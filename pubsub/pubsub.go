@@ -17,6 +17,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -143,24 +144,29 @@ type Publication struct {
 	km         keyMap
 	sockName   string
 	listener   net.Listener
-	// Handle special case of file only info
-	publishToDir bool
+
+	publishToDir bool // Handle special case of file only info
 	dirName      string
+	persistent   bool
 }
 
 func Publish(agentName string, topicType interface{}) (*Publication, error) {
-	return publishImpl(agentName, "", topicType)
+	return publishImpl(agentName, "", topicType, false)
+}
+
+func PublishPersistent(agentName string, topicType interface{}) (*Publication, error) {
+	return publishImpl(agentName, "", topicType, true)
 }
 
 func PublishScope(agentName string, agentScope string, topicType interface{}) (*Publication, error) {
-	return publishImpl(agentName, agentScope, topicType)
+	return publishImpl(agentName, agentScope, topicType, false)
 }
 
 // Init function to create directory and socket listener based on above settings
 // We read any checkpointed state from dirName and insert in pub.km as initial
 // values.
 func publishImpl(agentName string, agentScope string,
-	topicType interface{}) (*Publication, error) {
+	topicType interface{}, persistent bool) (*Publication, error) {
 
 	topic := TypeToName(topicType)
 	pub := new(Publication)
@@ -169,12 +175,19 @@ func publishImpl(agentName string, agentScope string,
 	pub.agentScope = agentScope
 	pub.topic = topic
 	pub.km = keyMap{key: NewLockedStringMap()}
+	pub.persistent = persistent
 	name := pub.nameString()
 
 	log.Infof("Publish(%s)\n", name)
 
-	// We always write to the directory as a checkpoint
-	dirName := PubDirName(name)
+	// We always write to the directory as a checkpoint, and only
+	// write to it when persistent is set?
+	if pub.persistent {
+		pub.dirName = PersistentDirName(name)
+	} else {
+		pub.dirName = PubDirName(name)
+	}
+	dirName := pub.dirName
 	if _, err := os.Stat(dirName); err != nil {
 		log.Infof("Publish Create %s\n", dirName)
 		if err := os.MkdirAll(dirName, 0700); err != nil {
@@ -192,7 +205,15 @@ func publishImpl(agentName string, agentScope string,
 
 	if publishToSock {
 		sockName := SockName(name)
-		if _, err := os.Stat(sockName); err == nil {
+		baseName := path.Base(sockName)
+		if _, err := os.Stat(baseName); err != nil {
+			log.Infof("Publish Create %s\n", baseName)
+			if err := os.MkdirAll(baseName, 0700); err != nil {
+				errStr := fmt.Sprintf("Publish(%s): %s",
+					name, err)
+				return nil, errors.New(errStr)
+			}
+		} else if _, err := os.Stat(sockName); err == nil {
 			if err := os.Remove(sockName); err != nil {
 				errStr := fmt.Sprintf("Publish(%s): %s",
 					name, err)
@@ -215,7 +236,7 @@ func publishImpl(agentName string, agentScope string,
 // Only reads json files. Sets restarted if that file was found.
 func (pub *Publication) populate() {
 	name := pub.nameString()
-	dirName := PubDirName(name)
+	dirName := pub.dirName
 	foundRestarted := false
 
 	log.Infof("populate(%s)\n", name)
@@ -446,6 +467,10 @@ func FixedDirName(name string) string {
 	return fmt.Sprintf("%s/%s", fixedDir, name)
 }
 
+func PersistentDirName(name string) string {
+	return fmt.Sprintf("/persist/status/%s", name)
+}
+
 func (pub *Publication) nameString() string {
 	if pub.publishToDir {
 		return pub.dirName
@@ -506,13 +531,7 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 	}
 	pub.updatersNotify(name)
 
-	var dirName string
-	if pub.publishToDir {
-		dirName = pub.dirName
-	} else {
-		dirName = PubDirName(name)
-	}
-	fileName := dirName + "/" + key + ".json"
+	fileName := pub.dirName + "/" + key + ".json"
 	log.Debugf("Publish writing %s\n", fileName)
 
 	// XXX already did a marshal in deepCopy; save that result?
@@ -585,8 +604,7 @@ func (pub *Publication) Unpublish(key string) error {
 	}
 	pub.updatersNotify(name)
 
-	dirName := PubDirName(name)
-	fileName := dirName + "/" + key + ".json"
+	fileName := pub.dirName + "/" + key + ".json"
 	log.Debugf("Unpublish deleting file %s\n", fileName)
 	if err := os.Remove(fileName); err != nil {
 		errStr := fmt.Sprintf("Unpublish(%s/%s): failed %s",
@@ -624,8 +642,7 @@ func (pub *Publication) restartImpl(restarted bool) error {
 		pub.updatersNotify(name)
 	}
 
-	dirName := PubDirName(name)
-	restartFile := dirName + "/" + "restarted"
+	restartFile := pub.dirName + "/" + "restarted"
 	if restarted {
 		f, err := os.OpenFile(restartFile, os.O_RDONLY|os.O_CREATE, 0600)
 		if err != nil {
@@ -787,9 +804,10 @@ type Subscription struct {
 	km         keyMap
 	userCtx    interface{}
 	sock       net.Conn // For socket subscriptions
-	// Handle special case of file only info
-	subscribeFromDir bool
+
+	subscribeFromDir bool // Handle special case of file only info
 	dirName          string
+	persistent       bool
 }
 
 func (sub *Subscription) nameString() string {
@@ -813,17 +831,24 @@ func (sub *Subscription) nameString() string {
 func Subscribe(agentName string, topicType interface{}, activate bool,
 	ctx interface{}) (*Subscription, error) {
 
-	return subscribeImpl(agentName, "", topicType, activate, ctx)
+	return subscribeImpl(agentName, "", topicType, activate, ctx, false)
 }
 
 func SubscribeScope(agentName string, agentScope string, topicType interface{},
 	activate bool, ctx interface{}) (*Subscription, error) {
 
-	return subscribeImpl(agentName, agentScope, topicType, activate, ctx)
+	return subscribeImpl(agentName, agentScope, topicType, activate, ctx,
+		false)
+}
+
+func SubscribePersistent(agentName string, topicType interface{}, activate bool,
+	ctx interface{}) (*Subscription, error) {
+
+	return subscribeImpl(agentName, "", topicType, activate, ctx, true)
 }
 
 func subscribeImpl(agentName string, agentScope string, topicType interface{},
-	activate bool, ctx interface{}) (*Subscription, error) {
+	activate bool, ctx interface{}, persistent bool) (*Subscription, error) {
 
 	topic := TypeToName(topicType)
 	changes := make(chan string)
@@ -836,6 +861,7 @@ func subscribeImpl(agentName string, agentScope string, topicType interface{},
 	sub.topic = topic
 	sub.userCtx = ctx
 	sub.km = keyMap{key: NewLockedStringMap()}
+	sub.persistent = persistent
 	name := sub.nameString()
 
 	// Special case for files in /var/tmp/zededa/ and also
@@ -847,6 +873,9 @@ func subscribeImpl(agentName string, agentScope string, topicType interface{},
 	} else if agentName == "zedclient" {
 		sub.subscribeFromDir = true
 		sub.dirName = PubDirName(name)
+	} else if persistent {
+		sub.subscribeFromDir = true
+		sub.dirName = PersistentDirName(name)
 	} else {
 		sub.subscribeFromDir = subscribeFromDir
 		sub.dirName = PubDirName(name)

@@ -188,7 +188,7 @@ echo "Current downloaded files:"
 ls -lt $PERSISTDIR/downloads/*/*
 echo
 
-# Place for surviving global config
+# Places for surviving global config and status
 if [ ! -d $PERSISTDIR/config/GlobalConfig ]; then
     mkdir -p $PERSISTDIR/config/GlobalConfig
 fi
@@ -196,6 +196,10 @@ if [ -f $PERSISTDIR/config/GlobalConfig ]; then
     rm -f /var/tmp/zededa/GlobalConfig
 fi
 ln -s $PERSISTDIR/config/GlobalConfig /var/tmp/zededa/GlobalConfig
+
+if [ ! -d $PERSISTDIR/status ]; then
+    mkdir -p $PERSISTDIR/status
+fi
 
 CURPART=`zboot curpart`
 if [ $? != 0 ]; then
@@ -415,6 +419,7 @@ fi
 if [ $SELF_REGISTER = 1 ]; then
     rm -f $TMPDIR/zedrouterconfig.json
     
+    # XXX doesn't this need to be in /config to survive a power-failure?
     touch $TMPDIR/self-register-failed
     echo "Self-registering our device certificate at " `date`
     if [ ! \( -f $CONFIGDIR/onboard.cert.pem -a -f $CONFIGDIR/onboard.key.pem \) ]; then

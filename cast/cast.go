@@ -373,7 +373,6 @@ func CastLispMetrics(in interface{}) types.LispMetrics {
 	return output
 }
 
-
 func CastGlobalConfig(in interface{}) types.GlobalConfig {
 	b, err := json.Marshal(in)
 	if err != nil {
@@ -395,6 +394,19 @@ func CastImageStatus(in interface{}) types.ImageStatus {
 	var output types.ImageStatus
 	if err := json.Unmarshal(b, &output); err != nil {
 		log.Fatal(err, "json Unmarshal in CastImageStatus")
+	}
+	return output
+}
+
+func CastUuidToNum(in interface{}) types.UuidToNum {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastUuidToNum")
+	}
+	var output types.UuidToNum
+	if err := json.Unmarshal(b, &output); err != nil {
+		// File might be corrupted in /persist; don't fatal
+		log.Error(err, "json Unmarshal in CastUuidToNum")
 	}
 	return output
 }

@@ -39,9 +39,6 @@ const (
 
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
-
-	// XXX hard-coded at 10 minutes
-	gcTime = 10 * time.Minute
 )
 
 // Go doesn't like this as a constant
@@ -1239,7 +1236,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	status.ModTime = time.Now()
 	status.PendingAdd = false
 	status.State = types.DOWNLOADED
-	status.Progress = 100	// Just in case
+	status.Progress = 100 // Just in case
 	publishDownloaderStatus(ctx, status)
 }
 
