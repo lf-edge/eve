@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -44,7 +45,13 @@ func (ep *AwsTransportMethod) Close() error {
 
 // use the specific ip as source address for this connection
 func (ep *AwsTransportMethod) WithSrcIpSelection(localAddr net.IP) error {
-	ep.hClient = httpClientSrcIP(localAddr)
+	ep.hClient = httpClientSrcIP(localAddr, nil)
+	return nil
+}
+
+func (ep *AwsTransportMethod) WithSrcIpAndProxySelection(localAddr net.IP,
+	proxy *url.URL) error {
+	ep.hClient = httpClientSrcIP(localAddr, proxy)
 	return nil
 }
 
@@ -52,7 +59,7 @@ func (ep *AwsTransportMethod) WithSrcIpSelection(localAddr net.IP) error {
 func (ep *AwsTransportMethod) WithBindIntf(intf string) error {
 	localAddr := getSrcIpFromInterface(intf)
 	if localAddr != nil {
-		ep.hClient = httpClientSrcIP(localAddr)
+		ep.hClient = httpClientSrcIP(localAddr, nil)
 		return nil
 	}
 	return fmt.Errorf("failed to get the address for intf")
