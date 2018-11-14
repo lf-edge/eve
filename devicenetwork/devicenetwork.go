@@ -63,9 +63,6 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 		if err != nil {
 			addrs6 = nil
 		}
-		// Get DNS info from dhcpcd
-		// XXX put error in status? Local only error so ignore?
-		GetDnsInfo(&globalStatus.UplinkStatus[ix])
 		globalStatus.UplinkStatus[ix].AddrInfoList = make([]types.AddrInfo,
 			len(addrs4)+len(addrs6))
 		for i, addr := range addrs4 {
@@ -79,6 +76,10 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 				u.IfName, addr.IP)
 			globalStatus.UplinkStatus[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
 		}
+		// Get DNS info from dhcpcd
+		// XXX put error in status? Local only error so ignore?
+		GetDnsInfo(&globalStatus.UplinkStatus[ix])
+
 		// Attempt to get a wpad.dat file if so configured
 		// Result is updating the Pacfile
 		// XXX put error in status?
