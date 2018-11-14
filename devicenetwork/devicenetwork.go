@@ -10,7 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/zedpac"
+	//"github.com/zededa/go-provision/zedpac"
 	"net"
 	"net/url"
 	"time"
@@ -119,6 +119,7 @@ func LookupProxy(
 			return nil, errors.New(errStr)
 		}
 
+		/*
 		// Check if we have a PAC file
 		if len(proxyConfig.Pacfile) > 0 {
 			pacFile, err := base64.StdEncoding.DecodeString(proxyConfig.Pacfile)
@@ -166,6 +167,7 @@ func LookupProxy(
 			log.Debugf("LookupProxy: PAC proxy being used is %s", proxy0)
 			return proxy, err
 		}
+		*/
 
 		config := &Config{}
 		for _, proxy := range proxyConfig.Proxies {
