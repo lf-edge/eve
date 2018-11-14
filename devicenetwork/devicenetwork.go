@@ -79,6 +79,11 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 				u.IfName, addr.IP)
 			globalStatus.UplinkStatus[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
 		}
+		// Attempt to get a wpad.dat file if so configured
+		// Result is updating the Pacfile
+		// XXX put error in status?
+		CheckAndGetNetworkProxy(&globalStatus,
+			&globalStatus.UplinkStatus[ix])
 	}
 	// Preserve geo info for existing interface and IP address
 	for ui, _ := range globalStatus.UplinkStatus {
@@ -95,14 +100,6 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 			ai.LastGeoTimestamp = oai.LastGeoTimestamp
 		}
 	}
-	// Copy proxy settings
-	globalStatus.ProxyConfig = globalConfig.ProxyConfig
-	// Attempt to get a wpad.dat file if so configured
-	// Result is updating the Pacfile
-	// XXX put error in status?
-	CheckAndGetNetworkProxy(&globalStatus, &globalStatus.ProxyConfig)
-	// Apply proxy before we do geolocation calls
-	ProxyToEnv(globalStatus.ProxyConfig)
 
 	// Immediate check
 	UpdateDeviceNetworkGeo(time.Second, &globalStatus)

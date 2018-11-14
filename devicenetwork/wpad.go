@@ -12,13 +12,12 @@ import (
 	"strings"
 )
 
-// Caller should loop over interfaces
 // Download a wpad file if so configured
-func CheckAndGetNetworkProxy(status *types.DeviceNetworkStatus,
-	proxyConfig *types.ProxyConfig) error {
+func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
+	status *types.NetworkUplink) error {
 
-	// XXX make per interface
-	ifname := "eth0"
+	ifname := status.IfName
+	proxyConfig := &status.ProxyConfig
 
 	log.Infof("CheckAndGetNetworkProxy(%s): enable %v, url %s\n",
 		ifname, proxyConfig.NetworkProxyEnable,
@@ -35,7 +34,8 @@ func CheckAndGetNetworkProxy(status *types.DeviceNetworkStatus,
 		return nil
 	}
 	if proxyConfig.NetworkProxyURL != "" {
-		pac, err := getFile(status, proxyConfig.NetworkProxyURL, ifname)
+		pac, err := getFile(deviceNetworkStatus,
+			proxyConfig.NetworkProxyURL, ifname)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to fetch %s for %s: %s",
 				proxyConfig.NetworkProxyURL, ifname, err)
@@ -47,8 +47,7 @@ func CheckAndGetNetworkProxy(status *types.DeviceNetworkStatus,
 		proxyConfig.Pacfile = pac
 		return nil
 	}
-	// XXX need the DomainName for a specific interface
-	dn := "" // XXX from interface's DomainName
+	dn := status.DomainName
 	if dn == "" {
 		errStr := fmt.Sprintf("NetworkProxyEnable for %s but neither a NetworkProxyURL nor a DomainName",
 			ifname)
@@ -61,7 +60,8 @@ func CheckAndGetNetworkProxy(status *types.DeviceNetworkStatus,
 	// in DomainName until we succeed
 	for {
 		url := fmt.Sprintf("http://wpad.%s/wpad.dat", dn)
-		pac, err := getFile(status, proxyConfig.NetworkProxyURL, ifname)
+		pac, err := getFile(deviceNetworkStatus,
+			proxyConfig.NetworkProxyURL, ifname)
 		if err == nil {
 			log.Infof("CheckAndGetNetworkProxy(%s): fetched from URL %s: %s\n",
 				ifname, url, pac)
