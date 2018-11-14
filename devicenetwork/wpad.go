@@ -60,8 +60,7 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 	// in DomainName until we succeed
 	for {
 		url := fmt.Sprintf("http://wpad.%s/wpad.dat", dn)
-		pac, err := getFile(deviceNetworkStatus,
-			proxyConfig.NetworkProxyURL, ifname)
+		pac, err := getFile(deviceNetworkStatus, url, ifname)
 		if err == nil {
 			log.Infof("CheckAndGetNetworkProxy(%s): fetched from URL %s: %s\n",
 				ifname, url, pac)
@@ -79,8 +78,8 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 			return errors.New(errStr)
 		}
 		b := []byte(dn)
-		dn = string(b[i:])
-		// How many dots left? End when we have a TLD i.e., not dots
+		dn = string(b[i+1:])
+		// How many dots left? End when we have a TLD i.e., no dots
 		// since wpad.com isn't a useful place to look
 		count := strings.Count(dn, ".")
 		if count == 0 {
