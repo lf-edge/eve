@@ -13,6 +13,7 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -611,6 +612,16 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				NetworkProxyEnable: netProxyConfig.NetworkProxyEnable,
 				NetworkProxyURL: netProxyConfig.NetworkProxyURL,
 				Pacfile: netProxyConfig.Pacfile,
+			}
+			// XXX temporary test code
+			test, _ := agentlog.GetXXXTest(ctx.zedagentCtx.subGlobalConfig)
+			if test && !proxyConfig.NetworkProxyEnable &&
+				proxyConfig.NetworkProxyURL != "" {
+
+				proxyConfig.NetworkProxyEnable = true
+				proxyConfig.NetworkProxyURL = "http://zedcontrol.hummingbird.zededa.net:88/api/v1/wpad.dat"
+				log.Warnf("GetXXXTest forcing NetworkProxy to %s\n",
+					proxyConfig.NetworkProxyURL)
 			}
 			proxyConfig.Exceptions = netProxyConfig.Exceptions
 
