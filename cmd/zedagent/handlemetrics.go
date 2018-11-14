@@ -1074,11 +1074,6 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 	networkInfo := new(zmet.ZInfoNetwork)
 	networkInfo.IPAddrs = make([]string, len(interfaceDetail.Addrs))
 	for index, ip := range interfaceDetail.Addrs {
-		// For compatibility we put he first in the deprecated singleton
-		// Note CIDR notation with /N
-		if index == 0 {
-			networkInfo.IPAddr = *proto.String(ip.Addr)
-		}
 		networkInfo.IPAddrs[index] = *proto.String(ip.Addr)
 	}
 	networkInfo.MacAddr = *proto.String(interfaceDetail.HardwareAddr)
@@ -1152,7 +1147,6 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 
 	ReportAppInfo.AppID = uuid
 	ReportAppInfo.SystemApp = false
-	ReportAppInfo.Activated = false
 	ReportAppInfo.State = zmet.ZSwState(types.HALTED)
 	if aiStatus != nil {
 		ReportAppInfo.AppName = aiStatus.DisplayName
@@ -1165,7 +1159,6 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			// appears. We avoid nil checks below by:
 			ds = &types.DomainStatus{}
 		} else {
-			ReportAppInfo.Activated = aiStatus.Activated
 			// XXX better compare? Pick REFRESHING and PURGING from
 			// aiStatus but HALTED from DomainStatus
 			if ds.State > aiStatus.State {

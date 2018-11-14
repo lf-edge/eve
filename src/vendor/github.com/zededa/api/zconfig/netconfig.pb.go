@@ -10,8 +10,8 @@ It is generated from these files:
 	fw.proto
 	vm.proto
 	devconfig.proto
-	devcommon.proto
 	storage.proto
+	devcommon.proto
 	appconfig.proto
 	netcmn.proto
 	baseosconfig.proto
@@ -36,13 +36,13 @@ It has these top-level messages:
 	ConfigItem
 	ConfigRequest
 	ConfigResponse
-	UUIDandVersion
-	Adapter
-	ZcServicePoint
 	SignatureInfo
 	DatastoreConfig
 	Image
 	Drive
+	UUIDandVersion
+	Adapter
+	ZcServicePoint
 	InstanceOpsCmd
 	AppInstanceConfig
 	IpRange

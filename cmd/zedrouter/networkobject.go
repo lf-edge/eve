@@ -109,7 +109,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	}
 
 	// Allocate bridgeNum.
-	bridgeNum := bridgeNumAllocate(config.UUID)
+	bridgeNum := bridgeNumAllocate(ctx, config.UUID)
 	bridgeName := fmt.Sprintf("bn%d", bridgeNum)
 	status.BridgeNum = bridgeNum
 	status.BridgeName = bridgeName
@@ -734,7 +734,7 @@ func doNetworkDelete(ctx *zedrouterContext,
 
 	status.BridgeName = ""
 	status.BridgeNum = 0
-	bridgeNumFree(status.UUID)
+	bridgeNumFree(ctx, status.UUID)
 }
 
 func findVifInBridge(status *types.NetworkObjectStatus, vifName string) bool {

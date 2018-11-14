@@ -564,9 +564,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		if status.Activated {
 			errStr := fmt.Sprintf("verifyStatus(%s) failed %s",
 				status.Key(), err)
-			log.Errorln(errStr)
-			status.LastErr = errStr
-			status.LastErrTime = time.Now()
+			log.Warnln(errStr)
 			status.Activated = false
 			status.State = types.HALTED
 		}
@@ -574,7 +572,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		publishDomainStatus(ctx, status)
 	} else {
 		if !status.Activated {
-			log.Errorf("verifyDomain(%s) domain came back alive; id  %d\n",
+			log.Warnf("verifyDomain(%s) domain came back alive; id  %d\n",
 				status.Key(), domainId)
 			status.LastErr = ""
 			status.LastErrTime = time.Time{}
@@ -583,7 +581,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.State = types.RUNNING
 			publishDomainStatus(ctx, status)
 		} else if domainId != status.DomainId {
-			log.Errorf("verifyDomain(%s) domainId changed from %d to %d\n",
+			log.Warnf("verifyDomain(%s) domainId changed from %d to %d\n",
 				status.Key(), status.DomainId, domainId)
 			status.DomainId = domainId
 			publishDomainStatus(ctx, status)
@@ -649,6 +647,9 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))
 	publishDomainStatus(ctx, &status)
+	log.Infof("handleCreate(%v) set domainName %s for %s\n",
+		config.UUIDandVersion, status.DomainName,
+		config.DisplayName)
 
 	if err := configToStatus(*config, ctx.assignableAdapters,
 		&status); err != nil {
@@ -879,7 +880,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus,
 	if err == nil && domainId != status.DomainId {
 		status.DomainId = domainId
 	}
-	maxDelay := time.Second * 600 // 10 minutes
+	maxDelay := time.Second * 60 // 1 minute
 	if status.DomainId != 0 {
 		status.State = types.HALTING
 		publishDomainStatus(ctx, status)
@@ -1060,6 +1061,7 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 		}
 		ds.ActiveFileLocation = target
 	}
+	// XXX could defer to Activate
 	if config.CloudInitUserData != "" {
 		ds, err := createCloudInitISO(config)
 		if err != nil {
@@ -1071,6 +1073,7 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 		}
 	}
 
+	// XXX could defer to Activate but might want to reserve adapters
 	for _, adapter := range config.IoAdapterList {
 		log.Debugf("configToStatus processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
@@ -1330,8 +1333,6 @@ func cp(dst, src string) error {
 // then we need to reboot. Thus version can change but can't handle disk or
 // vif changes.
 // XXX should we reboot if there are such changes? Or reject with error?
-// XXX to save key when the goroutine is created.
-// XXX separate goroutine to run cp? Add "copy complete" status?
 func handleModify(ctx *domainContext, key string,
 	config *types.DomainConfig, status *types.DomainStatus) {
 
@@ -1343,12 +1344,34 @@ func handleModify(ctx *domainContext, key string,
 
 	changed := false
 	if config.Activate && !status.Activated {
-		if status.LastErr != "" {
+		// AppNum could have changed if we did not already Activate
+		name := config.DisplayName + "." + strconv.Itoa(config.AppNum)
+		status.DomainName = name
+		status.AppNum = config.AppNum
+		status.VifList = config.VifList
+		publishDomainStatus(ctx, status)
+		log.Infof("handleModify(%v) set domainName %s for %s\n",
+			config.UUIDandVersion, status.DomainName,
+			config.DisplayName)
+
+		// XXX remove and use code below? Should see Actvate false to
+		// clear error?
+		if false && status.LastErr != "" {
 			log.Errorf("handleModify(%v) existing error for %s\n",
 				config.UUIDandVersion, config.DisplayName)
 			status.PendingModify = false
 			publishDomainStatus(ctx, status)
 			return
+		}
+		// This has the effect of trying a boot again for any
+		// handleModify after an error.
+		if status.LastErr != "" {
+			log.Infof("handleModify(%v) ignoring existing error for %s\n",
+				config.UUIDandVersion, config.DisplayName)
+			status.LastErr = ""
+			status.LastErrTime = time.Time{}
+			publishDomainStatus(ctx, status)
+			doInactivate(ctx, status, ctx.assignableAdapters)
 		}
 		status.VirtualizationMode = config.VirtualizationMode
 		status.EnableVnc = config.EnableVnc

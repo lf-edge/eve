@@ -19,6 +19,7 @@ import (
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/uuidtonum"
 	"os"
 	"time"
 )
@@ -54,6 +55,7 @@ type zedmanagerContext struct {
 	subAppImgVerifierStatus *pubsub.Subscription
 	subDatastoreConfig      *pubsub.Subscription
 	subGlobalConfig         *pubsub.Subscription
+	pubUuidToNum            *pubsub.Publication
 }
 
 var deviceNetworkStatus types.DeviceNetworkStatus
@@ -138,6 +140,14 @@ func Run() {
 	}
 	pubAppImgVerifierConfig.ClearRestarted()
 	ctx.pubAppImgVerifierConfig = pubAppImgVerifierConfig
+
+	pubUuidToNum, err := pubsub.PublishPersistent(agentName,
+		types.UuidToNum{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubUuidToNum = pubUuidToNum
+	pubUuidToNum.ClearRestarted()
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
@@ -465,12 +475,43 @@ func handleCreate(ctx *zedmanagerContext, key string,
 		PurgeCmd:            config.PurgeCmd,
 	}
 
+	// Do we have a PurgeCmd counter from before the reboot?
+	c, err := uuidtonum.UuidToNumGet(ctx.pubUuidToNum,
+		config.UUIDandVersion.UUID, "purgeCmdCounter")
+	if err == nil {
+		if uint32(c) == status.PurgeCmd.Counter {
+			log.Infof("handleCreate(%v) for %s found matching purge counter %d\n",
+				config.UUIDandVersion, config.DisplayName, c)
+		} else {
+			log.Warnf("handleCreate(%v) for %s found different purge counter %d vs. %d\n",
+				config.UUIDandVersion, config.DisplayName, c,
+				config.PurgeCmd.Counter)
+			status.PurgeCmd.Counter = config.PurgeCmd.Counter
+			status.PurgeInprogress = types.DOWNLOAD
+			status.State = types.PURGING
+			// We persist the PurgeCmd Counter when
+			// PurgeInprogress is done
+		}
+	} else {
+		// Save this PurgeCmd.Counter as the baseline
+		log.Infof("handleCreate(%v) for %s saving purge counter %d\n",
+			config.UUIDandVersion, config.DisplayName,
+			config.PurgeCmd.Counter)
+		uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum,
+			config.UUIDandVersion.UUID, int(config.PurgeCmd.Counter),
+			true, "purgeCmdCounter")
+	}
 	status.StorageStatusList = make([]types.StorageStatus,
 		len(config.StorageConfigList))
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
+		ss.DatastoreId = sc.DatastoreId
 		ss.Name = sc.Name
 		ss.ImageSha256 = sc.ImageSha256
+		ss.Size = sc.Size
+		ss.CertificateChain = sc.CertificateChain
+		ss.ImageSignature = sc.ImageSignature
+		ss.SignatureKey = sc.SignatureKey
 		ss.ReadOnly = sc.ReadOnly
 		ss.Preserve = sc.Preserve
 		ss.Format = sc.Format
@@ -503,7 +544,7 @@ func handleModify(ctx *zedmanagerContext, key string,
 	log.Infof("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
-	// XXX handle at least ACL and activate changes. What else?
+	// We handle at least ACL and activate changes. XXX What else?
 	// Not checking the version here; assume the microservices can handle
 	// some updates.
 
@@ -536,13 +577,10 @@ func handleModify(ctx *zedmanagerContext, key string,
 			config.UUIDandVersion, config.DisplayName,
 			status.PurgeCmd.Counter, config.PurgeCmd.Counter,
 			needPurge)
-		// XXX need to remember purge across power cycle
-		// But when we get the config after a device reboot
-		// we don't have history. Add per App UUID file in /config or
-		// /persist with PurgeInprogress value?
 		status.PurgeCmd.Counter = config.PurgeCmd.Counter
 		status.PurgeInprogress = types.DOWNLOAD
 		status.State = types.PURGING
+		// We persist the PurgeCmd Counter when PurgeInprogress is done
 	}
 	status.UUIDandVersion = config.UUIDandVersion
 	publishAppInstanceStatus(ctx, status)
@@ -558,6 +596,7 @@ func handleModify(ctx *zedmanagerContext, key string,
 	status.OverlayNetworkList = config.OverlayNetworkList
 	status.UnderlayNetworkList = config.UnderlayNetworkList
 	status.IoAdapterList = config.IoAdapterList
+	publishAppInstanceStatus(ctx, status)
 	log.Infof("handleModify done for %s\n", config.DisplayName)
 }
 
@@ -568,11 +607,12 @@ func handleDelete(ctx *zedmanagerContext, key string,
 		status.UUIDandVersion, status.DisplayName)
 
 	removeAIStatus(ctx, status)
+	// Remove the recorded PurgeCmd Counter
+	uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, status.UUIDandVersion.UUID)
 	log.Infof("handleDelete done for %s\n", status.DisplayName)
 }
 
 // Returns needRestart, needPurge
-// XXX return an enum instead?
 // If there is a change to the disks, adapters, or network interfaces
 // it returns needPurge.
 // If there is a change to the CPU etc resources it returns needRestart
