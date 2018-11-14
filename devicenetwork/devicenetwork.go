@@ -107,7 +107,6 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 			ai.LastGeoTimestamp = oai.LastGeoTimestamp
 		}
 	}
-
 	// Immediate check
 	UpdateDeviceNetworkGeo(time.Second, &globalStatus)
 	return globalStatus, err
