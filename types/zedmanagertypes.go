@@ -183,8 +183,13 @@ func RoundupToKB(b uint64) uint64 {
 }
 
 type StorageStatus struct {
+	DatastoreId        uuid.UUID
 	Name               string
-	ImageSha256        string // sha256 of immutable image
+	ImageSha256        string   // sha256 of immutable image
+	Size               uint64   // In bytes
+	CertificateChain   []string //name of intermediate certificates
+	ImageSignature     []byte   //signature of image
+	SignatureKey       string   //certificate containing public key
 	ReadOnly           bool
 	Preserve           bool
 	Maxsizebytes       uint64 // Resize filesystem to this size if set

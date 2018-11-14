@@ -45,13 +45,13 @@ func lookupVerifyImageConfigSha256(ctx *zedmanagerContext,
 
 // If checkCerts is set this can return false. Otherwise not.
 func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, safename string,
-	sc *types.StorageConfig, checkCerts bool) bool {
+	ss *types.StorageStatus, checkCerts bool) bool {
 
 	log.Infof("MaybeAddVerifyImageConfig for %s\n", safename)
 
 	// check the certificate files, if not present,
 	// we can not start verification
-	if checkCerts && !checkCertsForObject(safename, sc) {
+	if checkCerts && !checkCertsForObject(safename, ss) {
 		log.Infof("MaybeAddVerifyImageConfig for %s, Certs are still not installed\n",
 			safename)
 		return false
@@ -68,12 +68,12 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, safename string,
 			safename)
 		n := types.VerifyImageConfig{
 			Safename:         safename,
-			Name:             sc.Name,
-			ImageSha256:      sc.ImageSha256,
+			Name:             ss.Name,
+			ImageSha256:      ss.ImageSha256,
 			RefCount:         1,
-			CertificateChain: sc.CertificateChain,
-			ImageSignature:   sc.ImageSignature,
-			SignatureKey:     sc.SignatureKey,
+			CertificateChain: ss.CertificateChain,
+			ImageSignature:   ss.ImageSignature,
+			SignatureKey:     ss.SignatureKey,
 		}
 		publishVerifyImageConfig(ctx, &n)
 	}
@@ -153,10 +153,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 			Safename:    status.Safename,
 			Name:        status.Safename,
 			ImageSha256: status.ImageSha256,
-			// XXX CertificateChain: status.CertificateChain,
-			// ImageSignature:   status.ImageSignature,
-			// SignatureKey:     status.SignatureKey,
-			RefCount: 0,
+			RefCount:    0,
 		}
 		publishVerifyImageConfig(ctx, &n)
 		return
@@ -241,15 +238,15 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 }
 
 // check whether the cert files are installed
-func checkCertsForObject(safename string, sc *types.StorageConfig) bool {
+func checkCertsForObject(safename string, ss *types.StorageStatus) bool {
 
 	var cidx int = 0
 
 	// count the number of cerificates in this object
-	if sc.SignatureKey != "" {
+	if ss.SignatureKey != "" {
 		cidx++
 	}
-	for _, certUrl := range sc.CertificateChain {
+	for _, certUrl := range ss.CertificateChain {
 		if certUrl != "" {
 			cidx++
 		}
@@ -261,8 +258,8 @@ func checkCertsForObject(safename string, sc *types.StorageConfig) bool {
 		return true
 	}
 
-	if sc.SignatureKey != "" {
-		safename := types.UrlToSafename(sc.SignatureKey, "")
+	if ss.SignatureKey != "" {
+		safename := types.UrlToSafename(ss.SignatureKey, "")
 		filename := certificateDirname + "/" +
 			types.SafenameToFilename(safename)
 		if _, err := os.Stat(filename); err != nil {
@@ -272,7 +269,7 @@ func checkCertsForObject(safename string, sc *types.StorageConfig) bool {
 		// XXX check for valid or non-zero length?
 	}
 
-	for _, certUrl := range sc.CertificateChain {
+	for _, certUrl := range ss.CertificateChain {
 		if certUrl != "" {
 			safename := types.UrlToSafename(certUrl, "")
 			filename := certificateDirname + "/" +

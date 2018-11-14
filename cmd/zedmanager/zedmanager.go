@@ -486,9 +486,11 @@ func handleCreate(ctx *zedmanagerContext, key string,
 			log.Warnf("handleCreate(%v) for %s found different purge counter %d vs. %d\n",
 				config.UUIDandVersion, config.DisplayName, c,
 				config.PurgeCmd.Counter)
-			status.PurgeCmd.Counter = uint32(c)
-			// XXX where/when do we act? Ideally before we
-			// have booted domU once.
+			status.PurgeCmd.Counter = config.PurgeCmd.Counter
+			status.PurgeInprogress = types.DOWNLOAD
+			status.State = types.PURGING
+			// We persist the PurgeCmd Counter when
+			// PurgeInprogress is done
 		}
 	} else {
 		// Save this PurgeCmd.Counter as the baseline
@@ -503,8 +505,13 @@ func handleCreate(ctx *zedmanagerContext, key string,
 		len(config.StorageConfigList))
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
+		ss.DatastoreId = sc.DatastoreId
 		ss.Name = sc.Name
 		ss.ImageSha256 = sc.ImageSha256
+		ss.Size = sc.Size
+		ss.CertificateChain = sc.CertificateChain
+		ss.ImageSignature = sc.ImageSignature
+		ss.SignatureKey = sc.SignatureKey
 		ss.ReadOnly = sc.ReadOnly
 		ss.Preserve = sc.Preserve
 		ss.Format = sc.Format
@@ -537,7 +544,7 @@ func handleModify(ctx *zedmanagerContext, key string,
 	log.Infof("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
-	// XXX handle at least ACL and activate changes. What else?
+	// We handle at least ACL and activate changes. XXX What else?
 	// Not checking the version here; assume the microservices can handle
 	// some updates.
 
@@ -589,6 +596,7 @@ func handleModify(ctx *zedmanagerContext, key string,
 	status.OverlayNetworkList = config.OverlayNetworkList
 	status.UnderlayNetworkList = config.UnderlayNetworkList
 	status.IoAdapterList = config.IoAdapterList
+	publishAppInstanceStatus(ctx, status)
 	log.Infof("handleModify done for %s\n", config.DisplayName)
 }
 
@@ -605,7 +613,6 @@ func handleDelete(ctx *zedmanagerContext, key string,
 }
 
 // Returns needRestart, needPurge
-// XXX return an enum instead?
 // If there is a change to the disks, adapters, or network interfaces
 // it returns needPurge.
 // If there is a change to the CPU etc resources it returns needRestart
