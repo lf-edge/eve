@@ -536,14 +536,14 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 			// Generate NAT and ACCEPT rules based on protocol,
 			// lport, and TargetPort
 			if lport == "" || protocol == "" {
-				errStr := fmt.Sprintf("PortMap without lport %s/protocol %d: %s",
-					lport, protocol)
+				errStr := fmt.Sprintf("PortMap without lport %s or protocol %d: %+v",
+					lport, protocol, ace)
 				log.Errorln(errStr)
 				return nil, errors.New(errStr)
 			}
 			if appIP == "" {
-				errStr := fmt.Sprintf("PortMap without appIP %s/protocol %d: %s",
-					lport, protocol)
+				errStr := fmt.Sprintf("PortMap without appIP for lport %s/protocol %s: %+v",
+					lport, protocol, ace)
 				log.Errorln(errStr)
 				return nil, errors.New(errStr)
 			}
@@ -589,7 +589,7 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 			rulesList = append(rulesList, rule1, rule2)
 		}
 		if actionCount > 1 {
-			errStr := fmt.Sprintf("ACL with combination of Drop, Limit and/or PortMap rejected: %v",
+			errStr := fmt.Sprintf("ACL with combination of Drop, Limit and/or PortMap rejected: %+v",
 				ace)
 			log.Errorln(errStr)
 			return nil, errors.New(errStr)
