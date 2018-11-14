@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
+	"strings"
 )
 
 // XXX should we add some Init() function to create this?
@@ -98,7 +99,12 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		d := net.Dialer{LocalAddr: &localTCPAddr}
 
 		var transport *http.Transport
-		reqUrl := "https://" + destUrl
+		var reqUrl string
+		if strings.HasPrefix(destUrl, "http:") {
+			reqUrl = destUrl
+		} else {
+			reqUrl = "https://" + destUrl
+		}
 		// XXX Get the transport header with proxy information filled
 		var proxyUrl *url.URL
 		// XXX import cycle proxyUrl, err := devicenetwork.LookupProxy(
@@ -122,9 +128,9 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		
 		var req *http.Request
 		if b != nil {
-			req, err = http.NewRequest("POST", "https://"+destUrl, b)
+			req, err = http.NewRequest("POST", reqUrl, b)
 		} else {
-			req, err = http.NewRequest("GET", "https://"+destUrl, nil)
+			req, err = http.NewRequest("GET", reqUrl, nil)
 		}
 		if err != nil {
 			log.Errorf("NewRequest failed %s\n", err)
