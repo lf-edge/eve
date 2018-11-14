@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 )
@@ -46,12 +47,13 @@ type DronaEndPoint interface {
 	Action(req *DronaRequest) error
 	Close() error
 	WithSrcIpSelection(localAddr net.IP) error
+	WithSrcIpAndProxySelection(localAddr net.IP, proxy *url.URL) error
 	WithBindIntf(intf string) error
 	WithLogging(onoff bool) error
 }
 
 // use the specific ip as source address for this connection
-func httpClientSrcIP(localAddr net.IP) *http.Client {
+func httpClientSrcIP(localAddr net.IP, proxy *url.URL) *http.Client {
 	// You also need to do this to make it work and not give you a
 	// "mismatched local address type ip"
 	// This will make the ResolveIPAddr a TCPAddr without needing to
@@ -59,7 +61,7 @@ func httpClientSrcIP(localAddr net.IP) *http.Client {
 	localTCPAddr := net.TCPAddr{IP: localAddr}
 	webclient := &http.Client{
 		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
+			Proxy: http.ProxyURL(proxy),
 			DialContext: (&net.Dialer{
 				LocalAddr: &localTCPAddr,
 				Timeout:   30 * time.Second,

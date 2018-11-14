@@ -15,7 +15,6 @@ import (
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
@@ -328,7 +327,6 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	deviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
-	devicenetwork.ProxyToEnv(deviceNetworkStatus.ProxyConfig)
 	log.Infof("handleDNSModify done for %s; %d usable\n",
 		key, newAddrCount)
 }
@@ -345,7 +343,6 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
-	devicenetwork.ProxyToEnv(deviceNetworkStatus.ProxyConfig)
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
