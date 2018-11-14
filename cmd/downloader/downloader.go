@@ -903,7 +903,7 @@ func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
 	}
 	// check for proxies on the selected uplink interface
 	proxyUrl, err := devicenetwork.LookupProxy(
-		&ctx.deviceNetworkStatus, ifname, dpath)
+		&ctx.deviceNetworkStatus, ifname, dnldUrl)
 	if err == nil && proxyUrl != nil {
 		log.Infof("doS3: Using proxy %s", proxyUrl.String())
 		dEndPoint.WithSrcIpAndProxySelection(ipSrc, proxyUrl)
