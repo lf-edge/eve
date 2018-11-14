@@ -13,9 +13,12 @@ import (
 	"strings"
 )
 
-// Parsing the output of and updating NetworkUplink
+// Get DNS info from dhcpcd. Updates DomainName and DnsServers
 // dhcpcd -U eth0 | grep domain_name=
 // dhcpcd -U eth0 | grep domain_name_servers=
+// XXX add IPv6 support. Where do we put if different DomainName?
+// dhcp6_domain_search='attlocal.net'
+// dhcp6_name_servers='2600:1700:daa0:cfb0::1'
 func GetDnsInfo(us *types.NetworkUplink) error {
 
 	log.Infof("getDnsInfo(%s)\n", us.IfName)
@@ -39,9 +42,6 @@ func GetDnsInfo(us *types.NetworkUplink) error {
 			continue
 		}
 		log.Debugf("Got <%s> <%s>\n", items[0], items[1])
-		// XXX check with IPv6 as well. Repeat vs. different string?
-		// Have dhcp6_domain_search='attlocal.net'
-		// dhcp6_name_servers='2600:1700:daa0:cfb0::1'
 		switch items[0] {
 		case "domain_name":
 			dn := trimQuotes(items[1])

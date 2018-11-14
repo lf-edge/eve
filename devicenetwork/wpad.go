@@ -84,7 +84,7 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 		// since wpad.com isn't a useful place to look
 		count := strings.Count(dn, ".")
 		if count == 0 {
-			log.Infof("CheckAndGetNetworkProxy(%s): got to TLD in DomainName %s\n",
+			log.Infof("CheckAndGetNetworkProxy(%s): reached TLD in DomainName %s\n",
 				ifname, dn)
 			log.Errorln(errStr)
 			return errors.New(errStr)

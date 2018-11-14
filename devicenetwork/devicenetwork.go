@@ -76,15 +76,23 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 				u.IfName, addr.IP)
 			globalStatus.UplinkStatus[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
 		}
-		// Get DNS info from dhcpcd
-		// XXX put error in status? Local only error so ignore?
-		GetDnsInfo(&globalStatus.UplinkStatus[ix])
+		// Get DNS info from dhcpcd. Updates DomainName and DnsServers
+		err = GetDnsInfo(&globalStatus.UplinkStatus[ix])
+		if err != nil {
+			errStr := fmt.Sprintf("GetDnsInfo failed %s", err)
+			globalStatus.UplinkStatus[ix].Error = errStr
+			globalStatus.UplinkStatus[ix].ErrorTime = time.Now()
+		}
 
 		// Attempt to get a wpad.dat file if so configured
 		// Result is updating the Pacfile
-		// XXX put error in status?
-		CheckAndGetNetworkProxy(&globalStatus,
+		err = CheckAndGetNetworkProxy(&globalStatus,
 			&globalStatus.UplinkStatus[ix])
+		if err != nil {
+			errStr := fmt.Sprintf("GetNetworkProxy failed %s", err)
+			globalStatus.UplinkStatus[ix].Error = errStr
+			globalStatus.UplinkStatus[ix].ErrorTime = time.Now()
+		}
 	}
 	// Preserve geo info for existing interface and IP address
 	for ui, _ := range globalStatus.UplinkStatus {
