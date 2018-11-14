@@ -13,7 +13,6 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zconfig"
-	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -412,8 +411,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 
 		uplink := types.NetworkUplinkConfig{}
 		uplink.IfName = sysAdapter.Name
-		uplink.Free   = sysAdapter.FreeUplink
-		uplink.Dhcp   = types.DT_CLIENT
+		uplink.Free = sysAdapter.FreeUplink
+		uplink.Dhcp = types.DT_CLIENT
 
 		// Lookup the network with given UUID
 		// and copy proxy configuration
@@ -426,7 +425,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		network := cast.CastNetworkObjectConfig(networkObject)
 		if network.Proxy != nil {
 			uplink.ProxyConfig = *network.Proxy
-			uplink.AddrSubnet  = sysAdapter.Addr
+			uplink.AddrSubnet = sysAdapter.Addr
 			// XXX Only use for systerm adapter now is to pass proxy configuration
 			// from cloud. It is useless without proxy configuration.
 			//uplinkConfig.Uplinks = append(uplinkConfig.Uplinks, uplink)
@@ -444,7 +443,6 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	getconfigCtx.pubDeviceUplinkConfig.Publish("zedagent", *uplinkConfig)
 	log.Infof("parseSystemAdapterConfig: Done")
 }
-
 
 func lookupDatastore(datastores []*zconfig.DatastoreConfig,
 	dsid string) *zconfig.DatastoreConfig {
@@ -610,18 +608,8 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 
 			proxyConfig := types.ProxyConfig{
 				NetworkProxyEnable: netProxyConfig.NetworkProxyEnable,
-				NetworkProxyURL: netProxyConfig.NetworkProxyURL,
-				Pacfile: netProxyConfig.Pacfile,
-			}
-			// XXX temporary test code
-			test, _ := agentlog.GetXXXTest(ctx.zedagentCtx.subGlobalConfig)
-			if test && !proxyConfig.NetworkProxyEnable &&
-				proxyConfig.NetworkProxyURL != "" {
-
-				proxyConfig.NetworkProxyEnable = true
-				proxyConfig.NetworkProxyURL = "http://zedcontrol.hummingbird.zededa.net:88/api/v1/wpad.dat"
-				log.Warnf("GetXXXTest forcing NetworkProxy to %s\n",
-					proxyConfig.NetworkProxyURL)
+				NetworkProxyURL:    netProxyConfig.NetworkProxyURL,
+				Pacfile:            netProxyConfig.Pacfile,
 			}
 			proxyConfig.Exceptions = netProxyConfig.Exceptions
 
@@ -629,7 +617,7 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 			for _, proxy := range netProxyConfig.Proxies {
 				proxyEntry := types.ProxyEntry{
 					Server: proxy.Server,
-					Port: proxy.Port,
+					Port:   proxy.Port,
 				}
 				switch proxy.Proto {
 				case zconfig.ProxyProto_PROXY_HTTP:
