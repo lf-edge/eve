@@ -886,7 +886,7 @@ func doCurl(url string, ifname string, maxsize uint64, destFilename string) erro
 }
 
 func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
-	syncOp zedUpload.SyncOpType, apiKey string, password string,
+	syncOp zedUpload.SyncOpType, dnldUrl string, apiKey string, password string,
 	dpath string, region string, maxsize uint64, ifname string,
 	ipSrc net.IP, filename string, locFilename string) error {
 
@@ -1115,7 +1115,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			ipSrc, ifname, config.TransportMethod)
 		switch config.TransportMethod {
 		case zconfig.DsType_DsS3.String():
-			err = doS3(ctx, status, syncOp, config.ApiKey,
+			err = doS3(ctx, status, syncOp, config.DownloadURL, config.ApiKey,
 				config.Password, config.Dpath, config.Region,
 				config.Size, ifname, ipSrc, filename, locFilename)
 			if err != nil {

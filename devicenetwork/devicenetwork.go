@@ -118,6 +118,54 @@ func LookupProxy(
 			return nil, errors.New(errStr)
 		}
 
+		// Check if we have a PAC file
+		if len(proxyConfig.Pacfile) > 0 {
+			pacFile, err := base64.StdEncoding.DecodeString(proxyConfig.Pacfile)
+			if err != nil {
+				errStr := fmt.Sprintf("LookupProxy: Decoding proxy file failed: %s", err)
+				log.Errorf(errStr)
+				return nil, errors.New(errStr)
+			}
+			proxyString, err := zedpac.Find_proxy_sync(
+				string(pacFile), rawUrl, u.Host)
+			if err != nil {
+				errStr := fmt.Sprintf("LookupProxy: PAC file could not find proxy for %s: %s",
+					rawUrl, err)
+				log.Errorf(errStr)
+				return nil, errors.New(errStr)
+			}
+			//if proxyString == "DIRECT" {
+			if strings.HasPrefix(proxyString, "DIRECT") {
+				return nil, nil
+			}
+			proxies := strings.Split(proxyString, ";")
+			if len(proxies) == 0 {
+				log.Errorf("LookupProxy: Number of proxies in PAC file result is Zero")
+				return nil, nil
+			}
+
+			// XXX Take the first proxy for now. Failing over to the next
+			// proxy should be implemented
+			proxy0 := proxies[0]
+			proxy0 = strings.Split(proxy0, " ")[1]
+			// Proxy address returned by PAC does not have the URL scheme.
+			// We prepend the scheme (http/https) of the incoming raw URL.
+			if len(u.Scheme) == 0 {
+				proxy0 = "http://" + proxy0
+			} else {
+				proxy0 = u.Scheme + "://" + proxy0
+			}
+			proxy, err := url.Parse(proxy0)
+			if err != nil {
+				errStr := fmt.Sprintf("LookupProxy: PAC file returned invalid proxy %s: %s",
+					proxyString, err)
+				log.Errorf(errStr)
+				return nil, errors.New(errStr)
+			}
+			log.Debugf("LookupProxy: PAC proxy being used is %s", proxy0)
+			return proxy, err
+		}
+
 		config := &Config{}
 		for _, proxy := range proxyConfig.Proxies {
 			switch proxy.Type {

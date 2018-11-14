@@ -102,6 +102,7 @@ func (cfg *Config) ProxyFunc() func(reqURL *url.URL) (*url.URL, error) {
 
 func (cfg *config) proxyForURL(reqURL *url.URL) (*url.URL, error) {
 	var proxy *url.URL
+	/*
 	if reqURL.Scheme == "https" {
 		proxy = cfg.httpsProxy
 	}
@@ -110,6 +111,13 @@ func (cfg *config) proxyForURL(reqURL *url.URL) (*url.URL, error) {
 		if proxy != nil && cfg.CGI {
 			return nil, errors.New("refusing to use HTTP_PROXY value in CGI environment; see golang.org/s/cgihttpproxy")
 		}
+	}
+	*/
+	switch reqURL.Scheme {
+	case "https":
+		proxy = cfg.httpsProxy
+	case "http":
+		proxy = cfg.httpProxy
 	}
 	if proxy == nil {
 		return nil, nil
