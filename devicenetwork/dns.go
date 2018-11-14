@@ -39,6 +39,8 @@ func GetDnsInfo(us *types.NetworkUplink) error {
 		}
 		log.Debugf("Got <%s> <%s>\n", items[0], items[1])
 		// XXX check with IPv6 as well. Repeat vs. different string?
+		// Have dhcp6_domain_search='attlocal.net'
+		// dhcp6_name_servers='2600:1700:daa0:cfb0::1'
 		switch items[0] {
 		case "domain_name":
 			dn := trimQuotes(items[1])

@@ -20,7 +20,7 @@ func CheckAndGetNetworkProxy(status *types.DeviceNetworkStatus,
 	// XXX make per interface
 	ifname := "eth0"
 
-	log.Infof("CheckAndGetNetworkProxy(%s): enable %v, url %s, %s, %s\n",
+	log.Infof("CheckAndGetNetworkProxy(%s): enable %v, url %s\n",
 		ifname, proxyConfig.NetworkProxyEnable,
 		proxyConfig.NetworkProxyURL)
 
