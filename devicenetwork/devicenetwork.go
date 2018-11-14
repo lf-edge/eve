@@ -10,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/zedpac"
 	"net"
 	"net/url"
 	"time"

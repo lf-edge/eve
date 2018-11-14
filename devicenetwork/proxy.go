@@ -12,7 +12,7 @@
 package devicenetwork
 
 import (
-	"errors"
+	//"errors"
 	"fmt"
 	"net"
 	"net/url"

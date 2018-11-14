@@ -5,6 +5,7 @@ import (
 	"github.com/zededa/shared/srvs/drona/sftp"
 	"log"
 	"net"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -71,6 +72,11 @@ func (ep *SftpTransportMethod) Close() error {
 
 // use the specific ip as source address for this connection
 func (ep *SftpTransportMethod) WithSrcIpSelection(localAddr net.IP) error {
+	return fmt.Errorf("not supported")
+}
+
+func (ep *SftpTransportMethod) WithSrcIpAndProxySelection(localAddr net.IP,
+	proxy *url.URL) error {
 	return fmt.Errorf("not supported")
 }
 
