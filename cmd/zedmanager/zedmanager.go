@@ -486,7 +486,6 @@ func handleCreate(ctx *zedmanagerContext, key string,
 			log.Warnf("handleCreate(%v) for %s found different purge counter %d vs. %d\n",
 				config.UUIDandVersion, config.DisplayName, c,
 				config.PurgeCmd.Counter)
-			// XXX status.PurgeCmd.Counter = uint32(c)
 			status.PurgeCmd.Counter = config.PurgeCmd.Counter
 			status.PurgeInprogress = types.DOWNLOAD
 			status.State = types.PURGING
