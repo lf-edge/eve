@@ -21,15 +21,16 @@ func GetDnsInfo(us *types.NetworkUplink) error {
 	log.Infof("getDnsInfo(%s)\n", us.IfName)
 	log.Infof("Calling dhcpcd -U -4 %s\n", us.IfName)
 	cmd := wrap.Command("dhcpcd", "-U", "-4", us.IfName)
-	stdout, err := cmd.Output()
+	stdoutStderr, err := cmd.CombinedOutput()
 	if err != nil {
 		// XXX get error -1 unless we have -4
-		errStr := fmt.Sprintf("dhcpcd -U failed ", err)
+		errStr := fmt.Sprintf("dhcpcd -U failed %s: %s",
+			string(stdoutStderr), err)
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
-	log.Debugf("dhcpcd -U got %v\n", string(stdout))
-	lines := strings.Split(string(stdout), "\n")
+	log.Debugf("dhcpcd -U got %v\n", string(stdoutStderr))
+	lines := strings.Split(string(stdoutStderr), "\n")
 	us.DomainName = ""
 	us.DnsServers = []net.IP{}
 	for _, line := range lines {
