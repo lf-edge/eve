@@ -1145,12 +1145,15 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 			networkInfo.Location = geo
 			break
 		}
+		// Any error?
+		if !uplink.ErrorTime.IsZero() {
+			errInfo := new(zmet.ErrorInfo)
+			errInfo.Description = uplink.Error
+			errTime, _ := ptypes.TimestampProto(uplink.ErrorTime)
+			errInfo.Timestamp = errTime
+			networkInfo.NetworkErr = errInfo
+		}
 	}
-
-	// XXX once we have static config add any
-	// config errors. Note that this might imply
-	// reporting for devices which do not exist.
-
 	return networkInfo
 }
 
