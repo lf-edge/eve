@@ -558,6 +558,12 @@ func Run() {
 	// Publish initial device info. Retries all addresses on all uplinks.
 	publishDevInfo(&zedagentCtx)
 
+	// start the metrics reporting task
+	handleChannel := make(chan interface{})
+	go metricsTimerTask(&zedagentCtx, handleChannel)
+	metricsTickerHandle := <-handleChannel
+	getconfigCtx.metricsTickerHandle = metricsTickerHandle
+
 	// Process the verifierStatus to avoid downloading an image we
 	// already have in place
 	log.Infof("Handling initial verifier Status\n")
@@ -584,16 +590,11 @@ func Run() {
 		}
 	}
 
-	// start the metrics/config fetch tasks
-	handleChannel := make(chan interface{})
+	// start the config fetch tasks after we've heard from verifier
 	go configTimerTask(handleChannel, &getconfigCtx)
-	log.Infof("Waiting for flexticker handle\n")
 	configTickerHandle := <-handleChannel
-	go metricsTimerTask(&zedagentCtx, handleChannel)
-	metricsTickerHandle := <-handleChannel
 	// XXX close handleChannels?
 	getconfigCtx.configTickerHandle = configTickerHandle
-	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
 	updateSshAccess(!globalConfig.NoSshAccess, true)
 
