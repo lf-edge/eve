@@ -4,6 +4,7 @@
 package devicenetwork
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	log "github.com/sirupsen/logrus"
@@ -35,7 +36,7 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 		return nil
 	}
 	if proxyConfig.NetworkProxyURL != "" {
-		pac, err := getWpadFile(deviceNetworkStatus,
+		pac, err := getPacFile(deviceNetworkStatus,
 			proxyConfig.NetworkProxyURL, ifname)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to fetch %s for %s: %s",
@@ -43,8 +44,6 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 			log.Errorln(errStr)
 			return errors.New(errStr)
 		}
-		log.Infof("CheckAndGetNetworkProxy(%s): fetched from URL %s: %s\n",
-			ifname, proxyConfig.NetworkProxyURL, pac)
 		proxyConfig.Pacfile = pac
 		return nil
 	}
@@ -61,10 +60,8 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 	// in DomainName until we succeed
 	for {
 		url := fmt.Sprintf("http://wpad.%s/wpad.dat", dn)
-		pac, err := getWpadFile(deviceNetworkStatus, url, ifname)
+		pac, err := getPacFile(deviceNetworkStatus, url, ifname)
 		if err == nil {
-			log.Infof("CheckAndGetNetworkProxy(%s): fetched from URL %s: %s\n",
-				ifname, url, pac)
 			proxyConfig.Pacfile = pac
 			return nil
 		}
@@ -97,7 +94,7 @@ var ctx = zedcloud.ZedCloudContext{
 	SuccessFunc: zedcloud.ZedCloudSuccess,
 }
 
-func getWpadFile(status *types.DeviceNetworkStatus, url string,
+func getPacFile(status *types.DeviceNetworkStatus, url string,
 	ifname string) (string, error) {
 
 	ctx.DeviceNetworkStatus = status
@@ -119,7 +116,10 @@ func getWpadFile(status *types.DeviceNetworkStatus, url string,
 	}
 	switch mimeType {
 	case "application/x-ns-proxy-autoconfig":
-		return string(contents), nil
+		log.Infof("getPacFile(%s): fetched from URL %s: %s\n",
+				ifname, url, string(contents))
+		encoded := base64.StdEncoding.EncodeToString(contents)
+		return encoded, nil
 	default:
 		errStr := fmt.Sprintf("Incorrect mime-type %s from %s",
 			mimeType, url)

@@ -6,7 +6,6 @@ package zedagent
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -622,15 +621,7 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 			proxyConfig := types.ProxyConfig{
 				NetworkProxyEnable: netProxyConfig.NetworkProxyEnable,
 				NetworkProxyURL:    netProxyConfig.NetworkProxyURL,
-			}
-			if netProxyConfig.Pacfile != "" {
-				pacFile, err := base64.StdEncoding.DecodeString(netProxyConfig.Pacfile)
-				if err != nil {
-					log.Errorf("Decoding proxy file failed: %s",
-						err)
-				} else {
-					proxyConfig.Pacfile = string(pacFile)
-				}
+				Pacfile:            netProxyConfig.Pacfile,
 			}
 			proxyConfig.Exceptions = netProxyConfig.Exceptions
 
