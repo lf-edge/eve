@@ -96,10 +96,11 @@ var ctx = zedcloud.ZedCloudContext{
 	SuccessFunc: zedcloud.ZedCloudSuccess,
 }
 
+// Avoid using a proxy to fetch the wpad.dat
 func getFile(status *types.DeviceNetworkStatus, url string,
 	ifname string) (string, error) {
 
 	ctx.DeviceNetworkStatus = status
-	_, contents, err := zedcloud.SendOnIntf(ctx, url, ifname, 0, nil)
+	_, contents, err := zedcloud.SendOnIntf(ctx, url, ifname, 0, nil, false)
 	return string(contents), err
 }
