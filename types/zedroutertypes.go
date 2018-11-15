@@ -65,8 +65,6 @@ type AppNetworkStatus struct {
 	PendingAdd     bool
 	PendingModify  bool
 	PendingDelete  bool
-	UlNum          int // Number of underlay interfaces
-	OlNum          int // Number of overlay interfaces
 	DisplayName    string
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	IsZedmanager        bool
