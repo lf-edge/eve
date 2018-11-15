@@ -16,7 +16,7 @@ static char* buffer;
 static char* buf_ptr;
 static int buf_size;
 
-static void log(int level, const char *buf) {
+static void log_pac(int level, const char *buf) {
     while (*buf && (buf_ptr - buffer < buf_size - 1)) {
        *buf_ptr++ = *buf++;
     }
@@ -27,7 +27,7 @@ static void init_log(char *buf, int size) {
     buffer  = buf;
     buf_ptr = buf;
     buf_size = size;
-    pac_set_log_fn(&log);
+    pac_set_log_fn(&log_pac);
 }
 */
 import "C"
