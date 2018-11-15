@@ -15,7 +15,6 @@ import (
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
@@ -902,7 +901,7 @@ func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
 		return err
 	}
 	// check for proxies on the selected uplink interface
-	proxyUrl, err := devicenetwork.LookupProxy(
+	proxyUrl, err := zedcloud.LookupProxy(
 		&ctx.deviceNetworkStatus, ifname, dnldUrl)
 	if err == nil && proxyUrl != nil {
 		log.Infof("doS3: Using proxy %s", proxyUrl.String())

@@ -411,8 +411,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 
 		uplink := types.NetworkUplinkConfig{}
 		uplink.IfName = sysAdapter.Name
-		uplink.Free   = sysAdapter.FreeUplink
-		uplink.Dhcp   = types.DT_CLIENT
+		uplink.Free = sysAdapter.FreeUplink
+		uplink.Dhcp = types.DT_CLIENT
 
 		// Lookup the network with given UUID
 		// and copy proxy configuration
@@ -425,7 +425,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		network := cast.CastNetworkObjectConfig(networkObject)
 		if network.Proxy != nil {
 			uplink.ProxyConfig = *network.Proxy
-			uplink.AddrSubnet  = sysAdapter.Addr
+			uplink.AddrSubnet = sysAdapter.Addr
 			// XXX Only use for systerm adapter now is to pass proxy configuration
 			// from cloud. It is useless without proxy configuration.
 			//uplinkConfig.Uplinks = append(uplinkConfig.Uplinks, uplink)
@@ -443,7 +443,6 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	getconfigCtx.pubDeviceUplinkConfig.Publish("zedagent", *uplinkConfig)
 	log.Infof("parseSystemAdapterConfig: Done")
 }
-
 
 func lookupDatastore(datastores []*zconfig.DatastoreConfig,
 	dsid string) *zconfig.DatastoreConfig {
@@ -608,8 +607,9 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				netEnt.Id)
 
 			proxyConfig := types.ProxyConfig{
-				ProxyEnable: netProxyConfig.NetworkProxyEnable,
-				Pacfile: netProxyConfig.Pacfile,
+				NetworkProxyEnable: netProxyConfig.NetworkProxyEnable,
+				NetworkProxyURL:    netProxyConfig.NetworkProxyURL,
+				Pacfile:            netProxyConfig.Pacfile,
 			}
 			proxyConfig.Exceptions = netProxyConfig.Exceptions
 
@@ -617,7 +617,7 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 			for _, proxy := range netProxyConfig.Proxies {
 				proxyEntry := types.ProxyEntry{
 					Server: proxy.Server,
-					Port: proxy.Port,
+					Port:   proxy.Port,
 				}
 				switch proxy.Proto {
 				case zconfig.ProxyProto_PROXY_HTTP:

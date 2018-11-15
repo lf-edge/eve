@@ -124,10 +124,13 @@ type ProxyEntry struct {
 }
 
 type ProxyConfig struct {
-	ProxyEnable bool
-	Proxies     []ProxyEntry
-	Exceptions  string
-	Pacfile     string
+	Proxies    []ProxyEntry
+	Exceptions string
+	Pacfile    string
+	// If Enable is set we use WPAD. If the URL is not set we try
+	// the various DNS suffixes until we can download a wpad.dat file
+	NetworkProxyEnable bool   // Enable WPAD
+	NetworkProxyURL    string // Complete URL i.e., with /wpad.dat
 }
 
 type NetworkUplinkConfig struct {
@@ -148,6 +151,8 @@ type NetworkUplink struct {
 	NetworkObjectConfig
 	AddrInfoList []AddrInfo
 	ProxyConfig
+	Error     string
+	ErrorTime time.Time
 }
 
 type AddrInfo struct {
