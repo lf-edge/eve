@@ -856,16 +856,13 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	}
 	getSwInfo := func(partLabel string) *zmet.ZInfoDevSW {
 		swInfo := new(zmet.ZInfoDevSW)
-		swInfo.Activated = (partLabel == zboot.GetCurrentPartition())
-		swInfo.PartitionLabel = partLabel
-		swInfo.PartitionDevice = zboot.GetPartitionDevname(partLabel)
-		swInfo.PartitionState = zboot.GetPartitionState(partLabel)
-		swInfo.ShortVersion = zboot.GetShortVersion(partLabel)
-		swInfo.LongVersion = zboot.GetLongVersion(partLabel)
-		swInfo.DownloadProgress = 100
 		if bos := getBaseOsStatus(partLabel); bos != nil {
 			// Get current state/version which is different than
 			// what is on disk
+			swInfo.Activated = bos.Activated
+			swInfo.PartitionLabel = bos.PartitionLabel
+			swInfo.PartitionDevice = bos.PartitionDevice
+			swInfo.PartitionState = bos.PartitionState
 			swInfo.Status = zmet.ZSwState(bos.State)
 			swInfo.ShortVersion = bos.BaseOsVersion
 			swInfo.LongVersion = "" // XXX
@@ -883,13 +880,23 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 				errInfo.Timestamp = errTime
 				swInfo.SwErr = errInfo
 			}
-		} else if swInfo.ShortVersion != "" {
-			// Must be factory install i.e. INSTALLED
-			swInfo.Status = zmet.ZSwState(types.INSTALLED)
-			swInfo.DownloadProgress = 100
 		} else {
-			swInfo.Status = zmet.ZSwState(types.INITIAL)
-			swInfo.DownloadProgress = 0
+			// XXX put this info in BaseOsStatus so we don't need to call zboot here? Can't since no UUID!
+			swInfo.Activated = (partLabel == zboot.GetCurrentPartition())
+			swInfo.PartitionLabel = partLabel
+			swInfo.PartitionDevice = zboot.GetPartitionDevname(partLabel)
+			swInfo.PartitionState = zboot.GetPartitionState(partLabel)
+			swInfo.ShortVersion = zboot.GetShortVersion(partLabel)
+			swInfo.LongVersion = zboot.GetLongVersion(partLabel)
+			swInfo.DownloadProgress = 100
+			if swInfo.ShortVersion != "" {
+				// Must be factory install i.e. INSTALLED
+				swInfo.Status = zmet.ZSwState(types.INSTALLED)
+				swInfo.DownloadProgress = 100
+			} else {
+				swInfo.Status = zmet.ZSwState(types.INITIAL)
+				swInfo.DownloadProgress = 0
+			}
 		}
 		return swInfo
 	}
