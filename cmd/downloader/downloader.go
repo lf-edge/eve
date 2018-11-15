@@ -15,7 +15,6 @@ import (
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
@@ -883,8 +882,8 @@ func doCurl(url string, ifname string, maxsize uint64, destFilename string) erro
 }
 
 func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
-	syncOp zedUpload.SyncOpType, apiKey string, password string,
-	dpath string, region string, maxsize uint64,
+	syncOp zedUpload.SyncOpType, dnldUrl string, apiKey string, password string,
+	dpath string, region string, maxsize uint64, ifname string,
 	ipSrc net.IP, filename string, locFilename string) error {
 
 	auth := &zedUpload.AuthInput{
@@ -901,7 +900,16 @@ func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
 		log.Errorf("NewSyncerDest failed: %s\n", err)
 		return err
 	}
-	dEndPoint.WithSrcIpSelection(ipSrc)
+	// check for proxies on the selected uplink interface
+	proxyUrl, err := zedcloud.LookupProxy(
+		&ctx.deviceNetworkStatus, ifname, dnldUrl)
+	if err == nil && proxyUrl != nil {
+		log.Infof("doS3: Using proxy %s", proxyUrl.String())
+		dEndPoint.WithSrcIpAndProxySelection(ipSrc, proxyUrl)
+	} else {
+		dEndPoint.WithSrcIpSelection(ipSrc)
+	}
+
 	var respChan = make(chan *zedUpload.DronaRequest)
 
 	log.Debugf("syncOp for <%s>, <%s>, <%s>\n", dpath, region, filename)
@@ -1103,9 +1111,9 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			ipSrc, ifname, config.TransportMethod)
 		switch config.TransportMethod {
 		case zconfig.DsType_DsS3.String():
-			err = doS3(ctx, status, syncOp, config.ApiKey,
+			err = doS3(ctx, status, syncOp, config.DownloadURL, config.ApiKey,
 				config.Password, config.Dpath, config.Region,
-				config.Size, ipSrc, filename, locFilename)
+				config.Size, ifname, ipSrc, filename, locFilename)
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
@@ -1246,7 +1254,6 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		types.CountLocalAddrFree(ctx.deviceNetworkStatus, ""),
 		types.CountLocalAddrAny(ctx.deviceNetworkStatus, ""))
 
-	devicenetwork.ProxyToEnv(ctx.deviceNetworkStatus.ProxyConfig)
 	log.Infof("handleDNSModify done for %s\n", key)
 }
 
@@ -1259,7 +1266,6 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
-	devicenetwork.ProxyToEnv(ctx.deviceNetworkStatus.ProxyConfig)
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 

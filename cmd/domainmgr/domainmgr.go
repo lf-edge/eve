@@ -19,7 +19,6 @@ import (
 	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/diskmetrics"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
@@ -1787,7 +1786,6 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	log.Infof("handleDNSModify for %s\n", key)
 	deviceNetworkStatus = status
-	devicenetwork.ProxyToEnv(deviceNetworkStatus.ProxyConfig)
 	log.Infof("handleDNSModify done for %s\n", key)
 }
 
@@ -1798,7 +1796,6 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	log.Infof("handleDNSDelete for %s\n", key)
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
-	devicenetwork.ProxyToEnv(deviceNetworkStatus.ProxyConfig)
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 

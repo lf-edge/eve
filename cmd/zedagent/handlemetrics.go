@@ -39,9 +39,6 @@ import (
 	"time"
 )
 
-// Remember the set of names of the disks and partitions
-var savedDisks []string
-
 // Also report usage for these paths
 const persistPath = "/persist"
 
@@ -488,13 +485,8 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 			&metric)
 	}
 
-	// Add DiskMetric
-	// XXX should we get a new list of disks each time?
-	// XXX can we use part, err = disk.Partitions(false)
-	// and then p.MountPoint for the usage?
-	log.Debugf("Using savedDisks %v current %v\n",
-		savedDisks, findDisksPartitions())
-	for _, d := range savedDisks {
+	disks := findDisksPartitions()
+	for _, d := range disks {
 		size := partitionSize(d)
 		log.Debugf("Disk/partition %s size %d\n", d, size)
 		size = RoundToMbytes(size)
@@ -792,8 +784,6 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	}
 	// Find all disks and partitions
 	disks := findDisksPartitions()
-	savedDisks = disks // Save for stats
-	log.Infof("Setting savedDisks %v\n", savedDisks)
 	for _, disk := range disks {
 		size := partitionSize(disk)
 		log.Debugf("Disk/partition %s size %d\n", disk, size)
@@ -854,16 +844,13 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	}
 	getSwInfo := func(partLabel string) *zmet.ZInfoDevSW {
 		swInfo := new(zmet.ZInfoDevSW)
-		swInfo.Activated = (partLabel == zboot.GetCurrentPartition())
-		swInfo.PartitionLabel = partLabel
-		swInfo.PartitionDevice = zboot.GetPartitionDevname(partLabel)
-		swInfo.PartitionState = zboot.GetPartitionState(partLabel)
-		swInfo.ShortVersion = zboot.GetShortVersion(partLabel)
-		swInfo.LongVersion = zboot.GetLongVersion(partLabel)
-		swInfo.DownloadProgress = 100
 		if bos := getBaseOsStatus(partLabel); bos != nil {
 			// Get current state/version which is different than
 			// what is on disk
+			swInfo.Activated = bos.Activated
+			swInfo.PartitionLabel = bos.PartitionLabel
+			swInfo.PartitionDevice = bos.PartitionDevice
+			swInfo.PartitionState = bos.PartitionState
 			swInfo.Status = zmet.ZSwState(bos.State)
 			swInfo.ShortVersion = bos.BaseOsVersion
 			swInfo.LongVersion = "" // XXX
@@ -881,13 +868,23 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 				errInfo.Timestamp = errTime
 				swInfo.SwErr = errInfo
 			}
-		} else if swInfo.ShortVersion != "" {
-			// Must be factory install i.e. INSTALLED
-			swInfo.Status = zmet.ZSwState(types.INSTALLED)
-			swInfo.DownloadProgress = 100
 		} else {
-			swInfo.Status = zmet.ZSwState(types.INITIAL)
-			swInfo.DownloadProgress = 0
+			// XXX put this info in BaseOsStatus so we don't need to call zboot here? Can't since no UUID!
+			swInfo.Activated = (partLabel == zboot.GetCurrentPartition())
+			swInfo.PartitionLabel = partLabel
+			swInfo.PartitionDevice = zboot.GetPartitionDevname(partLabel)
+			swInfo.PartitionState = zboot.GetPartitionState(partLabel)
+			swInfo.ShortVersion = zboot.GetShortVersion(partLabel)
+			swInfo.LongVersion = zboot.GetLongVersion(partLabel)
+			swInfo.DownloadProgress = 100
+			if swInfo.ShortVersion != "" {
+				// Must be factory install i.e. INSTALLED
+				swInfo.Status = zmet.ZSwState(types.INSTALLED)
+				swInfo.DownloadProgress = 100
+			} else {
+				swInfo.Status = zmet.ZSwState(types.INITIAL)
+				swInfo.DownloadProgress = 0
+			}
 		}
 		return swInfo
 	}
@@ -1086,9 +1083,6 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 		networkInfo.DefaultRouters[index] = *proto.String(dr)
 	}
 
-	// XXX fill in ZInfoDNS dns
-	// XXX from correct resolv conf file - static map from intf to file?
-	// XXX in /hostfs/containers/services/dhcpcd/tmp/upper/run/dhcpcd/resolv.conf/eth0.dhcp; place in
 	for _, fl := range interfaceDetail.Flags {
 		if fl == "up" {
 			networkInfo.Up = true
@@ -1099,6 +1093,14 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 	uplink := types.GetUplink(deviceNetworkStatus, interfaceDetail.Name)
 	if uplink != nil {
 		networkInfo.Uplink = true
+		// fill in ZInfoDNS
+		networkInfo.Dns = new(zmet.ZInfoDNS)
+		networkInfo.Dns.DNSdomain = uplink.DomainName
+		for _, server := range uplink.DnsServers {
+			networkInfo.Dns.DNSservers = append(networkInfo.Dns.DNSservers,
+				server.String())
+		}
+
 		// XXX we potentially have geoloc information for each IP
 		// address.
 		// For now fill in using the first IP address which has location
@@ -1118,12 +1120,15 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 			networkInfo.Location = geo
 			break
 		}
+		// Any error?
+		if !uplink.ErrorTime.IsZero() {
+			errInfo := new(zmet.ErrorInfo)
+			errInfo.Description = uplink.Error
+			errTime, _ := ptypes.TimestampProto(uplink.ErrorTime)
+			errInfo.Timestamp = errTime
+			networkInfo.NetworkErr = errInfo
+		}
 	}
-
-	// XXX once we have static config add any
-	// config errors. Note that this might imply
-	// reporting for devices which do not exist.
-
 	return networkInfo
 }
 

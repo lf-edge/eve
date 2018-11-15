@@ -11,7 +11,6 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/types"
 	"net"
-	"os"
 	"time"
 )
 
@@ -39,16 +38,12 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 	var globalStatus types.DeviceNetworkStatus
 	var err error = nil
 
-	// Copy proxy settings
-	globalStatus.ProxyConfig = globalConfig.ProxyConfig
-	// Apply proxy before we do geolocation calls
-	ProxyToEnv(globalStatus.ProxyConfig)
-
 	globalStatus.UplinkStatus = make([]types.NetworkUplink,
 		len(globalConfig.Uplinks))
 	for ix, u := range globalConfig.Uplinks {
 		globalStatus.UplinkStatus[ix].IfName = u.IfName
 		globalStatus.UplinkStatus[ix].Free = u.Free
+		globalStatus.UplinkStatus[ix].ProxyConfig = u.ProxyConfig
 		// XXX should we get statics?
 		link, err := netlink.LinkByName(u.IfName)
 		if err != nil {
@@ -78,6 +73,23 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 			log.Infof("UplinkAddrs(%s) found IPv6 %v\n",
 				u.IfName, addr.IP)
 			globalStatus.UplinkStatus[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
+		}
+		// Get DNS info from dhcpcd. Updates DomainName and DnsServers
+		err = GetDnsInfo(&globalStatus.UplinkStatus[ix])
+		if err != nil {
+			errStr := fmt.Sprintf("GetDnsInfo failed %s", err)
+			globalStatus.UplinkStatus[ix].Error = errStr
+			globalStatus.UplinkStatus[ix].ErrorTime = time.Now()
+		}
+
+		// Attempt to get a wpad.dat file if so configured
+		// Result is updating the Pacfile
+		err = CheckAndGetNetworkProxy(&globalStatus,
+			&globalStatus.UplinkStatus[ix])
+		if err != nil {
+			errStr := fmt.Sprintf("GetNetworkProxy failed %s", err)
+			globalStatus.UplinkStatus[ix].Error = errStr
+			globalStatus.UplinkStatus[ix].ErrorTime = time.Now()
 		}
 	}
 	// Preserve geo info for existing interface and IP address
@@ -189,34 +201,3 @@ func GetFreeUplinks(config types.DeviceUplinkConfig) []string {
 	return result
 }
 
-func ProxyToEnv(config types.ProxyConfig) {
-
-	log.Infof("ProxyToEnv: %s, %s, %s, %s\n",
-		config.HttpsProxy, config.HttpProxy, config.FtpProxy,
-		config.NoProxy)
-	if config.HttpsProxy == "" {
-		os.Unsetenv("HTTPS_PROXY")
-	} else {
-		os.Setenv("HTTPS_PROXY", config.HttpsProxy)
-	}
-	if config.HttpProxy == "" {
-		os.Unsetenv("HTTP_PROXY")
-	} else {
-		os.Setenv("HTTP_PROXY", config.HttpProxy)
-	}
-	if config.FtpProxy == "" {
-		os.Unsetenv("FTP_PROXY")
-	} else {
-		os.Setenv("FTP_PROXY", config.FtpProxy)
-	}
-	if config.SocksProxy == "" {
-		os.Unsetenv("SOCKS_PROXY")
-	} else {
-		os.Setenv("SOCKS_PROXY", config.SocksProxy)
-	}
-	if config.NoProxy == "" {
-		os.Unsetenv("NO_PROXY")
-	} else {
-		os.Setenv("NO_PROXY", config.NoProxy)
-	}
-}

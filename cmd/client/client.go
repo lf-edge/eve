@@ -338,7 +338,6 @@ func Run() {
 	// Inform ledmanager that we have uplink addresses
 	types.UpdateLedManagerConfig(2)
 
-	devicenetwork.ProxyToEnv(clientCtx.DeviceNetworkStatus.ProxyConfig)
 	zedcloudCtx := zedcloud.ZedCloudContext{
 		DeviceNetworkStatus: clientCtx.DeviceNetworkStatus,
 		FailureFunc:         zedcloud.ZedCloudFailure,

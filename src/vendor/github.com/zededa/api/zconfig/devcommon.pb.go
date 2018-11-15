@@ -45,7 +45,7 @@ var ZCioType_value = map[string]int32{
 func (x ZCioType) String() string {
 	return proto.EnumName(ZCioType_name, int32(x))
 }
-func (ZCioType) EnumDescriptor() ([]byte, []int) { return fileDescriptor6, []int{0} }
+func (ZCioType) EnumDescriptor() ([]byte, []int) { return fileDescriptor5, []int{0} }
 
 type ZcServiceType int32
 
@@ -72,7 +72,7 @@ var ZcServiceType_value = map[string]int32{
 func (x ZcServiceType) String() string {
 	return proto.EnumName(ZcServiceType_name, int32(x))
 }
-func (ZcServiceType) EnumDescriptor() ([]byte, []int) { return fileDescriptor6, []int{1} }
+func (ZcServiceType) EnumDescriptor() ([]byte, []int) { return fileDescriptor5, []int{1} }
 
 type UUIDandVersion struct {
 	Uuid    string `protobuf:"bytes,1,opt,name=uuid" json:"uuid,omitempty"`
@@ -82,7 +82,7 @@ type UUIDandVersion struct {
 func (m *UUIDandVersion) Reset()                    { *m = UUIDandVersion{} }
 func (m *UUIDandVersion) String() string            { return proto.CompactTextString(m) }
 func (*UUIDandVersion) ProtoMessage()               {}
-func (*UUIDandVersion) Descriptor() ([]byte, []int) { return fileDescriptor6, []int{0} }
+func (*UUIDandVersion) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{0} }
 
 func (m *UUIDandVersion) GetUuid() string {
 	if m != nil {
@@ -107,7 +107,7 @@ type Adapter struct {
 func (m *Adapter) Reset()                    { *m = Adapter{} }
 func (m *Adapter) String() string            { return proto.CompactTextString(m) }
 func (*Adapter) ProtoMessage()               {}
-func (*Adapter) Descriptor() ([]byte, []int) { return fileDescriptor6, []int{1} }
+func (*Adapter) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{1} }
 
 func (m *Adapter) GetType() ZCioType {
 	if m != nil {
@@ -134,7 +134,7 @@ type ZcServicePoint struct {
 func (m *ZcServicePoint) Reset()                    { *m = ZcServicePoint{} }
 func (m *ZcServicePoint) String() string            { return proto.CompactTextString(m) }
 func (*ZcServicePoint) ProtoMessage()               {}
-func (*ZcServicePoint) Descriptor() ([]byte, []int) { return fileDescriptor6, []int{2} }
+func (*ZcServicePoint) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{2} }
 
 func (m *ZcServicePoint) GetZsType() ZcServiceType {
 	if m != nil {
@@ -165,9 +165,9 @@ func init() {
 	proto.RegisterEnum("ZcServiceType", ZcServiceType_name, ZcServiceType_value)
 }
 
-func init() { proto.RegisterFile("devcommon.proto", fileDescriptor6) }
+func init() { proto.RegisterFile("devcommon.proto", fileDescriptor5) }
 
-var fileDescriptor6 = []byte{
+var fileDescriptor5 = []byte{
 	// 353 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x54, 0x91, 0xc1, 0x6b, 0xe2, 0x40,
 	0x14, 0xc6, 0x8d, 0x8a, 0x9a, 0xb7, 0x6b, 0x76, 0x76, 0xd8, 0x43, 0x58, 0x70, 0x77, 0xf1, 0xb0,
