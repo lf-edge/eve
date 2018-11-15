@@ -4,7 +4,6 @@
 package zedcloud
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	log "github.com/sirupsen/logrus"
@@ -14,9 +13,9 @@ import (
 	"strings"
 )
 
-func LookupProxy(
-	status *types.DeviceNetworkStatus, ifname string, rawUrl string) (*url.URL, error) {
-	//(types.ProxyEntry, types.NetworkProxyType, bool) {
+func LookupProxy(status *types.DeviceNetworkStatus, ifname string,
+	rawUrl string) (*url.URL, error) {
+
 	for _, uplink := range status.UplinkStatus {
 		log.Debugf("LookupProxy: Looking for proxy config on Uplink %s", uplink.IfName)
 		if uplink.IfName != ifname {
@@ -38,14 +37,8 @@ func LookupProxy(
 
 		// Check if we have a PAC file
 		if len(proxyConfig.Pacfile) > 0 {
-			pacFile, err := base64.StdEncoding.DecodeString(proxyConfig.Pacfile)
-			if err != nil {
-				errStr := fmt.Sprintf("LookupProxy: Decoding proxy file failed: %s", err)
-				log.Errorf(errStr)
-				return nil, errors.New(errStr)
-			}
 			proxyString, err := zedpac.Find_proxy_sync(
-				string(pacFile), rawUrl, u.Host)
+				proxyConfig.Pacfile, rawUrl, u.Host)
 			if err != nil {
 				errStr := fmt.Sprintf("LookupProxy: PAC file could not find proxy for %s: %s",
 					rawUrl, err)
