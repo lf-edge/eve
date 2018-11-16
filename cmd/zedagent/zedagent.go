@@ -592,8 +592,8 @@ func Run() {
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-subAa.C:
-			subAa.ProcessChange(change)
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
