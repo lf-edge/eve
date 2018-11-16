@@ -465,29 +465,6 @@ func Run() {
 	stillRunning := time.NewTicker(25 * time.Second)
 	agentlog.StillRunning(agentName)
 
-	// First we process the verifierStatus to avoid downloading
-	// an base image we already have in place
-	log.Infof("Handling initial verifier Status\n")
-	for !zedagentCtx.verifierRestarted {
-		select {
-		case change := <-subGlobalConfig.C:
-			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subBaseOsVerifierStatus.C:
-			subBaseOsVerifierStatus.ProcessChange(change)
-			if zedagentCtx.verifierRestarted {
-				log.Infof("Verifier reported restarted\n")
-				break
-			}
-
-		case change := <-subAssignableAdapters.C:
-			subAssignableAdapters.ProcessChange(change)
-
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
-		}
-	}
-
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 
@@ -526,6 +503,9 @@ func Run() {
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subBaseOsVerifierStatus.C:
+			subBaseOsVerifierStatus.ProcessChange(change)
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
@@ -588,16 +568,43 @@ func Run() {
 	// Publish initial device info. Retries all addresses on all uplinks.
 	publishDevInfo(&zedagentCtx)
 
-	// start the metrics/config fetch tasks
+	// start the metrics reporting task
 	handleChannel := make(chan interface{})
-	go configTimerTask(handleChannel, &getconfigCtx)
-	log.Infof("Waiting for flexticker handle\n")
-	configTickerHandle := <-handleChannel
 	go metricsTimerTask(&zedagentCtx, handleChannel)
 	metricsTickerHandle := <-handleChannel
+	getconfigCtx.metricsTickerHandle = metricsTickerHandle
+
+	// Process the verifierStatus to avoid downloading an image we
+	// already have in place
+	log.Infof("Handling initial verifier Status\n")
+	for !zedagentCtx.verifierRestarted {
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subBaseOsVerifierStatus.C:
+			subBaseOsVerifierStatus.ProcessChange(change)
+			if zedagentCtx.verifierRestarted {
+				log.Infof("Verifier reported restarted\n")
+				break
+			}
+
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
+
+		case change := <-subAa.C:
+			subAa.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
+		}
+	}
+
+	// start the config fetch tasks after we've heard from verifier
+	go configTimerTask(handleChannel, &getconfigCtx)
+	configTickerHandle := <-handleChannel
 	// XXX close handleChannels?
 	getconfigCtx.configTickerHandle = configTickerHandle
-	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
 	updateSshAccess(!globalConfig.NoSshAccess, true)
 

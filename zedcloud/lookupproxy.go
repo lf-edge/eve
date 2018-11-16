@@ -4,17 +4,19 @@
 package zedcloud
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
-	//"github.com/zededa/go-provision/zedpac"
+	"github.com/zededa/go-provision/zedpac"
 	"net/url"
+	"strings"
 )
 
-func LookupProxy(
-	status *types.DeviceNetworkStatus, ifname string, rawUrl string) (*url.URL, error) {
-	//(types.ProxyEntry, types.NetworkProxyType, bool) {
+func LookupProxy(status *types.DeviceNetworkStatus, ifname string,
+	rawUrl string) (*url.URL, error) {
+
 	for _, uplink := range status.UplinkStatus {
 		log.Debugf("LookupProxy: Looking for proxy config on Uplink %s", uplink.IfName)
 		if uplink.IfName != ifname {
@@ -34,7 +36,6 @@ func LookupProxy(
 			return nil, errors.New(errStr)
 		}
 
-		/*
 		// Check if we have a PAC file
 		if len(proxyConfig.Pacfile) > 0 {
 			pacFile, err := base64.StdEncoding.DecodeString(proxyConfig.Pacfile)
@@ -82,7 +83,6 @@ func LookupProxy(
 			log.Debugf("LookupProxy: PAC proxy being used is %s", proxy0)
 			return proxy, err
 		}
-		*/
 
 		config := &Config{}
 		for _, proxy := range proxyConfig.Proxies {

@@ -1038,8 +1038,6 @@ func handleCreate(ctx *zedrouterContext, key string,
 	publishAppNetworkStatus(ctx, &status)
 
 	if config.Activate {
-		status.OlNum = len(config.OverlayNetworkList)
-		status.UlNum = len(config.UnderlayNetworkList)
 		doActivate(ctx, config, &status)
 	}
 	status.PendingAdd = false
@@ -1286,6 +1284,8 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 	if olcount > 0 {
 		log.Infof("Received olcount %d\n", olcount)
 	}
+	// XXX are we clobbering? Create in handleCreate?
+	// XXX can count change for inactivate/activate?
 	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 		olcount)
 	for i, _ := range config.OverlayNetworkList {
@@ -1364,6 +1364,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 
 		// Record what we have so far
 		olStatus := &status.OverlayNetworkList[olNum-1]
+		log.Infof("doActivate olNum %d: %v\n", olNum, olStatus)
 		olStatus.Bridge = bridgeName
 		olStatus.BridgeMac = bridgeMac
 		olStatus.Vif = vifName
@@ -1541,6 +1542,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 
 		// Record what we have so far
 		ulStatus := &status.UnderlayNetworkList[ulNum-1]
+		log.Infof("doActivate ulNum %d: %v\n", ulNum, ulStatus)
 		ulStatus.Bridge = bridgeName
 		ulStatus.BridgeMac = bridgeMac
 		ulStatus.Vif = vifName
@@ -1814,15 +1816,13 @@ func handleModify(ctx *zedrouterContext, key string,
 	status.UUIDandVersion = config.UUIDandVersion
 	publishAppNetworkStatus(ctx, status)
 
-	if config.Activate && !status.Activated {
-		doActivate(ctx, config, status)
-	}
-
+	// XXX what about changing the number of interfaces as
+	// part of an inactive/active transition?
 	// XXX We could should we allow the addition of interfaces
 	// if the domU would find out through some hotplug event.
 	// But deletion is hard.
 	// For now don't allow any adds or deletes.
-	if len(config.OverlayNetworkList) != status.OlNum {
+	if len(config.OverlayNetworkList) != len(status.OverlayNetworkList) {
 		errStr := fmt.Sprintf("Unsupported: Changed number of overlays for %s",
 			config.UUIDandVersion)
 		status.PendingModify = false
@@ -1830,13 +1830,17 @@ func handleModify(ctx *zedrouterContext, key string,
 		log.Infof("handleModify done for %s\n", config.DisplayName)
 		return
 	}
-	if len(config.UnderlayNetworkList) != status.UlNum {
+	if len(config.UnderlayNetworkList) != len(status.UnderlayNetworkList) {
 		errStr := fmt.Sprintf("Unsupported: Changed number of underlays for %s",
 			config.UUIDandVersion)
 		status.PendingModify = false
 		addError(ctx, status, "handleModify", errors.New(errStr))
 		log.Infof("handleModify done for %s\n", config.DisplayName)
 		return
+	}
+
+	if !config.Activate && status.Activated {
+		doInactivate(ctx, status)
 	}
 
 	if config.IsZedmanager {
@@ -1866,8 +1870,8 @@ func handleModify(ctx *zedrouterContext, key string,
 			addError(ctx, status, "updateACL", err)
 		}
 
-		if !config.Activate && status.Activated {
-			doInactivate(ctx, status)
+		if config.Activate && !status.Activated {
+			doActivate(ctx, config, status)
 		}
 		status.PendingModify = false
 		publishAppNetworkStatus(ctx, status)
@@ -2030,22 +2034,20 @@ func handleModify(ctx *zedrouterContext, key string,
 	}
 
 	// Write out what we modified to AppNetworkStatus
-	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
-		len(config.OverlayNetworkList))
+	// Note that lengths are the same as before
 	for i, _ := range config.OverlayNetworkList {
 		status.OverlayNetworkList[i].OverlayNetworkConfig =
 			config.OverlayNetworkList[i]
 	}
-	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus,
-		len(config.UnderlayNetworkList))
 	for i, _ := range config.UnderlayNetworkList {
 		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
 			config.UnderlayNetworkList[i]
 	}
 
-	if !config.Activate && status.Activated {
-		doInactivate(ctx, status)
+	if config.Activate && !status.Activated {
+		doActivate(ctx, config, status)
 	}
+
 	status.PendingModify = false
 	publishAppNetworkStatus(ctx, status)
 	log.Infof("handleModify done for %s\n", config.DisplayName)
@@ -2095,10 +2097,6 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 	log.Infof("doInactivate(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 	appNum := status.AppNum
-	maxOlNum := status.OlNum
-	maxUlNum := status.UlNum
-	log.Debugf("doInactivate appNum %d maxOlNum %d maxUlNum %d\n",
-		appNum, maxOlNum, maxUlNum)
 
 	if status.IsZedmanager {
 		if len(status.OverlayNetworkList) != 1 ||
@@ -2208,10 +2206,10 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 		status.UnderlayNetworkList, status.Key())
 
 	// Delete everything for overlay
-	for olNum := 1; olNum <= maxOlNum; olNum++ {
+	for olNum := 1; olNum <= len(status.OverlayNetworkList); olNum++ {
 		log.Debugf("doInactivate olNum %d\n", olNum)
 
-		// Need to check that index exists
+		// Need to check that index exists XXX remove
 		if len(status.OverlayNetworkList) < olNum {
 			log.Errorln("Missing status for overlay %d; can not clean up\n",
 				olNum)
@@ -2219,6 +2217,7 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 		}
 
 		olStatus := &status.OverlayNetworkList[olNum-1]
+		log.Infof("doInactivate olNum %d: %v\n", olNum, olStatus)
 		bridgeName := olStatus.Bridge
 
 		netconfig := lookupNetworkObjectConfig(ctx,
@@ -2299,7 +2298,7 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 	// XXX requires looking at all of configDir and statusDir
 
 	// Delete everything in underlay
-	for ulNum := 1; ulNum <= maxUlNum; ulNum++ {
+	for ulNum := 1; ulNum <= len(status.UnderlayNetworkList); ulNum++ {
 		log.Debugf("doInactivate ulNum %d\n", ulNum)
 
 		// Need to check that index exists
@@ -2309,6 +2308,7 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 			continue
 		}
 		ulStatus := &status.UnderlayNetworkList[ulNum-1]
+		log.Infof("doInactivate ulNum %d: %v\n", ulNum, ulStatus)
 		bridgeName := ulStatus.Bridge
 
 		netconfig := lookupNetworkObjectConfig(ctx,

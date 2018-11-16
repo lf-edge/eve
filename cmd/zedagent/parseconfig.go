@@ -75,7 +75,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	parseBaseOsConfig(getconfigCtx, config)
 	parseNetworkObjectConfig(config, getconfigCtx)
 	parseNetworkServiceConfig(config, getconfigCtx)
-	parseSystemAdapterConfig(config, getconfigCtx)
+	parseSystemAdapterConfig(config, getconfigCtx, false)
 	parseAppInstanceConfig(config, getconfigCtx)
 
 	return false
@@ -237,7 +237,10 @@ func parseNetworkObjectConfig(config *zconfig.EdgeDevConfig,
 	log.Infof("parseNetworkObjectConfig: Applying updated config sha % x vs. % x: %v\n",
 		networkConfigPrevConfigHash, configHash, nets)
 	// Export NetworkObjectConfig to zedrouter
-	publishNetworkObjectConfig(getconfigCtx, nets)
+	parseSystemAdapters := publishNetworkObjectConfig(getconfigCtx, nets)
+	if parseSystemAdapters {
+		parseSystemAdapterConfig(config, getconfigCtx, true)
+	}
 }
 
 var networkServicePrevConfigHash []byte
@@ -379,7 +382,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 var systemAdaptersPrevConfigHash []byte
 
 func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
-	getconfigCtx *getconfigContext) {
+	getconfigCtx *getconfigContext, forceParse bool) {
 	log.Debugf("parseSystemAdapterConfig: EdgeDevConfig: %v\n", *config)
 
 	sysAdapters := config.GetSystemAdapterList()
@@ -390,7 +393,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, systemAdaptersPrevConfigHash)
 	systemAdaptersPrevConfigHash = configHash
-	if same {
+	if same && !forceParse {
 		log.Debugf("parseSystemAdapterConfig: system adapter sha is unchanged: % x\n",
 			configHash)
 		return
@@ -571,7 +574,7 @@ func lookupServiceId(id string, cfgServices []*zconfig.ServiceInstanceConfig) *z
 }
 
 func publishNetworkObjectConfig(ctx *getconfigContext,
-	cfgNetworks []*zconfig.NetworkConfig) {
+	cfgNetworks []*zconfig.NetworkConfig) (parseSystemAdapters bool) {
 
 	// Check for items to delete first
 	items := ctx.pubNetworkObjectConfig.GetAll()
@@ -583,6 +586,14 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 		log.Debugf("publishNetworkObjectConfig: unpublishing %s\n", k)
 		ctx.pubNetworkObjectConfig.Unpublish(k)
 	}
+
+	// XXX
+	// System Adapter point to network for Proxy configuration.
+	// There could be a situation where networks change, but
+	// systerm adapters do not change. When we see the networks
+	// change and there is a proxy configuration present in them,
+	// we should parse systerm adapters again.
+	var proxyConfigPresent bool = false
 	// XXX note that we currently get repeats in the same loop.
 	// Should we track them and not rewrite them?
 	for _, netEnt := range cfgNetworks {
@@ -603,6 +614,7 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				netEnt.Id)
 		}
 		if netProxyConfig != nil {
+			proxyConfigPresent = true
 			log.Infof("publishNetworkObjectConfig: Proxy configuration present in %s",
 				netEnt.Id)
 
@@ -693,6 +705,10 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 		ctx.pubNetworkObjectConfig.Publish(config.Key(),
 			&config)
 	}
+	if proxyConfigPresent {
+		return true
+	}
+	return false
 }
 
 func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) error {

@@ -4,11 +4,13 @@
 package devicenetwork
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
+	"mime"
 	"strings"
 )
 
@@ -34,7 +36,7 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 		return nil
 	}
 	if proxyConfig.NetworkProxyURL != "" {
-		pac, err := getFile(deviceNetworkStatus,
+		pac, err := getPacFile(deviceNetworkStatus,
 			proxyConfig.NetworkProxyURL, ifname)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to fetch %s for %s: %s",
@@ -42,8 +44,6 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 			log.Errorln(errStr)
 			return errors.New(errStr)
 		}
-		log.Infof("CheckAndGetNetworkProxy(%s): fetched from URL %s: %s\n",
-			ifname, proxyConfig.NetworkProxyURL, pac)
 		proxyConfig.Pacfile = pac
 		return nil
 	}
@@ -60,10 +60,8 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 	// in DomainName until we succeed
 	for {
 		url := fmt.Sprintf("http://wpad.%s/wpad.dat", dn)
-		pac, err := getFile(deviceNetworkStatus, url, ifname)
+		pac, err := getPacFile(deviceNetworkStatus, url, ifname)
 		if err == nil {
-			log.Infof("CheckAndGetNetworkProxy(%s): fetched from URL %s: %s\n",
-				ifname, url, pac)
 			proxyConfig.Pacfile = pac
 			return nil
 		}
@@ -96,10 +94,35 @@ var ctx = zedcloud.ZedCloudContext{
 	SuccessFunc: zedcloud.ZedCloudSuccess,
 }
 
-func getFile(status *types.DeviceNetworkStatus, url string,
+func getPacFile(status *types.DeviceNetworkStatus, url string,
 	ifname string) (string, error) {
 
 	ctx.DeviceNetworkStatus = status
-	_, contents, err := zedcloud.SendOnIntf(ctx, url, ifname, 0, nil)
-	return string(contents), err
+	// Avoid using a proxy to fetch the wpad.dat
+	resp, contents, err := zedcloud.SendOnIntf(ctx, url, ifname, 0, nil,
+		false)
+	if err != nil {
+		return "", err
+	}
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		errStr := fmt.Sprintf("%s no content-type\n", url)
+		return "", errors.New(errStr)
+	}
+	mimeType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		errStr := fmt.Sprintf("%s ParseMediaType failed %v\n", url, err)
+		return "", errors.New(errStr)
+	}
+	switch mimeType {
+	case "application/x-ns-proxy-autoconfig":
+		log.Infof("getPacFile(%s): fetched from URL %s: %s\n",
+				ifname, url, string(contents))
+		encoded := base64.StdEncoding.EncodeToString(contents)
+		return encoded, nil
+	default:
+		errStr := fmt.Sprintf("Incorrect mime-type %s from %s",
+			mimeType, url)
+		return "", errors.New(errStr)
+	}
 }
