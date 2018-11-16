@@ -14,9 +14,9 @@ import (
 	"strings"
 )
 
-func LookupProxy(
-	status *types.DeviceNetworkStatus, ifname string, rawUrl string) (*url.URL, error) {
-	//(types.ProxyEntry, types.NetworkProxyType, bool) {
+func LookupProxy(status *types.DeviceNetworkStatus, ifname string,
+	rawUrl string) (*url.URL, error) {
+
 	for _, uplink := range status.UplinkStatus {
 		log.Debugf("LookupProxy: Looking for proxy config on Uplink %s", uplink.IfName)
 		if uplink.IfName != ifname {

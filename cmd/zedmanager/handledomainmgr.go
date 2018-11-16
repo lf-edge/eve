@@ -118,13 +118,16 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		}
 	}
 	if ns != nil {
-		dc.VifList = make([]types.VifInfo, ns.OlNum+ns.UlNum)
+		olNum := len(ns.OverlayNetworkList)
+		ulNum := len(ns.UnderlayNetworkList)
+
+		dc.VifList = make([]types.VifInfo, olNum+ulNum)
 		// Put UL before OL
 		for i, ul := range ns.UnderlayNetworkList {
 			dc.VifList[i] = ul.VifInfo
 		}
 		for i, ol := range ns.OverlayNetworkList {
-			dc.VifList[i+ns.UlNum] = ol.VifInfo
+			dc.VifList[i+ulNum] = ol.VifInfo
 		}
 	}
 	publishDomainConfig(ctx, &dc)

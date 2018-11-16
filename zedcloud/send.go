@@ -46,7 +46,7 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 			log.Debugf("sendOnAllIntf non-free %v\n", intfs)
 		}
 		for _, intf := range intfs {
-			resp, contents, err := SendOnIntf(ctx, url, intf, reqlen, b)
+			resp, contents, err := SendOnIntf(ctx, url, intf, reqlen, b, true)
 			if return400 && resp != nil &&
 				resp.StatusCode >= 400 && resp.StatusCode < 500 {
 				log.Infof("sendOnAllIntf: for %s reqlen %d ignore code %d\n",
@@ -70,7 +70,7 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 // use []byte contents return.
 // If we get a http response, we return that even if it was an error
 // to allow the caller to look at StatusCode
-func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, b *bytes.Buffer) (*http.Response, []byte, error) {
+func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool) (*http.Response, []byte, error) {
 
 	addrCount := types.CountLocalAddrAny(*ctx.DeviceNetworkStatus, intf)
 	log.Debugf("Connecting to %s using intf %s #sources %d reqlen %d\n",
@@ -109,7 +109,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		// XXX Get the transport header with proxy information filled
 		proxyUrl, err := LookupProxy(ctx.DeviceNetworkStatus,
 			intf, reqUrl)
-		if err == nil && proxyUrl != nil {
+		if err == nil && proxyUrl != nil && allowProxy {
 			log.Debugf("sendOnIntf: For input URL %s, proxy found is %s",
 				reqUrl, proxyUrl.String())
 			transport = &http.Transport{
