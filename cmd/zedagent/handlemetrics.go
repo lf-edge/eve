@@ -951,7 +951,7 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	// Report AssignableAdapters.
 	// Domainmgr excludes adapters which do not currently exist in
 	// what it publishes.
-	// We also exclude current uplinks.
+	// We also mark current uplinks as such.
 	for i, _ := range aa.IoBundleList {
 		ib := &aa.IoBundleList[i]
 		reportAA := new(zmet.ZioBundle)

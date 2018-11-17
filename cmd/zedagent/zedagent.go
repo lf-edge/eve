@@ -181,6 +181,9 @@ func Run() {
 	getconfigCtx.zedagentCtx = &zedagentCtx
 	zedagentCtx.getconfigCtx = &getconfigCtx
 
+	// Timer for deferred sends of info messages
+	deferredChan := zedcloud.InitDeferred()
+
 	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
 		types.AssignableAdapters{}, false, &zedagentCtx)
 	if err != nil {
@@ -513,6 +516,9 @@ func Run() {
 		case change := <-subAssignableAdapters.C:
 			subAssignableAdapters.ProcessChange(change)
 
+		case change := <-deferredChan:
+			zedcloud.HandleDeferred(change)
+
 		case <-t1.C:
 			log.Errorf("Exceeded outage for cloud connectivity - rebooting\n")
 			execReboot(true)
@@ -562,9 +568,6 @@ func Run() {
 		log.Fatal(err)
 	}
 
-	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.InitDeferred()
-
 	// Publish initial device info. Retries all addresses on all uplinks.
 	publishDevInfo(&zedagentCtx)
 
@@ -594,6 +597,9 @@ func Run() {
 
 		case change := <-subAssignableAdapters.C:
 			subAssignableAdapters.ProcessChange(change)
+
+		case change := <-deferredChan:
+			zedcloud.HandleDeferred(change)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
@@ -707,6 +713,7 @@ func Run() {
 			} else {
 				downloaderMetrics = m
 			}
+
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change)
 

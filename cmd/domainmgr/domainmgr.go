@@ -212,7 +212,6 @@ func Run() {
 		}
 	}
 	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
-
 	// Subscribe to DomainConfig from zedmanager
 	subDomainConfig, err := pubsub.Subscribe("zedmanager",
 		types.DomainConfig{}, false, &domainCtx)
@@ -650,7 +649,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		config.UUIDandVersion, status.DomainName,
 		config.DisplayName)
 
-	if err := configToStatus(*config, ctx.assignableAdapters,
+	if err := configToStatus(ctx, *config, ctx.assignableAdapters,
 		&status); err != nil {
 		log.Errorf("Failed to create DomainStatus from %v: %s\n",
 			config, err)
@@ -776,7 +775,6 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 				return
 			}
 		}
-		// XXX Record assignment in AssignableAdapters and publish
 	}
 
 	// Do we need to copy any rw files? Preserve ones are copied upon
@@ -976,14 +974,14 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus,
 			delImageStatus(ctx, ds.ActiveFileLocation)
 		}
 	}
-	pciUnassign(status, aa, false)
+	pciUnassign(ctx, status, aa, false)
 
 	log.Infof("doInactivate(%v) done for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 }
 
-func pciUnassign(status *types.DomainStatus, aa *types.AssignableAdapters,
-	ignoreErrors bool) {
+func pciUnassign(ctx *domainContext, status *types.DomainStatus,
+	aa *types.AssignableAdapters, ignoreErrors bool) {
 
 	log.Infof("pciUnassign(%v, %v) for %s\n",
 		status.UUIDandVersion, ignoreErrors, status.DisplayName)
@@ -1019,13 +1017,16 @@ func pciUnassign(status *types.DomainStatus, aa *types.AssignableAdapters,
 				return
 			}
 		}
-		// XXX Remove assignment from AssignableAdapters and publish
+		ib.UsedByUUID = nilUUID
+		pub := ctx.pubAssignableAdapters
+		pub.Publish("global", *aa)
 	}
 }
 
 // Produce DomainStatus based on the config
-func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
-	status *types.DomainStatus) error {
+func configToStatus(ctx *domainContext, config types.DomainConfig,
+	aa *types.AssignableAdapters, status *types.DomainStatus) error {
+
 	log.Infof("configToStatus(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 	for i, dc := range config.DiskConfigList {
@@ -1093,18 +1094,15 @@ func configToStatus(config types.DomainConfig, aa *types.AssignableAdapters,
 			}
 		}
 
-		// Does it exist?
-		// Then save the PCI ID before we assign it away
-		long, short, err := types.IoBundleToPci(ib)
-		if err != nil {
-			log.Errorf("IoBundleToPci failed: %v\n", err)
-			return err
+		if ib.Lookup && ib.PciShort == "" {
+			log.Fatal("configToStatus lookup missing: %d %s for %s\n",
+				adapter.Type, adapter.Name, status.DomainName)
 		}
 		log.Debugf("configToStatus setting uuid %s for adapter %d %s\n",
 			config.Key(), adapter.Type, adapter.Name)
 		ib.UsedByUUID = config.UUIDandVersion.UUID
-		ib.PciLong = long
-		ib.PciShort = short
+		pub := ctx.pubAssignableAdapters
+		pub.Publish("global", *aa)
 	}
 	return nil
 }
@@ -1473,7 +1471,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	if status.Activated {
 		doInactivate(ctx, status, ctx.assignableAdapters)
 	} else {
-		pciUnassign(status, ctx.assignableAdapters, true)
+		pciUnassign(ctx, status, ctx.assignableAdapters, true)
 	}
 
 	// Look for any adapters used by us and clear UsedByUUID
@@ -1958,6 +1956,7 @@ func handleAAModify(ctxArg interface{}, config types.AssignableAdapters,
 			handleIBModify(ctx, *statusIb, configIb, status)
 		}
 	}
+	status.Initialized = true
 	pub := ctx.pubAssignableAdapters
 	pub.Publish("global", *status)
 	log.Infof("handleAAModify() done\n")
@@ -2029,7 +2028,7 @@ func handleIBDelete(ctx *domainContext, ib types.IoBundle,
 			log.Errorf("handleIbDelete(%d %s %v) pciAssignableRem failed %v\n",
 				ib.Type, ib.Name, ib.Members, err)
 		}
-		ib.IsPCIBack = true
+		ib.IsPCIBack = false
 	}
 	replace := types.AssignableAdapters{Initialized: true,
 		IoBundleList: make([]types.IoBundle, len(status.IoBundleList)-1)}
