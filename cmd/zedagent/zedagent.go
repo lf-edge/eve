@@ -1298,11 +1298,13 @@ func handleAAModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedagentContext)
+	status := cast.CastAssignableAdapters(statusArg)
 	if key != "global" {
 		log.Infof("handleAAModify: ignoring %s\n", key)
 		return
 	}
-	log.Infof("handleAAModify()\n")
+	log.Infof("handleAAModify() %+v\n", status)
+	*ctx.assignableAdapters = status
 	publishDevInfo(ctx)
 	log.Infof("handleAAModify() done\n")
 }
@@ -1316,6 +1318,7 @@ func handleAADelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleAADelete()\n")
+	ctx.assignableAdapters.Initialized = false
 	publishDevInfo(ctx)
 	log.Infof("handleAADelete() done\n")
 }

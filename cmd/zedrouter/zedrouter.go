@@ -143,8 +143,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// No need for notification functions; we look at assignableAdapters
-	// on demand.
+	subAssignableAdapters.ModifyHandler = handleAAModify
+	subAssignableAdapters.DeleteHandler = handleAADelete
 	zedrouterCtx.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
@@ -2430,4 +2430,31 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+func handleAAModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zedrouterContext)
+	status := cast.CastAssignableAdapters(statusArg)
+	if key != "global" {
+		log.Infof("handleAAModify: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleAAModify() %+v\n", status)
+	*ctx.assignableAdapters = status
+	log.Infof("handleAAModify() done\n")
+}
+
+func handleAADelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zedrouterContext)
+	if key != "global" {
+		log.Infof("handleAADelete: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleAADelete()\n")
+	ctx.assignableAdapters.Initialized = false
+	log.Infof("handleAADelete() done\n")
 }
