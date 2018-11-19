@@ -58,20 +58,20 @@ var nilUUID = uuid.UUID{}
 // Set from Makefile
 var Version = "No version specified"
 
-// The isUplink function is called by different goroutines
-// hence we serialize the calls on a mutex.
-var deviceNetworkStatus types.DeviceNetworkStatus
-var dnsLock sync.Mutex
-
-func isUplink(ifname string) bool {
-	dnsLock.Lock()
-	defer dnsLock.Unlock()
-	return types.IsUplink(deviceNetworkStatus, ifname)
+func isUplink(ctx *domainContext, ifname string) bool {
+	ctx.dnsLock.Lock()
+	defer ctx.dnsLock.Unlock()
+	return types.IsUplink(ctx.deviceNetworkStatus, ifname)
 }
 
 // Information for handleCreate/Modify/Delete
 type domainContext struct {
+	// The isUplink function is called by different goroutines
+	// hence we serialize the calls on a mutex.
+	deviceNetworkStatus    types.DeviceNetworkStatus
+	dnsLock                sync.Mutex
 	assignableAdapters     *types.AssignableAdapters
+	usableAddressCount     int
 	subDeviceNetworkStatus *pubsub.Subscription
 	subDomainConfig        *pubsub.Subscription
 	pubDomainStatus        *pubsub.Publication
@@ -200,18 +200,6 @@ func Run() {
 	domainCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	for !domainCtx.assignableAdapters.Initialized {
-		log.Infof("Waiting for AssignableAdapters %v\n",
-			domainCtx.assignableAdapters.Initialized)
-		select {
-		case change := <-subGlobalConfig.C:
-			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subAa.C:
-			subAa.ProcessChange(change)
-		}
-	}
-	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
 	// Subscribe to DomainConfig from zedmanager
 	subDomainConfig, err := pubsub.Subscribe("zedmanager",
 		types.DomainConfig{}, false, &domainCtx)
@@ -224,6 +212,8 @@ func Run() {
 	domainCtx.subDomainConfig = subDomainConfig
 	subDomainConfig.Activate()
 
+	domainCtx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(domainCtx.deviceNetworkStatus)
+
 	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
 		types.DeviceNetworkStatus{}, false, &domainCtx)
 	if err != nil {
@@ -233,6 +223,27 @@ func Run() {
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	domainCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
+
+	// Wait for DeviceNetworkStatus to make sure we know the uplinks and
+	// wait for assignableAdapters.
+	for domainCtx.usableAddressCount == 0 ||
+		!domainCtx.assignableAdapters.Initialized {
+
+		log.Infof("Waiting - have %d addresses; aa %v\n",
+			domainCtx.usableAddressCount,
+			domainCtx.assignableAdapters.Initialized)
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
+
+		case change := <-subAa.C:
+			subAa.ProcessChange(change)
+		}
+	}
+	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
 
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse
@@ -1088,14 +1099,14 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 				adapter.Type, adapter.Name, ib.UsedByUUID))
 		}
 		for _, m := range ib.Members {
-			if isUplink(m) {
+			if isUplink(ctx, m) {
 				return errors.New(fmt.Sprintf("Adapter %d %s member %s is (part of) an uplink\n",
 					adapter.Type, adapter.Name, m))
 			}
 		}
 
 		if ib.Lookup && ib.PciShort == "" {
-			log.Fatal("configToStatus lookup missing: %d %s for %s\n",
+			log.Fatalf("configToStatus lookup missing: %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
 		log.Debugf("configToStatus setting uuid %s for adapter %d %s\n",
@@ -1778,22 +1789,34 @@ func pciAssignableRem(long string) error {
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	status := cast.CastDeviceNetworkStatus(statusArg)
+	ctx := ctxArg.(*domainContext)
 	if key != "global" {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)
-	deviceNetworkStatus = status
+	ctx.deviceNetworkStatus = status
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
+	checkAndSetIoBundleAll(ctx)
+	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
+		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
+			newAddrCount, ctx.usableAddressCount)
+	}
+	ctx.usableAddressCount = newAddrCount
 	log.Infof("handleDNSModify done for %s\n", key)
 }
 
 func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
+
+	ctx := ctxArg.(*domainContext)
 	if key != "global" {
 		log.Infof("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
 	log.Infof("handleDNSDelete for %s\n", key)
-	deviceNetworkStatus = types.DeviceNetworkStatus{}
+	ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
+	ctx.usableAddressCount = 0
+	checkAndSetIoBundleAll(ctx)
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
@@ -1976,14 +1999,12 @@ func handleAADelete(ctxArg interface{}, status *types.AssignableAdapters) {
 
 // Process new IoBundles. Check if PCI device exists, and check if uplink.
 // Assign to pciback
-// XXX can we get USB insertion events somehow??
-// XXX how do we reverify when uplinks change?
 // XXX Who reports errors on uplink change? zedrouter!
 func handleIBCreate(ctx *domainContext, ib types.IoBundle,
 	status *types.AssignableAdapters) {
 
 	log.Infof("handleIbCreate(%d %s %v)\n", ib.Type, ib.Name, ib.Members)
-	if err := checkAndSetIoBundle(&ib); err != nil {
+	if err := checkAndSetIoBundle(ctx, &ib); err != nil {
 		log.Warnf("Not reporting non-existent PCI device %d %s: %v\n",
 			ib.Type, ib.Name, err)
 		return
@@ -1991,21 +2012,37 @@ func handleIBCreate(ctx *domainContext, ib types.IoBundle,
 	status.IoBundleList = append(status.IoBundleList, ib)
 }
 
-func checkAndSetIoBundle(ib *types.IoBundle) error {
+func checkAndSetIoBundleAll(ctx *domainContext) {
+	for i, _ := range ctx.assignableAdapters.IoBundleList {
+		ib := &ctx.assignableAdapters.IoBundleList[i]
+		err := checkAndSetIoBundle(ctx, ib)
+		if err != nil {
+			log.Errorf("checkAndSetInBundleAll failed for %d\n", i)
+		}
+	}
+}
+
+func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 
 	// Check if uplink or part of uplink
 	ib.IsUplink = false
 	for _, m := range ib.Members {
-		if types.IsUplink(deviceNetworkStatus, m) {
-			log.Warnf("handleIbCreate(%d %s %v) part of uplink\n",
+		if types.IsUplink(ctx.deviceNetworkStatus, m) {
+			log.Warnf("checkAndSetIoBundle(%d %s %v) part of uplink\n",
 				ib.Type, ib.Name, ib.Members)
 			ib.IsUplink = true
 		}
 	}
-	// For a PCI device we check if it exists in hardware/kernel
-	_, _, err := types.IoBundleToPci(ib)
-	if err != nil {
-		return err
+	// For a new PCI device we check if it exists in hardware/kernel
+	if ib.Lookup && ib.PciShort == "" {
+		long, short, err := types.IoBundleToPci(ib)
+		if err != nil {
+			return err
+		}
+		ib.PciLong = long
+		ib.PciShort = short
+		log.Infof("checkAndSetIoBundle(%d %s %v) found %s/%s\n",
+			ib.Type, ib.Name, ib.Members, short, long)
 	}
 	// XXX USB GlobalConfig and ib.Type == USB check
 	if ib.PciShort != "" && !ib.IsPCIBack {
@@ -2055,7 +2092,7 @@ func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.
 		}
 		// XXX can we have changes which require us to
 		// do pciAssignableRem for the old status?
-		if err := checkAndSetIoBundle(&configIb); err != nil {
+		if err := checkAndSetIoBundle(ctx, &configIb); err != nil {
 			log.Warnf("Not reporting non-existent PCI device %d %s: %v\n",
 				configIb.Type, configIb.Name, err)
 			return
