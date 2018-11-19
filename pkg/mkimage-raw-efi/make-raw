@@ -23,11 +23,12 @@
 # The script CLI UX is really not user friendly for now, since it is expected
 # to be called mostly from other scripts (and also linuxkit VMs). So no, there's
 # no printing of help for this one and all the arguments are required! Here they are:
-#   <img> <num parts> <
+#   <img> [part1...] 
 # 
-# <img>       file name of the raw disk image (we expect it to be pre-created and sized correctly)
-# <num parts> number of partitions you want to be created (could be 2 for bas or 5)
-# <
+# <img>       file name of the raw disk image (we expect it to be pre-created and 
+#             sized correctly OR be an actual physical device)
+# [part1...]  list of partitions to be created: efi imga imgb conf persist
+#             Can be ommitted. Default is: efi imga imgb conf persist
 # 
 # On stdin, this scripts expects to recieve a tarball full of partition images
 # that will be used to pre-populated actual partitions it creates. This tarball 
@@ -37,10 +38,11 @@
 #   * rootfs*.img for rootfs partition
 #   * config.tar for config partition
 #
-set -ex
+set -e
 
 IMGFILE=$1
-PARTS=${2:-"efi imga imgb conf persist"}
+shift
+PARTS=${*:-"efi imga imgb conf persist"}
 
 # EFI partition size in bytes 
 EFI_PART_SIZE=$((1536 * 1024))
@@ -160,8 +162,7 @@ function do_persist {
            --typecode=$NUM_PART:5f24425a-2dfa-11e8-a270-7b663faccc2c \
            --change-name=$NUM_PART:'P3' $IMGFILE
 
-    # clean up the filesystem
-    dd if=/dev/zero of=$IMGFILE bs=512 conv=notrunc seek=$SEC_START count=2048
+    [ -e $PERSIST_FILE ] && dd if=$PERSIST_FILE of=$IMGFILE bs=512 conv=notrunc seek=$SEC_START
     
     eval $1=0
 }
@@ -177,11 +178,13 @@ mkdir /parts 2>/dev/null || :
 ROOTFS_IMG=`echo /parts/rootfs*.img | cut -f1 -d\ `
 # content of conf partition 
 CONF_FILE=/parts/config.img
+# content of persist partition
+PERSIST_FILE=/parts/persist.img
 
 # Empty GPT partition
-sgdisk -g --clear $IMGFILE
+sgdisk -g --clear $IMGFILE 2>/dev/null
 
 CUR_SEC=2048
 for p in $PARTS ; do
-  eval do_$p CUR_SEC 
+  eval do_$p CUR_SEC 2>/dev/null
 done

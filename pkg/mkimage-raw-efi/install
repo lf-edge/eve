@@ -1,5 +1,24 @@
 #!/bin/sh
+#
+# This script is an entry point for a standalone installer.
+# It is expected to probe for the destination installtion
+# media and arrange for source files to be in /parts. Some
+# of these files will be supplied from outside of the container
+# in /bits, some will be constructed on the fly depending
+# on settings that were passed via kernel command line:
+#   zenix_install_disk
+#   zenix_pause_before_install
+#   zenix_pause_after_install
+#   zenix_install_skip_config
+#   zenix_install_skip_persist
+#   zenix_install_skip_rootfs
+#
 set -x
+
+function trunc {
+  rm "$1"
+  touch "$1"
+}
 
 function root_dev {
    local MAJOR
@@ -50,6 +69,11 @@ fi
 for i in config.img rootfs.img ; do
   [ -L /parts/$i ] || ln -s /dev/null /parts/$i
 done
+# finally lets see if we were given any overrides
+grep -q zenix_install_skip_rootfs /proc/cmdline && trunc /parts/rootfs.img
+grep -q zenix_install_skip_config /proc/cmdline && trunc /parts/config.img
+# 1M of zeroes should be enough to trigger ext3 filesystem wipe
+grep -q zenix_install_skip_persist /proc/cmdline || dd if=/dev/zero of=/parts/persist.img bs=1M count=1
 
 # we may be asked to pause before install procedure
 grep -q zenix_pause_before_install /proc/cmdline && sleep 100000

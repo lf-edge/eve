@@ -3,7 +3,6 @@
 #
 #      ./makeflash.sh [-C size] <output.img> [num of partitions]
 #
-set -x
 MKFLASH_TAG="$(linuxkit pkg show-tag pkg/mkimage-raw-efi)"
 
 if [ "$1" = "-C" ]; then
