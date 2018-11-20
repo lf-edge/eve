@@ -123,6 +123,9 @@ run-target: bios/OVMF.fd
 run-rootfs: bios/OVMF.fd bios/EFI
 	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:./bios/,format=raw 
 
+run-grub:
+	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=fat:rw:./bios/,format=raw
+
 # NOTE: that we have to depend on zedctr-workaround here to make sure
 # it gets triggered when we build any kind of image target
 images/%.yml: build-tools zedctr-workaround parse-pkgs.sh images/%.yml.in FORCE
