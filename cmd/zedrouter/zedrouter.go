@@ -127,8 +127,6 @@ func Run() {
 	}
 	pubDeviceUplinkConfig.ClearRestarted()
 
-	model := hardware.GetHardwareModel()
-
 	// Pick up (mostly static) AssignableAdapters before we process
 	// any Routes; Pbr needs to know which network adapters are assignable
 
@@ -159,17 +157,7 @@ func Run() {
 	zedrouterCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	for !zedrouterCtx.assignableAdapters.Initialized {
-		log.Infof("Waiting for AssignableAdapters\n")
-		select {
-		case change := <-subGlobalConfig.C:
-			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subAssignableAdapters.C:
-			subAssignableAdapters.ProcessChange(change)
-		}
-	}
-	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
+	model := hardware.GetHardwareModel()
 
 	zedrouterCtx.ManufacturerModel = model
 	zedrouterCtx.DeviceNetworkConfig = &types.DeviceNetworkConfig{}
@@ -273,9 +261,11 @@ func Run() {
 	subDeviceUplinkConfigS.Activate()
 
 	// Make sure we wait for a while to process all the DeviceUplinkConfigs
+	// XXX should we just wait for 5 seconds?
+	devicenetwork.DoDNSUpdate(&zedrouterCtx.DeviceNetworkContext)
 	done := zedrouterCtx.UsableAddressCount != 0
 	t1 := time.NewTimer(5 * time.Second)
-	for zedrouterCtx.UsableAddressCount == 0 || !done {
+	for !done {
 		log.Infof("Waiting for UsableAddressCount %d and done %v\n",
 			zedrouterCtx.UsableAddressCount, done)
 		select {
@@ -309,6 +299,18 @@ func Run() {
 		zedrouterCtx.UsableAddressCount)
 
 	handleInit(runDirname, pubDeviceNetworkStatus)
+
+	for !zedrouterCtx.assignableAdapters.Initialized {
+		log.Infof("Waiting for AssignableAdapters\n")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
+		}
+	}
+	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
 
 	// Subscribe to network objects and services from zedagent
 	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
