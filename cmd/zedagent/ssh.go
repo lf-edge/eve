@@ -13,6 +13,7 @@ import (
 	"os/exec"
 )
 
+// XXX move to zedrouter
 func updateSshAccess(enable bool, initial bool) {
 	if enable {
 		enableSsh(initial)

@@ -78,6 +78,7 @@ type domainContext struct {
 	subGlobalConfig        *pubsub.Subscription
 	pubImageStatus         *pubsub.Publication
 	pubAssignableAdapters  *pubsub.Publication
+	usbAccess              bool
 }
 
 var debug = false
@@ -790,8 +791,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			log.Fatal("doActivate lookup missing: %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
-		// XXX was assigned away at init unless USB knob
-		if false && ib.PciShort != "" {
+		if ctx.usbAccess && ib.Type == types.IoUSB && ib.PciShort != "" {
 			log.Infof("Assigning %s (%s %s) to %s\n",
 				ib.Name, ib.PciLong, ib.PciShort,
 				status.DomainName)
@@ -801,6 +801,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 				status.LastErrTime = time.Now()
 				return
 			}
+			ib.IsPCIBack = true
 		}
 	}
 
@@ -1033,16 +1034,19 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 			log.Fatal("doInactivate lookup missing: %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
-		// XXX no unless USB knob
-		if false && ib.PciShort != "" {
-			log.Infof("Removing %s %s from %s\n",
-				ib.PciLong, ib.PciShort, status.DomainName)
+		if ctx.usbAccess && ib.Type == types.IoUSB && ib.IsPCIBack &&
+			ib.PciShort != "" {
+
+			log.Infof("Removing %s (%s %s) from %s\n",
+				ib.Name, ib.PciLong, ib.PciShort,
+				status.DomainName)
 			err := pciAssignableRem(ib.PciLong)
 			if err != nil && !ignoreErrors {
 				status.LastErr = fmt.Sprintf("%v", err)
 				status.LastErrTime = time.Now()
 				return
 			}
+			ib.IsPCIBack = false
 		}
 		ib.UsedByUUID = nilUUID
 		pub := ctx.pubAssignableAdapters
@@ -1851,6 +1855,11 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	if gcp != nil && gcp.VdiskGCTime != 0 {
 		vdiskGCTime = time.Duration(gcp.VdiskGCTime) * time.Second
 	}
+	// XXX note different polarity
+	if gcp != nil && gcp.NoUsbAccess == ctx.usbAccess {
+		ctx.usbAccess = !gcp.NoUsbAccess
+		updateUsbAccess(ctx)
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -2029,12 +2038,6 @@ func handleIBCreate(ctx *domainContext, ib types.IoBundle,
 }
 
 func checkAndSetIoBundleAll(ctx *domainContext) {
-	if ctx.assignableAdapters == nil {
-		return
-	}
-	if ctx.assignableAdapters.IoBundleList == nil {
-		return
-	}
 	for i, _ := range ctx.assignableAdapters.IoBundleList {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
 		err := checkAndSetIoBundle(ctx, ib)
@@ -2076,17 +2079,49 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		log.Infof("checkAndSetIoBundle(%d %s %v) found %s/%s\n",
 			ib.Type, ib.Name, ib.Members, short, long)
 	}
-	// XXX USB GlobalConfig and ib.Type == USB check
 	if !ib.IsUplink && ib.PciShort != "" && !ib.IsPCIBack {
-		log.Infof("Assigning %s (%s %s) to pciback\n",
-			ib.Name, ib.PciLong, ib.PciShort)
-		err := pciAssignableAdd(ib.PciLong)
-		if err != nil {
-			return err
+		if ctx.usbAccess && ib.Type == types.IoUSB {
+			log.Infof("No assigning %s (%s %s) to pciback\n",
+				ib.Name, ib.PciLong, ib.PciShort)
+		} else {
+			log.Infof("Assigning %s (%s %s) to pciback\n",
+				ib.Name, ib.PciLong, ib.PciShort)
+			err := pciAssignableAdd(ib.PciLong)
+			if err != nil {
+				return err
+			}
+			ib.IsPCIBack = true
 		}
-		ib.IsPCIBack = true
 	}
 	return nil
+}
+
+func updateUsbAccess(ctx *domainContext) {
+	log.Infof("updateUsbAccess()\n")
+	for i, _ := range ctx.assignableAdapters.IoBundleList {
+		ib := &ctx.assignableAdapters.IoBundleList[i]
+		if ib.Type != types.IoUSB {
+			continue
+		}
+		if !ctx.usbAccess && !ib.IsPCIBack {
+			log.Infof("Assigning %s (%s %s) to pciback\n",
+				ib.Name, ib.PciLong, ib.PciShort)
+			err := pciAssignableAdd(ib.PciLong)
+			if err != nil {
+				log.Errorf("updateUsbAccess: %s\n", err)
+			}
+			ib.IsPCIBack = true
+		}
+		if ctx.usbAccess && ib.IsPCIBack && ib.UsedByUUID != nilUUID {
+			log.Infof("Removing %s (%s %s) from pciback\n",
+				ib.Name, ib.PciLong, ib.PciShort)
+			err := pciAssignableRem(ib.PciLong)
+			if err != nil {
+				log.Errorf("updateUsbAccess: %s\n", err)
+			}
+			ib.IsPCIBack = false
+		}
+	}
 }
 
 func handleIBDelete(ctx *domainContext, ib types.IoBundle,

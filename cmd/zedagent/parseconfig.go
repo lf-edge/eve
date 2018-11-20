@@ -1156,9 +1156,6 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					newBool)
 				globalConfig.NoUsbAccess = newBool
 				globalConfigChange = true
-				// Need to enable/disable login in domainMgr
-				// for PCI assignment
-				// XXX updateUsbAccess(!globalConfig.NoUsbAccess)
 			}
 		case "debug.disable.ssh": // XXX swap name to enable?
 			if newBool != globalConfig.NoSshAccess {
@@ -1168,6 +1165,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					newBool)
 				globalConfig.NoSshAccess = newBool
 				globalConfigChange = true
+				// XXX move to zedrouter
 				updateSshAccess(!globalConfig.NoSshAccess,
 					false)
 			}

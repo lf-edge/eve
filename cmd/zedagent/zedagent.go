@@ -491,6 +491,7 @@ func Run() {
 	t2 := time.NewTimer(time2 * time.Second)
 
 	// Initial settings; redone below in case some
+	// XXX move to zedrouter
 	updateSshAccess(!globalConfig.NoSshAccess, true)
 
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
@@ -612,6 +613,7 @@ func Run() {
 	// XXX close handleChannels?
 	getconfigCtx.configTickerHandle = configTickerHandle
 
+	// XXX move to zedrouter
 	updateSshAccess(!globalConfig.NoSshAccess, true)
 
 	for {
