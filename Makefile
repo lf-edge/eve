@@ -48,15 +48,6 @@ DEFAULT_PKG_TARGET=build
 
 all: help
 
-help:
-	@echo zenbuild: LinuxKit-based Xen images composer
-	@echo
-	@echo amd64 targets:
-	@echo "   'make fallback.img'   builds an image with the fallback"
-	@echo "                         bootloader"
-	@echo "   'make run'            run fallback.img image using qemu'"
-	@echo
-
 build-tools:
 	${MAKE} -C build-tools all
 
@@ -106,7 +97,7 @@ bios/OVMF.fd: bios
 # through the installer. It's the long road to fallback.img. Good for
 # testing.
 #
-run-installer: bios/OVMF.fd
+run-installer-iso: bios/OVMF.fd
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -cdrom $(INSTALLER_IMG).iso -boot d
 
@@ -173,3 +164,37 @@ pkg/%: FORCE
 
 .PHONY: FORCE
 FORCE:
+
+help:
+	@echo "zenbuild: Linuxkit based IoT Edge Operating System (Zenix)"
+	@echo
+	@echo "This Makefile automates commons tasks of building and running"
+	@echo "  * Zenix"
+	@echo "  * Installer of Zenix OS"
+	@echo "  * linuxkit command line tools"
+	@echo "We currently support two platforms: x86_64 and aarch64. There is"
+	@echo "even rudimentary support for cross-compiling that can be triggered"
+	@echo "by forcing a particular architecture via adding ZARCH=[x86_64|aarch64]"
+	@echo "to the make's command line. You can also run in a cross- way since"
+	@echo "all the execution is done via qemu."
+	@echo
+	@echo "Commonly used build targets:"
+	@echo "   build-tools    builds linuxkit and manifest-tool utilities under build-tools/bin"
+	@echo "   build-pkgs     builds all built-time linuxkit packages"
+	@echo "   config.img     builds a bundle with initial Zenix configs"
+	@echo "   pkgs           builds all Zenix packages"
+	@echo "   pkg/XXX        builds XXX Zenix package"
+	@echo "   rootfs.img     builds Zenix rootfs image (upload it to the cloud as BaseImage)"
+	@echo "   fallback.img   builds a full disk image of Zenix which can be function as a virtual device"
+	@echo "   installer.raw  builds raw disk installer image (to be installed on bootable media)"
+	@echo "   installer.iso  builds an ISO installers image (to be installed on bootable media)"
+	@echo
+	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
+	@echo "   run-grub          runs our copy of GRUB bootloader and nothing else (very limited usefulness)"
+	@echo "   run-rootfs        runs a rootfs.img (limited usefulness e.g. quick test before cloud upload)"
+	@echo "   run-installer-iso runs installer.iso on qemu and 'installs' Zenix on fallback.img" 
+	@echo "   run-installer-raw runs installer.raw on qemu and 'installs' Zenix on fallback.img"
+	@echo "   run-fallback      runs a full fledged virtual device on qemu (as close as it gets to actual h/w)"
+	@echo
+	@echo "make run is currently an alias for make run-fallback"
+	@echo
