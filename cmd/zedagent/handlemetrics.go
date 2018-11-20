@@ -960,8 +960,9 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 		reportAA.Members = ib.Members
 		if ib.IsUplink {
 			reportAA.UsedByBaseOS = true
+		} else if ib.UsedByUUID != nilUUID {
+			reportAA.UsedByAppUUID = ib.UsedByUUID.String()
 		}
-		reportAA.UsedByAppUUID = ib.UsedByUUID.String()
 
 		ReportDeviceInfo.AssignableAdapters = append(ReportDeviceInfo.AssignableAdapters,
 			reportAA)
