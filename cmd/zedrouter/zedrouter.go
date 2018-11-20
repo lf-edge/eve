@@ -63,6 +63,7 @@ type zedrouterContext struct {
 	ready           bool
 	subGlobalConfig *pubsub.Subscription
 	pubUuidToNum    *pubsub.Publication
+	sshAccess       bool
 }
 
 var debug = false
@@ -2415,8 +2416,14 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	// XXX note different polarity
+	if gcp != nil && gcp.NoSshAccess == ctx.sshAccess {
+		ctx.sshAccess = !gcp.NoSshAccess
+		updateSshAccess(ctx.sshAccess, false)
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
