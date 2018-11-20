@@ -200,4 +200,3 @@ func GetFreeUplinks(config types.DeviceUplinkConfig) []string {
 	}
 	return result
 }
-
