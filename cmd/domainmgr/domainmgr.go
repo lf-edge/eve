@@ -153,17 +153,6 @@ func Run() {
 
 	domainCtx := domainContext{}
 
-	// Pick up (mostly static) AssignableAdapters before we process
-	// any DomainConfig
-	model := hardware.GetHardwareModel()
-	aa := types.AssignableAdapters{}
-	var modifyFn adapters.ModifyHandler = handleAAModify
-	var deleteFn adapters.DeleteHandler = handleAADelete
-	subAa := adapters.Subscribe(&aa, model, &modifyFn, &deleteFn,
-		&domainCtx)
-	domainCtx.assignableAdapters = &aa
-	subAa.Activate()
-
 	pubDomainStatus, err := pubsub.Publish(agentName, types.DomainStatus{})
 	if err != nil {
 		log.Fatal(err)
@@ -200,18 +189,6 @@ func Run() {
 	domainCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	// Subscribe to DomainConfig from zedmanager
-	subDomainConfig, err := pubsub.Subscribe("zedmanager",
-		types.DomainConfig{}, false, &domainCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDomainConfig.ModifyHandler = handleDomainModify
-	subDomainConfig.DeleteHandler = handleDomainDelete
-	subDomainConfig.RestartHandler = handleRestart
-	domainCtx.subDomainConfig = subDomainConfig
-	subDomainConfig.Activate()
-
 	domainCtx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(domainCtx.deviceNetworkStatus)
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
@@ -224,8 +201,34 @@ func Run() {
 	domainCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
+	model := hardware.GetHardwareModel()
+	aa := types.AssignableAdapters{}
+	domainCtx.assignableAdapters = &aa
+
 	// Wait for DeviceNetworkStatus to make sure we know the uplinks and
-	// wait for assignableAdapters.
+	// then wait for assignableAdapters.
+	for domainCtx.usableAddressCount == 0 {
+
+		log.Infof("Waiting - have %d addresses\n",
+			domainCtx.usableAddressCount)
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
+		}
+	}
+	log.Infof("Have %d usable addresses\n", domainCtx.usableAddressCount)
+
+	// Pick up (mostly static) AssignableAdapters before we process
+	// any DomainConfig
+	var modifyFn adapters.ModifyHandler = handleAAModify
+	var deleteFn adapters.DeleteHandler = handleAADelete
+	subAa := adapters.Subscribe(&aa, model, &modifyFn, &deleteFn,
+		&domainCtx)
+	subAa.Activate()
+
 	for domainCtx.usableAddressCount == 0 ||
 		!domainCtx.assignableAdapters.Initialized {
 
@@ -244,6 +247,18 @@ func Run() {
 		}
 	}
 	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
+
+	// Subscribe to DomainConfig from zedmanager
+	subDomainConfig, err := pubsub.Subscribe("zedmanager",
+		types.DomainConfig{}, false, &domainCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDomainConfig.ModifyHandler = handleDomainModify
+	subDomainConfig.DeleteHandler = handleDomainDelete
+	subDomainConfig.RestartHandler = handleRestart
+	domainCtx.subDomainConfig = subDomainConfig
+	subDomainConfig.Activate()
 
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse
@@ -777,8 +792,9 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		}
 		// XXX was assigned away at init unless USB knob
 		if false && ib.PciShort != "" {
-			log.Infof("Assigning %s %s to %s\n",
-				ib.PciLong, ib.PciShort, status.DomainName)
+			log.Infof("Assigning %s (%s %s) to %s\n",
+				ib.Name, ib.PciLong, ib.PciShort,
+				status.DomainName)
 			err := pciAssignableAdd(ib.PciLong)
 			if err != nil {
 				status.LastErr = fmt.Sprintf("%v", err)
@@ -1957,7 +1973,7 @@ func handleAAModify(ctxArg interface{}, config types.AssignableAdapters,
 	status *types.AssignableAdapters) {
 
 	ctx := ctxArg.(*domainContext)
-	log.Infof("handleAAModify()\n")
+	log.Infof("handleAAModify() %+v\n", status)
 	// Any deletes?
 	for _, statusIb := range (*status).IoBundleList {
 		configIb := types.LookupIoBundle(&config, statusIb.Type, statusIb.Name)
@@ -2003,7 +2019,7 @@ func handleAADelete(ctxArg interface{}, status *types.AssignableAdapters) {
 func handleIBCreate(ctx *domainContext, ib types.IoBundle,
 	status *types.AssignableAdapters) {
 
-	log.Infof("handleIbCreate(%d %s %v)\n", ib.Type, ib.Name, ib.Members)
+	log.Infof("handleIBCreate(%d %s %v)\n", ib.Type, ib.Name, ib.Members)
 	if err := checkAndSetIoBundle(ctx, &ib); err != nil {
 		log.Warnf("Not reporting non-existent PCI device %d %s: %v\n",
 			ib.Type, ib.Name, err)
@@ -2013,6 +2029,12 @@ func handleIBCreate(ctx *domainContext, ib types.IoBundle,
 }
 
 func checkAndSetIoBundleAll(ctx *domainContext) {
+	if ctx.assignableAdapters == nil {
+		return
+	}
+	if ctx.assignableAdapters.IoBundleList == nil {
+		return
+	}
 	for i, _ := range ctx.assignableAdapters.IoBundleList {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
 		err := checkAndSetIoBundle(ctx, ib)
@@ -2031,6 +2053,16 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 			log.Warnf("checkAndSetIoBundle(%d %s %v) part of uplink\n",
 				ib.Type, ib.Name, ib.Members)
 			ib.IsUplink = true
+			if ib.IsPCIBack {
+				log.Infof("checkAndSetIoBundle(%d %s %v) take back fro pciback\n",
+					ib.Type, ib.Name, ib.Members)
+				err := pciAssignableRem(ib.PciLong)
+				if err != nil {
+					log.Errorf("checkAndSetIoBundle(%d %s %v) pciAssignableRem failed %v\n",
+						ib.Type, ib.Name, ib.Members, err)
+				}
+				ib.IsPCIBack = false
+			}
 		}
 	}
 	// For a new PCI device we check if it exists in hardware/kernel
@@ -2045,7 +2077,9 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 			ib.Type, ib.Name, ib.Members, short, long)
 	}
 	// XXX USB GlobalConfig and ib.Type == USB check
-	if ib.PciShort != "" && !ib.IsPCIBack {
+	if !ib.IsUplink && ib.PciShort != "" && !ib.IsPCIBack {
+		log.Infof("Assigning %s (%s %s) to pciback\n",
+			ib.Name, ib.PciLong, ib.PciShort)
 		err := pciAssignableAdd(ib.PciLong)
 		if err != nil {
 			return err
@@ -2058,11 +2092,13 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 func handleIBDelete(ctx *domainContext, ib types.IoBundle,
 	status *types.AssignableAdapters) {
 
-	log.Infof("handleIbDelete(%d %s %v)\n", ib.Type, ib.Name, ib.Members)
+	log.Infof("handleIBDelete(%d %s %v)\n", ib.Type, ib.Name, ib.Members)
 	if ib.IsPCIBack {
+		log.Infof("handleIBDelete: Assigning %s (%s %s) back\n",
+			ib.Name, ib.PciLong, ib.PciShort)
 		err := pciAssignableRem(ib.PciLong)
 		if err != nil {
-			log.Errorf("handleIbDelete(%d %s %v) pciAssignableRem failed %v\n",
+			log.Errorf("handleIBDelete(%d %s %v) pciAssignableRem failed %v\n",
 				ib.Type, ib.Name, ib.Members, err)
 		}
 		ib.IsPCIBack = false
@@ -2081,7 +2117,7 @@ func handleIBDelete(ctx *domainContext, ib types.IoBundle,
 func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.IoBundle,
 	status *types.AssignableAdapters) {
 
-	log.Infof("handleIbModify(%d %s %v) from %v to %v\n",
+	log.Infof("handleIBModify(%d %s %v) from %v to %v\n",
 		statusIb.Type, statusIb.Name, statusIb.Members,
 		statusIb, configIb)
 
