@@ -31,9 +31,9 @@ RUN apk add \
     zlib-dev
 
 # we need edge/testing for u-boot and libunwind-dev
-RUN (echo http://nl.alpinelinux.org/alpine/edge/main ;\
-     echo http://nl.alpinelinux.org/alpine/edge/testing) >> /etc/apk/repositories ;\
-    apk add --no-cache libunwind-dev uboot-tools
+RUN if [ $(uname -m) = "aarch64" ] ; then (echo http://nl.alpinelinux.org/alpine/edge/main ;\
+     echo http://nl.alpinelinux.org/alpine/edge/testing) >> /etc/apk/repositories && \
+    apk add --no-cache libunwind-dev uboot-tools ; fi
 
 
 ENV XEN_UBOOT_ADDR 0x81000000
