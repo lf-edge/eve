@@ -22,18 +22,26 @@ import (
 	"github.com/zededa/go-provision/types"
 )
 
+type ModifyHandler func(userCtx interface{}, config types.AssignableAdapters,
+	status *types.AssignableAdapters)
+type DeleteHandler func(userCtx interface{}, status *types.AssignableAdapters)
+
 // Context used for the underlaying pubsub subscription.
 // this package
 type context struct {
-	Found bool
-	C     <-chan string
+	C <-chan string
 	// Private info
-	aa    *types.AssignableAdapters
-	model string
-	sub   *pubsub.Subscription
+	aa            *types.AssignableAdapters
+	model         string
+	sub           *pubsub.Subscription
+	modifyHandler *ModifyHandler
+	deleteHandler *DeleteHandler
+	userCtx       interface{}
 }
 
-func Subscribe(aa *types.AssignableAdapters, model string) *context {
+func Subscribe(aa *types.AssignableAdapters, model string,
+	modifyHandler *ModifyHandler, deleteHandler *DeleteHandler,
+	userCtx interface{}) *context {
 
 	ctx := context{model: model, aa: aa}
 	sub, err := pubsub.Subscribe("", types.AssignableAdapters{},
@@ -43,10 +51,16 @@ func Subscribe(aa *types.AssignableAdapters, model string) *context {
 	}
 	sub.ModifyHandler = handleAAModify
 	sub.DeleteHandler = handleAADelete
+	ctx.modifyHandler = modifyHandler
+	ctx.deleteHandler = deleteHandler
+	ctx.userCtx = userCtx
 	ctx.sub = sub
 	ctx.C = sub.C
-	sub.Activate()
 	return &ctx
+}
+
+func (ctx *context) Activate() {
+	ctx.sub.Activate()
 }
 
 func (ctx *context) ProcessChange(change string) {
@@ -63,8 +77,12 @@ func handleAAModify(ctxArg interface{}, key string, configArg interface{}) {
 		return
 	}
 	log.Infof("handleAAModify found %s\n", key)
-	*ctx.aa = config
-	ctx.Found = true
+	if ctx.modifyHandler != nil {
+		(*ctx.modifyHandler)(ctx.userCtx, config, ctx.aa)
+	} else {
+		*ctx.aa = config
+	}
+	ctx.aa.Initialized = true
 	log.Infof("handleAAModify done for %s\n", key)
 }
 
@@ -76,8 +94,12 @@ func handleAADelete(ctxArg interface{}, key string, configArg interface{}) {
 			key, ctx.model)
 		return
 	}
-	log.Infof("handleAADelete: found %s\n", ctx.model)
-	ctx.Found = false
-	ctx.aa = &types.AssignableAdapters{}
+	log.Infof("handleAADelete: found model %s\n", ctx.model)
+	if ctx.deleteHandler != nil {
+		(*ctx.deleteHandler)(ctx.userCtx, ctx.aa)
+	} else {
+		ctx.aa = &types.AssignableAdapters{}
+	}
+	ctx.aa.Initialized = false
 	log.Infof("handleAADelete done for %s\n", key)
 }

@@ -18,7 +18,6 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
-	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/devicenetwork"
@@ -58,11 +57,13 @@ type zedrouterContext struct {
 	subLispInfoStatus        *pubsub.Subscription
 	subLispMetrics           *pubsub.Subscription
 	assignableAdapters       *types.AssignableAdapters
+	subAssignableAdapters    *pubsub.Subscription
 	pubNetworkServiceMetrics *pubsub.Publication
 	devicenetwork.DeviceNetworkContext
 	ready           bool
 	subGlobalConfig *pubsub.Subscription
 	pubUuidToNum    *pubsub.Publication
+	sshAccess       bool
 }
 
 var debug = false
@@ -127,17 +128,24 @@ func Run() {
 	}
 	pubDeviceUplinkConfig.ClearRestarted()
 
-	model := hardware.GetHardwareModel()
-
 	// Pick up (mostly static) AssignableAdapters before we process
 	// any Routes; Pbr needs to know which network adapters are assignable
-	aa := types.AssignableAdapters{}
-	subAa := adapters.Subscribe(&aa, model)
 
+	aa := types.AssignableAdapters{}
 	zedrouterCtx := zedrouterContext{
 		separateDataPlane:  false,
 		assignableAdapters: &aa,
 	}
+
+	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
+		types.AssignableAdapters{}, false, &zedrouterCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAssignableAdapters.ModifyHandler = handleAAModify
+	subAssignableAdapters.DeleteHandler = handleAADelete
+	zedrouterCtx.subAssignableAdapters = subAssignableAdapters
+	subAssignableAdapters.Activate()
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
@@ -150,17 +158,7 @@ func Run() {
 	zedrouterCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	for !subAa.Found {
-		log.Infof("Waiting for AssignableAdapters %v\n", subAa.Found)
-		select {
-		case change := <-subGlobalConfig.C:
-			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subAa.C:
-			subAa.ProcessChange(change)
-		}
-	}
-	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
+	model := hardware.GetHardwareModel()
 
 	zedrouterCtx.ManufacturerModel = model
 	zedrouterCtx.DeviceNetworkConfig = &types.DeviceNetworkConfig{}
@@ -264,14 +262,19 @@ func Run() {
 	subDeviceUplinkConfigS.Activate()
 
 	// Make sure we wait for a while to process all the DeviceUplinkConfigs
+	// XXX should we just wait for 5 seconds?
+	devicenetwork.DoDNSUpdate(&zedrouterCtx.DeviceNetworkContext)
 	done := zedrouterCtx.UsableAddressCount != 0
 	t1 := time.NewTimer(5 * time.Second)
-	for zedrouterCtx.UsableAddressCount == 0 || !done {
+	for !done {
 		log.Infof("Waiting for UsableAddressCount %d and done %v\n",
 			zedrouterCtx.UsableAddressCount, done)
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
 
 		case change := <-subDeviceNetworkConfig.C:
 			subDeviceNetworkConfig.ProcessChange(change)
@@ -297,6 +300,18 @@ func Run() {
 		zedrouterCtx.UsableAddressCount)
 
 	handleInit(runDirname, pubDeviceNetworkStatus)
+
+	for !zedrouterCtx.assignableAdapters.Initialized {
+		log.Infof("Waiting for AssignableAdapters\n")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
+		}
+	}
+	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
 
 	// Subscribe to network objects and services from zedagent
 	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
@@ -420,6 +435,9 @@ func Run() {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
 
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
+
 		case change := <-subAppNetworkConfig.C:
 			subAppNetworkConfig.ProcessChange(change)
 		}
@@ -430,6 +448,9 @@ func Run() {
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
 
 		case change := <-subAppNetworkConfig.C:
 			subAppNetworkConfig.ProcessChange(change)
@@ -481,10 +502,9 @@ func Run() {
 		case change := <-subNetworkServiceConfig.C:
 			subNetworkServiceConfig.ProcessChange(change)
 
-		case change := <-subAa.C:
-			subAa.ProcessChange(change)
 		case change := <-subLispInfoStatus.C:
 			subLispInfoStatus.ProcessChange(change)
+
 		case change := <-subLispMetrics.C:
 			subLispMetrics.ProcessChange(change)
 		}
@@ -2396,8 +2416,14 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	// XXX note different polarity
+	if gcp != nil && gcp.NoSshAccess == ctx.sshAccess {
+		ctx.sshAccess = !gcp.NoSshAccess
+		updateSshAccess(ctx.sshAccess, false)
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -2413,4 +2439,31 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+func handleAAModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zedrouterContext)
+	status := cast.CastAssignableAdapters(statusArg)
+	if key != "global" {
+		log.Infof("handleAAModify: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleAAModify() %+v\n", status)
+	*ctx.assignableAdapters = status
+	log.Infof("handleAAModify() done\n")
+}
+
+func handleAADelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zedrouterContext)
+	if key != "global" {
+		log.Infof("handleAADelete: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleAADelete()\n")
+	ctx.assignableAdapters.Initialized = false
+	log.Infof("handleAADelete() done\n")
 }

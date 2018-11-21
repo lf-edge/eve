@@ -117,7 +117,7 @@ func getPacFile(status *types.DeviceNetworkStatus, url string,
 	switch mimeType {
 	case "application/x-ns-proxy-autoconfig":
 		log.Infof("getPacFile(%s): fetched from URL %s: %s\n",
-				ifname, url, string(contents))
+			ifname, url, string(contents))
 		encoded := base64.StdEncoding.EncodeToString(contents)
 		return encoded, nil
 	default:

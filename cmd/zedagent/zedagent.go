@@ -39,10 +39,8 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/adapters"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -90,6 +88,7 @@ type zedagentContext struct {
 	getconfigCtx             *getconfigContext // Cross link
 	verifierRestarted        bool              // Information from handleVerifierRestarted
 	assignableAdapters       *types.AssignableAdapters
+	subAssignableAdapters    *pubsub.Subscription
 	iteration                int
 	subNetworkObjectStatus   *pubsub.Subscription
 	subNetworkServiceStatus  *pubsub.Subscription
@@ -175,15 +174,25 @@ func Run() {
 
 	// Pick up (mostly static) AssignableAdapters before we report
 	// any device info
-	model := hardware.GetHardwareModel()
-	log.Debugf("HardwareModel %s\n", model)
 	aa := types.AssignableAdapters{}
-	subAa := adapters.Subscribe(&aa, model)
-
 	zedagentCtx := zedagentContext{assignableAdapters: &aa}
+
 	// Cross link
 	getconfigCtx.zedagentCtx = &zedagentCtx
 	zedagentCtx.getconfigCtx = &getconfigCtx
+
+	// Timer for deferred sends of info messages
+	deferredChan := zedcloud.InitDeferred()
+
+	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
+		types.AssignableAdapters{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAssignableAdapters.ModifyHandler = handleAAModify
+	subAssignableAdapters.DeleteHandler = handleAADelete
+	zedagentCtx.subAssignableAdapters = subAssignableAdapters
+	subAssignableAdapters.Activate()
 
 	// XXX placeholder for uplink config from zedcloud
 	pubDeviceUplinkConfig, err := pubsub.Publish(agentName,
@@ -481,14 +490,14 @@ func Run() {
 		updateInprogress, time2)
 	t2 := time.NewTimer(time2 * time.Second)
 
-	// Initial settings; redone below in case some
-	updateSshAccess(!globalConfig.NoSshAccess, true)
-
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
-	for DNSctx.usableAddressCount == 0 || !subAa.Found {
-		log.Infof("Waiting - have %d addresses; subAa %v\n",
-			DNSctx.usableAddressCount, subAa.Found)
+	for DNSctx.usableAddressCount == 0 ||
+		!zedagentCtx.assignableAdapters.Initialized {
+
+		log.Infof("Waiting - have %d addresses; aa %v\n",
+			DNSctx.usableAddressCount,
+			zedagentCtx.assignableAdapters.Initialized)
 		waited = true
 
 		select {
@@ -501,8 +510,11 @@ func Run() {
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-subAa.C:
-			subAa.ProcessChange(change)
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
+
+		case change := <-deferredChan:
+			zedcloud.HandleDeferred(change)
 
 		case <-t1.C:
 			log.Errorf("Exceeded outage for cloud connectivity - rebooting\n")
@@ -520,8 +532,9 @@ func Run() {
 	}
 	t1.Stop()
 	t2.Stop()
-	log.Infof("Have %d uplinks addresses to use; subAa %v\n",
-		DNSctx.usableAddressCount, subAa.Found)
+	log.Infof("Have %d uplinks addresses to use; aa %v\n",
+		DNSctx.usableAddressCount,
+		zedagentCtx.assignableAdapters.Initialized)
 	if waited {
 		// Inform ledmanager that we have uplink addresses
 		types.UpdateLedManagerConfig(2)
@@ -552,9 +565,6 @@ func Run() {
 		log.Fatal(err)
 	}
 
-	// Timer for deferred sends of info messages
-	deferredChan := zedcloud.InitDeferred()
-
 	// Publish initial device info. Retries all addresses on all uplinks.
 	publishDevInfo(&zedagentCtx)
 
@@ -582,8 +592,11 @@ func Run() {
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-subAa.C:
-			subAa.ProcessChange(change)
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
+
+		case change := <-deferredChan:
+			zedcloud.HandleDeferred(change)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
@@ -595,8 +608,6 @@ func Run() {
 	configTickerHandle := <-handleChannel
 	// XXX close handleChannels?
 	getconfigCtx.configTickerHandle = configTickerHandle
-
-	updateSshAccess(!globalConfig.NoSshAccess, true)
 
 	for {
 		select {
@@ -655,8 +666,8 @@ func Run() {
 				zedagentCtx.TriggerDeviceInfo = false
 			}
 
-		case change := <-subAa.C:
-			subAa.ProcessChange(change)
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
 
 		case change := <-subNetworkMetrics.C:
 			subNetworkMetrics.ProcessChange(change)
@@ -697,6 +708,7 @@ func Run() {
 			} else {
 				downloaderMetrics = m
 			}
+
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change)
 
@@ -1275,4 +1287,33 @@ func applyGlobalConfig(newgc types.GlobalConfig) {
 		newgc.VdiskGCTime = globalConfigDefaults.VdiskGCTime
 	}
 	globalConfig = newgc
+}
+
+func handleAAModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zedagentContext)
+	status := cast.CastAssignableAdapters(statusArg)
+	if key != "global" {
+		log.Infof("handleAAModify: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleAAModify() %+v\n", status)
+	*ctx.assignableAdapters = status
+	publishDevInfo(ctx)
+	log.Infof("handleAAModify() done\n")
+}
+
+func handleAADelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*zedagentContext)
+	if key != "global" {
+		log.Infof("handleAADelete: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleAADelete()\n")
+	ctx.assignableAdapters.Initialized = false
+	publishDevInfo(ctx)
+	log.Infof("handleAADelete() done\n")
 }
