@@ -101,6 +101,7 @@ func handleNetworkServiceDelete(ctxArg interface{}, key string,
 	status.PendingDelete = false
 	publishNetworkServiceStatus(ctx, status, true)
 	pub.Unpublish(status.Key())
+	deleteNetworkServiceMetrics(ctx, status.Key())
 	log.Infof("handleNetworkServiceDelete(%s) done\n", key)
 }
 
@@ -439,6 +440,13 @@ func lookupNetworkServiceMetrics(ctx *zedrouterContext, key string) *types.Netwo
 		return nil
 	}
 	return &status
+}
+
+func deleteNetworkServiceMetrics(ctx *zedrouterContext, key string) {
+	pub := ctx.pubNetworkServiceMetrics
+	if metrics := lookupNetworkServiceMetrics(ctx, key); metrics != nil {
+		pub.Unpublish(metrics.Key())
+	}
 }
 
 // Entrypoint from networkobject to look for the service type and optional
