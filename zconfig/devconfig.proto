@@ -112,6 +112,8 @@ message EdgeDevConfig {
 // it means the default value of 60 seconds.
 message ConfigItem {
 	string key = 1;		// E.g., "configinterval"
+	string value = 2;
+	// Below section will be deprecated
 	oneof configItemValue {
 		bool boolValue = 3;
 		uint32 uint32Value = 4;	// If timer this is in seconds
