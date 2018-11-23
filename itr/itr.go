@@ -21,6 +21,7 @@ import (
 	"math/rand"
 	"net"
 	"os/exec"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -64,6 +65,7 @@ func StartItrThread(threadName string,
 	if handle == nil {
 		log.Errorf("StartItrThread: Packet capture setup for interface %s failed",
 			threadName)
+		return
 	}
 	defer handle.Close()
 
@@ -183,7 +185,7 @@ func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
 	blockSize := frameSize * 128
 	numBlocks := 10
 
-	if iface != "dbo1x0" {
+	if strings.HasPrefix(iface, "dbo1x") {
 		// Capture packets from domU network's sister interface.
 		// DomUs can some times send big packets. This can break MTU
 		// requirement of uplink interfaces. go-provision would create
