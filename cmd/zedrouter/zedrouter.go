@@ -44,7 +44,7 @@ const (
 var Version = "No version specified"
 
 type zedrouterContext struct {
-	// Experimental Zededa data plane enable/disable flag
+	// Experimental data plane enable/disable flag
 	separateDataPlane        bool
 	subNetworkObjectConfig   *pubsub.Subscription
 	subNetworkServiceConfig  *pubsub.Subscription
@@ -1068,7 +1068,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 		}
 		ctx.separateDataPlane = config.SeparateDataPlane
 		dataplaneConfig := types.LispDataplaneConfig{
-			Experimental: ctx.separateDataPlane,
+			Experimental: !ctx.separateDataPlane,
 		}
 		publishLispDataplaneConfig(ctx, &dataplaneConfig)
 

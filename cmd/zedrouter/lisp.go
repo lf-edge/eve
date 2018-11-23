@@ -415,7 +415,7 @@ func updateLisp(lispRunDirname string,
 		return
 	}
 	baseConfig := string(content)
-	if separateDataPlane {
+	if !separateDataPlane {
 		tmpfile.WriteString(fmt.Sprintf(baseConfig, "yes"))
 	} else {
 		tmpfile.WriteString(fmt.Sprintf(baseConfig, "no"))
@@ -498,25 +498,25 @@ func updateLisp(lispRunDirname string,
 		stopLisp()
 
 		// XXX We have changed the design to have lisp-ztr dataplane
-		// always run and not do anything unless zedrouter sends `Experimental = true`
+		// always run and not do anything unless zedrouter sends `Experimental = false`
 		// configuration to lisp-ztr process via pubsub.
-		// When separateDataPlane flag is true zedrouter sends `Experimantal = true`
+		// When separateDataPlane flag is false zedrouter sends `Experimantal = true`
 		// to lisp-ztr dataplane.
 		// The below code that stops dataplane should be removed at some point of time.
 		if false {
-			if separateDataPlane {
+			if !separateDataPlane {
 				maybeStopLispDataPlane()
 			}
 		}
 	} else {
 		// XXX We have changed the design to have lisp-ztr dataplane
-		// always run and not do anything unless zedrouter sends `Experimental = true`
+		// always run and not do anything unless zedrouter sends `Experimental = false`
 		// configuration to lisp-ztr process via pubsub.
-		// When separateDataPlane flag is true zedrouter sends `Experimantal = true`
+		// When separateDataPlane flag is false zedrouter sends `Experimantal = true`
 		// to lisp-ztr dataplane.
 		// The below code that stops dataplane should be removed at some point of time.
 		if false {
-			if separateDataPlane {
+			if !separateDataPlane {
 				maybeStartLispDataPlane()
 			}
 		}
