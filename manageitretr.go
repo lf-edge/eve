@@ -104,6 +104,11 @@ func ManageItrThreads(interfaces Interfaces) {
 			// Start the go thread here
 			//ring := itr.SetupPacketCapture(name, 65536)
 			handle := itr.SetupPacketCapture(name, 65536)
+			if handle == nil {
+				log.Errorf("ManageItrThreads: Open AF packet for interface %s failed",
+					name)
+				continue
+			}
 			log.Infof("ManageItrThreads: Creating new ITR thread for capturing pkts on: %s", name)
 			threadTable[name] = ThreadEntry{
 				umblical: umblical,
