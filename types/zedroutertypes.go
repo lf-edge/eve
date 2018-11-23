@@ -131,15 +131,19 @@ type ProxyConfig struct {
 	NetworkProxyURL    string // Complete URL i.e., with /wpad.dat
 }
 
-type NetworkUplinkConfig struct {
-	IfName     string
-	Free       bool
+type DhcpConfig struct {
 	Dhcp       DhcpType // If DT_STATIC use below
 	AddrSubnet string   // In CIDR e.g., 192.168.1.44/24
 	Gateway    net.IP
 	DomainName string
 	NtpServer  net.IP
 	DnsServers []net.IP // If not set we use Gateway as DNS server
+}
+
+type NetworkUplinkConfig struct {
+	IfName string
+	Free   bool
+	DhcpConfig
 	ProxyConfig
 }
 

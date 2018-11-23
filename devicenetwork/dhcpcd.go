@@ -31,7 +31,7 @@ func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 		} else {
 			log.Infof("updateDhcpClient: found old %v\n",
 				oldU)
-			if !reflect.DeepEqual(newU, oldU) {
+			if !reflect.DeepEqual(newU.DhcpConfig, oldU.DhcpConfig) {
 				log.Infof("updateDhcpClient: changed %s\n",
 					newU.IfName)
 				doDhcpClientInactivate(*oldU)
