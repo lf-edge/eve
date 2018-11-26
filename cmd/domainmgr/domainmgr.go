@@ -192,7 +192,7 @@ func Run() {
 
 	domainCtx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(domainCtx.deviceNetworkStatus)
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &domainCtx)
 	if err != nil {
 		log.Fatal(err)

@@ -10,12 +10,13 @@ import (
 	"flag"
 	"fmt"
 	"github.com/golang/protobuf/proto"
+	"github.com/google/go-cmp/cmp"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/devicenetwork"
-	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -32,7 +33,6 @@ import (
 const (
 	agentName   = "zedclient"
 	tmpDirname  = "/var/tmp/zededa"
-	DNCDirname  = tmpDirname + "/DeviceNetworkConfig"
 	maxDelay    = time.Second * 600 // 10 minutes
 	uuidMaxWait = time.Second * 60  // 1 minute
 )
@@ -57,6 +57,13 @@ var Version = "No version specified"
 //
 //
 
+type clientContext struct {
+	subDeviceNetworkStatus *pubsub.Subscription
+	deviceNetworkStatus    *types.DeviceNetworkStatus
+	usableAddressCount     int
+	subGlobalConfig        *pubsub.Subscription
+}
+
 var debug = false
 var debugOverride bool // From command line arg
 
@@ -67,10 +74,6 @@ func Run() {
 	dirPtr := flag.String("D", "/config", "Directory with certs etc")
 	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
-	// DUCDir is used for testing a new DeviceUplinkConfig. Note that
-	// the file in that directory must be called something different than
-	// "override.json" and "global.json" since those have lower priority.
-	DUCDirPtr := flag.String("u", "", "Uplink override subdir")
 	maxRetriesPtr := flag.Int("r", 0, "Max ping retries")
 
 	flag.Parse()
@@ -87,7 +90,6 @@ func Run() {
 	identityDirname := *dirPtr
 	useStdout := *stdoutPtr
 	noPidFlag := *noPidPtr
-	DUCDir := *DUCDirPtr
 	maxRetries := *maxRetriesPtr
 	args := flag.Args()
 	if versionFlag {
@@ -121,7 +123,6 @@ func Run() {
 		"selfRegister": false,
 		"ping":         false,
 		"getUuid":      false,
-		"dhcpcd":       false,
 	}
 	for _, op := range args {
 		if _, ok := operations[op]; ok {
@@ -157,54 +158,13 @@ func Run() {
 		}
 	}
 	var oldHardwaremodel string
-	var model string
 	b, err = ioutil.ReadFile(hardwaremodelFileName)
 	if err == nil {
 		oldHardwaremodel = strings.TrimSpace(string(b))
-		model = oldHardwaremodel
-	} else {
-		model = hardware.GetHardwareModel()
 	}
 
-	// To better handle new hardware platforms log and blink if we
-	// don't have a DeviceNetworkConfig
-	// After some tries we fall back to default.json which is eth0, wlan0
-	// and wwan0
-	// XXX if we have a /config/DeviceUplinkConfig/override.json
-	// we should proceed. Defer that until a DIM/DUM agent
-	tries := 0
-	for {
-		DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
-		if _, err := os.Stat(DNCFilename); err == nil {
-			break
-		}
-		// Tell the world that we have issues
-		types.UpdateLedManagerConfig(10)
-		log.Warningln(err)
-		log.Warningf("You need to create this file for this hardware: %s\n",
-			DNCFilename)
-		time.Sleep(time.Second)
-		tries += 1
-		if tries == 120 { // Two minutes
-			log.Infof("Falling back to using hardware model default\n")
-			model = "default"
-		}
-	}
-
-	pubDeviceUplinkConfig, err := pubsub.Publish(agentName,
-		types.DeviceUplinkConfig{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubDeviceUplinkConfig.ClearRestarted()
-
-	clientCtx := devicenetwork.DeviceNetworkContext{
-		ManufacturerModel:      model,
-		DeviceNetworkConfig:    &types.DeviceNetworkConfig{},
-		DeviceUplinkConfig:     &types.DeviceUplinkConfig{},
-		DeviceNetworkStatus:    &types.DeviceNetworkStatus{},
-		PubDeviceUplinkConfig:  pubDeviceUplinkConfig,
-		PubDeviceNetworkStatus: nil,
+	clientCtx := clientContext{
+		deviceNetworkStatus: &types.DeviceNetworkStatus{},
 	}
 
 	// Look for global config such as log levels
@@ -215,97 +175,34 @@ func Run() {
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
-	clientCtx.SubGlobalConfig = subGlobalConfig
+	clientCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	// Look for address changes
-	addrChanges := devicenetwork.AddrChangeInit(&clientCtx)
-
-	// Get the initial DeviceNetworkConfig
-	// Subscribe from "" means /var/tmp/zededa/
-	subDeviceNetworkConfig, err := pubsub.Subscribe("",
-		types.DeviceNetworkConfig{}, false, &clientCtx)
+	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
+		types.DeviceNetworkStatus{}, false, &clientCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceNetworkConfig.ModifyHandler = devicenetwork.HandleDNCModify
-	subDeviceNetworkConfig.DeleteHandler = devicenetwork.HandleDNCDelete
-	clientCtx.SubDeviceNetworkConfig = subDeviceNetworkConfig
-	subDeviceNetworkConfig.Activate()
-
-	// We get DeviceUplinkConfig from three sources in this priority:
-	// 1. zedagent - used in zedrouter but not here, but we have the DUCDir
-	// for testing instead
-	// 2. override file in /var/tmp/zededa/NetworkUplinkConfig/override.json
-	// 3. self-generated file derived from per-platform DeviceNetworkConfig
-	var subDeviceUplinkConfigT *pubsub.Subscription
-	if DUCDir != "" {
-		var err error
-		subDeviceUplinkConfigT, err = pubsub.SubscribeScope("", DUCDir,
-			types.DeviceUplinkConfig{}, false, &clientCtx)
-		if err != nil {
-			log.Fatal(err)
-		}
-		subDeviceUplinkConfigT.ModifyHandler = devicenetwork.HandleDUCModify
-		subDeviceUplinkConfigT.DeleteHandler = devicenetwork.HandleDUCDelete
-		clientCtx.SubDeviceUplinkConfigA = subDeviceUplinkConfigT
-		subDeviceUplinkConfigT.Activate()
-	}
-
-	subDeviceUplinkConfigO, err := pubsub.Subscribe("",
-		types.DeviceUplinkConfig{}, false, &clientCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDeviceUplinkConfigO.ModifyHandler = devicenetwork.HandleDUCModify
-	subDeviceUplinkConfigO.DeleteHandler = devicenetwork.HandleDUCDelete
-	clientCtx.SubDeviceUplinkConfigO = subDeviceUplinkConfigO
-	subDeviceUplinkConfigO.Activate()
-
-	subDeviceUplinkConfigS, err := pubsub.Subscribe(agentName,
-		types.DeviceUplinkConfig{}, false, &clientCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDeviceUplinkConfigS.ModifyHandler = devicenetwork.HandleDUCModify
-	subDeviceUplinkConfigS.DeleteHandler = devicenetwork.HandleDUCDelete
-	clientCtx.SubDeviceUplinkConfigS = subDeviceUplinkConfigS
-	subDeviceUplinkConfigS.Activate()
-
-	if DUCDir == "" {
-		// Avoid a nil pointer check in select statement
-		subDeviceUplinkConfigT = subDeviceUplinkConfigO
-	}
+	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
+	clientCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
+	subDeviceNetworkStatus.Activate()
 
 	// After 5 seconds we check; if we already have a UUID we continue
 	// with that one
 	t1 := time.NewTimer(5 * time.Second)
-	done := clientCtx.UsableAddressCount != 0
+	done := clientCtx.usableAddressCount != 0
 
 	// Make sure we wait for a while to process all the DeviceUplinkConfigs
-	for clientCtx.UsableAddressCount == 0 || !done {
-		log.Infof("Waiting for UsableAddressCount %d and done %v\n",
-			clientCtx.UsableAddressCount, done)
+	for clientCtx.usableAddressCount == 0 || !done {
+		log.Infof("Waiting for usableAddressCount %d and done %v\n",
+			clientCtx.usableAddressCount, done)
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDeviceNetworkConfig.C:
-			log.Debugf("Got subDeviceNetworkConfig\n")
-			subDeviceNetworkConfig.ProcessChange(change)
-
-		case change := <-subDeviceUplinkConfigT.C:
-			// If DUCDir == "" this will process "O" which is fine
-			subDeviceUplinkConfigT.ProcessChange(change)
-
-		case change := <-subDeviceUplinkConfigO.C:
-			subDeviceUplinkConfigO.ProcessChange(change)
-
-		case change := <-subDeviceUplinkConfigS.C:
-			subDeviceUplinkConfigS.ProcessChange(change)
-
-		case change := <-addrChanges:
-			devicenetwork.AddrChange(&clientCtx, change)
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
 
 		case <-t1.C:
 			done = true
@@ -314,7 +211,7 @@ func Run() {
 			// an onboarded system without /config/hardwaremodel.
 			// Unlikely to have a network outage during that
 			// upgrade *and* require an override.
-			if clientCtx.UsableAddressCount == 0 &&
+			if clientCtx.usableAddressCount == 0 &&
 				operations["getUuid"] && oldUUID != nilUUID {
 
 				log.Infof("Already have a UUID %s; declaring success\n",
@@ -328,18 +225,14 @@ func Run() {
 			}
 		}
 	}
-	log.Infof("Got for DeviceNetworkConfig: %d addresses\n",
-		clientCtx.UsableAddressCount)
-	if operations["dhcpcd"] {
-		log.Infof("dhcpcd operation done\n")
-		return
-	}
+	log.Infof("Got for deviceNetworkConfig: %d addresses\n",
+		clientCtx.usableAddressCount)
 
 	// Inform ledmanager that we have uplink addresses
 	types.UpdateLedManagerConfig(2)
 
 	zedcloudCtx := zedcloud.ZedCloudContext{
-		DeviceNetworkStatus: clientCtx.DeviceNetworkStatus,
+		DeviceNetworkStatus: clientCtx.deviceNetworkStatus,
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
 	}
@@ -689,4 +582,44 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	debug, _ = agentlog.HandleGlobalConfig(ctx.SubGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
+
+	status := cast.CastDeviceNetworkStatus(statusArg)
+	ctx := ctxArg.(*clientContext)
+	if key != "global" {
+		log.Infof("handleDNSModify: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleDNSModify for %s\n", key)
+	if cmp.Equal(ctx.deviceNetworkStatus, status) {
+		return
+	}
+	log.Infof("handleDNSModify: changed %v",
+		cmp.Diff(ctx.deviceNetworkStatus, status))
+	*ctx.deviceNetworkStatus = status
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
+	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
+		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
+			newAddrCount, ctx.usableAddressCount)
+	}
+	ctx.usableAddressCount = newAddrCount
+	log.Infof("handleDNSModify done for %s\n", key)
+}
+
+func handleDNSDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Infof("handleDNSDelete for %s\n", key)
+	ctx := ctxArg.(*clientContext)
+
+	if key != "global" {
+		log.Infof("handleDNSDelete: ignoring %s\n", key)
+		return
+	}
+	*ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
+	ctx.usableAddressCount = newAddrCount
+	log.Infof("handleDNSDelete done for %s\n", key)
 }

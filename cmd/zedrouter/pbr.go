@@ -11,7 +11,6 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
-	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/types"
 	"net"
 	"syscall"
@@ -31,7 +30,7 @@ func PbrInit(ctx *zedrouterContext, addrChange addrChangeFnType,
 	chan netlink.AddrUpdate, chan netlink.LinkUpdate) {
 
 	log.Debugf("PbrInit()\n")
-	setFreeUplinks(devicenetwork.GetFreeUplinks(*ctx.DeviceUplinkConfig))
+	setFreeUplinks(types.GetUplinksFree(*ctx.DeviceNetworkStatus, 0))
 	addrChangeFuncUplink = addrChange
 	addrChangeFuncNonUplink = addrChangeNon
 
@@ -237,7 +236,7 @@ func pbrGetFreeRule(prefixStr string) (*netlink.Rule, error) {
 }
 
 // Handle a route change
-func PbrRouteChange(deviceUplinkConfig *types.DeviceUplinkConfig,
+func PbrRouteChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	change netlink.RouteUpdate) {
 
 	rt := change.Route
@@ -252,7 +251,7 @@ func PbrRouteChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 		log.Errorf("PbrRouteChange IfindexToName failed for %d: %s\n",
 			rt.LinkIndex, err)
 	} else {
-		if devicenetwork.IsFreeUplink(*deviceUplinkConfig, ifname) {
+		if types.IsFreeUplink(*deviceNetworkStatus, ifname) {
 			log.Debugf("Applying to FreeTable: %v\n", rt)
 			doFreeTable = true
 		}
@@ -310,7 +309,7 @@ func PbrRouteChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 var once = true
 
 // Handle an IP address change
-func PbrAddrChange(deviceUplinkConfig *types.DeviceUplinkConfig,
+func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	change netlink.AddrUpdate) {
 
 	changed := false
@@ -353,7 +352,7 @@ func PbrAddrChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 		if err != nil {
 			log.Errorf("PbrAddrChange IfindexToName failed for %d: %s\n",
 				change.LinkIndex, err)
-		} else if devicenetwork.IsUplink(*deviceUplinkConfig, ifname) {
+		} else if types.IsUplink(*deviceNetworkStatus, ifname) {
 			log.Debugf("Address change for uplink: %v\n", change)
 			addrChangeFuncUplink(ifname)
 		} else {
@@ -367,7 +366,7 @@ func PbrAddrChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 }
 
 // Handle a link being added or deleted
-func PbrLinkChange(deviceUplinkConfig *types.DeviceUplinkConfig,
+func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	change netlink.LinkUpdate) {
 
 	ifindex := change.Attrs().Index
@@ -379,14 +378,14 @@ func PbrLinkChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 	case syscall.RTM_NEWLINK:
 		added := IfindexToNameAdd(ifindex, ifname, linkType)
 		if added {
-			if devicenetwork.IsFreeUplink(*deviceUplinkConfig,
+			if types.IsFreeUplink(*deviceNetworkStatus,
 				ifname) {
 
 				log.Debugf("PbrLinkChange moving to FreeTable %s\n",
 					ifname)
 				moveRoutesTable(0, ifindex, FreeTable)
 			}
-			if devicenetwork.IsUplink(*deviceUplinkConfig, ifname) {
+			if types.IsUplink(*deviceNetworkStatus, ifname) {
 				log.Debugf("Link change for uplink: %s\n",
 					ifname)
 				addrChangeFuncUplink(ifname)
@@ -402,7 +401,7 @@ func PbrLinkChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 	case syscall.RTM_DELLINK:
 		gone := IfindexToNameDel(ifindex, ifname)
 		if gone {
-			if devicenetwork.IsFreeUplink(*deviceUplinkConfig,
+			if types.IsFreeUplink(*deviceNetworkStatus,
 				ifname) {
 
 				flushRoutesTable(FreeTable, ifindex)
@@ -410,7 +409,7 @@ func PbrLinkChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 			MyTable := FreeTable + ifindex
 			flushRoutesTable(MyTable, 0)
 			flushRules(ifindex)
-			if devicenetwork.IsUplink(*deviceUplinkConfig, ifname) {
+			if types.IsUplink(*deviceNetworkStatus, ifname) {
 				log.Debugf("Link change for uplink: %s\n",
 					ifname)
 				addrChangeFuncUplink(ifname)

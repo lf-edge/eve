@@ -289,23 +289,15 @@ if [ -f $CONFIGDIR/allow-usb-override ]; then
 	if [ $? != 0 ]; then
 	    echo "mount $SPECIAL failed: $?"
 	else
+	    # XXX Remove this code? nim will do testing...
 	    echo "Mounted $SPECIAL"
 	    keyfile=/mnt/$key.json
 	    if [ -f $keyfile ]; then
 		echo "Found $keyfile on $SPECIAL"
-		echo "Testing $keyfile"
-		mkdir -p $TMPDIR/try/DeviceUplinkConfig
-		cp -p $keyfile $TMPDIR/try/DeviceUplinkConfig
-		/opt/zededa/bin/client -s -r 5 -u try ping
-		if [ $? == 0 ] ; then
-		    echo "Tested $keyfile - passed"
-		    echo "Copying from $keyfile to $CONFIGDIR/DeviceUplinkConfig/override.json"
-		    cp -p $keyfile $CONFIGDIR/DeviceUplinkConfig/override.json
-		    # No more override allowed
-		    rm $CONFIGDIR/allow-usb-override
-		else
-		    echo "Failed to connect to zedcloud using $keyfile; ignored"
-		fi
+		echo "Copying from $keyfile to $CONFIGDIR/DeviceUplinkConfig/override.json"
+		cp -p $keyfile $CONFIGDIR/DeviceUplinkConfig/override.json
+		# No more override allowed
+		rm $CONFIGDIR/allow-usb-override
 	    else
 		echo "$keyfile not found on $SPECIAL"
 	    fi
@@ -328,9 +320,8 @@ if [ -f /var/run/watchdog.pid ]; then
 fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogclient.conf -F -s &
 
-echo $BINDIR/client dhcpcd
-$BINDIR/client dhcpcd
-ifconfig
+echo $BINDIR/nim
+$BINDIR/nim &
 
 # Restart watchdog with only ledmanager since we don't know how long ntp will take
 if [ -f /var/run/watchdog.pid ]; then

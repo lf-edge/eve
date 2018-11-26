@@ -12,6 +12,7 @@ import (
 	"github.com/zededa/go-provision/cmd/identitymgr"
 	"github.com/zededa/go-provision/cmd/ipcmonitor"
 	"github.com/zededa/go-provision/cmd/ledmanager"
+	"github.com/zededa/go-provision/cmd/nim"
 	"github.com/zededa/go-provision/cmd/logmanager"
 	"github.com/zededa/go-provision/cmd/verifier"
 	"github.com/zededa/go-provision/cmd/zedagent"
@@ -38,6 +39,8 @@ func main() {
 		ledmanager.Run()
 	case "logmanager":
 		logmanager.Run()
+	case "nim":
+		nim.Run()
 	case "verifier":
 		verifier.Run()
 	case "zedagent":

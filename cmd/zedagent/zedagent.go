@@ -471,7 +471,7 @@ func Run() {
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &DNSctx)
 	if err != nil {
 		log.Fatal(err)
