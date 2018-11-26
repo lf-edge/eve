@@ -349,7 +349,7 @@ func iptableCounterRuleStat(acl vpnAclRule) (types.PktStats, error) {
 	for _, outLine := range outLines {
 		if !strings.Contains(outLine, acl.proto) ||
 			(acl.intf != "" && !strings.Contains(outLine, acl.intf)) ||
-			(acl.sport != "" && !strings.Contains(outLine, "sport " + acl.sport + " ")) ||
+			(acl.sport != "" && !strings.Contains(outLine, "--sport " + acl.sport + " ")) ||
 			(acl.dport != "" && !strings.Contains(outLine, "--dport " + acl.dport + " ")) {
 			continue
 		}
