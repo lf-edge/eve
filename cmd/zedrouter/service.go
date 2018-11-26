@@ -666,7 +666,7 @@ func lispInactivate(ctx *zedrouterContext,
 					status.LispStatus.IID, olStatus.EID,
 					olStatus.AppIPAddr,
 					*ctx.DeviceNetworkStatus,
-					ctx.separateDataPlane)
+					ctx.legacyDataPlane)
 			}
 		}
 	}

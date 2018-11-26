@@ -180,7 +180,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	EID net.IP, AppIPAddr net.IP, lispSignature string,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
-	mapservers []types.MapServer, separateDataPlane bool) {
+	mapservers []types.MapServer, legacyDataPlane bool) {
 
 	log.Debugf("createLispConfiglet: %s %v %d %s %v %v %s %s %s %v\n",
 		lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
@@ -272,14 +272,14 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 		file2.WriteString(fmt.Sprintf(lispDBtemplate,
 			IID, EID, IID, tag, tag, rlocString))
 	}
-	updateLisp(lispRunDirname, &globalStatus, separateDataPlane)
+	updateLisp(lispRunDirname, &globalStatus, legacyDataPlane)
 }
 
 func createLispEidConfiglet(lispRunDirname string,
 	IID uint32, EID net.IP, AppIPAddr net.IP, lispSignature string,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
-	mapservers []types.MapServer, separateDataPlane bool) {
+	mapservers []types.MapServer, legacyDataPlane bool) {
 
 	log.Debugf("createLispEidConfiglet: %s %d %s %v %v %s %s %s %v\n",
 		lispRunDirname, IID, EID, lispSignature, globalStatus,
@@ -339,7 +339,7 @@ func createLispEidConfiglet(lispRunDirname string,
 		olIfname, IID))
 	file.WriteString(fmt.Sprintf(lispDBtemplate,
 		IID, EID, IID, tag, tag, rlocString))
-	updateLisp(lispRunDirname, &globalStatus, separateDataPlane)
+	updateLisp(lispRunDirname, &globalStatus, legacyDataPlane)
 }
 
 func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
@@ -347,7 +347,7 @@ func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	globalStatus types.DeviceNetworkStatus,
 	tag string, olIfname string, additionalInfo string,
 	mapservers []types.MapServer,
-	separateDataPlane bool) {
+	legacyDataPlane bool) {
 
 	log.Debugf("updateLispConfiglet: %s %v %d %s %v %v %s %s %s %v\n",
 		lispRunDirname, isMgmt, IID, EID, lispSignature, globalStatus,
@@ -355,12 +355,12 @@ func updateLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 
 	createLispConfiglet(lispRunDirname, isMgmt, IID, EID, AppIPAddr,
 		lispSignature, globalStatus, tag, olIfname, additionalInfo,
-		mapservers, separateDataPlane)
+		mapservers, legacyDataPlane)
 }
 
 func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	EID net.IP, AppIPAddr net.IP, globalStatus types.DeviceNetworkStatus,
-	separateDataPlane bool) {
+	legacyDataPlane bool) {
 
 	log.Debugf("deleteLispConfiglet: %s %d %s %v\n",
 		lispRunDirname, IID, EID, globalStatus)
@@ -382,12 +382,12 @@ func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	// cfgPathnameIID := lispRunDirname + "/" +
 	//	strconv.FormatUint(uint64(IID), 10)
 
-	updateLisp(lispRunDirname, &globalStatus, separateDataPlane)
+	updateLisp(lispRunDirname, &globalStatus, legacyDataPlane)
 }
 
 func updateLisp(lispRunDirname string,
 	globalStatus *types.DeviceNetworkStatus,
-	separateDataPlane bool) {
+	legacyDataPlane bool) {
 
 	log.Debugf("updateLisp: %s %v\n",
 		lispRunDirname, globalStatus.UplinkStatus)
@@ -415,7 +415,7 @@ func updateLisp(lispRunDirname string,
 		return
 	}
 	baseConfig := string(content)
-	if !separateDataPlane {
+	if !legacyDataPlane {
 		tmpfile.WriteString(fmt.Sprintf(baseConfig, "yes"))
 	} else {
 		tmpfile.WriteString(fmt.Sprintf(baseConfig, "no"))
@@ -500,11 +500,11 @@ func updateLisp(lispRunDirname string,
 		// XXX We have changed the design to have lisp-ztr dataplane
 		// always run and not do anything unless zedrouter sends `Experimental = false`
 		// configuration to lisp-ztr process via pubsub.
-		// When separateDataPlane flag is false zedrouter sends `Experimantal = true`
+		// When legacyDataPlane flag is false zedrouter sends `Experimantal = true`
 		// to lisp-ztr dataplane.
 		// The below code that stops dataplane should be removed at some point of time.
 		if false {
-			if !separateDataPlane {
+			if !legacyDataPlane {
 				maybeStopLispDataPlane()
 			}
 		}
@@ -512,11 +512,11 @@ func updateLisp(lispRunDirname string,
 		// XXX We have changed the design to have lisp-ztr dataplane
 		// always run and not do anything unless zedrouter sends `Experimental = false`
 		// configuration to lisp-ztr process via pubsub.
-		// When separateDataPlane flag is false zedrouter sends `Experimantal = true`
+		// When legacyDataPlane flag is false zedrouter sends `Experimantal = true`
 		// to lisp-ztr dataplane.
 		// The below code that stops dataplane should be removed at some point of time.
 		if false {
-			if !separateDataPlane {
+			if !legacyDataPlane {
 				maybeStartLispDataPlane()
 			}
 		}
@@ -528,7 +528,7 @@ var deferUpdate = false
 var deferLispRunDirname = ""
 var deferGlobalStatus *types.DeviceNetworkStatus
 
-func handleLispRestart(done bool, separateDataPlane bool) {
+func handleLispRestart(done bool, legacyDataPlane bool) {
 
 	log.Debugf("handleLispRestart(%v)\n", done)
 	if done {
@@ -536,7 +536,7 @@ func handleLispRestart(done bool, separateDataPlane bool) {
 			deferUpdate = false
 			if deferLispRunDirname != "" {
 				updateLisp(deferLispRunDirname,
-					deferGlobalStatus, separateDataPlane)
+					deferGlobalStatus, legacyDataPlane)
 				deferLispRunDirname = ""
 				deferGlobalStatus = nil
 			}

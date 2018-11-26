@@ -44,8 +44,8 @@ const (
 var Version = "No version specified"
 
 type zedrouterContext struct {
-	// Experimental data plane enable/disable flag
-	separateDataPlane        bool
+	// Legacy data plane enable/disable flag
+	legacyDataPlane          bool
 	subNetworkObjectConfig   *pubsub.Subscription
 	subNetworkServiceConfig  *pubsub.Subscription
 	pubNetworkObjectStatus   *pubsub.Publication
@@ -133,7 +133,7 @@ func Run() {
 
 	aa := types.AssignableAdapters{}
 	zedrouterCtx := zedrouterContext{
-		separateDataPlane:  false,
+		legacyDataPlane:  false,
 		assignableAdapters: &aa,
 	}
 
@@ -422,7 +422,7 @@ func Run() {
 
 	// Apply any changes from the uplink config to date.
 	publishDeviceNetworkStatus(&zedrouterCtx)
-	updateLispConfiglets(&zedrouterCtx, zedrouterCtx.separateDataPlane)
+	updateLispConfiglets(&zedrouterCtx, zedrouterCtx.legacyDataPlane)
 
 	setFreeUplinks(devicenetwork.GetFreeUplinks(*zedrouterCtx.DeviceUplinkConfig))
 
@@ -519,7 +519,7 @@ func maybeHandleDUC(ctx *zedrouterContext) {
 	if !ctx.ready {
 		return
 	}
-	updateLispConfiglets(ctx, ctx.separateDataPlane)
+	updateLispConfiglets(ctx, ctx.legacyDataPlane)
 	setFreeUplinks(devicenetwork.GetFreeUplinks(*ctx.DeviceUplinkConfig))
 	// XXX do a NatInactivate/NatActivate if freeuplinks/uplinks changed?
 }
@@ -529,7 +529,7 @@ func handleRestart(ctxArg interface{}, done bool) {
 	log.Debugf("handleRestart(%v)\n", done)
 	ctx := ctxArg.(*zedrouterContext)
 	if ctx.ready {
-		handleLispRestart(done, ctx.separateDataPlane)
+		handleLispRestart(done, ctx.legacyDataPlane)
 	}
 	if done {
 		// Since all work is done inline we can immediately say that
@@ -708,7 +708,7 @@ func generateAdditionalInfo(status types.AppNetworkStatus, olConfig types.Overla
 	return additionalInfo
 }
 
-func updateLispConfiglets(ctx *zedrouterContext, separateDataPlane bool) {
+func updateLispConfiglets(ctx *zedrouterContext, legacyDataPlane bool) {
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
 	for _, st := range items {
@@ -746,7 +746,7 @@ func updateLispConfiglets(ctx *zedrouterContext, separateDataPlane bool) {
 				olStatus.AppIPAddr, olStatus.LispSignature,
 				*ctx.DeviceNetworkStatus, olIfname,
 				olIfname, additionalInfo,
-				olStatus.MgmtMapServers, separateDataPlane)
+				olStatus.MgmtMapServers, legacyDataPlane)
 		}
 	}
 }
@@ -1066,9 +1066,9 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 				config.DisplayName)
 			return
 		}
-		ctx.separateDataPlane = config.SeparateDataPlane
+		ctx.legacyDataPlane = config.SeparateDataPlane
 		dataplaneConfig := types.LispDataplaneConfig{
-			Experimental: !ctx.separateDataPlane,
+			Experimental: !ctx.legacyDataPlane,
 		}
 		publishLispDataplaneConfig(ctx, &dataplaneConfig)
 
@@ -1227,7 +1227,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 			olConfig.LispSignature,
 			*ctx.DeviceNetworkStatus, olIfname, olIfname,
 			additionalInfo, olConfig.MgmtMapServers,
-			ctx.separateDataPlane)
+			ctx.legacyDataPlane)
 		status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 			len(config.OverlayNetworkList))
 		for i, _ := range config.OverlayNetworkList {
@@ -1701,7 +1701,7 @@ func createAndStartLisp(ctx *zedrouterContext,
 	createLispEidConfiglet(lispRunDirname, serviceStatus.LispStatus.IID,
 		olConfig.EID, olConfig.AppIPAddr, olConfig.LispSignature,
 		deviceNetworkParams, bridgeName, bridgeName, additionalInfo,
-		serviceStatus.LispStatus.MapServers, ctx.separateDataPlane)
+		serviceStatus.LispStatus.MapServers, ctx.legacyDataPlane)
 }
 
 // Returns the link
@@ -1815,7 +1815,7 @@ func handleModify(ctx *zedrouterContext, key string,
 		log.Infof("handleModify done for %s\n", config.DisplayName)
 		return
 	}
-	status.SeparateDataPlane = ctx.separateDataPlane
+	status.SeparateDataPlane = ctx.legacyDataPlane
 	status.UUIDandVersion = config.UUIDandVersion
 	publishAppNetworkStatus(ctx, status)
 
@@ -1847,8 +1847,8 @@ func handleModify(ctx *zedrouterContext, key string,
 	}
 
 	if config.IsZedmanager {
-		if config.SeparateDataPlane != ctx.separateDataPlane {
-			errStr := fmt.Sprintf("Unsupported: Changing experimental data plane flag on the fly\n")
+		if config.SeparateDataPlane != ctx.legacyDataPlane {
+			errStr := fmt.Sprintf("Unsupported: Changing legacy data plane flag on the fly\n")
 
 			status.PendingModify = false
 			addError(ctx, status, "handleModify",
@@ -1970,7 +1970,7 @@ func handleModify(ctx *zedrouterContext, key string,
 			olConfig.AppIPAddr, olConfig.LispSignature,
 			*ctx.DeviceNetworkStatus, bridgeName, bridgeName,
 			additionalInfo, serviceStatus.LispStatus.MapServers,
-			ctx.separateDataPlane)
+			ctx.legacyDataPlane)
 	}
 	// Look for ACL changes in underlay
 	for i, ulConfig := range config.UnderlayNetworkList {
@@ -2195,7 +2195,7 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, true, olStatus.MgmtIID,
 			olStatus.EID, olStatus.AppIPAddr,
-			*ctx.DeviceNetworkStatus, ctx.separateDataPlane)
+			*ctx.DeviceNetworkStatus, ctx.legacyDataPlane)
 		status.Activated = false
 		publishAppNetworkStatus(ctx, status)
 		log.Infof("doInactivate done for %s\n", status.DisplayName)
@@ -2294,7 +2294,7 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 		deleteLispConfiglet(lispRunDirname, false,
 			serviceStatus.LispStatus.IID, olStatus.EID,
 			olStatus.AppIPAddr, *ctx.DeviceNetworkStatus,
-			ctx.separateDataPlane)
+			ctx.legacyDataPlane)
 	}
 
 	// XXX check if any IIDs are now unreferenced and delete them
