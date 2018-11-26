@@ -354,7 +354,9 @@ func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 				change.LinkIndex, err)
 		} else if types.IsUplink(*deviceNetworkStatus, ifname) {
 			log.Debugf("Address change for uplink: %v\n", change)
-			addrChangeFuncUplink(ifname)
+			if addrChangeFuncUplink != nil {
+				addrChangeFuncUplink(ifname)
+			}
 		} else {
 			log.Debugf("Address change for non-uplink: %v\n",
 				change)
@@ -388,7 +390,9 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 			if types.IsUplink(*deviceNetworkStatus, ifname) {
 				log.Debugf("Link change for uplink: %s\n",
 					ifname)
-				addrChangeFuncUplink(ifname)
+				if addrChangeFuncUplink != nil {
+					addrChangeFuncUplink(ifname)
+				}
 			} else {
 				log.Debugf("Link change for non-uplink: %s\n",
 					ifname)
@@ -412,7 +416,9 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 			if types.IsUplink(*deviceNetworkStatus, ifname) {
 				log.Debugf("Link change for uplink: %s\n",
 					ifname)
-				addrChangeFuncUplink(ifname)
+				if addrChangeFuncUplink != nil {
+					addrChangeFuncUplink(ifname)
+				}
 			} else {
 				log.Debugf("Link change for non-uplink: %s\n",
 					ifname)
@@ -606,8 +612,7 @@ func IfindexToAddrsAdd(index int, addr net.IPNet) bool {
 func IfindexToAddrsDel(index int, addr net.IPNet) bool {
 	addrs, ok := ifindexToAddrs[index]
 	if !ok {
-		log.Infof("IfindexToAddrsDel unknown index %d\n", index)
-		// XXX error?
+		log.Warnf("IfindexToAddrsDel unknown index %d\n", index)
 		return false
 	}
 	for i, a := range addrs {
@@ -623,7 +628,7 @@ func IfindexToAddrsDel(index int, addr net.IPNet) bool {
 			return true
 		}
 	}
-	log.Infof("IfindexToAddrsDel address not found for %d in\n",
+	log.Warnf("IfindexToAddrsDel address not found for %d in\n",
 		index, addrs)
 	return false
 }

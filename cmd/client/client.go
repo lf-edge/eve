@@ -16,7 +16,6 @@ import (
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -559,13 +558,13 @@ func Run() {
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	ctx := ctxArg.(*devicenetwork.DeviceNetworkContext)
+	ctx := ctxArg.(*clientContext)
 	if key != "global" {
 		log.Debugf("handleGlobalConfigModify: ignoring %s\n", key)
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.SubGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
@@ -573,13 +572,13 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	ctx := ctxArg.(*devicenetwork.DeviceNetworkContext)
+	ctx := ctxArg.(*clientContext)
 	if key != "global" {
 		log.Debugf("handleGlobalConfigDelete: ignoring %s\n", key)
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.SubGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
