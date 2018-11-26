@@ -210,8 +210,6 @@ func Run() {
 	addrChanges := devicenetwork.AddrChangeInit(&nimCtx.DeviceNetworkContext)
 
 	for {
-		log.Infof("Waiting for changed; UsableAddressCount %d\n",
-			nimCtx.UsableAddressCount)
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
