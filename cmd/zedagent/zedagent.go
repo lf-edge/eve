@@ -823,7 +823,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
 	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
 		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
-			newAddrCount, ctx.usableAddressCount)
+			ctx.usableAddressCount, newAddrCount)
 		ctx.triggerGetConfig = true
 	}
 	ctx.usableAddressCount = newAddrCount

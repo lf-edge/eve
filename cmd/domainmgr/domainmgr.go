@@ -1820,7 +1820,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	checkAndSetIoBundleAll(ctx)
 	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
 		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
-			newAddrCount, ctx.usableAddressCount)
+			ctx.usableAddressCount, newAddrCount)
 	}
 	ctx.usableAddressCount = newAddrCount
 	log.Infof("handleDNSModify done for %s\n", key)
