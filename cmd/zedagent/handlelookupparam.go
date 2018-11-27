@@ -236,7 +236,9 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		DisplayName:       "zedmanager",
 		IsZedmanager:      true,
 		Activate:          true,
-		SeparateDataPlane: lispInfo.Experimental,
+		// Experimental flag from protobuf is re-interpreted to mean
+		// using legacy data plane (i.e. lispers.net)
+		LegacyDataPlane: lispInfo.Experimental,
 	}
 
 	olconf := make([]types.OverlayNetworkConfig, 1)

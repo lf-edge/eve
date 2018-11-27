@@ -22,7 +22,7 @@ type AppNetworkConfig struct {
 	DisplayName         string
 	Activate            bool
 	IsZedmanager        bool
-	SeparateDataPlane   bool
+	LegacyDataPlane     bool
 	OverlayNetworkList  []OverlayNetworkConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 }
@@ -68,7 +68,7 @@ type AppNetworkStatus struct {
 	DisplayName    string
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	IsZedmanager        bool
-	SeparateDataPlane   bool
+	LegacyDataPlane     bool
 	OverlayNetworkList  []OverlayNetworkStatus
 	UnderlayNetworkList []UnderlayNetworkStatus
 	MissingNetwork      bool // If any Missing flag is set in the networks
@@ -844,7 +844,8 @@ type LispMetrics struct {
 }
 
 type LispDataplaneConfig struct {
-	Experimental bool
+	// If true, we run legacy lispers.net data plane.
+	Legacy bool
 }
 
 type VpnState uint8
