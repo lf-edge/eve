@@ -274,5 +274,5 @@ type DataplaneContext struct {
 	SubLispConfig     *pubsub.Subscription
 	SubDeviceNetworkStatus *pubsub.Subscription
 	SubGlobalConfig   *pubsub.Subscription
-	Experimental      bool
+	Legacy            bool
 }
