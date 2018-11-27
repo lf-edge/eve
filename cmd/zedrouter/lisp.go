@@ -498,9 +498,9 @@ func updateLisp(lispRunDirname string,
 		stopLisp()
 
 		// XXX We have changed the design to have lisp-ztr dataplane
-		// always run and not do anything unless zedrouter sends `Experimental = false`
+		// always run and not do anything unless zedrouter sends `Legacy = false`
 		// configuration to lisp-ztr process via pubsub.
-		// When legacyDataPlane flag is false zedrouter sends `Experimantal = true`
+		// When legacyDataPlane flag is false zedrouter sends `Legacy = false`
 		// to lisp-ztr dataplane.
 		// The below code that stops dataplane should be removed at some point of time.
 		if false {
@@ -510,9 +510,9 @@ func updateLisp(lispRunDirname string,
 		}
 	} else {
 		// XXX We have changed the design to have lisp-ztr dataplane
-		// always run and not do anything unless zedrouter sends `Experimental = false`
+		// always run and not do anything unless zedrouter sends `Legacy = false`
 		// configuration to lisp-ztr process via pubsub.
-		// When legacyDataPlane flag is false zedrouter sends `Experimantal = true`
+		// When legacyDataPlane flag is false zedrouter sends `Legacy = false`
 		// to lisp-ztr dataplane.
 		// The below code that stops dataplane should be removed at some point of time.
 		if false {
