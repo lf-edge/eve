@@ -84,7 +84,7 @@ func main() {
 	// We subsribe to Lisp configuration channel from zedrouter
 	// and wait for our configuration. Dataplane will only start
 	// processing packets when the configuration from zedrouter has
-	// Experimental set to true.
+	// Legacy set to false.
 	dataplaneContext := initPubsubChannels()
 
 	log.Infof("Waiting for configuration from zedrouter")
@@ -94,7 +94,7 @@ func main() {
 			dataplaneContext.SubLispConfig.ProcessChange(change)
 		}
 		// We keep waiting till we are enabled
-		if dataplaneContext.Experimental == true {
+		if dataplaneContext.Legacy == false {
 			break
 		}
 	}
@@ -186,16 +186,16 @@ func handleExpModify(ctxArg interface{}, key string, statusArg interface{}) {
 		log.Infof("handleExpModify: ignoring %s", key)
 		return
 	}
-	ctx.Experimental = status.Experimental
-	log.Infof("handleExpModify: Experimental status %v", ctx.Experimental)
+	ctx.Legacy = status.Legacy
+	log.Infof("handleExpModify: Legacy status %v", ctx.Legacy)
 	log.Infof("handleExpModify: done")
 }
 
 func handleExpDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	// There is no valid reason for deleting configuration
-	// XXX For now just mark our local experimental flag to false and return
+	// XXX For now just mark our local Legacy flag to false and return
 	ctx := ctxArg.(*dptypes.DataplaneContext)
-	ctx.Experimental = false
+	ctx.Legacy = true
 }
 
 func initPubsubChannels() *dptypes.DataplaneContext {
