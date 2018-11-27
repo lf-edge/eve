@@ -8,8 +8,8 @@ package devicenetwork
 import (
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"github.com/eriknordmark/netlink"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"reflect"
 )
@@ -28,7 +28,7 @@ func AddrChangeInit(ctx *DeviceNetworkContext) chan netlink.AddrUpdate {
 		log.Errorf("AddrSubscribe failed %s\n", err)
 	}
 	addropt := netlink.AddrSubscribeOptions{
-		ListExisting: true,
+		ListExisting:  true,
 		ErrorCallback: errFunc,
 	}
 	if err := netlink.AddrSubscribeWithOptions(addrchan, nil,
