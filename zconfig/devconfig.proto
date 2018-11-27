@@ -29,7 +29,7 @@ message DeviceLispDetails {
         bytes EidAllocationPrefix = 8;
         uint32 EidAllocationPrefixLen = 9;
         string ClientAddr = 10;
-        bool Experimental = 20;	// true: Zededa dataplane, false [default]: lispers.net dataplane
+        bool Experimental = 20;	// true: lispers.net dataplane. Default: go dataplane
 }
 
 // Device Operational Commands Semantic
