@@ -14,10 +14,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/eriknordmark/netlink"
 	"github.com/google/go-cmp/cmp"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/flextimer"
@@ -373,11 +373,20 @@ func Run() {
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-addrChanges:
+		case change, ok := <-addrChanges:
+			if !ok {
+				log.Fatalf("addrChanges closed?\n")
+			}
 			PbrAddrChange(zedrouterCtx.DeviceNetworkStatus, change)
-		case change := <-linkChanges:
+		case change, ok := <-linkChanges:
+			if !ok {
+				log.Fatalf("linkChanges closed?\n")
+			}
 			PbrLinkChange(zedrouterCtx.DeviceNetworkStatus, change)
-		case change := <-routeChanges:
+		case change, ok := <-routeChanges:
+			if !ok {
+				log.Fatalf("routeChanges closed?\n")
+			}
 			PbrRouteChange(zedrouterCtx.DeviceNetworkStatus, change)
 		case <-publishTimer.C:
 			log.Debugln("publishTimer at", time.Now())

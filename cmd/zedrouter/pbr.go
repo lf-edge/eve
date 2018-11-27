@@ -9,8 +9,8 @@ package zedrouter
 import (
 	"errors"
 	"fmt"
+	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
-	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/types"
 	"net"
 	"syscall"
@@ -44,20 +44,38 @@ func PbrInit(ctx *zedrouterContext, addrChange addrChangeFnType,
 
 	// Need links to get name to ifindex? Or lookup each time?
 	linkchan := make(chan netlink.LinkUpdate)
-	linkopt := netlink.LinkSubscribeOptions{ListExisting: true}
+	linkErrFunc := func(err error) {
+		log.Errorf("LinkSubscribe failed %s\n", err)
+	}
+	linkopt := netlink.LinkSubscribeOptions{
+		ListExisting:  true,
+		ErrorCallback: linkErrFunc,
+	}
 	if err := netlink.LinkSubscribeWithOptions(linkchan, nil,
 		linkopt); err != nil {
 		log.Fatal(err)
 	}
 
 	addrchan := make(chan netlink.AddrUpdate)
-	addropt := netlink.AddrSubscribeOptions{ListExisting: true}
+	addrErrFunc := func(err error) {
+		log.Errorf("AddrSubscribe failed %s\n", err)
+	}
+	addropt := netlink.AddrSubscribeOptions{
+		ListExisting:  true,
+		ErrorCallback: addrErrFunc,
+	}
 	if err := netlink.AddrSubscribeWithOptions(addrchan, nil,
 		addropt); err != nil {
 		log.Fatal(err)
 	}
 	routechan := make(chan netlink.RouteUpdate)
-	rtopt := netlink.RouteSubscribeOptions{ListExisting: true}
+	routeErrFunc := func(err error) {
+		log.Errorf("RouteSubscribe failed %s\n", err)
+	}
+	rtopt := netlink.RouteSubscribeOptions{
+		ListExisting:  true,
+		ErrorCallback: routeErrFunc,
+	}
 	if err := netlink.RouteSubscribeWithOptions(routechan, nil,
 		rtopt); err != nil {
 		log.Fatal(err)
@@ -305,7 +323,7 @@ func PbrRouteChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	}
 }
 
-// XXX
+// XXX due to closed chan? Remove
 var once = true
 
 // Handle an IP address change

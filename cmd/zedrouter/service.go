@@ -8,9 +8,9 @@ package zedrouter
 import (
 	"errors"
 	"fmt"
+	"github.com/eriknordmark/netlink"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"os"
