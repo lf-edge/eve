@@ -1066,9 +1066,9 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 				config.DisplayName)
 			return
 		}
-		ctx.legacyDataPlane = config.SeparateDataPlane
+		ctx.legacyDataPlane = config.LegacyDataPlane
 		dataplaneConfig := types.LispDataplaneConfig{
-			Experimental: !ctx.legacyDataPlane,
+			Legacy: ctx.legacyDataPlane,
 		}
 		publishLispDataplaneConfig(ctx, &dataplaneConfig)
 
@@ -1815,7 +1815,7 @@ func handleModify(ctx *zedrouterContext, key string,
 		log.Infof("handleModify done for %s\n", config.DisplayName)
 		return
 	}
-	status.SeparateDataPlane = ctx.legacyDataPlane
+	status.LegacyDataPlane = ctx.legacyDataPlane
 	status.UUIDandVersion = config.UUIDandVersion
 	publishAppNetworkStatus(ctx, status)
 
@@ -1847,7 +1847,7 @@ func handleModify(ctx *zedrouterContext, key string,
 	}
 
 	if config.IsZedmanager {
-		if config.SeparateDataPlane != ctx.legacyDataPlane {
+		if config.LegacyDataPlane != ctx.legacyDataPlane {
 			errStr := fmt.Sprintf("Unsupported: Changing legacy data plane flag on the fly\n")
 
 			status.PendingModify = false

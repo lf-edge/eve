@@ -236,7 +236,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		DisplayName:       "zedmanager",
 		IsZedmanager:      true,
 		Activate:          true,
-		SeparateDataPlane: lispInfo.Experimental,
+		LegacyDataPlane: lispInfo.Experimental,
 	}
 
 	olconf := make([]types.OverlayNetworkConfig, 1)
