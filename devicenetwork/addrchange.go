@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	log "github.com/sirupsen/logrus"
-	"github.com/vishvananda/netlink"
+	"github.com/eriknordmark/netlink"
 	"net"
 	"reflect"
 )
@@ -24,7 +24,13 @@ func AddrChangeInit(ctx *DeviceNetworkContext) chan netlink.AddrUpdate {
 	IfindexToAddrsInit()
 
 	addrchan := make(chan netlink.AddrUpdate)
-	addropt := netlink.AddrSubscribeOptions{ListExisting: true}
+	errFunc := func(err error) {
+		log.Errorf("AddrSubscribe failed %s\n", err)
+	}
+	addropt := netlink.AddrSubscribeOptions{
+		ListExisting: true,
+		ErrorCallback: errFunc,
+	}
 	if err := netlink.AddrSubscribeWithOptions(addrchan, nil,
 		addropt); err != nil {
 		log.Fatal(err)
@@ -32,7 +38,7 @@ func AddrChangeInit(ctx *DeviceNetworkContext) chan netlink.AddrUpdate {
 	return addrchan
 }
 
-// XXX
+// XXX due to closed chan? Remove
 var once = true
 
 // Handle an IP address change
