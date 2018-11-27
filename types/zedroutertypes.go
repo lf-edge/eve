@@ -844,6 +844,7 @@ type LispMetrics struct {
 }
 
 type LispDataplaneConfig struct {
+	// If true, we run legacy lispers.net data plane.
 	Legacy bool
 }
 
