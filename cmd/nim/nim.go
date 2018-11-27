@@ -226,7 +226,13 @@ func Run() {
 		case change := <-subDeviceUplinkConfigS.C:
 			subDeviceUplinkConfigS.ProcessChange(change)
 
-		case change := <-addrChanges:
+		case change, ok := <-addrChanges:
+			if !ok {
+				log.Fatalf("addrChanges closed?\n")
+			}
+			if debug {
+				log.Debugf("addrChanges %+v\n", change)
+			}
 			devicenetwork.AddrChange(&nimCtx.DeviceNetworkContext,
 				change)
 
