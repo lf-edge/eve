@@ -160,7 +160,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s", key)
-	debug = agentlog.HandleGlobalConfig(ctx.SubGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.SubGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigModify done for %s", key)
 }
@@ -173,7 +173,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s", key)
-	debug = agentlog.HandleGlobalConfig(ctx.SubGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.SubGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
@@ -228,7 +228,7 @@ func initPubsubChannels() *dptypes.DataplaneContext {
 
 	// Look for global config like debug
 	subGlobalConfig, err := pubsub.Subscribe("",
-		agentlog.GlobalConfig{}, false, dataplaneContext)
+		types.GlobalConfig{}, false, dataplaneContext)
 	if err != nil {
 		log.Fatal(err)
 	}
