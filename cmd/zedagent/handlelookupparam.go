@@ -236,6 +236,8 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		DisplayName:       "zedmanager",
 		IsZedmanager:      true,
 		Activate:          true,
+		// Experimental flag from protobuf is re-interpreted to mean
+		// using legacy data plane (i.e. lispers.net)
 		LegacyDataPlane: lispInfo.Experimental,
 	}
 
