@@ -30,6 +30,14 @@
   name = "github.com/eriknordmark/ipinfo"
 
 [[constraint]]
+  branch = "master"
+  name = "github.com/eriknordmark/netlink"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/vishvananda/netlink"
+
+[[constraint]]
   name = "github.com/fsnotify/fsnotify"
   version = "1.4.7"
 

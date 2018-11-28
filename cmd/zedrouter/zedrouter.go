@@ -133,7 +133,7 @@ func Run() {
 
 	aa := types.AssignableAdapters{}
 	zedrouterCtx := zedrouterContext{
-		legacyDataPlane:  false,
+		legacyDataPlane:    false,
 		assignableAdapters: &aa,
 	}
 
