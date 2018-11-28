@@ -38,9 +38,6 @@ func AddrChangeInit(ctx *DeviceNetworkContext) chan netlink.AddrUpdate {
 	return addrchan
 }
 
-// XXX due to closed chan? Remove
-var once = true
-
 // Handle an IP address change
 func AddrChange(ctx *DeviceNetworkContext, change netlink.AddrUpdate) {
 
@@ -48,13 +45,6 @@ func AddrChange(ctx *DeviceNetworkContext, change netlink.AddrUpdate) {
 	if change.NewAddr {
 		changed = IfindexToAddrsAdd(ctx, change.LinkIndex,
 			change.LinkAddress)
-	} else if change.LinkIndex == 0 {
-		// XXX why?
-		if once {
-			log.Errorf("XXX AddrChange: index 0 for %s\n",
-				change.LinkAddress.String())
-			once = false
-		}
 	} else {
 		changed = IfindexToAddrsDel(ctx, change.LinkIndex,
 			change.LinkAddress)

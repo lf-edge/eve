@@ -323,9 +323,6 @@ func PbrRouteChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	}
 }
 
-// XXX due to closed chan? Remove
-var once = true
-
 // Handle an IP address change
 func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	change netlink.AddrUpdate) {
@@ -343,13 +340,6 @@ func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 			// XXX only call for uplinks and bridges?
 			addSourceRule(change.LinkIndex, change.LinkAddress,
 				linkType == "bridge")
-		}
-	} else if change.LinkIndex == 0 {
-		// XXX why?
-		if once {
-			log.Errorf("XXX PbrAddrChange: index 0 for %s\n",
-				change.LinkAddress.String())
-			once = false
 		}
 	} else {
 		changed = IfindexToAddrsDel(change.LinkIndex,
