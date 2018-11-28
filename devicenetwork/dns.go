@@ -4,7 +4,6 @@
 package devicenetwork
 
 import (
-	"errors"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
@@ -30,7 +29,10 @@ func GetDnsInfo(us *types.NetworkUplink) error {
 		errStr := fmt.Sprintf("dhcpcd -U failed %s: %s",
 			string(stdoutStderr), err)
 		log.Errorln(errStr)
-		return errors.New(errStr)
+		// If we have no lease we get an error. Don't store those
+		us.DomainName = ""
+		us.DnsServers = []net.IP{}
+		return nil
 	}
 	log.Debugf("dhcpcd -U got %v\n", string(stdoutStderr))
 	lines := strings.Split(string(stdoutStderr), "\n")
