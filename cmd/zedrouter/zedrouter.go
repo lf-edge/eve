@@ -58,12 +58,12 @@ type zedrouterContext struct {
 	subAssignableAdapters    *pubsub.Subscription
 	pubNetworkServiceMetrics *pubsub.Publication
 	subDeviceNetworkStatus   *pubsub.Subscription
-	deviceNetworkStatus *types.DeviceNetworkStatus
-	usableAddressCount  int
-	ready               bool
-	subGlobalConfig     *pubsub.Subscription
-	pubUuidToNum        *pubsub.Publication
-	sshAccess           bool
+	deviceNetworkStatus      *types.DeviceNetworkStatus
+	usableAddressCount       int
+	ready                    bool
+	subGlobalConfig          *pubsub.Subscription
+	pubUuidToNum             *pubsub.Publication
+	sshAccess                bool
 }
 
 var debug = false
