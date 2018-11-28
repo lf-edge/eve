@@ -672,7 +672,7 @@ func lispInactivate(ctx *zedrouterContext,
 				deleteLispConfiglet(lispRunDirname, false,
 					status.LispStatus.IID, olStatus.EID,
 					olStatus.AppIPAddr,
-					*ctx.DeviceNetworkStatus,
+					*ctx.deviceNetworkStatus,
 					ctx.legacyDataPlane)
 			}
 		}
@@ -720,7 +720,7 @@ func bridgeCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	// XXX check it isn't assigned to dom0? That's maintained
 	// in domainmgr so can't do it here.
 	// For now check it isn't an uplink instead.
-	if types.IsUplink(*ctx.DeviceNetworkStatus, config.Adapter) {
+	if types.IsUplink(*ctx.deviceNetworkStatus, config.Adapter) {
 		errStr := fmt.Sprintf("Uplink interface %s not available as bridge for %s",
 			config.Adapter, config.Key())
 		return errors.New(errStr)
@@ -843,10 +843,10 @@ func natActivate(config types.NetworkServiceConfig,
 // Expand the generic names
 func getAdapters(ctx *zedrouterContext, adapter string) []string {
 	if strings.EqualFold(adapter, "uplink") {
-		return types.GetUplinks(*ctx.DeviceNetworkStatus, 0)
+		return types.GetUplinks(*ctx.deviceNetworkStatus, 0)
 	}
 	if strings.EqualFold(adapter, "freeuplink") {
-		return types.GetUplinksFree(*ctx.DeviceNetworkStatus, 0)
+		return types.GetUplinksFree(*ctx.deviceNetworkStatus, 0)
 	}
 	return []string{adapter}
 }

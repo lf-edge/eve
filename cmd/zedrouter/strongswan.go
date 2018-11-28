@@ -120,7 +120,7 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 	}
 
 	// uplink ip address error
-	srcIp, err := types.GetLocalAddrAny(*ctx.DeviceNetworkStatus, 0,
+	srcIp, err := types.GetLocalAddrAny(*ctx.deviceNetworkStatus, 0,
 		config.Adapter)
 	if err != nil {
 		return vpnConfig, err

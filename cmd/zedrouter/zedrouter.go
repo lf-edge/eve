@@ -58,8 +58,7 @@ type zedrouterContext struct {
 	subAssignableAdapters    *pubsub.Subscription
 	pubNetworkServiceMetrics *pubsub.Publication
 	subDeviceNetworkStatus   *pubsub.Subscription
-	// XXX lower case?
-	DeviceNetworkStatus *types.DeviceNetworkStatus
+	deviceNetworkStatus *types.DeviceNetworkStatus
 	usableAddressCount  int
 	ready               bool
 	subGlobalConfig     *pubsub.Subscription
@@ -155,7 +154,7 @@ func Run() {
 	zedrouterCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	zedrouterCtx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
+	zedrouterCtx.deviceNetworkStatus = &types.DeviceNetworkStatus{}
 	zedrouterCtx.pubUuidToNum = pubUuidToNum
 
 	// Create publish before subscribing and activating subscriptions
@@ -224,7 +223,7 @@ func Run() {
 			done = true
 		}
 	}
-	log.Infof("Got for DeviceNetworkStatus: %d usable addresses\n",
+	log.Infof("Got %d usable addresses\n",
 		zedrouterCtx.usableAddressCount)
 
 	handleInit(runDirname)
@@ -333,7 +332,7 @@ func Run() {
 
 	updateLispConfiglets(&zedrouterCtx, zedrouterCtx.legacyDataPlane)
 
-	setFreeUplinks(types.GetUplinksFree(*zedrouterCtx.DeviceNetworkStatus, 0))
+	setFreeUplinks(types.GetUplinksFree(*zedrouterCtx.deviceNetworkStatus, 0))
 
 	zedrouterCtx.ready = true
 
@@ -377,17 +376,17 @@ func Run() {
 			if !ok {
 				log.Fatalf("addrChanges closed?\n")
 			}
-			PbrAddrChange(zedrouterCtx.DeviceNetworkStatus, change)
+			PbrAddrChange(zedrouterCtx.deviceNetworkStatus, change)
 		case change, ok := <-linkChanges:
 			if !ok {
 				log.Fatalf("linkChanges closed?\n")
 			}
-			PbrLinkChange(zedrouterCtx.DeviceNetworkStatus, change)
+			PbrLinkChange(zedrouterCtx.deviceNetworkStatus, change)
 		case change, ok := <-routeChanges:
 			if !ok {
 				log.Fatalf("routeChanges closed?\n")
 			}
-			PbrRouteChange(zedrouterCtx.DeviceNetworkStatus, change)
+			PbrRouteChange(zedrouterCtx.deviceNetworkStatus, change)
 		case <-publishTimer.C:
 			log.Debugln("publishTimer at", time.Now())
 			err := pub.Publish("global",
@@ -418,7 +417,7 @@ func maybeHandleDNS(ctx *zedrouterContext) {
 	}
 	updateLispConfiglets(ctx, ctx.legacyDataPlane)
 
-	setFreeUplinks(types.GetUplinksFree(*ctx.DeviceNetworkStatus, 0))
+	setFreeUplinks(types.GetUplinksFree(*ctx.deviceNetworkStatus, 0))
 	// XXX do a NatInactivate/NatActivate if freeuplinks/uplinks changed?
 }
 
@@ -638,7 +637,7 @@ func updateLispConfiglets(ctx *zedrouterContext, legacyDataPlane bool) {
 			createLispConfiglet(lispRunDirname, status.IsZedmanager,
 				IID, olStatus.EID,
 				olStatus.AppIPAddr, olStatus.LispSignature,
-				*ctx.DeviceNetworkStatus, olIfname,
+				*ctx.deviceNetworkStatus, olIfname,
 				olIfname, additionalInfo,
 				olStatus.MgmtMapServers, legacyDataPlane)
 		}
@@ -1119,7 +1118,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 		createLispConfiglet(lispRunDirname, config.IsZedmanager,
 			olConfig.MgmtIID, olConfig.EID, nil,
 			olConfig.LispSignature,
-			*ctx.DeviceNetworkStatus, olIfname, olIfname,
+			*ctx.deviceNetworkStatus, olIfname, olIfname,
 			additionalInfo, olConfig.MgmtMapServers,
 			ctx.legacyDataPlane)
 		status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
@@ -1586,7 +1585,7 @@ func createAndStartLisp(ctx *zedrouterContext,
 		adapterMap[adapter] = true
 	}
 	deviceNetworkParams := types.DeviceNetworkStatus{}
-	for _, uplink := range ctx.DeviceNetworkStatus.UplinkStatus {
+	for _, uplink := range ctx.deviceNetworkStatus.UplinkStatus {
 		if _, ok := adapterMap[uplink.IfName]; ok == true {
 			deviceNetworkParams.UplinkStatus =
 				append(deviceNetworkParams.UplinkStatus, uplink)
@@ -1862,7 +1861,7 @@ func handleModify(ctx *zedrouterContext, key string,
 		updateLispConfiglet(lispRunDirname, false,
 			serviceStatus.LispStatus.IID, olConfig.EID,
 			olConfig.AppIPAddr, olConfig.LispSignature,
-			*ctx.DeviceNetworkStatus, bridgeName, bridgeName,
+			*ctx.deviceNetworkStatus, bridgeName, bridgeName,
 			additionalInfo, serviceStatus.LispStatus.MapServers,
 			ctx.legacyDataPlane)
 	}
@@ -2089,7 +2088,7 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, true, olStatus.MgmtIID,
 			olStatus.EID, olStatus.AppIPAddr,
-			*ctx.DeviceNetworkStatus, ctx.legacyDataPlane)
+			*ctx.deviceNetworkStatus, ctx.legacyDataPlane)
 		status.Activated = false
 		publishAppNetworkStatus(ctx, status)
 		log.Infof("doInactivate done for %s\n", status.DisplayName)
@@ -2187,7 +2186,7 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 		// Delete LISP configlets
 		deleteLispConfiglet(lispRunDirname, false,
 			serviceStatus.LispStatus.IID, olStatus.EID,
-			olStatus.AppIPAddr, *ctx.DeviceNetworkStatus,
+			olStatus.AppIPAddr, *ctx.deviceNetworkStatus,
 			ctx.legacyDataPlane)
 	}
 
@@ -2371,15 +2370,15 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)
-	if cmp.Equal(ctx.DeviceNetworkStatus, status) {
+	if cmp.Equal(ctx.deviceNetworkStatus, status) {
 		return
 	}
 	log.Infof("handleDNSModify: changed %v",
-		cmp.Diff(ctx.DeviceNetworkStatus, status))
-	*ctx.DeviceNetworkStatus = status
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
+		cmp.Diff(ctx.deviceNetworkStatus, status))
+	*ctx.deviceNetworkStatus = status
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
 	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
-		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
+		log.Infof("deviceNetworkStatus from %d to %d addresses\n",
 			ctx.usableAddressCount, newAddrCount)
 	}
 	ctx.usableAddressCount = newAddrCount
@@ -2397,8 +2396,8 @@ func handleDNSDelete(ctxArg interface{}, key string,
 		log.Infof("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
-	*ctx.DeviceNetworkStatus = types.DeviceNetworkStatus{}
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
+	*ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
 	maybeHandleDNS(ctx)
 	log.Infof("handleDNSDelete done for %s\n", key)
