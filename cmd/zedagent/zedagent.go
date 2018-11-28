@@ -823,6 +823,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 			ctx.usableAddressCount, newAddrCount)
 		ctx.triggerGetConfig = true
 	}
+	ctx.DNSinitialized = true
 	ctx.usableAddressCount = newAddrCount
 	ctx.triggerDeviceInfo = true
 	log.Infof("handleDNSModify done for %s\n", key)
@@ -840,6 +841,7 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	ctx.DNSinitialized = false
 	ctx.usableAddressCount = newAddrCount
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
