@@ -416,8 +416,9 @@ func maybeHandleDNS(ctx *zedrouterContext) {
 	if !ctx.ready {
 		return
 	}
-	updateLispConfiglets(ctx, ctx.separateDataPlane)
-	setFreeUplinks(devicenetwork.GetFreeUplinks(*ctx.DeviceUplinkConfig))
+	updateLispConfiglets(ctx, ctx.legacyDataPlane)
+
+	setFreeUplinks(types.GetUplinksFree(*ctx.DeviceNetworkStatus, 0))
 	// XXX do a NatInactivate/NatActivate if freeuplinks/uplinks changed?
 }
 
