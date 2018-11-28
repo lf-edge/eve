@@ -209,6 +209,9 @@ func Run() {
 	// Look for address changes
 	addrChanges := devicenetwork.AddrChangeInit(&nimCtx.DeviceNetworkContext)
 
+	// The handlers call UpdateLedManagerConfig with 2 and 1 as the
+	// number of usable IP addresses increases from zero and drops
+	// back to zero, respectively.
 	for {
 		select {
 		case change := <-subGlobalConfig.C:

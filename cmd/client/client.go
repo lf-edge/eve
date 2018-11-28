@@ -187,13 +187,14 @@ func Run() {
 	clientCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	// After 5 seconds we check; if we already have a UUID we continue
-	// with that one
+	// Wait for a usable IP address.
+	// After 5 seconds we check; if we already have a UUID we proceed.
+	// Otherwise we start connecting to zedcloud whether or not we
+	// have any IP addresses.
 	t1 := time.NewTimer(5 * time.Second)
 	done := clientCtx.usableAddressCount != 0
 
-	// Make sure we wait for a while to process all the DeviceUplinkConfigs
-	for clientCtx.usableAddressCount == 0 || !done {
+	for !done {
 		log.Infof("Waiting for usableAddressCount %d and done %v\n",
 			clientCtx.usableAddressCount, done)
 		select {
@@ -202,6 +203,7 @@ func Run() {
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
+			done = clientCtx.usableAddressCount != 0
 
 		case <-t1.C:
 			done = true
@@ -226,9 +228,6 @@ func Run() {
 	}
 	log.Infof("Got for deviceNetworkConfig: %d addresses\n",
 		clientCtx.usableAddressCount)
-
-	// Inform ledmanager that we have uplink addresses
-	types.UpdateLedManagerConfig(2)
 
 	zedcloudCtx := zedcloud.ZedCloudContext{
 		DeviceNetworkStatus: clientCtx.deviceNetworkStatus,
@@ -602,6 +601,8 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
 		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
 			ctx.usableAddressCount, newAddrCount)
+		// Inform ledmanager that we have uplink addresses
+		types.UpdateLedManagerConfig(2)
 	}
 	ctx.usableAddressCount = newAddrCount
 	log.Infof("handleDNSModify done for %s\n", key)
@@ -620,5 +621,9 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	*ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
+	if ctx.usableAddressCount == 0 {
+		// Inform ledmanager that we have no uplink addresses
+		types.UpdateLedManagerConfig(1)
+	}
 	log.Infof("handleDNSDelete done for %s\n", key)
 }

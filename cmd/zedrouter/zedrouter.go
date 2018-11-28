@@ -199,35 +199,10 @@ func Run() {
 
 	appNumAllocatorInit(&zedrouterCtx)
 	bridgeNumAllocatorInit(&zedrouterCtx)
-
-	// XXX wait for DNS usableAddressCount
-	// XXX Do we need timer or not? Commented out
-	// Make sure we wait for a while to process all the DeviceUplinkConfigs
-	// XXX should we just wait for 5 seconds?
-	done := zedrouterCtx.usableAddressCount != 0
-	t1 := time.NewTimer(5 * time.Second)
-	for !done {
-		log.Infof("Waiting for usableAddressCount %d and done %v\n",
-			zedrouterCtx.usableAddressCount, done)
-		select {
-		case change := <-subGlobalConfig.C:
-			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subAssignableAdapters.C:
-			subAssignableAdapters.ProcessChange(change)
-
-		case change := <-subDeviceNetworkStatus.C:
-			subDeviceNetworkStatus.ProcessChange(change)
-
-		case <-t1.C:
-			done = true
-		}
-	}
-	log.Infof("Got %d usable addresses\n",
-		zedrouterCtx.usableAddressCount)
-
 	handleInit(runDirname)
 
+	// Before we process any NetworkServices we want to know the
+	// assignable adapters.
 	for !zedrouterCtx.assignableAdapters.Initialized {
 		log.Infof("Waiting for AssignableAdapters\n")
 		select {
@@ -725,7 +700,6 @@ func parseAndPublishLispServiceInfo(ctx *zedrouterContext, lispInfo *types.LispI
 		if !ok {
 			continue
 		}
-		// XXX Check if there are changes in the status
 		if cmp.Equal(status.LispStatus, lispStatus) {
 			continue
 		} else {
@@ -829,7 +803,6 @@ func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMe
 			metricsStatus.DisplayName = status.DisplayName
 			metricsStatus.Type = status.Type
 		}
-		// XXX Check if there are changes in metrics
 		if (metricsStatus.LispMetrics != nil) &&
 			cmp.Equal(metricsStatus.LispMetrics, metrics) {
 			continue
