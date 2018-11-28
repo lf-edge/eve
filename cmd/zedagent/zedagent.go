@@ -79,6 +79,7 @@ var networkMetrics types.NetworkMetrics
 // Context for handleDNSModify
 type DNSContext struct {
 	usableAddressCount     int
+	DNSinitialized         bool // Received DeviceNetworkStatus
 	subDeviceNetworkStatus *pubsub.Subscription
 	triggerGetConfig       bool
 	triggerDeviceInfo      bool
@@ -490,13 +491,12 @@ func Run() {
 		updateInprogress, time2)
 	t2 := time.NewTimer(time2 * time.Second)
 
-	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
-	for DNSctx.usableAddressCount == 0 ||
+	for !DNSctx.DNSinitialized ||
 		!zedagentCtx.assignableAdapters.Initialized {
 
-		log.Infof("Waiting - have %d addresses; aa %v\n",
-			DNSctx.usableAddressCount,
+		log.Infof("Waiting for DomainNetworkStatus %v and aa %v\n",
+			DNSctx.DNSinitialized,
 			zedagentCtx.assignableAdapters.Initialized)
 		waited = true
 
@@ -532,10 +532,7 @@ func Run() {
 	}
 	t1.Stop()
 	t2.Stop()
-	log.Infof("Have %d uplinks addresses to use; aa %v\n",
-		DNSctx.usableAddressCount,
-		zedagentCtx.assignableAdapters.Initialized)
-	if waited {
+	if waited && DNSctx.usableAddressCount != 0 {
 		// Inform ledmanager that we have uplink addresses
 		types.UpdateLedManagerConfig(2)
 		getconfigCtx.ledManagerCount = 2

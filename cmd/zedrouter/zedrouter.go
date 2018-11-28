@@ -59,7 +59,6 @@ type zedrouterContext struct {
 	pubNetworkServiceMetrics *pubsub.Publication
 	subDeviceNetworkStatus   *pubsub.Subscription
 	deviceNetworkStatus      *types.DeviceNetworkStatus
-	usableAddressCount       int
 	ready                    bool
 	subGlobalConfig          *pubsub.Subscription
 	pubUuidToNum             *pubsub.Publication
@@ -2349,12 +2348,6 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSModify: changed %v",
 		cmp.Diff(ctx.deviceNetworkStatus, status))
 	*ctx.deviceNetworkStatus = status
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
-	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
-		log.Infof("deviceNetworkStatus from %d to %d addresses\n",
-			ctx.usableAddressCount, newAddrCount)
-	}
-	ctx.usableAddressCount = newAddrCount
 	maybeHandleDNS(ctx)
 	log.Infof("handleDNSModify done for %s\n", key)
 }
@@ -2370,8 +2363,6 @@ func handleDNSDelete(ctxArg interface{}, key string,
 		return
 	}
 	*ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
-	ctx.usableAddressCount = newAddrCount
 	maybeHandleDNS(ctx)
 	log.Infof("handleDNSDelete done for %s\n", key)
 }

@@ -603,6 +603,11 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 			ctx.usableAddressCount, newAddrCount)
 		// Inform ledmanager that we have uplink addresses
 		types.UpdateLedManagerConfig(2)
+	} else if newAddrCount == 0 && ctx.usableAddressCount != 0 {
+		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
+			ctx.usableAddressCount, newAddrCount)
+		// Inform ledmanager that we have no uplink addresses
+		types.UpdateLedManagerConfig(1)
 	}
 	ctx.usableAddressCount = newAddrCount
 	log.Infof("handleDNSModify done for %s\n", key)
