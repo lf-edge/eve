@@ -33,6 +33,17 @@ func MakeNetworkUplinkConfig(globalConfig types.DeviceNetworkConfig) types.Devic
 	return config
 }
 
+func isProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
+	if len(proxyConfig.Proxies) == 0 &&
+		proxyConfig.Exceptions == "" &&
+		proxyConfig.Pacfile == "" &&
+		proxyConfig.NetworkProxyEnable == false &&
+		proxyConfig.NetworkProxyURL == "" {
+		return true
+	}
+	return false
+}
+
 // Calculate local IP addresses to make a types.DeviceNetworkStatus
 func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus types.DeviceNetworkStatus) (types.DeviceNetworkStatus, error) {
 	var globalStatus types.DeviceNetworkStatus
@@ -43,7 +54,23 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 	for ix, u := range globalConfig.Uplinks {
 		globalStatus.UplinkStatus[ix].IfName = u.IfName
 		globalStatus.UplinkStatus[ix].Free = u.Free
-		globalStatus.UplinkStatus[ix].ProxyConfig = u.ProxyConfig
+		// XXX
+		// If device DeviceNetworkStatus already has non-empty proxy
+		// configuration for this uplink and the new proxy configuration
+		// is empty, we should retain the existing proxy configuration to
+		// avoid bricking the device.
+		// These kind of checks should go away when we have Network manager
+		// service that tests proxy configuration before trying to apply it.
+		if isProxyConfigEmpty(u.ProxyConfig) {
+			for _, uplink := range oldStatus.UplinkStatus {
+				if uplink.IfName == u.IfName {
+					globalStatus.UplinkStatus[ix].ProxyConfig = uplink.ProxyConfig
+					break
+				}
+			}
+		} else {
+			globalStatus.UplinkStatus[ix].ProxyConfig = u.ProxyConfig
+		}
 		// XXX should we get statics?
 		link, err := netlink.LinkByName(u.IfName)
 		if err != nil {

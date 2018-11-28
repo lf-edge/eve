@@ -237,10 +237,13 @@ func parseNetworkObjectConfig(config *zconfig.EdgeDevConfig,
 	log.Infof("parseNetworkObjectConfig: Applying updated config sha % x vs. % x: %v\n",
 		networkConfigPrevConfigHash, configHash, nets)
 	// Export NetworkObjectConfig to zedrouter
-	parseSystemAdapters := publishNetworkObjectConfig(getconfigCtx, nets)
-	if parseSystemAdapters {
-		parseSystemAdapterConfig(config, getconfigCtx, true)
-	}
+	// XXX
+	// System Adapter points to network for Proxy configuration.
+	// There could be a situation where networks change, but
+	// systerm adapters do not change. When we see the networks
+	// change, we should parse systerm adapters again.
+	publishNetworkObjectConfig(getconfigCtx, nets)
+	parseSystemAdapterConfig(config, getconfigCtx, true)
 }
 
 var networkServicePrevConfigHash []byte
@@ -429,13 +432,15 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		if network.Proxy != nil {
 			uplink.ProxyConfig = *network.Proxy
 			uplink.AddrSubnet = sysAdapter.Addr
-			// XXX Only use for systerm adapter now is to pass proxy configuration
-			// from cloud. It is useless without proxy configuration.
-			//uplinkConfig.Uplinks = append(uplinkConfig.Uplinks, uplink)
-			newUplinks = append(newUplinks, uplink)
 		}
+		// XXX
+		// Even when the network that we point to does not have
+		// proxy configuration, we should still parse the uplink.
+		// There could have been a proxy before attached to this network,
+		// and now removed. Even when there was never a proxy configuration 
+		// attached, we should still process the uplink and bring it UP.
+		newUplinks = append(newUplinks, uplink)
 	}
-	//if len(uplinkConfig.Uplinks) == 0 {
 	if len(newUplinks) == 0 {
 		log.Infof("parseSystemAdapterConfig: No Uplink configuration present")
 		return
@@ -574,7 +579,7 @@ func lookupServiceId(id string, cfgServices []*zconfig.ServiceInstanceConfig) *z
 }
 
 func publishNetworkObjectConfig(ctx *getconfigContext,
-	cfgNetworks []*zconfig.NetworkConfig) (parseSystemAdapters bool) {
+	cfgNetworks []*zconfig.NetworkConfig) {
 
 	// Check for items to delete first
 	items := ctx.pubNetworkObjectConfig.GetAll()
@@ -587,13 +592,6 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 		ctx.pubNetworkObjectConfig.Unpublish(k)
 	}
 
-	// XXX
-	// System Adapter point to network for Proxy configuration.
-	// There could be a situation where networks change, but
-	// systerm adapters do not change. When we see the networks
-	// change and there is a proxy configuration present in them,
-	// we should parse systerm adapters again.
-	var proxyConfigPresent bool = false
 	// XXX note that we currently get repeats in the same loop.
 	// Should we track them and not rewrite them?
 	for _, netEnt := range cfgNetworks {
@@ -614,7 +612,6 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				netEnt.Id)
 		}
 		if netProxyConfig != nil {
-			proxyConfigPresent = true
 			log.Infof("publishNetworkObjectConfig: Proxy configuration present in %s",
 				netEnt.Id)
 
@@ -705,10 +702,6 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 		ctx.pubNetworkObjectConfig.Publish(config.Key(),
 			&config)
 	}
-	if proxyConfigPresent {
-		return true
-	}
-	return false
 }
 
 func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) error {
