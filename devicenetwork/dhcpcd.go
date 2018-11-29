@@ -54,6 +54,9 @@ func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 
 }
 
+// XXX if new have to wait until taken back from pciback; check linkbyname?
+// or check AssignableAdapters? Checking AA means we can react to a change.
+// XXX create pending list?
 func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 
 	log.Infof("doDhcpClientActivate(%s) dhcp %v addr %s gateway %s\n",

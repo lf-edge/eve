@@ -9,9 +9,8 @@ package zedrouter
 import (
 	"errors"
 	"fmt"
+	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
-	"github.com/vishvananda/netlink"
-	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/types"
 	"net"
 	"syscall"
@@ -31,7 +30,7 @@ func PbrInit(ctx *zedrouterContext, addrChange addrChangeFnType,
 	chan netlink.AddrUpdate, chan netlink.LinkUpdate) {
 
 	log.Debugf("PbrInit()\n")
-	setFreeUplinks(devicenetwork.GetFreeUplinks(*ctx.DeviceUplinkConfig))
+	setFreeUplinks(types.GetUplinksFree(*ctx.deviceNetworkStatus, 0))
 	addrChangeFuncUplink = addrChange
 	addrChangeFuncNonUplink = addrChangeNon
 
@@ -45,20 +44,38 @@ func PbrInit(ctx *zedrouterContext, addrChange addrChangeFnType,
 
 	// Need links to get name to ifindex? Or lookup each time?
 	linkchan := make(chan netlink.LinkUpdate)
-	linkopt := netlink.LinkSubscribeOptions{ListExisting: true}
+	linkErrFunc := func(err error) {
+		log.Errorf("LinkSubscribe failed %s\n", err)
+	}
+	linkopt := netlink.LinkSubscribeOptions{
+		ListExisting:  true,
+		ErrorCallback: linkErrFunc,
+	}
 	if err := netlink.LinkSubscribeWithOptions(linkchan, nil,
 		linkopt); err != nil {
 		log.Fatal(err)
 	}
 
 	addrchan := make(chan netlink.AddrUpdate)
-	addropt := netlink.AddrSubscribeOptions{ListExisting: true}
+	addrErrFunc := func(err error) {
+		log.Errorf("AddrSubscribe failed %s\n", err)
+	}
+	addropt := netlink.AddrSubscribeOptions{
+		ListExisting:  true,
+		ErrorCallback: addrErrFunc,
+	}
 	if err := netlink.AddrSubscribeWithOptions(addrchan, nil,
 		addropt); err != nil {
 		log.Fatal(err)
 	}
 	routechan := make(chan netlink.RouteUpdate)
-	rtopt := netlink.RouteSubscribeOptions{ListExisting: true}
+	routeErrFunc := func(err error) {
+		log.Errorf("RouteSubscribe failed %s\n", err)
+	}
+	rtopt := netlink.RouteSubscribeOptions{
+		ListExisting:  true,
+		ErrorCallback: routeErrFunc,
+	}
 	if err := netlink.RouteSubscribeWithOptions(routechan, nil,
 		rtopt); err != nil {
 		log.Fatal(err)
@@ -237,7 +254,7 @@ func pbrGetFreeRule(prefixStr string) (*netlink.Rule, error) {
 }
 
 // Handle a route change
-func PbrRouteChange(deviceUplinkConfig *types.DeviceUplinkConfig,
+func PbrRouteChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	change netlink.RouteUpdate) {
 
 	rt := change.Route
@@ -252,7 +269,7 @@ func PbrRouteChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 		log.Errorf("PbrRouteChange IfindexToName failed for %d: %s\n",
 			rt.LinkIndex, err)
 	} else {
-		if devicenetwork.IsFreeUplink(*deviceUplinkConfig, ifname) {
+		if types.IsFreeUplink(*deviceNetworkStatus, ifname) {
 			log.Debugf("Applying to FreeTable: %v\n", rt)
 			doFreeTable = true
 		}
@@ -306,11 +323,8 @@ func PbrRouteChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 	}
 }
 
-// XXX
-var once = true
-
 // Handle an IP address change
-func PbrAddrChange(deviceUplinkConfig *types.DeviceUplinkConfig,
+func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	change netlink.AddrUpdate) {
 
 	changed := false
@@ -326,13 +340,6 @@ func PbrAddrChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 			// XXX only call for uplinks and bridges?
 			addSourceRule(change.LinkIndex, change.LinkAddress,
 				linkType == "bridge")
-		}
-	} else if change.LinkIndex == 0 {
-		// XXX why?
-		if once {
-			log.Errorf("XXX PbrAddrChange: index 0 for %s\n",
-				change.LinkAddress.String())
-			once = false
 		}
 	} else {
 		changed = IfindexToAddrsDel(change.LinkIndex,
@@ -353,9 +360,11 @@ func PbrAddrChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 		if err != nil {
 			log.Errorf("PbrAddrChange IfindexToName failed for %d: %s\n",
 				change.LinkIndex, err)
-		} else if devicenetwork.IsUplink(*deviceUplinkConfig, ifname) {
+		} else if types.IsUplink(*deviceNetworkStatus, ifname) {
 			log.Debugf("Address change for uplink: %v\n", change)
-			addrChangeFuncUplink(ifname)
+			if addrChangeFuncUplink != nil {
+				addrChangeFuncUplink(ifname)
+			}
 		} else {
 			log.Debugf("Address change for non-uplink: %v\n",
 				change)
@@ -367,7 +376,7 @@ func PbrAddrChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 }
 
 // Handle a link being added or deleted
-func PbrLinkChange(deviceUplinkConfig *types.DeviceUplinkConfig,
+func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	change netlink.LinkUpdate) {
 
 	ifindex := change.Attrs().Index
@@ -379,17 +388,19 @@ func PbrLinkChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 	case syscall.RTM_NEWLINK:
 		added := IfindexToNameAdd(ifindex, ifname, linkType)
 		if added {
-			if devicenetwork.IsFreeUplink(*deviceUplinkConfig,
+			if types.IsFreeUplink(*deviceNetworkStatus,
 				ifname) {
 
 				log.Debugf("PbrLinkChange moving to FreeTable %s\n",
 					ifname)
 				moveRoutesTable(0, ifindex, FreeTable)
 			}
-			if devicenetwork.IsUplink(*deviceUplinkConfig, ifname) {
+			if types.IsUplink(*deviceNetworkStatus, ifname) {
 				log.Debugf("Link change for uplink: %s\n",
 					ifname)
-				addrChangeFuncUplink(ifname)
+				if addrChangeFuncUplink != nil {
+					addrChangeFuncUplink(ifname)
+				}
 			} else {
 				log.Debugf("Link change for non-uplink: %s\n",
 					ifname)
@@ -402,7 +413,7 @@ func PbrLinkChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 	case syscall.RTM_DELLINK:
 		gone := IfindexToNameDel(ifindex, ifname)
 		if gone {
-			if devicenetwork.IsFreeUplink(*deviceUplinkConfig,
+			if types.IsFreeUplink(*deviceNetworkStatus,
 				ifname) {
 
 				flushRoutesTable(FreeTable, ifindex)
@@ -410,10 +421,12 @@ func PbrLinkChange(deviceUplinkConfig *types.DeviceUplinkConfig,
 			MyTable := FreeTable + ifindex
 			flushRoutesTable(MyTable, 0)
 			flushRules(ifindex)
-			if devicenetwork.IsUplink(*deviceUplinkConfig, ifname) {
+			if types.IsUplink(*deviceNetworkStatus, ifname) {
 				log.Debugf("Link change for uplink: %s\n",
 					ifname)
-				addrChangeFuncUplink(ifname)
+				if addrChangeFuncUplink != nil {
+					addrChangeFuncUplink(ifname)
+				}
 			} else {
 				log.Debugf("Link change for non-uplink: %s\n",
 					ifname)
@@ -607,8 +620,7 @@ func IfindexToAddrsAdd(index int, addr net.IPNet) bool {
 func IfindexToAddrsDel(index int, addr net.IPNet) bool {
 	addrs, ok := ifindexToAddrs[index]
 	if !ok {
-		log.Infof("IfindexToAddrsDel unknown index %d\n", index)
-		// XXX error?
+		log.Warnf("IfindexToAddrsDel unknown index %d\n", index)
 		return false
 	}
 	for i, a := range addrs {
@@ -624,7 +636,7 @@ func IfindexToAddrsDel(index int, addr net.IPNet) bool {
 			return true
 		}
 	}
-	log.Infof("IfindexToAddrsDel address not found for %d in\n",
+	log.Warnf("IfindexToAddrsDel address not found for %d in\n",
 		index, addrs)
 	return false
 }

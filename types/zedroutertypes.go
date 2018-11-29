@@ -199,6 +199,18 @@ func GetUplinkFree(globalStatus DeviceNetworkStatus, pickNum int) (string, error
 	return "", errors.New("GetUplinkFree past end")
 }
 
+// Return all uplink interfaces
+func GetUplinks(globalStatus DeviceNetworkStatus, rotation int) []string {
+	var uplinks []string
+
+	for _, us := range globalStatus.UplinkStatus {
+		if us.Free {
+			uplinks = append(uplinks, us.IfName)
+		}
+	}
+	return rotate(uplinks, rotation)
+}
+
 // Return all free uplink interfaces
 func GetUplinksFree(globalStatus DeviceNetworkStatus, rotation int) []string {
 	var uplinks []string
@@ -344,6 +356,16 @@ func IsUplink(globalStatus DeviceNetworkStatus, ifname string) bool {
 	for _, us := range globalStatus.UplinkStatus {
 		if us.IfName == ifname {
 			return true
+		}
+	}
+	return false
+}
+
+// Check if an interface/adapter name is a free uplink
+func IsFreeUplink(globalStatus DeviceNetworkStatus, ifname string) bool {
+	for _, us := range globalStatus.UplinkStatus {
+		if us.IfName == ifname {
+			return us.Free
 		}
 	}
 	return false

@@ -12,7 +12,7 @@ DUCDIR=$TMPDIR/DeviceUplinkConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
-AGENTS="zedmanager logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr"
+AGENTS="zedmanager logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr nim"
 
 PATH=$BINDIR:$PATH
 
@@ -56,7 +56,10 @@ logtick  = 60
 EOF
 cp $TMPDIR/watchdogbase.conf $TMPDIR/watchdogled.conf
 echo "pidfile = /var/run/ledmanager.pid" >>$TMPDIR/watchdogled.conf
+cp $TMPDIR/watchdogled.conf $TMPDIR/watchdognim.conf
+echo "pidfile = /var/run/nim.pid" >>$TMPDIR/watchdognim.conf
 cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogclient.conf
+echo "pidfile = /var/run/nim.pid" >>$TMPDIR/watchdogclient.conf
 echo "pidfile = /var/run/zedclient.pid" >>$TMPDIR/watchdogclient.conf
 
 cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogall.conf
@@ -289,23 +292,15 @@ if [ -f $CONFIGDIR/allow-usb-override ]; then
 	if [ $? != 0 ]; then
 	    echo "mount $SPECIAL failed: $?"
 	else
+	    # XXX Remove this code? nim will do testing...
 	    echo "Mounted $SPECIAL"
 	    keyfile=/mnt/$key.json
 	    if [ -f $keyfile ]; then
 		echo "Found $keyfile on $SPECIAL"
-		echo "Testing $keyfile"
-		mkdir -p $TMPDIR/try/DeviceUplinkConfig
-		cp -p $keyfile $TMPDIR/try/DeviceUplinkConfig
-		/opt/zededa/bin/client -s -r 5 -u try ping
-		if [ $? == 0 ] ; then
-		    echo "Tested $keyfile - passed"
-		    echo "Copying from $keyfile to $CONFIGDIR/DeviceUplinkConfig/override.json"
-		    cp -p $keyfile $CONFIGDIR/DeviceUplinkConfig/override.json
-		    # No more override allowed
-		    rm $CONFIGDIR/allow-usb-override
-		else
-		    echo "Failed to connect to zedcloud using $keyfile; ignored"
-		fi
+		echo "Copying from $keyfile to $CONFIGDIR/DeviceUplinkConfig/override.json"
+		cp -p $keyfile $CONFIGDIR/DeviceUplinkConfig/override.json
+		# No more override allowed
+		rm $CONFIGDIR/allow-usb-override
 	    else
 		echo "$keyfile not found on $SPECIAL"
 	    fi
@@ -318,25 +313,14 @@ if [ -f $CONFIGDIR/DeviceUplinkConfig/override.json ]; then
 fi
 
 # Get IP addresses
-# XXX we should be able to do this in the initial call
-# However, we need it before we run ntpd
-# XXX need a networkinterfacemgr to do this separately.
+echo $BINDIR/nim
+$BINDIR/nim &
 
-# Restart watchdog ledmanager and client
+# Restart watchdog ledmanager and nim
 if [ -f /var/run/watchdog.pid ]; then
     kill `cat /var/run/watchdog.pid`
 fi
-/usr/sbin/watchdog -c $TMPDIR/watchdogclient.conf -F -s &
-
-echo $BINDIR/client dhcpcd
-$BINDIR/client dhcpcd
-ifconfig
-
-# Restart watchdog with only ledmanager since we don't know how long ntp will take
-if [ -f /var/run/watchdog.pid ]; then
-    kill `cat /var/run/watchdog.pid`
-fi
-/usr/sbin/watchdog -c $TMPDIR/watchdogled.conf -F -s &
+/usr/sbin/watchdog -c $TMPDIR/watchdognim.conf -F -s &
 
 # We need to try our best to setup time *before* we generate the certifiacte.
 # Otherwise it may have start date in the future
@@ -372,7 +356,7 @@ if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
-# Restart watchdog ledmanager and client
+# Restart watchdog ledmanager, client, and nim
 if [ -f /var/run/watchdog.pid ]; then
     kill `cat /var/run/watchdog.pid`
 fi
