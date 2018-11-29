@@ -71,6 +71,9 @@ var mToF = []modelToFuncs{
 		model:     "Supermicro.SYS-E300-8D",
 		blinkFunc: ExecuteDDCmd},
 	modelToFuncs{
+		model:     "Supermicro.SYS-E300-9A-4CN10P",
+		blinkFunc: ExecuteDDCmd},
+	modelToFuncs{
 		model:     "Supermicro.SYS-5018D-FN8T",
 		blinkFunc: ExecuteDDCmd},
 	modelToFuncs{
