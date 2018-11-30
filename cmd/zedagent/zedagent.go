@@ -67,7 +67,7 @@ const (
 var Version = "No version specified"
 
 // XXX move to a context? Which? Used in handleconfig and handlemetrics!
-var deviceNetworkStatus types.DeviceNetworkStatus
+var deviceNetworkStatus *types.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 
 // XXX globals filled in by subscription handlers and read by handlemetrics
 // XXX could alternatively access sub object when adding them.
@@ -470,7 +470,7 @@ func Run() {
 	agentlog.StillRunning(agentName)
 
 	DNSctx := DNSContext{}
-	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &DNSctx)
@@ -809,15 +809,15 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)
-	if cmp.Equal(deviceNetworkStatus, status) {
+	if cmp.Equal(*deviceNetworkStatus, status) {
 		return
 	}
 	log.Infof("handleDNSModify: changed %v",
-		cmp.Diff(deviceNetworkStatus, status))
-	deviceNetworkStatus = status
+		cmp.Diff(*deviceNetworkStatus, status))
+	*deviceNetworkStatus = status
 	// Did we (re-)gain the first usable address?
 	// XXX should we also trigger if the count increases?
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
 		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
 			ctx.usableAddressCount, newAddrCount)
@@ -839,8 +839,8 @@ func handleDNSDelete(ctxArg interface{}, key string,
 		log.Infof("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
-	deviceNetworkStatus = types.DeviceNetworkStatus{}
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	*deviceNetworkStatus = types.DeviceNetworkStatus{}
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 	ctx.DNSinitialized = false
 	ctx.usableAddressCount = newAddrCount
 	log.Infof("handleDNSDelete done for %s\n", key)

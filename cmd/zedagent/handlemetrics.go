@@ -408,7 +408,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 	}
 	// Use the network metrics from zedrouter subscription
 	// Only report stats for the uplinks plus dbo1x0
-	ifNames := types.ReportInterfaces(deviceNetworkStatus)
+	ifNames := types.ReportInterfaces(*deviceNetworkStatus)
 	for _, ifName := range ifNames {
 		var metric *types.NetworkMetric
 		for _, m := range networkMetrics.MetricList {
@@ -927,7 +927,7 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	// XXX should get this info from zedrouter subscription
 	// Should we put it all in DeviceNetworkStatus?
 	interfaces, _ := psutilnet.Interfaces()
-	ifNames := types.ReportInterfaces(deviceNetworkStatus)
+	ifNames := types.ReportInterfaces(*deviceNetworkStatus)
 	for _, ifname := range ifNames {
 		for _, interfaceDetail := range interfaces {
 			if ifname == interfaceDetail.Name {
@@ -1091,7 +1091,7 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 		}
 	}
 
-	uplink := types.GetUplink(deviceNetworkStatus, interfaceDetail.Name)
+	uplink := types.GetUplink(*deviceNetworkStatus, interfaceDetail.Name)
 	if uplink != nil {
 		networkInfo.Uplink = true
 		// fill in ZInfoDNS

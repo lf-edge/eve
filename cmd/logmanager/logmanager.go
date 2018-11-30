@@ -25,6 +25,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	dbg "runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -44,7 +45,7 @@ const (
 
 var (
 	devUUID             uuid.UUID
-	deviceNetworkStatus types.DeviceNetworkStatus
+	deviceNetworkStatus *types.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	debug               bool
 	debugOverride       bool // From command line arg
 	serverName          string
@@ -188,7 +189,7 @@ func Run() {
 
 	// Wait until we have at least one useable address?
 	DNSctx := DNSContext{}
-	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &DNSctx)
@@ -311,6 +312,7 @@ func Run() {
 			}
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change)
+			dbg.FreeOSMemory()
 		}
 	}
 }
@@ -324,8 +326,8 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)
-	deviceNetworkStatus = status
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	*deviceNetworkStatus = status
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
 	log.Infof("handleDNSModify done for %s; %d usable\n",
 		key, newAddrCount)
@@ -340,8 +342,8 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 		log.Infof("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
-	deviceNetworkStatus = types.DeviceNetworkStatus{}
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	*deviceNetworkStatus = types.DeviceNetworkStatus{}
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
@@ -536,7 +538,7 @@ func sendCtxInit() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
+	zedcloudCtx.DeviceNetworkStatus = deviceNetworkStatus
 	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
