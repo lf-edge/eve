@@ -89,29 +89,29 @@ func getStacks(all bool) string {
 }
 
 func logGCStats() {
-        var m dbg.GCStats
+	var m dbg.GCStats
 
 	dbg.ReadGCStats(&m)
-        log.Infof("GCStats %+v\n", m)
+	log.Infof("GCStats %+v\n", m)
 }
 
 func logMemUsage() {
-        var m runtime.MemStats
+	var m runtime.MemStats
 
-        runtime.ReadMemStats(&m)
+	runtime.ReadMemStats(&m)
 
-        log.Infof("Alloc %v Mb", roundToMb(m.Alloc))
-        log.Infof("TotalAlloc %v Mb", roundToMb(m.TotalAlloc))
-        log.Infof("Sys %v Mb", roundToMb(m.Sys))
-        log.Infof("NumGC %v", m.NumGC)
-        log.Infof("MemStats %+v", m)
+	log.Infof("Alloc %v Mb", roundToMb(m.Alloc))
+	log.Infof("TotalAlloc %v Mb", roundToMb(m.TotalAlloc))
+	log.Infof("Sys %v Mb", roundToMb(m.Sys))
+	log.Infof("NumGC %v", m.NumGC)
+	log.Infof("MemStats %+v", m)
 }
 
 func roundToMb(b uint64) uint64 {
 
-    kb := (b + 1023) / 1024
-    mb := (kb + 1023) / 1024
-    return mb
+	kb := (b + 1023) / 1024
+	mb := (kb + 1023) / 1024
+	return mb
 }
 
 func Init(agentName string) (*os.File, error) {
