@@ -514,7 +514,7 @@ func Run() {
 			subAssignableAdapters.ProcessChange(change)
 
 		case change := <-deferredChan:
-			zedcloud.HandleDeferred(change)
+			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 
 		case <-t1.C:
 			log.Errorf("Exceeded outage for cloud connectivity - rebooting\n")
@@ -593,7 +593,7 @@ func Run() {
 			subAssignableAdapters.ProcessChange(change)
 
 		case change := <-deferredChan:
-			zedcloud.HandleDeferred(change)
+			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
@@ -707,7 +707,7 @@ func Run() {
 			}
 
 		case change := <-deferredChan:
-			zedcloud.HandleDeferred(change)
+			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 
 		case change := <-subNetworkObjectStatus.C:
 			subNetworkObjectStatus.ProcessChange(change)

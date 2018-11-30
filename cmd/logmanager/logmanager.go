@@ -311,7 +311,7 @@ func Run() {
 				log.Errorln(err)
 			}
 		case change := <-deferredChan:
-			zedcloud.HandleDeferred(change)
+			zedcloud.HandleDeferred(change, 1*time.Second)
 			dbg.FreeOSMemory()
 		}
 	}
