@@ -230,7 +230,7 @@ func (ctx *DeferredContext) addDeferred(key string, buf *bytes.Buffer,
 // Try every minute backoff to every 15 minutes
 func startTimer(ctx *DeferredContext) {
 
-	log.Debugf("startTimer()\n")
+	log.Infof("startTimer()\n")
 	min := 1 * time.Minute
 	max := 15 * time.Minute
 	ctx.ticker.UpdateExpTicker(min, max, 0.3)
@@ -238,6 +238,6 @@ func startTimer(ctx *DeferredContext) {
 
 func stopTimer(ctx *DeferredContext) {
 
-	log.Debugf("stopTimer()\n")
+	log.Infof("stopTimer()\n")
 	ctx.ticker.UpdateRangeTicker(longTime1, longTime2)
 }
