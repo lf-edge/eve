@@ -402,7 +402,7 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 func handleConfig(c *net.UnixConn, dpContext *dptypes.DataplaneContext) {
 	defer c.Close()
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, nil)
 	if err != nil {
 		log.Fatal(err)
