@@ -111,7 +111,7 @@ func (ctx *DeferredContext) handleDeferred(event time.Time,
 			delete(ctx.deferredItems, key)
 			iteration += 1
 			// XXX sleeping in main thread
-			if spacing != 0 {
+			if len(ctx.deferredItems) != 0 && spacing != 0 {
 				log.Infof("HandleDeferred sleeping %v\n",
 					spacing)
 				time.Sleep(spacing)

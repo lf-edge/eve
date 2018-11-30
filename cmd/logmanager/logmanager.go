@@ -106,6 +106,7 @@ type imageLoggerContext struct {
 type DNSContext struct {
 	usableAddressCount     int
 	subDeviceNetworkStatus *pubsub.Subscription
+	doDeferred	       bool
 }
 
 type zedcloudLogs struct {
@@ -216,6 +217,7 @@ func Run() {
 
 	// Timer for deferred sends of info messages
 	deferredChan := zedcloud.InitDeferred()
+	DNSctx.doDeferred = true
 
 	//Get servername, set logUrl, get device id and initialize zedcloudCtx
 	sendCtxInit()
@@ -329,6 +331,10 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	*deviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
+	if ctx.doDeferred {
+		change := time.Now()
+		zedcloud.HandleDeferred(change, 1*time.Second)
+	}
 	log.Infof("handleDNSModify done for %s; %d usable\n",
 		key, newAddrCount)
 }
