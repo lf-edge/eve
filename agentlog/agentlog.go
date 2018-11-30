@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	dbg "runtime/debug"
 	"syscall"
 	"time"
 )
@@ -42,19 +43,27 @@ func initImpl(agentName string, logdir string, redirect bool,
 
 		sigs := make(chan os.Signal, 1)
 		signal.Notify(sigs, syscall.SIGUSR1)
-		go printAllStacks(sigs)
+		signal.Notify(sigs, syscall.SIGUSR2)
+		go handleSignals(sigs)
 	}
 	return logf, nil
 }
 
-// Wait on channel then print all stacks.
-func printAllStacks(sigs chan os.Signal) {
+// Wait on channel then handle the signals
+func handleSignals(sigs chan os.Signal) {
 	for {
 		select {
 		case sig := <-sigs:
-			log.Infof("printAllStacks: received %v\n", sig)
-			log.Warnf("SIGUSR1 triggered stack traces:\n%v\n",
-				getStacks(true))
+			log.Infof("handleSignals: received %v\n", sig)
+			switch sig {
+			case syscall.SIGUSR1:
+				log.Warnf("SIGUSR1 triggered stack traces:\n%v\n",
+					getStacks(true))
+			case syscall.SIGUSR2:
+				log.Warnf("SIGUSR2 triggered memory info:\n")
+				logMemUsage()
+				logGCStats()
+			}
 		}
 	}
 }
@@ -77,6 +86,32 @@ func getStacks(all bool) string {
 	}
 	buf = buf[:stackSize]
 	return string(buf)
+}
+
+func logGCStats() {
+        var m dbg.GCStats
+
+	dbg.ReadGCStats(&m)
+        log.Infof("GCStats %+v\n", m)
+}
+
+func logMemUsage() {
+        var m runtime.MemStats
+
+        runtime.ReadMemStats(&m)
+
+        log.Infof("Alloc %v Mb", roundToMb(m.Alloc))
+        log.Infof("TotalAlloc %v Mb", roundToMb(m.TotalAlloc))
+        log.Infof("Sys %v Mb", roundToMb(m.Sys))
+        log.Infof("NumGC %v", m.NumGC)
+        log.Infof("MemStats %+v", m)
+}
+
+func roundToMb(b uint64) uint64 {
+
+    kb := (b + 1023) / 1024
+    mb := (kb + 1023) / 1024
+    return mb
 }
 
 func Init(agentName string) (*os.File, error) {
