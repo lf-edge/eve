@@ -20,9 +20,8 @@ message NetworkConfig {
 }
 
 message NetworkAdapter {
-	// this is deviceName....
-	string name =1;
-	string id   =2;		// UUID of adapter?
+	string name =1;		// name which we report in metrics and status
+	string id   =2;		// UUID of adapter? XXX Deprecate since unused
 
 	string networkId =3;	// UUID of NetworkConfig object
 
