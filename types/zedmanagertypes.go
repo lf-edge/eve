@@ -86,6 +86,7 @@ func (config AppInstanceConfig) VerifyFilename(fileName string) bool {
 type AppInstanceStatus struct {
 	UUIDandVersion     UUIDandVersion
 	DisplayName        string
+	DomainName         string // Once booted
 	Activated          bool
 	ActivateInprogress bool     // Needed for cleanup after failure
 	FixedResources     VmConfig // CPU etc
