@@ -109,8 +109,8 @@ func logMemUsage() {
 
 func roundToMb(b uint64) uint64 {
 
-	kb := (b + 1023) / 1024
-	mb := (kb + 1023) / 1024
+	kb := (b + 512) / 1024
+	mb := (kb + 512) / 1024
 	return mb
 }
 
