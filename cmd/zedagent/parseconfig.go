@@ -877,6 +877,7 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 			cfgApp.Displayname, uuid.String(), netEnt.Type)
 
 		ulCfg := new(types.UnderlayNetworkConfig)
+		ulCfg.Name = intfEnt.Name
 		ulCfg.Network = uuid
 		if intfEnt.MacAddress != "" {
 			log.Infof("parseUnderlayNetworkConfig: got static MAC %s\n",
@@ -961,6 +962,7 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 
 		olCfg := new(types.EIDOverlayConfig)
 		olCfg.Network = uuid
+		olCfg.Name = intfEnt.Name
 		if intfEnt.MacAddress != "" {
 			olCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
 			if err != nil {
