@@ -437,7 +437,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		// Even when the network that we point to does not have
 		// proxy configuration, we should still parse the uplink.
 		// There could have been a proxy before attached to this network,
-		// and now removed. Even when there was never a proxy configuration 
+		// and now removed. Even when there was never a proxy configuration
 		// attached, we should still process the uplink and bring it UP.
 		newUplinks = append(newUplinks, uplink)
 	}

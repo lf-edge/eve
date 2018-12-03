@@ -24,6 +24,7 @@ import (
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
+	"github.com/zededa/go-provision/sema"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/wrap"
 	"io"
@@ -79,6 +80,7 @@ type domainContext struct {
 	pubImageStatus         *pubsub.Publication
 	pubAssignableAdapters  *pubsub.Publication
 	usbAccess              bool
+	createSema	       sema.Semaphore
 }
 
 var debug = false
@@ -153,6 +155,9 @@ func Run() {
 	}
 
 	domainCtx := domainContext{}
+	// Allow only one concurrent xl create
+	domainCtx.createSema = sema.Create(1)
+	domainCtx.createSema.P(1)
 
 	pubDomainStatus, err := pubsub.Publish(agentName, types.DomainStatus{})
 	if err != nil {
@@ -838,7 +843,9 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	for {
 		status.TriedCount += 1
 		var err error
+		ctx.createSema.V(1)
 		domainId, err = xlCreate(status.DomainName, filename)
+		ctx.createSema.P(1)
 		if err == nil {
 			break
 		}
