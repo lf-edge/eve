@@ -599,7 +599,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 			ReportAppMetric.AppName = ds.DisplayName
 			ReportAppMetric.AppID = ds.Key()
 		}
-		// Returns nil if no AppIdXXX
+		// Returns nil if no AppId; we check for nil below
 		aiStatus := lookupAppInstanceStatus(ctx,
 			ReportAppMetric.AppID)
 
