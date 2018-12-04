@@ -46,6 +46,7 @@ message ZInfoNetwork {
   GeoLoc location = 9;
   bool uplink = 10; // Uplink interface
   ErrorInfo networkErr = 11; // For instance bad proxy config
+  string name = 12; // From name in config
 }
 
 // From an IP address-based geolocation service
@@ -380,6 +381,7 @@ message networkMetric {
   uint64 rxAclDrops = 13;
   uint64 txAclRateLimitDrops = 14;
   uint64 rxAclRateLimitDrops = 15;
+  string name = 16; // From config
 }
 
 // Failures and successes for commuication to zedcloud
