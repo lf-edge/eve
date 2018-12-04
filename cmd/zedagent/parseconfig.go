@@ -418,7 +418,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		uplink := types.NetworkUplinkConfig{}
 		uplink.IfName = sysAdapter.Name
 		uplink.Free = sysAdapter.FreeUplink
-		uplink.Dhcp = types.DT_CLIENT
+		uplink.Dhcp = types.DT_CLIENT // XXX from zedcloud?
 
 		// Lookup the network with given UUID
 		// and copy proxy configuration

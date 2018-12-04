@@ -465,6 +465,7 @@ type ServiceLispConfig struct {
 }
 
 type OverlayNetworkConfig struct {
+	Name          string // From proto message
 	EID           net.IP // Always EIDv6
 	LispSignature string
 	ACLs          []ACE
@@ -501,6 +502,7 @@ const (
 )
 
 type UnderlayNetworkConfig struct {
+	Name       string // From proto message
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
 	Network    uuid.UUID

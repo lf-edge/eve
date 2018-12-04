@@ -179,3 +179,11 @@ func handleAppNetworkStatusDelete(ctxArg interface{}, key string,
 	removeAIStatusUUID(ctx, key)
 	log.Infof("handleAppNetworkStatusDelete done for %s\n", key)
 }
+
+func updateAppNetworkStatus(aiStatus *types.AppInstanceStatus,
+	ns *types.AppNetworkStatus) {
+
+	// XXX do we need to copy elements?
+	aiStatus.OverlayNetworks = ns.OverlayNetworkList
+	aiStatus.UnderlayNetworks = ns.UnderlayNetworkList
+}
