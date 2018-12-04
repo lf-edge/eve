@@ -74,6 +74,8 @@ func Run() {
 	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
 	maxRetriesPtr := flag.Int("r", 0, "Max ping retries")
+	pingServerPtr := flag.String("S", "", "Override ping server")
+	pingURLPtr := flag.String("U", "", "Override ping url")
 
 	flag.Parse()
 
@@ -90,6 +92,8 @@ func Run() {
 	useStdout := *stdoutPtr
 	noPidFlag := *noPidPtr
 	maxRetries := *maxRetriesPtr
+	pingServer := *pingServerPtr
+	pingURL := *pingURLPtr
 	args := flag.Args()
 	if versionFlag {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
@@ -263,14 +267,17 @@ func Run() {
 		deviceCertSet = true
 	}
 
-	server, err := ioutil.ReadFile(serverFileName)
-	if err != nil {
-		log.Fatal(err)
+	var serverNameAndPort string
+	if pingServer == "" {
+		server, err := ioutil.ReadFile(serverFileName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		serverNameAndPort = strings.TrimSpace(string(server))
+	} else {
+		serverNameAndPort = pingServer
 	}
-	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
-	// XXX for local testing
-	// serverNameAndPort = "localhost:9069"
 
 	// Post something without a return type.
 	// Returns true when done; false when retry
@@ -399,7 +406,12 @@ func Run() {
 	zedcloudCtx.TlsConfig = tlsConfig
 
 	if operations["ping"] {
-		url := "/api/v1/edgedevice/ping"
+		var url string
+		if pingURL == "" {
+			url = "/api/v1/edgedevice/ping"
+		} else {
+			url = pingURL
+		}
 		retryCount := 0
 		done := false
 		var delay time.Duration
