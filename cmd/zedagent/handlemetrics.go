@@ -599,7 +599,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 			ReportAppMetric.AppName = ds.DisplayName
 			ReportAppMetric.AppID = ds.Key()
 		}
-		// Returns nil if no AppId
+		// Returns nil if no AppIdXXX
 		aiStatus := lookupAppInstanceStatus(ctx,
 			ReportAppMetric.AppID)
 
@@ -639,8 +639,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 			if aiStatus != nil {
 				name := appIfnameToName(aiStatus,
 					metric.IfName)
-				// XXX remove/downgrade log
-				log.Infof("app %s/%s iname %s name %s\n",
+				log.Debugf("app %s/%s iname %s name %s\n",
 					aiStatus.Key(), aiStatus.DisplayName,
 					metric.IfName, name)
 				networkDetails.Name = name
@@ -1258,8 +1257,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 					networkInfo.IPAddrs[0] = *proto.String(ip.String())
 				}
 				name := appIfnameToName(aiStatus, ifname)
-				// XXX remove/downgrade log
-				log.Infof("app %s/%s iname %s name %s\n",
+				log.Debugf("app %s/%s iname %s name %s\n",
 					aiStatus.Key(), aiStatus.DisplayName,
 					ifname, name)
 				networkInfo.Name = name
