@@ -191,7 +191,7 @@
     "zconfig",
     "zmet"
   ]
-  revision = "94ca33baf52fc8dcaa0e25c93014b603fc3a1d44"
+  revision = "2130e2f4a556a8ac129e1fcf648dd5b9c353f424"
 
 [[projects]]
   branch = "master"
