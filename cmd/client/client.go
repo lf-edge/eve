@@ -74,9 +74,8 @@ func Run() {
 	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
 	maxRetriesPtr := flag.Int("r", 0, "Max ping retries")
-	pingServerPtr := flag.String("S", "", "Override ping server")
 	pingURLPtr := flag.String("U", "", "Override ping url")
-
+	insecurePtr := flag.Bool("I", false, "Do not check server cert")
 	flag.Parse()
 
 	versionFlag := *versionPtr
@@ -92,8 +91,8 @@ func Run() {
 	useStdout := *stdoutPtr
 	noPidFlag := *noPidPtr
 	maxRetries := *maxRetriesPtr
-	pingServer := *pingServerPtr
 	pingURL := *pingURLPtr
+	insecure := *insecurePtr
 	args := flag.Args()
 	if versionFlag {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
@@ -267,23 +266,18 @@ func Run() {
 		deviceCertSet = true
 	}
 
-	var serverNameAndPort string
-	if pingServer == "" {
-		server, err := ioutil.ReadFile(serverFileName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		serverNameAndPort = strings.TrimSpace(string(server))
-	} else {
-		serverNameAndPort = pingServer
+	server, err := ioutil.ReadFile(serverFileName)
+	if err != nil {
+		log.Fatal(err)
 	}
+	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
 
 	// Post something without a return type.
 	// Returns true when done; false when retry
 	myPost := func(retryCount int, url string, reqlen int64, b *bytes.Buffer) bool {
 		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			serverNameAndPort+url, reqlen, b, retryCount, false)
+			url, reqlen, b, retryCount, false)
 		if err != nil {
 			log.Errorln(err)
 			return false
@@ -359,7 +353,8 @@ func Run() {
 			log.Errorln(err)
 			return false
 		}
-		return myPost(retryCount, "/api/v1/edgedevice/register",
+		return myPost(retryCount,
+			serverNameAndPort+"/api/v1/edgedevice/register",
 			int64(len(b)), bytes.NewBuffer(b))
 	}
 
@@ -367,9 +362,11 @@ func Run() {
 	// Returns true when done; false when retry.
 	// Returns the response when done. Caller can not use resp.Body but
 	// can use the contents []byte
-	myGet := func(url string, retryCount int) (bool, *http.Response, []byte) {
+	myGet := func(url string, retryCount int, insecure bool) (bool, *http.Response, []byte) {
+		zedcloudCtx.Insecure = insecure
 		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			serverNameAndPort+url, 0, nil, retryCount, false)
+			url, 0, nil, retryCount, false)
+		zedcloudCtx.Insecure = false
 		if err != nil {
 			log.Errorln(err)
 			return false, nil, nil
@@ -408,7 +405,7 @@ func Run() {
 	if operations["ping"] {
 		var url string
 		if pingURL == "" {
-			url = "/api/v1/edgedevice/ping"
+			url = serverNameAndPort + "/api/v1/edgedevice/ping"
 		} else {
 			url = pingURL
 		}
@@ -417,7 +414,7 @@ func Run() {
 		var delay time.Duration
 		for !done {
 			time.Sleep(delay)
-			done, _, _ = myGet(url, retryCount)
+			done, _, _ = myGet(url, retryCount, insecure)
 			if done {
 				continue
 			}
@@ -475,7 +472,7 @@ func Run() {
 			var contents []byte
 
 			time.Sleep(delay)
-			done, resp, contents = myGet(url, retryCount)
+			done, resp, contents = myGet(url, retryCount, insecure)
 			if done {
 				var err error
 
