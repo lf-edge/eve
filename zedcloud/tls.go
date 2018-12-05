@@ -67,11 +67,11 @@ func GetTlsConfig(serverName string, clientCert *tls.Certificate) (*tls.Config, 
 }
 
 func stapledCheck(connState *tls.ConnectionState) bool {
-	if connstate.VerifiedChains == nil {
+	if connState.VerifiedChains == nil {
 		log.Errorln("stapledCheck: No VerifiedChains")
 		return false
 	}
-	if len(connstate.VerifiedChains[0]) == 0 {
+	if len(connState.VerifiedChains[0]) == 0 {
 		log.Errorln("stapledCheck: No VerifiedChains 2")
 		return false
 	}
