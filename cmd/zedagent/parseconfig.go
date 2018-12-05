@@ -418,7 +418,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		uplink := types.NetworkUplinkConfig{}
 		uplink.IfName = sysAdapter.Name
 		uplink.Free = sysAdapter.FreeUplink
-		uplink.Dhcp = types.DT_CLIENT
+		uplink.Dhcp = types.DT_CLIENT // XXX from zedcloud?
 
 		// Lookup the network with given UUID
 		// and copy proxy configuration
@@ -877,6 +877,7 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 			cfgApp.Displayname, uuid.String(), netEnt.Type)
 
 		ulCfg := new(types.UnderlayNetworkConfig)
+		ulCfg.Name = intfEnt.Name
 		ulCfg.Network = uuid
 		if intfEnt.MacAddress != "" {
 			log.Infof("parseUnderlayNetworkConfig: got static MAC %s\n",
@@ -961,6 +962,7 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 
 		olCfg := new(types.EIDOverlayConfig)
 		olCfg.Network = uuid
+		olCfg.Name = intfEnt.Name
 		if intfEnt.MacAddress != "" {
 			olCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
 			if err != nil {

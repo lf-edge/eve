@@ -1233,6 +1233,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 		// Record what we have so far
 		olStatus := &status.OverlayNetworkList[olNum-1]
 		log.Infof("doActivate olNum %d: %v\n", olNum, olStatus)
+		olStatus.Name = olConfig.Name
 		olStatus.Bridge = bridgeName
 		olStatus.BridgeMac = bridgeMac
 		olStatus.Vif = vifName
@@ -1411,6 +1412,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 		// Record what we have so far
 		ulStatus := &status.UnderlayNetworkList[ulNum-1]
 		log.Infof("doActivate ulNum %d: %v\n", ulNum, ulStatus)
+		ulStatus.Name = ulConfig.Name
 		ulStatus.Bridge = bridgeName
 		ulStatus.BridgeMac = bridgeMac
 		ulStatus.Vif = vifName

@@ -800,6 +800,23 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
 	ctx.iteration += 1
 }
 
+func lookupAppInstanceStatus(ctx *zedagentContext, key string) *types.AppInstanceStatus {
+
+	sub := ctx.getconfigCtx.subAppInstanceStatus
+	st, _ := sub.Get(key)
+	if st == nil {
+		log.Infof("lookupAppInstanceStatus(%s) not found\n", key)
+		return nil
+	}
+	status := cast.CastAppInstanceStatus(st)
+	if status.Key() != key {
+		log.Errorf("lookupAppInstanceStatus key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return nil
+	}
+	return &status
+}
+
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	status := cast.CastDeviceNetworkStatus(statusArg)

@@ -24,6 +24,7 @@ import (
 	"io/ioutil"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -74,7 +75,8 @@ func Run() {
 	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
 	maxRetriesPtr := flag.Int("r", 0, "Max ping retries")
-
+	pingURLPtr := flag.String("U", "", "Override ping url")
+	insecurePtr := flag.Bool("I", false, "Do not check server cert")
 	flag.Parse()
 
 	versionFlag := *versionPtr
@@ -90,6 +92,8 @@ func Run() {
 	useStdout := *stdoutPtr
 	noPidFlag := *noPidPtr
 	maxRetries := *maxRetriesPtr
+	pingURL := *pingURLPtr
+	insecure := *insecurePtr
 	args := flag.Args()
 	if versionFlag {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
@@ -269,14 +273,12 @@ func Run() {
 	}
 	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
-	// XXX for local testing
-	// serverNameAndPort = "localhost:9069"
 
 	// Post something without a return type.
 	// Returns true when done; false when retry
-	myPost := func(retryCount int, url string, reqlen int64, b *bytes.Buffer) bool {
+	myPost := func(retryCount int, requrl string, reqlen int64, b *bytes.Buffer) bool {
 		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			serverNameAndPort+url, reqlen, b, retryCount, false)
+			requrl, reqlen, b, retryCount, false)
 		if err != nil {
 			log.Errorln(err)
 			return false
@@ -289,28 +291,28 @@ func Run() {
 		case http.StatusOK:
 			// Inform ledmanager about existence in cloud
 			types.UpdateLedManagerConfig(4)
-			log.Infof("%s StatusOK\n", url)
+			log.Infof("%s StatusOK\n", requrl)
 		case http.StatusCreated:
 			// Inform ledmanager about existence in cloud
 			types.UpdateLedManagerConfig(4)
-			log.Infof("%s StatusCreated\n", url)
+			log.Infof("%s StatusCreated\n", requrl)
 		case http.StatusConflict:
 			// Inform ledmanager about brokenness
 			types.UpdateLedManagerConfig(10)
-			log.Errorf("%s StatusConflict\n", url)
+			log.Errorf("%s StatusConflict\n", requrl)
 			// Retry until fixed
 			log.Errorf("%s\n", string(contents))
 			return false
 		case http.StatusNotModified: // XXX from zedcloud
 			// Inform ledmanager about brokenness
 			types.UpdateLedManagerConfig(10)
-			log.Errorf("%s StatusNotModified\n", url)
+			log.Errorf("%s StatusNotModified\n", requrl)
 			// Retry until fixed
 			log.Errorf("%s\n", string(contents))
 			return false
 		default:
 			log.Errorf("%s statuscode %d %s\n",
-				url, resp.StatusCode,
+				requrl, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
 			log.Errorf("%s\n", string(contents))
 			return false
@@ -318,12 +320,12 @@ func Run() {
 
 		contentType := resp.Header.Get("Content-Type")
 		if contentType == "" {
-			log.Errorf("%s no content-type\n", url)
+			log.Errorf("%s no content-type\n", requrl)
 			return false
 		}
 		mimeType, _, err := mime.ParseMediaType(contentType)
 		if err != nil {
-			log.Errorf("%s ParseMediaType failed %v\n", url, err)
+			log.Errorf("%s ParseMediaType failed %v\n", requrl, err)
 			return false
 		}
 		switch mimeType {
@@ -352,7 +354,8 @@ func Run() {
 			log.Errorln(err)
 			return false
 		}
-		return myPost(retryCount, "/api/v1/edgedevice/register",
+		return myPost(retryCount,
+			serverNameAndPort+"/api/v1/edgedevice/register",
 			int64(len(b)), bytes.NewBuffer(b))
 	}
 
@@ -360,9 +363,9 @@ func Run() {
 	// Returns true when done; false when retry.
 	// Returns the response when done. Caller can not use resp.Body but
 	// can use the contents []byte
-	myGet := func(url string, retryCount int) (bool, *http.Response, []byte) {
+	myGet := func(requrl string, retryCount int) (bool, *http.Response, []byte) {
 		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			serverNameAndPort+url, 0, nil, retryCount, false)
+			requrl, 0, nil, retryCount, false)
 		if err != nil {
 			log.Errorln(err)
 			return false, nil, nil
@@ -370,11 +373,11 @@ func Run() {
 
 		switch resp.StatusCode {
 		case http.StatusOK:
-			log.Infof("%s StatusOK\n", url)
+			log.Infof("%s StatusOK\n", requrl)
 			return true, resp, contents
 		default:
 			log.Errorf("%s statuscode %d %s\n",
-				url, resp.StatusCode,
+				requrl, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
 			log.Errorf("Received %s\n", string(contents))
 			return false, nil, nil
@@ -392,20 +395,33 @@ func Run() {
 	} else {
 		log.Fatalf("No device certificate for %v\n", operations)
 	}
-	tlsConfig, err := zedcloud.GetTlsConfig(serverName, &cert)
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedcloudCtx.TlsConfig = tlsConfig
 
 	if operations["ping"] {
-		url := "/api/v1/edgedevice/ping"
+		var requrl string
+		if pingURL == "" {
+			requrl = serverNameAndPort + "/api/v1/edgedevice/ping"
+		} else {
+			requrl = pingURL
+			u, err := url.Parse(requrl)
+			if err != nil {
+				log.Fatalf("Malformed URL %s: %v",
+					requrl, err)
+			}
+			serverName = u.Host
+		}
+		tlsConfig, err := zedcloud.GetTlsConfig(serverName, &cert)
+		if err != nil {
+			log.Fatal(err)
+		}
+		tlsConfig.InsecureSkipVerify = insecure
+		zedcloudCtx.TlsConfig = tlsConfig
+
 		retryCount := 0
 		done := false
 		var delay time.Duration
 		for !done {
 			time.Sleep(delay)
-			done, _, _ = myGet(url, retryCount)
+			done, _, _ = myGet(requrl, retryCount)
 			if done {
 				continue
 			}
@@ -423,6 +439,12 @@ func Run() {
 				delay/time.Second)
 		}
 	}
+
+	tlsConfig, err := zedcloud.GetTlsConfig(serverName, &cert)
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedcloudCtx.TlsConfig = tlsConfig
 
 	if operations["selfRegister"] {
 		retryCount := 0
@@ -454,7 +476,7 @@ func Run() {
 		var hardwaremodel string
 
 		doWrite := true
-		url := "/api/v1/edgedevice/config"
+		requrl := serverNameAndPort + "/api/v1/edgedevice/config"
 		retryCount := 0
 		done := false
 		var delay time.Duration
@@ -463,11 +485,11 @@ func Run() {
 			var contents []byte
 
 			time.Sleep(delay)
-			done, resp, contents = myGet(url, retryCount)
+			done, resp, contents = myGet(requrl, retryCount)
 			if done {
 				var err error
 
-				devUUID, hardwaremodel, err = parseConfig(url, resp, contents)
+				devUUID, hardwaremodel, err = parseConfig(requrl, resp, contents)
 				if err == nil {
 					// Inform ledmanager about config received from cloud
 					types.UpdateLedManagerConfig(4)
