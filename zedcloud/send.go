@@ -26,7 +26,6 @@ type ZedCloudContext struct {
 	TlsConfig           *tls.Config
 	FailureFunc         func(intf string, url string, reqLen int64, respLen int64)
 	SuccessFunc         func(intf string, url string, reqLen int64, respLen int64)
-	Insecure            bool // Skip server cert check
 }
 
 // Tries all interfaces (free first) until one succeeds. interation arg
@@ -110,8 +109,6 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		log.Debugf("Connecting to %s using intf %s source %v\n",
 			reqUrl, intf, localTCPAddr)
 		d := net.Dialer{LocalAddr: &localTCPAddr}
-
-		ctx.TlsConfig.InsecureSkipVerify = ctx.Insecure
 
 		// Get the transport header with proxy information filled
 		proxyUrl, err := LookupProxy(ctx.DeviceNetworkStatus,
