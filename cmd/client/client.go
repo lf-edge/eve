@@ -463,7 +463,7 @@ func Run() {
 		var hardwaremodel string
 
 		doWrite := true
-		url := "/api/v1/edgedevice/config"
+		url := serverNameAndPort+"/api/v1/edgedevice/config"
 		retryCount := 0
 		done := false
 		var delay time.Duration
