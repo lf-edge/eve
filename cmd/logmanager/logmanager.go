@@ -474,6 +474,14 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	msgIdCounter += 1
 	log.Debugf("Read event from %s time %v id %d: %s\n",
 		event.source, event.timestamp, msgId, event.content)
+	// XXX discard too large
+	strLen := len(event.content)
+	if strLen > logMaxBytes {
+		log.Errorf("HandleLogEvent: dropping source %s %d bytes: %s\n",
+			event.source, strLen, event.content)
+		return
+	}
+
 	logDetails := &zmet.LogEntry{}
 	logDetails.Content = event.content
 	logDetails.Severity = event.severity
@@ -485,7 +493,7 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	reportLogs.Log = append(reportLogs.Log, logDetails)
 	newLen := int64(proto.Size(reportLogs))
 	if newLen > logMaxBytes {
-		log.Warnf("HandleLogEvent: source from %d to %d bytes: %s\n",
+		log.Warnf("HandleLogEvent: source %s from %d to %d bytes: %s\n",
 			event.source, oldLen, newLen, event.content)
 	}
 }
@@ -503,7 +511,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		log.Fatal("sendProtoStrForLogs proto marshaling error: ", err)
 	}
 	size := int64(proto.Size(reportLogs))
-	if size > logMaxBytes/4 {
+	if size > logMaxBytes {
 		log.Warnf("sendProtoStrForLogs: %d bytes: %s\n",
 			size, reportLogs)
 	} else {
