@@ -1,0 +1,4 @@
+{
+    "Uplink":["eth3","wlan0","wwan0"],
+    "FreeUplinks":["eth3","wlan0"]
+}

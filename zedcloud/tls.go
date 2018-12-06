@@ -67,10 +67,19 @@ func GetTlsConfig(serverName string, clientCert *tls.Certificate) (*tls.Config, 
 }
 
 func stapledCheck(connState *tls.ConnectionState) bool {
+	if connState.VerifiedChains == nil {
+		log.Errorln("stapledCheck: No VerifiedChains")
+		return false
+	}
+	if len(connState.VerifiedChains[0]) == 0 {
+		log.Errorln("stapledCheck: No VerifiedChains 2")
+		return false
+	}
+
 	issuer := connState.VerifiedChains[0][1]
 	resp, err := ocsp.ParseResponse(connState.OCSPResponse, issuer)
 	if err != nil {
-		log.Errorln("error parsing response: ", err)
+		log.Errorln("stapledCheck: error parsing response: ", err)
 		return false
 	}
 	now := time.Now()

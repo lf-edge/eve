@@ -232,11 +232,13 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		Version: devConfig.Id.String(),
 	}
 	config := types.AppNetworkConfig{
-		UUIDandVersion:    uv,
-		DisplayName:       "zedmanager",
-		IsZedmanager:      true,
-		Activate:          true,
-		SeparateDataPlane: lispInfo.Experimental,
+		UUIDandVersion: uv,
+		DisplayName:    "zedmanager",
+		IsZedmanager:   true,
+		Activate:       true,
+		// Experimental flag from protobuf is re-interpreted to mean
+		// using legacy data plane (i.e. lispers.net)
+		LegacyDataPlane: lispInfo.Experimental,
 	}
 
 	olconf := make([]types.OverlayNetworkConfig, 1)

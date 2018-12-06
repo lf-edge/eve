@@ -109,7 +109,7 @@ func handleConfigInit() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zedcloudCtx.DeviceNetworkStatus = &deviceNetworkStatus
+	zedcloudCtx.DeviceNetworkStatus = deviceNetworkStatus
 	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess

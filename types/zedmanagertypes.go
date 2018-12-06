@@ -86,11 +86,14 @@ func (config AppInstanceConfig) VerifyFilename(fileName string) bool {
 type AppInstanceStatus struct {
 	UUIDandVersion     UUIDandVersion
 	DisplayName        string
+	DomainName         string // Once booted
 	Activated          bool
 	ActivateInprogress bool     // Needed for cleanup after failure
 	FixedResources     VmConfig // CPU etc
 	StorageStatusList  []StorageStatus
 	EIDList            []EIDStatusDetails
+	OverlayNetworks    []OverlayNetworkStatus
+	UnderlayNetworks   []UnderlayNetworkStatus
 	// Copies of config to determine diffs
 	OverlayNetworkList  []EIDOverlayConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
@@ -147,6 +150,7 @@ func (status AppInstanceStatus) CheckPendingDelete() bool {
 }
 
 type EIDOverlayConfig struct {
+	Name string // From proto message
 	EIDConfigDetails
 	ACLs       []ACE
 	AppMacAddr net.HardwareAddr // If set use it for vif

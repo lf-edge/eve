@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
+	"github.com/eriknordmark/netlink"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/shirou/gopsutil/cpu"
@@ -17,7 +18,6 @@ import (
 	"github.com/shirou/gopsutil/mem"
 	psutilnet "github.com/shirou/gopsutil/net"
 	log "github.com/sirupsen/logrus"
-	"github.com/vishvananda/netlink"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/diskmetrics"
@@ -407,7 +407,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 	}
 	// Use the network metrics from zedrouter subscription
 	// Only report stats for the uplinks plus dbo1x0
-	ifNames := types.ReportInterfaces(deviceNetworkStatus)
+	ifNames := types.ReportInterfaces(*deviceNetworkStatus)
 	for _, ifName := range ifNames {
 		var metric *types.NetworkMetric
 		for _, m := range networkMetrics.MetricList {
@@ -421,6 +421,9 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 		}
 		networkDetails := new(zmet.NetworkMetric)
 		networkDetails.IName = metric.IfName
+		// XXX Set name from SystemAdapter??
+		networkDetails.Name = metric.IfName
+
 		networkDetails.TxPkts = metric.TxPkts
 		networkDetails.RxPkts = metric.RxPkts
 		networkDetails.TxBytes = metric.TxBytes
@@ -566,6 +569,8 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 	}
 
 	countApp := 0
+	// XXX change to loop over AppInstanceStatus instead.
+	// means we report before the instance has booted
 	ReportMetrics.Am = make([]*zmet.AppMetric, len(cpuStorageStat)-2)
 	for arr := 1; arr < len(cpuStorageStat); arr++ {
 		if strings.Contains(cpuStorageStat[arr][1], "Domain-0") {
@@ -593,6 +598,9 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 			ReportAppMetric.AppName = ds.DisplayName
 			ReportAppMetric.AppID = ds.Key()
 		}
+		// Returns nil if no AppId; we check for nil below
+		aiStatus := lookupAppInstanceStatus(ctx,
+			ReportAppMetric.AppID)
 
 		appCpuTotal, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
 		ReportAppMetric.Cpu.Total = *proto.Uint64(appCpuTotal)
@@ -627,6 +635,14 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 			}
 			networkDetails := new(zmet.NetworkMetric)
 			networkDetails.IName = metric.IfName
+			if aiStatus != nil {
+				name := appIfnameToName(aiStatus,
+					metric.IfName)
+				log.Debugf("app %s/%s iname %s name %s\n",
+					aiStatus.Key(), aiStatus.DisplayName,
+					metric.IfName, name)
+				networkDetails.Name = name
+			}
 			// Counters not swapped on vif
 			if strings.HasPrefix(ifName, "nbn") ||
 				strings.HasPrefix(ifName, "nbu") ||
@@ -929,7 +945,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// XXX should get this info from zedrouter subscription
 	// Should we put it all in DeviceNetworkStatus?
 	interfaces, _ := psutilnet.Interfaces()
-	ifNames := types.ReportInterfaces(deviceNetworkStatus)
+	ifNames := types.ReportInterfaces(*deviceNetworkStatus)
 	for _, ifname := range ifNames {
 		for _, interfaceDetail := range interfaces {
 			if ifname == interfaceDetail.Name {
@@ -1093,7 +1109,7 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 		}
 	}
 
-	uplink := types.GetUplink(deviceNetworkStatus, interfaceDetail.Name)
+	uplink := types.GetUplink(*deviceNetworkStatus, interfaceDetail.Name)
 	if uplink != nil {
 		networkInfo.Uplink = true
 		// fill in ZInfoDNS
@@ -1242,6 +1258,11 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 					networkInfo.IPAddrs = make([]string, 1)
 					networkInfo.IPAddrs[0] = *proto.String(ip.String())
 				}
+				name := appIfnameToName(aiStatus, ifname)
+				log.Debugf("app %s/%s iname %s name %s\n",
+					aiStatus.Key(), aiStatus.DisplayName,
+					ifname, name)
+				networkInfo.Name = name
 				ReportAppInfo.Network = append(ReportAppInfo.Network,
 					networkInfo)
 			}
@@ -1273,6 +1294,20 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	} else {
 		writeSentAppInfoProtoMessage(data)
 	}
+}
+
+func appIfnameToName(aiStatus *types.AppInstanceStatus, ifname string) string {
+	for _, ulStatus := range aiStatus.UnderlayNetworks {
+		if ulStatus.Vif == ifname {
+			return ulStatus.Name
+		}
+	}
+	for _, olStatus := range aiStatus.OverlayNetworks {
+		if olStatus.Vif == ifname {
+			return olStatus.Name
+		}
+	}
+	return ""
 }
 
 // This function is called per change, hence needs to try over all uplinks

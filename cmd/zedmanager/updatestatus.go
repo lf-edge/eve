@@ -663,6 +663,10 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		// If !status.Activated e.g, due to error, then
 		// need to bring down first.
 		ds := lookupDomainStatus(ctx, config.Key())
+		if ds != nil && status.DomainName != ds.DomainName {
+			status.DomainName = ds.DomainName
+			changed = true
+		}
 		if ds != nil && !ds.Activated && ds.LastErr == "" {
 			log.Infof("RestartInprogress(%s) came down - set bring up\n",
 				status.Key())
@@ -679,8 +683,13 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 
 	// Check AppNetworkStatus
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
-	if ns == nil || ns.Pending() {
+	if ns == nil {
 		log.Infof("Waiting for AppNetworkStatus for %s\n", uuidStr)
+		return changed
+	}
+	updateAppNetworkStatus(status, ns)
+	if ns.Pending() {
+		log.Infof("Waiting for AppNetworkStatus !Pending for %s\n", uuidStr)
 		return changed
 	}
 	if !ns.Activated {
@@ -723,6 +732,10 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	if ds == nil {
 		log.Infof("Waiting for DomainStatus for %s\n", uuidStr)
 		return changed
+	}
+	if status.DomainName != ds.DomainName {
+		status.DomainName = ds.DomainName
+		changed = true
 	}
 	// Are we doing a restart?
 	if status.RestartInprogress == types.BRING_DOWN {
@@ -963,6 +976,10 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 
 	// Check if DomainStatus gone; update AppInstanceStatus if error
 	ds := lookupDomainStatus(ctx, uuidStr)
+	if status.DomainName != ds.DomainName {
+		status.DomainName = ds.DomainName
+		changed = true
+	}
 	if ds != nil {
 		log.Infof("Waiting for DomainStatus removal for %s\n", uuidStr)
 		// Look for xen errors.
@@ -1117,8 +1134,13 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 
 	// Check AppNetworkStatus
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
-	if ns == nil || ns.Pending() {
+	if ns != nil {
 		log.Infof("Waiting for AppNetworkStatus for %s\n", uuidStr)
+		return changed
+	}
+	updateAppNetworkStatus(status, ns)
+	if ns == nil || ns.Pending() {
+		log.Infof("Waiting for AppNetworkStatus !Pending for %s\n", uuidStr)
 		return changed
 	}
 	// XXX should we make it not Activated?
@@ -1158,6 +1180,10 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 	if ds == nil {
 		log.Infof("Waiting for DomainStatus for %s\n", uuidStr)
 		return changed
+	}
+	if status.DomainName != ds.DomainName {
+		status.DomainName = ds.DomainName
+		changed = true
 	}
 	if ds.State != status.State {
 		switch status.State {

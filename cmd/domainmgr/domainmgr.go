@@ -24,6 +24,7 @@ import (
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
+	"github.com/zededa/go-provision/sema"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/wrap"
 	"io"
@@ -71,7 +72,7 @@ type domainContext struct {
 	deviceNetworkStatus    types.DeviceNetworkStatus
 	dnsLock                sync.Mutex
 	assignableAdapters     *types.AssignableAdapters
-	usableAddressCount     int
+	DNSinitialized         bool // Received DeviceNetworkStatus
 	subDeviceNetworkStatus *pubsub.Subscription
 	subDomainConfig        *pubsub.Subscription
 	pubDomainStatus        *pubsub.Publication
@@ -79,6 +80,7 @@ type domainContext struct {
 	pubImageStatus         *pubsub.Publication
 	pubAssignableAdapters  *pubsub.Publication
 	usbAccess              bool
+	createSema	       sema.Semaphore
 }
 
 var debug = false
@@ -153,6 +155,9 @@ func Run() {
 	}
 
 	domainCtx := domainContext{}
+	// Allow only one concurrent xl create
+	domainCtx.createSema = sema.Create(1)
+	domainCtx.createSema.P(1)
 
 	pubDomainStatus, err := pubsub.Publish(agentName, types.DomainStatus{})
 	if err != nil {
@@ -190,9 +195,7 @@ func Run() {
 	domainCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	domainCtx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(domainCtx.deviceNetworkStatus)
-
-	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &domainCtx)
 	if err != nil {
 		log.Fatal(err)
@@ -206,12 +209,11 @@ func Run() {
 	aa := types.AssignableAdapters{}
 	domainCtx.assignableAdapters = &aa
 
-	// Wait for DeviceNetworkStatus to make sure we know the uplinks and
+	// Wait for DeviceNetworkStatus to be init so we know the uplinks and
 	// then wait for assignableAdapters.
-	for domainCtx.usableAddressCount == 0 {
+	for !domainCtx.DNSinitialized {
 
-		log.Infof("Waiting - have %d addresses\n",
-			domainCtx.usableAddressCount)
+		log.Infof("Waiting for DeviceNetworkStatus init\n")
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
@@ -220,7 +222,6 @@ func Run() {
 			subDeviceNetworkStatus.ProcessChange(change)
 		}
 	}
-	log.Infof("Have %d usable addresses\n", domainCtx.usableAddressCount)
 
 	// Pick up (mostly static) AssignableAdapters before we process
 	// any DomainConfig
@@ -230,12 +231,9 @@ func Run() {
 		&domainCtx)
 	subAa.Activate()
 
-	for domainCtx.usableAddressCount == 0 ||
-		!domainCtx.assignableAdapters.Initialized {
+	for !domainCtx.assignableAdapters.Initialized {
 
-		log.Infof("Waiting - have %d addresses; aa %v\n",
-			domainCtx.usableAddressCount,
-			domainCtx.assignableAdapters.Initialized)
+		log.Infof("Waiting for AssignableAdapters\n")
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
@@ -845,7 +843,9 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	for {
 		status.TriedCount += 1
 		var err error
+		ctx.createSema.V(1)
 		domainId, err = xlCreate(status.DomainName, filename)
+		ctx.createSema.P(1)
 		if err == nil {
 			break
 		}
@@ -1816,13 +1816,8 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	log.Infof("handleDNSModify for %s\n", key)
 	ctx.deviceNetworkStatus = status
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
 	checkAndSetIoBundleAll(ctx)
-	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
-		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
-			newAddrCount, ctx.usableAddressCount)
-	}
-	ctx.usableAddressCount = newAddrCount
+	ctx.DNSinitialized = true
 	log.Infof("handleDNSModify done for %s\n", key)
 }
 
@@ -1835,7 +1830,7 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	log.Infof("handleDNSDelete for %s\n", key)
 	ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
-	ctx.usableAddressCount = 0
+	ctx.DNSinitialized = false
 	checkAndSetIoBundleAll(ctx)
 	log.Infof("handleDNSDelete done for %s\n", key)
 }

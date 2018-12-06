@@ -123,7 +123,7 @@ func Run() {
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)

@@ -213,7 +213,8 @@ func publishImpl(agentName string, agentScope string,
 					name, err)
 				return nil, errors.New(errStr)
 			}
-		} else if _, err := os.Stat(sockName); err == nil {
+		}
+		if _, err := os.Stat(sockName); err == nil {
 			if err := os.Remove(sockName); err != nil {
 				errStr := fmt.Sprintf("Publish(%s): %s",
 					name, err)

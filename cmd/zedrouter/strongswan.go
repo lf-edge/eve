@@ -24,9 +24,6 @@ const (
 	AnyIpAddr         = "%any"
 )
 
-// XXX currently, only AwsVpn StrongSwan Client IpSec Tunnel handling
-// XXX add support for standalone StrongSwan Server/client
-
 func strongswanCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus) error {
 
@@ -123,7 +120,7 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 	}
 
 	// uplink ip address error
-	srcIp, err := types.GetLocalAddrAny(*ctx.DeviceNetworkStatus, 0,
+	srcIp, err := types.GetLocalAddrAny(*ctx.deviceNetworkStatus, 0,
 		config.Adapter)
 	if err != nil {
 		return vpnConfig, err
@@ -207,6 +204,9 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 		}
 		if err := vpnValidateLinkLocal(tunnelConfig.RemoteIpAddr); err != nil {
 			return vpnConfig, err
+		}
+		if clientConfig.SubnetBlock == vpnConfig.GatewayConfig.SubnetBlock {
+			return vpnConfig, errors.New("Peer is on Same Subnet")
 		}
 		vpnConfig.ClientConfigList[idx] = *clientConfig
 	}

@@ -68,17 +68,19 @@ func initImpl() *DeferredContext {
 
 // Try to send all deferred items. Give up if any one fails
 // Stop timer is map becomes empty
-func HandleDeferred(event time.Time) {
+func HandleDeferred(event time.Time, spacing time.Duration) {
+
 	if defaultCtx == nil {
 		log.Fatal("HandleDeferred no defaultCtx")
 	}
-	defaultCtx.handleDeferred(event)
+	defaultCtx.handleDeferred(event, spacing)
 }
 
-func (ctx *DeferredContext) handleDeferred(event time.Time) {
+func (ctx *DeferredContext) handleDeferred(event time.Time,
+	spacing time.Duration) {
 
-	log.Infof("HandleDeferred(%v) map %d\n",
-		event, len(ctx.deferredItems))
+	log.Infof("HandleDeferred(%v, %v) map %d\n",
+		event, spacing, len(ctx.deferredItems))
 	iteration := 0 // Do some load spreading
 	for key, l := range ctx.deferredItems {
 		log.Infof("Trying to send for %s items %d\n", key, len(l.list))
@@ -108,6 +110,12 @@ func (ctx *DeferredContext) handleDeferred(event time.Time) {
 		} else {
 			delete(ctx.deferredItems, key)
 			iteration += 1
+			// XXX sleeping in main thread
+			if len(ctx.deferredItems) != 0 && spacing != 0 {
+				log.Infof("HandleDeferred sleeping %v\n",
+					spacing)
+				time.Sleep(spacing)
+			}
 		}
 	}
 	if len(ctx.deferredItems) == 0 {
@@ -230,7 +238,7 @@ func (ctx *DeferredContext) addDeferred(key string, buf *bytes.Buffer,
 // Try every minute backoff to every 15 minutes
 func startTimer(ctx *DeferredContext) {
 
-	log.Debugf("startTimer()\n")
+	log.Infof("startTimer()\n")
 	min := 1 * time.Minute
 	max := 15 * time.Minute
 	ctx.ticker.UpdateExpTicker(min, max, 0.3)
@@ -238,6 +246,6 @@ func startTimer(ctx *DeferredContext) {
 
 func stopTimer(ctx *DeferredContext) {
 
-	log.Debugf("stopTimer()\n")
+	log.Infof("stopTimer()\n")
 	ctx.ticker.UpdateRangeTicker(longTime1, longTime2)
 }

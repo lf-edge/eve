@@ -58,7 +58,7 @@ const (
 var Version = "No version specified"
 
 // XXX move to a context? Which? Used in handleconfig and handlemetrics!
-var deviceNetworkStatus types.DeviceNetworkStatus
+var deviceNetworkStatus *types.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 
 // XXX globals filled in by subscription handlers and read by handlemetrics
 // XXX could alternatively access sub object when adding them.
@@ -70,6 +70,7 @@ var networkMetrics types.NetworkMetrics
 // Context for handleDNSModify
 type DNSContext struct {
 	usableAddressCount     int
+	DNSinitialized         bool // Received DeviceNetworkStatus
 	subDeviceNetworkStatus *pubsub.Subscription
 	triggerGetConfig       bool
 	triggerDeviceInfo      bool
@@ -383,9 +384,9 @@ func Run() {
 	agentlog.StillRunning(agentName)
 
 	DNSctx := DNSContext{}
-	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("zedrouter",
+	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &DNSctx)
 	if err != nil {
 		log.Fatal(err)
@@ -430,11 +431,11 @@ func Run() {
 
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
-	for DNSctx.usableAddressCount == 0 ||
+	for !DNSctx.DNSinitialized ||
 		!zedagentCtx.assignableAdapters.Initialized {
 
-		log.Infof("Waiting - have %d addresses; aa %v\n",
-			DNSctx.usableAddressCount,
+		log.Infof("Waiting for DomainNetworkStatus %v and aa %v\n",
+			DNSctx.DNSinitialized,
 			zedagentCtx.assignableAdapters.Initialized)
 		waited = true
 
@@ -452,7 +453,7 @@ func Run() {
 			subAssignableAdapters.ProcessChange(change)
 
 		case change := <-deferredChan:
-			zedcloud.HandleDeferred(change)
+			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 
 		case <-t1.C:
 			log.Errorf("Exceeded outage for cloud connectivity - rebooting\n")
@@ -470,10 +471,7 @@ func Run() {
 	}
 	t1.Stop()
 	t2.Stop()
-	log.Infof("Have %d uplinks addresses to use; aa %v\n",
-		DNSctx.usableAddressCount,
-		zedagentCtx.assignableAdapters.Initialized)
-	if waited {
+	if waited && DNSctx.usableAddressCount != 0 {
 		// Inform ledmanager that we have uplink addresses
 		types.UpdateLedManagerConfig(2)
 		getconfigCtx.ledManagerCount = 2
@@ -534,7 +532,7 @@ func Run() {
 			subAssignableAdapters.ProcessChange(change)
 
 		case change := <-deferredChan:
-			zedcloud.HandleDeferred(change)
+			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
@@ -627,7 +625,7 @@ func Run() {
 			}
 
 		case change := <-deferredChan:
-			zedcloud.HandleDeferred(change)
+			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 
 		case change := <-subNetworkObjectStatus.C:
 			subNetworkObjectStatus.ProcessChange(change)
@@ -719,6 +717,23 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
 	ctx.iteration += 1
 }
 
+func lookupAppInstanceStatus(ctx *zedagentContext, key string) *types.AppInstanceStatus {
+
+	sub := ctx.getconfigCtx.subAppInstanceStatus
+	st, _ := sub.Get(key)
+	if st == nil {
+		log.Infof("lookupAppInstanceStatus(%s) not found\n", key)
+		return nil
+	}
+	status := cast.CastAppInstanceStatus(st)
+	if status.Key() != key {
+		log.Errorf("lookupAppInstanceStatus key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return nil
+	}
+	return &status
+}
+
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	status := cast.CastDeviceNetworkStatus(statusArg)
@@ -728,20 +743,21 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)
-	if cmp.Equal(deviceNetworkStatus, status) {
+	if cmp.Equal(*deviceNetworkStatus, status) {
 		return
 	}
 	log.Infof("handleDNSModify: changed %v",
-		cmp.Diff(deviceNetworkStatus, status))
-	deviceNetworkStatus = status
+		cmp.Diff(*deviceNetworkStatus, status))
+	*deviceNetworkStatus = status
 	// Did we (re-)gain the first usable address?
 	// XXX should we also trigger if the count increases?
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
 		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
-			newAddrCount, ctx.usableAddressCount)
+			ctx.usableAddressCount, newAddrCount)
 		ctx.triggerGetConfig = true
 	}
+	ctx.DNSinitialized = true
 	ctx.usableAddressCount = newAddrCount
 	ctx.triggerDeviceInfo = true
 	log.Infof("handleDNSModify done for %s\n", key)
@@ -757,8 +773,9 @@ func handleDNSDelete(ctxArg interface{}, key string,
 		log.Infof("handleDNSDelete: ignoring %s\n", key)
 		return
 	}
-	deviceNetworkStatus = types.DeviceNetworkStatus{}
-	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(deviceNetworkStatus)
+	*deviceNetworkStatus = types.DeviceNetworkStatus{}
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
+	ctx.DNSinitialized = false
 	ctx.usableAddressCount = newAddrCount
 	log.Infof("handleDNSDelete done for %s\n", key)
 }

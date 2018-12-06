@@ -22,7 +22,7 @@ type AppNetworkConfig struct {
 	DisplayName         string
 	Activate            bool
 	IsZedmanager        bool
-	SeparateDataPlane   bool
+	LegacyDataPlane     bool
 	OverlayNetworkList  []OverlayNetworkConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
 }
@@ -68,7 +68,7 @@ type AppNetworkStatus struct {
 	DisplayName    string
 	// Copy from the AppNetworkConfig; used to delete when config is gone.
 	IsZedmanager        bool
-	SeparateDataPlane   bool
+	LegacyDataPlane     bool
 	OverlayNetworkList  []OverlayNetworkStatus
 	UnderlayNetworkList []UnderlayNetworkStatus
 	MissingNetwork      bool // If any Missing flag is set in the networks
@@ -197,6 +197,18 @@ func GetUplinkFree(globalStatus DeviceNetworkStatus, pickNum int) (string, error
 		}
 	}
 	return "", errors.New("GetUplinkFree past end")
+}
+
+// Return all uplink interfaces
+func GetUplinks(globalStatus DeviceNetworkStatus, rotation int) []string {
+	var uplinks []string
+
+	for _, us := range globalStatus.UplinkStatus {
+		if us.Free {
+			uplinks = append(uplinks, us.IfName)
+		}
+	}
+	return rotate(uplinks, rotation)
 }
 
 // Return all free uplink interfaces
@@ -349,6 +361,16 @@ func IsUplink(globalStatus DeviceNetworkStatus, ifname string) bool {
 	return false
 }
 
+// Check if an interface/adapter name is a free uplink
+func IsFreeUplink(globalStatus DeviceNetworkStatus, ifname string) bool {
+	for _, us := range globalStatus.UplinkStatus {
+		if us.IfName == ifname {
+			return us.Free
+		}
+	}
+	return false
+}
+
 func GetUplink(globalStatus DeviceNetworkStatus, ifname string) *NetworkUplink {
 	for _, us := range globalStatus.UplinkStatus {
 		if us.IfName == ifname {
@@ -443,6 +465,7 @@ type ServiceLispConfig struct {
 }
 
 type OverlayNetworkConfig struct {
+	Name          string // From proto message
 	EID           net.IP // Always EIDv6
 	LispSignature string
 	ACLs          []ACE
@@ -479,6 +502,7 @@ const (
 )
 
 type UnderlayNetworkConfig struct {
+	Name       string // From proto message
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
 	Network    uuid.UUID
@@ -844,7 +868,8 @@ type LispMetrics struct {
 }
 
 type LispDataplaneConfig struct {
-	Experimental bool
+	// If true, we run legacy lispers.net data plane.
+	Legacy bool
 }
 
 type VpnState uint8

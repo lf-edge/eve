@@ -33,6 +33,17 @@ func MakeNetworkUplinkConfig(globalConfig types.DeviceNetworkConfig) types.Devic
 	return config
 }
 
+func isProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
+	if len(proxyConfig.Proxies) == 0 &&
+		proxyConfig.Exceptions == "" &&
+		proxyConfig.Pacfile == "" &&
+		proxyConfig.NetworkProxyEnable == false &&
+		proxyConfig.NetworkProxyURL == "" {
+		return true
+	}
+	return false
+}
+
 // Calculate local IP addresses to make a types.DeviceNetworkStatus
 func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus types.DeviceNetworkStatus) (types.DeviceNetworkStatus, error) {
 	var globalStatus types.DeviceNetworkStatus
@@ -43,7 +54,23 @@ func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus ty
 	for ix, u := range globalConfig.Uplinks {
 		globalStatus.UplinkStatus[ix].IfName = u.IfName
 		globalStatus.UplinkStatus[ix].Free = u.Free
-		globalStatus.UplinkStatus[ix].ProxyConfig = u.ProxyConfig
+		// XXX
+		// If device DeviceNetworkStatus already has non-empty proxy
+		// configuration for this uplink and the new proxy configuration
+		// is empty, we should retain the existing proxy configuration to
+		// avoid bricking the device.
+		// These kind of checks should go away when we have Network manager
+		// service that tests proxy configuration before trying to apply it.
+		if isProxyConfigEmpty(u.ProxyConfig) {
+			for _, uplink := range oldStatus.UplinkStatus {
+				if uplink.IfName == u.IfName {
+					globalStatus.UplinkStatus[ix].ProxyConfig = uplink.ProxyConfig
+					break
+				}
+			}
+		} else {
+			globalStatus.UplinkStatus[ix].ProxyConfig = u.ProxyConfig
+		}
 		// XXX should we get statics?
 		link, err := netlink.LinkByName(u.IfName)
 		if err != nil {
@@ -172,31 +199,4 @@ func lookupOnIfname(config types.DeviceUplinkConfig, ifname string) *types.Netwo
 		}
 	}
 	return nil
-}
-
-func IsUplink(config types.DeviceUplinkConfig, ifname string) bool {
-	return lookupOnIfname(config, ifname) != nil
-}
-
-func IsFreeUplink(config types.DeviceUplinkConfig, ifname string) bool {
-	c := lookupOnIfname(config, ifname)
-	return c != nil && c.Free
-}
-
-func GetUplinks(config types.DeviceUplinkConfig) []string {
-	var result []string
-	for _, c := range config.Uplinks {
-		result = append(result, c.IfName)
-	}
-	return result
-}
-
-func GetFreeUplinks(config types.DeviceUplinkConfig) []string {
-	var result []string
-	for _, c := range config.Uplinks {
-		if c.Free {
-			result = append(result, c.IfName)
-		}
-	}
-	return result
 }
