@@ -503,7 +503,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		log.Fatal("sendProtoStrForLogs proto marshaling error: ", err)
 	}
 	size := int64(proto.Size(reportLogs))
-	if size > maxLogBytes/4 {
+	if size > logMaxBytes/4 {
 		log.Warnf("sendProtoStrForLogs: %d bytes: %s\n",
 			size, reportLogs)
 	} else {
