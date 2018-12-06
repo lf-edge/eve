@@ -24,7 +24,6 @@ import (
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/netclone"
-	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
 	"github.com/zededa/go-provision/zedcloud"
@@ -716,8 +715,10 @@ func RoundFromKbytesToMbytes(byteCount uint64) uint64 {
 
 // This function is called per change, hence needs to try over all uplinks
 // send report on each uplink.
-func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
-	aa *types.AssignableAdapters, iteration int) {
+func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
+	aa := ctx.assignableAdapters
+	iteration := ctx.iteration
+	subBaseOsStatus := ctx.subBaseOsStatus
 
 	var ReportInfo = &zmet.ZInfoMsg{}
 
@@ -870,12 +871,13 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 			}
 		} else {
 			// XXX put this info in BaseOsStatus so we don't need to call zboot here? Can't since no UUID!
-			swInfo.Activated = (partLabel == zboot.GetCurrentPartition())
+			partStatus := zbootPartitionStatusGet(ctx, partLabel)
+			swInfo.Activated = partStatus.CurrentPartition
 			swInfo.PartitionLabel = partLabel
-			swInfo.PartitionDevice = zboot.GetPartitionDevname(partLabel)
-			swInfo.PartitionState = zboot.GetPartitionState(partLabel)
-			swInfo.ShortVersion = zboot.GetShortVersion(partLabel)
-			swInfo.LongVersion = zboot.GetLongVersion(partLabel)
+			swInfo.PartitionDevice = partStatus.PartitionDevname
+			swInfo.PartitionState = partStatus.PartitionState
+			swInfo.ShortVersion = partStatus.ShortVersion
+			swInfo.LongVersion = partStatus.LongVersion
 			swInfo.DownloadProgress = 100
 			if swInfo.ShortVersion != "" {
 				// Must be factory install i.e. INSTALLED

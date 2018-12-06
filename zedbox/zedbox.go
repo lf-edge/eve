@@ -17,6 +17,7 @@ import (
 	"github.com/zededa/go-provision/cmd/zedagent"
 	"github.com/zededa/go-provision/cmd/zedmanager"
 	"github.com/zededa/go-provision/cmd/zedrouter"
+	"github.com/zededa/go-provision/cmd/baseosmgr"
 	"os"
 	"path/filepath"
 )
@@ -48,6 +49,8 @@ func main() {
 		zedrouter.Run()
 	case "ipcmonitor":
 		ipcmonitor.Run()
+	case "baseosmgr":
+		baseosmgr.Run()
 	default:
 		fmt.Printf("Unknown package: %s\n", basename)
 	}

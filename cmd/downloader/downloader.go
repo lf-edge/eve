@@ -184,7 +184,7 @@ func Run() {
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
 
-	subBaseOsConfig, err := pubsub.SubscribeScope("zedagent",
+	subBaseOsConfig, err := pubsub.SubscribeScope("baseosmgr",
 		baseOsObj, types.DownloaderConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
@@ -194,7 +194,7 @@ func Run() {
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
-	subCertObjConfig, err := pubsub.SubscribeScope("zedagent",
+	subCertObjConfig, err := pubsub.SubscribeScope("baseosmgr",
 		certObj, types.DownloaderConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
@@ -711,7 +711,7 @@ func clearInProgressDownloadDirs(objTypes []string) {
 
 // If an object has a zero RefCount and dropped to zero more than
 // downloadGCTime ago, then we delete the Status. That will result in the
-// user (zedmanager or zedagent) deleting the Config, unless a RefCount
+// user (zedmanager or baseosmgr) deleting the Config, unless a RefCount
 // increase is underway.
 // XXX Note that this runs concurrently with the handler.
 func gcObjects(ctx *downloaderContext) {

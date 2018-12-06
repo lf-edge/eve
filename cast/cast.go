@@ -410,3 +410,15 @@ func CastUuidToNum(in interface{}) types.UuidToNum {
 	}
 	return output
 }
+
+func CastZbootStatus(in interface{}) types.ZbootStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in ZbootStatus")
+	}
+	var output types.ZbootStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastZbootStatus")
+	}
+	return output
+}

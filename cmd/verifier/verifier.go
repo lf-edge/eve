@@ -150,7 +150,7 @@ func Run() {
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
 
-	subBaseOsConfig, err := pubsub.SubscribeScope("zedagent",
+	subBaseOsConfig, err := pubsub.SubscribeScope("baseosmgr",
 		baseOsObj, types.VerifyImageConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
@@ -392,7 +392,7 @@ func clearInProgressDownloadDirs(objTypes []string) {
 
 // If an object has a zero RefCount and dropped to zero more than
 // downloadGCTime ago, then we delete the Status. That will result in the
-// user (zedmanager or zedagent) deleting the Config, unless a RefCount
+// user (zedmanager or baseosmgr) deleting the Config, unless a RefCount
 // increase is underway.
 // XXX Note that this runs concurrently with the handler.
 func gcVerifiedObjects(ctx *verifierContext) {
@@ -1006,7 +1006,7 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	if status.RefCount == 0 {
 		// GC timer will clean up by marking status Expired
 		// and some point in time.
-		// Then user (zedmanager/zedagent) will delete config.
+		// Then user (zedmanager/baseosmgr) will delete config.
 		status.PendingModify = true
 		status.LastUse = time.Now()
 		status.PendingModify = false

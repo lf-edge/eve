@@ -251,8 +251,8 @@ func Run() {
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	// Look for CertObjStatus from zedagent
-	subCertObjStatus, err := pubsub.Subscribe("zedagent",
+	// Look for CertObjStatus from baseosmgr
+	subCertObjStatus, err := pubsub.Subscribe("baseosmgr",
 		types.CertObjStatus{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
