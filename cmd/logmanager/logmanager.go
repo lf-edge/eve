@@ -503,7 +503,13 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		log.Fatal("sendProtoStrForLogs proto marshaling error: ", err)
 	}
 	size := int64(proto.Size(reportLogs))
-	log.Debugf("Log Details (size %d): %s\n", size, reportLogs)
+	if size > maxLogBytes/4 {
+		log.Warnf("sendProtoStrForLogs: %d bytes: %s\n",
+			size, reportLogs)
+	} else {
+		log.Debugf("sendProtoStrForLogs %d bytes: %s\n",
+			size, reportLogs)
+	}
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("sendProtoStrForLogs malloc error:")
