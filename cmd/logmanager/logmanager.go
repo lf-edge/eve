@@ -106,7 +106,7 @@ type imageLoggerContext struct {
 type DNSContext struct {
 	usableAddressCount     int
 	subDeviceNetworkStatus *pubsub.Subscription
-	doDeferred	       bool
+	doDeferred             bool
 }
 
 type zedcloudLogs struct {
@@ -481,7 +481,13 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	logDetails.Source = event.source
 	logDetails.Iid = event.iid
 	logDetails.Msgid = uint64(msgId)
+	oldLen := int64(proto.Size(reportLogs))
 	reportLogs.Log = append(reportLogs.Log, logDetails)
+	newLen := int64(proto.Size(reportLogs))
+	if newLen > logMaxBytes {
+		log.Warnf("HandleLogEvent: source from %d to %d bytes: %s\n",
+			event.source, oldLen, newLen, event.content)
+	}
 }
 
 // Returns true if a message was successfully sent
