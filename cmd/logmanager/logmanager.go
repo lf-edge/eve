@@ -106,7 +106,7 @@ type imageLoggerContext struct {
 type DNSContext struct {
 	usableAddressCount     int
 	subDeviceNetworkStatus *pubsub.Subscription
-	doDeferred	       bool
+	doDeferred             bool
 }
 
 type zedcloudLogs struct {
@@ -202,7 +202,7 @@ func Run() {
 	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	log.Infof("Waiting until we have some uplinks with usable addresses\n")
+	log.Infof("Waiting until we have some management ports with usable addresses\n")
 	for DNSctx.usableAddressCount == 0 && !force {
 		select {
 		case change := <-subGlobalConfig.C:
@@ -212,7 +212,7 @@ func Run() {
 			subDeviceNetworkStatus.ProcessChange(change)
 		}
 	}
-	log.Infof("Have %d uplinks with usable addresses\n",
+	log.Infof("Have %d management ports with usable addresses\n",
 		DNSctx.usableAddressCount)
 
 	// Timer for deferred sends of info messages

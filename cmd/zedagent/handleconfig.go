@@ -176,7 +176,7 @@ func updateConfigTimer(tickerHandle interface{}) {
 	flextimer.TickNow(tickerHandle)
 }
 
-// Start by trying the all the free uplinks and then all the non-free
+// Start by trying the all the free management ports and then all the non-free
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
 // Returns a rebootFlag

@@ -17,13 +17,14 @@ import (
 func LookupProxy(status *types.DeviceNetworkStatus, ifname string,
 	rawUrl string) (*url.URL, error) {
 
-	for _, uplink := range status.Ports {
-		log.Debugf("LookupProxy: Looking for proxy config on Uplink %s", uplink.IfName)
-		if uplink.IfName != ifname {
+	for _, port := range status.Ports {
+		log.Debugf("LookupProxy: Looking for proxy config on port %s",
+			port.IfName)
+		if port.IfName != ifname {
 			continue
 		}
-		log.Debugf("LookupProxy: Uplink configuration found for %s", ifname)
-		proxyConfig := uplink.ProxyConfig
+		log.Debugf("LookupProxy: Port configuration found for %s", ifname)
+		proxyConfig := port.ProxyConfig
 
 		// Check if the URL is present in exception list
 		// XXX Should we just get the domain name part of URL and compare?
@@ -95,7 +96,7 @@ func LookupProxy(status *types.DeviceNetworkStatus, ifname string,
 					httpProxy = fmt.Sprintf("%s", proxy.Server)
 				}
 				config.HTTPProxy = httpProxy
-				log.Debugf("LookupProxy: Adding HTTP proxy %s for uplink %s",
+				log.Debugf("LookupProxy: Adding HTTP proxy %s for port %s",
 					config.HTTPProxy, ifname)
 			case types.NPT_HTTPS:
 				var httpsProxy string
@@ -105,7 +106,7 @@ func LookupProxy(status *types.DeviceNetworkStatus, ifname string,
 					httpsProxy = fmt.Sprintf("%s", proxy.Server)
 				}
 				config.HTTPSProxy = httpsProxy
-				log.Debugf("LookupProxy: Adding HTTPS proxy %s for uplink %s",
+				log.Debugf("LookupProxy: Adding HTTPS proxy %s for port %s",
 					config.HTTPSProxy, ifname)
 			default:
 				// XXX We should take care of Socks proxy, FTP proxy also in future
@@ -121,6 +122,6 @@ func LookupProxy(status *types.DeviceNetworkStatus, ifname string,
 		}
 		return proxy, err
 	}
-	log.Infof("LookupProxy: No proxy configured for uplink %s", ifname)
+	log.Infof("LookupProxy: No proxy configured for port %s", ifname)
 	return nil, nil
 }

@@ -84,7 +84,7 @@ lisp interface {
 `
 
 // Need to pass in (IID, EID, rlocs), where rlocs is a string with
-// sets of uplink info with:
+// sets of ports info with:
 // rloc {
 //        interface = %s
 // }
@@ -131,7 +131,7 @@ lisp interface {
 `
 
 // Need to fill in (IID, EID, IID, tag, tag, rlocs) where
-// rlocs is a string with sets of uplink info with:
+// rlocs is a string with sets of ports info with:
 // rloc {
 //        interface = %s
 // }
@@ -489,8 +489,8 @@ func updateLisp(lispRunDirname string,
 	devices = strings.Replace(devices, "\n", " ", -1)
 	log.Debugf("updateLisp: found %d EIDs devices <%v>\n",
 		eidCount, devices)
-	freeUpLinks := types.GetUplinkFreeNoLocal(*globalStatus)
-	for _, u := range freeUpLinks {
+	freeMgmtPorts := types.GetMgmtPortFreeNoLocal(*globalStatus)
+	for _, u := range freeMgmtPorts {
 		devices += " " + u.IfName
 	}
 	// Check how many EIDs we have configured. If none we stop lisp

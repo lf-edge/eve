@@ -59,15 +59,15 @@ var nilUUID = uuid.UUID{}
 // Set from Makefile
 var Version = "No version specified"
 
-func isUplink(ctx *domainContext, ifname string) bool {
+func isMgmtPort(ctx *domainContext, ifname string) bool {
 	ctx.dnsLock.Lock()
 	defer ctx.dnsLock.Unlock()
-	return types.IsUplink(ctx.deviceNetworkStatus, ifname)
+	return types.IsMgmtPort(ctx.deviceNetworkStatus, ifname)
 }
 
 // Information for handleCreate/Modify/Delete
 type domainContext struct {
-	// The isUplink function is called by different goroutines
+	// The isMgmtPort function is called by different goroutines
 	// hence we serialize the calls on a mutex.
 	deviceNetworkStatus    types.DeviceNetworkStatus
 	dnsLock                sync.Mutex
@@ -80,7 +80,7 @@ type domainContext struct {
 	pubImageStatus         *pubsub.Publication
 	pubAssignableAdapters  *pubsub.Publication
 	usbAccess              bool
-	createSema	       sema.Semaphore
+	createSema             sema.Semaphore
 }
 
 var debug = false
@@ -209,8 +209,8 @@ func Run() {
 	aa := types.AssignableAdapters{}
 	domainCtx.assignableAdapters = &aa
 
-	// Wait for DeviceNetworkStatus to be init so we know the uplinks and
-	// then wait for assignableAdapters.
+	// Wait for DeviceNetworkStatus to be init so we know the management
+	// ports and then wait for assignableAdapters.
 	for !domainCtx.DNSinitialized {
 
 		log.Infof("Waiting for DeviceNetworkStatus init\n")
@@ -1119,8 +1119,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 				adapter.Type, adapter.Name, ib.UsedByUUID))
 		}
 		for _, m := range ib.Members {
-			if isUplink(ctx, m) {
-				return errors.New(fmt.Sprintf("Adapter %d %s member %s is (part of) an uplink\n",
+			if isMgmtPort(ctx, m) {
+				return errors.New(fmt.Sprintf("Adapter %d %s member %s is (part of) a management port\n",
 					adapter.Type, adapter.Name, m))
 			}
 		}
@@ -2017,9 +2017,9 @@ func handleAADelete(ctxArg interface{}, status *types.AssignableAdapters) {
 	log.Infof("handleAADelete() done\n")
 }
 
-// Process new IoBundles. Check if PCI device exists, and check if uplink.
+// Process new IoBundles. Check if PCI device exists, and check if management port.
 // Assign to pciback
-// XXX Who reports errors on uplink change? zedrouter!
+// XXX Who reports errors on port changes? zedrouter!
 func handleIBCreate(ctx *domainContext, ib types.IoBundle,
 	status *types.AssignableAdapters) {
 
@@ -2044,13 +2044,13 @@ func checkAndSetIoBundleAll(ctx *domainContext) {
 
 func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 
-	// Check if uplink or part of uplink
-	ib.IsUplink = false
+	// Check if management port or part of management port
+	ib.IsMgmtPort = false
 	for _, m := range ib.Members {
-		if types.IsUplink(ctx.deviceNetworkStatus, m) {
-			log.Warnf("checkAndSetIoBundle(%d %s %v) part of uplink\n",
+		if types.IsMgmtPort(ctx.deviceNetworkStatus, m) {
+			log.Warnf("checkAndSetIoBundle(%d %s %v) part of management port\n",
 				ib.Type, ib.Name, ib.Members)
-			ib.IsUplink = true
+			ib.IsMgmtPort = true
 			if ib.IsPCIBack {
 				log.Infof("checkAndSetIoBundle(%d %s %v) take back fro pciback\n",
 					ib.Type, ib.Name, ib.Members)
@@ -2074,7 +2074,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		log.Infof("checkAndSetIoBundle(%d %s %v) found %s/%s\n",
 			ib.Type, ib.Name, ib.Members, short, long)
 	}
-	if !ib.IsUplink && ib.PciShort != "" && !ib.IsPCIBack {
+	if !ib.IsMgmtPort && ib.PciShort != "" && !ib.IsPCIBack {
 		if ctx.usbAccess && ib.Type == types.IoUSB {
 			log.Infof("No assigning %s (%s %s) to pciback\n",
 				ib.Name, ib.PciLong, ib.PciShort)
@@ -2163,7 +2163,7 @@ func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.
 				configIb.Type, configIb.Name, err)
 			return
 		}
-		e.IsUplink = configIb.IsUplink
+		e.IsMgmtPort = configIb.IsMgmtPort
 		e.IsPCIBack = configIb.IsPCIBack
 		// XXX TBD IsBridge, IsService
 		e.Lookup = configIb.Lookup

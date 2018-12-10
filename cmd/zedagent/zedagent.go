@@ -532,7 +532,7 @@ func Run() {
 	t1.Stop()
 	t2.Stop()
 	if waited && DNSctx.usableAddressCount != 0 {
-		// Inform ledmanager that we have uplink addresses
+		// Inform ledmanager that we have management port addresses
 		types.UpdateLedManagerConfig(2)
 		getconfigCtx.ledManagerCount = 2
 	}
@@ -561,7 +561,7 @@ func Run() {
 		log.Fatal(err)
 	}
 
-	// Publish initial device info. Retries all addresses on all uplinks.
+	// Publish initial device info.
 	publishDevInfo(&zedagentCtx)
 
 	// start the metrics reporting task

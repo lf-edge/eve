@@ -15,6 +15,7 @@ import (
 )
 
 // Genetate DevicePortConfig based on DeviceNetworkConfig
+// XXX retire when we have retired DeviceNetworkConfig
 func MakeNetworkPortConfig(globalConfig types.DeviceNetworkConfig) types.DevicePortConfig {
 	var config types.DevicePortConfig
 
@@ -58,15 +59,15 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].Free = u.Free
 		// XXX
 		// If device DeviceNetworkStatus already has non-empty proxy
-		// configuration for this uplink and the new proxy configuration
+		// configuration for this port and the new proxy configuration
 		// is empty, we should retain the existing proxy configuration to
 		// avoid bricking the device.
 		// These kind of checks should go away when we have Network manager
 		// service that tests proxy configuration before trying to apply it.
 		if isProxyConfigEmpty(u.ProxyConfig) {
-			for _, uplink := range oldStatus.Ports {
-				if uplink.IfName == u.IfName {
-					globalStatus.Ports[ix].ProxyConfig = uplink.ProxyConfig
+			for _, port := range oldStatus.Ports {
+				if port.IfName == u.IfName {
+					globalStatus.Ports[ix].ProxyConfig = port.ProxyConfig
 					break
 				}
 			}
@@ -78,7 +79,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		if err != nil {
 			log.Warnf("MakeDeviceNetworkStatus LinkByName %s: %s\n",
 				u.IfName, err)
-			err = errors.New(fmt.Sprintf("Uplink in config/global does not exist: %v",
+			err = errors.New(fmt.Sprintf("Port in config/global does not exist: %v",
 				u))
 			continue
 		}
@@ -93,13 +94,13 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].AddrInfoList = make([]types.AddrInfo,
 			len(addrs4)+len(addrs6))
 		for i, addr := range addrs4 {
-			log.Infof("UplinkAddrs(%s) found IPv4 %v\n",
+			log.Infof("PortAddrs(%s) found IPv4 %v\n",
 				u.IfName, addr.IP)
 			globalStatus.Ports[ix].AddrInfoList[i].Addr = addr.IP
 		}
 		for i, addr := range addrs6 {
 			// We include link-locals since they can be used for LISP behind nats
-			log.Infof("UplinkAddrs(%s) found IPv6 %v\n",
+			log.Infof("PortAddrs(%s) found IPv6 %v\n",
 				u.IfName, addr.IP)
 			globalStatus.Ports[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
 		}

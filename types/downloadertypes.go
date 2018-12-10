@@ -11,18 +11,18 @@ import (
 // The key/index to this is the Safename which is allocated by ZedManager.
 // That is the filename in which we store the corresponding json files.
 type DownloaderConfig struct {
-	Safename        string
-	DownloadURL     string
-	UseFreeUplinks  bool
-	TransportMethod string // Download Method S3/HTTP/SFTP etc.
-	Dpath           string
-	ApiKey          string
-	Password        string
-	Region          string
-	Size            uint64 // In bytes
-	ImageSha256     string // sha256 of immutable image
-	FinalObjDir     string // final Object Store
-	RefCount        uint
+	Safename         string
+	DownloadURL      string
+	UseFreeMgmtPorts bool
+	TransportMethod  string // Download Method S3/HTTP/SFTP etc.
+	Dpath            string
+	ApiKey           string
+	Password         string
+	Region           string
+	Size             uint64 // In bytes
+	ImageSha256      string // sha256 of immutable image
+	FinalObjDir      string // final Object Store
+	RefCount         uint
 }
 
 func (config DownloaderConfig) Key() string {
@@ -49,25 +49,25 @@ type CertConfig struct {
 // The key/index to this is the Safename which comes from DownloaderConfig.
 // That is the filename in which we store the corresponding json files.
 type DownloaderStatus struct {
-	Safename       string
-	ObjType        string
-	PendingAdd     bool
-	PendingModify  bool
-	PendingDelete  bool
-	RefCount       uint      // Zero means not downloaded
-	LastUse        time.Time // When RefCount dropped to zero
-	Expired        bool      // Handshake to client
-	DownloadURL    string
-	UseFreeUplinks bool
-	ImageSha256    string  // sha256 of immutable image
-	State          SwState // DOWNLOADED etc
-	ReservedSpace  uint    // Contribution to global ReservedSpace
-	Size           uint64  // Once DOWNLOADED; in bytes
-	Progress       uint    // In percent i.e., 0-100
-	ModTime        time.Time
-	LastErr        string // Download error
-	LastErrTime    time.Time
-	RetryCount     int
+	Safename         string
+	ObjType          string
+	PendingAdd       bool
+	PendingModify    bool
+	PendingDelete    bool
+	RefCount         uint      // Zero means not downloaded
+	LastUse          time.Time // When RefCount dropped to zero
+	Expired          bool      // Handshake to client
+	DownloadURL      string
+	UseFreeMgmtPorts bool
+	ImageSha256      string  // sha256 of immutable image
+	State            SwState // DOWNLOADED etc
+	ReservedSpace    uint    // Contribution to global ReservedSpace
+	Size             uint64  // Once DOWNLOADED; in bytes
+	Progress         uint    // In percent i.e., 0-100
+	ModTime          time.Time
+	LastErr          string // Download error
+	LastErrTime      time.Time
+	RetryCount       int
 }
 
 func (status DownloaderStatus) Key() string {

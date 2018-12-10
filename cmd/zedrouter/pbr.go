@@ -2,7 +2,7 @@
 // All rights reserved.
 
 // Create ip rules and ip routing tables for each ifindex and also a free
-// one for the collection of free uplinks.
+// one for the collection of free management ports.
 
 package zedrouter
 
@@ -16,13 +16,13 @@ import (
 	"syscall"
 )
 
-var FreeTable = 500 // Need a FreeUplink policy for NAT+underlay
+var FreeTable = 500 // Need a FreeMgmtPort policy for NAT+underlay
 
 type addrChangeFnType func(ifname string)
 
 // XXX should really be in a context returned by Init
-var addrChangeFuncUplink addrChangeFnType
-var addrChangeFuncNonUplink addrChangeFnType
+var addrChangeFuncMgmtPort addrChangeFnType
+var addrChangeFuncNonMgmtPort addrChangeFnType
 
 // Returns the channels for route, addr, link updates
 func PbrInit(ctx *zedrouterContext, addrChange addrChangeFnType,
@@ -30,9 +30,9 @@ func PbrInit(ctx *zedrouterContext, addrChange addrChangeFnType,
 	chan netlink.AddrUpdate, chan netlink.LinkUpdate) {
 
 	log.Debugf("PbrInit()\n")
-	setFreeUplinks(types.GetUplinksFree(*ctx.deviceNetworkStatus, 0))
-	addrChangeFuncUplink = addrChange
-	addrChangeFuncNonUplink = addrChangeNon
+	setFreeMgmtPorts(types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0))
+	addrChangeFuncMgmtPort = addrChange
+	addrChangeFuncNonMgmtPort = addrChangeNon
 
 	IfindexToNameInit()
 	IfindexToAddrsInit()
@@ -83,21 +83,21 @@ func PbrInit(ctx *zedrouterContext, addrChange addrChangeFnType,
 	return routechan, addrchan, linkchan
 }
 
-// Add a default route for the bridgeName table to the specific uplink
-func PbrRouteAddDefault(bridgeName string, uplink string) error {
-	log.Infof("PbrRouteAddDefault(%s, %s)\n", bridgeName, uplink)
+// Add a default route for the bridgeName table to the specific port
+func PbrRouteAddDefault(bridgeName string, port string) error {
+	log.Infof("PbrRouteAddDefault(%s, %s)\n", bridgeName, port)
 
-	ifindex, err := IfnameToIndex(uplink)
+	ifindex, err := IfnameToIndex(port)
 	if err != nil {
 		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
-			uplink, err)
+			port, err)
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
 	rt := getDefaultIPv4Route(ifindex)
 	if rt == nil {
 		log.Warnf("PbrRouteAddDefault(%s, %s) no default route\n",
-			bridgeName, uplink)
+			bridgeName, port)
 		return nil
 	}
 	// Add to ifindex specific table
@@ -116,7 +116,7 @@ func PbrRouteAddDefault(bridgeName string, uplink string) error {
 		myrt.Flags = 0
 	}
 	log.Infof("PbrRouteAddDefault(%s, %s) adding %v\n",
-		bridgeName, uplink, myrt)
+		bridgeName, port, myrt)
 	if err := netlink.RouteAdd(&myrt); err != nil {
 		errStr := fmt.Sprintf("Failed to add %v to %d: %s",
 			myrt, myrt.Table, err)
@@ -126,21 +126,21 @@ func PbrRouteAddDefault(bridgeName string, uplink string) error {
 	return nil
 }
 
-// Delete the default route for the bridgeName table to the specific uplink
-func PbrRouteDeleteDefault(bridgeName string, uplink string) error {
-	log.Infof("PbrRouteAddDefault(%s, %s)\n", bridgeName, uplink)
+// Delete the default route for the bridgeName table to the specific port
+func PbrRouteDeleteDefault(bridgeName string, port string) error {
+	log.Infof("PbrRouteAddDefault(%s, %s)\n", bridgeName, port)
 
-	ifindex, err := IfnameToIndex(uplink)
+	ifindex, err := IfnameToIndex(port)
 	if err != nil {
 		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
-			uplink, err)
+			port, err)
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
 	rt := getDefaultIPv4Route(ifindex)
 	if rt == nil {
 		log.Warnf("PbrRouteDeleteDefault(%s, %s) no default route\n",
-			bridgeName, uplink)
+			bridgeName, port)
 		return nil
 	}
 	// Remove from ifindex specific table
@@ -159,7 +159,7 @@ func PbrRouteDeleteDefault(bridgeName string, uplink string) error {
 		myrt.Flags = 0
 	}
 	log.Infof("PbrRouteDeleteDefault(%s, %s) deleting %v\n",
-		bridgeName, uplink, myrt)
+		bridgeName, port, myrt)
 	if err := netlink.RouteDel(&myrt); err != nil {
 		errStr := fmt.Sprintf("Failed to delete %v from %d: %s",
 			myrt, myrt.Table, err)
@@ -199,7 +199,7 @@ func getDefaultIPv4Route(ifindex int) *netlink.Route {
 // XXX The PbrNAT functions are no-ops for now.
 // The prefix for the NAT linux bridge interface is in its own pbr table
 // XXX put the default route(s) for the selected Adapter for the service
-// into the table for the bridge to avoid using other uplinks.
+// into the table for the bridge to avoid using other ports.
 func PbrNATAdd(prefix string) error {
 
 	log.Debugf("PbrNATAdd(%s)\n", prefix)
@@ -269,7 +269,7 @@ func PbrRouteChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 		log.Errorf("PbrRouteChange IfindexToName failed for %d: %s\n",
 			rt.LinkIndex, err)
 	} else {
-		if types.IsFreeUplink(*deviceNetworkStatus, ifname) {
+		if types.IsFreeMgmtPort(*deviceNetworkStatus, ifname) {
 			log.Debugf("Applying to FreeTable: %v\n", rt)
 			doFreeTable = true
 		}
@@ -337,7 +337,7 @@ func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 				log.Errorf("XXX NewAddr IfindexToName(%d) failed %s\n",
 					change.LinkIndex, err)
 			}
-			// XXX only call for uplinks and bridges?
+			// XXX only call for ports and bridges?
 			addSourceRule(change.LinkIndex, change.LinkAddress,
 				linkType == "bridge")
 		}
@@ -350,7 +350,7 @@ func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 				log.Errorf("XXX DelAddr IfindexToName(%d) failed %s\n",
 					change.LinkIndex, err)
 			}
-			// XXX only call for uplinks and bridges?
+			// XXX only call for ports and bridges?
 			delSourceRule(change.LinkIndex, change.LinkAddress,
 				linkType == "bridge")
 		}
@@ -360,16 +360,16 @@ func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 		if err != nil {
 			log.Errorf("PbrAddrChange IfindexToName failed for %d: %s\n",
 				change.LinkIndex, err)
-		} else if types.IsUplink(*deviceNetworkStatus, ifname) {
-			log.Debugf("Address change for uplink: %v\n", change)
-			if addrChangeFuncUplink != nil {
-				addrChangeFuncUplink(ifname)
+		} else if types.IsMgmtPort(*deviceNetworkStatus, ifname) {
+			log.Debugf("Address change for port: %v\n", change)
+			if addrChangeFuncMgmtPort != nil {
+				addrChangeFuncMgmtPort(ifname)
 			}
 		} else {
-			log.Debugf("Address change for non-uplink: %v\n",
+			log.Debugf("Address change for non-port: %v\n",
 				change)
-			if addrChangeFuncNonUplink != nil {
-				addrChangeFuncNonUplink(ifname)
+			if addrChangeFuncNonMgmtPort != nil {
+				addrChangeFuncNonMgmtPort(ifname)
 			}
 		}
 	}
@@ -388,24 +388,24 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	case syscall.RTM_NEWLINK:
 		added := IfindexToNameAdd(ifindex, ifname, linkType)
 		if added {
-			if types.IsFreeUplink(*deviceNetworkStatus,
+			if types.IsFreeMgmtPort(*deviceNetworkStatus,
 				ifname) {
 
 				log.Debugf("PbrLinkChange moving to FreeTable %s\n",
 					ifname)
 				moveRoutesTable(0, ifindex, FreeTable)
 			}
-			if types.IsUplink(*deviceNetworkStatus, ifname) {
-				log.Debugf("Link change for uplink: %s\n",
+			if types.IsMgmtPort(*deviceNetworkStatus, ifname) {
+				log.Debugf("Link change for port: %s\n",
 					ifname)
-				if addrChangeFuncUplink != nil {
-					addrChangeFuncUplink(ifname)
+				if addrChangeFuncMgmtPort != nil {
+					addrChangeFuncMgmtPort(ifname)
 				}
 			} else {
-				log.Debugf("Link change for non-uplink: %s\n",
+				log.Debugf("Link change for non-port: %s\n",
 					ifname)
-				if addrChangeFuncNonUplink != nil {
-					addrChangeFuncNonUplink(ifname)
+				if addrChangeFuncNonMgmtPort != nil {
+					addrChangeFuncNonMgmtPort(ifname)
 				}
 			}
 
@@ -413,7 +413,7 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	case syscall.RTM_DELLINK:
 		gone := IfindexToNameDel(ifindex, ifname)
 		if gone {
-			if types.IsFreeUplink(*deviceNetworkStatus,
+			if types.IsFreeMgmtPort(*deviceNetworkStatus,
 				ifname) {
 
 				flushRoutesTable(FreeTable, ifindex)
@@ -421,17 +421,17 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 			MyTable := FreeTable + ifindex
 			flushRoutesTable(MyTable, 0)
 			flushRules(ifindex)
-			if types.IsUplink(*deviceNetworkStatus, ifname) {
-				log.Debugf("Link change for uplink: %s\n",
+			if types.IsMgmtPort(*deviceNetworkStatus, ifname) {
+				log.Debugf("Link change for port: %s\n",
 					ifname)
-				if addrChangeFuncUplink != nil {
-					addrChangeFuncUplink(ifname)
+				if addrChangeFuncMgmtPort != nil {
+					addrChangeFuncMgmtPort(ifname)
 				}
 			} else {
-				log.Debugf("Link change for non-uplink: %s\n",
+				log.Debugf("Link change for non-port: %s\n",
 					ifname)
-				if addrChangeFuncNonUplink != nil {
-					addrChangeFuncNonUplink(ifname)
+				if addrChangeFuncNonMgmtPort != nil {
+					addrChangeFuncNonMgmtPort(ifname)
 				}
 			}
 
@@ -439,20 +439,20 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	}
 }
 
-// We track the freeuplink list to be able to detect changes and
-// update the free table with the routes from all the free uplinks.
-// XXX TBD: do we need a separate table for all the uplinks?
+// We track the freeMgmtPort list to be able to detect changes and
+// update the free table with the routes from all the free management ports.
+// XXX TBD: do we need a separate table for all the management ports?
 
-var freeUplinkList []string // The subset we add to FreeTable
+var freeMgmtPortList []string // The subset we add to FreeTable
 
 // Can be called to update the list.
-func setFreeUplinks(freeUplinks []string) {
+func setFreeMgmtPorts(freeMgmtPorts []string) {
 
-	log.Debugf("setFreeUplinks(%v)\n", freeUplinks)
+	log.Debugf("setFreeMgmtPorts(%v)\n", freeMgmtPorts)
 	// Determine which ones were added; moveRoutesTable to add to free table
-	for _, u := range freeUplinks {
+	for _, u := range freeMgmtPorts {
 		found := false
-		for _, old := range freeUplinkList {
+		for _, old := range freeMgmtPortList {
 			if old == u {
 				found = true
 				break
@@ -466,9 +466,9 @@ func setFreeUplinks(freeUplinks []string) {
 	}
 	// Determine which ones were deleted; flushRoutesTable to remove from
 	// free table
-	for _, old := range freeUplinkList {
+	for _, old := range freeMgmtPortList {
 		found := false
-		for _, u := range freeUplinks {
+		for _, u := range freeMgmtPorts {
 			if old == u {
 				found = true
 				break
@@ -480,7 +480,7 @@ func setFreeUplinks(freeUplinks []string) {
 			}
 		}
 	}
-	freeUplinkList = freeUplinks
+	freeMgmtPortList = freeMgmtPorts
 }
 
 // ===== map from ifindex to ifname
@@ -682,7 +682,7 @@ func flushRoutesTable(table int, ifindex int) {
 	}
 }
 
-// Used when FreeUplinks get a link added
+// Used when FreeMgmtPorts get a link added
 // If ifindex is non-zero we also compare it
 func moveRoutesTable(srcTable int, ifindex int, dstTable int) {
 	if srcTable == 0 {

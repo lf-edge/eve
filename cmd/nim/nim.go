@@ -192,7 +192,7 @@ func Run() {
 
 	devicenetwork.DoDNSUpdate(&nimCtx.DeviceNetworkContext)
 
-	// Apply any changes from the uplink config to date.
+	// Apply any changes from the port config to date.
 	publishDeviceNetworkStatus(&nimCtx)
 
 	// XXX should we make geoRedoTime configurable?

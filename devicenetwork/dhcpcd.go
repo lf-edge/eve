@@ -1,7 +1,7 @@
 // Copyright (c) 2018 Zededa, Inc.
 // All rights reserved.
 
-// Manage dhcpcd for uplinks including static
+// Manage dhcpcd for ports including static
 // XXX wwan0? Skip for now
 
 package devicenetwork

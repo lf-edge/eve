@@ -407,7 +407,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 			(100.0 - (ram.UsedPercent))
 	}
 	// Use the network metrics from zedrouter subscription
-	// Only report stats for the uplinks plus dbo1x0
+	// Only report stats for the ports plus dbo1x0
 	ifNames := types.ReportInterfaces(*deviceNetworkStatus)
 	for _, ifName := range ifNames {
 		var metric *types.NetworkMetric
@@ -730,8 +730,7 @@ func RoundFromKbytesToMbytes(byteCount uint64) uint64 {
 	return (byteCount + kbyte/2) / kbyte
 }
 
-// This function is called per change, hence needs to try over all uplinks
-// send report on each uplink.
+// This function is called per change, hence needs to try over all management ports
 func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	aa *types.AssignableAdapters, iteration int) {
 
@@ -938,8 +937,8 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 			swInfo)
 	}
 
-	// Read interface name from library and match it with uplink name from
-	// global status. Only report the uplinks plus dbo1x0
+	// Read interface name from library and match it with port name from
+	// global status. Only report the ports plus dbo1x0
 	// XXX should get this info from zedrouter subscription
 	// Should we put it all in DeviceNetworkStatus?
 	interfaces, _ := psutilnet.Interfaces()
@@ -967,14 +966,14 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	// Report AssignableAdapters.
 	// Domainmgr excludes adapters which do not currently exist in
 	// what it publishes.
-	// We also mark current uplinks as such.
+	// We also mark current management ports as such.
 	for i, _ := range aa.IoBundleList {
 		ib := &aa.IoBundleList[i]
 		reportAA := new(zmet.ZioBundle)
 		reportAA.Type = zmet.ZioType(ib.Type)
 		reportAA.Name = ib.Name
 		reportAA.Members = ib.Members
-		if ib.IsUplink {
+		if ib.IsMgmtPort {
 			reportAA.UsedByBaseOS = true
 		} else if ib.UsedByUUID != nilUUID {
 			reportAA.UsedByAppUUID = ib.UsedByUUID.String()
@@ -1107,13 +1106,14 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 		}
 	}
 
-	uplink := types.GetUplink(*deviceNetworkStatus, interfaceDetail.Name)
-	if uplink != nil {
+	// XXX Should we report non-management ports as well?
+	port := types.GetMgmtPort(*deviceNetworkStatus, interfaceDetail.Name)
+	if port != nil {
 		networkInfo.Uplink = true
 		// fill in ZInfoDNS
 		networkInfo.Dns = new(zmet.ZInfoDNS)
-		networkInfo.Dns.DNSdomain = uplink.DomainName
-		for _, server := range uplink.DnsServers {
+		networkInfo.Dns.DNSdomain = port.DomainName
+		for _, server := range port.DnsServers {
 			networkInfo.Dns.DNSservers = append(networkInfo.Dns.DNSservers,
 				server.String())
 		}
@@ -1122,7 +1122,7 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 		// address.
 		// For now fill in using the first IP address which has location
 		// info.
-		for _, ai := range uplink.AddrInfoList {
+		for _, ai := range port.AddrInfoList {
 			if ai.Geo == nilIPInfo {
 				continue
 			}
@@ -1138,10 +1138,10 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 			break
 		}
 		// Any error?
-		if !uplink.ErrorTime.IsZero() {
+		if !port.ErrorTime.IsZero() {
 			errInfo := new(zmet.ErrorInfo)
-			errInfo.Description = uplink.Error
-			errTime, _ := ptypes.TimestampProto(uplink.ErrorTime)
+			errInfo.Description = port.Error
+			errTime, _ := ptypes.TimestampProto(port.ErrorTime)
 			errInfo.Timestamp = errTime
 			networkInfo.NetworkErr = errInfo
 		}
@@ -1149,8 +1149,7 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 	return networkInfo
 }
 
-// This function is called per change, hence needs to try over all uplinks
-// send report on each uplink.
+// This function is called per change, hence needs to try over all management ports
 // When aiStatus is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
 func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
@@ -1308,9 +1307,8 @@ func appIfnameToName(aiStatus *types.AppInstanceStatus, ifname string) string {
 	return ""
 }
 
-// This function is called per change, hence needs to try over all uplinks
-// send report on each uplink.
-// For each uplink we try different source IPs until we find a working one.
+// This function is called per change, hence needs to try over all management ports
+// For each port we try different source IPs until we find a working one.
 // For any 400 error we give up (don't retry) by not returning an error
 func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 	iteration int) error {
@@ -1326,8 +1324,8 @@ func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 }
 
 // Try all (first free, then rest) until it gets through.
-// Each iteration we try a different uplink for load spreading.
-// For each uplink we try all its local IP addresses until we get a success.
+// Each iteration we try a different port for load spreading.
+// For each port we try all its local IP addresses until we get a success.
 func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 	iteration int) {
 	data, err := proto.Marshal(ReportMetrics)

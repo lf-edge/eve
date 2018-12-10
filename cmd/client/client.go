@@ -623,12 +623,12 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
 		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
 			ctx.usableAddressCount, newAddrCount)
-		// Inform ledmanager that we have uplink addresses
+		// Inform ledmanager that we have management port addresses
 		types.UpdateLedManagerConfig(2)
 	} else if newAddrCount == 0 && ctx.usableAddressCount != 0 {
 		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
 			ctx.usableAddressCount, newAddrCount)
-		// Inform ledmanager that we have no uplink addresses
+		// Inform ledmanager that we have no management port addresses
 		types.UpdateLedManagerConfig(1)
 	}
 	ctx.usableAddressCount = newAddrCount
@@ -649,7 +649,7 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
 	if ctx.usableAddressCount == 0 {
-		// Inform ledmanager that we have no uplink addresses
+		// Inform ledmanager that we have no management port addresses
 		types.UpdateLedManagerConfig(1)
 	}
 	log.Infof("handleDNSDelete done for %s\n", key)

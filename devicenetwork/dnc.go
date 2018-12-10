@@ -47,11 +47,11 @@ func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
 		oldConfig = types.DevicePortConfig{}
 	}
 	*ctx.DeviceNetworkConfig = config
-	uplinkConfig := MakeNetworkPortConfig(config)
-	if !reflect.DeepEqual(oldConfig, uplinkConfig) {
+	portConfig := MakeNetworkPortConfig(config)
+	if !reflect.DeepEqual(oldConfig, portConfig) {
 		log.Infof("DevicePortConfig change from %v to %v\n",
-			oldConfig, uplinkConfig)
-		ctx.PubDevicePortConfig.Publish("global", uplinkConfig)
+			oldConfig, portConfig)
+		ctx.PubDevicePortConfig.Publish("global", portConfig)
 	}
 	log.Infof("HandleDNCModify done for %s\n", key)
 }
@@ -74,11 +74,11 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	}
 	// XXX what's the default? eth0 aka default.json? Use empty for now
 	*ctx.DeviceNetworkConfig = types.DeviceNetworkConfig{}
-	uplinkConfig := MakeNetworkPortConfig(*ctx.DeviceNetworkConfig)
-	if !reflect.DeepEqual(oldConfig, uplinkConfig) {
+	portConfig := MakeNetworkPortConfig(*ctx.DeviceNetworkConfig)
+	if !reflect.DeepEqual(oldConfig, portConfig) {
 		log.Infof("DevicePortConfig change from %v to %v\n",
-			oldConfig, uplinkConfig)
-		ctx.PubDevicePortConfig.Publish("global", uplinkConfig)
+			oldConfig, portConfig)
+		ctx.PubDevicePortConfig.Publish("global", portConfig)
 	}
 	log.Infof("HandleDNCDelete done for %s\n", key)
 }
@@ -89,7 +89,7 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 // 3. "global" key derived from per-platform DeviceNetworkConfig
 func HandleDUCModify(ctxArg interface{}, key string, configArg interface{}) {
 
-	uplinkConfig := cast.CastDevicePortConfig(configArg)
+	portConfig := cast.CastDevicePortConfig(configArg)
 	ctx := ctxArg.(*DeviceNetworkContext)
 
 	curPriority := ctx.DevicePortConfigPrio
@@ -112,14 +112,13 @@ func HandleDUCModify(ctxArg interface{}, key string, configArg interface{}) {
 	}
 	ctx.DevicePortConfigPrio = priority
 
-	if !reflect.DeepEqual(*ctx.DevicePortConfig, uplinkConfig) {
+	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
 		log.Infof("DevicePortConfig change from %v to %v\n",
-			*ctx.DevicePortConfig, uplinkConfig)
-		UpdateDhcpClient(uplinkConfig,
-			*ctx.DevicePortConfig)
-		*ctx.DevicePortConfig = uplinkConfig
+			*ctx.DevicePortConfig, portConfig)
+		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
+		*ctx.DevicePortConfig = portConfig
 	}
-	dnStatus, _ := MakeDeviceNetworkStatus(uplinkConfig,
+	dnStatus, _ := MakeDeviceNetworkStatus(portConfig,
 		*ctx.DeviceNetworkStatus)
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
 		log.Infof("DeviceNetworkStatus change from %v to %v\n",
@@ -157,13 +156,12 @@ func HandleDUCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	// as if we have none
 	ctx.DevicePortConfigPrio = 0
 
-	uplinkConfig := types.DevicePortConfig{}
-	if !reflect.DeepEqual(*ctx.DevicePortConfig, uplinkConfig) {
+	portConfig := types.DevicePortConfig{}
+	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
 		log.Infof("DevicePortConfig change from %v to %v\n",
-			*ctx.DevicePortConfig, uplinkConfig)
-		UpdateDhcpClient(uplinkConfig,
-			*ctx.DevicePortConfig)
-		*ctx.DevicePortConfig = uplinkConfig
+			*ctx.DevicePortConfig, portConfig)
+		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
+		*ctx.DevicePortConfig = portConfig
 	}
 	dnStatus := types.DeviceNetworkStatus{}
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
@@ -187,7 +185,7 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 	} else if newAddrCount != 0 && ctx.UsableAddressCount == 0 {
 		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
 			ctx.UsableAddressCount, newAddrCount)
-		// Inform ledmanager that we have uplink addresses
+		// Inform ledmanager that we have port addresses
 		types.UpdateLedManagerConfig(2)
 	}
 	ctx.UsableAddressCount = newAddrCount

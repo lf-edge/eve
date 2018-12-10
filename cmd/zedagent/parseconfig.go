@@ -412,6 +412,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		//if !sysAdapter.Uplink {
 		//	continue
 		//}
+		// XXX Rename Uplink in proto file to IsMgmtPort!
 		sysAdapter.Uplink = true
 		sysAdapter.FreeUplink = true
 
