@@ -17,7 +17,7 @@ import (
 func LookupProxy(status *types.DeviceNetworkStatus, ifname string,
 	rawUrl string) (*url.URL, error) {
 
-	for _, uplink := range status.UplinkStatus {
+	for _, uplink := range status.Ports {
 		log.Debugf("LookupProxy: Looking for proxy config on Uplink %s", uplink.IfName)
 		if uplink.IfName != ifname {
 			continue

@@ -18,7 +18,7 @@ import (
 // XXX add IPv6 support. Where do we put if different DomainName?
 // dhcp6_domain_search='attlocal.net'
 // dhcp6_name_servers='2600:1700:daa0:cfb0::1'
-func GetDnsInfo(us *types.NetworkUplink) error {
+func GetDnsInfo(us *types.NetworkPortStatus) error {
 
 	log.Infof("getDnsInfo(%s)\n", us.IfName)
 	log.Infof("Calling dhcpcd -U -4 %s\n", us.IfName)

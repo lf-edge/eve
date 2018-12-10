@@ -93,6 +93,7 @@ func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
 
 // Global network config. For backwards compatibility with build artifacts
 // XXX move to using DevicePortConfig in build?
+// XXX remove since it uses old "Uplink" terms
 type DeviceNetworkConfig struct {
 	Uplink      []string // ifname; all uplinks
 	FreeUplinks []string // subset used for image downloads
@@ -158,8 +159,7 @@ type NetworkPortConfig struct {
 	ProxyConfig
 }
 
-// XXX rename to Status; part of DeviceNetworkStatus
-type NetworkUplink struct {
+type NetworkPortStatus struct {
 	IfName string
 	Free   bool
 	NetworkObjectConfig
@@ -177,24 +177,24 @@ type AddrInfo struct {
 
 // Published to microservices which needs to know about ports and IP addresses
 type DeviceNetworkStatus struct {
-	UplinkStatus []NetworkUplink
+	Ports []NetworkPortStatus
 }
 
 // XXX rename Uplink->MgmtPort
 // XXX check IsMgmt flag
 // Pick one of the uplinks
 func GetUplinkAny(globalStatus DeviceNetworkStatus, pickNum int) (string, error) {
-	if len(globalStatus.UplinkStatus) == 0 {
+	if len(globalStatus.Ports) == 0 {
 		return "", errors.New("GetUplinkAny has no uplink")
 	}
-	pickNum = pickNum % len(globalStatus.UplinkStatus)
-	return globalStatus.UplinkStatus[pickNum].IfName, nil
+	pickNum = pickNum % len(globalStatus.Ports)
+	return globalStatus.Ports[pickNum].IfName, nil
 }
 
 // Pick one of the free uplinks
 func GetUplinkFree(globalStatus DeviceNetworkStatus, pickNum int) (string, error) {
 	count := 0
-	for _, us := range globalStatus.UplinkStatus {
+	for _, us := range globalStatus.Ports {
 		if us.Free {
 			count += 1
 		}
@@ -203,7 +203,7 @@ func GetUplinkFree(globalStatus DeviceNetworkStatus, pickNum int) (string, error
 		return "", errors.New("GetUplinkFree has no uplink")
 	}
 	pickNum = pickNum % count
-	for _, us := range globalStatus.UplinkStatus {
+	for _, us := range globalStatus.Ports {
 		if us.Free {
 			if pickNum == 0 {
 				return us.IfName, nil
@@ -220,7 +220,7 @@ func GetUplinkFree(globalStatus DeviceNetworkStatus, pickNum int) (string, error
 func GetUplinks(globalStatus DeviceNetworkStatus, rotation int) []string {
 	var uplinks []string
 
-	for _, us := range globalStatus.UplinkStatus {
+	for _, us := range globalStatus.Ports {
 		if us.Free {
 			uplinks = append(uplinks, us.IfName)
 		}
@@ -232,7 +232,7 @@ func GetUplinks(globalStatus DeviceNetworkStatus, rotation int) []string {
 func GetUplinksFree(globalStatus DeviceNetworkStatus, rotation int) []string {
 	var uplinks []string
 
-	for _, us := range globalStatus.UplinkStatus {
+	for _, us := range globalStatus.Ports {
 		if us.Free {
 			uplinks = append(uplinks, us.IfName)
 		}
@@ -252,7 +252,7 @@ func rotate(arr []string, amount int) []string {
 func GetUplinksNonFree(globalStatus DeviceNetworkStatus, rotation int) []string {
 	var uplinks []string
 
-	for _, us := range globalStatus.UplinkStatus {
+	for _, us := range globalStatus.Ports {
 		if !us.Free {
 			uplinks = append(uplinks, us.IfName)
 		}
@@ -285,7 +285,7 @@ func CountLocalAddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 }
 
 // Return a list of free uplinks that have non link local IP addresses
-func GetUplinkFreeNoLocal(globalStatus DeviceNetworkStatus) []NetworkUplink {
+func GetUplinkFreeNoLocal(globalStatus DeviceNetworkStatus) []NetworkPortStatus {
 	// Return Uplink list with valid non link local addresses
 	links, _ := getInterfaceAndAddr(globalStatus, true, "", false)
 	return links
@@ -328,9 +328,9 @@ func GetLocalAddrFree(globalStatus DeviceNetworkStatus, pickNum int, uplink stri
 }
 
 func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, ifname string,
-	includeLinkLocal bool) ([]NetworkUplink, error) {
-	var links []NetworkUplink
-	for _, u := range globalStatus.UplinkStatus {
+	includeLinkLocal bool) ([]NetworkPortStatus, error) {
+	var links []NetworkPortStatus
+	for _, u := range globalStatus.Ports {
 		if free && !u.Free {
 			continue
 		}
@@ -340,7 +340,7 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, ifname str
 		}
 
 		if includeLinkLocal {
-			link := NetworkUplink{
+			link := NetworkPortStatus{
 				IfName: u.IfName,
 				//Addrs: u.Addrs,
 				AddrInfoList: u.AddrInfoList,
@@ -348,7 +348,7 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, ifname str
 			links = append(links, link)
 		} else {
 			var addrs []AddrInfo
-			var link NetworkUplink
+			var link NetworkPortStatus
 			link.IfName = u.IfName
 			for _, a := range u.AddrInfoList {
 				if !a.Addr.IsLinkLocalUnicast() {
@@ -364,13 +364,13 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, ifname str
 	if len(links) != 0 {
 		return links, nil
 	} else {
-		return []NetworkUplink{}, errors.New("No good Uplinks")
+		return []NetworkPortStatus{}, errors.New("No good Uplinks")
 	}
 }
 
 // Check if an interface/adapter name is an uplink
 func IsUplink(globalStatus DeviceNetworkStatus, ifname string) bool {
-	for _, us := range globalStatus.UplinkStatus {
+	for _, us := range globalStatus.Ports {
 		if us.IfName == ifname {
 			return true
 		}
@@ -380,7 +380,7 @@ func IsUplink(globalStatus DeviceNetworkStatus, ifname string) bool {
 
 // Check if an interface/adapter name is a free uplink
 func IsFreeUplink(globalStatus DeviceNetworkStatus, ifname string) bool {
-	for _, us := range globalStatus.UplinkStatus {
+	for _, us := range globalStatus.Ports {
 		if us.IfName == ifname {
 			return us.Free
 		}
@@ -388,8 +388,8 @@ func IsFreeUplink(globalStatus DeviceNetworkStatus, ifname string) bool {
 	return false
 }
 
-func GetUplink(globalStatus DeviceNetworkStatus, ifname string) *NetworkUplink {
-	for _, us := range globalStatus.UplinkStatus {
+func GetUplink(globalStatus DeviceNetworkStatus, ifname string) *NetworkPortStatus {
+	for _, us := range globalStatus.Ports {
 		if us.IfName == ifname {
 			return &us
 		}
@@ -399,7 +399,7 @@ func GetUplink(globalStatus DeviceNetworkStatus, ifname string) *NetworkUplink {
 
 // Given an address tell me its interface
 func GetUplinkFromAddr(globalStatus DeviceNetworkStatus, addr net.IP) string {
-	for _, u := range globalStatus.UplinkStatus {
+	for _, u := range globalStatus.Ports {
 		for _, i := range u.AddrInfoList {
 			if i.Addr.Equal(addr) {
 				return u.IfName
@@ -415,7 +415,7 @@ func GetUplinkFromAddr(globalStatus DeviceNetworkStatus, addr net.IP) string {
 func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool, ifname string, includeLinkLocal bool) ([]net.IP, error) {
 	var freeAddrs []net.IP
 	var nonfreeAddrs []net.IP
-	for _, u := range globalStatus.UplinkStatus {
+	for _, u := range globalStatus.Ports {
 		if free && !u.Free {
 			continue
 		}
@@ -449,7 +449,7 @@ func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool, ifname string
 func ReportInterfaces(deviceNetworkStatus DeviceNetworkStatus) []string {
 	var names []string
 	names = append(names, "dbo1x0")
-	for _, uplink := range deviceNetworkStatus.UplinkStatus {
+	for _, uplink := range deviceNetworkStatus.Ports {
 		names = append(names, uplink.IfName)
 	}
 	return names

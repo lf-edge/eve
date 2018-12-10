@@ -154,8 +154,8 @@ func Run() {
 	subDeviceNetworkConfig.Activate()
 
 	// We get DevicePortConfig from three sources in this priority:
-	// 1. zedagent
-	// 2. override file in /var/tmp/zededa/NetworkUplinkConfig/override.json
+	// 1. zedagent publishing NetworkPortConfig
+	// 2. override file in /var/tmp/zededa/NetworkPortConfig/override.json
 	// 3. self-generated file derived from per-platform DeviceNetworkConfig
 	subDevicePortConfigA, err := pubsub.Subscribe("zedagent",
 		types.DevicePortConfig{}, false,

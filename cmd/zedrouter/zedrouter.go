@@ -1559,10 +1559,10 @@ func createAndStartLisp(ctx *zedrouterContext,
 		adapterMap[adapter] = true
 	}
 	deviceNetworkParams := types.DeviceNetworkStatus{}
-	for _, uplink := range ctx.deviceNetworkStatus.UplinkStatus {
+	for _, uplink := range ctx.deviceNetworkStatus.Ports {
 		if _, ok := adapterMap[uplink.IfName]; ok == true {
-			deviceNetworkParams.UplinkStatus =
-				append(deviceNetworkParams.UplinkStatus, uplink)
+			deviceNetworkParams.Ports =
+				append(deviceNetworkParams.Ports, uplink)
 		}
 	}
 	createLispEidConfiglet(lispRunDirname, serviceStatus.LispStatus.IID,

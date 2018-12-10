@@ -51,12 +51,11 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 	var globalStatus types.DeviceNetworkStatus
 	var err error = nil
 
-	// XXX rename fields
-	globalStatus.UplinkStatus = make([]types.NetworkUplink,
+	globalStatus.Ports = make([]types.NetworkPortStatus,
 		len(globalConfig.Ports))
 	for ix, u := range globalConfig.Ports {
-		globalStatus.UplinkStatus[ix].IfName = u.IfName
-		globalStatus.UplinkStatus[ix].Free = u.Free
+		globalStatus.Ports[ix].IfName = u.IfName
+		globalStatus.Ports[ix].Free = u.Free
 		// XXX
 		// If device DeviceNetworkStatus already has non-empty proxy
 		// configuration for this uplink and the new proxy configuration
@@ -65,14 +64,14 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		// These kind of checks should go away when we have Network manager
 		// service that tests proxy configuration before trying to apply it.
 		if isProxyConfigEmpty(u.ProxyConfig) {
-			for _, uplink := range oldStatus.UplinkStatus {
+			for _, uplink := range oldStatus.Ports {
 				if uplink.IfName == u.IfName {
-					globalStatus.UplinkStatus[ix].ProxyConfig = uplink.ProxyConfig
+					globalStatus.Ports[ix].ProxyConfig = uplink.ProxyConfig
 					break
 				}
 			}
 		} else {
-			globalStatus.UplinkStatus[ix].ProxyConfig = u.ProxyConfig
+			globalStatus.Ports[ix].ProxyConfig = u.ProxyConfig
 		}
 		// XXX should we get statics?
 		link, err := netlink.LinkByName(u.IfName)
@@ -91,44 +90,44 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		if err != nil {
 			addrs6 = nil
 		}
-		globalStatus.UplinkStatus[ix].AddrInfoList = make([]types.AddrInfo,
+		globalStatus.Ports[ix].AddrInfoList = make([]types.AddrInfo,
 			len(addrs4)+len(addrs6))
 		for i, addr := range addrs4 {
 			log.Infof("UplinkAddrs(%s) found IPv4 %v\n",
 				u.IfName, addr.IP)
-			globalStatus.UplinkStatus[ix].AddrInfoList[i].Addr = addr.IP
+			globalStatus.Ports[ix].AddrInfoList[i].Addr = addr.IP
 		}
 		for i, addr := range addrs6 {
 			// We include link-locals since they can be used for LISP behind nats
 			log.Infof("UplinkAddrs(%s) found IPv6 %v\n",
 				u.IfName, addr.IP)
-			globalStatus.UplinkStatus[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
+			globalStatus.Ports[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
 		}
 		// Get DNS info from dhcpcd. Updates DomainName and DnsServers
-		err = GetDnsInfo(&globalStatus.UplinkStatus[ix])
+		err = GetDnsInfo(&globalStatus.Ports[ix])
 		if err != nil {
 			errStr := fmt.Sprintf("GetDnsInfo failed %s", err)
-			globalStatus.UplinkStatus[ix].Error = errStr
-			globalStatus.UplinkStatus[ix].ErrorTime = time.Now()
+			globalStatus.Ports[ix].Error = errStr
+			globalStatus.Ports[ix].ErrorTime = time.Now()
 		}
 
 		// Attempt to get a wpad.dat file if so configured
 		// Result is updating the Pacfile
 		err = CheckAndGetNetworkProxy(&globalStatus,
-			&globalStatus.UplinkStatus[ix])
+			&globalStatus.Ports[ix])
 		if err != nil {
 			errStr := fmt.Sprintf("GetNetworkProxy failed %s", err)
-			globalStatus.UplinkStatus[ix].Error = errStr
-			globalStatus.UplinkStatus[ix].ErrorTime = time.Now()
+			globalStatus.Ports[ix].Error = errStr
+			globalStatus.Ports[ix].ErrorTime = time.Now()
 		}
 	}
 	// Preserve geo info for existing interface and IP address
-	for ui, _ := range globalStatus.UplinkStatus {
-		u := &globalStatus.UplinkStatus[ui]
+	for ui, _ := range globalStatus.Ports {
+		u := &globalStatus.Ports[ui]
 		for i, _ := range u.AddrInfoList {
 			// Need pointer since we are going to modify
 			ai := &u.AddrInfoList[i]
-			oai := lookupUplinkStatusAddr(oldStatus,
+			oai := lookupPortStatusAddr(oldStatus,
 				u.IfName, ai.Addr)
 			if oai == nil {
 				continue
@@ -142,9 +141,10 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 	return globalStatus, err
 }
 
-func lookupUplinkStatusAddr(status types.DeviceNetworkStatus,
+func lookupPortStatusAddr(status types.DeviceNetworkStatus,
 	ifname string, addr net.IP) *types.AddrInfo {
-	for _, u := range status.UplinkStatus {
+
+	for _, u := range status.Ports {
 		if u.IfName != ifname {
 			continue
 		}
@@ -160,8 +160,8 @@ func lookupUplinkStatusAddr(status types.DeviceNetworkStatus,
 // Returns true if anything might have changed
 func UpdateDeviceNetworkGeo(timelimit time.Duration, globalStatus *types.DeviceNetworkStatus) bool {
 	change := false
-	for ui, _ := range globalStatus.UplinkStatus {
-		u := &globalStatus.UplinkStatus[ui]
+	for ui, _ := range globalStatus.Ports {
+		u := &globalStatus.Ports[ui]
 		for i, _ := range u.AddrInfoList {
 			// Need pointer since we are going to modify
 			ai := &u.AddrInfoList[i]
