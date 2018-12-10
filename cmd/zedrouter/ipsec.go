@@ -147,7 +147,7 @@ func ipSecTunnelStateCheck(vpnRole string, tunnelName string) error {
 
 func ipTablesRuleCreate(vpnConfig types.VpnServiceConfig) error {
 
-	upLinkConfig := vpnConfig.UpLinkConfig
+	portConfig := vpnConfig.PortConfig
 	gatewayConfig := vpnConfig.GatewayConfig
 	clientConfig := vpnConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
@@ -159,14 +159,14 @@ func ipTablesRuleCreate(vpnConfig types.VpnServiceConfig) error {
 		}
 	}
 	if err := ipTablesCounterRulesSet(vpnConfig.PolicyBased,
-		tunnelConfig.Name, upLinkConfig.Name); err != nil {
+		tunnelConfig.Name, portConfig.Name); err != nil {
 		return err
 	}
 	return nil
 }
 
 func ipTablesRulesDelete(vpnConfig types.VpnServiceConfig) error {
-	upLinkConfig := vpnConfig.UpLinkConfig
+	portConfig := vpnConfig.PortConfig
 	gatewayConfig := vpnConfig.GatewayConfig
 	clientConfig := vpnConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
@@ -178,7 +178,7 @@ func ipTablesRulesDelete(vpnConfig types.VpnServiceConfig) error {
 		}
 	}
 	if err := ipTablesCounterRulesReset(vpnConfig.PolicyBased,
-		tunnelConfig.Name, upLinkConfig.Name); err != nil {
+		tunnelConfig.Name, portConfig.Name); err != nil {
 		return err
 	}
 	return nil
@@ -238,9 +238,9 @@ func ipTablesAwsClientRulesReset(tunnelName string,
 }
 
 func ipTablesCounterRulesSet(policyBased bool,
-	tunnelName string, uplinkName string) error {
+	tunnelName string, portName string) error {
 	for _, acl := range vpnCounterAcls {
-		acl.intf = uplinkName
+		acl.intf = portName
 		if err := iptableCounterRuleOp(acl, true); err != nil {
 			return err
 		}
@@ -250,9 +250,9 @@ func ipTablesCounterRulesSet(policyBased bool,
 }
 
 func ipTablesCounterRulesReset(policyBased bool,
-	tunnelName string, uplinkName string) error {
+	tunnelName string, portName string) error {
 	for _, acl := range vpnCounterAcls {
-		acl.intf = uplinkName
+		acl.intf = portName
 		if err := iptableCounterRuleOp(acl, false); err != nil {
 			return err
 		}
@@ -570,27 +570,27 @@ func ipLinkTunnelCreate(vpnConfig types.VpnServiceConfig) error {
 	gatewayConfig := vpnConfig.GatewayConfig
 	clientConfig := vpnConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
-	upLinkConfig := vpnConfig.UpLinkConfig
+	portConfig := vpnConfig.PortConfig
 
 	log.Infof("%s: %s %s %s\n", tunnelConfig.Name, "ip link add",
-		upLinkConfig.IpAddr, gatewayConfig.IpAddr)
+		portConfig.IpAddr, gatewayConfig.IpAddr)
 	if vpnConfig.IsClient {
 		cmd := exec.Command("ip", "link", "add",
-			tunnelConfig.Name, "type", "vti", "local", upLinkConfig.IpAddr,
+			tunnelConfig.Name, "type", "vti", "local", portConfig.IpAddr,
 			"remote", gatewayConfig.IpAddr, "key", tunnelConfig.Key)
 		if _, err := cmd.Output(); err != nil {
 			log.Errorf("%s for %s %s add on %s\n", err.Error(), "ip link",
-				tunnelConfig.Name, upLinkConfig.IpAddr, gatewayConfig.IpAddr)
+				tunnelConfig.Name, portConfig.IpAddr, gatewayConfig.IpAddr)
 			return err
 		}
 	} else {
 		// for server, create remote any
 		cmd := exec.Command("ip", "link", "add",
-			tunnelConfig.Name, "type", "vti", "local", upLinkConfig.IpAddr,
+			tunnelConfig.Name, "type", "vti", "local", portConfig.IpAddr,
 			"remote", "0.0.0.0")
 		if _, err := cmd.Output(); err != nil {
 			log.Errorf("%s for %s %s add on %s\n", err.Error(), "ip link",
-				tunnelConfig.Name, upLinkConfig.IpAddr, gatewayConfig.IpAddr)
+				tunnelConfig.Name, portConfig.IpAddr, gatewayConfig.IpAddr)
 			return err
 		}
 	}
@@ -813,16 +813,16 @@ func charonConfigReset() error {
 
 func sysctlConfigCreate(vpnConfig types.VpnServiceConfig) error {
 
-	upLinkConfig := vpnConfig.UpLinkConfig
-	log.Infof("%s: %s config\n", upLinkConfig.Name, "sysctl")
+	portConfig := vpnConfig.PortConfig
+	log.Infof("%s: %s config\n", portConfig.Name, "sysctl")
 
 	writeStr := ""
 	if vpnConfig.PolicyBased {
-		writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_xfrm=0"
-		writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_policy=0\n"
+		writeStr = writeStr + "\n net.ipv4.conf." + portConfig.Name + ".disable_xfrm=0"
+		writeStr = writeStr + "\n net.ipv4.conf." + portConfig.Name + ".disable_policy=0\n"
 	} else {
-		writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_xfrm=1"
-		writeStr = writeStr + "\n net.ipv4.conf." + upLinkConfig.Name + ".disable_policy=1\n"
+		writeStr = writeStr + "\n net.ipv4.conf." + portConfig.Name + ".disable_xfrm=1"
+		writeStr = writeStr + "\n net.ipv4.conf." + portConfig.Name + ".disable_policy=1\n"
 		for _, clientConfig := range vpnConfig.ClientConfigList {
 			tunnelConfig := clientConfig.TunnelConfig
 			log.Infof("%s: %s config\n", tunnelConfig.Name, "sysctl")

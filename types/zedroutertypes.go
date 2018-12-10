@@ -792,7 +792,7 @@ type VpnServiceConfig struct {
 	VpnRole          string
 	PolicyBased      bool
 	IsClient         bool
-	UpLinkConfig     NetLinkConfig
+	PortConfig       NetLinkConfig
 	AppLinkConfig    NetLinkConfig
 	GatewayConfig    NetLinkConfig
 	ClientConfigList []VpnClientConfig
