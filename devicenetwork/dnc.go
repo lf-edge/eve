@@ -15,14 +15,14 @@ type DeviceNetworkContext struct {
 	UsableAddressCount     int
 	ManufacturerModel      string
 	DeviceNetworkConfig    *types.DeviceNetworkConfig
-	DeviceUplinkConfig     *types.DeviceUplinkConfig
-	DeviceUplinkConfigPrio int
+	DevicePortConfig       *types.DevicePortConfig
+	DevicePortConfigPrio   int
 	DeviceNetworkStatus    *types.DeviceNetworkStatus
 	SubDeviceNetworkConfig *pubsub.Subscription
-	SubDeviceUplinkConfigA *pubsub.Subscription
-	SubDeviceUplinkConfigO *pubsub.Subscription
-	SubDeviceUplinkConfigS *pubsub.Subscription
-	PubDeviceUplinkConfig  *pubsub.Publication
+	SubDevicePortConfigA   *pubsub.Subscription
+	SubDevicePortConfigO   *pubsub.Subscription
+	SubDevicePortConfigS   *pubsub.Subscription
+	PubDevicePortConfig    *pubsub.Publication
 	PubDeviceNetworkStatus *pubsub.Publication
 	Changed                bool
 	SubGlobalConfig        *pubsub.Subscription
@@ -39,19 +39,19 @@ func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
 	}
 	log.Infof("HandleDNCModify for %s\n", key)
 	// Get old value
-	var oldConfig types.DeviceUplinkConfig
-	c, _ := ctx.PubDeviceUplinkConfig.Get("global")
+	var oldConfig types.DevicePortConfig
+	c, _ := ctx.PubDevicePortConfig.Get("global")
 	if c != nil {
-		oldConfig = cast.CastDeviceUplinkConfig(c)
+		oldConfig = cast.CastDevicePortConfig(c)
 	} else {
-		oldConfig = types.DeviceUplinkConfig{}
+		oldConfig = types.DevicePortConfig{}
 	}
 	*ctx.DeviceNetworkConfig = config
-	uplinkConfig := MakeNetworkUplinkConfig(config)
+	uplinkConfig := MakeNetworkPortConfig(config)
 	if !reflect.DeepEqual(oldConfig, uplinkConfig) {
-		log.Infof("DeviceUplinkConfig change from %v to %v\n",
+		log.Infof("DevicePortConfig change from %v to %v\n",
 			oldConfig, uplinkConfig)
-		ctx.PubDeviceUplinkConfig.Publish("global", uplinkConfig)
+		ctx.PubDevicePortConfig.Publish("global", uplinkConfig)
 	}
 	log.Infof("HandleDNCModify done for %s\n", key)
 }
@@ -65,20 +65,20 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	}
 	log.Infof("HandleDNCDelete for %s\n", key)
 	// Get old value
-	var oldConfig types.DeviceUplinkConfig
-	c, _ := ctx.PubDeviceUplinkConfig.Get("global")
+	var oldConfig types.DevicePortConfig
+	c, _ := ctx.PubDevicePortConfig.Get("global")
 	if c != nil {
-		oldConfig = cast.CastDeviceUplinkConfig(c)
+		oldConfig = cast.CastDevicePortConfig(c)
 	} else {
-		oldConfig = types.DeviceUplinkConfig{}
+		oldConfig = types.DevicePortConfig{}
 	}
 	// XXX what's the default? eth0 aka default.json? Use empty for now
 	*ctx.DeviceNetworkConfig = types.DeviceNetworkConfig{}
-	uplinkConfig := MakeNetworkUplinkConfig(*ctx.DeviceNetworkConfig)
+	uplinkConfig := MakeNetworkPortConfig(*ctx.DeviceNetworkConfig)
 	if !reflect.DeepEqual(oldConfig, uplinkConfig) {
-		log.Infof("DeviceUplinkConfig change from %v to %v\n",
+		log.Infof("DevicePortConfig change from %v to %v\n",
 			oldConfig, uplinkConfig)
-		ctx.PubDeviceUplinkConfig.Publish("global", uplinkConfig)
+		ctx.PubDevicePortConfig.Publish("global", uplinkConfig)
 	}
 	log.Infof("HandleDNCDelete done for %s\n", key)
 }
@@ -89,10 +89,10 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 // 3. "global" key derived from per-platform DeviceNetworkConfig
 func HandleDUCModify(ctxArg interface{}, key string, configArg interface{}) {
 
-	uplinkConfig := cast.CastDeviceUplinkConfig(configArg)
+	uplinkConfig := cast.CastDevicePortConfig(configArg)
 	ctx := ctxArg.(*DeviceNetworkContext)
 
-	curPriority := ctx.DeviceUplinkConfigPrio
+	curPriority := ctx.DevicePortConfigPrio
 	log.Infof("HandleDUCModify for %s current priority %d\n",
 		key, curPriority)
 
@@ -110,14 +110,14 @@ func HandleDUCModify(ctxArg interface{}, key string, configArg interface{}) {
 			key)
 		return
 	}
-	ctx.DeviceUplinkConfigPrio = priority
+	ctx.DevicePortConfigPrio = priority
 
-	if !reflect.DeepEqual(*ctx.DeviceUplinkConfig, uplinkConfig) {
-		log.Infof("DeviceUplinkConfig change from %v to %v\n",
-			*ctx.DeviceUplinkConfig, uplinkConfig)
+	if !reflect.DeepEqual(*ctx.DevicePortConfig, uplinkConfig) {
+		log.Infof("DevicePortConfig change from %v to %v\n",
+			*ctx.DevicePortConfig, uplinkConfig)
 		UpdateDhcpClient(uplinkConfig,
-			*ctx.DeviceUplinkConfig)
-		*ctx.DeviceUplinkConfig = uplinkConfig
+			*ctx.DevicePortConfig)
+		*ctx.DevicePortConfig = uplinkConfig
 	}
 	dnStatus, _ := MakeDeviceNetworkStatus(uplinkConfig,
 		*ctx.DeviceNetworkStatus)
@@ -135,7 +135,7 @@ func HandleDUCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("HandleDUCDelete for %s\n", key)
 	ctx := ctxArg.(*DeviceNetworkContext)
 
-	curPriority := ctx.DeviceUplinkConfigPrio
+	curPriority := ctx.DevicePortConfigPrio
 	log.Infof("HandleDUCDelete for %s current priority %d\n",
 		key, curPriority)
 
@@ -155,15 +155,15 @@ func HandleDUCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	}
 	// XXX we have no idea what the next in line priority is; set to zero
 	// as if we have none
-	ctx.DeviceUplinkConfigPrio = 0
+	ctx.DevicePortConfigPrio = 0
 
-	uplinkConfig := types.DeviceUplinkConfig{}
-	if !reflect.DeepEqual(*ctx.DeviceUplinkConfig, uplinkConfig) {
-		log.Infof("DeviceUplinkConfig change from %v to %v\n",
-			*ctx.DeviceUplinkConfig, uplinkConfig)
+	uplinkConfig := types.DevicePortConfig{}
+	if !reflect.DeepEqual(*ctx.DevicePortConfig, uplinkConfig) {
+		log.Infof("DevicePortConfig change from %v to %v\n",
+			*ctx.DevicePortConfig, uplinkConfig)
 		UpdateDhcpClient(uplinkConfig,
-			*ctx.DeviceUplinkConfig)
-		*ctx.DeviceUplinkConfig = uplinkConfig
+			*ctx.DevicePortConfig)
+		*ctx.DevicePortConfig = uplinkConfig
 	}
 	dnStatus := types.DeviceNetworkStatus{}
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {

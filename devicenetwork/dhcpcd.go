@@ -17,12 +17,12 @@ import (
 )
 
 // Start/modify/delete dhcpcd per interface
-func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
+func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig) {
 
 	// Look for adds or changes
 	log.Infof("updateDhcpClient: new %v old %v\n",
 		newConfig, oldConfig)
-	for _, newU := range newConfig.Uplinks {
+	for _, newU := range newConfig.Ports {
 		oldU := lookupOnIfname(oldConfig, newU.IfName)
 		if oldU == nil {
 			log.Infof("updateDhcpClient: new %s\n", newU.IfName)
@@ -40,7 +40,7 @@ func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 		}
 	}
 	// Look for deletes from oldConfig to newConfig
-	for _, oldU := range oldConfig.Uplinks {
+	for _, oldU := range oldConfig.Ports {
 		newU := lookupOnIfname(newConfig, oldU.IfName)
 		if newU == nil {
 			log.Infof("updateDhcpClient: deleted %s\n",
@@ -57,7 +57,7 @@ func UpdateDhcpClient(newConfig, oldConfig types.DeviceUplinkConfig) {
 // XXX if new have to wait until taken back from pciback; check linkbyname?
 // or check AssignableAdapters? Checking AA means we can react to a change.
 // XXX create pending list?
-func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
+func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 
 	log.Infof("doDhcpClientActivate(%s) dhcp %v addr %s gateway %s\n",
 		nuc.IfName, nuc.Dhcp, nuc.AddrSubnet,
@@ -131,7 +131,7 @@ func doDhcpClientActivate(nuc types.NetworkUplinkConfig) {
 	}
 }
 
-func doDhcpClientInactivate(nuc types.NetworkUplinkConfig) {
+func doDhcpClientInactivate(nuc types.NetworkPortConfig) {
 
 	log.Infof("doDhcpClientInactivate(%s) dhcp %v addr %s gateway %s\n",
 		nuc.IfName, nuc.Dhcp, nuc.AddrSubnet,

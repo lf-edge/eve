@@ -195,13 +195,12 @@ func Run() {
 	zedagentCtx.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
-	// XXX placeholder for uplink config from zedcloud
-	pubDeviceUplinkConfig, err := pubsub.Publish(agentName,
-		types.DeviceUplinkConfig{})
+	pubDevicePortConfig, err := pubsub.Publish(agentName,
+		types.DevicePortConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
-	getconfigCtx.pubDeviceUplinkConfig = pubDeviceUplinkConfig
+	getconfigCtx.pubDevicePortConfig = pubDevicePortConfig
 
 	// Publish NetworkConfig and NetworkServiceConfig for zedmanager/zedrouter
 	pubNetworkObjectConfig, err := pubsub.Publish(agentName,

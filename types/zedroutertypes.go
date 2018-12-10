@@ -92,14 +92,23 @@ func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
 }
 
 // Global network config. For backwards compatibility with build artifacts
-// XXX move to using DeviceUplinkConfig in build?
+// XXX move to using DevicePortConfig in build?
 type DeviceNetworkConfig struct {
 	Uplink      []string // ifname; all uplinks
 	FreeUplinks []string // subset used for image downloads
 }
 
-type DeviceUplinkConfig struct {
-	Uplinks []NetworkUplinkConfig
+// Array in timestamp aka priority order; first one is the most desired
+// config to use
+type DevicePortConfigList struct {
+	PortConfigList []DevicePortConfig
+}
+
+// A complete set of configuration for all the ports used by zedrouter on the
+// device
+type DevicePortConfig struct {
+	TimePriority time.Time // All zero's is fallback lowest priority
+	Ports        []NetworkPortConfig
 }
 
 type NetworkProxyType uint8
@@ -140,13 +149,16 @@ type DhcpConfig struct {
 	DnsServers []net.IP // If not set we use Gateway as DNS server
 }
 
-type NetworkUplinkConfig struct {
+type NetworkPortConfig struct {
 	IfName string
-	Free   bool
+	Name   string // XXX New logical name set by controller/model
+	IsMgmt bool   // Used to talk to controller XXX NEW
+	Free   bool   // Higher priority to talk to controller since no cost
 	DhcpConfig
 	ProxyConfig
 }
 
+// XXX rename to Status; part of DeviceNetworkStatus
 type NetworkUplink struct {
 	IfName string
 	Free   bool
@@ -163,10 +175,13 @@ type AddrInfo struct {
 	LastGeoTimestamp time.Time
 }
 
+// Published to microservices which needs to know about ports and IP addresses
 type DeviceNetworkStatus struct {
 	UplinkStatus []NetworkUplink
 }
 
+// XXX rename Uplink->MgmtPort
+// XXX check IsMgmt flag
 // Pick one of the uplinks
 func GetUplinkAny(globalStatus DeviceNetworkStatus, pickNum int) (string, error) {
 	if len(globalStatus.UplinkStatus) == 0 {
@@ -199,7 +214,9 @@ func GetUplinkFree(globalStatus DeviceNetworkStatus, pickNum int) (string, error
 	return "", errors.New("GetUplinkFree past end")
 }
 
-// Return all uplink interfaces
+// Return all mgmt ports
+// XXX check IsMgmt here and below
+// XXX check blame to see why it checks Free!
 func GetUplinks(globalStatus DeviceNetworkStatus, rotation int) []string {
 	var uplinks []string
 
@@ -211,7 +228,7 @@ func GetUplinks(globalStatus DeviceNetworkStatus, rotation int) []string {
 	return rotate(uplinks, rotation)
 }
 
-// Return all free uplink interfaces
+// Return all free mgmt ports
 func GetUplinksFree(globalStatus DeviceNetworkStatus, rotation int) []string {
 	var uplinks []string
 
@@ -502,7 +519,7 @@ const (
 )
 
 type UnderlayNetworkConfig struct {
-	Name       string // From proto message
+	Name       string           // From proto message
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
 	Network    uuid.UUID

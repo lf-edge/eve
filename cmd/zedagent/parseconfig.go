@@ -404,8 +404,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	log.Infof("parseSystemAdapterConfig: Applying updated config sha % x vs. % x: %v\n",
 		systemAdaptersPrevConfigHash, configHash, sysAdapters)
 
-	//uplinkConfig := &types.DeviceUplinkConfig{}
-	newUplinks := []types.NetworkUplinkConfig{}
+	//portConfig := &types.DevicePortConfig{}
+	newPorts := []types.NetworkPortConfig{}
 	for _, sysAdapter := range sysAdapters {
 		// XXX Make Uplink and FreeUplink true
 		// This should go away when cloud sends proper values
@@ -415,10 +415,10 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		sysAdapter.Uplink = true
 		sysAdapter.FreeUplink = true
 
-		uplink := types.NetworkUplinkConfig{}
-		uplink.IfName = sysAdapter.Name
-		uplink.Free = sysAdapter.FreeUplink
-		uplink.Dhcp = types.DT_CLIENT // XXX from zedcloud?
+		port := types.NetworkPortConfig{}
+		port.IfName = sysAdapter.Name
+		port.Free = sysAdapter.FreeUplink
+		port.Dhcp = types.DT_CLIENT // XXX from zedcloud?
 
 		// Lookup the network with given UUID
 		// and copy proxy configuration
@@ -430,25 +430,25 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		}
 		network := cast.CastNetworkObjectConfig(networkObject)
 		if network.Proxy != nil {
-			uplink.ProxyConfig = *network.Proxy
-			uplink.AddrSubnet = sysAdapter.Addr
+			port.ProxyConfig = *network.Proxy
+			port.AddrSubnet = sysAdapter.Addr
 		}
 		// XXX
 		// Even when the network that we point to does not have
-		// proxy configuration, we should still parse the uplink.
+		// proxy configuration, we should still parse the port.
 		// There could have been a proxy before attached to this network,
 		// and now removed. Even when there was never a proxy configuration
-		// attached, we should still process the uplink and bring it UP.
-		newUplinks = append(newUplinks, uplink)
+		// attached, we should still process the port and bring it UP.
+		newPorts = append(newPorts, port)
 	}
-	if len(newUplinks) == 0 {
-		log.Infof("parseSystemAdapterConfig: No Uplink configuration present")
+	if len(newPorts) == 0 {
+		log.Infof("parseSystemAdapterConfig: No Port configuration present")
 		return
 	}
-	uplinkConfig := &types.DeviceUplinkConfig{}
-	uplinkConfig.Uplinks = newUplinks
+	portConfig := &types.DevicePortConfig{}
+	portConfig.Ports = newPorts
 
-	getconfigCtx.pubDeviceUplinkConfig.Publish("zedagent", *uplinkConfig)
+	getconfigCtx.pubDevicePortConfig.Publish("zedagent", *portConfig)
 	log.Infof("parseSystemAdapterConfig: Done")
 }
 

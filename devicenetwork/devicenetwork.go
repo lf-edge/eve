@@ -14,21 +14,23 @@ import (
 	"time"
 )
 
-// Genetate NetworkUplinkConfig based on DeviceNetworkConfig
-func MakeNetworkUplinkConfig(globalConfig types.DeviceNetworkConfig) types.DeviceUplinkConfig {
-	var config types.DeviceUplinkConfig
+// Genetate DevicePortConfig based on DeviceNetworkConfig
+func MakeNetworkPortConfig(globalConfig types.DeviceNetworkConfig) types.DevicePortConfig {
+	var config types.DevicePortConfig
 
-	config.Uplinks = make([]types.NetworkUplinkConfig,
+	config.Ports = make([]types.NetworkPortConfig,
 		len(globalConfig.Uplink))
 	for ix, u := range globalConfig.Uplink {
-		config.Uplinks[ix].IfName = u
+		config.Ports[ix].IfName = u
 		for _, f := range globalConfig.FreeUplinks {
 			if f == u {
-				config.Uplinks[ix].Free = true
+				config.Ports[ix].Free = true
 				break
 			}
 		}
-		config.Uplinks[ix].Dhcp = types.DT_CLIENT
+		config.Ports[ix].IsMgmt = true
+		config.Ports[ix].Name = config.Ports[ix].IfName
+		config.Ports[ix].Dhcp = types.DT_CLIENT
 	}
 	return config
 }
@@ -45,13 +47,14 @@ func isProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 }
 
 // Calculate local IP addresses to make a types.DeviceNetworkStatus
-func MakeDeviceNetworkStatus(globalConfig types.DeviceUplinkConfig, oldStatus types.DeviceNetworkStatus) (types.DeviceNetworkStatus, error) {
+func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus types.DeviceNetworkStatus) (types.DeviceNetworkStatus, error) {
 	var globalStatus types.DeviceNetworkStatus
 	var err error = nil
 
+	// XXX rename fields
 	globalStatus.UplinkStatus = make([]types.NetworkUplink,
-		len(globalConfig.Uplinks))
-	for ix, u := range globalConfig.Uplinks {
+		len(globalConfig.Ports))
+	for ix, u := range globalConfig.Ports {
 		globalStatus.UplinkStatus[ix].IfName = u.IfName
 		globalStatus.UplinkStatus[ix].Free = u.Free
 		// XXX
@@ -192,8 +195,8 @@ func UpdateDeviceNetworkGeo(timelimit time.Duration, globalStatus *types.DeviceN
 	return change
 }
 
-func lookupOnIfname(config types.DeviceUplinkConfig, ifname string) *types.NetworkUplinkConfig {
-	for _, c := range config.Uplinks {
+func lookupOnIfname(config types.DevicePortConfig, ifname string) *types.NetworkPortConfig {
+	for _, c := range config.Ports {
 		if c.IfName == ifname {
 			return &c
 		}
