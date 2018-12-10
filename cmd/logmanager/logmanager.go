@@ -106,7 +106,7 @@ type imageLoggerContext struct {
 type DNSContext struct {
 	usableAddressCount     int
 	subDeviceNetworkStatus *pubsub.Subscription
-	doDeferred	       bool
+	doDeferred             bool
 }
 
 type zedcloudLogs struct {
@@ -474,6 +474,15 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	msgIdCounter += 1
 	log.Debugf("Read event from %s time %v id %d: %s\n",
 		event.source, event.timestamp, msgId, event.content)
+	// Have to discard if too large since service doesn't
+	// handle above 64k; we limit payload at 32k
+	strLen := len(event.content)
+	if strLen > logMaxBytes {
+		log.Errorf("HandleLogEvent: dropping source %s %d bytes: %s\n",
+			event.source, strLen, event.content)
+		return
+	}
+
 	logDetails := &zmet.LogEntry{}
 	logDetails.Content = event.content
 	logDetails.Severity = event.severity
@@ -481,7 +490,13 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	logDetails.Source = event.source
 	logDetails.Iid = event.iid
 	logDetails.Msgid = uint64(msgId)
+	oldLen := int64(proto.Size(reportLogs))
 	reportLogs.Log = append(reportLogs.Log, logDetails)
+	newLen := int64(proto.Size(reportLogs))
+	if newLen > logMaxBytes {
+		log.Warnf("HandleLogEvent: source %s from %d to %d bytes: %s\n",
+			event.source, oldLen, newLen, event.content)
+	}
 }
 
 // Returns true if a message was successfully sent
@@ -497,7 +512,13 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		log.Fatal("sendProtoStrForLogs proto marshaling error: ", err)
 	}
 	size := int64(proto.Size(reportLogs))
-	log.Debugf("Log Details (size %d): %s\n", size, reportLogs)
+	if size > logMaxBytes {
+		log.Warnf("sendProtoStrForLogs: %d bytes: %s\n",
+			size, reportLogs)
+	} else {
+		log.Debugf("sendProtoStrForLogs %d bytes: %s\n",
+			size, reportLogs)
+	}
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
 		log.Fatal("sendProtoStrForLogs malloc error:")
