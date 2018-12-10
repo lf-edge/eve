@@ -474,7 +474,8 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 	msgIdCounter += 1
 	log.Debugf("Read event from %s time %v id %d: %s\n",
 		event.source, event.timestamp, msgId, event.content)
-	// XXX discard too large
+	// Have to discard if too large since service doesn't
+	// handle above 64k; we limit payload at 32k
 	strLen := len(event.content)
 	if strLen > logMaxBytes {
 		log.Errorf("HandleLogEvent: dropping source %s %d bytes: %s\n",
