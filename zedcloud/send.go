@@ -151,12 +151,18 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 					connInfo.Conn.RemoteAddr(),
 					connInfo.Conn.LocalAddr())
 			},
+			DNSDone: func(dnsInfo httptrace.DNSDoneInfo) {
+				log.Debugf("DNS Info: %+v\n", dnsInfo)
+			},
+			DNSStart: func(dnsInfo httptrace.DNSStartInfo) {
+				log.Debugf("DNS start: %+v\n", dnsInfo)
+			},
 		}
 		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
 			trace))
 		resp, err := client.Do(req)
 		if err != nil {
-			log.Errorf("URL get fail: %v\n", err)
+			log.Errorf("client.Do fail: %v\n", err)
 			continue
 		}
 		defer resp.Body.Close()
