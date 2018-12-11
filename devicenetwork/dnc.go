@@ -9,23 +9,27 @@ import (
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"reflect"
+	"time"
 )
 
 type DeviceNetworkContext struct {
-	UsableAddressCount     int
-	ManufacturerModel      string
-	DeviceNetworkConfig    *types.DeviceNetworkConfig
-	DevicePortConfig       *types.DevicePortConfig
-	DevicePortConfigPrio   int
-	DeviceNetworkStatus    *types.DeviceNetworkStatus
-	SubDeviceNetworkConfig *pubsub.Subscription
-	SubDevicePortConfigA   *pubsub.Subscription
-	SubDevicePortConfigO   *pubsub.Subscription
-	SubDevicePortConfigS   *pubsub.Subscription
-	PubDevicePortConfig    *pubsub.Publication
-	PubDeviceNetworkStatus *pubsub.Publication
-	Changed                bool
-	SubGlobalConfig        *pubsub.Subscription
+	UsableAddressCount      int
+	ManufacturerModel       string
+	DeviceNetworkConfig     *types.DeviceNetworkConfig
+	DevicePortConfig        *types.DevicePortConfig // XXX remove? Or top?
+	DevicePortConfigList    *types.DevicePortConfigList
+	DevicePortConfigPrio    int // XXX remove
+	DevicePortConfigTime    time.Time
+	DeviceNetworkStatus     *types.DeviceNetworkStatus
+	SubDeviceNetworkConfig  *pubsub.Subscription
+	SubDevicePortConfigA    *pubsub.Subscription
+	SubDevicePortConfigO    *pubsub.Subscription
+	SubDevicePortConfigS    *pubsub.Subscription
+	PubDevicePortConfig     *pubsub.Publication // XXX remove
+	PubDevicePortConfigList *pubsub.Publication
+	PubDeviceNetworkStatus  *pubsub.Publication
+	Changed                 bool
+	SubGlobalConfig         *pubsub.Subscription
 }
 
 func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
@@ -87,17 +91,50 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 // 1. zedagent with any key
 // 2. "override" key from build or USB stick file
 // 3. "global" key derived from per-platform DeviceNetworkConfig
-// XXX same config with different timestamp? Each time zedagent retrieves?
-// Have zedagent compare?
 func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	portConfig := cast.CastDevicePortConfig(configArg)
 	ctx := ctxArg.(*DeviceNetworkContext)
 
 	curPriority := ctx.DevicePortConfigPrio
-	log.Infof("HandleDPCModify for %s current priority %d\n",
-		key, curPriority)
+	curTimePriority := ctx.DevicePortConfigTime
+	log.Infof("HandleDPCModify for %s current priority %d current time %v new time %v\n",
+		key, curPriority, curTimePriority, portConfig.TimePriority)
 
+	zeroTime := time.Time{}
+	if key == "override" && portConfig.TimePriority == zeroTime {
+		// XXX fix input instead?
+		portConfig.TimePriority = time.Unix(1, 0)
+		log.Infof("HandleDPCModify: Forcing TimePriority to %v\n",
+			portConfig.TimePriority)
+	}
+	var curConfig *types.DevicePortConfig
+	if ctx.DevicePortConfigList != nil &&
+		len(ctx.DevicePortConfigList.PortConfigList) != 0 {
+		curConfig = &ctx.DevicePortConfigList.PortConfigList[0]
+		log.Infof("HandleDPCModify: found curConfig %+v\n", curConfig)
+	} else {
+		curConfig = &types.DevicePortConfig{}
+	}
+	// Look up based on timestamp, then content
+	oldConfig := lookupPortConfig(ctx, portConfig)
+	if oldConfig != nil {
+		if reflect.DeepEqual(oldConfig.Ports, portConfig.Ports) {
+			log.Infof("HandleDPCModify: no change; timestamps %v %v\n",
+				oldConfig.TimePriority, portConfig.TimePriority)
+			log.Infof("HandleDPCModify done for %s\n", key)
+			return
+		}
+		log.Infof("HandleDPCModify: change from %+v to %+v\n",
+			*oldConfig, portConfig)
+		updatePortConfig(ctx, oldConfig, portConfig)
+	} else {
+		insertPortConfig(ctx, portConfig)
+	}
+	ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
+	log.Infof("HandleDPCModify: first is %+v\n",
+		ctx.DevicePortConfigList.PortConfigList[0])
+	// XXX old code - replace with: portConfig = ctx.DevicePortConfigList.PortConfigList[0]
 	var priority int
 	switch key {
 	case "global":
@@ -135,11 +172,29 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("HandleDPCDelete for %s\n", key)
 	ctx := ctxArg.(*DeviceNetworkContext)
+	portConfig := cast.CastDevicePortConfig(configArg)
 
 	curPriority := ctx.DevicePortConfigPrio
-	log.Infof("HandleDPCDelete for %s current priority %d\n",
-		key, curPriority)
+	curTimePriority := ctx.DevicePortConfigTime
+	log.Infof("HandleDPCDelete for %s current priority %d current time %v new time %v\n",
+		key, curPriority, curTimePriority, portConfig.TimePriority)
 
+	// Look up based on timestamp, then content
+	oldConfig := lookupPortConfig(ctx, portConfig)
+	if oldConfig != nil {
+		log.Infof("HandleDPCDelete: found %+v\n", *oldConfig)
+		removePortConfig(ctx, *oldConfig)
+	} else {
+		log.Errorf("HandleDPCDelete: not found %+v\n", portConfig)
+	}
+	ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
+	if len(ctx.DevicePortConfigList.PortConfigList) != 0 {
+		log.Infof("HandleDPCDelete: first is %+v\n",
+			ctx.DevicePortConfigList.PortConfigList[0])
+	} else {
+		log.Infof("HandleDPCDelete: none left\n")
+	}
+	// XXX old code - replace with: portConfig = ctx.DevicePortConfigList.PortConfigList[0]
 	var priority int
 	switch key {
 	case "global":
@@ -158,7 +213,7 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	// as if we have none
 	ctx.DevicePortConfigPrio = 0
 
-	portConfig := types.DevicePortConfig{}
+	portConfig = types.DevicePortConfig{}
 	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
 		log.Infof("DevicePortConfig change from %v to %v\n",
 			*ctx.DevicePortConfig, portConfig)
@@ -173,6 +228,85 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 		DoDNSUpdate(ctx)
 	}
 	log.Infof("HandleDPCDelete done for %s\n", key)
+}
+
+// First look for matching timestamp, then compare for identical content
+// This is needed since after a restart zedagent will provide new timestamps
+// even if we persisted the DevicePortConfig before the restart.
+func lookupPortConfig(ctx *DeviceNetworkContext,
+	portConfig types.DevicePortConfig) *types.DevicePortConfig {
+
+	for i, port := range ctx.DevicePortConfigList.PortConfigList {
+		if port.TimePriority == portConfig.TimePriority {
+			log.Infof("lookupPortConfig timestamp found +%v\n",
+				port)
+			return &ctx.DevicePortConfigList.PortConfigList[i]
+		}
+	}
+	for i, port := range ctx.DevicePortConfigList.PortConfigList {
+		if reflect.DeepEqual(port.Ports, portConfig.Ports) {
+			log.Infof("lookupPortConfig deepequal found +%v\n",
+				port)
+			return &ctx.DevicePortConfigList.PortConfigList[i]
+		}
+	}
+	return nil
+}
+
+// Update content and move if the timestamp changed
+func updatePortConfig(ctx *DeviceNetworkContext, oldConfig *types.DevicePortConfig, portConfig types.DevicePortConfig) {
+
+	if oldConfig.TimePriority == portConfig.TimePriority {
+		log.Infof("updatePortConfig: same time update %+v\n",
+			portConfig)
+		*oldConfig = portConfig
+		return
+	}
+	log.Infof("updatePortConfig: diff time remove+add  %+v\n",
+		portConfig)
+	removePortConfig(ctx, *oldConfig)
+	insertPortConfig(ctx, portConfig)
+}
+
+// Insert in reverse timestamp order
+func insertPortConfig(ctx *DeviceNetworkContext, portConfig types.DevicePortConfig) {
+
+	var newConfig []types.DevicePortConfig
+	inserted := false
+	for _, port := range ctx.DevicePortConfigList.PortConfigList {
+		if !inserted && portConfig.TimePriority.After(port.TimePriority) {
+			log.Infof("insertPortConfig: %+v before %+v\n",
+				portConfig, port)
+			newConfig = append(newConfig, portConfig)
+			inserted = true
+		}
+		newConfig = append(newConfig, port)
+	}
+	if !inserted {
+		log.Infof("insertPortConfig: at end %+v\n", portConfig)
+		newConfig = append(newConfig, portConfig)
+	}
+	ctx.DevicePortConfigList.PortConfigList = newConfig
+}
+
+// Remove by matching TimePriority
+func removePortConfig(ctx *DeviceNetworkContext, portConfig types.DevicePortConfig) {
+	var newConfig []types.DevicePortConfig
+	removed := false
+	for _, port := range ctx.DevicePortConfigList.PortConfigList {
+		if !removed && portConfig.TimePriority == port.TimePriority {
+			log.Infof("removePortConfig: found %+v\n",
+				port)
+			removed = true
+		} else {
+			newConfig = append(newConfig, port)
+		}
+	}
+	if !removed {
+		log.Errorf("removePortConfig: not found %+v\n", portConfig)
+		return
+	}
+	ctx.DevicePortConfigList.PortConfigList = newConfig
 }
 
 func DoDNSUpdate(ctx *DeviceNetworkContext) {

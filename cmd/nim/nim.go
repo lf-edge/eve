@@ -121,6 +121,13 @@ func Run() {
 	}
 	pubDevicePortConfig.ClearRestarted()
 
+	pubDevicePortConfigList, err := pubsub.PublishPersistent(agentName,
+		types.DevicePortConfigList{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubDevicePortConfigList.ClearRestarted()
+
 	nimCtx := nimContext{}
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
@@ -136,8 +143,10 @@ func Run() {
 	nimCtx.ManufacturerModel = model
 	nimCtx.DeviceNetworkConfig = &types.DeviceNetworkConfig{}
 	nimCtx.DevicePortConfig = &types.DevicePortConfig{}
+	nimCtx.DevicePortConfigList = &types.DevicePortConfigList{}
 	nimCtx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	nimCtx.PubDevicePortConfig = pubDevicePortConfig
+	nimCtx.PubDevicePortConfigList = pubDevicePortConfigList
 	nimCtx.PubDeviceNetworkStatus = pubDeviceNetworkStatus
 
 	// Get the initial DeviceNetworkConfig
