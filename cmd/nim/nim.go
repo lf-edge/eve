@@ -163,8 +163,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDevicePortConfigA.ModifyHandler = devicenetwork.HandleDUCModify
-	subDevicePortConfigA.DeleteHandler = devicenetwork.HandleDUCDelete
+	subDevicePortConfigA.ModifyHandler = devicenetwork.HandleDPCModify
+	subDevicePortConfigA.DeleteHandler = devicenetwork.HandleDPCDelete
 	nimCtx.SubDevicePortConfigA = subDevicePortConfigA
 	subDevicePortConfigA.Activate()
 
@@ -174,8 +174,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDevicePortConfigO.ModifyHandler = devicenetwork.HandleDUCModify
-	subDevicePortConfigO.DeleteHandler = devicenetwork.HandleDUCDelete
+	subDevicePortConfigO.ModifyHandler = devicenetwork.HandleDPCModify
+	subDevicePortConfigO.DeleteHandler = devicenetwork.HandleDPCDelete
 	nimCtx.SubDevicePortConfigO = subDevicePortConfigO
 	subDevicePortConfigO.Activate()
 
@@ -185,8 +185,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDevicePortConfigS.ModifyHandler = devicenetwork.HandleDUCModify
-	subDevicePortConfigS.DeleteHandler = devicenetwork.HandleDUCDelete
+	subDevicePortConfigS.ModifyHandler = devicenetwork.HandleDPCModify
+	subDevicePortConfigS.DeleteHandler = devicenetwork.HandleDPCDelete
 	nimCtx.SubDevicePortConfigS = subDevicePortConfigS
 	subDevicePortConfigS.Activate()
 

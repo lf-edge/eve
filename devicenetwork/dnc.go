@@ -47,7 +47,7 @@ func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
 		oldConfig = types.DevicePortConfig{}
 	}
 	*ctx.DeviceNetworkConfig = config
-	portConfig := MakeNetworkPortConfig(config)
+	portConfig := MakeDevicePortConfig(config)
 	if !reflect.DeepEqual(oldConfig, portConfig) {
 		log.Infof("DevicePortConfig change from %v to %v\n",
 			oldConfig, portConfig)
@@ -74,7 +74,7 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	}
 	// XXX what's the default? eth0 aka default.json? Use empty for now
 	*ctx.DeviceNetworkConfig = types.DeviceNetworkConfig{}
-	portConfig := MakeNetworkPortConfig(*ctx.DeviceNetworkConfig)
+	portConfig := MakeDevicePortConfig(*ctx.DeviceNetworkConfig)
 	if !reflect.DeepEqual(oldConfig, portConfig) {
 		log.Infof("DevicePortConfig change from %v to %v\n",
 			oldConfig, portConfig)
@@ -87,13 +87,15 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 // 1. zedagent with any key
 // 2. "override" key from build or USB stick file
 // 3. "global" key derived from per-platform DeviceNetworkConfig
-func HandleDUCModify(ctxArg interface{}, key string, configArg interface{}) {
+// XXX same config with different timestamp? Each time zedagent retrieves?
+// Have zedagent compare?
+func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	portConfig := cast.CastDevicePortConfig(configArg)
 	ctx := ctxArg.(*DeviceNetworkContext)
 
 	curPriority := ctx.DevicePortConfigPrio
-	log.Infof("HandleDUCModify for %s current priority %d\n",
+	log.Infof("HandleDPCModify for %s current priority %d\n",
 		key, curPriority)
 
 	var priority int
@@ -106,7 +108,7 @@ func HandleDUCModify(ctxArg interface{}, key string, configArg interface{}) {
 		priority = 1
 	}
 	if curPriority != 0 && priority > curPriority {
-		log.Infof("HandleDUCModify: ignoring lower priority %s\n",
+		log.Infof("HandleDPCModify: ignoring lower priority %s\n",
 			key)
 		return
 	}
@@ -126,16 +128,16 @@ func HandleDUCModify(ctxArg interface{}, key string, configArg interface{}) {
 		*ctx.DeviceNetworkStatus = dnStatus
 		DoDNSUpdate(ctx)
 	}
-	log.Infof("HandleDUCModify done for %s\n", key)
+	log.Infof("HandleDPCModify done for %s\n", key)
 }
 
-func HandleDUCDelete(ctxArg interface{}, key string, configArg interface{}) {
+func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 
-	log.Infof("HandleDUCDelete for %s\n", key)
+	log.Infof("HandleDPCDelete for %s\n", key)
 	ctx := ctxArg.(*DeviceNetworkContext)
 
 	curPriority := ctx.DevicePortConfigPrio
-	log.Infof("HandleDUCDelete for %s current priority %d\n",
+	log.Infof("HandleDPCDelete for %s current priority %d\n",
 		key, curPriority)
 
 	var priority int
@@ -148,7 +150,7 @@ func HandleDUCDelete(ctxArg interface{}, key string, configArg interface{}) {
 		priority = 1
 	}
 	if curPriority != priority {
-		log.Infof("HandleDUCDelete: not removing current priority %d for %s\n",
+		log.Infof("HandleDPCDelete: not removing current priority %d for %s\n",
 			curPriority, key)
 		return
 	}
@@ -170,7 +172,7 @@ func HandleDUCDelete(ctxArg interface{}, key string, configArg interface{}) {
 		*ctx.DeviceNetworkStatus = dnStatus
 		DoDNSUpdate(ctx)
 	}
-	log.Infof("HandleDUCDelete done for %s\n", key)
+	log.Infof("HandleDPCDelete done for %s\n", key)
 }
 
 func DoDNSUpdate(ctx *DeviceNetworkContext) {
