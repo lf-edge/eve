@@ -8,7 +8,7 @@ PERSISTDIR=/persist
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
 DNCDIR=$TMPDIR/DeviceNetworkConfig
-DUCDIR=$TMPDIR/DeviceUplinkConfig
+DPCDIR=$TMPDIR/DevicePortConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
@@ -88,7 +88,7 @@ fi
 # Make sure we have the required directories in place
 # Need /var/tmp/ledmanager/config; /var/run/ledmanager/status is empty. Needed?
 AGENTSWITHDIRS="ledmanager"
-DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
+DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
 
 for a in $AGENTSWITHDIRS; do
     DIRS="$DIRS /var/tmp/$a/config /var/run/$a/status"
@@ -274,14 +274,14 @@ if [ -f /var/run/watchdog.pid ]; then
 fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogled.conf -F -s &
 
-mkdir -p $DUCDIR
+mkdir -p $DPCDIR
 if [ -f $CONFIGDIR/allow-usb-override ]; then
     # Look for a USB stick with a key'ed file
     # If found it replaces any build override file in /config
     # XXX alternative is to use a designated UUID and -t.
     # cgpt find -t ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
     # XXX invent a unique uuid for the above?
-    SPECIAL=`cgpt find -l DeviceUplinkConfig`
+    SPECIAL=`cgpt find -l DevicePortConfig`
     echo "Found SPECIAL: $SPECIAL"
     if [ -z $SPECIAL ]; then
 	SPECIAL=/dev/sdb1
@@ -297,8 +297,8 @@ if [ -f $CONFIGDIR/allow-usb-override ]; then
 	    keyfile=/mnt/$key.json
 	    if [ -f $keyfile ]; then
 		echo "Found $keyfile on $SPECIAL"
-		echo "Copying from $keyfile to $CONFIGDIR/DeviceUplinkConfig/override.json"
-		cp -p $keyfile $CONFIGDIR/DeviceUplinkConfig/override.json
+		echo "Copying from $keyfile to $CONFIGDIR/DevicePortConfig/override.json"
+		cp -p $keyfile $CONFIGDIR/DevicePortConfig/override.json
 		# No more override allowed
 		rm $CONFIGDIR/allow-usb-override
 	    else
@@ -307,9 +307,9 @@ if [ -f $CONFIGDIR/allow-usb-override ]; then
 	fi
     fi
 fi
-if [ -f $CONFIGDIR/DeviceUplinkConfig/override.json ]; then
-    echo "Copying from $CONFIGDIR/DeviceUplinkConfig/override.json"
-    cp -p $CONFIGDIR/DeviceUplinkConfig/override.json $DUCDIR
+if [ -f $CONFIGDIR/DevicePortConfig/override.json ]; then
+    echo "Copying from $CONFIGDIR/DevicePortConfig/override.json"
+    cp -p $CONFIGDIR/DevicePortConfig/override.json $DPCDIR
 fi
 
 # Get IP addresses

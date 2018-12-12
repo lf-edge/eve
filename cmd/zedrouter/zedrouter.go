@@ -281,16 +281,16 @@ func Run() {
 	zedrouterCtx.subLispMetrics = subLispMetrics
 	subLispMetrics.Activate()
 
-	// This function is called from PBR when some non-uplink interface
+	// This function is called from PBR when some non-management port
 	// changes its IP address(es)
-	addrChangeNonUplinkFn := func(ifname string) {
-		log.Debugf("addrChangeNonUplinkFn(%s) called\n", ifname)
+	addrChangeNonMgmtPortFn := func(ifname string) {
+		log.Debugf("addrChangeNonMgmtPortFn(%s) called\n", ifname)
 		// Even if ethN isn't individually assignable, it
 		// could be used for a bridge.
 		maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
 	}
 	routeChanges, addrChanges, linkChanges := PbrInit(
-		&zedrouterCtx, nil, addrChangeNonUplinkFn)
+		&zedrouterCtx, nil, addrChangeNonMgmtPortFn)
 
 	// Publish network metrics for zedagent every 10 seconds
 	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
@@ -306,7 +306,7 @@ func Run() {
 
 	updateLispConfiglets(&zedrouterCtx, zedrouterCtx.legacyDataPlane)
 
-	setFreeUplinks(types.GetUplinksFree(*zedrouterCtx.deviceNetworkStatus, 0))
+	setFreeMgmtPorts(types.GetMgmtPortsFree(*zedrouterCtx.deviceNetworkStatus, 0))
 
 	zedrouterCtx.ready = true
 
@@ -391,8 +391,8 @@ func maybeHandleDNS(ctx *zedrouterContext) {
 	}
 	updateLispConfiglets(ctx, ctx.legacyDataPlane)
 
-	setFreeUplinks(types.GetUplinksFree(*ctx.deviceNetworkStatus, 0))
-	// XXX do a NatInactivate/NatActivate if freeuplinks/uplinks changed?
+	setFreeMgmtPorts(types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0))
+	// XXX do a NatInactivate/NatActivate if management ports changed?
 }
 
 func handleRestart(ctxArg interface{}, done bool) {
@@ -1031,7 +1031,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 		}
 		// Need to do both an add and a change since we could have
 		// a FAILED neighbor entry from a previous run and a down
-		// uplink interface.
+		// interface.
 		//    ip nei add fe80::1 lladdr 00:16:3e:02:01:00 dev $intf
 		//    ip nei change fe80::1 lladdr 00:16:3e:02:01:00 dev $intf
 		neigh := netlink.Neigh{LinkIndex: index, IP: via,
@@ -1559,10 +1559,10 @@ func createAndStartLisp(ctx *zedrouterContext,
 		adapterMap[adapter] = true
 	}
 	deviceNetworkParams := types.DeviceNetworkStatus{}
-	for _, uplink := range ctx.deviceNetworkStatus.UplinkStatus {
-		if _, ok := adapterMap[uplink.IfName]; ok == true {
-			deviceNetworkParams.UplinkStatus =
-				append(deviceNetworkParams.UplinkStatus, uplink)
+	for _, port := range ctx.deviceNetworkStatus.Ports {
+		if _, ok := adapterMap[port.IfName]; ok == true {
+			deviceNetworkParams.Ports =
+				append(deviceNetworkParams.Ports, port)
 		}
 	}
 	createLispEidConfiglet(lispRunDirname, serviceStatus.LispStatus.IID,

@@ -84,15 +84,15 @@ func CastDeviceNetworkConfig(in interface{}) types.DeviceNetworkConfig {
 	return output
 }
 
-func CastDeviceUplinkConfig(in interface{}) types.DeviceUplinkConfig {
+func CastDevicePortConfig(in interface{}) types.DevicePortConfig {
 	b, err := json.Marshal(in)
 	if err != nil {
-		log.Fatal(err, "json Marshal in CastDeviceUplinkConfig")
+		log.Fatal(err, "json Marshal in CastDevicePortConfig")
 	}
-	var output types.DeviceUplinkConfig
+	var output types.DevicePortConfig
 	if err := json.Unmarshal(b, &output); err != nil {
 		// Comes from outside sources like USB stick so don't Fatal
-		log.Errorln(err, "json Unmarshal in CastDeviceUplinkConfig")
+		log.Errorln(err, "json Unmarshal in CastDevicePortConfig")
 	}
 	return output
 }

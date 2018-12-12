@@ -66,17 +66,17 @@ func createDownloaderConfig(ctx *zedagentContext, objType string,
 			downloadURL = ds.Fqdn + "/" + dpath + "/" + sc.Name
 		}
 		n := types.DownloaderConfig{
-			Safename:        safename,
-			DownloadURL:     downloadURL,
-			TransportMethod: ds.DsType,
-			ApiKey:          ds.ApiKey,
-			Password:        ds.Password,
-			Dpath:           dpath,
-			Region:          ds.Region,
-			UseFreeUplinks:  false,
-			Size:            sc.Size,
-			ImageSha256:     sc.ImageSha256,
-			RefCount:        1,
+			Safename:         safename,
+			DownloadURL:      downloadURL,
+			TransportMethod:  ds.DsType,
+			ApiKey:           ds.ApiKey,
+			Password:         ds.Password,
+			Dpath:            dpath,
+			Region:           ds.Region,
+			UseFreeMgmtPorts: false,
+			Size:             sc.Size,
+			ImageSha256:      sc.ImageSha256,
+			RefCount:         1,
 		}
 		publishDownloaderConfig(ctx, objType, &n)
 	}
@@ -124,10 +124,10 @@ func updateDownloaderStatus(ctx *zedagentContext,
 			// Password:        status.Password,
 			// Dpath:           status.Dpath,
 			// Region:          status.Region,
-			UseFreeUplinks: status.UseFreeUplinks,
-			Size:           status.Size,
-			ImageSha256:    status.ImageSha256,
-			RefCount:       0,
+			UseFreeMgmtPorts: status.UseFreeMgmtPorts,
+			Size:             status.Size,
+			ImageSha256:      status.ImageSha256,
+			RefCount:         0,
 		}
 		publishDownloaderConfig(ctx, status.ObjType, &n)
 		return
