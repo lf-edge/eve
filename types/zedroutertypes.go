@@ -108,9 +108,18 @@ type DevicePortConfigList struct {
 // A complete set of configuration for all the ports used by zedrouter on the
 // device
 type DevicePortConfig struct {
+	Version      DevicePortConfigVersion
 	TimePriority time.Time // All zero's is fallback lowest priority
 	Ports        []NetworkPortConfig
 }
+
+type DevicePortConfigVersion uint32
+
+// When new fields and/or new semantics are added to DevicePortConfig a new
+// version value is added here.
+const (
+	DPCInitial DevicePortConfigVersion = iota
+)
 
 type NetworkProxyType uint8
 
