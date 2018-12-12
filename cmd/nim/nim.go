@@ -20,6 +20,7 @@ import (
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
+	"io"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -53,8 +54,10 @@ func Run() {
 
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
+	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
 	flag.Parse()
 	debug = *debugPtr
+	useStdout := *stdoutPtr
 	debugOverride = debug
 	if debugOverride {
 		log.SetLevel(log.DebugLevel)
@@ -65,6 +68,17 @@ func Run() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
+	// For limited output on console
+	consolef := os.Stdout
+	if !useStdout {
+		consolef, err = os.OpenFile("/dev/console", os.O_RDWR|os.O_APPEND,
+			0666)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	multi := io.MultiWriter(logf, consolef)
+	log.SetOutput(multi)
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
