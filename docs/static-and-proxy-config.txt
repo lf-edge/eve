@@ -17,7 +17,7 @@ Note that this uses the old "uplink" terminology; new terminology is
 
 This per-model comfiguration can be overridden by an optional file in
 /config which is added when the image is built/installed.
-That file is /config/DeviceUplinkConfig/override.json
+That file is /config/DevicePortConfig/override.json
 
 That file can specify multiple management interfaces, and can specify static IP
 and DNS configuration (for environments where DHCP is not used). In addition it
@@ -25,7 +25,7 @@ can specify proxies using different mechanism.
 
 An example file to specify using WPAD to retrieve proxy configuration on eth0 is:
 {
-    "Uplinks": [
+    "Ports": [
         {
             "AddrSubnet": "",
             "Dhcp": 4,
@@ -35,6 +35,7 @@ An example file to specify using WPAD to retrieve proxy configuration on eth0 is
             "Free": true,
             "Gateway": "",
             "IfName": "eth0",
+            "IsMgmt": true,
             "NetworkProxyEnable": true,
             "NetworkProxyURL": "",
             "NtpServer": "",
@@ -46,7 +47,7 @@ An example file to specify using WPAD to retrieve proxy configuration on eth0 is
 
 An example file with eth0 being static and eth1 using dhcp is:
 {
-    "Uplinks": [
+    "Ports": [
         {
             "AddrSubnet": "38.108.181.238/24", 
             "Dhcp": 1,
@@ -57,6 +58,7 @@ An example file with eth0 being static and eth1 using dhcp is:
             "Free": true,
             "Gateway": "38.108.181.254",
             "IfName": "eth0",
+            "IsMgmt": true,
             "NtpServer": "38.108.181.254",
             "NetworkProxyEnable": false,
             "NetworkProxyURL": "",
@@ -67,7 +69,8 @@ An example file with eth0 being static and eth1 using dhcp is:
         {
             "Dhcp": 4,
             "Free": true,
-            "IfName": "eth1"
+            "IfName": "eth1",
+            "IsMgmt": true
         }
     ]
 }
