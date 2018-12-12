@@ -33,10 +33,10 @@ type IoBundle struct {
 	PciShort string // If pci adapter
 	XenCfg   string // If template for the bundle
 
-	IsPCIBack bool // Assigned to pciback
-	IsUplink  bool // Whole or part of the bundle is an uplink
-	IsBridge  bool // Exclusively used by a bridge service. TBD
-	IsService bool // Used by a service. TBD.
+	IsPCIBack  bool // Assigned to pciback
+	IsMgmtPort bool // Whole or part of the bundle is a management port
+	IsBridge   bool // Exclusively used by a bridge service. TBD
+	IsService  bool // Used by a service. TBD.
 }
 
 // Should match definition in appconfig.proto

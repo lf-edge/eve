@@ -24,7 +24,7 @@ type GlobalConfig struct {
 	DefaultLogLevel       string
 	DefaultRemoteLogLevel string
 	// XXX add max space for downloads?
-	// XXX add LTE uplink usage policy?
+	// XXX add LTE management port usage policy?
 
 	XXXTest bool
 	// Per agent settings of log levels; if set for an agent it

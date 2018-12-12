@@ -57,7 +57,7 @@ func AddrChange(ctx *DeviceNetworkContext, change netlink.AddrUpdate) {
 // The ifname arg can only be used for logging
 func HandleAddressChange(ctx *DeviceNetworkContext, ifname string) {
 	// Check if we have more or less addresses
-	status, _ := MakeDeviceNetworkStatus(*ctx.DeviceUplinkConfig,
+	status, _ := MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
 		*ctx.DeviceNetworkStatus)
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
 		log.Debugf("HandleAddressChange: change for %s from %v to %v\n",

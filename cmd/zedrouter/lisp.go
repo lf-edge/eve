@@ -84,7 +84,7 @@ lisp interface {
 `
 
 // Need to pass in (IID, EID, rlocs), where rlocs is a string with
-// sets of uplink info with:
+// sets of ports info with:
 // rloc {
 //        interface = %s
 // }
@@ -131,7 +131,7 @@ lisp interface {
 `
 
 // Need to fill in (IID, EID, IID, tag, tag, rlocs) where
-// rlocs is a string with sets of uplink info with:
+// rlocs is a string with sets of ports info with:
 // rloc {
 //        interface = %s
 // }
@@ -208,7 +208,7 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	}
 	defer file2.Close()
 	rlocString := ""
-	for _, u := range globalStatus.UplinkStatus {
+	for _, u := range globalStatus.Ports {
 		// Skip interfaces which are not free or have no usable address
 		if !u.Free {
 			continue
@@ -294,7 +294,7 @@ func createLispEidConfiglet(lispRunDirname string,
 	defer file.Close()
 
 	rlocString := ""
-	for _, u := range globalStatus.UplinkStatus {
+	for _, u := range globalStatus.Ports {
 		// Skip interfaces which are not free or have no usable address
 		if !u.Free {
 			continue
@@ -390,7 +390,7 @@ func updateLisp(lispRunDirname string,
 	legacyDataPlane bool) {
 
 	log.Debugf("updateLisp: %s %v\n",
-		lispRunDirname, globalStatus.UplinkStatus)
+		lispRunDirname, globalStatus.Ports)
 
 	if deferUpdate {
 		log.Infof("updateLisp deferred\n")
@@ -489,8 +489,8 @@ func updateLisp(lispRunDirname string,
 	devices = strings.Replace(devices, "\n", " ", -1)
 	log.Debugf("updateLisp: found %d EIDs devices <%v>\n",
 		eidCount, devices)
-	freeUpLinks := types.GetUplinkFreeNoLocal(*globalStatus)
-	for _, u := range freeUpLinks {
+	freeMgmtPorts := types.GetMgmtPortFreeNoLocal(*globalStatus)
+	for _, u := range freeMgmtPorts {
 		devices += " " + u.IfName
 	}
 	// Check how many EIDs we have configured. If none we stop lisp
@@ -520,7 +520,7 @@ func updateLisp(lispRunDirname string,
 				maybeStartLispDataPlane()
 			}
 		}
-		restartLisp(globalStatus.UplinkStatus, devices)
+		restartLisp(globalStatus.Ports, devices)
 	}
 }
 
@@ -546,11 +546,11 @@ func handleLispRestart(done bool, legacyDataPlane bool) {
 	}
 }
 
-func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
+func restartLisp(portStatus []types.NetworkPortStatus, devices string) {
 
-	log.Debugf("restartLisp: %v %s\n", upLinkStatus, devices)
-	if len(upLinkStatus) == 0 {
-		log.Errorf("Can not restart lisp with no uplinks\n")
+	log.Debugf("restartLisp: %v %s\n", portStatus, devices)
+	if len(portStatus) == 0 {
+		log.Errorf("Can not restart lisp with no ports\n")
 		return
 	}
 	// XXX hack to avoid hang in pslisp on Erik's laptop
@@ -564,11 +564,11 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 			log.Errorf("pkill output %s\n", string(stdoutStderr))
 		}
 	}
-	// XXX how to restart with multiple uplinks?
-	// Find first free uplink with a non-link-local IPv6, or an IPv4 address
-	uplink := upLinkStatus[0]
+	// XXX how to restart with multiple ports?
+	// Find first free port with a non-link-local IPv6, or an IPv4 address
+	port := portStatus[0]
 	found := false
-	for _, u := range upLinkStatus {
+	for _, u := range portStatus {
 		// Skip interfaces which are not free or have no usable address
 		if !u.Free {
 			continue
@@ -578,7 +578,7 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 		}
 		for _, i := range u.AddrInfoList {
 			if !i.Addr.IsLinkLocalUnicast() {
-				uplink = u
+				port = u
 				found = true
 				break
 			}
@@ -588,14 +588,14 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 		}
 	}
 	if !found {
-		log.Errorf("Can not restart lisp - no usable IP addresses on free uplinks\n")
+		log.Errorf("Can not restart lisp - no usable IP addresses on free ports\n")
 		return
 	}
 
 	args := []string{
 		RestartCmd,
 		"8080",
-		uplink.IfName,
+		port.IfName,
 	}
 	itrTimeout := 1
 	cmd := wrap.Command(RestartCmd)
@@ -625,7 +625,7 @@ func restartLisp(upLinkStatus []types.NetworkUplink, devices string) {
 		"%s 8080 %s\n"
 
 	b := []byte(fmt.Sprintf(RLTemplate, devices, itrTimeout, RestartCmd,
-		uplink.IfName))
+		port.IfName))
 	err = ioutil.WriteFile(RLFilename, b, 0744)
 	if err != nil {
 		log.Fatal("WriteFile", err, RLFilename)

@@ -37,11 +37,11 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 	for try := 0; try < 2; try += 1 {
 		var intfs []string
 		if try == 0 {
-			intfs = types.GetUplinksFree(*ctx.DeviceNetworkStatus,
+			intfs = types.GetMgmtPortsFree(*ctx.DeviceNetworkStatus,
 				iteration)
 			log.Debugf("sendOnAllIntf trying free %v\n", intfs)
 		} else {
-			intfs = types.GetUplinksNonFree(*ctx.DeviceNetworkStatus,
+			intfs = types.GetMgmtPortsNonFree(*ctx.DeviceNetworkStatus,
 				iteration)
 			log.Debugf("sendOnAllIntf non-free %v\n", intfs)
 		}

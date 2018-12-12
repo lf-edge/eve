@@ -195,13 +195,12 @@ func Run() {
 	zedagentCtx.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
-	// XXX placeholder for uplink config from zedcloud
-	pubDeviceUplinkConfig, err := pubsub.Publish(agentName,
-		types.DeviceUplinkConfig{})
+	pubDevicePortConfig, err := pubsub.Publish(agentName,
+		types.DevicePortConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
-	getconfigCtx.pubDeviceUplinkConfig = pubDeviceUplinkConfig
+	getconfigCtx.pubDevicePortConfig = pubDevicePortConfig
 
 	// Publish NetworkConfig and NetworkServiceConfig for zedmanager/zedrouter
 	pubNetworkObjectConfig, err := pubsub.Publish(agentName,
@@ -533,7 +532,7 @@ func Run() {
 	t1.Stop()
 	t2.Stop()
 	if waited && DNSctx.usableAddressCount != 0 {
-		// Inform ledmanager that we have uplink addresses
+		// Inform ledmanager that we have management port addresses
 		types.UpdateLedManagerConfig(2)
 		getconfigCtx.ledManagerCount = 2
 	}
@@ -562,7 +561,7 @@ func Run() {
 		log.Fatal(err)
 	}
 
-	// Publish initial device info. Retries all addresses on all uplinks.
+	// Publish initial device info.
 	publishDevInfo(&zedagentCtx)
 
 	// start the metrics reporting task

@@ -19,7 +19,7 @@ const (
 	AzureVpnClient    = "azureClient"
 	OnPremVpnClient   = "onPremClient"
 	OnPremVpnServer   = "onPremServer"
-	UpLinkIpAddrType  = "upLink"
+	PortIpAddrType    = "upLink" // XXX where is "upLink" set?
 	AppLinkSubnetType = "appNet"
 	AnyIpAddr         = "%any"
 )
@@ -109,25 +109,25 @@ func strongswanInactivate(status *types.NetworkServiceStatus,
 func strongSwanConfigGet(ctx *zedrouterContext,
 	config types.NetworkServiceConfig) (types.VpnServiceConfig, error) {
 
-	upLink := types.NetLinkConfig{}
+	port := types.NetLinkConfig{}
 	appLink := types.NetLinkConfig{}
 	vpnConfig := types.VpnServiceConfig{}
 	appNetPresent := false
 
 	// if adapter is not set, return
 	if config.Adapter == "" {
-		return vpnConfig, errors.New("uplink config is absent")
+		return vpnConfig, errors.New("port config is absent")
 	}
 
-	// uplink ip address error
+	// port ip address error
 	srcIp, err := types.GetLocalAddrAny(*ctx.deviceNetworkStatus, 0,
 		config.Adapter)
 	if err != nil {
 		return vpnConfig, err
 	}
 
-	upLink.Name = config.Adapter
-	upLink.IpAddr = srcIp.String()
+	port.Name = config.Adapter
+	port.IpAddr = srcIp.String()
 
 	// app net information
 	appNet := lookupNetworkObjectConfig(ctx, config.AppLink.String())
@@ -149,12 +149,12 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 	vpnConfig.IsClient = vpnCloudConfig.IsClient
 	vpnConfig.PolicyBased = vpnCloudConfig.PolicyBased
 	vpnConfig.GatewayConfig = vpnCloudConfig.GatewayConfig
-	vpnConfig.UpLinkConfig = upLink
+	vpnConfig.PortConfig = port
 	vpnConfig.AppLinkConfig = appLink
 
 	// fill and validate the ip address/subnet
-	if vpnConfig.GatewayConfig.IpAddr == UpLinkIpAddrType {
-		vpnConfig.GatewayConfig.IpAddr = upLink.IpAddr
+	if vpnConfig.GatewayConfig.IpAddr == PortIpAddrType {
+		vpnConfig.GatewayConfig.IpAddr = port.IpAddr
 	}
 	if appNetPresent &&
 		vpnConfig.GatewayConfig.SubnetBlock == AppLinkSubnetType {
@@ -181,8 +181,8 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 		clientConfig.TunnelConfig.LocalIpAddr = ssClientConfig.TunnelConfig.LocalIpAddr
 		clientConfig.TunnelConfig.RemoteIpAddr = ssClientConfig.TunnelConfig.RemoteIpAddr
 
-		if clientConfig.IpAddr == UpLinkIpAddrType {
-			clientConfig.IpAddr = upLink.IpAddr
+		if clientConfig.IpAddr == PortIpAddrType {
+			clientConfig.IpAddr = port.IpAddr
 		}
 		if appNetPresent &&
 			clientConfig.SubnetBlock == AppLinkSubnetType {
@@ -212,9 +212,9 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 	}
 
 	if !vpnConfig.IsClient {
-		if vpnConfig.GatewayConfig.IpAddr != upLink.IpAddr {
+		if vpnConfig.GatewayConfig.IpAddr != port.IpAddr {
 			errorStr := vpnConfig.GatewayConfig.IpAddr
-			errorStr = errorStr + ", upLink: " + upLink.IpAddr
+			errorStr = errorStr + ", port: " + port.IpAddr
 			return vpnConfig, errors.New("IpAddr Mismatch, GatewayIp: " + errorStr)
 		}
 		// ensure appNet match
@@ -307,7 +307,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		// server ip address/subnet is must
 		if strongSwanConfig.VpnGatewayIpAddr == "" ||
 			strongSwanConfig.VpnGatewayIpAddr == AnyIpAddr ||
-			strongSwanConfig.VpnGatewayIpAddr == UpLinkIpAddrType {
+			strongSwanConfig.VpnGatewayIpAddr == PortIpAddrType {
 			return vpnConfig, errors.New("vpn gateway not set")
 		}
 		if strongSwanConfig.VpnSubnetBlock == "" ||
@@ -347,7 +347,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		// server ip address/subnet is must
 		if strongSwanConfig.VpnGatewayIpAddr == "" ||
 			strongSwanConfig.VpnGatewayIpAddr == AnyIpAddr ||
-			strongSwanConfig.VpnGatewayIpAddr == UpLinkIpAddrType {
+			strongSwanConfig.VpnGatewayIpAddr == PortIpAddrType {
 			return vpnConfig, errors.New("vpn gateway not set")
 		}
 		if strongSwanConfig.VpnSubnetBlock == "" ||
@@ -372,7 +372,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 		// server ip address is must
 		if strongSwanConfig.VpnGatewayIpAddr == "" ||
 			strongSwanConfig.VpnGatewayIpAddr == AnyIpAddr ||
-			strongSwanConfig.VpnGatewayIpAddr == UpLinkIpAddrType {
+			strongSwanConfig.VpnGatewayIpAddr == PortIpAddrType {
 			return vpnConfig, errors.New("vpn gateway not set")
 		}
 		// for client, server side subnet information, is must
@@ -391,9 +391,9 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 
 	case OnPremVpnServer:
 		strongSwanConfig.IsClient = false
-		// if not mentioned, assume upLink ip address
+		// if not mentioned, assume port ip address
 		if strongSwanConfig.VpnGatewayIpAddr == "" {
-			strongSwanConfig.VpnGatewayIpAddr = UpLinkIpAddrType
+			strongSwanConfig.VpnGatewayIpAddr = PortIpAddrType
 		}
 		// if not mentioned, assume appnet subnet
 		if strongSwanConfig.VpnSubnetBlock == "" {
@@ -409,8 +409,8 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 			strongSwanConfig.ClientConfigList[0] = *clientConfig
 		}
 		for _, clientConfig := range strongSwanConfig.ClientConfigList {
-			if clientConfig.IpAddr == UpLinkIpAddrType {
-				return vpnConfig, errors.New("client can not take uplink Addr")
+			if clientConfig.IpAddr == PortIpAddrType {
+				return vpnConfig, errors.New("client can not take port Addr")
 			}
 			// for route based server, client subnet information is must
 			if clientConfig.SubnetBlock == "" ||
@@ -443,7 +443,7 @@ func strongSwanVpnConfigParse(opaqueConfig string) (types.VpnServiceConfig, erro
 
 		if vpnConfig.IsClient {
 			if clientConfig.IpAddr == "" {
-				clientConfig.IpAddr = UpLinkIpAddrType
+				clientConfig.IpAddr = PortIpAddrType
 			}
 			if clientConfig.SubnetBlock == "" {
 				clientConfig.SubnetBlock = AppLinkSubnetType
@@ -687,7 +687,7 @@ func checkForClientDups(config types.StrongSwanServiceConfig) error {
 func isClientWildCard(client types.VpnClientConfig) bool {
 	log.Infof("isClientWildCard %s\n", client.IpAddr)
 	if client.IpAddr == "" || client.IpAddr == AnyIpAddr ||
-		client.IpAddr == UpLinkIpAddrType {
+		client.IpAddr == PortIpAddrType {
 		return true
 	}
 	if ip := net.ParseIP(client.IpAddr); ip != nil {
@@ -721,7 +721,7 @@ func vpnValidateLinkLocal(ipNetStr string) error {
 
 func vpnValidateIpAddr(ipAddrStr string, isValid bool) error {
 	if ipAddrStr == "" || ipAddrStr == AnyIpAddr ||
-		ipAddrStr == UpLinkIpAddrType {
+		ipAddrStr == PortIpAddrType {
 		if isValid {
 			return errors.New("invalid ip address: " + ipAddrStr)
 		}
