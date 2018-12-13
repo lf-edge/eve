@@ -366,9 +366,15 @@ if [ ! \( -f $CONFIGDIR/device.cert.pem -a -f $CONFIGDIR/device.key.pem \) ]; th
     echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
     $BINDIR/generate-device.sh $CONFIGDIR/device
     SELF_REGISTER=1
-elif [ -f $TMPDIR/self-register-failed ]; then
-    echo "self-register failed/killed/rebooted; redoing self-register"
-    SELF_REGISTER=1
+elif [ -f $CONFIGDIR/self-register-failed ]; then
+    echo "self-register failed/killed/rebooted"
+    $BINDIR/client -r 5 getUuid
+    if [ $? != 0 ]; then 
+	echo "self-register failed/killed/rebooted; getUuid fail; redoing self-register"
+	SELF_REGISTER=1
+    else
+	echo "self-register failed/killed/rebooted; getUuid pass"
+    fi
 else
     echo "Using existing device key pair and self-signed cert"
     SELF_REGISTER=0
@@ -403,8 +409,7 @@ fi
 if [ $SELF_REGISTER = 1 ]; then
     rm -f $TMPDIR/zedrouterconfig.json
     
-    # XXX doesn't this need to be in /config to survive a power-failure?
-    touch $TMPDIR/self-register-failed
+    touch $CONFIGDIR/self-register-failed
     echo "Self-registering our device certificate at " `date`
     if [ ! \( -f $CONFIGDIR/onboard.cert.pem -a -f $CONFIGDIR/onboard.key.pem \) ]; then
 	echo "Missing onboarding certificate. Giving up"
@@ -412,7 +417,11 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
     echo $BINDIR/client selfRegister
     $BINDIR/client selfRegister
-    rm -f $TMPDIR/self-register-failed
+    if [ $? != 0 ]; then
+	echo "client selfRegister failed with $?"
+	exit 1
+    fi
+    rm -f $CONFIGDIR/self-register-failed
     if [ $WAIT = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
