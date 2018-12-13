@@ -65,6 +65,49 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 	return nil, nil, errors.New(errStr)
 }
 
+func TestAllIntf(ctx ZedCloudContext, url string, iteration int) (bool, error) {
+	var cloudReachable bool = false
+	// If failed then try the non-free
+	for try := 0; try < 2; try += 1 {
+		var intfs []string
+		if try == 0 {
+			intfs = types.GetMgmtPortsFree(*ctx.DeviceNetworkStatus,
+			iteration)
+			log.Debugf("TestAllIntf: trying free %v\n", intfs)
+		} else {
+			intfs = types.GetMgmtPortsNonFree(*ctx.DeviceNetworkStatus,
+			iteration)
+			log.Debugf("TestAllIntf: non-free %v\n", intfs)
+		}
+		for _, intf := range intfs {
+			resp, _, err := SendOnIntf(ctx, url, intf, 0, nil, true)
+			if err != nil {
+				// XXX Have code to mark this interface as not suitable
+				// for cloud/internet connectivity
+				log.Errorf("TestAllIntf: Zedcloud un-reachable via interface %s", intf)
+				continue
+			}
+			switch resp.StatusCode {
+			case http.StatusOK:
+				log.Infof("TestAllIntf: Zedcloud reachable via interface %s", intf)
+				cloudReachable = true
+			default:
+				log.Errorf(
+					"TestAllIntf: Uplink test FAILED via %s to URL %s with " +
+					"status code %d and status %s",
+					intf, url, resp.StatusCode, http.StatusText(resp.StatusCode))
+					continue
+			}
+		}
+	}
+	if !cloudReachable {
+		errStr := fmt.Sprintf("TestAllIntf: All test attempts to connect to %s failed", url)
+		log.Errorln(errStr)
+		return false, errors.New(errStr)
+	}
+	return true, nil
+}
+
 // Tries all source addresses on interface until one succeeds.
 // Returns response for first success. Caller can not use resp.Body but can
 // use []byte contents return.

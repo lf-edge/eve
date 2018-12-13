@@ -10,7 +10,10 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/zedcloud"
+	"io/ioutil"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -46,6 +49,41 @@ func isProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 	}
 	return false
 }
+
+// Check if device can talk to outside world via atleast one of the free uplinks
+func TestDeviceNetworkStatus(
+	status types.DeviceNetworkStatus, retryCount int) bool {
+
+	serverFileName := "/config/server"
+	server, err := ioutil.ReadFile(serverFileName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	serverNameAndPort := strings.TrimSpace(string(server))
+	serverName := strings.Split(serverNameAndPort, ":")[0]
+	testUrl := serverNameAndPort + "/api/v1/edgedevice/ping"
+
+	zedcloudCtx := zedcloud.ZedCloudContext{
+		DeviceNetworkStatus: &status,
+	}
+	tlsConfig, err := zedcloud.GetTlsConfig(serverName, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedcloudCtx.TlsConfig = tlsConfig
+	cloudReachable, err := zedcloud.TestAllIntf(zedcloudCtx, testUrl, retryCount)
+	if err != nil {
+		log.Errorln(err)
+		return false
+	}
+
+	if cloudReachable {
+		log.Infof("Uplink test SUCCESS to URL: %s", testUrl)
+		return true
+	}
+	return false
+}
+
 
 // Calculate local IP addresses to make a types.DeviceNetworkStatus
 func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus types.DeviceNetworkStatus) (types.DeviceNetworkStatus, error) {
