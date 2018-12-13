@@ -16,16 +16,15 @@ type DeviceNetworkContext struct {
 	UsableAddressCount      int
 	ManufacturerModel       string
 	DeviceNetworkConfig     *types.DeviceNetworkConfig
-	DevicePortConfig        *types.DevicePortConfig // XXX remove? Or top?
+	DevicePortConfig        *types.DevicePortConfig // Currently in use
 	DevicePortConfigList    *types.DevicePortConfigList
-	DevicePortConfigPrio    int // XXX remove
 	DevicePortConfigTime    time.Time
 	DeviceNetworkStatus     *types.DeviceNetworkStatus
 	SubDeviceNetworkConfig  *pubsub.Subscription
 	SubDevicePortConfigA    *pubsub.Subscription
 	SubDevicePortConfigO    *pubsub.Subscription
 	SubDevicePortConfigS    *pubsub.Subscription
-	PubDevicePortConfig     *pubsub.Publication // XXX remove
+	PubDevicePortConfig     *pubsub.Publication // Derived from DeviceNetworkConfig
 	PubDevicePortConfigList *pubsub.Publication
 	PubDeviceNetworkStatus  *pubsub.Publication
 	Changed                 bool
@@ -91,15 +90,15 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 // 1. zedagent with any key
 // 2. "override" key from build or USB stick file
 // 3. "global" key derived from per-platform DeviceNetworkConfig
+// We determine the priority from TimePriority in the config.
 func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	portConfig := cast.CastDevicePortConfig(configArg)
 	ctx := ctxArg.(*DeviceNetworkContext)
 
-	curPriority := ctx.DevicePortConfigPrio
 	curTimePriority := ctx.DevicePortConfigTime
-	log.Infof("HandleDPCModify for %s current priority %d current time %v new time %v\n",
-		key, curPriority, curTimePriority, portConfig.TimePriority)
+	log.Infof("HandleDPCModify for %s current time %v new time %v\n",
+		key, curTimePriority, portConfig.TimePriority)
 
 	zeroTime := time.Time{}
 	if key == "override" && portConfig.TimePriority == zeroTime {
@@ -108,6 +107,13 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 		log.Infof("HandleDPCModify: Forcing TimePriority to %v\n",
 			portConfig.TimePriority)
 	}
+	// XXX should we for Name == "" to IfName for each?
+	for _, port := range portConfig.Ports {
+		if port.Name == "" {
+			port.Name = port.IfName
+		}
+	}
+
 	var curConfig *types.DevicePortConfig
 	if ctx.DevicePortConfigList != nil &&
 		len(ctx.DevicePortConfigList.PortConfigList) != 0 {
@@ -134,25 +140,10 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
 	log.Infof("HandleDPCModify: first is %+v\n",
 		ctx.DevicePortConfigList.PortConfigList[0])
-	// XXX old code - replace with: portConfig = ctx.DevicePortConfigList.PortConfigList[0]
-	var priority int
-	switch key {
-	case "global":
-		priority = 3
-	case "override":
-		priority = 2
-	default:
-		priority = 1
-	}
-	if curPriority != 0 && priority > curPriority {
-		log.Infof("HandleDPCModify: ignoring lower priority %s\n",
-			key)
-		return
-	}
-	ctx.DevicePortConfigPrio = priority
+	portConfig = ctx.DevicePortConfigList.PortConfigList[0]
 
 	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
-		log.Infof("DevicePortConfig change from %v to %v\n",
+		log.Infof("HandleDPCModify DevicePortConfig change from %v to %v\n",
 			*ctx.DevicePortConfig, portConfig)
 		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
 		*ctx.DevicePortConfig = portConfig
@@ -160,7 +151,7 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	dnStatus, _ := MakeDeviceNetworkStatus(portConfig,
 		*ctx.DeviceNetworkStatus)
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
-		log.Infof("DeviceNetworkStatus change from %v to %v\n",
+		log.Infof("HandleDPCModify DeviceNetworkStatus change from %v to %v\n",
 			*ctx.DeviceNetworkStatus, dnStatus)
 		*ctx.DeviceNetworkStatus = dnStatus
 		DoDNSUpdate(ctx)
@@ -174,10 +165,9 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*DeviceNetworkContext)
 	portConfig := cast.CastDevicePortConfig(configArg)
 
-	curPriority := ctx.DevicePortConfigPrio
 	curTimePriority := ctx.DevicePortConfigTime
-	log.Infof("HandleDPCDelete for %s current priority %d current time %v new time %v\n",
-		key, curPriority, curTimePriority, portConfig.TimePriority)
+	log.Infof("HandleDPCDelete for %s current time %v new time %v\n",
+		key, curTimePriority, portConfig.TimePriority)
 
 	// Look up based on timestamp, then content
 	oldConfig := lookupPortConfig(ctx, portConfig)
@@ -191,38 +181,21 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	if len(ctx.DevicePortConfigList.PortConfigList) != 0 {
 		log.Infof("HandleDPCDelete: first is %+v\n",
 			ctx.DevicePortConfigList.PortConfigList[0])
+		portConfig = ctx.DevicePortConfigList.PortConfigList[0]
 	} else {
 		log.Infof("HandleDPCDelete: none left\n")
+		portConfig = types.DevicePortConfig{}
 	}
-	// XXX old code - replace with: portConfig = ctx.DevicePortConfigList.PortConfigList[0]
-	var priority int
-	switch key {
-	case "global":
-		priority = 3
-	case "override":
-		priority = 2
-	default:
-		priority = 1
-	}
-	if curPriority != priority {
-		log.Infof("HandleDPCDelete: not removing current priority %d for %s\n",
-			curPriority, key)
-		return
-	}
-	// XXX we have no idea what the next in line priority is; set to zero
-	// as if we have none
-	ctx.DevicePortConfigPrio = 0
 
-	portConfig = types.DevicePortConfig{}
 	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
-		log.Infof("DevicePortConfig change from %v to %v\n",
+		log.Infof("HandleDPCDelete DevicePortConfig change from %v to %v\n",
 			*ctx.DevicePortConfig, portConfig)
 		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
 		*ctx.DevicePortConfig = portConfig
 	}
 	dnStatus := types.DeviceNetworkStatus{}
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
-		log.Infof("DeviceNetworkStatus change from %v to %v\n",
+		log.Infof("HandleDPCDelete DeviceNetworkStatus change from %v to %v\n",
 			*ctx.DeviceNetworkStatus, dnStatus)
 		*ctx.DeviceNetworkStatus = dnStatus
 		DoDNSUpdate(ctx)
