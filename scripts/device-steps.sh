@@ -417,6 +417,10 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
     echo $BINDIR/client selfRegister
     $BINDIR/client selfRegister
+    if [ $? != 0 ]; then
+	echo "client selfRegister failed with $?"
+	exit 1
+    fi
     rm -f $CONFIGDIR/self-register-failed
     if [ $WAIT = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
