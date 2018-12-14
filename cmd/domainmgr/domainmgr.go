@@ -13,6 +13,16 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -27,15 +37,6 @@ import (
 	"github.com/zededa/go-provision/sema"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/wrap"
-	"io"
-	"io/ioutil"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 )
 
 const (
@@ -81,6 +82,10 @@ type domainContext struct {
 	pubAssignableAdapters  *pubsub.Publication
 	usbAccess              bool
 	createSema             sema.Semaphore
+}
+
+func (ctx *domainContext) publishAssignableAdapters() {
+	ctx.pubAssignableAdapters.Publish("global", ctx.assignableAdapters)
 }
 
 var debug = false
@@ -674,8 +679,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		config.UUIDandVersion, status.DomainName,
 		config.DisplayName)
 
-	if err := configToStatus(ctx, *config, ctx.assignableAdapters,
-		&status); err != nil {
+	if err := configToStatus(ctx, *config, &status); err != nil {
 		log.Errorf("Failed to create DomainStatus from %v: %s\n",
 			config, err)
 		status.PendingAdd = false
@@ -896,8 +900,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 }
 
 // shutdown and wait for the domain to go away; if that fails destroy and wait
-func doInactivate(ctx *domainContext, status *types.DomainStatus,
-	aa *types.AssignableAdapters) {
+func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 
 	log.Infof("doInactivate(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
@@ -1002,14 +1005,14 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus,
 			delImageStatus(ctx, ds.ActiveFileLocation)
 		}
 	}
-	pciUnassign(ctx, status, aa, false)
+	pciUnassign(ctx, status, false)
 
 	log.Infof("doInactivate(%v) done for %s\n",
 		status.UUIDandVersion, status.DisplayName)
 }
 
 func pciUnassign(ctx *domainContext, status *types.DomainStatus,
-	aa *types.AssignableAdapters, ignoreErrors bool) {
+	ignoreErrors bool) {
 
 	log.Infof("pciUnassign(%v, %v) for %s\n",
 		status.UUIDandVersion, ignoreErrors, status.DisplayName)
@@ -1018,7 +1021,7 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 	for _, adapter := range status.IoAdapterList {
 		log.Debugf("doInactivate processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
-		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
+		ib := types.LookupIoBundle(ctx.assignableAdapters, adapter.Type, adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if ib == nil {
 			log.Fatalf("doInactivate IoBundle disappeared %d %s for %s\n",
@@ -1040,7 +1043,7 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 			log.Infof("Removing %s (%s %s) from %s\n",
 				ib.Name, ib.PciLong, ib.PciShort,
 				status.DomainName)
-			err := pciAssignableRem(ib.PciLong)
+			err := pciAssignableRemove(ib.PciLong)
 			if err != nil && !ignoreErrors {
 				status.LastErr = fmt.Sprintf("%v", err)
 				status.LastErrTime = time.Now()
@@ -1049,14 +1052,13 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 			ib.IsPCIBack = false
 		}
 		ib.UsedByUUID = nilUUID
-		pub := ctx.pubAssignableAdapters
-		pub.Publish("global", *aa)
+		ctx.publishAssignableAdapters()
 	}
 }
 
 // Produce DomainStatus based on the config
 func configToStatus(ctx *domainContext, config types.DomainConfig,
-	aa *types.AssignableAdapters, status *types.DomainStatus) error {
+	status *types.DomainStatus) error {
 
 	log.Infof("configToStatus(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
@@ -1109,7 +1111,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		log.Debugf("configToStatus processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
 		// Lookup to make sure adapter exists on this device
-		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
+		ib := types.LookupIoBundle(ctx.assignableAdapters, adapter.Type, adapter.Name)
 		if ib == nil {
 			return errors.New(fmt.Sprintf("Unknown adapter %d %s\n",
 				adapter.Type, adapter.Name))
@@ -1132,8 +1134,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		log.Debugf("configToStatus setting uuid %s for adapter %d %s\n",
 			config.Key(), adapter.Type, adapter.Name)
 		ib.UsedByUUID = config.UUIDandVersion.UUID
-		pub := ctx.pubAssignableAdapters
-		pub.Publish("global", *aa)
+		ctx.publishAssignableAdapters()
 	}
 	return nil
 }
@@ -1399,7 +1400,7 @@ func handleModify(ctx *domainContext, key string,
 			status.LastErr = ""
 			status.LastErrTime = time.Time{}
 			publishDomainStatus(ctx, status)
-			doInactivate(ctx, status, ctx.assignableAdapters)
+			doInactivate(ctx, status)
 		}
 		status.VirtualizationMode = config.VirtualizationMode
 		status.EnableVnc = config.EnableVnc
@@ -1412,12 +1413,12 @@ func handleModify(ctx *domainContext, key string,
 			status.LastErr = ""
 			status.LastErrTime = time.Time{}
 			publishDomainStatus(ctx, status)
-			doInactivate(ctx, status, ctx.assignableAdapters)
+			doInactivate(ctx, status)
 			status.VirtualizationMode = config.VirtualizationMode
 			status.EnableVnc = config.EnableVnc
 			changed = true
 		} else if status.Activated {
-			doInactivate(ctx, status, ctx.assignableAdapters)
+			doInactivate(ctx, status)
 			status.VirtualizationMode = config.VirtualizationMode
 			status.EnableVnc = config.EnableVnc
 			changed = true
@@ -1500,9 +1501,9 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	publishDomainStatus(ctx, status)
 
 	if status.Activated {
-		doInactivate(ctx, status, ctx.assignableAdapters)
+		doInactivate(ctx, status)
 	} else {
-		pciUnassign(ctx, status, ctx.assignableAdapters, true)
+		pciUnassign(ctx, status, true)
 	}
 
 	// Look for any adapters used by us and clear UsedByUUID
@@ -1787,8 +1788,8 @@ func pciAssignableAdd(long string) error {
 	return nil
 }
 
-func pciAssignableRem(long string) error {
-	log.Infof("pciAssignableRem %s\n", long)
+func pciAssignableRemove(long string) error {
+	log.Infof("pciAssignableRemove %s\n", long)
 	cmd := "xl"
 	args := []string{
 		"pci-assignable-rem",
@@ -2000,8 +2001,7 @@ func handleAAModify(ctxArg interface{}, config types.AssignableAdapters,
 		}
 	}
 	status.Initialized = true
-	pub := ctx.pubAssignableAdapters
-	pub.Publish("global", *status)
+	ctx.publishAssignableAdapters()
 	log.Infof("handleAAModify() done\n")
 }
 
@@ -2012,8 +2012,7 @@ func handleAADelete(ctxArg interface{}, status *types.AssignableAdapters) {
 	for _, statusIb := range (*status).IoBundleList {
 		handleIBDelete(ctx, statusIb, status)
 	}
-	pub := ctx.pubAssignableAdapters
-	pub.Unpublish("global")
+	ctx.publishAssignableAdapters()
 	log.Infof("handleAADelete() done\n")
 }
 
@@ -2054,12 +2053,14 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 			if ib.IsPCIBack {
 				log.Infof("checkAndSetIoBundle(%d %s %v) take back fro pciback\n",
 					ib.Type, ib.Name, ib.Members)
-				err := pciAssignableRem(ib.PciLong)
+				err := pciAssignableRemove(ib.PciLong)
 				if err != nil {
-					log.Errorf("checkAndSetIoBundle(%d %s %v) pciAssignableRem failed %v\n",
+					log.Errorf("checkAndSetIoBundle(%d %s %v) pciAssignableRemove failed %v\n",
 						ib.Type, ib.Name, ib.Members, err)
 				}
 				ib.IsPCIBack = false
+				// Publish pciAssignable
+				ctx.publishAssignableAdapters()
 			}
 		}
 	}
@@ -2086,6 +2087,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 				return err
 			}
 			ib.IsPCIBack = true
+			// Publish pciAssignable
 		}
 	}
 	return nil
@@ -2110,7 +2112,7 @@ func updateUsbAccess(ctx *domainContext) {
 		if ctx.usbAccess && ib.IsPCIBack && ib.UsedByUUID != nilUUID {
 			log.Infof("Removing %s (%s %s) from pciback\n",
 				ib.Name, ib.PciLong, ib.PciShort)
-			err := pciAssignableRem(ib.PciLong)
+			err := pciAssignableRemove(ib.PciLong)
 			if err != nil {
 				log.Errorf("updateUsbAccess: %s\n", err)
 			}
@@ -2126,9 +2128,9 @@ func handleIBDelete(ctx *domainContext, ib types.IoBundle,
 	if ib.IsPCIBack {
 		log.Infof("handleIBDelete: Assigning %s (%s %s) back\n",
 			ib.Name, ib.PciLong, ib.PciShort)
-		err := pciAssignableRem(ib.PciLong)
+		err := pciAssignableRemove(ib.PciLong)
 		if err != nil {
-			log.Errorf("handleIBDelete(%d %s %v) pciAssignableRem failed %v\n",
+			log.Errorf("handleIBDelete(%d %s %v) pciAssignableRemove failed %v\n",
 				ib.Type, ib.Name, ib.Members, err)
 		}
 		ib.IsPCIBack = false
@@ -2157,7 +2159,7 @@ func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.
 			continue
 		}
 		// XXX can we have changes which require us to
-		// do pciAssignableRem for the old status?
+		// do pciAssignableRemove for the old status?
 		if err := checkAndSetIoBundle(ctx, &configIb); err != nil {
 			log.Warnf("Not reporting non-existent PCI device %d %s: %v\n",
 				configIb.Type, configIb.Name, err)
