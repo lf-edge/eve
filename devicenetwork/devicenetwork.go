@@ -4,6 +4,7 @@
 package devicenetwork
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
@@ -51,7 +52,7 @@ func isProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 }
 
 // Check if device can talk to outside world via atleast one of the free uplinks
-func TestDeviceNetworkStatus(
+func VerifyDeviceNetworkStatus(
 	status types.DeviceNetworkStatus, retryCount int) bool {
 
 	serverFileName := "/config/server"
@@ -68,10 +69,28 @@ func TestDeviceNetworkStatus(
 	}
 	tlsConfig, err := zedcloud.GetTlsConfig(serverName, nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Infof("VerifyDeviceNetworkStatus: " +
+			"Device certificate not found, looking for Onboarding certificate")
+
+		identityDirname := "/config"
+		onboardingCertName := identityDirname + "/onboard.cert.pem"
+		onboardingKeyName  := identityDirname + "/onboard.key.pem"
+		onboardingCert, err := tls.LoadX509KeyPair(onboardingCertName,
+			onboardingKeyName)
+		if err != nil {
+			log.Infof("VerifyDeviceNetworkStatus: Onboarding certificate cannot be found")
+			return false
+		}
+		clientCert := &onboardingCert
+		tlsConfig, err = zedcloud.GetTlsConfig(serverName, clientCert)
+		if err != nil {
+			log.Infof("VerifyDeviceNetworkStatus: " +
+			"Tls configuration for talking to Zedcloud cannot be found")
+			return false
+		}
 	}
 	zedcloudCtx.TlsConfig = tlsConfig
-	cloudReachable, err := zedcloud.TestAllIntf(zedcloudCtx, testUrl, retryCount)
+	cloudReachable, err := zedcloud.VerifyAllIntf(zedcloudCtx, testUrl, retryCount, 1)
 	if err != nil {
 		log.Errorln(err)
 		return false

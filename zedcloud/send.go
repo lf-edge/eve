@@ -65,35 +65,39 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 	return nil, nil, errors.New(errStr)
 }
 
-func TestAllIntf(ctx ZedCloudContext, url string, iteration int) (bool, error) {
+func VerifyAllIntf(ctx ZedCloudContext,
+	url string, successCount int, iteration int) (bool, error) {
 	var cloudReachable bool = false
+	var intfSuccessCount int = 0
+
 	// If failed then try the non-free
 	for try := 0; try < 2; try += 1 {
 		var intfs []string
 		if try == 0 {
 			intfs = types.GetMgmtPortsFree(*ctx.DeviceNetworkStatus,
 			iteration)
-			log.Debugf("TestAllIntf: trying free %v\n", intfs)
+			log.Debugf("VerifyAllIntf: trying free %v\n", intfs)
 		} else {
 			intfs = types.GetMgmtPortsNonFree(*ctx.DeviceNetworkStatus,
 			iteration)
-			log.Debugf("TestAllIntf: non-free %v\n", intfs)
+			log.Debugf("VerifyAllIntf: non-free %v\n", intfs)
 		}
 		for _, intf := range intfs {
 			resp, _, err := SendOnIntf(ctx, url, intf, 0, nil, true)
 			if err != nil {
 				// XXX Have code to mark this interface as not suitable
 				// for cloud/internet connectivity
-				log.Errorf("TestAllIntf: Zedcloud un-reachable via interface %s", intf)
+				log.Errorf("VerifyAllIntf: Zedcloud un-reachable via interface %s", intf)
 				continue
 			}
 			switch resp.StatusCode {
 			case http.StatusOK:
-				log.Infof("TestAllIntf: Zedcloud reachable via interface %s", intf)
+				log.Infof("VerifyAllIntf: Zedcloud reachable via interface %s", intf)
 				cloudReachable = true
+				intfSuccessCount += 1
 			default:
 				log.Errorf(
-					"TestAllIntf: Uplink test FAILED via %s to URL %s with " +
+					"VerifyAllIntf: Uplink test FAILED via %s to URL %s with " +
 					"status code %d and status %s",
 					intf, url, resp.StatusCode, http.StatusText(resp.StatusCode))
 					continue
@@ -101,7 +105,14 @@ func TestAllIntf(ctx ZedCloudContext, url string, iteration int) (bool, error) {
 		}
 	}
 	if !cloudReachable {
-		errStr := fmt.Sprintf("TestAllIntf: All test attempts to connect to %s failed", url)
+		errStr := fmt.Sprintf("VerifyAllIntf: All test attempts to connect to %s failed", url)
+		log.Errorln(errStr)
+		return false, errors.New(errStr)
+	}
+	if intfSuccessCount < successCount {
+		errStr := fmt.Sprintf("VerifyAllIntf: " +
+			"Not enough Ports (%d) against required count %d, can help reach Zedcloud",
+			intfSuccessCount, successCount)
 		log.Errorln(errStr)
 		return false, errors.New(errStr)
 	}
