@@ -284,28 +284,37 @@ func Run() {
 			return false
 		}
 
-		// Inform ledmanager about cloud connectivity
-		types.UpdateLedManagerConfig(3)
-
+		if !zedcloudCtx.NoLedManager {
+			// Inform ledmanager about cloud connectivity
+			types.UpdateLedManagerConfig(3)
+		}
 		switch resp.StatusCode {
 		case http.StatusOK:
-			// Inform ledmanager about existence in cloud
-			types.UpdateLedManagerConfig(4)
+			if !zedcloudCtx.NoLedManager {
+				// Inform ledmanager about existence in cloud
+				types.UpdateLedManagerConfig(4)
+			}
 			log.Infof("%s StatusOK\n", requrl)
 		case http.StatusCreated:
-			// Inform ledmanager about existence in cloud
-			types.UpdateLedManagerConfig(4)
+			if !zedcloudCtx.NoLedManager {
+				// Inform ledmanager about existence in cloud
+				types.UpdateLedManagerConfig(4)
+			}
 			log.Infof("%s StatusCreated\n", requrl)
 		case http.StatusConflict:
-			// Inform ledmanager about brokenness
-			types.UpdateLedManagerConfig(10)
+			if !zedcloudCtx.NoLedManager {
+				// Inform ledmanager about brokenness
+				types.UpdateLedManagerConfig(10)
+			}
 			log.Errorf("%s StatusConflict\n", requrl)
 			// Retry until fixed
 			log.Errorf("%s\n", string(contents))
 			return false
 		case http.StatusNotModified: // XXX from zedcloud
-			// Inform ledmanager about brokenness
-			types.UpdateLedManagerConfig(10)
+			if !zedcloudCtx.NoLedManager {
+				// Inform ledmanager about brokenness
+				types.UpdateLedManagerConfig(10)
+			}
 			log.Errorf("%s StatusNotModified\n", requrl)
 			// Retry until fixed
 			log.Errorf("%s\n", string(contents))
@@ -415,6 +424,8 @@ func Run() {
 		}
 		tlsConfig.InsecureSkipVerify = insecure
 		zedcloudCtx.TlsConfig = tlsConfig
+		// As we ping the cloud or other URLs, don't affect the LEDs
+		zedcloudCtx.NoLedManager = true
 
 		retryCount := 0
 		done := false
@@ -492,7 +503,9 @@ func Run() {
 				devUUID, hardwaremodel, err = parseConfig(requrl, resp, contents)
 				if err == nil {
 					// Inform ledmanager about config received from cloud
-					types.UpdateLedManagerConfig(4)
+					if !zedcloudCtx.NoLedManager {
+						types.UpdateLedManagerConfig(4)
+					}
 					continue
 				}
 				// Keep on trying until it parses

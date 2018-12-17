@@ -26,6 +26,7 @@ type ZedCloudContext struct {
 	TlsConfig           *tls.Config
 	FailureFunc         func(intf string, url string, reqLen int64, respLen int64)
 	SuccessFunc         func(intf string, url string, reqLen int64, respLen int64)
+	NoLedManager	    bool // Don't call UpdateLedManagerConfig
 }
 
 // Tries all interfaces (free first) until one succeeds. interation arg
@@ -179,7 +180,9 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 			if connState == nil {
 				log.Errorln("no TLS connection state")
 				// Inform ledmanager about broken cloud connectivity
-				types.UpdateLedManagerConfig(10)
+				if !ctx.NoLedManager {
+					types.UpdateLedManagerConfig(10)
+				}
 				if ctx.FailureFunc != nil {
 					ctx.FailureFunc(intf, reqUrl, reqlen,
 						resplen)
@@ -202,7 +205,9 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 				// commenting out it for now.
 				if false {
 					// Inform ledmanager about broken cloud connectivity
-					types.UpdateLedManagerConfig(10)
+					if !ctx.NoLedManager {
+						types.UpdateLedManagerConfig(10)
+					}
 					if ctx.FailureFunc != nil {
 						ctx.FailureFunc(intf, reqUrl,
 							reqlen, resplen)

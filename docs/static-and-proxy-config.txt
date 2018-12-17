@@ -18,6 +18,8 @@ Note that this uses the old "uplink" terminology; new terminology is
 This per-model comfiguration can be overridden by an optional file in
 /config which is added when the image is built/installed.
 That file is /config/DevicePortConfig/override.json
+[Note that this file does not override cloud configuration. TBD: should we rename
+it to local.json instead?]
 
 That file can specify multiple management interfaces, and can specify static IP
 and DNS configuration (for environments where DHCP is not used). In addition it
@@ -45,6 +47,22 @@ An example file to specify using WPAD to retrieve proxy configuration on eth0 is
     ]
 }
 
+To specify fetching from a fixed WPAD URL one would set:
+            "NetworkProxyEnable": true,
+            "NetworkProxyURL": "http://wpad.sc.zededa.net/wpad.dat",
+
+To specify a particular set of http and https proxies with a set of
+exceptions one would set TBD
+            "Proxies": [ { "Server": "proxy.example.com", "Port":1080, "Type":1 },
+                       { "Server": "proxy.example.com", "Port":1080, "Type":0 } ],
+            "Exceptions": "example.com",
+
+
+To specify a PAC file inline one would base64 encode the PAC file and set the
+result as the Pacfile e.g.,
+	Pacfile":"ZnVuY3Rpb24gRmluZFByb3h5Rm9yVVJMKHVybCxob3N0KSB7CmlmIChob3N0ID09ICIxMjcuMC4wLjEiKSB7cmV0dXJuICJESVJFQ1QiO30KaWYgKGhvc3QgPT0gImxvY2FsaG9zdCIpIHtyZXR1cm4gIkRJUkVDVCI7fQppZiAoaXNQbGFpbkhvc3ROYW1lKGhvc3QpKSB7cmV0dXJuICJESVJFQ1QiO30KZWxzZSB7IHJldHVybiAiUFJPWFkgcHJveHkucHJpdi5zYy56ZWRlZGEubmV0OjEwODAiO30KfQo=",
+
+
 An example file with eth0 being static and eth1 using dhcp is:
 {
     "Ports": [
@@ -54,7 +72,7 @@ An example file with eth0 being static and eth1 using dhcp is:
             "DnsServers": [
                 "8.8.8.8"
             ],
-            "DomainName": "",
+            "DomainName": "example.com",
             "Free": true,
             "Gateway": "38.108.181.254",
             "IfName": "eth0",
@@ -75,5 +93,44 @@ An example file with eth0 being static and eth1 using dhcp is:
     ]
 }
 
-In addition the above can be specified from the EV-controller by specifying one
-or more networks with the proxy and/or static as part of the zcli device create.
+NOTE that if a static IP configuration is used with WPAD DNS discovery then the
+DomainName needs to be set; the DomainName is used to determine where to look for
+the wpad.dat file. Alternatively, an explicit NetworkProxyURL can be set.
+The logic for how the device looks for the URL based on the DomainName is specified
+in https://en.wikipedia.org/wiki/Web_Proxy_Auto-Discovery_Protocol
+The device does not specify DHCP-based WPAD since most browsers do not.
+
+In addition the above configurations be specified from the EV-controller by
+specifying one or more networks with the proxy and/or static as part of the
+zcli device create.
+
+Troubleshooting
+===============
+
+The blinking pattern can be extracted from the shell using
+cat /var/tmp/ledmanager/config/ledconfig.json
+
+If the device does not have any usable IP addresses it will be 1,
+if IP address but no cloud connectivity it will be 2,
+if the cloud responds (even if it is an http error e.g, if the device is not yet
+onboarded), it will be 3, and if a GET of /config works it will be 4.
+
+One can test proxy connectivity to zedcloud using
+    /opt/zededa/bin/client -s ping
+or
+    /opt/zededa/bin/client -s -r 5 ping
+to try at most 5 times.
+
+And to try other URLs one can do
+	/opt/zededa/bin/client -s -r 5 -U http://www.google.com ping
+	/opt/zededa/bin/client -s -r 5 -U https://www.google.com -I ping
+(-I disables the certificate chain check against /config/root-certificate.pem)
+
+The logs for the onboarding attempts are in
+    /persist/`zboot curpart`/log/client.log
+
+If there are no IP addresses, the logs for network interface manager can help:
+    /persist/`zboot curpart`/log/nim.log
+
+Finally zedagent.log, downloader.log, and /persist/log/logmanager.log will contain
+errors if those agents can not reach zedcloud.
