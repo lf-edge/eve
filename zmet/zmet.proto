@@ -38,7 +38,7 @@ message ZInfoNetwork {
   // string IPAddr = 1; // Deprecated. Returning first address for now
   // string gwAddr = 2; // Deprecated; routing is richer than a single gateway
   string macAddr = 3;
-  string devName = 4; // eth0, eth1 etc.
+  string devName = 4; // From name in config
   repeated string IPAddrs = 5; // All IP addresses with /N for subnet
   repeated string defaultRouters = 6; // If DHCP assigned
   ZInfoDNS dns = 7; // If DHCP assigned
@@ -46,7 +46,7 @@ message ZInfoNetwork {
   GeoLoc location = 9;
   bool uplink = 10; // Uplink interface
   ErrorInfo networkErr = 11; // For instance bad proxy config
-  string name = 12; // From name in config
+  string localName = 12; // eth0, eth1 etc.
 }
 
 // From an IP address-based geolocation service
@@ -366,7 +366,7 @@ message memoryMetric {
 }
 
 message networkMetric {
-  string iName = 1;	// interface name
+  string iName = 1;	// name from config
   uint64 txBytes = 2;	// in bytes
   uint64 rxBytes = 3;	// in bytes
   uint64 txDrops = 4;
@@ -381,7 +381,7 @@ message networkMetric {
   uint64 rxAclDrops = 13;
   uint64 txAclRateLimitDrops = 14;
   uint64 rxAclRateLimitDrops = 15;
-  string name = 16; // From config
+  string localName = 16; // local vif name e.g., nbu*
 }
 
 // Failures and successes for commuication to zedcloud
