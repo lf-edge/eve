@@ -166,6 +166,8 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
 		*ctx.DevicePortConfig = portConfig
 	}
+	// XXX if err return means WPAD failed, or port does not exist
+	// XXX add test hook for former; try lower priority
 	dnStatus, _ := MakeDeviceNetworkStatus(portConfig,
 		*ctx.DeviceNetworkStatus)
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
@@ -224,7 +226,10 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
 		*ctx.DevicePortConfig = portConfig
 	}
-	dnStatus := types.DeviceNetworkStatus{}
+	// XXX if err return means WPAD failed, or port does not exist
+	// XXX add test hook for former; try lower priority
+	dnStatus, _ := MakeDeviceNetworkStatus(portConfig,
+		*ctx.DeviceNetworkStatus)
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
 		log.Infof("HandleDPCDelete DeviceNetworkStatus change from %v to %v\n",
 			*ctx.DeviceNetworkStatus, dnStatus)
