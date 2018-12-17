@@ -77,7 +77,6 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	} else {
 		oldConfig = types.DevicePortConfig{}
 	}
-	// XXX what's the default? eth0 aka default.json? Use empty for now
 	*ctx.DeviceNetworkConfig = types.DeviceNetworkConfig{}
 	portConfig := MakeDevicePortConfig(*ctx.DeviceNetworkConfig)
 	if !reflect.DeepEqual(oldConfig, portConfig) {
@@ -103,8 +102,7 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 		key, curTimePriority, portConfig.TimePriority)
 
 	zeroTime := time.Time{}
-	// XXX can we check the source aka directory? For all sources?
-	if key == "override" && portConfig.TimePriority == zeroTime {
+	if portConfig.TimePriority == zeroTime {
 		// If we can stat the file use its modify time
 		filename := fmt.Sprintf("/var/tmp/zededa/DevicePortConfig/%s.json",
 			key)
@@ -114,11 +112,15 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 		} else {
 			portConfig.TimePriority = time.Unix(1, 0)
 		}
-		log.Infof("HandleDPCModify: Forcing TimePriority to %v\n",
-			portConfig.TimePriority)
+		log.Infof("HandleDPCModify: Forcing TimePriority for %s to %v\n",
+			key, portConfig.TimePriority)
 	}
-	// XXX should we for Name == "" to IfName for each?
-	for _, port := range portConfig.Ports {
+	if portConfig.Key == "" {
+		portConfig.Key = key
+	}
+	// In case Name isn't set we make it match IfName
+	for i, _ := range portConfig.Ports {
+		port := &portConfig.Ports[i]
 		if port.Name == "" {
 			port.Name = port.IfName
 		}
@@ -135,7 +137,12 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	// Look up based on timestamp, then content
 	oldConfig := lookupPortConfig(ctx, portConfig)
 	if oldConfig != nil {
-		if reflect.DeepEqual(oldConfig.Ports, portConfig.Ports) {
+		// Compare everything but TimePriority since that is
+		// modified by zedagent even if there are no changes.
+		if oldConfig.Key == portConfig.Key &&
+			oldConfig.Version == portConfig.Version &&
+			reflect.DeepEqual(oldConfig.Ports, portConfig.Ports) {
+
 			log.Infof("HandleDPCModify: no change; timestamps %v %v\n",
 				oldConfig.TimePriority, portConfig.TimePriority)
 			log.Infof("HandleDPCModify done for %s\n", key)
@@ -151,6 +158,7 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("HandleDPCModify: first is %+v\n",
 		ctx.DevicePortConfigList.PortConfigList[0])
 	portConfig = ctx.DevicePortConfigList.PortConfigList[0]
+	ctx.DevicePortConfigTime = portConfig.TimePriority
 
 	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
 		log.Infof("HandleDPCModify DevicePortConfig change from %v to %v\n",
@@ -187,6 +195,7 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	} else {
 		log.Errorf("HandleDPCDelete: not found %+v\n", portConfig)
 	}
+
 	ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
 	if len(ctx.DevicePortConfigList.PortConfigList) != 0 {
 		log.Infof("HandleDPCDelete: first is %+v\n",
@@ -196,6 +205,7 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 		log.Infof("HandleDPCDelete: none left\n")
 		portConfig = types.DevicePortConfig{}
 	}
+	ctx.DevicePortConfigTime = portConfig.TimePriority
 
 	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
 		log.Infof("HandleDPCDelete DevicePortConfig change from %v to %v\n",

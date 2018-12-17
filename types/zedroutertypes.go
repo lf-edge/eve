@@ -109,6 +109,7 @@ type DevicePortConfigList struct {
 // device
 type DevicePortConfig struct {
 	Version      DevicePortConfigVersion
+	Key          string
 	TimePriority time.Time // All zero's is fallback lowest priority
 	Ports        []NetworkPortConfig
 }
