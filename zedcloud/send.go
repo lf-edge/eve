@@ -70,7 +70,6 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 // Otherwise we test non-free interfaces also.
 func VerifyAllIntf(ctx ZedCloudContext,
 	url string, successCount int, iteration int) (bool, error) {
-	var testingNonFree bool = false
 	var intfSuccessCount int = 0
 
 	if successCount <= 0 {
@@ -85,17 +84,15 @@ func VerifyAllIntf(ctx ZedCloudContext,
 			iteration)
 			log.Debugf("VerifyAllIntf: trying free %v\n", intfs)
 		} else {
-			if intfSuccessCount >= successCount {
-				// Don't test non-free interfaces when we already have the required
-				// number of free interfaces that can be used for connectivity to cloud.
-				break
-			}
 			intfs = types.GetMgmtPortsNonFree(*ctx.DeviceNetworkStatus,
 			iteration)
 			log.Debugf("VerifyAllIntf: non-free %v\n", intfs)
-			testingNonFree = true
 		}
 		for _, intf := range intfs {
+			if (intfSuccessCount >= successCount) {
+				// We have enough uplinks with cloud connectivity working.
+				break
+			}
 			resp, _, err := SendOnIntf(ctx, url, intf, 0, nil, true)
 			if err != nil {
 				// XXX Have code to mark this interface as not suitable
@@ -113,12 +110,6 @@ func VerifyAllIntf(ctx ZedCloudContext,
 					"status code %d and status %s",
 					intf, url, resp.StatusCode, http.StatusText(resp.StatusCode))
 					continue
-			}
-			if testingNonFree && (intfSuccessCount >= successCount) {
-				// For efficiency and owing to cost of using non-free interfaces, we
-				// do not want to test more non-free interfaces, when we already have
-				// enouth interfaces through which cloud connectivity can be achieved.
-				break
 			}
 		}
 	}
