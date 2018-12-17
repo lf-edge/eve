@@ -155,12 +155,11 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	// NIM starts even before device onboarding finishes. When a device is
 	// booting for the first time and does not have its device certs registered
 	// with cloud yet, a hit to Ping URL would fail.
-	pass := VerifyDeviceNetworkStatus(dnStatus, 1)
-	if pass {
-		log.Infof("XXXXX Connectivity test passed")
-		if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
-			log.Infof("HandleDPCModify DeviceNetworkStatus change from %v to %v\n",
+	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
+		log.Infof("HandleDPCModify DeviceNetworkStatus change from %v to %v\n",
 			*ctx.DeviceNetworkStatus, dnStatus)
+		pass := VerifyDeviceNetworkStatus(dnStatus, 1)
+		if pass {
 			*ctx.DeviceNetworkStatus = dnStatus
 			DoDNSUpdate(ctx)
 		}
