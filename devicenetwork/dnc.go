@@ -150,11 +150,19 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	}
 	dnStatus, _ := MakeDeviceNetworkStatus(portConfig,
 		*ctx.DeviceNetworkStatus)
+
+	// We use device certs to build tls config to hit the test Ping URL.
+	// NIM starts even before device onboarding finishes. When a device is
+	// booting for the first time and does not have its device certs registered
+	// with cloud yet, a hit to Ping URL would fail.
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
 		log.Infof("HandleDPCModify DeviceNetworkStatus change from %v to %v\n",
 			*ctx.DeviceNetworkStatus, dnStatus)
-		*ctx.DeviceNetworkStatus = dnStatus
-		DoDNSUpdate(ctx)
+		pass := VerifyDeviceNetworkStatus(dnStatus, 1)
+		if pass {
+			*ctx.DeviceNetworkStatus = dnStatus
+			DoDNSUpdate(ctx)
+		}
 	}
 	log.Infof("HandleDPCModify done for %s\n", key)
 }

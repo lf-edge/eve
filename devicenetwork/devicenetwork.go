@@ -4,13 +4,17 @@
 package devicenetwork
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
 	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/zedcloud"
+	"io/ioutil"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -46,6 +50,59 @@ func isProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 	}
 	return false
 }
+
+// Check if device can talk to outside world via atleast one of the free uplinks
+func VerifyDeviceNetworkStatus(
+	status types.DeviceNetworkStatus, retryCount int) bool {
+
+	serverFileName := "/config/server"
+	server, err := ioutil.ReadFile(serverFileName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	serverNameAndPort := strings.TrimSpace(string(server))
+	serverName := strings.Split(serverNameAndPort, ":")[0]
+	testUrl := serverNameAndPort + "/api/v1/edgedevice/ping"
+
+	zedcloudCtx := zedcloud.ZedCloudContext{
+		DeviceNetworkStatus: &status,
+	}
+	tlsConfig, err := zedcloud.GetTlsConfig(serverName, nil)
+	if err != nil {
+		log.Infof("VerifyDeviceNetworkStatus: " +
+			"Device certificate not found, looking for Onboarding certificate")
+
+		identityDirname := "/config"
+		onboardingCertName := identityDirname + "/onboard.cert.pem"
+		onboardingKeyName  := identityDirname + "/onboard.key.pem"
+		onboardingCert, err := tls.LoadX509KeyPair(onboardingCertName,
+			onboardingKeyName)
+		if err != nil {
+			log.Infof("VerifyDeviceNetworkStatus: Onboarding certificate cannot be found")
+			return false
+		}
+		clientCert := &onboardingCert
+		tlsConfig, err = zedcloud.GetTlsConfig(serverName, clientCert)
+		if err != nil {
+			log.Infof("VerifyDeviceNetworkStatus: " +
+			"Tls configuration for talking to Zedcloud cannot be found")
+			return false
+		}
+	}
+	zedcloudCtx.TlsConfig = tlsConfig
+	cloudReachable, err := zedcloud.VerifyAllIntf(zedcloudCtx, testUrl, retryCount, 1)
+	if err != nil {
+		log.Errorln(err)
+		return false
+	}
+
+	if cloudReachable {
+		log.Infof("Uplink test SUCCESS to URL: %s", testUrl)
+		return true
+	}
+	return false
+}
+
 
 // Calculate local IP addresses to make a types.DeviceNetworkStatus
 func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus types.DeviceNetworkStatus) (types.DeviceNetworkStatus, error) {
