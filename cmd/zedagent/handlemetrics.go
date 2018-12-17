@@ -421,9 +421,10 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 			continue
 		}
 		networkDetails := new(zmet.NetworkMetric)
+		networkDetails.LocalName = metric.IfName
+		// XXX Set IName from SystemAdapter??
+		// XXX would need getconfigCtx.pubDevicePortConfig.Get("zedagent")
 		networkDetails.IName = metric.IfName
-		// XXX Set name from SystemAdapter??
-		networkDetails.Name = metric.IfName
 
 		networkDetails.TxPkts = metric.TxPkts
 		networkDetails.RxPkts = metric.RxPkts
@@ -635,15 +636,17 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 				continue
 			}
 			networkDetails := new(zmet.NetworkMetric)
-			networkDetails.IName = metric.IfName
 			if aiStatus != nil {
 				name := appIfnameToName(aiStatus,
 					metric.IfName)
 				log.Debugf("app %s/%s iname %s name %s\n",
 					aiStatus.Key(), aiStatus.DisplayName,
 					metric.IfName, name)
-				networkDetails.Name = name
+				networkDetails.IName = name
+			} else {
+				networkDetails.IName = metric.IfName
 			}
+			networkDetails.LocalName = metric.IfName
 			// Counters not swapped on vif
 			if strings.HasPrefix(ifName, "nbn") ||
 				strings.HasPrefix(ifName, "nbu") ||
@@ -947,6 +950,8 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 		for _, interfaceDetail := range interfaces {
 			if ifname == interfaceDetail.Name {
 				ReportDeviceNetworkInfo := getNetInfo(interfaceDetail)
+				// XXX look at SystemAdapter to get DevName from config
+				// XXX would need getconfigCtx.pubDevicePortConfig.Get("zedagent")
 				ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
 					ReportDeviceNetworkInfo)
 			}
@@ -1090,7 +1095,9 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat) *zmet.ZInfoNetwork {
 		networkInfo.IPAddrs[index] = *proto.String(ip.Addr)
 	}
 	networkInfo.MacAddr = *proto.String(interfaceDetail.HardwareAddr)
-	networkInfo.DevName = *proto.String(interfaceDetail.Name)
+	networkInfo.LocalName = *proto.String(interfaceDetail.Name)
+	// In case caller doesn't override
+	networkInfo.DevName = networkInfo.LocalName
 	// Default routers from kernel whether or not we are using DHCP
 	drs := getDefaultRouters(interfaceDetail.Name)
 	networkInfo.DefaultRouters = make([]string, len(drs))
@@ -1256,10 +1263,10 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 					networkInfo.IPAddrs[0] = *proto.String(ip.String())
 				}
 				name := appIfnameToName(aiStatus, ifname)
-				log.Debugf("app %s/%s iname %s name %s\n",
+				log.Debugf("app %s/%s localName %s devName %s\n",
 					aiStatus.Key(), aiStatus.DisplayName,
 					ifname, name)
-				networkInfo.Name = name
+				networkInfo.DevName = name
 				ReportAppInfo.Network = append(ReportAppInfo.Network,
 					networkInfo)
 			}
