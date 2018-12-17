@@ -107,18 +107,18 @@ func VerifyAllIntf(ctx ZedCloudContext,
 			case http.StatusOK:
 				log.Infof("VerifyAllIntf: Zedcloud reachable via interface %s", intf)
 				intfSuccessCount += 1
-				if testingNonFree && (intfSuccessCount >= successCount) {
-					// For efficiency and owing to cost of using non-free interfaces, we
-					// do not want to test more non-free interfaces, when we already have
-					// enouth interfaces through which cloud connectivity can be achieved.
-					break
-				}
 			default:
 				log.Errorf(
 					"VerifyAllIntf: Uplink test FAILED via %s to URL %s with " +
 					"status code %d and status %s",
 					intf, url, resp.StatusCode, http.StatusText(resp.StatusCode))
 					continue
+			}
+			if testingNonFree && (intfSuccessCount >= successCount) {
+				// For efficiency and owing to cost of using non-free interfaces, we
+				// do not want to test more non-free interfaces, when we already have
+				// enouth interfaces through which cloud connectivity can be achieved.
+				break
 			}
 		}
 	}
