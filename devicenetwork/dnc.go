@@ -4,10 +4,12 @@
 package devicenetwork
 
 import (
+	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
+	"os"
 	"reflect"
 	"time"
 )
@@ -101,9 +103,17 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 		key, curTimePriority, portConfig.TimePriority)
 
 	zeroTime := time.Time{}
+	// XXX can we check the source aka directory? For all sources?
 	if key == "override" && portConfig.TimePriority == zeroTime {
-		// XXX fix input instead?
-		portConfig.TimePriority = time.Unix(1, 0)
+		// If we can stat the file use its modify time
+		filename := fmt.Sprintf("/var/tmp/zededa/DevicePortConfig/%s.json",
+			key)
+		fi, err := os.Stat(filename)
+		if err == nil {
+			portConfig.TimePriority = fi.ModTime()
+		} else {
+			portConfig.TimePriority = time.Unix(1, 0)
+		}
 		log.Infof("HandleDPCModify: Forcing TimePriority to %v\n",
 			portConfig.TimePriority)
 	}
