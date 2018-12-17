@@ -66,6 +66,69 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 	return nil, nil, errors.New(errStr)
 }
 
+// We try with free interfaces first. If we find enough free interfaces through
+// which cloud connectivity can be achieved, we won't test non-free interfaces.
+// Otherwise we test non-free interfaces also.
+func VerifyAllIntf(ctx ZedCloudContext,
+	url string, successCount int, iteration int) (bool, error) {
+	var intfSuccessCount int = 0
+
+	if successCount <= 0 {
+		// No need to test. Just return true.
+		return true, nil
+	}
+
+	for try := 0; try < 2; try += 1 {
+		var intfs []string
+		if try == 0 {
+			intfs = types.GetMgmtPortsFree(*ctx.DeviceNetworkStatus,
+			iteration)
+			log.Debugf("VerifyAllIntf: trying free %v\n", intfs)
+		} else {
+			intfs = types.GetMgmtPortsNonFree(*ctx.DeviceNetworkStatus,
+			iteration)
+			log.Debugf("VerifyAllIntf: non-free %v\n", intfs)
+		}
+		for _, intf := range intfs {
+			if (intfSuccessCount >= successCount) {
+				// We have enough uplinks with cloud connectivity working.
+				break
+			}
+			resp, _, err := SendOnIntf(ctx, url, intf, 0, nil, true)
+			if err != nil {
+				// XXX Have code to mark this interface as not suitable
+				// for cloud/internet connectivity
+				log.Errorf("VerifyAllIntf: Zedcloud un-reachable via interface %s", intf)
+				continue
+			}
+			switch resp.StatusCode {
+			case http.StatusOK:
+				log.Infof("VerifyAllIntf: Zedcloud reachable via interface %s", intf)
+				intfSuccessCount += 1
+			default:
+				log.Errorf(
+					"VerifyAllIntf: Uplink test FAILED via %s to URL %s with " +
+					"status code %d and status %s",
+					intf, url, resp.StatusCode, http.StatusText(resp.StatusCode))
+					continue
+			}
+		}
+	}
+	if intfSuccessCount == 0 {
+		errStr := fmt.Sprintf("VerifyAllIntf: All test attempts to connect to %s failed", url)
+		log.Errorln(errStr)
+		return false, errors.New(errStr)
+	}
+	if intfSuccessCount < successCount {
+		errStr := fmt.Sprintf("VerifyAllIntf: " +
+			"Not enough Ports (%d) against required count %d, can help reach Zedcloud",
+			intfSuccessCount, successCount)
+		log.Errorln(errStr)
+		return false, errors.New(errStr)
+	}
+	return true, nil
+}
+
 // Tries all source addresses on interface until one succeeds.
 // Returns response for first success. Caller can not use resp.Body but can
 // use []byte contents return.
