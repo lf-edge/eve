@@ -29,7 +29,6 @@ import (
 	"github.com/zededa/go-provision/zboot"
 	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
-	"net"
 	"os"
 	"os/exec"
 	"regexp"
@@ -1261,11 +1260,10 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 					continue
 				}
 				networkInfo := getNetInfo(interfaceDetail, false)
-				ip, macAddr := getAppIP(ctx, aiStatus.Key(), ifname)
-				if ip != nil {
-					networkInfo.IPAddrs = make([]string, 1)
-					networkInfo.IPAddrs[0] = *proto.String(ip.String())
-				}
+				ip, macAddr := getAppIP(ctx, aiStatus,
+					ifname)
+				networkInfo.IPAddrs = make([]string, 1)
+				networkInfo.IPAddrs[0] = *proto.String(ip)
 				networkInfo.MacAddr = *proto.String(macAddr)
 				name := appIfnameToName(aiStatus, ifname)
 				log.Debugf("app %s/%s localName %s devName %s\n",
@@ -1305,14 +1303,14 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	}
 }
 
-func appIfnameToName(aiStatus *types.AppInstanceStatus, ifname string) string {
+func appIfnameToName(aiStatus *types.AppInstanceStatus, vifname string) string {
 	for _, ulStatus := range aiStatus.UnderlayNetworks {
-		if ulStatus.Vif == ifname {
+		if ulStatus.Vif == vifname {
 			return ulStatus.Name
 		}
 	}
 	for _, olStatus := range aiStatus.OverlayNetworks {
-		if olStatus.Vif == ifname {
+		if olStatus.Vif == vifname {
 			return olStatus.Name
 		}
 	}
@@ -1460,62 +1458,29 @@ func getDefaultRouters(ifname string) []string {
 	return res
 }
 
-// Use the ifname/vifname to find the MAC address, and use that to find
-// the allocated IP address.
-func getAppIP(ctx *zedagentContext, uuidStr string, ifname string) (*net.IP, string) {
-	log.Debugf("getAppIP(%s, %s)\n", uuidStr, ifname)
-	ds, ok := domainStatus[uuidStr]
-	if !ok {
-		log.Debugf("getAppIP(%s, %s) no DomainStatus\n",
-			uuidStr, ifname)
-		return nil, ""
-	}
-	macAddr := ""
-	for _, v := range ds.VifList {
-		if v.Vif == ifname {
-			macAddr = v.Mac
-			break
-		}
-	}
-	if macAddr == "" {
-		log.Debugf("getAppIP(%s, %s) no macAddr\n",
-			uuidStr, ifname)
-		return nil, ""
-	}
-	log.Debugf("getAppIP(%s, %s) found macAddr %s\n",
-		uuidStr, ifname, macAddr)
-	ip := lookupNetworkObjectStatusByMac(ctx, macAddr)
-	if ip == nil {
-		log.Debugf("getAppIP(%s, %s) no IP address mac %s\n",
-			uuidStr, ifname, macAddr)
-		return nil, macAddr
-	}
-	log.Debugf("getAppIP(%s, %s) found %s mac %s\n",
-		uuidStr, ifname, ip.String(), macAddr)
-	return ip, macAddr
-}
+// Use the ifname/vifname to find the overlay or underlay status
+// and from there the (ip, mac) addresses for the app
+func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
+	vifname string) (string, string) {
 
-func lookupNetworkObjectStatusByMac(ctx *zedagentContext,
-	macAddr string) *net.IP {
-
-	sub := ctx.subNetworkObjectStatus
-	items := sub.GetAll()
-	for key, st := range items {
-		status := cast.CastNetworkObjectStatus(st)
-		if status.Key() != key {
-			log.Errorf("lookupNetworkObjectStatusByMac: key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
+	log.Debugf("getAppIP(%s, %s)\n", aiStatus.Key(), vifname)
+	for _, ulStatus := range aiStatus.UnderlayNetworks {
+		if ulStatus.Vif != vifname {
 			continue
 		}
-		ip, ok := status.IPAssignments[macAddr]
-		if ok {
-			return &ip
-		} else {
-			log.Errorf("lookupNetworkObjectStatusByMac: found network %s but not found mac %s\n",
-				key, macAddr)
-		}
+		log.Debugf("getAppIP(%s, %s) found underlay %s mac %s\n",
+			aiStatus.Key(), vifname,
+			ulStatus.AssignedIPAddr, ulStatus.Mac)
+		return ulStatus.AssignedIPAddr, ulStatus.Mac
 	}
-	log.Errorf("lookupNetworkObjectStatusByMac: not found mac %s\n",
-		macAddr)
-	return nil
+	for _, olStatus := range aiStatus.OverlayNetworks {
+		if olStatus.Vif != vifname {
+			continue
+		}
+		log.Debugf("getAppIP(%s, %s) found overlay %s mac %s\n",
+			aiStatus.Key(), vifname,
+			olStatus.EID.String(), olStatus.Mac)
+		return olStatus.EID.String(), olStatus.Mac
+	}
+	return "", ""
 }
