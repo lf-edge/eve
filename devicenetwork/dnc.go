@@ -98,7 +98,7 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*DeviceNetworkContext)
 
 	curTimePriority := ctx.DevicePortConfigTime
-	log.Infof("HandleDPCModify for %s current time %v new time %v\n",
+	log.Infof("HandleDPCModify for %s current time %v modified time %v\n",
 		key, curTimePriority, portConfig.TimePriority)
 
 	zeroTime := time.Time{}
@@ -184,18 +184,29 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	portConfig := cast.CastDevicePortConfig(configArg)
 
 	curTimePriority := ctx.DevicePortConfigTime
-	log.Infof("HandleDPCDelete for %s current time %v new time %v\n",
+	log.Infof("HandleDPCDelete for %s current time %v deleted time %v\n",
 		key, curTimePriority, portConfig.TimePriority)
+
+	if portConfig.Key == "" {
+		portConfig.Key = key
+	}
+	// In case Name isn't set we make it match IfName
+	for i, _ := range portConfig.Ports {
+		port := &portConfig.Ports[i]
+		if port.Name == "" {
+			port.Name = port.IfName
+		}
+	}
 
 	// Look up based on timestamp, then content
 	oldConfig := lookupPortConfig(ctx, portConfig)
-	if oldConfig != nil {
-		log.Infof("HandleDPCDelete: found %+v\n", *oldConfig)
-		removePortConfig(ctx, *oldConfig)
-	} else {
+	if oldConfig == nil {
 		log.Errorf("HandleDPCDelete: not found %+v\n", portConfig)
+		return
 	}
 
+	log.Infof("HandleDPCDelete: found %+v\n", *oldConfig)
+	removePortConfig(ctx, *oldConfig)
 	ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
 	if len(ctx.DevicePortConfigList.PortConfigList) != 0 {
 		log.Infof("HandleDPCDelete: first is %+v\n",
@@ -237,7 +248,10 @@ func lookupPortConfig(ctx *DeviceNetworkContext,
 		}
 	}
 	for i, port := range ctx.DevicePortConfigList.PortConfigList {
-		if reflect.DeepEqual(port.Ports, portConfig.Ports) {
+		if port.Version == portConfig.Version &&
+			port.Key == portConfig.Key &&
+			reflect.DeepEqual(port.Ports, portConfig.Ports) {
+
 			log.Infof("lookupPortConfig deepequal found +%v\n",
 				port)
 			return &ctx.DevicePortConfigList.PortConfigList[i]
