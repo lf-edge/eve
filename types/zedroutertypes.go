@@ -162,7 +162,7 @@ type DhcpConfig struct {
 
 type NetworkPortConfig struct {
 	IfName string
-	Name   string // XXX New logical name set by controller/model
+	Name   string // New logical name set by controller/model
 	IsMgmt bool   // Used to talk to controller XXX NEW
 	Free   bool   // Higher priority to talk to controller since no cost
 	DhcpConfig
@@ -171,6 +171,8 @@ type NetworkPortConfig struct {
 
 type NetworkPortStatus struct {
 	IfName string
+	Name   string // New logical name set by controller/model
+	IsMgmt bool   // Used to talk to controller XXX NEW
 	Free   bool
 	NetworkObjectConfig
 	AddrInfoList []AddrInfo
@@ -187,7 +189,8 @@ type AddrInfo struct {
 
 // Published to microservices which needs to know about ports and IP addresses
 type DeviceNetworkStatus struct {
-	Ports []NetworkPortStatus
+	Version DevicePortConfigVersion // From DevicePortConfig
+	Ports   []NetworkPortStatus
 }
 
 // XXX check IsMgmt flag
@@ -383,7 +386,7 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, ifname str
 }
 
 // Check if an interface/adapter name is a management port
-// XXX check IsMgmtPort
+// XXX check IsMgmtPort if Version=1
 func IsMgmtPort(globalStatus DeviceNetworkStatus, ifname string) bool {
 	for _, us := range globalStatus.Ports {
 		if us.IfName == ifname {

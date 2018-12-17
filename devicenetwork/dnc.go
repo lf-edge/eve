@@ -182,6 +182,9 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 		if pass {
 			*ctx.DeviceNetworkStatus = dnStatus
 			DoDNSUpdate(ctx)
+		} else {
+			// XXX try lower priority
+			// XXX add retry of higher priority in main
 		}
 	}
 	log.Infof("HandleDPCModify done for %s\n", key)
@@ -241,8 +244,14 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
 		log.Infof("HandleDPCDelete DeviceNetworkStatus change from %v to %v\n",
 			*ctx.DeviceNetworkStatus, dnStatus)
-		*ctx.DeviceNetworkStatus = dnStatus
-		DoDNSUpdate(ctx)
+		pass := VerifyDeviceNetworkStatus(dnStatus, 1)
+		if pass {
+			*ctx.DeviceNetworkStatus = dnStatus
+			DoDNSUpdate(ctx)
+		} else {
+			// XXX try lower priority
+			// XXX add retry of higher priority in main
+		}
 	}
 	log.Infof("HandleDPCDelete done for %s\n", key)
 }

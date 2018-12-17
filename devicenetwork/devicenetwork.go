@@ -109,10 +109,13 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 	var globalStatus types.DeviceNetworkStatus
 	var err error = nil
 
+	globalStatus.Version = globalConfig.Version
 	globalStatus.Ports = make([]types.NetworkPortStatus,
 		len(globalConfig.Ports))
 	for ix, u := range globalConfig.Ports {
 		globalStatus.Ports[ix].IfName = u.IfName
+		globalStatus.Ports[ix].Name = u.Name
+		globalStatus.Ports[ix].IsMgmt = u.IsMgmt
 		globalStatus.Ports[ix].Free = u.Free
 		// XXX
 		// If device DeviceNetworkStatus already has non-empty proxy
