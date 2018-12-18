@@ -74,7 +74,7 @@ func VerifyDeviceNetworkStatus(
 
 		identityDirname := "/config"
 		onboardingCertName := identityDirname + "/onboard.cert.pem"
-		onboardingKeyName  := identityDirname + "/onboard.key.pem"
+		onboardingKeyName := identityDirname + "/onboard.key.pem"
 		onboardingCert, err := tls.LoadX509KeyPair(onboardingCertName,
 			onboardingKeyName)
 		if err != nil {
@@ -85,7 +85,7 @@ func VerifyDeviceNetworkStatus(
 		tlsConfig, err = zedcloud.GetTlsConfig(serverName, clientCert)
 		if err != nil {
 			log.Infof("VerifyDeviceNetworkStatus: " +
-			"Tls configuration for talking to Zedcloud cannot be found")
+				"Tls configuration for talking to Zedcloud cannot be found")
 			return false
 		}
 	}
@@ -102,7 +102,6 @@ func VerifyDeviceNetworkStatus(
 	}
 	return false
 }
-
 
 // Calculate local IP addresses to make a types.DeviceNetworkStatus
 func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus types.DeviceNetworkStatus) (types.DeviceNetworkStatus, error) {
@@ -219,13 +218,22 @@ func lookupPortStatusAddr(status types.DeviceNetworkStatus,
 }
 
 // Returns true if anything might have changed
+// XXX check for all other walkers of globalStatus.Ports for IsMgmt check
 func UpdateDeviceNetworkGeo(timelimit time.Duration, globalStatus *types.DeviceNetworkStatus) bool {
 	change := false
 	for ui, _ := range globalStatus.Ports {
 		u := &globalStatus.Ports[ui]
+		if globalStatus.Version >= types.DPCIsMgmt &&
+			!u.IsMgmt {
+			continue
+		}
 		for i, _ := range u.AddrInfoList {
 			// Need pointer since we are going to modify
 			ai := &u.AddrInfoList[i]
+			if ai.Addr.IsLinkLocalUnicast() {
+				continue
+			}
+
 			timePassed := time.Since(ai.LastGeoTimestamp)
 			if timePassed < timelimit {
 				continue

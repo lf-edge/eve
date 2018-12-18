@@ -489,7 +489,7 @@ func updateLisp(lispRunDirname string,
 	devices = strings.Replace(devices, "\n", " ", -1)
 	log.Debugf("updateLisp: found %d EIDs devices <%v>\n",
 		eidCount, devices)
-	freeMgmtPorts := types.GetMgmtPortFreeNoLocal(*globalStatus)
+	freeMgmtPorts := types.GetMgmtPortsFreeNoLinkLocal(*globalStatus)
 	for _, u := range freeMgmtPorts {
 		devices += " " + u.IfName
 	}

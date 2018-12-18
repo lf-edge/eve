@@ -843,7 +843,7 @@ func natActivate(config types.NetworkServiceConfig,
 // Expand the generic names
 func getAdapters(ctx *zedrouterContext, adapter string) []string {
 	if strings.EqualFold(adapter, "uplink") {
-		return types.GetMgmtPorts(*ctx.deviceNetworkStatus, 0)
+		return types.GetMgmtPortsAny(*ctx.deviceNetworkStatus, 0)
 	}
 	if strings.EqualFold(adapter, "freeuplink") {
 		return types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0)

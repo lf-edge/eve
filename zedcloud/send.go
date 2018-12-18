@@ -26,7 +26,7 @@ type ZedCloudContext struct {
 	TlsConfig           *tls.Config
 	FailureFunc         func(intf string, url string, reqLen int64, respLen int64)
 	SuccessFunc         func(intf string, url string, reqLen int64, respLen int64)
-	NoLedManager	    bool // Don't call UpdateLedManagerConfig
+	NoLedManager        bool // Don't call UpdateLedManagerConfig
 }
 
 // Tries all interfaces (free first) until one succeeds. interation arg
@@ -82,15 +82,15 @@ func VerifyAllIntf(ctx ZedCloudContext,
 		var intfs []string
 		if try == 0 {
 			intfs = types.GetMgmtPortsFree(*ctx.DeviceNetworkStatus,
-			iteration)
+				iteration)
 			log.Debugf("VerifyAllIntf: trying free %v\n", intfs)
 		} else {
 			intfs = types.GetMgmtPortsNonFree(*ctx.DeviceNetworkStatus,
-			iteration)
+				iteration)
 			log.Debugf("VerifyAllIntf: non-free %v\n", intfs)
 		}
 		for _, intf := range intfs {
-			if (intfSuccessCount >= successCount) {
+			if intfSuccessCount >= successCount {
 				// We have enough uplinks with cloud connectivity working.
 				break
 			}
@@ -107,10 +107,10 @@ func VerifyAllIntf(ctx ZedCloudContext,
 				intfSuccessCount += 1
 			default:
 				log.Errorf(
-					"VerifyAllIntf: Uplink test FAILED via %s to URL %s with " +
-					"status code %d and status %s",
+					"VerifyAllIntf: Uplink test FAILED via %s to URL %s with "+
+						"status code %d and status %s",
 					intf, url, resp.StatusCode, http.StatusText(resp.StatusCode))
-					continue
+				continue
 			}
 		}
 	}
@@ -120,7 +120,7 @@ func VerifyAllIntf(ctx ZedCloudContext,
 		return false, errors.New(errStr)
 	}
 	if intfSuccessCount < successCount {
-		errStr := fmt.Sprintf("VerifyAllIntf: " +
+		errStr := fmt.Sprintf("VerifyAllIntf: "+
 			"Not enough Ports (%d) against required count %d, can help reach Zedcloud",
 			intfSuccessCount, successCount)
 		log.Errorln(errStr)
@@ -150,7 +150,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		useTLS = true
 	}
 
-	addrCount := types.CountLocalAddrAny(*ctx.DeviceNetworkStatus, intf)
+	addrCount := types.CountLocalAddrAnyNoLinkLocalIf(*ctx.DeviceNetworkStatus, intf)
 	log.Debugf("Connecting to %s using intf %s #sources %d reqlen %d\n",
 		reqUrl, intf, addrCount, reqlen)
 
@@ -164,7 +164,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		return nil, nil, errors.New(errStr)
 	}
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
-		localAddr, err := types.GetLocalAddrAny(*ctx.DeviceNetworkStatus,
+		localAddr, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus,
 			retryCount, intf)
 		if err != nil {
 			log.Fatal(err)
