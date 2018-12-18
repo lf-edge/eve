@@ -432,8 +432,10 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		network := cast.CastNetworkObjectConfig(networkObject)
 		if network.Proxy != nil {
 			port.ProxyConfig = *network.Proxy
+			// XXX set this even if no Proxy
 			port.AddrSubnet = sysAdapter.Addr
 		}
+		// XXX add other parameters from the network such as gateway, dns
 		// XXX
 		// Even when the network that we point to does not have
 		// proxy configuration, we should still parse the port.
@@ -1062,8 +1064,10 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 
 	globalConfigChange := false
 	for _, item := range items {
-		log.Infof("parseConfigItems key %s\n", item.Key)
+		log.Infof("parseConfigItems key %s value %s\n",
+			item.Key, item.Value)
 
+		// XXX parse item.Value into int/bool/etc
 		var newU32 uint32
 		var newBool bool
 		var newString string
