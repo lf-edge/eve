@@ -194,52 +194,7 @@ type DeviceNetworkStatus struct {
 	Ports   []NetworkPortStatus
 }
 
-// Pick one of the isMgmt ports
-// XXX unused
-func XXXGetMgmtPortAny(globalStatus DeviceNetworkStatus, pickNum int) (string, error) {
-	return getMgmtPortImpl(globalStatus, pickNum, false)
-}
-
-// Pick one of the free IsMgmt ports
-// XXX unused
-func XXXGetMgmtPortFree(globalStatus DeviceNetworkStatus, pickNum int) (string, error) {
-	return getMgmtPortImpl(globalStatus, pickNum, true)
-}
-
-func getMgmtPortImpl(globalStatus DeviceNetworkStatus, pickNum int,
-	freeOnly bool) (string, error) {
-
-	count := 0
-	for _, us := range globalStatus.Ports {
-		if freeOnly && !us.Free {
-			continue
-		}
-		if globalStatus.Version >= DPCIsMgmt &&
-			!us.IsMgmt {
-			continue
-		}
-		count += 1
-	}
-	if count == 0 {
-		return "", errors.New("getMgmtPortImpl has no ports")
-	}
-	pickNum = pickNum % count
-	for _, us := range globalStatus.Ports {
-		if freeOnly && !us.Free {
-			continue
-		}
-		if globalStatus.Version >= DPCIsMgmt &&
-			!us.IsMgmt {
-			continue
-		}
-		if pickNum == 0 {
-			return us.IfName, nil
-		}
-		pickNum -= 1
-	}
-	return "", errors.New("getMgmtPortImpl past end")
-}
-
+// XXX used?
 func rotate(arr []string, amount int) []string {
 	if len(arr) == 0 {
 		return []string{}
@@ -281,26 +236,6 @@ func getMgmtPortsImpl(globalStatus DeviceNetworkStatus, rotation int,
 		ports = append(ports, us.IfName)
 	}
 	return rotate(ports, rotation)
-}
-
-// Return number of local IP addresses for all the management port, unless if
-// port is set in which case we could it.
-// XXX ununsed
-func XXXCountLocalAddrAny(globalStatus DeviceNetworkStatus, port string) int {
-	// Count the number of addresses which apply
-	addrs, _ := getInterfaceAddr(globalStatus, false, port, true)
-	return len(addrs)
-}
-
-// Return number of local IP addresses for all the free management ports,
-// unless if port is set in which case we could it.
-// XXX ununsed
-func XXXCountLocalAddrFree(globalStatus DeviceNetworkStatus,
-	port string) int {
-
-	// Count the number of addresses which apply
-	addrs, _ := getInterfaceAddr(globalStatus, true, port, true)
-	return len(addrs)
 }
 
 // Return number of local IP addresses for all the management ports
@@ -347,18 +282,6 @@ func GetLocalAddrAny(globalStatus DeviceNetworkStatus, pickNum int,
 	port string) (net.IP, error) {
 
 	freeOnly := false
-	includeLinkLocal := true
-	return getLocalAddrImpl(globalStatus, pickNum, port, freeOnly,
-		includeLinkLocal)
-}
-
-// Pick one address from all of the free management ports, unless if port is
-// set in which we pick from that port. Includes link-local addresses.
-// XXX used?
-func XXXGetLocalAddrFree(globalStatus DeviceNetworkStatus, pickNum int,
-	port string) (net.IP, error) {
-
-	freeOnly := true
 	includeLinkLocal := true
 	return getLocalAddrImpl(globalStatus, pickNum, port, freeOnly,
 		includeLinkLocal)
@@ -613,7 +536,6 @@ type OverlayNetworkStatus struct {
 	BridgeMac    net.HardwareAddr
 	BridgeIPAddr string // The address for DNS/DHCP service in zedrouter
 	HostName     string
-	// XXX MissingNetwork bool // If Network UUID not found
 }
 
 type DhcpType uint8
@@ -641,7 +563,6 @@ type UnderlayNetworkStatus struct {
 	BridgeIPAddr   string // The address for DNS/DHCP service in zedrouter
 	AssignedIPAddr string // Assigned to domU
 	HostName       string
-	// XXX MissingNetwork bool // If Network UUID not found
 }
 
 type NetworkType uint8

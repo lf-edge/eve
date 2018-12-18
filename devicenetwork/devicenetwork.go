@@ -218,7 +218,6 @@ func lookupPortStatusAddr(status types.DeviceNetworkStatus,
 }
 
 // Returns true if anything might have changed
-// XXX check for all other walkers of globalStatus.Ports for IsMgmt check
 func UpdateDeviceNetworkGeo(timelimit time.Duration, globalStatus *types.DeviceNetworkStatus) bool {
 	change := false
 	for ui, _ := range globalStatus.Ports {
