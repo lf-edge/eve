@@ -1,0 +1,147 @@
+// Copyright (c) 2017-2018 Zededa, Inc.
+// All rights reserved.
+
+// Wait for having IP addresses for a few minutes
+// so that we are likely to have an address when we run ntp
+
+package waitforaddr
+
+import (
+	"flag"
+	"fmt"
+	"github.com/google/go-cmp/cmp"
+	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/pubsub"
+	"github.com/zededa/go-provision/types"
+	"io"
+	"os"
+	"time"
+)
+
+const (
+	agentName = "waitforaddr"
+)
+
+// Set from Makefile
+var Version = "No version specified"
+
+// Context for handleDNSModify
+type DNSContext struct {
+	deviceNetworkStatus    types.DeviceNetworkStatus
+	usableAddressCount     int
+	DNSinitialized         bool // Received DeviceNetworkStatus
+	subDeviceNetworkStatus *pubsub.Subscription
+}
+
+var debug = false
+var debugOverride bool // From command line arg
+
+func Run() {
+	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug flag")
+	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
+	flag.Parse()
+	debug = *debugPtr
+	debugOverride = debug
+	if debugOverride {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
+	useStdout := *stdoutPtr
+	if *versionPtr {
+		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		return
+	}
+	// XXX json to file; text to stdout/console?
+	logf, err := agentlog.Init(agentName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logf.Close()
+	// For limited output on console
+	consolef := os.Stdout
+	if !useStdout {
+		consolef, err = os.OpenFile("/dev/console", os.O_RDWR|os.O_APPEND,
+			0666)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	multi := io.MultiWriter(logf, consolef)
+	log.SetOutput(multi)
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+	log.Infof("Starting %s\n", agentName)
+
+	DNSctx := DNSContext{}
+
+	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
+		types.DeviceNetworkStatus{}, false, &DNSctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
+	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
+	subDeviceNetworkStatus.Activate()
+
+	// Wait until we have an address or 5 minutes, whichever comes first
+	timer := time.NewTimer(5 * time.Minute)
+	defer timer.Stop()
+
+	done := false
+	for DNSctx.usableAddressCount == 0 || done {
+		log.Infof("Waiting for usable address(es)\n")
+		select {
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
+		case <-timer.C:
+			log.Infoln("Exit since we got timeout")
+			done = true
+
+		}
+	}
+}
+
+func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
+
+	status := cast.CastDeviceNetworkStatus(statusArg)
+	ctx := ctxArg.(*DNSContext)
+	if key != "global" {
+		log.Infof("handleDNSModify: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleDNSModify for %s\n", key)
+	if cmp.Equal(ctx.deviceNetworkStatus, status) {
+		return
+	}
+	log.Infof("handleDNSModify: changed %v",
+		cmp.Diff(ctx.deviceNetworkStatus, status))
+	ctx.deviceNetworkStatus = status
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
+	ctx.DNSinitialized = true
+	ctx.usableAddressCount = newAddrCount
+	log.Infof("handleDNSModify done for %s\n", key)
+}
+
+func handleDNSDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Infof("handleDNSDelete for %s\n", key)
+	ctx := ctxArg.(*DNSContext)
+
+	if key != "global" {
+		log.Infof("handleDNSDelete: ignoring %s\n", key)
+		return
+	}
+	ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
+	ctx.DNSinitialized = false
+	ctx.usableAddressCount = newAddrCount
+	log.Infof("handleDNSDelete done for %s\n", key)
+}

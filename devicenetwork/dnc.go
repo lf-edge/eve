@@ -4,10 +4,12 @@
 package devicenetwork
 
 import (
+	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
+	"os"
 	"reflect"
 	"time"
 )
@@ -75,7 +77,6 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	} else {
 		oldConfig = types.DevicePortConfig{}
 	}
-	// XXX what's the default? eth0 aka default.json? Use empty for now
 	*ctx.DeviceNetworkConfig = types.DeviceNetworkConfig{}
 	portConfig := MakeDevicePortConfig(*ctx.DeviceNetworkConfig)
 	if !reflect.DeepEqual(oldConfig, portConfig) {
@@ -97,18 +98,29 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*DeviceNetworkContext)
 
 	curTimePriority := ctx.DevicePortConfigTime
-	log.Infof("HandleDPCModify for %s current time %v new time %v\n",
+	log.Infof("HandleDPCModify for %s current time %v modified time %v\n",
 		key, curTimePriority, portConfig.TimePriority)
 
 	zeroTime := time.Time{}
-	if key == "override" && portConfig.TimePriority == zeroTime {
-		// XXX fix input instead?
-		portConfig.TimePriority = time.Unix(1, 0)
-		log.Infof("HandleDPCModify: Forcing TimePriority to %v\n",
-			portConfig.TimePriority)
+	if portConfig.TimePriority == zeroTime {
+		// If we can stat the file use its modify time
+		filename := fmt.Sprintf("/var/tmp/zededa/DevicePortConfig/%s.json",
+			key)
+		fi, err := os.Stat(filename)
+		if err == nil {
+			portConfig.TimePriority = fi.ModTime()
+		} else {
+			portConfig.TimePriority = time.Unix(1, 0)
+		}
+		log.Infof("HandleDPCModify: Forcing TimePriority for %s to %v\n",
+			key, portConfig.TimePriority)
 	}
-	// XXX should we for Name == "" to IfName for each?
-	for _, port := range portConfig.Ports {
+	if portConfig.Key == "" {
+		portConfig.Key = key
+	}
+	// In case Name isn't set we make it match IfName
+	for i, _ := range portConfig.Ports {
+		port := &portConfig.Ports[i]
 		if port.Name == "" {
 			port.Name = port.IfName
 		}
@@ -125,7 +137,12 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	// Look up based on timestamp, then content
 	oldConfig := lookupPortConfig(ctx, portConfig)
 	if oldConfig != nil {
-		if reflect.DeepEqual(oldConfig.Ports, portConfig.Ports) {
+		// Compare everything but TimePriority since that is
+		// modified by zedagent even if there are no changes.
+		if oldConfig.Key == portConfig.Key &&
+			oldConfig.Version == portConfig.Version &&
+			reflect.DeepEqual(oldConfig.Ports, portConfig.Ports) {
+
 			log.Infof("HandleDPCModify: no change; timestamps %v %v\n",
 				oldConfig.TimePriority, portConfig.TimePriority)
 			log.Infof("HandleDPCModify done for %s\n", key)
@@ -141,6 +158,7 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("HandleDPCModify: first is %+v\n",
 		ctx.DevicePortConfigList.PortConfigList[0])
 	portConfig = ctx.DevicePortConfigList.PortConfigList[0]
+	ctx.DevicePortConfigTime = portConfig.TimePriority
 
 	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
 		log.Infof("HandleDPCModify DevicePortConfig change from %v to %v\n",
@@ -148,6 +166,8 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
 		*ctx.DevicePortConfig = portConfig
 	}
+	// XXX if err return means WPAD failed, or port does not exist
+	// XXX add test hook for former; try lower priority
 	dnStatus, _ := MakeDeviceNetworkStatus(portConfig,
 		*ctx.DeviceNetworkStatus)
 
@@ -162,6 +182,9 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 		if pass {
 			*ctx.DeviceNetworkStatus = dnStatus
 			DoDNSUpdate(ctx)
+		} else {
+			// XXX try lower priority
+			// XXX add retry of higher priority in main
 		}
 	}
 	log.Infof("HandleDPCModify done for %s\n", key)
@@ -174,17 +197,29 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	portConfig := cast.CastDevicePortConfig(configArg)
 
 	curTimePriority := ctx.DevicePortConfigTime
-	log.Infof("HandleDPCDelete for %s current time %v new time %v\n",
+	log.Infof("HandleDPCDelete for %s current time %v deleted time %v\n",
 		key, curTimePriority, portConfig.TimePriority)
+
+	if portConfig.Key == "" {
+		portConfig.Key = key
+	}
+	// In case Name isn't set we make it match IfName
+	for i, _ := range portConfig.Ports {
+		port := &portConfig.Ports[i]
+		if port.Name == "" {
+			port.Name = port.IfName
+		}
+	}
 
 	// Look up based on timestamp, then content
 	oldConfig := lookupPortConfig(ctx, portConfig)
-	if oldConfig != nil {
-		log.Infof("HandleDPCDelete: found %+v\n", *oldConfig)
-		removePortConfig(ctx, *oldConfig)
-	} else {
+	if oldConfig == nil {
 		log.Errorf("HandleDPCDelete: not found %+v\n", portConfig)
+		return
 	}
+
+	log.Infof("HandleDPCDelete: found %+v\n", *oldConfig)
+	removePortConfig(ctx, *oldConfig)
 	ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
 	if len(ctx.DevicePortConfigList.PortConfigList) != 0 {
 		log.Infof("HandleDPCDelete: first is %+v\n",
@@ -194,6 +229,7 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 		log.Infof("HandleDPCDelete: none left\n")
 		portConfig = types.DevicePortConfig{}
 	}
+	ctx.DevicePortConfigTime = portConfig.TimePriority
 
 	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
 		log.Infof("HandleDPCDelete DevicePortConfig change from %v to %v\n",
@@ -201,12 +237,21 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
 		*ctx.DevicePortConfig = portConfig
 	}
-	dnStatus := types.DeviceNetworkStatus{}
+	// XXX if err return means WPAD failed, or port does not exist
+	// XXX add test hook for former; try lower priority
+	dnStatus, _ := MakeDeviceNetworkStatus(portConfig,
+		*ctx.DeviceNetworkStatus)
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
 		log.Infof("HandleDPCDelete DeviceNetworkStatus change from %v to %v\n",
 			*ctx.DeviceNetworkStatus, dnStatus)
-		*ctx.DeviceNetworkStatus = dnStatus
-		DoDNSUpdate(ctx)
+		pass := VerifyDeviceNetworkStatus(dnStatus, 1)
+		if pass {
+			*ctx.DeviceNetworkStatus = dnStatus
+			DoDNSUpdate(ctx)
+		} else {
+			// XXX try lower priority
+			// XXX add retry of higher priority in main
+		}
 	}
 	log.Infof("HandleDPCDelete done for %s\n", key)
 }
@@ -225,7 +270,10 @@ func lookupPortConfig(ctx *DeviceNetworkContext,
 		}
 	}
 	for i, port := range ctx.DevicePortConfigList.PortConfigList {
-		if reflect.DeepEqual(port.Ports, portConfig.Ports) {
+		if port.Version == portConfig.Version &&
+			port.Key == portConfig.Key &&
+			reflect.DeepEqual(port.Ports, portConfig.Ports) {
+
 			log.Infof("lookupPortConfig deepequal found +%v\n",
 				port)
 			return &ctx.DevicePortConfigList.PortConfigList[i]

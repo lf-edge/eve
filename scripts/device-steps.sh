@@ -322,6 +322,11 @@ if [ -f /var/run/watchdog.pid ]; then
 fi
 /usr/sbin/watchdog -c $TMPDIR/watchdognim.conf -F -s &
 
+# Wait for having IP addresses for a few minutes
+# so that we are likely to have an address when we run ntp
+echo $BINDIR/waitforaddr
+$BINDIR/waitforaddr
+
 # We need to try our best to setup time *before* we generate the certifiacte.
 # Otherwise it may have start date in the future
 echo "Check for NTP config"

@@ -15,6 +15,7 @@ import (
 	"github.com/zededa/go-provision/cmd/nim"
 	"github.com/zededa/go-provision/cmd/logmanager"
 	"github.com/zededa/go-provision/cmd/verifier"
+	"github.com/zededa/go-provision/cmd/waitforaddr"
 	"github.com/zededa/go-provision/cmd/zedagent"
 	"github.com/zededa/go-provision/cmd/zedmanager"
 	"github.com/zededa/go-provision/cmd/zedrouter"
@@ -43,6 +44,8 @@ func main() {
 		nim.Run()
 	case "verifier":
 		verifier.Run()
+	case "waitforaddr":
+		waitforaddr.Run()
 	case "zedagent":
 		zedagent.Run()
 	case "zedmanager":
