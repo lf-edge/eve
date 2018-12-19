@@ -27,6 +27,7 @@ can specify proxies using different mechanism.
 
 An example file to specify using WPAD to retrieve proxy configuration on eth0 is:
 {
+    "Version": 1,
     "Ports": [
         {
             "AddrSubnet": "",
@@ -65,6 +66,7 @@ result as the Pacfile e.g.,
 
 An example file with eth0 being static and eth1 using dhcp is:
 {
+    "Version": 1,
     "Ports": [
         {
             "AddrSubnet": "38.108.181.238/24", 
@@ -92,6 +94,9 @@ An example file with eth0 being static and eth1 using dhcp is:
         }
     ]
 }
+
+If you want eth1 to be configured by zedrouter and used by applications but not
+used for zedcloud management traffic, make sure you have Version 1 and IsMgmt false.
 
 NOTE that if a static IP configuration is used with WPAD DNS discovery then the
 DomainName needs to be set; the DomainName is used to determine where to look for

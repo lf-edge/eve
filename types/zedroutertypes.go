@@ -373,6 +373,17 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, ifname str
 	}
 }
 
+// Check if an interface/adapter name is a port owned by zedrouter
+func IsPort(globalStatus DeviceNetworkStatus, ifname string) bool {
+	for _, us := range globalStatus.Ports {
+		if us.IfName != ifname {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 // Check if an interface/adapter name is a management port
 func IsMgmtPort(globalStatus DeviceNetworkStatus, ifname string) bool {
 	for _, us := range globalStatus.Ports {
