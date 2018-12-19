@@ -488,10 +488,11 @@ func PublishToDir(dirName string, key string, item interface{}) error {
 	topic := TypeToName(item)
 	pub := new(Publication)
 	pub.topicType = item
-	pub.dirName = dirName
-	pub.publishToDir = true
 	pub.topic = topic
 	pub.km = keyMap{key: NewLockedStringMap()}
+	dirName = fmt.Sprintf("%s/%s", dirName, pub.topic)
+	pub.dirName = dirName
+	pub.publishToDir = true
 	name := pub.nameString()
 
 	if _, err := os.Stat(dirName); err != nil {
