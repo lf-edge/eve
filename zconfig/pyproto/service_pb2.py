@@ -15,15 +15,16 @@ _sym_db = _symbol_database.Default()
 
 
 import devcommon_pb2 as devcommon__pb2
+import netcmn_pb2 as netcmn__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='service.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\rservice.proto\x1a\x0f\x64\x65vcommon.proto\"&\n\x13ServiceOpaqueConfig\x12\x0f\n\x07oconfig\x18\x01 \x01(\t\"\xc3\x01\n\x11ServiceLispConfig\x12 \n\x07LispMSs\x18\x01 \x03(\x0b\x32\x0f.ZcServicePoint\x12\x16\n\x0eLispInstanceId\x18\x02 \x01(\r\x12\x10\n\x08\x61llocate\x18\x03 \x01(\x08\x12\x15\n\rexportprivate\x18\x04 \x01(\x08\x12\x18\n\x10\x61llocationprefix\x18\x05 \x01(\x0c\x12\x1b\n\x13\x61llocationprefixlen\x18\x06 \x01(\r\x12\x14\n\x0c\x65xperimental\x18\x14 \x01(\x08\"\xda\x01\n\x15ServiceInstanceConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12\x1a\n\x07srvtype\x18\x03 \x01(\x0e\x32\t.ZSrvType\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12\x0f\n\x07\x61pplink\x18\n \x01(\t\x12\x19\n\x07\x64\x65vlink\x18\x14 \x01(\x0b\x32\x08.Adapter\x12!\n\x03\x63\x66g\x18\x1e \x01(\x0b\x32\x14.ServiceOpaqueConfig\x12#\n\x07lispCfg\x18\x1f \x01(\x0b\x32\x12.ServiceLispConfig*s\n\x08ZSrvType\x12\r\n\tZsrvFirst\x10\x00\x12\x12\n\x0eZsrvStrongSwan\x10\x01\x12\x0c\n\x08ZsrvLISP\x10\x02\x12\x0e\n\nZsrvBridge\x10\x03\x12\x0b\n\x07ZsrvNAT\x10\x04\x12\n\n\x06ZsrvLB\x10\x05\x12\r\n\x08ZsrvLast\x10\xff\x01\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\rservice.proto\x1a\x0f\x64\x65vcommon.proto\x1a\x0cnetcmn.proto\"&\n\x13ServiceOpaqueConfig\x12\x0f\n\x07oconfig\x18\x01 \x01(\t\"\xc3\x01\n\x11ServiceLispConfig\x12 \n\x07LispMSs\x18\x01 \x03(\x0b\x32\x0f.ZcServicePoint\x12\x16\n\x0eLispInstanceId\x18\x02 \x01(\r\x12\x10\n\x08\x61llocate\x18\x03 \x01(\x08\x12\x15\n\rexportprivate\x18\x04 \x01(\x08\x12\x18\n\x10\x61llocationprefix\x18\x05 \x01(\x0c\x12\x1b\n\x13\x61llocationprefixlen\x18\x06 \x01(\r\x12\x14\n\x0c\x65xperimental\x18\x14 \x01(\x08\"\xd6\x02\n\x15ServiceInstanceConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12\x1a\n\x07srvtype\x18\x03 \x01(\x0e\x32\t.ZSrvType\x12#\n\x08instType\x18\x04 \x01(\x0e\x32\x11.ZNetworkInstType\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12\x0f\n\x07\x61pplink\x18\n \x01(\t\x12\x19\n\x07\x64\x65vlink\x18\x14 \x01(\x0b\x32\x08.Adapter\x12!\n\x03\x63\x66g\x18\x1e \x01(\x0b\x32\x14.ServiceOpaqueConfig\x12#\n\x07lispCfg\x18\x1f \x01(\x0b\x32\x12.ServiceLispConfig\x12\x13\n\x02ip\x18( \x01(\x0b\x32\x07.ipspec\x12 \n\x03\x64ns\x18) \x03(\x0b\x32\x13.ZnetStaticDNSEntry\x12\x1e\n\x08\x65ntProxy\x18* \x01(\x0b\x32\x0c.ProxyConfig*s\n\x08ZSrvType\x12\r\n\tZsrvFirst\x10\x00\x12\x12\n\x0eZsrvStrongSwan\x10\x01\x12\x0c\n\x08ZsrvLISP\x10\x02\x12\x0e\n\nZsrvBridge\x10\x03\x12\x0b\n\x07ZsrvNAT\x10\x04\x12\n\n\x06ZsrvLB\x10\x05\x12\r\n\x08ZsrvLast\x10\xff\x01*\x9a\x01\n\x10ZNetworkInstType\x12\x11\n\rZNetInstFirst\x10\x00\x12\x12\n\x0eZnetInstSwitch\x10\x01\x12\x11\n\rZnetInstLocal\x10\x02\x12\x11\n\rZnetInstCloud\x10\x03\x12\x10\n\x0cZnetInstMesh\x10\x04\x12\x14\n\x10ZnetInstHoneyPot\x10\x05\x12\x11\n\x0cZNetInstLast\x10\xff\x01\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
   ,
-  dependencies=[devcommon__pb2.DESCRIPTOR,])
+  dependencies=[devcommon__pb2.DESCRIPTOR,netcmn__pb2.DESCRIPTOR,])
 
 _ZSRVTYPE = _descriptor.EnumDescriptor(
   name='ZSrvType',
@@ -62,12 +63,55 @@ _ZSRVTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=493,
-  serialized_end=608,
+  serialized_start=631,
+  serialized_end=746,
 )
 _sym_db.RegisterEnumDescriptor(_ZSRVTYPE)
 
 ZSrvType = enum_type_wrapper.EnumTypeWrapper(_ZSRVTYPE)
+_ZNETWORKINSTTYPE = _descriptor.EnumDescriptor(
+  name='ZNetworkInstType',
+  full_name='ZNetworkInstType',
+  filename=None,
+  file=DESCRIPTOR,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='ZNetInstFirst', index=0, number=0,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ZnetInstSwitch', index=1, number=1,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ZnetInstLocal', index=2, number=2,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ZnetInstCloud', index=3, number=3,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ZnetInstMesh', index=4, number=4,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ZnetInstHoneyPot', index=5, number=5,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ZNetInstLast', index=6, number=255,
+      options=None,
+      type=None),
+  ],
+  containing_type=None,
+  options=None,
+  serialized_start=749,
+  serialized_end=903,
+)
+_sym_db.RegisterEnumDescriptor(_ZNETWORKINSTTYPE)
+
+ZNetworkInstType = enum_type_wrapper.EnumTypeWrapper(_ZNETWORKINSTTYPE)
 ZsrvFirst = 0
 ZsrvStrongSwan = 1
 ZsrvLISP = 2
@@ -75,6 +119,13 @@ ZsrvBridge = 3
 ZsrvNAT = 4
 ZsrvLB = 5
 ZsrvLast = 255
+ZNetInstFirst = 0
+ZnetInstSwitch = 1
+ZnetInstLocal = 2
+ZnetInstCloud = 3
+ZnetInstMesh = 4
+ZnetInstHoneyPot = 5
+ZNetInstLast = 255
 
 
 
@@ -104,8 +155,8 @@ _SERVICEOPAQUECONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=34,
-  serialized_end=72,
+  serialized_start=48,
+  serialized_end=86,
 )
 
 
@@ -177,8 +228,8 @@ _SERVICELISPCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=75,
-  serialized_end=270,
+  serialized_start=89,
+  serialized_end=284,
 )
 
 
@@ -211,36 +262,64 @@ _SERVICEINSTANCECONFIG = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='activate', full_name='ServiceInstanceConfig.activate', index=3,
+      name='instType', full_name='ServiceInstanceConfig.instType', index=3,
+      number=4, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='activate', full_name='ServiceInstanceConfig.activate', index=4,
       number=5, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='applink', full_name='ServiceInstanceConfig.applink', index=4,
+      name='applink', full_name='ServiceInstanceConfig.applink', index=5,
       number=10, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='devlink', full_name='ServiceInstanceConfig.devlink', index=5,
+      name='devlink', full_name='ServiceInstanceConfig.devlink', index=6,
       number=20, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='cfg', full_name='ServiceInstanceConfig.cfg', index=6,
+      name='cfg', full_name='ServiceInstanceConfig.cfg', index=7,
       number=30, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lispCfg', full_name='ServiceInstanceConfig.lispCfg', index=7,
+      name='lispCfg', full_name='ServiceInstanceConfig.lispCfg', index=8,
       number=31, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='ip', full_name='ServiceInstanceConfig.ip', index=9,
+      number=40, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='dns', full_name='ServiceInstanceConfig.dns', index=10,
+      number=41, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='entProxy', full_name='ServiceInstanceConfig.entProxy', index=11,
+      number=42, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -257,19 +336,24 @@ _SERVICEINSTANCECONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=273,
-  serialized_end=491,
+  serialized_start=287,
+  serialized_end=629,
 )
 
 _SERVICELISPCONFIG.fields_by_name['LispMSs'].message_type = devcommon__pb2._ZCSERVICEPOINT
 _SERVICEINSTANCECONFIG.fields_by_name['srvtype'].enum_type = _ZSRVTYPE
+_SERVICEINSTANCECONFIG.fields_by_name['instType'].enum_type = _ZNETWORKINSTTYPE
 _SERVICEINSTANCECONFIG.fields_by_name['devlink'].message_type = devcommon__pb2._ADAPTER
 _SERVICEINSTANCECONFIG.fields_by_name['cfg'].message_type = _SERVICEOPAQUECONFIG
 _SERVICEINSTANCECONFIG.fields_by_name['lispCfg'].message_type = _SERVICELISPCONFIG
+_SERVICEINSTANCECONFIG.fields_by_name['ip'].message_type = netcmn__pb2._IPSPEC
+_SERVICEINSTANCECONFIG.fields_by_name['dns'].message_type = netcmn__pb2._ZNETSTATICDNSENTRY
+_SERVICEINSTANCECONFIG.fields_by_name['entProxy'].message_type = netcmn__pb2._PROXYCONFIG
 DESCRIPTOR.message_types_by_name['ServiceOpaqueConfig'] = _SERVICEOPAQUECONFIG
 DESCRIPTOR.message_types_by_name['ServiceLispConfig'] = _SERVICELISPCONFIG
 DESCRIPTOR.message_types_by_name['ServiceInstanceConfig'] = _SERVICEINSTANCECONFIG
 DESCRIPTOR.enum_types_by_name['ZSrvType'] = _ZSRVTYPE
+DESCRIPTOR.enum_types_by_name['ZNetworkInstType'] = _ZNETWORKINSTTYPE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 ServiceOpaqueConfig = _reflection.GeneratedProtocolMessageType('ServiceOpaqueConfig', (_message.Message,), dict(
