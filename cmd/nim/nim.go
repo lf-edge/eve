@@ -37,11 +37,12 @@ const (
 
 type nimContext struct {
 	devicenetwork.DeviceNetworkContext
-	subGlobalConfig       *pubsub.Subscription
-	subAssignableAdapters *pubsub.Subscription
-	debug                 bool
-	debugOverride         bool // From command line arg
+	subGlobalConfig *pubsub.Subscription
 
+	// CLI args
+	debug         bool
+	debugOverride bool // From command line arg
+	useStdout     bool
 }
 
 // Set from Makefile
@@ -55,7 +56,7 @@ func (ctx *nimContext) processArgs() {
 
 	ctx.debug = *debugPtr
 	ctx.debugOverride = ctx.debug
-	ctx.useStdout := *stdoutPtr
+	ctx.useStdout = *stdoutPtr
 	if ctx.debugOverride {
 		log.SetLevel(log.DebugLevel)
 	} else {
@@ -127,7 +128,7 @@ func Run() {
 
 	// For limited output on console
 	consolef := os.Stdout
-	if !ctx.useStdout {
+	if !nimCtx.useStdout {
 		consolef, err = os.OpenFile("/dev/console", os.O_RDWR|os.O_APPEND,
 			0666)
 		if err != nil {
@@ -241,9 +242,9 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAssignableAdapters.ModifyHandler = devicenetwork.HandleDUCModify
-	subAssignableAdapters.DeleteHandler = devicenetwork.HandleDUCDelete
-	nimCtx.subAssignableAdapters = subAssignableAdapters
+	subAssignableAdapters.ModifyHandler = devicenetwork.HandleAssignableAdaptersModify
+	subAssignableAdapters.DeleteHandler = devicenetwork.HandleAssignableAdaptersDelete
+	nimCtx.SubAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
 	devicenetwork.DoDNSUpdate(&nimCtx.DeviceNetworkContext)
