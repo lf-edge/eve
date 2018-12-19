@@ -23,6 +23,7 @@ import (
 func MakeDevicePortConfig(globalConfig types.DeviceNetworkConfig) types.DevicePortConfig {
 	var config types.DevicePortConfig
 
+	config.Version = types.DPCIsMgmt
 	config.Ports = make([]types.NetworkPortConfig,
 		len(globalConfig.Uplink))
 	for ix, u := range globalConfig.Uplink {
