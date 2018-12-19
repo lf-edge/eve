@@ -179,7 +179,8 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 		log.Infof("HandleDPCModify DeviceNetworkStatus change from %v to %v\n",
 			*ctx.DeviceNetworkStatus, dnStatus)
 		pass := VerifyDeviceNetworkStatus(dnStatus, 1)
-		if pass {
+		// XXX Can fail if we don't have a DHCP lease yet
+		if true || pass {
 			*ctx.DeviceNetworkStatus = dnStatus
 			DoDNSUpdate(ctx)
 		} else {
