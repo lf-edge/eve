@@ -1081,12 +1081,15 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 		log.Infof("parseConfigItems key %s value %s\n",
 			item.Key, item.Value)
 
-		switch item.Key {
+		// XXX remove any "project." string. Can zedcloud omit it?
+		key := strings.TrimPrefix(item.Key, "project.")
+
+		switch key {
 		case "timer.config.interval":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
 				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
-					item.Value, item.Key, err)
+					item.Value, key, err)
 				continue
 			}
 			newU32 := uint32(i64)
@@ -1096,7 +1099,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			}
 			if newU32 != globalConfig.ConfigInterval {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					item.Key,
+					key,
 					globalConfig.ConfigInterval,
 					newU32)
 				globalConfig.ConfigInterval = newU32
@@ -1107,7 +1110,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
 				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
-					item.Value, item.Key, err)
+					item.Value, key, err)
 				continue
 			}
 			newU32 := uint32(i64)
@@ -1117,7 +1120,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			}
 			if newU32 != globalConfig.MetricInterval {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					item.Key,
+					key,
 					globalConfig.MetricInterval,
 					newU32)
 				globalConfig.MetricInterval = newU32
@@ -1128,7 +1131,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
 				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
-					item.Value, item.Key, err)
+					item.Value, key, err)
 				continue
 			}
 			newU32 := uint32(i64)
@@ -1138,7 +1141,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			}
 			if newU32 != globalConfig.ResetIfCloudGoneTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					item.Key,
+					key,
 					globalConfig.ResetIfCloudGoneTime,
 					newU32)
 				globalConfig.ResetIfCloudGoneTime = newU32
@@ -1148,7 +1151,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
 				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
-					item.Value, item.Key, err)
+					item.Value, key, err)
 				continue
 			}
 			newU32 := uint32(i64)
@@ -1158,7 +1161,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			}
 			if newU32 != globalConfig.FallbackIfCloudGoneTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					item.Key,
+					key,
 					globalConfig.FallbackIfCloudGoneTime,
 					newU32)
 				globalConfig.FallbackIfCloudGoneTime = newU32
@@ -1168,7 +1171,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
 				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
-					item.Value, item.Key, err)
+					item.Value, key, err)
 				continue
 			}
 			newU32 := uint32(i64)
@@ -1178,7 +1181,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			}
 			if newU32 != globalConfig.MintimeUpdateSuccess {
 				log.Errorf("parseConfigItems: %s change from %d to %d\n",
-					item.Key,
+					key,
 					globalConfig.MintimeUpdateSuccess,
 					newU32)
 				globalConfig.MintimeUpdateSuccess = newU32
@@ -1188,15 +1191,15 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			newBool, err := strconv.ParseBool(item.Value)
 			if err != nil {
 				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
-					item.Value, item.Key, err)
+					item.Value, key, err)
 				continue
 			}
-			if item.Key == "debug.enable.usb" {
+			if key == "debug.enable.usb" {
 				newBool = !newBool
 			}
 			if newBool != globalConfig.NoUsbAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
-					item.Key,
+					key,
 					globalConfig.NoUsbAccess,
 					newBool)
 				globalConfig.NoUsbAccess = newBool
@@ -1206,15 +1209,15 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			newBool, err := strconv.ParseBool(item.Value)
 			if err != nil {
 				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
-					item.Value, item.Key, err)
+					item.Value, key, err)
 				continue
 			}
-			if item.Key == "debug.enable.ssh" {
+			if key == "debug.enable.ssh" {
 				newBool = !newBool
 			}
 			if newBool != globalConfig.NoSshAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
-					item.Key,
+					key,
 					globalConfig.NoSshAccess,
 					newBool)
 				globalConfig.NoSshAccess = newBool
@@ -1224,7 +1227,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
 				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
-					item.Value, item.Key, err)
+					item.Value, key, err)
 				continue
 			}
 			newU32 := uint32(i64)
@@ -1234,7 +1237,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			}
 			if newU32 != globalConfig.StaleConfigTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					item.Key,
+					key,
 					globalConfig.StaleConfigTime,
 					newU32)
 				globalConfig.StaleConfigTime = newU32
@@ -1244,7 +1247,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
 				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
-					item.Value, item.Key, err)
+					item.Value, key, err)
 				continue
 			}
 			newU32 := uint32(i64)
@@ -1254,7 +1257,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			}
 			if newU32 != globalConfig.DownloadGCTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					item.Key,
+					key,
 					globalConfig.DownloadGCTime,
 					newU32)
 				globalConfig.DownloadGCTime = newU32
@@ -1264,7 +1267,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
 				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
-					item.Value, item.Key, err)
+					item.Value, key, err)
 				continue
 			}
 			newU32 := uint32(i64)
@@ -1274,7 +1277,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			}
 			if newU32 != globalConfig.VdiskGCTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					item.Key,
+					key,
 					globalConfig.VdiskGCTime,
 					newU32)
 				globalConfig.VdiskGCTime = newU32
@@ -1288,7 +1291,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			}
 			if newString != globalConfig.DefaultLogLevel {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
-					item.Key,
+					key,
 					globalConfig.DefaultLogLevel,
 					newString)
 				globalConfig.DefaultLogLevel = newString
@@ -1302,7 +1305,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			}
 			if newString != globalConfig.DefaultRemoteLogLevel {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
-					item.Key,
+					key,
 					globalConfig.DefaultRemoteLogLevel,
 					newString)
 				globalConfig.DefaultRemoteLogLevel = newString
@@ -1310,7 +1313,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			}
 		default:
 			log.Errorf("Unknown configItem %s value %s\n",
-				item.Key, item.Value)
+				key, item.Value)
 			// XXX send back error? Need device error for that
 		}
 	}
