@@ -22,6 +22,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -1080,24 +1081,15 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 		log.Infof("parseConfigItems key %s value %s\n",
 			item.Key, item.Value)
 
-		// XXX parse item.Value into int/bool/etc
-		var newU32 uint32
-		var newBool bool
-		var newString string
-		switch u := item.ConfigItemValue.(type) {
-		case *zconfig.ConfigItem_Uint32Value:
-			newU32 = u.Uint32Value
-		case *zconfig.ConfigItem_BoolValue:
-			newBool = u.BoolValue
-		case *zconfig.ConfigItem_StringValue:
-			newString = u.StringValue
-		default:
-			log.Errorf("parseConfigItems: not supporting %T type\n",
-				u)
-			continue
-		}
 		switch item.Key {
 		case "timer.config.interval":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, item.Key, err)
+				continue
+			}
+			newU32 := uint32(i64)
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.ConfigInterval
@@ -1112,6 +1104,13 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				updateConfigTimer(ctx.configTickerHandle)
 			}
 		case "timer.metric.interval":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, item.Key, err)
+				continue
+			}
+			newU32 := uint32(i64)
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.MetricInterval
@@ -1126,6 +1125,13 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				updateMetricsTimer(ctx.metricsTickerHandle)
 			}
 		case "timer.reboot.no.network":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, item.Key, err)
+				continue
+			}
+			newU32 := uint32(i64)
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.ResetIfCloudGoneTime
@@ -1139,6 +1145,13 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfigChange = true
 			}
 		case "timer.update.fallback.no.network":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, item.Key, err)
+				continue
+			}
+			newU32 := uint32(i64)
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.FallbackIfCloudGoneTime
@@ -1152,6 +1165,13 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfigChange = true
 			}
 		case "timer.test.baseimage.update":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, item.Key, err)
+				continue
+			}
+			newU32 := uint32(i64)
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.MintimeUpdateSuccess
@@ -1164,7 +1184,16 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.MintimeUpdateSuccess = newU32
 				globalConfigChange = true
 			}
-		case "debug.disable.usb": // XXX swap name to enable?
+		case "debug.disable.usb","debug.enable.usb": // XXX swap name to enable?
+			newBool, err := strconv.ParseBool(item.Value)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
+					item.Value, item.Key, err)
+				continue
+			}
+			if item.Key == "debug.enable.usb" {
+				newBool = !newBool
+			}
 			if newBool != globalConfig.NoUsbAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
 					item.Key,
@@ -1173,7 +1202,16 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.NoUsbAccess = newBool
 				globalConfigChange = true
 			}
-		case "debug.disable.ssh": // XXX swap name to enable?
+		case "debug.disable.ssh", "debug.enable.ssh": // XXX swap name to enable?
+			newBool, err := strconv.ParseBool(item.Value)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
+					item.Value, item.Key, err)
+				continue
+			}
+			if item.Key == "debug.enable.ssh" {
+				newBool = !newBool
+			}
 			if newBool != globalConfig.NoSshAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
 					item.Key,
@@ -1183,6 +1221,13 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfigChange = true
 			}
 		case "timer.use.config.checkpoint":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, item.Key, err)
+				continue
+			}
+			newU32 := uint32(i64)
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.StaleConfigTime
@@ -1196,6 +1241,13 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfigChange = true
 			}
 		case "timer.gc.download":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, item.Key, err)
+				continue
+			}
+			newU32 := uint32(i64)
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.DownloadGCTime
@@ -1209,6 +1261,13 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfigChange = true
 			}
 		case "timer.gc.vdisk":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, item.Key, err)
+				continue
+			}
+			newU32 := uint32(i64)
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.VdiskGCTime
@@ -1222,6 +1281,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfigChange = true
 			}
 		case "debug.default.loglevel":
+			newString := item.Value
 			if newString == "" {
 				// Revert to default
 				newString = globalConfigDefaults.DefaultLogLevel
@@ -1235,6 +1295,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfigChange = true
 			}
 		case "debug.default.remote.loglevel":
+			newString := item.Value
 			if newString == "" {
 				// Revert to default
 				newString = globalConfigDefaults.DefaultRemoteLogLevel
@@ -1248,7 +1309,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfigChange = true
 			}
 		default:
-			log.Errorf("Unknown configItem %s\n", item.Key)
+			log.Errorf("Unknown configItem %s value %s\n",
+				item.Key, item.Value)
 			// XXX send back error? Need device error for that
 		}
 	}
