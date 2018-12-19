@@ -925,6 +925,9 @@ func (sub *Subscription) watchSock() {
 		switch msg {
 		case "hello", "complete":
 			// XXX anything for complete? Do we have an initial loop?
+			// XXX to handle restart we need to handle "complete"
+			// by doing a sweep across the KeyMap to handleDelete
+			// what we didn't see before the "complete"
 		case "restarted":
 			sub.sendChan <- "R done"
 
