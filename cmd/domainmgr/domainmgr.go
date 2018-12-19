@@ -1944,7 +1944,7 @@ func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
 	ds.ActiveFileLocation = fileName
 	ds.Format = "raw"
 	ds.Vdev = "hdc"
-	ds.ReadOnly = true
+	ds.ReadOnly = false
 	return ds, nil
 }
 
