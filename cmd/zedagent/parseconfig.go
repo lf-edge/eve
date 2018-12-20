@@ -22,6 +22,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -404,25 +405,32 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	log.Infof("parseSystemAdapterConfig: Applying updated config sha % x vs. % x: %v\n",
 		systemAdaptersPrevConfigHash, configHash, sysAdapters)
 
-	//portConfig := &types.DevicePortConfig{}
+	// Check if we have any with Uplink/IsMgmt set, in which case we
+	// infer the version
+	version := types.DPCInitial
+	for _, sysAdapter := range sysAdapters {
+		if sysAdapter.Uplink {
+			version = types.DPCIsMgmt
+		}
+	}
+
 	newPorts := []types.NetworkPortConfig{}
 	for _, sysAdapter := range sysAdapters {
-		// XXX Make Uplink and FreeUplink true
-		// This should go away when cloud sends proper values
-		//if !sysAdapter.Uplink {
-		//	continue
-		//}
-		// XXX Rename Uplink in proto file to IsMgmtPort!
-		sysAdapter.Uplink = true
-		sysAdapter.FreeUplink = true
-
+		// XXX Rename Uplink in proto file to IsMgmt! Ditto for FreeUplink
+		if version < types.DPCIsMgmt {
+			// XXX Make Uplink and FreeUplink true
+			// This should go away when cloud sends proper values
+			sysAdapter.Uplink = true
+			sysAdapter.FreeUplink = true
+		}
 		port := types.NetworkPortConfig{}
 		port.IfName = sysAdapter.Name
+		port.Name = sysAdapter.Name
+		port.IsMgmt = sysAdapter.Uplink
 		port.Free = sysAdapter.FreeUplink
-		port.Dhcp = types.DT_CLIENT // XXX from zedcloud?
 
 		// Lookup the network with given UUID
-		// and copy proxy configuration
+		// and copy proxy and other configuration
 		networkObject, err := getconfigCtx.pubNetworkObjectConfig.Get(sysAdapter.NetworkUUID)
 		if err != nil {
 			log.Errorf("parseSystemAdapterConfig: Network with UUID %s not found: %s\n",
@@ -430,16 +438,24 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			continue
 		}
 		network := cast.CastNetworkObjectConfig(networkObject)
+		port.Dhcp = network.Dhcp
+		ip := net.ParseIP(sysAdapter.Addr)
+		if ip == nil {
+			log.Errorf("parseSystemAdapterConfig: Bad sysAdapter.Addr %s - ignored\n",
+				sysAdapter.Addr)
+			continue
+		}
+		addrSubnet := network.Subnet
+		addrSubnet.IP = ip
+		port.AddrSubnet = addrSubnet.String()
+		port.Gateway = network.Gateway
+		port.DomainName = network.DomainName
+		port.NtpServer = network.NtpServer
+		port.DnsServers = network.DnsServers
+		// XXX use DnsNameToIpList?
 		if network.Proxy != nil {
 			port.ProxyConfig = *network.Proxy
-			port.AddrSubnet = sysAdapter.Addr
 		}
-		// XXX
-		// Even when the network that we point to does not have
-		// proxy configuration, we should still parse the port.
-		// There could have been a proxy before attached to this network,
-		// and now removed. Even when there was never a proxy configuration
-		// attached, we should still process the port and bring it UP.
 		newPorts = append(newPorts, port)
 	}
 	if len(newPorts) == 0 {
@@ -447,6 +463,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		return
 	}
 	portConfig := &types.DevicePortConfig{}
+	portConfig.Version = version
 	// This is suboptimal after a reboot since the config will be the same
 	// yet the timestamp be new. HandleDPCModify takes care of that.
 	portConfig.TimePriority = time.Now()
@@ -1062,32 +1079,28 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 
 	globalConfigChange := false
 	for _, item := range items {
-		log.Infof("parseConfigItems key %s\n", item.Key)
+		log.Infof("parseConfigItems key %s value %s\n",
+			item.Key, item.Value)
 
-		var newU32 uint32
-		var newBool bool
-		var newString string
-		switch u := item.ConfigItemValue.(type) {
-		case *zconfig.ConfigItem_Uint32Value:
-			newU32 = u.Uint32Value
-		case *zconfig.ConfigItem_BoolValue:
-			newBool = u.BoolValue
-		case *zconfig.ConfigItem_StringValue:
-			newString = u.StringValue
-		default:
-			log.Errorf("parseConfigItems: not supporting %T type\n",
-				u)
-			continue
-		}
-		switch item.Key {
+		// XXX remove any "project." string. Can zedcloud omit it?
+		key := strings.TrimPrefix(item.Key, "project.")
+
+		switch key {
 		case "timer.config.interval":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newU32 := uint32(i64)
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.ConfigInterval
 			}
 			if newU32 != globalConfig.ConfigInterval {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					item.Key,
+					key,
 					globalConfig.ConfigInterval,
 					newU32)
 				globalConfig.ConfigInterval = newU32
@@ -1095,13 +1108,20 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				updateConfigTimer(ctx.configTickerHandle)
 			}
 		case "timer.metric.interval":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newU32 := uint32(i64)
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.MetricInterval
 			}
 			if newU32 != globalConfig.MetricInterval {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					item.Key,
+					key,
 					globalConfig.MetricInterval,
 					newU32)
 				globalConfig.MetricInterval = newU32
@@ -1109,129 +1129,192 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				updateMetricsTimer(ctx.metricsTickerHandle)
 			}
 		case "timer.reboot.no.network":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newU32 := uint32(i64)
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.ResetIfCloudGoneTime
 			}
 			if newU32 != globalConfig.ResetIfCloudGoneTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					item.Key,
+					key,
 					globalConfig.ResetIfCloudGoneTime,
 					newU32)
 				globalConfig.ResetIfCloudGoneTime = newU32
 				globalConfigChange = true
 			}
 		case "timer.update.fallback.no.network":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newU32 := uint32(i64)
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.FallbackIfCloudGoneTime
 			}
 			if newU32 != globalConfig.FallbackIfCloudGoneTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					item.Key,
+					key,
 					globalConfig.FallbackIfCloudGoneTime,
 					newU32)
 				globalConfig.FallbackIfCloudGoneTime = newU32
 				globalConfigChange = true
 			}
 		case "timer.test.baseimage.update":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newU32 := uint32(i64)
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.MintimeUpdateSuccess
 			}
 			if newU32 != globalConfig.MintimeUpdateSuccess {
 				log.Errorf("parseConfigItems: %s change from %d to %d\n",
-					item.Key,
+					key,
 					globalConfig.MintimeUpdateSuccess,
 					newU32)
 				globalConfig.MintimeUpdateSuccess = newU32
 				globalConfigChange = true
 			}
-		case "debug.disable.usb": // XXX swap name to enable?
+		case "debug.disable.usb","debug.enable.usb": // XXX swap name to enable?
+			newBool, err := strconv.ParseBool(item.Value)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			if key == "debug.enable.usb" {
+				newBool = !newBool
+			}
 			if newBool != globalConfig.NoUsbAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
-					item.Key,
+					key,
 					globalConfig.NoUsbAccess,
 					newBool)
 				globalConfig.NoUsbAccess = newBool
 				globalConfigChange = true
 			}
-		case "debug.disable.ssh": // XXX swap name to enable?
+		case "debug.disable.ssh", "debug.enable.ssh": // XXX swap name to enable?
+			newBool, err := strconv.ParseBool(item.Value)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			if key == "debug.enable.ssh" {
+				newBool = !newBool
+			}
 			if newBool != globalConfig.NoSshAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
-					item.Key,
+					key,
 					globalConfig.NoSshAccess,
 					newBool)
 				globalConfig.NoSshAccess = newBool
 				globalConfigChange = true
 			}
 		case "timer.use.config.checkpoint":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newU32 := uint32(i64)
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.StaleConfigTime
 			}
 			if newU32 != globalConfig.StaleConfigTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					item.Key,
+					key,
 					globalConfig.StaleConfigTime,
 					newU32)
 				globalConfig.StaleConfigTime = newU32
 				globalConfigChange = true
 			}
 		case "timer.gc.download":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newU32 := uint32(i64)
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.DownloadGCTime
 			}
 			if newU32 != globalConfig.DownloadGCTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					item.Key,
+					key,
 					globalConfig.DownloadGCTime,
 					newU32)
 				globalConfig.DownloadGCTime = newU32
 				globalConfigChange = true
 			}
 		case "timer.gc.vdisk":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newU32 := uint32(i64)
 			if newU32 == 0 {
 				// Revert to default
 				newU32 = globalConfigDefaults.VdiskGCTime
 			}
 			if newU32 != globalConfig.VdiskGCTime {
 				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					item.Key,
+					key,
 					globalConfig.VdiskGCTime,
 					newU32)
 				globalConfig.VdiskGCTime = newU32
 				globalConfigChange = true
 			}
 		case "debug.default.loglevel":
+			newString := item.Value
 			if newString == "" {
 				// Revert to default
 				newString = globalConfigDefaults.DefaultLogLevel
 			}
 			if newString != globalConfig.DefaultLogLevel {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
-					item.Key,
+					key,
 					globalConfig.DefaultLogLevel,
 					newString)
 				globalConfig.DefaultLogLevel = newString
 				globalConfigChange = true
 			}
 		case "debug.default.remote.loglevel":
+			newString := item.Value
 			if newString == "" {
 				// Revert to default
 				newString = globalConfigDefaults.DefaultRemoteLogLevel
 			}
 			if newString != globalConfig.DefaultRemoteLogLevel {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
-					item.Key,
+					key,
 					globalConfig.DefaultRemoteLogLevel,
 					newString)
 				globalConfig.DefaultRemoteLogLevel = newString
 				globalConfigChange = true
 			}
 		default:
-			log.Errorf("Unknown configItem %s\n", item.Key)
+			log.Errorf("Unknown configItem %s value %s\n",
+				key, item.Value)
 			// XXX send back error? Need device error for that
 		}
 	}
