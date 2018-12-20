@@ -247,17 +247,6 @@ func Run() {
 	nimCtx.SubAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
-	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
-		types.AssignableAdapters{}, false,
-		&nimCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subAssignableAdapters.ModifyHandler = devicenetwork.HandleDUCModify
-	subAssignableAdapters.DeleteHandler = devicenetwork.HandleDUCDelete
-	nimCtx.subAssignableAdapters = subAssignableAdapters
-	subAssignableAdapters.Activate()
-
 	devicenetwork.DoDNSUpdate(&nimCtx.DeviceNetworkContext)
 
 	// Apply any changes from the port config to date.
