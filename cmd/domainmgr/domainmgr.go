@@ -2045,6 +2045,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 
 	// Check if management port or part of management port
 	ib.IsPort = false
+	publishAssignableAdapters := false
 	for _, m := range ib.Members {
 		if types.IsPort(ctx.deviceNetworkStatus, m) {
 			log.Warnf("checkAndSetIoBundle(%d %s %v) part of zedrouter port\n",
@@ -2059,11 +2060,14 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 						ib.Type, ib.Name, ib.Members, err)
 				}
 				ib.IsPCIBack = false
-				// Publish pciAssignable
-				ctx.publishAssignableAdapters()
+				publishAssignableAdapters = true
 			}
 		}
 	}
+	if publishAssignableAdapters {
+		ctx.publishAssignableAdapters()
+	}
+
 	// For a new PCI device we check if it exists in hardware/kernel
 	if ib.Lookup && ib.PciShort == "" {
 		long, short, err := types.IoBundleToPci(ib)
@@ -2087,7 +2091,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 				return err
 			}
 			ib.IsPCIBack = true
-			// Publish pciAssignable
+			ctx.publishAssignableAdapters()
 		}
 	}
 	return nil
