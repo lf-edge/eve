@@ -52,7 +52,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	// updating/rebooting, ignore config??
 	// XXX can we get stuck here? When do we set updating? As part of activate?
 	// XXX can this happen when usingSaved is set?
-	if zbootIsOtherPartitionStateUpdating(ctx) {
+	if isBaseOsOtherPartitionStateUpdating(ctx) {
 		log.Infoln("OtherPartitionStatusUpdating - returning rebootFlag")
 		// Make sure we tell apps to shut down
 		shutdownApps(getconfigCtx)
@@ -63,8 +63,8 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	// We leave in inprogress state so logmanager can use it to decide
 	// to upload the other logs. If a different BaseOsVersion is provided
 	// we allow it to be installed into the inprogress partition.
-	if zbootIsOtherPartitionStateInProgress(ctx) {
-		otherPart := zboot.GetOtherPartition()
+	if isBaseOsOtherPartitionStateInProgress(ctx) {
+		otherPart := getBaseOsOtherPartition(ctx)
 		log.Errorf("Other %s partition contains failed update\n",
 			otherPart)
 	}

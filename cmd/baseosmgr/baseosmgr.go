@@ -39,9 +39,7 @@ import (
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/zboot"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -124,6 +122,9 @@ func Run() {
 	// publish zboot partition status
 	publishZbootPartitionStatusAll(&ctx)
 
+	// report other agents, about, zboot status availability
+	ctx.pubZbootStatus.SignalRestarted()
+
 	// First we process the verifierStatus to avoid downloading
 	// an image we already have in place.
 	log.Infof("Handling initial verifier Status\n")
@@ -139,6 +140,10 @@ func Run() {
 			}
 		}
 	}
+
+	// do a get all procedure, pick up the initial set of
+	// configuration items
+	baseOsMgrConfigGetAll(&ctx)
 
 	// start the forever loop for event handling
 	for {
@@ -167,6 +172,36 @@ func Run() {
 	}
 }
 
+func baseOsMgrConfigGetAll(ctx *baseOsMgrContext) {
+
+	log.Infof("baseOsMgrConfigGetAll()\n")
+
+	sub := ctx.subGlobalConfig
+	items := sub.GetAll()
+	for k, c := range items {
+		handleGlobalConfigModify(ctx, k, c)
+	}
+
+	sub = ctx.subCertObjConfig
+	items = sub.GetAll()
+	for k, c := range items {
+		handleCertObjConfigModify(ctx, k, c)
+	}
+
+	sub = ctx.subDatastoreConfig
+	items = sub.GetAll()
+	for k, c := range items {
+		handleDatastoreConfigModify(ctx, k, c)
+	}
+
+	sub = ctx.subBaseOsConfig
+	items = sub.GetAll()
+	for k, c := range items {
+		handleBaseOsConfigModify(ctx, k, c)
+	}
+	log.Infof("baseOsMgrConfigGetAll() done\n")
+}
+
 func handleVerifierRestarted(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*baseOsMgrContext)
 	log.Infof("handleVerifierRestarted(%v)\n", done)
@@ -176,7 +211,6 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
 }
 
 // Wrappers around handleBaseOsCreate/Modify/Delete
-
 func handleBaseOsConfigModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*baseOsMgrContext)
 	config := cast.CastBaseOsConfig(configArg)
@@ -308,8 +342,8 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 
 // base os config delete event
 func handleBaseOsDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-	status := configArg.(*types.BaseOsStatus)
+	statusArg interface{}) {
+	status := statusArg.(*types.BaseOsStatus)
 	if status.Key() != key {
 		log.Errorf("handleBaseOsDelete key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
@@ -690,58 +724,4 @@ func initializeVerifierHandles(ctx *baseOsMgrContext) {
 	subBaseOsVerifierStatus.RestartHandler = handleVerifierRestarted
 	ctx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
 	subBaseOsVerifierStatus.Activate()
-}
-
-func publishZbootPartitionStatusAll(ctx *baseOsMgrContext) {
-	log.Infof("publishZbootStatusAll\n")
-	partitionNames := [] string {"IMGA", "IMGB"}
-	for _, partName := range partitionNames {
-		publishZbootPartitionStatus(ctx, partName)
-	}
-}
-
-func publishZbootPartitionStatus(ctx *baseOsMgrContext, partName string) {
-	partName = strings.TrimSpace(partName)
-	if !zboot.IsAvailable() || !zbootIsValidPartitionLabel(partName) {
-		return
-	}
-	pub := ctx.pubZbootStatus
-	status := types.ZbootStatus{}
-	status.PartitionLabel = partName
-	status.PartitionDevname = zboot.GetPartitionDevname(partName)
-	status.PartitionState = zboot.GetPartitionState(partName)
-	status.ShortVersion = zboot.GetShortVersion(partName)
-	status.LongVersion = zboot.GetLongVersion(partName)
-	status.CurrentPartition = zboot.IsCurrentPartition(partName)
-	log.Infof("publishZbootPartitionStatus: %v\n", status)
-	pub.Publish(partName, status)
-}
-
-func zbootPartitionStatusGet(ctx *baseOsMgrContext, partName string) types.ZbootStatus {
-	status := types.ZbootStatus{}
-	partName = strings.TrimSpace(partName)
-	if !zboot.IsAvailable() || !zbootIsValidPartitionLabel(partName) {
-		return status
-	}
-	pub := ctx.pubZbootStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := cast.CastZbootStatus(st)
-		if status.PartitionLabel == partName {
-			return status
-		}
-	}
-	log.Errorf("zbootPartitionStatusGet(%s) not found\n", partName)
-	return status
-}
-
-func zbootIsValidPartitionLabel(name string) bool {
-	partitionNames := [] string {"IMGA", "IMGB"}
-	name = strings.TrimSpace(name)
-	for _, partName := range partitionNames {
-		if name == partName {
-			return true
-		}
-	}
-	return false
 }

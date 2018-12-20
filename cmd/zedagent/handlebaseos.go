@@ -10,6 +10,7 @@ import (
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
+	"strings"
 )
 
 func lookupBaseOsConfig(ctx *getconfigContext, key string) *types.BaseOsConfig {
@@ -68,7 +69,7 @@ func initiateBaseOsZedCloudTestComplete(ctx *getconfigContext) {
 		}
 		status := lookupBaseOsStatus(ctx.zedagentCtx, key)
 		if status != nil && status.PartitionLabel != "" {
-			if zboot.IsCurrentPartition(status.PartitionLabel) {
+			if isBaseOsCurrentPartition(ctx.zedagentCtx, status.PartitionLabel) {
 				log.Infof("initiateBaseOsZedCloudTestComplete(%s): done\n", key)
 				config.TestComplete = true
 				publishBaseOsConfig(ctx, &config)
@@ -84,7 +85,7 @@ func handleBaseOsZedCloudTestComplete(ctx *zedagentContext, status types.BaseOsS
 		if config := lookupBaseOsConfig(ctx.getconfigCtx, key); config != nil {
 			config.TestComplete = false
 			publishBaseOsConfig(ctx.getconfigCtx, config)
-			log.Infof("handleBaseOsZedCloudTestComplete(key): done\n", key)
+			log.Infof("handleBaseOsZedCloudTestComplete(%s): done\n", key)
 		}
 	}
 }
@@ -97,4 +98,122 @@ func handleBaseOsDeviceReboot(ctx *zedagentContext, status types.BaseOsStatus) {
 		shutdownAppsGlobal(ctx)
 		startExecReboot()
 	}
+}
+
+// utility routines to access baseos partition status
+
+func isBaseOsValidPartitionLabel(name string) bool {
+	partitionNames := []string{"IMGA", "IMGB"}
+	if !zboot.IsAvailable() {
+		return false
+	}
+	for _, partName := range partitionNames {
+		if name == partName {
+			return true
+		}
+	}
+	return false
+}
+
+func getBaseOsPartitionStatusAll(ctx *zedagentContext) map[string]interface{} {
+	sub := ctx.subZbootStatus
+	items := sub.GetAll()
+	return items
+}
+
+func getBaseOsPartitionStatus(ctx *zedagentContext, partName string) *types.ZbootStatus {
+	partName = strings.TrimSpace(partName)
+	if !isBaseOsValidPartitionLabel(partName) {
+		log.Errorf("getBaseOsPartitionStatus(%s) invalid partition\n", partName)
+		return nil
+	}
+	items := getBaseOsPartitionStatusAll(ctx)
+	for _, st := range items {
+		status := cast.CastZbootStatus(st)
+		if status.PartitionLabel == partName {
+			return &status
+		}
+	}
+	log.Errorf("getBaseOsPartitionStatus(%s) not found\n", partName)
+	return nil
+}
+
+func getBaseOsCurrentPartition(ctx *zedagentContext) string {
+	var partName string
+	if !zboot.IsAvailable() {
+		log.Errorf("getBaseOsCurrentPartition, zboot not available\n")
+		return partName
+	}
+	items := getBaseOsPartitionStatusAll(ctx)
+	for _, st := range items {
+		status := cast.CastZbootStatus(st)
+		if status.CurrentPartition {
+			log.Debugf("getBaseOsCurrentPartition:%s\n", status.PartitionLabel)
+			return status.PartitionLabel
+		}
+	}
+	log.Errorf("getBaseOsCurrentPartition() not found\n")
+	return partName
+}
+
+func getBaseOsOtherPartition(ctx *zedagentContext) string {
+	var partName string
+	if !zboot.IsAvailable() {
+		log.Errorf("getBaseOsOtherPartition, zboot not available\n")
+		return partName
+	}
+	items := getBaseOsPartitionStatusAll(ctx)
+	for _, st := range items {
+		status := cast.CastZbootStatus(st)
+		if !status.CurrentPartition {
+			log.Debugf("getBaseOsOtherPartition:%s\n", status.PartitionLabel)
+			return status.PartitionLabel
+		}
+	}
+	log.Errorf("getBaseOsOtherPartition() not found\n")
+	return partName
+}
+
+func isBaseOsCurrentPartition(ctx *zedagentContext, partName string) bool {
+	if status := getBaseOsPartitionStatus(ctx, partName); status != nil {
+		return status.CurrentPartition
+	}
+	return false
+}
+
+func isBaseOsOtherPartition(ctx *zedagentContext, partName string) bool {
+	if status := getBaseOsPartitionStatus(ctx, partName); status != nil {
+		return !status.CurrentPartition
+	}
+	return false
+}
+
+func isBaseOsOtherPartitionStateUpdating(ctx *zedagentContext) bool {
+	partName := getBaseOsOtherPartition(ctx)
+	if status := getBaseOsPartitionStatus(ctx, partName); status != nil {
+		if status.PartitionState == "updating" {
+			return true
+		}
+	}
+	return false
+}
+
+func isBaseOsOtherPartitionStateInProgress(ctx *zedagentContext) bool {
+	partName := getBaseOsOtherPartition(ctx)
+	if status := getBaseOsPartitionStatus(ctx, partName); status != nil {
+		if status.PartitionState == "inprogress" {
+			return true
+		}
+	}
+	return false
+}
+
+func isBaseOsCurrentPartitionStateInProgress(ctx *zedagentContext) bool {
+	partName := getBaseOsCurrentPartition(ctx)
+	if status := getBaseOsPartitionStatus(ctx, partName); status != nil {
+		if status.PartitionState == "inprogress" {
+			return true
+		}
+	}
+	return false
 }

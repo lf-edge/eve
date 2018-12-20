@@ -154,7 +154,7 @@ func configTimerTask(handleChannel chan interface{},
 			// once activated, it does not go back to the inprogress
 			// state
 			if updateInprogress {
-				updateInprogress = zbootIsCurrentPartitionStateInProgress(ctx)
+				updateInprogress = isBaseOsCurrentPartitionStateInProgress(ctx)
 			}
 			rebootFlag = getLatestConfig(configUrl, iteration,
 				updateInprogress, getconfigCtx)
@@ -253,7 +253,7 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 		timePassed := time.Since(getconfigCtx.startTime)
 		successLimit := time.Second *
 			time.Duration(globalConfig.MintimeUpdateSuccess)
-		curPart := zboot.GetCurrentPartition()
+		curPart := getBaseOsCurrentPartition(getconfigCtx.zedagentCtx)
 		if timePassed < successLimit {
 			log.Infof("getLastestConfig, curPart %s inprogress waiting for %d seconds\n", curPart, (successLimit-timePassed)/time.Second)
 		} else {

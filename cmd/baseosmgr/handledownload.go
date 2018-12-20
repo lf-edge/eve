@@ -16,7 +16,6 @@ import (
 	"time"
 )
 
-
 // Really a constant
 var nilUUID uuid.UUID
 

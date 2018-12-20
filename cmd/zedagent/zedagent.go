@@ -32,10 +32,8 @@ import (
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/zboot"
 	"github.com/zededa/go-provision/zedcloud"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -78,7 +76,7 @@ type DNSContext struct {
 
 type zedagentContext struct {
 	getconfigCtx             *getconfigContext // Cross link
-	verifierRestarted        bool              // Information from handleVerifierRestarted
+	zbootRestarted           bool              // published by baseosmgr
 	assignableAdapters       *types.AssignableAdapters
 	subAssignableAdapters    *pubsub.Subscription
 	iteration                int
@@ -310,7 +308,7 @@ func Run() {
 	zedagentCtx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
 
-	// Look for zboot status 
+	// Look for zboot status
 	subZbootStatus, err := pubsub.Subscribe("baseosmgr",
 		types.ZbootStatus{}, false, &zedagentCtx)
 	if err != nil {
@@ -318,6 +316,7 @@ func Run() {
 	}
 	subZbootStatus.ModifyHandler = handleZbootStatusModify
 	subZbootStatus.DeleteHandler = handleZbootStatusDelete
+	subZbootStatus.RestartHandler = handleZbootRestarted
 	zedagentCtx.subZbootStatus = subZbootStatus
 	subZbootStatus.Activate()
 
@@ -332,6 +331,7 @@ func Run() {
 	subBaseOsStatus.Activate()
 
 	// Look for DownloaderStatus from downloader
+	// used only for downloader storage stats collection
 	subBaseOsDownloadStatus, err := pubsub.SubscribeScope("downloader",
 		baseOsObj, types.DownloaderStatus{}, false, &zedagentCtx)
 	if err != nil {
@@ -341,6 +341,7 @@ func Run() {
 	subBaseOsDownloadStatus.Activate()
 
 	// Look for DownloaderStatus from downloader
+	// used only for downloader storage stats collection
 	subCertObjDownloadStatus, err := pubsub.SubscribeScope("downloader",
 		certObj, types.DownloaderStatus{}, false, &zedagentCtx)
 	if err != nil {
@@ -349,19 +350,18 @@ func Run() {
 	zedagentCtx.subCertObjDownloadStatus = subCertObjDownloadStatus
 	subCertObjDownloadStatus.Activate()
 
-	// Look for VerifyImageStatus from verifier
+	// Look for VerifyBaseOsImageStatus from verifier
+	// used only for verifier storage stats collection
 	subBaseOsVerifierStatus, err := pubsub.SubscribeScope("verifier",
 		baseOsObj, types.VerifyImageStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subBaseOsVerifierStatus.ModifyHandler = handleVerifierStatusModify
-	subBaseOsVerifierStatus.DeleteHandler = handleVerifierStatusDelete
-	subBaseOsVerifierStatus.RestartHandler = handleVerifierRestarted
 	zedagentCtx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
 	subBaseOsVerifierStatus.Activate()
 
 	// Look for VerifyImageStatus from verifier
+	// used only for verifier storage stats collection
 	subAppImgVerifierStatus, err := pubsub.SubscribeScope("verifier",
 		appImgObj, types.VerifyImageStatus{}, false, &zedagentCtx)
 	if err != nil {
@@ -371,6 +371,7 @@ func Run() {
 	subAppImgVerifierStatus.Activate()
 
 	// Look for DownloaderStatus from downloader for metric reporting
+	// used only for downloader storage stats collection
 	subAppImgDownloadStatus, err := pubsub.SubscribeScope("downloader",
 		appImgObj, types.DownloaderStatus{}, false, &zedagentCtx)
 	if err != nil {
@@ -396,39 +397,32 @@ func Run() {
 	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	// only time, we access the zboot partition state
-	updateInprogress := zboot.IsCurrentPartitionStateInProgress()
 	time1 := time.Duration(globalConfig.ResetIfCloudGoneTime)
 	t1 := time.NewTimer(time1 * time.Second)
 	log.Infof("Started timer for reset for %d seconds\n", time1)
 	time2 := time.Duration(globalConfig.FallbackIfCloudGoneTime)
-	log.Infof("Started timer for fallback (%v) reset for %d seconds\n",
-		updateInprogress, time2)
+	log.Infof("Started timer for fallback,  reset for %d seconds\n", time2)
 	t2 := time.NewTimer(time2 * time.Second)
 
-	// wait until all the partition(s) status are ready
-	zbootReadFlag := 0
-	for zbootReadFlag < partitionCount {
-		if !zboot.IsAvailable() {
-			zbootReadFlag = partitionCount
-			continue
-		}
+	// wait till, zboot status is ready
+	for !zedagentCtx.zbootRestarted {
 		select {
 		case change := <-subZbootStatus.C:
-			log.Infof("Zboot Status is available\n")
 			subZbootStatus.ProcessChange(change)
-			zbootReadFlag++ 
-		case <-t1.C:
-			log.Errorf("Exceeded outage for cloud connectivity - rebooting\n")
-			execReboot(true)
-		case <-t2.C:
-			if updateInprogress {
-				log.Errorf("Exceeded fallback outage for cloud connectivity - rebooting\n")
-				execReboot(true)
+			if zedagentCtx.zbootRestarted {
+				log.Infof("Zboot reported restarted\n")
 			}
+		case <-t1.C:
+			// reboot, if not available, within a wait time
+			log.Errorf("zboot status is still not available - rebooting\n")
+			execReboot(true)
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 
+	updateInprogress := isBaseOsCurrentPartitionStateInProgress(&zedagentCtx)
+	log.Infof("Current partition inProgress state is %v\n", updateInprogress)
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
 	for !DNSctx.DNSinitialized ||
@@ -442,9 +436,6 @@ func Run() {
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subBaseOsVerifierStatus.C:
-			subBaseOsVerifierStatus.ProcessChange(change)
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
@@ -510,36 +501,7 @@ func Run() {
 	metricsTickerHandle := <-handleChannel
 	getconfigCtx.metricsTickerHandle = metricsTickerHandle
 
-	// Process the verifierStatus to avoid downloading an image we
-	// already have in place
-	log.Infof("Handling initial verifier Status\n")
-	for !zedagentCtx.verifierRestarted {
-		select {
-		case change := <-subGlobalConfig.C:
-			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subBaseOsVerifierStatus.C:
-			subBaseOsVerifierStatus.ProcessChange(change)
-			if zedagentCtx.verifierRestarted {
-				log.Infof("Verifier reported restarted\n")
-				break
-			}
-
-		case change := <-subDeviceNetworkStatus.C:
-			subDeviceNetworkStatus.ProcessChange(change)
-
-		case change := <-subAssignableAdapters.C:
-			subAssignableAdapters.ProcessChange(change)
-
-		case change := <-deferredChan:
-			zedcloud.HandleDeferred(change, 100*time.Millisecond)
-
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
-		}
-	}
-
-	// start the config fetch tasks after we've heard from verifier
+	// start the config fetch tasks, when zboot status is ready
 	go configTimerTask(handleChannel, &getconfigCtx, updateInprogress)
 	configTickerHandle := <-handleChannel
 	// XXX close handleChannels?
@@ -647,11 +609,11 @@ func publishDevInfo(ctx *zedagentContext) {
 	ctx.iteration += 1
 }
 
-func handleVerifierRestarted(ctxArg interface{}, done bool) {
+func handleZbootRestarted(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*zedagentContext)
-	log.Infof("handleVerifierRestarted(%v)\n", done)
+	log.Infof("handleZbootRestarted(%v)\n", done)
 	if done {
-		ctx.verifierRestarted = true
+		ctx.zbootRestarted = true
 	}
 }
 
@@ -911,106 +873,18 @@ func handleAADelete(ctxArg interface{}, key string,
 	log.Infof("handleAADelete() done\n")
 }
 
-// base os verifier status modify event
-func handleVerifierStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := cast.CastVerifyImageStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleVerifierStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
-	log.Infof("handleVerifierStatusModify for %s\n", status.Safename)
-	// Nothing to do
-}
-
-// base os verifier status delete event
-func handleVerifierStatusDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := cast.CastVerifyImageStatus(statusArg)
-	log.Infof("handleVeriferStatusDelete RefCount %d Expired %v for %s\n",
-		status.RefCount, status.Expired, key)
-	// Nothing to do
-}
 func handleZbootStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	if zbootIsValidPartitionLabel(key) {
-		log.Infof("handleZbootStatusModify: ignoring %s\n", key)
-		return
+	if isBaseOsValidPartitionLabel(key) {
+		log.Infof("handleZbootStatusModify: for %s\n", key)
 	}
-	log.Infof("handleZbootStatusModify done for %s\n", key)
 	// Nothing to do
 }
 
 func handleZbootStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	if zbootIsValidPartitionLabel(key) {
-		log.Infof("handleZbootStatusDelete: ignoring %s\n", key)
-		return
+	if isBaseOsValidPartitionLabel(key) {
+		log.Infof("handleZbootStatusDelete: for %s\n", key)
 	}
-	log.Infof("handleZbootStatusDelete done for %s\n", key)
-}
-
-func zbootPartitionStatusGet(ctx *zedagentContext, partName string) types.ZbootStatus {
-	status := types.ZbootStatus{}
-	partName = strings.TrimSpace(partName)
-	if !zboot.IsAvailable() ||
-		!zbootIsValidPartitionLabel(partName) {
-		log.Errorf("zbootPartitionStatusGet(%s) invalid partition\n", partName)
-		return status
-	}
-	sub := ctx.subZbootStatus
-	items := sub.GetAll()
-	for _, st := range items {
-		status := cast.CastZbootStatus(st)
-		if status.PartitionLabel == partName {
-			return status
-		}
-	}
-	log.Errorf("zbootPartitionStatusGet(%s) not found\n", partName)
-	return status
-}
-
-func zbootIsValidPartitionLabel(name string) bool {
-	partitionNames := [] string {"IMGA", "IMGB"}
-	for _, partName := range partitionNames {
-		if name == partName {
-			return true
-		}
-	}
-	return false
-}
-func zbootIsOtherPartitionStateUpdating(ctx *zedagentContext) bool{
-	partName := zboot.GetOtherPartition()
-	partStatus := zbootPartitionStatusGet(ctx, partName)
-	if partStatus.PartitionLabel == "" {
-		return false
-	}
-	if partStatus.PartitionState == "updating" {
-		return true
-	}
-	return false
-}
-
-func zbootIsOtherPartitionStateInProgress(ctx *zedagentContext) bool {
-	partName := zboot.GetOtherPartition()
-	partStatus := zbootPartitionStatusGet(ctx, partName)
-	if partStatus.PartitionLabel == "" {
-		return false
-	}
-	if partStatus.PartitionState == "inprogress" {
-		return true
-	}
-	return false
-}
-
-func zbootIsCurrentPartitionStateInProgress(ctx *zedagentContext) bool {
-	partName := zboot.GetCurrentPartition()
-	partStatus := zbootPartitionStatusGet(ctx, partName)
-	if partStatus.PartitionState == "inprogress" {
-		return true
-	}
-	return false
+	// Nothing to do
 }

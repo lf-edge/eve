@@ -13,6 +13,8 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
 	"os"
+	"strings"
+	"syscall"
 	"time"
 )
 
@@ -83,7 +85,14 @@ func baseOsGetActivationStatus(ctx *baseOsMgrContext,
 	}
 
 	partName := status.PartitionLabel
-	partStatus := zbootPartitionStatusGet(ctx, partName)
+	partStatus := getBaseOsPartitionStatus(ctx, partName)
+	if partStatus == nil {
+		if status.Activated {
+			status.Activated = false
+			changed = true
+		}
+		return changed
+	}
 
 	// some partition specific attributes
 	ps := partStatus.PartitionState
@@ -95,7 +104,7 @@ func baseOsGetActivationStatus(ctx *baseOsMgrContext,
 	}
 	var act bool
 	// for otherPartition, its always false
-	if !partStatus.CurrentPartition { 
+	if !partStatus.CurrentPartition {
 		act = false
 	} else {
 		// if current Partition, get the status from zboot
@@ -159,7 +168,7 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 	if status.BaseOsVersion == zboot.GetShortVersion(curPartName) {
 		log.Infof("doBaseOsStatusUpdate(%s) for %s found in current %s\n",
 			config.BaseOsVersion, uuidStr, curPartName)
-		baseOsStatusSetPartitionInfo(ctx, status, curPartName)
+		baseOsSetPartitionInfoInStatus(ctx, status, curPartName)
 		setProgressDone(status, types.INSTALLED)
 		status.Activated = true
 		return true
@@ -172,7 +181,7 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 		status.BaseOsVersion == zboot.GetShortVersion(otherPartName) {
 		log.Infof("doBaseOsStatusUpdate(%s) for %s found in other %s\n",
 			config.BaseOsVersion, uuidStr, otherPartName)
-		baseOsStatusSetPartitionInfo(ctx, status, otherPartName)
+		baseOsSetPartitionInfoInStatus(ctx, status, otherPartName)
 		// Might be corrupt? XXX should we verify sha? But modified!!
 		setProgressDone(status, types.DOWNLOADED)
 		status.Activated = false
@@ -239,8 +248,12 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	if !zboot.IsOtherPartition(status.PartitionLabel) {
 		return changed
 	}
-	partStatus := zbootPartitionStatusGet(ctx, status.PartitionLabel)
-	partState := partStatus.PartitionState
+	partStatus := getBaseOsPartitionStatus(ctx, status.PartitionLabel)
+	if partStatus == nil {
+		log.Infof("doBaseOsActivate(%s) for %s, partition status %s not found\n",
+			config.BaseOsVersion, uuidStr, status.PartitionLabel)
+		return changed
+	}
 	switch partStatus.PartitionState {
 	case "unused":
 		log.Infof("Installing %s over unused\n",
@@ -253,7 +266,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 			config.BaseOsVersion)
 	default:
 		errString := fmt.Sprintf("Wrong partition state %s for %s",
-			partState, status.PartitionLabel)
+			partStatus.PartitionState, status.PartitionLabel)
 		log.Errorln(errString)
 		status.Error = errString
 		status.ErrorTime = time.Now()
@@ -358,6 +371,7 @@ func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
 // Returns changed, proceed as above
 func validateAndAssignPartition(ctx *baseOsMgrContext,
 	config types.BaseOsConfig, status *types.BaseOsStatus) (bool, bool) {
+	var curPartVersion, otherPartVersion string
 
 	log.Infof("validateAndAssignPartition(%s) for %s\n",
 		config.Key(), config.BaseOsVersion)
@@ -365,10 +379,14 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 	proceed := false
 	curPartName := zboot.GetCurrentPartition()
 	otherPartName := zboot.GetOtherPartition()
-	curPartStatus := zbootPartitionStatusGet(ctx, curPartName)
-	otherPartStatus := zbootPartitionStatusGet(ctx, otherPartName)
-	curPartVersion := curPartStatus.ShortVersion
-	otherPartVersion := otherPartStatus.ShortVersion
+	curPartStatus := getBaseOsPartitionStatus(ctx, curPartName)
+	otherPartStatus := getBaseOsPartitionStatus(ctx, otherPartName)
+	if curPartStatus != nil {
+		curPartVersion = curPartStatus.ShortVersion
+	}
+	if otherPartStatus != nil {
+		otherPartVersion = otherPartStatus.ShortVersion
+	}
 
 	// Does the other partition contain a failed update with the same
 	// version?
@@ -554,7 +572,12 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 	// as unused.
 	if status.PartitionLabel != "" {
 		partName := status.PartitionLabel
-		partStatus := zbootPartitionStatusGet(ctx, partName)
+		partStatus := getBaseOsPartitionStatus(ctx, partName)
+		if partStatus == nil {
+			log.Infof("doBaseOsUninstall(%s) for %s, partitionStatus not found\n",
+				status.BaseOsVersion, uuidStr)
+			return changed, del
+		}
 		if status.BaseOsVersion == partStatus.ShortVersion &&
 			!partStatus.CurrentPartition {
 			log.Infof("doBaseOsUninstall(%s) for %s, currently on other %s\n",
@@ -680,10 +703,11 @@ func checkInstalledVersion(ctx *baseOsMgrContext, status types.BaseOsStatus) str
 		log.Errorln(errStr)
 		return errStr
 	}
-	partStatus := zbootPartitionStatusGet(ctx, status.PartitionLabel)
+	partStatus := getBaseOsPartitionStatus(ctx, status.PartitionLabel)
 	// XXX this check can result in failures when multiple updates in progress in zedcloud!
 	// XXX remove?
-	if status.BaseOsVersion != partStatus.ShortVersion {
+	if partStatus != nil &&
+		status.BaseOsVersion != partStatus.ShortVersion {
 		errStr := fmt.Sprintf("baseOs %s, %s, does not match installed %s",
 			status.PartitionLabel, status.BaseOsVersion, partStatus.ShortVersion)
 
@@ -811,13 +835,13 @@ func handleBaseOsTestComplete(ctx *baseOsMgrContext, uuidStr string, config type
 	// trigger for baseos validation complete
 	// handle Partition State transition
 	if config.TestComplete {
-		handlePartitionStateTransition(ctx, uuidStr, config, status)
+		doPartitionStateTransition(ctx, uuidStr, config, status)
 		return
 	}
 
 	// completed state transition, mark TestComplete as false
 	log.Infof("handleBaseOsTestComplete(%s) for %s in %s, done\n",
-			uuidStr, config.BaseOsVersion, status.PartitionLabel)
+		uuidStr, config.BaseOsVersion, status.PartitionLabel)
 	status.TestComplete = false
 	updateAndPublishBaseOsStatusAll(ctx)
 }
@@ -825,13 +849,16 @@ func handleBaseOsTestComplete(ctx *baseOsMgrContext, uuidStr string, config type
 // initiate Partition State transition,
 // for current partition, from inprogress to active
 // for other partition, from active to unused
-func handlePartitionStateTransition(ctx *baseOsMgrContext, uuidStr string, config types.BaseOsConfig, status types.BaseOsStatus) {
+func doPartitionStateTransition(ctx *baseOsMgrContext, uuidStr string, config types.BaseOsConfig, status types.BaseOsStatus) {
 
-	log.Infof("handlePartitionStateTransition(%s) for %s in %s\n",
-			uuidStr, config.BaseOsVersion, status.PartitionLabel)
+	log.Infof("doPartitionStateTransition(%s) for %s in %s\n",
+		uuidStr, config.BaseOsVersion, status.PartitionLabel)
 
 	partName := zboot.GetCurrentPartition()
-	partStatus := zbootPartitionStatusGet(ctx, partName)
+	partStatus := getBaseOsPartitionStatus(ctx, partName)
+	if partStatus == nil {
+		return
+	}
 
 	if status.PartitionLabel == partName &&
 		status.BaseOsVersion == partStatus.ShortVersion {
@@ -845,7 +872,7 @@ func handlePartitionStateTransition(ctx *baseOsMgrContext, uuidStr string, confi
 		}
 		// publish the partition information
 		publishZbootPartitionStatusAll(ctx)
-		baseOsStatusSetPartitionInfo(ctx, &status, partName)
+		baseOsSetPartitionInfoInStatus(ctx, &status, partName)
 		status.TestComplete = true
 		publishBaseOsStatus(ctx, &status)
 	}
@@ -859,14 +886,74 @@ func updateAndPublishBaseOsStatusAll(ctx *baseOsMgrContext) {
 		if status.PartitionLabel == "" {
 			continue
 		}
-		baseOsStatusSetPartitionInfo(ctx, &status, status.PartitionLabel)
+		baseOsSetPartitionInfoInStatus(ctx, &status, status.PartitionLabel)
 		publishBaseOsStatus(ctx, &status)
 	}
 }
 
-func baseOsStatusSetPartitionInfo(ctx *baseOsMgrContext, status *types.BaseOsStatus, partName string) {
-	partStatus := zbootPartitionStatusGet(ctx, partName)
+func baseOsSetPartitionInfoInStatus(ctx *baseOsMgrContext, status *types.BaseOsStatus, partName string) {
+	partStatus := getBaseOsPartitionStatus(ctx, partName)
+	if partStatus != nil {
+		status.PartitionLabel = partName
+		status.PartitionState = partStatus.PartitionState
+		status.PartitionDevice = partStatus.PartitionDevname
+	}
+}
+
+func publishZbootPartitionStatusAll(ctx *baseOsMgrContext) {
+	log.Infof("publishZbootStatusAll\n")
+	partitionNames := []string{"IMGA", "IMGB"}
+	for _, partName := range partitionNames {
+		publishZbootPartitionStatus(ctx, partName)
+	}
+	syscall.Sync()
+}
+
+func publishZbootPartitionStatus(ctx *baseOsMgrContext, partName string) {
+	partName = strings.TrimSpace(partName)
+	if !isValidBaseOsPartitionLabel(partName) {
+		return
+	}
+	pub := ctx.pubZbootStatus
+	status := types.ZbootStatus{}
 	status.PartitionLabel = partName
-	status.PartitionState = partStatus.PartitionState
-	status.PartitionDevice = partStatus.PartitionDevname
+	status.PartitionDevname = zboot.GetPartitionDevname(partName)
+	status.PartitionState = zboot.GetPartitionState(partName)
+	status.ShortVersion = zboot.GetShortVersion(partName)
+	status.LongVersion = zboot.GetLongVersion(partName)
+	status.CurrentPartition = zboot.IsCurrentPartition(partName)
+	log.Infof("publishZbootPartitionStatus: %v\n", status)
+	pub.Publish(partName, status)
+	syscall.Sync()
+}
+
+func getBaseOsPartitionStatus(ctx *baseOsMgrContext, partName string) *types.ZbootStatus {
+	partName = strings.TrimSpace(partName)
+	if !isValidBaseOsPartitionLabel(partName) {
+		return nil
+	}
+	pub := ctx.pubZbootStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastZbootStatus(st)
+		if status.PartitionLabel == partName {
+			return &status
+		}
+	}
+	log.Errorf("getBaseOsPartitionStatus(%s) not found\n", partName)
+	return nil
+}
+
+func isValidBaseOsPartitionLabel(name string) bool {
+	partitionNames := []string{"IMGA", "IMGB"}
+	name = strings.TrimSpace(name)
+	if !zboot.IsAvailable() {
+		return false
+	}
+	for _, partName := range partitionNames {
+		if name == partName {
+			return true
+		}
+	}
+	return false
 }

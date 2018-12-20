@@ -25,7 +25,6 @@ import (
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/netclone"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/zboot"
 	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
 	"net"
@@ -886,15 +885,15 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				swInfo.SwErr = errInfo
 			}
 		} else {
-			// XXX put this info in BaseOsStatus so we don't need to call zboot here? Can't since no UUID!
-			partStatus := zbootPartitionStatusGet(ctx, partLabel)
-			swInfo.Activated = partStatus.CurrentPartition
+			partStatus := getBaseOsPartitionStatus(ctx, partLabel)
 			swInfo.PartitionLabel = partLabel
-			swInfo.PartitionDevice = partStatus.PartitionDevname
-			swInfo.PartitionState = partStatus.PartitionState
-			swInfo.ShortVersion = partStatus.ShortVersion
-			swInfo.LongVersion = partStatus.LongVersion
-			swInfo.DownloadProgress = 100
+			if partStatus != nil {
+				swInfo.Activated = partStatus.CurrentPartition
+				swInfo.PartitionDevice = partStatus.PartitionDevname
+				swInfo.PartitionState = partStatus.PartitionState
+				swInfo.ShortVersion = partStatus.ShortVersion
+				swInfo.LongVersion = partStatus.LongVersion
+			}
 			if swInfo.ShortVersion != "" {
 				// Must be factory install i.e. INSTALLED
 				swInfo.Status = zmet.ZSwState(types.INSTALLED)
@@ -908,8 +907,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	}
 
 	ReportDeviceInfo.SwList = make([]*zmet.ZInfoDevSW, 2)
-	ReportDeviceInfo.SwList[0] = getSwInfo(zboot.GetCurrentPartition())
-	ReportDeviceInfo.SwList[1] = getSwInfo(zboot.GetOtherPartition())
+	ReportDeviceInfo.SwList[0] = getSwInfo(getBaseOsCurrentPartition(ctx))
+	ReportDeviceInfo.SwList[1] = getSwInfo(getBaseOsOtherPartition(ctx))
 	// Report any other BaseOsStatus which might have errors
 	items := subBaseOsStatus.GetAll()
 	for _, st := range items {
