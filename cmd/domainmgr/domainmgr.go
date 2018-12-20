@@ -59,15 +59,15 @@ var nilUUID = uuid.UUID{}
 // Set from Makefile
 var Version = "No version specified"
 
-func isMgmtPort(ctx *domainContext, ifname string) bool {
+func isPort(ctx *domainContext, ifname string) bool {
 	ctx.dnsLock.Lock()
 	defer ctx.dnsLock.Unlock()
-	return types.IsMgmtPort(ctx.deviceNetworkStatus, ifname)
+	return types.IsPort(ctx.deviceNetworkStatus, ifname)
 }
 
 // Information for handleCreate/Modify/Delete
 type domainContext struct {
-	// The isMgmtPort function is called by different goroutines
+	// The isPort function is called by different goroutines
 	// hence we serialize the calls on a mutex.
 	deviceNetworkStatus    types.DeviceNetworkStatus
 	dnsLock                sync.Mutex
@@ -1119,8 +1119,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 				adapter.Type, adapter.Name, ib.UsedByUUID))
 		}
 		for _, m := range ib.Members {
-			if isMgmtPort(ctx, m) {
-				return errors.New(fmt.Sprintf("Adapter %d %s member %s is (part of) a management port\n",
+			if isPort(ctx, m) {
+				return errors.New(fmt.Sprintf("Adapter %d %s member %s is (part of) a zedrouter port\n",
 					adapter.Type, adapter.Name, m))
 			}
 		}
@@ -2045,12 +2045,12 @@ func checkAndSetIoBundleAll(ctx *domainContext) {
 func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 
 	// Check if management port or part of management port
-	ib.IsMgmtPort = false
+	ib.IsPort = false
 	for _, m := range ib.Members {
-		if types.IsMgmtPort(ctx.deviceNetworkStatus, m) {
-			log.Warnf("checkAndSetIoBundle(%d %s %v) part of management port\n",
+		if types.IsPort(ctx.deviceNetworkStatus, m) {
+			log.Warnf("checkAndSetIoBundle(%d %s %v) part of zedrouter port\n",
 				ib.Type, ib.Name, ib.Members)
-			ib.IsMgmtPort = true
+			ib.IsPort = true
 			if ib.IsPCIBack {
 				log.Infof("checkAndSetIoBundle(%d %s %v) take back fro pciback\n",
 					ib.Type, ib.Name, ib.Members)
@@ -2074,7 +2074,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		log.Infof("checkAndSetIoBundle(%d %s %v) found %s/%s\n",
 			ib.Type, ib.Name, ib.Members, short, long)
 	}
-	if !ib.IsMgmtPort && ib.PciShort != "" && !ib.IsPCIBack {
+	if !ib.IsPort && ib.PciShort != "" && !ib.IsPCIBack {
 		if ctx.usbAccess && ib.Type == types.IoUSB {
 			log.Infof("No assigning %s (%s %s) to pciback\n",
 				ib.Name, ib.PciLong, ib.PciShort)
@@ -2163,7 +2163,7 @@ func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.
 				configIb.Type, configIb.Name, err)
 			return
 		}
-		e.IsMgmtPort = configIb.IsMgmtPort
+		e.IsPort = configIb.IsPort
 		e.IsPCIBack = configIb.IsPCIBack
 		// XXX TBD IsBridge, IsService
 		e.Lookup = configIb.Lookup

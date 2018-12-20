@@ -1071,10 +1071,12 @@ func doUnprepare(ctx *zedmanagerContext, uuidStr string,
 		if es != nil {
 			log.Infof("lookupEIDStatus not gone on remove for %s\n",
 				key)
+			// Could it have changed?
+			changed = true
+			status.EIDList[i] = es.EIDStatusDetails
 			eidsFreed = false
 			continue
 		}
-		status.EIDList[i] = es.EIDStatusDetails
 		changed = true
 	}
 	if !eidsFreed {
