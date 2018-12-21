@@ -34,7 +34,7 @@ type IoBundle struct {
 	XenCfg   string // If template for the bundle
 
 	IsPCIBack bool // Assigned to pciback
-	IsUplink  bool // Whole or part of the bundle is an uplink
+	IsPort    bool // Whole or part of the bundle is a zedrouter port
 	IsBridge  bool // Exclusively used by a bridge service. TBD
 	IsService bool // Used by a service. TBD.
 }

@@ -26,6 +26,7 @@ type ZedCloudContext struct {
 	TlsConfig           *tls.Config
 	FailureFunc         func(intf string, url string, reqLen int64, respLen int64)
 	SuccessFunc         func(intf string, url string, reqLen int64, respLen int64)
+	NoLedManager        bool // Don't call UpdateLedManagerConfig
 }
 
 // Tries all interfaces (free first) until one succeeds. interation arg
@@ -37,11 +38,11 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 	for try := 0; try < 2; try += 1 {
 		var intfs []string
 		if try == 0 {
-			intfs = types.GetUplinksFree(*ctx.DeviceNetworkStatus,
+			intfs = types.GetMgmtPortsFree(*ctx.DeviceNetworkStatus,
 				iteration)
 			log.Debugf("sendOnAllIntf trying free %v\n", intfs)
 		} else {
-			intfs = types.GetUplinksNonFree(*ctx.DeviceNetworkStatus,
+			intfs = types.GetMgmtPortsNonFree(*ctx.DeviceNetworkStatus,
 				iteration)
 			log.Debugf("sendOnAllIntf non-free %v\n", intfs)
 		}
@@ -65,6 +66,69 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 	return nil, nil, errors.New(errStr)
 }
 
+// We try with free interfaces first. If we find enough free interfaces through
+// which cloud connectivity can be achieved, we won't test non-free interfaces.
+// Otherwise we test non-free interfaces also.
+func VerifyAllIntf(ctx ZedCloudContext,
+	url string, successCount int, iteration int) (bool, error) {
+	var intfSuccessCount int = 0
+
+	if successCount <= 0 {
+		// No need to test. Just return true.
+		return true, nil
+	}
+
+	for try := 0; try < 2; try += 1 {
+		var intfs []string
+		if try == 0 {
+			intfs = types.GetMgmtPortsFree(*ctx.DeviceNetworkStatus,
+				iteration)
+			log.Debugf("VerifyAllIntf: trying free %v\n", intfs)
+		} else {
+			intfs = types.GetMgmtPortsNonFree(*ctx.DeviceNetworkStatus,
+				iteration)
+			log.Debugf("VerifyAllIntf: non-free %v\n", intfs)
+		}
+		for _, intf := range intfs {
+			if intfSuccessCount >= successCount {
+				// We have enough uplinks with cloud connectivity working.
+				break
+			}
+			resp, _, err := SendOnIntf(ctx, url, intf, 0, nil, true)
+			if err != nil {
+				// XXX Have code to mark this interface as not suitable
+				// for cloud/internet connectivity
+				log.Errorf("VerifyAllIntf: Zedcloud un-reachable via interface %s", intf)
+				continue
+			}
+			switch resp.StatusCode {
+			case http.StatusOK:
+				log.Infof("VerifyAllIntf: Zedcloud reachable via interface %s", intf)
+				intfSuccessCount += 1
+			default:
+				log.Errorf(
+					"VerifyAllIntf: Uplink test FAILED via %s to URL %s with "+
+						"status code %d and status %s",
+					intf, url, resp.StatusCode, http.StatusText(resp.StatusCode))
+				continue
+			}
+		}
+	}
+	if intfSuccessCount == 0 {
+		errStr := fmt.Sprintf("VerifyAllIntf: All test attempts to connect to %s failed", url)
+		log.Errorln(errStr)
+		return false, errors.New(errStr)
+	}
+	if intfSuccessCount < successCount {
+		errStr := fmt.Sprintf("VerifyAllIntf: "+
+			"Not enough Ports (%d) against required count %d, can help reach Zedcloud",
+			intfSuccessCount, successCount)
+		log.Errorln(errStr)
+		return false, errors.New(errStr)
+	}
+	return true, nil
+}
+
 // Tries all source addresses on interface until one succeeds.
 // Returns response for first success. Caller can not use resp.Body but can
 // use []byte contents return.
@@ -86,7 +150,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		useTLS = true
 	}
 
-	addrCount := types.CountLocalAddrAny(*ctx.DeviceNetworkStatus, intf)
+	addrCount := types.CountLocalAddrAnyNoLinkLocalIf(*ctx.DeviceNetworkStatus, intf)
 	log.Debugf("Connecting to %s using intf %s #sources %d reqlen %d\n",
 		reqUrl, intf, addrCount, reqlen)
 
@@ -100,7 +164,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		return nil, nil, errors.New(errStr)
 	}
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
-		localAddr, err := types.GetLocalAddrAny(*ctx.DeviceNetworkStatus,
+		localAddr, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus,
 			retryCount, intf)
 		if err != nil {
 			log.Fatal(err)
@@ -151,12 +215,18 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 					connInfo.Conn.RemoteAddr(),
 					connInfo.Conn.LocalAddr())
 			},
+			DNSDone: func(dnsInfo httptrace.DNSDoneInfo) {
+				log.Debugf("DNS Info: %+v\n", dnsInfo)
+			},
+			DNSStart: func(dnsInfo httptrace.DNSStartInfo) {
+				log.Debugf("DNS start: %+v\n", dnsInfo)
+			},
 		}
 		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
 			trace))
 		resp, err := client.Do(req)
 		if err != nil {
-			log.Errorf("URL get fail: %v\n", err)
+			log.Errorf("client.Do fail: %v\n", err)
 			continue
 		}
 		defer resp.Body.Close()
@@ -173,7 +243,9 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 			if connState == nil {
 				log.Errorln("no TLS connection state")
 				// Inform ledmanager about broken cloud connectivity
-				types.UpdateLedManagerConfig(10)
+				if !ctx.NoLedManager {
+					types.UpdateLedManagerConfig(10)
+				}
 				if ctx.FailureFunc != nil {
 					ctx.FailureFunc(intf, reqUrl, reqlen,
 						resplen)
@@ -196,7 +268,9 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 				// commenting out it for now.
 				if false {
 					// Inform ledmanager about broken cloud connectivity
-					types.UpdateLedManagerConfig(10)
+					if !ctx.NoLedManager {
+						types.UpdateLedManagerConfig(10)
+					}
 					if ctx.FailureFunc != nil {
 						ctx.FailureFunc(intf, reqUrl,
 							reqlen, resplen)

@@ -208,12 +208,12 @@ func Run() {
 	pubBaseOsStatus.SignalRestarted()
 	pubCertObjStatus.SignalRestarted()
 
-	// First wait to have some uplinks with addresses
-	// Looking at any uplinks since we can do baseOS download over all
+	// First wait to have some management ports with addresses
+	// Looking at any management ports since we can do baseOS download over all
 	// Also ensure GlobalDownloadConfig has been read
 	for types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus) == 0 ||
 		ctx.globalConfig.MaxSpace == 0 {
-		log.Infof("Waiting for uplink addresses or Global Config\n")
+		log.Infof("Waiting for management port addresses or Global Config\n")
 
 		select {
 		case change := <-subGlobalConfig.C:
@@ -226,7 +226,7 @@ func Run() {
 			subGlobalDownloadConfig.ProcessChange(change)
 		}
 	}
-	log.Infof("Have %d uplinks addresses to use\n",
+	log.Infof("Have %d management ports addresses to use\n",
 		types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus))
 
 	ctx.dCtx = downloaderInit(&ctx)
@@ -420,14 +420,14 @@ func handleCreate(ctx *downloaderContext, objType string,
 	}
 	// Start by marking with PendingAdd
 	status := types.DownloaderStatus{
-		Safename:       config.Safename,
-		ObjType:        objType,
-		RefCount:       config.RefCount,
-		LastUse:        time.Now(),
-		DownloadURL:    config.DownloadURL,
-		UseFreeUplinks: config.UseFreeUplinks,
-		ImageSha256:    config.ImageSha256,
-		PendingAdd:     true,
+		Safename:         config.Safename,
+		ObjType:          objType,
+		RefCount:         config.RefCount,
+		LastUse:          time.Now(),
+		DownloadURL:      config.DownloadURL,
+		UseFreeMgmtPorts: config.UseFreeMgmtPorts,
+		ImageSha256:      config.ImageSha256,
+		PendingAdd:       true,
 	}
 	publishDownloaderStatus(ctx, &status)
 
@@ -900,7 +900,7 @@ func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
 		log.Errorf("NewSyncerDest failed: %s\n", err)
 		return err
 	}
-	// check for proxies on the selected uplink interface
+	// check for proxies on the selected management port interface
 	proxyUrl, err := zedcloud.LookupProxy(
 		&ctx.deviceNetworkStatus, ifname, dnldUrl)
 	if err == nil && proxyUrl != nil {
@@ -1068,18 +1068,18 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	locFilename = locFilename + "/" + config.Safename
 
-	log.Infof("Downloading <%s> to <%s> using %v freeuplink\n",
-		config.DownloadURL, locFilename, config.UseFreeUplinks)
+	log.Infof("Downloading <%s> to <%s> using %v free management port\n",
+		config.DownloadURL, locFilename, config.UseFreeMgmtPorts)
 
 	var addrCount int
-	if config.UseFreeUplinks {
-		addrCount = types.CountLocalAddrFree(ctx.deviceNetworkStatus, "")
-		log.Infof("Have %d free uplink addresses\n", addrCount)
-		err = errors.New("No free IP uplink addresses for download")
+	if config.UseFreeMgmtPorts {
+		addrCount = types.CountLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus)
+		log.Infof("Have %d free management port addresses\n", addrCount)
+		err = errors.New("No free IP management port addresses for download")
 	} else {
-		addrCount = types.CountLocalAddrAny(ctx.deviceNetworkStatus, "")
-		log.Infof("Have %d any uplink addresses\n", addrCount)
-		err = errors.New("No IP uplink addresses for download")
+		addrCount = types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
+		log.Infof("Have %d any management port addresses\n", addrCount)
+		err = errors.New("No IP management port addresses for download")
 	}
 	if addrCount == 0 {
 		errStr = err.Error()
@@ -1093,12 +1093,12 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	// Loop through all interfaces until a success
 	for addrIndex := 0; addrIndex < addrCount; addrIndex += 1 {
 		var ipSrc net.IP
-		if config.UseFreeUplinks {
-			ipSrc, err = types.GetLocalAddrFree(ctx.deviceNetworkStatus,
+		if config.UseFreeMgmtPorts {
+			ipSrc, err = types.GetLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus,
 				addrIndex, "")
 		} else {
 			// Note that GetLocalAddrAny has the free ones first
-			ipSrc, err = types.GetLocalAddrAny(ctx.deviceNetworkStatus,
+			ipSrc, err = types.GetLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus,
 				addrIndex, "")
 		}
 		if err != nil {
@@ -1106,7 +1106,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			errStr = errStr + "\n" + err.Error()
 			continue
 		}
-		ifname := types.GetUplinkFromAddr(ctx.deviceNetworkStatus, ipSrc)
+		ifname := types.GetMgmtPortFromAddr(ctx.deviceNetworkStatus, ipSrc)
 		log.Infof("Using IP source %v if %s transport %v\n",
 			ipSrc, ifname, config.TransportMethod)
 		switch config.TransportMethod {
@@ -1250,9 +1250,9 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	log.Infof("handleDNSModify for %s\n", key)
 	ctx.deviceNetworkStatus = status
-	log.Infof("handleDNSModify %d free uplinks addresses; %d any\n",
-		types.CountLocalAddrFree(ctx.deviceNetworkStatus, ""),
-		types.CountLocalAddrAny(ctx.deviceNetworkStatus, ""))
+	log.Infof("handleDNSModify %d free management ports addresses; %d any\n",
+		types.CountLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus),
+		types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus))
 
 	log.Infof("handleDNSModify done for %s\n", key)
 }

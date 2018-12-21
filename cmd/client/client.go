@@ -284,28 +284,37 @@ func Run() {
 			return false
 		}
 
-		// Inform ledmanager about cloud connectivity
-		types.UpdateLedManagerConfig(3)
-
+		if !zedcloudCtx.NoLedManager {
+			// Inform ledmanager about cloud connectivity
+			types.UpdateLedManagerConfig(3)
+		}
 		switch resp.StatusCode {
 		case http.StatusOK:
-			// Inform ledmanager about existence in cloud
-			types.UpdateLedManagerConfig(4)
+			if !zedcloudCtx.NoLedManager {
+				// Inform ledmanager about existence in cloud
+				types.UpdateLedManagerConfig(4)
+			}
 			log.Infof("%s StatusOK\n", requrl)
 		case http.StatusCreated:
-			// Inform ledmanager about existence in cloud
-			types.UpdateLedManagerConfig(4)
+			if !zedcloudCtx.NoLedManager {
+				// Inform ledmanager about existence in cloud
+				types.UpdateLedManagerConfig(4)
+			}
 			log.Infof("%s StatusCreated\n", requrl)
 		case http.StatusConflict:
-			// Inform ledmanager about brokenness
-			types.UpdateLedManagerConfig(10)
+			if !zedcloudCtx.NoLedManager {
+				// Inform ledmanager about brokenness
+				types.UpdateLedManagerConfig(10)
+			}
 			log.Errorf("%s StatusConflict\n", requrl)
 			// Retry until fixed
 			log.Errorf("%s\n", string(contents))
 			return false
 		case http.StatusNotModified: // XXX from zedcloud
-			// Inform ledmanager about brokenness
-			types.UpdateLedManagerConfig(10)
+			if !zedcloudCtx.NoLedManager {
+				// Inform ledmanager about brokenness
+				types.UpdateLedManagerConfig(10)
+			}
 			log.Errorf("%s StatusNotModified\n", requrl)
 			// Retry until fixed
 			log.Errorf("%s\n", string(contents))
@@ -415,6 +424,8 @@ func Run() {
 		}
 		tlsConfig.InsecureSkipVerify = insecure
 		zedcloudCtx.TlsConfig = tlsConfig
+		// As we ping the cloud or other URLs, don't affect the LEDs
+		zedcloudCtx.NoLedManager = true
 
 		retryCount := 0
 		done := false
@@ -492,7 +503,9 @@ func Run() {
 				devUUID, hardwaremodel, err = parseConfig(requrl, resp, contents)
 				if err == nil {
 					// Inform ledmanager about config received from cloud
-					types.UpdateLedManagerConfig(4)
+					if !zedcloudCtx.NoLedManager {
+						types.UpdateLedManagerConfig(4)
+					}
 					continue
 				}
 				// Keep on trying until it parses
@@ -623,12 +636,12 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
 		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
 			ctx.usableAddressCount, newAddrCount)
-		// Inform ledmanager that we have uplink addresses
+		// Inform ledmanager that we have management port addresses
 		types.UpdateLedManagerConfig(2)
 	} else if newAddrCount == 0 && ctx.usableAddressCount != 0 {
 		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
 			ctx.usableAddressCount, newAddrCount)
-		// Inform ledmanager that we have no uplink addresses
+		// Inform ledmanager that we have no management port addresses
 		types.UpdateLedManagerConfig(1)
 	}
 	ctx.usableAddressCount = newAddrCount
@@ -649,7 +662,7 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
 	if ctx.usableAddressCount == 0 {
-		// Inform ledmanager that we have no uplink addresses
+		// Inform ledmanager that we have no management port addresses
 		types.UpdateLedManagerConfig(1)
 	}
 	log.Infof("handleDNSDelete done for %s\n", key)

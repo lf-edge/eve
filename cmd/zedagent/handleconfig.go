@@ -72,7 +72,7 @@ type getconfigContext struct {
 	readSavedConfig             bool
 	configTickerHandle          interface{}
 	metricsTickerHandle         interface{}
-	pubDeviceUplinkConfig       *pubsub.Publication
+	pubDevicePortConfig         *pubsub.Publication
 	pubNetworkObjectConfig      *pubsub.Publication
 	pubNetworkServiceConfig     *pubsub.Publication
 	subAppInstanceStatus        *pubsub.Subscription
@@ -182,7 +182,7 @@ func updateConfigTimer(tickerHandle interface{}) {
 	flextimer.TickNow(tickerHandle)
 }
 
-// Start by trying the all the free uplinks and then all the non-free
+// Start by trying the all the free management ports and then all the non-free
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
 // Returns a rebootFlag

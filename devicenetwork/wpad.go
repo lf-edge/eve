@@ -16,7 +16,7 @@ import (
 
 // Download a wpad file if so configured
 func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
-	status *types.NetworkUplink) error {
+	status *types.NetworkPortStatus) error {
 
 	ifname := status.IfName
 	proxyConfig := &status.ProxyConfig

@@ -228,8 +228,8 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	// Check that Adapter is either "uplink", "freeuplink", or
 	// an existing ifname assigned to doServicemO/zedrouter. A Bridge
 	// only works with a single adapter interface.
-	allowUplink := (config.Type != types.NST_BRIDGE)
-	err := validateAdapter(config.Adapter, allowUplink)
+	allowMgmtPort := (config.Type != types.NST_BRIDGE)
+	err := validateAdapter(config.Adapter, allowMgmtPort)
 	if err != nil {
 		return err
 	}
@@ -308,12 +308,12 @@ func checkAndRecreateService(ctx *zedrouterContext, network uuid.UUID) {
 	}
 }
 
-func validateAdapter(adapter string, allowUplink bool) error {
+func validateAdapter(adapter string, allowMgmtPort bool) error {
 	if adapter == "" {
 		errStr := fmt.Sprintf("Adapter not specified")
 		return errors.New(errStr)
 	}
-	if allowUplink {
+	if allowMgmtPort {
 		if strings.EqualFold(adapter, "uplink") {
 			return nil
 		}
@@ -323,7 +323,7 @@ func validateAdapter(adapter string, allowUplink bool) error {
 	}
 	// XXX look for ifname; this assumes it exists in dom0/zedrouter
 	// and not assigned to pciback
-	// XXX also check not uplink? assignable checked for bridge ...
+	// XXX also check not management port? assignable checked for bridge ...
 	// XXX need a resourcemgr to track use of resources
 	link, _ := netlink.LinkByName(adapter)
 	if link == nil {
@@ -719,9 +719,9 @@ func bridgeCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	}
 	// XXX check it isn't assigned to dom0? That's maintained
 	// in domainmgr so can't do it here.
-	// For now check it isn't an uplink instead.
-	if types.IsUplink(*ctx.deviceNetworkStatus, config.Adapter) {
-		errStr := fmt.Sprintf("Uplink interface %s not available as bridge for %s",
+	// For now check it isn't a zedrouter port instead.
+	if types.IsPort(*ctx.deviceNetworkStatus, config.Adapter) {
+		errStr := fmt.Sprintf("Zedrouter port %s not available as bridge for %s",
 			config.Adapter, config.Key())
 		return errors.New(errStr)
 	}
@@ -807,7 +807,7 @@ func natCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	return nil
 }
 
-// XXX need to redo this when Uplinks/FreeUplinks changes?
+// XXX need to redo this when MgmtPorts/FreeMgmtPorts changes?
 func natActivate(config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) error {
@@ -843,10 +843,10 @@ func natActivate(config types.NetworkServiceConfig,
 // Expand the generic names
 func getAdapters(ctx *zedrouterContext, adapter string) []string {
 	if strings.EqualFold(adapter, "uplink") {
-		return types.GetUplinks(*ctx.deviceNetworkStatus, 0)
+		return types.GetMgmtPortsAny(*ctx.deviceNetworkStatus, 0)
 	}
 	if strings.EqualFold(adapter, "freeuplink") {
-		return types.GetUplinksFree(*ctx.deviceNetworkStatus, 0)
+		return types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0)
 	}
 	return []string{adapter}
 }

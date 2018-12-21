@@ -20,6 +20,7 @@ import (
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
+	"io"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -53,8 +54,10 @@ func Run() {
 
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
+	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
 	flag.Parse()
 	debug = *debugPtr
+	useStdout := *stdoutPtr
 	debugOverride = debug
 	if debugOverride {
 		log.SetLevel(log.DebugLevel)
@@ -65,6 +68,17 @@ func Run() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
+	// For limited output on console
+	consolef := os.Stdout
+	if !useStdout {
+		consolef, err = os.OpenFile("/dev/console", os.O_RDWR|os.O_APPEND,
+			0666)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	multi := io.MultiWriter(logf, consolef)
+	log.SetOutput(multi)
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
@@ -85,7 +99,8 @@ func Run() {
 	// don't have a DeviceNetworkConfig
 	// After some tries we fall back to default.json which is eth0, wlan0
 	// and wwan0
-	// XXX if we have a /config/DeviceUplinkConfig/override.json
+	// XXX Rename dirname to DevicePortConfig?
+	// XXX if we have a /config/DevicePortConfig/override.json
 	// we should proceed without a DNCFilename!
 	tries := 0
 	for {
@@ -113,12 +128,19 @@ func Run() {
 	}
 	pubDeviceNetworkStatus.ClearRestarted()
 
-	pubDeviceUplinkConfig, err := pubsub.Publish(agentName,
-		types.DeviceUplinkConfig{})
+	pubDevicePortConfig, err := pubsub.Publish(agentName,
+		types.DevicePortConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
-	pubDeviceUplinkConfig.ClearRestarted()
+	pubDevicePortConfig.ClearRestarted()
+
+	pubDevicePortConfigList, err := pubsub.PublishPersistent(agentName,
+		types.DevicePortConfigList{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubDevicePortConfigList.ClearRestarted()
 
 	nimCtx := nimContext{}
 	// Look for global config such as log levels
@@ -134,9 +156,11 @@ func Run() {
 
 	nimCtx.ManufacturerModel = model
 	nimCtx.DeviceNetworkConfig = &types.DeviceNetworkConfig{}
-	nimCtx.DeviceUplinkConfig = &types.DeviceUplinkConfig{}
+	nimCtx.DevicePortConfig = &types.DevicePortConfig{}
+	nimCtx.DevicePortConfigList = &types.DevicePortConfigList{}
 	nimCtx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
-	nimCtx.PubDeviceUplinkConfig = pubDeviceUplinkConfig
+	nimCtx.PubDevicePortConfig = pubDevicePortConfig
+	nimCtx.PubDevicePortConfigList = pubDevicePortConfigList
 	nimCtx.PubDeviceNetworkStatus = pubDeviceNetworkStatus
 
 	// Get the initial DeviceNetworkConfig
@@ -152,46 +176,46 @@ func Run() {
 	nimCtx.SubDeviceNetworkConfig = subDeviceNetworkConfig
 	subDeviceNetworkConfig.Activate()
 
-	// We get DeviceUplinkConfig from three sources in this priority:
-	// 1. zedagent
-	// 2. override file in /var/tmp/zededa/NetworkUplinkConfig/override.json
+	// We get DevicePortConfig from three sources in this priority:
+	// 1. zedagent publishing NetworkPortConfig
+	// 2. override file in /var/tmp/zededa/NetworkPortConfig/override.json
 	// 3. self-generated file derived from per-platform DeviceNetworkConfig
-	subDeviceUplinkConfigA, err := pubsub.Subscribe("zedagent",
-		types.DeviceUplinkConfig{}, false,
+	subDevicePortConfigA, err := pubsub.Subscribe("zedagent",
+		types.DevicePortConfig{}, false,
 		&nimCtx.DeviceNetworkContext)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceUplinkConfigA.ModifyHandler = devicenetwork.HandleDUCModify
-	subDeviceUplinkConfigA.DeleteHandler = devicenetwork.HandleDUCDelete
-	nimCtx.SubDeviceUplinkConfigA = subDeviceUplinkConfigA
-	subDeviceUplinkConfigA.Activate()
+	subDevicePortConfigA.ModifyHandler = devicenetwork.HandleDPCModify
+	subDevicePortConfigA.DeleteHandler = devicenetwork.HandleDPCDelete
+	nimCtx.SubDevicePortConfigA = subDevicePortConfigA
+	subDevicePortConfigA.Activate()
 
-	subDeviceUplinkConfigO, err := pubsub.Subscribe("",
-		types.DeviceUplinkConfig{}, false,
+	subDevicePortConfigO, err := pubsub.Subscribe("",
+		types.DevicePortConfig{}, false,
 		&nimCtx.DeviceNetworkContext)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceUplinkConfigO.ModifyHandler = devicenetwork.HandleDUCModify
-	subDeviceUplinkConfigO.DeleteHandler = devicenetwork.HandleDUCDelete
-	nimCtx.SubDeviceUplinkConfigO = subDeviceUplinkConfigO
-	subDeviceUplinkConfigO.Activate()
+	subDevicePortConfigO.ModifyHandler = devicenetwork.HandleDPCModify
+	subDevicePortConfigO.DeleteHandler = devicenetwork.HandleDPCDelete
+	nimCtx.SubDevicePortConfigO = subDevicePortConfigO
+	subDevicePortConfigO.Activate()
 
-	subDeviceUplinkConfigS, err := pubsub.Subscribe(agentName,
-		types.DeviceUplinkConfig{}, false,
+	subDevicePortConfigS, err := pubsub.Subscribe(agentName,
+		types.DevicePortConfig{}, false,
 		&nimCtx.DeviceNetworkContext)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceUplinkConfigS.ModifyHandler = devicenetwork.HandleDUCModify
-	subDeviceUplinkConfigS.DeleteHandler = devicenetwork.HandleDUCDelete
-	nimCtx.SubDeviceUplinkConfigS = subDeviceUplinkConfigS
-	subDeviceUplinkConfigS.Activate()
+	subDevicePortConfigS.ModifyHandler = devicenetwork.HandleDPCModify
+	subDevicePortConfigS.DeleteHandler = devicenetwork.HandleDPCDelete
+	nimCtx.SubDevicePortConfigS = subDevicePortConfigS
+	subDevicePortConfigS.Activate()
 
 	devicenetwork.DoDNSUpdate(&nimCtx.DeviceNetworkContext)
 
-	// Apply any changes from the uplink config to date.
+	// Apply any changes from the port config to date.
 	publishDeviceNetworkStatus(&nimCtx)
 
 	// XXX should we make geoRedoTime configurable?
@@ -220,14 +244,14 @@ func Run() {
 		case change := <-subDeviceNetworkConfig.C:
 			subDeviceNetworkConfig.ProcessChange(change)
 
-		case change := <-subDeviceUplinkConfigA.C:
-			subDeviceUplinkConfigA.ProcessChange(change)
+		case change := <-subDevicePortConfigA.C:
+			subDevicePortConfigA.ProcessChange(change)
 
-		case change := <-subDeviceUplinkConfigO.C:
-			subDeviceUplinkConfigO.ProcessChange(change)
+		case change := <-subDevicePortConfigO.C:
+			subDevicePortConfigO.ProcessChange(change)
 
-		case change := <-subDeviceUplinkConfigS.C:
-			subDeviceUplinkConfigS.ProcessChange(change)
+		case change := <-subDevicePortConfigS.C:
+			subDevicePortConfigS.ProcessChange(change)
 
 		case change, ok := <-addrChanges:
 			if !ok {

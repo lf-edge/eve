@@ -19,7 +19,6 @@ import (
 	//"os"
 	"strings"
 	"unicode/utf8"
-
 	//"golang.org/x/net/idna"
 )
 
@@ -103,15 +102,15 @@ func (cfg *Config) ProxyFunc() func(reqURL *url.URL) (*url.URL, error) {
 func (cfg *config) proxyForURL(reqURL *url.URL) (*url.URL, error) {
 	var proxy *url.URL
 	/*
-	if reqURL.Scheme == "https" {
-		proxy = cfg.httpsProxy
-	}
-	if proxy == nil {
-		proxy = cfg.httpProxy
-		if proxy != nil && cfg.CGI {
-			return nil, errors.New("refusing to use HTTP_PROXY value in CGI environment; see golang.org/s/cgihttpproxy")
+		if reqURL.Scheme == "https" {
+			proxy = cfg.httpsProxy
 		}
-	}
+		if proxy == nil {
+			proxy = cfg.httpProxy
+			if proxy != nil && cfg.CGI {
+				return nil, errors.New("refusing to use HTTP_PROXY value in CGI environment; see golang.org/s/cgihttpproxy")
+			}
+		}
 	*/
 	switch reqURL.Scheme {
 	case "https":
@@ -266,9 +265,9 @@ var portMap = map[string]string{
 func canonicalAddr(url *url.URL) string {
 	addr := url.Hostname()
 	/*
-	if v, err := idnaASCII(addr); err == nil {
-		addr = v
-	}
+		if v, err := idnaASCII(addr); err == nil {
+			addr = v
+		}
 	*/
 	port := url.Port()
 	if port == "" {

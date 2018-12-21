@@ -976,11 +976,11 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 
 	// Check if DomainStatus gone; update AppInstanceStatus if error
 	ds := lookupDomainStatus(ctx, uuidStr)
-	if status.DomainName != ds.DomainName {
-		status.DomainName = ds.DomainName
-		changed = true
-	}
 	if ds != nil {
+		if status.DomainName != ds.DomainName {
+			status.DomainName = ds.DomainName
+			changed = true
+		}
 		log.Infof("Waiting for DomainStatus removal for %s\n", uuidStr)
 		// Look for xen errors.
 		if !ds.Activated {
@@ -1071,10 +1071,12 @@ func doUnprepare(ctx *zedmanagerContext, uuidStr string,
 		if es != nil {
 			log.Infof("lookupEIDStatus not gone on remove for %s\n",
 				key)
+			// Could it have changed?
+			changed = true
+			status.EIDList[i] = es.EIDStatusDetails
 			eidsFreed = false
 			continue
 		}
-		status.EIDList[i] = es.EIDStatusDetails
 		changed = true
 	}
 	if !eidsFreed {
