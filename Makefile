@@ -114,7 +114,7 @@ run-target: bios/OVMF.fd
 run-rootfs: bios/OVMF.fd bios/EFI
 	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:./bios/,format=raw 
 
-run-grub:
+run-grub: bios/OVMF.fd bios/EFI
 	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=fat:rw:./bios/,format=raw
 
 # NOTE: that we have to depend on zedctr-workaround here to make sure
