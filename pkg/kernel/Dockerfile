@@ -112,7 +112,7 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" KCFLAGS="-fno-pie" && \
         cp arch/x86_64/boot/bzImage /out/kernel; \
         ;; \
     aarch64) \
-        cp arch/arm64/boot/Image.gz /out/kernel.zen; \
+        mkdir -p /tmp/kernel-modules/lib ; cp arch/arm64/boot/Image.gz /tmp/kernel-modules/lib/kernel ; \
         cp /kernel.hikey /out/kernel; \
         ;; \
     esac && \
