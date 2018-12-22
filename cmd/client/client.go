@@ -105,17 +105,10 @@ func Run() {
 		log.Fatal(err)
 	}
 	defer logf.Close()
-	// For limited output on console
-	consolef := os.Stdout
-	if !useStdout {
-		consolef, err = os.OpenFile("/dev/console", os.O_RDWR|os.O_APPEND,
-			0666)
-		if err != nil {
-			log.Fatal(err)
-		}
+	if useStdout {
+		multi := io.MultiWriter(logf, os.Stdout)
+		log.SetOutput(multi)
 	}
-	multi := io.MultiWriter(logf, consolef)
-	log.SetOutput(multi)
 	if !noPidFlag {
 		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 			log.Fatal(err)
