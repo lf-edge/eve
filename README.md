@@ -88,7 +88,6 @@ Once you aquire the board you will need to build an image, flash it onto
 the SD card and tell the UEFI bootloader to boot the GRUB payload from
 the SD card. Here's what you need to do:
 ```
-cp images/rootfs.yml.in.hikey images/rootfs.yml.in
 vi conf/wpa_supplicant.conf
   # put your WIFI passwords in and/or add your own networks
 make ZARCH=aarch64 MEDIA_SIZE=1024 fallback_aarch64.raw
@@ -109,12 +108,36 @@ Start: 4
 .....
 Press ESC in 4 seconds to skip startup.nsh or any other key to continue.
 Shell> fs0:\EFI\BOOT\BOOTAA64.EFI
-
-Finally pick the last menu item in GRUB saying
-  LinuxKit Image on HiKey/ARM64
 ```
 
-As an aside, you may be wondering why do we have a container-based
+At this point you should see command prompt and it may be a good idea
+to configure HiKey's boot sequence to go through zenbuild GRUB trampoline
+(so that you don't have to manually press '4' and enter the BOOTAA64.EFI 
+GRUB location at the UEFI prompt). Unfortunatelly, the default HiKey boot 
+sequence is pretty rigid so the easiest way to get to GRUB is a hack. By
+replacing the default fastboot.efi binary in the EFI partition on the eMMC
+we will trick HiKey UEFI firmware into loading GRUB trampoline instead:
+```
+mount /dev/mmcblk0p6 /mnt
+cd /mnt
+mv fastboot.efi fastboot.efi.bak
+mv grub.cfg grub.cfg.bak
+mv grubaa64.efi grubaa64.efi.bak
+cp /EFI/BOOT/BOOTAA64.EFI fastboot.efi
+cat > grub.cfg <<'__EOT__'
+gptprio.next -d dev -u uuid hd1,gpt1
+set root=$dev
+chainloader ($dev)/EFI/BOOT/BOOTX64.EFI
+boot
+reboot
+__EOT__
+```
+
+Note that this gives you exactly the same GRUB trampoline that also resides
+in the EFI partition on the SD card. We could've also chainloaded into that,
+but it feels like goin through two trampolines is a waste of time.
+
+A quick note on linuxkit: you may be wondering why do we have a container-based
 architecture for a Xen-centric environment. First of all, OCI containers
 are a key type of a workload for our platform. Which means having
 OCI environment to run them is a key requirement. We do plan to run them
