@@ -42,6 +42,8 @@ const (
 	appImgObj = "appImg.obj"
 	agentName = "domainmgr"
 
+	tmpDirname        = "/var/tmp/zededa"
+	AADirname         = tmpDirname + "/AssignableAdapters"
 	runDirname        = "/var/run/" + agentName
 	persistDir        = "/persist"
 	rwImgDirname      = persistDir + "/img"       // We store images here
@@ -206,6 +208,25 @@ func Run() {
 	subDeviceNetworkStatus.Activate()
 
 	model := hardware.GetHardwareModel()
+	// Logic to fall back to default.json model if cloud sends wrong
+	// model string
+	tries := 0
+	for {
+		AAFilename := fmt.Sprintf("%s/%s.json", AADirname, model)
+		if _, err := os.Stat(AAFilename); err == nil {
+			break
+		}
+		log.Warningln(err)
+		log.Warningf("You need to create this file for this hardware: %s\n",
+			AAFilename)
+		time.Sleep(time.Second)
+		tries += 1
+		if tries == 10 { // 10 Seconds
+			log.Infof("Falling back to using hardware model default\n")
+			model = "default"
+		}
+	}
+
 	aa := types.AssignableAdapters{}
 	domainCtx.assignableAdapters = &aa
 
