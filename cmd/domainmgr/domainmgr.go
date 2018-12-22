@@ -838,6 +838,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		return
 	}
 
+	status.TriedCount = 0
 	var domainId int
 	// Invoke xl create; try 3 times with a timeout
 	for {
@@ -853,10 +854,12 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			log.Errorf("xl create for %s: %s\n", status.DomainName, err)
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
+			publishDomainStatus(ctx, status)
 			return
 		}
 		log.Warnf("Retry xl create for %s: failed %s\n",
 			status.DomainName, err)
+		publishDomainStatus(ctx, status)
 		time.Sleep(5 * time.Second)
 	}
 	log.Infof("created domainId %d for %s\n", domainId, status.DomainName)
