@@ -405,25 +405,32 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	log.Infof("parseSystemAdapterConfig: Applying updated config sha % x vs. % x: %v\n",
 		systemAdaptersPrevConfigHash, configHash, sysAdapters)
 
-	//portConfig := &types.DevicePortConfig{}
+	// Check if we have any with Uplink/IsMgmt set, in which case we
+	// infer the version
+	version := types.DPCInitial
+	for _, sysAdapter := range sysAdapters {
+		if sysAdapter.Uplink {
+			version = types.DPCIsMgmt
+		}
+	}
+
 	newPorts := []types.NetworkPortConfig{}
 	for _, sysAdapter := range sysAdapters {
-		// XXX Make Uplink and FreeUplink true
-		// This should go away when cloud sends proper values
-		//if !sysAdapter.Uplink {
-		//	continue
-		//}
-		// XXX Rename Uplink in proto file to IsMgmtPort!
-		sysAdapter.Uplink = true
-		sysAdapter.FreeUplink = true
-
+		// XXX Rename Uplink in proto file to IsMgmt! Ditto for FreeUplink
+		if version < types.DPCIsMgmt {
+			// XXX Make Uplink and FreeUplink true
+			// This should go away when cloud sends proper values
+			sysAdapter.Uplink = true
+			sysAdapter.FreeUplink = true
+		}
 		port := types.NetworkPortConfig{}
 		port.IfName = sysAdapter.Name
+		port.Name = sysAdapter.Name
+		port.IsMgmt = sysAdapter.Uplink
 		port.Free = sysAdapter.FreeUplink
-		port.Dhcp = types.DT_CLIENT // XXX from zedcloud?
 
 		// Lookup the network with given UUID
-		// and copy proxy configuration
+		// and copy proxy and other configuration
 		networkObject, err := getconfigCtx.pubNetworkObjectConfig.Get(sysAdapter.NetworkUUID)
 		if err != nil {
 			log.Errorf("parseSystemAdapterConfig: Network with UUID %s not found: %s\n",
@@ -431,16 +438,24 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			continue
 		}
 		network := cast.CastNetworkObjectConfig(networkObject)
+		port.Dhcp = network.Dhcp
+		ip := net.ParseIP(sysAdapter.Addr)
+		if ip == nil {
+			log.Errorf("parseSystemAdapterConfig: Bad sysAdapter.Addr %s - ignored\n",
+				sysAdapter.Addr)
+			continue
+		}
+		addrSubnet := network.Subnet
+		addrSubnet.IP = ip
+		port.AddrSubnet = addrSubnet.String()
+		port.Gateway = network.Gateway
+		port.DomainName = network.DomainName
+		port.NtpServer = network.NtpServer
+		port.DnsServers = network.DnsServers
+		// XXX use DnsNameToIpList?
 		if network.Proxy != nil {
 			port.ProxyConfig = *network.Proxy
-			port.AddrSubnet = sysAdapter.Addr
 		}
-		// XXX
-		// Even when the network that we point to does not have
-		// proxy configuration, we should still parse the port.
-		// There could have been a proxy before attached to this network,
-		// and now removed. Even when there was never a proxy configuration
-		// attached, we should still process the port and bring it UP.
 		newPorts = append(newPorts, port)
 	}
 	if len(newPorts) == 0 {
@@ -448,6 +463,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		return
 	}
 	portConfig := &types.DevicePortConfig{}
+	portConfig.Version = version
 	// This is suboptimal after a reboot since the config will be the same
 	// yet the timestamp be new. HandleDPCModify takes care of that.
 	portConfig.TimePriority = time.Now()

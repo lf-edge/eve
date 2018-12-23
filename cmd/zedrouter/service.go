@@ -719,9 +719,9 @@ func bridgeCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	}
 	// XXX check it isn't assigned to dom0? That's maintained
 	// in domainmgr so can't do it here.
-	// For now check it isn't a management port instead.
-	if types.IsMgmtPort(*ctx.deviceNetworkStatus, config.Adapter) {
-		errStr := fmt.Sprintf("MgmtPort interface %s not available as bridge for %s",
+	// For now check it isn't a zedrouter port instead.
+	if types.IsPort(*ctx.deviceNetworkStatus, config.Adapter) {
+		errStr := fmt.Sprintf("Zedrouter port %s not available as bridge for %s",
 			config.Adapter, config.Key())
 		return errors.New(errStr)
 	}
@@ -843,7 +843,7 @@ func natActivate(config types.NetworkServiceConfig,
 // Expand the generic names
 func getAdapters(ctx *zedrouterContext, adapter string) []string {
 	if strings.EqualFold(adapter, "uplink") {
-		return types.GetMgmtPorts(*ctx.deviceNetworkStatus, 0)
+		return types.GetMgmtPortsAny(*ctx.deviceNetworkStatus, 0)
 	}
 	if strings.EqualFold(adapter, "freeuplink") {
 		return types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0)

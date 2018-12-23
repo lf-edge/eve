@@ -977,7 +977,7 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 		reportAA.Type = zmet.ZioType(ib.Type)
 		reportAA.Name = ib.Name
 		reportAA.Members = ib.Members
-		if ib.IsMgmtPort {
+		if ib.IsPort {
 			reportAA.UsedByBaseOS = true
 		} else if ib.UsedByUUID != nilUUID {
 			reportAA.UsedByAppUUID = ib.UsedByUUID.String()

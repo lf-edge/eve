@@ -361,7 +361,8 @@ func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 			log.Errorf("PbrAddrChange IfindexToName failed for %d: %s\n",
 				change.LinkIndex, err)
 		} else if types.IsMgmtPort(*deviceNetworkStatus, ifname) {
-			log.Debugf("Address change for port: %v\n", change)
+			log.Debugf("Address change for management port: %v\n",
+				change)
 			if addrChangeFuncMgmtPort != nil {
 				addrChangeFuncMgmtPort(ifname)
 			}
@@ -396,7 +397,7 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 				moveRoutesTable(0, ifindex, FreeTable)
 			}
 			if types.IsMgmtPort(*deviceNetworkStatus, ifname) {
-				log.Debugf("Link change for port: %s\n",
+				log.Debugf("Link change for management port: %s\n",
 					ifname)
 				if addrChangeFuncMgmtPort != nil {
 					addrChangeFuncMgmtPort(ifname)
@@ -422,7 +423,7 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 			flushRoutesTable(MyTable, 0)
 			flushRules(ifindex)
 			if types.IsMgmtPort(*deviceNetworkStatus, ifname) {
-				log.Debugf("Link change for port: %s\n",
+				log.Debugf("Link change for management port: %s\n",
 					ifname)
 				if addrChangeFuncMgmtPort != nil {
 					addrChangeFuncMgmtPort(ifname)

@@ -42,6 +42,8 @@ const (
 	appImgObj = "appImg.obj"
 	agentName = "domainmgr"
 
+	tmpDirname        = "/var/tmp/zededa"
+	AADirname         = tmpDirname + "/AssignableAdapters"
 	runDirname        = "/var/run/" + agentName
 	persistDir        = "/persist"
 	rwImgDirname      = persistDir + "/img"       // We store images here
@@ -59,15 +61,15 @@ var nilUUID = uuid.UUID{}
 // Set from Makefile
 var Version = "No version specified"
 
-func isMgmtPort(ctx *domainContext, ifname string) bool {
+func isPort(ctx *domainContext, ifname string) bool {
 	ctx.dnsLock.Lock()
 	defer ctx.dnsLock.Unlock()
-	return types.IsMgmtPort(ctx.deviceNetworkStatus, ifname)
+	return types.IsPort(ctx.deviceNetworkStatus, ifname)
 }
 
 // Information for handleCreate/Modify/Delete
 type domainContext struct {
-	// The isMgmtPort function is called by different goroutines
+	// The isPort function is called by different goroutines
 	// hence we serialize the calls on a mutex.
 	deviceNetworkStatus    types.DeviceNetworkStatus
 	dnsLock                sync.Mutex
@@ -206,6 +208,25 @@ func Run() {
 	subDeviceNetworkStatus.Activate()
 
 	model := hardware.GetHardwareModel()
+	// Logic to fall back to default.json model if cloud sends wrong
+	// model string
+	tries := 0
+	for {
+		AAFilename := fmt.Sprintf("%s/%s.json", AADirname, model)
+		if _, err := os.Stat(AAFilename); err == nil {
+			break
+		}
+		log.Warningln(err)
+		log.Warningf("You need to create this file for this hardware: %s\n",
+			AAFilename)
+		time.Sleep(time.Second)
+		tries += 1
+		if tries == 10 { // 10 Seconds
+			log.Infof("Falling back to using hardware model default\n")
+			model = "default"
+		}
+	}
+
 	aa := types.AssignableAdapters{}
 	domainCtx.assignableAdapters = &aa
 
@@ -838,6 +859,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		return
 	}
 
+	status.TriedCount = 0
 	var domainId int
 	// Invoke xl create; try 3 times with a timeout
 	for {
@@ -853,10 +875,12 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			log.Errorf("xl create for %s: %s\n", status.DomainName, err)
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
+			publishDomainStatus(ctx, status)
 			return
 		}
 		log.Warnf("Retry xl create for %s: failed %s\n",
 			status.DomainName, err)
+		publishDomainStatus(ctx, status)
 		time.Sleep(5 * time.Second)
 	}
 	log.Infof("created domainId %d for %s\n", domainId, status.DomainName)
@@ -1119,8 +1143,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 				adapter.Type, adapter.Name, ib.UsedByUUID))
 		}
 		for _, m := range ib.Members {
-			if isMgmtPort(ctx, m) {
-				return errors.New(fmt.Sprintf("Adapter %d %s member %s is (part of) a management port\n",
+			if isPort(ctx, m) {
+				return errors.New(fmt.Sprintf("Adapter %d %s member %s is (part of) a zedrouter port\n",
 					adapter.Type, adapter.Name, m))
 			}
 		}
@@ -2045,12 +2069,12 @@ func checkAndSetIoBundleAll(ctx *domainContext) {
 func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 
 	// Check if management port or part of management port
-	ib.IsMgmtPort = false
+	ib.IsPort = false
 	for _, m := range ib.Members {
-		if types.IsMgmtPort(ctx.deviceNetworkStatus, m) {
-			log.Warnf("checkAndSetIoBundle(%d %s %v) part of management port\n",
+		if types.IsPort(ctx.deviceNetworkStatus, m) {
+			log.Warnf("checkAndSetIoBundle(%d %s %v) part of zedrouter port\n",
 				ib.Type, ib.Name, ib.Members)
-			ib.IsMgmtPort = true
+			ib.IsPort = true
 			if ib.IsPCIBack {
 				log.Infof("checkAndSetIoBundle(%d %s %v) take back fro pciback\n",
 					ib.Type, ib.Name, ib.Members)
@@ -2074,7 +2098,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		log.Infof("checkAndSetIoBundle(%d %s %v) found %s/%s\n",
 			ib.Type, ib.Name, ib.Members, short, long)
 	}
-	if !ib.IsMgmtPort && ib.PciShort != "" && !ib.IsPCIBack {
+	if !ib.IsPort && ib.PciShort != "" && !ib.IsPCIBack {
 		if ctx.usbAccess && ib.Type == types.IoUSB {
 			log.Infof("No assigning %s (%s %s) to pciback\n",
 				ib.Name, ib.PciLong, ib.PciShort)
@@ -2163,7 +2187,7 @@ func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.
 				configIb.Type, configIb.Name, err)
 			return
 		}
-		e.IsMgmtPort = configIb.IsMgmtPort
+		e.IsPort = configIb.IsPort
 		e.IsPCIBack = configIb.IsPCIBack
 		// XXX TBD IsBridge, IsService
 		e.Lookup = configIb.Lookup
