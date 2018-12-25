@@ -12,6 +12,12 @@ package nim
 import (
 	"flag"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"os"
+	"strings"
+	"time"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/devicenetwork"
@@ -20,11 +26,6 @@ import (
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"io"
-	"io/ioutil"
-	"os"
-	"strings"
-	"time"
 )
 
 const (
@@ -37,53 +38,37 @@ const (
 type nimContext struct {
 	devicenetwork.DeviceNetworkContext
 	subGlobalConfig *pubsub.Subscription
+
+	// CLI args
+	debug         bool
+	debugOverride bool // From command line arg
+	useStdout     bool
 }
 
 // Set from Makefile
 var Version = "No version specified"
 
-var debug = false
-var debugOverride bool // From command line arg
-
-func Run() {
-	logf, err := agentlog.Init(agentName)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer logf.Close()
-
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
+func (ctx *nimContext) processArgs() {
+	versionPtr := flag.Bool("v", false, "Print Version of the agent.")
+	debugPtr := flag.Bool("d", false, "Set Debug level")
 	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
 	flag.Parse()
-	debug = *debugPtr
-	useStdout := *stdoutPtr
-	debugOverride = debug
-	if debugOverride {
+
+	ctx.debug = *debugPtr
+	ctx.debugOverride = ctx.debug
+	ctx.useStdout = *stdoutPtr
+	if ctx.debugOverride {
 		log.SetLevel(log.DebugLevel)
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
+		os.Exit(0)
 	}
-	// For limited output on console
-	consolef := os.Stdout
-	if !useStdout {
-		consolef, err = os.OpenFile("/dev/console", os.O_RDWR|os.O_APPEND,
-			0666)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-	multi := io.MultiWriter(logf, consolef)
-	log.SetOutput(multi)
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-		log.Fatal(err)
-	}
-	log.Infof("Starting %s\n", agentName)
+}
 
+func hardwareModelName() string {
 	hardwaremodelFileName := identityDirname + "/hardwaremodel"
 	var oldHardwaremodel string
 	var model string
@@ -94,6 +79,11 @@ func Run() {
 	} else {
 		model = hardware.GetHardwareModel()
 	}
+	return model
+}
+
+func waitForDeviceNetworkConfigFile() string {
+	model := hardwareModelName()
 
 	// To better handle new hardware platforms log and blink if we
 	// don't have a DeviceNetworkConfig
@@ -105,7 +95,8 @@ func Run() {
 	tries := 0
 	for {
 		DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
-		if _, err := os.Stat(DNCFilename); err == nil {
+		_, err := os.Stat(DNCFilename)
+		if err == nil {
 			break
 		}
 		// Tell the world that we have issues
@@ -114,12 +105,45 @@ func Run() {
 		log.Warningf("You need to create this file for this hardware: %s\n",
 			DNCFilename)
 		time.Sleep(time.Second)
-		tries += 1
+		tries++
 		if tries == 120 { // Two minutes
 			log.Infof("Falling back to using hardware model default\n")
 			model = "default"
 		}
 	}
+	return model
+}
+
+// Run - Main function - invoked from zedbox.go
+func Run() {
+	nimCtx := nimContext{}
+
+	logf, err := agentlog.Init(agentName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logf.Close()
+
+	nimCtx.processArgs()
+
+	// For limited output on console
+	consolef := os.Stdout
+	if !nimCtx.useStdout {
+		consolef, err = os.OpenFile("/dev/console", os.O_RDWR|os.O_APPEND,
+			0666)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	multi := io.MultiWriter(logf, consolef)
+	log.SetOutput(multi)
+
+	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+		log.Fatal(err)
+	}
+	log.Infof("Starting %s\n", agentName)
+
+	model := waitForDeviceNetworkConfigFile()
 
 	pubDeviceNetworkStatus, err := pubsub.Publish(agentName,
 		types.DeviceNetworkStatus{})
@@ -142,7 +166,6 @@ func Run() {
 	}
 	pubDevicePortConfigList.ClearRestarted()
 
-	nimCtx := nimContext{}
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
 		false, &nimCtx)
@@ -213,6 +236,17 @@ func Run() {
 	nimCtx.SubDevicePortConfigS = subDevicePortConfigS
 	subDevicePortConfigS.Activate()
 
+	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
+		types.AssignableAdapters{}, false,
+		&nimCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAssignableAdapters.ModifyHandler = devicenetwork.HandleAssignableAdaptersModify
+	subAssignableAdapters.DeleteHandler = devicenetwork.HandleAssignableAdaptersDelete
+	nimCtx.SubAssignableAdapters = subAssignableAdapters
+	subAssignableAdapters.Activate()
+
 	devicenetwork.DoDNSUpdate(&nimCtx.DeviceNetworkContext)
 
 	// Apply any changes from the port config to date.
@@ -257,7 +291,7 @@ func Run() {
 			if !ok {
 				log.Fatalf("addrChanges closed?\n")
 			}
-			if debug {
+			if nimCtx.debug {
 				log.Debugf("addrChanges %+v\n", change)
 			}
 			devicenetwork.AddrChange(&nimCtx.DeviceNetworkContext,
@@ -287,8 +321,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.debugOverride)
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -301,7 +335,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	ctx.debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		ctx.debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

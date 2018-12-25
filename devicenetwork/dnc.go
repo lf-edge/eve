@@ -5,13 +5,14 @@ package devicenetwork
 
 import (
 	"fmt"
+	"os"
+	"reflect"
+	"time"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"os"
-	"reflect"
-	"time"
 )
 
 type DeviceNetworkContext struct {
@@ -26,6 +27,7 @@ type DeviceNetworkContext struct {
 	SubDevicePortConfigA    *pubsub.Subscription
 	SubDevicePortConfigO    *pubsub.Subscription
 	SubDevicePortConfigS    *pubsub.Subscription
+	SubAssignableAdapters   *pubsub.Subscription
 	PubDevicePortConfig     *pubsub.Publication // Derived from DeviceNetworkConfig
 	PubDevicePortConfigList *pubsub.Publication
 	PubDeviceNetworkStatus  *pubsub.Publication
@@ -191,6 +193,7 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("HandleDPCModify done for %s\n", key)
 }
 
+//
 func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("HandleDPCDelete for %s\n", key)
@@ -255,6 +258,16 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 		}
 	}
 	log.Infof("HandleDPCDelete done for %s\n", key)
+}
+
+// HandleAssignableAdaptersModify - Handle Assignable Adapter list modifications
+func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
+	configArg interface{}) {
+}
+
+// HandleAssignableAdaptersModify - Handle Assignable Adapter list deletions
+func HandleAssignableAdaptersDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
 }
 
 // First look for matching timestamp, then compare for identical content
