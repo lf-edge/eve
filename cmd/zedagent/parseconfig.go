@@ -438,7 +438,6 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			continue
 		}
 		network := cast.CastNetworkObjectConfig(networkObject)
-		port.Dhcp = network.Dhcp // XXX results in failures!
 		if sysAdapter.Addr != "" {
 			ip := net.ParseIP(sysAdapter.Addr)
 			if ip == nil {
@@ -454,6 +453,20 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		port.DomainName = network.DomainName
 		port.NtpServer = network.NtpServer
 		port.DnsServers = network.DnsServers
+		// Need to be careful since zedcloud can feed us bad Dhcp type
+		port.Dhcp = types.DT_CLIENT
+		if network.Dhcp == types.DT_STATIC {
+			if port.Gateway.IsUnspecified() || port.AddrSubnet == "" ||
+				port.DomainName == "" || port.DnsServers == nil {
+				log.Errorf("parseSystemAdapterConfig: DT_STATIC but missing parameters in %+v; ignored\n",
+					port)
+				continue
+			}
+		} else {
+			// XXX or ignore SystemAdapter as above?
+			log.Warnf("parseSystemAdapterConfig: ignore unsupported dhcp type %v - using DT_CLIENT\n",
+				network.Dhcp)
+		}
 		// XXX use DnsNameToIpList?
 		if network.Proxy != nil {
 			port.ProxyConfig = *network.Proxy
