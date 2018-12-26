@@ -438,16 +438,18 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			continue
 		}
 		network := cast.CastNetworkObjectConfig(networkObject)
-		port.Dhcp = network.Dhcp
-		ip := net.ParseIP(sysAdapter.Addr)
-		if ip == nil {
-			log.Errorf("parseSystemAdapterConfig: Bad sysAdapter.Addr %s - ignored\n",
-				sysAdapter.Addr)
-			continue
+		port.Dhcp = network.Dhcp // XXX results in failures!
+		if sysAdapter.Addr != "" {
+			ip := net.ParseIP(sysAdapter.Addr)
+			if ip == nil {
+				log.Errorf("parseSystemAdapterConfig: Bad sysAdapter.Addr %s - ignored\n",
+					sysAdapter.Addr)
+				continue
+			}
+			addrSubnet := network.Subnet
+			addrSubnet.IP = ip
+			port.AddrSubnet = addrSubnet.String()
 		}
-		addrSubnet := network.Subnet
-		addrSubnet.IP = ip
-		port.AddrSubnet = addrSubnet.String()
 		port.Gateway = network.Gateway
 		port.DomainName = network.DomainName
 		port.NtpServer = network.NtpServer
@@ -1188,7 +1190,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.MintimeUpdateSuccess = newU32
 				globalConfigChange = true
 			}
-		case "debug.disable.usb","debug.enable.usb": // XXX swap name to enable?
+		case "debug.disable.usb", "debug.enable.usb": // XXX swap name to enable?
 			newBool, err := strconv.ParseBool(item.Value)
 			if err != nil {
 				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
