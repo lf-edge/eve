@@ -68,28 +68,13 @@ func (ctx *nimContext) processArgs() {
 	}
 }
 
-func hardwareModelName() string {
-	hardwaremodelFileName := identityDirname + "/hardwaremodel"
-	var oldHardwaremodel string
-	var model string
-	b, err := ioutil.ReadFile(hardwaremodelFileName)
-	if err == nil {
-		oldHardwaremodel = strings.TrimSpace(string(b))
-		model = oldHardwaremodel
-	} else {
-		model = hardware.GetHardwareModel()
-	}
-	return model
-}
-
 func waitForDeviceNetworkConfigFile() string {
-	model := hardwareModelName()
+	model := hardware.GetHardwareModel()
 
 	// To better handle new hardware platforms log and blink if we
 	// don't have a DeviceNetworkConfig
 	// After some tries we fall back to default.json which is eth0, wlan0
 	// and wwan0
-	// XXX Rename dirname to DevicePortConfig?
 	// XXX if we have a /config/DevicePortConfig/override.json
 	// we should proceed without a DNCFilename!
 	tries := 0

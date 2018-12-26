@@ -162,11 +162,8 @@ func Run() {
 			log.Warningf("Malformed UUID file ignored: %s\n", err)
 		}
 	}
-	var oldHardwaremodel string
-	b, err = ioutil.ReadFile(hardwaremodelFileName)
-	if err == nil {
-		oldHardwaremodel = strings.TrimSpace(string(b))
-	}
+	// Check if we have a /config/hardwaremodel file
+	oldHardwaremodel := hardware.GetOverride()
 
 	clientCtx := clientContext{
 		deviceNetworkStatus: &types.DeviceNetworkStatus{},
@@ -565,7 +562,7 @@ func Run() {
 					log.Infof("Replacing existing hardwaremodel %s with %s\n",
 						oldHardwaremodel, hardwaremodel)
 				} else {
-					log.Errorf("Attempt to replacing existing hardwaremodel %s with non-exsting %s model\n",
+					log.Errorf("Attempt to replace existing hardwaremodel %s with non-eixsting %s model - ignored\n",
 						oldHardwaremodel, hardwaremodel)
 					doWrite = false
 				}

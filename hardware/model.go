@@ -39,6 +39,10 @@ func GetHardwareModel() string {
 	return GetHardwareModelNoOverride()
 }
 
+func GetOverride() string {
+	return getOverride(overrideFile)
+}
+
 func GetHardwareModelNoOverride() string {
 	product := ""
 	manufacturer := ""
