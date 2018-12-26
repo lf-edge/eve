@@ -13,9 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
-	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"

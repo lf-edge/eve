@@ -39,7 +39,7 @@ func GetHardwareModel() string {
 	return GetHardwareModelNoOverride()
 }
 
-func GetOverride() string {
+func GetHardwareModelOverride() string {
 	return getOverride(overrideFile)
 }
 

@@ -16,6 +16,7 @@ import (
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -163,7 +164,7 @@ func Run() {
 		}
 	}
 	// Check if we have a /config/hardwaremodel file
-	oldHardwaremodel := hardware.GetOverride()
+	oldHardwaremodel := hardware.GetHardwareModelOverride()
 
 	clientCtx := clientContext{
 		deviceNetworkStatus: &types.DeviceNetworkStatus{},
