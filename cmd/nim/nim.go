@@ -62,7 +62,7 @@ func (ctx *nimContext) processArgs() {
 	}
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		exit(0)
+		os.Exit(0)
 	}
 }
 
@@ -109,7 +109,7 @@ func Run() {
 
 	nimCtx.processArgs()
 
-	if ctx.useStdout {
+	if nimCtx.useStdout {
 		multi := io.MultiWriter(logf, os.Stdout)
 		log.SetOutput(multi)
 	}
