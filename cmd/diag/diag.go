@@ -11,16 +11,19 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/devicenetwork"
-// XXX	"github.com/zededa/go-provision/hardware"
-// XXX	"github.com/zededa/go-provision/pubsub"
-// XXX	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/hardware"
+	// XXX	"github.com/zededa/go-provision/pubsub"
+	// XXX	"github.com/zededa/go-provision/types"
 	"os"
 )
 
 const (
 	agentName       = "diag"
 	tmpDirname      = "/var/tmp/zededa"
+	AADirname       = tmpDirname + "/AssignableAdapters"
+	DNCDirname      = tmpDirname + "/DeviceNetworkConfig"
 	identityDirname = "/config"
+	selfRegFile     = identityDirname + "/self-register-failed"
 )
 
 type diagContext struct {
@@ -55,23 +58,54 @@ func Run() {
 		return
 	}
 
-	// XXX should we check whether model exists first?? Separately look
-	// at override and dmidecode?
-	// NOTE: dmidecode hardware model %s overridden by zedcloud to %s
-	// ERROR: zedcloud/dmidecode hardware model %s not in /var/tmp/zededa/DeviceNetworkConfig/
-	// NOTE: Device is using /var/tmp/zededa/DeviceNetworkConfig/default.json
-
-	// ERROR: zedcloud/dmidecode hardware model %s not in /var/tmp/zededa/AssignableAdapters/
-	// NOTE: Device is using /var/tmp/zededa/AssignableAdapters/default.json
-
-	// NOTE: /config/DevicePortConfig/%s.json overrides /var/tmp/zededa/DeviceNetworkConfig/
-
-
+	savedHardwareModel := hardware.GetHardwareModelOverride()
+	hardwareModel := hardware.GetHardwareModelNoOverride()
+	if savedHardwareModel != hardwareModel {
+		fmt.Printf("INFO: dmidecode model string %s overridden as %s\n",
+			hardwareModel, savedHardwareModel)
+	}
+	if !DNCExists(savedHardwareModel) {
+		fmt.Printf("ERROR: /config/hardwaremodel %s does not exist in /var/tmp/zededa/DeviceNetworkConfig\n",
+			savedHardwareModel)
+		fmt.Printf("NOTE: Device is using /var/tmp/zededa/DeviceNetworkConfig/default.json\n")
+	}
+	if !AAExists(savedHardwareModel) {
+		fmt.Printf("ERROR: /config/hardwaremodel %s does not exist in /var/tmp/zededa/AssignableAdapters\n",
+			savedHardwareModel)
+		fmt.Printf("NOTE: Device is using /var/tmp/zededa/AssignableAdapters/default.json\n")
+	}
+	if !DNCExists(hardwareModel) {
+		fmt.Printf("INFO: dmidecode model %s does not exist in /var/tmp/zededa/DeviceNetworkConfig\n",
+			hardwareModel)
+	}
+	if !AAExists(hardwareModel) {
+		fmt.Printf("INFO: dmidecode model %s does not exist in /var/tmp/zededa/AssignableAdapters\n",
+			hardwareModel)
+	}
 	// XXX device.cert? self-register-failed?
-
+	// XXX certificate fingerprints? What does zedcloud use?
+	if fileExists(selfRegFile) {
+		fmt.Printf("INFO: selfRegister is still in progress\n")
+		// XXX print onboarding cert
+	}
 	// XXX subscribe to Ledmanager config and print it; need Initialized
-	// flag or after first wait?
+	// flag or after first wait? Print on each ledmanager update? Default to once i.e., current value?
 
 	// XXX subscribe to DeviceNetworkStatus
 	// XXX track/print based on updated separately if -w flag?
+}
+
+func fileExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return err == nil
+}
+
+func DNCExists(model string) bool {
+	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
+	return fileExists(DNCFilename)
+}
+
+func AAExists(model string) bool {
+	AAFilename := fmt.Sprintf("%s/%s.json", AADirname, model)
+	return fileExists(AAFilename)
 }
