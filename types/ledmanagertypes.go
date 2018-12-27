@@ -13,8 +13,8 @@ type LedBlinkCounter struct {
 }
 
 const (
-	ledConfigDirName = "/var/tmp/zededa/LedBlinkCounter"
-	ledConfigKey     = "ledconfig"
+	tmpDirName   = "/var/tmp/zededa/"
+	ledConfigKey = "ledconfig"
 )
 
 // Global variable to supress log messages when nothing changes from this
@@ -26,9 +26,9 @@ func UpdateLedManagerConfig(count int) {
 	blinkCount := LedBlinkCounter{
 		BlinkCounter: count,
 	}
-	err := pubsub.PublishToDir(ledConfigDirName, ledConfigKey, &blinkCount)
+	err := pubsub.PublishToDir(tmpDirName, ledConfigKey, &blinkCount)
 	if err != nil {
-		log.Errorln("err: ", err, ledConfigDirName)
+		log.Errorln("err: ", err, tmpDirName)
 	} else {
 		if count != lastCount {
 			log.Infof("UpdateLedManagerConfig: set %d\n", count)
