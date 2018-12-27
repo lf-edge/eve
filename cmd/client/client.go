@@ -75,7 +75,7 @@ func Run() {
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	forcePtr := flag.Bool("f", false, "Force using onboarding cert")
 	dirPtr := flag.String("D", "/config", "Directory with certs etc")
-	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
+	stdoutPtr := flag.Bool("s", false, "Use stdout")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
 	maxRetriesPtr := flag.Int("r", 0, "Max ping retries")
 	pingURLPtr := flag.String("U", "", "Override ping url")

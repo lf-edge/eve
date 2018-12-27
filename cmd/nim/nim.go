@@ -49,7 +49,7 @@ var Version = "No version specified"
 func (ctx *nimContext) processArgs() {
 	versionPtr := flag.Bool("v", false, "Print Version of the agent.")
 	debugPtr := flag.Bool("d", false, "Set Debug level")
-	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
+	stdoutPtr := flag.Bool("s", false, "Use stdout")
 	flag.Parse()
 
 	ctx.debug = *debugPtr
