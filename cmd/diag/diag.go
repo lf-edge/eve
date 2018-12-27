@@ -303,40 +303,40 @@ func printOutput(ctx *diagContext) {
 		} else if types.IsMgmtPort(*ctx.DeviceNetworkStatus, ifname) {
 			isMgmt = true
 		}
-		typeStr := "Port for application use"
+		typeStr := "for application use"
 		if isFree {
-			typeStr = "Port for EV Controller without charging"
+			typeStr = "for EV Controller without charging"
 		} else if isMgmt {
-			typeStr = "Port for EV Controller"
+			typeStr = "for EV Controller"
 		}
-		fmt.Printf("Interface %s: %s\n", ifname, typeStr)
+		fmt.Printf("INFO: Port %s: %s\n", ifname, typeStr)
 		for _, ai := range port.AddrInfoList {
 			if ai.Addr.IsLinkLocalUnicast() {
 				continue
 			}
 			noGeo := ipinfo.IPInfo{}
 			if ai.Geo == noGeo {
-				fmt.Printf("IP address %s not geolocated\n",
+				fmt.Printf("INFO: IP address %s not geolocated\n",
 					ai.Addr)
 			} else {
-				fmt.Printf("IP address %s geolocated to %+v\n",
+				fmt.Printf("INFO: IP address %s geolocated to %+v\n",
 					ai.Addr, ai.Geo)
 			}
 		}
-		fmt.Printf("DNS servers: ")
+		fmt.Printf("INFO: DNS servers: ")
 		for _, ds := range port.DnsServers {
 			fmt.Printf("%s, ", ds.String())
 		}
 		fmt.Printf("\n")
 		// If static print static config
 		if port.Dhcp == types.DT_STATIC {
-			fmt.Printf("Static IP config: %s\n",
+			fmt.Printf("INFO: Static IP config: %s\n",
 				port.Subnet.String())
-			fmt.Printf("Static IP router: %s\n",
+			fmt.Printf("INFO: Static IP router: %s\n",
 				port.Gateway.String())
-			fmt.Printf("Static Domain Name: %s\n",
+			fmt.Printf("INFO: Static Domain Name: %s\n",
 				port.DomainName)
-			fmt.Printf("Static NTP server: %s\n",
+			fmt.Printf("INFO: Static NTP server: %s\n",
 				port.NtpServer.String())
 		}
 		printProxy(port, ifname)
@@ -351,8 +351,8 @@ func printOutput(ctx *diagContext) {
 		if !tryGetUuid(ctx, ifname) {
 			continue
 		}
-		fmt.Printf("INFO: port %s fully connected to EV controller\n",
-			ifname)
+		fmt.Printf("INFO: port %s fully connected to EV controller %s\n",
+			ifname, ctx.serverName)
 	}
 }
 
@@ -441,7 +441,7 @@ func tryPing(ctx *diagContext, ifname string) bool {
 		time.Sleep(delay)
 		done, _, _ = myGet(zedcloudCtx, requrl, ifname, retryCount)
 		if done {
-			fmt.Printf("INFO: Get of config succeeded on %s\n",
+			fmt.Printf("INFO: http ping succeeded on %s\n",
 				ifname)
 			break
 		}
@@ -475,7 +475,7 @@ func tryGetUuid(ctx *diagContext, ifname string) bool {
 		}
 		retryCount += 1
 		if maxRetries != 0 && retryCount > maxRetries {
-			fmt.Printf("ERROR: Exceeded %d retries for ping\n",
+			fmt.Printf("ERROR: Exceeded %d retries for get config\n",
 				maxRetries)
 			return false
 		}
