@@ -117,6 +117,17 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].Name = u.Name
 		globalStatus.Ports[ix].IsMgmt = u.IsMgmt
 		globalStatus.Ports[ix].Free = u.Free
+		// Set fields from the config...
+		globalStatus.Ports[ix].Dhcp = u.Dhcp
+		_, subnet, _ := net.ParseCIDR(u.AddrSubnet)
+		if subnet != nil {
+			globalStatus.Ports[ix].Subnet = *subnet
+		}
+		globalStatus.Ports[ix].Gateway = u.Gateway
+		globalStatus.Ports[ix].DomainName = u.DomainName
+		globalStatus.Ports[ix].NtpServer = u.NtpServer
+		globalStatus.Ports[ix].DnsServers = u.DnsServers
+		// XXX Would net NetworkObjectConfig to set DhcpRange ...
 		// XXX
 		// If device DeviceNetworkStatus already has non-empty proxy
 		// configuration for this port and the new proxy configuration
