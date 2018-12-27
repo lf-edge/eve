@@ -194,7 +194,6 @@ type DeviceNetworkStatus struct {
 	Ports   []NetworkPortStatus
 }
 
-// XXX used?
 func rotate(arr []string, amount int) []string {
 	if len(arr) == 0 {
 		return []string{}
