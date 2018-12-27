@@ -41,7 +41,7 @@ func MakeDevicePortConfig(globalConfig types.DeviceNetworkConfig) types.DevicePo
 	return config
 }
 
-func isProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
+func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 	if len(proxyConfig.Proxies) == 0 &&
 		proxyConfig.Exceptions == "" &&
 		proxyConfig.Pacfile == "" &&
@@ -135,7 +135,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		// avoid bricking the device.
 		// These kind of checks should go away when we have Network manager
 		// service that tests proxy configuration before trying to apply it.
-		if isProxyConfigEmpty(u.ProxyConfig) {
+		if IsProxyConfigEmpty(u.ProxyConfig) {
 			for _, port := range oldStatus.Ports {
 				if port.IfName == u.IfName {
 					globalStatus.Ports[ix].ProxyConfig = port.ProxyConfig
