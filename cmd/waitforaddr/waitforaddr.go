@@ -42,7 +42,7 @@ var debugOverride bool // From command line arg
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
-	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
+	stdoutPtr := flag.Bool("s", false, "Use stdout")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
@@ -56,23 +56,15 @@ func Run() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	// XXX json to file; text to stdout/console?
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer logf.Close()
-	// For limited output on console
-	consolef := os.Stdout
-	if !useStdout {
-		consolef, err = os.OpenFile("/dev/console", os.O_RDWR|os.O_APPEND,
-			0666)
-		if err != nil {
-			log.Fatal(err)
-		}
+	if useStdout {
+		multi := io.MultiWriter(logf, os.Stdout)
+		log.SetOutput(multi)
 	}
-	multi := io.MultiWriter(logf, consolef)
-	log.SetOutput(multi)
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
