@@ -83,7 +83,7 @@ func waitForDeviceNetworkConfigFile() string {
 			break
 		}
 		// Tell the world that we have issues
-		types.UpdateLedManagerConfig(10)
+		types.UpdateLedManagerConfig(11)
 		log.Warningln(err)
 		log.Warningf("You need to create this file for this hardware: %s\n",
 			DNCFilename)
