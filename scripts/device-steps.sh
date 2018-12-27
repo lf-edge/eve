@@ -85,14 +85,8 @@ if [ $? = 0 ]; then
     killall dmesg
 fi
 
-# Make sure we have the required directories in place
-# Need /var/tmp/ledmanager/config; /var/run/ledmanager/status is empty. Needed?
-AGENTSWITHDIRS="ledmanager"
 DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
 
-for a in $AGENTSWITHDIRS; do
-    DIRS="$DIRS /var/tmp/$a/config /var/run/$a/status"
-done
 for d in $DIRS; do
     d1=`dirname $d`
     if [ ! -d $d1 ]; then
@@ -254,8 +248,8 @@ ln -s $PERSISTDIR/$CURPART/log/lisp $LISPDIR/logs
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least
 # one free uplink with IP address(s)
-mkdir -p /var/tmp/ledmanager/config/
-echo '{"BlinkCounter": 1}' > '/var/tmp/ledmanager/config/ledconfig.json'
+mkdir -p /var/tmp/zededa/LedBlinkCounter/
+echo '{"BlinkCounter": 1}' > '/var/tmp/zededa/LedBlinkCounter/ledconfig.json'
 
 # If ledmanager is already running we don't have to start it.
 # TBD: Should we start it earlier before wwan and wlan services?
@@ -588,6 +582,10 @@ if [ $? != 0 ]; then
 fi
 
 echo "Initial setup done at" `date`
+
+# Print the initial diag output
+/opt/zededa/bin/diag
+
 if [ $MEASURE = 1 ]; then
     ping6 -c 3 -w 1000 zedcontrol
     echo "Measurement done at" `date`

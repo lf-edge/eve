@@ -410,3 +410,16 @@ func CastUuidToNum(in interface{}) types.UuidToNum {
 	}
 	return output
 }
+
+func CastLedBlinkCounter(in interface{}) types.LedBlinkCounter {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastLedBlinkCounter")
+	}
+	var output types.LedBlinkCounter
+	if err := json.Unmarshal(b, &output); err != nil {
+		// File might be corrupted in /var/tmp/zededa; don't fatal
+		log.Error(err, "json Unmarshal in CastLedBlinkCounter")
+	}
+	return output
+}
