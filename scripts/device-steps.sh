@@ -586,6 +586,9 @@ fi
 
 echo "Initial setup done at" `date`
 
+# Print second diag output
+/opt/zededa/bin/diag >/dev/console 2>&1
+
 if [ $MEASURE = 1 ]; then
     ping6 -c 3 -w 1000 zedcontrol
     echo "Measurement done at" `date`
