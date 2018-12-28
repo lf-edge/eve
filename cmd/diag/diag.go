@@ -302,7 +302,8 @@ func printOutput(ctx *diagContext) {
 	passPorts := 0
 	passOtherPorts := 0
 
-	fmt.Printf("INFO: Have %d ports\n", numPorts)
+	numMgmtPorts := len(types.GetMgmtPortsAny(*ctx.DeviceNetworkStatus, 0))
+	fmt.Printf("INFO: Have %d total ports. %d ports should be connected to EV controller\n", numPorts, numMgmtPorts)
 	for _, port := range ctx.DeviceNetworkStatus.Ports {
 		// Print usefully formatted info based on which
 		// fields are set and Dhcp type; proxy info order
@@ -377,6 +378,7 @@ func printOutput(ctx *diagContext) {
 		if !tryPing(ctx, ifname, "") {
 			fmt.Printf("ERROR: ping failed to %s on %s; trying google\n",
 				ctx.serverNameAndPort, ifname)
+			origServerName := ctx.serverName
 			origServerNameAndPort := ctx.serverNameAndPort
 			ctx.serverName = "www.google.com"
 			ctx.serverNameAndPort = ctx.serverName
@@ -396,6 +398,17 @@ func printOutput(ctx *diagContext) {
 				fmt.Printf("ERROR: Can't reach https://google.com; likely lack of Internet connectivity on %s\n",
 					ifname)
 			}
+			ctx.serverName = origServerName
+			ctx.serverNameAndPort = origServerNameAndPort
+			// restore TLS
+			tlsConfig, err := zedcloud.GetTlsConfig(ctx.serverName,
+				ctx.deviceCert)
+			if err != nil {
+				errStr := fmt.Sprintf("ERROR: internal GetTlsConfig failed %s\n",
+					err)
+				panic(errStr)
+			}
+			ctx.zedcloudCtx.TlsConfig = tlsConfig
 			continue
 		}
 		if !tryGetUuid(ctx, ifname) {
@@ -406,7 +419,7 @@ func printOutput(ctx *diagContext) {
 		} else {
 			passOtherPorts += 1
 		}
-		fmt.Printf("INFO: port %s fully connected to EV controller %s\n",
+		fmt.Printf("PASS: port %s fully connected to EV controller %s\n",
 			ifname, ctx.serverName)
 	}
 	if passOtherPorts > 0 {
@@ -432,11 +445,18 @@ func printProxy(port types.NetworkPortStatus, ifname string) {
 		fmt.Printf("INFO: proxy exceptions %s on %s\n",
 			port.ProxyConfig.Exceptions, ifname)
 	}
-	// XXX any errors from retrieving pacfile?
+	if port.Error != "" {
+		fmt.Printf("ERROR: from WPAD? %s\n", port.Error)
+	}
 	if port.ProxyConfig.NetworkProxyEnable {
 		if port.ProxyConfig.NetworkProxyURL == "" {
-			// XXX save the successful WPAD url in status and
-			fmt.Printf("INFO: WPAD enabled on %s\n", ifname)
+			if port.ProxyConfig.WpadURL == "" {
+				fmt.Printf("WARNING: WPAD enabled on %s but found no URL\n",
+					ifname)
+			} else {
+				fmt.Printf("INFO: WPAD enabled on %s found URL %s\n",
+					ifname, port.ProxyConfig.WpadURL)
+			}
 		} else {
 			fmt.Printf("INFO: WPAD fetched from %s  on %s\n",
 				port.ProxyConfig.NetworkProxyURL, ifname)
@@ -538,7 +558,7 @@ func tryPing(ctx *diagContext, ifname string, requrl string) bool {
 		fmt.Printf("INFO: Simulate ping failure\n")
 		return false
 	}
-	fmt.Printf("INFO: http ping succeeded on %s\n", ifname)
+	fmt.Printf("INFO: EV controller ping succeeded on %s\n", ifname)
 	return true
 }
 
@@ -565,7 +585,8 @@ func tryGetUuid(ctx *diagContext, ifname string) bool {
 		}
 		delay = time.Second
 	}
-	fmt.Printf("PASS: Get of config succeeded on %s\n", ifname)
+	fmt.Printf("PASS: EV controller get of config succeeded on %s\n",
+		ifname)
 	return true
 }
 
