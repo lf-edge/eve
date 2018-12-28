@@ -51,6 +51,12 @@ ROOTFS_PART_SIZE=$(( 300 * 1024 * 1024 ))
 # conf partition size in bytes
 CONF_PART_SIZE=$((1024 * 1024))
 
+function cp_with_backup {
+  local MD5_SUM=$(md5sum "$2" | cut -f1 -d\  )
+  [ -f "$2".$MD5_SUM ] || cp "$2" "$2".$MD5_SUM
+  [ $? -eq 0 ] && cp "$1" "$2"
+}
+
 function grow_part {
   # (x+1024)/1024*1024 rounds up to multiple of 1024KB, or 2048
   # sectors some firmwares get confused if the partitions are not
@@ -75,7 +81,7 @@ function dir2vfat {
 function do_efi {
   eval local SEC_START=\$$1
   local SEC_END=`grow_part $SEC_START $EFI_PART_SIZE`
-  local NUM_PART=1
+  local NUM_PART=$(( $PART_OFFSET + 1 ))
 
   # Create a partition
   sgdisk --new $NUM_PART:$SEC_START:$SEC_END --typecode=$NUM_PART:ef00 --change-name=$NUM_PART:'EFI System' \
@@ -100,10 +106,10 @@ function do_rootfs {
     IMG=$3
 
     case $2 in
-      IMGA) NUM_PART=2
+      IMGA) NUM_PART=$(( $PART_OFFSET + 2 ))
             EXTRA_ATTR="--attributes=$NUM_PART:set:56 --attributes=$NUM_PART:set:49"
             ;;
-      IMGB) NUM_PART=3
+      IMGB) NUM_PART=$(( $PART_OFFSET + 3 ))
             ;;
     esac
 
@@ -130,7 +136,7 @@ function do_imgb {
 function do_vfat {
     eval local SEC_START=\$$1
     local SEC_END=`grow_part $SEC_START $CONF_PART_SIZE`
-    local NUM_PART=4
+    local NUM_PART=$(( $PART_OFFSET + 4 ))
     local PART_TYPE=$2
 
     sgdisk --new $NUM_PART:$SEC_START:$SEC_END \
@@ -154,7 +160,7 @@ function do_persist {
     eval SEC_START=\$$1
     # Persistent Purgeable Partition.  It is set at partition
     # number 9 to reserve the first 8 partitions to system types.
-    local NUM_PART=9
+    local NUM_PART=$(( $PART_OFFSET + 9 ))
     # P3 takes all space available
     local SEC_END=0
 
@@ -181,10 +187,48 @@ CONF_FILE=/parts/config.img
 # content of persist partition
 PERSIST_FILE=/parts/persist.img
 
-# Empty GPT partition
-sgdisk -g --clear $IMGFILE 2>/dev/null
-
+# offset in the GTP partition table from which we can start our numbering
+PART_OFFSET=0
+# starting sector for our portion of the disk
 CUR_SEC=2048
+
+# Lets see if GPT partition exists and it is one of the
+# kinds we recognize
+case "$(sgdisk -p $IMGFILE 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '\012' ' ')" in
+  "Name vrl vrl_backup mcuimage fastboot nvme boot reserved cache"*)
+      echo "Found Android GPT partition table on $IMGFILE"
+      for p in $(sgdisk -p $IMGFILE 2>/dev/null | sed -e '1,/cache$/d' | awk '{print $1;}') ; do
+        sgdisk -d $p $IMGFILE
+      done 
+      PART_OFFSET=10
+      CUR_SEC=$(( ( $(sgdisk -p $IMGFILE 2>/dev/null | tail -1 | awk '{print $3;}') / 2048 + 1 ) * 2048 ))
+      EMBED_BOOT_START=$(sgdisk -i 6 $IMGFILE 2>/dev/null | awk '/First sector:/{ print $3; }')
+      EMBED_BOOT_SIZE=$(sgdisk -i 6 $IMGFILE 2>/dev/null | awk '/Partition size:/{ print $3; }')
+      ;;
+  "Name System IMGA IMGB CONFIG P3"*)
+      echo "Found Zenix GPT partition table on $IMGFILE"
+      ;;
+   *) echo "Unknown (or unrecongnizable) GTP partition table on $IMGFILE"
+      sgdisk -g --clear $IMGFILE 2>/dev/null
+      ;;
+esac
+
 for p in $PARTS ; do
   eval do_$p CUR_SEC 2>/dev/null
 done
+
+# Update embedded boot partition with our own bootloader
+if [ "$EMBED_BOOT_START" -gt 0 -a "$EMBED_BOOT_SIZE" -gt 0 -a -f /efifs/EFI/BOOT/BOOTX64.EFI ] ; then
+  if mount $IMGFILE /mnt -o loop,offset=$(( $EMBED_BOOT_START * 512  )),sizelimit=$(( $EMBED_BOOT_SIZE * 512 )) ; then
+     FASTBOOT=$(cd /mnt/EFI/BOOT/ ; ls | grep -i '^fastboot.efi$')
+     if $(set ${FASTBOOT:-. .} ; test $# -eq 1) ; then
+        cp_with_backup /efifs/EFI/BOOT/BOOTX64.EFI /mnt/EFI/BOOT/$FASTBOOT
+        (echo 'set root=hd0,gpt11' ; echo 'chainloader /efi/boot/bootx64.efi' ; echo 'boot') > /tmp/grub.cfg
+        cp_with_backup /tmp/grub.cfg /mnt/EFI/BOOT/grub.cfg
+     fi
+  fi
+  umount /mnt || :
+fi
+
+# Validate the health of our creation
+sgdisk -v $IMGFILE
