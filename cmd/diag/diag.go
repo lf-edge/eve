@@ -361,6 +361,11 @@ func printOutput(ctx *diagContext) {
 		}
 		printProxy(port, ifname)
 
+		if !isMgmt {
+			fmt.Printf("INFO: port %s not intended for EV controller; skipping those tests\n",
+				ifname)
+			continue
+		}
 		// DNS lookup, ping and getUuid calls
 		if !tryLookupIP(ctx, ifname) {
 			switch ctx.serverName {
@@ -558,7 +563,6 @@ func tryPing(ctx *diagContext, ifname string, requrl string) bool {
 		fmt.Printf("INFO: Simulate ping failure\n")
 		return false
 	}
-	fmt.Printf("INFO: EV controller ping succeeded on %s\n", ifname)
 	return true
 }
 
@@ -585,8 +589,6 @@ func tryGetUuid(ctx *diagContext, ifname string) bool {
 		}
 		delay = time.Second
 	}
-	fmt.Printf("PASS: EV controller get of config succeeded on %s\n",
-		ifname)
 	return true
 }
 
@@ -597,11 +599,25 @@ func tryGetUuid(ctx *diagContext, ifname string) bool {
 func myGet(zedcloudCtx *zedcloud.ZedCloudContext, requrl string, ifname string,
 	retryCount int) (bool, *http.Response, []byte) {
 
+	var preqUrl string
+	if strings.HasPrefix(requrl, "http:") {
+		preqUrl = requrl
+	} else if strings.HasPrefix(requrl, "https:") {
+		preqUrl = requrl
+	} else {
+		preqUrl = "https://" + requrl
+	}
 	proxyUrl, err := zedcloud.LookupProxy(zedcloudCtx.DeviceNetworkStatus,
-		ifname, requrl)
-	if err == nil && proxyUrl != nil {
+		ifname, preqUrl)
+	if err != nil {
+		fmt.Printf("ERROR: LookupProxy failed: %s\n", err)
+	} else if proxyUrl != nil {
 		fmt.Printf("INFO: Using proxy %s to reach %s on %s\n",
 			proxyUrl.String(), requrl, ifname)
+	} else {
+		// XXX remove?
+		fmt.Printf("INFO: No proxy to reach %s on %s\n",
+			requrl, ifname)
 	}
 	resp, contents, err := zedcloud.SendOnIntf(*zedcloudCtx,
 		requrl, ifname, 0, nil, true)
