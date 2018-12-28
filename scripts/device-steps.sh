@@ -355,6 +355,9 @@ if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
+# Print the initial diag output
+/opt/zededa/bin/diag >/dev/console 2>&1
+
 # Restart watchdog ledmanager, client, and nim
 if [ -f /var/run/watchdog.pid ]; then
     kill `cat /var/run/watchdog.pid`
@@ -582,9 +585,6 @@ if [ $? != 0 ]; then
 fi
 
 echo "Initial setup done at" `date`
-
-# Print the initial diag output
-/opt/zededa/bin/diag >/dev/console 2>&1
 
 if [ $MEASURE = 1 ]; then
     ping6 -c 3 -w 1000 zedcontrol
