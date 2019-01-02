@@ -244,6 +244,8 @@ func printOutput(ctx *diagContext) {
 		return
 	}
 
+	fmt.Printf("\nINFO: updated diag information at %v\n",
+		time.Now().UTC().String())
 	savedHardwareModel := hardware.GetHardwareModelOverride()
 	hardwareModel := hardware.GetHardwareModelNoOverride()
 	if savedHardwareModel != hardwareModel {
