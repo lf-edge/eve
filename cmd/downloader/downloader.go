@@ -1073,11 +1073,11 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	var addrCount int
 	if config.UseFreeMgmtPorts {
-		addrCount = types.CountLocalAddrFree(ctx.deviceNetworkStatus, "")
+		addrCount = types.CountLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus)
 		log.Infof("Have %d free management port addresses\n", addrCount)
 		err = errors.New("No free IP management port addresses for download")
 	} else {
-		addrCount = types.CountLocalAddrAny(ctx.deviceNetworkStatus, "")
+		addrCount = types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
 		log.Infof("Have %d any management port addresses\n", addrCount)
 		err = errors.New("No IP management port addresses for download")
 	}
@@ -1094,11 +1094,11 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	for addrIndex := 0; addrIndex < addrCount; addrIndex += 1 {
 		var ipSrc net.IP
 		if config.UseFreeMgmtPorts {
-			ipSrc, err = types.GetLocalAddrFree(ctx.deviceNetworkStatus,
+			ipSrc, err = types.GetLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus,
 				addrIndex, "")
 		} else {
 			// Note that GetLocalAddrAny has the free ones first
-			ipSrc, err = types.GetLocalAddrAny(ctx.deviceNetworkStatus,
+			ipSrc, err = types.GetLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus,
 				addrIndex, "")
 		}
 		if err != nil {
@@ -1251,8 +1251,8 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSModify for %s\n", key)
 	ctx.deviceNetworkStatus = status
 	log.Infof("handleDNSModify %d free management ports addresses; %d any\n",
-		types.CountLocalAddrFree(ctx.deviceNetworkStatus, ""),
-		types.CountLocalAddrAny(ctx.deviceNetworkStatus, ""))
+		types.CountLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus),
+		types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus))
 
 	log.Infof("handleDNSModify done for %s\n", key)
 }

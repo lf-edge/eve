@@ -205,10 +205,10 @@ func publishImpl(agentName string, agentScope string,
 
 	if publishToSock {
 		sockName := SockName(name)
-		baseName := path.Base(sockName)
-		if _, err := os.Stat(baseName); err != nil {
-			log.Infof("Publish Create %s\n", baseName)
-			if err := os.MkdirAll(baseName, 0700); err != nil {
+		dir := path.Dir(sockName)
+		if _, err := os.Stat(dir); err != nil {
+			log.Infof("Publish Create %s\n", dir)
+			if err := os.MkdirAll(dir, 0700); err != nil {
 				errStr := fmt.Sprintf("Publish(%s): %s",
 					name, err)
 				return nil, errors.New(errStr)
@@ -488,10 +488,11 @@ func PublishToDir(dirName string, key string, item interface{}) error {
 	topic := TypeToName(item)
 	pub := new(Publication)
 	pub.topicType = item
-	pub.dirName = dirName
-	pub.publishToDir = true
 	pub.topic = topic
 	pub.km = keyMap{key: NewLockedStringMap()}
+	dirName = fmt.Sprintf("%s/%s", dirName, pub.topic)
+	pub.dirName = dirName
+	pub.publishToDir = true
 	name := pub.nameString()
 
 	if _, err := os.Stat(dirName); err != nil {

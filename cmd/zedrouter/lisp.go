@@ -209,6 +209,10 @@ func createLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	defer file2.Close()
 	rlocString := ""
 	for _, u := range globalStatus.Ports {
+		if globalStatus.Version >= types.DPCIsMgmt &&
+			!u.IsMgmt {
+			continue
+		}
 		// Skip interfaces which are not free or have no usable address
 		if !u.Free {
 			continue
@@ -295,6 +299,10 @@ func createLispEidConfiglet(lispRunDirname string,
 
 	rlocString := ""
 	for _, u := range globalStatus.Ports {
+		if globalStatus.Version >= types.DPCIsMgmt &&
+			!u.IsMgmt {
+			continue
+		}
 		// Skip interfaces which are not free or have no usable address
 		if !u.Free {
 			continue
@@ -489,7 +497,7 @@ func updateLisp(lispRunDirname string,
 	devices = strings.Replace(devices, "\n", " ", -1)
 	log.Debugf("updateLisp: found %d EIDs devices <%v>\n",
 		eidCount, devices)
-	freeMgmtPorts := types.GetMgmtPortFreeNoLocal(*globalStatus)
+	freeMgmtPorts := types.GetMgmtPortsFreeNoLinkLocal(*globalStatus)
 	for _, u := range freeMgmtPorts {
 		devices += " " + u.IfName
 	}

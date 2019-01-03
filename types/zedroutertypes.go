@@ -120,6 +120,7 @@ type DevicePortConfigVersion uint32
 // version value is added here.
 const (
 	DPCInitial DevicePortConfigVersion = iota
+	DPCIsMgmt                          // Require IsMgmt to be set for management ports
 )
 
 type NetworkProxyType uint8
@@ -163,7 +164,7 @@ type DhcpConfig struct {
 type NetworkPortConfig struct {
 	IfName string
 	Name   string // New logical name set by controller/model
-	IsMgmt bool   // Used to talk to controller XXX NEW
+	IsMgmt bool   // Used to talk to controller
 	Free   bool   // Higher priority to talk to controller since no cost
 	DhcpConfig
 	ProxyConfig
@@ -172,7 +173,7 @@ type NetworkPortConfig struct {
 type NetworkPortStatus struct {
 	IfName string
 	Name   string // New logical name set by controller/model
-	IsMgmt bool   // Used to talk to controller XXX NEW
+	IsMgmt bool   // Used to talk to controller
 	Free   bool
 	NetworkObjectConfig
 	AddrInfoList []AddrInfo
@@ -193,66 +194,7 @@ type DeviceNetworkStatus struct {
 	Ports   []NetworkPortStatus
 }
 
-// XXX check IsMgmt flag
-// Pick one of the isMgmt ports
-func GetMgmtPortAny(globalStatus DeviceNetworkStatus, pickNum int) (string, error) {
-	if len(globalStatus.Ports) == 0 {
-		return "", errors.New("GetMgmtPortAny has no ports")
-	}
-	pickNum = pickNum % len(globalStatus.Ports)
-	return globalStatus.Ports[pickNum].IfName, nil
-}
-
-// Pick one of the free IsMgmt ports
-// XXX check IsMgmt flag
-func GetMgmtPortFree(globalStatus DeviceNetworkStatus, pickNum int) (string, error) {
-	count := 0
-	for _, us := range globalStatus.Ports {
-		if us.Free {
-			count += 1
-		}
-	}
-	if count == 0 {
-		return "", errors.New("GetMgmtPortFree has no ports")
-	}
-	pickNum = pickNum % count
-	for _, us := range globalStatus.Ports {
-		if us.Free {
-			if pickNum == 0 {
-				return us.IfName, nil
-			}
-			pickNum -= 1
-		}
-	}
-	return "", errors.New("GetMgmtPortFree past end")
-}
-
-// Return all mgmt ports
-// XXX check IsMgmt here and below
-// XXX check blame to see why it checks Free!
-func GetMgmtPorts(globalStatus DeviceNetworkStatus, rotation int) []string {
-	var ports []string
-
-	for _, us := range globalStatus.Ports {
-		if us.Free {
-			ports = append(ports, us.IfName)
-		}
-	}
-	return rotate(ports, rotation)
-}
-
-// Return all free mgmt ports
-func GetMgmtPortsFree(globalStatus DeviceNetworkStatus, rotation int) []string {
-	var ports []string
-
-	for _, us := range globalStatus.Ports {
-		if us.Free {
-			ports = append(ports, us.IfName)
-		}
-	}
-	return rotate(ports, rotation)
-}
-
+// XXX used?
 func rotate(arr []string, amount int) []string {
 	if len(arr) == 0 {
 		return []string{}
@@ -261,81 +203,122 @@ func rotate(arr []string, amount int) []string {
 	return append(append([]string{}, arr[amount:]...), arr[:amount]...)
 }
 
+// Return all management ports
+func GetMgmtPortsAny(globalStatus DeviceNetworkStatus, rotation int) []string {
+	return getMgmtPortsImpl(globalStatus, rotation, false, false)
+}
+
+// Return all free management ports
+func GetMgmtPortsFree(globalStatus DeviceNetworkStatus, rotation int) []string {
+	return getMgmtPortsImpl(globalStatus, rotation, true, false)
+}
+
 // Return all non-free management ports
 func GetMgmtPortsNonFree(globalStatus DeviceNetworkStatus, rotation int) []string {
-	var ports []string
+	return getMgmtPortsImpl(globalStatus, rotation, false, true)
+}
 
+func getMgmtPortsImpl(globalStatus DeviceNetworkStatus, rotation int,
+	freeOnly bool, nonfreeOnly bool) []string {
+
+	var ports []string
 	for _, us := range globalStatus.Ports {
-		if !us.Free {
-			ports = append(ports, us.IfName)
+		if freeOnly && !us.Free {
+			continue
 		}
+		if nonfreeOnly && us.Free {
+			continue
+		}
+		if globalStatus.Version >= DPCIsMgmt &&
+			!us.IsMgmt {
+			continue
+		}
+		ports = append(ports, us.IfName)
 	}
 	return rotate(ports, rotation)
 }
 
-// Return number of local IP addresses for all the management port, unless if
-// port is set in which case we could it.
-// XXX check IsMgmtPort
-func CountLocalAddrAny(globalStatus DeviceNetworkStatus, port string) int {
-	// Count the number of addresses which apply
-	addrs, _ := getInterfaceAddr(globalStatus, false, port, true)
-	return len(addrs)
-}
-
-// Return number of local IP addresses for all the free management ports,
-// unless if port is set in which case we could it.
-// XXX check IsMgmtPort
-func CountLocalAddrFree(globalStatus DeviceNetworkStatus, port string) int {
-	// Count the number of addresses which apply
-	addrs, _ := getInterfaceAddr(globalStatus, true, port, true)
-	return len(addrs)
-}
-
 // Return number of local IP addresses for all the management ports
-// XXX check IsMgmtPort
+// excluding link-local addresses
 func CountLocalAddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
+
 	// Count the number of addresses which apply
 	addrs, _ := getInterfaceAddr(globalStatus, false, "", false)
 	return len(addrs)
 }
 
+// Return number of local IP addresses for all the management ports
+// excluding link-local addresses
+func CountLocalAddrAnyNoLinkLocalIf(globalStatus DeviceNetworkStatus,
+	port string) int {
+
+	// Count the number of addresses which apply
+	addrs, _ := getInterfaceAddr(globalStatus, false, port, false)
+	return len(addrs)
+}
+
 // Return a list of free management ports that have non link local IP addresses
-// XXX check IsMgmtPort
-func GetMgmtPortFreeNoLocal(globalStatus DeviceNetworkStatus) []NetworkPortStatus {
+// Used by LISP.
+func GetMgmtPortsFreeNoLinkLocal(globalStatus DeviceNetworkStatus) []NetworkPortStatus {
 	// Return MgmtPort list with valid non link local addresses
 	links, _ := getInterfaceAndAddr(globalStatus, true, "", false)
 	return links
 }
 
 // Return number of local IP addresses for all the free management ports
-// XXX check IsMgmtPort
+// excluding link-local addresses
 func CountLocalAddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus) int {
+
 	// Count the number of addresses which apply
 	addrs, _ := getInterfaceAddr(globalStatus, true, "", false)
 	return len(addrs)
 }
 
 // Pick one address from all of the management ports, unless if port is set
-// in which we pick from that port.
+// in which we pick from that port. Includes link-local addresses.
 // We put addresses from the free management ports first in the list i.e.,
 // returned for the lower 'pickNum'
-// XXX check IsMgmtPort
-func GetLocalAddrAny(globalStatus DeviceNetworkStatus, pickNum int, port string) (net.IP, error) {
-	// Count the number of addresses which apply
-	addrs, err := getInterfaceAddr(globalStatus, false, port, true)
-	if err != nil {
-		return net.IP{}, err
-	}
-	numAddrs := len(addrs)
-	pickNum = pickNum % numAddrs
-	return addrs[pickNum], nil
+func GetLocalAddrAny(globalStatus DeviceNetworkStatus, pickNum int,
+	port string) (net.IP, error) {
+
+	freeOnly := false
+	includeLinkLocal := true
+	return getLocalAddrImpl(globalStatus, pickNum, port, freeOnly,
+		includeLinkLocal)
 }
 
-// Pick one address from all of the free management ports, unless if port is set
-// in which we pick from that port
-func GetLocalAddrFree(globalStatus DeviceNetworkStatus, pickNum int, port string) (net.IP, error) {
+// Pick one address from all of the management ports, unless if port is set
+// in which we pick from that port. Excludes link-local addresses.
+// We put addresses from the free management ports first in the list i.e.,
+// returned for the lower 'pickNum'
+func GetLocalAddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus, pickNum int,
+	port string) (net.IP, error) {
+
+	freeOnly := false
+	includeLinkLocal := false
+	return getLocalAddrImpl(globalStatus, pickNum, port, freeOnly,
+		includeLinkLocal)
+}
+
+// Pick one address from the free management ports, unless if port is set
+// in which we pick from that port. Excludes link-local addresses.
+// We put addresses from the free management ports first in the list i.e.,
+// returned for the lower 'pickNum'
+func GetLocalAddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus, pickNum int,
+	port string) (net.IP, error) {
+
+	freeOnly := true
+	includeLinkLocal := false
+	return getLocalAddrImpl(globalStatus, pickNum, port, freeOnly,
+		includeLinkLocal)
+}
+
+func getLocalAddrImpl(globalStatus DeviceNetworkStatus, pickNum int,
+	port string, freeOnly bool, includeLinkLocal bool) (net.IP, error) {
+
 	// Count the number of addresses which apply
-	addrs, err := getInterfaceAddr(globalStatus, true, port, true)
+	addrs, err := getInterfaceAddr(globalStatus, freeOnly, port,
+		includeLinkLocal)
 	if err != nil {
 		return net.IP{}, err
 	}
@@ -346,28 +329,33 @@ func GetLocalAddrFree(globalStatus DeviceNetworkStatus, pickNum int, port string
 
 func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, ifname string,
 	includeLinkLocal bool) ([]NetworkPortStatus, error) {
+
 	var links []NetworkPortStatus
-	for _, u := range globalStatus.Ports {
-		if free && !u.Free {
+	for _, us := range globalStatus.Ports {
+		if globalStatus.Version >= DPCIsMgmt &&
+			!us.IsMgmt {
+			continue
+		}
+		if free && !us.Free {
 			continue
 		}
 		// If ifname is set it should match
-		if u.IfName != ifname && ifname != "" {
+		if us.IfName != ifname && ifname != "" {
 			continue
 		}
 
 		if includeLinkLocal {
 			link := NetworkPortStatus{
-				IfName: u.IfName,
-				//Addrs: u.Addrs,
-				AddrInfoList: u.AddrInfoList,
+				IfName: us.IfName,
+				//Addrs: us.Addrs,
+				AddrInfoList: us.AddrInfoList,
 			}
 			links = append(links, link)
 		} else {
 			var addrs []AddrInfo
 			var link NetworkPortStatus
-			link.IfName = u.IfName
-			for _, a := range u.AddrInfoList {
+			link.IfName = us.IfName
+			for _, a := range us.AddrInfoList {
 				if !a.Addr.IsLinkLocalUnicast() {
 					addrs = append(addrs, a)
 				}
@@ -385,43 +373,71 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, ifname str
 	}
 }
 
+// Check if an interface/adapter name is a port owned by zedrouter
+func IsPort(globalStatus DeviceNetworkStatus, ifname string) bool {
+	for _, us := range globalStatus.Ports {
+		if us.IfName != ifname {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 // Check if an interface/adapter name is a management port
-// XXX check IsMgmtPort if Version=1
 func IsMgmtPort(globalStatus DeviceNetworkStatus, ifname string) bool {
 	for _, us := range globalStatus.Ports {
-		if us.IfName == ifname {
-			return true
+		if us.IfName != ifname {
+			continue
 		}
+		if globalStatus.Version >= DPCIsMgmt &&
+			!us.IsMgmt {
+			continue
+		}
+		return true
 	}
 	return false
 }
 
 // Check if an interface/adapter name is a free management port
-// XXX check IsMgmtPort
 func IsFreeMgmtPort(globalStatus DeviceNetworkStatus, ifname string) bool {
 	for _, us := range globalStatus.Ports {
-		if us.IfName == ifname {
-			return us.Free
+		if us.IfName != ifname {
+			continue
 		}
+		if globalStatus.Version >= DPCIsMgmt &&
+			!us.IsMgmt {
+			continue
+		}
+		return us.Free
 	}
 	return false
 }
 
 func GetMgmtPort(globalStatus DeviceNetworkStatus, ifname string) *NetworkPortStatus {
 	for _, us := range globalStatus.Ports {
-		if us.IfName == ifname {
-			return &us
+		if us.IfName != ifname {
+			continue
 		}
+		if globalStatus.Version >= DPCIsMgmt &&
+			!us.IsMgmt {
+			continue
+		}
+		return &us
 	}
 	return nil
 }
 
 // Given an address tell me its interface
 func GetMgmtPortFromAddr(globalStatus DeviceNetworkStatus, addr net.IP) string {
-	for _, u := range globalStatus.Ports {
-		for _, i := range u.AddrInfoList {
+	for _, us := range globalStatus.Ports {
+		if globalStatus.Version >= DPCIsMgmt &&
+			!us.IsMgmt {
+			continue
+		}
+		for _, i := range us.AddrInfoList {
 			if i.Addr.Equal(addr) {
-				return u.IfName
+				return us.IfName
 			}
 		}
 	}
@@ -429,21 +445,27 @@ func GetMgmtPortFromAddr(globalStatus DeviceNetworkStatus, addr net.IP) string {
 }
 
 // Returns addresses based on free, ifname, and whether or not we want
-// IPv6 link-locals.
+// IPv6 link-locals. Only applies to management ports.
 // If free is not set, the addresses from the free management ports are first.
-func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool, ifname string, includeLinkLocal bool) ([]net.IP, error) {
+func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool,
+	ifname string, includeLinkLocal bool) ([]net.IP, error) {
+
 	var freeAddrs []net.IP
 	var nonfreeAddrs []net.IP
-	for _, u := range globalStatus.Ports {
-		if free && !u.Free {
+	for _, us := range globalStatus.Ports {
+		if free && !us.Free {
+			continue
+		}
+		if globalStatus.Version >= DPCIsMgmt &&
+			!us.IsMgmt {
 			continue
 		}
 		// If ifname is set it should match
-		if u.IfName != ifname && ifname != "" {
+		if us.IfName != ifname && ifname != "" {
 			continue
 		}
 		var addrs []net.IP
-		for _, i := range u.AddrInfoList {
+		for _, i := range us.AddrInfoList {
 			if includeLinkLocal || !i.Addr.IsLinkLocalUnicast() {
 				addrs = append(addrs, i.Addr)
 			}
@@ -464,6 +486,7 @@ func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool, ifname string
 
 // Return list of interfaces we will report in info and metrics
 // Always include dbo1x0 for now.
+// XXX What about non-management ports? XXX how will caller tag?
 // Latter will move to a system app when we disaggregate
 func ReportInterfaces(deviceNetworkStatus DeviceNetworkStatus) []string {
 	var names []string
@@ -524,7 +547,6 @@ type OverlayNetworkStatus struct {
 	BridgeMac    net.HardwareAddr
 	BridgeIPAddr string // The address for DNS/DHCP service in zedrouter
 	HostName     string
-	// XXX MissingNetwork bool // If Network UUID not found
 }
 
 type DhcpType uint8
@@ -552,7 +574,6 @@ type UnderlayNetworkStatus struct {
 	BridgeIPAddr   string // The address for DNS/DHCP service in zedrouter
 	AssignedIPAddr string // Assigned to domU
 	HostName       string
-	// XXX MissingNetwork bool // If Network UUID not found
 }
 
 type NetworkType uint8
