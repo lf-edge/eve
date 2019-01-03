@@ -7,6 +7,7 @@ package diag
 
 import (
 	"crypto/tls"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
@@ -45,6 +46,7 @@ const (
 type diagContext struct {
 	devicenetwork.DeviceNetworkContext
 	forever                bool // Keep on reporting until ^C
+	pacContents            bool // Print PAC file contents
 	ledCounter             int  // Supress work and output
 	subGlobalConfig        *pubsub.Subscription
 	subLedBlinkCounter     *pubsub.Subscription
@@ -76,6 +78,7 @@ func Run() {
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	stdoutPtr := flag.Bool("s", false, "Use stdout")
 	foreverPtr := flag.Bool("f", false, "Forever flag")
+	pacContentsPtr := flag.Bool("p", false, "Print PAC file contents")
 	simulateDnsFailurePtr := flag.Bool("D", false, "simulateDnsFailure flag")
 	simulatePingFailurePtr := flag.Bool("P", false, "simulatePingFailure flag")
 	flag.Parse()
@@ -98,7 +101,10 @@ func Run() {
 		log.SetOutput(multi)
 	}
 
-	ctx := diagContext{forever: *foreverPtr}
+	ctx := diagContext{
+		forever:     *foreverPtr,
+		pacContents: *pacContentsPtr,
+	}
 	ctx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 
 	// XXX should we subscribe to and get GlobalConfig for debug??
@@ -364,7 +370,7 @@ func printOutput(ctx *diagContext) {
 			fmt.Printf("INFO: %s: Static NTP server: %s\n",
 				ifname, port.NtpServer.String())
 		}
-		printProxy(port, ifname)
+		printProxy(ctx, port, ifname)
 
 		if !isMgmt {
 			fmt.Printf("INFO: %s: not intended for EV controller; skipping those tests\n",
@@ -450,7 +456,8 @@ func printOutput(ctx *diagContext) {
 	}
 }
 
-func printProxy(port types.NetworkPortStatus, ifname string) {
+func printProxy(ctx *diagContext, port types.NetworkPortStatus,
+	ifname string) {
 
 	if devicenetwork.IsProxyConfigEmpty(port.ProxyConfig) {
 		fmt.Printf("INFO: %s: no http(s) proxy\n", ifname)
@@ -481,6 +488,16 @@ func printProxy(port types.NetworkPortStatus, ifname string) {
 	if pacLen > 0 {
 		fmt.Printf("INFO: %s: Have PAC file len %d\n",
 			ifname, pacLen)
+		if ctx.pacContents {
+			pacFile, err := base64.StdEncoding.DecodeString(port.ProxyConfig.Pacfile)
+			if err != nil {
+				errStr := fmt.Sprintf("Decoding proxy file failed: %s", err)
+				log.Errorf(errStr)
+			} else {
+				fmt.Printf("INFO: %s: PAC file:\n%s\n",
+					ifname, pacFile)
+			}
+		}
 	} else {
 		for _, proxy := range port.ProxyConfig.Proxies {
 			switch proxy.Type {
