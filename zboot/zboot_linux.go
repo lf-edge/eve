@@ -13,8 +13,8 @@ import (
 
 func zbootMount(devname string, target string, fstype string,
 	flags MountFlags, data string) (err error) {
-	flagsLinux := 0
-	if flags&MountFlagRDONLY > 0 {
+	var flagsLinux uintptr = 0
+	if flags & MountFlagRDONLY > 0 {
 		flagsLinux |= syscall.MS_RDONLY
 	}
 	return syscall.Mount(devname, target, fstype, flagsLinux, data)
