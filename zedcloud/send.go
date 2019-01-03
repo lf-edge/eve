@@ -244,7 +244,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 				log.Errorln("no TLS connection state")
 				// Inform ledmanager about broken cloud connectivity
 				if !ctx.NoLedManager {
-					types.UpdateLedManagerConfig(10)
+					types.UpdateLedManagerConfig(12)
 				}
 				if ctx.FailureFunc != nil {
 					ctx.FailureFunc(intf, reqUrl, reqlen,
@@ -269,7 +269,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 				if false {
 					// Inform ledmanager about broken cloud connectivity
 					if !ctx.NoLedManager {
-						types.UpdateLedManagerConfig(10)
+						types.UpdateLedManagerConfig(13)
 					}
 					if ctx.FailureFunc != nil {
 						ctx.FailureFunc(intf, reqUrl,

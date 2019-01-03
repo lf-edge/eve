@@ -22,11 +22,11 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/watch" // XXX remove
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -40,8 +40,10 @@ const (
 
 // State passed to handlers
 type ledManagerContext struct {
-	countChange     chan int
-	subGlobalConfig *pubsub.Subscription
+	countChange        chan int
+	ledCounter         int // Supress work and logging if no change
+	subGlobalConfig    *pubsub.Subscription
+	subLedBlinkCounter *pubsub.Subscription
 }
 
 type Blink200msFunc func()
@@ -140,14 +142,21 @@ func Run() {
 	if initFunc != nil {
 		initFunc()
 	}
-	ledChanges := make(chan string)
-	go watch.WatchStatus(ledConfigDirName, true, ledChanges)
-	log.Debugln("called watcher...")
 
 	// Any state needed by handler functions
 	ctx := ledManagerContext{}
 	ctx.countChange = make(chan int)
 	go TriggerBlinkOnDevice(ctx.countChange, blinkFunc)
+
+	subLedBlinkCounter, err := pubsub.Subscribe("", types.LedBlinkCounter{},
+		false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subLedBlinkCounter.ModifyHandler = handleLedBlinkModify
+	subLedBlinkCounter.DeleteHandler = handleLedBlinkDelete
+	ctx.subLedBlinkCounter = subLedBlinkCounter
+	subLedBlinkCounter.Activate()
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
@@ -165,59 +174,48 @@ func Run() {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
 
-		// XXX move to /var/tmp/zededa? Multiple publishers! Need
-		// diff pubsub support or everybody subscribes ...
-		case change := <-ledChanges:
-			{
-				watch.HandleStatusEvent(change, &ctx,
-					ledConfigDirName,
-					&types.LedBlinkCounter{},
-					handleLedBlinkModify, handleLedBlinkDelete,
-					nil)
-			}
+		case change := <-subLedBlinkCounter.C:
+			subLedBlinkCounter.ProcessChange(change)
 		}
 	}
 }
 
-// Supress work and logging if no change
-var oldCounter = 0
-
-func handleLedBlinkModify(ctxArg interface{}, configFilename string,
+func handleLedBlinkModify(ctxArg interface{}, key string,
 	configArg interface{}) {
-	// XXX switch to using cast?
-	config := configArg.(*types.LedBlinkCounter)
+
+	config := cast.CastLedBlinkCounter(configArg)
 	ctx := ctxArg.(*ledManagerContext)
 
-	if configFilename != "ledconfig" {
-		log.Errorf("handleLedBlinkModify: ignoring %s\n",
-			configFilename)
+	if key != "ledconfig" {
+		log.Errorf("handleLedBlinkModify: ignoring %s\n", key)
 		return
 	}
 	// Supress work and logging if no change
-	if config.BlinkCounter == oldCounter {
+	if config.BlinkCounter == ctx.ledCounter {
 		return
 	}
-	oldCounter = config.BlinkCounter
-	log.Infof("handleLedBlinkModify for %s\n", configFilename)
+	ctx.ledCounter = config.BlinkCounter
+	log.Infof("handleLedBlinkModify for %s\n", key)
 	log.Infoln("value of blinkCount: ", config.BlinkCounter)
 	ctx.countChange <- config.BlinkCounter
-	log.Infof("handleLedBlinkModify done for %s\n", configFilename)
+	log.Infof("handleLedBlinkModify done for %s\n", key)
 }
 
-// XXX add configArg?
-func handleLedBlinkDelete(ctxArg interface{}, configFilename string) {
-	log.Infof("handleLedBlinkDelete for %s\n", configFilename)
+func handleLedBlinkDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	log.Infof("handleLedBlinkDelete for %s\n", key)
 	ctx := ctxArg.(*ledManagerContext)
 
-	if configFilename != "ledconfig" {
-		log.Errorf("handleLedBlinkDelete: ignoring %s\n", configFilename)
+	if key != "ledconfig" {
+		log.Errorf("handleLedBlinkDelete: ignoring %s\n", key)
 		return
 	}
 	// XXX or should we tell the blink go routine to exit?
 	ctx.countChange <- 0
-	// Update our own input... XXX need something different when pubsub
 	types.UpdateLedManagerConfig(0)
-	log.Infof("handleLedBlinkDelete done for %s\n", configFilename)
+	ctx.ledCounter = 0
+	log.Infof("handleLedBlinkDelete done for %s\n", key)
 }
 
 func TriggerBlinkOnDevice(countChange chan int, blinkFunc Blink200msFunc) {
