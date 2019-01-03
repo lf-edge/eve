@@ -16,6 +16,7 @@ import (
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -162,11 +163,8 @@ func Run() {
 			log.Warningf("Malformed UUID file ignored: %s\n", err)
 		}
 	}
-	var oldHardwaremodel string
-	b, err = ioutil.ReadFile(hardwaremodelFileName)
-	if err == nil {
-		oldHardwaremodel = strings.TrimSpace(string(b))
-	}
+	// Check if we have a /config/hardwaremodel file
+	oldHardwaremodel := hardware.GetHardwareModelOverride()
 
 	clientCtx := clientContext{
 		deviceNetworkStatus: &types.DeviceNetworkStatus{},
@@ -565,7 +563,7 @@ func Run() {
 					log.Infof("Replacing existing hardwaremodel %s with %s\n",
 						oldHardwaremodel, hardwaremodel)
 				} else {
-					log.Errorf("Attempt to replacing existing hardwaremodel %s with non-exsting %s model\n",
+					log.Errorf("Attempt to replace existing hardwaremodel %s with non-eixsting %s model - ignored\n",
 						oldHardwaremodel, hardwaremodel)
 					doWrite = false
 				}
