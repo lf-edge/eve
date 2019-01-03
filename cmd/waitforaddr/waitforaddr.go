@@ -95,7 +95,7 @@ func Run() {
 	defer timer.Stop()
 
 	done := false
-	for DNSctx.usableAddressCount == 0 || done {
+	for DNSctx.usableAddressCount == 0 && !done {
 		log.Infof("Waiting for usable address(es)\n")
 		select {
 		case change := <-subDeviceNetworkStatus.C:
@@ -103,7 +103,6 @@ func Run() {
 		case <-timer.C:
 			log.Infoln("Exit since we got timeout")
 			done = true
-
 		}
 	}
 }
