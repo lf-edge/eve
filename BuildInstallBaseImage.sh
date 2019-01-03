@@ -59,7 +59,7 @@ fi
 
 ZCLI_CONFIG_CMD="zcli configure -s $SERVER  -u $ZCLI_USER -P $ZCLI_PASSWORD -O text"
 echo "ZCLI_CONFIFG_CMD: $ZCLI_CONFIG_CMD"
-exit 1
+
 
 cd $ZEDEDA/go-provision
 echo "docker build -t $TAG ."
