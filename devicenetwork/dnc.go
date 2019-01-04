@@ -21,6 +21,7 @@ type DeviceNetworkContext struct {
 	DeviceNetworkConfig     *types.DeviceNetworkConfig
 	DevicePortConfig        *types.DevicePortConfig // Currently in use
 	DevicePortConfigList    *types.DevicePortConfigList
+	AssignableAdapters      *types.AssignableAdapters
 	DevicePortConfigTime    time.Time
 	DeviceNetworkStatus     *types.DeviceNetworkStatus
 	SubDeviceNetworkConfig  *pubsub.Subscription
@@ -89,6 +90,29 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("HandleDNCDelete done for %s\n", key)
 }
 
+func doApplyDevicePortConfig(ctx *DeviceNetworkContext, delete bool) {
+
+	portConfig := types.DevicePortConfig{}
+	if ctx.DevicePortConfigList == nil ||
+		len(ctx.DevicePortConfigList.PortConfigList) == 0 {
+		if !delete {
+			log.Infof("doApplyDevicePortConfig: No config found for the port.\n")
+			return
+		}
+		log.Infof("doApplyDevicePortConfig: no config left\n")
+	} else {
+		// PortConfigList[0] is the most desirable config to use
+		portConfig = ctx.DevicePortConfigList.PortConfigList[0]
+	}
+	ctx.DevicePortConfigTime = portConfig.TimePriority
+
+	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
+		log.Infof("HandleDPCModify DevicePortConfig change from %v to %v\n",
+			*ctx.DevicePortConfig, portConfig)
+		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
+	}
+}
+
 // Handle three different sources in this priority order:
 // 1. zedagent with any key
 // 2. "override" key from build or USB stick file
@@ -128,14 +152,6 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 		}
 	}
 
-	var curConfig *types.DevicePortConfig
-	if ctx.DevicePortConfigList != nil &&
-		len(ctx.DevicePortConfigList.PortConfigList) != 0 {
-		curConfig = &ctx.DevicePortConfigList.PortConfigList[0]
-		log.Infof("HandleDPCModify: found curConfig %+v\n", curConfig)
-	} else {
-		curConfig = &types.DevicePortConfig{}
-	}
 	// Look up based on timestamp, then content
 	oldConfig := lookupPortConfig(ctx, portConfig)
 	if oldConfig != nil {
@@ -162,34 +178,17 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	portConfig = ctx.DevicePortConfigList.PortConfigList[0]
 	ctx.DevicePortConfigTime = portConfig.TimePriority
 
-	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
-		log.Infof("HandleDPCModify DevicePortConfig change from %v to %v\n",
-			*ctx.DevicePortConfig, portConfig)
-		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
-		*ctx.DevicePortConfig = portConfig
+	// Check if all the expected ports in the config are out of pciBack.
+	// If yes, apply config.
+	// If not, wait for the port to come out of PCIBack.
+	portInPciBack := portConfig.isAnyPortInPciBack()
+	if portInPciBack {
+		log.Infof("HandleDPCModify Interface %v still in PCIBack. "+
+			"wait for it to come out%v to %v\n", portConfig)
+	} else {
+		doApplyDevicePortConfig(ctx, false)
 	}
-	// XXX if err return means WPAD failed, or port does not exist
-	// XXX add test hook for former; try lower priority
-	dnStatus, _ := MakeDeviceNetworkStatus(portConfig,
-		*ctx.DeviceNetworkStatus)
 
-	// We use device certs to build tls config to hit the test Ping URL.
-	// NIM starts even before device onboarding finishes. When a device is
-	// booting for the first time and does not have its device certs registered
-	// with cloud yet, a hit to Ping URL would fail.
-	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
-		log.Infof("HandleDPCModify DeviceNetworkStatus change from %v to %v\n",
-			*ctx.DeviceNetworkStatus, dnStatus)
-		pass := VerifyDeviceNetworkStatus(dnStatus, 1)
-		// XXX Can fail if we don't have a DHCP lease yet
-		if true || pass {
-			*ctx.DeviceNetworkStatus = dnStatus
-			DoDNSUpdate(ctx)
-		} else {
-			// XXX try lower priority
-			// XXX add retry of higher priority in main
-		}
-	}
 	log.Infof("HandleDPCModify done for %s\n", key)
 }
 
@@ -225,30 +224,23 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("HandleDPCDelete: found %+v\n", *oldConfig)
 	removePortConfig(ctx, *oldConfig)
 	ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
-	if len(ctx.DevicePortConfigList.PortConfigList) != 0 {
-		log.Infof("HandleDPCDelete: first is %+v\n",
-			ctx.DevicePortConfigList.PortConfigList[0])
-		portConfig = ctx.DevicePortConfigList.PortConfigList[0]
-	} else {
-		log.Infof("HandleDPCDelete: none left\n")
-		portConfig = types.DevicePortConfig{}
-	}
-	ctx.DevicePortConfigTime = portConfig.TimePriority
 
-	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
-		log.Infof("HandleDPCDelete DevicePortConfig change from %v to %v\n",
-			*ctx.DevicePortConfig, portConfig)
-		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
-		*ctx.DevicePortConfig = portConfig
-	}
+	*ctx.DevicePortConfig = portConfig
+
 	// XXX if err return means WPAD failed, or port does not exist
 	// XXX add test hook for former; try lower priority
 	dnStatus, _ := MakeDeviceNetworkStatus(portConfig,
 		*ctx.DeviceNetworkStatus)
+
+	// We use device certs to build tls config to hit the test Ping URL.
+	// NIM starts even before device onboarding finishes. When a device is
+	// booting for the first time and does not have its device certs registered
+	// with cloud yet, a hit to Ping URL would fail.
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
-		log.Infof("HandleDPCDelete DeviceNetworkStatus change from %v to %v\n",
+		log.Infof("HandleDPCModify DeviceNetworkStatus change from %v to %v\n",
 			*ctx.DeviceNetworkStatus, dnStatus)
 		pass := VerifyDeviceNetworkStatus(dnStatus, 1)
+		// XXX Can fail if we don't have a DHCP lease yet
 		if pass {
 			*ctx.DeviceNetworkStatus = dnStatus
 			DoDNSUpdate(ctx)
@@ -257,17 +249,56 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 			// XXX add retry of higher priority in main
 		}
 	}
+	doApplyDevicePortConfig(ctx, true)
+
 	log.Infof("HandleDPCDelete done for %s\n", key)
 }
 
 // HandleAssignableAdaptersModify - Handle Assignable Adapter list modifications
 func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
-	configArg interface{}) {
+	statusArg interface{}) {
+
+	if key != "global" {
+		log.Infof("HandleAssignableAdaptersModify: ignoring %s\n", key)
+		return
+	}
+	ctx := ctxArg.(*DeviceNetworkContext)
+	newAssignableAdapters := cast.CastAssignableAdapters(statusArg)
+	log.Infof("HandleAssignableAdaptersModify() %+v\n", newAssignableAdapters)
+
+	// ctxArg is DeviceNetworkContext
+	for _, ioBundle := range newAssignableAdapters.IoBundleList {
+		if ioBundle.Type != types.IoEth {
+			continue
+		}
+		currentIoBundle := types.LookupIoBundle(ctx.AssignableAdapters,
+			types.IoEth, ioBundle.Name)
+		if ioBundle.IsPCIBack == currentIoBundle.IsPCIBack {
+			continue
+		}
+		if ioBundle.IsPCIBack {
+			// Interface put back in pciBack list.
+			// Stop dhcp and update DeviceNetworkStatus
+			doDhcpClientInactivate()
+		} else {
+			// Interface moved out of PciBack mode.
+			doApplyDevicePortConfig(ctx, false)
+		}
+	}
+	*ctx.AssignableAdapters = newAssignableAdapters
+	log.Infof("handleAAModify() done\n")
 }
 
 // HandleAssignableAdaptersModify - Handle Assignable Adapter list deletions
 func HandleAssignableAdaptersDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
+	// this usually happens only at restart - as any changes to assignable
+	//   adapters results in domain restart and takes affect only after
+	//   the restart.
+
+	// NoUsbAccess can change dynamically - but it is not network device,
+	// so can be ignored. Assuming there are no USB based network interfaces.
+	log.Infof("HandleAssignableAdaptersDelete done for %s\n", key)
 }
 
 // First look for matching timestamp, then compare for identical content
@@ -352,7 +383,16 @@ func removePortConfig(ctx *DeviceNetworkContext, portConfig types.DevicePortConf
 	ctx.DevicePortConfigList.PortConfigList = newConfig
 }
 
+// DoDNSUpdate
+//	Update the device network status and publish it.
 func DoDNSUpdate(ctx *DeviceNetworkContext) {
+	// Check if interface in PCiBack mode - if yes, delete them from DNS
+	for index, networkPortStatus := range ctx.DeviceNetworkStatus {
+		if isnetworkPortInPciBackMode() {
+			// Delete the port from Network Status
+		}
+	}
+
 	// Did we loose all usable addresses or gain the first usable
 	// address?
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
