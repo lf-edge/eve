@@ -12,7 +12,6 @@ import (
 	"github.com/eriknordmark/ipinfo"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/types"
 )
 
 // Indexed by UUID
@@ -537,12 +536,12 @@ func AdapterToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 	return adapter
 }
 
-func (portConfig *DevicePortConfig) isAnyPortInPciBack(
-	aa *types.AssignableAdapters) bool {
+func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
+	aa *AssignableAdapters) bool {
 	for _, port := range portConfig.Ports {
-		ioBundle := asignableAdapters.LookupIoBundleForMember(
-			types.IoEth, port.Name)
-		if ioBundle.IsPCIBack {
+		ioBundle := aa.LookupIoBundleForMember(
+			IoEth, port.Name)
+		if ioBundle != nil && ioBundle.IsPCIBack {
 			return true
 		}
 	}
