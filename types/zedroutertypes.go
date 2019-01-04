@@ -6,11 +6,13 @@ package types
 import (
 	"encoding/json"
 	"errors"
+	"net"
+	"time"
+
 	"github.com/eriknordmark/ipinfo"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"net"
-	"time"
+	"github.com/zededa/go-provision/types"
 )
 
 // Indexed by UUID
@@ -533,6 +535,18 @@ func AdapterToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 	}
 	log.Infof("AdapterToIfName: no match for %s\n", adapter)
 	return adapter
+}
+
+func (portConfig *DevicePortConfig) isAnyPortInPciBack(
+	aa *types.AssignableAdapters) bool {
+	for _, port := range portConfig.Ports {
+		ioBundle := asignableAdapters.LookupIoBundleForMember(
+			types.IoEth, port.Name)
+		if ioBundle.IsPCIBack {
+			return true
+		}
+	}
+	return false
 }
 
 type MapServerType uint8
