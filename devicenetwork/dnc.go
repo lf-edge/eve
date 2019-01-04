@@ -181,7 +181,7 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	// Check if all the expected ports in the config are out of pciBack.
 	// If yes, apply config.
 	// If not, wait for the port to come out of PCIBack.
-	portInPciBack := portConfig.isAnyPortInPciBack()
+	portInPciBack := portConfig.IsAnyPortInPciBack(ctx.AssignableAdapters)
 	if portInPciBack {
 		log.Infof("HandleDPCModify Interface %v still in PCIBack. "+
 			"wait for it to come out%v to %v\n", portConfig)
@@ -279,7 +279,7 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 		if ioBundle.IsPCIBack {
 			// Interface put back in pciBack list.
 			// Stop dhcp and update DeviceNetworkStatus
-			doDhcpClientInactivate()
+			//doDhcpClientInactivate()  KALYAN- FIXTHIS BEFORE MERGE
 		} else {
 			// Interface moved out of PciBack mode.
 			doApplyDevicePortConfig(ctx, false)
@@ -386,13 +386,6 @@ func removePortConfig(ctx *DeviceNetworkContext, portConfig types.DevicePortConf
 // DoDNSUpdate
 //	Update the device network status and publish it.
 func DoDNSUpdate(ctx *DeviceNetworkContext) {
-	// Check if interface in PCiBack mode - if yes, delete them from DNS
-	for index, networkPortStatus := range ctx.DeviceNetworkStatus {
-		if isnetworkPortInPciBackMode() {
-			// Delete the port from Network Status
-		}
-	}
-
 	// Did we loose all usable addresses or gain the first usable
 	// address?
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
