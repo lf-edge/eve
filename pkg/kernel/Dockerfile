@@ -1,9 +1,6 @@
 FROM alpine:3.6 as kernel-build
 #linuxkit/alpine:f2f4db272c910d136380781a97e475013fabda8b AS kernel-build
 
-# FIXME: we need to get rid of this binary blob (look for cp .. kernel.zen below)
-COPY kernel.hikey /kernel.hikey
-
 RUN apk update
 
 RUN apk add \
@@ -112,8 +109,7 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" KCFLAGS="-fno-pie" && \
         cp arch/x86_64/boot/bzImage /out/kernel; \
         ;; \
     aarch64) \
-        mkdir -p /tmp/kernel-modules/lib ; cp arch/arm64/boot/Image.gz /tmp/kernel-modules/lib/kernel ; \
-        cp /kernel.hikey /out/kernel; \
+        cp arch/arm64/boot/Image.gz /out/kernel; \
         ;; \
     esac && \
     cp System.map /out && \
