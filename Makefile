@@ -122,9 +122,8 @@ run-grub: bios/OVMF.fd bios/EFI
 images/%.yml: build-tools zedctr-workaround parse-pkgs.sh images/%.yml.in FORCE
 	DOCKER_ARCH_TAG="$(DOCKER_ARCH_TAG)" ./parse-pkgs.sh $@.in > $@
 	# the following is a horrible hack that needs to go away ASAP
-	if [ "$(ZARCH)" != `uname -m` ] ; then \
-           sed -e '/source:/s#rootfs.img#rootfs_aarch64.img#' \
-               -e '/command:/s#/dev/sda#/dev/vda#' -i.orig $@ ;\
+	if [ "$(ZARCH)" = aarch64 ] ; then \
+           sed -e '/source:/s#rootfs.img#rootfs_aarch64.img#' -i.orig $@ ;\
 	   echo "WARNING: We are assembling a $(ZARCH) image on `uname -m`. Things may break." ;\
         fi
 
