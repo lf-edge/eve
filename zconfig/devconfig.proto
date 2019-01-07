@@ -64,7 +64,7 @@ message sWAdapterParams {
 }
 
 message SystemAdapter {
-	// name of the adapter
+	// name of the adapter; hardware-specific e.g., eth0
 	string name = 1;
 
 	sWAdapterParams allocDetails = 20;
@@ -80,6 +80,10 @@ message SystemAdapter {
 
 	// if its static network we need ip address
 	string addr = 5;
+
+	// alias/logical name which will be reported to zedcloud
+	// and used for app instances
+	string logicalName = 6;
 }
 
 message EdgeDevConfig {
