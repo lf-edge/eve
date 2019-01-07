@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"github.com/zededa/go-provision/cmd/client"
+	"github.com/zededa/go-provision/cmd/diag"
 	"github.com/zededa/go-provision/cmd/domainmgr"
 	"github.com/zededa/go-provision/cmd/downloader"
 	"github.com/zededa/go-provision/cmd/hardwaremodel"
@@ -29,6 +30,8 @@ func main() {
 	switch basename {
 	case "client":
 		client.Run()
+	case "diag":
+		diag.Run()
 	case "domainmgr":
 		domainmgr.Run()
 	case "downloader":

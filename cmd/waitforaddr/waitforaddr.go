@@ -42,7 +42,8 @@ var debugOverride bool // From command line arg
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
-	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
+	stdoutPtr := flag.Bool("s", false, "Use stdout")
+	noPidPtr := flag.Bool("p", false, "Do not check for running agent")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
@@ -52,29 +53,24 @@ func Run() {
 		log.SetLevel(log.InfoLevel)
 	}
 	useStdout := *stdoutPtr
+	noPidFlag := *noPidPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	// XXX json to file; text to stdout/console?
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer logf.Close()
-	// For limited output on console
-	consolef := os.Stdout
-	if !useStdout {
-		consolef, err = os.OpenFile("/dev/console", os.O_RDWR|os.O_APPEND,
-			0666)
-		if err != nil {
+	if useStdout {
+		multi := io.MultiWriter(logf, os.Stdout)
+		log.SetOutput(multi)
+	}
+	if !noPidFlag {
+		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 			log.Fatal(err)
 		}
-	}
-	multi := io.MultiWriter(logf, consolef)
-	log.SetOutput(multi)
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-		log.Fatal(err)
 	}
 	log.Infof("Starting %s\n", agentName)
 
@@ -95,7 +91,7 @@ func Run() {
 	defer timer.Stop()
 
 	done := false
-	for DNSctx.usableAddressCount == 0 || done {
+	for DNSctx.usableAddressCount == 0 && !done {
 		log.Infof("Waiting for usable address(es)\n")
 		select {
 		case change := <-subDeviceNetworkStatus.C:
@@ -103,7 +99,6 @@ func Run() {
 		case <-timer.C:
 			log.Infoln("Exit since we got timeout")
 			done = true
-
 		}
 	}
 }

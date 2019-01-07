@@ -45,17 +45,6 @@ func lookupBaseOsStatus(ctx *zedagentContext, key string) *types.BaseOsStatus {
 	return &status
 }
 
-// on baseos install and activate set, the device reboot is initiated
-func handleBaseOsReboot(ctx *zedagentContext, status types.BaseOsStatus) {
-	// if restart flag is set,
-	// initiate the shutdown process
-	if status.Reboot == true {
-		log.Infof("handleBaseOsReboot for %s", status.Key())
-		shutdownAppsGlobal(ctx)
-		startExecReboot()
-	}
-}
-
 // mark the zedcloud health/connectivity test complete flag
 // for baseosmgr to pick up and complete the partition activation
 func initiateBaseOsZedCloudTestComplete(ctx *getconfigContext) {
@@ -78,23 +67,24 @@ func initiateBaseOsZedCloudTestComplete(ctx *getconfigContext) {
 	}
 }
 
-func handleBaseOsZedCloudTestComplete(ctx *zedagentContext, status types.BaseOsStatus) {
+func doBaseOsZedCloudTestComplete(ctx *zedagentContext, status types.BaseOsStatus) {
 	if status.TestComplete {
 		key := status.Key()
-		log.Infof("handleBaseOsZedCloudTestComplete(%s):\n", key)
+		log.Infof("doBaseOsZedCloudTestComplete(%s):\n", key)
 		if config := lookupBaseOsConfig(ctx.getconfigCtx, key); config != nil {
 			config.TestComplete = false
 			publishBaseOsConfig(ctx.getconfigCtx, config)
-			log.Infof("handleBaseOsZedCloudTestComplete(%s): done\n", key)
+			log.Infof("doBaseOsZedCloudTestComplete(%s): done\n", key)
 		}
 	}
 }
 
-func handleBaseOsDeviceReboot(ctx *zedagentContext, status types.BaseOsStatus) {
+// on baseos install and activate set, the device reboot is initiated
+func doBaseOsDeviceReboot(ctx *zedagentContext, status types.BaseOsStatus) {
 	// if restart flag is set,
 	// initiate the shutdown process
 	if status.Reboot {
-		log.Infof("handleBaseOsDeviceReboot(%s)", status.Key())
+		log.Infof("doBaseOsDeviceReboot(%s)", status.Key())
 		shutdownAppsGlobal(ctx)
 		startExecReboot()
 	}

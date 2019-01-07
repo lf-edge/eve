@@ -751,8 +751,8 @@ func handleBaseOsStatusModify(ctxArg interface{}, key string, statusArg interfac
 		log.Errorf("handleBaseOsStatusModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.Key(), status)
 		return
 	}
-	handleBaseOsZedCloudTestComplete(ctx, status)
-	handleBaseOsDeviceReboot(ctx, status)
+	doBaseOsZedCloudTestComplete(ctx, status)
+	doBaseOsDeviceReboot(ctx, status)
 	publishDevInfo(ctx)
 	log.Infof("handleBaseOsStatusModify(%s) done\n", key)
 }

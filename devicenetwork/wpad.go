@@ -63,6 +63,7 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 		pac, err := getPacFile(deviceNetworkStatus, url, ifname)
 		if err == nil {
 			proxyConfig.Pacfile = pac
+			proxyConfig.WpadURL = url
 			return nil
 		}
 		errStr := fmt.Sprintf("Failed to fetch %s for %s: %s",

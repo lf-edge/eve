@@ -24,7 +24,7 @@ OBJDIR      := $(PWD)/bin/$(ARCH)
 BINDIR	    := $(OBJDIR)
 
 APPS = zedbox
-APPS1 = logmanager ledmanager downloader verifier client zedrouter domainmgr identitymgr zedmanager zedagent hardwaremodel ipcmonitor baseosmgr
+APPS1 = logmanager ledmanager downloader verifier client zedrouter domainmgr identitymgr zedmanager zedagent hardwaremodel ipcmonitor nim diag baseosmgr
 
 SCRIPTS = \
 	device-steps.sh \

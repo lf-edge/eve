@@ -150,6 +150,7 @@ type ProxyConfig struct {
 	// the various DNS suffixes until we can download a wpad.dat file
 	NetworkProxyEnable bool   // Enable WPAD
 	NetworkProxyURL    string // Complete URL i.e., with /wpad.dat
+	WpadURL            string // The URL determined from DNS
 }
 
 type DhcpConfig struct {
@@ -194,7 +195,6 @@ type DeviceNetworkStatus struct {
 	Ports   []NetworkPortStatus
 }
 
-// XXX used?
 func rotate(arr []string, amount int) []string {
 	if len(arr) == 0 {
 		return []string{}

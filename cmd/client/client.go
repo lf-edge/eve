@@ -16,6 +16,7 @@ import (
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -33,6 +34,8 @@ import (
 const (
 	agentName   = "zedclient"
 	tmpDirname  = "/var/tmp/zededa"
+	DNCDirname  = tmpDirname + "/DeviceNetworkConfig"
+	AADirname   = tmpDirname + "/AssignableAdapters"
 	maxDelay    = time.Second * 600 // 10 minutes
 	uuidMaxWait = time.Second * 60  // 1 minute
 )
@@ -72,7 +75,7 @@ func Run() {
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	forcePtr := flag.Bool("f", false, "Force using onboarding cert")
 	dirPtr := flag.String("D", "/config", "Directory with certs etc")
-	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
+	stdoutPtr := flag.Bool("s", false, "Use stdout")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
 	maxRetriesPtr := flag.Int("r", 0, "Max ping retries")
 	pingURLPtr := flag.String("U", "", "Override ping url")
@@ -99,23 +102,16 @@ func Run() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	// XXX json to file; text to stdout/console?
+	// Sending json log format to stdout
 	logf, err := agentlog.Init("client")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer logf.Close()
-	// For limited output on console
-	consolef := os.Stdout
-	if !useStdout {
-		consolef, err = os.OpenFile("/dev/console", os.O_RDWR|os.O_APPEND,
-			0666)
-		if err != nil {
-			log.Fatal(err)
-		}
+	if useStdout {
+		multi := io.MultiWriter(logf, os.Stdout)
+		log.SetOutput(multi)
 	}
-	multi := io.MultiWriter(logf, consolef)
-	log.SetOutput(multi)
 	if !noPidFlag {
 		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 			log.Fatal(err)
@@ -160,11 +156,8 @@ func Run() {
 			log.Warningf("Malformed UUID file ignored: %s\n", err)
 		}
 	}
-	var oldHardwaremodel string
-	b, err = ioutil.ReadFile(hardwaremodelFileName)
-	if err == nil {
-		oldHardwaremodel = strings.TrimSpace(string(b))
-	}
+	// Check if we have a /config/hardwaremodel file
+	oldHardwaremodel := hardware.GetHardwareModelOverride()
 
 	clientCtx := clientContext{
 		deviceNetworkStatus: &types.DeviceNetworkStatus{},
@@ -559,8 +552,15 @@ func Run() {
 		doWrite = true
 		if hardwaremodel != "" {
 			if oldHardwaremodel != hardwaremodel {
-				log.Infof("Replacing existing hardwaremodel %s\n",
-					oldHardwaremodel)
+				if existingModel(hardwaremodel) {
+					log.Infof("Replacing existing hardwaremodel %s with %s\n",
+						oldHardwaremodel, hardwaremodel)
+				} else {
+					log.Errorf("Attempt to replace existing hardwaremodel %s with non-eixsting %s model - ignored\n",
+						oldHardwaremodel, hardwaremodel)
+					doWrite = false
+				}
+
 			} else {
 				log.Infof("No change to hardwaremodel %s\n",
 					hardwaremodel)
@@ -587,6 +587,20 @@ func Run() {
 	if err != nil {
 		log.Errorln(err)
 	}
+}
+
+func existingModel(model string) bool {
+	AAFilename := fmt.Sprintf("%s/%s.json", AADirname, model)
+	if _, err := os.Stat(AAFilename); err != nil {
+		log.Debugln(err)
+		return false
+	}
+	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
+	if _, err := os.Stat(DNCFilename); err == nil {
+		log.Debugln(err)
+		return false
+	}
+	return true
 }
 
 func handleGlobalConfigModify(ctxArg interface{}, key string,

@@ -439,20 +439,35 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			continue
 		}
 		network := cast.CastNetworkObjectConfig(networkObject)
-		port.Dhcp = network.Dhcp
-		ip := net.ParseIP(sysAdapter.Addr)
-		if ip == nil {
-			log.Errorf("parseSystemAdapterConfig: Bad sysAdapter.Addr %s - ignored\n",
-				sysAdapter.Addr)
-			continue
+		if sysAdapter.Addr != "" {
+			ip := net.ParseIP(sysAdapter.Addr)
+			if ip == nil {
+				log.Errorf("parseSystemAdapterConfig: Bad sysAdapter.Addr %s - ignored\n",
+					sysAdapter.Addr)
+				continue
+			}
+			addrSubnet := network.Subnet
+			addrSubnet.IP = ip
+			port.AddrSubnet = addrSubnet.String()
 		}
-		addrSubnet := network.Subnet
-		addrSubnet.IP = ip
-		port.AddrSubnet = addrSubnet.String()
 		port.Gateway = network.Gateway
 		port.DomainName = network.DomainName
 		port.NtpServer = network.NtpServer
 		port.DnsServers = network.DnsServers
+		// Need to be careful since zedcloud can feed us bad Dhcp type
+		port.Dhcp = types.DT_CLIENT
+		if network.Dhcp == types.DT_STATIC {
+			if port.Gateway.IsUnspecified() || port.AddrSubnet == "" ||
+				port.DomainName == "" || port.DnsServers == nil {
+				log.Errorf("parseSystemAdapterConfig: DT_STATIC but missing parameters in %+v; ignored\n",
+					port)
+				continue
+			}
+		} else {
+			// XXX or ignore SystemAdapter as above?
+			log.Warnf("parseSystemAdapterConfig: ignore unsupported dhcp type %v - using DT_CLIENT\n",
+				network.Dhcp)
+		}
 		// XXX use DnsNameToIpList?
 		if network.Proxy != nil {
 			port.ProxyConfig = *network.Proxy
@@ -1189,7 +1204,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.MintimeUpdateSuccess = newU32
 				globalConfigChange = true
 			}
-		case "debug.disable.usb","debug.enable.usb": // XXX swap name to enable?
+		case "debug.disable.usb", "debug.enable.usb": // XXX swap name to enable?
 			newBool, err := strconv.ParseBool(item.Value)
 			if err != nil {
 				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
