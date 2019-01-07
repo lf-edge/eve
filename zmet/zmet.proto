@@ -44,7 +44,7 @@ message ZInfoNetwork {
   ZInfoDNS dns = 7; // If DHCP assigned
   bool up = 8;      // operational up/down status.
   GeoLoc location = 9;
-  bool uplink = 10; // Uplink interface
+  bool uplink = 10; // Uplink interface  // XXX rename to isMgmtPort
   ErrorInfo networkErr = 11; // For instance bad proxy config
   string name = 12; // From name in config
 }
@@ -385,7 +385,7 @@ message networkMetric {
 }
 
 // Failures and successes for commuication to zedcloud
-// for each uplink interface
+// for each port
 message zedcloudMetric {
     string ifName = 1;	// interface name
     uint64 failures = 2;
