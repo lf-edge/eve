@@ -72,7 +72,7 @@ func strongswanDelete(status *types.NetworkServiceStatus) {
 	}
 }
 
-func strongswanActivate(config types.NetworkServiceConfig,
+func strongswanActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus, netstatus *types.NetworkObjectStatus) error {
 
 	log.Infof("strongswanActivate(%s)\n", status.DisplayName)
@@ -90,7 +90,7 @@ func strongswanActivate(config types.NetworkServiceConfig,
 	return nil
 }
 
-func strongswanInactivate(status *types.NetworkServiceStatus,
+func strongswanInactivate(ctx *zedrouterContext, status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) {
 
 	log.Infof("strongswanInactivate(%s)\n", status.DisplayName)
@@ -126,7 +126,8 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 		return vpnConfig, err
 	}
 
-	port.Name = config.Adapter
+	port.Name = types.AdapterToIfName(ctx.deviceNetworkStatus,
+		config.Adapter)
 	port.IpAddr = srcIp.String()
 
 	// app net information
