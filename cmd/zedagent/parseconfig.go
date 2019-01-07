@@ -425,7 +425,11 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		}
 		port := types.NetworkPortConfig{}
 		port.IfName = sysAdapter.Name
-		port.Name = sysAdapter.Name
+		if sysAdapter.LogicalName != "" {
+			port.Name = sysAdapter.LogicalName
+		} else {
+			port.Name = sysAdapter.Name
+		}
 		port.IsMgmt = sysAdapter.Uplink
 		port.Free = sysAdapter.FreeUplink
 
