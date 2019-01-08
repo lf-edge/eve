@@ -174,10 +174,11 @@ func maybeUpdateBridgeIPAddr(ctx *zedrouterContext, ifname string) {
 				key, status.Key(), status)
 			continue
 		}
-
-		if status.Adapter != ifname {
-			log.Infof("maybeUpdateBridgeIPAddr(%s) wrong adapter %s\n",
-				ifname, status.Adapter)
+		ifname2 := types.AdapterToIfName(ctx.deviceNetworkStatus,
+			status.Adapter)
+		if ifname2 != ifname {
+			log.Infof("maybeUpdateBridgeIPAddr(%s) wrong adapter %s, %s\n",
+				ifname, ifname2, status.Adapter)
 			continue
 		}
 		if status.Type != types.NST_BRIDGE {
@@ -226,27 +227,27 @@ func doServiceActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 		netstatus.Key())
 
 	// Check that Adapter is either "uplink", "freeuplink", or
-	// an existing ifname assigned to doServicemO/zedrouter. A Bridge
+	// an existing port name assigned to domO/zedrouter. A Bridge
 	// only works with a single adapter interface.
 	allowMgmtPort := (config.Type != types.NST_BRIDGE)
-	err := validateAdapter(config.Adapter, allowMgmtPort)
+	err := validateAdapter(ctx, config.Adapter, allowMgmtPort)
 	if err != nil {
 		return err
 	}
-	status.AdapterList = getAdapters(ctx, config.Adapter)
+	status.IfNameList = adapterToIfNames(ctx, config.Adapter)
 
 	switch config.Type {
 	case types.NST_STRONGSWAN:
-		err = strongswanActivate(config, status, netstatus)
+		err = strongswanActivate(ctx, config, status, netstatus)
 	case types.NST_LISP:
 		err = lispActivate(ctx, config, status, netstatus)
 	case types.NST_BRIDGE:
-		err = bridgeActivate(config, status, netstatus)
+		err = bridgeActivate(ctx, config, status, netstatus)
 		if err != nil {
 			updateBridgeIPAddr(ctx, netstatus)
 		}
 	case types.NST_NAT:
-		err = natActivate(config, status, netstatus)
+		err = natActivate(ctx, config, status, netstatus)
 	case types.NST_LB:
 		errStr := "doServiceActivate NetworkService LB not yet supported"
 		err = errors.New(errStr)
@@ -308,7 +309,9 @@ func checkAndRecreateService(ctx *zedrouterContext, network uuid.UUID) {
 	}
 }
 
-func validateAdapter(adapter string, allowMgmtPort bool) error {
+func validateAdapter(ctx *zedrouterContext, adapter string,
+	allowMgmtPort bool) error {
+
 	if adapter == "" {
 		errStr := fmt.Sprintf("Adapter not specified")
 		return errors.New(errStr)
@@ -321,13 +324,15 @@ func validateAdapter(adapter string, allowMgmtPort bool) error {
 			return nil
 		}
 	}
+	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, adapter)
 	// XXX look for ifname; this assumes it exists in dom0/zedrouter
 	// and not assigned to pciback
 	// XXX also check not management port? assignable checked for bridge ...
 	// XXX need a resourcemgr to track use of resources
-	link, _ := netlink.LinkByName(adapter)
+	link, _ := netlink.LinkByName(ifname)
 	if link == nil {
-		errStr := fmt.Sprintf("Unknown adapter %s", adapter)
+		errStr := fmt.Sprintf("Unknown adapter %s, %s",
+			adapter, ifname)
 		return errors.New(errStr)
 	}
 	return nil
@@ -353,14 +358,14 @@ func doServiceInactivate(ctx *zedrouterContext,
 
 	switch status.Type {
 	case types.NST_STRONGSWAN:
-		strongswanInactivate(status, netstatus)
+		strongswanInactivate(ctx, status, netstatus)
 	case types.NST_LISP:
 		lispInactivate(ctx, status, netstatus)
 	case types.NST_BRIDGE:
-		bridgeInactivate(status, netstatus)
+		bridgeInactivate(ctx, status, netstatus)
 		updateBridgeIPAddr(ctx, netstatus)
 	case types.NST_NAT:
-		natInactivate(status, netstatus)
+		natInactivate(ctx, status, netstatus)
 	case types.NST_LB:
 		errStr := "doServiceInactivate NetworkService LB not yet supported"
 		log.Errorln(errStr)
@@ -483,7 +488,8 @@ func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string,
 	}
 
 	// Get IP address from adapter
-	link, err := netlink.LinkByName(status.Adapter)
+	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Adapter)
+	link, err := netlink.LinkByName(ifname)
 	if err != nil {
 		return "", err
 	}
@@ -728,7 +734,7 @@ func bridgeCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	return nil
 }
 
-func bridgeActivate(config types.NetworkServiceConfig,
+func bridgeActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) error {
 
@@ -747,10 +753,11 @@ func bridgeActivate(config types.NetworkServiceConfig,
 		return errors.New(errStr)
 	}
 	// Find adapter
-	alink, _ := netlink.LinkByName(status.Adapter)
+	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Adapter)
+	alink, _ := netlink.LinkByName(ifname)
 	if alink == nil {
-		errStr := fmt.Sprintf("Unknown adapter %s",
-			status.Adapter)
+		errStr := fmt.Sprintf("Unknown adapter %s, %s",
+			status.Adapter, ifname)
 		return errors.New(errStr)
 	}
 	// Make sure it is up
@@ -771,15 +778,17 @@ func bridgeActivate(config types.NetworkServiceConfig,
 	return nil
 }
 
-func bridgeInactivate(status *types.NetworkServiceStatus,
+func bridgeInactivate(ctx *zedrouterContext,
+	status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) {
 
 	log.Infof("bridgeInactivate(%s)\n", status.DisplayName)
 	// Find adapter
-	alink, _ := netlink.LinkByName(status.Adapter)
+	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Adapter)
+	alink, _ := netlink.LinkByName(ifname)
 	if alink == nil {
-		errStr := fmt.Sprintf("Unknown adapter %s",
-			status.Adapter)
+		errStr := fmt.Sprintf("Unknown adapter %s, %s",
+			status.Adapter, ifname)
 		log.Errorln(errStr)
 		return
 	}
@@ -808,7 +817,7 @@ func natCreate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 }
 
 // XXX need to redo this when MgmtPorts/FreeMgmtPorts changes?
-func natActivate(config types.NetworkServiceConfig,
+func natActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) error {
 
@@ -821,7 +830,7 @@ func natActivate(config types.NetworkServiceConfig,
 	status.Subnet = netstatus.Subnet
 	subnetStr := netstatus.Subnet.String()
 
-	for _, a := range status.AdapterList {
+	for _, a := range status.IfNameList {
 		err := iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
@@ -840,23 +849,25 @@ func natActivate(config types.NetworkServiceConfig,
 	return nil
 }
 
-// Expand the generic names
-func getAdapters(ctx *zedrouterContext, adapter string) []string {
+// Expand the generic names, and return the interface name
+// Does not verify the existence of the adapters/interfaces
+func adapterToIfNames(ctx *zedrouterContext, adapter string) []string {
 	if strings.EqualFold(adapter, "uplink") {
 		return types.GetMgmtPortsAny(*ctx.deviceNetworkStatus, 0)
 	}
 	if strings.EqualFold(adapter, "freeuplink") {
 		return types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0)
 	}
-	return []string{adapter}
+	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, adapter)
+	return []string{ifname}
 }
 
-func natInactivate(status *types.NetworkServiceStatus,
+func natInactivate(ctx *zedrouterContext, status *types.NetworkServiceStatus,
 	netstatus *types.NetworkObjectStatus) {
 
 	log.Infof("netInactivate(%s)\n", status.DisplayName)
 	subnetStr := status.Subnet.String()
-	for _, a := range status.AdapterList {
+	for _, a := range status.IfNameList {
 		err := iptableCmd("-t", "nat", "-D", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {

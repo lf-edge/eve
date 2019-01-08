@@ -121,6 +121,7 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 		portConfig.Key = key
 	}
 	// In case Name isn't set we make it match IfName
+	// XXX still needed?
 	for i, _ := range portConfig.Ports {
 		port := &portConfig.Ports[i]
 		if port.Name == "" {
@@ -208,6 +209,7 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 		portConfig.Key = key
 	}
 	// In case Name isn't set we make it match IfName
+	// XXX still needed?
 	for i, _ := range portConfig.Ports {
 		port := &portConfig.Ports[i]
 		if port.Name == "" {
