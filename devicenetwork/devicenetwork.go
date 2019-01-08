@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
 	log "github.com/sirupsen/logrus"
-	"github.com/vishvananda/netlink"
+	"github.com/eriknordmark/netlink"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"

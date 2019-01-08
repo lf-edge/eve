@@ -166,10 +166,7 @@
 [[projects]]
   branch = "master"
   name = "github.com/vishvananda/netlink"
-  packages = [
-    ".",
-    "nl"
-  ]
+  packages = ["nl"]
   revision = "91b013f9ed89f77842f4b3efc7acbebd108b1ee0"
 
 [[projects]]
@@ -185,7 +182,7 @@
     "zconfig",
     "zmet"
   ]
-  revision = "4c8b243fb41d884facf55933c7c61bb21b658478"
+  revision = "033f4e5ccd872704618b0060cad0e4f2b66f642a"
 
 [[projects]]
   branch = "master"
@@ -225,6 +222,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "edaa0a7fea756f3a05894678cacc97b86b5af04b3f58f1023d9d0b6e323df2ca"
+  inputs-digest = "a0db19cdf0b9bc07697947c201f0fc6516da9e19bb95b9538dabce9125492507"
   solver-name = "gps-cdcl"
   solver-version = 1
