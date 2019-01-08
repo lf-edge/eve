@@ -2203,7 +2203,7 @@ func (m *NetworkMetric) GetLocalName() string {
 }
 
 // Failures and successes for commuication to zedcloud
-// for each uplink interface
+// for each port
 type ZedcloudMetric struct {
 	IfName      string                     `protobuf:"bytes,1,opt,name=ifName" json:"ifName,omitempty"`
 	Failures    uint64                     `protobuf:"varint,2,opt,name=failures" json:"failures,omitempty"`
