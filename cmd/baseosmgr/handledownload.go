@@ -69,17 +69,17 @@ func createDownloaderConfig(ctx *baseOsMgrContext, objType string,
 			downloadURL = ds.Fqdn + "/" + dpath + "/" + sc.Name
 		}
 		n := types.DownloaderConfig{
-			Safename:        safename,
-			DownloadURL:     downloadURL,
-			TransportMethod: ds.DsType,
-			ApiKey:          ds.ApiKey,
-			Password:        ds.Password,
-			Dpath:           dpath,
-			Region:          ds.Region,
-			UseFreeMgmtPorts:  false,
-			Size:            sc.Size,
-			ImageSha256:     sc.ImageSha256,
-			RefCount:        1,
+			Safename:         safename,
+			DownloadURL:      downloadURL,
+			TransportMethod:  ds.DsType,
+			ApiKey:           ds.ApiKey,
+			Password:         ds.Password,
+			Dpath:            dpath,
+			Region:           ds.Region,
+			UseFreeMgmtPorts: false,
+			Size:             sc.Size,
+			ImageSha256:      sc.ImageSha256,
+			RefCount:         1,
 		}
 		publishDownloaderConfig(ctx, objType, &n)
 	}
@@ -123,9 +123,9 @@ func updateDownloaderStatus(ctx *baseOsMgrContext,
 			// Dpath:           status.Dpath,
 			// Region:          status.Region,
 			UseFreeMgmtPorts: status.UseFreeMgmtPorts,
-			Size:           status.Size,
-			ImageSha256:    status.ImageSha256,
-			RefCount:       0,
+			Size:             status.Size,
+			ImageSha256:      status.ImageSha256,
+			RefCount:         0,
 		}
 		publishDownloaderConfig(ctx, status.ObjType, &n)
 		return

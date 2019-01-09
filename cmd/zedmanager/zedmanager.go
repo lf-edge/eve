@@ -278,10 +278,6 @@ func Run() {
 		}
 	}
 
-	// do a get all procedure, pick up the initial set of
-	// configuration items
-	zedmanagerConfigGetAll(&ctx)
-
 	log.Infof("Handling all inputs\n")
 	for {
 		select {
@@ -317,30 +313,6 @@ func Run() {
 			subDeviceNetworkStatus.ProcessChange(change)
 		}
 	}
-}
-
-func zedmanagerConfigGetAll(ctx *zedmanagerContext) {
-
-	log.Infof("zedmanagerConfigGetAll()\n")
-
-	sub := ctx.subGlobalConfig
-	items := sub.GetAll()
-	for k, c := range items {
-		handleGlobalConfigModify(ctx, k, c)
-	}
-
-	sub = ctx.subDatastoreConfig
-	items = sub.GetAll()
-	for k, c := range items {
-		handleDatastoreConfigModify(ctx, k, c)
-	}
-
-	sub = ctx.subAppInstanceConfig
-	items = sub.GetAll()
-	for k, c := range items {
-		handleAppInstanceConfigModify(ctx, k, c)
-	}
-	log.Infof("zedmanagerConfigGetAll() done\n")
 }
 
 // After zedagent has waited for its config and set restarted for

@@ -141,10 +141,6 @@ func Run() {
 		}
 	}
 
-	// do a get all procedure, pick up the initial set of
-	// configuration items
-	baseOsMgrConfigGetAll(&ctx)
-
 	// start the forever loop for event handling
 	for {
 		select {
@@ -170,36 +166,6 @@ func Run() {
 			ctx.subCertObjDownloadStatus.ProcessChange(change)
 		}
 	}
-}
-
-func baseOsMgrConfigGetAll(ctx *baseOsMgrContext) {
-
-	log.Infof("baseOsMgrConfigGetAll()\n")
-
-	sub := ctx.subGlobalConfig
-	items := sub.GetAll()
-	for k, c := range items {
-		handleGlobalConfigModify(ctx, k, c)
-	}
-
-	sub = ctx.subCertObjConfig
-	items = sub.GetAll()
-	for k, c := range items {
-		handleCertObjConfigModify(ctx, k, c)
-	}
-
-	sub = ctx.subDatastoreConfig
-	items = sub.GetAll()
-	for k, c := range items {
-		handleDatastoreConfigModify(ctx, k, c)
-	}
-
-	sub = ctx.subBaseOsConfig
-	items = sub.GetAll()
-	for k, c := range items {
-		handleBaseOsConfigModify(ctx, k, c)
-	}
-	log.Infof("baseOsMgrConfigGetAll() done\n")
 }
 
 func handleVerifierRestarted(ctxArg interface{}, done bool) {

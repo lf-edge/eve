@@ -75,6 +75,7 @@ type DNSContext struct {
 }
 
 type zedagentContext struct {
+	verifierRestarted        bool              // Information from handleVerifierRestarted
 	getconfigCtx             *getconfigContext // Cross link
 	zbootRestarted           bool              // published by baseosmgr
 	assignableAdapters       *types.AssignableAdapters
@@ -356,6 +357,9 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subBaseOsVerifierStatus.ModifyHandler = handleVerifierStatusModify
+	subBaseOsVerifierStatus.DeleteHandler = handleVerifierStatusDelete
+	subBaseOsVerifierStatus.RestartHandler = handleVerifierRestarted
 	zedagentCtx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
 	subBaseOsVerifierStatus.Activate()
 
@@ -422,6 +426,26 @@ func Run() {
 
 	updateInprogress := isBaseOsCurrentPartitionStateInProgress(&zedagentCtx)
 	log.Infof("Current partition inProgress state is %v\n", updateInprogress)
+
+	log.Infof("Handling initial verifier Status\n")
+	for !zedagentCtx.verifierRestarted {
+		select {
+		case change := <-zedagentCtx.subGlobalConfig.C:
+			zedagentCtx.subGlobalConfig.ProcessChange(change)
+
+		case change := <-zedagentCtx.subBaseOsVerifierStatus.C:
+			zedagentCtx.subBaseOsVerifierStatus.ProcessChange(change)
+			if zedagentCtx.verifierRestarted {
+				log.Infof("Verifier reported restarted\n")
+			}
+		case <-t1.C:
+			// reboot, if not available, within a wait time
+			log.Errorf("verifier is still struck - rebooting\n")
+			execReboot(true)
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
+		}
+	}
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
 	for !DNSctx.DNSinitialized ||
@@ -606,6 +630,38 @@ func Run() {
 func publishDevInfo(ctx *zedagentContext) {
 	PublishDeviceInfoToZedCloud(ctx)
 	ctx.iteration += 1
+}
+
+func handleVerifierRestarted(ctxArg interface{}, done bool) {
+	ctx := ctxArg.(*zedagentContext)
+	log.Infof("handleVerifierRestarted(%v)\n", done)
+	if done {
+		ctx.verifierRestarted = true
+	}
+}
+
+// base os verifier status modify event
+func handleVerifierStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	status := cast.CastVerifyImageStatus(statusArg)
+	if status.Key() != key {
+		log.Errorf("handleVerifierStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
+	}
+	log.Infof("handleVerifierStatusModify for %s\n", status.Safename)
+	// Nothing to do
+}
+
+// base os verifier status delete event
+func handleVerifierStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	status := cast.CastVerifyImageStatus(statusArg)
+	log.Infof("handleVeriferStatusDelete RefCount %d Expired %v for %s\n",
+		status.RefCount, status.Expired, key)
+	// Nothing to do
 }
 
 func handleZbootRestarted(ctxArg interface{}, done bool) {
