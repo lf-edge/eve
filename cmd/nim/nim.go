@@ -49,7 +49,7 @@ var Version = "No version specified"
 func (ctx *nimContext) processArgs() {
 	versionPtr := flag.Bool("v", false, "Print Version of the agent.")
 	debugPtr := flag.Bool("d", false, "Set Debug level")
-	stdoutPtr := flag.Bool("s", false, "Use stdout instead of console")
+	stdoutPtr := flag.Bool("s", false, "Use stdout")
 	flag.Parse()
 
 	ctx.debug = *debugPtr
@@ -83,7 +83,7 @@ func waitForDeviceNetworkConfigFile() string {
 			break
 		}
 		// Tell the world that we have issues
-		types.UpdateLedManagerConfig(10)
+		types.UpdateLedManagerConfig(11)
 		log.Warningln(err)
 		log.Warningf("You need to create this file for this hardware: %s\n",
 			DNCFilename)
@@ -109,18 +109,10 @@ func Run() {
 
 	nimCtx.processArgs()
 
-	// For limited output on console
-	consolef := os.Stdout
-	if !nimCtx.useStdout {
-		consolef, err = os.OpenFile("/dev/console", os.O_RDWR|os.O_APPEND,
-			0666)
-		if err != nil {
-			log.Fatal(err)
-		}
+	if nimCtx.useStdout {
+		multi := io.MultiWriter(logf, os.Stdout)
+		log.SetOutput(multi)
 	}
-	multi := io.MultiWriter(logf, consolef)
-	log.SetOutput(multi)
-
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}

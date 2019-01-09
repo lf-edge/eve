@@ -151,6 +151,7 @@ type ProxyConfig struct {
 	// the various DNS suffixes until we can download a wpad.dat file
 	NetworkProxyEnable bool   // Enable WPAD
 	NetworkProxyURL    string // Complete URL i.e., with /wpad.dat
+	WpadURL            string // The URL determined from DNS
 }
 
 type DhcpConfig struct {
@@ -195,7 +196,6 @@ type DeviceNetworkStatus struct {
 	Ports   []NetworkPortStatus
 }
 
-// XXX used?
 func rotate(arr []string, amount int) []string {
 	if len(arr) == 0 {
 		return []string{}
@@ -219,6 +219,7 @@ func GetMgmtPortsNonFree(globalStatus DeviceNetworkStatus, rotation int) []strin
 	return getMgmtPortsImpl(globalStatus, rotation, false, true)
 }
 
+// Returns the IfNames.
 func getMgmtPortsImpl(globalStatus DeviceNetworkStatus, rotation int,
 	freeOnly bool, nonfreeOnly bool) []string {
 
@@ -328,10 +329,16 @@ func getLocalAddrImpl(globalStatus DeviceNetworkStatus, pickNum int,
 	return addrs[pickNum], nil
 }
 
-func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, ifname string,
+func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, port string,
 	includeLinkLocal bool) ([]NetworkPortStatus, error) {
 
 	var links []NetworkPortStatus
+	var ifname string
+	if port != "" {
+		ifname = AdapterToIfName(&globalStatus, port)
+	} else {
+		ifname = port
+	}
 	for _, us := range globalStatus.Ports {
 		if globalStatus.Version >= DPCIsMgmt &&
 			!us.IsMgmt {
@@ -350,12 +357,14 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, ifname str
 				IfName: us.IfName,
 				//Addrs: us.Addrs,
 				AddrInfoList: us.AddrInfoList,
+				Name:         us.Name,
 			}
 			links = append(links, link)
 		} else {
 			var addrs []AddrInfo
 			var link NetworkPortStatus
 			link.IfName = us.IfName
+			link.Name = us.Name
 			for _, a := range us.AddrInfoList {
 				if !a.Addr.IsLinkLocalUnicast() {
 					addrs = append(addrs, a)
@@ -375,9 +384,9 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, ifname str
 }
 
 // Check if an interface/adapter name is a port owned by zedrouter
-func IsPort(globalStatus DeviceNetworkStatus, ifname string) bool {
+func IsPort(globalStatus DeviceNetworkStatus, port string) bool {
 	for _, us := range globalStatus.Ports {
-		if us.IfName != ifname {
+		if us.Name != port && us.IfName != port {
 			continue
 		}
 		return true
@@ -386,9 +395,9 @@ func IsPort(globalStatus DeviceNetworkStatus, ifname string) bool {
 }
 
 // Check if an interface/adapter name is a management port
-func IsMgmtPort(globalStatus DeviceNetworkStatus, ifname string) bool {
+func IsMgmtPort(globalStatus DeviceNetworkStatus, port string) bool {
 	for _, us := range globalStatus.Ports {
-		if us.IfName != ifname {
+		if us.Name != port && us.IfName != port {
 			continue
 		}
 		if globalStatus.Version >= DPCIsMgmt &&
@@ -401,9 +410,9 @@ func IsMgmtPort(globalStatus DeviceNetworkStatus, ifname string) bool {
 }
 
 // Check if an interface/adapter name is a free management port
-func IsFreeMgmtPort(globalStatus DeviceNetworkStatus, ifname string) bool {
+func IsFreeMgmtPort(globalStatus DeviceNetworkStatus, port string) bool {
 	for _, us := range globalStatus.Ports {
-		if us.IfName != ifname {
+		if us.Name != port && us.IfName != port {
 			continue
 		}
 		if globalStatus.Version >= DPCIsMgmt &&
@@ -415,9 +424,9 @@ func IsFreeMgmtPort(globalStatus DeviceNetworkStatus, ifname string) bool {
 	return false
 }
 
-func GetMgmtPort(globalStatus DeviceNetworkStatus, ifname string) *NetworkPortStatus {
+func GetMgmtPort(globalStatus DeviceNetworkStatus, port string) *NetworkPortStatus {
 	for _, us := range globalStatus.Ports {
-		if us.IfName != ifname {
+		if us.Name != port && us.IfName != port {
 			continue
 		}
 		if globalStatus.Version >= DPCIsMgmt &&
@@ -429,7 +438,7 @@ func GetMgmtPort(globalStatus DeviceNetworkStatus, ifname string) *NetworkPortSt
 	return nil
 }
 
-// Given an address tell me its interface
+// Given an address tell me its IfName
 func GetMgmtPortFromAddr(globalStatus DeviceNetworkStatus, addr net.IP) string {
 	for _, us := range globalStatus.Ports {
 		if globalStatus.Version >= DPCIsMgmt &&
@@ -449,10 +458,16 @@ func GetMgmtPortFromAddr(globalStatus DeviceNetworkStatus, addr net.IP) string {
 // IPv6 link-locals. Only applies to management ports.
 // If free is not set, the addresses from the free management ports are first.
 func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool,
-	ifname string, includeLinkLocal bool) ([]net.IP, error) {
+	port string, includeLinkLocal bool) ([]net.IP, error) {
 
 	var freeAddrs []net.IP
 	var nonfreeAddrs []net.IP
+	var ifname string
+	if port != "" {
+		ifname = AdapterToIfName(&globalStatus, port)
+	} else {
+		ifname = port
+	}
 	for _, us := range globalStatus.Ports {
 		if free && !us.Free {
 			continue
@@ -485,15 +500,15 @@ func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool,
 	}
 }
 
-// Return list of interfaces we will report in info and metrics
+// Return list of port names we will report in info and metrics
 // Always include dbo1x0 for now.
 // XXX What about non-management ports? XXX how will caller tag?
 // Latter will move to a system app when we disaggregate
-func ReportInterfaces(deviceNetworkStatus DeviceNetworkStatus) []string {
+func ReportPorts(deviceNetworkStatus DeviceNetworkStatus) []string {
 	var names []string
 	names = append(names, "dbo1x0")
 	for _, port := range deviceNetworkStatus.Ports {
-		names = append(names, port.IfName)
+		names = append(names, port.Name)
 	}
 	return names
 }
@@ -508,7 +523,29 @@ func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
 		}
 	}
 	return false
+}
 
+// lookup port Name to find IfName
+// Can also match on IfName
+// If not found, return the adapter string
+func AdapterToIfName(deviceNetworkStatus *DeviceNetworkStatus,
+	adapter string) string {
+
+	for _, p := range deviceNetworkStatus.Ports {
+		if p.Name == adapter {
+			log.Infof("AdapterToIfName: found %s for %s\n",
+				p.IfName, adapter)
+			return p.IfName
+		}
+	}
+	for _, p := range deviceNetworkStatus.Ports {
+		if p.IfName == adapter {
+			log.Infof("AdapterToIfName: matched %s\n", adapter)
+			return adapter
+		}
+	}
+	log.Infof("AdapterToIfName: no match for %s\n", adapter)
+	return adapter
 }
 
 type MapServerType uint8
@@ -703,7 +740,7 @@ type NetworkServiceStatus struct {
 	Adapter       string // Ifname or group like "uplink", or empty
 	OpaqueStatus  string
 	LispStatus    ServiceLispConfig
-	AdapterList   []string  // Recorded at time of activate
+	IfNameList    []string  // Recorded at time of activate
 	Subnet        net.IPNet // Recorded at time of activate
 
 	MissingNetwork bool // If AppLink UUID not found

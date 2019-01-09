@@ -4,9 +4,8 @@
 package types
 
 import (
-	"encoding/json"
 	log "github.com/sirupsen/logrus"
-	"io/ioutil"
+	"github.com/zededa/go-provision/pubsub"
 )
 
 type LedBlinkCounter struct {
@@ -14,8 +13,8 @@ type LedBlinkCounter struct {
 }
 
 const (
-	ledConfigDirName  = "/var/tmp/ledmanager/config"
-	ledConfigFileName = ledConfigDirName + "/ledconfig.json"
+	tmpDirName   = "/var/tmp/zededa/"
+	ledConfigKey = "ledconfig"
 )
 
 // Global variable to supress log messages when nothing changes from this
@@ -27,13 +26,9 @@ func UpdateLedManagerConfig(count int) {
 	blinkCount := LedBlinkCounter{
 		BlinkCounter: count,
 	}
-	b, err := json.Marshal(blinkCount)
+	err := pubsub.PublishToDir(tmpDirName, ledConfigKey, &blinkCount)
 	if err != nil {
-		log.Fatal(err, "json Marshal blinkCount")
-	}
-	err = ioutil.WriteFile(ledConfigFileName, b, 0644)
-	if err != nil {
-		log.Errorln("err: ", err, ledConfigFileName)
+		log.Errorln("err: ", err, tmpDirName)
 	} else {
 		if count != lastCount {
 			log.Infof("UpdateLedManagerConfig: set %d\n", count)

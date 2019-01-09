@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
 	log "github.com/sirupsen/logrus"
-	"github.com/vishvananda/netlink"
+	"github.com/eriknordmark/netlink"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
@@ -41,7 +41,7 @@ func MakeDevicePortConfig(globalConfig types.DeviceNetworkConfig) types.DevicePo
 	return config
 }
 
-func isProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
+func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 	if len(proxyConfig.Proxies) == 0 &&
 		proxyConfig.Exceptions == "" &&
 		proxyConfig.Pacfile == "" &&
@@ -117,6 +117,17 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].Name = u.Name
 		globalStatus.Ports[ix].IsMgmt = u.IsMgmt
 		globalStatus.Ports[ix].Free = u.Free
+		// Set fields from the config...
+		globalStatus.Ports[ix].Dhcp = u.Dhcp
+		_, subnet, _ := net.ParseCIDR(u.AddrSubnet)
+		if subnet != nil {
+			globalStatus.Ports[ix].Subnet = *subnet
+		}
+		globalStatus.Ports[ix].Gateway = u.Gateway
+		globalStatus.Ports[ix].DomainName = u.DomainName
+		globalStatus.Ports[ix].NtpServer = u.NtpServer
+		globalStatus.Ports[ix].DnsServers = u.DnsServers
+		// XXX Would net NetworkObjectConfig to set DhcpRange ...
 		// XXX
 		// If device DeviceNetworkStatus already has non-empty proxy
 		// configuration for this port and the new proxy configuration
@@ -124,7 +135,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		// avoid bricking the device.
 		// These kind of checks should go away when we have Network manager
 		// service that tests proxy configuration before trying to apply it.
-		if isProxyConfigEmpty(u.ProxyConfig) {
+		if IsProxyConfigEmpty(u.ProxyConfig) {
 			for _, port := range oldStatus.Ports {
 				if port.IfName == u.IfName {
 					globalStatus.Ports[ix].ProxyConfig = port.ProxyConfig

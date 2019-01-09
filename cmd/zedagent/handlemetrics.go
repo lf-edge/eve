@@ -407,11 +407,12 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 	}
 	// Use the network metrics from zedrouter subscription
 	// Only report stats for the ports plus dbo1x0
-	ifNames := types.ReportInterfaces(*deviceNetworkStatus)
-	for _, ifName := range ifNames {
+	portNames := types.ReportPorts(*deviceNetworkStatus)
+	for _, port := range portNames {
 		var metric *types.NetworkMetric
+		ifname := types.AdapterToIfName(deviceNetworkStatus, port)
 		for _, m := range networkMetrics.MetricList {
-			if ifName == m.IfName {
+			if ifname == m.IfName {
 				metric = &m
 				break
 			}
@@ -421,9 +422,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 		}
 		networkDetails := new(zmet.NetworkMetric)
 		networkDetails.LocalName = metric.IfName
-		// XXX Set IName from SystemAdapter??
-		// XXX would need getconfigCtx.pubDevicePortConfig.Get("zedagent")
-		networkDetails.IName = metric.IfName
+		networkDetails.IName = port
 
 		networkDetails.TxPkts = metric.TxPkts
 		networkDetails.RxPkts = metric.RxPkts
@@ -944,16 +943,17 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	// XXX should get this info from zedrouter subscription
 	// Should we put it all in DeviceNetworkStatus?
 	interfaces, _ := psutilnet.Interfaces()
-	ifNames := types.ReportInterfaces(*deviceNetworkStatus)
-	for _, ifname := range ifNames {
+	portNames := types.ReportPorts(*deviceNetworkStatus)
+	for _, port := range portNames {
+		ifname := types.AdapterToIfName(deviceNetworkStatus, port)
 		for _, interfaceDetail := range interfaces {
-			if ifname == interfaceDetail.Name {
-				ReportDeviceNetworkInfo := getNetInfo(interfaceDetail, true)
-				// XXX look at SystemAdapter to get DevName from config
-				// XXX would need getconfigCtx.pubDevicePortConfig.Get("zedagent")
-				ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
-					ReportDeviceNetworkInfo)
+			if ifname != interfaceDetail.Name {
+				continue
 			}
+			ReportDeviceNetworkInfo := getNetInfo(interfaceDetail, true)
+			ReportDeviceNetworkInfo.DevName = *proto.String(port)
+			ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
+				ReportDeviceNetworkInfo)
 		}
 	}
 	// Fill in global ZInfoDNS dns from /etc/resolv.conf

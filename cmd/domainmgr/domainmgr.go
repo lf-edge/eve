@@ -161,7 +161,7 @@ func Run() {
 		}
 	}
 
-	domainCtx := domainContext{}
+	domainCtx := domainContext{usbAccess: true}
 	// Allow only one concurrent xl create
 	domainCtx.createSema = sema.Create(1)
 	domainCtx.createSema.P(1)
@@ -813,8 +813,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 			log.Fatal("doAssignIoAdaptersToDomain lookup missing: %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
-
-		if ctx.usbAccess && ib.Type == types.IoUSB && ib.PciShort != "" {
+		if ctx.usbAccess && ib.Type == types.IoUSB && !ib.IsPCIBack && ib.PciShort != "" {
 			log.Infof("Assigning %s (%s %s) to %s\n",
 				ib.Name, ib.PciLong, ib.PciShort,
 				status.DomainName)
@@ -2100,6 +2099,9 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 				ib.IsPCIBack = false
 				publishAssignableAdapters = true
 			}
+		} else {
+			// XXX potentially move to PCIBack if not already
+			// and with USB check
 		}
 	}
 	if publishAssignableAdapters {
@@ -2151,7 +2153,7 @@ func updateUsbAccess(ctx *domainContext) {
 			}
 			ib.IsPCIBack = true
 		}
-		if ctx.usbAccess && ib.IsPCIBack && ib.UsedByUUID != nilUUID {
+		if ctx.usbAccess && ib.IsPCIBack && ib.UsedByUUID == nilUUID {
 			log.Infof("Removing %s (%s %s) from pciback\n",
 				ib.Name, ib.PciLong, ib.PciShort)
 			err := pciAssignableRemove(ib.PciLong)
