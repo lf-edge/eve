@@ -409,7 +409,6 @@ func verifyDevicePortConfig(ctx *devicenetwork.DeviceNetworkContext) bool {
 				log.Infof("verifyDevicePortConfig: Tested configuration %s "+
 					"has a timestamp that is earlier than timestapmp of "+
 					"configuration being used %s", ctx.DPCBeingTested, ctx.DPCBeingUsed)
-				ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].LastFailed = time.Now()
 				//ctx.PendDeviceNetworkStatus = nil
 				//ctx.NextDPCIndex = -1
 			}
@@ -417,6 +416,7 @@ func verifyDevicePortConfig(ctx *devicenetwork.DeviceNetworkContext) bool {
 			log.Infof("verifyDevicePortConfig: DPC configuration at DPC list "+
 				"index %d did not work, moving to next valid DPC (if present)",
 				ctx.NextDPCIndex)
+			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].LastFailed = time.Now()
 			ctx.NextDPCIndex += 1
 		}
 	}
