@@ -108,10 +108,16 @@ type DevicePortConfigList struct {
 // A complete set of configuration for all the ports used by zedrouter on the
 // device
 type DevicePortConfig struct {
-	Version      DevicePortConfigVersion
-	Key          string
-	TimePriority time.Time // All zero's is fallback lowest priority
-	Ports        []NetworkPortConfig
+	Version       DevicePortConfigVersion
+	Key           string
+	TimePriority  time.Time // All zero's is fallback lowest priority
+
+	// Times when last ping test Failed/Succeeded.
+	// All zeros means never tested.
+	LastFailed    time.Time
+	LastSucceeded time.Time
+
+	Ports         []NetworkPortConfig
 }
 
 type DevicePortConfigVersion uint32

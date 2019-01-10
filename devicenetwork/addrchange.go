@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/eriknordmark/netlink"
+	"github.com/zededa/go-provision/types"
 	log "github.com/sirupsen/logrus"
 	"net"
 	"reflect"
@@ -57,17 +58,25 @@ func AddrChange(ctx *DeviceNetworkContext, change netlink.AddrUpdate) {
 // The ifname arg can only be used for logging
 func HandleAddressChange(ctx *DeviceNetworkContext, ifname string) {
 	// Check if we have more or less addresses
-	status, _ := MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
-		*ctx.DeviceNetworkStatus)
+	var dnStatus *types.DeviceNetworkStatus
+	if ctx.PendDeviceNetworkStatus != nil {
+		dnStatus = ctx.PendDeviceNetworkStatus
+	} else {
+		dnStatus = ctx.DeviceNetworkStatus
+	}
+	status, _ := MakeDeviceNetworkStatus(*ctx.DevicePortConfig, *dnStatus)
+
 	// XXX if err return means WPAD failed, or port does not exist
 	// XXX add test hook for former
-	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
-		log.Debugf("HandleAddressChange: change for %s from %v to %v\n",
-			ifname, *ctx.DeviceNetworkStatus, status)
-		*ctx.DeviceNetworkStatus = status
-		DoDNSUpdate(ctx)
-	} else {
-		log.Infof("HandleAddressChange: No change for %s\n", ifname)
+	if ctx.PendDeviceNetworkStatus == nil {
+		if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
+			log.Debugf("HandleAddressChange: change for %s from %v to %v\n",
+				ifname, *ctx.DeviceNetworkStatus, status)
+			*ctx.DeviceNetworkStatus = status
+			DoDNSUpdate(ctx)
+		} else {
+			log.Infof("HandleAddressChange: No change for %s\n", ifname)
+		}
 	}
 }
 

@@ -441,8 +441,9 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		if sysAdapter.Addr != "" {
 			ip := net.ParseIP(sysAdapter.Addr)
 			if ip == nil {
-				log.Errorf("parseSystemAdapterConfig: Bad sysAdapter.Addr %s - ignored\n",
-					sysAdapter.Addr)
+				log.Errorf("parseSystemAdapterConfig: Port %s has Bad " +
+				"sysAdapter.Addr %s - ignored\n",
+					sysAdapter.Name, sysAdapter.Addr)
 				continue
 			}
 			addrSubnet := network.Subnet

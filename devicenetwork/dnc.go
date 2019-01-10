@@ -33,6 +33,12 @@ type DeviceNetworkContext struct {
 	PubDeviceNetworkStatus  *pubsub.Publication
 	Changed                 bool
 	SubGlobalConfig         *pubsub.Subscription
+	PendDeviceNetworkStatus *types.DeviceNetworkStatus
+	ParseDPCList            chan bool
+	NextDPCIndex            int
+	DPCBeingUsed            *types.DevicePortConfig
+	DPCBeingTested          *types.DevicePortConfig
+	CloudConnectivityWorks  bool
 }
 
 func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
@@ -159,37 +165,15 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
 	log.Infof("HandleDPCModify: first is %+v\n",
 		ctx.DevicePortConfigList.PortConfigList[0])
-	portConfig = ctx.DevicePortConfigList.PortConfigList[0]
-	ctx.DevicePortConfigTime = portConfig.TimePriority
 
-	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
-		log.Infof("HandleDPCModify DevicePortConfig change from %v to %v\n",
-			*ctx.DevicePortConfig, portConfig)
-		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
-		*ctx.DevicePortConfig = portConfig
+	select {
+	// Do not get blocked
+	case ctx.ParseDPCList <- true:
+	default:
+		log.Infof("HandleDPCModify: Device port configuration list verification already"+
+			" in progress")
 	}
-	// XXX if err return means WPAD failed, or port does not exist
-	// XXX add test hook for former; try lower priority
-	dnStatus, _ := MakeDeviceNetworkStatus(portConfig,
-		*ctx.DeviceNetworkStatus)
 
-	// We use device certs to build tls config to hit the test Ping URL.
-	// NIM starts even before device onboarding finishes. When a device is
-	// booting for the first time and does not have its device certs registered
-	// with cloud yet, a hit to Ping URL would fail.
-	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
-		log.Infof("HandleDPCModify DeviceNetworkStatus change from %v to %v\n",
-			*ctx.DeviceNetworkStatus, dnStatus)
-		pass := VerifyDeviceNetworkStatus(dnStatus, 1)
-		// XXX Can fail if we don't have a DHCP lease yet
-		if true || pass {
-			*ctx.DeviceNetworkStatus = dnStatus
-			DoDNSUpdate(ctx)
-		} else {
-			// XXX try lower priority
-			// XXX add retry of higher priority in main
-		}
-	}
 	log.Infof("HandleDPCModify done for %s\n", key)
 }
 
