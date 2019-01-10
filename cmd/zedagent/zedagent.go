@@ -3,33 +3,22 @@
 
 // zedAgent interfaces with zedcloud for
 //   * config sync
-//   * metric/info pubish
+//   * metric/info publish
 // app instance config is pushed to zedmanager for orchestration
-// event based app instance/device info published to ZedCloud
+// baseos/certs config is pushed to baseosmgr for orchestration
+// event based baseos/app instance/device info published to ZedCloud
 // periodic status/metric published to zedCloud
-// zeagent orchestrates base os/certs installation
 
-// zedagent handles the following orchestration
-//   * base os config/status          <zedagent>   / <baseos> / <config | status>
-//   * certs config/status            <zedagent>   / certs>   / <config | status>
-//   * base os download config/status <downloader> / <baseos> / <config | status>
-//   * certs download config/status   <downloader> / <certs>  / <config | status>
-//   * base os verifier config/status <verifier>   / <baseos> / <config | status>
+// zedagent handles the following configuration
+//   * app instance config/status  <zedagent>   / <appimg> / <config | status>
+//   * base os config/status       <zedagent>   / <baseos> / <config | status>
+//   * certs config/status         <zedagent>   / certs>   / <config | status>
 // <base os>
-//   <zedagent>   <baseos> <config> --> <zedagent>    <baseos> <status>
-//				<download>...       --> <downloader>  <baseos> <config>
-//   <downloader> <baseos> <config> --> <downloader>  <baseos> <status>
-//				<downloaded>...     --> <downloader>  <baseos> <status>
-//								    --> <zedagent>    <baseos> <status>
-//								    --> <verifier>    <baseos> <config>
-//				<verified>  ...     --> <verifier>    <baseos> <status>
-//								    --> <zedagent>    <baseos> <status>
+//   <zedagent>  <baseos> <config> --> <baseosmgr>  <baseos> <status>
 // <certs>
-//   <zedagent>   <certs> <config> --> <zedagent>    <certs> <status>
-//				<download>...      --> <downloader>  <certs> <config>
-//   <downloader> <certs> <config> --> <downloader>  <certs> <status>
-//				<downloaded>...    --> <downloader>  <certs> <status>
-//								   --> <zedagent>    <certs> <status>
+//   <zedagent>  <certs> <config> --> <baseosmgr>   <certs> <status>
+// <app image>
+//   <zedagent>  <appimage> <config> --> <zedmanager> <appimage> <status>
 
 package zedagent
 
@@ -37,14 +26,12 @@ import (
 	"flag"
 	"fmt"
 	"github.com/google/go-cmp/cmp"
-	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/zboot"
 	"github.com/zededa/go-provision/zedcloud"
 	"os"
 	"time"
@@ -61,6 +48,8 @@ const (
 	objectDownloadDirname = persistDir + "/downloads"
 	certificateDirname    = persistDir + "/certs"
 	checkpointDirname     = persistDir + "/checkpoint"
+
+	partitionCount = 2
 )
 
 // Set from Makefile
@@ -86,8 +75,9 @@ type DNSContext struct {
 }
 
 type zedagentContext struct {
-	getconfigCtx             *getconfigContext // Cross link
 	verifierRestarted        bool              // Information from handleVerifierRestarted
+	getconfigCtx             *getconfigContext // Cross link
+	zbootRestarted           bool              // published by baseosmgr
 	assignableAdapters       *types.AssignableAdapters
 	subAssignableAdapters    *pubsub.Subscription
 	iteration                int
@@ -95,22 +85,16 @@ type zedagentContext struct {
 	subNetworkServiceStatus  *pubsub.Subscription
 	subDomainStatus          *pubsub.Subscription
 	subCertObjConfig         *pubsub.Subscription
-	pubCertObjStatus         *pubsub.Publication
 	TriggerDeviceInfo        bool
-	subBaseOsConfig          *pubsub.Subscription
 	subBaseOsStatus          *pubsub.Subscription
-	subDatastoreConfig       *pubsub.Subscription
-	pubBaseOsStatus          *pubsub.Publication
-	pubBaseOsDownloadConfig  *pubsub.Publication
 	subBaseOsDownloadStatus  *pubsub.Subscription
-	pubCertObjDownloadConfig *pubsub.Publication
 	subCertObjDownloadStatus *pubsub.Subscription
-	pubBaseOsVerifierConfig  *pubsub.Publication
 	subBaseOsVerifierStatus  *pubsub.Subscription
 	subAppImgDownloadStatus  *pubsub.Subscription
 	subAppImgVerifierStatus  *pubsub.Subscription
 	subNetworkServiceMetrics *pubsub.Subscription
 	subGlobalConfig          *pubsub.Subscription
+	subZbootStatus           *pubsub.Subscription
 }
 
 var debug = false
@@ -244,14 +228,6 @@ func Run() {
 	pubCertObjConfig.ClearRestarted()
 	getconfigCtx.pubCertObjConfig = pubCertObjConfig
 
-	pubCertObjStatus, err := pubsub.Publish(agentName,
-		types.CertObjStatus{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubCertObjStatus.ClearRestarted()
-	zedagentCtx.pubCertObjStatus = pubCertObjStatus
-
 	pubBaseOsConfig, err := pubsub.Publish(agentName,
 		types.BaseOsConfig{})
 	if err != nil {
@@ -259,38 +235,6 @@ func Run() {
 	}
 	pubBaseOsConfig.ClearRestarted()
 	getconfigCtx.pubBaseOsConfig = pubBaseOsConfig
-
-	pubBaseOsStatus, err := pubsub.Publish(agentName,
-		types.BaseOsStatus{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubBaseOsStatus.ClearRestarted()
-	zedagentCtx.pubBaseOsStatus = pubBaseOsStatus
-
-	pubBaseOsDownloadConfig, err := pubsub.PublishScope(agentName,
-		baseOsObj, types.DownloaderConfig{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubBaseOsDownloadConfig.ClearRestarted()
-	zedagentCtx.pubBaseOsDownloadConfig = pubBaseOsDownloadConfig
-
-	pubCertObjDownloadConfig, err := pubsub.PublishScope(agentName,
-		certObj, types.DownloaderConfig{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubCertObjDownloadConfig.ClearRestarted()
-	zedagentCtx.pubCertObjDownloadConfig = pubCertObjDownloadConfig
-
-	pubBaseOsVerifierConfig, err := pubsub.PublishScope(agentName,
-		baseOsObj, types.VerifyImageConfig{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubBaseOsVerifierConfig.ClearRestarted()
-	zedagentCtx.pubBaseOsVerifierConfig = pubBaseOsVerifierConfig
 
 	pubDatastoreConfig, err := pubsub.Publish(agentName,
 		types.DatastoreConfig{})
@@ -364,30 +308,19 @@ func Run() {
 	zedagentCtx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
 
-	// Look for CertObjConfig from ourselves! XXX introduce separate
-	// certmanager?
-	subCertObjConfig, err := pubsub.Subscribe("zedagent",
-		types.CertObjConfig{}, false, &zedagentCtx)
+	// Look for zboot status
+	subZbootStatus, err := pubsub.Subscribe("baseosmgr",
+		types.ZbootStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subCertObjConfig.ModifyHandler = handleCertObjConfigModify
-	subCertObjConfig.DeleteHandler = handleCertObjConfigDelete
-	zedagentCtx.subCertObjConfig = subCertObjConfig
-	subCertObjConfig.Activate()
+	subZbootStatus.ModifyHandler = handleZbootStatusModify
+	subZbootStatus.DeleteHandler = handleZbootStatusDelete
+	subZbootStatus.RestartHandler = handleZbootRestarted
+	zedagentCtx.subZbootStatus = subZbootStatus
+	subZbootStatus.Activate()
 
-	// Look for BaseOsConfig and BaseOsStatus from ourselves!
-	subBaseOsConfig, err := pubsub.Subscribe("zedagent",
-		types.BaseOsConfig{}, false, &zedagentCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subBaseOsConfig.ModifyHandler = handleBaseOsConfigModify
-	subBaseOsConfig.DeleteHandler = handleBaseOsConfigDelete
-	zedagentCtx.subBaseOsConfig = subBaseOsConfig
-	subBaseOsConfig.Activate()
-
-	subBaseOsStatus, err := pubsub.Subscribe("zedagent",
+	subBaseOsStatus, err := pubsub.Subscribe("baseosmgr",
 		types.BaseOsStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
@@ -397,40 +330,28 @@ func Run() {
 	zedagentCtx.subBaseOsStatus = subBaseOsStatus
 	subBaseOsStatus.Activate()
 
-	// Look for DatastoreConfig from ourselves!
-	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
-		types.DatastoreConfig{}, false, &zedagentCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
-	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
-	zedagentCtx.subDatastoreConfig = subDatastoreConfig
-	subDatastoreConfig.Activate()
-
 	// Look for DownloaderStatus from downloader
+	// used only for downloader storage stats collection
 	subBaseOsDownloadStatus, err := pubsub.SubscribeScope("downloader",
 		baseOsObj, types.DownloaderStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subBaseOsDownloadStatus.ModifyHandler = handleDownloadStatusModify
-	subBaseOsDownloadStatus.DeleteHandler = handleDownloadStatusDelete
 	zedagentCtx.subBaseOsDownloadStatus = subBaseOsDownloadStatus
 	subBaseOsDownloadStatus.Activate()
 
 	// Look for DownloaderStatus from downloader
+	// used only for downloader storage stats collection
 	subCertObjDownloadStatus, err := pubsub.SubscribeScope("downloader",
 		certObj, types.DownloaderStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subCertObjDownloadStatus.ModifyHandler = handleDownloadStatusModify
-	subCertObjDownloadStatus.DeleteHandler = handleDownloadStatusDelete
 	zedagentCtx.subCertObjDownloadStatus = subCertObjDownloadStatus
 	subCertObjDownloadStatus.Activate()
 
-	// Look for VerifyImageStatus from verifier
+	// Look for VerifyBaseOsImageStatus from verifier
+	// used only for verifier storage stats collection
 	subBaseOsVerifierStatus, err := pubsub.SubscribeScope("verifier",
 		baseOsObj, types.VerifyImageStatus{}, false, &zedagentCtx)
 	if err != nil {
@@ -443,24 +364,22 @@ func Run() {
 	subBaseOsVerifierStatus.Activate()
 
 	// Look for VerifyImageStatus from verifier
+	// used only for verifier storage stats collection
 	subAppImgVerifierStatus, err := pubsub.SubscribeScope("verifier",
 		appImgObj, types.VerifyImageStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppImgVerifierStatus.ModifyHandler = handleVerifierStatusModify
-	subAppImgVerifierStatus.DeleteHandler = handleVerifierStatusDelete
 	zedagentCtx.subAppImgVerifierStatus = subAppImgVerifierStatus
 	subAppImgVerifierStatus.Activate()
 
 	// Look for DownloaderStatus from downloader for metric reporting
+	// used only for downloader storage stats collection
 	subAppImgDownloadStatus, err := pubsub.SubscribeScope("downloader",
 		appImgObj, types.DownloaderStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppImgDownloadStatus.ModifyHandler = handleDownloadStatusModify
-	subAppImgDownloadStatus.DeleteHandler = handleDownloadStatusDelete
 	zedagentCtx.subAppImgDownloadStatus = subAppImgDownloadStatus
 	subAppImgDownloadStatus.Activate()
 
@@ -481,15 +400,33 @@ func Run() {
 	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	updateInprogress := zboot.IsCurrentPartitionStateInProgress()
 	time1 := time.Duration(globalConfig.ResetIfCloudGoneTime)
 	t1 := time.NewTimer(time1 * time.Second)
 	log.Infof("Started timer for reset for %d seconds\n", time1)
 	time2 := time.Duration(globalConfig.FallbackIfCloudGoneTime)
-	log.Infof("Started timer for fallback (%v) reset for %d seconds\n",
-		updateInprogress, time2)
+	log.Infof("Started timer for fallback,  reset for %d seconds\n", time2)
 	t2 := time.NewTimer(time2 * time.Second)
 
+	// wait till, zboot status is ready
+	for !zedagentCtx.zbootRestarted {
+		select {
+		case change := <-subZbootStatus.C:
+			subZbootStatus.ProcessChange(change)
+			if zedagentCtx.zbootRestarted {
+				log.Infof("Zboot reported restarted\n")
+			}
+		case <-t1.C:
+			// reboot, if not available, within a wait time
+			log.Errorf("zboot status is still not available - rebooting\n")
+			execReboot(true)
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
+		}
+	}
+
+	updateInprogress := isBaseOsCurrentPartitionStateInProgress(&zedagentCtx)
+	log.Infof("Current partition inProgress state is %v\n", updateInprogress)
+	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
 	for !DNSctx.DNSinitialized ||
 		!zedagentCtx.assignableAdapters.Initialized {
@@ -503,8 +440,8 @@ func Run() {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subBaseOsVerifierStatus.C:
-			subBaseOsVerifierStatus.ProcessChange(change)
+		case change := <-zedagentCtx.subBaseOsVerifierStatus.C:
+			zedagentCtx.subBaseOsVerifierStatus.ProcessChange(change)
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
@@ -599,46 +536,25 @@ func Run() {
 		}
 	}
 
-	// start the config fetch tasks after we've heard from verifier
-	go configTimerTask(handleChannel, &getconfigCtx)
+	// start the config fetch tasks, when zboot status is ready
+	go configTimerTask(handleChannel, &getconfigCtx, updateInprogress)
 	configTickerHandle := <-handleChannel
 	// XXX close handleChannels?
 	getconfigCtx.configTickerHandle = configTickerHandle
 
 	for {
 		select {
+		case change := <-subZbootStatus.C:
+			subZbootStatus.ProcessChange(change)
+
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subCertObjConfig.C:
-			subCertObjConfig.ProcessChange(change)
 
 		case change := <-subAppInstanceStatus.C:
 			subAppInstanceStatus.ProcessChange(change)
 
-		case change := <-subBaseOsConfig.C:
-			subBaseOsConfig.ProcessChange(change)
-
 		case change := <-subBaseOsStatus.C:
 			subBaseOsStatus.ProcessChange(change)
-
-		case change := <-subDatastoreConfig.C:
-			subDatastoreConfig.ProcessChange(change)
-
-		case change := <-subBaseOsDownloadStatus.C:
-			subBaseOsDownloadStatus.ProcessChange(change)
-
-		case change := <-subBaseOsVerifierStatus.C:
-			subBaseOsVerifierStatus.ProcessChange(change)
-
-		case change := <-subAppImgVerifierStatus.C:
-			subAppImgVerifierStatus.ProcessChange(change)
-
-		case change := <-subAppImgDownloadStatus.C:
-			subAppImgDownloadStatus.ProcessChange(change)
-
-		case change := <-subCertObjDownloadStatus.C:
-			subCertObjDownloadStatus.ProcessChange(change)
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
@@ -724,8 +640,7 @@ func Run() {
 }
 
 func publishDevInfo(ctx *zedagentContext) {
-	PublishDeviceInfoToZedCloud(ctx.subBaseOsStatus, ctx.assignableAdapters,
-		ctx.iteration)
+	PublishDeviceInfoToZedCloud(ctx)
 	ctx.iteration += 1
 }
 
@@ -734,6 +649,38 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
 	log.Infof("handleVerifierRestarted(%v)\n", done)
 	if done {
 		ctx.verifierRestarted = true
+	}
+}
+
+// base os verifier status modify event
+func handleVerifierStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	status := cast.CastVerifyImageStatus(statusArg)
+	if status.Key() != key {
+		log.Errorf("handleVerifierStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return
+	}
+	log.Infof("handleVerifierStatusModify for %s\n", status.Safename)
+	// Nothing to do
+}
+
+// base os verifier status delete event
+func handleVerifierStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	status := cast.CastVerifyImageStatus(statusArg)
+	log.Infof("handleVeriferStatusDelete RefCount %d Expired %v for %s\n",
+		status.RefCount, status.Expired, key)
+	// Nothing to do
+}
+
+func handleZbootRestarted(ctxArg interface{}, done bool) {
+	ctx := ctxArg.(*zedagentContext)
+	log.Infof("handleZbootRestarted(%v)\n", done)
+	if done {
+		ctx.zbootRestarted = true
 	}
 }
 
@@ -862,151 +809,7 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
-// Wrappers around handleBaseOsCreate/Modify/Delete
-
-func handleBaseOsConfigModify(ctxArg interface{}, key string, configArg interface{}) {
-	ctx := ctxArg.(*zedagentContext)
-	config := cast.CastBaseOsConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleBaseOsConfigModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
-		return
-	}
-	status := lookupBaseOsStatus(ctx, key)
-	if status == nil {
-		handleBaseOsCreate(ctx, key, &config)
-	} else {
-		handleBaseOsModify(ctx, key, &config, status)
-	}
-	log.Infof("handleBaseOsConfigModify(%s) done\n", key)
-}
-
-func handleBaseOsConfigDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Infof("handleBaseOsConfigDelete(%s)\n", key)
-	ctx := ctxArg.(*zedagentContext)
-	status := lookupBaseOsStatus(ctx, key)
-	if status == nil {
-		log.Infof("handleBaseOsConfigDelete: unknown %s\n", key)
-		return
-	}
-	handleBaseOsDelete(ctx, key, status)
-	log.Infof("handleBaseOsConfigDelete(%s) done\n", key)
-}
-
-// base os config/status event handlers
-// base os config create event
-func handleBaseOsCreate(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	config := cast.CastBaseOsConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleBaseOsCreate key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	uuidStr := config.Key()
-	ctx := ctxArg.(*zedagentContext)
-
-	log.Infof("handleBaseOsCreate for %s\n", uuidStr)
-	status := types.BaseOsStatus{
-		UUIDandVersion: config.UUIDandVersion,
-		BaseOsVersion:  config.BaseOsVersion,
-		ConfigSha256:   config.ConfigSha256,
-	}
-
-	status.StorageStatusList = make([]types.StorageStatus,
-		len(config.StorageConfigList))
-
-	for i, sc := range config.StorageConfigList {
-		ss := &status.StorageStatusList[i]
-		ss.Name = sc.Name
-		ss.ImageSha256 = sc.ImageSha256
-		ss.Target = sc.Target
-	}
-	handleBaseOsCreate2(ctx, config, status)
-}
-
-func handleBaseOsCreate2(ctx *zedagentContext, config types.BaseOsConfig,
-	status types.BaseOsStatus) {
-
-	// Check total and activated counts
-	err := validateBaseOsConfig(ctx, config)
-	if err != nil {
-		errStr := fmt.Sprintf("%v", err)
-		log.Errorln(errStr)
-		status.Error = errStr
-		status.ErrorTime = time.Now()
-		publishBaseOsStatus(ctx, &status)
-		return
-	}
-
-	baseOsGetActivationStatus(ctx, &status)
-	publishBaseOsStatus(ctx, &status)
-
-	baseOsHandleStatusUpdate(ctx, &config, &status)
-}
-
-// base os config modify event
-func handleBaseOsModify(ctxArg interface{}, key string,
-	configArg interface{}, statusArg interface{}) {
-	config := cast.CastBaseOsConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	status := cast.CastBaseOsStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
-	uuidStr := config.Key()
-	ctx := ctxArg.(*zedagentContext)
-
-	log.Infof("handleBaseOsModify for %s Activate %v\n",
-		config.BaseOsVersion, config.Activate)
-	if config.UUIDandVersion.Version == status.UUIDandVersion.Version &&
-		config.Activate == status.Activated {
-		log.Infof("Same version %v for %s\n",
-			config.UUIDandVersion.Version, uuidStr)
-		return
-	}
-
-	// Check total and activated counts
-	err := validateBaseOsConfig(ctx, config)
-	if err != nil {
-		errStr := fmt.Sprintf("%v", err)
-		log.Errorln(errStr)
-		status.Error = errStr
-		status.ErrorTime = time.Now()
-		publishBaseOsStatus(ctx, &status)
-		return
-	}
-
-	// update the version field, uuids being the same
-	status.UUIDandVersion = config.UUIDandVersion
-	publishBaseOsStatus(ctx, &status)
-
-	baseOsHandleStatusUpdate(ctx, &config, &status)
-}
-
-// base os config delete event
-func handleBaseOsDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-	status := configArg.(*types.BaseOsStatus)
-	if status.Key() != key {
-		log.Errorf("handleBaseOsDelete key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
-	ctx := ctxArg.(*zedagentContext)
-
-	log.Infof("handleBaseOsDelete for %s\n", status.BaseOsVersion)
-	removeBaseOsConfig(ctx, status.Key())
-}
-
+// base os status event handlers
 // Report BaseOsStatus to zedcloud
 
 func handleBaseOsStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
@@ -1016,6 +819,8 @@ func handleBaseOsStatusModify(ctxArg interface{}, key string, statusArg interfac
 		log.Errorf("handleBaseOsStatusModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.Key(), status)
 		return
 	}
+	doBaseOsZedCloudTestComplete(ctx, status)
+	doBaseOsDeviceReboot(ctx, status)
 	publishDevInfo(ctx)
 	log.Infof("handleBaseOsStatusModify(%s) done\n", key)
 }
@@ -1032,204 +837,6 @@ func handleBaseOsStatusDelete(ctxArg interface{}, key string,
 	}
 	publishDevInfo(ctx)
 	log.Infof("handleBaseOsStatusDelete(%s) done\n", key)
-}
-
-// Wrappers around handleCertObjCreate/Modify/Delete
-
-func handleCertObjConfigModify(ctxArg interface{}, key string, configArg interface{}) {
-	ctx := ctxArg.(*zedagentContext)
-	config := cast.CastCertObjConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleCertObjConfigModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
-		return
-	}
-	status := lookupCertObjStatus(ctx, key)
-	if status == nil {
-		handleCertObjCreate(ctx, key, &config)
-	} else {
-		handleCertObjModify(ctx, key, &config, status)
-	}
-	log.Infof("handleCertObjConfigModify(%s) done\n", key)
-}
-
-func handleCertObjConfigDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Infof("handleCertObjConfigDelete(%s)\n", key)
-	ctx := ctxArg.(*zedagentContext)
-	status := lookupCertObjStatus(ctx, key)
-	if status == nil {
-		log.Infof("handleCertObjConfigDelete: unknown %s\n", key)
-		return
-	}
-	handleCertObjDelete(ctx, key, status)
-	log.Infof("handleCertObjConfigDelete(%s) done\n", key)
-}
-
-// certificate config/status event handlers
-// certificate config create event
-func handleCertObjCreate(ctx *zedagentContext, key string, config *types.CertObjConfig) {
-
-	log.Infof("handleCertObjCreate for %s\n", key)
-
-	status := types.CertObjStatus{
-		UUIDandVersion: config.UUIDandVersion,
-		ConfigSha256:   config.ConfigSha256,
-	}
-
-	status.StorageStatusList = make([]types.StorageStatus,
-		len(config.StorageConfigList))
-
-	for i, sc := range config.StorageConfigList {
-		ss := &status.StorageStatusList[i]
-		ss.Name = sc.Name
-		ss.ImageSha256 = sc.ImageSha256
-		ss.FinalObjDir = certificateDirname
-	}
-
-	publishCertObjStatus(ctx, &status)
-
-	certObjHandleStatusUpdate(ctx, config, &status)
-}
-
-// certificate config modify event
-func handleCertObjModify(ctx *zedagentContext, key string, config *types.CertObjConfig, status *types.CertObjStatus) {
-
-	uuidStr := config.Key()
-	log.Infof("handleCertObjModify for %s\n", uuidStr)
-
-	// XXX:FIXME, do we
-	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		log.Infof("Same version %v for %s\n",
-			config.UUIDandVersion.Version, key)
-		return
-	}
-
-	status.UUIDandVersion = config.UUIDandVersion
-	publishCertObjStatus(ctx, status)
-
-	certObjHandleStatusUpdate(ctx, config, status)
-}
-
-// certificate config delete event
-func handleCertObjDelete(ctx *zedagentContext, key string,
-	status *types.CertObjStatus) {
-
-	uuidStr := status.Key()
-	log.Infof("handleCertObjDelete for %s\n", uuidStr)
-	removeCertObjConfig(ctx, uuidStr)
-}
-
-func handleDownloadStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := cast.CastDownloaderStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleDownloadStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
-	ctx := ctxArg.(*zedagentContext)
-	log.Infof("handleDownloadStatusModify for %s\n",
-		status.Safename)
-	updateDownloaderStatus(ctx, &status)
-}
-
-// base os download status delete event
-func handleDownloadStatusDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := cast.CastDownloaderStatus(statusArg)
-	log.Infof("handleDownloadStatusDelete RefCount %d Expired %v for %s\n",
-		status.RefCount, status.Expired, key)
-	// Nothing to do
-}
-
-func handleVerifierStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := cast.CastVerifyImageStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleVerifierStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
-	ctx := ctxArg.(*zedagentContext)
-	log.Infof("handleVerifierStatusModify for %s\n", status.Safename)
-	updateVerifierStatus(ctx, &status)
-}
-
-func handleVerifierStatusDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	status := cast.CastVerifyImageStatus(statusArg)
-	log.Infof("handleVeriferStatusDelete RefCount %d Expired %v for %s\n",
-		status.RefCount, status.Expired, key)
-	// Nothing to do
-}
-
-func handleDatastoreConfigModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	ctx := ctxArg.(*zedagentContext)
-	config := cast.CastDatastoreConfig(configArg)
-	checkAndRecreateBaseOs(ctx, config.UUID)
-	log.Infof("handleDatastoreConfigModify for %s\n", key)
-}
-
-func handleDatastoreConfigDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Infof("handleDatastoreConfigDelete for %s\n", key)
-}
-
-// Called when a DatastoreConfig is added
-// Walk all BaseOsStatus (XXX Cert?) looking for MissingDatastore, then
-// check if the DatastoreId matches.
-func checkAndRecreateBaseOs(ctx *zedagentContext, datastore uuid.UUID) {
-
-	log.Infof("checkAndRecreateBaseOs(%s)\n", datastore.String())
-	pub := ctx.pubBaseOsStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := cast.CastBaseOsStatus(st)
-		if !status.MissingDatastore {
-			continue
-		}
-		log.Infof("checkAndRecreateBaseOs(%s) missing for %s\n",
-			datastore.String(), status.BaseOsVersion)
-
-		config := lookupBaseOsConfig(ctx, status.Key())
-		if config == nil {
-			log.Warnf("checkAndRecreatebaseOs(%s) no config for %s\n",
-				datastore.String(), status.BaseOsVersion)
-			continue
-		}
-
-		matched := false
-		for _, ss := range config.StorageConfigList {
-			if ss.DatastoreId != datastore {
-				continue
-			}
-			log.Infof("checkAndRecreateBaseOs(%s) found ss %s for %s\n",
-				datastore.String(), ss.Name,
-				status.BaseOsVersion)
-			matched = true
-		}
-		if !matched {
-			continue
-		}
-		log.Infof("checkAndRecreateBaseOs(%s) recreating for %s\n",
-			datastore.String(), status.BaseOsVersion)
-		if status.Error != "" {
-			log.Infof("checkAndRecreateBaseOs(%s) remove error %s for %s\n",
-				datastore.String(), status.Error,
-				status.BaseOsVersion)
-			status.Error = ""
-			status.ErrorTime = time.Time{}
-		}
-		handleBaseOsCreate2(ctx, *config, status)
-	}
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {
@@ -1331,4 +938,20 @@ func handleAADelete(ctxArg interface{}, key string,
 	ctx.assignableAdapters.Initialized = false
 	publishDevInfo(ctx)
 	log.Infof("handleAADelete() done\n")
+}
+
+func handleZbootStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	if isBaseOsValidPartitionLabel(key) {
+		log.Infof("handleZbootStatusModify: for %s\n", key)
+	}
+	// Nothing to do
+}
+
+func handleZbootStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	if isBaseOsValidPartitionLabel(key) {
+		log.Infof("handleZbootStatusDelete: for %s\n", key)
+	}
+	// Nothing to do
 }

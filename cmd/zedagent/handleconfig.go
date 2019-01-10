@@ -129,15 +129,15 @@ func handleConfigInit() {
 
 // Run a periodic fetch of the config
 func configTimerTask(handleChannel chan interface{},
-	getconfigCtx *getconfigContext) {
+	getconfigCtx *getconfigContext, updateInprogress bool) {
 
 	configUrl := serverName + "/" + configApi
 	getconfigCtx.startTime = time.Now()
 	getconfigCtx.lastReceivedConfigFromCloud = getconfigCtx.startTime
 	iteration := 0
-	updateInprogress := zboot.IsCurrentPartitionStateInProgress()
+	ctx := getconfigCtx.zedagentCtx
 	rebootFlag := getLatestConfig(configUrl, iteration,
-		&updateInprogress, getconfigCtx)
+		updateInprogress, getconfigCtx)
 
 	interval := time.Duration(globalConfig.ConfigInterval) * time.Second
 	max := float64(interval)
@@ -150,8 +150,14 @@ func configTimerTask(handleChannel chan interface{},
 		iteration += 1
 		// reboot flag is not set, go fetch new config
 		if !rebootFlag {
+			// check whether the device is still in progress state
+			// once activated, it does not go back to the inprogress
+			// state
+			if updateInprogress {
+				updateInprogress = isBaseOsCurrentPartitionStateInProgress(ctx)
+			}
 			rebootFlag = getLatestConfig(configUrl, iteration,
-				&updateInprogress, getconfigCtx)
+				updateInprogress, getconfigCtx)
 		} else {
 			log.Infof("rebootFlag set; not getting config\n")
 		}
@@ -180,11 +186,11 @@ func updateConfigTimer(tickerHandle interface{}) {
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
 // Returns a rebootFlag
-func getLatestConfig(url string, iteration int, updateInprogress *bool,
+func getLatestConfig(url string, iteration int, updateInprogress bool,
 	getconfigCtx *getconfigContext) bool {
 
 	log.Debugf("getLastestConfig(%s, %d, %v)\n", url, iteration,
-		*updateInprogress)
+		updateInprogress)
 
 	// Did we exceed the time limits?
 	timePassed := time.Since(getconfigCtx.lastReceivedConfigFromCloud)
@@ -197,7 +203,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 		execReboot(true)
 		return true
 	}
-	if *updateInprogress {
+	if updateInprogress {
 		fallbackLimit := time.Second * time.Duration(globalConfig.FallbackIfCloudGoneTime)
 		if timePassed > fallbackLimit {
 			log.Errorf("Exceeded fallback outage for cloud connectivity by %d seconds- rebooting\n",
@@ -219,7 +225,7 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 		// If we didn't yet get a config, then look for a file
 		// XXX should we try a few times?
 		// XXX different policy if updateInProgress? No fallback for now
-		if !*updateInprogress &&
+		if !updateInprogress &&
 			!getconfigCtx.readSavedConfig &&
 			getconfigCtx.lastReceivedConfigFromCloud == getconfigCtx.startTime {
 
@@ -241,27 +247,17 @@ func getLatestConfig(url string, iteration int, updateInprogress *bool,
 	// active if it was inprogress
 	// XXX down the road we want more diagnostics and validation
 	// before we do this.
-	if *updateInprogress && zboot.IsCurrentPartitionStateInProgress() {
+	if updateInprogress {
 		// Wait for a bit to detect an agent crash. Should run for
 		// at least N minutes to make sure we don't hit a watchdog.
 		timePassed := time.Since(getconfigCtx.startTime)
 		successLimit := time.Second *
 			time.Duration(globalConfig.MintimeUpdateSuccess)
-		curPart := zboot.GetCurrentPartition()
+		curPart := getBaseOsCurrentPartition(getconfigCtx.zedagentCtx)
 		if timePassed < successLimit {
-			log.Infof("getLastestConfig, curPart %s inprogress waiting for %d seconds\n",
-				curPart,
-				(successLimit-timePassed)/time.Second)
+			log.Infof("getLastestConfig, curPart %s inprogress waiting for %d seconds\n", curPart, (successLimit-timePassed)/time.Second)
 		} else {
-			log.Infof("getLastestConfig, curPart %s inprogress; marking active\n",
-				curPart)
-			if err := zboot.MarkOtherPartitionStateActive(); err != nil {
-				log.Errorf("mark other active failed %s\n", err)
-			} else {
-				// Update and publish the change
-				baseOsGetActivationStatusAll(getconfigCtx.zedagentCtx)
-				*updateInprogress = false
-			}
+			initiateBaseOsZedCloudTestComplete(getconfigCtx)
 		}
 	}
 

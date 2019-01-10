@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
 	log "github.com/sirupsen/logrus"
-	"github.com/vishvananda/netlink"
+	"github.com/eriknordmark/netlink"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
@@ -41,7 +41,7 @@ func MakeDevicePortConfig(globalConfig types.DeviceNetworkConfig) types.DevicePo
 	return config
 }
 
-func isProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
+func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 	if len(proxyConfig.Proxies) == 0 &&
 		proxyConfig.Exceptions == "" &&
 		proxyConfig.Pacfile == "" &&
@@ -118,6 +118,17 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].IsMgmt = u.IsMgmt
 		globalStatus.Ports[ix].Free = u.Free
 		globalStatus.Ports[ix].ProxyConfig = u.ProxyConfig
+		// Set fields from the config...
+		globalStatus.Ports[ix].Dhcp = u.Dhcp
+		_, subnet, _ := net.ParseCIDR(u.AddrSubnet)
+		if subnet != nil {
+			globalStatus.Ports[ix].Subnet = *subnet
+		}
+		globalStatus.Ports[ix].Gateway = u.Gateway
+		globalStatus.Ports[ix].DomainName = u.DomainName
+		globalStatus.Ports[ix].NtpServer = u.NtpServer
+		globalStatus.Ports[ix].DnsServers = u.DnsServers
+		// XXX Would net NetworkObjectConfig to set DhcpRange ...
 		// XXX should we get statics?
 		link, err := netlink.LinkByName(u.IfName)
 		if err != nil {

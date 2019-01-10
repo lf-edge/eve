@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"github.com/zededa/go-provision/cmd/client"
+	"github.com/zededa/go-provision/cmd/diag"
 	"github.com/zededa/go-provision/cmd/domainmgr"
 	"github.com/zededa/go-provision/cmd/downloader"
 	"github.com/zededa/go-provision/cmd/hardwaremodel"
@@ -19,6 +20,7 @@ import (
 	"github.com/zededa/go-provision/cmd/zedagent"
 	"github.com/zededa/go-provision/cmd/zedmanager"
 	"github.com/zededa/go-provision/cmd/zedrouter"
+	"github.com/zededa/go-provision/cmd/baseosmgr"
 	"os"
 	"path/filepath"
 )
@@ -28,6 +30,8 @@ func main() {
 	switch basename {
 	case "client":
 		client.Run()
+	case "diag":
+		diag.Run()
 	case "domainmgr":
 		domainmgr.Run()
 	case "downloader":
@@ -54,6 +58,8 @@ func main() {
 		zedrouter.Run()
 	case "ipcmonitor":
 		ipcmonitor.Run()
+	case "baseosmgr":
+		baseosmgr.Run()
 	default:
 		fmt.Printf("Unknown package: %s\n", basename)
 	}

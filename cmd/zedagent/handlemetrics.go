@@ -24,9 +24,7 @@ import (
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/netclone"
-	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/zboot"
 	"github.com/zededa/go-provision/zedcloud"
 	"io/ioutil"
 	"os"
@@ -407,11 +405,12 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 	}
 	// Use the network metrics from zedrouter subscription
 	// Only report stats for the ports plus dbo1x0
-	ifNames := types.ReportInterfaces(*deviceNetworkStatus)
-	for _, ifName := range ifNames {
+	portNames := types.ReportPorts(*deviceNetworkStatus)
+	for _, port := range portNames {
 		var metric *types.NetworkMetric
+		ifname := types.AdapterToIfName(deviceNetworkStatus, port)
 		for _, m := range networkMetrics.MetricList {
-			if ifName == m.IfName {
+			if ifname == m.IfName {
 				metric = &m
 				break
 			}
@@ -421,9 +420,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 		}
 		networkDetails := new(zmet.NetworkMetric)
 		networkDetails.LocalName = metric.IfName
-		// XXX Set IName from SystemAdapter??
-		// XXX would need getconfigCtx.pubDevicePortConfig.Get("zedagent")
-		networkDetails.IName = metric.IfName
+		networkDetails.IName = port
 
 		networkDetails.TxPkts = metric.TxPkts
 		networkDetails.RxPkts = metric.RxPkts
@@ -733,8 +730,10 @@ func RoundFromKbytesToMbytes(byteCount uint64) uint64 {
 }
 
 // This function is called per change, hence needs to try over all management ports
-func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
-	aa *types.AssignableAdapters, iteration int) {
+func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
+	aa := ctx.assignableAdapters
+	iteration := ctx.iteration
+	subBaseOsStatus := ctx.subBaseOsStatus
 
 	var ReportInfo = &zmet.ZInfoMsg{}
 
@@ -886,14 +885,15 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 				swInfo.SwErr = errInfo
 			}
 		} else {
-			// XXX put this info in BaseOsStatus so we don't need to call zboot here? Can't since no UUID!
-			swInfo.Activated = (partLabel == zboot.GetCurrentPartition())
+			partStatus := getBaseOsPartitionStatus(ctx, partLabel)
 			swInfo.PartitionLabel = partLabel
-			swInfo.PartitionDevice = zboot.GetPartitionDevname(partLabel)
-			swInfo.PartitionState = zboot.GetPartitionState(partLabel)
-			swInfo.ShortVersion = zboot.GetShortVersion(partLabel)
-			swInfo.LongVersion = zboot.GetLongVersion(partLabel)
-			swInfo.DownloadProgress = 100
+			if partStatus != nil {
+				swInfo.Activated = partStatus.CurrentPartition
+				swInfo.PartitionDevice = partStatus.PartitionDevname
+				swInfo.PartitionState = partStatus.PartitionState
+				swInfo.ShortVersion = partStatus.ShortVersion
+				swInfo.LongVersion = partStatus.LongVersion
+			}
 			if swInfo.ShortVersion != "" {
 				// Must be factory install i.e. INSTALLED
 				swInfo.Status = zmet.ZSwState(types.INSTALLED)
@@ -907,8 +907,8 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	}
 
 	ReportDeviceInfo.SwList = make([]*zmet.ZInfoDevSW, 2)
-	ReportDeviceInfo.SwList[0] = getSwInfo(zboot.GetCurrentPartition())
-	ReportDeviceInfo.SwList[1] = getSwInfo(zboot.GetOtherPartition())
+	ReportDeviceInfo.SwList[0] = getSwInfo(getBaseOsCurrentPartition(ctx))
+	ReportDeviceInfo.SwList[1] = getSwInfo(getBaseOsOtherPartition(ctx))
 	// Report any other BaseOsStatus which might have errors
 	items := subBaseOsStatus.GetAll()
 	for _, st := range items {
@@ -944,16 +944,17 @@ func PublishDeviceInfoToZedCloud(subBaseOsStatus *pubsub.Subscription,
 	// XXX should get this info from zedrouter subscription
 	// Should we put it all in DeviceNetworkStatus?
 	interfaces, _ := psutilnet.Interfaces()
-	ifNames := types.ReportInterfaces(*deviceNetworkStatus)
-	for _, ifname := range ifNames {
+	portNames := types.ReportPorts(*deviceNetworkStatus)
+	for _, port := range portNames {
+		ifname := types.AdapterToIfName(deviceNetworkStatus, port)
 		for _, interfaceDetail := range interfaces {
-			if ifname == interfaceDetail.Name {
-				ReportDeviceNetworkInfo := getNetInfo(interfaceDetail, true)
-				// XXX look at SystemAdapter to get DevName from config
-				// XXX would need getconfigCtx.pubDevicePortConfig.Get("zedagent")
-				ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
-					ReportDeviceNetworkInfo)
+			if ifname != interfaceDetail.Name {
+				continue
 			}
+			ReportDeviceNetworkInfo := getNetInfo(interfaceDetail, true)
+			ReportDeviceNetworkInfo.DevName = *proto.String(port)
+			ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
+				ReportDeviceNetworkInfo)
 		}
 	}
 	// Fill in global ZInfoDNS dns from /etc/resolv.conf

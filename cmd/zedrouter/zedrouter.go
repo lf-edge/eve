@@ -1553,14 +1553,14 @@ func createAndStartLisp(ctx *zedrouterContext,
 	}
 
 	additionalInfo := generateAdditionalInfo(status, olConfig)
-	adapters := getAdapters(ctx, serviceStatus.Adapter)
-	adapterMap := make(map[string]bool)
-	for _, adapter := range adapters {
-		adapterMap[adapter] = true
+	ifnames := adapterToIfNames(ctx, serviceStatus.Adapter)
+	ifnameMap := make(map[string]bool)
+	for _, adapter := range ifnames {
+		ifnameMap[adapter] = true
 	}
 	deviceNetworkParams := types.DeviceNetworkStatus{}
 	for _, port := range ctx.deviceNetworkStatus.Ports {
-		if _, ok := adapterMap[port.IfName]; ok == true {
+		if _, ok := ifnameMap[port.IfName]; ok == true {
 			deviceNetworkParams.Ports =
 				append(deviceNetworkParams.Ports, port)
 		}
