@@ -426,26 +426,6 @@ func Run() {
 
 	updateInprogress := isBaseOsCurrentPartitionStateInProgress(&zedagentCtx)
 	log.Infof("Current partition inProgress state is %v\n", updateInprogress)
-
-	log.Infof("Handling initial verifier Status\n")
-	for !zedagentCtx.verifierRestarted {
-		select {
-		case change := <-zedagentCtx.subGlobalConfig.C:
-			zedagentCtx.subGlobalConfig.ProcessChange(change)
-
-		case change := <-zedagentCtx.subBaseOsVerifierStatus.C:
-			zedagentCtx.subBaseOsVerifierStatus.ProcessChange(change)
-			if zedagentCtx.verifierRestarted {
-				log.Infof("Verifier reported restarted\n")
-			}
-		case <-t1.C:
-			// reboot, if not available, within a wait time
-			log.Errorf("verifier is still struck - rebooting\n")
-			execReboot(true)
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
-		}
-	}
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	waited := false
 	for !DNSctx.DNSinitialized ||
@@ -459,6 +439,9 @@ func Run() {
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-zedagentCtx.subBaseOsVerifierStatus.C:
+			zedagentCtx.subBaseOsVerifierStatus.ProcessChange(change)
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
@@ -523,6 +506,35 @@ func Run() {
 	go metricsTimerTask(&zedagentCtx, handleChannel)
 	metricsTickerHandle := <-handleChannel
 	getconfigCtx.metricsTickerHandle = metricsTickerHandle
+
+	// Process the verifierStatus to avoid downloading an image we
+	// already have in place
+	log.Infof("Handling initial verifier Status\n")
+	for !zedagentCtx.verifierRestarted {
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subBaseOsVerifierStatus.C:
+			subBaseOsVerifierStatus.ProcessChange(change)
+			if zedagentCtx.verifierRestarted {
+				log.Infof("Verifier reported restarted\n")
+				break
+			}
+
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
+
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
+
+		case change := <-deferredChan:
+			zedcloud.HandleDeferred(change, 100*time.Millisecond)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
+		}
+	}
 
 	// start the config fetch tasks, when zboot status is ready
 	go configTimerTask(handleChannel, &getconfigCtx, updateInprogress)
