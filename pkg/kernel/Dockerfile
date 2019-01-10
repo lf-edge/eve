@@ -119,17 +119,11 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" KCFLAGS="-fno-pie" && \
     ([ "${EXTRA}" = "-dbg" ] && cp vmlinux /out || true)
 
 # Modules
-ENV FAT_MODS="drivers/gpu drivers/net/wireless/ath drivers/net/wireless/broadcom drivers/net/wireless/marvell  \
-      drivers/media/tuners drivers/media/v4l2-core drivers/media/dvb-core drivers/media sound  \
-      drivers/net/ethernet/stmicro drivers/usb/gadget fs/nfsd fs/nfs drivers/net/ethernet net/bluetooth  \
-      net/6lowpan drivers/usb/renesas_usbhs drivers/net/slip drivers/net/ieee802154 drivers/bluetooth  \
-      net/ieee802154 net/mac802154 drivers/video"
 RUN make INSTALL_MOD_PATH=/tmp/kernel-modules modules_install && \
     ( DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdepth 1)) && \
       cd /tmp/kernel-modules/lib/modules/$DVER && \
       rm build source && \
       ln -s /usr/src/linux-headers-$DVER build ) && \
-    [ $(uname -m) = aarch64 ] && cd /tmp/kernel-modules/lib/modules/*/kernel ; rm -rf $FAT_MODS && \
     ( cd /tmp/kernel-modules && tar cf /out/kernel.tar lib )
 
 # Headers (userspace API)
