@@ -29,6 +29,7 @@ type BaseOsConfig struct {
 	StorageConfigList []StorageConfig
 	RetryCount        int32
 	Activate          bool
+	TestComplete      bool
 }
 
 func (config BaseOsConfig) Key() string {
@@ -51,6 +52,8 @@ type BaseOsStatus struct {
 	BaseOsVersion     string
 	ConfigSha256      string
 	Activated         bool
+	Reboot            bool
+	TestComplete      bool
 	OsParams          []OsVerParams
 	StorageStatusList []StorageStatus
 	PartitionLabel    string

@@ -2,7 +2,7 @@
 // All rights reserved.
 
 // cert object event handlers
-package zedagent
+package baseosmgr
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-func lookupCertObjSafename(ctx *zedagentContext, safename string) *types.CertObjConfig {
+func lookupCertObjSafename(ctx *baseOsMgrContext, safename string) *types.CertObjConfig {
 
 	sub := ctx.subCertObjConfig
 	items := sub.GetAll()
@@ -38,7 +38,7 @@ func lookupCertObjSafename(ctx *zedagentContext, safename string) *types.CertObj
 
 // XXX but there can be multiple CertObjConfig/Status with the same safename!
 // This only looks for one.
-func certObjHandleStatusUpdateSafename(ctx *zedagentContext, safename string) {
+func certObjHandleStatusUpdateSafename(ctx *baseOsMgrContext, safename string) {
 
 	log.Infof("certObjHandleStatusUpdateSafename(%s)\n", safename)
 	config := lookupCertObjSafename(ctx, safename)
@@ -59,7 +59,7 @@ func certObjHandleStatusUpdateSafename(ctx *zedagentContext, safename string) {
 	certObjHandleStatusUpdate(ctx, config, status)
 }
 
-func certObjHandleStatusUpdate(ctx *zedagentContext,
+func certObjHandleStatusUpdate(ctx *baseOsMgrContext,
 	config *types.CertObjConfig, status *types.CertObjStatus) {
 
 	uuidStr := config.Key()
@@ -73,7 +73,7 @@ func certObjHandleStatusUpdate(ctx *zedagentContext,
 	}
 }
 
-func doCertObjStatusUpdate(ctx *zedagentContext, uuidStr string, config types.CertObjConfig,
+func doCertObjStatusUpdate(ctx *baseOsMgrContext, uuidStr string, config types.CertObjConfig,
 	status *types.CertObjStatus) bool {
 
 	log.Infof("doCertObjStatusUpdate(%s)\n", uuidStr)
@@ -102,7 +102,7 @@ func doCertObjStatusUpdate(ctx *zedagentContext, uuidStr string, config types.Ce
 	return changed
 }
 
-func doCertObjInstall(ctx *zedagentContext, uuidStr string, config types.CertObjConfig,
+func doCertObjInstall(ctx *baseOsMgrContext, uuidStr string, config types.CertObjConfig,
 	status *types.CertObjStatus) (bool, bool) {
 
 	log.Infof("doCertObjInstall(%s)\n", uuidStr)
@@ -153,7 +153,7 @@ func doCertObjInstall(ctx *zedagentContext, uuidStr string, config types.CertObj
 	return changed, true
 }
 
-func checkCertObjStorageDownloadStatus(ctx *zedagentContext, uuidStr string,
+func checkCertObjStorageDownloadStatus(ctx *baseOsMgrContext, uuidStr string,
 	config types.CertObjConfig, status *types.CertObjStatus) (bool, bool) {
 
 	ret := checkStorageDownloadStatus(ctx, certObj, uuidStr,
@@ -189,7 +189,7 @@ func checkCertObjStorageDownloadStatus(ctx *zedagentContext, uuidStr string,
 	return ret.Changed, true
 }
 
-func removeCertObjConfig(ctx *zedagentContext, uuidStr string) {
+func removeCertObjConfig(ctx *baseOsMgrContext, uuidStr string) {
 
 	log.Infof("removeCertObjConfig(%s)\n", uuidStr)
 	status := lookupCertObjStatus(ctx, uuidStr)
@@ -211,7 +211,7 @@ func removeCertObjConfig(ctx *zedagentContext, uuidStr string) {
 	log.Infof("removeCertObjConfig(%s) done\n", uuidStr)
 }
 
-func doCertObjUninstall(ctx *zedagentContext, uuidStr string,
+func doCertObjUninstall(ctx *baseOsMgrContext, uuidStr string,
 	status *types.CertObjStatus) (bool, bool) {
 
 	var del, changed, removedAll bool
@@ -256,7 +256,7 @@ func doCertObjUninstall(ctx *zedagentContext, uuidStr string,
 	return changed, del
 }
 
-func lookupCertObjConfig(ctx *zedagentContext, key string) *types.CertObjConfig {
+func lookupCertObjConfig(ctx *baseOsMgrContext, key string) *types.CertObjConfig {
 
 	sub := ctx.subCertObjConfig
 	c, _ := sub.Get(key)
@@ -273,7 +273,7 @@ func lookupCertObjConfig(ctx *zedagentContext, key string) *types.CertObjConfig 
 	return &config
 }
 
-func lookupCertObjStatus(ctx *zedagentContext, key string) *types.CertObjStatus {
+func lookupCertObjStatus(ctx *baseOsMgrContext, key string) *types.CertObjStatus {
 	pub := ctx.pubCertObjStatus
 	st, _ := pub.Get(key)
 	if st == nil {
@@ -289,7 +289,7 @@ func lookupCertObjStatus(ctx *zedagentContext, key string) *types.CertObjStatus 
 	return &status
 }
 
-func publishCertObjStatus(ctx *zedagentContext, status *types.CertObjStatus) {
+func publishCertObjStatus(ctx *baseOsMgrContext, status *types.CertObjStatus) {
 
 	key := status.Key()
 	log.Debugf("publishCertObjStatus(%s)\n", key)
@@ -297,7 +297,7 @@ func publishCertObjStatus(ctx *zedagentContext, status *types.CertObjStatus) {
 	pub.Publish(key, status)
 }
 
-func unpublishCertObjStatus(ctx *zedagentContext, key string) {
+func unpublishCertObjStatus(ctx *baseOsMgrContext, key string) {
 
 	log.Debugf("unpublishCertObjStatus(%s)\n", key)
 	pub := ctx.pubCertObjStatus

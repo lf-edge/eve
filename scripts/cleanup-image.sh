@@ -29,6 +29,7 @@ rm -rf var/run/zedrouter
 rm -rf var/run/domainmgr
 rm -rf var/run/identitymgr
 rm -rf var/run/downloader
+rm -rf var/run/baseosmgr
 rm -rf var/run/verifier
 
 # Preserve var/tmp/zedmanager/downloads
@@ -42,6 +43,7 @@ rm -rf var/tmp/domainmgr/config/*
 rm -rf var/tmp/identitymgr/config/*
 rm -rf var/tmp/downloader/config/*
 rm -rf var/tmp/verifier/config/*
+rm -rf var/tmp/baseosmgr/config/*
 
 rm -rf var/log/zedmanager*
 rm -rf var/log/zedrouter*
@@ -49,6 +51,7 @@ rm -rf var/log/domainmgr*
 rm -rf var/log/identitymgr*
 rm -rf var/log/downloader*
 rm -rf var/log/verifier*
+rm -rf var/log/baseosmgr*
 rm -rf var/log/xen/*
 
 rm -rf opt/zededa/lisp/logs/*
