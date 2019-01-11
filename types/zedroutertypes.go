@@ -6,12 +6,11 @@ package types
 import (
 	"encoding/json"
 	"errors"
-	"net"
-	"time"
-
 	"github.com/eriknordmark/ipinfo"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
+	"net"
+	"time"
 )
 
 // Indexed by UUID
@@ -511,18 +510,6 @@ func ReportPorts(deviceNetworkStatus DeviceNetworkStatus) []string {
 		names = append(names, port.Name)
 	}
 	return names
-}
-
-func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
-	aa *AssignableAdapters) bool {
-	for _, port := range portConfig.Ports {
-		ioBundle := aa.LookupIoBundleForMember(
-			IoEth, port.Name)
-		if ioBundle != nil && ioBundle.IsPCIBack {
-			return true
-		}
-	}
-	return false
 }
 
 // lookup port Name to find IfName
