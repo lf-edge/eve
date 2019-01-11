@@ -103,12 +103,14 @@ func doApplyDevicePortConfig(ctx *DeviceNetworkContext, delete bool) {
 	} else {
 		// PortConfigList[0] is the most desirable config to use
 		portConfig = ctx.DevicePortConfigList.PortConfigList[0]
+		log.Infof("doApplyDevicePortConfig: config to apply %+v\n",
+			portConfig)
 	}
-	ctx.DevicePortConfigTime = portConfig.TimePriority
 
 	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
 		log.Infof("HandleDPCModify DevicePortConfig change from %v to %v\n",
 			*ctx.DevicePortConfig, portConfig)
+		ctx.DevicePortConfigTime = portConfig.TimePriority
 		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
 	}
 }
