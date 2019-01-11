@@ -761,7 +761,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 	}
 
 	if config.Activate {
-		doActivateDomain(ctx, *config, &status)
+		doActivate(ctx, *config, &status)
 	}
 	// work done
 	status.PendingAdd = false
@@ -828,10 +828,10 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 	}
 }
 
-func doActivateDomain(ctx *domainContext, config types.DomainConfig,
+func doActivate(ctx *domainContext, config types.DomainConfig,
 	status *types.DomainStatus) {
 
-	log.Infof("doActivateDomain(%v) for %s\n",
+	log.Infof("doActivate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
 	// Assign any I/O devices
@@ -929,7 +929,7 @@ func doActivateDomain(ctx *domainContext, config types.DomainConfig,
 	if err == nil && domainId != status.DomainId {
 		status.DomainId = domainId
 	}
-	log.Infof("doActivateDomain(%v) done for %s\n",
+	log.Infof("doActivate(%v) done for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 }
 
@@ -1441,7 +1441,7 @@ func handleModify(ctx *domainContext, key string,
 		}
 		status.VirtualizationMode = config.VirtualizationMode
 		status.EnableVnc = config.EnableVnc
-		doActivateDomain(ctx, *config, status)
+		doActivate(ctx, *config, status)
 		changed = true
 	} else if !config.Activate {
 		if status.LastErr != "" {
