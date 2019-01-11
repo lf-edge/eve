@@ -23,13 +23,23 @@ type AssignableAdapters struct {
 }
 
 type IoBundle struct {
-	Type       IoType
-	Name       string    // Short hand name such as "com"
-	Members    []string  // E.g., "com1", "com2"
-	UsedByUUID uuid.UUID // UUID for application
-
-	//
-	DeviceExists bool
+	// Type
+	//	Type of the IoBundle
+	Type IoType
+	// Name
+	//	Short hand name such as "com".
+	//  xxx - Any description is where this is used? How this is to be set etc??
+	Name string // Short hand name such as "com"
+	// Members
+	//	List of members ( names )
+	//  XXX - Should this be a map?? With list, we cannot detect duplicate members
+	//		In most cases, we probably do lookups on members - they become easy with
+	//		Maps too.
+	Members []string // E.g., "com1", "com2"
+	// UsedByUUID
+	//	Application UUID ( Can be Dom0 too ) that owns the Bundle.
+	//	For unassigned adapters, this is not set.
+	UsedByUUID uuid.UUID
 
 	// Local information not reported to cloud
 	Lookup   bool   // Look up name to find PCI
@@ -37,10 +47,21 @@ type IoBundle struct {
 	PciShort string // If pci adapter
 	XenCfg   string // If template for the bundle
 
+	// IsPciBack
+	//	Is the IpBundle assigned to pciBack.
+	//  If the device is managed by dom0, this is False.
+	//  If the device is ( or to be ) managed by DomU, this is True
 	IsPCIBack bool // Assigned to pciback
 	IsPort    bool // Whole or part of the bundle is a zedrouter port
 	IsBridge  bool // Exclusively used by a bridge service. TBD
 	IsService bool // Used by a service. TBD.
+
+	// DeviceExists
+	//	This is to indicate if the device exists in the system
+	//  Currently, there are many checks using pciShort to see
+	//  if the device exists. This attribute is to abstract it out.
+	// DeviceExists bool
+
 }
 
 // Should match definition in appconfig.proto
