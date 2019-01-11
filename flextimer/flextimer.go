@@ -75,12 +75,12 @@ func (f FlexTickerHandle) TickNow() {
 	// XXX
 	// There is a case when flextimer thread queues next tick, but main
 	// thread of service is doing something else and as part of what the
-	// main service is doingi, calls flextimer.TickNow(). In such case main
-	// service thread will get blocked and never gets un-blocked
-	// (since privateChan only has one tick slot).
+	// main service does at that point, calls flextimer.TickNow().
+	// In such a case main service thread will get blocked and never gets
+	// un-blocked (since privateChan only has one tick slot).
 	//
-	// Is there a better solution than trying to send on channel using select
-	// in a non-blocking fashion? Can this case issues?
+	// Is there a better solution than trying to send on privateChannel
+	// in a non-blocking fashion using select? Can this cause issues?
 	select {
 	case f.privateChan <- time.Now():
 	default:
