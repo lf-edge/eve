@@ -12,9 +12,8 @@ package types
 // file on boot.
 
 import (
-	"strings"
-
 	"github.com/satori/go.uuid"
+	"strings"
 )
 
 type AssignableAdapters struct {
@@ -27,9 +26,6 @@ type IoBundle struct {
 	Name       string    // Short hand name such as "com"
 	Members    []string  // E.g., "com1", "com2"
 	UsedByUUID uuid.UUID // UUID for application
-
-	//
-	DeviceExists bool
 
 	// Local information not reported to cloud
 	Lookup   bool   // Look up name to find PCI
@@ -58,16 +54,6 @@ const (
 func LookupIoBundle(aa *AssignableAdapters, ioType IoType, name string) *IoBundle {
 	for i, b := range aa.IoBundleList {
 		if b.Type == ioType && strings.EqualFold(b.Name, name) {
-			return &aa.IoBundleList[i]
-		}
-	}
-	return nil
-}
-
-func (aa *AssignableAdapters) LookupIoBundleForMember(
-	ioType IoType, memberName string) *IoBundle {
-	for i, b := range aa.IoBundleList {
-		if b.Type == ioType && strings.EqualFold(b.Name, memberName) {
 			return &aa.IoBundleList[i]
 		}
 	}

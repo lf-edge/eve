@@ -711,7 +711,6 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 			config.UUIDandVersion.UUID)
 		return
 	}
-
 	// We now have reserved all of the IoAdapters
 	status.IoAdapterList = config.IoAdapterList
 
@@ -761,7 +760,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 	}
 
 	if config.Activate {
-		doActivateDomain(ctx, *config, &status)
+		doActivate(ctx, *config, &status, ctx.assignableAdapters)
 	}
 	// work done
 	status.PendingAdd = false
@@ -790,27 +789,29 @@ func cleanupAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 	}
 }
 
-func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
-	status *types.DomainStatus) {
+func doActivate(ctx *domainContext, config types.DomainConfig,
+	status *types.DomainStatus, aa *types.AssignableAdapters) {
 
+	log.Infof("doActivate(%v) for %s\n",
+		config.UUIDandVersion, config.DisplayName)
+
+	// Assign any I/O devices
 	for _, adapter := range config.IoAdapterList {
-		log.Debugf("doAssignIoAdaptersToDomain processing adapter %d %s\n",
+		log.Debugf("doActivate processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
-
-		ib := types.LookupIoBundle(ctx.assignableAdapters,
-			adapter.Type, adapter.Name)
+		ib := types.LookupIoBundle(aa, adapter.Type, adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if ib == nil {
-			log.Fatalf("doAssignIoAdaptersToDomain IoBundle disappeared %d %s for %s\n",
+			log.Fatalf("doActivate IoBundle disappeared %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
 		if ib.UsedByUUID != config.UUIDandVersion.UUID {
-			log.Fatalf("doAssignIoAdaptersToDomain IoBundle stolen by %s: %d %s for %s\n",
+			log.Fatalf("doActivate IoBundle stolen by %s: %d %s for %s\n",
 				ib.UsedByUUID, adapter.Type, adapter.Name,
 				status.DomainName)
 		}
 		if ib.Lookup && ib.PciShort == "" {
-			log.Fatal("doAssignIoAdaptersToDomain lookup missing: %d %s for %s\n",
+			log.Fatal("doActivate lookup missing: %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
 		if ctx.usbAccess && ib.Type == types.IoUSB && !ib.IsPCIBack && ib.PciShort != "" {
@@ -826,16 +827,6 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 			ib.IsPCIBack = true
 		}
 	}
-}
-
-func doActivateDomain(ctx *domainContext, config types.DomainConfig,
-	status *types.DomainStatus) {
-
-	log.Infof("doActivateDomain(%v) for %s\n",
-		config.UUIDandVersion, config.DisplayName)
-
-	// Assign any I/O devices
-	doAssignIoAdaptersToDomain(ctx, config, status)
 
 	// Do we need to copy any rw files? Preserve ones are copied upon
 	// creation
@@ -865,8 +856,7 @@ func doActivateDomain(ctx *domainContext, config types.DomainConfig,
 	}
 	defer file.Close()
 
-	if err := configToXencfg(config, *status, ctx.assignableAdapters,
-		file); err != nil {
+	if err := configToXencfg(config, *status, aa, file); err != nil {
 		log.Errorf("Failed to create DomainStatus from %v\n", config)
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
@@ -929,7 +919,7 @@ func doActivateDomain(ctx *domainContext, config types.DomainConfig,
 	if err == nil && domainId != status.DomainId {
 		status.DomainId = domainId
 	}
-	log.Infof("doActivateDomain(%v) done for %s\n",
+	log.Infof("doActivate(%v) done for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 }
 
@@ -1081,13 +1071,13 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 			if err != nil && !ignoreErrors {
 				status.LastErr = fmt.Sprintf("%v", err)
 				status.LastErrTime = time.Now()
-			} else {
-				ib.IsPCIBack = false
+				return
 			}
+			ib.IsPCIBack = false
 		}
 		ib.UsedByUUID = nilUUID
+		ctx.publishAssignableAdapters()
 	}
-	ctx.publishAssignableAdapters()
 }
 
 // Produce DomainStatus based on the config
@@ -1168,9 +1158,6 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		log.Debugf("configToStatus setting uuid %s for adapter %d %s\n",
 			config.Key(), adapter.Type, adapter.Name)
 		ib.UsedByUUID = config.UUIDandVersion.UUID
-
-		// XXX TODO - We can publish AA at the end of the loop, as it publishes all
-		// devices.Need to remove the return statements as well in that case.
 		ctx.publishAssignableAdapters()
 	}
 	return nil
@@ -1441,7 +1428,7 @@ func handleModify(ctx *domainContext, key string,
 		}
 		status.VirtualizationMode = config.VirtualizationMode
 		status.EnableVnc = config.EnableVnc
-		doActivateDomain(ctx, *config, status)
+		doActivate(ctx, *config, status, ctx.assignableAdapters)
 		changed = true
 	} else if !config.Activate {
 		if status.LastErr != "" {
