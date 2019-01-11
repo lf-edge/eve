@@ -417,12 +417,14 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 
 	newPorts := []types.NetworkPortConfig{}
 	for _, sysAdapter := range sysAdapters {
+		var isUplink, isFreeUplink bool = false, false
+
 		// XXX Rename Uplink in proto file to IsMgmt! Ditto for FreeUplink
 		if version < types.DPCIsMgmt {
 			// XXX Make Uplink and FreeUplink true
 			// This should go away when cloud sends proper values
-			sysAdapter.Uplink = true
-			sysAdapter.FreeUplink = true
+			isUplink = true
+			isFreeUplink = true
 		}
 		port := types.NetworkPortConfig{}
 		port.IfName = sysAdapter.Name
@@ -431,8 +433,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		} else {
 			port.Name = sysAdapter.Name
 		}
-		port.IsMgmt = sysAdapter.Uplink
-		port.Free = sysAdapter.FreeUplink
+		port.IsMgmt = isUplink
+		port.Free = isFreeUplink
 
 		// Lookup the network with given UUID
 		// and copy proxy and other configuration

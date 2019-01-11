@@ -55,6 +55,16 @@ func AddrChange(ctx *DeviceNetworkContext, change netlink.AddrUpdate) {
 	}
 }
 
+func kickStartDPCListVerify(ctx *DeviceNetworkContext) {
+	select {
+	// Do not get blocked
+	case ctx.ParseDPCList <- true:
+	default:
+		log.Infof("kickStartDPCListVerify: Device port configuration list " +
+			"verification already in progress")
+	}
+}
+
 // The ifname arg can only be used for logging
 func HandleAddressChange(ctx *DeviceNetworkContext, ifname string) {
 	// Check if we have more or less addresses
@@ -74,6 +84,15 @@ func HandleAddressChange(ctx *DeviceNetworkContext, ifname string) {
 				ifname, *ctx.DeviceNetworkStatus, status)
 			*ctx.DeviceNetworkStatus = status
 			DoDNSUpdate(ctx)
+
+			// Since there is a change in address to one of the ports, we should
+			// verify this new DeviceNetworkStatus with cloud connectivity test.
+			// If cloud connectivity test fails, we shold go ahead the restart
+			// parsing DevicePortConfigList to find a working network configuration.
+			pass := VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1)
+			if !pass {
+				kickStartDPCListVerify(ctx)
+			}
 		} else {
 			log.Infof("HandleAddressChange: No change for %s\n", ifname)
 		}

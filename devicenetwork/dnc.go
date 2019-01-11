@@ -135,19 +135,17 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 		}
 	}
 
-	var curConfig *types.DevicePortConfig
-	if ctx.DevicePortConfigList != nil &&
-		len(ctx.DevicePortConfigList.PortConfigList) != 0 {
-		curConfig = &ctx.DevicePortConfigList.PortConfigList[0]
-		log.Infof("HandleDPCModify: found curConfig %+v\n", curConfig)
-	} else {
-		curConfig = &types.DevicePortConfig{}
-	}
 	// Look up based on timestamp, then content
 	oldConfig := lookupPortConfig(ctx, portConfig)
 	if oldConfig != nil {
 		// Compare everything but TimePriority since that is
 		// modified by zedagent even if there are no changes.
+
+		// XXX Why would the below check be needed?
+		// Shouldn't updatePortConfig be called?
+		// Even when old and new configurations look the same, we
+		// should still remove old config and put latest config
+		// in the beginning of device port config list, no?
 		if oldConfig.Key == portConfig.Key &&
 			oldConfig.Version == portConfig.Version &&
 			reflect.DeepEqual(oldConfig.Ports, portConfig.Ports) {
@@ -167,13 +165,7 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("HandleDPCModify: first is %+v\n",
 		ctx.DevicePortConfigList.PortConfigList[0])
 
-	select {
-	// Do not get blocked
-	case ctx.ParseDPCList <- true:
-	default:
-		log.Infof("HandleDPCModify: Device port configuration list verification already"+
-			" in progress")
-	}
+	kickStartDPCListVerify(ctx)
 
 	log.Infof("HandleDPCModify done for %s\n", key)
 }
@@ -211,38 +203,7 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("HandleDPCDelete: found %+v\n", *oldConfig)
 	removePortConfig(ctx, *oldConfig)
 	ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
-	if len(ctx.DevicePortConfigList.PortConfigList) != 0 {
-		log.Infof("HandleDPCDelete: first is %+v\n",
-			ctx.DevicePortConfigList.PortConfigList[0])
-		portConfig = ctx.DevicePortConfigList.PortConfigList[0]
-	} else {
-		log.Infof("HandleDPCDelete: none left\n")
-		portConfig = types.DevicePortConfig{}
-	}
-	ctx.DevicePortConfigTime = portConfig.TimePriority
-
-	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
-		log.Infof("HandleDPCDelete DevicePortConfig change from %v to %v\n",
-			*ctx.DevicePortConfig, portConfig)
-		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
-		*ctx.DevicePortConfig = portConfig
-	}
-	// XXX if err return means WPAD failed, or port does not exist
-	// XXX add test hook for former; try lower priority
-	dnStatus, _ := MakeDeviceNetworkStatus(portConfig,
-		*ctx.DeviceNetworkStatus)
-	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
-		log.Infof("HandleDPCDelete DeviceNetworkStatus change from %v to %v\n",
-			*ctx.DeviceNetworkStatus, dnStatus)
-		pass := VerifyDeviceNetworkStatus(dnStatus, 1)
-		if pass {
-			*ctx.DeviceNetworkStatus = dnStatus
-			DoDNSUpdate(ctx)
-		} else {
-			// XXX try lower priority
-			// XXX add retry of higher priority in main
-		}
-	}
+	kickStartDPCListVerify(ctx)
 	log.Infof("HandleDPCDelete done for %s\n", key)
 }
 
