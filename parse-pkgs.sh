@@ -55,6 +55,7 @@ STRONGSWAN_TAG=$(linuxkit_tag pkg/strongswan)$ARCH
 TESTMSVCS_TAG=$(linuxkit_tag pkg/test-microsvcs)$ARCH
 ZEDEDA_TAG=$(linuxkit_tag pkg/zedctr)$ARCH
 DOM0ZTOOLS_TAG=$(linuxkit_tag pkg/dom0-ztools)$ARCH
+RNGD_TAG=$(linuxkit_tag pkg/rngd)$ARCH
 QREXECLIB_TAG=$(linuxkit_tag pkg/qrexec-lib)$ARCH
 WWAN_TAG=$(linuxkit_tag pkg/wwan)$ARCH
 WLAN_TAG=$(linuxkit_tag pkg/wlan)$ARCH
@@ -79,6 +80,7 @@ sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e "s#FW_TAG#"$FW_TAG"#" \
     -e "s#XENTOOLS_TAG#"$XENTOOLS_TAG"#" \
     -e "s#DOM0ZTOOLS_TAG#"$DOM0ZTOOLS_TAG"#" \
+    -e "s#RNGD_TAG#"$RNGD_TAG"#" \
     -e "s#XEN_TAG#"$XEN_TAG"#" \
     -e "s#DNSMASQ_TAG#"$DNSMASQ_TAG"#" \
     -e "s#STRONGSWAN_TAG#"$STRONGSWAN_TAG"#" \
