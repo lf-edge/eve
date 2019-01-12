@@ -6,7 +6,9 @@ package types
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
+	"os"
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
@@ -123,6 +125,46 @@ const (
 	DPCInitial DevicePortConfigVersion = iota
 	DPCIsMgmt                          // Require IsMgmt to be set for management ports
 )
+
+func (portConfig *DevicePortConfig) DoSanitize(
+	sanitizeTimePriority bool,
+	sanitizeKey bool, key string,
+	sanitizeName bool) {
+
+	if sanitizeTimePriority {
+		zeroTime := time.Time{}
+		if portConfig.TimePriority == zeroTime {
+			// If we can stat the file use its modify time
+			filename := fmt.Sprintf("/var/tmp/zededa/DevicePortConfig/%s.json",
+				key)
+			fi, err := os.Stat(filename)
+			if err == nil {
+				portConfig.TimePriority = fi.ModTime()
+			} else {
+				portConfig.TimePriority = time.Unix(1, 0)
+			}
+			log.Infof("HandleDPCModify: Forcing TimePriority for %s to %v\n",
+				key, portConfig.TimePriority)
+		}
+	}
+	if sanitizeKey {
+		if portConfig.Key == "" {
+			portConfig.Key = key
+		}
+	}
+	if sanitizeName {
+		// In case Name isn't set we make it match IfName
+		// XXX still needed?
+		for i, _ := range portConfig.Ports {
+			port := &portConfig.Ports[i]
+			if port.Name == "" {
+				port.Name = port.IfName
+			}
+		}
+
+	}
+	return
+}
 
 type NetworkProxyType uint8
 
