@@ -21,6 +21,9 @@ onboot:
    - name: mount
      image: linuxkit/mount:v0.5
      command: ["/bin/sh", "-c", "/usr/bin/mountie $(/hostroot/sbin/findfs PARTLABEL=CONFIG) /var/config "]
+   - name: rngd
+     image: RNGD_TAG
+     command: ["/sbin/rngd", "-1"]
 services:
    - name: ntpd
      image: linuxkit/openntpd:v0.5

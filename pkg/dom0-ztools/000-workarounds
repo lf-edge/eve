@@ -1,2 +1,0 @@
-#!/bin/sh
-nohup rngd -W 2048 -r /dev/urandom >/dev/null 2>&1 &

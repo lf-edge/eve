@@ -10,6 +10,9 @@ init:
   - linuxkit/runc:v0.5
   - linuxkit/getty:v0.5
 onboot:
+  - name: rngd
+    image: RNGD_TAG
+    command: ["/sbin/rngd", "-1"]
   - name: installer
     image: MKRAW_TAG
     command: ["/install"]
