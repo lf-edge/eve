@@ -132,6 +132,8 @@ config.img: conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/
 
 $(ROOTFS_IMG): images/rootfs.yml
 	./makerootfs.sh $< $(ROOTFS_FORMAT) $@
+	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
+          echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
 
 $(FALLBACK_IMG).img: $(FALLBACK_IMG).$(IMG_FORMAT)
 	@rm -f $@ >/dev/null 2>&1 || :
@@ -146,6 +148,8 @@ $(FALLBACK_IMG).raw: $(ROOTFS_IMG) config.img
 
 $(ROOTFS_IMG)_installer.img: images/installer.yml $(ROOTFS_IMG) config.img
 	./makerootfs.sh $< $(ROOTFS_FORMAT) $@
+	@[ $$(wc -c < "$@") -gt $$(( 300 * 1024 * 1024 )) ] && \
+          echo "ERROR: size of $@ is greater than 300MB (bigger than allocated partition)" && exit 1 || :
 
 $(INSTALLER_IMG).raw: $(ROOTFS_IMG)_installer.img config.img
 	tar c $^ | ./makeflash.sh -C 350 $@ "efi imga conf_win"
