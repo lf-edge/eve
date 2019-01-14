@@ -253,7 +253,6 @@ func Run() {
 	nimCtx.DeviceNetworkContext.ParseDPCList = parseDPCList
 
 	// Periodic timer that tests device cloud connectivity
-	// Timer for checking/verifying pending device network status
 	networkTestInterval := time.Duration(5 * time.Minute)
 	networkTestMax := float64(networkTestInterval)
 	networkTestMin := networkTestMax * 0.9
