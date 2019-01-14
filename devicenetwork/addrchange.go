@@ -65,6 +65,24 @@ func kickStartDPCListVerify(ctx *DeviceNetworkContext) {
 	}
 }
 
+// Check if ports in the given DeviceNetworkStatus have atleast one
+// IP address each.
+func doAllDNSPortsHaveIPAddrs(status types.DeviceNetworkStatus) bool {
+	mgmtPorts := types.GetMgmtPortsFree(status, 0)
+	if len(mgmtPorts) == 0 {
+		return false
+	}
+
+	for _, port := range mgmtPorts {
+		numAddrs := types.CountLocalAddrFreeNoLinkLocalIf(status, port)
+		log.Debugln("doAllDNSPortsHaveIPAddrs: Port %s has %d addresses.", port, numAddrs)
+		if numAddrs < 1 {
+			return false
+		}
+	}
+	return true
+}
+
 // The ifname arg can only be used for logging
 func HandleAddressChange(ctx *DeviceNetworkContext, ifname string) {
 	// Check if we have more or less addresses
@@ -84,17 +102,17 @@ func HandleAddressChange(ctx *DeviceNetworkContext, ifname string) {
 				ifname, *ctx.DeviceNetworkStatus, status)
 			*ctx.DeviceNetworkStatus = status
 			DoDNSUpdate(ctx)
-
-			// Since there is a change in address to one of the ports, we should
-			// verify this new DeviceNetworkStatus with cloud connectivity test.
-			// If cloud connectivity test fails, we shold go ahead the restart
-			// parsing DevicePortConfigList to find a working network configuration.
-			pass := VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1)
-			if !pass {
-				kickStartDPCListVerify(ctx)
-			}
 		} else {
 			log.Infof("HandleAddressChange: No change for %s\n", ifname)
+		}
+	} else {
+		pingTestDNS := doAllDNSPortsHaveIPAddrs(*ctx.PendDeviceNetworkStatus)
+		if pingTestDNS {
+			// We have a suitable candiate for running our cloud ping test.
+			// Kick the DNS test timer to fire immediately.
+			log.Infof("HandleAddressChange: Kicking cloud ping test now, " + 
+				"Since we have suitable addresses already."
+			ctx.DNSTimer.TickNow()
 		}
 	}
 }

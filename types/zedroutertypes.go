@@ -281,6 +281,16 @@ func CountLocalAddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 	return len(addrs)
 }
 
+// Return number of local IP addresses for all the management ports with given name
+// excluding link-local addresses
+func CountLocalAddrFreeNoLinkLocalIf(globalStatus DeviceNetworkStatus,
+	port string) int {
+
+	// Count the number of addresses which apply
+	addrs, _ := getInterfaceAddr(globalStatus, true, port, false)
+	return len(addrs)
+}
+
 // Pick one address from all of the management ports, unless if port is set
 // in which we pick from that port. Includes link-local addresses.
 // We put addresses from the free management ports first in the list i.e.,

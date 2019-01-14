@@ -11,6 +11,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 )
@@ -35,7 +36,9 @@ type DeviceNetworkContext struct {
 	SubGlobalConfig         *pubsub.Subscription
 	PendDeviceNetworkStatus *types.DeviceNetworkStatus
 	ParseDPCList            chan bool
+	DNSTimer                flextimer.FlexTickerHandle
 	NextDPCIndex            int
+	ReTestCurrentDPC        bool
 	DPCBeingUsed            *types.DevicePortConfig
 	DPCBeingTested          *types.DevicePortConfig
 	CloudConnectivityWorks  bool

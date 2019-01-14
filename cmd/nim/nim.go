@@ -248,6 +248,7 @@ func Run() {
 	dnsMin := dnsMax * 0.9
 	dnsTimer := flextimer.NewRangeTicker(time.Duration(dnsMin),
 		time.Duration(dnsMax))
+	nimCtx.DeviceNetworkContext.DNSTimer = dnsTimer
 	parseDPCList := make(chan bool, 1)
 	nimCtx.DeviceNetworkContext.ParseDPCList = parseDPCList
 
@@ -311,6 +312,7 @@ func Run() {
 				}
 				dnc.PendDeviceNetworkStatus = nil
 				dnc.NextDPCIndex = 0
+				dnc.ReTestCurrentDPC = false
 				// Kick the DPC verify timer to tick now.
 				dnsTimer.TickNow()
 			}
@@ -363,6 +365,7 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext,
 					"verification to resume cloud connectivity")
 				ctx.PendDeviceNetworkStatus = nil
 				ctx.NextDPCIndex = 0
+				ctx.ReTestCurrentDPC = false
 				// Kick the DPC verify timer to tick now.
 				dnsTimer.TickNow()
 			}
@@ -374,6 +377,7 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext,
 }
 
 func verifyDevicePortConfig(ctx *devicenetwork.DeviceNetworkContext) bool {
+	var numUsableAddrs int
 	if ctx.NextDPCIndex < 0 {
 		return true
 	}
@@ -381,8 +385,12 @@ func verifyDevicePortConfig(ctx *devicenetwork.DeviceNetworkContext) bool {
 	numDPCs := len(ctx.DevicePortConfigList.PortConfigList)
 
 	dnStatus := ctx.PendDeviceNetworkStatus
+	if dnStatus != nil {
+		numUsableAddrs = types.CountLocalAddrFreeNoLinkLocal(*dnStatus)
+	}
 	// XXX Check if there are any usable unicast ip addresses assigned.
-	if dnStatus != nil && types.CountLocalAddrFreeNoLinkLocal(*dnStatus) > 0 {
+	if dnStatus != nil && numUsableAddrs > 0 {
+		ctx.ReTestCurrentDPC = false
 		// We want connectivity to zedcloud via atleast one Management port.
 		pass := devicenetwork.VerifyDeviceNetworkStatus(*dnStatus, 1)
 		if pass {
@@ -419,12 +427,29 @@ func verifyDevicePortConfig(ctx *devicenetwork.DeviceNetworkContext) bool {
 			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].LastFailed = time.Now()
 			ctx.NextDPCIndex += 1
 		}
+	} else if dnStatus != nil && numUsableAddrs == 0 {
+		// We have a pending device network status, but do not yet have any
+		// usable IP addresses assigned to ports. We give this pending
+		// device network one more chance by waiting till the next test slot.
+		// We mark a flag in device network context saying that we have
+		// given a second chance to the current DevicePortConfig.
+		//
+		// If this is the second try already, move ahead in the DPC list.
+		if ctx.ReTestCurrentDPC {
+			ctx.NextDPCIndex += 1
+			ctx.ReTestCurrentDPC = false
+		} else {
+			ctx.ReTestCurrentDPC = true
+			log.Infof("verifyDevicePortConfig: Waiting till the next test slot of DPC " +
+				"at index %d", ctx.NextDPCIndex)
+		}
 	}
 	if ctx.NextDPCIndex >= numDPCs {
 		log.Errorf("verifyDevicePortConfig: No working device port configuration found. " +
 			"Starting Device port configuration list test again.")
 		ctx.PendDeviceNetworkStatus = nil
 		ctx.NextDPCIndex = 0
+		ctx.ReTestCurrentDPC = false
 		return false
 	}
 	portConfig := ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
