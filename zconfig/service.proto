@@ -38,19 +38,20 @@ message ServiceInstanceConfig {
 	string id = 1;
 	string displayname = 2;
 
-	//depricate this field
 	ZSrvType srvtype = 3;
 
+	// Optional in future we might need this
+	//	VmConfig fixedresources = 3;
+	//	repeated Drive drives = 4;
 	bool activate = 5;
 
 	// towards application which networkUUID to use
+	// FIXME: In future there might multiple application network assignment
+	// so this will become repeated.
 	string applink = 10;
 
-	// This is port configuration, we can use this one and evovle to do 
-	// model name, based thing for future.
-
 	// towards devices which phyiscal or logical adapter to use
-	Adapter devlink = 20;
+	Adapter devlink = 20;	// I/O adapters to assign to app
 
 	// Opaque configuration 
 	ServiceOpaqueConfig cfg = 30;

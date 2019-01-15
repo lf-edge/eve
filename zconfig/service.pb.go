@@ -132,12 +132,16 @@ func (m *ServiceLispConfig) GetExperimental() bool {
 }
 
 type ServiceInstanceConfig struct {
-	Id          string `protobuf:"bytes,1,opt,name=id" json:"id,omitempty"`
-	Displayname string `protobuf:"bytes,2,opt,name=displayname" json:"displayname,omitempty"`
-	// depricate this field
-	Srvtype  ZSrvType `protobuf:"varint,3,opt,name=srvtype,enum=ZSrvType" json:"srvtype,omitempty"`
-	Activate bool     `protobuf:"varint,5,opt,name=activate" json:"activate,omitempty"`
+	Id          string   `protobuf:"bytes,1,opt,name=id" json:"id,omitempty"`
+	Displayname string   `protobuf:"bytes,2,opt,name=displayname" json:"displayname,omitempty"`
+	Srvtype     ZSrvType `protobuf:"varint,3,opt,name=srvtype,enum=ZSrvType" json:"srvtype,omitempty"`
+	// Optional in future we might need this
+	// 	VmConfig fixedresources = 3;
+	// 	repeated Drive drives = 4;
+	Activate bool `protobuf:"varint,5,opt,name=activate" json:"activate,omitempty"`
 	// towards application which networkUUID to use
+	// FIXME: In future there might multiple application network assignment
+	// so this will become repeated.
 	Applink string `protobuf:"bytes,10,opt,name=applink" json:"applink,omitempty"`
 	// towards devices which phyiscal or logical adapter to use
 	Devlink *Adapter `protobuf:"bytes,20,opt,name=devlink" json:"devlink,omitempty"`
