@@ -98,6 +98,13 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("HandleDNCDelete done for %s\n", key)
 }
 
+func resetDNSVerifyTimer(dnsTimer flextimer.FlexTickerHandle,
+	interval time.Duration) {
+	maxTime := float64(interval)
+	minTime := maxTime * 0.9
+	dnsTimer.UpdateRangeTicker(time.Duration(minTime), time.Duration(maxTime))
+}
+
 // Handle three different sources in this priority order:
 // 1. zedagent with any key
 // 2. "override" key from build or USB stick file

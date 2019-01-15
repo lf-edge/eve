@@ -13,6 +13,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"net"
 	"reflect"
+	"time"
 )
 
 // Returns a channel for address updates
@@ -111,8 +112,11 @@ func HandleAddressChange(ctx *DeviceNetworkContext, ifname string) {
 			// We have a suitable candiate for running our cloud ping test.
 			// Kick the DNS test timer to fire immediately.
 			log.Infof("HandleAddressChange: Kicking cloud ping test now, " + 
-				"Since we have suitable addresses already."
+				"Since we have suitable addresses already.")
 			ctx.DNSTimer.TickNow()
+
+			// Also reset the DNS timer.
+			resetDNSVerifyTimer(ctx.DNSTimer, time.Duration(30 * time.Second))
 		}
 	}
 }
