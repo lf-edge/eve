@@ -45,8 +45,10 @@ func TestLookupIoBundle(t *testing.T) {
 	testMatrix := []TestLookupIoBundleForMemberMatrix{
 		{ioType: IoEth, lookupName: "eth0-1", expectedBundleName: "eth0-1"},
 		// Type should also be considered.
-		{ioType: IoUSB, lookupName: "eth1", expectedBundleName: ""},
-		{ioType: IoEth, lookupName: "eth4-7", expectedBundleName: ""}, // No such member
+		{ioType: IoUSB, lookupName: "eth2", expectedBundleName: ""},
+		{ioType: IoEth, lookupName: "eth1", expectedBundleName: ""},
+		{ioType: IoEth, lookupName: "eth2", expectedBundleName: "eth2"},
+		{ioType: IoEth, lookupName: "eth4-7", expectedBundleName: "eTH4-7"}, // No such member
 	}
 
 	// Basic test
@@ -65,20 +67,19 @@ func TestLookupIoBundle(t *testing.T) {
 			}
 		}
 	}
-	log.Infof("TestLookupIoBundleForMember: DONE\n")
+	log.Infof("TestLookupIoBundle: DONE\n")
 }
 
 func TestLookupIoBundleForMember(t *testing.T) {
 	log.Infof("TestLookupIoBundleForMember: START\n")
-
 	testMatrix := []TestLookupIoBundleForMemberMatrix{
 		{ioType: IoEth, lookupName: "eth1", expectedBundleName: "eth0-1"},
 		// Type should also be considered.
 		{ioType: IoUSB, lookupName: "eth1", expectedBundleName: ""},
 		{ioType: IoEth, lookupName: "eth3", expectedBundleName: ""}, // No such member
-		{ioType: IoEth, lookupName: "eth7", expectedBundleName: "eth4-7"},
+		{ioType: IoEth, lookupName: "eth7", expectedBundleName: "eTH4-7"},
 		// Test Ignore case
-		{ioType: IoEth, lookupName: "ETH7", expectedBundleName: "eth4-7"},
+		{ioType: IoEth, lookupName: "ETH7", expectedBundleName: "eTH4-7"},
 	}
 
 	// Basic test

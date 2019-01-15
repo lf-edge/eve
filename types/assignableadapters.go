@@ -88,8 +88,13 @@ func LookupIoBundle(aa *AssignableAdapters, ioType IoType, name string) *IoBundl
 func (aa *AssignableAdapters) LookupIoBundleForMember(
 	ioType IoType, memberName string) *IoBundle {
 	for i, b := range aa.IoBundleList {
-		if b.Type == ioType && strings.EqualFold(b.Name, memberName) {
-			return &aa.IoBundleList[i]
+		if b.Type != ioType {
+			continue
+		}
+		for _, member := range b.Members {
+			if strings.EqualFold(member, memberName) {
+				return &aa.IoBundleList[i]
+			}
 		}
 	}
 	return nil
