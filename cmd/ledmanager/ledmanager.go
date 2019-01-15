@@ -184,6 +184,9 @@ func Run() {
 
 		case change := <-subLedBlinkCounter.C:
 			subLedBlinkCounter.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 }
