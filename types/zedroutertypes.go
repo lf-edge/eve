@@ -580,6 +580,10 @@ func AdapterToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 
 func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
 	aa *AssignableAdapters) bool {
+	if aa == nil {
+	   log.Infof("IsAnyPortInPciBack nil aa")
+	   return false
+        }
 	for _, port := range portConfig.Ports {
 		ioBundle := aa.LookupIoBundleForMember(
 			IoEth, port.Name)
