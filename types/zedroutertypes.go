@@ -531,7 +531,7 @@ func AdapterToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 			return adapter
 		}
 	}
-	log.Infof("AdapterToIfName: no match for %s\n", adapter)
+	log.Debugf("AdapterToIfName: no match for %s\n", adapter)
 	return adapter
 }
 
