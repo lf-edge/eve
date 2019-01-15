@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Zededa, Inc.
+// Copyright (c) 2019 Zededa, Inc.
 // All rights reserved.
 
 package types
