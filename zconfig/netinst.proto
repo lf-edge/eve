@@ -4,25 +4,26 @@ option java_package = "com.zededa.cloud.uservice.proto";
 option go_package = "github.com/zededa/api/zconfig";
 
 import "devcommon.proto";
+import "netcmn.proto";
 
-enum ZSrvType {
-  ZsrvFirst = 0;
-  ZsrvStrongSwan = 1;
-  ZsrvLISP = 2;
-  ZsrvBridge = 3;
-  ZsrvNAT = 4;
-  ZsrvLB = 5;
-  ZsrvLast = 255;
+enum ZNetworkInstType {
+  ZNetInstFirst    = 0;
+  ZnetInstSwitch   = 1;
+  ZnetInstLocal    = 2;
+  ZnetInstCloud    = 3;
+  ZnetInstMesh     = 4;
+  ZnetInstHoneyPot = 5;
+  ZNetInstLast     = 255;
 }
 
-// Service Opaque config. In future we might add more fields here
+// Network Instance Opaque config. In future we might add more fields here
 // but idea is here. This is service specific configuration.
-message ServiceOpaqueConfig {
+message NetworkInstanceOpaqueConfig {
 	string oconfig = 1;
 }
 
-// Service Lisp config
-message ServiceLispConfig {
+// Lisp NetworkInstance config
+message NetworkInstanceLispConfig {
         repeated ZcServicePoint LispMSs = 1;
         uint32 LispInstanceId = 2;
 
@@ -35,17 +36,14 @@ message ServiceLispConfig {
 	bool experimental = 20;
 }
 
-message ServiceInstanceConfig {
+message NetworkInstanceConfig {
 	string id = 1;
 	string displayname = 2;
 
-	//depricate this field
-	ZSrvType srvtype = 3;
+	// new instance type
+	ZNetworkInstType instType = 4;
 
 	bool activate = 5;
-
-	// towards application which networkUUID to use
-	string applink = 10;
 
 	// This is port configuration, we can use this one and evovle to do 
 	// model name, based thing for future.
@@ -54,6 +52,14 @@ message ServiceInstanceConfig {
 	Adapter devlink = 20;
 
 	// Opaque configuration 
-	ServiceOpaqueConfig cfg = 30;
-	ServiceLispConfig   lispCfg = 31; 
+	NetworkInstanceOpaqueConfig cfg = 30;
+
+	// network ip specification
+	ipspec ip = 40;
+
+	// static DNS entry, if we are running DNS/DHCP service
+	repeated ZnetStaticDNSEntry dns = 41;
+
+        // enterprise proxy
+        ProxyConfig entProxy = 42;
 }

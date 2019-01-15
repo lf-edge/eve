@@ -24,7 +24,7 @@ message NetworkAdapter {
 	string name =1;
 	string id   =2;		// UUID of adapter?
 
-	string networkId =3;	// UUID of NetworkConfig object
+	string networkId =3;	// UUID of NetworkInstance object
 
 	string addr = 4;	// Static IP address; could be IPv4 EID
 	string hostname = 5;	// Not currently used

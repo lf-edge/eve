@@ -11,6 +11,7 @@ It is generated from these files:
 	devconfig.proto
 	devcommon.proto
 	netcmn.proto
+	netinst.proto
 	appconfig.proto
 	vm.proto
 	netconfig.proto
@@ -45,6 +46,9 @@ It has these top-level messages:
 	ProxyConfig
 	ZnetStaticDNSEntry
 	Ipspec
+	NetworkInstanceOpaqueConfig
+	NetworkInstanceLispConfig
+	NetworkInstanceConfig
 	InstanceOpsCmd
 	AppInstanceConfig
 	VmConfig
