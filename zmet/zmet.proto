@@ -14,7 +14,7 @@ option java_package = "com.zededa.cloud.uservice.proto";
 enum ZInfoTypes {
   ZiNop = 0;
   ZiDevice = 1;
-  ZiHypervisor = 2;	// Deprecated
+  // ZiHypervisor = 2;	// Deprecated
   ZiApp = 3;
   ZiService = 4;
   ZiNetworkObject = 5;
@@ -35,16 +35,18 @@ message ZInfoManufacturer {
 }
 
 message ZInfoNetwork {
-  string IPAddr = 1; // Deprecated. Returning first address for now
-  string gwAddr = 2; // Deprecated; routing is richer than a single gateway
+  // string IPAddr = 1; // Deprecated. Returning first address for now
+  // string gwAddr = 2; // Deprecated; routing is richer than a single gateway
   string macAddr = 3;
-  string devName = 4; // eth0, eth1 etc.
+  string devName = 4; // From name in config
   repeated string IPAddrs = 5; // All IP addresses with /N for subnet
   repeated string defaultRouters = 6; // If DHCP assigned
   ZInfoDNS dns = 7; // If DHCP assigned
   bool up = 8;      // operational up/down status.
   GeoLoc location = 9;
-  bool uplink = 10; // Uplink interface
+  bool uplink = 10; // Uplink interface  // XXX rename to isMgmtPort
+  ErrorInfo networkErr = 11; // For instance bad proxy config
+  string localName = 12; // eth0, eth1 etc.
 }
 
 // From an IP address-based geolocation service
@@ -161,24 +163,14 @@ message ZInfoStorage {
   bool storageLocation = 4; // Storage location for app disks, images etc.
 }
 
-// Device info from DOM0 perspective, if it exists.
-// The following is deprecated.
-message ZInfoHypervisor {
-  uint32 ncpu = 3;
-  uint64 memory = 4;
-  uint64 storage = 5;
-
-  ZInfoSW software = 6;
-}
-
 message ZInfoApp {
   string AppID = 1;
 
   bool systemApp = 6;
   string AppName = 7;
   repeated ZInfoSW softwareList = 8;
-  bool activated = 9;                       // deprecated
-  google.protobuf.Timestamp errorTime = 11; //deprecated, use ErrorInfo
+  // bool activated = 9;                       // deprecated
+  // google.protobuf.Timestamp errorTime = 11; //deprecated, use ErrorInfo
 
   google.protobuf.Timestamp bootTime = 12;
   repeated ZioBundle assignedAdapters = 13;
@@ -366,20 +358,6 @@ enum ZmetricTypes {
   ZmApp = 3;
 }
 
-message cpuMetric { // Deprecated
-  uint32 upTime = 2;
-  double cpuUtilization = 3;
-  double usr = 4;
-  double nice = 5;
-  double system = 6;
-  double io = 7;
-  double irq = 8;
-  double soft = 9;
-  double steal = 10;
-  double guest = 11;
-  double idle = 12;
-}
-
 message memoryMetric {
   uint32 usedMem = 2;            //in MBytes
   uint32 availMem = 3;           //in MBytes
@@ -388,7 +366,7 @@ message memoryMetric {
 }
 
 message networkMetric {
-  string iName = 1;	// interface name
+  string iName = 1;	// name from config
   uint64 txBytes = 2;	// in bytes
   uint64 rxBytes = 3;	// in bytes
   uint64 txDrops = 4;
@@ -403,10 +381,11 @@ message networkMetric {
   uint64 rxAclDrops = 13;
   uint64 txAclRateLimitDrops = 14;
   uint64 rxAclRateLimitDrops = 15;
+  string localName = 16; // local vif name e.g., nbu*
 }
 
 // Failures and successes for commuication to zedcloud
-// for each uplink interface
+// for each port
 message zedcloudMetric {
     string ifName = 1;	// interface name
     uint64 failures = 2;
@@ -427,26 +406,18 @@ message urlcloudMetric {
 }
 
 message appCpuMetric {
-    uint32 cpuTotal = 2;		// deprecated
-    double cpuPercentage = 3;		// deprecated
+    // uint32 cpuTotal = 2;		// deprecated
+    // double cpuPercentage = 3;		// deprecated
     google.protobuf.Timestamp upTime = 4;
     uint64 total = 5;                   // cpu total in secs.
 }
 
-// We report both upTime in seconds and bootTime (in info). Allows to determine
-// large clock skew. Difference betweem cpuTotal and upTime is the amount
-// of idle.
-message devCpuMetric {  // deprecated
-    uint64 cpuTotal = 1;	// in seconds
-    uint64 upTime = 2;          // in seconds
-}
-
 message deviceMetric {
-  cpuMetric cpu = 1;	// deprecated
+  // cpuMetric cpu = 1;	// deprecated
   memoryMetric memory = 2;
   repeated networkMetric network = 3;
   repeated zedcloudMetric zedcloud = 4;
-  devCpuMetric compute = 5; // depcreated
+  // devCpuMetric compute = 5; // deprecated
   repeated diskMetric disk = 6;
   appCpuMetric cpuMetric = 7;
   repeated MetricItem metricItems = 8;
@@ -614,7 +585,7 @@ message ZMetricService {
 
 message ZMetricMsg {
   string devID = 1;
-  ZmetricTypes ztype = 2;  // deprecated
+  // ZmetricTypes ztype = 2;  // deprecated
   google.protobuf.Timestamp atTimeStamp = 3;
 
   oneof MetricContent {

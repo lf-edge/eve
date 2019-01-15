@@ -30,7 +30,7 @@ message DeviceLispDetails {
         bytes EidAllocationPrefix = 8;
         uint32 EidAllocationPrefixLen = 9;
         string ClientAddr = 10;
-        bool Experimental = 20;	// true: Zededa dataplane, false [default]: lispers.net dataplane
+        bool Experimental = 20;	// true: lispers.net dataplane. Default: go dataplane
 }
 
 // Device Operational Commands Semantic
@@ -65,7 +65,7 @@ message sWAdapterParams {
 }
 
 message SystemAdapter {
-	// name of the adapter
+	// name of the adapter; hardware-specific e.g., eth0
 	string name = 1;
 
 	sWAdapterParams allocDetails = 20;
@@ -81,6 +81,10 @@ message SystemAdapter {
 
 	// if its static network we need ip address
 	string addr = 5;
+
+	// alias/logical name which will be reported to zedcloud
+	// and used for app instances
+	string logicalName = 6;
 }
 
 message EdgeDevConfig {
@@ -115,6 +119,8 @@ message EdgeDevConfig {
 // it means the default value of 60 seconds.
 message ConfigItem {
 	string key = 1;		// E.g., "configinterval"
+	string value = 2;
+	// Below section will be deprecated
 	oneof configItemValue {
 		bool boolValue = 3;
 		uint32 uint32Value = 4;	// If timer this is in seconds

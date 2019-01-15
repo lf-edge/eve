@@ -63,7 +63,6 @@ func (m *NetworkConfig) GetEntProxy() *ProxyConfig {
 }
 
 type NetworkAdapter struct {
-	// this is deviceName....
 	Name      string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
 	Id        string `protobuf:"bytes,2,opt,name=id" json:"id,omitempty"`
 	NetworkId string `protobuf:"bytes,3,opt,name=networkId" json:"networkId,omitempty"`

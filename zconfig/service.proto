@@ -31,8 +31,7 @@ message ServiceLispConfig {
         bytes allocationprefix = 5;
         uint32 allocationprefixlen = 6;
 
-	// various configuration to dataPlane, lispers.net vs Zededa
-	bool experimental = 20;
+        bool Experimental = 20;	// true: lispers.net dataplane. Default: go dataplane
 }
 
 message ServiceInstanceConfig {

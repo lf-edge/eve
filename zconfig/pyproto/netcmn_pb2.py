@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='netcmn.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\x0cnetcmn.proto\"%\n\x07ipRange\x12\r\n\x05start\x18\x01 \x01(\t\x12\x0b\n\x03\x65nd\x18\x02 \x01(\t\"G\n\x0bProxyServer\x12\x1a\n\x05proto\x18\x01 \x01(\x0e\x32\x0b.proxyProto\x12\x0e\n\x06server\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"m\n\x0bProxyConfig\x12\x1a\n\x12networkProxyEnable\x18\x01 \x01(\x08\x12\x1d\n\x07proxies\x18\x02 \x03(\x0b\x32\x0c.ProxyServer\x12\x12\n\nexceptions\x18\x03 \x01(\t\x12\x0f\n\x07pacfile\x18\x04 \x01(\t\"7\n\x12ZnetStaticDNSEntry\x12\x10\n\x08HostName\x18\x01 \x01(\t\x12\x0f\n\x07\x41\x64\x64ress\x18\x02 \x03(\t\"\x89\x01\n\x06ipspec\x12\x17\n\x04\x64hcp\x18\x02 \x01(\x0e\x32\t.DHCPType\x12\x0e\n\x06subnet\x18\x03 \x01(\t\x12\x0f\n\x07gateway\x18\x05 \x01(\t\x12\x0e\n\x06\x64omain\x18\x06 \x01(\t\x12\x0b\n\x03ntp\x18\x07 \x01(\t\x12\x0b\n\x03\x64ns\x18\x08 \x03(\t\x12\x1b\n\tdhcpRange\x18\t \x01(\x0b\x32\x08.ipRange*_\n\nproxyProto\x12\x0e\n\nPROXY_HTTP\x10\x00\x12\x0f\n\x0bPROXY_HTTPS\x10\x01\x12\x0f\n\x0bPROXY_SOCKS\x10\x02\x12\r\n\tPROXY_FTP\x10\x03\x12\x10\n\x0bPROXY_OTHER\x10\xff\x01*M\n\x08\x44HCPType\x12\x0c\n\x08\x44HCPNoop\x10\x00\x12\n\n\x06Static\x10\x01\x12\x0f\n\x0bPassThrough\x10\x02\x12\n\n\x06Server\x10\x03\x12\n\n\x06\x43lient\x10\x04*A\n\x0bNetworkType\x12\x13\n\x0fNETWORKTYPENOOP\x10\x00\x12\x06\n\x02V4\x10\x04\x12\x06\n\x02V6\x10\x06\x12\r\n\tCryptoEID\x10\x0e\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\x0cnetcmn.proto\"%\n\x07ipRange\x12\r\n\x05start\x18\x01 \x01(\t\x12\x0b\n\x03\x65nd\x18\x02 \x01(\t\"G\n\x0bProxyServer\x12\x1a\n\x05proto\x18\x01 \x01(\x0e\x32\x0b.proxyProto\x12\x0e\n\x06server\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\x86\x01\n\x0bProxyConfig\x12\x1a\n\x12networkProxyEnable\x18\x01 \x01(\x08\x12\x1d\n\x07proxies\x18\x02 \x03(\x0b\x32\x0c.ProxyServer\x12\x12\n\nexceptions\x18\x03 \x01(\t\x12\x0f\n\x07pacfile\x18\x04 \x01(\t\x12\x17\n\x0fnetworkProxyURL\x18\x05 \x01(\t\"7\n\x12ZnetStaticDNSEntry\x12\x10\n\x08HostName\x18\x01 \x01(\t\x12\x0f\n\x07\x41\x64\x64ress\x18\x02 \x03(\t\"\x89\x01\n\x06ipspec\x12\x17\n\x04\x64hcp\x18\x02 \x01(\x0e\x32\t.DHCPType\x12\x0e\n\x06subnet\x18\x03 \x01(\t\x12\x0f\n\x07gateway\x18\x05 \x01(\t\x12\x0e\n\x06\x64omain\x18\x06 \x01(\t\x12\x0b\n\x03ntp\x18\x07 \x01(\t\x12\x0b\n\x03\x64ns\x18\x08 \x03(\t\x12\x1b\n\tdhcpRange\x18\t \x01(\x0b\x32\x08.ipRange*_\n\nproxyProto\x12\x0e\n\nPROXY_HTTP\x10\x00\x12\x0f\n\x0bPROXY_HTTPS\x10\x01\x12\x0f\n\x0bPROXY_SOCKS\x10\x02\x12\r\n\tPROXY_FTP\x10\x03\x12\x10\n\x0bPROXY_OTHER\x10\xff\x01*M\n\x08\x44HCPType\x12\x0c\n\x08\x44HCPNoop\x10\x00\x12\n\n\x06Static\x10\x01\x12\x0f\n\x0bPassThrough\x10\x02\x12\n\n\x06Server\x10\x03\x12\n\n\x06\x43lient\x10\x04*A\n\x0bNetworkType\x12\x13\n\x0fNETWORKTYPENOOP\x10\x00\x12\x06\n\x02V4\x10\x04\x12\x06\n\x02V6\x10\x06\x12\r\n\tCryptoEID\x10\x0e\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
 )
 
 _PROXYPROTO = _descriptor.EnumDescriptor(
@@ -52,8 +52,8 @@ _PROXYPROTO = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=436,
-  serialized_end=531,
+  serialized_start=462,
+  serialized_end=557,
 )
 _sym_db.RegisterEnumDescriptor(_PROXYPROTO)
 
@@ -87,8 +87,8 @@ _DHCPTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=533,
-  serialized_end=610,
+  serialized_start=559,
+  serialized_end=636,
 )
 _sym_db.RegisterEnumDescriptor(_DHCPTYPE)
 
@@ -118,8 +118,8 @@ _NETWORKTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=612,
-  serialized_end=677,
+  serialized_start=638,
+  serialized_end=703,
 )
 _sym_db.RegisterEnumDescriptor(_NETWORKTYPE)
 
@@ -259,6 +259,13 @@ _PROXYCONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='networkProxyURL', full_name='ProxyConfig.networkProxyURL', index=4,
+      number=5, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -271,8 +278,8 @@ _PROXYCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=128,
-  serialized_end=237,
+  serialized_start=129,
+  serialized_end=263,
 )
 
 
@@ -309,8 +316,8 @@ _ZNETSTATICDNSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=239,
-  serialized_end=294,
+  serialized_start=265,
+  serialized_end=320,
 )
 
 
@@ -382,8 +389,8 @@ _IPSPEC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=297,
-  serialized_end=434,
+  serialized_start=323,
+  serialized_end=460,
 )
 
 _PROXYSERVER.fields_by_name['proto'].enum_type = _PROXYPROTO

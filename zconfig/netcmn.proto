@@ -23,7 +23,7 @@ message ProxyServer {
 }
 
 message ProxyConfig {
-       // enable network level proxy
+       // enable network level proxy in the form of WPAD
        bool networkProxyEnable = 1;
 
        // dedicated per protocol information
@@ -35,6 +35,9 @@ message ProxyConfig {
        // or pacfile can be in place of others
        // base64 encoded
        string pacfile = 4;
+
+       // Direct URL for wpad.dat download
+       string networkProxyURL = 5;
 }
 
 
