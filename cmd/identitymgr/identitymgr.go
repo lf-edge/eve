@@ -75,6 +75,10 @@ func Run() {
 	}
 	log.Infof("Starting %s\n", agentName)
 
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName)
+
 	identityCtx := identityContext{}
 
 	pubEIDStatus, err := pubsub.Publish(agentName,
@@ -115,6 +119,9 @@ func Run() {
 
 		case change := <-subEIDConfig.C:
 			subEIDConfig.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 }

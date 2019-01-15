@@ -53,22 +53,24 @@ admin =
 #priority = 1
 interval = 10
 logtick  = 60
+change = 600
 EOF
 cp $TMPDIR/watchdogbase.conf $TMPDIR/watchdogled.conf
 echo "pidfile = /var/run/ledmanager.pid" >>$TMPDIR/watchdogled.conf
+echo "file = /var/run/ledmanager.touch" >>$TMPDIR/watchdogled.conf
 cp $TMPDIR/watchdogled.conf $TMPDIR/watchdognim.conf
 echo "pidfile = /var/run/nim.pid" >>$TMPDIR/watchdognim.conf
+echo "file = /var/run/nim.touch" >>$TMPDIR/watchdognim.conf
 cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogclient.conf
-echo "pidfile = /var/run/nim.pid" >>$TMPDIR/watchdogclient.conf
 echo "pidfile = /var/run/zedclient.pid" >>$TMPDIR/watchdogclient.conf
+echo "pidfile = /var/run/nim.pid" >>$TMPDIR/watchdogclient.conf
+echo "file = /var/run/nim.touch" >>$TMPDIR/watchdogclient.conf
 
 cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogall.conf
 for AGENT in $AGENTS; do
     echo "pidfile = /var/run/$AGENT.pid" >>$TMPDIR/watchdogall.conf
+    echo "file = /var/run/$AGENT.touch" >>$TMPDIR/watchdogall.conf
 done
-# XXX Apply for all agents?
-echo "file = /var/run/zedagent.touch" >>$TMPDIR/watchdogall.conf
-echo "change = 600" >>$TMPDIR/watchdogall.conf
 
 # If watchdog was running we restart it in a way where it will
 # no fail due to killing the agents below.
