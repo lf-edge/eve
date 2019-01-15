@@ -80,7 +80,7 @@ func IoBundleToPci(ib *IoBundle) (string, string, error) {
 	}
 	if short != "" {
 		if !pciLongExists(long) {
-			return "", "", errors.New(fmt.Sprintf("PCI device does not exist", long))
+			return "", "", errors.New(fmt.Sprintf("PCI device (%s) does not exist", long))
 		}
 	}
 	return long, short, nil
