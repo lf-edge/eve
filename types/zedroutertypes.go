@@ -520,14 +520,14 @@ func AdapterToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 
 	for _, p := range deviceNetworkStatus.Ports {
 		if p.Name == adapter {
-			log.Infof("AdapterToIfName: found %s for %s\n",
+			log.Debugf("AdapterToIfName: found %s for %s\n",
 				p.IfName, adapter)
 			return p.IfName
 		}
 	}
 	for _, p := range deviceNetworkStatus.Ports {
 		if p.IfName == adapter {
-			log.Infof("AdapterToIfName: matched %s\n", adapter)
+			log.Debugf("AdapterToIfName: matched %s\n", adapter)
 			return adapter
 		}
 	}
