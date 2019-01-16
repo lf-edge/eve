@@ -96,6 +96,10 @@ func Run() {
 	}
 	log.Infof("Starting %s\n", agentName)
 
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName)
+
 	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := pubsub.Publish(agentName, cms)
 	if err != nil {
@@ -224,6 +228,9 @@ func Run() {
 
 		case change := <-subGlobalDownloadConfig.C:
 			subGlobalDownloadConfig.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 	log.Infof("Have %d management ports addresses to use\n",
@@ -263,6 +270,9 @@ func Run() {
 
 		case <-gc.C:
 			gcObjects(&ctx)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 }

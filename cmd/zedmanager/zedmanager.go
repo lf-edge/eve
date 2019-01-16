@@ -88,6 +88,10 @@ func Run() {
 	}
 	log.Infof("Starting %s\n", agentName)
 
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName)
+
 	// Any state needed by handler functions
 	ctx := zedmanagerContext{}
 
@@ -275,6 +279,9 @@ func Run() {
 			if ctx.verifierRestarted {
 				log.Infof("Verifier reported restarted\n")
 			}
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 
@@ -311,6 +318,9 @@ func Run() {
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 }

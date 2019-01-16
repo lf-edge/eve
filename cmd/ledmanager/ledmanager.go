@@ -124,6 +124,10 @@ func Run() {
 	}
 	log.Infof("Starting %s\n", agentName)
 
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName)
+
 	model := hardware.GetHardwareModel()
 	log.Infof("Got HardwareModel %s\n", model)
 
@@ -180,6 +184,9 @@ func Run() {
 
 		case change := <-subLedBlinkCounter.C:
 			subLedBlinkCounter.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 }

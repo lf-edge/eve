@@ -74,6 +74,10 @@ func Run() {
 	}
 	log.Infof("Starting %s\n", agentName)
 
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName)
+
 	DNSctx := DNSContext{}
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
@@ -99,6 +103,9 @@ func Run() {
 		case <-timer.C:
 			log.Infoln("Exit since we got timeout")
 			done = true
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 }

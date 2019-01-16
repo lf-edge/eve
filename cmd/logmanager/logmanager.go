@@ -152,6 +152,10 @@ func Run() {
 	log.Infof("Starting %s watching %s\n", agentName, logDirName)
 	log.Infof("watching %s\n", lispLogDirName)
 
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName)
+
 	// Make sure we have the last sent directory
 	dirname := fmt.Sprintf("/persist/%s", lastSentDirname)
 	if _, err := os.Stat(dirname); err != nil {
@@ -210,6 +214,9 @@ func Run() {
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 	log.Infof("Have %d management ports with usable addresses\n",
@@ -315,6 +322,9 @@ func Run() {
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change, 1*time.Second)
 			dbg.FreeOSMemory()
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 }

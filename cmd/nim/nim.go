@@ -118,6 +118,10 @@ func Run() {
 	}
 	log.Infof("Starting %s\n", agentName)
 
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName)
+
 	model := waitForDeviceNetworkConfigFile()
 
 	pubDeviceNetworkStatus, err := pubsub.Publish(agentName,
@@ -279,6 +283,9 @@ func Run() {
 			if change {
 				publishDeviceNetworkStatus(&nimCtx)
 			}
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 }
