@@ -13,7 +13,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"net"
 	"reflect"
-	"time"
 )
 
 // Returns a channel for address updates
@@ -41,7 +40,8 @@ func AddrChangeInit(ctx *DeviceNetworkContext) chan netlink.AddrUpdate {
 }
 
 // Handle an IP address change
-func AddrChange(ctx *DeviceNetworkContext, change netlink.AddrUpdate) {
+func AddrChange(ctx *DeviceNetworkContext,
+	change netlink.AddrUpdate) {
 
 	changed := false
 	if change.NewAddr {
@@ -56,19 +56,9 @@ func AddrChange(ctx *DeviceNetworkContext, change netlink.AddrUpdate) {
 	}
 }
 
-func kickStartDPCListVerify(ctx *DeviceNetworkContext) {
-	select {
-	// Do not get blocked
-	case ctx.ParseDPCList <- true:
-	default:
-		log.Infof("kickStartDPCListVerify: Device port configuration list " +
-			"verification already in progress")
-	}
-}
-
 // Check if ports in the given DeviceNetworkStatus have atleast one
 // IP address each.
-func doAllDNSPortsHaveIPAddrs(status types.DeviceNetworkStatus) bool {
+func checkIfAllDNSPortsHaveIPAddrs(status types.DeviceNetworkStatus) bool {
 	mgmtPorts := types.GetMgmtPortsFree(status, 0)
 	if len(mgmtPorts) == 0 {
 		return false
@@ -76,7 +66,10 @@ func doAllDNSPortsHaveIPAddrs(status types.DeviceNetworkStatus) bool {
 
 	for _, port := range mgmtPorts {
 		numAddrs := types.CountLocalAddrFreeNoLinkLocalIf(status, port)
-		log.Debugln("doAllDNSPortsHaveIPAddrs: Port %s has %d addresses.", port, numAddrs)
+		log.Debugln("checkIfAllDNSPortsHaveIPAddrs: Port %s has %d addresses.",
+			port, numAddrs)
+		log.Infof("XXXXX checkIfAllDNSPortsHaveIPAddrs: Port %s has %d addresses.",
+			port, numAddrs)
 		if numAddrs < 1 {
 			return false
 		}
@@ -85,19 +78,19 @@ func doAllDNSPortsHaveIPAddrs(status types.DeviceNetworkStatus) bool {
 }
 
 // The ifname arg can only be used for logging
-func HandleAddressChange(ctx *DeviceNetworkContext, ifname string) {
+func HandleAddressChange(ctx *DeviceNetworkContext,
+	ifname string) {
+
 	// Check if we have more or less addresses
 	var dnStatus *types.DeviceNetworkStatus
-	if ctx.PendDeviceNetworkStatus != nil {
-		dnStatus = ctx.PendDeviceNetworkStatus
-	} else {
-		dnStatus = ctx.DeviceNetworkStatus
-	}
-	status, _ := MakeDeviceNetworkStatus(*ctx.DevicePortConfig, *dnStatus)
 
 	// XXX if err return means WPAD failed, or port does not exist
 	// XXX add test hook for former
 	if ctx.PendDeviceNetworkStatus == nil {
+		dnStatus = ctx.DeviceNetworkStatus
+		status, _ := MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
+			*dnStatus)
+
 		if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
 			log.Debugf("HandleAddressChange: change for %s from %v to %v\n",
 				ifname, *ctx.DeviceNetworkStatus, status)
@@ -107,16 +100,17 @@ func HandleAddressChange(ctx *DeviceNetworkContext, ifname string) {
 			log.Infof("HandleAddressChange: No change for %s\n", ifname)
 		}
 	} else {
-		pingTestDNS := doAllDNSPortsHaveIPAddrs(*ctx.PendDeviceNetworkStatus)
+		dnStatus = ctx.PendDeviceNetworkStatus
+		_, _ = MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
+			*dnStatus)
+
+		pingTestDNS := checkIfAllDNSPortsHaveIPAddrs(*ctx.PendDeviceNetworkStatus)
 		if pingTestDNS {
 			// We have a suitable candiate for running our cloud ping test.
 			// Kick the DNS test timer to fire immediately.
 			log.Infof("HandleAddressChange: Kicking cloud ping test now, " + 
 				"Since we have suitable addresses already.")
-			ctx.DNSTimer.TickNow()
-
-			// Also reset the DNS timer.
-			resetDNSVerifyTimer(ctx.DNSTimer, time.Duration(30 * time.Second))
+			VerifyDevicePortConfig(ctx)
 		}
 	}
 }

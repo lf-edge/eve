@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"reflect"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -242,22 +241,16 @@ func Run() {
 	geoTimer := flextimer.NewRangeTicker(time.Duration(geoMin),
 		time.Duration(geoMax))
 
+	dnc := &nimCtx.DeviceNetworkContext
 	// Timer for checking/verifying pending device network status
-	dnsInterval := time.Duration(30 * time.Second)
-	dnsMax := float64(dnsInterval)
-	dnsMin := dnsMax * 0.9
-	dnsTimer := flextimer.NewRangeTicker(time.Duration(dnsMin),
-		time.Duration(dnsMax))
-	nimCtx.DeviceNetworkContext.DNSTimer = dnsTimer
-	parseDPCList := make(chan bool, 1)
-	nimCtx.DeviceNetworkContext.ParseDPCList = parseDPCList
+	dnsTimer := time.NewTimer(30 * time.Second)
+	dnsTimer.Stop()
+	dnc.DNSTimer = dnsTimer
 
 	// Periodic timer that tests device cloud connectivity
 	networkTestInterval := time.Duration(5 * time.Minute)
-	networkTestMax := float64(networkTestInterval)
-	networkTestMin := networkTestMax * 0.9
-	networkTestTimer := flextimer.NewRangeTicker(time.Duration(networkTestMin),
-		time.Duration(networkTestMax))
+	networkTestTimer := time.NewTimer(networkTestInterval)
+	dnc.NetworkTestTimer = networkTestTimer
 
 	// Look for address changes
 	addrChanges := devicenetwork.AddrChangeInit(&nimCtx.DeviceNetworkContext)
@@ -299,39 +292,21 @@ func Run() {
 			if change {
 				publishDeviceNetworkStatus(&nimCtx)
 			}
-		case _, ok := <-parseDPCList:
-			if !ok {
-				log.Infof("Parse DPC list channel closed?")
-			} else {
-				log.Debugln("Parsing DevicePortConfigList at", time.Now())
-				dnc := &nimCtx.DeviceNetworkContext
-				if dnc.NextDPCIndex >= 0 {
-					log.Infof("Previous instance of Device port configuration " +
-						"list verification in progress currently.")
-				}
-				dnc.PendDeviceNetworkStatus = nil
-				dnc.NextDPCIndex = 0
-				dnc.ReTestCurrentDPC = false
-				// Kick the DPC verify timer to tick now.
-				dnsTimer.TickNow()
-			}
-		case _, ok := <-dnsTimer.C:
+		case _, ok := <-dnc.DNSTimer.C:
 			if !ok {
 				log.Infof("Device port test timer stopped?")
 			} else {
 				log.Debugln("dnsTimer at", time.Now())
-				dnc := &nimCtx.DeviceNetworkContext
-				ok := verifyDevicePortConfig(dnc)
+				ok := devicenetwork.VerifyDevicePortConfig(dnc)
 				if ok == true {
 					log.Debugln("Working Device port configuration available.")
 				}
 			}
-		case _, ok := <-networkTestTimer.C:
+		case _, ok := <-dnc.NetworkTestTimer.C:
 			if !ok {
 				log.Infof("Network test timer stopped?")
 			} else {
-				dnc := &nimCtx.DeviceNetworkContext
-				ok := tryDeviceConnectivityToCloud(dnc, dnsTimer)
+				ok := tryDeviceConnectivityToCloud(dnc)
 				if ok {
 					log.Infof("Device connectivity to cloud worked at %v", time.Now())
 				} else {
@@ -342,8 +317,7 @@ func Run() {
 	}
 }
 
-func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext,
-	dnsTimer flextimer.FlexTickerHandle) bool {
+func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool {
 	pass := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1)
 	if pass {
 		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
@@ -366,105 +340,12 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext,
 				ctx.NextDPCIndex = 0
 				ctx.ReTestCurrentDPC = false
 				// Kick the DPC verify timer to tick now.
-				dnsTimer.TickNow()
+				devicenetwork.RestartVerify(ctx, "tryDeviceConnectivityToCloud")
 			}
 		} else {
 			ctx.CloudConnectivityWorks = false
 		}
 	}
-	return false
-}
-
-func verifyDevicePortConfig(ctx *devicenetwork.DeviceNetworkContext) bool {
-	var numUsableAddrs int
-	if ctx.NextDPCIndex < 0 {
-		return true
-	}
-	log.Debugln("verifyDevicePortConfig: Verifying DPC at index %d", ctx.NextDPCIndex)
-	numDPCs := len(ctx.DevicePortConfigList.PortConfigList)
-
-	dnStatus := ctx.PendDeviceNetworkStatus
-	if dnStatus != nil {
-		numUsableAddrs = types.CountLocalAddrFreeNoLinkLocal(*dnStatus)
-	}
-	// XXX Check if there are any usable unicast ip addresses assigned.
-	if dnStatus != nil && numUsableAddrs > 0 {
-		ctx.ReTestCurrentDPC = false
-		// We want connectivity to zedcloud via atleast one Management port.
-		pass := devicenetwork.VerifyDeviceNetworkStatus(*dnStatus, 1)
-		if pass {
-			dpcBeingUsed := ctx.DPCBeingUsed.TimePriority
-			dpcBeingTested := ctx.DPCBeingTested.TimePriority
-			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].LastSucceeded = time.Now()
-			if ctx.DPCBeingUsed == nil ||
-				dpcBeingTested.After(dpcBeingUsed) ||
-				dpcBeingTested.Equal(dpcBeingUsed) {
-				log.Infof("verifyDevicePortConfig: Stopping Device Port configuration test"+
-					" at index %d of Device port configuration list", ctx.NextDPCIndex)
-
-				// XXX We should stop the network testing now.
-				ctx.PendDeviceNetworkStatus = nil
-				ctx.NextDPCIndex = -1
-
-				ctx.DeviceNetworkStatus = dnStatus
-				devicenetwork.DoDNSUpdate(ctx)
-				ctx.DPCBeingUsed = ctx.DPCBeingTested
-				*ctx.DevicePortConfig = *ctx.DPCBeingUsed
-				return true
-			} else {
-				// Should we stop here?
-				log.Infof("verifyDevicePortConfig: Tested configuration %s "+
-					"has a timestamp that is earlier than timestapmp of "+
-					"configuration being used %s", ctx.DPCBeingTested, ctx.DPCBeingUsed)
-				//ctx.PendDeviceNetworkStatus = nil
-				//ctx.NextDPCIndex = -1
-			}
-		} else {
-			log.Infof("verifyDevicePortConfig: DPC configuration at DPC list "+
-				"index %d did not work, moving to next valid DPC (if present)",
-				ctx.NextDPCIndex)
-			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].LastFailed = time.Now()
-			ctx.NextDPCIndex += 1
-		}
-	} else if dnStatus != nil && numUsableAddrs == 0 {
-		// We have a pending device network status, but do not yet have any
-		// usable IP addresses assigned to ports. We give this pending
-		// device network one more chance by waiting till the next test slot.
-		// We mark a flag in device network context saying that we have
-		// given a second chance to the current DevicePortConfig.
-		//
-		// If this is the second try already, move ahead in the DPC list.
-		if ctx.ReTestCurrentDPC {
-			ctx.NextDPCIndex += 1
-			ctx.ReTestCurrentDPC = false
-		} else {
-			ctx.ReTestCurrentDPC = true
-			log.Infof("verifyDevicePortConfig: Waiting till the next test slot of DPC " +
-				"at index %d", ctx.NextDPCIndex)
-		}
-	}
-	if ctx.NextDPCIndex >= numDPCs {
-		log.Errorf("verifyDevicePortConfig: No working device port configuration found. " +
-			"Starting Device port configuration list test again.")
-		ctx.PendDeviceNetworkStatus = nil
-		ctx.NextDPCIndex = 0
-		ctx.ReTestCurrentDPC = false
-		return false
-	}
-	portConfig := ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
-	ctx.DevicePortConfigTime = portConfig.TimePriority
-
-	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
-		log.Infof("verifyDevicePortConfig: DevicePortConfig change from %v to %v\n",
-			*ctx.DevicePortConfig, portConfig)
-		devicenetwork.UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
-		*ctx.DevicePortConfig = portConfig
-		*ctx.DPCBeingTested = portConfig
-	}
-	status, _ := devicenetwork.MakeDeviceNetworkStatus(portConfig,
-		*ctx.DeviceNetworkStatus)
-	ctx.PendDeviceNetworkStatus = &status
-
 	return false
 }
 
