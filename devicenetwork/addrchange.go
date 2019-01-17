@@ -28,8 +28,9 @@ func AddrChangeInit(ctx *DeviceNetworkContext) chan netlink.AddrUpdate {
 		log.Errorf("AddrSubscribe failed %s\n", err)
 	}
 	addropt := netlink.AddrSubscribeOptions{
-		ListExisting:  true,
-		ErrorCallback: errFunc,
+		ListExisting:        true,
+		ErrorCallback:       errFunc,
+		SocketReceiveBuffer: 128 * 1024,
 	}
 	if err := netlink.AddrSubscribeWithOptions(addrchan, nil,
 		addropt); err != nil {

@@ -61,8 +61,9 @@ func PbrInit(ctx *zedrouterContext, addrChange addrChangeFnType,
 		log.Errorf("AddrSubscribe failed %s\n", err)
 	}
 	addropt := netlink.AddrSubscribeOptions{
-		ListExisting:  true,
-		ErrorCallback: addrErrFunc,
+		ListExisting:        true,
+		ErrorCallback:       addrErrFunc,
+		SocketReceiveBuffer: 128 * 1024,
 	}
 	if err := netlink.AddrSubscribeWithOptions(addrchan, nil,
 		addropt); err != nil {
