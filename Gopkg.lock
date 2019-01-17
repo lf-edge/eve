@@ -56,7 +56,7 @@
   branch = "master"
   name = "github.com/eriknordmark/netlink"
   packages = ["."]
-  revision = "cd477fd797a5383d1abd018a784b4037c5d9bc9b"
+  revision = "cf716481271abe5d3b06fd6289da31ed1f82abc2"
 
 [[projects]]
   name = "github.com/fsnotify/fsnotify"
