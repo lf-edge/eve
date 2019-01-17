@@ -84,18 +84,40 @@ interact with Xen.
 While running everything on your laptop with qemu could be fun, nothing
 beats real hardware. The most cost-effective option, not surprisingly,
 is ARM. We recommend using HiKey board (http://www.lenovator.com/product/90.html).
-Once you aquire the board you will need to build an image, flash it onto
-the SD card and tell the UEFI bootloader to boot the GRUB payload from
-the SD card. Here's what you need to do:
+Once you acquire the board you will need to build an installer image by running
+(note that if you're building it on an ARM server you can drop ZARCH=aarch64 part):
 ```
-vi conf/wpa_supplicant.conf
-  # put your WIFI passwords in and/or add your own networks
-make ZARCH=aarch64 MEDIA_SIZE=1024 fallback_aarch64.raw
-sudo dd if=fallback_aarch64.raw of=/dev/rdiskXXX bs=1m
-``` 
+make ZARCH=aarch64 installer_aarch64.img
+```
+and then flashing it onto an SD card. For example, here's how you can do the
+flashing on Mac OS X (where XXX is the name of your SD card as shown by
+diskutil list):
+```
+diskutil list
+diskutil umountDisk /dev/rdiskXXX
+sudo dd if=installer_aarch64.raw of=/dev/rdiskXXX bs=1m
+diskutil eject /dev/rdiskXXX
+```
 
-Now put the SD card into the KiKey, connect HiKey to your serial port,
-start screen and poweron HiKey:
+Since by default HiKey is using WiFi for all its networking, you will also
+have to provide SSID and password for your WiFi network. On Mac OS X you
+can simply re-insert SD card and edit wpa_supplicant.conf that will appear 
+on volume called ZEDEDA.
+
+
+At this point you have everything you need to permanently install onto
+HiKey's internal flash. This, of course, will mean that if you have anything
+else installed there (like a Debian or Android OS) it will be replaced so
+make sure to make a backup if you nee to.
+
+Additionally, our installer will try to configure an entry point to the
+initial boot sequence via GRUB. Since the only reliable way to do so is
+by replacing a file called fastboot.efi in the system boot partition you
+need to make sure that you have fastboot.efi present there (since if itsn't
+there installer will refuse to proceed). The easiest way to check for
+all that is to invoke an EFI shell on HiKey. Here's how: put the SD card 
+into the KiKey, connect HiKey to your serial port, start screen, poweron
+HiKey and immediately start pressing <ESC> key to trigger EFI shell:
 ```
 screen /dev/tty.usbserial-* 115200
 
@@ -107,35 +129,55 @@ screen /dev/tty.usbserial-* 115200
 Start: 4
 .....
 Press ESC in 4 seconds to skip startup.nsh or any other key to continue.
-Shell> fs0:\EFI\BOOT\BOOTAA64.EFI
+
+Shell> ls fs2:\EFI\BOOT\fastboot.efi
+Shell> setsize 1 fs2:\EFI\BOOT\fastboot.efi
 ```
 
-At this point you should see command prompt and it may be a good idea
-to configure HiKey's boot sequence to go through zenbuild GRUB trampoline
-(so that you don't have to manually press '4' and enter the BOOTAA64.EFI 
-GRUB location at the UEFI prompt). Unfortunatelly, the default HiKey boot 
-sequence is pretty rigid so the easiest way to get to GRUB is a hack. By
-replacing the default fastboot.efi binary in the EFI partition on the eMMC
-we will trick HiKey UEFI firmware into loading GRUB trampoline instead:
+NOTE: you only need to execute the last (setsize) command if, for whatever
+reason, the previous command doesn't show fastboot.efi present on your
+system. Once you've either verified that there's an existing fastboot.efi
+(or created a dummy one via the setsize command) you can proceed with
+the rest of the installation from the same EFI shell by executing:
 ```
-mount /dev/mmcblk0p6 /mnt
-cd /mnt
-mv fastboot.efi fastboot.efi.bak
-mv grub.cfg grub.cfg.bak
-mv grubaa64.efi grubaa64.efi.bak
-cp /EFI/BOOT/BOOTAA64.EFI fastboot.efi
-cat > grub.cfg <<'__EOT__'
-gptprio.next -d dev -u uuid hd1,gpt1
-set root=$dev
-chainloader ($dev)/EFI/BOOT/BOOTX64.EFI
-boot
-reboot
-__EOT__
+Shell> fs0:\EFI\BOOT\BOOTX64.EFI
 ```
 
-Note that this gives you exactly the same GRUB trampoline that also resides
-in the EFI partition on the SD card. We could've also chainloaded into that,
-but it feels like goin through two trampolines is a waste of time.
+You will see an installation sequence scroll on screen and the output
+that indicates a successful install will look like this:
+```
+[   85.717414]  mmcblk0: p1 p2 p3 p4 p5 p6 p7 p8 p11
+[   87.420407]  mmcblk0: p1 p2 p3 p4 p5 p6 p7 p8 p11 p12
+[  118.754353]  mmcblk0: p1 p2 p3 p4 p5 p6 p7 p8 p11 p12 p13
+[  119.801805]  mmcblk0: p1 p2 p3 p4 p5 p6 p7 p8 p11 p12 p13 p14
+[  120.992048]  mmcblk0: p1 p2 p3 p4 p5 p6 p7 p8 p11 p12 p13 p14 p19
+[  127.191119] reboot: Power down
+(XEN) Hardware Dom0 halted: halting machine
+```
+
+At this point you should remove your SD card from HiKey's slot and reboot
+the board. If everything went as planned you will boot right into the running
+system. One thing that you will notice is that a successful installation sequence
+made a backup copy of your existing fastboot.efi under the fastboot.efi.XXX name.
+This allows you to restore your HiKey to a pristine state without going through
+a full fledged re-flashing sequence.
+
+Alternatively, if you're not quite ready to commit to replace your current OS
+on the HiKey, you can try running from the SD card. For that you will have to
+put a live system on the SD card, not the installer. Here's how you can do that
+on Mac OS X:
+```
+vi conf/wpa_supplicant.conf
+  # put your WIFI passwords in and/or add your own networks
+make ZARCH=aarch64 MEDIA_SIZE=8192 fallback_aarch64.raw
+sudo dd if=fallback_aarch64.raw of=/dev/rdiskXXX bs=1m
+```
+
+Then you can boot into a live system from triggering UEFI shell like shown
+above and executing exactly the same boot command:
+```
+Shell> fs0:\EFI\BOOT\BOOTX64.EFI
+```
 
 A quick note on linuxkit: you may be wondering why do we have a container-based
 architecture for a Xen-centric environment. First of all, OCI containers

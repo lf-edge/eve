@@ -1,0 +1,29 @@
+The following file has been generated for HiKey board with TI wifi
+
+git://git.ti.com/wilink8-wlan/18xx-ti-utils.git
+
+5040274cae5e88303e8a895c2707628fa72d58e8
+
+./configure-device.sh 
+
+
+Please provide the following information.
+
+Are you using a TI module? [y/n] : y
+What is the chip flavor? [1801/1805/1807/1831/1835/1837 or 0 for unknown] : 1835
+Should certification Class 2 Permissive Change (C2PC) due to higher antenna gain (max 3.2dBm) be applied? [y/n] : n
+How many 2.4GHz antennas are fitted? [1/2] : 1
+Should SISO40 support be applied? [y/n] : n
+
+The device has been successfully configured.
+TI Module: y
+Chip Flavor: 1835
+Number of 2.4GHz Antennas Fitted: 1
+Number of 5GHz Antennas Fitted: 0
+Diversity Support: n
+SISO40 Support: n
+Japanese Standards Applied: n
+Class 2 Permissive Change (C2PC) Applied: n
+
+
+

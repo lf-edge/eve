@@ -122,10 +122,9 @@ run-grub: bios/OVMF.fd bios/EFI
 images/%.yml: build-tools zedctr-workaround parse-pkgs.sh images/%.yml.in FORCE
 	DOCKER_ARCH_TAG="$(DOCKER_ARCH_TAG)" ./parse-pkgs.sh $@.in > $@
 	# the following is a horrible hack that needs to go away ASAP
-	if [ "$(ZARCH)" != `uname -m` ] ; then \
-           sed -e '/source:/s#rootfs.img#rootfs_aarch64.img#' \
-               -e '/command:/s#/dev/sda#/dev/vda#' -i.orig $@ ;\
-	   echo "WARNING: We are assembling a $(ZARCH) image on `uname -m`. Things may break." ;\
+	if [ "$(ZARCH)" = aarch64 ] ; then \
+           sed -e '/source:/s#rootfs.img#rootfs_aarch64.img#' -i.orig $@ ;\
+	   [ $(uname -m) = aarch64 ] || echo "WARNING: We are assembling a $(ZARCH) image on `uname -m`. Things may break." ;\
         fi
 
 config.img: conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/
@@ -133,6 +132,8 @@ config.img: conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/
 
 $(ROOTFS_IMG): images/rootfs.yml
 	./makerootfs.sh $< $(ROOTFS_FORMAT) $@
+	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
+          echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
 
 $(FALLBACK_IMG).img: $(FALLBACK_IMG).$(IMG_FORMAT)
 	@rm -f $@ >/dev/null 2>&1 || :
@@ -147,6 +148,8 @@ $(FALLBACK_IMG).raw: $(ROOTFS_IMG) config.img
 
 $(ROOTFS_IMG)_installer.img: images/installer.yml $(ROOTFS_IMG) config.img
 	./makerootfs.sh $< $(ROOTFS_FORMAT) $@
+	@[ $$(wc -c < "$@") -gt $$(( 300 * 1024 * 1024 )) ] && \
+          echo "ERROR: size of $@ is greater than 300MB (bigger than allocated partition)" && exit 1 || :
 
 $(INSTALLER_IMG).raw: $(ROOTFS_IMG)_installer.img config.img
 	tar c $^ | ./makeflash.sh -C 350 $@ "efi imga conf_win"

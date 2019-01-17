@@ -39,7 +39,7 @@ if [ -z "$DOCKER_ARCH_TAG" ] ; then
       ;;
   esac
 else
-  [ -z "`echo $DOCKER_ARCH_TAG`" ] || ARCH="-${DOCKER_ARCH_TAG}"
+  ARCH="-${DOCKER_ARCH_TAG}"
 fi
 
 ZENBUILD_VERSION=`zenbuild_version`$ARCH
@@ -55,6 +55,7 @@ STRONGSWAN_TAG=$(linuxkit_tag pkg/strongswan)$ARCH
 TESTMSVCS_TAG=$(linuxkit_tag pkg/test-microsvcs)$ARCH
 ZEDEDA_TAG=$(linuxkit_tag pkg/zedctr)$ARCH
 DOM0ZTOOLS_TAG=$(linuxkit_tag pkg/dom0-ztools)$ARCH
+RNGD_TAG=$(linuxkit_tag pkg/rngd)$ARCH
 QREXECLIB_TAG=$(linuxkit_tag pkg/qrexec-lib)$ARCH
 WWAN_TAG=$(linuxkit_tag pkg/wwan)$ARCH
 WLAN_TAG=$(linuxkit_tag pkg/wlan)$ARCH
@@ -72,11 +73,14 @@ DEBUG_TAG=$(linuxkit_tag pkg/debug)$ARCH
 # images lacking functionality.
 ZTOOLS_TAG=${ZTOOLS_TAG:-$(plugin_tag zededa/ztools:latest)}
 
-sed -e "s#ZENBUILD_VERSION#"$ZENBUILD_VERSION"#" \
+sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
+    -e '/image:.*linuxkit\/.*:/s# *$#'${ARCH}# \
+    -e "s#ZENBUILD_VERSION#"$ZENBUILD_VERSION"#" \
     -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
     -e "s#FW_TAG#"$FW_TAG"#" \
     -e "s#XENTOOLS_TAG#"$XENTOOLS_TAG"#" \
     -e "s#DOM0ZTOOLS_TAG#"$DOM0ZTOOLS_TAG"#" \
+    -e "s#RNGD_TAG#"$RNGD_TAG"#" \
     -e "s#XEN_TAG#"$XEN_TAG"#" \
     -e "s#DNSMASQ_TAG#"$DNSMASQ_TAG"#" \
     -e "s#STRONGSWAN_TAG#"$STRONGSWAN_TAG"#" \

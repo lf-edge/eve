@@ -6,6 +6,7 @@ help() {
   cat <<__EOT__
 Welcome to Zenix!
   commands: enter [qube (assumed zededa-tools)] [command (assumed sh)]
+            exec qube command
             list
             status
             start <qube> (requires a qube to be in a destroyed state) 
@@ -17,6 +18,11 @@ __EOT__
 }
 
 case "$1" in
+    exec) [ -z "$2" -o -z "$3" ] && help
+          CONT="$2"
+          shift 2
+          ${CTR_CMD} t exec --exec-id $(basename $(mktemp)) "$CONT" "$@"
+          ;;
    enter) ${CTR_CMD} t exec -t --exec-id $(basename $(mktemp))  ${2:-zededa-tools} ${3:-sh}
           ;;
     list) ${CTR_CMD} c ls
