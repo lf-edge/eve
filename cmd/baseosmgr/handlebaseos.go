@@ -304,7 +304,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	}
 
 	// if it is installed, flip the activated status
-	if status.State == types.INSTALLED || !status.Reboot {
+	if status.State == types.INSTALLED && !status.Reboot {
 		// trigger, zedagent to start reboot process
 		status.Reboot = true
 		changed = true
