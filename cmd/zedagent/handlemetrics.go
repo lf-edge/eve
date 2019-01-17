@@ -582,7 +582,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 		ReportAppMetric.Cpu = new(zmet.AppCpuMetric)
 		ReportAppMetric.Memory = new(zmet.MemoryMetric)
 
-		domainName := cpuStorageStat[arr][1]
+		domainName := strings.TrimSpace(cpuStorageStat[arr][1])
 		ds := LookupDomainStatus(domainName)
 		if ds == nil {
 			log.Infof("ReportMetrics: Did not find status for domainName %s\n",
@@ -618,7 +618,9 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 		ReportAppMetric.Memory.UsedPercentage = float64(usedAppMemoryPercent)
 		ReportAppMetric.Memory.AvailPercentage = float64(availableAppMemoryPercent)
 
-		appInterfaceList := ReadAppInterfaceList(strings.TrimSpace(cpuStorageStat[arr][1]))
+		appInterfaceList := ReadAppInterfaceList(domainName)
+		log.Debugf("ReportMetrics: domainName %s ifs %v\n",
+			domainName, appInterfaceList)
 		// Use the network metrics from zedrouter subscription
 		for _, ifName := range appInterfaceList {
 			var metric *types.NetworkMetric
@@ -1255,6 +1257,8 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		// We extract the appIP from the dnsmasq assignment
 		interfaces, _ := psutilnet.Interfaces()
 		ifNames := ReadAppInterfaceList(ds.DomainName)
+		log.Debugf("ReportAppInfo: domainName %s ifs %v\n",
+			ds.DomainName, ifNames)
 		for _, ifname := range ifNames {
 			for _, interfaceDetail := range interfaces {
 				if ifname != interfaceDetail.Name {

@@ -106,6 +106,10 @@ func Run() {
 	}
 	log.Infof("Starting %s\n", agentName)
 
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName)
+
 	// create the directories
 	initializeDirs()
 
@@ -183,6 +187,9 @@ func Run() {
 
 		case <-gc.C:
 			gcVerifiedObjects(&ctx)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 }

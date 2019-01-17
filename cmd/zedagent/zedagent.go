@@ -150,6 +150,10 @@ func Run() {
 
 	log.Infof("Starting %s\n", agentName)
 
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName)
+
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
 	handleInit()
@@ -383,10 +387,6 @@ func Run() {
 	zedagentCtx.subAppImgDownloadStatus = subAppImgDownloadStatus
 	subAppImgDownloadStatus.Activate()
 
-	// Run a periodic timer so we always update SillRunning
-	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
-
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 
@@ -415,10 +415,12 @@ func Run() {
 			if zedagentCtx.zbootRestarted {
 				log.Infof("Zboot reported restarted\n")
 			}
+
 		case <-t1.C:
 			// reboot, if not available, within a wait time
 			log.Errorf("zboot status is still not available - rebooting\n")
 			execReboot(true)
+
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
 		}

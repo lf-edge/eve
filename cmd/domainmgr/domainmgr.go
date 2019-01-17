@@ -121,6 +121,10 @@ func Run() {
 	}
 	log.Infof("Starting %s\n", agentName)
 
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName)
+
 	if _, err := os.Stat(runDirname); err != nil {
 		log.Debugf("Create %s\n", runDirname)
 		if err := os.MkdirAll(runDirname, 0700); err != nil {
@@ -246,6 +250,9 @@ func Run() {
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 
@@ -269,6 +276,9 @@ func Run() {
 
 		case change := <-subAa.C:
 			subAa.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
@@ -305,6 +315,9 @@ func Run() {
 
 		case <-gc.C:
 			gcObjects(&domainCtx, rwImgDirname)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 }

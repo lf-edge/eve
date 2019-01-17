@@ -56,19 +56,26 @@ logtick  = 60
 EOF
 cp $TMPDIR/watchdogbase.conf $TMPDIR/watchdogled.conf
 echo "pidfile = /var/run/ledmanager.pid" >>$TMPDIR/watchdogled.conf
+echo "file = /var/run/ledmanager.touch" >>$TMPDIR/watchdogled.conf
+echo "change = 600" >>$TMPDIR/watchdogled.conf
 cp $TMPDIR/watchdogled.conf $TMPDIR/watchdognim.conf
 echo "pidfile = /var/run/nim.pid" >>$TMPDIR/watchdognim.conf
+echo "file = /var/run/nim.touch" >>$TMPDIR/watchdognim.conf
+echo "change = 600" >>$TMPDIR/watchdognim.conf
 cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogclient.conf
-echo "pidfile = /var/run/nim.pid" >>$TMPDIR/watchdogclient.conf
 echo "pidfile = /var/run/zedclient.pid" >>$TMPDIR/watchdogclient.conf
+echo "pidfile = /var/run/nim.pid" >>$TMPDIR/watchdogclient.conf
+echo "file = /var/run/nim.touch" >>$TMPDIR/watchdogclient.conf
+echo "change = 600" >>$TMPDIR/watchdogclient.conf
 
 cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogall.conf
 for AGENT in $AGENTS; do
     echo "pidfile = /var/run/$AGENT.pid" >>$TMPDIR/watchdogall.conf
+    if [ $AGENT != 'lisp-ztr' ]; then
+	echo "file = /var/run/$AGENT.touch" >>$TMPDIR/watchdogall.conf
+	echo "change = 600" >>$TMPDIR/watchdogall.conf
+    fi
 done
-# XXX Apply for all agents?
-echo "file = /var/run/zedagent.touch" >>$TMPDIR/watchdogall.conf
-echo "change = 600" >>$TMPDIR/watchdogall.conf
 
 # If watchdog was running we restart it in a way where it will
 # no fail due to killing the agents below.
@@ -365,6 +372,14 @@ fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogclient.conf -F -s &
 
 if [ ! \( -f $CONFIGDIR/device.cert.pem -a -f $CONFIGDIR/device.key.pem \) ]; then
+    # The device cert generation needs the current time. Some hardware
+    # doesn't have a battery-backed clock
+    YEAR=`date +%Y`
+    while [ $YEAR == "1970" ]; do
+	echo "It's still 1970; waiting for ntp to advance"
+	sleep 10
+	YEAR=`/bin/date +%Y`
+    done
     echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
     $BINDIR/generate-device.sh $CONFIGDIR/device
     SELF_REGISTER=1
