@@ -365,12 +365,6 @@ fi
 # Print the initial diag output
 /opt/zededa/bin/diag >/dev/console 2>&1
 
-# Restart watchdog ledmanager, client, and nim
-if [ -f /var/run/watchdog.pid ]; then
-    kill `cat /var/run/watchdog.pid`
-fi
-/usr/sbin/watchdog -c $TMPDIR/watchdogclient.conf -F -s &
-
 if [ ! \( -f $CONFIGDIR/device.cert.pem -a -f $CONFIGDIR/device.key.pem \) ]; then
     # The device cert generation needs the current time. Some hardware
     # doesn't have a battery-backed clock
@@ -380,6 +374,15 @@ if [ ! \( -f $CONFIGDIR/device.cert.pem -a -f $CONFIGDIR/device.key.pem \) ]; th
 	sleep 10
 	YEAR=`/bin/date +%Y`
     done
+fi
+
+# Restart watchdog ledmanager, client, and nim
+if [ -f /var/run/watchdog.pid ]; then
+    kill `cat /var/run/watchdog.pid`
+fi
+/usr/sbin/watchdog -c $TMPDIR/watchdogclient.conf -F -s &
+
+if [ ! \( -f $CONFIGDIR/device.cert.pem -a -f $CONFIGDIR/device.key.pem \) ]; then
     echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
     $BINDIR/generate-device.sh $CONFIGDIR/device
     SELF_REGISTER=1
