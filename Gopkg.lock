@@ -56,7 +56,7 @@
   branch = "master"
   name = "github.com/eriknordmark/netlink"
   packages = ["."]
-  revision = "c341b21e73d9aa49e986c713b2939b00e1b836fe"
+  revision = "cf716481271abe5d3b06fd6289da31ed1f82abc2"
 
 [[projects]]
   name = "github.com/fsnotify/fsnotify"
@@ -156,6 +156,12 @@
   ]
   revision = "eeb1d38d69593f121e060d24d17f7b1f0936b203"
   version = "v2.18.05"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/shirou/w32"
+  packages = ["."]
+  revision = "bb4de0191aa41b5507caa14b0650cdbddcd9280b"
 
 [[projects]]
   name = "github.com/sirupsen/logrus"

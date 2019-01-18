@@ -1645,6 +1645,8 @@ func xlStatus(domainName string, domainId int) error {
 			string(stdoutStderr)))
 	}
 	// XXX parse json to look at state? Not currently included
+	// XXX note that there is a warning at the top of the combined
+	// output. If we want to parse the json we need to get Output()
 	log.Infof("xl list done. Result %s\n", string(stdoutStderr))
 	return nil
 }
