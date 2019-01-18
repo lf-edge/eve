@@ -891,6 +891,77 @@ func doCurl(url string, ifname string, maxsize uint64, destFilename string) erro
 	return err
 }
 
+func doHttp(ctx *downloaderContext, status *types.DownloaderStatus,
+	syncOp zedUpload.SyncOpType, serverUrl string, maxsize uint64,
+	ipSrc net.IP, locFilename string) error {
+
+	auth := &zedUpload.AuthInput{
+		AuthType: "http",
+	}
+
+	index := strings.LastIndex(serverURL, "/")
+	url := serverURL[:index+1]
+	filename := serverURL[index+1:]
+
+	trType := zedUpload.SyncHttpTr
+
+	// create Endpoint
+	dEndPoint, err := ctx.dCtx.NewSyncerDest(trType, url, "", auth)
+	if err != nil {
+		log.Errorf("NewSyncerDest failed: %s\n", err)
+		return err
+	}
+	dEndPoint.WithSrcIpSelection(ipSrc)
+	var respChan = make(chan *zedUpload.DronaRequest)
+
+	log.Debugf("syncOp for <%s>, <%s>\n", url, filename)
+	// create Request
+	// Round up from bytes to Mbytes
+	maxMB := (maxsize + 1024*1024 - 1) / (1024 * 1024)
+	req := dEndPoint.NewRequest(syncOp, filename, locFilename, int64(maxMB), true, respChan)
+	if req == nil {
+		return errors.New("NewRequest failed")
+	}
+
+	req.Post()
+	for {
+		select {
+		case resp, ok := <-respChan:
+			if resp.IsDnUpdate() {
+				asize := resp.GetAsize()
+				osize := resp.GetOsize()
+				log.Infof("Update progress for %v: %v/%v",
+					resp.GetLocalName(), asize, osize)
+				if osize == 0 {
+					status.Progress = 0
+				} else {
+					percent := 100 * asize / osize
+					status.Progress = uint(percent)
+				}
+				publishDownloaderStatus(ctx, status)
+				continue
+			}
+			if !ok {
+				errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>",
+					url, filename)
+				log.Errorln(errStr)
+				return errors.New(errStr)
+			}
+			_, err = resp.GetUpStatus()
+			if resp.IsError() {
+				return err
+			} else {
+				log.Infof("Done for %v: size %v/%v",
+					resp.GetLocalName(),
+					resp.GetAsize(), resp.GetOsize())
+				status.Progress = 100
+				publishDownloaderStatus(ctx, status)
+				return nil
+			}
+		}
+	}
+}
+
 func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
 	syncOp zedUpload.SyncOpType, dnldUrl string, apiKey string, password string,
 	dpath string, region string, maxsize uint64, ifname string,
@@ -1166,8 +1237,10 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		case zconfig.DsType_DsHttp.String(), zconfig.DsType_DsHttps.String(), "":
-			err = doCurl(config.DownloadURL, ipSrc.String(),
-				config.Size, locFilename)
+			//err = doCurl(config.DownloadURL, ipSrc.String(),
+			//	config.Size, locFilename)
+			err = doHttp(ctx, status, syncOp, config.DownloadURL,
+				config.Size, ipSrc, locFilename)
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
