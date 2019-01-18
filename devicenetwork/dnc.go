@@ -103,10 +103,12 @@ func (ctx *DeviceNetworkContext) doApplyDevicePortConfig(delete bool) {
 		log.Infof("doApplyDevicePortConfig: config to apply %+v\n",
 			portConfig)
 	}
+	log.Infof("doApplyDevicePortConfig: CurrentConfig: %+v, NewConfig: %+v\n",
+		ctx.DevicePortConfig, portConfig)
 
 	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
-		log.Infof("doApplyDevicePortConfig: DevicePortConfig change from %v to %v\n",
-			*ctx.DevicePortConfig, portConfig)
+		log.Infof("doApplyDevicePortConfig: DevicePortConfig changed. " +
+			"update DhcpClient.\n")
 		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
 		*ctx.DevicePortConfig = portConfig
 	}
@@ -256,16 +258,29 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 		if ioBundle.Type != types.IoEth {
 			continue
 		}
-		currentIoBundle := types.LookupIoBundle(ctx.AssignableAdapters,
-			types.IoEth, ioBundle.Name)
-		if ioBundle.IsPCIBack == currentIoBundle.IsPCIBack {
-			continue
+		if ctx.AssignableAdapters != nil {
+			currentIoBundle := types.LookupIoBundle(ctx.AssignableAdapters,
+				types.IoEth, ioBundle.Name)
+			if currentIoBundle != nil &&
+				ioBundle.IsPCIBack == currentIoBundle.IsPCIBack {
+				log.Infof("HandleAssignableAdaptersModify(): ioBundle (%+v) "+
+					"PCIBack status (%+v) unchanged\n",
+					ioBundle.Name, ioBundle.IsPCIBack)
+				continue
+			}
+		} else {
+			log.Infof("HandleAssignableAdaptersModify(): " +
+				"ctx.AssignableAdapters = nil\n")
 		}
 		if ioBundle.IsPCIBack {
+			log.Infof("HandleAssignableAdaptersModify(): ioBundle (%+v) changed "+
+				"to pciBack", ioBundle.Name)
 			// Interface put back in pciBack list.
 			// Stop dhcp and update DeviceNetworkStatus
 			//doDhcpClientInactivate()  KALYAN- FIXTHIS BEFORE MERGE
 		} else {
+			log.Infof("HandleAssignableAdaptersModify(): ioBundle (%+v) changed "+
+				"to pciBack=false", ioBundle.Name)
 			// Interface moved out of PciBack mode.
 			ctx.doApplyDevicePortConfig(false)
 		}
