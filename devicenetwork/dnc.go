@@ -111,6 +111,8 @@ func (ctx *DeviceNetworkContext) doApplyDevicePortConfig(delete bool) {
 			"update DhcpClient.\n")
 		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
 		*ctx.DevicePortConfig = portConfig
+	} else {
+		log.Infof("doApplyDevicePortConfig: Current config same as new config.\n")
 	}
 }
 
@@ -189,8 +191,8 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	portConfig := cast.CastDevicePortConfig(configArg)
 	ctx := ctxArg.(*DeviceNetworkContext)
 
-	log.Infof("HandleDPCModify for %s current time %v modified time %v\n",
-		key, ctx.DevicePortConfig.TimePriority, portConfig.TimePriority)
+	log.Infof("HandleDPCModify: Current Config: %+v, portConfig: %+v\n",
+		ctx.DevicePortConfig, portConfig)
 
 	portConfig.DoSanitize(true, true, key, true)
 
@@ -205,14 +207,14 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	// Check if all the expected ports in the config are out of pciBack.
 	// If yes, apply config.
 	// If not, wait for the port to come out of PCIBack.
-	portInPciBack := portConfig.IsAnyPortInPciBack(ctx.AssignableAdapters)
+	portInPciBack, portName := portConfig.IsAnyPortInPciBack(ctx.AssignableAdapters)
 	if portInPciBack {
-		log.Infof("HandleDPCModify Interface %v still in PCIBack. "+
-			"wait for it to come out%v to %v\n", portConfig)
+		log.Infof("HandleDPCModify: port %+v still in PCIBack. "+
+			"wait for it to come out before applying config.\n", portName)
 	} else {
+		log.Infof("HandleDPCModify: No ports in pciBack. Apply port config\n")
 		ctx.doApplyDevicePortConfig(false)
 	}
-
 	log.Infof("HandleDPCModify done for %s\n", key)
 }
 

@@ -268,7 +268,6 @@ func Run() {
 			subDevicePortConfigS.ProcessChange(change)
 
 		case change := <-subAssignableAdapters.C:
-			log.Infof("AssignableAdapters Change Notification. ProcessChange\n")
 			subAssignableAdapters.ProcessChange(change)
 
 		case change, ok := <-addrChanges:
