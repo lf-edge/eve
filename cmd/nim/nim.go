@@ -160,8 +160,6 @@ func Run() {
 	nimCtx.PubDevicePortConfig = pubDevicePortConfig
 	nimCtx.PubDevicePortConfigList = pubDevicePortConfigList
 	nimCtx.PubDeviceNetworkStatus = pubDeviceNetworkStatus
-	nimCtx.DPCBeingUsed = &types.DevicePortConfig{}
-	nimCtx.DPCBeingTested = &types.DevicePortConfig{}
 
 	// Get the initial DeviceNetworkConfig
 	// Subscribe from "" means /var/tmp/zededa/
@@ -243,9 +241,14 @@ func Run() {
 
 	dnc := &nimCtx.DeviceNetworkContext
 	// Timer for checking/verifying pending device network status
-	dnsTimer := time.NewTimer(30 * time.Second)
-	dnsTimer.Stop()
-	dnc.DNSTimer = dnsTimer
+	pendTimer := time.NewTimer(30 * time.Second)
+	// We stop this timer before using in the select loop below, because
+	// we do not want the DPC list verification to start yet. We need a place
+	// holder in the select loop.
+	// Let the select loop have this stopped timer for now and
+	// create a new timer when it's deemed required (change in DPC config).
+	pendTimer.Stop()
+	dnc.Pending.PendTimer = pendTimer
 
 	// Periodic timer that tests device cloud connectivity
 	networkTestInterval := time.Duration(5 * time.Minute)
@@ -292,15 +295,12 @@ func Run() {
 			if change {
 				publishDeviceNetworkStatus(&nimCtx)
 			}
-		case _, ok := <-dnc.DNSTimer.C:
+		case _, ok := <-dnc.Pending.PendTimer.C:
 			if !ok {
 				log.Infof("Device port test timer stopped?")
 			} else {
-				log.Debugln("dnsTimer at", time.Now())
-				ok := devicenetwork.VerifyDevicePortConfig(dnc)
-				if ok == true {
-					log.Debugln("Working Device port configuration available.")
-				}
+				log.Debugln("PendTimer at", time.Now())
+				devicenetwork.VerifyDevicePortConfig(dnc)
 			}
 		case _, ok := <-dnc.NetworkTestTimer.C:
 			if !ok {
@@ -311,6 +311,7 @@ func Run() {
 					log.Infof("Device connectivity to cloud worked at %v", time.Now())
 				} else {
 					log.Infof("Device connectivity to cloud failed at %v", time.Now())
+					devicenetwork.RestartVerify(dnc, "nim")
 				}
 			}
 		}
@@ -336,9 +337,7 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 			} else {
 				log.Infof("tryDeviceConnectivityToCloud: Triggering Device port " +
 					"verification to resume cloud connectivity")
-				ctx.PendDeviceNetworkStatus = nil
-				ctx.NextDPCIndex = 0
-				ctx.ReTestCurrentDPC = false
+				devicenetwork.SetupVerify(ctx, 0)
 				// Kick the DPC verify timer to tick now.
 				devicenetwork.RestartVerify(ctx, "tryDeviceConnectivityToCloud")
 			}
