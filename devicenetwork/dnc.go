@@ -268,7 +268,7 @@ func getCurrentDPC(ctx *DeviceNetworkContext) types.DevicePortConfig {
 
 func isDPCTestable(dpc types.DevicePortConfig) bool {
 	// convert time difference in nano seconds to seconds
-	timeDiff := int64(time.Now().Sub(dpc.LastFailed)/1000000000)
+	timeDiff := int64(time.Now().Sub(dpc.LastFailed)/time.Second)
 
 	if dpc.LastFailed.After(dpc.LastSucceeded) && timeDiff < 60 {
 		return false
