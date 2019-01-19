@@ -238,6 +238,8 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			// Check if there is an untested DPC configuration at index 0
 			// If yes, restart the test process from index 0
 			if isDPCUntested(ctx.DevicePortConfigList.PortConfigList[0]) {
+				log.Warn("VerifyDevicePortConfig: New DPC arrived while network testing " +
+					"was in progress. Restarting DPC verification.")
 				SetupVerify(ctx, 0)
 				continue
 			}
