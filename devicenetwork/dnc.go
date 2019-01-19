@@ -103,7 +103,11 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	portConfig.DoSanitize(true, true, key, true)
 
-	ctx.doUpdatePortConfigListAndPublish(&portConfig, false)
+	configChanged := ctx.doUpdatePortConfigListAndPublish(&portConfig, false)
+	if !configChanged {
+		log.Infof("HandleDPCModify: Config already current. No changes to process\n")
+		return
+	}
 
 	portConfig = ctx.DevicePortConfigList.PortConfigList[0]
 	log.Infof("HandleDPCModify: first is %+v\n", portConfig)
@@ -137,9 +141,9 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 
 	portConfig.DoSanitize(false, true, key, true)
 
-	// Look up based on timestamp, then content
 	configChanged := ctx.doUpdatePortConfigListAndPublish(&portConfig, true)
-	if configChanged {
+	if !configChanged {
+		log.Infof("HandleDPCDelete: System current. No change detected.\n")
 		return
 	}
 
