@@ -23,9 +23,9 @@ const (
 
 type PendDNSStatus uint32
 const (
-	DNS_FAIL PendDNSStatus = iota
-	DNS_SUCCESS
-	DNS_WAIT
+	DPC_FAIL PendDNSStatus = iota
+	DPC_SUCCESS
+	DPC_WAIT
 )
 
 type DPCPending struct {
@@ -139,8 +139,7 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 	VerifyDevicePortConfig(ctx)
 }
 
-func VerifyPending(ctx *DeviceNetworkContext) PendDNSStatus {
-	pending := &ctx.Pending
+func VerifyPending(pending *DPCPending) PendDNSStatus {
 	pending.PendTimer.Stop()
 
 	UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
@@ -151,10 +150,10 @@ func VerifyPending(ctx *DeviceNetworkContext) PendDNSStatus {
 	if numUsableAddrs == 0 {
 		if pending.TestCount < MaxDPCRetestCount {
 			pending.TestCount += 1
-			return DNS_WAIT
+			return DPC_WAIT
 		} else {
 			pending.PendDPC.LastFailed = time.Now()
-			return DNS_FAIL
+			return DPC_FAIL
 		}
 	}
 	// Do not entertain re-testing this DPC anymore.
@@ -162,16 +161,14 @@ func VerifyPending(ctx *DeviceNetworkContext) PendDNSStatus {
 
 	// We want connectivity to zedcloud via atleast one Management port.
 	res := VerifyDeviceNetworkStatus(pending.PendDNS, 1)
-	status := DNS_FAIL
+	status := DPC_FAIL
 	if res {
 		pending.PendDPC.LastSucceeded = time.Now()
-		status = DNS_SUCCESS
-		log.Infof("VerifyPending: DPC at index %d passed network test",
-			ctx.NextDPCIndex)
+		status = DPC_SUCCESS
+		log.Infof("VerifyPending: DPC %v passed network test", pending.PendDPC)
 	} else {
 		pending.PendDPC.LastFailed = time.Now()
-		log.Infof("VerifyPending: DPC at index %d failed network test",
-			ctx.NextDPCIndex)
+		log.Infof("VerifyPending: DPC %v failed network test", pending.PendDPC)
 	}
 	return status
 }
@@ -185,16 +182,16 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 
 	passed := false
 	for !passed {
-		res := VerifyPending(ctx)
+		res := VerifyPending(&ctx.Pending)
 		if ctx.PubDeviceNetworkStatus != nil {
 			ctx.PubDeviceNetworkStatus.Publish("global", ctx.Pending.PendDNS)
 		}
 		switch res {
-		case DNS_WAIT:
+		case DPC_WAIT:
 			// Either addressChange or PendTimer will result in calling us again.
 			pending.PendTimer = time.NewTimer(DNSWaitSeconds * time.Second)
 			return
-		case DNS_FAIL:
+		case DPC_FAIL:
 			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
 			if ctx.PubDevicePortConfigList != nil {
 				ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
@@ -202,6 +199,8 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			// Check if there is an untested DPC configuration at index 0
 			// If yes, restart the test process from index 0
 			if isDPCUntested(ctx.DevicePortConfigList.PortConfigList[0]) {
+				log.Warn("VerifyDevicePortConfig: New DPC arrived while network testing " +
+					"was in progress. Restarting DPC verification.")
 				SetupVerify(ctx, 0)
 				continue
 			}
@@ -211,7 +210,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			// a recent LastFailed (a minute or less).
 			dpcListLen := len(ctx.DevicePortConfigList.PortConfigList)
 
-			// XXX What is a good condition to stop this loop.
+			// XXX What is a good condition to stop this loop?
 			// We want to wrap around, but should not keep looping around.
 			// Should we do one loop of the entire list and start from index 0
 			// if no suitable test candidate is found?
@@ -231,7 +230,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			}
 			SetupVerify(ctx, newIndex)
 			continue
-		case DNS_SUCCESS:
+		case DPC_SUCCESS:
 			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
 			if ctx.PubDevicePortConfigList != nil {
 				ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)

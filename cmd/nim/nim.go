@@ -311,7 +311,6 @@ func Run() {
 					log.Infof("Device connectivity to cloud worked at %v", time.Now())
 				} else {
 					log.Infof("Device connectivity to cloud failed at %v", time.Now())
-					devicenetwork.RestartVerify(dnc, "nim")
 				}
 			}
 		}
@@ -326,10 +325,11 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 		return true
 	} else {
 		if !ctx.CloudConnectivityWorks {
-			// If previous cloud connectivity test also failed, we declare
-			// the device bricked. In this case we kick the process where
-			// device tries to figure out a DevicePortConfig that works.
-			if ctx.NextDPCIndex >= 0 {
+			// If previous cloud connectivity test also failed, it means
+			// that the current DPC configuration stopped working.
+			// In this case we start the process where device tries to
+			// figure out a DevicePortConfig that works.
+			if ctx.Pending.Inprogress {
 				log.Infof("tryDeviceConnectivityToCloud: Device port configuration list " +
 					"verification in progress")
 				// Connectivity to cloud is already being figured out.
@@ -338,7 +338,7 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 				log.Infof("tryDeviceConnectivityToCloud: Triggering Device port " +
 					"verification to resume cloud connectivity")
 				devicenetwork.SetupVerify(ctx, 0)
-				// Kick the DPC verify timer to tick now.
+				// Start DPC verification to find a working configuration
 				devicenetwork.RestartVerify(ctx, "tryDeviceConnectivityToCloud")
 			}
 		} else {
