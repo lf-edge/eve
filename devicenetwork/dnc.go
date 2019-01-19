@@ -88,99 +88,6 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("HandleDNCDelete done for %s\n", key)
 }
 
-func (ctx *DeviceNetworkContext) doApplyDevicePortConfig(delete bool) {
-	portConfig := types.DevicePortConfig{}
-	if ctx.DevicePortConfigList == nil ||
-		len(ctx.DevicePortConfigList.PortConfigList) == 0 {
-		if !delete {
-			log.Infof("doApplyDevicePortConfig: No config found for the port.\n")
-			return
-		}
-		log.Infof("doApplyDevicePortConfig: no config left\n")
-	} else {
-		// PortConfigList[0] is the most desirable config to use
-		portConfig = ctx.DevicePortConfigList.PortConfigList[0]
-		log.Infof("doApplyDevicePortConfig: config to apply %+v\n",
-			portConfig)
-	}
-	log.Infof("doApplyDevicePortConfig: CurrentConfig: %+v, NewConfig: %+v\n",
-		ctx.DevicePortConfig, portConfig)
-
-	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
-		log.Infof("doApplyDevicePortConfig: DevicePortConfig changed. " +
-			"update DhcpClient.\n")
-		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
-		*ctx.DevicePortConfig = portConfig
-	} else {
-		log.Infof("doApplyDevicePortConfig: Current config same as new config.\n")
-	}
-}
-
-func (ctx *DeviceNetworkContext) doPublishDNSForPortConfig(
-	portConfig *types.DevicePortConfig) {
-	// XXX if err return means WPAD failed, or port does not exist
-	// XXX add test hook for former; try lower priority
-	dnStatus, _ := MakeDeviceNetworkStatus(*portConfig,
-		*ctx.DeviceNetworkStatus)
-
-	// We use device certs to build tls config to hit the test Ping URL.
-	// NIM starts even before device onboarding finishes. When a device is
-	// booting for the first time and does not have its device certs registered
-	// with cloud yet, a hit to Ping URL would fail.
-	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
-		log.Infof("HandleDPCModify DeviceNetworkStatus change from %v to %v\n",
-			*ctx.DeviceNetworkStatus, dnStatus)
-		pass := VerifyDeviceNetworkStatus(dnStatus, 1)
-		// XXX Can fail if we don't have a DHCP lease yet
-		if true || pass {
-			*ctx.DeviceNetworkStatus = dnStatus
-			DoDNSUpdate(ctx)
-		} else {
-			// XXX try lower priority
-			// XXX add retry of higher priority in main
-		}
-	}
-	return
-}
-
-// doUpdatePortConfigListAndPublish
-//		Returns if the current config has actually changed.
-func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
-	portConfig *types.DevicePortConfig, delete bool) bool {
-	// Look up based on timestamp, then content
-	oldConfig := lookupPortConfig(ctx, *portConfig)
-	if delete {
-		if oldConfig == nil {
-			log.Errorf("doUpdatePortConfigListAndPublish - Delete. "+
-				"Config not found: %+v\n", portConfig)
-			return false
-		}
-		log.Infof("doUpdatePortConfigListAndPublish: Delete. "+
-			"oldCOnfig found: %+v\n", *oldConfig, portConfig)
-		removePortConfig(ctx, *oldConfig)
-	} else {
-		if oldConfig != nil {
-			// Compare everything but TimePriority since that is
-			// modified by zedagent even if there are no changes.
-			if oldConfig.Key == portConfig.Key &&
-				oldConfig.Version == portConfig.Version &&
-				reflect.DeepEqual(oldConfig.Ports, portConfig.Ports) {
-
-				log.Infof("HandleDPCModify: no change; timestamps %v %v\n",
-					oldConfig.TimePriority, portConfig.TimePriority)
-				return false
-			}
-			log.Infof("HandleDPCModify: change from %+v to %+v\n",
-				*oldConfig, portConfig)
-			updatePortConfig(ctx, oldConfig, *portConfig)
-		} else {
-			insertPortConfig(ctx, *portConfig)
-		}
-	}
-	ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
-	return true
-}
-
 // Handle three different sources in this priority order:
 // 1. zedagent with any key
 // 2. "override" key from build or USB stick file
@@ -204,9 +111,9 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	// Publish DeviceNetworkStatus
 	ctx.doPublishDNSForPortConfig(&portConfig)
 
-	// Check if all the expected ports in the config are out of pciBack.
+	// Check if all the ports in the config are out of pciBack.
 	// If yes, apply config.
-	// If not, wait for the port to come out of PCIBack.
+	// If not, wait for all the ports to come out of PCIBack.
 	portInPciBack, portName := portConfig.IsAnyPortInPciBack(ctx.AssignableAdapters)
 	if portInPciBack {
 		log.Infof("HandleDPCModify: port %+v still in PCIBack. "+
@@ -327,6 +234,101 @@ func lookupPortConfig(ctx *DeviceNetworkContext,
 		}
 	}
 	return nil
+}
+
+func (ctx *DeviceNetworkContext) doApplyDevicePortConfig(delete bool) {
+	portConfig := types.DevicePortConfig{}
+	if ctx.DevicePortConfigList == nil ||
+		len(ctx.DevicePortConfigList.PortConfigList) == 0 {
+		if !delete {
+			log.Infof("doApplyDevicePortConfig: No config found for the port.\n")
+			return
+		}
+		log.Infof("doApplyDevicePortConfig: no config left\n")
+	} else {
+		// PortConfigList[0] is the most desirable config to use
+		portConfig = ctx.DevicePortConfigList.PortConfigList[0]
+		log.Infof("doApplyDevicePortConfig: config to apply %+v\n",
+			portConfig)
+	}
+	log.Infof("doApplyDevicePortConfig: CurrentConfig: %+v, NewConfig: %+v\n",
+		ctx.DevicePortConfig, portConfig)
+
+	if !reflect.DeepEqual(*ctx.DevicePortConfig, portConfig) {
+		log.Infof("doApplyDevicePortConfig: DevicePortConfig changed. " +
+			"update DhcpClient.\n")
+		UpdateDhcpClient(portConfig, *ctx.DevicePortConfig)
+		*ctx.DevicePortConfig = portConfig
+	} else {
+		log.Infof("doApplyDevicePortConfig: Current config same as new config.\n")
+	}
+}
+
+func (ctx *DeviceNetworkContext) doPublishDNSForPortConfig(
+	portConfig *types.DevicePortConfig) {
+	// XXX if err return means WPAD failed, or port does not exist
+	// XXX add test hook for former; try lower priority
+	dnStatus, _ := MakeDeviceNetworkStatus(*portConfig,
+		*ctx.DeviceNetworkStatus)
+
+	// We use device certs to build tls config to hit the test Ping URL.
+	// NIM starts even before device onboarding finishes. When a device is
+	// booting for the first time and does not have its device certs registered
+	// with cloud yet, a hit to Ping URL would fail.
+	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
+		log.Infof("doPublishDNSForPortConfig: DeviceNetworkStatus change from %v to %v\n",
+			*ctx.DeviceNetworkStatus, dnStatus)
+		pass := VerifyDeviceNetworkStatus(dnStatus, 1)
+		// XXX Can fail if we don't have a DHCP lease yet
+		if true || pass {
+			*ctx.DeviceNetworkStatus = dnStatus
+			DoDNSUpdate(ctx)
+		} else {
+			// XXX try lower priority
+			// XXX add retry of higher priority in main
+		}
+	} else {
+		log.Infof("doPublishDNSForPortConfig: No change in DNS\n")
+	}
+	return
+}
+
+// doUpdatePortConfigListAndPublish
+//		Returns if the current config has actually changed.
+func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
+	portConfig *types.DevicePortConfig, delete bool) bool {
+	// Look up based on timestamp, then content
+	oldConfig := lookupPortConfig(ctx, *portConfig)
+	if delete {
+		if oldConfig == nil {
+			log.Errorf("doUpdatePortConfigListAndPublish - Delete. "+
+				"Config not found: %+v\n", portConfig)
+			return false
+		}
+		log.Infof("doUpdatePortConfigListAndPublish: Delete. "+
+			"oldCOnfig found: %+v\n", *oldConfig, portConfig)
+		removePortConfig(ctx, *oldConfig)
+	} else {
+		if oldConfig != nil {
+			// Compare everything but TimePriority since that is
+			// modified by zedagent even if there are no changes.
+			if oldConfig.Key == portConfig.Key &&
+				oldConfig.Version == portConfig.Version &&
+				reflect.DeepEqual(oldConfig.Ports, portConfig.Ports) {
+
+				log.Infof("doUpdatePortConfigListAndPublish: no change; timestamps %v %v\n",
+					oldConfig.TimePriority, portConfig.TimePriority)
+				return false
+			}
+			log.Infof("doUpdatePortConfigListAndPublish: change from %+v to %+v\n",
+				*oldConfig, portConfig)
+			updatePortConfig(ctx, oldConfig, *portConfig)
+		} else {
+			insertPortConfig(ctx, *portConfig)
+		}
+	}
+	ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
+	return true
 }
 
 // Update content and move if the timestamp changed
