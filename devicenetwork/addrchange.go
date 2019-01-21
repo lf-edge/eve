@@ -67,8 +67,6 @@ func checkIfAllDNSPortsHaveIPAddrs(status types.DeviceNetworkStatus) bool {
 		numAddrs := types.CountLocalAddrFreeNoLinkLocalIf(status, port)
 		log.Debugln("checkIfAllDNSPortsHaveIPAddrs: Port %s has %d addresses.",
 			port, numAddrs)
-		log.Infof("XXXXX checkIfAllDNSPortsHaveIPAddrs: Port %s has %d addresses.",
-			port, numAddrs)
 		if numAddrs < 1 {
 			return false
 		}

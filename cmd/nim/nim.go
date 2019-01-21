@@ -240,8 +240,9 @@ func Run() {
 		time.Duration(geoMax))
 
 	dnc := &nimCtx.DeviceNetworkContext
+	dnc.DPCTestDuration = 30 // seconds
 	// Timer for checking/verifying pending device network status
-	pendTimer := time.NewTimer(30 * time.Second)
+	pendTimer := time.NewTimer(dnc.DPCTestDuration * time.Second)
 	// We stop this timer before using in the select loop below, because
 	// we do not want the DPC list verification to start yet. We need a place
 	// holder in the select loop.
@@ -251,9 +252,12 @@ func Run() {
 	dnc.Pending.PendTimer = pendTimer
 
 	// Periodic timer that tests device cloud connectivity
-	networkTestInterval := time.Duration(5 * time.Minute)
+	dnc.NetworkTestInterval = 5 // minutes
+	networkTestInterval := time.Duration(dnc.NetworkTestInterval * time.Minute)
 	networkTestTimer := time.NewTimer(networkTestInterval)
 	dnc.NetworkTestTimer = networkTestTimer
+	// We start assuming cloud connectivity works
+	dnc.CloudConnectivityWorks = true
 
 	// Look for address changes
 	addrChanges := devicenetwork.AddrChangeInit(&nimCtx.DeviceNetworkContext)
@@ -322,28 +326,30 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 	if pass {
 		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
 		ctx.CloudConnectivityWorks = true
+		// Restart network test timer for next slot.
+		ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
 		return true
-	} else {
-		if !ctx.CloudConnectivityWorks {
-			// If previous cloud connectivity test also failed, it means
-			// that the current DPC configuration stopped working.
-			// In this case we start the process where device tries to
-			// figure out a DevicePortConfig that works.
-			if ctx.Pending.Inprogress {
-				log.Infof("tryDeviceConnectivityToCloud: Device port configuration list " +
-					"verification in progress")
-				// Connectivity to cloud is already being figured out.
-				// We wait till the next cloud connectivity test slot.
-			} else {
-				log.Infof("tryDeviceConnectivityToCloud: Triggering Device port " +
-					"verification to resume cloud connectivity")
-				devicenetwork.SetupVerify(ctx, 0)
-				// Start DPC verification to find a working configuration
-				devicenetwork.RestartVerify(ctx, "tryDeviceConnectivityToCloud")
-			}
+	}
+	if !ctx.CloudConnectivityWorks {
+		// If previous cloud connectivity test also failed, it means
+		// that the current DPC configuration stopped working.
+		// In this case we start the process where device tries to
+		// figure out a DevicePortConfig that works.
+		if ctx.Pending.Inprogress {
+			log.Infof("tryDeviceConnectivityToCloud: Device port configuration list " +
+			"verification in progress")
+			// Connectivity to cloud is already being figured out.
+			// We wait till the next cloud connectivity test slot.
 		} else {
-			ctx.CloudConnectivityWorks = false
+			log.Infof("tryDeviceConnectivityToCloud: Triggering Device port " +
+			"verification to resume cloud connectivity")
+			// Start DPC verification to find a working configuration
+			devicenetwork.RestartVerify(ctx, "tryDeviceConnectivityToCloud")
 		}
+	} else {
+		// Restart network test timer for next slot.
+		ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
+		ctx.CloudConnectivityWorks = false
 	}
 	return false
 }

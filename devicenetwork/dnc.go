@@ -16,8 +16,6 @@ import (
 )
 
 const (
-	DNSWaitSeconds  = 30
-	NetworkTestInterval = 5
 	MaxDPCRetestCount = 3
 )
 
@@ -60,6 +58,10 @@ type DeviceNetworkContext struct {
 	NetworkTestTimer        *time.Timer
 	NextDPCIndex            int
 	CloudConnectivityWorks  bool
+
+	// How long should we wait before testing a pending DPC?
+	DPCTestDuration         time.Duration  // In seconds.
+	NetworkTestInterval     time.Duration  // Test interval in minutes.
 }
 
 func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
@@ -128,11 +130,12 @@ func SetupVerify(ctx *DeviceNetworkContext, index int) {
 }
 
 func RestartVerify(ctx *DeviceNetworkContext, caller string) {
-	log.Infof("RestartVerify: Caller %s initialized DPC list verify at", time.Now())
+	log.Infof("RestartVerify: Caller %s initialized DPC list verify at %v",
+		caller, time.Now())
 
 	pending := &ctx.Pending
 	if pending.Inprogress {
-		log.Debugln("RestartVerify: DPC list verification in progress")
+		log.Infof("RestartVerify: DPC list verification in progress")
 		return
 	}
 	SetupVerify(ctx, 0)
@@ -189,7 +192,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 		switch res {
 		case DPC_WAIT:
 			// Either addressChange or PendTimer will result in calling us again.
-			pending.PendTimer = time.NewTimer(DNSWaitSeconds * time.Second)
+			pending.PendTimer = time.NewTimer(ctx.DPCTestDuration * time.Second)
 			return
 		case DPC_FAIL:
 			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
@@ -256,7 +259,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	pending.OldDPC = getCurrentDPC(ctx)
 
 	// Restart network test timer
-	ctx.NetworkTestTimer = time.NewTimer(NetworkTestInterval * time.Minute)
+	ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
 }
 
 func getCurrentDPC(ctx *DeviceNetworkContext) types.DevicePortConfig {
