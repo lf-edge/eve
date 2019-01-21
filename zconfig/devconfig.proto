@@ -9,6 +9,7 @@ import "baseosconfig.proto";
 import "netconfig.proto";
 import "storage.proto";
 import "service.proto";
+import "netinst.proto";
 
 message MapServer {
         string NameOrIp   = 1;
@@ -107,6 +108,8 @@ message EdgeDevConfig {
 	// Override dmidecode info if set
 	string manufacturer = 14;
 	string productName = 15;
+
+	repeated NetworkInstanceConfig netinsts = 16;
 }
 
 // Timers and other per-device policy which relates to the interaction

@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+option java_package = "com.zededa.cloud.uservice.proto";
+option go_package = "github.com/zededa/api/zconfig";
+
+import "devcommon.proto";
+import "netcmn.proto";
+
+enum ZNetworkInstType {
+  ZNetInstFirst    = 0;
+  ZnetInstSwitch   = 1;
+  ZnetInstLocal    = 2;
+  ZnetInstCloud    = 3;
+  ZnetInstMesh     = 4;
+  ZnetInstHoneyPot = 5;
+  ZnetInstTransparent = 6;
+  ZNetInstLast     = 255;
+}
+
+// Network Instance Opaque config. In future we might add more fields here
+// but idea is here. This is service specific configuration.
+message NetworkInstanceOpaqueConfig {
+	string oconfig = 1;
+}
+
+// Lisp NetworkInstance config
+message NetworkInstanceLispConfig {
+        repeated ZcServicePoint LispMSs = 1;
+        uint32 LispInstanceId = 2;
+
+        bool allocate = 3;
+        bool exportprivate = 4;
+        bytes allocationprefix = 5;
+        uint32 allocationprefixlen = 6;
+
+	// various configuration to dataPlane, lispers.net vs Zededa
+	bool experimental = 20;
+}
+
+message NetworkInstanceConfig {
+	string id = 1;
+	string displayname = 2;
+
+	// new instance type
+	ZNetworkInstType instType = 4;
+
+	bool activate = 5;
+
+	// This is port configuration, we can use this one and evovle to do 
+	// model name, based thing for future.
+	// towards devices which phyiscal or logical adapter to use
+	Adapter devlink = 20;
+
+	// Opaque configuration 
+	NetworkInstanceOpaqueConfig cfg = 30;
+
+	// network ip specification
+	ipspec ip = 40;
+
+	// static DNS entry, if we are running DNS/DHCP service
+	repeated ZnetStaticDNSEntry dns = 41;
+}
