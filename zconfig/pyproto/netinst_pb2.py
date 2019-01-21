@@ -22,7 +22,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='netinst.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\rnetinst.proto\x1a\x0f\x64\x65vcommon.proto\x1a\x0cnetcmn.proto\".\n\x1bNetworkInstanceOpaqueConfig\x12\x0f\n\x07oconfig\x18\x01 \x01(\t\"\xcb\x01\n\x19NetworkInstanceLispConfig\x12 \n\x07LispMSs\x18\x01 \x03(\x0b\x32\x0f.ZcServicePoint\x12\x16\n\x0eLispInstanceId\x18\x02 \x01(\r\x12\x10\n\x08\x61llocate\x18\x03 \x01(\x08\x12\x15\n\rexportprivate\x18\x04 \x01(\x08\x12\x18\n\x10\x61llocationprefix\x18\x05 \x01(\x0c\x12\x1b\n\x13\x61llocationprefixlen\x18\x06 \x01(\r\x12\x14\n\x0c\x65xperimental\x18\x14 \x01(\x08\"\x8c\x02\n\x15NetworkInstanceConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12#\n\x08instType\x18\x04 \x01(\x0e\x32\x11.ZNetworkInstType\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12\x19\n\x07\x64\x65vlink\x18\x14 \x01(\x0b\x32\x08.Adapter\x12)\n\x03\x63\x66g\x18\x1e \x01(\x0b\x32\x1c.NetworkInstanceOpaqueConfig\x12\x13\n\x02ip\x18( \x01(\x0b\x32\x07.ipspec\x12 \n\x03\x64ns\x18) \x03(\x0b\x32\x13.ZnetStaticDNSEntry\x12\x1e\n\x08\x65ntProxy\x18* \x01(\x0b\x32\x0c.ProxyConfig*\x9a\x01\n\x10ZNetworkInstType\x12\x11\n\rZNetInstFirst\x10\x00\x12\x12\n\x0eZnetInstSwitch\x10\x01\x12\x11\n\rZnetInstLocal\x10\x02\x12\x11\n\rZnetInstCloud\x10\x03\x12\x10\n\x0cZnetInstMesh\x10\x04\x12\x14\n\x10ZnetInstHoneyPot\x10\x05\x12\x11\n\x0cZNetInstLast\x10\xff\x01\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\rnetinst.proto\x1a\x0f\x64\x65vcommon.proto\x1a\x0cnetcmn.proto\".\n\x1bNetworkInstanceOpaqueConfig\x12\x0f\n\x07oconfig\x18\x01 \x01(\t\"\xcb\x01\n\x19NetworkInstanceLispConfig\x12 \n\x07LispMSs\x18\x01 \x03(\x0b\x32\x0f.ZcServicePoint\x12\x16\n\x0eLispInstanceId\x18\x02 \x01(\r\x12\x10\n\x08\x61llocate\x18\x03 \x01(\x08\x12\x15\n\rexportprivate\x18\x04 \x01(\x08\x12\x18\n\x10\x61llocationprefix\x18\x05 \x01(\x0c\x12\x1b\n\x13\x61llocationprefixlen\x18\x06 \x01(\r\x12\x14\n\x0c\x65xperimental\x18\x14 \x01(\x08\"\xec\x01\n\x15NetworkInstanceConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12#\n\x08instType\x18\x04 \x01(\x0e\x32\x11.ZNetworkInstType\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12\x19\n\x07\x64\x65vlink\x18\x14 \x01(\x0b\x32\x08.Adapter\x12)\n\x03\x63\x66g\x18\x1e \x01(\x0b\x32\x1c.NetworkInstanceOpaqueConfig\x12\x13\n\x02ip\x18( \x01(\x0b\x32\x07.ipspec\x12 \n\x03\x64ns\x18) \x03(\x0b\x32\x13.ZnetStaticDNSEntry*\xb3\x01\n\x10ZNetworkInstType\x12\x11\n\rZNetInstFirst\x10\x00\x12\x12\n\x0eZnetInstSwitch\x10\x01\x12\x11\n\rZnetInstLocal\x10\x02\x12\x11\n\rZnetInstCloud\x10\x03\x12\x10\n\x0cZnetInstMesh\x10\x04\x12\x14\n\x10ZnetInstHoneyPot\x10\x05\x12\x17\n\x13ZnetInstTransparent\x10\x06\x12\x11\n\x0cZNetInstLast\x10\xff\x01\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
   ,
   dependencies=[devcommon__pb2.DESCRIPTOR,netcmn__pb2.DESCRIPTOR,])
 
@@ -57,14 +57,18 @@ _ZNETWORKINSTTYPE = _descriptor.EnumDescriptor(
       options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='ZNetInstLast', index=6, number=255,
+      name='ZnetInstTransparent', index=6, number=6,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ZNetInstLast', index=7, number=255,
       options=None,
       type=None),
   ],
   containing_type=None,
   options=None,
-  serialized_start=574,
-  serialized_end=728,
+  serialized_start=542,
+  serialized_end=721,
 )
 _sym_db.RegisterEnumDescriptor(_ZNETWORKINSTTYPE)
 
@@ -75,6 +79,7 @@ ZnetInstLocal = 2
 ZnetInstCloud = 3
 ZnetInstMesh = 4
 ZnetInstHoneyPot = 5
+ZnetInstTransparent = 6
 ZNetInstLast = 255
 
 
@@ -246,13 +251,6 @@ _NETWORKINSTANCECONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='entProxy', full_name='NetworkInstanceConfig.entProxy', index=8,
-      number=42, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -266,7 +264,7 @@ _NETWORKINSTANCECONFIG = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=303,
-  serialized_end=571,
+  serialized_end=539,
 )
 
 _NETWORKINSTANCELISPCONFIG.fields_by_name['LispMSs'].message_type = devcommon__pb2._ZCSERVICEPOINT
@@ -275,7 +273,6 @@ _NETWORKINSTANCECONFIG.fields_by_name['devlink'].message_type = devcommon__pb2._
 _NETWORKINSTANCECONFIG.fields_by_name['cfg'].message_type = _NETWORKINSTANCEOPAQUECONFIG
 _NETWORKINSTANCECONFIG.fields_by_name['ip'].message_type = netcmn__pb2._IPSPEC
 _NETWORKINSTANCECONFIG.fields_by_name['dns'].message_type = netcmn__pb2._ZNETSTATICDNSENTRY
-_NETWORKINSTANCECONFIG.fields_by_name['entProxy'].message_type = netcmn__pb2._PROXYCONFIG
 DESCRIPTOR.message_types_by_name['NetworkInstanceOpaqueConfig'] = _NETWORKINSTANCEOPAQUECONFIG
 DESCRIPTOR.message_types_by_name['NetworkInstanceLispConfig'] = _NETWORKINSTANCELISPCONFIG
 DESCRIPTOR.message_types_by_name['NetworkInstanceConfig'] = _NETWORKINSTANCECONFIG

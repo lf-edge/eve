@@ -13,6 +13,7 @@ enum ZNetworkInstType {
   ZnetInstCloud    = 3;
   ZnetInstMesh     = 4;
   ZnetInstHoneyPot = 5;
+  ZnetInstTransparent = 6;
   ZNetInstLast     = 255;
 }
 
@@ -47,7 +48,6 @@ message NetworkInstanceConfig {
 
 	// This is port configuration, we can use this one and evovle to do 
 	// model name, based thing for future.
-
 	// towards devices which phyiscal or logical adapter to use
 	Adapter devlink = 20;
 
@@ -59,7 +59,4 @@ message NetworkInstanceConfig {
 
 	// static DNS entry, if we are running DNS/DHCP service
 	repeated ZnetStaticDNSEntry dns = 41;
-
-        // enterprise proxy
-        ProxyConfig entProxy = 42;
 }
