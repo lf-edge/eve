@@ -16,8 +16,9 @@ enum ZInfoTypes {
   ZiDevice = 1;
   // ZiHypervisor = 2;	// Deprecated
   ZiApp = 3;
-  ZiService = 4;
-  ZiNetworkObject = 5;
+  ZiService = 4;	// XXX to be deprecated
+  ZiNetworkObject = 5;	// XXX to be deprecated
+  ZiNetworkInstance = 6;
 }
 
 // Manufacturing info, product name, model, version etc.
@@ -267,7 +268,7 @@ message ZInfoLisp {
 	repeated DecapKey DecapKeys = 5;
 }
 
-// Service instance state information
+// Service instance state information XXX to be deprecated
 message ZInfoService {
   string serviceID = 1;
   string serviceName = 2;
@@ -284,7 +285,7 @@ message ZInfoService {
   }
 }
 
-// Network Object information
+// Network Object information XXX to be deprecated
 message ZInfoNetworkObject {
   string networkID = 1;		// UUID
 
@@ -313,6 +314,42 @@ message ZInfoNetworkObject {
   repeated ErrorInfo networkErr = 19;
 }
 
+// Network Instance information
+message ZInfoNetworkInstance {
+  string networkID = 1;		// UUID
+  uint32 instType = 2; 		// ZNetworkInstType
+  string displayname = 3;	// From NetworkInstance config
+  bool activated = 4;
+  google.protobuf.Timestamp upTimeStamp = 5;
+
+  // From NetworkInstanceConfig; do we need to include all of these?
+  uint32 dhcpType = 10;
+  string subnet = 11;
+  string gateway = 12;
+  string domainname = 13;
+  string ntpServer = 14;
+  repeated string dnsServers = 15;
+  string dhcpRangeLow = 16;
+  string dhcpRangeHigh = 17;
+
+  // From NetworkInstanceStatus
+  uint32 bridgeNum = 20;
+  string bridgeName = 21;
+  string bridgeIPAddr = 22;
+
+  repeated ZmetIPAssignmentEntry ipAssignments = 23;
+  repeated string bridgeIPSets = 24; // Union of all ipsets for the bridge
+  repeated string vifNames = 25; // Set of vifs on this bridge
+  bool ipv4Eid = 26; // Track if this is a CryptoEid with IPv4 EIDs
+
+  repeated ZioBundle assignedAdapters = 30;
+  oneof InfoContent {
+    ZInfoVpn vinfo = 31;
+    ZInfoLisp linfo = 32;
+  }
+  repeated ErrorInfo networkErr = 40;
+}
+
 // Map from MAC to IP addresses
 message ZmetIPAssignmentEntry {
         string macAddress = 1;
@@ -325,8 +362,9 @@ message ZInfoMsg {
   oneof InfoContent {
   	ZInfoDevice dinfo = 3;
   	ZInfoApp ainfo = 5;
-	ZInfoService sinfo = 10;
-	ZInfoNetworkObject ninfo = 11;
+	ZInfoService sinfo = 10;	// XXX To be deprecated
+	ZInfoNetworkObject ninfo = 11;	// XXX To be deprecated
+	ZInfoNetworkInstance niinfo = 12;
    }
   google.protobuf.Timestamp atTimeStamp = 6;
 }
@@ -366,7 +404,7 @@ message memoryMetric {
 }
 
 message networkMetric {
-  string iName = 1;	// name from config
+  string iName = 1;	// name from config; displayName for network instance
   uint64 txBytes = 2;	// in bytes
   uint64 rxBytes = 3;	// in bytes
   uint64 txDrops = 4;
@@ -525,6 +563,10 @@ message ZMetricVpn {
 	ZMetricConn EspStat = 4;
 }
 
+// For other services with no specific metrics
+message ZMetricNone {
+}
+
 // flow stats
 message ZMetricFlowLink {
   oneof Link {
@@ -570,6 +612,7 @@ message ZMetricLispGlobal {
 	PktStat DecryptError = 12;
 }
 
+// XXX to be deprecated
 message ZMetricService {
   string serviceID = 1;
   string serviceName = 2;
@@ -583,6 +626,22 @@ message ZMetricService {
   ZMetricLispGlobal lispGlobalStats = 11;
 }
 
+message ZMetricNetworkInstance {
+  string networkID = 1;		// UUID
+  uint32 instType = 2;  	// ZNetworkInstType
+  string displayname = 3;	// From NetworkInstance config
+  bool activated = 4;
+
+  repeated networkMetric network = 10; // Aggregate counters for bridge
+  oneof ServiceContent {
+    ZMetricVpn  vpnm = 20;
+    ZMetricLisp lispm = 21;
+    ZMetricNone nonem = 22;
+  }
+  repeated ZMetricFlow flowStats = 30;
+  ZMetricLispGlobal lispGlobalStats = 31;
+}
+
 message ZMetricMsg {
   string devID = 1;
   // ZmetricTypes ztype = 2;  // deprecated
@@ -592,5 +651,6 @@ message ZMetricMsg {
   	deviceMetric dm = 4;
    }
    repeated appMetric am = 5;
-   repeated ZMetricService sm = 6;
+   repeated ZMetricService sm = 6;	// XXX To be deprecated
+   repeated ZMetricNetworkInstance nm = 7;
 }
