@@ -127,6 +127,8 @@ func SetupVerify(ctx *DeviceNetworkContext, index int) {
 	pending.PendDPC    = ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
 	pending.PendDNS, _ = MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
 	pending.TestCount = 0
+	log.Debugln("SetupVerify: Started testing DPC %v",
+		ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex])
 }
 
 func RestartVerify(ctx *DeviceNetworkContext, caller string) {
@@ -153,9 +155,13 @@ func VerifyPending(pending *DPCPending) PendDNSStatus {
 	if numUsableAddrs == 0 {
 		if pending.TestCount < MaxDPCRetestCount {
 			pending.TestCount += 1
+			log.Debugln("VerifyPending: Pending DNS %v does not " +
+				"have any usable IP addresses", pending.PendDNS)
 			return DPC_WAIT
 		} else {
 			pending.PendDPC.LastFailed = time.Now()
+			log.Debugln("VerifyPending: DHCP could not resolve any usable " +
+				"IP addresses for the pending DNS %v", pending.PendDNS)
 			return DPC_FAIL
 		}
 	}
@@ -226,6 +232,8 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 				if ok {
 					break
 				}
+				log.Debugln("VerifyDevicePortConfig: DPC %v is not testable",
+					ctx.DevicePortConfigList.PortConfigList[newIndex])
 				newIndex = (newIndex + 1) % dpcListLen
 			}
 			if count == dpcListLen {
