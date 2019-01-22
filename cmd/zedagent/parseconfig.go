@@ -1304,6 +1304,46 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.VdiskGCTime = newU32
 				globalConfigChange = true
 			}
+		case "timer.download.retry":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newU32 := uint32(i64)
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = globalConfigDefaults.DownloadRetryTime
+			}
+			if newU32 != globalConfig.DownloadRetryTime {
+				log.Infof("parseConfigItems: %s change from %d to %d\n",
+					key,
+					globalConfig.DownloadRetryTime,
+					newU32)
+				globalConfig.DownloadRetryTime = newU32
+				globalConfigChange = true
+			}
+		case "timer.boot.retry":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newU32 := uint32(i64)
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = globalConfigDefaults.DomainBootRetryTime
+			}
+			if newU32 != globalConfig.DomainBootRetryTime {
+				log.Infof("parseConfigItems: %s change from %d to %d\n",
+					key,
+					globalConfig.DomainBootRetryTime,
+					newU32)
+				globalConfig.DomainBootRetryTime = newU32
+				globalConfigChange = true
+			}
 		case "debug.default.loglevel":
 			newString := item.Value
 			if newString == "" {

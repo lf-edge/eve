@@ -18,7 +18,10 @@ type GlobalConfig struct {
 	StaleConfigTime         uint32 // On reboot use saved config if not stale
 	DownloadGCTime          uint32 // Garbage collect if no use
 	VdiskGCTime             uint32 // Garbage collect RW disk if no use
-	
+
+	DownloadRetryTime   uint32 // Retry failed download after N sec
+	DomainBootRetryTime uint32 // Retry failed boot after N sec
+
 	// NoUsbAccess
 	// Determines if Dom0 can use USB devices.
 	// If true:

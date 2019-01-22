@@ -412,6 +412,7 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 
 		// Must still be testing the current version; don't overwrite
 		// fallback
+		status.TooEarly = true
 		errStr := fmt.Sprintf("Attempt to install baseOs update %s while testing is in progress for %s: refused",
 			config.BaseOsVersion, curPartVersion)
 		log.Errorln(errStr)
@@ -875,6 +876,9 @@ func doPartitionStateTransition(ctx *baseOsMgrContext, uuidStr string, config ty
 		baseOsSetPartitionInfoInStatus(ctx, &status, partName)
 		status.TestComplete = true
 		publishBaseOsStatus(ctx, &status)
+
+		// Check if we have a failed update which needs a kick
+		maybeRetryInstall(ctx)
 	}
 }
 
@@ -888,6 +892,32 @@ func updateAndPublishBaseOsStatusAll(ctx *baseOsMgrContext) {
 		}
 		baseOsSetPartitionInfoInStatus(ctx, &status, status.PartitionLabel)
 		publishBaseOsStatus(ctx, &status)
+	}
+}
+
+func maybeRetryInstall(ctx *baseOsMgrContext) {
+	pub := ctx.pubBaseOsStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastBaseOsStatus(st)
+		if !status.TooEarly {
+			log.Infof("maybeRetryInstall(%s) skipped\n",
+				status.Key())
+			continue
+		}
+		config := lookupBaseOsConfig(ctx, status.Key())
+		if config == nil {
+			log.Infof("maybeRetryInstall(%s) no config\n",
+				status.Key())
+			continue
+		}
+
+		log.Infof("maybeRetryInstall(%s) redoing after %s %v\n",
+			status.Key(), status.Error, status.ErrorTime)
+		status.TooEarly = false
+		status.Error = ""
+		status.ErrorTime = time.Time{}
+		baseOsHandleStatusUpdate(ctx, config, &status)
 	}
 }
 

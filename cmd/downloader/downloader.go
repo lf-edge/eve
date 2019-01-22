@@ -66,8 +66,9 @@ type downloaderContext struct {
 }
 
 var debug = false
-var debugOverride bool                                // From command line arg
-var downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
+var debugOverride bool                                   // From command line arg
+var downloadGCTime = time.Duration(600) * time.Second    // Unless from GlobalConfig
+var downloadRetryTime = time.Duration(600) * time.Second // Unless from GlobalConfig
 
 func Run() {
 	handlersInit()
@@ -328,6 +329,24 @@ func lookupDownloaderStatus(ctx *downloaderContext, objType string,
 	return &status
 }
 
+func lookupDownloaderConfig(ctx *downloaderContext, objType string,
+	key string) *types.DownloaderConfig {
+
+	sub := downloaderSubscription(ctx, objType)
+	c, _ := sub.Get(key)
+	if c == nil {
+		log.Infof("lookupDownloaderConfig(%s) not found\n", key)
+		return nil
+	}
+	config := cast.CastDownloaderConfig(c)
+	if config.Key() != key {
+		log.Errorf("lookupDownloaderConfig key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return nil
+	}
+	return &config
+}
+
 // We have one goroutine per provisioned domU object.
 // Channel is used to send config (new and updates)
 // Channel is closed when the object is deleted
@@ -391,6 +410,10 @@ func runHandler(ctx *downloaderContext, objType string, key string,
 
 	log.Infof("runHandler starting\n")
 
+	max := float64(downloadRetryTime)
+	min := max * 0.3
+	ticker := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
 	closed := false
 	for !closed {
 		select {
@@ -404,6 +427,7 @@ func runHandler(ctx *downloaderContext, objType string, key string,
 				} else {
 					handleModify(ctx, key, config, status)
 				}
+				// XXX if err start timer
 			} else {
 				// Closed
 				status := lookupDownloaderStatus(ctx,
@@ -412,10 +436,48 @@ func runHandler(ctx *downloaderContext, objType string, key string,
 					handleDelete(ctx, key, status)
 				}
 				closed = true
+				// XXX stop timer
+			}
+		case <-ticker.C:
+			log.Debugf("runHandler(%s) timer\n", key)
+			status := lookupDownloaderStatus(ctx, objType, key)
+			if status != nil {
+				maybeRetryDownload(ctx, status)
 			}
 		}
 	}
 	log.Infof("runHandler(%s) DONE\n", key)
+}
+
+func maybeRetryDownload(ctx *downloaderContext,
+	status *types.DownloaderStatus) {
+
+	if status.LastErr == "" {
+		return
+	}
+	t := time.Now()
+	elapsed := t.Sub(status.LastErrTime)
+	if elapsed < downloadRetryTime {
+		log.Infof("maybeRetryDownload(%s) %v remaining\n",
+			status.Key(),
+			(downloadRetryTime-elapsed)/time.Second)
+		return
+	}
+	log.Infof("maybeRetryDownload(%s) after %s at %v\n",
+		status.Key(), status.LastErr, status.LastErrTime)
+
+	config := lookupDownloaderConfig(ctx, status.ObjType, status.Key())
+	if config == nil {
+		log.Infof("maybeRetryDownload(%s) no config\n",
+			status.Key())
+		return
+	}
+	status.LastErr = ""
+	status.LastErrTime = time.Time{}
+	status.RetryCount += 1
+	// XXX do we need to adjust reservedspace??
+
+	handleSyncOp(ctx, status.Key(), *config, status)
 }
 
 func handleCreate(ctx *downloaderContext, objType string,
@@ -834,6 +896,23 @@ func downloaderPublication(ctx *downloaderContext, objType string) *pubsub.Publi
 			objType)
 	}
 	return pub
+}
+
+func downloaderSubscription(ctx *downloaderContext, objType string) *pubsub.Subscription {
+
+	var sub *pubsub.Subscription
+	switch objType {
+	case appImgObj:
+		sub = ctx.subAppImgConfig
+	case baseOsObj:
+		sub = ctx.subBaseOsConfig
+	case certObj:
+		sub = ctx.subCertObjConfig
+	default:
+		log.Fatalf("downloaderSubscription: Unknown ObjType %s\n",
+			objType)
+	}
+	return sub
 }
 
 // cloud storage interface functions/APIs
@@ -1291,8 +1370,13 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	var gcp *types.GlobalConfig
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	if gcp != nil && gcp.DownloadGCTime != 0 {
-		downloadGCTime = time.Duration(gcp.DownloadGCTime) * time.Second
+	if gcp != nil {
+		if gcp.DownloadGCTime != 0 {
+			downloadGCTime = time.Duration(gcp.DownloadGCTime) * time.Second
+		}
+		if gcp.DownloadRetryTime != 0 {
+			downloadRetryTime = time.Duration(gcp.DownloadRetryTime) * time.Second
+		}
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }

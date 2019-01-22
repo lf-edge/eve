@@ -58,6 +58,8 @@ var globalConfigDefaults = types.GlobalConfig{
 	StaleConfigTime:         600,    // Use stale config for up to 10 minutes
 	DownloadGCTime:          600,    // 10 minutes
 	VdiskGCTime:             3600,   // 1 hour
+	DownloadRetryTime:	 600,	 // 10 minutes
+	DomainBootRetryTime:	 600,	 // 10 minutes
 	DefaultLogLevel:         "info", // XXX change default to warning?
 	DefaultRemoteLogLevel:   "warning",
 }
