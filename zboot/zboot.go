@@ -8,13 +8,22 @@ package zboot
 import (
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
 	"syscall"
+
+	log "github.com/sirupsen/logrus"
+)
+
+// MountFlags used in zbootMount calls
+type MountFlags uint
+
+const (
+	// MountFlagRDONLY readOnly mount
+	MountFlagRDONLY MountFlags = 0x01
 )
 
 // mutex for zboot/dd APIs
@@ -403,8 +412,8 @@ func getVersion(part string, verFilename string) string {
 		// Mount failure is ok; might not have a filesystem in the
 		// other partition
 		// XXX hardcoded file system type squashfs
-		err = syscall.Mount(devname, target, "squashfs",
-			syscall.MS_RDONLY, "")
+		mountFlags := MountFlagRDONLY
+		err = zbootMount(devname, target, "squashfs", mountFlags, "")
 		if err != nil {
 			log.Errorf("Mount of %s failed: %s\n", devname, err)
 			return ""

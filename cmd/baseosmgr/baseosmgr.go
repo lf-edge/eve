@@ -105,9 +105,11 @@ func Run() {
 
 	log.Infof("Starting %s\n", agentName)
 
-	// Tell ourselves to go ahead
-	// Context to pass around
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName)
 
+	// Context to pass around
 	ctx := baseOsMgrContext{}
 
 	// initialize publishing handles
@@ -138,6 +140,9 @@ func Run() {
 			if ctx.verifierRestarted {
 				log.Infof("Verifier reported restarted\n")
 			}
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 
@@ -164,6 +169,9 @@ func Run() {
 
 		case change := <-ctx.subCertObjDownloadStatus.C:
 			ctx.subCertObjDownloadStatus.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 }

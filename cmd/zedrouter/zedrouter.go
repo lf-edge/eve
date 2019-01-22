@@ -94,6 +94,10 @@ func Run() {
 	}
 	log.Infof("Starting %s\n", agentName)
 
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName)
+
 	if _, err := os.Stat(runDirname); err != nil {
 		log.Infof("Create %s\n", runDirname)
 		if err := os.Mkdir(runDirname, 0755); err != nil {
@@ -213,6 +217,9 @@ func Run() {
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
@@ -325,6 +332,9 @@ func Run() {
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 	log.Infof("Zedmanager has restarted\n")
@@ -381,6 +391,9 @@ func Run() {
 
 		case change := <-subLispMetrics.C:
 			subLispMetrics.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 }

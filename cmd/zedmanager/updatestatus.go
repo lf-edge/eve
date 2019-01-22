@@ -1136,12 +1136,12 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 
 	// Check AppNetworkStatus
 	ns := lookupAppNetworkStatus(ctx, uuidStr)
-	if ns != nil {
+	if ns == nil {
 		log.Infof("Waiting for AppNetworkStatus for %s\n", uuidStr)
 		return changed
 	}
 	updateAppNetworkStatus(status, ns)
-	if ns == nil || ns.Pending() {
+	if ns.Pending() {
 		log.Infof("Waiting for AppNetworkStatus !Pending for %s\n", uuidStr)
 		return changed
 	}

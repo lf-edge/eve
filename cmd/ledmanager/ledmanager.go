@@ -79,6 +79,10 @@ var mToF = []modelToFuncs{
 		model:     "Supermicro.SYS-5018D-FN8T",
 		blinkFunc: ExecuteDDCmd},
 	modelToFuncs{
+		model:     "hisilicon,hi6220-hikey.hisilicon,hi6220.",
+		initFunc:  InitWifiLedCmd,
+		blinkFunc: ExecuteWifiLedCmd},
+	modelToFuncs{
 		model:     "hisilicon,hikey.hisilicon,hi6220.",
 		initFunc:  InitWifiLedCmd,
 		blinkFunc: ExecuteWifiLedCmd},
@@ -119,6 +123,10 @@ func Run() {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s\n", agentName)
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName)
 
 	model := hardware.GetHardwareModel()
 	log.Infof("Got HardwareModel %s\n", model)
@@ -176,6 +184,9 @@ func Run() {
 
 		case change := <-subLedBlinkCounter.C:
 			subLedBlinkCounter.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
 	}
 }

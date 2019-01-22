@@ -254,19 +254,21 @@ func printOutput(ctx *diagContext) {
 		time.Now().Format(time.RFC3339Nano))
 	savedHardwareModel := hardware.GetHardwareModelOverride()
 	hardwareModel := hardware.GetHardwareModelNoOverride()
-	if savedHardwareModel != hardwareModel {
+	if savedHardwareModel != "" && savedHardwareModel != hardwareModel {
 		fmt.Printf("INFO: dmidecode model string %s overridden as %s\n",
 			hardwareModel, savedHardwareModel)
 	}
-	if !DNCExists(savedHardwareModel) {
-		fmt.Printf("ERROR: /config/hardwaremodel %s does not exist in /var/tmp/zededa/DeviceNetworkConfig\n",
-			savedHardwareModel)
-		fmt.Printf("NOTE: Device is using /var/tmp/zededa/DeviceNetworkConfig/default.json\n")
-	}
-	if !AAExists(savedHardwareModel) {
-		fmt.Printf("ERROR: /config/hardwaremodel %s does not exist in /var/tmp/zededa/AssignableAdapters\n",
-			savedHardwareModel)
-		fmt.Printf("NOTE: Device is using /var/tmp/zededa/AssignableAdapters/default.json\n")
+	if savedHardwareModel != "" {
+		if !DNCExists(savedHardwareModel) {
+			fmt.Printf("ERROR: /config/hardwaremodel %s does not exist in /var/tmp/zededa/DeviceNetworkConfig\n",
+				savedHardwareModel)
+			fmt.Printf("NOTE: Device is using /var/tmp/zededa/DeviceNetworkConfig/default.json\n")
+		}
+		if !AAExists(savedHardwareModel) {
+			fmt.Printf("ERROR: /config/hardwaremodel %s does not exist in /var/tmp/zededa/AssignableAdapters\n",
+				savedHardwareModel)
+			fmt.Printf("NOTE: Device is using /var/tmp/zededa/AssignableAdapters/default.json\n")
+		}
 	}
 	if !DNCExists(hardwareModel) {
 		fmt.Printf("INFO: dmidecode model %s does not exist in /var/tmp/zededa/DeviceNetworkConfig\n",
@@ -286,9 +288,9 @@ func printOutput(ctx *diagContext) {
 	case 0:
 		fmt.Printf("ERROR: Summary: Unknown LED counter 0\n")
 	case 1:
-		fmt.Printf("ERROR: Summary: Running but DHCP client not yet started\n")
-	case 2:
 		fmt.Printf("ERROR: Summary: Waiting for DHCP IP address(es)\n")
+	case 2:
+		fmt.Printf("ERROR: Summary: Trying to connect to EV Controller\n")
 	case 3:
 		fmt.Printf("WARNING: Summary: Connected to EV Controller but not onboarded\n")
 	case 4:

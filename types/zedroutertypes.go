@@ -6,11 +6,14 @@ package types
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
+	"os"
+	"time"
+
 	"github.com/eriknordmark/ipinfo"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"net"
-	"time"
 )
 
 // Indexed by UUID
@@ -128,6 +131,46 @@ const (
 	DPCInitial DevicePortConfigVersion = iota
 	DPCIsMgmt                          // Require IsMgmt to be set for management ports
 )
+
+func (portConfig *DevicePortConfig) DoSanitize(
+	sanitizeTimePriority bool,
+	sanitizeKey bool, key string,
+	sanitizeName bool) {
+
+	if sanitizeTimePriority {
+		zeroTime := time.Time{}
+		if portConfig.TimePriority == zeroTime {
+			// If we can stat the file use its modify time
+			filename := fmt.Sprintf("/var/tmp/zededa/DevicePortConfig/%s.json",
+				key)
+			fi, err := os.Stat(filename)
+			if err == nil {
+				portConfig.TimePriority = fi.ModTime()
+			} else {
+				portConfig.TimePriority = time.Unix(1, 0)
+			}
+			log.Infof("HandleDPCModify: Forcing TimePriority for %s to %v\n",
+				key, portConfig.TimePriority)
+		}
+	}
+	if sanitizeKey {
+		if portConfig.Key == "" {
+			portConfig.Key = key
+		}
+	}
+	if sanitizeName {
+		// In case Name isn't set we make it match IfName
+		// XXX still needed?
+		for i, _ := range portConfig.Ports {
+			port := &portConfig.Ports[i]
+			if port.Name == "" {
+				port.Name = port.IfName
+			}
+		}
+
+	}
+	return
+}
 
 type NetworkProxyType uint8
 
@@ -536,19 +579,44 @@ func AdapterToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 
 	for _, p := range deviceNetworkStatus.Ports {
 		if p.Name == adapter {
-			log.Infof("AdapterToIfName: found %s for %s\n",
+			log.Debugf("AdapterToIfName: found %s for %s\n",
 				p.IfName, adapter)
 			return p.IfName
 		}
 	}
 	for _, p := range deviceNetworkStatus.Ports {
 		if p.IfName == adapter {
-			log.Infof("AdapterToIfName: matched %s\n", adapter)
+			log.Debugf("AdapterToIfName: matched %s\n", adapter)
 			return adapter
 		}
 	}
-	log.Infof("AdapterToIfName: no match for %s\n", adapter)
+	log.Debugf("AdapterToIfName: no match for %s\n", adapter)
 	return adapter
+}
+
+// IsAnyPortInPciBack
+//		Checks is any of the Ports are part of IO bundles which are in PCIback.
+//		If true, it also returns the portName ( NOT bundle name )
+func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
+	aa *AssignableAdapters) (bool, string) {
+	if aa == nil {
+		log.Infof("IsAnyPortInPciBack: nil aa")
+		return false, ""
+	}
+	for _, port := range portConfig.Ports {
+		ioBundle := aa.LookupIoBundleForMember(
+			IoEth, port.IfName)
+		if ioBundle == nil {
+			// It is not guaranteed that all Ports are part of Assignable Adapters
+			// If not found, the adaptor is not capable of being assigned at
+			// PCI level. So it cannot be in PCI back.
+			continue
+		}
+		if ioBundle.IsPCIBack {
+			return true, port.IfName
+		}
+	}
+	return false, ""
 }
 
 type MapServerType uint8
