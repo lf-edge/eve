@@ -72,7 +72,18 @@ func (f FlexTickerHandle) UpdateRangeTicker(minTime time.Duration, maxTime time.
 
 // Insert a tick now in addition to running timers
 func (f FlexTickerHandle) TickNow() {
-	f.privateChan <- time.Now()
+	// There is a case when flextimer thread queues next tick, but main
+	// thread of service is doing something else and as part of what the
+	// main service does at that point, calls flextimer.TickNow().
+	// In such a case main service thread will get blocked and never gets
+	// un-blocked (since privateChan only has one tick slot).
+	//
+	// Is there a better solution than trying to send on privateChannel
+	// in a non-blocking fashion using select? Can this cause issues?
+	select {
+	case f.privateChan <- time.Now():
+	default:
+	}
 }
 
 // Note that the above member functions aren't always usable since the

@@ -111,10 +111,16 @@ type DevicePortConfigList struct {
 // A complete set of configuration for all the ports used by zedrouter on the
 // device
 type DevicePortConfig struct {
-	Version      DevicePortConfigVersion
-	Key          string
-	TimePriority time.Time // All zero's is fallback lowest priority
-	Ports        []NetworkPortConfig
+	Version       DevicePortConfigVersion
+	Key           string
+	TimePriority  time.Time // All zero's is fallback lowest priority
+
+	// Times when last ping test Failed/Succeeded.
+	// All zeros means never tested.
+	LastFailed    time.Time
+	LastSucceeded time.Time
+
+	Ports         []NetworkPortConfig
 }
 
 type DevicePortConfigVersion uint32
@@ -315,6 +321,16 @@ func CountLocalAddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 
 	// Count the number of addresses which apply
 	addrs, _ := getInterfaceAddr(globalStatus, true, "", false)
+	return len(addrs)
+}
+
+// Return number of local IP addresses for all the management ports with given name
+// excluding link-local addresses
+func CountLocalAddrFreeNoLinkLocalIf(globalStatus DeviceNetworkStatus,
+	port string) int {
+
+	// Count the number of addresses which apply
+	addrs, _ := getInterfaceAddr(globalStatus, true, port, false)
 	return len(addrs)
 }
 
