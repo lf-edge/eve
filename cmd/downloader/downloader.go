@@ -27,6 +27,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -61,6 +62,7 @@ type downloaderContext struct {
 	pubGlobalDownloadStatus *pubsub.Publication
 	deviceNetworkStatus     types.DeviceNetworkStatus
 	globalConfig            types.GlobalDownloadConfig
+	globalStatusLock        sync.Mutex
 	globalStatus            types.GlobalDownloadStatus
 	subGlobalConfig         *pubsub.Subscription
 }
@@ -505,9 +507,11 @@ func handleCreate(ctx *downloaderContext, objType string,
 
 	// Check if we have space
 	kb := types.RoundupToKB(config.Size)
+	ctx.globalStatusLock.Lock()
 	if uint(kb) >= ctx.globalStatus.RemainingSpace {
 		errString := fmt.Sprintf("Would exceed remaining space %d vs %d\n",
 			kb, ctx.globalStatus.RemainingSpace)
+		ctx.globalStatusLock.Unlock()
 		log.Errorln(errString)
 		status.PendingAdd = false
 		status.Size = 0
@@ -524,6 +528,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 	status.ReservedSpace = uint(types.RoundupToKB(config.Size))
 	ctx.globalStatus.ReservedSpace += status.ReservedSpace
 	updateRemainingSpace(ctx)
+	ctx.globalStatusLock.Unlock()
 
 	// If RefCount == 0 then we don't yet download.
 	if config.RefCount == 0 {
@@ -618,12 +623,14 @@ func doDelete(ctx *downloaderContext, key string, locDirname string,
 	deletefile(locDirname+"/pending", status)
 
 	status.State = types.INITIAL
+	ctx.globalStatusLock.Lock()
 	ctx.globalStatus.UsedSpace -= uint(types.RoundupToKB(status.Size))
 	status.Size = 0
 
 	// XXX Asymmetric; handleCreate reserved on RefCount 0. We unreserve
 	// going back to RefCount 0. FIXed
 	updateRemainingSpace(ctx)
+	ctx.globalStatusLock.Unlock()
 	publishDownloaderStatus(ctx, status)
 }
 
@@ -661,12 +668,14 @@ func handleDelete(ctx *downloaderContext, key string,
 	status.PendingDelete = true
 	publishDownloaderStatus(ctx, status)
 
+	ctx.globalStatusLock.Lock()
 	ctx.globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
 	ctx.globalStatus.UsedSpace -= uint(types.RoundupToKB(status.Size))
 	status.Size = 0
 
 	updateRemainingSpace(ctx)
+	ctx.globalStatusLock.Unlock()
 
 	publishDownloaderStatus(ctx, status)
 
@@ -689,9 +698,11 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 
 	log.Infof("MaxSpace %d\n", ctx.globalConfig.MaxSpace)
 
+	ctx.globalStatusLock.Lock()
 	ctx.globalStatus.UsedSpace = 0
 	ctx.globalStatus.ReservedSpace = 0
 	updateRemainingSpace(ctx)
+	ctx.globalStatusLock.Unlock()
 
 	// XXX how do we find out when verifier cleans up duplicates etc?
 	// XXX run this periodically... What about downloads inprogress
@@ -700,6 +711,7 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 	// We read objectDownloadDirname/* and determine how much space
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
 	totalUsed := sizeFromDir(objectDownloadDirname)
+	ctx.globalStatusLock.Lock()
 	ctx.globalStatus.UsedSpace = uint(types.RoundupToKB(totalUsed))
 	// Note that the UsedSpace calculated during initialization can exceed
 	// MaxSpace, and RemainingSpace is a uint!
@@ -707,6 +719,7 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 		ctx.globalStatus.UsedSpace = ctx.globalConfig.MaxSpace
 	}
 	updateRemainingSpace(ctx)
+	ctx.globalStatusLock.Unlock()
 
 	// create drona interface
 	dCtx, err := zedUpload.NewDronaCtx("zdownloader", 0)
@@ -843,6 +856,7 @@ func sizeFromDir(dirname string) uint64 {
 	return totalUsed
 }
 
+// Caller must hold ctx.globalStatusLock.Lock() but no way to assert in go
 func updateRemainingSpace(ctx *downloaderContext) {
 
 	ctx.globalStatus.RemainingSpace = ctx.globalConfig.MaxSpace -
@@ -1311,10 +1325,12 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	}
 	status.Size = uint64(info.Size())
 
+	ctx.globalStatusLock.Lock()
 	ctx.globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
 	ctx.globalStatus.UsedSpace += uint(types.RoundupToKB(status.Size))
 	updateRemainingSpace(ctx)
+	ctx.globalStatusLock.Unlock()
 
 	log.Infof("handleSyncOpResponse successful <%s> <%s>\n",
 		config.DownloadURL, locFilename)
