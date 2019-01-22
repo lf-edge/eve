@@ -136,6 +136,14 @@
   revision = "0b12d6b5"
 
 [[projects]]
+  digest = "1:4059c14e87a2de3a434430340521b5feece186c1469eff0834c29a63870de3ed"
+  name = "github.com/konsorten/go-windows-terminal-sequences"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "5c8c8bd35d3832f5d134ae1e1e375b69a4d25242"
+  version = "v1.0.1"
+
+[[projects]]
   digest = "1:47fa0ef6ae6b0387dacb77c7ab8827b4ef621650fd613e43ece61de4cb3f5019"
   name = "github.com/kr/fs"
   packages = ["."]
@@ -200,12 +208,12 @@
   revision = "bb4de0191aa41b5507caa14b0650cdbddcd9280b"
 
 [[projects]]
-  digest = "1:b2339e83ce9b5c4f79405f949429a7f68a9a904fed903c672aac1e7ceb7f5f02"
+  branch = "master"
+  digest = "1:f47836ef2767f515ed596c12b8309b5a0fb85a63af66255c6800253c634bf345"
   name = "github.com/sirupsen/logrus"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "3e01752db0189b9157070a0e1668a620f9a85da2"
-  version = "v1.0.6"
+  revision = "659e47340eafb203ad3c2ce461023fde46356615"
 
 [[projects]]
   branch = "master"
@@ -225,14 +233,14 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:67b3abe36d5440333fdf6a1e325181374ad341bd16dcb406f74193b18a747a37"
+  digest = "1:0f9e07653037ee3b121414bb581bbf1e534b3d72ae9872a7ad68ac319f53eaa2"
   name = "github.com/zededa/api"
   packages = [
     "zconfig",
     "zmet",
   ]
   pruneopts = "NUT"
-  revision = "453e4abab4446e64620e8616e6315a317e16128f"
+  revision = "cb8bcd9c2f37fff0a218d2d6eb1f11b027a8ea27"
 
 [[projects]]
   branch = "master"
