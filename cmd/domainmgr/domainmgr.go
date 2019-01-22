@@ -1094,13 +1094,13 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 			if err != nil && !ignoreErrors {
 				status.LastErr = fmt.Sprintf("%v", err)
 				status.LastErrTime = time.Now()
-				return
+			} else {
+				ib.IsPCIBack = false
 			}
-			ib.IsPCIBack = false
 		}
 		ib.UsedByUUID = nilUUID
-		ctx.publishAssignableAdapters()
 	}
+	ctx.publishAssignableAdapters()
 }
 
 // Produce DomainStatus based on the config

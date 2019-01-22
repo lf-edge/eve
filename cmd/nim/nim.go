@@ -100,6 +100,7 @@ func waitForDeviceNetworkConfigFile() string {
 // Run - Main function - invoked from zedbox.go
 func Run() {
 	nimCtx := nimContext{}
+	nimCtx.AssignableAdapters = &types.AssignableAdapters{}
 
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
@@ -217,7 +218,7 @@ func Run() {
 
 	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
 		types.AssignableAdapters{}, false,
-		&nimCtx)
+		&nimCtx.DeviceNetworkContext)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -265,6 +266,9 @@ func Run() {
 
 		case change := <-subDevicePortConfigS.C:
 			subDevicePortConfigS.ProcessChange(change)
+
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
 
 		case change, ok := <-addrChanges:
 			if !ok {
