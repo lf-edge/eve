@@ -286,14 +286,10 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 	uuidStr := config.Key()
 	ctx := ctxArg.(*baseOsMgrContext)
 
-	log.Infof("handleBaseOsModify for %s Activate %v\n",
-		config.BaseOsVersion, config.Activate)
-	// The config.Activate might already have been cleared if there
-	// is yet another baseimage update coming
-	if config.UUIDandVersion.Version == status.UUIDandVersion.Version &&
-		status.Activated {
-		log.Infof("Same version %v for %s\n",
-			config.UUIDandVersion.Version, uuidStr)
+	log.Infof("handleBaseOsModify for %s Activate %v TestComplete %v\n",
+		config.BaseOsVersion, config.Activate, config.TestComplete)
+
+	if config.TestComplete != status.TestComplete && status.Activated {
 		handleBaseOsTestComplete(ctx, uuidStr, config, status)
 		return
 	}

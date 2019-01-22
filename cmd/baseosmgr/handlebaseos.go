@@ -828,8 +828,12 @@ func validateBaseOsConfig(ctx *baseOsMgrContext, config types.BaseOsConfig) erro
 
 func handleBaseOsTestComplete(ctx *baseOsMgrContext, uuidStr string, config types.BaseOsConfig, status types.BaseOsStatus) {
 
+	log.Infof("handleBaseOsTestComplete(%s) for %s\n",
+		uuidStr, config.BaseOsVersion)
 	if config.TestComplete == status.TestComplete {
 		// nothing to do
+		log.Infof("handleBaseOsTestComplete(%s) nothing to do for %s\n",
+			uuidStr, config.BaseOsVersion)
 		return
 	}
 
