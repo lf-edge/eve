@@ -395,7 +395,6 @@ func handleCertObjModify(ctx *baseOsMgrContext, key string, config *types.CertOb
 	uuidStr := config.Key()
 	log.Infof("handleCertObjModify for %s\n", uuidStr)
 
-	// XXX:FIXME, do we
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
 		log.Infof("Same version %v for %s\n",
 			config.UUIDandVersion.Version, key)
