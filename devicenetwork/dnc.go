@@ -170,12 +170,12 @@ func VerifyPending(pending *DPCPending,
 	if numUsableAddrs == 0 {
 		if pending.TestCount < MaxDPCRetestCount {
 			pending.TestCount += 1
-			log.Debugln("VerifyPending: Pending DNS %v does not " +
+			log.Infof("VerifyPending: Pending DNS %v does not " +
 				"have any usable IP addresses", pending.PendDNS)
 			return DPC_WAIT
 		} else {
 			pending.PendDPC.LastFailed = time.Now()
-			log.Debugln("VerifyPending: DHCP could not resolve any usable " +
+			log.Infof("VerifyPending: DHCP could not resolve any usable " +
 				"IP addresses for the pending DNS %v", pending.PendDNS)
 			return DPC_FAIL
 		}

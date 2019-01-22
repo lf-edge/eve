@@ -72,7 +72,6 @@ func (f FlexTickerHandle) UpdateRangeTicker(minTime time.Duration, maxTime time.
 
 // Insert a tick now in addition to running timers
 func (f FlexTickerHandle) TickNow() {
-	// XXX
 	// There is a case when flextimer thread queues next tick, but main
 	// thread of service is doing something else and as part of what the
 	// main service does at that point, calls flextimer.TickNow().
