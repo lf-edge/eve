@@ -25,7 +25,7 @@ type NetworkConfig struct {
 func (m *NetworkConfig) Reset()                    { *m = NetworkConfig{} }
 func (m *NetworkConfig) String() string            { return proto.CompactTextString(m) }
 func (*NetworkConfig) ProtoMessage()               {}
-func (*NetworkConfig) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{0} }
+func (*NetworkConfig) Descriptor() ([]byte, []int) { return fileDescriptor6, []int{0} }
 
 func (m *NetworkConfig) GetId() string {
 	if m != nil {
@@ -83,7 +83,7 @@ type NetworkAdapter struct {
 func (m *NetworkAdapter) Reset()                    { *m = NetworkAdapter{} }
 func (m *NetworkAdapter) String() string            { return proto.CompactTextString(m) }
 func (*NetworkAdapter) ProtoMessage()               {}
-func (*NetworkAdapter) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{1} }
+func (*NetworkAdapter) Descriptor() ([]byte, []int) { return fileDescriptor6, []int{1} }
 
 func (m *NetworkAdapter) GetName() string {
 	if m != nil {
@@ -167,9 +167,9 @@ func init() {
 	proto.RegisterType((*NetworkAdapter)(nil), "NetworkAdapter")
 }
 
-func init() { proto.RegisterFile("netconfig.proto", fileDescriptor8) }
+func init() { proto.RegisterFile("netconfig.proto", fileDescriptor6) }
 
-var fileDescriptor8 = []byte{
+var fileDescriptor6 = []byte{
 	// 405 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x54, 0x92, 0xcf, 0x6e, 0x1b, 0x21,
 	0x10, 0xc6, 0xb5, 0xeb, 0x4d, 0x6c, 0x4f, 0x36, 0xae, 0x44, 0x0f, 0x45, 0x51, 0xff, 0xac, 0xa2,
