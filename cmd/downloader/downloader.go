@@ -899,9 +899,9 @@ func doHttp(ctx *downloaderContext, status *types.DownloaderStatus,
 		AuthType: "http",
 	}
 
-	index := strings.LastIndex(serverURL, "/")
-	url := serverURL[:index+1]
-	filename := serverURL[index+1:]
+	index := strings.LastIndex(serverUrl, "/")
+	url := serverUrl[:index+1]
+	filename := serverUrl[index+1:]
 
 	trType := zedUpload.SyncHttpTr
 
