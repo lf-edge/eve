@@ -13,6 +13,27 @@ import (
 	"github.com/zededa/go-provision/types"
 )
 
+const (
+	MaxDPCRetestCount = 3
+)
+
+type PendDNSStatus uint32
+const (
+	DPC_FAIL PendDNSStatus = iota
+	DPC_SUCCESS
+	DPC_WAIT
+	DPC_PCI_WAITING
+)
+
+type DPCPending struct {
+	Inprogress bool
+	PendDPC    types.DevicePortConfig
+	OldDPC     types.DevicePortConfig
+	PendDNS    types.DeviceNetworkStatus
+	PendTimer  *time.Timer
+	TestCount  uint
+}
+
 type DeviceNetworkContext struct {
 	UsableAddressCount      int
 	ManufacturerModel       string
@@ -32,6 +53,15 @@ type DeviceNetworkContext struct {
 	PubDeviceNetworkStatus  *pubsub.Publication
 	Changed                 bool
 	SubGlobalConfig         *pubsub.Subscription
+
+	Pending                 DPCPending
+	NetworkTestTimer        *time.Timer
+	NextDPCIndex            int
+	CloudConnectivityWorks  bool
+
+	// How long should we wait before testing a pending DPC?
+	DPCTestDuration         time.Duration  // In seconds.
+	NetworkTestInterval     time.Duration  // Test interval in minutes.
 }
 
 func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
@@ -88,6 +118,206 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("HandleDNCDelete done for %s\n", key)
 }
 
+func SetupVerify(ctx *DeviceNetworkContext, index int) {
+	log.Debugln("SetupVerify: Setting up verification for DPC at index %d", index)
+	ctx.NextDPCIndex = index
+
+	pending := &ctx.Pending
+	pending.Inprogress = true
+	pending.PendDPC    = ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
+	pending.PendDNS, _ = MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
+	pending.TestCount = 0
+	log.Debugln("SetupVerify: Started testing DPC %v",
+		ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex])
+}
+
+func RestartVerify(ctx *DeviceNetworkContext, caller string) {
+	log.Infof("RestartVerify: Caller %s initialized DPC list verify at %v",
+		caller, time.Now())
+
+	pending := &ctx.Pending
+	if pending.Inprogress {
+		log.Infof("RestartVerify: DPC list verification in progress")
+		return
+	}
+	SetupVerify(ctx, 0)
+	VerifyDevicePortConfig(ctx)
+}
+
+func VerifyPending(pending *DPCPending,
+	aa *types.AssignableAdapters) PendDNSStatus {
+	// Stop pending timer if its running.
+	pending.PendTimer.Stop()
+
+	// Check if all the ports in the config are out of pciBack.
+	// If yes, apply config.
+	// If not, wait for all the ports to come out of PCIBack.
+	portInPciBack, portName := pending.PendDPC.IsAnyPortInPciBack(aa)
+	if portInPciBack {
+		log.Infof("VerifyPending: port %+v still in PCIBack. "+
+			"wait for it to come out before re-parsing device port config list.\n",
+			portName)
+		return DPC_PCI_WAITING
+	}
+	log.Infof("VerifyPending: No required ports held in pciBack. " +
+		"parsing device port config list")
+
+	UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
+	pending.OldDPC = pending.PendDPC
+	pending.PendDNS, _ = MakeDeviceNetworkStatus(pending.PendDPC,
+		pending.PendDNS)
+	numUsableAddrs := types.CountLocalAddrFreeNoLinkLocal(pending.PendDNS)
+	if numUsableAddrs == 0 {
+		if pending.TestCount < MaxDPCRetestCount {
+			pending.TestCount += 1
+			log.Infof("VerifyPending: Pending DNS %v does not " +
+				"have any usable IP addresses", pending.PendDNS)
+			return DPC_WAIT
+		} else {
+			pending.PendDPC.LastFailed = time.Now()
+			log.Infof("VerifyPending: DHCP could not resolve any usable " +
+				"IP addresses for the pending DNS %v", pending.PendDNS)
+			return DPC_FAIL
+		}
+	}
+	// Do not entertain re-testing this DPC anymore.
+	pending.TestCount = MaxDPCRetestCount
+
+	// We want connectivity to zedcloud via atleast one Management port.
+	res := VerifyDeviceNetworkStatus(pending.PendDNS, 1)
+	status := DPC_FAIL
+	if res {
+		pending.PendDPC.LastSucceeded = time.Now()
+		status = DPC_SUCCESS
+		log.Infof("VerifyPending: DPC %v passed network test", pending.PendDPC)
+	} else {
+		pending.PendDPC.LastFailed = time.Now()
+		log.Infof("VerifyPending: DPC %v failed network test", pending.PendDPC)
+	}
+	return status
+}
+
+func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
+	if !ctx.Pending.Inprogress {
+		return
+	}
+	// Stop network test timer.
+	// It shall be resumed when we find working network configuration.
+	ctx.NetworkTestTimer.Stop()
+
+	pending := &ctx.Pending
+
+	passed := false
+	for !passed {
+		res := VerifyPending(&ctx.Pending, ctx.AssignableAdapters)
+		if ctx.PubDeviceNetworkStatus != nil {
+			ctx.PubDeviceNetworkStatus.Publish("global", ctx.Pending.PendDNS)
+		}
+		switch res {
+		case DPC_PCI_WAITING:
+			// We have already published the new DNS for domainmgr.
+			// Wait until we hear from domainmgr before applying (dhcp enable/disable)
+			// and testing this new configuration.
+			return
+		case DPC_WAIT:
+			// Either addressChange or PendTimer will result in calling us again.
+			pending.PendTimer = time.NewTimer(ctx.DPCTestDuration * time.Second)
+			return
+		case DPC_FAIL:
+			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
+			if ctx.PubDevicePortConfigList != nil {
+				ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
+			}
+			// Check if there is an untested DPC configuration at index 0
+			// If yes, restart the test process from index 0
+			if isDPCUntested(ctx.DevicePortConfigList.PortConfigList[0]) {
+				log.Warn("VerifyDevicePortConfig: New DPC arrived while network testing " +
+					"was in progress. Restarting DPC verification.")
+				SetupVerify(ctx, 0)
+				continue
+			}
+
+			// Move to next index (including wrap around)
+			// Skip entries with LastFailed after LastSucceeded and
+			// a recent LastFailed (a minute or less).
+			dpcListLen := len(ctx.DevicePortConfigList.PortConfigList)
+
+			// XXX What is a good condition to stop this loop?
+			// We want to wrap around, but should not keep looping around.
+			// Should we do one loop of the entire list and start from index 0
+			// if no suitable test candidate is found?
+			found := false
+			count := 0
+			newIndex := (ctx.NextDPCIndex + 1) % dpcListLen
+			for !found && count < dpcListLen {
+				count += 1
+				ok := isDPCTestable(ctx.DevicePortConfigList.PortConfigList[newIndex])
+				if ok {
+					break
+				}
+				log.Debugln("VerifyDevicePortConfig: DPC %v is not testable",
+					ctx.DevicePortConfigList.PortConfigList[newIndex])
+				newIndex = (newIndex + 1) % dpcListLen
+			}
+			if count == dpcListLen {
+				newIndex = 0
+			}
+			SetupVerify(ctx, newIndex)
+			continue
+		case DPC_SUCCESS:
+			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
+			if ctx.PubDevicePortConfigList != nil {
+				ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
+			}
+			// Check if there is an untested DPC configuration at index 0
+			// If yes, restart the test process from index 0
+			if isDPCUntested(ctx.DevicePortConfigList.PortConfigList[0]) {
+				log.Warn("VerifyDevicePortConfig: New DPC arrived while network testing " +
+					"was in progress. Restarting DPC verification.")
+				SetupVerify(ctx, 0)
+				continue
+			}
+			passed = true
+			log.Infof("VerifyDevicePortConfig: Working DPC configuration found " +
+				"at index %d in DPC list", ctx.NextDPCIndex)
+		}
+	}
+	*ctx.DevicePortConfig = pending.PendDPC
+	*ctx.DeviceNetworkStatus = pending.PendDNS
+	DoDNSUpdate(ctx)
+
+	pending.Inprogress = false
+	pending.OldDPC = getCurrentDPC(ctx)
+
+	// Restart network test timer
+	ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
+}
+
+func getCurrentDPC(ctx *DeviceNetworkContext) types.DevicePortConfig {
+	if len(ctx.DevicePortConfigList.PortConfigList) == 0 ||
+		ctx.NextDPCIndex >= len(ctx.DevicePortConfigList.PortConfigList) {
+		return types.DevicePortConfig{}
+	}
+	return ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
+}
+
+func isDPCTestable(dpc types.DevicePortConfig) bool {
+	// convert time difference in nano seconds to seconds
+	timeDiff := int64(time.Now().Sub(dpc.LastFailed)/time.Second)
+
+	if dpc.LastFailed.After(dpc.LastSucceeded) && timeDiff < 60 {
+		return false
+	}
+	return true
+}
+
+func isDPCUntested(dpc types.DevicePortConfig) bool {
+	if dpc.LastFailed.IsZero() && dpc.LastSucceeded.IsZero() {
+		return true
+	}
+	return false
+}
+
 // Handle three different sources in this priority order:
 // 1. zedagent with any key
 // 2. "override" key from build or USB stick file
@@ -109,23 +339,7 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 		return
 	}
 
-	portConfig = ctx.DevicePortConfigList.PortConfigList[0]
-	log.Infof("HandleDPCModify: first is %+v\n", portConfig)
-
-	// Publish DeviceNetworkStatus
-	ctx.doPublishDNSForPortConfig(&portConfig)
-
-	// Check if all the ports in the config are out of pciBack.
-	// If yes, apply config.
-	// If not, wait for all the ports to come out of PCIBack.
-	portInPciBack, portName := portConfig.IsAnyPortInPciBack(ctx.AssignableAdapters)
-	if portInPciBack {
-		log.Infof("HandleDPCModify: port %+v still in PCIBack. "+
-			"wait for it to come out before applying config.\n", portName)
-	} else {
-		log.Infof("HandleDPCModify: No ports in pciBack. Apply port config\n")
-		ctx.doApplyDevicePortConfig(false)
-	}
+	RestartVerify(ctx, "HandleDPCModify")
 	log.Infof("HandleDPCModify done for %s\n", key)
 }
 
@@ -147,10 +361,7 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 		return
 	}
 
-	ctx.doPublishDNSForPortConfig(&portConfig)
-
-	ctx.doApplyDevicePortConfig(true)
-
+	RestartVerify(ctx, "HandleDPCDelete")
 	log.Infof("HandleDPCDelete done for %s\n", key)
 }
 
@@ -195,10 +406,10 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 			log.Infof("HandleAssignableAdaptersModify(): ioBundle (%+v) changed "+
 				"to pciBack=false", ioBundle.Name)
 			// Interface moved out of PciBack mode.
-			ctx.doApplyDevicePortConfig(false)
 		}
 	}
 	*ctx.AssignableAdapters = newAssignableAdapters
+	VerifyDevicePortConfig(ctx)
 	log.Infof("handleAAModify() done\n")
 }
 

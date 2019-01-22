@@ -244,6 +244,26 @@ func Run() {
 	geoTimer := flextimer.NewRangeTicker(time.Duration(geoMin),
 		time.Duration(geoMax))
 
+	dnc := &nimCtx.DeviceNetworkContext
+	dnc.DPCTestDuration = 30 // seconds
+	// Timer for checking/verifying pending device network status
+	pendTimer := time.NewTimer(dnc.DPCTestDuration * time.Second)
+	// We stop this timer before using in the select loop below, because
+	// we do not want the DPC list verification to start yet. We need a place
+	// holder in the select loop.
+	// Let the select loop have this stopped timer for now and
+	// create a new timer when it's deemed required (change in DPC config).
+	pendTimer.Stop()
+	dnc.Pending.PendTimer = pendTimer
+
+	// Periodic timer that tests device cloud connectivity
+	dnc.NetworkTestInterval = 5 // minutes
+	networkTestInterval := time.Duration(dnc.NetworkTestInterval * time.Minute)
+	networkTestTimer := time.NewTimer(networkTestInterval)
+	dnc.NetworkTestTimer = networkTestTimer
+	// We start assuming cloud connectivity works
+	dnc.CloudConnectivityWorks = true
+
 	// Look for address changes
 	addrChanges := devicenetwork.AddrChangeInit(&nimCtx.DeviceNetworkContext)
 
@@ -287,11 +307,61 @@ func Run() {
 			if change {
 				publishDeviceNetworkStatus(&nimCtx)
 			}
-
+		case _, ok := <-dnc.Pending.PendTimer.C:
+			if !ok {
+				log.Infof("Device port test timer stopped?")
+			} else {
+				log.Debugln("PendTimer at", time.Now())
+				devicenetwork.VerifyDevicePortConfig(dnc)
+			}
+		case _, ok := <-dnc.NetworkTestTimer.C:
+			if !ok {
+				log.Infof("Network test timer stopped?")
+			} else {
+				ok := tryDeviceConnectivityToCloud(dnc)
+				if ok {
+					log.Infof("Device connectivity to cloud worked at %v", time.Now())
+				} else {
+					log.Infof("Device connectivity to cloud failed at %v", time.Now())
+				}
+			}
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
 		}
 	}
+}
+
+func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool {
+	pass := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1)
+	if pass {
+		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
+		ctx.CloudConnectivityWorks = true
+		// Restart network test timer for next slot.
+		ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
+		return true
+	}
+	if !ctx.CloudConnectivityWorks {
+		// If previous cloud connectivity test also failed, it means
+		// that the current DPC configuration stopped working.
+		// In this case we start the process where device tries to
+		// figure out a DevicePortConfig that works.
+		if ctx.Pending.Inprogress {
+			log.Infof("tryDeviceConnectivityToCloud: Device port configuration list " +
+			"verification in progress")
+			// Connectivity to cloud is already being figured out.
+			// We wait till the next cloud connectivity test slot.
+		} else {
+			log.Infof("tryDeviceConnectivityToCloud: Triggering Device port " +
+			"verification to resume cloud connectivity")
+			// Start DPC verification to find a working configuration
+			devicenetwork.RestartVerify(ctx, "tryDeviceConnectivityToCloud")
+		}
+	} else {
+		// Restart network test timer for next slot.
+		ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
+		ctx.CloudConnectivityWorks = false
+	}
+	return false
 }
 
 func publishDeviceNetworkStatus(ctx *nimContext) {

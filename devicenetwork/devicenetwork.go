@@ -117,6 +117,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].Name = u.Name
 		globalStatus.Ports[ix].IsMgmt = u.IsMgmt
 		globalStatus.Ports[ix].Free = u.Free
+		globalStatus.Ports[ix].ProxyConfig = u.ProxyConfig
 		// Set fields from the config...
 		globalStatus.Ports[ix].Dhcp = u.Dhcp
 		_, subnet, _ := net.ParseCIDR(u.AddrSubnet)
@@ -128,23 +129,6 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].NtpServer = u.NtpServer
 		globalStatus.Ports[ix].DnsServers = u.DnsServers
 		// XXX Would net NetworkObjectConfig to set DhcpRange ...
-		// XXX
-		// If device DeviceNetworkStatus already has non-empty proxy
-		// configuration for this port and the new proxy configuration
-		// is empty, we should retain the existing proxy configuration to
-		// avoid bricking the device.
-		// These kind of checks should go away when we have Network manager
-		// service that tests proxy configuration before trying to apply it.
-		if IsProxyConfigEmpty(u.ProxyConfig) {
-			for _, port := range oldStatus.Ports {
-				if port.IfName == u.IfName {
-					globalStatus.Ports[ix].ProxyConfig = port.ProxyConfig
-					break
-				}
-			}
-		} else {
-			globalStatus.Ports[ix].ProxyConfig = u.ProxyConfig
-		}
 		// XXX should we get statics?
 		link, err := netlink.LinkByName(u.IfName)
 		if err != nil {
