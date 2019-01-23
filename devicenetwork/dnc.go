@@ -22,7 +22,7 @@ const (
 	DPC_FAIL PendDNSStatus = iota
 	DPC_SUCCESS
 	DPC_WAIT
-	DPC_PCI_WAITING
+	DPC_PCI_WAIT
 )
 
 type DPCPending struct {
@@ -127,7 +127,8 @@ func SetupVerify(ctx *DeviceNetworkContext, index int) {
 	pending.PendDPC    = ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
 	pending.PendDNS, _ = MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
 	pending.TestCount = 0
-	log.Debugln("SetupVerify: Started testing DPC %v",
+	log.Infof("SetupVerify: Started testing DPC (index %d): %v",
+		ctx.NextDPCIndex,
 		ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex])
 }
 
@@ -157,7 +158,7 @@ func VerifyPending(pending *DPCPending,
 		log.Infof("VerifyPending: port %+v still in PCIBack. "+
 			"wait for it to come out before re-parsing device port config list.\n",
 			portName)
-		return DPC_PCI_WAITING
+		return DPC_PCI_WAIT
 	}
 	log.Infof("VerifyPending: No required ports held in pciBack. " +
 		"parsing device port config list")
@@ -214,7 +215,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			ctx.PubDeviceNetworkStatus.Publish("global", ctx.Pending.PendDNS)
 		}
 		switch res {
-		case DPC_PCI_WAITING:
+		case DPC_PCI_WAIT:
 			// We have already published the new DNS for domainmgr.
 			// Wait until we hear from domainmgr before applying (dhcp enable/disable)
 			// and testing this new configuration.
@@ -225,7 +226,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			return
 		case DPC_FAIL:
 			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
-			if checkAndRestartTest(ctx) {
+			if checkAndRestartDPCListTest(ctx) {
 				// DPC list verification re-started from beginning
 				continue
 			}
@@ -239,7 +240,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			continue
 		case DPC_SUCCESS:
 			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
-			if checkAndRestartTest(ctx) {
+			if checkAndRestartDPCListTest(ctx) {
 				// DPC list verification re-started from beginning
 				continue
 			}
@@ -259,15 +260,15 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
 }
 
-func checkAndRestartTest(ctx *DeviceNetworkContext) bool {
+func checkAndRestartDPCListTest(ctx *DeviceNetworkContext) bool {
 	if ctx.PubDevicePortConfigList != nil {
 		ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
 	}
 	// Check if there is an untested DPC configuration at index 0
 	// If yes, restart the test process from index 0
 	if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() {
-		log.Warn("checkAndRestartTest: New DPC arrived while network testing " +
-		"was in progress. Restarting DPC verification.")
+		log.Warn("checkAndRestartDPCListTest: New DPC arrived while network testing " +
+			"was in progress. Restarting DPC verification.")
 		SetupVerify(ctx, 0)
 		return true
 	}
