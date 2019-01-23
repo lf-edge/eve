@@ -885,11 +885,10 @@ func doPartitionStateTransition(ctx *baseOsMgrContext, uuidStr string, config ty
 			publishBaseOsStatus(ctx, &status)
 			return
 		}
+		status.TestComplete = true
 		// publish the partition information
 		publishZbootPartitionStatusAll(ctx)
-		baseOsSetPartitionInfoInStatus(ctx, &status, partName)
-		status.TestComplete = true
-		publishBaseOsStatus(ctx, &status)
+		updateAndPublishBaseOsStatusAll(ctx)
 
 		// Check if we have a failed update which needs a kick
 		maybeRetryInstall(ctx)
