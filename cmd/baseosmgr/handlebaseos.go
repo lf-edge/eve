@@ -877,8 +877,7 @@ func doPartitionStateTransition(ctx *baseOsMgrContext, uuidStr string, config ty
 			uuidStr, status.BaseOsVersion, partStatus.ShortVersion,
 			config.BaseOsVersion)
 	} else {
-		// XXX really mark this partition state active; other becomes unused
-		if err := zboot.MarkOtherPartitionStateActive(); err != nil {
+		if err := zboot.MarkCurrentPartitionStateActive(); err != nil {
 			errStr := fmt.Sprintf("mark other active failed %s", err)
 			log.Errorf(errStr)
 			status.Error = errStr
