@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
+import "github.com/zededa/api/zconfig/devcommon.proto";
 option go_package  = "github.com/zededa/api/zmet";
 
 option java_package = "com.zededa.cloud.uservice.proto";
@@ -166,6 +167,7 @@ message ZInfoStorage {
 
 message ZInfoApp {
   string AppID = 1;
+  string appVersion = 2;
 
   bool systemApp = 6;
   string AppName = 7;
@@ -308,29 +310,24 @@ message ZInfoNetworkObject {
 
   repeated ZmetIPAssignmentEntry ipAssignments = 15;
   repeated string bridgeIPSets = 16; // Union of all ipsets for the bridge
-  repeated string vifNames = 17; // Set of vifs on this bridge
+  repeated string vifNames = 17; // XXX to be deprecated
   bool ipv4Eid = 18; // Track if this is a CryptoEid with IPv4 EIDs
 
   repeated ErrorInfo networkErr = 19;
+
+  repeated ZmetVifInfo vifs = 25; // Set of vifs on this bridge
 }
 
 // Network Instance information
 message ZInfoNetworkInstance {
-  string networkID = 1;		// UUID
-  uint32 instType = 2; 		// ZNetworkInstType
-  string displayname = 3;	// From NetworkInstance config
-  bool activated = 4;
-  google.protobuf.Timestamp upTimeStamp = 5;
+  UUIDandVersion uuidandversion = 1;
+  string networkID = 2;                // UUID
+  string networkVersion = 3;
 
-  // From NetworkInstanceConfig; do we need to include all of these?
-  uint32 dhcpType = 10;
-  string subnet = 11;
-  string gateway = 12;
-  string domainname = 13;
-  string ntpServer = 14;
-  repeated string dnsServers = 15;
-  string dhcpRangeLow = 16;
-  string dhcpRangeHigh = 17;
+  uint32 instType = 5; 		// ZNetworkInstType
+  string displayname = 6;		// From NetworkInstance config
+  bool activated = 7;
+  google.protobuf.Timestamp upTimeStamp = 8;
 
   // From NetworkInstanceStatus
   uint32 bridgeNum = 20;
@@ -339,7 +336,7 @@ message ZInfoNetworkInstance {
 
   repeated ZmetIPAssignmentEntry ipAssignments = 23;
   repeated string bridgeIPSets = 24; // Union of all ipsets for the bridge
-  repeated string vifNames = 25; // Set of vifs on this bridge
+  repeated ZmetVifInfo vifs = 25; // Set of vifs on this bridge
   bool ipv4Eid = 26; // Track if this is a CryptoEid with IPv4 EIDs
 
   repeated ZioBundle assignedAdapters = 30;
@@ -354,6 +351,13 @@ message ZInfoNetworkInstance {
 message ZmetIPAssignmentEntry {
         string macAddress = 1;
         repeated string ipAddress = 2;
+}
+
+// Map from vifname to other info
+message ZmetVifInfo {
+	string vifName = 1;
+        string macAddress = 2;
+	string appID = 3; // UUID
 }
 
 message ZInfoMsg {
@@ -505,6 +509,7 @@ message appDiskMetric {
 
 message appMetric {
   string AppID  = 1;
+  string appVersion = 10;
   string AppName = 2;
   appCpuMetric cpu = 3;
   memoryMetric memory = 4;
@@ -627,10 +632,13 @@ message ZMetricService {
 }
 
 message ZMetricNetworkInstance {
-  string networkID = 1;		// UUID
-  uint32 instType = 2;  	// ZNetworkInstType
-  string displayname = 3;	// From NetworkInstance config
-  bool activated = 4;
+  UUIDandVersion uuidandversion = 1;
+  string networkID = 2;                // UUID
+  string networkVersion = 3;
+
+  uint32 instType = 5;  	// ZNetworkInstType
+  string displayname = 6;	// From NetworkInstance config
+  bool activated = 7;
 
   repeated networkMetric network = 10; // Aggregate counters for bridge
   oneof ServiceContent {

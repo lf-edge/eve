@@ -38,7 +38,7 @@ message NetworkInstanceLispConfig {
 }
 
 message NetworkInstanceConfig {
-	string id = 1;
+	UUIDandVersion uuidandversion = 1;
 	string displayname = 2;
 
 	// new instance type
