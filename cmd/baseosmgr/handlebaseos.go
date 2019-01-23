@@ -277,6 +277,8 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	log.Infof("doBaseOsActivate: %s activating\n", uuidStr)
 	zboot.SetOtherPartitionStateUpdating()
 	publishZbootPartitionStatus(ctx, status.PartitionLabel)
+	baseOsSetPartitionInfoInStatus(ctx, status, status.PartitionLabel)
+	publishBaseOsStatus(ctx, status)
 
 	// install the image at proper partition; dd etc
 	if installDownloadedObjects(baseOsObj, uuidStr,
@@ -288,12 +290,19 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 			status.Error = errString
 			status.ErrorTime = time.Now()
 			zboot.SetOtherPartitionStateUnused()
-			publishZbootPartitionStatus(ctx, status.PartitionLabel)
+			publishZbootPartitionStatus(ctx,
+				status.PartitionLabel)
+			baseOsSetPartitionInfoInStatus(ctx, status,
+				status.PartitionLabel)
+			publishBaseOsStatus(ctx, status)
 			return changed
 		}
 		// move the state from DELIVERED to INSTALLED
 		setProgressDone(status, types.INSTALLED)
 		publishZbootPartitionStatus(ctx, status.PartitionLabel)
+		baseOsSetPartitionInfoInStatus(ctx, status,
+			status.PartitionLabel)
+		publishBaseOsStatus(ctx, status)
 	}
 
 	// Remove any old log files for a previous instance
@@ -586,6 +595,9 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 			log.Infof("Mark other partition %s, unused\n", partName)
 			zboot.SetOtherPartitionStateUnused()
 			publishZbootPartitionStatus(ctx, partName)
+			baseOsSetPartitionInfoInStatus(ctx, status,
+				status.PartitionLabel)
+			publishBaseOsStatus(ctx, status)
 		}
 		status.PartitionLabel = ""
 		changed = true
