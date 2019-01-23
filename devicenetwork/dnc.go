@@ -260,12 +260,12 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
 }
 
+// Check if there is an untested DPC configuration at index 0
+// If yes, restart the test process from index 0
 func checkAndRestartDPCListTest(ctx *DeviceNetworkContext) bool {
 	if ctx.PubDevicePortConfigList != nil {
 		ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
 	}
-	// Check if there is an untested DPC configuration at index 0
-	// If yes, restart the test process from index 0
 	if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() {
 		log.Warn("checkAndRestartDPCListTest: New DPC arrived while network testing " +
 			"was in progress. Restarting DPC verification.")
@@ -281,10 +281,9 @@ func checkAndRestartDPCListTest(ctx *DeviceNetworkContext) bool {
 func getNextTestableDPCIndex(ctx *DeviceNetworkContext) int {
 	dpcListLen := len(ctx.DevicePortConfigList.PortConfigList)
 
-	// XXX What is a good condition to stop this loop?
 	// We want to wrap around, but should not keep looping around.
-	// Should we do one loop of the entire list and start from index 0
-	// if no suitable test candidate is found?
+	// We do one loop of the entire list searching for a testable candidate.
+	// If no suitable test candidate is found, we reset the test index to 0.
 	found := false
 	count := 0
 	newIndex := (ctx.NextDPCIndex + 1) % dpcListLen
