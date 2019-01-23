@@ -133,9 +133,6 @@ func Run() {
 	zedcloudCtx.TlsConfig = tlsConfig
 	ctx.zedcloudCtx = &zedcloudCtx
 
-	// XXX print any override.json; subscribe and wait for sync??
-	// XXX print all DevicePortConfig's? Changes?
-
 	subLedBlinkCounter, err := pubsub.Subscribe("", types.LedBlinkCounter{},
 		false, &ctx)
 	if err != nil {
@@ -318,9 +315,6 @@ func printOutput(ctx *diagContext) {
 	for _, port := range ctx.DeviceNetworkStatus.Ports {
 		// Print usefully formatted info based on which
 		// fields are set and Dhcp type; proxy info order
-		if false {
-			fmt.Printf("Port status XXX %+v\n", port)
-		}
 		ifname := port.IfName
 		isMgmt := false
 		isFree := false
@@ -386,17 +380,7 @@ func printOutput(ctx *diagContext) {
 		}
 		// DNS lookup, ping and getUuid calls
 		if !tryLookupIP(ctx, ifname) {
-			// Try the IP address. Keep serverName for TLS config
-			switch ctx.serverName {
-			case "zedcloud.canary.zededa.net":
-				ctx.serverNameAndPort = "18.219.11.36"
-			case "zedcloud.zededa.net":
-				ctx.serverNameAndPort = "18.221.230.1"
-			default:
-				continue
-			}
-			fmt.Printf("INFO: %s: Trying ping and get of config using IP address %s instead of DNS lookup\n",
-				ifname, ctx.serverNameAndPort)
+			continue
 		}
 		if !tryPing(ctx, ifname, "") {
 			fmt.Printf("ERROR: %s: ping failed to %s; trying google\n",
@@ -565,7 +549,7 @@ func tryPing(ctx *diagContext, ifname string, requrl string) bool {
 			panic(errStr)
 		}
 		zedcloudCtx.TlsConfig = tlsConfig
-		tlsConfig.InsecureSkipVerify = true // XXX do we need to clear it for http?
+		tlsConfig.InsecureSkipVerify = true
 	}
 
 	// As we ping the cloud or other URLs, don't affect the LEDs

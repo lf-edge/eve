@@ -39,6 +39,7 @@ func initImpl(agentName string, logdir string, redirect bool,
 			}
 			log.SetFormatter(&formatter)
 		}
+		log.SetReportCaller(true)
 		log.RegisterExitHandler(printStack)
 
 		sigs := make(chan os.Signal, 1)
