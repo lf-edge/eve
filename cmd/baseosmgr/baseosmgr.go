@@ -291,7 +291,6 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 
 	if config.TestComplete != status.TestComplete && status.Activated {
 		handleBaseOsTestComplete(ctx, uuidStr, config, status)
-		return
 	}
 
 	// Check total and activated counts

@@ -836,11 +836,14 @@ func handleBaseOsTestComplete(ctx *baseOsMgrContext, uuidStr string, config type
 			uuidStr, config.BaseOsVersion)
 		return
 	}
-
-	// trigger for baseos validation complete
-	// handle Partition State transition
 	if config.TestComplete {
-		doPartitionStateTransition(ctx, uuidStr, config, status)
+		if !zboot.IsCurrentPartitionStateInProgress() {
+			log.Warnf("handleBaseOsTestComplete(%s) not Inprogress for %s\n",
+				uuidStr, config.BaseOsVersion)
+		} else {
+			doPartitionStateTransition(ctx, uuidStr, config,
+				status)
+		}
 		return
 	}
 
@@ -865,8 +868,16 @@ func doPartitionStateTransition(ctx *baseOsMgrContext, uuidStr string, config ty
 		return
 	}
 
-	if status.PartitionLabel == partName &&
-		status.BaseOsVersion == partStatus.ShortVersion {
+	if status.PartitionLabel != partName {
+		log.Warnf("doPartitionStateTransition(%s) wrong partLabel %s vs %s for %s\n",
+			uuidStr, status.PartitionLabel, partName,
+			config.BaseOsVersion)
+	} else if status.BaseOsVersion != partStatus.ShortVersion {
+		log.Warnf("doPartitionStateTransition(%s) wrong version %s vs %s for %s\n",
+			uuidStr, status.BaseOsVersion, partStatus.ShortVersion,
+			config.BaseOsVersion)
+	} else {
+		// XXX really mark this partition state active; other becomes unused
 		if err := zboot.MarkOtherPartitionStateActive(); err != nil {
 			errStr := fmt.Sprintf("mark other active failed %s", err)
 			log.Errorf(errStr)
