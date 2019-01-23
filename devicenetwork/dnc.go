@@ -22,7 +22,7 @@ const (
 	DPC_FAIL PendDNSStatus = iota
 	DPC_SUCCESS
 	DPC_WAIT
-	DPC_PCI_WAITING
+	DPC_PCI_WAIT
 )
 
 type DPCPending struct {
@@ -127,7 +127,8 @@ func SetupVerify(ctx *DeviceNetworkContext, index int) {
 	pending.PendDPC    = ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
 	pending.PendDNS, _ = MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
 	pending.TestCount = 0
-	log.Debugln("SetupVerify: Started testing DPC %v",
+	log.Infof("SetupVerify: Started testing DPC (index %d): %v",
+		ctx.NextDPCIndex,
 		ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex])
 }
 
@@ -157,7 +158,7 @@ func VerifyPending(pending *DPCPending,
 		log.Infof("VerifyPending: port %+v still in PCIBack. "+
 			"wait for it to come out before re-parsing device port config list.\n",
 			portName)
-		return DPC_PCI_WAITING
+		return DPC_PCI_WAIT
 	}
 	log.Infof("VerifyPending: No required ports held in pciBack. " +
 		"parsing device port config list")
@@ -214,7 +215,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			ctx.PubDeviceNetworkStatus.Publish("global", ctx.Pending.PendDNS)
 		}
 		switch res {
-		case DPC_PCI_WAITING:
+		case DPC_PCI_WAIT:
 			// We have already published the new DNS for domainmgr.
 			// Wait until we hear from domainmgr before applying (dhcp enable/disable)
 			// and testing this new configuration.
@@ -225,56 +226,22 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			return
 		case DPC_FAIL:
 			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
-			if ctx.PubDevicePortConfigList != nil {
-				ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
-			}
-			// Check if there is an untested DPC configuration at index 0
-			// If yes, restart the test process from index 0
-			if isDPCUntested(ctx.DevicePortConfigList.PortConfigList[0]) {
-				log.Warn("VerifyDevicePortConfig: New DPC arrived while network testing " +
-					"was in progress. Restarting DPC verification.")
-				SetupVerify(ctx, 0)
+			if checkAndRestartDPCListTest(ctx) {
+				// DPC list verification re-started from beginning
 				continue
 			}
 
 			// Move to next index (including wrap around)
 			// Skip entries with LastFailed after LastSucceeded and
 			// a recent LastFailed (a minute or less).
-			dpcListLen := len(ctx.DevicePortConfigList.PortConfigList)
+			nextIndex := getNextTestableDPCIndex(ctx)
 
-			// XXX What is a good condition to stop this loop?
-			// We want to wrap around, but should not keep looping around.
-			// Should we do one loop of the entire list and start from index 0
-			// if no suitable test candidate is found?
-			found := false
-			count := 0
-			newIndex := (ctx.NextDPCIndex + 1) % dpcListLen
-			for !found && count < dpcListLen {
-				count += 1
-				ok := isDPCTestable(ctx.DevicePortConfigList.PortConfigList[newIndex])
-				if ok {
-					break
-				}
-				log.Debugln("VerifyDevicePortConfig: DPC %v is not testable",
-					ctx.DevicePortConfigList.PortConfigList[newIndex])
-				newIndex = (newIndex + 1) % dpcListLen
-			}
-			if count == dpcListLen {
-				newIndex = 0
-			}
-			SetupVerify(ctx, newIndex)
+			SetupVerify(ctx, nextIndex)
 			continue
 		case DPC_SUCCESS:
 			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
-			if ctx.PubDevicePortConfigList != nil {
-				ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
-			}
-			// Check if there is an untested DPC configuration at index 0
-			// If yes, restart the test process from index 0
-			if isDPCUntested(ctx.DevicePortConfigList.PortConfigList[0]) {
-				log.Warn("VerifyDevicePortConfig: New DPC arrived while network testing " +
-					"was in progress. Restarting DPC verification.")
-				SetupVerify(ctx, 0)
+			if checkAndRestartDPCListTest(ctx) {
+				// DPC list verification re-started from beginning
 				continue
 			}
 			passed = true
@@ -293,29 +260,55 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
 }
 
+// Check if there is an untested DPC configuration at index 0
+// If yes, restart the test process from index 0
+func checkAndRestartDPCListTest(ctx *DeviceNetworkContext) bool {
+	if ctx.PubDevicePortConfigList != nil {
+		ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
+	}
+	if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() {
+		log.Warn("checkAndRestartDPCListTest: New DPC arrived while network testing " +
+			"was in progress. Restarting DPC verification.")
+		SetupVerify(ctx, 0)
+		return true
+	}
+	return false
+}
+
+// Move to next index (including wrap around)
+// Skip entries with LastFailed after LastSucceeded and
+// a recent LastFailed (a minute or less).
+func getNextTestableDPCIndex(ctx *DeviceNetworkContext) int {
+	dpcListLen := len(ctx.DevicePortConfigList.PortConfigList)
+
+	// We want to wrap around, but should not keep looping around.
+	// We do one loop of the entire list searching for a testable candidate.
+	// If no suitable test candidate is found, we reset the test index to 0.
+	found := false
+	count := 0
+	newIndex := (ctx.NextDPCIndex + 1) % dpcListLen
+	for !found && count < dpcListLen {
+		count += 1
+		ok := ctx.DevicePortConfigList.PortConfigList[newIndex].IsDPCTestable()
+		if ok {
+			break
+		}
+		log.Debugln("getNextTestableDPCIndex: DPC %v is not testable",
+		ctx.DevicePortConfigList.PortConfigList[newIndex])
+		newIndex = (newIndex + 1) % dpcListLen
+	}
+	if count == dpcListLen {
+		newIndex = 0
+	}
+	return newIndex
+}
+
 func getCurrentDPC(ctx *DeviceNetworkContext) types.DevicePortConfig {
 	if len(ctx.DevicePortConfigList.PortConfigList) == 0 ||
 		ctx.NextDPCIndex >= len(ctx.DevicePortConfigList.PortConfigList) {
 		return types.DevicePortConfig{}
 	}
 	return ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
-}
-
-func isDPCTestable(dpc types.DevicePortConfig) bool {
-	// convert time difference in nano seconds to seconds
-	timeDiff := int64(time.Now().Sub(dpc.LastFailed)/time.Second)
-
-	if dpc.LastFailed.After(dpc.LastSucceeded) && timeDiff < 60 {
-		return false
-	}
-	return true
-}
-
-func isDPCUntested(dpc types.DevicePortConfig) bool {
-	if dpc.LastFailed.IsZero() && dpc.LastSucceeded.IsZero() {
-		return true
-	}
-	return false
 }
 
 // Handle three different sources in this priority order:
