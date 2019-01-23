@@ -448,8 +448,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		if sysAdapter.Addr != "" {
 			ip := net.ParseIP(sysAdapter.Addr)
 			if ip == nil {
-				log.Errorf("parseSystemAdapterConfig: Port %s has Bad " +
-				"sysAdapter.Addr %s - ignored\n",
+				log.Errorf("parseSystemAdapterConfig: Port %s has Bad "+
+					"sysAdapter.Addr %s - ignored\n",
 					sysAdapter.Name, sysAdapter.Addr)
 				continue
 			}
@@ -1614,6 +1614,16 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 		// start the timer again
 		// XXX:FIXME, need to handle the scheduled time
 		duration := time.Duration(immediate)
+
+		// Defer if inprogress
+		ctx := getconfigCtx.zedagentCtx
+		if isBaseOsCurrentPartitionStateInProgress(ctx) {
+			log.Warnf("Rebooting even though testing inprogress; defer for %v seconds\n",
+				globalConfig.MintimeUpdateSuccess)
+			duration = time.Second *
+				time.Duration(globalConfig.MintimeUpdateSuccess)
+		}
+
 		rebootTimer = time.NewTimer(time.Second * duration)
 
 		log.Infof("Scheduling for reboot %d %d\n",
