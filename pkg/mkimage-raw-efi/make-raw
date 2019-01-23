@@ -207,6 +207,7 @@ case "$(sgdisk -p $IMGFILE 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '\0
       ;;
   "Name System IMGA IMGB CONFIG P3"*)
       echo "Found Zenix GPT partition table on $IMGFILE"
+      sgdisk -g --clear $IMGFILE 2>/dev/null
       ;;
    *) echo "Unknown (or unrecongnizable) GTP partition table on $IMGFILE"
       sgdisk -g --clear $IMGFILE 2>/dev/null
@@ -218,7 +219,7 @@ for p in $PARTS ; do
 done
 
 # Update embedded boot partition with our own bootloader
-if [ "$EMBED_BOOT_START" -gt 0 -a "$EMBED_BOOT_SIZE" -gt 0 -a -f /efifs/EFI/BOOT/BOOTX64.EFI ] ; then
+if [ ${EMBED_BOOT_START:-0} -gt 0 -a ${EMBED_BOOT_SIZE:-0} -gt 0 -a -f /efifs/EFI/BOOT/BOOTX64.EFI ] ; then
   if mount $IMGFILE /mnt -o loop,offset=$(( $EMBED_BOOT_START * 512  )),sizelimit=$(( $EMBED_BOOT_SIZE * 512 )) ; then
      FASTBOOT=$(cd /mnt/EFI/BOOT/ ; ls | grep -i '^fastboot.efi$')
      if $(set ${FASTBOOT:-. .} ; test $# -eq 1) ; then
