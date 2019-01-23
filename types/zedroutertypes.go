@@ -172,6 +172,23 @@ func (portConfig *DevicePortConfig) DoSanitize(
 	return
 }
 
+func (portConfig DevicePortConfig) IsDPCTestable() bool {
+	// convert time difference in nano seconds to seconds
+	timeDiff := int64(time.Now().Sub(portConfig.LastFailed)/time.Second)
+
+	if portConfig.LastFailed.After(portConfig.LastSucceeded) && timeDiff < 60 {
+		return false
+	}
+	return true
+}
+
+func (portConfig DevicePortConfig) IsDPCUntested() bool {
+	if portConfig.LastFailed.IsZero() && portConfig.LastSucceeded.IsZero() {
+		return true
+	}
+	return false
+}
+
 type NetworkProxyType uint8
 
 // Values if these definitions should match the values
