@@ -38,13 +38,11 @@ message NetworkInstanceLispConfig {
 }
 
 message NetworkInstanceConfig {
-  // id - UUID
-	string id = 1;
+	UUIDandVersion uuidandversion = 1;
 	string displayname = 2;
 
 	// instType - Type of network instance ( local, bridge etc )
 	ZNetworkInstType instType = 4;
-
   // activate
   //  - True by default. If set to false ( inactivate), the network instance
   //    configuration is downloaded to the device, but the network instance

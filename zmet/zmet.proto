@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
+import "github.com/zededa/api/zconfig/devcommon.proto";
 option go_package  = "github.com/zededa/api/zmet";
 
 option java_package = "com.zededa.cloud.uservice.proto";
@@ -16,8 +17,9 @@ enum ZInfoTypes {
   ZiDevice = 1;
   // ZiHypervisor = 2;	// Deprecated
   ZiApp = 3;
-  ZiService = 4;
-  ZiNetworkObject = 5;
+  ZiService = 4;	// XXX to be deprecated
+  ZiNetworkObject = 5;	// XXX to be deprecated
+  ZiNetworkInstance = 6;
 }
 
 // Manufacturing info, product name, model, version etc.
@@ -165,6 +167,7 @@ message ZInfoStorage {
 
 message ZInfoApp {
   string AppID = 1;
+  string appVersion = 2;
 
   bool systemApp = 6;
   string AppName = 7;
@@ -267,7 +270,7 @@ message ZInfoLisp {
 	repeated DecapKey DecapKeys = 5;
 }
 
-// Service instance state information
+// Service instance state information XXX to be deprecated
 message ZInfoService {
   string serviceID = 1;
   string serviceName = 2;
@@ -284,7 +287,7 @@ message ZInfoService {
   }
 }
 
-// Network Object information
+// Network Object information XXX to be deprecated
 message ZInfoNetworkObject {
   string networkID = 1;		// UUID
 
@@ -307,10 +310,40 @@ message ZInfoNetworkObject {
 
   repeated ZmetIPAssignmentEntry ipAssignments = 15;
   repeated string bridgeIPSets = 16; // Union of all ipsets for the bridge
-  repeated string vifNames = 17; // Set of vifs on this bridge
+  repeated string vifNames = 17; // XXX to be deprecated
   bool ipv4Eid = 18; // Track if this is a CryptoEid with IPv4 EIDs
 
   repeated ErrorInfo networkErr = 19;
+
+  repeated ZmetVifInfo vifs = 25; // Set of vifs on this bridge
+}
+
+// Network Instance information
+message ZInfoNetworkInstance {
+  UUIDandVersion uuidandversion = 1;
+  string networkID = 2;		// UUID
+  string networkVersion = 3;
+
+  uint32 instType = 5;		// ZNetworkInstType
+  string displayname = 6;	// From NetworkInstance config
+  bool activated = 7;		// Forwarding enabled
+  google.protobuf.Timestamp upTimeStamp = 8;
+
+  uint32 bridgeNum = 20;
+  string bridgeName = 21;
+  string bridgeIPAddr = 22;
+
+  repeated ZmetIPAssignmentEntry ipAssignments = 23;
+  repeated string bridgeIPSets = 24; // Union of all ipsets for the bridge
+  repeated ZmetVifInfo vifs = 25; // Set of vifs on this bridge
+  bool ipv4Eid = 26; // Track if this is a CryptoEid with IPv4 EIDs
+
+  repeated ZioBundle assignedAdapters = 30;
+  oneof InfoContent {
+    ZInfoVpn vinfo = 31;
+    ZInfoLisp linfo = 32;
+  }
+  repeated ErrorInfo networkErr = 40;
 }
 
 // Map from MAC to IP addresses
@@ -319,14 +352,22 @@ message ZmetIPAssignmentEntry {
         repeated string ipAddress = 2;
 }
 
+// Map from vifname to other info
+message ZmetVifInfo {
+	string vifName = 1;
+        string macAddress = 2;
+	string appID = 3; // UUID
+}
+
 message ZInfoMsg {
   ZInfoTypes ztype = 1;
   string devId = 2;
   oneof InfoContent {
   	ZInfoDevice dinfo = 3;
   	ZInfoApp ainfo = 5;
-	ZInfoService sinfo = 10;
-	ZInfoNetworkObject ninfo = 11;
+	ZInfoService sinfo = 10;	// XXX To be deprecated
+	ZInfoNetworkObject ninfo = 11;	// XXX To be deprecated
+	ZInfoNetworkInstance niinfo = 12;
    }
   google.protobuf.Timestamp atTimeStamp = 6;
 }
@@ -366,7 +407,7 @@ message memoryMetric {
 }
 
 message networkMetric {
-  string iName = 1;	// name from config
+  string iName = 1;	// name from config; displayName for network instance
   uint64 txBytes = 2;	// in bytes
   uint64 rxBytes = 3;	// in bytes
   uint64 txDrops = 4;
@@ -467,6 +508,7 @@ message appDiskMetric {
 
 message appMetric {
   string AppID  = 1;
+  string appVersion = 10;
   string AppName = 2;
   appCpuMetric cpu = 3;
   memoryMetric memory = 4;
@@ -525,6 +567,10 @@ message ZMetricVpn {
 	ZMetricConn EspStat = 4;
 }
 
+// For other services with no specific metrics
+message ZMetricNone {
+}
+
 // flow stats
 message ZMetricFlowLink {
   oneof Link {
@@ -570,6 +616,7 @@ message ZMetricLispGlobal {
 	PktStat DecryptError = 12;
 }
 
+// XXX to be deprecated
 message ZMetricService {
   string serviceID = 1;
   string serviceName = 2;
@@ -583,6 +630,25 @@ message ZMetricService {
   ZMetricLispGlobal lispGlobalStats = 11;
 }
 
+message ZMetricNetworkInstance {
+  UUIDandVersion uuidandversion = 1;
+  string networkID = 2;		// UUID
+  string networkVersion = 3;
+
+  uint32 instType = 5;		// ZNetworkInstType
+  string displayname = 6;	// From NetworkInstance config
+  bool activated = 7;		// Forwarding enabled
+
+  repeated networkMetric network = 10;	// Aggregate counters for bridge
+  oneof ServiceContent {
+    ZMetricVpn  vpnm = 20;
+    ZMetricLisp lispm = 21;
+    ZMetricNone nonem = 22;
+  }
+  repeated ZMetricFlow flowStats = 30;
+  ZMetricLispGlobal lispGlobalStats = 31;
+}
+
 message ZMetricMsg {
   string devID = 1;
   // ZmetricTypes ztype = 2;  // deprecated
@@ -592,5 +658,6 @@ message ZMetricMsg {
   	deviceMetric dm = 4;
    }
    repeated appMetric am = 5;
-   repeated ZMetricService sm = 6;
+   repeated ZMetricService sm = 6;	// XXX To be deprecated
+   repeated ZMetricNetworkInstance nm = 7;
 }
