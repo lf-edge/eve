@@ -40,7 +40,7 @@ var ProxyProto_value = map[string]int32{
 func (x ProxyProto) String() string {
 	return proto.EnumName(ProxyProto_name, int32(x))
 }
-func (ProxyProto) EnumDescriptor() ([]byte, []int) { return fileDescriptor5, []int{0} }
+func (ProxyProto) EnumDescriptor() ([]byte, []int) { return fileDescriptor9, []int{0} }
 
 type DHCPType int32
 
@@ -74,7 +74,7 @@ var DHCPType_value = map[string]int32{
 func (x DHCPType) String() string {
 	return proto.EnumName(DHCPType_name, int32(x))
 }
-func (DHCPType) EnumDescriptor() ([]byte, []int) { return fileDescriptor5, []int{1} }
+func (DHCPType) EnumDescriptor() ([]byte, []int) { return fileDescriptor9, []int{1} }
 
 type NetworkType int32
 
@@ -107,7 +107,7 @@ var NetworkType_value = map[string]int32{
 func (x NetworkType) String() string {
 	return proto.EnumName(NetworkType_name, int32(x))
 }
-func (NetworkType) EnumDescriptor() ([]byte, []int) { return fileDescriptor5, []int{2} }
+func (NetworkType) EnumDescriptor() ([]byte, []int) { return fileDescriptor9, []int{2} }
 
 type IpRange struct {
 	Start string `protobuf:"bytes,1,opt,name=start" json:"start,omitempty"`
@@ -117,7 +117,7 @@ type IpRange struct {
 func (m *IpRange) Reset()                    { *m = IpRange{} }
 func (m *IpRange) String() string            { return proto.CompactTextString(m) }
 func (*IpRange) ProtoMessage()               {}
-func (*IpRange) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{0} }
+func (*IpRange) Descriptor() ([]byte, []int) { return fileDescriptor9, []int{0} }
 
 func (m *IpRange) GetStart() string {
 	if m != nil {
@@ -142,7 +142,7 @@ type ProxyServer struct {
 func (m *ProxyServer) Reset()                    { *m = ProxyServer{} }
 func (m *ProxyServer) String() string            { return proto.CompactTextString(m) }
 func (*ProxyServer) ProtoMessage()               {}
-func (*ProxyServer) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{1} }
+func (*ProxyServer) Descriptor() ([]byte, []int) { return fileDescriptor9, []int{1} }
 
 func (m *ProxyServer) GetProto() ProxyProto {
 	if m != nil {
@@ -182,7 +182,7 @@ type ProxyConfig struct {
 func (m *ProxyConfig) Reset()                    { *m = ProxyConfig{} }
 func (m *ProxyConfig) String() string            { return proto.CompactTextString(m) }
 func (*ProxyConfig) ProtoMessage()               {}
-func (*ProxyConfig) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{2} }
+func (*ProxyConfig) Descriptor() ([]byte, []int) { return fileDescriptor9, []int{2} }
 
 func (m *ProxyConfig) GetNetworkProxyEnable() bool {
 	if m != nil {
@@ -228,7 +228,7 @@ type ZnetStaticDNSEntry struct {
 func (m *ZnetStaticDNSEntry) Reset()                    { *m = ZnetStaticDNSEntry{} }
 func (m *ZnetStaticDNSEntry) String() string            { return proto.CompactTextString(m) }
 func (*ZnetStaticDNSEntry) ProtoMessage()               {}
-func (*ZnetStaticDNSEntry) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{3} }
+func (*ZnetStaticDNSEntry) Descriptor() ([]byte, []int) { return fileDescriptor9, []int{3} }
 
 func (m *ZnetStaticDNSEntry) GetHostName() string {
 	if m != nil {
@@ -261,7 +261,7 @@ type Ipspec struct {
 func (m *Ipspec) Reset()                    { *m = Ipspec{} }
 func (m *Ipspec) String() string            { return proto.CompactTextString(m) }
 func (*Ipspec) ProtoMessage()               {}
-func (*Ipspec) Descriptor() ([]byte, []int) { return fileDescriptor5, []int{4} }
+func (*Ipspec) Descriptor() ([]byte, []int) { return fileDescriptor9, []int{4} }
 
 func (m *Ipspec) GetDhcp() DHCPType {
 	if m != nil {
@@ -323,9 +323,9 @@ func init() {
 	proto.RegisterEnum("NetworkType", NetworkType_name, NetworkType_value)
 }
 
-func init() { proto.RegisterFile("netcmn.proto", fileDescriptor5) }
+func init() { proto.RegisterFile("netcmn.proto", fileDescriptor9) }
 
-var fileDescriptor5 = []byte{
+var fileDescriptor9 = []byte{
 	// 600 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x6c, 0x53, 0x51, 0x6f, 0xd3, 0x30,
 	0x10, 0x5e, 0xda, 0x2e, 0x6d, 0xae, 0x5b, 0x67, 0x19, 0x84, 0xa2, 0x49, 0x83, 0xd2, 0x87, 0xa9,
