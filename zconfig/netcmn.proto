@@ -82,5 +82,7 @@ enum NetworkType {
 	NETWORKTYPENOOP = 0;
 	V4 = 4;
 	V6 = 6;
+	CryptoV4 = 24;
+	CryptoV6 = 26;
 	CryptoEID = 14;
 }

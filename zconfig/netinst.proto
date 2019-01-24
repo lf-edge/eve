@@ -63,6 +63,9 @@ message NetworkInstanceConfig {
   //       network instance. For Ex: Lisp, StriongSwan etc
 	NetworkInstanceOpaqueConfig cfg = 30;
 
+	// type of ipSpec
+	NetworkType ipType = 39;
+
 	// network ip specification
 	ipspec ip = 40;
 
