@@ -46,7 +46,7 @@ var ZSrvType_value = map[string]int32{
 func (x ZSrvType) String() string {
 	return proto.EnumName(ZSrvType_name, int32(x))
 }
-func (ZSrvType) EnumDescriptor() ([]byte, []int) { return fileDescriptor8, []int{0} }
+func (ZSrvType) EnumDescriptor() ([]byte, []int) { return fileDescriptor1, []int{0} }
 
 // Service Opaque config. In future we might add more fields here
 // but idea is here. This is service specific configuration.
@@ -57,7 +57,7 @@ type ServiceOpaqueConfig struct {
 func (m *ServiceOpaqueConfig) Reset()                    { *m = ServiceOpaqueConfig{} }
 func (m *ServiceOpaqueConfig) String() string            { return proto.CompactTextString(m) }
 func (*ServiceOpaqueConfig) ProtoMessage()               {}
-func (*ServiceOpaqueConfig) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{0} }
+func (*ServiceOpaqueConfig) Descriptor() ([]byte, []int) { return fileDescriptor1, []int{0} }
 
 func (m *ServiceOpaqueConfig) GetOconfig() string {
 	if m != nil {
@@ -80,7 +80,7 @@ type ServiceLispConfig struct {
 func (m *ServiceLispConfig) Reset()                    { *m = ServiceLispConfig{} }
 func (m *ServiceLispConfig) String() string            { return proto.CompactTextString(m) }
 func (*ServiceLispConfig) ProtoMessage()               {}
-func (*ServiceLispConfig) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{1} }
+func (*ServiceLispConfig) Descriptor() ([]byte, []int) { return fileDescriptor1, []int{1} }
 
 func (m *ServiceLispConfig) GetLispMSs() []*ZcServicePoint {
 	if m != nil {
@@ -153,7 +153,7 @@ type ServiceInstanceConfig struct {
 func (m *ServiceInstanceConfig) Reset()                    { *m = ServiceInstanceConfig{} }
 func (m *ServiceInstanceConfig) String() string            { return proto.CompactTextString(m) }
 func (*ServiceInstanceConfig) ProtoMessage()               {}
-func (*ServiceInstanceConfig) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{2} }
+func (*ServiceInstanceConfig) Descriptor() ([]byte, []int) { return fileDescriptor1, []int{2} }
 
 func (m *ServiceInstanceConfig) GetId() string {
 	if m != nil {
@@ -218,9 +218,9 @@ func init() {
 	proto.RegisterEnum("ZSrvType", ZSrvType_name, ZSrvType_value)
 }
 
-func init() { proto.RegisterFile("service.proto", fileDescriptor8) }
+func init() { proto.RegisterFile("service.proto", fileDescriptor1) }
 
-var fileDescriptor8 = []byte{
+var fileDescriptor1 = []byte{
 	// 509 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x6c, 0x93, 0xdf, 0x6e, 0xd3, 0x30,
 	0x18, 0xc5, 0x49, 0xba, 0x35, 0xed, 0xd7, 0x3f, 0x0b, 0xde, 0x90, 0xa2, 0x49, 0xb0, 0xa8, 0xa0,
