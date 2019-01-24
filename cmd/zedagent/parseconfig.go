@@ -9,14 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/golang/protobuf/proto"
-	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
-	"github.com/zededa/api/zconfig"
-	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/pubsub"
-	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/zboot"
 	"hash"
 	"io/ioutil"
 	"net"
@@ -26,6 +18,15 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/golang/protobuf/proto"
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
+	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/pubsub"
+	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/zboot"
 )
 
 const (
@@ -370,6 +371,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		}
 
 		appInstance.CloudInitUserData = userData
+		appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
@@ -448,8 +450,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		if sysAdapter.Addr != "" {
 			ip := net.ParseIP(sysAdapter.Addr)
 			if ip == nil {
-				log.Errorf("parseSystemAdapterConfig: Port %s has Bad " +
-				"sysAdapter.Addr %s - ignored\n",
+				log.Errorf("parseSystemAdapterConfig: Port %s has Bad "+
+					"sysAdapter.Addr %s - ignored\n",
 					sysAdapter.Name, sysAdapter.Addr)
 				continue
 			}
