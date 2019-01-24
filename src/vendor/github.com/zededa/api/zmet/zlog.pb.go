@@ -35,9 +35,7 @@ It has these top-level messages:
 	ZInfoLisp
 	ZInfoService
 	ZInfoNetworkObject
-	ZInfoNetworkInstance
 	ZmetIPAssignmentEntry
-	ZmetVifInfo
 	ZInfoMsg
 	ZioBundle
 	MemoryMetric
@@ -56,13 +54,11 @@ It has these top-level messages:
 	ZMetricLisp
 	ZMetricConn
 	ZMetricVpn
-	ZMetricNone
 	ZMetricFlowLink
 	ZMetricFlowEndPoint
 	ZMetricFlow
 	ZMetricLispGlobal
 	ZMetricService
-	ZMetricNetworkInstance
 	ZMetricMsg
 	ZRegisterResp
 	ZRegisterMsg

@@ -233,14 +233,14 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:f51255e7dd813f8af8384c991d71c478e80f9281b2cf125593a04735c47621e4"
+  digest = "1:0f9e07653037ee3b121414bb581bbf1e534b3d72ae9872a7ad68ac319f53eaa2"
   name = "github.com/zededa/api"
   packages = [
     "zconfig",
     "zmet",
   ]
   pruneopts = "NUT"
-  revision = "cb9e3899c2d9c0a18e53db9654ff93cf4479defb"
+  revision = "cb8bcd9c2f37fff0a218d2d6eb1f11b027a8ea27"
 
 [[projects]]
   branch = "master"
