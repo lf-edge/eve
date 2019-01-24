@@ -1244,8 +1244,6 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		case zconfig.DsType_DsHttp.String(), zconfig.DsType_DsHttps.String(), "":
-			//err = doCurl(config.DownloadURL, ipSrc.String(),
-			//	config.Size, locFilename)
 			err = doHttp(ctx, status, syncOp, config.DownloadURL,
 				config.Size, ifname, ipSrc, locFilename)
 			if err != nil {
