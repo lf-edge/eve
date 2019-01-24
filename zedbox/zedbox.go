@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/zededa/go-provision/cmd/baseosmgr"
 	"github.com/zededa/go-provision/cmd/client"
 	"github.com/zededa/go-provision/cmd/diag"
 	"github.com/zededa/go-provision/cmd/domainmgr"
@@ -13,14 +14,14 @@ import (
 	"github.com/zededa/go-provision/cmd/identitymgr"
 	"github.com/zededa/go-provision/cmd/ipcmonitor"
 	"github.com/zededa/go-provision/cmd/ledmanager"
-	"github.com/zededa/go-provision/cmd/nim"
 	"github.com/zededa/go-provision/cmd/logmanager"
+	"github.com/zededa/go-provision/cmd/nim"
 	"github.com/zededa/go-provision/cmd/verifier"
 	"github.com/zededa/go-provision/cmd/waitforaddr"
+	"github.com/zededa/go-provision/cmd/wstunnelclient"
 	"github.com/zededa/go-provision/cmd/zedagent"
 	"github.com/zededa/go-provision/cmd/zedmanager"
 	"github.com/zededa/go-provision/cmd/zedrouter"
-	"github.com/zededa/go-provision/cmd/baseosmgr"
 	"os"
 	"path/filepath"
 )
@@ -60,6 +61,8 @@ func main() {
 		ipcmonitor.Run()
 	case "baseosmgr":
 		baseosmgr.Run()
+	case "wstunnelclient":
+		wstunnelclient.Run()
 	default:
 		fmt.Printf("Unknown package: %s\n", basename)
 	}
