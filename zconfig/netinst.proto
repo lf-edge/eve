@@ -41,18 +41,28 @@ message NetworkInstanceConfig {
 	UUIDandVersion uuidandversion = 1;
 	string displayname = 2;
 
-	// new instance type
+	// instType - Type of network instance ( local, bridge etc )
 	ZNetworkInstType instType = 4;
+  // activate
+  //  - True by default. If set to false ( inactivate), the network instance
+  //    configuration is downloaded to the device, but the network instance
+  //    itself is not created on the device.
+	bool activate = 5;
 
-	bool activate = 5;	// Enable forwarding of packets
+	// port - Only a single port is supported.
+  //    This is used as the external connection for the network instance.
+  //    This can be a physical (eth0 ) or logical port (vlan 0).
+  //    The port name comes from DeviceConfig ( When it is supported in future).
+  //    If the user needs multiple physical ports, Device config should be
+  //    used to create a label for multiple physical ports.
+	Adapter port = 20;
 
-	// This is port configuration, we can use this one and evovle to do 
-	// model name, based thing for future.
-	// towards devices which phyiscal or logical adapter to use
-	Adapter devlink = 20;
-
-	// Opaque configuration 
+	// cfg - Used to pass some feature-specific configuration to the
+  //       network instance. For Ex: Lisp, StriongSwan etc
 	NetworkInstanceOpaqueConfig cfg = 30;
+
+	// type of ipSpec
+	NetworkType ipType = 39;
 
 	// network ip specification
 	ipspec ip = 40;

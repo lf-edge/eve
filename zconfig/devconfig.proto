@@ -51,7 +51,7 @@ enum sWAdapterType {
 	IGNORE = 0;
 	VLAN = 1;
 	BOND = 2;
-} 
+}
 
 message sWAdapterParams {
 	sWAdapterType aType = 1;
@@ -72,7 +72,7 @@ message SystemAdapter {
 
 	// this is part of the freelink group
 	bool freeUplink = 2;
-		
+
 	// this is part of the uplink group
 	bool uplink = 3;
 
@@ -101,15 +101,15 @@ message EdgeDevConfig {
 	DeviceOpsCmd reboot = 9;
 	DeviceOpsCmd backup = 10;
 
-	repeated ConfigItem configItems = 11;	
-	repeated SystemAdapter systemAdapterList = 12; 
+	repeated ConfigItem configItems = 11;
+	repeated SystemAdapter systemAdapterList = 12;
 
 	repeated ServiceInstanceConfig services = 13;
 	// Override dmidecode info if set
 	string manufacturer = 14;
 	string productName = 15;
 
-	repeated NetworkInstanceConfig netinsts = 16;
+	repeated NetworkInstanceConfig networkInstances = 16;
 }
 
 // Timers and other per-device policy which relates to the interaction
@@ -128,7 +128,7 @@ message ConfigItem {
 		float floatValue = 6;
 		string stringValue = 7;
 	}
-}		
+}
 
 message ConfigRequest {
 	string configHash = 1;
