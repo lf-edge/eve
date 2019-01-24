@@ -17,6 +17,15 @@ enum ZNetworkInstType {
   ZNetInstLast     = 255;
 }
 
+enum AddressType {
+  AddressTypeFirst    = 0;
+  AddressTypeIPV4    = 1;
+  AddressTypeIPV6    = 2;
+  AddressTypeCryptoV4    = 3;
+  AddressTypeCryptoV6    = 4;
+  AddressTypeLast    = 255;
+}
+
 // Network Instance Opaque config. In future we might add more fields here
 // but idea is here. This is service specific configuration.
 message NetworkInstanceOpaqueConfig {
@@ -62,7 +71,7 @@ message NetworkInstanceConfig {
 	NetworkInstanceOpaqueConfig cfg = 30;
 
 	// type of ipSpec
-	NetworkType ipType = 39;
+	AddressType ipType = 39;
 
 	// network ip specification
 	ipspec ip = 40;
