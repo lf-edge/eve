@@ -101,7 +101,7 @@ func Run() {
 
 	// Look for AppInstanceConfig from zedagent
 	// XXX is it better to look for AppInstanceStatus from zedmanager?
-	subAppInstanceConfig, err := pubsub.Subscribe("zedmanager",
+	subAppInstanceConfig, err := pubsub.Subscribe("zedagent",
 		types.AppInstanceConfig{}, false, &wscCtx)
 	if err != nil {
 		log.Fatal(err)
@@ -113,8 +113,7 @@ func Run() {
 
 	// Wait for knowledge about IP addresses. XXX needed?
 	for !DNSctx.DNSinitialized {
-		log.Infof("Waiting for DomainNetworkStatus\n",
-			DNSctx.DNSinitialized)
+		log.Infof("Waiting for DomainNetworkStatus\n")
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
