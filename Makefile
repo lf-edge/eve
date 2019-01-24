@@ -19,7 +19,7 @@ export GOPATH0
 
 # Package lists
 TOPLEVEL_PKG := .
-DIRS := zmet zconfig
+DIRS := zconfig zmet
 
 BUILD_LIST = $(DIRS)
 CLEAN_LIST = $(DIRS:%=clean-%)
