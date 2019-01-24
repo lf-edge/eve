@@ -341,7 +341,9 @@ func WriteToPartition(srcFilename string, partName string) error {
 	return nil
 }
 
-func MarkOtherPartitionStateActive() error {
+// Transition current from inprogress to active, and other from active
+// to unused
+func MarkCurrentPartitionStateActive() error {
 
 	curPart := GetCurrentPartition()
 	otherPart := GetOtherPartition()
