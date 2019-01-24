@@ -321,15 +321,14 @@ message ZInfoNetworkObject {
 // Network Instance information
 message ZInfoNetworkInstance {
   UUIDandVersion uuidandversion = 1;
-  string networkID = 2;                // UUID
+  string networkID = 2;		// UUID
   string networkVersion = 3;
 
-  uint32 instType = 5; 		// ZNetworkInstType
-  string displayname = 6;		// From NetworkInstance config
-  bool activated = 7;
+  uint32 instType = 5;		// ZNetworkInstType
+  string displayname = 6;	// From NetworkInstance config
+  bool activated = 7;		// Forwarding enabled
   google.protobuf.Timestamp upTimeStamp = 8;
 
-  // From NetworkInstanceStatus
   uint32 bridgeNum = 20;
   string bridgeName = 21;
   string bridgeIPAddr = 22;
@@ -633,14 +632,14 @@ message ZMetricService {
 
 message ZMetricNetworkInstance {
   UUIDandVersion uuidandversion = 1;
-  string networkID = 2;                // UUID
+  string networkID = 2;		// UUID
   string networkVersion = 3;
 
-  uint32 instType = 5;  	// ZNetworkInstType
+  uint32 instType = 5;		// ZNetworkInstType
   string displayname = 6;	// From NetworkInstance config
-  bool activated = 7;
+  bool activated = 7;		// Forwarding enabled
 
-  repeated networkMetric network = 10; // Aggregate counters for bridge
+  repeated networkMetric network = 10;	// Aggregate counters for bridge
   oneof ServiceContent {
     ZMetricVpn  vpnm = 20;
     ZMetricLisp lispm = 21;

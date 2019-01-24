@@ -44,7 +44,7 @@ message NetworkInstanceConfig {
 	// new instance type
 	ZNetworkInstType instType = 4;
 
-	bool activate = 5;
+	bool activate = 5;	// Enable forwarding of packets
 
 	// This is port configuration, we can use this one and evovle to do 
 	// model name, based thing for future.
