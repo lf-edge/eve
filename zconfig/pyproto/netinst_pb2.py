@@ -22,7 +22,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='netinst.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\rnetinst.proto\x1a\x0f\x64\x65vcommon.proto\x1a\x0cnetcmn.proto\".\n\x1bNetworkInstanceOpaqueConfig\x12\x0f\n\x07oconfig\x18\x01 \x01(\t\"\xcb\x01\n\x19NetworkInstanceLispConfig\x12 \n\x07LispMSs\x18\x01 \x03(\x0b\x32\x0f.ZcServicePoint\x12\x16\n\x0eLispInstanceId\x18\x02 \x01(\r\x12\x10\n\x08\x61llocate\x18\x03 \x01(\x08\x12\x15\n\rexportprivate\x18\x04 \x01(\x08\x12\x18\n\x10\x61llocationprefix\x18\x05 \x01(\x0c\x12\x1b\n\x13\x61llocationprefixlen\x18\x06 \x01(\r\x12\x14\n\x0c\x65xperimental\x18\x14 \x01(\x08\"\xa4\x02\n\x15NetworkInstanceConfig\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12#\n\x08instType\x18\x04 \x01(\x0e\x32\x11.ZNetworkInstType\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12\x16\n\x04port\x18\x14 \x01(\x0b\x32\x08.Adapter\x12)\n\x03\x63\x66g\x18\x1e \x01(\x0b\x32\x1c.NetworkInstanceOpaqueConfig\x12\x1c\n\x06ipType\x18\' \x01(\x0e\x32\x0c.AddressType\x12\x13\n\x02ip\x18( \x01(\x0b\x32\x07.ipspec\x12 \n\x03\x64ns\x18) \x03(\x0b\x32\x13.ZnetStaticDNSEntry*\xb3\x01\n\x10ZNetworkInstType\x12\x11\n\rZNetInstFirst\x10\x00\x12\x12\n\x0eZnetInstSwitch\x10\x01\x12\x11\n\rZnetInstLocal\x10\x02\x12\x11\n\rZnetInstCloud\x10\x03\x12\x10\n\x0cZnetInstMesh\x10\x04\x12\x14\n\x10ZnetInstHoneyPot\x10\x05\x12\x17\n\x13ZnetInstTransparent\x10\x06\x12\x11\n\x0cZNetInstLast\x10\xff\x01*\x95\x01\n\x0b\x41\x64\x64ressType\x12\x14\n\x10\x41\x64\x64ressTypeFirst\x10\x00\x12\x13\n\x0f\x41\x64\x64ressTypeIPV4\x10\x01\x12\x13\n\x0f\x41\x64\x64ressTypeIPV6\x10\x02\x12\x17\n\x13\x41\x64\x64ressTypeCryptoV4\x10\x03\x12\x17\n\x13\x41\x64\x64ressTypeCryptoV6\x10\x04\x12\x14\n\x0f\x41\x64\x64ressTypeLast\x10\xff\x01\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
+  serialized_pb=_b('\n\rnetinst.proto\x1a\x0f\x64\x65vcommon.proto\x1a\x0cnetcmn.proto\".\n\x1bNetworkInstanceOpaqueConfig\x12\x0f\n\x07oconfig\x18\x01 \x01(\t\"\xcb\x01\n\x19NetworkInstanceLispConfig\x12 \n\x07LispMSs\x18\x01 \x03(\x0b\x32\x0f.ZcServicePoint\x12\x16\n\x0eLispInstanceId\x18\x02 \x01(\r\x12\x10\n\x08\x61llocate\x18\x03 \x01(\x08\x12\x15\n\rexportprivate\x18\x04 \x01(\x08\x12\x18\n\x10\x61llocationprefix\x18\x05 \x01(\x0c\x12\x1b\n\x13\x61llocationprefixlen\x18\x06 \x01(\r\x12\x14\n\x0c\x65xperimental\x18\x14 \x01(\x08\"\xa4\x02\n\x15NetworkInstanceConfig\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x13\n\x0b\x64isplayname\x18\x02 \x01(\t\x12#\n\x08instType\x18\x04 \x01(\x0e\x32\x11.ZNetworkInstType\x12\x10\n\x08\x61\x63tivate\x18\x05 \x01(\x08\x12\x16\n\x04port\x18\x14 \x01(\x0b\x32\x08.Adapter\x12)\n\x03\x63\x66g\x18\x1e \x01(\x0b\x32\x1c.NetworkInstanceOpaqueConfig\x12\x1c\n\x06ipType\x18\' \x01(\x0e\x32\x0c.AddressType\x12\x13\n\x02ip\x18( \x01(\x0b\x32\x07.ipspec\x12 \n\x03\x64ns\x18) \x03(\x0b\x32\x13.ZnetStaticDNSEntry*\xb3\x01\n\x10ZNetworkInstType\x12\x11\n\rZNetInstFirst\x10\x00\x12\x12\n\x0eZnetInstSwitch\x10\x01\x12\x11\n\rZnetInstLocal\x10\x02\x12\x11\n\rZnetInstCloud\x10\x03\x12\x10\n\x0cZnetInstMesh\x10\x04\x12\x14\n\x10ZnetInstHoneyPot\x10\x05\x12\x17\n\x13ZnetInstTransparent\x10\x06\x12\x11\n\x0cZNetInstLast\x10\xff\x01*W\n\x0b\x41\x64\x64ressType\x12\t\n\x05\x46irst\x10\x00\x12\x08\n\x04IPV4\x10\x01\x12\x08\n\x04IPV6\x10\x02\x12\x0e\n\nCryptoIPV4\x10\x03\x12\x0e\n\nCryptoIPV6\x10\x04\x12\t\n\x04Last\x10\xff\x01\x42@\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1dgithub.com/zededa/api/zconfigb\x06proto3')
   ,
   dependencies=[devcommon__pb2.DESCRIPTOR,netcmn__pb2.DESCRIPTOR,])
 
@@ -80,34 +80,34 @@ _ADDRESSTYPE = _descriptor.EnumDescriptor(
   file=DESCRIPTOR,
   values=[
     _descriptor.EnumValueDescriptor(
-      name='AddressTypeFirst', index=0, number=0,
+      name='First', index=0, number=0,
       options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='AddressTypeIPV4', index=1, number=1,
+      name='IPV4', index=1, number=1,
       options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='AddressTypeIPV6', index=2, number=2,
+      name='IPV6', index=2, number=2,
       options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='AddressTypeCryptoV4', index=3, number=3,
+      name='CryptoIPV4', index=3, number=3,
       options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='AddressTypeCryptoV6', index=4, number=4,
+      name='CryptoIPV6', index=4, number=4,
       options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='AddressTypeLast', index=5, number=255,
+      name='Last', index=5, number=255,
       options=None,
       type=None),
   ],
   containing_type=None,
   options=None,
-  serialized_start=780,
-  serialized_end=929,
+  serialized_start=779,
+  serialized_end=866,
 )
 _sym_db.RegisterEnumDescriptor(_ADDRESSTYPE)
 
@@ -120,12 +120,12 @@ ZnetInstMesh = 4
 ZnetInstHoneyPot = 5
 ZnetInstTransparent = 6
 ZNetInstLast = 255
-AddressTypeFirst = 0
-AddressTypeIPV4 = 1
-AddressTypeIPV6 = 2
-AddressTypeCryptoV4 = 3
-AddressTypeCryptoV6 = 4
-AddressTypeLast = 255
+First = 0
+IPV4 = 1
+IPV6 = 2
+CryptoIPV4 = 3
+CryptoIPV6 = 4
+Last = 255
 
 
 
