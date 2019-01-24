@@ -893,7 +893,7 @@ func doCurl(url string, ifname string, maxsize uint64, destFilename string) erro
 
 func doHttp(ctx *downloaderContext, status *types.DownloaderStatus,
 	syncOp zedUpload.SyncOpType, serverUrl string, maxsize uint64,
-	ipSrc net.IP, locFilename string) error {
+	ifname string, ipSrc net.IP, locFilename string) error {
 
 	auth := &zedUpload.AuthInput{
 		AuthType: "http",
@@ -911,7 +911,14 @@ func doHttp(ctx *downloaderContext, status *types.DownloaderStatus,
 		log.Errorf("NewSyncerDest failed: %s\n", err)
 		return err
 	}
-	dEndPoint.WithSrcIpSelection(ipSrc)
+	proxyUrl, err := zedcloud.LookupProxy(
+		&ctx.deviceNetworkStatus, ifname, serverUrl)
+	if err == nil && proxyUrl != nil {
+		log.Infof("doHttp: Using proxy %s", proxyUrl.String())
+		dEndPoint.WithSrcIpAndProxySelection(ipSrc, proxyUrl)
+	} else {
+		dEndPoint.WithSrcIpSelection(ipSrc)
+	}
 	var respChan = make(chan *zedUpload.DronaRequest)
 
 	log.Debugf("syncOp for <%s>, <%s>\n", url, filename)
@@ -1240,7 +1247,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			//err = doCurl(config.DownloadURL, ipSrc.String(),
 			//	config.Size, locFilename)
 			err = doHttp(ctx, status, syncOp, config.DownloadURL,
-				config.Size, ipSrc, locFilename)
+				config.Size, ifname, ipSrc, locFilename)
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
