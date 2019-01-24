@@ -2,12 +2,15 @@
 
 
 [[projects]]
+  digest = "1:3ccf8ba7afe02fd470c4f07d6eea4d0e6875da3d129f95b925f2003ce5dd2024"
   name = "github.com/StackExchange/wmi"
   packages = ["."]
+  pruneopts = "NUT"
   revision = "5d049714c4a64225c3c79a7cf7d02f7fb5b96338"
   version = "1.0.0"
 
 [[projects]]
+  digest = "1:62167d5c1369b5bb652598d2b33906c4ed49b8917fa980ae9ad372bcf9e98265"
   name = "github.com/aws/aws-sdk-go"
   packages = [
     "aws",
@@ -41,115 +44,147 @@
     "service/s3",
     "service/s3/s3iface",
     "service/s3/s3manager",
-    "service/sts"
+    "service/sts",
   ]
+  pruneopts = "NUT"
   revision = "aff39e8473db578a1cec9ac2f829a56813c1d631"
   version = "v1.14.14"
 
 [[projects]]
   branch = "master"
+  digest = "1:91b0d36932d5b6c83facc6e778d58ef8a21f6dab566aef08c00846a733ec45f5"
   name = "github.com/eriknordmark/ipinfo"
   packages = ["."]
+  pruneopts = "NUT"
   revision = "b148f0155466cd0944ae7057fc0acca0c7eb1229"
 
 [[projects]]
   branch = "master"
+  digest = "1:917fc2b2fbafbdc1ca3996d07f906428ecf7c3bbad947723df16b92a2a4701bf"
   name = "github.com/eriknordmark/netlink"
   packages = ["."]
+  pruneopts = "NUT"
   revision = "cf716481271abe5d3b06fd6289da31ed1f82abc2"
 
 [[projects]]
+  digest = "1:1b91ae0dc69a41d4c2ed23ea5cffb721ea63f5037ca4b81e6d6771fbb8f45129"
   name = "github.com/fsnotify/fsnotify"
   packages = ["."]
+  pruneopts = "NUT"
   revision = "c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9"
   version = "v1.4.7"
 
 [[projects]]
+  digest = "1:30b09d75e7e16119e85020374df10ea06f263c9bdff72afdc1522838b9609375"
   name = "github.com/go-ini/ini"
   packages = ["."]
+  pruneopts = "NUT"
   revision = "06f5f3d67269ccec1fe5fe4134ba6e982984f7f5"
   version = "v1.37.0"
 
 [[projects]]
+  digest = "1:cb4e216bd9f58866f42dc65893455b24f879b026fdaa1ecc3aafff625fdb5a66"
   name = "github.com/go-ole/go-ole"
   packages = [
     ".",
-    "oleutil"
+    "oleutil",
   ]
+  pruneopts = "NUT"
   revision = "a41e3c4b706f6ae8dfbff342b06e40fa4d2d0506"
   version = "v1.2.1"
 
 [[projects]]
+  digest = "1:63ccdfbd20f7ccd2399d0647a7d100b122f79c13bb83da9660b1598396fd9f62"
   name = "github.com/golang/protobuf"
   packages = [
     "proto",
     "ptypes",
     "ptypes/any",
     "ptypes/duration",
-    "ptypes/timestamp"
+    "ptypes/timestamp",
   ]
+  pruneopts = "NUT"
   revision = "aa810b61a9c79d51363740d207bb46cf8e620ed5"
   version = "v1.2.0"
 
 [[projects]]
+  digest = "1:2e3c336fc7fde5c984d2841455a658a6d626450b1754a854b3b32e7a8f49a07a"
   name = "github.com/google/go-cmp"
   packages = [
     "cmp",
     "cmp/internal/diff",
     "cmp/internal/function",
-    "cmp/internal/value"
+    "cmp/internal/value",
   ]
+  pruneopts = "NUT"
   revision = "3af367b6b30c263d47e8895973edcca9a49cf029"
   version = "v0.2.0"
 
 [[projects]]
   branch = "master"
+  digest = "1:65723afc58f7b9481e094e1f772c827ee02be6660a171fb601982e4a2d6f7c48"
   name = "github.com/jcelliott/lumber"
   packages = ["."]
+  pruneopts = "NUT"
   revision = "dd349441af25132d146d7095c6693a15431fc9b1"
 
 [[projects]]
+  digest = "1:ac6d01547ec4f7f673311b4663909269bfb8249952de3279799289467837c3cc"
   name = "github.com/jmespath/go-jmespath"
   packages = ["."]
+  pruneopts = "NUT"
   revision = "0b12d6b5"
 
 [[projects]]
+  digest = "1:4059c14e87a2de3a434430340521b5feece186c1469eff0834c29a63870de3ed"
   name = "github.com/konsorten/go-windows-terminal-sequences"
   packages = ["."]
+  pruneopts = "NUT"
   revision = "5c8c8bd35d3832f5d134ae1e1e375b69a4d25242"
   version = "v1.0.1"
 
 [[projects]]
+  digest = "1:47fa0ef6ae6b0387dacb77c7ab8827b4ef621650fd613e43ece61de4cb3f5019"
   name = "github.com/kr/fs"
   packages = ["."]
+  pruneopts = "NUT"
   revision = "1455def202f6e05b95cc7bfc7e8ae67ae5141eba"
   version = "v0.1.0"
 
 [[projects]]
   branch = "master"
+  digest = "1:bc1f3f3f6f6112ab64e620e28bbb11e6d4765d45caf071b78e08af59f3c375ca"
   name = "github.com/nanobox-io/golang-scribble"
   packages = ["."]
+  pruneopts = "NUT"
   revision = "336beac0a992ed9abaf4ef8e7042ba7fe3335c06"
 
 [[projects]]
+  digest = "1:5cf3f025cbee5951a4ee961de067c8a89fc95a5adabead774f82822efabab121"
   name = "github.com/pkg/errors"
   packages = ["."]
+  pruneopts = "NUT"
   revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
   version = "v0.8.0"
 
 [[projects]]
+  digest = "1:8af064f64d63ee15210924be5d817dc92f0a8b48437915b46c1147b672d72f69"
   name = "github.com/pkg/sftp"
   packages = ["."]
+  pruneopts = "NUT"
   revision = "57673e38ea946592a59c26592b7e6fbda646975b"
   version = "1.8.0"
 
 [[projects]]
   branch = "master"
+  digest = "1:8737b20e873c7cad069dfafd6382659b4cdf9e80359cdc159b8ec464893c932e"
   name = "github.com/satori/go.uuid"
   packages = ["."]
+  pruneopts = "NUT"
   revision = "36e9d2ebbde5e3f13ab2e25625fd453271d6522e"
 
 [[projects]]
+  digest = "1:80668d90768f879df429cff9d2e525a158777e2af182491e89a69844e77e1116"
   name = "github.com/shirou/gopsutil"
   packages = [
     "cpu",
@@ -158,50 +193,70 @@
     "internal/common",
     "mem",
     "net",
-    "process"
+    "process",
   ]
+  pruneopts = "NUT"
   revision = "eeb1d38d69593f121e060d24d17f7b1f0936b203"
   version = "v2.18.05"
 
 [[projects]]
   branch = "master"
+  digest = "1:869e13958e05ca96407cecebea71a60310256aba8f70244d05a06ce09e3f60ba"
+  name = "github.com/shirou/w32"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "bb4de0191aa41b5507caa14b0650cdbddcd9280b"
+
+[[projects]]
+  branch = "master"
+  digest = "1:f47836ef2767f515ed596c12b8309b5a0fb85a63af66255c6800253c634bf345"
   name = "github.com/sirupsen/logrus"
   packages = ["."]
+  pruneopts = "NUT"
   revision = "659e47340eafb203ad3c2ce461023fde46356615"
 
 [[projects]]
   branch = "master"
+  digest = "1:7977a5c6f0dfbff479980c2b05852d16c2b78b65f6ad375c110cc98eeea3223c"
   name = "github.com/vishvananda/netlink"
   packages = ["nl"]
+  pruneopts = "NUT"
   revision = "91b013f9ed89f77842f4b3efc7acbebd108b1ee0"
 
 [[projects]]
   branch = "master"
+  digest = "1:cfa9b2092e9b5f46feaa6c0d7a957618cd74d26cb2a72e3638f3ead773b23854"
   name = "github.com/vishvananda/netns"
   packages = ["."]
+  pruneopts = "NUT"
   revision = "be1fbeda19366dea804f00efff2dd73a1642fdcc"
 
 [[projects]]
   branch = "master"
+  digest = "1:f51255e7dd813f8af8384c991d71c478e80f9281b2cf125593a04735c47621e4"
   name = "github.com/zededa/api"
   packages = [
     "zconfig",
-    "zmet"
+    "zmet",
   ]
-  revision = "b81616bead07f5baa5ec88ebff0168fcd1ef70ae"
+  pruneopts = "NUT"
+  revision = "cb9e3899c2d9c0a18e53db9654ff93cf4479defb"
 
 [[projects]]
   branch = "master"
+  digest = "1:3e555116a8e55eed424118461162cdc2d1ecde90de152d9d795468f3fe9c61f6"
   name = "github.com/zededa/shared"
   packages = [
     "libs/zedUpload",
     "libs/zedUpload/awsutil",
-    "srvs/drona/sftp"
+    "srvs/drona/sftp",
   ]
+  pruneopts = "NUT"
   revision = "0d995adf3bd0748da6e227f82b648a158c918832"
 
 [[projects]]
   branch = "master"
+  digest = "1:c374d41b0fa5312e76405c017f47788d61aba4b4ec23a125983e403e2265d480"
   name = "golang.org/x/crypto"
   packages = [
     "curve25519",
@@ -212,22 +267,44 @@
     "ocsp",
     "poly1305",
     "ssh",
-    "ssh/terminal"
+    "ssh/terminal",
   ]
+  pruneopts = "NUT"
   revision = "a49355c7e3f8fe157a85be2f77e6e269a0f89602"
 
 [[projects]]
   branch = "master"
+  digest = "1:e1498a6884b2564efe2a4c4aefce64eb4bc6a4666acfd42db044cf581db4d9cb"
   name = "golang.org/x/sys"
   packages = [
     "unix",
-    "windows"
+    "windows",
   ]
+  pruneopts = "NUT"
   revision = "49385e6e15226593f68b26af201feec29d5bba22"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "07a533ea06ce029ca68b2dd589b4c5a1d662d706a32e7308e69a908cd17bfdfd"
+  input-imports = [
+    "github.com/eriknordmark/ipinfo",
+    "github.com/eriknordmark/netlink",
+    "github.com/fsnotify/fsnotify",
+    "github.com/golang/protobuf/proto",
+    "github.com/golang/protobuf/ptypes",
+    "github.com/google/go-cmp/cmp",
+    "github.com/nanobox-io/golang-scribble",
+    "github.com/satori/go.uuid",
+    "github.com/shirou/gopsutil/cpu",
+    "github.com/shirou/gopsutil/disk",
+    "github.com/shirou/gopsutil/host",
+    "github.com/shirou/gopsutil/mem",
+    "github.com/shirou/gopsutil/net",
+    "github.com/sirupsen/logrus",
+    "github.com/zededa/api/zconfig",
+    "github.com/zededa/api/zmet",
+    "github.com/zededa/shared/libs/zedUpload",
+    "golang.org/x/crypto/ocsp",
+  ]
   solver-name = "gps-cdcl"
   solver-version = 1
