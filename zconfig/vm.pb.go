@@ -35,7 +35,7 @@ var VmMode_value = map[string]int32{
 func (x VmMode) String() string {
 	return proto.EnumName(VmMode_name, int32(x))
 }
-func (VmMode) EnumDescriptor() ([]byte, []int) { return fileDescriptor8, []int{0} }
+func (VmMode) EnumDescriptor() ([]byte, []int) { return fileDescriptor3, []int{0} }
 
 type VmConfig struct {
 	Kernel             string   `protobuf:"bytes,1,opt,name=kernel" json:"kernel,omitempty"`
@@ -59,7 +59,7 @@ type VmConfig struct {
 func (m *VmConfig) Reset()                    { *m = VmConfig{} }
 func (m *VmConfig) String() string            { return proto.CompactTextString(m) }
 func (*VmConfig) ProtoMessage()               {}
-func (*VmConfig) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{0} }
+func (*VmConfig) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{0} }
 
 func (m *VmConfig) GetKernel() string {
 	if m != nil {
@@ -178,9 +178,9 @@ func init() {
 	proto.RegisterEnum("VmMode", VmMode_name, VmMode_value)
 }
 
-func init() { proto.RegisterFile("vm.proto", fileDescriptor8) }
+func init() { proto.RegisterFile("vm.proto", fileDescriptor3) }
 
-var fileDescriptor8 = []byte{
+var fileDescriptor3 = []byte{
 	// 362 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x6c, 0x92, 0x3d, 0x6f, 0xdb, 0x30,
 	0x10, 0x86, 0x2b, 0xcb, 0xd6, 0x07, 0x5b, 0xbb, 0x06, 0x51, 0x14, 0x2c, 0xd0, 0x0f, 0xa1, 0x93,
