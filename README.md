@@ -68,8 +68,7 @@ make pkgs
 ```
 
 Finally run the resulting image by typing `make run`. This will launch
-qemu with some default assumptions. Make sure to wait for the GRUB menu
-to show up and then pick the 2nd option (otherwise image will hang).
+qemu with some default assumptions.
 
 Once the image boots you can interact with it either by using the console
 (right there in the terminal window from which make run was executed).
