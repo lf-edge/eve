@@ -1,0 +1,4 @@
+FROM LISP_TAG
+
+WORKDIR /lisp
+RUN rm -f *.pyo how-to-install.txt lisp-build-date.txt lisp-version.txt lispapi.txt pip-requirements.txt release-notes.txt get-pip.py lispers.net-geo.html lisp-xtr lisp-xtr.alpine
