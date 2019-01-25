@@ -41,9 +41,7 @@ func disableSsh(initial bool) {
 // Avoid logging errors if initial
 func allowPortRange(initial bool, startPort int, endPort int) {
 	// Delete these rules
-	// iptables -D OUTPUT -p tcp --sport 22 -j DROP
 	// iptables -D INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
-	// ip6tables -D OUTPUT -p tcp --sport 22 -j DROP
 	// ip6tables -D INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
 	var portStr string
 	if startPort == endPort {
@@ -51,18 +49,14 @@ func allowPortRange(initial bool, startPort int, endPort int) {
 	} else {
 		portStr = fmt.Sprintf("%d:%d", startPort, endPort)
 	}
-	IptableCmdOut(!initial, "-D", "OUTPUT", "-p", "tcp", "--sport", portStr, "-j", "DROP")
 	IptableCmdOut(!initial, "-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
-	Ip6tableCmdOut(!initial, "-D", "OUTPUT", "-p", "tcp", "--sport", portStr, "-j", "DROP")
 	Ip6tableCmdOut(!initial, "-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
 }
 
 // Avoid logging errors if initial
 func dropPortRange(initial bool, startPort int, endPort int) {
 	// Add these rules
-	// iptables -A OUTPUT -p tcp --sport 22 -j DROP
 	// iptables -A INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
-	// ip6tables -A OUTPUT -p tcp --sport 22 -j DROP
 	// ip6tables -A INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
 	var portStr string
 	if startPort == endPort {
@@ -70,8 +64,6 @@ func dropPortRange(initial bool, startPort int, endPort int) {
 	} else {
 		portStr = fmt.Sprintf("%d:%d", startPort, endPort)
 	}
-	IptableCmdOut(!initial, "-A", "OUTPUT", "-p", "tcp", "--sport", portStr, "-j", "DROP")
 	IptableCmdOut(!initial, "-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
-	Ip6tableCmdOut(!initial, "-A", "OUTPUT", "-p", "tcp", "--sport", portStr, "-j", "DROP")
 	Ip6tableCmdOut(!initial, "-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
 }
