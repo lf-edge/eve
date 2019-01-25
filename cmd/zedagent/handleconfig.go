@@ -7,6 +7,13 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
+	"io/ioutil"
+	"mime"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -16,12 +23,6 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
 	"github.com/zededa/go-provision/zedcloud"
-	"io/ioutil"
-	"mime"
-	"net/http"
-	"os"
-	"strings"
-	"time"
 )
 
 var configApi string = "api/v1/edgedevice/config"
@@ -81,6 +82,7 @@ type getconfigContext struct {
 	pubCertObjConfig            *pubsub.Publication
 	pubBaseOsConfig             *pubsub.Publication
 	pubDatastoreConfig          *pubsub.Publication
+	pubNetworkInstanceConfig    *pubsub.Publication
 }
 
 // tlsConfig is initialized once i.e. effectively a constant

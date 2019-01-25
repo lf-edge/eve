@@ -25,6 +25,9 @@ package zedagent
 import (
 	"flag"
 	"fmt"
+	"os"
+	"time"
+
 	"github.com/google/go-cmp/cmp"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
@@ -33,8 +36,6 @@ import (
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
-	"os"
-	"time"
 )
 
 const (
@@ -83,6 +84,7 @@ type zedagentContext struct {
 	iteration                int
 	subNetworkObjectStatus   *pubsub.Subscription
 	subNetworkServiceStatus  *pubsub.Subscription
+	subNetworkInstanceStatus *pubsub.Subscription
 	subDomainStatus          *pubsub.Subscription
 	subCertObjConfig         *pubsub.Subscription
 	TriggerDeviceInfo        bool

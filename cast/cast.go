@@ -5,6 +5,7 @@ package cast
 
 import (
 	"encoding/json"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
 )
@@ -80,6 +81,30 @@ func CastDeviceNetworkConfig(in interface{}) types.DeviceNetworkConfig {
 	var output types.DeviceNetworkConfig
 	if err := json.Unmarshal(b, &output); err != nil {
 		log.Fatal(err, "json Unmarshal in CastDeviceNetworkConfig")
+	}
+	return output
+}
+
+func CastNetworkInstanceConfig(in interface{}) types.NetworkInstanceConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "CastNetworkInstanceConfig: json Marshal error")
+	}
+	var output types.NetworkInstanceConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "CastNetworkInstanceConfig: json Unmarshal error")
+	}
+	return output
+}
+
+func CastNetworkInstanceStatus(in interface{}) types.NetworkInstanceStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "CastNetworkInstanceStatus: json Marshal error")
+	}
+	var output types.NetworkInstanceStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "CastNetworkInstanceStatus: json Unmarshal error")
 	}
 	return output
 }
