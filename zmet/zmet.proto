@@ -1,7 +1,6 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
-import "github.com/zededa/api/zconfig/devcommon.proto";
 option go_package  = "github.com/zededa/api/zmet";
 
 option java_package = "com.zededa.cloud.uservice.proto";
@@ -320,7 +319,6 @@ message ZInfoNetworkObject {
 
 // Network Instance information
 message ZInfoNetworkInstance {
-  UUIDandVersion uuidandversion = 1;
   string networkID = 2;		// UUID
   string networkVersion = 3;
 
@@ -631,7 +629,6 @@ message ZMetricService {
 }
 
 message ZMetricNetworkInstance {
-  UUIDandVersion uuidandversion = 1;
   string networkID = 2;		// UUID
   string networkVersion = 3;
 

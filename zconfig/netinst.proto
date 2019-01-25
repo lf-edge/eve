@@ -18,12 +18,12 @@ enum ZNetworkInstType {
 }
 
 enum AddressType {
-  AddressTypeFirst    = 0;
-  AddressTypeIPV4    = 1;
-  AddressTypeIPV6    = 2;
-  AddressTypeCryptoV4    = 3;
-  AddressTypeCryptoV6    = 4;
-  AddressTypeLast    = 255;
+  First    = 0;
+  IPV4    = 1;
+  IPV6    = 2;
+  CryptoIPV4    = 3;
+  CryptoIPV6    = 4;
+  Last    = 255;
 }
 
 // Network Instance Opaque config. In future we might add more fields here

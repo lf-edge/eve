@@ -15,16 +15,15 @@ _sym_db = _symbol_database.Default()
 
 
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
-from github.com.zededa.api.zconfig import devcommon_pb2 as github_dot_com_dot_zededa_dot_api_dot_zconfig_dot_devcommon__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(
   name='zmet.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\nzmet.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a-github.com/zededa/api/zconfig/devcommon.proto\"\xc9\x01\n\x11ZInfoManufacturer\x12\x14\n\x0cmanufacturer\x18\x01 \x01(\t\x12\x13\n\x0bproductName\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x14\n\x0cserialNumber\x18\x04 \x01(\t\x12\x0c\n\x04UUID\x18\x05 \x01(\t\x12\x12\n\ncompatible\x18\x06 \x01(\t\x12\x12\n\nbiosVendor\x18\x07 \x01(\t\x12\x13\n\x0b\x62iosVersion\x18\x08 \x01(\t\x12\x17\n\x0f\x62iosReleaseDate\x18\t \x01(\t\"\xdb\x01\n\x0cZInfoNetwork\x12\x0f\n\x07macAddr\x18\x03 \x01(\t\x12\x0f\n\x07\x64\x65vName\x18\x04 \x01(\t\x12\x0f\n\x07IPAddrs\x18\x05 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x06 \x03(\t\x12\x16\n\x03\x64ns\x18\x07 \x01(\x0b\x32\t.ZInfoDNS\x12\n\n\x02up\x18\x08 \x01(\x08\x12\x19\n\x08location\x18\t \x01(\x0b\x32\x07.GeoLoc\x12\x0e\n\x06uplink\x18\n \x01(\x08\x12\x1e\n\nnetworkErr\x18\x0b \x01(\x0b\x32\n.ErrorInfo\x12\x11\n\tlocalName\x18\x0c \x01(\t\"\x87\x01\n\x06GeoLoc\x12\x12\n\nUnderlayIP\x18\x01 \x01(\t\x12\x10\n\x08Hostname\x18\x02 \x01(\t\x12\x0c\n\x04\x43ity\x18\x03 \x01(\t\x12\x0e\n\x06Region\x18\x04 \x01(\t\x12\x0f\n\x07\x43ountry\x18\x05 \x01(\t\x12\x0b\n\x03Loc\x18\x06 \x01(\t\x12\x0b\n\x03Org\x18\x07 \x01(\t\x12\x0e\n\x06Postal\x18\x08 \x01(\t\"D\n\x08ZInfoDNS\x12\x12\n\nDNSservers\x18\x01 \x03(\t\x12\x11\n\tDNSdomain\x18\x02 \x01(\t\x12\x11\n\tDNSsearch\x18\x03 \x03(\t\"i\n\x0fZinfoPeripheral\x12 \n\x05ztype\x18\x01 \x01(\x0e\x32\x11.ZPeripheralTypes\x12\x11\n\tpluggable\x18\x02 \x01(\x08\x12!\n\x05minfo\x18\x03 \x01(\x0b\x32\x12.ZInfoManufacturer\"\x91\x01\n\x07ZInfoSW\x12\x11\n\tswVersion\x18\x02 \x01(\t\x12\x0e\n\x06swHash\x18\x03 \x01(\t\x12\x18\n\x05state\x18\x04 \x01(\x0e\x32\t.ZSwState\x12\x0e\n\x06target\x18\x06 \x01(\t\x12\x0c\n\x04vdev\x18\x07 \x01(\t\x12\x18\n\x10\x64ownloadProgress\x18\x08 \x01(\r\x12\x11\n\timageName\x18\t \x01(\t\"O\n\tErrorInfo\x12\x13\n\x0b\x64\x65scription\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\x9a\x03\n\x0bZInfoDevice\x12\x13\n\x0bmachineArch\x18\x04 \x01(\t\x12\x0f\n\x07\x63puArch\x18\x05 \x01(\t\x12\x10\n\x08platform\x18\x06 \x01(\t\x12\x0c\n\x04ncpu\x18\x07 \x01(\r\x12\x0e\n\x06memory\x18\x08 \x01(\x04\x12\x0f\n\x07storage\x18\t \x01(\x04\x12!\n\x05minfo\x18\x0b \x01(\x0b\x32\x12.ZInfoManufacturer\x12\x1e\n\x07network\x18\r \x03(\x0b\x32\r.ZInfoNetwork\x12&\n\x12\x61ssignableAdapters\x18\x0f \x03(\x0b\x32\n.ZioBundle\x12\x16\n\x03\x64ns\x18\x10 \x01(\x0b\x32\t.ZInfoDNS\x12\"\n\x0bstorageList\x18\x11 \x03(\x0b\x32\r.ZInfoStorage\x12,\n\x08\x62ootTime\x18\x12 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x06swList\x18\x13 \x03(\x0b\x32\x0b.ZInfoDevSW\x12\x10\n\x08HostName\x18\x14 \x01(\t\x12 \n\x0bmetricItems\x18\x15 \x03(\x0b\x32\x0b.MetricItem\"\xe3\x01\n\nZInfoDevSW\x12\x11\n\tactivated\x18\x02 \x01(\x08\x12\x16\n\x0epartitionLabel\x18\x03 \x01(\t\x12\x17\n\x0fpartitionDevice\x18\x04 \x01(\t\x12\x16\n\x0epartitionState\x18\x05 \x01(\t\x12\x19\n\x06status\x18\x06 \x01(\x0e\x32\t.ZSwState\x12\x14\n\x0cshortVersion\x18\x07 \x01(\t\x12\x13\n\x0blongVersion\x18\x08 \x01(\t\x12\x19\n\x05swErr\x18\t \x01(\x0b\x32\n.ErrorInfo\x12\x18\n\x10\x64ownloadProgress\x18\n \x01(\r\"Y\n\x0cZInfoStorage\x12\x0e\n\x06\x64\x65vice\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\r\n\x05total\x18\x03 \x01(\x04\x12\x17\n\x0fstorageLocation\x18\x04 \x01(\x08\"\x9b\x02\n\x08ZInfoApp\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x12\n\nappVersion\x18\x02 \x01(\t\x12\x11\n\tsystemApp\x18\x06 \x01(\x08\x12\x0f\n\x07\x41ppName\x18\x07 \x01(\t\x12\x1e\n\x0csoftwareList\x18\x08 \x03(\x0b\x32\x08.ZInfoSW\x12,\n\x08\x62ootTime\x18\x0c \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12$\n\x10\x61ssignedAdapters\x18\r \x03(\x0b\x32\n.ZioBundle\x12\x1a\n\x06\x61ppErr\x18\x0e \x03(\x0b\x32\n.ErrorInfo\x12\x18\n\x05state\x18\x0f \x01(\x0e\x32\t.ZSwState\x12\x1e\n\x07network\x18\x10 \x03(\x0b\x32\r.ZInfoNetwork\"D\n\x10ZInfoVpnLinkInfo\x12\r\n\x05spiId\x18\x01 \x01(\t\x12\x0e\n\x06subNet\x18\x02 \x01(\t\x12\x11\n\tdirection\x18\x03 \x01(\x08\"\xbd\x01\n\x0cZInfoVpnLink\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\r\n\x05reqId\x18\x03 \x01(\t\x12\x10\n\x08instTime\x18\x04 \x01(\x04\x12\x0f\n\x07\x65spInfo\x18\x05 \x01(\t\x12\x1d\n\x05state\x18\x06 \x01(\x0e\x32\x0e.ZInfoVpnState\x12 \n\x05lInfo\x18\n \x01(\x0b\x32\x11.ZInfoVpnLinkInfo\x12 \n\x05rInfo\x18\x0b \x01(\x0b\x32\x11.ZInfoVpnLinkInfo\"<\n\x10ZInfoVpnEndPoint\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0e\n\x06ipAddr\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\xd9\x01\n\x0cZInfoVpnConn\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x0f\n\x07\x65stTime\x18\x04 \x01(\x04\x12\x0c\n\x04ikes\x18\x05 \x01(\t\x12\x1d\n\x05state\x18\x06 \x01(\x0e\x32\x0e.ZInfoVpnState\x12 \n\x05lInfo\x18\x07 \x01(\x0b\x32\x11.ZInfoVpnEndPoint\x12 \n\x05rInfo\x18\x08 \x01(\x0b\x32\x11.ZInfoVpnEndPoint\x12\x1c\n\x05links\x18\n \x03(\x0b\x32\r.ZInfoVpnLink\"f\n\x08ZInfoVpn\x12\x0e\n\x06upTime\x18\x01 \x01(\x04\x12\x13\n\x0bpolicyBased\x18\x02 \x01(\x08\x12\x18\n\x10listeningIpAddrs\x18\x03 \x03(\t\x12\x1b\n\x04\x63onn\x18\n \x03(\x0b\x32\r.ZInfoVpnConn\",\n\tRlocState\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x11\n\tReachable\x18\x02 \x01(\x08\"7\n\rMapCacheEntry\x12\x0b\n\x03\x45ID\x18\x01 \x01(\t\x12\x19\n\x05Rlocs\x18\x02 \x03(\x0b\x32\n.RlocState\"C\n\x0b\x44\x61tabaseMap\x12\x0b\n\x03IID\x18\x01 \x01(\x04\x12\'\n\x0fMapCacheEntries\x18\x02 \x03(\x0b\x32\x0e.MapCacheEntry\"8\n\x08\x44\x65\x63\x61pKey\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x0c\n\x04Port\x18\x02 \x01(\x04\x12\x10\n\x08KeyCount\x18\x03 \x01(\x04\"\x8c\x01\n\tZInfoLisp\x12\x15\n\rItrCryptoPort\x18\x01 \x01(\x04\x12\x12\n\nEtrNatPort\x18\x02 \x01(\x04\x12\x12\n\nInterfaces\x18\x03 \x03(\t\x12\"\n\x0c\x44\x61tabaseMaps\x18\x04 \x03(\x0b\x32\x0c.DatabaseMap\x12\x1c\n\tDecapKeys\x18\x05 \x03(\x0b\x32\t.DecapKey\"\xd9\x02\n\x0cZInfoService\x12\x11\n\tserviceID\x18\x01 \x01(\t\x12\x13\n\x0bserviceName\x18\x02 \x01(\t\x12\x13\n\x0bserviceType\x18\x03 \x01(\r\x12\x1e\n\x0csoftwareList\x18\x04 \x01(\x0b\x32\x08.ZInfoSW\x12\x11\n\tactivated\x18\x05 \x01(\x08\x12/\n\x0bupTimeStamp\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12$\n\x10\x61ssignedAdapters\x18\x07 \x03(\x0b\x32\n.ZioBundle\x12\x1a\n\x06svcErr\x18\x08 \x03(\x0b\x32\n.ErrorInfo\x12\x1e\n\x07network\x18\t \x03(\x0b\x32\r.ZInfoNetwork\x12\x1a\n\x05vinfo\x18\x14 \x01(\x0b\x32\t.ZInfoVpnH\x00\x12\x1b\n\x05linfo\x18\x15 \x01(\x0b\x32\n.ZInfoLispH\x00\x42\r\n\x0bInfoContent\"\xb8\x03\n\x12ZInfoNetworkObject\x12\x11\n\tnetworkID\x18\x01 \x01(\t\x12\x13\n\x0bnetworkType\x18\x02 \x01(\r\x12\x10\n\x08\x64hcpType\x18\x03 \x01(\r\x12\x0e\n\x06subnet\x18\x04 \x01(\t\x12\x0f\n\x07gateway\x18\x05 \x01(\t\x12\x12\n\ndomainname\x18\x06 \x01(\t\x12\x11\n\tntpServer\x18\x07 \x01(\t\x12\x12\n\ndnsServers\x18\x08 \x03(\t\x12\x14\n\x0c\x64hcpRangeLow\x18\t \x01(\t\x12\x15\n\rdhcpRangeHigh\x18\n \x01(\t\x12\x11\n\tbridgeNum\x18\x0c \x01(\r\x12\x12\n\nbridgeName\x18\r \x01(\t\x12\x14\n\x0c\x62ridgeIPAddr\x18\x0e \x01(\t\x12-\n\ripAssignments\x18\x0f \x03(\x0b\x32\x16.ZmetIPAssignmentEntry\x12\x14\n\x0c\x62ridgeIPSets\x18\x10 \x03(\t\x12\x10\n\x08vifNames\x18\x11 \x03(\t\x12\x0f\n\x07ipv4Eid\x18\x12 \x01(\x08\x12\x1e\n\nnetworkErr\x18\x13 \x03(\x0b\x32\n.ErrorInfo\x12\x1a\n\x04vifs\x18\x19 \x03(\x0b\x32\x0c.ZmetVifInfo\"\x92\x04\n\x14ZInfoNetworkInstance\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x11\n\tnetworkID\x18\x02 \x01(\t\x12\x16\n\x0enetworkVersion\x18\x03 \x01(\t\x12\x10\n\x08instType\x18\x05 \x01(\r\x12\x13\n\x0b\x64isplayname\x18\x06 \x01(\t\x12\x11\n\tactivated\x18\x07 \x01(\x08\x12/\n\x0bupTimeStamp\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x11\n\tbridgeNum\x18\x14 \x01(\r\x12\x12\n\nbridgeName\x18\x15 \x01(\t\x12\x14\n\x0c\x62ridgeIPAddr\x18\x16 \x01(\t\x12-\n\ripAssignments\x18\x17 \x03(\x0b\x32\x16.ZmetIPAssignmentEntry\x12\x14\n\x0c\x62ridgeIPSets\x18\x18 \x03(\t\x12\x1a\n\x04vifs\x18\x19 \x03(\x0b\x32\x0c.ZmetVifInfo\x12\x0f\n\x07ipv4Eid\x18\x1a \x01(\x08\x12$\n\x10\x61ssignedAdapters\x18\x1e \x03(\x0b\x32\n.ZioBundle\x12\x1a\n\x05vinfo\x18\x1f \x01(\x0b\x32\t.ZInfoVpnH\x00\x12\x1b\n\x05linfo\x18  \x01(\x0b\x32\n.ZInfoLispH\x00\x12\x1e\n\nnetworkErr\x18( \x03(\x0b\x32\n.ErrorInfoB\r\n\x0bInfoContent\">\n\x15ZmetIPAssignmentEntry\x12\x12\n\nmacAddress\x18\x01 \x01(\t\x12\x11\n\tipAddress\x18\x02 \x03(\t\"A\n\x0bZmetVifInfo\x12\x0f\n\x07vifName\x18\x01 \x01(\t\x12\x12\n\nmacAddress\x18\x02 \x01(\t\x12\r\n\x05\x61ppID\x18\x03 \x01(\t\"\x9f\x02\n\x08ZInfoMsg\x12\x1a\n\x05ztype\x18\x01 \x01(\x0e\x32\x0b.ZInfoTypes\x12\r\n\x05\x64\x65vId\x18\x02 \x01(\t\x12\x1d\n\x05\x64info\x18\x03 \x01(\x0b\x32\x0c.ZInfoDeviceH\x00\x12\x1a\n\x05\x61info\x18\x05 \x01(\x0b\x32\t.ZInfoAppH\x00\x12\x1e\n\x05sinfo\x18\n \x01(\x0b\x32\r.ZInfoServiceH\x00\x12$\n\x05ninfo\x18\x0b \x01(\x0b\x32\x13.ZInfoNetworkObjectH\x00\x12\'\n\x06niinfo\x18\x0c \x01(\x0b\x32\x15.ZInfoNetworkInstanceH\x00\x12/\n\x0b\x61tTimeStamp\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\r\n\x0bInfoContent\"o\n\tZioBundle\x12\x16\n\x04type\x18\x01 \x01(\x0e\x32\x08.ZioType\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07members\x18\x03 \x03(\t\x12\x15\n\rusedByAppUUID\x18\x04 \x01(\t\x12\x14\n\x0cusedByBaseOS\x18\x05 \x01(\x08\"b\n\x0cmemoryMetric\x12\x0f\n\x07usedMem\x18\x02 \x01(\r\x12\x10\n\x08\x61vailMem\x18\x03 \x01(\r\x12\x16\n\x0eusedPercentage\x18\x04 \x01(\x01\x12\x17\n\x0f\x61vailPercentage\x18\x05 \x01(\x01\"\xbb\x02\n\rnetworkMetric\x12\r\n\x05iName\x18\x01 \x01(\t\x12\x0f\n\x07txBytes\x18\x02 \x01(\x04\x12\x0f\n\x07rxBytes\x18\x03 \x01(\x04\x12\x0f\n\x07txDrops\x18\x04 \x01(\x04\x12\x0f\n\x07rxDrops\x18\x05 \x01(\x04\x12\x0e\n\x06txRate\x18\x06 \x01(\x04\x12\x0e\n\x06rxRate\x18\x07 \x01(\x04\x12\x0e\n\x06txPkts\x18\x08 \x01(\x04\x12\x0e\n\x06rxPkts\x18\t \x01(\x04\x12\x10\n\x08txErrors\x18\n \x01(\x04\x12\x10\n\x08rxErrors\x18\x0b \x01(\x04\x12\x12\n\ntxAclDrops\x18\x0c \x01(\x04\x12\x12\n\nrxAclDrops\x18\r \x01(\x04\x12\x1b\n\x13txAclRateLimitDrops\x18\x0e \x01(\x04\x12\x1b\n\x13rxAclRateLimitDrops\x18\x0f \x01(\x04\x12\x11\n\tlocalName\x18\x10 \x01(\t\"\xca\x01\n\x0ezedcloudMetric\x12\x0e\n\x06ifName\x18\x01 \x01(\t\x12\x10\n\x08\x66\x61ilures\x18\x02 \x01(\x04\x12\x0f\n\x07success\x18\x03 \x01(\x04\x12/\n\x0blastFailure\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0blastSuccess\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12#\n\nurlMetrics\x18\x06 \x03(\x0b\x32\x0f.urlcloudMetric\"\xa2\x01\n\x0eurlcloudMetric\x12\x0b\n\x03url\x18\x01 \x01(\t\x12\x13\n\x0btryMsgCount\x18\x02 \x01(\x03\x12\x14\n\x0ctryByteCount\x18\x03 \x01(\x03\x12\x14\n\x0csentMsgCount\x18\x04 \x01(\x03\x12\x15\n\rsentByteCount\x18\x05 \x01(\x03\x12\x14\n\x0crecvMsgCount\x18\x06 \x01(\x03\x12\x15\n\rrecvByteCount\x18\x07 \x01(\x03\"I\n\x0c\x61ppCpuMetric\x12*\n\x06upTime\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\r\n\x05total\x18\x05 \x01(\x04\"\xd0\x01\n\x0c\x64\x65viceMetric\x12\x1d\n\x06memory\x18\x02 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x03 \x03(\x0b\x32\x0e.networkMetric\x12!\n\x08zedcloud\x18\x04 \x03(\x0b\x32\x0f.zedcloudMetric\x12\x19\n\x04\x64isk\x18\x06 \x03(\x0b\x32\x0b.diskMetric\x12 \n\tcpuMetric\x18\x07 \x01(\x0b\x32\r.appCpuMetric\x12 \n\x0bmetricItems\x18\x08 \x03(\x0b\x32\x0b.MetricItem\"\xbb\x01\n\nMetricItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x1d\n\x04type\x18\x02 \x01(\x0e\x32\x0f.MetricItemType\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0fmetricItemValue\"\xa6\x01\n\ndiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\x12\r\n\x05total\x18\x07 \x01(\x04\x12\x0c\n\x04used\x18\x08 \x01(\x04\x12\x0c\n\x04\x66ree\x18\t \x01(\x04\"a\n\rappDiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x13\n\x0bprovisioned\x18\x02 \x01(\x04\x12\x0c\n\x04used\x18\x03 \x01(\x04\x12\x10\n\x08\x64iskType\x18\x04 \x01(\t\x12\r\n\x05\x64irty\x18\x05 \x01(\x08\"\xb9\x01\n\tappMetric\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x12\n\nappVersion\x18\n \x01(\t\x12\x0f\n\x07\x41ppName\x18\x02 \x01(\t\x12\x1a\n\x03\x63pu\x18\x03 \x01(\x0b\x32\r.appCpuMetric\x12\x1d\n\x06memory\x18\x04 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x05 \x03(\x0b\x32\x0e.networkMetric\x12\x1c\n\x04\x64isk\x18\x06 \x03(\x0b\x32\x0e.appDiskMetric\")\n\x07PktStat\x12\x0f\n\x07Packets\x18\x01 \x01(\x04\x12\r\n\x05\x42ytes\x18\x02 \x01(\x04\"R\n\tRlocStats\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x17\n\x05Stats\x18\x02 \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x16SecondsSinceLastPacket\x18\x03 \x01(\x04\"J\n\x08\x45idStats\x12\x0b\n\x03IID\x18\x01 \x01(\x04\x12\x0b\n\x03\x45ID\x18\x02 \x01(\t\x12$\n\x10RlocStatsEntries\x18\x03 \x03(\x0b\x32\n.RlocStats\"\xa6\x03\n\x0bZMetricLisp\x12\"\n\x0f\x45idStatsEntries\x18\x01 \x03(\x0b\x32\t.EidStats\x12$\n\x12ItrPacketSendError\x18\x02 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fInvalidEidError\x18\x03 \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0cNoDecryptKey\x18\x04 \x01(\x0b\x32\x08.PktStat\x12\"\n\x10OuterHeaderError\x18\x05 \x01(\x0b\x32\x08.PktStat\x12!\n\x0f\x42\x61\x64InnerVersion\x18\x06 \x01(\x0b\x32\x08.PktStat\x12\x1d\n\x0bGoodPackets\x18\x07 \x01(\x0b\x32\x08.PktStat\x12\x1a\n\x08ICVError\x18\x08 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fLispHeaderError\x18\t \x01(\x0b\x32\x08.PktStat\x12\x1f\n\rCheckSumError\x18\n \x01(\x0b\x32\x08.PktStat\x12$\n\x12\x44\x65\x63\x61pReInjectError\x18\x0b \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0c\x44\x65\x63ryptError\x18\x0c \x01(\x0b\x32\x08.PktStat\"~\n\x0bZMetricConn\x12\x18\n\x06InPkts\x18\x01 \x01(\x0b\x32\x08.PktStat\x12\x19\n\x07OutPkts\x18\x02 \x01(\x0b\x32\x08.PktStat\x12\x19\n\x07\x45rrPkts\x18\x03 \x01(\x0b\x32\x08.PktStat\x12\x1f\n\rCarierErrPkts\x18\x04 \x01(\x0b\x32\x08.PktStat\"\x8a\x01\n\nZMetricVpn\x12\x1e\n\x08\x43onnStat\x18\x01 \x01(\x0b\x32\x0c.ZMetricConn\x12\x1d\n\x07IkeStat\x18\x02 \x01(\x0b\x32\x0c.ZMetricConn\x12\x1e\n\x08NatTStat\x18\x03 \x01(\x0b\x32\x0c.ZMetricConn\x12\x1d\n\x07\x45spStat\x18\x04 \x01(\x0b\x32\x0c.ZMetricConn\"\r\n\x0bZMetricNone\"I\n\x0fZMetricFlowLink\x12\x10\n\x06subNet\x18\x01 \x01(\tH\x00\x12\r\n\x03\x65id\x18\x02 \x01(\tH\x00\x12\r\n\x05spiId\x18\x03 \x01(\tB\x06\n\x04Link\"|\n\x13ZMetricFlowEndPoint\x12\x10\n\x06ipAddr\x18\x01 \x01(\tH\x00\x12\x0e\n\x04rloc\x18\x02 \x01(\tH\x00\x12\x1e\n\x04link\x18\x05 \x03(\x0b\x32\x10.ZMetricFlowLink\x12\x17\n\x05stats\x18\n \x01(\x0b\x32\x08.PktStatB\n\n\x08\x45ndpoint\"\xa5\x01\n\x0bZMetricFlow\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0c\n\x04type\x18\x03 \x01(\r\x12\x0b\n\x03iid\x18\x04 \x01(\x04\x12\x0f\n\x07\x65stTime\x18\x05 \x01(\x04\x12\'\n\tlEndPoint\x18\n \x01(\x0b\x32\x14.ZMetricFlowEndPoint\x12\'\n\trEndPoint\x18\x0b \x03(\x0b\x32\x14.ZMetricFlowEndPoint\"\x88\x03\n\x11ZMetricLispGlobal\x12$\n\x12ItrPacketSendError\x18\x02 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fInvalidEidError\x18\x03 \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0cNoDecryptKey\x18\x04 \x01(\x0b\x32\x08.PktStat\x12\"\n\x10OuterHeaderError\x18\x05 \x01(\x0b\x32\x08.PktStat\x12!\n\x0f\x42\x61\x64InnerVersion\x18\x06 \x01(\x0b\x32\x08.PktStat\x12\x1d\n\x0bGoodPackets\x18\x07 \x01(\x0b\x32\x08.PktStat\x12\x1a\n\x08ICVError\x18\x08 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fLispHeaderError\x18\t \x01(\x0b\x32\x08.PktStat\x12\x1f\n\rCheckSumError\x18\n \x01(\x0b\x32\x08.PktStat\x12$\n\x12\x44\x65\x63\x61pReInjectError\x18\x0b \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0c\x44\x65\x63ryptError\x18\x0c \x01(\x0b\x32\x08.PktStat\"\x8a\x02\n\x0eZMetricService\x12\x11\n\tserviceID\x18\x01 \x01(\t\x12\x13\n\x0bserviceName\x18\x02 \x01(\t\x12\x13\n\x0bserviceType\x18\x03 \x01(\r\x12\x1f\n\x07network\x18\x04 \x03(\x0b\x32\x0e.networkMetric\x12\x1b\n\x04vpnm\x18\x14 \x01(\x0b\x32\x0b.ZMetricVpnH\x00\x12\x1d\n\x05lispm\x18\x15 \x01(\x0b\x32\x0c.ZMetricLispH\x00\x12\x1f\n\tflowStats\x18\n \x03(\x0b\x32\x0c.ZMetricFlow\x12+\n\x0flispGlobalStats\x18\x0b \x01(\x0b\x32\x12.ZMetricLispGlobalB\x10\n\x0eServiceContent\"\x82\x03\n\x16ZMetricNetworkInstance\x12\'\n\x0euuidandversion\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x11\n\tnetworkID\x18\x02 \x01(\t\x12\x16\n\x0enetworkVersion\x18\x03 \x01(\t\x12\x10\n\x08instType\x18\x05 \x01(\r\x12\x13\n\x0b\x64isplayname\x18\x06 \x01(\t\x12\x11\n\tactivated\x18\x07 \x01(\x08\x12\x1f\n\x07network\x18\n \x03(\x0b\x32\x0e.networkMetric\x12\x1b\n\x04vpnm\x18\x14 \x01(\x0b\x32\x0b.ZMetricVpnH\x00\x12\x1d\n\x05lispm\x18\x15 \x01(\x0b\x32\x0c.ZMetricLispH\x00\x12\x1d\n\x05nonem\x18\x16 \x01(\x0b\x32\x0c.ZMetricNoneH\x00\x12\x1f\n\tflowStats\x18\x1e \x03(\x0b\x32\x0c.ZMetricFlow\x12+\n\x0flispGlobalStats\x18\x1f \x01(\x0b\x32\x12.ZMetricLispGlobalB\x10\n\x0eServiceContent\"\xd4\x01\n\nZMetricMsg\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12/\n\x0b\x61tTimeStamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x02\x64m\x18\x04 \x01(\x0b\x32\r.deviceMetricH\x00\x12\x16\n\x02\x61m\x18\x05 \x03(\x0b\x32\n.appMetric\x12\x1b\n\x02sm\x18\x06 \x03(\x0b\x32\x0f.ZMetricService\x12#\n\x02nm\x18\x07 \x03(\x0b\x32\x17.ZMetricNetworkInstanceB\x0f\n\rMetricContent*k\n\nZInfoTypes\x12\t\n\x05ZiNop\x10\x00\x12\x0c\n\x08ZiDevice\x10\x01\x12\t\n\x05ZiApp\x10\x03\x12\r\n\tZiService\x10\x04\x12\x13\n\x0fZiNetworkObject\x10\x05\x12\x15\n\x11ZiNetworkInstance\x10\x06*<\n\x10ZPeripheralTypes\x12\n\n\x06ZpNone\x10\x00\x12\r\n\tZpStorage\x10\x01\x12\r\n\tZpNetwork\x10\x02*\xb8\x01\n\x08ZSwState\x12\x0b\n\x07INVALID\x10\x00\x12\x0b\n\x07INITIAL\x10\x01\x12\x14\n\x10\x44OWNLOAD_STARTED\x10\x02\x12\x0e\n\nDOWNLOADED\x10\x03\x12\r\n\tDELIVERED\x10\x04\x12\r\n\tINSTALLED\x10\x05\x12\x0b\n\x07\x42OOTING\x10\x06\x12\x0b\n\x07RUNNING\x10\x07\x12\x0b\n\x07HALTING\x10\x08\x12\n\n\x06HALTED\x10\t\x12\x0e\n\nRESTARTING\x10\n\x12\x0b\n\x07PURGING\x10\x0b*\x8f\x01\n\rZInfoVpnState\x12\x0f\n\x0bVPN_INVALID\x10\x00\x12\x0f\n\x0bVPN_INITIAL\x10\x01\x12\x12\n\x0eVPN_CONNECTING\x10\x02\x12\x13\n\x0fVPN_ESTABLISHED\x10\x03\x12\x11\n\rVPN_INSTALLED\x10\x04\x12\x0f\n\x0bVPN_REKEYED\x10\x05\x12\x0f\n\x0bVPN_DELETED\x10\n*H\n\x07ZioType\x12\n\n\x06ZioNop\x10\x00\x12\n\n\x06ZioEth\x10\x01\x12\n\n\x06ZioUSB\x10\x02\x12\n\n\x06ZioCOM\x10\x03\x12\r\n\x08ZioOther\x10\xff\x01*2\n\x0cZmetricTypes\x12\t\n\x05ZmNop\x10\x00\x12\x0c\n\x08ZmDevice\x10\x01\x12\t\n\x05ZmApp\x10\x03*f\n\x0eMetricItemType\x12\x13\n\x0fMetricItemOther\x10\x00\x12\x13\n\x0fMetricItemGauge\x10\x01\x12\x15\n\x11MetricItemCounter\x10\x02\x12\x13\n\x0fMetricItemState\x10\x03\x42=\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1agithub.com/zededa/api/zmetb\x06proto3')
+  serialized_pb=_b('\n\nzmet.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc9\x01\n\x11ZInfoManufacturer\x12\x14\n\x0cmanufacturer\x18\x01 \x01(\t\x12\x13\n\x0bproductName\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x14\n\x0cserialNumber\x18\x04 \x01(\t\x12\x0c\n\x04UUID\x18\x05 \x01(\t\x12\x12\n\ncompatible\x18\x06 \x01(\t\x12\x12\n\nbiosVendor\x18\x07 \x01(\t\x12\x13\n\x0b\x62iosVersion\x18\x08 \x01(\t\x12\x17\n\x0f\x62iosReleaseDate\x18\t \x01(\t\"\xdb\x01\n\x0cZInfoNetwork\x12\x0f\n\x07macAddr\x18\x03 \x01(\t\x12\x0f\n\x07\x64\x65vName\x18\x04 \x01(\t\x12\x0f\n\x07IPAddrs\x18\x05 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x06 \x03(\t\x12\x16\n\x03\x64ns\x18\x07 \x01(\x0b\x32\t.ZInfoDNS\x12\n\n\x02up\x18\x08 \x01(\x08\x12\x19\n\x08location\x18\t \x01(\x0b\x32\x07.GeoLoc\x12\x0e\n\x06uplink\x18\n \x01(\x08\x12\x1e\n\nnetworkErr\x18\x0b \x01(\x0b\x32\n.ErrorInfo\x12\x11\n\tlocalName\x18\x0c \x01(\t\"\x87\x01\n\x06GeoLoc\x12\x12\n\nUnderlayIP\x18\x01 \x01(\t\x12\x10\n\x08Hostname\x18\x02 \x01(\t\x12\x0c\n\x04\x43ity\x18\x03 \x01(\t\x12\x0e\n\x06Region\x18\x04 \x01(\t\x12\x0f\n\x07\x43ountry\x18\x05 \x01(\t\x12\x0b\n\x03Loc\x18\x06 \x01(\t\x12\x0b\n\x03Org\x18\x07 \x01(\t\x12\x0e\n\x06Postal\x18\x08 \x01(\t\"D\n\x08ZInfoDNS\x12\x12\n\nDNSservers\x18\x01 \x03(\t\x12\x11\n\tDNSdomain\x18\x02 \x01(\t\x12\x11\n\tDNSsearch\x18\x03 \x03(\t\"i\n\x0fZinfoPeripheral\x12 \n\x05ztype\x18\x01 \x01(\x0e\x32\x11.ZPeripheralTypes\x12\x11\n\tpluggable\x18\x02 \x01(\x08\x12!\n\x05minfo\x18\x03 \x01(\x0b\x32\x12.ZInfoManufacturer\"\x91\x01\n\x07ZInfoSW\x12\x11\n\tswVersion\x18\x02 \x01(\t\x12\x0e\n\x06swHash\x18\x03 \x01(\t\x12\x18\n\x05state\x18\x04 \x01(\x0e\x32\t.ZSwState\x12\x0e\n\x06target\x18\x06 \x01(\t\x12\x0c\n\x04vdev\x18\x07 \x01(\t\x12\x18\n\x10\x64ownloadProgress\x18\x08 \x01(\r\x12\x11\n\timageName\x18\t \x01(\t\"O\n\tErrorInfo\x12\x13\n\x0b\x64\x65scription\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\x9a\x03\n\x0bZInfoDevice\x12\x13\n\x0bmachineArch\x18\x04 \x01(\t\x12\x0f\n\x07\x63puArch\x18\x05 \x01(\t\x12\x10\n\x08platform\x18\x06 \x01(\t\x12\x0c\n\x04ncpu\x18\x07 \x01(\r\x12\x0e\n\x06memory\x18\x08 \x01(\x04\x12\x0f\n\x07storage\x18\t \x01(\x04\x12!\n\x05minfo\x18\x0b \x01(\x0b\x32\x12.ZInfoManufacturer\x12\x1e\n\x07network\x18\r \x03(\x0b\x32\r.ZInfoNetwork\x12&\n\x12\x61ssignableAdapters\x18\x0f \x03(\x0b\x32\n.ZioBundle\x12\x16\n\x03\x64ns\x18\x10 \x01(\x0b\x32\t.ZInfoDNS\x12\"\n\x0bstorageList\x18\x11 \x03(\x0b\x32\r.ZInfoStorage\x12,\n\x08\x62ootTime\x18\x12 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x06swList\x18\x13 \x03(\x0b\x32\x0b.ZInfoDevSW\x12\x10\n\x08HostName\x18\x14 \x01(\t\x12 \n\x0bmetricItems\x18\x15 \x03(\x0b\x32\x0b.MetricItem\"\xe3\x01\n\nZInfoDevSW\x12\x11\n\tactivated\x18\x02 \x01(\x08\x12\x16\n\x0epartitionLabel\x18\x03 \x01(\t\x12\x17\n\x0fpartitionDevice\x18\x04 \x01(\t\x12\x16\n\x0epartitionState\x18\x05 \x01(\t\x12\x19\n\x06status\x18\x06 \x01(\x0e\x32\t.ZSwState\x12\x14\n\x0cshortVersion\x18\x07 \x01(\t\x12\x13\n\x0blongVersion\x18\x08 \x01(\t\x12\x19\n\x05swErr\x18\t \x01(\x0b\x32\n.ErrorInfo\x12\x18\n\x10\x64ownloadProgress\x18\n \x01(\r\"Y\n\x0cZInfoStorage\x12\x0e\n\x06\x64\x65vice\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\r\n\x05total\x18\x03 \x01(\x04\x12\x17\n\x0fstorageLocation\x18\x04 \x01(\x08\"\x9b\x02\n\x08ZInfoApp\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x12\n\nappVersion\x18\x02 \x01(\t\x12\x11\n\tsystemApp\x18\x06 \x01(\x08\x12\x0f\n\x07\x41ppName\x18\x07 \x01(\t\x12\x1e\n\x0csoftwareList\x18\x08 \x03(\x0b\x32\x08.ZInfoSW\x12,\n\x08\x62ootTime\x18\x0c \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12$\n\x10\x61ssignedAdapters\x18\r \x03(\x0b\x32\n.ZioBundle\x12\x1a\n\x06\x61ppErr\x18\x0e \x03(\x0b\x32\n.ErrorInfo\x12\x18\n\x05state\x18\x0f \x01(\x0e\x32\t.ZSwState\x12\x1e\n\x07network\x18\x10 \x03(\x0b\x32\r.ZInfoNetwork\"D\n\x10ZInfoVpnLinkInfo\x12\r\n\x05spiId\x18\x01 \x01(\t\x12\x0e\n\x06subNet\x18\x02 \x01(\t\x12\x11\n\tdirection\x18\x03 \x01(\x08\"\xbd\x01\n\x0cZInfoVpnLink\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\r\n\x05reqId\x18\x03 \x01(\t\x12\x10\n\x08instTime\x18\x04 \x01(\x04\x12\x0f\n\x07\x65spInfo\x18\x05 \x01(\t\x12\x1d\n\x05state\x18\x06 \x01(\x0e\x32\x0e.ZInfoVpnState\x12 \n\x05lInfo\x18\n \x01(\x0b\x32\x11.ZInfoVpnLinkInfo\x12 \n\x05rInfo\x18\x0b \x01(\x0b\x32\x11.ZInfoVpnLinkInfo\"<\n\x10ZInfoVpnEndPoint\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0e\n\x06ipAddr\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\xd9\x01\n\x0cZInfoVpnConn\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x0f\n\x07\x65stTime\x18\x04 \x01(\x04\x12\x0c\n\x04ikes\x18\x05 \x01(\t\x12\x1d\n\x05state\x18\x06 \x01(\x0e\x32\x0e.ZInfoVpnState\x12 \n\x05lInfo\x18\x07 \x01(\x0b\x32\x11.ZInfoVpnEndPoint\x12 \n\x05rInfo\x18\x08 \x01(\x0b\x32\x11.ZInfoVpnEndPoint\x12\x1c\n\x05links\x18\n \x03(\x0b\x32\r.ZInfoVpnLink\"f\n\x08ZInfoVpn\x12\x0e\n\x06upTime\x18\x01 \x01(\x04\x12\x13\n\x0bpolicyBased\x18\x02 \x01(\x08\x12\x18\n\x10listeningIpAddrs\x18\x03 \x03(\t\x12\x1b\n\x04\x63onn\x18\n \x03(\x0b\x32\r.ZInfoVpnConn\",\n\tRlocState\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x11\n\tReachable\x18\x02 \x01(\x08\"7\n\rMapCacheEntry\x12\x0b\n\x03\x45ID\x18\x01 \x01(\t\x12\x19\n\x05Rlocs\x18\x02 \x03(\x0b\x32\n.RlocState\"C\n\x0b\x44\x61tabaseMap\x12\x0b\n\x03IID\x18\x01 \x01(\x04\x12\'\n\x0fMapCacheEntries\x18\x02 \x03(\x0b\x32\x0e.MapCacheEntry\"8\n\x08\x44\x65\x63\x61pKey\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x0c\n\x04Port\x18\x02 \x01(\x04\x12\x10\n\x08KeyCount\x18\x03 \x01(\x04\"\x8c\x01\n\tZInfoLisp\x12\x15\n\rItrCryptoPort\x18\x01 \x01(\x04\x12\x12\n\nEtrNatPort\x18\x02 \x01(\x04\x12\x12\n\nInterfaces\x18\x03 \x03(\t\x12\"\n\x0c\x44\x61tabaseMaps\x18\x04 \x03(\x0b\x32\x0c.DatabaseMap\x12\x1c\n\tDecapKeys\x18\x05 \x03(\x0b\x32\t.DecapKey\"\xd9\x02\n\x0cZInfoService\x12\x11\n\tserviceID\x18\x01 \x01(\t\x12\x13\n\x0bserviceName\x18\x02 \x01(\t\x12\x13\n\x0bserviceType\x18\x03 \x01(\r\x12\x1e\n\x0csoftwareList\x18\x04 \x01(\x0b\x32\x08.ZInfoSW\x12\x11\n\tactivated\x18\x05 \x01(\x08\x12/\n\x0bupTimeStamp\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12$\n\x10\x61ssignedAdapters\x18\x07 \x03(\x0b\x32\n.ZioBundle\x12\x1a\n\x06svcErr\x18\x08 \x03(\x0b\x32\n.ErrorInfo\x12\x1e\n\x07network\x18\t \x03(\x0b\x32\r.ZInfoNetwork\x12\x1a\n\x05vinfo\x18\x14 \x01(\x0b\x32\t.ZInfoVpnH\x00\x12\x1b\n\x05linfo\x18\x15 \x01(\x0b\x32\n.ZInfoLispH\x00\x42\r\n\x0bInfoContent\"\xb8\x03\n\x12ZInfoNetworkObject\x12\x11\n\tnetworkID\x18\x01 \x01(\t\x12\x13\n\x0bnetworkType\x18\x02 \x01(\r\x12\x10\n\x08\x64hcpType\x18\x03 \x01(\r\x12\x0e\n\x06subnet\x18\x04 \x01(\t\x12\x0f\n\x07gateway\x18\x05 \x01(\t\x12\x12\n\ndomainname\x18\x06 \x01(\t\x12\x11\n\tntpServer\x18\x07 \x01(\t\x12\x12\n\ndnsServers\x18\x08 \x03(\t\x12\x14\n\x0c\x64hcpRangeLow\x18\t \x01(\t\x12\x15\n\rdhcpRangeHigh\x18\n \x01(\t\x12\x11\n\tbridgeNum\x18\x0c \x01(\r\x12\x12\n\nbridgeName\x18\r \x01(\t\x12\x14\n\x0c\x62ridgeIPAddr\x18\x0e \x01(\t\x12-\n\ripAssignments\x18\x0f \x03(\x0b\x32\x16.ZmetIPAssignmentEntry\x12\x14\n\x0c\x62ridgeIPSets\x18\x10 \x03(\t\x12\x10\n\x08vifNames\x18\x11 \x03(\t\x12\x0f\n\x07ipv4Eid\x18\x12 \x01(\x08\x12\x1e\n\nnetworkErr\x18\x13 \x03(\x0b\x32\n.ErrorInfo\x12\x1a\n\x04vifs\x18\x19 \x03(\x0b\x32\x0c.ZmetVifInfo\"\xe9\x03\n\x14ZInfoNetworkInstance\x12\x11\n\tnetworkID\x18\x02 \x01(\t\x12\x16\n\x0enetworkVersion\x18\x03 \x01(\t\x12\x10\n\x08instType\x18\x05 \x01(\r\x12\x13\n\x0b\x64isplayname\x18\x06 \x01(\t\x12\x11\n\tactivated\x18\x07 \x01(\x08\x12/\n\x0bupTimeStamp\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x11\n\tbridgeNum\x18\x14 \x01(\r\x12\x12\n\nbridgeName\x18\x15 \x01(\t\x12\x14\n\x0c\x62ridgeIPAddr\x18\x16 \x01(\t\x12-\n\ripAssignments\x18\x17 \x03(\x0b\x32\x16.ZmetIPAssignmentEntry\x12\x14\n\x0c\x62ridgeIPSets\x18\x18 \x03(\t\x12\x1a\n\x04vifs\x18\x19 \x03(\x0b\x32\x0c.ZmetVifInfo\x12\x0f\n\x07ipv4Eid\x18\x1a \x01(\x08\x12$\n\x10\x61ssignedAdapters\x18\x1e \x03(\x0b\x32\n.ZioBundle\x12\x1a\n\x05vinfo\x18\x1f \x01(\x0b\x32\t.ZInfoVpnH\x00\x12\x1b\n\x05linfo\x18  \x01(\x0b\x32\n.ZInfoLispH\x00\x12\x1e\n\nnetworkErr\x18( \x03(\x0b\x32\n.ErrorInfoB\r\n\x0bInfoContent\">\n\x15ZmetIPAssignmentEntry\x12\x12\n\nmacAddress\x18\x01 \x01(\t\x12\x11\n\tipAddress\x18\x02 \x03(\t\"A\n\x0bZmetVifInfo\x12\x0f\n\x07vifName\x18\x01 \x01(\t\x12\x12\n\nmacAddress\x18\x02 \x01(\t\x12\r\n\x05\x61ppID\x18\x03 \x01(\t\"\x9f\x02\n\x08ZInfoMsg\x12\x1a\n\x05ztype\x18\x01 \x01(\x0e\x32\x0b.ZInfoTypes\x12\r\n\x05\x64\x65vId\x18\x02 \x01(\t\x12\x1d\n\x05\x64info\x18\x03 \x01(\x0b\x32\x0c.ZInfoDeviceH\x00\x12\x1a\n\x05\x61info\x18\x05 \x01(\x0b\x32\t.ZInfoAppH\x00\x12\x1e\n\x05sinfo\x18\n \x01(\x0b\x32\r.ZInfoServiceH\x00\x12$\n\x05ninfo\x18\x0b \x01(\x0b\x32\x13.ZInfoNetworkObjectH\x00\x12\'\n\x06niinfo\x18\x0c \x01(\x0b\x32\x15.ZInfoNetworkInstanceH\x00\x12/\n\x0b\x61tTimeStamp\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\r\n\x0bInfoContent\"o\n\tZioBundle\x12\x16\n\x04type\x18\x01 \x01(\x0e\x32\x08.ZioType\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07members\x18\x03 \x03(\t\x12\x15\n\rusedByAppUUID\x18\x04 \x01(\t\x12\x14\n\x0cusedByBaseOS\x18\x05 \x01(\x08\"b\n\x0cmemoryMetric\x12\x0f\n\x07usedMem\x18\x02 \x01(\r\x12\x10\n\x08\x61vailMem\x18\x03 \x01(\r\x12\x16\n\x0eusedPercentage\x18\x04 \x01(\x01\x12\x17\n\x0f\x61vailPercentage\x18\x05 \x01(\x01\"\xbb\x02\n\rnetworkMetric\x12\r\n\x05iName\x18\x01 \x01(\t\x12\x0f\n\x07txBytes\x18\x02 \x01(\x04\x12\x0f\n\x07rxBytes\x18\x03 \x01(\x04\x12\x0f\n\x07txDrops\x18\x04 \x01(\x04\x12\x0f\n\x07rxDrops\x18\x05 \x01(\x04\x12\x0e\n\x06txRate\x18\x06 \x01(\x04\x12\x0e\n\x06rxRate\x18\x07 \x01(\x04\x12\x0e\n\x06txPkts\x18\x08 \x01(\x04\x12\x0e\n\x06rxPkts\x18\t \x01(\x04\x12\x10\n\x08txErrors\x18\n \x01(\x04\x12\x10\n\x08rxErrors\x18\x0b \x01(\x04\x12\x12\n\ntxAclDrops\x18\x0c \x01(\x04\x12\x12\n\nrxAclDrops\x18\r \x01(\x04\x12\x1b\n\x13txAclRateLimitDrops\x18\x0e \x01(\x04\x12\x1b\n\x13rxAclRateLimitDrops\x18\x0f \x01(\x04\x12\x11\n\tlocalName\x18\x10 \x01(\t\"\xca\x01\n\x0ezedcloudMetric\x12\x0e\n\x06ifName\x18\x01 \x01(\t\x12\x10\n\x08\x66\x61ilures\x18\x02 \x01(\x04\x12\x0f\n\x07success\x18\x03 \x01(\x04\x12/\n\x0blastFailure\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12/\n\x0blastSuccess\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12#\n\nurlMetrics\x18\x06 \x03(\x0b\x32\x0f.urlcloudMetric\"\xa2\x01\n\x0eurlcloudMetric\x12\x0b\n\x03url\x18\x01 \x01(\t\x12\x13\n\x0btryMsgCount\x18\x02 \x01(\x03\x12\x14\n\x0ctryByteCount\x18\x03 \x01(\x03\x12\x14\n\x0csentMsgCount\x18\x04 \x01(\x03\x12\x15\n\rsentByteCount\x18\x05 \x01(\x03\x12\x14\n\x0crecvMsgCount\x18\x06 \x01(\x03\x12\x15\n\rrecvByteCount\x18\x07 \x01(\x03\"I\n\x0c\x61ppCpuMetric\x12*\n\x06upTime\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\r\n\x05total\x18\x05 \x01(\x04\"\xd0\x01\n\x0c\x64\x65viceMetric\x12\x1d\n\x06memory\x18\x02 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x03 \x03(\x0b\x32\x0e.networkMetric\x12!\n\x08zedcloud\x18\x04 \x03(\x0b\x32\x0f.zedcloudMetric\x12\x19\n\x04\x64isk\x18\x06 \x03(\x0b\x32\x0b.diskMetric\x12 \n\tcpuMetric\x18\x07 \x01(\x0b\x32\r.appCpuMetric\x12 \n\x0bmetricItems\x18\x08 \x03(\x0b\x32\x0b.MetricItem\"\xbb\x01\n\nMetricItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x1d\n\x04type\x18\x02 \x01(\x0e\x32\x0f.MetricItemType\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0fmetricItemValue\"\xa6\x01\n\ndiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\x11\n\treadBytes\x18\x03 \x01(\x04\x12\x12\n\nwriteBytes\x18\x04 \x01(\x04\x12\x11\n\treadCount\x18\x05 \x01(\x04\x12\x12\n\nwriteCount\x18\x06 \x01(\x04\x12\r\n\x05total\x18\x07 \x01(\x04\x12\x0c\n\x04used\x18\x08 \x01(\x04\x12\x0c\n\x04\x66ree\x18\t \x01(\x04\"a\n\rappDiskMetric\x12\x0c\n\x04\x64isk\x18\x01 \x01(\t\x12\x13\n\x0bprovisioned\x18\x02 \x01(\x04\x12\x0c\n\x04used\x18\x03 \x01(\x04\x12\x10\n\x08\x64iskType\x18\x04 \x01(\t\x12\r\n\x05\x64irty\x18\x05 \x01(\x08\"\xb9\x01\n\tappMetric\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x12\n\nappVersion\x18\n \x01(\t\x12\x0f\n\x07\x41ppName\x18\x02 \x01(\t\x12\x1a\n\x03\x63pu\x18\x03 \x01(\x0b\x32\r.appCpuMetric\x12\x1d\n\x06memory\x18\x04 \x01(\x0b\x32\r.memoryMetric\x12\x1f\n\x07network\x18\x05 \x03(\x0b\x32\x0e.networkMetric\x12\x1c\n\x04\x64isk\x18\x06 \x03(\x0b\x32\x0e.appDiskMetric\")\n\x07PktStat\x12\x0f\n\x07Packets\x18\x01 \x01(\x04\x12\r\n\x05\x42ytes\x18\x02 \x01(\x04\"R\n\tRlocStats\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x17\n\x05Stats\x18\x02 \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x16SecondsSinceLastPacket\x18\x03 \x01(\x04\"J\n\x08\x45idStats\x12\x0b\n\x03IID\x18\x01 \x01(\x04\x12\x0b\n\x03\x45ID\x18\x02 \x01(\t\x12$\n\x10RlocStatsEntries\x18\x03 \x03(\x0b\x32\n.RlocStats\"\xa6\x03\n\x0bZMetricLisp\x12\"\n\x0f\x45idStatsEntries\x18\x01 \x03(\x0b\x32\t.EidStats\x12$\n\x12ItrPacketSendError\x18\x02 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fInvalidEidError\x18\x03 \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0cNoDecryptKey\x18\x04 \x01(\x0b\x32\x08.PktStat\x12\"\n\x10OuterHeaderError\x18\x05 \x01(\x0b\x32\x08.PktStat\x12!\n\x0f\x42\x61\x64InnerVersion\x18\x06 \x01(\x0b\x32\x08.PktStat\x12\x1d\n\x0bGoodPackets\x18\x07 \x01(\x0b\x32\x08.PktStat\x12\x1a\n\x08ICVError\x18\x08 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fLispHeaderError\x18\t \x01(\x0b\x32\x08.PktStat\x12\x1f\n\rCheckSumError\x18\n \x01(\x0b\x32\x08.PktStat\x12$\n\x12\x44\x65\x63\x61pReInjectError\x18\x0b \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0c\x44\x65\x63ryptError\x18\x0c \x01(\x0b\x32\x08.PktStat\"~\n\x0bZMetricConn\x12\x18\n\x06InPkts\x18\x01 \x01(\x0b\x32\x08.PktStat\x12\x19\n\x07OutPkts\x18\x02 \x01(\x0b\x32\x08.PktStat\x12\x19\n\x07\x45rrPkts\x18\x03 \x01(\x0b\x32\x08.PktStat\x12\x1f\n\rCarierErrPkts\x18\x04 \x01(\x0b\x32\x08.PktStat\"\x8a\x01\n\nZMetricVpn\x12\x1e\n\x08\x43onnStat\x18\x01 \x01(\x0b\x32\x0c.ZMetricConn\x12\x1d\n\x07IkeStat\x18\x02 \x01(\x0b\x32\x0c.ZMetricConn\x12\x1e\n\x08NatTStat\x18\x03 \x01(\x0b\x32\x0c.ZMetricConn\x12\x1d\n\x07\x45spStat\x18\x04 \x01(\x0b\x32\x0c.ZMetricConn\"\r\n\x0bZMetricNone\"I\n\x0fZMetricFlowLink\x12\x10\n\x06subNet\x18\x01 \x01(\tH\x00\x12\r\n\x03\x65id\x18\x02 \x01(\tH\x00\x12\r\n\x05spiId\x18\x03 \x01(\tB\x06\n\x04Link\"|\n\x13ZMetricFlowEndPoint\x12\x10\n\x06ipAddr\x18\x01 \x01(\tH\x00\x12\x0e\n\x04rloc\x18\x02 \x01(\tH\x00\x12\x1e\n\x04link\x18\x05 \x03(\x0b\x32\x10.ZMetricFlowLink\x12\x17\n\x05stats\x18\n \x01(\x0b\x32\x08.PktStatB\n\n\x08\x45ndpoint\"\xa5\x01\n\x0bZMetricFlow\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0c\n\x04type\x18\x03 \x01(\r\x12\x0b\n\x03iid\x18\x04 \x01(\x04\x12\x0f\n\x07\x65stTime\x18\x05 \x01(\x04\x12\'\n\tlEndPoint\x18\n \x01(\x0b\x32\x14.ZMetricFlowEndPoint\x12\'\n\trEndPoint\x18\x0b \x03(\x0b\x32\x14.ZMetricFlowEndPoint\"\x88\x03\n\x11ZMetricLispGlobal\x12$\n\x12ItrPacketSendError\x18\x02 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fInvalidEidError\x18\x03 \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0cNoDecryptKey\x18\x04 \x01(\x0b\x32\x08.PktStat\x12\"\n\x10OuterHeaderError\x18\x05 \x01(\x0b\x32\x08.PktStat\x12!\n\x0f\x42\x61\x64InnerVersion\x18\x06 \x01(\x0b\x32\x08.PktStat\x12\x1d\n\x0bGoodPackets\x18\x07 \x01(\x0b\x32\x08.PktStat\x12\x1a\n\x08ICVError\x18\x08 \x01(\x0b\x32\x08.PktStat\x12!\n\x0fLispHeaderError\x18\t \x01(\x0b\x32\x08.PktStat\x12\x1f\n\rCheckSumError\x18\n \x01(\x0b\x32\x08.PktStat\x12$\n\x12\x44\x65\x63\x61pReInjectError\x18\x0b \x01(\x0b\x32\x08.PktStat\x12\x1e\n\x0c\x44\x65\x63ryptError\x18\x0c \x01(\x0b\x32\x08.PktStat\"\x8a\x02\n\x0eZMetricService\x12\x11\n\tserviceID\x18\x01 \x01(\t\x12\x13\n\x0bserviceName\x18\x02 \x01(\t\x12\x13\n\x0bserviceType\x18\x03 \x01(\r\x12\x1f\n\x07network\x18\x04 \x03(\x0b\x32\x0e.networkMetric\x12\x1b\n\x04vpnm\x18\x14 \x01(\x0b\x32\x0b.ZMetricVpnH\x00\x12\x1d\n\x05lispm\x18\x15 \x01(\x0b\x32\x0c.ZMetricLispH\x00\x12\x1f\n\tflowStats\x18\n \x03(\x0b\x32\x0c.ZMetricFlow\x12+\n\x0flispGlobalStats\x18\x0b \x01(\x0b\x32\x12.ZMetricLispGlobalB\x10\n\x0eServiceContent\"\xd9\x02\n\x16ZMetricNetworkInstance\x12\x11\n\tnetworkID\x18\x02 \x01(\t\x12\x16\n\x0enetworkVersion\x18\x03 \x01(\t\x12\x10\n\x08instType\x18\x05 \x01(\r\x12\x13\n\x0b\x64isplayname\x18\x06 \x01(\t\x12\x11\n\tactivated\x18\x07 \x01(\x08\x12\x1f\n\x07network\x18\n \x03(\x0b\x32\x0e.networkMetric\x12\x1b\n\x04vpnm\x18\x14 \x01(\x0b\x32\x0b.ZMetricVpnH\x00\x12\x1d\n\x05lispm\x18\x15 \x01(\x0b\x32\x0c.ZMetricLispH\x00\x12\x1d\n\x05nonem\x18\x16 \x01(\x0b\x32\x0c.ZMetricNoneH\x00\x12\x1f\n\tflowStats\x18\x1e \x03(\x0b\x32\x0c.ZMetricFlow\x12+\n\x0flispGlobalStats\x18\x1f \x01(\x0b\x32\x12.ZMetricLispGlobalB\x10\n\x0eServiceContent\"\xd4\x01\n\nZMetricMsg\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12/\n\x0b\x61tTimeStamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x02\x64m\x18\x04 \x01(\x0b\x32\r.deviceMetricH\x00\x12\x16\n\x02\x61m\x18\x05 \x03(\x0b\x32\n.appMetric\x12\x1b\n\x02sm\x18\x06 \x03(\x0b\x32\x0f.ZMetricService\x12#\n\x02nm\x18\x07 \x03(\x0b\x32\x17.ZMetricNetworkInstanceB\x0f\n\rMetricContent*k\n\nZInfoTypes\x12\t\n\x05ZiNop\x10\x00\x12\x0c\n\x08ZiDevice\x10\x01\x12\t\n\x05ZiApp\x10\x03\x12\r\n\tZiService\x10\x04\x12\x13\n\x0fZiNetworkObject\x10\x05\x12\x15\n\x11ZiNetworkInstance\x10\x06*<\n\x10ZPeripheralTypes\x12\n\n\x06ZpNone\x10\x00\x12\r\n\tZpStorage\x10\x01\x12\r\n\tZpNetwork\x10\x02*\xb8\x01\n\x08ZSwState\x12\x0b\n\x07INVALID\x10\x00\x12\x0b\n\x07INITIAL\x10\x01\x12\x14\n\x10\x44OWNLOAD_STARTED\x10\x02\x12\x0e\n\nDOWNLOADED\x10\x03\x12\r\n\tDELIVERED\x10\x04\x12\r\n\tINSTALLED\x10\x05\x12\x0b\n\x07\x42OOTING\x10\x06\x12\x0b\n\x07RUNNING\x10\x07\x12\x0b\n\x07HALTING\x10\x08\x12\n\n\x06HALTED\x10\t\x12\x0e\n\nRESTARTING\x10\n\x12\x0b\n\x07PURGING\x10\x0b*\x8f\x01\n\rZInfoVpnState\x12\x0f\n\x0bVPN_INVALID\x10\x00\x12\x0f\n\x0bVPN_INITIAL\x10\x01\x12\x12\n\x0eVPN_CONNECTING\x10\x02\x12\x13\n\x0fVPN_ESTABLISHED\x10\x03\x12\x11\n\rVPN_INSTALLED\x10\x04\x12\x0f\n\x0bVPN_REKEYED\x10\x05\x12\x0f\n\x0bVPN_DELETED\x10\n*H\n\x07ZioType\x12\n\n\x06ZioNop\x10\x00\x12\n\n\x06ZioEth\x10\x01\x12\n\n\x06ZioUSB\x10\x02\x12\n\n\x06ZioCOM\x10\x03\x12\r\n\x08ZioOther\x10\xff\x01*2\n\x0cZmetricTypes\x12\t\n\x05ZmNop\x10\x00\x12\x0c\n\x08ZmDevice\x10\x01\x12\t\n\x05ZmApp\x10\x03*f\n\x0eMetricItemType\x12\x13\n\x0fMetricItemOther\x10\x00\x12\x13\n\x0fMetricItemGauge\x10\x01\x12\x15\n\x11MetricItemCounter\x10\x02\x12\x13\n\x0fMetricItemState\x10\x03\x42=\n\x1f\x63om.zededa.cloud.uservice.protoZ\x1agithub.com/zededa/api/zmetb\x06proto3')
   ,
-  dependencies=[google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,github_dot_com_dot_zededa_dot_api_dot_zconfig_dot_devcommon__pb2.DESCRIPTOR,])
+  dependencies=[google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
 
 _ZINFOTYPES = _descriptor.EnumDescriptor(
   name='ZInfoTypes',
@@ -59,8 +58,8 @@ _ZINFOTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=9232,
-  serialized_end=9339,
+  serialized_start=9103,
+  serialized_end=9210,
 )
 _sym_db.RegisterEnumDescriptor(_ZINFOTYPES)
 
@@ -86,8 +85,8 @@ _ZPERIPHERALTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=9341,
-  serialized_end=9401,
+  serialized_start=9212,
+  serialized_end=9272,
 )
 _sym_db.RegisterEnumDescriptor(_ZPERIPHERALTYPES)
 
@@ -149,8 +148,8 @@ _ZSWSTATE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=9404,
-  serialized_end=9588,
+  serialized_start=9275,
+  serialized_end=9459,
 )
 _sym_db.RegisterEnumDescriptor(_ZSWSTATE)
 
@@ -192,8 +191,8 @@ _ZINFOVPNSTATE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=9591,
-  serialized_end=9734,
+  serialized_start=9462,
+  serialized_end=9605,
 )
 _sym_db.RegisterEnumDescriptor(_ZINFOVPNSTATE)
 
@@ -227,8 +226,8 @@ _ZIOTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=9736,
-  serialized_end=9808,
+  serialized_start=9607,
+  serialized_end=9679,
 )
 _sym_db.RegisterEnumDescriptor(_ZIOTYPE)
 
@@ -254,8 +253,8 @@ _ZMETRICTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=9810,
-  serialized_end=9860,
+  serialized_start=9681,
+  serialized_end=9731,
 )
 _sym_db.RegisterEnumDescriptor(_ZMETRICTYPES)
 
@@ -285,8 +284,8 @@ _METRICITEMTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=9862,
-  serialized_end=9964,
+  serialized_start=9733,
+  serialized_end=9835,
 )
 _sym_db.RegisterEnumDescriptor(_METRICITEMTYPE)
 
@@ -416,8 +415,8 @@ _ZINFOMANUFACTURER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=95,
-  serialized_end=296,
+  serialized_start=48,
+  serialized_end=249,
 )
 
 
@@ -510,8 +509,8 @@ _ZINFONETWORK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=299,
-  serialized_end=518,
+  serialized_start=252,
+  serialized_end=471,
 )
 
 
@@ -590,8 +589,8 @@ _GEOLOC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=521,
-  serialized_end=656,
+  serialized_start=474,
+  serialized_end=609,
 )
 
 
@@ -635,8 +634,8 @@ _ZINFODNS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=658,
-  serialized_end=726,
+  serialized_start=611,
+  serialized_end=679,
 )
 
 
@@ -680,8 +679,8 @@ _ZINFOPERIPHERAL = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=728,
-  serialized_end=833,
+  serialized_start=681,
+  serialized_end=786,
 )
 
 
@@ -753,8 +752,8 @@ _ZINFOSW = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=836,
-  serialized_end=981,
+  serialized_start=789,
+  serialized_end=934,
 )
 
 
@@ -791,8 +790,8 @@ _ERRORINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=983,
-  serialized_end=1062,
+  serialized_start=936,
+  serialized_end=1015,
 )
 
 
@@ -920,8 +919,8 @@ _ZINFODEVICE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1065,
-  serialized_end=1475,
+  serialized_start=1018,
+  serialized_end=1428,
 )
 
 
@@ -1007,8 +1006,8 @@ _ZINFODEVSW = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1478,
-  serialized_end=1705,
+  serialized_start=1431,
+  serialized_end=1658,
 )
 
 
@@ -1059,8 +1058,8 @@ _ZINFOSTORAGE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1707,
-  serialized_end=1796,
+  serialized_start=1660,
+  serialized_end=1749,
 )
 
 
@@ -1153,8 +1152,8 @@ _ZINFOAPP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1799,
-  serialized_end=2082,
+  serialized_start=1752,
+  serialized_end=2035,
 )
 
 
@@ -1198,8 +1197,8 @@ _ZINFOVPNLINKINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2084,
-  serialized_end=2152,
+  serialized_start=2037,
+  serialized_end=2105,
 )
 
 
@@ -1278,8 +1277,8 @@ _ZINFOVPNLINK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2155,
-  serialized_end=2344,
+  serialized_start=2108,
+  serialized_end=2297,
 )
 
 
@@ -1323,8 +1322,8 @@ _ZINFOVPNENDPOINT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2346,
-  serialized_end=2406,
+  serialized_start=2299,
+  serialized_end=2359,
 )
 
 
@@ -1410,8 +1409,8 @@ _ZINFOVPNCONN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2409,
-  serialized_end=2626,
+  serialized_start=2362,
+  serialized_end=2579,
 )
 
 
@@ -1462,8 +1461,8 @@ _ZINFOVPN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2628,
-  serialized_end=2730,
+  serialized_start=2581,
+  serialized_end=2683,
 )
 
 
@@ -1500,8 +1499,8 @@ _RLOCSTATE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2732,
-  serialized_end=2776,
+  serialized_start=2685,
+  serialized_end=2729,
 )
 
 
@@ -1538,8 +1537,8 @@ _MAPCACHEENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2778,
-  serialized_end=2833,
+  serialized_start=2731,
+  serialized_end=2786,
 )
 
 
@@ -1576,8 +1575,8 @@ _DATABASEMAP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2835,
-  serialized_end=2902,
+  serialized_start=2788,
+  serialized_end=2855,
 )
 
 
@@ -1621,8 +1620,8 @@ _DECAPKEY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2904,
-  serialized_end=2960,
+  serialized_start=2857,
+  serialized_end=2913,
 )
 
 
@@ -1680,8 +1679,8 @@ _ZINFOLISP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2963,
-  serialized_end=3103,
+  serialized_start=2916,
+  serialized_end=3056,
 )
 
 
@@ -1784,8 +1783,8 @@ _ZINFOSERVICE = _descriptor.Descriptor(
       name='InfoContent', full_name='ZInfoService.InfoContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=3106,
-  serialized_end=3451,
+  serialized_start=3059,
+  serialized_end=3404,
 )
 
 
@@ -1941,8 +1940,8 @@ _ZINFONETWORKOBJECT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3454,
-  serialized_end=3894,
+  serialized_start=3407,
+  serialized_end=3847,
 )
 
 
@@ -1954,126 +1953,119 @@ _ZINFONETWORKINSTANCE = _descriptor.Descriptor(
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='uuidandversion', full_name='ZInfoNetworkInstance.uuidandversion', index=0,
-      number=1, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='networkID', full_name='ZInfoNetworkInstance.networkID', index=1,
+      name='networkID', full_name='ZInfoNetworkInstance.networkID', index=0,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='networkVersion', full_name='ZInfoNetworkInstance.networkVersion', index=2,
+      name='networkVersion', full_name='ZInfoNetworkInstance.networkVersion', index=1,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='instType', full_name='ZInfoNetworkInstance.instType', index=3,
+      name='instType', full_name='ZInfoNetworkInstance.instType', index=2,
       number=5, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='displayname', full_name='ZInfoNetworkInstance.displayname', index=4,
+      name='displayname', full_name='ZInfoNetworkInstance.displayname', index=3,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='activated', full_name='ZInfoNetworkInstance.activated', index=5,
+      name='activated', full_name='ZInfoNetworkInstance.activated', index=4,
       number=7, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='upTimeStamp', full_name='ZInfoNetworkInstance.upTimeStamp', index=6,
+      name='upTimeStamp', full_name='ZInfoNetworkInstance.upTimeStamp', index=5,
       number=8, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='bridgeNum', full_name='ZInfoNetworkInstance.bridgeNum', index=7,
+      name='bridgeNum', full_name='ZInfoNetworkInstance.bridgeNum', index=6,
       number=20, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='bridgeName', full_name='ZInfoNetworkInstance.bridgeName', index=8,
+      name='bridgeName', full_name='ZInfoNetworkInstance.bridgeName', index=7,
       number=21, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='bridgeIPAddr', full_name='ZInfoNetworkInstance.bridgeIPAddr', index=9,
+      name='bridgeIPAddr', full_name='ZInfoNetworkInstance.bridgeIPAddr', index=8,
       number=22, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ipAssignments', full_name='ZInfoNetworkInstance.ipAssignments', index=10,
+      name='ipAssignments', full_name='ZInfoNetworkInstance.ipAssignments', index=9,
       number=23, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='bridgeIPSets', full_name='ZInfoNetworkInstance.bridgeIPSets', index=11,
+      name='bridgeIPSets', full_name='ZInfoNetworkInstance.bridgeIPSets', index=10,
       number=24, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='vifs', full_name='ZInfoNetworkInstance.vifs', index=12,
+      name='vifs', full_name='ZInfoNetworkInstance.vifs', index=11,
       number=25, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ipv4Eid', full_name='ZInfoNetworkInstance.ipv4Eid', index=13,
+      name='ipv4Eid', full_name='ZInfoNetworkInstance.ipv4Eid', index=12,
       number=26, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='assignedAdapters', full_name='ZInfoNetworkInstance.assignedAdapters', index=14,
+      name='assignedAdapters', full_name='ZInfoNetworkInstance.assignedAdapters', index=13,
       number=30, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='vinfo', full_name='ZInfoNetworkInstance.vinfo', index=15,
+      name='vinfo', full_name='ZInfoNetworkInstance.vinfo', index=14,
       number=31, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='linfo', full_name='ZInfoNetworkInstance.linfo', index=16,
+      name='linfo', full_name='ZInfoNetworkInstance.linfo', index=15,
       number=32, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='networkErr', full_name='ZInfoNetworkInstance.networkErr', index=17,
+      name='networkErr', full_name='ZInfoNetworkInstance.networkErr', index=16,
       number=40, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
@@ -2094,8 +2086,8 @@ _ZINFONETWORKINSTANCE = _descriptor.Descriptor(
       name='InfoContent', full_name='ZInfoNetworkInstance.InfoContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=3897,
-  serialized_end=4427,
+  serialized_start=3850,
+  serialized_end=4339,
 )
 
 
@@ -2132,8 +2124,8 @@ _ZMETIPASSIGNMENTENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4429,
-  serialized_end=4491,
+  serialized_start=4341,
+  serialized_end=4403,
 )
 
 
@@ -2177,8 +2169,8 @@ _ZMETVIFINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4493,
-  serialized_end=4558,
+  serialized_start=4405,
+  serialized_end=4470,
 )
 
 
@@ -2260,8 +2252,8 @@ _ZINFOMSG = _descriptor.Descriptor(
       name='InfoContent', full_name='ZInfoMsg.InfoContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=4561,
-  serialized_end=4848,
+  serialized_start=4473,
+  serialized_end=4760,
 )
 
 
@@ -2319,8 +2311,8 @@ _ZIOBUNDLE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4850,
-  serialized_end=4961,
+  serialized_start=4762,
+  serialized_end=4873,
 )
 
 
@@ -2371,8 +2363,8 @@ _MEMORYMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4963,
-  serialized_end=5061,
+  serialized_start=4875,
+  serialized_end=4973,
 )
 
 
@@ -2507,8 +2499,8 @@ _NETWORKMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5064,
-  serialized_end=5379,
+  serialized_start=4976,
+  serialized_end=5291,
 )
 
 
@@ -2573,8 +2565,8 @@ _ZEDCLOUDMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5382,
-  serialized_end=5584,
+  serialized_start=5294,
+  serialized_end=5496,
 )
 
 
@@ -2646,8 +2638,8 @@ _URLCLOUDMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5587,
-  serialized_end=5749,
+  serialized_start=5499,
+  serialized_end=5661,
 )
 
 
@@ -2684,8 +2676,8 @@ _APPCPUMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5751,
-  serialized_end=5824,
+  serialized_start=5663,
+  serialized_end=5736,
 )
 
 
@@ -2750,8 +2742,8 @@ _DEVICEMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5827,
-  serialized_end=6035,
+  serialized_start=5739,
+  serialized_end=5947,
 )
 
 
@@ -2826,8 +2818,8 @@ _METRICITEM = _descriptor.Descriptor(
       name='metricItemValue', full_name='MetricItem.metricItemValue',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=6038,
-  serialized_end=6225,
+  serialized_start=5950,
+  serialized_end=6137,
 )
 
 
@@ -2913,8 +2905,8 @@ _DISKMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6228,
-  serialized_end=6394,
+  serialized_start=6140,
+  serialized_end=6306,
 )
 
 
@@ -2972,8 +2964,8 @@ _APPDISKMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6396,
-  serialized_end=6493,
+  serialized_start=6308,
+  serialized_end=6405,
 )
 
 
@@ -3045,8 +3037,8 @@ _APPMETRIC = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6496,
-  serialized_end=6681,
+  serialized_start=6408,
+  serialized_end=6593,
 )
 
 
@@ -3083,8 +3075,8 @@ _PKTSTAT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6683,
-  serialized_end=6724,
+  serialized_start=6595,
+  serialized_end=6636,
 )
 
 
@@ -3128,8 +3120,8 @@ _RLOCSTATS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6726,
-  serialized_end=6808,
+  serialized_start=6638,
+  serialized_end=6720,
 )
 
 
@@ -3173,8 +3165,8 @@ _EIDSTATS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6810,
-  serialized_end=6884,
+  serialized_start=6722,
+  serialized_end=6796,
 )
 
 
@@ -3281,8 +3273,8 @@ _ZMETRICLISP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=6887,
-  serialized_end=7309,
+  serialized_start=6799,
+  serialized_end=7221,
 )
 
 
@@ -3333,8 +3325,8 @@ _ZMETRICCONN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=7311,
-  serialized_end=7437,
+  serialized_start=7223,
+  serialized_end=7349,
 )
 
 
@@ -3385,8 +3377,8 @@ _ZMETRICVPN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=7440,
-  serialized_end=7578,
+  serialized_start=7352,
+  serialized_end=7490,
 )
 
 
@@ -3409,8 +3401,8 @@ _ZMETRICNONE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=7580,
-  serialized_end=7593,
+  serialized_start=7492,
+  serialized_end=7505,
 )
 
 
@@ -3457,8 +3449,8 @@ _ZMETRICFLOWLINK = _descriptor.Descriptor(
       name='Link', full_name='ZMetricFlowLink.Link',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=7595,
-  serialized_end=7668,
+  serialized_start=7507,
+  serialized_end=7580,
 )
 
 
@@ -3512,8 +3504,8 @@ _ZMETRICFLOWENDPOINT = _descriptor.Descriptor(
       name='Endpoint', full_name='ZMetricFlowEndPoint.Endpoint',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=7670,
-  serialized_end=7794,
+  serialized_start=7582,
+  serialized_end=7706,
 )
 
 
@@ -3585,8 +3577,8 @@ _ZMETRICFLOW = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=7797,
-  serialized_end=7962,
+  serialized_start=7709,
+  serialized_end=7874,
 )
 
 
@@ -3686,8 +3678,8 @@ _ZMETRICLISPGLOBAL = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=7965,
-  serialized_end=8357,
+  serialized_start=7877,
+  serialized_end=8269,
 )
 
 
@@ -3769,8 +3761,8 @@ _ZMETRICSERVICE = _descriptor.Descriptor(
       name='ServiceContent', full_name='ZMetricService.ServiceContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=8360,
-  serialized_end=8626,
+  serialized_start=8272,
+  serialized_end=8538,
 )
 
 
@@ -3782,84 +3774,77 @@ _ZMETRICNETWORKINSTANCE = _descriptor.Descriptor(
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='uuidandversion', full_name='ZMetricNetworkInstance.uuidandversion', index=0,
-      number=1, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='networkID', full_name='ZMetricNetworkInstance.networkID', index=1,
+      name='networkID', full_name='ZMetricNetworkInstance.networkID', index=0,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='networkVersion', full_name='ZMetricNetworkInstance.networkVersion', index=2,
+      name='networkVersion', full_name='ZMetricNetworkInstance.networkVersion', index=1,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='instType', full_name='ZMetricNetworkInstance.instType', index=3,
+      name='instType', full_name='ZMetricNetworkInstance.instType', index=2,
       number=5, type=13, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='displayname', full_name='ZMetricNetworkInstance.displayname', index=4,
+      name='displayname', full_name='ZMetricNetworkInstance.displayname', index=3,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='activated', full_name='ZMetricNetworkInstance.activated', index=5,
+      name='activated', full_name='ZMetricNetworkInstance.activated', index=4,
       number=7, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='network', full_name='ZMetricNetworkInstance.network', index=6,
+      name='network', full_name='ZMetricNetworkInstance.network', index=5,
       number=10, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='vpnm', full_name='ZMetricNetworkInstance.vpnm', index=7,
+      name='vpnm', full_name='ZMetricNetworkInstance.vpnm', index=6,
       number=20, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lispm', full_name='ZMetricNetworkInstance.lispm', index=8,
+      name='lispm', full_name='ZMetricNetworkInstance.lispm', index=7,
       number=21, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='nonem', full_name='ZMetricNetworkInstance.nonem', index=9,
+      name='nonem', full_name='ZMetricNetworkInstance.nonem', index=8,
       number=22, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='flowStats', full_name='ZMetricNetworkInstance.flowStats', index=10,
+      name='flowStats', full_name='ZMetricNetworkInstance.flowStats', index=9,
       number=30, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='lispGlobalStats', full_name='ZMetricNetworkInstance.lispGlobalStats', index=11,
+      name='lispGlobalStats', full_name='ZMetricNetworkInstance.lispGlobalStats', index=10,
       number=31, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -3880,8 +3865,8 @@ _ZMETRICNETWORKINSTANCE = _descriptor.Descriptor(
       name='ServiceContent', full_name='ZMetricNetworkInstance.ServiceContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=8629,
-  serialized_end=9015,
+  serialized_start=8541,
+  serialized_end=8886,
 )
 
 
@@ -3949,8 +3934,8 @@ _ZMETRICMSG = _descriptor.Descriptor(
       name='MetricContent', full_name='ZMetricMsg.MetricContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=9018,
-  serialized_end=9230,
+  serialized_start=8889,
+  serialized_end=9101,
 )
 
 _ZINFONETWORK.fields_by_name['dns'].message_type = _ZINFODNS
@@ -4004,7 +3989,6 @@ _ZINFOSERVICE.fields_by_name['linfo'].containing_oneof = _ZINFOSERVICE.oneofs_by
 _ZINFONETWORKOBJECT.fields_by_name['ipAssignments'].message_type = _ZMETIPASSIGNMENTENTRY
 _ZINFONETWORKOBJECT.fields_by_name['networkErr'].message_type = _ERRORINFO
 _ZINFONETWORKOBJECT.fields_by_name['vifs'].message_type = _ZMETVIFINFO
-_ZINFONETWORKINSTANCE.fields_by_name['uuidandversion'].message_type = github_dot_com_dot_zededa_dot_api_dot_zconfig_dot_devcommon__pb2._UUIDANDVERSION
 _ZINFONETWORKINSTANCE.fields_by_name['upTimeStamp'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _ZINFONETWORKINSTANCE.fields_by_name['ipAssignments'].message_type = _ZMETIPASSIGNMENTENTRY
 _ZINFONETWORKINSTANCE.fields_by_name['vifs'].message_type = _ZMETVIFINFO
@@ -4131,7 +4115,6 @@ _ZMETRICSERVICE.fields_by_name['vpnm'].containing_oneof = _ZMETRICSERVICE.oneofs
 _ZMETRICSERVICE.oneofs_by_name['ServiceContent'].fields.append(
   _ZMETRICSERVICE.fields_by_name['lispm'])
 _ZMETRICSERVICE.fields_by_name['lispm'].containing_oneof = _ZMETRICSERVICE.oneofs_by_name['ServiceContent']
-_ZMETRICNETWORKINSTANCE.fields_by_name['uuidandversion'].message_type = github_dot_com_dot_zededa_dot_api_dot_zconfig_dot_devcommon__pb2._UUIDANDVERSION
 _ZMETRICNETWORKINSTANCE.fields_by_name['network'].message_type = _NETWORKMETRIC
 _ZMETRICNETWORKINSTANCE.fields_by_name['vpnm'].message_type = _ZMETRICVPN
 _ZMETRICNETWORKINSTANCE.fields_by_name['lispm'].message_type = _ZMETRICLISP
