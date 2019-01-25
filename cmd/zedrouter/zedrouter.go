@@ -125,6 +125,7 @@ func Run() {
 		legacyDataPlane:    false,
 		assignableAdapters: &aa,
 	}
+	updateSshAccess(zedrouterCtx.sshAccess, true)
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &zedrouterCtx)

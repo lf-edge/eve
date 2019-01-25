@@ -1107,6 +1107,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 
 		// XXX remove any "project." string. Can zedcloud omit it?
 		key := strings.TrimPrefix(item.Key, "project.")
+		// XXX remove any "project." string. Can zedcloud omit it?
+		key = strings.TrimPrefix(key, "device.")
 
 		switch key {
 		case "timer.config.interval":
