@@ -116,10 +116,7 @@ func updateVerifierStatus(ctx *baseOsMgrContext,
 			Safename:    status.Safename,
 			Name:        status.Safename,
 			ImageSha256: status.ImageSha256,
-			// XXX CertificateChain: status.CertificateChain,
-			// ImageSignature:   status.ImageSignature,
-			// SignatureKey:     status.SignatureKey,
-			RefCount: 0,
+			RefCount:    0,
 		}
 		publishVerifierConfig(ctx, status.ObjType, &n)
 		return

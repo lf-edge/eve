@@ -30,6 +30,7 @@ rm -rf var/run/domainmgr
 rm -rf var/run/identitymgr
 rm -rf var/run/downloader
 rm -rf var/run/baseosmgr
+rm -rf var/run/wstunnelclient
 rm -rf var/run/verifier
 
 # Preserve var/tmp/zedmanager/downloads

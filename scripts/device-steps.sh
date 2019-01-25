@@ -12,7 +12,7 @@ DPCDIR=$TMPDIR/DevicePortConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
-AGENTS="zedmanager logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr nim baseosmgr"
+AGENTS="zedmanager logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr nim baseosmgr wstunnelclient"
 
 PATH=$BINDIR:$PATH
 
@@ -587,6 +587,12 @@ fi
 
 echo "Starting baseosmgr at" `date`
 baseosmgr &
+if [ $WAIT = 1 ]; then
+    echo -n "Press any key to continue "; read dummy; echo; echo
+fi
+
+echo "Starting wstunnelclient at" `date`
+wstunnelclient &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi

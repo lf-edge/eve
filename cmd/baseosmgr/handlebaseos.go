@@ -221,7 +221,7 @@ func setProgressDone(status *types.BaseOsStatus, state types.SwState) {
 	for i, _ := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		ss.Progress = 100
-		ss.State = state // XXX Cap at DELIVERED?
+		ss.State = state
 	}
 }
 
@@ -277,6 +277,8 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	log.Infof("doBaseOsActivate: %s activating\n", uuidStr)
 	zboot.SetOtherPartitionStateUpdating()
 	publishZbootPartitionStatus(ctx, status.PartitionLabel)
+	baseOsSetPartitionInfoInStatus(ctx, status, status.PartitionLabel)
+	publishBaseOsStatus(ctx, status)
 
 	// install the image at proper partition; dd etc
 	if installDownloadedObjects(baseOsObj, uuidStr,
@@ -288,12 +290,19 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 			status.Error = errString
 			status.ErrorTime = time.Now()
 			zboot.SetOtherPartitionStateUnused()
-			publishZbootPartitionStatus(ctx, status.PartitionLabel)
+			publishZbootPartitionStatus(ctx,
+				status.PartitionLabel)
+			baseOsSetPartitionInfoInStatus(ctx, status,
+				status.PartitionLabel)
+			publishBaseOsStatus(ctx, status)
 			return changed
 		}
 		// move the state from DELIVERED to INSTALLED
 		setProgressDone(status, types.INSTALLED)
 		publishZbootPartitionStatus(ctx, status.PartitionLabel)
+		baseOsSetPartitionInfoInStatus(ctx, status,
+			status.PartitionLabel)
+		publishBaseOsStatus(ctx, status)
 	}
 
 	// Remove any old log files for a previous instance
@@ -412,6 +421,7 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 
 		// Must still be testing the current version; don't overwrite
 		// fallback
+		status.TooEarly = true
 		errStr := fmt.Sprintf("Attempt to install baseOs update %s while testing is in progress for %s: refused",
 			config.BaseOsVersion, curPartVersion)
 		log.Errorln(errStr)
@@ -585,6 +595,9 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 			log.Infof("Mark other partition %s, unused\n", partName)
 			zboot.SetOtherPartitionStateUnused()
 			publishZbootPartitionStatus(ctx, partName)
+			baseOsSetPartitionInfoInStatus(ctx, status,
+				status.PartitionLabel)
+			publishBaseOsStatus(ctx, status)
 		}
 		status.PartitionLabel = ""
 		changed = true
@@ -827,15 +840,22 @@ func validateBaseOsConfig(ctx *baseOsMgrContext, config types.BaseOsConfig) erro
 
 func handleBaseOsTestComplete(ctx *baseOsMgrContext, uuidStr string, config types.BaseOsConfig, status types.BaseOsStatus) {
 
+	log.Infof("handleBaseOsTestComplete(%s) for %s\n",
+		uuidStr, config.BaseOsVersion)
 	if config.TestComplete == status.TestComplete {
 		// nothing to do
+		log.Infof("handleBaseOsTestComplete(%s) nothing to do for %s\n",
+			uuidStr, config.BaseOsVersion)
 		return
 	}
-
-	// trigger for baseos validation complete
-	// handle Partition State transition
 	if config.TestComplete {
-		doPartitionStateTransition(ctx, uuidStr, config, status)
+		if !zboot.IsCurrentPartitionStateInProgress() {
+			log.Warnf("handleBaseOsTestComplete(%s) not Inprogress for %s\n",
+				uuidStr, config.BaseOsVersion)
+		} else {
+			doPartitionStateTransition(ctx, uuidStr, config,
+				status)
+		}
 		return
 	}
 
@@ -860,9 +880,16 @@ func doPartitionStateTransition(ctx *baseOsMgrContext, uuidStr string, config ty
 		return
 	}
 
-	if status.PartitionLabel == partName &&
-		status.BaseOsVersion == partStatus.ShortVersion {
-		if err := zboot.MarkOtherPartitionStateActive(); err != nil {
+	if status.PartitionLabel != partName {
+		log.Warnf("doPartitionStateTransition(%s) wrong partLabel %s vs %s for %s\n",
+			uuidStr, status.PartitionLabel, partName,
+			config.BaseOsVersion)
+	} else if status.BaseOsVersion != partStatus.ShortVersion {
+		log.Warnf("doPartitionStateTransition(%s) wrong version %s vs %s for %s\n",
+			uuidStr, status.BaseOsVersion, partStatus.ShortVersion,
+			config.BaseOsVersion)
+	} else {
+		if err := zboot.MarkCurrentPartitionStateActive(); err != nil {
 			errStr := fmt.Sprintf("mark other active failed %s", err)
 			log.Errorf(errStr)
 			status.Error = errStr
@@ -870,11 +897,13 @@ func doPartitionStateTransition(ctx *baseOsMgrContext, uuidStr string, config ty
 			publishBaseOsStatus(ctx, &status)
 			return
 		}
+		status.TestComplete = true
 		// publish the partition information
 		publishZbootPartitionStatusAll(ctx)
-		baseOsSetPartitionInfoInStatus(ctx, &status, partName)
-		status.TestComplete = true
-		publishBaseOsStatus(ctx, &status)
+		updateAndPublishBaseOsStatusAll(ctx)
+
+		// Check if we have a failed update which needs a kick
+		maybeRetryInstall(ctx)
 	}
 }
 
@@ -888,6 +917,32 @@ func updateAndPublishBaseOsStatusAll(ctx *baseOsMgrContext) {
 		}
 		baseOsSetPartitionInfoInStatus(ctx, &status, status.PartitionLabel)
 		publishBaseOsStatus(ctx, &status)
+	}
+}
+
+func maybeRetryInstall(ctx *baseOsMgrContext) {
+	pub := ctx.pubBaseOsStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastBaseOsStatus(st)
+		if !status.TooEarly {
+			log.Infof("maybeRetryInstall(%s) skipped\n",
+				status.Key())
+			continue
+		}
+		config := lookupBaseOsConfig(ctx, status.Key())
+		if config == nil {
+			log.Infof("maybeRetryInstall(%s) no config\n",
+				status.Key())
+			continue
+		}
+
+		log.Infof("maybeRetryInstall(%s) redoing after %s %v\n",
+			status.Key(), status.Error, status.ErrorTime)
+		status.TooEarly = false
+		status.Error = ""
+		status.ErrorTime = time.Time{}
+		baseOsHandleStatusUpdate(ctx, config, &status)
 	}
 }
 
