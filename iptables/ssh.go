@@ -5,14 +5,14 @@
 // Always blocks 4822
 // Also always blocks port 8080
 
-package zedrouter
+package iptables
 
 import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 )
 
-func updateSshAccess(enable bool, initial bool) {
+func UpdateSshAccess(enable bool, initial bool) {
 
 	log.Infof("updateSshAccess(enable %v initial %v)\n",
 		enable, initial)
@@ -51,10 +51,10 @@ func allowPortRange(initial bool, startPort int, endPort int) {
 	} else {
 		portStr = fmt.Sprintf("%d:%d", startPort, endPort)
 	}
-	iptableCmdOut(!initial, "-D", "OUTPUT", "-p", "tcp", "--sport", portStr, "-j", "DROP")
-	iptableCmdOut(!initial, "-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
-	ip6tableCmdOut(!initial, "-D", "OUTPUT", "-p", "tcp", "--sport", portStr, "-j", "DROP")
-	ip6tableCmdOut(!initial, "-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
+	IptableCmdOut(!initial, "-D", "OUTPUT", "-p", "tcp", "--sport", portStr, "-j", "DROP")
+	IptableCmdOut(!initial, "-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
+	Ip6tableCmdOut(!initial, "-D", "OUTPUT", "-p", "tcp", "--sport", portStr, "-j", "DROP")
+	Ip6tableCmdOut(!initial, "-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
 }
 
 // Avoid logging errors if initial
@@ -70,8 +70,8 @@ func dropPortRange(initial bool, startPort int, endPort int) {
 	} else {
 		portStr = fmt.Sprintf("%d:%d", startPort, endPort)
 	}
-	iptableCmdOut(!initial, "-A", "OUTPUT", "-p", "tcp", "--sport", portStr, "-j", "DROP")
-	iptableCmdOut(!initial, "-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
-	ip6tableCmdOut(!initial, "-A", "OUTPUT", "-p", "tcp", "--sport", portStr, "-j", "DROP")
-	ip6tableCmdOut(!initial, "-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
+	IptableCmdOut(!initial, "-A", "OUTPUT", "-p", "tcp", "--sport", portStr, "-j", "DROP")
+	IptableCmdOut(!initial, "-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
+	Ip6tableCmdOut(!initial, "-A", "OUTPUT", "-p", "tcp", "--sport", portStr, "-j", "DROP")
+	Ip6tableCmdOut(!initial, "-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
 }

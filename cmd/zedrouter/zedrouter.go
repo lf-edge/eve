@@ -21,6 +21,7 @@ import (
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/flextimer"
+	"github.com/zededa/go-provision/iptables"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -125,7 +126,7 @@ func Run() {
 		legacyDataPlane:    false,
 		assignableAdapters: &aa,
 	}
-	updateSshAccess(zedrouterCtx.sshAccess, true)
+	iptables.UpdateSshAccess(zedrouterCtx.sshAccess, true)
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &zedrouterCtx)
@@ -449,7 +450,7 @@ func handleInit(runDirname string) {
 	}
 
 	// Setup initial iptables rules
-	iptablesInit()
+	iptables.IptablesInit()
 
 	// ipsets which are independent of config
 	createDefaultIpset()
@@ -2303,7 +2304,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	// XXX note different polarity
 	if gcp != nil && gcp.NoSshAccess == ctx.sshAccess {
 		ctx.sshAccess = !gcp.NoSshAccess
-		updateSshAccess(ctx.sshAccess, false)
+		iptables.UpdateSshAccess(ctx.sshAccess, false)
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
