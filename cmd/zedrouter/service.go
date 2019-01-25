@@ -18,6 +18,7 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/iptables"
 	"github.com/zededa/go-provision/types"
 )
 
@@ -832,7 +833,7 @@ func natActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	subnetStr := netstatus.Subnet.String()
 
 	for _, a := range status.IfNameList {
-		err := iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", a,
+		err := iptables.IptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
 			return err
@@ -872,7 +873,7 @@ func natInactivate(ctx *zedrouterContext, status *types.NetworkServiceStatus,
 	log.Infof("netInactivate(%s)\n", status.DisplayName)
 	subnetStr := status.Subnet.String()
 	for _, a := range status.IfNameList {
-		err := iptableCmd("-t", "nat", "-D", "POSTROUTING", "-o", a,
+		err := iptables.IptableCmd("-t", "nat", "-D", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
 			log.Errorf("natInactivate: iptableCmd failed %s\n", err)

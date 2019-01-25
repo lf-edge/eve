@@ -17,6 +17,7 @@ import (
 	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/iptables"
 	"github.com/zededa/go-provision/types"
 )
 
@@ -896,7 +897,7 @@ func natActivateForNetworkInstance(ctx *zedrouterContext,
 	subnetStr := status.Subnet.String()
 
 	for _, a := range status.IfNameList {
-		err := iptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", a,
+		err := iptables.IptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
 			return err
@@ -920,7 +921,7 @@ func natInactivateForNetworkInstance(ctx *zedrouterContext,
 	log.Infof("natInactivateForNetworkInstance(%s)\n", status.DisplayName)
 	subnetStr := status.Subnet.String()
 	for _, a := range status.IfNameList {
-		err := iptableCmd("-t", "nat", "-D", "POSTROUTING", "-o", a,
+		err := iptables.IptableCmd("-t", "nat", "-D", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
 			log.Errorf("natInactivateForNetworkInstance: iptableCmd failed %s\n", err)

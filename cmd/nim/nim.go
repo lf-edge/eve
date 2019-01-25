@@ -21,6 +21,7 @@ import (
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
+	"github.com/zededa/go-provision/iptables"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -36,6 +37,8 @@ const (
 type nimContext struct {
 	devicenetwork.DeviceNetworkContext
 	subGlobalConfig *pubsub.Subscription
+	GCInitialized   bool // Received initial GlobalConfig
+	sshAccess       bool
 
 	// CLI args
 	debug         bool
@@ -101,6 +104,7 @@ func waitForDeviceNetworkConfigFile() string {
 func Run() {
 	nimCtx := nimContext{}
 	nimCtx.AssignableAdapters = &types.AssignableAdapters{}
+	iptables.UpdateSshAccess(nimCtx.sshAccess, true)
 
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
@@ -232,6 +236,18 @@ func Run() {
 	// Apply any changes from the port config to date.
 	publishDeviceNetworkStatus(&nimCtx)
 
+	// Wait for initial GlobalConfig
+	for !nimCtx.GCInitialized {
+		log.Infof("Waiting for GCInitialized\n")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
+		}
+	}
+
 	// XXX should we make geoRedoTime configurable?
 	// We refresh the gelocation information when the underlay
 	// IP address(es) change, or once an hour.
@@ -325,6 +341,7 @@ func Run() {
 					log.Infof("Device connectivity to cloud failed at %v", time.Now())
 				}
 			}
+
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
 		}
@@ -347,12 +364,12 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 		// figure out a DevicePortConfig that works.
 		if ctx.Pending.Inprogress {
 			log.Infof("tryDeviceConnectivityToCloud: Device port configuration list " +
-			"verification in progress")
+				"verification in progress")
 			// Connectivity to cloud is already being figured out.
 			// We wait till the next cloud connectivity test slot.
 		} else {
 			log.Infof("tryDeviceConnectivityToCloud: Triggering Device port " +
-			"verification to resume cloud connectivity")
+				"verification to resume cloud connectivity")
 			// Start DPC verification to find a working configuration
 			devicenetwork.RestartVerify(ctx, "tryDeviceConnectivityToCloud")
 		}
@@ -377,8 +394,15 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	ctx.debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	ctx.debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
+	// XXX note different polarity
+	if gcp != nil && gcp.NoSshAccess == ctx.sshAccess {
+		ctx.sshAccess = !gcp.NoSshAccess
+		iptables.UpdateSshAccess(ctx.sshAccess, false)
+	}
+	ctx.GCInitialized = true
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -393,5 +417,6 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	ctx.debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
+	ctx.GCInitialized = false
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

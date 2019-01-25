@@ -1225,7 +1225,11 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			item.Key, item.Value)
 
 		// XXX remove any "project." string. Can zedcloud omit it?
+		// XXX also any "device." string.
+		// XXX ideally zedcloud should send us a single item
+		// after it determins whether project or device wins.
 		key := strings.TrimPrefix(item.Key, "project.")
+		key = strings.TrimPrefix(key, "device.")
 
 		switch key {
 		case "timer.config.interval":
