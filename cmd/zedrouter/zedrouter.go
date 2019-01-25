@@ -126,7 +126,6 @@ func Run() {
 		legacyDataPlane:    false,
 		assignableAdapters: &aa,
 	}
-	iptables.UpdateSshAccess(zedrouterCtx.sshAccess, true)
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &zedrouterCtx)
