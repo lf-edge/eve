@@ -60,12 +60,7 @@ func InitializeTunnelClient(serverName string, localRelay string) *WSTunnelClien
 		Timeout:          calcWsTimeout(30),
 	}
 
-	/*var proxy *string = cliFlag.String("proxy", "",
-		"use HTTPS proxy http://user:pass@hostname:port")
-
-	cliFlag.Parse(args)*/
-
-	// process -proxy or look for standard unix env variables
+	//TODO enable proxy
 	/*if *proxy == "" {
 		envNames := []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"}
 		for _, n := range envNames {
@@ -83,7 +78,6 @@ func InitializeTunnelClient(serverName string, localRelay string) *WSTunnelClien
 			// through and complain about the original one.
 			if proxyURL, err = url.Parse("http://" + *proxy); err != nil {
 				////log.Printf(fmt.Sprintf("Invalid proxy address: %q, %v", *proxy, err.Error()))
-				os.Exit(1)
 			}
 		}
 
