@@ -1,4 +1,5 @@
 FROM ZTOOLS_TAG as ztools
+FROM LISP_TAG as lisp
 FROM XENTOOLS_TAG as xen-tools
 FROM DNSMASQ_TAG as dnsmasq
 FROM STRONGSWAN_TAG as strongswan
@@ -23,6 +24,11 @@ RUN ssh-keygen -A ; echo PermitRootLogin yes >> /etc/ssh/sshd_config ; sed -ie '
 
 COPY --from=xen-tools / /
 COPY --from=ztools / /
+COPY --from=lisp /lisp/lisp-ztr /opt/zededa/bin/
+COPY --from=lisp /lisp /opt/zededa/lisp/
+COPY --from=lisp /usr/bin/pydoc /usr/bin/smtpd.py /usr/bin/python* /usr/bin/
+COPY --from=lisp /usr/lib/libpython* /usr/lib/libffi.so* /usr/lib/
+COPY --from=lisp /usr/lib/python2.7 /usr/lib/python2.7/
 COPY --from=gpttools / /
 COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
 COPY --from=strongswan / /
