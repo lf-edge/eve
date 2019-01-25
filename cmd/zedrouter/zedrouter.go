@@ -340,7 +340,10 @@ func Run() {
 
 	zedrouterCtx.ready = true
 
-	// First wait for restarted from zedmanager
+	// First wait for restarted from zedmanager to
+	// reduce the number of LISP-RESTARTs
+	// XXX this results in waiting for the verifier to report restarted
+	// to zedmanager which can be quite a long time.
 	for !subAppNetworkConfig.Restarted() {
 		log.Infof("Waiting for zedmanager to report restarted\n")
 		select {
