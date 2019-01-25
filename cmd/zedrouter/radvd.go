@@ -33,6 +33,7 @@ interface %s {
 
 // Create the radvd config file for the overlay
 // Would be more polite to return an error then to Fatal
+//	olIfname - Overlay Interface Name
 func createRadvdConfiglet(cfgPathname string, olIfname string) {
 
 	log.Debugf("createRadvdConfiglet: %s\n", olIfname)

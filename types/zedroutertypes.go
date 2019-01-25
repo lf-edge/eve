@@ -111,16 +111,16 @@ type DevicePortConfigList struct {
 // A complete set of configuration for all the ports used by zedrouter on the
 // device
 type DevicePortConfig struct {
-	Version       DevicePortConfigVersion
-	Key           string
-	TimePriority  time.Time // All zero's is fallback lowest priority
+	Version      DevicePortConfigVersion
+	Key          string
+	TimePriority time.Time // All zero's is fallback lowest priority
 
 	// Times when last ping test Failed/Succeeded.
 	// All zeros means never tested.
 	LastFailed    time.Time
 	LastSucceeded time.Time
 
-	Ports         []NetworkPortConfig
+	Ports []NetworkPortConfig
 }
 
 type DevicePortConfigVersion uint32
@@ -174,7 +174,7 @@ func (portConfig *DevicePortConfig) DoSanitize(
 
 func (portConfig DevicePortConfig) IsDPCTestable() bool {
 	// convert time difference in nano seconds to seconds
-	timeDiff := int64(time.Now().Sub(portConfig.LastFailed)/time.Second)
+	timeDiff := int64(time.Now().Sub(portConfig.LastFailed) / time.Second)
 
 	if portConfig.LastFailed.After(portConfig.LastSucceeded) && timeDiff < 60 {
 		return false
@@ -891,6 +891,127 @@ func CastNetworkMetrics(in interface{}) NetworkMetrics {
 		log.Fatal(err, "json Unmarshal in CastNetworkMetrics")
 	}
 	return output
+}
+
+type NetworkInstanceType int32
+
+const (
+	NetworkInstanceTypeFirst       NetworkInstanceType = 0
+	NetworkInstanceTypeSwitch      NetworkInstanceType = 1
+	NetworkInstanceTypeLocal       NetworkInstanceType = 2
+	NetworkInstanceTypeCloud       NetworkInstanceType = 3
+	NetworkInstanceTypeMesh        NetworkInstanceType = 4
+	NetworkInstanceTypeHoneyPot    NetworkInstanceType = 5
+	NetworkInstanceTypeTransparent NetworkInstanceType = 6
+	NetworkInstanceTypeLast        NetworkInstanceType = 255
+)
+
+type AddressType int32
+
+const (
+	AddressTypeFirst      AddressType = 0
+	AddressTypeIPV4       AddressType = 1
+	AddressTypeIPV6       AddressType = 2
+	AddressTypeCryptoIPV4 AddressType = 3
+	AddressTypeCryptoIPV6 AddressType = 4
+	AddressTypeLast       AddressType = 255
+)
+
+// NetworkInstanceConfig
+//		Config Object for NetworkInstance
+// 		Extracted from the protobuf NetworkInstanceConfig
+type NetworkInstanceConfig struct {
+	UUIDandVersion
+	DisplayName string
+	Activate    bool
+
+	Type NetworkInstanceType
+
+	// Activated
+	//	true if the NetworkInstance has been activated
+	Activated bool
+
+	// Port - Port name specified in the Device Config.
+	Port string
+
+	// IP configuration for the Application
+	IpType          AddressType
+	DhcpType        DhcpType // If DT_STATIC or DT_SERVER use below
+	Subnet          net.IPNet
+	Gateway         net.IP
+	DomainName      string
+	NtpServer       net.IP
+	DnsServers      []net.IP // If not set we use Gateway as DNS server
+	DhcpRange       IpRange
+	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
+
+	// For other network services - Proxy / Lisp /StrongSwan etc..
+	OpaqueConfig string
+}
+
+func (status *NetworkInstanceConfig) Key() string {
+	return status.UUID.String()
+}
+
+type ChangeInProgressType int32
+
+const (
+	ChangeInProgressTypeNone   ChangeInProgressType = 0
+	ChangeInProgressTypeCreate ChangeInProgressType = 1
+	ChangeInProgressTypeModify ChangeInProgressType = 2
+	ChangeInProgressTypeDelete ChangeInProgressType = 3
+	ChangeInProgressTypeLast   ChangeInProgressType = 255
+)
+
+// NetworkInstanceStatus
+//		Config Object for NetworkInstance
+// 		Extracted from the protobuf NetworkInstanceConfig
+type NetworkInstanceStatus struct {
+	NetworkInstanceConfig
+	ChangeInProgress ChangeInProgressType
+
+	BridgeNum    int
+	BridgeName   string // bn<N>
+	BridgeIPAddr string
+	BridgeMac    string
+
+	// interface names for the Port
+	IfNameList []string // Recorded at time of activate
+
+	// Used to populate DNS and eid ipset
+	DnsNameToIPList []DnsNameToIP
+
+	// Collection of address assignments; from MAC address to IP address
+	IPAssignments map[string]net.IP
+
+	// Union of all ipsets fed to dnsmasq for the linux bridge
+	BridgeIPSets []string
+
+	// Set of vifs on this bridge
+	VifNames []string
+
+	Ipv4Eid bool // Track if this is a CryptoEid with IPv4 EIDs
+
+	// Any errrors from provisioning the network instance
+	Error     string
+	ErrorTime time.Time
+}
+
+func (status *NetworkInstanceStatus) SetError(err error) {
+	log.Errorln(err.Error())
+	status.Error = err.Error()
+	status.ErrorTime = time.Now()
+	return
+}
+
+// Returns true if found
+func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
+	for _, a := range status.IPAssignments {
+		if ip.Equal(a) {
+			return true
+		}
+	}
+	return false
 }
 
 // Similar support as in draft-ietf-netmod-acl-model

@@ -48,7 +48,7 @@ type IoBundle struct {
 	XenCfg   string // If template for the bundle
 
 	// IsPciBack
-	//	Is the IpBundle assigned to pciBack.
+	//	Is the IoBundle assigned to pciBack.
 	//  If the device is managed by dom0, this is False.
 	//  If the device is ( or to be ) managed by DomU, this is True
 	IsPCIBack bool // Assigned to pciback
