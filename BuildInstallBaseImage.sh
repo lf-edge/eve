@@ -61,17 +61,30 @@ ZCLI_CONFIG_CMD="zcli configure -s $SERVER  -u $ZCLI_USER -P $ZCLI_PASSWORD -O t
 echo "ZCLI_CONFIFG_CMD: $ZCLI_CONFIG_CMD"
 
 
+echo "==========================================="
+echo "Building go-provision docker image"
+echo "==========================================="
 cd $ZEDEDA/go-provision
 echo "docker build -t $TAG ."
 docker build -t $TAG .
+echo "\n\n\n"
 
+echo "==========================================="
+echo "Building zenbuild rootfs.img"
+echo "==========================================="
 cd $ZEDEDA/zenbuild
 echo "ZTOOLS_TAG=$TAG make rootfs.img"
 ZTOOLS_TAG=$TAG make rootfs.img
+echo "\n\n\n"
+
 IMAGE=`grep contents images/rootfs.yml | awk '{print $2}'`
+echo "==========================================="
 echo "IMAGE=$IMAGE"
+echo "==========================================="
 #contents: '0.0.0-fixes-6640a81b-dirty-2018-12-17.22.10-amd64'
 #IMAGE='0.0.0-6640a81b-dirty-2018-12-18.23.51-amd64'
+
+echo "\n\n\n"
 
 echo "Start zcli container."
 # This looks-fori/starts a container named "zcli".
@@ -97,10 +110,15 @@ zcli_exec() {
    docker exec zcli /bin/sh -c "$1"
 }
 
+echo "\n\n\n"
+echo "=================================================================="
+echo "Executing ZCLI commands to create / upload image and update device"
+echo "=================================================================="
 zcli_exec "$ZCLI_CONFIG_CMD"
 zcli_exec "zcli login"
-zcli_exec "zcli image create --type=baseimage --image-format=qcow2 $IMAGE"
-zcli_exec "zcli image upload --datastore-name=Zededa-AWS-Image $IMAGE --path=$IMAGE_PATH"
+zcli_exec "zcli image create --datastore-name=Zededa-AWS-Image --type=baseimage --image-format=qcow2 $IMAGE"
+zcli_exec "zcli image upload $IMAGE --path=$IMAGE_PATH"
+echo "=================\n Waiting for Image Upload to Complete======"; sleep 60; echo "=== WAIT FOR UPLOAD DONE ===="
 zcli_exec "zcli device baseimage-update $DEVICE --image=$IMAGE"
 zcli_exec "zcli device baseimage-update $DEVICE --image=$IMAGE --activate"
 zcli_exec "zcli device show --detail $DEVICE"
