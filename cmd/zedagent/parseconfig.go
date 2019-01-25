@@ -9,14 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/golang/protobuf/proto"
-	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
-	"github.com/zededa/api/zconfig"
-	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/pubsub"
-	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/zboot"
 	"hash"
 	"io/ioutil"
 	"net"
@@ -26,6 +18,15 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/golang/protobuf/proto"
+	"github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
+	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/pubsub"
+	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/zboot"
 )
 
 const (
@@ -75,8 +76,15 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	parseDatastoreConfig(config, getconfigCtx)
 
 	parseBaseOsConfig(getconfigCtx, config)
+	// XXX Deprecated..
+	//	parseNetworkObjectConfig
+	//	parseNetworkServiceConfig
+	//	Remove this when Network / ServiceInstance are removed.
+	//	XXX Network Instance is the new way of configuring network for
+	// 				applications
 	parseNetworkObjectConfig(config, getconfigCtx)
 	parseNetworkServiceConfig(config, getconfigCtx)
+	parseNetworkInstanceConfig(config, getconfigCtx)
 	parseSystemAdapterConfig(config, getconfigCtx, false)
 	parseAppInstanceConfig(config, getconfigCtx)
 
@@ -271,6 +279,104 @@ func parseNetworkServiceConfig(config *zconfig.EdgeDevConfig,
 
 	// Export NetworkServiceConfig to zedrouter
 	publishNetworkServiceConfig(getconfigCtx, svcs)
+}
+
+func unpublishDeletedNetworkInstanceConfig(ctx *getconfigContext,
+	networkInstances []*zconfig.NetworkInstanceConfig) {
+
+	currentEntries := ctx.pubNetworkInstanceConfig.GetAll()
+	for key, entry := range currentEntries {
+		networkInstanceEntry := lookupNetworkInstanceById(key, networkInstances)
+		if networkInstanceEntry != nil {
+			// Entry not deleted.
+			continue
+		}
+
+		config := cast.CastNetworkServiceConfig(entry)
+		if config.Key() != key {
+			// XXX Should we assert here instead?? This should never happen.
+			log.Fatalf("unpublishDeletedNetworkInstanceConfig: key/UUID mismatch "+
+				"%s vs %s; ignored %+v\n", key, config.Key(), config)
+		}
+
+		log.Infof("publishNetworkServiceConfig: unpublishing %s\n", key)
+		ctx.pubNetworkServiceConfig.Unpublish(key)
+	}
+}
+
+func publishNetworkInstanceConfig(ctx *getconfigContext,
+	networkInstances []*zconfig.NetworkInstanceConfig) {
+
+	unpublishDeletedNetworkInstanceConfig(ctx, networkInstances)
+
+	for _, apiConfigEntry := range networkInstances {
+		id, err := uuid.FromString(apiConfigEntry.Uuidandversion.Uuid)
+		version := apiConfigEntry.Uuidandversion.Version
+		if err != nil {
+			log.Errorf("NetworkInstanceConfig: Malformed UUID %s. ignored. Err: %s\n",
+				apiConfigEntry.Uuidandversion.Uuid, err)
+			// XXX - We should propagate this error to Cloud.
+			// Why ignore only for this specific Check?
+			// Shouldn't we reject the config if any of the fields have errors?
+			// Or may be identify some fields as imp. fields and reject them only?
+			// Either way, it is good to propagate the error to Cloud.
+			continue
+		}
+		networkInstanceConfig := types.NetworkInstanceConfig{
+			UUIDandVersion: types.UUIDandVersion{id, version},
+			DisplayName:    apiConfigEntry.Displayname,
+			Type:           types.NetworkInstanceType(apiConfigEntry.InstType),
+			Activate:       apiConfigEntry.Activate,
+		}
+		log.Infof("publishNetworkInstanceConfig: processing %s %s type %d activate %v\n",
+			networkInstanceConfig.UUID.String(), networkInstanceConfig.DisplayName,
+			networkInstanceConfig.Type, networkInstanceConfig.Activate)
+
+		if apiConfigEntry.Port != nil {
+			if apiConfigEntry.Port.Type != zconfig.ZCioType_ZCioEth {
+				log.Errorf("publishNetworkInstanceConfig: Unsupported IoType %v ignored\n",
+					apiConfigEntry.Port.Type)
+				continue
+			}
+			networkInstanceConfig.Port = apiConfigEntry.Port.Name
+		}
+		if apiConfigEntry.Cfg != nil {
+			networkInstanceConfig.OpaqueConfig = apiConfigEntry.Cfg.Oconfig
+		}
+
+		ctx.pubNetworkServiceConfig.Publish(networkInstanceConfig.UUID.String(),
+			&networkInstanceConfig)
+	}
+}
+
+var networkInstancePrevConfigHash []byte
+
+func parseNetworkInstanceConfig(config *zconfig.EdgeDevConfig,
+	getconfigCtx *getconfigContext) {
+
+	h := sha256.New()
+	networkInstances := config.GetNetworkInstances()
+	for _, n := range networkInstances {
+		computeConfigElementSha(h, n)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, networkInstancePrevConfigHash)
+	networkConfigPrevConfigHash = configHash
+	if same {
+		log.Debugf("parseNetworkObjectConfig: network sha is unchanged: % x\n",
+			configHash)
+		return
+	}
+	log.Infof("parseNetworkInstanceObjectConfig: Applying updated config "+
+		"sha % x vs. % x: %v\n",
+		networkInstancePrevConfigHash, configHash, networkInstances)
+	// Export NetworkObjectConfig to zedrouter
+	// XXX
+	// System Adapter points to network for Proxy configuration.
+	// There could be a situation where networks change, but
+	// systerm adapters do not change. When we see the networks
+	// change, we should parse systerm adapters again.
+	publishNetworkInstanceConfig(getconfigCtx, networkInstances)
 }
 
 var appinstancePrevConfigHash []byte
@@ -617,6 +723,19 @@ func lookupServiceId(id string, cfgServices []*zconfig.ServiceInstanceConfig) *z
 	for _, svcEnt := range cfgServices {
 		if id == svcEnt.Id {
 			return svcEnt
+		}
+	}
+	return nil
+}
+
+// XXX - Why not just make each Config type implement an interface Id?
+//		Or even have all of them use uuidVersionName struct as the first member?
+//		That would avoid writing this code for each config type??
+func lookupNetworkInstanceById(uuid string,
+	networkInstancesConfigList []*zconfig.NetworkInstanceConfig) *zconfig.NetworkInstanceConfig {
+	for _, entry := range networkInstancesConfigList {
+		if uuid == entry.Uuidandversion.Uuid {
+			return entry
 		}
 	}
 	return nil

@@ -8,14 +8,15 @@ package zedrouter
 import (
 	"bufio"
 	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/agentlog"
-	"github.com/zededa/go-provision/types"
 	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/types"
 )
 
 // XXX inotify seems to stop reporting any changes in some cases
@@ -52,6 +53,172 @@ func dnsmasqDhcpHostDir(bridgeName string) string {
 	return dhcphostsDir
 }
 
+// createDnsmasqConfigletForNetworkInstance
+// When we create a linux bridge we set this up
+// Also called when we need to update the ipsets
+func createDnsmasqConfigletForNetworkInstance(
+	bridgeName string, bridgeIPAddr string,
+	netconf *types.NetworkInstanceConfig, hostsDir string,
+	ipsets []string, Ipv4Eid bool) {
+
+	log.Debugf("createDnsmasqConfiglet: %s netconf %v\n",
+		bridgeName, netconf)
+
+	cfgPathname := dnsmasqConfigPath(bridgeName)
+	// Delete if it exists
+	if _, err := os.Stat(cfgPathname); err == nil {
+		if err := os.Remove(cfgPathname); err != nil {
+			errStr := fmt.Sprintf("createDnsmasqConfiglet %v",
+				err)
+			log.Errorln(errStr)
+		}
+	}
+	file, err := os.Create(cfgPathname)
+	if err != nil {
+		log.Fatal("createDnsmasqConfiglet failed ", err)
+	}
+	defer file.Close()
+
+	// Create a dhcp-hosts directory to be used when hosts are added
+	dhcphostsDir := dnsmasqDhcpHostDir(bridgeName)
+	ensureDir(dhcphostsDir)
+
+	file.WriteString(dnsmasqStatic)
+	for _, ipset := range ipsets {
+		file.WriteString(fmt.Sprintf("ipset=/%s/ipv4.%s,ipv6.%s\n",
+			ipset, ipset, ipset))
+	}
+	file.WriteString(fmt.Sprintf("pid-file=/var/run/dnsmasq.%s.pid\n",
+		bridgeName))
+	file.WriteString(fmt.Sprintf("interface=%s\n", bridgeName))
+	isIPv6 := false
+	if bridgeIPAddr != "" {
+		ip := net.ParseIP(bridgeIPAddr)
+		if ip == nil {
+			log.Fatalf("createDnsmasqConfiglet failed to parse IP %s",
+				bridgeIPAddr)
+		}
+		isIPv6 = (ip.To4() == nil)
+		file.WriteString(fmt.Sprintf("listen-address=%s\n",
+			bridgeIPAddr))
+	} else {
+		// XXX error if there is no bridgeIPAddr?
+	}
+	file.WriteString(fmt.Sprintf("hostsdir=%s\n", hostsDir))
+	file.WriteString(fmt.Sprintf("dhcp-hostsdir=%s\n", dhcphostsDir))
+
+	ipv4Netmask := "255.255.255.0" // Default unless there is a Subnet
+	dhcpRange := bridgeIPAddr      // Default unless there is a DhcpRange
+
+	// By default dnsmasq advertizes a router (and we can have a
+	// static router defined in the NetworkObjectConfig).
+	// To support airgap networks we interpret gateway=0.0.0.0
+	// to not advertize ourselves as a router. Also,
+	// if there is not an explicit dns server we skip
+	// advertising that as well.
+	advertizeRouter := true
+	var router string
+
+	if Ipv4Eid {
+		advertizeRouter = false
+	} else if netconf.Gateway != nil {
+		if netconf.Gateway.IsUnspecified() {
+			advertizeRouter = false
+		} else {
+			router = netconf.Gateway.String()
+		}
+	} else if bridgeIPAddr != "" {
+		router = bridgeIPAddr
+	} else {
+		advertizeRouter = false
+	}
+	if netconf.DomainName != "" {
+		if isIPv6 {
+			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-search,%s\n",
+				netconf.DomainName))
+		} else {
+			file.WriteString(fmt.Sprintf("dhcp-option=option:domain-name,%s\n",
+				netconf.DomainName))
+		}
+	}
+	advertizeDns := false
+	if Ipv4Eid {
+		advertizeDns = true
+	}
+	for _, ns := range netconf.DnsServers {
+		advertizeDns = true
+		file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server,%s\n",
+			ns.String()))
+	}
+	if netconf.NtpServer != nil {
+		file.WriteString(fmt.Sprintf("dhcp-option=option:ntp-server,%s\n",
+			netconf.NtpServer.String()))
+	}
+	if netconf.Subnet.IP != nil {
+		ipv4Netmask = net.IP(netconf.Subnet.Mask).String()
+	}
+	// Special handling for IPv4 EID case to avoid ARP for EIDs.
+	// We add a router for the BridgeIPAddr plus a subnet route
+	// for the EID subnet, and no default route by clearing advertizeRouter
+	// above. We configure an all ones netmask. In addition, since the
+	// default broadcast address ends up being the bridgeIPAddr, we force
+	// a bogus one as the first .0 address in the subnet.
+	//
+	if Ipv4Eid {
+		file.WriteString("dhcp-option=option:netmask,255.255.255.255\n")
+		// Onlink aka ARPing route for our IP
+		route1 := fmt.Sprintf("%s/32,0.0.0.0", bridgeIPAddr)
+		var route2 string
+		var broadcast string
+		if netconf.Subnet.IP != nil {
+			route2 = fmt.Sprintf(",%s,%s", netconf.Subnet.String(),
+				bridgeIPAddr)
+			broadcast = netconf.Subnet.IP.String()
+		}
+		file.WriteString(fmt.Sprintf("dhcp-option=option:classless-static-route,%s%s\n",
+			route1, route2))
+		// Broadcast address option
+		if broadcast != "" {
+			file.WriteString(fmt.Sprintf("dhcp-option=28,%s\n",
+				broadcast))
+		}
+	} else if netconf.Subnet.IP != nil {
+		file.WriteString(fmt.Sprintf("dhcp-option=option:netmask,%s\n",
+			ipv4Netmask))
+	}
+	if advertizeRouter {
+		// IPv6 XXX needs to be handled in radvd
+		if !isIPv6 {
+			file.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n",
+				router))
+		}
+	} else {
+		log.Infof("createDnsmasqConfiglet: no router\n")
+		if !isIPv6 {
+			file.WriteString(fmt.Sprintf("dhcp-option=option:router\n"))
+		}
+		if !advertizeDns {
+			// Handle isolated network by making sure
+			// we are not a DNS server. Can be overridden
+			// with the DnsServers above
+			log.Infof("createDnsmasqConfiglet: no DNS server\n")
+			file.WriteString(fmt.Sprintf("dhcp-option=option:dns-server\n"))
+		}
+	}
+	if netconf.DhcpRange.Start != nil {
+		dhcpRange = netconf.DhcpRange.Start.String()
+	}
+	if isIPv6 {
+		file.WriteString(fmt.Sprintf("dhcp-range=::,static,0,10m\n"))
+	} else {
+		file.WriteString(fmt.Sprintf("dhcp-range=%s,static,%s,10m\n",
+			dhcpRange, ipv4Netmask))
+	}
+}
+
+// createDnsmasqConfiglet
+//		DEPRECATED.. Will be Deleted when Service Instance is no longer
+//			Supported
 // When we create a linux bridge we set this up
 // Also called when we need to update the ipsets
 func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,

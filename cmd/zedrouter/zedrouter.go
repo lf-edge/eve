@@ -14,6 +14,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
+	"os"
+	"strconv"
+	"time"
+
 	"github.com/eriknordmark/netlink"
 	"github.com/google/go-cmp/cmp"
 	"github.com/satori/go.uuid"
@@ -26,10 +31,6 @@ import (
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/wrap"
-	"net"
-	"os"
-	"strconv"
-	"time"
 )
 
 const (
@@ -47,8 +48,10 @@ type zedrouterContext struct {
 	legacyDataPlane          bool
 	subNetworkObjectConfig   *pubsub.Subscription
 	subNetworkServiceConfig  *pubsub.Subscription
+	subNetworkInstanceConfig *pubsub.Subscription
 	pubNetworkObjectStatus   *pubsub.Publication
 	pubNetworkServiceStatus  *pubsub.Publication
+	pubNetworkInstanceStatus *pubsub.Publication
 	subAppNetworkConfig      *pubsub.Subscription
 	subAppNetworkConfigAg    *pubsub.Subscription // From zedagent for dom0
 	pubAppNetworkStatus      *pubsub.Publication
@@ -179,6 +182,13 @@ func Run() {
 	}
 	zedrouterCtx.pubNetworkServiceStatus = pubNetworkServiceStatus
 
+	pubNetworkInstanceStatus, err := pubsub.Publish(agentName,
+		types.NetworkInstanceStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubNetworkInstanceStatus = pubNetworkInstanceStatus
+
 	pubAppNetworkStatus, err := pubsub.Publish(agentName,
 		types.AppNetworkStatus{})
 	if err != nil {
@@ -246,6 +256,16 @@ func Run() {
 	zedrouterCtx.subNetworkServiceConfig = subNetworkServiceConfig
 	subNetworkServiceConfig.Activate()
 
+	subNetworkInstanceConfig, err := pubsub.Subscribe("zedagent",
+		types.NetworkInstanceConfig{}, false, &zedrouterCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subNetworkInstanceConfig.ModifyHandler = handleNetworkInstanceModify
+	subNetworkInstanceConfig.DeleteHandler = handleNetworkInstanceDelete
+	zedrouterCtx.subNetworkInstanceConfig = subNetworkInstanceConfig
+	subNetworkInstanceConfig.Activate()
+
 	// Subscribe to AppNetworkConfig from zedmanager and from zedagent
 	subAppNetworkConfig, err := pubsub.Subscribe("zedmanager",
 		types.AppNetworkConfig{}, false, &zedrouterCtx)
@@ -296,6 +316,8 @@ func Run() {
 		// Even if ethN isn't individually assignable, it
 		// could be used for a bridge.
 		maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
+		maybeUpdateBridgeIPAddrForNetworkInstance(
+			&zedrouterCtx, ifname)
 	}
 	routeChanges, addrChanges, linkChanges := PbrInit(
 		&zedrouterCtx, nil, addrChangeNonMgmtPortFn)
@@ -386,6 +408,9 @@ func Run() {
 
 		case change := <-subNetworkServiceConfig.C:
 			subNetworkServiceConfig.ProcessChange(change)
+
+		case change := <-subNetworkInstanceConfig.C:
+			subNetworkInstanceConfig.ProcessChange(change)
 
 		case change := <-subLispInfoStatus.C:
 			subLispInfoStatus.ProcessChange(change)

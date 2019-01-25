@@ -8,17 +8,18 @@ package zedrouter
 import (
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
 	"github.com/eriknordmark/netlink"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/iptables"
 	"github.com/zededa/go-provision/types"
-	"os"
-	"strconv"
-	"strings"
-	"syscall"
-	"time"
 )
 
 func handleNetworkServiceModify(ctxArg interface{}, key string, configArg interface{}) {
@@ -850,6 +851,9 @@ func natActivate(ctx *zedrouterContext, config types.NetworkServiceConfig,
 	return nil
 }
 
+// adapterToIfNames
+//	XXX - Probably should move this to ZedRouter.go as a method
+//		of zedRouterContext
 // Expand the generic names, and return the interface name
 // Does not verify the existence of the adapters/interfaces
 func adapterToIfNames(ctx *zedrouterContext, adapter string) []string {
