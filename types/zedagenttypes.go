@@ -54,6 +54,7 @@ type BaseOsStatus struct {
 	Activated         bool
 	Reboot            bool
 	TestComplete      bool
+	TooEarly          bool // Failed since previous was inprogress/test
 	OsParams          []OsVerParams
 	StorageStatusList []StorageStatus
 	PartitionLabel    string

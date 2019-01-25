@@ -286,14 +286,11 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 	uuidStr := config.Key()
 	ctx := ctxArg.(*baseOsMgrContext)
 
-	log.Infof("handleBaseOsModify for %s Activate %v\n",
-		config.BaseOsVersion, config.Activate)
-	if config.UUIDandVersion.Version == status.UUIDandVersion.Version &&
-		config.Activate == status.Activated {
-		log.Infof("Same version %v for %s\n",
-			config.UUIDandVersion.Version, uuidStr)
+	log.Infof("handleBaseOsModify for %s Activate %v TestComplete %v\n",
+		config.BaseOsVersion, config.Activate, config.TestComplete)
+
+	if config.TestComplete != status.TestComplete && status.Activated {
 		handleBaseOsTestComplete(ctx, uuidStr, config, status)
-		return
 	}
 
 	// Check total and activated counts
@@ -393,7 +390,6 @@ func handleCertObjModify(ctx *baseOsMgrContext, key string, config *types.CertOb
 	uuidStr := config.Key()
 	log.Infof("handleCertObjModify for %s\n", uuidStr)
 
-	// XXX:FIXME, do we
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
 		log.Infof("Same version %v for %s\n",
 			config.UUIDandVersion.Version, key)
