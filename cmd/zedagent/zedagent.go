@@ -207,6 +207,13 @@ func Run() {
 	}
 	getconfigCtx.pubNetworkServiceConfig = pubNetworkServiceConfig
 
+	pubNetworkInstanceConfig, err := pubsub.Publish(agentName,
+		types.NetworkInstanceConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.pubNetworkInstanceConfig = pubNetworkInstanceConfig
+
 	pubAppInstanceConfig, err := pubsub.Publish(agentName,
 		types.AppInstanceConfig{})
 	if err != nil {
