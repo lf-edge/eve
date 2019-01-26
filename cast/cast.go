@@ -109,6 +109,18 @@ func CastNetworkInstanceStatus(in interface{}) types.NetworkInstanceStatus {
 	return output
 }
 
+func CastNetworkInstanceMetrics(in interface{}) types.NetworkInstanceMetrics {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastNetworkInstanceMetrics")
+	}
+	var output types.NetworkInstanceMetrics
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastNetworkInstanceSMetrics")
+	}
+	return output
+}
+
 func CastDevicePortConfig(in interface{}) types.DevicePortConfig {
 	b, err := json.Marshal(in)
 	if err != nil {
