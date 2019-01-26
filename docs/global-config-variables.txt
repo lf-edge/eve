@@ -1,5 +1,9 @@
 The following variables can be set using zcli on a per-project basis using e.g.,
-zcli project update <name> [--config=<key:value>...]:
+    zcli project update <name> [--config=<key:value>...]
+or on a per asset basis using
+   zcli device update <name> [--config=<key:value>...]
+For example,
+zcli device update sc-supermicro-zc2 --config=debug.disable.ssh:true
 
 timer.config.interval	integer in seconds - how frequently device gets config
 timer.metric.interval	integer in seconds - how frequently device reports metrics
