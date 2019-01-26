@@ -9,9 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
-	"net"
 )
 
 const (
@@ -538,7 +539,7 @@ func strongSwanVpnDelete(vpnConfig types.VpnServiceConfig) error {
 
 	gatewayConfig := vpnConfig.GatewayConfig
 
-	log.Infof("strongSwan IpSec Vpn Delete %s:%s, %s, %s\n",
+	log.Infof("strongSwan IpSec Vpn Delete %s:%t, %s, %s\n",
 		vpnConfig.VpnRole, vpnConfig.PolicyBased,
 		gatewayConfig.IpAddr, gatewayConfig.SubnetBlock)
 

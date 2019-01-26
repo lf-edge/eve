@@ -895,6 +895,7 @@ func CastNetworkMetrics(in interface{}) NetworkMetrics {
 
 type NetworkInstanceType int32
 
+// These values should be same as the ones defined in zconfig.ZNetworkInstType
 const (
 	NetworkInstanceTypeFirst       NetworkInstanceType = 0
 	NetworkInstanceTypeSwitch      NetworkInstanceType = 1
@@ -908,6 +909,7 @@ const (
 
 type AddressType int32
 
+// The values here should be same as the ones defined in zconfig.AddressType
 const (
 	AddressTypeFirst      AddressType = 0
 	AddressTypeIPV4       AddressType = 1
@@ -923,13 +925,11 @@ const (
 type NetworkInstanceConfig struct {
 	UUIDandVersion
 	DisplayName string
-	Activate    bool
+
+	// Activate - Activate the config.
+	Activate bool
 
 	Type NetworkInstanceType
-
-	// Activated
-	//	true if the NetworkInstance has been activated
-	Activated bool
 
 	// Port - Port name specified in the Device Config.
 	Port string
@@ -969,6 +969,10 @@ const (
 type NetworkInstanceStatus struct {
 	NetworkInstanceConfig
 	ChangeInProgress ChangeInProgressType
+
+	// Activated
+	//	Keeps track of current state of object - if it has been activated
+	Activated bool
 
 	BridgeNum    int
 	BridgeName   string // bn<N>
