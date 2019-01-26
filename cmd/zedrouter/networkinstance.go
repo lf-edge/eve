@@ -618,7 +618,7 @@ func maybeUpdateBridgeIPAddrForNetworkInstance(
 		return
 	}
 	log.Infof("maybeUpdateBridgeIPAddrForNetworkInstance: found \n"+
-		"NetworkInstance %s", status)
+		"NetworkInstance %s", status.DisplayName)
 
 	if !status.Activated {
 		log.Errorf("maybeUpdateBridgeIPAddrForNetworkInstance: "+

@@ -8,11 +8,12 @@ package zedrouter
 import (
 	"errors"
 	"fmt"
+	"net"
+	"strconv"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
-	"net"
-	"strconv"
 )
 
 // iptablesRule is the list of parmeters after the "-A", "FORWARD"
@@ -536,7 +537,7 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 			// Generate NAT and ACCEPT rules based on protocol,
 			// lport, and TargetPort
 			if lport == "" || protocol == "" {
-				errStr := fmt.Sprintf("PortMap without lport %s or protocol %d: %+v",
+				errStr := fmt.Sprintf("PortMap without lport %s or protocol %s: %+v",
 					lport, protocol, ace)
 				log.Errorln(errStr)
 				return nil, errors.New(errStr)

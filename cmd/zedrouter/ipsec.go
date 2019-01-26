@@ -7,12 +7,13 @@ package zedrouter
 
 import (
 	"errors"
-	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/pubsub"
-	"github.com/zededa/go-provision/types"
 	"os/exec"
 	"strconv"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/pubsub"
+	"github.com/zededa/go-provision/types"
 )
 
 type vpnAclRule struct {
@@ -264,7 +265,7 @@ func ipTablesCounterRulesReset(policyBased bool,
 func iptableCounterRuleOp(acl vpnAclRule, set bool) error {
 	if acl.chain == "" || acl.proto == "" {
 		err := errors.New("Invalid counter acl")
-		log.Errorf("%s for %s, %s %s rule create\n",
+		log.Errorf("%s for %s, %s rule create\n",
 			err.Error(), "iptables", acl.chain)
 		return err
 	}
@@ -303,7 +304,7 @@ func iptableCounterRuleOp(acl vpnAclRule, set bool) error {
 				cmd = append(cmd, "-o")
 			} else {
 				err := errors.New("direction not set")
-				log.Errorf("%s for %s, %s %s rule create\n",
+				log.Errorf("%s for %s, %s rule create\n",
 					err.Error(), "iptables", acl.chain)
 				return err
 			}
@@ -315,7 +316,7 @@ func iptableCounterRuleOp(acl vpnAclRule, set bool) error {
 	cmd = append(cmd, acl.target)
 
 	if err := iptableCmd(cmd...); err != nil {
-		log.Errorf("%s for %s, %s %s rule create\n",
+		log.Errorf("%s for %s, %s rule create\n",
 			err.Error(), "iptables", acl.chain)
 		return err
 	}
@@ -326,7 +327,7 @@ func iptableCounterRuleStat(acl vpnAclRule) (types.PktStats, error) {
 	var stat types.PktStats
 	if acl.chain == "" || acl.proto == "" {
 		err := errors.New("Invalid counter acl")
-		log.Errorf("%s for %s, %s %s rule counter\n",
+		log.Errorf("%s for %s, %s rule counter\n",
 			err.Error(), "iptables", acl.chain)
 		return stat, err
 	}
@@ -341,7 +342,7 @@ func iptableCounterRuleStat(acl vpnAclRule) (types.PktStats, error) {
 
 	out, err := iptableCmdOut(false, cmd...)
 	if err != nil {
-		log.Errorf("%s for %s, %s %s rule counter\n",
+		log.Errorf("%s for %s, %s rule counter\n",
 			err.Error(), "iptables", acl.chain)
 		return stat, err
 	}
@@ -579,7 +580,7 @@ func ipLinkTunnelCreate(vpnConfig types.VpnServiceConfig) error {
 			tunnelConfig.Name, "type", "vti", "local", portConfig.IpAddr,
 			"remote", gatewayConfig.IpAddr, "key", tunnelConfig.Key)
 		if _, err := cmd.Output(); err != nil {
-			log.Errorf("%s for %s %s add on %s\n", err.Error(), "ip link",
+			log.Errorf("%s for %s %s add on %s %s\n", err.Error(), "ip link",
 				tunnelConfig.Name, portConfig.IpAddr, gatewayConfig.IpAddr)
 			return err
 		}
@@ -589,7 +590,7 @@ func ipLinkTunnelCreate(vpnConfig types.VpnServiceConfig) error {
 			tunnelConfig.Name, "type", "vti", "local", portConfig.IpAddr,
 			"remote", "0.0.0.0")
 		if _, err := cmd.Output(); err != nil {
-			log.Errorf("%s for %s %s add on %s\n", err.Error(), "ip link",
+			log.Errorf("%s for %s %s add on %s %s\n", err.Error(), "ip link",
 				tunnelConfig.Name, portConfig.IpAddr, gatewayConfig.IpAddr)
 			return err
 		}
@@ -602,9 +603,9 @@ func ipLinkTunnelCreate(vpnConfig types.VpnServiceConfig) error {
 			tunnelConfig.LocalIpAddr, "remote", tunnelConfig.RemoteIpAddr,
 			"dev", tunnelConfig.Name)
 		if _, err := cmd.Output(); err != nil {
-			log.Errorf("%s for %s %s addr add\n",
-				err.Error(), "ip link", tunnelConfig.Name, tunnelConfig.LocalIpAddr,
-				tunnelConfig.RemoteIpAddr)
+			log.Errorf("%s for ip addr add %s remote %s dev %s\n",
+				err.Error(), tunnelConfig.LocalIpAddr,
+				tunnelConfig.RemoteIpAddr, tunnelConfig.Name)
 			return err
 		}
 	}
