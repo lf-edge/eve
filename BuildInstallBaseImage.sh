@@ -57,6 +57,16 @@ then
    exit 1
 fi
 
+echo "The tag should end with -amd64. If not, add the prefix -amd64"
+if [[ "$TAG" =~ "-amd64" ]]
+then
+   echo "TAG=$TAG"
+else
+   echo "Specified tag ($TAG) doesn't end with -amd64i. Appending -amd64 to the tag"
+   TAG=$TAG-amd64
+   echo "TAG=$TAG"
+fi
+
 ZCLI_CONFIG_CMD="zcli configure -s $SERVER  -u $ZCLI_USER -P $ZCLI_PASSWORD -O text"
 echo "ZCLI_CONFIFG_CMD: $ZCLI_CONFIG_CMD"
 
