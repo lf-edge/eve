@@ -4,16 +4,20 @@
 // Create ip rules and ip routing tables for each ifindex and also a free
 // one for the collection of free management ports.
 
+// This is built only for linux - not MacOs
+// +build linux
+
 package zedrouter
 
 import (
 	"errors"
 	"fmt"
+	"net"
+	"syscall"
+
 	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
-	"net"
-	"syscall"
 )
 
 var FreeTable = 500 // Need a FreeMgmtPort policy for NAT+underlay
