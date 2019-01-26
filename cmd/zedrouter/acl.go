@@ -13,6 +13,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/iptables"
 	"github.com/zededa/go-provision/types"
 )
 
@@ -257,9 +258,9 @@ func applyACLRules(rules IptablesRuleList, bridgeName string, vifName string,
 		}
 		args = append(args, rule...)
 		if ipVer == 4 {
-			err = iptableCmd(args...)
+			err = iptables.IptableCmd(args...)
 		} else if ipVer == 6 {
-			err = ip6tableCmd(args...)
+			err = iptables.Ip6tableCmd(args...)
 		} else {
 			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", ipVer))
 		}
@@ -272,13 +273,13 @@ func applyACLRules(rules IptablesRuleList, bridgeName string, vifName string,
 		// underlay) since netfront/netback thinks there is checksum
 		// offload
 		// XXX add error checks?
-		ip6tableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
+		iptables.Ip6tableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
 			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
-		ip6tableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
+		iptables.Ip6tableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
 			"-p", "udp", "-j", "CHECKSUM", "--checksum-fill")
-		iptableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
+		iptables.IptableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
 			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
-		iptableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
+		iptables.IptableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
 			"-p", "udp", "-j", "CHECKSUM", "--checksum-fill")
 	}
 	// XXX isMgmt is painful; related to commenting out eidset accepts
@@ -288,7 +289,7 @@ func applyACLRules(rules IptablesRuleList, bridgeName string, vifName string,
 		// Manually add rules so that lispers.net doesn't see and drop
 		// the packet on dbo1x0
 		// XXX add error checks?
-		ip6tableCmd("-A", "FORWARD", "-i", bridgeName, "-o", "dbo1x0",
+		iptables.Ip6tableCmd("-A", "FORWARD", "-i", bridgeName, "-o", "dbo1x0",
 			"-j", "DROP")
 	}
 	return nil
@@ -782,9 +783,9 @@ func applyACLUpdate(isMgmt bool, ipVer int, vifName string, appIP string,
 		}
 		args = append(args, rule...)
 		if ipVer == 4 {
-			err = iptableCmd(args...)
+			err = iptables.IptableCmd(args...)
 		} else if ipVer == 6 {
-			err = ip6tableCmd(args...)
+			err = iptables.Ip6tableCmd(args...)
 		} else {
 			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", ipVer))
 		}
@@ -811,9 +812,9 @@ func applyACLUpdate(isMgmt bool, ipVer int, vifName string, appIP string,
 		}
 		args = append(args, rule...)
 		if ipVer == 4 {
-			err = iptableCmd(args...)
+			err = iptables.IptableCmd(args...)
 		} else if ipVer == 6 {
-			err = ip6tableCmd(args...)
+			err = iptables.Ip6tableCmd(args...)
 		} else {
 			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", ipVer))
 		}
@@ -851,9 +852,9 @@ func deleteACLConfiglet(bridgeName string, vifName string, isMgmt bool,
 		}
 		args = append(args, rule...)
 		if ipVer == 4 {
-			err = iptableCmd(args...)
+			err = iptables.IptableCmd(args...)
 		} else if ipVer == 6 {
-			err = ip6tableCmd(args...)
+			err = iptables.Ip6tableCmd(args...)
 		} else {
 			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", ipVer))
 		}
@@ -864,16 +865,16 @@ func deleteACLConfiglet(bridgeName string, vifName string, isMgmt bool,
 	if !isMgmt {
 		// Remove mangle rules for IPv6 packets added above
 		// XXX error checks?
-		ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", bridgeName,
+		iptables.Ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", bridgeName,
 			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
-		ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", bridgeName,
+		iptables.Ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", bridgeName,
 			"-p", "udp", "-j", "CHECKSUM", "--checksum-fill")
 	}
 	// XXX see above
 	if false && ipVer == 6 && !isMgmt {
 		// Manually delete the manual add above
 		// XXX error checks?
-		ip6tableCmd("-D", "FORWARD", "-i", bridgeName, "-o", "dbo1x0",
+		iptables.Ip6tableCmd("-D", "FORWARD", "-i", bridgeName, "-o", "dbo1x0",
 			"-j", "DROP")
 	}
 	return nil

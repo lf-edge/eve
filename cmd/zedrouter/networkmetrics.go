@@ -10,6 +10,7 @@ package zedrouter
 import (
 	psutilnet "github.com/shirou/gopsutil/net"
 	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/iptables"
 	"github.com/zededa/go-provision/types"
 	"strings"
 )
@@ -22,7 +23,7 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 		return types.NetworkMetrics{}
 	}
 	// Call iptables once to get counters
-	ac := fetchIprulesCounters()
+	ac := iptables.FetchIprulesCounters()
 
 	for _, ni := range network {
 		metric := types.NetworkMetric{
@@ -68,13 +69,13 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 			// XXX IPv4 EIDs?
 			ipVer = 6
 		}
-		metric.TxAclDrops = getIpRuleAclDrop(ac, bridgeName, vifName,
+		metric.TxAclDrops = iptables.GetIpRuleAclDrop(ac, bridgeName, vifName,
 			ipVer, inout)
-		metric.RxAclDrops = getIpRuleAclDrop(ac, bridgeName, vifName,
+		metric.RxAclDrops = iptables.GetIpRuleAclDrop(ac, bridgeName, vifName,
 			ipVer, !inout)
-		metric.TxAclRateLimitDrops = getIpRuleAclRateLimitDrop(ac,
+		metric.TxAclRateLimitDrops = iptables.GetIpRuleAclRateLimitDrop(ac,
 			bridgeName, vifName, ipVer, inout)
-		metric.RxAclRateLimitDrops = getIpRuleAclRateLimitDrop(ac,
+		metric.RxAclRateLimitDrops = iptables.GetIpRuleAclRateLimitDrop(ac,
 			bridgeName, vifName, ipVer, !inout)
 		metrics = append(metrics, metric)
 	}

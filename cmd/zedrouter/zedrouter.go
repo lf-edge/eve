@@ -26,6 +26,7 @@ import (
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/flextimer"
+	"github.com/zededa/go-provision/iptables"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -339,7 +340,10 @@ func Run() {
 
 	zedrouterCtx.ready = true
 
-	// First wait for restarted from zedmanager
+	// First wait for restarted from zedmanager to
+	// reduce the number of LISP-RESTARTs
+	// XXX this results in waiting for the verifier to report restarted
+	// to zedmanager which can be quite a long time.
 	for !subAppNetworkConfig.Restarted() {
 		log.Infof("Waiting for zedmanager to report restarted\n")
 		select {
@@ -473,7 +477,7 @@ func handleInit(runDirname string) {
 	}
 
 	// Setup initial iptables rules
-	iptablesInit()
+	iptables.IptablesInit()
 
 	// ipsets which are independent of config
 	createDefaultIpset()
@@ -2327,7 +2331,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	// XXX note different polarity
 	if gcp != nil && gcp.NoSshAccess == ctx.sshAccess {
 		ctx.sshAccess = !gcp.NoSshAccess
-		updateSshAccess(ctx.sshAccess, false)
+		iptables.UpdateSshAccess(ctx.sshAccess, false)
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
