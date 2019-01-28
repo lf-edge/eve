@@ -57,16 +57,6 @@ then
    exit 1
 fi
 
-echo "The tag should end with -amd64. If not, add the prefix -amd64"
-if [[ "$TAG" =~ "-amd64" ]]
-then
-   echo "TAG=$TAG"
-else
-   echo "Specified tag ($TAG) doesn't end with -amd64i. Appending -amd64 to the tag"
-   TAG=$TAG-amd64
-   echo "TAG=$TAG"
-fi
-
 ZCLI_CONFIG_CMD="zcli configure -s $SERVER  -u $ZCLI_USER -P $ZCLI_PASSWORD -O text"
 echo "ZCLI_CONFIFG_CMD: $ZCLI_CONFIG_CMD"
 
@@ -75,8 +65,9 @@ echo "==========================================="
 echo "Building go-provision docker image"
 echo "==========================================="
 cd $ZEDEDA/go-provision
-echo "docker build -t $TAG ."
-docker build -t $TAG .
+# add suffix -amd64
+echo "docker build -t $TAG-amd64 ."
+docker build -t $TAG-amd64 .
 echo "\n\n\n"
 
 echo "==========================================="
@@ -88,9 +79,9 @@ ZTOOLS_TAG=$TAG make rootfs.img
 echo "\n\n\n"
 
 IMAGE=`grep contents images/rootfs.yml | awk '{print $2}'`
-echo "==========================================="
+echo "========================================================================================"
 echo "IMAGE=$IMAGE"
-echo "==========================================="
+echo "========================================================================================"
 #contents: '0.0.0-fixes-6640a81b-dirty-2018-12-17.22.10-amd64'
 #IMAGE='0.0.0-6640a81b-dirty-2018-12-18.23.51-amd64'
 
@@ -128,7 +119,7 @@ zcli_exec "$ZCLI_CONFIG_CMD"
 zcli_exec "zcli login"
 zcli_exec "zcli image create --datastore-name=Zededa-AWS-Image --type=baseimage --image-format=qcow2 $IMAGE"
 zcli_exec "zcli image upload $IMAGE --path=$IMAGE_PATH"
-echo "=================\n Waiting for Image Upload to Complete======"; sleep 60; echo "=== WAIT FOR UPLOAD DONE ===="
+#echo "=================\n Waiting for Image Upload to Complete======"; sleep 60; echo "=== WAIT FOR UPLOAD DONE ===="
 zcli_exec "zcli device baseimage-update $DEVICE --image=$IMAGE"
 zcli_exec "zcli device baseimage-update $DEVICE --image=$IMAGE --activate"
 zcli_exec "zcli device show --detail $DEVICE"
