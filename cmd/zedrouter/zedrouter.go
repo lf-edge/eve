@@ -265,6 +265,7 @@ func Run() {
 	subNetworkInstanceConfig.DeleteHandler = handleNetworkInstanceDelete
 	zedrouterCtx.subNetworkInstanceConfig = subNetworkInstanceConfig
 	subNetworkInstanceConfig.Activate()
+	log.Infof("Subscribed to NetworkInstanceConfig")
 
 	// Subscribe to AppNetworkConfig from zedmanager and from zedagent
 	subAppNetworkConfig, err := pubsub.Subscribe("zedmanager",
@@ -359,6 +360,11 @@ func Run() {
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 
+		case change := <-subNetworkInstanceConfig.C:
+			log.Infof("AppNetworkConfig - waiting to Restart - "+
+				"InstanceConfig change at %+v", time.Now())
+			subNetworkInstanceConfig.ProcessChange(change)
+
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
 		}
@@ -413,6 +419,7 @@ func Run() {
 			subNetworkServiceConfig.ProcessChange(change)
 
 		case change := <-subNetworkInstanceConfig.C:
+			log.Infof("NetworkInstanceConfig change at %+v", time.Now())
 			subNetworkInstanceConfig.ProcessChange(change)
 
 		case change := <-subLispInfoStatus.C:

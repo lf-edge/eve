@@ -1,4 +1,6 @@
-// Package nl has low level primitives for making Netlink calls.
+// Stub file to make nl package compile on macos
+// +build darwin
+
 package nl
 
 import (

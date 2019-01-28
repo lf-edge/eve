@@ -1,5 +1,7 @@
-// Stub file for compilation to pass on macos. Actual functionality is
-// not supported.
+// Stubfile to let netlink package compile on macos
+// This file is only to make compilation succeed.
+// Functionality is NOT supported on macos.
+
 // +build darwin
 
 package netlink
