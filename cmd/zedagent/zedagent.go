@@ -76,27 +76,28 @@ type DNSContext struct {
 }
 
 type zedagentContext struct {
-	verifierRestarted        bool              // Information from handleVerifierRestarted
-	getconfigCtx             *getconfigContext // Cross link
-	zbootRestarted           bool              // published by baseosmgr
-	assignableAdapters       *types.AssignableAdapters
-	subAssignableAdapters    *pubsub.Subscription
-	iteration                int
-	subNetworkObjectStatus   *pubsub.Subscription
-	subNetworkServiceStatus  *pubsub.Subscription
-	subNetworkInstanceStatus *pubsub.Subscription
-	subDomainStatus          *pubsub.Subscription
-	subCertObjConfig         *pubsub.Subscription
-	TriggerDeviceInfo        bool
-	subBaseOsStatus          *pubsub.Subscription
-	subBaseOsDownloadStatus  *pubsub.Subscription
-	subCertObjDownloadStatus *pubsub.Subscription
-	subBaseOsVerifierStatus  *pubsub.Subscription
-	subAppImgDownloadStatus  *pubsub.Subscription
-	subAppImgVerifierStatus  *pubsub.Subscription
-	subNetworkServiceMetrics *pubsub.Subscription
-	subGlobalConfig          *pubsub.Subscription
-	subZbootStatus           *pubsub.Subscription
+	verifierRestarted         bool              // Information from handleVerifierRestarted
+	getconfigCtx              *getconfigContext // Cross link
+	zbootRestarted            bool              // published by baseosmgr
+	assignableAdapters        *types.AssignableAdapters
+	subAssignableAdapters     *pubsub.Subscription
+	iteration                 int
+	subNetworkObjectStatus    *pubsub.Subscription
+	subNetworkServiceStatus   *pubsub.Subscription
+	subNetworkInstanceStatus  *pubsub.Subscription
+	subDomainStatus           *pubsub.Subscription
+	subCertObjConfig          *pubsub.Subscription
+	TriggerDeviceInfo         bool
+	subBaseOsStatus           *pubsub.Subscription
+	subBaseOsDownloadStatus   *pubsub.Subscription
+	subCertObjDownloadStatus  *pubsub.Subscription
+	subBaseOsVerifierStatus   *pubsub.Subscription
+	subAppImgDownloadStatus   *pubsub.Subscription
+	subAppImgVerifierStatus   *pubsub.Subscription
+	subNetworkServiceMetrics  *pubsub.Subscription
+	subNetworkInstanceMetrics *pubsub.Subscription
+	subGlobalConfig           *pubsub.Subscription
+	subZbootStatus            *pubsub.Subscription
 }
 
 var debug = false
@@ -298,6 +299,26 @@ func Run() {
 	subNetworkServiceMetrics.DeleteHandler = handleNetworkServiceMetricsDelete
 	zedagentCtx.subNetworkServiceMetrics = subNetworkServiceMetrics
 	subNetworkServiceMetrics.Activate()
+
+	subNetworkInstanceStatus, err := pubsub.Subscribe("zedrouter",
+		types.NetworkInstanceStatus{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subNetworkInstanceStatus.ModifyHandler = handleNetworkInstanceModify
+	subNetworkInstanceStatus.DeleteHandler = handleNetworkInstanceDelete
+	zedagentCtx.subNetworkInstanceStatus = subNetworkInstanceStatus
+	subNetworkInstanceStatus.Activate()
+
+	subNetworkInstanceMetrics, err := pubsub.Subscribe("zedrouter",
+		types.NetworkInstanceMetrics{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subNetworkInstanceMetrics.ModifyHandler = handleNetworkInstanceMetricsModify
+	subNetworkInstanceMetrics.DeleteHandler = handleNetworkInstanceMetricsDelete
+	zedagentCtx.subNetworkInstanceMetrics = subNetworkInstanceMetrics
+	subNetworkInstanceMetrics.Activate()
 
 	// Look for AppInstanceStatus from zedmanager
 	subAppInstanceStatus, err := pubsub.Subscribe("zedmanager",
@@ -643,6 +664,12 @@ func Run() {
 
 		case change := <-subNetworkServiceMetrics.C:
 			subNetworkServiceMetrics.ProcessChange(change)
+
+		case change := <-subNetworkInstanceStatus.C:
+			subNetworkInstanceStatus.ProcessChange(change)
+
+		case change := <-subNetworkInstanceMetrics.C:
+			subNetworkInstanceMetrics.ProcessChange(change)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)

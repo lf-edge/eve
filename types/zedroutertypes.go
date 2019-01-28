@@ -773,7 +773,7 @@ type NetworkObjectStatus struct {
 	BridgeIPSets []string
 
 	// Set of vifs on this bridge
-	VifNames []string
+	Vifs []VifNameMac
 
 	Ipv4Eid bool // Track if this is a CryptoEid with IPv4 EIDs
 
@@ -854,6 +854,18 @@ type NetworkServiceMetrics struct {
 
 func (metrics NetworkServiceMetrics) Key() string {
 	return metrics.UUID.String()
+}
+
+type NetworkInstanceMetrics struct {
+	UUIDandVersion UUIDandVersion
+	DisplayName    string
+	Type           NetworkInstanceType
+	VpnMetrics     *VpnMetrics
+	LispMetrics    *LispMetrics
+}
+
+func (metrics NetworkInstanceMetrics) Key() string {
+	return metrics.UUIDandVersion.UUID.String()
 }
 
 // Network metrics for overlay and underlay
@@ -992,13 +1004,23 @@ type NetworkInstanceStatus struct {
 	BridgeIPSets []string
 
 	// Set of vifs on this bridge
-	VifNames []string
+	Vifs []VifNameMac
 
 	Ipv4Eid bool // Track if this is a CryptoEid with IPv4 EIDs
+
+	VpnStatus      *ServiceVpnStatus
+	LispInfoStatus *LispInfoStatus
+	LispMetrics    *LispMetrics
 
 	// Any errrors from provisioning the network instance
 	Error     string
 	ErrorTime time.Time
+}
+
+type VifNameMac struct {
+	Name    string
+	MacAddr string
+	AppID   uuid.UUID
 }
 
 func (status *NetworkInstanceStatus) SetError(err error) {
