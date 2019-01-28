@@ -1,6 +1,7 @@
 # disable content trust for now
 PATH := $(CURDIR)/../build-tools/bin:$(PATH)
 LINUXKIT_OPTS= --disable-content-trust
+RESCAN_DEPS=FORCE
 
 PKGS = grub xen kernel fw xen-tools dnsmasq strongswan gpt-tools dom0-ztools	\
 	qrexec-lib qrexec-dom0 wwan wlan rngd	\
@@ -31,6 +32,6 @@ clean:
 
 dockerfiles: $(addsuffix /Dockerfile, $(PKGS)/)
 
-%: %.in FORCE
+%: %.in $(RESCAN_DEPS)
 	(cd ..; ./parse-pkgs.sh pkg/$< > pkg/$@)
 FORCE:

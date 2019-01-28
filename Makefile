@@ -42,6 +42,8 @@ QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH))
 
 DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; docker export $$C | tar -xf - $$2 ; docker rm $$C ; } ; _
 
+PARSE_PKGS=DOCKER_ARCH_TAG="$(DOCKER_ARCH_TAG)" ./parse-pkgs.sh
+
 DEFAULT_PKG_TARGET=build
 
 .PHONY: run pkgs build-pkgs help build-tools
@@ -68,14 +70,20 @@ build-pkgs: build-tools
 #   2. touch a file in the zedctr package (thus making it dirty and changing a reference in image.yml) 
 # Finally, we only forcefully rebuild the zedctr IF either docker pull brught a new image or ZTOOLS_TAG was given 
 zedctr-workaround:
-	@if [ -z "$$ZTOOLS_TAG" ]; then \
-	  docker pull `bash -c "./parse-pkgs.sh <(echo ZTOOLS_TAG)"` | tee /dev/tty | grep -Eq 'Downloaded newer image|zededa/debug' ;\
+	rm -f pkg/zedctr/Dockerfile ;\
+	if [ -z "$$ZTOOLS_TAG" ]; then \
+	  docker pull `echo ZTOOLS_TAG | $(PARSE_PKGS)` | tee /dev/tty | grep -Eq 'Downloaded newer image|zededa/debug' ;\
 	else \
+	  if [ $(ZARCH) != $$(uname -m) ] ; then  \
+              $(PARSE_PKGS) < pkg/zedctr/Dockerfile.cross.in > pkg/zedctr/Dockerfile ;\
+              PKG_HASH=`mktemp -u XXXXXXXXXX` ;\
+          fi ;\
 	  date +%s > pkg/zedctr/trigger ;\
         fi ; if [ $$? -eq 0 ]; then \
-	  make -C pkg PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache" $(DEFAULT_PKG_TARGET) ;\
+	  make -C pkg RESCAN_DEPS="" PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache $${PKG_HASH:+-hash }$$PKG_HASH" $(DEFAULT_PKG_TARGET) ;\
+	  [ -z "$$PKG_HASH" ] || (PKG_HASH=zededa/zedctr:$$PKG_HASH ; docker tag $$PKG_HASH `echo ZEDEDA_TAG | $(PARSE_PKGS)` ; docker rmi $$PKG_HASH $$PKG_HASH-$(DOCKER_ARCH_TAG_$(shell uname -m))) ;\
 	else \
-	  docker pull `bash -c "./parse-pkgs.sh <(echo ZEDEDA_TAG)"` || : ;\
+	  docker pull `echo ZEDEDA_TAG | $(PARSE_PKGS)` || : ;\
         fi
 
 pkgs: build-tools build-pkgs zedctr-workaround
@@ -96,6 +104,8 @@ bios/OVMF.fd: bios
 # This creates an image equivalent to fallback.img (called target.img)
 # through the installer. It's the long road to fallback.img. Good for
 # testing.
+#
+# -machine dumpdtb=virt.dtb 
 #
 run-installer-iso: bios/OVMF.fd
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
@@ -120,9 +130,9 @@ run-grub: bios/OVMF.fd bios/EFI
 # NOTE: that we have to depend on zedctr-workaround here to make sure
 # it gets triggered when we build any kind of image target
 images/%.yml: build-tools zedctr-workaround parse-pkgs.sh images/%.yml.in FORCE
-	DOCKER_ARCH_TAG="$(DOCKER_ARCH_TAG)" ./parse-pkgs.sh $@.in > $@
-	# the following is a horrible hack that needs to go away ASAP
-	@if [ "$(ZARCH)" = aarch64 ] ; then \
+	$(PARSE_PKGS) $@.in > $@
+	@# the following is a horrible hack that needs to go away ASAP \
+	if [ "$(ZARCH)" = aarch64 ] ; then \
            sed -e '/source:/s#rootfs.img#rootfs_aarch64.img#' -i.orig $@ ;\
 	   [ $$(uname -m) = aarch64 ] || echo "WARNING: We are assembling a $(ZARCH) image on `uname -m`. Things may break." ;\
         fi
