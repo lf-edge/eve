@@ -486,9 +486,8 @@ func protoEncodeLispInstanceMetric(status types.NetworkInstanceMetrics,
 	}
 	lispMetric.EidStatsEntries = lispStats
 
-	// XXX rename in proto
-	metric.ServiceContent = new(zmet.ZMetricNetworkInstance_Lispm)
-	if x, ok := metric.GetServiceContent().(*zmet.ZMetricNetworkInstance_Lispm); ok {
+	metric.InstanceContent = new(zmet.ZMetricNetworkInstance_Lispm)
+	if x, ok := metric.GetInstanceContent().(*zmet.ZMetricNetworkInstance_Lispm); ok {
 		x.Lispm = lispMetric
 	}
 }
@@ -507,9 +506,8 @@ func protoEncodeVpnInstanceMetric(metrics types.NetworkInstanceMetrics,
 	vpnMetric.IkeStat = protoEncodeVpnInstanceStat(stats.IkeStat)
 	vpnMetric.EspStat = protoEncodeVpnInstanceStat(stats.EspStat)
 
-	// XXX rename in proto
-	instanceMetrics.ServiceContent = new(zmet.ZMetricNetworkInstance_Vpnm)
-	if x, ok := instanceMetrics.GetServiceContent().(*zmet.ZMetricNetworkInstance_Vpnm); ok {
+	instanceMetrics.InstanceContent = new(zmet.ZMetricNetworkInstance_Vpnm)
+	if x, ok := instanceMetrics.GetInstanceContent().(*zmet.ZMetricNetworkInstance_Vpnm); ok {
 		x.Vpnm = vpnMetric
 	}
 	protoEncodeVpnInstanceFlowMetric(metrics, instanceMetrics)
