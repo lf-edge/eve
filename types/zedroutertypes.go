@@ -773,7 +773,7 @@ type NetworkObjectStatus struct {
 	BridgeIPSets []string
 
 	// Set of vifs on this bridge
-	VifNames []string
+	Vifs []VifNameMac
 
 	Ipv4Eid bool // Track if this is a CryptoEid with IPv4 EIDs
 
@@ -1004,7 +1004,7 @@ type NetworkInstanceStatus struct {
 	BridgeIPSets []string
 
 	// Set of vifs on this bridge
-	VifNames []string
+	Vifs []VifNameMac
 
 	Ipv4Eid bool // Track if this is a CryptoEid with IPv4 EIDs
 
@@ -1015,6 +1015,12 @@ type NetworkInstanceStatus struct {
 	// Any errrors from provisioning the network instance
 	Error     string
 	ErrorTime time.Time
+}
+
+type VifNameMac struct {
+	Name    string
+	MacAddr string
+	AppID   uuid.UUID
 }
 
 func (status *NetworkInstanceStatus) SetError(err error) {

@@ -23,10 +23,9 @@ func handleNetworkInstanceModify(ctxArg interface{}, key string, statusArg inter
 		log.Errorf("handleNetworkInstanceModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.Key(), status)
 		return
 	}
-	// XXX look for error; copy to device error; need device error in proto
-	// XXX have handlemetrics read sub.GetAll() and look for errors?
 	if !status.ErrorTime.IsZero() {
-		log.Errorf("Received NetworkInstance error %s\n", status.Error)
+		log.Errorf("Received NetworkInstance error %s\n",
+			status.Error)
 	}
 	switch status.Type {
 	case types.NetworkInstanceTypeMesh: // XXX any subtype?
@@ -48,7 +47,6 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 			key, status.Key(), status)
 		return
 	}
-	// XXX how do we find and delete any error
 	ctx := ctxArg.(*zedagentContext)
 	switch status.Type {
 	case types.NetworkInstanceTypeMesh: // XXX any subtype?
@@ -111,12 +109,11 @@ func prepareAndPublishLispInstanceInfoMsg(ctx *zedagentContext,
 		for _, s := range status.BridgeIPSets {
 			info.BridgeIPSets = append(info.BridgeIPSets, s)
 		}
-		for _, v := range status.VifNames {
+		for _, v := range status.Vifs {
 			vi := new(zmet.ZmetVifInfo)
-			vi.VifName = v
-			// XXX Gather and fill in the MacAddress and AppID
-			vi.MacAddress = ""
-			vi.AppID = ""
+			vi.VifName = v.Name
+			vi.MacAddress = v.MacAddr
+			vi.AppID = v.AppID.String()
 			info.Vifs = append(info.Vifs, vi)
 		}
 		info.Ipv4Eid = status.Ipv4Eid
