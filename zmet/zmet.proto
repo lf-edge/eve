@@ -326,6 +326,7 @@ message ZInfoNetworkInstance {
   string displayname = 6;	// From NetworkInstance config
   bool activated = 7;		// Forwarding enabled
   google.protobuf.Timestamp upTimeStamp = 8;
+  ZInfoSW softwareList = 9; 	// E.g., VPN version
 
   uint32 bridgeNum = 20;
   string bridgeName = 21;
@@ -637,7 +638,7 @@ message ZMetricNetworkInstance {
   bool activated = 7;		// Forwarding enabled
 
   repeated networkMetric network = 10;	// Aggregate counters for bridge
-  oneof ServiceContent {
+  oneof InstanceContent {
     ZMetricVpn  vpnm = 20;
     ZMetricLisp lispm = 21;
     ZMetricNone nonem = 22;

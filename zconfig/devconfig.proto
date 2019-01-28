@@ -110,6 +110,10 @@ message EdgeDevConfig {
 	string productName = 15;
 
 	repeated NetworkInstanceConfig networkInstances = 16;
+
+	// Information saved in /config to make it easier find a device in EV-C
+	string enterprise = 17;
+	string name = 18;
 }
 
 // Timers and other per-device policy which relates to the interaction

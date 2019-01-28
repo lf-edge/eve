@@ -31,4 +31,6 @@ message VmConfig {
 	repeated string iomem = 14;
 	VmMode virtualizationMode = 15;
 	bool enableVnc = 16;
+	uint32 vncDisplay = 17;
+	string vncPasswd = 18;
 }
