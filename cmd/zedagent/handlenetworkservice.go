@@ -637,29 +637,3 @@ func protoEncodeVpnServiceFlowMetric(metrics types.NetworkServiceMetrics,
 		serviceMetrics.FlowStats[idx] = flowStats
 	}
 }
-
-func protoEncodeVpnMetricEndPtIpAddr(endPInfo types.VpnEndPointMetrics) *zmet.ZMetricFlowEndPoint {
-	endPoint := new(zmet.ZMetricFlowEndPoint)
-	endPoint.Endpoint = new(zmet.ZMetricFlowEndPoint_IpAddr)
-	if x, ok := endPoint.GetEndpoint().(*zmet.ZMetricFlowEndPoint_IpAddr); ok {
-		x.IpAddr = endPInfo.IpAddr
-	}
-	return endPoint
-}
-
-func protoEncodeVpnMetricLink(linkInfo types.VpnLinkMetrics) *zmet.ZMetricFlowLink {
-	link := new(zmet.ZMetricFlowLink)
-	link.SpiId = linkInfo.SpiId
-	link.Link = new(zmet.ZMetricFlowLink_SubNet)
-	if x, ok := link.GetLink().(*zmet.ZMetricFlowLink_SubNet); ok {
-		x.SubNet = linkInfo.SubNet
-	}
-	return link
-}
-
-func protoEncodeVpnMetricStats(linkStats types.PktStats) *zmet.PktStat {
-	pktStats := new(zmet.PktStat)
-	pktStats.Bytes = linkStats.Bytes
-	pktStats.Packets = linkStats.Pkts
-	return pktStats
-}
