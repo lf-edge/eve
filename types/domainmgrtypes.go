@@ -67,8 +67,8 @@ type VmConfig struct {
 	// Example, IOMem=["0xf7020,1","0xf8013,1"]
 	VirtualizationMode VmMode
 	EnableVnc          bool
-	VncDisplay	   int
-	VncPasswd	   string
+	VncDisplay         int
+	VncPasswd          string
 }
 
 type VmMode uint8
