@@ -84,56 +84,50 @@ func prepareAndPublishLispInstanceInfoMsg(ctx *zedagentContext,
 	info.NetworkVersion = status.UUIDandVersion.Version
 	info.Displayname = status.DisplayName
 	info.InstType = uint32(status.Type)
-	info.Activated = status.Activated
 
-	// XXX When a network instance is deleted it is ideal to send
-	// a flag such as deleted/gone inside ZInfoNetworkInstance message.
-	// Having a separate flag (indicating deletion) make is explicit
-	// and easy for the cloud process.
-	// For now we just send an empty lispInfo to indicate deletion to cloud.
-	// It can't be omitted since protobuf requires something to satisfy
-	// the oneof.
-
+	// Always need a lispinfo to satisfy oneof
 	lispInfo := new(zmet.ZInfoLisp)
-	lispStatus := status.LispInfoStatus
-	if lispStatus != nil && !deleted {
-		lispInfo.ItrCryptoPort = lispStatus.ItrCryptoPort
-		lispInfo.EtrNatPort = lispStatus.EtrNatPort
-		for _, intf := range lispStatus.Interfaces {
-			lispInfo.Interfaces = append(lispInfo.Interfaces, intf)
+	if deleted {
+		// XXX When a network instance is deleted it is ideal to
+		// send a flag such as deleted/gone inside
+		// ZInfoNetworkInstance message. Having a separate flag
+		// (indicating deletion) would make is explicit
+		// and easy for the cloud process.
+		info.Activated = false
+	} else {
+		info.Activated = status.Activated
+
+		info.BridgeNum = uint32(status.BridgeNum)
+		info.BridgeName = status.BridgeName
+		info.BridgeIPAddr = status.BridgeIPAddr
+
+		for mac, ip := range status.IPAssignments {
+			assignment := new(zmet.ZmetIPAssignmentEntry)
+			assignment.MacAddress = mac
+			assignment.IpAddress = append(assignment.IpAddress, ip.String())
+			info.IpAssignments = append(info.IpAssignments,
+				assignment)
 		}
-
-		// Copy ITR database map entries
-		for _, dbMap := range lispStatus.DatabaseMaps {
-			dbMapEntry := &zmet.DatabaseMap{
-				IID: dbMap.IID,
-			}
-
-			for _, mapEntry := range dbMap.MapCacheEntries {
-				mapCacheEntry := &zmet.MapCacheEntry{
-					EID: mapEntry.EID.String(),
-				}
-
-				for _, rloc := range mapEntry.Rlocs {
-					rlocEntry := &zmet.RlocState{
-						Rloc:      rloc.Rloc.String(),
-						Reachable: rloc.Reachable,
-					}
-					mapCacheEntry.Rlocs = append(mapCacheEntry.Rlocs, rlocEntry)
-				}
-				dbMapEntry.MapCacheEntries = append(dbMapEntry.MapCacheEntries, mapCacheEntry)
-			}
-			lispInfo.DatabaseMaps = append(lispInfo.DatabaseMaps, dbMapEntry)
+		for _, s := range status.BridgeIPSets {
+			info.BridgeIPSets = append(info.BridgeIPSets, s)
 		}
+		for _, v := range status.VifNames {
+			vi := new(zmet.ZmetVifInfo)
+			vi.VifName = v
+			// XXX Gather and fill in the MacAddress and AppID
+			vi.MacAddress = ""
+			vi.AppID = ""
+			info.Vifs = append(info.Vifs, vi)
+		}
+		info.Ipv4Eid = status.Ipv4Eid
 
-		// Copy ETR decap entries
-		for _, decapKey := range lispStatus.DecapKeys {
-			decap := &zmet.DecapKey{
-				Rloc:     decapKey.Rloc.String(),
-				Port:     decapKey.Port,
-				KeyCount: decapKey.KeyCount,
-			}
-			lispInfo.DecapKeys = append(lispInfo.DecapKeys, decap)
+		// For now we just send an empty lispInfo to indicate deletion to cloud.
+		// It can't be omitted since protobuf requires something to satisfy
+		// the oneof.
+
+		lispStatus := status.LispInfoStatus
+		if lispStatus != nil {
+			fillLispInfo(lispInfo, lispStatus)
 		}
 	}
 
@@ -148,6 +142,51 @@ func prepareAndPublishLispInstanceInfoMsg(ctx *zedagentContext,
 	}
 	log.Debugf("Publish LispInfo message to zedcloud: %v\n", infoMsg)
 	publishInfo(ctx, uuid, infoMsg)
+}
+
+func fillLispInfo(lispInfo *zmet.ZInfoLisp, lispStatus *types.LispInfoStatus) {
+
+	lispInfo.ItrCryptoPort = lispStatus.ItrCryptoPort
+	lispInfo.EtrNatPort = lispStatus.EtrNatPort
+	for _, intf := range lispStatus.Interfaces {
+		lispInfo.Interfaces = append(lispInfo.Interfaces, intf)
+	}
+
+	// Copy ITR database map entries
+	for _, dbMap := range lispStatus.DatabaseMaps {
+		dbMapEntry := &zmet.DatabaseMap{
+			IID: dbMap.IID,
+		}
+
+		for _, mapEntry := range dbMap.MapCacheEntries {
+			mapCacheEntry := &zmet.MapCacheEntry{
+				EID: mapEntry.EID.String(),
+			}
+
+			for _, rloc := range mapEntry.Rlocs {
+				rlocEntry := &zmet.RlocState{
+					Rloc:      rloc.Rloc.String(),
+					Reachable: rloc.Reachable,
+				}
+				mapCacheEntry.Rlocs = append(mapCacheEntry.Rlocs,
+					rlocEntry)
+			}
+			dbMapEntry.MapCacheEntries = append(dbMapEntry.MapCacheEntries,
+				mapCacheEntry)
+		}
+		lispInfo.DatabaseMaps = append(lispInfo.DatabaseMaps,
+			dbMapEntry)
+	}
+
+	// Copy ETR decap entries
+	for _, decapKey := range lispStatus.DecapKeys {
+		decap := &zmet.DecapKey{
+			Rloc:     decapKey.Rloc.String(),
+			Port:     decapKey.Port,
+			KeyCount: decapKey.KeyCount,
+		}
+		lispInfo.DecapKeys = append(lispInfo.DecapKeys, decap)
+	}
 }
 
 func handleNetworkLispInstanceStatusModify(ctx *zedagentContext, status types.NetworkInstanceStatus) {
@@ -176,11 +215,12 @@ func prepareVpnInstanceInfoMsg(ctx *zedagentContext, status types.NetworkInstanc
 	info.Displayname = status.DisplayName
 	info.InstType = uint32(status.Type)
 	info.Activated = status.Activated
-	// XXX info.SoftwareList = new(zmet.ZInfoSW)
-	// XXX info.SoftwareList.SwVersion = vpnStatus.Version
+	info.SoftwareList = new(zmet.ZInfoSW)
+	info.SoftwareList.SwVersion = vpnStatus.Version
 	info.Activated = status.Activated
 	upTime, _ := ptypes.TimestampProto(vpnStatus.UpTime)
 	info.UpTimeStamp = upTime
+
 	if !status.ErrorTime.IsZero() {
 		errInfo := new(zmet.ErrorInfo)
 		errInfo.Description = status.Error
