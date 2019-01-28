@@ -2,6 +2,13 @@ FROM golang:1.9.1-alpine AS build
 RUN apk update
 RUN apk add --no-cache git gcc linux-headers libc-dev util-linux
 
+# These three are supporting rudimentary cross-build capabilities.
+# The only one supported so far is cross compiling for aarch64 on x86
+ENV CGO_ENABLED=1
+ARG GOARCH=
+ARG CROSS_GCC=https://musl.cc/aarch64-linux-musleabi-cross.tgz
+RUN [ -z "$GOARCH" ] || (cd / ; apk add --no-cache wget && wget -O - $CROSS_GCC | tar xzvf -)
+
 ADD ./  /go/src/github.com/zededa/go-provision/
 ADD etc /config
 ADD scripts/device-steps.sh \
@@ -21,9 +28,15 @@ RUN cp /opt/zededa/bin/versioninfo /opt/zededa/bin/versioninfo.1
 # Echo for builders enjoyment
 RUN echo Building: `cat /opt/zededa/bin/versioninfo`
 
-RUN go install github.com/zededa/go-provision/zedbox/...
-RUN cd /opt/zededa/bin ; ln -s /go/bin/* .
-RUN cd /opt/zededa/bin ; ln -s zedbox client; ln -s zedbox domainmgr; ln -s zedbox downloader; ln -s zedbox hardwaremodel; ln -s zedbox identitymgr; ln -s zedbox ledmanager; ln -s zedbox logmanager; ln -s zedbox verifier; ln -s zedbox zedagent; ln -s zedbox zedmanager; ln -s zedbox zedrouter; ln -s zedbox ipcmonitor; ln -s zedbox nim; ln -s zedbox waitforaddr; ln -s zedbox diag;ln -s zedbox baseosmgr;ln -s zedbox wstunnelclient
+RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc)           ;\
+    go install github.com/zededa/go-provision/zedbox/...               ;\
+    if [ -f /go/bin/*/zedbox ] ; then mv /go/bin/*/zedbox /go/bin ; fi
+RUN ln -s /go/bin/zedbox /opt/zededa/bin/zedbox ;\
+    for app in   \
+      client domainmgr downloader hardwaremodel identitymgr ledmanager \
+      logmanager verifier zedagent zedmanager zedrouter ipcmonitor nim \
+      waitforaddr diag baseosmgr wstunnelclient ;\
+    do ln -s zedbox /opt/zededa/bin/$app ; done
 
 # Second stage of the build is creating a minimalistic container
 FROM scratch

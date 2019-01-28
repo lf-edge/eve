@@ -23,6 +23,9 @@ BUILD_VERSION=$(shell scripts/getversion.sh)
 OBJDIR      := $(PWD)/bin/$(ARCH)
 BINDIR	    := $(OBJDIR)
 
+DOCKER_ARGS=$${GOARCH:+--build-arg GOARCH=}$(GOARCH)
+DOCKER_TAG=zededa/ztools:local$${GOARCH:+-}$(GOARCH)
+
 APPS = zedbox
 APPS1 = logmanager ledmanager downloader verifier client zedrouter domainmgr identitymgr zedmanager zedagent hardwaremodel ipcmonitor nim diag baseosmgr wstunnelclient
 
@@ -61,10 +64,10 @@ build:
 	done
 
 build-docker:
-	docker build -t zededa/ztools:local .
+	docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) .
 
 build-docker-git:
-	git archive HEAD | docker build -t zededa/ztools:local -
+	git archive HEAD | docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) -
 
 Gopkg.lock: Gopkg.toml
 	mkdir -p .go/src/github.com/zededa && ln -s ../../../.. .go/src/github.com/zededa/go-provision || :

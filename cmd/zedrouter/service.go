@@ -595,7 +595,7 @@ func lispActivate(ctx *zedrouterContext,
 		strconv.FormatUint(uint64(iid), 10)
 	file, err := os.Create(cfgPathnameIID)
 	if err != nil {
-		log.Errorf("lispActivate failed ", err)
+		log.Errorf("lispActivate failed: %s ", err)
 		return err
 	}
 	defer file.Close()
