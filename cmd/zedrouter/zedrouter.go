@@ -1806,7 +1806,7 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		// Need to check that index exists
 		if len(status.OverlayNetworkList) < olNum {
-			log.Errorf("Missing status for overlay %d; can not modify\n",
+			log.Errorln("Missing status for overlay %d; can not modify\n",
 				olNum)
 			continue
 		}
@@ -1890,7 +1890,7 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		// Need to check that index exists
 		if len(status.UnderlayNetworkList) < ulNum {
-			log.Errorf("Missing status for underlay %d; can not modify\n",
+			log.Errorln("Missing status for underlay %d; can not modify\n",
 				ulNum)
 			continue
 		}
@@ -2125,7 +2125,7 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 
 		// Need to check that index exists XXX remove
 		if len(status.OverlayNetworkList) < olNum {
-			log.Errorf("Missing status for overlay %d; can not clean up\n",
+			log.Errorln("Missing status for overlay %d; can not clean up\n",
 				olNum)
 			continue
 		}
@@ -2217,7 +2217,7 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 
 		// Need to check that index exists
 		if len(status.UnderlayNetworkList) < ulNum {
-			log.Infof("Missing status for underlay %d; can not clean up\n",
+			log.Infoln("Missing status for underlay %d; can not clean up\n",
 				ulNum)
 			continue
 		}
