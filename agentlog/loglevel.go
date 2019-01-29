@@ -71,6 +71,7 @@ func HandleGlobalConfig(sub *pubsub.Subscription, agentName string,
 	level := log.InfoLevel
 	debug := false
 	gcp := GetGlobalConfig(sub)
+	log.Infof("HandleGlobalConfig: gcp %+v\n", gcp)
 	if debugOverride {
 		debug = true
 		level = log.DebugLevel
