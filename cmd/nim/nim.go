@@ -402,8 +402,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	ctx.debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
 	// XXX note different polarity
-	if gcp != nil && gcp.NoSshAccess == ctx.sshAccess {
-		first := !ctx.GCInitialized
+	first := !ctx.GCInitialized
+	if gcp != nil && (gcp.NoSshAccess == ctx.sshAccess || first) {
 		ctx.sshAccess = !gcp.NoSshAccess
 		iptables.UpdateSshAccess(ctx.sshAccess, first)
 	}
