@@ -340,6 +340,7 @@ func Run() {
 	setFreeMgmtPorts(types.GetMgmtPortsFree(*zedrouterCtx.deviceNetworkStatus, 0))
 
 	zedrouterCtx.ready = true
+	log.Infof("zedrouterCtx.ready\n")
 
 	// First wait for restarted from zedmanager to
 	// reduce the number of LISP-RESTARTs
@@ -369,7 +370,7 @@ func Run() {
 			agentlog.StillRunning(agentName)
 		}
 	}
-	log.Infof("Zedmanager has restarted\n")
+	log.Infof("Zedmanager has restarted. Entering main Select loop\n")
 
 	for {
 		select {

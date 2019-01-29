@@ -289,23 +289,22 @@ func unpublishDeletedNetworkInstanceConfig(ctx *getconfigContext,
 		networkInstanceEntry := lookupNetworkInstanceById(key, networkInstances)
 		if networkInstanceEntry != nil {
 			// Entry not deleted.
+			log.Infof("NetworkInstance %s (Name: %s) still exists\n",
+				key, networkInstanceEntry.Displayname)
 			continue
 		}
 
 		config := cast.CastNetworkServiceConfig(entry)
-		if config.Key() != key {
-			// XXX Should we assert here instead?? This should never happen.
-			log.Fatalf("unpublishDeletedNetworkInstanceConfig: key/UUID mismatch "+
-				"%s vs %s; ignored %+v\n", key, config.Key(), config)
-		}
-
-		log.Infof("publishNetworkServiceConfig: unpublishing %s\n", key)
+		log.Infof("unpublishing NetworkInstance %s (Name: %s) \n",
+			key, config.DisplayName)
 		ctx.pubNetworkServiceConfig.Unpublish(key)
 	}
 }
 
 func publishNetworkInstanceConfig(ctx *getconfigContext,
 	networkInstances []*zconfig.NetworkInstanceConfig) {
+
+	log.Infof("Publish NetworkInstance Config: %+v", networkInstances)
 
 	unpublishDeletedNetworkInstanceConfig(ctx, networkInstances)
 
@@ -333,19 +332,17 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			networkInstanceConfig.Type, networkInstanceConfig.Activate)
 
 		if apiConfigEntry.Port != nil {
-			if apiConfigEntry.Port.Type != zconfig.ZCioType_ZCioEth {
-				log.Errorf("publishNetworkInstanceConfig: Unsupported IoType %v ignored\n",
-					apiConfigEntry.Port.Type)
-				continue
-			}
 			networkInstanceConfig.Port = apiConfigEntry.Port.Name
 		}
 		if apiConfigEntry.Cfg != nil {
 			networkInstanceConfig.OpaqueConfig = apiConfigEntry.Cfg.Oconfig
 		}
+		networkInstanceConfig.IpType = types.AddressType(apiConfigEntry.IpType)
 
-		ctx.pubNetworkServiceConfig.Publish(networkInstanceConfig.UUID.String(),
-			&networkInstanceConfig)
+		if err := ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
+			&networkInstanceConfig); err != nil {
+			log.Fatalf("Network Instance Publish FAILED: %s", err)
+		}
 	}
 }
 
@@ -354,23 +351,27 @@ var networkInstancePrevConfigHash []byte
 func parseNetworkInstanceConfig(config *zconfig.EdgeDevConfig,
 	getconfigCtx *getconfigContext) {
 
-	h := sha256.New()
 	networkInstances := config.GetNetworkInstances()
+
+	log.Infof("networkInstances: %+v\n", networkInstances)
+
+	h := sha256.New()
 	for _, n := range networkInstances {
 		computeConfigElementSha(h, n)
 	}
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, networkInstancePrevConfigHash)
 	networkConfigPrevConfigHash = configHash
+
 	if same {
-		log.Debugf("parseNetworkObjectConfig: network sha is unchanged: % x\n",
+		log.Infof("parseNetworkInstanceConfig: network sha is unchanged: % x\n",
 			configHash)
 		return
 	}
-	log.Infof("parseNetworkInstanceObjectConfig: Applying updated config "+
+	log.Infof("parseNetworkInstanceConfig: Applying updated config "+
 		"sha % x vs. % x: %v\n",
 		networkInstancePrevConfigHash, configHash, networkInstances)
-	// Export NetworkObjectConfig to zedrouter
+	// Export NetworkInstanceConfig to zedrouter
 	// XXX
 	// System Adapter points to network for Proxy configuration.
 	// There could be a situation where networks change, but

@@ -189,8 +189,8 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	case types.NetworkInstanceTypeSwitch:
 		// Nothing to do
 	default:
-		log.Fatalf("doNetworkInstanceCreate: Instance type %d not supported",
-			status.Type)
+		err := fmt.Sprintf("Instance type %d not supported", status.Type)
+		return errors.New(err)
 	}
 
 	// Check for valid types
@@ -205,8 +205,8 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		// Nothing to do
 	default:
 		// This should have been caught in parsestatus.
-		log.Fatalf("doNetworkInstanceCreate: IpType %d not supported",
-			status.IpType)
+		err := fmt.Sprintf("IpType %d not supported\n", status.IpType)
+		return errors.New(err)
 	}
 
 	// Allocate bridgeNum.
