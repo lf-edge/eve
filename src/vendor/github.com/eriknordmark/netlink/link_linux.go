@@ -18,7 +18,7 @@ import (
 
 const (
 	SizeofLinkStats32 = 0x5c
-	SizeofLinkStats64 = 0xd8
+	SizeofLinkStats64 = 0xb8
 )
 
 const (
@@ -1191,6 +1191,8 @@ func (h *Handle) linkModify(link Link, flags int) error {
 		addBridgeAttrs(link, linkInfo)
 	case *GTP:
 		addGTPAttrs(link, linkInfo)
+	case *Xfrmi:
+		addXfrmiAttrs(link, linkInfo)
 	}
 
 	req.AddData(linkInfo)
@@ -1442,6 +1444,8 @@ func LinkDeserialize(hdr *unix.NlMsghdr, m []byte) (Link, error) {
 						link = &Vrf{}
 					case "gtp":
 						link = &GTP{}
+					case "xfrm":
+						link = &Xfrmi{}
 					default:
 						link = &GenericLink{LinkType: linkType}
 					}
@@ -1483,6 +1487,8 @@ func LinkDeserialize(hdr *unix.NlMsghdr, m []byte) (Link, error) {
 						parseBridgeData(link, data)
 					case "gtp":
 						parseGTPData(link, data)
+					case "xfrm":
+						parseXfrmiData(link, data)
 					}
 				}
 			}
@@ -2487,6 +2493,25 @@ func parseVfInfo(data []syscall.NetlinkRouteAttr, id int) VfInfo {
 		}
 	}
 	return vf
+}
+
+func addXfrmiAttrs(xfrmi *Xfrmi, linkInfo *nl.RtAttr) {
+	data := linkInfo.AddRtAttr(nl.IFLA_INFO_DATA, nil)
+	data.AddRtAttr(nl.IFLA_XFRM_LINK, nl.Uint32Attr(uint32(xfrmi.ParentIndex)))
+	data.AddRtAttr(nl.IFLA_XFRM_IF_ID, nl.Uint32Attr(xfrmi.Ifid))
+
+}
+
+func parseXfrmiData(link Link, data []syscall.NetlinkRouteAttr) {
+	xfrmi := link.(*Xfrmi)
+	for _, datum := range data {
+		switch datum.Attr.Type {
+		case nl.IFLA_XFRM_LINK:
+			xfrmi.ParentIndex = int(native.Uint32(datum.Value))
+		case nl.IFLA_XFRM_IF_ID:
+			xfrmi.Ifid = native.Uint32(datum.Value)
+		}
+	}
 }
 
 // LinkSetBondSlave add slave to bond link via ioctl interface.

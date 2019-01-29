@@ -702,6 +702,8 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 	// report Network Service Statistics
 	createNetworkServiceMetrics(ctx, ReportMetrics)
 
+	createNetworkInstanceMetrics(ctx, ReportMetrics)
+
 	log.Debugf("PublishMetricsToZedCloud sending %s\n", ReportMetrics)
 	SendMetricsProtobuf(ReportMetrics, iteration)
 }

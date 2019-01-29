@@ -56,7 +56,7 @@
   branch = "master"
   name = "github.com/eriknordmark/netlink"
   packages = ["."]
-  revision = "cf716481271abe5d3b06fd6289da31ed1f82abc2"
+  revision = "c3bd86bb587babe96d6ff3af3e5a2d14321327d4"
 
 [[projects]]
   name = "github.com/fsnotify/fsnotify"
@@ -165,12 +165,6 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/shirou/w32"
-  packages = ["."]
-  revision = "bb4de0191aa41b5507caa14b0650cdbddcd9280b"
-
-[[projects]]
-  branch = "master"
   name = "github.com/sirupsen/logrus"
   packages = ["."]
   revision = "659e47340eafb203ad3c2ce461023fde46356615"
@@ -179,7 +173,7 @@
   branch = "master"
   name = "github.com/vishvananda/netlink"
   packages = ["nl"]
-  revision = "91b013f9ed89f77842f4b3efc7acbebd108b1ee0"
+  revision = "1e2e7ab670e05e2fd29bf5d0bcab2f9907e9f9f4"
 
 [[projects]]
   branch = "master"
@@ -194,7 +188,7 @@
     "zconfig",
     "zmet"
   ]
-  revision = "c19456cb44c5c8b36f0ddc70e6eef04973702a46"
+  revision = "448b07181b059e47b20c5e58bb0d646c11b3eee7"
 
 [[projects]]
   branch = "master"
@@ -234,6 +228,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "07a533ea06ce029ca68b2dd589b4c5a1d662d706a32e7308e69a908cd17bfdfd"
+  inputs-digest = "6375acba030a95b915e0e46b9eeb0c64f4e183a77b5cfaf32cbf42949dc3746c"
   solver-name = "gps-cdcl"
   solver-version = 1

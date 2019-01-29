@@ -1378,7 +1378,8 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 				newIpsets, netstatus.Ipv4Eid)
 			startDnsmasq(bridgeName)
 		}
-		addVifToBridge(netstatus, vifName)
+		addVifToBridge(netstatus, vifName, appMac,
+			config.UUIDandVersion.UUID)
 		netstatus.BridgeIPSets = newIpsets
 		publishNetworkObjectStatus(ctx, netstatus)
 
@@ -1518,7 +1519,8 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 				newIpsets, false)
 			startDnsmasq(bridgeName)
 		}
-		addVifToBridge(netstatus, vifName)
+		addVifToBridge(netstatus, vifName, appMac,
+			config.UUIDandVersion.UUID)
 		netstatus.BridgeIPSets = newIpsets
 		publishNetworkObjectStatus(ctx, netstatus)
 
