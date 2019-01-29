@@ -301,6 +301,39 @@ func unpublishDeletedNetworkInstanceConfig(ctx *getconfigContext,
 	}
 }
 
+func parseDnsNameToIpListForNetworkInstanceConfig(
+	apiConfigEntry *zconfig.NetworkInstanceConfig,
+	config *types.NetworkInstanceConfig) {
+
+	// Parse and store DnsNameToIPList form Network configuration
+	dnsEntries := apiConfigEntry.GetDns()
+
+	// Parse and populate the DnsNameToIP list
+	// This is what we will publish to zedrouter
+	nameToIPs := []types.DnsNameToIP{}
+	for _, dnsEntry := range dnsEntries {
+		hostName := dnsEntry.HostName
+
+		ips := []net.IP{}
+		for _, strAddr := range dnsEntry.Address {
+			ip := net.ParseIP(strAddr)
+			if ip != nil {
+				ips = append(ips, ip)
+			} else {
+				log.Errorf("Bad dnsEntry %s ignored\n",
+					strAddr)
+			}
+		}
+
+		nameToIP := types.DnsNameToIP{
+			HostName: hostName,
+			IPs:      ips,
+		}
+		nameToIPs = append(nameToIPs, nameToIP)
+	}
+	config.DnsNameToIPList = nameToIPs
+}
+
 func publishNetworkInstanceConfig(ctx *getconfigContext,
 	networkInstances []*zconfig.NetworkInstanceConfig) {
 
@@ -334,10 +367,21 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		if apiConfigEntry.Port != nil {
 			networkInstanceConfig.Port = apiConfigEntry.Port.Name
 		}
+		networkInstanceConfig.IpType = types.AddressType(apiConfigEntry.IpType)
+
+		// KALYAN - FIX THIS before final merge. Workaround to not getting ipType
+		if networkInstanceConfig.IpType == 0 {
+			networkInstanceConfig.IpType = types.AddressTypeIPV4
+		}
+
+		parseIpspecForNetworkInstanceConfig(apiConfigEntry.Ip, &networkInstanceConfig)
+
+		parseDnsNameToIpListForNetworkInstanceConfig(apiConfigEntry,
+			&networkInstanceConfig)
+
 		if apiConfigEntry.Cfg != nil {
 			networkInstanceConfig.OpaqueConfig = apiConfigEntry.Cfg.Oconfig
 		}
-		networkInstanceConfig.IpType = types.AddressType(apiConfigEntry.IpType)
 
 		if err := ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
 			&networkInstanceConfig); err != nil {
@@ -918,6 +962,61 @@ func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) erro
 	return nil
 }
 
+func parseIpspecForNetworkInstanceConfig(ipspec *zconfig.Ipspec,
+	config *types.NetworkInstanceConfig) error {
+	config.DhcpType = types.DhcpType(ipspec.Dhcp)
+	config.DomainName = ipspec.GetDomain()
+	// Parse Subnet
+	if s := ipspec.GetSubnet(); s != "" {
+		_, subnet, err := net.ParseCIDR(s)
+		if err != nil {
+			return errors.New(fmt.Sprintf("parseIpspec: bad subnet %s: %s",
+				s, err))
+		}
+		config.Subnet = *subnet
+	}
+	// Parse Gateway
+	if g := ipspec.GetGateway(); g != "" {
+		config.Gateway = net.ParseIP(g)
+		if config.Gateway == nil {
+			return errors.New(fmt.Sprintf("parseIpspec: bad gateway IP %s",
+				g))
+		}
+	}
+	// Parse NTP Server
+	if n := ipspec.GetNtp(); n != "" {
+		config.NtpServer = net.ParseIP(n)
+		if config.NtpServer == nil {
+			return errors.New(fmt.Sprintf("parseIpspec: bad ntp IP %s",
+				n))
+		}
+	}
+	// Parse Dns Servers
+	for _, dsStr := range ipspec.GetDns() {
+		ds := net.ParseIP(dsStr)
+		if ds == nil {
+			return errors.New(fmt.Sprintf("parseIpspec: bad dns IP %s",
+				dsStr))
+		}
+		config.DnsServers = append(config.DnsServers, ds)
+	}
+	// Parse DhcpRange
+	if dr := ipspec.GetDhcpRange(); dr != nil && dr.GetStart() != "" {
+		start := net.ParseIP(dr.GetStart())
+		if start == nil {
+			return errors.New(fmt.Sprintf("parseIpspec: bad start IP %s",
+				dr.GetStart()))
+		}
+		end := net.ParseIP(dr.GetEnd())
+		if end == nil && dr.GetEnd() != "" {
+			return errors.New(fmt.Sprintf("parseIpspec: bad end IP %s",
+				dr.GetEnd()))
+		}
+		config.DhcpRange.Start = start
+		config.DhcpRange.End = end
+	}
+	return nil
+}
 func publishNetworkServiceConfig(ctx *getconfigContext,
 	cfgServices []*zconfig.ServiceInstanceConfig) {
 
