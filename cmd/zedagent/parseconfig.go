@@ -297,7 +297,10 @@ func unpublishDeletedNetworkInstanceConfig(ctx *getconfigContext,
 		config := cast.CastNetworkServiceConfig(entry)
 		log.Infof("unpublishing NetworkInstance %s (Name: %s) \n",
 			key, config.DisplayName)
-		ctx.pubNetworkServiceConfig.Unpublish(key)
+		if err := ctx.pubNetworkInstanceConfig.Unpublish(key); err != nil {
+			log.Fatalf("Network Instance UnPublish (key:%s, name:%s) FAILED: %s",
+				key, config.DisplayName, err)
+		}
 	}
 }
 
@@ -914,6 +917,11 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 
 func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) error {
 	config.Dhcp = types.DhcpType(ipspec.Dhcp)
+	// KALYAN - HACK till zcli supports setting DHCP type
+	if config.Dhcp == 0 {
+		log.Infof("DhcpType not specified. Setting to DT_SERVER")
+		config.Dhcp = types.DT_SERVER
+	}
 	config.DomainName = ipspec.GetDomain()
 	if s := ipspec.GetSubnet(); s != "" {
 		_, subnet, err := net.ParseCIDR(s)
@@ -964,6 +972,11 @@ func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) erro
 
 func parseIpspecForNetworkInstanceConfig(ipspec *zconfig.Ipspec,
 	config *types.NetworkInstanceConfig) error {
+
+	if ipspec == nil {
+		log.Infof("ipspec not specified in config")
+		return nil
+	}
 	config.DhcpType = types.DhcpType(ipspec.Dhcp)
 	config.DomainName = ipspec.GetDomain()
 	// Parse Subnet
