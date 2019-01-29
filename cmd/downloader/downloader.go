@@ -954,28 +954,18 @@ func downloaderSubscription(ctx *downloaderContext, objType string) *pubsub.Subs
 
 // cloud storage interface functions/APIs
 
-// XXX should we use --cacart? Would assume we know the root CA.
-// XXX Set --limit-rate 100k
-// XXX continue based on filesize with: -C -
-// Note that support for --dns-interface is not compiled in
-// Normally "ifname" is the source IP to be consistent with the S3 loop
-
 func doHttp(ctx *downloaderContext, status *types.DownloaderStatus,
-	syncOp zedUpload.SyncOpType, serverUrl string, maxsize uint64,
-	ifname string, ipSrc net.IP, locFilename string) error {
+	syncOp zedUpload.SyncOpType, serverUrl, dpath string, maxsize uint64,
+	ifname string, ipSrc net.IP, filename, locFilename string) error {
 
 	auth := &zedUpload.AuthInput{
 		AuthType: "http",
 	}
 
-	index := strings.LastIndex(serverUrl, "/")
-	url := serverUrl[:index+1]
-	filename := serverUrl[index+1:]
-
 	trType := zedUpload.SyncHttpTr
 
 	// create Endpoint
-	dEndPoint, err := ctx.dCtx.NewSyncerDest(trType, url, "", auth)
+	dEndPoint, err := ctx.dCtx.NewSyncerDest(trType, serverUrl, dpath, auth)
 	if err != nil {
 		log.Errorf("NewSyncerDest failed: %s\n", err)
 		return err
@@ -990,7 +980,7 @@ func doHttp(ctx *downloaderContext, status *types.DownloaderStatus,
 	}
 	var respChan = make(chan *zedUpload.DronaRequest)
 
-	log.Debugf("syncOp for <%s>, <%s>\n", url, filename)
+	log.Debugf("syncOp for <%s>, <%s>\n", serverUrl, filename)
 	// create Request
 	// Round up from bytes to Mbytes
 	maxMB := (maxsize + 1024*1024 - 1) / (1024 * 1024)
@@ -1019,7 +1009,7 @@ func doHttp(ctx *downloaderContext, status *types.DownloaderStatus,
 			}
 			if !ok {
 				errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>",
-					url, filename)
+					serverUrl, filename)
 				log.Errorln(errStr)
 				return errors.New(errStr)
 			}
@@ -1313,8 +1303,18 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		case zconfig.DsType_DsHttp.String(), zconfig.DsType_DsHttps.String(), "":
-			err = doHttp(ctx, status, syncOp, config.DownloadURL,
-				config.Size, ifname, ipSrc, locFilename)
+			// DownloadURL format : http://<serverURL>/dpath/filename
+			index := strings.LastIndex(config.DownloadURL, "/")
+			serverUrl := config.DownloadURL[:index+1]
+			filename := config.DownloadURL[index+1:]
+			if index == -1 {
+				log.Errorf("Invalid URL : %s\n", config.DownloadURL)
+				errStr = errStr + "\n" + "Invalid URL"
+				zedcloud.ZedCloudFailure(ifname,
+					metricsUrl, 1024, 0)
+			}
+			err = doHttp(ctx, status, syncOp, serverUrl, "",
+				config.Size, ifname, ipSrc, filename, locFilename)
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
