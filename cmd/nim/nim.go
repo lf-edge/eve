@@ -31,7 +31,7 @@ const (
 	agentName       = "nim"
 	tmpDirname      = "/var/tmp/zededa"
 	DNCDirname      = tmpDirname + "/DeviceNetworkConfig"
-	identityDirname = "/config"
+	DPCOverride	= tmpDirname + "/DevicePortConfig/override.json"
 )
 
 type nimContext struct {
@@ -76,9 +76,13 @@ func waitForDeviceNetworkConfigFile() string {
 	// don't have a DeviceNetworkConfig
 	// After some tries we fall back to default.json which is eth0, wlan0
 	// and wwan0
-	// XXX if we have a /config/DevicePortConfig/override.json
-	// we should proceed without a DNCFilename!
+	// If we have a DevicePortConfig/override.json we proceed
+	// without a DNCFilename!
 	tries := 0
+	if fileExists(DPCOverride) {
+		model = "default"
+		return model
+	}
 	for {
 		DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
 		_, err := os.Stat(DNCFilename)
@@ -420,4 +424,9 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		ctx.debugOverride)
 	ctx.GCInitialized = false
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+func fileExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return err == nil
 }
