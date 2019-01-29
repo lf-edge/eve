@@ -802,7 +802,9 @@ func publishNetworkInstanceStatus(
 	pub.Publish(status.Key(), &status)
 }
 
-func publishNetworkInstanceMetrics(ctx *zedrouterContext, status *types.NetworkInstanceMetrics) {
+func publishNetworkInstanceMetrics(ctx *zedrouterContext,
+	status *types.NetworkInstanceMetrics) {
+
 	pub := ctx.pubNetworkInstanceMetrics
 	pub.Publish(status.Key(), &status)
 }
