@@ -512,7 +512,7 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 	if topic != pub.topic {
 		errStr := fmt.Sprintf("Publish(%s): item is wrong topic %s",
 			name, topic)
-		return errors.New(errStr)
+		log.Fatalln(errStr)
 	}
 	// Perform a deepCopy so the Equal check will work
 	newItem := deepCopy(item)
