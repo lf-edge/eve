@@ -12,7 +12,7 @@ DPCDIR=$TMPDIR/DevicePortConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
-AGENTS="zedmanager logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr nim baseosmgr"
+AGENTS="zedmanager logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr nim baseosmgr wstunnelclient"
 
 PATH=$BINDIR:$PATH
 
@@ -363,7 +363,8 @@ if [ $WAIT = 1 ]; then
 fi
 
 # Print the initial diag output
-/opt/zededa/bin/diag >/dev/console 2>&1
+# If we don't have a network this takes many minutes. Backgrounded
+/opt/zededa/bin/diag >/dev/console 2>&1 &
 
 # The device cert generation needs the current time. Some hardware
 # doesn't have a battery-backed clock
@@ -371,7 +372,7 @@ YEAR=`date +%Y`
 while [ $YEAR == "1970" ]; do
     echo "It's still 1970; waiting for ntp to advance"
     sleep 10
-    YEAR=`/bin/date +%Y`
+    YEAR=`date +%Y`
 done
 
 # Restart watchdog ledmanager, client, and nim
@@ -586,6 +587,12 @@ fi
 
 echo "Starting baseosmgr at" `date`
 baseosmgr &
+if [ $WAIT = 1 ]; then
+    echo -n "Press any key to continue "; read dummy; echo; echo
+fi
+
+echo "Starting wstunnelclient at" `date`
+wstunnelclient &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi

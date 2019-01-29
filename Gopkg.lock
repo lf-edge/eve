@@ -56,7 +56,7 @@
   branch = "master"
   name = "github.com/eriknordmark/netlink"
   packages = ["."]
-  revision = "cf716481271abe5d3b06fd6289da31ed1f82abc2"
+  revision = "c3bd86bb587babe96d6ff3af3e5a2d14321327d4"
 
 [[projects]]
   name = "github.com/fsnotify/fsnotify"
@@ -114,6 +114,12 @@
   revision = "0b12d6b5"
 
 [[projects]]
+  name = "github.com/konsorten/go-windows-terminal-sequences"
+  packages = ["."]
+  revision = "5c8c8bd35d3832f5d134ae1e1e375b69a4d25242"
+  version = "v1.0.1"
+
+[[projects]]
   name = "github.com/kr/fs"
   packages = ["."]
   revision = "1455def202f6e05b95cc7bfc7e8ae67ae5141eba"
@@ -159,21 +165,15 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/shirou/w32"
-  packages = ["."]
-  revision = "bb4de0191aa41b5507caa14b0650cdbddcd9280b"
-
-[[projects]]
   name = "github.com/sirupsen/logrus"
   packages = ["."]
-  revision = "3e01752db0189b9157070a0e1668a620f9a85da2"
-  version = "v1.0.6"
+  revision = "659e47340eafb203ad3c2ce461023fde46356615"
 
 [[projects]]
   branch = "master"
   name = "github.com/vishvananda/netlink"
   packages = ["nl"]
-  revision = "91b013f9ed89f77842f4b3efc7acbebd108b1ee0"
+  revision = "1e2e7ab670e05e2fd29bf5d0bcab2f9907e9f9f4"
 
 [[projects]]
   branch = "master"
@@ -188,7 +188,7 @@
     "zconfig",
     "zmet"
   ]
-  revision = "033f4e5ccd872704618b0060cad0e4f2b66f642a"
+  revision = "448b07181b059e47b20c5e58bb0d646c11b3eee7"
 
 [[projects]]
   branch = "master"
@@ -228,6 +228,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "a0db19cdf0b9bc07697947c201f0fc6516da9e19bb95b9538dabce9125492507"
+  inputs-digest = "6375acba030a95b915e0e46b9eeb0c64f4e183a77b5cfaf32cbf42949dc3746c"
   solver-name = "gps-cdcl"
   solver-version = 1

@@ -91,8 +91,9 @@ func (ctx *domainContext) publishAssignableAdapters() {
 }
 
 var debug = false
-var debugOverride bool                              // From command line arg
-var vdiskGCTime = time.Duration(3600) * time.Second // Unless from GlobalConfig
+var debugOverride bool                                     // From command line arg
+var vdiskGCTime = time.Duration(3600) * time.Second        // Unless from GlobalConfig
+var domainBootRetryTime = time.Duration(600) * time.Second // Unless from GlobalConfig
 
 func Run() {
 	handlersInit()
@@ -612,6 +613,7 @@ func runHandler(ctx *domainContext, key string, c <-chan interface{}) {
 			status := lookupDomainStatus(ctx, key)
 			if status != nil {
 				verifyStatus(ctx, status)
+				maybeRetryBoot(ctx, status)
 			}
 		}
 	}
@@ -649,6 +651,41 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			publishDomainStatus(ctx, status)
 		}
 	}
+}
+
+func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
+
+	if status.LastErr == "" {
+		return
+	}
+	t := time.Now()
+	elapsed := t.Sub(status.LastErrTime)
+	if elapsed < domainBootRetryTime {
+		log.Infof("maybeRetryBoot(%s) %v remaining\n",
+			status.Key(),
+			(domainBootRetryTime-elapsed)/time.Second)
+		return
+	}
+	log.Infof("maybeRetryBoot(%s) after %s at %v\n",
+		status.Key(), status.LastErr, status.LastErrTime)
+
+	status.LastErr = ""
+	status.LastErrTime = time.Time{}
+	status.TriedCount += 1
+
+	filename := xenCfgFilename(status.AppNum)
+	ctx.createSema.V(1)
+	domainId, err := xlCreate(status.DomainName, filename)
+	ctx.createSema.P(1)
+	if err != nil {
+		log.Errorf("maybeRetryBoot xl create for %s: %s\n",
+			status.DomainName, err)
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
+		publishDomainStatus(ctx, status)
+		return
+	}
+	doActivateTail(ctx, status, domainId)
 }
 
 // Callers must be careful to publish any changes to DomainStatus
@@ -910,6 +947,12 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		publishDomainStatus(ctx, status)
 		time.Sleep(5 * time.Second)
 	}
+	doActivateTail(ctx, status, domainId)
+}
+
+func doActivateTail(ctx *domainContext, status *types.DomainStatus,
+	domainId int) {
+
 	log.Infof("created domainId %d for %s\n", domainId, status.DomainName)
 	status.DomainId = domainId
 	status.Activated = true
@@ -918,8 +961,8 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	publishDomainStatus(ctx, status)
 
 	// Disable offloads for all vifs
-	err = xlDisableVifOffload(status.DomainName, domainId,
-		len(config.VifList))
+	err := xlDisableVifOffload(status.DomainName, domainId,
+		len(status.VifList))
 	if err != nil {
 		// XXX continuing even if we get a failure?
 		log.Errorf("xlDisableVifOffload for %s: %s\n",
@@ -942,8 +985,8 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	if err == nil && domainId != status.DomainId {
 		status.DomainId = domainId
 	}
-	log.Infof("doActivate(%v) done for %s\n",
-		config.UUIDandVersion, config.DisplayName)
+	log.Infof("doActivateTail(%v) done for %s\n",
+		status.UUIDandVersion, status.DisplayName)
 }
 
 // shutdown and wait for the domain to go away; if that fails destroy and wait
@@ -1094,13 +1137,13 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 			if err != nil && !ignoreErrors {
 				status.LastErr = fmt.Sprintf("%v", err)
 				status.LastErrTime = time.Now()
-				return
+			} else {
+				ib.IsPCIBack = false
 			}
-			ib.IsPCIBack = false
 		}
 		ib.UsedByUUID = nilUUID
-		ctx.publishAssignableAdapters()
 	}
+	ctx.publishAssignableAdapters()
 }
 
 // Produce DomainStatus based on the config
@@ -1900,13 +1943,18 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	var gcp *types.GlobalConfig
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	if gcp != nil && gcp.VdiskGCTime != 0 {
-		vdiskGCTime = time.Duration(gcp.VdiskGCTime) * time.Second
-	}
-	// XXX note different polarity
-	if gcp != nil && gcp.NoUsbAccess == ctx.usbAccess {
-		ctx.usbAccess = !gcp.NoUsbAccess
-		updateUsbAccess(ctx)
+	if gcp != nil {
+		if gcp.VdiskGCTime != 0 {
+			vdiskGCTime = time.Duration(gcp.VdiskGCTime) * time.Second
+		}
+		if gcp.DomainBootRetryTime != 0 {
+			domainBootRetryTime = time.Duration(gcp.DomainBootRetryTime) * time.Second
+		}
+		// XXX note different polarity
+		if gcp.NoUsbAccess == ctx.usbAccess {
+			ctx.usbAccess = !gcp.NoUsbAccess
+			updateUsbAccess(ctx)
+		}
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }

@@ -39,6 +39,8 @@ const (
 	serverFileName  = identityDirname + "/server"
 	deviceCertName  = identityDirname + "/device.cert.pem"
 	deviceKeyName   = identityDirname + "/device.key.pem"
+	onboardCertName = identityDirname + "/onboard.cert.pem"
+	onboardKeyName  = identityDirname + "/onboard.key.pem"
 	maxRetries      = 5
 )
 
@@ -56,7 +58,7 @@ type diagContext struct {
 	serverNameAndPort      string
 	serverName             string // Without port number
 	zedcloudCtx            *zedcloud.ZedCloudContext
-	deviceCert             *tls.Certificate
+	cert                   *tls.Certificate
 }
 
 // Set from Makefile
@@ -121,20 +123,35 @@ func Run() {
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
 	}
-	deviceCert, err := tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
-	if err != nil {
-		log.Fatal(err)
+	if fileExists(deviceCertName) && fileExists(deviceKeyName) {
+		cert, err := tls.LoadX509KeyPair(deviceCertName,
+			deviceKeyName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		ctx.cert = &cert
+	} else if fileExists(onboardCertName) && fileExists(onboardKeyName) {
+		cert, err := tls.LoadX509KeyPair(onboardCertName,
+			onboardKeyName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		ctx.cert = &cert
+		fmt.Printf("WARNING: no device cert; using onboarding cert at %v\n",
+			time.Now().Format(time.RFC3339Nano))
+
+	} else {
+		fmt.Printf("ERROR: no device cert and no onboarding cert at %v\n",
+			time.Now().Format(time.RFC3339Nano))
+		os.Exit(1)
 	}
-	ctx.deviceCert = &deviceCert
-	tlsConfig, err := zedcloud.GetTlsConfig(ctx.serverName, &deviceCert)
+
+	tlsConfig, err := zedcloud.GetTlsConfig(ctx.serverName, ctx.cert)
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedcloudCtx.TlsConfig = tlsConfig
 	ctx.zedcloudCtx = &zedcloudCtx
-
-	// XXX print any override.json; subscribe and wait for sync??
-	// XXX print all DevicePortConfig's? Changes?
 
 	subLedBlinkCounter, err := pubsub.Subscribe("", types.LedBlinkCounter{},
 		false, &ctx)
@@ -318,9 +335,6 @@ func printOutput(ctx *diagContext) {
 	for _, port := range ctx.DeviceNetworkStatus.Ports {
 		// Print usefully formatted info based on which
 		// fields are set and Dhcp type; proxy info order
-		if false {
-			fmt.Printf("Port status XXX %+v\n", port)
-		}
 		ifname := port.IfName
 		isMgmt := false
 		isFree := false
@@ -386,17 +400,7 @@ func printOutput(ctx *diagContext) {
 		}
 		// DNS lookup, ping and getUuid calls
 		if !tryLookupIP(ctx, ifname) {
-			// Try the IP address. Keep serverName for TLS config
-			switch ctx.serverName {
-			case "zedcloud.canary.zededa.net":
-				ctx.serverNameAndPort = "18.219.11.36"
-			case "zedcloud.zededa.net":
-				ctx.serverNameAndPort = "18.221.230.1"
-			default:
-				continue
-			}
-			fmt.Printf("INFO: %s: Trying ping and get of config using IP address %s instead of DNS lookup\n",
-				ifname, ctx.serverNameAndPort)
+			continue
 		}
 		if !tryPing(ctx, ifname, "") {
 			fmt.Printf("ERROR: %s: ping failed to %s; trying google\n",
@@ -425,7 +429,7 @@ func printOutput(ctx *diagContext) {
 			ctx.serverNameAndPort = origServerNameAndPort
 			// restore TLS
 			tlsConfig, err := zedcloud.GetTlsConfig(ctx.serverName,
-				ctx.deviceCert)
+				ctx.cert)
 			if err != nil {
 				errStr := fmt.Sprintf("ERROR: %s: internal GetTlsConfig failed %s\n",
 					ifname, err)
@@ -558,14 +562,14 @@ func tryPing(ctx *diagContext, ifname string, requrl string) bool {
 		requrl = ctx.serverNameAndPort + "/api/v1/edgedevice/ping"
 	} else {
 		tlsConfig, err := zedcloud.GetTlsConfig(ctx.serverName,
-			ctx.deviceCert)
+			ctx.cert)
 		if err != nil {
 			errStr := fmt.Sprintf("ERROR: %s: internal GetTlsConfig failed %s\n",
 				ifname, err)
 			panic(errStr)
 		}
 		zedcloudCtx.TlsConfig = tlsConfig
-		tlsConfig.InsecureSkipVerify = true // XXX do we need to clear it for http?
+		tlsConfig.InsecureSkipVerify = true
 	}
 
 	// As we ping the cloud or other URLs, don't affect the LEDs

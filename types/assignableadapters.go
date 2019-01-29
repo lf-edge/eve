@@ -12,8 +12,9 @@ package types
 // file on boot.
 
 import (
-	"github.com/satori/go.uuid"
 	"strings"
+
+	"github.com/satori/go.uuid"
 )
 
 type AssignableAdapters struct {
@@ -22,10 +23,23 @@ type AssignableAdapters struct {
 }
 
 type IoBundle struct {
-	Type       IoType
-	Name       string    // Short hand name such as "com"
-	Members    []string  // E.g., "com1", "com2"
-	UsedByUUID uuid.UUID // UUID for application
+	// Type
+	//	Type of the IoBundle
+	Type IoType
+	// Name
+	//	Short hand name such as "com".
+	//  xxx - Any description is where this is used? How this is to be set etc??
+	Name string // Short hand name such as "com"
+	// Members
+	//	List of members ( names )
+	//  XXX - Should this be a map?? With list, we cannot detect duplicate members
+	//		In most cases, we probably do lookups on members - they become easy with
+	//		Maps too.
+	Members []string // E.g., "com1", "com2"
+	// UsedByUUID
+	//	Application UUID ( Can be Dom0 too ) that owns the Bundle.
+	//	For unassigned adapters, this is not set.
+	UsedByUUID uuid.UUID
 
 	// Local information not reported to cloud
 	Lookup   bool   // Look up name to find PCI
@@ -33,10 +47,21 @@ type IoBundle struct {
 	PciShort string // If pci adapter
 	XenCfg   string // If template for the bundle
 
+	// IsPciBack
+	//	Is the IoBundle assigned to pciBack.
+	//  If the device is managed by dom0, this is False.
+	//  If the device is ( or to be ) managed by DomU, this is True
 	IsPCIBack bool // Assigned to pciback
 	IsPort    bool // Whole or part of the bundle is a zedrouter port
 	IsBridge  bool // Exclusively used by a bridge service. TBD
 	IsService bool // Used by a service. TBD.
+
+	// DeviceExists
+	//	This is to indicate if the device exists in the system
+	//  Currently, there are many checks using pciShort to see
+	//  if the device exists. This attribute is to abstract it out.
+	// DeviceExists bool
+
 }
 
 // Should match definition in appconfig.proto
@@ -55,6 +80,21 @@ func LookupIoBundle(aa *AssignableAdapters, ioType IoType, name string) *IoBundl
 	for i, b := range aa.IoBundleList {
 		if b.Type == ioType && strings.EqualFold(b.Name, name) {
 			return &aa.IoBundleList[i]
+		}
+	}
+	return nil
+}
+
+func (aa *AssignableAdapters) LookupIoBundleForMember(
+	ioType IoType, memberName string) *IoBundle {
+	for i, b := range aa.IoBundleList {
+		if b.Type != ioType {
+			continue
+		}
+		for _, member := range b.Members {
+			if strings.EqualFold(member, memberName) {
+				return &aa.IoBundleList[i]
+			}
 		}
 	}
 	return nil

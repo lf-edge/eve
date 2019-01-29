@@ -19,7 +19,19 @@ type GlobalConfig struct {
 	DownloadGCTime          uint32 // Garbage collect if no use
 	VdiskGCTime             uint32 // Garbage collect RW disk if no use
 
-	NoUsbAccess           bool // domU has all PCI including USB controllers
+	DownloadRetryTime   uint32 // Retry failed download after N sec
+	DomainBootRetryTime uint32 // Retry failed boot after N sec
+
+	// NoUsbAccess
+	// Determines if Dom0 can use USB devices.
+	// If true:
+	//		USB devices can only be passed through to the applications
+	//		( pciBack=true). The devices are in pci-assignable-list
+	// If false:
+	// 			dom0 can use these devices as well.
+	//			By default, all USB devices will be assigned to dom0. pciBack=false.
+	//			But these devices are still available in pci-assignable-list.
+	NoUsbAccess           bool
 	NoSshAccess           bool
 	DefaultLogLevel       string
 	DefaultRemoteLogLevel string

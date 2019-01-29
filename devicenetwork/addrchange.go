@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/eriknordmark/netlink"
+	"github.com/zededa/go-provision/types"
 	log "github.com/sirupsen/logrus"
 	"net"
 	"reflect"
@@ -55,20 +56,59 @@ func AddrChange(ctx *DeviceNetworkContext, change netlink.AddrUpdate) {
 	}
 }
 
+// Check if ports in the given DeviceNetworkStatus have atleast one
+// IP address each.
+func checkIfAllDNSPortsHaveIPAddrs(status types.DeviceNetworkStatus) bool {
+	mgmtPorts := types.GetMgmtPortsFree(status, 0)
+	if len(mgmtPorts) == 0 {
+		return false
+	}
+
+	for _, port := range mgmtPorts {
+		numAddrs := types.CountLocalAddrFreeNoLinkLocalIf(status, port)
+		log.Debugln("checkIfAllDNSPortsHaveIPAddrs: Port %s has %d addresses.",
+			port, numAddrs)
+		if numAddrs < 1 {
+			return false
+		}
+	}
+	return true
+}
+
 // The ifname arg can only be used for logging
-func HandleAddressChange(ctx *DeviceNetworkContext, ifname string) {
+func HandleAddressChange(ctx *DeviceNetworkContext,
+	ifname string) {
+
 	// Check if we have more or less addresses
-	status, _ := MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
-		*ctx.DeviceNetworkStatus)
+	var dnStatus types.DeviceNetworkStatus
+
 	// XXX if err return means WPAD failed, or port does not exist
 	// XXX add test hook for former
-	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
-		log.Debugf("HandleAddressChange: change for %s from %v to %v\n",
-			ifname, *ctx.DeviceNetworkStatus, status)
-		*ctx.DeviceNetworkStatus = status
-		DoDNSUpdate(ctx)
+	if !ctx.Pending.Inprogress {
+		dnStatus = *ctx.DeviceNetworkStatus
+		status, _ := MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
+			dnStatus)
+
+		if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
+			log.Debugf("HandleAddressChange: change for %s from %v to %v\n",
+				ifname, *ctx.DeviceNetworkStatus, status)
+			*ctx.DeviceNetworkStatus = status
+			DoDNSUpdate(ctx)
+		} else {
+			log.Infof("HandleAddressChange: No change for %s\n", ifname)
+		}
 	} else {
-		log.Infof("HandleAddressChange: No change for %s\n", ifname)
+		dnStatus = ctx.Pending.PendDNS
+		_, _ = MakeDeviceNetworkStatus(*ctx.DevicePortConfig, dnStatus)
+
+		pingTestDNS := checkIfAllDNSPortsHaveIPAddrs(dnStatus)
+		if pingTestDNS {
+			// We have a suitable candiate for running our cloud ping test.
+			// Kick the DNS test timer to fire immediately.
+			log.Infof("HandleAddressChange: Kicking cloud ping test now, " + 
+				"Since we have suitable addresses already.")
+			VerifyDevicePortConfig(ctx)
+		}
 	}
 }
 

@@ -82,8 +82,8 @@ func prepareAndPublishNetworkInfoMsg(ctx *zedagentContext,
 	for _, s := range status.BridgeIPSets {
 		netInfo.BridgeIPSets = append(netInfo.BridgeIPSets, s)
 	}
-	for _, v := range status.VifNames {
-		netInfo.VifNames = append(netInfo.VifNames, v)
+	for _, v := range status.Vifs {
+		netInfo.VifNames = append(netInfo.VifNames, v.Name)
 	}
 	netInfo.Ipv4Eid = status.Ipv4Eid
 

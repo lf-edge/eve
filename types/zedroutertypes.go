@@ -6,11 +6,14 @@ package types
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
+	"os"
+	"time"
+
 	"github.com/eriknordmark/ipinfo"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"net"
-	"time"
 )
 
 // Indexed by UUID
@@ -111,7 +114,13 @@ type DevicePortConfig struct {
 	Version      DevicePortConfigVersion
 	Key          string
 	TimePriority time.Time // All zero's is fallback lowest priority
-	Ports        []NetworkPortConfig
+
+	// Times when last ping test Failed/Succeeded.
+	// All zeros means never tested.
+	LastFailed    time.Time
+	LastSucceeded time.Time
+
+	Ports []NetworkPortConfig
 }
 
 type DevicePortConfigVersion uint32
@@ -122,6 +131,63 @@ const (
 	DPCInitial DevicePortConfigVersion = iota
 	DPCIsMgmt                          // Require IsMgmt to be set for management ports
 )
+
+func (portConfig *DevicePortConfig) DoSanitize(
+	sanitizeTimePriority bool,
+	sanitizeKey bool, key string,
+	sanitizeName bool) {
+
+	if sanitizeTimePriority {
+		zeroTime := time.Time{}
+		if portConfig.TimePriority == zeroTime {
+			// If we can stat the file use its modify time
+			filename := fmt.Sprintf("/var/tmp/zededa/DevicePortConfig/%s.json",
+				key)
+			fi, err := os.Stat(filename)
+			if err == nil {
+				portConfig.TimePriority = fi.ModTime()
+			} else {
+				portConfig.TimePriority = time.Unix(1, 0)
+			}
+			log.Infof("HandleDPCModify: Forcing TimePriority for %s to %v\n",
+				key, portConfig.TimePriority)
+		}
+	}
+	if sanitizeKey {
+		if portConfig.Key == "" {
+			portConfig.Key = key
+		}
+	}
+	if sanitizeName {
+		// In case Name isn't set we make it match IfName
+		// XXX still needed?
+		for i, _ := range portConfig.Ports {
+			port := &portConfig.Ports[i]
+			if port.Name == "" {
+				port.Name = port.IfName
+			}
+		}
+
+	}
+	return
+}
+
+func (portConfig DevicePortConfig) IsDPCTestable() bool {
+	// convert time difference in nano seconds to seconds
+	timeDiff := int64(time.Now().Sub(portConfig.LastFailed) / time.Second)
+
+	if portConfig.LastFailed.After(portConfig.LastSucceeded) && timeDiff < 60 {
+		return false
+	}
+	return true
+}
+
+func (portConfig DevicePortConfig) IsDPCUntested() bool {
+	if portConfig.LastFailed.IsZero() && portConfig.LastSucceeded.IsZero() {
+		return true
+	}
+	return false
+}
 
 type NetworkProxyType uint8
 
@@ -272,6 +338,16 @@ func CountLocalAddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 
 	// Count the number of addresses which apply
 	addrs, _ := getInterfaceAddr(globalStatus, true, "", false)
+	return len(addrs)
+}
+
+// Return number of local IP addresses for all the management ports with given name
+// excluding link-local addresses
+func CountLocalAddrFreeNoLinkLocalIf(globalStatus DeviceNetworkStatus,
+	port string) int {
+
+	// Count the number of addresses which apply
+	addrs, _ := getInterfaceAddr(globalStatus, true, port, false)
 	return len(addrs)
 }
 
@@ -535,6 +611,31 @@ func AdapterToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 	return adapter
 }
 
+// IsAnyPortInPciBack
+//		Checks is any of the Ports are part of IO bundles which are in PCIback.
+//		If true, it also returns the portName ( NOT bundle name )
+func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
+	aa *AssignableAdapters) (bool, string) {
+	if aa == nil {
+		log.Infof("IsAnyPortInPciBack: nil aa")
+		return false, ""
+	}
+	for _, port := range portConfig.Ports {
+		ioBundle := aa.LookupIoBundleForMember(
+			IoEth, port.IfName)
+		if ioBundle == nil {
+			// It is not guaranteed that all Ports are part of Assignable Adapters
+			// If not found, the adaptor is not capable of being assigned at
+			// PCI level. So it cannot be in PCI back.
+			continue
+		}
+		if ioBundle.IsPCIBack {
+			return true, port.IfName
+		}
+	}
+	return false, ""
+}
+
 type MapServerType uint8
 
 const (
@@ -672,7 +773,7 @@ type NetworkObjectStatus struct {
 	BridgeIPSets []string
 
 	// Set of vifs on this bridge
-	VifNames []string
+	Vifs []VifNameMac
 
 	Ipv4Eid bool // Track if this is a CryptoEid with IPv4 EIDs
 
@@ -755,6 +856,18 @@ func (metrics NetworkServiceMetrics) Key() string {
 	return metrics.UUID.String()
 }
 
+type NetworkInstanceMetrics struct {
+	UUIDandVersion UUIDandVersion
+	DisplayName    string
+	Type           NetworkInstanceType
+	VpnMetrics     *VpnMetrics
+	LispMetrics    *LispMetrics
+}
+
+func (metrics NetworkInstanceMetrics) Key() string {
+	return metrics.UUIDandVersion.UUID.String()
+}
+
 // Network metrics for overlay and underlay
 // Matches networkMetrics protobuf message
 type NetworkMetrics struct {
@@ -790,6 +903,141 @@ func CastNetworkMetrics(in interface{}) NetworkMetrics {
 		log.Fatal(err, "json Unmarshal in CastNetworkMetrics")
 	}
 	return output
+}
+
+type NetworkInstanceType int32
+
+// These values should be same as the ones defined in zconfig.ZNetworkInstType
+const (
+	NetworkInstanceTypeFirst       NetworkInstanceType = 0
+	NetworkInstanceTypeSwitch      NetworkInstanceType = 1
+	NetworkInstanceTypeLocal       NetworkInstanceType = 2
+	NetworkInstanceTypeCloud       NetworkInstanceType = 3
+	NetworkInstanceTypeMesh        NetworkInstanceType = 4
+	NetworkInstanceTypeHoneyPot    NetworkInstanceType = 5
+	NetworkInstanceTypeTransparent NetworkInstanceType = 6
+	NetworkInstanceTypeLast        NetworkInstanceType = 255
+)
+
+type AddressType int32
+
+// The values here should be same as the ones defined in zconfig.AddressType
+const (
+	AddressTypeFirst      AddressType = 0
+	AddressTypeIPV4       AddressType = 1
+	AddressTypeIPV6       AddressType = 2
+	AddressTypeCryptoIPV4 AddressType = 3
+	AddressTypeCryptoIPV6 AddressType = 4
+	AddressTypeLast       AddressType = 255
+)
+
+// NetworkInstanceConfig
+//		Config Object for NetworkInstance
+// 		Extracted from the protobuf NetworkInstanceConfig
+type NetworkInstanceConfig struct {
+	UUIDandVersion
+	DisplayName string
+
+	// Activate - Activate the config.
+	Activate bool
+
+	Type NetworkInstanceType
+
+	// Port - Port name specified in the Device Config.
+	Port string
+
+	// IP configuration for the Application
+	IpType          AddressType
+	DhcpType        DhcpType // If DT_STATIC or DT_SERVER use below
+	Subnet          net.IPNet
+	Gateway         net.IP
+	DomainName      string
+	NtpServer       net.IP
+	DnsServers      []net.IP // If not set we use Gateway as DNS server
+	DhcpRange       IpRange
+	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
+
+	// For other network services - Proxy / Lisp /StrongSwan etc..
+	OpaqueConfig string
+}
+
+func (status *NetworkInstanceConfig) Key() string {
+	return status.UUID.String()
+}
+
+type ChangeInProgressType int32
+
+const (
+	ChangeInProgressTypeNone   ChangeInProgressType = 0
+	ChangeInProgressTypeCreate ChangeInProgressType = 1
+	ChangeInProgressTypeModify ChangeInProgressType = 2
+	ChangeInProgressTypeDelete ChangeInProgressType = 3
+	ChangeInProgressTypeLast   ChangeInProgressType = 255
+)
+
+// NetworkInstanceStatus
+//		Config Object for NetworkInstance
+// 		Extracted from the protobuf NetworkInstanceConfig
+type NetworkInstanceStatus struct {
+	NetworkInstanceConfig
+	ChangeInProgress ChangeInProgressType
+
+	// Activated
+	//	Keeps track of current state of object - if it has been activated
+	Activated bool
+
+	BridgeNum    int
+	BridgeName   string // bn<N>
+	BridgeIPAddr string
+	BridgeMac    string
+
+	// interface names for the Port
+	IfNameList []string // Recorded at time of activate
+
+	// Used to populate DNS and eid ipset
+	DnsNameToIPList []DnsNameToIP
+
+	// Collection of address assignments; from MAC address to IP address
+	IPAssignments map[string]net.IP
+
+	// Union of all ipsets fed to dnsmasq for the linux bridge
+	BridgeIPSets []string
+
+	// Set of vifs on this bridge
+	Vifs []VifNameMac
+
+	Ipv4Eid bool // Track if this is a CryptoEid with IPv4 EIDs
+
+	VpnStatus      *ServiceVpnStatus
+	LispInfoStatus *LispInfoStatus
+	LispMetrics    *LispMetrics
+
+	// Any errrors from provisioning the network instance
+	Error     string
+	ErrorTime time.Time
+}
+
+type VifNameMac struct {
+	Name    string
+	MacAddr string
+	AppID   uuid.UUID
+}
+
+func (status *NetworkInstanceStatus) SetError(err error) {
+	log.Errorln(err.Error())
+	status.Error = err.Error()
+	status.ErrorTime = time.Now()
+	return
+}
+
+// Returns true if found
+func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
+	for _, a := range status.IPAssignments {
+		if ip.Equal(a) {
+			return true
+		}
+	}
+	return false
 }
 
 // Similar support as in draft-ietf-netmod-acl-model

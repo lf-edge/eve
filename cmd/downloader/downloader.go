@@ -27,6 +27,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -61,13 +62,15 @@ type downloaderContext struct {
 	pubGlobalDownloadStatus *pubsub.Publication
 	deviceNetworkStatus     types.DeviceNetworkStatus
 	globalConfig            types.GlobalDownloadConfig
+	globalStatusLock        sync.Mutex
 	globalStatus            types.GlobalDownloadStatus
 	subGlobalConfig         *pubsub.Subscription
 }
 
 var debug = false
-var debugOverride bool                                // From command line arg
-var downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
+var debugOverride bool                                   // From command line arg
+var downloadGCTime = time.Duration(600) * time.Second    // Unless from GlobalConfig
+var downloadRetryTime = time.Duration(600) * time.Second // Unless from GlobalConfig
 
 func Run() {
 	handlersInit()
@@ -328,6 +331,24 @@ func lookupDownloaderStatus(ctx *downloaderContext, objType string,
 	return &status
 }
 
+func lookupDownloaderConfig(ctx *downloaderContext, objType string,
+	key string) *types.DownloaderConfig {
+
+	sub := downloaderSubscription(ctx, objType)
+	c, _ := sub.Get(key)
+	if c == nil {
+		log.Infof("lookupDownloaderConfig(%s) not found\n", key)
+		return nil
+	}
+	config := cast.CastDownloaderConfig(c)
+	if config.Key() != key {
+		log.Errorf("lookupDownloaderConfig key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return nil
+	}
+	return &config
+}
+
 // We have one goroutine per provisioned domU object.
 // Channel is used to send config (new and updates)
 // Channel is closed when the object is deleted
@@ -391,6 +412,10 @@ func runHandler(ctx *downloaderContext, objType string, key string,
 
 	log.Infof("runHandler starting\n")
 
+	max := float64(downloadRetryTime)
+	min := max * 0.3
+	ticker := flextimer.NewRangeTicker(time.Duration(min),
+		time.Duration(max))
 	closed := false
 	for !closed {
 		select {
@@ -404,6 +429,7 @@ func runHandler(ctx *downloaderContext, objType string, key string,
 				} else {
 					handleModify(ctx, key, config, status)
 				}
+				// XXX if err start timer
 			} else {
 				// Closed
 				status := lookupDownloaderStatus(ctx,
@@ -412,10 +438,48 @@ func runHandler(ctx *downloaderContext, objType string, key string,
 					handleDelete(ctx, key, status)
 				}
 				closed = true
+				// XXX stop timer
+			}
+		case <-ticker.C:
+			log.Debugf("runHandler(%s) timer\n", key)
+			status := lookupDownloaderStatus(ctx, objType, key)
+			if status != nil {
+				maybeRetryDownload(ctx, status)
 			}
 		}
 	}
 	log.Infof("runHandler(%s) DONE\n", key)
+}
+
+func maybeRetryDownload(ctx *downloaderContext,
+	status *types.DownloaderStatus) {
+
+	if status.LastErr == "" {
+		return
+	}
+	t := time.Now()
+	elapsed := t.Sub(status.LastErrTime)
+	if elapsed < downloadRetryTime {
+		log.Infof("maybeRetryDownload(%s) %v remaining\n",
+			status.Key(),
+			(downloadRetryTime-elapsed)/time.Second)
+		return
+	}
+	log.Infof("maybeRetryDownload(%s) after %s at %v\n",
+		status.Key(), status.LastErr, status.LastErrTime)
+
+	config := lookupDownloaderConfig(ctx, status.ObjType, status.Key())
+	if config == nil {
+		log.Infof("maybeRetryDownload(%s) no config\n",
+			status.Key())
+		return
+	}
+	status.LastErr = ""
+	status.LastErrTime = time.Time{}
+	status.RetryCount += 1
+	// XXX do we need to adjust reservedspace??
+
+	handleSyncOp(ctx, status.Key(), *config, status)
 }
 
 func handleCreate(ctx *downloaderContext, objType string,
@@ -442,8 +506,10 @@ func handleCreate(ctx *downloaderContext, objType string,
 	publishDownloaderStatus(ctx, &status)
 
 	// Check if we have space
-	kb := types.RoundupToKB(config.Size)
-	if uint(kb) >= ctx.globalStatus.RemainingSpace {
+	// Update reserved space. Keep reserved until doDelete
+	// XXX RefCount -> 0 should keep it reserved.
+	kb := uint(types.RoundupToKB(config.Size))
+	if !tryReserveSpace(ctx, kb) {
 		errString := fmt.Sprintf("Would exceed remaining space %d vs %d\n",
 			kb, ctx.globalStatus.RemainingSpace)
 		log.Errorln(errString)
@@ -456,12 +522,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		log.Errorf("handleCreate failed for %s\n", config.DownloadURL)
 		return
 	}
-
-	// Update reserved space. Keep reserved until doDelete
-	// XXX RefCount -> 0 should keep it reserved.
-	status.ReservedSpace = uint(types.RoundupToKB(config.Size))
-	ctx.globalStatus.ReservedSpace += status.ReservedSpace
-	updateRemainingSpace(ctx)
+	status.ReservedSpace = kb
 
 	// If RefCount == 0 then we don't yet download.
 	if config.RefCount == 0 {
@@ -556,12 +617,11 @@ func doDelete(ctx *downloaderContext, key string, locDirname string,
 	deletefile(locDirname+"/pending", status)
 
 	status.State = types.INITIAL
-	ctx.globalStatus.UsedSpace -= uint(types.RoundupToKB(status.Size))
+	deleteSpace(ctx, uint(types.RoundupToKB(status.Size)))
 	status.Size = 0
 
 	// XXX Asymmetric; handleCreate reserved on RefCount 0. We unreserve
 	// going back to RefCount 0. FIXed
-	updateRemainingSpace(ctx)
 	publishDownloaderStatus(ctx, status)
 }
 
@@ -599,12 +659,8 @@ func handleDelete(ctx *downloaderContext, key string,
 	status.PendingDelete = true
 	publishDownloaderStatus(ctx, status)
 
-	ctx.globalStatus.ReservedSpace -= status.ReservedSpace
-	status.ReservedSpace = 0
-	ctx.globalStatus.UsedSpace -= uint(types.RoundupToKB(status.Size))
-	status.Size = 0
-
-	updateRemainingSpace(ctx)
+	// Update globalStatus and status
+	unreserveSpace(ctx, status)
 
 	publishDownloaderStatus(ctx, status)
 
@@ -627,10 +683,6 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 
 	log.Infof("MaxSpace %d\n", ctx.globalConfig.MaxSpace)
 
-	ctx.globalStatus.UsedSpace = 0
-	ctx.globalStatus.ReservedSpace = 0
-	updateRemainingSpace(ctx)
-
 	// XXX how do we find out when verifier cleans up duplicates etc?
 	// XXX run this periodically... What about downloads inprogress
 	// when we run it?
@@ -638,13 +690,8 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 	// We read objectDownloadDirname/* and determine how much space
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
 	totalUsed := sizeFromDir(objectDownloadDirname)
-	ctx.globalStatus.UsedSpace = uint(types.RoundupToKB(totalUsed))
-	// Note that the UsedSpace calculated during initialization can exceed
-	// MaxSpace, and RemainingSpace is a uint!
-	if ctx.globalStatus.UsedSpace > ctx.globalConfig.MaxSpace {
-		ctx.globalStatus.UsedSpace = ctx.globalConfig.MaxSpace
-	}
-	updateRemainingSpace(ctx)
+	kb := uint(types.RoundupToKB(totalUsed))
+	initSpace(ctx, kb)
 
 	// create drona interface
 	dCtx, err := zedUpload.NewDronaCtx("zdownloader", 0)
@@ -781,6 +828,62 @@ func sizeFromDir(dirname string) uint64 {
 	return totalUsed
 }
 
+func initSpace(ctx *downloaderContext, kb uint) {
+	ctx.globalStatusLock.Lock()
+	ctx.globalStatus.UsedSpace = 0
+	ctx.globalStatus.ReservedSpace = 0
+	updateRemainingSpace(ctx)
+
+	ctx.globalStatus.UsedSpace = kb
+	// Note that the UsedSpace calculated during initialization can
+	// exceed MaxSpace, and RemainingSpace is a uint!
+	if ctx.globalStatus.UsedSpace > ctx.globalConfig.MaxSpace {
+		ctx.globalStatus.UsedSpace = ctx.globalConfig.MaxSpace
+	}
+	updateRemainingSpace(ctx)
+	ctx.globalStatusLock.Unlock()
+
+	publishGlobalStatus(ctx)
+}
+
+// Returns true if there was space
+func tryReserveSpace(ctx *downloaderContext, kb uint) bool {
+	ctx.globalStatusLock.Lock()
+	if kb >= ctx.globalStatus.RemainingSpace {
+		ctx.globalStatusLock.Unlock()
+		return false
+	}
+	ctx.globalStatus.ReservedSpace += kb
+	updateRemainingSpace(ctx)
+	ctx.globalStatusLock.Unlock()
+
+	publishGlobalStatus(ctx)
+	return true
+}
+
+func unreserveSpace(ctx *downloaderContext, status *types.DownloaderStatus) {
+	ctx.globalStatusLock.Lock()
+	ctx.globalStatus.ReservedSpace -= status.ReservedSpace
+	status.ReservedSpace = 0
+	ctx.globalStatus.UsedSpace -= uint(types.RoundupToKB(status.Size))
+	status.Size = 0
+
+	updateRemainingSpace(ctx)
+	ctx.globalStatusLock.Unlock()
+
+	publishGlobalStatus(ctx)
+}
+
+func deleteSpace(ctx *downloaderContext, kb uint) {
+	ctx.globalStatusLock.Lock()
+	ctx.globalStatus.UsedSpace -= kb
+	updateRemainingSpace(ctx)
+	ctx.globalStatusLock.Unlock()
+
+	publishGlobalStatus(ctx)
+}
+
+// Caller must hold ctx.globalStatusLock.Lock() but no way to assert in go
 func updateRemainingSpace(ctx *downloaderContext) {
 
 	ctx.globalStatus.RemainingSpace = ctx.globalConfig.MaxSpace -
@@ -789,8 +892,6 @@ func updateRemainingSpace(ctx *downloaderContext) {
 	log.Infof("RemainingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
 		ctx.globalStatus.RemainingSpace, ctx.globalConfig.MaxSpace,
 		ctx.globalStatus.UsedSpace, ctx.globalStatus.ReservedSpace)
-	// Create and write
-	publishGlobalStatus(ctx)
 }
 
 func publishGlobalStatus(ctx *downloaderContext) {
@@ -834,6 +935,23 @@ func downloaderPublication(ctx *downloaderContext, objType string) *pubsub.Publi
 			objType)
 	}
 	return pub
+}
+
+func downloaderSubscription(ctx *downloaderContext, objType string) *pubsub.Subscription {
+
+	var sub *pubsub.Subscription
+	switch objType {
+	case appImgObj:
+		sub = ctx.subAppImgConfig
+	case baseOsObj:
+		sub = ctx.subBaseOsConfig
+	case certObj:
+		sub = ctx.subCertObjConfig
+	default:
+		log.Fatalf("downloaderSubscription: Unknown ObjType %s\n",
+			objType)
+	}
+	return sub
 }
 
 // cloud storage interface functions/APIs
@@ -1310,10 +1428,8 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	}
 	status.Size = uint64(info.Size())
 
-	ctx.globalStatus.ReservedSpace -= status.ReservedSpace
-	status.ReservedSpace = 0
-	ctx.globalStatus.UsedSpace += uint(types.RoundupToKB(status.Size))
-	updateRemainingSpace(ctx)
+	// Update globalStatus and status
+	unreserveSpace(ctx, status)
 
 	log.Infof("handleSyncOpResponse successful <%s> <%s>\n",
 		config.DownloadURL, locFilename)
@@ -1369,8 +1485,13 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	var gcp *types.GlobalConfig
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	if gcp != nil && gcp.DownloadGCTime != 0 {
-		downloadGCTime = time.Duration(gcp.DownloadGCTime) * time.Second
+	if gcp != nil {
+		if gcp.DownloadGCTime != 0 {
+			downloadGCTime = time.Duration(gcp.DownloadGCTime) * time.Second
+		}
+		if gcp.DownloadRetryTime != 0 {
+			downloadRetryTime = time.Duration(gcp.DownloadRetryTime) * time.Second
+		}
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
+	"github.com/zededa/go-provision/iptables"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -36,6 +37,8 @@ const (
 type nimContext struct {
 	devicenetwork.DeviceNetworkContext
 	subGlobalConfig *pubsub.Subscription
+	GCInitialized   bool // Received initial GlobalConfig
+	sshAccess       bool
 
 	// CLI args
 	debug         bool
@@ -100,6 +103,8 @@ func waitForDeviceNetworkConfigFile() string {
 // Run - Main function - invoked from zedbox.go
 func Run() {
 	nimCtx := nimContext{}
+	nimCtx.AssignableAdapters = &types.AssignableAdapters{}
+	iptables.UpdateSshAccess(nimCtx.sshAccess, true)
 
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
@@ -217,7 +222,7 @@ func Run() {
 
 	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
 		types.AssignableAdapters{}, false,
-		&nimCtx)
+		&nimCtx.DeviceNetworkContext)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -231,6 +236,18 @@ func Run() {
 	// Apply any changes from the port config to date.
 	publishDeviceNetworkStatus(&nimCtx)
 
+	// Wait for initial GlobalConfig
+	for !nimCtx.GCInitialized {
+		log.Infof("Waiting for GCInitialized\n")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
+		}
+	}
+
 	// XXX should we make geoRedoTime configurable?
 	// We refresh the gelocation information when the underlay
 	// IP address(es) change, or once an hour.
@@ -242,6 +259,26 @@ func Run() {
 	geoMin := geoMax * 0.3
 	geoTimer := flextimer.NewRangeTicker(time.Duration(geoMin),
 		time.Duration(geoMax))
+
+	dnc := &nimCtx.DeviceNetworkContext
+	dnc.DPCTestDuration = 30 // seconds
+	// Timer for checking/verifying pending device network status
+	pendTimer := time.NewTimer(dnc.DPCTestDuration * time.Second)
+	// We stop this timer before using in the select loop below, because
+	// we do not want the DPC list verification to start yet. We need a place
+	// holder in the select loop.
+	// Let the select loop have this stopped timer for now and
+	// create a new timer when it's deemed required (change in DPC config).
+	pendTimer.Stop()
+	dnc.Pending.PendTimer = pendTimer
+
+	// Periodic timer that tests device cloud connectivity
+	dnc.NetworkTestInterval = 5 // minutes
+	networkTestInterval := time.Duration(dnc.NetworkTestInterval * time.Minute)
+	networkTestTimer := time.NewTimer(networkTestInterval)
+	dnc.NetworkTestTimer = networkTestTimer
+	// We start assuming cloud connectivity works
+	dnc.CloudConnectivityWorks = true
 
 	// Look for address changes
 	addrChanges := devicenetwork.AddrChangeInit(&nimCtx.DeviceNetworkContext)
@@ -266,6 +303,9 @@ func Run() {
 		case change := <-subDevicePortConfigS.C:
 			subDevicePortConfigS.ProcessChange(change)
 
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
+
 		case change, ok := <-addrChanges:
 			if !ok {
 				log.Fatalf("addrChanges closed?\n")
@@ -283,11 +323,62 @@ func Run() {
 			if change {
 				publishDeviceNetworkStatus(&nimCtx)
 			}
+		case _, ok := <-dnc.Pending.PendTimer.C:
+			if !ok {
+				log.Infof("Device port test timer stopped?")
+			} else {
+				log.Debugln("PendTimer at", time.Now())
+				devicenetwork.VerifyDevicePortConfig(dnc)
+			}
+		case _, ok := <-dnc.NetworkTestTimer.C:
+			if !ok {
+				log.Infof("Network test timer stopped?")
+			} else {
+				ok := tryDeviceConnectivityToCloud(dnc)
+				if ok {
+					log.Infof("Device connectivity to cloud worked at %v", time.Now())
+				} else {
+					log.Infof("Device connectivity to cloud failed at %v", time.Now())
+				}
+			}
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
 		}
 	}
+}
+
+func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool {
+	pass := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1)
+	if pass {
+		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
+		ctx.CloudConnectivityWorks = true
+		// Restart network test timer for next slot.
+		ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
+		return true
+	}
+	if !ctx.CloudConnectivityWorks {
+		// If previous cloud connectivity test also failed, it means
+		// that the current DPC configuration stopped working.
+		// In this case we start the process where device tries to
+		// figure out a DevicePortConfig that works.
+		if ctx.Pending.Inprogress {
+			log.Infof("tryDeviceConnectivityToCloud: Device port configuration list " +
+				"verification in progress")
+			// Connectivity to cloud is already being figured out.
+			// We wait till the next cloud connectivity test slot.
+		} else {
+			log.Infof("tryDeviceConnectivityToCloud: Triggering Device port " +
+				"verification to resume cloud connectivity")
+			// Start DPC verification to find a working configuration
+			devicenetwork.RestartVerify(ctx, "tryDeviceConnectivityToCloud")
+		}
+	} else {
+		// Restart network test timer for next slot.
+		ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
+		ctx.CloudConnectivityWorks = false
+	}
+	return false
 }
 
 func publishDeviceNetworkStatus(ctx *nimContext) {
@@ -303,8 +394,15 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	ctx.debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	ctx.debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
+	// XXX note different polarity
+	if gcp != nil && gcp.NoSshAccess == ctx.sshAccess {
+		ctx.sshAccess = !gcp.NoSshAccess
+		iptables.UpdateSshAccess(ctx.sshAccess, false)
+	}
+	ctx.GCInitialized = true
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -319,5 +417,6 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	ctx.debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
+	ctx.GCInitialized = false
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

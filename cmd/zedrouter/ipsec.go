@@ -7,12 +7,14 @@ package zedrouter
 
 import (
 	"errors"
-	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/pubsub"
-	"github.com/zededa/go-provision/types"
 	"os/exec"
 	"strconv"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/iptables"
+	"github.com/zededa/go-provision/pubsub"
+	"github.com/zededa/go-provision/types"
 )
 
 type vpnAclRule struct {
@@ -190,7 +192,7 @@ func ipTablesAwsClientRulesSet(tunnelName string,
 	ipTableName := "mangle"
 	// set the iptable rules
 	// forward rule
-	if err := iptableCmd("-t", ipTableName,
+	if err := iptables.IptableCmd("-t", ipTableName,
 		"-I", "FORWARD", "1", "-o", tunnelName,
 		"-p", "tcp", "--tcp-flags", "SYN,RST",
 		"SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"); err != nil {
@@ -200,7 +202,7 @@ func ipTablesAwsClientRulesSet(tunnelName string,
 	}
 
 	// input rule
-	if err := iptableCmd("-t", ipTableName,
+	if err := iptables.IptableCmd("-t", ipTableName,
 		"-I", "INPUT", "1", "-p", "esp", "-s", gatewayIpAddr,
 		"-j", "MARK", "--set-xmark", tunnelKey); err != nil {
 		log.Errorf("%s for %s, %s input rule create\n",
@@ -217,7 +219,7 @@ func ipTablesAwsClientRulesReset(tunnelName string,
 	ipTableName := "mangle"
 	// delete the iptable rules
 	// forward rule
-	if err := iptableCmd("-t", ipTableName, "-D", "FORWARD", "-o", tunnelName,
+	if err := iptables.IptableCmd("-t", ipTableName, "-D", "FORWARD", "-o", tunnelName,
 		"-p", "tcp", "--tcp-flags", "SYN,RST",
 		"SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"); err != nil {
 		log.Errorf("%s for %s, %s forward rule delete\n",
@@ -226,7 +228,7 @@ func ipTablesAwsClientRulesReset(tunnelName string,
 	}
 
 	// input rule
-	if err := iptableCmd("-t", ipTableName, "-D", "INPUT",
+	if err := iptables.IptableCmd("-t", ipTableName, "-D", "INPUT",
 		"-p", "esp", "-s", gatewayIpAddr,
 		"-j", "MARK", "--set-xmark", tunnelKey); err != nil {
 		log.Errorf("%s for %s, %s input rule delete\n",
@@ -264,7 +266,7 @@ func ipTablesCounterRulesReset(policyBased bool,
 func iptableCounterRuleOp(acl vpnAclRule, set bool) error {
 	if acl.chain == "" || acl.proto == "" {
 		err := errors.New("Invalid counter acl")
-		log.Errorf("%s for %s, %s %s rule create\n",
+		log.Errorf("%s for %s, %s rule create\n",
 			err.Error(), "iptables", acl.chain)
 		return err
 	}
@@ -303,7 +305,7 @@ func iptableCounterRuleOp(acl vpnAclRule, set bool) error {
 				cmd = append(cmd, "-o")
 			} else {
 				err := errors.New("direction not set")
-				log.Errorf("%s for %s, %s %s rule create\n",
+				log.Errorf("%s for %s, %s rule create\n",
 					err.Error(), "iptables", acl.chain)
 				return err
 			}
@@ -314,8 +316,8 @@ func iptableCounterRuleOp(acl vpnAclRule, set bool) error {
 	cmd = append(cmd, "-j")
 	cmd = append(cmd, acl.target)
 
-	if err := iptableCmd(cmd...); err != nil {
-		log.Errorf("%s for %s, %s %s rule create\n",
+	if err := iptables.IptableCmd(cmd...); err != nil {
+		log.Errorf("%s for %s, %s rule create\n",
 			err.Error(), "iptables", acl.chain)
 		return err
 	}
@@ -326,7 +328,7 @@ func iptableCounterRuleStat(acl vpnAclRule) (types.PktStats, error) {
 	var stat types.PktStats
 	if acl.chain == "" || acl.proto == "" {
 		err := errors.New("Invalid counter acl")
-		log.Errorf("%s for %s, %s %s rule counter\n",
+		log.Errorf("%s for %s, %s rule counter\n",
 			err.Error(), "iptables", acl.chain)
 		return stat, err
 	}
@@ -339,9 +341,9 @@ func iptableCounterRuleStat(acl vpnAclRule) (types.PktStats, error) {
 	cmd = append(cmd, acl.chain)
 	cmd = append(cmd, "-v")
 
-	out, err := iptableCmdOut(false, cmd...)
+	out, err := iptables.IptableCmdOut(false, cmd...)
 	if err != nil {
-		log.Errorf("%s for %s, %s %s rule counter\n",
+		log.Errorf("%s for %s, %s rule counter\n",
 			err.Error(), "iptables", acl.chain)
 		return stat, err
 	}
@@ -579,7 +581,7 @@ func ipLinkTunnelCreate(vpnConfig types.VpnServiceConfig) error {
 			tunnelConfig.Name, "type", "vti", "local", portConfig.IpAddr,
 			"remote", gatewayConfig.IpAddr, "key", tunnelConfig.Key)
 		if _, err := cmd.Output(); err != nil {
-			log.Errorf("%s for %s %s add on %s\n", err.Error(), "ip link",
+			log.Errorf("%s for %s %s add on %s %s\n", err.Error(), "ip link",
 				tunnelConfig.Name, portConfig.IpAddr, gatewayConfig.IpAddr)
 			return err
 		}
@@ -589,7 +591,7 @@ func ipLinkTunnelCreate(vpnConfig types.VpnServiceConfig) error {
 			tunnelConfig.Name, "type", "vti", "local", portConfig.IpAddr,
 			"remote", "0.0.0.0")
 		if _, err := cmd.Output(); err != nil {
-			log.Errorf("%s for %s %s add on %s\n", err.Error(), "ip link",
+			log.Errorf("%s for %s %s add on %s %s\n", err.Error(), "ip link",
 				tunnelConfig.Name, portConfig.IpAddr, gatewayConfig.IpAddr)
 			return err
 		}
@@ -602,9 +604,9 @@ func ipLinkTunnelCreate(vpnConfig types.VpnServiceConfig) error {
 			tunnelConfig.LocalIpAddr, "remote", tunnelConfig.RemoteIpAddr,
 			"dev", tunnelConfig.Name)
 		if _, err := cmd.Output(); err != nil {
-			log.Errorf("%s for %s %s addr add\n",
-				err.Error(), "ip link", tunnelConfig.Name, tunnelConfig.LocalIpAddr,
-				tunnelConfig.RemoteIpAddr)
+			log.Errorf("%s for ip addr add %s remote %s dev %s\n",
+				err.Error(), tunnelConfig.LocalIpAddr,
+				tunnelConfig.RemoteIpAddr, tunnelConfig.Name)
 			return err
 		}
 	}
