@@ -12,19 +12,20 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func UpdateSshAccess(enable bool, initial bool) {
+func UpdateSshAccess(enable bool, first bool) {
 
-	log.Infof("updateSshAccess(enable %v initial %v)\n",
-		enable, initial)
+	log.Infof("updateSshAccess(enable %v first %v)\n",
+		enable, first)
+
+	if first {
+		// Always blocked
+		dropPortRange(8080, 8080)
+		dropPortRange(4822, 4822)
+	}
 	if enable {
 		enableSsh()
 	} else {
 		disableSsh()
-	}
-	if initial {
-		// Always blocked
-		dropPortRange(8080, 8080)
-		dropPortRange(4822, 4822)
 	}
 }
 
@@ -39,6 +40,7 @@ func disableSsh() {
 }
 
 func allowPortRange(startPort int, endPort int) {
+	log.Infof("allowPortRange(%d, %d)\n", startPort, endPort)
 	// Delete these rules
 	// iptables -D INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
 	// ip6tables -D INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
@@ -53,6 +55,7 @@ func allowPortRange(startPort int, endPort int) {
 }
 
 func dropPortRange(startPort int, endPort int) {
+	log.Infof("dropPortRange(%d, %d)\n", startPort, endPort)
 	// Add these rules
 	// iptables -A INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
 	// ip6tables -A INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
