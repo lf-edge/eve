@@ -23,20 +23,21 @@ func UpdateSshAccess(enable bool, first bool) {
 		dropPortRange(4822, 4822)
 	}
 	if enable {
-		enableSsh()
+		allowPortRange(22, 22)
 	} else {
-		disableSsh()
+		dropPortRange(22, 22)
 	}
 }
 
-func enableSsh() {
-	allowPortRange(22, 22)
-	allowPortRange(5900, 5999)
-}
+func UpdateVncAccess(enable bool) {
 
-func disableSsh() {
-	dropPortRange(22, 22)
-	dropPortRange(5900, 5999)
+	log.Infof("updateVncAccess(enable %v\n", enable)
+
+	if enable {
+		allowPortRange(5900, 5999)
+	} else {
+		dropPortRange(5900, 5999)
+	}
 }
 
 func allowPortRange(startPort int, endPort int) {

@@ -1370,6 +1370,21 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.NoSshAccess = newBool
 				globalConfigChange = true
 			}
+		case "app.allow.vnc":
+			newBool, err := strconv.ParseBool(item.Value)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			if newBool != globalConfig.AllowAppVnc {
+				log.Infof("parseConfigItems: %s change from %v to %v\n",
+					key,
+					globalConfig.AllowAppVnc,
+					newBool)
+				globalConfig.AllowAppVnc = newBool
+				globalConfigChange = true
+			}
 		case "timer.use.config.checkpoint":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {

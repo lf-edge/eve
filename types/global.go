@@ -33,6 +33,7 @@ type GlobalConfig struct {
 	//			But these devices are still available in pci-assignable-list.
 	NoUsbAccess           bool
 	NoSshAccess           bool
+	AllowAppVnc           bool
 	DefaultLogLevel       string
 	DefaultRemoteLogLevel string
 	// XXX add max space for downloads?
