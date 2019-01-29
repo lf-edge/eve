@@ -3,10 +3,10 @@ package awsutil
 import (
 	"compress/gzip"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"io"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -15,9 +15,10 @@ import (
 
 // stats update
 type UpdateStats struct {
-	Name  string // always the remote key
-	Size  int64  // complete size to upload/download
-	Asize int64  // current size uploaded/downloaded
+	Name  string   // always the remote key
+	Size  int64    // complete size to upload/download
+	Asize int64    // current size uploaded/downloaded
+	List  []string //list of images at given path
 }
 
 type NotifChan chan UpdateStats
@@ -108,13 +109,11 @@ func (s *S3ctx) UploadFile(fname, bname, bkey string, compression bool, prgNotif
 
 	file, err := os.Open(fname)
 	if err != nil {
-		log.Printf("Failed to open file %s/%v", fname, err)
 		return location, err
 	}
 
 	fileInfo, err := file.Stat()
 	if err != nil {
-		log.Println("ERROR:", err)
 		return location, err
 	}
 
@@ -151,17 +150,13 @@ func (s *S3ctx) UploadFile(fname, bname, bkey string, compression bool, prgNotif
 		Body: reader, Bucket: aws.String(bname),
 		Key: aws.String(bkey)})
 	if err != nil {
-		log.Printf("Failed to upload object %s/%v", bname, err)
 		return location, err
 	}
-
-	log.Printf("Successfully uploaded to %v", result.Location)
 	return result.Location, nil
 }
 
 func (s *S3ctx) DownloadFile(fname, bname, bkey string, prgNotify NotifChan) error {
 	if err := os.MkdirAll(filepath.Dir(fname), 0775); err != nil {
-		log.Printf("failed to create dir %s, %v", fname, err)
 		return err
 	}
 
@@ -173,7 +168,6 @@ func (s *S3ctx) DownloadFile(fname, bname, bkey string, prgNotify NotifChan) err
 	// Setup the local file
 	fd, err := os.Create(fname)
 	if err != nil {
-		log.Printf("failed to create filer %s, %v", fname, err)
 		return err
 	}
 
@@ -187,11 +181,57 @@ func (s *S3ctx) DownloadFile(fname, bname, bkey string, prgNotify NotifChan) err
 	_, err = s.dn.Download(cWriter, &s3.GetObjectInput{Bucket: aws.String(bname),
 		Key: aws.String(bkey)})
 	if err != nil {
-		log.Printf("Failed to download object %s/%v", bname, err)
 		return err
 	}
-	log.Printf("Successfully downloaded to %v", bkey)
 	return nil
+}
+
+func (s *S3ctx) ListImages(bname string, prgNotify NotifChan) ([]string, error) {
+	var img []string
+	input := &s3.ListObjectsInput{
+		Bucket: aws.String(bname),
+	}
+
+	result, err := s.ss3.ListObjects(input)
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			case s3.ErrCodeNoSuchBucket:
+				return img, aerr
+			default:
+				return img, aerr
+			}
+		} else {
+			// Print the error, cast err to awserr.Error to get the Code and
+			// Message from an error.
+			return img, aerr
+		}
+	}
+
+	for _, list := range result.Contents {
+		img = append(img, *list.Key)
+	}
+	stats := UpdateStats{}
+	stats.List = img
+	if prgNotify != nil {
+		select {
+		case prgNotify <- stats:
+		default: //ignore we cannot write
+		}
+	}
+	return img, nil
+}
+
+func (s *S3ctx) GetObjectMetaData(bname, bkey string) (int64, string, error) {
+	err, bsize := s.GetObjectSize(bname, bkey)
+	if err != nil {
+		return 0, "", err
+	}
+	err, md5 := s.GetObjectMD5(bname, bkey)
+	if err != nil {
+		return 0, "", err
+	}
+	return bsize, md5, nil
 }
 
 func (s *S3ctx) UploadDir(localPath, bname, bkey string, compression bool, prgNotify NotifChan) error {
@@ -199,7 +239,6 @@ func (s *S3ctx) UploadDir(localPath, bname, bkey string, compression bool, prgNo
 	go func() {
 		// Gather the files to upload by walking the path recursively.
 		if err := filepath.Walk(localPath, walker.Walk); err != nil {
-			log.Printf("Walk failed: %v", err)
 		}
 		close(walker)
 	}()
@@ -208,7 +247,6 @@ func (s *S3ctx) UploadDir(localPath, bname, bkey string, compression bool, prgNo
 	for path := range walker {
 		rel, err := filepath.Rel(localPath, path)
 		if err != nil {
-			log.Printf("Unable to get relative path:%s, %s", path, err)
 		}
 		s.UploadFile(rel, bname, bkey, compression, prgNotify)
 	}
