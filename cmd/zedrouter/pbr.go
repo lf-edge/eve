@@ -4,9 +4,6 @@
 // Create ip rules and ip routing tables for each ifindex and also a free
 // one for the collection of free management ports.
 
-// This is built only for linux - not MacOs
-// +build linux
-
 package zedrouter
 
 import (
