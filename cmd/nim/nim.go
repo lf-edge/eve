@@ -28,10 +28,10 @@ import (
 )
 
 const (
-	agentName       = "nim"
-	tmpDirname      = "/var/tmp/zededa"
-	DNCDirname      = tmpDirname + "/DeviceNetworkConfig"
-	DPCOverride	= tmpDirname + "/DevicePortConfig/override.json"
+	agentName   = "nim"
+	tmpDirname  = "/var/tmp/zededa"
+	DNCDirname  = tmpDirname + "/DeviceNetworkConfig"
+	DPCOverride = tmpDirname + "/DevicePortConfig/override.json"
 )
 
 type nimContext struct {
