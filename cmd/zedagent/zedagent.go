@@ -82,7 +82,6 @@ type zedagentContext struct {
 	assignableAdapters        *types.AssignableAdapters
 	subAssignableAdapters     *pubsub.Subscription
 	iteration                 int
-	subNetworkObjectStatus    *pubsub.Subscription
 	subNetworkServiceStatus   *pubsub.Subscription
 	subNetworkInstanceStatus  *pubsub.Subscription
 	subDomainStatus           *pubsub.Subscription
@@ -268,17 +267,6 @@ func Run() {
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	zedagentCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
-
-	// Look for errors and status from zedrouter
-	subNetworkObjectStatus, err := pubsub.Subscribe("zedrouter",
-		types.NetworkObjectStatus{}, false, &zedagentCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subNetworkObjectStatus.ModifyHandler = handleNetworkObjectStatusModify
-	subNetworkObjectStatus.DeleteHandler = handleNetworkObjectStatusDelete
-	zedagentCtx.subNetworkObjectStatus = subNetworkObjectStatus
-	subNetworkObjectStatus.Activate()
 
 	subNetworkServiceStatus, err := pubsub.Subscribe("zedrouter",
 		types.NetworkServiceStatus{}, false, &zedagentCtx)
@@ -655,9 +643,6 @@ func Run() {
 
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
-
-		case change := <-subNetworkObjectStatus.C:
-			subNetworkObjectStatus.ProcessChange(change)
 
 		case change := <-subNetworkServiceStatus.C:
 			subNetworkServiceStatus.ProcessChange(change)

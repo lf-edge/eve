@@ -38,7 +38,7 @@ import (
 //	"hello"  topic
 //	"update" topic key json-val
 //	"delete" topic key
-//	"complete" topic
+//	"complete" topic (aka synchronized)
 //	"restarted" topic
 
 // Maintain a collection which is used to handle the restart of a subscriber
@@ -512,7 +512,7 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 	if topic != pub.topic {
 		errStr := fmt.Sprintf("Publish(%s): item is wrong topic %s",
 			name, topic)
-		return errors.New(errStr)
+		log.Fatalln(errStr)
 	}
 	// Perform a deepCopy so the Equal check will work
 	newItem := deepCopy(item)
@@ -792,10 +792,11 @@ type SubDeleteHandler func(ctx interface{}, key string, status interface{})
 type SubRestartHandler func(ctx interface{}, restarted bool)
 
 type Subscription struct {
-	C              <-chan string
-	ModifyHandler  SubModifyHandler
-	DeleteHandler  SubDeleteHandler
-	RestartHandler SubRestartHandler
+	C                   <-chan string
+	ModifyHandler       SubModifyHandler
+	DeleteHandler       SubDeleteHandler
+	RestartHandler      SubRestartHandler
+	SynchronizedHandler SubRestartHandler
 
 	// Private fields
 	sendChan   chan<- string
@@ -807,6 +808,7 @@ type Subscription struct {
 	userCtx    interface{}
 	sock       net.Conn // For socket subscriptions
 
+	synchronized     bool
 	subscribeFromDir bool // Handle special case of file only info
 	dirName          string
 	persistent       bool
@@ -924,11 +926,14 @@ func (sub *Subscription) watchSock() {
 	for {
 		msg, key, val := sub.connectAndRead()
 		switch msg {
-		case "hello", "complete":
-			// XXX anything for complete? Do we have an initial loop?
+		case "hello":
+			// Do nothing
+		case "complete":
 			// XXX to handle restart we need to handle "complete"
 			// by doing a sweep across the KeyMap to handleDelete
 			// what we didn't see before the "complete"
+			sub.sendChan <- "C done"
+
 		case "restarted":
 			sub.sendChan <- "R done"
 
@@ -1088,15 +1093,19 @@ func (sub *Subscription) ProcessChange(change string) {
 
 	if sub.subscribeFromDir {
 		var restartFn watch.StatusRestartHandler = handleRestart
+		var completeFn watch.StatusRestartHandler = handleSynchronized
 		watch.HandleStatusEvent(change, sub,
 			sub.dirName, &sub.topicType,
-			handleModify, handleDelete, &restartFn)
+			handleModify, handleDelete, &restartFn,
+			&completeFn)
 	} else if subscribeFromSock {
 		name := sub.nameString()
 		reply := strings.Split(change, " ")
 		operation := reply[0]
 
 		switch operation {
+		case "C":
+			handleSynchronized(sub, true)
 		case "R":
 			handleRestart(sub, true)
 		case "D":
@@ -1211,6 +1220,22 @@ func handleRestart(ctxArg interface{}, restarted bool) {
 		name, restarted)
 }
 
+func handleSynchronized(ctxArg interface{}, synchronized bool) {
+	sub := ctxArg.(*Subscription)
+	name := sub.nameString()
+	log.Debugf("pubsub.handleSynchronized(%s) synchronized %v\n", name, synchronized)
+	if synchronized == sub.synchronized {
+		log.Debugf("pubsub.handleSynchronized(%s) value unchanged\n", name)
+		return
+	}
+	sub.synchronized = synchronized
+	if sub.SynchronizedHandler != nil {
+		(sub.SynchronizedHandler)(sub.userCtx, synchronized)
+	}
+	log.Debugf("pubsub.handleSynchronized(%s) done for synchronized %v\n",
+		name, synchronized)
+}
+
 func (sub *Subscription) dump(infoStr string) {
 	name := sub.nameString()
 	log.Debugf("dump(%s) %s\n", name, infoStr)
@@ -1224,6 +1249,7 @@ func (sub *Subscription) dump(infoStr string) {
 	}
 	sub.km.key.Range(dumper)
 	log.Debugf("\trestarted %t\n", sub.km.restarted)
+	log.Debugf("\tsynchronized %t\n", sub.synchronized)
 }
 
 func (sub *Subscription) Get(key string) (interface{}, error) {
@@ -1250,4 +1276,8 @@ func (sub *Subscription) GetAll() map[string]interface{} {
 
 func (sub *Subscription) Restarted() bool {
 	return sub.km.restarted
+}
+
+func (sub *Subscription) Synchronized() bool {
+	return sub.synchronized
 }
