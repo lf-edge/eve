@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -230,10 +229,13 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	}
 	status.BridgeMac = bridgeMac
 
+	log.Infof("bridge created. BridgeMac: %s\n", bridgeMac)
+
 	// Check if we have a bridge service
 	if err := setBridgeIPAddrForNetworkInstance(ctx, status); err != nil {
 		return err
 	}
+	log.Infof("IpAddress set for bridge\n")
 
 	// XXX mov this before set??
 	// Create a hosts directory for the new bridge
@@ -367,8 +369,8 @@ func getSwitchNetworkInstanceUsingPort(
 			status.DisplayName, status.Type)
 		break
 	}
-	log.Infof("getSwitchNetworkInstanceUsingPort: networkInstance "+
-		"using ifname(%s) not found\n", ifname)
+	//log.Debugf("getSwitchNetworkInstanceUsingPort: networkInstance "+
+	//	"using ifname(%s) not found\n", ifname)
 	return nil
 }
 
@@ -448,12 +450,46 @@ func lookupOrAllocateIPv4ForNetworkInstance(
 	return "", errors.New(errStr)
 }
 
+// getPortIPv4Addr
+//	To be used only for NI type Switch
+func getPortIPv4Addr(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) (string, error) {
+	// Find any service which is associated with the appLink UUID
+	log.Infof("NetworkInstance UUID:%s, Name: %s, Port: %s\n",
+		status.UUID, status.DisplayName, status.Port)
+
+	if status.Port == "" {
+		log.Infof("no Adapter\n")
+		return "", nil
+	}
+
+	// Get IP address from adapter
+	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Port)
+	link, err := netlink.LinkByName(ifname)
+	if err != nil {
+		return "", err
+	}
+	// XXX Add IPv6 underlay; ignore link-locals.
+	addrs, err := netlink.AddrList(link, syscall.AF_INET)
+	if err != nil {
+		return "", err
+	}
+	for _, addr := range addrs {
+		log.Infof("found addr %s\n", addr.IP.String())
+		return addr.IP.String(), nil
+	}
+	log.Infof("IP address on %s yet\n", status.Port)
+	return "", nil
+}
+
 // Call when we have a network and a service?
 func setBridgeIPAddrForNetworkInstance(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	log.Infof("setBridgeIPAddrForNetworkInstance for %s\n", status.Key())
+	log.Infof("setBridgeIPAddrForNetworkInstance (NI UUIDL:%s, name: %s)\n",
+		status.Key(), status.DisplayName)
+
 	if status.BridgeName == "" {
 		// Called too early
 		log.Infof("setBridgeIPAddrForNetworkInstance: don't yet have a bridgeName for %s\n",
@@ -466,19 +502,13 @@ func setBridgeIPAddrForNetworkInstance(
 		errStr := fmt.Sprintf("Unknown adapter %s", status.BridgeName)
 		return errors.New(errStr)
 	}
+
 	// Check if we have a bridge service, and if so return error or address
-	st, _, err := getServiceInfo(ctx, status.UUID)
-	if err != nil {
-		// There might not be a service associated with this network
-		// or it might not yet have arrived. In either case we
-		// don't treat it as a bridge service.
-		log.Errorf("setBridgeIPAddrForNetworkInstance: getServiceInfo failed: %s\n",
-			err)
-	}
 	var ipAddr string
-	switch st {
-	case types.NST_BRIDGE:
-		ipAddr, err = getBridgeServiceIPv4Addr(ctx, status.UUID)
+	var err error
+	switch status.Type {
+	case types.NetworkInstanceTypeSwitch:
+		ipAddr, err = getPortIPv4Addr(ctx, status)
 		if err != nil {
 			log.Infof("setBridgeIPAddrForNetworkInstance: getBridgeServiceIPv4Addr failed: %s\n",
 				err)
@@ -491,25 +521,25 @@ func setBridgeIPAddrForNetworkInstance(
 	// So we check the type of the network instead of the type of the
 	// service
 
-	if status.Type == types.NT_CryptoEID {
-		if status.Subnet.IP != nil && status.Subnet.IP.To4() != nil {
-			// Require an IPv4 gateway
-			if status.Gateway == nil {
-				errStr := fmt.Sprintf("No IPv4 gateway for bridge %s network %s subnet %s",
-					status.BridgeName, status.Key(),
-					status.Subnet.String())
-				return errors.New(errStr)
-			}
-			ipAddr = status.Gateway.String()
-			log.Infof("setBridgeIPAddrForNetworkInstance: Bridge %s assigned IPv4 EID %s\n",
-				status.BridgeName, ipAddr)
-			status.Ipv4Eid = true
-		} else {
-			ipAddr = "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
-			log.Infof("setBridgeIPAddrForNetworkInstance: Bridge %s assigned IPv6 EID %s\n",
-				status.BridgeName, ipAddr)
-		}
-	}
+	//if status.Type == types.NT_CryptoEID {
+	//	if status.Subnet.IP != nil && status.Subnet.IP.To4() != nil {
+	//		// Require an IPv4 gateway
+	//		if status.Gateway == nil {
+	//			errStr := fmt.Sprintf("No IPv4 gateway for bridge %s network %s subnet %s",
+	//				status.BridgeName, status.Key(),
+	//				status.Subnet.String())
+	//			return errors.New(errStr)
+	//		}
+	//		ipAddr = status.Gateway.String()
+	//		log.Infof("setBridgeIPAddrForNetworkInstance: Bridge %s assigned IPv4 EID %s\n",
+	//			status.BridgeName, ipAddr)
+	//		status.Ipv4Eid = true
+	//	} else {
+	//		ipAddr = "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
+	//		log.Infof("setBridgeIPAddrForNetworkInstance: Bridge %s assigned IPv6 EID %s\n",
+	//			status.BridgeName, ipAddr)
+	//	}
+	//}
 
 	// If not we do a local allocation
 	if ipAddr == "" {
@@ -537,6 +567,8 @@ func setBridgeIPAddrForNetworkInstance(
 	}
 	status.BridgeIPAddr = ipAddr
 	publishNetworkInstanceStatus(ctx, status)
+	log.Infof("Published NetworkStatus. BridgeIpAddr: %s\n",
+		status.BridgeIPAddr)
 
 	if status.BridgeIPAddr == "" {
 		log.Infof("Does not yet have a bridge IP address for %s\n",
@@ -588,7 +620,6 @@ func setBridgeIPAddrForNetworkInstance(
 		createRadvdConfiglet(cfgPathname, status.BridgeName)
 		startRadvd(cfgPathname, status.BridgeName)
 	}
-
 	return nil
 }
 
