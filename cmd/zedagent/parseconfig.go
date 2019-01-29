@@ -378,10 +378,21 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		}
 
 		parseIpspecForNetworkInstanceConfig(apiConfigEntry.Ip, &networkInstanceConfig)
+
 		// KALYAN- HACK - REMOVE WORKAROUND - fr DHCPType
 		if networkInstanceConfig.DhcpType == 0 {
 			log.Infof("Hack - Set NetworkInstance DhcpType to DT_SERVER")
 			networkInstanceConfig.DhcpType = types.DT_SERVER
+		}
+		// KALYAN- HACK - REMOVE WORKAROUND - fr DHCPType
+		if networkInstanceConfig.DhcpRange.Start.IsUnspecified() {
+			log.Infof("Hack - DhcpRange unspecified. Set to 10.1.0.1")
+			networkInstanceConfig.DhcpRange.Start = net.ParseIP("10.1.0.1")
+			networkInstanceConfig.DhcpRange.End = net.ParseIP("10.1.0.254")
+		} else {
+			log.Infof("DhcpRange Specified: %s to %s\n",
+				networkInstanceConfig.DhcpRange.Start.String(),
+				networkInstanceConfig.DhcpRange.End.String())
 		}
 
 		parseDnsNameToIpListForNetworkInstanceConfig(apiConfigEntry,
