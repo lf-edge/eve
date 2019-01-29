@@ -73,3 +73,7 @@
 [[constraint]]
   name = "github.com/google/go-cmp"
   version = "0.2.0"
+
+[[constraint]]
+  name = "github.com/gorilla/websocket"
+  version = "=1.4.0"

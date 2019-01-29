@@ -121,6 +121,14 @@
   version = "v0.2.0"
 
 [[projects]]
+  digest = "1:4a0c072e44da763409da72d41492373a034baf2e6d849c76d239b4abdfbb6c49"
+  name = "github.com/gorilla/websocket"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "66b9c49e59c6c48f0ffce28c2d8b8a5678502c6d"
+  version = "v1.4.0"
+
+[[projects]]
   branch = "master"
   digest = "1:65723afc58f7b9481e094e1f772c827ee02be6660a171fb601982e4a2d6f7c48"
   name = "github.com/jcelliott/lumber"
@@ -293,6 +301,7 @@
     "github.com/golang/protobuf/proto",
     "github.com/golang/protobuf/ptypes",
     "github.com/google/go-cmp/cmp",
+    "github.com/gorilla/websocket",
     "github.com/nanobox-io/golang-scribble",
     "github.com/satori/go.uuid",
     "github.com/shirou/gopsutil/cpu",
