@@ -990,7 +990,7 @@ func publishNetworkServiceConfig(ctx *getconfigContext,
 			eidPrefix := net.IP(svcEnt.LispCfg.Allocationprefix)
 
 			// Populate service Lisp config that should be sent to zedrouter
-			service.LispConfig = types.ServiceLispConfig{
+			service.LispConfig = types.LispConfig{
 				MapServers:    mapServers,
 				IID:           svcEnt.LispCfg.LispInstanceId,
 				Allocate:      svcEnt.LispCfg.Allocate,
