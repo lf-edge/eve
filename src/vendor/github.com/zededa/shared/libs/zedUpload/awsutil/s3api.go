@@ -133,14 +133,7 @@ func (s *S3ctx) GetObjectSize(bname, bkey string) (error, int64) {
 		Key:    aws.String(bkey)})
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			default:
-				log.Println("Get size error ", aerr.Error())
-			}
-		} else {
-			// Print the error, cast err to awserr.Error to get the Code and
-			// Message from an error.
-			log.Println("Get AWS Size error ", err.Error())
+			return aerr, 0
 		}
 		return err, 0
 	}
@@ -150,4 +143,20 @@ func (s *S3ctx) GetObjectSize(bname, bkey string) (error, int64) {
 	}
 
 	return nil, 0
+}
+
+func (s *S3ctx) GetObjectMD5(bname, bkey string) (error, string) {
+	resp, err := s.ss3.HeadObject(&s3.HeadObjectInput{
+		Bucket: aws.String(bname),
+		Key:    aws.String(bkey)})
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			return aerr, ""
+		}
+		return err, ""
+	}
+	if resp != nil {
+		return nil, *resp.ETag
+	}
+	return nil, ""
 }

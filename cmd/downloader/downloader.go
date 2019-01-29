@@ -961,53 +961,6 @@ func downloaderSubscription(ctx *downloaderContext, objType string) *pubsub.Subs
 // XXX continue based on filesize with: -C -
 // Note that support for --dns-interface is not compiled in
 // Normally "ifname" is the source IP to be consistent with the S3 loop
-func doCurl(url string, ifname string, maxsize uint64, destFilename string) error {
-	cmd := "curl"
-	args := []string{}
-	maxsizeStr := strconv.FormatUint(maxsize, 10)
-	if ifname != "" {
-		args = []string{
-			"-q",
-			"-4", // XXX due to getting IPv6 ULAs and not IPv4
-			"--insecure",
-			"--retry",
-			"3",
-			"--silent",
-			"--show-error",
-			"--interface",
-			ifname,
-			"--max-filesize",
-			maxsizeStr,
-			"-o",
-			destFilename,
-			url,
-		}
-	} else {
-		args = []string{
-			"-q",
-			"-4", // XXX due to getting IPv6 ULAs and not IPv4
-			"--insecure",
-			"--retry",
-			"3",
-			"--silent",
-			"--show-error",
-			"--max-filesize",
-			maxsizeStr,
-			"-o",
-			destFilename,
-			url,
-		}
-	}
-
-	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
-
-	if err != nil {
-		log.Errorln("curl failed ", err)
-	} else {
-		log.Infof("curl done: output <%s>\n", string(stdoutStderr))
-	}
-	return err
-}
 
 func doHttp(ctx *downloaderContext, status *types.DownloaderStatus,
 	syncOp zedUpload.SyncOpType, serverUrl string, maxsize uint64,
