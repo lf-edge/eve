@@ -1305,31 +1305,32 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		case zconfig.DsType_DsHttp.String(), zconfig.DsType_DsHttps.String(), "":
 			// DownloadURL format : http://<serverURL>/dpath/filename
 			index := strings.LastIndex(config.DownloadURL, "/")
-			serverUrl := config.DownloadURL[:index+1]
-			filename := config.DownloadURL[index+1:]
 			if index == -1 {
 				log.Errorf("Invalid URL : %s\n", config.DownloadURL)
-				errStr = errStr + "\n" + "Invalid URL"
-				zedcloud.ZedCloudFailure(ifname,
-					metricsUrl, 1024, 0)
-			}
-			err = doHttp(ctx, status, syncOp, serverUrl, "",
-				config.Size, ifname, ipSrc, filename, locFilename)
-			if err != nil {
-				log.Errorf("Source IP %s failed: %s\n",
-					ipSrc.String(), err)
-				errStr = errStr + "\n" + err.Error()
+				errStr = errStr + "\n" + "Invalid URL : " + config.DownloadURL
 				zedcloud.ZedCloudFailure(ifname,
 					metricsUrl, 1024, 0)
 			} else {
-				// Record how much we downloaded
-				info, _ := os.Stat(locFilename)
-				size := info.Size()
-				zedcloud.ZedCloudSuccess(ifname,
-					metricsUrl, 1024, size)
-				handleSyncOpResponse(ctx, config, status,
-					locFilename, key, "")
-				return
+				serverUrl := config.DownloadURL[:index+1]
+				filename := config.DownloadURL[index+1:]
+				err = doHttp(ctx, status, syncOp, serverUrl, "",
+					config.Size, ifname, ipSrc, filename, locFilename)
+				if err != nil {
+					log.Errorf("Source IP %s failed: %s\n",
+						ipSrc.String(), err)
+					errStr = errStr + "\n" + err.Error()
+					zedcloud.ZedCloudFailure(ifname,
+						metricsUrl, 1024, 0)
+				} else {
+					// Record how much we downloaded
+					info, _ := os.Stat(locFilename)
+					size := info.Size()
+					zedcloud.ZedCloudSuccess(ifname,
+						metricsUrl, 1024, size)
+					handleSyncOpResponse(ctx, config, status,
+						locFilename, key, "")
+					return
+				}
 			}
 		default:
 			log.Fatal("unsupported transport method")
