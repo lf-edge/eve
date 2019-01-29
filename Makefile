@@ -168,9 +168,10 @@ $(INSTALLER_IMG).raw: $(ROOTFS_IMG)_installer.img config.img
 $(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) config.img
 	./makeiso.sh $< $@
 
-publish: Makefile bios/OVMF.fd config.img $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(FALLBACK_IMG).img
+ZENIX_HASH=$(shell ./parse-pkgs.sh ./parse-pkgs.sh | git hash-object --stdin)
+zenix: Makefile bios/OVMF.fd config.img $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(FALLBACK_IMG).img images/rootfs.yml images/installer.yml
 	cp $^ build-pkgs/zenix
-	make -C build-pkgs BUILD-PKGS=zenix LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(DEFAULT_PKG_TARGET)
+	make -C build-pkgs BUILD-PKGS=zenix LINUXKIT_HASH="--hash $(ZENIX_HASH)" $(DEFAULT_PKG_TARGET)
 
 pkg/%: FORCE
 	make -C pkg PKGS=$(notdir $@) LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(DEFAULT_PKG_TARGET)
