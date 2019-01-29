@@ -162,7 +162,7 @@ func Run() {
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
-	subGlobalConfig.RestartHandler = handleGlobalConfigRestarted
+	subGlobalConfig.SynchronizedHandler = handleGlobalConfigSynchronized
 	nimCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
@@ -428,17 +428,17 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 }
 
 // In case there is no GlobalConfig.json this will move us forward
-func handleGlobalConfigRestarted(ctxArg interface{}, done bool) {
+func handleGlobalConfigSynchronized(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*nimContext)
 
-	log.Infof("handleGlobalConfigRestarted(%v)\n", done)
+	log.Infof("handleGlobalConfigSynchronized(%v)\n", done)
 	if done {
 		first := !ctx.GCInitialized
 		if first {
 			iptables.UpdateSshAccess(ctx.sshAccess, first)
 		}
+		ctx.GCInitialized = true
 	}
-	ctx.GCInitialized = true
 }
 
 func fileExists(filename string) bool {
