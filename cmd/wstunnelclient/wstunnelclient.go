@@ -6,6 +6,12 @@ package wstunnelclient
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"strings"
+
+	"os"
+	"time"
+
 	"github.com/google/go-cmp/cmp"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
@@ -13,13 +19,13 @@ import (
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	// XXX "github.com/zededa/go-provision/zedcloud"
-	"os"
-	"time"
+	"github.com/zededa/go-provision/zedcloud"
 )
 
 const (
-	agentName = "wstunnelclient"
+	agentName       = "wstunnelclient"
+	identityDirname = "/config"
+	serverFilename  = identityDirname + "/server"
 )
 
 // Set from Makefile
@@ -36,6 +42,8 @@ type DNSContext struct {
 type wstunnelclientContext struct {
 	subGlobalConfig      *pubsub.Subscription
 	subAppInstanceConfig *pubsub.Subscription
+	serverName           string
+	wstunnelclient       *zedcloud.WSTunnelClient
 	// XXX add any output from scanAIConfigs()?
 }
 
@@ -109,6 +117,14 @@ func Run() {
 	subAppInstanceConfig.ModifyHandler = handleAppInstanceConfigModify
 	subAppInstanceConfig.DeleteHandler = handleAppInstanceConfigDelete
 	wscCtx.subAppInstanceConfig = subAppInstanceConfig
+
+	//get server name
+	bytes, err := ioutil.ReadFile(serverFilename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	strTrim := strings.TrimSpace(string(bytes))
+	wscCtx.serverName = strings.Split(strTrim, ":")[0]
 	subAppInstanceConfig.Activate()
 
 	// Wait for knowledge about IP addresses. XXX needed?
@@ -216,28 +232,45 @@ func handleDNSDelete(ctxArg interface{}, key string,
 func handleAppInstanceConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
+	log.Infof("handleAppInstanceConfigModify for %s\n", key)
 	// XXX config := cast.CastAppInstanceConfig(configArg)
 	ctx := ctxArg.(*wstunnelclientContext)
 	scanAIConfigs(ctx)
+	log.Infof("handleAppInstanceConfigModify done for %s\n", key)
 }
 
 func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
+	log.Infof("handleAppInstanceConfigDelete for %s\n", key)
 	// XXX config := cast.CastAppInstanceConfig(configArg)]
 	ctx := ctxArg.(*wstunnelclientContext)
 	scanAIConfigs(ctx)
+	log.Infof("handleAppInstanceConfigDelete done for %s\n", key)
 }
 
 // walk over all instances to determine new value
 func scanAIConfigs(ctx *wstunnelclientContext) {
 
+	isTunnelRequired := false
 	sub := ctx.subAppInstanceConfig
 	items := sub.GetAll()
-	for key, c := range items {
+	for _, c := range items {
 		config := cast.CastAppInstanceConfig(c)
-		// XXX insert checks; remove log
-		log.Infof("Found AppInstanceConfig for %s, %s\n",
-			key, config.Key())
+		log.Infof("Remote console status for app-instance: %s: %t\n", config.DisplayName, config.RemoteConsole)
+		isTunnelRequired = config.RemoteConsole || isTunnelRequired
+	}
+
+	log.Infof("Tunnel check status after checking app-instance configs: %t\n", isTunnelRequired)
+	if isTunnelRequired == true {
+		if ctx.wstunnelclient == nil {
+			ctx.wstunnelclient = zedcloud.InitializeTunnelClient(ctx.serverName, "localhost:4822")
+			ctx.wstunnelclient.Start()
+		}
+	} else {
+		if ctx.wstunnelclient != nil {
+			ctx.wstunnelclient.Stop()
+			ctx.wstunnelclient = nil
+		}
 	}
 }

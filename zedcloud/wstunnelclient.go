@@ -1,3 +1,6 @@
+// Copyright (c) 2017,2018 Zededa, Inc.
+// All rights reserved.
+
 package zedcloud
 
 import (
@@ -5,11 +8,9 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -18,13 +19,12 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	log "github.com/sirupsen/logrus"
 )
 
 var localTCP string
 var binaryMode bool
 
-//var addr = flag.String("addr", "zedcontrol.zededa.net", "http service address")
-var addr = flag.String("addr", "zedcontrol.zededa.net", "http service address")
 var localConnection net.Conn
 
 // WSTunnelClient represents a persistent tunnel that can cycle through many websockets. The
@@ -89,7 +89,6 @@ func InitializeTunnelClient(serverName string, localRelay string) *WSTunnelClien
 
 // Start connection to tunnel server
 func (t *WSTunnelClient) Start() {
-
 	t.SetupConnection()
 	<-make(chan struct{}, 0)
 }
@@ -147,25 +146,21 @@ func (t *WSTunnelClient) SetupConnection() error {
 	// Keep opening websocket connections to tunnel requests
 	go func() {
 		log.Println("Looping through websocket connection requests")
-		tlsConfig, err := GetTlsConfig(t.TunnelServerName, nil)
-		if err != nil {
-			log.Fatal(err)
-		}
 		for {
-			log.Println("Initializing websocket dialer")
+			tlsConfig, err := GetTlsConfig(t.TunnelServerName, nil)
+			if err != nil {
+				log.Fatal(err)
+			}
 			dialer := &websocket.Dialer{
-				NetDial:         t.wsProxyDialer,
+				//NetDial:         t.wsProxyDialer,
 				ReadBufferSize:  100 * 1024,
 				WriteBufferSize: 100 * 1024,
 				TLSClientConfig: tlsConfig,
 			}
-			log.Println("Initializing websocket header")
-			header := make(http.Header)
-			header.Add("Origin", *addr)
 			url := fmt.Sprintf("%s/api/v1/edgedevice/connection/tunnel", t.Tunnel)
-			log.Printf("WS Connection url: %s", url)
-			timer := time.NewTimer(10 * time.Second)
-			ws, resp, err := dialer.Dial(url, header)
+			log.Printf("Attempting WS connection to url: %s", url)
+			timer := time.NewTimer(30 * time.Second)
+			ws, resp, err := dialer.Dial(url, nil)
 			if err != nil {
 				extra := ""
 				if resp != nil {
@@ -203,6 +198,7 @@ func (t *WSTunnelClient) SetupConnection() error {
 
 // Stop tunnel client
 func (t *WSTunnelClient) Stop() {
+	log.Print("Stopping WS tunnel client")
 	t.exitChan <- struct{}{}
 }
 
