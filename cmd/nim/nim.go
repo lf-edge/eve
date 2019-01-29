@@ -104,7 +104,7 @@ func waitForDeviceNetworkConfigFile() string {
 func Run() {
 	nimCtx := nimContext{}
 	nimCtx.AssignableAdapters = &types.AssignableAdapters{}
-	iptables.UpdateSshAccess(nimCtx.sshAccess, true)
+	nimCtx.sshAccess = true
 
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
@@ -399,8 +399,9 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		ctx.debugOverride)
 	// XXX note different polarity
 	if gcp != nil && gcp.NoSshAccess == ctx.sshAccess {
+		first := !ctx.GCInitialized
 		ctx.sshAccess = !gcp.NoSshAccess
-		iptables.UpdateSshAccess(ctx.sshAccess, false)
+		iptables.UpdateSshAccess(ctx.sshAccess, first)
 	}
 	ctx.GCInitialized = true
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
