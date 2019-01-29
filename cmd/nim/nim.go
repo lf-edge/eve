@@ -108,7 +108,7 @@ func waitForDeviceNetworkConfigFile() string {
 func Run() {
 	nimCtx := nimContext{}
 	nimCtx.AssignableAdapters = &types.AssignableAdapters{}
-	nimCtx.sshAccess = true
+	nimCtx.sshAccess = true // Kernel default - no iptables filters
 
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
@@ -162,6 +162,7 @@ func Run() {
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	subGlobalConfig.RestartHandler = handleGlobalConfigRestarted
 	nimCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
@@ -401,8 +402,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	var gcp *types.GlobalConfig
 	ctx.debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
-	// XXX note different polarity
 	first := !ctx.GCInitialized
+	// XXX note different polarity
 	if gcp != nil && (gcp.NoSshAccess == ctx.sshAccess || first) {
 		ctx.sshAccess = !gcp.NoSshAccess
 		iptables.UpdateSshAccess(ctx.sshAccess, first)
@@ -424,6 +425,20 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		ctx.debugOverride)
 	ctx.GCInitialized = false
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+// In case there is no GlobalConfig.json this will move us forward
+func handleGlobalConfigRestarted(ctxArg interface{}, done bool) {
+	ctx := ctxArg.(*nimContext)
+
+	log.Infof("handleGlobalConfigRestarted(%v)\n", done)
+	if done {
+		first := !ctx.GCInitialized
+		if first {
+			iptables.UpdateSshAccess(ctx.sshAccess, first)
+		}
+	}
+	ctx.GCInitialized = true
 }
 
 func fileExists(filename string) bool {
