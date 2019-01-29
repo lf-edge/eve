@@ -378,6 +378,11 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		}
 
 		parseIpspecForNetworkInstanceConfig(apiConfigEntry.Ip, &networkInstanceConfig)
+		// KALYAN- HACK - REMOVE WORKAROUND - fr DHCPType
+		if networkInstanceConfig.DhcpType == 0 {
+			log.Infof("Hack - Set NetworkInstance DhcpType to DT_SERVER")
+			networkInstanceConfig.DhcpType = types.DT_SERVER
+		}
 
 		parseDnsNameToIpListForNetworkInstanceConfig(apiConfigEntry,
 			&networkInstanceConfig)
@@ -917,11 +922,6 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 
 func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) error {
 	config.Dhcp = types.DhcpType(ipspec.Dhcp)
-	// KALYAN - HACK till zcli supports setting DHCP type
-	if config.Dhcp == 0 {
-		log.Infof("DhcpType not specified. Setting to DT_SERVER")
-		config.Dhcp = types.DT_SERVER
-	}
 	config.DomainName = ipspec.GetDomain()
 	if s := ipspec.GetSubnet(); s != "" {
 		_, subnet, err := net.ParseCIDR(s)
