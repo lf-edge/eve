@@ -220,7 +220,7 @@ type ProxyConfig struct {
 }
 
 type DhcpConfig struct {
-	Dhcp       DhcpType // If DT_STATIC use below
+	Dhcp       DhcpType // If DT_STATIC use below; if DT_NOOP do nothing
 	AddrSubnet string   // In CIDR e.g., 192.168.1.44/24
 	Gateway    net.IP
 	DomainName string
