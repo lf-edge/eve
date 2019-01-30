@@ -441,7 +441,7 @@ func getPortIPv4Addr(ctx *zedrouterContext,
 		status.UUID, status.DisplayName, status.Port)
 
 	if status.Port == "" {
-		log.Infof("no Adapter\n")
+		log.Infof("no Port\n")
 		return "", nil
 	}
 
@@ -631,7 +631,7 @@ func updateBridgeIPAddrForNetworkInstance(
 }
 
 // maybeUpdateBridgeIPAddrForNetworkInstance
-// 	Find ifname as a bridge Adapter and see if it can be updated
+// 	Find ifname as a bridge Port and see if it can be updated
 func maybeUpdateBridgeIPAddrForNetworkInstance(
 	ctx *zedrouterContext,
 	ifname string) {
@@ -819,7 +819,7 @@ func getBridgeServiceIPv4AddrForNetworkInstance(
 		return "", errors.New(errStr)
 	}
 	if status.Port == "" {
-		log.Infof("getBridgeServiceIPv4AddrForNetworkInstance(%s): bridge but no Adapter\n",
+		log.Infof("getBridgeServiceIPv4AddrForNetworkInstance(%s): bridge but no Port\n",
 			status.DisplayName)
 		return "", nil
 	}
@@ -830,6 +830,8 @@ func getBridgeServiceIPv4AddrForNetworkInstance(
 	if err != nil {
 		return "", err
 	}
+	// XXX - We really should maintain these addresses in our own data structures
+	//		and not query netlink. To be cleaned up.
 	// XXX Add IPv6 underlay; ignore link-locals.
 	addrs, err := netlink.AddrList(link, syscall.AF_INET)
 	if err != nil {
@@ -864,11 +866,6 @@ func publishNetworkInstanceMetrics(ctx *zedrouterContext,
 // XXX need a better check than assignable since it could be any
 // member of an IoBundle.
 // XXX also need to check the bundle isn't assigned to a domU?
-// KALYAN - Is this check valid anymore?? Port refers to the interface
-//		defined in application manifest. That is not the same as
-//		AssignableAdapters. DirectAttach adapters, which are taken from
-//		AssignableAdapters, are handled during ApplicationInstance deployment.
-//	KALYAN - TO CLARIFY
 func bridgeCreateForNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
