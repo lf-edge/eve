@@ -56,6 +56,8 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 func VerifyDeviceNetworkStatus(
 	status types.DeviceNetworkStatus, retryCount int) bool {
 
+	log.Infof("VerifyDeviceNetworkStatus() %d\n", retryCount)
+
 	serverFileName := "/config/server"
 	server, err := ioutil.ReadFile(serverFileName)
 	if err != nil {
@@ -91,9 +93,26 @@ func VerifyDeviceNetworkStatus(
 		}
 	}
 	zedcloudCtx.TlsConfig = tlsConfig
+	for ix, _ := range status.Ports {
+		err = CheckAndGetNetworkProxy(&status,
+			&status.Ports[ix])
+		if err != nil {
+			errStr := fmt.Sprintf("VerifyDeviceNetworkStatus GetNetworkProxy failed %s", err)
+			log.Errorln(errStr)
+			// XXX status.Ports[ix].Error = errStr
+			// XXX status.Ports[ix].ErrorTime = time.Now()
+			return false
+		}
+		// XXX remove log?
+		proxyConfig := status.Ports[ix].ProxyConfig
+		if proxyConfig.NetworkProxyEnable {
+			log.Infof("VerifyDeviceNetworkStatus pac %s\n",
+				proxyConfig.Pacfile)
+		}
+	}
 	cloudReachable, err := zedcloud.VerifyAllIntf(zedcloudCtx, testUrl, retryCount, 1)
 	if err != nil {
-		log.Errorln(err)
+		log.Infof("VerifyDeviceNetworkStatus failed %s\n", err)
 		return false
 	}
 
@@ -101,6 +120,7 @@ func VerifyDeviceNetworkStatus(
 		log.Infof("Uplink test SUCCESS to URL: %s", testUrl)
 		return true
 	}
+	log.Infof("Uplink test FAIL to URL: %s", testUrl)
 	return false
 }
 
@@ -169,6 +189,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 
 		// Attempt to get a wpad.dat file if so configured
 		// Result is updating the Pacfile
+		// XXX did we already set this above? Remove this code?
 		err = CheckAndGetNetworkProxy(&globalStatus,
 			&globalStatus.Ports[ix])
 		if err != nil {

@@ -191,15 +191,18 @@ func VerifyPending(pending *DPCPending,
 	if res {
 		pending.PendDPC.LastSucceeded = time.Now()
 		status = DPC_SUCCESS
-		log.Infof("VerifyPending: DPC %v passed network test", pending.PendDPC)
+		log.Infof("VerifyPending: DPC passed network test: %+v",
+			pending.PendDPC)
 	} else {
 		pending.PendDPC.LastFailed = time.Now()
-		log.Infof("VerifyPending: DPC %v failed network test", pending.PendDPC)
+		log.Infof("VerifyPending: DPC failed network test: %+v",
+			pending.PendDPC)
 	}
 	return status
 }
 
 func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
+	log.Infof("VerifyDevicePortConfig()\n")
 	if !ctx.Pending.Inprogress {
 		return
 	}
@@ -220,12 +223,15 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			// We have already published the new DNS for domainmgr.
 			// Wait until we hear from domainmgr before applying (dhcp enable/disable)
 			// and testing this new configuration.
+			log.Infof("VerifyDevicePortConfig: DPC_PCI_WAIT\n")
 			return
 		case DPC_WAIT:
 			// Either addressChange or PendTimer will result in calling us again.
 			pending.PendTimer = time.NewTimer(ctx.DPCTestDuration * time.Second)
+			log.Infof("VerifyDevicePortConfig: DPC_WAIT\n")
 			return
 		case DPC_FAIL:
+			log.Infof("VerifyDevicePortConfig: DPC_FAIL\n")
 			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
 			if checkAndRestartDPCListTest(ctx) {
 				// DPC list verification re-started from beginning
@@ -246,8 +252,15 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 				continue
 			}
 			passed = true
-			log.Infof("VerifyDevicePortConfig: Working DPC configuration found "+
-				"at index %d in DPC list", ctx.NextDPCIndex)
+			if ctx.NextDPCIndex == 0 {
+				log.Infof("VerifyDevicePortConfig: Working DPC configuration found "+
+					"at index %d in DPC list",
+					ctx.NextDPCIndex)
+			} else {
+				log.Warnf("VerifyDevicePortConfig: Working DPC configuration found "+
+					"at index %d in DPC list",
+					ctx.NextDPCIndex)
+			}
 		}
 	}
 	*ctx.DevicePortConfig = pending.PendDPC
@@ -475,27 +488,16 @@ func (ctx *DeviceNetworkContext) doApplyDevicePortConfig(delete bool) {
 
 func (ctx *DeviceNetworkContext) doPublishDNSForPortConfig(
 	portConfig *types.DevicePortConfig) {
-	// XXX if err return means WPAD failed, or port does not exist
-	// XXX add test hook for former; try lower priority
+
+	// XXX didn't we already update DeviceNetworkStatus? Or
+	// that was to a pending copy?
 	dnStatus, _ := MakeDeviceNetworkStatus(*portConfig,
 		*ctx.DeviceNetworkStatus)
-
-	// We use device certs to build tls config to hit the test Ping URL.
-	// NIM starts even before device onboarding finishes. When a device is
-	// booting for the first time and does not have its device certs registered
-	// with cloud yet, a hit to Ping URL would fail.
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
 		log.Infof("doPublishDNSForPortConfig: DeviceNetworkStatus change from %v to %v\n",
 			*ctx.DeviceNetworkStatus, dnStatus)
-		pass := VerifyDeviceNetworkStatus(dnStatus, 1)
-		// XXX Can fail if we don't have a DHCP lease yet
-		if true || pass {
-			*ctx.DeviceNetworkStatus = dnStatus
-			DoDNSUpdate(ctx)
-		} else {
-			// XXX try lower priority
-			// XXX add retry of higher priority in main
-		}
+		*ctx.DeviceNetworkStatus = dnStatus
+		DoDNSUpdate(ctx)
 	} else {
 		log.Infof("doPublishDNSForPortConfig: No change in DNS\n")
 	}
