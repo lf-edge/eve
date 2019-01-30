@@ -21,11 +21,15 @@ import (
 func GetDnsInfo(us *types.NetworkPortStatus) error {
 
 	log.Infof("getDnsInfo(%s)\n", us.IfName)
+	if us.Dhcp != types.DT_CLIENT {
+		return nil
+	}
+	// XXX get error -1 unless we have -4
+	// XXX add IPv6 support
 	log.Infof("Calling dhcpcd -U -4 %s\n", us.IfName)
 	cmd := wrap.Command("dhcpcd", "-U", "-4", us.IfName)
 	stdoutStderr, err := cmd.CombinedOutput()
 	if err != nil {
-		// XXX get error -1 unless we have -4
 		errStr := fmt.Sprintf("dhcpcd -U failed %s: %s",
 			string(stdoutStderr), err)
 		log.Errorln(errStr)

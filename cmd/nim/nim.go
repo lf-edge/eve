@@ -39,6 +39,7 @@ type nimContext struct {
 	subGlobalConfig *pubsub.Subscription
 	GCInitialized   bool // Received initial GlobalConfig
 	sshAccess       bool
+	allowAppVnc     bool
 
 	// CLI args
 	debug         bool
@@ -403,10 +404,16 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	ctx.debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
 	first := !ctx.GCInitialized
-	// XXX note different polarity
-	if gcp != nil && (gcp.NoSshAccess == ctx.sshAccess || first) {
-		ctx.sshAccess = !gcp.NoSshAccess
-		iptables.UpdateSshAccess(ctx.sshAccess, first)
+	if gcp != nil {
+		// XXX note different polarity
+		if gcp.NoSshAccess == ctx.sshAccess || first {
+			ctx.sshAccess = !gcp.NoSshAccess
+			iptables.UpdateSshAccess(ctx.sshAccess, first)
+		}
+		if gcp.AllowAppVnc != ctx.allowAppVnc || first {
+			ctx.allowAppVnc = gcp.AllowAppVnc
+			iptables.UpdateVncAccess(ctx.allowAppVnc)
+		}
 	}
 	ctx.GCInitialized = true
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
