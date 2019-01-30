@@ -146,10 +146,19 @@ func doDhcpClientInactivate(nuc types.NetworkPortConfig) {
 			nuc.IfName)
 		return
 	}
-	extras := []string{}
-	if !dhcpcdCmd("--release", extras, nuc.IfName, false) {
-		log.Errorf("doDhcpClientInactivate: release failed for %s\n",
+	switch nuc.Dhcp {
+	case types.DT_NOOP:
+		log.Infof("doDhcpClientInactivate(%s) DT_NOOP is a no-op\n",
 			nuc.IfName)
+	case types.DT_STATIC, types.DT_CLIENT:
+		extras := []string{}
+		if !dhcpcdCmd("--release", extras, nuc.IfName, false) {
+			log.Errorf("doDhcpClientInactivate: release failed for %s\n",
+				nuc.IfName)
+		}
+	default:
+		log.Errorf("doDhcpClientInactivate: unsupported dhcp %v\n",
+			nuc.Dhcp)
 	}
 }
 
