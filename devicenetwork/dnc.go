@@ -18,6 +18,7 @@ const (
 )
 
 type PendDNSStatus uint32
+
 const (
 	DPC_FAIL PendDNSStatus = iota
 	DPC_SUCCESS
@@ -54,14 +55,14 @@ type DeviceNetworkContext struct {
 	Changed                 bool
 	SubGlobalConfig         *pubsub.Subscription
 
-	Pending                 DPCPending
-	NetworkTestTimer        *time.Timer
-	NextDPCIndex            int
-	CloudConnectivityWorks  bool
+	Pending                DPCPending
+	NetworkTestTimer       *time.Timer
+	NextDPCIndex           int
+	CloudConnectivityWorks bool
 
 	// How long should we wait before testing a pending DPC?
-	DPCTestDuration         time.Duration  // In seconds.
-	NetworkTestInterval     time.Duration  // Test interval in minutes.
+	DPCTestDuration     time.Duration // In seconds.
+	NetworkTestInterval time.Duration // Test interval in minutes.
 }
 
 func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
@@ -124,7 +125,7 @@ func SetupVerify(ctx *DeviceNetworkContext, index int) {
 
 	pending := &ctx.Pending
 	pending.Inprogress = true
-	pending.PendDPC    = ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
+	pending.PendDPC = ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
 	pending.PendDNS, _ = MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
 	pending.TestCount = 0
 	log.Infof("SetupVerify: Started testing DPC (index %d): %v",
@@ -171,12 +172,12 @@ func VerifyPending(pending *DPCPending,
 	if numUsableAddrs == 0 {
 		if pending.TestCount < MaxDPCRetestCount {
 			pending.TestCount += 1
-			log.Infof("VerifyPending: Pending DNS %v does not " +
+			log.Infof("VerifyPending: Pending DNS %v does not "+
 				"have any usable IP addresses", pending.PendDNS)
 			return DPC_WAIT
 		} else {
 			pending.PendDPC.LastFailed = time.Now()
-			log.Infof("VerifyPending: DHCP could not resolve any usable " +
+			log.Infof("VerifyPending: DHCP could not resolve any usable "+
 				"IP addresses for the pending DNS %v", pending.PendDNS)
 			return DPC_FAIL
 		}
@@ -245,7 +246,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 				continue
 			}
 			passed = true
-			log.Infof("VerifyDevicePortConfig: Working DPC configuration found " +
+			log.Infof("VerifyDevicePortConfig: Working DPC configuration found "+
 				"at index %d in DPC list", ctx.NextDPCIndex)
 		}
 	}
@@ -294,7 +295,7 @@ func getNextTestableDPCIndex(ctx *DeviceNetworkContext) int {
 			break
 		}
 		log.Debugln("getNextTestableDPCIndex: DPC %v is not testable",
-		ctx.DevicePortConfigList.PortConfigList[newIndex])
+			ctx.DevicePortConfigList.PortConfigList[newIndex])
 		newIndex = (newIndex + 1) % dpcListLen
 	}
 	if count == dpcListLen {
