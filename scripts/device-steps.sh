@@ -159,6 +159,12 @@ if [ $CLEANUP = 0 ]; then
     rm /var/tmp/zededa/preserve
 fi
 
+echo "Removing old iptables/ip6tables rules"
+# Cleanup any remaining iptables rules from a failed run
+iptables -F
+ip6tables -F
+ip6tables -t raw -F
+
 echo "Handling restart done at" `date`
 
 echo "Starting" `date`
@@ -497,12 +503,6 @@ if [ ! -d $LISPDIR ]; then
     echo "Missing $LISPDIR directory. Giving up"
     exit 1
 fi
-
-echo "Removing old iptables/ip6tables rules"
-# Cleanup any remaining iptables rules from a failed run
-iptables -F
-ip6tables -F
-ip6tables -t raw -F
 
 if [ $SELF_REGISTER = 1 ]; then
     # Do we have a file from the build?

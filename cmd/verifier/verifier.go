@@ -164,11 +164,17 @@ func Run() {
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
+	// Publish status for any objects that were verified before reboot
+	// Then we report that the rest of the system can proceed.
+	// After than handleInitUpdateVerifiedObjects will recheck
+	// sha/signatures which can take many minutes, and update zedmanager.
 	handleInit(&ctx)
 
 	// Report to zedmanager that init is done
 	pubAppImgStatus.SignalRestarted()
 	pubBaseOsStatus.SignalRestarted()
+
+	handleInitUpdateVerifiedObjects(&ctx)
 
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse
@@ -201,7 +207,7 @@ func handleInit(ctx *verifierContext) {
 	// mark all status file to PendingDelete
 	handleInitWorkinProgressObjects(ctx)
 
-	// recreate status files for verified objects
+	// Recreate status for objects that were verified before reboot
 	handleInitVerifiedObjects(ctx)
 
 	// delete status files marked PendingDelete
@@ -256,8 +262,9 @@ func handleInitWorkinProgressObjects(ctx *verifierContext) {
 	}
 }
 
-// recreate status files for verified objects
+// Recreate status files for verified objects as types.DOWNLOADED
 func handleInitVerifiedObjects(ctx *verifierContext) {
+
 	for _, objType := range verifierObjTypes {
 
 		verifiedDirname := objectDownloadDirname + "/" + objType + "/verified"
@@ -268,8 +275,23 @@ func handleInitVerifiedObjects(ctx *verifierContext) {
 	}
 }
 
-// recursive scanning for verified objects,
-// to recreate the status files
+// Verify the sha/signatures and then mark as types.DELIVERED
+func handleInitUpdateVerifiedObjects(ctx *verifierContext) {
+
+	log.Infoln("handleInitUpdateVerifiedObjects")
+	for _, objType := range verifierObjTypes {
+
+		verifiedDirname := objectDownloadDirname + "/" + objType + "/verified"
+		if _, err := os.Stat(verifiedDirname); err == nil {
+			updateInitialStatusFromVerified(ctx, objType,
+				verifiedDirname, "")
+		}
+	}
+	log.Infoln("handleInitUpdateVerifiedObjects done")
+}
+
+// Recursive scanning for verified objects,
+// to recreate the VerifyImageStatus.
 func populateInitialStatusFromVerified(ctx *verifierContext,
 	objType string, objDirname string, parentDirname string) {
 
@@ -294,8 +316,8 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 			}
 		} else {
 			info, _ := os.Stat(filename)
-			log.Debugf("populateInitialStatusFromVerified: Processing %d Mbytes %s \n",
-				info.Size()/(1024*1024), filename)
+			log.Debugf("populateInitialStatusFromVerified: Processing %s: %d Mbytes\n",
+				filename, info.Size()/(1024*1024))
 
 			sha := parentDirname
 			// We don't know the URL; Pick a name which is unique
@@ -305,10 +327,52 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 				Safename:    safename,
 				ObjType:     objType,
 				ImageSha256: sha,
-				State:       types.DELIVERED,
+				State:       types.DOWNLOADED,
 				Size:        info.Size(),
 				RefCount:    0,
 				LastUse:     time.Now(),
+			}
+			publishVerifyImageStatus(ctx, &status)
+		}
+	}
+}
+
+// Recursive scanning for verified objects,
+// to update the VerifyImageStatus after verifying the sha/signatures.
+func updateInitialStatusFromVerified(ctx *verifierContext,
+	objType string, objDirname string, parentDirname string) {
+
+	log.Infof("updateInitialStatusFromVerified(%s, %s)\n", objDirname,
+		parentDirname)
+
+	locations, err := ioutil.ReadDir(objDirname)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, location := range locations {
+
+		filename := objDirname + "/" + location.Name()
+
+		if location.IsDir() {
+			log.Debugf("updateInitialStatusFromVerified: Looking in %s\n", filename)
+			if _, err := os.Stat(filename); err == nil {
+				updateInitialStatusFromVerified(ctx,
+					objType, filename, location.Name())
+			}
+		} else {
+			log.Debugf("updateInitialStatusFromVerified: Processing %s\n",
+				filename)
+
+			sha := parentDirname
+			safename := location.Name() + "." + sha
+			status := lookupVerifyImageStatus(ctx,
+				objType, safename)
+			if status == nil {
+				log.Errorf("updateInitialStatusFromVerified: %s/%s not found\n",
+					objType, safename)
+				continue
 			}
 
 			// We re-verify the sha on reboot/restart
@@ -317,7 +381,7 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 			if err != nil {
 				log.Errorf("computeShaFile %s failed %s\n",
 					filename, err)
-				doDelete(&status)
+				doDelete(status)
 				continue
 			}
 
@@ -326,12 +390,13 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 				log.Errorf("computed   %s\n", got)
 				log.Errorf("configured %s\n",
 					strings.ToLower(sha))
-				doDelete(&status)
+				doDelete(status)
 				continue
 			}
 
+			status.State = types.DELIVERED
 			// Passed sha verification
-			publishVerifyImageStatus(ctx, &status)
+			publishVerifyImageStatus(ctx, status)
 		}
 	}
 }

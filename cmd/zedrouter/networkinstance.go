@@ -174,8 +174,8 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	}
 	doNetworkInstanceDelete(ctx, status)
 	pub.Unpublish(status.Key())
-	// XXX.. Metrics not yet ready..
-	//deleteNetworkInstanceMetrics(ctx, status.Key())
+
+	deleteNetworkInstanceMetrics(ctx, status.Key())
 	log.Infof("handleNetworkInstanceDelete(%s) done\n", key)
 }
 
@@ -781,11 +781,26 @@ func lookupNetworkInstanceStatus(ctx *zedrouterContext, key string) *types.Netwo
 	return &status
 }
 
+func lookupNetworkInstanceMetrics(ctx *zedrouterContext, key string) *types.NetworkInstanceMetrics {
+	pub := ctx.pubNetworkInstanceMetrics
+	st, _ := pub.Get(key)
+	if st == nil {
+		return nil
+	}
+	status := cast.CastNetworkInstanceMetrics(st)
+	if status.Key() != key {
+		log.Errorf("lookupNetworkInstanceMetrics key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, status.Key(), status)
+		return nil
+	}
+	return &status
+}
+
 func deleteNetworkInstanceMetrics(ctx *zedrouterContext, key string) {
-	//	pub := ctx.pubNetworkInstanceMetrics
-	//	if metrics := lookupNetworkInstanceMetrics(ctx, key); metrics != nil {
-	//		pub.Unpublish(metrics.Key())
-	//	}
+	pub := ctx.pubNetworkInstanceMetrics
+	if metrics := lookupNetworkInstanceMetrics(ctx, key); metrics != nil {
+		pub.Unpublish(metrics.Key())
+	}
 }
 
 // getBridgeServiceIPv4Addr
@@ -834,6 +849,13 @@ func publishNetworkInstanceStatus(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
 	pub := ctx.pubNetworkInstanceStatus
+	pub.Publish(status.Key(), &status)
+}
+
+func publishNetworkInstanceMetrics(ctx *zedrouterContext,
+	status *types.NetworkInstanceMetrics) {
+
+	pub := ctx.pubNetworkInstanceMetrics
 	pub.Publish(status.Key(), &status)
 }
 

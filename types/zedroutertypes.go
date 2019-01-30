@@ -221,7 +221,7 @@ type ProxyConfig struct {
 }
 
 type DhcpConfig struct {
-	Dhcp       DhcpType // If DT_STATIC use below
+	Dhcp       DhcpType // If DT_STATIC use below; if DT_NOOP do nothing
 	AddrSubnet string   // In CIDR e.g., 192.168.1.44/24
 	Gateway    net.IP
 	DomainName string
@@ -663,7 +663,7 @@ type MapServer struct {
 	Credential  string
 }
 
-type ServiceLispConfig struct {
+type LispConfig struct {
 	MapServers    []MapServer
 	IID           uint32
 	Allocate      bool
@@ -821,7 +821,7 @@ type NetworkServiceConfig struct {
 	AppLink      uuid.UUID
 	Adapter      string // Ifname or group like "uplink", or empty
 	OpaqueConfig string
-	LispConfig   ServiceLispConfig
+	LispConfig   LispConfig
 }
 
 func (config NetworkServiceConfig) Key() string {
@@ -839,7 +839,7 @@ type NetworkServiceStatus struct {
 	AppLink       uuid.UUID
 	Adapter       string // Ifname or group like "uplink", or empty
 	OpaqueStatus  string
-	LispStatus    ServiceLispConfig
+	LispStatus    LispConfig
 	IfNameList    []string  // Recorded at time of activate
 	Subnet        net.IPNet // Recorded at time of activate
 
@@ -1018,6 +1018,9 @@ type NetworkInstanceStatus struct {
 	Vifs []VifNameMac
 
 	Ipv4Eid bool // Track if this is a CryptoEid with IPv4 EIDs
+
+	OpaqueStatus string
+	LispStatus   LispConfig
 
 	VpnStatus      *ServiceVpnStatus
 	LispInfoStatus *LispInfoStatus
