@@ -223,15 +223,18 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			// We have already published the new DNS for domainmgr.
 			// Wait until we hear from domainmgr before applying (dhcp enable/disable)
 			// and testing this new configuration.
-			log.Infof("VerifyDevicePortConfig: DPC_PCI_WAIT\n")
+			log.Infof("VerifyDevicePortConfig: DPC_PCI_WAIT for %d",
+				ctx.NextDPCIndex)
 			return
 		case DPC_WAIT:
 			// Either addressChange or PendTimer will result in calling us again.
 			pending.PendTimer = time.NewTimer(ctx.DPCTestDuration * time.Second)
-			log.Infof("VerifyDevicePortConfig: DPC_WAIT\n")
+			log.Infof("VerifyDevicePortConfig: DPC_WAIT for %d",
+				ctx.NextDPCIndex)
 			return
 		case DPC_FAIL:
-			log.Infof("VerifyDevicePortConfig: DPC_FAIL\n")
+			log.Infof("VerifyDevicePortConfig: DPC_FAIL for %d",
+				ctx.NextDPCIndex)
 			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
 			if checkAndRestartDPCListTest(ctx) {
 				// DPC list verification re-started from beginning
@@ -246,6 +249,8 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			SetupVerify(ctx, nextIndex)
 			continue
 		case DPC_SUCCESS:
+			log.Infof("VerifyDevicePortConfig: DPC_SUCCESS for %d",
+				ctx.NextDPCIndex)
 			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
 			if checkAndRestartDPCListTest(ctx) {
 				// DPC list verification re-started from beginning
