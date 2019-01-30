@@ -179,18 +179,6 @@ func PbrNATAdd(prefix string) error {
 
 	log.Debugf("PbrNATAdd(%s)\n", prefix)
 	return nil
-
-	//freeRule, err := pbrGetFreeRule(prefix)
-	//if err != nil {
-	//	return err
-	//}
-	// Avoid duplicate rules
-	//_ = netlink.RuleDel(freeRule)
-	//err = netlink.RuleAdd(freeRule)
-	//if err != nil {
-	//	return err
-	//}
-	//return nil
 }
 
 // XXX The PbrNAT functions are no-ops for now.
@@ -198,17 +186,6 @@ func PbrNATDel(prefix string) error {
 
 	log.Debugf("PbrNATDel(%s)\n", prefix)
 	return nil
-	
-	//freeRule, err := pbrGetFreeRule(prefix)
-	//if err != nil {
-	//	return err
-	//}
-	// Avoid duplicate rules
-	//err = netlink.RuleDel(freeRule)
-	//if err != nil {
-	//	return err
-	//}
-	//return nil
 }
 
 func pbrGetFreeRule(prefixStr string) (*netlink.Rule, error) {
