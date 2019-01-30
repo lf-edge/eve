@@ -27,7 +27,7 @@ DOCKER_ARGS=$${GOARCH:+--build-arg GOARCH=}$(GOARCH)
 DOCKER_TAG=zededa/ztools:local$${GOARCH:+-}$(GOARCH)
 
 APPS = zedbox
-APPS1 = logmanager ledmanager downloader verifier client zedrouter domainmgr identitymgr zedmanager zedagent hardwaremodel ipcmonitor nim diag baseosmgr wstunnelclient
+APPS1 = logmanager ledmanager downloader verifier client zedrouter domainmgr identitymgr zedmanager zedagent hardwaremodel ipcmonitor nim diag baseosmgr wstunnelclient conntrack
 
 SCRIPTS = \
 	device-steps.sh \
