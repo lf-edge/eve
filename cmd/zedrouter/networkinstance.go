@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"syscall"
 	"time"
 
@@ -122,6 +123,7 @@ func handleNetworkInstanceCreate(
 	status := types.NetworkInstanceStatus{
 		NetworkInstanceConfig: config,
 	}
+	status.IPAssignments = make(map[string]net.IP)
 
 	status.ChangeInProgress = types.ChangeInProgressTypeCreate
 	pub.Publish(status.Key(), status)
@@ -145,6 +147,7 @@ func handleNetworkInstanceCreate(
 			status.Error = err.Error()
 			status.ErrorTime = time.Now()
 		} else {
+			log.Infof("Activated network instance %s %s", status.UUID, status.DisplayName)
 			status.Activated = true
 		}
 	}
@@ -274,17 +277,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		// XXX do we need same logic as for IPv4 dnsmasq to not
 		// advertize as default router? Might we need lower
 		// radvd preference if isolated local network?
-
-		// Write radvd configlet; start radvd; XXX shared
-		cfgFilename := "radvd." + bridgeName + ".conf"
-		cfgPathname := runDirname + "/" + cfgFilename
-
-		//    Start clean; kill just in case
-		//    pkill -u radvd -f radvd.${BRIDGENAME}.conf
-		deleteRadvdConfiglet(cfgPathname)
-		stopRadvd(cfgFilename, false)
-		createRadvdConfiglet(cfgPathname, bridgeName)
-		startRadvd(cfgPathname, bridgeName)
+		restartRadvdWithNewConfig(status)
 	}
 
 	switch status.Type {
@@ -397,7 +390,8 @@ func lookupOrAllocateIPv4ForNetworkInstance(
 	status *types.NetworkInstanceStatus,
 	mac net.HardwareAddr) (string, error) {
 
-	log.Infof("lookupOrAllocateIPv4(%s)\n", mac.String())
+	log.Infof("lookupOrAllocateIPv4ForNetworkInstance(%s): mac:%s\n",
+		status.DisplayName, mac.String())
 	// Lookup to see if it exists
 	if ip, ok := status.IPAssignments[mac.String()]; ok {
 		log.Infof("lookupOrAllocateIPv4(%s) found %s\n",
@@ -405,24 +399,12 @@ func lookupOrAllocateIPv4ForNetworkInstance(
 		return ip.String(), nil
 	}
 
-	log.Infof("lookupOrAllocateIPv4 status: %s dhcp %d bridgeName %s Subnet %v range %v-%v\n",
-		status.Key(), status.DhcpType, status.BridgeName,
+	log.Infof("lookupOrAllocateIPv4 status: %s bridgeName %s Subnet %v range %v-%v\n",
+		status.Key(), status.BridgeName,
 		status.Subnet, status.DhcpRange.Start, status.DhcpRange.End)
 
-	if status.DhcpType == types.DT_PASSTHROUGH {
-		// XXX do we have a local IP? If so caller would have found it
-		// Might appear later
-		return "", nil
-	}
-
-	if status.DhcpType != types.DT_SERVER {
-		errStr := fmt.Sprintf("Unsupported DHCP type %d for %s",
-			status.DhcpType, status.Key())
-		return "", errors.New(errStr)
-	}
-
 	if status.DhcpRange.Start == nil {
-		errStr := fmt.Sprintf("no NetworkOjectStatus DhcpRange for %s",
+		errStr := fmt.Sprintf("no NetworkInstanceStatus DhcpRange for %s",
 			status.Key())
 		return "", errors.New(errStr)
 	}
@@ -611,16 +593,20 @@ func setBridgeIPAddrForNetworkInstance(
 
 	// Create new radvd configuration and restart radvd if ipv6
 	if isIPv6 {
-		cfgFilename := "radvd." + status.BridgeName + ".conf"
-		cfgPathname := runDirname + "/" + cfgFilename
-
-		// kill existing radvd instance
-		deleteRadvdConfiglet(cfgPathname)
-		stopRadvd(cfgFilename, false)
-		createRadvdConfiglet(cfgPathname, status.BridgeName)
-		startRadvd(cfgPathname, status.BridgeName)
+		restartRadvdWithNewConfig(status)
 	}
 	return nil
+}
+
+func restartRadvdWithNewConfig(status *types.NetworkInstanceStatus) {
+	cfgFilename := "radvd." + status.BridgeName + ".conf"
+	cfgPathname := runDirname + "/" + cfgFilename
+
+	// kill existing radvd instance
+	deleteRadvdConfiglet(cfgPathname)
+	stopRadvd(cfgFilename, false)
+	createRadvdConfiglet(cfgPathname, status.BridgeName)
+	startRadvd(cfgPathname, status.BridgeName)
 }
 
 // updateBridgeIPAddrForNetworkInstance
@@ -666,6 +652,33 @@ func maybeUpdateBridgeIPAddrForNetworkInstance(
 	return
 }
 
+func validatePortForNetworkInstance(ctx *zedrouterContext, port string,
+	allowMgmtPort bool) error {
+
+	if port == "" {
+		log.Fatalf("validatePortForNetworkInstance - port not specified")
+	}
+	// XXX - I think we can get rid of these built-in labels.
+	//	This will be cleaned up as part of support for deviceConfig
+	//	from cloud.
+	if allowMgmtPort {
+		if strings.EqualFold(port, "uplink") {
+			return nil
+		}
+		if strings.EqualFold(port, "freeuplink") {
+			return nil
+		}
+	}
+
+	portStatus := ctx.deviceNetworkStatus.GetPortByName(port)
+	if portStatus == nil {
+		errStr := fmt.Sprintf("portStatus not found for port %s", port)
+		return errors.New(errStr)
+	}
+	log.Infof("Port %s valid for NetworkInstance", port)
+	return nil
+}
+
 // doNetworkInstanceActivate
 func doNetworkInstanceActivate(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
@@ -678,8 +691,9 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	// A Bridge only works with a single adapter interface.
 	// Management ports are not allowed to be part of Bridge networks.
 	allowMgmtPort := (status.Type != types.NetworkInstanceTypeSwitch)
-	err := validateAdapter(ctx, status.Port, allowMgmtPort)
+	err := validatePortForNetworkInstance(ctx, status.Port, allowMgmtPort)
 	if err != nil {
+		log.Infof("validateAdaptor failed: Port: %s, err:%s", err, status.Port)
 		return err
 	}
 	status.IfNameList = adapterToIfNames(ctx, status.Port)
@@ -865,12 +879,6 @@ func bridgeActivateForNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
 	log.Infof("bridgeActivateForNetworkInstance(%s)\n", status.DisplayName)
-	// For now we only support passthrough
-	if status.DhcpType != types.DT_PASSTHROUGH {
-		errStr := fmt.Sprintf("Unsupported DHCP type %d for bridge service for %s",
-			status.DhcpType, status.Key())
-		return errors.New(errStr)
-	}
 
 	bridgeLink, err := findBridge(status.BridgeName)
 	if err != nil {
@@ -940,7 +948,6 @@ func natActivateForNetworkInstance(ctx *zedrouterContext,
 			status.Key())
 		return errors.New(errStr)
 	}
-	status.Subnet = status.Subnet
 	subnetStr := status.Subnet.String()
 
 	for _, a := range status.IfNameList {
@@ -957,6 +964,7 @@ func natActivateForNetworkInstance(ctx *zedrouterContext,
 	// Add to Pbr table
 	err := PbrNATAdd(subnetStr)
 	if err != nil {
+		log.Errorf("PbrNATAdd failed for port %s - err = %s\n", status.Port, err)
 		return err
 	}
 	return nil

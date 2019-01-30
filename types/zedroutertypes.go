@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
@@ -259,6 +260,17 @@ type AddrInfo struct {
 type DeviceNetworkStatus struct {
 	Version DevicePortConfigVersion // From DevicePortConfig
 	Ports   []NetworkPortStatus
+}
+
+func (status *DeviceNetworkStatus) GetPortByName(
+	port string) *NetworkPortStatus {
+	for _, portStatus := range status.Ports {
+		if strings.EqualFold(portStatus.Name, port) {
+			log.Infof("Found NetworkPortStatus for %s", port)
+			return &portStatus
+		}
+	}
+	return nil
 }
 
 func rotate(arr []string, amount int) []string {
@@ -938,17 +950,16 @@ type NetworkInstanceConfig struct {
 	UUIDandVersion
 	DisplayName string
 
+	Type NetworkInstanceType
+
 	// Activate - Activate the config.
 	Activate bool
-
-	Type NetworkInstanceType
 
 	// Port - Port name specified in the Device Config.
 	Port string
 
 	// IP configuration for the Application
 	IpType          AddressType
-	DhcpType        DhcpType // If DT_STATIC or DT_SERVER use below
 	Subnet          net.IPNet
 	Gateway         net.IP
 	DomainName      string

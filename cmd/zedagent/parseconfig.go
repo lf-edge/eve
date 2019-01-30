@@ -379,22 +379,6 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 
 		parseIpspecForNetworkInstanceConfig(apiConfigEntry.Ip, &networkInstanceConfig)
 
-		// KALYAN- HACK - REMOVE WORKAROUND - fr DHCPType
-		if networkInstanceConfig.DhcpType == 0 {
-			log.Infof("Hack - Set NetworkInstance DhcpType to DT_SERVER")
-			networkInstanceConfig.DhcpType = types.DT_SERVER
-		}
-		// KALYAN- HACK - REMOVE WORKAROUND - fr DHCPType
-		if networkInstanceConfig.DhcpRange.Start.IsUnspecified() {
-			log.Infof("Hack - DhcpRange unspecified. Set to 10.1.0.1")
-			networkInstanceConfig.DhcpRange.Start = net.ParseIP("10.1.0.1")
-			networkInstanceConfig.DhcpRange.End = net.ParseIP("10.1.0.254")
-		} else {
-			log.Infof("DhcpRange Specified: %s to %s\n",
-				networkInstanceConfig.DhcpRange.Start.String(),
-				networkInstanceConfig.DhcpRange.End.String())
-		}
-
 		parseDnsNameToIpListForNetworkInstanceConfig(apiConfigEntry,
 			&networkInstanceConfig)
 
@@ -981,14 +965,33 @@ func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) erro
 	return nil
 }
 
+func setDefaultIpSpecForNetworkInstanceConfig(
+	config *types.NetworkInstanceConfig) {
+	// HACK.. KALYAN - REMOVE THIS..
+	// We should just return an error here. This is supposed to be
+	// filled up by the cloud.
+	_, subnet, _ := net.ParseCIDR("10.1.0.0/16")
+	config.Subnet = *subnet
+	config.Gateway = net.ParseIP("10.1.0.1")
+	config.DomainName = ""
+	config.NtpServer = net.ParseIP("0.0.0.0")
+	config.DnsServers = make([]net.IP, 1)
+	config.DnsServers[0] = config.Gateway
+	config.DhcpRange.Start = net.ParseIP("10.1.0.2")
+	config.DhcpRange.End = net.ParseIP("10.1.255.254")
+	return
+}
+
 func parseIpspecForNetworkInstanceConfig(ipspec *zconfig.Ipspec,
 	config *types.NetworkInstanceConfig) error {
 
 	if ipspec == nil {
 		log.Infof("ipspec not specified in config")
+		// Kalyan - Hack - Workaround till cloud is ready..
+		// .. Should not need this.. Should return an error
+		setDefaultIpSpecForNetworkInstanceConfig(config)
 		return nil
 	}
-	config.DhcpType = types.DhcpType(ipspec.Dhcp)
 	config.DomainName = ipspec.GetDomain()
 	// Parse Subnet
 	if s := ipspec.GetSubnet(); s != "" {
