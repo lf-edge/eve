@@ -12,34 +12,35 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func UpdateSshAccess(enable bool, initial bool) {
+func UpdateSshAccess(enable bool, first bool) {
 
-	log.Infof("updateSshAccess(enable %v initial %v)\n",
-		enable, initial)
-	if enable {
-		enableSsh(initial)
-	} else {
-		disableSsh(initial)
-	}
-	if initial {
+	log.Infof("updateSshAccess(enable %v first %v)\n",
+		enable, first)
+
+	if first {
 		// Always blocked
-		dropPortRange(initial, 8080, 8080)
-		dropPortRange(initial, 4822, 4822)
+		dropPortRange(8080, 8080)
+		dropPortRange(4822, 4822)
+	}
+	if enable {
+		enableSsh()
+	} else {
+		disableSsh()
 	}
 }
 
-func enableSsh(initial bool) {
-	allowPortRange(initial, 22, 22)
-	allowPortRange(initial, 5900, 5999)
+func enableSsh() {
+	allowPortRange(22, 22)
+	allowPortRange(5900, 5999)
 }
 
-func disableSsh(initial bool) {
-	dropPortRange(initial, 22, 22)
-	dropPortRange(initial, 5900, 5999)
+func disableSsh() {
+	dropPortRange(22, 22)
+	dropPortRange(5900, 5999)
 }
 
-// Avoid logging errors if initial
-func allowPortRange(initial bool, startPort int, endPort int) {
+func allowPortRange(startPort int, endPort int) {
+	log.Infof("allowPortRange(%d, %d)\n", startPort, endPort)
 	// Delete these rules
 	// iptables -D INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
 	// ip6tables -D INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
@@ -49,12 +50,12 @@ func allowPortRange(initial bool, startPort int, endPort int) {
 	} else {
 		portStr = fmt.Sprintf("%d:%d", startPort, endPort)
 	}
-	IptableCmdOut(!initial, "-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
-	Ip6tableCmdOut(!initial, "-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
+	IptableCmd("-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
+	Ip6tableCmd("-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
 }
 
-// Avoid logging errors if initial
-func dropPortRange(initial bool, startPort int, endPort int) {
+func dropPortRange(startPort int, endPort int) {
+	log.Infof("dropPortRange(%d, %d)\n", startPort, endPort)
 	// Add these rules
 	// iptables -A INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
 	// ip6tables -A INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
@@ -64,6 +65,6 @@ func dropPortRange(initial bool, startPort int, endPort int) {
 	} else {
 		portStr = fmt.Sprintf("%d:%d", startPort, endPort)
 	}
-	IptableCmdOut(!initial, "-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
-	Ip6tableCmdOut(!initial, "-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
+	IptableCmd("-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
+	Ip6tableCmd("-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
 }
