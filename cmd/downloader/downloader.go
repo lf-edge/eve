@@ -1312,7 +1312,6 @@ func handleSyncOp(ctx *downloaderContext, key string,
 					metricsUrl, 1024, 0)
 			} else {
 				serverUrl := config.DownloadURL[:index+1]
-				filename := config.DownloadURL[index+1:]
 				err = doHttp(ctx, status, syncOp, serverUrl, "",
 					config.Size, ifname, ipSrc, filename, locFilename)
 				if err != nil {
