@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -21,28 +21,65 @@ import (
 	"github.com/zededa/go-provision/types"
 )
 
-func checkPortAvailableForBridge(
+// checkPortAvailableForNetworkInstance
+//	A port can be used for NetworkInstance if the following are satisfied:
+//	a) Port should be part of Device Port Config
+//	b) For type switch, port should not be part of any other
+// 			Network Instance
+// Any device, which is not a port, can only be assigned as a
+// directAttach device.
+func checkPortAvailableForNetworkInstance(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	log.Infof("checkPortAvailableForBridge: NetworkInstance (%s)\n",
-		status.DisplayName)
-	ib := types.LookupIoBundle(ctx.assignableAdapters, types.IoEth,
-		status.Port)
-	if ib == nil {
-		errStr := fmt.Sprintf("bridge %s is not assignable for %s",
-			status.Port, status.Key())
+	if status.Port == "" {
+		log.Infof("Port not specified\n")
+		return nil
+	}
+	log.Infof("NetworkInstance (name: %s), port: %s\n",
+		status.DisplayName, status.Port)
+
+	portStatus := ctx.deviceNetworkStatus.GetPortByName(status.Port)
+	if portStatus == nil {
+		errStr := fmt.Sprintf("PortStatus for %s not found\n", status.Port)
 		return errors.New(errStr)
 	}
 
-	// XXX TODO - Clean this up.
-	// check it isn't assigned to dom0? That's maintained
-	// in domainmgr so can't do it here.
-	// For now check it isn't a zedrouter port instead.
-	if types.IsPort(*ctx.deviceNetworkStatus, status.Port) {
-		errStr := fmt.Sprintf("checkPortAvailableForBridge: Zedrouter port %s not "+
-			" available as bridge for %s", status.Port, status.Key())
-		return errors.New(errStr)
+	switch status.Type {
+	case types.NetworkInstanceTypeSwitch:
+		// Make sure it is not used by any other NetworkInstance
+		for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
+			if status == iterStatusEntry {
+				continue
+			}
+			if iterStatusEntry.IsUsingPort(status.Port) {
+				errStr := fmt.Sprintf("Port %s already used by NetworkInstance %s-%s. "+
+					"Cannot be used by Switch Network Instance %s-%s\n",
+					status.Port, iterStatusEntry.UUID, iterStatusEntry.DisplayName,
+					status.UUID, status.DisplayName)
+				return errors.New(errStr)
+			}
+		}
+	case types.NetworkInstanceTypeLocal:
+		// Make sure it is not used by a NetworkInstance of type Switch
+		for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
+			if status == iterStatusEntry {
+				continue
+			}
+			if iterStatusEntry.IsUsingPort(status.Port) {
+				if iterStatusEntry.Type == types.NetworkInstanceTypeSwitch {
+					errStr := fmt.Sprintf("Port %s already used by "+
+						"Switch NetworkInstance %s-%s. It cannot be used by "+
+						"any other Network Instance\n",
+						status.Port, iterStatusEntry.UUID, iterStatusEntry.DisplayName)
+					return errors.New(errStr)
+				}
+				// Still iterate through all NetworkInstances. This particular one
+				//	may have errored out or inactive. Make sure no Switch NI is
+				//  using the Port.
+			}
+		}
+	default:
 	}
 	return nil
 }
@@ -116,14 +153,17 @@ func handleNetworkInstanceCreate(
 	key string,
 	config types.NetworkInstanceConfig) {
 
-	log.Infof("handleNetworkInstanceCreate: (%s)\n", key)
+	log.Infof("handleNetworkInstanceCreate: (UUID: %s, name:%s)\n",
+		key, config.DisplayName)
 
 	pub := ctx.pubNetworkInstanceStatus
 	status := types.NetworkInstanceStatus{
 		NetworkInstanceConfig: config,
 	}
+	status.IPAssignments = make(map[string]net.IP)
 
 	status.ChangeInProgress = types.ChangeInProgressTypeCreate
+	ctx.networkInstanceStatusMap[status.UUID] = &status
 	pub.Publish(status.Key(), status)
 
 	err := doNetworkInstanceCreate(ctx, &status)
@@ -145,6 +185,7 @@ func handleNetworkInstanceCreate(
 			status.Error = err.Error()
 			status.ErrorTime = time.Now()
 		} else {
+			log.Infof("Activated network instance %s %s", status.UUID, status.DisplayName)
 			status.Activated = true
 		}
 	}
@@ -170,6 +211,7 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 		doNetworkInstanceInactivate(ctx, status)
 	}
 	doNetworkInstanceDelete(ctx, status)
+	delete(ctx.networkInstanceStatusMap, status.UUID)
 	pub.Unpublish(status.Key())
 
 	deleteNetworkInstanceMetrics(ctx, status.Key())
@@ -187,10 +229,9 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	case types.NetworkInstanceTypeLocal:
 		// Nothing to do
 	case types.NetworkInstanceTypeSwitch:
-		// Nothing to do
 	default:
-		log.Fatalf("doNetworkInstanceCreate: Instance type %d not supported",
-			status.Type)
+		err := fmt.Sprintf("Instance type %d not supported", status.Type)
+		return errors.New(err)
 	}
 
 	// Check for valid types
@@ -205,8 +246,11 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		// Nothing to do
 	default:
 		// This should have been caught in parsestatus.
-		log.Fatalf("doNetworkInstanceCreate: IpType %d not supported",
-			status.IpType)
+		err := fmt.Sprintf("IpType %d not supported\n", status.IpType)
+		return errors.New(err)
+	}
+	if err := checkPortAvailableForNetworkInstance(ctx, status); err != nil {
+		return err
 	}
 
 	// Allocate bridgeNum.
@@ -216,9 +260,6 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	status.BridgeName = bridgeName
 	publishNetworkInstanceStatus(ctx, status)
 
-	if err := checkPortAvailableForBridge(ctx, status); err != nil {
-		return err
-	}
 	// Create bridge
 	var err error
 	bridgeMac := ""
@@ -227,10 +268,13 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	}
 	status.BridgeMac = bridgeMac
 
+	log.Infof("bridge created. BridgeMac: %s\n", bridgeMac)
+
 	// Check if we have a bridge service
 	if err := setBridgeIPAddrForNetworkInstance(ctx, status); err != nil {
 		return err
 	}
+	log.Infof("IpAddress set for bridge\n")
 
 	// XXX mov this before set??
 	// Create a hosts directory for the new bridge
@@ -269,29 +313,9 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		// XXX do we need same logic as for IPv4 dnsmasq to not
 		// advertize as default router? Might we need lower
 		// radvd preference if isolated local network?
-
-		// Write radvd configlet; start radvd; XXX shared
-		cfgFilename := "radvd." + bridgeName + ".conf"
-		cfgPathname := runDirname + "/" + cfgFilename
-
-		//    Start clean; kill just in case
-		//    pkill -u radvd -f radvd.${BRIDGENAME}.conf
-		deleteRadvdConfiglet(cfgPathname)
-		stopRadvd(cfgFilename, false)
-		createRadvdConfiglet(cfgPathname, bridgeName)
-		startRadvd(cfgPathname, bridgeName)
+		restartRadvdWithNewConfig(status)
 	}
-
-	switch status.Type {
-	case types.NetworkInstanceTypeSwitch:
-		err = bridgeCreateForNetworkInstance(ctx, status)
-	case types.NetworkInstanceTypeLocal:
-	default:
-		errStr := fmt.Sprintf("doNetworkInstanceCreate NetworkInstance %d not yet supported",
-			status.Type)
-		err = errors.New(errStr)
-	}
-	return err
+	return nil
 }
 
 func doNetworkInstanceModify(ctx *zedrouterContext,
@@ -334,7 +358,6 @@ func getSwitchNetworkInstanceUsingPort(
 	ctx *zedrouterContext,
 	ifname string) (status *types.NetworkInstanceStatus) {
 
-	log.Infof("getSwitchNetworkInstanceUsingPort(%s)\n", ifname)
 	pub := ctx.pubNetworkInstanceStatus
 	items := pub.GetAll()
 
@@ -361,8 +384,6 @@ func getSwitchNetworkInstanceUsingPort(
 			status.DisplayName, status.Type)
 		break
 	}
-	log.Infof("getSwitchNetworkInstanceUsingPort: networkInstance "+
-		"using ifname(%s) not found\n", ifname)
 	return nil
 }
 
@@ -389,7 +410,8 @@ func lookupOrAllocateIPv4ForNetworkInstance(
 	status *types.NetworkInstanceStatus,
 	mac net.HardwareAddr) (string, error) {
 
-	log.Infof("lookupOrAllocateIPv4(%s)\n", mac.String())
+	log.Infof("lookupOrAllocateIPv4ForNetworkInstance(%s): mac:%s\n",
+		status.DisplayName, mac.String())
 	// Lookup to see if it exists
 	if ip, ok := status.IPAssignments[mac.String()]; ok {
 		log.Infof("lookupOrAllocateIPv4(%s) found %s\n",
@@ -397,24 +419,12 @@ func lookupOrAllocateIPv4ForNetworkInstance(
 		return ip.String(), nil
 	}
 
-	log.Infof("lookupOrAllocateIPv4 status: %s dhcp %d bridgeName %s Subnet %v range %v-%v\n",
-		status.Key(), status.DhcpType, status.BridgeName,
+	log.Infof("lookupOrAllocateIPv4 status: %s bridgeName %s Subnet %v range %v-%v\n",
+		status.Key(), status.BridgeName,
 		status.Subnet, status.DhcpRange.Start, status.DhcpRange.End)
 
-	if status.DhcpType == types.DT_PASSTHROUGH {
-		// XXX do we have a local IP? If so caller would have found it
-		// Might appear later
-		return "", nil
-	}
-
-	if status.DhcpType != types.DT_SERVER {
-		errStr := fmt.Sprintf("Unsupported DHCP type %d for %s",
-			status.DhcpType, status.Key())
-		return "", errors.New(errStr)
-	}
-
 	if status.DhcpRange.Start == nil {
-		errStr := fmt.Sprintf("no NetworkOjectStatus DhcpRange for %s",
+		errStr := fmt.Sprintf("no NetworkInstanceStatus DhcpRange for %s",
 			status.Key())
 		return "", errors.New(errStr)
 	}
@@ -442,12 +452,46 @@ func lookupOrAllocateIPv4ForNetworkInstance(
 	return "", errors.New(errStr)
 }
 
+// getPortIPv4Addr
+//	To be used only for NI type Switch
+func getPortIPv4Addr(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) (string, error) {
+	// Find any service which is associated with the appLink UUID
+	log.Infof("NetworkInstance UUID:%s, Name: %s, Port: %s\n",
+		status.UUID, status.DisplayName, status.Port)
+
+	if status.Port == "" {
+		log.Infof("no Port\n")
+		return "", nil
+	}
+
+	// Get IP address from adapter
+	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Port)
+	link, err := netlink.LinkByName(ifname)
+	if err != nil {
+		return "", err
+	}
+	// XXX Add IPv6 underlay; ignore link-locals.
+	addrs, err := netlink.AddrList(link, syscall.AF_INET)
+	if err != nil {
+		return "", err
+	}
+	for _, addr := range addrs {
+		log.Infof("found addr %s\n", addr.IP.String())
+		return addr.IP.String(), nil
+	}
+	log.Infof("IP address on %s yet\n", status.Port)
+	return "", nil
+}
+
 // Call when we have a network and a service?
 func setBridgeIPAddrForNetworkInstance(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	log.Infof("setBridgeIPAddrForNetworkInstance for %s\n", status.Key())
+	log.Infof("setBridgeIPAddrForNetworkInstance (NI UUIDL:%s, name: %s)\n",
+		status.Key(), status.DisplayName)
+
 	if status.BridgeName == "" {
 		// Called too early
 		log.Infof("setBridgeIPAddrForNetworkInstance: don't yet have a bridgeName for %s\n",
@@ -460,21 +504,14 @@ func setBridgeIPAddrForNetworkInstance(
 		errStr := fmt.Sprintf("Unknown adapter %s", status.BridgeName)
 		return errors.New(errStr)
 	}
-	// Check if we have a bridge service, and if so return error or address
-	st, _, err := getServiceInfo(ctx, status.UUID)
-	if err != nil {
-		// There might not be a service associated with this network
-		// or it might not yet have arrived. In either case we
-		// don't treat it as a bridge service.
-		log.Errorf("setBridgeIPAddrForNetworkInstance: getServiceInfo failed: %s\n",
-			err)
-	}
+
 	var ipAddr string
-	switch st {
-	case types.NST_BRIDGE:
-		ipAddr, err = getBridgeServiceIPv4Addr(ctx, status.UUID)
+	var err error
+	switch status.Type {
+	case types.NetworkInstanceTypeSwitch:
+		ipAddr, err = getPortIPv4Addr(ctx, status)
 		if err != nil {
-			log.Infof("setBridgeIPAddrForNetworkInstance: getBridgeServiceIPv4Addr failed: %s\n",
+			log.Errorf("setBridgeIPAddrForNetworkInstance: getBridgeServiceIPv4Addr failed: %s\n",
 				err)
 			return err
 		}
@@ -485,25 +522,25 @@ func setBridgeIPAddrForNetworkInstance(
 	// So we check the type of the network instead of the type of the
 	// service
 
-	if status.Type == types.NT_CryptoEID {
-		if status.Subnet.IP != nil && status.Subnet.IP.To4() != nil {
-			// Require an IPv4 gateway
-			if status.Gateway == nil {
-				errStr := fmt.Sprintf("No IPv4 gateway for bridge %s network %s subnet %s",
-					status.BridgeName, status.Key(),
-					status.Subnet.String())
-				return errors.New(errStr)
-			}
-			ipAddr = status.Gateway.String()
-			log.Infof("setBridgeIPAddrForNetworkInstance: Bridge %s assigned IPv4 EID %s\n",
-				status.BridgeName, ipAddr)
-			status.Ipv4Eid = true
-		} else {
-			ipAddr = "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
-			log.Infof("setBridgeIPAddrForNetworkInstance: Bridge %s assigned IPv6 EID %s\n",
-				status.BridgeName, ipAddr)
-		}
-	}
+	//if status.Type == types.NT_CryptoEID {
+	//	if status.Subnet.IP != nil && status.Subnet.IP.To4() != nil {
+	//		// Require an IPv4 gateway
+	//		if status.Gateway == nil {
+	//			errStr := fmt.Sprintf("No IPv4 gateway for bridge %s network %s subnet %s",
+	//				status.BridgeName, status.Key(),
+	//				status.Subnet.String())
+	//			return errors.New(errStr)
+	//		}
+	//		ipAddr = status.Gateway.String()
+	//		log.Infof("setBridgeIPAddrForNetworkInstance: Bridge %s assigned IPv4 EID %s\n",
+	//			status.BridgeName, ipAddr)
+	//		status.Ipv4Eid = true
+	//	} else {
+	//		ipAddr = "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
+	//		log.Infof("setBridgeIPAddrForNetworkInstance: Bridge %s assigned IPv6 EID %s\n",
+	//			status.BridgeName, ipAddr)
+	//	}
+	//}
 
 	// If not we do a local allocation
 	if ipAddr == "" {
@@ -531,6 +568,8 @@ func setBridgeIPAddrForNetworkInstance(
 	}
 	status.BridgeIPAddr = ipAddr
 	publishNetworkInstanceStatus(ctx, status)
+	log.Infof("Published NetworkStatus. BridgeIpAddr: %s\n",
+		status.BridgeIPAddr)
 
 	if status.BridgeIPAddr == "" {
 		log.Infof("Does not yet have a bridge IP address for %s\n",
@@ -573,16 +612,8 @@ func setBridgeIPAddrForNetworkInstance(
 
 	// Create new radvd configuration and restart radvd if ipv6
 	if isIPv6 {
-		cfgFilename := "radvd." + status.BridgeName + ".conf"
-		cfgPathname := runDirname + "/" + cfgFilename
-
-		// kill existing radvd instance
-		deleteRadvdConfiglet(cfgPathname)
-		stopRadvd(cfgFilename, false)
-		createRadvdConfiglet(cfgPathname, status.BridgeName)
-		startRadvd(cfgPathname, status.BridgeName)
+		restartRadvdWithNewConfig(status)
 	}
-
 	return nil
 }
 
@@ -608,12 +639,11 @@ func updateBridgeIPAddrForNetworkInstance(
 }
 
 // maybeUpdateBridgeIPAddrForNetworkInstance
-// 	Find ifname as a bridge Adapter and see if it can be updated
+// 	Find ifname as a bridge Port and see if it can be updated
 func maybeUpdateBridgeIPAddrForNetworkInstance(
 	ctx *zedrouterContext,
 	ifname string) {
 
-	log.Infof("maybeUpdateBridgeIPAddrForNetworkInstance(%s)\n", ifname)
 	status := getSwitchNetworkInstanceUsingPort(ctx, ifname)
 	if status == nil {
 		return
@@ -630,6 +660,33 @@ func maybeUpdateBridgeIPAddrForNetworkInstance(
 	return
 }
 
+func validatePortForNetworkInstance(ctx *zedrouterContext, port string,
+	allowMgmtPort bool) error {
+
+	if port == "" {
+		log.Fatalf("validatePortForNetworkInstance - port not specified")
+	}
+	// XXX - I think we can get rid of these built-in labels.
+	//	This will be cleaned up as part of support for deviceConfig
+	//	from cloud.
+	if allowMgmtPort {
+		if strings.EqualFold(port, "uplink") {
+			return nil
+		}
+		if strings.EqualFold(port, "freeuplink") {
+			return nil
+		}
+	}
+
+	portStatus := ctx.deviceNetworkStatus.GetPortByName(port)
+	if portStatus == nil {
+		errStr := fmt.Sprintf("portStatus not found for port %s", port)
+		return errors.New(errStr)
+	}
+	log.Infof("Port %s valid for NetworkInstance", port)
+	return nil
+}
+
 // doNetworkInstanceActivate
 func doNetworkInstanceActivate(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
@@ -642,8 +699,9 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	// A Bridge only works with a single adapter interface.
 	// Management ports are not allowed to be part of Bridge networks.
 	allowMgmtPort := (status.Type != types.NetworkInstanceTypeSwitch)
-	err := validateAdapter(ctx, status.Port, allowMgmtPort)
+	err := validatePortForNetworkInstance(ctx, status.Port, allowMgmtPort)
 	if err != nil {
+		log.Infof("validateAdaptor failed: Port: %s, err:%s", err, status.Port)
 		return err
 	}
 	status.IfNameList = adapterToIfNames(ctx, status.Port)
@@ -769,7 +827,7 @@ func getBridgeServiceIPv4AddrForNetworkInstance(
 		return "", errors.New(errStr)
 	}
 	if status.Port == "" {
-		log.Infof("getBridgeServiceIPv4AddrForNetworkInstance(%s): bridge but no Adapter\n",
+		log.Infof("getBridgeServiceIPv4AddrForNetworkInstance(%s): bridge but no Port\n",
 			status.DisplayName)
 		return "", nil
 	}
@@ -780,6 +838,8 @@ func getBridgeServiceIPv4AddrForNetworkInstance(
 	if err != nil {
 		return "", err
 	}
+	// XXX - We really should maintain these addresses in our own data structures
+	//		and not query netlink. To be cleaned up.
 	// XXX Add IPv6 underlay; ignore link-locals.
 	addrs, err := netlink.AddrList(link, syscall.AF_INET)
 	if err != nil {
@@ -811,41 +871,10 @@ func publishNetworkInstanceMetrics(ctx *zedrouterContext,
 
 // ==== Bridge
 
-// XXX need a better check than assignable since it could be any
-// member of an IoBundle.
-// XXX also need to check the bundle isn't assigned to a domU?
-func bridgeCreateForNetworkInstance(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) error {
-
-	log.Infof("bridgeCreateForNetworkInstance(%s)\n", status.DisplayName)
-	ib := types.LookupIoBundle(ctx.assignableAdapters, types.IoEth,
-		status.Port)
-	if ib == nil {
-		errStr := fmt.Sprintf("bridge %s is not assignable for %s",
-			status.Port, status.Key())
-		return errors.New(errStr)
-	}
-	// XXX check it isn't assigned to dom0? That's maintained
-	// in domainmgr so can't do it here.
-	// For now check it isn't a zedrouter port instead.
-	if types.IsPort(*ctx.deviceNetworkStatus, status.Port) {
-		errStr := fmt.Sprintf("Zedrouter port %s not available as bridge for %s",
-			status.Port, status.Key())
-		return errors.New(errStr)
-	}
-	return nil
-}
-
 func bridgeActivateForNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
 	log.Infof("bridgeActivateForNetworkInstance(%s)\n", status.DisplayName)
-	// For now we only support passthrough
-	if status.DhcpType != types.DT_PASSTHROUGH {
-		errStr := fmt.Sprintf("Unsupported DHCP type %d for bridge service for %s",
-			status.DhcpType, status.Key())
-		return errors.New(errStr)
-	}
 
 	bridgeLink, err := findBridge(status.BridgeName)
 	if err != nil {
@@ -931,6 +960,7 @@ func natActivateForNetworkInstance(ctx *zedrouterContext,
 	// Add to Pbr table
 	err := PbrNATAdd(subnetStr)
 	if err != nil {
+		log.Errorf("PbrNATAdd failed for port %s - err = %s\n", status.Port, err)
 		return err
 	}
 	return nil
