@@ -30,6 +30,7 @@ enum AddressType {
 // but idea is here. This is service specific configuration.
 message NetworkInstanceOpaqueConfig {
 	string oconfig = 1;
+	NetworkInstanceLispConfig lispConfig = 2;
 }
 
 // Lisp NetworkInstance config
