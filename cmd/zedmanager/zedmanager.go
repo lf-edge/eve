@@ -404,11 +404,6 @@ func handleAppInstanceConfigModify(ctxArg interface{}, key string, configArg int
 	log.Infof("handleAppInstanceConfigModify(%s)\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	config := cast.CastAppInstanceConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleAppInstanceConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
 	status := lookupAppInstanceStatus(ctx, key)
 	if status == nil {
 		handleCreate(ctx, key, config)
@@ -548,7 +543,7 @@ func handleCreate2(ctx *zedmanagerContext, config types.AppInstanceConfig,
 	log.Infof("handleCreate done for %s\n", config.DisplayName)
 }
 
-func handleModify(ctx *zedmanagerContext, key string,
+func handleModify(ctx *zedmanagerContext, key string
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) {
 	log.Infof("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)

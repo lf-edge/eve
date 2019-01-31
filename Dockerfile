@@ -28,9 +28,20 @@ RUN cp /opt/zededa/bin/versioninfo /opt/zededa/bin/versioninfo.1
 # Echo for builders enjoyment
 RUN echo Building: `cat /opt/zededa/bin/versioninfo`
 
+# run go vet command
+#   Ignore  go-provision/src directory for this tool
+RUN echo "Running go tool vet" && \
+    cd /go/src/github.com/zededa/go-provision/ && \
+    for f in $(ls | egrep -v '(src)'); do echo "go tool vet $f" && \
+    go tool vet $f; echo "result: $?"; done; exit 1
+
+# go install
 RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc)           ;\
-    go install github.com/zededa/go-provision/zedbox/...               ;\
-    if [ -f /go/bin/*/zedbox ] ; then mv /go/bin/*/zedbox /go/bin ; fi
+    go install github.com/zededa/go-provision/zedbox/...
+
+# Move zedbox executable to /go/bin
+RUN if [ -f /go/bin/*/zedbox ] ; then mv /go/bin/*/zedbox /go/bin ; fi
+
 RUN ln -s /go/bin/zedbox /opt/zededa/bin/zedbox ;\
     for app in   \
       client domainmgr downloader hardwaremodel identitymgr ledmanager \
