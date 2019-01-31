@@ -10,6 +10,9 @@ package zedmanager
 import (
 	"flag"
 	"fmt"
+	"os"
+	"time"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -19,8 +22,6 @@ import (
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/uuidtonum"
-	"os"
-	"time"
 )
 
 const (
