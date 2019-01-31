@@ -8,6 +8,15 @@ package zedagent
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"regexp"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
 	"github.com/golang/protobuf/proto"
@@ -26,14 +35,6 @@ import (
 	"github.com/zededa/go-provision/netclone"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
-	"io/ioutil"
-	"os"
-	"os/exec"
-	"regexp"
-	"strconv"
-	"strings"
-	"syscall"
-	"time"
 )
 
 // Also report usage for these paths
@@ -1438,7 +1439,7 @@ func getDefaultRouters(ifname string) []string {
 		return res
 	}
 	ifindex := link.Attrs().Index
-	table := syscall.RT_TABLE_MAIN
+	table := types.GetDefaultRouteTable()
 	// Note that a default route is represented as nil Dst
 	filter := netlink.Route{Table: table, LinkIndex: ifindex, Dst: nil}
 	fflags := netlink.RT_FILTER_TABLE

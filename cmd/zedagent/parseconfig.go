@@ -358,7 +358,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			continue
 		}
 		networkInstanceConfig := types.NetworkInstanceConfig{
-			UUIDandVersion: types.UUIDandVersion{UUID: id, Version: version},
+			UUIDandVersion: types.UUIDandVersion{id, version},
 			DisplayName:    apiConfigEntry.Displayname,
 			Type:           types.NetworkInstanceType(apiConfigEntry.InstType),
 			Activate:       apiConfigEntry.Activate,
@@ -405,10 +405,7 @@ func parseNetworkInstanceConfig(config *zconfig.EdgeDevConfig,
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, networkInstancePrevConfigHash)
 	networkConfigPrevConfigHash = configHash
-
 	if same {
-		log.Infof("parseNetworkInstanceConfig: network sha is unchanged: % x\n",
-			configHash)
 		return
 	}
 	log.Infof("parseNetworkInstanceConfig: Applying updated config "+
@@ -490,7 +487,8 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 			cfgApp.Drives)
 
 		// fill the overlay/underlay config
-		parseAppNetworkConfig(&appInstance, cfgApp, config.Networks)
+		parseAppNetworkConfig(&appInstance, cfgApp, config.Networks,
+			config.NetworkInstances)
 
 		// I/O adapters
 		appInstance.IoAdapterList = nil
@@ -756,6 +754,16 @@ func parseStorageConfigList(objType string,
 
 func lookupNetworkId(id string, cfgNetworks []*zconfig.NetworkConfig) *zconfig.NetworkConfig {
 	for _, netEnt := range cfgNetworks {
+		if id == netEnt.Id {
+			return netEnt
+		}
+	}
+	return nil
+}
+
+func lookupNetworkInstanceId(id string,
+	cfgNetworkInstances []*zconfig.NetworkInstanceConfig) *zconfig.NetworkInstanceConfig {
+	for _, netEnt := range cfgNetworkInstances {
 		if id == netEnt.Id {
 			return netEnt
 		}
@@ -1130,41 +1138,62 @@ func publishNetworkServiceConfig(ctx *getconfigContext,
 
 func parseAppNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
-	cfgNetworks []*zconfig.NetworkConfig) {
+	cfgNetworks []*zconfig.NetworkConfig,
+	cfgNetworkInstances []*zconfig.NetworkInstanceConfig) {
 
-	parseUnderlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
+	parseUnderlayNetworkConfig(appInstance, cfgApp, cfgNetworks,
+		cfgNetworkInstances)
 	parseOverlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
 }
 
 func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
-	cfgNetworks []*zconfig.NetworkConfig) {
+	cfgNetworks []*zconfig.NetworkConfig,
+	cfgNetworkInstances []*zconfig.NetworkInstanceConfig) {
 
 	for _, intfEnt := range cfgApp.Interfaces {
+		var networkUuidStr string
+		var networkInstanceEntry *zconfig.NetworkInstanceConfig = nil
 		netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
 		if netEnt == nil {
-			log.Errorf("parseUnderlayNetworkConfig: Can't find network id %s; ignored\n",
-				intfEnt.NetworkId)
-			continue
+			// Lookup NetworkInstance ID
+			networkInstanceEntry = lookupNetworkInstanceId(intfEnt.NetworkId,
+				cfgNetworkInstances)
+			if networkInstanceEntry == nil {
+				log.Errorf("App %s - Can't find network id %s in networks or "+
+					"networkinstances. Ignoring this network\n", intfEnt.NetworkId)
+				continue
+			}
+			networkUuidStr = networkInstanceEntry.Uuidandversion.Uuid
+		} else {
+			networkUuidStr = netEnt.Id
 		}
 		uuid, err := uuid.FromString(netEnt.Id)
 		if err != nil {
 			log.Errorf("parseUnderlayNetworkConfig: Malformed UUID %s ignored: %s\n",
-				netEnt.Id, err)
+				networkUuidStr, err)
 			continue
 		}
-		switch netEnt.Type {
-		case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
-			// Do nothing
-		default:
-			continue
+
+		if netEnt != nil {
+			switch netEnt.Type {
+			case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
+				// Do nothing
+			default:
+				continue
+			}
+			log.Infof("parseUnderlayNetworkConfig: app %v net %v type %v\n",
+				cfgApp.Displayname, uuid.String(), netEnt.Type)
+		} else {
+			// NetworkInstance
+			log.Infof("NetworkInstance: app %v net %v type %v\n",
+				cfgApp.Displayname, uuid.String(), netEnt.Type)
 		}
-		log.Infof("parseUnderlayNetworkConfig: app %v net %v type %v\n",
-			cfgApp.Displayname, uuid.String(), netEnt.Type)
 
 		ulCfg := new(types.UnderlayNetworkConfig)
 		ulCfg.Name = intfEnt.Name
 		ulCfg.Network = uuid
+		ulCfg.UsesNetworkInstance = (networkInstanceEntry != nil)
 		if intfEnt.MacAddress != "" {
 			log.Infof("parseUnderlayNetworkConfig: got static MAC %s\n",
 				intfEnt.MacAddress)
@@ -1223,6 +1252,10 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	}
 }
 
+// parseOverlayNetworkConfig
+//	This is not supported for NetworkInstances. Can be deleted when
+//	we stop support for Network-service. No changes done to this function
+//  for NetworkInstance support.
 func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig) {

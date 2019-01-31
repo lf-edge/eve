@@ -714,8 +714,18 @@ type UnderlayNetworkConfig struct {
 	Name       string           // From proto message
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
-	Network    uuid.UUID
-	ACLs       []ACE
+	// Network
+	//	Currently overloaded. Can point to NetworkInstance or
+	//	NetworkConfig. If UsesNetworkInstance is set, Network
+	//	UUID points to NetworkInstance. Else, it points
+	//	to Network
+	//	XXX - Clean this up when deleting Network-Service support.
+	Network uuid.UUID
+	// UsesNetworkInstance
+	//		This attribute can be deleted when we stop network-service
+	//		support.
+	UsesNetworkInstance bool
+	ACLs                []ACE
 }
 
 type UnderlayNetworkStatus struct {
