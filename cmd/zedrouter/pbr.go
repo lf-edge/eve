@@ -171,33 +171,6 @@ func PbrRouteDeleteDefault(bridgeName string, port string) error {
 	return nil
 }
 
-// Return the first default route for one interface. XXX or return all?
-func getDefaultIPv4Route(ifindex int) *netlink.Route {
-	table := syscall.RT_TABLE_MAIN
-	// Default route is nil Dst.
-	filter := netlink.Route{Table: table, LinkIndex: ifindex, Dst: nil}
-	fflags := netlink.RT_FILTER_TABLE
-	fflags |= netlink.RT_FILTER_OIF
-	fflags |= netlink.RT_FILTER_DST
-	log.Infof("getDefaultIPv4Route(%d) filter %v\n", ifindex, filter)
-	routes, err := netlink.RouteListFiltered(syscall.AF_INET,
-		&filter, fflags)
-	if err != nil {
-		log.Fatal("RouteList failed: %v\n", err)
-	}
-	log.Debugf("getDefaultIPv4Route(%d) - got %d matches\n",
-		ifindex, len(routes))
-	for _, rt := range routes {
-		if rt.LinkIndex != ifindex {
-			continue
-		}
-		log.Debugf("getDefaultIPv4Route(%d) returning %v\n",
-			ifindex, rt)
-		return &rt
-	}
-	return nil
-}
-
 // XXX The PbrNAT functions are no-ops for now.
 // The prefix for the NAT linux bridge interface is in its own pbr table
 // XXX put the default route(s) for the selected Adapter for the service
@@ -206,35 +179,12 @@ func PbrNATAdd(prefix string) error {
 
 	log.Debugf("PbrNATAdd(%s)\n", prefix)
 	return nil
-
-	freeRule, err := pbrGetFreeRule(prefix)
-	if err != nil {
-		return err
-	}
-	// Avoid duplicate rules
-	_ = netlink.RuleDel(freeRule)
-	err = netlink.RuleAdd(freeRule)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // XXX The PbrNAT functions are no-ops for now.
 func PbrNATDel(prefix string) error {
 
 	log.Debugf("PbrNATDel(%s)\n", prefix)
-	return nil
-
-	freeRule, err := pbrGetFreeRule(prefix)
-	if err != nil {
-		return err
-	}
-	// Avoid duplicate rules
-	err = netlink.RuleDel(freeRule)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -260,7 +210,7 @@ func PbrRouteChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	change netlink.RouteUpdate) {
 
 	rt := change.Route
-	if rt.Table != syscall.RT_TABLE_MAIN {
+	if rt.Table != getDefaultRouteTable() {
 		// Ignore since we will not add to other table
 		return
 	}
@@ -298,7 +248,7 @@ func PbrRouteChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 		srt.Flags = 0
 		myrt.Flags = 0
 	}
-	if change.Type == syscall.RTM_DELROUTE {
+	if change.Type == getRouteUpdateTypeDELROUTE() {
 		log.Debugf("Received route del %v\n", rt)
 		if doFreeTable {
 			if err := netlink.RouteDel(&srt); err != nil {
@@ -310,7 +260,7 @@ func PbrRouteChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 			log.Errorf("Failed to remove %v from %d: %s\n",
 				myrt, myrt.Table, err)
 		}
-	} else if change.Type == syscall.RTM_NEWROUTE {
+	} else if change.Type == getRouteUpdateTypeNEWROUTE() {
 		log.Debugf("Received route add %v\n", rt)
 		if doFreeTable {
 			if err := netlink.RouteAdd(&srt); err != nil {
@@ -374,70 +324,6 @@ func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 			if addrChangeFuncNonMgmtPort != nil {
 				addrChangeFuncNonMgmtPort(ifname)
 			}
-		}
-	}
-}
-
-// Handle a link being added or deleted
-func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
-	change netlink.LinkUpdate) {
-
-	ifindex := change.Attrs().Index
-	ifname := change.Attrs().Name
-	linkType := change.Link.Type()
-	log.Infof("PbrLinkChange: index %d name %s type %s\n", ifindex, ifname,
-		linkType)
-	switch change.Header.Type {
-	case syscall.RTM_NEWLINK:
-		added := IfindexToNameAdd(ifindex, ifname, linkType)
-		if added {
-			if types.IsFreeMgmtPort(*deviceNetworkStatus,
-				ifname) {
-
-				log.Debugf("PbrLinkChange moving to FreeTable %s\n",
-					ifname)
-				moveRoutesTable(0, ifindex, FreeTable)
-			}
-			if types.IsMgmtPort(*deviceNetworkStatus, ifname) {
-				log.Debugf("Link change for management port: %s\n",
-					ifname)
-				if addrChangeFuncMgmtPort != nil {
-					addrChangeFuncMgmtPort(ifname)
-				}
-			} else {
-				log.Debugf("Link change for non-port: %s\n",
-					ifname)
-				if addrChangeFuncNonMgmtPort != nil {
-					addrChangeFuncNonMgmtPort(ifname)
-				}
-			}
-
-		}
-	case syscall.RTM_DELLINK:
-		gone := IfindexToNameDel(ifindex, ifname)
-		if gone {
-			if types.IsFreeMgmtPort(*deviceNetworkStatus,
-				ifname) {
-
-				flushRoutesTable(FreeTable, ifindex)
-			}
-			MyTable := FreeTable + ifindex
-			flushRoutesTable(MyTable, 0)
-			flushRules(ifindex)
-			if types.IsMgmtPort(*deviceNetworkStatus, ifname) {
-				log.Debugf("Link change for management port: %s\n",
-					ifname)
-				if addrChangeFuncMgmtPort != nil {
-					addrChangeFuncMgmtPort(ifname)
-				}
-			} else {
-				log.Debugf("Link change for non-port: %s\n",
-					ifname)
-				if addrChangeFuncNonMgmtPort != nil {
-					addrChangeFuncNonMgmtPort(ifname)
-				}
-			}
-
 		}
 	}
 }
@@ -639,7 +525,7 @@ func IfindexToAddrsDel(index int, addr net.IPNet) bool {
 			return true
 		}
 	}
-	log.Warnf("IfindexToAddrsDel address not found for %d in\n",
+	log.Warnf("IfindexToAddrsDel address not found for %d in %+v\n",
 		index, addrs)
 	return false
 }
@@ -664,7 +550,7 @@ func flushRoutesTable(table int, ifindex int) {
 	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC,
 		&filter, fflags)
 	if err != nil {
-		log.Fatal("RouteList failed: %v\n", err)
+		log.Fatalf("RouteList failed: %v\n", err)
 	}
 	log.Debugf("flushRoutesTable(%d, %d) - got %d\n",
 		table, ifindex, len(routes))
@@ -685,56 +571,6 @@ func flushRoutesTable(table int, ifindex int) {
 	}
 }
 
-// Used when FreeMgmtPorts get a link added
-// If ifindex is non-zero we also compare it
-func moveRoutesTable(srcTable int, ifindex int, dstTable int) {
-	if srcTable == 0 {
-		srcTable = syscall.RT_TABLE_MAIN
-	}
-	filter := netlink.Route{Table: srcTable, LinkIndex: ifindex}
-	fflags := netlink.RT_FILTER_TABLE
-	if ifindex != 0 {
-		fflags |= netlink.RT_FILTER_OIF
-	}
-	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC,
-		&filter, fflags)
-	if err != nil {
-		log.Fatal("RouteList failed: %v\n", err)
-	}
-	log.Debugf("moveRoutesTable(%d, %d, %d) - got %d\n",
-		srcTable, ifindex, dstTable, len(routes))
-	for _, rt := range routes {
-		if rt.Table != srcTable {
-			continue
-		}
-		if ifindex != 0 && rt.LinkIndex != ifindex {
-			continue
-		}
-		art := rt
-		art.Table = dstTable
-		// Multiple IPv6 link-locals can't be added to the same
-		// table unless the Priority differs. Different
-		// LinkIndex, Src, Scope doesn't matter.
-		if rt.Dst != nil && rt.Dst.IP.IsLinkLocalUnicast() {
-			log.Debugf("Forcing IPv6 priority to %v\n",
-				rt.LinkIndex)
-			// Hack to make the kernel routes not appear identical
-			art.Priority = rt.LinkIndex
-		}
-		// Clear any RTNH_F_LINKDOWN etc flags since add doesn't
-		// like them
-		if rt.Flags != 0 {
-			art.Flags = 0
-		}
-		log.Debugf("moveRoutesTable(%d, %d, %d) adding %v\n",
-			srcTable, ifindex, dstTable, art)
-		if err := netlink.RouteAdd(&art); err != nil {
-			log.Errorf("moveRoutesTable failed to add %v to %d: %s\n",
-				art, art.Table, err)
-		}
-	}
-}
-
 // ==== manage the ip rules
 
 // Flush the rules we create. If ifindex is non-zero we also compare it
@@ -742,7 +578,7 @@ func moveRoutesTable(srcTable int, ifindex int, dstTable int) {
 func flushRules(ifindex int) {
 	rules, err := netlink.RuleList(syscall.AF_UNSPEC)
 	if err != nil {
-		log.Fatal("RuleList failed: %v\n", err)
+		log.Fatalf("RuleList failed: %v\n", err)
 	}
 	log.Debugf("flushRules(%d) - got %d\n", ifindex, len(rules))
 	for _, r := range rules {
@@ -754,7 +590,7 @@ func flushRules(ifindex int) {
 		}
 		log.Debugf("flushRules: RuleDel %v\n", r)
 		if err := netlink.RuleDel(&r); err != nil {
-			log.Fatal("flushRules - RuleDel %v failed %s\n",
+			log.Fatalf("flushRules - RuleDel %v failed %s\n",
 				r, err)
 		}
 	}
