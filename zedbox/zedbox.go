@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/zededa/go-provision/cmd/baseosmgr"
 	"github.com/zededa/go-provision/cmd/client"
+	"github.com/zededa/go-provision/cmd/conntrack"
 	"github.com/zededa/go-provision/cmd/diag"
 	"github.com/zededa/go-provision/cmd/domainmgr"
 	"github.com/zededa/go-provision/cmd/downloader"
@@ -63,6 +64,8 @@ func main() {
 		baseosmgr.Run()
 	case "wstunnelclient":
 		wstunnelclient.Run()
+	case "conntrack":
+		conntrack.Run()
 	default:
 		fmt.Printf("Unknown package: %s\n", basename)
 	}

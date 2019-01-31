@@ -35,7 +35,7 @@ RUN ln -s /go/bin/zedbox /opt/zededa/bin/zedbox ;\
     for app in   \
       client domainmgr downloader hardwaremodel identitymgr ledmanager \
       logmanager verifier zedagent zedmanager zedrouter ipcmonitor nim \
-      waitforaddr diag baseosmgr wstunnelclient ;\
+      waitforaddr diag baseosmgr wstunnelclient conntrack;\
     do ln -s zedbox /opt/zededa/bin/$app ; done
 
 # Second stage of the build is creating a minimalistic container
