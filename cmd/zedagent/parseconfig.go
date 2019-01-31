@@ -764,7 +764,7 @@ func lookupNetworkId(id string, cfgNetworks []*zconfig.NetworkConfig) *zconfig.N
 func lookupNetworkInstanceId(id string,
 	cfgNetworkInstances []*zconfig.NetworkInstanceConfig) *zconfig.NetworkInstanceConfig {
 	for _, netEnt := range cfgNetworkInstances {
-		if id == netEnt.Id {
+		if id == netEnt.Uuidandversion.Uuid {
 			return netEnt
 		}
 	}
