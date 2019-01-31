@@ -12,7 +12,7 @@ import (
 )
 
 func Run() {
-	flag.Parse()     
+	flag.Parse()
 	// XXX args := flag.Args()
 	res, err := netlink.ConntrackTableList(netlink.ConntrackTable, syscall.AF_INET)
 	if err != nil {
@@ -25,7 +25,7 @@ func Run() {
 			fmt.Printf("[%d]: reverse packets %d bytes %d\n", i,
 				entry.Reverse.Packets, entry.Reverse.Bytes)
 		}
-	}		
+	}
 	res, err = netlink.ConntrackTableList(netlink.ConntrackTable, syscall.AF_INET6)
 	if err != nil {
 		log.Println("ContrackTableList", err)
@@ -37,6 +37,5 @@ func Run() {
 			fmt.Printf("[%d]: reverse packets %d bytes %d\n", i,
 				entry.Reverse.Packets, entry.Reverse.Bytes)
 		}
-	}		
+	}
 }
-
