@@ -57,12 +57,14 @@ type DeviceNetworkContext struct {
 
 	Pending                DPCPending
 	NetworkTestTimer       *time.Timer
+	NetworkTestBetterTimer *time.Timer
 	NextDPCIndex           int
 	CloudConnectivityWorks bool
 
 	// How long should we wait before testing a pending DPC?
-	DPCTestDuration     time.Duration // In seconds.
-	NetworkTestInterval time.Duration // Test interval in minutes.
+	DPCTestDuration           time.Duration // In seconds.
+	NetworkTestInterval       time.Duration // Test interval in minutes.
+	NetworkTestBetterInterval time.Duration // Look for lower/better index
 }
 
 func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
@@ -210,6 +212,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	// It shall be resumed when we find working network configuration.
 	ctx.NetworkTestTimer.Stop()
 
+	ctx.NetworkTestBetterTimer.Stop()
 	pending := &ctx.Pending
 
 	passed := false
@@ -265,6 +268,8 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 				log.Warnf("VerifyDevicePortConfig: Working DPC configuration found "+
 					"at index %d in DPC list",
 					ctx.NextDPCIndex)
+				// Look for a better choice in a while
+				ctx.NetworkTestBetterTimer = time.NewTimer(ctx.NetworkTestBetterInterval * time.Minute)
 			}
 		}
 	}

@@ -267,6 +267,7 @@ func Run() {
 		time.Duration(geoMax))
 
 	dnc := &nimCtx.DeviceNetworkContext
+	// XXX timer.port.testduration from GlobalConfig
 	dnc.DPCTestDuration = 30 // seconds
 	// Timer for checking/verifying pending device network status
 	pendTimer := time.NewTimer(dnc.DPCTestDuration * time.Second)
@@ -279,12 +280,20 @@ func Run() {
 	dnc.Pending.PendTimer = pendTimer
 
 	// Periodic timer that tests device cloud connectivity
+	// XXX timer.port.testinterval from GlobalConfig
 	dnc.NetworkTestInterval = 5 // minutes
 	networkTestInterval := time.Duration(dnc.NetworkTestInterval * time.Minute)
 	networkTestTimer := time.NewTimer(networkTestInterval)
 	dnc.NetworkTestTimer = networkTestTimer
 	// We start assuming cloud connectivity works
 	dnc.CloudConnectivityWorks = true
+
+	// XXX introduce a timer to re-try higher priority entry
+	// XXX timer.port.testbetterinterval from GlobalConfig
+	dnc.NetworkTestBetterInterval = 30 // minutes
+	networkTestBetterInterval := time.Duration(dnc.NetworkTestBetterInterval * time.Minute)
+	networkTestBetterTimer := time.NewTimer(networkTestBetterInterval)
+	dnc.NetworkTestBetterTimer = networkTestBetterTimer
 
 	// Look for address changes
 	addrChanges := devicenetwork.AddrChangeInit(&nimCtx.DeviceNetworkContext)
@@ -346,6 +355,17 @@ func Run() {
 				} else {
 					log.Infof("Device connectivity to cloud failed at %v", time.Now())
 				}
+			}
+
+		case _, ok := <-dnc.NetworkTestBetterTimer.C:
+			if !ok {
+				log.Infof("Network testBetterTimer stopped?")
+			} else if dnc.NextDPCIndex == 0 {
+				log.Infof("Network testBetterTimer at zero ignored")
+			} else {
+				log.Infof("Network testBetterTimer at index %d",
+					dnc.NextDPCIndex)
+				devicenetwork.VerifyDevicePortConfig(dnc)
 			}
 
 		case <-stillRunning.C:

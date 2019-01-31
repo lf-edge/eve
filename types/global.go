@@ -22,6 +22,11 @@ type GlobalConfig struct {
 	DownloadRetryTime   uint32 // Retry failed download after N sec
 	DomainBootRetryTime uint32 // Retry failed boot after N sec
 
+	// Control NIM testing behavior:
+	NetworkTestDuration       uint32 // Time we wait for DHCP to complete
+	NetworkTestInterval       uint32 // Re-test DevicePortConfig
+	NetworkTestBetterInterval uint32 // Look for better DevicePortConfig
+
 	// NoUsbAccess
 	// Determines if Dom0 can use USB devices.
 	// If true:
