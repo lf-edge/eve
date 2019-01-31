@@ -386,10 +386,8 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			networkInstanceConfig.OpaqueConfig = apiConfigEntry.Cfg.Oconfig
 		}
 
-		if err := ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
-			&networkInstanceConfig); err != nil {
-			log.Fatalf("Network Instance Publish FAILED: %s", err)
-		}
+		ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
+			&networkInstanceConfig)
 	}
 }
 
@@ -399,8 +397,6 @@ func parseNetworkInstanceConfig(config *zconfig.EdgeDevConfig,
 	getconfigCtx *getconfigContext) {
 
 	networkInstances := config.GetNetworkInstances()
-
-	log.Infof("networkInstances: %+v\n", networkInstances)
 
 	h := sha256.New()
 	for _, n := range networkInstances {

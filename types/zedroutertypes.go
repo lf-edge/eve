@@ -972,8 +972,8 @@ type NetworkInstanceConfig struct {
 	OpaqueConfig string
 }
 
-func (status *NetworkInstanceConfig) Key() string {
-	return status.UUID.String()
+func (config *NetworkInstanceConfig) Key() string {
+	return config.UUID.String()
 }
 
 type ChangeInProgressType int32

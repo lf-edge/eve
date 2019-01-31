@@ -21,29 +21,38 @@ import (
 	"github.com/zededa/go-provision/types"
 )
 
-func checkPortAvailableForBridge(
+func checkPortAvailableForNetworkInstance(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	log.Infof("checkPortAvailableForBridge: NetworkInstance (name: %s), port: %s\n",
+	if status.Port == "" {
+		log.Infof("Port not specified\n")
+		return nil
+	}
+	log.Infof("NetworkInstance (name: %s), port: %s\n",
 		status.DisplayName, status.Port)
-	ib := types.LookupIoBundle(ctx.assignableAdapters, types.IoEth,
-		status.Port)
-	if ib == nil {
-		errStr := fmt.Sprintf("bridge %s is not assignable for %s",
-			status.Port, status.Key())
+
+	//	a) Port should be part of Device Port Config
+	//	b) For type switch, port should not be part of any other
+	// 			Network Instance
+	// Any device, which is not a port, can only be assigned as a
+	// directAttach device.
+	portStatus := ctx.deviceNetworkStatus.GetPortByName(status.Port)
+	if portStatus == nil {
+		errStr := fmt.Sprintf("PortStatus for %s not found\n", status.Port)
 		return errors.New(errStr)
 	}
 
-	// XXX TODO - Clean this up.
-	// check it isn't assigned to dom0? That's maintained
-	// in domainmgr so can't do it here.
-	// For now check it isn't a zedrouter port instead.
-	if types.IsPort(*ctx.deviceNetworkStatus, status.Port) {
-		errStr := fmt.Sprintf("checkPortAvailableForBridge: Zedrouter port %s not "+
-			" available as bridge for %s", status.Port, status.Key())
-		return errors.New(errStr)
+	switch status.Type {
+	case types.NetworkInstanceTypeSwitch:
+		// Make sure it is not used by any other NetworkInstance
+	case types.NetworkInstanceTypeLocal:
+		// Make sure it is not used by a NetworkInstance of type Switch
+	default:
 	}
+
+	// Iterate through all NetworkInstanceStatus and make sure port is not
+	// used for any other NetworkInstance
 	return nil
 }
 
@@ -190,7 +199,6 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	case types.NetworkInstanceTypeLocal:
 		// Nothing to do
 	case types.NetworkInstanceTypeSwitch:
-		// Nothing to do
 	default:
 		err := fmt.Sprintf("Instance type %d not supported", status.Type)
 		return errors.New(err)
@@ -211,6 +219,9 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		err := fmt.Sprintf("IpType %d not supported\n", status.IpType)
 		return errors.New(err)
 	}
+	if err := checkPortAvailableForNetworkInstance(ctx, status); err != nil {
+		return err
+	}
 
 	// Allocate bridgeNum.
 	bridgeNum := bridgeNumAllocate(ctx, status.UUID)
@@ -218,11 +229,6 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	status.BridgeNum = bridgeNum
 	status.BridgeName = bridgeName
 	publishNetworkInstanceStatus(ctx, status)
-
-	// KALYAN - TODO - We might need this check for NI type Switch
-	//if err := checkPortAvailableForBridge(ctx, status); err != nil {
-	//	return err
-	//}
 
 	// Create bridge
 	var err error
@@ -282,9 +288,9 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 
 	switch status.Type {
 	case types.NetworkInstanceTypeSwitch:
-		err = bridgeCreateForNetworkInstance(ctx, status)
+		err = checkPortAvailableForNetworkInstance(ctx, status)
 		if err == nil {
-			log.Infof("NetworkType Bridge. Bridge Creation Failed. err: %s", err)
+			log.Errorf("NetworkType Bridge. Bridge Creation Failed. err: %s", err)
 		}
 	case types.NetworkInstanceTypeLocal:
 		log.Infof("NetworkType Local.")
@@ -492,7 +498,7 @@ func setBridgeIPAddrForNetworkInstance(
 	case types.NetworkInstanceTypeSwitch:
 		ipAddr, err = getPortIPv4Addr(ctx, status)
 		if err != nil {
-			log.Infof("setBridgeIPAddrForNetworkInstance: getBridgeServiceIPv4Addr failed: %s\n",
+			log.Errorf("setBridgeIPAddrForNetworkInstance: getBridgeServiceIPv4Addr failed: %s\n",
 				err)
 			return err
 		}
@@ -862,37 +868,6 @@ func publishNetworkInstanceMetrics(ctx *zedrouterContext,
 }
 
 // ==== Bridge
-
-// XXX need a better check than assignable since it could be any
-// member of an IoBundle.
-// XXX also need to check the bundle isn't assigned to a domU?
-func bridgeCreateForNetworkInstance(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) error {
-
-	log.Infof("bridgeCreateForNetworkInstance(%s)\n", status.DisplayName)
-	ib := types.LookupIoBundle(ctx.assignableAdapters, types.IoEth,
-		status.Port)
-	if ib == nil {
-		// Check if port is a member of iobundle
-		ib = ctx.assignableAdapters.LookupIoBundleForMember(types.IoEth,
-			status.Port)
-		if ib == nil {
-			errStr := fmt.Sprintf("Port %s not found in Assignable list. "+
-				"It is not assignable to NetworkInstance (UUID:%s, name:%s)",
-				status.Port, status.Key(), status.DisplayName)
-			return errors.New(errStr)
-		}
-	}
-	// XXX check it isn't assigned to dom0? That's maintained
-	// in domainmgr so can't do it here.
-	// For now check it isn't a zedrouter port instead.
-	if types.IsPort(*ctx.deviceNetworkStatus, status.Port) {
-		errStr := fmt.Sprintf("Zedrouter port %s not available as bridge for %s",
-			status.Port, status.Key())
-		return errors.New(errStr)
-	}
-	return nil
-}
 
 func bridgeActivateForNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
