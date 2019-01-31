@@ -315,21 +315,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		// radvd preference if isolated local network?
 		restartRadvdWithNewConfig(status)
 	}
-
-	switch status.Type {
-	case types.NetworkInstanceTypeSwitch:
-		err = checkPortAvailableForNetworkInstance(ctx, status)
-		if err == nil {
-			log.Errorf("NetworkType Bridge. Bridge Creation Failed. err: %s", err)
-		}
-	case types.NetworkInstanceTypeLocal:
-		log.Infof("NetworkType Local.")
-	default:
-		errStr := fmt.Sprintf("doNetworkInstanceCreate NetworkInstance %d not yet supported",
-			status.Type)
-		err = errors.New(errStr)
-	}
-	return err
+	return nil
 }
 
 func doNetworkInstanceModify(ctx *zedrouterContext,
