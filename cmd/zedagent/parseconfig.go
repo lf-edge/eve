@@ -323,7 +323,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			continue
 		}
 		networkInstanceConfig := types.NetworkInstanceConfig{
-			UUIDandVersion: types.UUIDandVersion{id, version},
+			UUIDandVersion: types.UUIDandVersion{UUID: id, Version: version},
 			DisplayName:    apiConfigEntry.Displayname,
 			Type:           types.NetworkInstanceType(apiConfigEntry.InstType),
 			Activate:       apiConfigEntry.Activate,

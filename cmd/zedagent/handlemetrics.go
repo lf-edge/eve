@@ -298,15 +298,14 @@ func ExecuteXentopCmd() [][]string {
 		if matched {
 
 			count++
-			fmt.Sprintf("string matched: ", str)
+			log.Debugf("string matched: %s", str)
 			if count == 2 {
-
 				start = i
-				fmt.Sprintf("value of i: ", start)
+				log.Debugf("value of i: %d", start)
 			}
 
 		} else {
-			fmt.Sprintf("string not matched", err)
+			log.Debugf("string not matched: %s", err)
 		}
 	}
 
@@ -346,8 +345,7 @@ func ExecuteXentopCmd() [][]string {
 					cpuStorageStat[f][counter] = finalOutput[f][out]
 				}
 			} else {
-
-				fmt.Sprintf("space: ", finalOutput[f][counter])
+				log.Debugf("space: ", finalOutput[f][counter])
 			}
 		}
 		counter = 0
