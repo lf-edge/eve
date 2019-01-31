@@ -21,6 +21,13 @@ import (
 	"github.com/zededa/go-provision/types"
 )
 
+// checkPortAvailableForNetworkInstance
+//	A port can be used for NetworkInstance if the following are satisfied:
+//	a) Port should be part of Device Port Config
+//	b) For type switch, port should not be part of any other
+// 			Network Instance
+// Any device, which is not a port, can only be assigned as a
+// directAttach device.
 func checkPortAvailableForNetworkInstance(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
@@ -32,11 +39,6 @@ func checkPortAvailableForNetworkInstance(
 	log.Infof("NetworkInstance (name: %s), port: %s\n",
 		status.DisplayName, status.Port)
 
-	//	a) Port should be part of Device Port Config
-	//	b) For type switch, port should not be part of any other
-	// 			Network Instance
-	// Any device, which is not a port, can only be assigned as a
-	// directAttach device.
 	portStatus := ctx.deviceNetworkStatus.GetPortByName(status.Port)
 	if portStatus == nil {
 		errStr := fmt.Sprintf("PortStatus for %s not found\n", status.Port)
@@ -46,13 +48,39 @@ func checkPortAvailableForNetworkInstance(
 	switch status.Type {
 	case types.NetworkInstanceTypeSwitch:
 		// Make sure it is not used by any other NetworkInstance
+		for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
+			if status == iterStatusEntry {
+				continue
+			}
+			if iterStatusEntry.IsUsingPort(status.Port) {
+				errStr := fmt.Sprintf("Port %s already used by NetworkInstance %s-%s. "+
+					"Cannot be used by Switch Network Instance %s-%s\n",
+					status.Port, iterStatusEntry.UUID, iterStatusEntry.DisplayName,
+					status.UUID, status.DisplayName)
+				return errors.New(errStr)
+			}
+		}
 	case types.NetworkInstanceTypeLocal:
 		// Make sure it is not used by a NetworkInstance of type Switch
+		for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
+			if status == iterStatusEntry {
+				continue
+			}
+			if iterStatusEntry.IsUsingPort(status.Port) {
+				if iterStatusEntry.Type == types.NetworkInstanceTypeSwitch {
+					errStr := fmt.Sprintf("Port %s already used by "+
+						"Switch NetworkInstance %s-%s. It cannot be used by "+
+						"any other Network Instance\n",
+						status.Port, iterStatusEntry.UUID, iterStatusEntry.DisplayName)
+					return errors.New(errStr)
+				}
+				// Still iterate through all NetworkInstances. This particular one
+				//	may have errored out or inactive. Make sure no Switch NI is
+				//  using the Port.
+			}
+		}
 	default:
 	}
-
-	// Iterate through all NetworkInstanceStatus and make sure port is not
-	// used for any other NetworkInstance
 	return nil
 }
 
@@ -135,6 +163,7 @@ func handleNetworkInstanceCreate(
 	status.IPAssignments = make(map[string]net.IP)
 
 	status.ChangeInProgress = types.ChangeInProgressTypeCreate
+	ctx.networkInstanceStatusMap[status.UUID] = &status
 	pub.Publish(status.Key(), status)
 
 	err := doNetworkInstanceCreate(ctx, &status)
@@ -182,6 +211,7 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 		doNetworkInstanceInactivate(ctx, status)
 	}
 	doNetworkInstanceDelete(ctx, status)
+	delete(ctx.networkInstanceStatusMap, status.UUID)
 	pub.Unpublish(status.Key())
 
 	deleteNetworkInstanceMetrics(ctx, status.Key())
@@ -368,8 +398,6 @@ func getSwitchNetworkInstanceUsingPort(
 			status.DisplayName, status.Type)
 		break
 	}
-	//log.Debugf("getSwitchNetworkInstanceUsingPort: networkInstance "+
-	//	"using ifname(%s) not found\n", ifname)
 	return nil
 }
 
@@ -491,7 +519,6 @@ func setBridgeIPAddrForNetworkInstance(
 		return errors.New(errStr)
 	}
 
-	// Check if we have a bridge service, and if so return error or address
 	var ipAddr string
 	var err error
 	switch status.Type {
@@ -602,17 +629,6 @@ func setBridgeIPAddrForNetworkInstance(
 		restartRadvdWithNewConfig(status)
 	}
 	return nil
-}
-
-func restartRadvdWithNewConfig(status *types.NetworkInstanceStatus) {
-	cfgFilename := "radvd." + status.BridgeName + ".conf"
-	cfgPathname := runDirname + "/" + cfgFilename
-
-	// kill existing radvd instance
-	deleteRadvdConfiglet(cfgPathname)
-	stopRadvd(cfgFilename, false)
-	createRadvdConfiglet(cfgPathname, status.BridgeName)
-	startRadvd(cfgPathname, status.BridgeName)
 }
 
 // updateBridgeIPAddrForNetworkInstance

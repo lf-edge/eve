@@ -1054,6 +1054,10 @@ func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 	return false
 }
 
+func (status *NetworkInstanceStatus) IsUsingPort(port string) bool {
+	return strings.EqualFold(port, status.Port)
+}
+
 // Similar support as in draft-ietf-netmod-acl-model
 type ACE struct {
 	Matches []ACEMatch

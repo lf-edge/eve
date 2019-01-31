@@ -45,28 +45,37 @@ var Version = "No version specified"
 
 type zedrouterContext struct {
 	// Legacy data plane enable/disable flag
-	legacyDataPlane           bool
-	subNetworkObjectConfig    *pubsub.Subscription
-	subNetworkServiceConfig   *pubsub.Subscription
+	legacyDataPlane bool
+
+	subNetworkObjectConfig  *pubsub.Subscription
+	subNetworkServiceConfig *pubsub.Subscription
+
+	pubNetworkObjectStatus  *pubsub.Publication
+	pubNetworkServiceStatus *pubsub.Publication
+
+	subAppNetworkConfig   *pubsub.Subscription
+	subAppNetworkConfigAg *pubsub.Subscription // From zedagent for dom0
+
+	pubAppNetworkStatus *pubsub.Publication
+
+	pubLispDataplaneConfig *pubsub.Publication
+	subLispInfoStatus      *pubsub.Subscription
+	subLispMetrics         *pubsub.Subscription
+
+	assignableAdapters       *types.AssignableAdapters
+	subAssignableAdapters    *pubsub.Subscription
+	pubNetworkServiceMetrics *pubsub.Publication
+	subDeviceNetworkStatus   *pubsub.Subscription
+	deviceNetworkStatus      *types.DeviceNetworkStatus
+	ready                    bool
+	subGlobalConfig          *pubsub.Subscription
+	pubUuidToNum             *pubsub.Publication
+
+	// NetworkInstance
 	subNetworkInstanceConfig  *pubsub.Subscription
-	pubNetworkObjectStatus    *pubsub.Publication
-	pubNetworkServiceStatus   *pubsub.Publication
 	pubNetworkInstanceStatus  *pubsub.Publication
 	pubNetworkInstanceMetrics *pubsub.Publication
-	subAppNetworkConfig       *pubsub.Subscription
-	subAppNetworkConfigAg     *pubsub.Subscription // From zedagent for dom0
-	pubAppNetworkStatus       *pubsub.Publication
-	pubLispDataplaneConfig    *pubsub.Publication
-	subLispInfoStatus         *pubsub.Subscription
-	subLispMetrics            *pubsub.Subscription
-	assignableAdapters        *types.AssignableAdapters
-	subAssignableAdapters     *pubsub.Subscription
-	pubNetworkServiceMetrics  *pubsub.Publication
-	subDeviceNetworkStatus    *pubsub.Subscription
-	deviceNetworkStatus       *types.DeviceNetworkStatus
-	ready                     bool
-	subGlobalConfig           *pubsub.Subscription
-	pubUuidToNum              *pubsub.Publication
+	networkInstanceStatusMap  map[uuid.UUID]*types.NetworkInstanceStatus
 }
 
 var debug = false
@@ -129,6 +138,8 @@ func Run() {
 		legacyDataPlane:    false,
 		assignableAdapters: &aa,
 	}
+	zedrouterCtx.networkInstanceStatusMap =
+		make(map[uuid.UUID]*types.NetworkInstanceStatus)
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &zedrouterCtx)
