@@ -358,7 +358,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			continue
 		}
 		networkInstanceConfig := types.NetworkInstanceConfig{
-			UUIDandVersion: types.UUIDandVersion{id, version},
+			UUIDandVersion: types.UUIDandVersion{UUID: id, Version: version},
 			DisplayName:    apiConfigEntry.Displayname,
 			Type:           types.NetworkInstanceType(apiConfigEntry.InstType),
 			Activate:       apiConfigEntry.Activate,
@@ -1161,7 +1161,8 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				cfgNetworkInstances)
 			if networkInstanceEntry == nil {
 				log.Errorf("App %s - Can't find network id %s in networks or "+
-					"networkinstances. Ignoring this network\n", intfEnt.NetworkId)
+					"networkinstances. Ignoring this network\n",
+					cfgApp.Displayname, intfEnt.NetworkId)
 				continue
 			}
 			networkUuidStr = networkInstanceEntry.Uuidandversion.Uuid

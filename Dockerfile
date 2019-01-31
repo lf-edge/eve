@@ -32,8 +32,21 @@ RUN echo Building: `cat /opt/zededa/bin/versioninfo`
 #   Ignore  go-provision/src directory for this tool
 RUN echo "Running go tool vet" && \
     cd /go/src/github.com/zededa/go-provision/ && \
-    for f in $(ls | egrep -v '(src)'); do echo "go tool vet $f" && \
-    go tool vet $f; echo "result: $?"; done; exit 1
+    for f in $(ls | egrep -v '(src|oldcmd)'); \
+    do \
+       echo "go tool vet $f" && \
+       result=$(go tool vet $f 2>&1 );\
+       returnCode=$?;\
+       echo "$result"; \
+       #echo "returncode:$?"; \
+       noFilesChecked=$(echo $result | grep "no files checked"); \
+       if [[ $returnCode -ne 0 && -z "$noFilesChecked" ]]; \
+       then \
+          # Error.. Stop build here. \
+          printf "\n"; \
+          exit 1; \
+       fi;\
+     done;
 
 # go install
 RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc)           ;\
