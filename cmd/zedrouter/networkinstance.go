@@ -915,7 +915,6 @@ func natActivateForNetworkInstance(ctx *zedrouterContext,
 			status.Key())
 		return errors.New(errStr)
 	}
-	status.Subnet = status.Subnet
 	subnetStr := status.Subnet.String()
 
 	for _, a := range status.IfNameList {

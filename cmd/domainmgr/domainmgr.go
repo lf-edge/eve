@@ -1834,7 +1834,6 @@ func xlDestroy(domainName string, domainId int) error {
 		log.Errorln("xl destroy output ", string(stdoutStderr))
 		return errors.New(fmt.Sprintf("xl destroy failed: %s\n",
 			string(stdoutStderr)))
-		return err
 	}
 	log.Infof("xl destroy done\n")
 	return nil
