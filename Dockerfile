@@ -47,10 +47,8 @@ RUN echo "Running go tool vet" && \
 
 # go install
 RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc)           ;\
-    go install github.com/zededa/go-provision/zedbox/...
-
-# Move zedbox executable to /go/bin
-RUN if [ -f /go/bin/*/zedbox ] ; then mv /go/bin/*/zedbox /go/bin ; fi
+    go install github.com/zededa/go-provision/zedbox/... && \
+    if [ -f /go/bin/*/zedbox ] ; then mv /go/bin/*/zedbox /go/bin ; fi
 
 RUN ln -s /go/bin/zedbox /opt/zededa/bin/zedbox ;\
     for app in   \
