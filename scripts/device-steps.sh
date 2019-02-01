@@ -282,35 +282,27 @@ fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogled.conf -F -s &
 
 mkdir -p $DPCDIR
-if [ -f $CONFIGDIR/allow-usb-override ]; then
-    # Look for a USB stick with a key'ed file
-    # If found it replaces any build override file in /config
-    # XXX alternative is to use a designated UUID and -t.
-    # cgpt find -t ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
-    # XXX invent a unique uuid for the above?
-    SPECIAL=`cgpt find -l DevicePortConfig`
-    echo "Found SPECIAL: $SPECIAL"
-    if [ -z $SPECIAL ]; then
-	SPECIAL=/dev/sdb1
-    fi
-    if [ -b $SPECIAL ]; then
-	key=`cat /config/root-certificate.pem /config/server /config/device.cert.pem | openssl sha256 | awk '{print $2}'`
-	mount -t vfat $SPECIAL /mnt
-	if [ $? != 0 ]; then
-	    echo "mount $SPECIAL failed: $?"
+
+# Look for a USB stick with a key'ed file
+# If found it replaces any build override file in /config
+# XXX alternative is to use a designated UUID and -t.
+# cgpt find -t ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
+# XXX invent a unique uuid for the above?
+SPECIAL=`cgpt find -l DevicePortConfig`
+echo "Found USB with DevicePortConfig: $SPECIAL"
+if [ -b $SPECIAL ]; then
+    key="override"
+    mount -t vfat $SPECIAL /mnt
+    if [ $? != 0 ]; then
+	echo "mount $SPECIAL failed: $?"
+    else
+	keyfile=/mnt/$key.json
+	if [ -f $keyfile ]; then
+	    echo "Found $keyfile on $SPECIAL"
+	    echo "Copying from $keyfile to $CONFIGDIR/DevicePortConfig/override.json"
+	    cp -p $keyfile $CONFIGDIR/DevicePortConfig/override.json
 	else
-	    # XXX Remove this code? nim will do testing...
-	    echo "Mounted $SPECIAL"
-	    keyfile=/mnt/$key.json
-	    if [ -f $keyfile ]; then
-		echo "Found $keyfile on $SPECIAL"
-		echo "Copying from $keyfile to $CONFIGDIR/DevicePortConfig/override.json"
-		cp -p $keyfile $CONFIGDIR/DevicePortConfig/override.json
-		# No more override allowed
-		rm $CONFIGDIR/allow-usb-override
-	    else
-		echo "$keyfile not found on $SPECIAL"
-	    fi
+	    echo "$keyfile not found on $SPECIAL"
 	fi
     fi
 fi
