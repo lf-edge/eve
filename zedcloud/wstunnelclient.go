@@ -56,7 +56,7 @@ func InitializeTunnelClient(serverName string, localRelay string) *WSTunnelClien
 		TunnelServerName: serverName,
 		Tunnel:           "wss://" + serverName,
 		Server:           localRelay,
-		Timeout:          calcWsTimeout(30),
+		Timeout:          calcTimeout(30),
 	}
 
 	return &tunnelClient
@@ -106,7 +106,7 @@ func (t *WSTunnelClient) SetupConnection(proxyURL *url.URL) error {
 
 	// Keep opening websocket connections to tunnel requests
 	go func() {
-		log.Println("Looping through websocket connection requests")
+		log.Debug("Looping through websocket connection requests")
 		for {
 			// Retry timer of 30 seconds between attempts.
 			timer := time.NewTimer(30 * time.Second)
@@ -125,7 +125,7 @@ func (t *WSTunnelClient) SetupConnection(proxyURL *url.URL) error {
 			}
 
 			url := fmt.Sprintf("%s/api/v1/edgedevice/connection/tunnel", t.Tunnel)
-			log.Printf("Attempting WS connection to url: %s", url)
+			log.Debugf("Attempting WS connection to url: %s", url)
 
 			ws, resp, err := dialer.Dial(url, nil)
 			if err != nil {
@@ -139,7 +139,7 @@ func (t *WSTunnelClient) SetupConnection(proxyURL *url.URL) error {
 					}
 					resp.Body.Close()
 				}
-				log.Printf("Error opening connection: %v, response: %v", err.Error(), resp)
+				log.Errorf("Error opening connection: %v, response: %v", err.Error(), resp)
 				t.failRetryCount++
 				if t.failRetryCount == maxRetryAttempts {
 					log.Errorf("Initiating tunnel client shutdown after %d failed attempts.", maxRetryAttempts)
@@ -158,7 +158,6 @@ func (t *WSTunnelClient) SetupConnection(proxyURL *url.URL) error {
 			// check whether we need to exit
 			select {
 			case <-t.exitChan:
-				log.Println("Received WS tunnel client exit")
 				break
 			default: // non-blocking receive
 			}
@@ -168,18 +167,19 @@ func (t *WSTunnelClient) SetupConnection(proxyURL *url.URL) error {
 		}
 	}()
 
-	log.Println("Shutting down WS tunnel client, exit!")
+	log.Info("Shutting down WS tunnel client and exiting.")
 	return nil
 }
 
 // Stop tunnel client
 func (t *WSTunnelClient) Stop() {
-	log.Println("Stopping WS tunnel client")
+	log.Info("Stopping WS tunnel client")
 	t.exitChan <- struct{}{}
 }
 
-// Main function to handle WS requests: it reads a request from the socket, then forks
-// a goroutine to perform the actual http request and return the result
+// handleRequests reads a request from the socket, then forks
+// a goroutine to relay the request locally and optionally
+// return the result if any.
 func (wsc *WSConnection) handleRequests() {
 	go wsc.pinger()
 	for {
@@ -208,10 +208,10 @@ func (wsc *WSConnection) handleRequests() {
 		// websocket doesn't allow us to have multiple goroutines reading...
 		request, err := ioutil.ReadAll(reader)
 		if err != nil {
-			//log.Printf("[id=%d] WS cannot read request message Error: %s", id, err.Error())
+			log.Errorf("[id=%d] WS cannot read request message Error: %s", id, err.Error())
 			break
 		}
-		log.Printf("[id=%d] WS processing request payload: %v", id, string(request))
+		log.Debugf("[id=%d] WS processing request payload: %v", id, string(request))
 
 		// Finish off while we read the next request
 
@@ -226,13 +226,11 @@ func (wsc *WSConnection) handleRequests() {
 	}
 	// delay a few seconds to allow for writes to drain and then force-close the socket
 	go func() {
-		log.Println("Closing websocket connection")
+		log.Info("Closing websocket connection")
 		time.Sleep(5 * time.Second)
 		wsc.ws.Close()
 	}()
 }
-
-//===== Keep-alive ping-pong =====
 
 // Pinger that keeps connections alive and terminates them if they seem stuck
 func (wsc *WSConnection) pinger() {
@@ -240,10 +238,10 @@ func (wsc *WSConnection) pinger() {
 		// panics may occur in WriteControl (in unit tests at least) for closed
 		// websocket connections
 		if x := recover(); x != nil {
-			log.Printf("Panic in pinger: %s", x)
+			log.Errorf("Panic in pinger: %s", x)
 		}
 	}()
-	log.Println("pinger starting")
+	log.Debug("pinger starting")
 	tunTimeout := wsc.tun.Timeout
 
 	// timeout handler sends a close message, waits a few seconds, then kills the socket
@@ -252,7 +250,7 @@ func (wsc *WSConnection) pinger() {
 			return
 		}
 		wsc.ws.WriteControl(websocket.CloseMessage, nil, time.Now().Add(1*time.Second))
-		log.Println("ping timeout, closing WS")
+		log.Info("ping timeout, closing WS")
 		time.Sleep(15 * time.Second)
 		if wsc.ws != nil {
 			wsc.ws.Close()
@@ -269,7 +267,7 @@ func (wsc *WSConnection) pinger() {
 	// ping loop, ends when socket is closed...
 	for {
 		if wsc.ws == nil {
-			log.Println("WS not found")
+			log.Info("WS not found")
 			break
 		}
 		err := wsc.ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(tunTimeout/3))
@@ -279,22 +277,24 @@ func (wsc *WSConnection) pinger() {
 		}
 		time.Sleep(tunTimeout / 3)
 	}
-	log.Println("pinger ending (WS errored or closed)")
+	log.Info("pinger ending (WS errored or closed)")
 	wsc.ws.Close()
 }
 
-//===== TCP driver and response sender =====
+// processRequest forwards the received message to local relay
+// server and starts a separate go-routine to check for and return
+// any responses that are optionally received.
 func (wsc *WSConnection) processRequest(id int16, req []byte) (err error) {
 
 	host := wsc.tun.Server
 	if err := wsc.refreshLocalConnection(host, false); err != nil {
 		return err
 	}
-	//log.Printf("[id=%d] Forwarding request: %v to local connection: %s", id, string(req), host)
+	log.Debugf("[id=%d] Forwarding request: %v to local connection: %s", id, string(req), host)
 	for tries := 1; tries <= 3; tries++ {
 		_, err := wsc.localConnection.Write(req)
 		if err == nil {
-			//log.Printf("[id=%d] Completed writing request: \"%s\" to local connection", id, string(req))
+			log.Debugf("[id=%d] Completed writing request: \"%s\" to local connection", id, string(req))
 			break
 		} else {
 			log.Errorf("[id=%d] Error encountered while writing request to local connection : %s", id, err.Error())
@@ -307,6 +307,9 @@ func (wsc *WSConnection) processRequest(id int16, req []byte) (err error) {
 	return nil
 }
 
+// refreshLocalConnection checks if the cached connection is still
+// valid or else creates & caches a new one. The forceCreate flag
+// can be used to forcily update the cached local connection.
 func (wsc *WSConnection) refreshLocalConnection(host string, forceCreate bool) (err error) {
 
 	connMutex.Lock()
@@ -322,7 +325,7 @@ func (wsc *WSConnection) refreshLocalConnection(host string, forceCreate bool) (
 			if err == io.EOF ||
 				err == io.ErrClosedPipe ||
 				err == io.ErrUnexpectedEOF {
-				log.Println("Lost local server connection, reconnecting...")
+				log.Debug("Lost local server connection, reconnecting...")
 				if err := wsc.dialLocalConnection(host); err != nil {
 					return err
 				}
@@ -336,6 +339,7 @@ func (wsc *WSConnection) refreshLocalConnection(host string, forceCreate bool) (
 	return nil
 }
 
+// dialLocalConnection creates a new connection to local relay server.
 func (wsc *WSConnection) dialLocalConnection(host string) (err error) {
 
 	if host == "" {
@@ -343,35 +347,37 @@ func (wsc *WSConnection) dialLocalConnection(host string) (err error) {
 		return
 	}
 
-	log.Printf("Initializing local server connection: %s", host)
+	log.Debugf("Initializing local server connection: %s", host)
 	wsc.localConnection, err = net.Dial("tcp", host)
 	if err != nil {
 		log.Errorf("Could not connect to local server: %s, error: %s", host, err.Error())
 		return err
 	}
-	log.Printf("Successfully connected to local server: %s", host)
+	log.Debugf("Successfully connected to local server: %s", host)
 	return nil
 }
 
+// listenForResponse waits to read response message from the local relay
+// server and forwards them back over the websocket.
 func (wsc *WSConnection) listenForResponse(id int16) {
-	//log.Printf("[id=%d] Waiting for response on local connection", id)
+	log.Debugf("[id=%d] Waiting for response on local connection", id)
 	wsc.localConnection.SetReadDeadline(time.Now().Add(5 * time.Second))
 	responseBuffer := make([]byte, 8192)
 	num, err := wsc.localConnection.Read(responseBuffer)
 	if err != nil {
-		//log.Printf("[id=%d] Could not read response on local connection: %s", id, err.Error())
+		log.Errorf("[id=%d] Could not read response on local connection: %s", id, err.Error())
 	} else {
 		if num > 0 {
 			response := responseBuffer[:num]
-			log.Printf("[id=%d] Read local connection payload: \"%s\"", id, string(response))
+			log.Debugf("[id=%d] Read local connection payload: \"%s\"", id, string(response))
 			wsc.writeResponseMessage(id, bytes.NewBuffer(response))
 		} else {
-			//log.Printf("[id=%d] Empty response received from local connection", id)
+			log.Debugf("[id=%d] Empty response received from local connection", id)
 		}
 	}
 }
 
-// Write the response message to the websocket
+// writeResponseMessage forwards the response message on the websocket.
 func (wsc *WSConnection) writeResponseMessage(id int16, resp *bytes.Buffer) {
 	// Get writer's lock
 	wsWriterMutex.Lock()
@@ -395,7 +401,7 @@ func (wsc *WSConnection) writeResponseMessage(id int16, resp *bytes.Buffer) {
 	// write the response itself
 	_, err = io.Copy(writer, resp)
 	if err != nil {
-		log.Printf("WS cannot write response: %s", err.Error())
+		log.Errorf("WS cannot write response: %s", err.Error())
 		wsc.ws.Close()
 		return
 	}
@@ -408,14 +414,7 @@ func (wsc *WSConnection) writeResponseMessage(id int16, resp *bytes.Buffer) {
 	}
 }
 
-func calcWsTimeout(tout int) time.Duration {
-	var wsTimeout time.Duration
-	if tout < 3 {
-		wsTimeout = 3 * time.Second
-	} else if tout > 600 {
-		wsTimeout = 600 * time.Second
-	} else {
-		wsTimeout = time.Duration(tout) * time.Second
-	}
-	return wsTimeout
+// calcTimeout returns the timeout in seconds.
+func calcTimeout(tout int) time.Duration {
+	return time.Duration(tout) * time.Second
 }
