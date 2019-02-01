@@ -23,9 +23,7 @@ timer.port.georetry		default 600 seconds - retry geolocation after failure
 timer.port.testduration		default 30 - wait for DHCP to give address
 timer.port.testinterval		default 300 seconds - retest the current port config
 timer.port.testbetterinterval	default 1800 seconds - test a higher prio port config
-debug.disable.usb		boolean - default false TBD change to true
-debug.disable.ssh		boolean - default false TBD change to true
-debug.enable.usb		boolean
-debug.enable.ssh		boolean 
+debug.enable.usb		boolean - default true on device
+debug.enable.ssh		boolean - default true on device
 debug.default.loglevel		string - default "info"
-debug.default.remote.loglevel	string - default "info" TBD change to "warn"
+debug.default.remote.loglevel	string - default "info" TBD change to "warn"?

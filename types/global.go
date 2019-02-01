@@ -24,22 +24,22 @@ type GlobalConfig struct {
 
 	// Control NIM testing behavior: In seconds
 	NetworkGeoRedoTime        uint32 // Periodic IP geolocation
-	NetworkGeoRetryTime	  uint32 // Redo IP geolocation failure
+	NetworkGeoRetryTime       uint32 // Redo IP geolocation failure
 	NetworkTestDuration       uint32 // Time we wait for DHCP to complete
 	NetworkTestInterval       uint32 // Re-test DevicePortConfig
 	NetworkTestBetterInterval uint32 // Look for better DevicePortConfig
 
-	// NoUsbAccess
+	// UsbAccess
 	// Determines if Dom0 can use USB devices.
-	// If true:
+	// If false:
 	//		USB devices can only be passed through to the applications
 	//		( pciBack=true). The devices are in pci-assignable-list
-	// If false:
-	// 			dom0 can use these devices as well.
-	//			By default, all USB devices will be assigned to dom0. pciBack=false.
-	//			But these devices are still available in pci-assignable-list.
-	NoUsbAccess           bool
-	NoSshAccess           bool
+	// If true:
+	// 		dom0 can use these devices as well.
+	//		All USB devices will be assigned to dom0. pciBack=false.
+	//		But these devices are still available in pci-assignable-list.
+	UsbAccess             bool
+	SshAccess             bool
 	AllowAppVnc           bool
 	DefaultLogLevel       string
 	DefaultRemoteLogLevel string

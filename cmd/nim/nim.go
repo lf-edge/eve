@@ -424,9 +424,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		ctx.debugOverride)
 	first := !ctx.GCInitialized
 	if gcp != nil {
-		// NOTE different polarity
-		if gcp.NoSshAccess == ctx.sshAccess || first {
-			ctx.sshAccess = !gcp.NoSshAccess
+		if gcp.SshAccess != ctx.sshAccess || first {
+			ctx.sshAccess = gcp.SshAccess
 			iptables.UpdateSshAccess(ctx.sshAccess, first)
 		}
 		if gcp.AllowAppVnc != ctx.allowAppVnc || first {

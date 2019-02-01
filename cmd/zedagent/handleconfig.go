@@ -55,14 +55,14 @@ var globalConfigDefaults = types.GlobalConfig{
 	FallbackIfCloudGoneTime: 600,
 	MintimeUpdateSuccess:    300,
 
-	NetworkGeoRedoTime:	   3600, // 1 hour
-	NetworkGeoRetryTime:	   600,  // 10 minutes
+	NetworkGeoRedoTime:        3600, // 1 hour
+	NetworkGeoRetryTime:       600,  // 10 minutes
 	NetworkTestDuration:       30,
 	NetworkTestInterval:       300,  // 5 minutes
 	NetworkTestBetterInterval: 1800, // 30 minutes
 
-	NoUsbAccess:           false,  // XXX change defaults
-	NoSshAccess:           false,  // XXX change defaults
+	UsbAccess:             true,   // Contoller likely to default to false
+	SshAccess:             true,   // Contoller likely to default to false
 	StaleConfigTime:       600,    // Use stale config for up to 10 minutes
 	DownloadGCTime:        600,    // 10 minutes
 	VdiskGCTime:           3600,   // 1 hour

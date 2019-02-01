@@ -1949,9 +1949,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		if gcp.DomainBootRetryTime != 0 {
 			domainBootRetryTime = time.Duration(gcp.DomainBootRetryTime) * time.Second
 		}
-		// XXX note different polarity
-		if gcp.NoUsbAccess == ctx.usbAccess {
-			ctx.usbAccess = !gcp.NoUsbAccess
+		if gcp.UsbAccess != ctx.usbAccess {
+			ctx.usbAccess = gcp.UsbAccess
 			updateUsbAccess(ctx)
 		}
 	}

@@ -1429,7 +1429,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfigChange = true
 			}
 
-		case "debug.disable.usb", "debug.enable.usb": // XXX swap name to enable?
+		case "debug.enable.usb":
 			newBool, err := strconv.ParseBool(item.Value)
 			if err != nil {
 				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
@@ -1439,15 +1439,16 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			if key == "debug.enable.usb" {
 				newBool = !newBool
 			}
-			if newBool != globalConfig.NoUsbAccess {
+			if newBool != globalConfig.UsbAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
 					key,
-					globalConfig.NoUsbAccess,
+					globalConfig.UsbAccess,
 					newBool)
-				globalConfig.NoUsbAccess = newBool
+				globalConfig.UsbAccess = newBool
 				globalConfigChange = true
 			}
-		case "debug.disable.ssh", "debug.enable.ssh": // XXX swap name to enable?
+
+		case "debug.enable.ssh":
 			newBool, err := strconv.ParseBool(item.Value)
 			if err != nil {
 				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
@@ -1457,14 +1458,15 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			if key == "debug.enable.ssh" {
 				newBool = !newBool
 			}
-			if newBool != globalConfig.NoSshAccess {
+			if newBool != globalConfig.SshAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
 					key,
-					globalConfig.NoSshAccess,
+					globalConfig.SshAccess,
 					newBool)
-				globalConfig.NoSshAccess = newBool
+				globalConfig.SshAccess = newBool
 				globalConfigChange = true
 			}
+
 		case "app.allow.vnc":
 			newBool, err := strconv.ParseBool(item.Value)
 			if err != nil {
@@ -1480,6 +1482,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.AllowAppVnc = newBool
 				globalConfigChange = true
 			}
+
 		case "timer.use.config.checkpoint":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
