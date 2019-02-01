@@ -179,9 +179,8 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 
 		// Attempt to get a wpad.dat file if so configured
 		// Result is updating the Pacfile
-		// XXX did we already set this above? Remove this code?
-		// XXX previous code didn't save it and we are rebuilding the DNS
-		// from scratch. Add DPC argument? Callers? Or PendingDNS arg?
+		// We always redo this since we don't know what has changed
+		// from the previous DeviceNetworkStatus.
 		err = CheckAndGetNetworkProxy(&globalStatus,
 			&globalStatus.Ports[ix])
 		if err != nil {

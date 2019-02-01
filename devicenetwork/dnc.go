@@ -261,7 +261,6 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 				continue
 			}
 			passed = true
-			// XXX save WPAD info from ctx.PendingDNS?
 			if ctx.NextDPCIndex == 0 {
 				log.Infof("VerifyDevicePortConfig: Working DPC configuration found "+
 					"at index %d in DPC list",
@@ -441,7 +440,7 @@ func HandleAssignableAdaptersDelete(ctxArg interface{}, key string,
 	//   adapters results in domain restart and takes affect only after
 	//   the restart.
 
-	// NoUsbAccess can change dynamically - but it is not network device,
+	// UsbAccess can change dynamically - but it is not network device,
 	// so can be ignored. Assuming there are no USB based network interfaces.
 	log.Infof("HandleAssignableAdaptersDelete done for %s\n", key)
 }
@@ -503,8 +502,6 @@ func (ctx *DeviceNetworkContext) doApplyDevicePortConfig(delete bool) {
 func (ctx *DeviceNetworkContext) doPublishDNSForPortConfig(
 	portConfig *types.DevicePortConfig) {
 
-	// XXX didn't we already update DeviceNetworkStatus? Or
-	// that was to a pending copy?
 	dnStatus, _ := MakeDeviceNetworkStatus(*portConfig,
 		*ctx.DeviceNetworkStatus)
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
