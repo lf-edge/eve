@@ -34,16 +34,13 @@ RUN echo "Running go tool vet" && \
     cd /go/src/github.com/zededa/go-provision/ && \
     for f in $(ls | egrep -v '(src|oldcmd)'); \
     do \
-       echo "go tool vet $f" && \
        result=$(go tool vet $f 2>&1 );\
        returnCode=$?;\
-       echo "$result"; \
-       #echo "returncode:$?"; \
        noFilesChecked=$(echo $result | grep "no files checked"); \
        if [[ $returnCode -ne 0 && -z "$noFilesChecked" ]]; \
        then \
           # Error.. Stop build here. \
-          printf "\n"; \
+          printf "\n***FAILED: go tool vet $f\n\n $result\n\n"; \
           exit 1; \
        fi;\
      done;
