@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-// Genetate DevicePortConfig based on DeviceNetworkConfig
+// Generate DevicePortConfig based on DeviceNetworkConfig
 // XXX retire when we have retired DeviceNetworkConfig
 func MakeDevicePortConfig(globalConfig types.DeviceNetworkConfig) types.DevicePortConfig {
 	var config types.DevicePortConfig

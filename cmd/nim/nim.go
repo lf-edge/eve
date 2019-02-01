@@ -365,7 +365,8 @@ func Run() {
 			} else {
 				log.Infof("Network testBetterTimer at index %d",
 					dnc.NextDPCIndex)
-				devicenetwork.VerifyDevicePortConfig(dnc)
+				devicenetwork.RestartVerify(dnc,
+					"NetworkTestBetterTimer")
 			}
 
 		case <-stillRunning.C:
