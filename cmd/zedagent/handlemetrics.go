@@ -8,6 +8,15 @@ package zedagent
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"regexp"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
 	"github.com/golang/protobuf/proto"
@@ -26,14 +35,6 @@ import (
 	"github.com/zededa/go-provision/netclone"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
-	"io/ioutil"
-	"os"
-	"os/exec"
-	"regexp"
-	"strconv"
-	"strings"
-	"syscall"
-	"time"
 )
 
 // Also report usage for these paths
@@ -298,15 +299,14 @@ func ExecuteXentopCmd() [][]string {
 		if matched {
 
 			count++
-			fmt.Sprintf("string matched: ", str)
+			log.Debugf("string matched: %s", str)
 			if count == 2 {
-
 				start = i
-				fmt.Sprintf("value of i: ", start)
+				log.Debugf("value of i: %d", start)
 			}
 
 		} else {
-			fmt.Sprintf("string not matched", err)
+			log.Debugf("string not matched: %s", err)
 		}
 	}
 
@@ -346,8 +346,7 @@ func ExecuteXentopCmd() [][]string {
 					cpuStorageStat[f][counter] = finalOutput[f][out]
 				}
 			} else {
-
-				fmt.Sprintf("space: ", finalOutput[f][counter])
+				log.Debugf("space: ", finalOutput[f][counter])
 			}
 		}
 		counter = 0
@@ -701,6 +700,8 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 	}
 	// report Network Service Statistics
 	createNetworkServiceMetrics(ctx, ReportMetrics)
+
+	createNetworkInstanceMetrics(ctx, ReportMetrics)
 
 	log.Debugf("PublishMetricsToZedCloud sending %s\n", ReportMetrics)
 	SendMetricsProtobuf(ReportMetrics, iteration)
@@ -1438,7 +1439,7 @@ func getDefaultRouters(ifname string) []string {
 		return res
 	}
 	ifindex := link.Attrs().Index
-	table := syscall.RT_TABLE_MAIN
+	table := types.GetDefaultRouteTable()
 	// Note that a default route is represented as nil Dst
 	filter := netlink.Route{Table: table, LinkIndex: ifindex, Dst: nil}
 	fflags := netlink.RT_FILTER_TABLE

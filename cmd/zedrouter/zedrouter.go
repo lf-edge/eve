@@ -14,6 +14,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
+	"os"
+	"strconv"
+	"time"
+
 	"github.com/eriknordmark/netlink"
 	"github.com/google/go-cmp/cmp"
 	"github.com/satori/go.uuid"
@@ -21,14 +26,11 @@ import (
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/flextimer"
+	"github.com/zededa/go-provision/iptables"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/wrap"
-	"net"
-	"os"
-	"strconv"
-	"time"
 )
 
 const (
@@ -43,17 +45,23 @@ var Version = "No version specified"
 
 type zedrouterContext struct {
 	// Legacy data plane enable/disable flag
-	legacyDataPlane          bool
-	subNetworkObjectConfig   *pubsub.Subscription
-	subNetworkServiceConfig  *pubsub.Subscription
-	pubNetworkObjectStatus   *pubsub.Publication
-	pubNetworkServiceStatus  *pubsub.Publication
-	subAppNetworkConfig      *pubsub.Subscription
-	subAppNetworkConfigAg    *pubsub.Subscription // From zedagent for dom0
-	pubAppNetworkStatus      *pubsub.Publication
-	pubLispDataplaneConfig   *pubsub.Publication
-	subLispInfoStatus        *pubsub.Subscription
-	subLispMetrics           *pubsub.Subscription
+	legacyDataPlane bool
+
+	subNetworkObjectConfig  *pubsub.Subscription
+	subNetworkServiceConfig *pubsub.Subscription
+
+	pubNetworkObjectStatus  *pubsub.Publication
+	pubNetworkServiceStatus *pubsub.Publication
+
+	subAppNetworkConfig   *pubsub.Subscription
+	subAppNetworkConfigAg *pubsub.Subscription // From zedagent for dom0
+
+	pubAppNetworkStatus *pubsub.Publication
+
+	pubLispDataplaneConfig *pubsub.Publication
+	subLispInfoStatus      *pubsub.Subscription
+	subLispMetrics         *pubsub.Subscription
+
 	assignableAdapters       *types.AssignableAdapters
 	subAssignableAdapters    *pubsub.Subscription
 	pubNetworkServiceMetrics *pubsub.Publication
@@ -62,7 +70,12 @@ type zedrouterContext struct {
 	ready                    bool
 	subGlobalConfig          *pubsub.Subscription
 	pubUuidToNum             *pubsub.Publication
-	sshAccess                bool
+
+	// NetworkInstance
+	subNetworkInstanceConfig  *pubsub.Subscription
+	pubNetworkInstanceStatus  *pubsub.Publication
+	pubNetworkInstanceMetrics *pubsub.Publication
+	networkInstanceStatusMap  map[uuid.UUID]*types.NetworkInstanceStatus
 }
 
 var debug = false
@@ -125,6 +138,8 @@ func Run() {
 		legacyDataPlane:    false,
 		assignableAdapters: &aa,
 	}
+	zedrouterCtx.networkInstanceStatusMap =
+		make(map[uuid.UUID]*types.NetworkInstanceStatus)
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &zedrouterCtx)
@@ -178,6 +193,13 @@ func Run() {
 	}
 	zedrouterCtx.pubNetworkServiceStatus = pubNetworkServiceStatus
 
+	pubNetworkInstanceStatus, err := pubsub.Publish(agentName,
+		types.NetworkInstanceStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubNetworkInstanceStatus = pubNetworkInstanceStatus
+
 	pubAppNetworkStatus, err := pubsub.Publish(agentName,
 		types.AppNetworkStatus{})
 	if err != nil {
@@ -199,6 +221,13 @@ func Run() {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubNetworkServiceMetrics = pubNetworkServiceMetrics
+
+	pubNetworkInstanceMetrics, err := pubsub.Publish(agentName,
+		types.NetworkInstanceMetrics{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubNetworkInstanceMetrics = pubNetworkInstanceMetrics
 
 	appNumAllocatorInit(&zedrouterCtx)
 	bridgeNumAllocatorInit(&zedrouterCtx)
@@ -244,6 +273,17 @@ func Run() {
 	subNetworkServiceConfig.DeleteHandler = handleNetworkServiceDelete
 	zedrouterCtx.subNetworkServiceConfig = subNetworkServiceConfig
 	subNetworkServiceConfig.Activate()
+
+	subNetworkInstanceConfig, err := pubsub.Subscribe("zedagent",
+		types.NetworkInstanceConfig{}, false, &zedrouterCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subNetworkInstanceConfig.ModifyHandler = handleNetworkInstanceModify
+	subNetworkInstanceConfig.DeleteHandler = handleNetworkInstanceDelete
+	zedrouterCtx.subNetworkInstanceConfig = subNetworkInstanceConfig
+	subNetworkInstanceConfig.Activate()
+	log.Infof("Subscribed to NetworkInstanceConfig")
 
 	// Subscribe to AppNetworkConfig from zedmanager and from zedagent
 	subAppNetworkConfig, err := pubsub.Subscribe("zedmanager",
@@ -295,6 +335,8 @@ func Run() {
 		// Even if ethN isn't individually assignable, it
 		// could be used for a bridge.
 		maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
+		maybeUpdateBridgeIPAddrForNetworkInstance(
+			&zedrouterCtx, ifname)
 	}
 	routeChanges, addrChanges, linkChanges := PbrInit(
 		&zedrouterCtx, nil, addrChangeNonMgmtPortFn)
@@ -316,8 +358,12 @@ func Run() {
 	setFreeMgmtPorts(types.GetMgmtPortsFree(*zedrouterCtx.deviceNetworkStatus, 0))
 
 	zedrouterCtx.ready = true
+	log.Infof("zedrouterCtx.ready\n")
 
-	// First wait for restarted from zedmanager
+	// First wait for restarted from zedmanager to
+	// reduce the number of LISP-RESTARTs
+	// XXX this results in waiting for the verifier to report restarted
+	// to zedmanager which can be quite a long time.
 	for !subAppNetworkConfig.Restarted() {
 		log.Infof("Waiting for zedmanager to report restarted\n")
 		select {
@@ -333,11 +379,16 @@ func Run() {
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 
+		case change := <-subNetworkInstanceConfig.C:
+			log.Infof("AppNetworkConfig - waiting to Restart - "+
+				"InstanceConfig change at %+v", time.Now())
+			subNetworkInstanceConfig.ProcessChange(change)
+
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
 		}
 	}
-	log.Infof("Zedmanager has restarted\n")
+	log.Infof("Zedmanager has restarted. Entering main Select loop\n")
 
 	for {
 		select {
@@ -385,6 +436,10 @@ func Run() {
 
 		case change := <-subNetworkServiceConfig.C:
 			subNetworkServiceConfig.ProcessChange(change)
+
+		case change := <-subNetworkInstanceConfig.C:
+			log.Infof("NetworkInstanceConfig change at %+v", time.Now())
+			subNetworkInstanceConfig.ProcessChange(change)
 
 		case change := <-subLispInfoStatus.C:
 			subLispInfoStatus.ProcessChange(change)
@@ -448,7 +503,7 @@ func handleInit(runDirname string) {
 	}
 
 	// Setup initial iptables rules
-	iptablesInit()
+	iptables.IptablesInit()
 
 	// ipsets which are independent of config
 	createDefaultIpset()
@@ -725,6 +780,64 @@ func parseAndPublishLispServiceInfo(ctx *zedrouterContext, lispInfo *types.LispI
 	}
 }
 
+// This function separates Lisp service info/status into separate
+// LispInfoStatus messages based on IID. This function also publishes the separated
+// lisp info/status messages to correspoinding NetworkInstanceStatus objects.
+func parseAndPublishLispInstanceInfo(ctx *zedrouterContext, lispInfo *types.LispInfoStatus) {
+	// map for splitting the status info per IID
+	infoMap := make(map[uint64]*types.LispInfoStatus)
+
+	// Separate lispInfo into multiple LispInfoStatus structure based on IID
+	for _, dbMap := range lispInfo.DatabaseMaps {
+		iid := dbMap.IID
+
+		// check we have entry for this iid in our infoMap
+		var infoEntry *types.LispInfoStatus
+		var ok bool
+		infoEntry, ok = infoMap[iid]
+		if !ok {
+			infoEntry = &types.LispInfoStatus{}
+			infoEntry.ItrCryptoPort = lispInfo.ItrCryptoPort
+			infoEntry.EtrNatPort = lispInfo.EtrNatPort
+			infoEntry.Interfaces = lispInfo.Interfaces
+			infoEntry.DecapKeys = lispInfo.DecapKeys
+			infoMap[iid] = infoEntry
+		}
+		infoEntry.DatabaseMaps = append(infoEntry.DatabaseMaps, dbMap)
+	}
+
+	// Update LispStatus in service instance status based on it's IID
+	pub := ctx.pubNetworkInstanceStatus
+	stList := pub.GetAll()
+	// IID to instance status map for Lisp network instances
+	stMap := make(map[uint64]types.NetworkInstanceStatus)
+	for _, st := range stList {
+		status := cast.CastNetworkInstanceStatus(st)
+		if status.Type != types.NetworkInstanceTypeMesh {
+			continue
+		}
+		iid := uint64(status.LispStatus.IID)
+		stMap[iid] = status
+	}
+
+	for iid, lispStatus := range infoMap {
+		status, ok := stMap[iid]
+		if !ok {
+			continue
+		}
+		if cmp.Equal(status.LispStatus, lispStatus) {
+			continue
+		} else {
+			log.Debugf("parseAndPublishLispInstanceInfo: Publish diff %s to zedcloud\n",
+				cmp.Diff(status.LispStatus, lispStatus))
+		}
+		status.LispInfoStatus = lispStatus
+
+		// publish the changes
+		publishNetworkInstanceStatus(ctx, &status)
+	}
+}
+
 func handleLispInfoModify(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("handleLispInfoModify(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
@@ -734,7 +847,9 @@ func handleLispInfoModify(ctxArg interface{}, key string, configArg interface{})
 		log.Infof("handleLispInfoModify: ignoring %s\n", key)
 		return
 	}
+	// XXX remove the Service one
 	parseAndPublishLispServiceInfo(ctx, &lispInfo)
+	parseAndPublishLispInstanceInfo(ctx, &lispInfo)
 	log.Infof("handleLispInfoModify(%s) done\n", key)
 }
 
@@ -748,7 +863,7 @@ func handleLispInfoDelete(ctxArg interface{}, key string, configArg interface{})
 // of all IIDs together. We need to separate statistics per IID and associate them to
 // the NetworkServiceStatus to which a given IID (statistics) belong.
 // This function also publishes the Lisp metrics to NetworkServiceStatus.
-func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMetrics) {
+func parseAndPublishLispMetricsOLD(ctx *zedrouterContext, lispMetrics *types.LispMetrics) {
 	// map for splitting the metrics per IID
 	metricMap := make(map[uint64]*types.LispMetrics)
 
@@ -829,6 +944,91 @@ func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMe
 	}
 }
 
+// This function separates Lisp metrics by IID. lisp-ztr dataplane sends statistics
+// of all IIDs together. We need to separate statistics per IID and associate them to
+// the NetworkServiceStatus to which a given IID (statistics) belong.
+// This function also publishes the Lisp metrics to NetworkInstanceStatus.
+func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMetrics) {
+	// map for splitting the metrics per IID
+	metricMap := make(map[uint64]*types.LispMetrics)
+
+	// Separate lispMetrics into multiple LispMetrics based on IID
+	for _, dbMap := range lispMetrics.EidStats {
+		iid := dbMap.IID
+
+		// check we have entry for this iid in our metricMap
+		var metricEntry *types.LispMetrics
+		var ok bool
+		metricEntry, ok = metricMap[iid]
+		if !ok {
+			metricEntry = &types.LispMetrics{}
+			// Copy global statistics. We do it by directly
+			// assigning structures.
+			*metricEntry = *lispMetrics
+			metricEntry.EidStats = []types.EidStatistics{}
+			metricEntry.EidMaps = []types.EidMap{}
+			metricMap[iid] = metricEntry
+		}
+		metricEntry.EidStats = append(metricEntry.EidStats, dbMap)
+	}
+
+	// Copy IID to Eid maps to relevant IID LispMetric structurs
+	for _, eidMap := range lispMetrics.EidMaps {
+		iid := eidMap.IID
+		metricEntry, ok := metricMap[iid]
+		if ok {
+			metricEntry.EidMaps = append(metricEntry.EidMaps, eidMap)
+		}
+	}
+
+	// Update Lisp metrics in service instance status based on it's IID
+	pub := ctx.pubNetworkInstanceStatus
+	stList := pub.GetAll()
+	// IID to service status map for Lisp service instances
+	stMap := make(map[uint64]types.NetworkInstanceStatus)
+	for _, st := range stList {
+		status := cast.CastNetworkInstanceStatus(st)
+		if status.Type != types.NetworkInstanceTypeMesh {
+			continue
+		}
+		serviceIID := uint64(status.LispStatus.IID)
+		stMap[serviceIID] = status
+	}
+
+	// Populate the metrics that we have in NetworkInstanceMetrics objects
+	// of corresponding IID.
+	// We loop through NetworkInstanceStatus objects to find the services
+	// that are currently active on device and then populate metrics in their
+	// respective NetworkInstanceMetrics structures and publish them.
+	for iid, metrics := range metricMap {
+		status, ok := stMap[iid]
+		if !ok {
+			continue
+		}
+		metricsStatus := lookupNetworkInstanceMetrics(ctx, status.Key())
+		if metricsStatus == nil {
+			metricsStatus = new(types.NetworkInstanceMetrics)
+			if metricsStatus == nil {
+				continue
+			}
+			metricsStatus.UUIDandVersion = status.UUIDandVersion
+			metricsStatus.DisplayName = status.DisplayName
+			metricsStatus.Type = status.Type
+		}
+		if (metricsStatus.LispMetrics != nil) &&
+			cmp.Equal(metricsStatus.LispMetrics, metrics) {
+			continue
+		} else {
+			log.Debugf("parseAndPublishLispMetrics: Publish diff %s to zedcloud\n",
+				cmp.Diff(metricsStatus.LispMetrics, metrics))
+		}
+		metricsStatus.LispMetrics = metrics
+
+		// publish the changes
+		publishNetworkInstanceMetrics(ctx, metricsStatus)
+	}
+}
+
 func handleLispMetricsModify(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("handleLispMetricsModify(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
@@ -838,6 +1038,8 @@ func handleLispMetricsModify(ctxArg interface{}, key string, configArg interface
 		log.Infof("handleLispMetricsModify: ignoring %s\n", key)
 		return
 	}
+	// XXX remove the OLD service one
+	parseAndPublishLispMetricsOLD(ctx, &lispMetrics)
 	parseAndPublishLispMetrics(ctx, &lispMetrics)
 	log.Infof("handleLispMetricsModify(%s) done\n", key)
 }
@@ -1341,7 +1543,8 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 				newIpsets, netstatus.Ipv4Eid)
 			startDnsmasq(bridgeName)
 		}
-		addVifToBridge(netstatus, vifName)
+		addVifToBridge(netstatus, vifName, appMac,
+			config.UUIDandVersion.UUID)
 		netstatus.BridgeIPSets = newIpsets
 		publishNetworkObjectStatus(ctx, netstatus)
 
@@ -1481,7 +1684,8 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 				newIpsets, false)
 			startDnsmasq(bridgeName)
 		}
-		addVifToBridge(netstatus, vifName)
+		addVifToBridge(netstatus, vifName, appMac,
+			config.UUIDandVersion.UUID)
 		netstatus.BridgeIPSets = newIpsets
 		publishNetworkObjectStatus(ctx, netstatus)
 
@@ -1775,7 +1979,7 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		// Need to check that index exists
 		if len(status.OverlayNetworkList) < olNum {
-			log.Errorln("Missing status for overlay %d; can not modify\n",
+			log.Errorf("Missing status for overlay %d; can not modify\n",
 				olNum)
 			continue
 		}
@@ -1859,7 +2063,7 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		// Need to check that index exists
 		if len(status.UnderlayNetworkList) < ulNum {
-			log.Errorln("Missing status for underlay %d; can not modify\n",
+			log.Errorf("Missing status for underlay %d; can not modify\n",
 				ulNum)
 			continue
 		}
@@ -2094,7 +2298,7 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 
 		// Need to check that index exists XXX remove
 		if len(status.OverlayNetworkList) < olNum {
-			log.Errorln("Missing status for overlay %d; can not clean up\n",
+			log.Errorf("Missing status for overlay %d; can not clean up\n",
 				olNum)
 			continue
 		}
@@ -2186,7 +2390,7 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 
 		// Need to check that index exists
 		if len(status.UnderlayNetworkList) < ulNum {
-			log.Infoln("Missing status for underlay %d; can not clean up\n",
+			log.Infof("Missing status for underlay %d; can not clean up\n",
 				ulNum)
 			continue
 		}
@@ -2296,14 +2500,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	// XXX note different polarity
-	if gcp != nil && gcp.NoSshAccess == ctx.sshAccess {
-		ctx.sshAccess = !gcp.NoSshAccess
-		updateSshAccess(ctx.sshAccess, false)
-	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 

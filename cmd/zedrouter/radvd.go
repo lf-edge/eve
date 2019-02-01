@@ -7,9 +7,11 @@ package zedrouter
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/wrap"
 	"os"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/types"
+	"github.com/zededa/go-provision/wrap"
 )
 
 // Need to fill in the overlay inteface name
@@ -33,6 +35,7 @@ interface %s {
 
 // Create the radvd config file for the overlay
 // Would be more polite to return an error then to Fatal
+//	olIfname - Overlay Interface Name
 func createRadvdConfiglet(cfgPathname string, olIfname string) {
 
 	log.Debugf("createRadvdConfiglet: %s\n", olIfname)
@@ -76,4 +79,15 @@ func stopRadvd(cfgFilename string, printOnError bool) {
 
 	log.Debugf("stopRadvd: %s\n", cfgFilename)
 	pkillUserArgs("radvd", cfgFilename, printOnError)
+}
+
+func restartRadvdWithNewConfig(status *types.NetworkInstanceStatus) {
+	cfgFilename := "radvd." + status.BridgeName + ".conf"
+	cfgPathname := runDirname + "/" + cfgFilename
+
+	// kill existing radvd instance
+	deleteRadvdConfiglet(cfgPathname)
+	stopRadvd(cfgFilename, false)
+	createRadvdConfiglet(cfgPathname, status.BridgeName)
+	startRadvd(cfgPathname, status.BridgeName)
 }

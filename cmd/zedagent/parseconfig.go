@@ -76,8 +76,15 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	parseDatastoreConfig(config, getconfigCtx)
 
 	parseBaseOsConfig(getconfigCtx, config)
+	// XXX Deprecated..
+	//	parseNetworkObjectConfig
+	//	parseNetworkServiceConfig
+	//	Remove this when Network / ServiceInstance are removed.
+	//	XXX Network Instance is the new way of configuring network for
+	// 				applications
 	parseNetworkObjectConfig(config, getconfigCtx)
 	parseNetworkServiceConfig(config, getconfigCtx)
+	parseNetworkInstanceConfig(config, getconfigCtx)
 	parseSystemAdapterConfig(config, getconfigCtx, false)
 	parseAppInstanceConfig(config, getconfigCtx)
 
@@ -272,6 +279,148 @@ func parseNetworkServiceConfig(config *zconfig.EdgeDevConfig,
 
 	// Export NetworkServiceConfig to zedrouter
 	publishNetworkServiceConfig(getconfigCtx, svcs)
+}
+
+func unpublishDeletedNetworkInstanceConfig(ctx *getconfigContext,
+	networkInstances []*zconfig.NetworkInstanceConfig) {
+
+	currentEntries := ctx.pubNetworkInstanceConfig.GetAll()
+	for key, entry := range currentEntries {
+		networkInstanceEntry := lookupNetworkInstanceById(key, networkInstances)
+		if networkInstanceEntry != nil {
+			// Entry not deleted.
+			log.Infof("NetworkInstance %s (Name: %s) still exists\n",
+				key, networkInstanceEntry.Displayname)
+			continue
+		}
+
+		config := cast.CastNetworkServiceConfig(entry)
+		log.Infof("unpublishing NetworkInstance %s (Name: %s) \n",
+			key, config.DisplayName)
+		if err := ctx.pubNetworkInstanceConfig.Unpublish(key); err != nil {
+			log.Fatalf("Network Instance UnPublish (key:%s, name:%s) FAILED: %s",
+				key, config.DisplayName, err)
+		}
+	}
+}
+
+func parseDnsNameToIpListForNetworkInstanceConfig(
+	apiConfigEntry *zconfig.NetworkInstanceConfig,
+	config *types.NetworkInstanceConfig) {
+
+	// Parse and store DnsNameToIPList form Network configuration
+	dnsEntries := apiConfigEntry.GetDns()
+
+	// Parse and populate the DnsNameToIP list
+	// This is what we will publish to zedrouter
+	nameToIPs := []types.DnsNameToIP{}
+	for _, dnsEntry := range dnsEntries {
+		hostName := dnsEntry.HostName
+
+		ips := []net.IP{}
+		for _, strAddr := range dnsEntry.Address {
+			ip := net.ParseIP(strAddr)
+			if ip != nil {
+				ips = append(ips, ip)
+			} else {
+				log.Errorf("Bad dnsEntry %s ignored\n",
+					strAddr)
+			}
+		}
+
+		nameToIP := types.DnsNameToIP{
+			HostName: hostName,
+			IPs:      ips,
+		}
+		nameToIPs = append(nameToIPs, nameToIP)
+	}
+	config.DnsNameToIPList = nameToIPs
+}
+
+func publishNetworkInstanceConfig(ctx *getconfigContext,
+	networkInstances []*zconfig.NetworkInstanceConfig) {
+
+	log.Infof("Publish NetworkInstance Config: %+v", networkInstances)
+
+	unpublishDeletedNetworkInstanceConfig(ctx, networkInstances)
+
+	for _, apiConfigEntry := range networkInstances {
+		id, err := uuid.FromString(apiConfigEntry.Uuidandversion.Uuid)
+		version := apiConfigEntry.Uuidandversion.Version
+		if err != nil {
+			log.Errorf("NetworkInstanceConfig: Malformed UUID %s. ignored. Err: %s\n",
+				apiConfigEntry.Uuidandversion.Uuid, err)
+			// XXX - We should propagate this error to Cloud.
+			// Why ignore only for this specific Check?
+			// Shouldn't we reject the config if any of the fields have errors?
+			// Or may be identify some fields as imp. fields and reject them only?
+			// Either way, it is good to propagate the error to Cloud.
+			continue
+		}
+		networkInstanceConfig := types.NetworkInstanceConfig{
+			UUIDandVersion: types.UUIDandVersion{UUID: id, Version: version},
+			DisplayName:    apiConfigEntry.Displayname,
+			Type:           types.NetworkInstanceType(apiConfigEntry.InstType),
+			Activate:       apiConfigEntry.Activate,
+		}
+		log.Infof("publishNetworkInstanceConfig: processing %s %s type %d activate %v\n",
+			networkInstanceConfig.UUID.String(), networkInstanceConfig.DisplayName,
+			networkInstanceConfig.Type, networkInstanceConfig.Activate)
+
+		if apiConfigEntry.Port != nil {
+			networkInstanceConfig.Port = apiConfigEntry.Port.Name
+		}
+		networkInstanceConfig.IpType = types.AddressType(apiConfigEntry.IpType)
+
+		// KALYAN - FIX THIS before final merge. Workaround to not getting ipType
+		if networkInstanceConfig.IpType == 0 {
+			networkInstanceConfig.IpType = types.AddressTypeIPV4
+		}
+
+		parseIpspecForNetworkInstanceConfig(apiConfigEntry.Ip, &networkInstanceConfig)
+
+		parseDnsNameToIpListForNetworkInstanceConfig(apiConfigEntry,
+			&networkInstanceConfig)
+
+		if apiConfigEntry.Cfg != nil {
+			networkInstanceConfig.OpaqueConfig = apiConfigEntry.Cfg.Oconfig
+		}
+
+		ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
+			&networkInstanceConfig)
+	}
+}
+
+var networkInstancePrevConfigHash []byte
+
+func parseNetworkInstanceConfig(config *zconfig.EdgeDevConfig,
+	getconfigCtx *getconfigContext) {
+
+	networkInstances := config.GetNetworkInstances()
+
+	h := sha256.New()
+	for _, n := range networkInstances {
+		computeConfigElementSha(h, n)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, networkInstancePrevConfigHash)
+	networkConfigPrevConfigHash = configHash
+
+	if same {
+		log.Infof("parseNetworkInstanceConfig: network sha is unchanged: % x\n",
+			configHash)
+		return
+	}
+	log.Infof("parseNetworkInstanceConfig: Applying updated config "+
+		"sha % x vs. % x: %v\n",
+		networkInstancePrevConfigHash, configHash, networkInstances)
+	// Export NetworkInstanceConfig to zedrouter
+	// XXX
+	// System Adapter points to network for Proxy configuration.
+	// There could be a situation where networks change, but
+	// systerm adapters do not change. When we see the networks
+	// change, we should parse systerm adapters again.
+	publishNetworkInstanceConfig(getconfigCtx, networkInstances)
 }
 
 var appinstancePrevConfigHash []byte
@@ -624,6 +773,19 @@ func lookupServiceId(id string, cfgServices []*zconfig.ServiceInstanceConfig) *z
 	return nil
 }
 
+// XXX - Why not just make each Config type implement an interface Id?
+//		Or even have all of them use uuidVersionName struct as the first member?
+//		That would avoid writing this code for each config type??
+func lookupNetworkInstanceById(uuid string,
+	networkInstancesConfigList []*zconfig.NetworkInstanceConfig) *zconfig.NetworkInstanceConfig {
+	for _, entry := range networkInstancesConfigList {
+		if uuid == entry.Uuidandversion.Uuid {
+			return entry
+		}
+	}
+	return nil
+}
+
 func publishNetworkObjectConfig(ctx *getconfigContext,
 	cfgNetworks []*zconfig.NetworkConfig) {
 
@@ -800,6 +962,85 @@ func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) erro
 	return nil
 }
 
+func setDefaultIpSpecForNetworkInstanceConfig(
+	config *types.NetworkInstanceConfig) {
+	// HACK.. KALYAN - REMOVE THIS..
+	// We should just return an error here. This is supposed to be
+	// filled up by the cloud.
+	_, subnet, _ := net.ParseCIDR("10.1.0.0/16")
+	config.Subnet = *subnet
+	config.Gateway = net.ParseIP("10.1.0.1")
+	config.DomainName = ""
+	config.NtpServer = net.ParseIP("0.0.0.0")
+	config.DnsServers = make([]net.IP, 1)
+	config.DnsServers[0] = config.Gateway
+	config.DhcpRange.Start = net.ParseIP("10.1.0.2")
+	config.DhcpRange.End = net.ParseIP("10.1.255.254")
+	return
+}
+
+func parseIpspecForNetworkInstanceConfig(ipspec *zconfig.Ipspec,
+	config *types.NetworkInstanceConfig) error {
+
+	if ipspec == nil {
+		log.Infof("ipspec not specified in config")
+		// Kalyan - Hack - Workaround till cloud is ready..
+		// .. Should not need this.. Should return an error
+		setDefaultIpSpecForNetworkInstanceConfig(config)
+		return nil
+	}
+	config.DomainName = ipspec.GetDomain()
+	// Parse Subnet
+	if s := ipspec.GetSubnet(); s != "" {
+		_, subnet, err := net.ParseCIDR(s)
+		if err != nil {
+			return errors.New(fmt.Sprintf("parseIpspec: bad subnet %s: %s",
+				s, err))
+		}
+		config.Subnet = *subnet
+	}
+	// Parse Gateway
+	if g := ipspec.GetGateway(); g != "" {
+		config.Gateway = net.ParseIP(g)
+		if config.Gateway == nil {
+			return errors.New(fmt.Sprintf("parseIpspec: bad gateway IP %s",
+				g))
+		}
+	}
+	// Parse NTP Server
+	if n := ipspec.GetNtp(); n != "" {
+		config.NtpServer = net.ParseIP(n)
+		if config.NtpServer == nil {
+			return errors.New(fmt.Sprintf("parseIpspec: bad ntp IP %s",
+				n))
+		}
+	}
+	// Parse Dns Servers
+	for _, dsStr := range ipspec.GetDns() {
+		ds := net.ParseIP(dsStr)
+		if ds == nil {
+			return errors.New(fmt.Sprintf("parseIpspec: bad dns IP %s",
+				dsStr))
+		}
+		config.DnsServers = append(config.DnsServers, ds)
+	}
+	// Parse DhcpRange
+	if dr := ipspec.GetDhcpRange(); dr != nil && dr.GetStart() != "" {
+		start := net.ParseIP(dr.GetStart())
+		if start == nil {
+			return errors.New(fmt.Sprintf("parseIpspec: bad start IP %s",
+				dr.GetStart()))
+		}
+		end := net.ParseIP(dr.GetEnd())
+		if end == nil && dr.GetEnd() != "" {
+			return errors.New(fmt.Sprintf("parseIpspec: bad end IP %s",
+				dr.GetEnd()))
+		}
+		config.DhcpRange.Start = start
+		config.DhcpRange.End = end
+	}
+	return nil
+}
 func publishNetworkServiceConfig(ctx *getconfigContext,
 	cfgServices []*zconfig.ServiceInstanceConfig) {
 
@@ -873,7 +1114,7 @@ func publishNetworkServiceConfig(ctx *getconfigContext,
 			eidPrefix := net.IP(svcEnt.LispCfg.Allocationprefix)
 
 			// Populate service Lisp config that should be sent to zedrouter
-			service.LispConfig = types.ServiceLispConfig{
+			service.LispConfig = types.LispConfig{
 				MapServers:    mapServers,
 				IID:           svcEnt.LispCfg.LispInstanceId,
 				Allocate:      svcEnt.LispCfg.Allocate,
@@ -1108,7 +1349,11 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			item.Key, item.Value)
 
 		// XXX remove any "project." string. Can zedcloud omit it?
+		// XXX also any "device." string.
+		// XXX ideally zedcloud should send us a single item
+		// after it determins whether project or device wins.
 		key := strings.TrimPrefix(item.Key, "project.")
+		key = strings.TrimPrefix(key, "device.")
 
 		switch key {
 		case "timer.config.interval":
@@ -1247,6 +1492,21 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					globalConfig.NoSshAccess,
 					newBool)
 				globalConfig.NoSshAccess = newBool
+				globalConfigChange = true
+			}
+		case "app.allow.vnc":
+			newBool, err := strconv.ParseBool(item.Value)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			if newBool != globalConfig.AllowAppVnc {
+				log.Infof("parseConfigItems: %s change from %v to %v\n",
+					key,
+					globalConfig.AllowAppVnc,
+					newBool)
+				globalConfig.AllowAppVnc = newBool
 				globalConfigChange = true
 			}
 		case "timer.use.config.checkpoint":

@@ -21,21 +21,25 @@ import (
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
+	"github.com/zededa/go-provision/iptables"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 )
 
 const (
-	agentName       = "nim"
-	tmpDirname      = "/var/tmp/zededa"
-	DNCDirname      = tmpDirname + "/DeviceNetworkConfig"
-	identityDirname = "/config"
+	agentName   = "nim"
+	tmpDirname  = "/var/tmp/zededa"
+	DNCDirname  = tmpDirname + "/DeviceNetworkConfig"
+	DPCOverride = tmpDirname + "/DevicePortConfig/override.json"
 )
 
 type nimContext struct {
 	devicenetwork.DeviceNetworkContext
 	subGlobalConfig *pubsub.Subscription
+	GCInitialized   bool // Received initial GlobalConfig
+	sshAccess       bool
+	allowAppVnc     bool
 
 	// CLI args
 	debug         bool
@@ -73,9 +77,13 @@ func waitForDeviceNetworkConfigFile() string {
 	// don't have a DeviceNetworkConfig
 	// After some tries we fall back to default.json which is eth0, wlan0
 	// and wwan0
-	// XXX if we have a /config/DevicePortConfig/override.json
-	// we should proceed without a DNCFilename!
+	// If we have a DevicePortConfig/override.json we proceed
+	// without a DNCFilename!
 	tries := 0
+	if fileExists(DPCOverride) {
+		model = "default"
+		return model
+	}
 	for {
 		DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
 		_, err := os.Stat(DNCFilename)
@@ -101,6 +109,7 @@ func waitForDeviceNetworkConfigFile() string {
 func Run() {
 	nimCtx := nimContext{}
 	nimCtx.AssignableAdapters = &types.AssignableAdapters{}
+	nimCtx.sshAccess = true // Kernel default - no iptables filters
 
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
@@ -154,6 +163,7 @@ func Run() {
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	subGlobalConfig.SynchronizedHandler = handleGlobalConfigSynchronized
 	nimCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
@@ -231,6 +241,18 @@ func Run() {
 
 	// Apply any changes from the port config to date.
 	publishDeviceNetworkStatus(&nimCtx)
+
+	// Wait for initial GlobalConfig
+	for !nimCtx.GCInitialized {
+		log.Infof("Waiting for GCInitialized\n")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
+		}
+	}
 
 	// XXX should we make geoRedoTime configurable?
 	// We refresh the gelocation information when the underlay
@@ -325,6 +347,7 @@ func Run() {
 					log.Infof("Device connectivity to cloud failed at %v", time.Now())
 				}
 			}
+
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
 		}
@@ -347,12 +370,12 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 		// figure out a DevicePortConfig that works.
 		if ctx.Pending.Inprogress {
 			log.Infof("tryDeviceConnectivityToCloud: Device port configuration list " +
-			"verification in progress")
+				"verification in progress")
 			// Connectivity to cloud is already being figured out.
 			// We wait till the next cloud connectivity test slot.
 		} else {
 			log.Infof("tryDeviceConnectivityToCloud: Triggering Device port " +
-			"verification to resume cloud connectivity")
+				"verification to resume cloud connectivity")
 			// Start DPC verification to find a working configuration
 			devicenetwork.RestartVerify(ctx, "tryDeviceConnectivityToCloud")
 		}
@@ -377,8 +400,22 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	ctx.debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	ctx.debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
+	first := !ctx.GCInitialized
+	if gcp != nil {
+		// XXX note different polarity
+		if gcp.NoSshAccess == ctx.sshAccess || first {
+			ctx.sshAccess = !gcp.NoSshAccess
+			iptables.UpdateSshAccess(ctx.sshAccess, first)
+		}
+		if gcp.AllowAppVnc != ctx.allowAppVnc || first {
+			ctx.allowAppVnc = gcp.AllowAppVnc
+			iptables.UpdateVncAccess(ctx.allowAppVnc)
+		}
+	}
+	ctx.GCInitialized = true
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -393,5 +430,25 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	ctx.debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
+	ctx.GCInitialized = false
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+// In case there is no GlobalConfig.json this will move us forward
+func handleGlobalConfigSynchronized(ctxArg interface{}, done bool) {
+	ctx := ctxArg.(*nimContext)
+
+	log.Infof("handleGlobalConfigSynchronized(%v)\n", done)
+	if done {
+		first := !ctx.GCInitialized
+		if first {
+			iptables.UpdateSshAccess(ctx.sshAccess, first)
+		}
+		ctx.GCInitialized = true
+	}
+}
+
+func fileExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return err == nil
 }

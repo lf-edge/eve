@@ -9,8 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/eriknordmark/netlink"
-	"github.com/zededa/go-provision/types"
 	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/types"
 	"net"
 	"reflect"
 )
@@ -105,7 +105,7 @@ func HandleAddressChange(ctx *DeviceNetworkContext,
 		if pingTestDNS {
 			// We have a suitable candiate for running our cloud ping test.
 			// Kick the DNS test timer to fire immediately.
-			log.Infof("HandleAddressChange: Kicking cloud ping test now, " + 
+			log.Infof("HandleAddressChange: Kicking cloud ping test now, " +
 				"Since we have suitable addresses already.")
 			VerifyDevicePortConfig(ctx)
 		}

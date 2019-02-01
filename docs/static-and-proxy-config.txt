@@ -95,6 +95,28 @@ An example file with eth0 being static and eth1 using dhcp is:
     ]
 }
 
+To set up eth1 with the name Field in order to use it for a switch network,
+use DHCP 0. For example,
+{
+    "Version": 1,
+    "Ports": [
+        {
+            "Dhcp": 4,
+            "Free": true,
+            "IfName": "eth0",
+            "IsMgmt": true,
+            "Name": "Management"
+        },
+        {
+            "Dhcp": 0,
+            "Free": true,
+            "IfName": "eth1",
+            "IsMgmt": false,
+            "Name": "Field"
+        }
+    ]
+}
+
 If you want eth1 to be configured by zedrouter and used by applications but not
 used for zedcloud management traffic, make sure you have Version 1 and IsMgmt false.
 

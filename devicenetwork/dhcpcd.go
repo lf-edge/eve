@@ -24,7 +24,7 @@ func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig) {
 		newConfig, oldConfig)
 	for _, newU := range newConfig.Ports {
 		oldU := lookupOnIfname(oldConfig, newU.IfName)
-		if oldU == nil {
+		if oldU == nil || oldU.Dhcp == types.DT_NOOP {
 			log.Infof("updateDhcpClient: new %s\n", newU.IfName)
 			// Inactivate in case a dhcpcd is running
 			doDhcpClientActivate(newU)
@@ -42,7 +42,7 @@ func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig) {
 	// Look for deletes from oldConfig to newConfig
 	for _, oldU := range oldConfig.Ports {
 		newU := lookupOnIfname(newConfig, oldU.IfName)
-		if newU == nil {
+		if newU == nil || newU.Dhcp == types.DT_NOOP {
 			log.Infof("updateDhcpClient: deleted %s\n",
 				oldU.IfName)
 			doDhcpClientInactivate(oldU)
@@ -70,6 +70,10 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 	}
 
 	switch nuc.Dhcp {
+	case types.DT_NOOP:
+		log.Infof("doDhcpClientActivate(%s) DT_NOOP is a no-op\n",
+			nuc.IfName)
+		return
 	case types.DT_CLIENT:
 		extras := []string{"-f", "/dhcpcd.conf", "--nobackground",
 			"-d", "--noipv4ll"}
