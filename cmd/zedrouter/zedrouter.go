@@ -694,14 +694,9 @@ func handleAppNetworkConfigModify(ctxArg interface{}, key string, configArg inte
 	log.Infof("handleAppNetworkConfigModify(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 	config := cast.CastAppNetworkConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleAppNetworkConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
 	status := lookupAppNetworkStatus(ctx, key)
 	if status == nil {
-		handleCreate(ctx, key, config)
+		handleCreateAppNetwork(ctx, key, config)
 	} else {
 		handleModify(ctx, key, config, status)
 	}
@@ -1100,9 +1095,9 @@ var deviceEID net.IP
 var deviceIID uint32
 var additionalInfoDevice *types.AdditionalInfoDevice
 
-func handleCreate(ctx *zedrouterContext, key string,
+func handleCreateAppNetwork(ctx *zedrouterContext, key string,
 	config types.AppNetworkConfig) {
-	log.Infof("handleCreate(%v) for %s\n",
+	log.Infof("handleCreateAppNetwork(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
 	// Pick a local number to identify the application instance
@@ -1125,7 +1120,7 @@ func handleCreate(ctx *zedrouterContext, key string,
 	}
 	status.PendingAdd = false
 	publishAppNetworkStatus(ctx, &status)
-	log.Infof("handleCreate done for %s\n", config.DisplayName)
+	log.Infof("handleCreateAppNetwork done for %s\n", config.DisplayName)
 }
 
 func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
@@ -2160,7 +2155,7 @@ func handleModify(ctx *zedrouterContext, key string,
 	}
 
 	if !config.Activate && status.Activated {
-		doInactivate(ctx, status)
+		doInactivateAppNetwork(ctx, status)
 	}
 
 	if config.IsZedmanager {
@@ -2400,7 +2395,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 	publishAppNetworkStatus(ctx, status)
 
 	if status.Activated {
-		doInactivate(ctx, status)
+		doInactivateAppNetwork(ctx, status)
 	}
 	status.PendingDelete = false
 	publishAppNetworkStatus(ctx, status)
@@ -2412,7 +2407,7 @@ func handleDelete(ctx *zedrouterContext, key string,
 	log.Infof("handleDelete done for %s\n", status.DisplayName)
 }
 
-func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
+func doInactivateAppNetwork(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 
 	log.Infof("doInactivate(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
