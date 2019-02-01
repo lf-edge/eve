@@ -22,9 +22,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var localTCP string
-var binaryMode bool
-
 var localConnection net.Conn
 
 // WSTunnelClient represents a persistent tunnel that can cycle through many websockets. The
@@ -89,8 +86,10 @@ func InitializeTunnelClient(serverName string, localRelay string) *WSTunnelClien
 
 // Start connection to tunnel server
 func (t *WSTunnelClient) Start() {
-	t.SetupConnection()
-	<-make(chan struct{}, 0)
+	go func() {
+		t.SetupConnection()
+		<-make(chan struct{}, 0)
+	}()
 }
 
 // SetupConnection connects to configured backend on a
@@ -137,16 +136,17 @@ func (t *WSTunnelClient) SetupConnection() error {
 		log.Println("Using HTTPS proxy", "url", t.Proxy.Host, "user", username)
 	}*/
 
-	// for test purposes we have a signal that tells wstuncli to exit instead of reopening
+	// signal that tells tunnel client to exit instead of reopening
 	// a fresh connection.
 	t.exitChan = make(chan struct{}, 1)
-
-	//===== Goroutine =====
 
 	// Keep opening websocket connections to tunnel requests
 	go func() {
 		log.Println("Looping through websocket connection requests")
 		for {
+			// Retry timer of 30 seconds between attempts.
+			timer := time.NewTimer(30 * time.Second)
+
 			tlsConfig, err := GetTlsConfig(t.TunnelServerName, nil)
 			if err != nil {
 				log.Fatal(err)
@@ -159,7 +159,7 @@ func (t *WSTunnelClient) SetupConnection() error {
 			}
 			url := fmt.Sprintf("%s/api/v1/edgedevice/connection/tunnel", t.Tunnel)
 			log.Printf("Attempting WS connection to url: %s", url)
-			timer := time.NewTimer(30 * time.Second)
+
 			ws, resp, err := dialer.Dial(url, nil)
 			if err != nil {
 				extra := ""
@@ -185,20 +185,23 @@ func (t *WSTunnelClient) SetupConnection() error {
 			// check whether we need to exit
 			select {
 			case <-t.exitChan:
+				log.Println("Received WS tunnel client exit")
 				break
 			default: // non-blocking receive
 			}
 
-			<-timer.C // ensure we don't open connections too rapidly
+			// ensure we don't open connections too rapidly,
+			<-timer.C
 		}
 	}()
 
+	log.Println("Shutting down WS tunnel client, exit!")
 	return nil
 }
 
 // Stop tunnel client
 func (t *WSTunnelClient) Stop() {
-	log.Print("Stopping WS tunnel client")
+	log.Println("Stopping WS tunnel client")
 	t.exitChan <- struct{}{}
 }
 
@@ -210,11 +213,11 @@ func (wsc *WSConnection) handleRequests() {
 		wsc.ws.SetReadDeadline(time.Time{}) // separate ping-pong routine does timeout
 		messageType, reader, err := wsc.ws.NextReader()
 		if err != nil {
-			log.Printf("WS ReadMessage Error: %s", err.Error())
+			log.Errorf("WS ReadMessage Error: %s", err.Error())
 			break
 		}
 		if messageType != websocket.BinaryMessage {
-			log.Printf("WS ReadMessage Invalid message type: %d", messageType)
+			log.Errorf("WS ReadMessage Invalid message type: %d", messageType)
 			break
 		}
 		// give the sender a minute to produce the request
@@ -223,22 +226,30 @@ func (wsc *WSConnection) handleRequests() {
 		var id int16
 		_, err = fmt.Fscanf(io.LimitReader(reader, 4), "%04x", &id)
 		if err != nil {
-			log.Printf("WS cannot read request ID Error: %s", err.Error())
+			log.Errorf("WS cannot read request ID Error: %s", err.Error())
 			break
 		}
 		// read the whole message, this is bounded (to something large) by the
 		// SetReadLimit on the websocket. We have to do this because we want to handle
-		// the request in a goroutine (see "go finish..Request" calls below) and the
+		// the request in a goroutine (see "go process..Request" calls below) and the
 		// websocket doesn't allow us to have multiple goroutines reading...
 		request, err := ioutil.ReadAll(reader)
 		if err != nil {
-			log.Printf("[id=%d] WS cannot read request message Error: %s", id, err.Error())
+			//log.Printf("[id=%d] WS cannot read request message Error: %s", id, err.Error())
 			break
 		}
-		log.Printf("[id=%d] WS processing request payload: %s of length: %d", id, string(request), len(request))
+		log.Printf("[id=%d] WS processing request payload: %v", id, string(request))
 
 		// Finish off while we read the next request
-		wsc.processRequest(id, request)
+
+		if len(request) > 0 {
+			if err := wsc.processRequest(id, request); err != nil {
+				log.Error(err)
+			}
+		} else {
+			log.Errorf("[id=%d] Encountered WS request to process with no payload", id)
+		}
+
 	}
 	// delay a few seconds to allow for writes to drain and then force-close the socket
 	go func() {
@@ -371,80 +382,89 @@ func basicAuth(username, password string) string {
 var wsWriterMutex sync.Mutex // mutex to allow a single goroutine to send a response at a time
 var connMutex sync.Mutex     //mutex to allow a single goroutine to check and re-initialize connection if required
 
-func (wsc *WSConnection) processRequest(id int16, req []byte) {
+func (wsc *WSConnection) processRequest(id int16, req []byte) (err error) {
 
 	host := wsc.tun.Server
-	conn := getLocalConnection(host)
-	log.Printf("[id=%d] Forwarding request: \"%s\" to local connection: %s", id, string(req), host)
+	if err := wsc.refreshLocalConnection(host, false); err != nil {
+		return err
+	}
+	//log.Printf("[id=%d] Forwarding request: %v to local connection: %s", id, string(req), host)
 	for tries := 1; tries <= 3; tries++ {
-		_, err := conn.Write(req)
+		_, err := localConnection.Write(req)
 		if err == nil {
-			log.Printf("[id=%d] Completed writing request: \"%s\" to local connection", id, string(req))
+			//log.Printf("[id=%d] Completed writing request: \"%s\" to local connection", id, string(req))
 			break
 		} else {
-			log.Fatalf("[id=%d] Error encountered while writing request to local connection : %s", id, err.Error())
+			log.Errorf("[id=%d] Error encountered while writing request to local connection : %s", id, err.Error())
+			if err := wsc.refreshLocalConnection(host, true); err != nil {
+				return err
+			}
 		}
 	}
-	go wsc.listenForResponse(id, conn)
+	go wsc.listenForResponse(id)
+	return nil
 }
 
-func getLocalConnection(host string) (conn net.Conn) {
+func (wsc *WSConnection) refreshLocalConnection(host string, forceCreate bool) (err error) {
 
 	connMutex.Lock()
 	defer connMutex.Unlock()
 
-	if localConnection != nil {
+	if localConnection != nil && !forceCreate {
 		c := localConnection
 		one := []byte{}
 		c.SetReadDeadline(time.Now())
 		_, err := c.Read(one)
 		if err != nil {
-			log.Fatalf("Error encountered while testing local connection: %s", err.Error())
+			log.Errorf("Error encountered while testing local connection: %s", err.Error())
 			if err == io.EOF ||
 				err == io.ErrClosedPipe ||
 				err == io.ErrUnexpectedEOF {
 				log.Println("Lost local server connection, reconnecting...")
-				dialLocalConnection(host)
+				if err := wsc.dialLocalConnection(host); err != nil {
+					return err
+				}
 			}
 		}
 	} else {
-		log.Println("No local server connection found, connecting...")
-		dialLocalConnection(host)
+		if err := wsc.dialLocalConnection(host); err != nil {
+			return err
+		}
 	}
-	return localConnection
+	return nil
 }
 
-func dialLocalConnection(host string) {
+func (wsc *WSConnection) dialLocalConnection(host string) (err error) {
 
 	if host == "" {
-		log.Println("Local server not found for WS connection")
+		log.Error("Local server not found for WS connection")
 		return
 	}
 
 	log.Printf("Initializing local server connection: %s", host)
-	var err error
 	localConnection, err = net.Dial("tcp", host)
 	if err != nil {
-		log.Printf("Could not connect to local server: %s, error: %s", host, err.Error())
-		return
+		log.Errorf("Could not connect to local server: %s, error: %s", host, err.Error())
+		return err
 	}
 	log.Printf("Successfully connected to local server: %s", host)
+	return nil
 }
 
-func (wsc *WSConnection) listenForResponse(id int16, conn net.Conn) {
-	log.Printf("[id=%d] Waiting for response on local connection", id)
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+func (wsc *WSConnection) listenForResponse(id int16) {
+	//log.Printf("[id=%d] Waiting for response on local connection", id)
+	localConnection.SetReadDeadline(time.Now().Add(5 * time.Second))
 	responseBuffer := make([]byte, 8192)
-	num, err := conn.Read(responseBuffer)
+	num, err := localConnection.Read(responseBuffer)
 	if err != nil {
-		log.Printf("[id=%d] Could not read response on local connection: %s", id, err.Error())
+		//log.Printf("[id=%d] Could not read response on local connection: %s", id, err.Error())
 	} else {
 		if num > 0 {
 			response := responseBuffer[:num]
-			log.Printf("[id=%d] Read local connection data of length: %d, payload: \"%s\"", id, num, string(response))
+			log.Printf("[id=%d] Read local connection payload: \"%s\"", id, string(response))
 			wsc.writeResponseMessage(id, bytes.NewBuffer(response))
 		} else {
-			log.Printf("[id=%d] Empty response received from local connection", id)
+			//log.Printf("[id=%d] Empty response received from local connection", id)
 		}
 	}
 }
