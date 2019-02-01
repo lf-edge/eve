@@ -776,17 +776,14 @@ func (config NetworkObjectConfig) Key() string {
 	return config.UUID.String()
 }
 
-type NetworkObjectStatus struct {
-	NetworkObjectConfig
-	PendingAdd    bool
-	PendingModify bool
-	PendingDelete bool
-	BridgeNum     int
-	BridgeName    string // bn<N>
-	BridgeIPAddr  string
+type NetworkInstanceInfo struct {
+	BridgeNum    int
+	BridgeName   string // bn<N>
+	BridgeIPAddr string
+	BridgeMac    string
 
-	// Used to populate DNS and eid ipset
-	DnsNameToIPList []DnsNameToIP
+	// interface names for the Port
+	IfNameList []string // Recorded at time of activate
 
 	// Collection of address assignments; from MAC address to IP address
 	IPAssignments map[string]net.IP
@@ -802,6 +799,60 @@ type NetworkObjectStatus struct {
 	// Any errrors from provisioning the network
 	Error     string
 	ErrorTime time.Time
+}
+
+func (instanceInfo *NetworkInstanceInfo) IsVifInBridge(
+	vifName string) bool {
+	for _, vif := range instanceInfo.Vifs {
+		if vif.Name == vifName {
+			return true
+		}
+	}
+	return false
+}
+
+func (instanceInfo *NetworkInstanceInfo) DelVif(
+	vifName string) {
+	log.Infof("DelVif(%s, %s)\n", instanceInfo.BridgeName, vifName)
+
+	var vifs []VifNameMac
+	for _, vif := range instanceInfo.Vifs {
+		if vif.Name != vifName {
+			vifs = append(vifs, vif)
+		}
+	}
+	instanceInfo.Vifs = vifs
+}
+
+func (instanceInfo *NetworkInstanceInfo) AddVifToBridge(
+	vifName string, appMac string, appID uuid.UUID) {
+
+	log.Infof("addVifToBridge(%s, %s, %s, %s)\n",
+		instanceInfo.BridgeName, vifName, appMac, appID.String())
+	// XXX Should we just overwrite it? There is a lookup function
+	//	anyways if the caller wants "check and add" semantics
+	if instanceInfo.IsVifInBridge(vifName) {
+		log.Errorf("addVifToBridge(%s, %s) exists\n",
+			instanceInfo.BridgeName, vifName)
+		return
+	}
+	info := VifNameMac{
+		Name:    vifName,
+		MacAddr: appMac,
+		AppID:   appID,
+	}
+	instanceInfo.Vifs = append(instanceInfo.Vifs, info)
+}
+
+type NetworkObjectStatus struct {
+	NetworkObjectConfig
+	PendingAdd    bool
+	PendingModify bool
+	PendingDelete bool
+
+	NetworkInstanceInfo
+	// Used to populate DNS and eid ipset
+	DnsNameToIPList []DnsNameToIP
 }
 
 func (status NetworkObjectStatus) Key() string {
@@ -1007,27 +1058,7 @@ type NetworkInstanceStatus struct {
 	//	Keeps track of current state of object - if it has been activated
 	Activated bool
 
-	BridgeNum    int
-	BridgeName   string // bn<N>
-	BridgeIPAddr string
-	BridgeMac    string
-
-	// interface names for the Port
-	IfNameList []string // Recorded at time of activate
-
-	// Used to populate DNS and eid ipset
-	DnsNameToIPList []DnsNameToIP
-
-	// Collection of address assignments; from MAC address to IP address
-	IPAssignments map[string]net.IP
-
-	// Union of all ipsets fed to dnsmasq for the linux bridge
-	BridgeIPSets []string
-
-	// Set of vifs on this bridge
-	Vifs []VifNameMac
-
-	Ipv4Eid bool // Track if this is a CryptoEid with IPv4 EIDs
+	NetworkInstanceInfo
 
 	OpaqueStatus string
 	LispStatus   LispConfig
@@ -1035,10 +1066,6 @@ type NetworkInstanceStatus struct {
 	VpnStatus      *ServiceVpnStatus
 	LispInfoStatus *LispInfoStatus
 	LispMetrics    *LispMetrics
-
-	// Any errrors from provisioning the network instance
-	Error     string
-	ErrorTime time.Time
 }
 
 type VifNameMac struct {

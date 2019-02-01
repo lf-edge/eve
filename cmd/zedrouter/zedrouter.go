@@ -1131,229 +1131,16 @@ func handleCreate(ctx *zedrouterContext, key string,
 func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 	status *types.AppNetworkStatus) {
 
-	log.Infof("doActivate(%v) for %s\n",
-		config.UUIDandVersion, config.DisplayName)
+	log.Infof("doActivate(%v) for %s. IsZedmanager:%t\n",
+		config.UUIDandVersion, config.DisplayName, config.IsZedmanager)
 
 	if config.IsZedmanager {
-		log.Infof("doActivate: for %s IsZedmanager\n",
-			config.DisplayName)
-		if len(config.OverlayNetworkList) != 1 ||
-			len(config.UnderlayNetworkList) != 0 {
-			// XXX report IsZedmanager error to cloud?
-			err := errors.New("Malformed IsZedmanager config; ignored")
-			addError(ctx, status, "IsZedmanager", err)
-			log.Infof("doActivate done for %s\n",
-				config.DisplayName)
-			return
-		}
-		ctx.legacyDataPlane = config.LegacyDataPlane
-		dataplaneConfig := types.LispDataplaneConfig{
-			Legacy: ctx.legacyDataPlane,
-		}
-		publishLispDataplaneConfig(ctx, &dataplaneConfig)
-
-		// Use this olIfname to name files
-		// XXX some files might not be used until Zedmanager becomes
-		// a domU at which point IsZedMansger boolean won't be needed
-		olConfig := config.OverlayNetworkList[0]
-		olNum := 1
-		olIfname := "dbo" + strconv.Itoa(olNum) + "x" +
-			strconv.Itoa(status.AppNum)
-		// Assume there is no UUID for management overlay
-
-		// Create olIfname dummy interface with EID and fd00::/8 route
-		// pointing at it.
-		// XXX also a separate route for eidAllocationPrefix if global
-
-		// Start clean
-		attrs := netlink.NewLinkAttrs()
-		attrs.Name = olIfname
-		oLink := &netlink.Dummy{LinkAttrs: attrs}
-		netlink.LinkDel(oLink)
-
-		//    ip link add ${olIfname} type dummy
-		attrs = netlink.NewLinkAttrs()
-		attrs.Name = olIfname
-		// Note: we ignore olConfig.AppMacAddr for IsMgmt
-		olIfMac := fmt.Sprintf("00:16:3e:02:%02x:%02x", olNum,
-			status.AppNum)
-		hw, err := net.ParseMAC(olIfMac)
-		if err != nil {
-			log.Fatal("ParseMAC failed: ", olIfMac, err)
-		}
-		attrs.HardwareAddr = hw
-		oLink = &netlink.Dummy{LinkAttrs: attrs}
-		if err := netlink.LinkAdd(oLink); err != nil {
-			errStr := fmt.Sprintf("LinkAdd on %s failed: %s",
-				olIfname, err)
-			addError(ctx, status, "IsZedmanager",
-				errors.New(errStr))
-		}
-
-		// ip link set ${olIfname} mtu 1280
-		if err := netlink.LinkSetMTU(oLink, 1280); err != nil {
-			errStr := fmt.Sprintf("LinkSetMTU on %s failed: %s",
-				olIfname, err)
-			addError(ctx, status, "IsZedmanager",
-				errors.New(errStr))
-		}
-
-		//    ip link set ${olIfname} up
-		if err := netlink.LinkSetUp(oLink); err != nil {
-			errStr := fmt.Sprintf("LinkSetUp on %s failed: %s",
-				olIfname, err)
-			addError(ctx, status, "IsZedmanager",
-				errors.New(errStr))
-		}
-
-		//    ip link set ${olIfname} arp on
-		if err := netlink.LinkSetARPOn(oLink); err != nil {
-			errStr := fmt.Sprintf("LinkSetARPOn on %s failed: %s",
-				olIfname, err)
-			addError(ctx, status, "IsZedmanager",
-				errors.New(errStr))
-		}
-
-		// Configure the EID on olIfname and set up a default route
-		// for all fd00 EIDs
-		//    ip addr add ${EID}/128 dev ${olIfname}
-		EID := olConfig.EID
-		addr, err := netlink.ParseAddr(EID.String() + "/128")
-		if err != nil {
-			errStr := fmt.Sprintf("ParseAddr %s failed: %s",
-				EID, err)
-			addError(ctx, status, "IsZedmanager",
-				errors.New(errStr))
-			log.Infof("doActivate done for %s\n",
-				config.DisplayName)
-			return
-		}
-		if err := netlink.AddrAdd(oLink, addr); err != nil {
-			errStr := fmt.Sprintf("AddrAdd %s failed: %s", EID, err)
-			addError(ctx, status, "IsZedmanager",
-				errors.New(errStr))
-		}
-
-		//    ip route add fd00::/8 via fe80::1 dev $intf
-		index := oLink.Attrs().Index
-		_, ipnet, err := net.ParseCIDR("fd00::/8")
-		if err != nil {
-			log.Fatal("ParseCIDR fd00::/8 failed:\n", err)
-		}
-		via := net.ParseIP("fe80::1")
-		if via == nil {
-			log.Fatal("ParseIP fe80::1 failed: ", err)
-		}
-		// Need to do both an add and a change since we could have
-		// a FAILED neighbor entry from a previous run and a down
-		// interface.
-		//    ip nei add fe80::1 lladdr 00:16:3e:02:01:00 dev $intf
-		//    ip nei change fe80::1 lladdr 00:16:3e:02:01:00 dev $intf
-		neigh := netlink.Neigh{LinkIndex: index, IP: via,
-			HardwareAddr: hw, State: netlink.NUD_PERMANENT}
-		if err := netlink.NeighAdd(&neigh); err != nil {
-			errStr := fmt.Sprintf("NeighAdd fe80::1 failed: %s",
-				err)
-			addError(ctx, status, "IsZedmanager",
-				errors.New(errStr))
-		}
-		if err := netlink.NeighSet(&neigh); err != nil {
-			errStr := fmt.Sprintf("NeighSet fe80::1 failed: %s",
-				err)
-			addError(ctx, status, "IsZedmanager",
-				errors.New(errStr))
-		}
-
-		rt := netlink.Route{Dst: ipnet, LinkIndex: index, Gw: via}
-		if err := netlink.RouteAdd(&rt); err != nil {
-			errStr := fmt.Sprintf("RouteAdd fd00::/8 failed: %s",
-				err)
-			addError(ctx, status, "IsZedmanager",
-				errors.New(errStr))
-		}
-
-		// XXX NOTE: this hosts file is not read!
-		// XXX easier when Zedmanager is in separate domU!
-		// Create a hosts file for the overlay based on DnsNameToIPList
-		// Directory is /var/run/zedrouter/hosts.${OLIFNAME}
-		// Each hostname in a separate file in directory to facilitate
-		// adds and deletes
-		hostsDirpath := runDirname + "/hosts." + olIfname
-		deleteHostsConfiglet(hostsDirpath, false)
-		createHostsConfiglet(hostsDirpath, olConfig.MgmtDnsNameToIPList)
-
-		// Default ipset
-		deleteDefaultIpsetConfiglet(olIfname, false)
-		createDefaultIpsetConfiglet(olIfname, olConfig.MgmtDnsNameToIPList,
-			EID.String())
-
-		// Set up ACLs
-		err = createACLConfiglet(olIfname, olIfname, true, olConfig.ACLs,
-			"", "")
-		if err != nil {
-			addError(ctx, status, "createACL", err)
-		}
-
-		// Save information about zedmanger EID and additional info
-		deviceEID = EID
-		deviceIID = olConfig.MgmtIID
-		additionalInfoDevice = olConfig.AdditionalInfoDevice
-
-		additionalInfo := generateAdditionalInfo(*status, olConfig)
-
-		// Create LISP configlets for IID and EID/signature
-		createLispConfiglet(lispRunDirname, config.IsZedmanager,
-			olConfig.MgmtIID, olConfig.EID, nil,
-			olConfig.LispSignature,
-			*ctx.deviceNetworkStatus, olIfname, olIfname,
-			additionalInfo, olConfig.MgmtMapServers,
-			ctx.legacyDataPlane)
-		status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
-			len(config.OverlayNetworkList))
-		for i, _ := range config.OverlayNetworkList {
-			status.OverlayNetworkList[i].OverlayNetworkConfig =
-				config.OverlayNetworkList[i]
-			// XXX set BridgeName, BridgeIPAddr?
-		}
-		status.Activated = true
-		publishAppNetworkStatus(ctx, status)
-		log.Infof("doActivate done for %s\n", config.DisplayName)
-		return
+		doActivateAppInstanceWithMgmtLisp(ctx, config, status)
 	}
 
 	// Check that Network exists for all overlays and underlays.
 	// We look for MissingNetwork when a NetworkObject is added
-	allNetworksExist := true
-	for _, olConfig := range config.OverlayNetworkList {
-		netconfig := lookupNetworkObjectConfig(ctx,
-			olConfig.Network.String())
-		if netconfig != nil {
-			continue
-		}
-		// XXX no olStatus yet!
-		errStr := fmt.Sprintf("Missing overlay network %s for %s/%s",
-			olConfig.Network.String(),
-			config.UUIDandVersion, config.DisplayName)
-		log.Infof("doActivate failed: %s\n", errStr)
-		addError(ctx, status, "doActivate overlay",
-			errors.New(errStr))
-		allNetworksExist = false
-	}
-	for _, ulConfig := range config.UnderlayNetworkList {
-		netconfig := lookupNetworkObjectConfig(ctx,
-			ulConfig.Network.String())
-		if netconfig != nil {
-			continue
-		}
-		// XXX no ulStatus yet!
-		errStr := fmt.Sprintf("Missing underlay network %s for %s/%s",
-			ulConfig.Network.String(),
-			config.UUIDandVersion, config.DisplayName)
-		log.Infof("doActivate failed: %s\n", errStr)
-		addError(ctx, status, "doActivate underlay",
-			errors.New(errStr))
-		allNetworksExist = false
-	}
+	allNetworksExist := appNetworkCheckAllNetworksExist(ctx, config, status)
 	if !allNetworksExist {
 		// XXX error or not?
 		status.MissingNetwork = true
@@ -1362,26 +1149,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 		publishAppNetworkStatus(ctx, status)
 		return
 	}
-
-	olcount := len(config.OverlayNetworkList)
-	if olcount > 0 {
-		log.Infof("Received olcount %d\n", olcount)
-	}
-	// XXX are we clobbering? Create in handleCreate?
-	// XXX can count change for inactivate/activate?
-	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
-		olcount)
-	for i, _ := range config.OverlayNetworkList {
-		status.OverlayNetworkList[i].OverlayNetworkConfig =
-			config.OverlayNetworkList[i]
-	}
-	ulcount := len(config.UnderlayNetworkList)
-	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus,
-		ulcount)
-	for i, _ := range config.UnderlayNetworkList {
-		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
-			config.UnderlayNetworkList[i]
-	}
+	appNetworkDoCopyNetworksToStatus(config, status)
 
 	// Note that with IPv4/IPv6/LISP interfaces the domU can do
 	// dns lookups on either IPv4 and IPv6 on any interface, hence we
@@ -1389,6 +1157,289 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 	ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
 		config.UnderlayNetworkList)
 
+	appNetworkDoActivateOverlayNetworks(ctx, config, status, ipsets)
+
+	appNetworkDoActivateAllUnderlayNetworks(ctx, config, status, ipsets)
+
+	status.Activated = true
+	publishAppNetworkStatus(ctx, status)
+	log.Infof("doActivate done for %s\n", config.DisplayName)
+}
+
+func appNetworkDoActivateAllUnderlayNetworks(
+	ctx *zedrouterContext,
+	config types.AppNetworkConfig,
+	status *types.AppNetworkStatus,
+	ipsets []string) bool {
+	for i, ulConfig := range config.UnderlayNetworkList {
+		ulNum := i + 1
+		log.Debugf("ulNum %d network %s ACLs %v\n",
+			ulNum, ulConfig.Network.String(), ulConfig.ACLs)
+		if ulConfig.UsesNetworkInstance {
+			appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
+				ctx, config, status, ipsets, &ulConfig, ulNum)
+		} else {
+			appNetworkDoActivateUnderlayNetworkWithNetworkObject(
+				ctx, config, status, ipsets, &ulConfig, ulNum)
+		}
+
+	}
+	return true
+}
+
+func appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
+	ctx *zedrouterContext,
+	config types.AppNetworkConfig,
+	status *types.AppNetworkStatus,
+	ipsets []string,
+	ulConfig *types.UnderlayNetworkConfig,
+	ulNum int) {
+
+	netInstConfig := lookupNetworkInstanceConfig(ctx,
+		ulConfig.Network.String())
+	if netInstConfig == nil {
+		log.Fatalf("Cannot find UL NetworkObject %s for App %s",
+			ulConfig.Name, config.DisplayName)
+	}
+	netInstStatus := lookupNetworkInstanceStatus(ctx,
+		ulConfig.Network.String())
+	if netInstStatus == nil {
+		errStr := fmt.Sprintf("no status for %s",
+			ulConfig.Network.String())
+		err := errors.New(errStr)
+		addError(ctx, status, "doActivate underlay", err)
+		return
+	}
+	if netInstStatus.Error != "" {
+		log.Errorf("doActivate sees network error %s\n",
+			netInstStatus.Error)
+		addError(ctx, status, "netstatus.Error",
+			errors.New(netInstStatus.Error))
+		return
+	}
+	networkInstanceInfo := &netInstStatus.NetworkInstanceInfo
+
+	// Fetch the network that this underlay is attached to
+	bridgeName := networkInstanceInfo.BridgeName
+	vifName := "nbu" + strconv.Itoa(ulNum) + "x" +
+		strconv.Itoa(status.AppNum)
+	uLink, err := findBridge(bridgeName)
+	if err != nil {
+		addError(ctx, status, "findBridge", err)
+		log.Infof("doActivate done for %s\n",
+			config.DisplayName)
+		return
+	}
+	bridgeMac := uLink.HardwareAddr
+	log.Infof("bridgeName %s MAC %s\n",
+		bridgeName, bridgeMac.String())
+
+	var appMac string // Handed to domU
+	if ulConfig.AppMacAddr != nil {
+		appMac = ulConfig.AppMacAddr.String()
+	} else {
+		// Room to handle multiple underlays in 5th byte
+		appMac = fmt.Sprintf("00:16:3e:00:%02x:%02x",
+			ulNum, status.AppNum)
+	}
+	log.Infof("appMac %s\n", appMac)
+
+	// Record what we have so far
+	ulStatus := &status.UnderlayNetworkList[ulNum-1]
+	log.Infof("doActivate ulNum %d: %v\n", ulNum, ulStatus)
+	ulStatus.Name = ulConfig.Name
+	ulStatus.Bridge = bridgeName
+	ulStatus.BridgeMac = bridgeMac
+	ulStatus.Vif = vifName
+	ulStatus.Mac = appMac
+	ulStatus.HostName = config.Key()
+
+	bridgeIPAddr, appIPAddr := getUlAddrsForNetworkInstance(ctx, ulNum-1,
+		status.AppNum, ulStatus, netInstStatus)
+	// Check if we have a bridge service with an address
+	bridgeIP, err := getBridgeServiceIPv4Addr(ctx, ulConfig.Network)
+	if err != nil {
+		log.Infof("doActivate: %s\n", err)
+	} else if bridgeIP != "" {
+		bridgeIPAddr = bridgeIP
+	}
+	log.Infof("bridgeIPAddr %s appIPAddr %s\n", bridgeIPAddr, appIPAddr)
+	ulStatus.BridgeIPAddr = bridgeIPAddr
+	// XXX appIPAddr is "" if bridge service
+	ulStatus.AssignedIPAddr = appIPAddr
+	hostsDirpath := runDirname + "/hosts." + bridgeName
+	if appIPAddr != "" {
+		addToHostsConfiglet(hostsDirpath, config.DisplayName,
+			[]string{appIPAddr})
+	}
+
+	// Default ipset
+	deleteDefaultIpsetConfiglet(vifName, false)
+	createDefaultIpsetConfiglet(vifName, netInstStatus.DnsNameToIPList,
+		appIPAddr)
+
+	// Set up ACLs
+	err = createACLConfiglet(bridgeName, vifName, false,
+		ulConfig.ACLs, bridgeIPAddr, appIPAddr)
+	if err != nil {
+		addError(ctx, status, "createACL", err)
+	}
+
+	if appIPAddr != "" {
+		// XXX clobber any IPv6 EID entry since same name
+		// but that's probably OK since we're doing IPv4 EIDs
+		addhostDnsmasq(bridgeName, appMac, appIPAddr,
+			config.UUIDandVersion.UUID.String())
+	}
+
+	// Look for added or deleted ipsets
+	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
+		networkInstanceInfo.BridgeIPSets)
+
+	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
+		stopDnsmasq(bridgeName, true)
+		createDnsmasqConfigletForNetworkInstance(bridgeName,
+			ulStatus.BridgeIPAddr, netInstConfig, hostsDirpath,
+			newIpsets, false)
+		startDnsmasq(bridgeName)
+	}
+	networkInstanceInfo.AddVifToBridge(vifName, appMac,
+		config.UUIDandVersion.UUID)
+	networkInstanceInfo.BridgeIPSets = newIpsets
+	publishNetworkInstanceStatus(ctx, netInstStatus)
+
+	maybeRemoveStaleIpsets(staleIpsets)
+}
+
+func appNetworkDoActivateUnderlayNetworkWithNetworkObject(
+	ctx *zedrouterContext,
+	config types.AppNetworkConfig,
+	status *types.AppNetworkStatus,
+	ipsets []string,
+	ulConfig *types.UnderlayNetworkConfig,
+	ulNum int) {
+
+	netconfig := lookupNetworkObjectConfig(ctx,
+		ulConfig.Network.String())
+	if netconfig == nil {
+		log.Fatalf("Cannot find UL NetworkObject %s for App %s",
+			ulConfig.Name, config.DisplayName)
+	}
+	netstatus := lookupNetworkObjectStatus(ctx,
+		ulConfig.Network.String())
+	if netstatus == nil {
+		errStr := fmt.Sprintf("no status for %s",
+			ulConfig.Network.String())
+		err := errors.New(errStr)
+		addError(ctx, status, "doActivate underlay", err)
+		return
+	}
+	if netstatus.Error != "" {
+		log.Errorf("doActivate sees network error %s\n",
+			netstatus.Error)
+		addError(ctx, status, "netstatus.Error",
+			errors.New(netstatus.Error))
+		return
+	}
+	networkInstanceInfo := &netstatus.NetworkInstanceInfo
+
+	// Fetch the network that this underlay is attached to
+	bridgeName := networkInstanceInfo.BridgeName
+	vifName := "nbu" + strconv.Itoa(ulNum) + "x" +
+		strconv.Itoa(status.AppNum)
+	uLink, err := findBridge(bridgeName)
+	if err != nil {
+		addError(ctx, status, "findBridge", err)
+		log.Infof("doActivate done for %s\n",
+			config.DisplayName)
+		return
+	}
+	bridgeMac := uLink.HardwareAddr
+	log.Infof("bridgeName %s MAC %s\n",
+		bridgeName, bridgeMac.String())
+
+	var appMac string // Handed to domU
+	if ulConfig.AppMacAddr != nil {
+		appMac = ulConfig.AppMacAddr.String()
+	} else {
+		// Room to handle multiple underlays in 5th byte
+		appMac = fmt.Sprintf("00:16:3e:00:%02x:%02x",
+			ulNum, status.AppNum)
+	}
+	log.Infof("appMac %s\n", appMac)
+
+	// Record what we have so far
+	ulStatus := &status.UnderlayNetworkList[ulNum-1]
+	log.Infof("doActivate ulNum %d: %v\n", ulNum, ulStatus)
+	ulStatus.Name = ulConfig.Name
+	ulStatus.Bridge = bridgeName
+	ulStatus.BridgeMac = bridgeMac
+	ulStatus.Vif = vifName
+	ulStatus.Mac = appMac
+	ulStatus.HostName = config.Key()
+
+	bridgeIPAddr, appIPAddr := getUlAddrs(ctx, ulNum-1,
+		status.AppNum, ulStatus, netstatus)
+	// Check if we have a bridge service with an address
+	bridgeIP, err := getBridgeServiceIPv4Addr(ctx, ulConfig.Network)
+	if err != nil {
+		log.Infof("doActivate: %s\n", err)
+	} else if bridgeIP != "" {
+		bridgeIPAddr = bridgeIP
+	}
+	log.Infof("bridgeIPAddr %s appIPAddr %s\n", bridgeIPAddr, appIPAddr)
+	ulStatus.BridgeIPAddr = bridgeIPAddr
+	// XXX appIPAddr is "" if bridge service
+	ulStatus.AssignedIPAddr = appIPAddr
+	hostsDirpath := runDirname + "/hosts." + bridgeName
+	if appIPAddr != "" {
+		addToHostsConfiglet(hostsDirpath, config.DisplayName,
+			[]string{appIPAddr})
+	}
+
+	// Default ipset
+	deleteDefaultIpsetConfiglet(vifName, false)
+	createDefaultIpsetConfiglet(vifName, netstatus.DnsNameToIPList,
+		appIPAddr)
+
+	// Set up ACLs
+	err = createACLConfiglet(bridgeName, vifName, false,
+		ulConfig.ACLs, bridgeIPAddr, appIPAddr)
+	if err != nil {
+		addError(ctx, status, "createACL", err)
+	}
+
+	if appIPAddr != "" {
+		// XXX clobber any IPv6 EID entry since same name
+		// but that's probably OK since we're doing IPv4 EIDs
+		addhostDnsmasq(bridgeName, appMac, appIPAddr,
+			config.UUIDandVersion.UUID.String())
+	}
+
+	// Look for added or deleted ipsets
+	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
+		networkInstanceInfo.BridgeIPSets)
+
+	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
+		stopDnsmasq(bridgeName, true)
+		createDnsmasqConfiglet(bridgeName,
+			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
+			newIpsets, false)
+		startDnsmasq(bridgeName)
+	}
+	networkInstanceInfo.AddVifToBridge(vifName, appMac,
+		config.UUIDandVersion.UUID)
+	networkInstanceInfo.BridgeIPSets = newIpsets
+	publishNetworkObjectStatus(ctx, netstatus)
+
+	maybeRemoveStaleIpsets(staleIpsets)
+}
+
+func appNetworkDoActivateOverlayNetworks(
+	ctx *zedrouterContext,
+	config types.AppNetworkConfig,
+	status *types.AppNetworkStatus,
+	ipsets []string) bool {
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
 		log.Debugf("olNum %d network %s ACLs %v\n",
@@ -1397,9 +1448,8 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 		netconfig := lookupNetworkObjectConfig(ctx,
 			olConfig.Network.String())
 		if netconfig == nil {
-			// Checked for nil above
-			publishAppNetworkStatus(ctx, status)
-			return
+			log.Fatalf("Cannot find OL NetworkObject %s for App %s",
+				olConfig.Name, config.DisplayName)
 		}
 
 		// Fetch the network that this overlay is attached to
@@ -1430,7 +1480,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 			addError(ctx, status, "findBridge", err)
 			log.Infof("doActivate done for %s\n",
 				config.DisplayName)
-			return
+			return false
 		}
 		bridgeMac := oLink.HardwareAddr
 		log.Infof("bridgeName %s MAC %s\n",
@@ -1478,7 +1528,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 				errors.New(errStr))
 			log.Infof("doActivate done for %s\n",
 				config.DisplayName)
-			return
+			return false
 		}
 
 		var subnetSuffix string
@@ -1498,7 +1548,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 				errors.New(errStr))
 			log.Infof("doActivate done for %s\n",
 				config.DisplayName)
-			return
+			return false
 		}
 		rt := netlink.Route{Dst: ipnet, LinkIndex: oLink.Index}
 		if err := netlink.RouteAdd(&rt); err != nil {
@@ -1508,7 +1558,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 				errors.New(errStr))
 			log.Infof("doActivate done for %s\n",
 				config.DisplayName)
-			return
+			return false
 		}
 
 		// Write our EID hostname in a separate file in directory to
@@ -1543,7 +1593,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 				newIpsets, netstatus.Ipv4Eid)
 			startDnsmasq(bridgeName)
 		}
-		addVifToBridge(netstatus, vifName, appMac,
+		netstatus.AddVifToBridge(vifName, appMac,
 			config.UUIDandVersion.UUID)
 		netstatus.BridgeIPSets = newIpsets
 		publishNetworkObjectStatus(ctx, netstatus)
@@ -1571,129 +1621,263 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 		createAndStartLisp(ctx, *status, olConfig,
 			serviceStatus, lispRunDirname, bridgeName)
 	}
+	return true
+}
 
-	for i, ulConfig := range config.UnderlayNetworkList {
-		ulNum := i + 1
-		log.Debugf("ulNum %d network %s ACLs %v\n",
-			ulNum, ulConfig.Network.String(), ulConfig.ACLs)
+func appNetworkDoCopyNetworksToStatus(
+	config types.AppNetworkConfig,
+	status *types.AppNetworkStatus) {
+	olcount := len(config.OverlayNetworkList)
+	if olcount > 0 {
+		log.Infof("Received olcount %d\n", olcount)
+	}
+	// XXX are we clobbering? Create in handleCreate?
+	// XXX can count change for inactivate/activate?
+	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
+		olcount)
+	for i, _ := range config.OverlayNetworkList {
+		status.OverlayNetworkList[i].OverlayNetworkConfig =
+			config.OverlayNetworkList[i]
+	}
+	ulcount := len(config.UnderlayNetworkList)
+	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus,
+		ulcount)
+	for i, _ := range config.UnderlayNetworkList {
+		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
+			config.UnderlayNetworkList[i]
+	}
+
+}
+
+func appNetworkCheckAllNetworksExist(
+	ctx *zedrouterContext,
+	config types.AppNetworkConfig,
+	status *types.AppNetworkStatus) bool {
+
+	// Check networks for OL
+	for _, olConfig := range config.OverlayNetworkList {
+		netconfig := lookupNetworkObjectConfig(ctx,
+			olConfig.Network.String())
+		if netconfig != nil {
+			continue
+		}
+		// XXX no olStatus yet!
+		errStr := fmt.Sprintf("Missing overlay network %s for %s/%s",
+			olConfig.Network.String(),
+			config.UUIDandVersion, config.DisplayName)
+		log.Infof("doActivate failed: %s\n", errStr)
+		addError(ctx, status, "doActivate overlay",
+			errors.New(errStr))
+		return false
+	}
+
+	// Check networks for Underlay
+	for _, ulConfig := range config.UnderlayNetworkList {
 		netconfig := lookupNetworkObjectConfig(ctx,
 			ulConfig.Network.String())
-		if netconfig == nil {
-			// Checked for nil above
-			publishAppNetworkStatus(ctx, status)
-			return
-		}
-
-		// Fetch the network that this underlay is attached to
-		netstatus := lookupNetworkObjectStatus(ctx,
-			ulConfig.Network.String())
-		if netstatus == nil {
-			errStr := fmt.Sprintf("no status for %s",
-				ulConfig.Network.String())
-			err := errors.New(errStr)
-			addError(ctx, status, "doActivate underlay", err)
+		if netconfig != nil {
 			continue
 		}
-		if netstatus.Error != "" {
-			log.Errorf("doActivate sees network error %s\n",
-				netstatus.Error)
-			addError(ctx, status, "netstatus.Error",
-				errors.New(netstatus.Error))
-			continue
-		}
-		bridgeName := netstatus.BridgeName
-		vifName := "nbu" + strconv.Itoa(ulNum) + "x" +
-			strconv.Itoa(status.AppNum)
-		uLink, err := findBridge(bridgeName)
-		if err != nil {
-			addError(ctx, status, "findBridge", err)
-			log.Infof("doActivate done for %s\n",
-				config.DisplayName)
-			return
-		}
-		bridgeMac := uLink.HardwareAddr
-		log.Infof("bridgeName %s MAC %s\n",
-			bridgeName, bridgeMac.String())
+		// XXX no ulStatus yet!
+		errStr := fmt.Sprintf("Missing underlay network %s for %s/%s",
+			ulConfig.Network.String(),
+			config.UUIDandVersion, config.DisplayName)
+		log.Infof("doActivate failed: %s\n", errStr)
+		addError(ctx, status, "doActivate underlay",
+			errors.New(errStr))
+		return false
+	}
+	return true
+}
 
-		var appMac string // Handed to domU
-		if ulConfig.AppMacAddr != nil {
-			appMac = ulConfig.AppMacAddr.String()
-		} else {
-			// Room to handle multiple underlays in 5th byte
-			appMac = fmt.Sprintf("00:16:3e:00:%02x:%02x",
-				ulNum, status.AppNum)
-		}
-		log.Infof("appMac %s\n", appMac)
+func doActivateAppInstanceWithMgmtLisp(
+	ctx *zedrouterContext,
+	config types.AppNetworkConfig,
+	status *types.AppNetworkStatus) {
+	log.Infof("doActivate: for %s IsZedmanager\n",
+		config.DisplayName)
+	if len(config.OverlayNetworkList) != 1 ||
+		len(config.UnderlayNetworkList) != 0 {
+		// XXX report IsZedmanager error to cloud?
+		err := errors.New("Malformed IsZedmanager config; ignored")
+		addError(ctx, status, "IsZedmanager", err)
+		log.Infof("doActivate done for %s\n",
+			config.DisplayName)
+		return
+	}
+	ctx.legacyDataPlane = config.LegacyDataPlane
+	dataplaneConfig := types.LispDataplaneConfig{
+		Legacy: ctx.legacyDataPlane,
+	}
+	publishLispDataplaneConfig(ctx, &dataplaneConfig)
 
-		// Record what we have so far
-		ulStatus := &status.UnderlayNetworkList[ulNum-1]
-		log.Infof("doActivate ulNum %d: %v\n", ulNum, ulStatus)
-		ulStatus.Name = ulConfig.Name
-		ulStatus.Bridge = bridgeName
-		ulStatus.BridgeMac = bridgeMac
-		ulStatus.Vif = vifName
-		ulStatus.Mac = appMac
-		ulStatus.HostName = config.Key()
+	// Use this olIfname to name files
+	// XXX some files might not be used until Zedmanager becomes
+	// a domU at which point IsZedMansger boolean won't be needed
+	olConfig := config.OverlayNetworkList[0]
+	olNum := 1
+	olIfname := "dbo" + strconv.Itoa(olNum) + "x" +
+		strconv.Itoa(status.AppNum)
+	// Assume there is no UUID for management overlay
 
-		bridgeIPAddr, appIPAddr := getUlAddrs(ctx, ulNum-1,
-			status.AppNum, ulStatus, netstatus)
-		// Check if we have a bridge service with an address
-		bridgeIP, err := getBridgeServiceIPv4Addr(ctx, ulConfig.Network)
-		if err != nil {
-			log.Infof("doActivate: %s\n", err)
-		} else if bridgeIP != "" {
-			bridgeIPAddr = bridgeIP
-		}
-		log.Infof("bridgeIPAddr %s appIPAddr %s\n", bridgeIPAddr, appIPAddr)
-		ulStatus.BridgeIPAddr = bridgeIPAddr
-		// XXX appIPAddr is "" if bridge service
-		ulStatus.AssignedIPAddr = appIPAddr
-		hostsDirpath := runDirname + "/hosts." + bridgeName
-		if appIPAddr != "" {
-			addToHostsConfiglet(hostsDirpath, config.DisplayName,
-				[]string{appIPAddr})
-		}
+	// Create olIfname dummy interface with EID and fd00::/8 route
+	// pointing at it.
+	// XXX also a separate route for eidAllocationPrefix if global
 
-		// Default ipset
-		deleteDefaultIpsetConfiglet(vifName, false)
-		createDefaultIpsetConfiglet(vifName, netstatus.DnsNameToIPList,
-			appIPAddr)
+	// Start clean
+	attrs := netlink.NewLinkAttrs()
+	attrs.Name = olIfname
+	oLink := &netlink.Dummy{LinkAttrs: attrs}
+	netlink.LinkDel(oLink)
 
-		// Set up ACLs
-		err = createACLConfiglet(bridgeName, vifName, false,
-			ulConfig.ACLs, bridgeIPAddr, appIPAddr)
-		if err != nil {
-			addError(ctx, status, "createACL", err)
-		}
+	//    ip link add ${olIfname} type dummy
+	attrs = netlink.NewLinkAttrs()
+	attrs.Name = olIfname
+	// Note: we ignore olConfig.AppMacAddr for IsMgmt
+	olIfMac := fmt.Sprintf("00:16:3e:02:%02x:%02x", olNum,
+		status.AppNum)
+	hw, err := net.ParseMAC(olIfMac)
+	if err != nil {
+		log.Fatal("ParseMAC failed: ", olIfMac, err)
+	}
+	attrs.HardwareAddr = hw
+	oLink = &netlink.Dummy{LinkAttrs: attrs}
+	if err := netlink.LinkAdd(oLink); err != nil {
+		errStr := fmt.Sprintf("LinkAdd on %s failed: %s",
+			olIfname, err)
+		addError(ctx, status, "IsZedmanager",
+			errors.New(errStr))
+	}
 
-		if appIPAddr != "" {
-			// XXX clobber any IPv6 EID entry since same name
-			// but that's probably OK since we're doing IPv4 EIDs
-			addhostDnsmasq(bridgeName, appMac, appIPAddr,
-				config.UUIDandVersion.UUID.String())
-		}
+	// ip link set ${olIfname} mtu 1280
+	if err := netlink.LinkSetMTU(oLink, 1280); err != nil {
+		errStr := fmt.Sprintf("LinkSetMTU on %s failed: %s",
+			olIfname, err)
+		addError(ctx, status, "IsZedmanager",
+			errors.New(errStr))
+	}
 
-		// Look for added or deleted ipsets
-		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
-			netstatus.BridgeIPSets)
+	//    ip link set ${olIfname} up
+	if err := netlink.LinkSetUp(oLink); err != nil {
+		errStr := fmt.Sprintf("LinkSetUp on %s failed: %s",
+			olIfname, err)
+		addError(ctx, status, "IsZedmanager",
+			errors.New(errStr))
+	}
 
-		if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-			stopDnsmasq(bridgeName, true)
-			createDnsmasqConfiglet(bridgeName,
-				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-				newIpsets, false)
-			startDnsmasq(bridgeName)
-		}
-		addVifToBridge(netstatus, vifName, appMac,
-			config.UUIDandVersion.UUID)
-		netstatus.BridgeIPSets = newIpsets
-		publishNetworkObjectStatus(ctx, netstatus)
+	//    ip link set ${olIfname} arp on
+	if err := netlink.LinkSetARPOn(oLink); err != nil {
+		errStr := fmt.Sprintf("LinkSetARPOn on %s failed: %s",
+			olIfname, err)
+		addError(ctx, status, "IsZedmanager",
+			errors.New(errStr))
+	}
 
-		maybeRemoveStaleIpsets(staleIpsets)
+	// Configure the EID on olIfname and set up a default route
+	// for all fd00 EIDs
+	//    ip addr add ${EID}/128 dev ${olIfname}
+	EID := olConfig.EID
+	addr, err := netlink.ParseAddr(EID.String() + "/128")
+	if err != nil {
+		errStr := fmt.Sprintf("ParseAddr %s failed: %s",
+			EID, err)
+		addError(ctx, status, "IsZedmanager",
+			errors.New(errStr))
+		log.Infof("doActivate done for %s\n",
+			config.DisplayName)
+		return
+	}
+	if err := netlink.AddrAdd(oLink, addr); err != nil {
+		errStr := fmt.Sprintf("AddrAdd %s failed: %s", EID, err)
+		addError(ctx, status, "IsZedmanager",
+			errors.New(errStr))
+	}
+
+	//    ip route add fd00::/8 via fe80::1 dev $intf
+	index := oLink.Attrs().Index
+	_, ipnet, err := net.ParseCIDR("fd00::/8")
+	if err != nil {
+		log.Fatal("ParseCIDR fd00::/8 failed:\n", err)
+	}
+	via := net.ParseIP("fe80::1")
+	if via == nil {
+		log.Fatal("ParseIP fe80::1 failed: ", err)
+	}
+	// Need to do both an add and a change since we could have
+	// a FAILED neighbor entry from a previous run and a down
+	// interface.
+	//    ip nei add fe80::1 lladdr 00:16:3e:02:01:00 dev $intf
+	//    ip nei change fe80::1 lladdr 00:16:3e:02:01:00 dev $intf
+	neigh := netlink.Neigh{LinkIndex: index, IP: via,
+		HardwareAddr: hw, State: netlink.NUD_PERMANENT}
+	if err := netlink.NeighAdd(&neigh); err != nil {
+		errStr := fmt.Sprintf("NeighAdd fe80::1 failed: %s",
+			err)
+		addError(ctx, status, "IsZedmanager",
+			errors.New(errStr))
+	}
+	if err := netlink.NeighSet(&neigh); err != nil {
+		errStr := fmt.Sprintf("NeighSet fe80::1 failed: %s",
+			err)
+		addError(ctx, status, "IsZedmanager",
+			errors.New(errStr))
+	}
+
+	rt := netlink.Route{Dst: ipnet, LinkIndex: index, Gw: via}
+	if err := netlink.RouteAdd(&rt); err != nil {
+		errStr := fmt.Sprintf("RouteAdd fd00::/8 failed: %s",
+			err)
+		addError(ctx, status, "IsZedmanager",
+			errors.New(errStr))
+	}
+
+	// XXX NOTE: this hosts file is not read!
+	// XXX easier when Zedmanager is in separate domU!
+	// Create a hosts file for the overlay based on DnsNameToIPList
+	// Directory is /var/run/zedrouter/hosts.${OLIFNAME}
+	// Each hostname in a separate file in directory to facilitate
+	// adds and deletes
+	hostsDirpath := runDirname + "/hosts." + olIfname
+	deleteHostsConfiglet(hostsDirpath, false)
+	createHostsConfiglet(hostsDirpath, olConfig.MgmtDnsNameToIPList)
+
+	// Default ipset
+	deleteDefaultIpsetConfiglet(olIfname, false)
+	createDefaultIpsetConfiglet(olIfname, olConfig.MgmtDnsNameToIPList,
+		EID.String())
+
+	// Set up ACLs
+	err = createACLConfiglet(olIfname, olIfname, true, olConfig.ACLs,
+		"", "")
+	if err != nil {
+		addError(ctx, status, "createACL", err)
+	}
+
+	// Save information about zedmanger EID and additional info
+	deviceEID = EID
+	deviceIID = olConfig.MgmtIID
+	additionalInfoDevice = olConfig.AdditionalInfoDevice
+
+	additionalInfo := generateAdditionalInfo(*status, olConfig)
+
+	// Create LISP configlets for IID and EID/signature
+	createLispConfiglet(lispRunDirname, config.IsZedmanager,
+		olConfig.MgmtIID, olConfig.EID, nil,
+		olConfig.LispSignature,
+		*ctx.deviceNetworkStatus, olIfname, olIfname,
+		additionalInfo, olConfig.MgmtMapServers,
+		ctx.legacyDataPlane)
+	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
+		len(config.OverlayNetworkList))
+	for i, _ := range config.OverlayNetworkList {
+		status.OverlayNetworkList[i].OverlayNetworkConfig =
+			config.OverlayNetworkList[i]
+		// XXX set BridgeName, BridgeIPAddr?
 	}
 	status.Activated = true
 	publishAppNetworkStatus(ctx, status)
 	log.Infof("doActivate done for %s\n", config.DisplayName)
+	return
 }
 
 // Called when a NetworkObject is added
@@ -1848,6 +2032,55 @@ func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
 		log.Infof("getUlAddrs(%d/%d for %s) app Mac %s\n",
 			ifnum, appNum, netstatus.UUID.String(), mac.String())
 		addr, err := lookupOrAllocateIPv4(ctx, netstatus, mac)
+		if err != nil {
+			log.Errorf("lookupOrAllocateIPv4 failed %s\n", err)
+		} else {
+			appIPAddr = addr
+		}
+	}
+	log.Infof("getUlAddrs(%d/%d) done %s/%s\n",
+		ifnum, appNum, bridgeIPAddr, appIPAddr)
+	return bridgeIPAddr, appIPAddr
+}
+
+// XXX Need additional logic for IPv6 underlays.
+func getUlAddrsForNetworkInstance(ctx *zedrouterContext,
+	ifnum int, appNum int,
+	status *types.UnderlayNetworkStatus,
+	netInstStatus *types.NetworkInstanceStatus) (string, string) {
+
+	log.Infof("getUlAddrs(%d/%d)\n", ifnum, appNum)
+
+	bridgeIPAddr := ""
+	appIPAddr := ""
+
+	// Allocate bridgeIPAddr based on BridgeMac
+	log.Infof("getUlAddrs(%d/%d for %s) bridgeMac %s\n",
+		ifnum, appNum, netInstStatus.UUID.String(),
+		status.BridgeMac.String())
+	addr, err := lookupOrAllocateIPv4ForNetworkInstance(ctx, netInstStatus,
+		status.BridgeMac)
+	if err != nil {
+		log.Errorf("lookupOrAllocatePv4 failed %s\n", err)
+	} else {
+		bridgeIPAddr = addr
+	}
+
+	if status.AppIPAddr != nil {
+		// Static IP assignment case.
+		// Note that appIPAddr can be in a different subnet.
+		// Assumption is that the config specifies a gateway/router
+		// in the same subnet as the static address.
+		appIPAddr = status.AppIPAddr.String()
+	} else if status.Mac != "" {
+		// XXX or change type of VifInfo.Mac to avoid parsing?
+		mac, err := net.ParseMAC(status.Mac)
+		if err != nil {
+			log.Fatal("ParseMAC failed: ", status.Mac, err)
+		}
+		log.Infof("getUlAddrs(%d/%d for %s) app Mac %s\n",
+			ifnum, appNum, netInstStatus.UUID.String(), mac.String())
+		addr, err := lookupOrAllocateIPv4ForNetworkInstance(ctx, netInstStatus, mac)
 		if err != nil {
 			log.Errorf("lookupOrAllocateIPv4 failed %s\n", err)
 		} else {
@@ -2029,7 +2262,7 @@ func handleModify(ctx *zedrouterContext, key string,
 				newIpsets, netstatus.Ipv4Eid)
 			startDnsmasq(bridgeName)
 		}
-		removeVifFromBridge(netstatus, olStatus.Vif)
+		netstatus.NetworkInstanceInfo.DelVif(olStatus.Vif)
 		netstatus.BridgeIPSets = newIpsets
 		publishNetworkObjectStatus(ctx, netstatus)
 
@@ -2113,7 +2346,7 @@ func handleModify(ctx *zedrouterContext, key string,
 				newIpsets, false)
 			startDnsmasq(bridgeName)
 		}
-		removeVifFromBridge(netstatus, ulStatus.Vif)
+		netstatus.DelVif(ulStatus.Vif)
 		netstatus.BridgeIPSets = newIpsets
 		publishNetworkObjectStatus(ctx, netstatus)
 
