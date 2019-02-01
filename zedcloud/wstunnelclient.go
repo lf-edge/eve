@@ -4,10 +4,7 @@
 package zedcloud
 
 import (
-	"bufio"
 	"bytes"
-	"crypto/tls"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -22,72 +19,53 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var localConnection net.Conn
+const (
+	maxRetryAttempts = 50
+)
 
-// WSTunnelClient represents a persistent tunnel that can cycle through many websockets. The
-// fields in this struct are relatively static/constant. The conn field points to the latest
-// websocket, but it's important to realize that there may be goroutines handling older
+// WSTunnelClient represents a persistent tunnel that can cycle through many websockets.
+// The conn field points to the latest websocket,
+// but it's important to realize that there may be goroutines handling older
 // websockets that are not fully closed yet running at any point in time
 type WSTunnelClient struct {
 	TunnelServerName string        // hostname[:port] string representation of remote tunnel server
-	Tunnel           string        // websocket server to connect to (ws[s]://hostname:port)
-	Server           string        // local HTTP(S) server to send received requests to (default server)
-	Insecure         bool          // accept self-signed SSL certs from local HTTPS servers
+	Tunnel           string        // websocket server to connect to (ws[s]://hostname[:port])
+	Server           string        // local HTTP(S) server to send received requests to
 	Timeout          time.Duration // timeout on websocket
 	Proxy            *url.URL      // if non-nil, external proxy to use
-	Connected        bool          // true when we have an active connection to wstunsrv
+	Connected        bool          // true when we have an active connection to remote server
 	exitChan         chan struct{} // channel to tell the tunnel goroutines to end
-	conn             *WSConnection
+	conn             *WSConnection // reference to remote websocket connection
+	failRetryCount   int           // no of times the ws connection attempts have continuously failed
 }
 
 // WSConnection represents a single websocket connection
 type WSConnection struct {
-	ws  *websocket.Conn // websocket connection
-	tun *WSTunnelClient // link back to tunnel
+	ws              *websocket.Conn // websocket connection
+	tun             *WSTunnelClient // link back to tunnel
+	localConnection net.Conn        // connection to local relay
 }
 
-var httpClient http.Client // client used for all requests, gets special transport for -insecure
+var wsWriterMutex sync.Mutex // mutex to allow a single goroutine to send a response at a time
+var connMutex sync.Mutex     // mutex to allow a single goroutine to check and re-initialize connection if required
 
+// InitializeTunnelClient returns a websocket tunnel client configured with the
+// requested remote and local servers.
 func InitializeTunnelClient(serverName string, localRelay string) *WSTunnelClient {
 	tunnelClient := WSTunnelClient{
 		TunnelServerName: serverName,
 		Tunnel:           "wss://" + serverName,
 		Server:           localRelay,
-		Insecure:         false,
 		Timeout:          calcWsTimeout(30),
 	}
-
-	//TODO enable proxy
-	/*if *proxy == "" {
-		envNames := []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"}
-		for _, n := range envNames {
-			if p := os.Getenv(n); p != "" {
-				*proxy = p
-				break
-			}
-		}
-	}
-	if *proxy != "" {
-		proxyURL, err := url.Parse(*proxy)
-		if err != nil || !strings.HasPrefix(proxyURL.Scheme, "http") {
-			// proxy was bogus. Try prepending "http://" to it and
-			// see if that parses correctly. If not, we fall
-			// through and complain about the original one.
-			if proxyURL, err = url.Parse("http://" + *proxy); err != nil {
-				////log.Printf(fmt.Sprintf("Invalid proxy address: %q, %v", *proxy, err.Error()))
-			}
-		}
-
-		tunnelClient.Proxy = proxyURL
-	}*/
 
 	return &tunnelClient
 }
 
-// Start connection to tunnel server
-func (t *WSTunnelClient) Start() {
+// Start triggers the connection to remote tunnel server
+func (t *WSTunnelClient) Start(proxyURL *url.URL) {
 	go func() {
-		t.SetupConnection()
+		t.SetupConnection(proxyURL)
 		<-make(chan struct{}, 0)
 	}()
 }
@@ -95,9 +73,8 @@ func (t *WSTunnelClient) Start() {
 // SetupConnection connects to configured backend on a
 // secure websocket and waits for commands from the backend
 // to forward to local relay.
-func (t *WSTunnelClient) SetupConnection() error {
+func (t *WSTunnelClient) SetupConnection(proxyURL *url.URL) error {
 
-	// validate -tunnel
 	if t.Tunnel == "" {
 		return fmt.Errorf("Must specify tunnel server ws://hostname:port using -tunnel option")
 	}
@@ -106,7 +83,6 @@ func (t *WSTunnelClient) SetupConnection() error {
 	}
 	t.Tunnel = strings.TrimSuffix(t.Tunnel, "/")
 
-	// validate -server
 	if t.Server != "" {
 		if strings.HasPrefix(t.Server, "http://") && strings.HasPrefix(t.Server, "https://") {
 			return fmt.Errorf("Local server relay must not begin with http:// or https://")
@@ -114,31 +90,19 @@ func (t *WSTunnelClient) SetupConnection() error {
 		t.Server = strings.TrimSuffix(t.Server, "/")
 	}
 
-	if t.Insecure {
-		log.Println("Accepting unverified SSL certs from local HTTPS servers")
-		tr := &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-		}
-		httpClient = http.Client{Transport: tr}
-	}
-
 	if t.Server == "" {
 		return fmt.Errorf("Must specify server")
 	}
 
-	/*if t.Proxy != nil {
-		username := "(none)"
-		if u := t.Proxy.User; u != nil {
-			username = u.Username()
-		}
-		log.Println("Using HTTPS proxy", "url", t.Proxy.Host, "user", username)
-	}*/
+	if proxyURL != nil {
+		t.Proxy = proxyURL
+	}
 
 	// signal that tells tunnel client to exit instead of reopening
 	// a fresh connection.
 	t.exitChan = make(chan struct{}, 1)
+
+	t.failRetryCount = 0
 
 	// Keep opening websocket connections to tunnel requests
 	go func() {
@@ -152,11 +116,14 @@ func (t *WSTunnelClient) SetupConnection() error {
 				log.Fatal(err)
 			}
 			dialer := &websocket.Dialer{
-				//NetDial:         t.wsProxyDialer,
 				ReadBufferSize:  100 * 1024,
 				WriteBufferSize: 100 * 1024,
 				TLSClientConfig: tlsConfig,
 			}
+			if t.Proxy != nil {
+				dialer.Proxy = http.ProxyURL(t.Proxy)
+			}
+
 			url := fmt.Sprintf("%s/api/v1/edgedevice/connection/tunnel", t.Tunnel)
 			log.Printf("Attempting WS connection to url: %s", url)
 
@@ -173,12 +140,18 @@ func (t *WSTunnelClient) SetupConnection() error {
 					resp.Body.Close()
 				}
 				log.Printf("Error opening connection: %v, response: %v", err.Error(), resp)
+				t.failRetryCount++
+				if t.failRetryCount == maxRetryAttempts {
+					log.Errorf("Initiating tunnel client shutdown after %d failed attempts.", maxRetryAttempts)
+					t.Stop()
+				}
 			} else {
 				t.conn = &WSConnection{ws: ws, tun: t}
 				// Safety setting
 				ws.SetReadLimit(100 * 1024 * 1024)
 				// Request Loop
 				t.Connected = true
+				t.failRetryCount = 0
 				t.conn.handleRequests()
 				t.Connected = false
 			}
@@ -310,78 +283,7 @@ func (wsc *WSConnection) pinger() {
 	wsc.ws.Close()
 }
 
-//===== Proxy support =====
-// Bits of this taken from golangs net/http/transport.go. Gorilla websocket lib
-// allows you to pass in a custom net.Dial function, which it will call instead
-// of net.Dial. net.Dial normally just opens up a tcp socket for you. We go one
-// extra step and issue an HTTP CONNECT command after the socket is open. After
-// HTTP CONNECT is issued and successful, we hand the reins back to gorilla,
-// which will then set up SSL and handle the websocket UPGRADE request.
-// Note this only handles HTTPS connections through the proxy. HTTP requires
-// header rewriting.
-func (t *WSTunnelClient) wsProxyDialer(network string, addr string) (conn net.Conn, err error) {
-	if t.Proxy == nil {
-		log.Printf("WS Connect to : %s::%s", network, addr)
-		return net.Dial(network, addr)
-	}
-
-	conn, err = net.Dial("tcp", t.Proxy.Host)
-	if err != nil {
-		err = fmt.Errorf("WS: error connecting to proxy %s: %s", t.Proxy.Host, err.Error())
-		return nil, err
-	}
-
-	pa := proxyAuth(t.Proxy)
-
-	connectReq := &http.Request{
-		Method: "CONNECT",
-		URL:    &url.URL{Opaque: addr},
-		Host:   addr,
-		Header: make(http.Header),
-	}
-
-	if pa != "" {
-		connectReq.Header.Set("Proxy-Authorization", pa)
-	}
-	connectReq.Write(conn)
-
-	// Read and parse CONNECT response.
-	br := bufio.NewReader(conn)
-	resp, err := http.ReadResponse(br, connectReq)
-	if err != nil {
-		conn.Close()
-		return nil, err
-	}
-	if resp.StatusCode != 200 {
-		f := strings.SplitN(resp.Status, " ", 2)
-		conn.Close()
-		return nil, fmt.Errorf(f[1])
-	}
-	return conn, nil
-}
-
-// proxyAuth returns the Proxy-Authorization header to set
-// on requests, if applicable.
-func proxyAuth(proxy *url.URL) string {
-	if u := proxy.User; u != nil {
-		username := u.Username()
-		password, _ := u.Password()
-		return "Basic " + basicAuth(username, password)
-	}
-	return ""
-}
-
-// See 2 (end of page 4) http://www.ietf.org/rfc/rfc2617.txt
-func basicAuth(username, password string) string {
-	auth := username + ":" + password
-	return base64.StdEncoding.EncodeToString([]byte(auth))
-}
-
 //===== TCP driver and response sender =====
-
-var wsWriterMutex sync.Mutex // mutex to allow a single goroutine to send a response at a time
-var connMutex sync.Mutex     //mutex to allow a single goroutine to check and re-initialize connection if required
-
 func (wsc *WSConnection) processRequest(id int16, req []byte) (err error) {
 
 	host := wsc.tun.Server
@@ -390,7 +292,7 @@ func (wsc *WSConnection) processRequest(id int16, req []byte) (err error) {
 	}
 	//log.Printf("[id=%d] Forwarding request: %v to local connection: %s", id, string(req), host)
 	for tries := 1; tries <= 3; tries++ {
-		_, err := localConnection.Write(req)
+		_, err := wsc.localConnection.Write(req)
 		if err == nil {
 			//log.Printf("[id=%d] Completed writing request: \"%s\" to local connection", id, string(req))
 			break
@@ -410,8 +312,8 @@ func (wsc *WSConnection) refreshLocalConnection(host string, forceCreate bool) (
 	connMutex.Lock()
 	defer connMutex.Unlock()
 
-	if localConnection != nil && !forceCreate {
-		c := localConnection
+	if wsc.localConnection != nil && !forceCreate {
+		c := wsc.localConnection
 		one := []byte{}
 		c.SetReadDeadline(time.Now())
 		_, err := c.Read(one)
@@ -442,7 +344,7 @@ func (wsc *WSConnection) dialLocalConnection(host string) (err error) {
 	}
 
 	log.Printf("Initializing local server connection: %s", host)
-	localConnection, err = net.Dial("tcp", host)
+	wsc.localConnection, err = net.Dial("tcp", host)
 	if err != nil {
 		log.Errorf("Could not connect to local server: %s, error: %s", host, err.Error())
 		return err
@@ -453,9 +355,9 @@ func (wsc *WSConnection) dialLocalConnection(host string) (err error) {
 
 func (wsc *WSConnection) listenForResponse(id int16) {
 	//log.Printf("[id=%d] Waiting for response on local connection", id)
-	localConnection.SetReadDeadline(time.Now().Add(5 * time.Second))
+	wsc.localConnection.SetReadDeadline(time.Now().Add(5 * time.Second))
 	responseBuffer := make([]byte, 8192)
-	num, err := localConnection.Read(responseBuffer)
+	num, err := wsc.localConnection.Read(responseBuffer)
 	if err != nil {
 		//log.Printf("[id=%d] Could not read response on local connection: %s", id, err.Error())
 	} else {
