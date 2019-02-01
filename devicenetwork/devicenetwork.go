@@ -169,10 +169,10 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 				u.IfName, addr.IP)
 			globalStatus.Ports[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
 		}
-		// Get DNS info from dhcpcd. Updates DomainName and DnsServers
-		err = GetDnsInfo(&globalStatus.Ports[ix])
+		// Get DNS etc info from dhcpcd. Updates DomainName and DnsServers
+		err = GetDhcpInfo(&globalStatus.Ports[ix])
 		if err != nil {
-			errStr := fmt.Sprintf("GetDnsInfo failed %s", err)
+			errStr := fmt.Sprintf("GetDhcpInfo failed %s", err)
 			globalStatus.Ports[ix].Error = errStr
 			globalStatus.Ports[ix].ErrorTime = time.Now()
 		}
