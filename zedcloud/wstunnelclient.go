@@ -108,6 +108,10 @@ func (t *WSTunnelClient) SetupConnection(proxyURL *url.URL) error {
 	go func() {
 		log.Debug("Looping through websocket connection requests")
 		for {
+			if t.failRetryCount == maxRetryAttempts {
+				log.Errorf("Shutting down tunnel client after %d failed attempts.", maxRetryAttempts)
+				break
+			}
 			// Retry timer of 30 seconds between attempts.
 			timer := time.NewTimer(30 * time.Second)
 
@@ -141,10 +145,6 @@ func (t *WSTunnelClient) SetupConnection(proxyURL *url.URL) error {
 				}
 				log.Errorf("Error opening connection: %v, response: %v", err.Error(), resp)
 				t.failRetryCount++
-				if t.failRetryCount == maxRetryAttempts {
-					log.Errorf("Initiating tunnel client shutdown after %d failed attempts.", maxRetryAttempts)
-					t.Stop()
-				}
 			} else {
 				t.conn = &WSConnection{ws: ws, tun: t}
 				// Safety setting
@@ -167,13 +167,12 @@ func (t *WSTunnelClient) SetupConnection(proxyURL *url.URL) error {
 		}
 	}()
 
-	log.Info("Shutting down WS tunnel client and exiting.")
 	return nil
 }
 
 // Stop tunnel client
 func (t *WSTunnelClient) Stop() {
-	log.Info("Stopping WS tunnel client")
+	log.Info("Shutting down WS tunnel client and exiting.")
 	t.exitChan <- struct{}{}
 }
 
