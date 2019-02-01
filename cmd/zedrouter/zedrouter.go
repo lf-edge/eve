@@ -2407,112 +2407,17 @@ func handleDelete(ctx *zedrouterContext, key string,
 	log.Infof("handleDelete done for %s\n", status.DisplayName)
 }
 
-func doInactivateAppNetwork(ctx *zedrouterContext, status *types.AppNetworkStatus) {
+func doInactivateAppNetwork(ctx *zedrouterContext,
+	status *types.AppNetworkStatus) {
 
-	log.Infof("doInactivate(%v) for %s\n",
-		status.UUIDandVersion, status.DisplayName)
-	appNum := status.AppNum
+	log.Infof("doInactivate(%v) for %s, IsZedManager:%t\n",
+		status.UUIDandVersion, status.DisplayName, status.IsZedmanager)
 
 	if status.IsZedmanager {
-		if len(status.OverlayNetworkList) != 1 ||
-			len(status.UnderlayNetworkList) != 0 {
-			errStr := "Malformed IsZedmanager status; ignored"
-			addError(ctx, status, "doInactivate",
-				errors.New(errStr))
-			log.Infof("doInactivate done for %s\n",
-				status.DisplayName)
-			return
-		}
-		// Remove global state for device
-		deviceEID = net.IP{}
-		deviceIID = 0
-		additionalInfoDevice = nil
-
-		olNum := 1
-		olStatus := &status.OverlayNetworkList[0]
-		olIfname := "dbo" + strconv.Itoa(olNum) + "x" +
-			strconv.Itoa(appNum)
-		// Assume there is no UUID for management overlay
-
-		// Delete the address from loopback
-		// Delete fd00::/8 route
-		// Delete fe80::1 neighbor
-
-		//    ip addr del ${EID}/128 dev ${olIfname}
-		EID := status.OverlayNetworkList[0].EID
-		addr, err := netlink.ParseAddr(EID.String() + "/128")
-		if err != nil {
-			errStr := fmt.Sprintf("ParseAddr %s failed: %s",
-				EID, err)
-			addError(ctx, status, "doInactivate",
-				errors.New(errStr))
-			log.Infof("doInactivate done for %s\n",
-				status.DisplayName)
-			return
-		}
-		attrs := netlink.NewLinkAttrs()
-		attrs.Name = olIfname
-		oLink := &netlink.Dummy{LinkAttrs: attrs}
-		// XXX can we skip explicit deletes and just remove the oLink?
-		if err := netlink.AddrDel(oLink, addr); err != nil {
-			errStr := fmt.Sprintf("AddrDel %s failed: %s",
-				EID, err)
-			addError(ctx, status, "doInactivate",
-				errors.New(errStr))
-		}
-
-		//    ip route del fd00::/8 via fe80::1 dev $intf
-		index := oLink.Attrs().Index
-		_, ipnet, err := net.ParseCIDR("fd00::/8")
-		if err != nil {
-			log.Fatal("ParseCIDR fd00::/8 failed:\n", err)
-		}
-		via := net.ParseIP("fe80::1")
-		if via == nil {
-			log.Fatal("ParseIP fe80::1 failed: ", err)
-		}
-		rt := netlink.Route{Dst: ipnet, LinkIndex: index, Gw: via}
-		if err := netlink.RouteDel(&rt); err != nil {
-			errStr := fmt.Sprintf("RouteDel fd00::/8 failed: %s",
-				err)
-			addError(ctx, status, "doInactivate",
-				errors.New(errStr))
-		}
-		//    ip nei del fe80::1 lladdr 0:0:0:0:0:1 dev $intf
-		neigh := netlink.Neigh{LinkIndex: index, IP: via}
-		if err := netlink.NeighDel(&neigh); err != nil {
-			errStr := fmt.Sprintf("NeighDel fe80::1 failed: %s",
-				err)
-			addError(ctx, status, "doInactivate",
-				errors.New(errStr))
-		}
-
-		// Remove link and associated addresses
-		netlink.LinkDel(oLink)
-
-		// Delete overlay hosts file
-		hostsDirpath := runDirname + "/hosts." + olIfname
-		deleteHostsConfiglet(hostsDirpath, true)
-
-		// Default ipset
-		deleteDefaultIpsetConfiglet(olIfname, true)
-
-		// Delete ACLs
-		err = deleteACLConfiglet(olIfname, olIfname, true, olStatus.ACLs,
-			"", "")
-		if err != nil {
-			addError(ctx, status, "deleteACL", err)
-		}
-
-		// Delete LISP configlets
-		deleteLispConfiglet(lispRunDirname, true, olStatus.MgmtIID,
-			olStatus.EID, olStatus.AppIPAddr,
-			*ctx.deviceNetworkStatus, ctx.legacyDataPlane)
-		status.Activated = false
-		publishAppNetworkStatus(ctx, status)
-		log.Infof("doInactivate done for %s\n", status.DisplayName)
+		doInactivateAppNetworkWithMgmtLisp(ctx, status)
 		return
 	}
+
 	// Note that with IPv4/IPv6/LISP interfaces the domU can do
 	// dns lookups on either IPv4 and IPv6 on any interface, hence should
 	// configure the ipsets for all the domU's interfaces/bridges.
@@ -2521,6 +2426,109 @@ func doInactivateAppNetwork(ctx *zedrouterContext, status *types.AppNetworkStatu
 		status.UnderlayNetworkList, status.Key())
 
 	// Delete everything for overlay
+	appNetworkDoInactivateOverlayNetworks(ctx, status, ipsets)
+
+	// Delete everything in underlay
+	appNetworkDoInactivateUnderlayNetworks(ctx, status, ipsets)
+
+	status.Activated = false
+	publishAppNetworkStatus(ctx, status)
+	log.Infof("doInactivate done for %s\n", status.DisplayName)
+}
+
+func appNetworkDoInactivateUnderlayNetworks(ctx *zedrouterContext,
+	status *types.AppNetworkStatus,
+	ipsets []string) {
+	for ulNum := 1; ulNum <= len(status.UnderlayNetworkList); ulNum++ {
+		log.Debugf("doInactivate ulNum %d\n", ulNum)
+
+		// Need to check that index exists
+		if len(status.UnderlayNetworkList) < ulNum {
+			log.Infof("Missing status for underlay %d; can not clean up\n",
+				ulNum)
+			continue
+		}
+		ulStatus := &status.UnderlayNetworkList[ulNum-1]
+		log.Infof("doInactivate ulNum %d: %v\n", ulNum, ulStatus)
+		bridgeName := ulStatus.Bridge
+
+		netconfig := lookupNetworkObjectConfig(ctx,
+			ulStatus.Network.String())
+		if netconfig == nil {
+			errStr := fmt.Sprintf("no network config for %s",
+				ulStatus.Network.String())
+			err := errors.New(errStr)
+			addError(ctx, status, "lookupNetworkObjectConfig", err)
+			continue
+		}
+		netstatus := lookupNetworkObjectStatus(ctx,
+			ulStatus.Network.String())
+		if netstatus == nil {
+			// We had a netconfig but no status!
+			errStr := fmt.Sprintf("no network status for %s",
+				ulStatus.Network.String())
+			err := errors.New(errStr)
+			addError(ctx, status, "doInactivate underlay", err)
+			continue
+		}
+		// We ignore any errors in netstatus
+
+		if ulStatus.Mac != "" {
+			// XXX or change type of VifInfo.Mac?
+			mac, err := net.ParseMAC(ulStatus.Mac)
+			if err != nil {
+				log.Fatal("ParseMAC failed: ",
+					ulStatus.Mac, err)
+			}
+			err = releaseIPv4(ctx, netstatus, mac)
+			if err != nil {
+				// XXX publish error?
+				addError(ctx, status, "releaseIPv4", err)
+			}
+		}
+
+		appIPAddr := ulStatus.AssignedIPAddr
+		if appIPAddr != "" {
+			removehostDnsmasq(bridgeName, ulStatus.Mac,
+				appIPAddr)
+		}
+
+		// XXX Could ulStatus.Vif not be set? Means we didn't add
+		if ulStatus.Vif != "" {
+			err := deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
+				ulStatus.ACLs, ulStatus.BridgeIPAddr, appIPAddr)
+			if err != nil {
+				addError(ctx, status, "deleteACL", err)
+			}
+		} else {
+			log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
+				status.UUIDandVersion, bridgeName,
+				status.DisplayName)
+		}
+
+		// Delete underlay hosts file for this app
+		hostsDirpath := runDirname + "/hosts." + bridgeName
+		removeFromHostsConfiglet(hostsDirpath,
+			status.DisplayName)
+		// Look for added or deleted ipsets
+		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
+			netstatus.BridgeIPSets)
+
+		if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
+			stopDnsmasq(bridgeName, true)
+			createDnsmasqConfiglet(bridgeName,
+				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
+				newIpsets, false)
+			startDnsmasq(bridgeName)
+		}
+		netstatus.BridgeIPSets = newIpsets
+		maybeRemoveStaleIpsets(staleIpsets)
+	}
+}
+
+func appNetworkDoInactivateOverlayNetworks(ctx *zedrouterContext,
+	status *types.AppNetworkStatus,
+	ipsets []string) {
 	for olNum := 1; olNum <= len(status.OverlayNetworkList); olNum++ {
 		log.Debugf("doInactivate olNum %d\n", olNum)
 
@@ -2608,101 +2616,118 @@ func doInactivateAppNetwork(ctx *zedrouterContext, status *types.AppNetworkStatu
 			olStatus.AppIPAddr, *ctx.deviceNetworkStatus,
 			ctx.legacyDataPlane)
 	}
-
 	// XXX check if any IIDs are now unreferenced and delete them
 	// XXX requires looking at all of configDir and statusDir
+}
 
-	// Delete everything in underlay
-	for ulNum := 1; ulNum <= len(status.UnderlayNetworkList); ulNum++ {
-		log.Debugf("doInactivate ulNum %d\n", ulNum)
+func doInactivateAppNetworkWithMgmtLisp(
+	ctx *zedrouterContext,
+	status *types.AppNetworkStatus) {
 
-		// Need to check that index exists
-		if len(status.UnderlayNetworkList) < ulNum {
-			log.Infof("Missing status for underlay %d; can not clean up\n",
-				ulNum)
-			continue
-		}
-		ulStatus := &status.UnderlayNetworkList[ulNum-1]
-		log.Infof("doInactivate ulNum %d: %v\n", ulNum, ulStatus)
-		bridgeName := ulStatus.Bridge
-
-		netconfig := lookupNetworkObjectConfig(ctx,
-			ulStatus.Network.String())
-		if netconfig == nil {
-			errStr := fmt.Sprintf("no network config for %s",
-				ulStatus.Network.String())
-			err := errors.New(errStr)
-			addError(ctx, status, "lookupNetworkObjectConfig", err)
-			continue
-		}
-		netstatus := lookupNetworkObjectStatus(ctx,
-			ulStatus.Network.String())
-		if netstatus == nil {
-			// We had a netconfig but no status!
-			errStr := fmt.Sprintf("no network status for %s",
-				ulStatus.Network.String())
-			err := errors.New(errStr)
-			addError(ctx, status, "doInactivate underlay", err)
-			continue
-		}
-		// We ignore any errors in netstatus
-
-		if ulStatus.Mac != "" {
-			// XXX or change type of VifInfo.Mac?
-			mac, err := net.ParseMAC(ulStatus.Mac)
-			if err != nil {
-				log.Fatal("ParseMAC failed: ",
-					ulStatus.Mac, err)
-			}
-			err = releaseIPv4(ctx, netstatus, mac)
-			if err != nil {
-				// XXX publish error?
-				addError(ctx, status, "releaseIPv4", err)
-			}
-		}
-
-		appIPAddr := ulStatus.AssignedIPAddr
-		if appIPAddr != "" {
-			removehostDnsmasq(bridgeName, ulStatus.Mac,
-				appIPAddr)
-		}
-
-		// XXX Could ulStatus.Vif not be set? Means we didn't add
-		if ulStatus.Vif != "" {
-			err := deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
-				ulStatus.ACLs, ulStatus.BridgeIPAddr, appIPAddr)
-			if err != nil {
-				addError(ctx, status, "deleteACL", err)
-			}
-		} else {
-			log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
-				status.UUIDandVersion, bridgeName,
-				status.DisplayName)
-		}
-
-		// Delete underlay hosts file for this app
-		hostsDirpath := runDirname + "/hosts." + bridgeName
-		removeFromHostsConfiglet(hostsDirpath,
-			status.DisplayName)
-		// Look for added or deleted ipsets
-		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
-			netstatus.BridgeIPSets)
-
-		if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-			stopDnsmasq(bridgeName, true)
-			createDnsmasqConfiglet(bridgeName,
-				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-				newIpsets, false)
-			startDnsmasq(bridgeName)
-		}
-		netstatus.BridgeIPSets = newIpsets
-		maybeRemoveStaleIpsets(staleIpsets)
+	if status == nil || !status.IsZedmanager {
+		log.Fatalf("doInactivateAppNetworkWithMgmtLisp - Invalid State. "+
+			"status: %v", status)
 	}
+	appNum := status.AppNum
+	if len(status.OverlayNetworkList) != 1 ||
+		len(status.UnderlayNetworkList) != 0 {
+		errStr := "Malformed IsZedmanager status; ignored"
+		addError(ctx, status, "doInactivate",
+			errors.New(errStr))
+		log.Infof("doInactivate done for %s\n",
+			status.DisplayName)
+		return
+	}
+	// Remove global state for device
+	deviceEID = net.IP{}
+	deviceIID = 0
+	additionalInfoDevice = nil
+
+	olNum := 1
+	olStatus := &status.OverlayNetworkList[0]
+	olIfname := "dbo" + strconv.Itoa(olNum) + "x" +
+		strconv.Itoa(appNum)
+	// Assume there is no UUID for management overlay
+
+	// Delete the address from loopback
+	// Delete fd00::/8 route
+	// Delete fe80::1 neighbor
+
+	//    ip addr del ${EID}/128 dev ${olIfname}
+	EID := status.OverlayNetworkList[0].EID
+	addr, err := netlink.ParseAddr(EID.String() + "/128")
+	if err != nil {
+		errStr := fmt.Sprintf("ParseAddr %s failed: %s",
+			EID, err)
+		addError(ctx, status, "doInactivate",
+			errors.New(errStr))
+		log.Infof("doInactivate done for %s\n",
+			status.DisplayName)
+		return
+	}
+	attrs := netlink.NewLinkAttrs()
+	attrs.Name = olIfname
+	oLink := &netlink.Dummy{LinkAttrs: attrs}
+	// XXX can we skip explicit deletes and just remove the oLink?
+	if err := netlink.AddrDel(oLink, addr); err != nil {
+		errStr := fmt.Sprintf("AddrDel %s failed: %s",
+			EID, err)
+		addError(ctx, status, "doInactivate",
+			errors.New(errStr))
+	}
+
+	//    ip route del fd00::/8 via fe80::1 dev $intf
+	index := oLink.Attrs().Index
+	_, ipnet, err := net.ParseCIDR("fd00::/8")
+	if err != nil {
+		log.Fatal("ParseCIDR fd00::/8 failed:\n", err)
+	}
+	via := net.ParseIP("fe80::1")
+	if via == nil {
+		log.Fatal("ParseIP fe80::1 failed: ", err)
+	}
+	rt := netlink.Route{Dst: ipnet, LinkIndex: index, Gw: via}
+	if err := netlink.RouteDel(&rt); err != nil {
+		errStr := fmt.Sprintf("RouteDel fd00::/8 failed: %s",
+			err)
+		addError(ctx, status, "doInactivate",
+			errors.New(errStr))
+	}
+	//    ip nei del fe80::1 lladdr 0:0:0:0:0:1 dev $intf
+	neigh := netlink.Neigh{LinkIndex: index, IP: via}
+	if err := netlink.NeighDel(&neigh); err != nil {
+		errStr := fmt.Sprintf("NeighDel fe80::1 failed: %s",
+			err)
+		addError(ctx, status, "doInactivate",
+			errors.New(errStr))
+	}
+
+	// Remove link and associated addresses
+	netlink.LinkDel(oLink)
+
+	// Delete overlay hosts file
+	hostsDirpath := runDirname + "/hosts." + olIfname
+	deleteHostsConfiglet(hostsDirpath, true)
+
+	// Default ipset
+	deleteDefaultIpsetConfiglet(olIfname, true)
+
+	// Delete ACLs
+	err = deleteACLConfiglet(olIfname, olIfname, true, olStatus.ACLs,
+		"", "")
+	if err != nil {
+		addError(ctx, status, "deleteACL", err)
+	}
+
+	// Delete LISP configlets
+	deleteLispConfiglet(lispRunDirname, true, olStatus.MgmtIID,
+		olStatus.EID, olStatus.AppIPAddr,
+		*ctx.deviceNetworkStatus, ctx.legacyDataPlane)
 	status.Activated = false
 	publishAppNetworkStatus(ctx, status)
 	log.Infof("doInactivate done for %s\n", status.DisplayName)
+	return
 }
-
 func pkillUserArgs(userName string, match string, printOnError bool) {
 	cmd := "pkill"
 	args := []string{
