@@ -10,9 +10,6 @@ package zedmanager
 import (
 	"flag"
 	"fmt"
-	"os"
-	"time"
-
 	"github.com/google/go-cmp/cmp"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -22,6 +19,8 @@ import (
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/uuidtonum"
+	"os"
+	"time"
 )
 
 const (
@@ -405,6 +404,11 @@ func handleAppInstanceConfigModify(ctxArg interface{}, key string, configArg int
 	log.Infof("handleAppInstanceConfigModify(%s)\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	config := cast.CastAppInstanceConfig(configArg)
+	if config.Key() != key {
+		log.Errorf("handleAppInstanceConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
 	status := lookupAppInstanceStatus(ctx, key)
 	if status == nil {
 		handleCreate(ctx, key, config)
