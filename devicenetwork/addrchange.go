@@ -97,13 +97,13 @@ func HandleAddressChange(ctx *DeviceNetworkContext,
 		}
 	} else {
 		dnStatus = ctx.Pending.PendDNS
-		_, _ = MakeDeviceNetworkStatus(*ctx.DevicePortConfig, dnStatus)
+		dnStatus, _ = MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
+			dnStatus)
 
 		pingTestDNS := checkIfAllDNSPortsHaveIPAddrs(dnStatus)
 		if pingTestDNS {
 			// We have a suitable candiate for running our cloud ping test.
-			// Kick the DNS test timer to fire immediately.
-			log.Infof("HandleAddressChange: Kicking cloud ping test now, " +
+			log.Infof("HandleAddressChange: Running cloud ping test now, " +
 				"Since we have suitable addresses already.")
 			VerifyDevicePortConfig(ctx)
 		}
