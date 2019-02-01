@@ -45,28 +45,37 @@ var Version = "No version specified"
 
 type zedrouterContext struct {
 	// Legacy data plane enable/disable flag
-	legacyDataPlane           bool
-	subNetworkObjectConfig    *pubsub.Subscription
-	subNetworkServiceConfig   *pubsub.Subscription
+	legacyDataPlane bool
+
+	subNetworkObjectConfig  *pubsub.Subscription
+	subNetworkServiceConfig *pubsub.Subscription
+
+	pubNetworkObjectStatus  *pubsub.Publication
+	pubNetworkServiceStatus *pubsub.Publication
+
+	subAppNetworkConfig   *pubsub.Subscription
+	subAppNetworkConfigAg *pubsub.Subscription // From zedagent for dom0
+
+	pubAppNetworkStatus *pubsub.Publication
+
+	pubLispDataplaneConfig *pubsub.Publication
+	subLispInfoStatus      *pubsub.Subscription
+	subLispMetrics         *pubsub.Subscription
+
+	assignableAdapters       *types.AssignableAdapters
+	subAssignableAdapters    *pubsub.Subscription
+	pubNetworkServiceMetrics *pubsub.Publication
+	subDeviceNetworkStatus   *pubsub.Subscription
+	deviceNetworkStatus      *types.DeviceNetworkStatus
+	ready                    bool
+	subGlobalConfig          *pubsub.Subscription
+	pubUuidToNum             *pubsub.Publication
+
+	// NetworkInstance
 	subNetworkInstanceConfig  *pubsub.Subscription
-	pubNetworkObjectStatus    *pubsub.Publication
-	pubNetworkServiceStatus   *pubsub.Publication
 	pubNetworkInstanceStatus  *pubsub.Publication
 	pubNetworkInstanceMetrics *pubsub.Publication
-	subAppNetworkConfig       *pubsub.Subscription
-	subAppNetworkConfigAg     *pubsub.Subscription // From zedagent for dom0
-	pubAppNetworkStatus       *pubsub.Publication
-	pubLispDataplaneConfig    *pubsub.Publication
-	subLispInfoStatus         *pubsub.Subscription
-	subLispMetrics            *pubsub.Subscription
-	assignableAdapters        *types.AssignableAdapters
-	subAssignableAdapters     *pubsub.Subscription
-	pubNetworkServiceMetrics  *pubsub.Publication
-	subDeviceNetworkStatus    *pubsub.Subscription
-	deviceNetworkStatus       *types.DeviceNetworkStatus
-	ready                     bool
-	subGlobalConfig           *pubsub.Subscription
-	pubUuidToNum              *pubsub.Publication
+	networkInstanceStatusMap  map[uuid.UUID]*types.NetworkInstanceStatus
 }
 
 var debug = false
@@ -129,6 +138,8 @@ func Run() {
 		legacyDataPlane:    false,
 		assignableAdapters: &aa,
 	}
+	zedrouterCtx.networkInstanceStatusMap =
+		make(map[uuid.UUID]*types.NetworkInstanceStatus)
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &zedrouterCtx)
@@ -272,6 +283,7 @@ func Run() {
 	subNetworkInstanceConfig.DeleteHandler = handleNetworkInstanceDelete
 	zedrouterCtx.subNetworkInstanceConfig = subNetworkInstanceConfig
 	subNetworkInstanceConfig.Activate()
+	log.Infof("Subscribed to NetworkInstanceConfig")
 
 	// Subscribe to AppNetworkConfig from zedmanager and from zedagent
 	subAppNetworkConfig, err := pubsub.Subscribe("zedmanager",
@@ -346,6 +358,7 @@ func Run() {
 	setFreeMgmtPorts(types.GetMgmtPortsFree(*zedrouterCtx.deviceNetworkStatus, 0))
 
 	zedrouterCtx.ready = true
+	log.Infof("zedrouterCtx.ready\n")
 
 	// First wait for restarted from zedmanager to
 	// reduce the number of LISP-RESTARTs
@@ -366,11 +379,16 @@ func Run() {
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 
+		case change := <-subNetworkInstanceConfig.C:
+			log.Infof("AppNetworkConfig - waiting to Restart - "+
+				"InstanceConfig change at %+v", time.Now())
+			subNetworkInstanceConfig.ProcessChange(change)
+
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
 		}
 	}
-	log.Infof("Zedmanager has restarted\n")
+	log.Infof("Zedmanager has restarted. Entering main Select loop\n")
 
 	for {
 		select {
@@ -420,6 +438,7 @@ func Run() {
 			subNetworkServiceConfig.ProcessChange(change)
 
 		case change := <-subNetworkInstanceConfig.C:
+			log.Infof("NetworkInstanceConfig change at %+v", time.Now())
 			subNetworkInstanceConfig.ProcessChange(change)
 
 		case change := <-subLispInfoStatus.C:
@@ -1960,7 +1979,7 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		// Need to check that index exists
 		if len(status.OverlayNetworkList) < olNum {
-			log.Errorln("Missing status for overlay %d; can not modify\n",
+			log.Errorf("Missing status for overlay %d; can not modify\n",
 				olNum)
 			continue
 		}
@@ -2044,7 +2063,7 @@ func handleModify(ctx *zedrouterContext, key string,
 
 		// Need to check that index exists
 		if len(status.UnderlayNetworkList) < ulNum {
-			log.Errorln("Missing status for underlay %d; can not modify\n",
+			log.Errorf("Missing status for underlay %d; can not modify\n",
 				ulNum)
 			continue
 		}
@@ -2279,7 +2298,7 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 
 		// Need to check that index exists XXX remove
 		if len(status.OverlayNetworkList) < olNum {
-			log.Errorln("Missing status for overlay %d; can not clean up\n",
+			log.Errorf("Missing status for overlay %d; can not clean up\n",
 				olNum)
 			continue
 		}
@@ -2371,7 +2390,7 @@ func doInactivate(ctx *zedrouterContext, status *types.AppNetworkStatus) {
 
 		// Need to check that index exists
 		if len(status.UnderlayNetworkList) < ulNum {
-			log.Infoln("Missing status for underlay %d; can not clean up\n",
+			log.Infof("Missing status for underlay %d; can not clean up\n",
 				ulNum)
 			continue
 		}

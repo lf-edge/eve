@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
@@ -261,6 +262,17 @@ type DeviceNetworkStatus struct {
 	Ports   []NetworkPortStatus
 }
 
+func (status *DeviceNetworkStatus) GetPortByName(
+	port string) *NetworkPortStatus {
+	for _, portStatus := range status.Ports {
+		if strings.EqualFold(portStatus.Name, port) {
+			log.Infof("Found NetworkPortStatus for %s", port)
+			return &portStatus
+		}
+	}
+	return nil
+}
+
 func rotate(arr []string, amount int) []string {
 	if len(arr) == 0 {
 		return []string{}
@@ -499,14 +511,13 @@ func IsFreeMgmtPort(globalStatus DeviceNetworkStatus, port string) bool {
 	return false
 }
 
-func GetMgmtPort(globalStatus DeviceNetworkStatus, port string) *NetworkPortStatus {
+func GetPort(globalStatus DeviceNetworkStatus, port string) *NetworkPortStatus {
 	for _, us := range globalStatus.Ports {
 		if us.Name != port && us.IfName != port {
 			continue
 		}
-		if globalStatus.Version >= DPCIsMgmt &&
-			!us.IsMgmt {
-			continue
+		if globalStatus.Version < DPCIsMgmt {
+			us.IsMgmt = true
 		}
 		return &us
 	}
@@ -576,12 +587,9 @@ func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool,
 }
 
 // Return list of port names we will report in info and metrics
-// Always include dbo1x0 for now.
-// XXX What about non-management ports? XXX how will caller tag?
-// Latter will move to a system app when we disaggregate
 func ReportPorts(deviceNetworkStatus DeviceNetworkStatus) []string {
+
 	var names []string
-	names = append(names, "dbo1x0")
 	for _, port := range deviceNetworkStatus.Ports {
 		names = append(names, port.Name)
 	}
@@ -938,17 +946,16 @@ type NetworkInstanceConfig struct {
 	UUIDandVersion
 	DisplayName string
 
+	Type NetworkInstanceType
+
 	// Activate - Activate the config.
 	Activate bool
-
-	Type NetworkInstanceType
 
 	// Port - Port name specified in the Device Config.
 	Port string
 
 	// IP configuration for the Application
 	IpType          AddressType
-	DhcpType        DhcpType // If DT_STATIC or DT_SERVER use below
 	Subnet          net.IPNet
 	Gateway         net.IP
 	DomainName      string
@@ -961,8 +968,8 @@ type NetworkInstanceConfig struct {
 	OpaqueConfig string
 }
 
-func (status *NetworkInstanceConfig) Key() string {
-	return status.UUID.String()
+func (config *NetworkInstanceConfig) Key() string {
+	return config.UUID.String()
 }
 
 type ChangeInProgressType int32
@@ -1041,6 +1048,10 @@ func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 		}
 	}
 	return false
+}
+
+func (status *NetworkInstanceStatus) IsUsingPort(port string) bool {
+	return strings.EqualFold(port, status.Port)
 }
 
 // Similar support as in draft-ietf-netmod-acl-model

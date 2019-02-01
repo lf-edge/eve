@@ -8,6 +8,15 @@ package zedagent
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"regexp"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
 	"github.com/golang/protobuf/proto"
@@ -26,14 +35,6 @@ import (
 	"github.com/zededa/go-provision/netclone"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
-	"io/ioutil"
-	"os"
-	"os/exec"
-	"regexp"
-	"strconv"
-	"strings"
-	"syscall"
-	"time"
 )
 
 // Also report usage for these paths
@@ -402,7 +403,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 			(100.0 - (ram.UsedPercent))
 	}
 	// Use the network metrics from zedrouter subscription
-	// Only report stats for the ports plus dbo1x0
+	// Only report stats for the ports in DeviceNetworkStatus
 	portNames := types.ReportPorts(*deviceNetworkStatus)
 	for _, port := range portNames {
 		var metric *types.NetworkMetric
@@ -942,9 +943,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	}
 
 	// Read interface name from library and match it with port name from
-	// global status. Only report the ports plus dbo1x0
-	// XXX should get this info from zedrouter subscription
-	// Should we put it all in DeviceNetworkStatus?
+	// global status. Only report the ports in DeviceNetworkStatus
 	interfaces, _ := psutilnet.Interfaces()
 	portNames := types.ReportPorts(*deviceNetworkStatus)
 	for _, port := range portNames {
@@ -1119,10 +1118,9 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat,
 		}
 	}
 
-	// XXX Should we report non-management ports as well?
-	port := types.GetMgmtPort(*deviceNetworkStatus, interfaceDetail.Name)
+	port := types.GetPort(*deviceNetworkStatus, interfaceDetail.Name)
 	if port != nil {
-		networkInfo.Uplink = true
+		networkInfo.Uplink = port.IsMgmt
 		// fill in ZInfoDNS
 		networkInfo.Dns = new(zmet.ZInfoDNS)
 		networkInfo.Dns.DNSdomain = port.DomainName
@@ -1438,7 +1436,7 @@ func getDefaultRouters(ifname string) []string {
 		return res
 	}
 	ifindex := link.Attrs().Index
-	table := syscall.RT_TABLE_MAIN
+	table := types.GetDefaultRouteTable()
 	// Note that a default route is represented as nil Dst
 	filter := netlink.Route{Table: table, LinkIndex: ifindex, Dst: nil}
 	fflags := netlink.RT_FILTER_TABLE

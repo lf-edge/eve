@@ -99,3 +99,13 @@ func (aa *AssignableAdapters) LookupIoBundleForMember(
 	}
 	return nil
 }
+
+func (aa *AssignableAdapters) getIoBundleOrBundleForMemberByName(
+	ioType IoType, adapter string) *IoBundle {
+	ib := LookupIoBundle(aa, ioType, adapter)
+	if ib == nil {
+		// Check if adapter is a member of iobundle
+		ib = aa.LookupIoBundleForMember(ioType, adapter)
+	}
+	return ib
+}

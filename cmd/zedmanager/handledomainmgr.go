@@ -6,11 +6,12 @@ package zedmanager
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"os"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
-	"io/ioutil"
-	"os"
 )
 
 const (
@@ -106,7 +107,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			dc.Ramdisk = location
 		case "device_tree":
 			if dc.DeviceTree != "" {
-				log.Infof("Overriding device_tree %s with %s location %s\n",
+				log.Infof("Overriding device_tree %s with location %s\n",
 					dc.DeviceTree, location)
 			}
 			dc.DeviceTree = location
