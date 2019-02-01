@@ -293,10 +293,12 @@ func (wsc *WSConnection) processRequest(id int16, req []byte) (err error) {
 	for tries := 1; tries <= 3; tries++ {
 		_, err := wsc.localConnection.Write(req)
 		if err == nil {
-			log.Debugf("[id=%d] Completed writing request: \"%s\" to local connection", id, string(req))
+			log.Debugf("[id=%d] Completed writing request: \"%s\" to local connection",
+				id, string(req))
 			break
 		} else {
-			log.Errorf("[id=%d] Error encountered while writing request to local connection : %s", id, err.Error())
+			log.Errorf("[id=%d] Error encountered while writing request to local connection : %s",
+				id, err.Error())
 			if err := wsc.refreshLocalConnection(host, true); err != nil {
 				return err
 			}
