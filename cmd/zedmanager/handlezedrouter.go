@@ -4,11 +4,10 @@
 package zedmanager
 
 import (
-	"reflect"
-
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
+	"reflect"
 )
 
 func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
@@ -49,35 +48,11 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 		}
 		for i, new := range aiConfig.UnderlayNetworkList {
 			old := m.UnderlayNetworkList[i]
-			// Kalyan - Why are we checking here only for ACLs? Don't other fields matter?
 			if !reflect.DeepEqual(new.ACLs, old.ACLs) {
 				log.Infof("Under ACLs changed from %v to %v\n",
 					old.ACLs, new.ACLs)
 				changed = true
 				break
-			}
-			if old.AppMacAddr.String() != new.AppMacAddr.String() {
-				log.Errorln("Unsupported: AppMacAddr change not supported. "+
-					"old:%s, new:%s\n", aiConfig.UUIDandVersion,
-					old.AppMacAddr.String(), new.AppMacAddr.String())
-				return
-			}
-			if old.AppIPAddr.Equal(new.AppIPAddr) {
-				log.Errorln("Unsupported: AppIPAddr change not supported. "+
-					"old:%s, new:%s\n", aiConfig.UUIDandVersion,
-					old.AppIPAddr.String(), new.AppIPAddr.String())
-				return
-			}
-			if old.Network != new.Network {
-				log.Errorln("Unsupported: Changed number of underlays for ",
-					aiConfig.UUIDandVersion)
-				return
-
-			}
-			if old.UsesNetworkInstance != new.UsesNetworkInstance {
-				log.Errorln("Unsupported: Changed number of underlays for ",
-					aiConfig.UUIDandVersion)
-				return
 			}
 		}
 	} else {
