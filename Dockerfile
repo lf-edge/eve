@@ -28,9 +28,28 @@ RUN cp /opt/zededa/bin/versioninfo /opt/zededa/bin/versioninfo.1
 # Echo for builders enjoyment
 RUN echo Building: `cat /opt/zededa/bin/versioninfo`
 
+# run go vet command
+#   Ignore  go-provision/src directory for this tool
+RUN echo "Running go tool vet" && \
+    cd /go/src/github.com/zededa/go-provision/ && \
+    for f in $(ls | egrep -v '(src|oldcmd)'); \
+    do \
+       result=$(go tool vet $f 2>&1 );\
+       returnCode=$?;\
+       noFilesChecked=$(echo $result | grep "no files checked"); \
+       if [[ $returnCode -ne 0 && -z "$noFilesChecked" ]]; \
+       then \
+          # Error.. Stop build here. \
+          printf "\n***FAILED: go tool vet $f\n\n $result\n\n"; \
+          exit 1; \
+       fi;\
+     done;
+
+# go install
 RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc)           ;\
-    go install github.com/zededa/go-provision/zedbox/...               ;\
+    go install github.com/zededa/go-provision/zedbox/... && \
     if [ -f /go/bin/*/zedbox ] ; then mv /go/bin/*/zedbox /go/bin ; fi
+
 RUN ln -s /go/bin/zedbox /opt/zededa/bin/zedbox ;\
     for app in   \
       client domainmgr downloader hardwaremodel identitymgr ledmanager \
