@@ -2426,107 +2426,197 @@ func doInactivateAppNetwork(ctx *zedrouterContext,
 		status.UnderlayNetworkList, status.Key())
 
 	// Delete everything for overlay
-	appNetworkDoInactivateOverlayNetworks(ctx, status, ipsets)
+	appNetworkDoInactivateAllOverlayNetworks(ctx, status, ipsets)
 
 	// Delete everything in underlay
-	appNetworkDoInactivateUnderlayNetworks(ctx, status, ipsets)
+	appNetworkDoInactivateAllUnderlayNetworks(ctx, status, ipsets)
 
 	status.Activated = false
 	publishAppNetworkStatus(ctx, status)
 	log.Infof("doInactivate done for %s\n", status.DisplayName)
 }
 
-func appNetworkDoInactivateUnderlayNetworks(ctx *zedrouterContext,
+func appNetworkDoInactivateAllUnderlayNetworks(
+	ctx *zedrouterContext,
 	status *types.AppNetworkStatus,
 	ipsets []string) {
-	for ulNum := 1; ulNum <= len(status.UnderlayNetworkList); ulNum++ {
-		log.Debugf("doInactivate ulNum %d\n", ulNum)
 
-		// Need to check that index exists
-		if len(status.UnderlayNetworkList) < ulNum {
-			log.Infof("Missing status for underlay %d; can not clean up\n",
-				ulNum)
-			continue
-		}
-		ulStatus := &status.UnderlayNetworkList[ulNum-1]
+	for ulNum := 0; ulNum < len(status.UnderlayNetworkList); ulNum++ {
+		ulStatus := &status.UnderlayNetworkList[ulNum]
 		log.Infof("doInactivate ulNum %d: %v\n", ulNum, ulStatus)
-		bridgeName := ulStatus.Bridge
-
-		netconfig := lookupNetworkObjectConfig(ctx,
-			ulStatus.Network.String())
-		if netconfig == nil {
-			errStr := fmt.Sprintf("no network config for %s",
-				ulStatus.Network.String())
-			err := errors.New(errStr)
-			addError(ctx, status, "lookupNetworkObjectConfig", err)
-			continue
-		}
-		netstatus := lookupNetworkObjectStatus(ctx,
-			ulStatus.Network.String())
-		if netstatus == nil {
-			// We had a netconfig but no status!
-			errStr := fmt.Sprintf("no network status for %s",
-				ulStatus.Network.String())
-			err := errors.New(errStr)
-			addError(ctx, status, "doInactivate underlay", err)
-			continue
-		}
-		// We ignore any errors in netstatus
-
-		if ulStatus.Mac != "" {
-			// XXX or change type of VifInfo.Mac?
-			mac, err := net.ParseMAC(ulStatus.Mac)
-			if err != nil {
-				log.Fatal("ParseMAC failed: ",
-					ulStatus.Mac, err)
-			}
-			err = releaseIPv4(ctx, netstatus, mac)
-			if err != nil {
-				// XXX publish error?
-				addError(ctx, status, "releaseIPv4", err)
-			}
-		}
-
-		appIPAddr := ulStatus.AssignedIPAddr
-		if appIPAddr != "" {
-			removehostDnsmasq(bridgeName, ulStatus.Mac,
-				appIPAddr)
-		}
-
-		// XXX Could ulStatus.Vif not be set? Means we didn't add
-		if ulStatus.Vif != "" {
-			err := deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
-				ulStatus.ACLs, ulStatus.BridgeIPAddr, appIPAddr)
-			if err != nil {
-				addError(ctx, status, "deleteACL", err)
-			}
+		if ulStatus.UsesNetworkInstance {
+			appNetworkDoInactivateUnderlayNetworkWithNetworkObject(
+				ctx, status, ulStatus, ipsets)
 		} else {
-			log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
-				status.UUIDandVersion, bridgeName,
-				status.DisplayName)
+			appNetworkDoInactivateUnderlayNetworkWithNetworkInstance(
+				ctx, status, ulStatus, ipsets)
 		}
-
-		// Delete underlay hosts file for this app
-		hostsDirpath := runDirname + "/hosts." + bridgeName
-		removeFromHostsConfiglet(hostsDirpath,
-			status.DisplayName)
-		// Look for added or deleted ipsets
-		newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
-			netstatus.BridgeIPSets)
-
-		if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-			stopDnsmasq(bridgeName, true)
-			createDnsmasqConfiglet(bridgeName,
-				ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-				newIpsets, false)
-			startDnsmasq(bridgeName)
-		}
-		netstatus.BridgeIPSets = newIpsets
-		maybeRemoveStaleIpsets(staleIpsets)
 	}
 }
 
-func appNetworkDoInactivateOverlayNetworks(ctx *zedrouterContext,
+func appNetworkDoInactivateUnderlayNetworkWithNetworkInstance(
+	ctx *zedrouterContext,
+	status *types.AppNetworkStatus,
+	ulStatus *types.UnderlayNetworkStatus,
+	ipsets []string) {
+
+	bridgeName := ulStatus.Bridge
+
+	netconfig := lookupNetworkInstanceConfig(ctx,
+		ulStatus.Network.String())
+	if netconfig == nil {
+		errStr := fmt.Sprintf("no network config for %s",
+			ulStatus.Network.String())
+		err := errors.New(errStr)
+		addError(ctx, status, "lookupNetworkObjectConfig", err)
+		return
+	}
+	netstatus := lookupNetworkInstanceStatus(ctx,
+		ulStatus.Network.String())
+	if netstatus == nil {
+		// We had a netconfig but no status!
+		errStr := fmt.Sprintf("no network status for %s",
+			ulStatus.Network.String())
+		err := errors.New(errStr)
+		addError(ctx, status, "doInactivate underlay", err)
+		return
+	}
+	// We ignore any errors in netstatus
+
+	if ulStatus.Mac != "" {
+		// XXX or change type of VifInfo.Mac?
+		mac, err := net.ParseMAC(ulStatus.Mac)
+		if err != nil {
+			log.Fatal("ParseMAC failed: ",
+				ulStatus.Mac, err)
+		}
+		err = releaseIPv4FromNetworkInstance(ctx, netstatus, mac)
+		if err != nil {
+			// XXX publish error?
+			addError(ctx, status, "releaseIPv4", err)
+		}
+	}
+
+	appIPAddr := ulStatus.AssignedIPAddr
+	if appIPAddr != "" {
+		removehostDnsmasq(bridgeName, ulStatus.Mac,
+			appIPAddr)
+	}
+
+	// XXX Could ulStatus.Vif not be set? Means we didn't add
+	if ulStatus.Vif != "" {
+		err := deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
+			ulStatus.ACLs, ulStatus.BridgeIPAddr, appIPAddr)
+		if err != nil {
+			addError(ctx, status, "deleteACL", err)
+		}
+	} else {
+		log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
+			status.UUIDandVersion, bridgeName,
+			status.DisplayName)
+	}
+
+	// Delete underlay hosts file for this app
+	hostsDirpath := runDirname + "/hosts." + bridgeName
+	removeFromHostsConfiglet(hostsDirpath,
+		status.DisplayName)
+	// Look for added or deleted ipsets
+	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
+		netstatus.BridgeIPSets)
+
+	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
+		stopDnsmasq(bridgeName, true)
+		createDnsmasqConfigletForNetworkInstance(bridgeName,
+			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
+			newIpsets, false)
+		startDnsmasq(bridgeName)
+	}
+	netstatus.BridgeIPSets = newIpsets
+	maybeRemoveStaleIpsets(staleIpsets)
+}
+
+func appNetworkDoInactivateUnderlayNetworkWithNetworkObject(
+	ctx *zedrouterContext,
+	status *types.AppNetworkStatus,
+	ulStatus *types.UnderlayNetworkStatus,
+	ipsets []string) {
+
+	bridgeName := ulStatus.Bridge
+
+	netconfig := lookupNetworkObjectConfig(ctx,
+		ulStatus.Network.String())
+	if netconfig == nil {
+		errStr := fmt.Sprintf("no network config for %s",
+			ulStatus.Network.String())
+		err := errors.New(errStr)
+		addError(ctx, status, "lookupNetworkObjectConfig", err)
+		return
+	}
+	netstatus := lookupNetworkObjectStatus(ctx,
+		ulStatus.Network.String())
+	if netstatus == nil {
+		// We had a netconfig but no status!
+		errStr := fmt.Sprintf("no network status for %s",
+			ulStatus.Network.String())
+		err := errors.New(errStr)
+		addError(ctx, status, "doInactivate underlay", err)
+		return
+	}
+	// We ignore any errors in netstatus
+
+	if ulStatus.Mac != "" {
+		// XXX or change type of VifInfo.Mac?
+		mac, err := net.ParseMAC(ulStatus.Mac)
+		if err != nil {
+			log.Fatal("ParseMAC failed: ",
+				ulStatus.Mac, err)
+		}
+		err = releaseIPv4(ctx, netstatus, mac)
+		if err != nil {
+			// XXX publish error?
+			addError(ctx, status, "releaseIPv4", err)
+		}
+	}
+
+	appIPAddr := ulStatus.AssignedIPAddr
+	if appIPAddr != "" {
+		removehostDnsmasq(bridgeName, ulStatus.Mac,
+			appIPAddr)
+	}
+
+	// XXX Could ulStatus.Vif not be set? Means we didn't add
+	if ulStatus.Vif != "" {
+		err := deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
+			ulStatus.ACLs, ulStatus.BridgeIPAddr, appIPAddr)
+		if err != nil {
+			addError(ctx, status, "deleteACL", err)
+		}
+	} else {
+		log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
+			status.UUIDandVersion, bridgeName,
+			status.DisplayName)
+	}
+
+	// Delete underlay hosts file for this app
+	hostsDirpath := runDirname + "/hosts." + bridgeName
+	removeFromHostsConfiglet(hostsDirpath,
+		status.DisplayName)
+	// Look for added or deleted ipsets
+	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
+		netstatus.BridgeIPSets)
+
+	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
+		stopDnsmasq(bridgeName, true)
+		createDnsmasqConfiglet(bridgeName,
+			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
+			newIpsets, false)
+		startDnsmasq(bridgeName)
+	}
+	netstatus.BridgeIPSets = newIpsets
+	maybeRemoveStaleIpsets(staleIpsets)
+}
+
+func appNetworkDoInactivateAllOverlayNetworks(ctx *zedrouterContext,
 	status *types.AppNetworkStatus,
 	ipsets []string) {
 	for olNum := 1; olNum <= len(status.OverlayNetworkList); olNum++ {
