@@ -511,14 +511,13 @@ func IsFreeMgmtPort(globalStatus DeviceNetworkStatus, port string) bool {
 	return false
 }
 
-func GetMgmtPort(globalStatus DeviceNetworkStatus, port string) *NetworkPortStatus {
+func GetPort(globalStatus DeviceNetworkStatus, port string) *NetworkPortStatus {
 	for _, us := range globalStatus.Ports {
 		if us.Name != port && us.IfName != port {
 			continue
 		}
-		if globalStatus.Version >= DPCIsMgmt &&
-			!us.IsMgmt {
-			continue
+		if globalStatus.Version < DPCIsMgmt {
+			us.IsMgmt = true
 		}
 		return &us
 	}
@@ -588,12 +587,9 @@ func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool,
 }
 
 // Return list of port names we will report in info and metrics
-// Always include dbo1x0 for now.
-// XXX What about non-management ports? XXX how will caller tag?
-// Latter will move to a system app when we disaggregate
 func ReportPorts(deviceNetworkStatus DeviceNetworkStatus) []string {
+
 	var names []string
-	names = append(names, "dbo1x0")
 	for _, port := range deviceNetworkStatus.Ports {
 		names = append(names, port.Name)
 	}
