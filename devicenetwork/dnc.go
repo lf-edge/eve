@@ -249,9 +249,9 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			// Skip entries with LastFailed after LastSucceeded and
 			// a recent LastFailed (a minute or less).
 			nextIndex := getNextTestableDPCIndex(ctx)
-
 			SetupVerify(ctx, nextIndex)
 			continue
+
 		case DPC_SUCCESS:
 			log.Infof("VerifyDevicePortConfig: DPC_SUCCESS for %d",
 				ctx.NextDPCIndex)
@@ -261,6 +261,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 				continue
 			}
 			passed = true
+			// XXX save WPAD info from ctx.PendingDNS?
 			if ctx.NextDPCIndex == 0 {
 				log.Infof("VerifyDevicePortConfig: Working DPC configuration found "+
 					"at index %d in DPC list",
