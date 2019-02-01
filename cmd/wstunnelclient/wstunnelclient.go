@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"net/url"
 	"strings"
 
 	"os"
@@ -44,6 +45,7 @@ type wstunnelclientContext struct {
 	subAppInstanceConfig *pubsub.Subscription
 	serverName           string
 	wstunnelclient       *zedcloud.WSTunnelClient
+	dnsContext           *DNSContext
 	// XXX add any output from scanAIConfigs()?
 }
 
@@ -127,6 +129,7 @@ func Run() {
 	wscCtx.serverName = strings.Split(strTrim, ":")[0]
 	subAppInstanceConfig.Activate()
 
+	wscCtx.dnsContext = &DNSctx
 	// Wait for knowledge about IP addresses. XXX needed?
 	for !DNSctx.DNSinitialized {
 		log.Infof("Waiting for DomainNetworkStatus\n")
@@ -257,15 +260,25 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 	items := sub.GetAll()
 	for _, c := range items {
 		config := cast.CastAppInstanceConfig(c)
-		log.Infof("Remote console status for app-instance: %s: %t\n", config.DisplayName, config.RemoteConsole)
+		log.Debugf("Remote console status for app-instance: %s: %t\n",
+			config.DisplayName, config.RemoteConsole)
 		isTunnelRequired = config.RemoteConsole || isTunnelRequired
 	}
 
 	log.Infof("Tunnel check status after checking app-instance configs: %t\n", isTunnelRequired)
 	if isTunnelRequired == true {
 		if ctx.wstunnelclient == nil {
-			ctx.wstunnelclient = zedcloud.InitializeTunnelClient(ctx.serverName, "localhost:4822")
-			ctx.wstunnelclient.Start()
+			wstunnelclient := zedcloud.InitializeTunnelClient(ctx.serverName, "localhost:4822")
+			var proxyURL *url.URL
+			for _, port := range ctx.dnsContext.deviceNetworkStatus.Ports {
+				ifname := port.IfName
+				if types.IsMgmtPort(*ctx.dnsContext.deviceNetworkStatus, ifname) {
+					proxyURL, _ = zedcloud.LookupProxy(ctx.dnsContext.deviceNetworkStatus, ifname, wstunnelclient.Tunnel)
+				}
+			}
+
+			wstunnelclient.Start(proxyURL)
+			ctx.wstunnelclient = wstunnelclient
 		}
 	} else {
 		if ctx.wstunnelclient != nil {
