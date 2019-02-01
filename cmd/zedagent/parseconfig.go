@@ -1224,6 +1224,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 		log.Infof("parseConfigItems key %s value %s\n",
 			item.Key, item.Value)
 
+		key := item.Key
 		switch key {
 		case "timer.config.interval":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
@@ -1327,6 +1328,107 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.MintimeUpdateSuccess = newU32
 				globalConfigChange = true
 			}
+		case "timer.port.georedo":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newU32 := uint32(i64)
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = globalConfigDefaults.NetworkGeoRedoTime
+			}
+			if newU32 != globalConfig.NetworkGeoRedoTime {
+				log.Errorf("parseConfigItems: %s change from %d to %d\n",
+					key,
+					globalConfig.NetworkGeoRedoTime,
+					newU32)
+				globalConfig.NetworkGeoRedoTime = newU32
+				globalConfigChange = true
+			}
+		case "timer.port.georetry":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newU32 := uint32(i64)
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = globalConfigDefaults.NetworkGeoRetryTime
+			}
+			if newU32 != globalConfig.NetworkGeoRetryTime {
+				log.Errorf("parseConfigItems: %s change from %d to %d\n",
+					key,
+					globalConfig.NetworkGeoRetryTime,
+					newU32)
+				globalConfig.NetworkGeoRetryTime = newU32
+				globalConfigChange = true
+			}
+		case "timer.port.testduration":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newU32 := uint32(i64)
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = globalConfigDefaults.NetworkTestDuration
+			}
+			if newU32 != globalConfig.NetworkTestDuration {
+				log.Errorf("parseConfigItems: %s change from %d to %d\n",
+					key,
+					globalConfig.NetworkTestDuration,
+					newU32)
+				globalConfig.NetworkTestDuration = newU32
+				globalConfigChange = true
+			}
+		case "timer.port.testinterval":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newU32 := uint32(i64)
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = globalConfigDefaults.NetworkTestInterval
+			}
+			if newU32 != globalConfig.NetworkTestInterval {
+				log.Errorf("parseConfigItems: %s change from %d to %d\n",
+					key,
+					globalConfig.NetworkTestInterval,
+					newU32)
+				globalConfig.NetworkTestInterval = newU32
+				globalConfigChange = true
+			}
+		case "timer.port.testbetterinterval":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newU32 := uint32(i64)
+			if newU32 == 0 {
+				// Revert to default
+				newU32 = globalConfigDefaults.NetworkTestBetterInterval
+			}
+			if newU32 != globalConfig.NetworkTestBetterInterval {
+				log.Errorf("parseConfigItems: %s change from %d to %d\n",
+					key,
+					globalConfig.NetworkTestBetterInterval,
+					newU32)
+				globalConfig.NetworkTestBetterInterval = newU32
+				globalConfigChange = true
+			}
+
 		case "debug.disable.usb", "debug.enable.usb": // XXX swap name to enable?
 			newBool, err := strconv.ParseBool(item.Value)
 			if err != nil {

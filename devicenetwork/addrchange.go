@@ -82,8 +82,6 @@ func HandleAddressChange(ctx *DeviceNetworkContext,
 	// Check if we have more or less addresses
 	var dnStatus types.DeviceNetworkStatus
 
-	// XXX if err return means WPAD failed, or port does not exist
-	// XXX add test hook for former
 	if !ctx.Pending.Inprogress {
 		dnStatus = *ctx.DeviceNetworkStatus
 		status, _ := MakeDeviceNetworkStatus(*ctx.DevicePortConfig,

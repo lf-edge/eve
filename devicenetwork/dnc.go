@@ -61,10 +61,10 @@ type DeviceNetworkContext struct {
 	NextDPCIndex           int
 	CloudConnectivityWorks bool
 
-	// How long should we wait before testing a pending DPC?
-	DPCTestDuration           time.Duration // In seconds.
-	NetworkTestInterval       time.Duration // Test interval in minutes.
-	NetworkTestBetterInterval time.Duration // Look for lower/better index
+	// Timers in seconds
+	DPCTestDuration           uint32 // Wait for DHCP address
+	NetworkTestInterval       uint32 // Test interval in minutes.
+	NetworkTestBetterInterval uint32 // Look for lower/better index
 }
 
 func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
@@ -231,7 +231,8 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			return
 		case DPC_WAIT:
 			// Either addressChange or PendTimer will result in calling us again.
-			pending.PendTimer = time.NewTimer(ctx.DPCTestDuration * time.Second)
+			duration := time.Duration(ctx.DPCTestDuration) * time.Second
+			pending.PendTimer = time.NewTimer(duration)
 			log.Infof("VerifyDevicePortConfig: DPC_WAIT for %d",
 				ctx.NextDPCIndex)
 			return
@@ -269,7 +270,8 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 					"at index %d in DPC list",
 					ctx.NextDPCIndex)
 				// Look for a better choice in a while
-				ctx.NetworkTestBetterTimer = time.NewTimer(ctx.NetworkTestBetterInterval * time.Minute)
+				duration := time.Duration(ctx.NetworkTestBetterInterval) * time.Second
+				ctx.NetworkTestBetterTimer = time.NewTimer(duration)
 			}
 		}
 	}
@@ -281,7 +283,8 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	pending.OldDPC = getCurrentDPC(ctx)
 
 	// Restart network test timer
-	ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
+	duration := time.Duration(ctx.NetworkTestInterval) * time.Second
+	ctx.NetworkTestTimer = time.NewTimer(duration)
 }
 
 // Check if there is an untested DPC configuration at index 0

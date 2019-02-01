@@ -99,15 +99,7 @@ func VerifyDeviceNetworkStatus(
 		if err != nil {
 			errStr := fmt.Sprintf("VerifyDeviceNetworkStatus GetNetworkProxy failed %s", err)
 			log.Errorln(errStr)
-			// XXX status.Ports[ix].Error = errStr
-			// XXX status.Ports[ix].ErrorTime = time.Now()
 			return false
-		}
-		// XXX remove log?
-		proxyConfig := status.Ports[ix].ProxyConfig
-		if proxyConfig.NetworkProxyEnable {
-			log.Infof("VerifyDeviceNetworkStatus pac %s\n",
-				proxyConfig.Pacfile)
 		}
 	}
 	cloudReachable, err := zedcloud.VerifyAllIntf(zedcloudCtx, testUrl, retryCount, 1)
@@ -148,8 +140,6 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].DomainName = u.DomainName
 		globalStatus.Ports[ix].NtpServer = u.NtpServer
 		globalStatus.Ports[ix].DnsServers = u.DnsServers
-		// XXX Would net NetworkObjectConfig to set DhcpRange ...
-		// XXX should we get statics?
 		link, err := netlink.LinkByName(u.IfName)
 		if err != nil {
 			log.Warnf("MakeDeviceNetworkStatus LinkByName %s: %s\n",

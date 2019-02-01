@@ -18,6 +18,11 @@ timer.gc.download		integer in seconds - garbage collect unused downloaded object
 timer.gc.vdisk			integer in seconds - garbage collect unused virtual disk
 timer.download.retry		integer in seconds - retry a failed download
 timer.boot.retry		integer in seconds - retry a failed domain boot
+timer.port.georedo		default 3600 seconds - redo IP geolocation
+timer.port.georetry		default 600 seconds - retry geolocation after failure
+timer.port.testduration		default 30 - wait for DHCP to give address
+timer.port.testinterval		default 300 seconds - retest the current port config
+timer.port.testbetterinterval	default 1800 seconds - test a higher prio port config
 debug.disable.usb		boolean - default false TBD change to true
 debug.disable.ssh		boolean - default false TBD change to true
 debug.enable.usb		boolean

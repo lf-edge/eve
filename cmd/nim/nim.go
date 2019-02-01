@@ -38,6 +38,7 @@ type nimContext struct {
 	devicenetwork.DeviceNetworkContext
 	subGlobalConfig *pubsub.Subscription
 	GCInitialized   bool // Received initial GlobalConfig
+	globalConfig    *types.GlobalConfig
 	sshAccess       bool
 	allowAppVnc     bool
 
@@ -254,44 +255,41 @@ func Run() {
 		}
 	}
 
-	// XXX should we make geoRedoTime configurable?
 	// We refresh the gelocation information when the underlay
-	// IP address(es) change, or once an hour.
-	geoRedoTime := time.Hour
+	// IP address(es) change, plus periodically based on this timer
+	geoRedoTime := time.Duration(nimCtx.globalConfig.NetworkGeoRedoTime) * time.Second
 
 	// Timer for retries after failure etc. Should be less than geoRedoTime
-	geoInterval := time.Duration(10 * time.Minute)
+	geoInterval := time.Duration(nimCtx.globalConfig.NetworkGeoRetryTime) * time.Second
 	geoMax := float64(geoInterval)
 	geoMin := geoMax * 0.3
 	geoTimer := flextimer.NewRangeTicker(time.Duration(geoMin),
 		time.Duration(geoMax))
 
 	dnc := &nimCtx.DeviceNetworkContext
-	// XXX timer.port.testduration from GlobalConfig
-	dnc.DPCTestDuration = 30 // seconds
+	// TIme we wait for DHCP to get an address before giving up
+	dnc.DPCTestDuration = nimCtx.globalConfig.NetworkTestDuration
+
 	// Timer for checking/verifying pending device network status
-	pendTimer := time.NewTimer(dnc.DPCTestDuration * time.Second)
 	// We stop this timer before using in the select loop below, because
 	// we do not want the DPC list verification to start yet. We need a place
-	// holder in the select loop.
+	// Holder in the select loop.
 	// Let the select loop have this stopped timer for now and
 	// create a new timer when it's deemed required (change in DPC config).
+	pendTimer := time.NewTimer(time.Duration(dnc.DPCTestDuration) * time.Second)
 	pendTimer.Stop()
 	dnc.Pending.PendTimer = pendTimer
 
 	// Periodic timer that tests device cloud connectivity
-	// XXX timer.port.testinterval from GlobalConfig
-	dnc.NetworkTestInterval = 5 // minutes
-	networkTestInterval := time.Duration(dnc.NetworkTestInterval * time.Minute)
+	dnc.NetworkTestInterval = nimCtx.globalConfig.NetworkTestInterval
+	networkTestInterval := time.Duration(time.Duration(dnc.NetworkTestInterval) * time.Second)
 	networkTestTimer := time.NewTimer(networkTestInterval)
 	dnc.NetworkTestTimer = networkTestTimer
 	// We start assuming cloud connectivity works
 	dnc.CloudConnectivityWorks = true
 
-	// XXX introduce a timer to re-try higher priority entry
-	// XXX timer.port.testbetterinterval from GlobalConfig
-	dnc.NetworkTestBetterInterval = 30 // minutes
-	networkTestBetterInterval := time.Duration(dnc.NetworkTestBetterInterval * time.Minute)
+	dnc.NetworkTestBetterInterval = nimCtx.globalConfig.NetworkTestBetterInterval
+	networkTestBetterInterval := time.Duration(dnc.NetworkTestBetterInterval) * time.Second
 	networkTestBetterTimer := time.NewTimer(networkTestBetterInterval)
 	dnc.NetworkTestBetterTimer = networkTestBetterTimer
 
@@ -381,7 +379,7 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
 		ctx.CloudConnectivityWorks = true
 		// Restart network test timer for next slot.
-		ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
+		ctx.NetworkTestTimer = time.NewTimer(time.Duration(ctx.NetworkTestInterval) * time.Second)
 		return true
 	}
 	if !ctx.CloudConnectivityWorks {
@@ -402,7 +400,7 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 		}
 	} else {
 		// Restart network test timer for next slot.
-		ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
+		ctx.NetworkTestTimer = time.NewTimer(time.Duration(ctx.NetworkTestInterval) * time.Second)
 		ctx.CloudConnectivityWorks = false
 	}
 	return false
@@ -426,7 +424,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		ctx.debugOverride)
 	first := !ctx.GCInitialized
 	if gcp != nil {
-		// XXX note different polarity
+		// NOTE different polarity
 		if gcp.NoSshAccess == ctx.sshAccess || first {
 			ctx.sshAccess = !gcp.NoSshAccess
 			iptables.UpdateSshAccess(ctx.sshAccess, first)
@@ -437,6 +435,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		}
 	}
 	ctx.GCInitialized = true
+	ctx.globalConfig = gcp
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
