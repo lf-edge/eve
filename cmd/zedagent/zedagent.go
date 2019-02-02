@@ -878,12 +878,10 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	var gcp *types.GlobalConfig
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	if gcp != nil {
-		if !cmp.Equal(globalConfig, *gcp) {
-			log.Infof("handleGlobalConfigModify: diff %v\n",
-				cmp.Diff(globalConfig, *gcp))
-			applyGlobalConfig(*gcp)
-		}
+	if gcp != nil && !cmp.Equal(globalConfig, *gcp) {
+		log.Infof("handleGlobalConfigModify: diff %v\n",
+			cmp.Diff(globalConfig, *gcp))
+		globalConfig = types.ApplyGlobalConfig(*gcp)
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
@@ -901,38 +899,6 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		debugOverride)
 	globalConfig = types.GlobalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
-}
-
-// Check which values are set and which should come from defaults
-// Zero integers means to use default
-func applyGlobalConfig(newgc types.GlobalConfig) {
-
-	if newgc.ConfigInterval == 0 {
-		newgc.ConfigInterval = types.GlobalConfigDefaults.ConfigInterval
-	}
-	if newgc.MetricInterval == 0 {
-		newgc.MetricInterval = types.GlobalConfigDefaults.MetricInterval
-	}
-	if newgc.ResetIfCloudGoneTime == 0 {
-		newgc.ResetIfCloudGoneTime = types.GlobalConfigDefaults.ResetIfCloudGoneTime
-	}
-	if newgc.FallbackIfCloudGoneTime == 0 {
-		newgc.FallbackIfCloudGoneTime = types.GlobalConfigDefaults.FallbackIfCloudGoneTime
-	}
-	if newgc.MintimeUpdateSuccess == 0 {
-		newgc.MintimeUpdateSuccess = types.GlobalConfigDefaults.MintimeUpdateSuccess
-	}
-	if newgc.StaleConfigTime == 0 {
-		newgc.StaleConfigTime = types.GlobalConfigDefaults.StaleConfigTime
-	}
-	if newgc.DownloadGCTime == 0 {
-		newgc.DownloadGCTime = types.GlobalConfigDefaults.DownloadGCTime
-	}
-	if newgc.VdiskGCTime == 0 {
-		newgc.VdiskGCTime = types.GlobalConfigDefaults.VdiskGCTime
-	}
-	// XXX what about other fields?
-	globalConfig = newgc
 }
 
 func handleAAModify(ctxArg interface{}, key string,

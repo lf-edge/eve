@@ -16,6 +16,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/devicenetwork"
@@ -438,6 +439,11 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		ctx.debugOverride)
 	first := !ctx.GCInitialized
 	if gcp != nil {
+		if !cmp.Equal(ctx.globalConfig, *gcp) {
+			log.Infof("handleGlobalConfigModify: diff %v\n",
+				cmp.Diff(ctx.globalConfig, *gcp))
+			*gcp = types.ApplyGlobalConfig(*gcp)
+		}
 		if gcp.SshAccess != ctx.sshAccess || first {
 			ctx.sshAccess = gcp.SshAccess
 			iptables.UpdateSshAccess(ctx.sshAccess, first)

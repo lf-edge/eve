@@ -90,3 +90,53 @@ var GlobalConfigDefaults = GlobalConfig{
 	DefaultLogLevel:       "info", // XXX change default to warning?
 	DefaultRemoteLogLevel: "warning",
 }
+
+// Check which values are set and which should come from defaults
+// Zero integers means to use default
+func ApplyGlobalConfig(newgc GlobalConfig) GlobalConfig {
+
+	if newgc.ConfigInterval == 0 {
+		newgc.ConfigInterval = GlobalConfigDefaults.ConfigInterval
+	}
+	if newgc.MetricInterval == 0 {
+		newgc.MetricInterval = GlobalConfigDefaults.MetricInterval
+	}
+	if newgc.ResetIfCloudGoneTime == 0 {
+		newgc.ResetIfCloudGoneTime = GlobalConfigDefaults.ResetIfCloudGoneTime
+	}
+	if newgc.FallbackIfCloudGoneTime == 0 {
+		newgc.FallbackIfCloudGoneTime = GlobalConfigDefaults.FallbackIfCloudGoneTime
+	}
+	if newgc.MintimeUpdateSuccess == 0 {
+		newgc.MintimeUpdateSuccess = GlobalConfigDefaults.MintimeUpdateSuccess
+	}
+	if newgc.NetworkGeoRedoTime == 0 {
+		newgc.NetworkGeoRedoTime = GlobalConfigDefaults.NetworkGeoRedoTime
+	}
+	if newgc.NetworkGeoRetryTime == 0 {
+		newgc.NetworkGeoRetryTime = GlobalConfigDefaults.NetworkGeoRetryTime
+	}
+	if newgc.NetworkTestDuration == 0 {
+		newgc.NetworkTestDuration = GlobalConfigDefaults.NetworkTestDuration
+	}
+	if newgc.NetworkTestInterval == 0 {
+		newgc.NetworkTestInterval = GlobalConfigDefaults.NetworkTestInterval
+	}
+	// We allow newgc.NetworkTestBetterInterval to be zero meaning disabled
+	if newgc.StaleConfigTime == 0 {
+		newgc.StaleConfigTime = GlobalConfigDefaults.StaleConfigTime
+	}
+	if newgc.DownloadGCTime == 0 {
+		newgc.DownloadGCTime = GlobalConfigDefaults.DownloadGCTime
+	}
+	if newgc.VdiskGCTime == 0 {
+		newgc.VdiskGCTime = GlobalConfigDefaults.VdiskGCTime
+	}
+	if newgc.DownloadRetryTime == 0 {
+		newgc.DownloadRetryTime = GlobalConfigDefaults.DownloadRetryTime
+	}
+	if newgc.DomainBootRetryTime == 0 {
+		newgc.DomainBootRetryTime = GlobalConfigDefaults.DomainBootRetryTime
+	}
+	return newgc
+}
