@@ -696,7 +696,7 @@ func handleAppNetworkConfigModify(ctxArg interface{}, key string, configArg inte
 	config := cast.CastAppNetworkConfig(configArg)
 	status := lookupAppNetworkStatus(ctx, key)
 	if status == nil {
-		handleCreateAppNetwork(ctx, key, config)
+		handleAppNetworkCreate(ctx, key, config)
 	} else {
 		handleModify(ctx, key, config, status)
 	}
@@ -1095,7 +1095,7 @@ var deviceEID net.IP
 var deviceIID uint32
 var additionalInfoDevice *types.AdditionalInfoDevice
 
-func handleCreateAppNetwork(ctx *zedrouterContext, key string,
+func handleAppNetworkCreate(ctx *zedrouterContext, key string,
 	config types.AppNetworkConfig) {
 	log.Infof("handleCreateAppNetwork(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
@@ -1165,7 +1165,7 @@ func appNetworkDoActivateAllUnderlayNetworks(
 	ctx *zedrouterContext,
 	config types.AppNetworkConfig,
 	status *types.AppNetworkStatus,
-	ipsets []string) bool {
+	ipsets []string) {
 	for i, ulConfig := range config.UnderlayNetworkList {
 		ulNum := i + 1
 		log.Debugf("ulNum %d network %s ACLs %v\n",
@@ -1179,7 +1179,7 @@ func appNetworkDoActivateAllUnderlayNetworks(
 		}
 
 	}
-	return true
+	return
 }
 
 func appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
@@ -1298,7 +1298,7 @@ func appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
 			newIpsets, false)
 		startDnsmasq(bridgeName)
 	}
-	networkInstanceInfo.AddVifToBridge(vifName, appMac,
+	networkInstanceInfo.AddVif(vifName, appMac,
 		config.UUIDandVersion.UUID)
 	networkInstanceInfo.BridgeIPSets = newIpsets
 	publishNetworkInstanceStatus(ctx, netInstStatus)
@@ -1422,7 +1422,7 @@ func appNetworkDoActivateUnderlayNetworkWithNetworkObject(
 			newIpsets, false)
 		startDnsmasq(bridgeName)
 	}
-	networkInstanceInfo.AddVifToBridge(vifName, appMac,
+	networkInstanceInfo.AddVif(vifName, appMac,
 		config.UUIDandVersion.UUID)
 	networkInstanceInfo.BridgeIPSets = newIpsets
 	publishNetworkObjectStatus(ctx, netstatus)
@@ -1434,7 +1434,13 @@ func appNetworkDoActivateOverlayNetworks(
 	ctx *zedrouterContext,
 	config types.AppNetworkConfig,
 	status *types.AppNetworkStatus,
-	ipsets []string) bool {
+	ipsets []string) {
+
+	// XXX - The errors in theis function should either be Fatal
+	//	or abort activating the App Instance. We activate
+	//	the App Instance only if all the networks are available
+	//	and there are no errors.
+	//	Cleanup this code to be consistent in the error handling.
 	for i, olConfig := range config.OverlayNetworkList {
 		olNum := i + 1
 		log.Debugf("olNum %d network %s ACLs %v\n",
@@ -1475,7 +1481,7 @@ func appNetworkDoActivateOverlayNetworks(
 			addError(ctx, status, "findBridge", err)
 			log.Infof("doActivate done for %s\n",
 				config.DisplayName)
-			return false
+			continue
 		}
 		bridgeMac := oLink.HardwareAddr
 		log.Infof("bridgeName %s MAC %s\n",
@@ -1523,7 +1529,7 @@ func appNetworkDoActivateOverlayNetworks(
 				errors.New(errStr))
 			log.Infof("doActivate done for %s\n",
 				config.DisplayName)
-			return false
+			continue
 		}
 
 		var subnetSuffix string
@@ -1543,7 +1549,7 @@ func appNetworkDoActivateOverlayNetworks(
 				errors.New(errStr))
 			log.Infof("doActivate done for %s\n",
 				config.DisplayName)
-			return false
+			continue
 		}
 		rt := netlink.Route{Dst: ipnet, LinkIndex: oLink.Index}
 		if err := netlink.RouteAdd(&rt); err != nil {
@@ -1553,7 +1559,7 @@ func appNetworkDoActivateOverlayNetworks(
 				errors.New(errStr))
 			log.Infof("doActivate done for %s\n",
 				config.DisplayName)
-			return false
+			continue
 		}
 
 		// Write our EID hostname in a separate file in directory to
@@ -1588,7 +1594,7 @@ func appNetworkDoActivateOverlayNetworks(
 				newIpsets, netstatus.Ipv4Eid)
 			startDnsmasq(bridgeName)
 		}
-		netstatus.AddVifToBridge(vifName, appMac,
+		netstatus.AddVif(vifName, appMac,
 			config.UUIDandVersion.UUID)
 		netstatus.BridgeIPSets = newIpsets
 		publishNetworkObjectStatus(ctx, netstatus)
@@ -1616,12 +1622,13 @@ func appNetworkDoActivateOverlayNetworks(
 		createAndStartLisp(ctx, *status, olConfig,
 			serviceStatus, lispRunDirname, bridgeName)
 	}
-	return true
+	return
 }
 
 func appNetworkDoCopyNetworksToStatus(
 	config types.AppNetworkConfig,
 	status *types.AppNetworkStatus) {
+
 	olcount := len(config.OverlayNetworkList)
 	if olcount > 0 {
 		log.Infof("Received olcount %d\n", olcount)
@@ -1641,7 +1648,6 @@ func appNetworkDoCopyNetworksToStatus(
 		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
 			config.UnderlayNetworkList[i]
 	}
-
 }
 
 func appNetworkCheckAllNetworksExist(
@@ -1667,12 +1673,23 @@ func appNetworkCheckAllNetworksExist(
 	}
 
 	// Check networks for Underlay
+	// XXX - Should we also check for Network(instance)Status
+	// objects here itself?
 	for _, ulConfig := range config.UnderlayNetworkList {
-		netconfig := lookupNetworkObjectConfig(ctx,
-			ulConfig.Network.String())
-		if netconfig != nil {
-			continue
+		if ulConfig.UsesNetworkInstance {
+			netInstConfig := lookupNetworkInstanceConfig(ctx,
+				ulConfig.Network.String())
+			if netInstConfig != nil {
+				continue
+			}
+		} else {
+			netconfig := lookupNetworkObjectConfig(ctx,
+				ulConfig.Network.String())
+			if netconfig != nil {
+				continue
+			}
 		}
+		// Neither NetworkObjectStatus Nor NetworkInstanceConfig found.
 		// XXX no ulStatus yet!
 		errStr := fmt.Sprintf("Missing underlay network %s for %s/%s",
 			ulConfig.Network.String(),
@@ -1872,13 +1889,13 @@ func doActivateAppInstanceWithMgmtLisp(
 	status.Activated = true
 	publishAppNetworkStatus(ctx, status)
 	log.Infof("doActivate done for %s\n", config.DisplayName)
-	return
 }
 
 // Called when a NetworkObject is added
 // Walk all AppNetworkStatus looking for MissingNetwork, then
 // check if network UUID is there.
-func checkAndRecreateAppNetwork(ctx *zedrouterContext, network uuid.UUID) {
+func checkAndRecreateAppNetwork(
+	ctx *zedrouterContext, network uuid.UUID) {
 
 	log.Infof("checkAndRecreateAppNetwork(%s)\n", network.String())
 	pub := ctx.pubAppNetworkStatus
@@ -1900,25 +1917,7 @@ func checkAndRecreateAppNetwork(ctx *zedrouterContext, network uuid.UUID) {
 				network.String(), status.DisplayName)
 			continue
 		}
-
-		matched := false
-		for i, olConfig := range config.OverlayNetworkList {
-			if olConfig.Network != network {
-				continue
-			}
-			log.Infof("checkAndRecreateAppNetwork(%s) found overlay %d for %s\n",
-				network.String(), i, status.DisplayName)
-			matched = true
-		}
-		for i, ulConfig := range config.UnderlayNetworkList {
-			if ulConfig.Network != network {
-				continue
-			}
-			log.Infof("checkAndRecreateAppNetwork(%s) found underlay %d for %s\n",
-				network.String(), i, status.DisplayName)
-			matched = true
-		}
-		if !matched {
+		if !config.IsNetworkUsed(network) {
 			continue
 		}
 		log.Infof("checkAndRecreateAppNetwork(%s) recreating for %s\n",
@@ -1931,7 +1930,6 @@ func checkAndRecreateAppNetwork(ctx *zedrouterContext, network uuid.UUID) {
 			status.ErrorTime = time.Time{}
 		}
 		doActivate(ctx, *config, &status)
-		publishAppNetworkStatus(ctx, &status)
 		log.Infof("checkAndRecreateAppNetwork done for %s\n",
 			config.DisplayName)
 	}
@@ -2257,7 +2255,7 @@ func handleModify(ctx *zedrouterContext, key string,
 				newIpsets, netstatus.Ipv4Eid)
 			startDnsmasq(bridgeName)
 		}
-		netstatus.NetworkInstanceInfo.DelVif(olStatus.Vif)
+		netstatus.NetworkInstanceInfo.RemoveVif(olStatus.Vif)
 		netstatus.BridgeIPSets = newIpsets
 		publishNetworkObjectStatus(ctx, netstatus)
 
@@ -2341,7 +2339,7 @@ func handleModify(ctx *zedrouterContext, key string,
 				newIpsets, false)
 			startDnsmasq(bridgeName)
 		}
-		netstatus.DelVif(ulStatus.Vif)
+		netstatus.RemoveVif(ulStatus.Vif)
 		netstatus.BridgeIPSets = newIpsets
 		publishNetworkObjectStatus(ctx, netstatus)
 
@@ -2816,8 +2814,8 @@ func doInactivateAppNetworkWithMgmtLisp(
 	status.Activated = false
 	publishAppNetworkStatus(ctx, status)
 	log.Infof("doInactivate done for %s\n", status.DisplayName)
-	return
 }
+
 func pkillUserArgs(userName string, match string, printOnError bool) {
 	cmd := "pkill"
 	args := []string{

@@ -45,6 +45,41 @@ func (config AppNetworkConfig) VerifyFilename(fileName string) bool {
 	return ret
 }
 
+func (config *AppNetworkConfig) getOverlayConfig(
+	network uuid.UUID) *OverlayNetworkConfig {
+	for i, _ := range config.OverlayNetworkList {
+		olConfig := &config.OverlayNetworkList[i]
+		if olConfig.Network == network {
+			return olConfig
+		}
+	}
+	return nil
+}
+
+func (config *AppNetworkConfig) getUnderlayConfig(
+	network uuid.UUID) *UnderlayNetworkConfig {
+	for i, _ := range config.UnderlayNetworkList {
+		ulConfig := &config.UnderlayNetworkList[i]
+		if ulConfig.Network == network {
+			return ulConfig
+		}
+	}
+	return nil
+}
+
+func (config *AppNetworkConfig) IsNetworkUsed(network uuid.UUID) bool {
+	olConfig := config.getOverlayConfig(network)
+	if olConfig != nil {
+		return true
+	}
+	ulConfig := config.getUnderlayConfig(network)
+	if ulConfig != nil {
+		return true
+	}
+	// Network UUID matching neither UL nor OL network
+	return false
+}
+
 func (status AppNetworkStatus) CheckPendingAdd() bool {
 	return status.PendingAdd
 }
@@ -807,7 +842,7 @@ func (instanceInfo *NetworkInstanceInfo) IsVifInBridge(
 	return false
 }
 
-func (instanceInfo *NetworkInstanceInfo) DelVif(
+func (instanceInfo *NetworkInstanceInfo) RemoveVif(
 	vifName string) {
 	log.Infof("DelVif(%s, %s)\n", instanceInfo.BridgeName, vifName)
 
@@ -820,7 +855,7 @@ func (instanceInfo *NetworkInstanceInfo) DelVif(
 	instanceInfo.Vifs = vifs
 }
 
-func (instanceInfo *NetworkInstanceInfo) AddVifToBridge(
+func (instanceInfo *NetworkInstanceInfo) AddVif(
 	vifName string, appMac string, appID uuid.UUID) {
 
 	log.Infof("addVifToBridge(%s, %s, %s, %s)\n",
