@@ -899,7 +899,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	globalConfig = globalConfigDefaults
+	globalConfig = types.GlobalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 
@@ -908,29 +908,30 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 func applyGlobalConfig(newgc types.GlobalConfig) {
 
 	if newgc.ConfigInterval == 0 {
-		newgc.ConfigInterval = globalConfigDefaults.ConfigInterval
+		newgc.ConfigInterval = types.GlobalConfigDefaults.ConfigInterval
 	}
 	if newgc.MetricInterval == 0 {
-		newgc.MetricInterval = globalConfigDefaults.MetricInterval
+		newgc.MetricInterval = types.GlobalConfigDefaults.MetricInterval
 	}
 	if newgc.ResetIfCloudGoneTime == 0 {
-		newgc.ResetIfCloudGoneTime = globalConfigDefaults.ResetIfCloudGoneTime
+		newgc.ResetIfCloudGoneTime = types.GlobalConfigDefaults.ResetIfCloudGoneTime
 	}
 	if newgc.FallbackIfCloudGoneTime == 0 {
-		newgc.FallbackIfCloudGoneTime = globalConfigDefaults.FallbackIfCloudGoneTime
+		newgc.FallbackIfCloudGoneTime = types.GlobalConfigDefaults.FallbackIfCloudGoneTime
 	}
 	if newgc.MintimeUpdateSuccess == 0 {
-		newgc.MintimeUpdateSuccess = globalConfigDefaults.MintimeUpdateSuccess
+		newgc.MintimeUpdateSuccess = types.GlobalConfigDefaults.MintimeUpdateSuccess
 	}
 	if newgc.StaleConfigTime == 0 {
-		newgc.StaleConfigTime = globalConfigDefaults.StaleConfigTime
+		newgc.StaleConfigTime = types.GlobalConfigDefaults.StaleConfigTime
 	}
 	if newgc.DownloadGCTime == 0 {
-		newgc.DownloadGCTime = globalConfigDefaults.DownloadGCTime
+		newgc.DownloadGCTime = types.GlobalConfigDefaults.DownloadGCTime
 	}
 	if newgc.VdiskGCTime == 0 {
-		newgc.VdiskGCTime = globalConfigDefaults.VdiskGCTime
+		newgc.VdiskGCTime = types.GlobalConfigDefaults.VdiskGCTime
 	}
+	// XXX what about other fields?
 	globalConfig = newgc
 }
 

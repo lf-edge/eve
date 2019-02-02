@@ -314,7 +314,7 @@ for f in $dir/*.json; do
     fi
     echo "Copying from $f"
     cp -p $f $DPCDIR
-fi
+done
 
 # Get IP addresses
 echo $BINDIR/nim

@@ -111,6 +111,7 @@ func Run() {
 	nimCtx := nimContext{}
 	nimCtx.AssignableAdapters = &types.AssignableAdapters{}
 	nimCtx.sshAccess = true // Kernel default - no iptables filters
+	nimCtx.globalConfig = &types.GlobalConfigDefaults
 
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
@@ -432,9 +433,9 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 			ctx.allowAppVnc = gcp.AllowAppVnc
 			iptables.UpdateVncAccess(ctx.allowAppVnc)
 		}
+		ctx.globalConfig = gcp
 	}
 	ctx.GCInitialized = true
-	ctx.globalConfig = gcp
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
