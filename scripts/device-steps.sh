@@ -291,7 +291,7 @@ mkdir -p $DPCDIR
 SPECIAL=`cgpt find -l DevicePortConfig`
 echo "Found USB with DevicePortConfig: $SPECIAL"
 if [ -b $SPECIAL ]; then
-    key="override"
+    key="usb"
     mount -t vfat $SPECIAL /mnt
     if [ $? != 0 ]; then
 	echo "mount $SPECIAL failed: $?"
@@ -300,15 +300,20 @@ if [ -b $SPECIAL ]; then
 	if [ -f $keyfile ]; then
 	    echo "Found $keyfile on $SPECIAL"
 	    echo "Copying from $keyfile to $CONFIGDIR/DevicePortConfig/override.json"
-	    cp -p $keyfile $CONFIGDIR/DevicePortConfig/override.json
+	    cp $keyfile $CONFIGDIR/DevicePortConfig/
 	else
 	    echo "$keyfile not found on $SPECIAL"
 	fi
     fi
 fi
-if [ -f $CONFIGDIR/DevicePortConfig/override.json ]; then
-    echo "Copying from $CONFIGDIR/DevicePortConfig/override.json"
-    cp -p $CONFIGDIR/DevicePortConfig/override.json $DPCDIR
+# Copy any DevicePortConfig from /config
+dir=$CONFIGDIR/DevicePortConfig
+for f in $dir/*.json; do
+    if [ "$f" = "$dir/*.json" ]; then
+	break
+    fi
+    echo "Copying from $f"
+    cp -p $f $DPCDIR
 fi
 
 # Get IP addresses
