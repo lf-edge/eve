@@ -290,9 +290,17 @@ func Run() {
 	dnc.CloudConnectivityWorks = true
 
 	dnc.NetworkTestBetterInterval = nimCtx.globalConfig.NetworkTestBetterInterval
-	networkTestBetterInterval := time.Duration(dnc.NetworkTestBetterInterval) * time.Second
-	networkTestBetterTimer := time.NewTimer(networkTestBetterInterval)
-	dnc.NetworkTestBetterTimer = networkTestBetterTimer
+	if dnc.NetworkTestBetterInterval == 0 {
+		log.Warnln("NOT running TestBetterTimer")
+		// Dummy which is stopped needed for select loop
+		networkTestBetterTimer := time.NewTimer(time.Hour)
+		networkTestBetterTimer.Stop()
+		dnc.NetworkTestBetterTimer = networkTestBetterTimer
+	} else {
+		networkTestBetterInterval := time.Duration(dnc.NetworkTestBetterInterval) * time.Second
+		networkTestBetterTimer := time.NewTimer(networkTestBetterInterval)
+		dnc.NetworkTestBetterTimer = networkTestBetterTimer
+	}
 
 	// Look for address changes
 	addrChanges := devicenetwork.AddrChangeInit(&nimCtx.DeviceNetworkContext)
@@ -378,6 +386,11 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 	pass := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1)
 	if pass {
 		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
+		if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
+			cur := ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
+			cur.LastSucceeded = time.Now()
+		}
+
 		ctx.CloudConnectivityWorks = true
 		// Restart network test timer for next slot.
 		ctx.NetworkTestTimer = time.NewTimer(time.Duration(ctx.NetworkTestInterval) * time.Second)
