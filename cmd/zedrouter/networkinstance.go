@@ -452,6 +452,25 @@ func lookupOrAllocateIPv4ForNetworkInstance(
 	return "", errors.New(errStr)
 }
 
+// releaseIPv4ForNetworkInstance
+//	XXX TODO - This should be a method in NetworkInstanceSm
+func releaseIPv4FromNetworkInstance(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus,
+	mac net.HardwareAddr) error {
+
+	log.Infof("releaseIPv4(%s)\n", mac.String())
+	// Lookup to see if it exists
+	if _, ok := status.IPAssignments[mac.String()]; !ok {
+		errStr := fmt.Sprintf("releaseIPv4: not found %s for %s",
+			mac.String(), status.Key())
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+	delete(status.IPAssignments, mac.String())
+	publishNetworkInstanceStatus(ctx, status)
+	return nil
+}
+
 // getPortIPv4Addr
 //	To be used only for NI type Switch
 func getPortIPv4Addr(ctx *zedrouterContext,
