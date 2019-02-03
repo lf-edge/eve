@@ -138,5 +138,8 @@ func ApplyGlobalConfig(newgc GlobalConfig) GlobalConfig {
 	if newgc.DomainBootRetryTime == 0 {
 		newgc.DomainBootRetryTime = GlobalConfigDefaults.DomainBootRetryTime
 	}
+	if newgc.DefaultRemoteLogLevel == "" {
+		newgc.DefaultRemoteLogLevel = GlobalConfigDefaults.DefaultRemoteLogLevel
+	}
 	return newgc
 }
