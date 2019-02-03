@@ -269,9 +269,11 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 				log.Warnf("VerifyDevicePortConfig: Working DPC configuration found "+
 					"at index %d in DPC list",
 					ctx.NextDPCIndex)
-				// Look for a better choice in a while
-				duration := time.Duration(ctx.NetworkTestBetterInterval) * time.Second
-				ctx.NetworkTestBetterTimer = time.NewTimer(duration)
+				if ctx.NetworkTestBetterInterval != 0 {
+					// Look for a better choice in a while
+					duration := time.Duration(ctx.NetworkTestBetterInterval) * time.Second
+					ctx.NetworkTestBetterTimer = time.NewTimer(duration)
+				}
 			}
 		}
 	}
