@@ -442,7 +442,10 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		if !cmp.Equal(ctx.globalConfig, *gcp) {
 			log.Infof("handleGlobalConfigModify: diff %v\n",
 				cmp.Diff(ctx.globalConfig, *gcp))
-			*gcp = types.ApplyGlobalConfig(*gcp)
+			updated := types.ApplyGlobalConfig(*gcp)
+			log.Infof("handleGlobalConfigModify: updated with defaults %v\n",
+				cmp.Diff(*gcp, updated))
+			*gcp = updated
 		}
 		if gcp.SshAccess != ctx.sshAccess || first {
 			ctx.sshAccess = gcp.SshAccess

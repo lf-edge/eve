@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/google/go-cmp/cmp"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zconfig"
@@ -1561,9 +1562,6 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			if key == "debug.enable.usb" {
-				newBool = !newBool
-			}
 			if newBool != globalConfig.UsbAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
 					key,
@@ -1579,9 +1577,6 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
 					item.Value, key, err)
 				continue
-			}
-			if key == "debug.enable.ssh" {
-				newBool = !newBool
 			}
 			if newBool != globalConfig.SshAccess {
 				log.Infof("parseConfigItems: %s change from %v to %v\n",
@@ -1743,6 +1738,11 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 		}
 	}
 	if globalConfigChange {
+		// Apply defaults for zero values
+		updated := types.ApplyGlobalConfig(globalConfig)
+		log.Infof("parseConfigItems: updated with defaults %v\n",
+			cmp.Diff(globalConfig, updated))
+		globalConfig = updated
 		err := pubsub.PublishToDir("/persist/config/", "global",
 			&globalConfig)
 		if err != nil {

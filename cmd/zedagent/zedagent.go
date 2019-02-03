@@ -875,14 +875,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	if gcp != nil && !cmp.Equal(globalConfig, *gcp) {
-		log.Infof("handleGlobalConfigModify: diff %v\n",
-			cmp.Diff(globalConfig, *gcp))
-		globalConfig = types.ApplyGlobalConfig(*gcp)
-	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
