@@ -146,6 +146,14 @@
   version = "v0.2.0"
 
 [[projects]]
+  digest = "1:4a0c072e44da763409da72d41492373a034baf2e6d849c76d239b4abdfbb6c49"
+  name = "github.com/gorilla/websocket"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "66b9c49e59c6c48f0ffce28c2d8b8a5678502c6d"
+  version = "v1.4.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/jcelliott/lumber"
   packages = ["."]
@@ -394,6 +402,27 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
+  input-imports = [
+    "github.com/eriknordmark/ipinfo",
+    "github.com/eriknordmark/netlink",
+    "github.com/fsnotify/fsnotify",
+    "github.com/golang/protobuf/proto",
+    "github.com/golang/protobuf/ptypes",
+    "github.com/google/go-cmp/cmp",
+    "github.com/gorilla/websocket",
+    "github.com/nanobox-io/golang-scribble",
+    "github.com/satori/go.uuid",
+    "github.com/shirou/gopsutil/cpu",
+    "github.com/shirou/gopsutil/disk",
+    "github.com/shirou/gopsutil/host",
+    "github.com/shirou/gopsutil/mem",
+    "github.com/shirou/gopsutil/net",
+    "github.com/sirupsen/logrus",
+    "github.com/zededa/api/zconfig",
+    "github.com/zededa/api/zmet",
+    "github.com/zededa/shared/libs/zedUpload",
+    "golang.org/x/crypto/ocsp",
+  ]
   inputs-digest = "6375acba030a95b915e0e46b9eeb0c64f4e183a77b5cfaf32cbf42949dc3746c"
   solver-name = "gps-cdcl"
   solver-version = 1

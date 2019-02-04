@@ -523,6 +523,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		}
 
 		appInstance.CloudInitUserData = userData
+		appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
