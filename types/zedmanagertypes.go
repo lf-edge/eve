@@ -4,10 +4,11 @@
 package types
 
 import (
-	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"time"
+
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 type UrlCloudCfg struct {
@@ -56,6 +57,7 @@ type AppInstanceConfig struct {
 	RestartCmd          AppInstanceOpsCmd
 	PurgeCmd            AppInstanceOpsCmd
 	CloudInitUserData   string // base64-encoded
+	RemoteConsole       bool
 }
 
 type AppInstanceOpsCmd struct {

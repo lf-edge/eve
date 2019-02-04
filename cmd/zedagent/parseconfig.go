@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/cast"
@@ -520,6 +520,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		}
 
 		appInstance.CloudInitUserData = userData
+		appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
