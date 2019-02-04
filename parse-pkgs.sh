@@ -83,7 +83,7 @@ DEBUG_TAG=$(linuxkit_tag pkg/debug)$ARCH
 # not logged into the Docker hub you may see final
 # images lacking functionality.
 ZTOOLS_TAG=${ZTOOLS_TAG:-$(external_tag zededa/ztools $(linuxkit_tag pkg/debug))$ARCH}
-LISP_TAG=${LISP_TAG:-$(external_tag zededa/lisp $(external_tag zededa/zisp scratch 2>/dev/null))$ARCH}
+LISP_TAG=${LISP_TAG:-$(external_tag zededa/lisp $(linuxkit_tag pkg/zisp))$ARCH}
 
 sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e '/image:.*linuxkit\/.*:/s# *$#'${ARCH}# \
