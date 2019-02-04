@@ -26,11 +26,18 @@ enum AddressType {
   Last    = 255;
 }
 
+enum ZNetworkOpaqueConfigType {
+	ZNetOConfigFirst = 0;
+	ZNetOConfigVPN   = 1;
+	ZNetOConfigLisp  = 2;
+}
+
 // Network Instance Opaque config. In future we might add more fields here
 // but idea is here. This is service specific configuration.
 message NetworkInstanceOpaqueConfig {
 	string oconfig = 1;
 	NetworkInstanceLispConfig lispConfig = 2;
+	ZNetworkOpaqueConfigType  type = 3;
 }
 
 // Lisp NetworkInstance config
