@@ -691,14 +691,15 @@ func updateLispConfiglets(ctx *zedrouterContext, legacyDataPlane bool) {
 // Determine whether it is an create or modify
 func handleAppNetworkConfigModify(ctxArg interface{}, key string, configArg interface{}) {
 
-	log.Infof("handleAppNetworkConfigModify(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 	config := cast.CastAppNetworkConfig(configArg)
+	log.Infof("handleAppNetworkConfigModify(%s-%s)\n", config.DisplayName, key)
+
 	status := lookupAppNetworkStatus(ctx, key)
 	if status == nil {
 		handleAppNetworkCreate(ctx, key, config)
 	} else {
-		handleModify(ctx, key, config, status)
+		doAppNetworkConfigModify(ctx, key, config, status)
 	}
 	log.Infof("handleAppNetworkConfigModify(%s) done\n", key)
 }
@@ -2101,7 +2102,7 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 // Note that handleModify will not touch the EID; just ACLs
 // XXX should we check that nothing else has changed?
 // XXX If so flag other changes as errors; would need lastError in status.
-func handleModify(ctx *zedrouterContext, key string,
+func doAppNetworkConfigModify(ctx *zedrouterContext, key string,
 	config types.AppNetworkConfig, status *types.AppNetworkStatus) {
 
 	log.Infof("handleModify(%v) for %s\n",
@@ -2472,7 +2473,7 @@ func handleAppNetworkWithMgmtLispModify(ctx *zedrouterContext,
 	}
 	status.PendingModify = false
 	publishAppNetworkStatus(ctx, status)
-	log.Infof("handleModify done for %s\n", config.DisplayName)
+	log.Infof("Mgmt List modify done for %s\n", config.DisplayName)
 }
 
 func maybeRemoveStaleIpsets(staleIpsets []string) {
