@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-// Genetate DevicePortConfig based on DeviceNetworkConfig
+// Generate DevicePortConfig based on DeviceNetworkConfig
 // XXX retire when we have retired DeviceNetworkConfig
 func MakeDevicePortConfig(globalConfig types.DeviceNetworkConfig) types.DevicePortConfig {
 	var config types.DevicePortConfig
@@ -56,6 +56,8 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 func VerifyDeviceNetworkStatus(
 	status types.DeviceNetworkStatus, retryCount int) bool {
 
+	log.Infof("VerifyDeviceNetworkStatus() %d\n", retryCount)
+
 	serverFileName := "/config/server"
 	server, err := ioutil.ReadFile(serverFileName)
 	if err != nil {
@@ -91,9 +93,18 @@ func VerifyDeviceNetworkStatus(
 		}
 	}
 	zedcloudCtx.TlsConfig = tlsConfig
+	for ix, _ := range status.Ports {
+		err = CheckAndGetNetworkProxy(&status,
+			&status.Ports[ix])
+		if err != nil {
+			errStr := fmt.Sprintf("VerifyDeviceNetworkStatus GetNetworkProxy failed %s", err)
+			log.Errorln(errStr)
+			return false
+		}
+	}
 	cloudReachable, err := zedcloud.VerifyAllIntf(zedcloudCtx, testUrl, retryCount, 1)
 	if err != nil {
-		log.Errorln(err)
+		log.Infof("VerifyDeviceNetworkStatus failed %s\n", err)
 		return false
 	}
 
@@ -101,6 +112,7 @@ func VerifyDeviceNetworkStatus(
 		log.Infof("Uplink test SUCCESS to URL: %s", testUrl)
 		return true
 	}
+	log.Infof("Uplink test FAIL to URL: %s", testUrl)
 	return false
 }
 
@@ -128,8 +140,6 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].DomainName = u.DomainName
 		globalStatus.Ports[ix].NtpServer = u.NtpServer
 		globalStatus.Ports[ix].DnsServers = u.DnsServers
-		// XXX Would net NetworkObjectConfig to set DhcpRange ...
-		// XXX should we get statics?
 		link, err := netlink.LinkByName(u.IfName)
 		if err != nil {
 			log.Warnf("MakeDeviceNetworkStatus LinkByName %s: %s\n",
@@ -159,16 +169,18 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 				u.IfName, addr.IP)
 			globalStatus.Ports[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
 		}
-		// Get DNS info from dhcpcd. Updates DomainName and DnsServers
-		err = GetDnsInfo(&globalStatus.Ports[ix])
+		// Get DNS etc info from dhcpcd. Updates DomainName and DnsServers
+		err = GetDhcpInfo(&globalStatus.Ports[ix])
 		if err != nil {
-			errStr := fmt.Sprintf("GetDnsInfo failed %s", err)
+			errStr := fmt.Sprintf("GetDhcpInfo failed %s", err)
 			globalStatus.Ports[ix].Error = errStr
 			globalStatus.Ports[ix].ErrorTime = time.Now()
 		}
 
 		// Attempt to get a wpad.dat file if so configured
 		// Result is updating the Pacfile
+		// We always redo this since we don't know what has changed
+		// from the previous DeviceNetworkStatus.
 		err = CheckAndGetNetworkProxy(&globalStatus,
 			&globalStatus.Ports[ix])
 		if err != nil {
