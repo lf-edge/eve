@@ -1173,7 +1173,7 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		} else {
 			networkUuidStr = netEnt.Id
 		}
-		uuid, err := uuid.FromString(netEnt.Id)
+		uuid, err := uuid.FromString(networkUuidStr)
 		if err != nil {
 			log.Errorf("parseUnderlayNetworkConfig: Malformed UUID %s ignored: %s\n",
 				networkUuidStr, err)
@@ -1258,9 +1258,7 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 }
 
 // parseOverlayNetworkConfig
-//	This is not supported for NetworkInstances. Can be deleted when
-//	we stop support for Network-service. No changes done to this function
-//  for NetworkInstance support.
+//	This is not supported for NetworkInstances.
 func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig) {
