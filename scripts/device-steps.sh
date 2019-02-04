@@ -288,7 +288,7 @@ mkdir -p $DPCDIR
 # XXX alternative is to use a designated UUID and -t.
 # cgpt find -t a0ee3715-fcdc-4bd8-9f94-23a62bd53c91
 SPECIAL=`cgpt find -l DevicePortConfig`
-if [ ! -z "$SPECIAL" -a -b "$SPECIAL"]; then
+if [ ! -z "$SPECIAL" -a -b "$SPECIAL" ]; then
     echo "Found USB with DevicePortConfig: $SPECIAL"
     key="usb"
     mount -t vfat $SPECIAL /mnt
