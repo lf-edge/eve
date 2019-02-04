@@ -47,18 +47,20 @@ const (
 // State passed to handlers
 type diagContext struct {
 	devicenetwork.DeviceNetworkContext
-	forever                bool // Keep on reporting until ^C
-	pacContents            bool // Print PAC file contents
-	ledCounter             int  // Supress work and output
-	subGlobalConfig        *pubsub.Subscription
-	subLedBlinkCounter     *pubsub.Subscription
-	subDeviceNetworkStatus *pubsub.Subscription
-	gotBC                  bool
-	gotDNS                 bool
-	serverNameAndPort      string
-	serverName             string // Without port number
-	zedcloudCtx            *zedcloud.ZedCloudContext
-	cert                   *tls.Certificate
+	DevicePortConfigList    *types.DevicePortConfigList
+	forever                 bool // Keep on reporting until ^C
+	pacContents             bool // Print PAC file contents
+	ledCounter              int  // Supress work and output
+	subGlobalConfig         *pubsub.Subscription
+	subLedBlinkCounter      *pubsub.Subscription
+	subDeviceNetworkStatus  *pubsub.Subscription
+	subDevicePortConfigList *pubsub.Subscription
+	gotBC                   bool
+	gotDNS                  bool
+	serverNameAndPort       string
+	serverName              string // Without port number
+	zedcloudCtx             *zedcloud.ZedCloudContext
+	cert                    *tls.Certificate
 }
 
 // Set from Makefile
@@ -108,6 +110,7 @@ func Run() {
 		pacContents: *pacContentsPtr,
 	}
 	ctx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
+	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
 
 	// XXX should we subscribe to and get GlobalConfig for debug??
 
@@ -174,6 +177,16 @@ func Run() {
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
+	subDevicePortConfigList, err := pubsub.SubscribePersistent("nim",
+		types.DevicePortConfigList{}, false, &ctx)
+	if err != nil {
+		errStr := fmt.Sprintf("ERROR: internal Subscribe failed %s\n", err)
+		panic(errStr)
+	}
+	subDevicePortConfigList.ModifyHandler = handleDPCModify
+	ctx.subDevicePortConfigList = subDevicePortConfigList
+	subDevicePortConfigList.Activate()
+
 	for {
 		select {
 		case change := <-subLedBlinkCounter.C:
@@ -183,6 +196,9 @@ func Run() {
 		case change := <-subDeviceNetworkStatus.C:
 			ctx.gotDNS = true
 			subDeviceNetworkStatus.ProcessChange(change)
+
+		case change := <-subDevicePortConfigList.C:
+			subDevicePortConfigList.ProcessChange(change)
 		}
 		if !ctx.forever && ctx.gotDNS && ctx.gotBC {
 			break
@@ -258,6 +274,27 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
+func handleDPCModify(ctxArg interface{}, key string, statusArg interface{}) {
+
+	status := cast.CastDevicePortConfigList(statusArg)
+	ctx := ctxArg.(*diagContext)
+	if key != "global" {
+		log.Infof("handleDPCModify: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleDPCModify for %s\n", key)
+	if cmp.Equal(ctx.DevicePortConfigList, status) {
+		return
+	}
+	log.Infof("handleDPCModify: changed %v",
+		cmp.Diff(ctx.DevicePortConfigList, status))
+	*ctx.DevicePortConfigList = status
+	// XXX can we limit to interfaces which changed?
+	// XXX exclude if only timestamps changed?
+	printOutput(ctx)
+	log.Infof("handleDPCModify done for %s\n", key)
+}
+
 // Print output for all interfaces
 // XXX can we limit to interfaces which changed?
 func printOutput(ctx *diagContext) {
@@ -325,6 +362,35 @@ func printOutput(ctx *diagContext) {
 			ctx.ledCounter)
 	}
 
+	// Print info about fallback
+	DPCLen := len(ctx.DevicePortConfigList.PortConfigList)
+	if DPCLen > 0 {
+		first := ctx.DevicePortConfigList.PortConfigList[0]
+		if first.LastFailed.After(first.LastSucceeded) {
+			fmt.Printf("WARNING: Not using highest priority DevicePortConfig key %s\n",
+				first.Key)
+			for i, dpc := range ctx.DevicePortConfigList.PortConfigList {
+				if i == 0 {
+					continue
+				}
+				if dpc.LastFailed.After(dpc.LastSucceeded) {
+					fmt.Printf("WARNING: Not using priority %d DevicePortConfig key %s\n",
+						i, dpc.Key)
+				} else {
+					fmt.Printf("INFO: Using priority %d DevicePortConfig key %s\n",
+						i, dpc.Key)
+					break
+				}
+			}
+		} else {
+			fmt.Printf("INFO: Using highest priority DevicePortConfig key %s\n",
+				first.Key)
+			if DPCLen > 1 {
+				fmt.Printf("INFO: Have %d backup DevicePortConfig\n",
+					DPCLen-1)
+			}
+		}
+	}
 	numPorts := len(ctx.DeviceNetworkStatus.Ports)
 	mgmtPorts := 0
 	passPorts := 0
