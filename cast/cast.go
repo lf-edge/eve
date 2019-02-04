@@ -134,6 +134,19 @@ func CastDevicePortConfig(in interface{}) types.DevicePortConfig {
 	return output
 }
 
+func CastDevicePortConfigList(in interface{}) types.DevicePortConfigList {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastDevicePortConfigList")
+	}
+	var output types.DevicePortConfigList
+	if err := json.Unmarshal(b, &output); err != nil {
+		// Comes from outside sources like USB stick so don't Fatal
+		log.Errorln(err, "json Unmarshal in CastDevicePortConfigList")
+	}
+	return output
+}
+
 func CastDeviceNetworkStatus(in interface{}) types.DeviceNetworkStatus {
 	b, err := json.Marshal(in)
 	if err != nil {

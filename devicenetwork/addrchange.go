@@ -82,8 +82,6 @@ func HandleAddressChange(ctx *DeviceNetworkContext,
 	// Check if we have more or less addresses
 	var dnStatus types.DeviceNetworkStatus
 
-	// XXX if err return means WPAD failed, or port does not exist
-	// XXX add test hook for former
 	if !ctx.Pending.Inprogress {
 		dnStatus = *ctx.DeviceNetworkStatus
 		status, _ := MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
@@ -99,13 +97,13 @@ func HandleAddressChange(ctx *DeviceNetworkContext,
 		}
 	} else {
 		dnStatus = ctx.Pending.PendDNS
-		_, _ = MakeDeviceNetworkStatus(*ctx.DevicePortConfig, dnStatus)
+		dnStatus, _ = MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
+			dnStatus)
 
 		pingTestDNS := checkIfAllDNSPortsHaveIPAddrs(dnStatus)
 		if pingTestDNS {
 			// We have a suitable candiate for running our cloud ping test.
-			// Kick the DNS test timer to fire immediately.
-			log.Infof("HandleAddressChange: Kicking cloud ping test now, " +
+			log.Infof("HandleAddressChange: Running cloud ping test now, " +
 				"Since we have suitable addresses already.")
 			VerifyDevicePortConfig(ctx)
 		}

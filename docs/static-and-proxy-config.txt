@@ -20,10 +20,17 @@ This per-model comfiguration can be overridden by an optional file in
 That file is /config/DevicePortConfig/override.json
 [Note that this file does not override cloud configuration. TBD: should we rename
 it to local.json instead?]
+And futher overridden by a USB memory stick plugged in when the device is powered
+on. The scripts/mkusb.sh can be used to create that script.
+Finally, when the device is create or updated in the controller, the device
+port configuration can be specified. The most recent information DevicePortConfig
+becomes the highest priority, but the device tests that it works before using it
+(and falls back to a lower-priority working config.)
 
-That file can specify multiple management interfaces, and can specify static IP
-and DNS configuration (for environments where DHCP is not used). In addition it
-can specify proxies using different mechanism.
+That build/USB file can specify multiple management interfaces, as well as
+non-mananagement interface, and can specify static IP and DNS configuration
+(for environments where DHCP is not used). In addition it can specify proxies
+using several different mechanism.
 
 An example file to specify using WPAD to retrieve proxy configuration on eth0 is:
 {
@@ -38,6 +45,7 @@ An example file to specify using WPAD to retrieve proxy configuration on eth0 is
             "Free": true,
             "Gateway": "",
             "IfName": "eth0",
+            "Name": "Management",
             "IsMgmt": true,
             "NetworkProxyEnable": true,
             "NetworkProxyURL": "",
@@ -78,6 +86,7 @@ An example file with eth0 being static and eth1 using dhcp is:
             "Free": true,
             "Gateway": "38.108.181.254",
             "IfName": "eth0",
+            "Name": "Management1",
             "IsMgmt": true,
             "NtpServer": "38.108.181.254",
             "NetworkProxyEnable": false,
@@ -90,6 +99,7 @@ An example file with eth0 being static and eth1 using dhcp is:
             "Dhcp": 4,
             "Free": true,
             "IfName": "eth1",
+            "Name": "Management2",
             "IsMgmt": true
         }
     ]
