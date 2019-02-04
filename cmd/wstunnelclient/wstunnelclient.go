@@ -309,7 +309,7 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 					}
 					log.Infof("Could not connect to %s using intf %s\n", destURL, ifname)
 				} else {
-					log.Infof("Skipping connection using non-mangement intf %s\n", ifname)
+					log.Debugf("Skipping connection using non-mangement intf %s\n", ifname)
 				}
 			}
 		}
