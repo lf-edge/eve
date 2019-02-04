@@ -22,7 +22,7 @@ timer.port.georedo		default 3600 seconds - redo IP geolocation
 timer.port.georetry		default 600 seconds - retry geolocation after failure
 timer.port.testduration		default 30 - wait for DHCP to give address
 timer.port.testinterval		default 300 seconds - retest the current port config
-timer.port.testbetterinterval	default 1800 seconds - test a higher prio port config
+timer.port.testbetterinterval	default 0 seconds (disabled) - test a higher prio port config
 debug.enable.usb		boolean - default true on device
 debug.enable.ssh		boolean - default true on device
 debug.default.loglevel		string - default "info"
