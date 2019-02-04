@@ -286,11 +286,10 @@ mkdir -p $DPCDIR
 # Look for a USB stick with a key'ed file
 # If found it replaces any build override file in /config
 # XXX alternative is to use a designated UUID and -t.
-# cgpt find -t ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
-# XXX invent a unique uuid for the above?
+# cgpt find -t a0ee3715-fcdc-4bd8-9f94-23a62bd53c91
 SPECIAL=`cgpt find -l DevicePortConfig`
-echo "Found USB with DevicePortConfig: $SPECIAL"
-if [ -b $SPECIAL ]; then
+if [ ! -z "$SPECIAL" -a -b "$SPECIAL"]; then
+    echo "Found USB with DevicePortConfig: $SPECIAL"
     key="usb"
     mount -t vfat $SPECIAL /mnt
     if [ $? != 0 ]; then
