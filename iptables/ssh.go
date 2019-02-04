@@ -9,6 +9,7 @@ package iptables
 
 import (
 	"fmt"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -20,7 +21,7 @@ func UpdateSshAccess(enable bool, first bool) {
 	if first {
 		// Always blocked
 		dropPortRange(8080, 8080)
-		dropPortRange(4822, 4822)
+		//dropPortRange(4822, 4822)
 	}
 	if enable {
 		allowPortRange(22, 22)
