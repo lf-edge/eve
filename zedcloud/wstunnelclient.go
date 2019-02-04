@@ -5,6 +5,7 @@ package zedcloud
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -28,15 +29,17 @@ const (
 // but it's important to realize that there may be goroutines handling older
 // websockets that are not fully closed yet running at any point in time
 type WSTunnelClient struct {
-	TunnelServerName string        // hostname[:port] string representation of remote tunnel server
-	Tunnel           string        // websocket server to connect to (ws[s]://hostname[:port])
-	Server           string        // local HTTP(S) server to send received requests to
-	Timeout          time.Duration // timeout on websocket
-	Proxy            *url.URL      // if non-nil, external proxy to use
-	Connected        bool          // true when we have an active connection to remote server
-	exitChan         chan struct{} // channel to tell the tunnel goroutines to end
-	conn             *WSConnection // reference to remote websocket connection
-	failRetryCount   int           // no of times the ws connection attempts have continuously failed
+	TunnelServerName string            // hostname[:port] string representation of remote tunnel server
+	Tunnel           string            // websocket server to connect to (ws[s]://hostname[:port])
+	DestURL          string            // formatted websocket endpoint URL
+	LocalRelayServer string            // local server to send received requests to
+	Timeout          time.Duration     // timeout on websocket
+	Proxy            *url.URL          // if non-nil, external proxy to use
+	Connected        bool              // true when we have an active connection to remote server
+	Dialer           *websocket.Dialer // dialer connection initialized & tested for success
+	exitChan         chan struct{}     // channel to tell the tunnel goroutines to end
+	conn             *WSConnection     // reference to remote websocket connection
+	retryOnFailCount int               // no of times the ws connection attempts have continuously failed
 }
 
 // WSConnection represents a single websocket connection
@@ -55,83 +58,105 @@ func InitializeTunnelClient(serverName string, localRelay string) *WSTunnelClien
 	tunnelClient := WSTunnelClient{
 		TunnelServerName: serverName,
 		Tunnel:           "wss://" + serverName,
-		Server:           localRelay,
+		LocalRelayServer: localRelay,
 		Timeout:          calcTimeout(30),
 	}
 
 	return &tunnelClient
 }
 
-// Start triggers the connection to remote tunnel server
-func (t *WSTunnelClient) Start(proxyURL *url.URL) {
+// Start triggers workflow to establish the websocket
+// session with remote tunnel server
+func (t *WSTunnelClient) Start() {
 	go func() {
-		t.SetupConnection(proxyURL)
+		t.startSession()
 		<-make(chan struct{}, 0)
 	}()
 }
 
-// SetupConnection connects to configured backend on a
-// secure websocket and waits for commands from the backend
-// to forward to local relay.
-func (t *WSTunnelClient) SetupConnection(proxyURL *url.URL) error {
+// TestConnection validates the configured parameters for correctness
+// and further attempts an actual connection request to confirm
+// if the client can successfully connect to remote backend server.
+func (t *WSTunnelClient) TestConnection(proxyURL *url.URL, localAddr net.IP) error {
 
 	if t.Tunnel == "" {
-		return fmt.Errorf("Must specify tunnel server ws://hostname:port using -tunnel option")
+		return fmt.Errorf("Must specify tunnel server ws://hostname:port")
 	}
 	if !strings.HasPrefix(t.Tunnel, "ws://") && !strings.HasPrefix(t.Tunnel, "wss://") {
-		return fmt.Errorf("Remote tunnel (-tunnel option) must begin with ws:// or wss://")
+		return fmt.Errorf("Remote tunnel must begin with ws:// or wss://")
 	}
 	t.Tunnel = strings.TrimSuffix(t.Tunnel, "/")
 
-	if t.Server != "" {
-		if strings.HasPrefix(t.Server, "http://") && strings.HasPrefix(t.Server, "https://") {
+	if t.LocalRelayServer != "" {
+		if strings.HasPrefix(t.LocalRelayServer, "http://") && strings.HasPrefix(t.LocalRelayServer, "https://") {
 			return fmt.Errorf("Local server relay must not begin with http:// or https://")
 		}
-		t.Server = strings.TrimSuffix(t.Server, "/")
+		t.LocalRelayServer = strings.TrimSuffix(t.LocalRelayServer, "/")
+	} else {
+		return fmt.Errorf("Must specify local relay server hostOrIP:port")
 	}
 
-	if t.Server == "" {
-		return fmt.Errorf("Must specify server")
-	}
+	log.Debugf("Testing connection to %s on local address: %v, proxy: %v", t.Tunnel, proxyURL, localAddr)
 
+	tlsConfig, err := GetTlsConfig(t.TunnelServerName, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	dialer := &websocket.Dialer{
+		ReadBufferSize:  100 * 1024,
+		WriteBufferSize: 100 * 1024,
+		TLSClientConfig: tlsConfig,
+		NetDial: func(network, addr string) (net.Conn, error) {
+			localTCPAddr := net.TCPAddr{IP: localAddr}
+			netDialer := &net.Dialer{LocalAddr: &localTCPAddr}
+			return netDialer.DialContext(context.Background(), network, addr)
+		},
+	}
 	if proxyURL != nil {
-		t.Proxy = proxyURL
+		dialer.Proxy = http.ProxyURL(t.Proxy)
 	}
+
+	url := fmt.Sprintf("%s/api/v1/edgedevice/connection/tunnel", t.Tunnel)
+	log.Debugf("Testing connection to url: %s", url)
+	_, resp, err := dialer.Dial(url, nil)
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if err == nil {
+		t.DestURL = url
+		t.Proxy = proxyURL
+		t.Dialer = dialer
+		log.Infof("Connection test succeeded for url: %s on local address: %v, proxy: %v", url, proxyURL, localAddr)
+		return nil
+	}
+	return err
+}
+
+// startSession connects to configured backend on a
+// secure websocket and waits for commands from the backend
+// to forward to local relay.
+func (t *WSTunnelClient) startSession() error {
 
 	// signal that tells tunnel client to exit instead of reopening
 	// a fresh connection.
 	t.exitChan = make(chan struct{}, 1)
 
-	t.failRetryCount = 0
+	t.retryOnFailCount = 0
 
 	// Keep opening websocket connections to tunnel requests
 	go func() {
 		log.Debug("Looping through websocket connection requests")
 		for {
-			if t.failRetryCount == maxRetryAttempts {
+			if t.retryOnFailCount == maxRetryAttempts {
 				log.Errorf("Shutting down tunnel client after %d failed attempts.", maxRetryAttempts)
 				break
 			}
 			// Retry timer of 30 seconds between attempts.
 			timer := time.NewTimer(30 * time.Second)
 
-			tlsConfig, err := GetTlsConfig(t.TunnelServerName, nil)
-			if err != nil {
-				log.Fatal(err)
-			}
-			dialer := &websocket.Dialer{
-				ReadBufferSize:  100 * 1024,
-				WriteBufferSize: 100 * 1024,
-				TLSClientConfig: tlsConfig,
-			}
-			if t.Proxy != nil {
-				dialer.Proxy = http.ProxyURL(t.Proxy)
-			}
+			log.Debugf("Attempting WS connection to url: %s", t.DestURL)
 
-			url := fmt.Sprintf("%s/api/v1/edgedevice/connection/tunnel", t.Tunnel)
-			log.Debugf("Attempting WS connection to url: %s", url)
-
-			ws, resp, err := dialer.Dial(url, nil)
+			ws, resp, err := t.Dialer.Dial(t.DestURL, nil)
 			if err != nil {
 				extra := ""
 				if resp != nil {
@@ -142,16 +167,16 @@ func (t *WSTunnelClient) SetupConnection(proxyURL *url.URL) error {
 						extra = extra + " -- " + string(buf)
 					}
 					resp.Body.Close()
+					log.Errorf("Error opening connection: %v, response: %v", err.Error(), resp)
 				}
-				log.Errorf("Error opening connection: %v, response: %v", err.Error(), resp)
-				t.failRetryCount++
+				t.retryOnFailCount++
 			} else {
 				t.conn = &WSConnection{ws: ws, tun: t}
 				// Safety setting
 				ws.SetReadLimit(100 * 1024 * 1024)
 				// Request Loop
 				t.Connected = true
-				t.failRetryCount = 0
+				t.retryOnFailCount = 0
 				t.conn.handleRequests()
 				t.Connected = false
 			}
@@ -213,7 +238,6 @@ func (wsc *WSConnection) handleRequests() {
 		log.Debugf("[id=%d] WS processing request payload: %v", id, string(request))
 
 		// Finish off while we read the next request
-
 		if len(request) > 0 {
 			if err := wsc.processRequest(id, request); err != nil {
 				log.Error(err)
@@ -240,7 +264,7 @@ func (wsc *WSConnection) pinger() {
 			log.Errorf("Panic in pinger: %s", x)
 		}
 	}()
-	log.Debug("pinger starting")
+	log.Infof("pinger starting for websocket connection to: %s", wsc.tun.DestURL)
 	tunTimeout := wsc.tun.Timeout
 
 	// timeout handler sends a close message, waits a few seconds, then kills the socket
@@ -249,7 +273,7 @@ func (wsc *WSConnection) pinger() {
 			return
 		}
 		wsc.ws.WriteControl(websocket.CloseMessage, nil, time.Now().Add(1*time.Second))
-		log.Info("ping timeout, closing WS")
+		log.Infof("ping timeout, closing websocket connection to: %s", wsc.tun.DestURL)
 		time.Sleep(15 * time.Second)
 		if wsc.ws != nil {
 			wsc.ws.Close()
@@ -266,17 +290,17 @@ func (wsc *WSConnection) pinger() {
 	// ping loop, ends when socket is closed...
 	for {
 		if wsc.ws == nil {
-			log.Info("WS not found")
+			log.Errorf("WS not found for destination: %s", wsc.tun.DestURL)
 			break
 		}
 		err := wsc.ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(tunTimeout/3))
 		if err != nil {
-			log.Fatalf("WS WriteControl Error: %s", err.Error())
+			log.Errorf("WS WriteControl Error: %s", err.Error())
 			break
 		}
 		time.Sleep(tunTimeout / 3)
 	}
-	log.Info("pinger ending (WS errored or closed)")
+	log.Infof("pinger ending (WS errored or closed) for destination: %s", wsc.tun.DestURL)
 	wsc.ws.Close()
 }
 
@@ -285,7 +309,7 @@ func (wsc *WSConnection) pinger() {
 // any responses that are optionally received.
 func (wsc *WSConnection) processRequest(id int16, req []byte) (err error) {
 
-	host := wsc.tun.Server
+	host := wsc.tun.LocalRelayServer
 	if err := wsc.refreshLocalConnection(host, false); err != nil {
 		return err
 	}
@@ -327,13 +351,13 @@ func (wsc *WSConnection) refreshLocalConnection(host string, forceCreate bool) (
 				err == io.ErrClosedPipe ||
 				err == io.ErrUnexpectedEOF {
 				log.Debug("Lost local server connection, reconnecting...")
-				if err := wsc.dialLocalConnection(host); err != nil {
+				if err := wsc.dialLocalConnection(); err != nil {
 					return err
 				}
 			}
 		}
 	} else {
-		if err := wsc.dialLocalConnection(host); err != nil {
+		if err := wsc.dialLocalConnection(); err != nil {
 			return err
 		}
 	}
@@ -341,19 +365,21 @@ func (wsc *WSConnection) refreshLocalConnection(host string, forceCreate bool) (
 }
 
 // dialLocalConnection creates a new connection to local relay server.
-func (wsc *WSConnection) dialLocalConnection(host string) (err error) {
+func (wsc *WSConnection) dialLocalConnection() (err error) {
 
+	host := wsc.tun.LocalRelayServer
 	if host == "" {
 		log.Error("Local server not found for WS connection")
 		return
 	}
 
 	log.Debugf("Initializing local server connection: %s", host)
-	wsc.localConnection, err = net.Dial("tcp", host)
+	localConnection, err := net.Dial("tcp", host)
 	if err != nil {
 		log.Errorf("Could not connect to local server: %s, error: %s", host, err.Error())
 		return err
 	}
+	wsc.localConnection = localConnection
 	log.Debugf("Successfully connected to local server: %s", host)
 	return nil
 }

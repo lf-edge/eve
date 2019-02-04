@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"net/url"
 	"strings"
 
 	"os"
@@ -264,21 +263,55 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 			config.DisplayName, config.RemoteConsole)
 		isTunnelRequired = config.RemoteConsole || isTunnelRequired
 	}
-
 	log.Infof("Tunnel check status after checking app-instance configs: %t\n", isTunnelRequired)
+
 	if isTunnelRequired == true {
 		if ctx.wstunnelclient == nil {
-			wstunnelclient := zedcloud.InitializeTunnelClient(ctx.serverName, "localhost:4822")
-			var proxyURL *url.URL
-			for _, port := range ctx.dnsContext.deviceNetworkStatus.Ports {
+			deviceNetworkStatus := ctx.dnsContext.deviceNetworkStatus
+			for _, port := range deviceNetworkStatus.Ports {
 				ifname := port.IfName
-				if types.IsMgmtPort(*ctx.dnsContext.deviceNetworkStatus, ifname) {
-					proxyURL, _ = zedcloud.LookupProxy(ctx.dnsContext.deviceNetworkStatus, ifname, wstunnelclient.Tunnel)
+				if types.IsMgmtPort(*deviceNetworkStatus, ifname) {
+					wstunnelclient := zedcloud.InitializeTunnelClient(ctx.serverName, "localhost:4822")
+					destURL := wstunnelclient.Tunnel
+
+					addrCount := types.CountLocalAddrAnyNoLinkLocalIf(*deviceNetworkStatus, ifname)
+					log.Infof("Connecting to %s using intf %s #sources %d\n",
+						destURL, ifname, addrCount)
+
+					if addrCount == 0 {
+						errStr := fmt.Sprintf("No IP addresses to connect to %s using intf %s",
+							destURL, ifname)
+						log.Infoln(errStr)
+						continue
+					}
+
+					var connected bool
+					for retryCount := 0; retryCount < addrCount; retryCount++ {
+						localAddr, err := types.GetLocalAddrAnyNoLinkLocal(*deviceNetworkStatus,
+							retryCount, ifname)
+						if err != nil {
+							log.Info(err)
+							continue
+						}
+
+						proxyURL, _ := zedcloud.LookupProxy(ctx.dnsContext.deviceNetworkStatus, ifname, destURL)
+						if err := wstunnelclient.TestConnection(proxyURL, localAddr); err != nil {
+							log.Info(err)
+							continue
+						}
+						connected = true
+						break
+					}
+					if connected == true {
+						wstunnelclient.Start()
+						ctx.wstunnelclient = wstunnelclient
+						break
+					}
+					log.Infof("Could not connect to %s using intf %s\n", destURL, ifname)
+				} else {
+					log.Infof("Skipping connection using non-mangement intf %s\n", ifname)
 				}
 			}
-
-			wstunnelclient.Start(proxyURL)
-			ctx.wstunnelclient = wstunnelclient
 		}
 	} else {
 		if ctx.wstunnelclient != nil {
