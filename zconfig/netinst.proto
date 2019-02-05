@@ -27,9 +27,8 @@ enum AddressType {
 }
 
 enum ZNetworkOpaqueConfigType {
-	ZNetOConfigFirst = 0;
-	ZNetOConfigVPN   = 1;
-	ZNetOConfigLisp  = 2;
+	ZNetOConfigVPN   = 0;
+	ZNetOConfigLisp  = 1;
 }
 
 // Network Instance Opaque config. In future we might add more fields here
