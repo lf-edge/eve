@@ -2553,10 +2553,10 @@ func appNetworkDoInactivateAllUnderlayNetworks(
 		ulStatus := &status.UnderlayNetworkList[ulNum]
 		log.Infof("doInactivate ulNum %d: %v\n", ulNum, ulStatus)
 		if ulStatus.UsesNetworkInstance {
-			appNetworkDoInactivateUnderlayNetworkWithNetworkObject(
+			appNetworkDoInactivateUnderlayNetworkWithNetworkInstance(
 				ctx, status, ulStatus, ipsets)
 		} else {
-			appNetworkDoInactivateUnderlayNetworkWithNetworkInstance(
+			appNetworkDoInactivateUnderlayNetworkWithNetworkObject(
 				ctx, status, ulStatus, ipsets)
 		}
 	}
