@@ -174,12 +174,12 @@
   version = "v0.2.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:65723afc58f7b9481e094e1f772c827ee02be6660a171fb601982e4a2d6f7c48"
-  name = "github.com/jcelliott/lumber"
+  digest = "1:4a0c072e44da763409da72d41492373a034baf2e6d849c76d239b4abdfbb6c49"
+  name = "github.com/gorilla/websocket"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "dd349441af25132d146d7095c6693a15431fc9b1"
+  revision = "66b9c49e59c6c48f0ffce28c2d8b8a5678502c6d"
+  version = "v1.4.0"
 
 [[projects]]
   digest = "1:ac6d01547ec4f7f673311b4663909269bfb8249952de3279799289467837c3cc"
@@ -203,14 +203,6 @@
   pruneopts = "NUT"
   revision = "1455def202f6e05b95cc7bfc7e8ae67ae5141eba"
   version = "v0.1.0"
-
-[[projects]]
-  branch = "master"
-  digest = "1:bc1f3f3f6f6112ab64e620e28bbb11e6d4765d45caf071b78e08af59f3c375ca"
-  name = "github.com/nanobox-io/golang-scribble"
-  packages = ["."]
-  pruneopts = "NUT"
-  revision = "336beac0a992ed9abaf4ef8e7042ba7fe3335c06"
 
 [[projects]]
   digest = "1:5cf3f025cbee5951a4ee961de067c8a89fc95a5adabead774f82822efabab121"
@@ -262,14 +254,6 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:869e13958e05ca96407cecebea71a60310256aba8f70244d05a06ce09e3f60ba"
-  name = "github.com/shirou/w32"
-  packages = ["."]
-  pruneopts = "NUT"
-  revision = "bb4de0191aa41b5507caa14b0650cdbddcd9280b"
-
-[[projects]]
-  branch = "master"
   digest = "1:f47836ef2767f515ed596c12b8309b5a0fb85a63af66255c6800253c634bf345"
   name = "github.com/sirupsen/logrus"
   packages = ["."]
@@ -294,14 +278,14 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:683e3a482845e618e26084255da759b4f10b73dd970989f9fde62e5be4efe67c"
+  digest = "1:0a378d31a3dd2c0be0692436f8dea43a038da8cdb167562b1c3bf837f7785049"
   name = "github.com/zededa/api"
   packages = [
     "zconfig",
     "zmet",
   ]
   pruneopts = "NUT"
-  revision = "448b07181b059e47b20c5e58bb0d646c11b3eee7"
+  revision = "d4565b8b2d255e0dcad63ee500c9620fdb217144"
 
 [[projects]]
   branch = "master"
@@ -485,7 +469,7 @@
     "github.com/golang/protobuf/proto",
     "github.com/golang/protobuf/ptypes",
     "github.com/google/go-cmp/cmp",
-    "github.com/nanobox-io/golang-scribble",
+    "github.com/gorilla/websocket",
     "github.com/satori/go.uuid",
     "github.com/shirou/gopsutil/cpu",
     "github.com/shirou/gopsutil/disk",

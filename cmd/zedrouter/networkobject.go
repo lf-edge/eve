@@ -9,14 +9,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/eriknordmark/netlink"
-	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/types"
 	"net"
 	"strconv"
 	"time"
+
+	"github.com/eriknordmark/netlink"
+	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/types"
 )
 
 func handleNetworkObjectModify(ctxArg interface{}, key string, configArg interface{}) {
@@ -45,8 +45,10 @@ func handleNetworkObjectCreate(ctx *zedrouterContext, key string, config types.N
 
 	status := types.NetworkObjectStatus{
 		NetworkObjectConfig: config,
-		IPAssignments:       make(map[string]net.IP),
-		DnsNameToIPList:     config.DnsNameToIPList,
+		NetworkInstanceInfo: types.NetworkInstanceInfo{
+			IPAssignments: make(map[string]net.IP),
+		},
+		DnsNameToIPList: config.DnsNameToIPList,
 	}
 	status.PendingAdd = true
 	publishNetworkObjectStatus(ctx, &status)
@@ -738,57 +740,13 @@ func doNetworkDelete(ctx *zedrouterContext,
 	bridgeNumFree(ctx, status.UUID)
 }
 
-func findVifInBridge(status *types.NetworkObjectStatus, vifName string) bool {
-	for _, vif := range status.Vifs {
-		if vif.Name == vifName {
-			return true
-		}
-	}
-	return false
-}
-
-func addVifToBridge(status *types.NetworkObjectStatus, vifName string,
-	appMac string, appID uuid.UUID) {
-
-	log.Infof("addVifToBridge(%s, %s, %s, %s)\n",
-		status.BridgeName, vifName, appMac, appID.String())
-	if findVifInBridge(status, vifName) {
-		log.Errorf("addVifToBridge(%s, %s) exists\n",
-			status.BridgeName, vifName)
-		return
-	}
-	info := types.VifNameMac{
-		Name:    vifName,
-		MacAddr: appMac,
-		AppID:   appID,
-	}
-	status.Vifs = append(status.Vifs, info)
-}
-
-func removeVifFromBridge(status *types.NetworkObjectStatus, vifName string) {
-
-	log.Infof("removeVifFromBridge(%s, %s)\n", status.BridgeName, vifName)
-	if !findVifInBridge(status, vifName) {
-		log.Errorf("XXX removeVifFromBridge(%s, %s) not there\n",
-			status.BridgeName, vifName)
-		return
-	}
-	var vifs []types.VifNameMac
-	for _, vif := range status.Vifs {
-		if vif.Name != vifName {
-			vifs = append(vifs, vif)
-		}
-	}
-	status.Vifs = vifs
-}
-
 func vifNameToBridgeName(ctx *zedrouterContext, vifName string) string {
 
 	pub := ctx.pubNetworkObjectStatus
 	items := pub.GetAll()
 	for _, st := range items {
 		status := cast.CastNetworkObjectStatus(st)
-		if findVifInBridge(&status, vifName) {
+		if status.IsVifInBridge(vifName) {
 			return status.BridgeName
 		}
 	}

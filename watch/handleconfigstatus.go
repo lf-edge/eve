@@ -151,11 +151,16 @@ func HandleStatusEvent(change string, ctx interface{},
 	statusDirname string, status interface{},
 	statusCreateFunc statusCreateHandler,
 	statusDeleteFunc statusDeleteHandler,
-	handleRestart *StatusRestartHandler) {
+	handleRestart *StatusRestartHandler,
+	handleComplete *StatusRestartHandler) {
+
 	operation := string(change[0])
 	fileName := string(change[2:])
 	if operation == "R" {
-		log.Infof("Received restart <%s>; ignored\n", fileName)
+		log.Infof("Received restart <%s>\n", fileName)
+		if handleComplete != nil {
+			(*handleComplete)(ctx, true)
+		}
 		return
 	}
 	if fileName == "restarted" && operation == "M" {

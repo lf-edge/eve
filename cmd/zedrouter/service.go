@@ -493,12 +493,16 @@ func getBridgeServiceIPv4Addr(ctx *zedrouterContext, appLink uuid.UUID) (string,
 	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Adapter)
 	link, err := netlink.LinkByName(ifname)
 	if err != nil {
-		return "", err
+		errStr := fmt.Sprintf("getBridgeServiceIPv4Addr(%s): LinkByName(%s) failed %s",
+			appLink.String(), ifname, err)
+		return "", errors.New(errStr)
 	}
 	// XXX Add IPv6 underlay; ignore link-locals.
 	addrs, err := netlink.AddrList(link, syscall.AF_INET)
 	if err != nil {
-		return "", err
+		errStr := fmt.Sprintf("getBridgeServiceIPv4Addr(%s): AddrList(%s) failed %s",
+			appLink.String(), ifname, err)
+		return "", errors.New(errStr)
 	}
 	for _, addr := range addrs {
 		log.Infof("getBridgeServiceIPv4Addr(%s): found addr %s\n",

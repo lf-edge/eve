@@ -1834,7 +1834,6 @@ func xlDestroy(domainName string, domainId int) error {
 		log.Errorln("xl destroy output ", string(stdoutStderr))
 		return errors.New(fmt.Sprintf("xl destroy failed: %s\n",
 			string(stdoutStderr)))
-		return err
 	}
 	log.Infof("xl destroy done\n")
 	return nil
@@ -1950,9 +1949,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		if gcp.DomainBootRetryTime != 0 {
 			domainBootRetryTime = time.Duration(gcp.DomainBootRetryTime) * time.Second
 		}
-		// XXX note different polarity
-		if gcp.NoUsbAccess == ctx.usbAccess {
-			ctx.usbAccess = !gcp.NoUsbAccess
+		if gcp.UsbAccess != ctx.usbAccess {
+			ctx.usbAccess = gcp.UsbAccess
 			updateUsbAccess(ctx)
 		}
 	}

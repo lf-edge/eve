@@ -19,17 +19,18 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"math/big"
+	"net"
+	"os"
+	"reflect"
+	"time"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"math/big"
-	"net"
-	"os"
-	"reflect"
-	"time"
 )
 
 const (
@@ -184,8 +185,7 @@ func handleEIDConfigDelete(ctxArg interface{}, key string,
 	ctx := ctxArg.(*identityContext)
 	status := lookupEIDStatus(ctx, key)
 	if status == nil {
-		log.Errorf("handleEIDConfigDelete: unknown %s\n",
-			key, status.Key(), status)
+		log.Errorf("handleEIDConfigDelete: unknown %s\n", key)
 		return
 	}
 	handleDelete(ctx, key, status)

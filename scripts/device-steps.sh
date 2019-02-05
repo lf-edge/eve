@@ -159,6 +159,12 @@ if [ $CLEANUP = 0 ]; then
     rm /var/tmp/zededa/preserve
 fi
 
+echo "Removing old iptables/ip6tables rules"
+# Cleanup any remaining iptables rules from a failed run
+iptables -F
+ip6tables -F
+ip6tables -t raw -F
+
 echo "Handling restart done at" `date`
 
 echo "Starting" `date`
@@ -276,42 +282,38 @@ fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogled.conf -F -s &
 
 mkdir -p $DPCDIR
-if [ -f $CONFIGDIR/allow-usb-override ]; then
-    # Look for a USB stick with a key'ed file
-    # If found it replaces any build override file in /config
-    # XXX alternative is to use a designated UUID and -t.
-    # cgpt find -t ebd0a0a2-b9e5-4433-87c0-68b6b72699c7
-    # XXX invent a unique uuid for the above?
-    SPECIAL=`cgpt find -l DevicePortConfig`
-    echo "Found SPECIAL: $SPECIAL"
-    if [ -z $SPECIAL ]; then
-	SPECIAL=/dev/sdb1
-    fi
-    if [ -b $SPECIAL ]; then
-	key=`cat /config/root-certificate.pem /config/server /config/device.cert.pem | openssl sha256 | awk '{print $2}'`
-	mount -t vfat $SPECIAL /mnt
-	if [ $? != 0 ]; then
-	    echo "mount $SPECIAL failed: $?"
+
+# Look for a USB stick with a key'ed file
+# If found it replaces any build override file in /config
+# XXX alternative is to use a designated UUID and -t.
+# cgpt find -t a0ee3715-fcdc-4bd8-9f94-23a62bd53c91
+SPECIAL=`cgpt find -l DevicePortConfig`
+if [ ! -z "$SPECIAL" -a -b "$SPECIAL" ]; then
+    echo "Found USB with DevicePortConfig: $SPECIAL"
+    key="usb"
+    mount -t vfat $SPECIAL /mnt
+    if [ $? != 0 ]; then
+	echo "mount $SPECIAL failed: $?"
+    else
+	keyfile=/mnt/$key.json
+	if [ -f $keyfile ]; then
+	    echo "Found $keyfile on $SPECIAL"
+	    echo "Copying from $keyfile to $CONFIGDIR/DevicePortConfig/override.json"
+	    cp $keyfile $CONFIGDIR/DevicePortConfig/
 	else
-	    # XXX Remove this code? nim will do testing...
-	    echo "Mounted $SPECIAL"
-	    keyfile=/mnt/$key.json
-	    if [ -f $keyfile ]; then
-		echo "Found $keyfile on $SPECIAL"
-		echo "Copying from $keyfile to $CONFIGDIR/DevicePortConfig/override.json"
-		cp -p $keyfile $CONFIGDIR/DevicePortConfig/override.json
-		# No more override allowed
-		rm $CONFIGDIR/allow-usb-override
-	    else
-		echo "$keyfile not found on $SPECIAL"
-	    fi
+	    echo "$keyfile not found on $SPECIAL"
 	fi
     fi
 fi
-if [ -f $CONFIGDIR/DevicePortConfig/override.json ]; then
-    echo "Copying from $CONFIGDIR/DevicePortConfig/override.json"
-    cp -p $CONFIGDIR/DevicePortConfig/override.json $DPCDIR
-fi
+# Copy any DevicePortConfig from /config
+dir=$CONFIGDIR/DevicePortConfig
+for f in $dir/*.json; do
+    if [ "$f" = "$dir/*.json" ]; then
+	break
+    fi
+    echo "Copying from $f"
+    cp -p $f $DPCDIR
+done
 
 # Get IP addresses
 echo $BINDIR/nim
@@ -497,12 +499,6 @@ if [ ! -d $LISPDIR ]; then
     echo "Missing $LISPDIR directory. Giving up"
     exit 1
 fi
-
-echo "Removing old iptables/ip6tables rules"
-# Cleanup any remaining iptables rules from a failed run
-iptables -F
-ip6tables -F
-ip6tables -t raw -F
 
 if [ $SELF_REGISTER = 1 ]; then
     # Do we have a file from the build?

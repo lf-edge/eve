@@ -9,23 +9,31 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/wrap"
 	"net"
+	"strconv"
 	"strings"
 )
 
-// Get DNS info from dhcpcd. Updates DomainName and DnsServers
+// Get DNS etc info from dhcpcd. Updates DomainName and DnsServers, Gateway,
+// Subnet
+// XXX set NtpServer once we know what name it has
 // dhcpcd -U eth0 | grep domain_name=
 // dhcpcd -U eth0 | grep domain_name_servers=
+// dhcpcd -U eth0 | grep routers=
 // XXX add IPv6 support. Where do we put if different DomainName?
 // dhcp6_domain_search='attlocal.net'
 // dhcp6_name_servers='2600:1700:daa0:cfb0::1'
-func GetDnsInfo(us *types.NetworkPortStatus) error {
+func GetDhcpInfo(us *types.NetworkPortStatus) error {
 
 	log.Infof("getDnsInfo(%s)\n", us.IfName)
+	if us.Dhcp != types.DT_CLIENT {
+		return nil
+	}
+	// XXX get error -1 unless we have -4
+	// XXX add IPv6 support
 	log.Infof("Calling dhcpcd -U -4 %s\n", us.IfName)
 	cmd := wrap.Command("dhcpcd", "-U", "-4", us.IfName)
 	stdoutStderr, err := cmd.CombinedOutput()
 	if err != nil {
-		// XXX get error -1 unless we have -4
 		errStr := fmt.Sprintf("dhcpcd -U failed %s: %s",
 			string(stdoutStderr), err)
 		log.Errorln(errStr)
@@ -38,6 +46,8 @@ func GetDnsInfo(us *types.NetworkPortStatus) error {
 	lines := strings.Split(string(stdoutStderr), "\n")
 	us.DomainName = ""
 	us.DnsServers = []net.IP{}
+	masklen := 0
+	var subnet net.IP
 	for _, line := range lines {
 		items := strings.Split(line, "=")
 		if len(items) != 2 {
@@ -61,8 +71,39 @@ func GetDnsInfo(us *types.NetworkPortStatus) error {
 				continue
 			}
 			us.DnsServers = append(us.DnsServers, ip)
+		case "routers":
+			routers := trimQuotes(items[1])
+			log.Infof("getDnsInfo(%s) Gateway %s\n", us.IfName,
+				routers)
+			// XXX multiple? How separated?
+			ip := net.ParseIP(routers)
+			if ip == nil {
+				log.Errorf("Failed to parse %s\n", routers)
+				continue
+			}
+			us.Gateway = ip
+		case "network_number":
+			network := trimQuotes(items[1])
+			log.Infof("getDnsInfo(%s) network_number %s\n", us.IfName,
+				network)
+			ip := net.ParseIP(network)
+			if ip == nil {
+				log.Errorf("Failed to parse %s\n", network)
+				continue
+			}
+			subnet = ip
+		case "subnet_cidr":
+			str := trimQuotes(items[1])
+			log.Infof("getDnsInfo(%s) subnet_cidr %s\n", us.IfName,
+				str)
+			masklen, err = strconv.Atoi(str)
+			if err != nil {
+				log.Errorf("Failed to parse masklen %s\n", str)
+				continue
+			}
 		}
 	}
+	us.Subnet = net.IPNet{IP: subnet, Mask: net.CIDRMask(masklen, 32)}
 	return nil
 }
 

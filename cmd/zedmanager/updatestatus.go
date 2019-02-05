@@ -330,9 +330,19 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		// Shortcut if image is already verified
 		vs := lookupVerifyImageStatusAny(ctx, safename,
 			ss.ImageSha256)
-		if vs != nil && vs.State == types.DELIVERED {
-			log.Infof("doUpdate found verified image for %s sha %s\n",
-				safename, ss.ImageSha256)
+		// Handle post-reboot verification in progress by allowing
+		// types.DOWNLOADED. If the verification later fails we will
+		// get a delete of the VerifyImageStatus and skip this
+		if vs != nil && (vs.State == types.DELIVERED || vs.State == types.DOWNLOADED) {
+			switch vs.State {
+			case types.DELIVERED:
+				log.Infof("doUpdate found verified image for %s sha %s\n",
+					safename, ss.ImageSha256)
+
+			case types.DOWNLOADED:
+				log.Infof("doUpdate found downloaded/verified image for %s sha %s\n",
+					safename, ss.ImageSha256)
+			}
 			if vs.Safename != safename {
 				// If found based on sha256
 				log.Infof("doUpdate found diff safename %s\n",

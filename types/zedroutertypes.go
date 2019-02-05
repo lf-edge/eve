@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
@@ -42,6 +43,41 @@ func (config AppNetworkConfig) VerifyFilename(fileName string) bool {
 			fileName, expect)
 	}
 	return ret
+}
+
+func (config *AppNetworkConfig) getOverlayConfig(
+	network uuid.UUID) *OverlayNetworkConfig {
+	for i, _ := range config.OverlayNetworkList {
+		olConfig := &config.OverlayNetworkList[i]
+		if olConfig.Network == network {
+			return olConfig
+		}
+	}
+	return nil
+}
+
+func (config *AppNetworkConfig) getUnderlayConfig(
+	network uuid.UUID) *UnderlayNetworkConfig {
+	for i, _ := range config.UnderlayNetworkList {
+		ulConfig := &config.UnderlayNetworkList[i]
+		if ulConfig.Network == network {
+			return ulConfig
+		}
+	}
+	return nil
+}
+
+func (config *AppNetworkConfig) IsNetworkUsed(network uuid.UUID) bool {
+	olConfig := config.getOverlayConfig(network)
+	if olConfig != nil {
+		return true
+	}
+	ulConfig := config.getUnderlayConfig(network)
+	if ulConfig != nil {
+		return true
+	}
+	// Network UUID matching neither UL nor OL network
+	return false
 }
 
 func (status AppNetworkStatus) CheckPendingAdd() bool {
@@ -220,7 +256,7 @@ type ProxyConfig struct {
 }
 
 type DhcpConfig struct {
-	Dhcp       DhcpType // If DT_STATIC use below
+	Dhcp       DhcpType // If DT_STATIC use below; if DT_NOOP do nothing
 	AddrSubnet string   // In CIDR e.g., 192.168.1.44/24
 	Gateway    net.IP
 	DomainName string
@@ -259,6 +295,17 @@ type AddrInfo struct {
 type DeviceNetworkStatus struct {
 	Version DevicePortConfigVersion // From DevicePortConfig
 	Ports   []NetworkPortStatus
+}
+
+func (status *DeviceNetworkStatus) GetPortByName(
+	port string) *NetworkPortStatus {
+	for _, portStatus := range status.Ports {
+		if strings.EqualFold(portStatus.Name, port) {
+			log.Infof("Found NetworkPortStatus for %s", port)
+			return &portStatus
+		}
+	}
+	return nil
 }
 
 func rotate(arr []string, amount int) []string {
@@ -499,14 +546,13 @@ func IsFreeMgmtPort(globalStatus DeviceNetworkStatus, port string) bool {
 	return false
 }
 
-func GetMgmtPort(globalStatus DeviceNetworkStatus, port string) *NetworkPortStatus {
+func GetPort(globalStatus DeviceNetworkStatus, port string) *NetworkPortStatus {
 	for _, us := range globalStatus.Ports {
 		if us.Name != port && us.IfName != port {
 			continue
 		}
-		if globalStatus.Version >= DPCIsMgmt &&
-			!us.IsMgmt {
-			continue
+		if globalStatus.Version < DPCIsMgmt {
+			us.IsMgmt = true
 		}
 		return &us
 	}
@@ -576,12 +622,9 @@ func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool,
 }
 
 // Return list of port names we will report in info and metrics
-// Always include dbo1x0 for now.
-// XXX What about non-management ports? XXX how will caller tag?
-// Latter will move to a system app when we disaggregate
 func ReportPorts(deviceNetworkStatus DeviceNetworkStatus) []string {
+
 	var names []string
-	names = append(names, "dbo1x0")
 	for _, port := range deviceNetworkStatus.Ports {
 		names = append(names, port.Name)
 	}
@@ -651,7 +694,7 @@ type MapServer struct {
 	Credential  string
 }
 
-type ServiceLispConfig struct {
+type LispConfig struct {
 	MapServers    []MapServer
 	IID           uint32
 	Allocate      bool
@@ -702,8 +745,18 @@ type UnderlayNetworkConfig struct {
 	Name       string           // From proto message
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
-	Network    uuid.UUID
-	ACLs       []ACE
+	// Network
+	//   Currently overloaded. Can point to NetworkInstance or
+	//   NetworkConfig. If UsesNetworkInstance is set, Network
+	//   UUID points to NetworkInstance. Else, it points
+	//   to Network
+	//   XXX - Clean this up when deleting Network-Service support.
+	Network uuid.UUID
+	// UsesNetworkInstance
+	//   This attribute can be deleted when we stop network-service
+	//   support.
+	UsesNetworkInstance bool
+	ACLs                []ACE
 }
 
 type UnderlayNetworkStatus struct {
@@ -754,17 +807,14 @@ func (config NetworkObjectConfig) Key() string {
 	return config.UUID.String()
 }
 
-type NetworkObjectStatus struct {
-	NetworkObjectConfig
-	PendingAdd    bool
-	PendingModify bool
-	PendingDelete bool
-	BridgeNum     int
-	BridgeName    string // bn<N>
-	BridgeIPAddr  string
+type NetworkInstanceInfo struct {
+	BridgeNum    int
+	BridgeName   string // bn<N>
+	BridgeIPAddr string
+	BridgeMac    string
 
-	// Used to populate DNS and eid ipset
-	DnsNameToIPList []DnsNameToIP
+	// interface names for the Port
+	IfNameList []string // Recorded at time of activate
 
 	// Collection of address assignments; from MAC address to IP address
 	IPAssignments map[string]net.IP
@@ -780,6 +830,60 @@ type NetworkObjectStatus struct {
 	// Any errrors from provisioning the network
 	Error     string
 	ErrorTime time.Time
+}
+
+func (instanceInfo *NetworkInstanceInfo) IsVifInBridge(
+	vifName string) bool {
+	for _, vif := range instanceInfo.Vifs {
+		if vif.Name == vifName {
+			return true
+		}
+	}
+	return false
+}
+
+func (instanceInfo *NetworkInstanceInfo) RemoveVif(
+	vifName string) {
+	log.Infof("DelVif(%s, %s)\n", instanceInfo.BridgeName, vifName)
+
+	var vifs []VifNameMac
+	for _, vif := range instanceInfo.Vifs {
+		if vif.Name != vifName {
+			vifs = append(vifs, vif)
+		}
+	}
+	instanceInfo.Vifs = vifs
+}
+
+func (instanceInfo *NetworkInstanceInfo) AddVif(
+	vifName string, appMac string, appID uuid.UUID) {
+
+	log.Infof("addVifToBridge(%s, %s, %s, %s)\n",
+		instanceInfo.BridgeName, vifName, appMac, appID.String())
+	// XXX Should we just overwrite it? There is a lookup function
+	//	anyways if the caller wants "check and add" semantics
+	if instanceInfo.IsVifInBridge(vifName) {
+		log.Errorf("addVifToBridge(%s, %s) exists\n",
+			instanceInfo.BridgeName, vifName)
+		return
+	}
+	info := VifNameMac{
+		Name:    vifName,
+		MacAddr: appMac,
+		AppID:   appID,
+	}
+	instanceInfo.Vifs = append(instanceInfo.Vifs, info)
+}
+
+type NetworkObjectStatus struct {
+	NetworkObjectConfig
+	PendingAdd    bool
+	PendingModify bool
+	PendingDelete bool
+
+	NetworkInstanceInfo
+	// Used to populate DNS and eid ipset
+	DnsNameToIPList []DnsNameToIP
 }
 
 func (status NetworkObjectStatus) Key() string {
@@ -809,7 +913,7 @@ type NetworkServiceConfig struct {
 	AppLink      uuid.UUID
 	Adapter      string // Ifname or group like "uplink", or empty
 	OpaqueConfig string
-	LispConfig   ServiceLispConfig
+	LispConfig   LispConfig
 }
 
 func (config NetworkServiceConfig) Key() string {
@@ -827,7 +931,7 @@ type NetworkServiceStatus struct {
 	AppLink       uuid.UUID
 	Adapter       string // Ifname or group like "uplink", or empty
 	OpaqueStatus  string
-	LispStatus    ServiceLispConfig
+	LispStatus    LispConfig
 	IfNameList    []string  // Recorded at time of activate
 	Subnet        net.IPNet // Recorded at time of activate
 
@@ -938,17 +1042,16 @@ type NetworkInstanceConfig struct {
 	UUIDandVersion
 	DisplayName string
 
+	Type NetworkInstanceType
+
 	// Activate - Activate the config.
 	Activate bool
-
-	Type NetworkInstanceType
 
 	// Port - Port name specified in the Device Config.
 	Port string
 
 	// IP configuration for the Application
 	IpType          AddressType
-	DhcpType        DhcpType // If DT_STATIC or DT_SERVER use below
 	Subnet          net.IPNet
 	Gateway         net.IP
 	DomainName      string
@@ -961,8 +1064,8 @@ type NetworkInstanceConfig struct {
 	OpaqueConfig string
 }
 
-func (status *NetworkInstanceConfig) Key() string {
-	return status.UUID.String()
+func (config *NetworkInstanceConfig) Key() string {
+	return config.UUID.String()
 }
 
 type ChangeInProgressType int32
@@ -986,35 +1089,14 @@ type NetworkInstanceStatus struct {
 	//	Keeps track of current state of object - if it has been activated
 	Activated bool
 
-	BridgeNum    int
-	BridgeName   string // bn<N>
-	BridgeIPAddr string
-	BridgeMac    string
+	NetworkInstanceInfo
 
-	// interface names for the Port
-	IfNameList []string // Recorded at time of activate
-
-	// Used to populate DNS and eid ipset
-	DnsNameToIPList []DnsNameToIP
-
-	// Collection of address assignments; from MAC address to IP address
-	IPAssignments map[string]net.IP
-
-	// Union of all ipsets fed to dnsmasq for the linux bridge
-	BridgeIPSets []string
-
-	// Set of vifs on this bridge
-	Vifs []VifNameMac
-
-	Ipv4Eid bool // Track if this is a CryptoEid with IPv4 EIDs
+	OpaqueStatus string
+	LispStatus   LispConfig
 
 	VpnStatus      *ServiceVpnStatus
 	LispInfoStatus *LispInfoStatus
 	LispMetrics    *LispMetrics
-
-	// Any errrors from provisioning the network instance
-	Error     string
-	ErrorTime time.Time
 }
 
 type VifNameMac struct {
@@ -1038,6 +1120,10 @@ func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 		}
 	}
 	return false
+}
+
+func (status *NetworkInstanceStatus) IsUsingPort(port string) bool {
+	return strings.EqualFold(port, status.Port)
 }
 
 // Similar support as in draft-ietf-netmod-acl-model

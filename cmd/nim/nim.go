@@ -16,6 +16,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/devicenetwork"
@@ -28,17 +29,19 @@ import (
 )
 
 const (
-	agentName       = "nim"
-	tmpDirname      = "/var/tmp/zededa"
-	DNCDirname      = tmpDirname + "/DeviceNetworkConfig"
-	identityDirname = "/config"
+	agentName   = "nim"
+	tmpDirname  = "/var/tmp/zededa"
+	DNCDirname  = tmpDirname + "/DeviceNetworkConfig"
+	DPCOverride = tmpDirname + "/DevicePortConfig/override.json"
 )
 
 type nimContext struct {
 	devicenetwork.DeviceNetworkContext
 	subGlobalConfig *pubsub.Subscription
 	GCInitialized   bool // Received initial GlobalConfig
+	globalConfig    *types.GlobalConfig
 	sshAccess       bool
+	allowAppVnc     bool
 
 	// CLI args
 	debug         bool
@@ -76,9 +79,13 @@ func waitForDeviceNetworkConfigFile() string {
 	// don't have a DeviceNetworkConfig
 	// After some tries we fall back to default.json which is eth0, wlan0
 	// and wwan0
-	// XXX if we have a /config/DevicePortConfig/override.json
-	// we should proceed without a DNCFilename!
+	// If we have a DevicePortConfig/override.json we proceed
+	// without a DNCFilename!
 	tries := 0
+	if fileExists(DPCOverride) {
+		model = "default"
+		return model
+	}
 	for {
 		DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
 		_, err := os.Stat(DNCFilename)
@@ -104,7 +111,8 @@ func waitForDeviceNetworkConfigFile() string {
 func Run() {
 	nimCtx := nimContext{}
 	nimCtx.AssignableAdapters = &types.AssignableAdapters{}
-	iptables.UpdateSshAccess(nimCtx.sshAccess, true)
+	nimCtx.sshAccess = true // Kernel default - no iptables filters
+	nimCtx.globalConfig = &types.GlobalConfigDefaults
 
 	logf, err := agentlog.Init(agentName)
 	if err != nil {
@@ -158,6 +166,7 @@ func Run() {
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	subGlobalConfig.SynchronizedHandler = handleGlobalConfigSynchronized
 	nimCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
@@ -248,37 +257,51 @@ func Run() {
 		}
 	}
 
-	// XXX should we make geoRedoTime configurable?
 	// We refresh the gelocation information when the underlay
-	// IP address(es) change, or once an hour.
-	geoRedoTime := time.Hour
+	// IP address(es) change, plus periodically based on this timer
+	geoRedoTime := time.Duration(nimCtx.globalConfig.NetworkGeoRedoTime) * time.Second
 
 	// Timer for retries after failure etc. Should be less than geoRedoTime
-	geoInterval := time.Duration(10 * time.Minute)
+	geoInterval := time.Duration(nimCtx.globalConfig.NetworkGeoRetryTime) * time.Second
 	geoMax := float64(geoInterval)
 	geoMin := geoMax * 0.3
 	geoTimer := flextimer.NewRangeTicker(time.Duration(geoMin),
 		time.Duration(geoMax))
 
 	dnc := &nimCtx.DeviceNetworkContext
-	dnc.DPCTestDuration = 30 // seconds
+	// TIme we wait for DHCP to get an address before giving up
+	dnc.DPCTestDuration = nimCtx.globalConfig.NetworkTestDuration
+
 	// Timer for checking/verifying pending device network status
-	pendTimer := time.NewTimer(dnc.DPCTestDuration * time.Second)
 	// We stop this timer before using in the select loop below, because
 	// we do not want the DPC list verification to start yet. We need a place
-	// holder in the select loop.
+	// Holder in the select loop.
 	// Let the select loop have this stopped timer for now and
 	// create a new timer when it's deemed required (change in DPC config).
+	pendTimer := time.NewTimer(time.Duration(dnc.DPCTestDuration) * time.Second)
 	pendTimer.Stop()
 	dnc.Pending.PendTimer = pendTimer
 
 	// Periodic timer that tests device cloud connectivity
-	dnc.NetworkTestInterval = 5 // minutes
-	networkTestInterval := time.Duration(dnc.NetworkTestInterval * time.Minute)
+	dnc.NetworkTestInterval = nimCtx.globalConfig.NetworkTestInterval
+	networkTestInterval := time.Duration(time.Duration(dnc.NetworkTestInterval) * time.Second)
 	networkTestTimer := time.NewTimer(networkTestInterval)
 	dnc.NetworkTestTimer = networkTestTimer
 	// We start assuming cloud connectivity works
 	dnc.CloudConnectivityWorks = true
+
+	dnc.NetworkTestBetterInterval = nimCtx.globalConfig.NetworkTestBetterInterval
+	if dnc.NetworkTestBetterInterval == 0 {
+		log.Warnln("NOT running TestBetterTimer")
+		// Dummy which is stopped needed for select loop
+		networkTestBetterTimer := time.NewTimer(time.Hour)
+		networkTestBetterTimer.Stop()
+		dnc.NetworkTestBetterTimer = networkTestBetterTimer
+	} else {
+		networkTestBetterInterval := time.Duration(dnc.NetworkTestBetterInterval) * time.Second
+		networkTestBetterTimer := time.NewTimer(networkTestBetterInterval)
+		dnc.NetworkTestBetterTimer = networkTestBetterTimer
+	}
 
 	// Look for address changes
 	addrChanges := devicenetwork.AddrChangeInit(&nimCtx.DeviceNetworkContext)
@@ -342,6 +365,18 @@ func Run() {
 				}
 			}
 
+		case _, ok := <-dnc.NetworkTestBetterTimer.C:
+			if !ok {
+				log.Infof("Network testBetterTimer stopped?")
+			} else if dnc.NextDPCIndex == 0 {
+				log.Infof("Network testBetterTimer at zero ignored")
+			} else {
+				log.Infof("Network testBetterTimer at index %d",
+					dnc.NextDPCIndex)
+				devicenetwork.RestartVerify(dnc,
+					"NetworkTestBetterTimer")
+			}
+
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
 		}
@@ -352,9 +387,14 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 	pass := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1)
 	if pass {
 		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
+		if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
+			cur := ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
+			cur.LastSucceeded = time.Now()
+		}
+
 		ctx.CloudConnectivityWorks = true
 		// Restart network test timer for next slot.
-		ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
+		ctx.NetworkTestTimer = time.NewTimer(time.Duration(ctx.NetworkTestInterval) * time.Second)
 		return true
 	}
 	if !ctx.CloudConnectivityWorks {
@@ -375,7 +415,7 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 		}
 	} else {
 		// Restart network test timer for next slot.
-		ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
+		ctx.NetworkTestTimer = time.NewTimer(time.Duration(ctx.NetworkTestInterval) * time.Second)
 		ctx.CloudConnectivityWorks = false
 	}
 	return false
@@ -397,10 +437,25 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	var gcp *types.GlobalConfig
 	ctx.debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
-	// XXX note different polarity
-	if gcp != nil && gcp.NoSshAccess == ctx.sshAccess {
-		ctx.sshAccess = !gcp.NoSshAccess
-		iptables.UpdateSshAccess(ctx.sshAccess, false)
+	first := !ctx.GCInitialized
+	if gcp != nil {
+		if !cmp.Equal(ctx.globalConfig, *gcp) {
+			log.Infof("handleGlobalConfigModify: diff %v\n",
+				cmp.Diff(ctx.globalConfig, *gcp))
+			updated := types.ApplyGlobalConfig(*gcp)
+			log.Infof("handleGlobalConfigModify: updated with defaults %v\n",
+				cmp.Diff(*gcp, updated))
+			*gcp = updated
+		}
+		if gcp.SshAccess != ctx.sshAccess || first {
+			ctx.sshAccess = gcp.SshAccess
+			iptables.UpdateSshAccess(ctx.sshAccess, first)
+		}
+		if gcp.AllowAppVnc != ctx.allowAppVnc || first {
+			ctx.allowAppVnc = gcp.AllowAppVnc
+			iptables.UpdateVncAccess(ctx.allowAppVnc)
+		}
+		ctx.globalConfig = gcp
 	}
 	ctx.GCInitialized = true
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
@@ -419,4 +474,23 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 		ctx.debugOverride)
 	ctx.GCInitialized = false
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+// In case there is no GlobalConfig.json this will move us forward
+func handleGlobalConfigSynchronized(ctxArg interface{}, done bool) {
+	ctx := ctxArg.(*nimContext)
+
+	log.Infof("handleGlobalConfigSynchronized(%v)\n", done)
+	if done {
+		first := !ctx.GCInitialized
+		if first {
+			iptables.UpdateSshAccess(ctx.sshAccess, first)
+		}
+		ctx.GCInitialized = true
+	}
+}
+
+func fileExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return err == nil
 }

@@ -18,6 +18,7 @@ const (
 )
 
 type PendDNSStatus uint32
+
 const (
 	DPC_FAIL PendDNSStatus = iota
 	DPC_SUCCESS
@@ -54,14 +55,16 @@ type DeviceNetworkContext struct {
 	Changed                 bool
 	SubGlobalConfig         *pubsub.Subscription
 
-	Pending                 DPCPending
-	NetworkTestTimer        *time.Timer
-	NextDPCIndex            int
-	CloudConnectivityWorks  bool
+	Pending                DPCPending
+	NetworkTestTimer       *time.Timer
+	NetworkTestBetterTimer *time.Timer
+	NextDPCIndex           int
+	CloudConnectivityWorks bool
 
-	// How long should we wait before testing a pending DPC?
-	DPCTestDuration         time.Duration  // In seconds.
-	NetworkTestInterval     time.Duration  // Test interval in minutes.
+	// Timers in seconds
+	DPCTestDuration           uint32 // Wait for DHCP address
+	NetworkTestInterval       uint32 // Test interval in minutes.
+	NetworkTestBetterInterval uint32 // Look for lower/better index
 }
 
 func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
@@ -124,7 +127,7 @@ func SetupVerify(ctx *DeviceNetworkContext, index int) {
 
 	pending := &ctx.Pending
 	pending.Inprogress = true
-	pending.PendDPC    = ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
+	pending.PendDPC = ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
 	pending.PendDNS, _ = MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
 	pending.TestCount = 0
 	log.Infof("SetupVerify: Started testing DPC (index %d): %v",
@@ -171,12 +174,12 @@ func VerifyPending(pending *DPCPending,
 	if numUsableAddrs == 0 {
 		if pending.TestCount < MaxDPCRetestCount {
 			pending.TestCount += 1
-			log.Infof("VerifyPending: Pending DNS %v does not " +
+			log.Infof("VerifyPending: Pending DNS %v does not "+
 				"have any usable IP addresses", pending.PendDNS)
 			return DPC_WAIT
 		} else {
 			pending.PendDPC.LastFailed = time.Now()
-			log.Infof("VerifyPending: DHCP could not resolve any usable " +
+			log.Infof("VerifyPending: DHCP could not resolve any usable "+
 				"IP addresses for the pending DNS %v", pending.PendDNS)
 			return DPC_FAIL
 		}
@@ -190,15 +193,18 @@ func VerifyPending(pending *DPCPending,
 	if res {
 		pending.PendDPC.LastSucceeded = time.Now()
 		status = DPC_SUCCESS
-		log.Infof("VerifyPending: DPC %v passed network test", pending.PendDPC)
+		log.Infof("VerifyPending: DPC passed network test: %+v",
+			pending.PendDPC)
 	} else {
 		pending.PendDPC.LastFailed = time.Now()
-		log.Infof("VerifyPending: DPC %v failed network test", pending.PendDPC)
+		log.Infof("VerifyPending: DPC failed network test: %+v",
+			pending.PendDPC)
 	}
 	return status
 }
 
 func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
+	log.Infof("VerifyDevicePortConfig()\n")
 	if !ctx.Pending.Inprogress {
 		return
 	}
@@ -206,6 +212,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	// It shall be resumed when we find working network configuration.
 	ctx.NetworkTestTimer.Stop()
 
+	ctx.NetworkTestBetterTimer.Stop()
 	pending := &ctx.Pending
 
 	passed := false
@@ -219,12 +226,19 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			// We have already published the new DNS for domainmgr.
 			// Wait until we hear from domainmgr before applying (dhcp enable/disable)
 			// and testing this new configuration.
+			log.Infof("VerifyDevicePortConfig: DPC_PCI_WAIT for %d",
+				ctx.NextDPCIndex)
 			return
 		case DPC_WAIT:
 			// Either addressChange or PendTimer will result in calling us again.
-			pending.PendTimer = time.NewTimer(ctx.DPCTestDuration * time.Second)
+			duration := time.Duration(ctx.DPCTestDuration) * time.Second
+			pending.PendTimer = time.NewTimer(duration)
+			log.Infof("VerifyDevicePortConfig: DPC_WAIT for %d",
+				ctx.NextDPCIndex)
 			return
 		case DPC_FAIL:
+			log.Infof("VerifyDevicePortConfig: DPC_FAIL for %d",
+				ctx.NextDPCIndex)
 			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
 			if checkAndRestartDPCListTest(ctx) {
 				// DPC list verification re-started from beginning
@@ -235,18 +249,32 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			// Skip entries with LastFailed after LastSucceeded and
 			// a recent LastFailed (a minute or less).
 			nextIndex := getNextTestableDPCIndex(ctx)
-
 			SetupVerify(ctx, nextIndex)
 			continue
+
 		case DPC_SUCCESS:
+			log.Infof("VerifyDevicePortConfig: DPC_SUCCESS for %d",
+				ctx.NextDPCIndex)
 			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
 			if checkAndRestartDPCListTest(ctx) {
 				// DPC list verification re-started from beginning
 				continue
 			}
 			passed = true
-			log.Infof("VerifyDevicePortConfig: Working DPC configuration found " +
-				"at index %d in DPC list", ctx.NextDPCIndex)
+			if ctx.NextDPCIndex == 0 {
+				log.Infof("VerifyDevicePortConfig: Working DPC configuration found "+
+					"at index %d in DPC list",
+					ctx.NextDPCIndex)
+			} else {
+				log.Warnf("VerifyDevicePortConfig: Working DPC configuration found "+
+					"at index %d in DPC list",
+					ctx.NextDPCIndex)
+				if ctx.NetworkTestBetterInterval != 0 {
+					// Look for a better choice in a while
+					duration := time.Duration(ctx.NetworkTestBetterInterval) * time.Second
+					ctx.NetworkTestBetterTimer = time.NewTimer(duration)
+				}
+			}
 		}
 	}
 	*ctx.DevicePortConfig = pending.PendDPC
@@ -257,7 +285,8 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	pending.OldDPC = getCurrentDPC(ctx)
 
 	// Restart network test timer
-	ctx.NetworkTestTimer = time.NewTimer(ctx.NetworkTestInterval * time.Minute)
+	duration := time.Duration(ctx.NetworkTestInterval) * time.Second
+	ctx.NetworkTestTimer = time.NewTimer(duration)
 }
 
 // Check if there is an untested DPC configuration at index 0
@@ -294,7 +323,7 @@ func getNextTestableDPCIndex(ctx *DeviceNetworkContext) int {
 			break
 		}
 		log.Debugln("getNextTestableDPCIndex: DPC %v is not testable",
-		ctx.DevicePortConfigList.PortConfigList[newIndex])
+			ctx.DevicePortConfigList.PortConfigList[newIndex])
 		newIndex = (newIndex + 1) % dpcListLen
 	}
 	if count == dpcListLen {
@@ -413,7 +442,7 @@ func HandleAssignableAdaptersDelete(ctxArg interface{}, key string,
 	//   adapters results in domain restart and takes affect only after
 	//   the restart.
 
-	// NoUsbAccess can change dynamically - but it is not network device,
+	// UsbAccess can change dynamically - but it is not network device,
 	// so can be ignored. Assuming there are no USB based network interfaces.
 	log.Infof("HandleAssignableAdaptersDelete done for %s\n", key)
 }
@@ -474,27 +503,14 @@ func (ctx *DeviceNetworkContext) doApplyDevicePortConfig(delete bool) {
 
 func (ctx *DeviceNetworkContext) doPublishDNSForPortConfig(
 	portConfig *types.DevicePortConfig) {
-	// XXX if err return means WPAD failed, or port does not exist
-	// XXX add test hook for former; try lower priority
+
 	dnStatus, _ := MakeDeviceNetworkStatus(*portConfig,
 		*ctx.DeviceNetworkStatus)
-
-	// We use device certs to build tls config to hit the test Ping URL.
-	// NIM starts even before device onboarding finishes. When a device is
-	// booting for the first time and does not have its device certs registered
-	// with cloud yet, a hit to Ping URL would fail.
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
 		log.Infof("doPublishDNSForPortConfig: DeviceNetworkStatus change from %v to %v\n",
 			*ctx.DeviceNetworkStatus, dnStatus)
-		pass := VerifyDeviceNetworkStatus(dnStatus, 1)
-		// XXX Can fail if we don't have a DHCP lease yet
-		if true || pass {
-			*ctx.DeviceNetworkStatus = dnStatus
-			DoDNSUpdate(ctx)
-		} else {
-			// XXX try lower priority
-			// XXX add retry of higher priority in main
-		}
+		*ctx.DeviceNetworkStatus = dnStatus
+		DoDNSUpdate(ctx)
 	} else {
 		log.Infof("doPublishDNSForPortConfig: No change in DNS\n")
 	}

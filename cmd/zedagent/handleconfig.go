@@ -38,34 +38,7 @@ const (
 	uuidFileName    = identityDirname + "/uuid"
 )
 
-// Default values until/unless we receive them from the cloud
-// We do a GET of config every 60 seconds,
-// PUT of metrics every 60 seconds,
-// If we don't hear anything from the cloud in a week, then we reboot,
-// and during a post-update boot that time is reduced to 10 minutes.
-// On reboot if we can't get a config, then we use a saved one if the saved is
-// not older than 10 minutes.
-// A downloaded image which isn't used is garbage collected after 10 minutes.
-// If a instance has been removed its read/write vdisks are deleted after
-// one hour.
-var globalConfigDefaults = types.GlobalConfig{
-	ConfigInterval:          60,
-	MetricInterval:          60,
-	ResetIfCloudGoneTime:    7 * 24 * 3600,
-	FallbackIfCloudGoneTime: 600,
-	MintimeUpdateSuccess:    300,
-	NoUsbAccess:             false,  // XXX change defaults
-	NoSshAccess:             false,  // XXX change defaults
-	StaleConfigTime:         600,    // Use stale config for up to 10 minutes
-	DownloadGCTime:          600,    // 10 minutes
-	VdiskGCTime:             3600,   // 1 hour
-	DownloadRetryTime:       600,    // 10 minutes
-	DomainBootRetryTime:     600,    // 10 minutes
-	DefaultLogLevel:         "info", // XXX change default to warning?
-	DefaultRemoteLogLevel:   "warning",
-}
-
-var globalConfig = globalConfigDefaults
+var globalConfig = types.GlobalConfigDefaults
 
 type getconfigContext struct {
 	zedagentCtx                 *zedagentContext // Cross link
@@ -193,7 +166,7 @@ func updateConfigTimer(tickerHandle interface{}) {
 func getLatestConfig(url string, iteration int, updateInprogress bool,
 	getconfigCtx *getconfigContext) bool {
 
-	log.Debugf("getLastestConfig(%s, %d, %v)\n", url, iteration,
+	log.Debugf("getLatestConfig(%s, %d, %v)\n", url, iteration,
 		updateInprogress)
 
 	// Did we exceed the time limits?
@@ -259,7 +232,7 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 			time.Duration(globalConfig.MintimeUpdateSuccess)
 		curPart := getBaseOsCurrentPartition(getconfigCtx.zedagentCtx)
 		if timePassed < successLimit {
-			log.Infof("getLastestConfig, curPart %s inprogress waiting for %d seconds\n", curPart, (successLimit-timePassed)/time.Second)
+			log.Infof("getLatestConfig, curPart %s inprogress waiting for %d seconds\n", curPart, (successLimit-timePassed)/time.Second)
 		} else {
 			initiateBaseOsZedCloudTestComplete(getconfigCtx)
 		}
