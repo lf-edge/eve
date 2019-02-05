@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 )
 
@@ -83,6 +82,7 @@ func (ep *HttpTransportMethod) WithLogging(onoff bool) error {
 
 // File upload to HTTP Datastore
 func (ep *HttpTransportMethod) processHttpUpload(req *DronaRequest) (error, int) {
+	postUrl := ep.hurl + "/" + ep.path
 	prgChan := make(zedHttp.NotifChan)
 	defer close(prgChan)
 	if req.ackback {
@@ -102,7 +102,7 @@ func (ep *HttpTransportMethod) processHttpUpload(req *DronaRequest) (error, int)
 			}
 		}(req, prgChan)
 	}
-	resp := zedHttp.ExecCmd("post", ep.hurl, req.name, req.objloc, prgChan, ep.hClient)
+	resp := zedHttp.ExecCmd("post", postUrl, req.name, req.objloc, prgChan, ep.hClient)
 	return resp.Error, resp.BodyLength
 }
 
@@ -110,11 +110,7 @@ func (ep *HttpTransportMethod) processHttpUpload(req *DronaRequest) (error, int)
 func (ep *HttpTransportMethod) processHttpDownload(req *DronaRequest) (error, int) {
 	file := req.name
 	if ep.hurl != "" {
-		if strings.HasSuffix(ep.hurl, "/") {
-			file = ep.hurl + req.name
-		} else {
-			file = ep.hurl + "/" + req.name
-		}
+		file = ep.hurl + "/" + ep.path + "/" + req.name
 	}
 	prgChan := make(zedHttp.NotifChan)
 	defer close(prgChan)
@@ -149,6 +145,7 @@ func (ep *HttpTransportMethod) processHttpDelete(req *DronaRequest) error {
 
 // File list from HTTP Datastore
 func (ep *HttpTransportMethod) processHttpList(req *DronaRequest) ([]string, error) {
+	listUrl := ep.hurl + "/" + ep.path
 	prgChan := make(zedHttp.NotifChan)
 	defer close(prgChan)
 	if req.ackback {
@@ -168,7 +165,7 @@ func (ep *HttpTransportMethod) processHttpList(req *DronaRequest) ([]string, err
 			}
 		}(req, prgChan)
 	}
-	resp := zedHttp.ExecCmd("ls", ep.hurl, ep.path, "", prgChan, ep.hClient)
+	resp := zedHttp.ExecCmd("ls", listUrl, "", "", prgChan, ep.hClient)
 	return resp.List, resp.Error
 }
 
@@ -176,11 +173,7 @@ func (ep *HttpTransportMethod) processHttpList(req *DronaRequest) ([]string, err
 func (ep *HttpTransportMethod) processHttpObjectMetaData(req *DronaRequest) (error, int64) {
 	file := req.name
 	if ep.hurl != "" {
-		if strings.HasSuffix(ep.hurl, "/") {
-			file = ep.hurl + req.name
-		} else {
-			file = ep.hurl + "/" + req.name
-		}
+		file = ep.hurl + "/" + ep.path + "/" + req.name
 	}
 	prgChan := make(zedHttp.NotifChan)
 	defer close(prgChan)

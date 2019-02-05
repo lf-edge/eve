@@ -289,7 +289,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:0469116508ea01750ed13d76787eea4b0a0dd633c737feea9527c603aa4c36da"
+  digest = "1:36d18cfaf4234d4362bedc39a2c53b211c0663de636989a38a9d136507d8b53b"
   name = "github.com/zededa/shared"
   packages = [
     "libs/zedUpload",
@@ -299,7 +299,7 @@
     "libs/zedUpload/sftputil",
   ]
   pruneopts = "NUT"
-  revision = "dedf52683f00593edc5b85c7dd191098b9284254"
+  revision = "7ca37267f1b315b134ad98410d5739a002b2b83d"
 
 [[projects]]
   digest = "1:f2805adeca595d7dbd25173b57f83daaa79f44d43475263c4e34b05020eac9a7"

@@ -19,13 +19,11 @@ import (
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/wrap"
 	"github.com/zededa/go-provision/zedcloud"
 	"github.com/zededa/shared/libs/zedUpload"
 	"io/ioutil"
 	"net"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -956,57 +954,78 @@ func downloaderSubscription(ctx *downloaderContext, objType string) *pubsub.Subs
 
 // cloud storage interface functions/APIs
 
-// XXX should we use --cacart? Would assume we know the root CA.
-// XXX Set --limit-rate 100k
-// XXX continue based on filesize with: -C -
-// Note that support for --dns-interface is not compiled in
-// Normally "ifname" is the source IP to be consistent with the S3 loop
-func doCurl(url string, ifname string, maxsize uint64, destFilename string) error {
-	cmd := "curl"
-	args := []string{}
-	maxsizeStr := strconv.FormatUint(maxsize, 10)
-	if ifname != "" {
-		args = []string{
-			"-q",
-			"-4", // XXX due to getting IPv6 ULAs and not IPv4
-			"--insecure",
-			"--retry",
-			"3",
-			"--silent",
-			"--show-error",
-			"--interface",
-			ifname,
-			"--max-filesize",
-			maxsizeStr,
-			"-o",
-			destFilename,
-			url,
-		}
-	} else {
-		args = []string{
-			"-q",
-			"-4", // XXX due to getting IPv6 ULAs and not IPv4
-			"--insecure",
-			"--retry",
-			"3",
-			"--silent",
-			"--show-error",
-			"--max-filesize",
-			maxsizeStr,
-			"-o",
-			destFilename,
-			url,
-		}
+func doHttp(ctx *downloaderContext, status *types.DownloaderStatus,
+	syncOp zedUpload.SyncOpType, serverUrl, dpath string, maxsize uint64,
+	ifname string, ipSrc net.IP, filename, locFilename string) error {
+
+	auth := &zedUpload.AuthInput{
+		AuthType: "http",
 	}
 
-	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	trType := zedUpload.SyncHttpTr
 
+	// create Endpoint
+	dEndPoint, err := ctx.dCtx.NewSyncerDest(trType, serverUrl, dpath, auth)
 	if err != nil {
-		log.Errorln("curl failed ", err)
-	} else {
-		log.Infof("curl done: output <%s>\n", string(stdoutStderr))
+		log.Errorf("NewSyncerDest failed: %s\n", err)
+		return err
 	}
-	return err
+	proxyUrl, err := zedcloud.LookupProxy(
+		&ctx.deviceNetworkStatus, ifname, serverUrl)
+	if err == nil && proxyUrl != nil {
+		log.Infof("doHttp: Using proxy %s", proxyUrl.String())
+		dEndPoint.WithSrcIpAndProxySelection(ipSrc, proxyUrl)
+	} else {
+		dEndPoint.WithSrcIpSelection(ipSrc)
+	}
+	var respChan = make(chan *zedUpload.DronaRequest)
+
+	log.Debugf("syncOp for <%s>, <%s>\n", serverUrl, filename)
+	// create Request
+	// Round up from bytes to Mbytes
+	maxMB := (maxsize + 1024*1024 - 1) / (1024 * 1024)
+	req := dEndPoint.NewRequest(syncOp, filename, locFilename, int64(maxMB), true, respChan)
+	if req == nil {
+		return errors.New("NewRequest failed")
+	}
+
+	req.Post()
+	for {
+		select {
+		case resp, ok := <-respChan:
+			if resp.IsDnUpdate() {
+				asize := resp.GetAsize()
+				osize := resp.GetOsize()
+				log.Infof("Update progress for %v: %v/%v",
+					resp.GetLocalName(), asize, osize)
+				if osize == 0 {
+					status.Progress = 0
+				} else {
+					percent := 100 * asize / osize
+					status.Progress = uint(percent)
+				}
+				publishDownloaderStatus(ctx, status)
+				continue
+			}
+			if !ok {
+				errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>",
+					serverUrl, filename)
+				log.Errorln(errStr)
+				return errors.New(errStr)
+			}
+			_, err = resp.GetUpStatus()
+			if resp.IsError() {
+				return err
+			} else {
+				log.Infof("Done for %v: size %v/%v",
+					resp.GetLocalName(),
+					resp.GetAsize(), resp.GetOsize())
+				status.Progress = 100
+				publishDownloaderStatus(ctx, status)
+				return nil
+			}
+		}
+	}
 }
 
 func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
@@ -1261,7 +1280,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		case zconfig.DsType_DsSFTP.String():
-			serverUrl := strings.Split(config.DownloadURL, "/")[0]
+			serverUrl := strings.TrimSuffix(config.DownloadURL, "/"+config.Dpath+"/"+filename)
 			err = doSftp(ctx, status, syncOp, config.ApiKey,
 				config.Password, serverUrl, config.Dpath,
 				config.Size, ipSrc, filename, locFilename)
@@ -1284,8 +1303,10 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		case zconfig.DsType_DsHttp.String(), zconfig.DsType_DsHttps.String(), "":
-			err = doCurl(config.DownloadURL, ipSrc.String(),
-				config.Size, locFilename)
+			// DownloadURL format : http://<serverURL>/dpath/filename
+			serverUrl := strings.TrimSuffix(config.DownloadURL, "/"+config.Dpath+"/"+filename)
+			err = doHttp(ctx, status, syncOp, serverUrl, config.Dpath,
+				config.Size, ifname, ipSrc, filename, locFilename)
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
