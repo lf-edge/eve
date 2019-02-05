@@ -1,0 +1,24 @@
+--- guacamole-server-1.0.0/src/guacd/daemon.c.orig	2019-02-05 10:14:52.000000000 +0100
++++ guacamole-server-1.0.0/src/guacd/daemon.c	2019-02-05 10:16:07.000000000 +0100
+@@ -17,6 +17,8 @@
+  * under the License.
+  */
+ 
++#define _GNU_SOURCE 1
++#include <pthread.h>
+ #include "config.h"
+ 
+ #include "conf.h"
+@@ -275,6 +277,12 @@
+     /* General */
+     int retval;
+ 
++    /* Set default stack size of 8MB */
++    pthread_attr_t default_pthread_attr;
++    pthread_attr_init(&default_pthread_attr);
++    pthread_attr_setstacksize(&default_pthread_attr, 8*1024*1024);
++    pthread_setattr_default_np(&default_pthread_attr);
++
+     /* Load configuration */
+     guacd_config* config = guacd_conf_load();
+     if (config == NULL || guacd_conf_parse_args(config, argc, argv))
