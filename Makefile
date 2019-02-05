@@ -80,7 +80,7 @@ zedctr-workaround:
           fi ;\
 	  date +%s > pkg/zedctr/trigger ;\
         fi ; if [ $$? -eq 0 ]; then \
-	  make -C pkg RESCAN_DEPS="" PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache $${PKG_HASH:+-hash }$$PKG_HASH" $(DEFAULT_PKG_TARGET) ;\
+	  make -C pkg RESCAN_DEPS="" PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache $${PKG_HASH:+-hash }$$PKG_HASH" $(DEFAULT_PKG_TARGET) && \
 	  [ -z "$$PKG_HASH" ] || (PKG_HASH=zededa/zedctr:$$PKG_HASH ; docker tag $$PKG_HASH `echo ZEDEDA_TAG | $(PARSE_PKGS)` ; docker rmi $$PKG_HASH $$PKG_HASH-$(DOCKER_ARCH_TAG_$(shell uname -m))) ;\
 	else \
 	  docker pull `echo ZEDEDA_TAG | $(PARSE_PKGS)` || : ;\
