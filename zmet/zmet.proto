@@ -143,9 +143,11 @@ message ZInfoDevice {
   repeated MetricItem metricItems = 21; // For instance, static LTE network info
 }
 
-//SW Info for the device base OS
+// SW Info for the device base OS
+// Many of these fields are for debug purposes. The ones intended
+// for the UI/cli are userStatus, subStatus, shortVersion, and swErr
 message ZInfoDevSW {
-  bool activated = 2;        // XXX is this implicit in partitionStatus?
+  bool activated = 2;
   string partitionLabel = 3; // E.g., "IMGA"
   string partitionDevice = 4;// /dev/something
   string partitionState = 5; // state obtained from cboot
@@ -154,6 +156,18 @@ message ZInfoDevSW {
   string longVersion = 8;    // E.g., the yml file content from build
   ErrorInfo swErr = 9;
   uint32 downloadProgress = 10; // Download progress; 0-100 percent
+  BaseOsStatus userStatus = 11;
+  string subStatus = 12;	// Include progress information
+}
+
+enum BaseOsStatus {
+  NONE		= 0;	// Should be ignored in output
+  ACTIVE	= 1;	// Running
+  UPDATING	= 2;	// subStatus will have more details
+  REBOOTING	= 3;	// device reboot under way
+  TESTING	= 4;	// verifying new image after reboot
+  FALLBACK	= 5;	// fallback image during verification
+  FAILED	= 6;	// see ErrInfo for details
 }
 
 // Per filesystem/partition information
