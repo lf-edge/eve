@@ -2070,7 +2070,7 @@ func handleReboot(getconfigCtx *getconfigContext) {
 			err = json.Unmarshal(bytes, rebootConfig)
 		}
 		state = rebootConfig.DesiredState
-		log.Infof("ebootConfig.DesiredState: %v\n", state)
+		log.Infof("rebootConfig.DesiredState: %v\n", state)
 	}
 
 	shutdownAppsGlobal(getconfigCtx.zedagentCtx)
