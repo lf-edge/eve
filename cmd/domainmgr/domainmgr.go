@@ -2044,6 +2044,7 @@ func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
 	ds.Format = "raw"
 	ds.Vdev = "hdc"
 	ds.ReadOnly = false
+	ds.Preserve = true // Prevent attempt to copy
 	return ds, nil
 }
 
