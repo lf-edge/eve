@@ -9,6 +9,15 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"mime"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/google/go-cmp/cmp"
 	"github.com/satori/go.uuid"
@@ -21,14 +30,6 @@ import (
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
-	"io"
-	"io/ioutil"
-	"mime"
-	"net/http"
-	"net/url"
-	"os"
-	"strings"
-	"time"
 )
 
 const (
@@ -127,7 +128,7 @@ func Run() {
 		if _, ok := operations[op]; ok {
 			operations[op] = true
 		} else {
-			log.Error("Unknown arg %s\n", op)
+			log.Errorf("Unknown arg %s\n", op)
 			log.Fatal("Usage: " + os.Args[0] +
 				"[-o] [-d <identityDirname> [<operations>...]]")
 		}
