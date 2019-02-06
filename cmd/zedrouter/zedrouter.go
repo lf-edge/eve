@@ -1037,7 +1037,7 @@ func handleLispMetricsModify(ctxArg interface{}, key string, configArg interface
 	// XXX remove the OLD service one
 	parseAndPublishLispMetricsOLD(ctx, &lispMetrics)
 	parseAndPublishLispMetrics(ctx, &lispMetrics)
-	log.Infof("handleLispMetricsModify(%s) done\n", key)
+	log.Debugf("handleLispMetricsModify(%s) done\n", key)
 }
 
 func handleLispMetricsDelete(ctxArg interface{}, key string, configArg interface{}) {
