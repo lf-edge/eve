@@ -62,6 +62,8 @@ It has these top-level messages:
 	ZMetricFlow
 	ZMetricLispGlobal
 	ZMetricService
+	NetworkStats
+	ZMetricNetworkStats
 	ZMetricNetworkInstance
 	ZMetricMsg
 	ZRegisterResp
