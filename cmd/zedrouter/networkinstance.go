@@ -823,6 +823,81 @@ func lookupNetworkInstanceMetrics(ctx *zedrouterContext, key string) *types.Netw
 	return &status
 }
 
+func createNetworkInstanceMetrics(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus,
+	nms *types.NetworkMetrics) *types.NetworkInstanceMetrics {
+
+	niMetrics := types.NetworkInstanceMetrics {
+		UUIDandVersion: status.UUIDandVersion,
+		DisplayName: status.DisplayName,
+		Type: status.Type,
+	}
+	netMetrics := types.NetworkMetrics{}
+	netMetric  := types.NetworkMetric{IfName: status.BridgeName}
+	/*
+	 * Tx/Rx of bridge is equal to the total of Tx/Rx on all member
+	 * virtual interfaces excluding the bridge itself.
+	 *
+	 * Drops/Errors/AclDrops of bridge is equal to total of Drops/Errors/AclDrops
+	 * on all member virtual interface including the bridge.
+	 */
+	for _, vif := range status.Vifs {
+		metric, found := lookupNetworkMetrics(nms, vif.Name)
+		if !found {
+			log.Debugln("createNetworkInstanceMetrics: No metrics found for interface %s",
+				vif.Name)
+			continue
+		}
+		netMetric.TxBytes    += metric.TxBytes
+		netMetric.RxBytes    += metric.RxBytes
+		netMetric.TxPkts     += metric.TxPkts
+		netMetric.RxPkts     += metric.RxPkts
+		netMetric.TxErrors   += metric.TxErrors
+		netMetric.RxErrors   += metric.RxErrors
+		netMetric.TxDrops    += metric.TxDrops
+		netMetric.RxDrops    += metric.RxDrops
+		netMetric.TxAclDrops += metric.TxAclDrops
+		netMetric.RxAclDrops += metric.RxAclDrops
+		netMetric.TxAclRateLimitDrops += metric.TxAclRateLimitDrops
+		netMetric.RxAclRateLimitDrops += metric.RxAclRateLimitDrops
+	}
+	// Get bridge metrics
+	bridgeMetric, found := lookupNetworkMetrics(nms, status.BridgeName)
+	if !found {
+		log.Debugln("createNetworkInstanceMetrics: No metrics found for Bridge %s",
+			status.BridgeName)
+	} else {
+		netMetric.TxErrors   += bridgeMetric.TxErrors
+		netMetric.RxErrors   += bridgeMetric.RxErrors
+		netMetric.TxDrops    += bridgeMetric.TxDrops
+		netMetric.RxDrops    += bridgeMetric.RxDrops
+		netMetric.TxAclDrops += bridgeMetric.TxAclDrops
+		netMetric.RxAclDrops += bridgeMetric.RxAclDrops
+		netMetric.TxAclRateLimitDrops += bridgeMetric.TxAclRateLimitDrops
+		netMetric.RxAclRateLimitDrops += bridgeMetric.RxAclRateLimitDrops
+	}
+
+	netMetrics.MetricList = []types.NetworkMetric{netMetric}
+	niMetrics.NetworkMetrics = netMetrics
+
+	return &niMetrics
+}
+
+// this is periodic metrics handler
+func publishNetworkInstanceMetricsAll(ctx *zedrouterContext) {
+	pub := ctx.pubNetworkInstanceStatus
+	niList := pub.GetAll()
+	if niList == nil {
+		return
+	}
+	nms := getNetworkMetrics(ctx)
+	for _, ni := range niList {
+		status := cast.CastNetworkInstanceStatus(ni)
+		netMetrics := createNetworkInstanceMetrics(ctx, &status, &nms)
+		publishNetworkInstanceMetrics(ctx, netMetrics)
+	}
+}
+
 func deleteNetworkInstanceMetrics(ctx *zedrouterContext, key string) {
 	pub := ctx.pubNetworkInstanceMetrics
 	if metrics := lookupNetworkInstanceMetrics(ctx, key); metrics != nil {

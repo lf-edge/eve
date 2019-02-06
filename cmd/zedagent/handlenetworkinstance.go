@@ -340,9 +340,42 @@ func protoEncodeNetworkInstanceMetricProto(status types.NetworkInstanceMetrics) 
 		log.Debugf("Publish Lisp Instance Metric to Zedcloud %v\n",
 			metric)
 		protoEncodeLispInstanceMetric(status, metric)
+	default:
+		protoEncodeGenericInstanceMetric(status, metric)
 	}
 
 	return metric
+}
+
+func protoEncodeGenericInstanceMetric(status types.NetworkInstanceMetrics,
+	metric *zmet.ZMetricNetworkInstance) {
+	networkStats := new(zmet.ZMetricNetworkStats)
+	rxStats := new(zmet.NetworkStats)
+	txStats := new(zmet.NetworkStats)
+	netMetric := status.NetworkMetrics.MetricList[0]
+	rxStats.TotalPackets = netMetric.RxPkts
+	rxStats.TotalBytes   = netMetric.RxBytes
+	rxStats.Errors       = netMetric.RxErrors
+	// Add all types of Rx drops
+	var drops uint64 = 0
+	drops += netMetric.RxDrops
+	drops += netMetric.RxAclDrops
+	drops += netMetric.RxAclRateLimitDrops
+	rxStats.Drops = drops
+
+	txStats.TotalPackets = netMetric.TxPkts
+	txStats.TotalBytes   = netMetric.TxBytes
+	txStats.Errors       = netMetric.TxErrors
+	// Add all types of Rx drops
+	drops = 0
+	drops += netMetric.TxDrops
+	drops += netMetric.TxAclDrops
+	drops += netMetric.TxAclRateLimitDrops
+	txStats.Drops = drops
+
+	networkStats.Rx = rxStats
+	networkStats.Tx = txStats
+	metric.NetworkStats = networkStats
 }
 
 func protoEncodeLispInstanceMetric(status types.NetworkInstanceMetrics,
@@ -350,6 +383,7 @@ func protoEncodeLispInstanceMetric(status types.NetworkInstanceMetrics,
 	if status.LispMetrics == nil {
 		return
 	}
+	protoEncodeGenericInstanceMetric(status, metric)
 	metrics := status.LispMetrics
 
 	lispGlobalMetric := new(zmet.ZMetricLispGlobal)
@@ -535,6 +569,7 @@ func protoEncodeVpnInstanceMetric(metrics types.NetworkInstanceMetrics,
 	if metrics.VpnMetrics == nil {
 		return
 	}
+	protoEncodeGenericInstanceMetric(metrics, instanceMetrics)
 
 	stats := metrics.VpnMetrics
 	vpnMetric := new(zmet.ZMetricVpn)

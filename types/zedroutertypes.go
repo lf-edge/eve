@@ -830,6 +830,15 @@ type NetworkInstanceInfo struct {
 	// Any errrors from provisioning the network
 	Error     string
 	ErrorTime time.Time
+
+	// Vif metric map. This should have a union of currently existing
+	// vifs and previously deleted vifs.
+	// XXX When a vif is removed from bridge (app instance delete case),
+	// device might start reporting smaller statistic values. To avoid this
+	// from happening, we keep a list of all vifs that were ever connected
+	// to this bridge and their statistics.
+	// We add statistics from all vifs while reporting to cloud.
+	VifMetricMap map[string]NetworkMetric
 }
 
 func (instanceInfo *NetworkInstanceInfo) IsVifInBridge(
@@ -964,6 +973,7 @@ type NetworkInstanceMetrics struct {
 	UUIDandVersion UUIDandVersion
 	DisplayName    string
 	Type           NetworkInstanceType
+	NetworkMetrics NetworkMetrics
 	VpnMetrics     *VpnMetrics
 	LispMetrics    *LispMetrics
 }

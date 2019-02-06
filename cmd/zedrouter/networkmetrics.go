@@ -15,6 +15,16 @@ import (
 	"strings"
 )
 
+func lookupNetworkMetrics(
+	nms *types.NetworkMetrics, ifName string) (types.NetworkMetric, bool) {
+	for _, metric := range nms.MetricList {
+		if ifName == metric.IfName {
+			return metric, true
+		}
+	}
+	return types.NetworkMetric{}, false
+}
+
 func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 	metrics := []types.NetworkMetric{}
 	network, err := psutilnet.IOCounters(true)
