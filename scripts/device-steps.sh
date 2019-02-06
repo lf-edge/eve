@@ -9,6 +9,7 @@ BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
 DNCDIR=$TMPDIR/DeviceNetworkConfig
 DPCDIR=$TMPDIR/DevicePortConfig
+GCDIR=$PERSISTDIR/config/GlobalConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
@@ -92,7 +93,7 @@ if [ $? = 0 ]; then
     killall dmesg
 fi
 
-DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
+DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $CONFIGDIR/DevicePortConfig $CONFIGDIR/GlobalConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
 
 for d in $DIRS; do
     d1=`dirname $d`
@@ -199,13 +200,23 @@ ls -lt $PERSISTDIR/downloads/*/*
 echo
 
 # Places for surviving global config and status
-if [ ! -d $PERSISTDIR/config/GlobalConfig ]; then
-    mkdir -p $PERSISTDIR/config/GlobalConfig
+if [ ! -d $GCDIR ]; then
+    mkdir -p $GCDIR
 fi
-if [ -f $PERSISTDIR/config/GlobalConfig ]; then
+if [ -f /var/tmp/zededa/GlobalConfig ]; then
     rm -f /var/tmp/zededa/GlobalConfig
 fi
-ln -s $PERSISTDIR/config/GlobalConfig /var/tmp/zededa/GlobalConfig
+ln -s $GCDIR /var/tmp/zededa/GlobalConfig
+
+# Copy any GlobalConfig
+dir=$CONFIGDIR/GlobalConfig
+for f in $dir/*.json; do
+    if [ "$f" = "$dir/*.json" ]; then
+	break
+    fi
+    echo "Copying from $f to $GCDIR"
+    cp -p $f $GCDIR
+done
 
 if [ ! -d $PERSISTDIR/status ]; then
     mkdir -p $PERSISTDIR/status
@@ -311,7 +322,7 @@ for f in $dir/*.json; do
     if [ "$f" = "$dir/*.json" ]; then
 	break
     fi
-    echo "Copying from $f"
+    echo "Copying from $f to $DPCDIR"
     cp -p $f $DPCDIR
 done
 
