@@ -17,6 +17,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/eriknordmark/netlink"
@@ -1132,6 +1133,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 
 	if config.IsZedmanager {
 		doActivateAppInstanceWithMgmtLisp(ctx, config, status)
+		return
 	}
 
 	// Check that Network exists for all overlays and underlays.
@@ -1180,6 +1182,48 @@ func appNetworkDoActivateAllUnderlayNetworks(
 		}
 
 	}
+}
+
+// Entrypoint from networkobject to look for a bridge's IPv4 address
+func getSwitchIPv4Addr(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) (string, error) {
+	// Find any service which is associated with the appLink UUID
+	log.Infof("getSwitchIPv4Addr(%s-%s)\n",
+		status.DisplayName, status.UUID.String())
+	if status.Type != types.NetworkInstanceTypeSwitch {
+		errStr := fmt.Sprintf("NI not a switch. Type: %d", status.Type)
+		return "", errors.New(errStr)
+	}
+	if status.Port == "" {
+		log.Infof("SwitchType, but no Adapter\n")
+		return "", nil
+	}
+
+	// XXX - KALYAN - Why are we getting this from netlink?
+	// We should have this in local Data Structures
+	// Get IP address from adapter
+	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Port)
+	link, err := netlink.LinkByName(ifname)
+	if err != nil {
+		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): LinkByName(%s) failed %s",
+			status.DisplayName, ifname, err)
+		return "", errors.New(errStr)
+	}
+	// XXX Add IPv6 underlay; ignore link-locals.
+	addrs, err := netlink.AddrList(link, syscall.AF_INET)
+	if err != nil {
+		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): AddrList(%s) failed %s",
+			status.DisplayName, ifname, err)
+		return "", errors.New(errStr)
+	}
+	for _, addr := range addrs {
+		log.Infof("getSwitchIPv4Addr(%s): found addr %s\n",
+			status.DisplayName, addr.IP.String())
+		return addr.IP.String(), nil
+	}
+	log.Infof("getSwitchIPv4Addr(%s): no IP address on %s yet\n",
+		status.DisplayName, status.Port)
+	return "", nil
 }
 
 func appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
@@ -1251,11 +1295,13 @@ func appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
 
 	bridgeIPAddr, appIPAddr := getUlAddrsForNetworkInstance(ctx, ulNum-1,
 		status.AppNum, ulStatus, netInstStatus)
+
 	// Check if we have a bridge service with an address
-	bridgeIP, err := getBridgeServiceIPv4Addr(ctx, ulConfig.Network)
+	bridgeIP, err := getSwitchIPv4Addr(ctx, netInstStatus)
 	if err != nil {
 		log.Infof("doActivate: %s\n", err)
 	} else if bridgeIP != "" {
+		log.Infof("bridgeIp: %s\n", bridgeIP)
 		bridgeIPAddr = bridgeIP
 	}
 	log.Infof("bridgeIPAddr %s appIPAddr %s\n", bridgeIPAddr, appIPAddr)
