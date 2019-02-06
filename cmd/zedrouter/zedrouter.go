@@ -1026,7 +1026,7 @@ func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMe
 }
 
 func handleLispMetricsModify(ctxArg interface{}, key string, configArg interface{}) {
-	log.Infof("handleLispMetricsModify(%s)\n", key)
+	log.Debugf("handleLispMetricsModify(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 	lispMetrics := cast.CastLispMetrics(configArg)
 
