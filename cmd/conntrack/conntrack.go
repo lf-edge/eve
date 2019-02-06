@@ -7,7 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/eriknordmark/netlink"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"syscall"
 )
 
