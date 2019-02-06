@@ -15,9 +15,16 @@ import (
 	"time"
 )
 
+const (
+	persistDir = "/persist"
+)
+
+var savedAgentName string // Keep for signal and exit handlers
+
 func initImpl(agentName string, logdir string, redirect bool,
 	text bool) (*os.File, error) {
 
+	savedAgentName = agentName
 	logfile := fmt.Sprintf("%s/%s.log", logdir, agentName)
 	logf, err := os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND,
 		0666)
@@ -72,6 +79,16 @@ func handleSignals(sigs chan os.Signal) {
 // Print out our stack
 func printStack() {
 	log.Error("fatal stack trace:\n%v\n", getStacks(false))
+	RebootReason("fatal stack trace")
+}
+
+// print reason in /persist/IMGx/reboot-reason
+// XXX timestamp plus savedAgentName
+// XXX Append to file
+// XXX logmanager reads file and logs as log.Error?
+func RebootReason(reason string) {
+	filename := fmt.Sprintf("%s/reboot-reason", getCurrentIMGdir())
+	log.Warnf("RebootReason to %s: %s\n", filename, reason)
 }
 
 func getStacks(all bool) string {
@@ -130,18 +147,26 @@ func InitChild(agentName string) (*os.File, error) {
 	return initImpl(agentName, logdir, false, false)
 }
 
-const baseLogdir = "/persist"
+var currentIMGdir = ""
 
-// Return a logdir for agents and logmanager to use by default
-func GetCurrentLogdir() string {
+func getCurrentIMGdir() string {
+
+	if currentIMGdir != "" {
+		return currentIMGdir
+	}
 	var partName string
 	if !zboot.IsAvailable() {
 		partName = "IMGA"
 	} else {
 		partName = zboot.GetCurrentPartition()
 	}
-	logdir := fmt.Sprintf("%s/%s/log", baseLogdir, partName)
-	return logdir
+	currentIMGdir = fmt.Sprintf("%s/%s", persistDir, partName)
+	return currentIMGdir
+}
+
+// Return a logdir for agents and logmanager to use by default
+func GetCurrentLogdir() string {
+	return fmt.Sprintf("%s/log", getCurrentIMGdir())
 }
 
 // If the other partition is not inprogress we return the empty string
@@ -153,7 +178,7 @@ func GetOtherLogdir() string {
 		return ""
 	}
 	partName := zboot.GetOtherPartition()
-	logdir := fmt.Sprintf("%s/%s/log", baseLogdir, partName)
+	logdir := fmt.Sprintf("%s/%s/log", persistDir, partName)
 	return logdir
 }
 

@@ -436,7 +436,9 @@ func Run() {
 
 		case <-t1.C:
 			// reboot, if not available, within a wait time
-			log.Errorf("zboot status is still not available - rebooting\n")
+			errStr := "zboot status is still not available - rebooting"
+			log.Errorf(errStr)
+			agentlog.RebootReason(errStr)
 			execReboot(true)
 
 		case <-stillRunning.C:
@@ -473,12 +475,16 @@ func Run() {
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 
 		case <-t1.C:
-			log.Errorf("Exceeded outage for cloud connectivity - rebooting\n")
+			errStr := "Exceeded outage for cloud connectivity - rebooting"
+			log.Errorf(errStr)
+			agentlog.RebootReason(errStr)
 			execReboot(true)
 
 		case <-t2.C:
 			if updateInprogress {
-				log.Errorf("Exceeded fallback outage for cloud connectivity - rebooting\n")
+				errStr := "Exceeded fallback outage for cloud connectivity - rebooting"
+				log.Errorf(errStr)
+				agentlog.RebootReason(errStr)
 				execReboot(true)
 			}
 

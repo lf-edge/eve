@@ -24,6 +24,7 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -2068,9 +2069,13 @@ func handleReboot(getconfigCtx *getconfigContext) {
 	}
 
 	shutdownAppsGlobal(getconfigCtx.zedagentCtx)
+	errStr := "handleReboot rebooting"
+	log.Errorf(errStr)
+	agentlog.RebootReason(errStr)
 	execReboot(state)
 }
 
+// Used by doBaseOsDeviceReboot only
 func startExecReboot() {
 
 	log.Infof("startExecReboot: scheduling exec reboot\n")
@@ -2088,10 +2093,14 @@ func startExecReboot() {
 	go handleExecReboot()
 }
 
+// Used by doBaseOsDeviceReboot only
 func handleExecReboot() {
 
 	<-rebootTimer.C
 
+	errStr := "baseimage-update reboot"
+	log.Errorf(errStr)
+	agentlog.RebootReason(errStr)
 	execReboot(true)
 }
 
