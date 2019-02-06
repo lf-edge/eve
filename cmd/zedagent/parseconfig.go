@@ -1191,8 +1191,9 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				cfgApp.Displayname, uuid.String(), netEnt.Type)
 		} else {
 			// NetworkInstance
-			log.Infof("NetworkInstance: app %v net %v type %v\n",
-				cfgApp.Displayname, uuid.String(), netEnt.Type)
+			log.Infof("NetworkInstance(%s-%s): InstType %v\n",
+				cfgApp.Displayname, uuid.String(),
+				networkInstanceEntry.InstType)
 		}
 
 		ulCfg := new(types.UnderlayNetworkConfig)

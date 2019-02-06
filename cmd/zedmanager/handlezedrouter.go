@@ -4,10 +4,11 @@
 package zedmanager
 
 import (
+	"reflect"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
-	"reflect"
 )
 
 func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
@@ -150,7 +151,8 @@ func handleAppNetworkStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := cast.CastAppNetworkStatus(statusArg)
 	ctx := ctxArg.(*zedmanagerContext)
-	log.Infof("handleAppNetworkStatusModify for %s\n", key)
+	log.Infof("handleAppNetworkStatusModify: key:%s, name:%s\n",
+		key, status.DisplayName)
 	if status.Key() != key {
 		log.Errorf("handleAppNetworkStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
@@ -158,8 +160,9 @@ func handleAppNetworkStatusModify(ctxArg interface{}, key string,
 	}
 	// Ignore if any Pending* flag is set
 	if status.Pending() {
-		log.Infof("handleAppNetworkStatusModify skipped due to Pending* for %s\n",
-			key)
+		log.Infof("skipped AppNetworkConfigModify due to Pending* "+
+			"(Add:%t, Modify:%t, Del:%t) for %s:%s\n", status.PendingAdd,
+			status.PendingModify, status.PendingDelete, status.DisplayName, key)
 		return
 	}
 	if status.IsZedmanager {
