@@ -2174,7 +2174,9 @@ func doAppNetworkConfigModify(ctx *zedrouterContext, key string,
 	}
 
 	if config.IsZedmanager {
+		log.Debugf("ZedManager AppNetwork\n")
 		handleAppNetworkWithMgmtLispModify(ctx, config, status)
+		return
 	}
 
 	// Note that with IPv4/IPv6/LISP interfaces the domU can do
