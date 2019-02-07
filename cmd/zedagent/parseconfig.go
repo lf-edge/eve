@@ -116,12 +116,7 @@ func shutdownApps(getconfigCtx *getconfigContext) {
 }
 
 func shutdownAppsGlobal(ctx *zedagentContext) {
-	log.Infof("ctx: %v", ctx)
-	// XXX - Why are we checking this?? Shouldn't ctx always exist??
-	//	Replace this with Fatalf
-	if ctx.getconfigCtx != nil {
-		shutdownApps(ctx.getconfigCtx)
-	}
+	shutdownApps(ctx.getconfigCtx)
 }
 
 var baseosPrevConfigHash []byte
@@ -2113,7 +2108,12 @@ func execReboot(state bool) {
 		duration := time.Duration(immediate)
 		log.Infof("Rebooting... Starting timer for Duration(secs): %+v\n",
 			duration)
-		// Why do we need this timer??
+
+		// Start timer to allow applications some time to shudown and for
+		//	disks to sync.
+		// We could explicitly wait for domains to shutdown, but
+		// some (which don't have a shutdown hook like the mirageOs ones) take a
+		// very long time.
 		timer := time.NewTimer(time.Second * duration)
 		log.Infof("Timer started. Wait to expire\n")
 		<-timer.C
