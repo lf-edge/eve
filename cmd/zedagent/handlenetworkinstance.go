@@ -366,7 +366,7 @@ func protoEncodeGenericInstanceMetric(status types.NetworkInstanceMetrics,
 	txStats.TotalPackets = netMetric.TxPkts
 	txStats.TotalBytes   = netMetric.TxBytes
 	txStats.Errors       = netMetric.TxErrors
-	// Add all types of Rx drops
+	// Add all types of Tx drops
 	drops = 0
 	drops += netMetric.TxDrops
 	drops += netMetric.TxAclDrops
