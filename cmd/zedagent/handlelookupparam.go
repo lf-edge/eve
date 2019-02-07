@@ -15,15 +15,16 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
-	"github.com/eriknordmark/ipinfo"
-	log "github.com/sirupsen/logrus"
-	"github.com/zededa/api/zconfig"
-	"github.com/zededa/go-provision/types"
 	"net"
 	"os"
 	"os/exec"
 	"reflect"
 	"sort"
+
+	"github.com/eriknordmark/ipinfo"
+	log "github.com/sirupsen/logrus"
+	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/types"
 )
 
 const (
@@ -195,7 +196,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 			len(sigres), sigres)
 		log.Debugln("signature:", signature)
 	}
-	log.Debugf("MapServers %s\n", lispConfig.MapServers)
+	log.Debugf("MapServers %+v\n", lispConfig.MapServers)
 	log.Debugf("Lisp IID %d\n", lispConfig.LispInstance)
 	log.Debugf("EID %s\n", lispConfig.EID)
 

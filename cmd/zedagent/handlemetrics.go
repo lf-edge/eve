@@ -346,7 +346,7 @@ func ExecuteXentopCmd() [][]string {
 					cpuStorageStat[f][counter] = finalOutput[f][out]
 				}
 			} else {
-				log.Debugf("space: ", finalOutput[f][counter])
+				log.Debugf("space: %+v", finalOutput[f][counter])
 			}
 		}
 		counter = 0
@@ -371,7 +371,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 
 	info, err := host.Info()
 	if err != nil {
-		log.Fatal("host.Info(): %s\n", err)
+		log.Fatalf("host.Info(): %s\n", err)
 	}
 	log.Debugf("uptime %d = %d days\n",
 		info.Uptime, info.Uptime/(3600*24))
@@ -991,7 +991,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	info, err := host.Info()
 	if err != nil {
-		log.Fatal("host.Info(): %s\n", err)
+		log.Fatalf("host.Info(): %s\n", err)
 	}
 	log.Debugf("uptime %d = %d days\n",
 		info.Uptime, info.Uptime/(3600*24))
@@ -1393,7 +1393,7 @@ func partitionSize(part string) uint64 {
 func getCpuSecs() uint64 {
 	contents, err := ioutil.ReadFile("/proc/uptime")
 	if err != nil {
-		log.Fatal("/proc/uptime: %s\n", err)
+		log.Fatalf("/proc/uptime: %s\n", err)
 	}
 	lines := strings.Split(string(contents), "\n")
 
@@ -1445,7 +1445,7 @@ func getDefaultRouters(ifname string) []string {
 	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC,
 		&filter, fflags)
 	if err != nil {
-		log.Fatal("getDefaultRouters RouteList failed: %v\n", err)
+		log.Fatalf("getDefaultRouters RouteList failed: %v\n", err)
 	}
 	// log.Debugf("getDefaultRouters(%s) - got %d\n", ifname, len(routes))
 	for _, rt := range routes {
