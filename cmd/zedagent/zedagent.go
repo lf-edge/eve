@@ -154,15 +154,19 @@ func Run() {
 
 	// If we have a reboot reason from this or the other partition
 	// (assuming the other is in inprogress) then we log it
+	// We assume the log makes it reliably to zedcloud hence we discard
+	// the reason.
 	rebootReason := agentlog.GetCurrentRebootReason()
 	if rebootReason != "" {
 		log.Warnf("Current partition rebooted with: %s\n",
 			rebootReason)
+		agentlog.DiscardCurrentRebootReason()
 	}
 	rebootReason = agentlog.GetOtherRebootReason()
 	if rebootReason != "" {
 		log.Warnf("Other partition rebooted with: %s\n",
 			rebootReason)
+		agentlog.DiscardOtherRebootReason()
 	}
 
 	// Run a periodic timer so we always update StillRunning

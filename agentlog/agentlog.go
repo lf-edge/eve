@@ -89,8 +89,11 @@ func RebootReason(reason string) {
 	filename := fmt.Sprintf("%s/reboot-reason", getCurrentIMGdir())
 	log.Warnf("RebootReason to %s: %s\n", filename, reason)
 	dateStr := time.Now().Format(time.RFC3339Nano)
-	printToFile(filename, fmt.Sprintf("Reboot from agent %s at %s: %s\n",
+	err := printToFile(filename, fmt.Sprintf("Reboot from agent %s at %s: %s\n",
 		savedAgentName, dateStr, reason))
+	if err != nil {
+		log.Errorf("printToFile failed %s\n", err)
+	}
 	syscall.Sync()
 }
 
@@ -100,7 +103,7 @@ func GetCurrentRebootReason() string {
 }
 
 func GetOtherRebootReason() string {
-	dirname := getOtherIMGdir()
+	dirname := getOtherIMGdir(false)
 	if dirname == "" {
 		return ""
 	}
@@ -122,8 +125,10 @@ func statAndRead(filename string) string {
 	return string(content)
 }
 
+// Append if file exists.
 func printToFile(filename string, str string) error {
-	f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE,
+		os.ModeAppend)
 	if err != nil {
 		return err
 	}
@@ -133,6 +138,26 @@ func printToFile(filename string, str string) error {
 		return err
 	}
 	return nil
+}
+
+func DiscardCurrentRebootReason() {
+	filename := fmt.Sprintf("%s/reboot-reason", getCurrentIMGdir())
+	if err := os.Remove(filename); err != nil {
+		log.Errorf("DiscardCurrentRebootReason failed %s\n",
+			err)
+	}
+}
+
+func DiscardOtherRebootReason() {
+	dirname := getOtherIMGdir(false)
+	if dirname == "" {
+		return
+	}
+	filename := fmt.Sprintf("%s/reboot-reason", dirname)
+	if err := os.Remove(filename); err != nil {
+		log.Errorf("DiscardOtherRebootReason failed %s\n",
+			err)
+	}
 }
 
 func getStacks(all bool) string {
@@ -210,7 +235,7 @@ func getCurrentIMGdir() string {
 
 var otherIMGdir = ""
 
-func getOtherIMGdir() string {
+func getOtherIMGdir(inprogressCheck bool) string {
 
 	if otherIMGdir != "" {
 		return otherIMGdir
@@ -218,7 +243,7 @@ func getOtherIMGdir() string {
 	if !zboot.IsAvailable() {
 		return ""
 	}
-	if !zboot.IsOtherPartitionStateInProgress() {
+	if inprogressCheck && !zboot.IsOtherPartitionStateInProgress() {
 		return ""
 	}
 	partName := zboot.GetOtherPartition()
@@ -233,7 +258,7 @@ func GetCurrentLogdir() string {
 
 // If the other partition is not inprogress we return the empty string
 func GetOtherLogdir() string {
-	dirname := getOtherIMGdir()
+	dirname := getOtherIMGdir(true)
 	if dirname == "" {
 		return ""
 	}
