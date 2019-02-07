@@ -158,15 +158,21 @@ func Run() {
 	// the reason.
 	rebootReason := agentlog.GetCurrentRebootReason()
 	if rebootReason != "" {
-		log.Warnf("Current partition rebooted with: %s\n",
+		log.Warnf("Current partition rebooted reason: %s\n",
 			rebootReason)
 		agentlog.DiscardCurrentRebootReason()
 	}
 	rebootReason = agentlog.GetOtherRebootReason()
 	if rebootReason != "" {
-		log.Warnf("Other partition rebooted with: %s\n",
+		log.Warnf("Other partition rebooted reason: %s\n",
 			rebootReason)
 		agentlog.DiscardOtherRebootReason()
+	}
+	rebootReason = agentlog.GetCommonRebootReason()
+	if rebootReason != "" {
+		log.Warnf("Common rebooted reason: %s\n",
+			rebootReason)
+		agentlog.DiscardCommonRebootReason()
 	}
 
 	// Run a periodic timer so we always update StillRunning

@@ -111,6 +111,12 @@ func GetOtherRebootReason() string {
 	return statAndRead(filename)
 }
 
+// Used for failures/hangs when zboot curpart hangs
+func GetCommonRebootReason() string {
+	filename := fmt.Sprintf("%s/reboot-reason", persistDir)
+	return statAndRead(filename)
+}
+
 func statAndRead(filename string) string {
 	_, err := os.Stat(filename)
 	if err != nil {
@@ -119,7 +125,7 @@ func statAndRead(filename string) string {
 	}
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
-		log.Errorf("GetOtherRebootReason failed %s", err)
+		log.Errorf("statAndRead failed %s", err)
 		return ""
 	}
 	return string(content)
@@ -156,6 +162,14 @@ func DiscardOtherRebootReason() {
 	filename := fmt.Sprintf("%s/reboot-reason", dirname)
 	if err := os.Remove(filename); err != nil {
 		log.Errorf("DiscardOtherRebootReason failed %s\n",
+			err)
+	}
+}
+
+func DiscardCommonRebootReason() {
+	filename := fmt.Sprintf("%s/reboot-reason", persistDir)
+	if err := os.Remove(filename); err != nil {
+		log.Errorf("DiscardCommonRebootReason failed %s\n",
 			err)
 	}
 }
