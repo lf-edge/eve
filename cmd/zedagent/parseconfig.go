@@ -116,9 +116,7 @@ func shutdownApps(getconfigCtx *getconfigContext) {
 }
 
 func shutdownAppsGlobal(ctx *zedagentContext) {
-	if ctx.getconfigCtx != nil {
-		shutdownApps(ctx.getconfigCtx)
-	}
+	shutdownApps(ctx.getconfigCtx)
 }
 
 var baseosPrevConfigHash []byte
@@ -1191,8 +1189,9 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				cfgApp.Displayname, uuid.String(), netEnt.Type)
 		} else {
 			// NetworkInstance
-			log.Infof("NetworkInstance: app %v net %v\n",
-				cfgApp.Displayname, uuid.String())
+			log.Infof("NetworkInstance(%s-%s): InstType %v\n",
+				cfgApp.Displayname, uuid.String(),
+				networkInstanceEntry.InstType)
 		}
 
 		ulCfg := new(types.UnderlayNetworkConfig)
@@ -1901,7 +1900,7 @@ func unpublishCertObjConfig(getconfigCtx *getconfigContext, uuidStr string) {
 func computeConfigSha(msg proto.Message) []byte {
 	data, err := proto.Marshal(msg)
 	if err != nil {
-		log.Fatal("computeConfigSha: proto.Marshal: %s\n", err)
+		log.Fatalf("computeConfigSha: proto.Marshal: %s\n", err)
 	}
 	h := sha256.New()
 	h.Write(data)
@@ -1913,7 +1912,7 @@ func computeConfigSha(msg proto.Message) []byte {
 func computeConfigElementSha(h hash.Hash, msg proto.Message) {
 	data, err := proto.Marshal(msg)
 	if err != nil {
-		log.Fatal("computeConfigItemSha: proto.Marshal: %s\n",
+		log.Fatalf("computeConfigItemSha: proto.Marshal: %s\n",
 			err)
 	}
 	h.Write(data)
@@ -2053,6 +2052,7 @@ func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
 // the timer channel handler
 func handleReboot(getconfigCtx *getconfigContext) {
 
+	log.Infof("handleReboot timer handler\n")
 	rebootConfig := &zconfig.DeviceOpsCmd{}
 	var state bool
 
@@ -2065,6 +2065,7 @@ func handleReboot(getconfigCtx *getconfigContext) {
 			err = json.Unmarshal(bytes, rebootConfig)
 		}
 		state = rebootConfig.DesiredState
+		log.Infof("rebootConfig.DesiredState: %v\n", state)
 	}
 
 	shutdownAppsGlobal(getconfigCtx.zedagentCtx)
@@ -2098,23 +2099,34 @@ func handleExecReboot() {
 func execReboot(state bool) {
 
 	// do a sync
-	log.Infof("Doing a sync..\n")
+	log.Infof("State: %t, Doing a sync..\n", state)
 	syscall.Sync()
 
 	switch state {
 
 	case true:
-		log.Infof("Rebooting...\n")
 		duration := time.Duration(immediate)
+		log.Infof("Rebooting... Starting timer for Duration(secs): %+v\n",
+			duration)
+
+		// Start timer to allow applications some time to shudown and for
+		//	disks to sync.
+		// We could explicitly wait for domains to shutdown, but
+		// some (which don't have a shutdown hook like the mirageOs ones) take a
+		// very long time.
 		timer := time.NewTimer(time.Second * duration)
+		log.Infof("Timer started. Wait to expire\n")
 		<-timer.C
+		log.Infof("Timer Expired.. Zboot.Reset()\n")
 		zboot.Reset()
 
 	case false:
 		log.Infof("Powering Off..\n")
 		duration := time.Duration(immediate)
 		timer := time.NewTimer(time.Second * duration)
+		log.Infof("Timer started (duration: %+v). Wait to expire\n", duration)
 		<-timer.C
+		log.Infof("Timer Expired.. do Poweroff\n")
 		poweroffCmd := exec.Command("poweroff")
 		_, err := poweroffCmd.Output()
 		if err != nil {

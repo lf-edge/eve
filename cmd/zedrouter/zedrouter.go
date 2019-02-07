@@ -17,6 +17,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/eriknordmark/netlink"
@@ -692,14 +693,15 @@ func updateLispConfiglets(ctx *zedrouterContext, legacyDataPlane bool) {
 // Determine whether it is an create or modify
 func handleAppNetworkConfigModify(ctxArg interface{}, key string, configArg interface{}) {
 
-	log.Infof("handleAppNetworkConfigModify(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 	config := cast.CastAppNetworkConfig(configArg)
+	log.Infof("handleAppNetworkConfigModify(%s-%s)\n", config.DisplayName, key)
+
 	status := lookupAppNetworkStatus(ctx, key)
 	if status == nil {
 		handleAppNetworkCreate(ctx, key, config)
 	} else {
-		handleModify(ctx, key, config, status)
+		doAppNetworkConfigModify(ctx, key, config, status)
 	}
 	log.Infof("handleAppNetworkConfigModify(%s) done\n", key)
 }
@@ -1026,7 +1028,7 @@ func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMe
 }
 
 func handleLispMetricsModify(ctxArg interface{}, key string, configArg interface{}) {
-	log.Infof("handleLispMetricsModify(%s)\n", key)
+	log.Debugf("handleLispMetricsModify(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
 	lispMetrics := cast.CastLispMetrics(configArg)
 
@@ -1037,7 +1039,7 @@ func handleLispMetricsModify(ctxArg interface{}, key string, configArg interface
 	// XXX remove the OLD service one
 	parseAndPublishLispMetricsOLD(ctx, &lispMetrics)
 	parseAndPublishLispMetrics(ctx, &lispMetrics)
-	log.Infof("handleLispMetricsModify(%s) done\n", key)
+	log.Debugf("handleLispMetricsModify(%s) done\n", key)
 }
 
 func handleLispMetricsDelete(ctxArg interface{}, key string, configArg interface{}) {
@@ -1132,6 +1134,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 
 	if config.IsZedmanager {
 		doActivateAppInstanceWithMgmtLisp(ctx, config, status)
+		return
 	}
 
 	// Check that Network exists for all overlays and underlays.
@@ -1180,6 +1183,48 @@ func appNetworkDoActivateAllUnderlayNetworks(
 		}
 
 	}
+}
+
+// Entrypoint from networkobject to look for a bridge's IPv4 address
+func getSwitchIPv4Addr(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) (string, error) {
+	// Find any service which is associated with the appLink UUID
+	log.Infof("getSwitchIPv4Addr(%s-%s)\n",
+		status.DisplayName, status.UUID.String())
+	if status.Type != types.NetworkInstanceTypeSwitch {
+		errStr := fmt.Sprintf("NI not a switch. Type: %d", status.Type)
+		return "", errors.New(errStr)
+	}
+	if status.Port == "" {
+		log.Infof("SwitchType, but no Adapter\n")
+		return "", nil
+	}
+
+	// XXX - KALYAN - Why are we getting this from netlink?
+	// We should have this in local Data Structures
+	// Get IP address from adapter
+	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Port)
+	link, err := netlink.LinkByName(ifname)
+	if err != nil {
+		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): LinkByName(%s) failed %s",
+			status.DisplayName, ifname, err)
+		return "", errors.New(errStr)
+	}
+	// XXX Add IPv6 underlay; ignore link-locals.
+	addrs, err := netlink.AddrList(link, syscall.AF_INET)
+	if err != nil {
+		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): AddrList(%s) failed %s",
+			status.DisplayName, ifname, err)
+		return "", errors.New(errStr)
+	}
+	for _, addr := range addrs {
+		log.Infof("getSwitchIPv4Addr(%s): found addr %s\n",
+			status.DisplayName, addr.IP.String())
+		return addr.IP.String(), nil
+	}
+	log.Infof("getSwitchIPv4Addr(%s): no IP address on %s yet\n",
+		status.DisplayName, status.Port)
+	return "", nil
 }
 
 func appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
@@ -1251,11 +1296,13 @@ func appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
 
 	bridgeIPAddr, appIPAddr := getUlAddrsForNetworkInstance(ctx, ulNum-1,
 		status.AppNum, ulStatus, netInstStatus)
+
 	// Check if we have a bridge service with an address
-	bridgeIP, err := getBridgeServiceIPv4Addr(ctx, ulConfig.Network)
+	bridgeIP, err := getSwitchIPv4Addr(ctx, netInstStatus)
 	if err != nil {
 		log.Infof("doActivate: %s\n", err)
 	} else if bridgeIP != "" {
+		log.Infof("bridgeIp: %s\n", bridgeIP)
 		bridgeIPAddr = bridgeIP
 	}
 	log.Infof("bridgeIPAddr %s appIPAddr %s\n", bridgeIPAddr, appIPAddr)
@@ -2102,7 +2149,7 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 // Note that handleModify will not touch the EID; just ACLs
 // XXX should we check that nothing else has changed?
 // XXX If so flag other changes as errors; would need lastError in status.
-func handleModify(ctx *zedrouterContext, key string,
+func doAppNetworkConfigModify(ctx *zedrouterContext, key string,
 	config types.AppNetworkConfig, status *types.AppNetworkStatus) {
 
 	log.Infof("handleModify(%v) for %s\n",
@@ -2128,7 +2175,9 @@ func handleModify(ctx *zedrouterContext, key string,
 	}
 
 	if config.IsZedmanager {
+		log.Debugf("ZedManager AppNetwork\n")
 		handleAppNetworkWithMgmtLispModify(ctx, config, status)
+		return
 	}
 
 	// Note that with IPv4/IPv6/LISP interfaces the domU can do
@@ -2473,7 +2522,7 @@ func handleAppNetworkWithMgmtLispModify(ctx *zedrouterContext,
 	}
 	status.PendingModify = false
 	publishAppNetworkStatus(ctx, status)
-	log.Infof("handleModify done for %s\n", config.DisplayName)
+	log.Infof("Mgmt List modify done for %s\n", config.DisplayName)
 }
 
 func maybeRemoveStaleIpsets(staleIpsets []string) {
