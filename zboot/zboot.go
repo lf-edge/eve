@@ -39,14 +39,18 @@ func init() {
 
 // reset routine
 func Reset() {
+	log.Infof("Reset..\n")
 	if !IsAvailable() {
 		log.Infof("no zboot; can't do reset\n")
 		return
 	}
 	rebootCmd := exec.Command("zboot", "reset")
+	log.Infof("Waiting for zbootMutex.lock. rebootCmd: %+v\n", rebootCmd)
 	zbootMutex.Lock() // we are going to reboot
+	log.Infof("Got zbootMutex.lock. Executing reboot cmd\n")
 	_, err := rebootCmd.Output()
 	zbootMutex.Unlock()
+	log.Infof("Release zbootMutex.lock. err: %s\n", err)
 	if err != nil {
 		log.Fatalf("zboot reset: err %v\n", err)
 	}
