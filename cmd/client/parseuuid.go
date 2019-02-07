@@ -5,14 +5,15 @@ package client
 
 import (
 	"fmt"
+	"mime"
+	"net/http"
+	"strings"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/hardware"
-	"mime"
-	"net/http"
-	"strings"
 )
 
 // Return UUID and hardwaremodel
@@ -76,7 +77,7 @@ func readDeviceConfigProtoMessage(contents []byte) (*zconfig.EdgeDevConfig, erro
 
 	err := proto.Unmarshal(contents, config)
 	if err != nil {
-		log.Errorln("Unmarshalling failed: %v", err)
+		log.Errorf("Unmarshalling failed: %v", err)
 		return nil, err
 	}
 	return config, nil

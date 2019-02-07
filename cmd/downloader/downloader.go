@@ -11,6 +11,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"net"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/agentlog"
@@ -21,12 +28,6 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
 	"github.com/zededa/shared/libs/zedUpload"
-	"io/ioutil"
-	"net"
-	"os"
-	"strings"
-	"sync"
-	"time"
 )
 
 const (
@@ -580,7 +581,7 @@ func handleModify(ctx *downloaderContext, key string,
 		return
 	}
 
-	log.Infof("handleModify(%v) RefCount %d to %d, Expired %v %s for %s\n",
+	log.Infof("handleModify(%v) RefCount %d to %d, Expired %v for %s\n",
 		status.Safename, status.RefCount, config.RefCount,
 		status.Expired, status.DownloadURL)
 
