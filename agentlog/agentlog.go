@@ -80,8 +80,7 @@ func handleSignals(sigs chan os.Signal) {
 
 // Print out our stack
 func printStack() {
-<<<<<<< HEAD
-	log.Error("fatal stack trace:\n%v\n", getStacks(false))
+	log.Errorf("fatal stack trace:\n%v\n", getStacks(false))
 	RebootReason("fatal stack trace")
 }
 
@@ -173,9 +172,6 @@ func DiscardCommonRebootReason() {
 		log.Errorf("DiscardCommonRebootReason failed %s\n",
 			err)
 	}
-=======
-	log.Errorf("fatal stack trace:\n%v\n", getStacks(false))
->>>>>>> 6e6919df07bfb9088cac29d6cf42e9ede0eee336
 }
 
 func getStacks(all bool) string {
