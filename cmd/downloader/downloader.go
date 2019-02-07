@@ -581,7 +581,7 @@ func handleModify(ctx *downloaderContext, key string,
 		return
 	}
 
-	log.Infof("handleModify(%v) RefCount %d to %d, Expired %v %s\n",
+	log.Infof("handleModify(%v) RefCount %d to %d, Expired %v for %s\n",
 		status.Safename, status.RefCount, config.RefCount,
 		status.Expired, status.DownloadURL)
 
