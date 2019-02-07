@@ -159,8 +159,10 @@ func handleNetworkInstanceCreate(
 	pub := ctx.pubNetworkInstanceStatus
 	status := types.NetworkInstanceStatus{
 		NetworkInstanceConfig: config,
+		NetworkInstanceInfo: types.NetworkInstanceInfo{
+			IPAssignments: make(map[string]net.IP),
+		},
 	}
-	status.IPAssignments = make(map[string]net.IP)
 
 	status.ChangeInProgress = types.ChangeInProgressTypeCreate
 	ctx.networkInstanceStatusMap[status.UUID] = &status
@@ -191,6 +193,8 @@ func handleNetworkInstanceCreate(
 	}
 	status.ChangeInProgress = types.ChangeInProgressTypeNone
 	publishNetworkInstanceStatus(ctx, &status)
+	// Hooks for updating dependent objects
+	checkAndRecreateAppNetwork(ctx, config.UUID)
 	log.Infof("handleNetworkInstanceCreate(%s) done\n", key)
 }
 

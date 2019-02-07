@@ -355,7 +355,7 @@ func readSavedProtoMessage(filename string, force bool) (*zconfig.EdgeDevConfig,
 
 	err = proto.Unmarshal(contents, config)
 	if err != nil {
-		log.Errorln("readSavedProtoMessage Unmarshalling failed: %v",
+		log.Errorf("readSavedProtoMessage Unmarshalling failed: %v",
 			err)
 		return nil, err
 	}
@@ -381,7 +381,7 @@ func readDeviceConfigProtoMessage(contents []byte) (bool, *zconfig.EdgeDevConfig
 		same, prevConfigHash, configHash)
 	err := proto.Unmarshal(contents, config)
 	if err != nil {
-		log.Errorln("Unmarshalling failed: %v", err)
+		log.Errorf("Unmarshalling failed: %v", err)
 		return false, nil, err
 	}
 	return !same, config, nil
