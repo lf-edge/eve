@@ -96,7 +96,7 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 
 	log.Debugf("HandleDeviceNetworkChange: Free uplinks have changed" +
 		" new ipv4 & ipv6 source addresses will be picked")
-	links := types.GetUplinkFreeNoLocal(deviceNetworkStatus)
+	links := types.GetMgmtPortsFreeNoLinkLocal(deviceNetworkStatus)
 
 	// Collect the interfaces that are still valid
 	// Create newly required ETR instances
