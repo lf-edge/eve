@@ -46,15 +46,15 @@ func Reset() {
 		log.Infof("no zboot; can't do reset\n")
 		return
 	}
-	_, err := execWithRetry("zboot", "reset")
+	_, err := execWithRetry(true, "zboot", "reset")
 	if err != nil {
 		log.Fatalf("zboot reset: err %v\n", err)
 	}
 }
 
-func execWithRetry(command string, args ...string) ([]byte, error) {
+func execWithRetry(dolog bool, command string, args ...string) ([]byte, error) {
 	for {
-		out, done, err := execWithTimeout(command, args...)
+		out, done, err := execWithTimeout(dolog, command, args...)
 		if err != nil {
 			return out, err
 		}
@@ -65,25 +65,31 @@ func execWithRetry(command string, args ...string) ([]byte, error) {
 	}
 }
 
-func execWithTimeout(command string, args ...string) ([]byte, bool, error) {
+func execWithTimeout(dolog bool, command string, args ...string) ([]byte, bool, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(),
-		5*time.Second)
+		10*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, command, args...)
 
-	log.Infof("Waiting for zbootMutex.lock for %s %+v\n",
-		command, args)
+	if dolog {
+		log.Infof("Waiting for zbootMutex.lock for %s %+v\n",
+			command, args)
+	}
 	zbootMutex.Lock()
-	log.Infof("Got zbootMutex.lock. Executing %s %+v\n",
-		command, args)
+	if dolog {
+		log.Infof("Got zbootMutex.lock. Executing %s %+v\n",
+			command, args)
+	}
 
 	out, err := cmd.Output()
 
 	zbootMutex.Unlock()
-	log.Infof("Released zbootMutex.lock for %s %+v\n",
-		command, args)
+	if dolog {
+		log.Infof("Released zbootMutex.lock for %s %+v\n",
+			command, args)
+	}
 
 	if ctx.Err() == context.DeadlineExceeded {
 		return nil, false, nil
@@ -96,7 +102,7 @@ func WatchdogOK() {
 	if !IsAvailable() {
 		return
 	}
-	_, err := execWithRetry("zboot", "watchdog")
+	_, err := execWithRetry(false, "zboot", "watchdog")
 	if err != nil {
 		log.Fatalf("zboot watchdog: err %v\n", err)
 	}
@@ -116,7 +122,7 @@ func GetCurrentPartition() string {
 		return currentPartition
 	}
 	log.Debugf("calling zboot curpart - not in cache\n")
-	ret, err := execWithRetry("zboot", "curpart")
+	ret, err := execWithRetry(false, "zboot", "curpart")
 	if err != nil {
 		log.Fatalf("zboot curpart: err %v\n", err)
 	}
@@ -184,7 +190,7 @@ func GetPartitionState(partName string) string {
 			return "unused"
 		}
 	}
-	ret, err := execWithRetry("zboot", "partstate", partName)
+	ret, err := execWithRetry(false, "zboot", "partstate", partName)
 	if err != nil {
 		log.Fatalf("zboot partstate %s: err %v\n", partName, err)
 	}
@@ -209,7 +215,7 @@ func setPartitionState(partName string, partState string) {
 	validatePartitionName(partName)
 	validatePartitionState(partState)
 
-	_, err := execWithRetry("zboot", "set_partstate",
+	_, err := execWithRetry(true, "zboot", "set_partstate",
 		partName, partState)
 	if err != nil {
 		log.Fatalf("zboot set_partstate %s %s: err %v\n",
@@ -231,7 +237,7 @@ func GetPartitionDevname(partName string) string {
 	}
 	log.Debugf("calling zboot partdev %s - not in cache\n", partName)
 
-	ret, err := execWithRetry("zboot", "partdev", partName)
+	ret, err := execWithRetry(false, "zboot", "partdev", partName)
 	if err != nil {
 		log.Fatalf("zboot partdev %s: err %v\n", partName, err)
 	}
