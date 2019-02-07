@@ -860,7 +860,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 				status.DomainName)
 		}
 		if ib.Lookup && ib.PciShort == "" {
-			log.Fatal("doAssignIoAdaptersToDomain lookup missing: %d %s for %s\n",
+			log.Fatalf("doAssignIoAdaptersToDomain lookup missing: %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
 		if ctx.usbAccess && ib.Type == types.IoUSB && !ib.IsPCIBack && ib.PciShort != "" {
@@ -1124,7 +1124,7 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 			continue
 		}
 		if ib.Lookup && ib.PciShort == "" {
-			log.Fatal("doInactivate lookup missing: %d %s for %s\n",
+			log.Fatalf("doInactivate lookup missing: %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
 		if ctx.usbAccess && ib.Type == types.IoUSB && ib.IsPCIBack &&
@@ -1406,7 +1406,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 				status.DomainName)
 		}
 		if ib.Lookup && ib.PciShort == "" {
-			log.Fatal("configToXencfg lookup missing: %d %s\n",
+			log.Fatalf("configToXencfg lookup missing: %d %s\n",
 				ib.Type, ib.Name)
 		}
 		if ib.PciShort != "" {

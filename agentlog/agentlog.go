@@ -5,14 +5,15 @@ package agentlog
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/zboot"
 	"os"
 	"os/signal"
 	"runtime"
 	dbg "runtime/debug"
 	"syscall"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/zboot"
 )
 
 func initImpl(agentName string, logdir string, redirect bool,
@@ -71,7 +72,7 @@ func handleSignals(sigs chan os.Signal) {
 
 // Print out our stack
 func printStack() {
-	log.Error("fatal stack trace:\n%v\n", getStacks(false))
+	log.Errorf("fatal stack trace:\n%v\n", getStacks(false))
 }
 
 func getStacks(all bool) string {
