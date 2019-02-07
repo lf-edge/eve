@@ -5,14 +5,16 @@ package agentlog
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/zboot"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"runtime"
 	dbg "runtime/debug"
 	"syscall"
 	"time"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/zboot"
 )
 
 const (
@@ -82,13 +84,55 @@ func printStack() {
 	RebootReason("fatal stack trace")
 }
 
-// print reason in /persist/IMGx/reboot-reason
-// XXX timestamp plus savedAgentName
-// XXX Append to file
-// XXX logmanager reads file and logs as log.Error?
+// print reason in /persist/IMGx/reboot-reason, including agentName and date
 func RebootReason(reason string) {
 	filename := fmt.Sprintf("%s/reboot-reason", getCurrentIMGdir())
 	log.Warnf("RebootReason to %s: %s\n", filename, reason)
+	dateStr := time.Now().Format(time.RFC3339Nano)
+	printToFile(filename, fmt.Sprintf("Reboot from agent %s at %s: %s\n",
+		savedAgentName, dateStr, reason))
+	syscall.Sync()
+}
+
+func GetCurrentRebootReason() string {
+	filename := fmt.Sprintf("%s/reboot-reason", getCurrentIMGdir())
+	return statAndRead(filename)
+}
+
+func GetOtherRebootReason() string {
+	dirname := getOtherIMGdir()
+	if dirname == "" {
+		return ""
+	}
+	filename := fmt.Sprintf("%s/reboot-reason", dirname)
+	return statAndRead(filename)
+}
+
+func statAndRead(filename string) string {
+	_, err := os.Stat(filename)
+	if err != nil {
+		// File doesn't exist
+		return ""
+	}
+	content, err := ioutil.ReadFile(filename)
+	if err != nil {
+		log.Errorf("GetOtherRebootReason failed %s", err)
+		return ""
+	}
+	return string(content)
+}
+
+func printToFile(filename string, str string) error {
+	f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(str)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func getStacks(all bool) string {
@@ -164,13 +208,13 @@ func getCurrentIMGdir() string {
 	return currentIMGdir
 }
 
-// Return a logdir for agents and logmanager to use by default
-func GetCurrentLogdir() string {
-	return fmt.Sprintf("%s/log", getCurrentIMGdir())
-}
+var otherIMGdir = ""
 
-// If the other partition is not inprogress we return the empty string
-func GetOtherLogdir() string {
+func getOtherIMGdir() string {
+
+	if otherIMGdir != "" {
+		return otherIMGdir
+	}
 	if !zboot.IsAvailable() {
 		return ""
 	}
@@ -178,8 +222,22 @@ func GetOtherLogdir() string {
 		return ""
 	}
 	partName := zboot.GetOtherPartition()
-	logdir := fmt.Sprintf("%s/%s/log", persistDir, partName)
-	return logdir
+	otherIMGdir = fmt.Sprintf("%s/%s", persistDir, partName)
+	return otherIMGdir
+}
+
+// Return a logdir for agents and logmanager to use by default
+func GetCurrentLogdir() string {
+	return fmt.Sprintf("%s/log", getCurrentIMGdir())
+}
+
+// If the other partition is not inprogress we return the empty string
+func GetOtherLogdir() string {
+	dirname := getOtherIMGdir()
+	if dirname == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s/log", dirname)
 }
 
 // Touch a file per agentName to signal the event loop is still running

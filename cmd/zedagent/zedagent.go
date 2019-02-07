@@ -152,6 +152,19 @@ func Run() {
 
 	log.Infof("Starting %s\n", agentName)
 
+	// If we have a reboot reason from this or the other partition
+	// (assuming the other is in inprogress) then we log it
+	rebootReason := agentlog.GetCurrentRebootReason()
+	if rebootReason != "" {
+		log.Warnf("Current partition rebooted with: %s\n",
+			rebootReason)
+	}
+	rebootReason = agentlog.GetOtherRebootReason()
+	if rebootReason != "" {
+		log.Warnf("Other partition rebooted with: %s\n",
+			rebootReason)
+	}
+
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	agentlog.StillRunning(agentName)
