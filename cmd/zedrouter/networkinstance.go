@@ -161,6 +161,7 @@ func handleNetworkInstanceCreate(
 		NetworkInstanceConfig: config,
 		NetworkInstanceInfo: types.NetworkInstanceInfo{
 			IPAssignments: make(map[string]net.IP),
+			VifMetricMap: make(map[string]types.NetworkMetric),
 		},
 	}
 
