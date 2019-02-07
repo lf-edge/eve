@@ -6,6 +6,7 @@
 package zboot
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -44,16 +46,49 @@ func Reset() {
 		log.Infof("no zboot; can't do reset\n")
 		return
 	}
-	rebootCmd := exec.Command("zboot", "reset")
-	log.Infof("Waiting for zbootMutex.lock. rebootCmd: %+v\n", rebootCmd)
-	zbootMutex.Lock() // we are going to reboot
-	log.Infof("Got zbootMutex.lock. Executing reboot cmd\n")
-	_, err := rebootCmd.Output()
-	zbootMutex.Unlock()
-	log.Infof("Release zbootMutex.lock. err: %s\n", err)
+	_, err := execWithRetry("zboot", "reset")
 	if err != nil {
 		log.Fatalf("zboot reset: err %v\n", err)
 	}
+}
+
+func execWithRetry(command string, args ...string) ([]byte, error) {
+	for {
+		out, done, err := execWithTimeout(command, args...)
+		if err != nil {
+			return out, err
+		}
+		if done {
+			return out, nil
+		}
+		log.Errorf("Retrying %s %v", command, args)
+	}
+}
+
+func execWithTimeout(command string, args ...string) ([]byte, bool, error) {
+
+	ctx, cancel := context.WithTimeout(context.Background(),
+		5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, command, args...)
+
+	log.Infof("Waiting for zbootMutex.lock for %s %+v\n",
+		command, args)
+	zbootMutex.Lock()
+	log.Infof("Got zbootMutex.lock. Executing %s %+v\n",
+		command, args)
+
+	out, err := cmd.Output()
+
+	zbootMutex.Unlock()
+	log.Infof("Released zbootMutex.lock for %s %+v\n",
+		command, args)
+
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, false, nil
+	}
+	return out, true, err
 }
 
 // tell watchdog we are fine
@@ -61,10 +96,7 @@ func WatchdogOK() {
 	if !IsAvailable() {
 		return
 	}
-	watchDogCmd := exec.Command("zboot", "watchdog")
-	zbootMutex.Lock()
-	_, err := watchDogCmd.Output()
-	zbootMutex.Unlock()
+	_, err := execWithRetry("zboot", "watchdog")
 	if err != nil {
 		log.Fatalf("zboot watchdog: err %v\n", err)
 	}
@@ -84,10 +116,7 @@ func GetCurrentPartition() string {
 		return currentPartition
 	}
 	log.Debugf("calling zboot curpart - not in cache\n")
-	curPartCmd := exec.Command("zboot", "curpart")
-	zbootMutex.Lock()
-	ret, err := curPartCmd.Output()
-	zbootMutex.Unlock()
+	ret, err := execWithRetry("zboot", "curpart")
 	if err != nil {
 		log.Fatalf("zboot curpart: err %v\n", err)
 	}
@@ -155,10 +184,7 @@ func GetPartitionState(partName string) string {
 			return "unused"
 		}
 	}
-	partStateCmd := exec.Command("zboot", "partstate", partName)
-	zbootMutex.Lock()
-	ret, err := partStateCmd.Output()
-	zbootMutex.Unlock()
+	ret, err := execWithRetry("zboot", "partstate", partName)
 	if err != nil {
 		log.Fatalf("zboot partstate %s: err %v\n", partName, err)
 	}
@@ -183,11 +209,8 @@ func setPartitionState(partName string, partState string) {
 	validatePartitionName(partName)
 	validatePartitionState(partState)
 
-	setPartStateCmd := exec.Command("zboot", "set_partstate",
+	_, err := execWithRetry("zboot", "set_partstate",
 		partName, partState)
-	zbootMutex.Lock()
-	_, err := setPartStateCmd.Output()
-	zbootMutex.Unlock()
 	if err != nil {
 		log.Fatalf("zboot set_partstate %s %s: err %v\n",
 			partName, partState, err)
@@ -208,10 +231,7 @@ func GetPartitionDevname(partName string) string {
 	}
 	log.Debugf("calling zboot partdev %s - not in cache\n", partName)
 
-	getPartDevCmd := exec.Command("zboot", "partdev", partName)
-	zbootMutex.Lock()
-	ret, err := getPartDevCmd.Output()
-	zbootMutex.Unlock()
+	ret, err := execWithRetry("zboot", "partdev", partName)
 	if err != nil {
 		log.Fatalf("zboot partdev %s: err %v\n", partName, err)
 	}
