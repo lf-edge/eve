@@ -54,6 +54,7 @@ admin =
 #priority = 1
 interval = 10
 logtick  = 60
+repair-binary=/opt/zededa/bin/watchdog-report.sh
 EOF
 cp $TMPDIR/watchdogbase.conf $TMPDIR/watchdogled.conf
 echo "pidfile = /var/run/ledmanager.pid" >>$TMPDIR/watchdogled.conf
