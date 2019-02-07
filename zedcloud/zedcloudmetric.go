@@ -135,11 +135,11 @@ func Append(cms metricsMap, cms1 metricsMap) metricsMap {
 		}
 		cm.FailureCount += cm1.FailureCount
 		cm.SuccessCount += cm1.SuccessCount
+		if cm.UrlCounters == nil {
+			cm.UrlCounters = make(map[string]urlcloudMetrics)
+		}
+		cmu := cm.UrlCounters // A pointer to the map
 		for url, um1 := range cm1.UrlCounters {
-			if cm.UrlCounters == nil {
-				cm.UrlCounters = make(map[string]urlcloudMetrics)
-			}
-			cmu := cm.UrlCounters // A pointer to the map
 			um, ok := cmu[url]
 			if !ok {
 				// New url; take all
