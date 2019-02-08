@@ -161,6 +161,7 @@ func handleNetworkInstanceCreate(
 		NetworkInstanceConfig: config,
 		NetworkInstanceInfo: types.NetworkInstanceInfo{
 			IPAssignments: make(map[string]net.IP),
+			VifMetricMap: make(map[string]types.NetworkMetric),
 		},
 	}
 
@@ -825,6 +826,40 @@ func lookupNetworkInstanceMetrics(ctx *zedrouterContext, key string) *types.Netw
 		return nil
 	}
 	return &status
+}
+
+func createNetworkInstanceMetrics(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus,
+	nms *types.NetworkMetrics) *types.NetworkInstanceMetrics {
+
+	niMetrics := types.NetworkInstanceMetrics {
+		UUIDandVersion: status.UUIDandVersion,
+		DisplayName: status.DisplayName,
+		Type: status.Type,
+	}
+	netMetrics := types.NetworkMetrics{}
+	netMetric := status.UpdateNetworkMetrics(nms)
+	status.UpdateBridgeMetrics(nms, netMetric)
+
+	netMetrics.MetricList = []types.NetworkMetric{*netMetric}
+	niMetrics.NetworkMetrics = netMetrics
+
+	return &niMetrics
+}
+
+// this is periodic metrics handler
+func publishNetworkInstanceMetricsAll(ctx *zedrouterContext) {
+	pub := ctx.pubNetworkInstanceStatus
+	niList := pub.GetAll()
+	if niList == nil {
+		return
+	}
+	nms := getNetworkMetrics(ctx)
+	for _, ni := range niList {
+		status := cast.CastNetworkInstanceStatus(ni)
+		netMetrics := createNetworkInstanceMetrics(ctx, &status, &nms)
+		publishNetworkInstanceMetrics(ctx, netMetrics)
+	}
 }
 
 func deleteNetworkInstanceMetrics(ctx *zedrouterContext, key string) {
