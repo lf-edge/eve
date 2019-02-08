@@ -28,14 +28,10 @@ RUN cp /opt/zededa/bin/versioninfo /opt/zededa/bin/versioninfo.1
 # Echo for builders enjoyment
 RUN echo Building: `cat /opt/zededa/bin/versioninfo`
 
-# run go vet command
-RUN echo "Running go vet" && \
-    cd /go/src/github.com/zededa/go-provision/ && \
-    go vet -source ./...
-
-# go install
+# go install and go vet
 RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc)           ;\
     go install github.com/zededa/go-provision/zedbox/... && \
+    echo "Running go vet" && go vet ./... && \
     if [ -f /go/bin/*/zedbox ] ; then mv /go/bin/*/zedbox /go/bin ; fi
 
 RUN ln -s /go/bin/zedbox /opt/zededa/bin/zedbox ;\
