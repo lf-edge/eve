@@ -74,6 +74,7 @@ var debugOverride bool // From command line arg
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
+	curpartPtr := flag.String("c", "", "Current partition")
 	forcePtr := flag.Bool("f", false, "Force using onboarding cert")
 	dirPtr := flag.String("D", "/config", "Directory with certs etc")
 	stdoutPtr := flag.Bool("s", false, "Use stdout")
@@ -91,6 +92,7 @@ func Run() {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
+	curpart := *curpartPtr
 	forceOnboardingCert := *forcePtr
 	identityDirname := *dirPtr
 	useStdout := *stdoutPtr
@@ -104,7 +106,7 @@ func Run() {
 		return
 	}
 	// Sending json log format to stdout
-	logf, err := agentlog.Init("client")
+	logf, err := agentlog.Init("client", curpart)
 	if err != nil {
 		log.Fatal(err)
 	}

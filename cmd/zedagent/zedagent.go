@@ -105,6 +105,7 @@ var debugOverride bool // From command line arg
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
+	curpartPtr := flag.String("c", "", "Current partition")
 	parsePtr := flag.String("p", "", "parse checkpoint file")
 	validatePtr := flag.Bool("V", false, "validate UTF-8 in checkpoint")
 	flag.Parse()
@@ -115,6 +116,7 @@ func Run() {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
+	curpart := *curpartPtr
 	parse := *parsePtr
 	validate := *validatePtr
 	if *versionPtr {
@@ -141,7 +143,7 @@ func Run() {
 		}
 		return
 	}
-	logf, err := agentlog.Init(agentName)
+	logf, err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -151,6 +153,29 @@ func Run() {
 	}
 
 	log.Infof("Starting %s\n", agentName)
+
+	// If we have a reboot reason from this or the other partition
+	// (assuming the other is in inprogress) then we log it
+	// We assume the log makes it reliably to zedcloud hence we discard
+	// the reason.
+	rebootReason := agentlog.GetCurrentRebootReason()
+	if rebootReason != "" {
+		log.Warnf("Current partition rebooted reason: %s\n",
+			rebootReason)
+		agentlog.DiscardCurrentRebootReason()
+	}
+	rebootReason = agentlog.GetOtherRebootReason()
+	if rebootReason != "" {
+		log.Warnf("Other partition rebooted reason: %s\n",
+			rebootReason)
+		agentlog.DiscardOtherRebootReason()
+	}
+	rebootReason = agentlog.GetCommonRebootReason()
+	if rebootReason != "" {
+		log.Warnf("Common rebooted reason: %s\n",
+			rebootReason)
+		agentlog.DiscardCommonRebootReason()
+	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -436,7 +461,9 @@ func Run() {
 
 		case <-t1.C:
 			// reboot, if not available, within a wait time
-			log.Errorf("zboot status is still not available - rebooting\n")
+			errStr := "zboot status is still not available - rebooting"
+			log.Errorf(errStr)
+			agentlog.RebootReason(errStr)
 			execReboot(true)
 
 		case <-stillRunning.C:
@@ -473,12 +500,16 @@ func Run() {
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 
 		case <-t1.C:
-			log.Errorf("Exceeded outage for cloud connectivity - rebooting\n")
+			errStr := "Exceeded outage for cloud connectivity - rebooting"
+			log.Errorf(errStr)
+			agentlog.RebootReason(errStr)
 			execReboot(true)
 
 		case <-t2.C:
 			if updateInprogress {
-				log.Errorf("Exceeded fallback outage for cloud connectivity - rebooting\n")
+				errStr := "Exceeded fallback outage for cloud connectivity - rebooting"
+				log.Errorf(errStr)
+				agentlog.RebootReason(errStr)
 				execReboot(true)
 			}
 

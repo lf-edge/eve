@@ -54,6 +54,7 @@ admin =
 #priority = 1
 interval = 10
 logtick  = 60
+repair-binary=/opt/zededa/bin/watchdog-report.sh
 EOF
 cp $TMPDIR/watchdogbase.conf $TMPDIR/watchdogled.conf
 echo "pidfile = /var/run/ledmanager.pid" >>$TMPDIR/watchdogled.conf
@@ -328,7 +329,7 @@ done
 
 # Get IP addresses
 echo $BINDIR/nim
-$BINDIR/nim &
+$BINDIR/nim -c $CURPART &
 
 # Restart watchdog ledmanager and nim
 if [ -f /var/run/watchdog.pid ]; then
@@ -338,8 +339,8 @@ fi
 
 # Wait for having IP addresses for a few minutes
 # so that we are likely to have an address when we run ntp
-echo $BINDIR/waitforaddr
-$BINDIR/waitforaddr
+echo $BINDIR/waitforaddr 
+$BINDIR/waitforaddr -c $CURPART
 
 # We need to try our best to setup time *before* we generate the certifiacte.
 # Otherwise it may have start date in the future
@@ -377,7 +378,7 @@ fi
 
 # Print the initial diag output
 # If we don't have a network this takes many minutes. Backgrounded
-/opt/zededa/bin/diag >/dev/console 2>&1 &
+$BINDIR/diag -c $CURPART >/dev/console 2>&1 &
 
 # The device cert generation needs the current time. Some hardware
 # doesn't have a battery-backed clock
@@ -400,7 +401,7 @@ if [ ! \( -f $CONFIGDIR/device.cert.pem -a -f $CONFIGDIR/device.key.pem \) ]; th
     SELF_REGISTER=1
 elif [ -f $CONFIGDIR/self-register-failed ]; then
     echo "self-register failed/killed/rebooted"
-    $BINDIR/client -r 5 getUuid
+    $BINDIR/client -c $CURPART -r 5 getUuid
     if [ $? != 0 ]; then 
 	echo "self-register failed/killed/rebooted; getUuid fail; redoing self-register"
 	SELF_REGISTER=1
@@ -448,7 +449,7 @@ if [ $SELF_REGISTER = 1 ]; then
 	exit 1
     fi
     echo $BINDIR/client selfRegister
-    $BINDIR/client selfRegister
+    $BINDIR/client -c $CURPART selfRegister
     if [ $? != 0 ]; then
 	echo "client selfRegister failed with $?"
 	exit 1
@@ -458,7 +459,7 @@ if [ $SELF_REGISTER = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
     echo $BINDIR/client getUuid 
-    $BINDIR/client getUuid
+    $BINDIR/client -c $CURPART getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
 	/opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
 	echo "Created default hardwaremodel" `/opt/zededa/bin/hardwaremodel -c`
@@ -482,7 +483,7 @@ if [ $SELF_REGISTER = 1 ]; then
 else
     echo "XXX until cloud keeps state across upgrades redo getUuid"
     echo $BINDIR/client getUuid 
-    $BINDIR/client getUuid
+    $BINDIR/client -c $CURPART getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
 	# XXX for upgrade path
 	# XXX do we need a way to override?
@@ -550,62 +551,62 @@ fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
 
 echo "Starting verifier at" `date`
-verifier &
+$BINDIR/verifier -c $CURPART &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting ZedManager at" `date`
-zedmanager &
+$BINDIR/zedmanager -c $CURPART &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting downloader at" `date`
-downloader &
+$BINDIR/downloader -c $CURPART &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting identitymgr at" `date`
-identitymgr &
+$BINDIR/identitymgr -c $CURPART &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting ZedRouter at" `date`
-zedrouter &
+$BINDIR/zedrouter -c $CURPART &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting DomainMgr at" `date`
-domainmgr &
-# Do something
+$BINDIR/domainmgr -c $CURPART &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting zedagent at" `date`
-zedagent &
+$BINDIR/zedagent -c $CURPART &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting baseosmgr at" `date`
-baseosmgr &
+$BINDIR/baseosmgr -c $CURPART &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting wstunnelclient at" `date`
-wstunnelclient &
+$BINDIR/wstunnelclient -c $CURPART &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 echo "Starting lisp-ztr at" `date`
-lisp-ztr &
+# XXX add a -c $CURPART ?
+$BINDIR/lisp-ztr &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
@@ -614,7 +615,7 @@ fi
 pgrep logmanager >/dev/null
 if [ $? != 0 ]; then
     echo "Starting logmanager at" `date`
-    logmanager &
+    $BINDIR/logmanager -c $CURPART &
     if [ $WAIT = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
@@ -623,7 +624,7 @@ fi
 echo "Initial setup done at" `date`
 
 # Print diag output forever on changes
-/opt/zededa/bin/diag -f >/dev/console 2>&1 &
+$BINDIR/diag -c $CURPART -f >/dev/console 2>&1 &
 
 if [ $MEASURE = 1 ]; then
     ping6 -c 3 -w 1000 zedcontrol

@@ -35,7 +35,8 @@ SCRIPTS = \
 	generate-device.sh \
 	generate-onboard.sh \
 	generate-self-signed.sh \
-	run-ocsp.sh
+	run-ocsp.sh \
+	watchdog-report.sh
 
 .PHONY: all clean vendor
 

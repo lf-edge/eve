@@ -117,15 +117,10 @@ type zedcloudLogs struct {
 }
 
 func Run() {
-	logf, err := agentlog.InitWithDirText(agentName, "/persist/log")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer logf.Close()
-
 	defaultLogdirname := agentlog.GetCurrentLogdir()
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug")
+	curpartPtr := flag.String("c", "", "Current partition")
 	forcePtr := flag.Bool("f", false, "Force")
 	logdirPtr := flag.String("l", defaultLogdirname, "Log file directory")
 	flag.Parse()
@@ -136,12 +131,19 @@ func Run() {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
+	curpart := *curpartPtr
 	logDirName := *logdirPtr
 	force := *forcePtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
+	logf, err := agentlog.InitWithDirText(agentName, "/persist/log",
+		curpart)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logf.Close()
 
 	// Note that LISP needs a separate directory since it moves
 	// old content to a subdir when it (re)starts

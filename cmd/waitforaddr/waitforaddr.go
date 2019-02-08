@@ -42,6 +42,7 @@ var debugOverride bool // From command line arg
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
+	curpartPtr := flag.String("c", "", "Current partition")
 	stdoutPtr := flag.Bool("s", false, "Use stdout")
 	noPidPtr := flag.Bool("p", false, "Do not check for running agent")
 	flag.Parse()
@@ -52,13 +53,14 @@ func Run() {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
+	curpart := *curpartPtr
 	useStdout := *stdoutPtr
 	noPidFlag := *noPidPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	logf, err := agentlog.Init(agentName)
+	logf, err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
