@@ -830,6 +830,15 @@ type NetworkInstanceInfo struct {
 	// Any errrors from provisioning the network
 	Error     string
 	ErrorTime time.Time
+
+	// Vif metric map. This should have a union of currently existing
+	// vifs and previously deleted vifs.
+	// XXX When a vif is removed from bridge (app instance delete case),
+	// device might start reporting smaller statistic values. To avoid this
+	// from happening, we keep a list of all vifs that were ever connected
+	// to this bridge and their statistics.
+	// We add statistics from all vifs while reporting to cloud.
+	VifMetricMap map[string]NetworkMetric
 }
 
 func (instanceInfo *NetworkInstanceInfo) IsVifInBridge(
@@ -964,6 +973,7 @@ type NetworkInstanceMetrics struct {
 	UUIDandVersion UUIDandVersion
 	DisplayName    string
 	Type           NetworkInstanceType
+	NetworkMetrics NetworkMetrics
 	VpnMetrics     *VpnMetrics
 	LispMetrics    *LispMetrics
 }
@@ -976,6 +986,15 @@ func (metrics NetworkInstanceMetrics) Key() string {
 // Matches networkMetrics protobuf message
 type NetworkMetrics struct {
 	MetricList []NetworkMetric
+}
+
+func (nms *NetworkMetrics) LookupNetworkMetrics(ifName string) (NetworkMetric, bool) {
+	for _, metric := range nms.MetricList {
+		if ifName == metric.IfName {
+			return metric, true
+		}
+	}
+	return NetworkMetric{}, false
 }
 
 type NetworkMetric struct {
@@ -1103,6 +1122,69 @@ type VifNameMac struct {
 	Name    string
 	MacAddr string
 	AppID   uuid.UUID
+}
+
+/*
+ * Tx/Rx of bridge is equal to the total of Tx/Rx on all member
+ * virtual interfaces excluding the bridge itself.
+ *
+ * Drops/Errors/AclDrops of bridge is equal to total of Drops/Errors/AclDrops
+ * on all member virtual interface including the bridge.
+ */
+func (status *NetworkInstanceStatus) UpdateNetworkMetrics(
+	nms *NetworkMetrics) *NetworkMetric {
+
+	netMetric  := NetworkMetric{IfName: status.BridgeName}
+	for _, vif := range status.Vifs {
+		metric, found := nms.LookupNetworkMetrics(vif.Name)
+		if !found {
+			log.Debugf("No metrics found for interface %s",
+				vif.Name)
+			continue
+		}
+		status.VifMetricMap[vif.Name] = metric
+	}
+	for _, metric := range status.VifMetricMap {
+		netMetric.TxBytes    += metric.TxBytes
+		netMetric.RxBytes    += metric.RxBytes
+		netMetric.TxPkts     += metric.TxPkts
+		netMetric.RxPkts     += metric.RxPkts
+		netMetric.TxErrors   += metric.TxErrors
+		netMetric.RxErrors   += metric.RxErrors
+		netMetric.TxDrops    += metric.TxDrops
+		netMetric.RxDrops    += metric.RxDrops
+		netMetric.TxAclDrops += metric.TxAclDrops
+		netMetric.RxAclDrops += metric.RxAclDrops
+		netMetric.TxAclRateLimitDrops += metric.TxAclRateLimitDrops
+		netMetric.RxAclRateLimitDrops += metric.RxAclRateLimitDrops
+	}
+	return &netMetric
+}
+
+/*
+ * Tx/Rx of bridge is equal to the total of Tx/Rx on all member
+ * virtual interfaces excluding the bridge itself.
+ *
+ * Drops/Errors/AclDrops of bridge is equal to total of Drops/Errors/AclDrops
+ * on all member virtual interface including the bridge.
+ */
+func (status *NetworkInstanceStatus) UpdateBridgeMetrics(
+	nms *NetworkMetrics, netMetric *NetworkMetric) {
+	// Get bridge metrics
+	bridgeMetric, found := nms.LookupNetworkMetrics(status.BridgeName)
+	if !found {
+		log.Debugf("No metrics found for Bridge %s",
+			status.BridgeName)
+	} else {
+		netMetric.TxErrors   += bridgeMetric.TxErrors
+		netMetric.RxErrors   += bridgeMetric.RxErrors
+		netMetric.TxDrops    += bridgeMetric.TxDrops
+		netMetric.RxDrops    += bridgeMetric.RxDrops
+		netMetric.TxAclDrops += bridgeMetric.TxAclDrops
+		netMetric.RxAclDrops += bridgeMetric.RxAclDrops
+		netMetric.TxAclRateLimitDrops += bridgeMetric.TxAclRateLimitDrops
+		netMetric.RxAclRateLimitDrops += bridgeMetric.RxAclRateLimitDrops
+	}
 }
 
 func (status *NetworkInstanceStatus) SetError(err error) {

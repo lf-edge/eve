@@ -29,7 +29,7 @@ func getDefaultIPv4Route(ifindex int) *netlink.Route {
 	routes, err := netlink.RouteListFiltered(syscall.AF_INET,
 		&filter, fflags)
 	if err != nil {
-		log.Fatal("RouteList failed: %v\n", err)
+		log.Fatalf("RouteList failed: %v\n", err)
 	}
 	log.Debugf("getDefaultIPv4Route(%d) - got %d matches\n",
 		ifindex, len(routes))
@@ -70,7 +70,7 @@ func moveRoutesTable(srcTable int, ifindex int, dstTable int) {
 	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC,
 		&filter, fflags)
 	if err != nil {
-		log.Fatal("RouteList failed: %v\n", err)
+		log.Fatalf("RouteList failed: %v\n", err)
 	}
 	log.Debugf("moveRoutesTable(%d, %d, %d) - got %d\n",
 		srcTable, ifindex, dstTable, len(routes))

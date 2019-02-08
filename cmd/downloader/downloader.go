@@ -1308,7 +1308,12 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			}
 		case zconfig.DsType_DsHttp.String(), zconfig.DsType_DsHttps.String(), "":
 			// DownloadURL format : http://<serverURL>/dpath/filename
-			serverUrl := strings.TrimSuffix(config.DownloadURL, "/"+config.Dpath+"/"+filename)
+			var serverUrl string
+			if config.Dpath != "" {
+				serverUrl = strings.TrimSuffix(config.DownloadURL, "/"+config.Dpath+"/"+filename)
+			} else {
+				serverUrl = strings.TrimSuffix(config.DownloadURL, "/"+filename)
+			}
 			err = doHttp(ctx, status, syncOp, serverUrl, config.Dpath,
 				config.Size, ifname, ipSrc, filename, locFilename)
 			if err != nil {
