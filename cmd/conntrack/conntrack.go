@@ -12,8 +12,10 @@ import (
 )
 
 func Run() {
+	// XXX curpartPtr := flag.String("c", "", "Current partition")
 	flag.Parse()
 	// XXX args := flag.Args()
+	// XXX curpart := *curpartPtr
 	res, err := netlink.ConntrackTableList(netlink.ConntrackTable, syscall.AF_INET)
 	if err != nil {
 		log.Println("ContrackTableList", err)

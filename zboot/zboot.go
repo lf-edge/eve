@@ -113,6 +113,10 @@ func WatchdogOK() {
 // than once per process.
 var currentPartition string
 
+func SetCurpart(curpart string) {
+	currentPartition = curpart
+}
+
 // partition routines
 func GetCurrentPartition() string {
 	if !IsAvailable() {

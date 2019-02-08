@@ -51,14 +51,9 @@ var debug = false
 var debugOverride bool // From command line arg
 
 func Run() {
-	logf, err := agentlog.Init(agentName)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer logf.Close()
-
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
+	curpartPtr := flag.String("c", "", "Current partition")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
@@ -67,10 +62,17 @@ func Run() {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
+	curpart := *curpartPtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
+	logf, err := agentlog.Init(agentName, curpart)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logf.Close()
+
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}

@@ -215,12 +215,18 @@ func roundToMb(b uint64) uint64 {
 	return mb
 }
 
-func Init(agentName string) (*os.File, error) {
+func Init(agentName string, curpart string) (*os.File, error) {
+	if curpart != "" {
+		zboot.SetCurpart(curpart)
+	}
 	logdir := GetCurrentLogdir()
 	return initImpl(agentName, logdir, true, false)
 }
 
-func InitWithDirText(agentName string, logdir string) (*os.File, error) {
+func InitWithDirText(agentName string, logdir string, curpart string) (*os.File, error) {
+	if curpart != "" {
+		zboot.SetCurpart(curpart)
+	}
 	return initImpl(agentName, logdir, true, true)
 }
 

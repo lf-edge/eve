@@ -105,6 +105,7 @@ var debugOverride bool // From command line arg
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
+	curpartPtr := flag.String("c", "", "Current partition")
 	parsePtr := flag.String("p", "", "parse checkpoint file")
 	validatePtr := flag.Bool("V", false, "validate UTF-8 in checkpoint")
 	flag.Parse()
@@ -115,6 +116,7 @@ func Run() {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
+	curpart := *curpartPtr
 	parse := *parsePtr
 	validate := *validatePtr
 	if *versionPtr {
@@ -141,7 +143,7 @@ func Run() {
 		}
 		return
 	}
-	logf, err := agentlog.Init(agentName)
+	logf, err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
