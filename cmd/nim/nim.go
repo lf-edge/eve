@@ -116,7 +116,7 @@ func Run() {
 	nimCtx.globalConfig = &types.GlobalConfigDefaults
 
 	nimCtx.processArgs()
-	if ctx.version {
+	if nimCtx.version {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
