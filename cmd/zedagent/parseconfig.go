@@ -2012,15 +2012,18 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 		// Defer if inprogress
 		ctx := getconfigCtx.zedagentCtx
 		if isBaseOsCurrentPartitionStateInProgress(ctx) {
+			// Use double the testing delay
+			// XXX better to wait for the inprogress to
+			// be cleared.
 			log.Warnf("Rebooting even though testing inprogress; defer for %v seconds\n",
 				globalConfig.MintimeUpdateSuccess)
-			duration = time.Second *
+			duration = 2 * time.Second *
 				time.Duration(globalConfig.MintimeUpdateSuccess)
 		}
 
 		rebootTimer = time.NewTimer(duration)
 
-		log.Infof("Scheduling for reboot %d %d %v seconds\n",
+		log.Infof("Scheduling for reboot %d %d %d seconds\n",
 			rebootConfig.Counter, reboot.Counter,
 			duration/time.Second)
 
@@ -2091,6 +2094,8 @@ func startExecReboot() {
 	// XXX:FIXME, need to handle the scheduled time
 	duration := time.Second * time.Duration(rebootDelay)
 	rebootTimer = time.NewTimer(duration)
+	log.Infof("startExecReboot: timer %d seconds\n",
+		duration/time.Second)
 
 	go handleExecReboot()
 }
@@ -2116,7 +2121,7 @@ func execReboot(state bool) {
 
 	case true:
 		duration := time.Second * time.Duration(rebootDelay)
-		log.Infof("Rebooting... Starting timer for Duration(secs): %+v\n",
+		log.Infof("Rebooting... Starting timer for Duration(secs): %d\n",
 			duration/time.Second)
 
 		// Start timer to allow applications some time to shudown and for
@@ -2134,7 +2139,7 @@ func execReboot(state bool) {
 		log.Infof("Powering Off..\n")
 		duration := time.Second * time.Duration(rebootDelay)
 		timer := time.NewTimer(duration)
-		log.Infof("Timer started (duration: %+v seconds). Wait to expire\n",
+		log.Infof("Timer started (duration: %d seconds). Wait to expire\n",
 			duration/time.Second)
 		<-timer.C
 		log.Infof("Timer Expired.. do Poweroff\n")
