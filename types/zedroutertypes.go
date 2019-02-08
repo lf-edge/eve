@@ -1138,7 +1138,7 @@ func (status *NetworkInstanceStatus) UpdateNetworkMetrics(
 	for _, vif := range status.Vifs {
 		metric, found := nms.LookupNetworkMetrics(vif.Name)
 		if !found {
-			log.Debugf("createNetworkInstanceMetrics: No metrics found for interface %s",
+			log.Debugf("No metrics found for interface %s",
 				vif.Name)
 			continue
 		}
@@ -1173,7 +1173,7 @@ func (status *NetworkInstanceStatus) UpdateBridgeMetrics(
 	// Get bridge metrics
 	bridgeMetric, found := nms.LookupNetworkMetrics(status.BridgeName)
 	if !found {
-		log.Debugf("createNetworkInstanceMetrics: No metrics found for Bridge %s",
+		log.Debugf("No metrics found for Bridge %s",
 			status.BridgeName)
 	} else {
 		netMetric.TxErrors   += bridgeMetric.TxErrors
