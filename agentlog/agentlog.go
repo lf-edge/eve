@@ -19,6 +19,7 @@ import (
 
 const (
 	persistDir = "/persist"
+	reasonFile = "reboot-reason"
 )
 
 var savedAgentName string // Keep for signal and exit handlers
@@ -84,9 +85,9 @@ func printStack() {
 	RebootReason("fatal stack trace")
 }
 
-// print reason in /persist/IMGx/reboot-reason, including agentName and date
+// Write reason in /persist/IMGx/reboot-reason, including agentName and date
 func RebootReason(reason string) {
-	filename := fmt.Sprintf("%s/reboot-reason", getCurrentIMGdir())
+	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
 	log.Warnf("RebootReason to %s: %s\n", filename, reason)
 	dateStr := time.Now().Format(time.RFC3339Nano)
 	err := printToFile(filename, fmt.Sprintf("Reboot from agent %s at %s: %s\n",
@@ -98,7 +99,7 @@ func RebootReason(reason string) {
 }
 
 func GetCurrentRebootReason() string {
-	filename := fmt.Sprintf("%s/reboot-reason", getCurrentIMGdir())
+	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
 	return statAndRead(filename)
 }
 
@@ -107,13 +108,13 @@ func GetOtherRebootReason() string {
 	if dirname == "" {
 		return ""
 	}
-	filename := fmt.Sprintf("%s/reboot-reason", dirname)
+	filename := fmt.Sprintf("%s/%s", dirname, reasonFile)
 	return statAndRead(filename)
 }
 
 // Used for failures/hangs when zboot curpart hangs
 func GetCommonRebootReason() string {
-	filename := fmt.Sprintf("%s/reboot-reason", persistDir)
+	filename := fmt.Sprintf("%s/%s", persistDir, reasonFile)
 	return statAndRead(filename)
 }
 
@@ -147,10 +148,9 @@ func printToFile(filename string, str string) error {
 }
 
 func DiscardCurrentRebootReason() {
-	filename := fmt.Sprintf("%s/reboot-reason", getCurrentIMGdir())
+	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
 	if err := os.Remove(filename); err != nil {
-		log.Errorf("DiscardCurrentRebootReason failed %s\n",
-			err)
+		log.Errorf("DiscardCurrentRebootReason failed %s\n", err)
 	}
 }
 
@@ -159,18 +159,16 @@ func DiscardOtherRebootReason() {
 	if dirname == "" {
 		return
 	}
-	filename := fmt.Sprintf("%s/reboot-reason", dirname)
+	filename := fmt.Sprintf("%s/%s", dirname, reasonFile)
 	if err := os.Remove(filename); err != nil {
-		log.Errorf("DiscardOtherRebootReason failed %s\n",
-			err)
+		log.Errorf("DiscardOtherRebootReason failed %s\n", err)
 	}
 }
 
 func DiscardCommonRebootReason() {
-	filename := fmt.Sprintf("%s/reboot-reason", persistDir)
+	filename := fmt.Sprintf("%s/%s", persistDir, reasonFile)
 	if err := os.Remove(filename); err != nil {
-		log.Errorf("DiscardCommonRebootReason failed %s\n",
-			err)
+		log.Errorf("DiscardCommonRebootReason failed %s\n", err)
 	}
 }
 
