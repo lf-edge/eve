@@ -30,12 +30,21 @@ external_tag() {
   #    1. if we're building a release from a tag, we expect external tag to be the same
   #    2. if we're NOT building from a tag, the external tag is simply snapshot
   local TAG="`get_git_tag`"
-  TAG="$1:${TAG:-snapshot}"
+  PKG="$1:${TAG:-snapshot}"
+
+  # for external packages we have to always try to push first - otherwise
+  # we may have something stale in our local Docker cache
+  (docker pull "$PKG" || echo "WARNING: couldn't fetch the latest $PKG - may be using stale cache") >&2
+
+  # we have to resolve symbolic tags like x.y.z or snapshot to something immutable
+  # so that we can detect when the symbolic tag starts pointing a different immutable
+  # object and thus trigger a new SHA for zenix and zedctr 
+  IPKG=$(docker inspect --format='{{index .RepoDigests 0}}' "$PKG" 2>/dev/null)
   
-  if (docker inspect "$TAG" || docker pull "$TAG") > /dev/null 2>&1 ; then
-    echo "${TAG}"
+  if [ $? -a "$IPKG" ] ; then 
+    echo "${IPKG}"
   else
-    echo "WARNING: couldn't fetch $TAG plugin - using $2 instead" >&2
+    echo "WARNING: failed to obtain $PKG - using $2 instead" >&2
     echo $2
   fi
 }
