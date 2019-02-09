@@ -1068,6 +1068,14 @@ func (config *NetworkInstanceConfig) Key() string {
 	return config.UUID.String()
 }
 
+func (config *NetworkInstanceConfig) IsIPv6() bool {
+	switch config.IpType {
+	case AddressTypeIPV6:
+		return true
+	}
+	return false
+}
+
 type ChangeInProgressType int32
 
 const (
