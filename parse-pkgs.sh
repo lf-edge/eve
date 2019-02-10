@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Poor man's[1] yml generator
 #
 #
