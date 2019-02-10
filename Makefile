@@ -42,7 +42,8 @@ QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH))
 
 DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; docker export $$C | tar -xf - $$2 ; docker rm $$C ; } ; _
 
-PARSE_PKGS=DOCKER_ARCH_TAG="$(DOCKER_ARCH_TAG)" ./parse-pkgs.sh
+PARSE_PKGS:=ZENIX_HASH=$(ZENIX_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./parse-pkgs.sh
+LK_HASH_REL=LINUXKIT_HASH="$(if $(strip $(ZENIX_HASH)),--hash) $(ZENIX_HASH) $(if $(strip $(ZENIX_REL)),--release) $(ZENIX_REL)"
 
 DEFAULT_PKG_TARGET=build
 
@@ -54,7 +55,7 @@ build-tools:
 	${MAKE} -C build-tools all
 
 build-pkgs: build-tools
-	make -C build-pkgs $(DEFAULT_PKG_TARGET)
+	make -C build-pkgs $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
 
 # FIXME: the following is an ugly workaround against linuxkit complaining:
 # FATA[0030] Failed to create OCI spec for zededa/zedctr:XXX: 
@@ -63,31 +64,25 @@ build-pkgs: build-tools
 # the zededa/zedctr:XXX container will end up in a local docker cache (if linuxkit 
 # doesn't rebuild the package) and we need it there for the linuxkit build to work.
 # Which means, that we have to either forcefully rebuild it or fetch from docker hub.
-#
-# But wait! There's more! Since zedctr depends on ztools container (go-provision)
-# we have to make sure that when it is specified by the user explicitly via ZTOOLS_TAG env var we:
-#   1. don't attempt a docker pull
-#   2. touch a file in the zedctr package (thus making it dirty and changing a reference in image.yml) 
-# Finally, we only forcefully rebuild the zedctr IF either docker pull brught a new image or ZTOOLS_TAG was given 
+zedctr-workaround: ZENIX_HASH:=$(shell echo ZEDEDA_TAG | $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
+zedctr-workaround: ZEDCTR_TAG:=zededa/zedctr:$(ZENIX_HASH)-$(DOCKER_ARCH_TAG)
 zedctr-workaround:
-	rm -f pkg/zedctr/Dockerfile ;\
-	if [ -z "$$ZTOOLS_TAG" ]; then \
-	  docker pull `echo ZTOOLS_TAG | $(PARSE_PKGS)` | tee /dev/tty | grep -Eq 'Downloaded newer image|zededa/debug' ;\
-	else \
-	  if [ $(ZARCH) != $$(uname -m) ] ; then  \
-              $(PARSE_PKGS) < pkg/zedctr/Dockerfile.cross.in > pkg/zedctr/Dockerfile ;\
-              PKG_HASH=`mktemp -u XXXXXXXXXX` ;\
-          fi ;\
-	  date +%s > pkg/zedctr/trigger ;\
-        fi ; if [ $$? -eq 0 ]; then \
-	  make -C pkg RESCAN_DEPS="" PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache $${PKG_HASH:+-hash }$$PKG_HASH" $(DEFAULT_PKG_TARGET) && \
-	  [ -z "$$PKG_HASH" ] || (PKG_HASH=zededa/zedctr:$$PKG_HASH ; docker tag $$PKG_HASH `echo ZEDEDA_TAG | $(PARSE_PKGS)` ; docker rmi $$PKG_HASH $$PKG_HASH-$(DOCKER_ARCH_TAG_$(shell uname -m))) ;\
-	else \
-	  docker pull `echo ZEDEDA_TAG | $(PARSE_PKGS)` || : ;\
-        fi
+	docker pull $(ZEDCTR_TAG) >/dev/null 2>&1 || : ;\
+	if ! docker inspect $(ZEDCTR_TAG) >/dev/null 2>&1 ; then \
+	  if [ $(ZARCH) != $$(uname -m) ] ; then \
+	    $(PARSE_PKGS) < pkg/zedctr/Dockerfile.cross.in > pkg/zedctr/Dockerfile ;\
+	    PKG_HASH=`mktemp -u XXXXXXXXXX` ;\
+	    make -C pkg PKGS=zedctr RESCAN_DEPS="" LINUXKIT_OPTS="--disable-content-trust --force --disable-cache --hash $$PKG_HASH" $(DEFAULT_PKG_TARGET) ;\
+	    PKG_HASH=zededa/zedctr:$$PKG_HASH ;\
+	    docker tag $$PKG_HASH $(ZEDCTR_TAG) ;\
+	    docker rmi $$PKG_HASH $$PKG_HASH-$(DOCKER_ARCH_TAG_$(shell uname -m)) ;\
+	  else \
+	    make -C pkg PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache --hash $(ZENIX_HASH)" $(DEFAULT_PKG_TARGET) ;\
+	  fi ;\
+	fi
 
 pkgs: build-tools build-pkgs zedctr-workaround
-	make -C pkg $(DEFAULT_PKG_TARGET)
+	make -C pkg $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
 
 bios:
 	mkdir bios
@@ -168,14 +163,13 @@ $(INSTALLER_IMG).raw: $(ROOTFS_IMG)_installer.img config.img
 $(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) config.img
 	./makeiso.sh $< $@
 
-ZENIX_HASH=$(shell ./parse-pkgs.sh ./parse-pkgs.sh | git hash-object --stdin)
-ZENIX_REL=snapshot
+zenix: ZENIX_HASH:=$(shell echo ZENIX_TAG | $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
 zenix: Makefile bios/OVMF.fd config.img $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(FALLBACK_IMG).img images/rootfs.yml images/installer.yml
 	cp $^ build-pkgs/zenix
-	make -C build-pkgs BUILD-PKGS=zenix LINUXKIT_HASH="--hash $(ZENIX_HASH) --release $(ZENIX_REL)" $(DEFAULT_PKG_TARGET)
+	make -C build-pkgs BUILD-PKGS=zenix $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
 
 pkg/%: FORCE
-	make -C pkg PKGS=$(notdir $@) LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(DEFAULT_PKG_TARGET)
+	make -C pkg PKGS=$(notdir $@) LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
 
 .PHONY: FORCE
 FORCE:

@@ -6,7 +6,7 @@
 #
 
 get_git_tag() {
-  git tag -l --points-at HEAD | grep '[0-9]*\.[0-9]*\.[0-9]*' | head -1
+  echo ${ZENIX_HASH:-$(git tag -l --points-at HEAD | grep '[0-9]*\.[0-9]*\.[0-9]*' | head -1)}
 }
 
 zenbuild_version() {
@@ -21,7 +21,16 @@ zenbuild_version() {
 }
 
 linuxkit_tag() {
-    linuxkit pkg show-tag $1
+    echo $(linuxkit pkg show-tag ${ZENIX_HASH:+--hash} ${ZENIX_HASH} $1)$ARCH
+}
+
+immutable_tag() {
+  # we have to resolve symbolic tags like x.y.z or snapshot to something immutable
+  # so that we can detect when the symbolic tag starts pointing a different immutable
+  # object and thus trigger a new SHA for zenix and zedctr 
+  echo $(docker inspect --format='{{index .RepoDigests 0}}' "$1" 2>/dev/null ||
+         docker inspect --format='{{.Id}}' "$1" 2>/dev/null ||
+         echo "$1")
 }
 
 external_tag() {
@@ -30,70 +39,25 @@ external_tag() {
   #    1. if we're building a release from a tag, we expect external tag to be the same
   #    2. if we're NOT building from a tag, the external tag is simply snapshot
   local TAG="`get_git_tag`"
-  PKG="$1:${TAG:-snapshot}"
+  PKG="$1:${TAG:-snapshot}${ARCH}"
 
   # for external packages we have to always try to push first - otherwise
   # we may have something stale in our local Docker cache
-  (docker pull "$PKG" || echo "WARNING: couldn't fetch the latest $PKG - may be using stale cache") >&2
-
-  # we have to resolve symbolic tags like x.y.z or snapshot to something immutable
-  # so that we can detect when the symbolic tag starts pointing a different immutable
-  # object and thus trigger a new SHA for zenix and zedctr 
-  IPKG=$(docker inspect --format='{{index .RepoDigests 0}}' "$PKG" 2>/dev/null)
-  
-  if [ $? -a "$IPKG" ] ; then 
-    echo "${IPKG}"
+  if (docker pull "$PKG" || echo "WARNING: couldn't fetch the latest $PKG - may be using stale cache") >&2 ; then
+    echo "$PKG"
   else
     echo "WARNING: failed to obtain $PKG - using $2 instead" >&2
     echo $2
   fi
 }
 
-if [ -z "$DOCKER_ARCH_TAG" ] ; then
-  case $(uname -m) in
-    x86_64) ARCH=-amd64
-      ;;
-    aarch64) ARCH=-arm64
-      ;;
-    *) echo "Unsupported architecture $(uname -m). Exiting" && exit 1
-      ;;
-  esac
-else
-  ARCH="-${DOCKER_ARCH_TAG}"
-fi
+synthetic_tag() {
+  NAME=$1
+  shift 1
+  echo ${NAME}:${ZENIX_HASH:-$((cat "$@" ; git rev-parse HEAD) | resolve_tags | git hash-object --stdin)}$ARCH
+}
 
-ZENBUILD_VERSION=`zenbuild_version`$ARCH
-
-KERNEL_TAG=$(linuxkit_tag pkg/kernel)$ARCH
-FW_TAG=$(linuxkit_tag pkg/fw)$ARCH
-XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)$ARCH
-XEN_TAG=$(linuxkit_tag pkg/xen)$ARCH
-GRUB_TAG=$(linuxkit_tag pkg/grub)$ARCH
-DTREES_TAG=$(linuxkit_tag pkg/device-trees)$ARCH
-DNSMASQ_TAG=$(linuxkit_tag pkg/dnsmasq)$ARCH
-STRONGSWAN_TAG=$(linuxkit_tag pkg/strongswan)$ARCH
-TESTMSVCS_TAG=$(linuxkit_tag pkg/test-microsvcs)$ARCH
-ZEDEDA_TAG=$(linuxkit_tag pkg/zedctr)$ARCH
-DOM0ZTOOLS_TAG=$(linuxkit_tag pkg/dom0-ztools)$ARCH
-RNGD_TAG=$(linuxkit_tag pkg/rngd)$ARCH
-QREXECLIB_TAG=$(linuxkit_tag pkg/qrexec-lib)$ARCH
-WWAN_TAG=$(linuxkit_tag pkg/wwan)$ARCH
-WLAN_TAG=$(linuxkit_tag pkg/wlan)$ARCH
-GUACD_TAG=$(linuxkit_tag pkg/guacd)$ARCH
-GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)$ARCH
-WATCHDOG_TAG=$(linuxkit_tag pkg/watchdog)$ARCH
-MKRAW_TAG=$(linuxkit_tag pkg/mkimage-raw-efi)$ARCH
-DEBUG_TAG=$(linuxkit_tag pkg/debug)$ARCH
-
-# External tags: the following tags will default to
-# 'scratch' Docker container if not available.
-# This is intended to make plugging extensions into
-# our build easier. WARNING: it also means if you're
-# not logged into the Docker hub you may see final
-# images lacking functionality.
-ZTOOLS_TAG=${ZTOOLS_TAG:-$(external_tag zededa/ztools $(linuxkit_tag pkg/debug))$ARCH}
-LISP_TAG=${LISP_TAG:-$(external_tag zededa/lisp)$ARCH}
-
+resolve_tags() {
 sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e '/image:.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e "s#ZENBUILD_VERSION#"$ZENBUILD_VERSION"#" \
@@ -120,4 +84,62 @@ sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e "s#MKRAW_TAG#"$MKRAW_TAG"#" \
     -e "s#DEBUG_TAG#"$DEBUG_TAG"#" \
     -e "s#LISP_TAG#"$LISP_TAG"#" \
+    -e "s#ZENIX_TAG#"$ZENIX_TAG"#" \
     $1
+}
+
+if [ -z "$DOCKER_ARCH_TAG" ] ; then
+  case $(uname -m) in
+    x86_64) ARCH=-amd64
+      ;;
+    aarch64) ARCH=-arm64
+      ;;
+    *) echo "Unsupported architecture $(uname -m). Exiting" && exit 1
+      ;;
+  esac
+else
+  ARCH="-${DOCKER_ARCH_TAG}"
+fi
+
+ZENBUILD_VERSION=`zenbuild_version`$ARCH
+
+KERNEL_TAG=$(linuxkit_tag pkg/kernel)
+FW_TAG=$(linuxkit_tag pkg/fw)
+XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)
+XEN_TAG=$(linuxkit_tag pkg/xen)
+GRUB_TAG=$(linuxkit_tag pkg/grub)
+DTREES_TAG=$(linuxkit_tag pkg/device-trees)
+DNSMASQ_TAG=$(linuxkit_tag pkg/dnsmasq)
+STRONGSWAN_TAG=$(linuxkit_tag pkg/strongswan)
+TESTMSVCS_TAG=$(linuxkit_tag pkg/test-microsvcs)
+DOM0ZTOOLS_TAG=$(linuxkit_tag pkg/dom0-ztools)
+RNGD_TAG=$(linuxkit_tag pkg/rngd)
+QREXECLIB_TAG=$(linuxkit_tag pkg/qrexec-lib)
+WWAN_TAG=$(linuxkit_tag pkg/wwan)
+WLAN_TAG=$(linuxkit_tag pkg/wlan)
+GUACD_TAG=$(linuxkit_tag pkg/guacd)
+GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)
+WATCHDOG_TAG=$(linuxkit_tag pkg/watchdog)
+MKRAW_TAG=$(linuxkit_tag pkg/mkimage-raw-efi)
+DEBUG_TAG=$(linuxkit_tag pkg/debug)
+
+# External tags: the following tags will default to
+# 'scratch' Docker container if not available.
+# This is intended to make plugging extensions into
+# our build easier. WARNING: it also means if you're
+# not logged into the Docker hub you may see final
+# images lacking functionality.
+ZTOOLS_TAG=$(immutable_tag ${ZTOOLS_TAG:-$(external_tag zededa/ztools $(linuxkit_tag pkg/debug))})
+LISP_TAG=$(immutable_tag ${LISP_TAG:-$(external_tag zededa/lisp)})
+
+# Synthetic tags: the following tags are based on hashing
+# the contents of all the Dockerfile.in that we can find.
+# That way, these tags are guaranteed to change whenever
+# *any* *single* dependency changes.
+#
+# These tags need to be declared last sine they depend 
+# on the previous tags being already defined.
+ZEDEDA_TAG=$(synthetic_tag zededa/zedctr pkg/zedctr/Dockerfile.in)
+ZENIX_TAG=$(synthetic_tag zededa/zenix pkg/zedctr/Dockerfile.in)
+
+resolve_tags $1
