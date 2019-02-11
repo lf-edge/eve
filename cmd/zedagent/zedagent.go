@@ -97,6 +97,7 @@ type zedagentContext struct {
 	subNetworkInstanceMetrics *pubsub.Subscription
 	subGlobalConfig           *pubsub.Subscription
 	subZbootStatus            *pubsub.Subscription
+	rebootCmdDeferred         bool
 }
 
 var debug = false
