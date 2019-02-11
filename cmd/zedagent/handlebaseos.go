@@ -69,8 +69,11 @@ func initiateBaseOsZedCloudTestComplete(ctx *getconfigContext) {
 }
 
 func doBaseOsZedCloudTestComplete(ctx *zedagentContext, status types.BaseOsStatus) {
-	if status.TestComplete {
-		key := status.Key()
+	key := status.Key()
+	if !status.TestComplete {
+		log.Infof("doBaseOsZedCloudTestComplete(%s): not TestComplete\n",
+			key)
+	} else {
 		log.Infof("doBaseOsZedCloudTestComplete(%s):\n", key)
 		if config := lookupBaseOsConfig(ctx.getconfigCtx, key); config != nil {
 			config.TestComplete = false
