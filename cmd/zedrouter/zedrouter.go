@@ -559,7 +559,7 @@ func publishAppNetworkStatus(ctx *zedrouterContext,
 	status *types.AppNetworkStatus) {
 
 	key := status.Key()
-	log.Infof("publishAppNetworkStatus(%s)\n", key)
+	log.Infof("publishAppNetworkStatus(%s-%s)\n", status.DisplayName, key)
 	pub := ctx.pubAppNetworkStatus
 	pub.Publish(key, status)
 }
@@ -1187,7 +1187,7 @@ func appNetworkDoActivateAllUnderlayNetworks(
 	}
 }
 
-// Entrypoint from networkobject to look for a bridge's IPv4 address
+// Get Switch's IPv4 address for the port in NetworkInstance
 func getSwitchIPv4Addr(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) (string, error) {
 	// Find any service which is associated with the appLink UUID

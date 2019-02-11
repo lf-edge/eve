@@ -26,8 +26,8 @@ import (
 //	a) Port should be part of Device Port Config
 //	b) For type switch, port should not be part of any other
 // 			Network Instance
-// Any device, which is not a port, can only be assigned as a
-// directAttach device.
+// Any device, which is not a port, cannot be used in network instance
+//	and can only be assigned as a directAttach device.
 func checkPortAvailableForNetworkInstance(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
@@ -36,8 +36,8 @@ func checkPortAvailableForNetworkInstance(
 		log.Infof("Port not specified\n")
 		return nil
 	}
-	log.Infof("NetworkInstance (name: %s), port: %s\n",
-		status.DisplayName, status.Port)
+	log.Infof("NetworkInstance(%s-%s), port: %s\n",
+		status.DisplayName, status.UUID, status.Port)
 
 	portStatus := ctx.deviceNetworkStatus.GetPortByName(status.Port)
 	if portStatus == nil {
@@ -226,35 +226,12 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 func doNetworkInstanceCreate(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	log.Infof("doNetworkInstanceCreate key %s, NetworkType: %d, IpType: %d\n",
-		status.UUID, status.Type, status.IpType)
+	log.Infof("NetworkInstance(%s-%s): NetworkType: %d, IpType: %d\n",
+		status.DisplayName, status.UUID, status.Type, status.IpType)
 
-	//  Check NetworkInstanceType
-	switch status.Type {
-	case types.NetworkInstanceTypeLocal:
-		// Nothing to do
-	case types.NetworkInstanceTypeSwitch:
-	default:
-		err := fmt.Sprintf("Instance type %d not supported", status.Type)
-		return errors.New(err)
-	}
-
-	// Check for valid types
-	switch status.IpType {
-	case types.AddressTypeIPV4:
-		// Nothing to do
-	case types.AddressTypeIPV6:
-		// Nothing to do
-	case types.AddressTypeCryptoIPV4:
-		// Nothing to do
-	case types.AddressTypeCryptoIPV6:
-		// Nothing to do
-	default:
-		// This should have been caught in parsestatus.
-		err := fmt.Sprintf("IpType %d not supported\n", status.IpType)
-		return errors.New(err)
-	}
-	if err := checkPortAvailableForNetworkInstance(ctx, status); err != nil {
+	if err := doNetworkInstanceSanityCheck(ctx, status); err != nil {
+		log.Errorf("NetworkInstance(%s-%s): Sanity Check failed: %s",
+			status.DisplayName, status.UUID, err)
 		return err
 	}
 
@@ -275,7 +252,6 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 
 	log.Infof("bridge created. BridgeMac: %s\n", bridgeMac)
 
-	// Check if we have a bridge service
 	if err := setBridgeIPAddrForNetworkInstance(ctx, status); err != nil {
 		return err
 	}
@@ -306,19 +282,84 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		startDnsmasq(bridgeName)
 	}
 
-	isIPv6 := false
-	switch status.IpType {
-	case types.AddressTypeIPV6:
-		isIPv6 = true
-	default:
-		isIPv6 = false
-	}
-
-	if isIPv6 {
+	if status.IsIPv6() {
 		// XXX do we need same logic as for IPv4 dnsmasq to not
 		// advertize as default router? Might we need lower
 		// radvd preference if isolated local network?
 		restartRadvdWithNewConfig(status)
+	}
+	return nil
+}
+
+func doNetworkInstanceSanityCheck(
+	ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) error {
+
+	log.Infof("Sanity Checking NetworkInstance(%s-%s): type:%d, IpType:%d\n",
+		status.DisplayName, status.UUID, status.Type, status.IpType)
+
+	//  Check NetworkInstanceType
+	switch status.Type {
+	case types.NetworkInstanceTypeLocal:
+	case types.NetworkInstanceTypeSwitch:
+	default:
+		err := fmt.Sprintf("Instance type %d not supported", status.Type)
+		return errors.New(err)
+	}
+
+	if err := checkPortAvailableForNetworkInstance(ctx, status); err != nil {
+		return err
+	}
+
+	// IpType - Check for valid types
+	switch status.IpType {
+	case types.AddressTypeIPV4:
+	case types.AddressTypeIPV6:
+	// case types.AddressTypeCryptoIPV4:
+	// case types.AddressTypeCryptoIPV6:
+	default:
+		err := fmt.Sprintf("IpType %d not supported\n", status.IpType)
+		return errors.New(err)
+	}
+
+	if status.Subnet.IP == nil || status.Subnet.IP.IsUnspecified() {
+		err := fmt.Sprintf("Subnet Unspecified: %+v\n", status.Subnet)
+		return errors.New(err)
+	}
+	if status.Gateway.IsUnspecified() {
+		err := fmt.Sprintf("Gateway Unspecified: %+v\n", status.Gateway)
+		return errors.New(err)
+	}
+	if err := DoNetworkInstanceStatusDhcpRangeSanityCheck(status); err != nil {
+		return err
+	}
+	return nil
+}
+
+// DoDhcpRangeSanityCheck
+// 1) Must always be Unspecified
+// 2) It should be a subset of Subnet
+func DoNetworkInstanceStatusDhcpRangeSanityCheck(
+	status *types.NetworkInstanceStatus) error {
+	if status.DhcpRange.Start == nil || status.DhcpRange.Start.IsUnspecified() {
+		err := fmt.Sprintf("DhcpRange Start Unspecified: %+v\n",
+			status.DhcpRange.Start)
+		return errors.New(err)
+	}
+	if !status.Subnet.Contains(status.DhcpRange.Start) {
+		err := fmt.Sprintf("DhcpRange Start(%s) not within Subnet(%s)\n",
+			status.DhcpRange.Start.String(), status.Subnet.String())
+		return errors.New(err)
+	}
+	if status.DhcpRange.End == nil || status.DhcpRange.End.IsUnspecified() {
+		err := fmt.Sprintf("DhcpRange End Unspecified: %+v\n",
+			status.DhcpRange.Start)
+		return errors.New(err)
+	}
+	if !status.Subnet.Contains(status.DhcpRange.End) {
+		err := fmt.Sprintf("DhcpRange End(%s) not within Subnet(%s)\n",
+			status.DhcpRange.End.String(), status.Subnet.String())
+		return errors.New(err)
 	}
 	return nil
 }
@@ -415,24 +456,23 @@ func lookupOrAllocateIPv4ForNetworkInstance(
 	status *types.NetworkInstanceStatus,
 	mac net.HardwareAddr) (string, error) {
 
-	log.Infof("lookupOrAllocateIPv4ForNetworkInstance(%s): mac:%s\n",
-		status.DisplayName, mac.String())
+	log.Infof("lookupOrAllocateIPv4ForNetworkInstance(%s-%s): mac:%s\n",
+		status.DisplayName, status.Key(), mac.String())
 	// Lookup to see if it exists
 	if ip, ok := status.IPAssignments[mac.String()]; ok {
-		log.Infof("lookupOrAllocateIPv4(%s) found %s\n",
-			mac.String(), ip.String())
+		log.Infof("found Ip addr ( %s) for mac(%s)\n",
+			ip.String(), mac.String())
 		return ip.String(), nil
 	}
 
-	log.Infof("lookupOrAllocateIPv4 status: %s bridgeName %s Subnet %v range %v-%v\n",
-		status.Key(), status.BridgeName,
-		status.Subnet, status.DhcpRange.Start, status.DhcpRange.End)
+	log.Infof("bridgeName %s Subnet %v range %v-%v\n",
+		status.BridgeName, status.Subnet,
+		status.DhcpRange.Start, status.DhcpRange.End)
 
 	if status.DhcpRange.Start == nil {
-		errStr := fmt.Sprintf("no NetworkInstanceStatus DhcpRange for %s",
-			status.Key())
-		return "", errors.New(errStr)
+		log.Fatalf("%s-%s: nil DhcpRange.Start", status.DisplayName, status.Key())
 	}
+
 	// Starting guess based on number allocated
 	allocated := uint(len(status.IPAssignments))
 	a := addToIP(status.DhcpRange.Start, allocated)
@@ -476,6 +516,43 @@ func releaseIPv4FromNetworkInstance(ctx *zedrouterContext,
 	return nil
 }
 
+func getPrefixLenForBridgeIP(
+	status *types.NetworkInstanceStatus) int {
+	var prefixLen int
+	if status.Ipv4Eid {
+		prefixLen = 32
+	} else if status.Subnet.IP != nil {
+		prefixLen, _ = status.Subnet.Mask.Size()
+	} else if status.IsIPv6() {
+		prefixLen = 128
+	} else {
+		prefixLen = 24
+	}
+	return prefixLen
+}
+
+func doConfigureIpAddrOnInterface(
+	ipAddr string,
+	prefixLen int,
+	link netlink.Link) error {
+
+	ipAddr = fmt.Sprintf("%s/%d", ipAddr, prefixLen)
+
+	//    ip addr add ${ipAddr}/N dev ${bridgeName}
+	addr, err := netlink.ParseAddr(ipAddr)
+	if err != nil {
+		errStr := fmt.Sprintf("ParseAddr %s failed: %s", ipAddr, err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+	if err := netlink.AddrAdd(link, addr); err != nil {
+		errStr := fmt.Sprintf("AddrAdd %s failed: %s", ipAddr, err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+	return nil
+}
+
 // getPortIPv4Addr
 //	To be used only for NI type Switch
 func getPortIPv4Addr(ctx *zedrouterContext,
@@ -508,13 +585,12 @@ func getPortIPv4Addr(ctx *zedrouterContext,
 	return "", nil
 }
 
-// Call when we have a network and a service?
 func setBridgeIPAddrForNetworkInstance(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	log.Infof("setBridgeIPAddrForNetworkInstance (NI UUIDL:%s, name: %s)\n",
-		status.Key(), status.DisplayName)
+	log.Infof("setBridgeIPAddrForNetworkInstance(%s-%s)\n",
+		status.DisplayName, status.Key())
 
 	if status.BridgeName == "" {
 		// Called too early
@@ -523,14 +599,19 @@ func setBridgeIPAddrForNetworkInstance(
 		return nil
 	}
 
+	// Get the linux interface with the attributes.
+	// This is used to add an IP Address below.
 	link, _ := netlink.LinkByName(status.BridgeName)
 	if link == nil {
-		errStr := fmt.Sprintf("Unknown adapter %s", status.BridgeName)
+		// XXX..Why would this fail? Should this be Fatal instead??
+		errStr := fmt.Sprintf("Failed to get link for Bridge %s", status.BridgeName)
 		return errors.New(errStr)
 	}
+	log.Infof("Bridge: %s, Link: %s\n", status.BridgeName, link)
 
 	var ipAddr string
 	var err error
+
 	switch status.Type {
 	case types.NetworkInstanceTypeSwitch:
 		ipAddr, err = getPortIPv4Addr(ctx, status)
@@ -539,6 +620,8 @@ func setBridgeIPAddrForNetworkInstance(
 				err)
 			return err
 		}
+		log.Infof("Bridge: %s, Link: %s, ipAddr: %s\n",
+			status.BridgeName, link, ipAddr)
 	}
 
 	// Unlike bridge service Lisp will not need a service now for
@@ -567,6 +650,7 @@ func setBridgeIPAddrForNetworkInstance(
 	//}
 
 	// If not we do a local allocation
+	// Assign the gateway Address as the bridge IP address
 	if ipAddr == "" {
 		var bridgeMac net.HardwareAddr
 
@@ -576,19 +660,15 @@ func setBridgeIPAddrForNetworkInstance(
 			bridgeLink := link.(*netlink.Bridge)
 			bridgeMac = bridgeLink.HardwareAddr
 		default:
+			// XXX - Same here.. Should be Fatal??
 			errStr := fmt.Sprintf("Not a bridge %s",
 				status.BridgeName)
 			return errors.New(errStr)
 		}
-		log.Infof("setBridgeIPAddrForNetworkInstance lookupOrAllocate for %s\n",
-			bridgeMac.String())
-
-		ipAddr, err = lookupOrAllocateIPv4ForNetworkInstance(ctx, status, bridgeMac)
-		if err != nil {
-			errStr := fmt.Sprintf("lookupOrAllocateIPv4 failed: %s",
-				err)
-			return errors.New(errStr)
-		}
+		ipAddr = status.Gateway.String()
+		status.IPAssignments[bridgeMac.String()] = status.Gateway
+		log.Infof("BridgeMac: %s, ipAddr: %s\n",
+			bridgeMac.String(), ipAddr)
 	}
 	status.BridgeIPAddr = ipAddr
 	publishNetworkInstanceStatus(ctx, status)
@@ -601,41 +681,15 @@ func setBridgeIPAddrForNetworkInstance(
 		return nil
 	}
 
-	ip := net.ParseIP(ipAddr)
-	if ip == nil {
-		errStr := fmt.Sprintf("setBridgeIPAddrForNetworkInstance ParseIP failed for %s: %s",
-			ipAddr, err)
-		log.Errorln(errStr)
-		return errors.New(errStr)
-	}
-	isIPv6 := (ip.To4() == nil)
-	var prefixLen int
-	if status.Ipv4Eid {
-		prefixLen = 32
-	} else if status.Subnet.IP != nil {
-		prefixLen, _ = status.Subnet.Mask.Size()
-	} else if isIPv6 {
-		prefixLen = 128
-	} else {
-		prefixLen = 24
-	}
-	ipAddr = fmt.Sprintf("%s/%d", ipAddr, prefixLen)
-
-	//    ip addr add ${ipAddr}/N dev ${bridgeName}
-	addr, err := netlink.ParseAddr(ipAddr)
-	if err != nil {
-		errStr := fmt.Sprintf("ParseAddr %s failed: %s", ipAddr, err)
-		log.Errorln(errStr)
-		return errors.New(errStr)
-	}
-	if err := netlink.AddrAdd(link, addr); err != nil {
-		errStr := fmt.Sprintf("AddrAdd %s failed: %s", ipAddr, err)
-		log.Errorln(errStr)
-		return errors.New(errStr)
+	prefixLen := getPrefixLenForBridgeIP(status)
+	if err = doConfigureIpAddrOnInterface(ipAddr, prefixLen, link); err != nil {
+		log.Errorf("Failed to configure IPAddr on Interface\n")
+		return err
 	}
 
 	// Create new radvd configuration and restart radvd if ipv6
-	if isIPv6 {
+	if status.IsIPv6() {
+		log.Infof("Restart Radvd\n")
 		restartRadvdWithNewConfig(status)
 	}
 	return nil
