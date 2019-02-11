@@ -1091,6 +1091,8 @@ func (config *NetworkInstanceConfig) IsIPv6() bool {
 	switch config.IpType {
 	case AddressTypeIPV6:
 		return true
+	case AddressTypeCryptoIPV6:
+		return true
 	}
 	return false
 }

@@ -1131,8 +1131,8 @@ func handleAppNetworkCreate(ctx *zedrouterContext, key string,
 func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 	status *types.AppNetworkStatus) {
 
-	log.Infof("doActivate(%v) for %s. IsZedmanager:%t\n",
-		config.UUIDandVersion, config.DisplayName, config.IsZedmanager)
+	log.Infof("%s-%s: IsZedmanager:%t\n",
+		config.DisplayName, config.UUIDandVersion, config.IsZedmanager)
 
 	if config.IsZedmanager {
 		doActivateAppInstanceWithMgmtLisp(ctx, config, status)
