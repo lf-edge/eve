@@ -314,8 +314,8 @@ func doNetworkInstanceSanityCheck(
 	switch status.IpType {
 	case types.AddressTypeIPV4:
 	case types.AddressTypeIPV6:
-	// case types.AddressTypeCryptoIPV4:
-	// case types.AddressTypeCryptoIPV6:
+	case types.AddressTypeCryptoIPV4:
+	case types.AddressTypeCryptoIPV6:
 	default:
 		err := fmt.Sprintf("IpType %d not supported\n", status.IpType)
 		return errors.New(err)
