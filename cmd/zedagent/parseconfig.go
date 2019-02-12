@@ -49,20 +49,16 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		log.Infoln("Reboot flag set, skipping config processing")
 		// Make sure we tell apps to shut down
 		shutdownApps(getconfigCtx)
-		// XXX execReboot? done by parseOpCmds
 		return true
 	}
 	ctx := getconfigCtx.zedagentCtx
 
 	// updating/rebooting, ignore config??
-	// XXX can we get stuck here? When do we set updating? As part of activate?
-	// XXX can this happen when usingSaved is set?
 	if isBaseOsOtherPartitionStateUpdating(ctx) {
-		log.Infoln("OtherPartitionStatusUpdating - returning rebootFlag")
+		log.Infoln("OtherPartitionStatusUpdating - setting rebootFlag")
 		// Make sure we tell apps to shut down
 		shutdownApps(getconfigCtx)
-		// XXX execReboot?
-		return true
+		getconfigCtx.rebootFlag = true
 	}
 
 	// If the other partition is inprogress it means update failed
@@ -441,6 +437,11 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 			configHash)
 		return
 	}
+	if getconfigCtx.rebootFlag {
+		log.Infof("parseAppInstanceConfig: ignoring updated config duu to rebootFlag: %v\n",
+			Apps)
+		return
+	}
 	log.Infof("parseAppInstanceConfig: Applying updated config sha % x vs. % x: %v\n",
 		appinstancePrevConfigHash, configHash, Apps)
 
@@ -552,6 +553,11 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	if same && !forceParse {
 		log.Debugf("parseSystemAdapterConfig: system adapter sha is unchanged: % x\n",
 			configHash)
+		return
+	}
+	if getconfigCtx.rebootFlag {
+		log.Infof("parseSystemAdapterConfig: ignoring updated config due to rebootFlag: %v\n",
+			sysAdapters)
 		return
 	}
 	log.Infof("parseSystemAdapterConfig: Applying updated config sha % x vs. % x: %v\n",
@@ -2005,22 +2011,18 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 			rebootTimer.Stop()
 		}
 
+		// Defer if inprogress by returning
+		ctx := getconfigCtx.zedagentCtx
+		if isBaseOsCurrentPartitionStateInProgress(ctx) {
+			// Wait until TestComplete
+			log.Warnf("Rebooting even though testing inprogress; defer\n")
+			ctx.rebootCmdDeferred = true
+			return false
+		}
+
 		// start the timer again
 		// XXX:FIXME, need to handle the scheduled time
 		duration := time.Second * time.Duration(rebootDelay)
-
-		// Defer if inprogress
-		ctx := getconfigCtx.zedagentCtx
-		if isBaseOsCurrentPartitionStateInProgress(ctx) {
-			// Use double the testing delay
-			// XXX better to wait for the inprogress to
-			// be cleared.
-			log.Warnf("Rebooting even though testing inprogress; defer for %v seconds\n",
-				globalConfig.MintimeUpdateSuccess)
-			duration = 2 * time.Second *
-				time.Duration(globalConfig.MintimeUpdateSuccess)
-		}
-
 		rebootTimer = time.NewTimer(duration)
 
 		log.Infof("Scheduling for reboot %d %d %d seconds\n",
