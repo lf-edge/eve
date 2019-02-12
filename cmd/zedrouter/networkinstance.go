@@ -161,7 +161,7 @@ func handleNetworkInstanceCreate(
 		NetworkInstanceConfig: config,
 		NetworkInstanceInfo: types.NetworkInstanceInfo{
 			IPAssignments: make(map[string]net.IP),
-			VifMetricMap: make(map[string]types.NetworkMetric),
+			VifMetricMap:  make(map[string]types.NetworkMetric),
 		},
 	}
 
@@ -322,16 +322,71 @@ func doNetworkInstanceSanityCheck(
 		return errors.New(err)
 	}
 
-	if status.Subnet.IP == nil || status.Subnet.IP.IsUnspecified() {
-		err := fmt.Sprintf("Subnet Unspecified: %+v\n", status.Subnet)
+	if err := doNetworkInstanceSubnetSanityCheck(ctx, status); err != nil {
+		err := fmt.Sprintf("Subnet invalid: %+v\n", status.Gateway)
 		return errors.New(err)
 	}
+
 	if status.Gateway.IsUnspecified() {
 		err := fmt.Sprintf("Gateway Unspecified: %+v\n", status.Gateway)
 		return errors.New(err)
 	}
 	if err := DoNetworkInstanceStatusDhcpRangeSanityCheck(status); err != nil {
 		return err
+	}
+	return nil
+}
+
+func doNetworkInstanceSubnetSanityCheck(
+	ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) error {
+
+	if status.Subnet.IP == nil || status.Subnet.IP.IsUnspecified() {
+		err := fmt.Sprintf("Subnet Unspecified: %+v\n", status.Subnet)
+		return errors.New(err)
+	}
+
+	// Verify Subnet doesn't overlap with other network instances
+	for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
+		if status == iterStatusEntry {
+			continue
+		}
+
+		// Check if status.Subnet is contained in iterStatusEntry.Subnet
+		if iterStatusEntry.Subnet.Contains(status.Subnet.IP) {
+			errStr := fmt.Sprintf("Subnet(%s) SubnetAddr(%s) overlaps with another "+
+				"network instance(%s-%s) Subnet(%s)\n",
+				status.Subnet.String(), status.Subnet.IP.String(),
+				iterStatusEntry.DisplayName, iterStatusEntry.UUID,
+				iterStatusEntry.Subnet.String())
+			return errors.New(errStr)
+		}
+		if subnetBroadcastAddr := status.SubnetBroadcastAddr(); iterStatusEntry.Subnet.Contains(subnetBroadcastAddr) {
+			errStr := fmt.Sprintf("Subnet(%s) BroadcastAddr(%s) overlaps with another "+
+				"network instance(%s-%s) Subnet(%s)\n",
+				status.Subnet, subnetBroadcastAddr,
+				iterStatusEntry.DisplayName, iterStatusEntry.UUID,
+				iterStatusEntry.Subnet.String())
+			return errors.New(errStr)
+		}
+
+		// Reverse check..Check if iterStatusEntry.Subnet is contained in status.subnet
+		if status.Subnet.Contains(iterStatusEntry.Subnet.IP) {
+			errStr := fmt.Sprintf("Another network instance(%s-%s) Subnet(%s) "+
+				"overlaps with Subnet(%s)",
+				iterStatusEntry.DisplayName, iterStatusEntry.UUID,
+				iterStatusEntry.Subnet.String(),
+				status.Subnet.String())
+			return errors.New(errStr)
+		}
+		if subnetBroadcastAddr := iterStatusEntry.SubnetBroadcastAddr(); status.Subnet.Contains(subnetBroadcastAddr) {
+			errStr := fmt.Sprintf("Another network instance(%s-%s) Subnet(%s) "+
+				"BroadcastAddr(%s) overlaps with Subnet(%s)",
+				iterStatusEntry.DisplayName, iterStatusEntry.UUID,
+				iterStatusEntry.Subnet.String(), subnetBroadcastAddr,
+				status.Subnet.String())
+			return errors.New(errStr)
+		}
 	}
 	return nil
 }
@@ -886,10 +941,10 @@ func createNetworkInstanceMetrics(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus,
 	nms *types.NetworkMetrics) *types.NetworkInstanceMetrics {
 
-	niMetrics := types.NetworkInstanceMetrics {
+	niMetrics := types.NetworkInstanceMetrics{
 		UUIDandVersion: status.UUIDandVersion,
-		DisplayName: status.DisplayName,
-		Type: status.Type,
+		DisplayName:    status.DisplayName,
+		Type:           status.Type,
 	}
 	netMetrics := types.NetworkMetrics{}
 	netMetric := status.UpdateNetworkMetrics(nms)

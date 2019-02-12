@@ -24,7 +24,6 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zconfig"
-	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -37,7 +36,7 @@ const (
 	rebootConfigFilename = configDir + "/rebootConfig"
 )
 
-var rebootDelay int = 30 // take a 30 second delay
+var immediate int = 30 // take a 30 second delay
 var rebootTimer *time.Timer
 
 // Returns a rebootFlag
@@ -296,7 +295,7 @@ func unpublishDeletedNetworkInstanceConfig(ctx *getconfigContext,
 			continue
 		}
 
-		config := cast.CastNetworkServiceConfig(entry)
+		config := cast.CastNetworkInstanceConfig(entry)
 		log.Infof("unpublishing NetworkInstance %s (Name: %s) \n",
 			key, config.DisplayName)
 		if err := ctx.pubNetworkInstanceConfig.Unpublish(key); err != nil {
@@ -373,11 +372,6 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			networkInstanceConfig.Port = apiConfigEntry.Port.Name
 		}
 		networkInstanceConfig.IpType = types.AddressType(apiConfigEntry.IpType)
-
-		// KALYAN - FIX THIS before final merge. Workaround to not getting ipType
-		if networkInstanceConfig.IpType == 0 {
-			networkInstanceConfig.IpType = types.AddressTypeIPV4
-		}
 
 		parseIpspecForNetworkInstanceConfig(apiConfigEntry.Ip, &networkInstanceConfig)
 
@@ -972,33 +966,9 @@ func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) erro
 	return nil
 }
 
-func setDefaultIpSpecForNetworkInstanceConfig(
-	config *types.NetworkInstanceConfig) {
-	// HACK.. KALYAN - REMOVE THIS..
-	// We should just return an error here. This is supposed to be
-	// filled up by the cloud.
-	_, subnet, _ := net.ParseCIDR("10.1.0.0/16")
-	config.Subnet = *subnet
-	config.Gateway = net.ParseIP("10.1.0.1")
-	config.DomainName = ""
-	config.NtpServer = net.ParseIP("0.0.0.0")
-	config.DnsServers = make([]net.IP, 1)
-	config.DnsServers[0] = config.Gateway
-	config.DhcpRange.Start = net.ParseIP("10.1.0.2")
-	config.DhcpRange.End = net.ParseIP("10.1.255.254")
-	return
-}
-
 func parseIpspecForNetworkInstanceConfig(ipspec *zconfig.Ipspec,
 	config *types.NetworkInstanceConfig) error {
 
-	if ipspec == nil {
-		log.Infof("ipspec not specified in config")
-		// Kalyan - Hack - Workaround till cloud is ready..
-		// .. Should not need this.. Should return an error
-		setDefaultIpSpecForNetworkInstanceConfig(config)
-		return nil
-	}
 	config.DomainName = ipspec.GetDomain()
 	// Parse Subnet
 	if s := ipspec.GetSubnet(); s != "" {
@@ -2007,25 +1977,21 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 
 		// start the timer again
 		// XXX:FIXME, need to handle the scheduled time
-		duration := time.Second * time.Duration(rebootDelay)
+		duration := time.Duration(immediate)
 
 		// Defer if inprogress
 		ctx := getconfigCtx.zedagentCtx
 		if isBaseOsCurrentPartitionStateInProgress(ctx) {
-			// Use double the testing delay
-			// XXX better to wait for the inprogress to
-			// be cleared.
 			log.Warnf("Rebooting even though testing inprogress; defer for %v seconds\n",
 				globalConfig.MintimeUpdateSuccess)
-			duration = 2 * time.Second *
+			duration = time.Second *
 				time.Duration(globalConfig.MintimeUpdateSuccess)
 		}
 
-		rebootTimer = time.NewTimer(duration)
+		rebootTimer = time.NewTimer(time.Second * duration)
 
-		log.Infof("Scheduling for reboot %d %d %d seconds\n",
-			rebootConfig.Counter, reboot.Counter,
-			duration/time.Second)
+		log.Infof("Scheduling for reboot %d %d\n",
+			rebootConfig.Counter, reboot.Counter)
 
 		go handleReboot(getconfigCtx)
 		rebootPrevReturn = true
@@ -2059,7 +2025,7 @@ func handleReboot(getconfigCtx *getconfigContext) {
 
 	log.Infof("handleReboot timer handler\n")
 	rebootConfig := &zconfig.DeviceOpsCmd{}
-	var state bool = true // If no file we reboot and not power off
+	var state bool
 
 	<-rebootTimer.C
 
@@ -2074,13 +2040,9 @@ func handleReboot(getconfigCtx *getconfigContext) {
 	}
 
 	shutdownAppsGlobal(getconfigCtx.zedagentCtx)
-	errStr := "handleReboot rebooting"
-	log.Errorf(errStr)
-	agentlog.RebootReason(errStr)
 	execReboot(state)
 }
 
-// Used by doBaseOsDeviceReboot only
 func startExecReboot() {
 
 	log.Infof("startExecReboot: scheduling exec reboot\n")
@@ -2092,22 +2054,16 @@ func startExecReboot() {
 
 	// start the timer again
 	// XXX:FIXME, need to handle the scheduled time
-	duration := time.Second * time.Duration(rebootDelay)
-	rebootTimer = time.NewTimer(duration)
-	log.Infof("startExecReboot: timer %d seconds\n",
-		duration/time.Second)
+	duration := time.Duration(immediate)
+	rebootTimer = time.NewTimer(time.Second * duration)
 
 	go handleExecReboot()
 }
 
-// Used by doBaseOsDeviceReboot only
 func handleExecReboot() {
 
 	<-rebootTimer.C
 
-	errStr := "baseimage-update reboot"
-	log.Errorf(errStr)
-	agentlog.RebootReason(errStr)
 	execReboot(true)
 }
 
@@ -2120,15 +2076,9 @@ func execReboot(state bool) {
 	switch state {
 
 	case true:
-		duration := time.Second * time.Duration(rebootDelay)
-		log.Infof("Rebooting... Starting timer for Duration(secs): %d\n",
-			duration/time.Second)
-
-		// Start timer to allow applications some time to shudown and for
-		//	disks to sync.
-		// We could explicitly wait for domains to shutdown, but
-		// some (which don't have a shutdown hook like the mirageOs ones) take a
-		// very long time.
+		duration := time.Duration(immediate)
+		log.Infof("Rebooting... Starting timer for Duration(secs): %+v\n",
+			duration)
 		timer := time.NewTimer(duration)
 		log.Infof("Timer started. Wait to expire\n")
 		<-timer.C
@@ -2137,10 +2087,9 @@ func execReboot(state bool) {
 
 	case false:
 		log.Infof("Powering Off..\n")
-		duration := time.Second * time.Duration(rebootDelay)
-		timer := time.NewTimer(duration)
-		log.Infof("Timer started (duration: %d seconds). Wait to expire\n",
-			duration/time.Second)
+		duration := time.Duration(immediate)
+		timer := time.NewTimer(time.Second * duration)
+		log.Infof("Timer started (duration: %+v). Wait to expire\n", duration)
 		<-timer.C
 		log.Infof("Timer Expired.. do Poweroff\n")
 		poweroffCmd := exec.Command("poweroff")
