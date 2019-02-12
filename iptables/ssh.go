@@ -21,7 +21,7 @@ func UpdateSshAccess(enable bool, first bool) {
 	if first {
 		// Always blocked
 		dropPortRange(8080, 8080)
-		//dropPortRange(4822, 4822)
+		allowLocalPortRange(4822, 4822)
 	}
 	if enable {
 		allowPortRange(22, 22)
@@ -54,6 +54,31 @@ func allowPortRange(startPort int, endPort int) {
 	}
 	IptableCmd("-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
 	Ip6tableCmd("-D", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
+}
+
+// Like above but allow for 127.0.0.1 to 127.0.0.1 and block for other IPs
+func allowLocalPortRange(startPort int, endPort int) {
+	log.Infof("allowPortRange(%d, %d)\n", startPort, endPort)
+	// Add these rules
+	// XXX note no OUTPUT allow with sport
+	// iptables -A INPUT -p tcp -s 127.0.0.1 -d 127.0.0.1 --dport 22 -j ACCEPT
+	// iptables -A INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
+	// iptables -A INPUT -p tcp -s ::1 -d ::1 --dport 22 -j ACCEPT
+	// ip6tables -A INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
+	var portStr string
+	if startPort == endPort {
+		portStr = fmt.Sprintf("%d", startPort)
+	} else {
+		portStr = fmt.Sprintf("%d:%d", startPort, endPort)
+	}
+	IptableCmd("-A", "INPUT", "-p", "tcp", "--dport", portStr,
+		"-s", "127.0.0.1", "-d", "127.0.0.1", "-j", "ACCEPT")
+	IptableCmd("-A", "INPUT", "-p", "tcp", "--dport", portStr,
+		"-j", "REJECT", "--reject-with", "tcp-reset")
+	Ip6tableCmd("-A", "INPUT", "-p", "tcp", "--dport", portStr,
+		"-s", "::1", "-d", "::1", "-j", "ACCEPT")
+	Ip6tableCmd("-A", "INPUT", "-p", "tcp", "--dport", portStr,
+		"-j", "REJECT", "--reject-with", "tcp-reset")
 }
 
 func dropPortRange(startPort int, endPort int) {
