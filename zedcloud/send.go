@@ -164,6 +164,25 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		log.Debugln(errStr)
 		return nil, nil, errors.New(errStr)
 	}
+	// Get the transport header with proxy information filled
+	proxyUrl, err := LookupProxy(ctx.DeviceNetworkStatus, intf, reqUrl)
+	var transport *http.Transport
+	if err == nil && proxyUrl != nil && allowProxy {
+		log.Debugf("sendOnIntf: For input URL %s, proxy found is %s",
+			reqUrl, proxyUrl.String())
+		transport = &http.Transport{
+			TLSClientConfig: ctx.TlsConfig,
+			Proxy:           http.ProxyURL(proxyUrl),
+		}
+	} else {
+		transport = &http.Transport{
+			TLSClientConfig: ctx.TlsConfig,
+		}
+	}
+	// Since we recreate the transport on each call there is no benefit
+	// to keeping the connections open.
+	defer transport.CloseIdleConnections()
+
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
 		localAddr, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus,
 			retryCount, intf)
@@ -174,25 +193,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		log.Debugf("Connecting to %s using intf %s source %v\n",
 			reqUrl, intf, localTCPAddr)
 		d := net.Dialer{LocalAddr: &localTCPAddr}
-
-		// Get the transport header with proxy information filled
-		proxyUrl, err := LookupProxy(ctx.DeviceNetworkStatus,
-			intf, reqUrl)
-		var transport *http.Transport
-		if err == nil && proxyUrl != nil && allowProxy {
-			log.Debugf("sendOnIntf: For input URL %s, proxy found is %s",
-				reqUrl, proxyUrl.String())
-			transport = &http.Transport{
-				TLSClientConfig: ctx.TlsConfig,
-				Dial:            d.Dial,
-				Proxy:           http.ProxyURL(proxyUrl),
-			}
-		} else {
-			transport = &http.Transport{
-				TLSClientConfig: ctx.TlsConfig,
-				Dial:            d.Dial,
-			}
-		}
+		transport.Dial = d.Dial
 
 		client := &http.Client{Transport: transport}
 		if timeout != 0 {
@@ -233,13 +234,16 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 			log.Errorf("client.Do fail: %v\n", err)
 			continue
 		}
-		defer resp.Body.Close()
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			log.Errorf("ReadAll failed %s\n", err)
+			resp.Body.Close()
+			resp.Body = nil
 			continue
 		}
+		resp.Body.Close()
+		resp.Body = nil
 		resplen := int64(len(contents))
 
 		if useTLS {
