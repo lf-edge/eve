@@ -382,19 +382,16 @@ func doNetworkInstanceSubnetSanityCheck(
 			continue
 		}
 
+		// We check for overlapping subnets by checking the
+		// SubnetAddr ( first address ) is not contained in the subnet of
+		// any other NI and vice-versa ( Other NI Subnet addrs are not
+		// contained in the current NI subnet)
+
 		// Check if status.Subnet is contained in iterStatusEntry.Subnet
 		if iterStatusEntry.Subnet.Contains(status.Subnet.IP) {
 			errStr := fmt.Sprintf("Subnet(%s) SubnetAddr(%s) overlaps with another "+
 				"network instance(%s-%s) Subnet(%s)\n",
 				status.Subnet.String(), status.Subnet.IP.String(),
-				iterStatusEntry.DisplayName, iterStatusEntry.UUID,
-				iterStatusEntry.Subnet.String())
-			return errors.New(errStr)
-		}
-		if subnetBroadcastAddr := status.SubnetBroadcastAddr(); iterStatusEntry.Subnet.Contains(subnetBroadcastAddr) {
-			errStr := fmt.Sprintf("Subnet(%s) BroadcastAddr(%s) overlaps with another "+
-				"network instance(%s-%s) Subnet(%s)\n",
-				status.Subnet, subnetBroadcastAddr,
 				iterStatusEntry.DisplayName, iterStatusEntry.UUID,
 				iterStatusEntry.Subnet.String())
 			return errors.New(errStr)
@@ -406,14 +403,6 @@ func doNetworkInstanceSubnetSanityCheck(
 				"overlaps with Subnet(%s)",
 				iterStatusEntry.DisplayName, iterStatusEntry.UUID,
 				iterStatusEntry.Subnet.String(),
-				status.Subnet.String())
-			return errors.New(errStr)
-		}
-		if subnetBroadcastAddr := iterStatusEntry.SubnetBroadcastAddr(); status.Subnet.Contains(subnetBroadcastAddr) {
-			errStr := fmt.Sprintf("Another network instance(%s-%s) Subnet(%s) "+
-				"BroadcastAddr(%s) overlaps with Subnet(%s)",
-				iterStatusEntry.DisplayName, iterStatusEntry.UUID,
-				iterStatusEntry.Subnet.String(), subnetBroadcastAddr,
 				status.Subnet.String())
 			return errors.New(errStr)
 		}
@@ -863,20 +852,12 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 		log.Infof("validateAdaptor failed: Port: %s, err:%s", err, status.Port)
 		return err
 	}
+
+	// XXX - Filter this list of ports to those whose name with linux ifnames
+	//	by checking in DeviceNetworkStatus. Ports without ifnames will fail
+	//	when programming Pbr / Iptable rules.
 	status.IfNameList = adapterToIfNames(ctx, status.Port)
 	log.Infof("IfNameList: %+v", status.IfNameList)
-
-	// XXX HACK - Only use Ethernet ports from IfNameList.
-	//	wlan and wwan don't yet work
-	var ifNameList []string
-	for index := range status.IfNameList {
-		name := status.IfNameList[index]
-		if strings.Contains(strings.ToLower(name), "eth") {
-			ifNameList = append(ifNameList, name)
-		}
-	}
-	status.IfNameList = ifNameList
-	log.Infof("Filtered IfNameList: %+v", status.IfNameList)
 
 	switch status.Type {
 	case types.NetworkInstanceTypeSwitch:
@@ -1152,9 +1133,7 @@ func natActivateForNetworkInstance(ctx *zedrouterContext,
 		err := iptables.IptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
-			cmdStr := fmt.Sprintf("iptables -t nat -A POSTROUTING -o %s -s %s "+
-				"-j MASQUARADE", a, subnetStr)
-			log.Errorf("IptableCmd (%s) failed: %s", cmdStr, err)
+			log.Errorf("IptableCmd failed: %s", err)
 			return err
 		}
 		err = PbrRouteAddDefault(status.BridgeName, a)
