@@ -311,7 +311,7 @@ func (status *DeviceNetworkStatus) GetPortByName(
 func (status *DeviceNetworkStatus) GetPortByIfName(
 	port string) *NetworkPortStatus {
 	for _, portStatus := range status.Ports {
-		if strings.EqualFold(portStatus.IfName, port) {
+		if portStatus.IfName == port {
 			log.Infof("Found NetworkPortStatus for %s", port)
 			return &portStatus
 		}

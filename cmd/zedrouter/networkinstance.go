@@ -891,6 +891,10 @@ func getIfNameListForPort(
 	for _, ifName := range ifNameList {
 		dnsPort := ctx.deviceNetworkStatus.GetPortByIfName(ifName)
 		if dnsPort != nil {
+			// XXX - We have a bug in MakeDeviceNetworkStatus where we are allowing
+			//	a device without the corresponding linux interface. We can
+			//	remove this check for ifindex here when the MakeDeviceStatus
+			//	is fixed.
 			ifIndex, err := IfnameToIndex(ifName)
 			if err == nil {
 				log.Infof("ifName %s, ifindex: %d added to filteredList",
