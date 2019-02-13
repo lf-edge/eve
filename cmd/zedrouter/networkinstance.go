@@ -868,6 +868,7 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 		}
 	}
 	status.IfNameList = ifNameList
+	log.Infof("Filtered IfNameList: %+v", status.IfNameList)
 
 	switch status.Type {
 	case types.NetworkInstanceTypeSwitch:
