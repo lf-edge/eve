@@ -61,6 +61,7 @@ func checkPortAvailableForNetworkInstance(
 			allowMgmtPort(status), isMgmtPort(status.Port))
 		return nil
 	}
+
 	portStatus := ctx.deviceNetworkStatus.GetPortByName(status.Port)
 	if portStatus == nil {
 		errStr := fmt.Sprintf("PortStatus for %s not found\n", status.Port)
@@ -855,6 +856,18 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 		return err
 	}
 	status.IfNameList = adapterToIfNames(ctx, status.Port)
+	log.Infof("IfNameList: %+v", status.IfNameList)
+
+	// XXX HACK - Only use Ethernet ports from IfNameList.
+	//	wlan and wwan don't yet work
+	var ifNameList []string
+	for index := range status.IfNameList {
+		name := status.IfNameList[index]
+		if strings.Contains(strings.ToLower(name), "eth") {
+			ifNameList = append(ifNameList, name)
+		}
+	}
+	status.IfNameList = ifNameList
 
 	switch status.Type {
 	case types.NetworkInstanceTypeSwitch:
@@ -1123,21 +1136,22 @@ func natActivateForNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
 	log.Infof("natActivateForNetworkInstance(%s)\n", status.DisplayName)
-	if status.Subnet.IP == nil {
-		errStr := fmt.Sprintf("Missing subnet for NAT service for %s",
-			status.Key())
-		return errors.New(errStr)
-	}
 	subnetStr := status.Subnet.String()
 
 	for _, a := range status.IfNameList {
+		log.Infof("Adding iptables rules for %s \n", a)
 		err := iptables.IptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
+			cmdStr := fmt.Sprintf("iptables -t nat -A POSTROUTING -o %s -s %s "+
+				"-j MASQUARADE", a, subnetStr)
+			log.Errorf("IptableCmd (%s) failed: %s", cmdStr, err)
 			return err
 		}
 		err = PbrRouteAddDefault(status.BridgeName, a)
 		if err != nil {
+			log.Errorf("PbrRouteAddDefault for Bridge(%s) and interface %s failed. "+
+				"Err: %s", status.BridgeName, a, err)
 			return err
 		}
 	}
