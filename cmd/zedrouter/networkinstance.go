@@ -853,10 +853,8 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 		return err
 	}
 
-	// XXX - Filter this list of ports to those whose name with linux ifnames
-	//	by checking in DeviceNetworkStatus. Ports without ifnames will fail
-	//	when programming Pbr / Iptable rules.
-	status.IfNameList = adapterToIfNames(ctx, status.Port)
+	// Get a list of IfNames to the ones we have an ifIndex for.
+	status.IfNameList = getIfNameListForPort(ctx, status.Port)
 	log.Infof("IfNameList: %+v", status.IfNameList)
 
 	switch status.Type {
@@ -873,6 +871,50 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 		err = errors.New(errStr)
 	}
 	return err
+}
+
+// getIfNameListForPort
+// Get a list of IfNames to the ones we have an ifIndex for.
+// In the case where the port maps to multiple underlying ports
+// (For Ex: uplink), only include ports that have an ifindex.
+//	If there is no such port with ifindex, then retain the whole list.
+//	NetworkInstance creation will fail when programming default routes
+//  and iptable rules in that case - and that should be fine.
+func getIfNameListForPort(
+	ctx *zedrouterContext,
+	port string) []string {
+
+	ifNameList := adapterToIfNames(ctx, port)
+	log.Infof("ifNameList: %+v", ifNameList)
+
+	filteredList := make([]string, 0)
+	for _, ifName := range ifNameList {
+		dnsPort := ctx.deviceNetworkStatus.GetPortByIfName(ifName)
+		if dnsPort != nil {
+			// XXX - We have a bug in MakeDeviceNetworkStatus where we are allowing
+			//	a device without the corresponding linux interface. We can
+			//	remove this check for ifindex here when the MakeDeviceStatus
+			//	is fixed.
+			ifIndex, err := IfnameToIndex(ifName)
+			if err == nil {
+				log.Infof("ifName %s, ifindex: %d added to filteredList",
+					ifName, ifIndex)
+				filteredList = append(filteredList, ifName)
+			} else {
+				log.Infof("ifIndex not found for ifName(%s) - err: %s",
+					ifName, err.Error())
+			}
+		} else {
+			log.Infof("DeviceNetworkStatus not found for port(%s)", port)
+		}
+	}
+	if len(filteredList) > 0 {
+		log.Infof("filteredList: %+v", filteredList)
+		return filteredList
+	}
+	log.Infof("ifname or ifindex not found for any interface for port(%s)."+
+		"Returning the unfiltered list: %+v", port, ifNameList)
+	return ifNameList
 }
 
 func doNetworkInstanceInactivate(
