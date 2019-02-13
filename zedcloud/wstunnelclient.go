@@ -34,7 +34,6 @@ type WSTunnelClient struct {
 	DestURL          string            // formatted websocket endpoint URL
 	LocalRelayServer string            // local server to send received requests to
 	Timeout          time.Duration     // timeout on websocket
-	Proxy            *url.URL          // if non-nil, external proxy to use
 	Connected        bool              // true when we have an active connection to remote server
 	Dialer           *websocket.Dialer // dialer connection initialized & tested for success
 	exitChan         chan struct{}     // channel to tell the tunnel goroutines to end
@@ -95,7 +94,7 @@ func (t *WSTunnelClient) TestConnection(proxyURL *url.URL, localAddr net.IP) err
 	}
 	t.LocalRelayServer = strings.TrimSuffix(t.LocalRelayServer, "/")
 
-	log.Debugf("Testing connection to %s on local address: %v, proxy: %v", t.Tunnel, proxyURL, localAddr)
+	log.Debugf("Testing connection to %s on local address: %v, proxy: %v", t.Tunnel, localAddr, proxyURL)
 
 	tlsConfig, err := GetTlsConfig(t.TunnelServerName, nil)
 	if err != nil {
@@ -111,9 +110,8 @@ func (t *WSTunnelClient) TestConnection(proxyURL *url.URL, localAddr net.IP) err
 			return netDialer.DialContext(context.Background(), network, addr)
 		},
 	}
-	// XXX why not check/use the same proxy field? t.Proxy not yet set?
 	if proxyURL != nil {
-		dialer.Proxy = http.ProxyURL(t.Proxy)
+		dialer.Proxy = http.ProxyURL(proxyURL)
 	}
 
 	url := fmt.Sprintf("%s/api/v1/edgedevice/connection/tunnel", t.Tunnel)
@@ -124,9 +122,8 @@ func (t *WSTunnelClient) TestConnection(proxyURL *url.URL, localAddr net.IP) err
 	}
 	if err == nil {
 		t.DestURL = url
-		t.Proxy = proxyURL
 		t.Dialer = dialer
-		log.Infof("Connection test succeeded for url: %s on local address: %v, proxy: %v", url, proxyURL, localAddr)
+		log.Infof("Connection test succeeded for url: %s on local address: %v, proxy: %v", url, localAddr, proxyURL)
 		return nil
 	}
 	return err
@@ -211,11 +208,11 @@ func (wsc *WSConnection) handleRequests() {
 		wsc.ws.SetReadDeadline(time.Time{}) // separate ping-pong routine does timeout
 		messageType, reader, err := wsc.ws.NextReader()
 		if err != nil {
-			log.Errorf("WS ReadMessage Error: %s", err.Error())
+			log.Debugf("WS ReadMessage Error: %s", err.Error())
 			break
 		}
 		if messageType != websocket.BinaryMessage {
-			log.Errorf("WS ReadMessage Invalid message type: %d", messageType)
+			log.Debugf("WS ReadMessage Invalid message type: %d", messageType)
 			break
 		}
 		// give the sender a minute to produce the request
@@ -224,7 +221,7 @@ func (wsc *WSConnection) handleRequests() {
 		var id int16
 		_, err = fmt.Fscanf(io.LimitReader(reader, 4), "%04x", &id)
 		if err != nil {
-			log.Errorf("WS cannot read request ID Error: %s", err.Error())
+			log.Debugf("WS cannot read request ID Error: %s", err.Error())
 			break
 		}
 		// read the whole message, this is bounded (to something large) by the
@@ -233,7 +230,7 @@ func (wsc *WSConnection) handleRequests() {
 		// websocket doesn't allow us to have multiple goroutines reading...
 		request, err := ioutil.ReadAll(reader)
 		if err != nil {
-			log.Errorf("[id=%d] WS cannot read request message Error: %s", id, err.Error())
+			log.Debugf("[id=%d] WS cannot read request message Error: %s", id, err.Error())
 			break
 		}
 		log.Debugf("[id=%d] WS processing request payload: %v", id, string(request))
@@ -244,7 +241,7 @@ func (wsc *WSConnection) handleRequests() {
 				log.Error(err)
 			}
 		} else {
-			log.Errorf("[id=%d] Encountered WS request to process with no payload", id)
+			log.Debugf("[id=%d] Encountered WS request to process with no payload", id)
 		}
 
 	}
@@ -322,7 +319,7 @@ func (wsc *WSConnection) processRequest(id int16, req []byte) (err error) {
 				id, string(req))
 			break
 		} else {
-			log.Errorf("[id=%d] Error encountered while writing request to local connection : %s",
+			log.Debugf("[id=%d] Error encountered while writing request to local connection : %s",
 				id, err.Error())
 			if err := wsc.refreshLocalConnection(host, true); err != nil {
 				return err
@@ -393,7 +390,7 @@ func (wsc *WSConnection) listenForResponse(id int16) {
 	responseBuffer := make([]byte, 8192)
 	num, err := wsc.localConnection.Read(responseBuffer)
 	if err != nil {
-		log.Errorf("[id=%d] Could not read response on local connection: %s", id, err.Error())
+		log.Debugf("[id=%d] Could not read response on local connection: %s", id, err.Error())
 	} else {
 		if num > 0 {
 			response := responseBuffer[:num]
