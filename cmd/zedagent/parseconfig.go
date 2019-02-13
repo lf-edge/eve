@@ -2102,7 +2102,6 @@ func execReboot(state bool) {
 		// We could explicitly wait for domains to shutdown, but
 		// some (which don't have a shutdown hook like the mirageOs ones) take a
 		// very long time.
-
 		timer := time.NewTimer(duration)
 		log.Infof("Timer started. Wait to expire\n")
 		<-timer.C
