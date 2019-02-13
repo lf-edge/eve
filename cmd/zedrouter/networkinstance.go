@@ -21,11 +21,19 @@ import (
 	"github.com/zededa/go-provision/types"
 )
 
-func allowMgmtPort(status *types.NetworkInstanceStatus) bool {
+func allowSharedPort(status *types.NetworkInstanceStatus) bool {
 	return status.Type != types.NetworkInstanceTypeSwitch
 }
 
-func isMgmtPort(port string) bool {
+// isSharedPortLabel
+// port names "uplink" and "freeuplink" are actually built in labels
+//	we used for ports used by Dom0 itself to reach the cloud. But
+//  these can also be shared as L3 ports by the applications ie.,
+//	NI of kind Local can use them as well. Infact, except
+//  NetworkInstanceTypeSwitch, all other current types of network instance
+//  can share the port. Whether such ports can be used by network instance
+//  can be checked  using allowSharedPort() function
+func isSharedPortLabel(port string) bool {
 	// XXX - I think we can get rid of these built-in labels (uplink/freeuplink).
 	//	This will be cleaned up as part of support for deviceConfig
 	//	from cloud.
@@ -56,9 +64,9 @@ func checkPortAvailableForNetworkInstance(
 	log.Infof("NetworkInstance(%s-%s), port: %s\n",
 		status.DisplayName, status.UUID, status.Port)
 
-	if allowMgmtPort(status) && isMgmtPort(status.Port) {
-		log.Infof("Mgmt port - allowMgmtPort: %t, isMgmtPort:%t",
-			allowMgmtPort(status), isMgmtPort(status.Port))
+	if allowSharedPort(status) && isSharedPortLabel(status.Port) {
+		log.Infof("Mgmt port - allowSharedPort: %t, isSharedPortLabel:%t",
+			allowSharedPort(status), isSharedPortLabel(status.Port))
 		return nil
 	}
 
@@ -818,14 +826,14 @@ func maybeUpdateBridgeIPAddrForNetworkInstance(
 // XXX - This function is redundant.. This is already covered by ( and more )
 //	checkPortAvailableForNetworkInstance. Delete this.
 func validatePortForNetworkInstance(ctx *zedrouterContext, port string,
-	allowMgmtPort bool) error {
+	allowPortSharing bool) error {
 
 	if port == "" {
-		log.Infof("validatePortForNetworkInstance - port not specified")
+		log.Infof("port not specified")
 		return nil
 	}
-	if allowMgmtPort && isMgmtPort(port) {
-		log.Infof("validatePortForNetworkInstance - port not specified")
+	if allowPortSharing && isSharedPortLabel(port) {
+		log.Infof("NI allows port sharing and port(%s) is a mgmt port", port)
 		return nil
 	}
 
@@ -850,7 +858,7 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	// A Bridge only works with a single adapter interface.
 	// Management ports are not allowed to be part of Bridge networks.
 	err := validatePortForNetworkInstance(ctx, status.Port,
-		allowMgmtPort(status))
+		allowSharedPort(status))
 	if err != nil {
 		log.Infof("validateAdaptor failed: Port: %s, err:%s", err, status.Port)
 		return err
