@@ -308,6 +308,17 @@ func (status *DeviceNetworkStatus) GetPortByName(
 	return nil
 }
 
+func (status *DeviceNetworkStatus) GetPortByIfName(
+	port string) *NetworkPortStatus {
+	for _, portStatus := range status.Ports {
+		if strings.EqualFold(portStatus.IfName, port) {
+			log.Infof("Found NetworkPortStatus for %s", port)
+			return &portStatus
+		}
+	}
+	return nil
+}
+
 func rotate(arr []string, amount int) []string {
 	if len(arr) == 0 {
 		return []string{}
