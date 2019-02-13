@@ -1098,6 +1098,8 @@ func (config *NetworkInstanceConfig) IsIPv6() bool {
 }
 
 func (config *NetworkInstanceConfig) SubnetBroadcastAddr() net.IP {
+	// This is to avoid using different sized ( 4 / 16 ) slices for IP and
+	// mask.
 	_, subnet, err := net.ParseCIDR(config.Subnet.String())
 	if err != nil {
 		// XXX This should have been caught earlier. Should really be fatal.
@@ -1111,6 +1113,11 @@ func (config *NetworkInstanceConfig) SubnetBroadcastAddr() net.IP {
 	broadcast := net.ParseIP("0.0.0.0")
 
 	for i := range ip {
+		// For bits with 1 in mask (network portion), this retains the
+		// corresponding bits from ip ( since ^mask will be all zeros
+		// and ip | 0 = ip)
+		// For bits with 0 in mask ( host portion), this sets all bits to 1
+		// irrespective of ip value ( ^mask will be all ones and ip | 1 = 1)
 		broadcast[i] = ip[i] | ^mask[i]
 	}
 	return broadcast
