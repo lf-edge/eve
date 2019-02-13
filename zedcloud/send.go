@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"strings"
+	"time"
 )
 
 // XXX should we add some Init() function to create this?
@@ -47,7 +48,7 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 			log.Debugf("sendOnAllIntf non-free %v\n", intfs)
 		}
 		for _, intf := range intfs {
-			resp, contents, err := SendOnIntf(ctx, url, intf, reqlen, b, true)
+			resp, contents, err := SendOnIntf(ctx, url, intf, reqlen, b, true, 0)
 			if return400 && resp != nil &&
 				resp.StatusCode >= 400 && resp.StatusCode < 500 {
 				log.Infof("sendOnAllIntf: for %s reqlen %d ignore code %d\n",
@@ -94,7 +95,7 @@ func VerifyAllIntf(ctx ZedCloudContext,
 				// We have enough uplinks with cloud connectivity working.
 				break
 			}
-			resp, _, err := SendOnIntf(ctx, url, intf, 0, nil, true)
+			resp, _, err := SendOnIntf(ctx, url, intf, 0, nil, true, 15)
 			if err != nil {
 				// XXX Have code to mark this interface as not suitable
 				// for cloud/internet connectivity
@@ -134,7 +135,7 @@ func VerifyAllIntf(ctx ZedCloudContext,
 // use []byte contents return.
 // If we get a http response, we return that even if it was an error
 // to allow the caller to look at StatusCode
-func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool) (*http.Response, []byte, error) {
+func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool, timeout int) (*http.Response, []byte, error) {
 
 	var reqUrl string
 	var useTLS bool
@@ -194,6 +195,9 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		}
 
 		client := &http.Client{Transport: transport}
+		if timeout != 0 {
+			client.Timeout = time.Duration(timeout) * time.Second
+		}
 
 		var req *http.Request
 		if b != nil {

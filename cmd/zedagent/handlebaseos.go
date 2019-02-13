@@ -11,6 +11,7 @@ import (
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zboot"
 	"strings"
+	"time"
 )
 
 func lookupBaseOsConfig(ctx *getconfigContext, key string) *types.BaseOsConfig {
@@ -68,13 +69,23 @@ func initiateBaseOsZedCloudTestComplete(ctx *getconfigContext) {
 }
 
 func doBaseOsZedCloudTestComplete(ctx *zedagentContext, status types.BaseOsStatus) {
-	if status.TestComplete {
-		key := status.Key()
+	key := status.Key()
+	if !status.TestComplete {
+		log.Infof("doBaseOsZedCloudTestComplete(%s): not TestComplete\n",
+			key)
+	} else {
 		log.Infof("doBaseOsZedCloudTestComplete(%s):\n", key)
 		if config := lookupBaseOsConfig(ctx.getconfigCtx, key); config != nil {
 			config.TestComplete = false
 			publishBaseOsConfig(ctx.getconfigCtx, config)
 			log.Infof("doBaseOsZedCloudTestComplete(%s): done\n", key)
+		}
+		if ctx.rebootCmdDeferred {
+			log.Infof("TestComplete and deferred reboot\n")
+			ctx.rebootCmdDeferred = false
+			duration := time.Second * time.Duration(rebootDelay)
+			rebootTimer = time.NewTimer(duration)
+			go handleReboot(ctx.getconfigCtx)
 		}
 	}
 }

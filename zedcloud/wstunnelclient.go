@@ -87,14 +87,13 @@ func (t *WSTunnelClient) TestConnection(proxyURL *url.URL, localAddr net.IP) err
 	}
 	t.Tunnel = strings.TrimSuffix(t.Tunnel, "/")
 
-	if t.LocalRelayServer != "" {
-		if strings.HasPrefix(t.LocalRelayServer, "http://") && strings.HasPrefix(t.LocalRelayServer, "https://") {
-			return fmt.Errorf("Local server relay must not begin with http:// or https://")
-		}
-		t.LocalRelayServer = strings.TrimSuffix(t.LocalRelayServer, "/")
-	} else {
+	if t.LocalRelayServer == "" {
 		return fmt.Errorf("Must specify local relay server hostOrIP:port")
 	}
+	if strings.HasPrefix(t.LocalRelayServer, "http://") && strings.HasPrefix(t.LocalRelayServer, "https://") {
+		return fmt.Errorf("Local server relay must not begin with http:// or https://")
+	}
+	t.LocalRelayServer = strings.TrimSuffix(t.LocalRelayServer, "/")
 
 	log.Debugf("Testing connection to %s on local address: %v, proxy: %v", t.Tunnel, proxyURL, localAddr)
 
@@ -112,6 +111,7 @@ func (t *WSTunnelClient) TestConnection(proxyURL *url.URL, localAddr net.IP) err
 			return netDialer.DialContext(context.Background(), network, addr)
 		},
 	}
+	// XXX why not check/use the same proxy field? t.Proxy not yet set?
 	if proxyURL != nil {
 		dialer.Proxy = http.ProxyURL(t.Proxy)
 	}
@@ -135,6 +135,7 @@ func (t *WSTunnelClient) TestConnection(proxyURL *url.URL, localAddr net.IP) err
 // startSession connects to configured backend on a
 // secure websocket and waits for commands from the backend
 // to forward to local relay.
+// XXX Does it ever retry using different intf/srcIp?
 func (t *WSTunnelClient) startSession() error {
 
 	// signal that tells tunnel client to exit instead of reopening

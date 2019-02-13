@@ -58,6 +58,7 @@ type getconfigContext struct {
 	pubBaseOsConfig             *pubsub.Publication
 	pubDatastoreConfig          *pubsub.Publication
 	pubNetworkInstanceConfig    *pubsub.Publication
+	rebootFlag                  bool
 }
 
 // tlsConfig is initialized once i.e. effectively a constant
@@ -113,7 +114,7 @@ func configTimerTask(handleChannel chan interface{},
 	getconfigCtx.lastReceivedConfigFromCloud = getconfigCtx.startTime
 	iteration := 0
 	ctx := getconfigCtx.zedagentCtx
-	rebootFlag := getLatestConfig(configUrl, iteration,
+	getconfigCtx.rebootFlag = getLatestConfig(configUrl, iteration,
 		updateInprogress, getconfigCtx)
 
 	interval := time.Duration(globalConfig.ConfigInterval) * time.Second
@@ -125,19 +126,15 @@ func configTimerTask(handleChannel chan interface{},
 	handleChannel <- ticker
 	for range ticker.C {
 		iteration += 1
-		// reboot flag is not set, go fetch new config
-		if !rebootFlag {
-			// check whether the device is still in progress state
-			// once activated, it does not go back to the inprogress
-			// state
-			if updateInprogress {
-				updateInprogress = isBaseOsCurrentPartitionStateInProgress(ctx)
-			}
-			rebootFlag = getLatestConfig(configUrl, iteration,
-				updateInprogress, getconfigCtx)
-		} else {
-			log.Infof("rebootFlag set; not getting config\n")
+		// check whether the device is still in progress state
+		// once activated, it does not go back to the inprogress
+		// state
+		if updateInprogress {
+			updateInprogress = isBaseOsCurrentPartitionStateInProgress(ctx)
 		}
+		rebootFlag := getLatestConfig(configUrl, iteration,
+			updateInprogress, getconfigCtx)
+		getconfigCtx.rebootFlag = getconfigCtx.rebootFlag || rebootFlag
 	}
 }
 

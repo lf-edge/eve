@@ -99,9 +99,9 @@ func getPacFile(status *types.DeviceNetworkStatus, url string,
 	ifname string) (string, error) {
 
 	ctx.DeviceNetworkStatus = status
-	// Avoid using a proxy to fetch the wpad.dat
+	// Avoid using a proxy to fetch the wpad.dat; 15 second timeout
 	resp, contents, err := zedcloud.SendOnIntf(ctx, url, ifname, 0, nil,
-		false)
+		false, 15)
 	if err != nil {
 		return "", err
 	}

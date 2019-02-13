@@ -863,6 +863,7 @@ func handleBaseOsTestComplete(ctx *baseOsMgrContext, uuidStr string, config type
 	log.Infof("handleBaseOsTestComplete(%s) for %s in %s, done\n",
 		uuidStr, config.BaseOsVersion, status.PartitionLabel)
 	status.TestComplete = false
+	publishBaseOsStatus(ctx, &status)
 	updateAndPublishBaseOsStatusAll(ctx)
 }
 
@@ -898,7 +899,8 @@ func doPartitionStateTransition(ctx *baseOsMgrContext, uuidStr string, config ty
 			return
 		}
 		status.TestComplete = true
-		// publish the partition information
+		publishBaseOsStatus(ctx, &status)
+		// publish the updated partition information
 		publishZbootPartitionStatusAll(ctx)
 		updateAndPublishBaseOsStatusAll(ctx)
 

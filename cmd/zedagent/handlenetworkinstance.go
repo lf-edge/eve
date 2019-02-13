@@ -354,8 +354,8 @@ func protoEncodeGenericInstanceMetric(status types.NetworkInstanceMetrics,
 	txStats := new(zmet.NetworkStats)
 	netMetric := status.NetworkMetrics.MetricList[0]
 	rxStats.TotalPackets = netMetric.RxPkts
-	rxStats.TotalBytes   = netMetric.RxBytes
-	rxStats.Errors       = netMetric.RxErrors
+	rxStats.TotalBytes = netMetric.RxBytes
+	rxStats.Errors = netMetric.RxErrors
 	// Add all types of Rx drops
 	var drops uint64 = 0
 	drops += netMetric.RxDrops
@@ -364,8 +364,8 @@ func protoEncodeGenericInstanceMetric(status types.NetworkInstanceMetrics,
 	rxStats.Drops = drops
 
 	txStats.TotalPackets = netMetric.TxPkts
-	txStats.TotalBytes   = netMetric.TxBytes
-	txStats.Errors       = netMetric.TxErrors
+	txStats.TotalBytes = netMetric.TxBytes
+	txStats.Errors = netMetric.TxErrors
 	// Add all types of Tx drops
 	drops = 0
 	drops += netMetric.TxDrops
