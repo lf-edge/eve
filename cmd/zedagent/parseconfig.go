@@ -2066,11 +2066,14 @@ func startExecReboot() {
 	// start the timer again
 	// XXX:FIXME, need to handle the scheduled time
 	duration := time.Second * time.Duration(rebootDelay)
-	rebootTimer = time.NewTimer(time.Second * duration)
+	rebootTimer = time.NewTimer(duration)
+	log.Infof("startExecReboot: timer %d seconds\n",
+		duration/time.Second)
 
 	go handleExecReboot()
 }
 
+// Used by doBaseOsDeviceReboot only
 func handleExecReboot() {
 
 	<-rebootTimer.C
