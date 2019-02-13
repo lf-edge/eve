@@ -1144,7 +1144,7 @@ type VifNameMac struct {
 func (status *NetworkInstanceStatus) UpdateNetworkMetrics(
 	nms *NetworkMetrics) *NetworkMetric {
 
-	netMetric  := NetworkMetric{IfName: status.BridgeName}
+	netMetric := NetworkMetric{IfName: status.BridgeName}
 	for _, vif := range status.Vifs {
 		metric, found := nms.LookupNetworkMetrics(vif.Name)
 		if !found {
@@ -1155,14 +1155,14 @@ func (status *NetworkInstanceStatus) UpdateNetworkMetrics(
 		status.VifMetricMap[vif.Name] = metric
 	}
 	for _, metric := range status.VifMetricMap {
-		netMetric.TxBytes    += metric.TxBytes
-		netMetric.RxBytes    += metric.RxBytes
-		netMetric.TxPkts     += metric.TxPkts
-		netMetric.RxPkts     += metric.RxPkts
-		netMetric.TxErrors   += metric.TxErrors
-		netMetric.RxErrors   += metric.RxErrors
-		netMetric.TxDrops    += metric.TxDrops
-		netMetric.RxDrops    += metric.RxDrops
+		netMetric.TxBytes += metric.TxBytes
+		netMetric.RxBytes += metric.RxBytes
+		netMetric.TxPkts += metric.TxPkts
+		netMetric.RxPkts += metric.RxPkts
+		netMetric.TxErrors += metric.TxErrors
+		netMetric.RxErrors += metric.RxErrors
+		netMetric.TxDrops += metric.TxDrops
+		netMetric.RxDrops += metric.RxDrops
 		netMetric.TxAclDrops += metric.TxAclDrops
 		netMetric.RxAclDrops += metric.RxAclDrops
 		netMetric.TxAclRateLimitDrops += metric.TxAclRateLimitDrops
@@ -1186,10 +1186,10 @@ func (status *NetworkInstanceStatus) UpdateBridgeMetrics(
 		log.Debugf("No metrics found for Bridge %s",
 			status.BridgeName)
 	} else {
-		netMetric.TxErrors   += bridgeMetric.TxErrors
-		netMetric.RxErrors   += bridgeMetric.RxErrors
-		netMetric.TxDrops    += bridgeMetric.TxDrops
-		netMetric.RxDrops    += bridgeMetric.RxDrops
+		netMetric.TxErrors += bridgeMetric.TxErrors
+		netMetric.RxErrors += bridgeMetric.RxErrors
+		netMetric.TxDrops += bridgeMetric.TxDrops
+		netMetric.RxDrops += bridgeMetric.RxDrops
 		netMetric.TxAclDrops += bridgeMetric.TxAclDrops
 		netMetric.RxAclDrops += bridgeMetric.RxAclDrops
 		netMetric.TxAclRateLimitDrops += bridgeMetric.TxAclRateLimitDrops

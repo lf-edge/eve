@@ -21,6 +21,31 @@ import (
 	"github.com/zededa/go-provision/types"
 )
 
+func allowSharedPort(status *types.NetworkInstanceStatus) bool {
+	return status.Type != types.NetworkInstanceTypeSwitch
+}
+
+// isSharedPortLabel
+// port names "uplink" and "freeuplink" are actually built in labels
+//	we used for ports used by Dom0 itself to reach the cloud. But
+//  these can also be shared as L3 ports by the applications ie.,
+//	NI of kind Local can use them as well. Infact, except
+//  NetworkInstanceTypeSwitch, all other current types of network instance
+//  can share the port. Whether such ports can be used by network instance
+//  can be checked  using allowSharedPort() function
+func isSharedPortLabel(port string) bool {
+	// XXX - I think we can get rid of these built-in labels (uplink/freeuplink).
+	//	This will be cleaned up as part of support for deviceConfig
+	//	from cloud.
+	if strings.EqualFold(port, "uplink") {
+		return true
+	}
+	if strings.EqualFold(port, "freeuplink") {
+		return true
+	}
+	return false
+}
+
 // checkPortAvailableForNetworkInstance
 //	A port can be used for NetworkInstance if the following are satisfied:
 //	a) Port should be part of Device Port Config
@@ -38,6 +63,12 @@ func checkPortAvailableForNetworkInstance(
 	}
 	log.Infof("NetworkInstance(%s-%s), port: %s\n",
 		status.DisplayName, status.UUID, status.Port)
+
+	if allowSharedPort(status) && isSharedPortLabel(status.Port) {
+		log.Infof("Mgmt port - allowSharedPort: %t, isSharedPortLabel:%t",
+			allowSharedPort(status), isSharedPortLabel(status.Port))
+		return nil
+	}
 
 	portStatus := ctx.deviceNetworkStatus.GetPortByName(status.Port)
 	if portStatus == nil {
@@ -161,7 +192,7 @@ func handleNetworkInstanceCreate(
 		NetworkInstanceConfig: config,
 		NetworkInstanceInfo: types.NetworkInstanceInfo{
 			IPAssignments: make(map[string]net.IP),
-			VifMetricMap: make(map[string]types.NetworkMetric),
+			VifMetricMap:  make(map[string]types.NetworkMetric),
 		},
 	}
 
@@ -322,16 +353,59 @@ func doNetworkInstanceSanityCheck(
 		return errors.New(err)
 	}
 
-	if status.Subnet.IP == nil || status.Subnet.IP.IsUnspecified() {
-		err := fmt.Sprintf("Subnet Unspecified: %+v\n", status.Subnet)
-		return errors.New(err)
+	if err := doNetworkInstanceSubnetSanityCheck(ctx, status); err != nil {
+		return err
 	}
+
 	if status.Gateway.IsUnspecified() {
 		err := fmt.Sprintf("Gateway Unspecified: %+v\n", status.Gateway)
 		return errors.New(err)
 	}
 	if err := DoNetworkInstanceStatusDhcpRangeSanityCheck(status); err != nil {
 		return err
+	}
+	return nil
+}
+
+func doNetworkInstanceSubnetSanityCheck(
+	ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) error {
+
+	if status.Subnet.IP == nil || status.Subnet.IP.IsUnspecified() {
+		err := fmt.Sprintf("Subnet Unspecified: %+v\n", status.Subnet)
+		return errors.New(err)
+	}
+
+	// Verify Subnet doesn't overlap with other network instances
+	for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
+		if status == iterStatusEntry {
+			continue
+		}
+
+		// We check for overlapping subnets by checking the
+		// SubnetAddr ( first address ) is not contained in the subnet of
+		// any other NI and vice-versa ( Other NI Subnet addrs are not
+		// contained in the current NI subnet)
+
+		// Check if status.Subnet is contained in iterStatusEntry.Subnet
+		if iterStatusEntry.Subnet.Contains(status.Subnet.IP) {
+			errStr := fmt.Sprintf("Subnet(%s) SubnetAddr(%s) overlaps with another "+
+				"network instance(%s-%s) Subnet(%s)\n",
+				status.Subnet.String(), status.Subnet.IP.String(),
+				iterStatusEntry.DisplayName, iterStatusEntry.UUID,
+				iterStatusEntry.Subnet.String())
+			return errors.New(errStr)
+		}
+
+		// Reverse check..Check if iterStatusEntry.Subnet is contained in status.subnet
+		if status.Subnet.Contains(iterStatusEntry.Subnet.IP) {
+			errStr := fmt.Sprintf("Another network instance(%s-%s) Subnet(%s) "+
+				"overlaps with Subnet(%s)",
+				iterStatusEntry.DisplayName, iterStatusEntry.UUID,
+				iterStatusEntry.Subnet.String(),
+				status.Subnet.String())
+			return errors.New(errStr)
+		}
 	}
 	return nil
 }
@@ -738,22 +812,18 @@ func maybeUpdateBridgeIPAddrForNetworkInstance(
 	return
 }
 
+// XXX - This function is redundant.. This is already covered by ( and more )
+//	checkPortAvailableForNetworkInstance. Delete this.
 func validatePortForNetworkInstance(ctx *zedrouterContext, port string,
-	allowMgmtPort bool) error {
+	allowPortSharing bool) error {
 
 	if port == "" {
-		log.Fatalf("validatePortForNetworkInstance - port not specified")
+		log.Infof("port not specified")
+		return nil
 	}
-	// XXX - I think we can get rid of these built-in labels.
-	//	This will be cleaned up as part of support for deviceConfig
-	//	from cloud.
-	if allowMgmtPort {
-		if strings.EqualFold(port, "uplink") {
-			return nil
-		}
-		if strings.EqualFold(port, "freeuplink") {
-			return nil
-		}
+	if allowPortSharing && isSharedPortLabel(port) {
+		log.Infof("NI allows port sharing and port(%s) is a mgmt port", port)
+		return nil
 	}
 
 	portStatus := ctx.deviceNetworkStatus.GetPortByName(port)
@@ -776,13 +846,18 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	// an existing port name assigned to domO/zedrouter.
 	// A Bridge only works with a single adapter interface.
 	// Management ports are not allowed to be part of Bridge networks.
-	allowMgmtPort := (status.Type != types.NetworkInstanceTypeSwitch)
-	err := validatePortForNetworkInstance(ctx, status.Port, allowMgmtPort)
+	err := validatePortForNetworkInstance(ctx, status.Port,
+		allowSharedPort(status))
 	if err != nil {
 		log.Infof("validateAdaptor failed: Port: %s, err:%s", err, status.Port)
 		return err
 	}
+
+	// XXX - Filter this list of ports to those whose name with linux ifnames
+	//	by checking in DeviceNetworkStatus. Ports without ifnames will fail
+	//	when programming Pbr / Iptable rules.
 	status.IfNameList = adapterToIfNames(ctx, status.Port)
+	log.Infof("IfNameList: %+v", status.IfNameList)
 
 	switch status.Type {
 	case types.NetworkInstanceTypeSwitch:
@@ -886,10 +961,10 @@ func createNetworkInstanceMetrics(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus,
 	nms *types.NetworkMetrics) *types.NetworkInstanceMetrics {
 
-	niMetrics := types.NetworkInstanceMetrics {
+	niMetrics := types.NetworkInstanceMetrics{
 		UUIDandVersion: status.UUIDandVersion,
-		DisplayName: status.DisplayName,
-		Type: status.Type,
+		DisplayName:    status.DisplayName,
+		Type:           status.Type,
 	}
 	netMetrics := types.NetworkMetrics{}
 	netMetric := status.UpdateNetworkMetrics(nms)
@@ -1051,21 +1126,20 @@ func natActivateForNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
 	log.Infof("natActivateForNetworkInstance(%s)\n", status.DisplayName)
-	if status.Subnet.IP == nil {
-		errStr := fmt.Sprintf("Missing subnet for NAT service for %s",
-			status.Key())
-		return errors.New(errStr)
-	}
 	subnetStr := status.Subnet.String()
 
 	for _, a := range status.IfNameList {
+		log.Infof("Adding iptables rules for %s \n", a)
 		err := iptables.IptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", a,
 			"-s", subnetStr, "-j", "MASQUERADE")
 		if err != nil {
+			log.Errorf("IptableCmd failed: %s", err)
 			return err
 		}
 		err = PbrRouteAddDefault(status.BridgeName, a)
 		if err != nil {
+			log.Errorf("PbrRouteAddDefault for Bridge(%s) and interface %s failed. "+
+				"Err: %s", status.BridgeName, a, err)
 			return err
 		}
 	}

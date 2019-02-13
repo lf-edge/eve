@@ -6,13 +6,14 @@
 package zedagent
 
 import (
+	"strings"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zmet"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/types"
-	"strings"
 )
 
 func handleNetworkInstanceModify(ctxArg interface{}, key string, statusArg interface{}) {
@@ -28,11 +29,12 @@ func handleNetworkInstanceModify(ctxArg interface{}, key string, statusArg inter
 			status.Error)
 	}
 	switch status.Type {
-	case types.NetworkInstanceTypeMesh: // XXX any subtype?
-		handleNetworkLispInstanceStatusModify(ctx, status)
 	case types.NetworkInstanceTypeCloud:
+		// XXX - Should this really be a special case? Seems like
+		//		can be folded into prepareAndPublishNetworkInstanceInfoMsg
 		handleNetworkVpnInstanceStatusModify(ctx, status)
 	default:
+		prepareAndPublishNetworkInstanceInfoMsg(ctx, status, false)
 	}
 	log.Infof("handleNetworkInstanceModify(%s) done\n", key)
 }
@@ -49,11 +51,12 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 	}
 	ctx := ctxArg.(*zedagentContext)
 	switch status.Type {
-	case types.NetworkInstanceTypeMesh: // XXX any subtype?
-		handleNetworkLispInstanceStatusDelete(ctx, status)
 	case types.NetworkInstanceTypeCloud:
+		// XXX - Should this really be a special case? Seems like
+		//		can be folded into prepareAndPublishNetworkInstanceInfoMsg
 		handleNetworkVpnInstanceStatusDelete(ctx, status)
 	default:
+		prepareAndPublishNetworkInstanceInfoMsg(ctx, status, false)
 	}
 	log.Infof("handleNetworkInstanceDelete(%s) done\n", key)
 }
@@ -67,7 +70,7 @@ func handleNetworkVpnInstanceStatusDelete(ctx *zedagentContext, status types.Net
 	prepareVpnInstanceInfoMsg(ctx, status, true)
 }
 
-func prepareAndPublishLispInstanceInfoMsg(ctx *zedagentContext,
+func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	status types.NetworkInstanceStatus, deleted bool) {
 
 	infoMsg := &zmet.ZInfoMsg{}
@@ -83,8 +86,17 @@ func prepareAndPublishLispInstanceInfoMsg(ctx *zedagentContext,
 	info.Displayname = status.DisplayName
 	info.InstType = uint32(status.Type)
 
+	if !status.ErrorTime.IsZero() {
+		errInfo := new(zmet.ErrorInfo)
+		errInfo.Description = status.Error
+		errTime, _ := ptypes.TimestampProto(status.ErrorTime)
+		errInfo.Timestamp = errTime
+		info.NetworkErr = append(info.NetworkErr, errInfo)
+	}
+
 	// Always need a lispinfo to satisfy oneof
 	lispInfo := new(zmet.ZInfoLisp)
+
 	if deleted {
 		// XXX When a network instance is deleted it is ideal to
 		// send a flag such as deleted/gone inside
@@ -121,7 +133,6 @@ func prepareAndPublishLispInstanceInfoMsg(ctx *zedagentContext,
 		// For now we just send an empty lispInfo to indicate deletion to cloud.
 		// It can't be omitted since protobuf requires something to satisfy
 		// the oneof.
-
 		lispStatus := status.LispInfoStatus
 		if lispStatus != nil {
 			fillLispInfo(lispInfo, lispStatus)
@@ -137,7 +148,8 @@ func prepareAndPublishLispInstanceInfoMsg(ctx *zedagentContext,
 	if x, ok := infoMsg.GetInfoContent().(*zmet.ZInfoMsg_Niinfo); ok {
 		x.Niinfo = info
 	}
-	log.Debugf("Publish LispInfo message to zedcloud: %v\n", infoMsg)
+	log.Debugf("Publish NetworkInstance Info message to zedcloud: %v\n",
+		infoMsg)
 	publishInfo(ctx, uuid, infoMsg)
 }
 
@@ -184,14 +196,6 @@ func fillLispInfo(lispInfo *zmet.ZInfoLisp, lispStatus *types.LispInfoStatus) {
 		}
 		lispInfo.DecapKeys = append(lispInfo.DecapKeys, decap)
 	}
-}
-
-func handleNetworkLispInstanceStatusModify(ctx *zedagentContext, status types.NetworkInstanceStatus) {
-	prepareAndPublishLispInstanceInfoMsg(ctx, status, false)
-}
-
-func handleNetworkLispInstanceStatusDelete(ctx *zedagentContext, status types.NetworkInstanceStatus) {
-	prepareAndPublishLispInstanceInfoMsg(ctx, status, true)
 }
 
 func prepareVpnInstanceInfoMsg(ctx *zedagentContext, status types.NetworkInstanceStatus, delete bool) {
