@@ -1100,7 +1100,7 @@ func (config *NetworkInstanceConfig) IsIPv6() bool {
 func (config *NetworkInstanceConfig) SubnetBroadcastAddr() net.IP {
 	mask := config.Subnet.Mask
 	ip := config.Subnet.IP
-	broadcast := net.IP(make([]byte, 4))
+	broadcast := net.IP(make([]byte, len(ip)))
 	for i := range ip {
 		broadcast[i] = ip[i] | ^mask[i]
 	}

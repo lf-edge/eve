@@ -323,8 +323,7 @@ func doNetworkInstanceSanityCheck(
 	}
 
 	if err := doNetworkInstanceSubnetSanityCheck(ctx, status); err != nil {
-		err := fmt.Sprintf("Subnet invalid: %+v\n", status.Gateway)
-		return errors.New(err)
+		return err
 	}
 
 	if status.Gateway.IsUnspecified() {
