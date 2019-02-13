@@ -3,6 +3,7 @@
 STARTTIME=`date`
 echo "Starting device-steps.sh at" $STARTTIME
 
+USE_HW_WATCHDOG=0
 CONFIGDIR=/config
 PERSISTDIR=/persist
 BINDIR=/opt/zededa/bin
@@ -24,6 +25,8 @@ CLEANUP=0
 while [ $# != 0 ]; do
     if [ "$1" = -w ]; then
 	WAIT=0
+    elif [ "$1" = -h ]; then
+	USE_HW_WATCHDOG=1
     elif [ "$1" = -x ]; then
 	EID_IN_DOMU=1
     elif [ "$1" = -m ]; then
@@ -45,10 +48,26 @@ fi
     
 echo "Handling restart case at" `date`
 
+# XXX try without /dev/watchdog; First disable impact of bios setting
+if [ -c /dev/watchdog ]; then
+    if [ $USE_HW_WATCHDOG = 0 ]; then
+	wdctl /dev/watchdog
+    fi
+else
+    USE_HW_WATCHDOG=0
+fi
+
 # Create the watchdog(8) config files we will use
 # XXX should we enable realtime in the kernel?
-cat >$TMPDIR/watchdogbase.conf <<EOF
+if [ $USE_HW_WATCHDOG = 1 ]; then
+    cat >$TMPDIR/watchdogbase.conf <<EOF
 watchdog-device = /dev/watchdog
+EOF
+else
+    cat >$TMPDIR/watchdogbase.conf <<EOF
+EOF
+fi
+cat >>$TMPDIR/watchdogbase.conf <<EOF
 admin =
 #realtime = yes
 #priority = 1
