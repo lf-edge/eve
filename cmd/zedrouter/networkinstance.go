@@ -21,6 +21,23 @@ import (
 	"github.com/zededa/go-provision/types"
 )
 
+func allowMgmtPort(status *types.NetworkInstanceStatus) bool {
+	return status.Type != types.NetworkInstanceTypeSwitch
+}
+
+func isMgmtPort(port string) bool {
+	// XXX - I think we can get rid of these built-in labels (uplink/freeuplink).
+	//	This will be cleaned up as part of support for deviceConfig
+	//	from cloud.
+	if strings.EqualFold(port, "uplink") {
+		return true
+	}
+	if strings.EqualFold(port, "freeuplink") {
+		return true
+	}
+	return false
+}
+
 // checkPortAvailableForNetworkInstance
 //	A port can be used for NetworkInstance if the following are satisfied:
 //	a) Port should be part of Device Port Config
@@ -39,6 +56,11 @@ func checkPortAvailableForNetworkInstance(
 	log.Infof("NetworkInstance(%s-%s), port: %s\n",
 		status.DisplayName, status.UUID, status.Port)
 
+	if allowMgmtPort(status) && isMgmtPort(status.Port) {
+		log.Infof("Mgmt port - allowMgmtPort: %t, isMgmtPort:%t",
+			allowMgmtPort(status), isMgmtPort(status.Port))
+		return nil
+	}
 	portStatus := ctx.deviceNetworkStatus.GetPortByName(status.Port)
 	if portStatus == nil {
 		errStr := fmt.Sprintf("PortStatus for %s not found\n", status.Port)
@@ -792,22 +814,18 @@ func maybeUpdateBridgeIPAddrForNetworkInstance(
 	return
 }
 
+// XXX - This function is redundant.. This is already covered by ( and more )
+//	checkPortAvailableForNetworkInstance. Delete this.
 func validatePortForNetworkInstance(ctx *zedrouterContext, port string,
 	allowMgmtPort bool) error {
 
 	if port == "" {
-		log.Fatalf("validatePortForNetworkInstance - port not specified")
+		log.Infof("validatePortForNetworkInstance - port not specified")
+		return nil
 	}
-	// XXX - I think we can get rid of these built-in labels.
-	//	This will be cleaned up as part of support for deviceConfig
-	//	from cloud.
-	if allowMgmtPort {
-		if strings.EqualFold(port, "uplink") {
-			return nil
-		}
-		if strings.EqualFold(port, "freeuplink") {
-			return nil
-		}
+	if allowMgmtPort && isMgmtPort(port) {
+		log.Infof("validatePortForNetworkInstance - port not specified")
+		return nil
 	}
 
 	portStatus := ctx.deviceNetworkStatus.GetPortByName(port)
@@ -830,8 +848,8 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	// an existing port name assigned to domO/zedrouter.
 	// A Bridge only works with a single adapter interface.
 	// Management ports are not allowed to be part of Bridge networks.
-	allowMgmtPort := (status.Type != types.NetworkInstanceTypeSwitch)
-	err := validatePortForNetworkInstance(ctx, status.Port, allowMgmtPort)
+	err := validatePortForNetworkInstance(ctx, status.Port,
+		allowMgmtPort(status))
 	if err != nil {
 		log.Infof("validateAdaptor failed: Port: %s, err:%s", err, status.Port)
 		return err
