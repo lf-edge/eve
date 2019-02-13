@@ -1098,9 +1098,18 @@ func (config *NetworkInstanceConfig) IsIPv6() bool {
 }
 
 func (config *NetworkInstanceConfig) SubnetBroadcastAddr() net.IP {
-	mask := config.Subnet.Mask
-	ip := config.Subnet.IP
-	broadcast := net.IP(make([]byte, len(ip)))
+	_, subnet, err := net.ParseCIDR(config.Subnet.String())
+	if err != nil {
+		// XXX This should have been caught earlier. Should really be fatal.
+		log.Errorf("***SubnetBroadcastAddr: Error in parsing Subnet(%s)",
+			config.Subnet.String())
+		return subnet.IP
+	}
+
+	mask := subnet.Mask
+	ip := subnet.IP
+	broadcast := net.ParseIP("0.0.0.0")
+
 	for i := range ip {
 		broadcast[i] = ip[i] | ^mask[i]
 	}
