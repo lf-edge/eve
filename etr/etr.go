@@ -164,7 +164,6 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 			syscall.Close(link.Fd6)
 			//link.Ring.Disable()
 			//link.Ring.Close()
-			link.Handle.Close()
 			delete(EtrTable.EtrTable, key)
 			log.Infof("HandleDeviceNetworkChange: Stopping ETR thread for UP link %s", key)
 		}
@@ -557,17 +556,19 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 
 	for {
 		//ci, err := ring.ReadPacketDataTo(pktBuf[:])
-		ci, err := handle.ReadPacketDataTo(pktBuf[:])
-		if err != nil {
-			select {
-			case <-killChannel:
-				log.Errorf("ProcessCapturedPkts: Error capturing packets: %s", err)
-				log.Errorf(
-					"ProcessCapturedPkts: It could be the ETR thread handle closure leading to this")
+		select {
+		case <-killChannel:
+			log.Errorf(
+				"ProcessCapturedPkts: It could be the ETR thread handle closure leading to this")
+				log.Infof("ProcessCapturedPkts: Closing packet capture handle")
+				handle.Close()
 				return
 			default:
 				continue
-			}
+		}
+		ci, err := handle.ReadPacketDataTo(pktBuf[:])
+		if err != nil {
+			log.Errorf("ProcessCapturedPkts: Packer capture error: %s", err)
 		}
 		capLen := ci.CaptureLength
 		currUnixSeconds := ci.Timestamp.Unix()
