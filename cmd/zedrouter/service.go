@@ -868,6 +868,9 @@ func adapterToIfNames(ctx *zedrouterContext, adapter string) []string {
 		return types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0)
 	}
 	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, adapter)
+	if len(ifname) == 0 {
+		return []string{}
+	}
 	return []string{ifname}
 }
 
