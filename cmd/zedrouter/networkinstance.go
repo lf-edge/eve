@@ -1130,9 +1130,6 @@ func bridgeInactivateforNetworkInstance(ctx *zedrouterContext,
 
 func lispActivateForNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
-	//config types.NetworkServiceConfig,
-	//status *types.NetworkServiceStatus,
-	//netstatus *types.NetworkObjectStatus) error {
 
 	log.Infof("lispActivateForNetworkInstance(%s)\n", status.DisplayName)
 
