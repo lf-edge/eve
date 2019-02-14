@@ -384,6 +384,31 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			networkInstanceConfig.OpaqueConfig = apiConfigEntry.Cfg.Oconfig
 		}
 
+		if apiConfigEntry.Cfg.LispConfig != nil {
+			lispConfig := apiConfigEntry.Cfg.LispConfig
+			mapServers := []types.MapServer{}
+			for _, ms := range lispConfig.LispMSs {
+				mapServer := types.MapServer{
+					ServiceType: types.MapServerType(ms.ZsType),
+					NameOrIp:    ms.NameOrIp,
+					Credential:  ms.Credential,
+				}
+				mapServers = append(mapServers, mapServer)
+			}
+			eidPrefix := net.IP(lispConfig.Allocationprefix)
+
+			// Populate service Lisp config that should be sent to zedrouter
+			networkInstanceConfig.LispConfig = types.NetworkInstanceLispConfig {
+				MapServers:    mapServers,
+				IID:           lispConfig.LispInstanceId,
+				Allocate:      lispConfig.Allocate,
+				ExportPrivate: lispConfig.Exportprivate,
+				EidPrefix:     eidPrefix,
+				EidPrefixLen:  lispConfig.Allocationprefixlen,
+				Experimental:  lispConfig.Experimental,
+			}
+		}
+
 		ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
 			&networkInstanceConfig)
 	}
@@ -410,11 +435,6 @@ func parseNetworkInstanceConfig(config *zconfig.EdgeDevConfig,
 		"sha % x vs. % x: %v\n",
 		networkInstancePrevConfigHash, configHash, networkInstances)
 	// Export NetworkInstanceConfig to zedrouter
-	// XXX
-	// System Adapter points to network for Proxy configuration.
-	// There could be a situation where networks change, but
-	// systerm adapters do not change. When we see the networks
-	// change, we should parse systerm adapters again.
 	publishNetworkInstanceConfig(getconfigCtx, networkInstances)
 }
 
@@ -438,7 +458,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		return
 	}
 	if getconfigCtx.rebootFlag {
-		log.Infof("parseAppInstanceConfig: ignoring updated config duu to rebootFlag: %v\n",
+		log.Infof("parseAppInstanceConfig: ignoring updated config due to rebootFlag: %v\n",
 			Apps)
 		return
 	}
@@ -1152,7 +1172,8 @@ func parseAppNetworkConfig(appInstance *types.AppInstanceConfig,
 
 	parseUnderlayNetworkConfig(appInstance, cfgApp, cfgNetworks,
 		cfgNetworkInstances)
-	parseOverlayNetworkConfig(appInstance, cfgApp, cfgNetworks)
+	parseOverlayNetworkConfig(appInstance, cfgApp, cfgNetworks,
+		cfgNetworkInstances)
 }
 
 func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
@@ -1267,31 +1288,60 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 //	This is not supported for NetworkInstances.
 func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
-	cfgNetworks []*zconfig.NetworkConfig) {
+	cfgNetworks []*zconfig.NetworkConfig,
+	cfgNetworkInstances []*zconfig.NetworkInstanceConfig) {
 
 	for _, intfEnt := range cfgApp.Interfaces {
+		var networkUuidStr string
+		var networkInstanceEntry *zconfig.NetworkInstanceConfig = nil
+
 		netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
 		if netEnt == nil {
 			log.Errorf("parseOverlayNetworkConfig: Can't find network id %s; ignored\n",
 				intfEnt.NetworkId)
 			continue
 		}
-		uuid, err := uuid.FromString(netEnt.Id)
+		if netEnt == nil {
+			// Lookup NetworkInstance ID
+			networkInstanceEntry = lookupNetworkInstanceId(intfEnt.NetworkId,
+				cfgNetworkInstances)
+			if networkInstanceEntry == nil {
+				log.Errorf("App %s - Can't find network id %s in networks or "+
+					"networkinstances. Ignoring this network\n",
+					cfgApp.Displayname, intfEnt.NetworkId)
+				continue
+			}
+			networkUuidStr = networkInstanceEntry.Uuidandversion.Uuid
+		} else {
+			networkUuidStr = netEnt.Id
+		}
+		uuid, err := uuid.FromString(networkUuidStr)
 		if err != nil {
 			log.Errorf("parseOverlayNetworkConfig: Malformed UUID ignored: %s\n",
 				err)
 			continue
 		}
-		if netEnt.Type != zconfig.NetworkType_CryptoEID {
-			continue
+		if netEnt != nil {
+			switch netEnt.Type {
+			case zconfig.NetworkType_CryptoEID:
+				// do nothing
+			default:
+				continue
+			}
+			log.Infof("parseOverlayNetworkConfig: app %v net %v type %v\n",
+				cfgApp.Displayname, uuid.String(), netEnt.Type)
+		} else {
+			log.Infof("NetworkInstance(%s-%s): InstType %v\n",
+				cfgApp.Displayname, uuid.String(),
+				networkInstanceEntry.InstType)
 		}
-		log.Infof("parseOverlayNetworkConfig: app %v net %v type %v\n",
-			cfgApp.Displayname, uuid.String(), netEnt.Type)
 
 		olCfg := new(types.EIDOverlayConfig)
 		olCfg.Network = uuid
 		olCfg.Name = intfEnt.Name
 		if intfEnt.MacAddress != "" {
+			log.Infof("parseOverlayNetworkConfig: (App %s, Overlay interface %s) - " +
+				"Got static mac %s", cfgApp.Displayname, olCfg.Name, intfEnt.MacAddress)
 			olCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
 			if err != nil {
 				log.Errorf("parseOverlayNetworkConfig: bad MAC %s: %s\n",
