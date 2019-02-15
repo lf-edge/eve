@@ -239,7 +239,7 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 
 	// Start clean
 	deleteDnsmasqConfiglet(bridgeName)
-	stopDnsmasq(bridgeName, false)
+	stopDnsmasq(bridgeName, false, false)
 
 	if status.BridgeIPAddr != "" {
 		createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr, &config,
@@ -590,7 +590,7 @@ func updateBridgeIPAddr(ctx *zedrouterContext, status *types.NetworkObjectStatus
 			status.Key())
 		bridgeName := status.BridgeName
 		deleteDnsmasqConfiglet(bridgeName)
-		stopDnsmasq(bridgeName, false)
+		stopDnsmasq(bridgeName, false, false)
 
 		hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 		// XXX arbitrary name "router"!!
@@ -716,7 +716,7 @@ func doNetworkDelete(ctx *zedrouterContext,
 	netlink.LinkDel(link)
 
 	deleteDnsmasqConfiglet(bridgeName)
-	stopDnsmasq(bridgeName, true)
+	stopDnsmasq(bridgeName, true, false)
 
 	// For IPv6 and LISP, but LISP will become a service
 	isIPv6 := false

@@ -1341,7 +1341,7 @@ func appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
 		networkInstanceInfo.BridgeIPSets)
 
 	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-		stopDnsmasq(bridgeName, true)
+		stopDnsmasq(bridgeName, true, false)
 		createDnsmasqConfigletForNetworkInstance(bridgeName,
 			ulStatus.BridgeIPAddr, netInstConfig, hostsDirpath,
 			newIpsets, false)
@@ -1465,7 +1465,7 @@ func appNetworkDoActivateUnderlayNetworkWithNetworkObject(
 		networkInstanceInfo.BridgeIPSets)
 
 	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-		stopDnsmasq(bridgeName, true)
+		stopDnsmasq(bridgeName, true, false)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 			newIpsets, false)
@@ -1637,7 +1637,7 @@ func appNetworkDoActivateOverlayNetworks(
 			netstatus.BridgeIPSets)
 
 		if restartDnsmasq && olStatus.BridgeIPAddr != "" {
-			stopDnsmasq(bridgeName, true)
+			stopDnsmasq(bridgeName, true, false)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets, netstatus.Ipv4Eid)
@@ -2357,7 +2357,7 @@ func doAppNetworkModifyUnderlayNetworkWithNetworkInstance(
 
 	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
 		hostsDirpath := runDirname + "/hosts." + bridgeName
-		stopDnsmasq(bridgeName, true)
+		stopDnsmasq(bridgeName, true, false)
 		createDnsmasqConfigletForNetworkInstance(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 			newIpsets, false)
@@ -2400,7 +2400,7 @@ func doAppNetworkModifyUnderlayNetworkWithNetworkObject(
 
 	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
 		hostsDirpath := runDirname + "/hosts." + bridgeName
-		stopDnsmasq(bridgeName, true)
+		stopDnsmasq(bridgeName, true, false)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 			newIpsets, false)
@@ -2463,7 +2463,7 @@ func doAppNetworkModifyAllOverlayNetworks(
 
 		if restartDnsmasq && olStatus.BridgeIPAddr != "" {
 			hostsDirpath := runDirname + "/hosts." + bridgeName
-			stopDnsmasq(bridgeName, true)
+			stopDnsmasq(bridgeName, true, false)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets, netstatus.Ipv4Eid)
@@ -2684,7 +2684,7 @@ func appNetworkDoInactivateUnderlayNetworkWithNetworkInstance(
 		netstatus.BridgeIPSets)
 
 	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-		stopDnsmasq(bridgeName, true)
+		stopDnsmasq(bridgeName, true, false)
 		createDnsmasqConfigletForNetworkInstance(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 			newIpsets, false)
@@ -2765,7 +2765,7 @@ func appNetworkDoInactivateUnderlayNetworkWithNetworkObject(
 		netstatus.BridgeIPSets)
 
 	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-		stopDnsmasq(bridgeName, true)
+		stopDnsmasq(bridgeName, true, false)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 			newIpsets, false)
@@ -2842,7 +2842,7 @@ func appNetworkDoInactivateAllOverlayNetworks(ctx *zedrouterContext,
 			netstatus.BridgeIPSets)
 
 		if restartDnsmasq && olStatus.BridgeIPAddr != "" {
-			stopDnsmasq(bridgeName, true)
+			stopDnsmasq(bridgeName, true, false)
 			createDnsmasqConfiglet(bridgeName,
 				olStatus.BridgeIPAddr, netconfig, hostsDirpath,
 				newIpsets, netstatus.Ipv4Eid)

@@ -378,7 +378,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 
 	// Start clean
 	deleteDnsmasqConfiglet(bridgeName)
-	stopDnsmasq(bridgeName, false)
+	stopDnsmasq(bridgeName, false, false)
 
 	if status.BridgeIPAddr != "" {
 		createDnsmasqConfigletForNetworkInstance(bridgeName,
@@ -581,14 +581,9 @@ func getSwitchNetworkInstanceUsingPort(
 	return nil
 }
 
-func dnsmasqForBridgeStop(bridgeName string) {
-	deleteDnsmasqConfiglet(bridgeName)
-	stopDnsmasq(bridgeName, false)
-}
-
 func restartDnsmasq(status *types.NetworkInstanceStatus) {
 	bridgeName := status.BridgeName
-	dnsmasqForBridgeStop(bridgeName)
+	stopDnsmasq(bridgeName, false, true)
 
 	hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 	// XXX arbitrary name "router"!!
@@ -1026,7 +1021,7 @@ func doNetworkInstanceDelete(
 	}
 
 	doNetworkInstanceBridgeAclsDelete(ctx, status)
-	dnsmasqForBridgeStop(status.BridgeName)
+	stopDnsmasq(status.BridgeName, false, false)
 
 	if status.IsIPv6() {
 		stopRadvd(status.BridgeName, true)

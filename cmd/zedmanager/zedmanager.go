@@ -547,7 +547,8 @@ func handleCreate(ctx *zedmanagerContext, key string,
 	}
 	publishAppInstanceStatus(ctx, &status)
 
-	if status.Error != "" {
+	// If there are no errors, go ahead with Instance creation.
+	if status.Error == "" {
 		handleCreate2(ctx, config, status)
 	}
 

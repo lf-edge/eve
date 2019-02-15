@@ -388,7 +388,7 @@ func addhostDnsmasq(bridgeName string, appMac string, appIPAddr string,
 	log.Infof("addhostDnsmasq(%s, %s, %s, %s)\n", bridgeName, appMac,
 		appIPAddr, hostname)
 	if dnsmasqStopStart {
-		stopDnsmasq(bridgeName, true)
+		stopDnsmasq(bridgeName, true, false)
 	}
 	ip := net.ParseIP(appIPAddr)
 	if ip == nil {
@@ -427,7 +427,7 @@ func removehostDnsmasq(bridgeName string, appMac string, appIPAddr string) {
 	log.Infof("removehostDnsmasq(%s, %s, %s)\n",
 		bridgeName, appMac, appIPAddr)
 	if dnsmasqStopStart {
-		stopDnsmasq(bridgeName, true)
+		stopDnsmasq(bridgeName, true, false)
 	}
 	ip := net.ParseIP(appIPAddr)
 	if ip == nil {
@@ -522,10 +522,14 @@ func startDnsmasq(bridgeName string) {
 }
 
 //    pkill -u nobody -f dnsmasq.${BRIDGENAME}.conf
-func stopDnsmasq(bridgeName string, printOnError bool) {
+func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 
 	log.Debugf("stopDnsmasq(%s)\n", bridgeName)
 	cfgFilename := dnsmasqConfigFile(bridgeName)
 	// XXX currently running as root with -d above
 	pkillUserArgs("root", cfgFilename, printOnError)
+
+	if delConfiglet {
+		deleteDnsmasqConfiglet(bridgeName)
+	}
 }

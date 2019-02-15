@@ -740,8 +740,9 @@ type OverlayNetworkConfig struct {
 	//	If there is a parsing error and this uLNetwork config cannot be
 	//	processed, set the error here. This allows the error to be propagated
 	//  back to zedcloud
-	//	If this is empty ("") should not be processed further. Should just
-	//	be flagged to be in error state back to the cloud.
+	//	If this is non-empty ( != ""), the network Config should not be
+	// 	processed further. It Should just	be flagged to be in error state
+	//  back to the cloud.
 	Error string
 	// Optional additional information
 	AdditionalInfoDevice *AdditionalInfoDevice
@@ -779,8 +780,9 @@ type UnderlayNetworkConfig struct {
 	//	If there is a parsing error and this uLNetwork config cannot be
 	//	processed, set the error here. This allows the error to be propagated
 	//  back to zedcloud
-	//	If this is empty ("") should not be processed further. Should just
-	//	be flagged to be in error state back to the cloud.
+	//	If this is non-empty ( != ""), the UL network Config should not be
+	// 	processed further. It Should just	be flagged to be in error state
+	//  back to the cloud.
 	Error string
 
 	// Network
