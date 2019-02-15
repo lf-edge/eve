@@ -534,8 +534,23 @@ func handleCreate(ctx *zedmanagerContext, key string,
 	status.EIDList = make([]types.EIDStatusDetails,
 		len(config.OverlayNetworkList))
 
+	if len(config.Errors) > 0 {
+		// Combine all errors from Config parsing state and send them in Status
+		status.Error = ""
+		for i, errStr := range config.Errors {
+			status.Error += errStr
+			log.Errorf("App Instance %s-%s: Error(%d): %s",
+				config.DisplayName, config.UUIDandVersion.UUID, i, errStr)
+		}
+		log.Errorf("App Instance %s-%s: Errors in App Instance Create.",
+			config.DisplayName, config.UUIDandVersion.UUID)
+	}
 	publishAppInstanceStatus(ctx, &status)
-	handleCreate2(ctx, config, status)
+
+	if status.Error != "" {
+		handleCreate2(ctx, config, status)
+	}
+
 }
 
 func handleCreate2(ctx *zedmanagerContext, config types.AppInstanceConfig,
