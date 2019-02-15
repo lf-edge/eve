@@ -69,11 +69,18 @@ func checkPortAvailableForNetworkInstance(
 			allowSharedPort(status), isSharedPortLabel(status.Port))
 		return nil
 	}
+	// XXX are we checking allowPortSharing and the status of the port
+	// somewhere? Doesn't look like we do.
 
 	portStatus := ctx.deviceNetworkStatus.GetPortByName(status.Port)
 	if portStatus == nil {
-		errStr := fmt.Sprintf("PortStatus for %s not found\n", status.Port)
-		return errors.New(errStr)
+		// XXX Fallback until we have complete Name support in UI
+		portStatus = ctx.deviceNetworkStatus.GetPortByIfName(status.Port)
+		if portStatus == nil {
+			errStr := fmt.Sprintf("PortStatus for %s not found\n",
+				status.Port)
+			return errors.New(errStr)
+		}
 	}
 
 	switch status.Type {
@@ -344,26 +351,30 @@ func doNetworkInstanceSanityCheck(
 
 	// IpType - Check for valid types
 	switch status.IpType {
-	case types.AddressTypeIPV4:
-	case types.AddressTypeIPV6:
-	case types.AddressTypeCryptoIPV4:
-	case types.AddressTypeCryptoIPV6:
+	case types.AddressTypeNone:
+	case types.AddressTypeIPV4, types.AddressTypeIPV6,
+		types.AddressTypeCryptoIPV4, types.AddressTypeCryptoIPV6:
+
+		err := doNetworkInstanceSubnetSanityCheck(ctx, status)
+		if err != nil {
+			return err
+		}
+
+		if status.Gateway.IsUnspecified() {
+			err := fmt.Sprintf("Gateway Unspecified: %+v\n",
+				status.Gateway)
+			return errors.New(err)
+		}
+		err = DoNetworkInstanceStatusDhcpRangeSanityCheck(status)
+		if err != nil {
+			return err
+		}
+
 	default:
 		err := fmt.Sprintf("IpType %d not supported\n", status.IpType)
 		return errors.New(err)
 	}
 
-	if err := doNetworkInstanceSubnetSanityCheck(ctx, status); err != nil {
-		return err
-	}
-
-	if status.Gateway.IsUnspecified() {
-		err := fmt.Sprintf("Gateway Unspecified: %+v\n", status.Gateway)
-		return errors.New(err)
-	}
-	if err := DoNetworkInstanceStatusDhcpRangeSanityCheck(status); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -828,8 +839,14 @@ func validatePortForNetworkInstance(ctx *zedrouterContext, port string,
 
 	portStatus := ctx.deviceNetworkStatus.GetPortByName(port)
 	if portStatus == nil {
-		errStr := fmt.Sprintf("portStatus not found for port %s", port)
-		return errors.New(errStr)
+		// XXX Fallback until we have complete Name support in UI
+		portStatus = ctx.deviceNetworkStatus.GetPortByIfName(port)
+		if portStatus == nil {
+			errStr := fmt.Sprintf("portStatus not found for port %s",
+				port)
+			return errors.New(errStr)
+		}
+		log.Warnf("Port %s matched Ifname but not Name", port)
 	}
 	log.Infof("Port %s valid for NetworkInstance", port)
 	return nil
@@ -849,7 +866,7 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	err := validatePortForNetworkInstance(ctx, status.Port,
 		allowSharedPort(status))
 	if err != nil {
-		log.Infof("validateAdaptor failed: Port: %s, err:%s", err, status.Port)
+		log.Infof("validatePortForNwrqoekInstance failed: Port: %s, err:%s", err, status.Port)
 		return err
 	}
 

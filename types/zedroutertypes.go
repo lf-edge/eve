@@ -1057,7 +1057,7 @@ type AddressType int32
 
 // The values here should be same as the ones defined in zconfig.AddressType
 const (
-	AddressTypeFirst      AddressType = 0
+	AddressTypeNone       AddressType = 0 // For switch networks
 	AddressTypeIPV4       AddressType = 1
 	AddressTypeIPV6       AddressType = 2
 	AddressTypeCryptoIPV4 AddressType = 3
