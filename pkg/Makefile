@@ -10,7 +10,7 @@ PKGS = grub xen kernel fw xen-tools dnsmasq strongswan gpt-tools dom0-ztools	\
         guacd \
         device-trees \
         debug \
-	zedctr mkconf mkrootfs-ext4 mkrootfs-squash mkimage-raw-efi mkimage-iso-efi
+	mkconf mkrootfs-ext4 mkrootfs-squash mkimage-raw-efi mkimage-iso-efi
 
 .PHONY: push force-push build forcebuild show-tag clean dockerfiles
 

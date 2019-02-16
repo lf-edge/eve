@@ -57,31 +57,7 @@ build-tools:
 build-pkgs: build-tools
 	make -C build-pkgs $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
 
-# FIXME: the following is an ugly workaround against linuxkit complaining:
-# FATA[0030] Failed to create OCI spec for zededa/zedctr:XXX: 
-#    Error response from daemon: pull access denied for zededa/zedctr, repository does not exist or may require ‘docker login’
-# The underlying problem is that running pkg target doesn't guarantee that
-# the zededa/zedctr:XXX container will end up in a local docker cache (if linuxkit 
-# doesn't rebuild the package) and we need it there for the linuxkit build to work.
-# Which means, that we have to either forcefully rebuild it or fetch from docker hub.
-zedctr-workaround: ZENIX_HASH:=$(shell echo ZEDEDA_TAG | $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
-zedctr-workaround: ZEDCTR_TAG:=zededa/zedctr:$(ZENIX_HASH)-$(DOCKER_ARCH_TAG)
-zedctr-workaround:
-	docker pull $(ZEDCTR_TAG) >/dev/null 2>&1 || : ;\
-	if ! docker inspect $(ZEDCTR_TAG) >/dev/null 2>&1 ; then \
-	  if [ $(ZARCH) != $$(uname -m) ] ; then \
-	    $(PARSE_PKGS) < pkg/zedctr/Dockerfile.cross.in > pkg/zedctr/Dockerfile ;\
-	    PKG_HASH=`mktemp -u XXXXXXXXXX` ;\
-	    make -C pkg PKGS=zedctr RESCAN_DEPS="" LINUXKIT_OPTS="--disable-content-trust --force --disable-cache --hash $$PKG_HASH" $(DEFAULT_PKG_TARGET) ;\
-	    PKG_HASH=zededa/zedctr:$$PKG_HASH ;\
-	    docker tag $$PKG_HASH $(ZEDCTR_TAG) ;\
-	    docker rmi $$PKG_HASH $$PKG_HASH-$(DOCKER_ARCH_TAG_$(shell uname -m)) ;\
-	  else \
-	    make -C pkg PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache --hash $(ZENIX_HASH)" $(DEFAULT_PKG_TARGET) ;\
-	  fi ;\
-	fi
-
-pkgs: build-tools build-pkgs zedctr-workaround
+pkgs: build-tools build-pkgs
 	make -C pkg $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
 
 bios:
@@ -122,9 +98,9 @@ run-rootfs: bios/OVMF.fd bios/EFI
 run-grub: bios/OVMF.fd bios/EFI
 	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=fat:rw:./bios/,format=raw
 
-# NOTE: that we have to depend on zedctr-workaround here to make sure
+# NOTE: that we have to depend on pkg/zedctr here to make sure
 # it gets triggered when we build any kind of image target
-images/%.yml: build-tools zedctr-workaround parse-pkgs.sh images/%.yml.in FORCE
+images/%.yml: build-tools pkg/zedctr parse-pkgs.sh images/%.yml.in FORCE
 	$(PARSE_PKGS) $@.in > $@
 	@# the following is a horrible hack that needs to go away ASAP \
 	if [ "$(ZARCH)" = aarch64 ] ; then \
@@ -167,6 +143,30 @@ zenix: ZENIX_HASH:=$(shell echo ZENIX_TAG | $(PARSE_PKGS) | sed -e 's#^.*:##' -e
 zenix: Makefile bios/OVMF.fd config.img $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(FALLBACK_IMG).img images/rootfs.yml images/installer.yml
 	cp $^ build-pkgs/zenix
 	make -C build-pkgs BUILD-PKGS=zenix $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
+
+# FIXME: the following is an ugly workaround against linuxkit complaining:
+# FATA[0030] Failed to create OCI spec for zededa/zedctr:XXX: 
+#    Error response from daemon: pull access denied for zededa/zedctr, repository does not exist or may require ‘docker login’
+# The underlying problem is that running pkg target doesn't guarantee that
+# the zededa/zedctr:XXX container will end up in a local docker cache (if linuxkit 
+# doesn't rebuild the package) and we need it there for the linuxkit build to work.
+# Which means, that we have to either forcefully rebuild it or fetch from docker hub.
+pkg/zedctr: ZENIX_HASH:=$(shell echo ZEDEDA_TAG | $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
+pkg/zedctr: ZEDCTR_TAG:=zededa/zedctr:$(ZENIX_HASH)-$(DOCKER_ARCH_TAG)
+pkg/zedctr: FORCE
+	docker pull $(ZEDCTR_TAG) >/dev/null 2>&1 || : ;\
+	if ! docker inspect $(ZEDCTR_TAG) >/dev/null 2>&1 ; then \
+	  if [ $(ZARCH) != $$(uname -m) ] ; then \
+	    $(PARSE_PKGS) < pkg/zedctr/Dockerfile.cross.in > pkg/zedctr/Dockerfile ;\
+	    PKG_HASH=`mktemp -u XXXXXXXXXX` ;\
+	    make -C pkg PKGS=zedctr RESCAN_DEPS="" LINUXKIT_OPTS="--disable-content-trust --force --disable-cache --hash $$PKG_HASH" $(DEFAULT_PKG_TARGET) ;\
+	    PKG_HASH=zededa/zedctr:$$PKG_HASH ;\
+	    docker tag $$PKG_HASH $(ZEDCTR_TAG) ;\
+	    docker rmi $$PKG_HASH $$PKG_HASH-$(DOCKER_ARCH_TAG_$(shell uname -m)) ;\
+	  else \
+	    make -C pkg PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache --hash $(ZENIX_HASH)" $(DEFAULT_PKG_TARGET) ;\
+	  fi ;\
+	fi
 
 pkg/%: FORCE
 	make -C pkg PKGS=$(notdir $@) LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
