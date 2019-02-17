@@ -1,7 +1,7 @@
 #!/bin/bash
 
 word_per_line() {
-   for i in $* ; do echo $i ; done | sort
+   for i in $* ; do echo $i ; done | sort -t. -n -k1,1 -k2,2 -k3,3
 }
 
 run() {
@@ -21,8 +21,9 @@ esac
 
 GIT_TAGS=$(cd $REPO ; git tag --sort=-creatordate | grep '[0-9]*\.[0-9]*\.[0-9]*')
 LATEST_TAG=$(set $GIT_TAGS ; echo $1)
-DOCKER_TAGS=$(wget -q https://registry.hub.docker.com/v1/repositories/zededa/$REPO/tags -O -  | sed -e 's/[][]//g' -e 's/"//g' -e 's/ //g' | tr '}' '\n'  | cut -f3 -d:)
-DOCKER_TAGS=${DOCKER_TAGS:-$(wget -q https://registry.hub.docker.com/v1/repositories/zededa/zenix/tags -O -  | sed -e 's/[][]//g' -e 's/"//g' -e 's/ //g' | tr '}' '\n'  | cut -f3 -d:)}
+DOCKER_TAGS=$(wget -q https://registry.hub.docker.com/v1/repositories/zededa/$REPO/tags -O -  | sed -e 's/[][]//g' -e 's/"//g' -e 's/ //g' | tr '}' '\n'  | cut -f3 -d: | grep '[0-9]*\.[0-9]*\.[0-9]*')
+DOCKER_TAGS=${DOCKER_TAGS:-$(wget -q https://registry.hub.docker.com/v1/repositories/zededa/zenix/tags -O -  | sed -e 's/[][]//g' -e 's/"//g' -e 's/ //g' | tr '}' '\n'  | cut -f3 -d: | grep '[0-9]*\.[0-9]*\.[0-9]*')}
+diff -u <(word_per_line $DOCKER_TAGS) <(word_per_line $GIT_TAGS | sed -e 's#$#'$ARCH'#')
 MISSING_TAGS=$(diff -u <(word_per_line $DOCKER_TAGS) <(word_per_line $GIT_TAGS | sed -e 's#$#'$ARCH'#') | sed -ne '/^+[^+]/s#^\+##p' | sed -e 's#'$ARCH'##')
 MISSING_TAGS=${MISSING_TAGS:-origin/master}
 
