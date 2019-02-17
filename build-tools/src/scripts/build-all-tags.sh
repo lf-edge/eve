@@ -10,11 +10,20 @@ run() {
 
 REPO="$1"
 
+case $(uname -m) in
+  x86_64) ARCH=-amd64
+    ;;
+  aarch64) ARCH=-arm64
+    ;;
+  *) echo "Unsupported architecture $(uname -m). Exiting" && exit 1
+      ;;
+esac
+
 GIT_TAGS=$(cd $REPO ; git tag --sort=-creatordate | grep '[0-9]*\.[0-9]*\.[0-9]*')
 LATEST_TAG=$(set $GIT_TAGS ; echo $1)
 DOCKER_TAGS=$(wget -q https://registry.hub.docker.com/v1/repositories/zededa/$REPO/tags -O -  | sed -e 's/[][]//g' -e 's/"//g' -e 's/ //g' | tr '}' '\n'  | cut -f3 -d:)
 DOCKER_TAGS=${DOCKER_TAGS:-$(wget -q https://registry.hub.docker.com/v1/repositories/zededa/zenix/tags -O -  | sed -e 's/[][]//g' -e 's/"//g' -e 's/ //g' | tr '}' '\n'  | cut -f3 -d:)}
-MISSING_TAGS=$(diff -u <(word_per_line $DOCKER_TAGS) <(word_per_line $GIT_TAGS) | sed -ne '/^+[^+]/s#^\+##p')
+MISSING_TAGS=$(diff -u <(word_per_line $DOCKER_TAGS) <(word_per_line $GIT_TAGS | sed -e 's#$#'$ARCH'#') | sed -ne '/^+[^+]/s#^\+##p' | sed -e 's#'$ARCH'##')
 MISSING_TAGS=${MISSING_TAGS:-origin/master}
 
 echo "Building the following tags: $MISSING_TAGS (latest tag is ${LATEST_TAG})"
