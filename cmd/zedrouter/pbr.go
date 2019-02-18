@@ -379,6 +379,8 @@ type linkNameType struct {
 	linkType string
 }
 
+// XXX - IfIndexToName mapping is used outside of PBR as well. Better
+//	to move it into a separate module.
 var ifindexToName map[int]linkNameType
 
 func IfindexToNameInit() {

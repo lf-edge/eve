@@ -308,6 +308,17 @@ func (status *DeviceNetworkStatus) GetPortByName(
 	return nil
 }
 
+func (status *DeviceNetworkStatus) GetPortByIfName(
+	port string) *NetworkPortStatus {
+	for _, portStatus := range status.Ports {
+		if portStatus.IfName == port {
+			log.Infof("Found NetworkPortStatus for %s", port)
+			return &portStatus
+		}
+	}
+	return nil
+}
+
 func rotate(arr []string, amount int) []string {
 	if len(arr) == 0 {
 		return []string{}
@@ -723,8 +734,27 @@ type OverlayNetworkConfig struct {
 	ACLs          []ACE
 	AppMacAddr    net.HardwareAddr // If set use it for vif
 	AppIPAddr     net.IP           // EIDv4 or EIDv6
-	Network       uuid.UUID
 
+	// Network
+	//   Currently overloaded. Can point to NetworkInstance or
+	//   NetworkConfig. If UsesNetworkInstance is set, Network
+	//   UUID points to NetworkInstance. Else, it points
+	//   to Network
+	//   XXX - Clean this up when deleting Network-Service support.
+	Network uuid.UUID
+	// UsesNetworkInstance
+	//   This attribute can be deleted when we stop network-service
+	//   support.
+	UsesNetworkInstance bool
+
+	// Error
+	//	If there is a parsing error and this uLNetwork config cannot be
+	//	processed, set the error here. This allows the error to be propagated
+	//  back to zedcloud
+	//	If this is non-empty ( != ""), the network Config should not be
+	// 	processed further. It Should just	be flagged to be in error state
+	//  back to the cloud.
+	Error string
 	// Optional additional information
 	AdditionalInfoDevice *AdditionalInfoDevice
 
@@ -756,6 +786,16 @@ type UnderlayNetworkConfig struct {
 	Name       string           // From proto message
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
+
+	// Error
+	//	If there is a parsing error and this uLNetwork config cannot be
+	//	processed, set the error here. This allows the error to be propagated
+	//  back to zedcloud
+	//	If this is non-empty ( != ""), the UL network Config should not be
+	// 	processed further. It Should just	be flagged to be in error state
+	//  back to the cloud.
+	Error string
+
 	// Network
 	//   Currently overloaded. Can point to NetworkInstance or
 	//   NetworkConfig. If UsesNetworkInstance is set, Network
@@ -1156,7 +1196,7 @@ type VifNameMac struct {
 func (status *NetworkInstanceStatus) UpdateNetworkMetrics(
 	nms *NetworkMetrics) *NetworkMetric {
 
-	netMetric  := NetworkMetric{IfName: status.BridgeName}
+	netMetric := NetworkMetric{IfName: status.BridgeName}
 	for _, vif := range status.Vifs {
 		metric, found := nms.LookupNetworkMetrics(vif.Name)
 		if !found {
@@ -1167,14 +1207,14 @@ func (status *NetworkInstanceStatus) UpdateNetworkMetrics(
 		status.VifMetricMap[vif.Name] = metric
 	}
 	for _, metric := range status.VifMetricMap {
-		netMetric.TxBytes    += metric.TxBytes
-		netMetric.RxBytes    += metric.RxBytes
-		netMetric.TxPkts     += metric.TxPkts
-		netMetric.RxPkts     += metric.RxPkts
-		netMetric.TxErrors   += metric.TxErrors
-		netMetric.RxErrors   += metric.RxErrors
-		netMetric.TxDrops    += metric.TxDrops
-		netMetric.RxDrops    += metric.RxDrops
+		netMetric.TxBytes += metric.TxBytes
+		netMetric.RxBytes += metric.RxBytes
+		netMetric.TxPkts += metric.TxPkts
+		netMetric.RxPkts += metric.RxPkts
+		netMetric.TxErrors += metric.TxErrors
+		netMetric.RxErrors += metric.RxErrors
+		netMetric.TxDrops += metric.TxDrops
+		netMetric.RxDrops += metric.RxDrops
 		netMetric.TxAclDrops += metric.TxAclDrops
 		netMetric.RxAclDrops += metric.RxAclDrops
 		netMetric.TxAclRateLimitDrops += metric.TxAclRateLimitDrops
@@ -1198,10 +1238,10 @@ func (status *NetworkInstanceStatus) UpdateBridgeMetrics(
 		log.Debugf("No metrics found for Bridge %s",
 			status.BridgeName)
 	} else {
-		netMetric.TxErrors   += bridgeMetric.TxErrors
-		netMetric.RxErrors   += bridgeMetric.RxErrors
-		netMetric.TxDrops    += bridgeMetric.TxDrops
-		netMetric.RxDrops    += bridgeMetric.RxDrops
+		netMetric.TxErrors += bridgeMetric.TxErrors
+		netMetric.RxErrors += bridgeMetric.RxErrors
+		netMetric.TxDrops += bridgeMetric.TxDrops
+		netMetric.RxDrops += bridgeMetric.RxDrops
 		netMetric.TxAclDrops += bridgeMetric.TxAclDrops
 		netMetric.RxAclDrops += bridgeMetric.RxAclDrops
 		netMetric.TxAclRateLimitDrops += bridgeMetric.TxAclRateLimitDrops

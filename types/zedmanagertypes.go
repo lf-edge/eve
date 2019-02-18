@@ -44,10 +44,15 @@ type UUIDandVersion struct {
 // (advertize the EID in lisp and boot the guest) is driven by the Activate
 // attribute.
 type AppInstanceConfig struct {
-	UUIDandVersion      UUIDandVersion
-	DisplayName         string
-	ConfigSha256        string
-	ConfigSignature     string
+	UUIDandVersion  UUIDandVersion
+	DisplayName     string
+	ConfigSha256    string
+	ConfigSignature string
+
+	// Error
+	//	If this is set, do not process further.. Just set the status to error
+	//	so the cloud gets it.
+	Errors              []string
 	FixedResources      VmConfig // CPU etc
 	StorageConfigList   []StorageConfig
 	Activate            bool
