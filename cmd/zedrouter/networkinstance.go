@@ -666,7 +666,7 @@ func getPortIPv4Addr(ctx *zedrouterContext,
 		log.Infof("found addr %s\n", addr.IP.String())
 		return addr.IP.String(), nil
 	}
-	log.Infof("IP address on %s yet\n", status.Port)
+	log.Infof("No IP address on %s yet\n", status.Port)
 	return "", nil
 }
 
@@ -692,7 +692,7 @@ func setBridgeIPAddrForNetworkInstance(
 		errStr := fmt.Sprintf("Failed to get link for Bridge %s", status.BridgeName)
 		return errors.New(errStr)
 	}
-	log.Infof("Bridge: %s, Link: %s\n", status.BridgeName, link)
+	log.Infof("Bridge: %s, Link: %+v\n", status.BridgeName, link)
 
 	var ipAddr string
 	var err error
@@ -750,8 +750,10 @@ func setBridgeIPAddrForNetworkInstance(
 				status.BridgeName)
 			return errors.New(errStr)
 		}
-		ipAddr = status.Gateway.String()
-		status.IPAssignments[bridgeMac.String()] = status.Gateway
+		if status.Gateway != nil {
+			ipAddr = status.Gateway.String()
+			status.IPAssignments[bridgeMac.String()] = status.Gateway
+		}
 		log.Infof("BridgeMac: %s, ipAddr: %s\n",
 			bridgeMac.String(), ipAddr)
 	}
