@@ -1282,6 +1282,140 @@ func parseUnderlayNetworkConfigEntry(
 	return ulCfg
 }
 
+func parseOverlayNetworkConfigEntry(
+	cfgApp *zconfig.AppInstanceConfig,
+	cfgNetworks []*zconfig.NetworkConfig,
+	cfgNetworkInstances []*zconfig.NetworkInstanceConfig,
+	intfEnt *zconfig.NetworkAdapter) *types.EIDOverlayConfig {
+	var networkUuidStr string
+	var networkInstanceEntry *zconfig.NetworkInstanceConfig = nil
+
+	olCfg := new(types.EIDOverlayConfig)
+	olCfg.Name = intfEnt.Name
+
+	netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
+	if netEnt == nil {
+		// Lookup NetworkInstance ID
+		networkInstanceEntry = lookupNetworkInstanceId(intfEnt.NetworkId,
+			cfgNetworkInstances)
+		olCfg.UsesNetworkInstance = true
+		if networkInstanceEntry == nil {
+			olCfg.Error = fmt.Sprintf("App %s - Can't find network id %s in networks or "+
+				"networkinstances. Ignoring this network",
+				cfgApp.Displayname, intfEnt.NetworkId)
+			log.Errorf("%s", olCfg.Error)
+			return olCfg
+		}
+		networkUuidStr = networkInstanceEntry.Uuidandversion.Uuid
+	} else {
+		olCfg.UsesNetworkInstance = false
+		networkUuidStr = netEnt.Id
+	}
+	uuid, err := uuid.FromString(networkUuidStr)
+	if err != nil {
+		olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: Malformed UUID ignored: %s",
+			err)
+		log.Errorf("%s", olCfg.Error)
+		return olCfg
+	}
+	if netEnt != nil {
+		switch netEnt.Type {
+		case zconfig.NetworkType_CryptoV4, zconfig.NetworkType_CryptoV6:
+			// do nothing
+		default:
+			olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: Unsupported overlay type %v",
+				netEnt.Type)
+			return olCfg
+		}
+		log.Infof("parseOverlayNetworkConfigEntry: app %v net %v type %v\n",
+			cfgApp.Displayname, uuid.String(), netEnt.Type)
+	} else {
+		if networkInstanceEntry.InstType != zconfig.ZNetworkInstType_ZnetInstMesh {
+			olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: Unsupported" +
+				" overlay network instance type %v", networkInstanceEntry.InstType)
+			log.Errorf("%s", olCfg.Error)
+			return olCfg
+		}
+		log.Infof("NetworkInstance(%s-%s): InstType %v\n",
+			cfgApp.Displayname, uuid.String(),
+			networkInstanceEntry.InstType)
+	}
+
+	olCfg.Network = uuid
+	if intfEnt.MacAddress != "" {
+		log.Infof("parseOverlayNetworkConfigEntry: (App %s, Overlay interface %s) - " +
+			"Got static mac %s", cfgApp.Displayname, olCfg.Name, intfEnt.MacAddress)
+		olCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
+		if err != nil {
+			olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: bad MAC %s: %s\n",
+				intfEnt.MacAddress, err)
+			log.Errorf("%s", olCfg.Error)
+			return olCfg
+		}
+	}
+	// Handle old and new location of EIDv6
+	if intfEnt.CryptoEid != "" {
+		olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.CryptoEid)
+		if olCfg.EIDConfigDetails.EID == nil {
+			olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: bad CryptoEid %s\n",
+				intfEnt.CryptoEid)
+			log.Errorf("%s", olCfg.Error)
+		}
+		// Any IPv4 EID?
+		if intfEnt.Addr != "" {
+			olCfg.AppIPAddr = net.ParseIP(intfEnt.Addr)
+			if olCfg.AppIPAddr == nil {
+				olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: bad Addr %s\n",
+					intfEnt.Addr)
+				log.Errorf("%s", olCfg.Error)
+			}
+		}
+	} else if intfEnt.Addr != "" {
+		olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.Addr)
+		if olCfg.EIDConfigDetails.EID == nil {
+			olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: bad Addr %s\n",
+				intfEnt.Addr)
+			log.Errorf("%s", olCfg.Error)
+		}
+	}
+	if olCfg.AppIPAddr == nil {
+		olCfg.AppIPAddr = olCfg.EIDConfigDetails.EID
+	}
+
+	olCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
+	for aclIdx, acl := range intfEnt.Acls {
+		aclCfg := new(types.ACE)
+		aclCfg.Matches = make([]types.ACEMatch,
+		len(acl.Matches))
+		aclCfg.Actions = make([]types.ACEAction,
+		len(acl.Actions))
+		for matchIdx, match := range acl.Matches {
+			matchCfg := new(types.ACEMatch)
+			matchCfg.Type = match.Type
+			matchCfg.Value = match.Value
+			aclCfg.Matches[matchIdx] = *matchCfg
+		}
+
+		for actionIdx, action := range acl.Actions {
+			actionCfg := new(types.ACEAction)
+			actionCfg.Limit = action.Limit
+			actionCfg.LimitRate = int(action.Limitrate)
+			actionCfg.LimitUnit = action.Limitunit
+			actionCfg.LimitBurst = int(action.Limitburst)
+			actionCfg.PortMap = action.Portmap
+			actionCfg.TargetPort = int(action.AppPort)
+			aclCfg.Actions[actionIdx] = *actionCfg
+		}
+		olCfg.ACLs[aclIdx] = *aclCfg
+	}
+
+	olCfg.EIDConfigDetails.LispSignature = intfEnt.Lispsignature
+	olCfg.EIDConfigDetails.PemCert = intfEnt.Pemcert
+	olCfg.EIDConfigDetails.PemPrivateKey = intfEnt.Pemprivatekey
+
+	return olCfg
+}
+
 // parseOverlayNetworkConfig
 //	This is not supported for NetworkInstances.
 func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
@@ -1290,125 +1424,18 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgNetworkInstances []*zconfig.NetworkInstanceConfig) {
 
 	for _, intfEnt := range cfgApp.Interfaces {
-		var networkUuidStr string
-		var networkInstanceEntry *zconfig.NetworkInstanceConfig = nil
-
-		netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
-		if netEnt == nil {
-			log.Errorf("parseOverlayNetworkConfig: Can't find network id %s; ignored\n",
-				intfEnt.NetworkId)
-			continue
+		olCfg := parseOverlayNetworkConfigEntry(
+			cfgApp, cfgNetworks, cfgNetworkInstances, intfEnt)
+		if olCfg == nil {
+			log.Fatalf("Nil olcfg for App interface %s", intfEnt.Name)
 		}
-		if netEnt == nil {
-			// Lookup NetworkInstance ID
-			networkInstanceEntry = lookupNetworkInstanceId(intfEnt.NetworkId,
-				cfgNetworkInstances)
-			if networkInstanceEntry == nil {
-				log.Errorf("App %s - Can't find network id %s in networks or "+
-					"networkinstances. Ignoring this network\n",
-					cfgApp.Displayname, intfEnt.NetworkId)
-				continue
-			}
-			networkUuidStr = networkInstanceEntry.Uuidandversion.Uuid
-		} else {
-			networkUuidStr = netEnt.Id
-		}
-		uuid, err := uuid.FromString(networkUuidStr)
-		if err != nil {
-			log.Errorf("parseOverlayNetworkConfig: Malformed UUID ignored: %s\n",
-				err)
-			continue
-		}
-		if netEnt != nil {
-			switch netEnt.Type {
-			case zconfig.NetworkType_CryptoEID:
-				// do nothing
-			default:
-				continue
-			}
-			log.Infof("parseOverlayNetworkConfig: app %v net %v type %v\n",
-				cfgApp.Displayname, uuid.String(), netEnt.Type)
-		} else {
-			log.Infof("NetworkInstance(%s-%s): InstType %v\n",
-				cfgApp.Displayname, uuid.String(),
-				networkInstanceEntry.InstType)
-		}
-
-		olCfg := new(types.EIDOverlayConfig)
-		olCfg.Network = uuid
-		olCfg.Name = intfEnt.Name
-		if intfEnt.MacAddress != "" {
-			log.Infof("parseOverlayNetworkConfig: (App %s, Overlay interface %s) - " +
-				"Got static mac %s", cfgApp.Displayname, olCfg.Name, intfEnt.MacAddress)
-			olCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
-			if err != nil {
-				log.Errorf("parseOverlayNetworkConfig: bad MAC %s: %s\n",
-					intfEnt.MacAddress, err)
-				// XXX report error?
-			}
-		}
-		// Handle old and new location of EIDv6
-		if intfEnt.CryptoEid != "" {
-			olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.CryptoEid)
-			if olCfg.EIDConfigDetails.EID == nil {
-				log.Errorf("parseOverrlayNetworkConfig: bad CryptoEid %s\n",
-					intfEnt.CryptoEid)
-				// XXX report error?
-			}
-			// Any IPv4 EID?
-			if intfEnt.Addr != "" {
-				olCfg.AppIPAddr = net.ParseIP(intfEnt.Addr)
-				if olCfg.AppIPAddr == nil {
-					log.Errorf("parseOverlayNetworkConfig: bad Addr %s\n",
-						intfEnt.Addr)
-					// XXX report error?
-				}
-			}
-		} else if intfEnt.Addr != "" {
-			olCfg.EIDConfigDetails.EID = net.ParseIP(intfEnt.Addr)
-			if olCfg.EIDConfigDetails.EID == nil {
-				log.Errorf("parseOverrlayNetworkConfig: bad Addr %s\n",
-					intfEnt.Addr)
-				// XXX report error?
-			}
-		}
-		if olCfg.AppIPAddr == nil {
-			olCfg.AppIPAddr = olCfg.EIDConfigDetails.EID
-		}
-
-		olCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
-		for aclIdx, acl := range intfEnt.Acls {
-			aclCfg := new(types.ACE)
-			aclCfg.Matches = make([]types.ACEMatch,
-				len(acl.Matches))
-			aclCfg.Actions = make([]types.ACEAction,
-				len(acl.Actions))
-			for matchIdx, match := range acl.Matches {
-				matchCfg := new(types.ACEMatch)
-				matchCfg.Type = match.Type
-				matchCfg.Value = match.Value
-				aclCfg.Matches[matchIdx] = *matchCfg
-			}
-
-			for actionIdx, action := range acl.Actions {
-				actionCfg := new(types.ACEAction)
-				actionCfg.Limit = action.Limit
-				actionCfg.LimitRate = int(action.Limitrate)
-				actionCfg.LimitUnit = action.Limitunit
-				actionCfg.LimitBurst = int(action.Limitburst)
-				actionCfg.PortMap = action.Portmap
-				actionCfg.TargetPort = int(action.AppPort)
-				aclCfg.Actions[actionIdx] = *actionCfg
-			}
-			olCfg.ACLs[aclIdx] = *aclCfg
-		}
-
-		olCfg.EIDConfigDetails.LispSignature = intfEnt.Lispsignature
-		olCfg.EIDConfigDetails.PemCert = intfEnt.Pemcert
-		olCfg.EIDConfigDetails.PemPrivateKey = intfEnt.Pemprivatekey
-
 		appInstance.OverlayNetworkList = append(appInstance.OverlayNetworkList,
 			*olCfg)
+		if olCfg.Error != "" {
+			appInstance.Errors = append(appInstance.Errors, olCfg.Error)
+			log.Errorf("Error in Interface(%s) config. Error: %s",
+				intfEnt.Name, olCfg.Error)
+		}
 	}
 }
 

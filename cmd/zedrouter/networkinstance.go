@@ -93,9 +93,7 @@ func checkPortAvailableForNetworkInstance(
 				return errors.New(errStr)
 			}
 		}
-	case types.NetworkInstanceTypeLocal:
-	case types.NetworkInstanceTypeCloud:
-	case types.NetworkInstanceTypeMesh:
+	case types.NetworkInstanceTypeLocal, types.NetworkInstanceTypeCloud, types.NetworkInstanceTypeMesh:
 		// Make sure it is not used by a NetworkInstance of type Switch
 		for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
 			if status == iterStatusEntry {
