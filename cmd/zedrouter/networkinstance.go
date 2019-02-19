@@ -164,6 +164,80 @@ func doCreateBridge(bridgeName string, bridgeNum int) (error, string) {
 	return nil, bridgeMac
 }
 
+func networkInstanceBridgeDelete(
+	ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) {
+	// When bridge and sister interfaces are deleted, code in pbr.go
+	// takes care of deleting the corresponding route tables and ip rules.
+
+	bridgeName := status.BridgeName
+	switch status.IpType {
+	case types.AddressTypeCryptoIPV4:
+		fallthrough
+	case types.AddressTypeCryptoIPV6:
+		// "s" for sister
+		dummyIntfName := "s" + bridgeName
+
+		// Delete the sister dummy interface also
+		sattrs := netlink.NewLinkAttrs()
+		sattrs.Name = dummyIntfName
+		sLink := &netlink.Dummy{LinkAttrs: sattrs}
+		netlink.LinkDel(sLink)
+	}
+
+	attrs := netlink.NewLinkAttrs()
+	attrs.Name = bridgeName
+	link := &netlink.Bridge{LinkAttrs: attrs}
+	// Remove link and associated addresses
+	netlink.LinkDel(link)
+
+	status.BridgeName = ""
+	status.BridgeNum = 0
+	bridgeNumFree(ctx, status.UUID)
+}
+
+func doNetworkInstanceBridgeAclsDelete(
+	ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) {
+
+	// Delete ACLs attached to this network aka linux bridge
+	items := ctx.pubAppNetworkStatus.GetAll()
+	for _, ans := range items {
+		appNetStatus := cast.CastAppNetworkStatus(ans)
+
+		for _, olStatus := range appNetStatus.OverlayNetworkList {
+			if olStatus.UsesNetworkInstance && olStatus.Network != status.UUID {
+				continue
+			}
+			log.Infof("NetworkInstance - deleting Acls for OL Interface(%s)",
+				olStatus.Name)
+			err := deleteACLConfiglet(olStatus.Bridge,
+				olStatus.Vif, false, olStatus.ACLs,
+				olStatus.BridgeIPAddr,
+				olStatus.EID.String())
+			if err != nil {
+				log.Errorf("doNetworkDelete ACL failed: %s\n",
+					err)
+			}
+		}
+		for _, ulStatus := range appNetStatus.UnderlayNetworkList {
+			if ulStatus.UsesNetworkInstance && ulStatus.Network != status.UUID {
+				continue
+			}
+			log.Infof("NetworkInstance - deleting Acls for UL Interface(%s)",
+				ulStatus.Name)
+			err := deleteACLConfiglet(ulStatus.Bridge,
+				ulStatus.Vif, false, ulStatus.ACLs,
+				ulStatus.BridgeIPAddr, ulStatus.AssignedIPAddr)
+			if err != nil {
+				log.Errorf("NetworkInstance DeleteACL failed: %s\n",
+					err)
+			}
+		}
+	}
+	return
+}
+
 func handleNetworkInstanceModify(
 	ctxArg interface{},
 	key string,
@@ -311,7 +385,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 
 	// Start clean
 	deleteDnsmasqConfiglet(bridgeName)
-	stopDnsmasq(bridgeName, false)
+	stopDnsmasq(bridgeName, false, false)
 
 	if status.BridgeIPAddr != "" {
 		createDnsmasqConfigletForNetworkInstance(bridgeName,
@@ -324,7 +398,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		// XXX do we need same logic as for IPv4 dnsmasq to not
 		// advertize as default router? Might we need lower
 		// radvd preference if isolated local network?
-		restartRadvdWithNewConfig(status)
+		restartRadvdWithNewConfig(bridgeName)
 	}
 	return nil
 }
@@ -520,8 +594,7 @@ func getSwitchNetworkInstanceUsingPort(
 
 func restartDnsmasq(status *types.NetworkInstanceStatus) {
 	bridgeName := status.BridgeName
-	deleteDnsmasqConfiglet(bridgeName)
-	stopDnsmasq(bridgeName, false)
+	stopDnsmasq(bridgeName, false, true)
 
 	hostsDirpath := globalRunDirname + "/hosts." + bridgeName
 	// XXX arbitrary name "router"!!
@@ -777,7 +850,7 @@ func setBridgeIPAddrForNetworkInstance(
 	// Create new radvd configuration and restart radvd if ipv6
 	if status.IsIPv6() {
 		log.Infof("Restart Radvd\n")
-		restartRadvdWithNewConfig(status)
+		restartRadvdWithNewConfig(status.BridgeName)
 	}
 	return nil
 }
@@ -943,17 +1016,8 @@ func doNetworkInstanceInactivate(
 	log.Infof("doNetworkInstanceInactivate NetworkInstance key %s type %d\n",
 		status.UUID, status.Type)
 
-	switch status.Type {
-	case types.NetworkInstanceTypeSwitch:
-		bridgeInactivateforNetworkInstance(ctx, status)
-		updateBridgeIPAddrForNetworkInstance(ctx, status)
-	case types.NetworkInstanceTypeLocal:
-		natInactivateForNetworkInstance(ctx, status)
-	default:
-		errStr := fmt.Sprintf("doNetworkInstanceInactivate NetworkInstance %d not yet supported",
-			status.Type)
-		log.Infoln(errStr)
-	}
+	bridgeInactivateforNetworkInstance(ctx, status)
+	natInactivateForNetworkInstance(ctx, status)
 	return
 }
 
@@ -963,6 +1027,7 @@ func doNetworkInstanceDelete(
 
 	log.Infof("doNetworkInstanceDelete NetworkInstance key %s type %d\n",
 		status.UUID, status.Type)
+
 	// Anything to do except the inactivate already done?
 	switch status.Type {
 	case types.NetworkInstanceTypeSwitch:
@@ -970,11 +1035,17 @@ func doNetworkInstanceDelete(
 	case types.NetworkInstanceTypeLocal:
 		natDeleteForNetworkInstance(status)
 	default:
-		errStr := fmt.Sprintf("doNetworkInstanceDelete NetworkInstance %d not yet supported",
-			status.Type)
-		log.Errorln(errStr)
+		log.Errorf("NetworkInstance(%s-%s): Type %d not yet supported",
+			status.DisplayName, status.UUID, status.Type)
 	}
-	return
+
+	doNetworkInstanceBridgeAclsDelete(ctx, status)
+	stopDnsmasq(status.BridgeName, false, false)
+
+	if status.IsIPv6() {
+		stopRadvd(status.BridgeName, true)
+	}
+	networkInstanceBridgeDelete(ctx, status)
 }
 
 func lookupNetworkInstanceConfig(ctx *zedrouterContext, key string) *types.NetworkInstanceConfig {

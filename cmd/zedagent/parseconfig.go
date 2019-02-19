@@ -1156,106 +1156,129 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgNetworkInstances []*zconfig.NetworkInstanceConfig) {
 
 	for _, intfEnt := range cfgApp.Interfaces {
-		var networkUuidStr string
-		var networkInstanceEntry *zconfig.NetworkInstanceConfig = nil
-		netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
-		if netEnt == nil {
-			// Lookup NetworkInstance ID
-			networkInstanceEntry = lookupNetworkInstanceId(intfEnt.NetworkId,
-				cfgNetworkInstances)
-			if networkInstanceEntry == nil {
-				log.Errorf("App %s - Can't find network id %s in networks or "+
-					"networkinstances. Ignoring this network\n",
-					cfgApp.Displayname, intfEnt.NetworkId)
-				continue
-			}
-			networkUuidStr = networkInstanceEntry.Uuidandversion.Uuid
-		} else {
-			networkUuidStr = netEnt.Id
-		}
-		uuid, err := uuid.FromString(networkUuidStr)
-		if err != nil {
-			log.Errorf("parseUnderlayNetworkConfig: Malformed UUID %s ignored: %s\n",
-				networkUuidStr, err)
-			continue
-		}
-
-		if netEnt != nil {
-			switch netEnt.Type {
-			case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
-				// Do nothing
-			default:
-				continue
-			}
-			log.Infof("parseUnderlayNetworkConfig: app %v net %v type %v\n",
-				cfgApp.Displayname, uuid.String(), netEnt.Type)
-		} else {
-			// NetworkInstance
-			log.Infof("NetworkInstance(%s-%s): InstType %v\n",
-				cfgApp.Displayname, uuid.String(),
-				networkInstanceEntry.InstType)
-		}
-
-		ulCfg := new(types.UnderlayNetworkConfig)
-		ulCfg.Name = intfEnt.Name
-		ulCfg.Network = uuid
-		ulCfg.UsesNetworkInstance = (networkInstanceEntry != nil)
-		if intfEnt.MacAddress != "" {
-			log.Infof("parseUnderlayNetworkConfig: got static MAC %s\n",
-				intfEnt.MacAddress)
-			ulCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
-			if err != nil {
-				log.Errorf("parseUnderlayNetworkConfig: bad MAC %s: %s\n",
-					intfEnt.MacAddress, err)
-				// XXX report error?
-			}
-		}
-		if intfEnt.Addr != "" {
-			log.Infof("parseUnderlayNetworkConfig: got static IP %s\n",
-				intfEnt.Addr)
-			ulCfg.AppIPAddr = net.ParseIP(intfEnt.Addr)
-			if ulCfg.AppIPAddr == nil {
-				log.Errorf("parseUnderlayNetworkConfig: bad AppIPAddr %s\n",
-					intfEnt.Addr)
-				// XXX report error?
-			}
-			// XXX workaround for bad config from zedcloud
-			if ulCfg.AppIPAddr.To4() == nil {
-				log.Errorf("XXX parseUnderlayNetworkConfig: ignoring static IPv6 %s\n",
-					intfEnt.Addr)
-				ulCfg.AppIPAddr = nil
-			}
-		}
-		ulCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
-		for aclIdx, acl := range intfEnt.Acls {
-			aclCfg := new(types.ACE)
-			aclCfg.Matches = make([]types.ACEMatch,
-				len(acl.Matches))
-			aclCfg.Actions = make([]types.ACEAction,
-				len(acl.Actions))
-			for matchIdx, match := range acl.Matches {
-				matchCfg := new(types.ACEMatch)
-				matchCfg.Type = match.Type
-				matchCfg.Value = match.Value
-				aclCfg.Matches[matchIdx] = *matchCfg
-			}
-
-			for actionIdx, action := range acl.Actions {
-				actionCfg := new(types.ACEAction)
-				actionCfg.Limit = action.Limit
-				actionCfg.LimitRate = int(action.Limitrate)
-				actionCfg.LimitUnit = action.Limitunit
-				actionCfg.LimitBurst = int(action.Limitburst)
-				actionCfg.PortMap = action.Portmap
-				actionCfg.TargetPort = int(action.AppPort)
-				// XXX:FIXME actionCfg.Drop = <TBD>
-				aclCfg.Actions[actionIdx] = *actionCfg
-			}
-			ulCfg.ACLs[aclIdx] = *aclCfg
+		ulCfg := parseUnderlayNetworkConfigEntry(
+			cfgApp, cfgNetworks, cfgNetworkInstances, intfEnt)
+		if ulCfg == nil {
+			log.Fatalf("Nil ulcfg")
 		}
 		appInstance.UnderlayNetworkList = append(appInstance.UnderlayNetworkList,
 			*ulCfg)
+		if ulCfg.Error != "" {
+			appInstance.Errors = append(appInstance.Errors, ulCfg.Error)
+			log.Errorf("Error in Interface(%s) config. Error: %s",
+				intfEnt.Name, ulCfg.Error)
+		}
 	}
+}
+
+func parseUnderlayNetworkConfigEntry(
+	cfgApp *zconfig.AppInstanceConfig,
+	cfgNetworks []*zconfig.NetworkConfig,
+	cfgNetworkInstances []*zconfig.NetworkInstanceConfig,
+	intfEnt *zconfig.NetworkAdapter) *types.UnderlayNetworkConfig {
+
+	var networkUuidStr string
+	var networkInstanceEntry *zconfig.NetworkInstanceConfig = nil
+
+	ulCfg := new(types.UnderlayNetworkConfig)
+	ulCfg.Name = intfEnt.Name
+
+	netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
+	if netEnt == nil {
+		// Lookup NetworkInstance ID
+		networkInstanceEntry = lookupNetworkInstanceId(intfEnt.NetworkId,
+			cfgNetworkInstances)
+		if networkInstanceEntry == nil {
+			ulCfg.Error = fmt.Sprintf("App %s-%s: Can't find network id %s in networks "+
+				"or networkinstances.\n",
+				cfgApp.Displayname, cfgApp.Uuidandversion.Uuid,
+				intfEnt.NetworkId)
+			log.Errorf("%s", ulCfg.Error)
+			return ulCfg
+		}
+		ulCfg.UsesNetworkInstance = true
+		networkUuidStr = networkInstanceEntry.Uuidandversion.Uuid
+		log.Infof("NetworkInstance(%s-%s): InstType %v\n",
+			cfgApp.Displayname, cfgApp.Uuidandversion.Uuid,
+			networkInstanceEntry.InstType)
+	} else {
+		ulCfg.UsesNetworkInstance = false
+		networkUuidStr = netEnt.Id
+		log.Infof("parseUnderlayNetworkConfig: app %v net %v type %v\n",
+			cfgApp.Displayname, networkUuidStr, netEnt.Type)
+	}
+
+	var err error
+	ulCfg.Network, err = uuid.FromString(networkUuidStr)
+	if err != nil {
+		ulCfg.Error = fmt.Sprintf("App %s-%s: Malformed Network UUID %s. Err: %s\n",
+			cfgApp.Displayname, cfgApp.Uuidandversion.Uuid, networkUuidStr, err)
+		log.Errorf("%s", ulCfg.Error)
+		return ulCfg
+	}
+	if intfEnt.MacAddress != "" {
+		log.Infof("parseUnderlayNetworkConfig: got static MAC %s\n",
+			intfEnt.MacAddress)
+		ulCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
+		if err != nil {
+			ulCfg.Error = fmt.Sprintf("App %s-%s: bad MAC:%s, Err: %s\n",
+				cfgApp.Displayname, cfgApp.Uuidandversion.Uuid, intfEnt.MacAddress,
+				err)
+			log.Errorf("%s", ulCfg.Error)
+			return ulCfg
+		}
+	}
+	if intfEnt.Addr != "" {
+		log.Infof("parseUnderlayNetworkConfig: got static IP %s\n",
+			intfEnt.Addr)
+		ulCfg.AppIPAddr = net.ParseIP(intfEnt.Addr)
+		if ulCfg.AppIPAddr == nil {
+			ulCfg.Error = fmt.Sprintf("App %s-%s: bad AppIPAddr:%s\n",
+				cfgApp.Displayname, cfgApp.Uuidandversion.Uuid, intfEnt.Addr)
+			log.Errorf("%s", ulCfg.Error)
+			return ulCfg
+		}
+
+		// XXX - Should be move this check to zed manager? Only checks
+		// absolutely needed to fill in the AppInstanceConfig should
+		//	be in this routing. Rest of the checks should be done in zedmanager
+		//	when processing the config. Clean it up..
+		if ulCfg.AppIPAddr.To4() == nil {
+			ulCfg.Error = fmt.Sprintf("Static IPv6 addressing (%s) not yet supported.\n",
+				intfEnt.Addr)
+			log.Errorf("%s", ulCfg.Error)
+			return ulCfg
+		}
+	}
+
+	ulCfg.ACLs = make([]types.ACE, len(intfEnt.Acls))
+	for aclIdx, acl := range intfEnt.Acls {
+		aclCfg := new(types.ACE)
+		aclCfg.Matches = make([]types.ACEMatch,
+			len(acl.Matches))
+		aclCfg.Actions = make([]types.ACEAction,
+			len(acl.Actions))
+		for matchIdx, match := range acl.Matches {
+			matchCfg := new(types.ACEMatch)
+			matchCfg.Type = match.Type
+			matchCfg.Value = match.Value
+			aclCfg.Matches[matchIdx] = *matchCfg
+		}
+
+		for actionIdx, action := range acl.Actions {
+			actionCfg := new(types.ACEAction)
+			actionCfg.Limit = action.Limit
+			actionCfg.LimitRate = int(action.Limitrate)
+			actionCfg.LimitUnit = action.Limitunit
+			actionCfg.LimitBurst = int(action.Limitburst)
+			actionCfg.PortMap = action.Portmap
+			actionCfg.TargetPort = int(action.AppPort)
+			// XXX:FIXME actionCfg.Drop = <TBD>
+			aclCfg.Actions[actionIdx] = *actionCfg
+		}
+		ulCfg.ACLs[aclIdx] = *aclCfg
+	}
+	return ulCfg
 }
 
 // parseOverlayNetworkConfig
