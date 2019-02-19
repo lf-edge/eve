@@ -628,7 +628,13 @@ func lookupOrAllocateIPv4ForNetworkInstance(
 		status.DhcpRange.Start, status.DhcpRange.End)
 
 	if status.DhcpRange.Start == nil {
-		log.Fatalf("%s-%s: nil DhcpRange.Start", status.DisplayName, status.Key())
+		if status.Type == types.NetworkInstanceTypeSwitch {
+			log.Infof("%s-%s switch means no bridgeIpAddr",
+				status.DisplayName, status.Key())
+			return "", nil
+		}
+		log.Fatalf("%s-%s: nil DhcpRange.Start",
+			status.DisplayName, status.Key())
 	}
 
 	// Starting guess based on number allocated
