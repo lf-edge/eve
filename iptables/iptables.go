@@ -150,6 +150,7 @@ func FetchIprulesCounters() []AclCounters {
 }
 
 func getIpRuleCounters(counters []AclCounters, match AclCounters) *AclCounters {
+	log.Debugf("getIprulesCounters(): %+v\n", match)
 	for i, c := range counters {
 		if c.IpVer != match.IpVer || c.Log != match.Log ||
 			c.Drop != match.Drop || c.More != match.More {
@@ -179,7 +180,9 @@ func GetIpRuleAclDrop(counters []AclCounters, bridgeName string, vifName string,
 	var oif string
 	if input {
 		iif = bridgeName
-		piif = vifName + "+"
+		if vifName != "" {
+			piif = vifName + "+"
+		}
 	} else {
 		oif = bridgeName
 	}
@@ -203,7 +206,9 @@ func GetIpRuleAclRateLimitDrop(counters []AclCounters, bridgeName string,
 	var oif string
 	if input {
 		iif = bridgeName
-		piif = vifName + "+"
+		if vifName != "" {
+			piif = vifName + "+"
+		}
 	} else {
 		oif = bridgeName
 	}

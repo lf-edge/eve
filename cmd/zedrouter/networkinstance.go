@@ -1292,3 +1292,43 @@ func natDeleteForNetworkInstance(status *types.NetworkInstanceStatus) {
 
 	log.Infof("natDeleteForNetworkInstance(%s)\n", status.DisplayName)
 }
+
+func lookupNetworkInstanceStatusByBridgeName(ctx *zedrouterContext,
+	bridgeName string) *types.NetworkInstanceStatus {
+
+	pub := ctx.pubNetworkInstanceStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastNetworkInstanceStatus(st)
+		if status.BridgeName == bridgeName {
+			return &status
+		}
+	}
+	return nil
+}
+
+func networkInstanceAddressType(ctx *zedrouterContext, bridgeName string) int {
+	ipVer := 0
+	instanceStatus := lookupNetworkInstanceStatusByBridgeName(ctx, bridgeName)
+	if instanceStatus != nil {
+		switch instanceStatus.IpType {
+		case types.AddressTypeIPV4:
+			ipVer = 4
+		case types.AddressTypeIPV6, types.AddressTypeCryptoIPV6:
+			// XXX IPv4 EIDs?
+			ipVer = 6
+		}
+		return ipVer
+	}
+	objectStatus := lookupNetworkObjectStatusByBridgeName(ctx, bridgeName)
+	if objectStatus != nil {
+		switch objectStatus.Type {
+		case types.NT_IPV4:
+			ipVer = 4
+		case types.NT_IPV6, types.NT_CryptoEID:
+			// XXX IPv4 EIDs?
+			ipVer = 6
+		}
+	}
+	return ipVer
+}

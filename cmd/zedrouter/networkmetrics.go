@@ -37,37 +37,33 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 			TxErrors: ni.Errout,
 			RxErrors: ni.Errin,
 		}
-		var ntype types.NetworkType
 		bridgeName := ni.Name
 		vifName := ""
 		inout := true
+		ipVer := 4
 		if strings.HasPrefix(ni.Name, "dbo") {
+			// XXX IPv4 EIDs?
 			// Special check for dbo1x0 goes away when disagg
-			ntype = types.NT_CryptoEID
+			ipVer = 6
 			inout = false // Swapped in and out counters
 		} else {
 			// If this a vif in a bridge?
 			bn := vifNameToBridgeName(ctx, ni.Name)
 			if bn != "" {
-				ntype = networkObjectType(ctx, bn)
-				if ntype != 0 {
+				ipVer = networkInstanceAddressType(ctx, bn)
+				if ipVer != 0 {
 					vifName = ni.Name
 					bridgeName = bn
 				}
 			} else {
-				ntype = networkObjectType(ctx, ni.Name)
-				if ntype != 0 {
+				ipVer = networkInstanceAddressType(ctx, ni.Name)
+				if ipVer != 0 {
 					bridgeName = ni.Name
 				}
 			}
 		}
-		var ipVer int = 4
-		switch ntype {
-		case types.NT_IPV4:
+		if ipVer == 0 {
 			ipVer = 4
-		case types.NT_IPV6, types.NT_CryptoEID:
-			// XXX IPv4 EIDs?
-			ipVer = 6
 		}
 		metric.TxAclDrops = iptables.GetIpRuleAclDrop(ac, bridgeName, vifName,
 			ipVer, inout)
