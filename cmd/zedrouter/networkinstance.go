@@ -1312,7 +1312,7 @@ func networkInstanceAddressType(ctx *zedrouterContext, bridgeName string) int {
 	instanceStatus := lookupNetworkInstanceStatusByBridgeName(ctx, bridgeName)
 	if instanceStatus != nil {
 		switch instanceStatus.IpType {
-		case types.AddressTypeIPV4:
+		case types.AddressTypeIPV4, types.AddressTypeCryptoIPV4:
 			ipVer = 4
 		case types.AddressTypeIPV6, types.AddressTypeCryptoIPV6:
 			// XXX IPv4 EIDs?
