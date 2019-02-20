@@ -48,7 +48,9 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 			log.Debugf("sendOnAllIntf non-free %v\n", intfs)
 		}
 		for _, intf := range intfs {
-			resp, contents, err := SendOnIntf(ctx, url, intf, reqlen, b, true, 0)
+			// XXX Hard coded timeout to 15 seconds. Might need some adjusting
+			// depending on network conditions down the road.
+			resp, contents, err := SendOnIntf(ctx, url, intf, reqlen, b, true, 15)
 			if return400 && resp != nil &&
 				resp.StatusCode >= 400 && resp.StatusCode < 500 {
 				log.Infof("sendOnAllIntf: for %s reqlen %d ignore code %d\n",
