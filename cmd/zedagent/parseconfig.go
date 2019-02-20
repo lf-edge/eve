@@ -1417,7 +1417,6 @@ func parseOverlayNetworkConfigEntry(
 }
 
 // parseOverlayNetworkConfig
-//	This is not supported for NetworkInstances.
 func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig,
