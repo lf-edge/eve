@@ -368,13 +368,31 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		if apiConfigEntry.Port != nil {
 			networkInstanceConfig.Port = apiConfigEntry.Port.Name
 		}
+		// For switch log+force to AddressTypeFirst do not copy
+		// ipconfig but do copy opaque
+		// XXX zedcloud should send First/None type for switch
+		// network instances
 		networkInstanceConfig.IpType = types.AddressType(apiConfigEntry.IpType)
+		switch networkInstanceConfig.Type {
+		case types.NetworkInstanceTypeSwitch:
+			if networkInstanceConfig.IpType != types.AddressTypeNone {
+				log.Warnf("Switch network instance %s %s with invalid IpType %d\n",
+					networkInstanceConfig.UUID.String(),
+					networkInstanceConfig.DisplayName,
+					networkInstanceConfig.IpType)
+				networkInstanceConfig.IpType = types.AddressTypeNone
+			}
 
-		parseIpspecForNetworkInstanceConfig(apiConfigEntry.Ip, &networkInstanceConfig)
+		case types.NetworkInstanceTypeLocal,
+			types.NetworkInstanceTypeCloud,
+			types.NetworkInstanceTypeMesh:
 
-		parseDnsNameToIpListForNetworkInstanceConfig(apiConfigEntry,
-			&networkInstanceConfig)
+			parseIpspecForNetworkInstanceConfig(apiConfigEntry.Ip,
+				&networkInstanceConfig)
 
+			parseDnsNameToIpListForNetworkInstanceConfig(apiConfigEntry,
+				&networkInstanceConfig)
+		}
 		if apiConfigEntry.Cfg != nil {
 			networkInstanceConfig.OpaqueConfig = apiConfigEntry.Cfg.Oconfig
 		}
@@ -615,7 +633,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		port.DnsServers = network.DnsServers
 		// Need to be careful since zedcloud can feed us bad Dhcp type
 		port.Dhcp = network.Dhcp
-		if network.Dhcp == types.DT_STATIC {
+		switch network.Dhcp {
+		case types.DT_STATIC:
 			if port.Gateway.IsUnspecified() || port.AddrSubnet == "" ||
 				port.DnsServers == nil {
 				log.Errorf("parseSystemAdapterConfig: DT_STATIC but missing parameters in %+v; ignored\n",
@@ -625,11 +644,12 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 				// continue
 				continue
 			}
-		} else {
-			// XXX or ignore SystemAdapter as above?
-			log.Warnf("parseSystemAdapterConfig: ignore unsupported dhcp type %v - using DT_CLIENT\n",
+		case types.DT_CLIENT:
+			// Do nothing
+		default:
+			log.Warnf("parseSystemAdapterConfig: ignore unsupported dhcp type %v\n",
 				network.Dhcp)
-			port.Dhcp = types.DT_CLIENT
+			continue
 		}
 		// XXX use DnsNameToIpList?
 		if network.Proxy != nil {

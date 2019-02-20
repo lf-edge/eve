@@ -219,6 +219,8 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	for !passed {
 		res := VerifyPending(&ctx.Pending, ctx.AssignableAdapters)
 		if ctx.PubDeviceNetworkStatus != nil {
+			log.Infof("PublishDeviceNetworkStatus: pending %+v\n",
+				ctx.Pending.PendDNS)
 			ctx.PubDeviceNetworkStatus.Publish("global", ctx.Pending.PendDNS)
 		}
 		switch res {
@@ -630,7 +632,10 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 	}
 	ctx.UsableAddressCount = newAddrCount
 	if ctx.PubDeviceNetworkStatus != nil {
-		ctx.PubDeviceNetworkStatus.Publish("global", ctx.DeviceNetworkStatus)
+		log.Infof("PublishDeviceNetworkStatus: %+v\n",
+			ctx.DeviceNetworkStatus)
+		ctx.PubDeviceNetworkStatus.Publish("global",
+			ctx.DeviceNetworkStatus)
 	}
 	ctx.Changed = true
 }

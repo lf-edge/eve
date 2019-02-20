@@ -510,7 +510,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 	// Check if we have space
 	// Update reserved space. Keep reserved until doDelete
 	// XXX RefCount -> 0 should keep it reserved.
-	kb := uint(types.RoundupToKB(config.Size))
+	kb := types.RoundupToKB(config.Size)
 	if !tryReserveSpace(ctx, kb) {
 		errString := fmt.Sprintf("Would exceed remaining space %d vs %d\n",
 			kb, ctx.globalStatus.RemainingSpace)
@@ -619,7 +619,7 @@ func doDelete(ctx *downloaderContext, key string, locDirname string,
 	deletefile(locDirname+"/pending", status)
 
 	status.State = types.INITIAL
-	deleteSpace(ctx, uint(types.RoundupToKB(status.Size)))
+	deleteSpace(ctx, types.RoundupToKB(status.Size))
 	status.Size = 0
 
 	// XXX Asymmetric; handleCreate reserved on RefCount 0. We unreserve
@@ -692,7 +692,7 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 	// We read objectDownloadDirname/* and determine how much space
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
 	totalUsed := sizeFromDir(objectDownloadDirname)
-	kb := uint(types.RoundupToKB(totalUsed))
+	kb := types.RoundupToKB(totalUsed)
 	initSpace(ctx, kb)
 
 	// create drona interface
@@ -830,7 +830,7 @@ func sizeFromDir(dirname string) uint64 {
 	return totalUsed
 }
 
-func initSpace(ctx *downloaderContext, kb uint) {
+func initSpace(ctx *downloaderContext, kb uint64) {
 	ctx.globalStatusLock.Lock()
 	ctx.globalStatus.UsedSpace = 0
 	ctx.globalStatus.ReservedSpace = 0
@@ -849,7 +849,7 @@ func initSpace(ctx *downloaderContext, kb uint) {
 }
 
 // Returns true if there was space
-func tryReserveSpace(ctx *downloaderContext, kb uint) bool {
+func tryReserveSpace(ctx *downloaderContext, kb uint64) bool {
 	ctx.globalStatusLock.Lock()
 	if kb >= ctx.globalStatus.RemainingSpace {
 		ctx.globalStatusLock.Unlock()
@@ -867,7 +867,7 @@ func unreserveSpace(ctx *downloaderContext, status *types.DownloaderStatus) {
 	ctx.globalStatusLock.Lock()
 	ctx.globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
-	ctx.globalStatus.UsedSpace -= uint(types.RoundupToKB(status.Size))
+	ctx.globalStatus.UsedSpace -= types.RoundupToKB(status.Size)
 	status.Size = 0
 
 	updateRemainingSpace(ctx)
@@ -876,7 +876,7 @@ func unreserveSpace(ctx *downloaderContext, status *types.DownloaderStatus) {
 	publishGlobalStatus(ctx)
 }
 
-func deleteSpace(ctx *downloaderContext, kb uint) {
+func deleteSpace(ctx *downloaderContext, kb uint64) {
 	ctx.globalStatusLock.Lock()
 	ctx.globalStatus.UsedSpace -= kb
 	updateRemainingSpace(ctx)
