@@ -104,11 +104,11 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:91b0d36932d5b6c83facc6e778d58ef8a21f6dab566aef08c00846a733ec45f5"
+  digest = "1:af49fbd395573f2986a1d163d3aa7747895418489780cad9da9f4c3e6653b4d1"
   name = "github.com/eriknordmark/ipinfo"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "b148f0155466cd0944ae7057fc0acca0c7eb1229"
+  revision = "7ee0839158f952c1487a0112dc6a190ef6c5cb20"
 
 [[projects]]
   branch = "master"
