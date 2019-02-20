@@ -149,11 +149,10 @@ func FetchIprulesCounters() []AclCounters {
 	return counters
 }
 
-func getIpRuleCounters(counters []AclCounters, match AclCounters) *AclCounters {
-	log.Debugf("getIprulesCounters(): %+v\n", match)
+func getIpRuleCounters(counters []AclCounters, match *AclCounters) *AclCounters {
 	for i, c := range counters {
 		if c.IpVer != match.IpVer || c.Log != match.Log ||
-			c.Drop != match.Drop || c.More != match.More {
+			c.Drop != match.Drop || c.Limit != match.Limit {
 			continue
 		}
 		if c.IIf != match.IIf || c.OIf != match.OIf {
@@ -164,9 +163,11 @@ func getIpRuleCounters(counters []AclCounters, match AclCounters) *AclCounters {
 		}
 		log.Debugf("getIpRuleCounters: matched counters %+v\n",
 			&counters[i])
-		return &counters[i]
+		// accumulate counter across matching ACLs
+		match.Bytes += counters[i].Bytes
+		match.Pkts += counters[i].Pkts
 	}
-	return nil
+	return match
 }
 
 // Look for a LOG entry without More; we don't have those for rate limits
@@ -187,8 +188,8 @@ func GetIpRuleAclDrop(counters []AclCounters, bridgeName string, vifName string,
 		oif = bridgeName
 	}
 	match := AclCounters{IIf: iif, Piif: piif, OIf: oif, IpVer: ipVer,
-		Drop: true, More: false}
-	c := getIpRuleCounters(counters, match)
+		Drop: true, Limit: false}
+	c := getIpRuleCounters(counters, &match)
 	if c == nil {
 		return 0
 	}
@@ -212,9 +213,10 @@ func GetIpRuleAclRateLimitDrop(counters []AclCounters, bridgeName string,
 	} else {
 		oif = bridgeName
 	}
+	// for RateLimit Drops, the Drop is false
 	match := AclCounters{IIf: iif, Piif: piif, OIf: oif, IpVer: ipVer,
-		Drop: true, More: true}
-	c := getIpRuleCounters(counters, match)
+		Drop: false, Limit: true}
+	c := getIpRuleCounters(counters, &match)
 	if c == nil {
 		return 0
 	}
@@ -245,6 +247,7 @@ type AclCounters struct {
 	Poif   string
 	Log    bool
 	Drop   bool
+	Limit  bool
 	More   bool // Has fields we didn't explicitly parse; user specified
 	Accept bool
 	Dest   string
@@ -272,6 +275,13 @@ func parseline(line string, table string, ipVer int) *AclCounters {
 		// Skip things which are normal in the entries such as physdev
 		// and the destination match
 		if items[i] == "-m" && items[i+1] == "physdev" {
+			i += 2
+			continue
+		}
+		// Mark RateLimit flag
+		if items[i] == "-m" && items[i+1] == "limit" {
+			log.Infof("Marking RateLimit: true\n")
+			ac.Limit = true
 			i += 2
 			continue
 		}
