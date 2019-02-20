@@ -1315,7 +1315,6 @@ func networkInstanceAddressType(ctx *zedrouterContext, bridgeName string) int {
 		case types.AddressTypeIPV4, types.AddressTypeCryptoIPV4:
 			ipVer = 4
 		case types.AddressTypeIPV6, types.AddressTypeCryptoIPV6:
-			// XXX IPv4 EIDs?
 			ipVer = 6
 		}
 		return ipVer
