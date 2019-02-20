@@ -65,6 +65,9 @@ func getInfo(url string, opt *Options) (*IPInfo, error) {
 		Proxy: http.ProxyFromEnvironment,
 	}
 	client := &http.Client{Transport: transport}
+	if opt != nil && opt.Timeout != 0 {
+		client.Timeout = opt.Timeout
+	}
 	response, err := client.Get(url)
 	if err != nil {
 		return nil, err
