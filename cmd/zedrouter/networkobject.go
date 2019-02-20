@@ -742,9 +742,18 @@ func doNetworkDelete(ctx *zedrouterContext,
 
 func vifNameToBridgeName(ctx *zedrouterContext, vifName string) string {
 
-	pub := ctx.pubNetworkObjectStatus
-	items := pub.GetAll()
-	for _, st := range items {
+	pub := ctx.pubNetworkInstanceStatus
+	instanceItems := pub.GetAll()
+	for _, st := range instanceItems {
+		status := cast.CastNetworkInstanceStatus(st)
+		if status.IsVifInBridge(vifName) {
+			return status.BridgeName
+		}
+	}
+
+	pub = ctx.pubNetworkObjectStatus
+	objectItems := pub.GetAll()
+	for _, st := range objectItems {
 		status := cast.CastNetworkObjectStatus(st)
 		if status.IsVifInBridge(vifName) {
 			return status.BridgeName
