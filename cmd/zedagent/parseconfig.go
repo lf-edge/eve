@@ -379,8 +379,8 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			networkInstanceConfig.OpaqueConfig = apiConfigEntry.Cfg.Oconfig
 		}
 
-		if apiConfigEntry.Cfg.LispConfig != nil {
-			lispConfig := apiConfigEntry.Cfg.LispConfig
+		lispConfig := apiConfigEntry.Cfg.LispConfig
+		if lispConfig != nil {
 			mapServers := []types.MapServer{}
 			for _, ms := range lispConfig.LispMSs {
 				mapServer := types.MapServer{
@@ -1160,7 +1160,8 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		ulCfg := parseUnderlayNetworkConfigEntry(
 			cfgApp, cfgNetworks, cfgNetworkInstances, intfEnt)
 		if ulCfg == nil {
-			log.Fatalf("Nil ulcfg")
+			log.Infof("Nil ulcfgi for Interface %s", intfEnt.Name)
+			continue
 		}
 		appInstance.UnderlayNetworkList = append(appInstance.UnderlayNetworkList,
 			*ulCfg)
@@ -1197,12 +1198,24 @@ func parseUnderlayNetworkConfigEntry(
 			log.Errorf("%s", ulCfg.Error)
 			return ulCfg
 		}
+		switch networkInstanceEntry.InstType {
+		case zconfig.ZNetworkInstType_ZnetInstLocal, zconfig.ZNetworkInstType_ZnetInstSwitch:
+		default:
+			log.Infof("Interface %s of App instance %s not connected to Underlay network",
+				intfEnt.Name, cfgApp.Displayname)
+			return nil
+		}
 		ulCfg.UsesNetworkInstance = true
 		networkUuidStr = networkInstanceEntry.Uuidandversion.Uuid
 		log.Infof("NetworkInstance(%s-%s): InstType %v\n",
 			cfgApp.Displayname, cfgApp.Uuidandversion.Uuid,
 			networkInstanceEntry.InstType)
 	} else {
+		switch netEnt.Type {
+		case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
+		default:
+			return nil
+		}
 		ulCfg.UsesNetworkInstance = false
 		networkUuidStr = netEnt.Id
 		log.Infof("parseUnderlayNetworkConfig: app %v net %v type %v\n",
@@ -1306,8 +1319,16 @@ func parseOverlayNetworkConfigEntry(
 			log.Errorf("%s", olCfg.Error)
 			return olCfg
 		}
+		if networkInstanceEntry.InstType != zconfig.ZNetworkInstType_ZnetInstMesh {
+			log.Infof("Interface %s of App instance %s not connected to Overlay network",
+				intfEnt.Name, cfgApp.Displayname)
+			return nil
+		}
 		networkUuidStr = networkInstanceEntry.Uuidandversion.Uuid
 	} else {
+		if netEnt.Type != zconfig.NetworkType_CryptoEID {
+			return nil
+		}
 		olCfg.UsesNetworkInstance = false
 		networkUuidStr = netEnt.Id
 	}
@@ -1426,7 +1447,8 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		olCfg := parseOverlayNetworkConfigEntry(
 			cfgApp, cfgNetworks, cfgNetworkInstances, intfEnt)
 		if olCfg == nil {
-			log.Fatalf("Nil olcfg for App interface %s", intfEnt.Name)
+			log.Infof("Nil olcfg for App interface %s", intfEnt.Name)
+			continue
 		}
 		appInstance.OverlayNetworkList = append(appInstance.OverlayNetworkList,
 			*olCfg)

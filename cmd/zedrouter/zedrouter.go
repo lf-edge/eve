@@ -1484,8 +1484,9 @@ func appNetworkDoActivateOverlayNetworks(
 	config types.AppNetworkConfig,
 	status *types.AppNetworkStatus,
 	ipsets []string) {
+	log.Infof("appNetworkDoActivateOverlayNetworks():")
 
-	// XXX - The errors in theis function should either be Fatal
+	// XXX - The errors in this function should either be Fatal
 	//	or abort activating the App Instance. We activate
 	//	the App Instance only if all the networks are available
 	//	and there are no errors.
