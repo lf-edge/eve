@@ -434,6 +434,8 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 }
 
 func publishDeviceNetworkStatus(ctx *nimContext) {
+	log.Infof("PublishDeviceNetworkStatus: %+v\n",
+		ctx.DeviceNetworkStatus)
 	ctx.PubDeviceNetworkStatus.Publish("global", ctx.DeviceNetworkStatus)
 }
 

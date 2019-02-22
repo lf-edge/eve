@@ -61,7 +61,7 @@ type DownloaderStatus struct {
 	UseFreeMgmtPorts bool
 	ImageSha256      string  // sha256 of immutable image
 	State            SwState // DOWNLOADED etc
-	ReservedSpace    uint    // Contribution to global ReservedSpace
+	ReservedSpace    uint64  // Contribution to global ReservedSpace
 	Size             uint64  // Once DOWNLOADED; in bytes
 	Progress         uint    // In percent i.e., 0-100
 	ModTime          time.Time
@@ -101,12 +101,12 @@ func (status DownloaderStatus) Pending() bool {
 }
 
 type GlobalDownloadConfig struct {
-	MaxSpace uint // Number of kbytes allowed in /var/tmp/zedmanager/downloads
+	MaxSpace uint64 // Number of kbytes allowed in /var/tmp/zedmanager/downloads
 }
 
 // These are all in kbytes
 type GlobalDownloadStatus struct {
-	UsedSpace      uint // Number of kbytes used in /var/tmp/zedmanager/downloads
-	ReservedSpace  uint // Reserved for ongoing downloads
-	RemainingSpace uint // MaxSpace - UsedSpace - ReservedSpace
+	UsedSpace      uint64 // Number of kbytes used in /var/tmp/zedmanager/downloads
+	ReservedSpace  uint64 // Reserved for ongoing downloads
+	RemainingSpace uint64 // MaxSpace - UsedSpace - ReservedSpace
 }

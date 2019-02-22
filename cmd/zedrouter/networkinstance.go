@@ -71,11 +71,18 @@ func checkPortAvailableForNetworkInstance(
 			allowSharedPort(status), isSharedPortLabel(status.Port))
 		return nil
 	}
+	// XXX are we checking allowPortSharing and the status of the port
+	// somewhere? Doesn't look like we do.
 
 	portStatus := ctx.deviceNetworkStatus.GetPortByName(status.Port)
 	if portStatus == nil {
-		errStr := fmt.Sprintf("PortStatus for %s not found\n", status.Port)
-		return errors.New(errStr)
+		// XXX Fallback until we have complete Name support in UI
+		portStatus = ctx.deviceNetworkStatus.GetPortByIfName(status.Port)
+		if portStatus == nil {
+			errStr := fmt.Sprintf("PortStatus for %s not found\n",
+				status.Port)
+			return errors.New(errStr)
+		}
 	}
 
 	switch status.Type {
@@ -500,26 +507,30 @@ func doNetworkInstanceSanityCheck(
 
 	// IpType - Check for valid types
 	switch status.IpType {
-	case types.AddressTypeIPV4:
-	case types.AddressTypeIPV6:
-	case types.AddressTypeCryptoIPV4:
-	case types.AddressTypeCryptoIPV6:
+	case types.AddressTypeNone:
+	case types.AddressTypeIPV4, types.AddressTypeIPV6,
+		types.AddressTypeCryptoIPV4, types.AddressTypeCryptoIPV6:
+
+		err := doNetworkInstanceSubnetSanityCheck(ctx, status)
+		if err != nil {
+			return err
+		}
+
+		if status.Gateway.IsUnspecified() {
+			err := fmt.Sprintf("Gateway Unspecified: %+v\n",
+				status.Gateway)
+			return errors.New(err)
+		}
+		err = DoNetworkInstanceStatusDhcpRangeSanityCheck(status)
+		if err != nil {
+			return err
+		}
+
 	default:
 		err := fmt.Sprintf("IpType %d not supported\n", status.IpType)
 		return errors.New(err)
 	}
 
-	if err := doNetworkInstanceSubnetSanityCheck(ctx, status); err != nil {
-		return err
-	}
-
-	if status.Gateway.IsUnspecified() {
-		err := fmt.Sprintf("Gateway Unspecified: %+v\n", status.Gateway)
-		return errors.New(err)
-	}
-	if err := DoNetworkInstanceStatusDhcpRangeSanityCheck(status); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -699,7 +710,13 @@ func lookupOrAllocateIPv4ForNetworkInstance(
 		status.DhcpRange.Start, status.DhcpRange.End)
 
 	if status.DhcpRange.Start == nil {
-		log.Fatalf("%s-%s: nil DhcpRange.Start", status.DisplayName, status.Key())
+		if status.Type == types.NetworkInstanceTypeSwitch {
+			log.Infof("%s-%s switch means no bridgeIpAddr",
+				status.DisplayName, status.Key())
+			return "", nil
+		}
+		log.Fatalf("%s-%s: nil DhcpRange.Start",
+			status.DisplayName, status.Key())
 	}
 
 	// Starting guess based on number allocated
@@ -810,7 +827,7 @@ func getPortIPv4Addr(ctx *zedrouterContext,
 		log.Infof("found addr %s\n", addr.IP.String())
 		return addr.IP.String(), nil
 	}
-	log.Infof("IP address on %s yet\n", status.Port)
+	log.Infof("No IP address on %s yet\n", status.Port)
 	return "", nil
 }
 
@@ -836,7 +853,7 @@ func setBridgeIPAddrForNetworkInstance(
 		errStr := fmt.Sprintf("Failed to get link for Bridge %s", status.BridgeName)
 		return errors.New(errStr)
 	}
-	log.Infof("Bridge: %s, Link: %s\n", status.BridgeName, link)
+	log.Infof("Bridge: %s, Link: %+v\n", status.BridgeName, link)
 
 	var ipAddr string
 	var err error
@@ -888,8 +905,10 @@ func setBridgeIPAddrForNetworkInstance(
 				status.BridgeName)
 			return errors.New(errStr)
 		}
-		ipAddr = status.Gateway.String()
-		status.IPAssignments[bridgeMac.String()] = status.Gateway
+		if status.Gateway != nil {
+			ipAddr = status.Gateway.String()
+			status.IPAssignments[bridgeMac.String()] = status.Gateway
+		}
 		log.Infof("BridgeMac: %s, ipAddr: %s\n",
 			bridgeMac.String(), ipAddr)
 	}
@@ -977,8 +996,14 @@ func validatePortForNetworkInstance(ctx *zedrouterContext, port string,
 
 	portStatus := ctx.deviceNetworkStatus.GetPortByName(port)
 	if portStatus == nil {
-		errStr := fmt.Sprintf("portStatus not found for port %s", port)
-		return errors.New(errStr)
+		// XXX Fallback until we have complete Name support in UI
+		portStatus = ctx.deviceNetworkStatus.GetPortByIfName(port)
+		if portStatus == nil {
+			errStr := fmt.Sprintf("portStatus not found for port %s",
+				port)
+			return errors.New(errStr)
+		}
+		log.Warnf("Port %s matched Ifname but not Name", port)
 	}
 	log.Infof("Port %s valid for NetworkInstance", port)
 	return nil
@@ -998,7 +1023,7 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	err := validatePortForNetworkInstance(ctx, status.Port,
 		allowSharedPort(status))
 	if err != nil {
-		log.Infof("validateAdaptor failed: Port: %s, err:%s", err, status.Port)
+		log.Infof("validatePortForNwrqoekInstance failed: Port: %s, err:%s", err, status.Port)
 		return err
 	}
 
@@ -1448,4 +1473,43 @@ func natInactivateForNetworkInstance(ctx *zedrouterContext,
 func natDeleteForNetworkInstance(status *types.NetworkInstanceStatus) {
 
 	log.Infof("natDeleteForNetworkInstance(%s)\n", status.DisplayName)
+}
+
+func lookupNetworkInstanceStatusByBridgeName(ctx *zedrouterContext,
+	bridgeName string) *types.NetworkInstanceStatus {
+
+	pub := ctx.pubNetworkInstanceStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastNetworkInstanceStatus(st)
+		if status.BridgeName == bridgeName {
+			return &status
+		}
+	}
+	return nil
+}
+
+func networkInstanceAddressType(ctx *zedrouterContext, bridgeName string) int {
+	ipVer := 0
+	instanceStatus := lookupNetworkInstanceStatusByBridgeName(ctx, bridgeName)
+	if instanceStatus != nil {
+		switch instanceStatus.IpType {
+		case types.AddressTypeIPV4, types.AddressTypeCryptoIPV4:
+			ipVer = 4
+		case types.AddressTypeIPV6, types.AddressTypeCryptoIPV6:
+			ipVer = 6
+		}
+		return ipVer
+	}
+	objectStatus := lookupNetworkObjectStatusByBridgeName(ctx, bridgeName)
+	if objectStatus != nil {
+		switch objectStatus.Type {
+		case types.NT_IPV4:
+			ipVer = 4
+		case types.NT_IPV6, types.NT_CryptoEID:
+			// XXX IPv4 EIDs?
+			ipVer = 6
+		}
+	}
+	return ipVer
 }
