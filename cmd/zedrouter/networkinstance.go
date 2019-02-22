@@ -869,7 +869,8 @@ func setBridgeIPAddrForNetworkInstance(
 		log.Infof("Bridge: %s, Link: %s, ipAddr: %s\n",
 			status.BridgeName, link, ipAddr)
 	case types.NetworkInstanceTypeMesh:
-		if status.Subnet.IP != nil && status.Subnet.IP.To4() != nil {
+		status.Ipv4Eid = (status.Subnet.IP != nil && status.Subnet.IP.To4() != nil)
+		if status.Ipv4Eid {
 			// Require an IPv4 gateway
 			if status.Gateway == nil {
 				errStr := fmt.Sprintf("No IPv4 gateway for bridge %s network %s subnet %s",
@@ -880,7 +881,6 @@ func setBridgeIPAddrForNetworkInstance(
 			ipAddr = status.Gateway.String()
 			log.Infof("setBridgeIPAddrForNetworkInstance: Bridge %s assigned IPv4 EID %s",
 				status.BridgeName, ipAddr)
-			status.Ipv4Eid = true
 		} else {
 			ipAddr = "fd00::" + strconv.FormatInt(int64(status.BridgeNum), 16)
 			log.Infof("setBridgeIPAddrForNetworkInstance: Bridge %s assigned IPv6 EID %s",
