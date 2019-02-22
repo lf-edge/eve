@@ -981,7 +981,7 @@ func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMe
 		}
 	}
 
-	// Update Lisp metrics in service instance status based on it's IID
+	// Update Lisp metrics in network instance status based on it's IID
 	pub := ctx.pubNetworkInstanceStatus
 	stList := pub.GetAll()
 	// IID to service status map for Lisp service instances
