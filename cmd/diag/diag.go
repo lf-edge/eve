@@ -445,8 +445,9 @@ func printOutput(ctx *diagContext) {
 		fmt.Printf("\n")
 		// If static print static config
 		if port.Dhcp == types.DT_STATIC {
-			fmt.Printf("INFO: %s: Static IP config: %s\n",
-				ifname, port.Subnet.String())
+			prefixSize, _ := port.Subnet.Mask.Size()
+			fmt.Printf("INFO: %s: Static IP config: %s/%d\n",
+				ifname, port.Subnet.IP.String(), prefixSize)
 			fmt.Printf("INFO: %s: Static IP router: %s\n",
 				ifname, port.Gateway.String())
 			fmt.Printf("INFO: %s: Static Domain Name: %s\n",
