@@ -438,6 +438,11 @@ func printOutput(ctx *diagContext) {
 					ifname, ai.Addr, ai.Geo)
 			}
 		}
+		if ipCount == 0 {
+			fmt.Printf("INFO: %s: No IP address\n",
+				ifname)
+		}
+
 		fmt.Printf("INFO: %s: DNS servers: ", ifname)
 		for _, ds := range port.DnsServers {
 			fmt.Printf("%s, ", ds.String())
@@ -445,9 +450,8 @@ func printOutput(ctx *diagContext) {
 		fmt.Printf("\n")
 		// If static print static config
 		if port.Dhcp == types.DT_STATIC {
-			prefixSize, _ := port.Subnet.Mask.Size()
-			fmt.Printf("INFO: %s: Static IP config: %s/%d\n",
-				ifname, port.Subnet.IP.String(), prefixSize)
+			fmt.Printf("INFO: %s: Static IP subnet: %s\n",
+				ifname, port.Subnet.String())
 			fmt.Printf("INFO: %s: Static IP router: %s\n",
 				ifname, port.Gateway.String())
 			fmt.Printf("INFO: %s: Static Domain Name: %s\n",
