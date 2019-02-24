@@ -369,10 +369,9 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	}
 	log.Infof("IpAddress set for bridge\n")
 
-	// XXX mov this before set??
 	// Create a hosts directory for the new bridge
 	// Directory is /var/run/zedrouter/hosts.${BRIDGENAME}
-	hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+	hostsDirpath := runDirname + "/hosts." + bridgeName
 	deleteHostsConfiglet(hostsDirpath, false)
 	createHostsConfiglet(hostsDirpath,
 		status.DnsNameToIPList)
@@ -596,7 +595,7 @@ func restartDnsmasq(status *types.NetworkInstanceStatus) {
 	bridgeName := status.BridgeName
 	stopDnsmasq(bridgeName, false, true)
 
-	hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+	hostsDirpath := runDirname + "/hosts." + bridgeName
 	// XXX arbitrary name "router"!!
 	addToHostsConfiglet(hostsDirpath, "router",
 		[]string{status.BridgeIPAddr})
