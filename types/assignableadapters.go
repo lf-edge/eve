@@ -53,8 +53,6 @@ type IoBundle struct {
 	//  If the device is ( or to be ) managed by DomU, this is True
 	IsPCIBack bool // Assigned to pciback
 	IsPort    bool // Whole or part of the bundle is a zedrouter port
-	IsBridge  bool // Exclusively used by a bridge service. TBD
-	IsService bool // Used by a service. TBD.
 
 	// DeviceExists
 	//	This is to indicate if the device exists in the system
