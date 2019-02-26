@@ -903,35 +903,6 @@ func maybeUpdateBridgeIPAddrForNetworkInstance(
 	return
 }
 
-// XXX - This function is redundant.. This is already covered by ( and more )
-//	checkPortAvailableForNetworkInstance. Delete this.
-func validatePortForNetworkInstance(ctx *zedrouterContext, port string,
-	allowPortSharing bool) error {
-
-	if port == "" {
-		log.Infof("port not specified")
-		return nil
-	}
-	if allowPortSharing && isSharedPortLabel(port) {
-		log.Infof("NI allows port sharing and port(%s) is a mgmt port", port)
-		return nil
-	}
-
-	portStatus := ctx.deviceNetworkStatus.GetPortByName(port)
-	if portStatus == nil {
-		// XXX Fallback until we have complete Name support in UI
-		portStatus = ctx.deviceNetworkStatus.GetPortByIfName(port)
-		if portStatus == nil {
-			errStr := fmt.Sprintf("portStatus not found for port %s",
-				port)
-			return errors.New(errStr)
-		}
-		log.Warnf("Port %s matched Ifname but not Name", port)
-	}
-	log.Infof("Port %s valid for NetworkInstance", port)
-	return nil
-}
-
 // doNetworkInstanceActivate
 func doNetworkInstanceActivate(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
@@ -943,10 +914,10 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	// an existing port name assigned to domO/zedrouter.
 	// A Bridge only works with a single adapter interface.
 	// Management ports are not allowed to be part of Bridge networks.
-	err := validatePortForNetworkInstance(ctx, status.Port,
-		allowSharedPort(status))
+	err := checkPortAvailableForNetworkInstance(ctx, status)
 	if err != nil {
-		log.Infof("validatePortForNwrqoekInstance failed: Port: %s, err:%s", err, status.Port)
+		log.Errorf("checkPortAvailableForNetworkInstance failed: Port: %s, err:%s",
+			status.Port, err)
 		return err
 	}
 
