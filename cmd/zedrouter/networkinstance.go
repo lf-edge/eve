@@ -64,14 +64,20 @@ func checkPortAvailableForNetworkInstance(
 	log.Infof("NetworkInstance(%s-%s), port: %s\n",
 		status.DisplayName, status.UUID, status.Port)
 
-	if allowSharedPort(status) && isSharedPortLabel(status.Port) {
-		log.Infof("Mgmt port - allowSharedPort: %t, isSharedPortLabel:%t",
-			allowSharedPort(status), isSharedPortLabel(status.Port))
-		return nil
+	if allowSharedPort(status) {
+		if isSharedPortLabel(status.Port) {
+			log.Infof("allowSharedPort: %t, isSharedPortLabel:%t",
+				allowSharedPort(status), isSharedPortLabel(status.Port))
+			return nil
+		}
+	} else {
+		if !isSharedPortLabel(status.Port) {
+			errStr := fmt.Sprintf("SharedPortLabel %s not allowed for exclusive NI %s\n",
+				status.Port, status.Key())
+			log.Errorln(errStr)
+			return errors.New(errStr)
+		}
 	}
-	// XXX are we checking allowPortSharing and the status of the port
-	// somewhere? Doesn't look like we do.
-
 	portStatus := ctx.deviceNetworkStatus.GetPortByName(status.Port)
 	if portStatus == nil {
 		// XXX Fallback until we have complete Name support in UI
@@ -83,8 +89,39 @@ func checkPortAvailableForNetworkInstance(
 		}
 	}
 
-	switch status.Type {
-	case types.NetworkInstanceTypeSwitch:
+	if allowSharedPort(status) {
+		// Make sure it is configured for IP or will be
+		if portStatus.Dhcp == types.DT_NOOP {
+			errStr := fmt.Sprintf("Port %s not configured for shared use. "+
+				"Cannot be used by Switch Network Instance %s-%s\n",
+				status.Port, status.UUID, status.DisplayName)
+			return errors.New(errStr)
+		}
+		// Make sure it is not used by a NetworkInstance of type Switch
+		for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
+			if status == iterStatusEntry {
+				continue
+			}
+			if !iterStatusEntry.IsUsingPort(status.Port) {
+				continue
+			}
+			if !allowSharedPort(iterStatusEntry) {
+				errStr := fmt.Sprintf("Port %s already used by "+
+					"Switch NetworkInstance %s-%s. It cannot be used by "+
+					"any other Network Instance\n",
+					status.Port, iterStatusEntry.UUID,
+					iterStatusEntry.DisplayName)
+				return errors.New(errStr)
+			}
+		}
+	} else {
+		// Make sure it will not be configured for IP
+		if portStatus.Dhcp != types.DT_NOOP {
+			errStr := fmt.Sprintf("Port %s configured for shared use. "+
+				"Cannot be used by Switch Network Instance %s-%s\n",
+				status.Port, status.UUID, status.DisplayName)
+			return errors.New(errStr)
+		}
 		// Make sure it is not used by any other NetworkInstance
 		for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
 			if status == iterStatusEntry {
@@ -98,26 +135,6 @@ func checkPortAvailableForNetworkInstance(
 				return errors.New(errStr)
 			}
 		}
-	case types.NetworkInstanceTypeLocal:
-		// Make sure it is not used by a NetworkInstance of type Switch
-		for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
-			if status == iterStatusEntry {
-				continue
-			}
-			if iterStatusEntry.IsUsingPort(status.Port) {
-				if iterStatusEntry.Type == types.NetworkInstanceTypeSwitch {
-					errStr := fmt.Sprintf("Port %s already used by "+
-						"Switch NetworkInstance %s-%s. It cannot be used by "+
-						"any other Network Instance\n",
-						status.Port, iterStatusEntry.UUID, iterStatusEntry.DisplayName)
-					return errors.New(errStr)
-				}
-				// Still iterate through all NetworkInstances. This particular one
-				//	may have errored out or inactive. Make sure no Switch NI is
-				//  using the Port.
-			}
-		}
-	default:
 	}
 	return nil
 }
@@ -412,13 +429,17 @@ func doNetworkInstanceSanityCheck(
 	//  Check NetworkInstanceType
 	switch status.Type {
 	case types.NetworkInstanceTypeLocal:
+		// Do nothing
 	case types.NetworkInstanceTypeSwitch:
+		// Do nothing
 	default:
 		err := fmt.Sprintf("Instance type %d not supported", status.Type)
 		return errors.New(err)
 	}
 
 	if err := checkPortAvailableForNetworkInstance(ctx, status); err != nil {
+		log.Errorf("checkPortAvailableForNetworkInstance failed: Port: %s, err:%s",
+			status.Port, err)
 		return err
 	}
 
@@ -779,7 +800,7 @@ func setBridgeIPAddrForNetworkInstance(
 	case types.NetworkInstanceTypeSwitch:
 		ipAddr, err = getPortIPv4Addr(ctx, status)
 		if err != nil {
-			log.Errorf("setBridgeIPAddrForNetworkInstance: getBridgeServiceIPv4Addr failed: %s\n",
+			log.Errorf("setBridgeIPAddrForNetworkInstance: getPortIPv4Addr failed: %s\n",
 				err)
 			return err
 		}
@@ -891,7 +912,7 @@ func maybeUpdateBridgeIPAddrForNetworkInstance(
 	if status == nil {
 		return
 	}
-	log.Infof("maybeUpdateBridgeIPAddrForNetworkInstance: found \n"+
+	log.Infof("maybeUpdateBridgeIPAddrForNetworkInstance: found "+
 		"NetworkInstance %s", status.DisplayName)
 
 	if !status.Activated {
