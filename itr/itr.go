@@ -183,7 +183,7 @@ func SetupPacketCapture(iface string, snapLen int) *afpacket.TPacket {
 
 	frameSize := snapLen
 	blockSize := frameSize * 128
-	numBlocks := 10
+	numBlocks := 2
 
 	if !strings.HasPrefix(iface, "dbo1x") {
 		// Capture packets from domU network's sister interface.

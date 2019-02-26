@@ -444,7 +444,7 @@ func SetupEtrPktCapture(ephemeralPort int, upLink string) *afpacket.TPacket {
 
 	frameSize := 65536
 	blockSize := frameSize * 128
-	numBlocks := 10
+	numBlocks := 2
 
 	tPacket, err := afpacket.NewTPacket(
 		afpacket.OptInterface(upLink),
@@ -564,7 +564,6 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 				handle.Close()
 				return
 			default:
-				continue
 		}
 		ci, err := handle.ReadPacketDataTo(pktBuf[:])
 		if err != nil {
