@@ -942,11 +942,20 @@ func maybeRetryInstall(ctx *baseOsMgrContext) {
 }
 
 func baseOsSetPartitionInfoInStatus(ctx *baseOsMgrContext, status *types.BaseOsStatus, partName string) {
+
 	partStatus := getBaseOsPartitionStatus(ctx, partName)
 	if partStatus != nil {
+		log.Infof("baseOsSetPartitionInfoInStatus(%s) %s found %+v\n",
+			status.Key(), partName, partStatus)
 		status.PartitionLabel = partName
 		status.PartitionState = partStatus.PartitionState
 		status.PartitionDevice = partStatus.PartitionDevname
+
+		// List has only one element but ...
+		for idx, _ := range status.StorageStatusList {
+			ss := &status.StorageStatusList[idx]
+			ss.FinalObjDir = status.PartitionLabel
+		}
 	}
 }
 
