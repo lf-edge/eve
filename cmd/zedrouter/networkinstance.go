@@ -71,9 +71,9 @@ func checkPortAvailableForNetworkInstance(
 			return nil
 		}
 	} else {
-		if !isSharedPortLabel(status.Port) {
-			errStr := fmt.Sprintf("SharedPortLabel %s not allowed for exclusive NI %s\n",
-				status.Port, status.Key())
+		if isSharedPortLabel(status.Port) {
+			errStr := fmt.Sprintf("SharedPortLabel %s not allowed for exclusive network instance %s-%s\n",
+				status.Port, status.Key(), status.DisplayName)
 			log.Errorln(errStr)
 			return errors.New(errStr)
 		}
@@ -446,6 +446,7 @@ func doNetworkInstanceSanityCheck(
 	// IpType - Check for valid types
 	switch status.IpType {
 	case types.AddressTypeNone:
+		// Do nothing
 	case types.AddressTypeIPV4, types.AddressTypeIPV6,
 		types.AddressTypeCryptoIPV4, types.AddressTypeCryptoIPV6:
 
