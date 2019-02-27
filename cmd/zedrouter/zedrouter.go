@@ -1254,7 +1254,7 @@ func appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
 	if netInstStatus.Error != "" {
 		log.Errorf("doActivate sees network error %s\n",
 			netInstStatus.Error)
-		addError(ctx, status, "netstatus.Error",
+		addError(ctx, status, "error from network instance",
 			errors.New(netInstStatus.Error))
 		return
 	}

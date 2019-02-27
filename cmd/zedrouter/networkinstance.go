@@ -83,8 +83,8 @@ func checkPortAvailableForNetworkInstance(
 		// XXX Fallback until we have complete Name support in UI
 		portStatus = ctx.deviceNetworkStatus.GetPortByIfName(status.Port)
 		if portStatus == nil {
-			errStr := fmt.Sprintf("PortStatus for %s not found\n",
-				status.Port)
+			errStr := fmt.Sprintf("PortStatus for %s not found for network instance %s-%s\n",
+				status.Port, status.Key(), status.DisplayName)
 			return errors.New(errStr)
 		}
 	}
@@ -108,9 +108,10 @@ func checkPortAvailableForNetworkInstance(
 			if !allowSharedPort(iterStatusEntry) {
 				errStr := fmt.Sprintf("Port %s already used by "+
 					"Switch NetworkInstance %s-%s. It cannot be used by "+
-					"any other Network Instance\n",
+					"any other Network Instance such as %s-%s\n",
 					status.Port, iterStatusEntry.UUID,
-					iterStatusEntry.DisplayName)
+					iterStatusEntry.DisplayName,
+					status.UUID, status.DisplayName)
 				return errors.New(errStr)
 			}
 		}
@@ -478,7 +479,8 @@ func doNetworkInstanceSubnetSanityCheck(
 	status *types.NetworkInstanceStatus) error {
 
 	if status.Subnet.IP == nil || status.Subnet.IP.IsUnspecified() {
-		err := fmt.Sprintf("Subnet Unspecified: %+v\n", status.Subnet)
+		err := fmt.Sprintf("Subnet Unspecified for %s-%s: %+v\n",
+			status.Key(), status.DisplayName, status.Subnet)
 		return errors.New(err)
 	}
 
