@@ -676,6 +676,8 @@ func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
 		log.Infof("IsAnyPortInPciBack: nil aa")
 		return false, "", uuid.UUID{}
 	}
+	log.Infof("IsAnyPortInPciBack: aa init %t, %d bundles, %d ports",
+		aa.Initialized, len(aa.IoBundleList), len(portConfig.Ports))
 	for _, port := range portConfig.Ports {
 		ioBundle := aa.LookupIoBundleForMember(
 			IoEth, port.IfName)
@@ -683,6 +685,8 @@ func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
 			// It is not guaranteed that all Ports are part of Assignable Adapters
 			// If not found, the adaptor is not capable of being assigned at
 			// PCI level. So it cannot be in PCI back.
+			log.Infof("IsAnyPortInPciBack: ifname %s not found",
+				port.IfName)
 			continue
 		}
 		if ioBundle.IsPCIBack {
@@ -1271,7 +1275,7 @@ type ACE struct {
 // The host matching is suffix-matching thus zededa.net matches *.zededa.net.
 // XXX Need "interface"... e.g. "uplink" or "eth1"? Implicit in network used?
 // For now the matches are bidirectional.
-// XXX Add directionality? Different ragte limits in different directions?
+// XXX Add directionality? Different rate limits in different directions?
 // Value is always a string.
 // There is an implicit reject rule at the end.
 // The "eidset" type is special for the overlay. Matches all the IPs which
