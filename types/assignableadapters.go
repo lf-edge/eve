@@ -46,6 +46,7 @@ type IoBundle struct {
 	PciLong  string // If adapter on some bus
 	PciShort string // If pci adapter
 	XenCfg   string // If template for the bundle
+	Unique   string // From firmware_node symlink; used for debug checks
 
 	// IsPciBack
 	//	Is the IoBundle assigned to pciBack.

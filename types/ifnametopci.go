@@ -56,6 +56,33 @@ func pciLongExists(long string) bool {
 
 }
 
+// Return a string likely to be unique for the device.
+// Used to make sure devices don't move around
+// Returns exist bool, string
+func PciLongToUnique(long string) (bool, string) {
+
+	if !pciLongExists(long) {
+		return false, ""
+	}
+	devPath := pciPath + "/" + long + "/firmware_node"
+	info, err := os.Lstat(devPath)
+	if err != nil {
+		log.Errorln(err)
+		return false, ""
+	}
+	if (info.Mode() & os.ModeSymlink) == 0 {
+		log.Errorf("Skipping non-symlink %s\n", devPath)
+		return true, ""
+	}
+	link, err := os.Readlink(devPath)
+	if err != nil {
+		log.Errorln(err)
+		return true, ""
+	}
+	target := path.Base(link)
+	return true, target
+}
+
 // Returns the long and short PCI IDs.
 // Check if PCI ID exists on system. Returns null strings for non-PCI
 // devices since we can't check if they exist.

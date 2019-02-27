@@ -1480,15 +1480,6 @@ func handleModify(ctx *domainContext, key string,
 			config.UUIDandVersion, status.DomainName,
 			config.DisplayName)
 
-		// XXX remove and use code below? Should see Actvate false to
-		// clear error?
-		if false && status.LastErr != "" {
-			log.Errorf("handleModify(%v) existing error for %s\n",
-				config.UUIDandVersion, config.DisplayName)
-			status.PendingModify = false
-			publishDomainStatus(ctx, status)
-			return
-		}
 		// This has the effect of trying a boot again for any
 		// handleModify after an error.
 		if status.LastErr != "" {
@@ -2119,9 +2110,9 @@ func handleAADelete(ctxArg interface{}, status *types.AssignableAdapters) {
 	log.Infof("handleAADelete() done\n")
 }
 
-// Process new IoBundles. Check if PCI device exists, and check if management port.
+// Process new IoBundles. Check if PCI device exists, and check that not
+// used in a DevicePortConfig/DeviceNetworkStatus
 // Assign to pciback
-// XXX Who reports errors on port changes? zedrouter!
 func handleIBCreate(ctx *domainContext, ib types.IoBundle,
 	status *types.AssignableAdapters) {
 
@@ -2146,7 +2137,7 @@ func checkAndSetIoBundleAll(ctx *domainContext) {
 
 func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 
-	// Check if management port or part of management port
+	// Check any member is part of DevicePortConfig
 	ib.IsPort = false
 	publishAssignableAdapters := false
 	for _, m := range ib.Members {
@@ -2185,6 +2176,22 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		log.Infof("checkAndSetIoBundle(%d %s %v) found %s/%s\n",
 			ib.Type, ib.Name, ib.Members, short, long)
 	}
+	// Save somewhat Unique string for debug
+	if ib.PciLong != "" {
+		found, unique := types.PciLongToUnique(ib.PciLong)
+		if !found {
+			errStr := fmt.Sprintf("IoBundle(%d %s %v) %s/%s unique %s not foun\n",
+				ib.Type, ib.Name, ib.Members,
+				ib.PciShort, ib.PciLong, ib.Unique)
+			log.Errorln(errStr)
+		} else {
+			ib.Unique = unique
+			log.Infof("checkAndSetIoBundle(%d %s %v) %s/%s unique %s\n",
+				ib.Type, ib.Name, ib.Members, ib.PciShort,
+				ib.PciLong, ib.Unique)
+		}
+	}
+
 	if !ib.IsPort && ib.PciShort != "" && !ib.IsPCIBack {
 		if ctx.usbAccess && ib.Type == types.IoUSB {
 			log.Infof("No assigning %s (%s %s) to pciback\n",
@@ -2215,11 +2222,10 @@ func checkIoBundleAll(ctx *domainContext) {
 }
 
 // Check if the name to pci-id have changed
+// We track a mostly unique string to see if the underlying firmware node has
+// changed in addition to the name to pci-id lookup.
 func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 
-	// XXX need this even if not Lookup? Need to save more info for
-	// that case?? Lookup reverse in /sys/bus/pci/devices/<pcilong> and
-	// save what?
 	if ib.Lookup {
 		long, short, err := types.IoBundleToPci(ib)
 		if err != nil {
@@ -2234,6 +2240,21 @@ func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 			errStr := fmt.Sprintf("IoBundle(%d %s %v) changed from %s/%s to %s/%s\n",
 				ib.Type, ib.Name, ib.Members,
 				ib.PciShort, ib.PciLong, short, long)
+			return errors.New(errStr)
+		}
+	}
+	if ib.PciLong != "" {
+		found, unique := types.PciLongToUnique(ib.PciLong)
+		if !found {
+			errStr := fmt.Sprintf("IoBundle(%d %s %v) %s/%s unique %s not foun\n",
+				ib.Type, ib.Name, ib.Members,
+				ib.PciShort, ib.PciLong, ib.Unique)
+			return errors.New(errStr)
+		}
+		if unique != ib.Unique {
+			errStr := fmt.Sprintf("IoBundle(%d %s %v) changed unique from %s to %sn",
+				ib.Type, ib.Name, ib.Members,
+				ib.Unique, unique)
 			return errors.New(errStr)
 		}
 	}
@@ -2320,6 +2341,7 @@ func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.
 		e.PciLong = configIb.PciLong
 		e.PciShort = configIb.PciShort
 		e.XenCfg = configIb.XenCfg
+		e.Unique = configIb.Unique
 	}
 	checkIoBundleAll(ctx)
 }
