@@ -1790,9 +1790,39 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfigChange = true
 			}
 		default:
-			log.Errorf("Unknown configItem %s value %s\n",
-				key, item.Value)
-			// XXX send back error? Need device error for that
+			// Handle agentname items for loglevels
+			newString := item.Value
+			components := strings.Split(key, ".")
+			if len(components) == 3 && components[0] == "debug" &&
+				components[2] == "loglevel" {
+
+				agentName := components[1]
+				current := agentlog.LogLevel(&globalConfig,
+					agentName)
+				if current != newString {
+					log.Infof("parseConfigItems: %s change from %v to %v\n",
+						key, current, newString)
+					agentlog.SetLogLevel(&globalConfig,
+						agentName, newString)
+					globalConfigChange = true
+				}
+			} else if len(components) == 4 && components[0] == "debug" &&
+				components[2] == "remote" && components[3] == "loglevel" {
+				agentName := components[1]
+				current := agentlog.RemoteLogLevel(&globalConfig,
+					agentName)
+				if current != newString {
+					log.Infof("parseConfigItems: %s change from %v to %v\n",
+						key, current, newString)
+					agentlog.SetRemoteLogLevel(&globalConfig,
+						agentName, newString)
+					globalConfigChange = true
+				}
+			} else {
+				log.Errorf("Unknown configItem %s value %s\n",
+					key, item.Value)
+				// XXX send back error? Need device error for that
+			}
 		}
 	}
 	if globalConfigChange {

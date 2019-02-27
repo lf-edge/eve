@@ -54,6 +54,16 @@ func getLogLevelImpl(sub *pubsub.Subscription, agentName string,
 
 // Returns (value, ok)
 func GetRemoteLogLevel(sub *pubsub.Subscription, agentName string) (string, bool) {
+	return getRemoteLogLevelImpl(sub, agentName, true)
+}
+
+func GetRemoteLogLevelNoDefault(sub *pubsub.Subscription, agentName string) (string, bool) {
+	return getRemoteLogLevelImpl(sub, agentName, false)
+}
+
+func getRemoteLogLevelImpl(sub *pubsub.Subscription, agentName string,
+	allowDefault bool) (string, bool) {
+
 	m, err := sub.Get("global")
 	if err != nil {
 		log.Infof("GetRemoteLogLevel failed %s\n", err)
@@ -66,10 +76,62 @@ func GetRemoteLogLevel(sub *pubsub.Subscription, agentName string) (string, bool
 		return as.RemoteLogLevel, true
 	}
 	// Do we have a default value?
-	if gc.DefaultRemoteLogLevel != "" {
+	if allowDefault && gc.DefaultRemoteLogLevel != "" {
 		return gc.DefaultRemoteLogLevel, true
 	}
 	return "", false
+}
+
+func LogLevel(gc *types.GlobalConfig, agentName string) string {
+
+	as, ok := gc.AgentSettings[agentName]
+	if ok && as.LogLevel != "" {
+		return as.LogLevel
+	}
+	return ""
+}
+
+func RemoteLogLevel(gc *types.GlobalConfig, agentName string) string {
+
+	as, ok := gc.AgentSettings[agentName]
+	if ok && as.RemoteLogLevel != "" {
+		return as.RemoteLogLevel
+	}
+	return ""
+}
+
+// Ignores levels which don't parse
+func SetLogLevel(gc *types.GlobalConfig, agentName string, loglevel string) {
+
+	_, err := log.ParseLevel(loglevel)
+	if err != nil {
+		log.Errorf("ParseLevel %s failed: %s\n", loglevel, err)
+		return
+	}
+	as, ok := gc.AgentSettings[agentName]
+	if ok {
+		as.LogLevel = loglevel
+	} else {
+		as = types.PerAgentSettings{LogLevel: loglevel}
+	}
+	gc.AgentSettings[agentName] = as
+}
+
+// Ignores levels which don't parse
+func SetRemoteLogLevel(gc *types.GlobalConfig, agentName string, loglevel string) {
+
+	_, err := log.ParseLevel(loglevel)
+	if err != nil {
+		log.Errorf("ParseLevel %s failed: %s\n", loglevel, err)
+		return
+	}
+	as, ok := gc.AgentSettings[agentName]
+	if ok {
+		as.RemoteLogLevel = loglevel
+	} else {
+		as = types.PerAgentSettings{RemoteLogLevel: loglevel}
+	}
+	gc.AgentSettings[agentName] = as
 }
 
 // Update LogLevel setting based on GlobalConfig and debugOverride
