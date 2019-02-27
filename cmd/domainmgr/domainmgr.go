@@ -878,6 +878,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 			ib.IsPCIBack = true
 		}
 	}
+	checkIoBundleAll(ctx)
 }
 
 func doActivate(ctx *domainContext, config types.DomainConfig,
@@ -1144,6 +1145,7 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 			}
 		}
 		ib.UsedByUUID = nilUUID
+		checkIoBundleAll(ctx)
 	}
 	ctx.publishAssignableAdapters()
 }
@@ -2137,7 +2139,7 @@ func checkAndSetIoBundleAll(ctx *domainContext) {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
 		err := checkAndSetIoBundle(ctx, ib)
 		if err != nil {
-			log.Errorf("checkAndSetInBundleAll failed for %d\n", i)
+			log.Errorf("checkAndSetIoBundleAll failed for %d\n", i)
 		}
 	}
 }
@@ -2201,6 +2203,43 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 	return nil
 }
 
+// Check if anything moved around
+func checkIoBundleAll(ctx *domainContext) {
+	for i, _ := range ctx.assignableAdapters.IoBundleList {
+		ib := &ctx.assignableAdapters.IoBundleList[i]
+		err := checkIoBundle(ctx, ib)
+		if err != nil {
+			log.Errorf("checkIoBundleAll failed for %d\n", i)
+		}
+	}
+}
+
+// Check if the name to pci-id have changed
+func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
+
+	// XXX need this even if not Lookup? Need to save more info for
+	// that case?? Lookup reverse in /sys/bus/pci/devices/<pcilong> and
+	// save what?
+	if ib.Lookup {
+		long, short, err := types.IoBundleToPci(ib)
+		if err != nil {
+			return err
+		}
+		if short == "" {
+			// Doesn't exist
+			return nil
+		}
+		if ib.PciLong != long ||
+			ib.PciShort != short {
+			errStr := fmt.Sprintf("IoBundle(%d %s %v) changed from %s/%s to %s/%s\n",
+				ib.Type, ib.Name, ib.Members,
+				ib.PciShort, ib.PciLong, short, long)
+			return errors.New(errStr)
+		}
+	}
+	return nil
+}
+
 func updateUsbAccess(ctx *domainContext) {
 	log.Infof("updateUsbAccess()\n")
 	for i, _ := range ctx.assignableAdapters.IoBundleList {
@@ -2227,6 +2266,7 @@ func updateUsbAccess(ctx *domainContext) {
 			ib.IsPCIBack = false
 		}
 	}
+	checkIoBundleAll(ctx)
 }
 
 func handleIBDelete(ctx *domainContext, ib types.IoBundle,
@@ -2252,6 +2292,7 @@ func handleIBDelete(ctx *domainContext, ib types.IoBundle,
 		replace.IoBundleList = append(replace.IoBundleList, e)
 	}
 	*status = replace
+	checkIoBundleAll(ctx)
 }
 
 func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.IoBundle,
@@ -2275,10 +2316,10 @@ func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.
 		}
 		e.IsPort = configIb.IsPort
 		e.IsPCIBack = configIb.IsPCIBack
-		// XXX TBD IsBridge, IsService
 		e.Lookup = configIb.Lookup
 		e.PciLong = configIb.PciLong
 		e.PciShort = configIb.PciShort
 		e.XenCfg = configIb.XenCfg
 	}
+	checkIoBundleAll(ctx)
 }
