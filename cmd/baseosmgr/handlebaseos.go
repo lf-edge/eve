@@ -414,12 +414,18 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 	if zboot.IsOtherPartitionStateActive() {
 		// Must still be testing the current version; don't overwrite
 		// fallback
+		// If there is no change to the other we don't log error
+		// but still retry later
 		status.TooEarly = true
 		errStr := fmt.Sprintf("Attempt to install baseOs update %s while testing is in progress for %s: refused",
 			config.BaseOsVersion, curPartVersion)
-		log.Errorln(errStr)
-		status.Error = errStr
-		status.ErrorTime = time.Now()
+		if otherPartVersion == config.BaseOsVersion {
+			log.Infoln(errStr)
+		} else {
+			log.Errorln(errStr)
+			status.Error = errStr
+			status.ErrorTime = time.Now()
+		}
 		changed = true
 		return changed, proceed
 	}
