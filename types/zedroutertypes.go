@@ -668,11 +668,13 @@ func AdapterToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 // IsAnyPortInPciBack
 //		Checks is any of the Ports are part of IO bundles which are in PCIback.
 //		If true, it also returns the portName ( NOT bundle name )
+//		Also returns whether it is currently used by an application by
+//		returning a UUID. If the UUID is zero it is in PCIback but available.
 func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
-	aa *AssignableAdapters) (bool, string) {
+	aa *AssignableAdapters) (bool, string, uuid.UUID) {
 	if aa == nil {
 		log.Infof("IsAnyPortInPciBack: nil aa")
-		return false, ""
+		return false, "", uuid.UUID{}
 	}
 	for _, port := range portConfig.Ports {
 		ioBundle := aa.LookupIoBundleForMember(
@@ -684,10 +686,10 @@ func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
 			continue
 		}
 		if ioBundle.IsPCIBack {
-			return true, port.IfName
+			return true, port.IfName, ioBundle.UsedByUUID
 		}
 	}
-	return false, ""
+	return false, "", uuid.UUID{}
 }
 
 type MapServerType uint8

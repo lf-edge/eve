@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
@@ -148,6 +149,8 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 	VerifyDevicePortConfig(ctx)
 }
 
+var nilUUID = uuid.UUID{} // Really a const
+
 func VerifyPending(pending *DPCPending,
 	aa *types.AssignableAdapters) PendDNSStatus {
 	// Stop pending timer if its running.
@@ -156,9 +159,14 @@ func VerifyPending(pending *DPCPending,
 	// Check if all the ports in the config are out of pciBack.
 	// If yes, apply config.
 	// If not, wait for all the ports to come out of PCIBack.
-	portInPciBack, portName := pending.PendDPC.IsAnyPortInPciBack(aa)
+	portInPciBack, portName, usedByUUID := pending.PendDPC.IsAnyPortInPciBack(aa)
 	if portInPciBack {
-		log.Infof("VerifyPending: port %+v still in PCIBack. "+
+		if usedByUUID != nilUUID {
+			log.Errorf("VerifyPending: port %s in PCIBack "+
+				"used by %s\n", portName, usedByUUID.String())
+			return DPC_FAIL
+		}
+		log.Infof("VerifyPending: port %s still in PCIBack. "+
 			"wait for it to come out before re-parsing device port config list.\n",
 			portName)
 		return DPC_PCI_WAIT
