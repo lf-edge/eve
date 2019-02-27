@@ -79,8 +79,7 @@ func PciLongToUnique(long string) (bool, string) {
 		log.Errorln(err)
 		return true, ""
 	}
-	target := path.Base(link)
-	return true, target
+	return true, link
 }
 
 // Returns the long and short PCI IDs.
