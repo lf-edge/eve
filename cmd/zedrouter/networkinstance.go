@@ -493,9 +493,13 @@ func doNetworkInstanceSanityCheck(
 	//  Check NetworkInstanceType
 	switch status.Type {
 	case types.NetworkInstanceTypeLocal:
+		// Do nothing
 	case types.NetworkInstanceTypeSwitch:
+		// Do nothing
 	case types.NetworkInstanceTypeCloud:
+		// Do nothing
 	case types.NetworkInstanceTypeMesh:
+		// Do nothing
 	default:
 		err := fmt.Sprintf("Instance type %d not supported", status.Type)
 		return errors.New(err)

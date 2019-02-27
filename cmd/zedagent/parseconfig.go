@@ -1180,7 +1180,7 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 		ulCfg := parseUnderlayNetworkConfigEntry(
 			cfgApp, cfgNetworks, cfgNetworkInstances, intfEnt)
 		if ulCfg == nil {
-			log.Infof("Nil ulcfgi for Interface %s", intfEnt.Name)
+			log.Infof("Nil underlay config for Interface %s", intfEnt.Name)
 			continue
 		}
 		appInstance.UnderlayNetworkList = append(appInstance.UnderlayNetworkList,
@@ -1220,9 +1220,9 @@ func parseUnderlayNetworkConfigEntry(
 		}
 		switch networkInstanceEntry.InstType {
 		case zconfig.ZNetworkInstType_ZnetInstLocal, zconfig.ZNetworkInstType_ZnetInstSwitch:
+			// Do nothing
 		default:
-			log.Infof("Interface %s of App instance %s not connected to Underlay network",
-				intfEnt.Name, cfgApp.Displayname)
+			// We are not interested in overlays.
 			return nil
 		}
 		ulCfg.UsesNetworkInstance = true
@@ -1234,6 +1234,7 @@ func parseUnderlayNetworkConfigEntry(
 		switch netEnt.Type {
 		case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
 		default:
+			// We are not interested in overlays.
 			return nil
 		}
 		ulCfg.UsesNetworkInstance = false
@@ -1320,7 +1321,6 @@ func parseOverlayNetworkConfigEntry(
 	cfgNetworks []*zconfig.NetworkConfig,
 	cfgNetworkInstances []*zconfig.NetworkInstanceConfig,
 	intfEnt *zconfig.NetworkAdapter) *types.EIDOverlayConfig {
-	var networkUuidStr string
 	var networkInstanceEntry *zconfig.NetworkInstanceConfig = nil
 
 	olCfg := new(types.EIDOverlayConfig)
@@ -1340,22 +1340,18 @@ func parseOverlayNetworkConfigEntry(
 			return olCfg
 		}
 		if networkInstanceEntry.InstType != zconfig.ZNetworkInstType_ZnetInstMesh {
-			log.Infof("Interface %s of App instance %s not connected to Overlay network",
-				intfEnt.Name, cfgApp.Displayname)
 			return nil
 		}
-		networkUuidStr = networkInstanceEntry.Uuidandversion.Uuid
 	} else {
 		if netEnt.Type != zconfig.NetworkType_CryptoEID {
 			return nil
 		}
 		olCfg.UsesNetworkInstance = false
-		networkUuidStr = netEnt.Id
 	}
-	uuid, err := uuid.FromString(networkUuidStr)
+	uuid, err := uuid.FromString(intfEnt.NetworkId)
 	if err != nil {
-		olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: Malformed UUID ignored: %s",
-			err)
+		olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: " +
+			"Malformed UUID ignored: %s", err)
 		log.Errorf("%s", olCfg.Error)
 		return olCfg
 	}
@@ -1364,18 +1360,15 @@ func parseOverlayNetworkConfigEntry(
 		case zconfig.NetworkType_CryptoV4, zconfig.NetworkType_CryptoV6:
 			// do nothing
 		default:
-			olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: Unsupported overlay type %v",
-				netEnt.Type)
-			return olCfg
+			// We are not interested in non-overlays
+			return nil
 		}
 		log.Infof("parseOverlayNetworkConfigEntry: app %v net %v type %v\n",
 			cfgApp.Displayname, uuid.String(), netEnt.Type)
 	} else {
 		if networkInstanceEntry.InstType != zconfig.ZNetworkInstType_ZnetInstMesh {
-			olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: Unsupported" +
-				" overlay network instance type %v", networkInstanceEntry.InstType)
-			log.Errorf("%s", olCfg.Error)
-			return olCfg
+			// We are not interested in non-overlays
+			return nil
 		}
 		log.Infof("NetworkInstance(%s-%s): InstType %v\n",
 			cfgApp.Displayname, uuid.String(),
@@ -1401,6 +1394,7 @@ func parseOverlayNetworkConfigEntry(
 			olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: bad CryptoEid %s\n",
 				intfEnt.CryptoEid)
 			log.Errorf("%s", olCfg.Error)
+			return olCfg
 		}
 		// Any IPv4 EID?
 		if intfEnt.Addr != "" {
@@ -1409,6 +1403,7 @@ func parseOverlayNetworkConfigEntry(
 				olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: bad Addr %s\n",
 					intfEnt.Addr)
 				log.Errorf("%s", olCfg.Error)
+				return olCfg
 			}
 		}
 	} else if intfEnt.Addr != "" {
@@ -1417,6 +1412,7 @@ func parseOverlayNetworkConfigEntry(
 			olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: bad Addr %s\n",
 				intfEnt.Addr)
 			log.Errorf("%s", olCfg.Error)
+			return olCfg
 		}
 	}
 	if olCfg.AppIPAddr == nil {
