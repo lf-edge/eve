@@ -113,6 +113,9 @@ func SetLogLevel(gc *types.GlobalConfig, agentName string, loglevel string) {
 		as.LogLevel = loglevel
 	} else {
 		as = types.PerAgentSettings{LogLevel: loglevel}
+		if gc.AgentSettings == nil {
+			gc.AgentSettings = make(map[string]types.PerAgentSettings)
+		}
 	}
 	gc.AgentSettings[agentName] = as
 }
@@ -130,6 +133,9 @@ func SetRemoteLogLevel(gc *types.GlobalConfig, agentName string, loglevel string
 		as.RemoteLogLevel = loglevel
 	} else {
 		as = types.PerAgentSettings{RemoteLogLevel: loglevel}
+		if gc.AgentSettings == nil {
+			gc.AgentSettings = make(map[string]types.PerAgentSettings)
+		}
 	}
 	gc.AgentSettings[agentName] = as
 }
