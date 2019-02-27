@@ -49,10 +49,10 @@ type GlobalConfig struct {
 	XXXTest bool
 	// Per agent settings of log levels; if set for an agent it
 	// overrides the Default*Level above
-	AgentSettings map[string]perAgentSettings
+	AgentSettings map[string]PerAgentSettings
 }
 
-type perAgentSettings struct {
+type PerAgentSettings struct {
 	LogLevel       string // What we log to files
 	RemoteLogLevel string // What we log to zedcloud
 }
