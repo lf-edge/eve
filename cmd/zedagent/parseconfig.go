@@ -368,7 +368,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		if apiConfigEntry.Port != nil {
 			networkInstanceConfig.Port = apiConfigEntry.Port.Name
 		}
-		// For switch log+force to AddressTypeFirst do not copy
+		// For switch log+force to AddressTypeNone and do not copy
 		// ipconfig but do copy opaque
 		// XXX zedcloud should send First/None type for switch
 		// network instances
@@ -376,10 +376,11 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		switch networkInstanceConfig.Type {
 		case types.NetworkInstanceTypeSwitch:
 			if networkInstanceConfig.IpType != types.AddressTypeNone {
-				log.Warnf("Switch network instance %s %s with invalid IpType %d\n",
+				log.Warnf("Switch network instance %s %s with invalid IpType %d overridden as %d\n",
 					networkInstanceConfig.UUID.String(),
 					networkInstanceConfig.DisplayName,
-					networkInstanceConfig.IpType)
+					networkInstanceConfig.IpType,
+					types.AddressTypeNone)
 				networkInstanceConfig.IpType = types.AddressTypeNone
 			}
 
