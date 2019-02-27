@@ -209,9 +209,11 @@ func networkInstanceBridgeDelete(
 	// Remove link and associated addresses
 	netlink.LinkDel(link)
 
-	status.BridgeName = ""
-	status.BridgeNum = 0
-	bridgeNumFree(ctx, status.UUID)
+	if status.BridgeNum != 0 {
+		status.BridgeName = ""
+		status.BridgeNum = 0
+		bridgeNumFree(ctx, status.UUID)
+	}
 }
 
 func doNetworkInstanceBridgeAclsDelete(
@@ -227,6 +229,9 @@ func doNetworkInstanceBridgeAclsDelete(
 			if olStatus.UsesNetworkInstance && olStatus.Network != status.UUID {
 				continue
 			}
+			if olStatus.Bridge == "" {
+				continue
+			}
 			log.Infof("NetworkInstance - deleting Acls for OL Interface(%s)",
 				olStatus.Name)
 			err := deleteACLConfiglet(olStatus.Bridge,
@@ -240,6 +245,9 @@ func doNetworkInstanceBridgeAclsDelete(
 		}
 		for _, ulStatus := range appNetStatus.UnderlayNetworkList {
 			if ulStatus.UsesNetworkInstance && ulStatus.Network != status.UUID {
+				continue
+			}
+			if ulStatus.Bridge == "" {
 				continue
 			}
 			log.Infof("NetworkInstance - deleting Acls for UL Interface(%s)",
@@ -1040,10 +1048,12 @@ func doNetworkInstanceDelete(
 	}
 
 	doNetworkInstanceBridgeAclsDelete(ctx, status)
-	stopDnsmasq(status.BridgeName, false, false)
+	if status.BridgeName != "" {
+		stopDnsmasq(status.BridgeName, false, false)
 
-	if status.IsIPv6() {
-		stopRadvd(status.BridgeName, true)
+		if status.IsIPv6() {
+			stopRadvd(status.BridgeName, true)
+		}
 	}
 	networkInstanceBridgeDelete(ctx, status)
 }

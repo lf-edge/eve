@@ -734,9 +734,11 @@ func doNetworkDelete(ctx *zedrouterContext,
 		deleteRadvdConfiglet(cfgPathname)
 	}
 
-	status.BridgeName = ""
-	status.BridgeNum = 0
-	bridgeNumFree(ctx, status.UUID)
+	if status.BridgeNum != 0 {
+		status.BridgeName = ""
+		status.BridgeNum = 0
+		bridgeNumFree(ctx, status.UUID)
+	}
 }
 
 func vifNameToBridgeName(ctx *zedrouterContext, vifName string) string {
