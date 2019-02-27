@@ -368,6 +368,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		if apiConfigEntry.Port != nil {
 			networkInstanceConfig.Port = apiConfigEntry.Port.Name
 		}
+		// XXX temporary hack:
 		// For switch log+force to AddressTypeNone and do not copy
 		// ipconfig but do copy opaque
 		// XXX zedcloud should send First/None type for switch
@@ -616,6 +617,9 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			continue
 		}
 		network := cast.CastNetworkObjectConfig(networkObject)
+		// XXX temporary hack: if static IP 0.0.0.0 we log and force
+		// Dhcp = None. Remove once zedcloud can send Dhcp = None
+		forceDhcpNone := false
 		if sysAdapter.Addr != "" {
 			ip := net.ParseIP(sysAdapter.Addr)
 			if ip == nil {
@@ -623,6 +627,9 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 					"sysAdapter.Addr %s - ignored\n",
 					sysAdapter.Name, sysAdapter.Addr)
 				continue
+			}
+			if ip.IsUnspecified() {
+				forceDhcpNone = true
 			}
 			addrSubnet := network.Subnet
 			addrSubnet.IP = ip
@@ -636,13 +643,15 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		port.Dhcp = network.Dhcp
 		switch network.Dhcp {
 		case types.DT_STATIC:
+			if forceDhcpNone {
+				log.Warnf("Forcing DT_NOOP for %+v\n", port)
+				port.Dhcp = types.DT_NOOP
+				break
+			}
 			if port.Gateway.IsUnspecified() || port.AddrSubnet == "" ||
 				port.DnsServers == nil {
 				log.Errorf("parseSystemAdapterConfig: DT_STATIC but missing parameters in %+v; ignored\n",
 					port)
-				// XXX to test with zedcloud sending empty
-				// DnsServers need to comment out this
-				// continue
 				continue
 			}
 		case types.DT_CLIENT:
