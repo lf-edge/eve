@@ -1333,6 +1333,7 @@ func parseOverlayNetworkConfigEntry(
 			cfgNetworkInstances)
 		olCfg.UsesNetworkInstance = true
 		if networkInstanceEntry == nil {
+			olCfg.UsesNetworkInstance = true
 			olCfg.Error = fmt.Sprintf("App %s - Can't find network id %s in networks or "+
 				"networkinstances. Ignoring this network",
 				cfgApp.Displayname, intfEnt.NetworkId)
