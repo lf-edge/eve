@@ -58,6 +58,8 @@ var Version = "No version specified"
 //  		     		client is started.
 //  uuid			Written by getUuid operation
 //  hardwaremodel		Written by getUuid if server returns a hardwaremodel
+//  enterprise			Written by getUuid if server returns an enterprise
+//  name			Written by getUuid if server returns a name
 //
 //
 
@@ -143,6 +145,8 @@ func Run() {
 	serverFileName := identityDirname + "/server"
 	uuidFileName := identityDirname + "/uuid"
 	hardwaremodelFileName := identityDirname + "/hardwaremodel"
+	enterpriseFileName := identityDirname + "/enterprise"
+	nameFileName := identityDirname + "/name"
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := pubsub.Publish(agentName, cms)
@@ -481,6 +485,8 @@ func Run() {
 	if operations["getUuid"] {
 		var devUUID uuid.UUID
 		var hardwaremodel string
+		var enterprise string
+		var name string
 
 		doWrite := true
 		requrl := serverNameAndPort + "/api/v1/edgedevice/config"
@@ -496,7 +502,7 @@ func Run() {
 			if done {
 				var err error
 
-				devUUID, hardwaremodel, err = parseConfig(requrl, resp, contents)
+				devUUID, hardwaremodel, enterprise, name, err = parseConfig(requrl, resp, contents)
 				if err == nil {
 					// Inform ledmanager about config received from cloud
 					if !zedcloudCtx.NoLedManager {
@@ -584,6 +590,21 @@ func Run() {
 			}
 			log.Debugf("Wrote hardwaremodel %s\n", hardwaremodel)
 		}
+		// We write the strings even if empty to make sure we have the most
+		// recents. Since this is for debug use we are less careful
+		// than for the hardwaremodel.
+		b := []byte(enterprise) // Note that no CRLF
+		err = ioutil.WriteFile(enterpriseFileName, b, 0644)
+		if err != nil {
+			log.Fatal("WriteFile", err, enterpriseFileName)
+		}
+		log.Debugf("Wrote enterprise %s\n", enterprise)
+		b = []byte(name) // Note that no CRLF
+		err = ioutil.WriteFile(nameFileName, b, 0644)
+		if err != nil {
+			log.Fatal("WriteFile", err, nameFileName)
+		}
+		log.Debugf("Wrote name %s\n", name)
 	}
 
 	err = pub.Publish("global", zedcloud.GetCloudMetrics())
