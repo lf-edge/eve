@@ -141,6 +141,7 @@ type DeviceNetworkConfig struct {
 // Array in timestamp aka priority order; first one is the most desired
 // config to use
 type DevicePortConfigList struct {
+	CurrentIndex   int
 	PortConfigList []DevicePortConfig
 }
 
