@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/pubsub"
@@ -148,6 +149,8 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 	VerifyDevicePortConfig(ctx)
 }
 
+var nilUUID = uuid.UUID{} // Really a const
+
 func VerifyPending(pending *DPCPending,
 	aa *types.AssignableAdapters) PendDNSStatus {
 	// Stop pending timer if its running.
@@ -156,9 +159,14 @@ func VerifyPending(pending *DPCPending,
 	// Check if all the ports in the config are out of pciBack.
 	// If yes, apply config.
 	// If not, wait for all the ports to come out of PCIBack.
-	portInPciBack, portName := pending.PendDPC.IsAnyPortInPciBack(aa)
+	portInPciBack, portName, usedByUUID := pending.PendDPC.IsAnyPortInPciBack(aa)
 	if portInPciBack {
-		log.Infof("VerifyPending: port %+v still in PCIBack. "+
+		if usedByUUID != nilUUID {
+			log.Errorf("VerifyPending: port %s in PCIBack "+
+				"used by %s\n", portName, usedByUUID.String())
+			return DPC_FAIL
+		}
+		log.Infof("VerifyPending: port %s still in PCIBack. "+
 			"wait for it to come out before re-parsing device port config list.\n",
 			portName)
 		return DPC_PCI_WAIT
@@ -456,7 +464,10 @@ func lookupPortConfig(ctx *DeviceNetworkContext,
 	portConfig types.DevicePortConfig) *types.DevicePortConfig {
 
 	for i, port := range ctx.DevicePortConfigList.PortConfigList {
-		if port.TimePriority == portConfig.TimePriority {
+		if port.Version == portConfig.Version &&
+			port.Key == portConfig.Key &&
+			port.TimePriority == portConfig.TimePriority {
+
 			log.Infof("lookupPortConfig timestamp found +%v\n",
 				port)
 			return &ctx.DevicePortConfigList.PortConfigList[i]
@@ -538,16 +549,26 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 		if oldConfig != nil {
 			// Compare everything but TimePriority since that is
 			// modified by zedagent even if there are no changes.
+			// If we modify the timestamp for other than current
+			// then treat as a change since it could have moved up
+			// in the list.
 			if oldConfig.Key == portConfig.Key &&
 				oldConfig.Version == portConfig.Version &&
 				reflect.DeepEqual(oldConfig.Ports, portConfig.Ports) {
 
-				log.Infof("doUpdatePortConfigListAndPublish: no change; timestamps %v %v\n",
+				log.Infof("doUpdatePortConfigListAndPublish: no change but timestamps %v %v\n",
 					oldConfig.TimePriority, portConfig.TimePriority)
-				return false
+				current := getCurrentDPC(ctx)
+
+				if reflect.DeepEqual(current.Ports, oldConfig.Ports) {
+					log.Infof("doUpdatePortConfigListAndPublish: no change and same Ports as current\n")
+					return false
+				}
+				log.Infof("doUpdatePortConfigListAndPublish: changed ports from current; reorder\n")
+			} else {
+				log.Infof("doUpdatePortConfigListAndPublish: change from %+v to %+v\n",
+					*oldConfig, portConfig)
 			}
-			log.Infof("doUpdatePortConfigListAndPublish: change from %+v to %+v\n",
-				*oldConfig, portConfig)
 			updatePortConfig(ctx, oldConfig, *portConfig)
 		} else {
 			insertPortConfig(ctx, *portConfig)

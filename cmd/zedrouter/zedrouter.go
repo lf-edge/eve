@@ -481,7 +481,6 @@ func handleRestart(ctxArg interface{}, done bool) {
 	}
 }
 
-var globalRunDirname string
 var lispRunDirname string
 
 // XXX hack to avoid the pslisp hang on Erik's laptop
@@ -1255,7 +1254,7 @@ func appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
 	if netInstStatus.Error != "" {
 		log.Errorf("doActivate sees network error %s\n",
 			netInstStatus.Error)
-		addError(ctx, status, "netstatus.Error",
+		addError(ctx, status, "error from network instance",
 			errors.New(netInstStatus.Error))
 		return
 	}

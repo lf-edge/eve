@@ -190,6 +190,7 @@ echo "Handling restart done at" `date`
 
 echo "Starting" `date`
 echo "go-provison version:" `cat $BINDIR/versioninfo`
+echo "go-provison version.1:" `cat $BINDIR/versioninfo.1`
 
 echo "Configuration from factory/install:"
 (cd $CONFIGDIR; ls -l)
