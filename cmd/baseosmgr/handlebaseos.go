@@ -894,7 +894,11 @@ func doPartitionStateTransition(ctx *baseOsMgrContext, uuidStr string, config ty
 			log.Errorf(errStr)
 			status.Error = errStr
 			status.ErrorTime = time.Now()
+			status.TestComplete = true
 			publishBaseOsStatus(ctx, &status)
+			// publish the updated partition information
+			publishZbootPartitionStatusAll(ctx)
+			updateAndPublishBaseOsStatusAll(ctx)
 			return
 		}
 		status.TestComplete = true
