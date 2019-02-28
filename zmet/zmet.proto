@@ -643,6 +643,18 @@ message ZMetricService {
   ZMetricLispGlobal lispGlobalStats = 11;
 }
 
+message NetworkStats {
+	uint64 totalPackets = 1;
+	uint64 errors = 2;
+	uint64 drops = 3;
+	uint64 totalBytes = 4;
+}
+
+message ZMetricNetworkStats {
+	NetworkStats rx = 1;
+	NetworkStats tx = 2;
+}
+
 message ZMetricNetworkInstance {
   string networkID = 2;		// UUID
   string networkVersion = 3;
@@ -659,6 +671,8 @@ message ZMetricNetworkInstance {
   }
   repeated ZMetricFlow flowStats = 30;
   ZMetricLispGlobal lispGlobalStats = 31;
+
+  ZMetricNetworkStats networkStats = 40; // Network bridge interface statistics
 }
 
 message ZMetricMsg {
