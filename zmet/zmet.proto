@@ -141,6 +141,9 @@ message ZInfoDevice {
   repeated ZInfoDevSW swList = 19;
   string   HostName = 20;
   repeated MetricItem metricItems = 21; // For instance, static LTE network info
+
+  string   lastRebootReason = 22; // XXX test; last reboot
+  google.protobuf.Timestamp lastRebootTime = 23; // XXX test
 }
 
 // SW Info for the device base OS
@@ -475,6 +478,9 @@ message deviceMetric {
   repeated diskMetric disk = 6;
   appCpuMetric cpuMetric = 7;
   repeated MetricItem metricItems = 8;
+
+  string   lastRebootReason = 10; // XXX test; last reboot
+  google.protobuf.Timestamp lastRebootTime = 11; // XXX test
 }
 
 enum MetricItemType {
