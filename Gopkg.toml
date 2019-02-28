@@ -51,10 +51,6 @@
 
 [[constraint]]
   branch = "master"
-  name = "github.com/nanobox-io/golang-scribble"
-
-[[constraint]]
-  branch = "master"
   name = "github.com/satori/go.uuid"
 
 [[constraint]]
