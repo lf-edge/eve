@@ -34,7 +34,7 @@ var SWAdapterType_value = map[string]int32{
 func (x SWAdapterType) String() string {
 	return proto.EnumName(SWAdapterType_name, int32(x))
 }
-func (SWAdapterType) EnumDescriptor() ([]byte, []int) { return fileDescriptor3, []int{0} }
+func (SWAdapterType) EnumDescriptor() ([]byte, []int) { return fileDescriptor4, []int{0} }
 
 type MapServer struct {
 	NameOrIp   string `protobuf:"bytes,1,opt,name=NameOrIp" json:"NameOrIp,omitempty"`
@@ -44,7 +44,7 @@ type MapServer struct {
 func (m *MapServer) Reset()                    { *m = MapServer{} }
 func (m *MapServer) String() string            { return proto.CompactTextString(m) }
 func (*MapServer) ProtoMessage()               {}
-func (*MapServer) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{0} }
+func (*MapServer) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{0} }
 
 func (m *MapServer) GetNameOrIp() string {
 	if m != nil {
@@ -68,7 +68,7 @@ type ZedServer struct {
 func (m *ZedServer) Reset()                    { *m = ZedServer{} }
 func (m *ZedServer) String() string            { return proto.CompactTextString(m) }
 func (*ZedServer) ProtoMessage()               {}
-func (*ZedServer) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{1} }
+func (*ZedServer) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{1} }
 
 func (m *ZedServer) GetHostName() string {
 	if m != nil {
@@ -99,7 +99,7 @@ type DeviceLispDetails struct {
 func (m *DeviceLispDetails) Reset()                    { *m = DeviceLispDetails{} }
 func (m *DeviceLispDetails) String() string            { return proto.CompactTextString(m) }
 func (*DeviceLispDetails) ProtoMessage()               {}
-func (*DeviceLispDetails) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{2} }
+func (*DeviceLispDetails) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{2} }
 
 func (m *DeviceLispDetails) GetLispMapServers() []*MapServer {
 	if m != nil {
@@ -181,7 +181,7 @@ type DeviceOpsCmd struct {
 func (m *DeviceOpsCmd) Reset()                    { *m = DeviceOpsCmd{} }
 func (m *DeviceOpsCmd) String() string            { return proto.CompactTextString(m) }
 func (*DeviceOpsCmd) ProtoMessage()               {}
-func (*DeviceOpsCmd) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{3} }
+func (*DeviceOpsCmd) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{3} }
 
 func (m *DeviceOpsCmd) GetCounter() uint32 {
 	if m != nil {
@@ -216,7 +216,7 @@ type SWAdapterParams struct {
 func (m *SWAdapterParams) Reset()                    { *m = SWAdapterParams{} }
 func (m *SWAdapterParams) String() string            { return proto.CompactTextString(m) }
 func (*SWAdapterParams) ProtoMessage()               {}
-func (*SWAdapterParams) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{4} }
+func (*SWAdapterParams) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{4} }
 
 func (m *SWAdapterParams) GetAType() SWAdapterType {
 	if m != nil {
@@ -266,7 +266,7 @@ type SystemAdapter struct {
 func (m *SystemAdapter) Reset()                    { *m = SystemAdapter{} }
 func (m *SystemAdapter) String() string            { return proto.CompactTextString(m) }
 func (*SystemAdapter) ProtoMessage()               {}
-func (*SystemAdapter) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{5} }
+func (*SystemAdapter) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{5} }
 
 func (m *SystemAdapter) GetName() string {
 	if m != nil {
@@ -343,7 +343,7 @@ type EdgeDevConfig struct {
 func (m *EdgeDevConfig) Reset()                    { *m = EdgeDevConfig{} }
 func (m *EdgeDevConfig) String() string            { return proto.CompactTextString(m) }
 func (*EdgeDevConfig) ProtoMessage()               {}
-func (*EdgeDevConfig) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{6} }
+func (*EdgeDevConfig) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{6} }
 
 func (m *EdgeDevConfig) GetId() *UUIDandVersion {
 	if m != nil {
@@ -493,7 +493,7 @@ type ConfigItem struct {
 func (m *ConfigItem) Reset()                    { *m = ConfigItem{} }
 func (m *ConfigItem) String() string            { return proto.CompactTextString(m) }
 func (*ConfigItem) ProtoMessage()               {}
-func (*ConfigItem) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{7} }
+func (*ConfigItem) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{7} }
 
 type isConfigItem_ConfigItemValue interface {
 	isConfigItem_ConfigItemValue()
@@ -695,7 +695,7 @@ type ConfigRequest struct {
 func (m *ConfigRequest) Reset()                    { *m = ConfigRequest{} }
 func (m *ConfigRequest) String() string            { return proto.CompactTextString(m) }
 func (*ConfigRequest) ProtoMessage()               {}
-func (*ConfigRequest) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{8} }
+func (*ConfigRequest) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{8} }
 
 func (m *ConfigRequest) GetConfigHash() string {
 	if m != nil {
@@ -712,7 +712,7 @@ type ConfigResponse struct {
 func (m *ConfigResponse) Reset()                    { *m = ConfigResponse{} }
 func (m *ConfigResponse) String() string            { return proto.CompactTextString(m) }
 func (*ConfigResponse) ProtoMessage()               {}
-func (*ConfigResponse) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{9} }
+func (*ConfigResponse) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{9} }
 
 func (m *ConfigResponse) GetConfig() *EdgeDevConfig {
 	if m != nil {
@@ -742,9 +742,9 @@ func init() {
 	proto.RegisterEnum("SWAdapterType", SWAdapterType_name, SWAdapterType_value)
 }
 
-func init() { proto.RegisterFile("devconfig.proto", fileDescriptor3) }
+func init() { proto.RegisterFile("devconfig.proto", fileDescriptor4) }
 
-var fileDescriptor3 = []byte{
+var fileDescriptor4 = []byte{
 	// 1122 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x56, 0x5d, 0x6f, 0xdb, 0x36,
 	0x17, 0x8e, 0x1d, 0xc7, 0xb5, 0x8f, 0x3f, 0xe2, 0xf0, 0x2d, 0x0a, 0xa1, 0x78, 0xd7, 0x7a, 0xc2,
