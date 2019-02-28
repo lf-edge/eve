@@ -1193,6 +1193,22 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	}
 }
 
+func isOverlayNetworkObject(netEnt *zconfig.NetworkConfig) bool {
+	switch netEnt.Type {
+	case zconfig.NetworkType_CryptoV4, zconfig.NetworkType_CryptoV6:
+		return true
+	default:
+	}
+	return false
+}
+
+func isOverlayNetworkInstance(netInstEntry *zconfig.NetworkInstanceConfig) bool {
+	if netInstEntry.InstType != zconfig.ZNetworkInstType_ZnetInstMesh {
+		return false
+	}
+	return true
+}
+
 func parseUnderlayNetworkConfigEntry(
 	cfgApp *zconfig.AppInstanceConfig,
 	cfgNetworks []*zconfig.NetworkConfig,
@@ -1218,11 +1234,7 @@ func parseUnderlayNetworkConfigEntry(
 			log.Errorf("%s", ulCfg.Error)
 			return ulCfg
 		}
-		switch networkInstanceEntry.InstType {
-		case zconfig.ZNetworkInstType_ZnetInstLocal, zconfig.ZNetworkInstType_ZnetInstSwitch:
-			// Do nothing
-		default:
-			// We are not interested in overlays.
+		if isOverlay := isOverlayNetworkInstance(networkInstanceEntry); isOverlay {
 			return nil
 		}
 		ulCfg.UsesNetworkInstance = true
@@ -1231,10 +1243,7 @@ func parseUnderlayNetworkConfigEntry(
 			cfgApp.Displayname, cfgApp.Uuidandversion.Uuid,
 			networkInstanceEntry.InstType)
 	} else {
-		switch netEnt.Type {
-		case zconfig.NetworkType_V4, zconfig.NetworkType_V6:
-		default:
-			// We are not interested in overlays.
+		if isOverlay := isOverlayNetworkObject(netEnt); isOverlay {
 			return nil
 		}
 		ulCfg.UsesNetworkInstance = false
@@ -1340,11 +1349,11 @@ func parseOverlayNetworkConfigEntry(
 			log.Errorf("%s", olCfg.Error)
 			return olCfg
 		}
-		if networkInstanceEntry.InstType != zconfig.ZNetworkInstType_ZnetInstMesh {
+		if isOverlay := isOverlayNetworkInstance(networkInstanceEntry); !isOverlay {
 			return nil
 		}
 	} else {
-		if netEnt.Type != zconfig.NetworkType_CryptoEID {
+		if isOverlay := isOverlayNetworkObject(netEnt); !isOverlay {
 			return nil
 		}
 		olCfg.UsesNetworkInstance = false

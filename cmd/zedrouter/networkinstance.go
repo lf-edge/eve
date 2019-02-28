@@ -124,27 +124,23 @@ func checkPortAvailableForNetworkInstance(
 	return nil
 }
 
+func isOverlay(netType types.NetworkInstanceType) bool {
+	if netType == types.NetworkInstanceTypeMesh {
+		return true
+	}
+	return false
+}
+
 // doCreateBridge
 //		returns (error, bridgeMac-string)
 func doCreateBridge(bridgeName string, bridgeNum int,
 	status *types.NetworkInstanceStatus) (error, string) {
 	Ipv4Eid := false
-	// Check for valid types
-	switch status.Type {
-	case types.NetworkInstanceTypeLocal:
-		// Nothing to do
-	case types.NetworkInstanceTypeSwitch:
-		// Nothing to do
-	case types.NetworkInstanceTypeMesh:
-		if status.Subnet.IP != nil {
-			Ipv4Eid = (status.Subnet.IP.To4() != nil)
-			status.Ipv4Eid = Ipv4Eid
-		}
-	default:
-		errStr := fmt.Sprintf("doCreateBridge type %d not supported",
-			status.Type)
-		return errors.New(errStr), ""
+	if isOverlay(status.Type) && status.Subnet.IP != nil {
+		Ipv4Eid = (status.Subnet.IP.To4() != nil)
+		status.Ipv4Eid = Ipv4Eid
 	}
+
 	// Start clean
 	attrs := netlink.NewLinkAttrs()
 	attrs.Name = bridgeName
