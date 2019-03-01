@@ -1366,17 +1366,14 @@ func parseOverlayNetworkConfigEntry(
 		return olCfg
 	}
 	if netEnt != nil {
-		switch netEnt.Type {
-		case zconfig.NetworkType_CryptoV4, zconfig.NetworkType_CryptoV6:
-			// do nothing
-		default:
+		if isOverlay := isOverlayNetworkObject(netEnt); !isOverlay {
 			// We are not interested in non-overlays
 			return nil
 		}
 		log.Infof("parseOverlayNetworkConfigEntry: app %v net %v type %v\n",
 			cfgApp.Displayname, uuid.String(), netEnt.Type)
 	} else {
-		if networkInstanceEntry.InstType != zconfig.ZNetworkInstType_ZnetInstMesh {
+		if isOverlay := isOverlayNetworkInstance(networkInstanceEntry); !isOverlay {
 			// We are not interested in non-overlays
 			return nil
 		}
