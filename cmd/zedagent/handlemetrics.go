@@ -553,12 +553,6 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 		ReportDeviceMetric.MetricItems = append(ReportDeviceMetric.MetricItems, item)
 	}
 
-	ReportDeviceMetric.LastRebootReason = ctx.rebootReason
-	if !ctx.rebootTime.IsZero() {
-		rebootTime, _ := ptypes.TimestampProto(ctx.rebootTime)
-		ReportDeviceMetric.LastRebootTime = rebootTime
-	}
-
 	ReportMetrics.MetricContent = new(zmet.ZMetricMsg_Dm)
 	if x, ok := ReportMetrics.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
 		x.Dm = ReportDeviceMetric
