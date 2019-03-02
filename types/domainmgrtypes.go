@@ -67,7 +67,7 @@ type VmConfig struct {
 	// Example, IOMem=["0xf7020,1","0xf8013,1"]
 	VirtualizationMode VmMode
 	EnableVnc          bool
-	VncDisplay         int
+	VncDisplay         uint32
 	VncPasswd          string
 }
 
@@ -96,6 +96,8 @@ type DomainStatus struct {
 	IoAdapterList      []IoAdapter
 	VirtualizationMode VmMode
 	EnableVnc          bool
+	VncDisplay         uint32
+	VncPasswd          string
 	TriedCount         int
 	LastErr            string // Xen error
 	LastErrTime        time.Time
