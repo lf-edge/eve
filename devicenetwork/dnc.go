@@ -162,6 +162,7 @@ func VerifyPending(pending *DPCPending,
 	portInPciBack, portName, usedByUUID := pending.PendDPC.IsAnyPortInPciBack(aa)
 	if portInPciBack {
 		if usedByUUID != nilUUID {
+			pending.PendDPC.LastFailed = time.Now()
 			log.Errorf("VerifyPending: port %s in PCIBack "+
 				"used by %s\n", portName, usedByUUID.String())
 			return DPC_FAIL
