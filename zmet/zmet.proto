@@ -45,9 +45,10 @@ message ZInfoNetwork {
   ZInfoDNS dns = 7; // If DHCP assigned
   bool up = 8;      // operational up/down status.
   GeoLoc location = 9;
-  bool uplink = 10; // Uplink interface  // XXX rename to isMgmtPort
+  bool uplink = 10; // Uplink interface  // XXX rename to isMgmt
   ErrorInfo networkErr = 11; // For instance bad proxy config
   string localName = 12; // eth0, eth1 etc.
+  IProxyConfig proxy = 13;
 }
 
 // From an IP address-based geolocation service
@@ -144,6 +145,56 @@ message ZInfoDevice {
 
   string   lastRebootReason = 22;
   google.protobuf.Timestamp lastRebootTime = 23;
+
+  SystemAdapterInfo systemAdapter = 24;
+}
+
+// The current and fallback system adapter information
+message SystemAdapterInfo {
+  uint32 currentIndex = 1; // Zero means the first/highest priority is used
+  repeated DevicePortStatus status = 2;
+}
+
+message DevicePortStatus {
+  uint32 version = 1;
+  string key = 2;
+  google.protobuf.Timestamp timePriority = 3;
+  google.protobuf.Timestamp lastFailed = 4;
+  google.protobuf.Timestamp lastSucceeded = 5;
+  repeated DevicePort ports = 6;
+}
+
+message DevicePort {
+  string ifname = 1;
+  string name = 2;	// Logical name set by controller
+  bool isMgmt = 3;
+  bool free = 4;
+  // DhcpConfig
+  uint32 dhcpType = 11;
+  string subnet = 12;
+  string gateway = 13;
+  string domainname = 14;
+  string ntpServer = 15;
+  repeated string dnsServers = 16;
+  string dhcpRangeLow = 17;
+  string dhcpRangeHigh = 18;
+
+  IProxyConfig proxy = 21;
+}
+
+message IProxyConfig {
+  repeated ProxyEntry proxies = 1;
+  string exceptions = 2;
+  string pacfile = 3;
+  bool networkProxyEnable = 4;
+  string networkProxyURL = 5;
+  string wpadURL = 6;
+}
+
+message ProxyEntry {
+  uint32 type = 1; // From NPT_ types aka proxyProto
+  string server = 2;
+  uint32 port = 3;
 }
 
 // SW Info for the device base OS
