@@ -25,7 +25,8 @@ DOCKER_TAGS=$(wget -q https://registry.hub.docker.com/v1/repositories/zededa/$RE
 DOCKER_TAGS=${DOCKER_TAGS:-$(wget -q https://registry.hub.docker.com/v1/repositories/zededa/zenix/tags -O -  | sed -e 's/[][]//g' -e 's/"//g' -e 's/ //g' | tr '}' '\n'  | cut -f3 -d: | grep '[0-9]*\.[0-9]*\.[0-9]*')}
 diff -u <(word_per_line $DOCKER_TAGS) <(word_per_line $GIT_TAGS | sed -e 's#$#'$ARCH'#')
 MISSING_TAGS=$(diff -u <(word_per_line $DOCKER_TAGS) <(word_per_line $GIT_TAGS | sed -e 's#$#'$ARCH'#') | sed -ne '/^+[^+]/s#^\+##p' | sed -e 's#'$ARCH'##')
-MISSING_TAGS=${MISSING_TAGS:-origin/master}
+# MISSING_TAGS=${MISSING_TAGS:-origin/master}
+MISSING_TAGS="$MISSING_TAGS origin/master"
 
 echo "Building the following tags: $MISSING_TAGS (latest tag is ${LATEST_TAG})"
 
