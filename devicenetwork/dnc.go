@@ -123,7 +123,9 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 }
 
 func SetupVerify(ctx *DeviceNetworkContext, index int) {
-	log.Debugln("SetupVerify: Setting up verification for DPC at index %d", index)
+
+	log.Debugf("SetupVerify: Setting up verification for DPC at index %d",
+		index)
 	ctx.NextDPCIndex = index
 
 	pending := &ctx.Pending
@@ -333,7 +335,7 @@ func getNextTestableDPCIndex(ctx *DeviceNetworkContext) int {
 		if ok {
 			break
 		}
-		log.Debugln("getNextTestableDPCIndex: DPC %v is not testable",
+		log.Debugf("getNextTestableDPCIndex: DPC %v is not testable",
 			ctx.DevicePortConfigList.PortConfigList[newIndex])
 		newIndex = (newIndex + 1) % dpcListLen
 	}
@@ -544,7 +546,7 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 			return false
 		}
 		log.Infof("doUpdatePortConfigListAndPublish: Delete. "+
-			"oldCOnfig found: %+v\n", *oldConfig, portConfig)
+			"oldCOnfig %+v found: %+v\n", *oldConfig, portConfig)
 		removePortConfig(ctx, *oldConfig)
 	} else {
 		if oldConfig != nil {
