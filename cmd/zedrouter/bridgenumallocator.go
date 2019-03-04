@@ -116,7 +116,7 @@ func bridgeNumAllocate(ctx *zedrouterContext, uuid uuid.UUID) int {
 			uuid)
 		log.Infof("Failed to find free bridgeNum for %s. Reusing!\n",
 			uuid)
-		uuid, bridgeNum, err := uuidtonum.UuidToNumGetOldestUnused(ctx.pubUuidToNum, "bridgeNum")
+		uuid, bridgeNum, err = uuidtonum.UuidToNumGetOldestUnused(ctx.pubUuidToNum, "bridgeNum")
 		if err != nil {
 			log.Fatal("All 255 bridgeNums are in use!")
 		}
