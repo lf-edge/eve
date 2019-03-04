@@ -66,7 +66,7 @@ func checkIfAllDNSPortsHaveIPAddrs(status types.DeviceNetworkStatus) bool {
 
 	for _, port := range mgmtPorts {
 		numAddrs := types.CountLocalAddrFreeNoLinkLocalIf(status, port)
-		log.Debugln("checkIfAllDNSPortsHaveIPAddrs: Port %s has %d addresses.",
+		log.Debugf("checkIfAllDNSPortsHaveIPAddrs: Port %s has %d addresses.",
 			port, numAddrs)
 		if numAddrs < 1 {
 			return false
@@ -164,7 +164,7 @@ func IfindexToAddrsDel(ctx *DeviceNetworkContext, index int, addr net.IPNet) boo
 			return true
 		}
 	}
-	log.Warnf("IfindexToAddrsDel address not found for %d in\n",
+	log.Warnf("IfindexToAddrsDel address not found for %d in %v\n",
 		index, addrs)
 	return false
 }

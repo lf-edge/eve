@@ -26,7 +26,7 @@ func TestIsIPv6(t *testing.T) {
 			expectedValue: false},
 		{config: NetworkInstanceConfig{IpType: AddressTypeCryptoIPV4},
 			expectedValue: false},
-		{config: NetworkInstanceConfig{IpType: AddressTypeFirst},
+		{config: NetworkInstanceConfig{IpType: AddressTypeNone},
 			expectedValue: false},
 		{config: NetworkInstanceConfig{IpType: AddressTypeLast},
 			expectedValue: false},
