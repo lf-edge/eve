@@ -129,7 +129,7 @@ func appNumAllocate(ctx *zedrouterContext,
 		if appNum == 0 {
 			log.Infof("Failed to find free appNum for %s. Reusing!\n",
 				uuid)
-			uuid, appNum, err := uuidtonum.UuidToNumGetOldestUnused(ctx.pubUuidToNum, "appNum")
+			uuid, appNum, err = uuidtonum.UuidToNumGetOldestUnused(ctx.pubUuidToNum, "appNum")
 			if err != nil {
 				log.Fatal("All 255 appNums are in use!")
 			}

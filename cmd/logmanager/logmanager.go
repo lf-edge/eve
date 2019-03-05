@@ -884,9 +884,13 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	status := cast.CastGlobalConfig(statusArg)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
+	debug, _ = agentlog.HandleGlobalConfigNoDefault(ctx.subGlobalConfig,
+		agentName, debugOverride)
 	foundAgents := make(map[string]bool)
+	if status.DefaultRemoteLogLevel != "" {
+		foundAgents["default"] = true
+		addRemoteMap("default", status.DefaultRemoteLogLevel)
+	}
 	for agentName, perAgentSetting := range status.AgentSettings {
 		log.Debugf("Processing agentName %s\n", agentName)
 		foundAgents[agentName] = true

@@ -169,9 +169,9 @@ const (
 )
 
 // We write files with the IID-specifics (and not EID) to files
-// in <globalRunDirname>/lisp/<iid>.
+// in <runDirname>/lisp/<iid>.
 // We write files with the EID-specifics to files named
-// <globalRunDirname>/lisp/<eid>.
+// <runDirname>/lisp/<eid>.
 // We concatenate all of those to baseFilename and store the result
 // in destFilename
 //

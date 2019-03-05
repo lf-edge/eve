@@ -375,7 +375,7 @@ func WriteToPartition(srcFilename string, partName string) error {
 	return nil
 }
 
-// Transition current from inprogress to active, and other from active
+// Transition current from inprogress to active, and other from active/inprogress
 // to unused
 func MarkCurrentPartitionStateActive() error {
 
@@ -392,10 +392,17 @@ func MarkCurrentPartitionStateActive() error {
 	log.Infof("Mark the current partition %s, active\n", curPart)
 	setCurrentPartitionStateActive()
 
-	log.Infof("Check other partition %s for active state\n", otherPart)
-	if ret := IsOtherPartitionStateActive(); ret == false {
-		errStr := fmt.Sprintf("Other partition %s, is not active",
-			otherPart)
+	log.Infof("Check other partition %s for active state or inprogress\n",
+		otherPart)
+	state := GetPartitionState(otherPart)
+	switch state {
+	case "active":
+		// Normal case
+	case "inprogress":
+		// Activated what was already on the other partition
+	default:
+		errStr := fmt.Sprintf("Other partition %s, is %s not active/inprogress",
+			otherPart, state)
 		return errors.New(errStr)
 	}
 

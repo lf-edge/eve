@@ -51,7 +51,7 @@ func dnsmasqConfigPath(bridgeName string) string {
 }
 
 func dnsmasqDhcpHostDir(bridgeName string) string {
-	dhcphostsDir := globalRunDirname + "/dhcp-hosts." + bridgeName
+	dhcphostsDir := runDirname + "/dhcp-hosts." + bridgeName
 	return dhcphostsDir
 }
 

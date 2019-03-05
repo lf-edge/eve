@@ -412,21 +412,20 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 	}
 
 	if zboot.IsOtherPartitionStateActive() {
-		if otherPartVersion == config.BaseOsVersion {
-			// Don't try to download what is already in otherPartVersion
-			log.Infof("validateAndAssignPartition(%s) not overwriting other with same version since testing inprogress\n",
-				config.BaseOsVersion)
-			return changed, proceed
-		}
-
 		// Must still be testing the current version; don't overwrite
 		// fallback
+		// If there is no change to the other we don't log error
+		// but still retry later
 		status.TooEarly = true
 		errStr := fmt.Sprintf("Attempt to install baseOs update %s while testing is in progress for %s: refused",
 			config.BaseOsVersion, curPartVersion)
-		log.Errorln(errStr)
-		status.Error = errStr
-		status.ErrorTime = time.Now()
+		if otherPartVersion == config.BaseOsVersion {
+			log.Infoln(errStr)
+		} else {
+			log.Errorln(errStr)
+			status.Error = errStr
+			status.ErrorTime = time.Now()
+		}
 		changed = true
 		return changed, proceed
 	}
@@ -895,7 +894,11 @@ func doPartitionStateTransition(ctx *baseOsMgrContext, uuidStr string, config ty
 			log.Errorf(errStr)
 			status.Error = errStr
 			status.ErrorTime = time.Now()
+			status.TestComplete = true
 			publishBaseOsStatus(ctx, &status)
+			// publish the updated partition information
+			publishZbootPartitionStatusAll(ctx)
+			updateAndPublishBaseOsStatusAll(ctx)
 			return
 		}
 		status.TestComplete = true
@@ -949,11 +952,20 @@ func maybeRetryInstall(ctx *baseOsMgrContext) {
 }
 
 func baseOsSetPartitionInfoInStatus(ctx *baseOsMgrContext, status *types.BaseOsStatus, partName string) {
+
 	partStatus := getBaseOsPartitionStatus(ctx, partName)
 	if partStatus != nil {
+		log.Infof("baseOsSetPartitionInfoInStatus(%s) %s found %+v\n",
+			status.Key(), partName, partStatus)
 		status.PartitionLabel = partName
 		status.PartitionState = partStatus.PartitionState
 		status.PartitionDevice = partStatus.PartitionDevname
+
+		// List has only one element but ...
+		for idx, _ := range status.StorageStatusList {
+			ss := &status.StorageStatusList[idx]
+			ss.FinalObjDir = status.PartitionLabel
+		}
 	}
 }
 
