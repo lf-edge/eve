@@ -20,6 +20,11 @@ It has these top-level messages:
 	ZInfoSW
 	ErrorInfo
 	ZInfoDevice
+	SystemAdapterInfo
+	DevicePortStatus
+	DevicePort
+	IProxyConfig
+	ProxyEntry
 	ZInfoDevSW
 	ZInfoStorage
 	ZInfoApp
