@@ -48,7 +48,7 @@ message ZInfoNetwork {
   bool uplink = 10; // Uplink interface  // XXX rename to isMgmt
   ErrorInfo networkErr = 11; // For instance bad proxy config
   string localName = 12; // eth0, eth1 etc.
-  IProxyConfig proxy = 13;
+  ProxyStatus proxy = 13;
 }
 
 // From an IP address-based geolocation service
@@ -179,10 +179,10 @@ message DevicePort {
   string dhcpRangeLow = 17;
   string dhcpRangeHigh = 18;
 
-  IProxyConfig proxy = 21;
+  ProxyStatus proxy = 21;
 }
 
-message IProxyConfig {
+message ProxyStatus {
   repeated ProxyEntry proxies = 1;
   string exceptions = 2;
   string pacfile = 3;

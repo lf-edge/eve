@@ -23,7 +23,7 @@ It has these top-level messages:
 	SystemAdapterInfo
 	DevicePortStatus
 	DevicePort
-	IProxyConfig
+	ProxyStatus
 	ProxyEntry
 	ZInfoDevSW
 	ZInfoStorage
