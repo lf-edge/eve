@@ -208,12 +208,6 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/shirou/w32"
-  packages = ["."]
-  revision = "bb4de0191aa41b5507caa14b0650cdbddcd9280b"
-
-[[projects]]
-  branch = "master"
   name = "github.com/sirupsen/logrus"
   packages = ["."]
   revision = "659e47340eafb203ad3c2ce461023fde46356615"
@@ -237,7 +231,7 @@
     "zconfig",
     "zmet"
   ]
-  revision = "164b0029eba5e3a3b3a9367ff9f9503d4f948a76"
+  revision = "70ee59d4e05619a043f8e89a01ac8609a30f231c"
 
 [[projects]]
   branch = "master"
