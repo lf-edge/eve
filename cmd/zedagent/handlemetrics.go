@@ -33,6 +33,7 @@ import (
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/netclone"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
 )
@@ -1030,6 +1031,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		ReportDeviceInfo.LastRebootTime = rebootTime
 	}
 
+	ReportDeviceInfo.SystemAdapter = encodeSystemAdapterInfo(ctx.subDevicePortConfigList)
+
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
@@ -1206,8 +1209,89 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat,
 			errInfo.Timestamp = errTime
 			networkInfo.NetworkErr = errInfo
 		}
+		if port.Proxy != nil {
+			networkInfo.Proxy = encodeProxyStatus(port.Proxy)
+		}
 	}
 	return networkInfo
+}
+
+func encodeProxyStatus(proxyConfig *types.ProxyConfig) *zmet.ProxyStatus {
+	status := new(zmet.ProxyStatus)
+	status.Proxies = make([]*zmet.ProxyEntry, len(proxyConfig.Proxies))
+	for i, pe := range proxyConfig.Proxies {
+		pep := new(zmet.ProxyEntry)
+		pep.Type = uint32(pe.Type)
+		pep.Server = pe.Server
+		pep.Port = pe.Port
+		status.Proxies[i] = pep
+	}
+	status.Exceptions = proxyConfig.Exceptions
+	status.Pacfile = proxyConfig.Pacfile
+	status.NetworkProxyEnable = proxyConfig.NetworkProxyEnable
+	status.NetworkProxyURL = proxyConfig.NetworkProxyURL
+	status.WpadURL = proxyConfig.WpadURL
+	// XXX make into debugf?
+	log.Infof("encodeProxyStatus: %+v\n", status)
+	return status
+}
+
+func encodeSystemAdapterInfo(sub *pubsub.Subscription) *zmet.SystemAdapterInfo {
+	st, _ := sub.Get("global")
+	if st == nil {
+		log.Errorf("encodeSystemAdapterInfo: no DevicePortConfigList\n")
+		return nil
+	}
+	dpcl := cast.CastDevicePortConfigList(st)
+	info := new(zmet.SystemAdapterInfo)
+	info.CurrentIndex = uint32(dpcl.CurrentIndex)
+	info.Status = make([]*zmet.DevicePortStatus, len(dpcl.PortConfigList))
+	for i, dpc := range dpcl.PortConfigList {
+		dps := new(zmet.DevicePortStatus)
+		dps.Version = uint32(dpc.Version)
+		dps.Key = dpc.Key
+		ts, _ := ptypes.TimestampProto(dpc.TimePriority)
+		dps.TimePriority = ts
+		if !dpc.LastFailed.IsZero() {
+			ts, _ := ptypes.TimestampProto(dpc.LastFailed)
+			dps.LastFailed = ts
+		}
+		if !dpc.LastSucceeded.IsZero() {
+			ts, _ := ptypes.TimestampProto(dpc.LastSucceeded)
+			dps.LastSucceeded = ts
+		}
+		dps.Ports = make([]*zmet.DevicePort, len(dpc.Ports))
+		for j, p := range dpc.Ports {
+			dps.Ports[j] = encodeNetworkPortConfig(&p)
+		}
+		info.Status[i] = dps
+	}
+	// XXX make into debugf?
+	log.Infof("encodeSystemAdapterInfo: %+v\n", info)
+	return info
+}
+
+func encodeNetworkPortConfig(npc *types.NetworkPortConfig) *zmet.DevicePort {
+	dp := new(zmet.DevicePort)
+	dp.Ifname = npc.IfName
+	dp.Name = npc.Name
+	dp.IsMgmt = npc.IsMgmt
+	dp.Free = npc.Free
+	// DhcpConfig
+	dp.DhcpType = uint32(npc.Dhcp)
+	dp.Subnet = npc.AddrSubnet
+	dp.Gateway = npc.Gateway.String()
+	dp.Domainname = npc.DomainName
+	dp.NtpServer = npc.NtpServer.String()
+	for _, d := range npc.DnsServers {
+		dp.DnsServers = append(dp.DnsServers, d.String())
+	}
+	// XXX Not in definition. Remove?
+	// XXX  string dhcpRangeLow = 17;
+	// XXX  string dhcpRangeHigh = 18;
+
+	dp.Proxy = encodeProxyStatus(&npc.ProxyConfig)
+	return dp
 }
 
 // This function is called per change, hence needs to try over all management ports

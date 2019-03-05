@@ -101,6 +101,7 @@ type zedagentContext struct {
 	rebootCmdDeferred         bool
 	rebootReason              string
 	rebootTime                time.Time
+	subDevicePortConfigList   *pubsub.Subscription // XXX Use
 }
 
 var debug = false
@@ -457,6 +458,13 @@ func Run() {
 	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
+	subDevicePortConfigList, err := pubsub.Subscribe("nim",
+		types.DevicePortConfigList{}, true, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subDevicePortConfigList = subDevicePortConfigList
+
 	// Read the GlobalConfig first
 	// Wait for initial GlobalConfig
 	for !zedagentCtx.GCInitialized {
@@ -522,6 +530,9 @@ func Run() {
 
 		case change := <-subAssignableAdapters.C:
 			subAssignableAdapters.ProcessChange(change)
+
+		case change := <-subDevicePortConfigList.C:
+			subDevicePortConfigList.ProcessChange(change)
 
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
@@ -605,6 +616,9 @@ func Run() {
 
 		case change := <-subAssignableAdapters.C:
 			subAssignableAdapters.ProcessChange(change)
+
+		case change := <-subDevicePortConfigList.C:
+			subDevicePortConfigList.ProcessChange(change)
 
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
@@ -713,6 +727,9 @@ func Run() {
 
 		case change := <-subNetworkInstanceMetrics.C:
 			subNetworkInstanceMetrics.ProcessChange(change)
+
+		case change := <-subDevicePortConfigList.C:
+			subDevicePortConfigList.ProcessChange(change)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
