@@ -127,6 +127,7 @@ func SetupVerify(ctx *DeviceNetworkContext, index int) {
 	log.Debugf("SetupVerify: Setting up verification for DPC at index %d",
 		index)
 	ctx.NextDPCIndex = index
+	ctx.DevicePortConfigList.CurrentIndex = ctx.NextDPCIndex
 
 	pending := &ctx.Pending
 	pending.Inprogress = true

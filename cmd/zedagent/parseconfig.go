@@ -498,6 +498,8 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		appInstance.FixedResources.VCpus = int(cfgApp.Fixedresources.Vcpus)
 		appInstance.FixedResources.VirtualizationMode = types.VmMode(cfgApp.Fixedresources.VirtualizationMode)
 		appInstance.FixedResources.EnableVnc = cfgApp.Fixedresources.EnableVnc
+		appInstance.FixedResources.VncDisplay = cfgApp.Fixedresources.VncDisplay
+		appInstance.FixedResources.VncPasswd = cfgApp.Fixedresources.VncPasswd
 
 		appInstance.StorageConfigList = make([]types.StorageConfig,
 			len(cfgApp.Drives))

@@ -743,6 +743,8 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		VifList:            config.VifList,
 		VirtualizationMode: config.VirtualizationMode,
 		EnableVnc:          config.EnableVnc,
+		VncDisplay:         config.VncDisplay,
+		VncPasswd:          config.VncPasswd,
 		State:              types.INSTALLED,
 	}
 	status.DiskStatusList = make([]types.DiskStatus,
@@ -753,6 +755,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		config.DisplayName)
 
 	if err := configToStatus(ctx, *config, &status); err != nil {
+		// XXX error here
 		log.Errorf("Failed to create DomainStatus from %v: %s\n",
 			config, err)
 		status.PendingAdd = false
@@ -1201,6 +1204,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	}
 
 	// XXX could defer to Activate but might want to reserve adapters
+	// XXX if this fails and we deactive+activate then we'll get a stolen by
+	// 0000-00.. fatal. Move to activate
 	for _, adapter := range config.IoAdapterList {
 		log.Debugf("configToStatus processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
@@ -1293,6 +1298,15 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 		file.WriteString(fmt.Sprintf("vnclisten = \"0.0.0.0\"\n"))
 		file.WriteString(fmt.Sprintf("usb=1\n"))
 		file.WriteString(fmt.Sprintf("usbdevice=[\"tablet\"]\n"))
+
+		if config.VncDisplay != 0 {
+			file.WriteString(fmt.Sprintf("vncdisplay = %d\n",
+				config.VncDisplay))
+		}
+		if config.VncPasswd != "" {
+			file.WriteString(fmt.Sprintf("vncpasswd = \"%s\"\n",
+				config.VncPasswd))
+		}
 	}
 
 	// Go from kbytes to mbytes
@@ -1490,8 +1504,7 @@ func handleModify(ctx *domainContext, key string,
 			publishDomainStatus(ctx, status)
 			doInactivate(ctx, status)
 		}
-		status.VirtualizationMode = config.VirtualizationMode
-		status.EnableVnc = config.EnableVnc
+		updateStatusFromConfig(status, *config)
 		doActivate(ctx, *config, status)
 		changed = true
 	} else if !config.Activate {
@@ -1502,13 +1515,11 @@ func handleModify(ctx *domainContext, key string,
 			status.LastErrTime = time.Time{}
 			publishDomainStatus(ctx, status)
 			doInactivate(ctx, status)
-			status.VirtualizationMode = config.VirtualizationMode
-			status.EnableVnc = config.EnableVnc
+			updateStatusFromConfig(status, *config)
 			changed = true
 		} else if status.Activated {
 			doInactivate(ctx, status)
-			status.VirtualizationMode = config.VirtualizationMode
-			status.EnableVnc = config.EnableVnc
+			updateStatusFromConfig(status, *config)
 			changed = true
 		}
 	}
@@ -1549,6 +1560,13 @@ func handleModify(ctx *domainContext, key string,
 	publishDomainStatus(ctx, status)
 	log.Infof("handleModify(%v) DONE for %s\n",
 		config.UUIDandVersion, config.DisplayName)
+}
+
+func updateStatusFromConfig(status *types.DomainStatus, config types.DomainConfig) {
+	status.VirtualizationMode = config.VirtualizationMode
+	status.EnableVnc = config.EnableVnc
+	status.VncDisplay = config.VncDisplay
+	status.VncPasswd = config.VncPasswd
 }
 
 // Used to wait both after shutdown and destroy

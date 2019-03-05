@@ -906,6 +906,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				swInfo.DownloadProgress = 0
 			}
 		}
+		addUserSwInfo(swInfo)
 		return swInfo
 	}
 
@@ -938,6 +939,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			errInfo.Timestamp = errTime
 			swInfo.SwErr = errInfo
 		}
+		addUserSwInfo(swInfo)
 		ReportDeviceInfo.SwList = append(ReportDeviceInfo.SwList,
 			swInfo)
 	}
@@ -1022,6 +1024,12 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		ReportDeviceInfo.MetricItems = append(ReportDeviceInfo.MetricItems, item)
 	}
 
+	ReportDeviceInfo.LastRebootReason = ctx.rebootReason
+	if !ctx.rebootTime.IsZero() {
+		rebootTime, _ := ptypes.TimestampProto(ctx.rebootTime)
+		ReportDeviceInfo.LastRebootTime = rebootTime
+	}
+
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
@@ -1045,6 +1053,48 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			zedcloudCtx, true)
 	} else {
 		writeSentDeviceInfoProtoMessage(data)
+	}
+}
+
+// Convert the implementation details to the user-friendly userStatus and subStatus
+func addUserSwInfo(swInfo *zmet.ZInfoDevSW) {
+	switch swInfo.Status {
+	case zmet.ZSwState_INITIAL:
+		swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+		swInfo.SubStatus = "Initializing update"
+	case zmet.ZSwState_DOWNLOAD_STARTED:
+		swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+		swInfo.SubStatus = fmt.Sprintf("Downloading %d%% done", swInfo.DownloadProgress)
+	case zmet.ZSwState_DOWNLOADED:
+		swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+		swInfo.SubStatus = "Downloaded 100%"
+	case zmet.ZSwState_DELIVERED:
+		if !swInfo.Activated {
+			swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+			swInfo.SubStatus = "Downloaded and verified"
+		} else {
+			swInfo.UserStatus = zmet.BaseOsStatus_NONE
+		}
+	case zmet.ZSwState_INSTALLED:
+		switch swInfo.PartitionState {
+		case "active":
+			if swInfo.Activated {
+				swInfo.UserStatus = zmet.BaseOsStatus_ACTIVE
+			} else {
+				swInfo.UserStatus = zmet.BaseOsStatus_FALLBACK
+			}
+		case "updating":
+			swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+			swInfo.SubStatus = "About to reboot"
+		case "inprogress":
+			swInfo.UserStatus = zmet.BaseOsStatus_TESTING
+		case "unused":
+			swInfo.UserStatus = zmet.BaseOsStatus_NONE
+		}
+	// XXX anything else?
+	default:
+		// The other states are use for app instances not for baseos
+		swInfo.UserStatus = zmet.BaseOsStatus_NONE
 	}
 }
 

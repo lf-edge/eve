@@ -48,6 +48,10 @@ fi
     
 echo "Handling restart case at" `date`
 
+if [ `uname -m` != "x86_64" ]; then
+    USE_HW_WATCHDOG=1
+fi
+
 # XXX try without /dev/watchdog; First disable impact of bios setting
 if [ -c /dev/watchdog ]; then
     if [ $USE_HW_WATCHDOG = 0 ]; then
