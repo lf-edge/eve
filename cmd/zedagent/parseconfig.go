@@ -1213,10 +1213,7 @@ func isOverlayNetworkObject(netEnt *zconfig.NetworkConfig) bool {
 }
 
 func isOverlayNetworkInstance(netInstEntry *zconfig.NetworkInstanceConfig) bool {
-	if netInstEntry.InstType != zconfig.ZNetworkInstType_ZnetInstMesh {
-		return false
-	}
-	return true
+	return netInstEntry.InstType == zconfig.ZNetworkInstType_ZnetInstMesh
 }
 
 func parseUnderlayNetworkConfigEntry(
@@ -1244,7 +1241,7 @@ func parseUnderlayNetworkConfigEntry(
 			log.Errorf("%s", ulCfg.Error)
 			return ulCfg
 		}
-		if isOverlay := isOverlayNetworkInstance(networkInstanceEntry); isOverlay {
+		if isOverlayNetworkInstance(networkInstanceEntry) {
 			return nil
 		}
 		ulCfg.UsesNetworkInstance = true
@@ -1253,7 +1250,7 @@ func parseUnderlayNetworkConfigEntry(
 			cfgApp.Displayname, cfgApp.Uuidandversion.Uuid,
 			networkInstanceEntry.InstType)
 	} else {
-		if isOverlay := isOverlayNetworkObject(netEnt); isOverlay {
+		if isOverlayNetworkObject(netEnt) {
 			return nil
 		}
 		ulCfg.UsesNetworkInstance = false
@@ -1359,11 +1356,11 @@ func parseOverlayNetworkConfigEntry(
 			log.Errorf("%s", olCfg.Error)
 			return olCfg
 		}
-		if isOverlay := isOverlayNetworkInstance(networkInstanceEntry); !isOverlay {
+		if isOverlayNetworkInstance(networkInstanceEntry) {
 			return nil
 		}
 	} else {
-		if isOverlay := isOverlayNetworkObject(netEnt); !isOverlay {
+		if isOverlayNetworkObject(netEnt) {
 			return nil
 		}
 		olCfg.UsesNetworkInstance = false
@@ -1376,14 +1373,14 @@ func parseOverlayNetworkConfigEntry(
 		return olCfg
 	}
 	if netEnt != nil {
-		if isOverlay := isOverlayNetworkObject(netEnt); !isOverlay {
+		if isOverlayNetworkObject(netEnt) {
 			// We are not interested in non-overlays
 			return nil
 		}
 		log.Infof("parseOverlayNetworkConfigEntry: app %v net %v type %v\n",
 			cfgApp.Displayname, uuid.String(), netEnt.Type)
 	} else {
-		if isOverlay := isOverlayNetworkInstance(networkInstanceEntry); !isOverlay {
+		if isOverlayNetworkInstance(networkInstanceEntry) {
 			// We are not interested in non-overlays
 			return nil
 		}
