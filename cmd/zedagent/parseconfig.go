@@ -1356,11 +1356,11 @@ func parseOverlayNetworkConfigEntry(
 			log.Errorf("%s", olCfg.Error)
 			return olCfg
 		}
-		if isOverlayNetworkInstance(networkInstanceEntry) {
+		if !isOverlayNetworkInstance(networkInstanceEntry) {
 			return nil
 		}
 	} else {
-		if isOverlayNetworkObject(netEnt) {
+		if !isOverlayNetworkObject(netEnt) {
 			return nil
 		}
 		olCfg.UsesNetworkInstance = false
@@ -1373,14 +1373,14 @@ func parseOverlayNetworkConfigEntry(
 		return olCfg
 	}
 	if netEnt != nil {
-		if isOverlayNetworkObject(netEnt) {
+		if !isOverlayNetworkObject(netEnt) {
 			// We are not interested in non-overlays
 			return nil
 		}
 		log.Infof("parseOverlayNetworkConfigEntry: app %v net %v type %v\n",
 			cfgApp.Displayname, uuid.String(), netEnt.Type)
 	} else {
-		if isOverlayNetworkInstance(networkInstanceEntry) {
+		if !isOverlayNetworkInstance(networkInstanceEntry) {
 			// We are not interested in non-overlays
 			return nil
 		}

@@ -2186,10 +2186,10 @@ func createAndStartLispWithNetworkInstance(ctx *zedrouterContext,
 				append(deviceNetworkParams.Ports, port)
 		}
 	}
-	createLispEidConfiglet(lispRunDirname, instStatus.LispStatus.IID,
+	createLispEidConfiglet(lispRunDirname, instStatus.LispConfig.IID,
 		olConfig.EID, olConfig.AppIPAddr, olConfig.LispSignature,
 		deviceNetworkParams, bridgeName, bridgeName, additionalInfo,
-		instStatus.LispStatus.MapServers, ctx.legacyDataPlane)
+		instStatus.LispConfig.MapServers, ctx.legacyDataPlane)
 }
 
 func createAndStartLisp(ctx *zedrouterContext,
@@ -2709,10 +2709,10 @@ func doAppNetworkModifyOverlayNetworkWithNetworkInstance(
 
 	// Create LISP configlets for IID and EID/signature
 	updateLispConfiglet(lispRunDirname, false,
-		netstatus.LispStatus.IID, olConfig.EID,
+		netstatus.LispConfig.IID, olConfig.EID,
 		olConfig.AppIPAddr, olConfig.LispSignature,
 		*ctx.deviceNetworkStatus, bridgeName, bridgeName,
-		additionalInfo, netstatus.LispStatus.MapServers,
+		additionalInfo, netstatus.LispConfig.MapServers,
 		ctx.legacyDataPlane)
 }
 
@@ -3169,7 +3169,7 @@ func appNetworkDoInactivateOverlayNetworkWithNetworkInstance(
 
 	// Delete LISP configlets
 	deleteLispConfiglet(lispRunDirname, false,
-		netstatus.LispStatus.IID, olStatus.EID,
+		netstatus.LispConfig.IID, olStatus.EID,
 		olStatus.AppIPAddr, *ctx.deviceNetworkStatus,
 		ctx.legacyDataPlane)
 }
