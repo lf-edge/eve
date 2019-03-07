@@ -296,7 +296,14 @@ func Run() {
 	xenLogDirChanges := make(chan string)
 	go watch.WatchStatus(xenLogDirname, false, xenLogDirChanges)
 
-	log.Debugln("called watcher...")
+	// Run these dir -> event as goroutines since they will block
+	// when there is backpressure
+	// XXX state sharing with HandleDeferred?
+	go handleLogDir(logDirChanges, logDirName, &ctx)
+	go handleLogDir(otherLogDirChanges, otherLogDirname, &otherCtx)
+	go handleLogDir(lispLogDirChanges, lispLogDirName, &ctx)
+	go handleXenLogDir(xenLogDirChanges, xenLogDirname, &xenCtx)
+
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
@@ -304,22 +311,6 @@ func Run() {
 
 		case change := <-subDomainStatus.C:
 			subDomainStatus.ProcessChange(change)
-
-		case change := <-logDirChanges:
-			HandleLogDirEvent(change, logDirName, &ctx,
-				handleLogDirModify, handleLogDirDelete)
-
-		case change := <-otherLogDirChanges:
-			HandleLogDirEvent(change, otherLogDirname, &otherCtx,
-				handleLogDirModify, handleLogDirDelete)
-
-		case change := <-lispLogDirChanges:
-			HandleLogDirEvent(change, lispLogDirName, &ctx,
-				handleLogDirModify, handleLogDirDelete)
-
-		case change := <-xenLogDirChanges:
-			HandleLogDirEvent(change, xenLogDirname, &xenCtx,
-				handleXenLogDirModify, handleXenLogDirDelete)
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
@@ -340,6 +331,30 @@ func Run() {
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
+		}
+	}
+}
+
+func handleLogDir(logDirChanges chan string, logDirName string,
+	ctx *loggerContext) {
+
+	for {
+		select {
+		case change := <-logDirChanges:
+			HandleLogDirEvent(change, logDirName, ctx,
+				handleLogDirModify, handleLogDirDelete)
+		}
+	}
+}
+
+func handleXenLogDir(logDirChanges chan string, logDirName string,
+	ctx *imageLoggerContext) {
+
+	for {
+		select {
+		case change := <-logDirChanges:
+			HandleLogDirEvent(change, logDirName, ctx,
+				handleXenLogDirModify, handleXenLogDirDelete)
 		}
 	}
 }
