@@ -311,10 +311,6 @@ func Run() {
 	// Look for address changes
 	addrChanges := devicenetwork.AddrChangeInit(&nimCtx.DeviceNetworkContext)
 
-	// The handlers call UpdateLedManagerConfig with 2 and 1 as the
-	// number of usable IP addresses increases from zero and drops
-	// back to zero, respectively.
-
 	// To avoid a race between domainmgr starting and moving this to pciback
 	// and zedagent publishing its DevicePortConfig using those assigned-away
 	// adapter(s), we first wait for domainmgr to initialize AA, then enable

@@ -509,14 +509,12 @@ func Run() {
 	updateInprogress := isBaseOsCurrentPartitionStateInProgress(&zedagentCtx)
 	log.Infof("Current partition inProgress state is %v\n", updateInprogress)
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
-	waited := false
 	for !DNSctx.DNSinitialized ||
 		!zedagentCtx.assignableAdapters.Initialized {
 
 		log.Infof("Waiting for DomainNetworkStatus %v and aa %v\n",
 			DNSctx.DNSinitialized,
 			zedagentCtx.assignableAdapters.Initialized)
-		waited = true
 
 		select {
 		case change := <-subGlobalConfig.C:
@@ -557,11 +555,6 @@ func Run() {
 	}
 	t1.Stop()
 	t2.Stop()
-	if waited && DNSctx.usableAddressCount != 0 {
-		// Inform ledmanager that we have management port addresses
-		types.UpdateLedManagerConfig(2)
-		getconfigCtx.ledManagerCount = 2
-	}
 
 	// Subscribe to network metrics from zedrouter
 	subNetworkMetrics, err := pubsub.Subscribe("zedrouter",
