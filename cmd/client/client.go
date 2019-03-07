@@ -273,12 +273,12 @@ func Run() {
 	}
 	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
-
+	const return400 = false
 	// Post something without a return type.
 	// Returns true when done; false when retry
 	myPost := func(retryCount int, requrl string, reqlen int64, b *bytes.Buffer) bool {
 		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			requrl, reqlen, b, retryCount, false)
+			requrl, reqlen, b, retryCount, return400)
 		if err != nil {
 			log.Errorln(err)
 			return false
@@ -374,7 +374,7 @@ func Run() {
 	// can use the contents []byte
 	myGet := func(requrl string, retryCount int) (bool, *http.Response, []byte) {
 		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			requrl, 0, nil, retryCount, false)
+			requrl, 0, nil, retryCount, return400)
 		if err != nil {
 			log.Errorln(err)
 			return false, nil, nil

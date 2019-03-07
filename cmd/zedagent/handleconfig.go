@@ -188,9 +188,14 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 		}
 	}
 
-	resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration, false)
+	const return400 = false
+	resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration, return400)
 	if err != nil {
 		log.Errorf("getLatestConfig failed: %s\n", err)
+		// XXX nim might have already dropped it to 1 if no more addrs
+		// XXX Need NoZedCloudOK, ZedCloudOK, where the former would
+		// never raise. Plus a ZedCloudReach to raise to 3.
+		// XXX or have nim do this by doing ping...
 		if getconfigCtx.ledManagerCount == 4 {
 			// Inform ledmanager about loss of config from cloud
 			types.UpdateLedManagerConfig(3)

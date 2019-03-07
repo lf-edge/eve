@@ -721,8 +721,9 @@ func myGet(zedcloudCtx *zedcloud.ZedCloudContext, requrl string, ifname string,
 		fmt.Printf("INFO: %s: Using proxy %s to reach %s\n",
 			ifname, proxyUrl.String(), requrl)
 	}
+	const allowProxy = true
 	resp, contents, err := zedcloud.SendOnIntf(*zedcloudCtx,
-		requrl, ifname, 0, nil, true, 15)
+		requrl, ifname, 0, nil, allowProxy, 15)
 	if err != nil {
 		fmt.Printf("ERROR: %s: get %s failed: %s\n",
 			ifname, requrl, err)
