@@ -40,10 +40,14 @@ const (
 
 // State passed to handlers
 type ledManagerContext struct {
-	countChange        chan int
-	ledCounter         int // Supress work and logging if no change
-	subGlobalConfig    *pubsub.Subscription
-	subLedBlinkCounter *pubsub.Subscription
+	countChange            chan int
+	ledCounter             int // Supress work and logging if no change
+	subGlobalConfig        *pubsub.Subscription
+	subLedBlinkCounter     *pubsub.Subscription
+	subDeviceNetworkStatus *pubsub.Subscription
+	deviceNetworkStatus    types.DeviceNetworkStatus
+	usableAddressCount     int
+	derivedLedCounter      int // Based on ledCounter + usableAddressCount
 }
 
 type Blink200msFunc func()
@@ -55,7 +59,7 @@ type modelToFuncs struct {
 	blinkFunc Blink200msFunc
 }
 
-// XXX introduce wildcard matching on mondel names?
+// XXX introduce wildcard matching on model names? Just a default at the end
 var mToF = []modelToFuncs{
 	modelToFuncs{
 		model:     "Supermicro.SYS-E100-9APP",
@@ -86,6 +90,10 @@ var mToF = []modelToFuncs{
 		model:     "hisilicon,hikey.hisilicon,hi6220.",
 		initFunc:  InitWifiLedCmd,
 		blinkFunc: ExecuteWifiLedCmd},
+	modelToFuncs{
+		model: "QEMU.Standard PC (i440FX + PIIX, 1996)",
+		// No dd disk light blinking on QEMU
+	},
 	// Last in table as a default
 	modelToFuncs{
 		model:     "",
@@ -168,6 +176,16 @@ func Run() {
 	ctx.subLedBlinkCounter = subLedBlinkCounter
 	subLedBlinkCounter.Activate()
 
+	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
+		types.DeviceNetworkStatus{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
+	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
+	subDeviceNetworkStatus.Activate()
+
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
 		false, &ctx)
@@ -183,6 +201,9 @@ func Run() {
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subDeviceNetworkStatus.C:
+			subDeviceNetworkStatus.ProcessChange(change)
 
 		case change := <-subLedBlinkCounter.C:
 			subLedBlinkCounter.ProcessChange(change)
@@ -208,10 +229,23 @@ func handleLedBlinkModify(ctxArg interface{}, key string,
 		return
 	}
 	ctx.ledCounter = config.BlinkCounter
-	log.Infof("handleLedBlinkModify for %s\n", key)
-	log.Infoln("value of blinkCount: ", config.BlinkCounter)
-	ctx.countChange <- config.BlinkCounter
+	updateDerivedLedCounter(ctx)
 	log.Infof("handleLedBlinkModify done for %s\n", key)
+}
+
+// Merge the 1/2 values based on having usable addresses or not, with
+// the value we get based on access to zedcloud or errors.
+func updateDerivedLedCounter(ctx *ledManagerContext) {
+	if ctx.usableAddressCount == 0 {
+		ctx.derivedLedCounter = 1
+	} else if ctx.ledCounter < 2 {
+		ctx.derivedLedCounter = 2
+	} else {
+		ctx.derivedLedCounter = ctx.ledCounter
+	}
+	log.Infof("updateDerivedLedCounter counter %d usableAddr %d, derived %d\n",
+		ctx.ledCounter, ctx.usableAddressCount, ctx.derivedLedCounter)
+	ctx.countChange <- ctx.derivedLedCounter
 }
 
 func handleLedBlinkDelete(ctxArg interface{}, key string,
@@ -225,9 +259,8 @@ func handleLedBlinkDelete(ctxArg interface{}, key string,
 		return
 	}
 	// XXX or should we tell the blink go routine to exit?
-	ctx.countChange <- 0
-	types.UpdateLedManagerConfig(0)
 	ctx.ledCounter = 0
+	updateDerivedLedCounter(ctx)
 	log.Infof("handleLedBlinkDelete done for %s\n", key)
 }
 
@@ -243,7 +276,9 @@ func TriggerBlinkOnDevice(countChange chan int, blinkFunc Blink200msFunc) {
 		}
 		log.Debugln("Number of times LED will blink: ", counter)
 		for i := 0; i < counter; i++ {
-			blinkFunc()
+			if blinkFunc != nil {
+				blinkFunc()
+			}
 			time.Sleep(200 * time.Millisecond)
 		}
 		time.Sleep(1200 * time.Millisecond)
@@ -296,6 +331,46 @@ func ExecuteWifiLedCmd() {
 	if err != nil {
 		log.Fatal(err, brightnessFilename)
 	}
+}
+
+func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
+
+	ctx := ctxArg.(*ledManagerContext)
+	status := cast.CastDeviceNetworkStatus(statusArg)
+	if key != "global" {
+		log.Infof("handleDNSModify: ignoring %s\n", key)
+		return
+	}
+
+	log.Infof("handleDNSModify for %s\n", key)
+	ctx.deviceNetworkStatus = status
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
+	log.Infof("handleDNSModify %d usable addresses\n", newAddrCount)
+	if (ctx.usableAddressCount == 0 && newAddrCount != 0) ||
+		(ctx.usableAddressCount != 0 && newAddrCount == 0) {
+		ctx.usableAddressCount = newAddrCount
+		updateDerivedLedCounter(ctx)
+	}
+	log.Infof("handleDNSModify done for %s\n", key)
+}
+
+func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
+
+	ctx := ctxArg.(*ledManagerContext)
+	log.Infof("handleDNSDelete for %s\n", key)
+	if key != "global" {
+		log.Infof("handleDNSDelete: ignoring %s\n", key)
+		return
+	}
+	ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
+	log.Infof("handleDNSDelete %d usable addresses\n", newAddrCount)
+	if (ctx.usableAddressCount == 0 && newAddrCount != 0) ||
+		(ctx.usableAddressCount != 0 && newAddrCount == 0) {
+		ctx.usableAddressCount = newAddrCount
+		updateDerivedLedCounter(ctx)
+	}
+	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
 func handleGlobalConfigModify(ctxArg interface{}, key string,

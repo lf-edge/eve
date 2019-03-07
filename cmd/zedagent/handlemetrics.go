@@ -1460,8 +1460,9 @@ func appIfnameToName(aiStatus *types.AppInstanceStatus, vifname string) string {
 func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 	iteration int) error {
 
+	const return400 = true
 	resp, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
-		size, buf, iteration, true)
+		size, buf, iteration, return400)
 	if resp != nil && resp.StatusCode >= 400 && resp.StatusCode < 500 {
 		log.Infof("SendProtoBuf: %s silently ignore code %d\n",
 			url, resp.StatusCode)
@@ -1483,8 +1484,9 @@ func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 	buf := bytes.NewBuffer(data)
 	size := int64(proto.Size(ReportMetrics))
 	metricsUrl := serverName + "/" + metricsApi
+	const return400 = false
 	_, _, err = zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
-		size, buf, iteration, false)
+		size, buf, iteration, return400)
 	if err != nil {
 		// Hopefully next timeout will be more successful
 		log.Errorf("SendMetricsProtobuf failed: %s\n", err)

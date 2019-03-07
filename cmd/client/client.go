@@ -273,12 +273,12 @@ func Run() {
 	}
 	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
-
+	const return400 = false
 	// Post something without a return type.
 	// Returns true when done; false when retry
 	myPost := func(retryCount int, requrl string, reqlen int64, b *bytes.Buffer) bool {
 		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			requrl, reqlen, b, retryCount, false)
+			requrl, reqlen, b, retryCount, return400)
 		if err != nil {
 			log.Errorln(err)
 			return false
@@ -374,7 +374,7 @@ func Run() {
 	// can use the contents []byte
 	myGet := func(requrl string, retryCount int) (bool, *http.Response, []byte) {
 		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			requrl, 0, nil, retryCount, false)
+			requrl, 0, nil, retryCount, return400)
 		if err != nil {
 			log.Errorln(err)
 			return false, nil, nil
@@ -671,18 +671,12 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		cmp.Diff(ctx.deviceNetworkStatus, status))
 	*ctx.deviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
-	if newAddrCount != 0 && ctx.usableAddressCount == 0 {
+	if newAddrCount != ctx.usableAddressCount {
 		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
 			ctx.usableAddressCount, newAddrCount)
-		// Inform ledmanager that we have management port addresses
-		types.UpdateLedManagerConfig(2)
-	} else if newAddrCount == 0 && ctx.usableAddressCount != 0 {
-		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
-			ctx.usableAddressCount, newAddrCount)
-		// Inform ledmanager that we have no management port addresses
-		types.UpdateLedManagerConfig(1)
+		// ledmanager subscribes to DeviceNetworkStatus to see changes
+		ctx.usableAddressCount = newAddrCount
 	}
-	ctx.usableAddressCount = newAddrCount
 	log.Infof("handleDNSModify done for %s\n", key)
 }
 
@@ -699,9 +693,5 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	*ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus)
 	ctx.usableAddressCount = newAddrCount
-	if ctx.usableAddressCount == 0 {
-		// Inform ledmanager that we have no management port addresses
-		types.UpdateLedManagerConfig(1)
-	}
 	log.Infof("handleDNSDelete done for %s\n", key)
 }

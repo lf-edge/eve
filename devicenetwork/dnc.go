@@ -644,18 +644,12 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 	// Did we loose all usable addresses or gain the first usable
 	// address?
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
-	if newAddrCount == 0 && ctx.UsableAddressCount != 0 {
+	if newAddrCount != ctx.UsableAddressCount {
 		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
 			ctx.UsableAddressCount, newAddrCount)
-		// Inform ledmanager that we have no addresses
-		types.UpdateLedManagerConfig(1)
-	} else if newAddrCount != 0 && ctx.UsableAddressCount == 0 {
-		log.Infof("DeviceNetworkStatus from %d to %d addresses\n",
-			ctx.UsableAddressCount, newAddrCount)
-		// Inform ledmanager that we have port addresses
-		types.UpdateLedManagerConfig(2)
+		// ledmanager subscribes to DeviceNetworkStatus to see changes
+		ctx.UsableAddressCount = newAddrCount
 	}
-	ctx.UsableAddressCount = newAddrCount
 	if ctx.PubDeviceNetworkStatus != nil {
 		log.Infof("PublishDeviceNetworkStatus: %+v\n",
 			ctx.DeviceNetworkStatus)
