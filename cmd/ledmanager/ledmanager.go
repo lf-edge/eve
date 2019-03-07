@@ -59,7 +59,7 @@ type modelToFuncs struct {
 	blinkFunc Blink200msFunc
 }
 
-// XXX introduce wildcard matching on mondel names?
+// XXX introduce wildcard matching on model names? Just a default at the end
 var mToF = []modelToFuncs{
 	modelToFuncs{
 		model:     "Supermicro.SYS-E100-9APP",
@@ -90,6 +90,10 @@ var mToF = []modelToFuncs{
 		model:     "hisilicon,hikey.hisilicon,hi6220.",
 		initFunc:  InitWifiLedCmd,
 		blinkFunc: ExecuteWifiLedCmd},
+	modelToFuncs{
+		model: "QEMU.Standard PC (i440FX + PIIX, 1996)",
+		// No dd disk light blinking on QEMU
+	},
 	// Last in table as a default
 	modelToFuncs{
 		model:     "",
@@ -272,7 +276,9 @@ func TriggerBlinkOnDevice(countChange chan int, blinkFunc Blink200msFunc) {
 		}
 		log.Debugln("Number of times LED will blink: ", counter)
 		for i := 0; i < counter; i++ {
-			blinkFunc()
+			if blinkFunc != nil {
+				blinkFunc()
+			}
 			time.Sleep(200 * time.Millisecond)
 		}
 		time.Sleep(1200 * time.Millisecond)
