@@ -342,8 +342,9 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSModify for %s\n", key)
 	*deviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
+	cameOnline := (ctx.usableAddressCount == 0) && (newAddrCount != 0)
 	ctx.usableAddressCount = newAddrCount
-	if ctx.doDeferred {
+	if cameOnline && ctx.doDeferred {
 		change := time.Now()
 		zedcloud.HandleDeferred(change, 1*time.Second)
 	}
@@ -419,6 +420,8 @@ func processEvents(image string, prevLastSent time.Time,
 			}
 			if sent {
 				recordLastSent(image)
+			} else {
+				// XXX back pressure? Don't read from channel?
 			}
 
 		case <-flushTimer.C:
@@ -433,6 +436,8 @@ func processEvents(image string, prevLastSent time.Time,
 				iteration += 1
 				if sent {
 					recordLastSent(image)
+				} else {
+					// XXX back pressure? Don't read from channel?
 				}
 			}
 		}
@@ -536,15 +541,28 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		log.Fatal("sendProtoStrForLogs malloc error:")
 	}
 
+	// For any 400 error we abandon
+	const return400 = true
 	if zedcloud.HasDeferred(image) {
 		log.Infof("SendProtoStrForLogs queued after existing for %s\n",
 			image)
-		zedcloud.AddDeferred(image, buf, size, logsUrl, zedcloudCtx, false)
+		zedcloud.AddDeferred(image, buf, size, logsUrl, zedcloudCtx,
+			return400)
 		reportLogs.Log = []*zmet.LogEntry{}
 		return false
 	}
-	_, _, err = zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
-		size, buf, iteration, false)
+	resp, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
+		size, buf, iteration, return400)
+	// XXX We seem to still get large or bad messages which are rejected
+	// by the server. Ignore them to make sure we can log subsequent ones.
+	// XXX Should we inject a separate log entry to record that we dropped
+	// this one?
+	if resp != nil && resp.StatusCode == 400 {
+		log.Errorf("Failed sending %d bytes image %s to %s; code 400; ignored error\n",
+			size, image, logsUrl)
+		reportLogs.Log = []*zmet.LogEntry{}
+		return true
+	}
 	if err != nil {
 		log.Errorf("SendProtoStrForLogs %d bytes image %s failed: %s\n",
 			size, image, err)
@@ -552,7 +570,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		// will sleep until the timer takes care of sending this
 		// hence we'll keep things in order for a given image
 		zedcloud.AddDeferred(image, buf, size, logsUrl, zedcloudCtx,
-			false)
+			return400)
 		reportLogs.Log = []*zmet.LogEntry{}
 		return false
 	}
