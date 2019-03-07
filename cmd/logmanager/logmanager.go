@@ -32,15 +32,16 @@ import (
 )
 
 const (
-	agentName       = "logmanager"
-	identityDirname = "/config"
-	serverFilename  = identityDirname + "/server"
-	uuidFileName    = identityDirname + "/uuid"
-	xenLogDirname   = "/var/log/xen"
-	lastSentDirname = "lastlogsent" // Directory in /persist/
-	logsApi         = "api/v1/edgedevice/logs"
-	logMaxMessages  = 100
-	logMaxBytes     = 32768 // Approximate - no headers counted
+	agentName        = "logmanager"
+	identityDirname  = "/config"
+	serverFilename   = identityDirname + "/server"
+	uuidFileName     = identityDirname + "/uuid"
+	xenLogDirname    = "/var/log/xen"
+	lastSentDirname  = "lastlogsent"  // Directory in /persist/
+	lastDeferDirname = "lastlogdefer" // Directory in /persist/
+	logsApi          = "api/v1/edgedevice/logs"
+	logMaxMessages   = 100
+	logMaxBytes      = 32768 // Approximate - no headers counted
 )
 
 var (
@@ -52,6 +53,8 @@ var (
 	logsUrl             string
 	zedcloudCtx         zedcloud.ZedCloudContext
 	logs                map[string]zedcloudLogs // Key is ifname string
+
+	globalDeferInprogress bool
 )
 
 // global stuff
@@ -165,6 +168,12 @@ func Run() {
 			log.Fatal(err)
 		}
 	}
+	dirname = fmt.Sprintf("/persist/%s", lastDeferDirname)
+	if _, err := os.Stat(dirname); err != nil {
+		if err := os.MkdirAll(dirname, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
 	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := pubsub.Publish(agentName, cms)
 	if err != nil {
@@ -242,7 +251,7 @@ func Run() {
 	loggerChan := make(chan logEntry)
 	ctx := loggerContext{logChan: loggerChan, image: currentPartition}
 	xenCtx := imageLoggerContext{}
-	lastSent := readLastSent(currentPartition)
+	lastSent := readLast(lastSentDirname, currentPartition)
 	lastSentStr, _ := lastSent.MarshalText()
 	log.Debugf("Current partition logs were last sent at %s\n",
 		string(lastSentStr))
@@ -266,7 +275,7 @@ func Run() {
 			otherLogDirname)
 		otherLoggerChan := make(chan logEntry)
 		otherPartition := zboot.GetOtherPartition()
-		lastSent := readLastSent(otherPartition)
+		lastSent := readLast(lastSentDirname, otherPartition)
 		lastSentStr, _ := lastSent.MarshalText()
 		log.Debugf("Other partition logs were last sent at %s\n",
 			string(lastSentStr))
@@ -322,8 +331,12 @@ func Run() {
 				log.Errorln(err)
 			}
 		case change := <-deferredChan:
-			zedcloud.HandleDeferred(change, 1*time.Second)
+			done := zedcloud.HandleDeferred(change, 1*time.Second)
 			dbg.FreeOSMemory()
+			globalDeferInprogress = !done
+			if globalDeferInprogress {
+				log.Warnf("logmanager: globalDeferInprogress")
+			}
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
@@ -346,7 +359,11 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx.usableAddressCount = newAddrCount
 	if cameOnline && ctx.doDeferred {
 		change := time.Now()
-		zedcloud.HandleDeferred(change, 1*time.Second)
+		done := zedcloud.HandleDeferred(change, 1*time.Second)
+		globalDeferInprogress = !done
+		if globalDeferInprogress {
+			log.Warnf("handleDNSModify: globalDeferInprogress")
+		}
 	}
 	log.Infof("handleDNSModify done for %s; %d usable\n",
 		key, newAddrCount)
@@ -383,19 +400,39 @@ func processEvents(image string, prevLastSent time.Time,
 		time.Duration(max))
 	messageCount := 0
 	dropped := 0
+	deferInprogress := false
 	for {
+		// If we had a defer wait until it has been taken care of
+		// Note that globalDeferInprogress might not yet be set
+		// but if the condition persists it will be set in a bit
+		if deferInprogress {
+			log.Warnf("processEvents(%s) deferInprogress", image)
+			time.Sleep(2 * time.Minute)
+			if globalDeferInprogress {
+				log.Warnf("processEvents(%s) globalDeferInprogress",
+					image)
+				continue
+			}
+			log.Infof("processEvents(%s) deferInprogress done",
+				image)
+			deferInprogress = false
+		}
+
 		select {
 		case event, more := <-logChan:
 			sent := false
 			if !more {
 				log.Infof("processEvents(%s) end\n",
 					image)
-				if messageCount > 0 {
-					sent = sendProtoStrForLogs(reportLogs, image,
-						iteration)
+				if messageCount == 0 {
+					return
 				}
+				sent = sendProtoStrForLogs(reportLogs, image,
+					iteration)
 				if sent {
-					recordLastSent(image)
+					recordLast(lastSentDirname, image)
+				} else {
+					recordLast(lastDeferDirname, image)
 				}
 				return
 			}
@@ -408,74 +445,79 @@ func processEvents(image string, prevLastSent time.Time,
 			// Bytes before appending this one
 			byteCount := proto.Size(reportLogs)
 
-			if messageCount >= logMaxMessages ||
-				byteCount >= logMaxBytes {
+			if messageCount < logMaxMessages &&
+				byteCount < logMaxBytes {
 
-				log.Debugf("processEvents(%s): sending at messageCount %d, byteCount %d\n",
-					image, messageCount, byteCount)
-				sent = sendProtoStrForLogs(reportLogs, image,
-					iteration)
-				messageCount = 0
-				iteration += 1
+				break
 			}
+
+			log.Debugf("processEvents(%s): sending at messageCount %d, byteCount %d\n",
+				image, messageCount, byteCount)
+			sent = sendProtoStrForLogs(reportLogs, image,
+				iteration)
+			messageCount = 0
+			iteration += 1
 			if sent {
-				recordLastSent(image)
+				recordLast(lastSentDirname, image)
 			} else {
-				// XXX back pressure? Don't read from channel?
+				recordLast(lastDeferDirname, image)
+				deferInprogress = true
 			}
 
 		case <-flushTimer.C:
-			if messageCount > 0 {
-				log.Debugf("processEvents(%s) flush at %s dropped %d messageCount %d bytecount %d\n",
-					image, time.Now().String(),
-					dropped, messageCount,
-					proto.Size(reportLogs))
-				sent := sendProtoStrForLogs(reportLogs, image,
-					iteration)
-				messageCount = 0
-				iteration += 1
-				if sent {
-					recordLastSent(image)
-				} else {
-					// XXX back pressure? Don't read from channel?
-				}
+			if messageCount == 0 {
+				break
+			}
+			log.Debugf("processEvents(%s) flush at %s dropped %d messageCount %d bytecount %d\n",
+				image, time.Now().String(),
+				dropped, messageCount,
+				proto.Size(reportLogs))
+			sent := sendProtoStrForLogs(reportLogs, image,
+				iteration)
+			messageCount = 0
+			iteration += 1
+			if sent {
+				recordLast(lastSentDirname, image)
+			} else {
+				recordLast(lastDeferDirname, image)
+				deferInprogress = true
 			}
 		}
 	}
 }
 
 // Touch/create a file to keep track of when things where sent before a reboot
-func recordLastSent(image string) {
-	log.Debugf("recordLastSent(%s)\n", image)
-	filename := fmt.Sprintf("/persist/%s/%s", lastSentDirname, image)
+func recordLast(dirname string, image string) {
+	log.Debugf("recordLast(%s, %s)\n", dirname, image)
+	filename := fmt.Sprintf("/persist/%s/%s", dirname, image)
 	_, err := os.Stat(filename)
 	if err != nil {
 		file, err := os.Create(filename)
 		if err != nil {
-			log.Infof("recordLastSent: %s\n", err)
+			log.Infof("recordLast: %s\n", err)
 			return
 		}
 		file.Close()
 	}
 	_, err = os.Stat(filename)
 	if err != nil {
-		log.Errorf("recordLastSent: %s\n", err)
+		log.Errorf("recordLast: %s\n", err)
 		return
 	}
 	now := time.Now()
 	err = os.Chtimes(filename, now, now)
 	if err != nil {
-		log.Errorf("recordLastSent: %s\n", err)
+		log.Errorf("recordLast: %s\n", err)
 		return
 	}
 }
 
-func readLastSent(image string) time.Time {
-	filename := fmt.Sprintf("/persist/%s/%s", lastSentDirname, image)
+func readLast(dirname string, image string) time.Time {
+	filename := fmt.Sprintf("/persist/%s/%s", dirname, image)
 	st, err := os.Stat(filename)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Errorf("readLastSent: %s\n", err)
+			log.Errorf("readLast: %s\n", err)
 		}
 		return time.Time{}
 	}
@@ -702,7 +744,7 @@ func createXenLogger(ctx *imageLoggerContext, filename string, source string) {
 		logChan: make(chan logEntry),
 	}
 
-	lastSent := readLastSent(source)
+	lastSent := readLast(lastSentDirname, source)
 	lastSentStr, _ := lastSent.MarshalText()
 	log.Debugf("createXenLogger: source %s last sent at %s\n",
 		source, string(lastSentStr))
@@ -784,6 +826,8 @@ func handleLogDirDelete(ctx interface{}, filename string, source string) {
 }
 
 // Read until EOF or error
+// When we get backpressure the writes to logChan will block hence
+// we will stop reading and using more memory
 func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 	// Check if shrunk aka truncated
 	offset, err := r.fileDesc.Seek(0, os.SEEK_CUR)

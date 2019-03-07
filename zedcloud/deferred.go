@@ -48,7 +48,6 @@ type DeferredContext struct {
 var defaultCtx *DeferredContext
 
 // Create and return a channel to the caller
-// XXX add callback functions for complete?
 func InitDeferred() <-chan time.Time {
 	if defaultCtx != nil {
 		log.Fatal("InitDeferred called twice")
@@ -69,16 +68,17 @@ func initImpl() *DeferredContext {
 
 // Try to send all deferred items. Give up if any one fails
 // Stop timer if map becomes empty
-func HandleDeferred(event time.Time, spacing time.Duration) {
+// Returns true when there are no more deferred items
+func HandleDeferred(event time.Time, spacing time.Duration) bool {
 
 	if defaultCtx == nil {
 		log.Fatal("HandleDeferred no defaultCtx")
 	}
-	defaultCtx.handleDeferred(event, spacing)
+	return defaultCtx.handleDeferred(event, spacing)
 }
 
 func (ctx *DeferredContext) handleDeferred(event time.Time,
-	spacing time.Duration) {
+	spacing time.Duration) bool {
 
 	log.Infof("HandleDeferred(%v, %v) map %d\n",
 		event, spacing, len(ctx.deferredItems))
@@ -122,8 +122,8 @@ func (ctx *DeferredContext) handleDeferred(event time.Time,
 	if len(ctx.deferredItems) == 0 {
 		stopTimer(ctx)
 	}
-	// XXX return true if all handled?
 	log.Infof("HandleDeferred() done map %d\n", len(ctx.deferredItems))
+	return len(ctx.deferredItems) == 0
 }
 
 // Check if there are any deferred items for this key
