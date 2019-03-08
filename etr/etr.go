@@ -555,7 +555,6 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 	decoded := []gopacket.LayerType{}
 
 	for {
-		//ci, err := ring.ReadPacketDataTo(pktBuf[:])
 		select {
 		case <-killChannel:
 			log.Errorf(
@@ -566,13 +565,19 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 			default:
 		}
 		ci, err := handle.ReadPacketDataTo(pktBuf[:])
-		if err != nil {
-			log.Errorf("ProcessCapturedPkts: Packer capture error: %s", err)
-		}
 		capLen := ci.CaptureLength
+		if err == afpacket.ErrTimeout || capLen == 0 {
+			// poll timeout
+			continue
+		}
 		currUnixSeconds := ci.Timestamp.Unix()
 		if debug {
 			log.Debugf("ProcessCapturedPkts: Captured ETR packet of length %d", capLen)
+		}
+		err = parser.DecodeLayers(pktBuf[:capLen], &decoded)
+		if err != nil {
+			log.Infof("ProcessCapturedPkts: Decoding packet layers failed: %s", err)
+			continue
 		}
 		/*
 		packet := gopacket.NewPacket(
@@ -580,7 +585,6 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 			layers.LinkTypeEthernet,
 			gopacket.DecodeOptions{Lazy: false, NoCopy: true})
 			*/
-		err = parser.DecodeLayers(pktBuf[:capLen], &decoded)
 
 		/*
 		appLayer := packet.ApplicationLayer()
