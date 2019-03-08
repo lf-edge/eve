@@ -576,7 +576,7 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 		}
 		err = parser.DecodeLayers(pktBuf[:capLen], &decoded)
 		if err != nil {
-			log.Infof("ProcessCapturedPkts: Decoding packet layers failed: %s", err)
+			log.Debugf("ProcessCapturedPkts: Decoding packet layers failed: %s", err)
 			continue
 		}
 		/*
