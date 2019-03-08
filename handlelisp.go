@@ -424,9 +424,9 @@ func handleDecapKeys(msg []byte) {
 			IcvKey:   icvKey,
 			DecBlock: decBlock,
 		}
-		log.Debugf("handleDecapKeys: Adding Decap key[%d] 0x%x for Rloc %s",
+		log.Infof("handleDecapKeys: Adding Decap key[%d] 0x%x for Rloc %s",
 			keyId-1, keys[keyId-1].DecKey, decapMsg.Rloc)
-		log.Debugf("handleDecapKeys: Adding Decap icv[%d] 0x%x for Rloc %s",
+		log.Infof("handleDecapKeys: Adding Decap icv[%d] 0x%x for Rloc %s",
 			keyId-1, keys[keyId-1].IcvKey, decapMsg.Rloc)
 	}
 
