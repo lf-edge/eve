@@ -3167,11 +3167,56 @@ func appNetworkDoInactivateOverlayNetworkWithNetworkInstance(
 	netstatus.BridgeIPSets = newIpsets
 	maybeRemoveStaleIpsets(staleIpsets)
 
+	// Delete route towards app instance
+	deleteAppInstaneOverlayRoute(ctx, status, olStatus)
+
 	// Delete LISP configlets
 	deleteLispConfiglet(lispRunDirname, false,
 		netstatus.LispConfig.IID, olStatus.EID,
 		olStatus.AppIPAddr, *ctx.deviceNetworkStatus,
 		ctx.legacyDataPlane)
+}
+
+func deleteAppInstaneOverlayRoute(
+	ctx *zedrouterContext,
+	status *types.AppNetworkStatus,
+	olStatus *types.OverlayNetworkStatus) {
+	bridgeName := olStatus.Bridge
+	oLink, err := findBridge(bridgeName)
+	if err != nil {
+		addError(ctx, status, "findBridge", err)
+		log.Infof("deleteAppInstaneOverlayRoute done for %s\n",
+			status.DisplayName)
+		return
+	}
+	var subnetSuffix string
+
+	EID := olStatus.AppIPAddr
+	isIPv6 := (EID.To4() == nil)
+	if isIPv6 {
+		subnetSuffix = "/128"
+	} else {
+		subnetSuffix = "/32"
+	}
+	_, ipnet, err := net.ParseCIDR(EID.String() + subnetSuffix)
+	if err != nil {
+		errStr := fmt.Sprintf("ParseCIDR %s failed: %v",
+			EID.String()+subnetSuffix, err)
+		addError(ctx, status, "deleteAppInstaneOverlayRoute",
+			errors.New(errStr))
+		log.Infof("deleteAppInstaneOverlayRoute done for %s\n",
+			status.DisplayName)
+		return
+	}
+	rt := netlink.Route{Dst: ipnet, LinkIndex: oLink.Index}
+	if err := netlink.RouteDel(&rt); err != nil {
+		errStr := fmt.Sprintf("RouteDelete %s failed: %s",
+		EID, err)
+		addError(ctx, status, "deleteAppInstaneOverlayRoute",
+			errors.New(errStr))
+		log.Infof("deleteAppInstaneOverlayRoute done for %s\n",
+			status.DisplayName)
+	}
 }
 
 func appNetworkDoInactivateOverlayNetworkWithNetworkObject(
