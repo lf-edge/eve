@@ -566,7 +566,10 @@ func doNetworkInstanceSubnetSanityCheck(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	if status.Subnet.IP == nil || status.Subnet.IP.IsUnspecified() {
+	// Mesh network instance with crypto V6 addressing will not need any
+	// subnet specific configuration
+	if (status.Subnet.IP == nil || status.Subnet.IP.IsUnspecified()) &&
+		(status.IpType != types.AddressTypeCryptoIPV6) {
 		err := fmt.Sprintf("Subnet Unspecified for %s-%s: %+v\n",
 			status.Key(), status.DisplayName, status.Subnet)
 		return errors.New(err)
@@ -611,6 +614,12 @@ func doNetworkInstanceSubnetSanityCheck(
 // 2) It should be a subset of Subnet
 func DoNetworkInstanceStatusDhcpRangeSanityCheck(
 	status *types.NetworkInstanceStatus) error {
+	// For Mesh type network instance with Crypto V6 addressing, no dhcp-range
+	// will be specified.
+	if status.Type == types.NetworkInstanceTypeMesh  &&
+		status.IpType == types.AddressTypeCryptoIPV6 {
+		return nil
+	}
 	if status.DhcpRange.Start == nil || status.DhcpRange.Start.IsUnspecified() {
 		err := fmt.Sprintf("DhcpRange Start Unspecified: %+v\n",
 			status.DhcpRange.Start)
