@@ -33,6 +33,7 @@ import (
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/netclone"
+	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
 )
@@ -906,6 +907,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				swInfo.DownloadProgress = 0
 			}
 		}
+		addUserSwInfo(swInfo)
 		return swInfo
 	}
 
@@ -938,6 +940,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			errInfo.Timestamp = errTime
 			swInfo.SwErr = errInfo
 		}
+		addUserSwInfo(swInfo)
 		ReportDeviceInfo.SwList = append(ReportDeviceInfo.SwList,
 			swInfo)
 	}
@@ -1022,6 +1025,14 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		ReportDeviceInfo.MetricItems = append(ReportDeviceInfo.MetricItems, item)
 	}
 
+	ReportDeviceInfo.LastRebootReason = ctx.rebootReason
+	if !ctx.rebootTime.IsZero() {
+		rebootTime, _ := ptypes.TimestampProto(ctx.rebootTime)
+		ReportDeviceInfo.LastRebootTime = rebootTime
+	}
+
+	ReportDeviceInfo.SystemAdapter = encodeSystemAdapterInfo(ctx.subDevicePortConfigList)
+
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
@@ -1045,6 +1056,48 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			zedcloudCtx, true)
 	} else {
 		writeSentDeviceInfoProtoMessage(data)
+	}
+}
+
+// Convert the implementation details to the user-friendly userStatus and subStatus
+func addUserSwInfo(swInfo *zmet.ZInfoDevSW) {
+	switch swInfo.Status {
+	case zmet.ZSwState_INITIAL:
+		swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+		swInfo.SubStatus = "Initializing update"
+	case zmet.ZSwState_DOWNLOAD_STARTED:
+		swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+		swInfo.SubStatus = fmt.Sprintf("Downloading %d%% done", swInfo.DownloadProgress)
+	case zmet.ZSwState_DOWNLOADED:
+		swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+		swInfo.SubStatus = "Downloaded 100%"
+	case zmet.ZSwState_DELIVERED:
+		if !swInfo.Activated {
+			swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+			swInfo.SubStatus = "Downloaded and verified"
+		} else {
+			swInfo.UserStatus = zmet.BaseOsStatus_NONE
+		}
+	case zmet.ZSwState_INSTALLED:
+		switch swInfo.PartitionState {
+		case "active":
+			if swInfo.Activated {
+				swInfo.UserStatus = zmet.BaseOsStatus_ACTIVE
+			} else {
+				swInfo.UserStatus = zmet.BaseOsStatus_FALLBACK
+			}
+		case "updating":
+			swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+			swInfo.SubStatus = "About to reboot"
+		case "inprogress":
+			swInfo.UserStatus = zmet.BaseOsStatus_TESTING
+		case "unused":
+			swInfo.UserStatus = zmet.BaseOsStatus_NONE
+		}
+	// XXX anything else?
+	default:
+		// The other states are use for app instances not for baseos
+		swInfo.UserStatus = zmet.BaseOsStatus_NONE
 	}
 }
 
@@ -1156,8 +1209,89 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat,
 			errInfo.Timestamp = errTime
 			networkInfo.NetworkErr = errInfo
 		}
+		if port.Proxy != nil {
+			networkInfo.Proxy = encodeProxyStatus(port.Proxy)
+		}
 	}
 	return networkInfo
+}
+
+func encodeProxyStatus(proxyConfig *types.ProxyConfig) *zmet.ProxyStatus {
+	status := new(zmet.ProxyStatus)
+	status.Proxies = make([]*zmet.ProxyEntry, len(proxyConfig.Proxies))
+	for i, pe := range proxyConfig.Proxies {
+		pep := new(zmet.ProxyEntry)
+		pep.Type = uint32(pe.Type)
+		pep.Server = pe.Server
+		pep.Port = pe.Port
+		status.Proxies[i] = pep
+	}
+	status.Exceptions = proxyConfig.Exceptions
+	status.Pacfile = proxyConfig.Pacfile
+	status.NetworkProxyEnable = proxyConfig.NetworkProxyEnable
+	status.NetworkProxyURL = proxyConfig.NetworkProxyURL
+	status.WpadURL = proxyConfig.WpadURL
+	// XXX make into debugf?
+	log.Infof("encodeProxyStatus: %+v\n", status)
+	return status
+}
+
+func encodeSystemAdapterInfo(sub *pubsub.Subscription) *zmet.SystemAdapterInfo {
+	st, _ := sub.Get("global")
+	if st == nil {
+		log.Errorf("encodeSystemAdapterInfo: no DevicePortConfigList\n")
+		return nil
+	}
+	dpcl := cast.CastDevicePortConfigList(st)
+	info := new(zmet.SystemAdapterInfo)
+	info.CurrentIndex = uint32(dpcl.CurrentIndex)
+	info.Status = make([]*zmet.DevicePortStatus, len(dpcl.PortConfigList))
+	for i, dpc := range dpcl.PortConfigList {
+		dps := new(zmet.DevicePortStatus)
+		dps.Version = uint32(dpc.Version)
+		dps.Key = dpc.Key
+		ts, _ := ptypes.TimestampProto(dpc.TimePriority)
+		dps.TimePriority = ts
+		if !dpc.LastFailed.IsZero() {
+			ts, _ := ptypes.TimestampProto(dpc.LastFailed)
+			dps.LastFailed = ts
+		}
+		if !dpc.LastSucceeded.IsZero() {
+			ts, _ := ptypes.TimestampProto(dpc.LastSucceeded)
+			dps.LastSucceeded = ts
+		}
+		dps.Ports = make([]*zmet.DevicePort, len(dpc.Ports))
+		for j, p := range dpc.Ports {
+			dps.Ports[j] = encodeNetworkPortConfig(&p)
+		}
+		info.Status[i] = dps
+	}
+	// XXX make into debugf?
+	log.Infof("encodeSystemAdapterInfo: %+v\n", info)
+	return info
+}
+
+func encodeNetworkPortConfig(npc *types.NetworkPortConfig) *zmet.DevicePort {
+	dp := new(zmet.DevicePort)
+	dp.Ifname = npc.IfName
+	dp.Name = npc.Name
+	dp.IsMgmt = npc.IsMgmt
+	dp.Free = npc.Free
+	// DhcpConfig
+	dp.DhcpType = uint32(npc.Dhcp)
+	dp.Subnet = npc.AddrSubnet
+	dp.Gateway = npc.Gateway.String()
+	dp.Domainname = npc.DomainName
+	dp.NtpServer = npc.NtpServer.String()
+	for _, d := range npc.DnsServers {
+		dp.DnsServers = append(dp.DnsServers, d.String())
+	}
+	// XXX Not in definition. Remove?
+	// XXX  string dhcpRangeLow = 17;
+	// XXX  string dhcpRangeHigh = 18;
+
+	dp.Proxy = encodeProxyStatus(&npc.ProxyConfig)
+	return dp
 }
 
 // This function is called per change, hence needs to try over all management ports
@@ -1326,8 +1460,9 @@ func appIfnameToName(aiStatus *types.AppInstanceStatus, vifname string) string {
 func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 	iteration int) error {
 
+	const return400 = true
 	resp, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
-		size, buf, iteration, true)
+		size, buf, iteration, return400)
 	if resp != nil && resp.StatusCode >= 400 && resp.StatusCode < 500 {
 		log.Infof("SendProtoBuf: %s silently ignore code %d\n",
 			url, resp.StatusCode)
@@ -1349,8 +1484,9 @@ func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
 	buf := bytes.NewBuffer(data)
 	size := int64(proto.Size(ReportMetrics))
 	metricsUrl := serverName + "/" + metricsApi
+	const return400 = false
 	_, _, err = zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
-		size, buf, iteration, false)
+		size, buf, iteration, return400)
 	if err != nil {
 		// Hopefully next timeout will be more successful
 		log.Errorf("SendMetricsProtobuf failed: %s\n", err)

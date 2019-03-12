@@ -386,7 +386,8 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		if apiConfigEntry.Port != nil {
 			networkInstanceConfig.Port = apiConfigEntry.Port.Name
 		}
-		// For switch log+force to AddressTypeFirst do not copy
+		// XXX temporary hack:
+		// For switch log+force to AddressTypeNone and do not copy
 		// ipconfig but do copy opaque
 		// XXX zedcloud should send First/None type for switch
 		// network instances
@@ -394,10 +395,11 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		switch networkInstanceConfig.Type {
 		case types.NetworkInstanceTypeSwitch:
 			if networkInstanceConfig.IpType != types.AddressTypeNone {
-				log.Warnf("Switch network instance %s %s with invalid IpType %d\n",
+				log.Warnf("Switch network instance %s %s with invalid IpType %d overridden as %d\n",
 					networkInstanceConfig.UUID.String(),
 					networkInstanceConfig.DisplayName,
-					networkInstanceConfig.IpType)
+					networkInstanceConfig.IpType,
+					types.AddressTypeNone)
 				networkInstanceConfig.IpType = types.AddressTypeNone
 			}
 
@@ -543,6 +545,8 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		appInstance.FixedResources.VCpus = int(cfgApp.Fixedresources.Vcpus)
 		appInstance.FixedResources.VirtualizationMode = types.VmMode(cfgApp.Fixedresources.VirtualizationMode)
 		appInstance.FixedResources.EnableVnc = cfgApp.Fixedresources.EnableVnc
+		appInstance.FixedResources.VncDisplay = cfgApp.Fixedresources.VncDisplay
+		appInstance.FixedResources.VncPasswd = cfgApp.Fixedresources.VncPasswd
 
 		appInstance.StorageConfigList = make([]types.StorageConfig,
 			len(cfgApp.Drives))
@@ -662,6 +666,9 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			continue
 		}
 		network := cast.CastNetworkObjectConfig(networkObject)
+		// XXX temporary hack: if static IP 0.0.0.0 we log and force
+		// Dhcp = None. Remove once zedcloud can send Dhcp = None
+		forceDhcpNone := false
 		if sysAdapter.Addr != "" {
 			ip := net.ParseIP(sysAdapter.Addr)
 			if ip == nil {
@@ -669,6 +676,9 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 					"sysAdapter.Addr %s - ignored\n",
 					sysAdapter.Name, sysAdapter.Addr)
 				continue
+			}
+			if ip.IsUnspecified() {
+				forceDhcpNone = true
 			}
 			addrSubnet := network.Subnet
 			addrSubnet.IP = ip
@@ -682,13 +692,15 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		port.Dhcp = network.Dhcp
 		switch network.Dhcp {
 		case types.DT_STATIC:
+			if forceDhcpNone {
+				log.Warnf("Forcing DT_NOOP for %+v\n", port)
+				port.Dhcp = types.DT_NOOP
+				break
+			}
 			if port.Gateway.IsUnspecified() || port.AddrSubnet == "" ||
 				port.DnsServers == nil {
 				log.Errorf("parseSystemAdapterConfig: DT_STATIC but missing parameters in %+v; ignored\n",
 					port)
-				// XXX to test with zedcloud sending empty
-				// DnsServers need to comment out this
-				// continue
 				continue
 			}
 		case types.DT_CLIENT:
@@ -1836,9 +1848,39 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfigChange = true
 			}
 		default:
-			log.Errorf("Unknown configItem %s value %s\n",
-				key, item.Value)
-			// XXX send back error? Need device error for that
+			// Handle agentname items for loglevels
+			newString := item.Value
+			components := strings.Split(key, ".")
+			if len(components) == 3 && components[0] == "debug" &&
+				components[2] == "loglevel" {
+
+				agentName := components[1]
+				current := agentlog.LogLevel(&globalConfig,
+					agentName)
+				if current != newString {
+					log.Infof("parseConfigItems: %s change from %v to %v\n",
+						key, current, newString)
+					agentlog.SetLogLevel(&globalConfig,
+						agentName, newString)
+					globalConfigChange = true
+				}
+			} else if len(components) == 4 && components[0] == "debug" &&
+				components[2] == "remote" && components[3] == "loglevel" {
+				agentName := components[1]
+				current := agentlog.RemoteLogLevel(&globalConfig,
+					agentName)
+				if current != newString {
+					log.Infof("parseConfigItems: %s change from %v to %v\n",
+						key, current, newString)
+					agentlog.SetRemoteLogLevel(&globalConfig,
+						agentName, newString)
+					globalConfigChange = true
+				}
+			} else {
+				log.Errorf("Unknown configItem %s value %s\n",
+					key, item.Value)
+				// XXX send back error? Need device error for that
+			}
 		}
 	}
 	if globalConfigChange {

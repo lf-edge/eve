@@ -743,6 +743,8 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		VifList:            config.VifList,
 		VirtualizationMode: config.VirtualizationMode,
 		EnableVnc:          config.EnableVnc,
+		VncDisplay:         config.VncDisplay,
+		VncPasswd:          config.VncPasswd,
 		State:              types.INSTALLED,
 	}
 	status.DiskStatusList = make([]types.DiskStatus,
@@ -753,6 +755,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		config.DisplayName)
 
 	if err := configToStatus(ctx, *config, &status); err != nil {
+		// XXX error here
 		log.Errorf("Failed to create DomainStatus from %v: %s\n",
 			config, err)
 		status.PendingAdd = false
@@ -878,6 +881,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 			ib.IsPCIBack = true
 		}
 	}
+	checkIoBundleAll(ctx)
 }
 
 func doActivate(ctx *domainContext, config types.DomainConfig,
@@ -1144,6 +1148,7 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 			}
 		}
 		ib.UsedByUUID = nilUUID
+		checkIoBundleAll(ctx)
 	}
 	ctx.publishAssignableAdapters()
 }
@@ -1199,6 +1204,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	}
 
 	// XXX could defer to Activate but might want to reserve adapters
+	// XXX if this fails and we deactive+activate then we'll get a stolen by
+	// 0000-00.. fatal. Move to activate
 	for _, adapter := range config.IoAdapterList {
 		log.Debugf("configToStatus processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
@@ -1291,6 +1298,15 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 		file.WriteString(fmt.Sprintf("vnclisten = \"0.0.0.0\"\n"))
 		file.WriteString(fmt.Sprintf("usb=1\n"))
 		file.WriteString(fmt.Sprintf("usbdevice=[\"tablet\"]\n"))
+
+		if config.VncDisplay != 0 {
+			file.WriteString(fmt.Sprintf("vncdisplay = %d\n",
+				config.VncDisplay))
+		}
+		if config.VncPasswd != "" {
+			file.WriteString(fmt.Sprintf("vncpasswd = \"%s\"\n",
+				config.VncPasswd))
+		}
 	}
 
 	// Go from kbytes to mbytes
@@ -1478,15 +1494,6 @@ func handleModify(ctx *domainContext, key string,
 			config.UUIDandVersion, status.DomainName,
 			config.DisplayName)
 
-		// XXX remove and use code below? Should see Actvate false to
-		// clear error?
-		if false && status.LastErr != "" {
-			log.Errorf("handleModify(%v) existing error for %s\n",
-				config.UUIDandVersion, config.DisplayName)
-			status.PendingModify = false
-			publishDomainStatus(ctx, status)
-			return
-		}
 		// This has the effect of trying a boot again for any
 		// handleModify after an error.
 		if status.LastErr != "" {
@@ -1497,8 +1504,7 @@ func handleModify(ctx *domainContext, key string,
 			publishDomainStatus(ctx, status)
 			doInactivate(ctx, status)
 		}
-		status.VirtualizationMode = config.VirtualizationMode
-		status.EnableVnc = config.EnableVnc
+		updateStatusFromConfig(status, *config)
 		doActivate(ctx, *config, status)
 		changed = true
 	} else if !config.Activate {
@@ -1509,13 +1515,11 @@ func handleModify(ctx *domainContext, key string,
 			status.LastErrTime = time.Time{}
 			publishDomainStatus(ctx, status)
 			doInactivate(ctx, status)
-			status.VirtualizationMode = config.VirtualizationMode
-			status.EnableVnc = config.EnableVnc
+			updateStatusFromConfig(status, *config)
 			changed = true
 		} else if status.Activated {
 			doInactivate(ctx, status)
-			status.VirtualizationMode = config.VirtualizationMode
-			status.EnableVnc = config.EnableVnc
+			updateStatusFromConfig(status, *config)
 			changed = true
 		}
 	}
@@ -1556,6 +1560,13 @@ func handleModify(ctx *domainContext, key string,
 	publishDomainStatus(ctx, status)
 	log.Infof("handleModify(%v) DONE for %s\n",
 		config.UUIDandVersion, config.DisplayName)
+}
+
+func updateStatusFromConfig(status *types.DomainStatus, config types.DomainConfig) {
+	status.VirtualizationMode = config.VirtualizationMode
+	status.EnableVnc = config.EnableVnc
+	status.VncDisplay = config.VncDisplay
+	status.VncPasswd = config.VncPasswd
 }
 
 // Used to wait both after shutdown and destroy
@@ -2117,9 +2128,9 @@ func handleAADelete(ctxArg interface{}, status *types.AssignableAdapters) {
 	log.Infof("handleAADelete() done\n")
 }
 
-// Process new IoBundles. Check if PCI device exists, and check if management port.
+// Process new IoBundles. Check if PCI device exists, and check that not
+// used in a DevicePortConfig/DeviceNetworkStatus
 // Assign to pciback
-// XXX Who reports errors on port changes? zedrouter!
 func handleIBCreate(ctx *domainContext, ib types.IoBundle,
 	status *types.AssignableAdapters) {
 
@@ -2137,14 +2148,14 @@ func checkAndSetIoBundleAll(ctx *domainContext) {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
 		err := checkAndSetIoBundle(ctx, ib)
 		if err != nil {
-			log.Errorf("checkAndSetInBundleAll failed for %d\n", i)
+			log.Errorf("checkAndSetIoBundleAll failed for %d\n", i)
 		}
 	}
 }
 
 func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 
-	// Check if management port or part of management port
+	// Check any member is part of DevicePortConfig
 	ib.IsPort = false
 	publishAssignableAdapters := false
 	for _, m := range ib.Members {
@@ -2183,6 +2194,22 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		log.Infof("checkAndSetIoBundle(%d %s %v) found %s/%s\n",
 			ib.Type, ib.Name, ib.Members, short, long)
 	}
+	// Save somewhat Unique string for debug
+	if ib.PciLong != "" {
+		found, unique := types.PciLongToUnique(ib.PciLong)
+		if !found {
+			errStr := fmt.Sprintf("IoBundle(%d %s %v) %s/%s unique %s not foun\n",
+				ib.Type, ib.Name, ib.Members,
+				ib.PciShort, ib.PciLong, ib.Unique)
+			log.Errorln(errStr)
+		} else {
+			ib.Unique = unique
+			log.Infof("checkAndSetIoBundle(%d %s %v) %s/%s unique %s\n",
+				ib.Type, ib.Name, ib.Members, ib.PciShort,
+				ib.PciLong, ib.Unique)
+		}
+	}
+
 	if !ib.IsPort && ib.PciShort != "" && !ib.IsPCIBack {
 		if ctx.usbAccess && ib.Type == types.IoUSB {
 			log.Infof("No assigning %s (%s %s) to pciback\n",
@@ -2196,6 +2223,57 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 			}
 			ib.IsPCIBack = true
 			ctx.publishAssignableAdapters()
+		}
+	}
+	return nil
+}
+
+// Check if anything moved around
+func checkIoBundleAll(ctx *domainContext) {
+	for i, _ := range ctx.assignableAdapters.IoBundleList {
+		ib := &ctx.assignableAdapters.IoBundleList[i]
+		err := checkIoBundle(ctx, ib)
+		if err != nil {
+			log.Errorf("checkIoBundleAll failed for %d\n", i)
+		}
+	}
+}
+
+// Check if the name to pci-id have changed
+// We track a mostly unique string to see if the underlying firmware node has
+// changed in addition to the name to pci-id lookup.
+func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
+
+	if ib.Lookup {
+		long, short, err := types.IoBundleToPci(ib)
+		if err != nil {
+			return err
+		}
+		if short == "" {
+			// Doesn't exist
+			return nil
+		}
+		if ib.PciLong != long ||
+			ib.PciShort != short {
+			errStr := fmt.Sprintf("IoBundle(%d %s %v) changed from %s/%s to %s/%s\n",
+				ib.Type, ib.Name, ib.Members,
+				ib.PciShort, ib.PciLong, short, long)
+			return errors.New(errStr)
+		}
+	}
+	if ib.PciLong != "" {
+		found, unique := types.PciLongToUnique(ib.PciLong)
+		if !found {
+			errStr := fmt.Sprintf("IoBundle(%d %s %v) %s/%s unique %s not foun\n",
+				ib.Type, ib.Name, ib.Members,
+				ib.PciShort, ib.PciLong, ib.Unique)
+			return errors.New(errStr)
+		}
+		if unique != ib.Unique {
+			errStr := fmt.Sprintf("IoBundle(%d %s %v) changed unique from %s to %sn",
+				ib.Type, ib.Name, ib.Members,
+				ib.Unique, unique)
+			return errors.New(errStr)
 		}
 	}
 	return nil
@@ -2227,6 +2305,7 @@ func updateUsbAccess(ctx *domainContext) {
 			ib.IsPCIBack = false
 		}
 	}
+	checkIoBundleAll(ctx)
 }
 
 func handleIBDelete(ctx *domainContext, ib types.IoBundle,
@@ -2252,6 +2331,7 @@ func handleIBDelete(ctx *domainContext, ib types.IoBundle,
 		replace.IoBundleList = append(replace.IoBundleList, e)
 	}
 	*status = replace
+	checkIoBundleAll(ctx)
 }
 
 func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.IoBundle,
@@ -2275,10 +2355,11 @@ func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.
 		}
 		e.IsPort = configIb.IsPort
 		e.IsPCIBack = configIb.IsPCIBack
-		// XXX TBD IsBridge, IsService
 		e.Lookup = configIb.Lookup
 		e.PciLong = configIb.PciLong
 		e.PciShort = configIb.PciShort
 		e.XenCfg = configIb.XenCfg
+		e.Unique = configIb.Unique
 	}
+	checkIoBundleAll(ctx)
 }

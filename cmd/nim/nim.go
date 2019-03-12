@@ -199,7 +199,7 @@ func Run() {
 
 	// We get DevicePortConfig from three sources in this priority:
 	// 1. zedagent publishing NetworkPortConfig
-	// 2. override file in /var/tmp/zededa/NetworkPortConfig/override.json
+	// 2. override file in /var/tmp/zededa/NetworkPortConfig/*.json
 	// 3. self-generated file derived from per-platform DeviceNetworkConfig
 	subDevicePortConfigA, err := pubsub.Subscribe("zedagent",
 		types.DevicePortConfig{}, false,
@@ -311,9 +311,91 @@ func Run() {
 	// Look for address changes
 	addrChanges := devicenetwork.AddrChangeInit(&nimCtx.DeviceNetworkContext)
 
-	// The handlers call UpdateLedManagerConfig with 2 and 1 as the
-	// number of usable IP addresses increases from zero and drops
-	// back to zero, respectively.
+	// To avoid a race between domainmgr starting and moving this to pciback
+	// and zedagent publishing its DevicePortConfig using those assigned-away
+	// adapter(s), we first wait for domainmgr to initialize AA, then enable
+	// subDevicePortConfigA.
+	for !nimCtx.AssignableAdapters.Initialized {
+		log.Infof("Waiting for AA to initialize")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subDeviceNetworkConfig.C:
+			subDeviceNetworkConfig.ProcessChange(change)
+
+		case change := <-subDevicePortConfigO.C:
+			subDevicePortConfigO.ProcessChange(change)
+
+		case change := <-subDevicePortConfigS.C:
+			subDevicePortConfigS.ProcessChange(change)
+
+		case change := <-subAssignableAdapters.C:
+			subAssignableAdapters.ProcessChange(change)
+
+		case change, ok := <-addrChanges:
+			if !ok {
+				log.Fatalf("addrChanges closed?\n")
+			}
+			if nimCtx.debug {
+				log.Debugf("addrChanges %+v\n", change)
+			}
+			devicenetwork.AddrChange(&nimCtx.DeviceNetworkContext,
+				change)
+
+		case <-geoTimer.C:
+			log.Debugln("geoTimer at", time.Now())
+			change := devicenetwork.UpdateDeviceNetworkGeo(
+				geoRedoTime, nimCtx.DeviceNetworkStatus)
+			if change {
+				publishDeviceNetworkStatus(&nimCtx)
+			}
+
+		case _, ok := <-dnc.Pending.PendTimer.C:
+			if !ok {
+				log.Infof("Device port test timer stopped?")
+			} else {
+				log.Debugln("PendTimer at", time.Now())
+				devicenetwork.VerifyDevicePortConfig(dnc)
+			}
+
+		case _, ok := <-dnc.NetworkTestTimer.C:
+			if !ok {
+				log.Infof("Network test timer stopped?")
+			} else {
+				start := time.Now()
+				log.Debugf("Starting test of Device connectivity to cloud")
+				ok := tryDeviceConnectivityToCloud(dnc)
+				if ok {
+					log.Debugf("Device connectivity to cloud worked. Took %v",
+						time.Since(start))
+				} else {
+					log.Infof("Device connectivity to cloud failed. Took %v",
+						time.Since(start))
+				}
+			}
+
+		case _, ok := <-dnc.NetworkTestBetterTimer.C:
+			if !ok {
+				log.Infof("Network testBetterTimer stopped?")
+			} else if dnc.NextDPCIndex == 0 {
+				log.Debugf("Network testBetterTimer at zero ignored")
+			} else {
+				start := time.Now()
+				log.Infof("Network testBetterTimer at index %d",
+					dnc.NextDPCIndex)
+				devicenetwork.RestartVerify(dnc,
+					"NetworkTestBetterTimer")
+				log.Infof("Network testBetterTimer done at index %d. Took %v",
+					dnc.NextDPCIndex, time.Since(start))
+			}
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
+		}
+	}
+	log.Infof("AA initialized")
+
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
@@ -351,6 +433,7 @@ func Run() {
 			if change {
 				publishDeviceNetworkStatus(&nimCtx)
 			}
+
 		case _, ok := <-dnc.Pending.PendTimer.C:
 			if !ok {
 				log.Infof("Device port test timer stopped?")
@@ -358,6 +441,7 @@ func Run() {
 				log.Debugln("PendTimer at", time.Now())
 				devicenetwork.VerifyDevicePortConfig(dnc)
 			}
+
 		case _, ok := <-dnc.NetworkTestTimer.C:
 			if !ok {
 				log.Infof("Network test timer stopped?")

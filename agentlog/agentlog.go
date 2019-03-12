@@ -98,38 +98,39 @@ func RebootReason(reason string) {
 	syscall.Sync()
 }
 
-func GetCurrentRebootReason() string {
+func GetCurrentRebootReason() (string, time.Time) {
 	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
 	return statAndRead(filename)
 }
 
-func GetOtherRebootReason() string {
+func GetOtherRebootReason() (string, time.Time) {
 	dirname := getOtherIMGdir(false)
 	if dirname == "" {
-		return ""
+		return "", time.Time{}
 	}
 	filename := fmt.Sprintf("%s/%s", dirname, reasonFile)
 	return statAndRead(filename)
 }
 
 // Used for failures/hangs when zboot curpart hangs
-func GetCommonRebootReason() string {
+func GetCommonRebootReason() (string, time.Time) {
 	filename := fmt.Sprintf("%s/%s", persistDir, reasonFile)
 	return statAndRead(filename)
 }
 
-func statAndRead(filename string) string {
-	_, err := os.Stat(filename)
+// Returns content and Modtime
+func statAndRead(filename string) (string, time.Time) {
+	fi, err := os.Stat(filename)
 	if err != nil {
 		// File doesn't exist
-		return ""
+		return "", time.Time{}
 	}
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
 		log.Errorf("statAndRead failed %s", err)
-		return ""
+		return "", fi.ModTime()
 	}
-	return string(content)
+	return string(content), fi.ModTime()
 }
 
 // Append if file exists.

@@ -438,6 +438,11 @@ func printOutput(ctx *diagContext) {
 					ifname, ai.Addr, ai.Geo)
 			}
 		}
+		if ipCount == 0 {
+			fmt.Printf("INFO: %s: No IP address\n",
+				ifname)
+		}
+
 		fmt.Printf("INFO: %s: DNS servers: ", ifname)
 		for _, ds := range port.DnsServers {
 			fmt.Printf("%s, ", ds.String())
@@ -445,7 +450,7 @@ func printOutput(ctx *diagContext) {
 		fmt.Printf("\n")
 		// If static print static config
 		if port.Dhcp == types.DT_STATIC {
-			fmt.Printf("INFO: %s: Static IP config: %s\n",
+			fmt.Printf("INFO: %s: Static IP subnet: %s\n",
 				ifname, port.Subnet.String())
 			fmt.Printf("INFO: %s: Static IP router: %s\n",
 				ifname, port.Gateway.String())
@@ -716,8 +721,9 @@ func myGet(zedcloudCtx *zedcloud.ZedCloudContext, requrl string, ifname string,
 		fmt.Printf("INFO: %s: Using proxy %s to reach %s\n",
 			ifname, proxyUrl.String(), requrl)
 	}
+	const allowProxy = true
 	resp, contents, err := zedcloud.SendOnIntf(*zedcloudCtx,
-		requrl, ifname, 0, nil, true, 15)
+		requrl, ifname, 0, nil, allowProxy, 15)
 	if err != nil {
 		fmt.Printf("ERROR: %s: get %s failed: %s\n",
 			ifname, requrl, err)

@@ -96,8 +96,12 @@ type zedagentContext struct {
 	subNetworkServiceMetrics  *pubsub.Subscription
 	subNetworkInstanceMetrics *pubsub.Subscription
 	subGlobalConfig           *pubsub.Subscription
+	GCInitialized             bool // Received initial GlobalConfig
 	subZbootStatus            *pubsub.Subscription
 	rebootCmdDeferred         bool
+	rebootReason              string
+	rebootTime                time.Time
+	subDevicePortConfigList   *pubsub.Subscription // XXX Use
 }
 
 var debug = false
@@ -155,27 +159,37 @@ func Run() {
 
 	log.Infof("Starting %s\n", agentName)
 
+	zedagentCtx := zedagentContext{}
+
 	// If we have a reboot reason from this or the other partition
 	// (assuming the other is in inprogress) then we log it
 	// We assume the log makes it reliably to zedcloud hence we discard
 	// the reason.
-	rebootReason := agentlog.GetCurrentRebootReason()
-	if rebootReason != "" {
+	zedagentCtx.rebootReason, zedagentCtx.rebootTime = agentlog.GetCurrentRebootReason()
+	if zedagentCtx.rebootReason != "" {
 		log.Warnf("Current partition rebooted reason: %s\n",
-			rebootReason)
+			zedagentCtx.rebootReason)
 		agentlog.DiscardCurrentRebootReason()
 	}
-	rebootReason = agentlog.GetOtherRebootReason()
-	if rebootReason != "" {
+	otherRebootReason, otherRebootTime := agentlog.GetOtherRebootReason()
+	if otherRebootReason != "" {
 		log.Warnf("Other partition rebooted reason: %s\n",
-			rebootReason)
+			otherRebootReason)
 		agentlog.DiscardOtherRebootReason()
 	}
-	rebootReason = agentlog.GetCommonRebootReason()
-	if rebootReason != "" {
+	commonRebootReason, commonRebootTime := agentlog.GetCommonRebootReason()
+	if commonRebootReason != "" {
 		log.Warnf("Common rebooted reason: %s\n",
-			rebootReason)
+			commonRebootReason)
 		agentlog.DiscardCommonRebootReason()
+	}
+	if zedagentCtx.rebootReason == "" {
+		zedagentCtx.rebootReason = otherRebootReason
+		zedagentCtx.rebootTime = otherRebootTime
+	}
+	if zedagentCtx.rebootReason == "" {
+		zedagentCtx.rebootReason = commonRebootReason
+		zedagentCtx.rebootTime = commonRebootTime
 	}
 
 	// Run a periodic timer so we always update StillRunning
@@ -192,7 +206,7 @@ func Run() {
 	// Pick up (mostly static) AssignableAdapters before we report
 	// any device info
 	aa := types.AssignableAdapters{}
-	zedagentCtx := zedagentContext{assignableAdapters: &aa}
+	zedagentCtx.assignableAdapters = &aa
 
 	// Cross link
 	getconfigCtx.zedagentCtx = &zedagentCtx
@@ -444,6 +458,26 @@ func Run() {
 	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
+	subDevicePortConfigList, err := pubsub.Subscribe("nim",
+		types.DevicePortConfigList{}, true, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subDevicePortConfigList = subDevicePortConfigList
+
+	// Read the GlobalConfig first
+	// Wait for initial GlobalConfig
+	for !zedagentCtx.GCInitialized {
+		log.Infof("Waiting for GCInitialized\n")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
+		}
+	}
+
 	time1 := time.Duration(globalConfig.ResetIfCloudGoneTime)
 	t1 := time.NewTimer(time1 * time.Second)
 	log.Infof("Started timer for reset for %d seconds\n", time1)
@@ -475,14 +509,12 @@ func Run() {
 	updateInprogress := isBaseOsCurrentPartitionStateInProgress(&zedagentCtx)
 	log.Infof("Current partition inProgress state is %v\n", updateInprogress)
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
-	waited := false
 	for !DNSctx.DNSinitialized ||
 		!zedagentCtx.assignableAdapters.Initialized {
 
 		log.Infof("Waiting for DomainNetworkStatus %v and aa %v\n",
 			DNSctx.DNSinitialized,
 			zedagentCtx.assignableAdapters.Initialized)
-		waited = true
 
 		select {
 		case change := <-subGlobalConfig.C:
@@ -496,6 +528,9 @@ func Run() {
 
 		case change := <-subAssignableAdapters.C:
 			subAssignableAdapters.ProcessChange(change)
+
+		case change := <-subDevicePortConfigList.C:
+			subDevicePortConfigList.ProcessChange(change)
 
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
@@ -520,11 +555,6 @@ func Run() {
 	}
 	t1.Stop()
 	t2.Stop()
-	if waited && DNSctx.usableAddressCount != 0 {
-		// Inform ledmanager that we have management port addresses
-		types.UpdateLedManagerConfig(2)
-		getconfigCtx.ledManagerCount = 2
-	}
 
 	// Subscribe to network metrics from zedrouter
 	subNetworkMetrics, err := pubsub.Subscribe("zedrouter",
@@ -579,6 +609,9 @@ func Run() {
 
 		case change := <-subAssignableAdapters.C:
 			subAssignableAdapters.ProcessChange(change)
+
+		case change := <-subDevicePortConfigList.C:
+			subDevicePortConfigList.ProcessChange(change)
 
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
@@ -687,6 +720,9 @@ func Run() {
 
 		case change := <-subNetworkInstanceMetrics.C:
 			subNetworkInstanceMetrics.ProcessChange(change)
+
+		case change := <-subDevicePortConfigList.C:
+			subDevicePortConfigList.ProcessChange(change)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
@@ -907,8 +943,14 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	if gcp != nil && !ctx.GCInitialized {
+		log.Infof("handleGlobalConfigModify setting initials %+v\n", gcp)
+		globalConfig = *gcp
+		ctx.GCInitialized = true
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 

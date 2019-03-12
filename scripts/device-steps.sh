@@ -48,6 +48,10 @@ fi
     
 echo "Handling restart case at" `date`
 
+if [ `uname -m` != "x86_64" ]; then
+    USE_HW_WATCHDOG=1
+fi
+
 # XXX try without /dev/watchdog; First disable impact of bios setting
 if [ -c /dev/watchdog ]; then
     if [ $USE_HW_WATCHDOG = 0 ]; then
@@ -189,7 +193,8 @@ ip6tables -t raw -F
 echo "Handling restart done at" `date`
 
 echo "Starting" `date`
-echo "go-provison version:" `cat $BINDIR/versioninfo`
+echo "go-provision version:" `cat $BINDIR/versioninfo`
+echo "go-provision version.1:" `cat $BINDIR/versioninfo.1`
 
 echo "Configuration from factory/install:"
 (cd $CONFIGDIR; ls -l)

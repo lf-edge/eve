@@ -64,27 +64,65 @@ func checkPortAvailableForNetworkInstance(
 	log.Infof("NetworkInstance(%s-%s), port: %s\n",
 		status.DisplayName, status.UUID, status.Port)
 
-	if allowSharedPort(status) && isSharedPortLabel(status.Port) {
-		log.Infof("Mgmt port - allowSharedPort: %t, isSharedPortLabel:%t",
-			allowSharedPort(status), isSharedPortLabel(status.Port))
-		return nil
+	if allowSharedPort(status) {
+		if isSharedPortLabel(status.Port) {
+			log.Infof("allowSharedPort: %t, isSharedPortLabel:%t",
+				allowSharedPort(status), isSharedPortLabel(status.Port))
+			return nil
+		}
+	} else {
+		if isSharedPortLabel(status.Port) {
+			errStr := fmt.Sprintf("SharedPortLabel %s not allowed for exclusive network instance %s-%s\n",
+				status.Port, status.Key(), status.DisplayName)
+			log.Errorln(errStr)
+			return errors.New(errStr)
+		}
 	}
-	// XXX are we checking allowPortSharing and the status of the port
-	// somewhere? Doesn't look like we do.
-
 	portStatus := ctx.deviceNetworkStatus.GetPortByName(status.Port)
 	if portStatus == nil {
 		// XXX Fallback until we have complete Name support in UI
 		portStatus = ctx.deviceNetworkStatus.GetPortByIfName(status.Port)
 		if portStatus == nil {
-			errStr := fmt.Sprintf("PortStatus for %s not found\n",
-				status.Port)
+			errStr := fmt.Sprintf("PortStatus for %s not found for network instance %s-%s\n",
+				status.Port, status.Key(), status.DisplayName)
 			return errors.New(errStr)
 		}
 	}
 
-	switch status.Type {
-	case types.NetworkInstanceTypeSwitch:
+	if allowSharedPort(status) {
+		// Make sure it is configured for IP or will be
+		if portStatus.Dhcp == types.DT_NOOP {
+			errStr := fmt.Sprintf("Port %s not configured for shared use. "+
+				"Cannot be used by Switch Network Instance %s-%s\n",
+				status.Port, status.UUID, status.DisplayName)
+			return errors.New(errStr)
+		}
+		// Make sure it is not used by a NetworkInstance of type Switch
+		for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
+			if status == iterStatusEntry {
+				continue
+			}
+			if !iterStatusEntry.IsUsingPort(status.Port) {
+				continue
+			}
+			if !allowSharedPort(iterStatusEntry) {
+				errStr := fmt.Sprintf("Port %s already used by "+
+					"Switch NetworkInstance %s-%s. It cannot be used by "+
+					"any other Network Instance such as %s-%s\n",
+					status.Port, iterStatusEntry.UUID,
+					iterStatusEntry.DisplayName,
+					status.UUID, status.DisplayName)
+				return errors.New(errStr)
+			}
+		}
+	} else {
+		// Make sure it will not be configured for IP
+		if portStatus.Dhcp != types.DT_NOOP {
+			errStr := fmt.Sprintf("Port %s configured for shared use. "+
+				"Cannot be used by Switch Network Instance %s-%s\n",
+				status.Port, status.UUID, status.DisplayName)
+			return errors.New(errStr)
+		}
 		// Make sure it is not used by any other NetworkInstance
 		for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
 			if status == iterStatusEntry {
@@ -98,26 +136,6 @@ func checkPortAvailableForNetworkInstance(
 				return errors.New(errStr)
 			}
 		}
-	case types.NetworkInstanceTypeLocal, types.NetworkInstanceTypeCloud:
-		// Make sure it is not used by a NetworkInstance of type Switch
-		for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
-			if status == iterStatusEntry {
-				continue
-			}
-			if iterStatusEntry.IsUsingPort(status.Port) {
-				if iterStatusEntry.Type == types.NetworkInstanceTypeSwitch {
-					errStr := fmt.Sprintf("Port %s already used by "+
-						"Switch NetworkInstance %s-%s. It cannot be used by "+
-						"any other Network Instance\n",
-						status.Port, iterStatusEntry.UUID, iterStatusEntry.DisplayName)
-					return errors.New(errStr)
-				}
-				// Still iterate through all NetworkInstances. This particular one
-				//	may have errored out or inactive. Make sure no Switch NI is
-				//  using the Port.
-			}
-		}
-	default:
 	}
 	return nil
 }
@@ -191,9 +209,11 @@ func networkInstanceBridgeDelete(
 	// Remove link and associated addresses
 	netlink.LinkDel(link)
 
-	status.BridgeName = ""
-	status.BridgeNum = 0
-	bridgeNumFree(ctx, status.UUID)
+	if status.BridgeNum != 0 {
+		status.BridgeName = ""
+		status.BridgeNum = 0
+		bridgeNumFree(ctx, status.UUID)
+	}
 }
 
 func doNetworkInstanceBridgeAclsDelete(
@@ -209,6 +229,9 @@ func doNetworkInstanceBridgeAclsDelete(
 			if olStatus.UsesNetworkInstance && olStatus.Network != status.UUID {
 				continue
 			}
+			if olStatus.Bridge == "" {
+				continue
+			}
 			log.Infof("NetworkInstance - deleting Acls for OL Interface(%s)",
 				olStatus.Name)
 			err := deleteACLConfiglet(olStatus.Bridge,
@@ -222,6 +245,9 @@ func doNetworkInstanceBridgeAclsDelete(
 		}
 		for _, ulStatus := range appNetStatus.UnderlayNetworkList {
 			if ulStatus.UsesNetworkInstance && ulStatus.Network != status.UUID {
+				continue
+			}
+			if ulStatus.Bridge == "" {
 				continue
 			}
 			log.Infof("NetworkInstance - deleting Acls for UL Interface(%s)",
@@ -368,10 +394,9 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	}
 	log.Infof("IpAddress set for bridge\n")
 
-	// XXX mov this before set??
 	// Create a hosts directory for the new bridge
 	// Directory is /var/run/zedrouter/hosts.${BRIDGENAME}
-	hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+	hostsDirpath := runDirname + "/hosts." + bridgeName
 	deleteHostsConfiglet(hostsDirpath, false)
 	createHostsConfiglet(hostsDirpath,
 		status.DnsNameToIPList)
@@ -420,18 +445,22 @@ func doNetworkInstanceSanityCheck(
 	case types.NetworkInstanceTypeLocal:
 	case types.NetworkInstanceTypeSwitch:
 	case types.NetworkInstanceTypeCloud:
+		// Do nothing
 	default:
 		err := fmt.Sprintf("Instance type %d not supported", status.Type)
 		return errors.New(err)
 	}
 
 	if err := checkPortAvailableForNetworkInstance(ctx, status); err != nil {
+		log.Errorf("checkPortAvailableForNetworkInstance failed: Port: %s, err:%s",
+			status.Port, err)
 		return err
 	}
 
 	// IpType - Check for valid types
 	switch status.IpType {
 	case types.AddressTypeNone:
+		// Do nothing
 	case types.AddressTypeIPV4, types.AddressTypeIPV6,
 		types.AddressTypeCryptoIPV4, types.AddressTypeCryptoIPV6:
 
@@ -463,7 +492,8 @@ func doNetworkInstanceSubnetSanityCheck(
 	status *types.NetworkInstanceStatus) error {
 
 	if status.Subnet.IP == nil || status.Subnet.IP.IsUnspecified() {
-		err := fmt.Sprintf("Subnet Unspecified: %+v\n", status.Subnet)
+		err := fmt.Sprintf("Subnet Unspecified for %s-%s: %+v\n",
+			status.Key(), status.DisplayName, status.Subnet)
 		return errors.New(err)
 	}
 
@@ -602,7 +632,7 @@ func restartDnsmasq(status *types.NetworkInstanceStatus) {
 	bridgeName := status.BridgeName
 	stopDnsmasq(bridgeName, false, true)
 
-	hostsDirpath := globalRunDirname + "/hosts." + bridgeName
+	hostsDirpath := runDirname + "/hosts." + bridgeName
 	// XXX arbitrary name "router"!!
 	addToHostsConfiglet(hostsDirpath, "router",
 		[]string{status.BridgeIPAddr})
@@ -786,7 +816,7 @@ func setBridgeIPAddrForNetworkInstance(
 	case types.NetworkInstanceTypeSwitch:
 		ipAddr, err = getPortIPv4Addr(ctx, status)
 		if err != nil {
-			log.Errorf("setBridgeIPAddrForNetworkInstance: getBridgeServiceIPv4Addr failed: %s\n",
+			log.Errorf("setBridgeIPAddrForNetworkInstance: getPortIPv4Addr failed: %s\n",
 				err)
 			return err
 		}
@@ -898,7 +928,7 @@ func maybeUpdateBridgeIPAddrForNetworkInstance(
 	if status == nil {
 		return
 	}
-	log.Infof("maybeUpdateBridgeIPAddrForNetworkInstance: found \n"+
+	log.Infof("maybeUpdateBridgeIPAddrForNetworkInstance: found "+
 		"NetworkInstance %s", status.DisplayName)
 
 	if !status.Activated {
@@ -908,35 +938,6 @@ func maybeUpdateBridgeIPAddrForNetworkInstance(
 	}
 	updateBridgeIPAddrForNetworkInstance(ctx, status)
 	return
-}
-
-// XXX - This function is redundant.. This is already covered by ( and more )
-//	checkPortAvailableForNetworkInstance. Delete this.
-func validatePortForNetworkInstance(ctx *zedrouterContext, port string,
-	allowPortSharing bool) error {
-
-	if port == "" {
-		log.Infof("port not specified")
-		return nil
-	}
-	if allowPortSharing && isSharedPortLabel(port) {
-		log.Infof("NI allows port sharing and port(%s) is a mgmt port", port)
-		return nil
-	}
-
-	portStatus := ctx.deviceNetworkStatus.GetPortByName(port)
-	if portStatus == nil {
-		// XXX Fallback until we have complete Name support in UI
-		portStatus = ctx.deviceNetworkStatus.GetPortByIfName(port)
-		if portStatus == nil {
-			errStr := fmt.Sprintf("portStatus not found for port %s",
-				port)
-			return errors.New(errStr)
-		}
-		log.Warnf("Port %s matched Ifname but not Name", port)
-	}
-	log.Infof("Port %s valid for NetworkInstance", port)
-	return nil
 }
 
 // doNetworkInstanceActivate
@@ -950,10 +951,10 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	// an existing port name assigned to domO/zedrouter.
 	// A Bridge only works with a single adapter interface.
 	// Management ports are not allowed to be part of Bridge networks.
-	err := validatePortForNetworkInstance(ctx, status.Port,
-		allowSharedPort(status))
+	err := checkPortAvailableForNetworkInstance(ctx, status)
 	if err != nil {
-		log.Infof("validatePortForNwrqoekInstance failed: Port: %s, err:%s", err, status.Port)
+		log.Errorf("checkPortAvailableForNetworkInstance failed: Port: %s, err:%s",
+			status.Port, err)
 		return err
 	}
 
@@ -1061,10 +1062,12 @@ func doNetworkInstanceDelete(
 	}
 
 	doNetworkInstanceBridgeAclsDelete(ctx, status)
-	stopDnsmasq(status.BridgeName, false, false)
+	if status.BridgeName != "" {
+		stopDnsmasq(status.BridgeName, false, false)
 
-	if status.IsIPv6() {
-		stopRadvd(status.BridgeName, true)
+		if status.IsIPv6() {
+			stopRadvd(status.BridgeName, true)
+		}
 	}
 	networkInstanceBridgeDelete(ctx, status)
 }
@@ -1379,6 +1382,7 @@ func networkInstanceAddressType(ctx *zedrouterContext, bridgeName string) int {
 	return ipVer
 }
 
+// ==== Vpn
 func vpnCreateForNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
 	if status.OpaqueConfig == "" ||

@@ -141,6 +141,7 @@ type DeviceNetworkConfig struct {
 // Array in timestamp aka priority order; first one is the most desired
 // config to use
 type DevicePortConfigList struct {
+	CurrentIndex   int
 	PortConfigList []DevicePortConfig
 }
 
@@ -668,12 +669,16 @@ func AdapterToIfName(deviceNetworkStatus *DeviceNetworkStatus,
 // IsAnyPortInPciBack
 //		Checks is any of the Ports are part of IO bundles which are in PCIback.
 //		If true, it also returns the portName ( NOT bundle name )
+//		Also returns whether it is currently used by an application by
+//		returning a UUID. If the UUID is zero it is in PCIback but available.
 func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
-	aa *AssignableAdapters) (bool, string) {
+	aa *AssignableAdapters) (bool, string, uuid.UUID) {
 	if aa == nil {
 		log.Infof("IsAnyPortInPciBack: nil aa")
-		return false, ""
+		return false, "", uuid.UUID{}
 	}
+	log.Infof("IsAnyPortInPciBack: aa init %t, %d bundles, %d ports",
+		aa.Initialized, len(aa.IoBundleList), len(portConfig.Ports))
 	for _, port := range portConfig.Ports {
 		ioBundle := aa.LookupIoBundleForMember(
 			IoEth, port.IfName)
@@ -681,13 +686,15 @@ func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
 			// It is not guaranteed that all Ports are part of Assignable Adapters
 			// If not found, the adaptor is not capable of being assigned at
 			// PCI level. So it cannot be in PCI back.
+			log.Infof("IsAnyPortInPciBack: ifname %s not found",
+				port.IfName)
 			continue
 		}
 		if ioBundle.IsPCIBack {
-			return true, port.IfName
+			return true, port.IfName, ioBundle.UsedByUUID
 		}
 	}
-	return false, ""
+	return false, "", uuid.UUID{}
 }
 
 type MapServerType uint8
@@ -1280,7 +1287,7 @@ type ACE struct {
 // The host matching is suffix-matching thus zededa.net matches *.zededa.net.
 // XXX Need "interface"... e.g. "uplink" or "eth1"? Implicit in network used?
 // For now the matches are bidirectional.
-// XXX Add directionality? Different ragte limits in different directions?
+// XXX Add directionality? Different rate limits in different directions?
 // Value is always a string.
 // There is an implicit reject rule at the end.
 // The "eidset" type is special for the overlay. Matches all the IPs which

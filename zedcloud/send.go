@@ -36,6 +36,7 @@ type ZedCloudContext struct {
 // use []byte contents return.
 func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int, return400 bool) (*http.Response, []byte, error) {
 	// If failed then try the non-free
+	const allowProxy = true
 	for try := 0; try < 2; try += 1 {
 		var intfs []string
 		if try == 0 {
@@ -50,9 +51,9 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 		for _, intf := range intfs {
 			// XXX Hard coded timeout to 15 seconds. Might need some adjusting
 			// depending on network conditions down the road.
-			resp, contents, err := SendOnIntf(ctx, url, intf, reqlen, b, true, 15)
+			resp, contents, err := SendOnIntf(ctx, url, intf, reqlen, b, allowProxy, 15)
 			if return400 && resp != nil &&
-				resp.StatusCode >= 400 && resp.StatusCode < 500 {
+				resp.StatusCode == 400 {
 				log.Infof("sendOnAllIntf: for %s reqlen %d ignore code %d\n",
 					url, reqlen, resp.StatusCode)
 				return resp, nil, err
@@ -75,6 +76,7 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 func VerifyAllIntf(ctx ZedCloudContext,
 	url string, successCount int, iteration int) (bool, error) {
 	var intfSuccessCount int = 0
+	const allowProxy = true
 
 	if successCount <= 0 {
 		// No need to test. Just return true.
@@ -97,7 +99,7 @@ func VerifyAllIntf(ctx ZedCloudContext,
 				// We have enough uplinks with cloud connectivity working.
 				break
 			}
-			resp, _, err := SendOnIntf(ctx, url, intf, 0, nil, true, 15)
+			resp, _, err := SendOnIntf(ctx, url, intf, 0, nil, allowProxy, 15)
 			if err != nil {
 				// XXX Have code to mark this interface as not suitable
 				// for cloud/internet connectivity
