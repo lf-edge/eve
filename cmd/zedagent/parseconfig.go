@@ -1354,6 +1354,8 @@ func parseOverlayNetworkConfigEntry(
 				"networkinstances. Ignoring this network",
 				cfgApp.Displayname, intfEnt.NetworkId)
 			log.Errorf("%s", olCfg.Error)
+			// XXX These errors should be propagated to zedrouter.
+			// zedrouter can then relay these errors to zedcloud.
 			return olCfg
 		}
 		if !isOverlayNetworkInstance(networkInstanceEntry) {
