@@ -163,6 +163,19 @@ type EIDOverlayConfig struct {
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // EIDv4 or EIDv6
 	Network    uuid.UUID
+
+	// UsesNetworkInstance
+	//   This attribute can be deleted when we stop network-service
+	//   support.
+	UsesNetworkInstance bool
+	// Error
+	//	If there is a parsing error and this uLNetwork config cannot be
+	//	processed, set the error here. This allows the error to be propagated
+	//  back to zedcloud
+	//	If this is non-empty ( != ""), the network Config should not be
+	// 	processed further. It Should just	be flagged to be in error state
+	//  back to the cloud.
+	Error string
 }
 
 // If the Target is "" or "disk", then this becomes a vdisk for the domU
