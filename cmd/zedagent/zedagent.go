@@ -191,6 +191,14 @@ func Run() {
 		zedagentCtx.rebootReason = commonRebootReason
 		zedagentCtx.rebootTime = commonRebootTime
 	}
+	if zedagentCtx.rebootReason == "" {
+		dateStr := time.Now().Format(time.RFC3339Nano)
+		reason := fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s\n",
+			dateStr)
+		log.Warnf(reason)
+		zedagentCtx.rebootReason = reason
+		zedagentCtx.rebootTime = time.Now()
+	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
