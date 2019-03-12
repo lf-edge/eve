@@ -7,12 +7,12 @@ package zedrouter
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
@@ -98,7 +98,7 @@ func checkPortAvailableForNetworkInstance(
 				return errors.New(errStr)
 			}
 		}
-	case types.NetworkInstanceTypeLocal:
+	case types.NetworkInstanceTypeLocal, types.NetworkInstanceTypeCloud:
 		// Make sure it is not used by a NetworkInstance of type Switch
 		for _, iterStatusEntry := range ctx.networkInstanceStatusMap {
 			if status == iterStatusEntry {
@@ -297,8 +297,7 @@ func handleNetworkInstanceCreate(
 		err := doNetworkInstanceActivate(ctx, &status)
 		if err != nil {
 			log.Errorf("doNetworkInstanceActivate(%s) failed: %s\n", key, err)
-			status.Error = err.Error()
-			status.ErrorTime = time.Now()
+			status.SetError(err)
 		} else {
 			log.Infof("Activated network instance %s %s", status.UUID, status.DisplayName)
 			status.Activated = true
@@ -400,6 +399,12 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		// radvd preference if isolated local network?
 		restartRadvdWithNewConfig(bridgeName)
 	}
+
+	switch status.Type {
+	case types.NetworkInstanceTypeCloud:
+		vpnCreateForNetworkInstance(ctx, status)
+	default:
+	}
 	return nil
 }
 
@@ -414,6 +419,7 @@ func doNetworkInstanceSanityCheck(
 	switch status.Type {
 	case types.NetworkInstanceTypeLocal:
 	case types.NetworkInstanceTypeSwitch:
+	case types.NetworkInstanceTypeCloud:
 	default:
 		err := fmt.Sprintf("Instance type %d not supported", status.Type)
 		return errors.New(err)
@@ -963,6 +969,8 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 		}
 	case types.NetworkInstanceTypeLocal:
 		err = natActivateForNetworkInstance(ctx, status)
+	case types.NetworkInstanceTypeCloud:
+		err = vpnActivateForNetworkInstance(ctx, status)
 	default:
 		errStr := fmt.Sprintf("doNetworkInstanceActivate: NetworkInstance %d not yet supported",
 			status.Type)
@@ -1024,6 +1032,11 @@ func doNetworkInstanceInactivate(
 
 	bridgeInactivateforNetworkInstance(ctx, status)
 	natInactivateForNetworkInstance(ctx, status)
+	switch status.Type {
+	case types.NetworkInstanceTypeCloud:
+		vpnInactivateForNetworkInstance(ctx, status)
+	}
+
 	return
 }
 
@@ -1040,6 +1053,8 @@ func doNetworkInstanceDelete(
 		// Nothing to do.
 	case types.NetworkInstanceTypeLocal:
 		natDeleteForNetworkInstance(status)
+	case types.NetworkInstanceTypeCloud:
+		vpnDeleteForNetworkInstance(ctx, status)
 	default:
 		log.Errorf("NetworkInstance(%s-%s): Type %d not yet supported",
 			status.DisplayName, status.UUID, status.Type)
@@ -1110,6 +1125,11 @@ func createNetworkInstanceMetrics(ctx *zedrouterContext,
 
 	netMetrics.MetricList = []types.NetworkMetric{*netMetric}
 	niMetrics.NetworkMetrics = netMetrics
+	switch status.Type {
+	case types.NetworkInstanceTypeCloud:
+		strongSwanVpnStatusGetForNetworkInstance(ctx, status, &niMetrics)
+	default:
+	}
 
 	return &niMetrics
 }
@@ -1355,4 +1375,124 @@ func networkInstanceAddressType(ctx *zedrouterContext, bridgeName string) int {
 		}
 	}
 	return ipVer
+}
+
+func vpnCreateForNetworkInstance(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) {
+	if status.OpaqueConfig == "" ||
+		status.OpaqueConfigType != types.OpaqueConfigTypeVpn {
+		err := errors.New("vpnCreateForNetworkInstance(), invalid config")
+		status.SetError(err)
+		return
+	}
+	strongswanNetworkInstanceCreate(ctx, status)
+}
+
+func vpnActivateForNetworkInstance(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) error {
+	if status.OpaqueConfig == "" ||
+		status.OpaqueConfigType != types.OpaqueConfigTypeVpn {
+		err := errors.New("vpnActivateForNetworkInstance(), invalid config")
+		status.SetError(err)
+		return nil
+	}
+	return strongswanNetworkInstanceActivate(ctx, status)
+}
+
+func vpnInactivateForNetworkInstance(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) {
+	if status.OpaqueConfig == "" ||
+		status.OpaqueConfigType != types.OpaqueConfigTypeVpn {
+		err := errors.New("vpnInactivateForNetworkInstance(), invalid config")
+		status.SetError(err)
+		return
+	}
+	strongswanNetworkInstanceInactivate(ctx, status)
+}
+
+func vpnDeleteForNetworkInstance(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) {
+	if status.OpaqueConfig == "" ||
+		status.OpaqueConfigType != types.OpaqueConfigTypeVpn {
+		err := errors.New("vpnDeleteForNetworkInstance(), invalid config")
+		status.SetError(err)
+		return
+	}
+	strongswanNetworkInstanceDestroy(ctx, status)
+}
+
+func strongswanNetworkInstanceCreate(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) {
+
+	log.Infof("strongswanNetworkInstanceCreate(%s)\n", status.DisplayName)
+
+	// parse and structure the config
+	vpnConfig, err := strongSwanConfigGetForNetworkInstance(ctx, status)
+	if err != nil {
+		status.SetError(err)
+		return
+	}
+
+	// stringify and store in status
+	bytes, err := json.Marshal(vpnConfig)
+	if err != nil {
+		log.Errorf("strongswanNetworkInstanceCreate(%s)", err.Error())
+		status.SetError(err)
+		return
+	}
+
+	status.OpaqueStatus = string(bytes)
+	if err := strongSwanVpnCreate(vpnConfig); err != nil {
+		log.Errorf("strongswanNetworkInstanceCreate(%s)", err.Error())
+		status.SetError(err)
+	}
+}
+
+func strongswanNetworkInstanceDestroy(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) {
+
+	log.Infof("strongswanNetworkInstanceDestroy(%s)\n", status.DisplayName)
+	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
+	if err != nil {
+		log.Warnf("strongswanNetworkInstanceDestroy(): config absent\n")
+		status.SetError(err)
+	}
+
+	if err := strongSwanVpnDelete(vpnConfig); err != nil {
+		log.Errorf("strongswanNetworkInstanceDestroy(): %v\n", err.Error())
+		status.SetError(err)
+	}
+}
+
+func strongswanNetworkInstanceActivate(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) error {
+
+	log.Infof("strongswanNetworkInstanceActivate(%s)\n", status.DisplayName)
+	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
+	if err != nil {
+		log.Warnf("strongswanNetworkInstanceActivate(): config absent\n")
+		status.SetError(err)
+		return err
+	}
+
+	if err := strongSwanVpnActivate(vpnConfig); err != nil {
+		log.Errorf("strongswanNetworkInstanceActivate(): %v\n", err.Error())
+		status.SetError(err)
+	}
+	return nil
+}
+
+func strongswanNetworkInstanceInactivate(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) {
+
+	log.Infof("strongswanNetworkInstanceInactivate(%s)\n", status.DisplayName)
+	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
+	if err != nil {
+		log.Warnf("strongswanNetworkInstanceInactivate(): config absent\n")
+	}
+
+	if err := strongSwanVpnInactivate(vpnConfig); err != nil {
+		log.Errorf("strongswanNetworkInstanceInactivate(): %v\n", err.Error())
+		status.SetError(err)
+	}
 }

@@ -341,6 +341,24 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 	log.Infof("Publish NetworkInstance Config: %+v", networkInstances)
 
 	unpublishDeletedNetworkInstanceConfig(ctx, networkInstances)
+	// check we do not have more than one VPN network instance
+	vpnCount := 0
+	for _, netInstApiCfg := range networkInstances {
+		if oCfg := netInstApiCfg.Cfg; oCfg != nil {
+			opaqueCfg := oCfg.GetOconfig()
+			if opaqueCfg != "" {
+				opaqueType := oCfg.GetType()
+				if opaqueType == zconfig.ZNetworkOpaqueConfigType_ZNetOConfigVPN {
+					vpnCount++
+				}
+			}
+		}
+	}
+
+	if vpnCount > 1 {
+		log.Errorf("publishNetworkInstanceConfig(): more than one VPN instance configuration\n")
+		return
+	}
 
 	for _, apiConfigEntry := range networkInstances {
 		id, err := uuid.FromString(apiConfigEntry.Uuidandversion.Uuid)
@@ -393,8 +411,37 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			parseDnsNameToIpListForNetworkInstanceConfig(apiConfigEntry,
 				&networkInstanceConfig)
 		}
+
 		if apiConfigEntry.Cfg != nil {
-			networkInstanceConfig.OpaqueConfig = apiConfigEntry.Cfg.Oconfig
+			ocfg := apiConfigEntry.Cfg
+			switch ocfg.Type {
+			case zconfig.ZNetworkOpaqueConfigType_ZNetOConfigVPN:
+				// if not Cloud, flag it
+				if networkInstanceConfig.Type != types.NetworkInstanceTypeCloud {
+					log.Warnf("Network instance %s %s, %v not Cloud Type\n",
+						networkInstanceConfig.UUID.String(),
+						networkInstanceConfig.DisplayName,
+						networkInstanceConfig.IpType)
+				}
+				// if not IPv4 type, flag it
+				if networkInstanceConfig.IpType != types.AddressTypeIPV4 {
+					log.Warnf("Network instance %s %s, %v not IPv4 type\n",
+						networkInstanceConfig.UUID.String(),
+						networkInstanceConfig.DisplayName,
+						networkInstanceConfig.IpType)
+				}
+				networkInstanceConfig.OpaqueConfigType = types.OpaqueConfigTypeVpn
+			case zconfig.ZNetworkOpaqueConfigType_ZNetOConfigLisp:
+				// if not Mesh, flag it
+				if networkInstanceConfig.Type != types.NetworkInstanceTypeMesh {
+					log.Warnf("Network instance %s %s, %v not Mesh Type\n",
+						networkInstanceConfig.UUID.String(),
+						networkInstanceConfig.DisplayName,
+						networkInstanceConfig.IpType)
+				}
+				networkInstanceConfig.OpaqueConfigType = types.OpaqueConfigTypeLisp
+			}
+			networkInstanceConfig.OpaqueConfig = ocfg.Oconfig
 		}
 
 		ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),

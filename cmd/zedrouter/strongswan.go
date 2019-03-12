@@ -476,7 +476,7 @@ func strongSwanVpnStatusParse(opaqueStatus string) (types.VpnServiceConfig, erro
 	cb := []byte(opaqueStatus)
 	vpnConfig := types.VpnServiceConfig{}
 	if err := json.Unmarshal(cb, &vpnConfig); err != nil {
-		log.Errorf("%s awsStrongSwanLocalConfig \n", err.Error())
+		log.Errorf("strongSwanVpnStatusParse(): %v\n", err.Error())
 		return vpnConfig, err
 	}
 	return vpnConfig, nil
@@ -982,4 +982,251 @@ func incrementVpnMetricsConnStats(vpnMetrics *types.VpnMetrics,
 	vpnMetrics.DataStat.InPkts.Pkts += inPktStats.Pkts
 	vpnMetrics.DataStat.OutPkts.Bytes += outPktStats.Bytes
 	vpnMetrics.DataStat.OutPkts.Pkts += outPktStats.Pkts
+}
+
+func strongSwanConfigGetForNetworkInstance(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) (types.VpnServiceConfig, error) {
+
+	port := types.NetLinkConfig{}
+	appLink := types.NetLinkConfig{}
+	vpnConfig := types.VpnServiceConfig{}
+	appNetPresent := false
+
+	// if adapter is not set, return
+	if status.Port == "" {
+		return vpnConfig, errors.New("port config is absent")
+	}
+
+	// port ip address error
+	srcIp, err := types.GetLocalAddrAny(*ctx.deviceNetworkStatus, 0,
+		status.Port)
+	if err != nil {
+		return vpnConfig, err
+	}
+
+	port.Name = types.AdapterToIfName(ctx.deviceNetworkStatus,
+		status.Port)
+	port.IpAddr = srcIp.String()
+
+	// app net information
+	if status.IpType != types.AddressTypeIPV4 {
+		return vpnConfig, errors.New("appnet is not IPv4")
+	}
+	appNetPresent = true
+	appLink.Name = status.BridgeName
+	appLink.SubnetBlock = status.Subnet.String()
+
+	vpnCloudConfig, err := strongSwanVpnConfigParse(status.OpaqueConfig)
+	if err != nil {
+		return vpnConfig, err
+	}
+
+	// XXX:TBD  host names to ip addresses in the configuration
+	vpnConfig.VpnRole = vpnCloudConfig.VpnRole
+	vpnConfig.IsClient = vpnCloudConfig.IsClient
+	vpnConfig.PolicyBased = vpnCloudConfig.PolicyBased
+	vpnConfig.GatewayConfig = vpnCloudConfig.GatewayConfig
+	vpnConfig.PortConfig = port
+	vpnConfig.AppLinkConfig = appLink
+
+	// fill and validate the ip address/subnet
+	if vpnConfig.GatewayConfig.IpAddr == PortIpAddrType {
+		vpnConfig.GatewayConfig.IpAddr = port.IpAddr
+	}
+	if appNetPresent &&
+		vpnConfig.GatewayConfig.SubnetBlock == AppLinkSubnetType {
+		vpnConfig.GatewayConfig.SubnetBlock = appLink.SubnetBlock
+	}
+	if err := vpnValidateIpAddr(vpnConfig.GatewayConfig.IpAddr, true); err != nil {
+		return vpnConfig, err
+	}
+	if err := vpnValidateSubnet(vpnConfig.GatewayConfig.SubnetBlock); err != nil {
+		return vpnConfig, err
+	}
+	vpnConfig.ClientConfigList = make([]types.VpnClientConfig,
+		len(vpnCloudConfig.ClientConfigList))
+
+	for idx, ssClientConfig := range vpnCloudConfig.ClientConfigList {
+		clientConfig := new(types.VpnClientConfig)
+		clientConfig.IpAddr = ssClientConfig.IpAddr
+		clientConfig.SubnetBlock = ssClientConfig.SubnetBlock
+		clientConfig.PreSharedKey = ssClientConfig.PreSharedKey
+		clientConfig.TunnelConfig.Name = fmt.Sprintf("%s_%d", vpnConfig.VpnRole, idx)
+		clientConfig.TunnelConfig.Key = "100"
+		clientConfig.TunnelConfig.Mtu = "1419"
+		clientConfig.TunnelConfig.Metric = "50"
+		clientConfig.TunnelConfig.LocalIpAddr = ssClientConfig.TunnelConfig.LocalIpAddr
+		clientConfig.TunnelConfig.RemoteIpAddr = ssClientConfig.TunnelConfig.RemoteIpAddr
+
+		if clientConfig.IpAddr == PortIpAddrType {
+			clientConfig.IpAddr = port.IpAddr
+		}
+		if appNetPresent &&
+			clientConfig.SubnetBlock == AppLinkSubnetType {
+			clientConfig.SubnetBlock = appLink.SubnetBlock
+		}
+		if clientConfig.IpAddr == "" {
+			clientConfig.IpAddr = AnyIpAddr
+		}
+		// validate the ip address/subnet values
+		if err := vpnValidateIpAddr(clientConfig.IpAddr, false); err != nil {
+			return vpnConfig, err
+		}
+		if err := vpnValidateSubnet(clientConfig.SubnetBlock); err != nil {
+			return vpnConfig, err
+		}
+		tunnelConfig := clientConfig.TunnelConfig
+		if err := vpnValidateLinkLocal(tunnelConfig.LocalIpAddr); err != nil {
+			return vpnConfig, err
+		}
+		if err := vpnValidateLinkLocal(tunnelConfig.RemoteIpAddr); err != nil {
+			return vpnConfig, err
+		}
+		if clientConfig.SubnetBlock == vpnConfig.GatewayConfig.SubnetBlock {
+			return vpnConfig, errors.New("Peer is on Same Subnet")
+		}
+		vpnConfig.ClientConfigList[idx] = *clientConfig
+	}
+
+	if !vpnConfig.IsClient {
+		if vpnConfig.GatewayConfig.IpAddr != port.IpAddr {
+			errorStr := vpnConfig.GatewayConfig.IpAddr
+			errorStr = errorStr + ", port: " + port.IpAddr
+			return vpnConfig, errors.New("IpAddr Mismatch, GatewayIp: " + errorStr)
+		}
+		// ensure appNet match
+		if appNetPresent &&
+			vpnConfig.GatewayConfig.SubnetBlock != "" &&
+			vpnConfig.GatewayConfig.SubnetBlock != appLink.SubnetBlock {
+			errorStr := vpnConfig.GatewayConfig.SubnetBlock + ", appNet: " + appLink.SubnetBlock
+			return vpnConfig, errors.New("Subnet Mismatch: " + errorStr)
+		}
+	} else {
+		// for clients
+		if appNetPresent {
+			for _, clientConfig := range vpnConfig.ClientConfigList {
+				if clientConfig.SubnetBlock != "" &&
+					clientConfig.SubnetBlock != appLink.SubnetBlock {
+					errorStr := clientConfig.SubnetBlock
+					errorStr = errorStr + ", appNet: " + appLink.SubnetBlock
+					return vpnConfig, errors.New("Subnet Mismatch: " + errorStr)
+				}
+			}
+		}
+	}
+	if log.GetLevel() == log.DebugLevel {
+		if bytes, err := json.Marshal(vpnConfig); err == nil {
+			log.Debugf("strongSwanVpnConfigGet(): %s\n",
+				string(bytes))
+		}
+	}
+	return vpnConfig, nil
+}
+
+func strongSwanVpnStatusGetForNetworkInstance(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus, nis *types.NetworkInstanceMetrics) bool {
+	change := false
+	if status.Type != types.NetworkInstanceTypeCloud {
+		return change
+	}
+	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
+	if err != nil {
+		log.Infof("StrongSwanVpn config absent\n")
+		return change
+	}
+	vpnStatus := new(types.ServiceVpnStatus)
+	if err := ipSecStatusCmdGet(vpnStatus); err != nil {
+		return change
+	}
+	if err := swanCtlCmdGet(vpnStatus); err != nil {
+		return change
+	}
+
+	vpnStatus.PolicyBased = vpnConfig.PolicyBased
+
+	// if tunnel state have changed, update
+	if change = isVpnStatusChanged(status.VpnStatus, vpnStatus); change {
+		log.Debugf("vpn state change:%v\n", vpnStatus)
+		status.VpnStatus = vpnStatus
+	}
+	// push the vpnMetrics here
+	publishVpnMetricsForNetworkInstance(ctx, status, vpnStatus, nis)
+	return change
+}
+
+func publishVpnMetricsForNetworkInstance(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus, vpnStatus *types.ServiceVpnStatus,
+	nis *types.NetworkInstanceMetrics) {
+
+	// get older metrics, if any
+	vpnMetrics := new(types.VpnMetrics)
+	oldMetrics := lookupNetworkInstanceMetrics(ctx, nis.Key())
+
+	// for cumulative stats, take the old metrics stats
+	// and add the difference to the metrics
+	if oldMetrics != nil && oldMetrics.VpnMetrics != nil {
+		vpnMetrics.DataStat.InPkts = oldMetrics.VpnMetrics.DataStat.InPkts
+		vpnMetrics.DataStat.OutPkts = oldMetrics.VpnMetrics.DataStat.OutPkts
+	}
+
+	publishVpnConnMetricsForNetworkInstance(ctx, status, oldMetrics, vpnMetrics, vpnStatus)
+	publishVpnMetricsAclCounters(vpnMetrics)
+	nis.VpnMetrics = vpnMetrics
+	return
+}
+
+func publishVpnConnMetricsForNetworkInstance(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus, oldMetrics *types.NetworkInstanceMetrics,
+	vpnMetrics *types.VpnMetrics, vpnStatus *types.ServiceVpnStatus) {
+
+	if len(vpnStatus.ActiveVpnConns) == 0 {
+		return
+	}
+	vpnMetrics.VpnConns = make([]*types.VpnConnMetrics,
+		len(vpnStatus.ActiveVpnConns))
+	for idx, connStatus := range vpnStatus.ActiveVpnConns {
+		connMetrics := new(types.VpnConnMetrics)
+		connMetrics.Id = connStatus.Id
+		connMetrics.Name = connStatus.Name
+		connMetrics.NIType = status.Type
+		connMetrics.EstTime = connStatus.EstTime
+		connMetrics.LEndPoint.IpAddr = connStatus.LInfo.IpAddr
+		connMetrics.REndPoint.IpAddr = connStatus.RInfo.IpAddr
+
+		// get the last metrics
+		oldConnMetrics := getVpnMetricsOldConnStatsForNetworkInstance(oldMetrics, connStatus.Id)
+		// loop through the current setof SAs
+		for _, linkStatus := range connStatus.Links {
+			if linkStatus.State != types.VPN_INSTALLED {
+				continue
+			}
+			lStats := linkStatus.LInfo
+			connMetrics.LEndPoint.LinkInfo.SpiId = lStats.SpiId
+			connMetrics.LEndPoint.LinkInfo.SubNet = lStats.SubNet
+			connMetrics.LEndPoint.PktStats = lStats.PktStats
+
+			rStats := linkStatus.RInfo
+			connMetrics.REndPoint.LinkInfo.SpiId = rStats.SpiId
+			connMetrics.REndPoint.LinkInfo.SubNet = rStats.SubNet
+			connMetrics.REndPoint.PktStats = rStats.PktStats
+
+			// increment cumulative stats
+			incrementVpnMetricsConnStats(vpnMetrics,
+				oldConnMetrics, linkStatus)
+		}
+		vpnMetrics.VpnConns[idx] = connMetrics
+	}
+}
+
+func getVpnMetricsOldConnStatsForNetworkInstance(oldMetrics *types.NetworkInstanceMetrics,
+	id string) *types.VpnConnMetrics {
+	if oldMetrics == nil || oldMetrics.VpnMetrics == nil {
+		return nil
+	}
+	for _, connStatus := range oldMetrics.VpnMetrics.VpnConns {
+		if connStatus.Id == id {
+			return connStatus
+		}
+	}
+	return nil
 }
