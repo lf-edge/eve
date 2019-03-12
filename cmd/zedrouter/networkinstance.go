@@ -1345,7 +1345,7 @@ func lispActivateForNetworkInstance(ctx *zedrouterContext,
 
 	log.Infof("lispActivateForNetworkInstance(%s)\n", status.DisplayName)
 
-	// XXX Create Lisp IID & map-server configlets here
+	// Create Lisp IID & map-server configlets 
 	iid := status.LispConfig.IID
 	mapServers := status.LispConfig.MapServers
 	cfgPathnameIID := lispRunDirname + "/" +
