@@ -371,15 +371,15 @@ func printOutput(ctx *diagContext) {
 	if DPCLen > 0 {
 		first := ctx.DevicePortConfigList.PortConfigList[0]
 		if ctx.DevicePortConfigList.CurrentIndex != 0 {
-			fmt.Printf("WARNING: Not using highest priority DevicePortConfig key %s\n",
-				first.Key)
+			fmt.Printf("WARNING: Not using highest priority DevicePortConfig key %s due to %s\n",
+				first.Key, first.LastError)
 			for i, dpc := range ctx.DevicePortConfigList.PortConfigList {
 				if i == 0 {
 					continue
 				}
 				if i != ctx.DevicePortConfigList.CurrentIndex {
-					fmt.Printf("WARNING: Not using priority %d DevicePortConfig key %s\n",
-						i, dpc.Key)
+					fmt.Printf("WARNING: Not using priority %d DevicePortConfig key %s due to %s\n",
+						i, dpc.Key, dpc.LastError)
 				} else {
 					fmt.Printf("INFO: Using priority %d DevicePortConfig key %s\n",
 						i, dpc.Key)
