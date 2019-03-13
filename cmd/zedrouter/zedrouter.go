@@ -2629,7 +2629,7 @@ func doAppNetworkModifyAllOverlayNetworks(
 	ipsets []string) {
 
 	for i, _ := range config.OverlayNetworkList {
-		log.Debugf("handleModify olNum %d\n", i + 1)
+		log.Debugf("handleModify olNum %d\n", i+1)
 		olConfig := &config.OverlayNetworkList[i]
 		olStatus := &status.OverlayNetworkList[i]
 		if olConfig.UsesNetworkInstance {
@@ -3211,7 +3211,7 @@ func deleteAppInstaneOverlayRoute(
 	rt := netlink.Route{Dst: ipnet, LinkIndex: oLink.Index}
 	if err := netlink.RouteDel(&rt); err != nil {
 		errStr := fmt.Sprintf("RouteDelete %s failed: %s",
-		EID, err)
+			EID, err)
 		addError(ctx, status, "deleteAppInstaneOverlayRoute",
 			errors.New(errStr))
 		log.Infof("deleteAppInstaneOverlayRoute done for %s\n",
