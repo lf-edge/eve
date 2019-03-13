@@ -480,8 +480,8 @@ func Run() {
 }
 
 func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool {
-	pass := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1)
-	if pass {
+	err := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1)
+	if err == nil {
 		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
 		if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
 			cur := ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
@@ -504,8 +504,9 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 			// Connectivity to cloud is already being figured out.
 			// We wait till the next cloud connectivity test slot.
 		} else {
-			log.Infof("tryDeviceConnectivityToCloud: Triggering Device port " +
-				"verification to resume cloud connectivity")
+			log.Infof("tryDeviceConnectivityToCloud: Triggering Device port "+
+				"verification to resume cloud connectivity after %s",
+				err)
 			// Start DPC verification to find a working configuration
 			devicenetwork.RestartVerify(ctx, "tryDeviceConnectivityToCloud")
 		}
