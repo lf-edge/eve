@@ -107,8 +107,9 @@ func baseOsGetActivationStatus(ctx *baseOsMgrContext,
 	if !partStatus.CurrentPartition {
 		act = false
 	} else {
-		// if current Partition, get the status from zboot
-		act = zboot.IsCurrentPartitionStateActive()
+		// if current Partition, get the status
+		curPartState := getPartitionState(ctx, zboot.GetCurrentPartition())
+		act = (curPartState == "active")
 	}
 	if status.Activated != act {
 		status.Activated = act
@@ -377,6 +378,16 @@ func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
 	return changed, true
 }
 
+// Prefer to get the published value to reduce use of zboot calls into Linux
+func getPartitionState(ctx *baseOsMgrContext, partname string) string {
+	partStatus := getBaseOsPartitionStatus(ctx, partname)
+	if partStatus != nil {
+		return partStatus.PartitionState
+	}
+	return zboot.GetPartitionState(partname)
+}
+
+// XXX defer until Activate changes for a BaseOsConfig
 // Returns changed, proceed as above
 func validateAndAssignPartition(ctx *baseOsMgrContext,
 	config types.BaseOsConfig, status *types.BaseOsStatus) (bool, bool) {
@@ -396,10 +407,11 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 	if otherPartStatus != nil {
 		otherPartVersion = otherPartStatus.ShortVersion
 	}
+	otherPartState := getPartitionState(ctx, otherPartName)
 
 	// Does the other partition contain a failed update with the same
 	// version?
-	if zboot.IsOtherPartitionStateInProgress() &&
+	if otherPartState == "inprogress" &&
 		otherPartVersion == config.BaseOsVersion {
 
 		errStr := fmt.Sprintf("Attempt to reinstall failed update %s in %s: refused",
@@ -411,7 +423,7 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 		return changed, proceed
 	}
 
-	if zboot.IsOtherPartitionStateActive() {
+	if otherPartState == "active" {
 		// Must still be testing the current version; don't overwrite
 		// fallback
 		// If there is no change to the other we don't log error
@@ -848,7 +860,8 @@ func handleBaseOsTestComplete(ctx *baseOsMgrContext, uuidStr string, config type
 		return
 	}
 	if config.TestComplete {
-		if !zboot.IsCurrentPartitionStateInProgress() {
+		curPartState := getPartitionState(ctx, zboot.GetCurrentPartition())
+		if curPartState != "inprogress" {
 			log.Warnf("handleBaseOsTestComplete(%s) not Inprogress for %s\n",
 				uuidStr, config.BaseOsVersion)
 		} else {
