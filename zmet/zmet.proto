@@ -162,6 +162,7 @@ message DevicePortStatus {
   google.protobuf.Timestamp lastFailed = 4;
   google.protobuf.Timestamp lastSucceeded = 5;
   repeated DevicePort ports = 6;
+  string lastError = 7;
 }
 
 message DevicePort {
