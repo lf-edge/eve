@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strings"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -214,21 +214,21 @@ func doCreateBridge(bridgeName string, bridgeNum int,
 		slink := &netlink.Dummy{LinkAttrs: sattrs}
 		if err := netlink.LinkAdd(slink); err != nil {
 			errStr := fmt.Sprintf("doNetworkCreate: LinkAdd on %s failed: %s",
-			dummyIntfName, err)
+				dummyIntfName, err)
 			return errors.New(errStr), ""
 		}
 
 		// ip link set ${dummy-interface} up
 		if err := netlink.LinkSetUp(slink); err != nil {
 			errStr := fmt.Sprintf("doNetworkCreate: LinkSetUp on %s failed: %s",
-			dummyIntfName, err)
+				dummyIntfName, err)
 			return errors.New(errStr), ""
 		}
 
 		// Turn ARP off on our dummy link
 		if err := netlink.LinkSetARPOff(slink); err != nil {
 			errStr := fmt.Sprintf("doNetworkCreate: LinkSetARPOff on %s failed: %s",
-			dummyIntfName, err)
+				dummyIntfName, err)
 			return errors.New(errStr), ""
 		}
 
@@ -241,7 +241,7 @@ func doCreateBridge(bridgeName string, bridgeNum int,
 		_, ipnet, err := net.ParseCIDR(destAddr)
 		if err != nil {
 			errStr := fmt.Sprintf("doNetworkCreate: ParseCIDR of %s failed",
-			status.Subnet.String())
+				status.Subnet.String())
 			return errors.New(errStr), ""
 		}
 		iifIndex := link.Attrs().Index
@@ -251,7 +251,7 @@ func doCreateBridge(bridgeName string, bridgeNum int,
 			errStr := fmt.Sprintf(
 				"doNetworkCreate: Lisp IP rule and route addition failed for bridge %s: %s",
 				bridgeName, err)
-				return errors.New(errStr), ""
+			return errors.New(errStr), ""
 		}
 	}
 
@@ -616,7 +616,7 @@ func DoNetworkInstanceStatusDhcpRangeSanityCheck(
 	status *types.NetworkInstanceStatus) error {
 	// For Mesh type network instance with Crypto V6 addressing, no dhcp-range
 	// will be specified.
-	if status.Type == types.NetworkInstanceTypeMesh  &&
+	if status.Type == types.NetworkInstanceTypeMesh &&
 		status.IpType == types.AddressTypeCryptoIPV6 {
 		return nil
 	}
@@ -925,7 +925,6 @@ func setBridgeIPAddrForNetworkInstance(
 				status.BridgeName, ipAddr)
 		}
 	}
-
 
 	// If not we do a local allocation
 	// Assign the gateway Address as the bridge IP address
@@ -1354,7 +1353,7 @@ func lispActivateForNetworkInstance(ctx *zedrouterContext,
 
 	log.Infof("lispActivateForNetworkInstance(%s)\n", status.DisplayName)
 
-	// Create Lisp IID & map-server configlets 
+	// Create Lisp IID & map-server configlets
 	iid := status.LispConfig.IID
 	mapServers := status.LispConfig.MapServers
 	cfgPathnameIID := lispRunDirname + "/" +
@@ -1425,7 +1424,7 @@ func natActivateForNetworkInstance(ctx *zedrouterContext,
 
 func lispInactivateForNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
-	// Go through the AppNetworkConfigs and delete Lisp parameters 
+	// Go through the AppNetworkConfigs and delete Lisp parameters
 	// that use this service.
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
