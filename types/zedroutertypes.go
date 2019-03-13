@@ -296,6 +296,7 @@ type AddrInfo struct {
 // Published to microservices which needs to know about ports and IP addresses
 type DeviceNetworkStatus struct {
 	Version DevicePortConfigVersion // From DevicePortConfig
+	Testing bool                    // Ignore since it is not yet verified
 	Ports   []NetworkPortStatus
 }
 

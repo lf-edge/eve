@@ -20,6 +20,7 @@ package ledmanager
 import (
 	"flag"
 	"fmt"
+	"github.com/google/go-cmp/cmp"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
@@ -341,8 +342,15 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
 		return
 	}
-
 	log.Infof("handleDNSModify for %s\n", key)
+	if status.Testing {
+		log.Infof("handleDNSModify ignoring Testing\n")
+		return
+	}
+	if cmp.Equal(ctx.deviceNetworkStatus, status) {
+		log.Infof("handleDNSModify no change\n")
+		return
+	}
 	ctx.deviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus)
 	log.Infof("handleDNSModify %d usable addresses\n", newAddrCount)

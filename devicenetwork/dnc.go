@@ -241,6 +241,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 		if ctx.PubDeviceNetworkStatus != nil {
 			log.Infof("PublishDeviceNetworkStatus: pending %+v\n",
 				ctx.Pending.PendDNS)
+			ctx.Pending.PendDNS.Testing = true
 			ctx.PubDeviceNetworkStatus.Publish("global", ctx.Pending.PendDNS)
 		}
 		switch res {
@@ -661,6 +662,7 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 	if ctx.PubDeviceNetworkStatus != nil {
 		log.Infof("PublishDeviceNetworkStatus: %+v\n",
 			ctx.DeviceNetworkStatus)
+		ctx.DeviceNetworkStatus.Testing = false
 		ctx.PubDeviceNetworkStatus.Publish("global",
 			ctx.DeviceNetworkStatus)
 	}
