@@ -53,8 +53,8 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 }
 
 // Check if device can talk to outside world via atleast one of the free uplinks
-func VerifyDeviceNetworkStatus(
-	status types.DeviceNetworkStatus, retryCount int) bool {
+func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
+	retryCount int) error {
 
 	log.Infof("VerifyDeviceNetworkStatus() %d\n", retryCount)
 
@@ -81,39 +81,42 @@ func VerifyDeviceNetworkStatus(
 		onboardingCert, err := tls.LoadX509KeyPair(onboardingCertName,
 			onboardingKeyName)
 		if err != nil {
-			log.Infof("VerifyDeviceNetworkStatus: Onboarding certificate cannot be found")
-			return false
+			errStr := "Onboarding certificate cannot be found"
+			log.Infof("VerifyDeviceNetworkStatus: %s\n", errStr)
+			return errors.New(errStr)
 		}
 		clientCert := &onboardingCert
 		tlsConfig, err = zedcloud.GetTlsConfig(serverName, clientCert)
 		if err != nil {
-			log.Infof("VerifyDeviceNetworkStatus: " +
-				"Tls configuration for talking to Zedcloud cannot be found")
-			return false
+			errStr := "TLS configuration for talking to Zedcloud cannot be found"
+
+			log.Infof("VerifyDeviceNetworkStatus: %s\n", errStr)
+			return errors.New(errStr)
 		}
 	}
 	zedcloudCtx.TlsConfig = tlsConfig
 	for ix, _ := range status.Ports {
-		err = CheckAndGetNetworkProxy(&status,
-			&status.Ports[ix])
+		err = CheckAndGetNetworkProxy(&status, &status.Ports[ix])
 		if err != nil {
-			errStr := fmt.Sprintf("VerifyDeviceNetworkStatus GetNetworkProxy failed %s", err)
-			log.Errorln(errStr)
-			return false
+			errStr := fmt.Sprintf("GetNetworkProxy failed %s", err)
+			log.Errorf("VerifyDeviceNetworkStatus: %s\n", errStr)
+			return errors.New(errStr)
 		}
 	}
 	cloudReachable, err := zedcloud.VerifyAllIntf(zedcloudCtx, testUrl, retryCount, 1)
 	if err != nil {
-		log.Infof("VerifyDeviceNetworkStatus failed %s\n", err)
-		return false
+		log.Errorf("VerifyDeviceNetworkStatus: VerifyAllIntf failed %s\n",
+			err)
+		return err
 	}
 
 	if cloudReachable {
 		log.Infof("Uplink test SUCCESS to URL: %s", testUrl)
-		return true
+		return nil
 	}
-	log.Infof("Uplink test FAIL to URL: %s", testUrl)
-	return false
+	errStr := fmt.Sprintf("Uplink test FAIL to URL: %s", testUrl)
+	log.Errorf("VerifyDeviceNetworkStatus: %s\n", errStr)
+	return errors.New(errStr)
 }
 
 // Calculate local IP addresses to make a types.DeviceNetworkStatus

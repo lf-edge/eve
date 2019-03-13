@@ -1922,7 +1922,12 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
 		return
 	}
+	if cmp.Equal(ctx.deviceNetworkStatus, status) {
+		log.Infof("handleDNSModify unchanged\n")
+		return
+	}
 	log.Infof("handleDNSModify for %s\n", key)
+	// Even if Testing is set we look at it for pciback transitions
 	ctx.deviceNetworkStatus = status
 	checkAndSetIoBundleAll(ctx)
 	ctx.DNSinitialized = true

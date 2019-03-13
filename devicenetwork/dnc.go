@@ -4,6 +4,7 @@
 package devicenetwork
 
 import (
+	"fmt"
 	"reflect"
 	"time"
 
@@ -165,9 +166,11 @@ func VerifyPending(pending *DPCPending,
 	portInPciBack, portName, usedByUUID := pending.PendDPC.IsAnyPortInPciBack(aa)
 	if portInPciBack {
 		if usedByUUID != nilUUID {
+			errStr := fmt.Sprintf("port %s in PCIBack "+
+				"used by %s", portName, usedByUUID.String())
+			log.Errorf("VerifyPending: %s\n", errStr)
+			pending.PendDPC.LastError = errStr
 			pending.PendDPC.LastFailed = time.Now()
-			log.Errorf("VerifyPending: port %s in PCIBack "+
-				"used by %s\n", portName, usedByUUID.String())
 			return DPC_FAIL
 		}
 		log.Infof("VerifyPending: port %s still in PCIBack. "+
@@ -190,9 +193,11 @@ func VerifyPending(pending *DPCPending,
 				"have any usable IP addresses", pending.PendDNS)
 			return DPC_WAIT
 		} else {
-			pending.PendDPC.LastFailed = time.Now()
-			log.Infof("VerifyPending: DHCP could not resolve any usable "+
+			errStr := fmt.Sprintf("DHCP could not resolve any usable "+
 				"IP addresses for the pending DNS %v", pending.PendDNS)
+			log.Infof("VerifyPending: %s\n", errStr)
+			pending.PendDPC.LastFailed = time.Now()
+			pending.PendDPC.LastError = errStr
 			return DPC_FAIL
 		}
 	}
@@ -200,17 +205,20 @@ func VerifyPending(pending *DPCPending,
 	pending.TestCount = MaxDPCRetestCount
 
 	// We want connectivity to zedcloud via atleast one Management port.
-	res := VerifyDeviceNetworkStatus(pending.PendDNS, 1)
+	err := VerifyDeviceNetworkStatus(pending.PendDNS, 1)
 	status := DPC_FAIL
-	if res {
+	if err == nil {
 		pending.PendDPC.LastSucceeded = time.Now()
+		pending.PendDPC.LastError = ""
 		status = DPC_SUCCESS
 		log.Infof("VerifyPending: DPC passed network test: %+v",
 			pending.PendDPC)
 	} else {
+		errStr := fmt.Sprintf("Failed network test: %s",
+			err)
+		log.Errorf("VerifyPending: %s\n", errStr)
 		pending.PendDPC.LastFailed = time.Now()
-		log.Infof("VerifyPending: DPC failed network test: %+v",
-			pending.PendDPC)
+		pending.PendDPC.LastError = errStr
 	}
 	return status
 }
@@ -233,6 +241,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 		if ctx.PubDeviceNetworkStatus != nil {
 			log.Infof("PublishDeviceNetworkStatus: pending %+v\n",
 				ctx.Pending.PendDNS)
+			ctx.Pending.PendDNS.Testing = true
 			ctx.PubDeviceNetworkStatus.Publish("global", ctx.Pending.PendDNS)
 		}
 		switch res {
@@ -653,6 +662,7 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 	if ctx.PubDeviceNetworkStatus != nil {
 		log.Infof("PublishDeviceNetworkStatus: %+v\n",
 			ctx.DeviceNetworkStatus)
+		ctx.DeviceNetworkStatus.Testing = false
 		ctx.PubDeviceNetworkStatus.Publish("global",
 			ctx.DeviceNetworkStatus)
 	}

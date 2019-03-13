@@ -2236,7 +2236,7 @@ func handleReboot(getconfigCtx *getconfigContext) {
 	}
 
 	shutdownAppsGlobal(getconfigCtx.zedagentCtx)
-	errStr := "handleReboot rebooting"
+	errStr := "NORMAL: handleReboot rebooting"
 	log.Errorf(errStr)
 	agentlog.RebootReason(errStr)
 	execReboot(state)
@@ -2267,7 +2267,7 @@ func handleExecReboot() {
 
 	<-rebootTimer.C
 
-	errStr := "baseimage-update reboot"
+	errStr := "NORMAL: baseimage-update reboot"
 	log.Errorf(errStr)
 	agentlog.RebootReason(errStr)
 	execReboot(true)
