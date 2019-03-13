@@ -105,9 +105,9 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	}
 	cloudReachable, err := zedcloud.VerifyAllIntf(zedcloudCtx, testUrl, retryCount, 1)
 	if err != nil {
-		errStr := fmt.Sprintf("VerifyAllIntf failed %s", err)
-		log.Errorf("VerifyDeviceNetworkStatus: %s\n", errStr)
-		return errors.New(errStr)
+		log.Errorf("VerifyDeviceNetworkStatus: VerifyAllIntf failed %s\n",
+			err)
+		return err
 	}
 
 	if cloudReachable {
