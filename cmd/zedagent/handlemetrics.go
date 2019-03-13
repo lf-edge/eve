@@ -1260,11 +1260,8 @@ func encodeSystemAdapterInfo(sub *pubsub.Subscription) *zmet.SystemAdapterInfo {
 			ts, _ := ptypes.TimestampProto(dpc.LastSucceeded)
 			dps.LastSucceeded = ts
 		}
-		// XXX Add to API
-		if dpc.LastError != "" {
-			log.Errorf("LastError for key %s: %s\n",
-				dpc.Key, dpc.LastError)
-		}
+		dps.LastError = dpc.LastError
+
 		dps.Ports = make([]*zmet.DevicePort, len(dpc.Ports))
 		for j, p := range dpc.Ports {
 			dps.Ports[j] = encodeNetworkPortConfig(&p)
