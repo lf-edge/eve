@@ -723,6 +723,17 @@ type LispConfig struct {
 	Experimental bool
 }
 
+type NetworkInstanceLispConfig struct {
+	MapServers    []MapServer
+	IID           uint32
+	Allocate      bool
+	ExportPrivate bool
+	EidPrefix     net.IP
+	EidPrefixLen  uint32
+
+	Experimental bool
+}
+
 type OverlayNetworkConfig struct {
 	Name          string // From proto message
 	EID           net.IP // Always EIDv6
@@ -1128,6 +1139,7 @@ type NetworkInstanceConfig struct {
 
 	// For other network services - Proxy / Lisp /StrongSwan etc..
 	OpaqueConfig string
+	LispConfig   NetworkInstanceLispConfig
 }
 
 func (config *NetworkInstanceConfig) Key() string {
@@ -1168,7 +1180,7 @@ type NetworkInstanceStatus struct {
 	NetworkInstanceInfo
 
 	OpaqueStatus string
-	LispStatus   LispConfig
+	LispStatus   NetworkInstanceLispConfig
 
 	VpnStatus      *ServiceVpnStatus
 	LispInfoStatus *LispInfoStatus
