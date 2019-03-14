@@ -607,12 +607,12 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 		// to a timestamp. That better not be interpreted as a time since
 		// the epoch
 		if !ds.BootTime.IsZero() {
-			elapsed := time.Now().Sub(ds.BootTime)
-			zero := time.Time{}
-			uptime, _ := ptypes.TimestampProto(zero.Add(elapsed))
+			elapsed := time.Since(ds.BootTime)
+			uptime, _ := ptypes.TimestampProto(
+				time.Unix(0, elapsed.Nanoseconds()).UTC())
 			ReportAppMetric.Cpu.UpTime = uptime
 		}
-			
+
 		// This is in kbytes
 		totalAppMemory, _ := strconv.ParseUint(cpuStorageStat[arr][5], 10, 0)
 		totalAppMemory = RoundFromKbytesToMbytes(totalAppMemory)
