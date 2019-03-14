@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='zregister.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\x0fzregister.proto\"1\n\rZRegisterResp\x12 \n\x06result\x18\x02 \x01(\x0e\x32\x10.ZRegisterResult\"3\n\x0cZRegisterMsg\x12\x12\n\nonBoardKey\x18\x01 \x01(\t\x12\x0f\n\x07pemCert\x18\x02 \x01(\x0c*z\n\x0fZRegisterResult\x12\x0c\n\x08ZRegNone\x10\x00\x12\x0f\n\x0bZRegSuccess\x10\x01\x12\x11\n\rZRegNotActive\x10\x02\x12\x13\n\x0fZRegAlreadyDone\x10\x03\x12\x10\n\x0cZRegDeviceNA\x10\x04\x12\x0e\n\nZRegFailed\x10\x05\x42\x1cZ\x1agithub.com/zededa/api/zmetb\x06proto3')
+  serialized_pb=_b('\n\x0fzregister.proto\"1\n\rZRegisterResp\x12 \n\x06result\x18\x02 \x01(\x0e\x32\x10.ZRegisterResult\"C\n\x0cZRegisterMsg\x12\x12\n\nonBoardKey\x18\x01 \x01(\t\x12\x0f\n\x07pemCert\x18\x02 \x01(\x0c\x12\x0e\n\x06serial\x18\x03 \x01(\t*z\n\x0fZRegisterResult\x12\x0c\n\x08ZRegNone\x10\x00\x12\x0f\n\x0bZRegSuccess\x10\x01\x12\x11\n\rZRegNotActive\x10\x02\x12\x13\n\x0fZRegAlreadyDone\x10\x03\x12\x10\n\x0cZRegDeviceNA\x10\x04\x12\x0e\n\nZRegFailed\x10\x05\x42\x1cZ\x1agithub.com/zededa/api/zmetb\x06proto3')
 )
 
 _ZREGISTERRESULT = _descriptor.EnumDescriptor(
@@ -56,8 +56,8 @@ _ZREGISTERRESULT = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=123,
-  serialized_end=245,
+  serialized_start=139,
+  serialized_end=261,
 )
 _sym_db.RegisterEnumDescriptor(_ZREGISTERRESULT)
 
@@ -123,6 +123,13 @@ _ZREGISTERMSG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='serial', full_name='ZRegisterMsg.serial', index=2,
+      number=3, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -136,7 +143,7 @@ _ZREGISTERMSG = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=70,
-  serialized_end=121,
+  serialized_end=137,
 )
 
 _ZREGISTERRESP.fields_by_name['result'].enum_type = _ZREGISTERRESULT
