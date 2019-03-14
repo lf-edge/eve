@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
+	"github.com/google/go-cmp/cmp"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zmet"
@@ -368,6 +369,14 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)
+	if status.Testing {
+		log.Infof("handleDNSModify ignoring Testing\n")
+		return
+	}
+	if cmp.Equal(deviceNetworkStatus, status) {
+		log.Infof("handleDNSModify no change\n")
+		return
+	}
 	*deviceNetworkStatus = status
 	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 	cameOnline := (ctx.usableAddressCount == 0) && (newAddrCount != 0)

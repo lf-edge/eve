@@ -75,6 +75,9 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	parseConfigItems(config, getconfigCtx)
 	parseDatastoreConfig(config, getconfigCtx)
 
+	// XXX increase likelyhood of being available when we look
+	parseSystemAdapterConfig(config, getconfigCtx, false)
+
 	parseBaseOsConfig(getconfigCtx, config)
 	// XXX Deprecated..
 	//	parseNetworkObjectConfig
@@ -85,7 +88,6 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	parseNetworkObjectConfig(config, getconfigCtx)
 	parseNetworkServiceConfig(config, getconfigCtx)
 	parseNetworkInstanceConfig(config, getconfigCtx)
-	parseSystemAdapterConfig(config, getconfigCtx, false)
 	parseAppInstanceConfig(config, getconfigCtx)
 
 	return false
@@ -2285,7 +2287,7 @@ func handleReboot(getconfigCtx *getconfigContext) {
 	}
 
 	shutdownAppsGlobal(getconfigCtx.zedagentCtx)
-	errStr := "handleReboot rebooting"
+	errStr := "NORMAL: handleReboot rebooting"
 	log.Errorf(errStr)
 	agentlog.RebootReason(errStr)
 	execReboot(state)
@@ -2316,7 +2318,7 @@ func handleExecReboot() {
 
 	<-rebootTimer.C
 
-	errStr := "baseimage-update reboot"
+	errStr := "NORMAL: baseimage-update reboot"
 	log.Errorf(errStr)
 	agentlog.RebootReason(errStr)
 	execReboot(true)

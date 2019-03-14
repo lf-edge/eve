@@ -57,6 +57,7 @@ type diagContext struct {
 	subDevicePortConfigList *pubsub.Subscription
 	gotBC                   bool
 	gotDNS                  bool
+	gotDPCList              bool
 	serverNameAndPort       string
 	serverName              string // Without port number
 	zedcloudCtx             *zedcloud.ZedCloudContext
@@ -200,9 +201,10 @@ func Run() {
 			subDeviceNetworkStatus.ProcessChange(change)
 
 		case change := <-subDevicePortConfigList.C:
+			ctx.gotDPCList = true
 			subDevicePortConfigList.ProcessChange(change)
 		}
-		if !ctx.forever && ctx.gotDNS && ctx.gotBC {
+		if !ctx.forever && ctx.gotDNS && ctx.gotBC && ctx.gotDPCList {
 			break
 		}
 	}
@@ -250,7 +252,12 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)
+	if status.Testing {
+		log.Infof("handleDNSModify ignoring Testing\n")
+		return
+	}
 	if cmp.Equal(ctx.DeviceNetworkStatus, status) {
+		log.Infof("handleDNSModify unchanged\n")
 		return
 	}
 	log.Infof("handleDNSModify: changed %v",
@@ -302,7 +309,7 @@ func handleDPCModify(ctxArg interface{}, key string, statusArg interface{}) {
 func printOutput(ctx *diagContext) {
 
 	// Defer until we have an initial BlinkCounter and DeviceNetworkStatus
-	if !ctx.gotDNS || !ctx.gotBC {
+	if !ctx.gotDNS || !ctx.gotBC || !ctx.gotDPCList {
 		return
 	}
 
@@ -368,21 +375,25 @@ func printOutput(ctx *diagContext) {
 	DPCLen := len(ctx.DevicePortConfigList.PortConfigList)
 	if DPCLen > 0 {
 		first := ctx.DevicePortConfigList.PortConfigList[0]
-		if first.LastFailed.After(first.LastSucceeded) {
-			fmt.Printf("WARNING: Not using highest priority DevicePortConfig key %s\n",
-				first.Key)
+		if ctx.DevicePortConfigList.CurrentIndex != 0 {
+			fmt.Printf("WARNING: Not using highest priority DevicePortConfig key %s due to %s\n",
+				first.Key, first.LastError)
 			for i, dpc := range ctx.DevicePortConfigList.PortConfigList {
 				if i == 0 {
 					continue
 				}
-				if dpc.LastFailed.After(dpc.LastSucceeded) {
-					fmt.Printf("WARNING: Not using priority %d DevicePortConfig key %s\n",
-						i, dpc.Key)
+				if i != ctx.DevicePortConfigList.CurrentIndex {
+					fmt.Printf("WARNING: Not using priority %d DevicePortConfig key %s due to %s\n",
+						i, dpc.Key, dpc.LastError)
 				} else {
 					fmt.Printf("INFO: Using priority %d DevicePortConfig key %s\n",
 						i, dpc.Key)
 					break
 				}
+			}
+			if DPCLen-1 > ctx.DevicePortConfigList.CurrentIndex {
+				fmt.Printf("INFO: Have %d backup DevicePortConfig\n",
+					DPCLen-1-ctx.DevicePortConfigList.CurrentIndex)
 			}
 		} else {
 			fmt.Printf("INFO: Using highest priority DevicePortConfig key %s\n",
@@ -398,6 +409,10 @@ func printOutput(ctx *diagContext) {
 	passPorts := 0
 	passOtherPorts := 0
 
+	// XXX add to DeviceNetworkStatus?
+	// fmt.Printf("DEBUG: Using DevicePortConfig key %s prio %s lastSucceeded %v\n",
+	// 	ctx.DeviceNetworkStatus.Key, ctx.DeviceNetworkStatus.TimePriority,
+	//	ctx.DeviceNetworkStatus.LastSucceeded)
 	numMgmtPorts := len(types.GetMgmtPortsAny(*ctx.DeviceNetworkStatus, 0))
 	fmt.Printf("INFO: Have %d total ports. %d ports should be connected to EV controller\n", numPorts, numMgmtPorts)
 	for _, port := range ctx.DeviceNetworkStatus.Ports {

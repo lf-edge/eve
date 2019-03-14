@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/agentlog"
@@ -1018,7 +1019,11 @@ func doHttp(ctx *downloaderContext, status *types.DownloaderStatus,
 				log.Errorln(errStr)
 				return errors.New(errStr)
 			}
-			_, err = resp.GetUpStatus()
+			if syncOp == zedUpload.SyncOpDownload {
+				err = resp.GetDnStatus()
+			} else {
+				_, err = resp.GetUpStatus()
+			}
 			if resp.IsError() {
 				return err
 			} else {
@@ -1098,7 +1103,11 @@ func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
 				log.Errorln(errStr)
 				return errors.New(errStr)
 			}
-			_, err = resp.GetUpStatus()
+			if syncOp == zedUpload.SyncOpDownload {
+				err = resp.GetDnStatus()
+			} else {
+				_, err = resp.GetUpStatus()
+			}
 			if resp.IsError() {
 				return err
 			} else {
@@ -1410,8 +1419,15 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
 		return
 	}
-
 	log.Infof("handleDNSModify for %s\n", key)
+	if status.Testing {
+		log.Infof("handleDNSModify ignoring Testing\n")
+		return
+	}
+	if cmp.Equal(ctx.deviceNetworkStatus, status) {
+		log.Infof("handleDNSModify unchanged\n")
+		return
+	}
 	ctx.deviceNetworkStatus = status
 	log.Infof("handleDNSModify %d free management ports addresses; %d any\n",
 		types.CountLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus),
