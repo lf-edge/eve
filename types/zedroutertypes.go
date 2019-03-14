@@ -1149,7 +1149,7 @@ type NetworkInstanceConfig struct {
 	DhcpRange       IpRange
 	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
 
-	NeedMtuRefit     bool  // Lisp/Vpn, reduce MTU for Encap
+	NeedMtuRefit     bool // Lisp/Vpn, reduce MTU for Encap
 	OpaqueConfigType OpaqueConfigType
 	// For other network services - Proxy / Lisp /StrongSwan etc..
 	OpaqueConfig string
