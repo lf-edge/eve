@@ -19,6 +19,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
+	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
@@ -178,7 +179,14 @@ func Run() {
 	nimCtx.ManufacturerModel = model
 	nimCtx.DeviceNetworkConfig = &types.DeviceNetworkConfig{}
 	nimCtx.DevicePortConfig = &types.DevicePortConfig{}
-	nimCtx.DevicePortConfigList = &types.DevicePortConfigList{}
+	item, _ := pubDevicePortConfigList.Get("global")
+	if item != nil {
+		dpcl := cast.CastDevicePortConfigList(item)
+		nimCtx.DevicePortConfigList = &dpcl
+		log.Infof("Initial DPCL %+v\n", nimCtx.DevicePortConfigList)
+	} else {
+		nimCtx.DevicePortConfigList = &types.DevicePortConfigList{}
+	}
 	nimCtx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	nimCtx.PubDevicePortConfig = pubDevicePortConfig
 	nimCtx.PubDevicePortConfigList = pubDevicePortConfigList

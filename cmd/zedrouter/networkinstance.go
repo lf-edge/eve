@@ -1027,7 +1027,7 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	// Check that Port is either "uplink", "freeuplink", or
 	// an existing port name assigned to domO/zedrouter.
 	// A Bridge only works with a single adapter interface.
-	// Management ports are not allowed to be part of Bridge networks.
+	// Management ports are not allowed to be part of Switch networks.
 	err := checkPortAvailableForNetworkInstance(ctx, status)
 	if err != nil {
 		log.Errorf("checkPortAvailableForNetworkInstance failed: Port: %s, err:%s",
