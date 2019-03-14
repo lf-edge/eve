@@ -461,7 +461,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			eidPrefix := net.IP(lispConfig.Allocationprefix)
 
 			// Populate service Lisp config that should be sent to zedrouter
-			networkInstanceConfig.LispConfig = types.NetworkInstanceLispConfig {
+			networkInstanceConfig.LispConfig = types.NetworkInstanceLispConfig{
 				MapServers:    mapServers,
 				IID:           lispConfig.LispInstanceId,
 				Allocate:      lispConfig.Allocate,
@@ -1420,7 +1420,7 @@ func parseOverlayNetworkConfigEntry(
 	}
 	uuid, err := uuid.FromString(intfEnt.NetworkId)
 	if err != nil {
-		olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: " +
+		olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: "+
 			"Malformed UUID ignored: %s", err)
 		log.Errorf("%s", olCfg.Error)
 		return olCfg
@@ -1444,7 +1444,7 @@ func parseOverlayNetworkConfigEntry(
 
 	olCfg.Network = uuid
 	if intfEnt.MacAddress != "" {
-		log.Infof("parseOverlayNetworkConfigEntry: (App %s, Overlay interface %s) - " +
+		log.Infof("parseOverlayNetworkConfigEntry: (App %s, Overlay interface %s) - "+
 			"Got static mac %s", cfgApp.Displayname, olCfg.Name, intfEnt.MacAddress)
 		olCfg.AppMacAddr, err = net.ParseMAC(intfEnt.MacAddress)
 		if err != nil {
@@ -1490,9 +1490,9 @@ func parseOverlayNetworkConfigEntry(
 	for aclIdx, acl := range intfEnt.Acls {
 		aclCfg := new(types.ACE)
 		aclCfg.Matches = make([]types.ACEMatch,
-		len(acl.Matches))
+			len(acl.Matches))
 		aclCfg.Actions = make([]types.ACEAction,
-		len(acl.Actions))
+			len(acl.Actions))
 		for matchIdx, match := range acl.Matches {
 			matchCfg := new(types.ACEMatch)
 			matchCfg.Type = match.Type
