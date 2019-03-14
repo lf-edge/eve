@@ -3490,8 +3490,8 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	log.Infof("handleDNSModify for %s\n", key)
 	if status.Testing {
-		log.Infof("handleDNSModify ignoring Testing\n")
-		return
+		// Need to allow early since we check if a port exists
+		log.Infof("handleDNSModify allowing Testing\n")
 	}
 	if cmp.Equal(ctx.deviceNetworkStatus, status) {
 		log.Infof("handleDNSModify no change\n")
