@@ -55,8 +55,8 @@ enum DHCPType {
 	// Don't run any DHCP, we are in passthrough mode for app
 	PassThrough = 2;
 
-	// No longer used
-	Depricated_Server = 3;
+	// Deprecated Server no longer
+	deprecated_server = 3;
 
 	// Run the DHCP client on this port
 	Client = 4;
