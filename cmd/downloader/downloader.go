@@ -1019,7 +1019,11 @@ func doHttp(ctx *downloaderContext, status *types.DownloaderStatus,
 				log.Errorln(errStr)
 				return errors.New(errStr)
 			}
-			_, err = resp.GetUpStatus()
+			if syncOp == zedUpload.SyncOpDownload {
+				err = resp.GetDnStatus()
+			} else {
+				_, err = resp.GetUpStatus()
+			}
 			if resp.IsError() {
 				return err
 			} else {
@@ -1099,7 +1103,11 @@ func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
 				log.Errorln(errStr)
 				return errors.New(errStr)
 			}
-			_, err = resp.GetUpStatus()
+			if syncOp == zedUpload.SyncOpDownload {
+				err = resp.GetDnStatus()
+			} else {
+				_, err = resp.GetUpStatus()
+			}
 			if resp.IsError() {
 				return err
 			} else {
