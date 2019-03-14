@@ -2,7 +2,7 @@ syntax = "proto3";
 
 option go_package  = "github.com/zededa/api/zmet";
 
-// XXX is this used? Not in client.go
+// XXX is this used? Not in client.go; deprecate
 enum ZRegisterResult {
         ZRegNone         = 0;
         ZRegSuccess      = 1;
@@ -12,7 +12,7 @@ enum ZRegisterResult {
         ZRegFailed       = 5;
 }
 
-// XXX is this used? Not in client.go
+// XXX is this used? Not in client.go; deprecate
 message ZRegisterResp {
         ZRegisterResult result = 2;
 }
@@ -21,4 +21,5 @@ message ZRegisterMsg {
        string onBoardKey = 1; // deprecated
 
        bytes pemCert = 2;
+       string serial = 3;
 }
