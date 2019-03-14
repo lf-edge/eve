@@ -20,7 +20,7 @@ type InstanceOpsCmd struct {
 func (m *InstanceOpsCmd) Reset()                    { *m = InstanceOpsCmd{} }
 func (m *InstanceOpsCmd) String() string            { return proto.CompactTextString(m) }
 func (*InstanceOpsCmd) ProtoMessage()               {}
-func (*InstanceOpsCmd) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{0} }
+func (*InstanceOpsCmd) Descriptor() ([]byte, []int) { return fileDescriptor7, []int{0} }
 
 func (m *InstanceOpsCmd) GetCounter() uint32 {
 	if m != nil {
@@ -69,7 +69,7 @@ type AppInstanceConfig struct {
 func (m *AppInstanceConfig) Reset()                    { *m = AppInstanceConfig{} }
 func (m *AppInstanceConfig) String() string            { return proto.CompactTextString(m) }
 func (*AppInstanceConfig) ProtoMessage()               {}
-func (*AppInstanceConfig) Descriptor() ([]byte, []int) { return fileDescriptor8, []int{1} }
+func (*AppInstanceConfig) Descriptor() ([]byte, []int) { return fileDescriptor7, []int{1} }
 
 func (m *AppInstanceConfig) GetUuidandversion() *UUIDandVersion {
 	if m != nil {
@@ -153,9 +153,9 @@ func init() {
 	proto.RegisterType((*AppInstanceConfig)(nil), "AppInstanceConfig")
 }
 
-func init() { proto.RegisterFile("appconfig.proto", fileDescriptor8) }
+func init() { proto.RegisterFile("appconfig.proto", fileDescriptor7) }
 
-var fileDescriptor8 = []byte{
+var fileDescriptor7 = []byte{
 	// 412 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x6c, 0x92, 0x4f, 0x6f, 0x13, 0x31,
 	0x10, 0xc5, 0xb5, 0xa4, 0x4d, 0x36, 0x0e, 0x49, 0x84, 0x4f, 0x56, 0x25, 0x60, 0x55, 0x15, 0x69,
