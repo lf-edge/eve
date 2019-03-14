@@ -264,6 +264,7 @@ func handleBaseOsCreate2(ctx *baseOsMgrContext, config types.BaseOsConfig,
 		return
 	}
 
+	// Check if the version is already in one of the partions
 	baseOsGetActivationStatus(ctx, &status)
 	publishBaseOsStatus(ctx, &status)
 

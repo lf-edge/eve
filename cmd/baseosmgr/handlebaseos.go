@@ -118,24 +118,6 @@ func baseOsGetActivationStatus(ctx *baseOsMgrContext,
 	return changed
 }
 
-func baseOsGetActivationStatusAll(ctx *baseOsMgrContext) {
-	items := ctx.pubBaseOsStatus.GetAll()
-	for key, st := range items {
-		status := cast.CastBaseOsStatus(st)
-		if status.Key() != key {
-			log.Errorf("baseOsGetActivationStatusAll(%s) got %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
-		changed := baseOsGetActivationStatus(ctx, &status)
-		if changed {
-			log.Infof("baseOsGetActivationStatusAll change for %s %s\n",
-				status.Key(), status.BaseOsVersion)
-			publishBaseOsStatus(ctx, &status)
-		}
-	}
-}
-
 func baseOsHandleStatusUpdate(ctx *baseOsMgrContext, config *types.BaseOsConfig,
 	status *types.BaseOsStatus) {
 
@@ -162,6 +144,7 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 
 	changed := false
 
+	// XXX status should tell us this since we baseOsGetActivationStatus
 	// Are we already running this version? If so nothing to do.
 	// Note that we don't return errors if someone tries to deactivate
 	// the running version, but we don't act on it either.
