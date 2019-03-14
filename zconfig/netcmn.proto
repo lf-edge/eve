@@ -49,16 +49,16 @@ message ZnetStaticDNSEntry {
 
 enum DHCPType {
 	DHCPNoop = 0;
-	// used for device adapter
+	// Statically configure the DHCP for port
 	Static = 1;
 
-	// used for application simulation
+	// Don't run any DHCP, we are in passthrough mode for app
 	PassThrough = 2;
 
-	// used for application simulation
-	Server = 3;
+	// No longer used
+	Depricated_Server = 3;
 
-	// used for device adapter
+	// Run the DHCP client on this port
 	Client = 4;
 }
 
