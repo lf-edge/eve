@@ -145,7 +145,25 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].NtpServer = u.NtpServer
 		globalStatus.Ports[ix].DnsServers = u.DnsServers
 		// XXX check against local IfindexToAddrs() - need ifindex for
-		// that.
+		// that. XXX remove old code?
+		ifindex, err := IfnameToIndex(u.IfName)
+		numAddrs := 0
+		var addrs []net.IPNet
+		if err == nil {
+			addrs, err = IfindexToAddrs(ifindex)
+			if err == nil {
+				numAddrs = len(addrs)
+				log.Infof("MakeDeviceNetworkStatus %s found %d addrs %+v\n",
+					u.IfName, len(addrs), addrs)
+			} else {
+				log.Warnf("MakeDeviceNetworkStatus addrs not found %s index %d: %s\n",
+					u.IfName, ifindex, err)
+			}
+		} else {
+			log.Warnf("MakeDeviceNetworkStatus ifindex not found %s: %s\n",
+				u.IfName, err)
+		}
+
 		link, err := netlink.LinkByName(u.IfName)
 		if err != nil {
 			log.Warnf("MakeDeviceNetworkStatus LinkByName %s: %s\n",
@@ -161,6 +179,12 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		addrs6, err := netlink.AddrList(link, netlink.FAMILY_V6)
 		if err != nil {
 			addrs6 = nil
+		}
+		if numAddrs != len(addrs4)+len(addrs6) {
+			log.Warnf("MakeDeviceNetworkStatus len mismatch %d %d %d\n",
+				numAddrs, len(addrs4), len(addrs6))
+			log.Warnf("MakeDeviceNetworkStatus mismatch %v %v %v\n",
+				addrs, addrs4, addrs6)
 		}
 		globalStatus.Ports[ix].AddrInfoList = make([]types.AddrInfo,
 			len(addrs4)+len(addrs6))

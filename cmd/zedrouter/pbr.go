@@ -31,12 +31,12 @@ func PbrInit(ctx *zedrouterContext, addrChange addrChangeFnType,
 	chan netlink.AddrUpdate, chan netlink.LinkUpdate) {
 
 	log.Debugf("PbrInit()\n")
+	IfindexToNameInit()
+	IfindexToAddrsInit()
+
 	setFreeMgmtPorts(types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0))
 	addrChangeFuncMgmtPort = addrChange
 	addrChangeFuncNonMgmtPort = addrChangeNon
-
-	IfindexToNameInit()
-	IfindexToAddrsInit()
 
 	flushRoutesTable(FreeTable, 0)
 
@@ -453,6 +453,7 @@ func IfindexToName(index int) (string, string, error) {
 	linkType := link.Type()
 	log.Warnf("IfindexToName(%d) fallback lookup done: %s, %s\n",
 		index, linkName, linkType)
+	IfindexToNameAdd(index, linkName, linkType)
 	return linkName, linkType, nil
 }
 
@@ -468,8 +469,10 @@ func IfnameToIndex(ifname string) (int, error) {
 		return -1, errors.New(fmt.Sprintf("Unknown ifname %s", ifname))
 	}
 	index := link.Attrs().Index
+	linkType := link.Type()
 	log.Warnf("IfnameToIndex(%s) fallback lookup done: %d, %s\n",
-		ifname, index, link.Type())
+		ifname, index, linkType)
+	IfindexToNameAdd(index, ifname, linkType)
 	return index, nil
 }
 
