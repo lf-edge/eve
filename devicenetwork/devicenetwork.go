@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
-	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
@@ -144,74 +143,30 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].DomainName = u.DomainName
 		globalStatus.Ports[ix].NtpServer = u.NtpServer
 		globalStatus.Ports[ix].DnsServers = u.DnsServers
-		// XXX check against local IfindexToAddrs() - need ifindex for
-		// that. XXX remove old code?
 		ifindex, err := IfnameToIndex(u.IfName)
-		numAddrs := 0
-		var addrs []net.IPNet
-		if err == nil {
-			addrs, err = IfindexToAddrs(ifindex)
-			if err == nil {
-				numAddrs = len(addrs)
-				log.Infof("MakeDeviceNetworkStatus %s found %d addrs %+v\n",
-					u.IfName, len(addrs), addrs)
-			} else {
-				log.Warnf("MakeDeviceNetworkStatus addrs not found %s index %d: %s\n",
-					u.IfName, ifindex, err)
-			}
-		} else {
-			log.Warnf("MakeDeviceNetworkStatus ifindex not found %s: %s\n",
-				u.IfName, err)
-		}
-
-		link, err := netlink.LinkByName(u.IfName)
 		if err != nil {
-			log.Warnf("MakeDeviceNetworkStatus LinkByName %s: %s\n",
-				u.IfName, err)
-			err = errors.New(fmt.Sprintf("Port in config/global does not exist: %v",
-				u))
+			errStr := fmt.Sprintf("Port %s does not exist - ignored",
+				u.IfName)
+			log.Errorf("MakeDeviceNetworkStatus: %s\n", errStr)
+			err = errors.New(errStr)
 			continue
 		}
-		addrs4, err := netlink.AddrList(link, netlink.FAMILY_V4)
+		addrs, err := IfindexToAddrs(ifindex)
 		if err != nil {
-			addrs4 = nil
+			log.Warnf("MakeDeviceNetworkStatus addrs not found %s index %d: %s\n",
+				u.IfName, ifindex, err)
+			addrs = nil
 		}
-		addrs6, err := netlink.AddrList(link, netlink.FAMILY_V6)
-		if err != nil {
-			addrs6 = nil
-		}
-		if numAddrs != len(addrs4)+len(addrs6) {
-			log.Warnf("MakeDeviceNetworkStatus len mismatch %d %d %d\n",
-				numAddrs, len(addrs4), len(addrs6))
-			log.Warnf("MakeDeviceNetworkStatus mismatch %v %v %v\n",
-				addrs, addrs4, addrs6)
-		} else {
-			log.Infof("MakeDeviceNetworkStatus len match %d %d %d\n",
-				numAddrs, len(addrs4), len(addrs6))
-			log.Infof("MakeDeviceNetworkStatus match %v %v %v\n",
-				addrs, addrs4, addrs6)
-		}
-		// XXX log only for now ... then assign
-		for _, addr := range addrs {
+		globalStatus.Ports[ix].AddrInfoList = make([]types.AddrInfo,
+			len(addrs))
+		for i, addr := range addrs {
 			v := "IPv4"
 			if addr.IP.To4() == nil {
 				v = "IPv6"
 			}
 			log.Infof("PortAddrs(%s) found %s %v\n",
-				v, u.IfName, addr.IP)
-		}
-		globalStatus.Ports[ix].AddrInfoList = make([]types.AddrInfo,
-			len(addrs4)+len(addrs6))
-		for i, addr := range addrs4 {
-			log.Infof("PortAddrs(%s) found IPv4 %v\n",
-				u.IfName, addr.IP)
+				u.IfName, v, addr.IP)
 			globalStatus.Ports[ix].AddrInfoList[i].Addr = addr.IP
-		}
-		for i, addr := range addrs6 {
-			// We include link-locals since they can be used for LISP behind nats
-			log.Infof("PortAddrs(%s) found IPv6 %v\n",
-				u.IfName, addr.IP)
-			globalStatus.Ports[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
 		}
 		// Get DNS etc info from dhcpcd. Updates DomainName and DnsServers
 		err = GetDhcpInfo(&globalStatus.Ports[ix])
