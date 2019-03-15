@@ -438,6 +438,13 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 		return "", nil
 	}
 
+	// XXX fix - this will go away with NetworkObjectConfig going away
+	if status.Dhcp != types.DT_Deprecated {
+		errStr := fmt.Sprintf("Unsupported DHCP type %d for %s",
+			status.Dhcp, status.Key())
+		return "", errors.New(errStr)
+	}
+
 	if status.DhcpRange.Start == nil {
 		errStr := fmt.Sprintf("no NetworkOjectStatus DhcpRange for %s",
 			status.Key())
