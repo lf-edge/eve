@@ -17,7 +17,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/eriknordmark/netlink"
@@ -26,6 +25,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/iptables"
 	"github.com/zededa/go-provision/pidfile"
@@ -1212,29 +1212,28 @@ func getSwitchIPv4Addr(ctx *zedrouterContext,
 		return "", nil
 	}
 
-	// XXX - KALYAN - Why are we getting this from netlink?
-	// We should have this in local Data Structures
-	// Get IP address from adapter
 	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Port)
-	link, err := netlink.LinkByName(ifname)
+	ifindex, err := devicenetwork.IfnameToIndex(ifname)
 	if err != nil {
-		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): LinkByName(%s) failed %s",
+		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): IfnameToIndex(%s) failed %s",
 			status.DisplayName, ifname, err)
 		return "", errors.New(errStr)
 	}
-	// XXX Add IPv6 underlay; ignore link-locals.
-	addrs, err := netlink.AddrList(link, syscall.AF_INET)
+	addrs, err := devicenetwork.IfindexToAddrs(ifindex)
 	if err != nil {
-		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): AddrList(%s) failed %s",
-			status.DisplayName, ifname, err)
+		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): IfindexToAddrs(%s, index %d) failed %s",
+			status.DisplayName, ifname, ifindex, err)
 		return "", errors.New(errStr)
 	}
 	for _, addr := range addrs {
 		log.Infof("getSwitchIPv4Addr(%s): found addr %s\n",
 			status.DisplayName, addr.IP.String())
-		return addr.IP.String(), nil
+		// XXX Add IPv6 underlay; ignore link-locals.
+		if addr.IP.To4() != nil {
+			return addr.IP.String(), nil
+		}
 	}
-	log.Infof("getSwitchIPv4Addr(%s): no IP address on %s yet\n",
+	log.Infof("getSwitchIPv4Addr(%s): no IPv4 address on %s yet\n",
 		status.DisplayName, status.Port)
 	return "", nil
 }

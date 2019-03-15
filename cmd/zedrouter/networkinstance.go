@@ -13,7 +13,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/eriknordmark/netlink"
@@ -853,20 +852,22 @@ func getPortIPv4Addr(ctx *zedrouterContext,
 
 	// Get IP address from adapter
 	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Port)
-	link, err := netlink.LinkByName(ifname)
+	ifindex, err := devicenetwork.IfnameToIndex(ifname)
 	if err != nil {
 		return "", err
 	}
 	// XXX Add IPv6 underlay; ignore link-locals.
-	addrs, err := netlink.AddrList(link, syscall.AF_INET)
+	addrs, err := devicenetwork.IfindexToAddrs(ifindex)
 	if err != nil {
 		return "", err
 	}
 	for _, addr := range addrs {
 		log.Infof("found addr %s\n", addr.IP.String())
-		return addr.IP.String(), nil
+		if addr.IP.To4() != nil {
+			return addr.IP.String(), nil
+		}
 	}
-	log.Infof("No IP address on %s yet\n", status.Port)
+	log.Infof("No IPv4 address on %s yet\n", status.Port)
 	return "", nil
 }
 
@@ -1080,6 +1081,7 @@ func getIfNameListForPort(
 			//	a device without the corresponding linux interface. We can
 			//	remove this check for ifindex here when the MakeDeviceStatus
 			//	is fixed.
+			// XXX That bug has been fixed. Retest without this code?
 			ifIndex, err := devicenetwork.IfnameToIndex(ifName)
 			if err == nil {
 				log.Infof("ifName %s, ifindex: %d added to filteredList",
@@ -1249,18 +1251,18 @@ func getBridgeServiceIPv4AddrForNetworkInstance(
 
 	// Get IP address from Port
 	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Port)
-	link, err := netlink.LinkByName(ifname)
+	ifindex, err := devicenetwork.IfnameToIndex(ifname)
 	if err != nil {
 		return "", err
 	}
-	// XXX - We really should maintain these addresses in our own data structures
-	//		and not query netlink. To be cleaned up.
-	// XXX Add IPv6 underlay; ignore link-locals.
-	addrs, err := netlink.AddrList(link, syscall.AF_INET)
+	addrs, err := devicenetwork.IfindexToAddrs(ifindex)
 	if err != nil {
 		return "", err
 	}
 	for _, addr := range addrs {
+		if addr.IP.To4() == nil {
+			continue
+		}
 		log.Infof("getBridgeServiceIPv4AddrForNetworkInstance(%s): found addr %s\n",
 			status.DisplayName, addr.IP.String())
 		return addr.IP.String(), nil
