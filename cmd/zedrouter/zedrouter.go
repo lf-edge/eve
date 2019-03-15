@@ -407,7 +407,7 @@ func Run() {
 				change)
 			if ifname != "" &&
 				!types.IsMgmtPort(*zedrouterCtx.deviceNetworkStatus,
-				ifname) {
+					ifname) {
 				log.Debugf("addrChange(%s) not mgmt port\n", ifname)
 				// Even if ethN isn't individually assignable, it
 				// could be used for a bridge.
@@ -423,7 +423,7 @@ func Run() {
 				change)
 			if ifname != "" &&
 				!types.IsMgmtPort(*zedrouterCtx.deviceNetworkStatus,
-				ifname) {
+					ifname) {
 				log.Debugf("linkChange(%s) not mgmt port\n", ifname)
 				// Even if ethN isn't individually assignable, it
 				// could be used for a bridge.

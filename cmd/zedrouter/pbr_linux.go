@@ -14,6 +14,7 @@ import (
 
 	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/types"
 )
 
@@ -119,7 +120,7 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 		linkType)
 	switch change.Header.Type {
 	case syscall.RTM_NEWLINK:
-		added := IfindexToNameAdd(ifindex, ifname, linkType)
+		added := devicenetwork.IfindexToNameAdd(ifindex, ifname, linkType)
 		if added {
 			changed = true
 			if types.IsFreeMgmtPort(*deviceNetworkStatus,
@@ -131,7 +132,7 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 			}
 		}
 	case syscall.RTM_DELLINK:
-		gone := IfindexToNameDel(ifindex, ifname)
+		gone := devicenetwork.IfindexToNameDel(ifindex, ifname)
 		if gone {
 			changed = true
 			if types.IsFreeMgmtPort(*deviceNetworkStatus,

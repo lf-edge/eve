@@ -19,6 +19,7 @@ import (
 	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/iptables"
 	"github.com/zededa/go-provision/types"
 )
@@ -1079,7 +1080,7 @@ func getIfNameListForPort(
 			//	a device without the corresponding linux interface. We can
 			//	remove this check for ifindex here when the MakeDeviceStatus
 			//	is fixed.
-			ifIndex, err := IfnameToIndex(ifName)
+			ifIndex, err := devicenetwork.IfnameToIndex(ifName)
 			if err == nil {
 				log.Infof("ifName %s, ifindex: %d added to filteredList",
 					ifName, ifIndex)
