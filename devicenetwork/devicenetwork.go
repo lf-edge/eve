@@ -185,6 +185,20 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 				numAddrs, len(addrs4), len(addrs6))
 			log.Warnf("MakeDeviceNetworkStatus mismatch %v %v %v\n",
 				addrs, addrs4, addrs6)
+		} else {
+			log.Infof("MakeDeviceNetworkStatus len match %d %d %d\n",
+				numAddrs, len(addrs4), len(addrs6))
+			log.Infof("MakeDeviceNetworkStatus match %v %v %v\n",
+				addrs, addrs4, addrs6)
+		}
+		// XXX log only for now ... then assign
+		for _, addr := range addrs {
+			v := "IPv4"
+			if addr.IP.To4() == nil {
+				v = "IPv6"
+			}
+			log.Infof("PortAddrs(%s) found %s %v\n",
+				v, u.IfName, addr.IP)
 		}
 		globalStatus.Ports[ix].AddrInfoList = make([]types.AddrInfo,
 			len(addrs4)+len(addrs6))
