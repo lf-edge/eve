@@ -642,7 +642,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		}
 		network := cast.CastNetworkObjectConfig(networkObject)
 		// XXX temporary hack: if static IP 0.0.0.0 we log and force
-		// Dhcp = None. Remove once zedcloud can send Dhcp = None
+		// Dhcp = DT_NONE. Remove once zedcloud can send Dhcp = None
 		forceDhcpNone := false
 		if sysAdapter.Addr != "" {
 			ip := net.ParseIP(sysAdapter.Addr)
@@ -668,8 +668,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		switch network.Dhcp {
 		case types.DT_STATIC:
 			if forceDhcpNone {
-				log.Warnf("Forcing DT_NOOP for %+v\n", port)
-				port.Dhcp = types.DT_NOOP
+				log.Warnf("Forcing DT_NONE for %+v\n", port)
+				port.Dhcp = types.DT_NONE
 				break
 			}
 			if port.Gateway.IsUnspecified() || port.AddrSubnet == "" ||
