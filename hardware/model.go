@@ -128,6 +128,17 @@ func GetCompatible() string {
 	return compatible
 }
 
+func GetProductSerial() string {
+	cmd := exec.Command("dmidecode", "-s", "system-serial-number")
+	serial, err := cmd.Output()
+	if err != nil {
+		log.Errorf("GetProductSerial system-serial-number failed %s\n",
+			err)
+		serial = []byte{}
+	}
+	return string(serial)
+}
+
 // Returns productManufacturer, productName, productVersion, productSerial, productUuid
 func GetDeviceManufacturerInfo() (string, string, string, string, string) {
 	cmd := exec.Command("dmidecode", "-s", "system-product-name")

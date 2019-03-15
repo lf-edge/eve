@@ -101,7 +101,8 @@ type zedagentContext struct {
 	rebootCmdDeferred         bool
 	rebootReason              string
 	rebootTime                time.Time
-	subDevicePortConfigList   *pubsub.Subscription // XXX Use
+	subDevicePortConfigList   *pubsub.Subscription
+	devicePortConfigList      types.DevicePortConfigList
 }
 
 var debug = false
@@ -467,7 +468,7 @@ func Run() {
 	subDeviceNetworkStatus.Activate()
 
 	subDevicePortConfigList, err := pubsub.Subscribe("nim",
-		types.DevicePortConfigList{}, false, &DNSctx)
+		types.DevicePortConfigList{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -629,11 +630,11 @@ func Run() {
 
 		case change := <-subDevicePortConfigList.C:
 			subDevicePortConfigList.ProcessChange(change)
-			if DNSctx.triggerDeviceInfo {
+			if zedagentCtx.TriggerDeviceInfo {
 				// CurrentIndex, LastError could have changed
 				log.Infof("DevicePortConfigList triggered PublishDeviceInfo\n")
 				publishDevInfo(&zedagentCtx)
-				DNSctx.triggerDeviceInfo = false
+				zedagentCtx.TriggerDeviceInfo = false
 			}
 
 		case change := <-deferredChan:
@@ -746,11 +747,11 @@ func Run() {
 
 		case change := <-subDevicePortConfigList.C:
 			subDevicePortConfigList.ProcessChange(change)
-			if DNSctx.triggerDeviceInfo {
+			if zedagentCtx.TriggerDeviceInfo {
 				// CurrentIndex, LastError could have changed
 				log.Infof("DevicePortConfigList triggered PublishDeviceInfo\n")
 				publishDevInfo(&zedagentCtx)
-				DNSctx.triggerDeviceInfo = false
+				zedagentCtx.TriggerDeviceInfo = false
 			}
 
 		case <-stillRunning.C:
@@ -936,30 +937,34 @@ func handleDNSDelete(ctxArg interface{}, key string,
 
 func handleDPCLModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	ctx := ctxArg.(*DNSContext)
+	status := cast.CastDevicePortConfigList(statusArg)
+	ctx := ctxArg.(*zedagentContext)
 	if key != "global" {
 		log.Infof("handleDPCLModify: ignoring %s\n", key)
 		return
 	}
-	// XXX diff against old?
+	if cmp.Equal(ctx.devicePortConfigList, status) {
+		log.Infof("handleDPCLModify no change\n")
+		return
+	}
 	// Note that lastSucceeded will increment a lot; ignore it but compare
-	// lastFailed/lastError
-	log.Infof("handleDPCLModify for %s\n", key)
-	ctx.triggerDeviceInfo = true
+	// lastFailed/lastError?? XXX how?
+	log.Infof("handleDPCLModify: changed %v",
+		cmp.Diff(ctx.devicePortConfigList, status))
+	ctx.devicePortConfigList = status
+	ctx.TriggerDeviceInfo = true
 }
 
 func handleDPCLDelete(ctxArg interface{}, key string, statusArg interface{}) {
 
-	ctx := ctxArg.(*DNSContext)
+	ctx := ctxArg.(*zedagentContext)
 	if key != "global" {
 		log.Infof("handleDPCLDelete: ignoring %s\n", key)
 		return
 	}
-	// XXX diff against old?
-	// Note that lastSucceeded will increment a lot; ignore it but compare
-	// lastFailed/lastError
 	log.Infof("handleDPCLDelete for %s\n", key)
-	ctx.triggerDeviceInfo = true
+	ctx.devicePortConfigList = types.DevicePortConfigList{}
+	ctx.TriggerDeviceInfo = true
 }
 
 // base os status event handlers

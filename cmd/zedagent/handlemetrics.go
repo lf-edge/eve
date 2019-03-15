@@ -33,7 +33,6 @@ import (
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/hardware"
 	"github.com/zededa/go-provision/netclone"
-	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
 )
@@ -602,8 +601,17 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 
 		appCpuTotal, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
 		ReportAppMetric.Cpu.Total = *proto.Uint64(appCpuTotal)
-		// We don't report ReportAppMetric.Cpu.Uptime
-		// since we already report BootTime for the app
+		// This is redundant since we already report BootTime but
+		// makes it part of the time series
+		// Note that Uptime is seconds we've been up. We're converting
+		// to a timestamp. That better not be interpreted as a time since
+		// the epoch
+		if !ds.BootTime.IsZero() {
+			elapsed := time.Since(ds.BootTime)
+			uptime, _ := ptypes.TimestampProto(
+				time.Unix(0, elapsed.Nanoseconds()).UTC())
+			ReportAppMetric.Cpu.UpTime = uptime
+		}
 
 		// This is in kbytes
 		totalAppMemory, _ := strconv.ParseUint(cpuStorageStat[arr][5], 10, 0)
@@ -1031,7 +1039,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		ReportDeviceInfo.LastRebootTime = rebootTime
 	}
 
-	ReportDeviceInfo.SystemAdapter = encodeSystemAdapterInfo(ctx.subDevicePortConfigList)
+	ReportDeviceInfo.SystemAdapter = encodeSystemAdapterInfo(ctx.devicePortConfigList)
 
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Dinfo); ok {
@@ -1236,13 +1244,7 @@ func encodeProxyStatus(proxyConfig *types.ProxyConfig) *zmet.ProxyStatus {
 	return status
 }
 
-func encodeSystemAdapterInfo(sub *pubsub.Subscription) *zmet.SystemAdapterInfo {
-	st, _ := sub.Get("global")
-	if st == nil {
-		log.Errorf("encodeSystemAdapterInfo: no DevicePortConfigList\n")
-		return nil
-	}
-	dpcl := cast.CastDevicePortConfigList(st)
+func encodeSystemAdapterInfo(dpcl types.DevicePortConfigList) *zmet.SystemAdapterInfo {
 	info := new(zmet.SystemAdapterInfo)
 	info.CurrentIndex = uint32(dpcl.CurrentIndex)
 	info.Status = make([]*zmet.DevicePortStatus, len(dpcl.PortConfigList))
