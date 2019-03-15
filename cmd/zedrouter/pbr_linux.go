@@ -107,9 +107,11 @@ func moveRoutesTable(srcTable int, ifindex int, dstTable int) {
 }
 
 // Handle a link being added or deleted
+// Returns the ifname if there was a change
 func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
-	change netlink.LinkUpdate) {
+	change netlink.LinkUpdate) string {
 
+	changed := false
 	ifindex := change.Attrs().Index
 	ifname := change.Attrs().Name
 	linkType := change.Link.Type()
@@ -119,6 +121,7 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	case syscall.RTM_NEWLINK:
 		added := IfindexToNameAdd(ifindex, ifname, linkType)
 		if added {
+			changed = true
 			if types.IsFreeMgmtPort(*deviceNetworkStatus,
 				ifname) {
 
@@ -126,24 +129,11 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 					ifname)
 				moveRoutesTable(0, ifindex, FreeTable)
 			}
-			if types.IsMgmtPort(*deviceNetworkStatus, ifname) {
-				log.Debugf("Link change for management port: %s\n",
-					ifname)
-				if addrChangeFuncMgmtPort != nil {
-					addrChangeFuncMgmtPort(ifname)
-				}
-			} else {
-				log.Debugf("Link change for non-port: %s\n",
-					ifname)
-				if addrChangeFuncNonMgmtPort != nil {
-					addrChangeFuncNonMgmtPort(ifname)
-				}
-			}
-
 		}
 	case syscall.RTM_DELLINK:
 		gone := IfindexToNameDel(ifindex, ifname)
 		if gone {
+			changed = true
 			if types.IsFreeMgmtPort(*deviceNetworkStatus,
 				ifname) {
 
@@ -152,20 +142,10 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 			MyTable := FreeTable + ifindex
 			flushRoutesTable(MyTable, 0)
 			flushRules(ifindex)
-			if types.IsMgmtPort(*deviceNetworkStatus, ifname) {
-				log.Debugf("Link change for management port: %s\n",
-					ifname)
-				if addrChangeFuncMgmtPort != nil {
-					addrChangeFuncMgmtPort(ifname)
-				}
-			} else {
-				log.Debugf("Link change for non-port: %s\n",
-					ifname)
-				if addrChangeFuncNonMgmtPort != nil {
-					addrChangeFuncNonMgmtPort(ifname)
-				}
-			}
-
 		}
 	}
+	if changed {
+		return ifname
+	}
+	return ""
 }

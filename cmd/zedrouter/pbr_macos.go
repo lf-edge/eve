@@ -35,6 +35,6 @@ func moveRoutesTable(srcTable int, ifindex int, dstTable int) {
 
 // Handle a link being added or deleted
 func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
-	change netlink.LinkUpdate) {
-	return
+	change netlink.LinkUpdate) string {
+	return ""
 }

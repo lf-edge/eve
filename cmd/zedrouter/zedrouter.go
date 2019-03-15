@@ -331,18 +331,7 @@ func Run() {
 	zedrouterCtx.subLispMetrics = subLispMetrics
 	subLispMetrics.Activate()
 
-	// This function is called from PBR when some non-management port
-	// changes its IP address(es)
-	addrChangeNonMgmtPortFn := func(ifname string) {
-		log.Debugf("addrChangeNonMgmtPortFn(%s) called\n", ifname)
-		// Even if ethN isn't individually assignable, it
-		// could be used for a bridge.
-		maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
-		maybeUpdateBridgeIPAddrForNetworkInstance(
-			&zedrouterCtx, ifname)
-	}
-	routeChanges, addrChanges, linkChanges := PbrInit(
-		&zedrouterCtx, nil, addrChangeNonMgmtPortFn)
+	routeChanges, addrChanges, linkChanges := PbrInit(&zedrouterCtx)
 
 	// Publish network metrics for zedagent every 10 seconds
 	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
@@ -414,12 +403,34 @@ func Run() {
 			if !ok {
 				log.Fatalf("addrChanges closed?\n")
 			}
-			PbrAddrChange(zedrouterCtx.deviceNetworkStatus, change)
+			ifname := PbrAddrChange(zedrouterCtx.deviceNetworkStatus,
+				change)
+			if ifname != "" &&
+				!types.IsMgmtPort(*zedrouterCtx.deviceNetworkStatus,
+				ifname) {
+				log.Debugf("addrChange(%s) not mgmt port\n", ifname)
+				// Even if ethN isn't individually assignable, it
+				// could be used for a bridge.
+				maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
+				maybeUpdateBridgeIPAddrForNetworkInstance(
+					&zedrouterCtx, ifname)
+			}
 		case change, ok := <-linkChanges:
 			if !ok {
 				log.Fatalf("linkChanges closed?\n")
 			}
-			PbrLinkChange(zedrouterCtx.deviceNetworkStatus, change)
+			ifname := PbrLinkChange(zedrouterCtx.deviceNetworkStatus,
+				change)
+			if ifname != "" &&
+				!types.IsMgmtPort(*zedrouterCtx.deviceNetworkStatus,
+				ifname) {
+				log.Debugf("linkChange(%s) not mgmt port\n", ifname)
+				// Even if ethN isn't individually assignable, it
+				// could be used for a bridge.
+				maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
+				maybeUpdateBridgeIPAddrForNetworkInstance(
+					&zedrouterCtx, ifname)
+			}
 		case change, ok := <-routeChanges:
 			if !ok {
 				log.Fatalf("routeChanges closed?\n")

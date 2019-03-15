@@ -19,15 +19,8 @@ import (
 
 var FreeTable = 500 // Need a FreeMgmtPort policy for NAT+underlay
 
-type addrChangeFnType func(ifname string)
-
-// XXX should really be in a context returned by Init
-var addrChangeFuncMgmtPort addrChangeFnType
-var addrChangeFuncNonMgmtPort addrChangeFnType
-
 // Returns the channels for route, addr, link updates
-func PbrInit(ctx *zedrouterContext, addrChange addrChangeFnType,
-	addrChangeNon addrChangeFnType) (chan netlink.RouteUpdate,
+func PbrInit(ctx *zedrouterContext) (chan netlink.RouteUpdate,
 	chan netlink.AddrUpdate, chan netlink.LinkUpdate) {
 
 	log.Debugf("PbrInit()\n")
@@ -35,8 +28,6 @@ func PbrInit(ctx *zedrouterContext, addrChange addrChangeFnType,
 	IfindexToAddrsInit()
 
 	setFreeMgmtPorts(types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0))
-	addrChangeFuncMgmtPort = addrChange
-	addrChangeFuncNonMgmtPort = addrChangeNon
 
 	flushRoutesTable(FreeTable, 0)
 
@@ -276,8 +267,9 @@ func PbrRouteChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 }
 
 // Handle an IP address change
+// Returns the ifname if there was a change
 func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
-	change netlink.AddrUpdate) {
+	change netlink.AddrUpdate) string {
 
 	changed := false
 	if change.NewAddr {
@@ -312,20 +304,11 @@ func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 		if err != nil {
 			log.Errorf("PbrAddrChange IfindexToName failed for %d: %s\n",
 				change.LinkIndex, err)
-		} else if types.IsMgmtPort(*deviceNetworkStatus, ifname) {
-			log.Debugf("Address change for management port: %v\n",
-				change)
-			if addrChangeFuncMgmtPort != nil {
-				addrChangeFuncMgmtPort(ifname)
-			}
-		} else {
-			log.Debugf("Address change for non-port: %v\n",
-				change)
-			if addrChangeFuncNonMgmtPort != nil {
-				addrChangeFuncNonMgmtPort(ifname)
-			}
+			return ""
 		}
+		return ifname
 	}
+	return ""
 }
 
 // We track the freeMgmtPort list to be able to detect changes and
