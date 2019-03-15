@@ -124,6 +124,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 	var globalStatus types.DeviceNetworkStatus
 	var err error = nil
 
+	log.Infof("MakeDeviceNetworkStatus()\n")
 	globalStatus.Version = globalConfig.Version
 	globalStatus.Ports = make([]types.NetworkPortStatus,
 		len(globalConfig.Ports))
@@ -143,6 +144,8 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].DomainName = u.DomainName
 		globalStatus.Ports[ix].NtpServer = u.NtpServer
 		globalStatus.Ports[ix].DnsServers = u.DnsServers
+		// XXX check against local IfindexToAddrs() - need ifindex for
+		// that.
 		link, err := netlink.LinkByName(u.IfName)
 		if err != nil {
 			log.Warnf("MakeDeviceNetworkStatus LinkByName %s: %s\n",
@@ -209,6 +212,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 	}
 	// Immediate check
 	UpdateDeviceNetworkGeo(time.Second, &globalStatus)
+	log.Infof("MakeDeviceNetworkStatus() DONE\n")
 	return globalStatus, err
 }
 
