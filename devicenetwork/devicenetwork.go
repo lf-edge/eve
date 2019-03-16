@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
-	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
@@ -144,36 +143,30 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].DomainName = u.DomainName
 		globalStatus.Ports[ix].NtpServer = u.NtpServer
 		globalStatus.Ports[ix].DnsServers = u.DnsServers
-		// XXX check against local IfindexToAddrs() - need ifindex for
-		// that.
-		link, err := netlink.LinkByName(u.IfName)
+		ifindex, err := IfnameToIndex(u.IfName)
 		if err != nil {
-			log.Warnf("MakeDeviceNetworkStatus LinkByName %s: %s\n",
-				u.IfName, err)
-			err = errors.New(fmt.Sprintf("Port in config/global does not exist: %v",
-				u))
+			errStr := fmt.Sprintf("Port %s does not exist - ignored",
+				u.IfName)
+			log.Errorf("MakeDeviceNetworkStatus: %s\n", errStr)
+			err = errors.New(errStr)
 			continue
 		}
-		addrs4, err := netlink.AddrList(link, netlink.FAMILY_V4)
+		addrs, err := IfindexToAddrs(ifindex)
 		if err != nil {
-			addrs4 = nil
-		}
-		addrs6, err := netlink.AddrList(link, netlink.FAMILY_V6)
-		if err != nil {
-			addrs6 = nil
+			log.Warnf("MakeDeviceNetworkStatus addrs not found %s index %d: %s\n",
+				u.IfName, ifindex, err)
+			addrs = nil
 		}
 		globalStatus.Ports[ix].AddrInfoList = make([]types.AddrInfo,
-			len(addrs4)+len(addrs6))
-		for i, addr := range addrs4 {
-			log.Infof("PortAddrs(%s) found IPv4 %v\n",
-				u.IfName, addr.IP)
+			len(addrs))
+		for i, addr := range addrs {
+			v := "IPv4"
+			if addr.IP.To4() == nil {
+				v = "IPv6"
+			}
+			log.Infof("PortAddrs(%s) found %s %v\n",
+				u.IfName, v, addr.IP)
 			globalStatus.Ports[ix].AddrInfoList[i].Addr = addr.IP
-		}
-		for i, addr := range addrs6 {
-			// We include link-locals since they can be used for LISP behind nats
-			log.Infof("PortAddrs(%s) found IPv6 %v\n",
-				u.IfName, addr.IP)
-			globalStatus.Ports[ix].AddrInfoList[i+len(addrs4)].Addr = addr.IP
 		}
 		// Get DNS etc info from dhcpcd. Updates DomainName and DnsServers
 		err = GetDhcpInfo(&globalStatus.Ports[ix])

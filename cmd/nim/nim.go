@@ -316,8 +316,9 @@ func Run() {
 		dnc.NetworkTestBetterTimer = networkTestBetterTimer
 	}
 
-	// Look for address changes
+	// Look for address and link changes
 	addrChanges := devicenetwork.AddrChangeInit(&nimCtx.DeviceNetworkContext)
+	linkChanges := devicenetwork.LinkChangeInit(&nimCtx.DeviceNetworkContext)
 
 	// To avoid a race between domainmgr starting and moving this to pciback
 	// and zedagent publishing its DevicePortConfig using those assigned-away
@@ -345,10 +346,14 @@ func Run() {
 			if !ok {
 				log.Fatalf("addrChanges closed?\n")
 			}
-			if nimCtx.debug {
-				log.Debugf("addrChanges %+v\n", change)
-			}
 			devicenetwork.AddrChange(&nimCtx.DeviceNetworkContext,
+				change)
+
+		case change, ok := <-linkChanges:
+			if !ok {
+				log.Fatalf("linkChanges closed?\n")
+			}
+			devicenetwork.LinkChange(&nimCtx.DeviceNetworkContext,
 				change)
 
 		case <-geoTimer.C:
@@ -428,10 +433,14 @@ func Run() {
 			if !ok {
 				log.Fatalf("addrChanges closed?\n")
 			}
-			if nimCtx.debug {
-				log.Debugf("addrChanges %+v\n", change)
-			}
 			devicenetwork.AddrChange(&nimCtx.DeviceNetworkContext,
+				change)
+
+		case change, ok := <-linkChanges:
+			if !ok {
+				log.Fatalf("linkChanges closed?\n")
+			}
+			devicenetwork.LinkChange(&nimCtx.DeviceNetworkContext,
 				change)
 
 		case <-geoTimer.C:
