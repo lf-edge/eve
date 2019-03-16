@@ -93,7 +93,7 @@ func checkPortAvailableForNetworkInstance(
 
 	if allowSharedPort(status) {
 		// Make sure it is configured for IP or will be
-		if portStatus.Dhcp == types.DT_NOOP {
+		if portStatus.Dhcp == types.DT_NONE {
 			errStr := fmt.Sprintf("Port %s not configured for shared use. "+
 				"Cannot be used by Switch Network Instance %s-%s\n",
 				status.Port, status.UUID, status.DisplayName)
@@ -119,7 +119,7 @@ func checkPortAvailableForNetworkInstance(
 		}
 	} else {
 		// Make sure it will not be configured for IP
-		if portStatus.Dhcp != types.DT_NOOP {
+		if portStatus.Dhcp != types.DT_NONE {
 			errStr := fmt.Sprintf("Port %s configured for shared use. "+
 				"Cannot be used by Switch Network Instance %s-%s\n",
 				status.Port, status.UUID, status.DisplayName)
