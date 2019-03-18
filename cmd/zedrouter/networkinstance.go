@@ -859,8 +859,8 @@ func getPortIPv4Addr(ctx *zedrouterContext,
 	// XXX Add IPv6 underlay; ignore link-locals.
 	addrs, err := devicenetwork.IfindexToAddrs(ifindex)
 	if err != nil {
-	       log.Warnf("IfIndexToAddrs failed: %s\n", err)
-	       addrs = nil
+		log.Warnf("IfIndexToAddrs failed: %s\n", err)
+		addrs = nil
 	}
 	for _, addr := range addrs {
 		log.Infof("found addr %s\n", addr.IP.String())
@@ -1258,8 +1258,8 @@ func getBridgeServiceIPv4AddrForNetworkInstance(
 	}
 	addrs, err := devicenetwork.IfindexToAddrs(ifindex)
 	if err != nil {
-	       log.Warnf("IfIndexToAddrs failed: %s\n", err)
-	       addrs = nil
+		log.Warnf("IfIndexToAddrs failed: %s\n", err)
+		addrs = nil
 	}
 	for _, addr := range addrs {
 		if addr.IP.To4() == nil {
