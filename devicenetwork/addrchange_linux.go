@@ -16,7 +16,7 @@ import (
 )
 
 // Handle a link change
-func LinkChange(ctx *DeviceNetworkContext, change netlink.LinkUpdate) {
+func LinkChange(change netlink.LinkUpdate) {
 
 	ifindex := change.Attrs().Index
 	ifname := change.Attrs().Name

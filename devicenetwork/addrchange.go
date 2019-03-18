@@ -64,9 +64,9 @@ func AddrChange(ctx *DeviceNetworkContext, change netlink.AddrUpdate) {
 // Returns a channel for link updates
 // Caller then does this in select loop:
 //	case change := <-linkChanges:
-//		devicenetwork.LinkChange(&clientCtx, change)
+//		devicenetwork.LinkChange(change)
 //
-func LinkChangeInit(ctx *DeviceNetworkContext) chan netlink.LinkUpdate {
+func LinkChangeInit() chan netlink.LinkUpdate {
 
 	log.Debugf("LinkChangeInit()\n")
 	IfindexToNameInit()

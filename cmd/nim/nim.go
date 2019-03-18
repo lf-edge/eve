@@ -318,7 +318,7 @@ func Run() {
 
 	// Look for address and link changes
 	addrChanges := devicenetwork.AddrChangeInit(&nimCtx.DeviceNetworkContext)
-	linkChanges := devicenetwork.LinkChangeInit(&nimCtx.DeviceNetworkContext)
+	linkChanges := devicenetwork.LinkChangeInit()
 
 	// To avoid a race between domainmgr starting and moving this to pciback
 	// and zedagent publishing its DevicePortConfig using those assigned-away
@@ -353,8 +353,7 @@ func Run() {
 			if !ok {
 				log.Fatalf("linkChanges closed?\n")
 			}
-			devicenetwork.LinkChange(&nimCtx.DeviceNetworkContext,
-				change)
+			devicenetwork.LinkChange(change)
 
 		case <-geoTimer.C:
 			log.Debugln("geoTimer at", time.Now())
@@ -440,8 +439,7 @@ func Run() {
 			if !ok {
 				log.Fatalf("linkChanges closed?\n")
 			}
-			devicenetwork.LinkChange(&nimCtx.DeviceNetworkContext,
-				change)
+			devicenetwork.LinkChange(change)
 
 		case <-geoTimer.C:
 			log.Debugln("geoTimer at", time.Now())
