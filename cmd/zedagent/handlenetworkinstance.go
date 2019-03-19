@@ -28,14 +28,7 @@ func handleNetworkInstanceModify(ctxArg interface{}, key string, statusArg inter
 		log.Errorf("Received NetworkInstance error %s\n",
 			status.Error)
 	}
-	switch status.Type {
-	case types.NetworkInstanceTypeCloud:
-		// XXX - Should this really be a special case? Seems like
-		//		can be folded into prepareAndPublishNetworkInstanceInfoMsg
-		handleNetworkVpnInstanceStatusModify(ctx, status)
-	default:
-		prepareAndPublishNetworkInstanceInfoMsg(ctx, status, false)
-	}
+	prepareAndPublishNetworkInstanceInfoMsg(ctx, status, false)
 	log.Infof("handleNetworkInstanceModify(%s) done\n", key)
 }
 
@@ -50,24 +43,8 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 		return
 	}
 	ctx := ctxArg.(*zedagentContext)
-	switch status.Type {
-	case types.NetworkInstanceTypeCloud:
-		// XXX - Should this really be a special case? Seems like
-		//		can be folded into prepareAndPublishNetworkInstanceInfoMsg
-		handleNetworkVpnInstanceStatusDelete(ctx, status)
-	default:
-		prepareAndPublishNetworkInstanceInfoMsg(ctx, status, false)
-	}
+	prepareAndPublishNetworkInstanceInfoMsg(ctx, status, true)
 	log.Infof("handleNetworkInstanceDelete(%s) done\n", key)
-}
-
-func handleNetworkVpnInstanceStatusModify(ctx *zedagentContext,
-	status types.NetworkInstanceStatus) {
-	prepareVpnInstanceInfoMsg(ctx, status, false)
-}
-
-func handleNetworkVpnInstanceStatusDelete(ctx *zedagentContext, status types.NetworkInstanceStatus) {
-	prepareVpnInstanceInfoMsg(ctx, status, true)
 }
 
 func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
@@ -93,9 +70,6 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 		errInfo.Timestamp = errTime
 		info.NetworkErr = append(info.NetworkErr, errInfo)
 	}
-
-	// Always need a lispinfo to satisfy oneof
-	lispInfo := new(zmet.ZInfoLisp)
 
 	if deleted {
 		// XXX When a network instance is deleted it is ideal to
@@ -133,15 +107,13 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 		// For now we just send an empty lispInfo to indicate deletion to cloud.
 		// It can't be omitted since protobuf requires something to satisfy
 		// the oneof.
-		lispStatus := status.LispInfoStatus
-		if lispStatus != nil {
-			fillLispInfo(lispInfo, lispStatus)
+		if status.LispInfoStatus != nil {
+			fillLispInfo(info, status.LispInfoStatus)
 		}
-	}
-
-	info.InfoContent = new(zmet.ZInfoNetworkInstance_Linfo)
-	if x, ok := info.GetInfoContent().(*zmet.ZInfoNetworkInstance_Linfo); ok {
-		x.Linfo = lispInfo
+		// fill Vpn info
+		if status.VpnStatus != nil {
+			fillVpnInfo(info, status.VpnStatus)
+		}
 	}
 
 	infoMsg.InfoContent = new(zmet.ZInfoMsg_Niinfo)
@@ -153,7 +125,9 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	publishInfo(ctx, uuid, infoMsg)
 }
 
-func fillLispInfo(lispInfo *zmet.ZInfoLisp, lispStatus *types.LispInfoStatus) {
+func fillLispInfo(info *zmet.ZInfoNetworkInstance, lispStatus *types.LispInfoStatus) {
+
+	lispInfo := new(zmet.ZInfoLisp)
 
 	lispInfo.ItrCryptoPort = lispStatus.ItrCryptoPort
 	lispInfo.EtrNatPort = lispStatus.EtrNatPort
@@ -196,39 +170,19 @@ func fillLispInfo(lispInfo *zmet.ZInfoLisp, lispStatus *types.LispInfoStatus) {
 		}
 		lispInfo.DecapKeys = append(lispInfo.DecapKeys, decap)
 	}
+
+	info.InfoContent = new(zmet.ZInfoNetworkInstance_Linfo)
+	if x, ok := info.GetInfoContent().(*zmet.ZInfoNetworkInstance_Linfo); ok {
+		x.Linfo = lispInfo
+	}
 }
 
-func prepareVpnInstanceInfoMsg(ctx *zedagentContext, status types.NetworkInstanceStatus, delete bool) {
-	if status.VpnStatus == nil {
-		return
-	}
-	infoMsg := &zmet.ZInfoMsg{}
-	infoType := new(zmet.ZInfoTypes)
-	*infoType = zmet.ZInfoTypes_ZiNetworkInstance
-	infoMsg.DevId = *proto.String(zcdevUUID.String())
-	infoMsg.Ztype = *infoType
+func fillVpnInfo(info *zmet.ZInfoNetworkInstance, vpnStatus *types.ServiceVpnStatus) {
 
-	uuid := status.Key()
-	vpnStatus := status.VpnStatus
-	info := new(zmet.ZInfoNetworkInstance)
-	info.NetworkID = uuid
-	info.NetworkVersion = status.UUIDandVersion.Version
-	info.Displayname = status.DisplayName
-	info.InstType = uint32(status.Type)
-	info.Activated = status.Activated
 	info.SoftwareList = new(zmet.ZInfoSW)
 	info.SoftwareList.SwVersion = vpnStatus.Version
-	info.Activated = status.Activated
 	upTime, _ := ptypes.TimestampProto(vpnStatus.UpTime)
 	info.UpTimeStamp = upTime
-
-	if !status.ErrorTime.IsZero() {
-		errInfo := new(zmet.ErrorInfo)
-		errInfo.Description = status.Error
-		errTime, _ := ptypes.TimestampProto(status.ErrorTime)
-		errInfo.Timestamp = errTime
-		info.NetworkErr = append(info.NetworkErr, errInfo)
-	}
 
 	vpnInfo := new(zmet.ZInfoVpn)
 	vpnInfo.PolicyBased = vpnStatus.PolicyBased
@@ -245,13 +199,6 @@ func prepareVpnInstanceInfoMsg(ctx *zedagentContext, status types.NetworkInstanc
 		if x, ok := info.GetInfoContent().(*zmet.ZInfoNetworkInstance_Vinfo); ok {
 			x.Vinfo = vpnInfo
 		}
-
-		// prapare the final stuff
-		infoMsg.InfoContent = new(zmet.ZInfoMsg_Niinfo)
-		if x, ok := infoMsg.GetInfoContent().(*zmet.ZInfoMsg_Niinfo); ok {
-			x.Niinfo = info
-		}
-		publishInfo(ctx, uuid, infoMsg)
 		return
 	}
 
@@ -279,13 +226,6 @@ func prepareVpnInstanceInfoMsg(ctx *zedagentContext, status types.NetworkInstanc
 	if x, ok := info.GetInfoContent().(*zmet.ZInfoNetworkInstance_Vinfo); ok {
 		x.Vinfo = vpnInfo
 	}
-
-	// prepare the final stuff
-	infoMsg.InfoContent = new(zmet.ZInfoMsg_Niinfo)
-	if x, ok := infoMsg.GetInfoContent().(*zmet.ZInfoMsg_Niinfo); ok {
-		x.Niinfo = info
-	}
-	publishInfo(ctx, uuid, infoMsg)
 }
 
 func handleNetworkInstanceMetricsModify(ctxArg interface{}, key string,
