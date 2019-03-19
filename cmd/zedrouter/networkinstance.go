@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
 	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
@@ -519,6 +520,8 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 
 	switch status.Type {
 	case types.NetworkInstanceTypeCloud:
+		// XXX this must return an error instead of setting the error
+		// so the caller will see the error.
 		vpnCreateForNetworkInstance(ctx, status)
 	default:
 	}
@@ -880,8 +883,8 @@ func getPortIPv4Addr(ctx *zedrouterContext,
 	// XXX Add IPv6 underlay; ignore link-locals.
 	addrs, err := devicenetwork.IfindexToAddrs(ifindex)
 	if err != nil {
-	       log.Warnf("IfIndexToAddrs failed: %s\n", err)
-	       addrs = nil
+		log.Warnf("IfIndexToAddrs failed: %s\n", err)
+		addrs = nil
 	}
 	for _, addr := range addrs {
 		log.Infof("found addr %s\n", addr.IP.String())
@@ -1296,8 +1299,8 @@ func getBridgeServiceIPv4AddrForNetworkInstance(
 	}
 	addrs, err := devicenetwork.IfindexToAddrs(ifindex)
 	if err != nil {
-	       log.Warnf("IfIndexToAddrs failed: %s\n", err)
-	       addrs = nil
+		log.Warnf("IfIndexToAddrs failed: %s\n", err)
+		addrs = nil
 	}
 	for _, addr := range addrs {
 		if addr.IP.To4() == nil {
