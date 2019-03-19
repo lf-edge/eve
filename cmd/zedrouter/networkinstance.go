@@ -529,9 +529,10 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 
 	switch status.Type {
 	case types.NetworkInstanceTypeCloud:
-		// XXX this must return an error instead of setting the error
-		// so the caller will see the error.
-		vpnCreateForNetworkInstance(ctx, status)
+		err := vpnCreateForNetworkInstance(ctx, status)
+		if err != nil {
+			return err
+		}
 	default:
 	}
 	return nil
@@ -1581,47 +1582,35 @@ func networkInstanceAddressType(ctx *zedrouterContext, bridgeName string) int {
 
 // ==== Vpn
 func vpnCreateForNetworkInstance(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) {
+	status *types.NetworkInstanceStatus) error {
 	if status.OpaqueConfig == "" {
-		err := errors.New("Vpn network instance create, invalid config")
-		status.SetError(err)
-		return
+		return errors.New("Vpn network instance create, invalid config")
 	}
-	strongswanNetworkInstanceCreate(ctx, status)
+	return strongswanNetworkInstanceCreate(ctx, status)
 }
 
 func vpnActivateForNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 	if status.OpaqueConfig == "" {
-		err := errors.New("Vpn network instance activate, invalid config")
-		status.SetError(err)
-		return nil
+		return errors.New("Vpn network instance activate, invalid config")
 	}
 	return strongswanNetworkInstanceActivate(ctx, status)
 }
 
 func vpnInactivateForNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
-	if status.OpaqueConfig == "" {
-		err := errors.New("Vpn network instance inactivate, invalid config")
-		status.SetError(err)
-		return
-	}
+
 	strongswanNetworkInstanceInactivate(ctx, status)
 }
 
 func vpnDeleteForNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
-	if status.OpaqueConfig == "" {
-		err := errors.New("Vpn network instance delete, invalid config")
-		status.SetError(err)
-		return
-	}
+
 	strongswanNetworkInstanceDestroy(ctx, status)
 }
 
 func strongswanNetworkInstanceCreate(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) {
+	status *types.NetworkInstanceStatus) error {
 
 	log.Infof("Vpn network instance create: %s\n", status.DisplayName)
 
@@ -1629,23 +1618,22 @@ func strongswanNetworkInstanceCreate(ctx *zedrouterContext,
 	vpnConfig, err := strongSwanConfigGetForNetworkInstance(ctx, status)
 	if err != nil {
 		log.Warnf("Vpn network instance create: %v\n", err.Error())
-		status.SetError(err)
-		return
+		return err
 	}
 
 	// stringify and store in status
 	bytes, err := json.Marshal(vpnConfig)
 	if err != nil {
 		log.Errorf("Vpn network instance create: %v\n", err.Error())
-		status.SetError(err)
-		return
+		return err
 	}
 
 	status.OpaqueStatus = string(bytes)
 	if err := strongSwanVpnCreate(vpnConfig); err != nil {
 		log.Errorf("Vpn network instance create: %v\n", err.Error())
-		status.SetError(err)
+		return err
 	}
+	return nil
 }
 
 func strongswanNetworkInstanceDestroy(ctx *zedrouterContext,
@@ -1655,12 +1643,10 @@ func strongswanNetworkInstanceDestroy(ctx *zedrouterContext,
 	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
 		log.Warnf("Vpn network instance delete: %v\n", err.Error())
-		status.SetError(err)
 	}
 
 	if err := strongSwanVpnDelete(vpnConfig); err != nil {
-		log.Errorf("Vpn network instance delete: %v\n", err.Error())
-		status.SetError(err)
+		log.Warnf("Vpn network instance delete: %v\n", err.Error())
 	}
 }
 
@@ -1671,13 +1657,12 @@ func strongswanNetworkInstanceActivate(ctx *zedrouterContext,
 	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
 	if err != nil {
 		log.Warnf("Vpn network instance activate: %v\n", err.Error())
-		status.SetError(err)
 		return err
 	}
 
 	if err := strongSwanVpnActivate(vpnConfig); err != nil {
 		log.Errorf("Vpn network instance activate: %v\n", err.Error())
-		status.SetError(err)
+		return err
 	}
 	return nil
 }
@@ -1692,7 +1677,6 @@ func strongswanNetworkInstanceInactivate(ctx *zedrouterContext,
 	}
 
 	if err := strongSwanVpnInactivate(vpnConfig); err != nil {
-		log.Errorf("Vpn network instance inactivate: %v\n", err.Error())
-		status.SetError(err)
+		log.Warnf("Vpn network instance inactivate: %v\n", err.Error())
 	}
 }
