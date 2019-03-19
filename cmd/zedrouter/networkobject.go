@@ -432,13 +432,14 @@ func lookupOrAllocateIPv4(ctx *zedrouterContext,
 		status.Key(), status.Dhcp, status.BridgeName,
 		status.Subnet, status.DhcpRange.Start, status.DhcpRange.End)
 
-	if status.Dhcp == types.DT_PASSTHROUGH {
+	if status.Dhcp == types.DT_NONE {
 		// XXX do we have a local IP? If so caller would have found it
 		// Might appear later
 		return "", nil
 	}
 
-	if status.Dhcp != types.DT_SERVER {
+	// XXX fix - this will go away with NetworkObjectConfig going away
+	if status.Dhcp != types.DT_Deprecated {
 		errStr := fmt.Sprintf("Unsupported DHCP type %d for %s",
 			status.Dhcp, status.Key())
 		return "", errors.New(errStr)

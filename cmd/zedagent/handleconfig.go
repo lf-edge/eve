@@ -18,6 +18,7 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zconfig"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
@@ -171,8 +172,11 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 
 	resetLimit := time.Second * time.Duration(globalConfig.ResetIfCloudGoneTime)
 	if timePassed > resetLimit {
-		log.Errorf("Exceeded outage for cloud connectivity by %d seconds- rebooting\n",
+		errStr := fmt.Sprintf("Exceeded outage for cloud connectivity %d by %d seconds; rebooting\n",
+			resetLimit/time.Second,
 			(timePassed-resetLimit)/time.Second)
+		log.Errorf(errStr)
+		agentlog.RebootReason(errStr)
 		shutdownAppsGlobal(getconfigCtx.zedagentCtx)
 		execReboot(true)
 		return true
@@ -180,8 +184,11 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 	if updateInprogress {
 		fallbackLimit := time.Second * time.Duration(globalConfig.FallbackIfCloudGoneTime)
 		if timePassed > fallbackLimit {
-			log.Errorf("Exceeded fallback outage for cloud connectivity by %d seconds- rebooting\n",
+			errStr := fmt.Sprintf("Exceeded fallback outage for cloud connectivity %d by %d seconds; rebooting\n",
+				fallbackLimit/time.Second,
 				(timePassed-fallbackLimit)/time.Second)
+			log.Errorf(errStr)
+			agentlog.RebootReason(errStr)
 			shutdownAppsGlobal(getconfigCtx.zedagentCtx)
 			execReboot(true)
 			return true

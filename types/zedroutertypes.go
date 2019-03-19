@@ -258,7 +258,7 @@ type ProxyConfig struct {
 }
 
 type DhcpConfig struct {
-	Dhcp       DhcpType // If DT_STATIC use below; if DT_NOOP do nothing
+	Dhcp       DhcpType // If DT_STATIC use below; if DT_NONE do nothing
 	AddrSubnet string   // In CIDR e.g., 192.168.1.44/24
 	Gateway    net.IP
 	DomainName string
@@ -784,11 +784,11 @@ type OverlayNetworkStatus struct {
 type DhcpType uint8
 
 const (
-	DT_NOOP        DhcpType = iota
-	DT_STATIC               // Device static config
-	DT_PASSTHROUGH          // App passthrough e.g., to a bridge
-	DT_SERVER               // Local server for app network
-	DT_CLIENT               // Device client on external port
+	DT_NOOP       DhcpType = iota
+	DT_STATIC              // Device static config
+	DT_NONE                // App passthrough e.g., to a bridge
+	DT_Deprecated          // XXX to match .proto value
+	DT_CLIENT              // Device client on external port
 )
 
 type UnderlayNetworkConfig struct {
@@ -847,7 +847,7 @@ const (
 type NetworkObjectConfig struct {
 	UUID            uuid.UUID
 	Type            NetworkType
-	Dhcp            DhcpType // If DT_STATIC or DT_SERVER use below
+	Dhcp            DhcpType // If DT_STATIC or DT_CLIENT use below
 	Subnet          net.IPNet
 	Gateway         net.IP
 	DomainName      string

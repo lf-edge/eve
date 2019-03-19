@@ -14,11 +14,10 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
-
 	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/iptables"
 	"github.com/zededa/go-provision/types"
 )
@@ -93,7 +92,7 @@ func checkPortAvailableForNetworkInstance(
 
 	if allowSharedPort(status) {
 		// Make sure it is configured for IP or will be
-		if portStatus.Dhcp == types.DT_NOOP {
+		if portStatus.Dhcp == types.DT_NONE {
 			errStr := fmt.Sprintf("Port %s not configured for shared use. "+
 				"Cannot be used by Switch Network Instance %s-%s\n",
 				status.Port, status.UUID, status.DisplayName)
@@ -119,7 +118,7 @@ func checkPortAvailableForNetworkInstance(
 		}
 	} else {
 		// Make sure it will not be configured for IP
-		if portStatus.Dhcp != types.DT_NOOP {
+		if portStatus.Dhcp != types.DT_NONE {
 			errStr := fmt.Sprintf("Port %s configured for shared use. "+
 				"Cannot be used by Switch Network Instance %s-%s\n",
 				status.Port, status.UUID, status.DisplayName)
@@ -874,20 +873,23 @@ func getPortIPv4Addr(ctx *zedrouterContext,
 
 	// Get IP address from adapter
 	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Port)
-	link, err := netlink.LinkByName(ifname)
+	ifindex, err := devicenetwork.IfnameToIndex(ifname)
 	if err != nil {
 		return "", err
 	}
 	// XXX Add IPv6 underlay; ignore link-locals.
-	addrs, err := netlink.AddrList(link, syscall.AF_INET)
+	addrs, err := devicenetwork.IfindexToAddrs(ifindex)
 	if err != nil {
-		return "", err
+	       log.Warnf("IfIndexToAddrs failed: %s\n", err)
+	       addrs = nil
 	}
 	for _, addr := range addrs {
 		log.Infof("found addr %s\n", addr.IP.String())
-		return addr.IP.String(), nil
+		if addr.IP.To4() != nil {
+			return addr.IP.String(), nil
+		}
 	}
-	log.Infof("No IP address on %s yet\n", status.Port)
+	log.Infof("No IPv4 address on %s yet\n", status.Port)
 	return "", nil
 }
 
@@ -1103,7 +1105,8 @@ func getIfNameListForPort(
 			//	a device without the corresponding linux interface. We can
 			//	remove this check for ifindex here when the MakeDeviceStatus
 			//	is fixed.
-			ifIndex, err := IfnameToIndex(ifName)
+			// XXX That bug has been fixed. Retest without this code?
+			ifIndex, err := devicenetwork.IfnameToIndex(ifName)
 			if err == nil {
 				log.Infof("ifName %s, ifindex: %d added to filteredList",
 					ifName, ifIndex)
@@ -1287,18 +1290,19 @@ func getBridgeServiceIPv4AddrForNetworkInstance(
 
 	// Get IP address from Port
 	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Port)
-	link, err := netlink.LinkByName(ifname)
+	ifindex, err := devicenetwork.IfnameToIndex(ifname)
 	if err != nil {
 		return "", err
 	}
-	// XXX - We really should maintain these addresses in our own data structures
-	//		and not query netlink. To be cleaned up.
-	// XXX Add IPv6 underlay; ignore link-locals.
-	addrs, err := netlink.AddrList(link, syscall.AF_INET)
+	addrs, err := devicenetwork.IfindexToAddrs(ifindex)
 	if err != nil {
-		return "", err
+	       log.Warnf("IfIndexToAddrs failed: %s\n", err)
+	       addrs = nil
 	}
 	for _, addr := range addrs {
+		if addr.IP.To4() == nil {
+			continue
+		}
 		log.Infof("getBridgeServiceIPv4AddrForNetworkInstance(%s): found addr %s\n",
 			status.DisplayName, addr.IP.String())
 		return addr.IP.String(), nil

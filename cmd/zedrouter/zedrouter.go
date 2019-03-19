@@ -17,7 +17,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/eriknordmark/netlink"
@@ -26,6 +25,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/devicenetwork"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/iptables"
 	"github.com/zededa/go-provision/pidfile"
@@ -331,18 +331,7 @@ func Run() {
 	zedrouterCtx.subLispMetrics = subLispMetrics
 	subLispMetrics.Activate()
 
-	// This function is called from PBR when some non-management port
-	// changes its IP address(es)
-	addrChangeNonMgmtPortFn := func(ifname string) {
-		log.Debugf("addrChangeNonMgmtPortFn(%s) called\n", ifname)
-		// Even if ethN isn't individually assignable, it
-		// could be used for a bridge.
-		maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
-		maybeUpdateBridgeIPAddrForNetworkInstance(
-			&zedrouterCtx, ifname)
-	}
-	routeChanges, addrChanges, linkChanges := PbrInit(
-		&zedrouterCtx, nil, addrChangeNonMgmtPortFn)
+	routeChanges, addrChanges, linkChanges := PbrInit(&zedrouterCtx)
 
 	// Publish network metrics for zedagent every 10 seconds
 	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
@@ -414,12 +403,34 @@ func Run() {
 			if !ok {
 				log.Fatalf("addrChanges closed?\n")
 			}
-			PbrAddrChange(zedrouterCtx.deviceNetworkStatus, change)
+			ifname := PbrAddrChange(zedrouterCtx.deviceNetworkStatus,
+				change)
+			if ifname != "" &&
+				!types.IsMgmtPort(*zedrouterCtx.deviceNetworkStatus,
+					ifname) {
+				log.Debugf("addrChange(%s) not mgmt port\n", ifname)
+				// Even if ethN isn't individually assignable, it
+				// could be used for a bridge.
+				maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
+				maybeUpdateBridgeIPAddrForNetworkInstance(
+					&zedrouterCtx, ifname)
+			}
 		case change, ok := <-linkChanges:
 			if !ok {
 				log.Fatalf("linkChanges closed?\n")
 			}
-			PbrLinkChange(zedrouterCtx.deviceNetworkStatus, change)
+			ifname := PbrLinkChange(zedrouterCtx.deviceNetworkStatus,
+				change)
+			if ifname != "" &&
+				!types.IsMgmtPort(*zedrouterCtx.deviceNetworkStatus,
+					ifname) {
+				log.Debugf("linkChange(%s) not mgmt port\n", ifname)
+				// Even if ethN isn't individually assignable, it
+				// could be used for a bridge.
+				maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
+				maybeUpdateBridgeIPAddrForNetworkInstance(
+					&zedrouterCtx, ifname)
+			}
 		case change, ok := <-routeChanges:
 			if !ok {
 				log.Fatalf("routeChanges closed?\n")
@@ -1201,29 +1212,28 @@ func getSwitchIPv4Addr(ctx *zedrouterContext,
 		return "", nil
 	}
 
-	// XXX - KALYAN - Why are we getting this from netlink?
-	// We should have this in local Data Structures
-	// Get IP address from adapter
 	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Port)
-	link, err := netlink.LinkByName(ifname)
+	ifindex, err := devicenetwork.IfnameToIndex(ifname)
 	if err != nil {
-		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): LinkByName(%s) failed %s",
+		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): IfnameToIndex(%s) failed %s",
 			status.DisplayName, ifname, err)
 		return "", errors.New(errStr)
 	}
-	// XXX Add IPv6 underlay; ignore link-locals.
-	addrs, err := netlink.AddrList(link, syscall.AF_INET)
+	addrs, err := devicenetwork.IfindexToAddrs(ifindex)
 	if err != nil {
-		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): AddrList(%s) failed %s",
-			status.DisplayName, ifname, err)
+		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): IfindexToAddrs(%s, index %d) failed %s",
+			status.DisplayName, ifname, ifindex, err)
 		return "", errors.New(errStr)
 	}
 	for _, addr := range addrs {
 		log.Infof("getSwitchIPv4Addr(%s): found addr %s\n",
 			status.DisplayName, addr.IP.String())
-		return addr.IP.String(), nil
+		// XXX Add IPv6 underlay; ignore link-locals.
+		if addr.IP.To4() != nil {
+			return addr.IP.String(), nil
+		}
 	}
-	log.Infof("getSwitchIPv4Addr(%s): no IP address on %s yet\n",
+	log.Infof("getSwitchIPv4Addr(%s): no IPv4 address on %s yet\n",
 		status.DisplayName, status.Port)
 	return "", nil
 }

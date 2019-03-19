@@ -349,6 +349,9 @@ func Run() {
 
 	// Returns true when done; false when retry
 	selfRegister := func(retryCount int) bool {
+		// XXX add option to get this from a file in /config + override
+		// logic
+		productSerial := hardware.GetProductSerial()
 		tlsConfig, err := zedcloud.GetTlsConfig(serverName, &onboardCert)
 		if err != nil {
 			log.Errorln(err)
@@ -357,6 +360,7 @@ func Run() {
 		zedcloudCtx.TlsConfig = tlsConfig
 		registerCreate := &zmet.ZRegisterMsg{
 			PemCert: []byte(base64.StdEncoding.EncodeToString(deviceCertPem)),
+			Serial:  productSerial,
 		}
 		b, err := proto.Marshal(registerCreate)
 		if err != nil {
