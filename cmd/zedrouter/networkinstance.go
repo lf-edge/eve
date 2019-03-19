@@ -142,10 +142,22 @@ func checkPortAvailableForNetworkInstance(
 	return nil
 }
 
+func isOverlay(netType types.NetworkInstanceType) bool {
+	if netType == types.NetworkInstanceTypeMesh {
+		return true
+	}
+	return false
+}
+
 // doCreateBridge
 //		returns (error, bridgeMac-string)
 func doCreateBridge(bridgeName string, bridgeNum int,
 	status *types.NetworkInstanceStatus) (error, string) {
+	Ipv4Eid := false
+	if isOverlay(status.Type) && status.Subnet.IP != nil {
+		Ipv4Eid = (status.Subnet.IP.To4() != nil)
+		status.Ipv4Eid = Ipv4Eid
+	}
 
 	// Start clean
 	// delete the bridge
@@ -155,7 +167,9 @@ func doCreateBridge(bridgeName string, bridgeNum int,
 	netlink.LinkDel(link)
 
 	// Delete the sister dummy interface also, if any
-	deleteDummyInterface(status)
+	if status.HasEncap {
+		deleteDummyInterface(status)
+	}
 
 	//    ip link add ${bridgeName} type bridge
 	attrs = netlink.NewLinkAttrs()
@@ -225,11 +239,6 @@ func createDummyInterface(status *types.NetworkInstanceStatus) error {
 
 	bridgeName := status.BridgeName
 	bridgeNum := status.BridgeNum
-
-	if status.Subnet.IP != nil {
-		ipv4Eid := (status.Subnet.IP.To4() != nil)
-		status.Ipv4Eid = ipv4Eid
-	}
 
 	sattrs := netlink.NewLinkAttrs()
 	// "s" for sister
