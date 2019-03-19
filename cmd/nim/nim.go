@@ -267,6 +267,9 @@ func Run() {
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
+			// XXX hack; log currently up interfaces
+			ifs := devicenetwork.IfindexGetUp()
+			log.Infof("IfindexGetUp: %v\n", ifs)
 		}
 	}
 
@@ -404,6 +407,9 @@ func Run() {
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
+			// XXX hack; log currently up interfaces
+			ifs := devicenetwork.IfindexGetUp()
+			log.Infof("IfindexGetUp: %v\n", ifs)
 		}
 	}
 	log.Infof("AA initialized")
@@ -439,6 +445,8 @@ func Run() {
 			if !ok {
 				log.Fatalf("linkChanges closed?\n")
 			}
+			// XXX if this returns true we should potentially
+			// trigger testing
 			devicenetwork.LinkChange(change)
 
 		case <-geoTimer.C:
@@ -490,6 +498,9 @@ func Run() {
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
+			// XXX hack; log currently up interfaces
+			ifs := devicenetwork.IfindexGetUp()
+			log.Infof("IfindexGetUp: %v\n", ifs)
 		}
 	}
 }

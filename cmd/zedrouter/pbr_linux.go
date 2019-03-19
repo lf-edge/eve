@@ -120,7 +120,9 @@ func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 		linkType)
 	switch change.Header.Type {
 	case syscall.RTM_NEWLINK:
-		added := devicenetwork.IfindexToNameAdd(ifindex, ifname, linkType)
+		upFlag := devicenetwork.RelevantAndUp(change.Link)
+		added := devicenetwork.IfindexToNameAdd(ifindex, ifname, linkType,
+			upFlag)
 		if added {
 			changed = true
 			if types.IsFreeMgmtPort(*deviceNetworkStatus,

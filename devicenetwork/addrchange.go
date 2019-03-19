@@ -54,6 +54,8 @@ func AddrChange(ctx *DeviceNetworkContext, change netlink.AddrUpdate) {
 		changed = IfindexToAddrsDel(change.LinkIndex,
 			change.LinkAddress)
 	}
+	// XXX could move this to caller and remove ctx arg if we return changed
+	// bool
 	if changed {
 		log.Infof("AddrChange changed %d %s\n",
 			change.LinkIndex, change.LinkAddress.String())
