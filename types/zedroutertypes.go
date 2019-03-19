@@ -1139,6 +1139,7 @@ type NetworkInstanceConfig struct {
 	DhcpRange       IpRange
 	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
 
+	HasEncap bool // Lisp/Vpn, for adjusting pMTU
 	// For other network services - Proxy / Lisp /StrongSwan etc..
 	OpaqueConfig string
 	LispConfig   NetworkInstanceLispConfig
@@ -1547,6 +1548,7 @@ type VpnConnMetrics struct {
 	Name      string // connection name
 	EstTime   uint64 // established time
 	Type      NetworkServiceType
+	NIType    NetworkInstanceType
 	LEndPoint VpnEndPointMetrics
 	REndPoint VpnEndPointMetrics
 }

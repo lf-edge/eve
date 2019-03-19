@@ -7,13 +7,13 @@ package zedrouter
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
@@ -160,18 +160,16 @@ func doCreateBridge(bridgeName string, bridgeNum int,
 	}
 
 	// Start clean
+	// delete the bridge
 	attrs := netlink.NewLinkAttrs()
 	attrs.Name = bridgeName
 	link := &netlink.Bridge{LinkAttrs: attrs}
 	netlink.LinkDel(link)
 
-	// Delete the sister dummy interface also
-	sattrs := netlink.NewLinkAttrs()
-	// "s" for sister
-	dummyIntfName := "s" + bridgeName
-	sattrs.Name = dummyIntfName
-	sLink := &netlink.Dummy{LinkAttrs: sattrs}
-	netlink.LinkDel(sLink)
+	// Delete the sister dummy interface also, if any
+	if status.HasEncap {
+		deleteDummyInterface(status)
+	}
 
 	//    ip link add ${bridgeName} type bridge
 	attrs = netlink.NewLinkAttrs()
@@ -195,67 +193,15 @@ func doCreateBridge(bridgeName string, bridgeNum int,
 		return errors.New(errStr), ""
 	}
 
-	// For the case of Lisp networks, we route all traffic coming from
+	// For the case of Lisp/Vpn networks, we route all traffic coming from
 	// the bridge to a dummy interface with MTU 1280. This is done to
 	// get bigger packets fragmented and also to have the kernel generate
 	// ICMP packet too big for path MTU discovery before being captured by
-	// lisp dataplane.
-	if status.Type == types.NetworkInstanceTypeMesh {
-		sattrs = netlink.NewLinkAttrs()
-		sattrs.Name = dummyIntfName
-		slinkMac := fmt.Sprintf("00:16:3e:06:01:%02x", bridgeNum)
-		hw, err = net.ParseMAC(slinkMac)
-		if err != nil {
-			log.Fatal("doNetworkCreate: ParseMAC failed: ", slinkMac, err)
-		}
-		sattrs.HardwareAddr = hw
-		// 1280 gives us a comfortable buffer for lisp encapsulation
-		sattrs.MTU = 1280
-		slink := &netlink.Dummy{LinkAttrs: sattrs}
-		if err := netlink.LinkAdd(slink); err != nil {
-			errStr := fmt.Sprintf("doNetworkCreate: LinkAdd on %s failed: %s",
-				dummyIntfName, err)
-			return errors.New(errStr), ""
-		}
-
-		// ip link set ${dummy-interface} up
-		if err := netlink.LinkSetUp(slink); err != nil {
-			errStr := fmt.Sprintf("doNetworkCreate: LinkSetUp on %s failed: %s",
-				dummyIntfName, err)
-			return errors.New(errStr), ""
-		}
-
-		// Turn ARP off on our dummy link
-		if err := netlink.LinkSetARPOff(slink); err != nil {
-			errStr := fmt.Sprintf("doNetworkCreate: LinkSetARPOff on %s failed: %s",
-				dummyIntfName, err)
-			return errors.New(errStr), ""
-		}
-
-		var destAddr string
-		if status.Ipv4Eid {
-			destAddr = status.Subnet.String()
-		} else {
-			destAddr = "fd00::/8"
-		}
-		_, ipnet, err := net.ParseCIDR(destAddr)
-		if err != nil {
-			errStr := fmt.Sprintf("doNetworkCreate: ParseCIDR of %s failed",
-				status.Subnet.String())
-			return errors.New(errStr), ""
-		}
-		iifIndex := link.Attrs().Index
-		oifIndex := slink.Attrs().Index
-		err = AddOverlayRuleAndRoute(bridgeName, iifIndex, oifIndex, ipnet)
-		if err != nil {
-			errStr := fmt.Sprintf(
-				"doNetworkCreate: Lisp IP rule and route addition failed for bridge %s: %s",
-				bridgeName, err)
-			return errors.New(errStr), ""
-		}
+	// lisp dataplane/other network elements
+	if status.HasEncap {
+		err = createDummyInterface(status)
 	}
-
-	return nil, bridgeMac
+	return err, bridgeMac
 }
 
 func networkInstanceBridgeDelete(
@@ -264,23 +210,13 @@ func networkInstanceBridgeDelete(
 	// When bridge and sister interfaces are deleted, code in pbr.go
 	// takes care of deleting the corresponding route tables and ip rules.
 
-	bridgeName := status.BridgeName
-	switch status.IpType {
-	case types.AddressTypeCryptoIPV4:
-		fallthrough
-	case types.AddressTypeCryptoIPV6:
-		// "s" for sister
-		dummyIntfName := "s" + bridgeName
-
-		// Delete the sister dummy interface also
-		sattrs := netlink.NewLinkAttrs()
-		sattrs.Name = dummyIntfName
-		sLink := &netlink.Dummy{LinkAttrs: sattrs}
-		netlink.LinkDel(sLink)
+	// delete the sister interface
+	if status.HasEncap {
+		deleteDummyInterface(status)
 	}
 
 	attrs := netlink.NewLinkAttrs()
-	attrs.Name = bridgeName
+	attrs.Name = status.BridgeName
 	link := &netlink.Bridge{LinkAttrs: attrs}
 	// Remove link and associated addresses
 	netlink.LinkDel(link)
@@ -290,6 +226,96 @@ func networkInstanceBridgeDelete(
 		status.BridgeNum = 0
 		bridgeNumFree(ctx, status.UUID)
 	}
+}
+
+func isNetworkInstanceCloud(status *types.NetworkInstanceStatus) bool {
+	if status.Type == types.NetworkInstanceTypeCloud {
+		return true
+	}
+	return false
+}
+
+func createDummyInterface(status *types.NetworkInstanceStatus) error {
+
+	bridgeName := status.BridgeName
+	bridgeNum := status.BridgeNum
+
+	sattrs := netlink.NewLinkAttrs()
+	// "s" for sister
+	dummyIntfName := "s" + bridgeName
+	sattrs.Name = dummyIntfName
+
+	slinkMac := fmt.Sprintf("00:16:3e:06:01:%02x", bridgeNum)
+	hw, err := net.ParseMAC(slinkMac)
+	if err != nil {
+		log.Fatal("doNetworkCreate: ParseMAC failed: ", slinkMac, err)
+	}
+	sattrs.HardwareAddr = hw
+	// 1280 gives us a comfortable buffer for lisp encapsulation
+	sattrs.MTU = 1280
+	slink := &netlink.Dummy{LinkAttrs: sattrs}
+	if err := netlink.LinkAdd(slink); err != nil {
+		errStr := fmt.Sprintf("doNetworkCreate: LinkAdd on %s failed: %s",
+			dummyIntfName, err)
+		return errors.New(errStr)
+	}
+
+	// ip link set ${dummy-interface} up
+	if err := netlink.LinkSetUp(slink); err != nil {
+		errStr := fmt.Sprintf("doNetworkCreate: LinkSetUp on %s failed: %s",
+			dummyIntfName, err)
+		return errors.New(errStr)
+	}
+
+	// Turn ARP off on our dummy link
+	if err := netlink.LinkSetARPOff(slink); err != nil {
+		errStr := fmt.Sprintf("doNetworkCreate: LinkSetARPOff on %s failed: %s",
+			dummyIntfName, err)
+		return errors.New(errStr)
+	}
+
+	var destAddr string
+	if status.Ipv4Eid || isNetworkInstanceCloud(status) {
+		destAddr = status.Subnet.String()
+	} else {
+		destAddr = "fd00::/8"
+	}
+	_, ipnet, err := net.ParseCIDR(destAddr)
+	if err != nil {
+		errStr := fmt.Sprintf("doNetworkCreate: ParseCIDR of %s failed",
+			status.Subnet.String())
+		return errors.New(errStr)
+	}
+
+	// get bridge index
+	attrs := netlink.NewLinkAttrs()
+	attrs.Name = bridgeName
+	link := &netlink.Bridge{LinkAttrs: attrs}
+	iifIndex := link.Attrs().Index
+
+	// get link index
+	oifIndex := slink.Attrs().Index
+	err = AddOverlayRuleAndRoute(bridgeName, iifIndex, oifIndex, ipnet)
+	if err != nil {
+		errStr := fmt.Sprintf(
+			"doNetworkCreate: Lisp IP rule and route addition failed for bridge %s: %s",
+			bridgeName, err)
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+func deleteDummyInterface(status *types.NetworkInstanceStatus) {
+
+	bridgeName := status.BridgeName
+	// "s" for sister
+	dummyIntfName := "s" + bridgeName
+
+	// Delete the sister dummy interface also
+	sattrs := netlink.NewLinkAttrs()
+	sattrs.Name = dummyIntfName
+	sLink := &netlink.Dummy{LinkAttrs: sattrs}
+	netlink.LinkDel(sLink)
 }
 
 func doNetworkInstanceBridgeAclsDelete(
@@ -399,8 +425,7 @@ func handleNetworkInstanceCreate(
 		err := doNetworkInstanceActivate(ctx, &status)
 		if err != nil {
 			log.Errorf("doNetworkInstanceActivate(%s) failed: %s\n", key, err)
-			status.Error = err.Error()
-			status.ErrorTime = time.Now()
+			status.SetError(err)
 		} else {
 			log.Infof("Activated network instance %s %s", status.UUID, status.DisplayName)
 			status.Activated = true
@@ -500,6 +525,15 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		// advertize as default router? Might we need lower
 		// radvd preference if isolated local network?
 		restartRadvdWithNewConfig(bridgeName)
+	}
+
+	switch status.Type {
+	case types.NetworkInstanceTypeCloud:
+		err := vpnCreateForNetworkInstance(ctx, status)
+		if err != nil {
+			return err
+		}
+	default:
 	}
 	return nil
 }
@@ -1050,6 +1084,8 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 		}
 	case types.NetworkInstanceTypeLocal:
 		err = natActivateForNetworkInstance(ctx, status)
+	case types.NetworkInstanceTypeCloud:
+		err = vpnActivateForNetworkInstance(ctx, status)
 	case types.NetworkInstanceTypeMesh:
 		err = lispActivateForNetworkInstance(ctx, status)
 	default:
@@ -1114,7 +1150,13 @@ func doNetworkInstanceInactivate(
 
 	bridgeInactivateforNetworkInstance(ctx, status)
 	natInactivateForNetworkInstance(ctx, status)
-	lispInactivateForNetworkInstance(ctx, status)
+	switch status.Type {
+	case types.NetworkInstanceTypeCloud:
+		vpnInactivateForNetworkInstance(ctx, status)
+	case types.NetworkInstanceTypeMesh:
+		lispInactivateForNetworkInstance(ctx, status)
+	}
+
 	return
 }
 
@@ -1131,6 +1173,8 @@ func doNetworkInstanceDelete(
 		// Nothing to do.
 	case types.NetworkInstanceTypeLocal:
 		natDeleteForNetworkInstance(status)
+	case types.NetworkInstanceTypeCloud:
+		vpnDeleteForNetworkInstance(ctx, status)
 	default:
 		log.Errorf("NetworkInstance(%s-%s): Type %d not yet supported",
 			status.DisplayName, status.UUID, status.Type)
@@ -1203,6 +1247,13 @@ func createNetworkInstanceMetrics(ctx *zedrouterContext,
 
 	netMetrics.MetricList = []types.NetworkMetric{*netMetric}
 	niMetrics.NetworkMetrics = netMetrics
+	switch status.Type {
+	case types.NetworkInstanceTypeCloud:
+		if strongSwanVpnStatusGetForNetworkInstance(ctx, status, &niMetrics) {
+			publishNetworkInstanceStatus(ctx, status)
+		}
+	default:
+	}
 
 	return &niMetrics
 }
@@ -1274,9 +1325,9 @@ func getBridgeServiceIPv4AddrForNetworkInstance(
 	return "", nil
 }
 
-func publishNetworkInstanceStatus(
-	ctx *zedrouterContext,
+func publishNetworkInstanceStatus(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
+
 	pub := ctx.pubNetworkInstanceStatus
 	pub.Publish(status.Key(), &status)
 }
@@ -1527,4 +1578,105 @@ func networkInstanceAddressType(ctx *zedrouterContext, bridgeName string) int {
 		}
 	}
 	return ipVer
+}
+
+// ==== Vpn
+func vpnCreateForNetworkInstance(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) error {
+	if status.OpaqueConfig == "" {
+		return errors.New("Vpn network instance create, invalid config")
+	}
+	return strongswanNetworkInstanceCreate(ctx, status)
+}
+
+func vpnActivateForNetworkInstance(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) error {
+	if status.OpaqueConfig == "" {
+		return errors.New("Vpn network instance activate, invalid config")
+	}
+	return strongswanNetworkInstanceActivate(ctx, status)
+}
+
+func vpnInactivateForNetworkInstance(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) {
+
+	strongswanNetworkInstanceInactivate(ctx, status)
+}
+
+func vpnDeleteForNetworkInstance(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) {
+
+	strongswanNetworkInstanceDestroy(ctx, status)
+}
+
+func strongswanNetworkInstanceCreate(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) error {
+
+	log.Infof("Vpn network instance create: %s\n", status.DisplayName)
+
+	// parse and structure the config
+	vpnConfig, err := strongSwanConfigGetForNetworkInstance(ctx, status)
+	if err != nil {
+		log.Warnf("Vpn network instance create: %v\n", err.Error())
+		return err
+	}
+
+	// stringify and store in status
+	bytes, err := json.Marshal(vpnConfig)
+	if err != nil {
+		log.Errorf("Vpn network instance create: %v\n", err.Error())
+		return err
+	}
+
+	status.OpaqueStatus = string(bytes)
+	if err := strongSwanVpnCreate(vpnConfig); err != nil {
+		log.Errorf("Vpn network instance create: %v\n", err.Error())
+		return err
+	}
+	return nil
+}
+
+func strongswanNetworkInstanceDestroy(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) {
+
+	log.Infof("Vpn network instance delete: %s\n", status.DisplayName)
+	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
+	if err != nil {
+		log.Warnf("Vpn network instance delete: %v\n", err.Error())
+	}
+
+	if err := strongSwanVpnDelete(vpnConfig); err != nil {
+		log.Warnf("Vpn network instance delete: %v\n", err.Error())
+	}
+}
+
+func strongswanNetworkInstanceActivate(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) error {
+
+	log.Infof("Vpn network instance activate: %s\n", status.DisplayName)
+	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
+	if err != nil {
+		log.Warnf("Vpn network instance activate: %v\n", err.Error())
+		return err
+	}
+
+	if err := strongSwanVpnActivate(vpnConfig); err != nil {
+		log.Errorf("Vpn network instance activate: %v\n", err.Error())
+		return err
+	}
+	return nil
+}
+
+func strongswanNetworkInstanceInactivate(ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) {
+
+	log.Infof("Vpn network instance inactivate: %s\n", status.DisplayName)
+	vpnConfig, err := strongSwanVpnStatusParse(status.OpaqueStatus)
+	if err != nil {
+		log.Warnf("Vpn network instance inactivate: %v\n", err.Error())
+	}
+
+	if err := strongSwanVpnInactivate(vpnConfig); err != nil {
+		log.Warnf("Vpn network instance inactivate: %v\n", err.Error())
+	}
 }
