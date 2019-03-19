@@ -184,7 +184,9 @@ func doCreateBridge(bridgeName string, bridgeNum int,
 	// get bigger packets fragmented and also to have the kernel generate
 	// ICMP packet too big for path MTU discovery before being captured by
 	// lisp dataplane/other network elements
-	err = createDummyInterface(status)
+	if status.HasEncap {
+		err = createDummyInterface(status)
+	}
 	return err, bridgeMac
 }
 
@@ -195,7 +197,9 @@ func networkInstanceBridgeDelete(
 	// takes care of deleting the corresponding route tables and ip rules.
 
 	// delete the sister interface
-	deleteDummyInterface(status)
+	if status.HasEncap {
+		deleteDummyInterface(status)
+	}
 
 	attrs := netlink.NewLinkAttrs()
 	attrs.Name = status.BridgeName
@@ -210,11 +214,14 @@ func networkInstanceBridgeDelete(
 	}
 }
 
-func createDummyInterface(status *types.NetworkInstanceStatus) error {
-
-	if !status.NeedMtuRefit {
-		return nil
+func isNetworkInstanceCloud(status *types.NetworkInstanceStatus) bool {
+	if status.Type == types.NetworkInstanceTypeCloud {
+		return true
 	}
+	return false
+}
+
+func createDummyInterface(status *types.NetworkInstanceStatus) error {
 
 	bridgeName := status.BridgeName
 	bridgeNum := status.BridgeNum
@@ -259,7 +266,7 @@ func createDummyInterface(status *types.NetworkInstanceStatus) error {
 	}
 
 	var destAddr string
-	if status.Ipv4Eid {
+	if status.Ipv4Eid || isNetworkInstanceCloud(status) {
 		destAddr = status.Subnet.String()
 	} else {
 		destAddr = "fd00::/8"
@@ -291,9 +298,6 @@ func createDummyInterface(status *types.NetworkInstanceStatus) error {
 
 func deleteDummyInterface(status *types.NetworkInstanceStatus) {
 
-	if !status.NeedMtuRefit {
-		return
-	}
 	bridgeName := status.BridgeName
 	// "s" for sister
 	dummyIntfName := "s" + bridgeName
@@ -1562,8 +1566,7 @@ func networkInstanceAddressType(ctx *zedrouterContext, bridgeName string) int {
 // ==== Vpn
 func vpnCreateForNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
-	if status.OpaqueConfig == "" ||
-		status.OpaqueConfigType != types.OpaqueConfigTypeVpn {
+	if status.OpaqueConfig == "" {
 		err := errors.New("Vpn network instance create, invalid config")
 		status.SetError(err)
 		return
@@ -1573,8 +1576,7 @@ func vpnCreateForNetworkInstance(ctx *zedrouterContext,
 
 func vpnActivateForNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
-	if status.OpaqueConfig == "" ||
-		status.OpaqueConfigType != types.OpaqueConfigTypeVpn {
+	if status.OpaqueConfig == "" {
 		err := errors.New("Vpn network instance activate, invalid config")
 		status.SetError(err)
 		return nil
@@ -1584,8 +1586,7 @@ func vpnActivateForNetworkInstance(ctx *zedrouterContext,
 
 func vpnInactivateForNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
-	if status.OpaqueConfig == "" ||
-		status.OpaqueConfigType != types.OpaqueConfigTypeVpn {
+	if status.OpaqueConfig == "" {
 		err := errors.New("Vpn network instance inactivate, invalid config")
 		status.SetError(err)
 		return
@@ -1595,8 +1596,7 @@ func vpnInactivateForNetworkInstance(ctx *zedrouterContext,
 
 func vpnDeleteForNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
-	if status.OpaqueConfig == "" ||
-		status.OpaqueConfigType != types.OpaqueConfigTypeVpn {
+	if status.OpaqueConfig == "" {
 		err := errors.New("Vpn network instance delete, invalid config")
 		status.SetError(err)
 		return

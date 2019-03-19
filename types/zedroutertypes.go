@@ -1114,16 +1114,6 @@ const (
 	AddressTypeLast       AddressType = 255
 )
 
-type OpaqueConfigType int32
-
-const (
-	OpaqueConfigTypeNone  OpaqueConfigType = 0 // None
-	OpaqueConfigTypeVpn   OpaqueConfigType = 1 // Strongswan VPN
-	OpaqueConfigTypeLisp  OpaqueConfigType = 2 // Lisp
-	OpaqueConfigTypeProxy OpaqueConfigType = 3 // Proxy
-	OpaqueConfigTypeLast  OpaqueConfigType = 255
-)
-
 // NetworkInstanceConfig
 //		Config Object for NetworkInstance
 // 		Extracted from the protobuf NetworkInstanceConfig
@@ -1149,8 +1139,7 @@ type NetworkInstanceConfig struct {
 	DhcpRange       IpRange
 	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
 
-	NeedMtuRefit     bool // Lisp/Vpn, reduce MTU for Encap
-	OpaqueConfigType OpaqueConfigType
+	HasEncap bool // Lisp/Vpn, for adjusting pMTU
 	// For other network services - Proxy / Lisp /StrongSwan etc..
 	OpaqueConfig string
 	LispConfig   NetworkInstanceLispConfig

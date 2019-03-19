@@ -394,6 +394,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		// XXX zedcloud should send First/None type for switch
 		// network instances
 		networkInstanceConfig.IpType = types.AddressType(apiConfigEntry.IpType)
+
 		switch networkInstanceConfig.Type {
 		case types.NetworkInstanceTypeSwitch:
 			if networkInstanceConfig.IpType != types.AddressTypeNone {
@@ -404,11 +405,52 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 					types.AddressTypeNone)
 				networkInstanceConfig.IpType = types.AddressTypeNone
 			}
+			ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
+				&networkInstanceConfig)
 
-		case types.NetworkInstanceTypeLocal,
-			types.NetworkInstanceTypeCloud,
-			types.NetworkInstanceTypeMesh:
+		case types.NetworkInstanceTypeMesh:
+			// mark HasEncap as true, for special MTU handling
+			networkInstanceConfig.HasEncap = true
+			// if not cryptoIPv4/IPv6 type, flag it
+			if networkInstanceConfig.IpType != types.AddressTypeCryptoIPV4 && networkInstanceConfig.IpType != types.AddressTypeCryptoIPV6 {
+				log.Errorf("Network instance %s %s, %v not crypto type\n",
+					networkInstanceConfig.UUID.String(),
+					networkInstanceConfig.DisplayName,
+					networkInstanceConfig.IpType)
+			}
+			populateLispConfig(apiConfigEntry, &networkInstanceConfig)
 
+		// FIXME:XXX set encap flag, when the dummy interface
+		// is tested for the VPN
+		case types.NetworkInstanceTypeCloud:
+			// if opaque config not set, flag it
+			if apiConfigEntry.Cfg == nil {
+				log.Errorf("Network instance %s %s, %v, opaque not set\n",
+					networkInstanceConfig.UUID.String(),
+					networkInstanceConfig.DisplayName,
+					networkInstanceConfig.IpType)
+			} else {
+				ocfg := apiConfigEntry.Cfg
+				if ocfg.Type != zconfig.ZNetworkOpaqueConfigType_ZNetOConfigVPN {
+					log.Errorf("Network instance %s %s, %v invalid config \n",
+						networkInstanceConfig.UUID.String(),
+						networkInstanceConfig.DisplayName,
+						networkInstanceConfig.IpType)
+				}
+				networkInstanceConfig.OpaqueConfig = ocfg.Oconfig
+			}
+			// if not IPv4 type, flag it
+			if networkInstanceConfig.IpType != types.AddressTypeIPV4 {
+				log.Errorf("Network instance %s %s, %v not IPv4 type\n",
+					networkInstanceConfig.UUID.String(),
+					networkInstanceConfig.DisplayName,
+					networkInstanceConfig.IpType)
+			}
+		}
+
+		// other than switch-type(l2)
+		// if ip type is l3, do the needful
+		if networkInstanceConfig.IpType != types.AddressTypeNone {
 			parseIpspecForNetworkInstanceConfig(apiConfigEntry.Ip,
 				&networkInstanceConfig)
 
@@ -416,67 +458,36 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 				&networkInstanceConfig)
 		}
 
-		if apiConfigEntry.Cfg != nil {
-			ocfg := apiConfigEntry.Cfg
-			switch ocfg.Type {
-			case zconfig.ZNetworkOpaqueConfigType_ZNetOConfigVPN:
-				// if not Cloud, flag it
-				if networkInstanceConfig.Type != types.NetworkInstanceTypeCloud {
-					log.Errorf("Network instance %s %s, %v not Cloud Type\n",
-						networkInstanceConfig.UUID.String(),
-						networkInstanceConfig.DisplayName,
-						networkInstanceConfig.IpType)
-				}
-				// if not IPv4 type, flag it
-				if networkInstanceConfig.IpType != types.AddressTypeIPV4 {
-					log.Errorf("Network instance %s %s, %v not IPv4 type\n",
-						networkInstanceConfig.UUID.String(),
-						networkInstanceConfig.DisplayName,
-						networkInstanceConfig.IpType)
-				}
-				networkInstanceConfig.NeedMtuRefit = true
-				networkInstanceConfig.OpaqueConfigType = types.OpaqueConfigTypeVpn
-			case zconfig.ZNetworkOpaqueConfigType_ZNetOConfigLisp:
-				// if not Mesh, flag it
-				if networkInstanceConfig.Type != types.NetworkInstanceTypeMesh {
-					log.Errorf("Network instance %s %s, %v not Mesh Type\n",
-						networkInstanceConfig.UUID.String(),
-						networkInstanceConfig.DisplayName,
-						networkInstanceConfig.IpType)
-				}
-				networkInstanceConfig.OpaqueConfigType = types.OpaqueConfigTypeLisp
-			}
-			networkInstanceConfig.OpaqueConfig = ocfg.Oconfig
-		}
-
-		lispConfig := apiConfigEntry.Cfg.LispConfig
-		if lispConfig != nil {
-			mapServers := []types.MapServer{}
-			for _, ms := range lispConfig.LispMSs {
-				mapServer := types.MapServer{
-					ServiceType: types.MapServerType(ms.ZsType),
-					NameOrIp:    ms.NameOrIp,
-					Credential:  ms.Credential,
-				}
-				mapServers = append(mapServers, mapServer)
-			}
-			eidPrefix := net.IP(lispConfig.Allocationprefix)
-
-			// Populate service Lisp config that should be sent to zedrouter
-			networkInstanceConfig.LispConfig = types.NetworkInstanceLispConfig{
-				MapServers:    mapServers,
-				IID:           lispConfig.LispInstanceId,
-				Allocate:      lispConfig.Allocate,
-				ExportPrivate: lispConfig.Exportprivate,
-				EidPrefix:     eidPrefix,
-				EidPrefixLen:  lispConfig.Allocationprefixlen,
-				Experimental:  lispConfig.Experimental,
-			}
-			networkInstanceConfig.NeedMtuRefit = true
-		}
-
 		ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
 			&networkInstanceConfig)
+	}
+}
+
+func populateLispConfig(apiConfigEntry *zconfig.NetworkInstanceConfig,
+	networkInstanceConfig *types.NetworkInstanceConfig) {
+	lispConfig := apiConfigEntry.Cfg.LispConfig
+	if lispConfig != nil {
+		mapServers := []types.MapServer{}
+		for _, ms := range lispConfig.LispMSs {
+			mapServer := types.MapServer{
+				ServiceType: types.MapServerType(ms.ZsType),
+				NameOrIp:    ms.NameOrIp,
+				Credential:  ms.Credential,
+			}
+			mapServers = append(mapServers, mapServer)
+		}
+		eidPrefix := net.IP(lispConfig.Allocationprefix)
+
+		// Populate service Lisp config that should be sent to zedrouter
+		networkInstanceConfig.LispConfig = types.NetworkInstanceLispConfig{
+			MapServers:    mapServers,
+			IID:           lispConfig.LispInstanceId,
+			Allocate:      lispConfig.Allocate,
+			ExportPrivate: lispConfig.Exportprivate,
+			EidPrefix:     eidPrefix,
+			EidPrefixLen:  lispConfig.Allocationprefixlen,
+			Experimental:  lispConfig.Experimental,
+		}
 	}
 }
 
