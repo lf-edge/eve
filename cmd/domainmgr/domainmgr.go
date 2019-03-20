@@ -2333,7 +2333,7 @@ func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 			}
 			found, unique := types.PciLongToUnique(long)
 			if !found {
-				errStr := fmt.Sprintf("IoBundle(%d %s %v) %s/%s unique %s not foun\n",
+				errStr := fmt.Sprintf("IoBundle(%d %s %v) %s unique %s not foun\n",
 					ib.Type, ib.Name, ib.Members,
 					long, ib.MUnique[i])
 				return errors.New(errStr)
