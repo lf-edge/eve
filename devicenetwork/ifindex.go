@@ -139,10 +139,12 @@ func RelevantLastResort(link netlink.Link) bool {
 	linkFlags := attrs.Flags
 	loopbackFlag := (linkFlags & net.FlagLoopback) != 0
 	broadcastFlag := (linkFlags & net.FlagBroadcast) != 0
+	upFlag := (attrs.OperState == netlink.OperUp)
 	if linkType == "device" && !loopbackFlag && broadcastFlag &&
 		attrs.MasterIndex == 0 {
 
-		log.Infof("Relevant %s\n", ifname)
+		log.Infof("Relevant %s up %t operState %s\n",
+			ifname, upFlag, attrs.OperState.String())
 		return true
 	} else {
 		return false
