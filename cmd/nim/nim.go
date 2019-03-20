@@ -279,16 +279,6 @@ func Run() {
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
-			// XXX hack; shouldn't this be driven by linkChange or addrChange?
-			// XXX missing LTE??
-			ifs := devicenetwork.IfindexGetLastResort()
-			if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
-				log.Infof("XXX IfindexGetLastResort: updated to %v\n", ifs)
-				nimCtx.fallbackPorts = ifs
-				if nimCtx.networkFallbackAnyEth {
-					updateFallbackAnyEth(&nimCtx)
-				}
-			}
 		}
 	}
 
@@ -435,15 +425,6 @@ func Run() {
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
-			// XXX hack; log currently up interfaces
-			ifs := devicenetwork.IfindexGetLastResort()
-			if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
-				log.Infof("XXX IfindexGetLastResort: updated to %v\n", ifs)
-				nimCtx.fallbackPorts = ifs
-				if nimCtx.networkFallbackAnyEth {
-					updateFallbackAnyEth(&nimCtx)
-				}
-			}
 		}
 	}
 	log.Infof("AA initialized")
@@ -541,15 +522,6 @@ func Run() {
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
-			// XXX hack; log currently up interfaces
-			ifs := devicenetwork.IfindexGetLastResort()
-			if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
-				log.Infof("XXX IfindexGetLastResort: updated to %v\n", ifs)
-				nimCtx.fallbackPorts = ifs
-				if nimCtx.networkFallbackAnyEth {
-					updateFallbackAnyEth(&nimCtx)
-				}
-			}
 		}
 	}
 }
