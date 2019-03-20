@@ -126,6 +126,9 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 }
 
 func UpdateLastResortPortConfig(ctx *DeviceNetworkContext, ports []string) {
+	if ports == nil || len(ports) == 0 {
+		return
+	}
 	config := LastResortDevicePortConfig(ports)
 	config.Key = "lastresort"
 	ctx.PubDevicePortConfig.Publish("lastresort", config)
@@ -205,9 +208,9 @@ func VerifyPending(pending *DPCPending,
 				"have any usable IP addresses", pending.PendDNS)
 			return DPC_WAIT
 		} else {
-			errStr := fmt.Sprintf("DHCP could not resolve any usable "+
-				"IP addresses for the pending DNS %v", pending.PendDNS)
-			log.Infof("VerifyPending: %s\n", errStr)
+			errStr := "DHCP could not resolve any usable " +
+				"IP addresses for the pending network config"
+			log.Infof("VerifyPending: %s for %+v\n", errStr, pending.PendDNS)
 			pending.PendDPC.LastFailed = time.Now()
 			pending.PendDPC.LastError = errStr
 			return DPC_FAIL
