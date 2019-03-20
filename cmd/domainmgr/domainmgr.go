@@ -864,11 +864,17 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 				ib.UsedByUUID, adapter.Type, adapter.Name,
 				status.DomainName)
 		}
-		if ib.Lookup && ib.PciShort == "" {
-			log.Fatalf("doAssignIoAdaptersToDomain lookup missing: %d %s for %s\n",
+		if ib.Type != types.IoUSB {
+			continue
+		}
+		if ib.Lookup {
+			log.Fatalf("doAssignIoAdaptersToDomain lookup for USB: %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
-		if ctx.usbAccess && ib.Type == types.IoUSB && !ib.IsPCIBack && ib.PciShort != "" {
+		if ib.PciShort == "" {
+			log.Warnf("doAssignIoAdaptersToDomain missing PciShort: %d %s for %s\n",
+				adapter.Type, adapter.Name, status.DomainName)
+		} else if ctx.usbAccess && !ib.IsPCIBack {
 			log.Infof("Assigning %s (%s %s) to %s\n",
 				ib.Name, ib.PciLong, ib.PciShort,
 				status.DomainName)
@@ -1129,13 +1135,17 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 				status.DomainName)
 			continue
 		}
-		if ib.Lookup && ib.PciShort == "" {
-			log.Fatalf("doInactivate lookup missing: %d %s for %s\n",
+		if ib.Type != types.IoUSB {
+			continue
+		}
+		if ib.Lookup {
+			log.Fatalf("doInactivate lookup for USB: %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
-		if ctx.usbAccess && ib.Type == types.IoUSB && ib.IsPCIBack &&
-			ib.PciShort != "" {
-
+		if ib.PciShort == "" {
+			log.Warnf("doInactivate lookup missing: %d %s for %s\n",
+				adapter.Type, adapter.Name, status.DomainName)
+		} else if ctx.usbAccess && ib.IsPCIBack {
 			log.Infof("Removing %s (%s %s) from %s\n",
 				ib.Name, ib.PciLong, ib.PciShort,
 				status.DomainName)
@@ -1226,7 +1236,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			}
 		}
 
-		if ib.Lookup && ib.PciShort == "" {
+		if ib.Lookup && ib.MPciShort == nil {
 			log.Fatalf("configToStatus lookup missing: %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
@@ -1423,11 +1433,15 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 				ib.UsedByUUID, adapter.Type, adapter.Name,
 				status.DomainName)
 		}
-		if ib.Lookup && ib.PciShort == "" {
-			log.Fatalf("configToXencfg lookup missing: %d %s\n",
-				ib.Type, ib.Name)
-		}
-		if ib.PciShort != "" {
+		if ib.Lookup {
+			if ib.MPciShort == nil {
+				log.Fatalf("configToXencfg lookup missing: %d %s\n",
+					ib.Type, ib.Name)
+			}
+			for _, short := range ib.MPciShort {
+				pciAssignments = append(pciAssignments, short)
+			}
+		} else if ib.PciShort != "" {
 			pciAssignments = append(pciAssignments, ib.PciShort)
 		} else {
 			log.Infof("Adding io adapter config <%s>\n", ib.XenCfg)
@@ -2169,7 +2183,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 				ib.Type, ib.Name, ib.Members)
 			ib.IsPort = true
 			if ib.IsPCIBack {
-				log.Infof("checkAndSetIoBundle(%d %s %v) take back fro pciback\n",
+				log.Infof("checkAndSetIoBundle(%d %s %v) take back from pciback\n",
 					ib.Type, ib.Name, ib.Members)
 				err := pciAssignableRemove(ib.PciLong)
 				if err != nil {
@@ -2178,6 +2192,12 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 				}
 				ib.IsPCIBack = false
 				publishAssignableAdapters = true
+				// XXX check if it is back?
+				_, _, err = types.IoBundleToPci(ib)
+				if err != nil {
+					log.Warnf("checkAndSetIoBundle(%d %s %v) gone?: %s\n",
+						ib.Type, ib.Name, ib.Members, err)
+				}
 			}
 		} else {
 			// XXX potentially move to PCIBack if not already
@@ -2189,15 +2209,32 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 	}
 
 	// For a new PCI device we check if it exists in hardware/kernel
-	if ib.Lookup && ib.PciShort == "" {
-		long, short, err := types.IoBundleToPci(ib)
+	if ib.Lookup && ib.MPciShort == nil {
+		longs, shorts, err := types.IoBundleToPci(ib)
 		if err != nil {
 			return err
 		}
-		ib.PciLong = long
-		ib.PciShort = short
-		log.Infof("checkAndSetIoBundle(%d %s %v) found %s/%s\n",
-			ib.Type, ib.Name, ib.Members, short, long)
+		ib.MPciLong = longs
+		ib.MPciShort = shorts
+		ib.MUnique = make([]string, len(ib.Members))
+		log.Infof("checkAndSetIoBundle(%d %s %v) found %v %v\n",
+			ib.Type, ib.Name, ib.Members, shorts, longs)
+
+		// Save somewhat Unique string for debug
+		for i, long := range ib.MPciLong {
+			found, unique := types.PciLongToUnique(long)
+			if !found {
+				errStr := fmt.Sprintf("IoBundle(%d %s %v) %s/%s unique %s not foun\n",
+					ib.Type, ib.Name, ib.Members,
+					ib.MPciShort[i], ib.MPciLong[i], ib.MUnique[i])
+				log.Errorln(errStr)
+			} else {
+				ib.MUnique[i] = unique
+				log.Infof("checkAndSetIoBundle(%d %s %v) %s/%s unique %s\n",
+					ib.Type, ib.Name, ib.Members, ib.MPciShort[i],
+					ib.MPciLong[i], ib.MUnique[i])
+			}
+		}
 	}
 	// Save somewhat Unique string for debug
 	if ib.PciLong != "" {
@@ -2215,16 +2252,39 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		}
 	}
 
-	if !ib.IsPort && ib.PciShort != "" && !ib.IsPCIBack {
+	if !ib.IsPort && !ib.IsPCIBack {
 		if ctx.usbAccess && ib.Type == types.IoUSB {
 			log.Infof("No assigning %s (%s %s) to pciback\n",
 				ib.Name, ib.PciLong, ib.PciShort)
-		} else {
+		} else if ib.PciShort != "" {
 			log.Infof("Assigning %s (%s %s) to pciback\n",
 				ib.Name, ib.PciLong, ib.PciShort)
 			err := pciAssignableAdd(ib.PciLong)
 			if err != nil {
 				return err
+			}
+			ib.IsPCIBack = true
+			ctx.publishAssignableAdapters()
+		} else if ib.MPciLong != nil {
+			var oneError error
+			for i, long := range ib.MPciLong {
+				log.Infof("Assigning %s member %s (%s) to pciback\n",
+					ib.Name, ib.Members[i], long)
+				err := pciAssignableAdd(long)
+				if err != nil {
+					// XXX return all errors?
+					log.Errorf("Partial error for %s: %s\n", long, err)
+					oneError = err
+				}
+			}
+			if oneError != nil {
+				// Undo any assignments from above
+				for i, long := range ib.MPciLong {
+					log.Infof("XXX unassigning %s member %s (%s) to pciback\n",
+						ib.Name, ib.Members[i], long)
+					pciAssignableRemove(long)
+				}
+				return oneError
 			}
 			ib.IsPCIBack = true
 			ctx.publishAssignableAdapters()
@@ -2239,7 +2299,7 @@ func checkIoBundleAll(ctx *domainContext) {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
 		err := checkIoBundle(ctx, ib)
 		if err != nil {
-			log.Errorf("checkIoBundleAll failed for %d\n", i)
+			log.Errorf("checkIoBundleAll failed for %d: %s\n", i, err)
 		}
 	}
 }
@@ -2250,20 +2310,48 @@ func checkIoBundleAll(ctx *domainContext) {
 func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 
 	if ib.Lookup {
-		long, short, err := types.IoBundleToPci(ib)
+		longs, shorts, err := types.IoBundleToPci(ib)
 		if err != nil {
 			return err
 		}
-		if short == "" {
+		if shorts == nil {
 			// Doesn't exist
 			return nil
 		}
-		if ib.PciLong != long ||
-			ib.PciShort != short {
-			errStr := fmt.Sprintf("IoBundle(%d %s %v) changed from %s/%s to %s/%s\n",
+		if len(ib.MPciLong) != len(longs) || len(ib.MPciShort) != len(shorts) {
+			errStr := fmt.Sprintf("IoBundle(%d %s %v) changed num members from %d/%d to %d/%d\n",
 				ib.Type, ib.Name, ib.Members,
-				ib.PciShort, ib.PciLong, short, long)
+				len(ib.MPciShort), len(ib.MPciLong), len(shorts), len(longs))
 			return errors.New(errStr)
+		}
+		for i, long := range ib.MPciLong {
+			if long != longs[i] {
+				errStr := fmt.Sprintf("IoBundle(%d %s %v) long changed from %s to %s\n",
+					ib.Type, ib.Name, ib.Members,
+					long, longs[i])
+				return errors.New(errStr)
+			}
+			found, unique := types.PciLongToUnique(long)
+			if !found {
+				errStr := fmt.Sprintf("IoBundle(%d %s %v) %s/%s unique %s not foun\n",
+					ib.Type, ib.Name, ib.Members,
+					long, ib.MUnique[i])
+				return errors.New(errStr)
+			}
+			if unique != ib.MUnique[i] {
+				errStr := fmt.Sprintf("IoBundle(%d %s %v) changed unique from %s to %sn",
+					ib.Type, ib.Name, ib.Members,
+					ib.MUnique[i], unique)
+				return errors.New(errStr)
+			}
+		}
+		for i, short := range ib.MPciShort {
+			if short != shorts[i] {
+				errStr := fmt.Sprintf("IoBundle(%d %s %v) short changed from %s to %s\n",
+					ib.Type, ib.Name, ib.Members,
+					short, shorts[i])
+				return errors.New(errStr)
+			}
 		}
 	}
 	if ib.PciLong != "" {
@@ -2320,12 +2408,23 @@ func handleIBDelete(ctx *domainContext, ib types.IoBundle,
 	if ib.IsPCIBack {
 		log.Infof("handleIBDelete: Assigning %s (%s %s) back\n",
 			ib.Name, ib.PciLong, ib.PciShort)
-		err := pciAssignableRemove(ib.PciLong)
-		if err != nil {
-			log.Errorf("handleIBDelete(%d %s %v) pciAssignableRemove failed %v\n",
-				ib.Type, ib.Name, ib.Members, err)
+		if ib.PciLong != "" {
+			err := pciAssignableRemove(ib.PciLong)
+			if err != nil {
+				log.Errorf("handleIBDelete(%d %s %v) pciAssignableRemove %s failed %v\n",
+					ib.Type, ib.Name, ib.Members, ib.PciLong, err)
+			}
+			ib.IsPCIBack = false
+		} else if ib.MPciLong != nil {
+			for _, long := range ib.MPciLong {
+				err := pciAssignableRemove(long)
+				if err != nil {
+					log.Errorf("handleIBDelete(%d %s %v) pciAssignableRemove %s failed %v\n",
+						ib.Type, ib.Name, ib.Members, long, err)
+				}
+			}
+			ib.IsPCIBack = false
 		}
-		ib.IsPCIBack = false
 	}
 	replace := types.AssignableAdapters{Initialized: true,
 		IoBundleList: make([]types.IoBundle, len(status.IoBundleList)-1)}
@@ -2365,6 +2464,9 @@ func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.
 		e.PciShort = configIb.PciShort
 		e.XenCfg = configIb.XenCfg
 		e.Unique = configIb.Unique
+		e.MPciLong = configIb.MPciLong
+		e.MPciShort = configIb.MPciShort
+		e.MUnique = configIb.MUnique
 	}
 	checkIoBundleAll(ctx)
 }

@@ -43,16 +43,23 @@ type IoBundle struct {
 
 	// Local information not reported to cloud
 	Lookup   bool   // Look up name to find PCI
-	PciLong  string // If adapter on some bus
-	PciShort string // If pci adapter
+	PciLong  string // If adapter on some bus and not Eth
+	PciShort string // If pci adapter and not Eth
 	XenCfg   string // If template for the bundle
 	Unique   string // From firmware_node symlink; used for debug checks
+
+	// For each member we have these with the same indicies. Only used when
+	// Lookup is set.
+	// XXX a Member struct would make more sense but need compatibility with existing json
+	MPciLong  []string // If adapter on some bus
+	MPciShort []string // If pci adapter
+	MUnique   []string // From firmware_node symlink; used for debug checks
 
 	// IsPciBack
 	//	Is the IoBundle assigned to pciBack.
 	//  If the device is managed by dom0, this is False.
 	//  If the device is ( or to be ) managed by DomU, this is True
-	IsPCIBack bool // Assigned to pciback
+	IsPCIBack bool // Assigned to pciback XXX all members
 	IsPort    bool // Whole or part of the bundle is a zedrouter port
 
 	// DeviceExists
