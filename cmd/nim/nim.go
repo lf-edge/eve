@@ -140,9 +140,9 @@ func Run() {
 	}
 	log.Infof("Starting %s\n", agentName)
 
-	ifs := devicenetwork.IfindexGetUp()
+	ifs := devicenetwork.IfindexGetLastResort()
 	if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
-		log.Infof("IfindexGetUp: updated to %v\n", ifs)
+		log.Infof("IfindexGetLastResort: updated to %v\n", ifs)
 		nimCtx.fallbackPorts = ifs
 		if nimCtx.networkFallbackAnyEth {
 			updateFallbackAnyEth(&nimCtx)
@@ -281,9 +281,9 @@ func Run() {
 			agentlog.StillRunning(agentName)
 			// XXX hack; shouldn't this be driven by linkChange or addrChange?
 			// XXX missing LTE??
-			ifs := devicenetwork.IfindexGetUp()
+			ifs := devicenetwork.IfindexGetLastResort()
 			if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
-				log.Infof("XXX IfindexGetUp: updated to %v\n", ifs)
+				log.Infof("XXX IfindexGetLastResort: updated to %v\n", ifs)
 				nimCtx.fallbackPorts = ifs
 				if nimCtx.networkFallbackAnyEth {
 					updateFallbackAnyEth(&nimCtx)
@@ -376,9 +376,9 @@ func Run() {
 				log.Fatalf("linkChanges closed?\n")
 			}
 			if devicenetwork.LinkChange(change) {
-				ifs := devicenetwork.IfindexGetUp()
+				ifs := devicenetwork.IfindexGetLastResort()
 				if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
-					log.Infof("IfindexGetUp: updated to %v\n", ifs)
+					log.Infof("IfindexGetLastResort: updated to %v\n", ifs)
 					nimCtx.fallbackPorts = ifs
 					if nimCtx.networkFallbackAnyEth {
 						updateFallbackAnyEth(&nimCtx)
@@ -436,9 +436,9 @@ func Run() {
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
 			// XXX hack; log currently up interfaces
-			ifs := devicenetwork.IfindexGetUp()
+			ifs := devicenetwork.IfindexGetLastResort()
 			if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
-				log.Infof("XXX IfindexGetUp: updated to %v\n", ifs)
+				log.Infof("XXX IfindexGetLastResort: updated to %v\n", ifs)
 				nimCtx.fallbackPorts = ifs
 				if nimCtx.networkFallbackAnyEth {
 					updateFallbackAnyEth(&nimCtx)
@@ -482,9 +482,9 @@ func Run() {
 			// XXX if this returns true we should potentially
 			// trigger testing
 			if devicenetwork.LinkChange(change) {
-				ifs := devicenetwork.IfindexGetUp()
+				ifs := devicenetwork.IfindexGetLastResort()
 				if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
-					log.Infof("IfindexGetUp: updated to %v\n", ifs)
+					log.Infof("IfindexGetLastResort: updated to %v\n", ifs)
 					nimCtx.fallbackPorts = ifs
 					if nimCtx.networkFallbackAnyEth {
 						updateFallbackAnyEth(&nimCtx)
@@ -542,9 +542,9 @@ func Run() {
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
 			// XXX hack; log currently up interfaces
-			ifs := devicenetwork.IfindexGetUp()
+			ifs := devicenetwork.IfindexGetLastResort()
 			if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
-				log.Infof("XXX IfindexGetUp: updated to %v\n", ifs)
+				log.Infof("XXX IfindexGetLastResort: updated to %v\n", ifs)
 				nimCtx.fallbackPorts = ifs
 				if nimCtx.networkFallbackAnyEth {
 					updateFallbackAnyEth(&nimCtx)
@@ -675,7 +675,7 @@ func fileExists(filename string) bool {
 }
 
 func updateFallbackAnyEth(ctx *nimContext) {
-	log.Infof("updateFallbackAnyEth: on %s ifs %v\n",
+	log.Infof("updateFallbackAnyEth: enable %s ifs %v\n",
 		ctx.networkFallbackAnyEth, ctx.fallbackPorts)
 	if ctx.networkFallbackAnyEth {
 		devicenetwork.UpdateLastResortPortConfig(&ctx.DeviceNetworkContext,

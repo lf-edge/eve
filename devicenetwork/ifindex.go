@@ -18,7 +18,7 @@ import (
 type linkNameType struct {
 	linkName string
 	linkType string
-	upFlag   bool // Set for interfaces which are deemed interesting by caller
+	lastFlag bool // Set for interfaces which are deemed interesting by caller
 }
 
 var ifindexToName map[int]linkNameType
@@ -27,8 +27,8 @@ func IfindexToNameInit() {
 	ifindexToName = make(map[int]linkNameType)
 }
 
-// Returns true if added or if up flag changed.
-func IfindexToNameAdd(index int, linkName string, linkType string, up bool) bool {
+// Returns true if added or if last flag changed.
+func IfindexToNameAdd(index int, linkName string, linkType string, last bool) bool {
 	m, ok := ifindexToName[index]
 	if !ok {
 		// Note that we get RTM_NEWLINK even for link changes
@@ -38,7 +38,7 @@ func IfindexToNameAdd(index int, linkName string, linkType string, up bool) bool
 		ifindexToName[index] = linkNameType{
 			linkName: linkName,
 			linkType: linkType,
-			upFlag:   up,
+			lastFlag: last,
 		}
 		// log.Debugf("ifindexToName post add %v\n", ifindexToName)
 		return true
@@ -50,17 +50,17 @@ func IfindexToNameAdd(index int, linkName string, linkType string, up bool) bool
 		ifindexToName[index] = linkNameType{
 			linkName: linkName,
 			linkType: linkType,
-			upFlag:   up,
+			lastFlag: last,
 		}
 		// log.Debugf("ifindexToName post add %v\n", ifindexToName)
 		return false
-	} else if m.upFlag != up {
-		log.Infof("IfindexToNameAdd upFlag changed to %v for %s\n",
-			up, linkName)
+	} else if m.lastFlag != last {
+		log.Infof("IfindexToNameAdd lastFlag changed to %v for %s\n",
+			last, linkName)
 		ifindexToName[index] = linkNameType{
 			linkName: linkName,
 			linkType: linkType,
-			upFlag:   up,
+			lastFlag: last,
 		}
 		// log.Debugf("ifindexToName post add %v\n", ifindexToName)
 		return true
@@ -105,8 +105,8 @@ func IfindexToName(index int) (string, string, error) {
 	linkType := link.Type()
 	log.Warnf("IfindexToName(%d) fallback lookup done: %s, %s\n",
 		index, linkName, linkType)
-	upFlag := RelevantAndUp(link)
-	IfindexToNameAdd(index, linkName, linkType, upFlag)
+	lastFlag := RelevantLastResort(link)
+	IfindexToNameAdd(index, linkName, linkType, lastFlag)
 	return linkName, linkType, nil
 }
 
@@ -125,36 +125,34 @@ func IfnameToIndex(ifname string) (int, error) {
 	linkType := link.Type()
 	log.Warnf("IfnameToIndex(%s) fallback lookup done: %d, %s\n",
 		ifname, index, linkType)
-	upFlag := RelevantAndUp(link)
-	IfindexToNameAdd(index, ifname, linkType, upFlag)
+	lastFlag := RelevantLastResort(link)
+	IfindexToNameAdd(index, ifname, linkType, lastFlag)
 	return index, nil
 }
 
 // We skip things not considered to be device links, loopback, non-broadcast,
 // and children of a bridge master.
-func RelevantAndUp(link netlink.Link) bool {
+func RelevantLastResort(link netlink.Link) bool {
 	attrs := link.Attrs()
 	ifname := attrs.Name
 	linkType := link.Type()
 	linkFlags := attrs.Flags
-	upFlag := (linkFlags & net.FlagUp) != 0
 	loopbackFlag := (linkFlags & net.FlagLoopback) != 0
 	broadcastFlag := (linkFlags & net.FlagBroadcast) != 0
 	if linkType == "device" && !loopbackFlag && broadcastFlag &&
 		attrs.MasterIndex == 0 {
 
-		log.Infof("Relevant %s up %t\n", ifname, upFlag)
+		log.Infof("Relevant %s\n", ifname)
+		return true
 	} else {
-		// We ignore upFlag for others
-		upFlag = false
+		return false
 	}
-	return upFlag
 }
 
-func IfindexGetUp() []string {
+func IfindexGetLastResort() []string {
 	var ifs []string
 	for _, lnt := range ifindexToName {
-		if lnt.upFlag {
+		if lnt.lastFlag {
 			ifs = append(ifs, lnt.linkName)
 		}
 	}

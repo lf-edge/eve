@@ -24,10 +24,10 @@ func LinkChange(change netlink.LinkUpdate) bool {
 	changed := false
 	switch change.Header.Type {
 	case syscall.RTM_NEWLINK:
-		upFlag := RelevantAndUp(change.Link)
+		lastFlag := RelevantLastResort(change.Link)
 		log.Infof("LinkChange: NEWLINK index %d name %s type %s\n",
 			ifindex, ifname, linkType)
-		changed = IfindexToNameAdd(ifindex, ifname, linkType, upFlag)
+		changed = IfindexToNameAdd(ifindex, ifname, linkType, lastFlag)
 		log.Infof("LinkChange: changed %t index %d name %s type %s\n",
 			changed, ifindex, ifname, linkType)
 	case syscall.RTM_DELLINK:
