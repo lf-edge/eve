@@ -642,14 +642,15 @@ func insertPortConfig(ctx *DeviceNetworkContext, portConfig types.DevicePortConf
 	ctx.DevicePortConfigList.PortConfigList = newConfig
 }
 
-// Remove by matching TimePriority
+// Remove by matching TimePriority and Key
 func removePortConfig(ctx *DeviceNetworkContext, portConfig types.DevicePortConfig) {
 	var newConfig []types.DevicePortConfig
 	removed := false
 	for _, port := range ctx.DevicePortConfigList.PortConfigList {
-		if !removed && portConfig.TimePriority == port.TimePriority {
-			log.Infof("removePortConfig: found %+v\n",
-				port)
+		if !removed && portConfig.TimePriority == port.TimePriority &&
+		    portConfig.Key == port.Key {
+			log.Infof("removePortConfig: found %+v for %+v\n",
+				port, portConfig)
 			removed = true
 		} else {
 			newConfig = append(newConfig, port)

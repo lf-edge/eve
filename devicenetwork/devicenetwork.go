@@ -31,7 +31,7 @@ func LastResortDevicePortConfig(ports []string) types.DevicePortConfig {
 
 	config := makeDevicePortConfig(ports, ports)
 	// Set to higher than all zero but lower than the hardware model derived one above
-	config.TimePriority = time.Unix(1, 0)
+	config.TimePriority = time.Unix(0, 0)
 	return config
 }
 
