@@ -28,6 +28,7 @@ type GlobalConfig struct {
 	NetworkTestDuration       uint32 // Time we wait for DHCP to complete
 	NetworkTestInterval       uint32 // Re-test DevicePortConfig
 	NetworkTestBetterInterval uint32 // Look for better DevicePortConfig
+	NetworkFallbackAnyEth     bool   // When no connectivity try any Ethernet; XXX LTE?
 
 	// UsbAccess
 	// Determines if Dom0 can use USB devices.
@@ -79,6 +80,7 @@ var GlobalConfigDefaults = GlobalConfig{
 	NetworkTestDuration:       30,
 	NetworkTestInterval:       300,  // 5 minutes
 	NetworkTestBetterInterval: 1800, // 30 minutes
+	NetworkFallbackAnyEth:     true,
 
 	UsbAccess:             true,   // Contoller likely to default to false
 	SshAccess:             true,   // Contoller likely to default to false

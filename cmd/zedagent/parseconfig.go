@@ -1786,6 +1786,22 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfigChange = true
 			}
 
+		case "network.fallback.any.eth":
+			newBool, err := strconv.ParseBool(item.Value)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			if newBool != globalConfig.NetworkFallbackAnyEth {
+				log.Infof("parseConfigItems: %s change from %v to %v\n",
+					key,
+					globalConfig.NetworkFallbackAnyEth,
+					newBool)
+				globalConfig.NetworkFallbackAnyEth = newBool
+				globalConfigChange = true
+			}
+
 		case "debug.enable.usb":
 			newBool, err := strconv.ParseBool(item.Value)
 			if err != nil {

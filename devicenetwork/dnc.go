@@ -89,6 +89,7 @@ func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
 	}
 	*ctx.DeviceNetworkConfig = config
 	portConfig := MakeDevicePortConfig(config)
+	portConfig.Key = key
 	if !reflect.DeepEqual(oldConfig, portConfig) {
 		log.Infof("DevicePortConfig change from %v to %v\n",
 			oldConfig, portConfig)
@@ -115,12 +116,23 @@ func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
 	}
 	*ctx.DeviceNetworkConfig = types.DeviceNetworkConfig{}
 	portConfig := MakeDevicePortConfig(*ctx.DeviceNetworkConfig)
+	portConfig.Key = key
 	if !reflect.DeepEqual(oldConfig, portConfig) {
 		log.Infof("DevicePortConfig change from %v to %v\n",
 			oldConfig, portConfig)
 		ctx.PubDevicePortConfig.Publish("global", portConfig)
 	}
 	log.Infof("HandleDNCDelete done for %s\n", key)
+}
+
+func UpdateLastResortPortConfig(ctx *DeviceNetworkContext, ports []string) {
+	config := LastResortDevicePortConfig(ports)
+	config.Key = "lastresort"
+	ctx.PubDevicePortConfig.Publish("lastresort", config)
+}
+
+func RemoveLastResortPortConfig(ctx *DeviceNetworkContext) {
+	ctx.PubDevicePortConfig.Unpublish("lastresort")
 }
 
 func SetupVerify(ctx *DeviceNetworkContext, index int) {

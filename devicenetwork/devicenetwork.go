@@ -20,14 +20,28 @@ import (
 // Generate DevicePortConfig based on DeviceNetworkConfig
 // XXX retire when we have retired DeviceNetworkConfig
 func MakeDevicePortConfig(globalConfig types.DeviceNetworkConfig) types.DevicePortConfig {
+
+	config := makeDevicePortConfig(globalConfig.Uplink, globalConfig.FreeUplinks)
+	// Set to higher than all zero.
+	config.TimePriority = time.Unix(1, 0)
+	return config
+}
+
+func LastResortDevicePortConfig(ports []string) types.DevicePortConfig {
+
+	config := makeDevicePortConfig(ports, ports)
+	// Leave TimePriority at zero
+	return config
+}
+
+func makeDevicePortConfig(ports []string, free []string) types.DevicePortConfig {
 	var config types.DevicePortConfig
 
 	config.Version = types.DPCIsMgmt
-	config.Ports = make([]types.NetworkPortConfig,
-		len(globalConfig.Uplink))
-	for ix, u := range globalConfig.Uplink {
+	config.Ports = make([]types.NetworkPortConfig, len(ports))
+	for ix, u := range ports {
 		config.Ports[ix].IfName = u
-		for _, f := range globalConfig.FreeUplinks {
+		for _, f := range free {
 			if f == u {
 				config.Ports[ix].Free = true
 				break

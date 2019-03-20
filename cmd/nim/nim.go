@@ -44,6 +44,9 @@ type nimContext struct {
 	sshAccess       bool
 	allowAppVnc     bool
 
+	networkFallbackAnyEth bool
+	fallbackPorts         []string // All UP Ethernet ports
+
 	// CLI args
 	debug         bool
 	debugOverride bool // From command line arg
@@ -136,6 +139,15 @@ func Run() {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s\n", agentName)
+
+	ifs := devicenetwork.IfindexGetUp()
+	if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
+		log.Infof("IfindexGetUp: updated to %v\n", ifs)
+		nimCtx.fallbackPorts = ifs
+		if nimCtx.networkFallbackAnyEth {
+			updateFallbackAnyEth(&nimCtx)
+		}
+	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -267,9 +279,16 @@ func Run() {
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
-			// XXX hack; log currently up interfaces
+			// XXX hack; shouldn't this be driven by linkChange or addrChange?
+			// XXX missing LTE??
 			ifs := devicenetwork.IfindexGetUp()
-			log.Infof("IfindexGetUp: %v\n", ifs)
+			if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
+				log.Infof("XXX IfindexGetUp: updated to %v\n", ifs)
+				nimCtx.fallbackPorts = ifs
+				if nimCtx.networkFallbackAnyEth {
+					updateFallbackAnyEth(&nimCtx)
+				}
+			}
 		}
 	}
 
@@ -356,7 +375,16 @@ func Run() {
 			if !ok {
 				log.Fatalf("linkChanges closed?\n")
 			}
-			devicenetwork.LinkChange(change)
+			if devicenetwork.LinkChange(change) {
+				ifs := devicenetwork.IfindexGetUp()
+				if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
+					log.Infof("IfindexGetUp: updated to %v\n", ifs)
+					nimCtx.fallbackPorts = ifs
+					if nimCtx.networkFallbackAnyEth {
+						updateFallbackAnyEth(&nimCtx)
+					}
+				}
+			}
 
 		case <-geoTimer.C:
 			log.Debugln("geoTimer at", time.Now())
@@ -409,7 +437,13 @@ func Run() {
 			agentlog.StillRunning(agentName)
 			// XXX hack; log currently up interfaces
 			ifs := devicenetwork.IfindexGetUp()
-			log.Infof("IfindexGetUp: %v\n", ifs)
+			if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
+				log.Infof("XXX IfindexGetUp: updated to %v\n", ifs)
+				nimCtx.fallbackPorts = ifs
+				if nimCtx.networkFallbackAnyEth {
+					updateFallbackAnyEth(&nimCtx)
+				}
+			}
 		}
 	}
 	log.Infof("AA initialized")
@@ -447,7 +481,16 @@ func Run() {
 			}
 			// XXX if this returns true we should potentially
 			// trigger testing
-			devicenetwork.LinkChange(change)
+			if devicenetwork.LinkChange(change) {
+				ifs := devicenetwork.IfindexGetUp()
+				if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
+					log.Infof("IfindexGetUp: updated to %v\n", ifs)
+					nimCtx.fallbackPorts = ifs
+					if nimCtx.networkFallbackAnyEth {
+						updateFallbackAnyEth(&nimCtx)
+					}
+				}
+			}
 
 		case <-geoTimer.C:
 			log.Debugln("geoTimer at", time.Now())
@@ -500,7 +543,13 @@ func Run() {
 			agentlog.StillRunning(agentName)
 			// XXX hack; log currently up interfaces
 			ifs := devicenetwork.IfindexGetUp()
-			log.Infof("IfindexGetUp: %v\n", ifs)
+			if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
+				log.Infof("XXX IfindexGetUp: updated to %v\n", ifs)
+				nimCtx.fallbackPorts = ifs
+				if nimCtx.networkFallbackAnyEth {
+					updateFallbackAnyEth(&nimCtx)
+				}
+			}
 		}
 	}
 }
@@ -581,6 +630,10 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 			ctx.allowAppVnc = gcp.AllowAppVnc
 			iptables.UpdateVncAccess(ctx.allowAppVnc)
 		}
+		if gcp.NetworkFallbackAnyEth != ctx.networkFallbackAnyEth || first {
+			ctx.networkFallbackAnyEth = gcp.NetworkFallbackAnyEth
+			updateFallbackAnyEth(ctx)
+		}
 		ctx.globalConfig = gcp
 	}
 	ctx.GCInitialized = true
@@ -619,4 +672,15 @@ func handleGlobalConfigSynchronized(ctxArg interface{}, done bool) {
 func fileExists(filename string) bool {
 	_, err := os.Stat(filename)
 	return err == nil
+}
+
+func updateFallbackAnyEth(ctx *nimContext) {
+	log.Infof("updateFallbackAnyEth: on %s ifs %v\n",
+		ctx.networkFallbackAnyEth, ctx.fallbackPorts)
+	if ctx.networkFallbackAnyEth {
+		devicenetwork.UpdateLastResortPortConfig(&ctx.DeviceNetworkContext,
+			ctx.fallbackPorts)
+	} else {
+		devicenetwork.RemoveLastResortPortConfig(&ctx.DeviceNetworkContext)
+	}
 }
