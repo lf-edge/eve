@@ -147,6 +147,7 @@ message ZInfoDevice {
   google.protobuf.Timestamp lastRebootTime = 23;
 
   SystemAdapterInfo systemAdapter = 24;
+  uint32 restartCounter = 25; // Number of times zedagent has restarted i.e., device reboot
 }
 
 // The current and fallback system adapter information
