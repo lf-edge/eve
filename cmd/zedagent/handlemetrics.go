@@ -1041,6 +1041,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	ReportDeviceInfo.SystemAdapter = encodeSystemAdapterInfo(ctx.devicePortConfigList)
 
+	// XXX ReportDeviceInfo.ResetCounter = ctx.resetCounter
+	log.Infof("Would report resetCounter %d\n", ctx.resetCounter)
+
 	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
