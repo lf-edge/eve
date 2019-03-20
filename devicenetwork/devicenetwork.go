@@ -23,14 +23,15 @@ func MakeDevicePortConfig(globalConfig types.DeviceNetworkConfig) types.DevicePo
 
 	config := makeDevicePortConfig(globalConfig.Uplink, globalConfig.FreeUplinks)
 	// Set to higher than all zero.
-	config.TimePriority = time.Unix(1, 0)
+	config.TimePriority = time.Unix(2, 0)
 	return config
 }
 
 func LastResortDevicePortConfig(ports []string) types.DevicePortConfig {
 
 	config := makeDevicePortConfig(ports, ports)
-	// Leave TimePriority at zero
+	// Set to higher than all zero but lower than the hardware model derived one above
+	config.TimePriority = time.Unix(1, 0)
 	return config
 }
 

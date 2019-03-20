@@ -185,7 +185,7 @@ func (portConfig *DevicePortConfig) DoSanitize(
 			if err == nil {
 				portConfig.TimePriority = fi.ModTime()
 			} else {
-				portConfig.TimePriority = time.Unix(2, 0)
+				portConfig.TimePriority = time.Unix(0, 0)
 			}
 			log.Infof("HandleDPCModify: Forcing TimePriority for %s to %v\n",
 				key, portConfig.TimePriority)
