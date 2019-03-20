@@ -1,6 +1,7 @@
+# pass hash to parse-pkgs
 # disable content trust for now
 PATH := $(CURDIR)/../build-tools/bin:$(PATH)
-LINUXKIT_OPTS= --disable-content-trust
+LINUXKIT_OPTS= --disable-content-trust $(LINUXKIT_HASH)
 
 BUILDARCH ?= $(shell uname -m) # The target CPU architecture == host arch if unspecified.
 
