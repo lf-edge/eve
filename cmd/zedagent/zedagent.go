@@ -51,7 +51,7 @@ const (
 	objectDownloadDirname = persistDir + "/downloads"
 	certificateDirname    = persistDir + "/certs"
 	checkpointDirname     = persistDir + "/checkpoint"
-	resetCounterFile      = configDir + "/resetcounter"
+	restartCounterFile    = configDir + "/restartcounter"
 
 	partitionCount = 2
 )
@@ -104,7 +104,7 @@ type zedagentContext struct {
 	rebootCmdDeferred         bool
 	rebootReason              string
 	rebootTime                time.Time
-	resetCounter              uint32
+	restartCounter            uint32
 	subDevicePortConfigList   *pubsub.Subscription
 	devicePortConfigList      types.DevicePortConfigList
 }
@@ -205,8 +205,8 @@ func Run() {
 		zedagentCtx.rebootTime = time.Now()
 	}
 
-	// Read and increment resetCounter
-	zedagentCtx.resetCounter = incrementResetCounter()
+	// Read and increment restartCounter
+	zedagentCtx.restartCounter = incrementRestartCounter()
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -1090,27 +1090,27 @@ func handleZbootStatusDelete(ctxArg interface{}, key string,
 
 // If the file doesn't exist we pick zero.
 // Return value before increment; write new value to file
-func incrementResetCounter() uint32 {
-	var resetCounter uint32
+func incrementRestartCounter() uint32 {
+	var restartCounter uint32
 
-	if _, err := os.Stat(resetCounterFile); err == nil {
-		b, err := ioutil.ReadFile(resetCounterFile)
+	if _, err := os.Stat(restartCounterFile); err == nil {
+		b, err := ioutil.ReadFile(restartCounterFile)
 		if err != nil {
-			log.Errorf("incrementResetCounter: %s\n", err)
+			log.Errorf("incrementRestartCounter: %s\n", err)
 		} else {
 			c, err := strconv.Atoi(string(b))
 			if err != nil {
-				log.Errorf("incrementResetCounter: %s\n", err)
+				log.Errorf("incrementRestartCounter: %s\n", err)
 			} else {
-				resetCounter = uint32(c)
-				log.Infof("incrementResetCounter: read %d\n", resetCounter)
+				restartCounter = uint32(c)
+				log.Infof("incrementRestartCounter: read %d\n", restartCounter)
 			}
 		}
 	}
-	b := []byte(fmt.Sprintf("%d", resetCounter+1))
-	err := ioutil.WriteFile(resetCounterFile, b, 0644)
+	b := []byte(fmt.Sprintf("%d", restartCounter+1))
+	err := ioutil.WriteFile(restartCounterFile, b, 0644)
 	if err != nil {
-		log.Errorf("incrementResetCounter write: %s\n", err)
+		log.Errorf("incrementRestartCounter write: %s\n", err)
 	}
-	return resetCounter
+	return restartCounter
 }
