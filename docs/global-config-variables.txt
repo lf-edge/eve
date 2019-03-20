@@ -23,7 +23,7 @@ timer.port.georetry		default 600 seconds - retry geolocation after failure
 timer.port.testduration		default 30 - wait for DHCP to give address
 timer.port.testinterval		default 300 seconds - retest the current port config
 timer.port.testbetterinterval	default 0 seconds (disabled) - test a higher prio port config
-network.fallback.any.eth	boolean - default true - if no connectivity try any Eth
+network.fallback.any.eth	"enabled" or "disabled" - default enabled - if no connectivity try any Eth
 
 debug.enable.usb		boolean - default true on device
 debug.enable.ssh		boolean - default true on device

@@ -44,7 +44,7 @@ type nimContext struct {
 	sshAccess       bool
 	allowAppVnc     bool
 
-	networkFallbackAnyEth bool
+	networkFallbackAnyEth types.TriState
 	fallbackPorts         []string // All UP Ethernet ports
 
 	// CLI args
@@ -144,7 +144,7 @@ func Run() {
 	if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
 		log.Infof("IfindexGetLastResort: updated to %v\n", ifs)
 		nimCtx.fallbackPorts = ifs
-		if nimCtx.networkFallbackAnyEth {
+		if nimCtx.networkFallbackAnyEth == types.TS_ENABLED {
 			updateFallbackAnyEth(&nimCtx)
 		}
 	}
@@ -370,7 +370,7 @@ func Run() {
 				if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
 					log.Infof("IfindexGetLastResort: updated to %v\n", ifs)
 					nimCtx.fallbackPorts = ifs
-					if nimCtx.networkFallbackAnyEth {
+					if nimCtx.networkFallbackAnyEth == types.TS_ENABLED {
 						updateFallbackAnyEth(&nimCtx)
 					}
 				}
@@ -467,7 +467,7 @@ func Run() {
 				if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
 					log.Infof("IfindexGetLastResort: updated to %v\n", ifs)
 					nimCtx.fallbackPorts = ifs
-					if nimCtx.networkFallbackAnyEth {
+					if nimCtx.networkFallbackAnyEth == types.TS_ENABLED {
 						updateFallbackAnyEth(&nimCtx)
 					}
 				}
@@ -647,12 +647,12 @@ func fileExists(filename string) bool {
 }
 
 func updateFallbackAnyEth(ctx *nimContext) {
-	log.Infof("updateFallbackAnyEth: enable %s ifs %v\n",
+	log.Infof("updateFallbackAnyEth: enable %v ifs %v\n",
 		ctx.networkFallbackAnyEth, ctx.fallbackPorts)
-	if ctx.networkFallbackAnyEth {
+	if ctx.networkFallbackAnyEth == types.TS_ENABLED {
 		devicenetwork.UpdateLastResortPortConfig(&ctx.DeviceNetworkContext,
 			ctx.fallbackPorts)
-	} else {
+	} else if ctx.networkFallbackAnyEth == types.TS_DISABLED {
 		devicenetwork.RemoveLastResortPortConfig(&ctx.DeviceNetworkContext)
 	}
 }
