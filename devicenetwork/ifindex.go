@@ -16,9 +16,10 @@ import (
 // ===== map from ifindex to ifname
 
 type linkNameType struct {
-	linkName string
-	linkType string
-	lastFlag bool // Set for interfaces which are deemed interesting by caller
+	linkName     string
+	linkType     string
+	relevantFlag bool // Set for interfaces which are deemed interesting by caller
+	upFlag       bool // last resort and up
 }
 
 var ifindexToName map[int]linkNameType
@@ -28,7 +29,7 @@ func IfindexToNameInit() {
 }
 
 // Returns true if added or if last flag changed.
-func IfindexToNameAdd(index int, linkName string, linkType string, last bool) bool {
+func IfindexToNameAdd(index int, linkName string, linkType string, relevantFlag bool, upFlag bool) bool {
 	m, ok := ifindexToName[index]
 	if !ok {
 		// Note that we get RTM_NEWLINK even for link changes
@@ -36,9 +37,10 @@ func IfindexToNameAdd(index int, linkName string, linkType string, last bool) bo
 		log.Infof("IfindexToNameAdd index %d name %s type %s\n",
 			index, linkName, linkType)
 		ifindexToName[index] = linkNameType{
-			linkName: linkName,
-			linkType: linkType,
-			lastFlag: last,
+			linkName:     linkName,
+			linkType:     linkType,
+			relevantFlag: relevantFlag,
+			upFlag:       upFlag,
 		}
 		// log.Debugf("ifindexToName post add %v\n", ifindexToName)
 		return true
@@ -48,19 +50,21 @@ func IfindexToNameAdd(index int, linkName string, linkType string, last bool) bo
 		log.Infof("IfindexToNameAdd name mismatch %s vs %s for %d\n",
 			m.linkName, linkName, index)
 		ifindexToName[index] = linkNameType{
-			linkName: linkName,
-			linkType: linkType,
-			lastFlag: last,
+			linkName:     linkName,
+			linkType:     linkType,
+			relevantFlag: relevantFlag,
+			upFlag:       upFlag,
 		}
 		// log.Debugf("ifindexToName post add %v\n", ifindexToName)
 		return false
-	} else if m.lastFlag != last {
-		log.Infof("IfindexToNameAdd lastFlag changed to %v for %s\n",
-			last, linkName)
+	} else if m.relevantFlag != relevantFlag || m.upFlag != upFlag {
+		log.Infof("IfindexToNameAdd flag(s) changed to %v/%v for %s\n",
+			relevantFlag, upFlag, linkName)
 		ifindexToName[index] = linkNameType{
-			linkName: linkName,
-			linkType: linkType,
-			lastFlag: last,
+			linkName:     linkName,
+			linkType:     linkType,
+			relevantFlag: relevantFlag,
+			upFlag:       upFlag,
 		}
 		// log.Debugf("ifindexToName post add %v\n", ifindexToName)
 		return true
@@ -105,8 +109,8 @@ func IfindexToName(index int) (string, string, error) {
 	linkType := link.Type()
 	log.Warnf("IfindexToName(%d) fallback lookup done: %s, %s\n",
 		index, linkName, linkType)
-	lastFlag := RelevantLastResort(link)
-	IfindexToNameAdd(index, linkName, linkType, lastFlag)
+	relevantFlag, upFlag := RelevantLastResort(link)
+	IfindexToNameAdd(index, linkName, linkType, relevantFlag, upFlag)
 	return linkName, linkType, nil
 }
 
@@ -125,14 +129,15 @@ func IfnameToIndex(ifname string) (int, error) {
 	linkType := link.Type()
 	log.Warnf("IfnameToIndex(%s) fallback lookup done: %d, %s\n",
 		ifname, index, linkType)
-	lastFlag := RelevantLastResort(link)
-	IfindexToNameAdd(index, ifname, linkType, lastFlag)
+	relevantFlag, upFlag := RelevantLastResort(link)
+	IfindexToNameAdd(index, ifname, linkType, relevantFlag, upFlag)
 	return index, nil
 }
 
 // We skip things not considered to be device links, loopback, non-broadcast,
 // and children of a bridge master.
-func RelevantLastResort(link netlink.Link) bool {
+// Returns (relevant, up)
+func RelevantLastResort(link netlink.Link) (bool, bool) {
 	attrs := link.Attrs()
 	ifname := attrs.Name
 	linkType := link.Type()
@@ -145,17 +150,29 @@ func RelevantLastResort(link netlink.Link) bool {
 
 		log.Infof("Relevant %s up %t operState %s\n",
 			ifname, upFlag, attrs.OperState.String())
-		return true
+		return true, upFlag
 	} else {
-		return false
+		return false, false
 	}
 }
 
+// XXX remove
 func IfindexGetLastResort() []string {
 	var ifs []string
 	for _, lnt := range ifindexToName {
-		if lnt.lastFlag {
+		if lnt.relevantFlag {
 			ifs = append(ifs, lnt.linkName)
+		}
+	}
+	return ifs
+}
+
+// Return map[string] bool up
+func IfindexGetLastResortMap() map[string]bool {
+	ifs := make(map[string]bool, len(ifindexToName))
+	for _, lnt := range ifindexToName {
+		if lnt.relevantFlag {
+			ifs[lnt.linkName] = lnt.upFlag
 		}
 	}
 	return ifs

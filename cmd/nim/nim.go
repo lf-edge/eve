@@ -46,6 +46,7 @@ type nimContext struct {
 
 	networkFallbackAnyEth types.TriState
 	fallbackPorts         []string // All UP Ethernet ports
+	fallbackPortMap       map[string]bool
 
 	// CLI args
 	debug         bool
@@ -114,7 +115,7 @@ func waitForDeviceNetworkConfigFile() string {
 
 // Run - Main function - invoked from zedbox.go
 func Run() {
-	nimCtx := nimContext{}
+	nimCtx := nimContext{fallbackPortMap: make(map[string]bool)}
 	nimCtx.AssignableAdapters = &types.AssignableAdapters{}
 	nimCtx.sshAccess = true // Kernel default - no iptables filters
 	nimCtx.globalConfig = &types.GlobalConfigDefaults
@@ -139,15 +140,6 @@ func Run() {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s\n", agentName)
-
-	ifs := devicenetwork.IfindexGetLastResort()
-	if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
-		log.Infof("IfindexGetLastResort: updated to %v\n", ifs)
-		nimCtx.fallbackPorts = ifs
-		if nimCtx.networkFallbackAnyEth == types.TS_ENABLED {
-			updateFallbackAnyEth(&nimCtx)
-		}
-	}
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -366,14 +358,8 @@ func Run() {
 				log.Fatalf("linkChanges closed?\n")
 			}
 			if devicenetwork.LinkChange(change) {
-				ifs := devicenetwork.IfindexGetLastResort()
-				if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
-					log.Infof("IfindexGetLastResort: updated to %v\n", ifs)
-					nimCtx.fallbackPorts = ifs
-					if nimCtx.networkFallbackAnyEth == types.TS_ENABLED {
-						updateFallbackAnyEth(&nimCtx)
-					}
-				}
+				handleLinkChange(&nimCtx)
+				// XXX trigger testing??
 			}
 
 		case <-geoTimer.C:
@@ -460,17 +446,9 @@ func Run() {
 			if !ok {
 				log.Fatalf("linkChanges closed?\n")
 			}
-			// XXX if this returns true we should potentially
-			// trigger testing
 			if devicenetwork.LinkChange(change) {
-				ifs := devicenetwork.IfindexGetLastResort()
-				if !cmp.Equal(ifs, nimCtx.fallbackPorts) {
-					log.Infof("IfindexGetLastResort: updated to %v\n", ifs)
-					nimCtx.fallbackPorts = ifs
-					if nimCtx.networkFallbackAnyEth == types.TS_ENABLED {
-						updateFallbackAnyEth(&nimCtx)
-					}
-				}
+				handleLinkChange(&nimCtx)
+				// XXX trigger testing??
 			}
 
 		case <-geoTimer.C:
@@ -523,6 +501,36 @@ func Run() {
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
 		}
+	}
+}
+
+func handleLinkChange(ctx *nimContext) {
+	ifs := devicenetwork.IfindexGetLastResort()
+	if !cmp.Equal(ifs, ctx.fallbackPorts) {
+		log.Infof("IfindexGetLastResort: updated to %v\n", ifs)
+		ctx.fallbackPorts = ifs
+		if ctx.networkFallbackAnyEth == types.TS_ENABLED {
+			updateFallbackAnyEth(ctx)
+		}
+	}
+	// Create superset; update to have the latest upFlag
+	ifmap := devicenetwork.IfindexGetLastResortMap()
+	changed := false
+	for ifname, upFlag := range ifmap {
+		v, ok := ctx.fallbackPortMap[ifname]
+		if ok && v == upFlag {
+			continue
+		}
+		changed = true
+		if !ok {
+			log.Infof("fallbackPortMap added %s %t\n", ifname, upFlag)
+		} else {
+			log.Infof("fallbackPortMap updated %s to %t\n", ifname, upFlag)
+		}
+		ctx.fallbackPortMap[ifname] = upFlag
+	}
+	if changed {
+		log.Infof("new fallBackPortmap: %+v\n", ctx.fallbackPortMap)
 	}
 }
 

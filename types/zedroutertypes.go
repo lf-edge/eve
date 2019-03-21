@@ -187,13 +187,15 @@ func (portConfig *DevicePortConfig) DoSanitize(
 			} else {
 				portConfig.TimePriority = time.Unix(0, 0)
 			}
-			log.Infof("HandleDPCModify: Forcing TimePriority for %s to %v\n",
+			log.Infof("DoSanitize: Forcing TimePriority for %s to %v\n",
 				key, portConfig.TimePriority)
 		}
 	}
 	if sanitizeKey {
 		if portConfig.Key == "" {
 			portConfig.Key = key
+			log.Infof("DoSanitize: Forcing Key for %s TS %v\n",
+				key, portConfig.TimePriority)
 		}
 	}
 	if sanitizeName {
@@ -203,11 +205,11 @@ func (portConfig *DevicePortConfig) DoSanitize(
 			port := &portConfig.Ports[i]
 			if port.Name == "" {
 				port.Name = port.IfName
+				log.Infof("DoSanitize: Forcing Name for %s ifname %s\n",
+					key, port.IfName)
 			}
 		}
-
 	}
-	return
 }
 
 func (portConfig DevicePortConfig) IsDPCTestable() bool {
