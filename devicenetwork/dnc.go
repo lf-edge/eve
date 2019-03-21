@@ -164,6 +164,7 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 	pending := &ctx.Pending
 	if pending.Inprogress {
 		log.Infof("RestartVerify: DPC list verification in progress")
+		// Once we are done with current inprogress, start another test
 		pending.RestartNeeded = true
 		return
 	}
@@ -287,8 +288,10 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 				ctx.NextDPCIndex)
 			// Avoid clobbering wrong entry if insert/remove after verification
 			// started
-			if pending.RestartNeeded {
-				log.Warnf("Not updating list on DPC_FAIL due to RestartNeeded\n")
+			if ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key != pending.PendDPC.Key {
+				log.Warnf("Not updating list on DPC_FAIL due key mismatch %s vs %s\n",
+					ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key,
+					pending.PendDPC.Key)
 			} else {
 				ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
 			}
@@ -309,8 +312,10 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 				ctx.NextDPCIndex)
 			// Avoid clobbering wrong entry if insert/remove after verification
 			// started
-			if pending.RestartNeeded {
-				log.Warnf("Not updating list on DPC_SUCCESS due to RestartNeeded\n")
+			if ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key != pending.PendDPC.Key {
+				log.Warnf("Not updating list on DPC_SUCCESS due key mismatch %s vs %s\n",
+					ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key,
+					pending.PendDPC.Key)
 			} else {
 				ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
 			}
@@ -337,8 +342,10 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	}
 	// Avoid clobbering wrong entry if insert/remove after verification
 	// started
-	if pending.RestartNeeded {
-		log.Warnf("Not updating list on done due to RestartNeeded\n")
+	if ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key != pending.PendDPC.Key {
+		log.Warnf("Not updating list on done due key mismatch %s vs %s\n",
+			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key,
+			pending.PendDPC.Key)
 	} else {
 		*ctx.DevicePortConfig = pending.PendDPC
 		*ctx.DeviceNetworkStatus = pending.PendDNS
