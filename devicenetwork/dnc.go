@@ -379,7 +379,16 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	portConfig.DoSanitize(true, true, key, true)
 
 	configChanged := ctx.doUpdatePortConfigListAndPublish(&portConfig, false)
-	if !configChanged {
+	// We could have just booted up and not run RestartVerify even once.
+	// If we see a DPC configuration that we already have in the persistent
+	// DPC list that we load from storage, we will return with out testing it.
+	// In such case we end up not having any working DeviceNetworkStatus (no ips).
+	// When the current DeviceNetworkStatus does not have any usable IP addresses,
+	// we should go ahead and call RestartVerify even when "configChanged" is false.
+	//
+	// XXX Or instead of checking for Ip address count, should be have a "first DPC" flag?
+	ipAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
+	if !configChanged && ipAddrCount > 0 {
 		log.Infof("HandleDPCModify: Config already current. No changes to process\n")
 		return
 	}
