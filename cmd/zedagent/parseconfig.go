@@ -1001,6 +1001,17 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				log.Errorf("publishNetworkObjectConfig: parseIpspec failed: %s\n", err)
 				continue
 			}
+		case types.NT_NOOP:
+			// XXX zedcloud is sending static and dynamic entries with zero.
+			// XXX could also be for a switch without an IP address??
+			if ipspec != nil {
+				err := parseIpspec(ipspec, &config)
+				if err != nil {
+					// XXX return how?
+					log.Errorf("publishNetworkObjectConfig: parseIpspec ignored: %s\n", err)
+				}
+			}
+
 		default:
 			log.Errorf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %s in %v; ignored\n",
 				config.Type, id.String(), netEnt)
@@ -1783,6 +1794,22 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					globalConfig.NetworkTestBetterInterval,
 					newU32)
 				globalConfig.NetworkTestBetterInterval = newU32
+				globalConfigChange = true
+			}
+
+		case "network.fallback.any.eth":
+			newTs, err := types.ParseTriState(item.Value)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad tristate value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			if newTs != globalConfig.NetworkFallbackAnyEth {
+				log.Infof("parseConfigItems: %s change from %v to %v\n",
+					key,
+					globalConfig.NetworkFallbackAnyEth,
+					newTs)
+				globalConfig.NetworkFallbackAnyEth = newTs
 				globalConfigChange = true
 			}
 

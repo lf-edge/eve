@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
@@ -43,6 +44,12 @@ type nimContext struct {
 	globalConfig    *types.GlobalConfig
 	sshAccess       bool
 	allowAppVnc     bool
+
+	subNetworkInstanceStatus *pubsub.Subscription
+
+	networkFallbackAnyEth types.TriState
+	fallbackPortMap       map[string]bool
+	filteredFallback      map[string]bool
 
 	// CLI args
 	debug         bool
@@ -111,7 +118,10 @@ func waitForDeviceNetworkConfigFile() string {
 
 // Run - Main function - invoked from zedbox.go
 func Run() {
-	nimCtx := nimContext{}
+	nimCtx := nimContext{
+		fallbackPortMap:  make(map[string]bool),
+		filteredFallback: make(map[string]bool),
+	}
 	nimCtx.AssignableAdapters = &types.AssignableAdapters{}
 	nimCtx.sshAccess = true // Kernel default - no iptables filters
 	nimCtx.globalConfig = &types.GlobalConfigDefaults
@@ -253,6 +263,14 @@ func Run() {
 	nimCtx.SubAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
+	subNetworkInstanceStatus, err := pubsub.Subscribe("zedrouter",
+		types.NetworkInstanceStatus{}, false, &nimCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	nimCtx.subNetworkInstanceStatus = subNetworkInstanceStatus
+	subNetworkInstanceStatus.Activate()
+
 	devicenetwork.DoDNSUpdate(&nimCtx.DeviceNetworkContext)
 
 	// Apply any changes from the port config to date.
@@ -317,8 +335,8 @@ func Run() {
 	}
 
 	// Look for address and link changes
-	addrChanges := devicenetwork.AddrChangeInit(&nimCtx.DeviceNetworkContext)
-	linkChanges := devicenetwork.LinkChangeInit(&nimCtx.DeviceNetworkContext)
+	addrChanges := devicenetwork.AddrChangeInit()
+	linkChanges := devicenetwork.LinkChangeInit()
 
 	// To avoid a race between domainmgr starting and moving this to pciback
 	// and zedagent publishing its DevicePortConfig using those assigned-away
@@ -342,19 +360,27 @@ func Run() {
 		case change := <-subAssignableAdapters.C:
 			subAssignableAdapters.ProcessChange(change)
 
+		case change := <-subNetworkInstanceStatus.C:
+			subNetworkInstanceStatus.ProcessChange(change)
+
 		case change, ok := <-addrChanges:
 			if !ok {
-				log.Fatalf("addrChanges closed?\n")
+				log.Errorf("addrChanges closed\n")
+				addrChanges = devicenetwork.AddrChangeInit()
+			} else {
+				if devicenetwork.AddrChange(change) {
+					devicenetwork.HandleAddressChange(&nimCtx.DeviceNetworkContext)
+				}
 			}
-			devicenetwork.AddrChange(&nimCtx.DeviceNetworkContext,
-				change)
 
 		case change, ok := <-linkChanges:
 			if !ok {
-				log.Fatalf("linkChanges closed?\n")
+				log.Errorf("linkChanges closed\n")
+				linkChanges = devicenetwork.LinkChangeInit()
+			} else if devicenetwork.LinkChange(change) {
+				handleLinkChange(&nimCtx)
+				// XXX trigger testing??
 			}
-			devicenetwork.LinkChange(&nimCtx.DeviceNetworkContext,
-				change)
 
 		case <-geoTimer.C:
 			log.Debugln("geoTimer at", time.Now())
@@ -429,19 +455,27 @@ func Run() {
 		case change := <-subAssignableAdapters.C:
 			subAssignableAdapters.ProcessChange(change)
 
+		case change := <-subNetworkInstanceStatus.C:
+			subNetworkInstanceStatus.ProcessChange(change)
+
 		case change, ok := <-addrChanges:
 			if !ok {
-				log.Fatalf("addrChanges closed?\n")
+				log.Errorf("addrChanges closed\n")
+				addrChanges = devicenetwork.AddrChangeInit()
+			} else {
+				if devicenetwork.AddrChange(change) {
+					devicenetwork.HandleAddressChange(&nimCtx.DeviceNetworkContext)
+				}
 			}
-			devicenetwork.AddrChange(&nimCtx.DeviceNetworkContext,
-				change)
 
 		case change, ok := <-linkChanges:
 			if !ok {
-				log.Fatalf("linkChanges closed?\n")
+				log.Errorf("linkChanges closed\n")
+				linkChanges = devicenetwork.LinkChangeInit()
+			} else if devicenetwork.LinkChange(change) {
+				handleLinkChange(&nimCtx)
+				// XXX trigger testing??
 			}
-			devicenetwork.LinkChange(&nimCtx.DeviceNetworkContext,
-				change)
 
 		case <-geoTimer.C:
 			log.Debugln("geoTimer at", time.Now())
@@ -492,6 +526,34 @@ func Run() {
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
+		}
+	}
+}
+
+func handleLinkChange(ctx *nimContext) {
+	// Create superset; update to have the latest upFlag
+	// Note that upFlag gets cleared when the device is assigned away to pciback
+	ifmap := devicenetwork.IfindexGetLastResortMap()
+	changed := false
+	for ifname, upFlag := range ifmap {
+		v, ok := ctx.fallbackPortMap[ifname]
+		if ok && v == upFlag {
+			continue
+		}
+		changed = true
+		if !ok {
+			log.Infof("fallbackPortMap added %s %t\n", ifname, upFlag)
+		} else {
+			log.Infof("fallbackPortMap updated %s to %t\n", ifname, upFlag)
+		}
+		ctx.fallbackPortMap[ifname] = upFlag
+	}
+	if changed {
+		log.Infof("new fallbackPortmap: %+v\n", ctx.fallbackPortMap)
+		ctx.filteredFallback = filterIfMap(ctx, ctx.fallbackPortMap)
+		log.Infof("new filteredFallback: %+v\n", ctx.filteredFallback)
+		if ctx.networkFallbackAnyEth == types.TS_ENABLED {
+			updateFallbackAnyEth(ctx)
 		}
 	}
 }
@@ -572,6 +634,10 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 			ctx.allowAppVnc = gcp.AllowAppVnc
 			iptables.UpdateVncAccess(ctx.allowAppVnc)
 		}
+		if gcp.NetworkFallbackAnyEth != ctx.networkFallbackAnyEth || first {
+			ctx.networkFallbackAnyEth = gcp.NetworkFallbackAnyEth
+			updateFallbackAnyEth(ctx)
+		}
 		ctx.globalConfig = gcp
 	}
 	ctx.GCInitialized = true
@@ -610,4 +676,95 @@ func handleGlobalConfigSynchronized(ctxArg interface{}, done bool) {
 func fileExists(filename string) bool {
 	_, err := os.Stat(filename)
 	return err == nil
+}
+
+func updateFallbackAnyEth(ctx *nimContext) {
+	log.Infof("updateFallbackAnyEth: enable %v ifs %v\n",
+		ctx.networkFallbackAnyEth, ctx.filteredFallback)
+	if ctx.networkFallbackAnyEth == types.TS_ENABLED {
+		ports := mapToKeys(ctx.filteredFallback)
+		devicenetwork.UpdateLastResortPortConfig(&ctx.DeviceNetworkContext,
+			ports)
+	} else if ctx.networkFallbackAnyEth == types.TS_DISABLED {
+		devicenetwork.RemoveLastResortPortConfig(&ctx.DeviceNetworkContext)
+	}
+}
+
+// Return an array with the keys in the map
+func mapToKeys(m map[string]bool) []string {
+
+	keys := make([]string, len(m))
+	i := 0
+	for k := range m {
+		keys[i] = k
+		i++
+	}
+	return keys
+}
+
+// Determine which interfaces are not used exclusively by device assignment or by
+// a switch network instance.
+//
+// Exclude those in AssignableAdapters with usedByUUID!=0
+// Exclude those in NetworkInstanceStatus Type=switch
+func filterIfMap(ctx *nimContext, fallbackPortMap map[string]bool) map[string]bool {
+	log.Infof("filterIfMap: len %d\n", len(fallbackPortMap))
+
+	filteredFallback := make(map[string]bool, len(fallbackPortMap))
+	for ifname, upFlag := range fallbackPortMap {
+		if isAssigned(ctx, ifname) {
+			continue
+		}
+		if isSwitch(ctx, ifname) {
+			continue
+		}
+		filteredFallback[ifname] = upFlag
+	}
+	return filteredFallback
+}
+
+// Really a constant
+var nilUUID uuid.UUID
+
+// Check in AssignableAdapters with usedByUUID!=0
+func isAssigned(ctx *nimContext, ifname string) bool {
+
+	ib := ctx.AssignableAdapters.LookupIoBundleForMember(types.IoEth, ifname)
+	if ib == nil {
+		return false
+	}
+	log.Infof("isAssigned(%s): pciback %t used %s\n",
+		ib.IsPCIBack, ib.UsedByUUID.String())
+
+	if ib.UsedByUUID != nilUUID {
+		return true
+	}
+	return false
+}
+
+// Check in NetworkInstanceStatus Type=switch
+// XXX should we check for other shared usage? Static IP config?
+func isSwitch(ctx *nimContext, ifname string) bool {
+
+	sub := ctx.subNetworkInstanceStatus
+	items := sub.GetAll()
+	log.Infof("isSwitch(%s) have %d items\n", ifname, len(items))
+
+	foundExcl := false
+	for _, st := range items {
+		status := cast.CastNetworkInstanceStatus(st)
+
+		if !status.IsUsingPort(ifname) {
+			continue
+		}
+		log.Infof("isSwitch(%s) found use in %s/%s\n",
+			ifname, status.DisplayName, status.Key())
+		if status.Type != types.NetworkInstanceTypeSwitch {
+			continue
+		}
+		foundExcl = true
+		log.Infof("isSwitch(%s) found excl use in %s/%s\n",
+			ifname, status.DisplayName, status.Key())
+	}
+	return foundExcl
 }

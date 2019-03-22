@@ -25,7 +25,9 @@ package zedagent
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -49,6 +51,7 @@ const (
 	objectDownloadDirname = persistDir + "/downloads"
 	certificateDirname    = persistDir + "/certs"
 	checkpointDirname     = persistDir + "/checkpoint"
+	restartCounterFile    = configDir + "/restartcounter"
 
 	partitionCount = 2
 )
@@ -101,6 +104,7 @@ type zedagentContext struct {
 	rebootCmdDeferred         bool
 	rebootReason              string
 	rebootTime                time.Time
+	restartCounter            uint32
 	subDevicePortConfigList   *pubsub.Subscription
 	devicePortConfigList      types.DevicePortConfigList
 }
@@ -200,6 +204,9 @@ func Run() {
 		zedagentCtx.rebootReason = reason
 		zedagentCtx.rebootTime = time.Now()
 	}
+
+	// Read and increment restartCounter
+	zedagentCtx.restartCounter = incrementRestartCounter()
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -1079,4 +1086,31 @@ func handleZbootStatusDelete(ctxArg interface{}, key string,
 		log.Infof("handleZbootStatusDelete: for %s\n", key)
 	}
 	// Nothing to do
+}
+
+// If the file doesn't exist we pick zero.
+// Return value before increment; write new value to file
+func incrementRestartCounter() uint32 {
+	var restartCounter uint32
+
+	if _, err := os.Stat(restartCounterFile); err == nil {
+		b, err := ioutil.ReadFile(restartCounterFile)
+		if err != nil {
+			log.Errorf("incrementRestartCounter: %s\n", err)
+		} else {
+			c, err := strconv.Atoi(string(b))
+			if err != nil {
+				log.Errorf("incrementRestartCounter: %s\n", err)
+			} else {
+				restartCounter = uint32(c)
+				log.Infof("incrementRestartCounter: read %d\n", restartCounter)
+			}
+		}
+	}
+	b := []byte(fmt.Sprintf("%d", restartCounter+1))
+	err := ioutil.WriteFile(restartCounterFile, b, 0644)
+	if err != nil {
+		log.Errorf("incrementRestartCounter write: %s\n", err)
+	}
+	return restartCounter
 }

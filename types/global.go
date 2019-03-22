@@ -23,11 +23,12 @@ type GlobalConfig struct {
 	DomainBootRetryTime uint32 // Retry failed boot after N sec
 
 	// Control NIM testing behavior: In seconds
-	NetworkGeoRedoTime        uint32 // Periodic IP geolocation
-	NetworkGeoRetryTime       uint32 // Redo IP geolocation failure
-	NetworkTestDuration       uint32 // Time we wait for DHCP to complete
-	NetworkTestInterval       uint32 // Re-test DevicePortConfig
-	NetworkTestBetterInterval uint32 // Look for better DevicePortConfig
+	NetworkGeoRedoTime        uint32   // Periodic IP geolocation
+	NetworkGeoRetryTime       uint32   // Redo IP geolocation failure
+	NetworkTestDuration       uint32   // Time we wait for DHCP to complete
+	NetworkTestInterval       uint32   // Re-test DevicePortConfig
+	NetworkTestBetterInterval uint32   // Look for better DevicePortConfig
+	NetworkFallbackAnyEth     TriState // When no connectivity try any Ethernet; XXX LTE?
 
 	// UsbAccess
 	// Determines if Dom0 can use USB devices.
@@ -79,6 +80,7 @@ var GlobalConfigDefaults = GlobalConfig{
 	NetworkTestDuration:       30,
 	NetworkTestInterval:       300,  // 5 minutes
 	NetworkTestBetterInterval: 1800, // 30 minutes
+	NetworkFallbackAnyEth:     TS_ENABLED,
 
 	UsbAccess:             true,   // Contoller likely to default to false
 	SshAccess:             true,   // Contoller likely to default to false
@@ -123,6 +125,10 @@ func ApplyGlobalConfig(newgc GlobalConfig) GlobalConfig {
 		newgc.NetworkTestInterval = GlobalConfigDefaults.NetworkTestInterval
 	}
 	// We allow newgc.NetworkTestBetterInterval to be zero meaning disabled
+
+	if newgc.NetworkFallbackAnyEth == TS_NONE {
+		newgc.NetworkFallbackAnyEth = GlobalConfigDefaults.NetworkFallbackAnyEth
+	}
 	if newgc.StaleConfigTime == 0 {
 		newgc.StaleConfigTime = GlobalConfigDefaults.StaleConfigTime
 	}

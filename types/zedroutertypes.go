@@ -185,15 +185,17 @@ func (portConfig *DevicePortConfig) DoSanitize(
 			if err == nil {
 				portConfig.TimePriority = fi.ModTime()
 			} else {
-				portConfig.TimePriority = time.Unix(1, 0)
+				portConfig.TimePriority = time.Unix(0, 0)
 			}
-			log.Infof("HandleDPCModify: Forcing TimePriority for %s to %v\n",
+			log.Infof("DoSanitize: Forcing TimePriority for %s to %v\n",
 				key, portConfig.TimePriority)
 		}
 	}
 	if sanitizeKey {
 		if portConfig.Key == "" {
 			portConfig.Key = key
+			log.Infof("DoSanitize: Forcing Key for %s TS %v\n",
+				key, portConfig.TimePriority)
 		}
 	}
 	if sanitizeName {
@@ -203,21 +205,25 @@ func (portConfig *DevicePortConfig) DoSanitize(
 			port := &portConfig.Ports[i]
 			if port.Name == "" {
 				port.Name = port.IfName
+				log.Infof("DoSanitize: Forcing Name for %s ifname %s\n",
+					key, port.IfName)
 			}
 		}
-
 	}
-	return
 }
 
+// Return false if recent failure (less than 60 seconds ago)
 func (portConfig DevicePortConfig) IsDPCTestable() bool {
-	// convert time difference in nano seconds to seconds
-	timeDiff := int64(time.Now().Sub(portConfig.LastFailed) / time.Second)
 
-	if portConfig.LastFailed.After(portConfig.LastSucceeded) && timeDiff < 60 {
-		return false
+	if portConfig.LastFailed.IsZero() {
+		return true
 	}
-	return true
+	if portConfig.LastSucceeded.After(portConfig.LastFailed) {
+		return true
+	}
+	// convert time difference in nano seconds to seconds
+	timeDiff := time.Since(portConfig.LastFailed) / time.Second
+	return (timeDiff > 60)
 }
 
 func (portConfig DevicePortConfig) IsDPCUntested() bool {
@@ -400,6 +406,21 @@ func CountLocalAddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 	// Count the number of addresses which apply
 	addrs, _ := getInterfaceAddr(globalStatus, true, "", false)
 	return len(addrs)
+}
+
+// XXX move AF functionality to getInterfaceAddr?
+func CountLocalIPv4AddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus) int {
+
+	// Count the number of addresses which apply
+	addrs, _ := getInterfaceAddr(globalStatus, true, "", false)
+	count := 0
+	for _, addr := range addrs {
+		if addr.To4() == nil {
+			continue
+		}
+		count += 1
+	}
+	return count
 }
 
 // Return number of local IP addresses for all the management ports with given name
@@ -831,10 +852,13 @@ type UnderlayNetworkStatus struct {
 type NetworkType uint8
 
 const (
-	NT_IPV4      NetworkType = 4
+	NT_NOOP      NetworkType = 0
+	NT_IPV4      		 = 4
 	NT_IPV6                  = 6
 	NT_CryptoEID             = 14 // Either IPv6 or IPv4; adapter Addr
 	// determines whether IPv4 EIDs are in use.
+	NT_CryptoV4 = 24 // Not used
+	NT_CryptoV6 = 26 // Not used
 	// XXX Do we need a NT_DUAL/NT_IPV46? Implies two subnets/dhcp ranges?
 	// XXX how do we represent a bridge? NT_L2??
 )
@@ -1276,8 +1300,17 @@ func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 	return false
 }
 
+// Check if port is used even if a label like "uplink" is used to specify it
 func (status *NetworkInstanceStatus) IsUsingPort(port string) bool {
-	return strings.EqualFold(port, status.Port)
+	if strings.EqualFold(port, status.Port) {
+		return true
+	}
+	for _, ifname := range status.IfNameList {
+		if ifname == port {
+			return true
+		}
+	}
+	return false
 }
 
 // Similar support as in draft-ietf-netmod-acl-model

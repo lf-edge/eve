@@ -4,10 +4,13 @@
 package types
 
 import (
-	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
+
+	"github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 // Enum names from OMA-TS-LWM2M_SwMgmt-V1_0-20151201-C
@@ -76,4 +79,30 @@ type UuidToNum struct {
 
 func (info UuidToNum) Key() string {
 	return info.UUID.String()
+}
+
+// Use this for booleans which have a none/dontcare/notset value
+type TriState uint8
+
+const (
+	TS_NONE TriState = iota
+	TS_DISABLED
+	TS_ENABLED
+)
+
+func ParseTriState(value string) (TriState, error) {
+	var ts TriState
+
+	switch value {
+	case "none":
+		ts = TS_NONE
+	case "enabled":
+		ts = TS_ENABLED
+	case "disabled":
+		ts = TS_DISABLED
+	default:
+		err := errors.New(fmt.Sprintf("Bad value: %s", value))
+		return ts, err
+	}
+	return ts, nil
 }

@@ -82,32 +82,37 @@ func PciLongToUnique(long string) (bool, string) {
 	return true, link
 }
 
-// Returns the long and short PCI IDs.
+// Returns the long and short PCI IDs; if Lookup is set there can be a PCI ID for
+// each member.
 // Check if PCI ID exists on system. Returns null strings for non-PCI
 // devices since we can't check if they exist.
-// If there are multiple members in the bundle we return the PCI ID for
-// the first one we find.
-func IoBundleToPci(ib *IoBundle) (string, string, error) {
+func IoBundleToPci(ib *IoBundle) ([]string, []string, error) {
 	var long, short string
+	var longs, shorts []string
 	if ib.Lookup {
+		longs = make([]string, len(ib.Members))
+		shorts = make([]string, len(ib.Members))
 		var err error
-		for _, m := range ib.Members {
+		for i, m := range ib.Members {
 			long, short, err = ifNameToPci(m)
 			if err == nil {
-				break
+				longs[i] = long
+				shorts[i] = short
 			}
 		}
 		if err != nil {
-			return "", "", err
+			return nil, nil, err
 		}
 	} else if ib.PciShort != "" {
-		long = ib.PciLong
-		short = ib.PciShort
+		longs = make([]string, 1)
+		shorts = make([]string, 1)
+		longs[0] = ib.PciLong
+		shorts[0] = ib.PciShort
 	}
-	if short != "" {
-		if !pciLongExists(long) {
-			return "", "", errors.New(fmt.Sprintf("PCI device (%s) does not exist", long))
+	for i, _ := range shorts {
+		if !pciLongExists(longs[i]) {
+			return nil, nil, errors.New(fmt.Sprintf("PCI device (%s) does not exist", longs[i]))
 		}
 	}
-	return long, short, nil
+	return longs, shorts, nil
 }
