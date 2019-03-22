@@ -27,7 +27,7 @@ linuxkit_tag() {
 immutable_tag() {
   # we have to resolve symbolic tags like x.y.z or snapshot to something immutable
   # so that we can detect when the symbolic tag starts pointing a different immutable
-  # object and thus trigger a new SHA for zenix and zedctr 
+  # object and thus trigger a new SHA for zenix and zedctr
   echo $(docker inspect --format='{{index .RepoDigests 0}}' "$1" 2>/dev/null ||
          docker inspect --format='{{.Id}}' "$1" 2>/dev/null ||
          echo "$1")
@@ -101,7 +101,7 @@ else
   ARCH="-${DOCKER_ARCH_TAG}"
 fi
 
-ZENBUILD_VERSION=`zenbuild_version`$ARCH
+ZENBUILD_VERSION=${ZENBUILD_VERSION:-(`zenbuild_version`$ARCH)}
 
 KERNEL_TAG=$(linuxkit_tag pkg/kernel)
 FW_TAG=$(linuxkit_tag pkg/fw)
@@ -137,7 +137,7 @@ LISP_TAG=$(immutable_tag ${LISP_TAG:-$(external_tag zededa/lisp)})
 # That way, these tags are guaranteed to change whenever
 # *any* *single* dependency changes.
 #
-# These tags need to be declared last sine they depend 
+# These tags need to be declared last sine they depend
 # on the previous tags being already defined.
 ZEDEDA_TAG=$(synthetic_tag zededa/zedctr pkg/zedctr/Dockerfile.in)
 ZENIX_TAG=$(synthetic_tag zededa/zenix pkg/zedctr/Dockerfile.in)
