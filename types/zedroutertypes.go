@@ -1297,8 +1297,17 @@ func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 	return false
 }
 
+// Check if port is used even if a label like "uplink" is used to specify it
 func (status *NetworkInstanceStatus) IsUsingPort(port string) bool {
-	return strings.EqualFold(port, status.Port)
+	if strings.EqualFold(port, status.Port) {
+		return true
+	}
+	for _, ifname := range status.IfNameList {
+		if ifname == port {
+			return true
+		}
+	}
+	return false
 }
 
 // Similar support as in draft-ietf-netmod-acl-model

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
@@ -44,9 +45,12 @@ type nimContext struct {
 	sshAccess       bool
 	allowAppVnc     bool
 
+	subNetworkInstanceStatus *pubsub.Subscription
+
 	networkFallbackAnyEth types.TriState
-	fallbackPorts         []string // All UP Ethernet ports
+	fallbackPorts         []string // All relevant Ethernet ports
 	fallbackPortMap       map[string]bool
+	filteredFallback      map[string]bool
 
 	// CLI args
 	debug         bool
@@ -257,6 +261,16 @@ func Run() {
 	nimCtx.SubAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
+	subNetworkInstanceStatus, err := pubsub.Subscribe("zedrouter",
+		types.NetworkInstanceStatus{}, false, &nimCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// XXX subNetworkInstanceStatus.ModifyHandler = handleNetworkInstanceModify
+	// XXX subNetworkInstanceStatus.DeleteHandler = handleNetworkInstanceDelete
+	nimCtx.subNetworkInstanceStatus = subNetworkInstanceStatus
+	subNetworkInstanceStatus.Activate()
+
 	devicenetwork.DoDNSUpdate(&nimCtx.DeviceNetworkContext)
 
 	// Apply any changes from the port config to date.
@@ -345,6 +359,9 @@ func Run() {
 
 		case change := <-subAssignableAdapters.C:
 			subAssignableAdapters.ProcessChange(change)
+
+		case change := <-subNetworkInstanceStatus.C:
+			subNetworkInstanceStatus.ProcessChange(change)
 
 		case change, ok := <-addrChanges:
 			if !ok {
@@ -438,6 +455,9 @@ func Run() {
 		case change := <-subAssignableAdapters.C:
 			subAssignableAdapters.ProcessChange(change)
 
+		case change := <-subNetworkInstanceStatus.C:
+			subNetworkInstanceStatus.ProcessChange(change)
+
 		case change, ok := <-addrChanges:
 			if !ok {
 				log.Errorf("addrChanges closed\n")
@@ -516,10 +536,11 @@ func handleLinkChange(ctx *nimContext) {
 		log.Infof("IfindexGetLastResort: updated to %v\n", ifs)
 		ctx.fallbackPorts = ifs
 		if ctx.networkFallbackAnyEth == types.TS_ENABLED {
-			updateFallbackAnyEth(ctx)
+			// XXX remove updateFallbackAnyEth(ctx)
 		}
 	}
 	// Create superset; update to have the latest upFlag
+	// Note that upFlag gets cleared when the device is assigned away to pciback
 	ifmap := devicenetwork.IfindexGetLastResortMap()
 	changed := false
 	for ifname, upFlag := range ifmap {
@@ -537,6 +558,11 @@ func handleLinkChange(ctx *nimContext) {
 	}
 	if changed {
 		log.Infof("new fallbackPortmap: %+v\n", ctx.fallbackPortMap)
+		ctx.filteredFallback = filterIfMap(ctx, ctx.filteredFallback)
+		log.Infof("new filteredFallback: %+v\n", ctx.filteredFallback)
+		if ctx.networkFallbackAnyEth == types.TS_ENABLED {
+			updateFallbackAnyEth(ctx)
+		}
 	}
 }
 
@@ -662,11 +688,92 @@ func fileExists(filename string) bool {
 
 func updateFallbackAnyEth(ctx *nimContext) {
 	log.Infof("updateFallbackAnyEth: enable %v ifs %v\n",
-		ctx.networkFallbackAnyEth, ctx.fallbackPorts)
+		ctx.networkFallbackAnyEth, ctx.filteredFallback)
 	if ctx.networkFallbackAnyEth == types.TS_ENABLED {
+		ports := mapToKeys(ctx.filteredFallback)
 		devicenetwork.UpdateLastResortPortConfig(&ctx.DeviceNetworkContext,
-			ctx.fallbackPorts)
+			ports)
 	} else if ctx.networkFallbackAnyEth == types.TS_DISABLED {
 		devicenetwork.RemoveLastResortPortConfig(&ctx.DeviceNetworkContext)
 	}
+}
+
+// Return an array with the keys in the map
+func mapToKeys(m map[string]bool) []string {
+
+	keys := make([]string, len(m))
+	i := 0
+	for k := range m {
+		keys[i] = k
+		i++
+	}
+	return keys
+}
+
+// Determine which interfaces are not used exclusively by device assignment or by
+// a switch network instance.
+//
+// Exclude those in AssignableAdapters with usedByUUID!=0
+// Exclude those in NetworkInstanceStatus Type=switch
+func filterIfMap(ctx *nimContext, fallbackPortMap map[string]bool) map[string]bool {
+	log.Infof("filterIfMap: len %d\n", len(fallbackPortMap))
+
+	filteredFallback := make(map[string]bool, len(fallbackPortMap))
+	for ifname, upFlag := range fallbackPortMap {
+		if isAssigned(ctx, ifname) {
+			continue
+		}
+		if isSwitch(ctx, ifname) {
+			continue
+		}
+		filteredFallback[ifname] = upFlag
+	}
+	return filteredFallback
+}
+
+// Really a constant
+var nilUUID uuid.UUID
+
+// Check in AssignableAdapters with usedByUUID!=0
+func isAssigned(ctx *nimContext, ifname string) bool {
+
+	ib := ctx.AssignableAdapters.LookupIoBundleForMember(types.IoEth, ifname)
+	if ib == nil {
+		return false
+	}
+	log.Infof("isAssigned(%s): pciback %t used %s\n",
+		ib.IsPCIBack, ib.UsedByUUID.String())
+
+	if ib.UsedByUUID != nilUUID {
+		return true
+	}
+	return false
+}
+
+// Check in NetworkInstanceStatus Type=switch
+// XXX should we check for other shared usage? Static IP config?
+func isSwitch(ctx *nimContext, ifname string) bool {
+
+	// XXX should we keep this in cast form?
+	sub := ctx.subNetworkInstanceStatus
+	items := sub.GetAll()
+	log.Infof("isSwitch(%s) have %d items\n", ifname, len(items))
+
+	foundExcl := false
+	for _, st := range items {
+		status := cast.CastNetworkInstanceStatus(st)
+
+		if !status.IsUsingPort(ifname) {
+			continue
+		}
+		log.Infof("isSwitch(%s) found use in %s/%s\n",
+			ifname, status.DisplayName, status.Key())
+		if status.Type != types.NetworkInstanceTypeSwitch {
+			continue
+		}
+		foundExcl = true
+		log.Infof("isSwitch(%s) found excl use in %s/%s\n",
+			ifname, status.DisplayName, status.Key())
+	}
+	return foundExcl
 }
