@@ -530,7 +530,7 @@ func handleLinkChange(ctx *nimContext) {
 		ctx.fallbackPortMap[ifname] = upFlag
 	}
 	if changed {
-		log.Infof("new fallBackPortmap: %+v\n", ctx.fallbackPortMap)
+		log.Infof("new fallbackPortmap: %+v\n", ctx.fallbackPortMap)
 	}
 }
 
