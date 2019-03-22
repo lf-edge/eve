@@ -48,7 +48,6 @@ type nimContext struct {
 	subNetworkInstanceStatus *pubsub.Subscription
 
 	networkFallbackAnyEth types.TriState
-	fallbackPorts         []string // All relevant Ethernet ports
 	fallbackPortMap       map[string]bool
 	filteredFallback      map[string]bool
 
@@ -119,7 +118,10 @@ func waitForDeviceNetworkConfigFile() string {
 
 // Run - Main function - invoked from zedbox.go
 func Run() {
-	nimCtx := nimContext{fallbackPortMap: make(map[string]bool)}
+	nimCtx := nimContext{
+		fallbackPortMap:  make(map[string]bool),
+		filteredFallback: make(map[string]bool),
+	}
 	nimCtx.AssignableAdapters = &types.AssignableAdapters{}
 	nimCtx.sshAccess = true // Kernel default - no iptables filters
 	nimCtx.globalConfig = &types.GlobalConfigDefaults
@@ -266,8 +268,6 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// XXX subNetworkInstanceStatus.ModifyHandler = handleNetworkInstanceModify
-	// XXX subNetworkInstanceStatus.DeleteHandler = handleNetworkInstanceDelete
 	nimCtx.subNetworkInstanceStatus = subNetworkInstanceStatus
 	subNetworkInstanceStatus.Activate()
 
@@ -531,14 +531,6 @@ func Run() {
 }
 
 func handleLinkChange(ctx *nimContext) {
-	ifs := devicenetwork.IfindexGetLastResort()
-	if !cmp.Equal(ifs, ctx.fallbackPorts) {
-		log.Infof("IfindexGetLastResort: updated to %v\n", ifs)
-		ctx.fallbackPorts = ifs
-		if ctx.networkFallbackAnyEth == types.TS_ENABLED {
-			// XXX remove updateFallbackAnyEth(ctx)
-		}
-	}
 	// Create superset; update to have the latest upFlag
 	// Note that upFlag gets cleared when the device is assigned away to pciback
 	ifmap := devicenetwork.IfindexGetLastResortMap()
@@ -558,7 +550,7 @@ func handleLinkChange(ctx *nimContext) {
 	}
 	if changed {
 		log.Infof("new fallbackPortmap: %+v\n", ctx.fallbackPortMap)
-		ctx.filteredFallback = filterIfMap(ctx, ctx.filteredFallback)
+		ctx.filteredFallback = filterIfMap(ctx, ctx.fallbackPortMap)
 		log.Infof("new filteredFallback: %+v\n", ctx.filteredFallback)
 		if ctx.networkFallbackAnyEth == types.TS_ENABLED {
 			updateFallbackAnyEth(ctx)
@@ -754,7 +746,6 @@ func isAssigned(ctx *nimContext, ifname string) bool {
 // XXX should we check for other shared usage? Static IP config?
 func isSwitch(ctx *nimContext, ifname string) bool {
 
-	// XXX should we keep this in cast form?
 	sub := ctx.subNetworkInstanceStatus
 	items := sub.GetAll()
 	log.Infof("isSwitch(%s) have %d items\n", ifname, len(items))

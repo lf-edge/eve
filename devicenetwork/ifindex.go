@@ -152,17 +152,6 @@ func RelevantLastResort(link netlink.Link) (bool, bool) {
 	}
 }
 
-// XXX remove
-func IfindexGetLastResort() []string {
-	var ifs []string
-	for _, lnt := range ifindexToName {
-		if lnt.relevantFlag {
-			ifs = append(ifs, lnt.linkName)
-		}
-	}
-	return ifs
-}
-
 // Return map[string] bool up
 func IfindexGetLastResortMap() map[string]bool {
 	ifs := make(map[string]bool, len(ifindexToName))

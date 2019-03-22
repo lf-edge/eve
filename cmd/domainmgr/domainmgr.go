@@ -2192,7 +2192,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 				}
 				ib.IsPCIBack = false
 				publishAssignableAdapters = true
-				// XXX check if it is back?
+				// Verify that it has been returned from pciback
 				_, _, err = types.IoBundleToPci(ib)
 				if err != nil {
 					log.Warnf("checkAndSetIoBundle(%d %s %v) gone?: %s\n",
@@ -2272,7 +2272,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 					ib.Name, ib.Members[i], long)
 				err := pciAssignableAdd(long)
 				if err != nil {
-					// XXX return all errors?
+					// XXX return all errors? Here we return one error
 					log.Errorf("Partial error for %s: %s\n", long, err)
 					oneError = err
 				}
@@ -2280,7 +2280,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 			if oneError != nil {
 				// Undo any assignments from above
 				for i, long := range ib.MPciLong {
-					log.Infof("XXX unassigning %s member %s (%s) to pciback\n",
+					log.Infof("Unassigning %s member %s (%s) to pciback\n",
 						ib.Name, ib.Members[i], long)
 					pciAssignableRemove(long)
 				}

@@ -82,11 +82,10 @@ func PciLongToUnique(long string) (bool, string) {
 	return true, link
 }
 
-// Returns the long and short PCI IDs.
+// Returns the long and short PCI IDs; if Lookup is set there can be a PCI ID for
+// each member.
 // Check if PCI ID exists on system. Returns null strings for non-PCI
 // devices since we can't check if they exist.
-// If there are multiple members in the bundle we return the PCI ID for all
-// XXX Only in the lookup case.
 func IoBundleToPci(ib *IoBundle) ([]string, []string, error) {
 	var long, short string
 	var longs, shorts []string

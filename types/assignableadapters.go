@@ -56,10 +56,10 @@ type IoBundle struct {
 	MUnique   []string // From firmware_node symlink; used for debug checks
 
 	// IsPciBack
-	//	Is the IoBundle assigned to pciBack.
+	//	Is the IoBundle assigned to pciBack; means all members are assigned
 	//  If the device is managed by dom0, this is False.
 	//  If the device is ( or to be ) managed by DomU, this is True
-	IsPCIBack bool // Assigned to pciback XXX all members
+	IsPCIBack bool // Assigned to pciback
 	IsPort    bool // Whole or part of the bundle is a zedrouter port
 
 	// DeviceExists
