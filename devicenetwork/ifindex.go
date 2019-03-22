@@ -11,6 +11,7 @@ import (
 	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
 	"net"
+	"strings"
 )
 
 // ===== map from ifindex to ifname
@@ -132,6 +133,7 @@ func IfnameToIndex(ifname string) (int, error) {
 
 // We skip things not considered to be device links, loopback, non-broadcast,
 // and children of a bridge master.
+// Match "vif.*" for name and skip those as well.
 // Returns (relevant, up)
 func RelevantLastResort(link netlink.Link) (bool, bool) {
 	attrs := link.Attrs()
@@ -141,8 +143,9 @@ func RelevantLastResort(link netlink.Link) (bool, bool) {
 	loopbackFlag := (linkFlags & net.FlagLoopback) != 0
 	broadcastFlag := (linkFlags & net.FlagBroadcast) != 0
 	upFlag := (attrs.OperState == netlink.OperUp)
+	isVif := strings.HasPrefix(ifname, "vif")
 	if linkType == "device" && !loopbackFlag && broadcastFlag &&
-		attrs.MasterIndex == 0 {
+		attrs.MasterIndex == 0 && !isVif {
 
 		log.Infof("Relevant %s up %t operState %s\n",
 			ifname, upFlag, attrs.OperState.String())
