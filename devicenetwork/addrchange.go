@@ -15,32 +15,32 @@ import (
 // Returns a channel for address updates
 // Caller then does this in select loop:
 //	case change := <-addrChanges:
-//		devicenetwork.AddrChange(&clientCtx, change)
+//		changed := devicenetwork.AddrChange(&clientCtx, change)
 //
-func AddrChangeInit(ctx *DeviceNetworkContext) chan netlink.AddrUpdate {
+func AddrChangeInit() chan netlink.AddrUpdate {
 
 	log.Debugf("AddrChangeInit()\n")
-	IfindexToNameInit()
-	IfindexToAddrsInit()
 
 	addrchan := make(chan netlink.AddrUpdate)
+	donechan := make(chan struct{})
 	errFunc := func(err error) {
 		log.Errorf("AddrSubscribe failed %s\n", err)
+		close(donechan)
 	}
 	addropt := netlink.AddrSubscribeOptions{
 		ListExisting:      true,
 		ErrorCallback:     errFunc,
 		ReceiveBufferSize: 128 * 1024,
 	}
-	if err := netlink.AddrSubscribeWithOptions(addrchan, nil,
+	if err := netlink.AddrSubscribeWithOptions(addrchan, donechan,
 		addropt); err != nil {
 		log.Fatal(err)
 	}
 	return addrchan
 }
 
-// Handle an IP address change
-func AddrChange(ctx *DeviceNetworkContext, change netlink.AddrUpdate) {
+// Handle an IP address change. Returns changed bool
+func AddrChange(change netlink.AddrUpdate) bool {
 
 	changed := false
 	if change.NewAddr {
@@ -54,40 +54,60 @@ func AddrChange(ctx *DeviceNetworkContext, change netlink.AddrUpdate) {
 		changed = IfindexToAddrsDel(change.LinkIndex,
 			change.LinkAddress)
 	}
-	// XXX could move this to caller and remove ctx arg if we return changed
-	// bool
-	if changed {
-		log.Infof("AddrChange changed %d %s\n",
-			change.LinkIndex, change.LinkAddress.String())
-		HandleAddressChange(ctx, "any")
-	}
+	return changed
 }
 
 // Returns a channel for link updates
 // Caller then does this in select loop:
 //	case change := <-linkChanges:
-//		devicenetwork.LinkChange(change)
+//		changed := devicenetwork.LinkChange(change)
 //
 func LinkChangeInit() chan netlink.LinkUpdate {
 
 	log.Debugf("LinkChangeInit()\n")
-	IfindexToNameInit()
-	IfindexToAddrsInit()
 
 	// Need links to get name to ifindex? Or lookup each time?
 	linkchan := make(chan netlink.LinkUpdate)
+	donechan := make(chan struct{})
 	linkErrFunc := func(err error) {
 		log.Errorf("LinkSubscribe failed %s\n", err)
+		close(donechan)
 	}
 	linkopt := netlink.LinkSubscribeOptions{
 		ListExisting:  true,
 		ErrorCallback: linkErrFunc,
 	}
-	if err := netlink.LinkSubscribeWithOptions(linkchan, nil,
+	if err := netlink.LinkSubscribeWithOptions(linkchan, donechan,
 		linkopt); err != nil {
 		log.Fatal(err)
 	}
 	return linkchan
+}
+
+// Returns a channel for route updates
+// Caller then does this in select loop:
+//	case change := <-routeChanges:
+//		PbrHandleRouteChange(..., change)
+//
+func RouteChangeInit() chan netlink.RouteUpdate {
+
+	log.Debugf("RouteChangeInit()\n")
+
+	routechan := make(chan netlink.RouteUpdate)
+	donechan := make(chan struct{})
+	routeErrFunc := func(err error) {
+		log.Errorf("RouteSubscribe failed %s\n", err)
+		close(donechan)
+	}
+	rtopt := netlink.RouteSubscribeOptions{
+		ListExisting:  true,
+		ErrorCallback: routeErrFunc,
+	}
+	if err := netlink.RouteSubscribeWithOptions(routechan, donechan,
+		rtopt); err != nil {
+		log.Fatal(err)
+	}
+	return routechan
 }
 
 // Check if ports in the given DeviceNetworkStatus have atleast one
@@ -109,9 +129,7 @@ func checkIfAllDNSPortsHaveIPAddrs(status types.DeviceNetworkStatus) bool {
 	return true
 }
 
-// The ifname arg can only be used for logging
-func HandleAddressChange(ctx *DeviceNetworkContext,
-	ifname string) {
+func HandleAddressChange(ctx *DeviceNetworkContext) {
 
 	// Check if we have more or less addresses
 	var dnStatus types.DeviceNetworkStatus
@@ -122,24 +140,30 @@ func HandleAddressChange(ctx *DeviceNetworkContext,
 			dnStatus)
 
 		if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
-			log.Debugf("HandleAddressChange: change for %s from %v to %v\n",
-				ifname, *ctx.DeviceNetworkStatus, status)
+			log.Debugf("HandleAddressChange: change from %v to %v\n",
+				*ctx.DeviceNetworkStatus, status)
 			*ctx.DeviceNetworkStatus = status
 			DoDNSUpdate(ctx)
 		} else {
-			log.Infof("HandleAddressChange: No change for %s\n", ifname)
+			log.Infof("HandleAddressChange: No change\n")
 		}
 	} else {
 		dnStatus = ctx.Pending.PendDNS
 		dnStatus, _ = MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
 			dnStatus)
 
-		pingTestDNS := checkIfAllDNSPortsHaveIPAddrs(dnStatus)
-		if pingTestDNS {
-			// We have a suitable candiate for running our cloud ping test.
-			log.Infof("HandleAddressChange: Running cloud ping test now, " +
-				"Since we have suitable addresses already.")
-			VerifyDevicePortConfig(ctx)
+		if !reflect.DeepEqual(ctx.Pending.PendDNS, dnStatus) {
+			log.Debugf("HandleAddressChange pending: change from %v to %v\n",
+				ctx.Pending.PendDNS, dnStatus)
+			pingTestDNS := checkIfAllDNSPortsHaveIPAddrs(dnStatus)
+			if pingTestDNS {
+				// We have a suitable candiate for running our cloud ping test.
+				log.Infof("HandleAddressChange: Running cloud ping test now, " +
+					"Since we have suitable addresses already.")
+				VerifyDevicePortConfig(ctx)
+			}
+		} else {
+			log.Infof("HandleAddressChange pending: No change\n")
 		}
 	}
 }

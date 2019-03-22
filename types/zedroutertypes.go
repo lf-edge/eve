@@ -212,14 +212,18 @@ func (portConfig *DevicePortConfig) DoSanitize(
 	}
 }
 
+// Return false if recent failure (less than 60 seconds ago)
 func (portConfig DevicePortConfig) IsDPCTestable() bool {
-	// convert time difference in nano seconds to seconds
-	timeDiff := int64(time.Now().Sub(portConfig.LastFailed) / time.Second)
 
-	if portConfig.LastFailed.After(portConfig.LastSucceeded) && timeDiff < 60 {
-		return false
+	if portConfig.LastFailed.IsZero() {
+		return true
 	}
-	return true
+	if portConfig.LastSucceeded.After(portConfig.LastFailed) {
+		return true
+	}
+	// convert time difference in nano seconds to seconds
+	timeDiff := time.Since(portConfig.LastFailed) / time.Second
+	return (timeDiff > 60)
 }
 
 func (portConfig DevicePortConfig) IsDPCUntested() bool {
@@ -402,6 +406,21 @@ func CountLocalAddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 	// Count the number of addresses which apply
 	addrs, _ := getInterfaceAddr(globalStatus, true, "", false)
 	return len(addrs)
+}
+
+// XXX move AF functionality to getInterfaceAddr?
+func CountLocalIPv4AddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus) int {
+
+	// Count the number of addresses which apply
+	addrs, _ := getInterfaceAddr(globalStatus, true, "", false)
+	count := 0
+	for _, addr := range addrs {
+		if addr.To4() == nil {
+			continue
+		}
+		count += 1
+	}
+	return count
 }
 
 // Return number of local IP addresses for all the management ports with given name

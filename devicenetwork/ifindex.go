@@ -22,11 +22,7 @@ type linkNameType struct {
 	upFlag       bool // last resort and up
 }
 
-var ifindexToName map[int]linkNameType
-
-func IfindexToNameInit() {
-	ifindexToName = make(map[int]linkNameType)
-}
+var ifindexToName map[int]linkNameType = make(map[int]linkNameType)
 
 // Returns true if added or if last flag changed.
 func IfindexToNameAdd(index int, linkName string, linkType string, relevantFlag bool, upFlag bool) bool {
@@ -180,11 +176,7 @@ func IfindexGetLastResortMap() map[string]bool {
 
 // ===== map from ifindex to list of IP addresses
 
-var ifindexToAddrs map[int][]net.IPNet
-
-func IfindexToAddrsInit() {
-	ifindexToAddrs = make(map[int][]net.IPNet)
-}
+var ifindexToAddrs map[int][]net.IPNet = make(map[int][]net.IPNet)
 
 // Returns true if added
 func IfindexToAddrsAdd(index int, addr net.IPNet) bool {
@@ -243,4 +235,22 @@ func IfindexToAddrs(index int) ([]net.IPNet, error) {
 		return nil, errors.New(fmt.Sprintf("Unknown ifindex %d", index))
 	}
 	return addrs, nil
+}
+
+func IfindexToAddrsFlush(index int) {
+	_, ok := ifindexToAddrs[index]
+	if !ok {
+		log.Warnf("IfindexToAddrsFlush: Unknown ifindex %d", index)
+		return
+	}
+	delete(ifindexToAddrs, index)
+}
+
+func IfnameToAddrsFlush(ifname string) {
+	index, err := IfnameToIndex(ifname)
+	if err != nil {
+		log.Warnf("IfnameToAddrsFlush: Unknown ifname %s: %s", ifname, err)
+		return
+	}
+	IfindexToAddrsFlush(index)
 }

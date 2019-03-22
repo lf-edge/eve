@@ -321,7 +321,7 @@ func Run() {
 	}
 
 	// Look for address and link changes
-	addrChanges := devicenetwork.AddrChangeInit(&nimCtx.DeviceNetworkContext)
+	addrChanges := devicenetwork.AddrChangeInit()
 	linkChanges := devicenetwork.LinkChangeInit()
 
 	// To avoid a race between domainmgr starting and moving this to pciback
@@ -348,16 +348,19 @@ func Run() {
 
 		case change, ok := <-addrChanges:
 			if !ok {
-				log.Fatalf("addrChanges closed?\n")
+				log.Errorf("addrChanges closed\n")
+				addrChanges = devicenetwork.AddrChangeInit()
+			} else {
+				if devicenetwork.AddrChange(change) {
+					devicenetwork.HandleAddressChange(&nimCtx.DeviceNetworkContext)
+				}
 			}
-			devicenetwork.AddrChange(&nimCtx.DeviceNetworkContext,
-				change)
 
 		case change, ok := <-linkChanges:
 			if !ok {
-				log.Fatalf("linkChanges closed?\n")
-			}
-			if devicenetwork.LinkChange(change) {
+				log.Errorf("linkChanges closed\n")
+				linkChanges = devicenetwork.LinkChangeInit()
+			} else if devicenetwork.LinkChange(change) {
 				handleLinkChange(&nimCtx)
 				// XXX trigger testing??
 			}
@@ -437,16 +440,19 @@ func Run() {
 
 		case change, ok := <-addrChanges:
 			if !ok {
-				log.Fatalf("addrChanges closed?\n")
+				log.Errorf("addrChanges closed\n")
+				addrChanges = devicenetwork.AddrChangeInit()
+			} else {
+				if devicenetwork.AddrChange(change) {
+					devicenetwork.HandleAddressChange(&nimCtx.DeviceNetworkContext)
+				}
 			}
-			devicenetwork.AddrChange(&nimCtx.DeviceNetworkContext,
-				change)
 
 		case change, ok := <-linkChanges:
 			if !ok {
-				log.Fatalf("linkChanges closed?\n")
-			}
-			if devicenetwork.LinkChange(change) {
+				log.Errorf("linkChanges closed\n")
+				linkChanges = devicenetwork.LinkChangeInit()
+			} else if devicenetwork.LinkChange(change) {
 				handleLinkChange(&nimCtx)
 				// XXX trigger testing??
 			}

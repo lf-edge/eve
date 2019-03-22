@@ -331,7 +331,10 @@ func Run() {
 	zedrouterCtx.subLispMetrics = subLispMetrics
 	subLispMetrics.Activate()
 
-	routeChanges, addrChanges, linkChanges := PbrInit(&zedrouterCtx)
+	PbrInit(&zedrouterCtx)
+	routeChanges := devicenetwork.RouteChangeInit()
+	addrChanges := devicenetwork.AddrChangeInit()
+	linkChanges := devicenetwork.LinkChangeInit()
 
 	// Publish network metrics for zedagent every 10 seconds
 	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
@@ -401,7 +404,9 @@ func Run() {
 
 		case change, ok := <-addrChanges:
 			if !ok {
-				log.Fatalf("addrChanges closed?\n")
+				log.Errorf("addrChanges closed\n")
+				addrChanges = devicenetwork.AddrChangeInit()
+				break
 			}
 			ifname := PbrAddrChange(zedrouterCtx.deviceNetworkStatus,
 				change)
@@ -417,7 +422,9 @@ func Run() {
 			}
 		case change, ok := <-linkChanges:
 			if !ok {
-				log.Fatalf("linkChanges closed?\n")
+				log.Errorf("linkChanges closed\n")
+				linkChanges = devicenetwork.LinkChangeInit()
+				break
 			}
 			ifname := PbrLinkChange(zedrouterCtx.deviceNetworkStatus,
 				change)
@@ -433,9 +440,12 @@ func Run() {
 			}
 		case change, ok := <-routeChanges:
 			if !ok {
-				log.Fatalf("routeChanges closed?\n")
+				log.Errorf("routeChanges closed\n")
+				routeChanges = devicenetwork.RouteChangeInit()
+				break
 			}
 			PbrRouteChange(zedrouterCtx.deviceNetworkStatus, change)
+
 		case <-publishTimer.C:
 			log.Debugln("publishTimer at", time.Now())
 			err := pub.Publish("global",

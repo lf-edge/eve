@@ -20,13 +20,10 @@ import (
 
 var FreeTable = 500 // Need a FreeMgmtPort policy for NAT+underlay
 
-// Returns the channels for route, addr, link updates
-func PbrInit(ctx *zedrouterContext) (chan netlink.RouteUpdate,
-	chan netlink.AddrUpdate, chan netlink.LinkUpdate) {
+// Call before setting up routeChanges, addrChanges, and linkChanges
+func PbrInit(ctx *zedrouterContext) {
 
 	log.Debugf("PbrInit()\n")
-	devicenetwork.IfindexToNameInit()
-	devicenetwork.IfindexToAddrsInit()
 
 	setFreeMgmtPorts(types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0))
 
@@ -34,47 +31,6 @@ func PbrInit(ctx *zedrouterContext) (chan netlink.RouteUpdate,
 
 	// flush any old rules using RuleList
 	flushRules(0)
-
-	// Need links to get name to ifindex? Or lookup each time?
-	linkchan := make(chan netlink.LinkUpdate)
-	linkErrFunc := func(err error) {
-		log.Errorf("LinkSubscribe failed %s\n", err)
-	}
-	linkopt := netlink.LinkSubscribeOptions{
-		ListExisting:  true,
-		ErrorCallback: linkErrFunc,
-	}
-	if err := netlink.LinkSubscribeWithOptions(linkchan, nil,
-		linkopt); err != nil {
-		log.Fatal(err)
-	}
-
-	addrchan := make(chan netlink.AddrUpdate)
-	addrErrFunc := func(err error) {
-		log.Errorf("AddrSubscribe failed %s\n", err)
-	}
-	addropt := netlink.AddrSubscribeOptions{
-		ListExisting:      true,
-		ErrorCallback:     addrErrFunc,
-		ReceiveBufferSize: 128 * 1024,
-	}
-	if err := netlink.AddrSubscribeWithOptions(addrchan, nil,
-		addropt); err != nil {
-		log.Fatal(err)
-	}
-	routechan := make(chan netlink.RouteUpdate)
-	routeErrFunc := func(err error) {
-		log.Errorf("RouteSubscribe failed %s\n", err)
-	}
-	rtopt := netlink.RouteSubscribeOptions{
-		ListExisting:  true,
-		ErrorCallback: routeErrFunc,
-	}
-	if err := netlink.RouteSubscribeWithOptions(routechan, nil,
-		rtopt); err != nil {
-		log.Fatal(err)
-	}
-	return routechan, addrchan, linkchan
 }
 
 // Add a default route for the bridgeName table to the specific port

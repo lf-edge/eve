@@ -29,13 +29,12 @@ const (
 )
 
 type DPCPending struct {
-	Inprogress    bool
-	RestartNeeded bool
-	PendDPC       types.DevicePortConfig
-	OldDPC        types.DevicePortConfig
-	PendDNS       types.DeviceNetworkStatus
-	PendTimer     *time.Timer
-	TestCount     uint
+	Inprogress bool
+	PendDPC    types.DevicePortConfig
+	OldDPC     types.DevicePortConfig
+	PendDNS    types.DeviceNetworkStatus
+	PendTimer  *time.Timer
+	TestCount  uint
 }
 
 type DeviceNetworkContext struct {
@@ -142,7 +141,7 @@ func RemoveLastResortPortConfig(ctx *DeviceNetworkContext) {
 
 func SetupVerify(ctx *DeviceNetworkContext, index int) {
 
-	log.Debugf("SetupVerify: Setting up verification for DPC at index %d",
+	log.Infof("SetupVerify: Setting up verification for DPC at index %d",
 		index)
 	ctx.NextDPCIndex = index
 	ctx.DevicePortConfigList.CurrentIndex = ctx.NextDPCIndex
@@ -164,8 +163,6 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 	pending := &ctx.Pending
 	if pending.Inprogress {
 		log.Infof("RestartVerify: DPC list verification in progress")
-		// Once we are done with current inprogress, start another test
-		pending.RestartNeeded = true
 		return
 	}
 	SetupVerify(ctx, 0)
@@ -181,6 +178,8 @@ var nilUUID = uuid.UUID{} // Really a const
 
 func VerifyPending(pending *DPCPending,
 	aa *types.AssignableAdapters) PendDNSStatus {
+
+	log.Infof("VerifyPending()\n")
 	// Stop pending timer if its running.
 	pending.PendTimer.Stop()
 
@@ -205,11 +204,15 @@ func VerifyPending(pending *DPCPending,
 	log.Infof("VerifyPending: No required ports held in pciBack. " +
 		"parsing device port config list")
 
-	UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
-	pending.OldDPC = pending.PendDPC
+	if !reflect.DeepEqual(pending.PendDPC, pending.OldDPC) {
+		log.Infof("VerifyPending: DPC changed. update DhcpClient.\n")
+		UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
+		pending.OldDPC = pending.PendDPC
+	}
 	pending.PendDNS, _ = MakeDeviceNetworkStatus(pending.PendDPC,
 		pending.PendDNS)
-	numUsableAddrs := types.CountLocalAddrFreeNoLinkLocal(pending.PendDNS)
+	// XXX assume we're doing at least IPv4, so count only those to check if DHCP done
+	numUsableAddrs := types.CountLocalIPv4AddrFreeNoLinkLocal(pending.PendDNS)
 	if numUsableAddrs == 0 {
 		if pending.TestCount < MaxDPCRetestCount {
 			pending.TestCount += 1
@@ -250,6 +253,7 @@ func VerifyPending(pending *DPCPending,
 func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	log.Infof("VerifyDevicePortConfig()\n")
 	if !ctx.Pending.Inprogress {
+		log.Infof("VerifyDevicePortConfig() not Inprogress\n")
 		return
 	}
 	// Stop network test timer.
@@ -289,9 +293,15 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			// Avoid clobbering wrong entry if insert/remove after verification
 			// started
 			if ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key != pending.PendDPC.Key {
-				log.Warnf("Not updating list on DPC_FAIL due key mismatch %s vs %s\n",
-					ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key,
-					pending.PendDPC.Key)
+				tested := lookupPortConfig(ctx, pending.PendDPC)
+				if tested != nil {
+					log.Infof("Updating other PortConfig on DPC_FAIL %+v\n", tested)
+					*tested = pending.PendDPC
+				} else {
+					log.Warnf("Not updating list on DPC_FAIL due key mismatch %s vs %s\n",
+						ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key,
+						pending.PendDPC.Key)
+				}
 			} else {
 				ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
 			}
@@ -313,9 +323,15 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			// Avoid clobbering wrong entry if insert/remove after verification
 			// started
 			if ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key != pending.PendDPC.Key {
-				log.Warnf("Not updating list on DPC_SUCCESS due key mismatch %s vs %s\n",
-					ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key,
-					pending.PendDPC.Key)
+				tested := lookupPortConfig(ctx, pending.PendDPC)
+				if tested != nil {
+					log.Infof("Updating other PortConfig on DPC_SUCCESS %+v\n", tested)
+					*tested = pending.PendDPC
+				} else {
+					log.Warnf("Not updating list on DPC_SUCCESS due key mismatch %s vs %s\n",
+						ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key,
+						pending.PendDPC.Key)
+				}
 			} else {
 				ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
 			}
@@ -340,27 +356,13 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			}
 		}
 	}
-	// Avoid clobbering wrong entry if insert/remove after verification
-	// started
-	if ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key != pending.PendDPC.Key {
-		log.Warnf("Not updating list on done due key mismatch %s vs %s\n",
-			ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key,
-			pending.PendDPC.Key)
-	} else {
-		*ctx.DevicePortConfig = pending.PendDPC
-		*ctx.DeviceNetworkStatus = pending.PendDNS
-		DoDNSUpdate(ctx)
-	}
+	*ctx.DevicePortConfig = pending.PendDPC
+	*ctx.DeviceNetworkStatus = pending.PendDNS
+	DoDNSUpdate(ctx)
 
 	pending.Inprogress = false
 	pending.OldDPC = getCurrentDPC(ctx)
 
-	if pending.RestartNeeded {
-		pending.RestartNeeded = false
-		log.Infof("Restarting a verify since update during previous")
-		RestartVerify(ctx, "RestartNeeded")
-		return
-	}
 	// Restart network test timer
 	duration := time.Duration(ctx.NetworkTestInterval) * time.Second
 	ctx.NetworkTestTimer = time.NewTimer(duration)
@@ -389,6 +391,7 @@ func checkAndRestartDPCListTest(ctx *DeviceNetworkContext) bool {
 func getNextTestableDPCIndex(ctx *DeviceNetworkContext) int {
 	dpcListLen := len(ctx.DevicePortConfigList.PortConfigList)
 
+	log.Infof("getNextTestableDPCIndex: current index %d\n", ctx.NextDPCIndex)
 	// We want to wrap around, but should not keep looping around.
 	// We do one loop of the entire list searching for a testable candidate.
 	// If no suitable test candidate is found, we reset the test index to 0.
@@ -401,13 +404,15 @@ func getNextTestableDPCIndex(ctx *DeviceNetworkContext) int {
 		if ok {
 			break
 		}
-		log.Debugf("getNextTestableDPCIndex: DPC %v is not testable",
+		log.Infof("getNextTestableDPCIndex: DPC %v is not testable",
 			ctx.DevicePortConfigList.PortConfigList[newIndex])
 		newIndex = (newIndex + 1) % dpcListLen
 	}
 	if count == dpcListLen {
 		newIndex = 0
 	}
+	log.Infof("getNextTestableDPCIndex: current index %d new %d\n", ctx.NextDPCIndex,
+		newIndex)
 	return newIndex
 }
 

@@ -66,6 +66,9 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 		return
 	}
 
+	// Remove cached addresses; XXX looses IPv6 addresses as well. How do we regain?
+	IfnameToAddrsFlush(nuc.IfName)
+
 	switch nuc.Dhcp {
 	case types.DT_NONE:
 		log.Infof("doDhcpClientActivate(%s) DT_NONE is a no-op\n",
@@ -157,6 +160,8 @@ func doDhcpClientInactivate(nuc types.NetworkPortConfig) {
 		log.Errorf("doDhcpClientInactivate: unsupported dhcp %v\n",
 			nuc.Dhcp)
 	}
+	// Remove cached addresses
+	IfnameToAddrsFlush(nuc.IfName)
 }
 
 func dhcpcdCmd(op string, extras []string, ifname string, dolog bool) bool {

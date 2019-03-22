@@ -15,7 +15,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Handle a link change
+// Handle a link change. Returns changed bool
 func LinkChange(change netlink.LinkUpdate) bool {
 
 	ifindex := change.Attrs().Index
