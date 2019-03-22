@@ -852,10 +852,13 @@ type UnderlayNetworkStatus struct {
 type NetworkType uint8
 
 const (
-	NT_IPV4      NetworkType = 4
+	NT_NOOP      NetworkType = 0
+	NT_IPV4      		 = 4
 	NT_IPV6                  = 6
 	NT_CryptoEID             = 14 // Either IPv6 or IPv4; adapter Addr
 	// determines whether IPv4 EIDs are in use.
+	NT_CryptoV4 = 24 // Not used
+	NT_CryptoV6 = 26 // Not used
 	// XXX Do we need a NT_DUAL/NT_IPV46? Implies two subnets/dhcp ranges?
 	// XXX how do we represent a bridge? NT_L2??
 )

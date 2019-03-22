@@ -97,6 +97,8 @@ func doNetworkCreate(ctx *zedrouterContext, config types.NetworkObjectConfig,
 	Ipv4Eid := false
 	// Check for valid types
 	switch config.Type {
+	case types.NT_NOOP:
+		// Nothing to do
 	case types.NT_IPV6:
 		// Nothing to do
 	case types.NT_IPV4:

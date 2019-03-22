@@ -1001,6 +1001,17 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				log.Errorf("publishNetworkObjectConfig: parseIpspec failed: %s\n", err)
 				continue
 			}
+		case types.NT_NOOP:
+			// XXX zedcloud is sending static and dynamic entries with zero.
+			// XXX could also be for a switch without an IP address??
+			if ipspec != nil {
+				err := parseIpspec(ipspec, &config)
+				if err != nil {
+					// XXX return how?
+					log.Errorf("publishNetworkObjectConfig: parseIpspec ignored: %s\n", err)
+				}
+			}
+
 		default:
 			log.Errorf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %s in %v; ignored\n",
 				config.Type, id.String(), netEnt)
