@@ -25,7 +25,7 @@ func AddrChangeInit() chan netlink.AddrUpdate {
 	donechan := make(chan struct{})
 	errFunc := func(err error) {
 		log.Errorf("AddrSubscribe failed %s\n", err)
-		close(donechan)
+		donechan <- struct{}{}
 	}
 	addropt := netlink.AddrSubscribeOptions{
 		ListExisting:      true,
@@ -71,7 +71,7 @@ func LinkChangeInit() chan netlink.LinkUpdate {
 	donechan := make(chan struct{})
 	linkErrFunc := func(err error) {
 		log.Errorf("LinkSubscribe failed %s\n", err)
-		close(donechan)
+		donechan <- struct{}{}
 	}
 	linkopt := netlink.LinkSubscribeOptions{
 		ListExisting:  true,
@@ -97,7 +97,7 @@ func RouteChangeInit() chan netlink.RouteUpdate {
 	donechan := make(chan struct{})
 	routeErrFunc := func(err error) {
 		log.Errorf("RouteSubscribe failed %s\n", err)
-		close(donechan)
+		donechan <- struct{}{}
 	}
 	rtopt := netlink.RouteSubscribeOptions{
 		ListExisting:  true,

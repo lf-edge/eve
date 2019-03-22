@@ -66,7 +66,7 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 		return
 	}
 
-	// Remove cached addresses; XXX looses IPv6 addresses as well. How do we regain?
+	// Remove cached addresses; XXX looses IPv6 addresses as well. How do we regain them?
 	IfnameToAddrsFlush(nuc.IfName)
 
 	switch nuc.Dhcp {
