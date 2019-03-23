@@ -763,7 +763,7 @@ func isAssigned(ctx *nimContext, ifname string) bool {
 		return false
 	}
 	log.Infof("isAssigned(%s): pciback %t used %s\n",
-		ib.IsPCIBack, ib.UsedByUUID.String())
+		ifname, ib.IsPCIBack, ib.UsedByUUID.String())
 
 	if ib.UsedByUUID != nilUUID {
 		return true
