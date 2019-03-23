@@ -530,7 +530,7 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 			ctx.DevicePortConfigList)
 		ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
 	}
-	log.Infof("handleAAModify() done\n")
+	log.Infof("handleAssignableAdaptersModify() done\n")
 }
 
 // HandleAssignableAdaptersModify - Handle Assignable Adapter list deletions
