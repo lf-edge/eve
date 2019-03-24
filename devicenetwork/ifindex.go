@@ -133,7 +133,7 @@ func IfnameToIndex(ifname string) (int, error) {
 
 // We skip things not considered to be device links, loopback, non-broadcast,
 // and children of a bridge master.
-// Match "vif.*" for name and skip those as well.
+// Match "vif.*" and "nbu.*" for name and skip those as well.
 // Returns (relevant, up)
 func RelevantLastResort(link netlink.Link) (bool, bool) {
 	attrs := link.Attrs()
@@ -143,7 +143,7 @@ func RelevantLastResort(link netlink.Link) (bool, bool) {
 	loopbackFlag := (linkFlags & net.FlagLoopback) != 0
 	broadcastFlag := (linkFlags & net.FlagBroadcast) != 0
 	upFlag := (attrs.OperState == netlink.OperUp)
-	isVif := strings.HasPrefix(ifname, "vif")
+	isVif := strings.HasPrefix(ifname, "vif") || strings.HasPrefix(ifname, "nbu")
 	if linkType == "device" && !loopbackFlag && broadcastFlag &&
 		attrs.MasterIndex == 0 && !isVif {
 

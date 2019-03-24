@@ -268,6 +268,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subNetworkInstanceStatus.ModifyHandler = handleNetworkInstanceModify
+	subNetworkInstanceStatus.DeleteHandler = handleNetworkInstanceDelete
 	nimCtx.subNetworkInstanceStatus = subNetworkInstanceStatus
 	subNetworkInstanceStatus.Activate()
 
@@ -359,6 +361,7 @@ func Run() {
 
 		case change := <-subAssignableAdapters.C:
 			subAssignableAdapters.ProcessChange(change)
+			updateFilteredFallback(&nimCtx)
 
 		case change := <-subNetworkInstanceStatus.C:
 			subNetworkInstanceStatus.ProcessChange(change)
@@ -454,6 +457,7 @@ func Run() {
 
 		case change := <-subAssignableAdapters.C:
 			subAssignableAdapters.ProcessChange(change)
+			updateFilteredFallback(&nimCtx)
 
 		case change := <-subNetworkInstanceStatus.C:
 			subNetworkInstanceStatus.ProcessChange(change)
@@ -550,11 +554,15 @@ func handleLinkChange(ctx *nimContext) {
 	}
 	if changed {
 		log.Infof("new fallbackPortmap: %+v\n", ctx.fallbackPortMap)
-		ctx.filteredFallback = filterIfMap(ctx, ctx.fallbackPortMap)
-		log.Infof("new filteredFallback: %+v\n", ctx.filteredFallback)
-		if ctx.networkFallbackAnyEth == types.TS_ENABLED {
-			updateFallbackAnyEth(ctx)
-		}
+		updateFilteredFallback(ctx)
+	}
+}
+
+func updateFilteredFallback(ctx *nimContext) {
+	ctx.filteredFallback = filterIfMap(ctx, ctx.fallbackPortMap)
+	log.Infof("new filteredFallback: %+v\n", ctx.filteredFallback)
+	if ctx.networkFallbackAnyEth == types.TS_ENABLED {
+		updateFallbackAnyEth(ctx)
 	}
 }
 
@@ -673,6 +681,25 @@ func handleGlobalConfigSynchronized(ctxArg interface{}, done bool) {
 	}
 }
 
+func handleNetworkInstanceModify(ctxArg interface{}, key string, statusArg interface{}) {
+
+	log.Infof("handleNetworkInstanceStatusModify(%s)\n", key)
+	ctx := ctxArg.(*nimContext)
+	// Hard to check if any switch NI was added, deleted, or changed
+	updateFilteredFallback(ctx)
+	log.Infof("handleNetworkInstanceModify(%s) done\n", key)
+}
+
+func handleNetworkInstanceDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Infof("handleNetworkInstanceDelete(%s)\n", key)
+	ctx := ctxArg.(*nimContext)
+	// Hard to check if any switch NI was added, deleted, or changed
+	updateFilteredFallback(ctx)
+	log.Infof("handleNetworkInstanceDelete(%s) done\n", key)
+}
+
 func fileExists(filename string) bool {
 	_, err := os.Stat(filename)
 	return err == nil
@@ -729,12 +756,14 @@ var nilUUID uuid.UUID
 // Check in AssignableAdapters with usedByUUID!=0
 func isAssigned(ctx *nimContext, ifname string) bool {
 
+	log.Infof("isAssigned(%s) have %d bundles\n",
+		ifname, len(ctx.AssignableAdapters.IoBundleList))
 	ib := ctx.AssignableAdapters.LookupIoBundleForMember(types.IoEth, ifname)
 	if ib == nil {
 		return false
 	}
 	log.Infof("isAssigned(%s): pciback %t used %s\n",
-		ib.IsPCIBack, ib.UsedByUUID.String())
+		ifname, ib.IsPCIBack, ib.UsedByUUID.String())
 
 	if ib.UsedByUUID != nilUUID {
 		return true
