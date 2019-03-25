@@ -101,7 +101,7 @@ else
   ARCH="-${DOCKER_ARCH_TAG}"
 fi
 
-ZENBUILD_VERSION=${ZENBUILD_VERSION:-(`zenbuild_version`$ARCH)}
+ZENBUILD_VERSION=${ZENBUILD_VERSION:-`zenbuild_version`$ARCH}
 
 KERNEL_TAG=$(linuxkit_tag pkg/kernel)
 FW_TAG=$(linuxkit_tag pkg/fw)
