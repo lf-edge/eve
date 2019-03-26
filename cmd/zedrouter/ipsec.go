@@ -691,7 +691,9 @@ func ipSecServiceConfigCreate(vpnConfig types.VpnServiceConfig) error {
 		writeStr = writeStr + ipSecTunHdrStr + tunnelConfig.Name
 		writeStr = writeStr + azureIpSecLeftTunAttribSpecStr + clientConfig.SubnetBlock
 		writeStr = writeStr + azureIpSecRightTunAttribSpecStr + gatewayConfig.IpAddr
-		writeStr = writeStr + azureIpSecRightSubnetSpecStr + gatewayConfig.SubnetBlock
+		writeStr = writeStr + azureIpSecRightSubnetSpecStr
+		writeStr = writeStr + gatewayConfig.SubnetBlock
+		writeStr = writeStr + ipSecClientTunDpdSpecStr
 		writeStr = writeStr + "\n"
 
 	case OnPremVpnClient:
