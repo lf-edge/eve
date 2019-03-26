@@ -121,7 +121,7 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 	}
 
 	// port ip address error
-	srcIp, err := types.GetLocalAddrAny(*ctx.deviceNetworkStatus, 0,
+	srcIp, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus, 0,
 		config.Adapter)
 	if err != nil {
 		return vpnConfig, err
@@ -998,7 +998,7 @@ func strongSwanConfigGetForNetworkInstance(ctx *zedrouterContext,
 	}
 
 	// port ip address error
-	srcIp, err := types.GetLocalAddrAny(*ctx.deviceNetworkStatus, 0,
+	srcIp, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus, 0,
 		status.Port)
 	if err != nil {
 		return vpnConfig, err
