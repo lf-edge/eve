@@ -119,7 +119,7 @@ func checkIfAllDNSPortsHaveIPAddrs(status types.DeviceNetworkStatus) bool {
 	}
 
 	for _, port := range mgmtPorts {
-		numAddrs := types.CountLocalAddrFreeNoLinkLocalIf(status, port)
+		numAddrs := types.CountLocalIPv4AddrAnyNoLinkLocalIf(status, port)
 		log.Debugf("checkIfAllDNSPortsHaveIPAddrs: Port %s has %d addresses.",
 			port, numAddrs)
 		if numAddrs < 1 {
