@@ -167,8 +167,9 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 		log.Infof("RestartVerify: DPC list verification in progress")
 		return
 	}
-	// Look for the first which isn't recently failed
-	ctx.NextDPCIndex = 0
+	// Look for the first which isn't recently failed starting at 0 = -1+1
+	// XXX change getNext ...
+	ctx.NextDPCIndex = -1
 	// Skip entries with LastFailed after LastSucceeded and
 	// a recent LastFailed (a minute or less).
 	nextIndex := getNextTestableDPCIndex(ctx)
