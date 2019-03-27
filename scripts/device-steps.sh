@@ -224,9 +224,10 @@ echo "Current downloaded files:"
 ls -lt $PERSISTDIR/downloads/*/*
 echo
 
-# Places for surviving global config and status
+# Places for persistent across reboots global config and status
 if [ ! -d $GCDIR ]; then
     mkdir -p $GCDIR
+    echo '{}' >$GCDIR/global.json
 fi
 if [ -f /var/tmp/zededa/GlobalConfig ]; then
     rm -f /var/tmp/zededa/GlobalConfig
