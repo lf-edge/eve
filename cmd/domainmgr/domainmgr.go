@@ -1941,7 +1941,8 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)
-	// Even if Testing is set we look at it for pciback transitions
+	// Even if Testing is set we look at it for pciback transitions to
+	// bring things out of pciback (but not to add to pciback)
 	ctx.deviceNetworkStatus = status
 	checkAndSetIoBundleAll(ctx)
 	ctx.DNSinitialized = true
@@ -2185,15 +2186,11 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 			if ib.IsPCIBack {
 				log.Infof("checkAndSetIoBundle(%d %s %v) take back from pciback\n",
 					ib.Type, ib.Name, ib.Members)
-				err := pciAssignableRemove(ib.PciLong)
-				if err != nil {
-					log.Errorf("checkAndSetIoBundle(%d %s %v) pciAssignableRemove failed %v\n",
-						ib.Type, ib.Name, ib.Members, err)
-				}
+				removeAll(ib)
 				ib.IsPCIBack = false
 				publishAssignableAdapters = true
 				// Verify that it has been returned from pciback
-				_, _, err = types.IoBundleToPci(ib)
+				_, _, err := types.IoBundleToPci(ib)
 				if err != nil {
 					log.Warnf("checkAndSetIoBundle(%d %s %v) gone?: %s\n",
 						ib.Type, ib.Name, ib.Members, err)
@@ -2202,6 +2199,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		} else {
 			// XXX potentially move to PCIBack if not already
 			// and with USB check
+			// XXX should not do that when Testing is set.
 		}
 	}
 	if publishAssignableAdapters {
@@ -2253,44 +2251,82 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 	}
 
 	if !ib.IsPort && !ib.IsPCIBack {
-		if ctx.usbAccess && ib.Type == types.IoUSB {
-			log.Infof("No assigning %s (%s %s) to pciback\n",
+		if ctx.deviceNetworkStatus.Testing && ib.Type == types.IoEth {
+			log.Infof("Not assigning %s (%s %s) to pciback due to Testing\n",
 				ib.Name, ib.PciLong, ib.PciShort)
-		} else if ib.PciShort != "" {
-			log.Infof("Assigning %s (%s %s) to pciback\n",
+		} else if ctx.usbAccess && ib.Type == types.IoUSB {
+			log.Infof("Not assigning %s (%s %s) to pciback due to usbAccess\n",
 				ib.Name, ib.PciLong, ib.PciShort)
-			err := pciAssignableAdd(ib.PciLong)
+		} else {
+			err, done := assignAll(ib)
 			if err != nil {
 				return err
 			}
-			ib.IsPCIBack = true
-			ctx.publishAssignableAdapters()
-		} else if ib.MPciLong != nil {
-			var oneError error
-			for i, long := range ib.MPciLong {
-				log.Infof("Assigning %s member %s (%s) to pciback\n",
-					ib.Name, ib.Members[i], long)
-				err := pciAssignableAdd(long)
-				if err != nil {
-					// XXX return all errors? Here we return one error
-					log.Errorf("Partial error for %s: %s\n", long, err)
-					oneError = err
-				}
+			if done {
+				ib.IsPCIBack = true
+				ctx.publishAssignableAdapters()
 			}
-			if oneError != nil {
-				// Undo any assignments from above
-				for i, long := range ib.MPciLong {
-					log.Infof("Unassigning %s member %s (%s) to pciback\n",
-						ib.Name, ib.Members[i], long)
-					pciAssignableRemove(long)
-				}
-				return oneError
-			}
-			ib.IsPCIBack = true
-			ctx.publishAssignableAdapters()
 		}
 	}
 	return nil
+}
+
+func removeAll(ib *types.IoBundle) {
+	if ib.PciShort != "" {
+		log.Infof("Removing %s (%s %s) from pciback\n",
+			ib.Name, ib.PciLong, ib.PciShort)
+		err := pciAssignableRemove(ib.PciLong)
+		if err != nil {
+			log.Errorf("checkAndSetIoBundle(%d %s %v) pciAssignableRemove %s failed %v\n",
+				ib.Type, ib.Name, ib.Members, ib.PciLong, err)
+		}
+		return
+	}
+
+	for i, long := range ib.MPciLong {
+		log.Infof("Removing %s member %s (%s) from pciback\n",
+			ib.Name, ib.Members[i], long)
+		err := pciAssignableRemove(long)
+		if err != nil {
+			log.Errorf("checkAndSetIoBundle(%d %s %v) pciAssignableRemove %s failed %v\n",
+				ib.Type, ib.Name, ib.Members, long, err)
+		}
+	}
+}
+
+func assignAll(ib *types.IoBundle) (error, bool) {
+	if ib.PciShort != "" {
+		log.Infof("Assigning %s (%s %s) to pciback\n",
+			ib.Name, ib.PciLong, ib.PciShort)
+		err := pciAssignableAdd(ib.PciLong)
+		if err != nil {
+			return err, false
+		}
+		return nil, true
+	} else if ib.MPciLong != nil {
+		var oneError error
+		for i, long := range ib.MPciLong {
+			log.Infof("Assigning %s member %s (%s) to pciback\n",
+				ib.Name, ib.Members[i], long)
+			err := pciAssignableAdd(long)
+			if err != nil {
+				// XXX return all errors? Here we return one error
+				log.Errorf("Partial error for %s: %s\n", long, err)
+				oneError = err
+			}
+		}
+		if oneError != nil {
+			// Undo any assignments from above
+			for i, long := range ib.MPciLong {
+				log.Infof("Unassigning %s member %s (%s) to pciback\n",
+					ib.Name, ib.Members[i], long)
+				pciAssignableRemove(long)
+			}
+			return oneError, false
+		}
+		return nil, true
+	}
+	return nil, false
 }
 
 // Check if anything moved around
