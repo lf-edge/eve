@@ -96,9 +96,9 @@ func ParseTriState(value string) (TriState, error) {
 	switch value {
 	case "none":
 		ts = TS_NONE
-	case "enabled":
+	case "enabled", "enable", "on":
 		ts = TS_ENABLED
-	case "disabled":
+	case "disabled", "disable", "off":
 		ts = TS_DISABLED
 	default:
 		err := errors.New(fmt.Sprintf("Bad value: %s", value))
