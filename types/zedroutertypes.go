@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
+	"github.com/eriknordmark/netlink"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -409,8 +410,6 @@ func CountLocalAddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 }
 
 // XXX move AF functionality to getInterfaceAddr?
-// XXX removed free check. Free set in lastresort.json, but not when it makes it to
-// XXX zedagent.json has ismgmt=free=false.
 // Only IPv4 counted
 func CountLocalIPv4AddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 
@@ -561,6 +560,23 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, port strin
 	} else {
 		return []NetworkPortStatus{}, errors.New("No good MgmtPorts")
 	}
+}
+
+// Return the list of ifnames in DNC which exist in the kernel
+func GetExistingInterfaceList(globalStatus DeviceNetworkStatus) []string {
+
+	var ifs []string
+	for _, us := range globalStatus.Ports {
+
+		link, _ := netlink.LinkByName(us.IfName)
+		if link == nil {
+			log.Warnf("GetExistingInterfaceList: if %s not found\n",
+				us.IfName)
+			continue
+		}
+		ifs = append(ifs, us.IfName)
+	}
+	return ifs
 }
 
 // Check if an interface/adapter name is a port owned by zedrouter

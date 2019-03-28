@@ -223,15 +223,22 @@ func VerifyPending(pending *DPCPending,
 	// XXX assume we're doing at least IPv4, so count only those to check if DHCP done
 	numUsableAddrs := types.CountLocalIPv4AddrAnyNoLinkLocal(pending.PendDNS)
 	if numUsableAddrs == 0 {
+		var errStr string
+		ifs := types.GetExistingInterfaceList(pending.PendDNS)
+		if len(ifs) == 0 {
+			errStr = "No interfaces exist in the pending network config"
+		} else {
+			errStr = "DHCP could not resolve any usable " +
+				"IP addresses for the pending network config"
+		}
 		if pending.TestCount < MaxDPCRetestCount {
 			pending.TestCount += 1
-			log.Infof("VerifyPending: Pending DNS %v does not "+
-				"have any usable IP addresses", pending.PendDNS)
+			log.Infof("VerifyPending: %s for %+v\n",
+				errStr, pending.PendDNS)
 			return DPC_WAIT
 		} else {
-			errStr := "DHCP could not resolve any usable " +
-				"IP addresses for the pending network config"
-			log.Infof("VerifyPending: %s for %+v\n", errStr, pending.PendDNS)
+			log.Errorf("VerifyPending: %s for %+v\n",
+				errStr, pending.PendDNS)
 			pending.PendDPC.LastFailed = time.Now()
 			pending.PendDPC.LastError = errStr
 			return DPC_FAIL
