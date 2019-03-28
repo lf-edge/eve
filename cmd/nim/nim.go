@@ -651,6 +651,22 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 			ctx.networkFallbackAnyEth = gcp.NetworkFallbackAnyEth
 			updateFallbackAnyEth(ctx)
 		}
+		// Check for change to NetworkTestBetterInterval
+		if ctx.NetworkTestBetterInterval != gcp.NetworkTestBetterInterval {
+			if gcp.NetworkTestBetterInterval == 0 {
+				log.Warnln("NOT running TestBetterTimer")
+				networkTestBetterTimer := time.NewTimer(time.Hour)
+				networkTestBetterTimer.Stop()
+				ctx.NetworkTestBetterTimer = networkTestBetterTimer
+			} else {
+				log.Infof("Starting TestBetterTimer: %d",
+					gcp.NetworkTestBetterInterval)
+				networkTestBetterInterval := time.Duration(ctx.NetworkTestBetterInterval) * time.Second
+				networkTestBetterTimer := time.NewTimer(networkTestBetterInterval)
+				ctx.NetworkTestBetterTimer = networkTestBetterTimer
+			}
+			ctx.NetworkTestBetterInterval = gcp.NetworkTestBetterInterval
+		}
 		ctx.globalConfig = gcp
 	}
 	ctx.GCInitialized = true
