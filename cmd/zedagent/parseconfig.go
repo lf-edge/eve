@@ -664,6 +664,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 
 	// Check if we have any with Uplink/IsMgmt set, in which case we
 	// infer the version
+	// XXX should we have a version in the proto file? Will end up with
+	// a collapsed systemAdapter with network info inlined soon.
 	version := types.DPCInitial
 	for _, sysAdapter := range sysAdapters {
 		if sysAdapter.Uplink {
@@ -681,7 +683,13 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			// This should go away when cloud sends proper values
 			isUplink = true
 			isFreeUplink = true
+		} else {
+			isUplink = sysAdapter.Uplink
+			isFreeUplink = sysAdapter.FreeUplink
+			// XXX zedcloud doesn't set FreeUplink
+			isFreeUplink = isUplink
 		}
+
 		port := types.NetworkPortConfig{}
 		port.IfName = sysAdapter.Name
 		if sysAdapter.LogicalName != "" {
