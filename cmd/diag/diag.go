@@ -50,7 +50,8 @@ type diagContext struct {
 	DevicePortConfigList    *types.DevicePortConfigList
 	forever                 bool // Keep on reporting until ^C
 	pacContents             bool // Print PAC file contents
-	ledCounter              int  // Supress work and output
+	ledCounter              int
+	derivedLedCounter       int // Based on ledCounter + usableAddressCount
 	subGlobalConfig         *pubsub.Subscription
 	subLedBlinkCounter      *pubsub.Subscription
 	subDeviceNetworkStatus  *pubsub.Subscription
@@ -240,6 +241,10 @@ func handleLedBlinkModify(ctxArg interface{}, key string,
 		return
 	}
 	ctx.ledCounter = config.BlinkCounter
+	ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
+		ctx.UsableAddressCount)
+	log.Infof("counter %d usableAddr %d, derived %d\n",
+		ctx.ledCounter, ctx.UsableAddressCount, ctx.derivedLedCounter)
 	printOutput(ctx)
 }
 
@@ -263,6 +268,16 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSModify: changed %v",
 		cmp.Diff(ctx.DeviceNetworkStatus, status))
 	*ctx.DeviceNetworkStatus = status
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
+	log.Infof("handleDNSModify %d usable addresses\n", newAddrCount)
+	if (ctx.UsableAddressCount == 0 && newAddrCount != 0) ||
+		(ctx.UsableAddressCount != 0 && newAddrCount == 0) {
+		ctx.UsableAddressCount = newAddrCount
+		ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
+			ctx.UsableAddressCount)
+		log.Infof("counter %d usableAddr %d, derived %d\n",
+			ctx.ledCounter, ctx.UsableAddressCount, ctx.derivedLedCounter)
+	}
 	// XXX can we limit to interfaces which changed?
 	printOutput(ctx)
 	log.Infof("handleDNSModify done for %s\n", key)
@@ -279,6 +294,16 @@ func handleDNSDelete(ctxArg interface{}, key string,
 		return
 	}
 	*ctx.DeviceNetworkStatus = types.DeviceNetworkStatus{}
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
+	log.Infof("handleDNSDelete %d usable addresses\n", newAddrCount)
+	if (ctx.UsableAddressCount == 0 && newAddrCount != 0) ||
+		(ctx.UsableAddressCount != 0 && newAddrCount == 0) {
+		ctx.UsableAddressCount = newAddrCount
+		ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
+			ctx.UsableAddressCount)
+		log.Infof("counter %d usableAddr %d, derived %d\n",
+			ctx.ledCounter, ctx.UsableAddressCount, ctx.derivedLedCounter)
+	}
 	printOutput(ctx)
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
@@ -347,7 +372,7 @@ func printOutput(ctx *diagContext) {
 		// XXX print onboarding cert
 	}
 
-	switch ctx.ledCounter {
+	switch ctx.derivedLedCounter {
 	case 0:
 		fmt.Printf("ERROR: Summary: Unknown LED counter 0\n")
 	case 1:
@@ -368,7 +393,7 @@ func printOutput(ctx *diagContext) {
 		fmt.Printf("ERROR: Summary: Response without OSCP or bad OSCP - ignored\n")
 	default:
 		fmt.Printf("ERROR: Summary: Unsupported LED counter %d\n",
-			ctx.ledCounter)
+			ctx.derivedLedCounter)
 	}
 
 	// Print info about fallback

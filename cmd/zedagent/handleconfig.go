@@ -202,8 +202,8 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 		log.Errorf("getLatestConfig failed: %s\n", err)
 		if getconfigCtx.ledManagerCount == 4 {
 			// Inform ledmanager about loss of config from cloud
-			types.UpdateLedManagerConfig(3)
-			getconfigCtx.ledManagerCount = 3
+			types.UpdateLedManagerConfig(2)
+			getconfigCtx.ledManagerCount = 2
 		}
 		// If we didn't yet get a config, then look for a file
 		// XXX should we try a few times?
