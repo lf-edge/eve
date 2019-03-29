@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
+	"github.com/eriknordmark/netlink"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -409,11 +410,14 @@ func CountLocalAddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 }
 
 // XXX move AF functionality to getInterfaceAddr?
-func CountLocalIPv4AddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus) int {
+// Only IPv4 counted
+func CountLocalIPv4AddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 
 	// Count the number of addresses which apply
-	addrs, _ := getInterfaceAddr(globalStatus, true, "", false)
+	addrs, _ := getInterfaceAddr(globalStatus, false, "", false)
 	count := 0
+	log.Infof("CountLocalIPv4AddrAnyNoLinkLocal: total %d: %v\n",
+		len(addrs), addrs)
 	for _, addr := range addrs {
 		if addr.To4() == nil {
 			continue
@@ -431,6 +435,26 @@ func CountLocalAddrFreeNoLinkLocalIf(globalStatus DeviceNetworkStatus,
 	// Count the number of addresses which apply
 	addrs, _ := getInterfaceAddr(globalStatus, true, port, false)
 	return len(addrs)
+}
+
+// Return number of local IP addresses for all the management ports with given name
+// excluding link-local addresses
+// Only IPv4 counted
+func CountLocalIPv4AddrAnyNoLinkLocalIf(globalStatus DeviceNetworkStatus,
+	port string) int {
+
+	// Count the number of addresses which apply
+	addrs, _ := getInterfaceAddr(globalStatus, true, port, false)
+	count := 0
+	log.Infof("CountLocalIPv4AddrAnyNoLinkLocalIf(%s): total %d: %v\n",
+		port, len(addrs), addrs)
+	for _, addr := range addrs {
+		if addr.To4() == nil {
+			continue
+		}
+		count += 1
+	}
+	return count
 }
 
 // Pick one address from all of the management ports, unless if port is set
@@ -509,19 +533,17 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, port strin
 			continue
 		}
 
+		link := NetworkPortStatus{
+			IfName: us.IfName,
+			Name:   us.Name,
+			IsMgmt: us.IsMgmt,
+			Free:   us.Free,
+		}
 		if includeLinkLocal {
-			link := NetworkPortStatus{
-				IfName: us.IfName,
-				//Addrs: us.Addrs,
-				AddrInfoList: us.AddrInfoList,
-				Name:         us.Name,
-			}
+			link.AddrInfoList = us.AddrInfoList
 			links = append(links, link)
 		} else {
 			var addrs []AddrInfo
-			var link NetworkPortStatus
-			link.IfName = us.IfName
-			link.Name = us.Name
 			for _, a := range us.AddrInfoList {
 				if !a.Addr.IsLinkLocalUnicast() {
 					addrs = append(addrs, a)
@@ -538,6 +560,23 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, port strin
 	} else {
 		return []NetworkPortStatus{}, errors.New("No good MgmtPorts")
 	}
+}
+
+// Return the list of ifnames in DNC which exist in the kernel
+func GetExistingInterfaceList(globalStatus DeviceNetworkStatus) []string {
+
+	var ifs []string
+	for _, us := range globalStatus.Ports {
+
+		link, _ := netlink.LinkByName(us.IfName)
+		if link == nil {
+			log.Warnf("GetExistingInterfaceList: if %s not found\n",
+				us.IfName)
+			continue
+		}
+		ifs = append(ifs, us.IfName)
+	}
+	return ifs
 }
 
 // Check if an interface/adapter name is a port owned by zedrouter
@@ -853,7 +892,7 @@ type NetworkType uint8
 
 const (
 	NT_NOOP      NetworkType = 0
-	NT_IPV4      		 = 4
+	NT_IPV4                  = 4
 	NT_IPV6                  = 6
 	NT_CryptoEID             = 14 // Either IPv6 or IPv4; adapter Addr
 	// determines whether IPv4 EIDs are in use.

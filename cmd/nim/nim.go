@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -278,12 +279,16 @@ func Run() {
 	// Apply any changes from the port config to date.
 	publishDeviceNetworkStatus(&nimCtx)
 
-	// Wait for initial GlobalConfig
-	for !nimCtx.GCInitialized {
-		log.Infof("Waiting for GCInitialized\n")
+	// Wait for initial GlobalConfig and the DeviceNetworkConfig
+	for !nimCtx.GCInitialized || !nimCtx.DNCInitialized {
+		log.Infof("Waiting for GCInitialized %v or DNCInitialized %v\n",
+			nimCtx.GCInitialized, nimCtx.DNCInitialized)
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subDeviceNetworkConfig.C:
+			subDeviceNetworkConfig.ProcessChange(change)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
@@ -308,7 +313,7 @@ func Run() {
 	// Timer for checking/verifying pending device network status
 	// We stop this timer before using in the select loop below, because
 	// we do not want the DPC list verification to start yet. We need a place
-	// Holder in the select loop.
+	// holder in the select loop.
 	// Let the select loop have this stopped timer for now and
 	// create a new timer when it's deemed required (change in DPC config).
 	pendTimer := time.NewTimer(time.Duration(dnc.DPCTestDuration) * time.Second)
@@ -646,6 +651,22 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 			ctx.networkFallbackAnyEth = gcp.NetworkFallbackAnyEth
 			updateFallbackAnyEth(ctx)
 		}
+		// Check for change to NetworkTestBetterInterval
+		if ctx.NetworkTestBetterInterval != gcp.NetworkTestBetterInterval {
+			if gcp.NetworkTestBetterInterval == 0 {
+				log.Warnln("NOT running TestBetterTimer")
+				networkTestBetterTimer := time.NewTimer(time.Hour)
+				networkTestBetterTimer.Stop()
+				ctx.NetworkTestBetterTimer = networkTestBetterTimer
+			} else {
+				log.Infof("Starting TestBetterTimer: %d",
+					gcp.NetworkTestBetterInterval)
+				networkTestBetterInterval := time.Duration(ctx.NetworkTestBetterInterval) * time.Second
+				networkTestBetterTimer := time.NewTimer(networkTestBetterInterval)
+				ctx.NetworkTestBetterTimer = networkTestBetterTimer
+			}
+			ctx.NetworkTestBetterInterval = gcp.NetworkTestBetterInterval
+		}
 		ctx.globalConfig = gcp
 	}
 	ctx.GCInitialized = true
@@ -710,6 +731,9 @@ func updateFallbackAnyEth(ctx *nimContext) {
 		ctx.networkFallbackAnyEth, ctx.filteredFallback)
 	if ctx.networkFallbackAnyEth == types.TS_ENABLED {
 		ports := mapToKeys(ctx.filteredFallback)
+		// sort ports to reduce churn; otherwise with two they swap
+		// almost every time
+		sort.Strings(ports)
 		devicenetwork.UpdateLastResortPortConfig(&ctx.DeviceNetworkContext,
 			ports)
 	} else if ctx.networkFallbackAnyEth == types.TS_DISABLED {

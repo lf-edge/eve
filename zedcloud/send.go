@@ -41,14 +41,27 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 
 	for try := 0; try < 2; try += 1 {
 		var intfs []string
+		var numFreeIntf int
 		if try == 0 {
 			intfs = types.GetMgmtPortsFree(*ctx.DeviceNetworkStatus,
 				iteration)
 			log.Debugf("sendOnAllIntf trying free %v\n", intfs)
+			numFreeIntf = len(intfs)
+			if len(intfs) == 0 {
+				lastError = errors.New("No free management interfaces")
+			}
 		} else {
 			intfs = types.GetMgmtPortsNonFree(*ctx.DeviceNetworkStatus,
 				iteration)
 			log.Debugf("sendOnAllIntf non-free %v\n", intfs)
+			if len(intfs) == 0 {
+				if numFreeIntf == 0 {
+					lastError = errors.New("No management interfaces")
+				} else {
+					// Should have a lastError from
+					// trying the free
+				}
+			}
 		}
 		for _, intf := range intfs {
 			// XXX Hard coded timeout to 15 seconds. Might need some adjusting
