@@ -765,12 +765,20 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	}
 	portConfig := &types.DevicePortConfig{}
 	portConfig.Version = version
+	portConfig.Ports = newPorts
+
+	// Any content change?
+	if cmp.Equal(getconfigCtx.devicePortConfig.Ports, portConfig.Ports) &&
+		getconfigCtx.devicePortConfig.Version == portConfig.Version {
+		log.Infof("parseSystemAdapterConfig: Done with no change")
+		return
+	}
 	// This is suboptimal after a reboot since the config will be the same
 	// yet the timestamp be new. HandleDPCModify takes care of that.
 	portConfig.TimePriority = time.Now()
-	portConfig.Ports = newPorts
 
 	getconfigCtx.pubDevicePortConfig.Publish("zedagent", *portConfig)
+
 	log.Infof("parseSystemAdapterConfig: Done")
 }
 
