@@ -700,20 +700,13 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		port.IsMgmt = isUplink
 		port.Free = isFreeUplink
 
-		// Lookup the network with given UUID
-		// and copy proxy and other configuration
-		networkObject, err := getconfigCtx.pubNetworkObjectConfig.Get(sysAdapter.NetworkUUID)
-		if err != nil {
-			log.Errorf("parseSystemAdapterConfig: Network with UUID %s not found: %s\n",
-				sysAdapter.NetworkUUID, err)
-			continue
-		}
-		network := cast.CastNetworkObjectConfig(networkObject)
-		// XXX temporary hack: if static IP 0.0.0.0 we log and force
+		port.Dhcp = types.DT_NONE
+		// XXX temporary hack: if static IP 0.0.0.0 we log and
 		// Dhcp = DT_NONE. Remove once zedcloud can send Dhcp = None
 		forceDhcpNone := false
+		var ip net.IP
 		if sysAdapter.Addr != "" {
-			ip := net.ParseIP(sysAdapter.Addr)
+			ip = net.ParseIP(sysAdapter.Addr)
 			if ip == nil {
 				log.Errorf("parseSystemAdapterConfig: Port %s has Bad "+
 					"sysAdapter.Addr %s - ignored\n",
@@ -723,39 +716,54 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			if ip.IsUnspecified() {
 				forceDhcpNone = true
 			}
+			// XXX Note that ip is not used unless we have a network below
+		}
+		if sysAdapter.NetworkUUID != "" &&
+			sysAdapter.NetworkUUID != nilUUID.String() {
+
+			// Lookup the network with given UUID
+			// and copy proxy and other configuration
+			networkObject, err := getconfigCtx.pubNetworkObjectConfig.Get(sysAdapter.NetworkUUID)
+			if err != nil {
+				log.Errorf("parseSystemAdapterConfig: Network with UUID %s not found: %s\n",
+					sysAdapter.NetworkUUID, err)
+				continue
+			}
+			network := cast.CastNetworkObjectConfig(networkObject)
 			addrSubnet := network.Subnet
 			addrSubnet.IP = ip
 			port.AddrSubnet = addrSubnet.String()
-		}
-		port.Gateway = network.Gateway
-		port.DomainName = network.DomainName
-		port.NtpServer = network.NtpServer
-		port.DnsServers = network.DnsServers
-		// Need to be careful since zedcloud can feed us bad Dhcp type
-		port.Dhcp = network.Dhcp
-		switch network.Dhcp {
-		case types.DT_STATIC:
-			if forceDhcpNone {
-				log.Warnf("Forcing DT_NONE for %+v\n", port)
-				port.Dhcp = types.DT_NONE
-				break
-			}
-			if port.Gateway.IsUnspecified() || port.AddrSubnet == "" ||
-				port.DnsServers == nil {
-				log.Errorf("parseSystemAdapterConfig: DT_STATIC but missing parameters in %+v; ignored\n",
-					port)
+
+			port.Gateway = network.Gateway
+			port.DomainName = network.DomainName
+			port.NtpServer = network.NtpServer
+			port.DnsServers = network.DnsServers
+			// Need to be careful since zedcloud can feed us bad Dhcp type
+			port.Dhcp = network.Dhcp
+			switch network.Dhcp {
+			case types.DT_STATIC:
+				if forceDhcpNone {
+					log.Warnf("Forcing DT_NONE for %+v\n", port)
+					port.Dhcp = types.DT_NONE
+					break
+				}
+				if port.Gateway.IsUnspecified() || port.AddrSubnet == "" ||
+					port.DnsServers == nil {
+					log.Errorf("parseSystemAdapterConfig: DT_STATIC but missing parameters in %+v; ignored\n",
+						port)
+					continue
+				}
+			case types.DT_CLIENT:
+				// Do nothing
+			default:
+				log.Warnf("parseSystemAdapterConfig: ignore unsupported dhcp type %v\n",
+					network.Dhcp)
 				continue
 			}
-		case types.DT_CLIENT:
-			// Do nothing
-		default:
-			log.Warnf("parseSystemAdapterConfig: ignore unsupported dhcp type %v\n",
-				network.Dhcp)
-			continue
-		}
-		// XXX use DnsNameToIpList?
-		if network.Proxy != nil {
-			port.ProxyConfig = *network.Proxy
+			// XXX use DnsNameToIpList?
+			if network.Proxy != nil {
+				port.ProxyConfig = *network.Proxy
+			}
 		}
 		newPorts = append(newPorts, port)
 	}
