@@ -257,10 +257,6 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)
-	if status.Testing {
-		log.Infof("handleDNSModify ignoring Testing\n")
-		return
-	}
 	if cmp.Equal(ctx.DeviceNetworkStatus, status) {
 		log.Infof("handleDNSModify unchanged\n")
 		return
@@ -430,6 +426,9 @@ func printOutput(ctx *diagContext) {
 					DPCLen-1)
 			}
 		}
+	}
+	if ctx.DeviceNetworkStatus.Testing {
+		fmt.Printf("WARN: The configuration below is under test hence might report failures\n")
 	}
 	numPorts := len(ctx.DeviceNetworkStatus.Ports)
 	mgmtPorts := 0
