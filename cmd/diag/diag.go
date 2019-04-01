@@ -392,6 +392,15 @@ func printOutput(ctx *diagContext) {
 			ctx.derivedLedCounter)
 	}
 
+	testing := ctx.DeviceNetworkStatus.Testing
+	var upcase, downcase string
+	if testing {
+		upcase = "Testing"
+		downcase = "testing"
+	} else {
+		upcase = "Using"
+		downcase = "using"
+	}
 	// Print info about fallback
 	DPCLen := len(ctx.DevicePortConfigList.PortConfigList)
 	if DPCLen > 0 {
@@ -399,18 +408,18 @@ func printOutput(ctx *diagContext) {
 		if ctx.DevicePortConfigList.CurrentIndex == -1 {
 			fmt.Printf("WARNING: Have no currently working DevicePortConfig\n")
 		} else if ctx.DevicePortConfigList.CurrentIndex != 0 {
-			fmt.Printf("WARNING: Not using highest priority DevicePortConfig key %s due to %s\n",
-				first.Key, first.LastError)
+			fmt.Printf("WARNING: Not %s highest priority DevicePortConfig key %s due to %s\n",
+				downcase, first.Key, first.LastError)
 			for i, dpc := range ctx.DevicePortConfigList.PortConfigList {
 				if i == 0 {
 					continue
 				}
 				if i != ctx.DevicePortConfigList.CurrentIndex {
-					fmt.Printf("WARNING: Not using priority %d DevicePortConfig key %s due to %s\n",
-						i, dpc.Key, dpc.LastError)
+					fmt.Printf("WARNING: Not %s priority %d DevicePortConfig key %s due to %s\n",
+						downcase, i, dpc.Key, dpc.LastError)
 				} else {
-					fmt.Printf("INFO: Using priority %d DevicePortConfig key %s\n",
-						i, dpc.Key)
+					fmt.Printf("INFO: %s priority %d DevicePortConfig key %s\n",
+						upcase, i, dpc.Key)
 					break
 				}
 			}
@@ -419,26 +428,22 @@ func printOutput(ctx *diagContext) {
 					DPCLen-1-ctx.DevicePortConfigList.CurrentIndex)
 			}
 		} else {
-			fmt.Printf("INFO: Using highest priority DevicePortConfig key %s\n",
-				first.Key)
+			fmt.Printf("INFO: %s highest priority DevicePortConfig key %s\n",
+				upcase, first.Key)
 			if DPCLen > 1 {
 				fmt.Printf("INFO: Have %d backup DevicePortConfig\n",
 					DPCLen-1)
 			}
 		}
 	}
-	if ctx.DeviceNetworkStatus.Testing {
-		fmt.Printf("WARN: The configuration below is under test hence might report failures\n")
+	if testing {
+		fmt.Printf("WARNING: The configuration below is under test hence might report failures\n")
 	}
 	numPorts := len(ctx.DeviceNetworkStatus.Ports)
 	mgmtPorts := 0
 	passPorts := 0
 	passOtherPorts := 0
 
-	// XXX add to DeviceNetworkStatus?
-	// fmt.Printf("DEBUG: Using DevicePortConfig key %s prio %s lastSucceeded %v\n",
-	// 	ctx.DeviceNetworkStatus.Key, ctx.DeviceNetworkStatus.TimePriority,
-	//	ctx.DeviceNetworkStatus.LastSucceeded)
 	numMgmtPorts := len(types.GetMgmtPortsAny(*ctx.DeviceNetworkStatus, 0))
 	fmt.Printf("INFO: Have %d total ports. %d ports should be connected to EV controller\n", numPorts, numMgmtPorts)
 	for _, port := range ctx.DeviceNetworkStatus.Ports {
@@ -759,7 +764,7 @@ func myGet(zedcloudCtx *zedcloud.ZedCloudContext, requrl string, ifname string,
 	if err != nil {
 		fmt.Printf("ERROR: %s: LookupProxy failed: %s\n", ifname, err)
 	} else if proxyUrl != nil {
-		fmt.Printf("INFO: %s: Using proxy %s to reach %s\n",
+		fmt.Printf("INFO: %s: Proxy %s to reach %s\n",
 			ifname, proxyUrl.String(), requrl)
 	}
 	const allowProxy = true

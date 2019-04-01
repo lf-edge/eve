@@ -375,7 +375,7 @@ func Run() {
 		case change, ok := <-addrChanges:
 			if !ok {
 				log.Errorf("addrChanges closed\n")
-				// XXX Need to discard all cached information
+				// XXX Need to discard all cached information?
 				addrChanges = devicenetwork.AddrChangeInit()
 			} else {
 				if devicenetwork.AddrChange(change) {
@@ -387,7 +387,7 @@ func Run() {
 			if !ok {
 				log.Errorf("linkChanges closed\n")
 				linkChanges = devicenetwork.LinkChangeInit()
-				// XXX Need to discard all cached information
+				// XXX Need to discard all cached information?
 			} else if devicenetwork.LinkChange(change) {
 				handleLinkChange(&nimCtx)
 				// XXX trigger testing??
@@ -481,7 +481,7 @@ func Run() {
 			if !ok {
 				log.Errorf("addrChanges closed\n")
 				addrChanges = devicenetwork.AddrChangeInit()
-				// XXX Need to discard all cached information
+				// XXX Need to discard all cached information?
 			} else {
 				if devicenetwork.AddrChange(change) {
 					devicenetwork.HandleAddressChange(&nimCtx.DeviceNetworkContext)
@@ -492,7 +492,7 @@ func Run() {
 			if !ok {
 				log.Errorf("linkChanges closed\n")
 				linkChanges = devicenetwork.LinkChangeInit()
-				// XXX Need to discard all cached information
+				// XXX Need to discard all cached information?
 			} else if devicenetwork.LinkChange(change) {
 				handleLinkChange(&nimCtx)
 				// XXX trigger testing??
