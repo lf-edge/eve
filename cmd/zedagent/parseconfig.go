@@ -789,7 +789,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	// This is suboptimal after a reboot since the config will be the same
 	// yet the timestamp be new. HandleDPCModify takes care of that.
 	portConfig.TimePriority = time.Now()
-	getconfigCtx.devicePortConfig = portConfig
+	getconfigCtx.devicePortConfig = *portConfig
 
 	getconfigCtx.pubDevicePortConfig.Publish("zedagent", *portConfig)
 
