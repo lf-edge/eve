@@ -216,10 +216,6 @@ func VerifyPending(pending *DPCPending,
 		log.Infof("VerifyPending: DPC changed. update DhcpClient.\n")
 		UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
 		pending.OldDPC = pending.PendDPC
-		// XXX should we return DPC_WAIT here? Avoids publishing
-		// IP addresses until we get the AddrChange messages with drops
-		// XXX not needed when we drop the eth0/eth1 interfaces
-		return DPC_WAIT
 	}
 	pending.PendDNS, _ = MakeDeviceNetworkStatus(pending.PendDPC,
 		pending.PendDNS)
@@ -661,7 +657,6 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 			reflect.DeepEqual(oldConfig.Ports, portConfig.Ports) {
 			log.Infof("doUpdatePortConfigListAndPublish: no change but timestamps %v %v\n",
 				oldConfig.TimePriority, portConfig.TimePriority)
-			// XXX check if this is current? Better timepriority than current? XXX whether it will change place in list?
 			current := getCurrentDPC(ctx)
 
 			if reflect.DeepEqual(current.Ports, oldConfig.Ports) {
@@ -711,6 +706,10 @@ func updatePortConfig(ctx *DeviceNetworkContext, oldConfig *types.DevicePortConf
 		*oldConfig = portConfig
 		return
 	}
+	// Preserve Last*
+	portConfig.LastFailed = oldConfig.LastFailed
+	portConfig.LastError = oldConfig.LastError
+	portConfig.LastSucceeded = oldConfig.LastSucceeded
 	log.Infof("updatePortConfig: diff time remove+add  %+v\n",
 		portConfig)
 	removePortConfig(ctx, *oldConfig)

@@ -227,12 +227,13 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 
 // Return all IP addresses for an ifindex
 // Leaves mask uninitialized
+// Also replaces what is in the Ifindex cache since AddrChange callbacks
+// are far from reliable.
+// If AddrChange worked reliably this would just be:
+// return IfindexToAddrs(ifindex)
 func getAddrs(ifindex int) ([]net.IPNet, error) {
 
 	var addrs []net.IPNet
-
-	// XXX netlink's subscriptipons for changes do not work reliably
-	// XXX WAS: return IfindexToAddrs(ifindex)
 
 	link, err := netlink.LinkByIndex(ifindex)
 	if err != nil {
@@ -250,13 +251,19 @@ func getAddrs(ifindex int) ([]net.IPNet, error) {
 		log.Warnf("netlink.AddrList %d V4 failed: %s", ifindex, err)
 		addrs6 = nil
 	}
+	IfindexToAddrsFlush(ifindex)
 	for _, a := range addrs4 {
-		addrs = append(addrs, net.IPNet{IP: a.IP})
+		ip := net.IPNet{IP: a.IP}
+		addrs = append(addrs, ip)
+		IfindexToAddrsAdd(ifindex, ip)
 	}
 	for _, a := range addrs6 {
-		addrs = append(addrs, net.IPNet{IP: a.IP})
+		ip := net.IPNet{IP: a.IP}
+		addrs = append(addrs, ip)
+		IfindexToAddrsAdd(ifindex, ip)
 	}
 	return addrs, nil
+
 }
 
 func lookupPortStatusAddr(status types.DeviceNetworkStatus,
