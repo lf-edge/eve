@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
+	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
@@ -166,7 +167,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 			err = errors.New(errStr)
 			continue
 		}
-		addrs, err := IfindexToAddrs(ifindex)
+		addrs, err := getAddrs(ifindex)
 		if err != nil {
 			log.Warnf("MakeDeviceNetworkStatus addrs not found %s index %d: %s\n",
 				u.IfName, ifindex, err)
@@ -222,6 +223,40 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 	UpdateDeviceNetworkGeo(time.Second, &globalStatus)
 	log.Infof("MakeDeviceNetworkStatus() DONE\n")
 	return globalStatus, err
+}
+
+// Return all IP addresses for an ifindex
+// Leaves mask uninitialized
+func getAddrs(ifindex int) ([]net.IPNet, error) {
+
+	var addrs []net.IPNet
+
+	// XXX netlink's subscriptipons for changes do not work reliably
+	// XXX WAS: return IfindexToAddrs(ifindex)
+
+	link, err := netlink.LinkByIndex(ifindex)
+	if err != nil {
+		err = errors.New(fmt.Sprintf("Port in config/global does not exist: %d",
+			ifindex))
+		return addrs, err
+	}
+	addrs4, err := netlink.AddrList(link, netlink.FAMILY_V4)
+	if err != nil {
+		log.Warnf("netlink.AddrList %d V4 failed: %s", ifindex, err)
+		addrs4 = nil
+	}
+	addrs6, err := netlink.AddrList(link, netlink.FAMILY_V6)
+	if err != nil {
+		log.Warnf("netlink.AddrList %d V4 failed: %s", ifindex, err)
+		addrs6 = nil
+	}
+	for _, a := range addrs4 {
+		addrs = append(addrs, net.IPNet{IP: a.IP})
+	}
+	for _, a := range addrs6 {
+		addrs = append(addrs, net.IPNet{IP: a.IP})
+	}
+	return addrs, nil
 }
 
 func lookupPortStatusAddr(status types.DeviceNetworkStatus,
