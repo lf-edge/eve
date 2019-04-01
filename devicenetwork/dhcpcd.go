@@ -72,8 +72,12 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 		return
 	}
 
-	// Remove cached addresses; XXX looses IPv6 addresses as well. How do we regain them?
-	// XXX IfnameToAddrsFlush(nuc.IfName)
+	// Check the ifname exists
+	_, err := IfnameToIndex(nuc.IfName)
+	if err != nil {
+		log.Warnf("doDhcpClientActivate(%s) failed %s", nuc.IfName, err)
+		return
+	}
 
 	switch nuc.Dhcp {
 	case types.DT_NONE:
@@ -95,11 +99,20 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 			log.Errorf("doDhcpClientActivate: request failed for %s\n",
 				nuc.IfName)
 		}
-		// XXX if eth3 does not exist etc!
-		if !dhcpcdExists(nuc.IfName) {
+		// Wait for a bit then give up
+		waitCount := 0
+		failed := false
+		for !dhcpcdExists(nuc.IfName) {
 			log.Warnf("dhcpcd %s not yet running", nuc.IfName)
-			// XXX			time.Sleep(10 * time.Second)
-		} else {
+			waitCount++
+			if waitCount >= 3 {
+				log.Errorf("dhcpcd %s not yet running", nuc.IfName)
+				failed = true
+				break
+			}
+			time.Sleep(10 * time.Second)
+		}
+		if !failed {
 			log.Infof("dhcpcd %s is running", nuc.IfName)
 		}
 
@@ -194,8 +207,6 @@ func doDhcpClientInactivate(nuc types.NetworkPortConfig) {
 		log.Errorf("doDhcpClientInactivate: unsupported dhcp %v\n",
 			nuc.Dhcp)
 	}
-	// Remove cached addresses
-	// XXX IfnameToAddrsFlush(nuc.IfName)
 }
 
 func dhcpcdCmd(op string, extras []string, ifname string, dolog bool) bool {
@@ -226,10 +237,10 @@ func dhcpcdCmd(op string, extras []string, ifname string, dolog bool) bool {
 	return true
 }
 
-// XXX should we use dhcpcd -P <ifname> to get name of pidfile?
 func dhcpcdExists(ifname string) bool {
 
 	log.Infof("dhcpcdExists(%s)", ifname)
+	// XXX should we use dhcpcd -P <ifname> to get name of pidfile? Hardcoded path here
 	pidfileName := fmt.Sprintf("/run/dhcpcd-%s.pid", ifname)
 	val, t := statAndRead(pidfileName)
 	if val == "" {
@@ -238,12 +249,10 @@ func dhcpcdExists(ifname string) bool {
 	}
 	log.Infof("dhcpcdExists(%s) found modtime %v", ifname, t)
 
-	// XXX we return true even if there are failures below since
-	// the pidfile existed. Correct? NO
 	pid, err := strconv.Atoi(strings.TrimSpace(val))
 	if err != nil {
 		log.Errorf("Atoi of %s failed %s; ignored\n", val, err)
-		return true
+		return true // Guess since we dont' know
 	}
 	// Does the pid exist?
 	p, err := os.FindProcess(pid)
