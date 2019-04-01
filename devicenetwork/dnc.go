@@ -216,6 +216,10 @@ func VerifyPending(pending *DPCPending,
 		log.Infof("VerifyPending: DPC changed. update DhcpClient.\n")
 		UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
 		pending.OldDPC = pending.PendDPC
+		// XXX should we return DPC_WAIT here? Avoids publishing
+		// IP addresses until we get the AddrChange messages with drops
+		// XXX not needed when we drop the eth0/eth1 interfaces
+		return DPC_WAIT
 	}
 	pending.PendDNS, _ = MakeDeviceNetworkStatus(pending.PendDPC,
 		pending.PendDNS)
@@ -431,6 +435,7 @@ func getNextTestableDPCIndex(ctx *DeviceNetworkContext) int {
 
 func getCurrentDPC(ctx *DeviceNetworkContext) types.DevicePortConfig {
 	if len(ctx.DevicePortConfigList.PortConfigList) == 0 ||
+		ctx.NextDPCIndex < 0 ||
 		ctx.NextDPCIndex >= len(ctx.DevicePortConfigList.PortConfigList) {
 		return types.DevicePortConfig{}
 	}
@@ -462,7 +467,7 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	//
 	// XXX Or instead of checking for Ip address count, should be have a "first DPC" flag?
 	ipAddrCount := types.CountLocalIPv4AddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
-	if !configChanged && ipAddrCount > 0 {
+	if !configChanged && ipAddrCount > 0 && ctx.DevicePortConfigList.CurrentIndex != -1 {
 		log.Infof("HandleDPCModify: Config already current. No changes to process\n")
 		return
 	}
@@ -634,7 +639,7 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 	// Look up based on timestamp, then content
 
 	current := getCurrentDPC(ctx) // Use to determine if index needs to change
-	currentIndex := ctx.NextDPCIndex
+	currentIndex := ctx.DevicePortConfigList.CurrentIndex
 	oldConfig, _ := lookupPortConfig(ctx, *portConfig)
 	if delete {
 		if oldConfig == nil {
@@ -656,6 +661,7 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 			reflect.DeepEqual(oldConfig.Ports, portConfig.Ports) {
 			log.Infof("doUpdatePortConfigListAndPublish: no change but timestamps %v %v\n",
 				oldConfig.TimePriority, portConfig.TimePriority)
+			// XXX check if this is current? Better timepriority than current? XXX whether it will change place in list?
 			current := getCurrentDPC(ctx)
 
 			if reflect.DeepEqual(current.Ports, oldConfig.Ports) {
@@ -672,15 +678,24 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 		insertPortConfig(ctx, *portConfig)
 	}
 	// Check if current moved to a different index or was deleted
+	// XXX can current be default constructor?
 	newplace, newIndex := lookupPortConfig(ctx, current)
 	if newplace == nil {
 		log.Infof("doUpdatePortConfigListAndPublish: current %d deleted",
 			currentIndex)
-		ctx.NextDPCIndex = 0 // XXX trigger verification?
+		if ctx.DevicePortConfigList.PortConfigList[0].WasDPCWorking() {
+			ctx.DevicePortConfigList.CurrentIndex = 0
+		} else {
+			ctx.DevicePortConfigList.CurrentIndex = -1
+		}
 	} else if newIndex != currentIndex {
 		log.Infof("doUpdatePortConfigListAndPublish: current %d moved to %d",
 			currentIndex, newIndex)
-		ctx.NextDPCIndex = newIndex
+		if ctx.DevicePortConfigList.PortConfigList[newIndex].WasDPCWorking() {
+			ctx.DevicePortConfigList.CurrentIndex = newIndex
+		} else {
+			ctx.DevicePortConfigList.CurrentIndex = -1
+		}
 	}
 	log.Infof("publishing DevicePortConfigList: %+v\n", ctx.DevicePortConfigList)
 	ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
