@@ -234,6 +234,18 @@ func (portConfig DevicePortConfig) IsDPCUntested() bool {
 	return false
 }
 
+// Check if the last results for the DPC was Success
+func (portConfig DevicePortConfig) WasDPCWorking() bool {
+
+	if portConfig.LastSucceeded.IsZero() {
+		return false
+	}
+	if portConfig.LastSucceeded.After(portConfig.LastFailed) {
+		return true
+	}
+	return false
+}
+
 type NetworkProxyType uint8
 
 // Values if these definitions should match the values
