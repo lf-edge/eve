@@ -374,7 +374,7 @@ func getPartitionState(ctx *baseOsMgrContext, partname string) string {
 // Returns changed, proceed as above
 func validateAndAssignPartition(ctx *baseOsMgrContext,
 	config types.BaseOsConfig, status *types.BaseOsStatus) (bool, bool) {
-	var curPartVersion, otherPartVersion string
+	var curPartState, curPartVersion, otherPartVersion string
 
 	log.Infof("validateAndAssignPartition(%s) for %s\n",
 		config.Key(), config.BaseOsVersion)
@@ -386,6 +386,7 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 	otherPartStatus := getZbootStatus(ctx, otherPartName)
 	if curPartStatus != nil {
 		curPartVersion = curPartStatus.ShortVersion
+		curPartState = curPartStatus.PartitionState
 	}
 	if otherPartStatus != nil {
 		otherPartVersion = otherPartStatus.ShortVersion
@@ -406,7 +407,7 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 		return changed, proceed
 	}
 
-	if otherPartState == "active" {
+	if curPartState == "inprogress" || otherPartState == "active" {
 		// Must still be testing the current version; don't overwrite
 		// fallback
 		// If there is no change to the other we don't log error
