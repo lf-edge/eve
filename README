@@ -1,179 +1,29 @@
-# go-provision
-Onboarding and provisioning client and mock server in go
+# EVE microservices for device and app instance management
 
-The overall flow is as follows:
-1. Install provisioning binaries and config files in /opt/zededa/bin
-and /opt/zededa/etc
-    # XXX check these are current
-      scp -p prov01.priv.sc.zededa.net:/home/nordmark/go-provision.linux_arm64.tar.gz /tmp
-OR
-      scp -p prov01.priv.sc.zededa.net:/home/nordmark/go-provision.linux_x86_64.tar.gz /tmp
+For information about EVE see https://www.lfedge.org/projects/eve/
 
-      cd /opt/
-      sudo tar xf /tmp/go-provision.linux_*.tar.gz
+This is included in zenbuild (https://github.com/zededa/zenbuild) to produce the EVE images.
 
-   Install lisp in /opt/zededa/lisp
-      mkdir /opt/zededa/lisp
-      cd /opt/zededa/lisp
-      # XXX not current
-      wget https://www.dropbox.com/s/if22l9t0l0f3kt6/lispers.net-x86-release-0.373.tgz
-      tar xf lispers.net-x86-release-0.373.tgz
-      python -O /opt/zededa/lisp/lispers.net-install-ubuntu.pyo
-      sudo apt-get install python-pip
-      sudo pip install ecdsa==0.13
-Check install with
-      python -O /opt/zededa/lisp/lispers.net-test-install.pyo 
+The onboarding of devices is done by scripts/device-steps.sh, and afteronboarding that script proceeds to start the various agents.
 
-2. Generate an onboarding certificate (7 day lifetime) on the server and
-   register it with the server.
-   NOTE: For the device to be able to communicate with zedcontrol etc
-   it must be in IID 85865 and the IID is based on a hash of the username.
-   Thus the username below must be myself@zededa.net.
-   (Down the road we'll have the ability to pick a project with an associated
-   IID in the ZedCloud.)
-   Example:
-      ssh prov01.priv.sc.zededa.net
-      cd /opt/zededa/bin/
-      mkdir /tmp/`whoami`
-      ./generate-onboard.sh /tmp/`whoami`/onboard
-      ./register myself@zededa.com /tmp/`whoami`/onboard.cert.pem 3
-   The above registration allows to use the onboarding certificate for 3 devices
-   Generate-onboard produces two /tmp/`whoami`/onboard.*.pem files.
-   Copy those files to your client device in /opt/zededa/etc/
-      scp -p prov01.priv.sc.zededa.net:/tmp/`whoami`/onboard.\*.pem /opt/zededa/etc
-      
-   Then remove the private onboarding key and cert on the prov01 server:
-      rm -rf /tmp/`whoami`/onboard*
+The agents are:
+ - ledmanager - make LEDs light/blink for feedback to the person installing the hardware
+ - nim - network interface manager (ensures that there is connectivity to the controller)
+ - waitforaddr - merely waiting for a few minutes max for IP address(es) for a more orderly boot in the normal case.
+ - zedagent - communicate using the device API to the controller to retrieve configuration and send status and metrics
+ - logmanager - send logs to the controller for debugging of these agents
+ - baseosmgr - handle updates of the base OS (hypervisors plus all of the services which make up EVE) using dual partitions for fallback
+ - downloader - download objects like images and certificates
+ - verifier - verify cryptographic checksums and signatures on downloaded objects
+ - zedmanager - drive the application instance lifecycle
+ - zedrouter - drive the lifecycle for the connectivity for the instances. Includes services like DHCP, DNS, and Access Control Lists. Provides different connectivity like local, switch, cloud, and mesh networks.
+ - domainmgr - interface with the hypervisor to start and stop application images. Includes performing device assignment.
+ - identitymgr - used when mesh networks desire locally created key pairs for the cryptographic application instance identities
 
-Above steps are supposed to be done as part of the user requesting an
-image for their device(s) at e.g. developer.zededa.com
+In addition there are debugging tools like
+ - diag - prints the state of the connectivity on the console each time there is
+   a change.
+ - ipcmonitor - subscribes to the agents/collections passed between the different microservices
 
 
-3. Run through the provisioning steps on the device
-   /opt/zededa/bin/device-steps.sh -w
-   
-   Note that if the clocks are not in sync between the device and the prov01
-   server you'll see some errors and retries of the form:
-
-   device-param statuscode 401 Unauthorized
-   deviceCert too early NotBefore 2017-05-10 20:34:27 +0000 UTC, now 2017-05-10 13:33:42.990013239 -0700 PDT
-
-
-====
-
-Server config on prov01:
-1. Create server config in /usr/local/etc/zededa-server containing the following files
-   intermediate-ca-chain.pem  server.cert.pem  server.key.pem
-
-2. Start the server on a laptop or server
-   Example:
-	env -u https_proxy env -u http_proxy go-provision/bin/server 
-
-// how to manage sand box for <go-provision>
-set GOROOT 
-export GOROOT='/usr/local/go'
-
-// go-provision needs <zedcloud/src/shared>, for proto definition files
-// name the sand box as <WORK> env variable. here "demo" is sandbox name
-
-export WORK=$HOME/demo
-mkdir -p $WORK
-
-// the sand box should contain both go-provision and zedcloud code base
-// check out the code, at $WORK level, using following commands
-
-cd $WORK
-git clone https://github.com/zededa/go-provision.git
-git clone https://github.com/zededa/zedcloud.git
-
-// compile zedcloud before compiling go-provision
-
-// currently zedcloud compilation needs the github/golang/protobuf/proto
-// at $WORK/zedcloud level, for this do the following
-// this is only one time activity
-
-export GOPATH=$WORK/zedcloud
-go get -u github.com/golang/protobuf/proto
-
-// for zedcloud, set $GOPATH as follows
-
-export GOPATH=$HOME/.go
-export PATH=$PATH:$GOROOT/bin:$GOPATH/bin:
-export GOPATH=$GOPATH:$WORK/zedcloud
-
-//compile zedcloud code
-cd $WORK/zedcloud/src
-make
-
-// for go-provision, set $GOPATH as follows
-
-export GOPATH=$HOME/.go
-export PATH=$PATH:$GOROOT/bin:$GOPATH/bin:
-
-export WORK=$HOME/demo
-export GOPATH=$GOPATH:$WORK/go-provision:$WORK/zedcloud
-
-// compile go-provision code
-cd $WORK/go-provision
-./scripts/buildit.sh
-
-//config for x_86 appInstance without overlays.
-
-{
-  "UUIDandVersion": {
-    "UUID": "639d7e8e-2f2f-4d44-9924-6558e1cbc86f",
-    "Version": "2"
-  },
-  "DisplayName": "zedtest3",
-  "FixedResources": {
-    "Bootloader": "/usr/lib/xen-4.6/bin/pygrub",
-    "RootDev": "/dev/xvda",
-    "Ramdisk": "",
-    "Memory": 200000,
-    "MaxMem": 0,
-    "VCpus": 1,
-    "ExtraArgs": "mnt=/dev/xvdb run=/mnt/ledconsumer.py"
-  },
-  "StorageConfigList": [
-    {
-      "DownloadURL": "http://download.cirros-cloud.net/0.3.5/cirros-0.3.5-x86_64-disk.img",
-      "MaxSize": 440000,
-      "ImageSha256": "e137062a4dfbb4c225971b67781bc52183d14517170e16a3841d16f962ae7470",
-      "Format": "qcow2",
-      "Target": "disk"
-    }
-  ],
-  "Activate": true,
-  "OverlayNetworkList": [],
-  "UnderlayNetworkList": [
-    {
-      "ACLs": [
-        {
-          "Matches": [
-            {
-              "Type": "host",
-              "Value": "google.com"
-            }
-          ],
-          "Actions": [
-            {
-              "Limit": true,
-              "LimitRate": 10,
-              "LimitUnit": "m",
-              "LimitBurst": 40
-            }
-          ]
-        },
-        {
-          "Matches": [
-            {
-              "Type": "host",
-              "Value": "zededa.net"
-            }
-          ],
-          "Actions": null
-        }
-      ]
-    }
-  ]
-}
+ 
