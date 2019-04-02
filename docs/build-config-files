@@ -1,3 +1,5 @@
+# Customizing the image for static IP or enterprise proxy; ssh access
+
 It is possible to provide an initial DevicePortConfig and/or GlobalConfig
 during the build.
 
