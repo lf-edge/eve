@@ -11,10 +11,13 @@ Those files merely specify the set of management ports, plus which of them
 do not have per usage charging (to separate out e.g., LTE modems).
 
 The default.json is:
+```
 {
     "Uplink":["eth0","wlan0","wwan0"],
     "FreeUplinks":["eth0","wlan0"]
 }
+```
+
 Note that this uses the old "uplink" terminology; new terminology for this concept is "management port".
 
 This per-model comfiguration can be overridden by an optional file in
@@ -34,7 +37,10 @@ non-mananagement interface, and can specify static IP and DNS configuration
 (for environments where DHCP is not used). In addition it can specify proxies
 using several different mechanism.
 
+# Example DevicePortConfig
+
 An example file to specify using WPAD to retrieve proxy configuration on eth0 is:
+```
 {
     "Version": 1,
     "Ports": [
@@ -57,24 +63,31 @@ An example file to specify using WPAD to retrieve proxy configuration on eth0 is
         }
     ]
 }
+```
 
 To specify fetching from a fixed WPAD URL one would set:
+```
             "NetworkProxyEnable": true,
             "NetworkProxyURL": "http://wpad.sc.zededa.net/wpad.dat",
+```
 
 To specify a particular set of http and https proxies with a set of
-exceptions one would set TBD
+exceptions one would set:
+```
             "Proxies": [ { "Server": "proxy.example.com", "Port":1080, "Type":1 },
                        { "Server": "proxy.example.com", "Port":1080, "Type":0 } ],
             "Exceptions": "example.com",
-
+```
 
 To specify a PAC file inline one would base64 encode the PAC file and set the
 result as the Pacfile e.g.,
+```
 	Pacfile":"ZnVuY3Rpb24gRmluZFByb3h5Rm9yVVJMKHVybCxob3N0KSB7CmlmIChob3N0ID09ICIxMjcuMC4wLjEiKSB7cmV0dXJuICJESVJFQ1QiO30KaWYgKGhvc3QgPT0gImxvY2FsaG9zdCIpIHtyZXR1cm4gIkRJUkVDVCI7fQppZiAoaXNQbGFpbkhvc3ROYW1lKGhvc3QpKSB7cmV0dXJuICJESVJFQ1QiO30KZWxzZSB7IHJldHVybiAiUFJPWFkgcHJveHkucHJpdi5zYy56ZWRlZGEubmV0OjEwODAiO30KfQo=",
+```
 
 
 An example file with eth0 being static and eth1 using dhcp is:
+```
 {
     "Version": 1,
     "Ports": [
@@ -106,9 +119,11 @@ An example file with eth0 being static and eth1 using dhcp is:
         }
     ]
 }
+```
 
 To set up eth1 with the name Field in order to use it for a switch network,
 use DHCP 0. For example,
+```
 {
     "Version": 1,
     "Ports": [
@@ -128,6 +143,7 @@ use DHCP 0. For example,
         }
     ]
 }
+```
 
 If you want eth1 to be configured by zedrouter and used by applications but not
 used for management traffic to the controller, make sure you have Version 1 and IsMgmt false.
@@ -146,7 +162,9 @@ zcli device create.
 # Troubleshooting
 
 The blinking pattern can be extracted from the shell using
+```
 cat /var/tmp/ledmanager/config/ledconfig.json
+```
 
 If the device does not have any usable IP addresses it will be 1,
 if IP address but no cloud connectivity it will be 2,
@@ -154,13 +172,19 @@ if the cloud responds (even if it is an http error e.g, if the device is not yet
 onboarded), it will be 3, and if a GET of /config works it will be 4.
 
 One can test the connectivity to the controller using
+```
     /opt/zededa/bin/diag
+```
 
 The logs for the onboarding attempts are in
+```
     /persist/`zboot curpart`/log/client.log
+```
 
 If there are no IP addresses, the logs for network interface manager can help:
+```
     /persist/`zboot curpart`/log/nim.log
+```
 
 Finally zedagent.log, downloader.log, and /persist/log/logmanager.log will contain
 errors if those agents can not reach the controller.
