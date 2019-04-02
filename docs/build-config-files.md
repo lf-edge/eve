@@ -6,11 +6,14 @@ during the build.
 The former can be used to specify proxies and static IP configuration for
 the ports, if that is necessary to have the device connect to zedcloud.
 But a DevicePortConfig can also be added to a USB stick in which case it
-will be copied from the USB stick on boot. See mkusb.sh
+will be copied from the USB stick on boot. See https:../scripts/mkusb.sh
+The format of the DevicePortConfig/global.json is specified with examples in
+https:static-and-proxy-config.md
 
 The latter can be used to specify the initial timers and ssh/usb behavior
 which will be in place until the device connects to zedcloud and gets its
-configuration from there.
+configuration from there. The variables are documented in https:global-config-variables.md
+
 
 To add either during the build, in zenbuild's conf directory create a
 subdirectory called DevicePortConfig or GlobalConfig, respectively.

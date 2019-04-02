@@ -1,3 +1,5 @@
+# Controlling EVE behavior at boot
+
 When the device boots it determines the set of network interfaces.
 By default this is determined by extracting the manufacturer and model
 strings from dmidecode; /opt/zededa/bin/hardwaremodel does this determination.
@@ -6,14 +8,14 @@ That model string is used to look up a json file in /var/tmp/zededa/DeviceNetwor
 If no such json file is found the device uses /var/tmp/zededa/DeviceNetworkConfig/default.json
 
 Those files merely specify the set of management ports, plus which of them
-do not have per usage charging (to separate out LTE modems).
+do not have per usage charging (to separate out e.g., LTE modems).
+
 The default.json is:
 {
     "Uplink":["eth0","wlan0","wwan0"],
     "FreeUplinks":["eth0","wlan0"]
 }
-Note that this uses the old "uplink" terminology; new terminology is
-"management port".
+Note that this uses the old "uplink" terminology; new terminology for this concept is "management port".
 
 This per-model comfiguration can be overridden by an optional file in
 /config which is added when the image is built/installed.
@@ -22,8 +24,8 @@ That file is /config/DevicePortConfig/override.json
 it to local.json instead?]
 And futher overridden by a USB memory stick plugged in when the device is powered
 on. The scripts/mkusb.sh can be used to create that script.
-Finally, when the device is create or updated in the controller, the device
-port configuration can be specified. The most recent information DevicePortConfig
+Finally, when the device is created or updated in the controller, the device
+port configuration can be specified which will be sent to the device using the systemAdapter part of the API. The most recent information DevicePortConfig
 becomes the highest priority, but the device tests that it works before using it
 (and falls back to a lower-priority working config.)
 
@@ -141,8 +143,7 @@ In addition the above configurations be specified from the EV-controller by
 specifying one or more networks with the proxy and/or static as part of the
 zcli device create.
 
-Troubleshooting
-===============
+# Troubleshooting
 
 The blinking pattern can be extracted from the shell using
 cat /var/tmp/ledmanager/config/ledconfig.json
