@@ -49,7 +49,7 @@ var ZNetworkInstType_value = map[string]int32{
 func (x ZNetworkInstType) String() string {
 	return proto.EnumName(ZNetworkInstType_name, int32(x))
 }
-func (ZNetworkInstType) EnumDescriptor() ([]byte, []int) { return fileDescriptor6, []int{0} }
+func (ZNetworkInstType) EnumDescriptor() ([]byte, []int) { return fileDescriptor7, []int{0} }
 
 type AddressType int32
 
@@ -82,7 +82,7 @@ var AddressType_value = map[string]int32{
 func (x AddressType) String() string {
 	return proto.EnumName(AddressType_name, int32(x))
 }
-func (AddressType) EnumDescriptor() ([]byte, []int) { return fileDescriptor6, []int{1} }
+func (AddressType) EnumDescriptor() ([]byte, []int) { return fileDescriptor7, []int{1} }
 
 type ZNetworkOpaqueConfigType int32
 
@@ -103,7 +103,7 @@ var ZNetworkOpaqueConfigType_value = map[string]int32{
 func (x ZNetworkOpaqueConfigType) String() string {
 	return proto.EnumName(ZNetworkOpaqueConfigType_name, int32(x))
 }
-func (ZNetworkOpaqueConfigType) EnumDescriptor() ([]byte, []int) { return fileDescriptor6, []int{2} }
+func (ZNetworkOpaqueConfigType) EnumDescriptor() ([]byte, []int) { return fileDescriptor7, []int{2} }
 
 // Network Instance Opaque config. In future we might add more fields here
 // but idea is here. This is service specific configuration.
@@ -116,7 +116,7 @@ type NetworkInstanceOpaqueConfig struct {
 func (m *NetworkInstanceOpaqueConfig) Reset()                    { *m = NetworkInstanceOpaqueConfig{} }
 func (m *NetworkInstanceOpaqueConfig) String() string            { return proto.CompactTextString(m) }
 func (*NetworkInstanceOpaqueConfig) ProtoMessage()               {}
-func (*NetworkInstanceOpaqueConfig) Descriptor() ([]byte, []int) { return fileDescriptor6, []int{0} }
+func (*NetworkInstanceOpaqueConfig) Descriptor() ([]byte, []int) { return fileDescriptor7, []int{0} }
 
 func (m *NetworkInstanceOpaqueConfig) GetOconfig() string {
 	if m != nil {
@@ -154,7 +154,7 @@ type NetworkInstanceLispConfig struct {
 func (m *NetworkInstanceLispConfig) Reset()                    { *m = NetworkInstanceLispConfig{} }
 func (m *NetworkInstanceLispConfig) String() string            { return proto.CompactTextString(m) }
 func (*NetworkInstanceLispConfig) ProtoMessage()               {}
-func (*NetworkInstanceLispConfig) Descriptor() ([]byte, []int) { return fileDescriptor6, []int{1} }
+func (*NetworkInstanceLispConfig) Descriptor() ([]byte, []int) { return fileDescriptor7, []int{1} }
 
 func (m *NetworkInstanceLispConfig) GetLispMSs() []*ZcServicePoint {
 	if m != nil {
@@ -236,7 +236,7 @@ type NetworkInstanceConfig struct {
 func (m *NetworkInstanceConfig) Reset()                    { *m = NetworkInstanceConfig{} }
 func (m *NetworkInstanceConfig) String() string            { return proto.CompactTextString(m) }
 func (*NetworkInstanceConfig) ProtoMessage()               {}
-func (*NetworkInstanceConfig) Descriptor() ([]byte, []int) { return fileDescriptor6, []int{2} }
+func (*NetworkInstanceConfig) Descriptor() ([]byte, []int) { return fileDescriptor7, []int{2} }
 
 func (m *NetworkInstanceConfig) GetUuidandversion() *UUIDandVersion {
 	if m != nil {
@@ -310,9 +310,9 @@ func init() {
 	proto.RegisterEnum("ZNetworkOpaqueConfigType", ZNetworkOpaqueConfigType_name, ZNetworkOpaqueConfigType_value)
 }
 
-func init() { proto.RegisterFile("netinst.proto", fileDescriptor6) }
+func init() { proto.RegisterFile("netinst.proto", fileDescriptor7) }
 
-var fileDescriptor6 = []byte{
+var fileDescriptor7 = []byte{
 	// 707 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x7c, 0x94, 0xef, 0x4e, 0xdb, 0x3a,
 	0x18, 0xc6, 0x49, 0xff, 0xd1, 0xbe, 0xfd, 0x83, 0x71, 0x39, 0x22, 0x70, 0x38, 0x67, 0x55, 0xc5,
