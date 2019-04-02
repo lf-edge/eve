@@ -303,11 +303,11 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 				}
 				errStr := fmt.Sprintf("OCSP stapled check failed for %s",
 					reqUrl)
-				log.Errorln(errStr)
 
 				//XXX OSCP is not implemented in cloud side so
 				// commenting out it for now.
 				if false {
+					log.Errorln(errStr)
 					// Inform ledmanager about broken cloud connectivity
 					if !ctx.NoLedManager {
 						types.UpdateLedManagerConfig(13)
@@ -319,6 +319,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 					lastError = errors.New(errStr)
 					continue
 				}
+				log.Infoln(errStr)
 			}
 		}
 		// Even if we got e.g., a 404 we consider the connection a
