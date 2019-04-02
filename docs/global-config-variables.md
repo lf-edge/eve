@@ -2,11 +2,17 @@
 
 The following variables can be set in the controller and carried to the device
 using the configItem API. That can be done either on a per-project basis using e.g.,
+```
     zcli project update <name> [--config=<key:value>...]
+```
 or on a per asset basis using
+```
    zcli device update <name> [--config=<key:value>...]
+```
 For example,
+```
 zcli device update sc-supermicro-zc2 --config=debug.enable.ssh:true
+```
 will allow ssh access to the device for debugging issues.
 
 The same variables can be specified in a json file included in /config/GlobalConfig/global.json. The format of that file is the natural json encoding of GlobalConfig as specified in types/global.go
@@ -14,11 +20,12 @@ See [build-config-files.md](build-config-files.md) for how to include such a fil
 
 # List of config variables
 
-app.allow.vnc	   boolean - allow access to the app using the VNC port
-		   	     tcp port
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| app.allow.vnc | boolean | allow access to the app using the VNC tcp port |
+| timer.config.interval | integer in seconds | how frequently device gets config |
+| timer.metric.interval  | integer in seconds | how frequently device reports metrics |
 
-timer.config.interval	integer in seconds - how frequently device gets config
-timer.metric.interval	integer in seconds - how frequently device reports metrics
 timer.reboot.no.network	integer in seconds - reboot after no cloud connectivity
 timer.update.fallback.no.network integer in seconds - fallback after no cloud connectivity
 timer.test.baseimage.update	integer in seconds - commit to update
