@@ -46,6 +46,7 @@ See [build-config-files.md](build-config-files.md) for how to include such a fil
 
 In addition, for each agentname, there are specific overrides for the default
 ones with the names:
+
 | Name | Type | Description |
 | ---- | ---- | ----------- |
 | debug.<agentname>.loglevel | string | if set overrides debug.default.loglevel |
