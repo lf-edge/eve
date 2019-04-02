@@ -198,6 +198,7 @@ func Run() {
 	} else {
 		nimCtx.DevicePortConfigList = &types.DevicePortConfigList{}
 	}
+	nimCtx.DevicePortConfigList.CurrentIndex = -1 // No known working one
 	nimCtx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	nimCtx.PubDevicePortConfig = pubDevicePortConfig
 	nimCtx.PubDevicePortConfigList = pubDevicePortConfigList
@@ -374,6 +375,7 @@ func Run() {
 		case change, ok := <-addrChanges:
 			if !ok {
 				log.Errorf("addrChanges closed\n")
+				// XXX Need to discard all cached information?
 				addrChanges = devicenetwork.AddrChangeInit()
 			} else {
 				if devicenetwork.AddrChange(change) {
@@ -385,6 +387,7 @@ func Run() {
 			if !ok {
 				log.Errorf("linkChanges closed\n")
 				linkChanges = devicenetwork.LinkChangeInit()
+				// XXX Need to discard all cached information?
 			} else if devicenetwork.LinkChange(change) {
 				handleLinkChange(&nimCtx)
 				// XXX trigger testing??
@@ -409,6 +412,13 @@ func Run() {
 		case _, ok := <-dnc.NetworkTestTimer.C:
 			if !ok {
 				log.Infof("Network test timer stopped?")
+			} else if nimCtx.DevicePortConfigList.CurrentIndex == -1 {
+				start := time.Now()
+				log.Debugf("Starting looking for working Device connectivity to cloud")
+				devicenetwork.RestartVerify(dnc,
+					"Looking for working")
+				log.Infof("Looking for working  done at index %d. Took %v",
+					dnc.NextDPCIndex, time.Since(start))
 			} else {
 				start := time.Now()
 				log.Debugf("Starting test of Device connectivity to cloud")
@@ -471,6 +481,7 @@ func Run() {
 			if !ok {
 				log.Errorf("addrChanges closed\n")
 				addrChanges = devicenetwork.AddrChangeInit()
+				// XXX Need to discard all cached information?
 			} else {
 				if devicenetwork.AddrChange(change) {
 					devicenetwork.HandleAddressChange(&nimCtx.DeviceNetworkContext)
@@ -481,6 +492,7 @@ func Run() {
 			if !ok {
 				log.Errorf("linkChanges closed\n")
 				linkChanges = devicenetwork.LinkChangeInit()
+				// XXX Need to discard all cached information?
 			} else if devicenetwork.LinkChange(change) {
 				handleLinkChange(&nimCtx)
 				// XXX trigger testing??
@@ -734,6 +746,7 @@ func updateFallbackAnyEth(ctx *nimContext) {
 		// sort ports to reduce churn; otherwise with two they swap
 		// almost every time
 		sort.Strings(ports)
+		log.Infof("updateFallbackAnyEth: ports %+v", ports)
 		devicenetwork.UpdateLastResortPortConfig(&ctx.DeviceNetworkContext,
 			ports)
 	} else if ctx.networkFallbackAnyEth == types.TS_DISABLED {

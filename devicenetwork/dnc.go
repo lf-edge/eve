@@ -167,12 +167,9 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 		log.Infof("RestartVerify: DPC list verification in progress")
 		return
 	}
-	// Look for the first which isn't recently failed starting at 0 = -1+1
-	// XXX change getNext ...
-	ctx.NextDPCIndex = -1
-	// Skip entries with LastFailed after LastSucceeded and
-	// a recent LastFailed (a minute or less).
-	nextIndex := getNextTestableDPCIndex(ctx)
+	// Restart at index zero, then skip entries with LastFailed after
+	// LastSucceeded and a recent LastFailed (a minute or less).
+	nextIndex := getNextTestableDPCIndex(ctx, 0)
 	SetupVerify(ctx, nextIndex)
 
 	VerifyDevicePortConfig(ctx)
@@ -213,7 +210,7 @@ func VerifyPending(pending *DPCPending,
 	log.Infof("VerifyPending: No required ports held in pciBack. " +
 		"parsing device port config list")
 
-	if !reflect.DeepEqual(pending.PendDPC, pending.OldDPC) {
+	if !reflect.DeepEqual(pending.PendDPC.Ports, pending.OldDPC.Ports) {
 		log.Infof("VerifyPending: DPC changed. update DhcpClient.\n")
 		UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
 		pending.OldDPC = pending.PendDPC
@@ -308,29 +305,34 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 				ctx.NextDPCIndex)
 			// Avoid clobbering wrong entry if insert/remove after verification
 			// started
-			if ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key != pending.PendDPC.Key {
-				tested, index := lookupPortConfig(ctx, pending.PendDPC)
-				if tested != nil {
-					log.Infof("Updating other PortConfig %d on DPC_FAIL %+v\n",
-						index, tested)
-					*tested = pending.PendDPC
-				} else {
-					log.Warnf("Not updating list on DPC_FAIL due key mismatch %s vs %s\n",
-						ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key,
-						pending.PendDPC.Key)
-				}
+			tested, index := lookupPortConfig(ctx, pending.PendDPC)
+			if tested != nil {
+				log.Infof("At %d updating PortConfig %d on DPC_FAIL %+v\n",
+					ctx.NextDPCIndex, index, tested)
+				*tested = pending.PendDPC
 			} else {
-				ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
+				log.Warnf("Not updating list on DPC_FAIL due key mismatch %s vs %s\n",
+					ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key,
+					pending.PendDPC.Key)
 			}
-			if checkAndRestartDPCListTest(ctx) {
-				// DPC list verification re-started from beginning
+			if ctx.PubDevicePortConfigList != nil {
+				log.Infof("publishing DevicePortConfigList: %+v\n",
+					ctx.DevicePortConfigList)
+				ctx.PubDevicePortConfigList.Publish("global",
+					ctx.DevicePortConfigList)
+			}
+			if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() {
+				log.Warn("VerifyDevicePortConfig DPC_FAIL: New DPC arrived while network testing " +
+					"was in progress. Restarting DPC verification.")
+				SetupVerify(ctx, 0)
 				continue
 			}
 
 			// Move to next index (including wrap around)
 			// Skip entries with LastFailed after LastSucceeded and
 			// a recent LastFailed (a minute or less).
-			nextIndex := getNextTestableDPCIndex(ctx)
+			nextIndex := getNextTestableDPCIndex(ctx,
+				ctx.NextDPCIndex+1)
 			SetupVerify(ctx, nextIndex)
 			continue
 
@@ -339,20 +341,15 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 				ctx.NextDPCIndex)
 			// Avoid clobbering wrong entry if insert/remove after verification
 			// started
-			if ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key != pending.PendDPC.Key {
-				tested, index := lookupPortConfig(ctx, pending.PendDPC)
-				if tested != nil {
-					log.Infof("Updating other PortConfig %d on DPC_SUCCESS %+v to %+v\n",
-						index, tested, pending.PendDPC)
-					*tested = pending.PendDPC
-					ctx.NextDPCIndex = index
-				} else {
-					log.Warnf("Not updating list on DPC_SUCCESS due key mismatch %s vs %s\n",
-						ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key,
-						pending.PendDPC.Key)
-				}
+			tested, index := lookupPortConfig(ctx, pending.PendDPC)
+			if tested != nil {
+				log.Infof("At %d updating PortConfig %d on DPC_SUCCESS %+v\n",
+					ctx.NextDPCIndex, index, tested)
+				*tested = pending.PendDPC
 			} else {
-				ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex] = pending.PendDPC
+				log.Warnf("Not updating list on DPC_SUCCESS due key mismatch %s vs %s\n",
+					ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key,
+					pending.PendDPC.Key)
 			}
 			passed = true
 			if ctx.NextDPCIndex == 0 {
@@ -371,6 +368,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			}
 		}
 	}
+	// Found a working one
 	ctx.DevicePortConfigList.CurrentIndex = ctx.NextDPCIndex
 	*ctx.DevicePortConfig = pending.PendDPC
 	*ctx.DeviceNetworkStatus = pending.PendDNS
@@ -383,13 +381,12 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	DoDNSUpdate(ctx)
 
 	pending.Inprogress = false
-	pending.OldDPC = getCurrentDPC(ctx)
 
 	// Did we get a new at index zero?
 	if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() {
-		log.Warn("VerifyDevicePortConfig: New DPC arrived while network testing " +
+		log.Warn("VerifyDevicePortConfig DPC_SUCCESS: New DPC arrived while network testing " +
 			"was in progress. Restarting DPC verification.")
-		RestartVerify(ctx, "VerifyDevicePortConfig")
+		RestartVerify(ctx, "VerifyDevicePortConfig DPC_SUCCESS")
 		return
 	}
 
@@ -398,36 +395,19 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	ctx.NetworkTestTimer = time.NewTimer(duration)
 }
 
-// Check if there is an untested DPC configuration at index 0
-// If yes, restart the test process from index 0
-func checkAndRestartDPCListTest(ctx *DeviceNetworkContext) bool {
-	if ctx.PubDevicePortConfigList != nil {
-		log.Infof("publishing DevicePortConfigList: %+v\n",
-			ctx.DevicePortConfigList)
-		ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
-	}
-	if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() {
-		log.Warn("checkAndRestartDPCListTest: New DPC arrived while network testing " +
-			"was in progress. Restarting DPC verification.")
-		SetupVerify(ctx, 0)
-		return true
-	}
-	return false
-}
-
 // Move to next index (including wrap around)
 // Skip entries with LastFailed after LastSucceeded and
 // a recent LastFailed (a minute or less).
-func getNextTestableDPCIndex(ctx *DeviceNetworkContext) int {
+func getNextTestableDPCIndex(ctx *DeviceNetworkContext, start int) int {
 	dpcListLen := len(ctx.DevicePortConfigList.PortConfigList)
 
-	log.Infof("getNextTestableDPCIndex: current index %d\n", ctx.NextDPCIndex)
+	log.Infof("getNextTestableDPCIndex: start %d\n", start)
 	// We want to wrap around, but should not keep looping around.
 	// We do one loop of the entire list searching for a testable candidate.
 	// If no suitable test candidate is found, we reset the test index to 0.
 	found := false
 	count := 0
-	newIndex := (ctx.NextDPCIndex + 1) % dpcListLen
+	newIndex := start % dpcListLen
 	for !found && count < dpcListLen {
 		count += 1
 		ok := ctx.DevicePortConfigList.PortConfigList[newIndex].IsDPCTestable()
@@ -446,12 +426,13 @@ func getNextTestableDPCIndex(ctx *DeviceNetworkContext) int {
 	return newIndex
 }
 
-func getCurrentDPC(ctx *DeviceNetworkContext) types.DevicePortConfig {
+func getCurrentDPC(ctx *DeviceNetworkContext) *types.DevicePortConfig {
 	if len(ctx.DevicePortConfigList.PortConfigList) == 0 ||
+		ctx.NextDPCIndex < 0 ||
 		ctx.NextDPCIndex >= len(ctx.DevicePortConfigList.PortConfigList) {
-		return types.DevicePortConfig{}
+		return nil
 	}
-	return ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
+	return &ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
 }
 
 // Handle three different sources in this priority order:
@@ -476,10 +457,9 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	// In such case we end up not having any working DeviceNetworkStatus (no ips).
 	// When the current DeviceNetworkStatus does not have any usable IP addresses,
 	// we should go ahead and call RestartVerify even when "configChanged" is false.
-	//
-	// XXX Or instead of checking for Ip address count, should be have a "first DPC" flag?
+	// Also if we have no working one (index -1) we restart.
 	ipAddrCount := types.CountLocalIPv4AddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
-	if !configChanged && ipAddrCount > 0 {
+	if !configChanged && ipAddrCount > 0 && ctx.DevicePortConfigList.CurrentIndex != -1 {
 		log.Infof("HandleDPCModify: Config already current. No changes to process\n")
 		return
 	}
@@ -556,11 +536,6 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 	*ctx.AssignableAdapters = newAssignableAdapters
 	// In case a verification is in progress and is waiting for return from pciback
 	VerifyDevicePortConfig(ctx)
-	if ctx.PubDevicePortConfigList != nil {
-		log.Infof("publishing DevicePortConfigList: %+v\n",
-			ctx.DevicePortConfigList)
-		ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
-	}
 	log.Infof("handleAssignableAdaptersModify() done\n")
 }
 
@@ -654,6 +629,9 @@ func (ctx *DeviceNetworkContext) doPublishDNSForPortConfig(
 func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 	portConfig *types.DevicePortConfig, delete bool) bool {
 	// Look up based on timestamp, then content
+
+	current := getCurrentDPC(ctx) // Used to determine if index needs to change
+	currentIndex := ctx.DevicePortConfigList.CurrentIndex
 	oldConfig, _ := lookupPortConfig(ctx, *portConfig)
 	if delete {
 		if oldConfig == nil {
@@ -664,33 +642,54 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 		log.Infof("doUpdatePortConfigListAndPublish: Delete. "+
 			"oldCOnfig %+v found: %+v\n", *oldConfig, portConfig)
 		removePortConfig(ctx, *oldConfig)
-	} else {
-		if oldConfig != nil {
-			// Compare everything but TimePriority since that is
-			// modified by zedagent even if there are no changes.
-			// If we modify the timestamp for other than current
-			// then treat as a change since it could have moved up
-			// in the list.
-			if oldConfig.Key == portConfig.Key &&
-				oldConfig.Version == portConfig.Version &&
-				reflect.DeepEqual(oldConfig.Ports, portConfig.Ports) {
+	} else if oldConfig != nil {
+		// Compare everything but TimePriority since that is
+		// modified by zedagent even if there are no changes.
+		// If we modify the timestamp for other than current
+		// then treat as a change since it could have moved up
+		// in the list.
+		if oldConfig.Key == portConfig.Key &&
+			oldConfig.Version == portConfig.Version &&
+			reflect.DeepEqual(oldConfig.Ports, portConfig.Ports) {
+			log.Infof("doUpdatePortConfigListAndPublish: no change but timestamps %v %v\n",
+				oldConfig.TimePriority, portConfig.TimePriority)
 
-				log.Infof("doUpdatePortConfigListAndPublish: no change but timestamps %v %v\n",
-					oldConfig.TimePriority, portConfig.TimePriority)
-				current := getCurrentDPC(ctx)
+			if current != nil &&
+				reflect.DeepEqual(current.Ports, oldConfig.Ports) {
 
-				if reflect.DeepEqual(current.Ports, oldConfig.Ports) {
-					log.Infof("doUpdatePortConfigListAndPublish: no change and same Ports as current\n")
-					return false
-				}
-				log.Infof("doUpdatePortConfigListAndPublish: changed ports from current; reorder\n")
-			} else {
-				log.Infof("doUpdatePortConfigListAndPublish: change from %+v to %+v\n",
-					*oldConfig, portConfig)
+				log.Infof("doUpdatePortConfigListAndPublish: no change and same Ports as current\n")
+				return false
 			}
-			updatePortConfig(ctx, oldConfig, *portConfig)
+			log.Infof("doUpdatePortConfigListAndPublish: changed ports from current; reorder\n")
 		} else {
-			insertPortConfig(ctx, *portConfig)
+			log.Infof("doUpdatePortConfigListAndPublish: change from %+v to %+v\n",
+				*oldConfig, portConfig)
+		}
+		updatePortConfig(ctx, oldConfig, *portConfig)
+	} else {
+		insertPortConfig(ctx, *portConfig)
+	}
+	// Check if current moved to a different index or was deleted
+	if current == nil {
+		// No current index to update
+		log.Infof("doUpdatePortConfigListAndPublish: no current %d",
+			currentIndex)
+		return true
+	}
+	newplace, newIndex := lookupPortConfig(ctx, *current)
+	if newplace == nil {
+		if ctx.DevicePortConfigList.PortConfigList[0].WasDPCWorking() {
+			ctx.DevicePortConfigList.CurrentIndex = 0
+		} else {
+			ctx.DevicePortConfigList.CurrentIndex = -1
+		}
+	} else if newIndex != currentIndex {
+		log.Infof("doUpdatePortConfigListAndPublish: current %d moved to %d",
+			currentIndex, newIndex)
+		if ctx.DevicePortConfigList.PortConfigList[newIndex].WasDPCWorking() {
+			ctx.DevicePortConfigList.CurrentIndex = newIndex
+		} else {
+			ctx.DevicePortConfigList.CurrentIndex = -1
 		}
 	}
 	log.Infof("publishing DevicePortConfigList: %+v\n", ctx.DevicePortConfigList)
@@ -707,6 +706,10 @@ func updatePortConfig(ctx *DeviceNetworkContext, oldConfig *types.DevicePortConf
 		*oldConfig = portConfig
 		return
 	}
+	// Preserve Last*
+	portConfig.LastFailed = oldConfig.LastFailed
+	portConfig.LastError = oldConfig.LastError
+	portConfig.LastSucceeded = oldConfig.LastSucceeded
 	log.Infof("updatePortConfig: diff time remove+add  %+v\n",
 		portConfig)
 	removePortConfig(ctx, *oldConfig)

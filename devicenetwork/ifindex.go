@@ -172,6 +172,7 @@ var ifindexToAddrs map[int][]net.IPNet = make(map[int][]net.IPNet)
 
 // Returns true if added
 func IfindexToAddrsAdd(index int, addr net.IPNet) bool {
+	log.Infof("IfIndexToAddrsAdd(%d, %s)", index, addr.String())
 	addrs, ok := ifindexToAddrs[index]
 	if !ok {
 		log.Debugf("IfindexToAddrsAdd add %v for %d\n", addr, index)
@@ -198,6 +199,7 @@ func IfindexToAddrsAdd(index int, addr net.IPNet) bool {
 
 // Returns true if deleted
 func IfindexToAddrsDel(index int, addr net.IPNet) bool {
+	log.Infof("IfIndexToAddrsDel(%d, %s)", index, addr.String())
 	addrs, ok := ifindexToAddrs[index]
 	if !ok {
 		log.Warnf("IfindexToAddrsDel unknown index %d\n", index)
@@ -230,15 +232,18 @@ func IfindexToAddrs(index int) ([]net.IPNet, error) {
 }
 
 func IfindexToAddrsFlush(index int) {
+	log.Infof("IfIndexToAddrsFlush(%d)", index)
 	_, ok := ifindexToAddrs[index]
 	if !ok {
 		log.Warnf("IfindexToAddrsFlush: Unknown ifindex %d", index)
 		return
 	}
-	delete(ifindexToAddrs, index)
+	var addrs []net.IPNet
+	ifindexToAddrs[index] = addrs
 }
 
 func IfnameToAddrsFlush(ifname string) {
+	log.Infof("IfNameToAddrsFlush(%s)", ifname)
 	index, err := IfnameToIndex(ifname)
 	if err != nil {
 		log.Warnf("IfnameToAddrsFlush: Unknown ifname %s: %s", ifname, err)

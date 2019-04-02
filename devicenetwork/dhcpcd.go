@@ -11,9 +11,15 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/types"
+	"io/ioutil"
 	"net"
+	"os"
 	"os/exec"
 	"reflect"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
 )
 
 // Start/modify/delete dhcpcd per interface
@@ -66,8 +72,12 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 		return
 	}
 
-	// Remove cached addresses; XXX looses IPv6 addresses as well. How do we regain them?
-	IfnameToAddrsFlush(nuc.IfName)
+	// Check the ifname exists
+	_, err := IfnameToIndex(nuc.IfName)
+	if err != nil {
+		log.Warnf("doDhcpClientActivate(%s) failed %s", nuc.IfName, err)
+		return
+	}
 
 	switch nuc.Dhcp {
 	case types.DT_NONE:
@@ -75,6 +85,11 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 			nuc.IfName)
 		return
 	case types.DT_CLIENT:
+		for dhcpcdExists(nuc.IfName) {
+			log.Warnf("dhcpcd %s already exists", nuc.IfName)
+			time.Sleep(10 * time.Second)
+		}
+		log.Infof("dhcpcd %s not running", nuc.IfName)
 		extras := []string{"-f", "/dhcpcd.conf", "--nobackground",
 			"-d", "--noipv4ll"}
 		if nuc.Gateway != nil && nuc.Gateway.String() == "0.0.0.0" {
@@ -84,6 +99,23 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 			log.Errorf("doDhcpClientActivate: request failed for %s\n",
 				nuc.IfName)
 		}
+		// Wait for a bit then give up
+		waitCount := 0
+		failed := false
+		for !dhcpcdExists(nuc.IfName) {
+			log.Warnf("dhcpcd %s not yet running", nuc.IfName)
+			waitCount++
+			if waitCount >= 3 {
+				log.Errorf("dhcpcd %s not yet running", nuc.IfName)
+				failed = true
+				break
+			}
+			time.Sleep(10 * time.Second)
+		}
+		if !failed {
+			log.Infof("dhcpcd %s is running", nuc.IfName)
+		}
+
 	case types.DT_STATIC:
 		if nuc.AddrSubnet == "" {
 			log.Errorf("doDhcpClientActivate: missing AddrSubnet for %s\n",
@@ -99,6 +131,11 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 			// XXX return error?
 			return
 		}
+		for dhcpcdExists(nuc.IfName) {
+			log.Warnf("dhcpcd %s already exists", nuc.IfName)
+			time.Sleep(10 * time.Second)
+		}
+		log.Infof("dhcpcd %s not running", nuc.IfName)
 		args := []string{fmt.Sprintf("ip_address=%s", nuc.AddrSubnet)}
 
 		extras := []string{"-f", "/dhcpcd.conf", "--nobackground",
@@ -129,6 +166,11 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 			log.Errorf("doDhcpClientActivate: request failed for %s\n",
 				nuc.IfName)
 		}
+		for !dhcpcdExists(nuc.IfName) {
+			log.Warnf("dhcpcd %s not yet running", nuc.IfName)
+			time.Sleep(10 * time.Second)
+		}
+		log.Infof("dhcpcd %s is running", nuc.IfName)
 	default:
 		log.Errorf("doDhcpClientActivate: unsupported dhcp %v\n",
 			nuc.Dhcp)
@@ -156,12 +198,15 @@ func doDhcpClientInactivate(nuc types.NetworkPortConfig) {
 			log.Errorf("doDhcpClientInactivate: release failed for %s\n",
 				nuc.IfName)
 		}
+		for dhcpcdExists(nuc.IfName) {
+			log.Warnf("dhcpcd %s still running", nuc.IfName)
+			time.Sleep(10 * time.Second)
+		}
+		log.Infof("dhcpcd %s gone", nuc.IfName)
 	default:
 		log.Errorf("doDhcpClientInactivate: unsupported dhcp %v\n",
 			nuc.Dhcp)
 	}
-	// Remove cached addresses
-	IfnameToAddrsFlush(nuc.IfName)
 }
 
 func dhcpcdCmd(op string, extras []string, ifname string, dolog bool) bool {
@@ -190,4 +235,52 @@ func dhcpcdCmd(op string, extras []string, ifname string, dolog bool) bool {
 		}
 	}
 	return true
+}
+
+func dhcpcdExists(ifname string) bool {
+
+	log.Infof("dhcpcdExists(%s)", ifname)
+	// XXX should we use dhcpcd -P <ifname> to get name of pidfile? Hardcoded path here
+	pidfileName := fmt.Sprintf("/run/dhcpcd-%s.pid", ifname)
+	val, t := statAndRead(pidfileName)
+	if val == "" {
+		log.Infof("dhcpcdExists(%s) not exist", ifname)
+		return false
+	}
+	log.Infof("dhcpcdExists(%s) found modtime %v", ifname, t)
+
+	pid, err := strconv.Atoi(strings.TrimSpace(val))
+	if err != nil {
+		log.Errorf("Atoi of %s failed %s; ignored\n", val, err)
+		return true // Guess since we dont' know
+	}
+	// Does the pid exist?
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		log.Infof("dhcpcdExists(%s) pid %d not found: %s", ifname, pid,
+			err)
+		return false
+	}
+	err = p.Signal(syscall.Signal(0))
+	if err != nil {
+		log.Errorf("dhcpcdExists(%s) Signal failed %s", ifname, err)
+		return false
+	}
+	log.Infof("dhcpcdExists(%s) Signal 0 OK for %d", ifname, pid)
+	return true
+}
+
+// Returns content and Modtime
+func statAndRead(filename string) (string, time.Time) {
+	fi, err := os.Stat(filename)
+	if err != nil {
+		// File doesn't exist
+		return "", time.Time{}
+	}
+	content, err := ioutil.ReadFile(filename)
+	if err != nil {
+		log.Errorf("statAndRead failed %s", err)
+		return "", fi.ModTime()
+	}
+	return string(content), fi.ModTime()
 }

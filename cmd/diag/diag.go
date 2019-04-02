@@ -50,7 +50,8 @@ type diagContext struct {
 	DevicePortConfigList    *types.DevicePortConfigList
 	forever                 bool // Keep on reporting until ^C
 	pacContents             bool // Print PAC file contents
-	ledCounter              int  // Supress work and output
+	ledCounter              int
+	derivedLedCounter       int // Based on ledCounter + usableAddressCount
 	subGlobalConfig         *pubsub.Subscription
 	subLedBlinkCounter      *pubsub.Subscription
 	subDeviceNetworkStatus  *pubsub.Subscription
@@ -240,6 +241,10 @@ func handleLedBlinkModify(ctxArg interface{}, key string,
 		return
 	}
 	ctx.ledCounter = config.BlinkCounter
+	ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
+		ctx.UsableAddressCount)
+	log.Infof("counter %d usableAddr %d, derived %d\n",
+		ctx.ledCounter, ctx.UsableAddressCount, ctx.derivedLedCounter)
 	printOutput(ctx)
 }
 
@@ -252,10 +257,6 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)
-	if status.Testing {
-		log.Infof("handleDNSModify ignoring Testing\n")
-		return
-	}
 	if cmp.Equal(ctx.DeviceNetworkStatus, status) {
 		log.Infof("handleDNSModify unchanged\n")
 		return
@@ -263,6 +264,16 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSModify: changed %v",
 		cmp.Diff(ctx.DeviceNetworkStatus, status))
 	*ctx.DeviceNetworkStatus = status
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
+	log.Infof("handleDNSModify %d usable addresses\n", newAddrCount)
+	if (ctx.UsableAddressCount == 0 && newAddrCount != 0) ||
+		(ctx.UsableAddressCount != 0 && newAddrCount == 0) {
+		ctx.UsableAddressCount = newAddrCount
+		ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
+			ctx.UsableAddressCount)
+		log.Infof("counter %d usableAddr %d, derived %d\n",
+			ctx.ledCounter, ctx.UsableAddressCount, ctx.derivedLedCounter)
+	}
 	// XXX can we limit to interfaces which changed?
 	printOutput(ctx)
 	log.Infof("handleDNSModify done for %s\n", key)
@@ -279,6 +290,16 @@ func handleDNSDelete(ctxArg interface{}, key string,
 		return
 	}
 	*ctx.DeviceNetworkStatus = types.DeviceNetworkStatus{}
+	newAddrCount := types.CountLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
+	log.Infof("handleDNSDelete %d usable addresses\n", newAddrCount)
+	if (ctx.UsableAddressCount == 0 && newAddrCount != 0) ||
+		(ctx.UsableAddressCount != 0 && newAddrCount == 0) {
+		ctx.UsableAddressCount = newAddrCount
+		ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
+			ctx.UsableAddressCount)
+		log.Infof("counter %d usableAddr %d, derived %d\n",
+			ctx.ledCounter, ctx.UsableAddressCount, ctx.derivedLedCounter)
+	}
 	printOutput(ctx)
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
@@ -347,7 +368,7 @@ func printOutput(ctx *diagContext) {
 		// XXX print onboarding cert
 	}
 
-	switch ctx.ledCounter {
+	switch ctx.derivedLedCounter {
 	case 0:
 		fmt.Printf("ERROR: Summary: Unknown LED counter 0\n")
 	case 1:
@@ -368,26 +389,37 @@ func printOutput(ctx *diagContext) {
 		fmt.Printf("ERROR: Summary: Response without OSCP or bad OSCP - ignored\n")
 	default:
 		fmt.Printf("ERROR: Summary: Unsupported LED counter %d\n",
-			ctx.ledCounter)
+			ctx.derivedLedCounter)
 	}
 
+	testing := ctx.DeviceNetworkStatus.Testing
+	var upcase, downcase string
+	if testing {
+		upcase = "Testing"
+		downcase = "testing"
+	} else {
+		upcase = "Using"
+		downcase = "using"
+	}
 	// Print info about fallback
 	DPCLen := len(ctx.DevicePortConfigList.PortConfigList)
 	if DPCLen > 0 {
 		first := ctx.DevicePortConfigList.PortConfigList[0]
-		if ctx.DevicePortConfigList.CurrentIndex != 0 {
-			fmt.Printf("WARNING: Not using highest priority DevicePortConfig key %s due to %s\n",
-				first.Key, first.LastError)
+		if ctx.DevicePortConfigList.CurrentIndex == -1 {
+			fmt.Printf("WARNING: Have no currently working DevicePortConfig\n")
+		} else if ctx.DevicePortConfigList.CurrentIndex != 0 {
+			fmt.Printf("WARNING: Not %s highest priority DevicePortConfig key %s due to %s\n",
+				downcase, first.Key, first.LastError)
 			for i, dpc := range ctx.DevicePortConfigList.PortConfigList {
 				if i == 0 {
 					continue
 				}
 				if i != ctx.DevicePortConfigList.CurrentIndex {
-					fmt.Printf("WARNING: Not using priority %d DevicePortConfig key %s due to %s\n",
-						i, dpc.Key, dpc.LastError)
+					fmt.Printf("WARNING: Not %s priority %d DevicePortConfig key %s due to %s\n",
+						downcase, i, dpc.Key, dpc.LastError)
 				} else {
-					fmt.Printf("INFO: Using priority %d DevicePortConfig key %s\n",
-						i, dpc.Key)
+					fmt.Printf("INFO: %s priority %d DevicePortConfig key %s\n",
+						upcase, i, dpc.Key)
 					break
 				}
 			}
@@ -396,23 +428,22 @@ func printOutput(ctx *diagContext) {
 					DPCLen-1-ctx.DevicePortConfigList.CurrentIndex)
 			}
 		} else {
-			fmt.Printf("INFO: Using highest priority DevicePortConfig key %s\n",
-				first.Key)
+			fmt.Printf("INFO: %s highest priority DevicePortConfig key %s\n",
+				upcase, first.Key)
 			if DPCLen > 1 {
 				fmt.Printf("INFO: Have %d backup DevicePortConfig\n",
 					DPCLen-1)
 			}
 		}
 	}
+	if testing {
+		fmt.Printf("WARNING: The configuration below is under test hence might report failures\n")
+	}
 	numPorts := len(ctx.DeviceNetworkStatus.Ports)
 	mgmtPorts := 0
 	passPorts := 0
 	passOtherPorts := 0
 
-	// XXX add to DeviceNetworkStatus?
-	// fmt.Printf("DEBUG: Using DevicePortConfig key %s prio %s lastSucceeded %v\n",
-	// 	ctx.DeviceNetworkStatus.Key, ctx.DeviceNetworkStatus.TimePriority,
-	//	ctx.DeviceNetworkStatus.LastSucceeded)
 	numMgmtPorts := len(types.GetMgmtPortsAny(*ctx.DeviceNetworkStatus, 0))
 	fmt.Printf("INFO: Have %d total ports. %d ports should be connected to EV controller\n", numPorts, numMgmtPorts)
 	for _, port := range ctx.DeviceNetworkStatus.Ports {
@@ -733,7 +764,7 @@ func myGet(zedcloudCtx *zedcloud.ZedCloudContext, requrl string, ifname string,
 	if err != nil {
 		fmt.Printf("ERROR: %s: LookupProxy failed: %s\n", ifname, err)
 	} else if proxyUrl != nil {
-		fmt.Printf("INFO: %s: Using proxy %s to reach %s\n",
+		fmt.Printf("INFO: %s: Proxy %s to reach %s\n",
 			ifname, proxyUrl.String(), requrl)
 	}
 	const allowProxy = true

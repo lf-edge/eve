@@ -683,6 +683,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			// This should go away when cloud sends proper values
 			isUplink = true
 			isFreeUplink = true
+			version = types.DPCIsMgmt
 		} else {
 			isUplink = sysAdapter.Uplink
 			isFreeUplink = sysAdapter.FreeUplink
@@ -781,9 +782,14 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		log.Infof("parseSystemAdapterConfig: Done with no change")
 		return
 	}
+	log.Infof("parseSystemAdapterConfig: version %d/%d diff %v",
+		getconfigCtx.devicePortConfig.Version, portConfig.Version,
+		cmp.Diff(getconfigCtx.devicePortConfig.Ports, portConfig.Ports))
+
 	// This is suboptimal after a reboot since the config will be the same
 	// yet the timestamp be new. HandleDPCModify takes care of that.
 	portConfig.TimePriority = time.Now()
+	getconfigCtx.devicePortConfig = *portConfig
 
 	getconfigCtx.pubDevicePortConfig.Publish("zedagent", *portConfig)
 

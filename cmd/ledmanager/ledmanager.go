@@ -230,23 +230,12 @@ func handleLedBlinkModify(ctxArg interface{}, key string,
 		return
 	}
 	ctx.ledCounter = config.BlinkCounter
-	updateDerivedLedCounter(ctx)
-	log.Infof("handleLedBlinkModify done for %s\n", key)
-}
-
-// Merge the 1/2 values based on having usable addresses or not, with
-// the value we get based on access to zedcloud or errors.
-func updateDerivedLedCounter(ctx *ledManagerContext) {
-	if ctx.usableAddressCount == 0 {
-		ctx.derivedLedCounter = 1
-	} else if ctx.ledCounter < 2 {
-		ctx.derivedLedCounter = 2
-	} else {
-		ctx.derivedLedCounter = ctx.ledCounter
-	}
-	log.Infof("updateDerivedLedCounter counter %d usableAddr %d, derived %d\n",
+	ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
+		ctx.usableAddressCount)
+	log.Infof("counter %d usableAddr %d, derived %d\n",
 		ctx.ledCounter, ctx.usableAddressCount, ctx.derivedLedCounter)
 	ctx.countChange <- ctx.derivedLedCounter
+	log.Infof("handleLedBlinkModify done for %s\n", key)
 }
 
 func handleLedBlinkDelete(ctxArg interface{}, key string,
@@ -261,7 +250,11 @@ func handleLedBlinkDelete(ctxArg interface{}, key string,
 	}
 	// XXX or should we tell the blink go routine to exit?
 	ctx.ledCounter = 0
-	updateDerivedLedCounter(ctx)
+	ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
+		ctx.usableAddressCount)
+	log.Infof("counter %d usableAddr %d, derived %d\n",
+		ctx.ledCounter, ctx.usableAddressCount, ctx.derivedLedCounter)
+	ctx.countChange <- ctx.derivedLedCounter
 	log.Infof("handleLedBlinkDelete done for %s\n", key)
 }
 
@@ -357,7 +350,11 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	if (ctx.usableAddressCount == 0 && newAddrCount != 0) ||
 		(ctx.usableAddressCount != 0 && newAddrCount == 0) {
 		ctx.usableAddressCount = newAddrCount
-		updateDerivedLedCounter(ctx)
+		ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
+			ctx.usableAddressCount)
+		log.Infof("counter %d usableAddr %d, derived %d\n",
+			ctx.ledCounter, ctx.usableAddressCount, ctx.derivedLedCounter)
+		ctx.countChange <- ctx.derivedLedCounter
 	}
 	log.Infof("handleDNSModify done for %s\n", key)
 }
@@ -376,7 +373,11 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	if (ctx.usableAddressCount == 0 && newAddrCount != 0) ||
 		(ctx.usableAddressCount != 0 && newAddrCount == 0) {
 		ctx.usableAddressCount = newAddrCount
-		updateDerivedLedCounter(ctx)
+		ctx.derivedLedCounter = types.DeriveLedCounter(ctx.ledCounter,
+			ctx.usableAddressCount)
+		log.Infof("counter %d usableAddr %d, derived %d\n",
+			ctx.ledCounter, ctx.usableAddressCount, ctx.derivedLedCounter)
+		ctx.countChange <- ctx.derivedLedCounter
 	}
 	log.Infof("handleDNSDelete done for %s\n", key)
 }

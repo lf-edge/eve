@@ -36,6 +36,9 @@ func LinkChange(change netlink.LinkUpdate) bool {
 	case syscall.RTM_DELLINK:
 		log.Infof("LinkChange: DELLINK index %d name %s type %s\n",
 			ifindex, ifname, linkType)
+		// Drop all cached addresses
+		IfindexToAddrsFlush(ifindex)
+
 		changed = IfindexToNameDel(ifindex, ifname)
 		log.Infof("LinkChange: changed %t index %d name %s type %s\n",
 			changed, ifindex, ifname, linkType)

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
+	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/zedcloud"
@@ -166,7 +167,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 			err = errors.New(errStr)
 			continue
 		}
-		addrs, err := IfindexToAddrs(ifindex)
+		addrs, err := getAddrs(ifindex)
 		if err != nil {
 			log.Warnf("MakeDeviceNetworkStatus addrs not found %s index %d: %s\n",
 				u.IfName, ifindex, err)
@@ -222,6 +223,47 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 	UpdateDeviceNetworkGeo(time.Second, &globalStatus)
 	log.Infof("MakeDeviceNetworkStatus() DONE\n")
 	return globalStatus, err
+}
+
+// Return all IP addresses for an ifindex
+// Leaves mask uninitialized
+// Also replaces what is in the Ifindex cache since AddrChange callbacks
+// are far from reliable.
+// If AddrChange worked reliably this would just be:
+// return IfindexToAddrs(ifindex)
+func getAddrs(ifindex int) ([]net.IPNet, error) {
+
+	var addrs []net.IPNet
+
+	link, err := netlink.LinkByIndex(ifindex)
+	if err != nil {
+		err = errors.New(fmt.Sprintf("Port in config/global does not exist: %d",
+			ifindex))
+		return addrs, err
+	}
+	addrs4, err := netlink.AddrList(link, netlink.FAMILY_V4)
+	if err != nil {
+		log.Warnf("netlink.AddrList %d V4 failed: %s", ifindex, err)
+		addrs4 = nil
+	}
+	addrs6, err := netlink.AddrList(link, netlink.FAMILY_V6)
+	if err != nil {
+		log.Warnf("netlink.AddrList %d V4 failed: %s", ifindex, err)
+		addrs6 = nil
+	}
+	IfindexToAddrsFlush(ifindex)
+	for _, a := range addrs4 {
+		ip := net.IPNet{IP: a.IP}
+		addrs = append(addrs, ip)
+		IfindexToAddrsAdd(ifindex, ip)
+	}
+	for _, a := range addrs6 {
+		ip := net.IPNet{IP: a.IP}
+		addrs = append(addrs, ip)
+		IfindexToAddrsAdd(ifindex, ip)
+	}
+	return addrs, nil
+
 }
 
 func lookupPortStatusAddr(status types.DeviceNetworkStatus,
