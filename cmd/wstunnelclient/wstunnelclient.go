@@ -140,9 +140,6 @@ func Run() {
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
-
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
 	}
 

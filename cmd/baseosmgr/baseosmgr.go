@@ -142,9 +142,6 @@ func Run() {
 			if ctx.verifierRestarted {
 				log.Infof("Verifier reported restarted\n")
 			}
-
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
 	}
 

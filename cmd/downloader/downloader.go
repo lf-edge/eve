@@ -235,6 +235,8 @@ func Run() {
 		case change := <-subGlobalDownloadConfig.C:
 			subGlobalDownloadConfig.ProcessChange(change)
 
+		// This wait can take an unbounded time since we wait for IP
+		// addresses. Punch StillRunning
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
 		}

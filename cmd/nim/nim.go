@@ -290,9 +290,6 @@ func Run() {
 
 		case change := <-subDeviceNetworkConfig.C:
 			subDeviceNetworkConfig.ProcessChange(change)
-
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
 	}
 
@@ -350,6 +347,9 @@ func Run() {
 	// and zedagent publishing its DevicePortConfig using those assigned-away
 	// adapter(s), we first wait for domainmgr to initialize AA, then enable
 	// subDevicePortConfigA.
+	// This wait can take a very long time since we first need to get
+	// some usable IP addresses, or have waitforaddr time out, before we
+	// even start the other agents. Punch StillRunning
 	for !nimCtx.AssignableAdapters.Initialized {
 		log.Infof("Waiting for AA to initialize")
 		select {

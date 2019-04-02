@@ -227,6 +227,8 @@ func Run() {
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 
+		// This wait can take an unbounded time since we wait for IP
+		// addresses. Punch StillRunning
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
 		}
