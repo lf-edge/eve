@@ -4,7 +4,7 @@ For information about EVE see https://www.lfedge.org/projects/eve/
 
 This is included in zenbuild (https://github.com/zededa/zenbuild) to produce the EVE images.
 
-The onboarding of devices is done by scripts/device-steps.sh, and after onboarding that script proceeds to start the agents implementing the various microservices. That script runs on each boot. Once the agents are running they are operated from the controller using the API specified in (https://github.com/zededa/api
+The onboarding of devices is done by scripts/device-steps.sh, and after onboarding that script proceeds to start the agents implementing the various microservices. That script runs on each boot. Once the agents are running they are operated from the controller using the API specified in https://github.com/zededa/api
 
 The agents are:
  - ledmanager - make LEDs light/blink for feedback to the person installing the hardware
