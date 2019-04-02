@@ -1,3 +1,6 @@
+// Copyright(c) 2017-2018 Zededa, Inc.
+// All rights reserved.
+
 package awsutil
 
 import (
