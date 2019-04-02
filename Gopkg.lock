@@ -246,7 +246,7 @@
     "libs/zedUpload/httputil",
     "libs/zedUpload/sftputil"
   ]
-  revision = "7ca37267f1b315b134ad98410d5739a002b2b83d"
+  revision = "eec9ce4eb91587853b799c82e99dc311ae8a7628"
 
 [[projects]]
   name = "go.opencensus.io"
