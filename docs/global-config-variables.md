@@ -49,5 +49,5 @@ ones with the names:
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| debug.<agentname>.loglevel | string | if set overrides debug.default.loglevel |
-| debug.<agentname>.remote.loglevel | string | if set overrides debug.default.remote.loglevel |
+| debug.*agentname*.loglevel | string | if set overrides debug.default.loglevel |
+| debug.*agentname*.remote.loglevel | string | if set overrides debug.default.remote.loglevel |
