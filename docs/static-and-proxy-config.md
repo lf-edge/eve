@@ -130,7 +130,7 @@ use DHCP 0. For example,
 }
 
 If you want eth1 to be configured by zedrouter and used by applications but not
-used for zedcloud management traffic, make sure you have Version 1 and IsMgmt false.
+used for management traffic to the controller, make sure you have Version 1 and IsMgmt false.
 
 NOTE that if a static IP configuration is used with WPAD DNS discovery then the
 DomainName needs to be set; the DomainName is used to determine where to look for
@@ -153,16 +153,8 @@ if IP address but no cloud connectivity it will be 2,
 if the cloud responds (even if it is an http error e.g, if the device is not yet
 onboarded), it will be 3, and if a GET of /config works it will be 4.
 
-One can test proxy connectivity to zedcloud using
-    /opt/zededa/bin/client -s ping
-or
-    /opt/zededa/bin/client -s -r 5 ping
-to try at most 5 times.
-
-And to try other URLs one can do
-	/opt/zededa/bin/client -s -r 5 -U http://www.google.com ping
-	/opt/zededa/bin/client -s -r 5 -U https://www.google.com -I ping
-(-I disables the certificate chain check against /config/root-certificate.pem)
+One can test the connectivity to the controller using
+    /opt/zededa/bin/diag
 
 The logs for the onboarding attempts are in
     /persist/`zboot curpart`/log/client.log
@@ -171,4 +163,4 @@ If there are no IP addresses, the logs for network interface manager can help:
     /persist/`zboot curpart`/log/nim.log
 
 Finally zedagent.log, downloader.log, and /persist/log/logmanager.log will contain
-errors if those agents can not reach zedcloud.
+errors if those agents can not reach the controller.

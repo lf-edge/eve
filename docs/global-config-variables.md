@@ -10,7 +10,7 @@ zcli device update sc-supermicro-zc2 --config=debug.enable.ssh:true
 will allow ssh access to the device for debugging issues.
 
 The same variables can be specified in a json file included in /config/GlobalConfig/global.json. The format of that file is the natural json encoding of GlobalConfig as specified in types/global.go
-See https:build-config-files.md for how to include such a file in the image.
+See [build-config-files.md](build-config-files.md) for how to include such a file in the image.
 
 # List of config variables
 
