@@ -641,6 +641,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.State = types.RUNNING
 			publishDomainStatus(ctx, status)
 		} else if domainId != status.DomainId {
+			// XXX shutdown + create?
 			log.Warnf("verifyDomain(%s) domainId changed from %d to %d\n",
 				status.Key(), status.DomainId, domainId)
 			status.DomainId = domainId
@@ -651,9 +652,10 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 
 func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 
-	if status.LastErr == "" {
+	if !status.BootFailed {
 		return
 	}
+
 	t := time.Now()
 	elapsed := t.Sub(status.LastErrTime)
 	if elapsed < domainBootRetryTime {
@@ -676,11 +678,13 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	if err != nil {
 		log.Errorf("maybeRetryBoot xl create for %s: %s\n",
 			status.DomainName, err)
+		status.BootFailed = true
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
 		publishDomainStatus(ctx, status)
 		return
 	}
+	status.BootFailed = false
 	doActivateTail(ctx, status, domainId)
 }
 
@@ -749,18 +753,29 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		config.DisplayName)
 
 	if err := configToStatus(ctx, *config, &status); err != nil {
-		// XXX error here
 		log.Errorf("Failed to create DomainStatus from %v: %s\n",
 			config, err)
 		status.PendingAdd = false
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
 		publishDomainStatus(ctx, &status)
+		return
+	}
+
+	if err := configAdapters(ctx, *config); err != nil {
+		log.Errorf("Failed to reserve adapters for %v: %s\n",
+			config, err)
+		status.PendingAdd = false
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
+		status.AdaptersFailed = true
+		publishDomainStatus(ctx, &status)
 		cleanupAdapters(ctx, config.IoAdapterList,
 			config.UUIDandVersion.UUID)
 		return
 	}
 
+	status.AdaptersFailed = false
 	// We now have reserved all of the IoAdapters
 	status.IoAdapterList = config.IoAdapterList
 
@@ -890,6 +905,25 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	log.Infof("doActivate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
+	if status.AdaptersFailed {
+		if err := configAdapters(ctx, config); err != nil {
+			log.Errorf("Failed to reserve adapters for %v: %s\n",
+				config, err)
+			status.PendingAdd = false
+			status.LastErr = fmt.Sprintf("%v", err)
+			status.LastErrTime = time.Now()
+			status.AdaptersFailed = true
+			publishDomainStatus(ctx, status)
+			cleanupAdapters(ctx, config.IoAdapterList,
+				config.UUIDandVersion.UUID)
+			return
+		}
+
+		status.AdaptersFailed = false
+		// We now have reserved all of the IoAdapters
+		status.IoAdapterList = config.IoAdapterList
+	}
+
 	// Assign any I/O devices
 	doAssignIoAdaptersToDomain(ctx, config, status)
 
@@ -943,6 +977,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		}
 		if status.TriedCount >= 3 {
 			log.Errorf("xl create for %s: %s\n", status.DomainName, err)
+			status.BootFailed = true
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
 			publishDomainStatus(ctx, status)
@@ -953,6 +988,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		publishDomainStatus(ctx, status)
 		time.Sleep(5 * time.Second)
 	}
+	status.BootFailed = false
 	doActivateTail(ctx, status, domainId)
 }
 
@@ -1206,12 +1242,19 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 				*ds)
 		}
 	}
+	return nil
+}
 
-	// XXX could defer to Activate but might want to reserve adapters
-	// XXX if this fails and we deactive+activate then we'll get a stolen by
-	// 0000-00.. fatal. Move to activate
+// Check and reserve any assigned adapters
+func configAdapters(ctx *domainContext, config types.DomainConfig) error {
+
+	log.Infof("configAdapters(%v) for %s\n",
+		config.UUIDandVersion, config.DisplayName)
+
+	defer ctx.publishAssignableAdapters()
+
 	for _, adapter := range config.IoAdapterList {
-		log.Debugf("configToStatus processing adapter %d %s\n",
+		log.Debugf("configAdapters processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
 		// Lookup to make sure adapter exists on this device
 		ib := types.LookupIoBundle(ctx.assignableAdapters, adapter.Type, adapter.Name)
@@ -1231,16 +1274,12 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		}
 
 		if ib.Lookup && ib.MPciShort == nil {
-			log.Fatalf("configToStatus lookup missing: %d %s for %s\n",
-				adapter.Type, adapter.Name, status.DomainName)
+			log.Fatalf("configAdapters lookup missing: %d %s for %s\n",
+				adapter.Type, adapter.Name, config.DisplayName)
 		}
-		log.Debugf("configToStatus setting uuid %s for adapter %d %s\n",
+		log.Debugf("configAdapters setting uuid %s for adapter %d %s\n",
 			config.Key(), adapter.Type, adapter.Name)
 		ib.UsedByUUID = config.UUIDandVersion.UUID
-
-		// XXX TODO - We can publish AA at the end of the loop, as it publishes all
-		// devices.Need to remove the return statements as well in that case.
-		ctx.publishAssignableAdapters()
 	}
 	return nil
 }
