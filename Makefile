@@ -9,31 +9,41 @@ SSH_PORT := 2222
 
 CONF_DIR=conf
 
-ZARCH=$(shell uname -m)
-DOCKER_ARCH_TAG_aarch64=arm64
-DOCKER_ARCH_TAG_x86_64=amd64
-DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG_$(ZARCH))
+HOSTARCH=$(shell uname -m)
+# by default, take the host architecture as the target architecture, but can override with `make ZARCH=foo`
+#    assuming that the toolchain supports it, of course...
+ZARCH ?= $(HOSTARCH)
+# warn if we are cross-compiling and track it
+CROSS ?=
+ifneq ($(HOSTARCH),$(ZARCH))
+CROSS = 1
+$(warning "WARNING: We are assembling a $(ZARCH) image on $(HOSTARCH). Things may break.")
+endif
+# qemu-system-<arch> uses the local versions, so save the name early on
+QEMU_SYSTEM=qemu-system-$(ZARCH)
+# canonicalized names for architecture
+ifeq ($(ZARCH),aarch64)
+        ZARCH=arm64
+endif
+ifeq ($(ZARCH),x86_64)
+        ZARCH=amd64
+endif
 
-FALLBACK_IMG_aarch64=fallback_aarch64
-FALLBACK_IMG_x86_64=fallback
-FALLBACK_IMG=$(FALLBACK_IMG_$(ZARCH))
+# where we store outputs
+DIST=dist/$(ZARCH)
 
-ROOTFS_IMG_aarch64=rootfs_aarch64.img
-ROOTFS_IMG_x86_64=rootfs.img
-ROOTFS_IMG=$(ROOTFS_IMG_$(ZARCH))
+DOCKER_ARCH_TAG=$(ZARCH)
 
-TARGET_IMG_aarch64=target_aarch64.img
-TARGET_IMG_x86_64=target.img
-TARGET_IMG=$(TARGET_IMG_$(ZARCH))
+FALLBACK_IMG=$(DIST)/fallback
+ROOTFS_IMG=$(DIST)/rootfs.img
+TARGET_IMG=$(DIST)/target.img
+INSTALLER_IMG=$(DIST)/installer
+CONFIG_IMG=$(DIST)/config.img
 
-INSTALLER_IMG_aarch64=installer_aarch64
-INSTALLER_IMG_x86_64=installer
-INSTALLER_IMG=$(INSTALLER_IMG_$(ZARCH))
-
-QEMU_OPTS_aarch64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt
+QEMU_OPTS_arm64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt
 # -drive file=./bios/flash0.img,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
 # [ -f bios/flash1.img ] || dd if=/dev/zero of=bios/flash1.img bs=1048576 count=64
-QEMU_OPTS_x86_64= -cpu SandyBridge
+QEMU_OPTS_amd64= -cpu SandyBridge
 QEMU_OPTS_COMMON= -m 4096 -smp 4 -display none -serial mon:stdio -bios ./bios/OVMF.fd \
         -rtc base=utc,clock=rt \
         -nic user,id=eth0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::$(SSH_PORT)-:22 \
@@ -47,7 +57,7 @@ LK_HASH_REL=LINUXKIT_HASH="$(if $(strip $(ZENIX_HASH)),--hash) $(ZENIX_HASH) $(i
 
 DEFAULT_PKG_TARGET=build
 
-.PHONY: run pkgs build-pkgs help build-tools
+.PHONY: run pkgs build-pkgs help build-tools fallback rootfs config installer live
 
 all: help
 
@@ -80,67 +90,73 @@ bios/OVMF.fd: bios
 #
 run-installer-iso: bios/OVMF.fd
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
-	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -cdrom $(INSTALLER_IMG).iso -boot d
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -cdrom $(INSTALLER_IMG).iso -boot d
 
 run-installer-raw: bios/OVMF.fd
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
-	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(INSTALLER_IMG).raw,format=raw
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(INSTALLER_IMG).raw,format=raw
 
 run-fallback run: bios/OVMF.fd
-	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=$(FALLBACK_IMG).img,format=$(IMG_FORMAT)
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(FALLBACK_IMG).img,format=$(IMG_FORMAT)
 
 run-target: bios/OVMF.fd
-	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
 
 run-rootfs: bios/OVMF.fd bios/EFI
-	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:./bios/,format=raw 
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:./bios/,format=raw 
 
 run-grub: bios/OVMF.fd bios/EFI
-	qemu-system-$(ZARCH) $(QEMU_OPTS) -drive file=fat:rw:./bios/,format=raw
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=fat:rw:./bios/,format=raw
+
+# ensure the dist directory exists
+$(DIST):
+	mkdir -p $(DIST)
+
+# convenience targets - so you can do `make config` instead of `make dist/config.img`, and `make installer` instead of `make dist/amd64/installer.img
+config: $(CONFIG_IMG)
+rootfs: $(ROOTFS_IMG)
+fallback: $(FALLBACK_IMG).img
+live: fallback
+installer: $(INSTALLER_IMG).raw
 
 # NOTE: that we have to depend on pkg/zedctr here to make sure
 # it gets triggered when we build any kind of image target
 images/%.yml: build-tools pkg/zedctr parse-pkgs.sh images/%.yml.in FORCE
 	$(PARSE_PKGS) $@.in > $@
-	@# the following is a horrible hack that needs to go away ASAP \
-	if [ "$(ZARCH)" = aarch64 ] ; then \
-           sed -e '/source:/s#rootfs.img#rootfs_aarch64.img#' -i.orig $@ ;\
-	   [ $$(uname -m) = aarch64 ] || echo "WARNING: We are assembling a $(ZARCH) image on `uname -m`. Things may break." ;\
-        fi
 
-config.img: conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/
-	./maketestconfig.sh $(CONF_DIR) config.img
+$(CONFIG_IMG): $(DIST) conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/
+	./maketestconfig.sh $(CONF_DIR) $@
 
-$(ROOTFS_IMG): images/rootfs.yml
-	./makerootfs.sh $< $(ROOTFS_FORMAT) $@
+$(ROOTFS_IMG): images/rootfs.yml $(DIST)
+	./makerootfs.sh $< $(DIST) $(ROOTFS_FORMAT) $@
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
 
-$(FALLBACK_IMG).img: $(FALLBACK_IMG).$(IMG_FORMAT)
+$(FALLBACK_IMG).img: $(DIST) $(FALLBACK_IMG).$(IMG_FORMAT)
 	@rm -f $@ >/dev/null 2>&1 || :
 	ln -s $< $@
 
-$(FALLBACK_IMG).qcow2: $(FALLBACK_IMG).raw
+$(FALLBACK_IMG).qcow2: $(DIST) $(FALLBACK_IMG).raw
 	qemu-img convert -c -f raw -O qcow2 $< $@
 	rm $<
 
-$(FALLBACK_IMG).raw: $(ROOTFS_IMG) config.img
+$(FALLBACK_IMG).raw: $(DIST) $(ROOTFS_IMG) $(CONFIG_IMG)
 	tar c $^ | ./makeflash.sh -C ${MEDIA_SIZE} $@
 
-$(ROOTFS_IMG)_installer.img: images/installer.yml $(ROOTFS_IMG) config.img
-	./makerootfs.sh $< $(ROOTFS_FORMAT) $@
+$(ROOTFS_IMG)_installer.img: images/installer.yml $(DIST) $(ROOTFS_IMG) $(CONFIG_IMG)
+	./makerootfs.sh $< $(DIST) $(ROOTFS_FORMAT) $@
 	@[ $$(wc -c < "$@") -gt $$(( 300 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 300MB (bigger than allocated partition)" && exit 1 || :
 
-$(INSTALLER_IMG).raw: $(ROOTFS_IMG)_installer.img config.img
+$(INSTALLER_IMG).raw: $(DIST) $(ROOTFS_IMG)_installer.img $(CONFIG_IMG)
 	tar c $^ | ./makeflash.sh -C 350 $@ "efi imga conf_win"
 	rm $(ROOTFS_IMG)_installer.img
 
-$(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) config.img
-	./makeiso.sh $< $@
+$(INSTALLER_IMG).iso: images/installer.yml $(DIST) $(ROOTFS_IMG) $(CONFIG_IMG)
+	./makeiso.sh $< $(DIST) $@
 
 zenix: ZENIX_HASH:=$(shell echo ZENIX_TAG | $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
-zenix: Makefile bios/OVMF.fd config.img $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(FALLBACK_IMG).img images/rootfs.yml images/installer.yml
+zenix: Makefile bios/OVMF.fd $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(FALLBACK_IMG).img images/rootfs.yml images/installer.yml
 	cp $^ build-pkgs/zenix
 	make -C build-pkgs BUILD-PKGS=zenix $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
 
@@ -156,7 +172,7 @@ pkg/zedctr: ZEDCTR_TAG:=zededa/zedctr:$(ZENIX_HASH)-$(DOCKER_ARCH_TAG)
 pkg/zedctr: FORCE
 	docker pull $(ZEDCTR_TAG) >/dev/null 2>&1 || : ;\
 	if ! docker inspect $(ZEDCTR_TAG) >/dev/null 2>&1 ; then \
-	  if [ $(ZARCH) != $$(uname -m) ] ; then \
+	  if [ -n "$(CROSS)" ] ; then \
 	    $(PARSE_PKGS) < pkg/zedctr/Dockerfile.cross.in > pkg/zedctr/Dockerfile ;\
 	    PKG_HASH=`mktemp -u XXXXXXXXXX` ;\
 	    make -C pkg PKGS=zedctr RESCAN_DEPS="" LINUXKIT_OPTS="--disable-content-trust --force --disable-cache --hash $$PKG_HASH" $(DEFAULT_PKG_TARGET) ;\
