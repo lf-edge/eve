@@ -648,7 +648,6 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	}
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, systemAdaptersPrevConfigHash)
-	systemAdaptersPrevConfigHash = configHash
 	if same && !forceParse {
 		log.Debugf("parseSystemAdapterConfig: system adapter sha is unchanged: % x\n",
 			configHash)
@@ -661,6 +660,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	}
 	log.Infof("parseSystemAdapterConfig: Applying updated config sha % x vs. % x: %v\n",
 		systemAdaptersPrevConfigHash, configHash, sysAdapters)
+
+	systemAdaptersPrevConfigHash = configHash
 
 	// Check if we have any with Uplink/IsMgmt set, in which case we
 	// infer the version
