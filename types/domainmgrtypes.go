@@ -101,8 +101,8 @@ type DomainStatus struct {
 	TriedCount         int
 	LastErr            string // Xen error
 	LastErrTime        time.Time
-	BootFailed	   bool
-	AdaptersFailed	   bool
+	BootFailed         bool
+	AdaptersFailed     bool
 }
 
 func (status DomainStatus) Key() string {
