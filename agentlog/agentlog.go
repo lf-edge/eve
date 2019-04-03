@@ -214,14 +214,11 @@ func roundToMb(b uint64) uint64 {
 	return mb
 }
 
-var startTime time.Time // To measure until first StillRunning
-
 func Init(agentName string, curpart string) (*os.File, error) {
 	if curpart != "" {
 		zboot.SetCurpart(curpart)
 	}
 	logdir := GetCurrentLogdir()
-	startTime = time.Now()
 	return initImpl(agentName, logdir, true, false)
 }
 
@@ -287,17 +284,10 @@ func GetOtherLogdir() string {
 	return fmt.Sprintf("%s/log", dirname)
 }
 
-var printTwice = 2 // To be able to measure how long time agent startup takes
-
 // Touch a file per agentName to signal the event loop is still running
 // Could be use by watchdog
 func StillRunning(agentName string) {
 
-	if printTwice > 0 {
-		log.Infof("StillRunning(%s) startup took %d seconds\n",
-			agentName, time.Since(startTime)/time.Second)
-		printTwice--
-	}
 	log.Debugf("StillRunning(%s)\n", agentName)
 	filename := fmt.Sprintf("/var/run/%s.touch", agentName)
 	_, err := os.Stat(filename)
