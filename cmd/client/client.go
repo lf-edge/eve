@@ -352,6 +352,9 @@ func Run() {
 		// XXX add option to get this from a file in /config + override
 		// logic
 		productSerial := hardware.GetProductSerial()
+		productSerial = strings.TrimSpace(productSerial)
+		log.Infof("ProductSerial %s\n", productSerial)
+
 		tlsConfig, err := zedcloud.GetTlsConfig(serverName, &onboardCert)
 		if err != nil {
 			log.Errorln(err)
