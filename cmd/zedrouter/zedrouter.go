@@ -249,9 +249,6 @@ func Run() {
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
-
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
 	}
 	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
@@ -357,8 +354,6 @@ func Run() {
 
 	// First wait for restarted from zedmanager to
 	// reduce the number of LISP-RESTARTs
-	// XXX this results in waiting for the verifier to report restarted
-	// to zedmanager which can be quite a long time.
 	for !subAppNetworkConfig.Restarted() {
 		log.Infof("Waiting for zedmanager to report restarted\n")
 		select {
@@ -378,9 +373,6 @@ func Run() {
 			log.Infof("AppNetworkConfig - waiting to Restart - "+
 				"InstanceConfig change at %+v", time.Now())
 			subNetworkInstanceConfig.ProcessChange(change)
-
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
 	}
 	log.Infof("Zedmanager has restarted. Entering main Select loop\n")

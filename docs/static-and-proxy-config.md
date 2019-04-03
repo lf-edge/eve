@@ -1,3 +1,5 @@
+# Controlling EVE behavior at boot
+
 When the device boots it determines the set of network interfaces.
 By default this is determined by extracting the manufacturer and model
 strings from dmidecode; /opt/zededa/bin/hardwaremodel does this determination.
@@ -6,14 +8,17 @@ That model string is used to look up a json file in /var/tmp/zededa/DeviceNetwor
 If no such json file is found the device uses /var/tmp/zededa/DeviceNetworkConfig/default.json
 
 Those files merely specify the set of management ports, plus which of them
-do not have per usage charging (to separate out LTE modems).
+do not have per usage charging (to separate out e.g., LTE modems).
+
 The default.json is:
+```
 {
     "Uplink":["eth0","wlan0","wwan0"],
     "FreeUplinks":["eth0","wlan0"]
 }
-Note that this uses the old "uplink" terminology; new terminology is
-"management port".
+```
+
+Note that this uses the old "uplink" terminology; new terminology for this concept is "management port".
 
 This per-model comfiguration can be overridden by an optional file in
 /config which is added when the image is built/installed.
@@ -22,8 +27,8 @@ That file is /config/DevicePortConfig/override.json
 it to local.json instead?]
 And futher overridden by a USB memory stick plugged in when the device is powered
 on. The scripts/mkusb.sh can be used to create that script.
-Finally, when the device is create or updated in the controller, the device
-port configuration can be specified. The most recent information DevicePortConfig
+Finally, when the device is created or updated in the controller, the device
+port configuration can be specified which will be sent to the device using the systemAdapter part of the API. The most recent information DevicePortConfig
 becomes the highest priority, but the device tests that it works before using it
 (and falls back to a lower-priority working config.)
 
@@ -32,7 +37,10 @@ non-mananagement interface, and can specify static IP and DNS configuration
 (for environments where DHCP is not used). In addition it can specify proxies
 using several different mechanism.
 
+# Example DevicePortConfig
+
 An example file to specify using WPAD to retrieve proxy configuration on eth0 is:
+```
 {
     "Version": 1,
     "Ports": [
@@ -55,24 +63,31 @@ An example file to specify using WPAD to retrieve proxy configuration on eth0 is
         }
     ]
 }
+```
 
 To specify fetching from a fixed WPAD URL one would set:
+```
             "NetworkProxyEnable": true,
             "NetworkProxyURL": "http://wpad.sc.zededa.net/wpad.dat",
+```
 
 To specify a particular set of http and https proxies with a set of
-exceptions one would set TBD
+exceptions one would set:
+```
             "Proxies": [ { "Server": "proxy.example.com", "Port":1080, "Type":1 },
                        { "Server": "proxy.example.com", "Port":1080, "Type":0 } ],
             "Exceptions": "example.com",
-
+```
 
 To specify a PAC file inline one would base64 encode the PAC file and set the
 result as the Pacfile e.g.,
+```
 	Pacfile":"ZnVuY3Rpb24gRmluZFByb3h5Rm9yVVJMKHVybCxob3N0KSB7CmlmIChob3N0ID09ICIxMjcuMC4wLjEiKSB7cmV0dXJuICJESVJFQ1QiO30KaWYgKGhvc3QgPT0gImxvY2FsaG9zdCIpIHtyZXR1cm4gIkRJUkVDVCI7fQppZiAoaXNQbGFpbkhvc3ROYW1lKGhvc3QpKSB7cmV0dXJuICJESVJFQ1QiO30KZWxzZSB7IHJldHVybiAiUFJPWFkgcHJveHkucHJpdi5zYy56ZWRlZGEubmV0OjEwODAiO30KfQo=",
+```
 
 
 An example file with eth0 being static and eth1 using dhcp is:
+```
 {
     "Version": 1,
     "Ports": [
@@ -104,9 +119,11 @@ An example file with eth0 being static and eth1 using dhcp is:
         }
     ]
 }
+```
 
 To set up eth1 with the name Field in order to use it for a switch network,
 use DHCP 0. For example,
+```
 {
     "Version": 1,
     "Ports": [
@@ -126,9 +143,10 @@ use DHCP 0. For example,
         }
     ]
 }
+```
 
 If you want eth1 to be configured by zedrouter and used by applications but not
-used for zedcloud management traffic, make sure you have Version 1 and IsMgmt false.
+used for management traffic to the controller, make sure you have Version 1 and IsMgmt false.
 
 NOTE that if a static IP configuration is used with WPAD DNS discovery then the
 DomainName needs to be set; the DomainName is used to determine where to look for
@@ -141,33 +159,32 @@ In addition the above configurations be specified from the EV-controller by
 specifying one or more networks with the proxy and/or static as part of the
 zcli device create.
 
-Troubleshooting
-===============
+# Troubleshooting
 
 The blinking pattern can be extracted from the shell using
+```
 cat /var/tmp/ledmanager/config/ledconfig.json
+```
 
 If the device does not have any usable IP addresses it will be 1,
 if IP address but no cloud connectivity it will be 2,
 if the cloud responds (even if it is an http error e.g, if the device is not yet
 onboarded), it will be 3, and if a GET of /config works it will be 4.
 
-One can test proxy connectivity to zedcloud using
-    /opt/zededa/bin/client -s ping
-or
-    /opt/zededa/bin/client -s -r 5 ping
-to try at most 5 times.
-
-And to try other URLs one can do
-	/opt/zededa/bin/client -s -r 5 -U http://www.google.com ping
-	/opt/zededa/bin/client -s -r 5 -U https://www.google.com -I ping
-(-I disables the certificate chain check against /config/root-certificate.pem)
+One can test the connectivity to the controller using
+```
+    /opt/zededa/bin/diag
+```
 
 The logs for the onboarding attempts are in
+```
     /persist/`zboot curpart`/log/client.log
+```
 
 If there are no IP addresses, the logs for network interface manager can help:
+```
     /persist/`zboot curpart`/log/nim.log
+```
 
 Finally zedagent.log, downloader.log, and /persist/log/logmanager.log will contain
-errors if those agents can not reach zedcloud.
+errors if those agents can not reach the controller.

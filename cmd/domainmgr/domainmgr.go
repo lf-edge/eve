@@ -253,9 +253,6 @@ func Run() {
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
-
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
 	}
 
@@ -279,9 +276,6 @@ func Run() {
 
 		case change := <-subAa.C:
 			subAa.ProcessChange(change)
-
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
 	}
 	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))

@@ -756,6 +756,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 				}
 			case types.DT_CLIENT:
 				// Do nothing
+			case types.DT_NONE:
+				// Do nothing
 			default:
 				log.Warnf("parseSystemAdapterConfig: ignore unsupported dhcp type %v\n",
 					network.Dhcp)

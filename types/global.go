@@ -72,8 +72,8 @@ var GlobalConfigDefaults = GlobalConfig{
 	ConfigInterval:          60,
 	MetricInterval:          60,
 	ResetIfCloudGoneTime:    7 * 24 * 3600,
-	FallbackIfCloudGoneTime: 600,
-	MintimeUpdateSuccess:    300,
+	FallbackIfCloudGoneTime: 300,
+	MintimeUpdateSuccess:    600,
 
 	NetworkGeoRedoTime:        3600, // 1 hour
 	NetworkGeoRetryTime:       600,  // 10 minutes

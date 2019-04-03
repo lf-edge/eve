@@ -491,9 +491,6 @@ func Run() {
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
-
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
 	}
 
@@ -519,9 +516,6 @@ func Run() {
 			log.Errorf(errStr)
 			agentlog.RebootReason(errStr)
 			execReboot(true)
-
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
 	}
 
@@ -567,9 +561,6 @@ func Run() {
 				agentlog.RebootReason(errStr)
 				execReboot(true)
 			}
-
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
 	}
 	t1.Stop()
@@ -646,9 +637,6 @@ func Run() {
 
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
-
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
 	}
 
