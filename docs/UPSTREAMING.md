@@ -15,7 +15,7 @@ The document is divided into two parts:
 
 ### makerootfs
 
-[makerootfs.sh](./makerootfs.sh) is a script that runs `linuxkit build` based on the passed config `yml`, outputs a tar stream, and passes the resultant tar stream to [mkrootfs-ext4](./pkg/mkrootfs-ext4) or [mkrootfs-squash](./pkg/mkrootfs-squash), depending on the selected output format. `mkrootfs-<format>` builds the tar stream into an output disk image file with the desired filesystem format (ext4|squashfs).
+[makerootfs.sh](../makerootfs.sh) is a script that runs `linuxkit build` based on the passed config `yml`, outputs a tar stream, and passes the resultant tar stream to [mkrootfs-ext4](../pkg/mkrootfs-ext4) or [mkrootfs-squash](../pkg/mkrootfs-squash), depending on the selected output format. `mkrootfs-<format>` builds the tar stream into an output disk image file with the desired filesystem format (ext4|squashfs).
 
 It is not clear why this cannot be replaced with `linuxkit build -o raw-efi` or `linuxkit build -o kernel+squashfs`. The missing elements are listed here:
 
@@ -24,13 +24,13 @@ It is not clear why this cannot be replaced with `linuxkit build -o raw-efi` or 
 
 ### makeflash
 
-[makeflash.sh](./makeflash.sh) is a script that creates an empty file of the target disk image size. This target is then passed to [mkimage-raw-efi](./pkg/mkimage-raw-efi), which partitions the provided disk image into the requested partitions, and installs the correct bits in each partition: grub into `efi`, a pre-built rootfs into `imga` and optionally `imgb`, a pre-built config into `config`. 
+[makeflash.sh](../makeflash.sh) is a script that creates an empty file of the target disk image size. This target is then passed to [mkimage-raw-efi](../pkg/mkimage-raw-efi), which partitions the provided disk image into the requested partitions, and installs the correct bits in each partition: grub into `efi`, a pre-built rootfs into `imga` and optionally `imgb`, a pre-built config into `config`. 
 
 There is no tool that currently does anything close to this. The closest option might be linuxkit, if it were to add support for multiple partitions, with optional inputs into each partition.
 
 ### maketestconfig
 
-[maketestconfig.sh](./maketestconfig.sh) is a script that tars up the contents of [conf/](./conf/), passing the tar stream to [mkconf](./pkg/mkconf), which lays those contents on top of the contents of `/opt/zededa/examples/config` from [ztools](https://github.com/zededa/go-provision) and puts the result in a FAT32 image named `config.img`. 
+[maketestconfig.sh](../maketestconfig.sh) is a script that tars up the contents of [conf/](../conf/), passing the tar stream to [mkconf](../pkg/mkconf), which lays those contents on top of the contents of `/opt/zededa/examples/config` from [ztools](https://github.com/zededa/go-provision) and puts the result in a FAT32 image named `config.img`. 
 
 This is a fairly straightforward process - somewhat complicated by the two layers of tarring the local directory up and then overwriting the `ztools` default in a separate container, but not unduly so - and is unlikely to be replaced by any other tool. At best, in its current usage, it can be simplified somewhat as a single container image run.
 
@@ -40,7 +40,7 @@ More relevant and useful is an analysis of the usage of `config` in a production
 
 ### grub
 
-[grub](pkg/grub) applies a series of necessary patches to [upstream grub](https://www.gnu.org/software/grub/). These patches are in [pkg/grub/patches](./pkg/grub/patches). The primary way to eliminate the need for custom grub is to upstream these patches into grub itself. The largest of them - the [coreos patches](./pkg/grub/patches/0000-core-os-merge.patch) is in the process of being upstreamed, courtesy of Matthew Garrett, who did the original work at CoreOS and is now at Google. The rest simply require effort to interact with the main grub team and get the patches accepted.
+[grub](pkg/grub) applies a series of necessary patches to [upstream grub](https://www.gnu.org/software/grub/). These patches are in [pkg/grub/patches](../pkg/grub/patches). The primary way to eliminate the need for custom grub is to upstream these patches into grub itself. The largest of them - the [coreos patches](../pkg/grub/patches/0000-core-os-merge.patch) is in the process of being upstreamed, courtesy of Matthew Garrett, who did the original work at CoreOS and is now at Google. The rest simply require effort to interact with the main grub team and get the patches accepted.
 
 The customizations we apply via patches, and their purpose (i.e. we why need them for EVE), are as follows:
 
@@ -87,13 +87,13 @@ Exports current grub setting vars. Need and usage is unclear.
 
 ### fw
 
-[fw](./pkg/fw/) adds specific firmware. Most of the added firmware already is in the `alpine:3.8` and above standard distributions, added via `apk add linux-firmware-<platform>`. The package itself uses the standard except in 2 cases, one of which (`ath10k`) is in the process of being upstreamed. 
+[fw](../pkg/fw/) adds specific firmware. Most of the added firmware already is in the `alpine:3.8` and above standard distributions, added via `apk add linux-firmware-<platform>`. The package itself uses the standard except in 2 cases, one of which (`ath10k`) is in the process of being upstreamed. 
 
 This is unlikely to be replaced anywhere. The closest option is linuxkit, which has no custom firmware solutions at this time. Since it is modular via OCI images, the likely solution is to use a firmware-specific OCI image in the `init` section, which is precisely what we are doing.
 
 ### xen
 
-[xen](./pkg/xen/) builds and adds the xen kernel. It downloads the official Xen source, configures and builds it, and extracts the bootable kernel. This, in turn, is used in grub to boot into `dom0`, which then boots into the dom0 kernel, as defined in the linuxkit config `kernel` section. 
+[xen](../pkg/xen/) builds and adds the xen kernel. It downloads the official Xen source, configures and builds it, and extracts the bootable kernel. This, in turn, is used in grub to boot into `dom0`, which then boots into the dom0 kernel, as defined in the linuxkit config `kernel` section. 
 
 We do a custom build of the xen kernel for two reasons:
 
@@ -104,17 +104,17 @@ Further, the boot process is a bit "backwards", at least for the live `rootfs.im
 
 ### gpt-tools
 
-[gpt-tools](./pkg/gpt-tools) loads a series of gpt partition utilities/tools onto the base filesystem. It adds the following tools:
+[gpt-tools](../pkg/gpt-tools) loads a series of gpt partition utilities/tools onto the base filesystem. It adds the following tools:
 
-* `sgdisk` - with specific patches listed [here](./pkg/gpt-tools/patches)
+* `sgdisk` - with specific patches listed [here](../pkg/gpt-tools/patches)
 * `cgpt` - works with ChromeOS-specific GPT partitioning
-* [zboot](./pkg/gpt-tools/files/zboot) - a script whose purpose is unknown. It is not referenced elsewhere that we can find.
+* [zboot](../pkg/gpt-tools/files/zboot) - a script whose purpose is unknown. It is not referenced elsewhere that we can find.
 
 Upstreaming may be possible with `sgdisk`, if the patches are included. 
 
 ### dom0-ztools
 
-[dom0-ztools](./pkg/dom0-ztools) inserts a single script, [zen](./pkg/dom0-ztools/zen) onto the base filesystem. `zen` is a utility script that wraps `ctr` to simplify access to containerd containers. This presumably is because the `ctr` commands can be convoluted and hard to remember.
+[dom0-ztools](../pkg/dom0-ztools) inserts a single script, [zen](../pkg/dom0-ztools/zen) onto the base filesystem. `zen` is a utility script that wraps `ctr` to simplify access to containerd containers. This presumably is because the `ctr` commands can be convoluted and hard to remember.
 
 There is a case to be made for upstreaming this into linuxkit itself, at least in the ssh/getty containers.
 
