@@ -9,7 +9,7 @@ SSH_PORT := 2222
 
 CONF_DIR=conf
 
-HOSTARCH=$(shell uname -m)
+HOSTARCH:=$(shell uname -m)
 # by default, take the host architecture as the target architecture, but can override with `make ZARCH=foo`
 #    assuming that the toolchain supports it, of course...
 ZARCH ?= $(HOSTARCH)
@@ -20,7 +20,7 @@ CROSS = 1
 $(warning "WARNING: We are assembling a $(ZARCH) image on $(HOSTARCH). Things may break.")
 endif
 # qemu-system-<arch> uses the local versions, so save the name early on
-QEMU_SYSTEM=qemu-system-$(HOSTARCH)
+QEMU_SYSTEM:=qemu-system-$(ZARCH)
 # canonicalized names for architecture
 ifeq ($(ZARCH),aarch64)
         ZARCH=arm64
@@ -40,11 +40,14 @@ TARGET_IMG=$(DIST)/target.img
 INSTALLER_IMG=$(DIST)/installer
 CONFIG_IMG=$(DIST)/config.img
 
+BIOS_IMG=$(DIST)/bios/OVMF.fd
+EFI_PART=$(DIST)/bios/EFI
+
 QEMU_OPTS_arm64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt
 # -drive file=./bios/flash0.img,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
 # [ -f bios/flash1.img ] || dd if=/dev/zero of=bios/flash1.img bs=1048576 count=64
 QEMU_OPTS_amd64= -cpu SandyBridge
-QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m 4096 -smp 4 -display none -serial mon:stdio -bios ./bios/OVMF.fd \
+QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m 4096 -smp 4 -display none -serial mon:stdio -bios $(BIOS_IMG) \
         -rtc base=utc,clock=rt \
         -nic user,id=eth0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::$(SSH_PORT)-:22 \
         -nic user,id=eth1,net=192.168.2.0/24,dhcpstart=192.168.2.10
@@ -70,15 +73,12 @@ build-pkgs: build-tools
 pkgs: build-tools build-pkgs
 	make -C pkg $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
 
-bios:
-	mkdir bios
+$(EFI_PART): | $(DIST)/bios
+	cd $| ; $(DOCKER_UNPACK) $(shell make -s -C pkg PKGS=grub show-tag)-$(DOCKER_ARCH_TAG) EFI
+	(echo "set root=(hd0)" ; echo "chainloader /EFI/BOOT/BOOTX64.EFI" ; echo boot) > $@/BOOT/grub.cfg
 
-bios/EFI: bios
-	cd bios ; $(DOCKER_UNPACK) $(shell make -s -C pkg PKGS=grub show-tag)-$(DOCKER_ARCH_TAG) EFI
-	(echo "set root=(hd0)" ; echo "chainloader /EFI/BOOT/BOOTX64.EFI" ; echo boot) > bios/EFI/BOOT/grub.cfg
-
-bios/OVMF.fd: bios
-	cd bios ; $(DOCKER_UNPACK) $(shell make -s -C build-pkgs BUILD-PKGS=uefi show-tag)-$(DOCKER_ARCH_TAG) OVMF.fd
+$(BIOS_IMG): | $(DIST)/bios
+	cd $| ; $(DOCKER_UNPACK) $(shell make -s -C build-pkgs BUILD-PKGS=uefi show-tag)-$(DOCKER_ARCH_TAG) OVMF.fd
 
 # run-installer
 #
@@ -88,29 +88,29 @@ bios/OVMF.fd: bios
 #
 # -machine dumpdtb=virt.dtb 
 #
-run-installer-iso: bios/OVMF.fd
+run-installer-iso: $(BIOS_IMG)
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -cdrom $(INSTALLER_IMG).iso -boot d
 
-run-installer-raw: bios/OVMF.fd
+run-installer-raw: $(BIOS_IMG)
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(INSTALLER_IMG).raw,format=raw
 
-run-fallback run: bios/OVMF.fd
+run-fallback run: $(BIOS_IMG)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(FALLBACK_IMG).img,format=$(IMG_FORMAT)
 
-run-target: bios/OVMF.fd
+run-target: $(BIOS_IMG)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
 
-run-rootfs: bios/OVMF.fd bios/EFI
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:./bios/,format=raw 
+run-rootfs: $(BIOS_IMG) $(EFI_PART)
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:$(EFI_PART)/..,format=raw 
 
-run-grub: bios/OVMF.fd bios/EFI
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=fat:rw:./bios/,format=raw
+run-grub: $(BIOS_IMG) $(EFI_PART)
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=fat:rw:$(EFI_PART)/..,format=raw
 
 # ensure the dist directory exists
-$(DIST):
-	mkdir -p $(DIST)
+$(DIST) $(DIST)/bios:
+	mkdir -p $@
 
 # convenience targets - so you can do `make config` instead of `make dist/config.img`, and `make installer` instead of `make dist/amd64/installer.img
 config: $(CONFIG_IMG)
@@ -126,38 +126,38 @@ images/%.yml: build-tools pkg/zedctr parse-pkgs.sh images/%.yml.in FORCE
 	$(PARSE_PKGS) $@.in > $@
 
 $(CONFIG_IMG): conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/ | $(DIST)
-	./maketestconfig.sh $(CONF_DIR) $@
+	./makeconfig.sh $(CONF_DIR) $@
 
 $(ROOTFS_IMG): images/rootfs.yml | $(DIST)
-	./makerootfs.sh $< $(DIST) $(ROOTFS_FORMAT) $@
+	./makerootfs.sh $< $(ROOTFS_FORMAT) $@
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
 
 $(FALLBACK_IMG).img: $(FALLBACK_IMG).$(IMG_FORMAT) | $(DIST)
 	@rm -f $@ >/dev/null 2>&1 || :
-	ln -s $< $@
+	ln -s $(notdir $<) $@
 
 $(FALLBACK_IMG).qcow2: $(FALLBACK_IMG).raw | $(DIST)
 	qemu-img convert -c -f raw -O qcow2 $< $@
 	rm $<
 
 $(FALLBACK_IMG).raw: $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
-	tar c $^ | ./makeflash.sh -C ${MEDIA_SIZE} $@
+	tar -C $(DIST) -c $(notdir $^) | ./makeflash.sh -C ${MEDIA_SIZE} $@
 
 $(ROOTFS_IMG)_installer.img: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
-	./makerootfs.sh $< $(DIST) $(ROOTFS_FORMAT) $@
+	./makerootfs.sh $< $(ROOTFS_FORMAT) $@
 	@[ $$(wc -c < "$@") -gt $$(( 300 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 300MB (bigger than allocated partition)" && exit 1 || :
 
 $(INSTALLER_IMG).raw: $(ROOTFS_IMG)_installer.img $(CONFIG_IMG) | $(DIST)
-	tar c $^ | ./makeflash.sh -C 350 $@ "efi imga conf_win"
+	tar -C $(DIST) -c $(notdir $^) | ./makeflash.sh -C 350 $@ "efi imga conf_win"
 	rm $(ROOTFS_IMG)_installer.img
 
 $(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
-	./makeiso.sh $< $(DIST) $@
+	./makeiso.sh $< $@
 
 zenix: ZENIX_HASH:=$(shell echo ZENIX_TAG | $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
-zenix: Makefile bios/OVMF.fd $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(FALLBACK_IMG).img images/rootfs.yml images/installer.yml
+zenix: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(FALLBACK_IMG).img images/rootfs.yml images/installer.yml
 	cp $^ build-pkgs/zenix
 	make -C build-pkgs BUILD-PKGS=zenix $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
 
