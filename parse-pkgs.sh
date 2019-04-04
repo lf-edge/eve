@@ -43,7 +43,7 @@ external_tag() {
 
   # for external packages we have to always try to pull first - otherwise
   # we may have something stale in our local Docker cache
-  docker pull "$PKG" 2>/dev/null || echo "WARNING: couldn't fetch the latest $PKG - may be using stale cache" >&2
+  docker pull "$PKG" 2>/dev/null >&2 || echo "WARNING: couldn't fetch the latest $PKG - may be using stale cache" >&2
   if docker inspect "$PKG" >/dev/null 2>&1 ; then
     echo "$PKG"
   else
