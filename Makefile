@@ -171,6 +171,24 @@ pkg/zedctr: FORCE
 pkg/%: FORCE
 	make -C pkg PKGS=$(notdir $@) LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
 
+release:
+	@function bail() { echo "ERROR: $$@" ; exit 1 ; } ;\
+	 X=`echo $(VERSION) | cut -s -d. -f1` ; Y=`echo $(VERSION) | cut -s -d. -f2` ; Z=`echo $(VERSION) | cut -s -d. -f3` ;\
+	 [ -z "$$X" -o -z "$$Y" -o -z "$$Z" ] && bail "VERSION missing (or incorrect). Re-run as: make VERSION=x.y.z $@" ;\
+	 (git fetch && [ `git diff origin/master..master | wc -l` -eq 0 ]) || bail "origin/master is different from master" ;\
+	 if git checkout $$X.$$Y 2>/dev/null ; then \
+	    git merge origin/master ;\
+	 else \
+	    git checkout master -b $$X.$$Y && echo zedcloud.zededa.net > conf/server &&\
+	    git commit -m"Setting default server to prod" conf/server ;\
+	 fi || bail "Can't create $$X.$$Y branch" ;\
+	 git commit -m"Pinning down versions in parse-pkgs.sh" parse-pkgs.sh 2>/dev/null ;\
+	 (echo ZTOOLS_TAG ; echo LISP_TAG) | ZENIX_HASH=$$X.$$Y.$$Z ./parse-pkgs.sh | grep -q zededa/debug &&\
+	     bail "Couldn't find matching versions for ztools and/or lisp. You may want to edit parse-pkg.sh" ;\
+	 git tag -a -m"Release $$X.$$Y.$$Z" $$X.$$Y.$$Z &&\
+	 echo "Done tagging $$X.$$Y.$$Z release. Check the branch with git log and then run" &&\
+	 echo "  git push origin $$X.$$Y $$X.$$Y.$$Z"
+
 .PHONY: FORCE
 FORCE:
 
@@ -186,6 +204,9 @@ help:
 	@echo "by forcing a particular architecture via adding ZARCH=[x86_64|aarch64]"
 	@echo "to the make's command line. You can also run in a cross- way since"
 	@echo "all the execution is done via qemu."
+	@echo
+	@echo "Commonly used maitenance targets:"
+	@echo "   release        prepare branch for a release (VERSION=x.y.z required)"
 	@echo
 	@echo "Commonly used build targets:"
 	@echo "   build-tools    builds linuxkit and manifest-tool utilities under build-tools/bin"
