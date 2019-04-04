@@ -178,7 +178,7 @@ function do_persist {
 # Extract partitions from stdin
 #
 mkdir /parts 2>/dev/null || :
-[ -t 0 ] || (cd /parts; bsdtar xzf -)
+[ -t 0 ] || (cd /parts; bsdtar xz --strip-components=2 -f -)
 
 # content of rootfs partition
 ROOTFS_IMG=`echo /parts/rootfs*.img | cut -f1 -d\ `
@@ -215,7 +215,7 @@ case "$(sgdisk -p $IMGFILE 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '\0
 esac
 
 for p in $PARTS ; do
-  eval do_$p CUR_SEC 2>/dev/null
+  eval do_$p CUR_SEC
 done
 
 # Update embedded boot partition with our own bootloader
