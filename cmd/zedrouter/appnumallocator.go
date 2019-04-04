@@ -129,12 +129,15 @@ func appNumAllocate(ctx *zedrouterContext,
 		if appNum == 0 {
 			log.Infof("Failed to find free appNum for %s. Reusing!\n",
 				uuid)
-			uuid, appNum, err = uuidtonum.UuidToNumGetOldestUnused(ctx.pubUuidToNum, "appNum")
+			oldUuid, oldAppNum, err := uuidtonum.UuidToNumGetOldestUnused(ctx.pubUuidToNum, "appNum")
 			if err != nil {
 				log.Fatal("All 255 appNums are in use!")
 			}
-			uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, uuid)
-			AllocReservedAppNumBits.Clear(appNum)
+			log.Infof("Reuse found appNum %d for %s. Reusing!\n",
+				oldAppNum, oldUuid)
+			uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, oldUuid)
+			AllocReservedAppNumBits.Clear(oldAppNum)
+			appNum = oldAppNum
 		}
 	}
 	if AllocReservedAppNumBits.IsSet(appNum) {

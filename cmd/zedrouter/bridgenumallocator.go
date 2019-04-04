@@ -114,14 +114,15 @@ func bridgeNumAllocate(ctx *zedrouterContext, uuid uuid.UUID) int {
 	if bridgeNum == 0 {
 		log.Infof("Failed to find free bridgeNum for %s. Reusing!\n",
 			uuid)
-		log.Infof("Failed to find free bridgeNum for %s. Reusing!\n",
-			uuid)
-		uuid, bridgeNum, err = uuidtonum.UuidToNumGetOldestUnused(ctx.pubUuidToNum, "bridgeNum")
+		oldUuid, oldBridgeNum, err := uuidtonum.UuidToNumGetOldestUnused(ctx.pubUuidToNum, "bridgeNum")
 		if err != nil {
 			log.Fatal("All 255 bridgeNums are in use!")
 		}
-		uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, uuid)
-		AllocReservedBridgeNumBits.Clear(bridgeNum)
+		log.Infof("Reuse found bridgeNum %d for %s. Reusing!\n",
+			oldBridgeNum, oldUuid)
+		uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, oldUuid)
+		AllocReservedBridgeNumBits.Clear(oldBridgeNum)
+		bridgeNum = oldBridgeNum
 	}
 	if AllocReservedBridgeNumBits.IsSet(bridgeNum) {
 		log.Fatalf("AllocReservedBridgeNums already set for %d\n",
