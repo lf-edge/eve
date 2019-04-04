@@ -44,7 +44,7 @@ QEMU_OPTS_arm64= -machine virt,gic_version=3 -machine virtualization=true -cpu c
 # -drive file=./bios/flash0.img,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
 # [ -f bios/flash1.img ] || dd if=/dev/zero of=bios/flash1.img bs=1048576 count=64
 QEMU_OPTS_amd64= -cpu SandyBridge
-QEMU_OPTS_COMMON= -m 4096 -smp 4 -display none -serial mon:stdio -bios ./bios/OVMF.fd \
+QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m 4096 -smp 4 -display none -serial mon:stdio -bios ./bios/OVMF.fd \
         -rtc base=utc,clock=rt \
         -nic user,id=eth0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::$(SSH_PORT)-:22 \
         -nic user,id=eth1,net=192.168.2.0/24,dhcpstart=192.168.2.10
@@ -118,41 +118,42 @@ rootfs: $(ROOTFS_IMG)
 fallback: $(FALLBACK_IMG).img
 live: fallback
 installer: $(INSTALLER_IMG).raw
+installer-iso: $(INSTALLER_IMG).iso
 
 # NOTE: that we have to depend on pkg/zedctr here to make sure
 # it gets triggered when we build any kind of image target
 images/%.yml: build-tools pkg/zedctr parse-pkgs.sh images/%.yml.in FORCE
 	$(PARSE_PKGS) $@.in > $@
 
-$(CONFIG_IMG): $(DIST) conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/
+$(CONFIG_IMG): conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/ | $(DIST)
 	./maketestconfig.sh $(CONF_DIR) $@
 
-$(ROOTFS_IMG): images/rootfs.yml $(DIST)
+$(ROOTFS_IMG): images/rootfs.yml | $(DIST)
 	./makerootfs.sh $< $(DIST) $(ROOTFS_FORMAT) $@
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
 
-$(FALLBACK_IMG).img: $(DIST) $(FALLBACK_IMG).$(IMG_FORMAT)
+$(FALLBACK_IMG).img: $(FALLBACK_IMG).$(IMG_FORMAT) | $(DIST)
 	@rm -f $@ >/dev/null 2>&1 || :
 	ln -s $< $@
 
-$(FALLBACK_IMG).qcow2: $(DIST) $(FALLBACK_IMG).raw
+$(FALLBACK_IMG).qcow2: $(FALLBACK_IMG).raw | $(DIST)
 	qemu-img convert -c -f raw -O qcow2 $< $@
 	rm $<
 
-$(FALLBACK_IMG).raw: $(DIST) $(ROOTFS_IMG) $(CONFIG_IMG)
+$(FALLBACK_IMG).raw: $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
 	tar c $^ | ./makeflash.sh -C ${MEDIA_SIZE} $@
 
-$(ROOTFS_IMG)_installer.img: images/installer.yml $(DIST) $(ROOTFS_IMG) $(CONFIG_IMG)
+$(ROOTFS_IMG)_installer.img: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
 	./makerootfs.sh $< $(DIST) $(ROOTFS_FORMAT) $@
 	@[ $$(wc -c < "$@") -gt $$(( 300 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 300MB (bigger than allocated partition)" && exit 1 || :
 
-$(INSTALLER_IMG).raw: $(DIST) $(ROOTFS_IMG)_installer.img $(CONFIG_IMG)
+$(INSTALLER_IMG).raw: $(ROOTFS_IMG)_installer.img $(CONFIG_IMG) | $(DIST)
 	tar c $^ | ./makeflash.sh -C 350 $@ "efi imga conf_win"
 	rm $(ROOTFS_IMG)_installer.img
 
-$(INSTALLER_IMG).iso: images/installer.yml $(DIST) $(ROOTFS_IMG) $(CONFIG_IMG)
+$(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
 	./makeiso.sh $< $(DIST) $@
 
 zenix: ZENIX_HASH:=$(shell echo ZENIX_TAG | $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
@@ -227,13 +228,13 @@ help:
 	@echo "Commonly used build targets:"
 	@echo "   build-tools    builds linuxkit and manifest-tool utilities under build-tools/bin"
 	@echo "   build-pkgs     builds all built-time linuxkit packages"
-	@echo "   config.img     builds a bundle with initial Zenix configs"
+	@echo "   config         builds a bundle with initial Zenix configs"
 	@echo "   pkgs           builds all Zenix packages"
 	@echo "   pkg/XXX        builds XXX Zenix package"
-	@echo "   rootfs.img     builds Zenix rootfs image (upload it to the cloud as BaseImage)"
-	@echo "   fallback.img   builds a full disk image of Zenix which can be function as a virtual device"
-	@echo "   installer.raw  builds raw disk installer image (to be installed on bootable media)"
-	@echo "   installer.iso  builds an ISO installers image (to be installed on bootable media)"
+	@echo "   rootfs         builds Zenix rootfs image (upload it to the cloud as BaseImage)"
+	@echo "   fallback       builds a full disk image of Zenix which can be function as a virtual device"
+	@echo "   installer      builds raw disk installer image (to be installed on bootable media)"
+	@echo "   installer-iso  builds an ISO installers image (to be installed on bootable media)"
 	@echo
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
 	@echo "   run-grub          runs our copy of GRUB bootloader and nothing else (very limited usefulness)"
