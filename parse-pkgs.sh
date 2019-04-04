@@ -41,9 +41,10 @@ external_tag() {
   local TAG="`get_git_tag`"
   PKG="$1:${TAG:-snapshot}${ARCH}"
 
-  # for external packages we have to always try to push first - otherwise
+  # for external packages we have to always try to pull first - otherwise
   # we may have something stale in our local Docker cache
-  if (docker pull "$PKG" || echo "WARNING: couldn't fetch the latest $PKG - may be using stale cache") >&2 ; then
+  docker pull "$PKG" 2>/dev/null || echo "WARNING: couldn't fetch the latest $PKG - may be using stale cache" >&2
+  if docker inspect "$PKG" >/dev/null 2>&1 ; then
     echo "$PKG"
   else
     echo "WARNING: failed to obtain $PKG - using $2 instead" >&2
@@ -130,7 +131,7 @@ DEBUG_TAG=$(linuxkit_tag pkg/debug)
 # not logged into the Docker hub you may see final
 # images lacking functionality.
 ZTOOLS_TAG=$(immutable_tag ${ZTOOLS_TAG:-$(external_tag zededa/ztools $(linuxkit_tag pkg/debug))})
-LISP_TAG=$(immutable_tag ${LISP_TAG:-$(external_tag zededa/lisp)})
+LISP_TAG=$(immutable_tag ${LISP_TAG:-$(external_tag zededa/lisp $(linuxkit_tag pkg/debug))})
 
 # Synthetic tags: the following tags are based on hashing
 # the contents of all the Dockerfile.in that we can find.
