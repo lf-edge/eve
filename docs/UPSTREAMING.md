@@ -83,7 +83,7 @@ Exports current grub setting vars. Need and usage is unclear.
 
 ### devices-trees
 
-[devices-trees](pkg/devices-trees/) adds specific device tree source files and compiles them. This is unlikely to be upstreamed anywhere, but may be extractable. This is likely to be a primary place for extensibility.
+[devices-trees](pkg/devices-trees/) adds specific device tree source files and compiles them. This is unlikely to be upstreamed anywhere, but may be extractable. This is likely to be a primary place for extensibility for ARM.
 
 ### fw
 
