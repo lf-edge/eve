@@ -96,7 +96,7 @@ For a live bootable image, named `fallback.img`, we create the following depende
 
 `rootfs.img` is a bootable root filesystem. To build it:
 
-1. Verify the existence of the linuxkit builder configuration file `images/rootfs.yml`
+1. Verify the existence of the linuxkit builder configuration file `images/rootfs.yml`. See notes on [generating yml](#generating-yml).
 2. Call `makerootfs.sh images/rootfs.yml <format> rootfs.img`, which will:
     1. Build an image using `linuxkit` with a tar output format using `images/rootfs.yml` as the configuration file..
     2. Pipe the contents of the tar image to a docker container from either `mkrootfs-ext4` or `mkrootfs-squash`, depending on desired output format.
@@ -182,7 +182,7 @@ For an installable image, named `installer.img`, we create the following depende
 
 To build `rootfs_installer.img`:
 
-1. Ensure the existence of the prerequisites: `rootfs.img`, `config.img`, `images/installer.yml`. The `yml` file is the configuration file for using linuxkit to build the `rootfs_installer.img`.
+1. Ensure the existence of the prerequisites: `rootfs.img`, `config.img`, `images/installer.yml`. The `yml` file is the configuration file for using linuxkit to build the `rootfs_installer.img`. See notes on [generating yml](#generating-yml).
 2. Call `makerootfs.sh images/installer.yml <format> rootfs_installer.img`, which will:
     1. Build an image using `linuxkit` with a tar output format using `images/installer.yml` as the configuration file..
     2. Pipe the contents of the tar image to a docker container from either `mkrootfs-ext4` or `mkrootfs-squash`, depending on desired output format.
@@ -210,6 +210,25 @@ To build `installer.raw`:
     4. Populates the embedded boot partition with the grub `*.EFI` binary and `grub.cfg` file
     5. Validates the image.
 
+## Generating yml
+
+As described earlier, the `yml` files used to generate the images via `linuxkit build` are in the [images/](../images/) directory. The actual files, e.g. `rootfs.yml` and `installer.yml`, are not checked in directly to source code control. Rather, these are _generated_ from `<ymlname>.yml.in`, e.g. [rootfs.yml.in](../images/rootfs.yml.in) and [installer.yml.in](../images/installer.yml.in). The generation is as follows:
+
+```
+parse-pkgs.sh <yml>.in > <yml>
+```
+
+This is used to replace the tags of various components in the `.yml.in` file with the correct current image name and tag for various packages, including the correct architecture. 
+
+The output `.yml` file is stored in the same directory as the `.yml.in` file, i.e. [images/](../images/).
+
+This creates several challenges, which will, eventually, be cleaned up:
+
+1. The `images/` source directory is unclean, with both committed and non-committed code in the same directory.
+2. The same input file, e.g. `rootfs.yml`, appears to be usable with different architectures, but actually is not, as it is architecture-specific.
+3. It is necessary to pre-process the actual source files before generating an image. It is not possible to run `linuxkit build` manually to generate an image. This makes building and debugging individual steps harder.
+
+These are all due to constraints within the usage of the `yml` files. If a cleaner solution requires upstreaming into linuxkit, it will be added to the [UPSTREAMING.md](./UPSTREAMING.md) file.
 
 ## Image Contents
 
