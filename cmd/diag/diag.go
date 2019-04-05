@@ -245,6 +245,8 @@ func handleLedBlinkModify(ctxArg interface{}, key string,
 		ctx.UsableAddressCount)
 	log.Infof("counter %d usableAddr %d, derived %d\n",
 		ctx.ledCounter, ctx.UsableAddressCount, ctx.derivedLedCounter)
+	// XXX wait in case we get another handle call?
+	// XXX set output sched in ctx; print one second later?
 	printOutput(ctx)
 }
 
@@ -275,6 +277,8 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 			ctx.ledCounter, ctx.UsableAddressCount, ctx.derivedLedCounter)
 	}
 	// XXX can we limit to interfaces which changed?
+	// XXX wait in case we get another handle call?
+	// XXX set output sched in ctx; print one second later?
 	printOutput(ctx)
 	log.Infof("handleDNSModify done for %s\n", key)
 }
@@ -300,6 +304,8 @@ func handleDNSDelete(ctxArg interface{}, key string,
 		log.Infof("counter %d usableAddr %d, derived %d\n",
 			ctx.ledCounter, ctx.UsableAddressCount, ctx.derivedLedCounter)
 	}
+	// XXX wait in case we get another handle call?
+	// XXX set output sched in ctx; print one second later?
 	printOutput(ctx)
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
@@ -321,6 +327,8 @@ func handleDPCModify(ctxArg interface{}, key string, statusArg interface{}) {
 	*ctx.DevicePortConfigList = status
 	// XXX can we limit to interfaces which changed?
 	// XXX exclude if only timestamps changed?
+	// XXX wait in case we get another handle call?
+	// XXX set output sched in ctx; print one second later?
 	printOutput(ctx)
 	log.Infof("handleDPCModify done for %s\n", key)
 }
