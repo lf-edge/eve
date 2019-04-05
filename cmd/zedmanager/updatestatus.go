@@ -252,6 +252,13 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		}
 		log.Warnln(errString)
 	}
+	// XXX figure out which ones are added and which ones are removed
+	// XXX allow for failures in the removed ones by setting a flag ErrorAllowed
+	// Allows for downloader and verifier errors for those which are being
+	// replaced
+	// XXX remove assumption that the order is the same; walk Config and
+	// lookup in Status, then walk Status and lookup in Config to find
+	// removed and mark them as ErrorAllowed in StorageStatus
 	for i, sc := range config.StorageConfigList {
 		if i >= len(status.StorageStatusList) {
 			nss := lookupStorageStatus(status, sc)
@@ -374,6 +381,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				safename)
 			dst, err := lookupDatastoreConfig(ctx, ss.DatastoreId,
 				ss.Name)
+			// XXX check if ErrorAllowed
 			if err != nil {
 				// Remember to check when Datastores are added
 				ss.MissingDatastore = true
@@ -417,6 +425,9 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				safename)
 			continue
 		}
+		// XXX check if ErrorAllowed; if so proceed with ss.Error set
+		// but no allErrors
+		// XXX what about errorSource which goes into status? Don't set it.
 		if ds.LastErr != "" {
 			log.Errorf("Received error from downloader for %s: %s\n",
 				safename, ds.LastErr)
@@ -517,6 +528,9 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				safename)
 			continue
 		}
+		// XXX check if ErrorAllowed; if so proceed with ss.Error set
+		// but no allErrors
+		// XXX what about errorSource which goes into status? Don't set it.
 		if vs.LastErr != "" {
 			log.Errorf("Received error from verifier for %s: %s\n",
 				safename, vs.LastErr)
@@ -956,10 +970,9 @@ func doRemove(ctx *zedmanagerContext, uuidStr string,
 
 	changed := false
 	done := false
-	if status.Activated || status.ActivateInprogress {
-		c := doInactivate(ctx, uuidStr, status)
-		changed = changed || c
-	}
+	c := doInactivate(ctx, uuidStr, status)
+	changed = changed || c
+
 	if !status.Activated {
 		c := doUnprepare(ctx, uuidStr, status)
 		changed = changed || c
