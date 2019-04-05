@@ -22,12 +22,11 @@ const (
 	reasonFile = "reboot-reason"
 )
 
-var savedAgentName string // Keep for signal and exit handlers
+var savedAgentName string = "unknown" // Keep for signal and exit handlers
 
 func initImpl(agentName string, logdir string, redirect bool,
 	text bool) (*os.File, error) {
 
-	savedAgentName = agentName
 	logfile := fmt.Sprintf("%s/%s.log", logdir, agentName)
 	logf, err := os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND,
 		0666)
@@ -219,6 +218,7 @@ func Init(agentName string, curpart string) (*os.File, error) {
 		zboot.SetCurpart(curpart)
 	}
 	logdir := GetCurrentLogdir()
+	savedAgentName = agentName
 	return initImpl(agentName, logdir, true, false)
 }
 
@@ -226,6 +226,7 @@ func InitWithDirText(agentName string, logdir string, curpart string) (*os.File,
 	if curpart != "" {
 		zboot.SetCurpart(curpart)
 	}
+	savedAgentName = agentName
 	return initImpl(agentName, logdir, true, true)
 }
 
