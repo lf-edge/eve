@@ -205,10 +205,12 @@ To build `installer.raw`:
     3. Populates each partition with its appropriate contents:
         * `efi`: contents of `/EFI/BOOT/` from `/parts/rootfs.img`
         * `imga`: contents of `/parts/rootfs.img`
-        * `conf_win`: contents of `/parts/config.img`. `conf_win` is different from `conf` only in the partition type. It is unclear why this matters for the installer.
+        * `conf_win`: contents of `/parts/config.img`. `conf_win` is different from `conf` only in the partition type. This is required so that this partition can be mounted on MacOS and Windows machines for users to add/change configuration on the fly. 
         * `persist`: contents of `/parts/persist.img` if it exists, else empty
     4. Populates the embedded boot partition with the grub `*.EFI` binary and `grub.cfg` file
     5. Validates the image.
+
+Note that once you flash installer.raw on the USB drive (or any other medium) you will then get an ability to update configuration on the fly via mounting conf_win partition.
 
 ## Generating yml
 
@@ -298,30 +300,30 @@ The following custom packages are used:
 
 * kernel: EVE uses its own custom kernel package, rather than one of the standard linuxkit ones. This is primarily due to kernel modules and drivers, especially on arm, as well as Xen requirements.
 * `init` packages:
-    * `zededa/grub` - 
-    * `zededa/devices-trees` - 
-    * `zededa/fw` - 
-    * `zededa/xen` - 
-    * `zededa/gpt-tools` - 
-    * `zededa/dom0-ztools` - 
+    * `zededa/grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades.
+    * `zededa/devices-trees` - device trees for all the ARM platforms that EVE supports.
+    * `zededa/fw` - various firmware required for device drivers.
+    * `zededa/xen` - a single Xen binary required to boot EVE.
+    * `zededa/gpt-tools` - ChromiumOS inspired tools and sgdisk required to enable CoreOS-style dual partition upgrades. 
+    * `zededa/dom0-ztools` - catch-all containers for tools helpful in developing and debugging EVE. 
 * `onboot` packages:
-    * `zededa/rngd` - custom `zededa/rngd` package, rather than the standard linuxkit one. _Why?_
+    * `zededa/rngd` - custom `zededa/rngd` package, rather than the standard linuxkit one. This micro-fork accommodates the [following hack](https://github.com/zededa/zenbuild/blob/master/pkg/rngd/cmd/rngd/rng_linux_arm64.go) which provides some semblance of seeding randomness on ARM. Without this HiKey board won't boot. 
 * `services` packages:
-    * `zededa/wwan` - WWAN drivers and software. LTE? 3G? 2G?
-    * `zededa/wlan` - WLAN drivers and software.
-    * `zededa/guacd` - 
+    * `zededa/wwan` - WWAN drivers and software. LTE/3G/2G. Mostly experimental.
+    * `zededa/wlan` - WLAN drivers and software. Currently a glorified wrapper around wpa_supplicant.
+    * `zededa/guacd` - [Apache Guacamole service](http://guacamole.apache.org/) that provides console and VDI services to running VMs and containers. 
     * `zededa/zedctr` - a "catch-all" package for EVE tools; see below.
 
 **Installer**
 
-* kernel: EVE uses its own custom kernel package, rather than one of the standard linuxkit ones. _Why?_
+* kernel: EVE uses its own custom kernel package, rather than one of the standard linuxkit ones. This is required since EVE's installer has a double duty as a verification tool for whether hardware can support running Xen. We do this by booting Xen (see below) with the same kernel that the actual EVE deployment will use.
 * `init` packages:
-    * `zededa/grub` - 
-    * `zededa/devices-trees` - 
-    * `zededa/xen` - 
-    * `zededa/dom0-ztools` - 
+    * `zededa/grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades.
+    * `zededa/devices-trees` - device trees for all the ARM platforms that EVE supports.
+    * `zededa/xen` - a single Xen binary required to boot EVE.
+    * `zededa/dom0-ztools` - catch-all containers for tools helpful in developing and debugging EVE.
 * `onboot` packages:
-    * `zededa/rngd` - custom EVE rngd package, rather than the standard linuxkit one. _Why?_
+    * `zededa/rngd` - custom EVE rngd package, rather than the standard linuxkit one. This micro-fork accommodates the [following hack](https://github.com/zededa/zenbuild/blob/master/pkg/rngd/cmd/rngd/rng_linux_arm64.go) which provides some semblance of seeding randomness on ARM. Without this HiKey board won't boot.
     * `zededa/mkimage-raw-efi` - custom EVE version of `mkimage-raw-efi` to create an ext4 image, used to make the correct filesystems on the target install disk.
 
 #### zedctr

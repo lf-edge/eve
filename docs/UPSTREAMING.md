@@ -17,9 +17,7 @@ The document is divided into two parts:
 
 [makerootfs.sh](../makerootfs.sh) is a script that runs `linuxkit build` based on the passed config `yml`, outputs a tar stream, and passes the resultant tar stream to [mkrootfs-ext4](../pkg/mkrootfs-ext4) or [mkrootfs-squash](../pkg/mkrootfs-squash), depending on the selected output format. `mkrootfs-<format>` builds the tar stream into an output disk image file with the desired filesystem format (ext4|squashfs).
 
-It is not clear why this cannot be replaced with `linuxkit build -o raw-efi` or `linuxkit build -o kernel+squashfs`. The missing elements are listed here:
-
-* 
+When we started using linuxkit `linuxkit build -o kernel+squashfs` wasn't available, but it is entirely possible that we can simply transition to `linuxkit build -o raw-efi` or `linuxkit build -o kernel+squashfs` now.
 
 
 ### makeflash
@@ -78,7 +76,7 @@ In the function `grub_install_remove_efi_entries_by_distributor`, sets the defau
 
 #### 0006-export-vars.patch
 
-Exports current grub setting vars. Need and usage is unclear.
+Exports current grub setting vars. This is required for our use in grub.cfg where we [set global variable from submenus](../pkg/grub/rootfs.cfg).
 
 
 ### devices-trees
@@ -108,7 +106,7 @@ Further, the boot process is a bit "backwards", at least for the live `rootfs.im
 
 * `sgdisk` - with specific patches listed [here](../pkg/gpt-tools/patches)
 * `cgpt` - works with ChromeOS-specific GPT partitioning
-* [zboot](../pkg/gpt-tools/files/zboot) - a script whose purpose is unknown. It is not referenced elsewhere that we can find.
+* [zboot](../pkg/gpt-tools/files/zboot) - a script that is the main entry point for EVE Go code querying and manipulating the state of partitions
 
 Upstreaming may be possible with `sgdisk`, if the patches are included. 
 

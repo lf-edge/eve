@@ -35,7 +35,7 @@ The image `zededa/zedctr` is built from its [Dockerfile](../pkg/zedctr/Dockerfil
 It is built from the following packages, installed into the following locations:
 
 |Package|Image|Source|Install|Purpose|Comments|
-|---|---|---|---|---|
+|-------|-----|------|-------|-------|--------|
 |ztools|`zededa/ztools`|[go-provision](https://github.com/zededa/go-provision)|`/`|Interface with cloud controller||
 |lisp|`zededa/lisp`|[lisp](https://github.com/zededa/lisp)|[Locator/Identifier Separation Protocol](https://en.wikipedia.org/wiki/Locator/Identifier_Separation_Protocol)|see list [here](#lisp-install)|implementation for mesh networking|custom implementation in [go](https://golang.org) to provide a high performance dataplane. The control plane uses code from the Python reference implementation|
 |xen tools|`zededa/xen-tools`|[pkg/xen-tools](../pkg/xen-tools)|`/`|Xen utilities||
