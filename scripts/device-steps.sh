@@ -45,7 +45,7 @@ if [ $CLEANUP = 1 -a -d $PERSISTDIR/downloads ]; then
     echo "Cleaning up download dir $PERSISTDIR/downloads"
     rm -rf $PERSISTDIR/downloads
 fi
-    
+
 echo "Handling restart case at" `date`
 
 if [ `uname -m` != "x86_64" ]; then
@@ -227,6 +227,8 @@ echo
 # Places for persistent across reboots global config and status
 if [ ! -d $GCDIR ]; then
     mkdir -p $GCDIR
+fi
+if [ ! -f $GCDIR/global.json ]; then
     echo '{}' >$GCDIR/global.json
 fi
 if [ -f /var/tmp/zededa/GlobalConfig ]; then
@@ -364,7 +366,7 @@ fi
 
 # Wait for having IP addresses for a few minutes
 # so that we are likely to have an address when we run ntp
-echo $BINDIR/waitforaddr 
+echo $BINDIR/waitforaddr
 $BINDIR/waitforaddr -c $CURPART
 
 # We need to try our best to setup time *before* we generate the certifiacte.
@@ -427,7 +429,7 @@ if [ ! \( -f $CONFIGDIR/device.cert.pem -a -f $CONFIGDIR/device.key.pem \) ]; th
 elif [ -f $CONFIGDIR/self-register-failed ]; then
     echo "self-register failed/killed/rebooted"
     $BINDIR/client -c $CURPART -r 5 getUuid
-    if [ $? != 0 ]; then 
+    if [ $? != 0 ]; then
 	echo "self-register failed/killed/rebooted; getUuid fail; redoing self-register"
 	SELF_REGISTER=1
     else
@@ -466,7 +468,7 @@ fi
 
 if [ $SELF_REGISTER = 1 ]; then
     rm -f $TMPDIR/zedrouterconfig.json
-    
+
     touch $CONFIGDIR/self-register-failed
     echo "Self-registering our device certificate at " `date`
     if [ ! \( -f $CONFIGDIR/onboard.cert.pem -a -f $CONFIGDIR/onboard.key.pem \) ]; then
@@ -483,7 +485,7 @@ if [ $SELF_REGISTER = 1 ]; then
     if [ $WAIT = 1 ]; then
 	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
-    echo $BINDIR/client getUuid 
+    echo $BINDIR/client getUuid
     $BINDIR/client -c $CURPART getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
 	/opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
@@ -507,7 +509,7 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
 else
     echo "XXX until cloud keeps state across upgrades redo getUuid"
-    echo $BINDIR/client getUuid 
+    echo $BINDIR/client getUuid
     $BINDIR/client -c $CURPART getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
 	# XXX for upgrade path
@@ -551,7 +553,7 @@ if [ $SELF_REGISTER = 1 ]; then
 		echo "Found interface $intf based on route to map servers"
 	else
 		echo "NOT Found interface based on route to map servers. Giving up"
-		exit 1    
+		exit 1
 	fi
 	cat <<EOF >"$DNCDIR/$MODELFILE"
 {"Uplink":["$intf"], "FreeUplinks":["$intf"]}

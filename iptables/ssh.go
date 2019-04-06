@@ -22,6 +22,7 @@ func UpdateSshAccess(enable bool, first bool) {
 		// Always blocked
 		dropPortRange(8080, 8080)
 		allowLocalPortRange(4822, 4822)
+		allowLocalPortRange(5900, 5999)
 	}
 	if enable {
 		allowPortRange(22, 22)
