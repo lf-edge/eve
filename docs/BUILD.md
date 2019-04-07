@@ -462,7 +462,64 @@ The following are build tools used to create EVE images, their purpose and sourc
 * [makerootfs.sh](../makerootfs.sh) - call `linuxkit` to build a bootable image's filesystem, in tar format, for `rootfs.img` or `rootfs_installer.img`. Passes the resultant tar stream to a container from `pkg/mkrootfs-squash` or `pkg/mkrootfs-ext4`, depending on desired output format.
 * [mkrootfs-squash](../pkg/mkrootfs-squash) or [mkrootfs-ext4](../pkg/mkrootfs-ext4) - take a build rootfs from the previous step as stdin in tar stream format, customize it with a filesystem UUID and other parameters, and create a squashfs or ext4 filesystem.
 * [makeflash.sh](../makeflash.sh) - take an input tar stream of several images, primarily `rootfs.img` and `config.img`. Create a file to use as an image of a target size or default. Passes the resultant tar stream to a container from `pkg/mkimage-raw-efi`.
-* [mkimage-raw-efi](../pkg/mkimage-raw-efi] - create an output file that represents an entire disk, with multiple partitions. By default, `efi`,`imga`,`imgb`,`config`,`persist`. The installer image creates only `efi`,`img`,`config`.
+* [mkimage-raw-efi](../pkg/mkimage-raw-efi) - create an output file that represents an entire disk, with multiple partitions. By default, `efi`,`imga`,`imgb`,`config`,`persist`. The installer image creates only `efi`,`img`,`config`.
 * [maketestconfig.sh](../maketestconfig.sh) - package up the provided directory, normally [conf/](../conf/) into a tar stream, and pass to a container from `pkg/mkconf`.
 * [mkconf](../pkg/mkconf) - combine the input tar stream with defaults in `/conf/` from `zededa/ztools` into a new container image in `/`. Create a FAT32 disk image from it.
+* [parse-pkgs.sh](../parse-pkgs.sh) - determine the correct latest hash to use for all packages and higher-order components. See [parse-pks](#parse-pkgs).
+
+### parse-pkgs
+
+In many cases, we want to build an image not from a specific commit we actively know for individual packages, but from the latest specific version currently available. For example, if our linuxkit config `yml` looks as follows:
+
+```yml
+kernel:
+  image: zededa/kernel:7cfa13614bb99a84030db209b6c9a0696c7d3315-amd64
+  cmdline: "rootdelay=3"
+init:
+  - zededa/grub:97e7b1404e7c9d141eddb58294fcff019f61571b-amd64
+  - zededa/device-trees:18377dd0bc3c33a1602e94a4c43aa0b3c51badb9-amd64
+  - zededa/fw:1d8c22ae31c42d767ba648b186db4ea967a9c569-amd64
+  - zededa/xen:f51bf3d17fad15b71242befbddec96e177132a99-amd64
+  - zededa/gpt-tools:fe878611e4e032ea10946cbc9a1c3d5b22349dc4-amd64
+  - zededa/dom0-ztools:b53cd1b5785c128371a5997e3a6e16007718c12d-amd64
+```
+
+We may want to rebuild using the latest version currently available to us of each of the above packages. If we changed 1, 3 or even all of them, it is a tedious and error-prone job to change the hashes of the commits for each of them.
+
+Similarly, a `pkg/` may be sourced from another package which, in turn, has a specific commit. For example, the first line of the mkconf [Dockerfile](../pkg/mkconf/Dockerfile) is:
+
+```yml
+FROM zededa/ztools@sha256:4a6d0bcfc33a3096398b4daa0931f9583c674358eeb47241e0df5f96e24c0110 as zededa
+```
+
+We may want to update to the latest current version of `zededa/ztools`. 
+
+At the same time, we do not want to use `latest` or some similar version, is it creates a non-reproducible build; we simply do not know what was used to build a package or an image. The mutable `latest` tag is considered an anti-pattern.
+
+The purpose of [parse-pkgs](../parse-pkgs.sh) is to collect the actual hashes of the latest version of every relevant package and either report them to stdout or modify a template file à la sed.
+
+It does the following:
+
+1. Receive the `DOCKER_ARCH_TAG` var and, if not present, determine it from `uname -m` and canonicalize it.
+2. Receive the `ZENBUILD_VERSION` var and, if not present, determine it from `zenbuild_version`.
+3. Determine the latest tag for each package in a list, roughly approximating every directory in `pkg/` using `linuxkit pkg show-tag pkg/<dir>` and save it as a var with name `<pkg-as-uppercase>_TAG`, e.g. `STRONGSWAN_TAG`
+4. For external packages - `zededa/ztools` and `zededa/lisp` - determine the tag by pulling the latest tag for the image, and then running `docker inspect --format='{{index .RepoDigests 0}}' <image>` or, if that fails, `docker inspect --format='{{.Id}}' <image>`. **Note:** This could be done in a much lighterweight fashion by inspecting the manifest. However, since docker uses content-addressable storage, it will only save slightly, since the image will need to be pulled to build anyways.
+5. For internal packages that combine other packages - `zededa/zedctr` and `zededa/zenix` - do a more complicated versioning:
+    1. `cat pkg/<pkg>/Dockerfile.in`
+    2. resolve all of the tags to actual latest versions to create a ready-to-run `Dockerfile`
+    3. create a hash of the generated `Dockerfile`
+6. Modify all stdin to replace any tags with the appropriate named and hashed packages, e.g. `STRONGSWAN_TAG` to `zededa/strongswan@sha256:abcdef5678`
+
+The current build process with `parse-pkgs.sh` creates some challenges:
+
+* The templated inputs, e.g. `Dockerfile.in` or `rootfs.yml.in`, are easily checked into version control, while the generated `Dockerfile` or `rootfs.yml` are not. These leave artifacts throughout the tree that are the sources of actual builds and should be checked in.
+* The generated files tend to be architecture-specific. These can be resolved by using multi-arch manifests. This, in turn, will make the previous issue easier to solve.
+* `parse-pkgs.sh` is run with every invocation of `make`, even `make -n`. The lists of local packages to be resolved with `linuxkit pkg show-tag` is fairly quick, pulling down and resolving the actual images for external packages is slow. In all cases, if possible, these should be deferred until actual build requires them. This is resolvable via `Makefile` changes.
+* The list of packages is hard-coded into `parse-pkgs.sh`. This makes it brittle and hard to add packages. If possible, this should be moved to parsing the `pkg/` directory.
+
+Last but not least, is this completely necessary? 
+
+* `images/*.yml`: The need to update `images/*.yml` is understood, as these packages change a lot. Even so, the utilities might be better structured as a separate external utility that is run manually. Most of the time, you just build from a static `rootfs.yml` or `installer.yml`. When you want to update them, you run `update-images` (or similar) and it updates them. Finally, you commit when a good build is ready.
+* `pkg/*/Dockerfile`: The need to generate `Dockerfile` for many of the packages may mean too much cross-dependency, which can be brittle. It is possible that this is necessary, and there is no other way around it. However, we should explore how we can simplify dependencies.
+
 
