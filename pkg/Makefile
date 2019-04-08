@@ -34,5 +34,5 @@ clean:
 dockerfiles: $(addsuffix /Dockerfile, $(PKGS)/)
 
 %: %.in $(RESCAN_DEPS)
-	(cd ..; ./parse-pkgs.sh pkg/$< > pkg/$@)
+	(cd ..; ./tools/parse-pkgs.sh pkg/$< > pkg/$@)
 FORCE:
