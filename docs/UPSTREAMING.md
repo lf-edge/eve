@@ -17,8 +17,7 @@ The document is divided into two parts:
 
 [makerootfs.sh](../makerootfs.sh) is a script that runs `linuxkit build` based on the passed config `yml`, outputs a tar stream, and passes the resultant tar stream to [mkrootfs-ext4](../pkg/mkrootfs-ext4) or [mkrootfs-squash](../pkg/mkrootfs-squash), depending on the selected output format. `mkrootfs-<format>` builds the tar stream into an output disk image file with the desired filesystem format (ext4|squashfs).
 
-When we started using linuxkit `linuxkit build -o kernel+squashfs` wasn't available, but it is entirely possible that we can simply transition to `linuxkit build -o raw-efi` or `linuxkit build -o kernel+squashfs` now.
-
+When we started using linuxkit `linuxkit build -o kernel+squashfs` wasn't available, but it is entirely possible that we can simply transition to `linuxkit build -o raw-efi` or `linuxkit build -o kernel+squashfs` now. **Task:** investigate whether the result of `linuxkit build -o kernel+squashfs` or `linuxkit build -o raw-efi` will provide the desired output.
 
 ### makeflash
 
@@ -44,13 +43,27 @@ The customizations we apply via patches, and their purpose (i.e. we why need the
 
 #### 0000-core-os-merge.patch
 
-Merge in all of the changes that the CoreOS (RIP, CoreOS Inc) team included in their [fork of grub](https://github.com/coreos/grub). These include the following, and why we need them:
+Merge in all of the changes that the CoreOS (RIP, CoreOS Inc) team included in their [fork of grub](https://github.com/coreos/grub). These include the following, and why we need them.
 
-* PLEASE FILL IN
+Generally, most of the support we needed was for tpm and a few other capabilities. We need to do the following:
+
+1. Create a state diagram for our boot process.
+2. Determine the logic used to transition between states.
+3. Determine the tools that implement the given logic.
+4. For state transitions that depend on grub, determine if grub mainstream supports it.
+5. Isolate just those elements that: are required for state transitions; are not implemented in mainstream grub; cannot be worked around in any other mainstream way. 
+6. Apply just those patches.
+7. Upstream those few patches.
+
+For a reference boot state diagram from Android, see [this one](https://source.android.com/security/verifiedboot/boot-flow).
 
 #### 0001-TPM-build-issue-fixing.patch
 
-Apparently, there is build issue which mainstream grub (or possibly just coreos's version) has when building the tpm support. This fixes it in both `tpm.h` and `tpm.c`. The patch was submitted via staff at ARM in August 2017, so it is unclear if this is an issue _just_ on arm architectures, or a general problem. Additionally, even though tpm support was added (at least for efi booting) in mainstream grub as of late December 2018 into early 2019, `tpm.c` does not exist in the given location, and may be elsewhere. This entire patch may or may not be necessary.
+Apparently, there is build issue which CoreOS grub has when building the tpm support; this fixes it in both `tpm.h` and `tpm.c`. The patch was submitted via staff at ARM in August 2017, so it is unclear if this is an issue _just_ on arm architectures, or a general problem. Additionally, even though tpm support was added (at least for efi booting) in mainstream grub as of late December 2018 into early 2019, `tpm.c` does not exist in the given location, and may be elsewhere. This entire patch may or may not be necessary.
+
+More importantly, the purpose of the tpm patches to grub in general are for static root of trust measurement (SRTM), or measured boot. We currently do not use measured boot, and as such, this patch may be unnecessary.
+
+**Task:** See if the issue exists in mainstream grub.
 
 #### 0002-video-Allow-to-set-pure-text-mode-in-case-of-EFI.patch
 
@@ -58,15 +71,21 @@ Mainstream grub's loader for `i386/linux`, when EFI is defined via `define GRUB_
 
 It is unclear _why_ mainstream grub does not accept pure text mode, and should be investigated.
 
+**Task:** Determine why mainstream grub does not accept pure text and offer patch upstream.
+
 #### 0003-allow-probe-partuuid.patch
 
 Mainstream grub's does not enable searching for partitions via the partition's UUID. It does for filesystem elements, including its label and UUID, but not the partition's. This adds support for searching via partition UUID.
 
+**Task:** Upstream support for probing via partition UUID.
+
 #### 0004-Disabling-linuxefi-after-the-merge.patch
 
-This disables and removes the `linuxefi` command that the coreos grub patch added.
+This disables and removes the `linuxefi` command that the coreos grub patch added. The original purpose of the `linuxefi` option, added [here](https://github.com/coreos/grub/pull/4) appears to be to handle shims for secure boot.
 
-It is unclear _why_ we need to remove this. The original purpose of the `linuxefi` option, added [here](https://github.com/coreos/grub/pull/4) appears to be to handle shims for secure boot, but may have other usages. 
+This was removed because of issues with building it. If we are sticking with CoreOS's fork - which we should not, as it largely is abandonware - then we should make this work. Else, it is irrelevant.
+
+**Task:** Get linuxefi to work, or remove it from CoreOS patch 0000.
 
 #### 0005-rc-may-be-used-uninitialized.patch
 
@@ -77,6 +96,15 @@ In the function `grub_install_remove_efi_entries_by_distributor`, sets the defau
 #### 0006-export-vars.patch
 
 Exports current grub setting vars. This is required for our use in grub.cfg where we [set global variable from submenus](../pkg/grub/rootfs.cfg).
+
+Traditionally, grub would have menu options, each of which would launch a boot option with variables set. However, if there is a moderately large number of variables and a moderately large number of boot options, we end up with an MxN problem with a very large number of menu entries.
+
+We attempt to solve this by making the grub variables settable from within the menu. This leaves one menu to set each option, and one menu to boot after options are set.
+
+For upstreaming, we should:
+
+1. See if there is an easier or more canonical way to do the same thing without a custom patch. If so, use it. 
+2. If not, present the use case to grub upstream and get the patch upstreamed.
 
 
 ### devices-trees
@@ -106,9 +134,14 @@ Further, the boot process is a bit "backwards", at least for the live `rootfs.im
 
 * `sgdisk` - with specific patches listed [here](../pkg/gpt-tools/patches)
 * `cgpt` - works with ChromeOS-specific GPT partitioning
-* [zboot](../pkg/gpt-tools/files/zboot) - a script that is the main entry point for EVE Go code querying and manipulating the state of partitions
+* [zboot](../pkg/gpt-tools/files/zboot) - a script that is the main entry point for EVE Go code querying and manipulating the state of partitions. It makes it easy to read and set partition information, by wrapping calls to `cgpt`.
 
-Upstreaming may be possible with `sgdisk`, if the patches are included. 
+The primary purpose of the changes to `sgdisk` and `cgpt` are to support adding additional states on partitions. Normally, GPT partitions have a limited number of attributes. In order to support the a/b partition boot style, we wish to add additional states, notably `active`, `updating` and `unused`. The patches to `cgpt` and `sgdisk` add support for these attributes. Essentially, we are abusing the partition state bits to add our own custom attributes.
+
+We will explore two options:
+
+1. Are there alternate ways to signify the desired partition states using standard tools?
+2. If not, can we upstream the additional states, or some form of custom states, to `sgdisk` and `cgpt`?
 
 ### dom0-ztools
 

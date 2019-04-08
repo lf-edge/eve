@@ -2,6 +2,23 @@
 
 This document describes how the EVE build process works, its dependencies, inputs and outputs. The planned complementary document [CONTRIBUTING.md](./CONTRIBUTING.md) describes how to contribute to EVE.
 
+## EVE Install Methods
+
+Before describing how EVE is _built_, it is important to understand how EVE is _installed_. EVE has two distinct installation methods:
+
+* Live
+* Installer
+
+### Live
+
+A live image is ready for an actual device. It is flashed directly to a USB drive or SD card, which is then installed into a final device. As such, the live image has all of the necessary partitions, and is not expected to boot anything but a live device.
+
+### Installer
+
+An installer image is intended to be booted on multiple devices, each time installing a live image onto the local device. It is flashed to a USB drive or SD card. The card is then installed into a device, the device is booted, the installer installs a live image onto the device's actual long-term storage, and then the install media is disconnected and moved to the next device to repeat the process.
+
+Since an installer is many-use, potentially across many sites, the small amount of configuration may need to change between sets of installs. The installer image can have its configuration changed between installs by connecting it to a live running system.
+
 ## Dependencies
 
 EVE uses several build tools, some of which are prerequisites, while others are installed as needed.
@@ -134,7 +151,7 @@ To build `fallback.raw`:
     3. Populates each partition with its appropriate contents:
         * `efi`: contents of `/EFI/BOOT/` from `/parts/rootfs.img`
         * `imga`/`imgb`: contents of `/parts/rootfs.img`
-        * `conf`: contents of `/parts/config.img`
+        * `conf`: contents of `/parts/config.img` as a partition of type `13307e62-cd9c-4920-8f9b-91b45828b798`. This is a custom GUID for EVE configuration.
         * `persist`: contents of `/parts/persist.img` if it exists, else empty
     4. Populates the embedded boot partition with the grub `*.EFI` binary and `grub.cfg` file
     5. Validates the image.
@@ -205,12 +222,12 @@ To build `installer.raw`:
     3. Populates each partition with its appropriate contents:
         * `efi`: contents of `/EFI/BOOT/` from `/parts/rootfs.img`
         * `imga`: contents of `/parts/rootfs.img`
-        * `conf_win`: contents of `/parts/config.img`. `conf_win` is different from `conf` only in the partition type. This is required so that this partition can be mounted on MacOS and Windows machines for users to add/change configuration on the fly. 
+        * `conf_win`: contents of `/parts/config.img` as partition type `EBD0A0A2-B9E5-4433-87C0-68B6B72699C7`, or Windows Data partition. Other than the partition type, `conf_win` is idential to `conf`. This is required so that this partition can be mounted on MacOS and Windows machines for users to add/change configuration on an installer image in between installs.
         * `persist`: contents of `/parts/persist.img` if it exists, else empty
     4. Populates the embedded boot partition with the grub `*.EFI` binary and `grub.cfg` file
     5. Validates the image.
 
-Note that once you flash installer.raw on the USB drive (or any other medium) you will then get an ability to update configuration on the fly via mounting conf_win partition.
+Note that once you flash `installer.raw` on the installer media, such as USB drive or SD card, since the `conf_win` partition is a Windows Data partition, most operating systems will recognize it and allow you to mount it. This allows you to update configuration on the the installer media between installs.
 
 ## Generating yml
 
@@ -300,11 +317,11 @@ The following custom packages are used:
 
 * kernel: EVE uses its own custom kernel package, rather than one of the standard linuxkit ones. This is primarily due to kernel modules and drivers, especially on arm, as well as Xen requirements.
 * `init` packages:
-    * `zededa/grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades.
+    * `zededa/grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades. See [UPSTREAMING.md](./UPSTREAMING.md#grub) for a more detailed discussion of what is unique in this grub.
     * `zededa/devices-trees` - device trees for all the ARM platforms that EVE supports.
     * `zededa/fw` - various firmware required for device drivers.
     * `zededa/xen` - a single Xen binary required to boot EVE.
-    * `zededa/gpt-tools` - ChromiumOS inspired tools and sgdisk required to enable CoreOS-style dual partition upgrades. 
+    * `zededa/gpt-tools` - ChromiumOS inspired tools and sgdisk required to enable CoreOS-style dual partition upgrades. See [UPSTREAMING.md](./UPSTREAMING.md#grub) for a more detailed discussion of what is unique in these versions of the gpt tools.
     * `zededa/dom0-ztools` - catch-all containers for tools helpful in developing and debugging EVE. 
 * `onboot` packages:
     * `zededa/rngd` - custom `zededa/rngd` package, rather than the standard linuxkit one. This micro-fork accommodates the [following hack](https://github.com/zededa/zenbuild/blob/master/pkg/rngd/cmd/rngd/rng_linux_arm64.go) which provides some semblance of seeding randomness on ARM. Without this HiKey board won't boot. 
@@ -316,7 +333,7 @@ The following custom packages are used:
 
 **Installer**
 
-* kernel: EVE uses its own custom kernel package, rather than one of the standard linuxkit ones. This is required since EVE's installer has a double duty as a verification tool for whether hardware can support running Xen. We do this by booting Xen (see below) with the same kernel that the actual EVE deployment will use.
+* kernel: EVE uses its own custom kernel package, rather than one of the standard linuxkit ones. Technically, the installer could use a standard linux kernel from [linuxkit/kernel](https://github.com/linuxkit/kernel). However, while _installing_ has few special requirements, _booting_ the live system _does_ have requirements, including proper xen support and appropriate device drivers functioning. Rather than having the install function, only to have the live boot fail because of driver, module or xen issues, we boot the installer with the exact same kernel as the live system, allowing it to serve double-duty as both an installer and a verifier.
 * `init` packages:
     * `zededa/grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades.
     * `zededa/devices-trees` - device trees for all the ARM platforms that EVE supports.
