@@ -9,21 +9,21 @@ The onboarding of devices is done by scripts/device-steps.sh, and after onboardi
 The agents are:
  - ledmanager - make LEDs light/blink for feedback to the person installing the hardware
  - nim - network interface manager (ensures that there is connectivity to the controller)
- - waitforaddr - merely waiting for a few minutes max for IP address(es) for a more orderly boot in the normal case.
+ - waitforaddr - merely waiting for a few minutes max for IP address(es) for a more orderly boot in the normal case
  - zedagent - communicate using the device API to the controller to retrieve configuration and send status and metrics
  - logmanager - send logs to the controller for debugging of these agents
  - baseosmgr - handle updates of the base OS (hypervisors plus all of the services which make up EVE) using dual partitions for fallback
  - downloader - download objects like images and certificates
  - verifier - verify cryptographic checksums and signatures on downloaded objects
  - zedmanager - drive the application instance lifecycle
- - zedrouter - drive the lifecycle for the connectivity for the instances. Includes services like DHCP, DNS, and Access Control Lists. Provides different connectivity like local, switch, cloud, and mesh networks.
- - domainmgr - interface with the hypervisor to start and stop application images. Includes performing device assignment.
+ - zedrouter - drive the lifecycle for the connectivity for the instances. Includes services like DHCP, DNS, and Access Control Lists. Provides different connectivity like local, switch, cloud, and mesh networks
+ - dataplane (AKA lisp-ztr) - Go implementation of LISP data plane
+ - domainmgr - interface with the hypervisor to start and stop application images. Includes performing device assignment
  - identitymgr - used when mesh networks desire locally created key pairs for the cryptographic application instance identities
 
 In addition there are debugging tools like
- - diag - prints the state of the connectivity on the console each time there is
-   a change.
+ - diag - prints the state of the connectivity on the console each time there is a change
  - ipcmonitor - subscribes to the agents/collections passed between the different microservices
 
-
+In order to conserve filesystem space, all of the agents above are built into a single executable (zedbox) and are differentiated based on the symbolic link (very similar to how BusyBox does it with traditional UNIX utilities). 
  
