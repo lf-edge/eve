@@ -1,3 +1,6 @@
+# Copyright (c) 2018 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 FROM golang:1.9.1-alpine AS build
 RUN apk update
 RUN apk add --no-cache git gcc linux-headers libc-dev util-linux

@@ -1,5 +1,5 @@
 // Copyright (c) 2018 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Read the symlinks in /sys/class/net/*/device to print a mapping
 // from ifname to PCI-ID

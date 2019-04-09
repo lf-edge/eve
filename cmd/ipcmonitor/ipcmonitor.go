@@ -1,5 +1,5 @@
 // Copyright (c) 2017,2018 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Connect to and watch for updates for a given agent, agentScope, and topic.
 // Uses AF_UNIX socket

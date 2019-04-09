@@ -1,5 +1,5 @@
 // Copyright (c) 2018 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 // Parse either RFC3339 or ISO8601 from front of string and format as RFC3389.
 // Also parse the old format "2018/09/13 23:01:20.214433"
 // XXX add parsing log level strings?

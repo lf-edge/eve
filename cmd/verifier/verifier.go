@@ -1,5 +1,5 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Process input in the form of collections of VerifyImageConfig structs
 // and publish the results as collections of VerifyImageStatus structs.

@@ -1,5 +1,5 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Process input in the form of a collection of AppNetworkConfig structs
 // from zedmanager and zedagent. Publish the status as AppNetworkStatus.
