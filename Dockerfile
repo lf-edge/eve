@@ -3,7 +3,7 @@
 
 FROM golang:1.9.1-alpine AS build
 RUN apk update
-RUN apk add --no-cache git gcc linux-headers libc-dev util-linux
+RUN apk add --no-cache git gcc linux-headers libc-dev util-linux libpcap-dev
 
 # These three are supporting rudimentary cross-build capabilities.
 # The only one supported so far is cross compiling for aarch64 on x86
