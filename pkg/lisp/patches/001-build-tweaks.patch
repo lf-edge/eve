@@ -1,0 +1,33 @@
+diff -ruN a/build/make-apps-release.py b/build/make-apps-release.py
+--- a/build/make-apps-release.py	2019-02-05 02:46:49.000000000 +0000
++++ b/build/make-apps-release.py	2019-02-16 18:30:44.091078756 +0000
+@@ -60,6 +60,8 @@
+     cpu = "x86"
+ elif (machine.find("mips") != -1):
+     cpu = "mips"
++elif (machine.find("aarch64") != -1):
++    cpu = "aarch64"
+ else:
+     print "Build does not support cpu type {}".format(machine)
+     exit(1)
+diff -ruN a/build/make-release.py b/build/make-release.py
+--- a/build/make-release.py	2019-02-05 02:46:49.000000000 +0000
++++ b/build/make-release.py	2019-02-16 18:30:50.871114703 +0000
+@@ -30,7 +30,7 @@
+ 
+ #------------------------------------------------------------------------------
+ 
+-obfuscate_on = True
++obfuscate_on = False
+ root = "./.."
+ 
+ #
+@@ -75,6 +75,8 @@
+     cpu = "x86"
+ elif (machine.find("mips") != -1):
+     cpu = "mips"
++elif (machine.find("aarch64") != -1):
++    cpu = "aarch64"
+ else:
+     print "Build does not support cpu type {}".format(machine)
+     exit(1)

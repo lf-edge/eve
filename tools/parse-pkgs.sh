@@ -119,6 +119,7 @@ QREXECLIB_TAG=$(linuxkit_tag pkg/qrexec-lib)
 WWAN_TAG=$(linuxkit_tag pkg/wwan)
 WLAN_TAG=$(linuxkit_tag pkg/wlan)
 GUACD_TAG=$(linuxkit_tag pkg/guacd)
+LISP_TAG=$(linuxkit_tag pkg/lisp)
 GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)
 WATCHDOG_TAG=$(linuxkit_tag pkg/watchdog)
 MKRAW_TAG=$(linuxkit_tag pkg/mkimage-raw-efi)
@@ -131,7 +132,6 @@ DEBUG_TAG=$(linuxkit_tag pkg/debug)
 # not logged into the Docker hub you may see final
 # images lacking functionality.
 ZTOOLS_TAG=$(immutable_tag ${ZTOOLS_TAG:-$(external_tag zededa/ztools $(linuxkit_tag pkg/debug))})
-LISP_TAG=$(immutable_tag ${LISP_TAG:-$(external_tag zededa/lisp $(linuxkit_tag pkg/debug))})
 
 # Synthetic tags: the following tags are based on hashing
 # the contents of all the Dockerfile.in that we can find.
