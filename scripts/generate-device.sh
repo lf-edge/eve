@@ -1,4 +1,8 @@
 #!/bin/sh
+#
+# Copyright (c) 2018 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
 # Generate a self-signed ECC certificate; 20 year lifetime
 # argument is a basename for the output files
 # Example: generate-dc.sh ../run/test

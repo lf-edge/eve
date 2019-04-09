@@ -1,4 +1,7 @@
 #!/bin/sh
+#
+# Copyright (c) 2018 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
 
 STARTTIME=`date`
 echo "Starting device-steps.sh at" $STARTTIME

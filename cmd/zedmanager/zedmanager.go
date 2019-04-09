@@ -1,5 +1,5 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Get AppInstanceConfig from zedagent, drive config to Downloader, Verifier,
 // IdentityMgr, and Zedrouter. Collect status from those services and make

@@ -1,5 +1,5 @@
 // Copyright (c) 2018 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Package to get initial (and updates) to AssignableAdapters for our model.
 // Usage:

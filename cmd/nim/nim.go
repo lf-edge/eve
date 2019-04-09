@@ -1,5 +1,5 @@
 // Copyright (c) 2018 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Manage the network interfaces based on configuration from
 // different sources. Attempts to test configuration changes before applying

@@ -1,6 +1,11 @@
 #!/bin/sh
+#
+# Copyright (c) 2018 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
 # Find the interface based on the routes to the map servers
 # For now we take the first one IP for the first map server which has a route 
+
 if [ "$1" = -d ]; then
     DEBUG=1
     shift

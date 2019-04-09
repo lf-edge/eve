@@ -1,5 +1,5 @@
 // Copyright (c) 2018 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Wrapper with locking. Similar API to sync.map
 // The Range callback function must not call functions

@@ -1,5 +1,5 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Publish the IsZedmanager AppNetworkConfig and /etc/hosts
 // XXX Should also look at the corresponding AppNetworkStatus and report

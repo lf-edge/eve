@@ -1,4 +1,8 @@
 #!/bin/sh
+#
+# Copyright (c) 2018 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
 # Set export RELEASE=1 to get just the git tag as the version
 # XXX not clear how we can feed a RELEASE environment into the docker
 

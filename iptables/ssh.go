@@ -1,5 +1,5 @@
 // Copyright (c) 2018 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Also blocks the VNC ports (5900...) if ssh is blocked
 // Always blocks 4822

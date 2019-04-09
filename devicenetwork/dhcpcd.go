@@ -1,5 +1,5 @@
 // Copyright (c) 2018 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Manage dhcpcd for ports including static
 // XXX wwan0? Skip for now
