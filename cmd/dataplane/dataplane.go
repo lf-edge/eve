@@ -1,5 +1,5 @@
 // Copyright (c) 2017 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Main code that starts data plane process. All other modules like fib, itr & etr
 // are initialized and started by this control thread code.

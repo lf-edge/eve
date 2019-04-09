@@ -1,5 +1,5 @@
 // Copyright (c) 2017 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Implements ITR functionality. StartItrThread should be started as a go routine.
 // Each ITR threads listens on one of the overlay interfaces for packets. Captured

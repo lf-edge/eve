@@ -1,5 +1,5 @@
 // Copyright (c) 2017 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // This implements the ETR functionality. Listens on UDP destination port 4341 for
 // receiving packets behind the same NAT. Cross NAT packets are captured using afpacket

@@ -1,5 +1,5 @@
 // Copyright (c) 2017 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Maintains maps for storing ITR/ETR thread information. Also takes care of
 // creating new threads and destroying stale ITR/ETR threads.

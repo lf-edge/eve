@@ -1,5 +1,5 @@
 // Copyright (c) 2017 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Code to Add/Chance/Update map-cache entries. Also has code for storing the uplink
 // ipv4/ipv6 addresses to be used for sending out LISP packets.
