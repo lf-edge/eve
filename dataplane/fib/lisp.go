@@ -55,6 +55,8 @@ func SetLispNonce(hdr []byte, nonce uint32) {
 func GetLispNonce(hdr []byte) uint32 {
 	var nonce uint32 = 0
 
-	nonce = uint32(hdr[1]<<16 | hdr[2]<<8 | hdr[3])
+	nonce = uint32(hdr[1])
+	nonce = (nonce << 8) | uint32(hdr[2])
+	nonce = (nonce << 8) | uint32(hdr[3])
 	return nonce
 }

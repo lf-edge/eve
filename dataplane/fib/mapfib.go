@@ -116,13 +116,13 @@ func InitDecapTable() {
 
 	// Initialize ETR statistics
 	currUnixSeconds := time.Now().Unix()
-	decaps.NoDecryptKey = dptypes.PktStat{0, 0, currUnixSeconds}
-	decaps.OuterHeaderError = dptypes.PktStat{0, 0, currUnixSeconds}
-	decaps.BadInnerVersion = dptypes.PktStat{0, 0, currUnixSeconds}
-	decaps.GoodPackets = dptypes.PktStat{0, 0, currUnixSeconds}
-	decaps.ICVError = dptypes.PktStat{0, 0, currUnixSeconds}
-	decaps.LispHeaderError = dptypes.PktStat{0, 0, currUnixSeconds}
-	decaps.ChecksumError = dptypes.PktStat{0, 0, currUnixSeconds}
+    decaps.NoDecryptKey = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
+    decaps.OuterHeaderError = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
+    decaps.BadInnerVersion = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
+    decaps.GoodPackets = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
+    decaps.ICVError = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
+    decaps.LispHeaderError = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
+    decaps.ChecksumError = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
 }
 
 // Control thread looks for changes to /var/run/zedrouter/DeviceNetworkStatus/global.json

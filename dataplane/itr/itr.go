@@ -488,11 +488,13 @@ eidLoop:
 			case layers.IPProtocolTCP:
 				srcPort := itrLocalData.Tcp.SrcPort
 				dstPort := itrLocalData.Tcp.DstPort
-				ports = uint32(srcPort << 16 | dstPort)
+                var dwordSrcPort uint32 = uint32(srcPort) << 16
+				ports = uint32(dwordSrcPort | uint32(dstPort))
 			case layers.IPProtocolUDP:
 				srcPort := itrLocalData.Udp.SrcPort
 				dstPort := itrLocalData.Udp.DstPort
-				ports = uint32(srcPort << 16 | dstPort)
+                var dwordSrcPort uint32 = uint32(srcPort) << 16
+				ports = uint32(dwordSrcPort | uint32(dstPort))
 			}
 
 			var hash32 uint32 = srcAddrBytes ^ dstAddrBytes ^ ports

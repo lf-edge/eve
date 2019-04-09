@@ -76,7 +76,7 @@ func encryptPayload(payload []byte,
 	var extraLen, padLen int = 0, 0
 
 	if len(encKey) == 0 {
-		log.Errorf("encryptPayload: Invalid encrypt key lenght: %s", len(encKey))
+		log.Errorf("encryptPayload: Invalid encrypt key lenght: " + string(len(encKey)))
 		return false, 0
 	}
 

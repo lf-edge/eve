@@ -53,7 +53,7 @@ func StartEtrNonNat() {
 	// XXX Using ipv4 underlay for now. Will have to figure out v6 underlay case.
 	etrServer, err := net.ResolveUDPAddr("udp4", ":4341")
 	if err != nil {
-		log.Fatal("StartEtrNonNat: Error resolving ETR socket address: %s", err)
+		log.Fatal("StartEtrNonNat: Error resolving ETR socket address: " + err.Error())
 	}
 	serverConn, err := net.ListenUDP("udp4", etrServer)
 	if err != nil {
@@ -71,8 +71,8 @@ func StartEtrNonNat() {
 	fd4, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
 		serverConn.Close()
-		log.Errorf("StartEtrNonNat: Creating ETR IPv4 raw socket for packet injection failed: %s",
-			err)
+		log.Errorf("StartEtrNonNat: Creating ETR IPv4 raw socket for packet injection failed: " +
+			err.Error())
 		return
 	}
 
@@ -82,8 +82,8 @@ func StartEtrNonNat() {
 	if err != nil {
 		serverConn.Close()
 		log.Fatal(
-			"StartEtrNonNat: Creating ETR IPv6 raw socket for packet injection failed: %s\n",
-			err)
+			"StartEtrNonNat: Creating ETR IPv6 raw socket for packet injection failed: " +
+			err.Error())
 	}
 
 	// start processing packets. This loop should never end.
@@ -247,8 +247,8 @@ func StartEtrNat(ephPort int,
 	if err != nil {
 		handle.Close()
 		log.Fatal(
-			"StartEtrNat: Creating second ETR IPv4 raw socker for packet injection failed: %s\n",
-			err)
+			"StartEtrNat: Creating second ETR IPv4 raw socker for packet injection failed: " +
+			err.Error())
 	}
 
 	fd6, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
@@ -257,8 +257,8 @@ func StartEtrNat(ephPort int,
 		//ring.Close()
 		handle.Close()
 		log.Fatal(
-			"StartEtrNat: Creating second ETR IPv6 raw socket for packet injection failed: %s\n",
-			err)
+			"StartEtrNat: Creating second ETR IPv6 raw socket for packet injection failed: " +
+			err.Error())
 		syscall.Close(fd4)
 	}
 	//go ProcessCapturedPkts(fd, ring)
@@ -515,7 +515,7 @@ func ProcessETRPkts(fd4 int, fd6 int, serverConn *net.UDPConn) bool {
 	for {
 		n, saddr, err := serverConn.ReadFromUDP(buf)
 		if err != nil {
-			log.Fatal("ProcessETRPkts: Fatal error during ETR processing: %s", err)
+			log.Fatal("ProcessETRPkts: Fatal error during ETR processing: " + err.Error())
 		}
 		if debug {
 			log.Debugf("ProcessETRPkts: Received %v bytes in ETR", n)

@@ -221,8 +221,8 @@ func handleMapCacheTable(msg []byte) {
 
 	err := json.Unmarshal(msg, &mapCacheTable)
 	if err != nil {
-		log.Fatal("handleMapCacheTable: Error: Unknown json message format: %s: %s",
-			string(msg), err)
+		log.Fatal("handleMapCacheTable: Error: Unknown json message format: " +
+            string(msg) + ": " + err.Error())
 	}
 
 	numEntries := len(mapCacheTable.MapCaches)
@@ -245,8 +245,8 @@ func handleMapCache(msg []byte) {
 	log.Debugf("handleMapCache: Handling the following map-cache message:\n%s", string(msg))
 	err := json.Unmarshal(msg, &mapCache)
 	if err != nil {
-		log.Fatal("handleMapCache: Error: Unknown json message format: %s: %s",
-			string(msg), err)
+		log.Fatal("handleMapCache: Error: Unknown json message format: " +
+            string(msg) + ": " + err.Error())
 	}
 
 	createMapCache(&mapCache)
@@ -281,8 +281,8 @@ func handleDatabaseMappings(msg []byte) {
 		string(msg))
 	err := json.Unmarshal(msg, &databaseMappings)
 	if err != nil {
-		log.Fatal("handleDatabaseMappings: Error: Unknown json message format: %s: %s",
-			string(msg), err)
+		log.Fatal("handleDatabaseMappings: Error: Unknown json message format: " +
+        string(msg) + ": " +  err.Error())
 	}
 
 	// lispers.net sends database-mappings as an array of iid to individual eid
@@ -311,8 +311,8 @@ func handleInterfaces(msg []byte) {
 	log.Debugf("handleInterfaces: Handling the following Interfaces message:\n%s\n", string(msg))
 	err := json.Unmarshal(msg, &interfaces)
 	if err != nil {
-		log.Fatal("handleInterfaces: Error: Unknown json message format: %s: %s",
-			string(msg), err)
+		log.Fatal("handleInterfaces: Error: Unknown json message format: " +
+            string(msg) + ": " + err.Error())
 	}
 	ifaces := []dptypes.Interface{}
 
@@ -350,8 +350,8 @@ func handleDecapKeys(msg []byte) {
 		string(msg))
 	err := json.Unmarshal(msg, &decapMsg)
 	if err != nil {
-		log.Fatal("handleDecapKeys: Error: Unknown json message format: %s: %s",
-			string(msg), err)
+		log.Fatal("handleDecapKeys: Error: Unknown json message format: " +
+            string(msg) + ": " + err.Error())
 	}
 
 	rloc := net.ParseIP(decapMsg.Rloc)
@@ -445,8 +445,8 @@ func handleEtrNatPort(msg []byte) {
 	log.Debugf("handleEtrNatPort: Handling the following ETR Nat port message:\n%s\n", string(msg))
 	err := json.Unmarshal(msg, &etrNatPort)
 	if err != nil {
-		log.Fatal("handleEtrNatPort: Error: Unknown json message format: %s: %s",
-			string(msg), err)
+		log.Fatal("handleEtrNatPort: Error: Unknown json message format: " +
+            string(msg) + ": " + err.Error())
 	}
 	etr.HandleEtrEphPort(etrNatPort.Port)
 }
@@ -457,8 +457,8 @@ func handleItrCryptoPort(msg []byte) {
 	log.Debugf("handleItrCryptoPort: Handling the following ITR crypto port message:\n%s\n", string(msg))
 	err := json.Unmarshal(msg, &itrCryptoPort)
 	if err != nil {
-		log.Fatal("handleItrCryptoPort: Error: Unknown json message format: %s: %s",
-			string(msg), err)
+		log.Fatal("handleItrCryptoPort: Error: Unknown json message format: " +
+            string(msg) + ": " + err.Error())
 	}
 	HandleItrCryptoPort(uint(itrCryptoPort.Port))
 }

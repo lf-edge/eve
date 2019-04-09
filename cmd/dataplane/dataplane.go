@@ -127,7 +127,7 @@ func Run() {
 	}
 
 	configPipe, err := net.ListenUnixgram("unixgram",
-		&net.UnixAddr{configHolePath, "unixgram"})
+		&net.UnixAddr{Name: configHolePath, Net: "unixgram"})
 	if err != nil {
 		log.Errorf("main: Opening config hole: %s failed with err: %s",
 			configHolePath, err)
@@ -254,7 +254,7 @@ func connectToLispersDotNet() net.Conn {
 		}
 
 		lconn, err := net.DialUnix("unixgram", nil,
-			&net.UnixAddr{lispersDotNetItr, "unixgram"})
+			&net.UnixAddr{Name: lispersDotNetItr, Net: "unixgram"})
 		if err != nil {
 			log.Errorf("connectToLispersDotNet: Client connection to %s cannot be opened: %s",
 				lispersDotNetItr, err)
@@ -265,7 +265,6 @@ func connectToLispersDotNet() net.Conn {
 			lispersDotNetItr)
 		return lconn
 	}
-	return nil
 }
 
 func startPuntProcessor() {
@@ -289,7 +288,7 @@ func startPuntProcessor() {
 
 	conn = connectToLispersDotNet()
 	if conn == nil {
-		log.Fatal("startPuntProcessor: Connection to %s not possible", lispersDotNetItr)
+		log.Fatal("startPuntProcessor: Connection to " + lispersDotNetItr + " not possible")
 	}
 
 	// We could have restarted. We need to ask lispers.net for the databases again.
