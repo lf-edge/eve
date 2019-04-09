@@ -3,7 +3,7 @@
 
 // Decode messages from lispers.net and update fibs.
 
-package main
+package dataplane
 
 import (
 	"crypto/aes"

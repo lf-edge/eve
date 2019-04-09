@@ -4,7 +4,7 @@
 // Maintains maps for storing ITR/ETR thread information. Also takes care of
 // creating new threads and destroying stale ITR/ETR threads.
 
-package main
+package dataplane
 
 import (
 	"github.com/google/gopacket/afpacket"

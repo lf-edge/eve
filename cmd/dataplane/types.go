@@ -3,7 +3,7 @@
 
 // Defines json structures for control messages from lispers.net
 
-package main
+package dataplane
 
 const CRYPTO_KEY_LEN = 32
 

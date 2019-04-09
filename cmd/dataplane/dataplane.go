@@ -6,10 +6,11 @@
 // Control code also opens/reads unix sockets to get map-cache and interface fib
 // data fron lispers.net process.
 
-package main
+package dataplane
 
 import (
 	"encoding/json"
+	"fmt"
 	"flag"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
@@ -47,18 +48,24 @@ var Version = "No version specified"
 var debug = false
 var debugOverride bool
 
-func main() {
+func Run() {
+	versionPtr := flag.Bool("v", false, "Version")
+	debugPtr := flag.Bool("d", false, "Debug flag")
+	curpartPtr := flag.String("c", "", "Current partition")
+	flag.StringVar(&lispConfigDir, "lisp", "/opt/zededa/lisp", "lispers.net path")
+	flag.Parse()
+
 	// Open/Create new log file
-	logf, err := agentlog.Init(agentName)
+        curpart := *curpartPtr
+        if *versionPtr {
+                fmt.Printf("%s: %s\n", os.Args[0], Version)
+                return
+        }
+	logf, err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer logf.Close()
-
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	flag.StringVar(&lispConfigDir, "lisp", "/opt/zededa/lisp", "lispers.net path")
-	flag.Parse()
 
 	log.Infof("Dataplane: Using %s for LISP directory.\n", lispConfigDir)
 	configHolePath = lispConfigDir + "/lisp-ipc-data-plane"
@@ -70,10 +77,6 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 	} else {
 		log.SetLevel(log.InfoLevel)
-	}
-	if *versionPtr {
-		log.Infof("%s: %s\n", os.Args[0], Version)
-		return
 	}
 
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {

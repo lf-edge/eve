@@ -635,8 +635,7 @@ if [ $WAIT = 1 ]; then
 fi
 
 echo "Starting lisp-ztr at" `date`
-# XXX add a -c $CURPART ?
-$BINDIR/lisp-ztr &
+$BINDIR/lisp-ztr -c $CURPART &
 if [ $WAIT = 1 ]; then
     echo -n "Press any key to continue "; read dummy; echo; echo
 fi
