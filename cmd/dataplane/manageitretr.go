@@ -10,10 +10,10 @@ import (
 	"github.com/google/gopacket/afpacket"
 	//"github.com/google/gopacket/pfring"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/lisp/dataplane/dptypes"
-	"github.com/zededa/lisp/dataplane/etr"
-	"github.com/zededa/lisp/dataplane/fib"
-	"github.com/zededa/lisp/dataplane/itr"
+	"github.com/zededa/go-provision/dataplane/dptypes"
+	"github.com/zededa/go-provision/dataplane/etr"
+	"github.com/zededa/go-provision/dataplane/fib"
+	"github.com/zededa/go-provision/dataplane/itr"
 	log "github.com/sirupsen/logrus"
 )
 

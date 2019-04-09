@@ -14,7 +14,7 @@ import (
 	"encoding/hex"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/zededa/lisp/dataplane/dptypes"
+	"github.com/zededa/go-provision/dataplane/dptypes"
 	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"sync/atomic"

@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/lisp/dataplane/dptypes"
+	"github.com/zededa/go-provision/dataplane/dptypes"
 	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"net"
