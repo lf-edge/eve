@@ -121,7 +121,7 @@ installer-iso: $(INSTALLER_IMG).iso
 images/%.yml: build-tools tools/parse-pkgs.sh images/%.yml.in FORCE
 	$(PARSE_PKGS) $@.in > $@
 
-$(CONFIG_IMG): conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/ | $(DIST)
+$(CONFIG_IMG): conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/authorized_keys conf/ | $(DIST)
 	./tools/makeconfig.sh $(CONF_DIR) $@
 
 $(ROOTFS_IMG): images/rootfs.yml | $(DIST)
