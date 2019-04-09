@@ -38,8 +38,8 @@ RUN [ $(uname -m) == x86_64 ] && apk add libunwind-dev || true
 ENV KERNEL_VERSION_aarch64 4.19.5
 ENV KERNEL_SERIES_aarch64 4.19.x
 
-ENV KERNEL_VERSION_x86_64 4.9.51
-ENV KERNEL_SERIES_x86_64 4.9.x
+ENV KERNEL_VERSION_x86_64 4.19.5
+ENV KERNEL_SERIES_x86_64 4.19.x
 
 ENV KERNEL_SOURCE=https://www.kernel.org/pub/linux/kernel/v4.x/linux-\${KERNEL_VERSION}.tar.xz
 ENV KERNEL_SHA256_SUMS=https://www.kernel.org/pub/linux/kernel/v4.x/sha256sums.asc
@@ -75,12 +75,6 @@ RUN set -e && for patch in /patches-${KERNEL_SERIES}/*.patch; do \
         echo "Applying $patch"; \
         patch -p1 < "$patch"; \
     done
-
-# FIXME: for now, make sure that Intel ixgbe drivers are taken out of tree
-#        Once we upgrade to a newer kernel we should revisit this 
-RUN tar -C /tmp -xzvf /ixgbe-${IXGBE_VERSION}.tgz && \
-    rm -rf /linux/drivers/net/ethernet/intel/ixgbe && \
-    cp -r /tmp/ixgbe-${IXGBE_VERSION}/src /linux/drivers/net/ethernet/intel/ixgbe
 
 # Kernel config
 RUN mkdir /out
