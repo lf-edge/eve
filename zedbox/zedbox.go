@@ -33,7 +33,7 @@ func main() {
 	switch basename {
 	case "client":
 		client.Run()
-	case "dataplane":
+	case "dataplane", "lisp-ztr":
 		dataplane.Run()
 	case "diag":
 		diag.Run()
