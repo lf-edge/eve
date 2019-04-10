@@ -28,8 +28,8 @@ immutable_tag() {
   # we have to resolve symbolic tags like x.y.z or snapshot to something immutable
   # so that we can detect when the symbolic tag starts pointing a different immutable
   # object and thus trigger a new SHA for zenix and zedctr
-  echo $(docker inspect --format='{{index .RepoDigests 0}}' "$1" 2>/dev/null ||
-         docker inspect --format='{{.Id}}' "$1" 2>/dev/null ||
+  echo $(docker inspect --format='{{.Id}}' "$1" 2>/dev/null ||
+         docker inspect --format='{{index .RepoDigests 0}}' "$1" 2>/dev/null ||
          echo "$1")
 }
 
