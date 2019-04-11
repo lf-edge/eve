@@ -55,7 +55,7 @@ QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH))
 
 DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; docker export $$C | tar -xf - $$2 ; docker rm $$C ; } ; _
 
-PARSE_PKGS:=ZENIX_HASH=$(ZENIX_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./parse-pkgs.sh
+PARSE_PKGS:=$(if $(strip $(ZENIX_HASH)),ZENIX_HASH=)$(ZENIX_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/parse-pkgs.sh
 LK_HASH_REL=LINUXKIT_HASH="$(if $(strip $(ZENIX_HASH)),--hash) $(ZENIX_HASH) $(if $(strip $(ZENIX_REL)),--release) $(ZENIX_REL)"
 
 DEFAULT_PKG_TARGET=build
@@ -122,14 +122,14 @@ installer-iso: $(INSTALLER_IMG).iso
 
 # NOTE: that we have to depend on pkg/zedctr here to make sure
 # it gets triggered when we build any kind of image target
-images/%.yml: build-tools pkg/zedctr parse-pkgs.sh images/%.yml.in FORCE
+images/%.yml: build-tools pkg/zedctr tools/parse-pkgs.sh images/%.yml.in FORCE
 	$(PARSE_PKGS) $@.in > $@
 
 $(CONFIG_IMG): conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/ | $(DIST)
-	./makeconfig.sh $(CONF_DIR) $@
+	./tools/makeconfig.sh $(CONF_DIR) $@
 
 $(ROOTFS_IMG): images/rootfs.yml | $(DIST)
-	./makerootfs.sh $< $(ROOTFS_FORMAT) $@
+	./tools/makerootfs.sh $< $(ROOTFS_FORMAT) $@
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
 
@@ -142,21 +142,21 @@ $(FALLBACK_IMG).qcow2: $(FALLBACK_IMG).raw | $(DIST)
 	rm $<
 
 $(FALLBACK_IMG).raw: $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
-	tar -C $(DIST) -c $(notdir $^) | ./makeflash.sh -C ${MEDIA_SIZE} $@
+	tar -C $(DIST) -c $(notdir $^) | ./tools/makeflash.sh -C ${MEDIA_SIZE} $@
 
 $(ROOTFS_IMG)_installer.img: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
-	./makerootfs.sh $< $(ROOTFS_FORMAT) $@
+	./tools/makerootfs.sh $< $(ROOTFS_FORMAT) $@
 	@[ $$(wc -c < "$@") -gt $$(( 300 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 300MB (bigger than allocated partition)" && exit 1 || :
 
 $(INSTALLER_IMG).raw: $(ROOTFS_IMG)_installer.img $(CONFIG_IMG) | $(DIST)
-	tar -C $(DIST) -c $(notdir $^) | ./makeflash.sh -C 350 $@ "efi imga conf_win"
+	tar -C $(DIST) -c $(notdir $^) | ./tools/makeflash.sh -C 350 $@ "efi imga conf_win"
 	rm $(ROOTFS_IMG)_installer.img
 
 $(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
-	./makeiso.sh $< $@
+	./tools/makeiso.sh $< $@
 
-zenix: ZENIX_HASH:=$(shell echo ZENIX_TAG | $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
+zenix: ZENIX_HASH=$(shell echo ZENIX_TAG | PATH="$(PATH)" ZTOOLS_TAG="$(ZTOOLS_TAG)" $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
 zenix: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(FALLBACK_IMG).img images/rootfs.yml images/installer.yml
 	cp $^ build-pkgs/zenix
 	make -C build-pkgs BUILD-PKGS=zenix $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
@@ -168,8 +168,8 @@ zenix: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).
 # the zededa/zedctr:XXX container will end up in a local docker cache (if linuxkit 
 # doesn't rebuild the package) and we need it there for the linuxkit build to work.
 # Which means, that we have to either forcefully rebuild it or fetch from docker hub.
-pkg/zedctr: ZENIX_HASH:=$(shell echo ZEDEDA_TAG | $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
-pkg/zedctr: ZEDCTR_TAG:=zededa/zedctr:$(ZENIX_HASH)-$(DOCKER_ARCH_TAG)
+pkg/zedctr: ZENIX_HASH=$(shell echo ZEDEDA_TAG | PATH="$(PATH)" ZTOOLS_TAG="$(ZTOOLS_TAG)" $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
+pkg/zedctr: ZEDCTR_TAG=zededa/zedctr:$(ZENIX_HASH)-$(DOCKER_ARCH_TAG)
 pkg/zedctr: FORCE
 	docker pull $(ZEDCTR_TAG) >/dev/null 2>&1 || : ;\
 	if ! docker inspect $(ZEDCTR_TAG) >/dev/null 2>&1 ; then \
@@ -179,9 +179,9 @@ pkg/zedctr: FORCE
 	    make -C pkg PKGS=zedctr RESCAN_DEPS="" LINUXKIT_OPTS="--disable-content-trust --force --disable-cache --hash $$PKG_HASH" $(DEFAULT_PKG_TARGET) ;\
 	    PKG_HASH=zededa/zedctr:$$PKG_HASH ;\
 	    docker tag $$PKG_HASH $(ZEDCTR_TAG) ;\
-	    docker rmi $$PKG_HASH $$PKG_HASH-$(DOCKER_ARCH_TAG_$(shell uname -m)) ;\
+	    docker rmi $$PKG_HASH $$PKG_HASH-$(DOCKER_ARCH_TAG_$(HOSTARCH)) ;\
 	  else \
-	    make -C pkg PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache --hash $(ZENIX_HASH)" $(DEFAULT_PKG_TARGET) ;\
+	    make -C pkg PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache $(subst LINUXKIT_HASH=",,$(LK_HASH_REL)) $(DEFAULT_PKG_TARGET) ;\
 	  fi ;\
 	fi
 
@@ -199,9 +199,9 @@ release:
 	    git checkout master -b $$X.$$Y && echo zedcloud.zededa.net > conf/server &&\
 	    git commit -m"Setting default server to prod" conf/server ;\
 	 fi || bail "Can't create $$X.$$Y branch" ;\
-	 git commit -m"Pinning down versions in parse-pkgs.sh" parse-pkgs.sh 2>/dev/null ;\
-	 (echo ZTOOLS_TAG ; echo LISP_TAG) | ZENIX_HASH=$$X.$$Y.$$Z ./parse-pkgs.sh | grep -q zededa/debug &&\
-	     bail "Couldn't find matching versions for ztools and/or lisp. You may want to edit parse-pkg.sh" ;\
+	 git commit -m"Pinning down versions in tools/parse-pkgs.sh" tools/parse-pkgs.sh 2>/dev/null ;\
+	 (echo ZTOOLS_TAG ; echo LISP_TAG) | ZENIX_HASH=$$X.$$Y.$$Z ./tools/parse-pkgs.sh | grep -q zededa/debug &&\
+	     bail "Couldn't find matching versions for ztools and/or lisp. You may want to edit tools/parse-pkg.sh" ;\
 	 git tag -a -m"Release $$X.$$Y.$$Z" $$X.$$Y.$$Z &&\
 	 echo "Done tagging $$X.$$Y.$$Z release. Check the branch with git log and then run" &&\
 	 echo "  git push origin $$X.$$Y $$X.$$Y.$$Z"

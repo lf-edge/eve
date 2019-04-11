@@ -1,0 +1,14 @@
+version: 2
+jobs:
+  build:
+    machine:
+      image: circleci/classic:latest
+    steps:
+      - checkout
+      - run: 
+          name: Packages
+          command: make pkgs
+      - run:
+          name: Zenix
+          command: make zenix
+
