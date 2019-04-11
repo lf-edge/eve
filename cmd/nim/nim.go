@@ -649,7 +649,10 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 			updated := types.ApplyGlobalConfig(*gcp)
 			log.Infof("handleGlobalConfigModify: updated with defaults %v\n",
 				cmp.Diff(*gcp, updated))
-			*gcp = updated
+			sane := types.EnforceGlobalConfigMinimums(updated)
+			log.Infof("handleGlobalConfigModify: enforced minimums %v\n",
+				cmp.Diff(updated, sane))
+			*gcp = sane
 		}
 		if gcp.SshAccess != ctx.sshAccess || first {
 			ctx.sshAccess = gcp.SshAccess

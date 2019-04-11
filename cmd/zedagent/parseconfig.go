@@ -2063,7 +2063,10 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 		updated := types.ApplyGlobalConfig(globalConfig)
 		log.Infof("parseConfigItems: updated with defaults %v\n",
 			cmp.Diff(globalConfig, updated))
-		globalConfig = updated
+		sane := types.EnforceGlobalConfigMinimums(updated)
+		log.Infof("handleGlobalConfigModify: enforced minimums %v\n",
+			cmp.Diff(updated, sane))
+		globalConfig = sane
 		err := pubsub.PublishToDir("/persist/config/", "global",
 			&globalConfig)
 		if err != nil {

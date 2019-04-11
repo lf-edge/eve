@@ -3,6 +3,10 @@
 
 package types
 
+import (
+	log "github.com/sirupsen/logrus"
+)
+
 // GlobalConfig is used for log levels and timer values which are preserved
 // across reboots and baseimage-updates.
 
@@ -146,6 +150,106 @@ func ApplyGlobalConfig(newgc GlobalConfig) GlobalConfig {
 	}
 	if newgc.DefaultRemoteLogLevel == "" {
 		newgc.DefaultRemoteLogLevel = GlobalConfigDefaults.DefaultRemoteLogLevel
+	}
+	return newgc
+}
+
+// We enforce that timers are not below these values
+var GlobalConfigMinimums = GlobalConfig{
+	ConfigInterval:          5,
+	MetricInterval:          5,
+	ResetIfCloudGoneTime:    120,
+	FallbackIfCloudGoneTime: 60,
+	MintimeUpdateSuccess:    600,
+
+	NetworkGeoRedoTime:        60,
+	NetworkGeoRetryTime:       5,
+	NetworkTestDuration:       10,  // Wait for DHCP client
+	NetworkTestInterval:       300, // 5 minutes
+	NetworkTestBetterInterval: 0,   // Disabled
+
+	StaleConfigTime:     0, // Don't use stale config
+	DownloadGCTime:      60,
+	VdiskGCTime:         60,
+	DownloadRetryTime:   60,
+	DomainBootRetryTime: 10,
+}
+
+func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
+
+	if newgc.ConfigInterval < GlobalConfigMinimums.ConfigInterval {
+		log.Warnf("Enforce minimum ConfigInterval received %d; using %d",
+			newgc.ConfigInterval, GlobalConfigMinimums.ConfigInterval)
+		newgc.ConfigInterval = GlobalConfigMinimums.ConfigInterval
+	}
+	if newgc.MetricInterval < GlobalConfigMinimums.MetricInterval {
+		log.Warnf("Enforce minimum MetricInterval received %d; using %d",
+			newgc.MetricInterval, GlobalConfigMinimums.MetricInterval)
+		newgc.MetricInterval = GlobalConfigMinimums.MetricInterval
+	}
+	if newgc.ResetIfCloudGoneTime < GlobalConfigMinimums.ResetIfCloudGoneTime {
+		log.Warnf("Enforce minimum XXX received %d; using %d",
+			newgc.ResetIfCloudGoneTime, GlobalConfigMinimums.ResetIfCloudGoneTime)
+		newgc.ResetIfCloudGoneTime = GlobalConfigMinimums.ResetIfCloudGoneTime
+	}
+	if newgc.FallbackIfCloudGoneTime < GlobalConfigMinimums.FallbackIfCloudGoneTime {
+		log.Warnf("Enforce minimum FallbackIfCloudGoneTime received %d; using %d",
+			newgc.FallbackIfCloudGoneTime, GlobalConfigMinimums.FallbackIfCloudGoneTime)
+		newgc.FallbackIfCloudGoneTime = GlobalConfigMinimums.FallbackIfCloudGoneTime
+	}
+	if newgc.MintimeUpdateSuccess < GlobalConfigMinimums.MintimeUpdateSuccess {
+		log.Warnf("Enforce minimum MintimeUpdateSuccess received %d; using %d",
+			newgc.MintimeUpdateSuccess, GlobalConfigMinimums.MintimeUpdateSuccess)
+		newgc.MintimeUpdateSuccess = GlobalConfigMinimums.MintimeUpdateSuccess
+	}
+	if newgc.NetworkGeoRedoTime < GlobalConfigMinimums.NetworkGeoRedoTime {
+		log.Warnf("Enforce minimum NetworkGeoRedoTime received %d; using %d",
+			newgc.NetworkGeoRedoTime, GlobalConfigMinimums.NetworkGeoRedoTime)
+		newgc.NetworkGeoRedoTime = GlobalConfigMinimums.NetworkGeoRedoTime
+	}
+	if newgc.NetworkGeoRetryTime < GlobalConfigMinimums.NetworkGeoRetryTime {
+		log.Warnf("Enforce minimum NetworkGeoRetryTime received %d; using %d",
+			newgc.NetworkGeoRetryTime, GlobalConfigMinimums.NetworkGeoRetryTime)
+		newgc.NetworkGeoRetryTime = GlobalConfigMinimums.NetworkGeoRetryTime
+	}
+	if newgc.NetworkTestDuration < GlobalConfigMinimums.NetworkTestDuration {
+		log.Warnf("Enforce minimum NetworkTestDuration received %d; using %d",
+			newgc.NetworkTestDuration, GlobalConfigMinimums.NetworkTestDuration)
+		newgc.NetworkTestDuration = GlobalConfigMinimums.NetworkTestDuration
+	}
+	if newgc.NetworkTestInterval < GlobalConfigMinimums.NetworkTestInterval {
+		newgc.NetworkTestInterval = GlobalConfigMinimums.NetworkTestInterval
+	}
+	if newgc.NetworkTestBetterInterval < GlobalConfigMinimums.NetworkTestBetterInterval {
+		log.Warnf("Enforce minimum NetworkTestInterval received %d; using %d",
+			newgc.NetworkTestBetterInterval, GlobalConfigMinimums.NetworkTestBetterInterval)
+		newgc.NetworkTestBetterInterval = GlobalConfigMinimums.NetworkTestBetterInterval
+	}
+
+	if newgc.StaleConfigTime < GlobalConfigMinimums.StaleConfigTime {
+		log.Warnf("Enforce minimum StaleConfigTime received %d; using %d",
+			newgc.StaleConfigTime, GlobalConfigMinimums.StaleConfigTime)
+		newgc.StaleConfigTime = GlobalConfigMinimums.StaleConfigTime
+	}
+	if newgc.DownloadGCTime < GlobalConfigMinimums.DownloadGCTime {
+		log.Warnf("Enforce minimum DownloadGCTime received %d; using %d",
+			newgc.DownloadGCTime, GlobalConfigMinimums.DownloadGCTime)
+		newgc.DownloadGCTime = GlobalConfigMinimums.DownloadGCTime
+	}
+	if newgc.VdiskGCTime < GlobalConfigMinimums.VdiskGCTime {
+		log.Warnf("Enforce minimum VdiskGCTime received %d; using %d",
+			newgc.VdiskGCTime, GlobalConfigMinimums.VdiskGCTime)
+		newgc.VdiskGCTime = GlobalConfigMinimums.VdiskGCTime
+	}
+	if newgc.DownloadRetryTime < GlobalConfigMinimums.DownloadRetryTime {
+		log.Warnf("Enforce minimum DownloadRetryTime received %d; using %d",
+			newgc.DownloadRetryTime, GlobalConfigMinimums.DownloadRetryTime)
+		newgc.DownloadRetryTime = GlobalConfigMinimums.DownloadRetryTime
+	}
+	if newgc.DomainBootRetryTime < GlobalConfigMinimums.DomainBootRetryTime {
+		log.Warnf("Enforce minimum DomainBootRetryTime received %d; using %d",
+			newgc.DomainBootRetryTime, GlobalConfigMinimums.DomainBootRetryTime)
+		newgc.DomainBootRetryTime = GlobalConfigMinimums.DomainBootRetryTime
 	}
 	return newgc
 }

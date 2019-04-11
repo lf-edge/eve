@@ -1009,9 +1009,13 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil && !ctx.GCInitialized {
-		globalConfig = types.ApplyGlobalConfig(*gcp)
+		updated := types.ApplyGlobalConfig(*gcp)
 		log.Infof("handleGlobalConfigModify setting initials to %+v\n",
-			globalConfig)
+			updated)
+		sane := types.EnforceGlobalConfigMinimums(updated)
+		log.Infof("handleGlobalConfigModify: enforced minimums %v\n",
+			cmp.Diff(updated, sane))
+		globalConfig = sane
 		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
