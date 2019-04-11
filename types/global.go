@@ -51,7 +51,6 @@ type GlobalConfig struct {
 	// XXX add max space for downloads?
 	// XXX add LTE management port usage policy?
 
-	XXXTest bool
 	// Per agent settings of log levels; if set for an agent it
 	// overrides the Default*Level above
 	AgentSettings map[string]PerAgentSettings
@@ -147,6 +146,9 @@ func ApplyGlobalConfig(newgc GlobalConfig) GlobalConfig {
 	}
 	if newgc.DomainBootRetryTime == 0 {
 		newgc.DomainBootRetryTime = GlobalConfigDefaults.DomainBootRetryTime
+	}
+	if newgc.DefaultLogLevel == "" {
+		newgc.DefaultLogLevel = GlobalConfigDefaults.DefaultLogLevel
 	}
 	if newgc.DefaultRemoteLogLevel == "" {
 		newgc.DefaultRemoteLogLevel = GlobalConfigDefaults.DefaultRemoteLogLevel
