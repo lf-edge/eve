@@ -1,4 +1,7 @@
 #!/bin/sh
+#
+# Copyright (c) 2018 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
 
 die() { echo $@; exit 2; }
 [ $# -ne 1 ] && die "Need URL to download package from."

@@ -1,5 +1,5 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Manage the allocation of EIDs for application instances based on input
 // as EIDConfig structs and publish the status in the collection of EIDStatus

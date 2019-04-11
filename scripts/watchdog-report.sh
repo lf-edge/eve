@@ -1,4 +1,7 @@
 #!/bin/sh
+#
+# Copyright (c) 2018 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
 
 # Plugged in as a watchdog repair script just so that we can record the
 # watchdog reason

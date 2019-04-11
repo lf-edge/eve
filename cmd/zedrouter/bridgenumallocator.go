@@ -1,5 +1,5 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Allocate a small integer for each NetworkObject UUID.
 // Persist the numbers across reboots using uuidtonum package

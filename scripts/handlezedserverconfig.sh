@@ -1,4 +1,8 @@
 #!/bin/sh
+#
+# Copyright (c) 2018 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 TMPDIR=/var/tmp/zededa
 
 echo "Retrieved overlay /etc/hosts with:"

@@ -1,5 +1,5 @@
 // Copyright (c) 2017 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Create ip rules and ip routing tables for each ifindex and also a free
 // one for the collection of free management ports.

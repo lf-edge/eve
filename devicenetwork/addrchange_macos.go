@@ -1,5 +1,5 @@
 // Copyright (c) 2019 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 //
 // Stub file to allow compilation of addrchange.go to go thru on macos.

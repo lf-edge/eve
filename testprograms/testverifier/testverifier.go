@@ -1,5 +1,5 @@
 // Copyright (c) 2017 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 //This is a test code for testing verifier(image verification)
 //This code do all the work which is required to be done on cloud and device.

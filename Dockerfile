@@ -1,3 +1,6 @@
+# Copyright (c) 2018 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 FROM golang:1.9.1-alpine AS build
 RUN apk update
 RUN apk add --no-cache git gcc linux-headers libc-dev util-linux
@@ -10,7 +13,7 @@ ARG CROSS_GCC=https://musl.cc/aarch64-linux-musleabi-cross.tgz
 RUN [ -z "$GOARCH" ] || (cd / ; apk add --no-cache wget && wget -O - $CROSS_GCC | tar xzvf -)
 
 ADD ./  /go/src/github.com/zededa/go-provision/
-ADD etc /config
+ADD conf/root-certificate.pem conf/server conf/server.production /config/
 ADD scripts/device-steps.sh \
     scripts/find-uplink.sh \
     scripts/generate-device.sh \
@@ -19,9 +22,9 @@ ADD scripts/device-steps.sh \
     scripts/watchdog-report.sh \
   /opt/zededa/bin/
 ADD examples /opt/zededa/examples
-ADD AssignableAdapters /var/tmp/zededa/AssignableAdapters
-ADD DeviceNetworkConfig /var/tmp/zededa/DeviceNetworkConfig
-ADD lisp.config.base /var/tmp/zededa/lisp.config.base
+ADD conf/AssignableAdapters /var/tmp/zededa/AssignableAdapters
+ADD conf/DeviceNetworkConfig /var/tmp/zededa/DeviceNetworkConfig
+ADD conf/lisp.config.base /var/tmp/zededa/lisp.config.base
 
 # XXX temporary until we have a version for all of baseOS/rootfs
 RUN (cd ./src/github.com/zededa/go-provision/; scripts/getversion.sh >/opt/zededa/bin/versioninfo)

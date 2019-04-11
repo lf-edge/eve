@@ -1,6 +1,8 @@
 #
 # Makefile for zededa-provision
 #
+# Copyright (c) 2018 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
 
 # Goals
 # 1. Build go provision binaries for arm64 and amd64

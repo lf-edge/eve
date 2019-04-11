@@ -1,5 +1,5 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Wait for having IP addresses for a few minutes
 // so that we are likely to have an address when we run ntp

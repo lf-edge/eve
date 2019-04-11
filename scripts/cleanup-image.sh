@@ -1,4 +1,7 @@
 #!/bin/bash
+#
+# Copyright (c) 2018 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
 
 echo "Removing files and directories from the image mounted at `pwd`"
 echo; read -n 1 -s -p "Are you sure? ^C to abort"; echo; echo

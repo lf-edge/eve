@@ -1,5 +1,5 @@
 // Copyright (c) 2017 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Library to determine a hardwareModel string which can be used as a filename
 // In a disaggregated system this would probably need to run in dom0 hence

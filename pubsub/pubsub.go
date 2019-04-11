@@ -1,5 +1,5 @@
 // Copyright (c) 2017,2018 Zededa, Inc.
-// All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 // Provide for a pubsub mechanism for config and status which is
 // backed by an IPC mechanism such as connected sockets.

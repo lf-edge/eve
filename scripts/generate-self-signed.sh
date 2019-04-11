@@ -1,4 +1,8 @@
 #!/bin/sh
+#
+# Copyright (c) 2018 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
 # Generate a self-signed ECC certificate.
 # first argument is lifetime in days
 # second argument is a basename for the output files
