@@ -834,6 +834,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		config.UUIDandVersion, config.DisplayName)
 }
 
+// XXX clear the UUID assignment; leave in pciback
 func cleanupAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 	myUuid uuid.UUID) {
 	// Look for any adapters used by us and clear UsedByUUID
@@ -854,6 +855,8 @@ func cleanupAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 	}
 }
 
+// XXX only for USB when usbAccess is set; really assign to pciback then separately
+// assign to domain
 func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 	status *types.DomainStatus) {
 
@@ -1143,6 +1146,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 		status.UUIDandVersion, status.DisplayName)
 }
 
+// XXX currently only unassigns USB if usbAccess is set
 func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 	ignoreErrors bool) {
 
@@ -1165,6 +1169,7 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 				status.DomainName)
 			continue
 		}
+		// XXX also unassign others and assign during Activate?
 		if ib.Type != types.IoUSB {
 			continue
 		}
@@ -1246,6 +1251,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 }
 
 // Check and reserve any assigned adapters
+// XXX rename to reserveAdapters?
 func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 
 	log.Infof("configAdapters(%v) for %s\n",

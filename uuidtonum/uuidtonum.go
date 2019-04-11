@@ -17,6 +17,7 @@ import (
 // Update LastUseTime; set CreateTime if no entry, set InUse
 // The number can be updated as part of this. Entry could already be InUse
 // If mustCreate is set the entry should not exist.
+// XXX doesn't allocate; merely reserves the number for the UUID
 func UuidToNumAllocate(pub *pubsub.Publication, uuid uuid.UUID,
 	number int, mustCreate bool, numType string) {
 
@@ -57,6 +58,7 @@ func UuidToNumAllocate(pub *pubsub.Publication, uuid uuid.UUID,
 	u.Number = number
 	u.InUse = true
 	u.LastUseTime = time.Now()
+	// XXX note that nothing but lastusetime might be updated! Improve log?
 	log.Infof("UuidToNumAllocate(%s) publishing updated %v\n",
 		uuid.String(), u)
 	if err := pub.Publish(u.Key(), u); err != nil {

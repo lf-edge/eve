@@ -1082,7 +1082,7 @@ func addUserSwInfo(swInfo *zmet.ZInfoDevSW) {
 		swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
 		swInfo.SubStatus = "Downloaded 100%"
 	case zmet.ZSwState_DELIVERED:
-		if !swInfo.Activated {
+		if swInfo.Activated {
 			swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
 			swInfo.SubStatus = "Downloaded and verified"
 		} else {
