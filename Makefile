@@ -156,7 +156,7 @@ $(INSTALLER_IMG).raw: $(ROOTFS_IMG)_installer.img $(CONFIG_IMG) | $(DIST)
 $(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
 	./tools/makeiso.sh $< $@
 
-zenix: ZENIX_HASH=$(shell echo ZENIX_TAG | PATH="$(PATH)" $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
+zenix: ZENIX_HASH=$(shell echo ZENIX_TAG | PATH="$(PATH)" ZTOOLS_TAG="$(ZTOOLS_TAG)" $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
 zenix: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(FALLBACK_IMG).img images/rootfs.yml images/installer.yml
 	cp $^ build-pkgs/zenix
 	make -C build-pkgs BUILD-PKGS=zenix $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
@@ -168,7 +168,7 @@ zenix: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).
 # the zededa/zedctr:XXX container will end up in a local docker cache (if linuxkit 
 # doesn't rebuild the package) and we need it there for the linuxkit build to work.
 # Which means, that we have to either forcefully rebuild it or fetch from docker hub.
-pkg/zedctr: ZENIX_HASH=$(shell echo ZEDEDA_TAG | PATH="$(PATH)" $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
+pkg/zedctr: ZENIX_HASH=$(shell echo ZEDEDA_TAG | PATH="$(PATH)" ZTOOLS_TAG="$(ZTOOLS_TAG)" $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
 pkg/zedctr: ZEDCTR_TAG=zededa/zedctr:$(ZENIX_HASH)-$(DOCKER_ARCH_TAG)
 pkg/zedctr: FORCE
 	docker pull $(ZEDCTR_TAG) >/dev/null 2>&1 || : ;\
