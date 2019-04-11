@@ -82,8 +82,8 @@ var GlobalConfigDefaults = GlobalConfig{
 	NetworkGeoRedoTime:        3600, // 1 hour
 	NetworkGeoRetryTime:       600,  // 10 minutes
 	NetworkTestDuration:       30,
-	NetworkTestInterval:       300,  // 5 minutes
-	NetworkTestBetterInterval: 1800, // 30 minutes
+	NetworkTestInterval:       300, // 5 minutes
+	NetworkTestBetterInterval: 0,   // Disabled
 	NetworkFallbackAnyEth:     TS_ENABLED,
 
 	UsbAccess:             true,   // Contoller likely to default to false
@@ -93,8 +93,8 @@ var GlobalConfigDefaults = GlobalConfig{
 	VdiskGCTime:           3600,   // 1 hour
 	DownloadRetryTime:     600,    // 10 minutes
 	DomainBootRetryTime:   600,    // 10 minutes
-	DefaultLogLevel:       "info", // XXX change default to warning?
-	DefaultRemoteLogLevel: "warning",
+	DefaultLogLevel:       "info", // XXX Should we change to warning?
+	DefaultRemoteLogLevel: "info", // XXX Should we change to warning?
 }
 
 // Check which values are set and which should come from defaults
