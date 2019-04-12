@@ -369,7 +369,7 @@ func verifyAndInject(fd4 int,
 		// destination ipv6 address in ipv6 header.
 		destAddrOffset := packetOffset + dptypes.IP6DESTADDROFFSET
 		var destAddr [16]byte
-		for i, _ := range destAddr {
+		for i := range destAddr {
 			// offset is lisp hdr size + start offset of ip addresses in v6 hdr
 			destAddr[i] = buf[destAddrOffset+i]
 		}
@@ -400,7 +400,7 @@ func verifyAndInject(fd4 int,
 		// destination IPv4 address in IPv4 header
 		destAddrOffset := packetOffset + dptypes.IP4DESTADDROFFSET
 		var destAddr [4]byte
-		for i, _ := range destAddr {
+		for i := range destAddr {
 			// offset is lisp hdr size + start offset of ip addresses in v4 hdr
 			destAddr[i] = buf[destAddrOffset+i]
 		}

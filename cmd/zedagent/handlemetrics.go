@@ -984,7 +984,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// Domainmgr excludes adapters which do not currently exist in
 	// what it publishes.
 	// We also mark current management ports as such.
-	for i, _ := range aa.IoBundleList {
+	for i := range aa.IoBundleList {
 		ib := &aa.IoBundleList[i]
 		reportAA := new(zmet.ZioBundle)
 		reportAA.Type = zmet.ZioType(ib.Type)

@@ -12,19 +12,19 @@ import (
 var aa AssignableAdapters = AssignableAdapters{
 	Initialized: true,
 	IoBundleList: []IoBundle{
-		IoBundle{
+		{
 			Type:    IoEth,
 			Name:    "eth0-1",
 			Members: []string{"eth0", "eth1"},
 			Lookup:  true,
 		},
-		IoBundle{
+		{
 			Type:    IoEth,
 			Name:    "eth2",
 			Members: []string{"eth2"},
 			Lookup:  true,
 		},
-		IoBundle{
+		{
 			Type:    IoEth,
 			Name:    "eTH4-7",
 			Members: []string{"eth4", "eth5", "eth6", "eth7"},

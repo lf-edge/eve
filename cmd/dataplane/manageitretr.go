@@ -30,7 +30,7 @@ func InitThreadTable() {
 }
 
 func DumpThreadTable() {
-	for name, _ := range threadTable {
+	for name := range threadTable {
 		log.Println(name)
 	}
 }
@@ -96,7 +96,7 @@ func ManageItrThreads(interfaces Interfaces) {
 	}
 
 	// Create new threads that do not already exist
-	for name, _ := range tmpMap {
+	for name := range tmpMap {
 		if _, ok := threadTable[name]; !ok {
 			// This ITR thread has to be given birth to. Find a mom!!
 			umblical := make(chan dptypes.ITRConfiguration, 1)

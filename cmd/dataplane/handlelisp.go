@@ -139,7 +139,7 @@ func parseRloc(rlocStr *Rloc) (dptypes.Rloc, bool) {
 
 		// This is IPv6 Rloc address
 		v6Addr := rloc.To16()
-		for i, _ := range destAddr {
+		for i := range destAddr {
 			destAddr[i] = v6Addr[i]
 		}
 		rlocEntry.IPv6SockAddr.Port = 0

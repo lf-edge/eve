@@ -356,7 +356,7 @@ func compileRlocs(rlocs []dptypes.Rloc) ([]dptypes.Rloc, uint32) {
 	// For example if there are three RLOCs (say r1, r2, r3) with weights
 	// 10, 30, 60 respectively, then the weight ranges assigned to them will
 	// be (0 - 9), (10 - 39), (40 - 99) respectively.
-	for i, _ := range selectRlocs {
+	for i := range selectRlocs {
 		low := wrStart
 		high := low + selectRlocs[i].Weight - 1
 		wrStart = high + 1
@@ -832,7 +832,7 @@ func StatsThread(puntChannel chan []byte,
 	log.Infof("Starting statistics thread")
 	ticker := time.NewTicker(STATSPUNTINTERVAL * time.Second)
 	for {
-		for _ = range ticker.C {
+		for range ticker.C {
 			// Send out encap & decap statistics to lispers.net
 			encapStats := sendEncapStatistics(puntChannel)
 			decapStats := sendDecapStatistics(puntChannel)
@@ -1035,7 +1035,7 @@ func PublishLispMetrics(ctx *dptypes.DataplaneContext,
 			sslp := rlocStat.SecondsSinceLastPkt
 
 			rlocStatEntry := types.LispRlocStatistics{
-				Rloc:                   rloc,
+				Rloc: rloc,
 				SecondsSinceLastPacket: uint64(sslp),
 				Stats: types.LispPktStat{
 					Pkts:  pktCount,

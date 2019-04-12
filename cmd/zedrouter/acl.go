@@ -693,7 +693,7 @@ func equalRule(r1 IptablesRule, r2 IptablesRule) bool {
 	if len(r1) != len(r2) {
 		return false
 	}
-	for i, _ := range r1 {
+	for i := range r1 {
 		if r1[i] != r2[i] {
 			return false
 		}

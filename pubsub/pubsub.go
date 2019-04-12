@@ -406,7 +406,7 @@ func (pub *Publication) determineDiffs(slaveCollection localCollection) []string
 	name := pub.nameString()
 	items := pub.GetAll()
 	// Look for deleted
-	for slaveKey, _ := range slaveCollection {
+	for slaveKey := range slaveCollection {
 		_, ok := items[slaveKey]
 		if !ok {
 			log.Debugf("determineDiffs(%s): key %s deleted\n",
@@ -441,7 +441,7 @@ func (pub *Publication) determineDiffs(slaveCollection localCollection) []string
 }
 
 func lookupSlave(slaveCollection localCollection, key string) *interface{} {
-	for slaveKey, _ := range slaveCollection {
+	for slaveKey := range slaveCollection {
 		if slaveKey == key {
 			res := slaveCollection[slaveKey]
 			return &res

@@ -219,7 +219,7 @@ func doCertObjUninstall(ctx *baseOsMgrContext, uuidStr string,
 	removedAll = true
 	log.Infof("doCertObjUninstall(%s)\n", uuidStr)
 
-	for i, _ := range status.StorageStatusList {
+	for i := range status.StorageStatusList {
 
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
