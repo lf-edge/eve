@@ -228,7 +228,7 @@ func compressDPCL(dpcl *types.DevicePortConfigList) types.DevicePortConfigList {
 		}
 	}
 	return types.DevicePortConfigList{
-		CurrentIndex: currentIndex,
+		CurrentIndex:   currentIndex,
 		PortConfigList: newConfig,
 	}
 }
