@@ -33,8 +33,6 @@ func main() {
 	switch basename {
 	case "client":
 		client.Run()
-	case "dataplane", "lisp-ztr":
-		dataplane.Run()
 	case "diag":
 		diag.Run()
 	case "domainmgr":
@@ -47,6 +45,8 @@ func main() {
 		identitymgr.Run()
 	case "ledmanager":
 		ledmanager.Run()
+	case "lisp-ztr":
+		dataplane.Run()
 	case "logmanager":
 		logmanager.Run()
 	case "nim":
