@@ -181,14 +181,3 @@ func handleGlobalConfigImpl(sub *pubsub.Subscription, agentName string,
 	log.SetLevel(level)
 	return debug, gcp
 }
-
-// Returns (value, ok)
-func GetXXXTest(sub *pubsub.Subscription) (bool, bool) {
-	m, err := sub.Get("global")
-	if err != nil {
-		log.Infof("GetXXXTest failed %s\n", err)
-		return false, false
-	}
-	gc := cast.CastGlobalConfig(m)
-	return gc.XXXTest, true
-}
