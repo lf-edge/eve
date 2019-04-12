@@ -36,6 +36,8 @@ RUN echo Building: `cat /opt/zededa/bin/versioninfo`
 RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc)           ;\
     go install github.com/zededa/go-provision/zedbox/... && \
     echo "Running go vet" && go vet ./... && \
+    echo "Running go fmt" && ERR=$(gofmt -e -l -s $(find . -name \*.go | grep -v /vendor/)) && \
+       if [ -n "$ERR" ] ; then echo $ERR ; exit 1 ; fi && \
     if [ -f /go/bin/*/zedbox ] ; then mv /go/bin/*/zedbox /go/bin ; fi
 
 RUN ln -s /go/bin/zedbox /opt/zededa/bin/zedbox ;\
