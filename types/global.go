@@ -4,7 +4,18 @@
 package types
 
 import (
+	"encoding/json"
+	"io/ioutil"
+	"os"
+
 	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/pubsub"
+)
+
+const (
+	globalConfigDir  = "/persist/config/GlobalConfig"
+	globalConfigFile = globalConfigDir + "/global.json"
+	symlinkDir       = "/var/tmp/zededa/GlobalConfig"
 )
 
 // GlobalConfig is used for log levels and timer values which are preserved
@@ -162,7 +173,7 @@ var GlobalConfigMinimums = GlobalConfig{
 	MetricInterval:          5,
 	ResetIfCloudGoneTime:    120,
 	FallbackIfCloudGoneTime: 60,
-	MintimeUpdateSuccess:    600,
+	MintimeUpdateSuccess:    30,
 
 	NetworkGeoRedoTime:        60,
 	NetworkGeoRetryTime:       5,
@@ -254,4 +265,58 @@ func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
 		newgc.DomainBootRetryTime = GlobalConfigMinimums.DomainBootRetryTime
 	}
 	return newgc
+}
+
+// Agents which wait for GlobalConfig initialized should call this
+// on startup to make sure we have a GlobalConfig file.
+func EnsureGCFile() {
+	if _, err := os.Stat(globalConfigDir); err != nil {
+		log.Infof("Create %s\n", globalConfigDir)
+		if err := os.MkdirAll(globalConfigDir, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+	// If it exists but doesn't parse we pretend it doesn't exist
+	if _, err := os.Stat(globalConfigFile); err == nil {
+		ok := false
+		sb, err := ioutil.ReadFile(globalConfigFile)
+		if err != nil {
+			log.Errorf("%s for %s", err, globalConfigFile)
+		} else {
+			gc := GlobalConfig{}
+			if err := json.Unmarshal(sb, gc); err != nil {
+				log.Errorf("%s file: %s", err, globalConfigFile)
+			} else {
+				ok = true
+			}
+		}
+		if !ok {
+			log.Warnf("Removing bad %s", globalConfigFile)
+			if err := os.RemoveAll(globalConfigFile); err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
+	if _, err := os.Stat(globalConfigFile); err != nil {
+		err := pubsub.PublishToDir("/persist/config/", "global",
+			GlobalConfigDefaults)
+		if err != nil {
+			log.Errorf("PublishToDir for globalConfig failed %s\n",
+				err)
+		}
+	}
+
+	info, err := os.Lstat(symlinkDir)
+	if err == nil {
+		if (info.Mode() & os.ModeSymlink) != 0 {
+			return
+		}
+		log.Warnf("Removing old %s", symlinkDir)
+		if err := os.RemoveAll(symlinkDir); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if err := os.Symlink(globalConfigDir, symlinkDir); err != nil {
+		log.Fatal(err)
+	}
 }

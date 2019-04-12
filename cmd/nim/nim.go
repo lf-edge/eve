@@ -154,6 +154,9 @@ func Run() {
 
 	model := waitForDeviceNetworkConfigFile()
 
+	// Make sure we have a GlobalConfig file with defaults
+	types.EnsureGCFile()
+
 	pubDeviceNetworkStatus, err := pubsub.Publish(agentName,
 		types.DeviceNetworkStatus{})
 	if err != nil {
@@ -699,7 +702,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	ctx.debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
-	ctx.GCInitialized = false
+	*ctx.globalConfig = types.GlobalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 

@@ -231,6 +231,9 @@ func Run() {
 	// Timer for deferred sends of info messages
 	deferredChan := zedcloud.InitDeferred()
 
+	// Make sure we have a GlobalConfig file with defaults
+	types.EnsureGCFile()
+
 	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
 		types.AssignableAdapters{}, false, &zedagentCtx)
 	if err != nil {
