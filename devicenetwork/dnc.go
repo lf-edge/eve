@@ -173,10 +173,63 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 	SetupVerify(ctx, nextIndex)
 
 	VerifyDevicePortConfig(ctx)
+	*ctx.DevicePortConfigList = compressAndPublishDevicePortConfigList(ctx)
+}
+
+// Make DevicePortConfig have at most two zedagent entries;
+// 1. the highest priority (whether it has lastSucceeded after lastFailed or not)
+// 2. the next priority with lastSucceeded after lastFailed
+func compressAndPublishDevicePortConfigList(ctx *DeviceNetworkContext) types.DevicePortConfigList {
+
+	dpcl := compressDPCL(ctx.DevicePortConfigList)
 	if ctx.PubDevicePortConfigList != nil {
 		log.Infof("publishing DevicePortConfigList: %+v\n",
 			ctx.DevicePortConfigList)
-		ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
+		ctx.PubDevicePortConfigList.Publish("global", dpcl)
+	}
+	return dpcl
+}
+
+// XXX have to handle curindex
+func compressDPCL(dpcl *types.DevicePortConfigList) types.DevicePortConfigList {
+
+	var newConfig []types.DevicePortConfig
+	currentIndex := dpcl.CurrentIndex
+	deleteFailedZedagent := false
+	for i, dpc := range dpcl.PortConfigList {
+		if dpc.Key != "zedagent" {
+			newConfig = append(newConfig, dpc)
+			continue
+		}
+		if !deleteFailedZedagent {
+			newConfig = append(newConfig, dpc)
+			deleteFailedZedagent = true
+			continue
+		}
+		if dpc.LastFailed.IsZero() {
+			newConfig = append(newConfig, dpc)
+			continue
+		}
+		if dpc.LastSucceeded.After(dpc.LastFailed) {
+			newConfig = append(newConfig, dpc)
+			continue
+		}
+		// XXX what if untested i.e. LastFailed and LastSucceeded are zero?
+		if currentIndex == i {
+			// Don't cut off the branch we are sitting on
+			newConfig = append(newConfig, dpc)
+			continue
+		}
+		// delete by not appending
+		log.Infof("compressDPCL deleting zedagent index %d: %+v",
+			i, dpc)
+		if i < currentIndex {
+			currentIndex--
+		}
+	}
+	return types.DevicePortConfigList{
+		CurrentIndex: currentIndex,
+		PortConfigList: newConfig,
 	}
 }
 
@@ -315,12 +368,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 					ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex].Key,
 					pending.PendDPC.Key)
 			}
-			if ctx.PubDevicePortConfigList != nil {
-				log.Infof("publishing DevicePortConfigList: %+v\n",
-					ctx.DevicePortConfigList)
-				ctx.PubDevicePortConfigList.Publish("global",
-					ctx.DevicePortConfigList)
-			}
+			compressAndPublishDevicePortConfigList(ctx)
 			if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() {
 				log.Warn("VerifyDevicePortConfig DPC_FAIL: New DPC arrived while network testing " +
 					"was in progress. Restarting DPC verification.")
@@ -373,11 +421,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	*ctx.DevicePortConfig = pending.PendDPC
 	*ctx.DeviceNetworkStatus = pending.PendDNS
 	ctx.DeviceNetworkStatus.Testing = false
-	if ctx.PubDevicePortConfigList != nil {
-		log.Infof("publishing DevicePortConfigList: %+v\n",
-			ctx.DevicePortConfigList)
-		ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
-	}
+	*ctx.DevicePortConfigList = compressAndPublishDevicePortConfigList(ctx)
 	DoDNSUpdate(ctx)
 
 	pending.Inprogress = false
@@ -692,8 +736,7 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 			ctx.DevicePortConfigList.CurrentIndex = -1
 		}
 	}
-	log.Infof("publishing DevicePortConfigList: %+v\n", ctx.DevicePortConfigList)
-	ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
+	*ctx.DevicePortConfigList = compressAndPublishDevicePortConfigList(ctx)
 	return true
 }
 
