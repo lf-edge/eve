@@ -15,9 +15,9 @@ import (
 	"github.com/google/gopacket/pcap"
 	"golang.org/x/net/bpf"
 	//"github.com/google/gopacket/pfring"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/dataplane/dptypes"
 	"github.com/zededa/go-provision/dataplane/fib"
-	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"net"
 	"os/exec"
@@ -141,8 +141,8 @@ func StartItrThread(threadName string,
 	itrLocalData.IvLow = ivLow
 
 	itrLocalData.LayerParser = gopacket.NewDecodingLayerParser(
-			layers.LayerTypeEthernet, &itrLocalData.Eth, &itrLocalData.Ip4,
-			&itrLocalData.Ip6, &itrLocalData.Udp, &itrLocalData.Tcp)
+		layers.LayerTypeEthernet, &itrLocalData.Eth, &itrLocalData.Ip4,
+		&itrLocalData.Ip6, &itrLocalData.Udp, &itrLocalData.Tcp)
 
 	if itrLocalData.LayerParser == nil {
 		log.Fatal("StartItrThread: ERROR: Packet decode parser creation failed")
@@ -364,11 +364,11 @@ eidLoop:
 				continue
 			}
 			/*
-			packet := gopacket.NewPacket(
-				pktBuf[dptypes.MAXHEADERLEN:ci.CaptureLength+dptypes.MAXHEADERLEN],
-				layers.LinkTypeEthernet,
-				gopacket.DecodeOptions{Lazy: false, NoCopy: true})
-				*/
+				packet := gopacket.NewPacket(
+					pktBuf[dptypes.MAXHEADERLEN:ci.CaptureLength+dptypes.MAXHEADERLEN],
+					layers.LinkTypeEthernet,
+					gopacket.DecodeOptions{Lazy: false, NoCopy: true})
+			*/
 
 			err = itrLocalData.LayerParser.DecodeLayers(
 				pktBuf[dptypes.MAXHEADERLEN:ci.CaptureLength+dptypes.MAXHEADERLEN],
@@ -379,24 +379,24 @@ eidLoop:
 			var ipVersion byte
 
 			/*
-			if ip4Layer := packet.Layer(layers.LayerTypeIPv4); ip4Layer != nil{
-				ipVersion = dptypes.IPVERSION4
-				ipHeader := ip4Layer.(*layers.IPv4)
+				if ip4Layer := packet.Layer(layers.LayerTypeIPv4); ip4Layer != nil{
+					ipVersion = dptypes.IPVERSION4
+					ipHeader := ip4Layer.(*layers.IPv4)
 
-				srcAddr  = ipHeader.SrcIP
-				dstAddr  = ipHeader.DstIP
-				protocol = ipHeader.Protocol
-			} else if ip6Layer := packet.Layer(layers.LayerTypeIPv6); ip6Layer != nil {
-				ipVersion = dptypes.IPVERSION6
-				ipHeader := ip6Layer.(*layers.IPv6)
+					srcAddr  = ipHeader.SrcIP
+					dstAddr  = ipHeader.DstIP
+					protocol = ipHeader.Protocol
+				} else if ip6Layer := packet.Layer(layers.LayerTypeIPv6); ip6Layer != nil {
+					ipVersion = dptypes.IPVERSION6
+					ipHeader := ip6Layer.(*layers.IPv6)
 
-				srcAddr  = ipHeader.SrcIP
-				dstAddr  = ipHeader.DstIP
-				protocol = ipHeader.NextHeader
-			} else {
-				// XXX May be have a global error stat here
-				continue
-			}
+					srcAddr  = ipHeader.SrcIP
+					dstAddr  = ipHeader.DstIP
+					protocol = ipHeader.NextHeader
+				} else {
+					// XXX May be have a global error stat here
+					continue
+				}
 			*/
 			for _, layerType := range itrLocalData.DecodedLayers {
 				switch layerType {
@@ -404,16 +404,16 @@ eidLoop:
 					ipVersion = dptypes.IPVERSION4
 					ipHeader := &itrLocalData.Ip4
 
-					srcAddr  = ipHeader.SrcIP
-					dstAddr  = ipHeader.DstIP
+					srcAddr = ipHeader.SrcIP
+					dstAddr = ipHeader.DstIP
 					protocol = ipHeader.Protocol
 					break
 				case layers.LayerTypeIPv6:
 					ipVersion = dptypes.IPVERSION6
 					ipHeader := &itrLocalData.Ip6
 
-					srcAddr  = ipHeader.SrcIP
-					dstAddr  = ipHeader.DstIP
+					srcAddr = ipHeader.SrcIP
+					dstAddr = ipHeader.DstIP
 					protocol = ipHeader.NextHeader
 					break
 				default:
@@ -469,31 +469,31 @@ eidLoop:
 
 			var ports uint32 = 0
 			/*
-			transportLayer := packet.TransportLayer()
-			if (protocol == layers.IPProtocolUDP) ||
-				(protocol == layers.IPProtocolTCP) {
-				// This is a byte array of the header
-				transportContents := transportLayer.LayerContents()
+				transportLayer := packet.TransportLayer()
+				if (protocol == layers.IPProtocolUDP) ||
+					(protocol == layers.IPProtocolTCP) {
+					// This is a byte array of the header
+					transportContents := transportLayer.LayerContents()
 
-				// XXX What do we do when there is no transport header? like PING
-				if transportContents != nil {
-					ports = (uint32(transportContents[0])<<24 |
-						uint32(transportContents[1])<<16 |
-						uint32(transportContents[2])<<8 |
-						uint32(transportContents[3]))
+					// XXX What do we do when there is no transport header? like PING
+					if transportContents != nil {
+						ports = (uint32(transportContents[0])<<24 |
+							uint32(transportContents[1])<<16 |
+							uint32(transportContents[2])<<8 |
+							uint32(transportContents[3]))
+					}
 				}
-			}
 			*/
 			switch protocol {
 			case layers.IPProtocolTCP:
 				srcPort := itrLocalData.Tcp.SrcPort
 				dstPort := itrLocalData.Tcp.DstPort
-                var dwordSrcPort uint32 = uint32(srcPort) << 16
+				var dwordSrcPort uint32 = uint32(srcPort) << 16
 				ports = uint32(dwordSrcPort | uint32(dstPort))
 			case layers.IPProtocolUDP:
 				srcPort := itrLocalData.Udp.SrcPort
 				dstPort := itrLocalData.Udp.DstPort
-                var dwordSrcPort uint32 = uint32(srcPort) << 16
+				var dwordSrcPort uint32 = uint32(srcPort) << 16
 				ports = uint32(dwordSrcPort | uint32(dstPort))
 			}
 
@@ -575,8 +575,8 @@ func LookupAndSend(
 				// It is not safe to pass it's pointer.
 				// Extract the packet data from buffered packet
 				/*
-				pktBytes := pkt.Packet.Data()
-				capLen = uint32(len(pktBytes))
+					pktBytes := pkt.Packet.Data()
+					capLen = uint32(len(pktBytes))
 				*/
 				capLen = uint32(len(pkt.Packet))
 
@@ -641,7 +641,7 @@ func LookupAndSend(
 		} else {
 			puntChannel <- puntMsg
 			log.Infof("LookupAndSend:Sending punt entry at %s: %s",
-				time.Now(),string(puntMsg))
+				time.Now(), string(puntMsg))
 		}
 	}
 	return

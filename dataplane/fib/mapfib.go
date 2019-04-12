@@ -10,9 +10,9 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/dataplane/dptypes"
 	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/dataplane/dptypes"
+	"github.com/zededa/go-provision/types"
 	"math/rand"
 	"net"
 	"os"
@@ -116,13 +116,13 @@ func InitDecapTable() {
 
 	// Initialize ETR statistics
 	currUnixSeconds := time.Now().Unix()
-    decaps.NoDecryptKey = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
-    decaps.OuterHeaderError = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
-    decaps.BadInnerVersion = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
-    decaps.GoodPackets = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
-    decaps.ICVError = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
-    decaps.LispHeaderError = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
-    decaps.ChecksumError = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
+	decaps.NoDecryptKey = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
+	decaps.OuterHeaderError = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
+	decaps.BadInnerVersion = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
+	decaps.GoodPackets = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
+	decaps.ICVError = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
+	decaps.LispHeaderError = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
+	decaps.ChecksumError = dptypes.PktStat{Pkts: 0, Bytes: 0, LastPktTime: currUnixSeconds}
 }
 
 // Control thread looks for changes to /var/run/zedrouter/DeviceNetworkStatus/global.json
@@ -428,7 +428,7 @@ func LookupAndUpdate(iid uint32, eid net.IP, rlocs []dptypes.Rloc) *dptypes.MapC
 		// as resolved.
 		if debug {
 			log.Debugf("LookupAndUpdate: Resolving unresolved entry with EID %s, IID %v",
-			key.Eid, key.IID)
+				key.Eid, key.IID)
 		}
 
 		cache.LockMe.Lock()
@@ -1005,8 +1005,8 @@ func PublishLispMetrics(ctx *dptypes.DataplaneContext,
 	mapEntries := GetEidMaps()
 	var eidMaps []types.EidMap
 	for _, mapEntry := range mapEntries {
-		eidMap := types.EidMap {
-			IID: uint64(mapEntry.InstanceId),
+		eidMap := types.EidMap{
+			IID:  uint64(mapEntry.InstanceId),
 			Eids: mapEntry.Eids,
 		}
 		eidMaps = append(eidMaps, eidMap)
@@ -1035,7 +1035,7 @@ func PublishLispMetrics(ctx *dptypes.DataplaneContext,
 			sslp := rlocStat.SecondsSinceLastPkt
 
 			rlocStatEntry := types.LispRlocStatistics{
-				Rloc: rloc,
+				Rloc:                   rloc,
 				SecondsSinceLastPacket: uint64(sslp),
 				Stats: types.LispPktStat{
 					Pkts:  pktCount,

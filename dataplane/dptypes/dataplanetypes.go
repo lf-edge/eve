@@ -23,20 +23,20 @@ const (
 	// max header len is ip6 hdr len (40) +
 	// udp (8) + lisp (8) - eth hdr (14) + crypto iv len (16 for CBC and 12 for GCM)
 	//MAXHEADERLEN             = 58 // max header len with CBC
-	MAXHEADERLEN  = 54
-	ETHHEADERLEN  = 14
-	UDPHEADERLEN  = 8
-	ICVLEN        = 20
-	IVLEN         = 16
-	IP4HEADERLEN  = 20
-	IP6HEADERLEN  = 40
-	LISPHEADERLEN = 8
-	GCMIVLENGTH   = 12
-	IPVERSION4    = 4
-	IPVERSION6    = 6
-	IP4DESTADDROFFSET = 16
-	IP4TOTALLENOFFSET = 2
-	IP6DESTADDROFFSET = 24
+	MAXHEADERLEN        = 54
+	ETHHEADERLEN        = 14
+	UDPHEADERLEN        = 8
+	ICVLEN              = 20
+	IVLEN               = 16
+	IP4HEADERLEN        = 20
+	IP6HEADERLEN        = 40
+	LISPHEADERLEN       = 8
+	GCMIVLENGTH         = 12
+	IPVERSION4          = 4
+	IPVERSION6          = 6
+	IP4DESTADDROFFSET   = 16
+	IP4TOTALLENOFFSET   = 2
+	IP6DESTADDROFFSET   = 24
 	IP6PAYLOADLENOFFSET = 4
 )
 
@@ -248,12 +248,12 @@ type ITRLocalData struct {
 	ItrCryptoPort uint
 
 	// Decode headers
-	Eth layers.Ethernet
-	Ip4 layers.IPv4
-	Ip6 layers.IPv6
-	Udp layers.UDP
-	Tcp layers.TCP
-	LayerParser *gopacket.DecodingLayerParser
+	Eth           layers.Ethernet
+	Ip4           layers.IPv4
+	Ip6           layers.IPv6
+	Udp           layers.UDP
+	Tcp           layers.TCP
+	LayerParser   *gopacket.DecodingLayerParser
 	DecodedLayers []gopacket.LayerType
 }
 
@@ -269,10 +269,10 @@ type ITRConfiguration struct {
 }
 
 type DataplaneContext struct {
-	PubLispInfoStatus *pubsub.Publication
-	PubLispMetrics    *pubsub.Publication
-	SubLispConfig     *pubsub.Subscription
+	PubLispInfoStatus      *pubsub.Publication
+	PubLispMetrics         *pubsub.Publication
+	SubLispConfig          *pubsub.Subscription
 	SubDeviceNetworkStatus *pubsub.Subscription
-	SubGlobalConfig   *pubsub.Subscription
-	Legacy            bool
+	SubGlobalConfig        *pubsub.Subscription
+	Legacy                 bool
 }

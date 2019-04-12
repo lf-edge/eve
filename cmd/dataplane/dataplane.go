@@ -10,18 +10,18 @@ package dataplane
 
 import (
 	"encoding/json"
-	"fmt"
 	"flag"
+	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/pidfile"
-	"github.com/zededa/go-provision/pubsub"
-	"github.com/zededa/go-provision/types"
 	"github.com/zededa/go-provision/dataplane/dptypes"
 	"github.com/zededa/go-provision/dataplane/etr"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/dataplane/itr"
-	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/pidfile"
+	"github.com/zededa/go-provision/pubsub"
+	"github.com/zededa/go-provision/types"
 	"net"
 	"os"
 	"os/signal"
@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	agentName  = "lisp-ztr"
+	agentName = "lisp-ztr"
 )
 
 var lispConfigDir string
@@ -56,11 +56,11 @@ func Run() {
 	flag.Parse()
 
 	// Open/Create new log file
-        curpart := *curpartPtr
-        if *versionPtr {
-                fmt.Printf("%s: %s\n", os.Args[0], Version)
-                return
-        }
+	curpart := *curpartPtr
+	if *versionPtr {
+		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		return
+	}
 	logf, err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
@@ -470,7 +470,7 @@ func handleLispMsg(msg []byte) {
 		log.Debugf("handleLispMsg: Processing ITR crypto port message")
 		handleItrCryptoPort(msg)
 	default:
-			log.Debugf("handleLispMsg: Unknown message (%s) type (%v) received",
-				string(msg), msgType.Type)
+		log.Debugf("handleLispMsg: Unknown message (%s) type (%v) received",
+			string(msg), msgType.Type)
 	}
 }

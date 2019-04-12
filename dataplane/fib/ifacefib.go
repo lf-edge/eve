@@ -5,8 +5,8 @@ package fib
 
 import (
 	"fmt"
-	"github.com/zededa/go-provision/dataplane/dptypes"
 	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/dataplane/dptypes"
 	"net"
 )
 
@@ -155,7 +155,7 @@ func GetEidMaps() []dptypes.EIDEntry {
 
 	var eidMaps []dptypes.EIDEntry
 	for key, data := range eidMap.EidEntries {
-		eidMap := dptypes.EIDEntry {
+		eidMap := dptypes.EIDEntry{
 			InstanceId: key,
 		}
 		for _, eid := range data.Eids {

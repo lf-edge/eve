@@ -19,10 +19,10 @@ import (
 	"github.com/google/gopacket/pcap"
 	"golang.org/x/net/bpf"
 	//"github.com/google/gopacket/pfring"
-	"github.com/zededa/go-provision/types"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/dataplane/dptypes"
 	"github.com/zededa/go-provision/dataplane/fib"
-	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/types"
 	"net"
 	"syscall"
 	"time"
@@ -76,14 +76,13 @@ func StartEtrNonNat() {
 		return
 	}
 
-
 	// Create raw socket for forwarding decapsulated IPv6 packets
 	fd6, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
 	if err != nil {
 		serverConn.Close()
 		log.Fatal(
 			"StartEtrNonNat: Creating ETR IPv6 raw socket for packet injection failed: " +
-			err.Error())
+				err.Error())
 	}
 
 	// start processing packets. This loop should never end.
@@ -146,9 +145,9 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 			EtrTable.EtrTable[link.IfName] = &dptypes.EtrRunStatus{
 				IfName: link.IfName,
 				//Ring:   ring,
-				Handle: handle,
-				Fd4:    fd4,
-				Fd6:    fd6,
+				Handle:      handle,
+				Fd4:         fd4,
+				Fd6:         fd6,
 				KillChannel: killChannel,
 			}
 			log.Infof("HandleDeviceNetworkChange: Creating ETR thread for UP link %s",
@@ -248,7 +247,7 @@ func StartEtrNat(ephPort int,
 		handle.Close()
 		log.Fatal(
 			"StartEtrNat: Creating second ETR IPv4 raw socker for packet injection failed: " +
-			err.Error())
+				err.Error())
 	}
 
 	fd6, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_RAW, syscall.IPPROTO_RAW)
@@ -258,7 +257,7 @@ func StartEtrNat(ephPort int,
 		handle.Close()
 		log.Fatal(
 			"StartEtrNat: Creating second ETR IPv6 raw socket for packet injection failed: " +
-			err.Error())
+				err.Error())
 		syscall.Close(fd4)
 	}
 	//go ProcessCapturedPkts(fd, ring)
@@ -379,8 +378,8 @@ func verifyAndInject(fd4 int,
 		// Look for the payload length in IPv6 header and slice the packet
 		// buffer accordingly. Leaving the padding works in case of IPv6 but,
 		// we want to be ready when linux kernel behavior changes.
-		var payloadLen int = int(buf[packetOffset + dptypes.IP6PAYLOADLENOFFSET])
-		payloadLen = (payloadLen << 8) | int(buf[packetOffset + dptypes.IP6PAYLOADLENOFFSET + 1])
+		var payloadLen int = int(buf[packetOffset+dptypes.IP6PAYLOADLENOFFSET])
+		payloadLen = (payloadLen << 8) | int(buf[packetOffset+dptypes.IP6PAYLOADLENOFFSET+1])
 		packetEnd := packetOffset + payloadLen + dptypes.IP6HEADERLEN
 
 		err := syscall.Sendto(fd6, buf[packetOffset:packetEnd], 0, &syscall.SockaddrInet6{
@@ -410,13 +409,13 @@ func verifyAndInject(fd4 int,
 		// Look for the total packet length in IPv4 header and slice the packet
 		// buffer accordingly. Leaving the padding works in case of IPv6 but,
 		// results in checksum errors in case of IPv4.
-		var totalLen int = int(buf[packetOffset + dptypes.IP4TOTALLENOFFSET])
-		totalLen = (totalLen << 8) | int(buf[packetOffset + dptypes.IP4TOTALLENOFFSET + 1])
+		var totalLen int = int(buf[packetOffset+dptypes.IP4TOTALLENOFFSET])
+		totalLen = (totalLen << 8) | int(buf[packetOffset+dptypes.IP4TOTALLENOFFSET+1])
 		packetEnd := packetOffset + totalLen
 
 		err := syscall.Sendto(fd4, buf[packetOffset:packetEnd], 0, &syscall.SockaddrInet4{
-			Port:   0,
-			Addr:   destAddr,
+			Port: 0,
+			Addr: destAddr,
 		})
 		if err != nil {
 			// XXX May be add an error stat here
@@ -559,10 +558,10 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 		case <-killChannel:
 			log.Errorf(
 				"ProcessCapturedPkts: It could be the ETR thread handle closure leading to this")
-				log.Infof("ProcessCapturedPkts: Closing packet capture handle")
-				handle.Close()
-				return
-			default:
+			log.Infof("ProcessCapturedPkts: Closing packet capture handle")
+			handle.Close()
+			return
+		default:
 		}
 		ci, err := handle.ReadPacketDataTo(pktBuf[:])
 		capLen := ci.CaptureLength
@@ -580,46 +579,46 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 			continue
 		}
 		/*
-		packet := gopacket.NewPacket(
-			pktBuf[:capLen],
-			layers.LinkTypeEthernet,
-			gopacket.DecodeOptions{Lazy: false, NoCopy: true})
-			*/
+			packet := gopacket.NewPacket(
+				pktBuf[:capLen],
+				layers.LinkTypeEthernet,
+				gopacket.DecodeOptions{Lazy: false, NoCopy: true})
+		*/
 
 		/*
-		appLayer := packet.ApplicationLayer()
-		if appLayer == nil {
-			continue
-		}
-		payload := appLayer.Payload()
-		if payload == nil {
-			continue
-		}
-
-		var srcIP net.IP
-		if ipLayer := packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
-			// ipv4 underlay
-			ipHdr := ipLayer.(*layers.IPv4)
-			// validate outer header checksum
-			csum := computeChecksum(pktBuf[dptypes.ETHHEADERLEN : dptypes.ETHHEADERLEN+dptypes.IP4HEADERLEN])
-			if csum != 0xFFFF {
-				fib.AddDecapStatistics("checksum-error", 1, uint64(capLen), currUnixSeconds)
-				if debug {
-					log.Printf("ProcessCapturedPackets: Checksum error\n")
-				}
-				return
+			appLayer := packet.ApplicationLayer()
+			if appLayer == nil {
+				continue
+			}
+			payload := appLayer.Payload()
+			if payload == nil {
+				continue
 			}
 
-			srcIP = ipHdr.SrcIP
-		} else if ip6Layer := packet.Layer(layers.LayerTypeIPv6); ip6Layer != nil {
-			// ipv6 underlay
-			ip6Hdr := ip6Layer.(*layers.IPv6)
-			srcIP = ip6Hdr.SrcIP
-		} else {
-			// We do not need this packet
-			fib.AddDecapStatistics("outer-header-error", 1, uint64(capLen), currUnixSeconds)
-			return
-		}
+			var srcIP net.IP
+			if ipLayer := packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
+				// ipv4 underlay
+				ipHdr := ipLayer.(*layers.IPv4)
+				// validate outer header checksum
+				csum := computeChecksum(pktBuf[dptypes.ETHHEADERLEN : dptypes.ETHHEADERLEN+dptypes.IP4HEADERLEN])
+				if csum != 0xFFFF {
+					fib.AddDecapStatistics("checksum-error", 1, uint64(capLen), currUnixSeconds)
+					if debug {
+						log.Printf("ProcessCapturedPackets: Checksum error\n")
+					}
+					return
+				}
+
+				srcIP = ipHdr.SrcIP
+			} else if ip6Layer := packet.Layer(layers.LayerTypeIPv6); ip6Layer != nil {
+				// ipv6 underlay
+				ip6Hdr := ip6Layer.(*layers.IPv6)
+				srcIP = ip6Hdr.SrcIP
+			} else {
+				// We do not need this packet
+				fib.AddDecapStatistics("outer-header-error", 1, uint64(capLen), currUnixSeconds)
+				return
+			}
 		*/
 		var srcIP net.IP
 		var payload []byte

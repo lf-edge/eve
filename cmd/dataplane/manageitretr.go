@@ -9,12 +9,12 @@ package dataplane
 import (
 	"github.com/google/gopacket/afpacket"
 	//"github.com/google/gopacket/pfring"
-	"github.com/zededa/go-provision/types"
+	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/dataplane/dptypes"
 	"github.com/zededa/go-provision/dataplane/etr"
 	"github.com/zededa/go-provision/dataplane/fib"
 	"github.com/zededa/go-provision/dataplane/itr"
-	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/types"
 )
 
 type ThreadEntry struct {
@@ -70,7 +70,7 @@ func ManageItrThreads(interfaces Interfaces) {
 		itrConfig.ItrCryptoPortValid = false
 		if _, ok := tmpMap[name]; !ok {
 			// This thread has to die, break the bad news to it
-			log.Infof("ManageItrThreads: " +
+			log.Infof("ManageItrThreads: "+
 				"Sending kill signal to thread capturing pkts on: %s", name)
 			entry.umblical <- itrConfig
 
