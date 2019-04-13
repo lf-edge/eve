@@ -120,7 +120,7 @@ if [ $? = 0 ]; then
     killall dmesg
 fi
 
-DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $CONFIGDIR/DevicePortConfig $CONFIGDIR/GlobalConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
+DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
 
 for d in $DIRS; do
     d1=`dirname $d`
@@ -227,23 +227,14 @@ echo "Current downloaded files:"
 ls -lt $PERSISTDIR/downloads/*/*
 echo
 
-# Places for persistent across reboots global config and status
-if [ ! -d $GCDIR ]; then
-    mkdir -p $GCDIR
-fi
-if [ ! -f $GCDIR/global.json ]; then
-    echo '{}' >$GCDIR/global.json
-fi
-if [ -f /var/tmp/zededa/GlobalConfig ]; then
-    rm -f /var/tmp/zededa/GlobalConfig
-fi
-ln -s $GCDIR /var/tmp/zededa/GlobalConfig
-
-# Copy any GlobalConfig
+# Copy any GlobalConfig from /config
 dir=$CONFIGDIR/GlobalConfig
 for f in $dir/*.json; do
     if [ "$f" = "$dir/*.json" ]; then
 	break
+    fi
+    if [ ! -d $GCDIR ]; then
+	mkdir -p $GCDIR
     fi
     echo "Copying from $f to $GCDIR"
     cp -p $f $GCDIR

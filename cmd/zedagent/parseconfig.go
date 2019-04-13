@@ -1620,7 +1620,9 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	log.Infof("parseConfigItems: Applying updated config sha % x vs. % x: %v\n",
 		itemsPrevConfigHash, configHash, items)
 
-	globalConfigChange := false
+	// Start with the defaults so that we revert to default when no data
+	newGlobalConfig := types.GlobalConfigDefaults
+
 	for _, item := range items {
 		log.Infof("parseConfigItems key %s value %s\n",
 			item.Key, item.Value)
@@ -1634,20 +1636,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			newU32 := uint32(i64)
-			if newU32 == 0 {
-				// Revert to default
-				newU32 = types.GlobalConfigDefaults.ConfigInterval
-			}
-			if newU32 != globalConfig.ConfigInterval {
-				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					key,
-					globalConfig.ConfigInterval,
-					newU32)
-				globalConfig.ConfigInterval = newU32
-				globalConfigChange = true
-				updateConfigTimer(ctx.configTickerHandle)
-			}
+			newGlobalConfig.ConfigInterval = uint32(i64)
+
 		case "timer.metric.interval":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
@@ -1655,20 +1645,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			newU32 := uint32(i64)
-			if newU32 == 0 {
-				// Revert to default
-				newU32 = types.GlobalConfigDefaults.MetricInterval
-			}
-			if newU32 != globalConfig.MetricInterval {
-				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					key,
-					globalConfig.MetricInterval,
-					newU32)
-				globalConfig.MetricInterval = newU32
-				globalConfigChange = true
-				updateMetricsTimer(ctx.metricsTickerHandle)
-			}
+			newGlobalConfig.MetricInterval = uint32(i64)
+
 		case "timer.reboot.no.network":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
@@ -1676,19 +1654,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			newU32 := uint32(i64)
-			if newU32 == 0 {
-				// Revert to default
-				newU32 = types.GlobalConfigDefaults.ResetIfCloudGoneTime
-			}
-			if newU32 != globalConfig.ResetIfCloudGoneTime {
-				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					key,
-					globalConfig.ResetIfCloudGoneTime,
-					newU32)
-				globalConfig.ResetIfCloudGoneTime = newU32
-				globalConfigChange = true
-			}
+			newGlobalConfig.ResetIfCloudGoneTime = uint32(i64)
+
 		case "timer.update.fallback.no.network":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
@@ -1696,19 +1663,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			newU32 := uint32(i64)
-			if newU32 == 0 {
-				// Revert to default
-				newU32 = types.GlobalConfigDefaults.FallbackIfCloudGoneTime
-			}
-			if newU32 != globalConfig.FallbackIfCloudGoneTime {
-				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					key,
-					globalConfig.FallbackIfCloudGoneTime,
-					newU32)
-				globalConfig.FallbackIfCloudGoneTime = newU32
-				globalConfigChange = true
-			}
+			newGlobalConfig.FallbackIfCloudGoneTime = uint32(i64)
+
 		case "timer.test.baseimage.update":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
@@ -1716,19 +1672,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			newU32 := uint32(i64)
-			if newU32 == 0 {
-				// Revert to default
-				newU32 = types.GlobalConfigDefaults.MintimeUpdateSuccess
-			}
-			if newU32 != globalConfig.MintimeUpdateSuccess {
-				log.Errorf("parseConfigItems: %s change from %d to %d\n",
-					key,
-					globalConfig.MintimeUpdateSuccess,
-					newU32)
-				globalConfig.MintimeUpdateSuccess = newU32
-				globalConfigChange = true
-			}
+			newGlobalConfig.MintimeUpdateSuccess = uint32(i64)
+
 		case "timer.port.georedo":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
@@ -1736,19 +1681,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			newU32 := uint32(i64)
-			if newU32 == 0 {
-				// Revert to default
-				newU32 = types.GlobalConfigDefaults.NetworkGeoRedoTime
-			}
-			if newU32 != globalConfig.NetworkGeoRedoTime {
-				log.Errorf("parseConfigItems: %s change from %d to %d\n",
-					key,
-					globalConfig.NetworkGeoRedoTime,
-					newU32)
-				globalConfig.NetworkGeoRedoTime = newU32
-				globalConfigChange = true
-			}
+			newGlobalConfig.NetworkGeoRedoTime = uint32(i64)
+
 		case "timer.port.georetry":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
@@ -1756,19 +1690,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			newU32 := uint32(i64)
-			if newU32 == 0 {
-				// Revert to default
-				newU32 = types.GlobalConfigDefaults.NetworkGeoRetryTime
-			}
-			if newU32 != globalConfig.NetworkGeoRetryTime {
-				log.Errorf("parseConfigItems: %s change from %d to %d\n",
-					key,
-					globalConfig.NetworkGeoRetryTime,
-					newU32)
-				globalConfig.NetworkGeoRetryTime = newU32
-				globalConfigChange = true
-			}
+			newGlobalConfig.NetworkGeoRetryTime = uint32(i64)
+
 		case "timer.port.testduration":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
@@ -1776,19 +1699,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			newU32 := uint32(i64)
-			if newU32 == 0 {
-				// Revert to default
-				newU32 = types.GlobalConfigDefaults.NetworkTestDuration
-			}
-			if newU32 != globalConfig.NetworkTestDuration {
-				log.Errorf("parseConfigItems: %s change from %d to %d\n",
-					key,
-					globalConfig.NetworkTestDuration,
-					newU32)
-				globalConfig.NetworkTestDuration = newU32
-				globalConfigChange = true
-			}
+			newGlobalConfig.NetworkTestDuration = uint32(i64)
+
 		case "timer.port.testinterval":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
@@ -1796,19 +1708,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			newU32 := uint32(i64)
-			if newU32 == 0 {
-				// Revert to default
-				newU32 = types.GlobalConfigDefaults.NetworkTestInterval
-			}
-			if newU32 != globalConfig.NetworkTestInterval {
-				log.Errorf("parseConfigItems: %s change from %d to %d\n",
-					key,
-					globalConfig.NetworkTestInterval,
-					newU32)
-				globalConfig.NetworkTestInterval = newU32
-				globalConfigChange = true
-			}
+			newGlobalConfig.NetworkTestInterval = uint32(i64)
+
 		case "timer.port.testbetterinterval":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
@@ -1816,19 +1717,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			newU32 := uint32(i64)
-			if newU32 == 0 {
-				// Revert to default
-				newU32 = types.GlobalConfigDefaults.NetworkTestBetterInterval
-			}
-			if newU32 != globalConfig.NetworkTestBetterInterval {
-				log.Errorf("parseConfigItems: %s change from %d to %d\n",
-					key,
-					globalConfig.NetworkTestBetterInterval,
-					newU32)
-				globalConfig.NetworkTestBetterInterval = newU32
-				globalConfigChange = true
-			}
+			newGlobalConfig.NetworkTestBetterInterval = uint32(i64)
 
 		case "network.fallback.any.eth":
 			newTs, err := types.ParseTriState(item.Value)
@@ -1837,14 +1726,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			if newTs != globalConfig.NetworkFallbackAnyEth {
-				log.Infof("parseConfigItems: %s change from %v to %v\n",
-					key,
-					globalConfig.NetworkFallbackAnyEth,
-					newTs)
-				globalConfig.NetworkFallbackAnyEth = newTs
-				globalConfigChange = true
-			}
+			newGlobalConfig.NetworkFallbackAnyEth = newTs
 
 		case "debug.enable.usb":
 			newBool, err := strconv.ParseBool(item.Value)
@@ -1853,14 +1735,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			if newBool != globalConfig.UsbAccess {
-				log.Infof("parseConfigItems: %s change from %v to %v\n",
-					key,
-					globalConfig.UsbAccess,
-					newBool)
-				globalConfig.UsbAccess = newBool
-				globalConfigChange = true
-			}
+			newGlobalConfig.UsbAccess = newBool
 
 		case "debug.enable.ssh":
 			newBool, err := strconv.ParseBool(item.Value)
@@ -1869,14 +1744,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			if newBool != globalConfig.SshAccess {
-				log.Infof("parseConfigItems: %s change from %v to %v\n",
-					key,
-					globalConfig.SshAccess,
-					newBool)
-				globalConfig.SshAccess = newBool
-				globalConfigChange = true
-			}
+			newGlobalConfig.SshAccess = newBool
 
 		case "app.allow.vnc":
 			newBool, err := strconv.ParseBool(item.Value)
@@ -1885,14 +1753,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			if newBool != globalConfig.AllowAppVnc {
-				log.Infof("parseConfigItems: %s change from %v to %v\n",
-					key,
-					globalConfig.AllowAppVnc,
-					newBool)
-				globalConfig.AllowAppVnc = newBool
-				globalConfigChange = true
-			}
+			newGlobalConfig.AllowAppVnc = newBool
 
 		case "timer.use.config.checkpoint":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
@@ -1901,19 +1762,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			newU32 := uint32(i64)
-			if newU32 == 0 {
-				// Revert to default
-				newU32 = types.GlobalConfigDefaults.StaleConfigTime
-			}
-			if newU32 != globalConfig.StaleConfigTime {
-				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					key,
-					globalConfig.StaleConfigTime,
-					newU32)
-				globalConfig.StaleConfigTime = newU32
-				globalConfigChange = true
-			}
+			newGlobalConfig.StaleConfigTime = uint32(i64)
+
 		case "timer.gc.download":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
@@ -1921,19 +1771,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			newU32 := uint32(i64)
-			if newU32 == 0 {
-				// Revert to default
-				newU32 = types.GlobalConfigDefaults.DownloadGCTime
-			}
-			if newU32 != globalConfig.DownloadGCTime {
-				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					key,
-					globalConfig.DownloadGCTime,
-					newU32)
-				globalConfig.DownloadGCTime = newU32
-				globalConfigChange = true
-			}
+			newGlobalConfig.DownloadGCTime = uint32(i64)
+
 		case "timer.gc.vdisk":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
@@ -1941,19 +1780,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			newU32 := uint32(i64)
-			if newU32 == 0 {
-				// Revert to default
-				newU32 = types.GlobalConfigDefaults.VdiskGCTime
-			}
-			if newU32 != globalConfig.VdiskGCTime {
-				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					key,
-					globalConfig.VdiskGCTime,
-					newU32)
-				globalConfig.VdiskGCTime = newU32
-				globalConfigChange = true
-			}
+			newGlobalConfig.VdiskGCTime = uint32(i64)
+
 		case "timer.download.retry":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
@@ -1961,19 +1789,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			newU32 := uint32(i64)
-			if newU32 == 0 {
-				// Revert to default
-				newU32 = types.GlobalConfigDefaults.DownloadRetryTime
-			}
-			if newU32 != globalConfig.DownloadRetryTime {
-				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					key,
-					globalConfig.DownloadRetryTime,
-					newU32)
-				globalConfig.DownloadRetryTime = newU32
-				globalConfigChange = true
-			}
+			newGlobalConfig.DownloadRetryTime = uint32(i64)
+
 		case "timer.boot.retry":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
@@ -1981,47 +1798,14 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 					item.Value, key, err)
 				continue
 			}
-			newU32 := uint32(i64)
-			if newU32 == 0 {
-				// Revert to default
-				newU32 = types.GlobalConfigDefaults.DomainBootRetryTime
-			}
-			if newU32 != globalConfig.DomainBootRetryTime {
-				log.Infof("parseConfigItems: %s change from %d to %d\n",
-					key,
-					globalConfig.DomainBootRetryTime,
-					newU32)
-				globalConfig.DomainBootRetryTime = newU32
-				globalConfigChange = true
-			}
+			newGlobalConfig.DomainBootRetryTime = uint32(i64)
+
 		case "debug.default.loglevel":
-			newString := item.Value
-			if newString == "" {
-				// Revert to default
-				newString = types.GlobalConfigDefaults.DefaultLogLevel
-			}
-			if newString != globalConfig.DefaultLogLevel {
-				log.Infof("parseConfigItems: %s change from %v to %v\n",
-					key,
-					globalConfig.DefaultLogLevel,
-					newString)
-				globalConfig.DefaultLogLevel = newString
-				globalConfigChange = true
-			}
+			newGlobalConfig.DefaultLogLevel = item.Value
+
 		case "debug.default.remote.loglevel":
-			newString := item.Value
-			if newString == "" {
-				// Revert to default
-				newString = types.GlobalConfigDefaults.DefaultRemoteLogLevel
-			}
-			if newString != globalConfig.DefaultRemoteLogLevel {
-				log.Infof("parseConfigItems: %s change from %v to %v\n",
-					key,
-					globalConfig.DefaultRemoteLogLevel,
-					newString)
-				globalConfig.DefaultRemoteLogLevel = newString
-				globalConfigChange = true
-			}
+			newGlobalConfig.DefaultRemoteLogLevel = item.Value
+
 		default:
 			// Handle agentname items for loglevels
 			newString := item.Value
@@ -2032,24 +1816,28 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				agentName := components[1]
 				current := agentlog.LogLevel(&globalConfig,
 					agentName)
-				if current != newString {
+				if current != newString && newString != "" {
 					log.Infof("parseConfigItems: %s change from %v to %v\n",
 						key, current, newString)
-					agentlog.SetLogLevel(&globalConfig,
+					agentlog.SetLogLevel(&newGlobalConfig,
 						agentName, newString)
-					globalConfigChange = true
+				} else {
+					agentlog.SetLogLevel(&newGlobalConfig,
+						agentName, current)
 				}
 			} else if len(components) == 4 && components[0] == "debug" &&
 				components[2] == "remote" && components[3] == "loglevel" {
 				agentName := components[1]
 				current := agentlog.RemoteLogLevel(&globalConfig,
 					agentName)
-				if current != newString {
+				if current != newString && newString != "" {
 					log.Infof("parseConfigItems: %s change from %v to %v\n",
 						key, current, newString)
-					agentlog.SetRemoteLogLevel(&globalConfig,
+					agentlog.SetRemoteLogLevel(&newGlobalConfig,
 						agentName, newString)
-					globalConfigChange = true
+				} else {
+					agentlog.SetRemoteLogLevel(&newGlobalConfig,
+						agentName, current)
 				}
 			} else {
 				log.Errorf("Unknown configItem %s value %s\n",
@@ -2058,12 +1846,27 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			}
 		}
 	}
-	if globalConfigChange {
-		// Apply defaults for zero values
-		updated := types.ApplyGlobalConfig(globalConfig)
-		log.Infof("parseConfigItems: updated with defaults %v\n",
-			cmp.Diff(globalConfig, updated))
-		globalConfig = updated
+	newGlobalConfig = types.ApplyGlobalConfig(newGlobalConfig)
+	if !cmp.Equal(globalConfig, newGlobalConfig) {
+		log.Infof("parseConfigItems: change %v",
+			cmp.Diff(globalConfig, newGlobalConfig))
+
+		oldGlobalConfig := globalConfig
+		globalConfig = types.EnforceGlobalConfigMinimums(newGlobalConfig)
+		if globalConfig.ConfigInterval != oldGlobalConfig.ConfigInterval {
+			log.Infof("parseConfigItems: %s change from %d to %d\n",
+				"ConfigInterval",
+				oldGlobalConfig.ConfigInterval,
+				globalConfig.ConfigInterval)
+			updateConfigTimer(ctx.configTickerHandle)
+		}
+		if globalConfig.MetricInterval != oldGlobalConfig.MetricInterval {
+			log.Infof("parseConfigItems: %s change from %d to %d\n",
+				"MetricInterval",
+				oldGlobalConfig.MetricInterval,
+				globalConfig.MetricInterval)
+			updateMetricsTimer(ctx.metricsTickerHandle)
+		}
 		err := pubsub.PublishToDir("/persist/config/", "global",
 			&globalConfig)
 		if err != nil {

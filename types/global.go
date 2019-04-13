@@ -3,6 +3,21 @@
 
 package types
 
+import (
+	"encoding/json"
+	"io/ioutil"
+	"os"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/zededa/go-provision/pubsub"
+)
+
+const (
+	globalConfigDir  = "/persist/config/GlobalConfig"
+	globalConfigFile = globalConfigDir + "/global.json"
+	symlinkDir       = "/var/tmp/zededa/GlobalConfig"
+)
+
 // GlobalConfig is used for log levels and timer values which are preserved
 // across reboots and baseimage-updates.
 
@@ -47,7 +62,6 @@ type GlobalConfig struct {
 	// XXX add max space for downloads?
 	// XXX add LTE management port usage policy?
 
-	XXXTest bool
 	// Per agent settings of log levels; if set for an agent it
 	// overrides the Default*Level above
 	AgentSettings map[string]PerAgentSettings
@@ -78,8 +92,8 @@ var GlobalConfigDefaults = GlobalConfig{
 	NetworkGeoRedoTime:        3600, // 1 hour
 	NetworkGeoRetryTime:       600,  // 10 minutes
 	NetworkTestDuration:       30,
-	NetworkTestInterval:       300,  // 5 minutes
-	NetworkTestBetterInterval: 1800, // 30 minutes
+	NetworkTestInterval:       300, // 5 minutes
+	NetworkTestBetterInterval: 0,   // Disabled
 	NetworkFallbackAnyEth:     TS_ENABLED,
 
 	UsbAccess:             true,   // Contoller likely to default to false
@@ -89,8 +103,8 @@ var GlobalConfigDefaults = GlobalConfig{
 	VdiskGCTime:           3600,   // 1 hour
 	DownloadRetryTime:     600,    // 10 minutes
 	DomainBootRetryTime:   600,    // 10 minutes
-	DefaultLogLevel:       "info", // XXX change default to warning?
-	DefaultRemoteLogLevel: "warning",
+	DefaultLogLevel:       "info", // XXX Should we change to warning?
+	DefaultRemoteLogLevel: "info", // XXX Should we change to warning?
 }
 
 // Check which values are set and which should come from defaults
@@ -144,8 +158,165 @@ func ApplyGlobalConfig(newgc GlobalConfig) GlobalConfig {
 	if newgc.DomainBootRetryTime == 0 {
 		newgc.DomainBootRetryTime = GlobalConfigDefaults.DomainBootRetryTime
 	}
+	if newgc.DefaultLogLevel == "" {
+		newgc.DefaultLogLevel = GlobalConfigDefaults.DefaultLogLevel
+	}
 	if newgc.DefaultRemoteLogLevel == "" {
 		newgc.DefaultRemoteLogLevel = GlobalConfigDefaults.DefaultRemoteLogLevel
 	}
 	return newgc
+}
+
+// We enforce that timers are not below these values
+var GlobalConfigMinimums = GlobalConfig{
+	ConfigInterval:          5,
+	MetricInterval:          5,
+	ResetIfCloudGoneTime:    120,
+	FallbackIfCloudGoneTime: 60,
+	MintimeUpdateSuccess:    30,
+
+	NetworkGeoRedoTime:        60,
+	NetworkGeoRetryTime:       5,
+	NetworkTestDuration:       10,  // Wait for DHCP client
+	NetworkTestInterval:       300, // 5 minutes
+	NetworkTestBetterInterval: 0,   // Disabled
+
+	StaleConfigTime:     0, // Don't use stale config
+	DownloadGCTime:      60,
+	VdiskGCTime:         60,
+	DownloadRetryTime:   60,
+	DomainBootRetryTime: 10,
+}
+
+func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
+
+	if newgc.ConfigInterval < GlobalConfigMinimums.ConfigInterval {
+		log.Warnf("Enforce minimum ConfigInterval received %d; using %d",
+			newgc.ConfigInterval, GlobalConfigMinimums.ConfigInterval)
+		newgc.ConfigInterval = GlobalConfigMinimums.ConfigInterval
+	}
+	if newgc.MetricInterval < GlobalConfigMinimums.MetricInterval {
+		log.Warnf("Enforce minimum MetricInterval received %d; using %d",
+			newgc.MetricInterval, GlobalConfigMinimums.MetricInterval)
+		newgc.MetricInterval = GlobalConfigMinimums.MetricInterval
+	}
+	if newgc.ResetIfCloudGoneTime < GlobalConfigMinimums.ResetIfCloudGoneTime {
+		log.Warnf("Enforce minimum XXX received %d; using %d",
+			newgc.ResetIfCloudGoneTime, GlobalConfigMinimums.ResetIfCloudGoneTime)
+		newgc.ResetIfCloudGoneTime = GlobalConfigMinimums.ResetIfCloudGoneTime
+	}
+	if newgc.FallbackIfCloudGoneTime < GlobalConfigMinimums.FallbackIfCloudGoneTime {
+		log.Warnf("Enforce minimum FallbackIfCloudGoneTime received %d; using %d",
+			newgc.FallbackIfCloudGoneTime, GlobalConfigMinimums.FallbackIfCloudGoneTime)
+		newgc.FallbackIfCloudGoneTime = GlobalConfigMinimums.FallbackIfCloudGoneTime
+	}
+	if newgc.MintimeUpdateSuccess < GlobalConfigMinimums.MintimeUpdateSuccess {
+		log.Warnf("Enforce minimum MintimeUpdateSuccess received %d; using %d",
+			newgc.MintimeUpdateSuccess, GlobalConfigMinimums.MintimeUpdateSuccess)
+		newgc.MintimeUpdateSuccess = GlobalConfigMinimums.MintimeUpdateSuccess
+	}
+	if newgc.NetworkGeoRedoTime < GlobalConfigMinimums.NetworkGeoRedoTime {
+		log.Warnf("Enforce minimum NetworkGeoRedoTime received %d; using %d",
+			newgc.NetworkGeoRedoTime, GlobalConfigMinimums.NetworkGeoRedoTime)
+		newgc.NetworkGeoRedoTime = GlobalConfigMinimums.NetworkGeoRedoTime
+	}
+	if newgc.NetworkGeoRetryTime < GlobalConfigMinimums.NetworkGeoRetryTime {
+		log.Warnf("Enforce minimum NetworkGeoRetryTime received %d; using %d",
+			newgc.NetworkGeoRetryTime, GlobalConfigMinimums.NetworkGeoRetryTime)
+		newgc.NetworkGeoRetryTime = GlobalConfigMinimums.NetworkGeoRetryTime
+	}
+	if newgc.NetworkTestDuration < GlobalConfigMinimums.NetworkTestDuration {
+		log.Warnf("Enforce minimum NetworkTestDuration received %d; using %d",
+			newgc.NetworkTestDuration, GlobalConfigMinimums.NetworkTestDuration)
+		newgc.NetworkTestDuration = GlobalConfigMinimums.NetworkTestDuration
+	}
+	if newgc.NetworkTestInterval < GlobalConfigMinimums.NetworkTestInterval {
+		newgc.NetworkTestInterval = GlobalConfigMinimums.NetworkTestInterval
+	}
+	if newgc.NetworkTestBetterInterval < GlobalConfigMinimums.NetworkTestBetterInterval {
+		log.Warnf("Enforce minimum NetworkTestInterval received %d; using %d",
+			newgc.NetworkTestBetterInterval, GlobalConfigMinimums.NetworkTestBetterInterval)
+		newgc.NetworkTestBetterInterval = GlobalConfigMinimums.NetworkTestBetterInterval
+	}
+
+	if newgc.StaleConfigTime < GlobalConfigMinimums.StaleConfigTime {
+		log.Warnf("Enforce minimum StaleConfigTime received %d; using %d",
+			newgc.StaleConfigTime, GlobalConfigMinimums.StaleConfigTime)
+		newgc.StaleConfigTime = GlobalConfigMinimums.StaleConfigTime
+	}
+	if newgc.DownloadGCTime < GlobalConfigMinimums.DownloadGCTime {
+		log.Warnf("Enforce minimum DownloadGCTime received %d; using %d",
+			newgc.DownloadGCTime, GlobalConfigMinimums.DownloadGCTime)
+		newgc.DownloadGCTime = GlobalConfigMinimums.DownloadGCTime
+	}
+	if newgc.VdiskGCTime < GlobalConfigMinimums.VdiskGCTime {
+		log.Warnf("Enforce minimum VdiskGCTime received %d; using %d",
+			newgc.VdiskGCTime, GlobalConfigMinimums.VdiskGCTime)
+		newgc.VdiskGCTime = GlobalConfigMinimums.VdiskGCTime
+	}
+	if newgc.DownloadRetryTime < GlobalConfigMinimums.DownloadRetryTime {
+		log.Warnf("Enforce minimum DownloadRetryTime received %d; using %d",
+			newgc.DownloadRetryTime, GlobalConfigMinimums.DownloadRetryTime)
+		newgc.DownloadRetryTime = GlobalConfigMinimums.DownloadRetryTime
+	}
+	if newgc.DomainBootRetryTime < GlobalConfigMinimums.DomainBootRetryTime {
+		log.Warnf("Enforce minimum DomainBootRetryTime received %d; using %d",
+			newgc.DomainBootRetryTime, GlobalConfigMinimums.DomainBootRetryTime)
+		newgc.DomainBootRetryTime = GlobalConfigMinimums.DomainBootRetryTime
+	}
+	return newgc
+}
+
+// Agents which wait for GlobalConfig initialized should call this
+// on startup to make sure we have a GlobalConfig file.
+func EnsureGCFile() {
+	if _, err := os.Stat(globalConfigDir); err != nil {
+		log.Infof("Create %s\n", globalConfigDir)
+		if err := os.MkdirAll(globalConfigDir, 0700); err != nil {
+			log.Fatal(err)
+		}
+	}
+	// If it exists but doesn't parse we pretend it doesn't exist
+	if _, err := os.Stat(globalConfigFile); err == nil {
+		ok := false
+		sb, err := ioutil.ReadFile(globalConfigFile)
+		if err != nil {
+			log.Errorf("%s for %s", err, globalConfigFile)
+		} else {
+			gc := GlobalConfig{}
+			if err := json.Unmarshal(sb, gc); err != nil {
+				log.Errorf("%s file: %s", err, globalConfigFile)
+			} else {
+				ok = true
+			}
+		}
+		if !ok {
+			log.Warnf("Removing bad %s", globalConfigFile)
+			if err := os.RemoveAll(globalConfigFile); err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
+	if _, err := os.Stat(globalConfigFile); err != nil {
+		err := pubsub.PublishToDir("/persist/config/", "global",
+			GlobalConfigDefaults)
+		if err != nil {
+			log.Errorf("PublishToDir for globalConfig failed %s\n",
+				err)
+		}
+	}
+
+	info, err := os.Lstat(symlinkDir)
+	if err == nil {
+		if (info.Mode() & os.ModeSymlink) != 0 {
+			return
+		}
+		log.Warnf("Removing old %s", symlinkDir)
+		if err := os.RemoveAll(symlinkDir); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if err := os.Symlink(globalConfigDir, symlinkDir); err != nil {
+		log.Fatal(err)
+	}
 }
