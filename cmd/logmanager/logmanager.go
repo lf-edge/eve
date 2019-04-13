@@ -1029,7 +1029,7 @@ func delRemoteMapAgents(foundAgents map[string]bool) {
 	log.Infof("delRemoteMapAgents(%v)\n", foundAgents)
 	remoteMapLock.Lock()
 	defer remoteMapLock.Unlock()
-	for agentName, _ := range remoteMap {
+	for agentName := range remoteMap {
 		log.Debugf("delRemoteMapAgents: processing %s\n", agentName)
 		if _, ok := foundAgents[agentName]; !ok {
 			delete(remoteMap, agentName)

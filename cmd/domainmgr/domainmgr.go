@@ -2203,7 +2203,7 @@ func handleIBCreate(ctx *domainContext, ib types.IoBundle,
 }
 
 func checkAndSetIoBundleAll(ctx *domainContext) {
-	for i, _ := range ctx.assignableAdapters.IoBundleList {
+	for i := range ctx.assignableAdapters.IoBundleList {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
 		err := checkAndSetIoBundle(ctx, ib)
 		if err != nil {
@@ -2370,7 +2370,7 @@ func assignAll(ib *types.IoBundle) (error, bool) {
 
 // Check if anything moved around
 func checkIoBundleAll(ctx *domainContext) {
-	for i, _ := range ctx.assignableAdapters.IoBundleList {
+	for i := range ctx.assignableAdapters.IoBundleList {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
 		err := checkIoBundle(ctx, ib)
 		if err != nil {
@@ -2449,7 +2449,7 @@ func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 
 func updateUsbAccess(ctx *domainContext) {
 	log.Infof("updateUsbAccess()\n")
-	for i, _ := range ctx.assignableAdapters.IoBundleList {
+	for i := range ctx.assignableAdapters.IoBundleList {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
 		if ib.Type != types.IoUSB {
 			continue
@@ -2520,7 +2520,7 @@ func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.
 		statusIb.Type, statusIb.Name, statusIb.Members,
 		statusIb, configIb)
 
-	for i, _ := range status.IoBundleList {
+	for i := range status.IoBundleList {
 		e := &(*status).IoBundleList[i]
 		if e.Type != statusIb.Type || e.Name != statusIb.Name {
 			continue

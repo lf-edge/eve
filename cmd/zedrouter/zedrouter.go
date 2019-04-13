@@ -1873,14 +1873,14 @@ func appNetworkDoCopyNetworksToStatus(
 	// XXX can count change for inactivate/activate?
 	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 		olcount)
-	for i, _ := range config.OverlayNetworkList {
+	for i := range config.OverlayNetworkList {
 		status.OverlayNetworkList[i].OverlayNetworkConfig =
 			config.OverlayNetworkList[i]
 	}
 	ulcount := len(config.UnderlayNetworkList)
 	status.UnderlayNetworkList = make([]types.UnderlayNetworkStatus,
 		ulcount)
-	for i, _ := range config.UnderlayNetworkList {
+	for i := range config.UnderlayNetworkList {
 		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
 			config.UnderlayNetworkList[i]
 	}
@@ -2126,7 +2126,7 @@ func doActivateAppInstanceWithMgmtLisp(
 		ctx.legacyDataPlane)
 	status.OverlayNetworkList = make([]types.OverlayNetworkStatus,
 		len(config.OverlayNetworkList))
-	for i, _ := range config.OverlayNetworkList {
+	for i := range config.OverlayNetworkList {
 		status.OverlayNetworkList[i].OverlayNetworkConfig =
 			config.OverlayNetworkList[i]
 		// XXX set BridgeName, BridgeIPAddr?
@@ -2417,11 +2417,11 @@ func doAppNetworkConfigModify(ctx *zedrouterContext, key string,
 
 	// Write out what we modified to AppNetworkStatus
 	// Note that lengths are the same as before
-	for i, _ := range config.OverlayNetworkList {
+	for i := range config.OverlayNetworkList {
 		status.OverlayNetworkList[i].OverlayNetworkConfig =
 			config.OverlayNetworkList[i]
 	}
-	for i, _ := range config.UnderlayNetworkList {
+	for i := range config.UnderlayNetworkList {
 		status.UnderlayNetworkList[i].UnderlayNetworkConfig =
 			config.UnderlayNetworkList[i]
 	}
@@ -2479,7 +2479,7 @@ func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
 		log.Infof("handleModify done for %s\n", config.DisplayName)
 		return false
 	}
-	for i, _ := range config.UnderlayNetworkList {
+	for i := range config.UnderlayNetworkList {
 		ulConfig := &config.UnderlayNetworkList[i]
 		if ulConfig.UsesNetworkInstance {
 			netconfig := lookupNetworkInstanceConfig(ctx,
@@ -2534,7 +2534,7 @@ func doAppNetworkModifyAllUnderlayNetworks(
 	status *types.AppNetworkStatus,
 	ipsets []string) {
 
-	for i, _ := range config.UnderlayNetworkList {
+	for i := range config.UnderlayNetworkList {
 		log.Debugf("handleModify ulNum %d\n", i)
 		ulConfig := &config.UnderlayNetworkList[i]
 		ulStatus := &status.UnderlayNetworkList[i]
@@ -2640,7 +2640,7 @@ func doAppNetworkModifyAllOverlayNetworks(
 	status *types.AppNetworkStatus,
 	ipsets []string) {
 
-	for i, _ := range config.OverlayNetworkList {
+	for i := range config.OverlayNetworkList {
 		log.Debugf("handleModify olNum %d\n", i+1)
 		olConfig := &config.OverlayNetworkList[i]
 		olStatus := &status.OverlayNetworkList[i]

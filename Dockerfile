@@ -3,7 +3,7 @@
 
 FROM golang:1.9.1-alpine AS build
 RUN apk update
-RUN apk add --no-cache git gcc linux-headers libc-dev util-linux
+RUN apk add --no-cache git gcc linux-headers libc-dev util-linux libpcap-dev
 
 # These three are supporting rudimentary cross-build capabilities.
 # The only one supported so far is cross compiling for aarch64 on x86
@@ -36,13 +36,15 @@ RUN echo Building: `cat /opt/zededa/bin/versioninfo`
 RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc)           ;\
     go install github.com/zededa/go-provision/zedbox/... && \
     echo "Running go vet" && go vet ./... && \
+    echo "Running go fmt" && ERR=$(gofmt -e -l -s $(find . -name \*.go | grep -v /vendor/)) && \
+       if [ -n "$ERR" ] ; then echo $ERR ; exit 1 ; fi && \
     if [ -f /go/bin/*/zedbox ] ; then mv /go/bin/*/zedbox /go/bin ; fi
 
 RUN ln -s /go/bin/zedbox /opt/zededa/bin/zedbox ;\
     for app in   \
       client domainmgr downloader hardwaremodel identitymgr ledmanager \
       logmanager verifier zedagent zedmanager zedrouter ipcmonitor nim \
-      waitforaddr diag baseosmgr wstunnelclient conntrack;\
+      waitforaddr diag baseosmgr wstunnelclient conntrack lisp-ztr ;\
     do ln -s zedbox /opt/zededa/bin/$app ; done
 
 # Second stage of the build is creating a minimalistic container

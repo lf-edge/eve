@@ -202,7 +202,7 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 
 func setProgressDone(status *types.BaseOsStatus, state types.SwState) {
 	status.State = state
-	for i, _ := range status.StorageStatusList {
+	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		ss.Progress = 100
 		ss.State = state
@@ -434,7 +434,7 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 		status.PartitionDevice = otherPartStatus.PartitionDevname
 
 		// List has only one element but ...
-		for idx, _ := range status.StorageStatusList {
+		for idx := range status.StorageStatusList {
 			ss := &status.StorageStatusList[idx]
 			ss.FinalObjDir = status.PartitionLabel
 		}
@@ -597,7 +597,7 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 		status.PartitionLabel = ""
 		changed = true
 	}
-	for i, _ := range status.StorageStatusList {
+	for i := range status.StorageStatusList {
 
 		ss := &status.StorageStatusList[i]
 
@@ -639,7 +639,7 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 
 	removedAll = true
 
-	for i, _ := range status.StorageStatusList {
+	for i := range status.StorageStatusList {
 
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
@@ -960,7 +960,7 @@ func baseOsSetPartitionInfoInStatus(ctx *baseOsMgrContext, status *types.BaseOsS
 		status.PartitionDevice = partStatus.PartitionDevname
 
 		// List has only one element but ...
-		for idx, _ := range status.StorageStatusList {
+		for idx := range status.StorageStatusList {
 			ss := &status.StorageStatusList[idx]
 			ss.FinalObjDir = status.PartitionLabel
 		}

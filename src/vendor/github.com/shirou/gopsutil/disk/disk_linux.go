@@ -3,17 +3,18 @@
 package disk
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
-	"os/exec"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/shirou/gopsutil/internal/common"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -223,10 +224,21 @@ func Partitions(all bool) ([]PartitionStat, error) {
 }
 
 func PartitionsWithContext(ctx context.Context, all bool) ([]PartitionStat, error) {
-	filename := common.HostProc("self/mounts")
+	useMounts := false
+
+	filename := common.HostProc("self/mountinfo")
 	lines, err := common.ReadLines(filename)
 	if err != nil {
-		return nil, err
+		if err != err.(*os.PathError) {
+			return nil, err
+		}
+		// if kernel does not support self/mountinfo, fallback to self/mounts (<2.6.26)
+		useMounts = true
+		filename = common.HostProc("self/mounts")
+		lines, err = common.ReadLines(filename)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	fs, err := getFileSystems()
@@ -237,16 +249,63 @@ func PartitionsWithContext(ctx context.Context, all bool) ([]PartitionStat, erro
 	ret := make([]PartitionStat, 0, len(lines))
 
 	for _, line := range lines {
-		fields := strings.Fields(line)
-		d := PartitionStat{
-			Device:     fields[0],
-			Mountpoint: fields[1],
-			Fstype:     fields[2],
-			Opts:       fields[3],
-		}
-		if all == false {
-			if d.Device == "none" || !common.StringsHas(fs, d.Fstype) {
-				continue
+		var d PartitionStat
+		if useMounts {
+			fields := strings.Fields(line)
+
+			d = PartitionStat{
+				Device:     fields[0],
+				Mountpoint: unescapeFstab(fields[1]),
+				Fstype:     fields[2],
+				Opts:       fields[3],
+			}
+
+			if !all {
+				if d.Device == "none" || !common.StringsHas(fs, d.Fstype) {
+					continue
+				}
+			}
+		} else {
+			// a line of self/mountinfo has the following structure:
+			// 36  35  98:0 /mnt1 /mnt2 rw,noatime master:1 - ext3 /dev/root rw,errors=continue
+			// (1) (2) (3)   (4)   (5)      (6)      (7)   (8) (9)   (10)         (11)
+
+			// split the mountinfo line by the separator hyphen
+			parts := strings.Split(line, " - ")
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("found invalid mountinfo line in file %s: %s ", filename, line)
+			}
+
+			fields := strings.Fields(parts[0])
+			blockDeviceID := fields[2]
+			mountPoint := fields[4]
+			mountOpts := fields[5]
+
+			fields = strings.Fields(parts[1])
+			fstype := fields[0]
+			device := fields[1]
+
+			d = PartitionStat{
+				Device:     device,
+				Mountpoint: mountPoint,
+				Fstype:     fstype,
+				Opts:       mountOpts,
+			}
+
+			if !all {
+				if d.Device == "none" || !common.StringsHas(fs, d.Fstype) {
+					continue
+				}
+			}
+
+			// /dev/root is not the real device name
+			// so we get the real device name from its major/minor number
+			if d.Device == "/dev/root" {
+				devpath, err := os.Readlink(common.HostSys("/dev/block/" + blockDeviceID))
+				if err != nil {
+					return nil, err
+				}
+				d.Device = strings.Replace(d.Device, "root", filepath.Base(devpath), 1)
 			}
 		}
 		ret = append(ret, d)
@@ -385,26 +444,33 @@ func GetDiskSerialNumber(name string) string {
 }
 
 func GetDiskSerialNumberWithContext(ctx context.Context, name string) string {
-	n := fmt.Sprintf("--name=%s", name)
-	udevadm, err := exec.LookPath("/sbin/udevadm")
+	var stat unix.Stat_t
+	err := unix.Stat(name, &stat)
 	if err != nil {
 		return ""
 	}
+	major := unix.Major(uint64(stat.Rdev))
+	minor := unix.Minor(uint64(stat.Rdev))
 
-	out, err := invoke.CommandWithContext(ctx, udevadm, "info", "--query=property", n)
-
-	// does not return error, just an empty string
-	if err != nil {
-		return ""
-	}
-	lines := strings.Split(string(out), "\n")
-	for _, line := range lines {
-		values := strings.Split(line, "=")
-		if len(values) < 2 || values[0] != "ID_SERIAL" {
-			// only get ID_SERIAL, not ID_SERIAL_SHORT
-			continue
+	// Try to get the serial from udev data
+	udevDataPath := common.HostRun(fmt.Sprintf("udev/data/b%d:%d", major, minor))
+	if udevdata, err := ioutil.ReadFile(udevDataPath); err == nil {
+		scanner := bufio.NewScanner(bytes.NewReader(udevdata))
+		for scanner.Scan() {
+			values := strings.Split(scanner.Text(), "=")
+			if len(values) == 2 && values[0] == "E:ID_SERIAL" {
+				return values[1]
+			}
 		}
-		return values[1]
+	}
+
+	// Try to get the serial from sysfs, look at the disk device (minor 0) directly
+	// because if it is a partition it is not going to contain any device information
+	devicePath := common.HostSys(fmt.Sprintf("dev/block/%d:0/device", major))
+	model, _ := ioutil.ReadFile(filepath.Join(devicePath, "model"))
+	serial, _ := ioutil.ReadFile(filepath.Join(devicePath, "serial"))
+	if len(model) > 0 && len(serial) > 0 {
+		return fmt.Sprintf("%s_%s", string(model), string(serial))
 	}
 	return ""
 }
@@ -425,7 +491,7 @@ func GetLabel(name string) string {
 	if err != nil {
 		return ""
 	} else {
-		return string(dmname)
+		return strings.TrimSpace(string(dmname))
 	}
 }
 
