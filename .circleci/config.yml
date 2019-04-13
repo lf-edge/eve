@@ -1,14 +1,45 @@
+---
 version: 2
 jobs:
-  build:
+  yetus:
+    docker:
+      - image: apache/yetus:master
+    steps:
+      - checkout
+      - run:
+          name: yetus
+          command: >
+            test-patch
+            --build-tool=nobuild
+            --plugins=all,-shelldocs,-gitlab
+            --patch-dir=/tmp/yetus-out
+            --whitespace-tabs-ignore-list='.*Makefile.*','.*\.go','.*\.dts'
+            --html-report-file=/tmp/yetus-out/report.html
+            --console-report-file=/tmp/yetus-out/console.txt
+            --brief-report-file=/tmp/yetus-out/brief.txt
+            --excludes=.yetus-excludes
+            --line-comments=''
+            --bugcomments=briefreport,htmlout
+            --empty-patch
+            || true
+      - store_artifacts:
+          path: /tmp/yetus-out
+
+  build-tree:
     machine:
       image: circleci/classic:latest
     steps:
       - checkout
-      - run: 
+      - run:
           name: Packages
           command: make pkgs
       - run:
           name: Zenix
           command: make zenix
 
+workflows:
+  version: 2
+  build-stuff:
+    jobs:
+      - yetus
+      - build-tree

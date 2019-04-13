@@ -1,0 +1,116 @@
+#!/bin/sh
+#
+# RUN-LISP
+#
+# This simple entry script runs the LISP subsystem.
+#
+#------------------------------------------------------------------------------
+
+export LISP_ADDR_SELECT=$2
+export LISP_PCAP_THREADS=1
+export LISP_WORKER_THREADS=0
+export LISP_RTR_BEHIND_NAT=""
+export LISP_VIRTIO_BUG=""
+export LISP_DNS_LOOKUP=""
+#export LISP_NO_USER_TIMEOUT=""
+#export LISP_ANYCAST_MR=""
+#export LISP_ENFORCE_BINDTODEVICE=""
+#export LISP_LOAD_SPLIT_PINGS=""
+
+#
+# Run go data-plane. Called lisp-xtr.
+#
+#export LISP_RUN_LISP_XTR=1
+#export LISP_USE_AF_PACKET=1
+
+#
+# Cipher defaults to chacha20. Comment out CHACHA line below if you want AES.
+# When you use AES, choose either GCM or CBC. Default is CBC. If you want the
+# python data-plane to interrwork with the go data-plane, use GCM. ECDH 25519
+# works with both Chacha and AES ciphers.
+#
+export LISP_NO_CRYPTO=""
+#export LISP_USE_CHACHA=""
+#export LISP_USE_POLY=""
+#export LISP_ECDH_25519=""
+#export LISP_USE_AES_GCM=""
+
+#
+# Configure zoom level when a user clicks on a geo-coordinate URL.
+#
+export LISP_GEO_ZOOM_LEVEL="10"
+
+#
+# If you do not want lispers.net to pcap on each interface, supply a list
+# below. Make sure you supply a interface device already defined/configured
+# in the kernel. The member list is delimited with whitespace.
+#
+#export LISP_PCAP_LIST="eth0 eth1"
+
+#
+# When this environment variable is defined, the lispers.net code will not
+# do any iptables functionality.
+#
+#export LISP_NO_IPTABLES=""
+
+#
+# How long in seconds the lisp-itr process should poll to check if "lisp
+# database-mapping" commands have been totally processed.
+#
+#export LISP_ITR_WAIT_TIME=1
+
+bail() {
+   echo "$*"
+   exit 1
+}
+
+#
+# Bail if "python" does not give us version 2.7.x.
+#
+if python -V 2>&1 | egrep -vq 2.7 ; then
+    echo "Requires python version 2.7.x"
+    exit 1
+fi
+
+#
+# Create logs directory if it does not exist.
+#
+[ -d logs ] || mkdir ./logs
+
+#
+# Check to see if lisp-save-logs script exists.
+#
+[ -f lisp-save-logs.pyo ] || bail "File lisp-save-logs.pyo not found, script requires binary files"
+
+#
+# Skip if no log files found. If found, save them.
+#
+if ls ./logs/*.log >/dev/null 2>&1 ; then
+    python -O lisp-save-logs.pyo
+    rm -fr ./logs/lisp-traceback.log
+fi
+
+#
+# Remove file descriptors if last time we crashed.
+#
+python -O remove-lisp-locks.pyo
+
+#
+# Now run core process that starts the configured LISP components.
+#
+python -O lisp-core.pyo $1 > ./logs/lisp-core.log 2>&1 &
+
+#
+# Run the lisp-xtr golang data-plane.
+#
+if [ -n "$LISP_RUN_LISP_XTR" ] ; then
+    if [ -n "$LISP_USE_AF_PACKET" ] ; then
+        sudo ./lisp-xtr.alpine afpacket > ./logs/lisp-xtr.log 2>&1 &
+    else
+        sudo ./lisp-xtr.alpine > ./logs/lisp-xtr.log 2<&1 &
+    fi
+fi
+
+exit 0
+
+#------------------------------------------------------------------------------

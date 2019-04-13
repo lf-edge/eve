@@ -8,6 +8,7 @@ PKGS = grub xen kernel fw xen-tools dnsmasq strongswan gpt-tools dom0-ztools	\
 	qrexec-lib qrexec-dom0 wwan wlan rngd	\
 	watchdog \
         guacd \
+	lisp \
         device-trees \
         debug \
 	mkconf mkrootfs-ext4 mkrootfs-squash mkimage-raw-efi mkimage-iso-efi

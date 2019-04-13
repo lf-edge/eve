@@ -1,0 +1,21 @@
+#!/bin/sh
+
+SVC=`hostname | cut -f1 -d.`
+
+cp lisp.config.$SVC lisp.config 
+cp lisp-sig.pem.$SVC lisp-sig.pem
+cp RL.$SVC RL
+if [ "$SVC" == "ztr1" ] || [ "$SVC" == "ztr2" ] || [ "$SVC" == "ztr3" ] || \
+   [ "$SVC" == "ztr41" ]; then
+	mkdir -p /persist/IMGA/log/
+	mkdir -p /var/run/zedrouter/DeviceNetworkStatus/
+	cp global.json.$SVC /var/run/zedrouter/DeviceNetworkStatus/global.json
+fi
+
+#
+# Run lispers.net go data-plane on rtr1 but the python data-plane on rtr2.
+#
+if [ "$SVC" == "rtr1" ]; then
+	cp RUN-LISP.rtr1 RUN-LISP
+fi
+

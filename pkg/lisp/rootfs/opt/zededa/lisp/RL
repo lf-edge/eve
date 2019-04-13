@@ -1,0 +1,28 @@
+#!/bin/sh
+export LISP_NO_IPTABLES=
+export LISP_PCAP_LIST=eth0
+export LISP_ITR_WAIT_TIME=1
+
+#
+# Note about RTRs that are deployed in cloud providers, which means they
+# are behind NATs. You need to configure the global address on the 
+# loopback interface since it needs to know to get the ETR's RLOC address 
+# from the mapping versus its own address it could mistakenly select as an 
+# ETR RLOC because the RTR is comparing its local address to its global 
+# address in the mapping, when it isn't the same. So use the commands below
+# to start the RTR.
+#
+# There is also situations where an RTR may supply a private address in an
+# RLOC-probe reply. If it is behind a NAT, it needs to supply a global RLOC
+# address because if lisp-crypto is being used you want the decap-keys on an
+# xTR to reflect the same address that is being used for encapsulation from
+# the RTR. So the global address needs to be assignerd to the loopback
+# interface and the command line below needs to be "./RESTART-LISP 8080 lo".
+#
+#sudo ip addr add <rtr-translated-rloc>/32 dev lo >& /dev/null
+
+#
+# Start the lispers.net LISP subsystem. Use an absolute path name.
+#
+#/lisp/RESTART-LISP 8080 lo
+/lisp/RESTART-LISP 8080 eth0

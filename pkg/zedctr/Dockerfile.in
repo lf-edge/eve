@@ -10,25 +10,19 @@ FROM alpine:3.8
 RUN apk add --no-cache \
     yajl xz bash openssl iptables ip6tables iproute2 dhcpcd \
     apk-cron coreutils dmidecode sudo libbz2 libuuid ipset \
-    libpcap libaio logrotate pixman glib curl radvd perl ethtool \
-    openssh-server util-linux e2fsprogs libcrypto1.0 xorriso
+    libaio logrotate pixman glib curl radvd perl ethtool \
+    openssh-server util-linux e2fsprogs libcrypto1.0 xorriso \
+    python libpcap libffi
 
 # The following is for xen-tools
 RUN [ `uname -m` = "aarch64" ] && apk add --no-cache libfdt || :
-
-# The following enables pcappy to dlopen libpcap.so
-RUN ln -s libpcap.so.1 /usr/lib/libpcap.so
 
 # FIXME: we really need to do a proper linuxkit sshd
 RUN ssh-keygen -A ; echo PermitRootLogin yes >> /etc/ssh/sshd_config ; sed -ie '/^root/s#^.*$#root:$6$Ndt1G5AYZFQ8rz7m$7vGZMKKotSYxwxk/.jMfuOCzxw0I3DNedygaQaLF7kYSYsLqiBHhmc8RJSXp8/VxSYPpgYSz/8fkv0hO6I4js.:17477:0:::::#' /etc/shadow
 
 COPY --from=xen-tools / /
 COPY --from=ztools / /
-COPY --from=lisp /lisp/lisp-ztr /opt/zededa/bin/
-COPY --from=lisp /lisp /opt/zededa/lisp/
-COPY --from=lisp /usr/bin/pydoc /usr/bin/smtpd.py /usr/bin/python* /usr/bin/
-COPY --from=lisp /usr/lib/libpython* /usr/lib/libffi.so* /usr/lib/
-COPY --from=lisp /usr/lib/python2.7 /usr/lib/python2.7/
+COPY --from=lisp / /
 COPY --from=gpttools / /
 COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
 COPY --from=strongswan / /
