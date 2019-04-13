@@ -20,10 +20,9 @@ AGENTS="$AGENTS0 $AGENTS1"
 
 PATH=$BINDIR:$PATH
 
-STARTTIME=`date`
-echo "Starting device-steps.sh at" $STARTTIME
-echo "go-provision version:" `cat $BINDIR/versioninfo`
-echo "go-provision version.1:" `cat $BINDIR/versioninfo.1`
+echo $(date -Ins -u) "Starting device-steps.sh"
+echo $(date -Ins -u) "go-provision version:" `cat $BINDIR/versioninfo`
+echo $(date -Ins -u) "go-provision version.1:" `cat $BINDIR/versioninfo.1`
 
 MEASURE=0
 while [ $# != 0 ]; do
@@ -32,7 +31,7 @@ while [ $# != 0 ]; do
     elif [ "$1" = -m ]; then
 	MEASURE=1
     elif [ "$1" = -w ]; then
-	echo "Got old -w"
+	echo $(date -Ins -u) "Got old -w"
     else
 	CONFIGDIR=$1
     fi
@@ -108,42 +107,42 @@ DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceN
 for d in $DIRS; do
     d1=`dirname $d`
     if [ ! -d $d1 ]; then
-	# XXX echo "Create $d1"
+	# XXX echo $(date -Ins -u) "Create $d1"
 	mkdir -p $d1
 	chmod 700 $d1
     fi
     if [ ! -d $d ]; then
-	# XXX echo "Create $d"
+	# XXX echo $(date -Ins -u) "Create $d"
 	mkdir -p $d
 	chmod 700 $d
     fi
 done
 
-echo "Configuration from factory/install:"
+echo $(date -Ins -u) "Configuration from factory/install:"
 (cd $CONFIGDIR; ls -l)
 echo
 
 P3=`zboot partdev P3`
 if [ $? = 0 -a x$P3 != x ]; then
-    echo "Using $P3 for $PERSISTDIR"
+    echo $(date -Ins -u) "Using $P3 for $PERSISTDIR"
     fsck.ext3 -y $P3
     if [ $? != 0 ]; then
-	echo "mkfs on $P3 for $PERSISTDIR"
+	echo $(date -Ins -u) "mkfs on $P3 for $PERSISTDIR"
 	mkfs -t ext3 -v $P3
         if [ $? != 0 ]; then
-            echo "mkfs $P3 failed: $?"
+            echo $(date -Ins -u) "mkfs $P3 failed: $?"
 	    # Try mounting below
         fi
     fi
     mount -t ext3 $P3 $PERSISTDIR
     if [ $? != 0 ]; then
-	echo "mount $P3 failed: $?"
+	echo $(date -Ins -u) "mount $P3 failed: $?"
     fi
 else
-    echo "No separate $PERSISTDIR partition"
+    echo $(date -Ins -u) "No separate $PERSISTDIR partition"
 fi
 
-echo "Current downloaded files:"
+echo $(date -Ins -u) "Current downloaded files:"
 ls -lt $PERSISTDIR/downloads/*/*
 echo
 
@@ -156,7 +155,7 @@ for f in $dir/*.json; do
     if [ ! -d $GCDIR ]; then
 	mkdir -p $GCDIR
     fi
-    echo "Copying from $f to $GCDIR"
+    echo $(date -Ins -u) "Copying from $f to $GCDIR"
     cp -p $f $GCDIR
 done
 
@@ -166,42 +165,42 @@ if [ $? != 0 ]; then
 fi
 
 if [ ! -d $LOGDIRA ]; then
-    echo "Creating $LOGDIRA"
+    echo $(date -Ins -u) "Creating $LOGDIRA"
     mkdir -p $LOGDIRA
 fi
 if [ ! -d $LOGDIRB ]; then
-    echo "Creating $LOGDIRB"
+    echo $(date -Ins -u) "Creating $LOGDIRB"
     mkdir -p $LOGDIRB
 fi
 
 if [ ! -d $PERSISTDIR/log ]; then
-    echo "Creating $PERSISTDIR/log"
+    echo $(date -Ins -u) "Creating $PERSISTDIR/log"
     mkdir $PERSISTDIR/log
 fi
 
-echo "Set up log capture"
+echo $(date -Ins -u) "Set up log capture"
 DOM0LOGFILES="ntpd.err.log wlan.err.log wwan.err.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log zededa-tools.err.log"
 for f in $DOM0LOGFILES; do
-    echo "Starting" $f "at" $STARTTIME >$PERSISTDIR/$CURPART/log/$f
+    echo $(date -Ins -u) "Starting" $f >$PERSISTDIR/$CURPART/log/$f
     tail -c +0 -F /var/log/dom0/$f >>$PERSISTDIR/$CURPART/log/$f &
 done
 tail -c +0 -F /var/log/device-steps.log >>$PERSISTDIR/$CURPART/log/device-steps.log &
-echo "Starting hypervisor.log at" $STARTTIME >>$PERSISTDIR/$CURPART/log/hypervisor.log
+echo $(date -Ins -u) "Starting hypervisor.log" >>$PERSISTDIR/$CURPART/log/hypervisor.log
 tail -c +0 -F /var/log/xen/hypervisor.log >>$PERSISTDIR/$CURPART/log/hypervisor.log &
-echo "Starting dmesg at" $STARTTIME >>$PERSISTDIR/$CURPART/log/dmesg.log
+echo $(date -Ins -u) "Starting dmesg" >>$PERSISTDIR/$CURPART/log/dmesg.log
 dmesg -T -w -l 1,2,3 --time-format iso >>$PERSISTDIR/$CURPART/log/dmesg.log &
 
 if [ -d $LISPDIR/logs ]; then
-    echo "Saving old lisp logs in $LISPDIR/logs.old"
+    echo $(date -Ins -u) "Saving old lisp logs in $LISPDIR/logs.old"
     mv $LISPDIR/logs $LISPDIR/logs.old
 fi
 
 # Save any device-steps.log's to /persist/log/ so we can look for watchdog's
 # in there. Also save dmesg in case it tells something about reboots.
 tail -c +0 -F /var/log/device-steps.log >>$PERSISTDIR/log/device-steps.log &
-echo "Starting zededa-tools at" $STARTTIME >>$PERSISTDIR/log/zededa-tools.out.log
+echo $(date -Ins -u) "Starting zededa-tools" >>$PERSISTDIR/log/zededa-tools.out.log
 tail -c +0 -F /var/log/dom0/zededa-tools.out.log >>$PERSISTDIR/log/zededa-tools.out.log &
-echo "Starting dmesg at" $STARTTIME >>$PERSISTDIR/log/dmesg.log
+echo $(date -Ins -u) "Starting dmesg" >>$PERSISTDIR/log/dmesg.log
 dmesg -T -w -l 1,2,3 --time-format iso >>$PERSISTDIR/log/dmesg.log &
 
 #
@@ -222,7 +221,7 @@ echo '{"BlinkCounter": 1}' > '/var/tmp/zededa/LedBlinkCounter/ledconfig.json'
 # TBD: Should we start it earlier before wwan and wlan services?
 pgrep ledmanager >/dev/null
 if [ $? != 0 ]; then
-    echo "Starting ledmanager at" `date`
+    echo $(date -Ins -u) "Starting ledmanager"
     ledmanager &
 fi
 
@@ -240,19 +239,19 @@ mkdir -p $DPCDIR
 # cgpt find -t a0ee3715-fcdc-4bd8-9f94-23a62bd53c91
 SPECIAL=`cgpt find -l DevicePortConfig`
 if [ ! -z "$SPECIAL" -a -b "$SPECIAL" ]; then
-    echo "Found USB with DevicePortConfig: $SPECIAL"
+    echo $(date -Ins -u) "Found USB with DevicePortConfig: $SPECIAL"
     key="usb"
     mount -t vfat $SPECIAL /mnt
     if [ $? != 0 ]; then
-	echo "mount $SPECIAL failed: $?"
+	echo $(date -Ins -u) "mount $SPECIAL failed: $?"
     else
 	keyfile=/mnt/$key.json
 	if [ -f $keyfile ]; then
-	    echo "Found $keyfile on $SPECIAL"
-	    echo "Copying from $keyfile to $CONFIGDIR/DevicePortConfig/override.json"
+	    echo $(date -Ins -u) "Found $keyfile on $SPECIAL"
+	    echo $(date -Ins -u) "Copying from $keyfile to $CONFIGDIR/DevicePortConfig/override.json"
 	    cp $keyfile $CONFIGDIR/DevicePortConfig/
 	else
-	    echo "$keyfile not found on $SPECIAL"
+	    echo $(date -Ins -u) "$keyfile not found on $SPECIAL"
 	fi
     fi
 fi
@@ -262,12 +261,12 @@ for f in $dir/*.json; do
     if [ "$f" = "$dir/*.json" ]; then
 	break
     fi
-    echo "Copying from $f to $DPCDIR"
+    echo $(date -Ins -u) "Copying from $f to $DPCDIR"
     cp -p $f $DPCDIR
 done
 
 # Get IP addresses
-echo $BINDIR/nim
+echo $(date -Ins -u) "Starting nim"
 $BINDIR/nim -c $CURPART &
 
 # Restart watchdog ledmanager and nim
@@ -278,12 +277,12 @@ fi
 
 # Wait for having IP addresses for a few minutes
 # so that we are likely to have an address when we run ntp
-echo $BINDIR/waitforaddr
+echo $(date -Ins -u) "Starting waitforaddr"
 $BINDIR/waitforaddr -c $CURPART
 
 # We need to try our best to setup time *before* we generate the certifiacte.
 # Otherwise it may have start date in the future
-echo "Check for NTP config"
+echo $(date -Ins -u) "Check for NTP config"
 if [ -f $CONFIGDIR/ntp-server ]; then
     echo -n "Using "
     cat $CONFIGDIR/ntp-server
@@ -294,10 +293,10 @@ if [ -f $CONFIGDIR/ntp-server ]; then
     if [ -f /usr/bin/ntpdate ]; then
 	/usr/bin/ntpdate `cat $CONFIGDIR/ntp-server`
     elif [ -f /usr/bin/timedatectl ]; then
-	echo "NTP might already be running. Check"
+	echo $(date -Ins -u) "NTP might already be running. Check"
 	/usr/bin/timedatectl status
     else
-	echo "NTP not installed. Giving up"
+	echo $(date -Ins -u) "NTP not installed. Giving up"
 	exit 1
     fi
 elif [ -f /usr/bin/ntpdate ]; then
@@ -309,7 +308,7 @@ elif [ -f /usr/sbin/ntpd ]; then
     # Run ntpd to keep it in sync.
     /usr/sbin/ntpd -g -p pool.ntp.org
 else
-    echo "No ntpd"
+    echo $(date -Ins -u) "No ntpd"
 fi
 
 # Print the initial diag output
@@ -320,7 +319,7 @@ $BINDIR/diag -c $CURPART >/dev/console 2>&1 &
 # doesn't have a battery-backed clock
 YEAR=`date +%Y`
 while [ $YEAR == "1970" ]; do
-    echo "It's still 1970; waiting for ntp to advance"
+    echo $(date -Ins -u) "It's still 1970; waiting for ntp to advance"
     sleep 10
     YEAR=`date +%Y`
 done
@@ -332,63 +331,50 @@ fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogclient.conf -F -s &
 
 if [ ! \( -f $CONFIGDIR/device.cert.pem -a -f $CONFIGDIR/device.key.pem \) ]; then
-    echo "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
+    echo $(date -Ins -u) "Generating a device key pair and self-signed cert (using TPM/TEE if available) at" `date`
     $BINDIR/generate-device.sh $CONFIGDIR/device
     SELF_REGISTER=1
 elif [ -f $CONFIGDIR/self-register-failed ]; then
-    echo "self-register failed/killed/rebooted"
+    echo $(date -Ins -u) "self-register failed/killed/rebooted"
     $BINDIR/client -c $CURPART -r 5 getUuid
     if [ $? != 0 ]; then
-	echo "self-register failed/killed/rebooted; getUuid fail; redoing self-register"
+	echo $(date -Ins -u) "self-register failed/killed/rebooted; getUuid fail; redoing self-register"
 	SELF_REGISTER=1
     else
-	echo "self-register failed/killed/rebooted; getUuid pass"
+	echo $(date -Ins -u) "self-register failed/killed/rebooted; getUuid pass"
     fi
 else
-    echo "Using existing device key pair and self-signed cert"
+    echo $(date -Ins -u) "Using existing device key pair and self-signed cert"
     SELF_REGISTER=0
 fi
 if [ ! -f $CONFIGDIR/server -o ! -f $CONFIGDIR/root-certificate.pem ]; then
-    echo "No server or root-certificate to connect to. Done"
+    echo $(date -Ins -u) "No server or root-certificate to connect to. Done"
     exit 0
 fi
 
 # XXX should we harden/remove any Linux network services at this point?
-echo "Check for WiFi config"
-if [ -f $CONFIGDIR/wifi_ssid ]; then
-    echo -n "SSID: "
-    cat $CONFIGDIR/wifi_ssid
-    if [ -f $CONFIGDIR/wifi_credentials ]; then
-	echo -n "Wifi credentials: "
-	cat $CONFIGDIR/wifi_credentials
-    fi
-    # XXX actually configure wifi
-    # Requires a /etc/network/interfaces.d/wlan0.cfg
-    # and /etc/wpa_supplicant/wpa_supplicant.conf
-    # Assumes wpa packages are included. Would be in our image?
-fi
 
 if [ $SELF_REGISTER = 1 ]; then
     rm -f $TMPDIR/zedrouterconfig.json
 
     touch $CONFIGDIR/self-register-failed
-    echo "Self-registering our device certificate at " `date`
+    echo $(date -Ins -u) "Self-registering our device certificate at " `date`
     if [ ! \( -f $CONFIGDIR/onboard.cert.pem -a -f $CONFIGDIR/onboard.key.pem \) ]; then
-	echo "Missing onboarding certificate. Giving up"
+	echo $(date -Ins -u) "Missing onboarding certificate. Giving up"
 	exit 1
     fi
-    echo $BINDIR/client selfRegister
+    echo $(date -Ins -u) "Starting client selfRegister"
     $BINDIR/client -c $CURPART selfRegister
     if [ $? != 0 ]; then
-	echo "client selfRegister failed with $?"
+	echo $(date -Ins -u) "client selfRegister failed with $?"
 	exit 1
     fi
     rm -f $CONFIGDIR/self-register-failed
-    echo $BINDIR/client getUuid
+    echo $(date -Ins -u) "Starting client getUuid"
     $BINDIR/client -c $CURPART getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
 	/opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
-	echo "Created default hardwaremodel" `/opt/zededa/bin/hardwaremodel -c`
+	echo $(date -Ins -u) "Created default hardwaremodel" `/opt/zededa/bin/hardwaremodel -c`
     fi
     # Make sure we set the dom0 hostname, used by LISP nat traversal, to
     # a unique string. Using the uuid
@@ -398,20 +384,20 @@ if [ $SELF_REGISTER = 1 ]; then
     grep -q $uuid /etc/hosts
     if [ $? = 1 ]; then
 	# put the uuid in /etc/hosts to avoid complaints
-	echo "Adding $uuid to /etc/hosts"
+	echo $(date -Ins -u) "Adding $uuid to /etc/hosts"
 	echo "127.0.0.1 $uuid" >>/etc/hosts
     else
-	echo "Found $uuid in /etc/hosts"
+	echo $(date -Ins -u) "Found $uuid in /etc/hosts"
     fi
 else
-    echo "XXX until cloud keeps state across upgrades redo getUuid"
-    echo $BINDIR/client getUuid
+    echo $(date -Ins -u) "XXX until cloud keeps state across upgrades redo getUuid"
+    echo $(date -Ins -u) "Starting client getUuid"
     $BINDIR/client -c $CURPART getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
 	# XXX for upgrade path
 	# XXX do we need a way to override?
 	/opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
-	echo "Created hardwaremodel" `/opt/zededa/bin/hardwaremodel -c`
+	echo $(date -Ins -u) "Created hardwaremodel" `/opt/zededa/bin/hardwaremodel -c`
     fi
 
     uuid=`cat $CONFIGDIR/uuid`
@@ -420,15 +406,15 @@ else
     grep -q $uuid /etc/hosts
     if [ $? = 1 ]; then
 	# put the uuid in /etc/hosts to avoid complaints
-	echo "Adding $uuid to /etc/hosts"
+	echo $(date -Ins -u) "Adding $uuid to /etc/hosts"
 	echo "127.0.0.1 $uuid" >>/etc/hosts
     else
-	echo "Found $uuid in /etc/hosts"
+	echo $(date -Ins -u) "Found $uuid in /etc/hosts"
     fi
 fi
 
 if [ ! -d $LISPDIR ]; then
-    echo "Missing $LISPDIR directory. Giving up"
+    echo $(date -Ins -u) "Missing $LISPDIR directory. Giving up"
     exit 1
 fi
 
@@ -439,13 +425,13 @@ if [ $SELF_REGISTER = 1 ]; then
     model=`$BINDIR/hardwaremodel`
     MODELFILE=${model}.json
     if [ ! -f "$DNCDIR/$MODELFILE" ] ; then
-	echo "XXX Missing $DNCDIR/$MODELFILE - generate on the fly"
-	echo "Determining uplink interface"
+	echo $(date -Ins -u) "XXX Missing $DNCDIR/$MODELFILE - generate on the fly"
+	echo $(date -Ins -u) "Determining uplink interface"
 	intf=`$BINDIR/find-uplink.sh $TMPDIR/lisp.config.base`
 	if [ "$intf" != "" ]; then
-		echo "Found interface $intf based on route to map servers"
+		echo $(date -Ins -u) "Found interface $intf based on route to map servers"
 	else
-		echo "NOT Found interface based on route to map servers. Giving up"
+		echo $(date -Ins -u) "NOT Found interface based on route to map servers. Giving up"
 		exit 1
 	fi
 	cat <<EOF >"$DNCDIR/$MODELFILE"
@@ -471,23 +457,23 @@ fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
 
 for AGENT in $AGENTS1; do
-    echo "Starting $AGENT at" `date`
+    echo $(date -Ins -u) "Starting $AGENT"
     $BINDIR/$AGENT -c $CURPART &
 done
 
 #If logmanager is already running we don't have to start it.
 pgrep logmanager >/dev/null
 if [ $? != 0 ]; then
-    echo "Starting logmanager at" `date`
+    echo $(date -Ins -u) "Starting logmanager"
     $BINDIR/logmanager -c $CURPART &
 fi
 
-echo "Initial setup done at" `date`
+echo $(date -Ins -u) "Initial setup done at" `date`
 
 # Print diag output forever on changes
 $BINDIR/diag -c $CURPART -f >/dev/console 2>&1 &
 
 if [ $MEASURE = 1 ]; then
     ping6 -c 3 -w 1000 zedcontrol
-    echo "Measurement done at" `date`
+    echo $(date -Ins -u) "Measurement done"
 fi
