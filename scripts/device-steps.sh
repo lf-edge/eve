@@ -16,7 +16,7 @@ LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
 AGENTS0="logmanager ledmanager nim"
 AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr baseosmgr wstunnelclient"
-AGENTS=$AGENTS0 $AGENTS1
+AGENTS="$AGENTS0 $AGENTS1"
 
 PATH=$BINDIR:$PATH
 
@@ -182,10 +182,13 @@ fi
 echo "Set up log capture"
 DOM0LOGFILES="ntpd.err.log wlan.err.log wwan.err.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log zededa-tools.err.log"
 for f in $DOM0LOGFILES; do
+    echo "Starting" $f "at" $STARTTIME >$PERSISTDIR/$CURPART/log/$f
     tail -c +0 -F /var/log/dom0/$f >>$PERSISTDIR/$CURPART/log/$f &
 done
 tail -c +0 -F /var/log/device-steps.log >>$PERSISTDIR/$CURPART/log/device-steps.log &
+echo "Starting hypervisor.log at" $STARTTIME >>$PERSISTDIR/$CURPART/log/hypervisor.log
 tail -c +0 -F /var/log/xen/hypervisor.log >>$PERSISTDIR/$CURPART/log/hypervisor.log &
+echo "Starting dmesg at" $STARTTIME >>$PERSISTDIR/$CURPART/log/dmesg.log
 dmesg -T -w -l 1,2,3 --time-format iso >>$PERSISTDIR/$CURPART/log/dmesg.log &
 
 if [ -d $LISPDIR/logs ]; then
@@ -196,7 +199,9 @@ fi
 # Save any device-steps.log's to /persist/log/ so we can look for watchdog's
 # in there. Also save dmesg in case it tells something about reboots.
 tail -c +0 -F /var/log/device-steps.log >>$PERSISTDIR/log/device-steps.log &
+echo "Starting zededa-tools at" $STARTTIME >>$PERSISTDIR/log/zededa-tools.out.log
 tail -c +0 -F /var/log/dom0/zededa-tools.out.log >>$PERSISTDIR/log/zededa-tools.out.log &
+echo "Starting dmesg at" $STARTTIME >>$PERSISTDIR/log/dmesg.log
 dmesg -T -w -l 1,2,3 --time-format iso >>$PERSISTDIR/log/dmesg.log &
 
 #
