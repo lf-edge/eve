@@ -10,9 +10,9 @@
 # ../run/test.cert.pem
 
 if [ $# != 1 ]; then
-    myname=`basename $0`
+    myname=$(basename "$0")
     echo "Usage: $myname <output basename>"
     exit 1
 fi
-dir=`dirname $0`
-$dir/generate-self-signed.sh 7 $1
+dir=$(dirname "$0")
+"$dir"/generate-self-signed.sh 7 "$1"

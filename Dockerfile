@@ -15,7 +15,6 @@ RUN [ -z "$GOARCH" ] || (cd / ; apk add --no-cache wget && wget -O - $CROSS_GCC 
 ADD ./  /go/src/github.com/zededa/go-provision/
 ADD conf/root-certificate.pem conf/server conf/server.production /config/
 ADD scripts/device-steps.sh \
-    scripts/find-uplink.sh \
     scripts/generate-device.sh \
     scripts/generate-self-signed.sh \
     scripts/handlezedserverconfig.sh \
