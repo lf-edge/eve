@@ -3,9 +3,6 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-STARTTIME=`date`
-echo "Starting device-steps.sh at" $STARTTIME
-
 USE_HW_WATCHDOG=0
 CONFIGDIR=/config
 PERSISTDIR=/persist
@@ -17,25 +14,23 @@ GCDIR=$PERSISTDIR/config/GlobalConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
-AGENTS="zedmanager logmanager ledmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr nim baseosmgr wstunnelclient"
+AGENTS0="logmanager ledmanager nim lisp-ztr" # XXX FIX lisp-ztr to have -c
+AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent baseosmgr wstunnelclient"
+AGENTS=$AGENTS0 $AGENTS1
 
 PATH=$BINDIR:$PATH
 
-WAIT=1
-EID_IN_DOMU=0
+STARTTIME=`date`
+echo "Starting device-steps.sh at" $STARTTIME
+echo "go-provision version:" `cat $BINDIR/versioninfo`
+echo "go-provision version.1:" `cat $BINDIR/versioninfo.1`
+
 MEASURE=0
-CLEANUP=0
 while [ $# != 0 ]; do
-    if [ "$1" = -w ]; then
-	WAIT=0
-    elif [ "$1" = -h ]; then
+    if [ "$1" = -h ]; then
 	USE_HW_WATCHDOG=1
-    elif [ "$1" = -x ]; then
-	EID_IN_DOMU=1
     elif [ "$1" = -m ]; then
 	MEASURE=1
-    elif [ "$1" = -c ]; then
-	CLEANUP=1
     else
 	CONFIGDIR=$1
     fi
@@ -43,13 +38,6 @@ while [ $# != 0 ]; do
 done
 
 mkdir -p $TMPDIR
-
-if [ $CLEANUP = 1 -a -d $PERSISTDIR/downloads ]; then
-    echo "Cleaning up download dir $PERSISTDIR/downloads"
-    rm -rf $PERSISTDIR/downloads
-fi
-
-echo "Handling restart case at" `date`
 
 if [ `uname -m` != "x86_64" ]; then
     USE_HW_WATCHDOG=1
@@ -110,15 +98,8 @@ done
 if [ -f /var/run/watchdog.pid ]; then
     kill `cat /var/run/watchdog.pid`
 fi
-# Always run watchdog(8) since we have a hardware timer to advance
+# Always run watchdog(8) in case we have a hardware timer to advance
 /usr/sbin/watchdog -c $TMPDIR/watchdogbase.conf -F -s &
-
-# If we are re-running this script, clean up from last run
-pgrep zedmanager >/dev/null
-if [ $? = 0 ]; then
-    killall tail
-    killall dmesg
-fi
 
 DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
 
@@ -135,69 +116,6 @@ for d in $DIRS; do
 	chmod 700 $d
     fi
 done
-
-if [ $CLEANUP = 0 ]; then
-    # Add a tag to preserve any downloaded and verified files
-    touch /var/tmp/zededa/preserve
-fi
-
-# XXX Untested support for re-running all the agents:
-# Even with IPC the checkpoint files will be there
-pkill zedagent
-dir=/var/run/zedagent
-if [ -d $dir ]; then
-    echo "XXX Removing $dir"
-    rm -rf $dir
-    AGENT=zedmanager
-    dir=/var/run/zedmanager/AppInstanceStatus
-    if [ -d $dir ]; then
-	while /bin/true; do
-	    wait=0
-	    for f in $dir/*; do
-		# echo "XXX: f is $f"
-		if [ "$f" = "$dir/*" ]; then
-		    # echo "XXX: skipping $dir"
-		    break
-		fi
-		if [ "$f" = "$dir/global" ]; then
-		    echo "Ignoring $f"
-		elif [ "$f" = "$dir/restarted" ]; then
-		    echo "Ignoring $f"
-		else
-		    echo "Waiting due to $f"
-		    wait=1
-		fi
-	    done
-	    if [ $wait = 1 ]; then
-		echo "Waiting for $AGENT to clean up"
-		sleep 3
-	    else
-		break
-	    fi
-	done
-    fi
-fi
-
-for AGENT in $AGENTS; do
-    pkill $AGENT
-done
-
-if [ $CLEANUP = 0 ]; then
-    # Remove the preserve tag
-    rm /var/tmp/zededa/preserve
-fi
-
-echo "Removing old iptables/ip6tables rules"
-# Cleanup any remaining iptables rules from a failed run
-iptables -F
-ip6tables -F
-ip6tables -t raw -F
-
-echo "Handling restart done at" `date`
-
-echo "Starting" `date`
-echo "go-provision version:" `cat $BINDIR/versioninfo`
-echo "go-provision version.1:" `cat $BINDIR/versioninfo.1`
 
 echo "Configuration from factory/install:"
 (cd $CONFIGDIR; ls -l)
@@ -240,10 +158,6 @@ for f in $dir/*.json; do
     cp -p $f $GCDIR
 done
 
-if [ ! -d $PERSISTDIR/status ]; then
-    mkdir -p $PERSISTDIR/status
-fi
-
 CURPART=`zboot curpart`
 if [ $? != 0 ]; then
     CURPART="IMGA"
@@ -266,10 +180,11 @@ fi
 echo "Set up log capture"
 DOM0LOGFILES="ntpd.err.log wlan.err.log wwan.err.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log zededa-tools.err.log"
 for f in $DOM0LOGFILES; do
-    tail -c +0 -F /var/log/dom0/$f >$PERSISTDIR/$CURPART/log/$f &
+    tail -c +0 -F /var/log/dom0/$f >>$PERSISTDIR/$CURPART/log/$f &
 done
-tail -c +0 -F /var/log/xen/hypervisor.log >$PERSISTDIR/$CURPART/log/hypervisor.log &
-dmesg -T -w -l 1,2,3 --time-format iso >$PERSISTDIR/$CURPART/log/dmesg.log &
+tail -c +0 -F /var/log/device-steps.log >>$PERSISTDIR/$CURPART/log/device-steps.log &
+tail -c +0 -F /var/log/xen/hypervisor.log >>$PERSISTDIR/$CURPART/log/hypervisor.log &
+dmesg -T -w -l 1,2,3 --time-format iso >>$PERSISTDIR/$CURPART/log/dmesg.log &
 
 if [ -d $LISPDIR/logs ]; then
     echo "Saving old lisp logs in $LISPDIR/logs.old"
@@ -278,10 +193,9 @@ fi
 
 # Save any device-steps.log's to /persist/log/ so we can look for watchdog's
 # in there. Also save dmesg in case it tells something about reboots.
-# XXX redundant files to try to capture any info about reboots
-tail -c +0 -F /var/log/device-steps.log >$PERSISTDIR/log/device-steps.log."$STARTTIME" &
-tail -c +0 -F /var/log/dom0/zededa-tools.out.log >$PERSISTDIR/log/zededa-tools.out.log."$STARTTIME" &
-dmesg -T -w -l 1,2,3 --time-format iso >$PERSISTDIR/log/dmesg.log."$STARTTIME" &
+tail -c +0 -F /var/log/device-steps.log >>$PERSISTDIR/log/device-steps.log &
+tail -c +0 -F /var/log/dom0/zededa-tools.out.log >>$PERSISTDIR/log/zededa-tools.out.log &
+dmesg -T -w -l 1,2,3 --time-format iso >>$PERSISTDIR/log/dmesg.log &
 
 #
 # Remove any old symlink to different IMG directory
@@ -303,9 +217,6 @@ pgrep ledmanager >/dev/null
 if [ $? != 0 ]; then
     echo "Starting ledmanager at" `date`
     ledmanager &
-    if [ $WAIT = 1 ]; then
-	echo -n "Press any key to continue "; read dummy; echo; echo
-    fi
 fi
 
 # Restart watchdog - just for ledmanager so far
@@ -393,9 +304,6 @@ elif [ -f /usr/sbin/ntpd ]; then
 else
     echo "No ntpd"
 fi
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
 
 # Print the initial diag output
 # If we don't have a network this takes many minutes. Backgrounded
@@ -438,10 +346,6 @@ if [ ! -f $CONFIGDIR/server -o ! -f $CONFIGDIR/root-certificate.pem ]; then
     exit 0
 fi
 
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
-
 # XXX should we harden/remove any Linux network services at this point?
 echo "Check for WiFi config"
 if [ -f $CONFIGDIR/wifi_ssid ]; then
@@ -455,9 +359,6 @@ if [ -f $CONFIGDIR/wifi_ssid ]; then
     # Requires a /etc/network/interfaces.d/wlan0.cfg
     # and /etc/wpa_supplicant/wpa_supplicant.conf
     # Assumes wpa packages are included. Would be in our image?
-fi
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
 fi
 
 if [ $SELF_REGISTER = 1 ]; then
@@ -476,9 +377,6 @@ if [ $SELF_REGISTER = 1 ]; then
 	exit 1
     fi
     rm -f $CONFIGDIR/self-register-failed
-    if [ $WAIT = 1 ]; then
-	echo -n "Press any key to continue "; read dummy; echo; echo
-    fi
     echo $BINDIR/client getUuid
     $BINDIR/client -c $CURPART getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
@@ -497,9 +395,6 @@ if [ $SELF_REGISTER = 1 ]; then
 	echo "127.0.0.1 $uuid" >>/etc/hosts
     else
 	echo "Found $uuid in /etc/hosts"
-    fi
-    if [ $WAIT = 1 ]; then
-	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
 else
     echo "XXX until cloud keeps state across upgrades redo getUuid"
@@ -522,9 +417,6 @@ else
 	echo "127.0.0.1 $uuid" >>/etc/hosts
     else
 	echo "Found $uuid in /etc/hosts"
-    fi
-    if [ $WAIT = 1 ]; then
-	echo -n "Press any key to continue "; read dummy; echo; echo
     fi
 fi
 
@@ -571,75 +463,20 @@ if [ -f /var/run/watchdog.pid ]; then
 fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
 
-echo "Starting verifier at" `date`
-$BINDIR/verifier -c $CURPART &
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
-
-echo "Starting ZedManager at" `date`
-$BINDIR/zedmanager -c $CURPART &
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
-
-echo "Starting downloader at" `date`
-$BINDIR/downloader -c $CURPART &
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
-
-echo "Starting identitymgr at" `date`
-$BINDIR/identitymgr -c $CURPART &
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
-
-echo "Starting ZedRouter at" `date`
-$BINDIR/zedrouter -c $CURPART &
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
-
-echo "Starting DomainMgr at" `date`
-$BINDIR/domainmgr -c $CURPART &
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
-
-echo "Starting zedagent at" `date`
-$BINDIR/zedagent -c $CURPART &
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
-
-echo "Starting baseosmgr at" `date`
-$BINDIR/baseosmgr -c $CURPART &
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
-
-echo "Starting wstunnelclient at" `date`
-$BINDIR/wstunnelclient -c $CURPART &
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
+for AGENT in $AGENTS1; do
+    echo "Starting $AGENT at" `date`
+    $BINDIR/$AGENT -c $CURPART &
+done
 
 echo "Starting lisp-ztr at" `date`
-# XXX add a -c $CURPART ?
+# XXX add a -c $CURPART then move to AGENTS1
 $BINDIR/lisp-ztr &
-if [ $WAIT = 1 ]; then
-    echo -n "Press any key to continue "; read dummy; echo; echo
-fi
 
 #If logmanager is already running we don't have to start it.
 pgrep logmanager >/dev/null
 if [ $? != 0 ]; then
     echo "Starting logmanager at" `date`
     $BINDIR/logmanager -c $CURPART &
-    if [ $WAIT = 1 ]; then
-	echo -n "Press any key to continue "; read dummy; echo; echo
-    fi
 fi
 
 echo "Initial setup done at" `date`
