@@ -31,6 +31,8 @@ while [ $# != 0 ]; do
 	USE_HW_WATCHDOG=1
     elif [ "$1" = -m ]; then
 	MEASURE=1
+    elif [ "$1" = -w ]; then
+	echo "Got old -w"
     else
 	CONFIGDIR=$1
     fi
