@@ -388,7 +388,7 @@ func installDownloadedObjects(objType string, uuidStr string,
 	ret := true
 	log.Infof("installDownloadedObjects(%s)\n", uuidStr)
 
-	for i, _ := range *status {
+	for i := range *status {
 		ss := &(*status)[i]
 
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)

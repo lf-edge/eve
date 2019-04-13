@@ -328,7 +328,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	}
 
 	waitingForCerts := false
-	for i, _ := range status.StorageStatusList {
+	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
 		log.Infof("Found StorageStatus URL %s safename %s\n",
@@ -500,7 +500,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	}
 	log.Infof("Done with downloads for %s\n", uuidStr)
 	minState = types.MAXSTATE
-	for i, _ := range status.StorageStatusList {
+	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
 		log.Infof("Found StorageStatus URL %s safename %s\n",
@@ -838,7 +838,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	for _, disk := range ds.DiskStatusList {
 		// Need to lookup based on ImageSha256
 		found := false
-		for i, _ := range status.StorageStatusList {
+		for i := range status.StorageStatusList {
 			ss := &status.StorageStatusList[i]
 			if ss.ImageSha256 == disk.ImageSha256 {
 				found = true
@@ -896,7 +896,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 
 func lookupStorageStatus(status *types.AppInstanceStatus, sc types.StorageConfig) *types.StorageStatus {
 
-	for i, _ := range status.StorageStatusList {
+	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		if ss.Name == sc.Name &&
 			ss.ImageSha256 == sc.ImageSha256 {
@@ -910,7 +910,7 @@ func lookupStorageStatus(status *types.AppInstanceStatus, sc types.StorageConfig
 
 func lookupStorageConfig(config *types.AppInstanceConfig, ss types.StorageStatus) *types.StorageConfig {
 
-	for i, _ := range config.StorageConfigList {
+	for i := range config.StorageConfigList {
 		sc := &config.StorageConfigList[i]
 		if ss.Name == sc.Name &&
 			ss.ImageSha256 == sc.ImageSha256 {
@@ -1119,7 +1119,7 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 	changed := false
 	del := false
 
-	for i, _ := range status.StorageStatusList {
+	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		// Decrease refcount if we had increased it
 		if ss.HasVerifierRef {
@@ -1129,7 +1129,7 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 		}
 	}
 	log.Debugf("Done with all verify removes for %s\n", uuidStr)
-	for i, _ := range status.StorageStatusList {
+	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
 		log.Debugf("Found StorageStatus URL %s safename %s\n",

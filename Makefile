@@ -77,7 +77,8 @@ Gopkg.lock: Gopkg.toml
 	GOPATH=$(CURDIR)/.go go get github.com/golang/dep/cmd/dep
 	rm vendor
 	mv src/vendor vendor
-	(cd .go/src/github.com/zededa/go-provision ; GOPATH=$(CURDIR)/.go dep ensure -update $(GODEP_NAME)) 
+	cd .go/src/github.com/zededa/go-provision ; PATH=$(CURDIR)/.go/bin:$$PATH GOPATH=$(CURDIR)/.go \
+          dep ensure -update $(GODEP_NAME)
 	mv vendor src/vendor
 	ln -s src/vendor vendor	
 

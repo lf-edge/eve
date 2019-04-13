@@ -14,8 +14,8 @@ GCDIR=$PERSISTDIR/config/GlobalConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
-AGENTS0="logmanager ledmanager nim lisp-ztr" # XXX FIX lisp-ztr to have -c
-AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent baseosmgr wstunnelclient"
+AGENTS0="logmanager ledmanager nim"
+AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr baseosmgr wstunnelclient"
 AGENTS=$AGENTS0 $AGENTS1
 
 PATH=$BINDIR:$PATH
@@ -467,10 +467,6 @@ for AGENT in $AGENTS1; do
     echo "Starting $AGENT at" `date`
     $BINDIR/$AGENT -c $CURPART &
 done
-
-echo "Starting lisp-ztr at" `date`
-# XXX add a -c $CURPART then move to AGENTS1
-$BINDIR/lisp-ztr &
 
 #If logmanager is already running we don't have to start it.
 pgrep logmanager >/dev/null

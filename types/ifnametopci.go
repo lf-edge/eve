@@ -109,7 +109,7 @@ func IoBundleToPci(ib *IoBundle) ([]string, []string, error) {
 		longs[0] = ib.PciLong
 		shorts[0] = ib.PciShort
 	}
-	for i, _ := range shorts {
+	for i := range shorts {
 		if !pciLongExists(longs[i]) {
 			return nil, nil, errors.New(fmt.Sprintf("PCI device (%s) does not exist", longs[i]))
 		}

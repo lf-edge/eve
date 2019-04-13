@@ -48,7 +48,7 @@ func (config AppNetworkConfig) VerifyFilename(fileName string) bool {
 
 func (config *AppNetworkConfig) getOverlayConfig(
 	network uuid.UUID) *OverlayNetworkConfig {
-	for i, _ := range config.OverlayNetworkList {
+	for i := range config.OverlayNetworkList {
 		olConfig := &config.OverlayNetworkList[i]
 		if olConfig.Network == network {
 			return olConfig
@@ -59,7 +59,7 @@ func (config *AppNetworkConfig) getOverlayConfig(
 
 func (config *AppNetworkConfig) getUnderlayConfig(
 	network uuid.UUID) *UnderlayNetworkConfig {
-	for i, _ := range config.UnderlayNetworkList {
+	for i := range config.UnderlayNetworkList {
 		ulConfig := &config.UnderlayNetworkList[i]
 		if ulConfig.Network == network {
 			return ulConfig
@@ -202,7 +202,7 @@ func (portConfig *DevicePortConfig) DoSanitize(
 	if sanitizeName {
 		// In case Name isn't set we make it match IfName
 		// XXX still needed?
-		for i, _ := range portConfig.Ports {
+		for i := range portConfig.Ports {
 			port := &portConfig.Ports[i]
 			if port.Name == "" {
 				port.Name = port.IfName

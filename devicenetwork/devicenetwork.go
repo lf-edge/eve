@@ -110,7 +110,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 		}
 	}
 	zedcloudCtx.TlsConfig = tlsConfig
-	for ix, _ := range status.Ports {
+	for ix := range status.Ports {
 		err = CheckAndGetNetworkProxy(&status, &status.Ports[ix])
 		if err != nil {
 			errStr := fmt.Sprintf("GetNetworkProxy failed %s", err)
@@ -205,9 +205,9 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		}
 	}
 	// Preserve geo info for existing interface and IP address
-	for ui, _ := range globalStatus.Ports {
+	for ui := range globalStatus.Ports {
 		u := &globalStatus.Ports[ui]
-		for i, _ := range u.AddrInfoList {
+		for i := range u.AddrInfoList {
 			// Need pointer since we are going to modify
 			ai := &u.AddrInfoList[i]
 			oai := lookupPortStatusAddr(oldStatus,
@@ -285,13 +285,13 @@ func lookupPortStatusAddr(status types.DeviceNetworkStatus,
 // Returns true if anything might have changed
 func UpdateDeviceNetworkGeo(timelimit time.Duration, globalStatus *types.DeviceNetworkStatus) bool {
 	change := false
-	for ui, _ := range globalStatus.Ports {
+	for ui := range globalStatus.Ports {
 		u := &globalStatus.Ports[ui]
 		if globalStatus.Version >= types.DPCIsMgmt &&
 			!u.IsMgmt {
 			continue
 		}
-		for i, _ := range u.AddrInfoList {
+		for i := range u.AddrInfoList {
 			// Need pointer since we are going to modify
 			ai := &u.AddrInfoList[i]
 			if ai.Addr.IsLinkLocalUnicast() {

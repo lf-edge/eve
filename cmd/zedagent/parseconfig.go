@@ -150,7 +150,7 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 
 	// First look for deleted ones
 	items := getconfigCtx.pubBaseOsConfig.GetAll()
-	for uuidStr, _ := range items {
+	for uuidStr := range items {
 		found := false
 		for _, baseOs := range cfgOsList {
 			if baseOs.Uuidandversion.Uuid == uuidStr {
@@ -544,7 +544,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 
 	// First look for deleted ones
 	items := getconfigCtx.pubAppInstanceConfig.GetAll()
-	for uuidStr, _ := range items {
+	for uuidStr := range items {
 		found := false
 		for _, app := range Apps {
 			if app.Uuidandversion.Uuid == uuidStr {
@@ -838,7 +838,7 @@ func publishDatastoreConfig(ctx *getconfigContext,
 
 	// Check for items to delete first
 	items := ctx.pubDatastoreConfig.GetAll()
-	for k, _ := range items {
+	for k := range items {
 		ds := lookupDatastore(cfgDatastores, k)
 		if ds != nil {
 			continue
@@ -953,7 +953,7 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 
 	// Check for items to delete first
 	items := ctx.pubNetworkObjectConfig.GetAll()
-	for k, _ := range items {
+	for k := range items {
 		netEnt := lookupNetworkId(k, cfgNetworks)
 		if netEnt != nil {
 			continue

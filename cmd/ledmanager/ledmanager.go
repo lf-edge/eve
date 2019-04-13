@@ -62,41 +62,41 @@ type modelToFuncs struct {
 
 // XXX introduce wildcard matching on model names? Just a default at the end
 var mToF = []modelToFuncs{
-	modelToFuncs{
+	{
 		model:     "Supermicro.SYS-E100-9APP",
 		blinkFunc: ExecuteDDCmd},
-	modelToFuncs{
+	{
 		model:     "Supermicro.SYS-E100-9S",
 		blinkFunc: ExecuteDDCmd},
-	modelToFuncs{
+	{
 		model:     "Supermicro.SYS-E50-9AP",
 		blinkFunc: ExecuteDDCmd},
-	modelToFuncs{ // XXX temporary fix for old BIOS
+	{ // XXX temporary fix for old BIOS
 		model:     "Supermicro.Super Server",
 		blinkFunc: ExecuteDDCmd},
-	modelToFuncs{
+	{
 		model:     "Supermicro.SYS-E300-8D",
 		blinkFunc: ExecuteDDCmd},
-	modelToFuncs{
+	{
 		model:     "Supermicro.SYS-E300-9A-4CN10P",
 		blinkFunc: ExecuteDDCmd},
-	modelToFuncs{
+	{
 		model:     "Supermicro.SYS-5018D-FN8T",
 		blinkFunc: ExecuteDDCmd},
-	modelToFuncs{
+	{
 		model:     "hisilicon,hi6220-hikey.hisilicon,hi6220.",
 		initFunc:  InitWifiLedCmd,
 		blinkFunc: ExecuteWifiLedCmd},
-	modelToFuncs{
+	{
 		model:     "hisilicon,hikey.hisilicon,hi6220.",
 		initFunc:  InitWifiLedCmd,
 		blinkFunc: ExecuteWifiLedCmd},
-	modelToFuncs{
+	{
 		model: "QEMU.Standard PC (i440FX + PIIX, 1996)",
 		// No dd disk light blinking on QEMU
 	},
 	// Last in table as a default
-	modelToFuncs{
+	{
 		model:     "",
 		blinkFunc: ExecuteDDCmd},
 }
