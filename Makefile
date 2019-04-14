@@ -11,6 +11,11 @@
 ARCH        ?= amd64
 #ARCH        ?= arm64
 
+
+USER        := $(shell id -u -n)
+GROUP	    := $(shell id -g -n)
+UID         := $(shell id -u)
+GID	    := $(shell id -g)
 GIT_TAG     := $(shell git tag | tail -1)
 BUILD_DATE  := $(shell date -u +"%Y-%m-%d-%H:%M")
 GIT_VERSION := $(shell git describe --match v --abbrev=8 --always --dirty)
@@ -19,6 +24,7 @@ VERSION     := $(GIT_TAG)
 # Go parameters
 GOCMD=go
 GOBUILD=$(GOCMD) build
+GOMODULE=github.com/zededa/go-provision
 
 BUILD_VERSION=$(shell scripts/getversion.sh)
 
@@ -30,6 +36,16 @@ DOCKER_TAG=zededa/ztools:local$${GOARCH:+-}$(GOARCH)
 
 APPS = zedbox
 APPS1 = logmanager ledmanager downloader verifier client zedrouter domainmgr identitymgr zedmanager zedagent hardwaremodel ipcmonitor nim diag baseosmgr wstunnelclient conntrack
+
+SHELL_CMD=bash
+define BUILD_CONTAINER
+FROM golang:1.9.1-alpine
+RUN apk add --no-cache openssh-client git gcc linux-headers libc-dev util-linux libpcap-dev bash vim make
+RUN deluser $(USER) ; delgroup $(GROUP) || :
+RUN sed -ie /:$(UID):/d /etc/passwd /etc/shadow ; sed -ie /:$(GID):/d /etc/group || :
+RUN addgroup -g $(GID) $(GROUP) && adduser -h /home/$(USER) -G $(GROUP) -D -H -u $(UID) $(USER)
+ENV HOME /home/$(USER)
+endef
 
 .PHONY: all clean vendor
 
@@ -63,15 +79,22 @@ build-docker:
 build-docker-git:
 	git archive HEAD | docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) -
 
-Gopkg.lock: Gopkg.toml
-	mkdir -p .go/src/github.com/zededa && ln -s ../../../.. .go/src/github.com/zededa/go-provision || :
-	GOPATH=$(CURDIR)/.go go get github.com/golang/dep/cmd/dep
-	rm vendor
-	mv src/vendor vendor
-	cd .go/src/github.com/zededa/go-provision ; PATH=$(CURDIR)/.go/bin:$$PATH GOPATH=$(CURDIR)/.go \
-          dep ensure -update $(GODEP_NAME)
-	mv vendor src/vendor
-	ln -s src/vendor vendor	
+export BUILD_CONTAINER
+eve-build-$(USER):
+	@echo "$$BUILD_CONTAINER" | docker build -t $@ - >/dev/null
+
+shell: eve-build-$(USER)
+	@docker run -it --rm -u $(USER) -w /home/$(USER) \
+	  -v $(CURDIR)/.go:/go -v $(CURDIR):/go/src/$(GOMODULE) -v $${HOME}:/home/$(USER) \
+	$< $(SHELL_CMD)
+
+test: SHELL_CMD=go test github.com/zededa/go-provision/...
+test: shell
+	@echo Done testing
+
+Gopkg.lock: SHELL_CMD=sh -c "go get github.com/golang/dep/cmd/dep ; cd /go/src/$(GOMODULE) dep ensure -update $(GODEP_NAME)"
+Gopkg.lock: Gopkg.toml shell
+	@echo Done updating vendor
 
 vendor: Gopkg.lock
 	touch Gopkg.toml
