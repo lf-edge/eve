@@ -11,7 +11,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"strings"
@@ -23,6 +22,7 @@ import (
 	"github.com/zededa/api/zconfig"
 	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/go-provision/diskmetrics"
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/pidfile"
 	"github.com/zededa/go-provision/pubsub"
@@ -694,7 +694,7 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 	// XXX look at verifier and downloader status which have Size
 	// We read objectDownloadDirname/* and determine how much space
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
-	totalUsed := sizeFromDir(objectDownloadDirname)
+	totalUsed := diskmetrics.SizeFromDir(objectDownloadDirname)
 	kb := types.RoundupToKB(totalUsed)
 	initSpace(ctx, kb)
 
@@ -810,27 +810,6 @@ func gcObjects(ctx *downloaderContext) {
 			publishDownloaderStatus(ctx, &status)
 		}
 	}
-}
-
-func sizeFromDir(dirname string) uint64 {
-	var totalUsed uint64 = 0
-	locations, err := ioutil.ReadDir(dirname)
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, location := range locations {
-		filename := dirname + "/" + location.Name()
-		log.Debugf("Looking in %s\n", filename)
-		if location.IsDir() {
-			size := sizeFromDir(filename)
-			log.Debugf("Dir %s size %d\n", filename, size)
-			totalUsed += size
-		} else {
-			log.Debugf("File %s Size %d\n", filename, location.Size())
-			totalUsed += uint64(location.Size())
-		}
-	}
-	return totalUsed
 }
 
 func initSpace(ctx *downloaderContext, kb uint64) {

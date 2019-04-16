@@ -42,6 +42,9 @@ const persistPath = "/persist"
 
 var reportPaths = []string{"/", "/config", persistPath}
 
+// Application-related files live here; includes downloads and verifications in progress
+var appPersistPaths = []string{"/persist/img", "/persist/downloads/appImg.obj"}
+
 func publishMetrics(ctx *zedagentContext, iteration int) {
 	cpuStorageStat := ExecuteXentopCmd()
 	PublishMetricsToZedCloud(ctx, cpuStorageStat, iteration)
@@ -516,6 +519,21 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
+	// Determine how much we use in /persist and how much of it is
+	// for the benefits of applications
+	persistUsage := diskmetrics.SizeFromDir(persistPath)
+	var persistAppUsage uint64
+	for _, path := range appPersistPaths {
+		persistAppUsage += diskmetrics.SizeFromDir(path)
+	}
+	persistOverhead := persistUsage - persistAppUsage
+	// Convert to MB
+	runtimeStorageOverhead := types.RoundupToKB(types.RoundupToKB(persistOverhead))
+	appRunTimeStorage := types.RoundupToKB(types.RoundupToKB(persistAppUsage))
+	// XXX plug in API runtimeStorageOverhead, appRunTimeStorageOverhead
+	log.Infof("XXX runtimeStorageOverhead %d MB, appRunTimeStorage %d MB",
+		runtimeStorageOverhead, appRunTimeStorage)
+
 	// Walk all verified downloads and report their size (faked
 	// as disks)
 	verifierStatusMap := verifierGetAll(ctx)
