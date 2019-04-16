@@ -486,7 +486,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 
 	disks := findDisksPartitions()
 	for _, d := range disks {
-		size := partitionSize(d)
+		size, _ := partitionSize(d)
 		log.Debugf("Disk/partition %s size %d\n", d, size)
 		size = RoundToMbytes(size)
 		metric := zmet.DiskMetric{Disk: d, Total: size}
@@ -803,22 +803,19 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		}
 	}
 
-	d, err := disk.Usage("/")
-	if err != nil {
-		log.Errorf("disk.Usage: %s\n", err)
-	} else {
-		mbytes := RoundToMbytes(d.Total)
-		ReportDeviceInfo.Storage = *proto.Uint64(mbytes)
-	}
 	// Find all disks and partitions
 	disks := findDisksPartitions()
+	ReportDeviceInfo.Storage = *proto.Uint64(0)
 	for _, disk := range disks {
-		size := partitionSize(disk)
+		size, isPart := partitionSize(disk)
 		log.Debugf("Disk/partition %s size %d\n", disk, size)
 		size = RoundToMbytes(size)
 		is := zmet.ZInfoStorage{Device: disk, Total: size}
 		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
 			&is)
+		if isPart {
+			ReportDeviceInfo.Storage += *proto.Uint64(size)
+		}
 	}
 	for _, path := range reportPaths {
 		u, err := disk.Usage(path)
@@ -1523,22 +1520,29 @@ func findDisksPartitions() []string {
 }
 
 // Given "sdb1" return the size of the partition; "sdb" to size of disk
-func partitionSize(part string) uint64 {
+// Returns size and a bool to indicate that it is a partition.
+func partitionSize(part string) (uint64, bool) {
 	out, err := exec.Command("lsblk", "-nbdo", "SIZE", "/dev/"+part).Output()
 	if err != nil {
 		log.Errorf("lsblk -nbdo SIZE %s failed %s\n", "/dev/"+part, err)
-		return 0
+		return 0, false
 	}
 	res := strings.Split(string(out), "\n")
 	val, err := strconv.ParseUint(res[0], 10, 64)
 	if err != nil {
 		log.Errorf("parseUint(%s) failed %s\n", res[0], err)
-		return 0
+		return 0, false
 	}
-	return val
+	out, err = exec.Command("lsblk", "-nbdo", "TYPE", "/dev/"+part).Output()
+	if err != nil {
+		log.Errorf("lsblk -nbdo TYPE %s failed %s\n", "/dev/"+part, err)
+		return 0, false
+	}
+	isPart := strings.EqualFold(strings.TrimSpace(string(out)), "part")
+	return val, isPart
 }
 
-// Returns the number of CPU seconds since boot
+// Returns the number of CPU seconds since boot for dom0
 func getCpuSecs() uint64 {
 	contents, err := ioutil.ReadFile("/proc/uptime")
 	if err != nil {
@@ -1573,6 +1577,7 @@ func getCpuSecs() uint64 {
 	ncpus := uint64(len(cpus))
 	// Idle time is measured for each CPU hence need to scale
 	// to figure out how much CPU was used
+	// XXX multiple by ncpus? Doesn't matter with 1 CPU assigned to dom0
 	return uptime - (idle / ncpus)
 }
 
