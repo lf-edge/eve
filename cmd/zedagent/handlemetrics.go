@@ -547,12 +547,16 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
-	// XXX TBD: Avoid dups with verifierStatusMap above
 	downloaderStatusMap := downloaderGetAll(ctx)
 	for _, st := range downloaderStatusMap {
 		ds := cast.CastDownloaderStatus(st)
 		log.Debugf("downloaderStatusMap %s size %d\n",
 			ds.Safename, ds.Size)
+		if _, found := verifierStatusMap[ds.Key()]; found {
+			// XXX change to debug
+			log.Infof("Found verifierStatusMap for %s\n", ds.Key())
+			continue
+		}
 		metric := zmet.DiskMetric{
 			Disk:  ds.Safename,
 			Total: RoundToMbytes(uint64(ds.Size)),
