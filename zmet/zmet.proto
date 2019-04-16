@@ -534,6 +534,8 @@ message deviceMetric {
   repeated diskMetric disk = 6;
   appCpuMetric cpuMetric = 7;
   repeated MetricItem metricItems = 8;
+  uint64 runtimeStorageOverhead = 9;
+  uint64 appRunTimeStorageOverhead = 10;
 }
 
 enum MetricItemType {
