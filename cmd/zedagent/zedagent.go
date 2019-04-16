@@ -107,6 +107,7 @@ type zedagentContext struct {
 	restartCounter            uint32
 	subDevicePortConfigList   *pubsub.Subscription
 	devicePortConfigList      types.DevicePortConfigList
+	remainingTestTime         time.Duration
 }
 
 var debug = false

@@ -915,7 +915,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				swInfo.DownloadProgress = 0
 			}
 		}
-		addUserSwInfo(swInfo)
+		addUserSwInfo(ctx, swInfo)
 		return swInfo
 	}
 
@@ -948,7 +948,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			errInfo.Timestamp = errTime
 			swInfo.SwErr = errInfo
 		}
-		addUserSwInfo(swInfo)
+		addUserSwInfo(ctx, swInfo)
 		ReportDeviceInfo.SwList = append(ReportDeviceInfo.SwList,
 			swInfo)
 	}
@@ -1070,7 +1070,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 }
 
 // Convert the implementation details to the user-friendly userStatus and subStatus
-func addUserSwInfo(swInfo *zmet.ZInfoDevSW) {
+func addUserSwInfo(ctx *zedagentContext, swInfo *zmet.ZInfoDevSW) {
 	switch swInfo.Status {
 	case zmet.ZSwState_INITIAL:
 		swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
@@ -1079,8 +1079,12 @@ func addUserSwInfo(swInfo *zmet.ZInfoDevSW) {
 		swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
 		swInfo.SubStatus = fmt.Sprintf("Downloading %d%% done", swInfo.DownloadProgress)
 	case zmet.ZSwState_DOWNLOADED:
-		swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
-		swInfo.SubStatus = "Downloaded 100%"
+		if swInfo.Activated {
+			swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+			swInfo.SubStatus = "Downloaded 100%"
+		} else {
+			swInfo.UserStatus = zmet.BaseOsStatus_NONE
+		}
 	case zmet.ZSwState_DELIVERED:
 		if swInfo.Activated {
 			swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
@@ -1101,6 +1105,9 @@ func addUserSwInfo(swInfo *zmet.ZInfoDevSW) {
 			swInfo.SubStatus = "About to reboot"
 		case "inprogress":
 			swInfo.UserStatus = zmet.BaseOsStatus_TESTING
+			swInfo.SubStatus = fmt.Sprintf("Testing for %d more seconds",
+				ctx.remainingTestTime/time.Second)
+
 		case "unused":
 			swInfo.UserStatus = zmet.BaseOsStatus_NONE
 		}
