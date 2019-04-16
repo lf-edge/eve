@@ -540,6 +540,18 @@ func Run() {
 		case change := <-zedagentCtx.subBaseOsVerifierStatus.C:
 			zedagentCtx.subBaseOsVerifierStatus.ProcessChange(change)
 
+		case change := <-zedagentCtx.subBaseOsDownloadStatus.C:
+			zedagentCtx.subBaseOsDownloadStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAppImgVerifierStatus.C:
+			zedagentCtx.subAppImgVerifierStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAppImgDownloadStatus.C:
+			zedagentCtx.subAppImgDownloadStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subCertObjDownloadStatus.C:
+			zedagentCtx.subCertObjDownloadStatus.ProcessChange(change)
+
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 
@@ -618,6 +630,18 @@ func Run() {
 				break
 			}
 
+		case change := <-zedagentCtx.subBaseOsDownloadStatus.C:
+			zedagentCtx.subBaseOsDownloadStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAppImgVerifierStatus.C:
+			zedagentCtx.subAppImgVerifierStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAppImgDownloadStatus.C:
+			zedagentCtx.subAppImgDownloadStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subCertObjDownloadStatus.C:
+			zedagentCtx.subCertObjDownloadStatus.ProcessChange(change)
+
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 			if DNSctx.triggerDeviceInfo {
@@ -663,6 +687,21 @@ func Run() {
 
 		case change := <-subBaseOsStatus.C:
 			subBaseOsStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subBaseOsVerifierStatus.C:
+			zedagentCtx.subBaseOsVerifierStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subBaseOsDownloadStatus.C:
+			zedagentCtx.subBaseOsDownloadStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAppImgVerifierStatus.C:
+			zedagentCtx.subAppImgVerifierStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAppImgDownloadStatus.C:
+			zedagentCtx.subAppImgDownloadStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subCertObjDownloadStatus.C:
+			zedagentCtx.subCertObjDownloadStatus.ProcessChange(change)
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
