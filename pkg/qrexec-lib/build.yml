@@ -1,0 +1,3 @@
+org: zededa
+image: qrexec-lib
+network: yes

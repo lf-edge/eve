@@ -1,0 +1,11 @@
+image: wwan 
+org: zededa
+network: yes
+config:
+  binds:
+    - /lib/modules:/lib/modules
+    - /dev:/dev
+    - /run:/run
+  net: host
+  capabilities:
+    - all

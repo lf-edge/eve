@@ -1,0 +1,37 @@
+FROM ZTOOLS_TAG as ztools
+FROM LISP_TAG as lisp
+FROM XENTOOLS_TAG as xen-tools
+FROM DNSMASQ_TAG as dnsmasq
+FROM STRONGSWAN_TAG as strongswan
+FROM GPTTOOLS_TAG as gpttools
+FROM WATCHDOG_TAG as watchdog
+
+FROM alpine:3.8
+RUN apk add --no-cache \
+    yajl xz bash openssl iptables ip6tables iproute2 dhcpcd \
+    apk-cron coreutils dmidecode sudo libbz2 libuuid ipset \
+    libaio logrotate pixman glib curl radvd perl ethtool \
+    openssh-server util-linux e2fsprogs libcrypto1.0 xorriso \
+    python libpcap libffi
+
+# The following is for xen-tools
+RUN [ `uname -m` = "aarch64" ] && apk add --no-cache libfdt || :
+
+# FIXME: we really need to do a proper linuxkit sshd
+RUN ssh-keygen -A ; echo PermitRootLogin yes >> /etc/ssh/sshd_config ; sed -ie '/^root/s#^.*$#root:$6$Ndt1G5AYZFQ8rz7m$7vGZMKKotSYxwxk/.jMfuOCzxw0I3DNedygaQaLF7kYSYsLqiBHhmc8RJSXp8/VxSYPpgYSz/8fkv0hO6I4js.:17477:0:::::#' /etc/shadow
+
+COPY --from=xen-tools / /
+COPY --from=ztools / /
+COPY --from=lisp / /
+COPY --from=gpttools / /
+COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
+COPY --from=strongswan / /
+COPY --from=watchdog /usr/sbin /usr/sbin
+
+# And now a few local tweaks
+COPY rootfs/ /
+# logrotate requires restricted permissions
+RUN chmod 644 /etc/logrotate.d/zededa
+
+# FIXME: replace with tini+monit ASAP
+CMD /init.sh

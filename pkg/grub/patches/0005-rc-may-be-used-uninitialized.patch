@@ -1,0 +1,25 @@
+From d71d85e559b32ed5d1a010aa2fd5eafd02182a4b Mon Sep 17 00:00:00 2001
+From: Roman Shaposhnik <rvs@zededa.com>
+Date: Tue, 8 May 2018 12:52:26 -0700
+Subject: [PATCH] rc may be used uninitialized
+
+---
+ grub-core/osdep/unix/platform.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/grub-core/osdep/unix/platform.c b/grub-core/osdep/unix/platform.c
+index ca448bc11..55b8f4016 100644
+--- a/grub-core/osdep/unix/platform.c
++++ b/grub-core/osdep/unix/platform.c
+@@ -85,7 +85,7 @@ grub_install_remove_efi_entries_by_distributor (const char *efi_distributor)
+   pid_t pid = grub_util_exec_pipe ((const char * []){ "efibootmgr", NULL }, &fd);
+   char *line = NULL;
+   size_t len = 0;
+-  int rc;
++  int rc = 0;
+ 
+   if (!pid)
+     {
+-- 
+2.15.1
+

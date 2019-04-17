@@ -1,0 +1,16 @@
+--- a/src/shutdown.c	2016-02-26 12:05:00.000000000 +0000
++++ b/src/shutdown.c	2018-03-19 10:41:00.099250462 +0000
+@@ -26,13 +26,9 @@
+ #include "extern.h"
+ #include "ext2_mnt.h"
+ 
+-#if defined __GLIBC__
+ #include <sys/quota.h>
+ #include <sys/swap.h>
+ #include <sys/reboot.h>
+-#else				/* __GLIBC__ */
+-#include <linux/quota.h>
+-#endif				/* __GLIBC__ */
+ 
+ #include <unistd.h>
+ 
