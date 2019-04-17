@@ -8,7 +8,7 @@ package devicenetwork
 import (
 	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/eve/pkg/pillar/types"
 	"reflect"
 )
 

@@ -26,11 +26,11 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/agentlog"
-	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/pidfile"
-	"github.com/zededa/go-provision/pubsub"
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/eve/pkg/pillar/agentlog"
+	"github.com/zededa/eve/pkg/pillar/cast"
+	"github.com/zededa/eve/pkg/pillar/pidfile"
+	"github.com/zededa/eve/pkg/pillar/pubsub"
+	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 const (

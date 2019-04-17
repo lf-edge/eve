@@ -6,7 +6,7 @@ package fib
 import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/dataplane/dptypes"
+	"github.com/zededa/eve/pkg/pillar/dataplane/dptypes"
 	"net"
 )
 

@@ -10,7 +10,7 @@ package zedrouter
 
 import (
 	"github.com/eriknordmark/netlink"
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 func getDefaultIPv4Route(ifindex int) *netlink.Route {

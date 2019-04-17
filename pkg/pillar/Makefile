@@ -74,7 +74,7 @@ build:
 		GOOS=linux \
 		GOARCH=$(ARCH) $(GOBUILD) \
 			-ldflags -X=main.Version=$(BUILD_VERSION) \
-			-o $(BINDIR)/$$app github.com/zededa/go-provision/$$app || exit 1; \
+			-o $(BINDIR)/$$app github.com/zededa/eve/pkg/pillar/$$app || exit 1; \
 	done
 	@for app in $(APPS1); do \
 		echo $$app; \
@@ -97,7 +97,7 @@ shell: eve-build-$(USER)
 	  -v $(CURDIR)/.go:/go -v $(CURDIR):/go/src/$(GOMODULE) -v $${HOME}:/home/$(USER) \
 	$< $(SHELL_CMD)
 
-test: SHELL_CMD=go test github.com/zededa/go-provision/...
+test: SHELL_CMD=go test github.com/zededa/eve/pkg/pillar/...
 test: shell
 	@echo Done testing
 

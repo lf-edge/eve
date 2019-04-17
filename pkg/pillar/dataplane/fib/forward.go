@@ -15,7 +15,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/dataplane/dptypes"
+	"github.com/zededa/eve/pkg/pillar/dataplane/dptypes"
 	"math/rand"
 	"sync/atomic"
 	"syscall"

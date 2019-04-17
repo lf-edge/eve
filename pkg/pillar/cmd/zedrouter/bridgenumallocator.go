@@ -10,8 +10,8 @@ package zedrouter
 import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/uuidtonum"
+	"github.com/zededa/eve/pkg/pillar/cast"
+	"github.com/zededa/eve/pkg/pillar/uuidtonum"
 )
 
 var AllocReservedBridgeNumBits Bitmap

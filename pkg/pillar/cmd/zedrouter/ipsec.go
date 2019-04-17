@@ -12,9 +12,9 @@ import (
 	"strings"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/iptables"
-	"github.com/zededa/go-provision/pubsub"
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/eve/pkg/pillar/iptables"
+	"github.com/zededa/eve/pkg/pillar/pubsub"
+	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 type vpnAclRule struct {

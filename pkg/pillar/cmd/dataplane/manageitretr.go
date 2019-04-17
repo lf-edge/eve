@@ -10,11 +10,11 @@ import (
 	"github.com/google/gopacket/afpacket"
 	//"github.com/google/gopacket/pfring"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/dataplane/dptypes"
-	"github.com/zededa/go-provision/dataplane/etr"
-	"github.com/zededa/go-provision/dataplane/fib"
-	"github.com/zededa/go-provision/dataplane/itr"
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/eve/pkg/pillar/dataplane/dptypes"
+	"github.com/zededa/eve/pkg/pillar/dataplane/etr"
+	"github.com/zededa/eve/pkg/pillar/dataplane/fib"
+	"github.com/zededa/eve/pkg/pillar/dataplane/itr"
+	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 type ThreadEntry struct {

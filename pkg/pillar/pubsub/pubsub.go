@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"github.com/google/go-cmp/cmp"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/watch"
+	"github.com/zededa/eve/pkg/pillar/watch"
 	"io/ioutil"
 	"net"
 	"os"

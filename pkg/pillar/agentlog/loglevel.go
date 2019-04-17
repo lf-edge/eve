@@ -7,9 +7,9 @@ package agentlog
 
 import (
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/pubsub"
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/eve/pkg/pillar/cast"
+	"github.com/zededa/eve/pkg/pillar/pubsub"
+	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 func GetGlobalConfig(sub *pubsub.Subscription) *types.GlobalConfig {

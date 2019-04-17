@@ -9,8 +9,8 @@ package devicenetwork
 import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/agentlog"
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/eve/pkg/pillar/agentlog"
+	"github.com/zededa/eve/pkg/pillar/types"
 	"io/ioutil"
 	"net"
 	"os"

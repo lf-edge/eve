@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/wrap"
+	"github.com/zededa/eve/pkg/pillar/wrap"
 	"os/exec"
 	"strconv"
 	"strings"

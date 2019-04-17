@@ -12,8 +12,8 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zmet"
-	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/eve/pkg/pillar/cast"
+	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 func handleNetworkInstanceModify(ctxArg interface{}, key string, statusArg interface{}) {

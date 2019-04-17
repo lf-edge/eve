@@ -18,12 +18,12 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zconfig"
-	"github.com/zededa/go-provision/agentlog"
-	"github.com/zededa/go-provision/flextimer"
-	"github.com/zededa/go-provision/pubsub"
-	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/zboot"
-	"github.com/zededa/go-provision/zedcloud"
+	"github.com/zededa/eve/pkg/pillar/agentlog"
+	"github.com/zededa/eve/pkg/pillar/flextimer"
+	"github.com/zededa/eve/pkg/pillar/pubsub"
+	"github.com/zededa/eve/pkg/pillar/types"
+	"github.com/zededa/eve/pkg/pillar/zboot"
+	"github.com/zededa/eve/pkg/pillar/zedcloud"
 )
 
 var configApi string = "api/v1/edgedevice/config"

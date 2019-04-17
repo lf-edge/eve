@@ -27,7 +27,7 @@ APPS1="logmanager ledmanager downloader verifier client zedrouter domainmgr iden
 if /bin/true; then
     cmdline=""
     for app in $APPS; do
-    	cmdline="$cmdline github.com/zededa/go-provision/${app}"
+    	cmdline="$cmdline github.com/zededa/eve/pkg/pillar/${app}"
     done
     # echo CMDLINE $cmdline
     go install -v -ldflags -X=main.Version=${BUILD_VERSION} $cmdline

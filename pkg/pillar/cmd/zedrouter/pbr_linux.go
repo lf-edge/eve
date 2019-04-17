@@ -14,8 +14,8 @@ import (
 
 	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/devicenetwork"
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/eve/pkg/pillar/devicenetwork"
+	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 // Return the first default route for one interface. XXX or return all?

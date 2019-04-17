@@ -12,7 +12,7 @@ ARG GOARCH=
 ARG CROSS_GCC=https://musl.cc/aarch64-linux-musleabi-cross.tgz
 RUN [ -z "$GOARCH" ] || (cd / ; apk add --no-cache wget && wget -O - $CROSS_GCC | tar xzvf -)
 
-ADD ./  /go/src/github.com/zededa/go-provision/
+ADD ./  /go/src/github.com/zededa/eve/pkg/pillar/
 ADD conf/root-certificate.pem conf/server conf/server.production /config/
 ADD scripts/device-steps.sh \
     scripts/find-uplink.sh \
@@ -27,14 +27,14 @@ ADD conf/DeviceNetworkConfig /var/tmp/zededa/DeviceNetworkConfig
 ADD conf/lisp.config.base /var/tmp/zededa/lisp.config.base
 
 # XXX temporary until we have a version for all of baseOS/rootfs
-RUN (cd ./src/github.com/zededa/go-provision/; scripts/getversion.sh >/opt/zededa/bin/versioninfo)
+RUN (cd ./src/github.com/zededa/eve/pkg/pillar/; scripts/getversion.sh >/opt/zededa/bin/versioninfo)
 RUN cp /opt/zededa/bin/versioninfo /opt/zededa/bin/versioninfo.1
 # Echo for builders enjoyment
 RUN echo Building: `cat /opt/zededa/bin/versioninfo`
 
 # go install and go vet
 RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc)           ;\
-    go install github.com/zededa/go-provision/zedbox/... && \
+    go install github.com/zededa/eve/pkg/pillar/zedbox/... && \
     echo "Running go vet" && go vet ./... && \
     echo "Running go fmt" && ERR=$(gofmt -e -l -s $(find . -name \*.go | grep -v /vendor/)) && \
        if [ -n "$ERR" ] ; then echo $ERR ; exit 1 ; fi && \

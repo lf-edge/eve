@@ -9,7 +9,7 @@ import (
 	"os"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/pubsub"
+	"github.com/zededa/eve/pkg/pillar/pubsub"
 )
 
 const (

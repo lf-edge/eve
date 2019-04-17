@@ -6,7 +6,7 @@ package hardwaremodel
 import (
 	"flag"
 	"fmt"
-	"github.com/zededa/go-provision/hardware"
+	"github.com/zededa/eve/pkg/pillar/hardware"
 	"os"
 )
 

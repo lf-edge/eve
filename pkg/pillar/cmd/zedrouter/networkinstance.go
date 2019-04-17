@@ -17,10 +17,10 @@ import (
 
 	"github.com/eriknordmark/netlink"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/cast"
-	"github.com/zededa/go-provision/devicenetwork"
-	"github.com/zededa/go-provision/iptables"
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/eve/pkg/pillar/cast"
+	"github.com/zededa/eve/pkg/pillar/devicenetwork"
+	"github.com/zededa/eve/pkg/pillar/iptables"
+	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 func allowSharedPort(status *types.NetworkInstanceStatus) bool {

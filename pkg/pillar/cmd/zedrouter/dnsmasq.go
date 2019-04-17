@@ -15,8 +15,8 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/agentlog"
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/eve/pkg/pillar/agentlog"
+	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 // XXX inotify seems to stop reporting any changes in some cases

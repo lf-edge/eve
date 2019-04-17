@@ -5,7 +5,7 @@ package logmanager
 
 import (
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/cast"
+	"github.com/zededa/eve/pkg/pillar/cast"
 )
 
 // Return the UUID of the instance based on the domainname

@@ -10,8 +10,8 @@ package zedrouter
 import (
 	psutilnet "github.com/shirou/gopsutil/net"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/iptables"
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/eve/pkg/pillar/iptables"
+	"github.com/zededa/eve/pkg/pillar/types"
 	"strings"
 )
 

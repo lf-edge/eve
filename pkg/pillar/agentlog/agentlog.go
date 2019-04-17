@@ -14,7 +14,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/zboot"
+	"github.com/zededa/eve/pkg/pillar/zboot"
 )
 
 const (

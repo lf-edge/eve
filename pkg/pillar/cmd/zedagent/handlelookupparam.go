@@ -24,7 +24,7 @@ import (
 	"github.com/eriknordmark/ipinfo"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zconfig"
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 const (

@@ -8,8 +8,8 @@ package zedrouter
 import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/wrap"
+	"github.com/zededa/eve/pkg/pillar/types"
+	"github.com/zededa/eve/pkg/pillar/wrap"
 	"io"
 	"io/ioutil"
 	"net"

@@ -13,7 +13,7 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zconfig"
-	"github.com/zededa/go-provision/hardware"
+	"github.com/zededa/eve/pkg/pillar/hardware"
 )
 
 // Return UUID, hardwaremodel, enterprise, and devicename

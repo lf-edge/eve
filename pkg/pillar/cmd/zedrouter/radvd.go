@@ -10,7 +10,7 @@ import (
 	"os"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/wrap"
+	"github.com/zededa/eve/pkg/pillar/wrap"
 )
 
 // Need to fill in the overlay inteface name

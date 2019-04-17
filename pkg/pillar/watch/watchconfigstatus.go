@@ -14,7 +14,7 @@ package watch
 import (
 	"github.com/fsnotify/fsnotify"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/flextimer"
+	"github.com/zededa/eve/pkg/pillar/flextimer"
 	"io/ioutil"
 	"os"
 	"path"

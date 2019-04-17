@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/types"
+	"github.com/zededa/eve/pkg/pillar/types"
 	"io/ioutil"
 	"os"
 )

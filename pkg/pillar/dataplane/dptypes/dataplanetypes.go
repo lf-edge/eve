@@ -12,7 +12,7 @@ import (
 	"time"
 	//"github.com/google/gopacket/pfring"
 	"github.com/google/gopacket/afpacket"
-	"github.com/zededa/go-provision/pubsub"
+	"github.com/zededa/eve/pkg/pillar/pubsub"
 	"syscall"
 )
 

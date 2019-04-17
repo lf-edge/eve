@@ -5,7 +5,7 @@ package types
 
 import (
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/go-provision/pubsub"
+	"github.com/zededa/eve/pkg/pillar/pubsub"
 )
 
 type LedBlinkCounter struct {
