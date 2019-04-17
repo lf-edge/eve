@@ -523,7 +523,7 @@ It does the following:
 2. Receive the `ZENBUILD_VERSION` var and, if not present, determine it from `zenbuild_version`.
 3. Determine the latest tag for each package in a list, roughly approximating every directory in `pkg/` using `linuxkit pkg show-tag pkg/<dir>` and save it as a var with name `<pkg-as-uppercase>_TAG`, e.g. `STRONGSWAN_TAG`
 4. For external packages - `zededa/ztools` and `zededa/lisp` - determine the tag by pulling the latest tag for the image, and then running `docker inspect --format='{{index .RepoDigests 0}}' <image>` or, if that fails, `docker inspect --format='{{.Id}}' <image>`. **Note:** This could be done in a much lighterweight fashion by inspecting the manifest. However, since docker uses content-addressable storage, it will only save slightly, since the image will need to be pulled to build anyways.
-5. For internal packages that combine other packages - `zededa/zedctr` and `zededa/zenix` - do a more complicated versioning:
+5. For internal packages that combine other packages - `zededa/zedctr` and `zededa/eve` - do a more complicated versioning:
     1. `cat pkg/<pkg>/Dockerfile.in`
     2. resolve all of the tags to actual latest versions to create a ready-to-run `Dockerfile`
     3. create a hash of the generated `Dockerfile`

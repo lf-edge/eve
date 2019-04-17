@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# mkrootfs -- Create a Zenix rootfs
+# mkrootfs -- Create an EVE rootfs
 #
 # Input is a tarball containing the rootfs partition.
 # Output is a raw partition on stdout

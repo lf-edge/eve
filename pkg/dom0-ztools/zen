@@ -4,7 +4,7 @@ CTR_CMD="ctr --namespace services.linuxkit"
 
 help() {
   cat <<__EOT__
-Welcome to Zenix!
+Welcome to EVE!
   commands: enter [qube (assumed pillar)] [command (assumed sh)]
             exec qube command
             list

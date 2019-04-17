@@ -6,7 +6,7 @@
 #
 
 get_git_tag() {
-  echo ${ZENIX_HASH:-$(git tag -l --points-at HEAD | grep '[0-9]*\.[0-9]*\.[0-9]*' | head -1)}
+  echo ${EVE_HASH:-$(git tag -l --points-at HEAD | grep '[0-9]*\.[0-9]*\.[0-9]*' | head -1)}
 }
 
 zenbuild_version() {
@@ -21,13 +21,13 @@ zenbuild_version() {
 }
 
 linuxkit_tag() {
-    echo $(linuxkit pkg show-tag ${ZENIX_HASH:+--hash} ${ZENIX_HASH} $1)$ARCH
+    echo $(linuxkit pkg show-tag ${EVE_HASH:+--hash} ${EVE_HASH} $1)$ARCH
 }
 
 immutable_tag() {
   # we have to resolve symbolic tags like x.y.z or snapshot to something immutable
   # so that we can detect when the symbolic tag starts pointing a different immutable
-  # object and thus trigger a new SHA for things like zenix
+  # object and thus trigger a new SHA for things like EVE
   echo $(docker inspect --format='{{.Id}}' "$1" 2>/dev/null ||
          docker inspect --format='{{index .RepoDigests 0}}' "$1" 2>/dev/null ||
          echo "$1")
@@ -55,7 +55,7 @@ external_tag() {
 synthetic_tag() {
   NAME=$1
   shift 1
-  echo ${NAME}:${ZENIX_HASH:-$((cat "$@" ; git rev-parse HEAD) | resolve_tags | git hash-object --stdin)}$ARCH
+  echo ${NAME}:${EVE_HASH:-$((cat "$@" ; git rev-parse HEAD) | resolve_tags | git hash-object --stdin)}$ARCH
 }
 
 resolve_tags() {
@@ -85,7 +85,7 @@ sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e "s#MKRAW_TAG#"$MKRAW_TAG"#" \
     -e "s#DEBUG_TAG#"$DEBUG_TAG"#" \
     -e "s#LISP_TAG#"$LISP_TAG"#" \
-    -e "s#ZENIX_TAG#"$ZENIX_TAG"#" \
+    -e "s#EVE_TAG#"$EVE_TAG"#" \
     $1
 }
 
@@ -133,6 +133,6 @@ DEBUG_TAG=$(linuxkit_tag pkg/debug)
 #
 # These tags need to be declared last sine they depend
 # on the previous tags being already defined.
-ZENIX_TAG=$(synthetic_tag zededa/zenix pkg/pillar/Dockerfile.in)
+EVE_TAG=$(synthetic_tag zededa/eve pkg/pillar/Dockerfile.in)
 
 resolve_tags $1

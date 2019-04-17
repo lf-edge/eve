@@ -6,12 +6,12 @@
 # of these files will be supplied from outside of the container
 # in /bits, some will be constructed on the fly depending
 # on settings that were passed via kernel command line:
-#   zenix_install_disk
-#   zenix_pause_before_install
-#   zenix_pause_after_install
-#   zenix_install_skip_config
-#   zenix_install_skip_persist
-#   zenix_install_skip_rootfs
+#   eve_install_disk
+#   eve_pause_before_install
+#   eve_pause_after_install
+#   eve_install_skip_config
+#   eve_install_skip_persist
+#   eve_install_skip_rootfs
 #
 set -x
 
@@ -41,7 +41,7 @@ function root_dev {
 }
 
 # lets see if we're told on which disk to install...
-INSTALL_DEV=`cat /proc/cmdline | tr ' ' '\012' | sed -ne '/^zenix_install_disk=/s#^.*=##p'` 
+INSTALL_DEV=`cat /proc/cmdline | tr ' ' '\012' | sed -ne '/^eve_install_disk=/s#^.*=##p'` 
 
 # ...if not we will try to guess, and...
 if [ -z "$INSTALL_DEV" ] ; then
@@ -72,20 +72,20 @@ for i in config.img rootfs.img ; do
   [ -L /parts/$i ] || ln -s /dev/null /parts/$i
 done
 # finally lets see if we were given any overrides
-grep -q zenix_install_skip_rootfs /proc/cmdline && trunc /parts/rootfs.img
-grep -q zenix_install_skip_config /proc/cmdline && trunc /parts/config.img
+grep -q eve_install_skip_rootfs /proc/cmdline && trunc /parts/rootfs.img
+grep -q eve_install_skip_config /proc/cmdline && trunc /parts/config.img
 # 1M of zeroes should be enough to trigger ext3 filesystem wipe
-grep -q zenix_install_skip_persist /proc/cmdline || dd if=/dev/zero of=/parts/persist.img bs=1M count=1
+grep -q eve_install_skip_persist /proc/cmdline || dd if=/dev/zero of=/parts/persist.img bs=1M count=1
 
 # we may be asked to pause before install procedure
-grep -q zenix_pause_before_install /proc/cmdline && sleep 100000
+grep -q eve_pause_before_install /proc/cmdline && sleep 100000
 
 # do the install
 /bin/sh -xc "/make-raw /dev/$INSTALL_DEV" || bail "Installation failed. Entering shell..."
 
 # we also maybe asked to pause after
 PAUSE_AFTER_SYNC=5
-grep -q zenix_pause_after_install /proc/cmdline && PAUSE_AFTER_SYNC=100000
+grep -q eve_pause_after_install /proc/cmdline && PAUSE_AFTER_SYNC=100000
 
 sync
 sleep $PAUSE_AFTER_SYNC

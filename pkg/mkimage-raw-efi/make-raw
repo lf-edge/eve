@@ -206,7 +206,7 @@ case "$(sgdisk -p $IMGFILE 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '\0
       EMBED_BOOT_SIZE=$(sgdisk -i 6 $IMGFILE 2>/dev/null | awk '/Partition size:/{ print $3; }')
       ;;
   "Name System IMGA IMGB CONFIG P3"*)
-      echo "Found Zenix GPT partition table on $IMGFILE"
+      echo "Found EVE GPT partition table on $IMGFILE"
       sgdisk -g --clear $IMGFILE 2>/dev/null
       ;;
    *) echo "Unknown (or unrecongnizable) GTP partition table on $IMGFILE"

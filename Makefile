@@ -55,8 +55,8 @@ QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH))
 
 DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; docker export $$C | tar -xf - $$2 ; docker rm $$C ; } ; _
 
-PARSE_PKGS:=$(if $(strip $(ZENIX_HASH)),ZENIX_HASH=)$(ZENIX_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/parse-pkgs.sh
-LK_HASH_REL=LINUXKIT_HASH="$(if $(strip $(ZENIX_HASH)),--hash) $(ZENIX_HASH) $(if $(strip $(ZENIX_REL)),--release) $(ZENIX_REL)"
+PARSE_PKGS:=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/parse-pkgs.sh
+LK_HASH_REL=LINUXKIT_HASH="$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)"
 
 DEFAULT_PKG_TARGET=build
 
@@ -151,7 +151,7 @@ $(INSTALLER_IMG).raw: $(ROOTFS_IMG)_installer.img $(CONFIG_IMG) | $(DIST)
 $(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
 	./tools/makeiso.sh $< $@
 
-eve: ZENIX_HASH=$(shell echo ZENIX_TAG | PATH="$(PATH)" ZTOOLS_TAG="$(ZTOOLS_TAG)" $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
+eve: EVE_HASH=$(shell echo EVE_TAG | PATH="$(PATH)" ZTOOLS_TAG="$(ZTOOLS_TAG)" $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
 eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(FALLBACK_IMG).img images/rootfs.yml images/installer.yml
 	cp pkg/eve/* $(DIST)
 	make -C pkgs PKG=eve $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
@@ -196,19 +196,19 @@ help:
 	@echo
 	@echo "Commonly used build targets:"
 	@echo "   build-tools    builds linuxkit and manifest-tool utilities under build-tools/bin"
-	@echo "   config         builds a bundle with initial Zenix configs"
-	@echo "   pkgs           builds all Zenix packages"
-	@echo "   pkg/XXX        builds XXX Zenix package"
-	@echo "   rootfs         builds Zenix rootfs image (upload it to the cloud as BaseImage)"
-	@echo "   fallback       builds a full disk image of Zenix which can be function as a virtual device"
+	@echo "   config         builds a bundle with initial EVE configs"
+	@echo "   pkgs           builds all EVE packages"
+	@echo "   pkg/XXX        builds XXX EVE package"
+	@echo "   rootfs         builds EVE rootfs image (upload it to the cloud as BaseImage)"
+	@echo "   fallback       builds a full disk image of EVE which can be function as a virtual device"
 	@echo "   installer      builds raw disk installer image (to be installed on bootable media)"
 	@echo "   installer-iso  builds an ISO installers image (to be installed on bootable media)"
 	@echo
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
 	@echo "   run-grub          runs our copy of GRUB bootloader and nothing else (very limited usefulness)"
 	@echo "   run-rootfs        runs a rootfs.img (limited usefulness e.g. quick test before cloud upload)"
-	@echo "   run-installer-iso runs installer.iso on qemu and 'installs' Zenix on fallback.img" 
-	@echo "   run-installer-raw runs installer.raw on qemu and 'installs' Zenix on fallback.img"
+	@echo "   run-installer-iso runs installer.iso on qemu and 'installs' EVE on fallback.img" 
+	@echo "   run-installer-raw runs installer.raw on qemu and 'installs' EVE on fallback.img"
 	@echo "   run-fallback      runs a full fledged virtual device on qemu (as close as it gets to actual h/w)"
 	@echo
 	@echo "make run is currently an alias for make run-fallback"
