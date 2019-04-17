@@ -118,11 +118,11 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:b4299679e355999a9c1671eb49972ea35fb9a4154b1cf5a4c220e044cefa60ca"
+  digest = "1:07a284106d91982f79005d74deaae93402cd1db95ced13fde98c3dc8023bbfe1"
   name = "github.com/eriknordmark/netlink"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "25b1c65f027911b85af0ab97bf3412829b17eb31"
+  revision = "c63702da36e51c88beb368fdaa1305294ee8cc6b"
 
 [[projects]]
   digest = "1:1b91ae0dc69a41d4c2ed23ea5cffb721ea63f5037ca4b81e6d6771fbb8f45129"
@@ -323,14 +323,14 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:2cfce7bf5bfb62954803a6e46b9d375994a319255a9f7ba044ee2710cebbec21"
+  digest = "1:d5f37a1e4a67151aa51bade47447f762f93d9a774fa8e4d14e0cd85aad5e5eba"
   name = "github.com/zededa/api"
   packages = [
     "zconfig",
     "zmet",
   ]
   pruneopts = "NUT"
-  revision = "4a3b456717244ab7c3a6827103111438514ff874"
+  revision = "8e9e90d5517d307d5de706789ebfd0e717b2e568"
 
 [[projects]]
   branch = "master"

@@ -331,7 +331,7 @@ func addrSubscribeAt(newNs, curNs netns.NsHandle, ch chan<- AddrUpdate, done <-c
 			msgs, err := s.Receive()
 			if err != nil {
 				if cberr != nil {
-					cberr(fmt.Errorf("Receive %v", err))
+					cberr(fmt.Errorf("Receive: %v", err))
 				}
 				continue
 			}
@@ -346,7 +346,7 @@ func addrSubscribeAt(newNs, curNs netns.NsHandle, ch chan<- AddrUpdate, done <-c
 						continue
 					}
 					if cberr != nil {
-						cberr(fmt.Errorf("error message %v",
+						cberr(fmt.Errorf("error message: %v",
 							syscall.Errno(-error)))
 					}
 					continue
