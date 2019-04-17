@@ -94,6 +94,7 @@ eve-build-$(USER):
 	@echo "$$BUILD_CONTAINER" | docker build -t $@ - >/dev/null
 
 shell: eve-build-$(USER)
+	mkdir -p .go/src/$(GOMODULE)
 	@docker run -it --rm -u $(USER) -w /home/$(USER) \
 	  -v $(CURDIR)/.go:/go -v $(CURDIR):/go/src/$(GOMODULE) -v $${HOME}:/home/$(USER) \
 	$< $(SHELL_CMD)
@@ -102,7 +103,7 @@ test: SHELL_CMD=go test github.com/zededa/go-provision/...
 test: shell
 	@echo Done testing
 
-Gopkg.lock: SHELL_CMD=sh -c "go get github.com/golang/dep/cmd/dep ; cd /go/src/$(GOMODULE) dep ensure -update $(GODEP_NAME)"
+Gopkg.lock: SHELL_CMD=bash --norc --noprofile -c "go get github.com/golang/dep/cmd/dep ; cd /go/src/$(GOMODULE) ; dep ensure -update $(GODEP_NAME)"
 Gopkg.lock: Gopkg.toml shell
 	@echo Done updating vendor
 
