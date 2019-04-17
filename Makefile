@@ -94,7 +94,7 @@ eve-build-$(USER):
 	@echo "$$BUILD_CONTAINER" | docker build -t $@ - >/dev/null
 
 shell: eve-build-$(USER)
-	mkdir -p .go/src/$(GOMODULE)
+	@mkdir -p .go/src/$(GOMODULE)
 	@docker run -it --rm -u $(USER) -w /home/$(USER) \
 	  -v $(CURDIR)/.go:/go -v $(CURDIR):/go/src/$(GOMODULE) -v $${HOME}:/home/$(USER) \
 	$< $(SHELL_CMD)
