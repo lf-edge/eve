@@ -10,8 +10,8 @@ jobs:
           name: Packages
           command: make pkgs
       - run:
-          name: Zenix
-          command: make zenix
+          name: EVE
+          command: make eve
   yetus:
     docker:
       - image: apache/yetus:master

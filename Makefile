@@ -60,17 +60,14 @@ LK_HASH_REL=LINUXKIT_HASH="$(if $(strip $(ZENIX_HASH)),--hash) $(ZENIX_HASH) $(i
 
 DEFAULT_PKG_TARGET=build
 
-.PHONY: run pkgs build-pkgs help build-tools fallback rootfs config installer live
+.PHONY: run pkgs help build-tools fallback rootfs config installer live
 
 all: help
 
 build-tools:
 	${MAKE} -C build-tools all
 
-build-pkgs: build-tools
-	make -C build-pkgs $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
-
-pkgs: build-tools build-pkgs
+pkgs: build-tools
 	make -C pkg $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
 
 $(EFI_PART): | $(DIST)/bios
@@ -78,7 +75,7 @@ $(EFI_PART): | $(DIST)/bios
 	(echo "set root=(hd0)" ; echo "chainloader /EFI/BOOT/BOOTX64.EFI" ; echo boot) > $@/BOOT/grub.cfg
 
 $(BIOS_IMG): | $(DIST)/bios
-	cd $| ; $(DOCKER_UNPACK) $(shell make -s -C build-pkgs BUILD-PKGS=uefi show-tag)-$(DOCKER_ARCH_TAG) OVMF.fd
+	cd $| ; $(DOCKER_UNPACK) $(shell make -s -C pkg PKGS=uefi show-tag)-$(DOCKER_ARCH_TAG) OVMF.fd
 
 # run-installer
 #
@@ -154,10 +151,10 @@ $(INSTALLER_IMG).raw: $(ROOTFS_IMG)_installer.img $(CONFIG_IMG) | $(DIST)
 $(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
 	./tools/makeiso.sh $< $@
 
-zenix: ZENIX_HASH=$(shell echo ZENIX_TAG | PATH="$(PATH)" ZTOOLS_TAG="$(ZTOOLS_TAG)" $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
-zenix: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(FALLBACK_IMG).img images/rootfs.yml images/installer.yml
-	cp $^ build-pkgs/zenix
-	make -C build-pkgs BUILD-PKGS=zenix $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
+eve: ZENIX_HASH=$(shell echo ZENIX_TAG | PATH="$(PATH)" ZTOOLS_TAG="$(ZTOOLS_TAG)" $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
+eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(FALLBACK_IMG).img images/rootfs.yml images/installer.yml
+	cp pkg/eve/* $(DIST)
+	make -C pkgs PKG=eve $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
 
 pkg/%: FORCE
 	make -C pkg PKGS=$(notdir $@) LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
@@ -182,11 +179,11 @@ release:
 FORCE:
 
 help:
-	@echo "zenbuild: Linuxkit based IoT Edge Operating System (Zenix)"
+	@echo "EVE is Edge Virtualization Engine"
 	@echo
 	@echo "This Makefile automates commons tasks of building and running"
-	@echo "  * Zenix"
-	@echo "  * Installer of Zenix OS"
+	@echo "  * EVE"
+	@echo "  * Installer of EVE"
 	@echo "  * linuxkit command line tools"
 	@echo "We currently support two platforms: x86_64 and aarch64. There is"
 	@echo "even rudimentary support for cross-compiling that can be triggered"
@@ -199,7 +196,6 @@ help:
 	@echo
 	@echo "Commonly used build targets:"
 	@echo "   build-tools    builds linuxkit and manifest-tool utilities under build-tools/bin"
-	@echo "   build-pkgs     builds all built-time linuxkit packages"
 	@echo "   config         builds a bundle with initial Zenix configs"
 	@echo "   pkgs           builds all Zenix packages"
 	@echo "   pkg/XXX        builds XXX Zenix package"
