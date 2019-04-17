@@ -104,6 +104,7 @@ type AppInstanceStatus struct {
 	// Copies of config to determine diffs
 	OverlayNetworkList  []EIDOverlayConfig
 	UnderlayNetworkList []UnderlayNetworkConfig
+	BootTime            time.Time
 	IoAdapterList       []IoAdapter
 	RestartCmd          AppInstanceOpsCmd
 	PurgeCmd            AppInstanceOpsCmd

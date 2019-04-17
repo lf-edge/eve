@@ -357,6 +357,24 @@ func ExecuteXentopCmd() [][]string {
 	return cpuStorageStat
 }
 
+func lookupCpuStorageStat(cpuStorageStat [][]string, domainname string) []string {
+
+	for arr := 1; arr < len(cpuStorageStat); arr++ {
+		if strings.Contains(cpuStorageStat[arr][1], "Domain-0") {
+			log.Debugf("Nothing to report for Domain-0\n")
+			continue
+		}
+		if len(cpuStorageStat) <= 2 {
+			continue
+		}
+		dn := strings.TrimSpace(cpuStorageStat[arr][1])
+		if dn == domainname {
+			return cpuStorageStat[arr]
+		}
+	}
+	return nil
+}
+
 func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 	iteration int) {
 
@@ -587,70 +605,45 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 		return
 	}
 
-	countApp := 0
-	// XXX change to loop over AppInstanceStatus instead.
-	// means we report before the instance has booted
-	ReportMetrics.Am = make([]*zmet.AppMetric, len(cpuStorageStat)-2)
-	for arr := 1; arr < len(cpuStorageStat); arr++ {
-		if strings.Contains(cpuStorageStat[arr][1], "Domain-0") {
-			log.Debugf("Nothing to report for Domain-0\n")
-			continue
-		}
-		if len(cpuStorageStat) <= 2 {
-			continue
-		}
+	// Loop over AppInstanceStatus so we report before the instance has booted
+	sub := ctx.getconfigCtx.subAppInstanceStatus
+	items := sub.GetAll()
+	for _, st := range items {
+		aiStatus := cast.CastAppInstanceStatus(st)
+
 		ReportAppMetric := new(zmet.AppMetric)
 		ReportAppMetric.Cpu = new(zmet.AppCpuMetric)
 		ReportAppMetric.Memory = new(zmet.MemoryMetric)
-
-		domainName := strings.TrimSpace(cpuStorageStat[arr][1])
-		ds := LookupDomainStatus(domainName)
-		if ds == nil {
-			log.Infof("ReportMetrics: Did not find status for domainName %s\n",
-				domainName)
-			// Note that it is included in the
-			// metrics without a name and uuid.
-			// XXX ignore and report next time?
-			// Avoid nil checks
-			ds = &types.DomainStatus{}
-		} else {
-			ReportAppMetric.AppName = ds.DisplayName
-			ReportAppMetric.AppID = ds.Key()
-		}
-		// Returns nil if no AppId; we check for nil below
-		aiStatus := lookupAppInstanceStatus(ctx,
-			ReportAppMetric.AppID)
-
-		appCpuTotal, _ := strconv.ParseUint(cpuStorageStat[arr][3], 10, 0)
-		ReportAppMetric.Cpu.Total = *proto.Uint64(appCpuTotal)
-		// This is redundant since we already report BootTime but
-		// makes it part of the time series
-		// Note that Uptime is seconds we've been up. We're converting
-		// to a timestamp. That better not be interpreted as a time since
-		// the epoch
-		if !ds.BootTime.IsZero() {
-			elapsed := time.Since(ds.BootTime)
+		ReportAppMetric.AppName = aiStatus.DisplayName
+		ReportAppMetric.AppID = aiStatus.Key()
+		if !aiStatus.BootTime.IsZero() {
+			elapsed := time.Since(aiStatus.BootTime)
 			uptime, _ := ptypes.TimestampProto(
 				time.Unix(0, elapsed.Nanoseconds()).UTC())
 			ReportAppMetric.Cpu.UpTime = uptime
 		}
 
-		// This is in kbytes
-		totalAppMemory, _ := strconv.ParseUint(cpuStorageStat[arr][5], 10, 0)
-		totalAppMemory = RoundFromKbytesToMbytes(totalAppMemory)
-		usedAppMemoryPercent, _ := strconv.ParseFloat(cpuStorageStat[arr][6], 10)
-		usedMemory := (float64(totalAppMemory) * (usedAppMemoryPercent)) / 100
-		availableMemory := float64(totalAppMemory) - usedMemory
-		availableAppMemoryPercent := 100 - usedAppMemoryPercent
+		stat := lookupCpuStorageStat(cpuStorageStat, aiStatus.DomainName)
+		if len(stat) > 6 {
+			appCpuTotal, _ := strconv.ParseUint(stat[3], 10, 0)
+			ReportAppMetric.Cpu.Total = *proto.Uint64(appCpuTotal)
 
-		ReportAppMetric.Memory.UsedMem = uint32(usedMemory)
-		ReportAppMetric.Memory.AvailMem = uint32(availableMemory)
-		ReportAppMetric.Memory.UsedPercentage = float64(usedAppMemoryPercent)
-		ReportAppMetric.Memory.AvailPercentage = float64(availableAppMemoryPercent)
+			// This is in kbytes
+			totalAppMemory, _ := strconv.ParseUint(stat[5], 10, 0)
+			totalAppMemory = RoundFromKbytesToMbytes(totalAppMemory)
+			usedAppMemoryPercent, _ := strconv.ParseFloat(stat[6], 10)
+			usedMemory := (float64(totalAppMemory) * (usedAppMemoryPercent)) / 100
+			availableMemory := float64(totalAppMemory) - usedMemory
+			availableAppMemoryPercent := 100 - usedAppMemoryPercent
 
-		appInterfaceList := ReadAppInterfaceList(domainName)
+			ReportAppMetric.Memory.UsedMem = uint32(usedMemory)
+			ReportAppMetric.Memory.AvailMem = uint32(availableMemory)
+			ReportAppMetric.Memory.UsedPercentage = float64(usedAppMemoryPercent)
+			ReportAppMetric.Memory.AvailPercentage = float64(availableAppMemoryPercent)
+		}
+		appInterfaceList := ReadAppInterfaceList(aiStatus.DomainName)
 		log.Debugf("ReportMetrics: domainName %s ifs %v\n",
-			domainName, appInterfaceList)
+			aiStatus.DomainName, appInterfaceList)
 		// Use the network metrics from zedrouter subscription
 		for _, ifName := range appInterfaceList {
 			var metric *types.NetworkMetric
@@ -664,16 +657,11 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 				continue
 			}
 			networkDetails := new(zmet.NetworkMetric)
-			if aiStatus != nil {
-				name := appIfnameToName(aiStatus,
-					metric.IfName)
-				log.Debugf("app %s/%s localname %s name %s\n",
-					aiStatus.Key(), aiStatus.DisplayName,
-					metric.IfName, name)
-				networkDetails.IName = name
-			} else {
-				networkDetails.IName = metric.IfName
-			}
+			name := appIfnameToName(&aiStatus, metric.IfName)
+			log.Debugf("app %s/%s localname %s name %s\n",
+				aiStatus.Key(), aiStatus.DisplayName,
+				metric.IfName, name)
+			networkDetails.IName = name
 			networkDetails.LocalName = metric.IfName
 			// Counters not swapped on vif
 			if strings.HasPrefix(ifName, "nbn") ||
@@ -711,7 +699,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 				networkDetails)
 		}
 
-		appDiskList := ReadAppDiskList(strings.TrimSpace(cpuStorageStat[arr][1]))
+		appDiskList := ReadAppDiskList(aiStatus.DomainName)
 		// Use the network metrics from zedrouter subscription
 		for _, diskfile := range appDiskList {
 			appDiskDetails := new(zmet.AppDiskMetric)
@@ -724,10 +712,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuStorageStat [][]string,
 			ReportAppMetric.Disk = append(ReportAppMetric.Disk,
 				appDiskDetails)
 		}
-		ReportMetrics.Am[countApp] = ReportAppMetric
-		log.Debugln("metrics per app is: ",
-			ReportMetrics.Am[countApp])
-		countApp++
+		ReportMetrics.Am = append(ReportMetrics.Am, ReportAppMetric)
 	}
 	// report Network Service Statistics
 	createNetworkServiceMetrics(ctx, ReportMetrics)
@@ -1396,11 +1381,11 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 				ReportAppInfo.SoftwareList[idx] = ReportSoftwareInfo
 			}
 		}
-		if ds.BootTime.IsZero() {
-			// If never booted or we didn't find a DomainStatus
+		if aiStatus.BootTime.IsZero() {
+			// If never booted
 			log.Infoln("BootTime is empty")
 		} else {
-			bootTime, _ := ptypes.TimestampProto(ds.BootTime)
+			bootTime, _ := ptypes.TimestampProto(aiStatus.BootTime)
 			ReportAppInfo.BootTime = bootTime
 		}
 
@@ -1420,9 +1405,9 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		// Mostly reporting the UP status
 		// We extract the appIP from the dnsmasq assignment
 		interfaces, _ := psutilnet.Interfaces()
-		ifNames := ReadAppInterfaceList(ds.DomainName)
+		ifNames := ReadAppInterfaceList(aiStatus.DomainName)
 		log.Debugf("ReportAppInfo: domainName %s ifs %v\n",
-			ds.DomainName, ifNames)
+			aiStatus.DomainName, ifNames)
 		for _, ifname := range ifNames {
 			for _, interfaceDetail := range interfaces {
 				if ifname != interfaceDetail.Name {
