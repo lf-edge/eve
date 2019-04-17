@@ -411,11 +411,11 @@ func MarkCurrentPartitionStateActive() error {
 	return nil
 }
 
-// XXX known pathnames for the version file and the zededa-tools container
+// XXX known pathnames for the version file and the pillar container
 const (
 	shortVersionFile = "/opt/zededa/bin/versioninfo"
 	longVersionFile  = "XXX"
-	otherPrefix      = "/containers/services/zededa-tools/lower"
+	otherPrefix      = "/containers/services/pillar/lower"
 )
 
 func GetShortVersion(partName string) string {

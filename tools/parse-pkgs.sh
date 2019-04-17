@@ -27,7 +27,7 @@ linuxkit_tag() {
 immutable_tag() {
   # we have to resolve symbolic tags like x.y.z or snapshot to something immutable
   # so that we can detect when the symbolic tag starts pointing a different immutable
-  # object and thus trigger a new SHA for zenix and zedctr
+  # object and thus trigger a new SHA for things like zenix
   echo $(docker inspect --format='{{.Id}}' "$1" 2>/dev/null ||
          docker inspect --format='{{index .RepoDigests 0}}' "$1" 2>/dev/null ||
          echo "$1")
@@ -73,7 +73,7 @@ sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e "s#TESTCERT_TAG#"$TESTCERT_TAG"#" \
     -e "s#TESTMSVCS_TAG#"$TESTMSVCS_TAG"#" \
     -e "s#ZEDEDA_TAG#"$ZEDEDA_TAG"#" \
-    -e "s#ZTOOLS_TAG#"$ZTOOLS_TAG"#" \
+    -e "s#PILLAR_TAG#"$PILLAR_TAG"#" \
     -e "s#QREXECLIB_TAG#"$QREXECLIB_TAG"#" \
     -e "s#WWAN_TAG#"$WWAN_TAG"#" \
     -e "s#WLAN_TAG#"$WLAN_TAG"#" \
@@ -120,18 +120,11 @@ WWAN_TAG=$(linuxkit_tag pkg/wwan)
 WLAN_TAG=$(linuxkit_tag pkg/wlan)
 GUACD_TAG=$(linuxkit_tag pkg/guacd)
 LISP_TAG=$(linuxkit_tag pkg/lisp)
+PILLAR_TAG=$(linuxkit_tag pkg/pillar)
 GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)
 WATCHDOG_TAG=$(linuxkit_tag pkg/watchdog)
 MKRAW_TAG=$(linuxkit_tag pkg/mkimage-raw-efi)
 DEBUG_TAG=$(linuxkit_tag pkg/debug)
-
-# External tags: the following tags will default to
-# 'scratch' Docker container if not available.
-# This is intended to make plugging extensions into
-# our build easier. WARNING: it also means if you're
-# not logged into the Docker hub you may see final
-# images lacking functionality.
-ZTOOLS_TAG=$(immutable_tag ${ZTOOLS_TAG:-$(external_tag zededa/ztools $(linuxkit_tag pkg/debug))})
 
 # Synthetic tags: the following tags are based on hashing
 # the contents of all the Dockerfile.in that we can find.
@@ -140,7 +133,6 @@ ZTOOLS_TAG=$(immutable_tag ${ZTOOLS_TAG:-$(external_tag zededa/ztools $(linuxkit
 #
 # These tags need to be declared last sine they depend
 # on the previous tags being already defined.
-ZEDEDA_TAG=$(synthetic_tag zededa/zedctr pkg/zedctr/Dockerfile.in)
-ZENIX_TAG=$(synthetic_tag zededa/zenix pkg/zedctr/Dockerfile.in)
+ZENIX_TAG=$(synthetic_tag zededa/zenix pkg/pillar/Dockerfile.in)
 
 resolve_tags $1

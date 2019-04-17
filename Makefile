@@ -120,9 +120,7 @@ live: fallback
 installer: $(INSTALLER_IMG).raw
 installer-iso: $(INSTALLER_IMG).iso
 
-# NOTE: that we have to depend on pkg/zedctr here to make sure
-# it gets triggered when we build any kind of image target
-images/%.yml: build-tools pkg/zedctr tools/parse-pkgs.sh images/%.yml.in FORCE
+images/%.yml: build-tools tools/parse-pkgs.sh images/%.yml.in FORCE
 	$(PARSE_PKGS) $@.in > $@
 
 $(CONFIG_IMG): conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/ | $(DIST)
@@ -161,30 +159,6 @@ zenix: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).
 	cp $^ build-pkgs/zenix
 	make -C build-pkgs BUILD-PKGS=zenix $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
 
-# FIXME: the following is an ugly workaround against linuxkit complaining:
-# FATA[0030] Failed to create OCI spec for zededa/zedctr:XXX: 
-#    Error response from daemon: pull access denied for zededa/zedctr, repository does not exist or may require ‘docker login’
-# The underlying problem is that running pkg target doesn't guarantee that
-# the zededa/zedctr:XXX container will end up in a local docker cache (if linuxkit 
-# doesn't rebuild the package) and we need it there for the linuxkit build to work.
-# Which means, that we have to either forcefully rebuild it or fetch from docker hub.
-pkg/zedctr: ZENIX_HASH=$(shell echo ZEDEDA_TAG | PATH="$(PATH)" ZTOOLS_TAG="$(ZTOOLS_TAG)" $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
-pkg/zedctr: ZEDCTR_TAG=zededa/zedctr:$(ZENIX_HASH)-$(DOCKER_ARCH_TAG)
-pkg/zedctr: FORCE
-	docker pull $(ZEDCTR_TAG) >/dev/null 2>&1 || : ;\
-	if ! docker inspect $(ZEDCTR_TAG) >/dev/null 2>&1 ; then \
-	  if [ -n "$(CROSS)" ] ; then \
-	    $(PARSE_PKGS) < pkg/zedctr/Dockerfile.cross.in > pkg/zedctr/Dockerfile ;\
-	    PKG_HASH=`mktemp -u XXXXXXXXXX` ;\
-	    make -C pkg PKGS=zedctr RESCAN_DEPS="" LINUXKIT_OPTS="--disable-content-trust --force --disable-cache --hash $$PKG_HASH" $(DEFAULT_PKG_TARGET) ;\
-	    PKG_HASH=zededa/zedctr:$$PKG_HASH ;\
-	    docker tag $$PKG_HASH $(ZEDCTR_TAG) ;\
-	    docker rmi $$PKG_HASH $$PKG_HASH-$(DOCKER_ARCH_TAG_$(HOSTARCH)) ;\
-	  else \
-	    make -C pkg PKGS=zedctr LINUXKIT_OPTS="--disable-content-trust --force --disable-cache $(subst LINUXKIT_HASH=",,$(LK_HASH_REL)) $(DEFAULT_PKG_TARGET) ;\
-	  fi ;\
-	fi
-
 pkg/%: FORCE
 	make -C pkg PKGS=$(notdir $@) LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
 
@@ -200,8 +174,6 @@ release:
 	    git commit -m"Setting default server to prod" conf/server ;\
 	 fi || bail "Can't create $$X.$$Y branch" ;\
 	 git commit -m"Pinning down versions in tools/parse-pkgs.sh" tools/parse-pkgs.sh 2>/dev/null ;\
-	 (echo ZTOOLS_TAG ; echo LISP_TAG) | ZENIX_HASH=$$X.$$Y.$$Z ./tools/parse-pkgs.sh | grep -q zededa/debug &&\
-	     bail "Couldn't find matching versions for ztools and/or lisp. You may want to edit tools/parse-pkg.sh" ;\
 	 git tag -a -m"Release $$X.$$Y.$$Z" $$X.$$Y.$$Z &&\
 	 echo "Done tagging $$X.$$Y.$$Z release. Check the branch with git log and then run" &&\
 	 echo "  git push origin $$X.$$Y $$X.$$Y.$$Z"

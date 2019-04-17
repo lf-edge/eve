@@ -32,7 +32,7 @@ OBJDIR      := $(PWD)/bin/$(ARCH)
 BINDIR	    := $(OBJDIR)
 
 DOCKER_ARGS=$${GOARCH:+--build-arg GOARCH=}$(GOARCH)
-DOCKER_TAG=zededa/ztools:local$${GOARCH:+-}$(GOARCH)
+DOCKER_TAG=zededa/pillar:local$${GOARCH:+-}$(GOARCH)
 
 APPS = zedbox
 APPS1 = logmanager ledmanager downloader verifier client zedrouter domainmgr identitymgr zedmanager zedagent hardwaremodel ipcmonitor nim diag baseosmgr wstunnelclient conntrack

@@ -5,7 +5,7 @@ CTR_CMD="ctr --namespace services.linuxkit"
 help() {
   cat <<__EOT__
 Welcome to Zenix!
-  commands: enter [qube (assumed zededa-tools)] [command (assumed sh)]
+  commands: enter [qube (assumed pillar)] [command (assumed sh)]
             exec qube command
             list
             status
@@ -23,7 +23,7 @@ case "$1" in
           shift 2
           ${CTR_CMD} t exec --exec-id $(basename $(mktemp)) "$CONT" "$@"
           ;;
-   enter) ${CTR_CMD} t exec -t --exec-id $(basename $(mktemp))  ${2:-zededa-tools} ${3:-sh}
+   enter) ${CTR_CMD} t exec -t --exec-id $(basename $(mktemp))  ${2:-pillar} ${3:-sh}
           ;;
     list) ${CTR_CMD} c ls
           ;;

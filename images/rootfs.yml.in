@@ -33,10 +33,10 @@ services:
      image: WLAN_TAG
    - name: guacd
      image: GUACD_TAG
-   - name: zededa-tools
-     image: ZEDEDA_TAG
+   - name: pillar
+     image: PILLAR_TAG
 files:
-   - path: /containers/services/zededa-tools/lower/opt/zededa/bin/versioninfo
+   - path: /containers/services/pillar/lower/opt/zededa/bin/versioninfo
      contents: 'ZENBUILD_VERSION'
 trust:
   org:

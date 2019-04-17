@@ -73,7 +73,7 @@ qemu with some default assumptions.
 Once the image boots you can interact with it either by using the console
 (right there in the terminal window from which make run was executed).
 Your shell in the console is connected to the 'host' os. Everything
-interesting is actually happening in the zededa-tools container. Use
+interesting is actually happening in the pillar container. Use
 `zen enter` command to enter it (or if you're comfortable with ctr CLI
 from containerd - use that instead).
 

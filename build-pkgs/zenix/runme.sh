@@ -12,7 +12,7 @@ elif [ "$1" = "-" ] ; then
    tar -C /bits -czf - .
 elif [ "$1" = "version" ] ; then
    mount -o loop /bits/rootfs.img /mnt >/dev/null 2>&1 || bail "FAIL: make sure to add --privileged to you docker run"
-   cat /mnt/containers/services/zededa-tools/lower/opt/zededa/bin/versioninfo
+   cat /mnt/containers/services/pillar/lower/opt/zededa/bin/versioninfo
    umount /mnt
 else
    bash -c "$*"
