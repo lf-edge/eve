@@ -1,6 +1,17 @@
 ---
-version: 2
+version: 2.1
 jobs:
+  build:
+    machine:
+      image: circleci/classic:latest
+    steps:
+      - checkout
+      - run:
+          name: Packages
+          command: make pkgs
+      - run:
+          name: Zenix
+          command: make zenix
   yetus:
     docker:
       - image: apache/yetus:master
@@ -24,22 +35,11 @@ jobs:
             || true
       - store_artifacts:
           path: /tmp/yetus-out
-
-  build-tree:
-    machine:
-      image: circleci/classic:latest
-    steps:
-      - checkout
-      - run:
-          name: Packages
-          command: make pkgs
-      - run:
-          name: Zenix
-          command: make zenix
-
 workflows:
   version: 2
   build-stuff:
     jobs:
       - yetus
-      - build-tree
+      - build
+      - store_artifacts:
+          path: /tmp/yetus-out
