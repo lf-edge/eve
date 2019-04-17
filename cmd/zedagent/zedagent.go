@@ -656,15 +656,15 @@ func Run() {
 
 		case change := <-subDevicePortConfigList.C:
 			subDevicePortConfigList.ProcessChange(change)
-			if zedagentCtx.TriggerDeviceInfo {
-				// CurrentIndex, LastError could have changed
-				log.Infof("DevicePortConfigList triggered PublishDeviceInfo\n")
-				publishDevInfo(&zedagentCtx)
-				zedagentCtx.TriggerDeviceInfo = false
-			}
 
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
+		}
+		// UsedByUUID, baseos subStatus, DevicePortConfigList etc
+		if zedagentCtx.TriggerDeviceInfo {
+			log.Infof("triggered PublishDeviceInfo\n")
+			publishDevInfo(&zedagentCtx)
+			zedagentCtx.TriggerDeviceInfo = false
 		}
 	}
 
@@ -718,12 +718,6 @@ func Run() {
 
 		case change := <-subDomainStatus.C:
 			subDomainStatus.ProcessChange(change)
-			// UsedByUUID could have changed ...
-			if zedagentCtx.TriggerDeviceInfo {
-				log.Infof("UsedByUUID triggered PublishDeviceInfo\n")
-				publishDevInfo(&zedagentCtx)
-				zedagentCtx.TriggerDeviceInfo = false
-			}
 
 		case change := <-subAssignableAdapters.C:
 			subAssignableAdapters.ProcessChange(change)
@@ -785,15 +779,15 @@ func Run() {
 
 		case change := <-subDevicePortConfigList.C:
 			subDevicePortConfigList.ProcessChange(change)
-			if zedagentCtx.TriggerDeviceInfo {
-				// CurrentIndex, LastError could have changed
-				log.Infof("DevicePortConfigList triggered PublishDeviceInfo\n")
-				publishDevInfo(&zedagentCtx)
-				zedagentCtx.TriggerDeviceInfo = false
-			}
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
+		}
+		// UsedByUUID, baseos subStatus, DevicePortConfigList etc
+		if zedagentCtx.TriggerDeviceInfo {
+			log.Infof("triggered PublishDeviceInfo\n")
+			publishDevInfo(&zedagentCtx)
+			zedagentCtx.TriggerDeviceInfo = false
 		}
 	}
 }

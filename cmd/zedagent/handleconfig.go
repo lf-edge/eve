@@ -245,6 +245,8 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 			initiateBaseOsZedCloudTestComplete(getconfigCtx)
 			ctx.remainingTestTime = 0
 		}
+		// Send updated remainingTestTime to zedcloud
+		ctx.TriggerDeviceInfo = true
 	}
 
 	// Each time we hear back from the cloud we assume
