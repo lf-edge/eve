@@ -107,6 +107,7 @@ type zedagentContext struct {
 	restartCounter            uint32
 	subDevicePortConfigList   *pubsub.Subscription
 	devicePortConfigList      types.DevicePortConfigList
+	remainingTestTime         time.Duration
 }
 
 var debug = false
@@ -539,6 +540,18 @@ func Run() {
 		case change := <-zedagentCtx.subBaseOsVerifierStatus.C:
 			zedagentCtx.subBaseOsVerifierStatus.ProcessChange(change)
 
+		case change := <-zedagentCtx.subBaseOsDownloadStatus.C:
+			zedagentCtx.subBaseOsDownloadStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAppImgVerifierStatus.C:
+			zedagentCtx.subAppImgVerifierStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAppImgDownloadStatus.C:
+			zedagentCtx.subAppImgDownloadStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subCertObjDownloadStatus.C:
+			zedagentCtx.subCertObjDownloadStatus.ProcessChange(change)
+
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 
@@ -617,6 +630,18 @@ func Run() {
 				break
 			}
 
+		case change := <-zedagentCtx.subBaseOsDownloadStatus.C:
+			zedagentCtx.subBaseOsDownloadStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAppImgVerifierStatus.C:
+			zedagentCtx.subAppImgVerifierStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAppImgDownloadStatus.C:
+			zedagentCtx.subAppImgDownloadStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subCertObjDownloadStatus.C:
+			zedagentCtx.subCertObjDownloadStatus.ProcessChange(change)
+
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 			if DNSctx.triggerDeviceInfo {
@@ -631,15 +656,15 @@ func Run() {
 
 		case change := <-subDevicePortConfigList.C:
 			subDevicePortConfigList.ProcessChange(change)
-			if zedagentCtx.TriggerDeviceInfo {
-				// CurrentIndex, LastError could have changed
-				log.Infof("DevicePortConfigList triggered PublishDeviceInfo\n")
-				publishDevInfo(&zedagentCtx)
-				zedagentCtx.TriggerDeviceInfo = false
-			}
 
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
+		}
+		// UsedByUUID, baseos subStatus, DevicePortConfigList etc
+		if zedagentCtx.TriggerDeviceInfo {
+			log.Infof("triggered PublishDeviceInfo\n")
+			publishDevInfo(&zedagentCtx)
+			zedagentCtx.TriggerDeviceInfo = false
 		}
 	}
 
@@ -663,6 +688,21 @@ func Run() {
 		case change := <-subBaseOsStatus.C:
 			subBaseOsStatus.ProcessChange(change)
 
+		case change := <-zedagentCtx.subBaseOsVerifierStatus.C:
+			zedagentCtx.subBaseOsVerifierStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subBaseOsDownloadStatus.C:
+			zedagentCtx.subBaseOsDownloadStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAppImgVerifierStatus.C:
+			zedagentCtx.subAppImgVerifierStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subAppImgDownloadStatus.C:
+			zedagentCtx.subAppImgDownloadStatus.ProcessChange(change)
+
+		case change := <-zedagentCtx.subCertObjDownloadStatus.C:
+			zedagentCtx.subCertObjDownloadStatus.ProcessChange(change)
+
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 			if DNSctx.triggerGetConfig {
@@ -678,12 +718,6 @@ func Run() {
 
 		case change := <-subDomainStatus.C:
 			subDomainStatus.ProcessChange(change)
-			// UsedByUUID could have changed ...
-			if zedagentCtx.TriggerDeviceInfo {
-				log.Infof("UsedByUUID triggered PublishDeviceInfo\n")
-				publishDevInfo(&zedagentCtx)
-				zedagentCtx.TriggerDeviceInfo = false
-			}
 
 		case change := <-subAssignableAdapters.C:
 			subAssignableAdapters.ProcessChange(change)
@@ -745,15 +779,15 @@ func Run() {
 
 		case change := <-subDevicePortConfigList.C:
 			subDevicePortConfigList.ProcessChange(change)
-			if zedagentCtx.TriggerDeviceInfo {
-				// CurrentIndex, LastError could have changed
-				log.Infof("DevicePortConfigList triggered PublishDeviceInfo\n")
-				publishDevInfo(&zedagentCtx)
-				zedagentCtx.TriggerDeviceInfo = false
-			}
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
+		}
+		// UsedByUUID, baseos subStatus, DevicePortConfigList etc
+		if zedagentCtx.TriggerDeviceInfo {
+			log.Infof("triggered PublishDeviceInfo\n")
+			publishDevInfo(&zedagentCtx)
+			zedagentCtx.TriggerDeviceInfo = false
 		}
 	}
 }
