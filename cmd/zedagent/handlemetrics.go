@@ -568,9 +568,10 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 	// Convert to MB
 	runtimeStorageOverhead := types.RoundupToKB(types.RoundupToKB(persistOverhead))
 	appRunTimeStorage := types.RoundupToKB(types.RoundupToKB(persistAppUsage))
-	// XXX plug in API runtimeStorageOverhead, appRunTimeStorageOverhead
-	log.Infof("XXX runtimeStorageOverhead %d MB, appRunTimeStorage %d MB",
+	log.Debugf("runtimeStorageOverhead %d MB, appRunTimeStorage %d MB",
 		runtimeStorageOverhead, appRunTimeStorage)
+	ReportDeviceMetric.RuntimeStorageOverheadMB = runtimeStorageOverhead
+	ReportDeviceMetric.AppRunTimeStorageMB = appRunTimeStorage
 
 	// Walk all verified downloads and report their size (faked
 	// as disks)
@@ -617,18 +618,16 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		cpuTotal, (100*cpuTotal)/uint64(info.Uptime))
 	ReportDeviceMetric.CpuMetric.Total = *proto.Uint64(cpuTotal)
 
-	XReportDeviceMetric := new(zmet.DeviceMetric)
-	XReportDeviceMetric.Memory = new(zmet.MemoryMetric)
-	XReportDeviceMetric.Memory.UsedMem = usedMemory
-	XReportDeviceMetric.Memory.AvailMem = availableMemory
-	XReportDeviceMetric.Memory.UsedPercentage = usedMemoryPercent
-	XReportDeviceMetric.Memory.AvailPercentage = (100.0 - (usedMemoryPercent))
+	ReportDeviceMetric.SystemServicesMemoryMB = new(zmet.MemoryMetric)
+	ReportDeviceMetric.SystemServicesMemoryMB.UsedMem = usedMemory
+	ReportDeviceMetric.SystemServicesMemoryMB.AvailMem = availableMemory
+	ReportDeviceMetric.SystemServicesMemoryMB.UsedPercentage = usedMemoryPercent
+	ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage = (100.0 - (usedMemoryPercent))
 	log.Debugf("dom-0 Memory from xentop: %v %v %v %v",
-		XReportDeviceMetric.Memory.UsedMem,
-		XReportDeviceMetric.Memory.AvailMem,
-		XReportDeviceMetric.Memory.UsedPercentage,
-		XReportDeviceMetric.Memory.AvailPercentage)
-	// XXX plug in API with ReportDeviceMetric.servicesMemory
+		ReportDeviceMetric.SystemServicesMemoryMB.UsedMem,
+		ReportDeviceMetric.SystemServicesMemoryMB.AvailMem,
+		ReportDeviceMetric.SystemServicesMemoryMB.UsedPercentage,
+		ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage)
 
 	ReportMetrics.MetricContent = new(zmet.ZMetricMsg_Dm)
 	if x, ok := ReportMetrics.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
