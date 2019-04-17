@@ -536,6 +536,7 @@ message deviceMetric {
   repeated MetricItem metricItems = 8;
   uint64 runtimeStorageOverheadMB = 9;     // In MB
   uint64 appRunTimeStorageMB = 10;         // In MB
+  memoryMetric systemServicesMemory = 11;  // In MB
 }
 
 enum MetricItemType {
