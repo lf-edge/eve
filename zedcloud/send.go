@@ -319,7 +319,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 					lastError = errors.New(errStr)
 					continue
 				}
-				log.Infoln(errStr)
+				log.Debugln(errStr)
 			}
 		}
 		// Even if we got e.g., a 404 we consider the connection a
