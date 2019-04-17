@@ -554,7 +554,7 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 			// These rules should only apply on the uplink
 			// interfaces but for now we just compare the protocol
 			// and port number.
-			// The DNAT/SNAT rules do not compare fport and ipset
+			// The DNAT/MASQURADE rules do not compare fport and ipset
 			rule1 := []string{"PREROUTING",
 				"-p", protocol, "--dport", lport,
 				"-j", "DNAT", "--to-destination", target}
@@ -562,8 +562,8 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 			// e.g., out a directly attached interface in the domU
 			rule2 := []string{"POSTROUTING",
 				"-p", protocol, "-o", bridgeName,
-				"--dport", targetPort, "-j", "SNAT",
-				"--to-source", bridgeIP}
+				"-d", appIP,
+				"--dport", targetPort, "-j", "MASQUERADE"}
 			// Below we make sure the mapped packets get through
 			// Note that port/targetport change relative
 			// no normal ACL above.
