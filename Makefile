@@ -37,14 +37,15 @@ DOCKER_TAG=zededa/ztools:local$${GOARCH:+-}$(GOARCH)
 APPS = zedbox
 APPS1 = logmanager ledmanager downloader verifier client zedrouter domainmgr identitymgr zedmanager zedagent hardwaremodel ipcmonitor nim diag baseosmgr wstunnelclient conntrack
 
-SCRIPTS = \
-	device-steps.sh \
-	find-uplink.sh \
-	generate-device.sh \
-	generate-onboard.sh \
-	generate-self-signed.sh \
-	run-ocsp.sh \
-	watchdog-report.sh
+SHELL_CMD=bash
+define BUILD_CONTAINER
+FROM golang:1.9.1-alpine
+RUN apk add --no-cache openssh-client git gcc linux-headers libc-dev util-linux libpcap-dev bash vim make
+RUN deluser $(USER) ; delgroup $(GROUP) || :
+RUN sed -ie /:$(UID):/d /etc/passwd /etc/shadow ; sed -ie /:$(GID):/d /etc/group || :
+RUN addgroup -g $(GID) $(GROUP) && adduser -h /home/$(USER) -G $(GROUP) -D -H -u $(UID) $(USER)
+ENV HOME /home/$(USER)
+endef
 
 SHELL_CMD=bash
 define BUILD_CONTAINER
