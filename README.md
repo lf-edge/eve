@@ -105,7 +105,7 @@ diskutil eject /dev/rdiskXXX
 Since by default HiKey is using WiFi for all its networking, you will also
 have to provide SSID and password for your WiFi network. On Mac OS X you
 can simply re-insert SD card and edit wpa_supplicant.conf that will appear 
-on volume called ZEDEDA.
+on volume called EVE.
 
 
 At this point you have everything you need to permanently install onto

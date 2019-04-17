@@ -151,10 +151,10 @@ $(INSTALLER_IMG).raw: $(ROOTFS_IMG)_installer.img $(CONFIG_IMG) | $(DIST)
 $(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
 	./tools/makeiso.sh $< $@
 
-eve: EVE_HASH=$(shell echo EVE_TAG | PATH="$(PATH)" ZTOOLS_TAG="$(ZTOOLS_TAG)" $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
+eve: EVE_HASH=$(shell echo EVE_TAG | PATH="$(PATH)" $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
 eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(FALLBACK_IMG).img images/rootfs.yml images/installer.yml
-	cp pkg/eve/* $(DIST)
-	make -C pkgs PKG=eve $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
+	cp pkg/eve/* Makefile images/rootfs.yml images/installer.yml $(DIST)
+	export $(LK_HASH_REL) ; linuxkit pkg $(DEFAULT_PKG_TARGET) --disable-content-trust $${LINUXKIT_HASH} $(DIST)
 
 pkg/%: FORCE
 	make -C pkg PKGS=$(notdir $@) LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)

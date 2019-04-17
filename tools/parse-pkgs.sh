@@ -72,7 +72,6 @@ sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e "s#STRONGSWAN_TAG#"$STRONGSWAN_TAG"#" \
     -e "s#TESTCERT_TAG#"$TESTCERT_TAG"#" \
     -e "s#TESTMSVCS_TAG#"$TESTMSVCS_TAG"#" \
-    -e "s#ZEDEDA_TAG#"$ZEDEDA_TAG"#" \
     -e "s#PILLAR_TAG#"$PILLAR_TAG"#" \
     -e "s#QREXECLIB_TAG#"$QREXECLIB_TAG"#" \
     -e "s#WWAN_TAG#"$WWAN_TAG"#" \
