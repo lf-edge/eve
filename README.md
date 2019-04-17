@@ -1,11 +1,15 @@
-# Zenbuild
+# EVE is Edge Virtualization Engine
 
-zenbuild is a LinuxKit based builder for Xen-centric platforms targeting x86 and ARM architectures
+EVE aims to develop an open, agnostic and standardized architecture unifying the approach to developing and orchestrating cloud-native applications across the enterprise on-premises edge. It offers users new levels of control through hardware-assisted virtualization of on-prem edge devices. Once installed, EVE has direct access to and control of underlying resources and provides standard APIs that allow more efficient use of resources and can effectively partition hardware to increase workload consolidation and application multi-tenancy.
 
-How to use:
+EVE supports both ARM and Intel architectures and requires hardware-assisted virtualization. While EVE can run on a board as small as a $20 Orange Pi, the sweet spot for its deployment are IoT Gateways and Industrial PCs.
+
+To get its job done, EVE leverages a lot of great open source projects: [Xen Project](https://xenproject.org/), [Linuxkit](https://github.com/linuxkit/linuxkit) and [Alpine Linux](https://alpinelinux.org/) just to name a few. All of that functionality is being orchestrated by the Go microservices available under [pkg/pillar](../pkg/pillar). Why pillar? Well, because pillar is the kind of a monolith we need to break out into true, individual microservices under [pkg/](../pkg/).
+
+# How to use
 
 You will need qemu (https://www.qemu.org/), Docker (https://www.docker.com) 
-and go 1.9+ (https://golang.org) installed in your system.
+and go 1.12+ (https://golang.org) installed in your system.
 
 Note, that since Linuxkit and manifest-tool are evolving pretty rapidly, we're
 vendoring those under build-tools/src. This means you don't have to have them
@@ -40,20 +44,20 @@ Make sure that Docker is up and running on your system. On MacOS just start a do
 docker version
 ```
 
-zenbuild requires beeing built in Git repository (the tools keep looking up git commit IDs). The easiest way is to clone zenbuild repository from GitHub:
+EVE requires beeing built in Git repository (the tools keep looking up git commit IDs). The easiest way is to clone EVE repository from GitHub:
 ```
-git clone https://github.com/zededa/zenbuild.git
-cd zenbuild
+git clone https://github.com/zededa/eve.git
+cd eve
 ```
 
 Build both the build-tools as well as the fallback image in the source directory:
 
 ```
 make build-tools
-make fallback.img
+make fallback
 ```
 This will download the relevant dockers from docker hub and create a bootable
-image 'fallback.img'.
+image 'dist/<ARCH>/fallback.img'.
 
 Please note that not all containers will be fetched from the docker
 hub. mkimage-raw-efi in particular will be built.
@@ -61,7 +65,7 @@ hub. mkimage-raw-efi in particular will be built.
 Also, keep in mind that since the initial build fetches a LOT of bits
 over the network it may occasionally time out and fail. Typically
 re-running make fixes the issue. If it doesn't you can attempt a local
-build of all the required zenbuild packages first by running:
+build of all the required EVE packages first by running:
 
 ```
 make pkgs
@@ -86,7 +90,7 @@ is ARM. We recommend using HiKey board (http://www.lenovator.com/product/90.html
 Once you acquire the board you will need to build an installer image by running
 (note that if you're building it on an ARM server you can drop ZARCH=aarch64 part):
 ```
-make ZARCH=aarch64 installer_aarch64.img
+make ZARCH=aarch64 installer
 ```
 and then flashing it onto an SD card. For example, here's how you can do the
 flashing on Mac OS X (where XXX is the name of your SD card as shown by
@@ -94,7 +98,7 @@ diskutil list):
 ```
 diskutil list
 diskutil umountDisk /dev/rdiskXXX
-sudo dd if=installer_aarch64.raw of=/dev/rdiskXXX bs=1m
+sudo dd if=dist/aarch64/installer.raw of=/dev/rdiskXXX bs=1m
 diskutil eject /dev/rdiskXXX
 ```
 
@@ -169,7 +173,7 @@ on Mac OS X:
 vi conf/wpa_supplicant.conf
   # put your WIFI passwords in and/or add your own networks
 make ZARCH=aarch64 MEDIA_SIZE=8192 fallback_aarch64.raw
-sudo dd if=fallback_aarch64.raw of=/dev/rdiskXXX bs=1m
+sudo dd if=dist/aarch64/fallback.raw of=/dev/rdiskXXX bs=1m
 ```
 
 Then you can boot into a live system from triggering UEFI shell like shown
