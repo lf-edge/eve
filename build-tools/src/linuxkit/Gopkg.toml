@@ -1,0 +1,42 @@
+
+required = ["github.com/linuxkit/linuxkit/src/cmd/linuxkit"]
+
+[prune]
+  go-tests = true
+  unused-packages = true
+  non-go = true
+
+[[constraint]]
+  name = "github.com/linuxkit/linuxkit"
+  version = "v0.5"
+
+[[override]]
+  name = "github.com/docker/docker"
+  revision = "ba99c19b593bdb9e7b90793681fe89b0a91781ed"
+[[override]]
+  name = "github.com/docker/distribution"
+  revision = "3800056b8832cf6075e78b282ac010131d8687bc"
+[[override]]
+  name = "github.com/radu-matei/azure-sdk-for-go"
+  revision = "3b12823551999669c9a325a32472508e0af7978e"
+[[override]]
+  name = "github.com/radu-matei/azure-vhd-utils"
+  revision = "e52754d5569d2a643a7775f72ff2a6cf524f4c25"
+[[override]]
+  name = "github.com/Azure/azure-sdk-for-go"
+  revision = "26132835cbefa2669a306b777f34b929b56aa0a2"
+[[override]]
+  name = "github.com/packethost/packngo"
+  revision = "f1be085ecd6fca1b0a0e25eda71f208dcfcee5ab"
+[[override]]
+  name = "github.com/moby/hyperkit"
+  revision = "d65b09c1c28a2bfb6a976c86ecd885d2ee4c71d3"
+[[override]]
+  name = "github.com/moby/datakit"
+  revision = "97b3d230535397a813323902c23751e176481a86"
+[[override]]
+  name = "github.com/moby/tool"
+  revision = "3dbad3b7daffd631d036493a1e883608206d2e03"
+[[override]]
+  name = "github.com/moby/vpnkit"
+  revision = "0e4293bb1058598c4b0a406ed171f52573ef414c"

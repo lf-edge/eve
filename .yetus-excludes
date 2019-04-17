@@ -1,2 +1,8 @@
 ^src/vendor
 ^zedpac/
+^pkg/fw/
+^pkg/rngd/cmd/rngd/vendor/
+^build-tools/src/linuxkit/vendor/
+^build-tools/src/manifest-tool/vendor/
+^.+\.patch
+^.+\.diff

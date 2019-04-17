@@ -1,0 +1,2 @@
+Mirage unikernels can be simply run by
+   xl create -c [name].xl

@@ -1,0 +1,14 @@
+image: debug
+org: zededa
+network: yes
+config:
+  binds:
+    - /dev:/dev
+    - /etc/resolv.conf:/etc/resolv.conf
+    - /run:/run
+    - /var/log:/var/log/dom0
+    - /:/hostfs
+  net: host
+  capabilities:
+    - all
+  pid: host

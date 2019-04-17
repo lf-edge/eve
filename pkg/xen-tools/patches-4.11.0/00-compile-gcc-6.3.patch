@@ -1,0 +1,22 @@
+--- a/tools/libxc/xc_sr_restore.c
++++ b/tools/libxc/xc_sr_restore.c
+@@ -398,6 +398,6 @@
+     {
+         ERROR("PAGE_DATA record wrong size: length %u, expected "
+               "%zu + %zu + %lu", rec->length, sizeof(*pages),
+-              (sizeof(uint64_t) * pages->count), (PAGE_SIZE * pages_of_data));
++              (sizeof(uint64_t) * pages->count), (unsigned long)(PAGE_SIZE * pages_of_data));
+         goto err;
+     }
+--- a/tools/xenpaging/Makefile
++++ b/tools/xenpaging/Makefile
+@@ -12,8 +12,8 @@
+ SRCS     += file_ops.c xenpaging.c policy_$(POLICY).c
+ SRCS     += pagein.c
+
+-CFLAGS   += -Werror
++#CFLAGS   += -Werror
+ CFLAGS   += -Wno-unused
+
+ OBJS     = $(SRCS:.c=.o)
+ IBINS    = xenpaging

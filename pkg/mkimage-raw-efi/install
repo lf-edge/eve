@@ -1,0 +1,93 @@
+#!/bin/sh
+#
+# This script is an entry point for a standalone installer.
+# It is expected to probe for the destination installtion
+# media and arrange for source files to be in /parts. Some
+# of these files will be supplied from outside of the container
+# in /bits, some will be constructed on the fly depending
+# on settings that were passed via kernel command line:
+#   zenix_install_disk
+#   zenix_pause_before_install
+#   zenix_pause_after_install
+#   zenix_install_skip_config
+#   zenix_install_skip_persist
+#   zenix_install_skip_rootfs
+#
+set -x
+
+function bail {
+   echo "$*"
+   exit 1
+}
+
+function trunc {
+  rm "$1"
+  touch "$1"
+}
+
+function root_dev {
+   local MAJOR
+   local MINOR
+   local DEV=$(readlink -f /dev/root 2>/dev/null)
+   if [ -z "$DEV" ] ; then
+      MAJOR=$(( $(stat -c '%d' /hostfs ) / 256))
+      MINOR=$(( $(stat -c '%d' /hostfs ) - $MAJOR * 256 ))
+   else
+      MAJOR=$(( 0x$(stat -c '%t' $DEV) + 0 ))
+      MINOR=$(( 0x$(stat -c '%T' $DEV) + 0 ))
+   fi
+   DEV_MM="$MAJOR:$MINOR"
+   echo $(grep -l $DEV_MM /sys/block/*/dev /sys/block/*/*/dev | cut -f4 -d/)
+}
+
+# lets see if we're told on which disk to install...
+INSTALL_DEV=`cat /proc/cmdline | tr ' ' '\012' | sed -ne '/^zenix_install_disk=/s#^.*=##p'` 
+
+# ...if not we will try to guess, and...
+if [ -z "$INSTALL_DEV" ] ; then
+   # now lets see what sources of installation material are there
+   FREE_DISKS=$(lsblk -anlb -o "TYPE,NAME,SIZE" | grep "^disk" | awk '$3 { print $2;}' | grep -v $(root_dev))
+
+   # if there's more than one free disk, install on the first one but warn about all of them
+   echo $FREE_DISKS | awk '{ if (NF > 1) { printf("WARNING: found multiple free disks %s, installing on the first one\n", $0); } }'
+   INSTALL_DEV=$(set ${FREE_DISKS:-""} ; echo $1)
+fi
+
+# ...if we didn't find a single free disk - bail
+[ -z "$INSTALL_DEV" ] && bail "WARNING: didn't find a single free disk out of $ALL_DISKS"
+
+# now lets figure out whether we have installation material
+CONFIG_PARTS=$(lsblk -anl -o "NAME,PARTLABEL" | sed -ne '/CONFIG$/s#CONFIG##p')
+for p in $CONFIG_PARTS ; do
+   [ -f /sys/block/$(root_dev)/$p/dev ] && CONFIG_PART=$p
+done
+if [ -z "$CONFIG_PART" ] ; then
+   [ -f /bits/config.img ] && ln -s /bits/config.img /parts/config.img
+else
+   ln -s /dev/$CONFIG_PART /parts/config.img
+fi
+[ -f /bits/rootfs*.img ] && ln -s /bits/rootfs*.img /parts/rootfs.img
+# and the ultimate default is not to install anything
+for i in config.img rootfs.img ; do
+  [ -L /parts/$i ] || ln -s /dev/null /parts/$i
+done
+# finally lets see if we were given any overrides
+grep -q zenix_install_skip_rootfs /proc/cmdline && trunc /parts/rootfs.img
+grep -q zenix_install_skip_config /proc/cmdline && trunc /parts/config.img
+# 1M of zeroes should be enough to trigger ext3 filesystem wipe
+grep -q zenix_install_skip_persist /proc/cmdline || dd if=/dev/zero of=/parts/persist.img bs=1M count=1
+
+# we may be asked to pause before install procedure
+grep -q zenix_pause_before_install /proc/cmdline && sleep 100000
+
+# do the install
+/bin/sh -xc "/make-raw /dev/$INSTALL_DEV" || bail "Installation failed. Entering shell..."
+
+# we also maybe asked to pause after
+PAUSE_AFTER_SYNC=5
+grep -q zenix_pause_after_install /proc/cmdline && PAUSE_AFTER_SYNC=100000
+
+sync
+sleep $PAUSE_AFTER_SYNC
+sync
+poweroff -f

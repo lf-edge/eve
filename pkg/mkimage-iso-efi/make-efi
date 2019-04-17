@@ -1,0 +1,60 @@
+#!/bin/sh
+#
+# input is a tarball on stdin with kernel and cmdline in /boot
+# output is an iso on stdout
+#
+# The following env variables change the behaviour of this script
+#     DEBUG - makes this script verbose
+
+set -e
+[ -n "$DEBUG" ] && set -x
+
+mkdir -p /tmp/efi
+cd /tmp/efi
+
+# extract. BSD tar auto recognises compression, unlike GNU tar
+# only if stdin is a tty, if so need files volume mounted...
+[ -t 0 ] || bsdtar xzf -
+
+# now lets take care of GRUB 
+CMDLINE="$(cat boot/cmdline)"
+sed -i'' -e "/set *linuxkit_cmdline=/s#=.*\$#=$CMDLINE#" EFI/BOOT/grub.cfg
+cp EFI/BOOT/BOOTAA64.EFI . >/dev/null 2>&1 || cp EFI/BOOT/BOOTX64.EFI .
+
+# create a ISO with a EFI boot partition
+# Stuff it into a FAT filesystem, making it as small as possible.  511KiB
+# headroom seems to be enough; (x+31)/32*32 rounds up to multiple of 32.
+mkfs.vfat -v -C boot.img \
+        $(( ($(stat -c %s BOOT*EFI) / 1024 + 511) \
+		/ 32 * 32 )) > /dev/null
+echo "mtools_skip_check=1" >> /etc/mtools.conf && \
+mmd -i boot.img ::/EFI
+mmd -i boot.img ::/EFI/BOOT
+mcopy -i boot.img BOOT*EFI ::/EFI/BOOT/
+
+rm BOOT*EFI
+
+xorriso -as mkisofs \
+	-R -e boot.img -hide boot.img -hide boot.catalog -no-emul-boot -o linuxkit-efi.iso .
+
+cat linuxkit-efi.iso
+
+# How to build a VHDX. Commented out because we are currently not using it
+# Don't delete: It took too long to figure out how to do this...
+# # create a disk image (150MB)
+# # This is a little odd, as we run this as part of the default command.
+# # Can't run this during the build step as it requires privilege.
+# # The Magic numbers in losetup are startsector (2048) times 512 and
+# # (endsector - startsector) * 512
+# CMD cd /tmp/efi && \
+#     dd if=/dev/zero of=disk.raw bs=1024 count=51200 && \
+#     sgdisk -N 1 -t 1:ef00 disk.raw && \
+#     losetup -o 1048576 --sizelimit 51362816 /dev/loop/1 disk.raw && \
+#     mkfs.vfat /dev/loop/1 && \
+#     echo "drive c: file=\"/dev/loop/1\" mtools_skip_check=1" > /etc/mtools.conf && \
+#     mmd c:/EFI && \
+#     mmd c:/EFI/BOOT && \
+#     mcopy linuxkit.efi c:/EFI/BOOT/BOOTX64.EFI && \
+#     losetup -d /dev/loop/1 && \
+#     qemu-img convert -O vhdx disk.raw linuxkit-boot.vhdx && \
+#     cp /tmp/efi/linuxkit.efi /tmp/efi/linuxkitefi.iso /tmp/efi/linuxkit-boot.vhdx /mnt/

@@ -1,0 +1,75 @@
+From 47af3c4d475c18454359d6dbcd9ba7c98b809945 Mon Sep 17 00:00:00 2001
+From: Gianluca Guida <gianluca@zededa.com>
+Date: Mon, 22 Jan 2018 20:14:35 -0800
+Subject: [PATCH] sgdisk: add support for zenbuild bootloader states
+
+---
+ attributes.cc | 15 ++++++++++++++-
+ gptpart.cc    | 11 +++++++++++
+ 2 files changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/attributes.cc b/attributes.cc
+index f3cd585..1088be4 100644
+--- a/attributes.cc
++++ b/attributes.cc
+@@ -147,7 +147,8 @@ bool Attributes::OperateOnAttributes(const uint32_t partNum, const string& attri
+    typedef enum {
+       ao_or, ao_nand, ao_xor, ao_assignall,  // operate on all attributes (bitmask)
+       ao_unknown, // must be after bitmask operators and before bitnum operators
+-      ao_set, ao_clear, ao_toggle, ao_get    // operate on a single attribute (bitnum)
++      ao_set, ao_clear, ao_toggle, ao_get,   // operate on a single attribute (bitnum)
++      ao_active, ao_updating, ao_unused      // operate with intrinsic attributes
+    } attribute_opcode_t; // typedef enum
+ 
+    // translate attribute operator into an attribute opcode
+@@ -160,6 +161,9 @@ bool Attributes::OperateOnAttributes(const uint32_t partNum, const string& attri
+       else if (attributeOperator == "clear")   attributeOpcode = ao_clear;
+       else if (attributeOperator == "toggle")  attributeOpcode = ao_toggle;
+       else if (attributeOperator == "get")     attributeOpcode = ao_get;
++      else if (attributeOperator == "updating") attributeOpcode = ao_updating;
++      else if (attributeOperator == "active")  attributeOpcode = ao_active;
++      else if (attributeOperator == "unused")  attributeOpcode = ao_unused;
+       else {
+          cerr << "Unknown attributes operator: " << attributeOperator << endl;
+          return false;
+@@ -207,6 +211,15 @@ bool Attributes::OperateOnAttributes(const uint32_t partNum, const string& attri
+          break;
+       } // case ao_get
+ 
++      // set partition as updating
++      case ao_updating:    attributes = (3LL << 48) | (1LL << 52); break;
++
++      // set partition as active
++      case ao_active:      attributes = (2LL << 48) | (1LL << 56); break;
++
++      // set partition as unused
++      case ao_unused:      attributes = 0; break;
++
+       default: break; // will never get here
+    } // switch
+ 
+diff --git a/gptpart.cc b/gptpart.cc
+index 17d6f15..f945079 100644
+--- a/gptpart.cc
++++ b/gptpart.cc
+@@ -375,6 +375,17 @@ void GPTPart::ShowDetails(uint32_t blockSize) {
+       size = (lastLBA - firstLBA + 1);
+       cout << "Partition size: " << size << " sectors ("
+            << BytesToIeee(size, blockSize) << ")\n";
++      cout << "Partition state: ";
++      if (attributes.GetAttributes() == ((3LL << 48) | (1LL << 52))) {
++	  cout << "Updating";
++      } else if (attributes.GetAttributes() == ((2LL << 48) | (1LL << 56))) {
++	  cout << "Active";
++      } else if (attributes.GetAttributes() == (3LL << 48)) {
++	  cout << "Upgrade Failed";
++      } else {
++	cout << "Unused";
++      }
++      cout << "\n";
+       cout << "Attribute flags: ";
+       cout.fill('0');
+       cout.width(16);
+-- 
+2.11.0
+

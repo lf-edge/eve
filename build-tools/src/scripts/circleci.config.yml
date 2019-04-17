@@ -1,0 +1,35 @@
+version: 2
+jobs:
+ build:
+   machine: true
+   steps:
+     - checkout
+     - run: docker version
+     - run: docker images
+     - run: docker ps -a
+     - run: df -h
+     - run: go version
+     - run: sudo apt-get update; sudo apt-get install -y qemu-utils
+     - run: docker login -u $DOCKER_USER -p $DOCKER_PASS
+     - run: git clone https://github.com/zededa/zcli.git
+     - run: git clone https://github.com/zededa/lisp.git
+     - run: git clone https://github.com/zededa/go-provision.git
+     - run: git clone https://github.com/zededa/zenbuild.git
+     - run: (cd zenbuild ; make build-tools ; cp -r build-tools/bin .. ; cp build-tools/src/scripts/* ../bin)
+     - run: PATH=`pwd`/bin:$PATH build-all-tags.sh zcli
+     - run: PATH=`pwd`/bin:$PATH build-all-tags.sh lisp
+     - run: PATH=`pwd`/bin:$PATH build-all-tags.sh go-provision
+     - run: PATH=`pwd`/bin:$PATH build-all-tags.sh zenbuild
+
+workflows:
+  version: 2
+  build:
+    triggers:
+      - schedule:
+          cron: "0 * * * *"
+          filters:
+            branches:
+              only:
+                - master
+    jobs:
+      - build

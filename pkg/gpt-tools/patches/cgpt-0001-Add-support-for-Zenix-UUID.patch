@@ -1,0 +1,108 @@
+From bf8f77913605c7645859adb98705ee5cf0ef65cf Mon Sep 17 00:00:00 2001
+From: Gianluca Guida <gianluca@zededa.com>
+Date: Thu, 1 Feb 2018 07:54:44 -0800
+Subject: [PATCH] Add support for Zenix UUID.
+
+The same UUIDs of CoreOS, btw -- inherited from GRUB's gptprio.
+---
+ cgpt/cgpt.h                             |  1 +
+ cgpt/cgpt_common.c                      | 10 ++++++----
+ cgpt/cgpt_show.c                        |  2 +-
+ firmware/include/gpt.h                  |  3 +++
+ firmware/lib/cgptlib/cgptlib_internal.c |  4 ++--
+ 5 files changed, 13 insertions(+), 7 deletions(-)
+
+diff --git a/cgpt/cgpt.h b/cgpt/cgpt.h
+index 1216a72c..2024ff9b 100644
+--- a/cgpt/cgpt.h
++++ b/cgpt/cgpt.h
+@@ -115,6 +115,7 @@ extern const Guid guid_chromeos_kernel;
+ extern const Guid guid_chromeos_rootfs;
+ extern const Guid guid_linux_data;
+ extern const Guid guid_chromeos_reserved;
++extern const Guid guid_zenix_rootfs;
+ extern const Guid guid_efi;
+ extern const Guid guid_unused;
+ 
+diff --git a/cgpt/cgpt_common.c b/cgpt/cgpt_common.c
+index 1a6bd3cb..4935d430 100644
+--- a/cgpt/cgpt_common.c
++++ b/cgpt/cgpt_common.c
+@@ -671,6 +671,7 @@ const Guid guid_chromeos_rootfs =   GPT_ENT_TYPE_CHROMEOS_ROOTFS;
+ const Guid guid_linux_data =        GPT_ENT_TYPE_LINUX_DATA;
+ const Guid guid_chromeos_reserved = GPT_ENT_TYPE_CHROMEOS_RESERVED;
+ const Guid guid_efi =               GPT_ENT_TYPE_EFI;
++const Guid guid_zenix_rootfs =      GPT_ENT_TYPE_ZENIX_ROOTFS;
+ const Guid guid_unused =            GPT_ENT_TYPE_UNUSED;
+ 
+ const static struct {
+@@ -679,11 +680,12 @@ const static struct {
+   char *description;
+ } supported_types[] = {
+   {&guid_chromeos_firmware, "firmware", "ChromeOS firmware"},
+-  {&guid_chromeos_kernel, "kernel", "ChromeOS kernel"},
+-  {&guid_chromeos_rootfs, "rootfs", "ChromeOS rootfs"},
++  {&guid_chromeos_kernel, "kchrome", "ChromeOS kernel"},
++  {&guid_chromeos_rootfs, "rchrome", "ChromeOS rootfs"},
+   {&guid_linux_data, "data", "Linux data"},
+-  {&guid_chromeos_reserved, "reserved", "ChromeOS reserved"},
++  {&guid_chromeos_reserved, "rchrome", "ChromeOS reserved"},
+   {&guid_efi, "efi", "EFI System Partition"},
++  {&guid_zenix_rootfs, "rootfs", "Zenix rootfs"},
+   {&guid_unused, "unused", "Unused (nonexistent) partition"},
+ };
+ 
+@@ -844,7 +846,7 @@ int IsUnused(struct drive *drive, int secondary, uint32_t index) {
+ int IsKernel(struct drive *drive, int secondary, uint32_t index) {
+   GptEntry *entry;
+   entry = GetEntry(&drive->gpt, secondary, index);
+-  return GuidEqual(&entry->type, &guid_chromeos_kernel);
++  return GuidEqual(&entry->type, &guid_zenix_rootfs);
+ }
+ 
+ 
+diff --git a/cgpt/cgpt_show.c b/cgpt/cgpt_show.c
+index cd4a6136..4a35872a 100644
+--- a/cgpt/cgpt_show.c
++++ b/cgpt/cgpt_show.c
+@@ -121,7 +121,7 @@ void EntryDetails(GptEntry *entry, uint32_t index, int raw) {
+ 
+   clen = 0;
+   if (!raw) {
+-    if (GuidEqual(&guid_chromeos_kernel, &entry->type)) {
++    if (GuidEqual(&guid_zenix_rootfs, &entry->type)) {
+       int tries = (entry->attrs.fields.gpt_att &
+                    CGPT_ATTRIBUTE_TRIES_MASK) >>
+           CGPT_ATTRIBUTE_TRIES_OFFSET;
+diff --git a/firmware/include/gpt.h b/firmware/include/gpt.h
+index ae957cf7..92679488 100644
+--- a/firmware/include/gpt.h
++++ b/firmware/include/gpt.h
+@@ -48,6 +48,9 @@
+ #define GPT_ENT_TYPE_LINUX_FS \
+ 	{{{0x0fc63daf,0x8483,0x4772,0x8e,0x79,{0x3d,0x69,0xd8,0x47,0x7d,0xe4}}}}
+ 
++#define GPT_ENT_TYPE_ZENIX_ROOTFS \
++        {{{0x5DFBF5F4,0x2848,0x4BAC,0xAA,0x5E,{0x0D,0x9A,0x20,0xB7,0x45,0xA6}}}}
++
+ #define UUID_NODE_LEN 6
+ #define GUID_SIZE 16
+ 
+diff --git a/firmware/lib/cgptlib/cgptlib_internal.c b/firmware/lib/cgptlib/cgptlib_internal.c
+index 9f37def6..16b6fd8a 100644
+--- a/firmware/lib/cgptlib/cgptlib_internal.c
++++ b/firmware/lib/cgptlib/cgptlib_internal.c
+@@ -153,8 +153,8 @@ int CheckHeader(GptHeader *h, int is_secondary,
+ 
+ int IsKernelEntry(const GptEntry *e)
+ {
+-	static Guid chromeos_kernel = GPT_ENT_TYPE_CHROMEOS_KERNEL;
+-	return !memcmp(&e->type, &chromeos_kernel, sizeof(Guid));
++	static Guid zenix_rootfs = GPT_ENT_TYPE_ZENIX_ROOTFS;
++	return !memcmp(&e->type, &zenix_rootfs, sizeof(Guid));
+ }
+ 
+ int CheckEntries(GptEntry *entries, GptHeader *h)
+-- 
+2.11.0
+

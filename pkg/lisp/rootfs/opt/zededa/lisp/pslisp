@@ -1,0 +1,7 @@
+#!/bin/sh
+#
+# pslisp
+#
+# Just a wrapper to call python source or binary.
+#
+python -O ./is-lisp-running.pyo

@@ -1,0 +1,49 @@
+#!/bin/sh
+#
+# mkrootfs -- Create a Zenix rootfs
+#
+# Input is a tarball containing the rootfs partition.
+# Output is a raw partition on stdout
+#
+# The following env variables change the behaviour of this script
+#     DEBUG - makes this script verbose
+
+set -e
+[ -n "$DEBUG" ] && set -x
+
+IMGFILE=/rootfs.img
+
+# we want everything except the final result to stderr
+( exec 1>&2;
+
+  mkdir -p /tmp/rootfs
+  cd /tmp/rootfs
+
+  [ -t 0 ] || bsdtar xzf -
+
+  # This _filesystem_ UUID will be later reused as the _partition_
+  # UUID when creating the final image. This will allow us to have
+  # a static grub configuration.
+  ROOTFS_UUID=$(cat /proc/sys/kernel/random/uuid)
+
+  # In what can only be described as a horrible thing, create grub.cfg
+  # here. The only place we have to unpack the cmdline given by the
+  # yml image is here.
+  #
+  CMDLINE="$(cat boot/cmdline)"
+
+  sed -i'' -e "/set *linuxkit_cmdline=/s#=.*\$#=$CMDLINE#" EFI/BOOT/grub.cfg
+
+  ROOTFS_BLOCKSZ=4096
+  ROOTFS_PART_HEADROOM_BLOCKS=16000
+  
+  ROOTFS_FILE_SIZE_KB=$(du -sk . | awk '{print $1}')
+  ROOTFS_PART_BLOCKS=$(( $ROOTFS_FILE_SIZE_KB / 4 + $ROOTFS_PART_HEADROOM_BLOCKS ))
+  ROOTFS_PART_SIZE=$(( $ROOTFS_PART_BLOCKS * $ROOTFS_BLOCKSZ ))
+  ROOTFS_PART_SIZE_KB=$(( ( ($ROOTFS_PART_SIZE + 1024) / 1024 * 1024) / 1024 ))
+  ROOTFS_PART_SECTORS=$(( $ROOTFS_PART_SIZE_KB * 2 ))
+
+  mksquashfs /tmp/rootfs/ $IMGFILE
+)
+
+cat $IMGFILE

@@ -1,0 +1,13 @@
+image: wlan
+org: zededa
+network: yes
+config:
+  binds:
+    - /lib/modules:/lib/modules
+    - /lib/firmware:/lib/firmware
+    - /dev:/dev
+    - /run:/run
+    - /var/config:/config
+  net: host
+  capabilities:
+    - all

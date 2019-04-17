@@ -1,0 +1,235 @@
+#!/bin/sh
+#
+# This script creates a raw disk image partitioned with GPT partition table
+# and set up for UEFI boot sequence with a GRUB UEFI payload and a default
+# grub.cfg attempting to chainload GRUB from one of the actuall rootfs 
+# partitions. This means that at the very minimim the output of this script
+# will produce a disk that looks like:
+#
+# +----------------------------+
+# |  UEFI partition            |
+# |   w/ GRUB + grub.cfg       |
+# +----------------------------+
+# |  rootfs partition w/GRUB   |
+# +----------------------------+
+# 
+# In addition to producing this minimalistic (but fully functional!) layout,
+# this script is also capable of initializing a few additional partitions
+# that are required for live upgrade and configuration:
+#   * 2nd rootfs partition
+#   * /config partition
+#   * /persist partition
+#
+# The script CLI UX is really not user friendly for now, since it is expected
+# to be called mostly from other scripts (and also linuxkit VMs). So no, there's
+# no printing of help for this one and all the arguments are required! Here they are:
+#   <img> [part1...] 
+# 
+# <img>       file name of the raw disk image (we expect it to be pre-created and 
+#             sized correctly OR be an actual physical device)
+# [part1...]  list of partitions to be created: efi imga imgb conf persist
+#             Can be ommitted. Default is: efi imga imgb conf persist
+# 
+# On stdin, this scripts expects to recieve a tarball full of partition images
+# that will be used to pre-populated actual partitions it creates. This tarball 
+# is going to be recieved from stdin and extracted into /parts folder. This means, 
+# of course, that if you don't supply a tarball stream to the script you can just
+# pre-populate /parts with the same images:
+#   * rootfs*.img for rootfs partition
+#   * config.tar for config partition
+#
+set -e
+
+IMGFILE=$1
+shift
+PARTS=${*:-"efi imga imgb conf persist"}
+
+# EFI partition size in bytes 
+EFI_PART_SIZE=$((1536 * 1024))
+# rootfs partition size in bytes
+ROOTFS_PART_SIZE=$(( 300 * 1024 * 1024 ))
+# conf partition size in bytes
+CONF_PART_SIZE=$((1024 * 1024))
+
+function cp_with_backup {
+  local MD5_SUM=$(md5sum "$2" | cut -f1 -d\  )
+  [ -f "$2".$MD5_SUM ] || cp "$2" "$2".$MD5_SUM
+  [ $? -eq 0 ] && cp "$1" "$2"
+}
+
+function grow_part {
+  # (x+1024)/1024*1024 rounds up to multiple of 1024KB, or 2048
+  # sectors some firmwares get confused if the partitions are not
+  # aligned on 2048 blocks we will round up to the nearest multiple of
+  # 2048 blocks since each block is 512 bytes, we want the size to be
+  # a multiple of 2048 blocks * 512 bytes = 1048576 bytes = 1024KB
+  # The output is in sectors though, hence the final * 2
+  local IMAGE_SIZE_KB=$(( ( ( ($2 + 1024-1) / 1024 ) + 1024-1) / 1024 * 1024))
+  echo $(( $1 + 2 * $IMAGE_SIZE_KB - 1))
+}
+
+function dir2vfat {
+  # <img name> dir2vfat <dir> <image size>
+  local IMG=`mktemp -u -p /tmp/data`
+  (rm -rf /tmp/data
+   mkdir /tmp/data
+   mkfs.vfat -v -C $IMG $2
+   mcopy -i $IMG -s $1/* ::/ ) >&2
+  echo $IMG
+}
+
+function do_efi {
+  eval local SEC_START=\$$1
+  local SEC_END=`grow_part $SEC_START $EFI_PART_SIZE`
+  local NUM_PART=$(( $PART_OFFSET + 1 ))
+
+  # Create a partition
+  sgdisk --new $NUM_PART:$SEC_START:$SEC_END --typecode=$NUM_PART:ef00 --change-name=$NUM_PART:'EFI System' \
+         --attributes $NUM_PART:set:2 $IMGFILE
+ 
+  # Initialize partition...
+  #   ...extract GRUB bootloader
+  mount -o loop "$ROOTFS_IMG" /mnt
+  cp /mnt/EFI/BOOT/BOOT*EFI /efifs/EFI/BOOT/
+  umount /mnt
+  #   ...copy EFI fs to EFI partition
+  dd if=`dir2vfat /efifs $(( ($SEC_END - $SEC_START) / 2))` of=$IMGFILE bs=512 conv=notrunc seek=$SEC_START
+
+  eval $1=$(($SEC_END + 1))
+}
+
+
+function do_rootfs {
+    eval SEC_START=\$$1
+    local SEC_END=`grow_part $SEC_START $ROOTFS_PART_SIZE`
+    LABEL=$2
+    IMG=$3
+
+    case $2 in
+      IMGA) NUM_PART=$(( $PART_OFFSET + 2 ))
+            EXTRA_ATTR="--attributes=$NUM_PART:set:56 --attributes=$NUM_PART:set:49"
+            ;;
+      IMGB) NUM_PART=$(( $PART_OFFSET + 3 ))
+            ;;
+    esac
+
+    # Calculate partition size and add a partition
+    sgdisk --new $NUM_PART:$SEC_START:$SEC_END \
+           --typecode=$NUM_PART:5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6 \
+           --change-name=$NUM_PART:$LABEL $EXTRA_ATTR $IMGFILE
+
+    # Copy rootfs to image A
+    dd if=$IMG of=$IMGFILE bs=512 conv=notrunc seek=$SEC_START
+
+    eval $1=$(( $SEC_END + 1))
+}
+
+function do_imga {
+    do_rootfs $1 IMGA $ROOTFS_IMG
+}
+
+function do_imgb {
+    # for now we are not initializing IMGB - hence passing /dev/null
+    do_rootfs $1 IMGB /dev/null
+}
+
+function do_vfat {
+    eval local SEC_START=\$$1
+    local SEC_END=`grow_part $SEC_START $CONF_PART_SIZE`
+    local NUM_PART=$(( $PART_OFFSET + 4 ))
+    local PART_TYPE=$2
+
+    sgdisk --new $NUM_PART:$SEC_START:$SEC_END \
+           --typecode=$NUM_PART:$PART_TYPE \
+	   --change-name=$NUM_PART:'CONFIG' $IMGFILE
+
+    dd if=$CONF_FILE of=$IMGFILE bs=512 conv=notrunc seek=$SEC_START
+
+    eval $1=$(( $SEC_END + 1))
+}
+
+function do_conf {
+    do_vfat $1 13307e62-cd9c-4920-8f9b-91b45828b798 
+}
+
+function do_conf_win {
+    do_vfat $1 EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
+}
+
+function do_persist {
+    eval SEC_START=\$$1
+    # Persistent Purgeable Partition.  It is set at partition
+    # number 9 to reserve the first 8 partitions to system types.
+    local NUM_PART=$(( $PART_OFFSET + 9 ))
+    # P3 takes all space available
+    local SEC_END=0
+
+    sgdisk --new $NUM_PART:$SEC_START:$SEC_END \
+           --typecode=$NUM_PART:5f24425a-2dfa-11e8-a270-7b663faccc2c \
+           --change-name=$NUM_PART:'P3' $IMGFILE
+
+    [ -e $PERSIST_FILE ] && dd if=$PERSIST_FILE of=$IMGFILE bs=512 conv=notrunc seek=$SEC_START
+    
+    eval $1=0
+}
+
+
+#
+# Extract partitions from stdin
+#
+mkdir /parts 2>/dev/null || :
+[ -t 0 ] || (cd /parts; bsdtar xzf -)
+
+# content of rootfs partition
+ROOTFS_IMG=`echo /parts/rootfs*.img | cut -f1 -d\ `
+# content of conf partition 
+CONF_FILE=/parts/config.img
+# content of persist partition
+PERSIST_FILE=/parts/persist.img
+
+# offset in the GTP partition table from which we can start our numbering
+PART_OFFSET=0
+# starting sector for our portion of the disk
+CUR_SEC=2048
+
+# Lets see if GPT partition exists and it is one of the
+# kinds we recognize
+case "$(sgdisk -p $IMGFILE 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '\012' ' ')" in
+  "Name vrl vrl_backup mcuimage fastboot nvme boot reserved cache"*)
+      echo "Found Android GPT partition table on $IMGFILE"
+      for p in $(sgdisk -p $IMGFILE 2>/dev/null | sed -e '1,/cache$/d' | awk '{print $1;}') ; do
+        sgdisk -d $p $IMGFILE
+      done 
+      PART_OFFSET=10
+      CUR_SEC=$(( ( $(sgdisk -p $IMGFILE 2>/dev/null | tail -1 | awk '{print $3;}') / 2048 + 1 ) * 2048 ))
+      EMBED_BOOT_START=$(sgdisk -i 6 $IMGFILE 2>/dev/null | awk '/First sector:/{ print $3; }')
+      EMBED_BOOT_SIZE=$(sgdisk -i 6 $IMGFILE 2>/dev/null | awk '/Partition size:/{ print $3; }')
+      ;;
+  "Name System IMGA IMGB CONFIG P3"*)
+      echo "Found Zenix GPT partition table on $IMGFILE"
+      sgdisk -g --clear $IMGFILE 2>/dev/null
+      ;;
+   *) echo "Unknown (or unrecongnizable) GTP partition table on $IMGFILE"
+      sgdisk -g --clear $IMGFILE 2>/dev/null
+      ;;
+esac
+
+for p in $PARTS ; do
+  eval do_$p CUR_SEC 2>/dev/null
+done
+
+# Update embedded boot partition with our own bootloader
+if [ ${EMBED_BOOT_START:-0} -gt 0 -a ${EMBED_BOOT_SIZE:-0} -gt 0 -a -f /efifs/EFI/BOOT/BOOTX64.EFI ] ; then
+  if mount $IMGFILE /mnt -o loop,offset=$(( $EMBED_BOOT_START * 512  )),sizelimit=$(( $EMBED_BOOT_SIZE * 512 )) ; then
+     FASTBOOT=$(cd /mnt/EFI/BOOT/ ; ls | grep -i '^fastboot.efi$')
+     if $(set ${FASTBOOT:-. .} ; test $# -eq 1) ; then
+        cp_with_backup /efifs/EFI/BOOT/BOOTX64.EFI /mnt/EFI/BOOT/$FASTBOOT
+        (echo 'set root=hd0,gpt11' ; echo 'chainloader /efi/boot/bootx64.efi' ; echo 'boot') > /tmp/grub.cfg
+        cp_with_backup /tmp/grub.cfg /mnt/EFI/BOOT/grub.cfg
+     fi
+  fi
+  umount /mnt || :
+fi
+
+# Validate the health of our creation
+sgdisk -v $IMGFILE
