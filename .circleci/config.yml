@@ -36,10 +36,8 @@ jobs:
       - store_artifacts:
           path: /tmp/yetus-out
 workflows:
-  version: 2
+  version: 2.1
   build-stuff:
     jobs:
       - yetus
       - build
-      - store_artifacts:
-          path: /tmp/yetus-out
