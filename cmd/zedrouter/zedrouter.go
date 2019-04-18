@@ -2427,6 +2427,9 @@ func doAppNetworkConfigModify(ctx *zedrouterContext, key string,
 	}
 
 	if config.Activate && !status.Activated {
+		// XXX the doAppNetworkModify calls above did
+		// an updateACL and doActivate will do a createACL resulting
+		// in duplicate (but harmless) rules.
 		doActivate(ctx, config, status)
 	}
 
