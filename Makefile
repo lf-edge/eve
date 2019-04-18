@@ -19,8 +19,6 @@ ifneq ($(HOSTARCH),$(ZARCH))
 CROSS = 1
 $(warning "WARNING: We are assembling a $(ZARCH) image on $(HOSTARCH). Things may break.")
 endif
-# qemu-system-<arch> uses the local versions, so save the name early on
-QEMU_SYSTEM:=qemu-system-$(ZARCH)
 # canonicalized names for architecture
 ifeq ($(ZARCH),aarch64)
         ZARCH=arm64
@@ -28,6 +26,9 @@ endif
 ifeq ($(ZARCH),x86_64)
         ZARCH=amd64
 endif
+QEMU_SYSTEM_arm64:=qemu-system-aarch64
+QEMU_SYSTEM_amd64:=qemu-system-x86_64
+QEMU_SYSTEM=$(QEMU_SYSTEM_$(ZARCH))
 
 # where we store outputs
 DIST=dist/$(ZARCH)
