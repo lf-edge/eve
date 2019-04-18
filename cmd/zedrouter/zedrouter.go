@@ -550,6 +550,23 @@ func handleInit(runDirname string) {
 	if err != nil {
 		log.Fatal("Failed setting net.bridge-nf-call-arptables ", err)
 	}
+	// Needed in test setups where we have the same subnet on multiple ports
+	// XXX restrict to management ports?
+	_, err = wrap.Command("sysctl", "-w",
+		"net.ipv4.conf.all.rp_filter=2").Output()
+	if err != nil {
+		log.Fatal("Failed setting rp_filter ", err)
+	}
+	_, err = wrap.Command("sysctl", "-w",
+		"net.ipv4.conf.all.log_martians=1").Output()
+	if err != nil {
+		log.Fatal("Failed setting log_martians ", err)
+	}
+	_, err = wrap.Command("sysctl", "-w",
+		"net.ipv4.conf.default.log_martians=1").Output()
+	if err != nil {
+		log.Fatal("Failed setting log_martians ", err)
+	}
 
 	// XXX hack to determine whether a real system or Erik's laptop
 	_, err = wrap.Command("xl", "list").Output()
