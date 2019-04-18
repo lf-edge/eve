@@ -1,14 +1,14 @@
 # Instructions for this package are taken from:
 #   https://wiki.ubuntu.com/UEFI/EDK2
-#   https://wiki.linaro.org/LEG/UEFIforQEMU    
-# 
+#   https://wiki.linaro.org/LEG/UEFIforQEMU
+#
 # On ARM here's what works for other boars:
 #   git clone https://github.com/tianocore/edk2
 #   git clone https://github.com/tianocore/edk2-platforms
 #   git clone https://github.com/tianocore/edk2-non-osi
 #   git clone https://git.linaro.org/uefi/uefi-tools.git
 #   ./uefi-tools/edk2-build.sh -b DEBUG -b RELEASE all
-# 
+#
 # It is possible to do a docker-based aarch64 build on x86.
 # If you want to do that -- make sure to pass the following
 # argument to the docker build:
@@ -16,6 +16,7 @@
 ARG BUILD_CONTAINER=alpine:3.7
 FROM ${BUILD_CONTAINER} as build
 
+# hadolint ignore=DL3018
 RUN apk add --no-cache curl make gcc g++ python libuuid iasl nasm util-linux-dev bash
 RUN mkdir /ws ; curl -L https://github.com/tianocore/edk2/archive/vUDK2018.tar.gz | tar --strip-components 1 -C /ws -xzf -
 

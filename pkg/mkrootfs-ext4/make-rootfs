@@ -44,7 +44,7 @@ IMGFILE=/rootfs.img
   ROOTFS_PART_SECTORS=$(( $ROOTFS_PART_SIZE_KB * 2 ))
 
   dd if=/dev/zero of=$IMGFILE bs=1024 count=$(( $ROOTFS_PART_SIZE_KB ))
-  mkfs.ext4 -b 4096 -L eve_rootfs -U $ROOTFS_UUID -v $IMGFILE
+  mkfs.ext4 -b 4096 -L eve_rootfs -U "$ROOTFS_UUID" -v "$IMGFILE"
   mount -o loop $IMGFILE /mnt
   cp -R /tmp/rootfs/* /mnt
   umount /mnt

@@ -207,7 +207,7 @@ help:
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
 	@echo "   run-grub          runs our copy of GRUB bootloader and nothing else (very limited usefulness)"
 	@echo "   run-rootfs        runs a rootfs.img (limited usefulness e.g. quick test before cloud upload)"
-	@echo "   run-installer-iso runs installer.iso on qemu and 'installs' EVE on fallback.img" 
+	@echo "   run-installer-iso runs installer.iso on qemu and 'installs' EVE on fallback.img"
 	@echo "   run-installer-raw runs installer.raw on qemu and 'installs' EVE on fallback.img"
 	@echo "   run-fallback      runs a full fledged virtual device on qemu (as close as it gets to actual h/w)"
 	@echo

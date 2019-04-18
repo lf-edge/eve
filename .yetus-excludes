@@ -1,8 +1,9 @@
-^src/vendor
-^zedpac/
 ^pkg/fw/
 ^pkg/rngd/cmd/rngd/vendor/
 ^build-tools/src/linuxkit/vendor/
 ^build-tools/src/manifest-tool/vendor/
+^pkg/pillar/vendor/
+^pkg/pillar/zedpac/
 ^.+\.patch
 ^.+\.diff
+^.build.yml

@@ -21,7 +21,7 @@ zenbuild_version() {
 }
 
 linuxkit_tag() {
-    echo $(linuxkit pkg show-tag ${EVE_HASH:+--hash} ${EVE_HASH} $1)$ARCH
+    echo "$(linuxkit pkg show-tag ${EVE_HASH:+--hash $EVE_HASH} """$1""")$ARCH"
 }
 
 immutable_tag() {
@@ -55,7 +55,7 @@ external_tag() {
 synthetic_tag() {
   NAME=$1
   shift 1
-  echo ${NAME}:${EVE_HASH:-$((cat "$@" ; git rev-parse HEAD) | resolve_tags | git hash-object --stdin)}$ARCH
+  echo ${NAME}:${EVE_HASH:-$( (cat "$@" ; git rev-parse HEAD) | resolve_tags | git hash-object --stdin)}"$ARCH"
 }
 
 resolve_tags() {
@@ -84,8 +84,8 @@ sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e "s#MKRAW_TAG#"$MKRAW_TAG"#" \
     -e "s#DEBUG_TAG#"$DEBUG_TAG"#" \
     -e "s#LISP_TAG#"$LISP_TAG"#" \
-    -e "s#EVE_TAG#"$EVE_TAG"#" \
-    $1
+    -e "s#EVE_TAG#${EVE_TAG}#" \
+    ${1:-}
 }
 
 if [ -z "$DOCKER_ARCH_TAG" ] ; then

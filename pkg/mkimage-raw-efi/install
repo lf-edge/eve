@@ -41,7 +41,7 @@ function root_dev {
 }
 
 # lets see if we're told on which disk to install...
-INSTALL_DEV=`cat /proc/cmdline | tr ' ' '\012' | sed -ne '/^eve_install_disk=/s#^.*=##p'` 
+INSTALL_DEV=`cat /proc/cmdline | tr ' ' '\012' | sed -ne '/^eve_install_disk=/s#^.*=##p'`
 
 # ...if not we will try to guess, and...
 if [ -z "$INSTALL_DEV" ] ; then
