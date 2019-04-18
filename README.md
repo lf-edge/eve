@@ -90,9 +90,9 @@ While running everything on your laptop with qemu could be fun, nothing
 beats real hardware. The most cost-effective option, not surprisingly,
 is ARM. We recommend using HiKey board (http://www.lenovator.com/product/90.html).
 Once you acquire the board you will need to build an installer image by running
-(note that if you're building it on an ARM server you can drop ZARCH=aarch64 part):
+(note that if you're building it on an ARM server you can drop ZARCH=arm64 part):
 ```
-make ZARCH=aarch64 installer
+make ZARCH=arm64 installer
 ```
 and then flashing it onto an SD card. For example, here's how you can do the
 flashing on Mac OS X (where XXX is the name of your SD card as shown by
@@ -100,7 +100,7 @@ diskutil list):
 ```
 diskutil list
 diskutil umountDisk /dev/rdiskXXX
-sudo dd if=dist/aarch64/installer.raw of=/dev/rdiskXXX bs=1m
+sudo dd if=dist/arm64/installer.raw of=/dev/rdiskXXX bs=1m
 diskutil eject /dev/rdiskXXX
 ```
 
@@ -174,8 +174,8 @@ on Mac OS X:
 ```
 vi conf/wpa_supplicant.conf
   # put your WIFI passwords in and/or add your own networks
-make ZARCH=aarch64 MEDIA_SIZE=8192 fallback_aarch64.raw
-sudo dd if=dist/aarch64/fallback.raw of=/dev/rdiskXXX bs=1m
+make ZARCH=arm64 MEDIA_SIZE=8192 fallback
+sudo dd if=dist/arm64/fallback.raw of=/dev/rdiskXXX bs=1m
 ```
 
 Then you can boot into a live system from triggering UEFI shell like shown
