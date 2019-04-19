@@ -97,9 +97,18 @@ EOF
 cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogall.conf
 for AGENT in $AGENTS; do
     echo "pidfile = /var/run/$AGENT.pid" >>$TMPDIR/watchdogall.conf
-    if [ "$AGENT" != "lisp-ztr" ]; then
-	echo "file = /var/run/$AGENT.touch" >>$TMPDIR/watchdogall.conf
-	echo "change = 300" >>$TMPDIR/watchdogall.conf
+    if [ "$AGENT" = "lisp-ztr" ]; then
+	continue
+    fi
+    echo "file = /var/run/$AGENT.touch" >>$TMPDIR/watchdogall.conf
+    echo "change = 300" >>$TMPDIR/watchdogall.conf
+    if [ "$AGENT" = "zedagent" ]; then
+	cat >>$TMPDIR/watchdogall.conf <<EOF
+file = /var/run/${AGENT}config.touch
+change = 300
+file = /var/run/${AGENT}metrics.touch
+change = 300
+EOF
     fi
 done
 
