@@ -1,3 +1,3 @@
-org: zededa
-image: grub
+org: lfedge
+image: eve-grub
 network: true

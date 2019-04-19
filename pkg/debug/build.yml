@@ -1,5 +1,5 @@
-image: debug
-org: zededa
+image: eve-debug
+org: lfedge
 network: yes
 config:
   binds:

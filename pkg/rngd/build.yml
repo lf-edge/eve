@@ -1,5 +1,5 @@
-image: rngd
-org: zededa
+image: eve-rngd
+org: lfedge
 config:
   capabilities:
     - CAP_SYS_ADMIN

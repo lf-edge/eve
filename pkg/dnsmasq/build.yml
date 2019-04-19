@@ -1,2 +1,2 @@
-image: dnsmasq
-org: zededa
+image: eve-dnsmasq
+org: lfedge

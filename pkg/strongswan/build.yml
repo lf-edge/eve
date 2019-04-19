@@ -1,2 +1,2 @@
-image: strongswan
-org: zededa
+image: eve-strongswan
+org: lfedge

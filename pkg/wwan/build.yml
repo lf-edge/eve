@@ -1,5 +1,5 @@
-image: wwan 
-org: zededa
+image: eve-wwan 
+org: lfedge
 network: yes
 config:
   binds:

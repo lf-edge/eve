@@ -1,5 +1,5 @@
-image: guacd
-org: zededa
+image: eve-guacd
+org: lfedge
 network: yes
 config:
   binds:
