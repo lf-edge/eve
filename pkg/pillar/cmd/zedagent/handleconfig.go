@@ -22,7 +22,6 @@ import (
 	"github.com/zededa/eve/pkg/pillar/flextimer"
 	"github.com/zededa/eve/pkg/pillar/pubsub"
 	"github.com/zededa/eve/pkg/pillar/types"
-	"github.com/zededa/eve/pkg/pillar/zboot"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
 )
 
@@ -126,17 +125,27 @@ func configTimerTask(handleChannel chan interface{},
 		time.Duration(max))
 	// Return handle to caller
 	handleChannel <- ticker
-	for range ticker.C {
-		iteration += 1
-		// check whether the device is still in progress state
-		// once activated, it does not go back to the inprogress
-		// state
-		if updateInprogress {
-			updateInprogress = isBaseOsCurrentPartitionStateInProgress(ctx)
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+
+	for {
+		select {
+		case <-ticker.C:
+			iteration += 1
+			// check whether the device is still in progress state
+			// once activated, it does not go back to the inprogress
+			// state
+			if updateInprogress {
+				updateInprogress = isBaseOsCurrentPartitionStateInProgress(ctx)
+			}
+			rebootFlag := getLatestConfig(configUrl, iteration,
+				updateInprogress, getconfigCtx)
+			getconfigCtx.rebootFlag = getconfigCtx.rebootFlag || rebootFlag
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName + "config")
 		}
-		rebootFlag := getLatestConfig(configUrl, iteration,
-			updateInprogress, getconfigCtx)
-		getconfigCtx.rebootFlag = getconfigCtx.rebootFlag || rebootFlag
 	}
 }
 
@@ -236,21 +245,18 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 		timePassed := time.Since(getconfigCtx.startTime)
 		successLimit := time.Second *
 			time.Duration(globalConfig.MintimeUpdateSuccess)
-		curPart := getBaseOsCurrentPartition(getconfigCtx.zedagentCtx)
+		ctx := getconfigCtx.zedagentCtx
+		curPart := getBaseOsCurrentPartition(ctx)
 		if timePassed < successLimit {
 			log.Infof("getLatestConfig, curPart %s inprogress waiting for %d seconds\n", curPart, (successLimit-timePassed)/time.Second)
+			ctx.remainingTestTime = successLimit - timePassed
 		} else {
 			initiateBaseOsZedCloudTestComplete(getconfigCtx)
+			ctx.remainingTestTime = 0
 		}
+		// Send updated remainingTestTime to zedcloud
+		ctx.TriggerDeviceInfo = true
 	}
-
-	// Each time we hear back from the cloud we assume
-	// the device and connectivity is ok so we advance the
-	// watchdog timer.
-	// We should only require this connectivity once every 24 hours
-	// or so using a setable policy in the watchdog, but have
-	// a short timeout during validation of a image post update.
-	zboot.WatchdogOK()
 
 	if err := validateConfigMessage(url, resp); err != nil {
 		log.Errorln("validateConfigMessage: ", err)

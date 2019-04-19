@@ -176,7 +176,29 @@ func Run() {
 	pubAppImgStatus.SignalRestarted()
 	pubBaseOsStatus.SignalRestarted()
 
+	// Need stillRunning across handleInitUpdateVerifiedObjects since
+	// it reverifies potentially huge images
+	keepRunning := func(doneChan chan struct{}) {
+		log.Infof("keepRunning starting")
+		for {
+			select {
+			case <-doneChan:
+				log.Infof("keepRunning done")
+				close(doneChan)
+				return
+
+			case <-stillRunning.C:
+				log.Infof("keepRunning alive")
+				agentlog.StillRunning(agentName)
+			}
+		}
+	}
+	doneChan := make(chan struct{})
+	go keepRunning(doneChan)
+
 	handleInitUpdateVerifiedObjects(&ctx)
+
+	doneChan <- struct{}{}
 
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse

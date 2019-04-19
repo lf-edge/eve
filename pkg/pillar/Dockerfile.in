@@ -53,7 +53,6 @@ RUN ssh-keygen -A ; echo PermitRootLogin yes >> /etc/ssh/sshd_config ; sed -ie '
 ADD conf/root-certificate.pem conf/server conf/server.production /opt/zededa/examples/config/
 ADD examples /opt/zededa/examples
 ADD scripts/device-steps.sh \
-    scripts/find-uplink.sh \
     scripts/generate-device.sh \
     scripts/generate-self-signed.sh \
     scripts/handlezedserverconfig.sh \

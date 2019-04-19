@@ -691,6 +691,10 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			status.DomainName = ds.DomainName
 			changed = true
 		}
+		if ds != nil && status.BootTime != ds.BootTime {
+			status.BootTime = ds.BootTime
+			changed = true
+		}
 		if ds != nil && !ds.Activated && ds.LastErr == "" {
 			log.Infof("RestartInprogress(%s) came down - set bring up\n",
 				status.Key())
@@ -759,6 +763,10 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	}
 	if status.DomainName != ds.DomainName {
 		status.DomainName = ds.DomainName
+		changed = true
+	}
+	if status.BootTime != ds.BootTime {
+		status.BootTime = ds.BootTime
 		changed = true
 	}
 	// Are we doing a restart?
@@ -1004,6 +1012,10 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 			status.DomainName = ds.DomainName
 			changed = true
 		}
+		if status.BootTime != ds.BootTime {
+			status.BootTime = ds.BootTime
+			changed = true
+		}
 		log.Infof("Waiting for DomainStatus removal for %s\n", uuidStr)
 		// Look for xen errors.
 		if !ds.Activated {
@@ -1208,6 +1220,10 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 	}
 	if status.DomainName != ds.DomainName {
 		status.DomainName = ds.DomainName
+		changed = true
+	}
+	if status.BootTime != ds.BootTime {
+		status.BootTime = ds.BootTime
 		changed = true
 	}
 	if ds.State != status.State {

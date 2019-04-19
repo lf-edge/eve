@@ -1,6 +1,3 @@
-#
-# Makefile for zededa-provision
-#
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -24,7 +21,7 @@ VERSION     := $(GIT_TAG)
 # Go parameters
 GOCMD=go
 GOBUILD=$(GOCMD) build
-GOMODULE=github.com/zededa/go-provision
+GOMODULE=github.com/zededa/eve
 
 BUILD_VERSION=$(shell scripts/getversion.sh)
 
@@ -32,19 +29,20 @@ OBJDIR      := $(PWD)/bin/$(ARCH)
 BINDIR	    := $(OBJDIR)
 
 DOCKER_ARGS=$${GOARCH:+--build-arg GOARCH=}$(GOARCH)
-DOCKER_TAG=zededa/pillar:local$${GOARCH:+-}$(GOARCH)
+DOCKER_TAG=zededa/ztools:local$${GOARCH:+-}$(GOARCH)
 
 APPS = zedbox
 APPS1 = logmanager ledmanager downloader verifier client zedrouter domainmgr identitymgr zedmanager zedagent hardwaremodel ipcmonitor nim diag baseosmgr wstunnelclient conntrack
 
-SCRIPTS = \
-	device-steps.sh \
-	find-uplink.sh \
-	generate-device.sh \
-	generate-onboard.sh \
-	generate-self-signed.sh \
-	run-ocsp.sh \
-	watchdog-report.sh
+SHELL_CMD=bash
+define BUILD_CONTAINER
+FROM golang:1.9.1-alpine
+RUN apk add --no-cache openssh-client git gcc linux-headers libc-dev util-linux libpcap-dev bash vim make
+RUN deluser $(USER) ; delgroup $(GROUP) || :
+RUN sed -ie /:$(UID):/d /etc/passwd /etc/shadow ; sed -ie /:$(GID):/d /etc/group || :
+RUN addgroup -g $(GID) $(GROUP) && adduser -h /home/$(USER) -G $(GROUP) -D -H -u $(UID) $(USER)
+ENV HOME /home/$(USER)
+endef
 
 SHELL_CMD=bash
 define BUILD_CONTAINER
@@ -74,7 +72,7 @@ build:
 		GOOS=linux \
 		GOARCH=$(ARCH) $(GOBUILD) \
 			-ldflags -X=main.Version=$(BUILD_VERSION) \
-			-o $(BINDIR)/$$app github.com/zededa/eve/pkg/pillar/$$app || exit 1; \
+			-o $(BINDIR)/$$app github.com/zededa/eve/$$app || exit 1; \
 	done
 	@for app in $(APPS1); do \
 		echo $$app; \
@@ -93,15 +91,16 @@ eve-build-$(USER):
 	@echo "$$BUILD_CONTAINER" | docker build -t $@ - >/dev/null
 
 shell: eve-build-$(USER)
+	@mkdir -p .go/src/$(GOMODULE)
 	@docker run -it --rm -u $(USER) -w /home/$(USER) \
 	  -v $(CURDIR)/.go:/go -v $(CURDIR):/go/src/$(GOMODULE) -v $${HOME}:/home/$(USER) \
 	$< $(SHELL_CMD)
 
-test: SHELL_CMD=go test github.com/zededa/eve/pkg/pillar/...
+test: SHELL_CMD=go test github.com/zededa/eve/...
 test: shell
 	@echo Done testing
 
-Gopkg.lock: SHELL_CMD=sh -c "go get github.com/golang/dep/cmd/dep ; cd /go/src/$(GOMODULE) dep ensure -update $(GODEP_NAME)"
+Gopkg.lock: SHELL_CMD=bash --norc --noprofile -c "go get github.com/golang/dep/cmd/dep ; cd /go/src/$(GOMODULE) ; dep ensure -update $(GODEP_NAME)"
 Gopkg.lock: Gopkg.toml shell
 	@echo Done updating vendor
 
