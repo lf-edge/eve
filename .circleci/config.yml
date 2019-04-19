@@ -9,16 +9,23 @@ jobs:
       - run:
           name: Logging to Docker HUB
           command: >
-            [ -z "$DOCKERHUB_USERNAME" ] || (echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin)
-      - run: 
+            if [ "$DOCKERHUB_USERNAME" ] ; then
+              echo "$DOCKERHUB_PASS" |
+                docker login -u "$DOCKERHUB_USERNAME" --password-stdin ;
+            fi
+      - run:
           name: Installing qemu-utils
           command: sudo apt-get update; sudo apt-get install -y qemu-utils
       - run:
           name: Packages
-          command: make EVE_REL=snapshot ${DOCKERHUB_USERNAME:+DEFAULT_PKG_TARGET=push} pkgs
+          command: >
+            make ${DOCKERHUB_USERNAME:+EVE_REL=snapshot DEFAULT_PKG_TARGET=push}
+            pkgs
       - run:
           name: EVE
-          command: make EVE_REL=snapshot ${DOCKERHUB_USERNAME:+DEFAULT_PKG_TARGET=push} eve
+          command: >
+            make ${DOCKERHUB_USERNAME:+EVE_REL=snapshot DEFAULT_PKG_TARGET=push}
+            eve
   yetus:
     docker:
       - image: apache/yetus:master

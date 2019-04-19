@@ -6,4 +6,4 @@
 ^pkg/pillar/zedpac/
 ^.+\.patch
 ^.+\.diff
-^.build.yml
+^.+build.yml
