@@ -40,6 +40,8 @@ function root_dev {
    echo $(grep -l $DEV_MM /sys/block/*/dev /sys/block/*/*/dev | cut -f4 -d/)
 }
 
+echo "INFO: This is the EVE image installer. Looking for disk."
+
 # lets see if we're told on which disk to install...
 INSTALL_DEV=`cat /proc/cmdline | tr ' ' '\012' | sed -ne '/^zenix_install_disk=/s#^.*=##p'` 
 
@@ -55,6 +57,8 @@ fi
 
 # ...if we didn't find a single free disk - bail
 [ -z "$INSTALL_DEV" ] && bail "WARNING: didn't find a single free disk out of $ALL_DISKS"
+
+echo "INFO: Installing on disk $INSTALL_DEV"
 
 # now lets figure out whether we have installation material
 CONFIG_PARTS=$(lsblk -anl -o "NAME,PARTLABEL" | sed -ne '/CONFIG$/s#CONFIG##p')
@@ -82,6 +86,8 @@ grep -q zenix_pause_before_install /proc/cmdline && sleep 100000
 
 # do the install
 /bin/sh -xc "/make-raw /dev/$INSTALL_DEV" || bail "Installation failed. Entering shell..."
+
+echo "NOTICE: Device will now power off. Remove the USB stick and power it back on to complete the installation."
 
 # we also maybe asked to pause after
 PAUSE_AFTER_SYNC=5
