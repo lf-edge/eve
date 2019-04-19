@@ -8,7 +8,8 @@ jobs:
       - checkout
       - run:
           name: Logging to Docker HUB
-          command: echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+          command: >
+            [ -z "$DOCKERHUB_USERNAME" ] || (echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin)
       - run: 
           name: Installing qemu-utils
           command: sudo apt-get update; sudo apt-get install -y qemu-utils
