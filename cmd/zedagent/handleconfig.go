@@ -22,7 +22,6 @@ import (
 	"github.com/zededa/go-provision/flextimer"
 	"github.com/zededa/go-provision/pubsub"
 	"github.com/zededa/go-provision/types"
-	"github.com/zededa/go-provision/zboot"
 	"github.com/zededa/go-provision/zedcloud"
 )
 
@@ -126,17 +125,27 @@ func configTimerTask(handleChannel chan interface{},
 		time.Duration(max))
 	// Return handle to caller
 	handleChannel <- ticker
-	for range ticker.C {
-		iteration += 1
-		// check whether the device is still in progress state
-		// once activated, it does not go back to the inprogress
-		// state
-		if updateInprogress {
-			updateInprogress = isBaseOsCurrentPartitionStateInProgress(ctx)
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+
+	for {
+		select {
+		case <-ticker.C:
+			iteration += 1
+			// check whether the device is still in progress state
+			// once activated, it does not go back to the inprogress
+			// state
+			if updateInprogress {
+				updateInprogress = isBaseOsCurrentPartitionStateInProgress(ctx)
+			}
+			rebootFlag := getLatestConfig(configUrl, iteration,
+				updateInprogress, getconfigCtx)
+			getconfigCtx.rebootFlag = getconfigCtx.rebootFlag || rebootFlag
+
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName + "config")
 		}
-		rebootFlag := getLatestConfig(configUrl, iteration,
-			updateInprogress, getconfigCtx)
-		getconfigCtx.rebootFlag = getconfigCtx.rebootFlag || rebootFlag
 	}
 }
 
@@ -248,14 +257,6 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 		// Send updated remainingTestTime to zedcloud
 		ctx.TriggerDeviceInfo = true
 	}
-
-	// Each time we hear back from the cloud we assume
-	// the device and connectivity is ok so we advance the
-	// watchdog timer.
-	// We should only require this connectivity once every 24 hours
-	// or so using a setable policy in the watchdog, but have
-	// a short timeout during validation of a image post update.
-	zboot.WatchdogOK()
 
 	if err := validateConfigMessage(url, resp); err != nil {
 		log.Errorln("validateConfigMessage: ", err)

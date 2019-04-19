@@ -25,6 +25,7 @@ import (
 	psutilnet "github.com/shirou/gopsutil/net"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/api/zmet"
+	"github.com/zededa/go-provision/agentlog"
 	"github.com/zededa/go-provision/cast"
 	"github.com/zededa/go-provision/diskmetrics"
 	"github.com/zededa/go-provision/flextimer"
@@ -60,9 +61,18 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	ticker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
 	// Return handle to caller
 	handleChannel <- ticker
-	for range ticker.C {
-		iteration += 1
-		publishMetrics(ctx, iteration)
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+
+	for {
+		select {
+		case <-ticker.C:
+			iteration += 1
+			publishMetrics(ctx, iteration)
+		case <-stillRunning.C:
+			agentlog.StillRunning(agentName + "metrics")
+		}
 	}
 }
 

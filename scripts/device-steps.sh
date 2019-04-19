@@ -97,10 +97,15 @@ EOF
 cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogall.conf
 for AGENT in $AGENTS; do
     echo "pidfile = /var/run/$AGENT.pid" >>$TMPDIR/watchdogall.conf
-    if [ "$AGENT" != "lisp-ztr" ]; then
-	echo "file = /var/run/$AGENT.touch" >>$TMPDIR/watchdogall.conf
-	echo "change = 300" >>$TMPDIR/watchdogall.conf
+    if [ "$AGENT" = "lisp-ztr" ]; then
+	continue
     fi
+    echo "file = /var/run/$AGENT.touch" >>$TMPDIR/watchdogall.conf
+    if [ "$AGENT" = "zedagent" ]; then
+	echo "file = /var/run/${AGENT}config.touch" >>$TMPDIR/watchdogall.conf
+	echo "file = /var/run/${AGENT}metrics.touch" >>$TMPDIR/watchdogall.conf
+    fi
+    echo "change = 300" >>$TMPDIR/watchdogall.conf
 done
 
 # In case watchdog is running we restart it with the base file

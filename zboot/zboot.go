@@ -97,17 +97,6 @@ func execWithTimeout(dolog bool, command string, args ...string) ([]byte, bool, 
 	return out, true, err
 }
 
-// tell watchdog we are fine
-func WatchdogOK() {
-	if !IsAvailable() {
-		return
-	}
-	_, err := execWithRetry(false, "zboot", "watchdog")
-	if err != nil {
-		log.Fatalf("zboot watchdog: err %v\n", err)
-	}
-}
-
 // Cache since it never changes on a running system
 // XXX lsblk seems to hang in kernel so avoid calling zboot curpart more
 // than once per process.
