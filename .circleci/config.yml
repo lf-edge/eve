@@ -15,10 +15,10 @@ jobs:
           command: sudo apt-get update; sudo apt-get install -y qemu-utils
       - run:
           name: Packages
-          command: make pkgs
+          command: make EVE_REL=snapshot ${DOCKERHUB_USERNAME:+DEFAULT_PKG_TARGET=push} pkgs
       - run:
           name: EVE
-          command: make eve
+          command: make EVE_REL=snapshot ${DOCKERHUB_USERNAME:+DEFAULT_PKG_TARGET=push} eve
   yetus:
     docker:
       - image: apache/yetus:master
