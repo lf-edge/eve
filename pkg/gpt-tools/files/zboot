@@ -27,14 +27,13 @@ usage() {
     echo "Usage:"
     echo "       $(basename "$0") {partdev|partstate} <LABEL>"
     echo "       $(basename "$0") set_partstate <LABEL> <STATE>"
-    echo "       $(basename "$0") {curpart|reset|watchdog}"
+    echo "       $(basename "$0") {curpart|reset}"
     echo
     echo "Commands:"
     echo "    partdev: return device of partion LABEL."
     echo "    partstate: return state of partition LABEL."
     echo "    set_partstate: Set state of partition LABEL to STATE."
     echo "    curpart: return label of current root partition."
-    echo "    watchdog: signal ${ZX} that the system is alive."
     echo "    reset: reboot the machine with a certain hurry."
     echo
     echo "<IMAGE> can be IMGA, IMG, or any other GPT partition label."
@@ -113,17 +112,6 @@ set_partstate() {
 }
 
 #
-# WATCHDOG: call to signal system still alive.
-#
-watchdog() {
-    if [ ! $# -eq 0 ]; then
-	usage
-    fi
-
-    # Not implemented yet.
-}
-
-#
 # RESET: shutdown and restart
 #
 reset() {
@@ -147,7 +135,6 @@ case $cmd in
     partdev) partdev "$@" ;;
     partstate) partstate "$@" ;;
     set_partstate) set_partstate "$@" ;;
-    watchdog) watchdog ;;
     reset) reset ;;
     
     *) usage ;;
