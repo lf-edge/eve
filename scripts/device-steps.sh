@@ -101,11 +101,15 @@ for AGENT in $AGENTS; do
 	continue
     fi
     echo "file = /var/run/$AGENT.touch" >>$TMPDIR/watchdogall.conf
-    if [ "$AGENT" = "zedagent" ]; then
-	echo "file = /var/run/${AGENT}config.touch" >>$TMPDIR/watchdogall.conf
-	echo "file = /var/run/${AGENT}metrics.touch" >>$TMPDIR/watchdogall.conf
-    fi
     echo "change = 300" >>$TMPDIR/watchdogall.conf
+    if [ "$AGENT" = "zedagent" ]; then
+	cat >>$TMPDIR/watchdogall.conf <<EOF
+file = /var/run/${AGENT}config.touch
+change = 300
+file = /var/run/${AGENT}metrics.touch
+change = 300
+EOF
+    fi
 done
 
 # In case watchdog is running we restart it with the base file

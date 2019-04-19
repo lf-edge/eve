@@ -22,6 +22,10 @@ if [ $# -ge 2 ]; then
     fi
 fi
 
+echo "Watchdog report at $DATE: $*" >>/persist/log/watchdog.log
+ps >>/persist/log/watchdog.log
+echo "Watchdog report done" >>/persist/log/watchdog.log
+
 CURPART=$(zboot curpart)
 echo "Watchdog report at $DATE: $*" >>/persist/"$CURPART"/reboot-reason
 sync
