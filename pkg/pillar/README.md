@@ -26,4 +26,17 @@ In addition there are debugging tools like
  - ipcmonitor - subscribes to the agents/collections passed between the different microservices
 
 In order to conserve filesystem space, all of the agents above are built into a single executable (zedbox) and are differentiated based on the symbolic link (very similar to how BusyBox does it with traditional UNIX utilities). 
- 
+
+## Building
+
+Generally, the build is done inside a Docker container to ensure environment consistency. This container is `FROM golang:${GOVER}-alpine`. When running via docker-for-mac or docker-for-windows, you can run in a container that is derived from the library `golang` image. However, when building on Linux, the output artifacts will have the wrong ownership. Thus, we build a simple special image that contains and writes to the correct user.
+
+All output binaries and links are in `dist/`.
+
+Make targets of note:
+
+* `make build`: build pillar containerized
+* `make build BUILD=local`: build pillar via your local golang installation
+* `make builder-image`: build the builder image for your user
+* `make shell`: launch a shell inside the builder image, whence you can run all commands. It also sets `BUILD=local`, so that you can run just `make build` inside.
+
