@@ -157,7 +157,7 @@ eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).ra
 	cp pkg/eve/* Makefile images/rootfs.yml images/installer.yml $(DIST)
 	export $(LK_HASH_REL) ; linuxkit pkg $(DEFAULT_PKG_TARGET) --disable-content-trust $${LINUXKIT_HASH} $(DIST)
 
-pkg/%: FORCE
+pkg/%: build-tools FORCE
 	make -C pkg PKGS=$(notdir $@) LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
 
 release:
