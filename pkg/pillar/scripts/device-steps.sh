@@ -21,7 +21,6 @@ PATH=$BINDIR:$PATH
 
 echo "$(date -Ins -u) Starting device-steps.sh"
 echo "$(date -Ins -u) go-provision version: $(cat $BINDIR/versioninfo)"
-echo "$(date -Ins -u) go-provision version.1: $(cat $BINDIR/versioninfo.1)"
 
 MEASURE=0
 while [ $# != 0 ]; do

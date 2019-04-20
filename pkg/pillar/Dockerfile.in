@@ -19,12 +19,6 @@ RUN [ -z "$GOARCH" ] || (cd / ; apk add --no-cache wget && wget -O - $CROSS_GCC 
 
 ADD ./  /go/src/github.com/zededa/eve/pkg/pillar/
 
-# XXX temporary until we have a version for all of baseOS/rootfs
-RUN (cd ./src/github.com/zededa/eve/pkg/pillar/; scripts/getversion.sh >/go/bin/versioninfo)
-RUN cp /go/bin/versioninfo /go/bin/versioninfo.1
-# Echo for builders enjoyment
-RUN echo Building: `cat /go/bin/versioninfo`
-
 # go install and go vet
 RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc)           ;\
     go install github.com/zededa/eve/pkg/pillar/zedbox/... && \

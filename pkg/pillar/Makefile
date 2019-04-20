@@ -65,7 +65,6 @@ obj:
 build:
 	@echo Building version $(BUILD_VERSION)
 	@mkdir -p var/tmp/zededa
-	@echo $(BUILD_VERSION) >$(BINDIR)/versioninfo
 	@for app in $(APPS); do \
 		echo $$app; \
 		CGO_ENABLED=0 \
