@@ -5,7 +5,7 @@ package zedUpload
 
 import (
 	"fmt"
-	zedAWS "github.com/zededa/shared/libs/zedUpload/awsutil"
+	zedAWS "github.com/zededa/eve/pkg/pillar/zedUpload/awsutil"
 	"net"
 	"net/http"
 	"net/url"

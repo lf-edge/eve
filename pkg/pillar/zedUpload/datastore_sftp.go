@@ -5,7 +5,7 @@ package zedUpload
 
 import (
 	"fmt"
-	"github.com/zededa/shared/libs/zedUpload/sftputil"
+	"github.com/zededa/eve/pkg/pillar/zedUpload/sftputil"
 	"net"
 	"net/url"
 	"strings"
