@@ -83,6 +83,8 @@ grep -q eve_pause_before_install /proc/cmdline && sleep 100000
 # do the install
 /bin/sh -xc "/make-raw /dev/$INSTALL_DEV" || bail "Installation failed. Entering shell..."
 
+echo "NOTICE: Device will now power off. Remove the USB stick and power it back on to complete the installation." >/dev/console
+
 # we also maybe asked to pause after
 PAUSE_AFTER_SYNC=5
 grep -q eve_pause_after_install /proc/cmdline && PAUSE_AFTER_SYNC=100000
