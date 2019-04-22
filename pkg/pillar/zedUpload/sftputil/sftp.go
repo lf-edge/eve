@@ -38,7 +38,7 @@ func getSftpClient(host, user, pass string) (*sftp.Client, error) {
 			ssh.KeyboardInteractive(
 				func(user, instruction string, questions []string, echos []bool) ([]string, error) {
 					answers := make([]string, len(questions))
-					for i, _ := range answers {
+					for i := range answers {
 						answers[i] = pass
 					}
 					return answers, nil

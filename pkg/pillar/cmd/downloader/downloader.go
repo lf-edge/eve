@@ -27,8 +27,8 @@ import (
 	"github.com/zededa/eve/pkg/pillar/pidfile"
 	"github.com/zededa/eve/pkg/pillar/pubsub"
 	"github.com/zededa/eve/pkg/pillar/types"
-	"github.com/zededa/eve/pkg/pillar/zedcloud"
 	"github.com/zededa/eve/pkg/pillar/zedUpload"
+	"github.com/zededa/eve/pkg/pillar/zedcloud"
 )
 
 const (
