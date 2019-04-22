@@ -271,8 +271,6 @@ func (req *DronaRequest) postOnChannel() error {
 	default:
 		return SyncerRetry
 	}
-
-	return nil
 }
 
 func (req *DronaRequest) post() {
