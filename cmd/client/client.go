@@ -627,7 +627,7 @@ func existingModel(model string) bool {
 		return false
 	}
 	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
-	if _, err := os.Stat(DNCFilename); err == nil {
+	if _, err := os.Stat(DNCFilename); err != nil {
 		log.Debugln(err)
 		return false
 	}
