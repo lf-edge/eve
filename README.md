@@ -50,14 +50,14 @@ git clone https://github.com/zededa/eve.git
 cd eve
 ```
 
-Build both the build-tools as well as the fallback image in the source directory:
+Build both the build-tools as well as the live image in the source directory:
 
 ```
 make build-tools
-make fallback
+make live
 ```
 This will download the relevant dockers from docker hub and create a bootable
-image 'dist/<ARCH>/fallback.img'.
+image 'dist/<ARCH>/live.img'.
 
 Please note that not all containers will be fetched from the docker
 hub. mkimage-raw-efi in particular will be built.
@@ -174,8 +174,8 @@ on Mac OS X:
 ```
 vi conf/wpa_supplicant.conf
   # put your WIFI passwords in and/or add your own networks
-make ZARCH=arm64 MEDIA_SIZE=8192 fallback
-sudo dd if=dist/arm64/fallback.raw of=/dev/rdiskXXX bs=1m
+make ZARCH=arm64 MEDIA_SIZE=8192 live
+sudo dd if=dist/arm64/live.raw of=/dev/rdiskXXX bs=1m
 ```
 
 Then you can boot into a live system from triggering UEFI shell like shown

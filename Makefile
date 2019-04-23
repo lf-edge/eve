@@ -35,7 +35,7 @@ DIST=dist/$(ZARCH)
 
 DOCKER_ARCH_TAG=$(ZARCH)
 
-FALLBACK_IMG=$(DIST)/fallback
+LIVE_IMG=$(DIST)/live
 ROOTFS_IMG=$(DIST)/rootfs.img
 TARGET_IMG=$(DIST)/target.img
 INSTALLER_IMG=$(DIST)/installer
@@ -61,7 +61,7 @@ LK_HASH_REL=LINUXKIT_HASH="$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(
 
 DEFAULT_PKG_TARGET=build
 
-.PHONY: run pkgs help build-tools fallback rootfs config installer live
+.PHONY: run pkgs help build-tools live rootfs config installer live
 
 all: help
 
@@ -80,8 +80,8 @@ $(BIOS_IMG): | $(DIST)/bios
 
 # run-installer
 #
-# This creates an image equivalent to fallback.img (called target.img)
-# through the installer. It's the long road to fallback.img. Good for
+# This creates an image equivalent to live.img (called target.img)
+# through the installer. It's the long road to live.img. Good for
 # testing.
 #
 # -machine dumpdtb=virt.dtb 
@@ -94,8 +94,8 @@ run-installer-raw: $(BIOS_IMG)
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(INSTALLER_IMG).raw,format=raw
 
-run-fallback run: $(BIOS_IMG)
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(FALLBACK_IMG).img,format=$(IMG_FORMAT)
+run-live run: $(BIOS_IMG)
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(LIVE_IMG).img,format=$(IMG_FORMAT)
 
 run-target: $(BIOS_IMG)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
@@ -113,8 +113,7 @@ $(DIST) $(DIST)/bios:
 # convenience targets - so you can do `make config` instead of `make dist/config.img`, and `make installer` instead of `make dist/amd64/installer.img
 config: $(CONFIG_IMG)
 rootfs: $(ROOTFS_IMG)
-fallback: $(FALLBACK_IMG).img
-live: fallback
+live: $(LIVE_IMG).img
 installer: $(INSTALLER_IMG).raw
 installer-iso: $(INSTALLER_IMG).iso
 
@@ -129,15 +128,15 @@ $(ROOTFS_IMG): images/rootfs.yml | $(DIST)
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
 
-$(FALLBACK_IMG).img: $(FALLBACK_IMG).$(IMG_FORMAT) | $(DIST)
+$(LIVE_IMG).img: $(LIVE_IMG).$(IMG_FORMAT) | $(DIST)
 	@rm -f $@ >/dev/null 2>&1 || :
 	ln -s $(notdir $<) $@
 
-$(FALLBACK_IMG).qcow2: $(FALLBACK_IMG).raw | $(DIST)
+$(LIVE_IMG).qcow2: $(LIVE_IMG).raw | $(DIST)
 	qemu-img convert -c -f raw -O qcow2 $< $@
 	rm $<
 
-$(FALLBACK_IMG).raw: $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
+$(LIVE_IMG).raw: $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
 	tar -C $(DIST) -c $(notdir $^) | ./tools/makeflash.sh -C ${MEDIA_SIZE} $@
 
 $(ROOTFS_IMG)_installer.img: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
@@ -153,7 +152,7 @@ $(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
 	./tools/makeiso.sh $< $@
 
 eve: EVE_HASH=$(shell echo EVE_TAG | PATH="$(PATH)" $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
-eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(FALLBACK_IMG).img images/rootfs.yml images/installer.yml
+eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(LIVE_IMG).img images/rootfs.yml images/installer.yml
 	cp pkg/eve/* Makefile images/rootfs.yml images/installer.yml $(DIST)
 	export $(LK_HASH_REL) ; linuxkit pkg $(DEFAULT_PKG_TARGET) --disable-content-trust $${LINUXKIT_HASH} $(DIST)
 
@@ -201,16 +200,17 @@ help:
 	@echo "   pkgs           builds all EVE packages"
 	@echo "   pkg/XXX        builds XXX EVE package"
 	@echo "   rootfs         builds EVE rootfs image (upload it to the cloud as BaseImage)"
-	@echo "   fallback       builds a full disk image of EVE which can be function as a virtual device"
+	@echo "   live           builds a full disk image of EVE which can be function as a virtual device"
 	@echo "   installer      builds raw disk installer image (to be installed on bootable media)"
 	@echo "   installer-iso  builds an ISO installers image (to be installed on bootable media)"
 	@echo
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
-	@echo "   run-grub          runs our copy of GRUB bootloader and nothing else (very limited usefulness)"
+	@echo "   run-live          runs a full fledged virtual device on qemu (as close as it gets to actual h/w)"
 	@echo "   run-rootfs        runs a rootfs.img (limited usefulness e.g. quick test before cloud upload)"
-	@echo "   run-installer-iso runs installer.iso on qemu and 'installs' EVE on fallback.img"
-	@echo "   run-installer-raw runs installer.raw on qemu and 'installs' EVE on fallback.img"
-	@echo "   run-fallback      runs a full fledged virtual device on qemu (as close as it gets to actual h/w)"
+	@echo "   run-grub          runs our copy of GRUB bootloader and nothing else (very limited usefulness)"
+	@echo "   run-installer-iso runs installer.iso (via qemu) and 'installs' EVE into (initially blank) target.img"
+	@echo "   run-installer-raw runs installer.raw (via qemu) and 'installs' EVE into (initially blank) target.img"
+	@echo "   run-target        runs a full fledged virtual device on qemu from target.img (similar to run-live)"
 	@echo
-	@echo "make run is currently an alias for make run-fallback"
+	@echo "make run is currently an alias for make run-live"
 	@echo
