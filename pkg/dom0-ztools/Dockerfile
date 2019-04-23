@@ -1,2 +1,2 @@
 FROM scratch
-ADD zen /bin/
+ADD rootfs/ /

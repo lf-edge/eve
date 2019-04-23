@@ -27,6 +27,8 @@ onboot:
 services:
    - name: ntpd
      image: linuxkit/openntpd:v0.5
+   - name: sshd
+     image: linuxkit/sshd:v0.5
    - name: wwan
      image: WWAN_TAG
    - name: wlan
