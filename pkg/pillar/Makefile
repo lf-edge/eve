@@ -21,7 +21,7 @@ VERSION     := $(GIT_TAG)
 # Go parameters
 GOCMD=go
 GOBUILD=$(GOCMD) build
-GOMODULE=github.com/zededa/eve
+GOMODULE=github.com/zededa/eve/pkg/pillar
 
 BUILD_VERSION=$(shell scripts/getversion.sh)
 

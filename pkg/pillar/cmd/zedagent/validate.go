@@ -5,7 +5,7 @@ package zedagent
 
 import (
 	"fmt"
-	"github.com/zededa/api/zconfig"
+	"github.com/zededa/eve/pkg/pillar/api/zconfig"
 	"unicode/utf8"
 )
 

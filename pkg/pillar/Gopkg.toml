@@ -61,10 +61,6 @@
   branch = "master"
   name = "github.com/zededa/shared"
 
-[[constraint]]
-  branch = "master"
-  name = "github.com/zededa/api"
-
 [prune]
   non-go = true
   go-tests = true
