@@ -42,8 +42,6 @@ GOGET=$(GOCMD) get
 all: build
 
 init:	
-#	$(GOGET) ./...
-#	$(GOGET) -u github.com/golang/protobuf/protoc-gen-go
 	$(GOGET) -u github.com/gogo/protobuf/protoc-gen-gofast
 
 $(BUILD_LIST):
