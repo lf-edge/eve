@@ -26,15 +26,24 @@ jobs:
             make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} eve
   yetus:
     docker:
-      - image: apache/yetus:master
+      - image: apache/yetus:0.10.0
     steps:
       - checkout
+      # create a fake artifact so that Apache Yetus knows the URL
+      - run:
+          name: make artifact dir
+          command: mkdir -p /tmp/yetus-out
+      - run:
+          name: bootstrap artifacts
+          command: echo "bootstrap" > /tmp/yetus-out/bootstrap
+      - store_artifacts:
+          path: /tmp/yetus-out
       - run:
           name: yetus
           command: >
             test-patch
             --build-tool=nobuild
-            --plugins=all,-shelldocs,-gitlab
+            --plugins=all,-asflicense,-shelldocs,-gitlab
             --patch-dir=/tmp/yetus-out
             --whitespace-tabs-ignore-list='.*Makefile.*','.*\.go','.*\.dts'
             --html-report-file=/tmp/yetus-out/report.html
@@ -43,8 +52,7 @@ jobs:
             --excludes=.yetus-excludes
             --line-comments=''
             --bugcomments=briefreport,htmlout
-            --empty-patch
-            || true
+            --continuous-improvement=true
       - store_artifacts:
           path: /tmp/yetus-out
 workflows:
