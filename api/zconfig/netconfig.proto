@@ -1,0 +1,46 @@
+// Copyright(c) 2017-2018 Zededa, Inc.
+// All rights reserved.
+
+syntax = "proto3";
+
+option java_package = "com.zededa.cloud.uservice.proto";
+option go_package = "github.com/zededa/api/zconfig";
+
+import "fw.proto";
+import "netcmn.proto";
+
+message NetworkConfig {
+	string id = 1;
+	NetworkType type = 5;
+
+	// network ip specification
+	ipspec ip = 6;
+
+	repeated ZnetStaticDNSEntry dns = 7;
+
+        // enterprise proxy
+        ProxyConfig entProxy = 8;
+}
+
+message NetworkAdapter {
+	string name =1;		// name which we report in metrics and status
+	string id   =2;		// UUID of adapter? XXX Deprecate since unused
+
+	string networkId =3;	// UUID of NetworkInstance object
+
+	string addr = 4;	// Static IP address; could be IPv4 EID
+	string hostname = 5;	// Not currently used
+
+	// more configuration for getting addr/EID
+	string cryptoEid = 10;
+	string lispsignature = 6;
+	bytes  pemcert = 7;
+	bytes  pemprivatekey = 8;
+
+	// used in case of P2V, where we want to specify a macAddress
+	// to vif, that is simulated towards app
+	string macAddress = 9; 
+
+	// firewall
+	repeated ACE acls = 40;
+}

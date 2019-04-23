@@ -1,0 +1,751 @@
+// Copyright(c) 2017-2018 Zededa, Inc.
+// All rights reserved.
+
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+option go_package  = "github.com/zededa/api/zmet";
+
+option java_package = "com.zededa.cloud.uservice.proto";
+
+/*
+ * Broadly there are two types
+ * Info : information that is discovered/rarely changes
+ * Metrics: information that gets updated periodically
+ * Protobuf definitions in this file follow the convention. 
+ */
+enum ZInfoTypes {
+  ZiNop = 0;
+  ZiDevice = 1;
+  // ZiHypervisor = 2;	// Deprecated
+  ZiApp = 3;
+  ZiService = 4;	// XXX to be deprecated
+  ZiNetworkObject = 5;	// XXX to be deprecated
+  ZiNetworkInstance = 6;
+}
+
+// Manufacturing info, product name, model, version etc.
+// From dmidecode/BIOS on Intel
+message ZInfoManufacturer {
+  string manufacturer = 1;
+  string productName = 2;
+  string version = 3;
+  string serialNumber = 4;
+  string UUID = 5;		// From BIOS; different than device UUID
+  string compatible = 6;	// From /proc/device-tree/compatible on ARM
+  string biosVendor = 7;
+  string biosVersion = 8;
+  string biosReleaseDate = 9;
+}
+
+message ZInfoNetwork {
+  // string IPAddr = 1; // Deprecated. Returning first address for now
+  // string gwAddr = 2; // Deprecated; routing is richer than a single gateway
+  string macAddr = 3;
+  string devName = 4; // From name in config
+  repeated string IPAddrs = 5; // All IP addresses with /N for subnet
+  repeated string defaultRouters = 6; // If DHCP assigned
+  ZInfoDNS dns = 7; // If DHCP assigned
+  bool up = 8;      // operational up/down status.
+  GeoLoc location = 9;
+  bool uplink = 10; // Uplink interface  // XXX rename to isMgmt
+  ErrorInfo networkErr = 11; // For instance bad proxy config
+  string localName = 12; // eth0, eth1 etc.
+  ProxyStatus proxy = 13;
+}
+
+// From an IP address-based geolocation service
+// XXX later define GPS coordinates from device
+message GeoLoc {
+  string UnderlayIP = 1;
+  string Hostname = 2;
+  string City = 3;
+  string Region = 4;
+  string Country = 5;
+  string Loc = 6;
+  string Org = 7;
+  string Postal = 8;
+}
+
+// This is used both to represent the information we receive from DHCP
+// for each interface, and the information the device is using
+// (from /etc/resolv.conf). The latter could be different than what's received
+// from DHCP on all the interfaces
+message ZInfoDNS {
+  repeated string DNSservers = 1;
+  string DNSdomain = 2;
+  repeated string DNSsearch = 3;
+}
+
+// Deprecate since we can't determine it on the device
+enum ZPeripheralTypes {
+  ZpNone = 0;
+  ZpStorage = 1;
+  ZpNetwork = 2;
+}
+
+// Enum names from OMA-TS-LWM2M_SwMgmt-V1_0-20151201-C
+enum ZSwState {
+  INVALID		= 0;
+  INITIAL		= 1;	// Config received
+  DOWNLOAD_STARTED	= 2;	// Download in-progress
+  DOWNLOADED		= 3;	// Download completed, verification in-progress
+  DELIVERED		= 4;	// Verification completed
+  INSTALLED		= 5;	// Installed, ready for activation
+  BOOTING               = 6;    // booting. Booting and above means that App is activated.
+  RUNNING               = 7;    // running
+  HALTING               = 8;    // being halted
+  HALTED                = 9;    // Halted
+  RESTARTING            = 10;   // Restarting due to config change
+  PURGING               = 11;   // Purging due to config change
+}
+
+// Deprecate since we can't determine it on the device
+message ZinfoPeripheral {
+  ZPeripheralTypes ztype = 1;
+  bool pluggable = 2;
+  ZInfoManufacturer minfo = 3;
+}
+
+//SW Info for Apps
+message ZInfoSW {
+  string swVersion = 2;
+  string swHash = 3;
+  ZSwState state = 4;		// State of Software Image download/install
+  string target = 6;		// E.g., "disk", "kernel", "device-tree"
+  string vdev = 7;		// E.g., "xvda"
+  uint32 downloadProgress = 8;	// Download progress; 0-100 percent
+  string imageName = 9;         // Name of the disk image
+}
+
+// Errors in response to the applicatioan of configuration
+message ErrorInfo {
+  string description = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+// Base device info, as discovered by Xen (or OS on bare metal)
+message ZInfoDevice {
+  string machineArch = 4;
+  string cpuArch = 5;
+  string platform = 6;
+  uint32 ncpu = 7;
+  uint64 memory = 8;	// in Mbytes
+  uint64 storage = 9;	// in MBytes for the currently active image filesystem
+
+  ZInfoManufacturer minfo = 11;
+
+  repeated ZInfoNetwork network = 13;
+  repeated ZioBundle assignableAdapters = 15;
+  ZInfoDNS dns = 16; // What is used in resolv.conf
+  repeated ZInfoStorage storageList = 17;
+
+  google.protobuf.Timestamp bootTime = 18;
+
+  repeated ZInfoDevSW swList = 19;
+  string   HostName = 20;
+  repeated MetricItem metricItems = 21; // For instance, static LTE network info
+
+  string   lastRebootReason = 22;
+  google.protobuf.Timestamp lastRebootTime = 23;
+
+  SystemAdapterInfo systemAdapter = 24;
+  uint32 restartCounter = 25; // Number of times zedagent has restarted i.e., device reboot
+}
+
+// The current and fallback system adapter information
+message SystemAdapterInfo {
+  uint32 currentIndex = 1; // Zero means the first/highest priority is used
+  repeated DevicePortStatus status = 2;
+}
+
+message DevicePortStatus {
+  uint32 version = 1;
+  string key = 2;
+  google.protobuf.Timestamp timePriority = 3;
+  google.protobuf.Timestamp lastFailed = 4;
+  google.protobuf.Timestamp lastSucceeded = 5;
+  repeated DevicePort ports = 6;
+  string lastError = 7;
+}
+
+message DevicePort {
+  string ifname = 1;
+  string name = 2;	// Logical name set by controller
+  bool isMgmt = 3;
+  bool free = 4;
+  // DhcpConfig
+  uint32 dhcpType = 11;
+  string subnet = 12;
+  string gateway = 13;
+  string domainname = 14;
+  string ntpServer = 15;
+  repeated string dnsServers = 16;
+  string dhcpRangeLow = 17;
+  string dhcpRangeHigh = 18;
+
+  ProxyStatus proxy = 21;
+}
+
+message ProxyStatus {
+  repeated ProxyEntry proxies = 1;
+  string exceptions = 2;
+  string pacfile = 3;
+  bool networkProxyEnable = 4;
+  string networkProxyURL = 5;
+  string wpadURL = 6;
+}
+
+message ProxyEntry {
+  uint32 type = 1; // From NPT_ types aka proxyProto
+  string server = 2;
+  uint32 port = 3;
+}
+
+// SW Info for the device base OS
+// Many of these fields are for debug purposes. The ones intended
+// for the UI/cli are userStatus, subStatus, shortVersion, and swErr
+message ZInfoDevSW {
+  bool activated = 2;
+  string partitionLabel = 3; // E.g., "IMGA"
+  string partitionDevice = 4;// /dev/something
+  string partitionState = 5; // state obtained from cboot
+  ZSwState status = 6;       // E.g., "DOWNLOADED"
+  string shortVersion = 7;   // From rootfs i.e., image
+  string longVersion = 8;    // E.g., the yml file content from build
+  ErrorInfo swErr = 9;
+  uint32 downloadProgress = 10; // Download progress; 0-100 percent
+  BaseOsStatus userStatus = 11;
+  string subStatus = 12;	// Include progress information
+}
+
+enum BaseOsStatus {
+  NONE		= 0;	// Should be ignored in output
+  ACTIVE	= 1;	// Running
+  UPDATING	= 2;	// subStatus will have more details
+  REBOOTING	= 3;	// device reboot under way
+  TESTING	= 4;	// verifying new image after reboot
+  FALLBACK	= 5;	// fallback image during verification
+  FAILED	= 6;	// see ErrInfo for details
+}
+
+// Per filesystem/partition information
+message ZInfoStorage {
+  string device = 1;	// E.g., "sda3"
+  string mountPath = 2;	// E.g., "/", or "/config"
+  uint64 total = 3;	// in MBytes
+  bool storageLocation = 4; // Storage location for app disks, images etc.
+}
+
+message ZInfoApp {
+  string AppID = 1;
+  string appVersion = 2;
+
+  bool systemApp = 6;
+  string AppName = 7;
+  repeated ZInfoSW softwareList = 8;
+  // bool activated = 9;                       // deprecated
+  // google.protobuf.Timestamp errorTime = 11; //deprecated, use ErrorInfo
+
+  google.protobuf.Timestamp bootTime = 12;
+  repeated ZioBundle assignedAdapters = 13;
+  repeated ErrorInfo appErr = 14;
+  ZSwState state = 15;
+  repeated ZInfoNetwork network = 16;	    // up/down; allocated IP
+}
+
+// ipSec state information
+enum ZInfoVpnState {
+  VPN_INVALID     = 0;
+  VPN_INITIAL     = 1;	// Config received
+  VPN_CONNECTING  = 2;	// Connection is in-progress
+  VPN_ESTABLISHED = 3;	// Connection established
+  VPN_INSTALLED   = 4;	// SAs/Routes Installed
+  VPN_REKEYED     = 5;  // SAs Rekeyed
+  VPN_DELETED     = 10; // Connection deleted
+}
+
+// tunnel link details
+message ZInfoVpnLinkInfo {
+  string spiId = 1;   // Security Parameter Index
+  string subNet = 2;  // Associate Subnet
+  bool direction = 3; // 0 = local, 1 = remote
+}
+
+// Esp details
+message ZInfoVpnLink {
+  string id = 1;       // esp id
+  string name = 2;     // connection name
+  string reqId = 3;    // request id
+  uint64 instTime = 4; // in seconds
+  string espInfo = 5;  // esp info
+  ZInfoVpnState state = 6; // esp state
+  ZInfoVpnLinkInfo lInfo = 10; // local
+  ZInfoVpnLinkInfo rInfo = 11; // remote
+}
+
+// ipsec left/right end-point info
+message ZInfoVpnEndPoint {
+  string id     = 1; // ipSec id
+  string ipAddr = 2; // Ip Address
+  uint32 port   = 3; // udp port
+}
+
+// Ike details
+message ZInfoVpnConn {
+  string id = 1;      // ike id
+  string name = 2;    // connection name
+  string version = 3; // ike-v1/v2
+  uint64 estTime = 4; // in seconds
+  string ikes = 5;    // ike proposals
+  ZInfoVpnState state = 6; // ike state
+  ZInfoVpnEndPoint lInfo = 7;  // local
+  ZInfoVpnEndPoint rInfo = 8;  // remote
+  repeated ZInfoVpnLink links = 10; // can be more than one
+}
+
+// ipsec level information
+message ZInfoVpn {
+  uint64 upTime = 1; // in seconds
+  bool policyBased = 2; // Policy-based vs. VTI-based IPSEC VPN
+  repeated string listeningIpAddrs = 3; //listening on
+  repeated ZInfoVpnConn conn = 10; // Connection Information
+}
+
+// Lisp state information
+message RlocState {
+	string Rloc = 1;
+	bool Reachable = 2;
+}
+
+message MapCacheEntry {
+	string EID = 1;
+	repeated RlocState Rlocs = 2;
+}
+
+message DatabaseMap {
+	uint64 IID = 1;
+	repeated MapCacheEntry MapCacheEntries = 2;
+}
+
+message DecapKey {
+	string Rloc = 1;
+	uint64 Port = 2;
+	uint64 KeyCount = 3;
+}
+
+message ZInfoLisp {
+	uint64 ItrCryptoPort = 1;
+	uint64 EtrNatPort = 2;
+	repeated string Interfaces = 3;
+	repeated DatabaseMap DatabaseMaps = 4;
+	repeated DecapKey DecapKeys = 5;
+}
+
+// Service instance state information XXX to be deprecated
+message ZInfoService {
+  string serviceID = 1;
+  string serviceName = 2;
+  uint32 serviceType = 3;
+  ZInfoSW softwareList = 4;
+  bool activated = 5;
+  google.protobuf.Timestamp upTimeStamp = 6;
+  repeated ZioBundle assignedAdapters = 7;
+  repeated ErrorInfo svcErr = 8;
+  repeated ZInfoNetwork network = 9;
+  oneof InfoContent {
+    ZInfoVpn vinfo = 20;
+    ZInfoLisp linfo = 21;
+  }
+}
+
+// Network Object information XXX to be deprecated
+message ZInfoNetworkObject {
+  string networkID = 1;		// UUID
+
+  // From NetworkObjectConfig; do we need to include all of these?
+  uint32 networkType = 2;
+  uint32 dhcpType = 3;
+  string subnet = 4;
+  string gateway = 5;
+  string domainname = 6;
+  string ntpServer = 7;
+  repeated string dnsServers = 8;
+  string dhcpRangeLow = 9;
+  string dhcpRangeHigh = 10;
+  // XXX DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
+
+  // From NetworkObjectStatus
+  uint32 bridgeNum = 12;
+  string bridgeName = 13;
+  string bridgeIPAddr = 14;
+
+  repeated ZmetIPAssignmentEntry ipAssignments = 15;
+  repeated string bridgeIPSets = 16; // Union of all ipsets for the bridge
+  repeated string vifNames = 17; // XXX to be deprecated
+  bool ipv4Eid = 18; // Track if this is a CryptoEid with IPv4 EIDs
+
+  repeated ErrorInfo networkErr = 19;
+
+  repeated ZmetVifInfo vifs = 25; // Set of vifs on this bridge
+}
+
+// Network Instance information
+message ZInfoNetworkInstance {
+  string networkID = 2;		// UUID
+  string networkVersion = 3;
+
+  uint32 instType = 5;		// ZNetworkInstType
+  string displayname = 6;	// From NetworkInstance config
+  bool activated = 7;		// Forwarding enabled
+  google.protobuf.Timestamp upTimeStamp = 8;
+  ZInfoSW softwareList = 9; 	// E.g., VPN version
+
+  uint32 bridgeNum = 20;
+  string bridgeName = 21;
+  string bridgeIPAddr = 22;
+
+  repeated ZmetIPAssignmentEntry ipAssignments = 23;
+  repeated string bridgeIPSets = 24; // Union of all ipsets for the bridge
+  repeated ZmetVifInfo vifs = 25; // Set of vifs on this bridge
+  bool ipv4Eid = 26; // Track if this is a CryptoEid with IPv4 EIDs
+
+  repeated ZioBundle assignedAdapters = 30;
+  oneof InfoContent {
+    ZInfoVpn vinfo = 31;
+    ZInfoLisp linfo = 32;
+  }
+  repeated ErrorInfo networkErr = 40;
+}
+
+// Map from MAC to IP addresses
+message ZmetIPAssignmentEntry {
+        string macAddress = 1;
+        repeated string ipAddress = 2;
+}
+
+// Map from vifname to other info
+message ZmetVifInfo {
+	string vifName = 1;
+        string macAddress = 2;
+	string appID = 3; // UUID
+}
+
+message ZInfoMsg {
+  ZInfoTypes ztype = 1;
+  string devId = 2;
+  oneof InfoContent {
+  	ZInfoDevice dinfo = 3;
+  	ZInfoApp ainfo = 5;
+	ZInfoService sinfo = 10;	// XXX To be deprecated
+	ZInfoNetworkObject ninfo = 11;	// XXX To be deprecated
+	ZInfoNetworkInstance niinfo = 12;
+   }
+  google.protobuf.Timestamp atTimeStamp = 6;
+}
+
+// XXX duplicate of definition in appconfig.proto
+// Types of I/O adapters that can be assigned to applications
+enum ZioType {
+  ZioNop = 0;
+  ZioEth = 1;		// Includes WiFi?
+  ZioUSB = 2;
+  ZioCOM = 3;		// Com ports
+  ZioOther = 255;
+}
+
+// Information about assignable I/O adapter bundles
+message ZioBundle {
+  ZioType type = 1;
+  string name = 2;		// Short hand name such as "com"
+  repeated string members = 3;	// E.g., "com1", "com2"
+  string usedByAppUUID = 4;
+  bool usedByBaseOS = 5;
+}
+
+// Metrics from devices and applications
+
+enum ZmetricTypes {
+  ZmNop = 0;
+  ZmDevice = 1;
+  ZmApp = 3;
+}
+
+message memoryMetric {
+  uint32 usedMem = 2;            //in MBytes
+  uint32 availMem = 3;           //in MBytes
+  double usedPercentage = 4;
+  double availPercentage = 5;
+}
+
+message networkMetric {
+  string iName = 1;	// name from config; displayName for network instance
+  uint64 txBytes = 2;	// in bytes
+  uint64 rxBytes = 3;	// in bytes
+  uint64 txDrops = 4;
+  uint64 rxDrops = 5;
+  uint64 txRate = 6;  // deprecate
+  uint64 rxRate = 7;  // deprecate
+  uint64 txPkts = 8;
+  uint64 rxPkts = 9;
+  uint64 txErrors = 10;
+  uint64 rxErrors = 11;
+  uint64 txAclDrops = 12;
+  uint64 rxAclDrops = 13;
+  uint64 txAclRateLimitDrops = 14;
+  uint64 rxAclRateLimitDrops = 15;
+  string localName = 16; // local vif name e.g., nbu*
+}
+
+// Failures and successes for commuication to zedcloud
+// for each port
+message zedcloudMetric {
+    string ifName = 1;	// interface name
+    uint64 failures = 2;
+    uint64 success = 3;
+    google.protobuf.Timestamp lastFailure = 4;
+    google.protobuf.Timestamp lastSuccess = 5;
+    repeated urlcloudMetric urlMetrics = 6;
+}
+
+message urlcloudMetric {
+    string url = 1;
+    int64 tryMsgCount = 2;	// Things we might have tried to send
+    int64 tryByteCount = 3;	// or it failed before we could send them.
+    int64 sentMsgCount = 4;
+    int64 sentByteCount = 5;
+    int64 recvMsgCount = 6;
+    int64 recvByteCount = 7;
+}
+
+message appCpuMetric {
+    // uint32 cpuTotal = 2;		// deprecated
+    // double cpuPercentage = 3;		// deprecated
+    google.protobuf.Timestamp upTime = 4;
+    uint64 total = 5;                   // cpu total in secs.
+}
+
+message deviceMetric {
+  // cpuMetric cpu = 1;	// deprecated
+  memoryMetric memory = 2;
+  repeated networkMetric network = 3;
+  repeated zedcloudMetric zedcloud = 4;
+  // devCpuMetric compute = 5; // deprecated
+  repeated diskMetric disk = 6;
+  appCpuMetric cpuMetric = 7;
+  repeated MetricItem metricItems = 8;
+  uint64 runtimeStorageOverheadMB = 9;     // In MB
+  uint64 appRunTimeStorageMB = 10;         // In MB
+  memoryMetric systemServicesMemoryMB = 11;  // In MB
+}
+
+enum MetricItemType {
+  MetricItemOther = 0;		// E.g., a string like an ESSID
+  MetricItemGauge = 1;		// Goes up and down over time
+  MetricItemCounter = 2;	// Monotonically increasing (until reboot)
+  MetricItemState = 3;		// Toggles on and off; count transitions
+}
+
+// Open-ended metrics from different part of the device such as LTE modem
+// metrics.
+message MetricItem {
+	string key = 1;		// E.g., "lte-signal-strength"
+	MetricItemType type = 2;
+	oneof metricItemValue {
+		bool boolValue = 3;
+		uint32 uint32Value = 4;	// If timer this is in seconds
+		uint64 uint64Value = 5;
+		float floatValue = 6;
+		string stringValue = 7; // Use with care
+	}
+}		
+
+// For each partition; counts since boot
+message diskMetric {
+  string disk = 1;		// E.g., "mmcblk0p2"
+  string mountPath = 2;		// E.g., "/config"
+  uint64 readBytes = 3;		// In MB
+  uint64 writeBytes = 4;	// In MB
+  uint64 readCount = 5;		// Number of ops
+  uint64 writeCount = 6;	// Number of ops
+  uint64 total = 7;		// in MBytes; if we know the mountpath
+  uint64 used = 8;		// in MBytes; if we know the mountpath
+  uint64 free = 9;		// in MBytes; if we know the mountpath
+}
+
+message appDiskMetric {
+  string disk = 1;		// E.g., "mmcblk0p2"
+  uint64 provisioned = 2;	// in MBytes
+  uint64 used = 3;		// in MBytes
+  string diskType = 4;          // Type of disk, e.g., QCOW2, RAW etc.
+  bool dirty = 5;               // Dirty flag
+}
+
+message appMetric {
+  string AppID  = 1;
+  string appVersion = 10;
+  string AppName = 2;
+  appCpuMetric cpu = 3;
+  memoryMetric memory = 4;
+  repeated networkMetric network = 5;
+  repeated appDiskMetric disk = 6;
+}
+
+// Lisp stats
+message PktStat {
+	uint64 Packets = 1;
+	uint64 Bytes = 2;
+}
+
+message RlocStats {
+	string Rloc = 1;
+	PktStat Stats = 2;
+	uint64 SecondsSinceLastPacket = 3;
+}
+
+message EidStats {
+	uint64 IID = 1;
+	string EID = 2;
+	repeated RlocStats RlocStatsEntries = 3;
+}
+
+message ZMetricLisp {
+	// Encap Statistics
+	repeated EidStats EidStatsEntries = 1; // ITR Statistics
+	PktStat ItrPacketSendError = 2;
+	PktStat InvalidEidError = 3;
+
+	// Decap Statistics
+	PktStat NoDecryptKey = 4;
+	PktStat OuterHeaderError = 5;
+	PktStat BadInnerVersion = 6;
+	PktStat GoodPackets = 7;
+	PktStat ICVError = 8;
+	PktStat LispHeaderError = 9;
+	PktStat CheckSumError = 10;
+	PktStat DecapReInjectError = 11;
+	PktStat DecryptError = 12;
+}
+
+// Vpn Stats
+message ZMetricConn {
+	PktStat InPkts = 1;
+	PktStat OutPkts = 2;
+	PktStat ErrPkts = 3;
+	PktStat CarierErrPkts = 4;
+}
+
+message ZMetricVpn {
+	ZMetricConn ConnStat = 1;
+	ZMetricConn IkeStat = 2;
+	ZMetricConn NatTStat = 3;
+	ZMetricConn EspStat = 4;
+}
+
+// For other services with no specific metrics
+message ZMetricNone {
+}
+
+// flow stats
+message ZMetricFlowLink {
+  oneof Link {
+    string subNet = 1; // IpSec: Subnet
+    string eid = 2;    // LISP: EID
+  }
+  string spiId = 3;    // IpSec: SpiId
+}
+
+message ZMetricFlowEndPoint {
+  oneof Endpoint {
+    string ipAddr = 1; // IpSec: Endpoint Ip Address
+    string rloc = 2;   // LISP: RLOC
+  }
+  repeated ZMetricFlowLink link = 5;
+  PktStat stats = 10;  // traffic
+}
+
+message ZMetricFlow {
+  string id = 1;      // IpSec Conn-Id/Lisp
+  string name = 2;    // IpSec Tun-Name
+  uint32 type = 3;    // IpSec-Vpn or, LISP
+  uint64 iid  = 4;    // LISP: IID
+  uint64 estTime = 5; // in seconds
+  ZMetricFlowEndPoint lEndPoint = 10;
+  repeated ZMetricFlowEndPoint rEndPoint = 11;
+}
+
+message ZMetricLispGlobal {
+	// Encap/ITR Statistics
+	PktStat ItrPacketSendError = 2;
+	PktStat InvalidEidError = 3;
+
+	// Decap/ETR Statistics
+	PktStat NoDecryptKey = 4;
+	PktStat OuterHeaderError = 5;
+	PktStat BadInnerVersion = 6;
+	PktStat GoodPackets = 7;
+	PktStat ICVError = 8;
+	PktStat LispHeaderError = 9;
+	PktStat CheckSumError = 10;
+	PktStat DecapReInjectError = 11;
+	PktStat DecryptError = 12;
+}
+
+// XXX to be deprecated
+message ZMetricService {
+  string serviceID = 1;
+  string serviceName = 2;
+  uint32 serviceType = 3;
+  repeated networkMetric network = 4;
+  oneof ServiceContent {
+    ZMetricVpn  vpnm = 20;
+    ZMetricLisp lispm = 21;
+  }
+  repeated ZMetricFlow flowStats = 10;
+  ZMetricLispGlobal lispGlobalStats = 11;
+}
+
+message NetworkStats {
+	uint64 totalPackets = 1;
+	uint64 errors = 2;
+	uint64 drops = 3;
+	uint64 totalBytes = 4;
+}
+
+message ZMetricNetworkStats {
+	NetworkStats rx = 1;
+	NetworkStats tx = 2;
+}
+
+message ZMetricNetworkInstance {
+  string networkID = 2;		// UUID
+  string networkVersion = 3;
+
+  uint32 instType = 5;		// ZNetworkInstType
+  string displayname = 6;	// From NetworkInstance config
+  bool activated = 7;		// Forwarding enabled
+
+  repeated networkMetric network = 10;	// Aggregate counters for bridge
+  oneof InstanceContent {
+    ZMetricVpn  vpnm = 20;
+    ZMetricLisp lispm = 21;
+    ZMetricNone nonem = 22;
+  }
+  repeated ZMetricFlow flowStats = 30;
+  ZMetricLispGlobal lispGlobalStats = 31;
+
+  ZMetricNetworkStats networkStats = 40; // Network bridge interface statistics
+}
+
+message ZMetricMsg {
+  string devID = 1;
+  // ZmetricTypes ztype = 2;  // deprecated
+  google.protobuf.Timestamp atTimeStamp = 3;
+
+  oneof MetricContent {
+  	deviceMetric dm = 4;
+   }
+   repeated appMetric am = 5;
+   repeated ZMetricService sm = 6;	// XXX To be deprecated
+   repeated ZMetricNetworkInstance nm = 7;
+}
