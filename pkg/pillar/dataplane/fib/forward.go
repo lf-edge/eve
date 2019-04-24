@@ -9,6 +9,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -16,7 +17,7 @@ import (
 	"github.com/google/gopacket/layers"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/eve/pkg/pillar/dataplane/dptypes"
-	"math/rand"
+	"math/big"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -129,6 +130,15 @@ func encryptPayload(payload []byte,
 	return true, extraLen + padLen
 }
 
+func GenerateRandToken(seed int64) int64 {
+	nBig, err := rand.Int(rand.Reader, big.NewInt(seed))
+	if err != nil {
+		log.Fatalf("Random token generation for IV failed: %s", err)
+	}
+	n := nBig.Int64()
+	return n
+}
+
 func GenerateIVByteArray(ivHigh uint32, ivLow uint64, ivArray []byte) []byte {
 	// XXX Suggest if there is a better way of doing this.
 
@@ -148,9 +158,8 @@ func GetIVArray(itrLocalData *dptypes.ITRLocalData, ivArray []byte) []byte {
 	if itrLocalData.IvLow == 0 {
 		// Lower 64 bits value has rolled over
 		// allocate a new IV
-		rand.Seed(time.Now().UnixNano())
-		ivHigh = rand.Uint32()
-		ivLow = rand.Uint64()
+		ivLow := uint64(GenerateRandToken(0x7fffffffffffffff))
+		ivHigh := uint32(GenerateRandToken(0x7fffffff))
 
 		itrLocalData.IvHigh = ivHigh
 		itrLocalData.IvLow = ivLow
@@ -284,8 +293,8 @@ func craftAndSendIPv4LispPacket(
 	lispHdr := make([]byte, 8)
 	SetLispIID(lispHdr, iid)
 
-	nonce := rand.Intn(0xffffff)
-	SetLispNonce(lispHdr, uint32(nonce))
+	nonce := uint32(GenerateRandToken(0x7fffffff))
+	SetLispNonce(lispHdr, nonce)
 
 	// XXX Check if crypto is enabled for this EID and set
 	// the key id as required
@@ -454,8 +463,8 @@ func craftAndSendIPv6LispPacket(
 	lispHdr := make([]byte, 8)
 	SetLispIID(lispHdr, iid)
 
-	nonce := rand.Intn(0xffffff)
-	SetLispNonce(lispHdr, uint32(nonce))
+	nonce := uint32(GenerateRandToken(0x7fffffff))
+	SetLispNonce(lispHdr, nonce)
 
 	// XXX Check if crypto is enabled for this EID and set
 	// the key id as required
