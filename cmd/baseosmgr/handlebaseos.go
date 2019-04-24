@@ -168,6 +168,9 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 		log.Infof("doBaseOsStatusUpdate(%s) for %s found in other %s\n",
 			config.BaseOsVersion, uuidStr, otherPartName)
 		baseOsSetPartitionInfoInStatus(ctx, status, otherPartName)
+		if !config.Activate {
+			return true
+		}
 		// Might be corrupt? XXX should we verify sha? But modified!!
 		setProgressDone(status, types.DOWNLOADED)
 		status.Activated = false
