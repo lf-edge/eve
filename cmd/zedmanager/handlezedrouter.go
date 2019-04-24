@@ -72,6 +72,7 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 		for i, ols := range aiStatus.EIDList {
 			olc := &aiConfig.OverlayNetworkList[i]
 			ol := &nc.OverlayNetworkList[i]
+			ol.Name = olc.Name
 			ol.EID = ols.EID
 			ol.LispSignature = ols.LispSignature
 			ol.ACLs = olc.ACLs
