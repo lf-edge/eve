@@ -130,8 +130,8 @@ func encryptPayload(payload []byte,
 	return true, extraLen + padLen
 }
 
-func GenerateRandToken(seed int64) int64 {
-	nBig, err := rand.Int(rand.Reader, big.NewInt(seed))
+func GenerateRandToken(max int64) int64 {
+	nBig, err := rand.Int(rand.Reader, big.NewInt(max))
 	if err != nil {
 		log.Fatalf("Random token generation for IV failed: %s", err)
 	}
