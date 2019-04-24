@@ -280,7 +280,7 @@ func parseline(line string, table string, ipVer int) *AclCounters {
 		}
 		// Mark RateLimit flag
 		if items[i] == "-m" && items[i+1] == "limit" {
-			log.Infof("Marking RateLimit: true\n")
+			// log.Debugf("Marking RateLimit: true\n")
 			ac.Limit = true
 			i += 2
 			continue
