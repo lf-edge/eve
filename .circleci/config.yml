@@ -19,13 +19,11 @@ jobs:
       - run:
           name: Packages
           command: >
-            make ${DOCKERHUB_USERNAME:+EVE_REL=snapshot DEFAULT_PKG_TARGET=push}
-            pkgs
+            make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} pkgs
       - run:
           name: EVE
           command: >
-            make ${DOCKERHUB_USERNAME:+EVE_REL=snapshot DEFAULT_PKG_TARGET=push}
-            eve
+            make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} eve
   yetus:
     docker:
       - image: apache/yetus:master
