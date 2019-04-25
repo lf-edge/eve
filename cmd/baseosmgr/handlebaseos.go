@@ -163,7 +163,7 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 	// partition; other partition could have failed so safest to
 	// re-download and overwrite.
 	otherPartName := zboot.GetOtherPartition()
-	if status.PartitionLabel == "" &&
+	if (status.PartitionLabel == "" || status.PartitionLabel == otherPartName) &&
 		status.BaseOsVersion == zboot.GetShortVersion(otherPartName) {
 		log.Infof("doBaseOsStatusUpdate(%s) for %s found in other %s\n",
 			config.BaseOsVersion, uuidStr, otherPartName)
