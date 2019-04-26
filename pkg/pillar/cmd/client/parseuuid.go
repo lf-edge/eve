@@ -12,7 +12,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/api/zconfig"
+	"github.com/zededa/eve/pkg/pillar/api/zconfig"
 	"github.com/zededa/eve/pkg/pillar/hardware"
 )
 

@@ -1,0 +1,66 @@
+# Makefile
+#
+# Targets:
+# 	all: Builds the code
+# 	build: Builds the code
+# 	fmt: Formats the source files
+# 	clean: cleans the code
+#
+
+# Go parameters
+GOCMD=go
+GOBUILD=$(GOCMD) build
+GOCLEAN=$(GOCMD) clean
+GOTEST=$(GOCMD) test
+GOINSTALL=$(GOCMD) install
+GOGENERATE=$(GOCMD) generate
+GOGET=$(GOCMD) get
+GOFMT=gofmt -w
+
+# Assumes that GOPATH has a single component
+PROTOC=docker run --rm -v $(GOPATH0):$(GOPATH0) -v `pwd`/../../pkg/pillar/api/$(notdir $(CURDIR)):/goout/github.com/zededa/api/zconfig  -w$(CURDIR) zededa/protoc:latest
+
+# Package lists
+TOPLEVEL_PKG := .
+PKG := github.com/zededa/api/$(notdir $(CURDIR))
+
+PYTHONOUT=          ./pyproto
+GOOUT=  /goout
+
+SRCS=        *.proto
+
+#GENGO=          $(SRCS:.proto=.pb.go)
+
+GOSRCS=         $(SRCS:.proto=.pb.go)
+
+.PHONY:         all genproto
+
+all: build
+genproto:            $(GOSRCS)
+        @:
+
+init:	
+	$(GOGET) ./...
+
+generate:            $(GOSRCS)
+	$(GOGENERATE) -x $(PKG)
+
+%.pb.go::       %.proto
+	$(PROTOC) -I.:$(GOPATH) --go_out=$(GOOUT) $?
+	mkdir -p $(PYTHONOUT)
+	$(PROTOC) -I.:$(GOPATH) --python_out=$(PYTHONOUT) $?
+
+cleanproto:
+	rm -f ./*.pb.go
+
+build: genproto
+	echo $(GOBUILD) $(GOSRCS)
+clean: cleanproto
+	$(GOCLEAN)
+	rm -rf $(PYTHONOUT)
+test: 
+	$(GOTEST)
+fmt: 
+	$(GOFMT)
+install: build
+	$(GOINSTALL) $(PKG)
