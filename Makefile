@@ -198,6 +198,11 @@ eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).ra
 	cp pkg/eve/* Makefile images/rootfs.yml images/installer.yml $(DIST)
 	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --hash-path $(CURDIR) $(LINUXKIT_OPTS) $(DIST)
 
+proto-%: PROTO_OUT=$(subst /python/src,/eve,/$*/src)
+proto-%: $(GOBUILDER)
+	$(DOCKER_GO) "protoc -I/eve/api/zconfig --$*_out=$(PROTO_OUT) /eve/api/zconfig/*.proto" $(GOTREE) $(GOMODULE)
+	$(DOCKER_GO) "protoc -I/eve/api/zmet --$*_out=$(PROTO_OUT) /eve/api/zmet/*.proto" $(GOTREE) $(GOMODULE)
+
 release:
 	@function bail() { echo "ERROR: $$@" ; exit 1 ; } ;\
 	 X=`echo $(VERSION) | cut -s -d. -f1` ; Y=`echo $(VERSION) | cut -s -d. -f2` ; Z=`echo $(VERSION) | cut -s -d. -f3` ;\

@@ -1,0 +1,62 @@
+// Copyright(c) 2017-2018 Zededa, Inc.
+// All rights reserved.
+
+syntax = "proto3";
+
+option java_package = "com.zededa.cloud.uservice.proto";
+option go_package = "github.com/zededa/eve/pkg/pillar/api/zconfig";
+
+import "devcommon.proto";
+
+enum ZSrvType {
+  ZsrvFirst = 0;
+  ZsrvStrongSwan = 1;
+  ZsrvLISP = 2;
+  ZsrvBridge = 3;
+  ZsrvNAT = 4;
+  ZsrvLB = 5;
+  ZsrvLast = 255;
+}
+
+// Service Opaque config. In future we might add more fields here
+// but idea is here. This is service specific configuration.
+message ServiceOpaqueConfig {
+	string oconfig = 1;
+}
+
+// Service Lisp config
+message ServiceLispConfig {
+        repeated ZcServicePoint LispMSs = 1;
+        uint32 LispInstanceId = 2;
+
+        bool allocate = 3;
+        bool exportprivate = 4;
+        bytes allocationprefix = 5;
+        uint32 allocationprefixlen = 6;
+
+        bool Experimental = 20;	// true: lispers.net dataplane. Default: go dataplane
+}
+
+message ServiceInstanceConfig {
+	string id = 1;
+	string displayname = 2;
+
+	ZSrvType srvtype = 3;
+
+	// Optional in future we might need this
+	//	VmConfig fixedresources = 3;
+	//	repeated Drive drives = 4;
+	bool activate = 5;
+
+	// towards application which networkUUID to use
+	// FIXME: In future there might multiple application network assignment
+	// so this will become repeated.
+	string applink = 10;
+
+	// towards devices which phyiscal or logical adapter to use
+	Adapter devlink = 20;	// I/O adapters to assign to app
+
+	// Opaque configuration 
+	ServiceOpaqueConfig cfg = 30;
+	ServiceLispConfig   lispCfg = 31; 
+}
