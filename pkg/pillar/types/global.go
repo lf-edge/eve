@@ -290,7 +290,7 @@ func EnsureGCFile() {
 			log.Errorf("%s for %s", err, globalConfigFile)
 		} else {
 			gc := GlobalConfig{}
-			if err := json.Unmarshal(sb, gc); err != nil {
+			if err := json.Unmarshal(sb, &gc); err != nil {
 				log.Errorf("%s file: %s", err, globalConfigFile)
 			} else {
 				ok = true

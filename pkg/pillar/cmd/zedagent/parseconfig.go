@@ -1878,7 +1878,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			updateMetricsTimer(ctx.metricsTickerHandle)
 		}
 		if globalConfig.SshAuthorizedKeys != oldGlobalConfig.SshAuthorizedKeys {
-			log.Infof("parseConfigItems: %v change from %d to %v",
+			log.Infof("parseConfigItems: %v change from %v to %v",
 				"SshAuthorizedKeys",
 				oldGlobalConfig.SshAuthorizedKeys,
 				globalConfig.SshAuthorizedKeys)
