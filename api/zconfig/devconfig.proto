@@ -1,0 +1,147 @@
+// Copyright(c) 2017-2018 Zededa, Inc.
+// All rights reserved.
+
+syntax = "proto3";
+
+option go_package  = "github.com/zededa/eve/pkg/pillar/api/zconfig";
+option java_package = "com.zededa.cloud.uservice.proto";
+
+import "devcommon.proto";
+import "appconfig.proto";
+import "baseosconfig.proto";
+import "netconfig.proto";
+import "storage.proto";
+import "service.proto";
+import "netinst.proto";
+
+message MapServer {
+        string NameOrIp   = 1;
+        string Credential = 2;
+}
+
+message ZedServer {
+        string HostName   = 1;
+        repeated string EID = 2;
+}
+
+message DeviceLispDetails {
+        repeated MapServer LispMapServers = 1;
+        uint32 LispInstance = 2;
+        string EID = 4;
+        uint32 EIDHashLen = 5;
+        repeated ZedServer ZedServers = 6;
+        bytes EidAllocationPrefix = 8;
+        uint32 EidAllocationPrefixLen = 9;
+        string ClientAddr = 10;
+        bool Experimental = 20;	// true: lispers.net dataplane. Default: go dataplane
+}
+
+// Device Operational Commands Semantic
+// For rebooting device,  command=Reset, counter = counter+delta, desiredState = on
+// For poweroff device,  command=Reset, counter = counter+delta, desiredState = off
+// For backup at midnight, command=Backup, counter = counter+delta, desiredState=n/a, opsTime = mm/dd/yy:hh:ss
+// Current implementation does support only single command outstanding for each type
+// In future can be extended to have more scheduled events
+//
+message DeviceOpsCmd {
+	uint32 counter = 2;
+	bool desiredState = 3;
+	// FIXME: change to timestamp, once we move to gogo proto
+	string opsTime = 4;
+}
+
+enum sWAdapterType {
+	IGNORE = 0;
+	VLAN = 1;
+	BOND = 2;
+}
+
+message sWAdapterParams {
+	sWAdapterType aType = 1;
+
+	// vlan
+	string underlayInterface = 8;
+        uint32 vlanId = 9;
+
+	// OR : repeated physical interfaces for bond0
+	repeated string bondgroup = 10;
+}
+
+message SystemAdapter {
+	// name of the adapter; hardware-specific e.g., eth0
+	string name = 1;
+
+	sWAdapterParams allocDetails = 20;
+
+	// this is part of the freelink group
+	bool freeUplink = 2;
+
+	// this is part of the uplink group
+	bool uplink = 3;
+
+	// attach this network config for this adapter
+	string networkUUID = 4;
+
+	// if its static network we need ip address
+	string addr = 5;
+
+	// alias/logical name which will be reported to zedcloud
+	// and used for app instances
+	string logicalName = 6;
+}
+
+message EdgeDevConfig {
+	UUIDandVersion id = 1;
+	bytes devConfigSha256 = 2;
+	bytes devConfigSignature = 3;
+
+	repeated AppInstanceConfig apps   = 4;
+	repeated NetworkConfig networks = 5;
+	repeated DatastoreConfig datastores = 6;
+
+	DeviceLispDetails lispInfo = 7;
+	repeated BaseOSConfig base = 8;	// BaseOSImage config block
+	DeviceOpsCmd reboot = 9;
+	DeviceOpsCmd backup = 10;
+
+	repeated ConfigItem configItems = 11;
+	repeated SystemAdapter systemAdapterList = 12;
+
+	repeated ServiceInstanceConfig services = 13;
+	// Override dmidecode info if set
+	string manufacturer = 14;
+	string productName = 15;
+
+	repeated NetworkInstanceConfig networkInstances = 16;
+
+	// Information saved in /config to make it easier find a device in EV-C
+	string enterprise = 17;
+	string name = 18;
+}
+
+// Timers and other per-device policy which relates to the interaction
+// with zedcloud. Note that the timers are randomized on the device
+// to avoid synchronization with other devices. Random range is between
+// between .5 and 1.5 of these nominal values. If not set (i.e. zero),
+// it means the default value of 60 seconds.
+message ConfigItem {
+	string key = 1;		// E.g., "configinterval"
+	string value = 2;
+	// Below section will be deprecated
+	oneof configItemValue {
+		bool boolValue = 3;
+		uint32 uint32Value = 4;	// If timer this is in seconds
+		uint64 uint64Value = 5;
+		float floatValue = 6;
+		string stringValue = 7;
+	}
+}
+
+message ConfigRequest {
+	string configHash = 1;
+}
+
+message ConfigResponse {
+	EdgeDevConfig config = 1;
+	string configHash = 2;
+}
