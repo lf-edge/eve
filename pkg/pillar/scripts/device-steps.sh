@@ -413,11 +413,11 @@ space=$((size / 2048))
 mkdir -p /var/tmp/zededa/GlobalDownloadConfig/
 echo \{\"MaxSpace\":"$space"\} >/var/tmp/zededa/GlobalDownloadConfig/global.json
 
-# Now run watchdog for all agents
+# Restart watchdog ledmanager and nim
 if [ -f /var/run/watchdog.pid ]; then
     kill "$(cat /var/run/watchdog.pid)"
 fi
-/usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
+/usr/sbin/watchdog -c $TMPDIR/watchdognim.conf -F -s &
 
 for AGENT in $AGENTS1; do
     echo "$(date -Ins -u) Starting $AGENT"
@@ -429,6 +429,12 @@ if ! pgrep logmanager >/dev/null; then
     echo "$(date -Ins -u) Starting logmanager"
     $BINDIR/logmanager -c $CURPART &
 fi
+
+# Now run watchdog for all agents
+if [ -f /var/run/watchdog.pid ]; then
+    kill "$(cat /var/run/watchdog.pid)"
+fi
+/usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
 
 echo "$(date -Ins -u) Initial setup done"
 

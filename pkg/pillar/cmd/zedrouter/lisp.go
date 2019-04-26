@@ -456,6 +456,7 @@ func updateLisp(lispRunDirname string,
 		}
 		log.Debugf("Copied %d bytes from %s\n", cnt, filename)
 	}
+	tmpfile.Sync()
 	if err := tmpfile.Close(); err != nil {
 		log.Errorln("Close ", tmpfile.Name(), err)
 		return

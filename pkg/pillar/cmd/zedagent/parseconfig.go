@@ -27,6 +27,7 @@ import (
 	"github.com/zededa/eve/pkg/pillar/agentlog"
 	"github.com/zededa/eve/pkg/pillar/cast"
 	"github.com/zededa/eve/pkg/pillar/pubsub"
+	"github.com/zededa/eve/pkg/pillar/ssh"
 	"github.com/zededa/eve/pkg/pillar/types"
 	"github.com/zededa/eve/pkg/pillar/zboot"
 )
@@ -1738,11 +1739,20 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			newGlobalConfig.UsbAccess = newBool
 
 		case "debug.enable.ssh":
-			newBool, err := strconv.ParseBool(item.Value)
-			if err != nil {
-				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
-					item.Value, key, err)
-				continue
+			var newBool bool
+			// This can be either a boolean (old) or an ssh
+			// authorized_key which starts with "ssh"
+			if strings.HasPrefix(item.Value, "ssh") {
+				newGlobalConfig.SshAuthorizedKeys = item.Value
+				newBool = true
+			} else {
+				var err error
+				newBool, err = strconv.ParseBool(item.Value)
+				if err != nil {
+					log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
+						item.Value, key, err)
+					continue
+				}
 			}
 			newGlobalConfig.SshAccess = newBool
 
@@ -1866,6 +1876,13 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				oldGlobalConfig.MetricInterval,
 				globalConfig.MetricInterval)
 			updateMetricsTimer(ctx.metricsTickerHandle)
+		}
+		if globalConfig.SshAuthorizedKeys != oldGlobalConfig.SshAuthorizedKeys {
+			log.Infof("parseConfigItems: %v change from %d to %v",
+				"SshAuthorizedKeys",
+				oldGlobalConfig.SshAuthorizedKeys,
+				globalConfig.SshAuthorizedKeys)
+			ssh.UpdateSshAuthorizedKeys(globalConfig.SshAuthorizedKeys)
 		}
 		err := pubsub.PublishToDir("/persist/config/", "global",
 			&globalConfig)
