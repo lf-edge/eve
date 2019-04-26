@@ -3,7 +3,7 @@
 
 syntax = "proto3";
 
-option go_package  = "github.com/zededa/api/zconfig";
+option go_package  = "github.com/zededa/eve/pkg/pillar/api/zconfig";
 option java_package = "com.zededa.cloud.uservice.proto";
 
 import "devcommon.proto";
