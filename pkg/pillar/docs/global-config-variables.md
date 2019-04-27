@@ -11,7 +11,7 @@ or on a per asset basis using
 ```
 For example,
 ```
-zcli device update sc-supermicro-zc2 --config=debug.enable.ssh:true
+zcli device update myqemu --config="debug.enable.ssh:`cat .ssh/id_rsa.pub`"
 ```
 will allow ssh access to the device for debugging issues.
 
@@ -40,7 +40,7 @@ See [build-config-files.md](build-config-files.md) for how to include such a fil
 | timer.port.testbetterinterval | timer in seconds | 0 (disabled) | test a higher prio port config |
 | network.fallback.any.eth | "enabled" or "disabled" | enabled | if no connectivity try any Ethernet port |
 | debug.enable.usb | boolean | false | allow USB e.g. keyboards on device |
-| debug.enable.ssh | boolean | false | allow ssh to EVE |
+| debug.enable.ssh | boolean, or authorized ssh key | false | allow ssh to EVE |
 | debug.default.loglevel | string | info | min level saved in files on device |
 | debug.default.remote.loglevel	| string | warning | min level sent to controller |
 

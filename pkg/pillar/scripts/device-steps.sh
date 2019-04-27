@@ -190,7 +190,7 @@ if [ ! -d $PERSISTDIR/log ]; then
 fi
 
 echo "$(date -Ins -u) Set up log capture"
-DOM0LOGFILES="ntpd.err.log wlan.err.log wwan.err.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log zededa-tools.err.log"
+DOM0LOGFILES="ntpd.err.log wlan.err.log wwan.err.log ntpd.out.log wlan.out.log wwan.out.log pillar.out.log pillar.err.log"
 for f in $DOM0LOGFILES; do
     echo "$(date -Ins -u) Starting $f" >$PERSISTDIR/$CURPART/log/"$f"
     tail -c +0 -F /var/log/dom0/"$f" >>$PERSISTDIR/$CURPART/log/"$f" &
@@ -209,8 +209,8 @@ fi
 # Save any device-steps.log's to /persist/log/ so we can look for watchdog's
 # in there. Also save dmesg in case it tells something about reboots.
 tail -c +0 -F /var/log/device-steps.log >>$PERSISTDIR/log/device-steps.log &
-echo "$(date -Ins -u) Starting zededa-tools" >>$PERSISTDIR/log/zededa-tools.out.log
-tail -c +0 -F /var/log/dom0/zededa-tools.out.log >>$PERSISTDIR/log/zededa-tools.out.log &
+echo "$(date -Ins -u) Starting pillar" >>$PERSISTDIR/log/pillar.out.log
+tail -c +0 -F /var/log/dom0/pillar.out.log >>$PERSISTDIR/log/pillar.out.log &
 echo "$(date -Ins -u) Starting dmesg" >>$PERSISTDIR/log/dmesg.log
 dmesg -T -w -l 1,2,3 --time-format iso >>$PERSISTDIR/log/dmesg.log &
 
@@ -413,11 +413,11 @@ space=$((size / 2048))
 mkdir -p /var/tmp/zededa/GlobalDownloadConfig/
 echo \{\"MaxSpace\":"$space"\} >/var/tmp/zededa/GlobalDownloadConfig/global.json
 
-# Now run watchdog for all agents
+# Restart watchdog ledmanager and nim
 if [ -f /var/run/watchdog.pid ]; then
     kill "$(cat /var/run/watchdog.pid)"
 fi
-/usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
+/usr/sbin/watchdog -c $TMPDIR/watchdognim.conf -F -s &
 
 for AGENT in $AGENTS1; do
     echo "$(date -Ins -u) Starting $AGENT"
@@ -429,6 +429,12 @@ if ! pgrep logmanager >/dev/null; then
     echo "$(date -Ins -u) Starting logmanager"
     $BINDIR/logmanager -c $CURPART &
 fi
+
+# Now run watchdog for all agents
+if [ -f /var/run/watchdog.pid ]; then
+    kill "$(cat /var/run/watchdog.pid)"
+fi
+/usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
 
 echo "$(date -Ins -u) Initial setup done"
 

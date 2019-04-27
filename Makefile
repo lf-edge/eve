@@ -1,4 +1,15 @@
+# Copyright (c) 2018 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Run make (with no arguments) to see help on what targets are available
+
+GOVER ?= 1.9.1
+GOMODULE=github.com/zededa/eve/pkg/pillar
+GOTREE=$(CURDIR)/pkg/pillar
+
 PATH := $(CURDIR)/build-tools/bin:$(PATH)
+
+export CGO_ENABLED GOOS GOARCH PATH
 
 # How large to we want the disk to be in Mb
 MEDIA_SIZE=8192
@@ -8,6 +19,13 @@ ROOTFS_FORMAT=squash
 SSH_PORT := 2222
 
 CONF_DIR=conf
+
+USER         = $(shell id -u -n)
+GROUP        = $(shell id -g -n)
+UID          = $(shell id -u)
+GID          = $(shell id -g)
+
+EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty)
 
 HOSTARCH:=$(shell uname -m)
 # by default, take the host architecture as the target architecture, but can override with `make ZARCH=foo`
@@ -26,12 +44,13 @@ endif
 ifeq ($(ZARCH),x86_64)
         ZARCH=amd64
 endif
+
 QEMU_SYSTEM_arm64:=qemu-system-aarch64
 QEMU_SYSTEM_amd64:=qemu-system-x86_64
 QEMU_SYSTEM=$(QEMU_SYSTEM_$(ZARCH))
 
 # where we store outputs
-DIST=dist/$(ZARCH)
+DIST=$(CURDIR)/dist/$(ZARCH)
 
 DOCKER_ARCH_TAG=$(ZARCH)
 
@@ -54,29 +73,56 @@ QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m 4096 -smp 4 -display none -s
         -nic user,id=eth1,net=192.168.2.0/24,dhcpstart=192.168.2.10
 QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH))
 
+GOOS=linux
+CGO_ENABLED=1
+GOBUILDER=eve-build-$(USER)
+
 DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; docker export $$C | tar -xf - $$2 ; docker rm $$C ; } ; _
+DOCKER_GO = _() { mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ;\
+    docker run -it --rm -u $(USER) -w /go/src/$${3:-dummy} \
+    -v $(CURDIR)/.go:/go -v $$2:/go/src/$${3:-dummy} -v $${4:-$(CURDIR)/.go/bin}:/go/bin -v $(CURDIR)/:/eve -v $${HOME}:/home/$(USER) \
+    -e GOOS -e GOARCH -e CGO_ENABLED -e BUILD=local $(GOBUILDER) bash --noprofile --norc -c "$$1" ; } ; _
 
-PARSE_PKGS:=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/parse-pkgs.sh
-LK_HASH_REL=LINUXKIT_HASH="$(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL)"
+PARSE_PKGS=$(if $(strip $(EVE_HASH)),EVE_HASH=)$(EVE_HASH) DOCKER_ARCH_TAG=$(DOCKER_ARCH_TAG) ./tools/parse-pkgs.sh
+LINUXKIT=$(CURDIR)/build-tools/bin/linuxkit
+LINUXKIT_OPTS=--disable-content-trust $(if $(strip $(EVE_HASH)),--hash) $(EVE_HASH) $(if $(strip $(EVE_REL)),--release) $(EVE_REL) $(FORCE_BUILD)
+LINUXKIT_PKG_TARGET=build
+RESCAN_DEPS=FORCE
+FORCE_BUILD=--force
 
-DEFAULT_PKG_TARGET=build
+ifeq ($(LINUXKIT_PKG_TARGET),push)
+  EVE_REL:=$(shell git describe --always | grep -E '[0-9]*\.[0-9]*\.[0-9]*' || echo snapshot)
+  ifneq ($(EVE_REL),snapshot)
+    EVE_HASH:=$(EVE_REL)
+    EVE_REL:=$(shell [ "`git tag | grep -E '[0-9]*\.[0-9]*\.[0-9]*' | sort -t. -n -k1,1 -k2,2 -k3,3 | tail -1`" = $(EVE_HASH) ] && echo latest)
+  endif
+endif
+
+# We are currently filtering out a few packages from bulk builds
+# since they are not getting published in Docker HUB
+PKGS=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|u-boot")
+
+
+# Top-level targets
 
 .PHONY: run pkgs help build-tools live rootfs config installer live
 
 all: help
 
-build-tools:
-	${MAKE} -C build-tools all
+build-tools: $(LINUXKIT)
+	@echo Done building $<
 
-pkgs: build-tools
-	make -C pkg $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
+pkgs: RESCAN_DEPS=
+pkgs: FORCE_BUILD=
+pkgs: build-tools $(PKGS)
+	@echo Done building packages
 
-$(EFI_PART): | $(DIST)/bios
-	cd $| ; $(DOCKER_UNPACK) $(shell make -s -C pkg PKGS=grub show-tag)-$(DOCKER_ARCH_TAG) EFI
+$(EFI_PART): $(LINUXKIT) | $(DIST)/bios
+	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/grub)-$(DOCKER_ARCH_TAG) EFI
 	(echo "set root=(hd0)" ; echo "chainloader /EFI/BOOT/BOOTX64.EFI" ; echo boot) > $@/BOOT/grub.cfg
 
-$(BIOS_IMG): | $(DIST)/bios
-	cd $| ; $(DOCKER_UNPACK) $(shell make -s -C pkg PKGS=uefi show-tag)-$(DOCKER_ARCH_TAG) OVMF.fd
+$(BIOS_IMG): $(LINUXKIT) | $(DIST)/bios
+	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/uefi)-$(DOCKER_ARCH_TAG) OVMF.fd
 
 # run-installer
 #
@@ -117,9 +163,6 @@ live: $(LIVE_IMG).img
 installer: $(INSTALLER_IMG).raw
 installer-iso: $(INSTALLER_IMG).iso
 
-images/%.yml: build-tools tools/parse-pkgs.sh images/%.yml.in FORCE
-	$(PARSE_PKGS) $@.in > $@
-
 $(CONFIG_IMG): conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/authorized_keys conf/ | $(DIST)
 	./tools/makeconfig.sh $(CONF_DIR) $@
 
@@ -151,13 +194,14 @@ $(INSTALLER_IMG).raw: $(ROOTFS_IMG)_installer.img $(CONFIG_IMG) | $(DIST)
 $(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
 	./tools/makeiso.sh $< $@
 
-eve: EVE_HASH=$(shell echo EVE_TAG | PATH="$(PATH)" $(PARSE_PKGS) | sed -e 's#^.*:##' -e 's#-.*$$##')
 eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(LIVE_IMG).img images/rootfs.yml images/installer.yml
 	cp pkg/eve/* Makefile images/rootfs.yml images/installer.yml $(DIST)
-	export $(LK_HASH_REL) ; linuxkit pkg $(DEFAULT_PKG_TARGET) --disable-content-trust $${LINUXKIT_HASH} $(DIST)
+	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --hash-path $(CURDIR) $(LINUXKIT_OPTS) $(DIST)
 
-pkg/%: build-tools FORCE
-	make -C pkg PKGS=$(notdir $@) LINUXKIT_OPTS="--disable-content-trust --disable-cache --force" $(LK_HASH_REL) $(DEFAULT_PKG_TARGET)
+proto-%: PROTO_OUT=$(subst /python/src,/eve,/$*/src)
+proto-%: $(GOBUILDER)
+	$(DOCKER_GO) "protoc -I/eve/api/zconfig --$*_out=$(PROTO_OUT) /eve/api/zconfig/*.proto" $(GOTREE) $(GOMODULE)
+	$(DOCKER_GO) "protoc -I/eve/api/zmet --$*_out=$(PROTO_OUT) /eve/api/zmet/*.proto" $(GOTREE) $(GOMODULE)
 
 release:
 	@function bail() { echo "ERROR: $$@" ; exit 1 ; } ;\
@@ -170,10 +214,50 @@ release:
 	    git checkout master -b $$X.$$Y && echo zedcloud.zededa.net > conf/server &&\
 	    git commit -m"Setting default server to prod" conf/server ;\
 	 fi || bail "Can't create $$X.$$Y branch" ;\
-	 git commit -m"Pinning down versions in tools/parse-pkgs.sh" tools/parse-pkgs.sh 2>/dev/null ;\
 	 git tag -a -m"Release $$X.$$Y.$$Z" $$X.$$Y.$$Z &&\
 	 echo "Done tagging $$X.$$Y.$$Z release. Check the branch with git log and then run" &&\
 	 echo "  git push origin $$X.$$Y $$X.$$Y.$$Z"
+
+shell: $(GOBUILDER)
+	@$(DOCKER_GO) bash $(GOTREE) $(GOMODULE)
+
+#
+# Utility targets in support of our Dockerized build infrastrucutre
+#
+$(LINUXKIT): CGO_ENABLED=0
+$(LINUXKIT): GOOS=$(shell uname -s | tr '[A-Z]' '[a-z]')
+$(LINUXKIT): $(CURDIR)/build-tools/src/linuxkit/Gopkg.lock $(CURDIR)/build-tools/bin/manifest-tool
+	@$(DOCKER_GO) "go build -ldflags '-X version.GitCommit=$(EVE_TREE_TAG)' -o /go/bin/linuxkit \
+                          vendor/github.com/linuxkit/linuxkit/src/cmd/linuxkit" $(dir $<) / $(dir $@)
+$(CURDIR)/build-tools/bin/manifest-tool: $(CURDIR)/build-tools/src/manifest-tool/Gopkg.lock
+	@$(DOCKER_GO) "go build -ldflags '-X main.gitCommit=$(EVE_TREE_TAG)' -o /go/bin/manifest-tool \
+                          vendor/github.com/estesp/manifest-tool" $(dir $<) / $(dir $@)
+$(GOBUILDER):
+ifneq ($(BUILD),local)
+	@echo "Creating go builder image for user $(USER)"
+	@docker build --build-arg GOVER=$(GOVER) --build-arg USER=$(USER) --build-arg GROUP=$(GROUP) \
+                      --build-arg UID=$(UID) --build-arg GID=$(GID) -t $@ build-tools/src/scripts >/dev/null
+	@echo "$@ docker container is ready to use"
+endif
+
+#
+# Common, generalized rules
+#
+%.yml: %.yml.in build-tools $(RESCAN_DEPS)
+	@$(PARSE_PKGS) $< > $@
+
+%/Dockerfile: %/Dockerfile.in build-tools $(RESCAN_DEPS)
+	@$(PARSE_PKGS) $< > $@
+
+pkg/%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
+	@$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $@
+
+%-show-tag:
+	@$(LINUXKIT) pkg show-tag pkg/$*
+
+%Gopkg.lock: %Gopkg.toml | $(GOBUILDER)
+	@$(DOCKER_GO) "dep ensure -update $(GODEP_NAME)" $(dir $@)
+	@echo Done updating $@
 
 .PHONY: FORCE
 FORCE:
@@ -191,8 +275,9 @@ help:
 	@echo "to the make's command line. You can also run in a cross- way since"
 	@echo "all the execution is done via qemu."
 	@echo
-	@echo "Commonly used maitenance targets:"
+	@echo "Commonly used maitenance and development targets:"
 	@echo "   release        prepare branch for a release (VERSION=x.y.z required)"
+	@echo "   shell          drop into docker container setup for Go development"
 	@echo
 	@echo "Commonly used build targets:"
 	@echo "   build-tools    builds linuxkit and manifest-tool utilities under build-tools/bin"

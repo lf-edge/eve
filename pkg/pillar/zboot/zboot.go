@@ -404,7 +404,9 @@ func MarkCurrentPartitionStateActive() error {
 const (
 	shortVersionFile = "/opt/zededa/bin/versioninfo"
 	longVersionFile  = "XXX"
-	otherPrefix      = "/containers/services/zededa-tools/lower"
+	otherPrefix      = "/containers/services/pillar/lower"
+	// XXX handle baseimage-update by looking for old names
+	otherPrefixOld = "/containers/services/zededa-tools/lower"
 )
 
 func GetShortVersion(partName string) string {
@@ -455,7 +457,13 @@ func getVersion(part string, verFilename string) string {
 			target, otherPrefix, verFilename)
 		version, err := ioutil.ReadFile(filename)
 		if err != nil {
-			log.Fatal(err)
+			log.Warn(err)
+			filename := fmt.Sprintf("%s/%s/%s",
+				target, otherPrefixOld, verFilename)
+			version, err = ioutil.ReadFile(filename)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 		versionStr := string(version)
 		versionStr = strings.TrimSpace(versionStr)

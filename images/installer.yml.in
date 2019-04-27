@@ -2,13 +2,13 @@ kernel:
   image: KERNEL_TAG
   cmdline: "rootdelay=3"
 init:
+  - linuxkit/init:v0.5
+  - linuxkit/runc:v0.5
+  - linuxkit/getty:v0.5
   - GRUB_TAG
   - DTREES_TAG
   - XEN_TAG
   - DOM0ZTOOLS_TAG
-  - linuxkit/init:v0.5
-  - linuxkit/runc:v0.5
-  - linuxkit/getty:v0.5
 onboot:
   - name: rngd
     image: RNGD_TAG

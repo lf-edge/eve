@@ -19,8 +19,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/api/zconfig"
 	"github.com/zededa/eve/pkg/pillar/agentlog"
+	"github.com/zededa/eve/pkg/pillar/api/zconfig"
 	"github.com/zededa/eve/pkg/pillar/cast"
 	"github.com/zededa/eve/pkg/pillar/diskmetrics"
 	"github.com/zededa/eve/pkg/pillar/flextimer"

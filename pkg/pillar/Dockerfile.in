@@ -41,7 +41,6 @@ RUN [ `uname -m` = "aarch64" ] && apk add --no-cache libfdt || :
 # We have to make sure configs survive in some location, but they don't pollute
 # the default /config (since that is expected to be an empty mount point)
 ADD conf/root-certificate.pem conf/server conf/server.production /opt/zededa/examples/config/
-ADD examples /opt/zededa/examples
 ADD scripts/device-steps.sh \
     scripts/generate-device.sh \
     scripts/generate-self-signed.sh \
