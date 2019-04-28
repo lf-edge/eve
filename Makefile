@@ -4,8 +4,12 @@
 # Run make (with no arguments) to see help on what targets are available
 
 GOVER ?= 1.9.1
-GOMODULE=github.com/zededa/eve/pkg/pillar
+PKGBASE=github.com/zededa/eve
+GOMODULE=$(PKGBASE)/pkg/pillar
 GOTREE=$(CURDIR)/pkg/pillar
+PROTO_LANGS?=go python
+
+APIDIRS = $(shell find ./api/* -maxdepth 1 -type d -exec basename {} \;)
 
 PATH := $(CURDIR)/build-tools/bin:$(PATH)
 
@@ -198,10 +202,15 @@ eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).ra
 	cp pkg/eve/* Makefile images/rootfs.yml images/installer.yml $(DIST)
 	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --hash-path $(CURDIR) $(LINUXKIT_OPTS) $(DIST)
 
-proto-%: PROTO_OUT=$(subst /python/src,/eve,/$*/src)
+sdk: $(addprefix proto-,$(PROTO_LANGS))
+	mkdir -p $(GOTREE)/vendor/$(PKGBASE)
+	cp -r sdk $(GOTREE)/vendor/$(PKGBASE)
+
 proto-%: $(GOBUILDER)
-	$(DOCKER_GO) "protoc -I/eve/api/zconfig --$*_out=$(PROTO_OUT) /eve/api/zconfig/*.proto" $(GOTREE) $(GOMODULE)
-	$(DOCKER_GO) "protoc -I/eve/api/zmet --$*_out=$(PROTO_OUT) /eve/api/zmet/*.proto" $(GOTREE) $(GOMODULE)
+	for sub in $(APIDIRS); do \
+		mkdir -p sdk/$*/$$sub; \
+		$(DOCKER_GO) "protoc -I/eve/api/$$sub --$*_out=paths=source_relative:/go/src/$(PKGBASE)/sdk/$*/$$sub /eve/api/$$sub/*.proto" $(CURDIR)/sdk/$*/ $(PKGBASE)/sdk/$*; \
+	done
 
 release:
 	@function bail() { echo "ERROR: $$@" ; exit 1 ; } ;\

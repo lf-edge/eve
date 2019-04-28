@@ -10,10 +10,10 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/api/zmet"
 	"github.com/zededa/eve/pkg/pillar/cast"
 	"github.com/zededa/eve/pkg/pillar/types"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
+	"github.com/zededa/eve/sdk/go/zmet"
 	"strings"
 )
 

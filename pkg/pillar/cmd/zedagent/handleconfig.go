@@ -18,11 +18,11 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/eve/pkg/pillar/agentlog"
-	"github.com/zededa/eve/pkg/pillar/api/zconfig"
 	"github.com/zededa/eve/pkg/pillar/flextimer"
 	"github.com/zededa/eve/pkg/pillar/pubsub"
 	"github.com/zededa/eve/pkg/pillar/types"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
+	"github.com/zededa/eve/sdk/go/zconfig"
 )
 
 var configApi string = "api/v1/edgedevice/config"

@@ -27,8 +27,8 @@ EVE uses several build tools, some of which are prerequisites, while others are 
 
 You must have the following installed in order to build EVE:
 
-* [Go](https://golang.org) Eventually, this requirement will be replaced by running in docker.
 * [docker](https://www.docker.com/get-started) 
+* [Go](https://golang.org) (optional) Required only if you want to build packages locally. By default, all builds happen in a docker environment.
 * [qemu](https://www.qemu.org) (optional) Required only if you wish to run the generated image. On macOS, easiest to install via [homebrew](https://brew.sh) via `brew install qemu`.
 * [git](https://git-scm.com) which you must have to clone this repository.
 
@@ -36,7 +36,6 @@ You must have the following installed in order to build EVE:
 
 * [manifest-tool](https://github.com/estesp/manifest-tool) - CLI used to create multi-architecture manifests of docker images.
 * [linuxkit](https://github.com/linuxkit/linuxkit) - CLI used to build actual EVE bootable images.
-* [dep](https://github.com/golang/dep) - CLI used to install dependencies for other "Installed as Needed" requirements
 
 Each "Installed as Needed" build tool will place its final executable in `build-tools/bin/`, e.g. `build-tools/bin/linuxkit` or `build-tools/bin/manifest-tool`. Each tool, in turn, has a directory in `build-tools/src/`, e.g. `build-tools/src/linuxkit/`. The `src/` directory does _not_ contain all of the code for the tool. Instead, it has the following:
 
@@ -349,7 +348,16 @@ The package `zededa/zedctr` is a "catch-all" package, composed of many different
 
 #### ztools
 
-The package `ztools` contains the `go-provision` services that are responsible for managing the various components and deployments of a running EVE system. Its source is [go-provision](https://github.com/zededa/go-provision). 
+The package `ztools` contains the `pillar` services that are responsible for managing the various components and deployments of a running EVE system. Its source is [pkg/pillar](../pkg/pillar).
+
+`pillar` itself depends upon the `sdk`, i.e. the golang-compiled protobufs defined in [api](../api/). These can be compiled for a specific language using the makefile target `make proto-<language>`, e.g. `make proto-go` or `make proto-python`. To build them all, run:
+
+ ```
+$ make sdk
+```
+
+`pillar` depends upon the latest versions of these being available at its compile time in its vendor directory at [pkg/pillar/vendor](../pkg/pillar/vendor). The target `make sdk`, in addition to compiling the language-specific files into [sdk/](../sdk), also will vendor them into [pkg/pillar/vendor](../pkg/pillar/vendor).
+
 
 ### Building packages
 

@@ -25,7 +25,6 @@ import (
 	psutilnet "github.com/shirou/gopsutil/net"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/eve/pkg/pillar/agentlog"
-	"github.com/zededa/eve/pkg/pillar/api/zmet"
 	"github.com/zededa/eve/pkg/pillar/cast"
 	"github.com/zededa/eve/pkg/pillar/diskmetrics"
 	"github.com/zededa/eve/pkg/pillar/flextimer"
@@ -33,6 +32,7 @@ import (
 	"github.com/zededa/eve/pkg/pillar/netclone"
 	"github.com/zededa/eve/pkg/pillar/types"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
+	"github.com/zededa/eve/sdk/go/zmet"
 )
 
 // Also report usage for these paths

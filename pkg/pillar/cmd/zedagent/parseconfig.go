@@ -24,12 +24,12 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/eve/pkg/pillar/agentlog"
-	"github.com/zededa/eve/pkg/pillar/api/zconfig"
 	"github.com/zededa/eve/pkg/pillar/cast"
 	"github.com/zededa/eve/pkg/pillar/pubsub"
 	"github.com/zededa/eve/pkg/pillar/ssh"
 	"github.com/zededa/eve/pkg/pillar/types"
 	"github.com/zededa/eve/pkg/pillar/zboot"
+	"github.com/zededa/eve/sdk/go/zconfig"
 )
 
 const (
