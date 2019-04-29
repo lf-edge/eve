@@ -45,33 +45,32 @@ func UpdateSshAuthorizedKeys(authorizedKeys string) {
 
 	fileDesc, err := os.Open(baseAuthorizedKeysFile)
 	if err != nil {
-		log.Errorln("Open ", err)
-		return
-	}
+		log.Warnln("Open ", err)
+	} else {
+		reader := bufio.NewReader(fileDesc)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				log.Debugln(err)
+				if err != io.EOF {
+					log.Errorln("ReadString ", err)
+					return
+				}
+				break
+			}
+			// remove trailing "/n" from line
+			line = line[0 : len(line)-1]
 
-	reader := bufio.NewReader(fileDesc)
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			log.Debugln(err)
-			if err != io.EOF {
-				log.Errorln("ReadString ", err)
+			// Is it a comment or a key?
+			if strings.HasPrefix(line, "#") {
+				continue
+			}
+			_, err = tmpfile.WriteString(fmt.Sprintf("%s %s\n",
+				sshCommand, line))
+			if err != nil {
+				log.Error(err)
 				return
 			}
-			break
-		}
-		// remove trailing "/n" from line
-		line = line[0 : len(line)-1]
-
-		// Is it a comment or a key?
-		if strings.HasPrefix(line, "#") {
-			continue
-		}
-		_, err = tmpfile.WriteString(fmt.Sprintf("%s %s\n",
-			sshCommand, line))
-		if err != nil {
-			log.Error(err)
-			return
 		}
 	}
 	if authorizedKeys != "" {
