@@ -33,7 +33,7 @@ const (
 
 func UpdateSshAuthorizedKeys(authorizedKeys string) {
 
-	log.Infof("updateSshAuthorizedKeys: %s", authorizedKeys)
+	log.Infof("UpdateSshAuthorizedKeys: %s", authorizedKeys)
 	tmpfile, err := ioutil.TempFile(runDir, "ak")
 	if err != nil {
 		log.Errorln("TempFile ", err)
@@ -93,5 +93,5 @@ func UpdateSshAuthorizedKeys(authorizedKeys string) {
 		log.Errorln("Rename ", tmpfile.Name(), targetAuthorizedKeysFile, err)
 		return
 	}
-	log.Infof("updateSshAuthorizedKey done")
+	log.Infof("UpdateSshAuthorizedKey done")
 }
