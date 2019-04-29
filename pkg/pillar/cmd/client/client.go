@@ -354,6 +354,7 @@ func Run() {
 		productSerial := hardware.GetProductSerial()
 		productSerial = strings.TrimSpace(productSerial)
 		log.Infof("ProductSerial %s\n", productSerial)
+		zedcloudCtx.SerialNumStr = productSerial
 
 		tlsConfig, err := zedcloud.GetTlsConfig(serverName, &onboardCert)
 		if err != nil {
