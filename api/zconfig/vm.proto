@@ -1,0 +1,39 @@
+// Copyright(c) 2017-2018 Zededa, Inc.
+// All rights reserved.
+
+
+syntax = "proto3";
+
+option java_package = "com.zededa.cloud.uservice.proto";
+option go_package = "github.com/zededa/eve/pkg/pillar/api/zconfig";
+
+// For now we need to tell the device which virtualization mode
+// to use. Later we might use a single one for all VMs (on any particular
+// ISA). If we end up keeping this we should make the names be less
+// tied to a particular hypervisor.
+enum VmMode {
+  PV = 0;
+  HVM = 1;
+  // PVH = 2;
+}
+
+message VmConfig {
+	string kernel = 1;
+	string ramdisk = 2;
+	uint32 memory = 3;
+	uint32 maxmem = 4;
+	uint32 vcpus = 5;
+	uint32 maxcpus = 6;
+	string rootdev = 7;
+	string extraargs = 8;
+	string bootloader = 9;
+	string cpus = 10;
+	string devicetree = 11;
+	repeated string dtdev = 12;
+	repeated uint32 irqs = 13;
+	repeated string iomem = 14;
+	VmMode virtualizationMode = 15;
+	bool enableVnc = 16;
+	uint32 vncDisplay = 17;
+	string vncPasswd = 18;
+}
