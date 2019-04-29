@@ -738,6 +738,8 @@ func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
 	if (len(newIpsets) != len(oldIpsets)) || (len(staleIpsets) != 0) {
 		restartDnsmasq = true
 	}
+	log.Infof("diffIpsets: restart %v, new %v, stale %v",
+		restartDnsmasq, newIpsets, staleIpsets)
 	return newIpsets, staleIpsets, restartDnsmasq
 }
 

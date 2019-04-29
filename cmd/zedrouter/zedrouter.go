@@ -1378,6 +1378,8 @@ func appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
 	networkInstanceInfo.AddVif(vifName, appMac,
 		config.UUIDandVersion.UUID)
 	networkInstanceInfo.BridgeIPSets = newIpsets
+	log.Infof("set BridgeIPSets to %v for %s", newIpsets,
+		networkInstanceInfo.BridgeName)
 	publishNetworkInstanceStatus(ctx, netInstStatus)
 
 	maybeRemoveStaleIpsets(staleIpsets)
@@ -1502,6 +1504,8 @@ func appNetworkDoActivateUnderlayNetworkWithNetworkObject(
 	networkInstanceInfo.AddVif(vifName, appMac,
 		config.UUIDandVersion.UUID)
 	networkInstanceInfo.BridgeIPSets = newIpsets
+	log.Infof("set BridgeIPSets to %v for %s", newIpsets,
+		networkInstanceInfo.BridgeName)
 	publishNetworkObjectStatus(ctx, netstatus)
 
 	maybeRemoveStaleIpsets(staleIpsets)
@@ -1688,6 +1692,7 @@ func appNetworkDoActivateOverlayNetworkWithNetworkInstance(
 	netInstStatus.AddVif(vifName, appMac,
 		config.UUIDandVersion.UUID)
 	netInstStatus.BridgeIPSets = newIpsets
+	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netInstStatus.Key())
 	publishNetworkInstanceStatus(ctx, netInstStatus)
 
 	maybeRemoveStaleIpsets(staleIpsets)
@@ -1852,6 +1857,7 @@ func appNetworkDoActivateOverlayNetworkWithNetworkObject(
 	netstatus.AddVif(vifName, appMac,
 		config.UUIDandVersion.UUID)
 	netstatus.BridgeIPSets = newIpsets
+	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
 	publishNetworkObjectStatus(ctx, netstatus)
 
 	maybeRemoveStaleIpsets(staleIpsets)
@@ -2606,6 +2612,7 @@ func doAppNetworkModifyUnderlayNetworkWithNetworkInstance(
 	}
 	netstatus.RemoveVif(ulStatus.Vif)
 	netstatus.BridgeIPSets = newIpsets
+	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
 	publishNetworkInstanceStatus(ctx, netstatus)
 
 	maybeRemoveStaleIpsets(staleIpsets)
@@ -2649,6 +2656,7 @@ func doAppNetworkModifyUnderlayNetworkWithNetworkObject(
 	}
 	netstatus.RemoveVif(ulStatus.Vif)
 	netstatus.BridgeIPSets = newIpsets
+	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
 	publishNetworkObjectStatus(ctx, netstatus)
 
 	maybeRemoveStaleIpsets(staleIpsets)
@@ -2730,6 +2738,7 @@ func doAppNetworkModifyOverlayNetworkWithNetworkInstance(
 	}
 	netstatus.NetworkInstanceInfo.RemoveVif(olStatus.Vif)
 	netstatus.BridgeIPSets = newIpsets
+	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
 	publishNetworkInstanceStatus(ctx, netstatus)
 
 	maybeRemoveStaleIpsets(staleIpsets)
@@ -2803,6 +2812,7 @@ func doAppNetworkModifyOverlayNetworkWithNetworkObject(
 	}
 	netstatus.NetworkInstanceInfo.RemoveVif(olStatus.Vif)
 	netstatus.BridgeIPSets = newIpsets
+	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
 	publishNetworkObjectStatus(ctx, netstatus)
 
 	maybeRemoveStaleIpsets(staleIpsets)
@@ -3022,6 +3032,7 @@ func appNetworkDoInactivateUnderlayNetworkWithNetworkInstance(
 		startDnsmasq(bridgeName)
 	}
 	netstatus.BridgeIPSets = newIpsets
+	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
 	maybeRemoveStaleIpsets(staleIpsets)
 }
 
@@ -3103,6 +3114,7 @@ func appNetworkDoInactivateUnderlayNetworkWithNetworkObject(
 		startDnsmasq(bridgeName)
 	}
 	netstatus.BridgeIPSets = newIpsets
+	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
 	maybeRemoveStaleIpsets(staleIpsets)
 }
 
@@ -3197,6 +3209,7 @@ func appNetworkDoInactivateOverlayNetworkWithNetworkInstance(
 		startDnsmasq(bridgeName)
 	}
 	netstatus.BridgeIPSets = newIpsets
+	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
 	maybeRemoveStaleIpsets(staleIpsets)
 
 	// Delete route towards app instance
@@ -3316,6 +3329,7 @@ func appNetworkDoInactivateOverlayNetworkWithNetworkObject(
 		startDnsmasq(bridgeName)
 	}
 	netstatus.BridgeIPSets = newIpsets
+	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
 	maybeRemoveStaleIpsets(staleIpsets)
 
 	// If service does not exist overlays would not have been created
