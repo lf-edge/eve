@@ -41,12 +41,20 @@ func compileOverlayIpsets(ctx *zedrouterContext,
 
 	ipsets := []string{}
 	for _, olConfig := range ollist {
-		netconfig := lookupNetworkObjectConfig(ctx,
+		if !olConfig.UsesNetworkInstance {
+			log.Warnf("ACLs no longer support NetworkObject: %s",
+				olConfig.Network.String())
+			continue
+		}
+		netconfig := lookupNetworkInstanceConfig(ctx,
 			olConfig.Network.String())
 		if netconfig != nil {
 			// All ipsets from everybody on this network
 			ipsets = append(ipsets, compileNetworkIpsetsConfig(ctx,
 				netconfig)...)
+		} else {
+			log.Errorf("No NetworkInstanceConfig for %s",
+				olConfig.Network.String())
 		}
 	}
 	return ipsets
@@ -57,12 +65,20 @@ func compileUnderlayIpsets(ctx *zedrouterContext,
 
 	ipsets := []string{}
 	for _, ulConfig := range ullist {
-		netconfig := lookupNetworkObjectConfig(ctx,
+		if !ulConfig.UsesNetworkInstance {
+			log.Warnf("ACLs no longer support NetworkObject: %s",
+				ulConfig.Network.String())
+			continue
+		}
+		netconfig := lookupNetworkInstanceConfig(ctx,
 			ulConfig.Network.String())
 		if netconfig != nil {
 			// All ipsets from everybody on this network
 			ipsets = append(ipsets, compileNetworkIpsetsConfig(ctx,
 				netconfig)...)
+		} else {
+			log.Errorf("No NetworkInstanceConfig for %s",
+				ulConfig.Network.String())
 		}
 	}
 	return ipsets
@@ -80,7 +96,7 @@ func compileAppInstanceIpsets(ctx *zedrouterContext,
 
 // If skipKey is set ignore any AppNetworkConfig with that key
 func compileNetworkIpsetsStatus(ctx *zedrouterContext,
-	netconfig *types.NetworkObjectConfig, skipKey string) []string {
+	netconfig *types.NetworkInstanceConfig, skipKey string) []string {
 
 	ipsets := []string{}
 	if netconfig == nil {
@@ -121,7 +137,7 @@ func compileNetworkIpsetsStatus(ctx *zedrouterContext,
 }
 
 func compileNetworkIpsetsConfig(ctx *zedrouterContext,
-	netconfig *types.NetworkObjectConfig) []string {
+	netconfig *types.NetworkInstanceConfig) []string {
 
 	ipsets := []string{}
 	if netconfig == nil {
@@ -161,12 +177,20 @@ func compileOldOverlayIpsets(ctx *zedrouterContext,
 
 	ipsets := []string{}
 	for _, olStatus := range ollist {
-		netconfig := lookupNetworkObjectConfig(ctx,
+		if !olStatus.UsesNetworkInstance {
+			log.Warnf("ACLs no longer support NetworkObject: %s",
+				olStatus.Network.String())
+			continue
+		}
+		netconfig := lookupNetworkInstanceConfig(ctx,
 			olStatus.Network.String())
 		if netconfig != nil {
 			// All ipsets from everybody on this network
 			ipsets = append(ipsets, compileNetworkIpsetsStatus(ctx,
 				netconfig, skipKey)...)
+		} else {
+			log.Errorf("No NetworkInstanceConfig for %s",
+				olStatus.Network.String())
 		}
 	}
 	return ipsets
@@ -178,12 +202,20 @@ func compileOldUnderlayIpsets(ctx *zedrouterContext,
 
 	ipsets := []string{}
 	for _, ulStatus := range ullist {
-		netconfig := lookupNetworkObjectConfig(ctx,
+		if !ulStatus.UsesNetworkInstance {
+			log.Warnf("ACLs no longer support NetworkObject: %s",
+				ulStatus.Network.String())
+			continue
+		}
+		netconfig := lookupNetworkInstanceConfig(ctx,
 			ulStatus.Network.String())
 		if netconfig != nil {
 			// All ipsets from everybody on this network
 			ipsets = append(ipsets, compileNetworkIpsetsStatus(ctx,
 				netconfig, skipKey)...)
+		} else {
+			log.Errorf("No NetworkInstanceConfig for %s",
+				ulStatus.Network.String())
 		}
 	}
 	return ipsets
