@@ -1131,7 +1131,7 @@ var additionalInfoDevice *types.AdditionalInfoDevice
 
 func handleAppNetworkCreate(ctx *zedrouterContext, key string,
 	config types.AppNetworkConfig) {
-	log.Infof("handleCreateAppNetwork(%v) for %s\n",
+	log.Infof("handleAppAppNetworkCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
 	// Pick a local number to identify the application instance
@@ -2698,7 +2698,7 @@ func doAppNetworkModifyOverlayNetworkWithNetworkInstance(
 		errStr := fmt.Sprintf("no network config for %s",
 			olConfig.Network.String())
 		err := errors.New(errStr)
-		addError(ctx, status, "lookupNetworkObjectConfig", err)
+		addError(ctx, status, "doAppNetworkModifyOverlayNetworkWithNetworkInstance overlay", err)
 		return
 	}
 	netstatus := lookupNetworkInstanceStatus(ctx,
@@ -2772,7 +2772,7 @@ func doAppNetworkModifyOverlayNetworkWithNetworkObject(
 		errStr := fmt.Sprintf("no network config for %s",
 			olConfig.Network.String())
 		err := errors.New(errStr)
-		addError(ctx, status, "lookupNetworkObjectConfig", err)
+		addError(ctx, status, "doAppNetworkModifyOverlay", err)
 		return
 	}
 	netstatus := lookupNetworkObjectStatus(ctx,
