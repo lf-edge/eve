@@ -103,6 +103,7 @@ func handleConfigInit() {
 		log.Fatal("uuid.FromString", err, string(b))
 	}
 	log.Infof("Read UUID %s\n", devUUID)
+	zedcloudCtx.DevUUIDStr = uuidStr
 	zcdevUUID = devUUID
 }
 

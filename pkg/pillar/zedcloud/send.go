@@ -28,6 +28,7 @@ type ZedCloudContext struct {
 	FailureFunc         func(intf string, url string, reqLen int64, respLen int64)
 	SuccessFunc         func(intf string, url string, reqLen int64, respLen int64)
 	NoLedManager        bool // Don't call UpdateLedManagerConfig
+	DevUUIDStr          string
 }
 
 // Tries all interfaces (free first) until one succeeds. interation arg
@@ -241,6 +242,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 
 		if b != nil {
 			req.Header.Add("Content-Type", "application/x-proto-binary")
+			req.Header.Add("X-DEVICE-ID", ctx.DevUUIDStr)
 		}
 		trace := &httptrace.ClientTrace{
 			GotConn: func(connInfo httptrace.GotConnInfo) {
