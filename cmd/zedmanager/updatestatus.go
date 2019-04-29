@@ -1090,7 +1090,7 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 	status.Activated = false
 	status.ActivateInprogress = false
 	log.Infof("doInactivate done for %s\n", uuidStr)
-	return changed, true
+	return changed, done
 }
 
 func doUnprepare(ctx *zedmanagerContext, uuidStr string,
