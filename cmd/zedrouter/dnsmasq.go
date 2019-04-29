@@ -63,8 +63,8 @@ func createDnsmasqConfigletForNetworkInstance(
 	netconf *types.NetworkInstanceConfig, hostsDir string,
 	ipsets []string, Ipv4Eid bool) {
 
-	log.Debugf("createDnsmasqConfiglet: %s netconf %v\n",
-		bridgeName, netconf)
+	log.Infof("createDnsmasqConfiglet(%s, %s) netconf %v, ipsets %v\n",
+		bridgeName, bridgeIPAddr, netconf, ipsets)
 
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	// Delete if it exists
@@ -227,7 +227,7 @@ func createDnsmasqConfiglet(bridgeName string, bridgeIPAddr string,
 	netconf *types.NetworkObjectConfig, hostsDir string,
 	ipsets []string, Ipv4Eid bool) {
 
-	log.Debugf("createDnsmasqConfiglet: %s netconf %v\n",
+	log.Infof("createDnsmasqConfiglet: %s netconf %v\n",
 		bridgeName, netconf)
 
 	cfgPathname := dnsmasqConfigPath(bridgeName)
@@ -459,7 +459,7 @@ func removehostDnsmasq(bridgeName string, appMac string, appIPAddr string) {
 
 func deleteDnsmasqConfiglet(bridgeName string) {
 
-	log.Debugf("deleteDnsmasqConfiglet(%s)\n", bridgeName)
+	log.Infof("deleteDnsmasqConfiglet(%s)\n", bridgeName)
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	if _, err := os.Stat(cfgPathname); err == nil {
 		if err := os.Remove(cfgPathname); err != nil {
@@ -497,7 +497,7 @@ func RemoveDirContent(dir string) error {
 //    ${DMDIR}/dnsmasq -b -C /var/run/zedrouter/dnsmasq.${BRIDGENAME}.conf
 func startDnsmasq(bridgeName string) {
 
-	log.Debugf("startDnsmasq(%s)\n", bridgeName)
+	log.Infof("startDnsmasq(%s)\n", bridgeName)
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	name := "nohup"
 	//    XXX currently running as root with -d above
@@ -517,14 +517,14 @@ func startDnsmasq(bridgeName string) {
 	fmt.Fprintf(w, "%s Starting %s %v\n", ts, name, args)
 	cmd := exec.Command(name, args...)
 	cmd.Stderr = logf
-	log.Debugf("Calling command %s %v\n", name, args)
+	log.Infof("Calling command %s %v\n", name, args)
 	go cmd.Run()
 }
 
 //    pkill -u nobody -f dnsmasq.${BRIDGENAME}.conf
 func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 
-	log.Debugf("stopDnsmasq(%s)\n", bridgeName)
+	log.Infof("stopDnsmasq(%s)\n", bridgeName)
 	cfgFilename := dnsmasqConfigFile(bridgeName)
 	// XXX currently running as root with -d above
 	pkillUserArgs("root", cfgFilename, printOnError)

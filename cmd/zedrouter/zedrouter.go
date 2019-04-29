@@ -3464,7 +3464,19 @@ func pkillUserArgs(userName string, match string, printOnError bool) {
 		"-f",
 		match,
 	}
-	out, err := wrap.Command(cmd, args...).CombinedOutput()
+	var err error
+	var out []byte
+	for i := 0; i < 3; i++ {
+		out, err = wrap.Command(cmd, args...).CombinedOutput()
+		if err == nil {
+			break
+		}
+		if printOnError {
+			log.Warnf("Retrying failed command %v %v: %s output %s",
+				cmd, args, err, out)
+		}
+		time.Sleep(time.Second)
+	}
 	if err != nil && printOnError {
 		log.Errorf("Command %v %v failed: %s output %s\n",
 			cmd, args, err, out)
