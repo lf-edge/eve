@@ -152,6 +152,8 @@ if P3=$(zboot partdev P3) && [ -n "$P3" ]; then
     echo "$(date -Ins -u) Using $P3 for $PERSISTDIR"
     if ! fsck.ext3 -y "$P3"; then
 	echo "$(date -Ins -u) mkfs on $P3 for $PERSISTDIR"
+	# XXX note that if we have a bad ext3 partition this will ask questions
+	# Need to either dd zeros over the partition of feed "yes" into mkfs.
 	if ! mkfs -t ext3 -v "$P3"; then
             echo "$(date -Ins -u) mkfs $P3 failed: $?"
 	    # Try mounting below
@@ -335,11 +337,12 @@ if ! [ -f $CONFIGDIR/device.cert.pem ] || ! [ -f $CONFIGDIR/device.key.pem ]; th
     SELF_REGISTER=1
 elif [ -f $CONFIGDIR/self-register-failed ]; then
     echo "$(date -Ins -u) self-register failed/killed/rebooted"
-    if $BINDIR/client -c $CURPART -r 5 getUuid; then
+    if ! $BINDIR/client -c $CURPART -r 5 getUuid; then
 	echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid fail; redoing self-register"
 	SELF_REGISTER=1
     else
-	echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid pass"
+	echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid pass hence already registered"
+	rm -f $CONFIGDIR/self-register-failed
     fi
 else
     echo "$(date -Ins -u) Using existing device key pair and self-signed cert"
