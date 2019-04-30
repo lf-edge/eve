@@ -110,6 +110,14 @@ PKGS=$(shell ls -d pkg/* | grep -Ev "eve|test-microsvcs|u-boot")
 
 all: help
 
+test: $(GOBUILDER) | $(DIST)
+	@echo Running tests on $(GOMODULE)
+	@$(DOCKER_GO) "go test -v $(GOMODULE)/... 2>&1 | go-junit-report" $(GOTREE) $(GOMODULE) > $(DIST)/results.xml
+
+clean:
+	rm -rf $(DIST) pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile \
+	       images/installer.yml images/rootfs.yml.in
+
 build-tools: $(LINUXKIT)
 	@echo Done building $<
 
@@ -275,7 +283,7 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	@$(DOCKER_GO) "dep ensure -update $(GODEP_NAME)" $(dir $@)
 	@echo Done updating $@
 
-.PHONY: all run pkgs help build-tools live rootfs config installer live FORCE $(DIST)
+.PHONY: all clean test run pkgs help build-tools live rootfs config installer live FORCE $(DIST)
 FORCE:
 
 help:
@@ -292,6 +300,8 @@ help:
 	@echo "all the execution is done via qemu."
 	@echo
 	@echo "Commonly used maitenance and development targets:"
+	@echo "   test           run EVE tests"
+	@echo "   clean          clean build artifacts in a current directory (doesn't clean Docker)"
 	@echo "   release        prepare branch for a release (VERSION=x.y.z required)"
 	@echo "   shell          drop into docker container setup for Go development"
 	@echo
