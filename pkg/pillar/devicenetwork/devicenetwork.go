@@ -72,6 +72,13 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	retryCount int) error {
 
 	log.Infof("VerifyDeviceNetworkStatus() %d\n", retryCount)
+	// Check if it is 1970 in which case we declare success since
+	// our certificates will not work until NTP has brought the time
+	// forward.
+	if time.Now().Year() == 1970 {
+		log.Infof("VerifyDeviceNetworkStatus skip due to 1970")
+		return nil
+	}
 
 	serverFileName := "/config/server"
 	server, err := ioutil.ReadFile(serverFileName)
