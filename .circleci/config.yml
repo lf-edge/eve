@@ -31,7 +31,7 @@ jobs:
             make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} eve
   yetus:
     docker:
-      - image: apache/yetus:0.10.0
+      - image: awwashere/buretoolbox:junit-out
     steps:
       - checkout
       # create a fake artifact so that Apache Yetus knows the URL
@@ -56,8 +56,11 @@ jobs:
             --brief-report-file=/tmp/yetus-out/brief.txt
             --excludes=.yetus-excludes
             --line-comments=''
-            --bugcomments=briefreport,htmlout
+            --bugcomments=briefreport,htmlout,junit
+            --junit-results-xml=/tmp/yetus-out/results.xml
             --continuous-improvement=true
+      - store_test_results:
+          path: /tmp/yetus-out
       - store_artifacts:
           path: /tmp/yetus-out
 workflows:
