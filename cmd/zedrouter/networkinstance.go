@@ -747,6 +747,9 @@ func getSwitchNetworkInstanceUsingPort(
 }
 
 func restartDnsmasq(status *types.NetworkInstanceStatus) {
+
+	log.Infof("restartDnsmasq(%s) ipsets %v\n",
+		status.BridgeName, status.BridgeIPSets)
 	bridgeName := status.BridgeName
 	stopDnsmasq(bridgeName, false, true)
 

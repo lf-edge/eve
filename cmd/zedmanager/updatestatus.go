@@ -978,9 +978,12 @@ func doRemove(ctx *zedmanagerContext, uuidStr string,
 
 	changed := false
 	done := false
-	c := doInactivate(ctx, uuidStr, status)
+	c, done := doInactivate(ctx, uuidStr, status)
 	changed = changed || c
-
+	if !done {
+		log.Infof("doRemove waiting for inactivate for %s\n", uuidStr)
+		return changed, done
+	}
 	if !status.Activated {
 		c := doUnprepare(ctx, uuidStr, status)
 		changed = changed || c
@@ -997,10 +1000,11 @@ func doRemove(ctx *zedmanagerContext, uuidStr string,
 }
 
 func doInactivate(ctx *zedmanagerContext, uuidStr string,
-	status *types.AppInstanceStatus) bool {
+	status *types.AppInstanceStatus) (bool, bool) {
 
 	log.Infof("doInactivate for %s\n", uuidStr)
 	changed := false
+	done := false
 
 	// First halt the domain
 	unpublishDomainConfig(ctx, uuidStr)
@@ -1035,7 +1039,7 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 				changed = true
 			}
 		}
-		return changed
+		return changed, done
 	}
 
 	log.Infof("Done with DomainStatus removal for %s\n", uuidStr)
@@ -1079,13 +1083,14 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 			status.ErrorTime = time.Time{}
 			changed = true
 		}
-		return changed
+		return changed, done
 	}
 	log.Debugf("Done with AppNetworkStatus removal for %s\n", uuidStr)
+	done = true
 	status.Activated = false
 	status.ActivateInprogress = false
 	log.Infof("doInactivate done for %s\n", uuidStr)
-	return changed
+	return changed, done
 }
 
 func doUnprepare(ctx *zedmanagerContext, uuidStr string,
