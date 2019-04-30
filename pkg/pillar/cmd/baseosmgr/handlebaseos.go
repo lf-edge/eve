@@ -19,7 +19,6 @@ import (
 )
 
 const (
-	MaxBaseOsCount   = 2
 	BaseOsImageCount = 1
 )
 
@@ -159,13 +158,19 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 	}
 
 	// Is this already in otherPartName? If so we update status
-	// but proceed in case we need to overwrite the partition
+	// but proceed in case we need to overwrite the partition.
+	// Implies re-downloading as opposed to reusing that unused
+	// partition; other partition could have failed so safest to
+	// re-download and overwrite.
 	otherPartName := zboot.GetOtherPartition()
-	if status.PartitionLabel == "" &&
+	if (status.PartitionLabel == "" || status.PartitionLabel == otherPartName) &&
 		status.BaseOsVersion == zboot.GetShortVersion(otherPartName) {
 		log.Infof("doBaseOsStatusUpdate(%s) for %s found in other %s\n",
 			config.BaseOsVersion, uuidStr, otherPartName)
 		baseOsSetPartitionInfoInStatus(ctx, status, otherPartName)
+		if !config.Activate {
+			return true
+		}
 		// Might be corrupt? XXX should we verify sha? But modified!!
 		setProgressDone(status, types.DOWNLOADED)
 		status.Activated = false
@@ -194,6 +199,11 @@ func doBaseOsStatusUpdate(ctx *baseOsMgrContext, uuidStr string,
 		return changed
 	}
 
+	c, proceed = validateAndAssignPartition(ctx, config, status)
+	changed = changed || c
+	if !proceed {
+		return changed
+	}
 	changed = doBaseOsActivate(ctx, uuidStr, config, status)
 	log.Infof("doBaseOsStatusUpdate(%s) done for %s\n",
 		config.BaseOsVersion, uuidStr)
@@ -330,7 +340,8 @@ func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
 		}
 	}
 
-	changed, proceed = validateAndAssignPartition(ctx, config, status)
+	// Check if we should proceed to download and verify
+	changed, proceed = validatePartition(ctx, config, status)
 	if !proceed {
 		return changed, false
 	}
@@ -370,7 +381,38 @@ func getPartitionState(ctx *baseOsMgrContext, partname string) string {
 	return zboot.GetPartitionState(partname)
 }
 
-// XXX defer until Activate changes for a BaseOsConfig
+// Returns changed, proceed as above
+func validatePartition(ctx *baseOsMgrContext,
+	config types.BaseOsConfig, status *types.BaseOsStatus) (bool, bool) {
+	var otherPartVersion string
+
+	log.Infof("validatePartition(%s) for %s\n",
+		config.Key(), config.BaseOsVersion)
+	changed := false
+	otherPartName := zboot.GetOtherPartition()
+	otherPartStatus := getZbootStatus(ctx, otherPartName)
+	if otherPartStatus != nil {
+		otherPartVersion = otherPartStatus.ShortVersion
+	}
+	otherPartState := getPartitionState(ctx, otherPartName)
+
+	// Does the other partition contain a failed update with the same
+	// version?
+	if otherPartState == "inprogress" &&
+		otherPartVersion == config.BaseOsVersion {
+
+		errStr := fmt.Sprintf("Attempt to reinstall failed update %s in %s: refused",
+			config.BaseOsVersion, otherPartName)
+		log.Errorln(errStr)
+		status.Error = errStr
+		status.ErrorTime = time.Now()
+		changed = true
+		return changed, false
+	}
+	return changed, true
+}
+
+// Assign a free partition label; called when we activate
 // Returns changed, proceed as above
 func validateAndAssignPartition(ctx *baseOsMgrContext,
 	config types.BaseOsConfig, status *types.BaseOsStatus) (bool, bool) {
@@ -392,21 +434,6 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 		otherPartVersion = otherPartStatus.ShortVersion
 	}
 	otherPartState := getPartitionState(ctx, otherPartName)
-
-	// Does the other partition contain a failed update with the same
-	// version?
-	if otherPartState == "inprogress" &&
-		otherPartVersion == config.BaseOsVersion {
-
-		errStr := fmt.Sprintf("Attempt to reinstall failed update %s in %s: refused",
-			config.BaseOsVersion, otherPartName)
-		log.Errorln(errStr)
-		status.Error = errStr
-		status.ErrorTime = time.Now()
-		changed = true
-		return changed, proceed
-	}
-
 	if curPartState == "inprogress" || otherPartState == "active" {
 		// Must still be testing the current version; don't overwrite
 		// fallback
@@ -426,6 +453,8 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 		return changed, proceed
 	}
 
+	// XXX should we check that this is the only one marked as Activate?
+	// XXX or check that other isn't marked as updating?
 	if config.Activate && status.PartitionLabel == "" {
 		log.Infof("validateAndAssignPartition(%s) assigning with partition %s\n",
 			config.BaseOsVersion, otherPartName)
@@ -779,50 +808,8 @@ func unpublishBaseOsStatus(ctx *baseOsMgrContext, key string) {
 	pub.Unpublish(key)
 }
 
-// Check the number of baseos and number of actvated
-// Also check number of images in this config.
-// XXX only validate #images
+// Check the number of image in this config
 func validateBaseOsConfig(ctx *baseOsMgrContext, config types.BaseOsConfig) error {
-
-	var osCount, activateCount int
-	items := ctx.subBaseOsConfig.GetAll()
-	for key, c := range items {
-		boc := cast.CastBaseOsConfig(c)
-		if boc.Key() != key {
-			log.Errorf("validateBaseOsConfig(%s) got %s; ignored %+v\n",
-				key, boc.Key(), boc)
-			continue
-		}
-
-		log.Infof("validateBaseOsConfig(%s) %s activate %v\n",
-			boc.Key(), boc.BaseOsVersion, boc.Activate)
-		osCount++
-		if boc.Activate {
-			activateCount++
-		}
-	}
-	log.Infof("validateBaseOsConfig(%s) %s osCount %d activateCount %d\n",
-		config.Key(), config.BaseOsVersion, osCount, activateCount)
-
-	// not more than max base os count(2)
-	if osCount > MaxBaseOsCount {
-		errStr := fmt.Sprintf("baseOs: Unsupported Instance Count %d",
-			osCount)
-		return errors.New(errStr)
-	}
-
-	// can not be more than one activate as true
-	if osCount != 0 && activateCount != 1 {
-		errStr := fmt.Sprintf("baseOs: Unsupported Activate Count %v\n",
-			activateCount)
-		// XXX we process the BaseOsStatus in the random map order
-		// hence we can see an Activate to true transition before
-		// the Activate to false transition when they happen
-		// at the same time on different BaseOsConfig objects.
-		// XXX check if condition stays?? Where and how?
-		log.Errorln(errStr)
-		// XXX return errors.New(errStr)
-	}
 
 	imageCount := len(config.StorageConfigList)
 	if imageCount > BaseOsImageCount {

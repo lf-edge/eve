@@ -3,7 +3,7 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-USE_HW_WATCHDOG=0
+USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
 BINDIR=/opt/zededa/bin
@@ -25,7 +25,7 @@ echo "$(date -Ins -u) go-provision version: $(cat $BINDIR/versioninfo)"
 MEASURE=0
 while [ $# != 0 ]; do
     if [ "$1" = -h ]; then
-	USE_HW_WATCHDOG=1
+	USE_HW_WATCHDOG=0
     elif [ "$1" = -m ]; then
 	MEASURE=1
     elif [ "$1" = -w ]; then
@@ -39,15 +39,9 @@ done
 
 mkdir -p $TMPDIR
 
-if [ "$(uname -m)" != "x86_64" ]; then
-    USE_HW_WATCHDOG=1
-fi
-
-# XXX try without /dev/watchdog; First disable impact of bios setting
-# XXX restore to using /dev/watchdog if it exists?
 if [ -c /dev/watchdog ]; then
     if [ $USE_HW_WATCHDOG = 0 ]; then
-	echo "$(date -Ins -u) XXX Disabling use of /dev/watchdog"
+	echo "$(date -Ins -u) Disabling use of /dev/watchdog"
 	wdctl /dev/watchdog
     fi
 else
@@ -72,7 +66,20 @@ admin =
 interval = 10
 logtick  = 60
 repair-binary=/opt/zededa/bin/watchdog-report.sh
+pidfile = /var/run/xen/qemu-dom0.pid
+pidfile = /var/run/xen/xenconsoled.pid
+pidfile = /var/run/xen/xenstored.pid
+pidfile = /var/run/crond.pid
 EOF
+# XXX Other processes we should potentially watch but they run outside
+# of this container:
+# sshd.pid
+# services.linuxkit/zededa-tools/init.pid
+# services.linuxkit/wwan/init.pid
+# services.linuxkit/wlan/init.pid
+# services.linuxkit/ntpd/init.pid
+# services.linuxkit/guacd/init.pid
+
 cp $TMPDIR/watchdogbase.conf $TMPDIR/watchdogled.conf
 cat >>$TMPDIR/watchdogled.conf <<EOF
 pidfile = /var/run/ledmanager.pid
@@ -89,11 +96,13 @@ cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogclient.conf
 cat >>$TMPDIR/watchdogclient.conf <<EOF
 pidfile = /var/run/zedclient.pid
 pidfile = /var/run/nim.pid
+pidfile = /var/run/ntpd.pid
 file = /var/run/nim.touch
 change = 300
 EOF
 
 cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogall.conf
+echo "pidfile = /var/run/ntpd.pid" >>$TMPDIR/watchdogall.conf
 for AGENT in $AGENTS; do
     echo "pidfile = /var/run/$AGENT.pid" >>$TMPDIR/watchdogall.conf
     if [ "$AGENT" = "lisp-ztr" ]; then
@@ -142,6 +151,8 @@ if P3=$(zboot partdev P3) && [ -n "$P3" ]; then
     echo "$(date -Ins -u) Using $P3 for $PERSISTDIR"
     if ! fsck.ext3 -y "$P3"; then
 	echo "$(date -Ins -u) mkfs on $P3 for $PERSISTDIR"
+	# XXX note that if we have a bad ext3 partition this will ask questions
+	# Need to either dd zeros over the partition of feed "yes" into mkfs.
 	if ! mkfs -t ext3 -v "$P3"; then
             echo "$(date -Ins -u) mkfs $P3 failed: $?"
 	    # Try mounting below
@@ -325,11 +336,12 @@ if ! [ -f $CONFIGDIR/device.cert.pem ] || ! [ -f $CONFIGDIR/device.key.pem ]; th
     SELF_REGISTER=1
 elif [ -f $CONFIGDIR/self-register-failed ]; then
     echo "$(date -Ins -u) self-register failed/killed/rebooted"
-    if $BINDIR/client -c $CURPART -r 5 getUuid; then
+    if ! $BINDIR/client -c $CURPART -r 5 getUuid; then
 	echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid fail; redoing self-register"
 	SELF_REGISTER=1
     else
-	echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid pass"
+	echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid pass hence already registered"
+	rm -f $CONFIGDIR/self-register-failed
     fi
 else
     echo "$(date -Ins -u) Using existing device key pair and self-signed cert"

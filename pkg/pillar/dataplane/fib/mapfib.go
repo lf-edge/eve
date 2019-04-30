@@ -948,7 +948,7 @@ func publishLispMetrics(ctx *dptypes.DataplaneContext,
 	key := "global"
 	pub := ctx.PubLispMetrics
 	pub.Publish(key, *status)
-	log.Infof("publishLispMetrics: Done")
+	log.Debugf("publishLispMetrics: Done")
 }
 
 func unpublishLispMetrics(ctx *dptypes.DataplaneContext,
