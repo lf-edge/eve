@@ -24,4 +24,4 @@ case $2 in
     *) IMAGE=$PWD/$IMAGE;;
 esac
 
-(cd $1 ; tar chf - *) | docker run --privileged -v $IMAGE:/config.img -i ${MKCONFIG_TAG} /config.img
+(cd $1 ; tar chf - ./*) | docker run --privileged -v "$IMAGE:/config.img" -i "${MKCONFIG_TAG}" /config.img
