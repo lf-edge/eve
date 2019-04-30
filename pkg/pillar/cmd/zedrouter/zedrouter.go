@@ -496,9 +496,6 @@ func handleRestart(ctxArg interface{}, done bool) {
 
 var lispRunDirname string
 
-// XXX hack to avoid the pslisp hang on Erik's laptop
-var broken = false
-
 func handleInit(runDirname string) {
 
 	// XXX should this be in the lisp code?
@@ -566,13 +563,6 @@ func handleInit(runDirname string) {
 		"net.ipv4.conf.default.log_martians=1").Output()
 	if err != nil {
 		log.Fatal("Failed setting log_martians ", err)
-	}
-
-	// XXX hack to determine whether a real system or Erik's laptop
-	_, err = wrap.Command("xl", "list").Output()
-	if err != nil {
-		log.Errorf("Command xl list failed: %s\n", err)
-		broken = true
 	}
 }
 
