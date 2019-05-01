@@ -36,6 +36,30 @@ func lookupCertObjSafename(ctx *baseOsMgrContext, safename string) *types.CertOb
 	return nil
 }
 
+// check if the storage object config have changed
+func certObjCheckConfigModify(ctx *baseOsMgrContext, uuidStr string,
+	config *types.CertObjConfig, status *types.CertObjStatus) bool {
+
+	// check, whether number of cert objects have changed
+	if len(config.StorageConfigList) != len(status.StorageStatusList) {
+		log.Infof("certObjCheckConfigModify(%s), Storage length mismatch: %d vs %d\n", uuidStr,
+			len(config.StorageConfigList), len(status.StorageStatusList))
+		return true
+	}
+
+	// check, whether any cert object have changed
+	for idx, sc := range config.StorageConfigList {
+		ss := status.StorageStatusList[idx]
+		if sc.Name != ss.Name {
+			log.Infof("certObjCheckConfigModify(%s) CertObj changed %s, %s\n",
+				uuidStr, ss.Name, sc.Name)
+			return true
+		}
+	}
+	log.Infof("certObjCheckConfigModify(%s): no change\n", uuidStr)
+	return false
+}
+
 // XXX but there can be multiple CertObjConfig/Status with the same safename!
 // This only looks for one.
 func certObjHandleStatusUpdateSafename(ctx *baseOsMgrContext, safename string) {
