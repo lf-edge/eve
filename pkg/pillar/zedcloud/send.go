@@ -243,10 +243,10 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 
 		if b != nil {
 			req.Header.Add("Content-Type", "application/x-proto-binary")
-			devUuidStr := ctx.DevUUID.String()
-			if devUuidStr != "" {
-				req.Header.Add("X-Request-Id", devUuidStr)
-			}
+		}
+		devUuidStr := ctx.DevUUID.String()
+		if devUuidStr != "" {
+			req.Header.Add("X-Request-Id", devUuidStr)
 		}
 		trace := &httptrace.ClientTrace{
 			GotConn: func(connInfo httptrace.GotConnInfo) {
