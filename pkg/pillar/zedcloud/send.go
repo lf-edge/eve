@@ -244,6 +244,8 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		if b != nil {
 			req.Header.Add("Content-Type", "application/x-proto-binary")
 		}
+		// Add Device UUID to the HTTP Header
+		// for tracability
 		devUuidStr := ctx.DevUUID.String()
 		if devUuidStr != "" {
 			req.Header.Add("X-Request-Id", devUuidStr)
