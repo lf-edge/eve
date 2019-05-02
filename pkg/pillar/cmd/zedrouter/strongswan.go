@@ -106,6 +106,7 @@ func strongswanInactivate(ctx *zedrouterContext, status *types.NetworkServiceSta
 	}
 }
 
+// XXX remove this when we remove NetworkObject
 // StrongSwan Vpn IpSec Tenneling handler routines
 func strongSwanConfigGet(ctx *zedrouterContext,
 	config types.NetworkServiceConfig) (types.VpnServiceConfig, error) {
@@ -132,6 +133,7 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 	port.IpAddr = srcIp.String()
 
 	// app net information
+	// XXX whole function will be removed when we remove NetworkObject
 	appNet := lookupNetworkObjectConfig(ctx, config.AppLink.String())
 	if appNet != nil {
 		if appNet.Type != types.NT_IPV4 {
