@@ -28,6 +28,7 @@ import (
 	"github.com/zededa/eve/pkg/pillar/iptables"
 	"github.com/zededa/eve/pkg/pillar/pidfile"
 	"github.com/zededa/eve/pkg/pillar/pubsub"
+	"github.com/zededa/eve/pkg/pillar/ssh"
 	"github.com/zededa/eve/pkg/pillar/types"
 )
 
@@ -40,11 +41,12 @@ const (
 
 type nimContext struct {
 	devicenetwork.DeviceNetworkContext
-	subGlobalConfig *pubsub.Subscription
-	GCInitialized   bool // Received initial GlobalConfig
-	globalConfig    *types.GlobalConfig
-	sshAccess       bool
-	allowAppVnc     bool
+	subGlobalConfig   *pubsub.Subscription
+	GCInitialized     bool // Received initial GlobalConfig
+	globalConfig      *types.GlobalConfig
+	sshAccess         bool
+	sshAuthorizedKeys string
+	allowAppVnc       bool
 
 	subNetworkInstanceStatus *pubsub.Subscription
 
@@ -660,6 +662,10 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		if gcp.SshAccess != ctx.sshAccess || first {
 			ctx.sshAccess = gcp.SshAccess
 			iptables.UpdateSshAccess(ctx.sshAccess, first)
+		}
+		if gcp.SshAuthorizedKeys != ctx.sshAuthorizedKeys || first {
+			ctx.sshAuthorizedKeys = gcp.SshAuthorizedKeys
+			ssh.UpdateSshAuthorizedKeys(ctx.sshAuthorizedKeys)
 		}
 		if gcp.AllowAppVnc != ctx.allowAppVnc || first {
 			ctx.allowAppVnc = gcp.AllowAppVnc

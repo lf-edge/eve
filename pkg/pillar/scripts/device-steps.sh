@@ -3,7 +3,7 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-USE_HW_WATCHDOG=0
+USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
 BINDIR=/opt/zededa/bin
@@ -25,7 +25,7 @@ echo "$(date -Ins -u) go-provision version: $(cat $BINDIR/versioninfo)"
 MEASURE=0
 while [ $# != 0 ]; do
     if [ "$1" = -h ]; then
-	USE_HW_WATCHDOG=1
+	USE_HW_WATCHDOG=0
     elif [ "$1" = -m ]; then
 	MEASURE=1
     elif [ "$1" = -w ]; then
@@ -39,15 +39,9 @@ done
 
 mkdir -p $TMPDIR
 
-if [ "$(uname -m)" != "x86_64" ]; then
-    USE_HW_WATCHDOG=1
-fi
-
-# XXX try without /dev/watchdog; First disable impact of bios setting
-# XXX restore to using /dev/watchdog if it exists?
 if [ -c /dev/watchdog ]; then
     if [ $USE_HW_WATCHDOG = 0 ]; then
-	echo "$(date -Ins -u) XXX Disabling use of /dev/watchdog"
+	echo "$(date -Ins -u) Disabling use of /dev/watchdog"
 	wdctl /dev/watchdog
     fi
 else
@@ -72,7 +66,20 @@ admin =
 interval = 10
 logtick  = 60
 repair-binary=/opt/zededa/bin/watchdog-report.sh
+pidfile = /var/run/xen/qemu-dom0.pid
+pidfile = /var/run/xen/xenconsoled.pid
+pidfile = /var/run/xen/xenstored.pid
+pidfile = /var/run/crond.pid
 EOF
+# XXX Other processes we should potentially watch but they run outside
+# of this container:
+# sshd.pid
+# services.linuxkit/zededa-tools/init.pid
+# services.linuxkit/wwan/init.pid
+# services.linuxkit/wlan/init.pid
+# services.linuxkit/ntpd/init.pid
+# services.linuxkit/guacd/init.pid
+
 cp $TMPDIR/watchdogbase.conf $TMPDIR/watchdogled.conf
 cat >>$TMPDIR/watchdogled.conf <<EOF
 pidfile = /var/run/ledmanager.pid
@@ -89,11 +96,13 @@ cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogclient.conf
 cat >>$TMPDIR/watchdogclient.conf <<EOF
 pidfile = /var/run/zedclient.pid
 pidfile = /var/run/nim.pid
+pidfile = /var/run/ntpd.pid
 file = /var/run/nim.touch
 change = 300
 EOF
 
 cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogall.conf
+echo "pidfile = /var/run/ntpd.pid" >>$TMPDIR/watchdogall.conf
 for AGENT in $AGENTS; do
     echo "pidfile = /var/run/$AGENT.pid" >>$TMPDIR/watchdogall.conf
     if [ "$AGENT" = "lisp-ztr" ]; then
@@ -142,6 +151,8 @@ if P3=$(zboot partdev P3) && [ -n "$P3" ]; then
     echo "$(date -Ins -u) Using $P3 for $PERSISTDIR"
     if ! fsck.ext3 -y "$P3"; then
 	echo "$(date -Ins -u) mkfs on $P3 for $PERSISTDIR"
+	# XXX note that if we have a bad ext3 partition this will ask questions
+	# Need to either dd zeros over the partition of feed "yes" into mkfs.
 	if ! mkfs -t ext3 -v "$P3"; then
             echo "$(date -Ins -u) mkfs $P3 failed: $?"
 	    # Try mounting below
@@ -190,7 +201,7 @@ if [ ! -d $PERSISTDIR/log ]; then
 fi
 
 echo "$(date -Ins -u) Set up log capture"
-DOM0LOGFILES="ntpd.err.log wlan.err.log wwan.err.log ntpd.out.log wlan.out.log wwan.out.log zededa-tools.out.log zededa-tools.err.log"
+DOM0LOGFILES="ntpd.err.log wlan.err.log wwan.err.log ntpd.out.log wlan.out.log wwan.out.log pillar.out.log pillar.err.log"
 for f in $DOM0LOGFILES; do
     echo "$(date -Ins -u) Starting $f" >$PERSISTDIR/$CURPART/log/"$f"
     tail -c +0 -F /var/log/dom0/"$f" >>$PERSISTDIR/$CURPART/log/"$f" &
@@ -209,8 +220,8 @@ fi
 # Save any device-steps.log's to /persist/log/ so we can look for watchdog's
 # in there. Also save dmesg in case it tells something about reboots.
 tail -c +0 -F /var/log/device-steps.log >>$PERSISTDIR/log/device-steps.log &
-echo "$(date -Ins -u) Starting zededa-tools" >>$PERSISTDIR/log/zededa-tools.out.log
-tail -c +0 -F /var/log/dom0/zededa-tools.out.log >>$PERSISTDIR/log/zededa-tools.out.log &
+echo "$(date -Ins -u) Starting pillar" >>$PERSISTDIR/log/pillar.out.log
+tail -c +0 -F /var/log/dom0/pillar.out.log >>$PERSISTDIR/log/pillar.out.log &
 echo "$(date -Ins -u) Starting dmesg" >>$PERSISTDIR/log/dmesg.log
 dmesg -T -w -l 1,2,3 --time-format iso >>$PERSISTDIR/log/dmesg.log &
 
@@ -325,11 +336,12 @@ if ! [ -f $CONFIGDIR/device.cert.pem ] || ! [ -f $CONFIGDIR/device.key.pem ]; th
     SELF_REGISTER=1
 elif [ -f $CONFIGDIR/self-register-failed ]; then
     echo "$(date -Ins -u) self-register failed/killed/rebooted"
-    if $BINDIR/client -c $CURPART -r 5 getUuid; then
+    if ! $BINDIR/client -c $CURPART -r 5 getUuid; then
 	echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid fail; redoing self-register"
 	SELF_REGISTER=1
     else
-	echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid pass"
+	echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid pass hence already registered"
+	rm -f $CONFIGDIR/self-register-failed
     fi
 else
     echo "$(date -Ins -u) Using existing device key pair and self-signed cert"
@@ -413,11 +425,11 @@ space=$((size / 2048))
 mkdir -p /var/tmp/zededa/GlobalDownloadConfig/
 echo \{\"MaxSpace\":"$space"\} >/var/tmp/zededa/GlobalDownloadConfig/global.json
 
-# Now run watchdog for all agents
+# Restart watchdog ledmanager and nim
 if [ -f /var/run/watchdog.pid ]; then
     kill "$(cat /var/run/watchdog.pid)"
 fi
-/usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
+/usr/sbin/watchdog -c $TMPDIR/watchdognim.conf -F -s &
 
 for AGENT in $AGENTS1; do
     echo "$(date -Ins -u) Starting $AGENT"
@@ -429,6 +441,12 @@ if ! pgrep logmanager >/dev/null; then
     echo "$(date -Ins -u) Starting logmanager"
     $BINDIR/logmanager -c $CURPART &
 fi
+
+# Now run watchdog for all agents
+if [ -f /var/run/watchdog.pid ]; then
+    kill "$(cat /var/run/watchdog.pid)"
+fi
+/usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
 
 echo "$(date -Ins -u) Initial setup done"
 

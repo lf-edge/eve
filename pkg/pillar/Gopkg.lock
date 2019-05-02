@@ -322,31 +322,6 @@
   revision = "13995c7128ccc8e51e9a6bd2b551020a27180abd"
 
 [[projects]]
-  branch = "master"
-  digest = "1:d5f37a1e4a67151aa51bade47447f762f93d9a774fa8e4d14e0cd85aad5e5eba"
-  name = "github.com/zededa/api"
-  packages = [
-    "zconfig",
-    "zmet",
-  ]
-  pruneopts = "NUT"
-  revision = "8e9e90d5517d307d5de706789ebfd0e717b2e568"
-
-[[projects]]
-  branch = "master"
-  digest = "1:60b42311692c68379fd51c8bc3e676a9ba21d2f56a526f1f300aba75c5e35a0a"
-  name = "github.com/zededa/shared"
-  packages = [
-    "libs/zedUpload",
-    "libs/zedUpload/awsutil",
-    "libs/zedUpload/azureutil",
-    "libs/zedUpload/httputil",
-    "libs/zedUpload/sftputil",
-  ]
-  pruneopts = "NUT"
-  revision = "eec9ce4eb91587853b799c82e99dc311ae8a7628"
-
-[[projects]]
   digest = "1:58f2854b50ff8862eb6a347f20dedaac83e1166f4040472e17bc37736841a12f"
   name = "go.opencensus.io"
   packages = [
@@ -534,9 +509,6 @@
     "github.com/shirou/gopsutil/mem",
     "github.com/shirou/gopsutil/net",
     "github.com/sirupsen/logrus",
-    "github.com/zededa/api/zconfig",
-    "github.com/zededa/api/zmet",
-    "github.com/zededa/shared/libs/zedUpload",
     "golang.org/x/crypto/ocsp",
     "golang.org/x/net/bpf",
   ]

@@ -13,7 +13,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/api/zmet"
 	"github.com/zededa/eve/pkg/pillar/agentlog"
 	"github.com/zededa/eve/pkg/pillar/cast"
 	"github.com/zededa/eve/pkg/pillar/flextimer"
@@ -23,6 +22,7 @@ import (
 	"github.com/zededa/eve/pkg/pillar/watch"
 	"github.com/zededa/eve/pkg/pillar/zboot"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
+	"github.com/zededa/eve/sdk/go/zmet"
 	"io"
 	"io/ioutil"
 	"os"
@@ -683,6 +683,7 @@ func sendCtxInit() {
 			time.Sleep(time.Second)
 			continue
 		}
+		zedcloudCtx.DevUUID = devUUID
 		break
 	}
 	log.Infof("Read UUID %s\n", devUUID)

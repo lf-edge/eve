@@ -250,7 +250,7 @@ func handleBaseOsCreate(ctxArg interface{}, key string,
 func handleBaseOsCreate2(ctx *baseOsMgrContext, config types.BaseOsConfig,
 	status types.BaseOsStatus) {
 
-	// Check total and activated counts
+	// Check image count
 	err := validateBaseOsConfig(ctx, config)
 	if err != nil {
 		errStr := fmt.Sprintf("%v", err)
@@ -293,7 +293,7 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 		handleBaseOsTestComplete(ctx, uuidStr, config, status)
 	}
 
-	// Check total and activated counts
+	// Check image count
 	err := validateBaseOsConfig(ctx, config)
 	if err != nil {
 		errStr := fmt.Sprintf("%v", err)

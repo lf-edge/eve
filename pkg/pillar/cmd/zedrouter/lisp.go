@@ -456,6 +456,7 @@ func updateLisp(lispRunDirname string,
 		}
 		log.Debugf("Copied %d bytes from %s\n", cnt, filename)
 	}
+	tmpfile.Sync()
 	if err := tmpfile.Close(); err != nil {
 		log.Errorln("Close ", tmpfile.Name(), err)
 		return
@@ -560,17 +561,6 @@ func restartLisp(portStatus []types.NetworkPortStatus, devices string) {
 	if len(portStatus) == 0 {
 		log.Errorf("Can not restart lisp with no ports\n")
 		return
-	}
-	// XXX hack to avoid hang in pslisp on Erik's laptop
-	if broken {
-		// Issue pkill -f lisp-core.pyo
-		log.Infof("Calling pkill -f lisp-core.pyo\n")
-		cmd := wrap.Command("pkill", "-f", "lisp-core.pyo")
-		stdoutStderr, err := cmd.CombinedOutput()
-		if err != nil {
-			log.Errorln("pkill failed ", err)
-			log.Errorf("pkill output %s\n", string(stdoutStderr))
-		}
 	}
 	// XXX how to restart with multiple ports?
 	// Find first free port with a non-link-local IPv6, or an IPv4 address
@@ -705,18 +695,6 @@ func isLispDataPlaneRunning() (bool, []string) {
 func stopLisp() {
 
 	log.Debugf("stopLisp\n")
-	// XXX hack to avoid hang in pslisp on Erik's laptop
-	if broken {
-		// Issue pkill -f lisp-core.pyo
-		log.Infof("Calling pkill -f lisp-core.pyo\n")
-		cmd := wrap.Command("pkill", "-f", "lisp-core.pyo")
-		stdoutStderr, err := cmd.CombinedOutput()
-		if err != nil {
-			log.Errorln("pkill failed ", err)
-			log.Errorf("pkill output %s\n", string(stdoutStderr))
-		}
-	}
-
 	cmd := wrap.Command(StopCmd)
 	env := os.Environ()
 	env = append(env, fmt.Sprintf("LISP_NO_IPTABLES="))

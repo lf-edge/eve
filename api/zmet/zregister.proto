@@ -1,0 +1,28 @@
+// Copyright(c) 2017-2018 Zededa, Inc.
+// All rights reserved.
+
+syntax = "proto3";
+
+option go_package  = "github.com/zededa/eve/sdk/go/zmet";
+
+// XXX is this used? Not in client.go; deprecate
+enum ZRegisterResult {
+        ZRegNone         = 0;
+        ZRegSuccess      = 1;
+        ZRegNotActive    = 2;
+        ZRegAlreadyDone  = 3;
+        ZRegDeviceNA     = 4;
+        ZRegFailed       = 5;
+}
+
+// XXX is this used? Not in client.go; deprecate
+message ZRegisterResp {
+        ZRegisterResult result = 2;
+}
+
+message ZRegisterMsg {
+       string onBoardKey = 1; // deprecated
+
+       bytes pemCert = 2;
+       string serial = 3;
+}

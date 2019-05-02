@@ -24,7 +24,6 @@ import (
 	"github.com/shirou/gopsutil/host"
 	psutilnet "github.com/shirou/gopsutil/net"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/api/zmet"
 	"github.com/zededa/eve/pkg/pillar/agentlog"
 	"github.com/zededa/eve/pkg/pillar/cast"
 	"github.com/zededa/eve/pkg/pillar/diskmetrics"
@@ -33,6 +32,7 @@ import (
 	"github.com/zededa/eve/pkg/pillar/netclone"
 	"github.com/zededa/eve/pkg/pillar/types"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
+	"github.com/zededa/eve/sdk/go/zmet"
 )
 
 // Also report usage for these paths
@@ -96,7 +96,7 @@ func ExecuteXlInfoCmd() map[string]string {
 		log.Errorf("xl info failed %s\n", err)
 		return nil
 	}
-	xlInfo := fmt.Sprintf("%s", stdout)
+	xlInfo := string(stdout)
 	splitXlInfo := strings.Split(xlInfo, "\n")
 
 	dict := make(map[string]string, len(splitXlInfo)-1)
@@ -286,11 +286,11 @@ func ExecuteXentopCmd() [][]string {
 	cmd := exec.Command(arg1, arg2, arg3, arg4, arg5, arg6, arg7)
 	stdout, err := cmd.Output()
 	if err != nil {
-		println(err.Error())
+		log.Errorf("xentop failed: %s", err)
 		return [][]string{}
 	}
 
-	xentopInfo := fmt.Sprintf("%s", stdout)
+	xentopInfo := string(stdout)
 
 	splitXentopInfo := strings.Split(xentopInfo, "\n")
 
@@ -300,23 +300,22 @@ func ExecuteXentopCmd() [][]string {
 
 	for i = 0; i < splitXentopInfoLength; i++ {
 
-		str := fmt.Sprintf(splitXentopInfo[i])
+		str := splitXentopInfo[i]
 		re := regexp.MustCompile(" ")
 
-		spaceRemovedsplitXentopInfo := re.ReplaceAllLiteralString(splitXentopInfo[i], "")
+		spaceRemovedsplitXentopInfo := re.ReplaceAllLiteralString(str, "")
 		matched, err := regexp.MatchString("NAMESTATECPU.*", spaceRemovedsplitXentopInfo)
 
-		if matched {
+		if err != nil {
+			log.Debugf("MatchString failed: %s", err)
+		} else if matched {
 
 			count++
 			log.Debugf("string matched: %s", str)
 			if count == 2 {
-				start = i
+				start = i + 1
 				log.Debugf("value of i: %d", start)
 			}
-
-		} else {
-			log.Debugf("string not matched: %s", err)
 		}
 	}
 
@@ -325,9 +324,7 @@ func ExecuteXentopCmd() [][]string {
 
 	for j := start; j < splitXentopInfoLength-1; j++ {
 
-		str := fmt.Sprintf(splitXentopInfo[j])
-		splitOutput := regexp.MustCompile(" ")
-		finalOutput[j-start] = splitOutput.Split(str, -1)
+		finalOutput[j-start] = strings.Fields(strings.TrimSpace(splitXentopInfo[j]))
 	}
 
 	cpuMemoryStat = make([][]string, length)
@@ -336,31 +333,32 @@ func ExecuteXentopCmd() [][]string {
 		cpuMemoryStat[i] = make([]string, 20)
 	}
 
+	// Need to treat "no limit" as one token
 	for f := 0; f < length; f++ {
 
-		for out := 0; out < len(finalOutput[f]); out++ {
+		// First name and state
+		out := 0
+		counter++
+		cpuMemoryStat[f][counter] = finalOutput[f][out]
+		out++
+		counter++
+		cpuMemoryStat[f][counter] = finalOutput[f][out]
+		out++
+		for ; out < len(finalOutput[f]); out++ {
 
-			matched, err := regexp.MatchString("[A-Za-z0-9]+", finalOutput[f][out])
-			if err != nil {
-				log.Errorf("regexp failed %s for %s\n",
-					err, finalOutput[f])
-			} else if matched {
+			if finalOutput[f][out] == "no" {
 
-				if finalOutput[f][out] == "no" {
-
-				} else if finalOutput[f][out] == "limit" {
-					counter++
-					cpuMemoryStat[f][counter] = "no limit"
-				} else {
-					counter++
-					cpuMemoryStat[f][counter] = finalOutput[f][out]
-				}
+			} else if finalOutput[f][out] == "limit" {
+				counter++
+				cpuMemoryStat[f][counter] = "no limit"
 			} else {
-				log.Debugf("space: %+v", finalOutput[f][counter])
+				counter++
+				cpuMemoryStat[f][counter] = finalOutput[f][out]
 			}
 		}
 		counter = 0
 	}
+	log.Debugf("ExecuteXentopCmd return %+v", cpuMemoryStat)
 	return cpuMemoryStat
 }
 
@@ -376,11 +374,28 @@ func lookupCpuMemoryStat(cpuMemoryStat [][]string, domainname string) (uint64, u
 			if len(stat) <= 6 {
 				return 0, 0, 0, 0.0
 			}
-			cpuTotal, _ := strconv.ParseUint(stat[3], 10, 0)
+			log.Debugf("lookupCpuMemoryStat for %s %d elem: %+v",
+				domainname, len(stat), stat)
+			cpuTotal, err := strconv.ParseUint(stat[3], 10, 0)
+			if err != nil {
+				log.Errorf("ParseUint(%s) failed: %s",
+					stat[3], err)
+				cpuTotal = 0
+			}
 			// This is in kbytes
-			totalMemory, _ := strconv.ParseUint(stat[5], 10, 0)
+			totalMemory, err := strconv.ParseUint(stat[5], 10, 0)
+			if err != nil {
+				log.Errorf("ParseUint(%s) failed: %s",
+					stat[5], err)
+				totalMemory = 0
+			}
 			totalMemory = RoundFromKbytesToMbytes(totalMemory)
-			usedMemoryPercent, _ := strconv.ParseFloat(stat[6], 10)
+			usedMemoryPercent, err := strconv.ParseFloat(stat[6], 10)
+			if err != nil {
+				log.Errorf("ParseFloat(%s) failed: %s",
+					stat[6], err)
+				usedMemoryPercent = 0
+			}
 			usedMemory := (float64(totalMemory) * (usedMemoryPercent)) / 100
 			availableMemory := float64(totalMemory) - usedMemory
 
@@ -663,6 +678,9 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		}
 
 		appCpuTotal, usedMemory, availableMemory, usedMemoryPercent := lookupCpuMemoryStat(cpuMemoryStat, aiStatus.DomainName)
+		log.Debugf("xentop for %s CPU %d, usedMem %v, availMem %v, availMemPercent %v",
+			aiStatus.DomainName, appCpuTotal, usedMemory,
+			availableMemory, usedMemoryPercent)
 		ReportAppMetric.Cpu.Total = *proto.Uint64(appCpuTotal)
 		ReportAppMetric.Memory.UsedMem = usedMemory
 		ReportAppMetric.Memory.AvailMem = availableMemory
@@ -801,7 +819,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	if err != nil {
 		log.Errorf("uname -m failed %s\n", err)
 	} else {
-		machineArch = fmt.Sprintf("%s", stdout)
+		machineArch = string(stdout)
 		ReportDeviceInfo.MachineArch = *proto.String(strings.TrimSpace(machineArch))
 	}
 
@@ -810,7 +828,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	if err != nil {
 		log.Errorf("uname -p failed %s\n", err)
 	} else {
-		cpuArch := fmt.Sprintf("%s", stdout)
+		cpuArch := string(stdout)
 		ReportDeviceInfo.CpuArch = *proto.String(strings.TrimSpace(cpuArch))
 	}
 
@@ -819,7 +837,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	if err != nil {
 		log.Errorf("uname -i failed %s\n", err)
 	} else {
-		platform := fmt.Sprintf("%s", stdout)
+		platform := string(stdout)
 		ReportDeviceInfo.Platform = *proto.String(strings.TrimSpace(platform))
 	}
 
@@ -961,6 +979,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	for _, st := range items {
 		bos := cast.CastBaseOsStatus(st)
 		if bos.PartitionLabel != "" {
+			// Already reported above
 			continue
 		}
 		log.Debugf("reportMetrics sending unattached bos for %s\n",
@@ -1107,8 +1126,16 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 func addUserSwInfo(ctx *zedagentContext, swInfo *zmet.ZInfoDevSW) {
 	switch swInfo.Status {
 	case zmet.ZSwState_INITIAL:
-		swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
-		swInfo.SubStatus = "Initializing update"
+		// If Unused and partitionLabel is set them it
+		// is the uninitialized IMGB partition which we don't report
+		if swInfo.PartitionState == "unused" &&
+			swInfo.PartitionLabel != "" {
+
+			swInfo.UserStatus = zmet.BaseOsStatus_NONE
+		} else {
+			swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+			swInfo.SubStatus = "Initializing update"
+		}
 	case zmet.ZSwState_DOWNLOAD_STARTED:
 		swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
 		swInfo.SubStatus = fmt.Sprintf("Downloading %d%% done", swInfo.DownloadProgress)
@@ -1124,6 +1151,7 @@ func addUserSwInfo(ctx *zedagentContext, swInfo *zmet.ZInfoDevSW) {
 			swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
 			swInfo.SubStatus = "Downloaded and verified"
 		} else {
+			// XXX Remove once we have one slot
 			swInfo.UserStatus = zmet.BaseOsStatus_NONE
 		}
 	case zmet.ZSwState_INSTALLED:

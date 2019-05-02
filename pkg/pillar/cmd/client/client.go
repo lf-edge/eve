@@ -22,7 +22,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/api/zmet"
 	"github.com/zededa/eve/pkg/pillar/agentlog"
 	"github.com/zededa/eve/pkg/pillar/cast"
 	"github.com/zededa/eve/pkg/pillar/hardware"
@@ -30,6 +29,7 @@ import (
 	"github.com/zededa/eve/pkg/pillar/pubsub"
 	"github.com/zededa/eve/pkg/pillar/types"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
+	"github.com/zededa/eve/sdk/go/zmet"
 )
 
 const (
@@ -627,7 +627,7 @@ func existingModel(model string) bool {
 		return false
 	}
 	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
-	if _, err := os.Stat(DNCFilename); err == nil {
+	if _, err := os.Stat(DNCFilename); err != nil {
 		log.Debugln(err)
 		return false
 	}

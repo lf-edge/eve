@@ -15,22 +15,21 @@ UID          = $(shell id -u)
 GID	     = $(shell id -g)
 BUILD_VERSION=$(shell scripts/getversion.sh)
 
+DISTDIR     := dist/$(ARCH)
+
 # Go parameters and builder
 GOVER ?= 1.9.1
 GOMODULE=github.com/zededa/eve/pkg/pillar
 DOCKER_GO = mkdir -p .go/src/$(GOMODULE) ;\
     docker run -it --rm -u $(USER) -w /go/src/$(GOMODULE) \
-    -v $(CURDIR)/.go:/go -v $(CURDIR):/go/src/$(GOMODULE) -v $(DISTDIR):/go/bin -v $${HOME}:/home/$(USER) \
+    -v $(CURDIR)/.go:/go -v $(CURDIR):/go/src/$(GOMODULE) -v $(PWD)/$(DISTDIR):/go/bin -v $${HOME}:/home/$(USER) \
     -e GOOS=linux -e GOARCH=$(ARCH) -e CGO_ENABLED=1 -e BUILD=local $(GOBUILDER)
 
 # by default, build in docker container, unless override with BUILD=local
-GOBUILD=$(DOCKER_GO) go install
+GOBUILD=$(DOCKER_GO)
 ifeq ($(BUILD),local)
-GOBUILD=GOOS=linux GOARCH=$(ARCH) CGO_ENABLED=0 go build -o $(DISTDIR)/$@
+GOBUILD=GOOS=linux GOARCH=$(ARCH) CGO_ENABLED=1
 endif
-
-OBJDIR      := $(PWD)/dist/$(ARCH)
-DISTDIR	    := $(OBJDIR)
 
 DOCKER_ARGS=$${GOARCH:+--build-arg GOARCH=}$(GOARCH)
 DOCKER_TAG=zededa/ztools:local$${GOARCH:+-}$(GOARCH)
@@ -55,9 +54,10 @@ $(DISTDIR):
 
 build: $(APPS) $(APPS1)
 
-$(APPS): $(DISTDIR) builder-image
+$(APPS): $(DISTDIR) builder-image $(DISTDIR)/$(APPS)
+$(DISTDIR)/$(APPS):
 	@echo "Building $@"
-	@$(GOBUILD) -ldflags -X=main.Version=$(BUILD_VERSION) $(GOMODULE)/$@
+	@$(GOBUILD) go build -ldflags -X=main.Version=$(BUILD_VERSION) -o $@ $(GOMODULE)/$(@F)
 
 $(APPS1): $(DISTDIR)
 	@echo $@

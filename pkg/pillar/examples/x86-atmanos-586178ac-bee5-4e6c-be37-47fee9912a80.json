@@ -1,2 +1,0 @@
-{"UUIDandVersion":{"UUID":"586178ac-bee5-4e6c-be37-47fee9912a80","Version":"0"},"DisplayName":"hello_atmanos","Activate":true,"FixedResources":{"Kernel":"","BootLoader":"","RootDev":"","Ramdisk":"","Memory":256000,"MaxMem":0,"VCpus":1},"StorageConfigList":[{"DownloadURL":"https://store.zededa.net/hello.atman","MaxSize":10000,"ImageSha256":"699def71da2e9acd1658cf52bc8a28fd095056a0bdb3c2ccba569b6be489ee93","ReadOnly":false,"Preserve":true,"Format":"","Devtype":"","Target":"kernel"}]}
-

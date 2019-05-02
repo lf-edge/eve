@@ -10,6 +10,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/eve/pkg/pillar/types"
 	"io/ioutil"
@@ -28,6 +29,7 @@ type ZedCloudContext struct {
 	FailureFunc         func(intf string, url string, reqLen int64, respLen int64)
 	SuccessFunc         func(intf string, url string, reqLen int64, respLen int64)
 	NoLedManager        bool // Don't call UpdateLedManagerConfig
+	DevUUID             uuid.UUID
 }
 
 // Tries all interfaces (free first) until one succeeds. interation arg
@@ -241,6 +243,12 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 
 		if b != nil {
 			req.Header.Add("Content-Type", "application/x-proto-binary")
+		}
+		// Add Device UUID to the HTTP Header
+		// for tracability
+		devUuidStr := ctx.DevUUID.String()
+		if devUuidStr != "" {
+			req.Header.Add("X-Request-Id", devUuidStr)
 		}
 		trace := &httptrace.ClientTrace{
 			GotConn: func(connInfo httptrace.GotConnInfo) {

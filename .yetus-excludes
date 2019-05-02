@@ -4,6 +4,7 @@
 ^build-tools/src/manifest-tool/vendor/
 ^pkg/pillar/vendor/
 ^pkg/pillar/zedpac/
+^sdk/
 ^.+\.patch
 ^.+\.diff
 ^.+build.yml

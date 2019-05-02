@@ -3,7 +3,7 @@ dist/
 build-tools/bin/
 images/installer.yml
 images/rootfs.yml
-pkg/mkconf/Dockerfile
 pkg/pillar/Dockerfile
 pkg/qrexec-dom0/Dockerfile
 pkg/qrexec-lib/Dockerfile
+.go/

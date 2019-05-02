@@ -19,7 +19,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/api/zconfig"
 	"github.com/zededa/eve/pkg/pillar/agentlog"
 	"github.com/zededa/eve/pkg/pillar/cast"
 	"github.com/zededa/eve/pkg/pillar/diskmetrics"
@@ -27,8 +26,9 @@ import (
 	"github.com/zededa/eve/pkg/pillar/pidfile"
 	"github.com/zededa/eve/pkg/pillar/pubsub"
 	"github.com/zededa/eve/pkg/pillar/types"
+	"github.com/zededa/eve/pkg/pillar/zedUpload"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
-	"github.com/zededa/shared/libs/zedUpload"
+	"github.com/zededa/eve/sdk/go/zconfig"
 )
 
 const (

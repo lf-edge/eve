@@ -17,26 +17,38 @@ jobs:
           name: Installing qemu-utils
           command: sudo apt-get update; sudo apt-get install -y qemu-utils
       - run:
+          name: Test
+          command: make test
+      - store_test_results:
+          path: dist
+      - run:
           name: Packages
           command: >
-            make ${DOCKERHUB_USERNAME:+EVE_REL=snapshot DEFAULT_PKG_TARGET=push}
-            pkgs
+            make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} pkgs
       - run:
           name: EVE
           command: >
-            make ${DOCKERHUB_USERNAME:+EVE_REL=snapshot DEFAULT_PKG_TARGET=push}
-            eve
+            make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} eve
   yetus:
     docker:
-      - image: apache/yetus:master
+      - image: awwashere/buretoolbox:junit-out
     steps:
       - checkout
+      # create a fake artifact so that Apache Yetus knows the URL
+      - run:
+          name: make artifact dir
+          command: mkdir -p /tmp/yetus-out
+      - run:
+          name: bootstrap artifacts
+          command: echo "bootstrap" > /tmp/yetus-out/bootstrap
+      - store_artifacts:
+          path: /tmp/yetus-out
       - run:
           name: yetus
           command: >
             test-patch
             --build-tool=nobuild
-            --plugins=all,-shelldocs,-gitlab
+            --plugins=all,-asflicense,-shelldocs,-gitlab
             --patch-dir=/tmp/yetus-out
             --whitespace-tabs-ignore-list='.*Makefile.*','.*\.go','.*\.dts'
             --html-report-file=/tmp/yetus-out/report.html
@@ -44,9 +56,11 @@ jobs:
             --brief-report-file=/tmp/yetus-out/brief.txt
             --excludes=.yetus-excludes
             --line-comments=''
-            --bugcomments=briefreport,htmlout
-            --empty-patch
-            || true
+            --bugcomments=briefreport,htmlout,junit
+            --junit-results-xml=/tmp/yetus-out/results.xml
+            --continuous-improvement=true
+      - store_test_results:
+          path: /tmp/yetus-out
       - store_artifacts:
           path: /tmp/yetus-out
 workflows:

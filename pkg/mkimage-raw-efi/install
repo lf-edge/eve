@@ -37,7 +37,7 @@ function root_dev {
       MINOR=$(( 0x$(stat -c '%T' $DEV) + 0 ))
    fi
    DEV_MM="$MAJOR:$MINOR"
-   echo $(grep -l $DEV_MM /sys/block/*/dev /sys/block/*/*/dev | cut -f4 -d/)
+   echo $(grep -l '^'$DEV_MM'$' /sys/block/*/dev /sys/block/*/*/dev | cut -f4 -d/)
 }
 
 # lets see if we're told on which disk to install...
@@ -54,7 +54,7 @@ if [ -z "$INSTALL_DEV" ] ; then
 fi
 
 # ...if we didn't find a single free disk - bail
-[ -z "$INSTALL_DEV" ] && bail "WARNING: didn't find a single free disk out of $ALL_DISKS"
+[ -z "$INSTALL_DEV" ] && bail "FATAL: didn't find a single free disk"
 
 # now lets figure out whether we have installation material
 CONFIG_PARTS=$(lsblk -anl -o "NAME,PARTLABEL" | sed -ne '/CONFIG$/s#CONFIG##p')
@@ -83,8 +83,6 @@ grep -q eve_pause_before_install /proc/cmdline && sleep 100000
 # do the install
 /bin/sh -xc "/make-raw /dev/$INSTALL_DEV" || bail "Installation failed. Entering shell..."
 
-echo "NOTICE: Device will now power off. Remove the USB stick and power it back on to complete the installation." >/dev/console
-
 # we also maybe asked to pause after
 PAUSE_AFTER_SYNC=5
 grep -q eve_pause_after_install /proc/cmdline && PAUSE_AFTER_SYNC=100000
@@ -92,4 +90,10 @@ grep -q eve_pause_after_install /proc/cmdline && PAUSE_AFTER_SYNC=100000
 sync
 sleep $PAUSE_AFTER_SYNC
 sync
-poweroff -f
+
+# we need a copy of these in tmpfs so that a block device with rootfs can be yanked
+cp /sbin/poweroff /bin/sleep /
+echo "NOTICE: Device will now power off. Remove the USB stick and power it back on to complete the installation." >/dev/console
+/sleep $PAUSE_AFTER_SYNC
+
+/poweroff -f
