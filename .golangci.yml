@@ -1,0 +1,8 @@
+---
+run:
+  deadline: 30m
+
+linters:
+  enable-all: true
+  disable:
+    - lll  # line length check
