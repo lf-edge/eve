@@ -7,7 +7,7 @@ To use:
 ```go
 import (
 	"github.com/zededa/eve/sdk/zconfig"
-	"github.com/zededa/api/zmet"
+	"github.com/zededa/eve/sdk/zmet"
 )
 ```
 

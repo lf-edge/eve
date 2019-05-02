@@ -2,131 +2,298 @@
 
 This document defines the API for Device to Controller communications.
 
+This document is version 1, and all endpoints will begin with `/api/v1`.
+
 ## Definitions
 
-1. `Device`: an independent 
+1. `API`: This API for Device-to-Controller communications.
+2. `Device`: an independent computation Device that runs an engine and is controlled via a centralized control system. Normally, it runs [EVE](https://lfedge.org/projects/eve).
+3. `Controller`: A centralized unit that can control one or more Devices. It can be in the cloud, on a laptop, on a Device itself, or anywhere.
+4. `UUID`: A [universally unique identifier](https://en.wikipedia.org/wiki/Universally_unique_identifier) for a Device within the realm of a Controller.
 
-* zmet: device -> controller
-* zconfig: controller -> device
+## Responsibilities
 
-## API endpoints
+### Device
 
-* `POST /api/v1/edgedevice/register` for device onboarding. Returns one of the following:
-    * `201` - successful registration. 
-    * 
-* `GET /api/v1/edgedevice/ping` for connectivity test; return `200`, empty message, ignores payload
-* `GET /api/v1/edgedevice/config` complete device + instance config
-* `POST /api/v1/edgedevice/info` for triggered device/instance status
-* `POST /api/v1/edgedevice/metrics` for periodic device/instance metrics
-* `POST /api/v1/edgedevice/logs` for logs from microservices on device
+A Device MUST be able to boot independently of a Controller, as defined in this document. The independent boot mechanism MAY be a local flash or disk, an attached storage Device like a media card or CD/DVD, network boot, or any other method. A Controller MAY _also_ provide boot services such as iPXE, but that is NOT part of the Controller's responsibilities according to this document.
 
-All except `POST register` use device cert for mTLS.
+A Device MUST register with a Controller in an agreed and secure fashion, to be detailed below. It is NOT the responsibility of the Controller to seek out and find Devices.
 
-Every device has UUID by the CloudController and sent in the config (should be part of the API), sent in response to `GET config`, and used in all other requests by device. Message `message EdgeDevConfig` is the root of response to `/config`, UUID is in there.
+A Device MUST retrieve its configuration from its Controller.
 
-`GET /config` does not pass anything to controller, headers or trees or hashes or anything, right now, so every time we get the whole thing.
+A Device MUST check for updated configuration on a periodic basis. The period for refresh is implementation-dependent and is NOT defined in this document.
 
-### info posting
+A Device MUST use the communications, authentication and authorization channels described in this document.
 
-Event triggered updates to state from device to controller, for different objects. Includes the following:
+A Device MUST NOT generate its own UUID. Rather, it MUST receive its UUID from its Controller via its first `config` API call. A Device MUST submit its UUID with each request other than `register` and `ping`, and it MUST check its current UUID against the returned UUID with each request from the `config` endpoint.
 
-* Updated version of baseos image
-* Partition switch
-* Application instance - application has Linux bridge - following lifecycle of application instance. 
+A Device MUST generate its own unique Device certificate and key. This specification does NOT define the mechanism by which a Device is to do so, as it is implementation-dependent. It is RECOMMENDED that a Device use hardware security, where possible, such as TPM or TEE, to protect the Device private key.
 
-Look at messages in `zmet/*.proto`, specifically anything `ZInfo`.
+A Device MUST have a method of knowing or discovering its Controller URL. This specification does NOT define the mechanism by which a Device is to do so, as it is implementation-dependent.
 
-How often and what triggers is an implementation question; the definition of _what_ is reported is an API question.
+A Device MUST maintain and persist its own current state such that it survives reboots and process restarts. This includes UUID and configuration parameters. This specification does NOT define the mechanism by which each Device is to do so.
 
-`Info` messages are intended to be reliable, and should not be lost. This is distinct from metrics.
+### Controller
 
+A Controller MUST be available for response to Device requests.
+
+A Controller MUST be accessible to all Devices that need to reach it. If it cannot be accessed due to network limitations, the necessary proxies and other network traversal solutions should be made available. Those solutions are implementation-dependent and are not defined in this specification.
+
+A Controller MUST listen for https on a port. The specific port is not specified in this document, however, it is RECOMMENDED to use the well-known https port of 443 where possible. A Controller MUST expose all of the endpoints listed in this document. A Controller MAY additionally listen on other ports, and MAY expose additional endpoints defined in this document, provided those endpoints do NOT conflict with those defined in this document, and use the "Extensions" provision listed herein.
+
+A Controller MUST generate a UUID for each Device. The UUID MUST be unique across all Devices managed by the Controller. The Controller SHOULD use an approach to generating UUIDs which minimizes the probability of UUID collisions with UUIDs generated by all Controllers everywhere.
+
+## Messages
+
+All messages are defined in subdirectories to this directory. As a general rule of thumb:
+
+* `zmet`: messages sent from Device to Controller
+* `zconfig`: messages sent from Controller to Device in response to requests for information, generally configuration
+
+## Authentication
+
+All communication messages MUST be encrypted with TLS v1.2 or higher, and MUST authenticate all message with mutual TLS (mTLS). It is RECOMMENDED to use TLS v1.3 or higher to provider better privacy for the Device certificate and faster communication initialization.
+
+There are two types of certificates to use for client authentication via mTLS:
+
+* Onboarding: These MUST be used only for initial Device registration via the `/register` endpoint or for the `/ping` endpoint prior to registration, and MUST NOT be used again thereafter.
+* Device: These MUST be used for all communications after the initial Device registration.
+
+A Controller MUST NOT expose any endpoints that do not offer TLS encryption. A Controller MUST NOT offer any endpoints in the edge device path `/api/v1/edgedevice/` that do not use mTLS authentication.
+
+The `ping` endpoint may be useful for a Device to check connectivity before registering. Since the device has not yet registered, it MUST use its onboarding certificate to authenticate to the `ping` endpoint. The Controller SHOULD rate limit the endpoint when authenticated via onboarding certificate. A Device MUST expect that its Controller may rate limit the `ping` endpoint, and have an appropriate backoff scheme for retrying.
+
+The common return codes for failed authentication or authorization are:
+
+* In the case of a missing or invalid client certificate, a Controller MUST return a `401` http error code.
+* In the case of a valid client certificate but an endpoint to which the certificate does NOT have access, whether an endpoint listed in this specification or a custom endpoint, a Controller MUST return a `403` http error code.
+
+Additional return codes are defined in this specification for each endpoint as necessary.
+
+## Extensions
+
+A Controller MAY offer additional API endpoints under the path `/ext` after the `/api` and version prefix. This is to ensure no conflict with existing or future official endpoints.
+
+For example, an endpoint called "custom" would be:
+
+   GET /api/v1/ext/custom
+
+An endpoint specific called "check" specific to edge devices  would be:
+
+   GET /api/v1/edgedevice/ext/check
+
+Because the endpoint is under the `/edgedevice/` path, it MUST be encrypted and mTLS authenticated.
+
+## Mime Types
+
+All `GET` requests MUST have no mime type set.
+All `POST` requests MUST have the mime type set of `application/x-proto-binary`.
+All responses with a body MUST have the mime type set of `application/x-proto-binary`.
+
+## Endpoints
+
+The following are the API endpoints that MUST be implemented by a Controller. All of these endpoints MUST be encrypted and authenticated.
+
+### Register
+
+Register a new Device for the first time.
+
+   POST /api/v1/edgeDevice/register
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Valid registration: `201`
+* Repeat valid registration for Device: `200`
+* Duplicate Device: `409`
+* Missing or unprocessable body: `422`
+
+Request:
+
+The request MUST use the onboarding certificate for mTLS authentication. The Controller MAY retain the onboarding certificate or information within it for further purposes.
+
+The request MUST have the body of a single protobuf message [zmet/ZRegisterMsg](./zmet/zregister.proto). The message MUST include the Device certificate. In the case where the Device certificate is the same as the onboarding certificate, the Device MUST NOT assume that the Controller will extract the Device certificate from the mTLS authentication, and instead it MUST include the certificate in the message.
+
+The message SHOULD include a serial string or other unique identifier for the Device.
+
+The combination of onboard certificate and serial MUST be unique to each Device. Each item on its own, serial or onboard certificate, MAY be duplicated.
+In the case of an attempt to register a combination of onboard certificate+serial that already has been registered:
+
+* If the proposed device certificate is identical to the one already registered, then the Controller MUST return a "OK 200" status code.
+* If the proposed device certificate is different from the one already registered, then the Controller MUST return a "Conflict 409" status code.
+
+A Controller MAY require pre-registration of onboarding certificates, Device certificates, serial or any combination thereof prior to accepting a Device register request. In the case where a Controller requires pre-registration, yet a Device attempts to use the `register` endpoint prior to pre-registration, a Controller MUST return an "Unauthorized 403".
+
+This specification recognizes two use cases for device registration:
+
+* Onboarding: A Device with an appropriate onboarding certificate and serial string can register. The Device calls the `/register` endpoint to register its unique device certificate.
+* Registered: A Device with a unique device certificate has already had its certificate registered with the Controller. The Device does not call the `/register` endpoint, as it already is registered. Instead, it moves directly to the `/config` endpoint to retrieve its configuration.
+
+Additional registration flows, including a unique Device certificate signed by a CA recognized by the Controller, and a CSR-based flow, are under consideration for future versions of this specification.
+
+Response:
+
+The response MUST NOT contain any body content.
+
+### Ping
+
+Check connectivity between Device and Controller.
+
+   GET /api/v1/edgeDevice/ping
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `200`
+
+Request:
+
+The request MUST use the Device certificate for mTLS authentication.
+
+The request MUST NOT contain any body content.
+
+Response:
+
+The response MUST NOT contain any body content.
+
+### Configuration
+
+Retrieve configuration for a specific Device.
+
+   GET /api/v1/edgeDevice/config
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `200`
+* Unknown Device: `400`
+
+Request:
+
+The request MUST use the Device certificate for mTLS authentication.
+
+The request MUST NOT contain any body content.
+
+Response:
+
+The response mime type MUST be "application/x-proto-binary".
+The response MUST contain a message with the entire configuration for the given Device. The body MUST be a protobuf message of type [zconfig.EdgeDevConfig](./zconfig/devconfig.proto).
+The body MUST contain the entire configuration for the Device.
+The body MUST contain the UUID for the Device on each and every request. The Controller MUST NOT assume that the Device already has the UUID.
+
+#### Arbitrary Config Variables
+
+The `config` endpoint, specifically the `EdgeDevConfig` message, supports arbitrary key/value pairs. These are intended to send implementation-specific configuration to a Device. For example, it might control the frequency of downloading configs, enable debug logging or enable a USB port.
+
+The `EdgeDevConfig` message can contain zero, one or more `ConfigItem` entries, each of which is an arbitrary key/value pair. These SHOULD be used to send implementation-specific configuration to a Device, other than configuration already defined in this API or the messages.
+
+### Info
+
+Send Device status information to Controller
+
+   POST /api/v1/edgeDevice/info
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `201`
+* Unknown Device: `400`
+* Missing or unprocessable body: `422`
+
+Request:
+
+The request MUST use the Device certificate for mTLS authentication.
+
+The request MUST be of mime type "application/x-proto-binary".
+
+The request body MUST be a protobuf message of type [zmet.ZInfoMsg](./zmet/zmet.proto). The message itself MUST be one of the types defined as [zmet.ZInfoTypes](./zmet/zmet.proto).
+
+The request body MUST indicate the type of information it is sending, and the content thereof. It MUST be one of:
+
+* Device via `ZInfoDevice`: information about the Device itself, including baseos version, update of baseos, etc.
+* Application via `ZInfoApp`: information about an application running on the Device, including running, started, stopped, downloaded, version, etc.
+* Network via `ZInfoNetworkInstance`: information about networking on the Device, including ports, connectivity, assignment, etc.
+
+An information message is expected to be reliable. A Device MUST retry until it successfully delivers information messages. How often information messages are sent, retries and other caching mechanisms on the Device are NOT specified here, as they are implementation questions.
+
+Response:
+
+The response MUST contain no body content.
 
 ### metrics
 
-Metrics are numeric data points. Associated with apps, network instances or devices (similar to Info). One message sent periodically that carries all the metrics. It is sent once per frequency (implementation independent), root message is `message ZMetricMsg` is the root.
+Send Device and Application metrics to Controller
 
-Frequency is configured along with all other config variables/config items. The API is agnostic to them, just passes them along. The current list is [here](https://github.com/zededa/eve/blob/master/pkg/pillar/docs/global-config-variables.md).
+   POST /api/v1/edgeDevice/metrics
 
-QUESTION: should these be part of the API? Or some?
+Return codes:
 
-The message passes them along at `message ConfigItem`, which is a dumb key-value pair.
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `201`
+* Unknown Device: `400`
+* Missing or unprocessable body: `422`
+
+Request:
+
+The request MUST use the Device certificate for mTLS authentication.
+
+The request MUST be of mime type "application/x-proto-binary".
+
+The request body MUST be a protobuf message of type [zmet.ZMetricMsg](./zmet/zmet.proto). The message itself contains metrics of the following combinations:
+
+* zero or one Device metrics `DeviceMetric`
+* zero, one or many application metrics `appMetric`
+* zero, one or many network metrics `ZMetricNetworkInstance`
+
+A metrics message is NOT expected to be reliable. A Device SHOULD expect that some metrics messages will be lost. A Controller MUST NOT expect that it has received all of the metrics from a Device. Metric values in a metrics message SHOULD be cumulative, such that the loss of one or more metrics messages results in the loss of precision in the time domain alone, and not in the loss of any other information.
+
+A Device SHOULD bundle many metrics together into a single `ZMetricMsg`. The choice of how many to bundle together, and how often to send them, is implementation-dependent.
+
+Response:
+
+The response MUST contain no body content.
 
 ### logs
 
-Logs are passed in groups of `message LogBundle`, which contain multiple `message LogEntry`. Combined for maximum size (any POST up to 64kB), plus timer, "do not wait longer than x seconds to send."
+Send Device and Application logs to Controller
 
-Should be guaranteed delivery.
+   POST /api/v1/edgeDevice/logs
 
-Q: what if it runs out of memory or storage? Our log manager stores to loca disk, but this is a policy question.
-### registration
+Return codes:
 
-Possible responses:
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `201`
+* Unknown Device: `400`
+* Missing or unprocessable body: `422`
 
-```
-enum ZRegisterResult {
-        ZRegNone         = 0;
-        ZRegSuccess      = 1;
-        ZRegNotActive    = 2;
-        ZRegAlreadyDone  = 3;
-        ZRegDeviceNA     = 4;
-        ZRegFailed       = 5;
-}
-```
+Request:
 
-Onboard message:
+The request MUST use the Device certificate for mTLS authentication.
 
-```
-message ZRegisterMsg {
-       string onBoardKey = 1; // deprecated
+The request MUST be of mime type "application/x-proto-binary".
 
-       bytes pemCert = 2;
-       string serial = 3;
-}
-```
+The request body MUST be a protobuf message of type [zmet.LogBundle](./zmet/zlog.proto). The message itself contains zero, one or more entries of type [zmet.LogEntry](./zmet/zlog.proto).
 
-Flow is expected as follows:
+Each `LogEntry` is a single log message indicating its timestamp, source, severity, message ID, application or process ID, and arbitrary message content. In addition, it can content an unlimited number of key/value pairs.
 
+A Device SHOULD bundle many log messages together into a single `LogBundle`.
 
-(this part should be kept private)
+A `LogBundle` MUST NOT be larger than the maximum size specified by the Controller for the Device, but MAY be smaller than that, if insufficient messages are available or the Device network or endpoints cannot handle the maximum size. The Device MUST retrieve the maximum `LogBundle` message size from the appropriate field of the configuration.
 
-1. New device manufactured, contains EVE image; OR existing device is flashed with EVE
-2. Manufacturer extracts unique cryptographic information from device, e.g. public key from tpm, or generate new public/private keypair and stores private on device
-3. Ship with those public keys on a separate medium - QR on box, label on box, USB key, email, printed paper - and send to end-user
-4. When device comes up, it registers with cloud controller. As we see it arrive on cloud controller, it shows up with public key information. Users can then choose which to accept.
+A log message is expected to be reliable. A Device MUST retry until it successfully delivers log messages. How often log messages are sent, retries, the number of messages and which types to bundle together into a single `LogBundle`,  and other caching mechanisms on the Device are NOT specified here, as they are implementation questions.
 
-(end private)
+Response:
 
-This leads to device registration:
+The response MUST contain no body content.
 
-1. Device boots
-(assuming not yet registered)
-2. Device read config from `config` partition, which contains a `server` file, whose contents are an FQDN
-3. It finds a device certificate in `config` partition `device.cert` and `device.key` file, which contain the key/cert (code on way to use tpm)
-4. It finds an onboarding certificate in `config` partition `onboard.cert` and `onboard.key`, which contain the onboarding key/cert
-5. Connects via SSL to `https://<contents_of_server_file>/<endpoint listed above>`. In `config` partition, we have root CA cert we trust. Can use whatever they want.
-6. It does `POST device register` end point. Register endpoint uses onboarding cert for mTLS. 
-    * Can register any number of onboarding certs for my account (zedcloud capability) - unknown onboarding cert is rejected as `401` (`403`?)
-    * Once authenticated with mTLS, submits `ZRegisterMsg` message with unique device cert and serial number
-    * Can have any of the following:
-        * accepts: new device with serial number that has not been used before
-        * reject: serial number unknown (serial number has to be pre-registered in our implementation, but this is implementation-specific)
-        * reject: serial number already registered with different device
-    * How is the onboarding cert restricted to my account in the cloud controller? It is not now.
-    * When connected and auth-ed via mTLS, it then takes the serial+onboarding cert, uses them to find the customer, and now ties device to customer, unless serial already registered
-    * Map potential responses to http codes
-7. Once registration is accepted, record that it has been registered in `config` through files:
-    * Save the device certificate
-    * In process, create a file called `self-register-failed`, which exists until registration has succeeded. It is a transaction lock file.
-    * Create `failed` file, create device cert/key file, register, remove `-failed` file.
-    * Once successful, it is done
+## Caching Policy
 
+Edge Devices are expected to have intermittent connectivity, with limited bandwidth, memory and storage. It is likely that, at some point, a Device will run out of local memory or storage to cache information, logs or metrics messages that need to be sent to a Controller.
 
-#### Serial conflict resolution
-
-In theory serials can conflict between manufacturers, e.g. SuperMicro + RaspberryPi. We resolve it by having different onboarding certs per manufacturer, possibly manufacturer+customer (e.g. general SuperMicro, GE+SuperMicro, etc.)
-
-
-## Pillar local
-
-Is there a way to run pillar locally, not on a device?
-
+The choice of which messages to keep, how long to keep them, which to discard, and how to handle these overflows are implementation-dependent and are NOT specified in this document.
