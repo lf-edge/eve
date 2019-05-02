@@ -18,7 +18,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/go-provision/dataplane/dptypes"
 	"github.com/zededa/go-provision/dataplane/fib"
-	"math/rand"
 	"net"
 	"os/exec"
 	"strings"
@@ -130,9 +129,8 @@ func StartItrThread(threadName string,
 	}
 	defer syscall.Close(fd6)
 
-	rand.Seed(time.Now().UnixNano())
-	ivHigh := rand.Uint32()
-	ivLow := rand.Uint64()
+	ivLow := uint64(fib.GenerateRandToken(0x7fffffffffffffff))
+	ivHigh := uint32(fib.GenerateRandToken(0x7fffffff))
 
 	itrLocalData := new(dptypes.ITRLocalData)
 	itrLocalData.Fd4 = fd4
