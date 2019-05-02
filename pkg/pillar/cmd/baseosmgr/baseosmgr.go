@@ -390,16 +390,19 @@ func handleCertObjModify(ctx *baseOsMgrContext, key string, config *types.CertOb
 	uuidStr := config.Key()
 	log.Infof("handleCertObjModify for %s\n", uuidStr)
 
-	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
-		log.Infof("Same version %v for %s\n",
-			config.UUIDandVersion.Version, key)
-		return
+	if config.UUIDandVersion.Version != status.UUIDandVersion.Version {
+		log.Infof("handleCertObjModify(%s), New config version %v\n", key,
+			config.UUIDandVersion.Version)
+		status.UUIDandVersion = config.UUIDandVersion
+		publishCertObjStatus(ctx, status)
+
 	}
 
-	status.UUIDandVersion = config.UUIDandVersion
-	publishCertObjStatus(ctx, status)
-
-	certObjHandleStatusUpdate(ctx, config, status)
+	// on storage config change, purge and recreate
+	if certObjCheckConfigModify(ctx, key, config, status) {
+		removeCertObjConfig(ctx, key)
+		handleCertObjCreate(ctx, key, config)
+	}
 }
 
 // certificate config delete event
