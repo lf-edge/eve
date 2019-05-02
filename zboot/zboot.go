@@ -407,6 +407,12 @@ const (
 	otherPrefix      = "/containers/services/zededa-tools/lower"
 )
 
+// XXX handle baseimage-update backwards by looking for new names
+// XXX Really "New" name but easier merge if we call it "Old"
+const (
+	otherPrefixOld = "/containers/services/pillar/lower"
+)
+
 func GetShortVersion(partName string) string {
 	return getVersion(partName, shortVersionFile)
 }
@@ -455,7 +461,13 @@ func getVersion(part string, verFilename string) string {
 			target, otherPrefix, verFilename)
 		version, err := ioutil.ReadFile(filename)
 		if err != nil {
-			log.Fatal(err)
+			log.Warn(err)
+			filename := fmt.Sprintf("%s/%s/%s",
+				target, otherPrefixOld, verFilename)
+			version, err = ioutil.ReadFile(filename)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 		versionStr := string(version)
 		versionStr = strings.TrimSpace(versionStr)
