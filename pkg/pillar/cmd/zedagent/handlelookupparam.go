@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"reflect"
 	"sort"
+	"time"
 
 	"github.com/eriknordmark/ipinfo"
 	log "github.com/sirupsen/logrus"
@@ -144,7 +145,8 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 
 	var addInfoDevice *types.AdditionalInfoDevice
 	// Determine location information and use as AdditionalInfo
-	if myIP, err := ipinfo.MyIP(); err == nil {
+	opt := ipinfo.Options{Timeout: 5 * time.Second}
+	if myIP, err := ipinfo.MyIPWithOptions(opt); err == nil {
 		addInfo := types.AdditionalInfoDevice{
 			UnderlayIP: myIP.IP,
 			Hostname:   myIP.Hostname,
