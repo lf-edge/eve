@@ -30,9 +30,19 @@ jobs:
           command: >
             make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} eve
   yetus:
+    environment:
+      - CGO_ENABLED: 1
+      - GO111MODULE: "on"
+      - CGO_LDFLAGS: -lm
     docker:
       - image: apache/yetus:master
     steps:
+      - run:
+          name: update package cache
+          command: apt-get -q update
+      - run:
+          name: install libpcap-dev
+          command: apt-get -q install --no-install-recommends -y libpcap-dev
       - checkout
       # create a fake artifact so that Apache Yetus knows the URL
       - run:
@@ -58,6 +68,7 @@ jobs:
             --linecomments=''
             --bugcomments=briefreport,htmlout,junit
             --junit-results-xml=/tmp/yetus-out/results.xml
+            --tests-filter=checkmake,golang,golancilint,revive
             --continuous-improvement=true
       - store_test_results:
           path: /tmp/yetus-out
