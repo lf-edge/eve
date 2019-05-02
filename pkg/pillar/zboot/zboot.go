@@ -409,12 +409,6 @@ const (
 	otherPrefixOld = "/containers/services/zededa-tools/lower"
 )
 
-// XXX handle baseimage-update backwards by looking for new names
-// XXX Really "New" name but easier merge if we call it "Old"
-const (
-	otherPrefixOld = "/containers/services/pillar/lower"
-)
-
 func GetShortVersion(partName string) string {
 	return getVersion(partName, shortVersionFile)
 }
