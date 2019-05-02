@@ -50,7 +50,7 @@ jobs:
             --build-tool=nobuild
             --plugins=all,-asflicense,-shelldocs,-gitlab
             --patch-dir=/tmp/yetus-out
-            --whitespace-tabs-ignore-list='.*Makefile.*','.*\.go','.*\.dts'
+            --whitespace-tabs-ignore-list='.*Makefile.*','.*\.go','.*\.dts','.*\.md'
             --html-report-file=/tmp/yetus-out/report.html
             --console-report-file=/tmp/yetus-out/console.txt
             --brief-report-file=/tmp/yetus-out/brief.txt
