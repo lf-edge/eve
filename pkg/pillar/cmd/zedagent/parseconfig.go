@@ -1211,8 +1211,7 @@ func parseUnderlayNetworkConfigEntry(
 	networkInstanceEntry := lookupNetworkInstanceId(intfEnt.NetworkId,
 		cfgNetworkInstances)
 	if networkInstanceEntry == nil {
-		ulCfg.Error = fmt.Sprintf("App %s-%s: Can't find network id %s in networks "+
-			"or networkinstances.\n",
+		ulCfg.Error = fmt.Sprintf("App %s-%s: Can't find %s in network instances.\n",
 			cfgApp.Displayname, cfgApp.Uuidandversion.Uuid,
 			intfEnt.NetworkId)
 		log.Errorf("%s", ulCfg.Error)
@@ -1312,9 +1311,9 @@ func parseOverlayNetworkConfigEntry(
 	networkInstanceEntry := lookupNetworkInstanceId(intfEnt.NetworkId,
 		cfgNetworkInstances)
 	if networkInstanceEntry == nil {
-		olCfg.Error = fmt.Sprintf("App %s - Can't find network id %s in networks or "+
-			"networkinstances. Ignoring this network",
-			cfgApp.Displayname, intfEnt.NetworkId)
+		olCfg.Error = fmt.Sprintf("App %s-%s: Can't find %s in network instances.\n",
+			cfgApp.Displayname, cfgApp.Uuidandversion.Uuid,
+			intfEnt.NetworkId)
 		log.Errorf("%s", olCfg.Error)
 		// XXX These errors should be propagated to zedrouter.
 		// zedrouter can then relay these errors to zedcloud.
