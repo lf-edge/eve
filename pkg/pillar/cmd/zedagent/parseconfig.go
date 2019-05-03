@@ -80,14 +80,11 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	parseSystemAdapterConfig(config, getconfigCtx, false)
 
 	parseBaseOsConfig(getconfigCtx, config)
-	// XXX Deprecated..
-	//	parseNetworkObjectConfig
-	//	parseNetworkServiceConfig
-	//	Remove this when Network / ServiceInstance are removed.
-	//	XXX Network Instance is the new way of configuring network for
-	// 				applications
-	parseNetworkObjectConfig(config, getconfigCtx)
-	parseNetworkServiceConfig(config, getconfigCtx)
+
+	// XXX Deprecated but used for systemAdapters
+	//	parseNetworkXObjectConfig
+	parseNetworkXObjectConfig(config, getconfigCtx)
+
 	parseNetworkInstanceConfig(config, getconfigCtx)
 	parseAppInstanceConfig(config, getconfigCtx)
 
@@ -229,7 +226,7 @@ func lookupBaseOsConfigPub(getconfigCtx *getconfigContext, key string) *types.Ba
 
 var networkConfigPrevConfigHash []byte
 
-func parseNetworkObjectConfig(config *zconfig.EdgeDevConfig,
+func parseNetworkXObjectConfig(config *zconfig.EdgeDevConfig,
 	getconfigCtx *getconfigContext) {
 
 	h := sha256.New()
@@ -241,45 +238,20 @@ func parseNetworkObjectConfig(config *zconfig.EdgeDevConfig,
 	same := bytes.Equal(configHash, networkConfigPrevConfigHash)
 	networkConfigPrevConfigHash = configHash
 	if same {
-		log.Debugf("parseNetworkObjectConfig: network sha is unchanged: % x\n",
+		log.Debugf("parseNetworkXObjectConfig: network sha is unchanged: % x\n",
 			configHash)
 		return
 	}
-	log.Infof("parseNetworkObjectConfig: Applying updated config sha % x vs. % x: %v\n",
+	log.Infof("parseNetworkXObjectConfig: Applying updated config sha % x vs. % x: %v\n",
 		networkConfigPrevConfigHash, configHash, nets)
-	// Export NetworkObjectConfig to zedrouter
+	// Export NetworkXObjectConfig for ourselves; systemAdapter
 	// XXX
 	// System Adapter points to network for Proxy configuration.
 	// There could be a situation where networks change, but
 	// systerm adapters do not change. When we see the networks
 	// change, we should parse systerm adapters again.
-	publishNetworkObjectConfig(getconfigCtx, nets)
+	publishNetworkXObjectConfig(getconfigCtx, nets)
 	parseSystemAdapterConfig(config, getconfigCtx, true)
-}
-
-var networkServicePrevConfigHash []byte
-
-func parseNetworkServiceConfig(config *zconfig.EdgeDevConfig,
-	getconfigCtx *getconfigContext) {
-
-	h := sha256.New()
-	svcs := config.GetServices()
-	for _, s := range svcs {
-		computeConfigElementSha(h, s)
-	}
-	configHash := h.Sum(nil)
-	same := bytes.Equal(configHash, networkServicePrevConfigHash)
-	networkServicePrevConfigHash = configHash
-	if same {
-		log.Debugf("parseNetworkServiceConfig: service sha is unchanged: % x\n",
-			configHash)
-		return
-	}
-	log.Infof("parseNetworkServiceConfig: Applying updated config sha % x vs. % x: %v\n",
-		networkServicePrevConfigHash, configHash, svcs)
-
-	// Export NetworkServiceConfig to zedrouter
-	publishNetworkServiceConfig(getconfigCtx, svcs)
 }
 
 func unpublishDeletedNetworkInstanceConfig(ctx *getconfigContext,
@@ -726,13 +698,13 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 
 			// Lookup the network with given UUID
 			// and copy proxy and other configuration
-			networkObject, err := getconfigCtx.pubNetworkObjectConfig.Get(sysAdapter.NetworkUUID)
+			networkXObject, err := getconfigCtx.pubNetworkXObjectConfig.Get(sysAdapter.NetworkUUID)
 			if err != nil {
 				log.Errorf("parseSystemAdapterConfig: Network with UUID %s not found: %s\n",
 					sysAdapter.NetworkUUID, err)
 				continue
 			}
-			network := cast.CastNetworkObjectConfig(networkObject)
+			network := cast.CastNetworkXObjectConfig(networkXObject)
 			addrSubnet := network.Subnet
 			addrSubnet.IP = ip
 			port.AddrSubnet = addrSubnet.String()
@@ -949,18 +921,18 @@ func lookupNetworkInstanceById(uuid string,
 	return nil
 }
 
-func publishNetworkObjectConfig(ctx *getconfigContext,
+func publishNetworkXObjectConfig(ctx *getconfigContext,
 	cfgNetworks []*zconfig.NetworkConfig) {
 
 	// Check for items to delete first
-	items := ctx.pubNetworkObjectConfig.GetAll()
+	items := ctx.pubNetworkXObjectConfig.GetAll()
 	for k := range items {
 		netEnt := lookupNetworkId(k, cfgNetworks)
 		if netEnt != nil {
 			continue
 		}
-		log.Debugf("publishNetworkObjectConfig: unpublishing %s\n", k)
-		ctx.pubNetworkObjectConfig.Unpublish(k)
+		log.Debugf("publishNetworkXObjectConfig: unpublishing %s\n", k)
+		ctx.pubNetworkXObjectConfig.Unpublish(k)
 	}
 
 	// XXX note that we currently get repeats in the same loop.
@@ -968,22 +940,22 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 	for _, netEnt := range cfgNetworks {
 		id, err := uuid.FromString(netEnt.Id)
 		if err != nil {
-			log.Errorf("publishNetworkObjectConfig: Malformed UUID ignored: %s\n",
+			log.Errorf("publishNetworkXObjectConfig: Malformed UUID ignored: %s\n",
 				err)
 			continue
 		}
-		config := types.NetworkObjectConfig{
+		config := types.NetworkXObjectConfig{
 			UUID: id,
 			Type: types.NetworkType(netEnt.Type),
 		}
 		// proxy configuration from cloud network configuration
 		netProxyConfig := netEnt.GetEntProxy()
 		if netProxyConfig == nil {
-			log.Infof("publishNetworkObjectConfig: EntProxy of network %s is nil",
+			log.Infof("publishNetworkXObjectConfig: EntProxy of network %s is nil",
 				netEnt.Id)
 		}
 		if netProxyConfig != nil {
-			log.Infof("publishNetworkObjectConfig: Proxy configuration present in %s",
+			log.Infof("publishNetworkXObjectConfig: Proxy configuration present in %s",
 				netEnt.Id)
 
 			proxyConfig := types.ProxyConfig{
@@ -1011,43 +983,43 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 				default:
 				}
 				proxyConfig.Proxies = append(proxyConfig.Proxies, proxyEntry)
-				log.Debugf("publishNetworkObjectConfig: Adding proxy entry %s:%d in %s",
+				log.Debugf("publishNetworkXObjectConfig: Adding proxy entry %s:%d in %s",
 					proxyEntry.Server, proxyEntry.Port, netEnt.Id)
 			}
 
 			config.Proxy = &proxyConfig
 		}
 
-		log.Infof("publishNetworkObjectConfig: processing %s type %d\n",
+		log.Infof("publishNetworkXObjectConfig: processing %s type %d\n",
 			config.Key(), config.Type)
 
 		ipspec := netEnt.GetIp()
 		switch config.Type {
 		case types.NT_CryptoEID, types.NT_IPV4, types.NT_IPV6:
 			if ipspec == nil {
-				log.Errorf("publishNetworkObjectConfig: Missing ipspec for %s in %v\n",
+				log.Errorf("publishNetworkXObjectConfig: Missing ipspec for %s in %v\n",
 					id.String(), netEnt)
 				continue
 			}
-			err := parseIpspec(ipspec, &config)
+			err := parseIpspecNetworkXObject(ipspec, &config)
 			if err != nil {
 				// XXX return how?
-				log.Errorf("publishNetworkObjectConfig: parseIpspec failed: %s\n", err)
+				log.Errorf("publishNetworkXObjectConfig: parseIpspec failed: %s\n", err)
 				continue
 			}
 		case types.NT_NOOP:
 			// XXX zedcloud is sending static and dynamic entries with zero.
 			// XXX could also be for a switch without an IP address??
 			if ipspec != nil {
-				err := parseIpspec(ipspec, &config)
+				err := parseIpspecNetworkXObject(ipspec, &config)
 				if err != nil {
 					// XXX return how?
-					log.Errorf("publishNetworkObjectConfig: parseIpspec ignored: %s\n", err)
+					log.Errorf("publishNetworkXObjectConfig: parseIpspec ignored: %s\n", err)
 				}
 			}
 
 		default:
-			log.Errorf("publishNetworkObjectConfig: Unknown NetworkConfig type %d for %s in %v; ignored\n",
+			log.Errorf("publishNetworkXObjectConfig: Unknown NetworkConfig type %d for %s in %v; ignored\n",
 				config.Type, id.String(), netEnt)
 			// XXX return error? Ignore for now
 			continue
@@ -1081,12 +1053,12 @@ func publishNetworkObjectConfig(ctx *getconfigContext,
 		}
 		config.DnsNameToIPList = nameToIPs
 
-		ctx.pubNetworkObjectConfig.Publish(config.Key(),
+		ctx.pubNetworkXObjectConfig.Publish(config.Key(),
 			&config)
 	}
 }
 
-func parseIpspec(ipspec *zconfig.Ipspec, config *types.NetworkObjectConfig) error {
+func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObjectConfig) error {
 	config.Dhcp = types.DhcpType(ipspec.Dhcp)
 	config.DomainName = ipspec.GetDomain()
 	if s := ipspec.GetSubnet(); s != "" {
@@ -1191,93 +1163,6 @@ func parseIpspecForNetworkInstanceConfig(ipspec *zconfig.Ipspec,
 	}
 	return nil
 }
-func publishNetworkServiceConfig(ctx *getconfigContext,
-	cfgServices []*zconfig.ServiceInstanceConfig) {
-
-	// Check for items to delete first
-	items := ctx.pubNetworkServiceConfig.GetAll()
-	for k, c := range items {
-		svcEnt := lookupServiceId(k, cfgServices)
-		if svcEnt != nil {
-			continue
-		}
-		config := cast.CastNetworkServiceConfig(c)
-		if config.Key() != k {
-			log.Errorf("publishNetworkServiceConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-				k, config.Key(), config)
-			continue
-		}
-		if config.Internal {
-			log.Infof("publishNetworkServiceConfig: not deleting internal %s: %v\n", k, config)
-			continue
-		}
-		log.Debugf("publishNetworkServiceConfig: unpublishing %s\n", k)
-		ctx.pubNetworkServiceConfig.Unpublish(k)
-	}
-	for _, svcEnt := range cfgServices {
-		id, err := uuid.FromString(svcEnt.Id)
-		if err != nil {
-			log.Errorf("NetworkServiceConfig: Malformed UUID %s ignored: %s\n",
-				svcEnt.Id, err)
-			continue
-		}
-		service := types.NetworkServiceConfig{
-			UUID:        id,
-			DisplayName: svcEnt.Displayname,
-			Type:        types.NetworkServiceType(svcEnt.Srvtype),
-			Activate:    svcEnt.Activate,
-		}
-		log.Infof("publishNetworkServiceConfig: processing %s %s type %d activate %v\n",
-			service.UUID.String(), service.DisplayName, service.Type,
-			service.Activate)
-
-		if svcEnt.Applink != "" {
-			applink, err := uuid.FromString(svcEnt.Applink)
-			if err != nil {
-				log.Errorf("publishNetworkServiceConfig: Malformed UUID %s ignored: %s\n",
-					svcEnt.Applink, err)
-				continue
-			}
-			service.AppLink = applink
-		}
-		if svcEnt.Devlink != nil {
-			if svcEnt.Devlink.Type != zconfig.ZCioType_ZCioEth {
-				log.Errorf("publishNetworkServiceConfig: Unsupported IoType %v ignored\n",
-					svcEnt.Devlink.Type)
-				continue
-			}
-			service.Adapter = svcEnt.Devlink.Name
-		}
-		if svcEnt.Cfg != nil {
-			service.OpaqueConfig = svcEnt.Cfg.Oconfig
-		}
-		if svcEnt.LispCfg != nil {
-			mapServers := []types.MapServer{}
-			for _, ms := range svcEnt.LispCfg.LispMSs {
-				mapServer := types.MapServer{
-					ServiceType: types.MapServerType(ms.ZsType),
-					NameOrIp:    ms.NameOrIp,
-					Credential:  ms.Credential,
-				}
-				mapServers = append(mapServers, mapServer)
-			}
-			eidPrefix := net.IP(svcEnt.LispCfg.Allocationprefix)
-
-			// Populate service Lisp config that should be sent to zedrouter
-			service.LispConfig = types.LispConfig{
-				MapServers:    mapServers,
-				IID:           svcEnt.LispCfg.LispInstanceId,
-				Allocate:      svcEnt.LispCfg.Allocate,
-				ExportPrivate: svcEnt.LispCfg.Exportprivate,
-				EidPrefix:     eidPrefix,
-				EidPrefixLen:  svcEnt.LispCfg.Allocationprefixlen,
-				Experimental:  svcEnt.LispCfg.Experimental,
-			}
-		}
-		ctx.pubNetworkServiceConfig.Publish(service.UUID.String(),
-			&service)
-	}
-}
 
 func parseAppNetworkConfig(appInstance *types.AppInstanceConfig,
 	cfgApp *zconfig.AppInstanceConfig,
@@ -1312,7 +1197,7 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	}
 }
 
-func isOverlayNetworkObject(netEnt *zconfig.NetworkConfig) bool {
+func isOverlayNetwork(netEnt *zconfig.NetworkConfig) bool {
 	switch netEnt.Type {
 	case zconfig.NetworkType_CryptoV4, zconfig.NetworkType_CryptoV6:
 		return true
@@ -1359,7 +1244,7 @@ func parseUnderlayNetworkConfigEntry(
 			cfgApp.Displayname, cfgApp.Uuidandversion.Uuid,
 			networkInstanceEntry.InstType)
 	} else {
-		if isOverlayNetworkObject(netEnt) {
+		if isOverlayNetwork(netEnt) {
 			return nil
 		}
 		ulCfg.UsesNetworkInstance = false
@@ -1471,7 +1356,7 @@ func parseOverlayNetworkConfigEntry(
 			return nil
 		}
 	} else {
-		if !isOverlayNetworkObject(netEnt) {
+		if !isOverlayNetwork(netEnt) {
 			return nil
 		}
 		olCfg.UsesNetworkInstance = false
@@ -1484,7 +1369,7 @@ func parseOverlayNetworkConfigEntry(
 		return olCfg
 	}
 	if netEnt != nil {
-		if !isOverlayNetworkObject(netEnt) {
+		if !isOverlayNetwork(netEnt) {
 			// We are not interested in non-overlays
 			return nil
 		}

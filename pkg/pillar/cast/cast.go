@@ -13,62 +13,14 @@ import (
 // XXX template?
 // XXX alternative seems to be a deep copy of some sort
 
-func CastNetworkObjectConfig(in interface{}) types.NetworkObjectConfig {
+func CastNetworkXObjectConfig(in interface{}) types.NetworkXObjectConfig {
 	b, err := json.Marshal(in)
 	if err != nil {
-		log.Fatal(err, "json Marshal in CastNetworkObjectConfig")
+		log.Fatal(err, "json Marshal in CastNetworkXObjectConfig")
 	}
-	var output types.NetworkObjectConfig
+	var output types.NetworkXObjectConfig
 	if err := json.Unmarshal(b, &output); err != nil {
-		log.Fatal(err, "json Unmarshal in CastNetworkObjectConfig")
-	}
-	return output
-}
-
-func CastNetworkObjectStatus(in interface{}) types.NetworkObjectStatus {
-	b, err := json.Marshal(in)
-	if err != nil {
-		log.Fatal(err, "json Marshal in CastNetworkObjectStatus")
-	}
-	var output types.NetworkObjectStatus
-	if err := json.Unmarshal(b, &output); err != nil {
-		log.Fatal(err, "json Unmarshal in CastNetworkObjectStatus")
-	}
-	return output
-}
-
-func CastNetworkServiceConfig(in interface{}) types.NetworkServiceConfig {
-	b, err := json.Marshal(in)
-	if err != nil {
-		log.Fatal(err, "json Marshal in CastNetworkServiceConfig")
-	}
-	var output types.NetworkServiceConfig
-	if err := json.Unmarshal(b, &output); err != nil {
-		log.Fatal(err, "json Unmarshal in CastNetworkServiceConfig")
-	}
-	return output
-}
-
-func CastNetworkServiceStatus(in interface{}) types.NetworkServiceStatus {
-	b, err := json.Marshal(in)
-	if err != nil {
-		log.Fatal(err, "json Marshal in CastNetworkServiceStatus")
-	}
-	var output types.NetworkServiceStatus
-	if err := json.Unmarshal(b, &output); err != nil {
-		log.Fatal(err, "json Unmarshal in CastNetworkServiceStatus")
-	}
-	return output
-}
-
-func CastNetworkServiceMetrics(in interface{}) types.NetworkServiceMetrics {
-	b, err := json.Marshal(in)
-	if err != nil {
-		log.Fatal(err, "json Marshal in CastNetworkServiceMetrics")
-	}
-	var output types.NetworkServiceMetrics
-	if err := json.Unmarshal(b, &output); err != nil {
-		log.Fatal(err, "json Unmarshal in CastNetworkServiceSMetrics")
+		log.Fatal(err, "json Unmarshal in CastNetworkXObjectConfig")
 	}
 	return output
 }

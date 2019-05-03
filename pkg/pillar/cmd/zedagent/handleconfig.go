@@ -50,8 +50,7 @@ type getconfigContext struct {
 	metricsTickerHandle         interface{}
 	pubDevicePortConfig         *pubsub.Publication
 	devicePortConfig            types.DevicePortConfig
-	pubNetworkObjectConfig      *pubsub.Publication
-	pubNetworkServiceConfig     *pubsub.Publication
+	pubNetworkXObjectConfig     *pubsub.Publication
 	subAppInstanceStatus        *pubsub.Subscription
 	pubAppInstanceConfig        *pubsub.Publication
 	pubAppNetworkConfig         *pubsub.Publication

@@ -432,7 +432,7 @@ func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleAppInstanceConfigDelete(%s) done\n", key)
 }
 
-// Callers must be careful to publish any changes to NetworkObjectStatus
+// Callers must be careful to publish any changes to AppInstanceStatus
 func lookupAppInstanceStatus(ctx *zedmanagerContext, key string) *types.AppInstanceStatus {
 
 	pub := ctx.pubAppInstanceStatus

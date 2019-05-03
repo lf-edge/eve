@@ -299,7 +299,7 @@ type NetworkPortStatus struct {
 	Name   string // New logical name set by controller/model
 	IsMgmt bool   // Used to talk to controller
 	Free   bool
-	NetworkObjectConfig
+	NetworkXObjectConfig
 	AddrInfoList []AddrInfo
 	ProxyConfig
 	Error     string
@@ -914,12 +914,9 @@ const (
 	// XXX how do we represent a bridge? NT_L2??
 )
 
-// Extracted from the protobuf NetworkConfig
-// Referenced using the UUID in Overlay/UnderlayNetworkConfig
-// Note that NetworkConfig can be referenced (by UUID) from NetworkService.
-// If there is no such reference the NetworkConfig ends up being local to the
-// host.
-type NetworkObjectConfig struct {
+// Extracted from the protobuf NetworkConfig. Used by parseSystemAdapter
+// XXX replace by inline once we have device model
+type NetworkXObjectConfig struct {
 	UUID            uuid.UUID
 	Type            NetworkType
 	Dhcp            DhcpType // If DT_STATIC or DT_CLIENT use below
@@ -938,7 +935,7 @@ type IpRange struct {
 	End   net.IP
 }
 
-func (config NetworkObjectConfig) Key() string {
+func (config NetworkXObjectConfig) Key() string {
 	return config.UUID.String()
 }
 
@@ -1019,21 +1016,6 @@ func (instanceInfo *NetworkInstanceInfo) AddVif(
 	instanceInfo.Vifs = append(instanceInfo.Vifs, info)
 }
 
-type NetworkObjectStatus struct {
-	NetworkObjectConfig
-	PendingAdd    bool
-	PendingModify bool
-	PendingDelete bool
-
-	NetworkInstanceInfo
-	// Used to populate DNS and eid ipset
-	DnsNameToIPList []DnsNameToIP
-}
-
-func (status NetworkObjectStatus) Key() string {
-	return status.UUID.String()
-}
-
 type NetworkServiceType uint8
 
 const (
@@ -1046,63 +1028,6 @@ const (
 	// XXX Add a NST_L3/NST_ROUTER to describe IP forwarding?
 	NST_LAST = 255
 )
-
-// Extracted from protobuf Service definition
-type NetworkServiceConfig struct {
-	UUID         uuid.UUID
-	Internal     bool // Internally created - not from zedcloud
-	DisplayName  string
-	Type         NetworkServiceType
-	Activate     bool
-	AppLink      uuid.UUID
-	Adapter      string // Ifname or group like "uplink", or empty
-	OpaqueConfig string
-	LispConfig   LispConfig
-}
-
-func (config NetworkServiceConfig) Key() string {
-	return config.UUID.String()
-}
-
-type NetworkServiceStatus struct {
-	UUID          uuid.UUID
-	PendingAdd    bool
-	PendingModify bool
-	PendingDelete bool
-	DisplayName   string
-	Type          NetworkServiceType
-	Activated     bool
-	AppLink       uuid.UUID
-	Adapter       string // Ifname or group like "uplink", or empty
-	OpaqueStatus  string
-	LispStatus    LispConfig
-	IfNameList    []string  // Recorded at time of activate
-	Subnet        net.IPNet // Recorded at time of activate
-
-	MissingNetwork bool // If AppLink UUID not found
-	// Any errrors from provisioning the service
-	Error          string
-	ErrorTime      time.Time
-	VpnStatus      *ServiceVpnStatus
-	LispInfoStatus *LispInfoStatus
-	LispMetrics    *LispMetrics
-}
-
-func (status NetworkServiceStatus) Key() string {
-	return status.UUID.String()
-}
-
-type NetworkServiceMetrics struct {
-	UUID        uuid.UUID
-	DisplayName string
-	Type        NetworkServiceType
-	VpnMetrics  *VpnMetrics
-	LispMetrics *LispMetrics
-}
-
-func (metrics NetworkServiceMetrics) Key() string {
-	return metrics.UUID.String()
-}
 
 type NetworkInstanceMetrics struct {
 	UUIDandVersion UUIDandVersion

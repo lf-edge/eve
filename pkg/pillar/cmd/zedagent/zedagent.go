@@ -85,7 +85,6 @@ type zedagentContext struct {
 	assignableAdapters        *types.AssignableAdapters
 	subAssignableAdapters     *pubsub.Subscription
 	iteration                 int
-	subNetworkServiceStatus   *pubsub.Subscription
 	subNetworkInstanceStatus  *pubsub.Subscription
 	subDomainStatus           *pubsub.Subscription
 	subCertObjConfig          *pubsub.Subscription
@@ -96,7 +95,6 @@ type zedagentContext struct {
 	subBaseOsVerifierStatus   *pubsub.Subscription
 	subAppImgDownloadStatus   *pubsub.Subscription
 	subAppImgVerifierStatus   *pubsub.Subscription
-	subNetworkServiceMetrics  *pubsub.Subscription
 	subNetworkInstanceMetrics *pubsub.Subscription
 	subGlobalConfig           *pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
@@ -254,20 +252,13 @@ func Run() {
 	}
 	getconfigCtx.pubDevicePortConfig = pubDevicePortConfig
 
-	// Publish NetworkConfig and NetworkServiceConfig for zedmanager/zedrouter
-	pubNetworkObjectConfig, err := pubsub.Publish(agentName,
-		types.NetworkObjectConfig{})
+	// Publish NetworkXObjectConfig and for outselves. XXX remove
+	pubNetworkXObjectConfig, err := pubsub.Publish(agentName,
+		types.NetworkXObjectConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
-	getconfigCtx.pubNetworkObjectConfig = pubNetworkObjectConfig
-
-	pubNetworkServiceConfig, err := pubsub.Publish(agentName,
-		types.NetworkServiceConfig{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	getconfigCtx.pubNetworkServiceConfig = pubNetworkServiceConfig
+	getconfigCtx.pubNetworkXObjectConfig = pubNetworkXObjectConfig
 
 	pubNetworkInstanceConfig, err := pubsub.Publish(agentName,
 		types.NetworkInstanceConfig{})
@@ -329,26 +320,6 @@ func Run() {
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	zedagentCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
-
-	subNetworkServiceStatus, err := pubsub.Subscribe("zedrouter",
-		types.NetworkServiceStatus{}, false, &zedagentCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subNetworkServiceStatus.ModifyHandler = handleNetworkServiceModify
-	subNetworkServiceStatus.DeleteHandler = handleNetworkServiceDelete
-	zedagentCtx.subNetworkServiceStatus = subNetworkServiceStatus
-	subNetworkServiceStatus.Activate()
-
-	subNetworkServiceMetrics, err := pubsub.Subscribe("zedrouter",
-		types.NetworkServiceMetrics{}, false, &zedagentCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subNetworkServiceMetrics.ModifyHandler = handleNetworkServiceMetricsModify
-	subNetworkServiceMetrics.DeleteHandler = handleNetworkServiceMetricsDelete
-	zedagentCtx.subNetworkServiceMetrics = subNetworkServiceMetrics
-	subNetworkServiceMetrics.Activate()
 
 	subNetworkInstanceStatus, err := pubsub.Subscribe("zedrouter",
 		types.NetworkInstanceStatus{}, false, &zedagentCtx)
@@ -766,12 +737,6 @@ func Run() {
 
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
-
-		case change := <-subNetworkServiceStatus.C:
-			subNetworkServiceStatus.ProcessChange(change)
-
-		case change := <-subNetworkServiceMetrics.C:
-			subNetworkServiceMetrics.ProcessChange(change)
 
 		case change := <-subNetworkInstanceStatus.C:
 			subNetworkInstanceStatus.ProcessChange(change)

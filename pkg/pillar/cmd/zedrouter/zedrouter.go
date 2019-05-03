@@ -48,12 +48,6 @@ type zedrouterContext struct {
 	// Legacy data plane enable/disable flag
 	legacyDataPlane bool
 
-	subNetworkObjectConfig  *pubsub.Subscription
-	subNetworkServiceConfig *pubsub.Subscription
-
-	pubNetworkObjectStatus  *pubsub.Publication
-	pubNetworkServiceStatus *pubsub.Publication
-
 	subAppNetworkConfig   *pubsub.Subscription
 	subAppNetworkConfigAg *pubsub.Subscription // From zedagent for dom0
 
@@ -63,14 +57,13 @@ type zedrouterContext struct {
 	subLispInfoStatus      *pubsub.Subscription
 	subLispMetrics         *pubsub.Subscription
 
-	assignableAdapters       *types.AssignableAdapters
-	subAssignableAdapters    *pubsub.Subscription
-	pubNetworkServiceMetrics *pubsub.Publication
-	subDeviceNetworkStatus   *pubsub.Subscription
-	deviceNetworkStatus      *types.DeviceNetworkStatus
-	ready                    bool
-	subGlobalConfig          *pubsub.Subscription
-	pubUuidToNum             *pubsub.Publication
+	assignableAdapters     *types.AssignableAdapters
+	subAssignableAdapters  *pubsub.Subscription
+	subDeviceNetworkStatus *pubsub.Subscription
+	deviceNetworkStatus    *types.DeviceNetworkStatus
+	ready                  bool
+	subGlobalConfig        *pubsub.Subscription
+	pubUuidToNum           *pubsub.Publication
 
 	// NetworkInstance
 	subNetworkInstanceConfig  *pubsub.Subscription
@@ -182,20 +175,6 @@ func Run() {
 	// Also need to do this before we wait for IP addresses since
 	// zedagent waits for these to be published/exist, and zedagent
 	// runs the fallback timers after that wait.
-	pubNetworkObjectStatus, err := pubsub.Publish(agentName,
-		types.NetworkObjectStatus{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedrouterCtx.pubNetworkObjectStatus = pubNetworkObjectStatus
-
-	pubNetworkServiceStatus, err := pubsub.Publish(agentName,
-		types.NetworkServiceStatus{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedrouterCtx.pubNetworkServiceStatus = pubNetworkServiceStatus
-
 	pubNetworkInstanceStatus, err := pubsub.Publish(agentName,
 		types.NetworkInstanceStatus{})
 	if err != nil {
@@ -218,13 +197,6 @@ func Run() {
 	}
 	zedrouterCtx.pubLispDataplaneConfig = pubLispDataplaneConfig
 
-	pubNetworkServiceMetrics, err := pubsub.Publish(agentName,
-		types.NetworkServiceMetrics{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedrouterCtx.pubNetworkServiceMetrics = pubNetworkServiceMetrics
-
 	pubNetworkInstanceMetrics, err := pubsub.Publish(agentName,
 		types.NetworkInstanceMetrics{})
 	if err != nil {
@@ -236,7 +208,7 @@ func Run() {
 	bridgeNumAllocatorInit(&zedrouterCtx)
 	handleInit(runDirname)
 
-	// Before we process any NetworkServices we want to know the
+	// Before we process any NetworkInstances we want to know the
 	// assignable adapters.
 	for !zedrouterCtx.assignableAdapters.Initialized {
 		log.Infof("Waiting for AssignableAdapters\n")
@@ -252,27 +224,6 @@ func Run() {
 		}
 	}
 	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
-
-	// Subscribe to network objects and services from zedagent
-	subNetworkObjectConfig, err := pubsub.Subscribe("zedagent",
-		types.NetworkObjectConfig{}, false, &zedrouterCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subNetworkObjectConfig.ModifyHandler = handleNetworkObjectModify
-	subNetworkObjectConfig.DeleteHandler = handleNetworkObjectDelete
-	zedrouterCtx.subNetworkObjectConfig = subNetworkObjectConfig
-	subNetworkObjectConfig.Activate()
-
-	subNetworkServiceConfig, err := pubsub.Subscribe("zedagent",
-		types.NetworkServiceConfig{}, false, &zedrouterCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subNetworkServiceConfig.ModifyHandler = handleNetworkServiceModify
-	subNetworkServiceConfig.DeleteHandler = handleNetworkServiceDelete
-	zedrouterCtx.subNetworkServiceConfig = subNetworkServiceConfig
-	subNetworkServiceConfig.Activate()
 
 	subNetworkInstanceConfig, err := pubsub.Subscribe("zedagent",
 		types.NetworkInstanceConfig{}, false, &zedrouterCtx)
@@ -408,7 +359,6 @@ func Run() {
 				log.Debugf("addrChange(%s) not mgmt port\n", ifname)
 				// Even if ethN isn't individually assignable, it
 				// could be used for a bridge.
-				maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
 				maybeUpdateBridgeIPAddrForNetworkInstance(
 					&zedrouterCtx, ifname)
 			}
@@ -426,7 +376,6 @@ func Run() {
 				log.Debugf("linkChange(%s) not mgmt port\n", ifname)
 				// Even if ethN isn't individually assignable, it
 				// could be used for a bridge.
-				maybeUpdateBridgeIPAddr(&zedrouterCtx, ifname)
 				maybeUpdateBridgeIPAddrForNetworkInstance(
 					&zedrouterCtx, ifname)
 			}
@@ -445,14 +394,7 @@ func Run() {
 			if err != nil {
 				log.Errorf("getNetworkMetrics failed %s\n", err)
 			}
-			publishNetworkServiceStatusAll(&zedrouterCtx)
 			publishNetworkInstanceMetricsAll(&zedrouterCtx)
-
-		case change := <-subNetworkObjectConfig.C:
-			subNetworkObjectConfig.ProcessChange(change)
-
-		case change := <-subNetworkServiceConfig.C:
-			subNetworkServiceConfig.ProcessChange(change)
 
 		case change := <-subNetworkInstanceConfig.C:
 			log.Infof("NetworkInstanceConfig change at %+v", time.Now())
@@ -583,14 +525,6 @@ func publishAppNetworkStatus(ctx *zedrouterContext,
 	pub.Publish(key, status)
 }
 
-func publishNetworkObjectStatus(ctx *zedrouterContext,
-	status *types.NetworkObjectStatus) {
-	key := status.Key()
-	log.Debugf("publishNetworkObjectStatus(%s)\n", key)
-	pub := ctx.pubNetworkObjectStatus
-	pub.Publish(key, *status)
-}
-
 func unpublishAppNetworkStatus(ctx *zedrouterContext,
 	status *types.AppNetworkStatus) {
 
@@ -600,19 +534,6 @@ func unpublishAppNetworkStatus(ctx *zedrouterContext,
 	st, _ := pub.Get(key)
 	if st == nil {
 		log.Errorf("unpublishAppNetworkStatus(%s) not found\n", key)
-		return
-	}
-	pub.Unpublish(key)
-}
-
-func unpublishNetworkObjectStatus(ctx *zedrouterContext,
-	status *types.NetworkObjectStatus) {
-	key := status.Key()
-	log.Debugf("unpublishNetworkObjectStatus(%s)\n", key)
-	pub := ctx.pubNetworkObjectStatus
-	st, _ := pub.Get(key)
-	if st == nil {
-		log.Errorf("unpublishNetworkObjectStatus(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)
@@ -681,19 +602,20 @@ func updateLispConfiglets(ctx *zedrouterContext, legacyDataPlane bool) {
 				IID = olStatus.MgmtIID
 			} else {
 				olIfname = olStatus.Bridge
-				// Need to get the IID from the service
-				serviceStatus := lookupAppLink(ctx, olStatus.Network)
-				if serviceStatus == nil {
-					log.Errorf("updateLispConfiglets: Network %s is not attached to any service\n",
+				// Get the IID from the NetworkInstance
+				netinstStatus := lookupNetworkInstanceStatus(ctx,
+					olStatus.Network.String())
+				if netinstStatus == nil {
+					log.Errorf("updateLispConfiglets: Network %s does not exist",
 						olStatus.Network.String())
 					continue
 				}
-				if serviceStatus.Activated == false {
-					log.Errorf("updateLispConfiglets: Network service %s not activated\n",
-						serviceStatus.Key())
+				if netinstStatus.Activated == false {
+					log.Errorf("updateLispConfiglets: Network %s not activated\n",
+						netinstStatus.Key())
 					continue
 				}
-				IID = serviceStatus.LispStatus.IID
+				IID = netinstStatus.LispStatus.IID
 			}
 			additionalInfo := generateAdditionalInfo(status,
 				olStatus.OverlayNetworkConfig)
@@ -739,64 +661,6 @@ func handleAppNetworkConfigDelete(ctxArg interface{}, key string,
 	}
 	handleDelete(ctx, key, status)
 	log.Infof("handleAppNetworkConfigDelete(%s) done\n", key)
-}
-
-// This function separates Lisp service info/status into separate
-// LispInfoStatus messages based on IID. This function also publishes the separated
-// lisp info/status messages to correspoinding NetworkServiceStatus objects.
-func parseAndPublishLispServiceInfo(ctx *zedrouterContext, lispInfo *types.LispInfoStatus) {
-	// map for splitting the status info per IID
-	infoMap := make(map[uint64]*types.LispInfoStatus)
-
-	// Separate lispInfo into multiple LispInfoStatus structure based on IID
-	for _, dbMap := range lispInfo.DatabaseMaps {
-		iid := dbMap.IID
-
-		// check we have entry for this iid in our infoMap
-		var infoEntry *types.LispInfoStatus
-		var ok bool
-		infoEntry, ok = infoMap[iid]
-		if !ok {
-			infoEntry = &types.LispInfoStatus{}
-			infoEntry.ItrCryptoPort = lispInfo.ItrCryptoPort
-			infoEntry.EtrNatPort = lispInfo.EtrNatPort
-			infoEntry.Interfaces = lispInfo.Interfaces
-			infoEntry.DecapKeys = lispInfo.DecapKeys
-			infoMap[iid] = infoEntry
-		}
-		infoEntry.DatabaseMaps = append(infoEntry.DatabaseMaps, dbMap)
-	}
-
-	// Update LispStatus in service instance status based on it's IID
-	pub := ctx.pubNetworkServiceStatus
-	stList := pub.GetAll()
-	// IID to service status map for Lisp service instances
-	stMap := make(map[uint64]types.NetworkServiceStatus)
-	for _, st := range stList {
-		status := cast.CastNetworkServiceStatus(st)
-		if status.Type != types.NST_LISP {
-			continue
-		}
-		serviceIID := uint64(status.LispStatus.IID)
-		stMap[serviceIID] = status
-	}
-
-	for iid, lispStatus := range infoMap {
-		status, ok := stMap[iid]
-		if !ok {
-			continue
-		}
-		if cmp.Equal(status.LispStatus, lispStatus) {
-			continue
-		} else {
-			log.Debugf("parseAndPublishLispServiceInfo: Publish diff %s to zedcloud\n",
-				cmp.Diff(status.LispStatus, lispStatus))
-		}
-		status.LispInfoStatus = lispStatus
-
-		// publish the changes
-		publishNetworkServiceStatus(ctx, &status, true)
-	}
 }
 
 // This function separates Lisp service info/status into separate
@@ -866,8 +730,6 @@ func handleLispInfoModify(ctxArg interface{}, key string, configArg interface{})
 		log.Infof("handleLispInfoModify: ignoring %s\n", key)
 		return
 	}
-	// XXX remove the Service one
-	parseAndPublishLispServiceInfo(ctx, &lispInfo)
 	parseAndPublishLispInstanceInfo(ctx, &lispInfo)
 	log.Infof("handleLispInfoModify(%s) done\n", key)
 }
@@ -880,92 +742,7 @@ func handleLispInfoDelete(ctxArg interface{}, key string, configArg interface{})
 
 // This function separates Lisp metrics by IID. lisp-ztr dataplane sends statistics
 // of all IIDs together. We need to separate statistics per IID and associate them to
-// the NetworkServiceStatus to which a given IID (statistics) belong.
-// This function also publishes the Lisp metrics to NetworkServiceStatus.
-func parseAndPublishLispMetricsOLD(ctx *zedrouterContext, lispMetrics *types.LispMetrics) {
-	// map for splitting the metrics per IID
-	metricMap := make(map[uint64]*types.LispMetrics)
-
-	// Separate lispMetrics into multiple LispMetrics based on IID
-	for _, dbMap := range lispMetrics.EidStats {
-		iid := dbMap.IID
-
-		// check we have entry for this iid in our metricMap
-		var metricEntry *types.LispMetrics
-		var ok bool
-		metricEntry, ok = metricMap[iid]
-		if !ok {
-			metricEntry = &types.LispMetrics{}
-			// Copy global statistics. We do it by directly
-			// assigning structures.
-			*metricEntry = *lispMetrics
-			metricEntry.EidStats = []types.EidStatistics{}
-			metricEntry.EidMaps = []types.EidMap{}
-			metricMap[iid] = metricEntry
-		}
-		metricEntry.EidStats = append(metricEntry.EidStats, dbMap)
-	}
-
-	// Copy IID to Eid maps to relevant IID LispMetric structurs
-	for _, eidMap := range lispMetrics.EidMaps {
-		iid := eidMap.IID
-		metricEntry, ok := metricMap[iid]
-		if ok {
-			metricEntry.EidMaps = append(metricEntry.EidMaps, eidMap)
-		}
-	}
-
-	// Update Lisp metrics in service instance status based on it's IID
-	pub := ctx.pubNetworkServiceStatus
-	stList := pub.GetAll()
-	// IID to service status map for Lisp service instances
-	stMap := make(map[uint64]types.NetworkServiceStatus)
-	for _, st := range stList {
-		status := cast.CastNetworkServiceStatus(st)
-		if status.Type != types.NST_LISP {
-			continue
-		}
-		serviceIID := uint64(status.LispStatus.IID)
-		stMap[serviceIID] = status
-	}
-
-	// Populate the metrics that we have in NetworkServiceMetrics objects
-	// of corresponding IID.
-	// We loop through NetworkServiceStatus objects to find the services
-	// that are currently active on device and then populate metrics in their
-	// respective NetworkServiceMetrics structures and publish them.
-	for iid, metrics := range metricMap {
-		status, ok := stMap[iid]
-		if !ok {
-			continue
-		}
-		metricsStatus := lookupNetworkServiceMetrics(ctx, status.Key())
-		if metricsStatus == nil {
-			metricsStatus = new(types.NetworkServiceMetrics)
-			if metricsStatus == nil {
-				continue
-			}
-			metricsStatus.UUID = status.UUID
-			metricsStatus.DisplayName = status.DisplayName
-			metricsStatus.Type = status.Type
-		}
-		if (metricsStatus.LispMetrics != nil) &&
-			cmp.Equal(metricsStatus.LispMetrics, metrics) {
-			continue
-		} else {
-			log.Debugf("parseAndPublishLispMetrics: Publish diff %s to zedcloud\n",
-				cmp.Diff(metricsStatus.LispMetrics, metrics))
-		}
-		metricsStatus.LispMetrics = metrics
-
-		// publish the changes
-		publishNetworkServiceMetrics(ctx, metricsStatus, true)
-	}
-}
-
-// This function separates Lisp metrics by IID. lisp-ztr dataplane sends statistics
-// of all IIDs together. We need to separate statistics per IID and associate them to
-// the NetworkServiceStatus to which a given IID (statistics) belong.
+// the NetworkInstanceStatus to which a given IID (statistics) belong.
 // This function also publishes the Lisp metrics to NetworkInstanceStatus.
 func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMetrics) {
 	// map for splitting the metrics per IID
@@ -1057,8 +834,6 @@ func handleLispMetricsModify(ctxArg interface{}, key string, configArg interface
 		log.Infof("handleLispMetricsModify: ignoring %s\n", key)
 		return
 	}
-	// XXX remove the OLD service one
-	parseAndPublishLispMetricsOLD(ctx, &lispMetrics)
 	parseAndPublishLispMetrics(ctx, &lispMetrics)
 	log.Debugf("handleLispMetricsModify(%s) done\n", key)
 }
@@ -1159,7 +934,7 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 	}
 
 	// Check that Network exists for all overlays and underlays.
-	// We look for MissingNetwork when a NetworkObject is added
+	// We look for MissingNetwork when a NetworkInstance is added
 	allNetworksExist := appNetworkCheckAllNetworksExist(ctx, config, status)
 	if !allNetworksExist {
 		// XXX error or not?
@@ -1199,8 +974,7 @@ func appNetworkDoActivateAllUnderlayNetworks(
 			appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
 				ctx, config, status, ipsets, &ulConfig, ulNum)
 		} else {
-			appNetworkDoActivateUnderlayNetworkWithNetworkObject(
-				ctx, config, status, ipsets, &ulConfig, ulNum)
+			log.Fatalln("XXX !ulConfig.UsesNetworkInstance")
 		}
 
 	}
@@ -1258,7 +1032,7 @@ func appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
 	netInstConfig := lookupNetworkInstanceConfig(ctx,
 		ulConfig.Network.String())
 	if netInstConfig == nil {
-		log.Fatalf("Cannot find UL NetworkObject %s for App %s",
+		log.Fatalf("Cannot find UL NetworkInstance %s for App %s",
 			ulConfig.Name, config.DisplayName)
 	}
 	netInstStatus := lookupNetworkInstanceStatus(ctx,
@@ -1375,132 +1149,6 @@ func appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
 	maybeRemoveStaleIpsets(staleIpsets)
 }
 
-func appNetworkDoActivateUnderlayNetworkWithNetworkObject(
-	ctx *zedrouterContext,
-	config types.AppNetworkConfig,
-	status *types.AppNetworkStatus,
-	ipsets []string,
-	ulConfig *types.UnderlayNetworkConfig,
-	ulNum int) {
-
-	netconfig := lookupNetworkObjectConfig(ctx,
-		ulConfig.Network.String())
-	if netconfig == nil {
-		log.Fatalf("Cannot find UL NetworkObject %s for App %s",
-			ulConfig.Name, config.DisplayName)
-	}
-	netstatus := lookupNetworkObjectStatus(ctx,
-		ulConfig.Network.String())
-	if netstatus == nil {
-		errStr := fmt.Sprintf("no status for %s",
-			ulConfig.Network.String())
-		err := errors.New(errStr)
-		addError(ctx, status, "doActivate underlay", err)
-		return
-	}
-	if netstatus.Error != "" {
-		log.Errorf("doActivate sees network error %s\n",
-			netstatus.Error)
-		addError(ctx, status, "netstatus.Error",
-			errors.New(netstatus.Error))
-		return
-	}
-	networkInstanceInfo := &netstatus.NetworkInstanceInfo
-
-	// Fetch the network that this underlay is attached to
-	bridgeName := networkInstanceInfo.BridgeName
-	vifName := "nbu" + strconv.Itoa(ulNum) + "x" +
-		strconv.Itoa(status.AppNum)
-	uLink, err := findBridge(bridgeName)
-	if err != nil {
-		addError(ctx, status, "findBridge", err)
-		log.Infof("doActivate done for %s\n",
-			config.DisplayName)
-		return
-	}
-	bridgeMac := uLink.HardwareAddr
-	log.Infof("bridgeName %s MAC %s\n",
-		bridgeName, bridgeMac.String())
-
-	var appMac string // Handed to domU
-	if ulConfig.AppMacAddr != nil {
-		appMac = ulConfig.AppMacAddr.String()
-	} else {
-		// Room to handle multiple underlays in 5th byte
-		appMac = fmt.Sprintf("00:16:3e:00:%02x:%02x",
-			ulNum, status.AppNum)
-	}
-	log.Infof("appMac %s\n", appMac)
-
-	// Record what we have so far
-	ulStatus := &status.UnderlayNetworkList[ulNum-1]
-	log.Infof("doActivate ulNum %d: %v\n", ulNum, ulStatus)
-	ulStatus.Name = ulConfig.Name
-	ulStatus.Bridge = bridgeName
-	ulStatus.BridgeMac = bridgeMac
-	ulStatus.Vif = vifName
-	ulStatus.Mac = appMac
-	ulStatus.HostName = config.Key()
-
-	bridgeIPAddr, appIPAddr := getUlAddrs(ctx, ulNum-1,
-		status.AppNum, ulStatus, netstatus)
-	// Check if we have a bridge service with an address
-	bridgeIP, err := getBridgeServiceIPv4Addr(ctx, ulConfig.Network)
-	if err != nil {
-		log.Infof("doActivate: %s\n", err)
-	} else if bridgeIP != "" {
-		bridgeIPAddr = bridgeIP
-	}
-	log.Infof("bridgeIPAddr %s appIPAddr %s\n", bridgeIPAddr, appIPAddr)
-	ulStatus.BridgeIPAddr = bridgeIPAddr
-	// XXX appIPAddr is "" if bridge service
-	ulStatus.AssignedIPAddr = appIPAddr
-	hostsDirpath := runDirname + "/hosts." + bridgeName
-	if appIPAddr != "" {
-		addToHostsConfiglet(hostsDirpath, config.DisplayName,
-			[]string{appIPAddr})
-	}
-
-	// Default ipset
-	deleteDefaultIpsetConfiglet(vifName, false)
-	createDefaultIpsetConfiglet(vifName, netstatus.DnsNameToIPList,
-		appIPAddr)
-
-	// Set up ACLs
-	err = createACLConfiglet(bridgeName, vifName, false,
-		ulConfig.ACLs, bridgeIPAddr, appIPAddr)
-	if err != nil {
-		addError(ctx, status, "createACL", err)
-	}
-
-	if appIPAddr != "" {
-		// XXX clobber any IPv6 EID entry since same name
-		// but that's probably OK since we're doing IPv4 EIDs
-		addhostDnsmasq(bridgeName, appMac, appIPAddr,
-			config.UUIDandVersion.UUID.String())
-	}
-
-	// Look for added or deleted ipsets
-	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
-		networkInstanceInfo.BridgeIPSets)
-
-	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-		stopDnsmasq(bridgeName, true, false)
-		createDnsmasqConfiglet(bridgeName,
-			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-			newIpsets, false)
-		startDnsmasq(bridgeName)
-	}
-	networkInstanceInfo.AddVif(vifName, appMac,
-		config.UUIDandVersion.UUID)
-	networkInstanceInfo.BridgeIPSets = newIpsets
-	log.Infof("set BridgeIPSets to %v for %s", newIpsets,
-		networkInstanceInfo.BridgeName)
-	publishNetworkObjectStatus(ctx, netstatus)
-
-	maybeRemoveStaleIpsets(staleIpsets)
-}
-
 func appNetworkDoActivateOverlayNetworks(
 	ctx *zedrouterContext,
 	config types.AppNetworkConfig,
@@ -1521,8 +1169,7 @@ func appNetworkDoActivateOverlayNetworks(
 			appNetworkDoActivateOverlayNetworkWithNetworkInstance(ctx,
 				config, status, ipsets, olConfig, olNum)
 		} else {
-			appNetworkDoActivateOverlayNetworkWithNetworkObject(ctx,
-				config, status, ipsets, olConfig, olNum)
+			log.Fatalln("XXX !olConfig.UsesNetworkInstance")
 		}
 	}
 }
@@ -1691,189 +1338,6 @@ func appNetworkDoActivateOverlayNetworkWithNetworkInstance(
 		netInstStatus, lispRunDirname, bridgeName)
 }
 
-func appNetworkDoActivateOverlayNetworkWithNetworkObject(
-	ctx *zedrouterContext, config types.AppNetworkConfig,
-	status *types.AppNetworkStatus, ipsets []string,
-	olConfig types.OverlayNetworkConfig, olNum int) {
-
-	netconfig := lookupNetworkObjectConfig(ctx,
-		olConfig.Network.String())
-	if netconfig == nil {
-		log.Fatalf("Cannot find OL NetworkObject %s for App %s",
-			olConfig.Name, config.DisplayName)
-	}
-
-	// Fetch the network that this overlay is attached to
-	netstatus := lookupNetworkObjectStatus(ctx,
-		olConfig.Network.String())
-	if netstatus == nil {
-		// We had a netconfig but no status!
-		errStr := fmt.Sprintf("no network status for %s",
-			olConfig.Network.String())
-		err := errors.New(errStr)
-		addError(ctx, status, "handlecreate overlay", err)
-		return
-	}
-	if netstatus.Error != "" {
-		log.Errorf("doActivate sees network error %s\n",
-			netstatus.Error)
-		addError(ctx, status, "netstatus.Error",
-			errors.New(netstatus.Error))
-		return
-	}
-	bridgeNum := netstatus.BridgeNum
-	bridgeName := netstatus.BridgeName
-	vifName := "nbo" + strconv.Itoa(olNum) + "x" +
-		strconv.Itoa(bridgeNum)
-
-	oLink, err := findBridge(bridgeName)
-	if err != nil {
-		addError(ctx, status, "findBridge", err)
-		log.Infof("doActivate done for %s\n",
-			config.DisplayName)
-		return
-	}
-	bridgeMac := oLink.HardwareAddr
-	log.Infof("bridgeName %s MAC %s\n",
-		bridgeName, bridgeMac.String())
-
-	var appMac string // Handed to domU
-	if olConfig.AppMacAddr != nil {
-		appMac = olConfig.AppMacAddr.String()
-	} else {
-		appMac = fmt.Sprintf("00:16:3e:01:%02x:%02x",
-			olNum, status.AppNum)
-	}
-	log.Infof("appMac %s\n", appMac)
-
-	// Record what we have so far
-	olStatus := &status.OverlayNetworkList[olNum-1]
-	log.Infof("doActivate olNum %d: %v\n", olNum, olStatus)
-	olStatus.Name = olConfig.Name
-	olStatus.Bridge = bridgeName
-	olStatus.BridgeMac = bridgeMac
-	olStatus.Vif = vifName
-	olStatus.Mac = appMac
-	olStatus.HostName = config.Key()
-
-	// BridgeIPAddr is set when network is up.
-	olStatus.BridgeIPAddr = netstatus.BridgeIPAddr
-	log.Infof("bridgeIPAddr %s\n", olStatus.BridgeIPAddr)
-
-	// Create a host route towards the domU EID
-	EID := olConfig.AppIPAddr
-	isIPv6 := (EID.To4() == nil)
-
-	// Consistency check
-	if isIPv6 != !netstatus.Ipv4Eid {
-		var errStr string
-		if isIPv6 {
-			errStr = fmt.Sprintf("IPv4 EID network %s and no IPv4 EID",
-				olConfig.Network.String())
-		} else {
-			errStr = fmt.Sprintf("IPv6 EID network %s with an IPv4 EID %s",
-				olConfig.Network.String(),
-				olConfig.AppIPAddr.String())
-		}
-		addError(ctx, status, "doActivate",
-			errors.New(errStr))
-		log.Infof("doActivate done for %s\n",
-			config.DisplayName)
-		return
-	}
-
-	var subnetSuffix string
-	if isIPv6 {
-		subnetSuffix = "/128"
-	} else {
-		subnetSuffix = "/32"
-	}
-	//    ip -6 route add ${EID}/128 dev ${bridgeName}
-	// or
-	//    ip route add ${EID}/32 dev ${bridgeName}
-	_, ipnet, err := net.ParseCIDR(EID.String() + subnetSuffix)
-	if err != nil {
-		errStr := fmt.Sprintf("ParseCIDR %s failed: %v",
-			EID.String()+subnetSuffix, err)
-		addError(ctx, status, "doActivate",
-			errors.New(errStr))
-		log.Infof("doActivate done for %s\n",
-			config.DisplayName)
-		return
-	}
-	rt := netlink.Route{Dst: ipnet, LinkIndex: oLink.Index}
-	if err := netlink.RouteAdd(&rt); err != nil {
-		errStr := fmt.Sprintf("RouteAdd %s failed: %s",
-			EID, err)
-		addError(ctx, status, "doActivate",
-			errors.New(errStr))
-		log.Infof("doActivate done for %s\n",
-			config.DisplayName)
-		return
-	}
-
-	// Write our EID hostname in a separate file in directory to
-	// facilitate adds and deletes
-	hostsDirpath := runDirname + "/hosts." + bridgeName
-	addToHostsConfiglet(hostsDirpath, config.DisplayName,
-		[]string{EID.String()})
-
-	// Default ipset
-	deleteDefaultIpsetConfiglet(vifName, false)
-	createDefaultIpsetConfiglet(vifName, netstatus.DnsNameToIPList,
-		EID.String())
-
-	// Set up ACLs
-	err = createACLConfiglet(bridgeName, vifName, false,
-		olConfig.ACLs, olStatus.BridgeIPAddr, EID.String())
-	if err != nil {
-		addError(ctx, status, "createACL", err)
-	}
-
-	addhostDnsmasq(bridgeName, appMac, EID.String(),
-		config.UUIDandVersion.UUID.String())
-
-	// Look for added or deleted ipsets
-	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
-		netstatus.BridgeIPSets)
-
-	if restartDnsmasq && olStatus.BridgeIPAddr != "" {
-		stopDnsmasq(bridgeName, true, false)
-		createDnsmasqConfiglet(bridgeName,
-			olStatus.BridgeIPAddr, netconfig, hostsDirpath,
-			newIpsets, netstatus.Ipv4Eid)
-		startDnsmasq(bridgeName)
-	}
-	netstatus.AddVif(vifName, appMac,
-		config.UUIDandVersion.UUID)
-	netstatus.BridgeIPSets = newIpsets
-	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
-	publishNetworkObjectStatus(ctx, netstatus)
-
-	maybeRemoveStaleIpsets(staleIpsets)
-
-	// Create LISP configlets for IID and EID/signature
-	serviceStatus := lookupAppLink(ctx, olConfig.Network)
-	if serviceStatus == nil {
-		// Lisp service might not have arrived as part of configuration.
-		// Bail now and let the service activation take care of creating
-		// Lisp configlets and re-start lispers.net
-		log.Infof("doActivate: Network %s is not attached to any service\n",
-			olConfig.Network.String())
-		return
-	}
-	if serviceStatus.Activated == false {
-		// Lisp service is not activate yet. Let the Lisp service activation
-		// code take care of creating the Lisp configlets.
-		log.Infof("doActivate: Network service %s not activated\n",
-			serviceStatus.Key())
-		return
-	}
-
-	createAndStartLisp(ctx, *status, olConfig,
-		serviceStatus, lispRunDirname, bridgeName)
-}
-
 func appNetworkDoCopyNetworksToStatus(
 	config types.AppNetworkConfig,
 	status *types.AppNetworkStatus) {
@@ -1913,14 +1377,8 @@ func appNetworkCheckAllNetworksExist(
 				continue
 			}
 		} else {
-			netconfig := lookupNetworkObjectConfig(ctx,
-				olConfig.Network.String())
-			if netconfig != nil {
-				continue
-			}
+			log.Fatalln("XXX !olConfig.UsesNetworkInstance")
 		}
-		// Neither NetworkObjectStatus Nor NetworkInstanceConfig found.
-		// XXX no olStatus yet!
 		errStr := fmt.Sprintf("Missing overlay network %s for %s/%s",
 			olConfig.Network.String(),
 			config.UUIDandVersion, config.DisplayName)
@@ -1941,14 +1399,8 @@ func appNetworkCheckAllNetworksExist(
 				continue
 			}
 		} else {
-			netconfig := lookupNetworkObjectConfig(ctx,
-				ulConfig.Network.String())
-			if netconfig != nil {
-				continue
-			}
+			log.Fatalln("XXX !ulConfig.UsesNetworkInstance")
 		}
-		// Neither NetworkObjectStatus Nor NetworkInstanceConfig found.
-		// XXX no ulStatus yet!
 		errStr := fmt.Sprintf("Missing underlay network %s for %s/%s",
 			ulConfig.Network.String(),
 			config.UUIDandVersion, config.DisplayName)
@@ -2149,7 +1601,7 @@ func doActivateAppInstanceWithMgmtLisp(
 	log.Infof("doActivate done for %s\n", config.DisplayName)
 }
 
-// Called when a NetworkObject is added
+// Called when a NetworkInstance is added
 // Walk all AppNetworkStatus looking for MissingNetwork, then
 // check if network UUID is there.
 func checkAndRecreateAppNetwork(
@@ -2217,36 +1669,6 @@ func createAndStartLispWithNetworkInstance(ctx *zedrouterContext,
 		instStatus.LispConfig.MapServers, ctx.legacyDataPlane)
 }
 
-func createAndStartLisp(ctx *zedrouterContext,
-	status types.AppNetworkStatus,
-	olConfig types.OverlayNetworkConfig,
-	serviceStatus *types.NetworkServiceStatus,
-	lispRunDirname, bridgeName string) {
-
-	if serviceStatus == nil {
-		log.Infof("createAndStartLisp: No service configured yet\n")
-		return
-	}
-
-	additionalInfo := generateAdditionalInfo(status, olConfig)
-	ifnames := adapterToIfNames(ctx, serviceStatus.Adapter)
-	ifnameMap := make(map[string]bool)
-	for _, adapter := range ifnames {
-		ifnameMap[adapter] = true
-	}
-	deviceNetworkParams := types.DeviceNetworkStatus{}
-	for _, port := range ctx.deviceNetworkStatus.Ports {
-		if _, ok := ifnameMap[port.IfName]; ok == true {
-			deviceNetworkParams.Ports =
-				append(deviceNetworkParams.Ports, port)
-		}
-	}
-	createLispEidConfiglet(lispRunDirname, serviceStatus.LispStatus.IID,
-		olConfig.EID, olConfig.AppIPAddr, olConfig.LispSignature,
-		deviceNetworkParams, bridgeName, bridgeName, additionalInfo,
-		serviceStatus.LispStatus.MapServers, ctx.legacyDataPlane)
-}
-
 // Returns the link
 func findBridge(bridgeName string) (*netlink.Bridge, error) {
 
@@ -2268,54 +1690,6 @@ func findBridge(bridgeName string) (*netlink.Bridge, error) {
 		return nil, errors.New(errStr)
 	}
 	return bridgeLink, nil
-}
-
-// XXX Need additional logic for IPv6 underlays.
-func getUlAddrs(ctx *zedrouterContext, ifnum int, appNum int,
-	status *types.UnderlayNetworkStatus,
-	netstatus *types.NetworkObjectStatus) (string, string) {
-
-	log.Infof("getUlAddrs(%d/%d)\n", ifnum, appNum)
-
-	bridgeIPAddr := ""
-	appIPAddr := ""
-
-	// Allocate bridgeIPAddr based on BridgeMac
-	log.Infof("getUlAddrs(%d/%d for %s) bridgeMac %s\n",
-		ifnum, appNum, netstatus.UUID.String(),
-		status.BridgeMac.String())
-	addr, err := lookupOrAllocateIPv4(ctx, netstatus,
-		status.BridgeMac)
-	if err != nil {
-		log.Errorf("lookupOrAllocatePv4 failed %s\n", err)
-	} else {
-		bridgeIPAddr = addr
-	}
-
-	if status.AppIPAddr != nil {
-		// Static IP assignment case.
-		// Note that appIPAddr can be in a different subnet.
-		// Assumption is that the config specifies a gateway/router
-		// in the same subnet as the static address.
-		appIPAddr = status.AppIPAddr.String()
-	} else if status.Mac != "" {
-		// XXX or change type of VifInfo.Mac to avoid parsing?
-		mac, err := net.ParseMAC(status.Mac)
-		if err != nil {
-			log.Fatal("ParseMAC failed: ", status.Mac, err)
-		}
-		log.Infof("getUlAddrs(%d/%d for %s) app Mac %s\n",
-			ifnum, appNum, netstatus.UUID.String(), mac.String())
-		addr, err := lookupOrAllocateIPv4(ctx, netstatus, mac)
-		if err != nil {
-			log.Errorf("lookupOrAllocateIPv4 failed %s\n", err)
-		} else {
-			appIPAddr = addr
-		}
-	}
-	log.Infof("getUlAddrs(%d/%d) done %s/%s\n",
-		ifnum, appNum, bridgeIPAddr, appIPAddr)
-	return bridgeIPAddr, appIPAddr
 }
 
 // XXX Need additional logic for IPv6 underlays.
@@ -2523,25 +1897,7 @@ func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
 				return false
 			}
 		} else {
-			netconfig := lookupNetworkObjectConfig(ctx,
-				ulConfig.Network.String())
-			if netconfig == nil {
-				errStr := fmt.Sprintf("no network config for %s",
-					ulConfig.Network.String())
-				err := errors.New(errStr)
-				addError(ctx, status, "lookupNetworkObjectConfig", err)
-				return false
-			}
-			netstatus := lookupNetworkObjectStatus(ctx,
-				ulConfig.Network.String())
-			if netstatus == nil {
-				// We had a netconfig but no status!
-				errStr := fmt.Sprintf("no network status for %s",
-					ulConfig.Network.String())
-				err := errors.New(errStr)
-				addError(ctx, status, "handleModify underlay", err)
-				return false
-			}
+			log.Fatalln("XXX !ulConfig.UsesNetworkInstance")
 		}
 	}
 	return true
@@ -2562,8 +1918,7 @@ func doAppNetworkModifyAllUnderlayNetworks(
 			doAppNetworkModifyUnderlayNetworkWithNetworkInstance(
 				ctx, status, ulConfig, ulStatus, ipsets)
 		} else {
-			doAppNetworkModifyUnderlayNetworkWithNetworkObject(
-				ctx, status, ulConfig, ulStatus, ipsets)
+			log.Fatalln("XXX !ulConfig.UsesNetworkInstance")
 		}
 	}
 }
@@ -2611,49 +1966,6 @@ func doAppNetworkModifyUnderlayNetworkWithNetworkInstance(
 	maybeRemoveStaleIpsets(staleIpsets)
 }
 
-func doAppNetworkModifyUnderlayNetworkWithNetworkObject(
-	ctx *zedrouterContext,
-	status *types.AppNetworkStatus,
-	ulConfig *types.UnderlayNetworkConfig,
-	ulStatus *types.UnderlayNetworkStatus,
-	ipsets []string) {
-
-	bridgeName := ulStatus.Bridge
-	appIPAddr := ulStatus.AssignedIPAddr
-
-	netconfig := lookupNetworkObjectConfig(ctx, ulConfig.Network.String())
-	netstatus := lookupNetworkObjectStatus(ctx, ulConfig.Network.String())
-
-	// We ignore any errors in netstatus
-
-	// XXX could there be a change to AssignedIPAddress?
-	// If so updateNetworkACLConfiglet needs to know old and new
-	// XXX Could ulStatus.Vif not be set? Means we didn't add
-	err := updateACLConfiglet(bridgeName, ulStatus.Vif, false,
-		ulStatus.ACLs, ulConfig.ACLs, ulStatus.BridgeIPAddr,
-		appIPAddr)
-	if err != nil {
-		addError(ctx, status, "updateACL", err)
-	}
-
-	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
-		netstatus.BridgeIPSets)
-
-	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-		hostsDirpath := runDirname + "/hosts." + bridgeName
-		stopDnsmasq(bridgeName, true, false)
-		createDnsmasqConfiglet(bridgeName,
-			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-			newIpsets, false)
-		startDnsmasq(bridgeName)
-	}
-	netstatus.BridgeIPSets = newIpsets
-	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
-	publishNetworkObjectStatus(ctx, netstatus)
-
-	maybeRemoveStaleIpsets(staleIpsets)
-}
-
 func doAppNetworkModifyAllOverlayNetworks(
 	ctx *zedrouterContext,
 	config types.AppNetworkConfig,
@@ -2668,8 +1980,7 @@ func doAppNetworkModifyAllOverlayNetworks(
 			doAppNetworkModifyOverlayNetworkWithNetworkInstance(
 				ctx, status, olConfig, olStatus, ipsets)
 		} else {
-			doAppNetworkModifyOverlayNetworkWithNetworkObject(
-				ctx, status, olConfig, olStatus, ipsets)
+			log.Fatalln("XXX !olConfig.UsesNetworkInstance")
 		}
 
 	}
@@ -2745,87 +2056,6 @@ func doAppNetworkModifyOverlayNetworkWithNetworkInstance(
 		olConfig.AppIPAddr, olConfig.LispSignature,
 		*ctx.deviceNetworkStatus, bridgeName, bridgeName,
 		additionalInfo, netstatus.LispConfig.MapServers,
-		ctx.legacyDataPlane)
-}
-
-func doAppNetworkModifyOverlayNetworkWithNetworkObject(
-	ctx *zedrouterContext,
-	status *types.AppNetworkStatus,
-	olConfig *types.OverlayNetworkConfig,
-	olStatus *types.OverlayNetworkStatus,
-	ipsets []string) {
-	log.Infof("doAppNetworkModifyOverlayNetworkWithNetworkObject():")
-	bridgeName := olStatus.Bridge
-
-	netconfig := lookupNetworkObjectConfig(ctx,
-		olConfig.Network.String())
-	if netconfig == nil {
-		errStr := fmt.Sprintf("no network config for %s",
-			olConfig.Network.String())
-		err := errors.New(errStr)
-		addError(ctx, status, "doAppNetworkModifyOverlay", err)
-		return
-	}
-	netstatus := lookupNetworkObjectStatus(ctx,
-		olConfig.Network.String())
-	if netstatus == nil {
-		// We had a netconfig but no status!
-		errStr := fmt.Sprintf("no network status for %s",
-			olConfig.Network.String())
-		err := errors.New(errStr)
-		addError(ctx, status, "doAppNetworkModifyOverlayNetworkWithNetworkObject overlay",
-			err)
-		return
-	}
-	// We ignore any errors in netstatus
-
-	// XXX could there be a change to AssignedIPv6Address aka EID?
-	// If so updateACLConfiglet needs to know old and new
-	// XXX Could olStatus.Vif not be set? Means we didn't add
-	err := updateACLConfiglet(bridgeName, olStatus.Vif, false,
-		olStatus.ACLs, olConfig.ACLs, olStatus.BridgeIPAddr,
-		olConfig.EID.String())
-	if err != nil {
-		addError(ctx, status, "updateACL", err)
-	}
-
-	// Look for added or deleted ipsets
-	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
-		netstatus.BridgeIPSets)
-
-	if restartDnsmasq && olStatus.BridgeIPAddr != "" {
-		hostsDirpath := runDirname + "/hosts." + bridgeName
-		stopDnsmasq(bridgeName, true, false)
-		createDnsmasqConfiglet(bridgeName,
-			olStatus.BridgeIPAddr, netconfig, hostsDirpath,
-			newIpsets, netstatus.Ipv4Eid)
-		startDnsmasq(bridgeName)
-	}
-	netstatus.BridgeIPSets = newIpsets
-	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
-	publishNetworkObjectStatus(ctx, netstatus)
-
-	maybeRemoveStaleIpsets(staleIpsets)
-
-	serviceStatus := lookupAppLink(ctx, olConfig.Network)
-	if serviceStatus == nil {
-		// Lisp service might not have arrived as part of configuration.
-		// Bail now and let the service activation take care of creating
-		// Lisp configlets and re-start lispers.net
-		return
-	}
-
-	additionalInfo := generateAdditionalInfo(*status, *olConfig)
-
-	// Update any signature changes
-	// XXX should we check that EID didn't change?
-
-	// Create LISP configlets for IID and EID/signature
-	updateLispConfiglet(lispRunDirname, false,
-		serviceStatus.LispStatus.IID, olConfig.EID,
-		olConfig.AppIPAddr, olConfig.LispSignature,
-		*ctx.deviceNetworkStatus, bridgeName, bridgeName,
-		additionalInfo, serviceStatus.LispStatus.MapServers,
 		ctx.legacyDataPlane)
 }
 
@@ -2938,8 +2168,7 @@ func appNetworkDoInactivateAllUnderlayNetworks(
 			appNetworkDoInactivateUnderlayNetworkWithNetworkInstance(
 				ctx, status, ulStatus, ipsets)
 		} else {
-			appNetworkDoInactivateUnderlayNetworkWithNetworkObject(
-				ctx, status, ulStatus, ipsets)
+			log.Fatalln("XXX !ulStatus.UsesNetworkInstance")
 		}
 	}
 }
@@ -2958,7 +2187,7 @@ func appNetworkDoInactivateUnderlayNetworkWithNetworkInstance(
 		errStr := fmt.Sprintf("no network config for %s",
 			ulStatus.Network.String())
 		err := errors.New(errStr)
-		addError(ctx, status, "lookupNetworkObjectConfig", err)
+		addError(ctx, status, "lookupNetworkInstanceConfig", err)
 		return
 	}
 	netstatus := lookupNetworkInstanceStatus(ctx,
@@ -3027,89 +2256,6 @@ func appNetworkDoInactivateUnderlayNetworkWithNetworkInstance(
 	maybeRemoveStaleIpsets(staleIpsets)
 }
 
-func appNetworkDoInactivateUnderlayNetworkWithNetworkObject(
-	ctx *zedrouterContext,
-	status *types.AppNetworkStatus,
-	ulStatus *types.UnderlayNetworkStatus,
-	ipsets []string) {
-
-	bridgeName := ulStatus.Bridge
-
-	netconfig := lookupNetworkObjectConfig(ctx,
-		ulStatus.Network.String())
-	if netconfig == nil {
-		errStr := fmt.Sprintf("no network config for %s",
-			ulStatus.Network.String())
-		err := errors.New(errStr)
-		addError(ctx, status, "lookupNetworkObjectConfig", err)
-		return
-	}
-	netstatus := lookupNetworkObjectStatus(ctx,
-		ulStatus.Network.String())
-	if netstatus == nil {
-		// We had a netconfig but no status!
-		errStr := fmt.Sprintf("no network status for %s",
-			ulStatus.Network.String())
-		err := errors.New(errStr)
-		addError(ctx, status, "doInactivate underlay", err)
-		return
-	}
-	// We ignore any errors in netstatus
-
-	if ulStatus.Mac != "" {
-		// XXX or change type of VifInfo.Mac?
-		mac, err := net.ParseMAC(ulStatus.Mac)
-		if err != nil {
-			log.Fatal("ParseMAC failed: ",
-				ulStatus.Mac, err)
-		}
-		err = releaseIPv4(ctx, netstatus, mac)
-		if err != nil {
-			// XXX publish error?
-			addError(ctx, status, "releaseIPv4", err)
-		}
-	}
-
-	appIPAddr := ulStatus.AssignedIPAddr
-	if appIPAddr != "" {
-		removehostDnsmasq(bridgeName, ulStatus.Mac,
-			appIPAddr)
-	}
-
-	// XXX Could ulStatus.Vif not be set? Means we didn't add
-	if ulStatus.Vif != "" {
-		err := deleteACLConfiglet(bridgeName, ulStatus.Vif, false,
-			ulStatus.ACLs, ulStatus.BridgeIPAddr, appIPAddr)
-		if err != nil {
-			addError(ctx, status, "deleteACL", err)
-		}
-	} else {
-		log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
-			status.UUIDandVersion, bridgeName,
-			status.DisplayName)
-	}
-
-	// Delete underlay hosts file for this app
-	hostsDirpath := runDirname + "/hosts." + bridgeName
-	removeFromHostsConfiglet(hostsDirpath,
-		status.DisplayName)
-	// Look for added or deleted ipsets
-	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
-		netstatus.BridgeIPSets)
-
-	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
-		stopDnsmasq(bridgeName, true, false)
-		createDnsmasqConfiglet(bridgeName,
-			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-			newIpsets, false)
-		startDnsmasq(bridgeName)
-	}
-	netstatus.RemoveVif(ulStatus.Vif)
-	netstatus.BridgeIPSets = newIpsets
-	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
-	maybeRemoveStaleIpsets(staleIpsets)
-}
-
 func appNetworkDoInactivateAllOverlayNetworks(ctx *zedrouterContext,
 	status *types.AppNetworkStatus,
 	ipsets []string) {
@@ -3127,8 +2273,7 @@ func appNetworkDoInactivateAllOverlayNetworks(ctx *zedrouterContext,
 			appNetworkDoInactivateOverlayNetworkWithNetworkInstance(
 				ctx, status, olStatus, ipsets)
 		} else {
-			appNetworkDoInactivateOverlayNetworkWithNetworkObject(
-				ctx, status, olStatus, ipsets)
+			log.Fatalln("XXX !olStatus.UsesNetworkInstance")
 		}
 
 	}
@@ -3150,7 +2295,7 @@ func appNetworkDoInactivateOverlayNetworkWithNetworkInstance(
 		errStr := fmt.Sprintf("no network config for %s",
 			olStatus.Network.String())
 		err := errors.New(errStr)
-		addError(ctx, status, "lookupNetworkObjectStatus", err)
+		addError(ctx, status, "lookupNetworkInsanceConfig", err)
 		return
 	}
 	netstatus := lookupNetworkInstanceStatus(ctx,
@@ -3255,90 +2400,6 @@ func deleteAppInstaneOverlayRoute(
 		log.Infof("deleteAppInstaneOverlayRoute done for %s\n",
 			status.DisplayName)
 	}
-}
-
-func appNetworkDoInactivateOverlayNetworkWithNetworkObject(
-	ctx *zedrouterContext,
-	status *types.AppNetworkStatus,
-	olStatus *types.OverlayNetworkStatus,
-	ipsets []string) {
-
-	bridgeName := olStatus.Bridge
-
-	netconfig := lookupNetworkObjectConfig(ctx,
-		olStatus.Network.String())
-	if netconfig == nil {
-		errStr := fmt.Sprintf("no network config for %s",
-			olStatus.Network.String())
-		err := errors.New(errStr)
-		addError(ctx, status, "lookupNetworkObjectStatus", err)
-		return
-	}
-	netstatus := lookupNetworkObjectStatus(ctx,
-		olStatus.Network.String())
-	if netstatus == nil {
-		// We had a netconfig but no status!
-		errStr := fmt.Sprintf("no network status for %s",
-			olStatus.Network.String())
-		err := errors.New(errStr)
-		addError(ctx, status, "doInactivate overlay", err)
-		return
-	}
-	// We ignore any errors in netstatus
-
-	removehostDnsmasq(bridgeName, olStatus.Mac,
-		olStatus.EID.String())
-
-	// Delete ACLs
-	// XXX Could olStatus.Vif not be set? Means we didn't add
-	if olStatus.Vif != "" {
-		err := deleteACLConfiglet(bridgeName, olStatus.Vif, false,
-			olStatus.ACLs, olStatus.BridgeIPAddr,
-			olStatus.EID.String())
-		if err != nil {
-			addError(ctx, status, "deleteACL", err)
-		}
-	} else {
-		log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
-			status.UUIDandVersion, bridgeName,
-			status.DisplayName)
-	}
-
-	// Delete underlay hosts file for this app
-	hostsDirpath := runDirname + "/hosts." + bridgeName
-	removeFromHostsConfiglet(hostsDirpath, status.DisplayName)
-
-	deleteDefaultIpsetConfiglet(olStatus.Vif, true)
-
-	// Look for added or deleted ipsets
-	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
-		netstatus.BridgeIPSets)
-
-	if restartDnsmasq && olStatus.BridgeIPAddr != "" {
-		stopDnsmasq(bridgeName, true, false)
-		createDnsmasqConfiglet(bridgeName,
-			olStatus.BridgeIPAddr, netconfig, hostsDirpath,
-			newIpsets, netstatus.Ipv4Eid)
-		startDnsmasq(bridgeName)
-	}
-	netstatus.RemoveVif(olStatus.Vif)
-	netstatus.BridgeIPSets = newIpsets
-	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
-	maybeRemoveStaleIpsets(staleIpsets)
-
-	// If service does not exist overlays would not have been created
-	serviceStatus := lookupAppLink(ctx, olStatus.Network)
-	if serviceStatus == nil {
-		// Lisp service might already have been deleted.
-		// As part of Lisp service deletion, we delete all overlays.
-		return
-	}
-
-	// Delete LISP configlets
-	deleteLispConfiglet(lispRunDirname, false,
-		serviceStatus.LispStatus.IID, olStatus.EID,
-		olStatus.AppIPAddr, *ctx.deviceNetworkStatus,
-		ctx.legacyDataPlane)
 }
 
 func doInactivateAppNetworkWithMgmtLisp(

@@ -6,6 +6,7 @@
 package zedagent
 
 import (
+	"bytes"
 	"strings"
 
 	"github.com/golang/protobuf/proto"
@@ -13,6 +14,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/zededa/eve/pkg/pillar/cast"
 	"github.com/zededa/eve/pkg/pillar/types"
+	"github.com/zededa/eve/pkg/pillar/zedcloud"
 	"github.com/zededa/eve/sdk/go/zmet"
 )
 
@@ -601,4 +603,87 @@ func protoEncodeVpnMetricStats(linkStats types.PktStats) *zmet.PktStat {
 	pktStats.Bytes = linkStats.Bytes
 	pktStats.Packets = linkStats.Pkts
 	return pktStats
+}
+
+func publishVpnConnection(vpnInfo *zmet.ZInfoVpn,
+	vpnConn *types.VpnConnStatus) *zmet.ZInfoVpnConn {
+	if vpnConn == nil {
+		return nil
+	}
+	vpnConnInfo := new(zmet.ZInfoVpnConn)
+	vpnConnInfo.Id = vpnConn.Id
+	vpnConnInfo.Name = vpnConn.Name
+	vpnConnInfo.State = zmet.ZInfoVpnState(vpnConn.State)
+	vpnConnInfo.Ikes = vpnConn.Ikes
+	vpnConnInfo.EstTime = vpnConn.EstTime
+	vpnConnInfo.Version = vpnConn.Version
+
+	lEndPointInfo := new(zmet.ZInfoVpnEndPoint)
+	lEndPointInfo.Id = vpnConn.LInfo.Id
+	lEndPointInfo.IpAddr = vpnConn.LInfo.IpAddr
+	lEndPointInfo.Port = vpnConn.LInfo.Port
+	vpnConnInfo.LInfo = lEndPointInfo
+
+	rEndPointInfo := new(zmet.ZInfoVpnEndPoint)
+	rEndPointInfo.Id = vpnConn.RInfo.Id
+	rEndPointInfo.IpAddr = vpnConn.RInfo.IpAddr
+	rEndPointInfo.Port = vpnConn.RInfo.Port
+	vpnConnInfo.RInfo = rEndPointInfo
+
+	if len(vpnConn.Links) == 0 {
+		return vpnConnInfo
+	}
+	vpnConnInfo.Links = make([]*zmet.ZInfoVpnLink, len(vpnConn.Links))
+
+	for idx, linkData := range vpnConn.Links {
+		linkInfo := new(zmet.ZInfoVpnLink)
+		linkInfo.Id = linkData.Id
+		linkInfo.ReqId = linkData.ReqId
+		linkInfo.InstTime = linkData.InstTime
+		linkInfo.EspInfo = linkData.EspInfo
+		linkInfo.State = zmet.ZInfoVpnState(linkData.State)
+
+		linfo := new(zmet.ZInfoVpnLinkInfo)
+		linfo.SubNet = linkData.LInfo.SubNet
+		linfo.SpiId = linkData.LInfo.SpiId
+		linfo.Direction = linkData.LInfo.Direction
+		linkInfo.LInfo = linfo
+
+		rinfo := new(zmet.ZInfoVpnLinkInfo)
+		rinfo.SubNet = linkData.RInfo.SubNet
+		rinfo.SpiId = linkData.RInfo.SpiId
+		rinfo.Direction = linkData.RInfo.Direction
+		linkInfo.RInfo = rinfo
+
+		vpnConnInfo.Links[idx] = linkInfo
+	}
+
+	return vpnConnInfo
+}
+
+func publishInfo(ctx *zedagentContext, UUID string, infoMsg *zmet.ZInfoMsg) {
+	publishInfoToZedCloud(UUID, infoMsg, ctx.iteration)
+	ctx.iteration += 1
+}
+
+func publishInfoToZedCloud(UUID string, infoMsg *zmet.ZInfoMsg, iteration int) {
+
+	log.Infof("publishNetworkServiceInfoToZedCloud sending %v\n", infoMsg)
+	data, err := proto.Marshal(infoMsg)
+	if err != nil {
+		log.Fatal("publishNetworkServiceInfoToZedCloud proto marshaling error: ", err)
+	}
+	statusUrl := serverName + "/" + statusApi
+	zedcloud.RemoveDeferred(UUID)
+	buf := bytes.NewBuffer(data)
+	size := int64(proto.Size(infoMsg))
+	err = SendProtobuf(statusUrl, buf, size, iteration)
+	if err != nil {
+		log.Errorf("publishNetworkServiceInfoToZedCloud failed: %s\n", err)
+		// Try sending later
+		zedcloud.SetDeferred(UUID, buf, size, statusUrl,
+			zedcloudCtx, true)
+	} else {
+		writeSentDeviceInfoProtoMessage(data)
+	}
 }

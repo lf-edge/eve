@@ -818,6 +818,22 @@ func lookupOrAllocateIPv4ForNetworkInstance(
 	return "", errors.New(errStr)
 }
 
+// Add to an IPv4 address
+func addToIP(ip net.IP, addition uint) net.IP {
+	addr := ip.To4()
+	if addr == nil {
+		log.Fatalf("addIP: not an IPv4 address %s", ip.String())
+	}
+	val := uint(addr[0])<<24 + uint(addr[1])<<16 +
+		uint(addr[2])<<8 + uint(addr[3])
+	val += addition
+	val0 := byte((val >> 24) & 0xFF)
+	val1 := byte((val >> 16) & 0xFF)
+	val2 := byte((val >> 8) & 0xFF)
+	val3 := byte(val & 0xFF)
+	return net.IPv4(val0, val1, val2, val3)
+}
+
 // releaseIPv4ForNetworkInstance
 //	XXX TODO - This should be a method in NetworkInstanceSm
 func releaseIPv4FromNetworkInstance(ctx *zedrouterContext,
@@ -1570,16 +1586,6 @@ func networkInstanceAddressType(ctx *zedrouterContext, bridgeName string) int {
 		}
 		return ipVer
 	}
-	objectStatus := lookupNetworkObjectStatusByBridgeName(ctx, bridgeName)
-	if objectStatus != nil {
-		switch objectStatus.Type {
-		case types.NT_IPV4:
-			ipVer = 4
-		case types.NT_IPV6, types.NT_CryptoEID:
-			// XXX IPv4 EIDs?
-			ipVer = 6
-		}
-	}
 	return ipVer
 }
 
@@ -1682,4 +1688,36 @@ func strongswanNetworkInstanceInactivate(ctx *zedrouterContext,
 	if err := strongSwanVpnInactivate(vpnConfig); err != nil {
 		log.Warnf("Vpn network instance inactivate: %v\n", err.Error())
 	}
+}
+
+// adapterToIfNames
+//	XXX - Probably should move this to ZedRouter.go as a method
+//		of zedRouterContext
+// Expand the generic names, and return the interface name
+// Does not verify the existence of the adapters/interfaces
+func adapterToIfNames(ctx *zedrouterContext, adapter string) []string {
+	if strings.EqualFold(adapter, "uplink") {
+		return types.GetMgmtPortsAny(*ctx.deviceNetworkStatus, 0)
+	}
+	if strings.EqualFold(adapter, "freeuplink") {
+		return types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0)
+	}
+	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, adapter)
+	if len(ifname) == 0 {
+		return []string{}
+	}
+	return []string{ifname}
+}
+
+func vifNameToBridgeName(ctx *zedrouterContext, vifName string) string {
+
+	pub := ctx.pubNetworkInstanceStatus
+	instanceItems := pub.GetAll()
+	for _, st := range instanceItems {
+		status := cast.CastNetworkInstanceStatus(st)
+		if status.IsVifInBridge(vifName) {
+			return status.BridgeName
+		}
+	}
+	return ""
 }

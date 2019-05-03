@@ -35,7 +35,7 @@ func handleCertObjStatusDelete(ctxArg interface{}, key string,
 	log.Infof("handleCertObjStatusDelete done for %s\n", key)
 }
 
-// Callers must be careful to publish any changes to NetworkObjectStatus
+// Callers must be careful to publish any changes to CertObjStatus
 func lookupCertObjStatus(ctx *zedmanagerContext, key string) *types.CertObjStatus {
 
 	sub := ctx.subCertObjStatus

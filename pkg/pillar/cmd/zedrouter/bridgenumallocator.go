@@ -1,7 +1,7 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Allocate a small integer for each NetworkObject UUID.
+// Allocate a small integer for each Network UUID.
 // Persist the numbers across reboots using uuidtonum package
 // When there are no free numbers then reuse the unused numbers.
 
@@ -22,7 +22,7 @@ var AllocReservedBridgeNumBits Bitmap
 // Set bit in bitmap.
 func bridgeNumAllocatorInit(ctx *zedrouterContext) {
 
-	pubNetworkObjectStatus := ctx.pubNetworkObjectStatus
+	pubNetworkInstanceStatus := ctx.pubNetworkInstanceStatus
 	pubUuidToNum := ctx.pubUuidToNum
 
 	items := pubUuidToNum.GetAll()
@@ -54,10 +54,10 @@ func bridgeNumAllocatorInit(ctx *zedrouterContext) {
 		uuidtonum.UuidToNumFree(ctx.pubUuidToNum, uuid)
 	}
 	// In case zedrouter process restarted we fill in InUse from
-	// NetworkObjectStatus
-	items = pubNetworkObjectStatus.GetAll()
+	// NetworkInstanceStatus
+	items = pubNetworkInstanceStatus.GetAll()
 	for key, st := range items {
-		status := cast.CastNetworkObjectStatus(st)
+		status := cast.CastNetworkInstanceStatus(st)
 		if status.Key() != key {
 			log.Errorf("bridgeNumAllocatorInit key/UUID mismatch %s vs %s; ignored %+v\n",
 				key, status.Key(), status)

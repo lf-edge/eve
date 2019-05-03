@@ -762,9 +762,6 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		ReportMetrics.Am = append(ReportMetrics.Am, ReportAppMetric)
 	}
 
-	// report Network Service Statistics
-	createNetworkServiceMetrics(ctx, ReportMetrics)
-
 	createNetworkInstanceMetrics(ctx, ReportMetrics)
 
 	log.Debugf("PublishMetricsToZedCloud sending %s\n", ReportMetrics)
