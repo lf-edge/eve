@@ -7,8 +7,8 @@
 
 // Implements GetHardwareModel() string
 // We have no dmidecode on ARM. Can only report compatible string
-// Note that we replace any nul characters with '.' since
-// /proc/device-tree/compatible contains nuls.
+// Note that we replace any intermediate nul characters with '.' since
+// /proc/device-tree/compatible contains nuls to separate different strings.
 
 // XXX TBD: Are there other hardware-related infos which should indirect
 // through this package?
@@ -113,19 +113,27 @@ func GetCompatible() string {
 			log.Errorf("GetCompatible(%s) failed %s\n",
 				compatibleFile, err)
 		} else {
-			contents = bytes.Replace(contents, []byte("\x00"),
-				[]byte("."), -1)
-			filter := func(r rune) rune {
-				if strings.IndexRune(controlChars, r) < 0 {
-					return r
-				}
-				return -1
-			}
-			contents = bytes.Map(filter, contents)
-			compatible = string(contents)
+			compatible = string(massageCompatible(contents))
 		}
 	}
 	return compatible
+}
+
+func massageCompatible(contents []byte) []byte {
+	filter := func(r rune) rune {
+		if strings.IndexRune(controlChars, r) < 0 {
+			return r
+		}
+		return -1
+	}
+
+	// Drop last control character if present to avoid a trailing .
+	cl := len(contents)
+	if cl > 0 && filter(rune(contents[cl-1])) == -1 {
+		contents = contents[:cl-1]
+	}
+	contents = bytes.Replace(contents, []byte("\x00"), []byte("."), -1)
+	return bytes.Map(filter, contents)
 }
 
 func GetProductSerial() string {
