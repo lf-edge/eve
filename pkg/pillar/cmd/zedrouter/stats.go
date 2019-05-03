@@ -32,7 +32,7 @@ type readBlock struct {
 	childBlocks []*readBlock
 }
 
-func ipSecStatusCmdGet(vpnStatus *types.ServiceVpnStatus) error {
+func ipSecStatusCmdGet(vpnStatus *types.VpnStatus) error {
 	cmd := exec.Command("ipsec", "statusall")
 	bytes, err := cmd.Output()
 	if err != nil {
@@ -48,7 +48,7 @@ func ipSecStatusCmdGet(vpnStatus *types.ServiceVpnStatus) error {
 	return nil
 }
 
-func swanCtlCmdGet(vpnStatus *types.ServiceVpnStatus) error {
+func swanCtlCmdGet(vpnStatus *types.VpnStatus) error {
 	cmd := exec.Command("swanctl", "-l")
 	bytes, err := cmd.Output()
 	if err != nil {
@@ -145,7 +145,7 @@ func ipSecCmdParse(outStr string) ipSecCmdOut {
 	return ipSecCmdOut
 }
 
-func swanCtlCmdParse(vpnStatus *types.ServiceVpnStatus, outStr string) uint32 {
+func swanCtlCmdParse(vpnStatus *types.VpnStatus, outStr string) uint32 {
 	if len(outStr) == 0 {
 		return 0
 	}

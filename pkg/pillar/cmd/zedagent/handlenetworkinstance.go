@@ -179,7 +179,7 @@ func fillLispInfo(info *zmet.ZInfoNetworkInstance, lispStatus *types.LispInfoSta
 	}
 }
 
-func fillVpnInfo(info *zmet.ZInfoNetworkInstance, vpnStatus *types.ServiceVpnStatus) {
+func fillVpnInfo(info *zmet.ZInfoNetworkInstance, vpnStatus *types.VpnStatus) {
 
 	info.SoftwareList = new(zmet.ZInfoSW)
 	info.SoftwareList.SwVersion = vpnStatus.Version

@@ -1163,7 +1163,7 @@ type NetworkInstanceStatus struct {
 	OpaqueStatus string
 	LispStatus   NetworkInstanceLispConfig
 
-	VpnStatus      *ServiceVpnStatus
+	VpnStatus      *VpnStatus
 	LispInfoStatus *LispInfoStatus
 	LispMetrics    *LispMetrics
 }
@@ -1321,7 +1321,7 @@ type AdditionalInfoApp struct {
 }
 
 // Input Opaque Config
-type StrongSwanServiceConfig struct {
+type StrongSwanConfig struct {
 	VpnRole          string
 	PolicyBased      bool
 	IsClient         bool
@@ -1335,7 +1335,7 @@ type StrongSwanServiceConfig struct {
 }
 
 // structure for internal handling
-type VpnServiceConfig struct {
+type VpnConfig struct {
 	VpnRole          string
 	PolicyBased      bool
 	IsClient         bool
@@ -1498,7 +1498,7 @@ type VpnConnStatus struct {
 	MarkDelete bool
 }
 
-type ServiceVpnStatus struct {
+type VpnStatus struct {
 	Version            string    // strongswan package version
 	UpTime             time.Time // service start time stamp
 	IpAddrs            string    // listening ip addresses, can be multiple

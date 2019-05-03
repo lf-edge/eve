@@ -106,48 +106,48 @@ const (
 		"\n\tauto=add" + "\n"
 )
 
-func ipSecServiceActivate(vpnConfig types.VpnServiceConfig) error {
+func ipSecActivate(vpnConfig types.VpnConfig) error {
 	tunnelConfig := vpnConfig.ClientConfigList[0].TunnelConfig
 	cmd := exec.Command("ipsec", "start")
 	if _, err := cmd.Output(); err != nil {
 		log.Errorf("%s for %s start\n", err.Error(), "ipsec")
 		return err
 	}
-	log.Infof("ipSecService(%s) start OK\n", tunnelConfig.Name)
+	log.Infof("ipSec(%s) start OK\n", tunnelConfig.Name)
 	return nil
 }
 
-func ipSecServiceInactivate(vpnConfig types.VpnServiceConfig) error {
+func ipSecInactivate(vpnConfig types.VpnConfig) error {
 	cmd := exec.Command("ipsec", "stop")
 	if _, err := cmd.Output(); err != nil {
 		log.Errorf("%s for %s stop\n", err.Error(), "ipsec")
 		return err
 	}
-	log.Infof("ipSecService stop OK\n")
+	log.Infof("ipSec stop OK\n")
 	return nil
 }
 
-func ipSecServiceStatus() (string, error) {
+func ipSecStatus() (string, error) {
 	cmd := exec.Command("ipsec", "status")
 	out, err := cmd.Output()
 	if err != nil {
 		log.Errorf("%s for %s status\n", err.Error(), "ipsec")
 		return "", err
 	}
-	log.Infof("ipSecService() status %s\n", string(out))
+	log.Infof("ipSec() status %s\n", string(out))
 	return string(out), nil
 }
 
 // check whether ipsec tunnel is up
 func ipSecTunnelStateCheck(vpnRole string, tunnelName string) error {
-	if err := checkIpSecServiceStatusCmd(tunnelName); err != nil {
+	if err := checkIpSecStatusCmd(tunnelName); err != nil {
 		return err
 	}
 	log.Infof("%s IpSec Tunnel State OK\n", tunnelName)
 	return nil
 }
 
-func ipTablesRuleCreate(vpnConfig types.VpnServiceConfig) error {
+func ipTablesRuleCreate(vpnConfig types.VpnConfig) error {
 
 	portConfig := vpnConfig.PortConfig
 	gatewayConfig := vpnConfig.GatewayConfig
@@ -167,7 +167,7 @@ func ipTablesRuleCreate(vpnConfig types.VpnServiceConfig) error {
 	return nil
 }
 
-func ipTablesRulesDelete(vpnConfig types.VpnServiceConfig) error {
+func ipTablesRulesDelete(vpnConfig types.VpnConfig) error {
 	portConfig := vpnConfig.PortConfig
 	gatewayConfig := vpnConfig.GatewayConfig
 	clientConfig := vpnConfig.ClientConfigList[0]
@@ -372,7 +372,7 @@ func iptableCounterRuleStat(acl vpnAclRule) (types.PktStats, error) {
 }
 
 // check iptables rule status
-func ipTablesRuleCheck(vpnConfig types.VpnServiceConfig) error {
+func ipTablesRuleCheck(vpnConfig types.VpnConfig) error {
 	clientConfig := vpnConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
 	gatewayConfig := vpnConfig.GatewayConfig
@@ -431,7 +431,7 @@ func ipTablesChainMatch(tableName string, chainName string,
 
 // XXX need to make sure the added route is duplicated by ipr.go to the
 // correct table or add/delete from the correct table
-func ipRouteCreate(vpnConfig types.VpnServiceConfig) error {
+func ipRouteCreate(vpnConfig types.VpnConfig) error {
 
 	if vpnConfig.PolicyBased {
 		return nil
@@ -468,7 +468,7 @@ func ipRouteCreate(vpnConfig types.VpnServiceConfig) error {
 	return nil
 }
 
-func ipRouteDelete(vpnConfig types.VpnServiceConfig) error {
+func ipRouteDelete(vpnConfig types.VpnConfig) error {
 
 	if vpnConfig.PolicyBased {
 		return nil
@@ -503,7 +503,7 @@ func ipRouteDelete(vpnConfig types.VpnServiceConfig) error {
 	return nil
 }
 
-func ipRouteCheck(vpnConfig types.VpnServiceConfig) error {
+func ipRouteCheck(vpnConfig types.VpnConfig) error {
 
 	if vpnConfig.PolicyBased {
 		return nil
@@ -564,7 +564,7 @@ func ipRouteMatch(outStr, matchString string) error {
 	return errors.New("not found")
 }
 
-func ipLinkTunnelCreate(vpnConfig types.VpnServiceConfig) error {
+func ipLinkTunnelCreate(vpnConfig types.VpnConfig) error {
 
 	if vpnConfig.PolicyBased {
 		return nil
@@ -625,7 +625,7 @@ func ipLinkTunnelCreate(vpnConfig types.VpnServiceConfig) error {
 	return nil
 }
 
-func ipLinkTunnelDelete(vpnConfig types.VpnServiceConfig) error {
+func ipLinkTunnelDelete(vpnConfig types.VpnConfig) error {
 
 	if vpnConfig.PolicyBased {
 		return nil
@@ -670,7 +670,7 @@ func ipLinkIntfStateCheck(tunnelName string) error {
 	return nil
 }
 
-func ipSecServiceConfigCreate(vpnConfig types.VpnServiceConfig) error {
+func ipSecConfigCreate(vpnConfig types.VpnConfig) error {
 
 	clientConfigList := vpnConfig.ClientConfigList
 	gatewayConfig := vpnConfig.GatewayConfig
@@ -748,13 +748,13 @@ func ipSecServiceConfigCreate(vpnConfig types.VpnServiceConfig) error {
 	return nil
 }
 
-func ipSecServiceConfigDelete() error {
+func ipSecConfigDelete() error {
 	writeStr := ipSecConfHdrStr
 	filename := "/etc/ipsec.conf"
 	return ipSecConfigFileWrite(filename, writeStr)
 }
 
-func ipSecSecretConfigCreate(vpnConfig types.VpnServiceConfig) error {
+func ipSecSecretConfigCreate(vpnConfig types.VpnConfig) error {
 
 	clientConfigList := vpnConfig.ClientConfigList
 	gatewayConfig := vpnConfig.GatewayConfig
@@ -815,7 +815,7 @@ func charonConfigReset() error {
 	return ipSecConfigFileWrite(filename, charonConfStr)
 }
 
-func sysctlConfigCreate(vpnConfig types.VpnServiceConfig) error {
+func sysctlConfigCreate(vpnConfig types.VpnConfig) error {
 
 	portConfig := vpnConfig.PortConfig
 	log.Infof("%s: %s config\n", portConfig.Name, "sysctl")
@@ -843,7 +843,7 @@ func sysctlConfigCreate(vpnConfig types.VpnServiceConfig) error {
 	return nil
 }
 
-func sysctlConfigReset(vpnConfig types.VpnServiceConfig) error {
+func sysctlConfigReset(vpnConfig types.VpnConfig) error {
 	return nil
 }
 
@@ -899,7 +899,7 @@ func checkIntfStateCmd(intfName string) error {
 	return errors.New("interface is down")
 }
 
-func checkIpSecServiceStatusCmd(tunnelName string) error {
+func checkIpSecStatusCmd(tunnelName string) error {
 	cmd := exec.Command("ipsec", "status")
 	out, err := cmd.Output()
 	if err != nil {

@@ -76,14 +76,13 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	parseConfigItems(config, getconfigCtx)
 	parseDatastoreConfig(config, getconfigCtx)
 
-	// XXX increase likelyhood of being available when we look
-	parseSystemAdapterConfig(config, getconfigCtx, false)
-
-	parseBaseOsConfig(getconfigCtx, config)
-
 	// XXX Deprecated but used for systemAdapters
 	//	parseNetworkXObjectConfig
 	parseNetworkXObjectConfig(config, getconfigCtx)
+
+	parseSystemAdapterConfig(config, getconfigCtx, false)
+
+	parseBaseOsConfig(getconfigCtx, config)
 
 	parseNetworkInstanceConfig(config, getconfigCtx)
 	parseAppInstanceConfig(config, getconfigCtx)

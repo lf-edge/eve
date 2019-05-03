@@ -1299,51 +1299,6 @@ func deleteNetworkInstanceMetrics(ctx *zedrouterContext, key string) {
 	}
 }
 
-// getBridgeServiceIPv4Addr
-//	XXX - Do we need this function??
-// 	Entrypoint from networkobject to look for a bridge's IPv4 address
-func getBridgeServiceIPv4Addr(
-	ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) (string, error) {
-
-	log.Infof("getBridgeServiceIPv4Addr(%s)\n", status.DisplayName)
-
-	if status.Type != types.NetworkInstanceTypeSwitch {
-		errStr := fmt.Sprintf("getBridgeServiceIPv4Addr(%s): "+
-			"service not a bridge; type %d",
-			status.DisplayName, status.Type)
-		return "", errors.New(errStr)
-	}
-	if status.Port == "" {
-		log.Infof("getBridgeServiceIPv4Addr(%s): bridge but no Port\n",
-			status.DisplayName)
-		return "", nil
-	}
-
-	// Get IP address from Port
-	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Port)
-	ifindex, err := devicenetwork.IfnameToIndex(ifname)
-	if err != nil {
-		return "", err
-	}
-	addrs, err := devicenetwork.IfindexToAddrs(ifindex)
-	if err != nil {
-		log.Warnf("IfIndexToAddrs failed: %s\n", err)
-		addrs = nil
-	}
-	for _, addr := range addrs {
-		if addr.IP.To4() == nil {
-			continue
-		}
-		log.Infof("getBridgeServiceIPv4Addr(%s): found addr %s\n",
-			status.DisplayName, addr.IP.String())
-		return addr.IP.String(), nil
-	}
-	log.Infof("getBridgeServiceIPv4Addr(%s): no IP address on %s yet\n",
-		status.DisplayName, status.Port)
-	return "", nil
-}
-
 func publishNetworkInstanceStatus(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
 
