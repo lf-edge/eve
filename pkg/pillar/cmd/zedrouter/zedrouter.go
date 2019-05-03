@@ -359,7 +359,7 @@ func Run() {
 				log.Debugf("addrChange(%s) not mgmt port\n", ifname)
 				// Even if ethN isn't individually assignable, it
 				// could be used for a bridge.
-				maybeUpdateBridgeIPAddrForNetworkInstance(
+				maybeUpdateBridgeIPAddr(
 					&zedrouterCtx, ifname)
 			}
 		case change, ok := <-linkChanges:
@@ -376,7 +376,7 @@ func Run() {
 				log.Debugf("linkChange(%s) not mgmt port\n", ifname)
 				// Even if ethN isn't individually assignable, it
 				// could be used for a bridge.
-				maybeUpdateBridgeIPAddrForNetworkInstance(
+				maybeUpdateBridgeIPAddr(
 					&zedrouterCtx, ifname)
 			}
 		case change, ok := <-routeChanges:
@@ -971,7 +971,7 @@ func appNetworkDoActivateAllUnderlayNetworks(
 		log.Debugf("ulNum %d network %s ACLs %v\n",
 			ulNum, ulConfig.Network.String(), ulConfig.ACLs)
 		if ulConfig.UsesNetworkInstance {
-			appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
+			appNetworkDoActivateUnderlayNetwork(
 				ctx, config, status, ipsets, &ulConfig, ulNum)
 		} else {
 			log.Fatalln("XXX !ulConfig.UsesNetworkInstance")
@@ -1021,7 +1021,7 @@ func getSwitchIPv4Addr(ctx *zedrouterContext,
 	return "", nil
 }
 
-func appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
+func appNetworkDoActivateUnderlayNetwork(
 	ctx *zedrouterContext,
 	config types.AppNetworkConfig,
 	status *types.AppNetworkStatus,
@@ -1088,7 +1088,7 @@ func appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
 	ulStatus.Mac = appMac
 	ulStatus.HostName = config.Key()
 
-	bridgeIPAddr, appIPAddr := getUlAddrsForNetworkInstance(ctx, ulNum-1,
+	bridgeIPAddr, appIPAddr := getUlAddrs(ctx, ulNum-1,
 		status.AppNum, ulStatus, netInstStatus)
 
 	// Check if we have a bridge service with an address
@@ -1134,7 +1134,7 @@ func appNetworkDoActivateUnderlayNetworkWithNetworkInstance(
 
 	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
 		stopDnsmasq(bridgeName, true, false)
-		createDnsmasqConfigletForNetworkInstance(bridgeName,
+		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netInstConfig, hostsDirpath,
 			newIpsets, false)
 		startDnsmasq(bridgeName)
@@ -1166,7 +1166,7 @@ func appNetworkDoActivateOverlayNetworks(
 		log.Debugf("olNum %d network %s ACLs %v\n",
 			olNum, olConfig.Network.String(), olConfig.ACLs)
 		if olConfig.UsesNetworkInstance {
-			appNetworkDoActivateOverlayNetworkWithNetworkInstance(ctx,
+			appNetworkDoActivateOverlayNetwork(ctx,
 				config, status, ipsets, olConfig, olNum)
 		} else {
 			log.Fatalln("XXX !olConfig.UsesNetworkInstance")
@@ -1174,7 +1174,7 @@ func appNetworkDoActivateOverlayNetworks(
 	}
 }
 
-func appNetworkDoActivateOverlayNetworkWithNetworkInstance(
+func appNetworkDoActivateOverlayNetwork(
 	ctx *zedrouterContext, config types.AppNetworkConfig,
 	status *types.AppNetworkStatus, ipsets []string,
 	olConfig types.OverlayNetworkConfig, olNum int) {
@@ -1321,7 +1321,7 @@ func appNetworkDoActivateOverlayNetworkWithNetworkInstance(
 
 	if restartDnsmasq && olStatus.BridgeIPAddr != "" {
 		stopDnsmasq(bridgeName, true, false)
-		createDnsmasqConfigletForNetworkInstance(bridgeName,
+		createDnsmasqConfiglet(bridgeName,
 			olStatus.BridgeIPAddr, netInstConfig, hostsDirpath,
 			newIpsets, netInstStatus.Ipv4Eid)
 		startDnsmasq(bridgeName)
@@ -1334,7 +1334,7 @@ func appNetworkDoActivateOverlayNetworkWithNetworkInstance(
 
 	maybeRemoveStaleIpsets(staleIpsets)
 
-	createAndStartLispWithNetworkInstance(ctx, *status, olConfig,
+	createAndStartLisp(ctx, *status, olConfig,
 		netInstStatus, lispRunDirname, bridgeName)
 }
 
@@ -1644,7 +1644,7 @@ func checkAndRecreateAppNetwork(
 			config.DisplayName)
 	}
 }
-func createAndStartLispWithNetworkInstance(ctx *zedrouterContext,
+func createAndStartLisp(ctx *zedrouterContext,
 	status types.AppNetworkStatus,
 	olConfig types.OverlayNetworkConfig,
 	instStatus *types.NetworkInstanceStatus,
@@ -1693,7 +1693,7 @@ func findBridge(bridgeName string) (*netlink.Bridge, error) {
 }
 
 // XXX Need additional logic for IPv6 underlays.
-func getUlAddrsForNetworkInstance(ctx *zedrouterContext,
+func getUlAddrs(ctx *zedrouterContext,
 	ifnum int, appNum int,
 	status *types.UnderlayNetworkStatus,
 	netInstStatus *types.NetworkInstanceStatus) (string, string) {
@@ -1707,7 +1707,7 @@ func getUlAddrsForNetworkInstance(ctx *zedrouterContext,
 	log.Infof("getUlAddrs(%d/%d for %s) bridgeMac %s\n",
 		ifnum, appNum, netInstStatus.UUID.String(),
 		status.BridgeMac.String())
-	addr, err := lookupOrAllocateIPv4ForNetworkInstance(ctx, netInstStatus,
+	addr, err := lookupOrAllocateIPv4(ctx, netInstStatus,
 		status.BridgeMac)
 	if err != nil {
 		log.Errorf("lookupOrAllocatePv4 failed %s\n", err)
@@ -1729,7 +1729,7 @@ func getUlAddrsForNetworkInstance(ctx *zedrouterContext,
 		}
 		log.Infof("getUlAddrs(%d/%d for %s) app Mac %s\n",
 			ifnum, appNum, netInstStatus.UUID.String(), mac.String())
-		addr, err := lookupOrAllocateIPv4ForNetworkInstance(ctx, netInstStatus, mac)
+		addr, err := lookupOrAllocateIPv4(ctx, netInstStatus, mac)
 		if err != nil {
 			log.Errorf("lookupOrAllocateIPv4 failed %s\n", err)
 		} else {
@@ -1915,7 +1915,7 @@ func doAppNetworkModifyAllUnderlayNetworks(
 		ulConfig := &config.UnderlayNetworkList[i]
 		ulStatus := &status.UnderlayNetworkList[i]
 		if ulConfig.UsesNetworkInstance {
-			doAppNetworkModifyUnderlayNetworkWithNetworkInstance(
+			doAppNetworkModifyUnderlayNetwork(
 				ctx, status, ulConfig, ulStatus, ipsets)
 		} else {
 			log.Fatalln("XXX !ulConfig.UsesNetworkInstance")
@@ -1923,7 +1923,7 @@ func doAppNetworkModifyAllUnderlayNetworks(
 	}
 }
 
-func doAppNetworkModifyUnderlayNetworkWithNetworkInstance(
+func doAppNetworkModifyUnderlayNetwork(
 	ctx *zedrouterContext,
 	status *types.AppNetworkStatus,
 	ulConfig *types.UnderlayNetworkConfig,
@@ -1954,7 +1954,7 @@ func doAppNetworkModifyUnderlayNetworkWithNetworkInstance(
 	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
 		hostsDirpath := runDirname + "/hosts." + bridgeName
 		stopDnsmasq(bridgeName, true, false)
-		createDnsmasqConfigletForNetworkInstance(bridgeName,
+		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 			newIpsets, false)
 		startDnsmasq(bridgeName)
@@ -1977,7 +1977,7 @@ func doAppNetworkModifyAllOverlayNetworks(
 		olConfig := &config.OverlayNetworkList[i]
 		olStatus := &status.OverlayNetworkList[i]
 		if olConfig.UsesNetworkInstance {
-			doAppNetworkModifyOverlayNetworkWithNetworkInstance(
+			doAppNetworkModifyOverlayNetwork(
 				ctx, status, olConfig, olStatus, ipsets)
 		} else {
 			log.Fatalln("XXX !olConfig.UsesNetworkInstance")
@@ -1986,13 +1986,13 @@ func doAppNetworkModifyAllOverlayNetworks(
 	}
 }
 
-func doAppNetworkModifyOverlayNetworkWithNetworkInstance(
+func doAppNetworkModifyOverlayNetwork(
 	ctx *zedrouterContext,
 	status *types.AppNetworkStatus,
 	olConfig *types.OverlayNetworkConfig,
 	olStatus *types.OverlayNetworkStatus,
 	ipsets []string) {
-	log.Infof("doAppNetworkModifyOverlayNetworkWithNetworkInstance():")
+	log.Infof("doAppNetworkModifyOverlayNetwork():")
 	bridgeName := olStatus.Bridge
 
 	netconfig := lookupNetworkInstanceConfig(ctx,
@@ -2001,7 +2001,7 @@ func doAppNetworkModifyOverlayNetworkWithNetworkInstance(
 		errStr := fmt.Sprintf("no network config for %s",
 			olConfig.Network.String())
 		err := errors.New(errStr)
-		addError(ctx, status, "doAppNetworkModifyOverlayNetworkWithNetworkInstance overlay", err)
+		addError(ctx, status, "doAppNetworkModifyOverlayNetwork overlay", err)
 		return
 	}
 	netstatus := lookupNetworkInstanceStatus(ctx,
@@ -2011,7 +2011,7 @@ func doAppNetworkModifyOverlayNetworkWithNetworkInstance(
 		errStr := fmt.Sprintf("no network status for %s",
 			olConfig.Network.String())
 		err := errors.New(errStr)
-		addError(ctx, status, "doAppNetworkModifyOverlayNetworkWithNetworkInstance overlay",
+		addError(ctx, status, "doAppNetworkModifyOverlayNetwork overlay",
 			err)
 		return
 	}
@@ -2034,7 +2034,7 @@ func doAppNetworkModifyOverlayNetworkWithNetworkInstance(
 	if restartDnsmasq && olStatus.BridgeIPAddr != "" {
 		hostsDirpath := runDirname + "/hosts." + bridgeName
 		stopDnsmasq(bridgeName, true, false)
-		createDnsmasqConfigletForNetworkInstance(bridgeName,
+		createDnsmasqConfiglet(bridgeName,
 			olStatus.BridgeIPAddr, netconfig, hostsDirpath,
 			newIpsets, netstatus.Ipv4Eid)
 		startDnsmasq(bridgeName)
@@ -2165,7 +2165,7 @@ func appNetworkDoInactivateAllUnderlayNetworks(
 		ulStatus := &status.UnderlayNetworkList[ulNum]
 		log.Infof("doInactivate ulNum %d: %v\n", ulNum, ulStatus)
 		if ulStatus.UsesNetworkInstance {
-			appNetworkDoInactivateUnderlayNetworkWithNetworkInstance(
+			appNetworkDoInactivateUnderlayNetwork(
 				ctx, status, ulStatus, ipsets)
 		} else {
 			log.Fatalln("XXX !ulStatus.UsesNetworkInstance")
@@ -2173,7 +2173,7 @@ func appNetworkDoInactivateAllUnderlayNetworks(
 	}
 }
 
-func appNetworkDoInactivateUnderlayNetworkWithNetworkInstance(
+func appNetworkDoInactivateUnderlayNetwork(
 	ctx *zedrouterContext,
 	status *types.AppNetworkStatus,
 	ulStatus *types.UnderlayNetworkStatus,
@@ -2245,7 +2245,7 @@ func appNetworkDoInactivateUnderlayNetworkWithNetworkInstance(
 
 	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
 		stopDnsmasq(bridgeName, true, false)
-		createDnsmasqConfigletForNetworkInstance(bridgeName,
+		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
 			newIpsets, false)
 		startDnsmasq(bridgeName)
@@ -2270,7 +2270,7 @@ func appNetworkDoInactivateAllOverlayNetworks(ctx *zedrouterContext,
 		olStatus := &status.OverlayNetworkList[olNum-1]
 		log.Infof("doInactivate olNum %d: %v\n", olNum, olStatus)
 		if olStatus.UsesNetworkInstance {
-			appNetworkDoInactivateOverlayNetworkWithNetworkInstance(
+			appNetworkDoInactivateOverlayNetwork(
 				ctx, status, olStatus, ipsets)
 		} else {
 			log.Fatalln("XXX !olStatus.UsesNetworkInstance")
@@ -2281,7 +2281,7 @@ func appNetworkDoInactivateAllOverlayNetworks(ctx *zedrouterContext,
 	// XXX requires looking at all of configDir and statusDir
 }
 
-func appNetworkDoInactivateOverlayNetworkWithNetworkInstance(
+func appNetworkDoInactivateOverlayNetwork(
 	ctx *zedrouterContext,
 	status *types.AppNetworkStatus,
 	olStatus *types.OverlayNetworkStatus,
@@ -2340,7 +2340,7 @@ func appNetworkDoInactivateOverlayNetworkWithNetworkInstance(
 
 	if restartDnsmasq && olStatus.BridgeIPAddr != "" {
 		stopDnsmasq(bridgeName, true, false)
-		createDnsmasqConfigletForNetworkInstance(bridgeName,
+		createDnsmasqConfiglet(bridgeName,
 			olStatus.BridgeIPAddr, netconfig, hostsDirpath,
 			newIpsets, netstatus.Ipv4Eid)
 		startDnsmasq(bridgeName)

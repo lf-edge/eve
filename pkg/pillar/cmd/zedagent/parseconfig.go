@@ -277,7 +277,7 @@ func unpublishDeletedNetworkInstanceConfig(ctx *getconfigContext,
 	}
 }
 
-func parseDnsNameToIpListForNetworkInstanceConfig(
+func parseDnsNameToIpList(
 	apiConfigEntry *zconfig.NetworkInstanceConfig,
 	config *types.NetworkInstanceConfig) {
 
@@ -424,10 +424,10 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		// other than switch-type(l2)
 		// if ip type is l3, do the needful
 		if networkInstanceConfig.IpType != types.AddressTypeNone {
-			parseIpspecForNetworkInstanceConfig(apiConfigEntry.Ip,
+			parseIpspec(apiConfigEntry.Ip,
 				&networkInstanceConfig)
 
-			parseDnsNameToIpListForNetworkInstanceConfig(apiConfigEntry,
+			parseDnsNameToIpList(apiConfigEntry,
 				&networkInstanceConfig)
 		}
 
@@ -1108,7 +1108,7 @@ func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObj
 	return nil
 }
 
-func parseIpspecForNetworkInstanceConfig(ipspec *zconfig.Ipspec,
+func parseIpspec(ipspec *zconfig.Ipspec,
 	config *types.NetworkInstanceConfig) error {
 
 	config.DomainName = ipspec.GetDomain()

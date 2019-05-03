@@ -55,10 +55,10 @@ func dnsmasqDhcpHostDir(bridgeName string) string {
 	return dhcphostsDir
 }
 
-// createDnsmasqConfigletForNetworkInstance
+// createDnsmasqConfiglet
 // When we create a linux bridge we set this up
 // Also called when we need to update the ipsets
-func createDnsmasqConfigletForNetworkInstance(
+func createDnsmasqConfiglet(
 	bridgeName string, bridgeIPAddr string,
 	netconf *types.NetworkInstanceConfig, hostsDir string,
 	ipsets []string, Ipv4Eid bool) {

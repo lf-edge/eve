@@ -651,7 +651,7 @@ func incrementVpnMetricsConnStats(vpnMetrics *types.VpnMetrics,
 	vpnMetrics.DataStat.OutPkts.Pkts += outPktStats.Pkts
 }
 
-func strongSwanConfigGetForNetworkInstance(ctx *zedrouterContext,
+func strongSwanConfigGet(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) (types.VpnServiceConfig, error) {
 
 	port := types.NetLinkConfig{}
@@ -790,7 +790,7 @@ func strongSwanConfigGetForNetworkInstance(ctx *zedrouterContext,
 	return vpnConfig, nil
 }
 
-func strongSwanVpnStatusGetForNetworkInstance(ctx *zedrouterContext,
+func strongSwanVpnStatusGet(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus, nis *types.NetworkInstanceMetrics) bool {
 	change := false
 	if status.Type != types.NetworkInstanceTypeCloud {
@@ -817,11 +817,11 @@ func strongSwanVpnStatusGetForNetworkInstance(ctx *zedrouterContext,
 		status.VpnStatus = vpnStatus
 	}
 	// push the vpnMetrics here
-	publishVpnMetricsForNetworkInstance(ctx, status, vpnStatus, nis)
+	publishVpnMetrics(ctx, status, vpnStatus, nis)
 	return change
 }
 
-func publishVpnMetricsForNetworkInstance(ctx *zedrouterContext,
+func publishVpnMetrics(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus, vpnStatus *types.ServiceVpnStatus,
 	nis *types.NetworkInstanceMetrics) {
 
@@ -836,13 +836,13 @@ func publishVpnMetricsForNetworkInstance(ctx *zedrouterContext,
 		vpnMetrics.DataStat.OutPkts = oldMetrics.VpnMetrics.DataStat.OutPkts
 	}
 
-	publishVpnConnMetricsForNetworkInstance(ctx, status, oldMetrics, vpnMetrics, vpnStatus)
+	publishVpnConnMetrics(ctx, status, oldMetrics, vpnMetrics, vpnStatus)
 	publishVpnMetricsAclCounters(vpnMetrics)
 	nis.VpnMetrics = vpnMetrics
 	return
 }
 
-func publishVpnConnMetricsForNetworkInstance(ctx *zedrouterContext,
+func publishVpnConnMetrics(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus, oldMetrics *types.NetworkInstanceMetrics,
 	vpnMetrics *types.VpnMetrics, vpnStatus *types.ServiceVpnStatus) {
 
@@ -861,7 +861,7 @@ func publishVpnConnMetricsForNetworkInstance(ctx *zedrouterContext,
 		connMetrics.REndPoint.IpAddr = connStatus.RInfo.IpAddr
 
 		// get the last metrics
-		oldConnMetrics := getVpnMetricsOldConnStatsForNetworkInstance(oldMetrics, connStatus.Id)
+		oldConnMetrics := getVpnMetricsOldConnStats(oldMetrics, connStatus.Id)
 		// loop through the current setof SAs
 		for _, linkStatus := range connStatus.Links {
 			if linkStatus.State != types.VPN_INSTALLED {
@@ -885,7 +885,7 @@ func publishVpnConnMetricsForNetworkInstance(ctx *zedrouterContext,
 	}
 }
 
-func getVpnMetricsOldConnStatsForNetworkInstance(oldMetrics *types.NetworkInstanceMetrics,
+func getVpnMetricsOldConnStats(oldMetrics *types.NetworkInstanceMetrics,
 	id string) *types.VpnConnMetrics {
 	if oldMetrics == nil || oldMetrics.VpnMetrics == nil {
 		return nil
