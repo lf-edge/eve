@@ -1,0 +1,221 @@
+# contrib.go.opencensus.io/exporter/ocagent v0.4.11
+contrib.go.opencensus.io/exporter/ocagent
+# github.com/Azure/azure-sdk-for-go v11.3.0-beta+incompatible
+github.com/Azure/azure-sdk-for-go/storage
+# github.com/Azure/go-autorest v11.7.0+incompatible
+github.com/Azure/go-autorest/autorest
+github.com/Azure/go-autorest/autorest/azure
+github.com/Azure/go-autorest/autorest/adal
+github.com/Azure/go-autorest/logger
+github.com/Azure/go-autorest/tracing
+github.com/Azure/go-autorest/autorest/date
+# github.com/StackExchange/wmi v0.0.0-20180116203802-5d049714c4a6
+github.com/StackExchange/wmi
+# github.com/aws/aws-sdk-go v1.19.11
+github.com/aws/aws-sdk-go/aws
+github.com/aws/aws-sdk-go/aws/awserr
+github.com/aws/aws-sdk-go/aws/credentials
+github.com/aws/aws-sdk-go/aws/session
+github.com/aws/aws-sdk-go/service/s3
+github.com/aws/aws-sdk-go/service/s3/s3manager
+github.com/aws/aws-sdk-go/aws/endpoints
+github.com/aws/aws-sdk-go/internal/sdkio
+github.com/aws/aws-sdk-go/internal/ini
+github.com/aws/aws-sdk-go/internal/shareddefaults
+github.com/aws/aws-sdk-go/aws/client
+github.com/aws/aws-sdk-go/aws/corehandlers
+github.com/aws/aws-sdk-go/aws/credentials/processcreds
+github.com/aws/aws-sdk-go/aws/credentials/stscreds
+github.com/aws/aws-sdk-go/aws/csm
+github.com/aws/aws-sdk-go/aws/defaults
+github.com/aws/aws-sdk-go/aws/request
+github.com/aws/aws-sdk-go/aws/awsutil
+github.com/aws/aws-sdk-go/aws/client/metadata
+github.com/aws/aws-sdk-go/aws/signer/v4
+github.com/aws/aws-sdk-go/internal/s3err
+github.com/aws/aws-sdk-go/private/protocol
+github.com/aws/aws-sdk-go/private/protocol/eventstream
+github.com/aws/aws-sdk-go/private/protocol/eventstream/eventstreamapi
+github.com/aws/aws-sdk-go/private/protocol/rest
+github.com/aws/aws-sdk-go/private/protocol/restxml
+github.com/aws/aws-sdk-go/service/s3/s3iface
+github.com/aws/aws-sdk-go/internal/sdkrand
+github.com/aws/aws-sdk-go/service/sts
+github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds
+github.com/aws/aws-sdk-go/aws/credentials/endpointcreds
+github.com/aws/aws-sdk-go/aws/ec2metadata
+github.com/aws/aws-sdk-go/private/protocol/query
+github.com/aws/aws-sdk-go/private/protocol/xml/xmlutil
+github.com/aws/aws-sdk-go/internal/sdkuri
+github.com/aws/aws-sdk-go/private/protocol/query/queryutil
+# github.com/census-instrumentation/opencensus-proto v0.2.0
+github.com/census-instrumentation/opencensus-proto/gen-go/agent/common/v1
+github.com/census-instrumentation/opencensus-proto/gen-go/agent/metrics/v1
+github.com/census-instrumentation/opencensus-proto/gen-go/agent/trace/v1
+github.com/census-instrumentation/opencensus-proto/gen-go/metrics/v1
+github.com/census-instrumentation/opencensus-proto/gen-go/resource/v1
+github.com/census-instrumentation/opencensus-proto/gen-go/trace/v1
+# github.com/dgrijalva/jwt-go v3.2.0+incompatible
+github.com/dgrijalva/jwt-go
+# github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
+github.com/eriknordmark/ipinfo
+# github.com/eriknordmark/netlink v0.0.0-20190417195958-c63702da36e5
+github.com/eriknordmark/netlink
+# github.com/fsnotify/fsnotify v1.4.7
+github.com/fsnotify/fsnotify
+# github.com/go-ole/go-ole v1.2.4
+github.com/go-ole/go-ole
+github.com/go-ole/go-ole/oleutil
+# github.com/golang/protobuf v1.3.1
+github.com/golang/protobuf/proto
+github.com/golang/protobuf/ptypes/timestamp
+github.com/golang/protobuf/ptypes
+github.com/golang/protobuf/ptypes/any
+github.com/golang/protobuf/ptypes/duration
+github.com/golang/protobuf/ptypes/wrappers
+github.com/golang/protobuf/jsonpb
+github.com/golang/protobuf/protoc-gen-go/generator
+github.com/golang/protobuf/ptypes/struct
+github.com/golang/protobuf/protoc-gen-go/descriptor
+github.com/golang/protobuf/protoc-gen-go/generator/internal/remap
+github.com/golang/protobuf/protoc-gen-go/plugin
+# github.com/google/go-cmp v0.2.0
+github.com/google/go-cmp/cmp
+github.com/google/go-cmp/cmp/internal/diff
+github.com/google/go-cmp/cmp/internal/function
+github.com/google/go-cmp/cmp/internal/value
+# github.com/google/gopacket v1.1.16
+github.com/google/gopacket/afpacket
+github.com/google/gopacket
+github.com/google/gopacket/layers
+github.com/google/gopacket/pcap
+# github.com/gorilla/websocket v1.4.0
+github.com/gorilla/websocket
+# github.com/grpc-ecosystem/grpc-gateway v1.8.5
+github.com/grpc-ecosystem/grpc-gateway/runtime
+github.com/grpc-ecosystem/grpc-gateway/utilities
+github.com/grpc-ecosystem/grpc-gateway/internal
+# github.com/hashicorp/golang-lru v0.5.1
+github.com/hashicorp/golang-lru/simplelru
+# github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
+github.com/jmespath/go-jmespath
+# github.com/konsorten/go-windows-terminal-sequences v1.0.2
+github.com/konsorten/go-windows-terminal-sequences
+# github.com/kr/fs v0.1.0
+github.com/kr/fs
+# github.com/pkg/errors v0.8.1
+github.com/pkg/errors
+# github.com/pkg/sftp v1.10.0
+github.com/pkg/sftp
+# github.com/satori/go.uuid v0.0.0-20181028125025-b2ce2384e17b
+github.com/satori/go.uuid
+# github.com/satori/uuid v1.2.0
+github.com/satori/uuid
+# github.com/shirou/gopsutil v0.0.0-20190323131628-2cbc9195c892
+github.com/shirou/gopsutil/disk
+github.com/shirou/gopsutil/host
+github.com/shirou/gopsutil/net
+github.com/shirou/gopsutil/internal/common
+github.com/shirou/gopsutil/process
+github.com/shirou/gopsutil/cpu
+github.com/shirou/gopsutil/mem
+# github.com/shirou/w32 v0.0.0-20160930032740-bb4de0191aa4
+github.com/shirou/w32
+# github.com/sirupsen/logrus v1.2.0
+github.com/sirupsen/logrus
+# github.com/vishvananda/netlink v0.0.0-20190319163122-f504738125a5
+github.com/vishvananda/netlink/nl
+# github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc
+github.com/vishvananda/netns
+# github.com/zededa/eve/sdk/go v0.0.0-00010101000000-000000000000 => ../../sdk/go
+github.com/zededa/eve/sdk/go/zconfig
+github.com/zededa/eve/sdk/go/zmet
+# go.opencensus.io v0.20.1
+go.opencensus.io/plugin/ochttp
+go.opencensus.io/plugin/ochttp/propagation/tracecontext
+go.opencensus.io/stats/view
+go.opencensus.io/trace
+go.opencensus.io
+go.opencensus.io/plugin/ocgrpc
+go.opencensus.io/resource
+go.opencensus.io/stats
+go.opencensus.io/tag
+go.opencensus.io/trace/tracestate
+go.opencensus.io/plugin/ochttp/propagation/b3
+go.opencensus.io/trace/propagation
+go.opencensus.io/internal/tagencoding
+go.opencensus.io/metric/metricdata
+go.opencensus.io/metric/metricproducer
+go.opencensus.io/stats/internal
+go.opencensus.io/internal
+go.opencensus.io/trace/internal
+# golang.org/x/crypto v0.0.0-20190404164418-38d8ce5564a5
+golang.org/x/crypto/ssh
+golang.org/x/crypto/ocsp
+golang.org/x/crypto/ssh/terminal
+golang.org/x/crypto/curve25519
+golang.org/x/crypto/ed25519
+golang.org/x/crypto/internal/chacha20
+golang.org/x/crypto/poly1305
+golang.org/x/crypto/ed25519/internal/edwards25519
+golang.org/x/crypto/internal/subtle
+# golang.org/x/net v0.0.0-20190419010253-1f3472d942ba
+golang.org/x/net/bpf
+golang.org/x/net/html
+golang.org/x/net/html/atom
+golang.org/x/net/context
+golang.org/x/net/trace
+golang.org/x/net/internal/timeseries
+golang.org/x/net/http2
+golang.org/x/net/http2/hpack
+golang.org/x/net/http/httpguts
+golang.org/x/net/idna
+# golang.org/x/sync v0.0.0-20190227155943-e225da77a7e6
+golang.org/x/sync/semaphore
+# golang.org/x/sys v0.0.0-20190418153312-f0ce4c0180be
+golang.org/x/sys/unix
+golang.org/x/sys/windows
+golang.org/x/sys/cpu
+# golang.org/x/text v0.3.0
+golang.org/x/text/secure/bidirule
+golang.org/x/text/unicode/bidi
+golang.org/x/text/unicode/norm
+golang.org/x/text/transform
+# google.golang.org/api v0.3.2
+google.golang.org/api/support/bundler
+# google.golang.org/genproto v0.0.0-20190404172233-64821d5d2107
+google.golang.org/genproto/googleapis/api/httpbody
+google.golang.org/genproto/protobuf/field_mask
+google.golang.org/genproto/googleapis/rpc/status
+# google.golang.org/grpc v1.19.1
+google.golang.org/grpc
+google.golang.org/grpc/credentials
+google.golang.org/grpc/metadata
+google.golang.org/grpc/codes
+google.golang.org/grpc/grpclog
+google.golang.org/grpc/status
+google.golang.org/grpc/stats
+google.golang.org/grpc/balancer
+google.golang.org/grpc/balancer/roundrobin
+google.golang.org/grpc/connectivity
+google.golang.org/grpc/encoding
+google.golang.org/grpc/encoding/proto
+google.golang.org/grpc/internal
+google.golang.org/grpc/internal/backoff
+google.golang.org/grpc/internal/binarylog
+google.golang.org/grpc/internal/channelz
+google.golang.org/grpc/internal/envconfig
+google.golang.org/grpc/internal/grpcrand
+google.golang.org/grpc/internal/grpcsync
+google.golang.org/grpc/internal/transport
+google.golang.org/grpc/keepalive
+google.golang.org/grpc/naming
+google.golang.org/grpc/peer
+google.golang.org/grpc/resolver
+google.golang.org/grpc/resolver/dns
+google.golang.org/grpc/resolver/passthrough
+google.golang.org/grpc/tap
+google.golang.org/grpc/credentials/internal
+google.golang.org/grpc/balancer/base
+google.golang.org/grpc/binarylog/grpc_binarylog_v1
+google.golang.org/grpc/internal/syscall
