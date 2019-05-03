@@ -1,10 +1,11 @@
 ^pkg/fw/
 ^pkg/rngd/cmd/rngd/vendor/
-^build-tools/src/linuxkit/vendor/
-^build-tools/src/manifest-tool/vendor/
+^build-tools/src/linuxkit/
+^build-tools/src/manifest-tool/
 ^pkg/pillar/vendor/
 ^pkg/pillar/zedpac/
 ^sdk/
 ^.+\.patch
 ^.+\.diff
 ^.+build.yml
+^.+go.mod
