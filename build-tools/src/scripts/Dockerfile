@@ -14,4 +14,5 @@ RUN go get -u github.com/golang/protobuf/protoc-gen-go
 RUN go get -u github.com/jstemmer/go-junit-report
 RUN mv /go/bin/* /usr/bin
 ENV HOME /home/${USER}
-
+ENV GOFLAGS=-mod=vendor
+ENV GO111MODULE=on

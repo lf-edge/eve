@@ -12,6 +12,8 @@ RUN apk add --no-cache git gcc linux-headers libc-dev util-linux libpcap-dev
 
 # These three are supporting rudimentary cross-build capabilities.
 # The only one supported so far is cross compiling for aarch64 on x86
+ENV GOFLAGS=-mod=vendor
+ENV GO111MODULE=on
 ENV CGO_ENABLED=1
 ARG GOARCH=
 ARG CROSS_GCC=https://musl.cc/aarch64-linux-musleabi-cross.tgz
