@@ -1218,12 +1218,8 @@ func parseUnderlayNetworkConfigEntry(
 		log.Errorf("%s", ulCfg.Error)
 		return ulCfg
 	}
-	// XXX do we need this check?
 	if isOverlayNetworkInstance(networkInstanceEntry) {
-		ulCfg.Error = fmt.Sprintf("parseUnderlayNetworkConfigEntry: "+
-			"Network %s is Overlay", intfEnt.NetworkId)
-		log.Errorf("%s", ulCfg.Error)
-		return ulCfg
+		return nil
 	}
 	uuid, err := uuid.FromString(intfEnt.NetworkId)
 	if err != nil {
@@ -1325,11 +1321,7 @@ func parseOverlayNetworkConfigEntry(
 		return olCfg
 	}
 	if !isOverlayNetworkInstance(networkInstanceEntry) {
-		// We are not interested in non-overlays
-		olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: "+
-			"Network %s is not Overlay", intfEnt.NetworkId)
-		log.Errorf("%s", olCfg.Error)
-		return olCfg
+		return nil
 	}
 	uuid, err := uuid.FromString(intfEnt.NetworkId)
 	if err != nil {
