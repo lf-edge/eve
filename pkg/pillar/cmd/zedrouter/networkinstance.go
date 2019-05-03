@@ -318,7 +318,7 @@ func deleteDummyInterface(status *types.NetworkInstanceStatus) {
 	netlink.LinkDel(sLink)
 }
 
-func doNetworkInstanceBridgeAclsDelete(
+func doBridgeAclsDelete(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
 
@@ -328,7 +328,7 @@ func doNetworkInstanceBridgeAclsDelete(
 		appNetStatus := cast.CastAppNetworkStatus(ans)
 
 		for _, olStatus := range appNetStatus.OverlayNetworkList {
-			if olStatus.UsesNetworkInstance && olStatus.Network != status.UUID {
+			if olStatus.Network != status.UUID {
 				continue
 			}
 			if olStatus.Bridge == "" {
@@ -346,7 +346,7 @@ func doNetworkInstanceBridgeAclsDelete(
 			}
 		}
 		for _, ulStatus := range appNetStatus.UnderlayNetworkList {
-			if ulStatus.UsesNetworkInstance && ulStatus.Network != status.UUID {
+			if ulStatus.Network != status.UUID {
 				continue
 			}
 			if ulStatus.Bridge == "" {
@@ -1199,7 +1199,7 @@ func doNetworkInstanceDelete(
 			status.DisplayName, status.UUID, status.Type)
 	}
 
-	doNetworkInstanceBridgeAclsDelete(ctx, status)
+	doBridgeAclsDelete(ctx, status)
 	if status.BridgeName != "" {
 		stopDnsmasq(status.BridgeName, false, false)
 

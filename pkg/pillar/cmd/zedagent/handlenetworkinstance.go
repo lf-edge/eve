@@ -668,10 +668,10 @@ func publishInfo(ctx *zedagentContext, UUID string, infoMsg *zmet.ZInfoMsg) {
 
 func publishInfoToZedCloud(UUID string, infoMsg *zmet.ZInfoMsg, iteration int) {
 
-	log.Infof("publishNetworkServiceInfoToZedCloud sending %v\n", infoMsg)
+	log.Infof("publishInfoToZedCloud sending %v\n", infoMsg)
 	data, err := proto.Marshal(infoMsg)
 	if err != nil {
-		log.Fatal("publishNetworkServiceInfoToZedCloud proto marshaling error: ", err)
+		log.Fatal("publishInfoToZedCloud proto marshaling error: ", err)
 	}
 	statusUrl := serverName + "/" + statusApi
 	zedcloud.RemoveDeferred(UUID)
@@ -679,7 +679,7 @@ func publishInfoToZedCloud(UUID string, infoMsg *zmet.ZInfoMsg, iteration int) {
 	size := int64(proto.Size(infoMsg))
 	err = SendProtobuf(statusUrl, buf, size, iteration)
 	if err != nil {
-		log.Errorf("publishNetworkServiceInfoToZedCloud failed: %s\n", err)
+		log.Errorf("publishInfoToZedCloud failed: %s\n", err)
 		// Try sending later
 		zedcloud.SetDeferred(UUID, buf, size, statusUrl,
 			zedcloudCtx, true)

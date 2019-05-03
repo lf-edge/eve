@@ -815,18 +815,7 @@ type OverlayNetworkConfig struct {
 	ACLs          []ACE
 	AppMacAddr    net.HardwareAddr // If set use it for vif
 	AppIPAddr     net.IP           // EIDv4 or EIDv6
-
-	// Network
-	//   Currently overloaded. Can point to NetworkInstance or
-	//   NetworkConfig. If UsesNetworkInstance is set, Network
-	//   UUID points to NetworkInstance. Else, it points
-	//   to Network
-	//   XXX - Clean this up when deleting Network-Service support.
-	Network uuid.UUID
-	// UsesNetworkInstance
-	//   This attribute can be deleted when we stop network-service
-	//   support.
-	UsesNetworkInstance bool
+	Network       uuid.UUID        // Points to a NetworkInstance.
 
 	// Error
 	//	If there is a parsing error and this uLNetwork config cannot be
@@ -875,20 +864,9 @@ type UnderlayNetworkConfig struct {
 	//	If this is non-empty ( != ""), the UL network Config should not be
 	// 	processed further. It Should just	be flagged to be in error state
 	//  back to the cloud.
-	Error string
-
-	// Network
-	//   Currently overloaded. Can point to NetworkInstance or
-	//   NetworkConfig. If UsesNetworkInstance is set, Network
-	//   UUID points to NetworkInstance. Else, it points
-	//   to Network
-	//   XXX - Clean this up when deleting Network-Service support.
-	Network uuid.UUID
-	// UsesNetworkInstance
-	//   This attribute can be deleted when we stop network-service
-	//   support.
-	UsesNetworkInstance bool
-	ACLs                []ACE
+	Error   string
+	Network uuid.UUID // Points to a NetworkInstance.
+	ACLs    []ACE
 }
 
 type UnderlayNetworkStatus struct {

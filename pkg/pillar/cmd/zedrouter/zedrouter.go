@@ -970,12 +970,8 @@ func appNetworkDoActivateAllUnderlayNetworks(
 		ulNum := i + 1
 		log.Debugf("ulNum %d network %s ACLs %v\n",
 			ulNum, ulConfig.Network.String(), ulConfig.ACLs)
-		if ulConfig.UsesNetworkInstance {
-			appNetworkDoActivateUnderlayNetwork(
-				ctx, config, status, ipsets, &ulConfig, ulNum)
-		} else {
-			log.Fatalln("XXX !ulConfig.UsesNetworkInstance")
-		}
+		appNetworkDoActivateUnderlayNetwork(
+			ctx, config, status, ipsets, &ulConfig, ulNum)
 
 	}
 }
@@ -1165,12 +1161,8 @@ func appNetworkDoActivateOverlayNetworks(
 		olNum := i + 1
 		log.Debugf("olNum %d network %s ACLs %v\n",
 			olNum, olConfig.Network.String(), olConfig.ACLs)
-		if olConfig.UsesNetworkInstance {
-			appNetworkDoActivateOverlayNetwork(ctx,
-				config, status, ipsets, olConfig, olNum)
-		} else {
-			log.Fatalln("XXX !olConfig.UsesNetworkInstance")
-		}
+		appNetworkDoActivateOverlayNetwork(ctx,
+			config, status, ipsets, olConfig, olNum)
 	}
 }
 
@@ -1370,14 +1362,10 @@ func appNetworkCheckAllNetworksExist(
 
 	// Check networks for OL
 	for _, olConfig := range config.OverlayNetworkList {
-		if olConfig.UsesNetworkInstance {
-			netInstConfig := lookupNetworkInstanceConfig(ctx,
-				olConfig.Network.String())
-			if netInstConfig != nil {
-				continue
-			}
-		} else {
-			log.Fatalln("XXX !olConfig.UsesNetworkInstance")
+		netInstConfig := lookupNetworkInstanceConfig(ctx,
+			olConfig.Network.String())
+		if netInstConfig != nil {
+			continue
 		}
 		errStr := fmt.Sprintf("Missing overlay network %s for %s/%s",
 			olConfig.Network.String(),
@@ -1392,14 +1380,10 @@ func appNetworkCheckAllNetworksExist(
 	// XXX - Should we also check for Network(instance)Status
 	// objects here itself?
 	for _, ulConfig := range config.UnderlayNetworkList {
-		if ulConfig.UsesNetworkInstance {
-			netInstConfig := lookupNetworkInstanceConfig(ctx,
-				ulConfig.Network.String())
-			if netInstConfig != nil {
-				continue
-			}
-		} else {
-			log.Fatalln("XXX !ulConfig.UsesNetworkInstance")
+		netInstConfig := lookupNetworkInstanceConfig(ctx,
+			ulConfig.Network.String())
+		if netInstConfig != nil {
+			continue
 		}
 		errStr := fmt.Sprintf("Missing underlay network %s for %s/%s",
 			ulConfig.Network.String(),
@@ -1875,29 +1859,25 @@ func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
 	}
 	for i := range config.UnderlayNetworkList {
 		ulConfig := &config.UnderlayNetworkList[i]
-		if ulConfig.UsesNetworkInstance {
-			netconfig := lookupNetworkInstanceConfig(ctx,
+		netconfig := lookupNetworkInstanceConfig(ctx,
+			ulConfig.Network.String())
+		if netconfig == nil {
+			errStr := fmt.Sprintf("no network Instance config for %s",
 				ulConfig.Network.String())
-			if netconfig == nil {
-				errStr := fmt.Sprintf("no network Instance config for %s",
-					ulConfig.Network.String())
-				err := errors.New(errStr)
-				addError(ctx, status, "lookupNetworkInstanceConfig", err)
-				return false
-			}
-			netstatus := lookupNetworkInstanceStatus(ctx,
+			err := errors.New(errStr)
+			addError(ctx, status, "lookupNetworkInstanceConfig", err)
+			return false
+		}
+		netstatus := lookupNetworkInstanceStatus(ctx,
+			ulConfig.Network.String())
+		if netstatus == nil {
+			// We had a netconfig but no status!
+			errStr := fmt.Sprintf("no network Instance status for %s",
 				ulConfig.Network.String())
-			if netstatus == nil {
-				// We had a netconfig but no status!
-				errStr := fmt.Sprintf("no network Instance status for %s",
-					ulConfig.Network.String())
-				err := errors.New(errStr)
-				addError(ctx, status, "handleModify underlay sanity check "+
-					" - no network instance", err)
-				return false
-			}
-		} else {
-			log.Fatalln("XXX !ulConfig.UsesNetworkInstance")
+			err := errors.New(errStr)
+			addError(ctx, status, "handleModify underlay sanity check "+
+				" - no network instance", err)
+			return false
 		}
 	}
 	return true
@@ -1914,12 +1894,8 @@ func doAppNetworkModifyAllUnderlayNetworks(
 		log.Debugf("handleModify ulNum %d\n", i)
 		ulConfig := &config.UnderlayNetworkList[i]
 		ulStatus := &status.UnderlayNetworkList[i]
-		if ulConfig.UsesNetworkInstance {
-			doAppNetworkModifyUnderlayNetwork(
-				ctx, status, ulConfig, ulStatus, ipsets)
-		} else {
-			log.Fatalln("XXX !ulConfig.UsesNetworkInstance")
-		}
+		doAppNetworkModifyUnderlayNetwork(
+			ctx, status, ulConfig, ulStatus, ipsets)
 	}
 }
 
@@ -1976,13 +1952,8 @@ func doAppNetworkModifyAllOverlayNetworks(
 		log.Debugf("handleModify olNum %d\n", i+1)
 		olConfig := &config.OverlayNetworkList[i]
 		olStatus := &status.OverlayNetworkList[i]
-		if olConfig.UsesNetworkInstance {
-			doAppNetworkModifyOverlayNetwork(
-				ctx, status, olConfig, olStatus, ipsets)
-		} else {
-			log.Fatalln("XXX !olConfig.UsesNetworkInstance")
-		}
-
+		doAppNetworkModifyOverlayNetwork(
+			ctx, status, olConfig, olStatus, ipsets)
 	}
 }
 
@@ -2164,12 +2135,8 @@ func appNetworkDoInactivateAllUnderlayNetworks(
 	for ulNum := 0; ulNum < len(status.UnderlayNetworkList); ulNum++ {
 		ulStatus := &status.UnderlayNetworkList[ulNum]
 		log.Infof("doInactivate ulNum %d: %v\n", ulNum, ulStatus)
-		if ulStatus.UsesNetworkInstance {
-			appNetworkDoInactivateUnderlayNetwork(
-				ctx, status, ulStatus, ipsets)
-		} else {
-			log.Fatalln("XXX !ulStatus.UsesNetworkInstance")
-		}
+		appNetworkDoInactivateUnderlayNetwork(
+			ctx, status, ulStatus, ipsets)
 	}
 }
 
@@ -2269,13 +2236,8 @@ func appNetworkDoInactivateAllOverlayNetworks(ctx *zedrouterContext,
 		}
 		olStatus := &status.OverlayNetworkList[olNum-1]
 		log.Infof("doInactivate olNum %d: %v\n", olNum, olStatus)
-		if olStatus.UsesNetworkInstance {
-			appNetworkDoInactivateOverlayNetwork(
-				ctx, status, olStatus, ipsets)
-		} else {
-			log.Fatalln("XXX !olStatus.UsesNetworkInstance")
-		}
-
+		appNetworkDoInactivateOverlayNetwork(
+			ctx, status, olStatus, ipsets)
 	}
 	// XXX check if any IIDs are now unreferenced and delete them
 	// XXX requires looking at all of configDir and statusDir

@@ -80,7 +80,6 @@ func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,
 			ol.AppIPAddr = olc.AppIPAddr
 			ol.Network = olc.Network
 			ol.MgmtIID = ols.IID
-			ol.UsesNetworkInstance = olc.UsesNetworkInstance
 		}
 		nc.UnderlayNetworkList = make([]types.UnderlayNetworkConfig,
 			len(aiConfig.UnderlayNetworkList))

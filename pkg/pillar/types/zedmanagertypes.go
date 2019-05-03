@@ -165,10 +165,6 @@ type EIDOverlayConfig struct {
 	AppIPAddr  net.IP           // EIDv4 or EIDv6
 	Network    uuid.UUID
 
-	// UsesNetworkInstance
-	//   This attribute can be deleted when we stop network-service
-	//   support.
-	UsesNetworkInstance bool
 	// Error
 	//	If there is a parsing error and this uLNetwork config cannot be
 	//	processed, set the error here. This allows the error to be propagated

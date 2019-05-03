@@ -880,6 +880,7 @@ func parseStorageConfigList(objType string,
 	}
 }
 
+// XXX Remove when systemAdapter embeds the NetworkXObject
 func lookupNetworkId(id string, cfgNetworks []*zconfig.NetworkConfig) *zconfig.NetworkConfig {
 	for _, netEnt := range cfgNetworks {
 		if id == netEnt.Id {
@@ -899,18 +900,6 @@ func lookupNetworkInstanceId(id string,
 	return nil
 }
 
-func lookupServiceId(id string, cfgServices []*zconfig.ServiceInstanceConfig) *zconfig.ServiceInstanceConfig {
-	for _, svcEnt := range cfgServices {
-		if id == svcEnt.Id {
-			return svcEnt
-		}
-	}
-	return nil
-}
-
-// XXX - Why not just make each Config type implement an interface Id?
-//		Or even have all of them use uuidVersionName struct as the first member?
-//		That would avoid writing this code for each config type??
 func lookupNetworkInstanceById(uuid string,
 	networkInstancesConfigList []*zconfig.NetworkInstanceConfig) *zconfig.NetworkInstanceConfig {
 	for _, entry := range networkInstancesConfigList {
@@ -1216,51 +1205,40 @@ func parseUnderlayNetworkConfigEntry(
 	cfgNetworkInstances []*zconfig.NetworkInstanceConfig,
 	intfEnt *zconfig.NetworkAdapter) *types.UnderlayNetworkConfig {
 
-	var networkUuidStr string
-	var networkInstanceEntry *zconfig.NetworkInstanceConfig = nil
-
 	ulCfg := new(types.UnderlayNetworkConfig)
 	ulCfg.Name = intfEnt.Name
 
-	netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
-	if netEnt == nil {
-		// Lookup NetworkInstance ID
-		networkInstanceEntry = lookupNetworkInstanceId(intfEnt.NetworkId,
-			cfgNetworkInstances)
-		if networkInstanceEntry == nil {
-			ulCfg.Error = fmt.Sprintf("App %s-%s: Can't find network id %s in networks "+
-				"or networkinstances.\n",
-				cfgApp.Displayname, cfgApp.Uuidandversion.Uuid,
-				intfEnt.NetworkId)
-			log.Errorf("%s", ulCfg.Error)
-			return ulCfg
-		}
-		if isOverlayNetworkInstance(networkInstanceEntry) {
-			return nil
-		}
-		ulCfg.UsesNetworkInstance = true
-		networkUuidStr = networkInstanceEntry.Uuidandversion.Uuid
-		log.Infof("NetworkInstance(%s-%s): InstType %v\n",
+	// Lookup NetworkInstance ID
+	networkInstanceEntry := lookupNetworkInstanceId(intfEnt.NetworkId,
+		cfgNetworkInstances)
+	if networkInstanceEntry == nil {
+		ulCfg.Error = fmt.Sprintf("App %s-%s: Can't find network id %s in networks "+
+			"or networkinstances.\n",
 			cfgApp.Displayname, cfgApp.Uuidandversion.Uuid,
-			networkInstanceEntry.InstType)
-	} else {
-		if isOverlayNetwork(netEnt) {
-			return nil
-		}
-		ulCfg.UsesNetworkInstance = false
-		networkUuidStr = netEnt.Id
-		log.Infof("parseUnderlayNetworkConfig: app %v net %v type %v\n",
-			cfgApp.Displayname, networkUuidStr, netEnt.Type)
-	}
-
-	var err error
-	ulCfg.Network, err = uuid.FromString(networkUuidStr)
-	if err != nil {
-		ulCfg.Error = fmt.Sprintf("App %s-%s: Malformed Network UUID %s. Err: %s\n",
-			cfgApp.Displayname, cfgApp.Uuidandversion.Uuid, networkUuidStr, err)
+			intfEnt.NetworkId)
 		log.Errorf("%s", ulCfg.Error)
 		return ulCfg
 	}
+	// XXX do we need this check?
+	if isOverlayNetworkInstance(networkInstanceEntry) {
+		ulCfg.Error = fmt.Sprintf("parseUnderlayNetworkConfigEntry: "+
+			"Network %s is Overlay", intfEnt.NetworkId)
+		log.Errorf("%s", ulCfg.Error)
+		return ulCfg
+	}
+	uuid, err := uuid.FromString(intfEnt.NetworkId)
+	if err != nil {
+		ulCfg.Error = fmt.Sprintf("App %s-%s: Malformed Network UUID %s. Err: %s\n",
+			cfgApp.Displayname, cfgApp.Uuidandversion.Uuid,
+			intfEnt.NetworkId, err)
+		log.Errorf("%s", ulCfg.Error)
+		return ulCfg
+	}
+	log.Infof("NetworkInstance(%s-%s): InstType %v\n",
+		cfgApp.Displayname, cfgApp.Uuidandversion.Uuid,
+		networkInstanceEntry.InstType)
+
+	ulCfg.Network = uuid
 	if intfEnt.MacAddress != "" {
 		log.Infof("parseUnderlayNetworkConfig: got static MAC %s\n",
 			intfEnt.MacAddress)
@@ -1331,35 +1309,28 @@ func parseOverlayNetworkConfigEntry(
 	cfgNetworks []*zconfig.NetworkConfig,
 	cfgNetworkInstances []*zconfig.NetworkInstanceConfig,
 	intfEnt *zconfig.NetworkAdapter) *types.EIDOverlayConfig {
-	var networkInstanceEntry *zconfig.NetworkInstanceConfig = nil
 
 	olCfg := new(types.EIDOverlayConfig)
 	olCfg.Name = intfEnt.Name
 
-	netEnt := lookupNetworkId(intfEnt.NetworkId, cfgNetworks)
-	if netEnt == nil {
-		// Lookup NetworkInstance ID
-		networkInstanceEntry = lookupNetworkInstanceId(intfEnt.NetworkId,
-			cfgNetworkInstances)
-		olCfg.UsesNetworkInstance = true
-		if networkInstanceEntry == nil {
-			olCfg.UsesNetworkInstance = true
-			olCfg.Error = fmt.Sprintf("App %s - Can't find network id %s in networks or "+
-				"networkinstances. Ignoring this network",
-				cfgApp.Displayname, intfEnt.NetworkId)
-			log.Errorf("%s", olCfg.Error)
-			// XXX These errors should be propagated to zedrouter.
-			// zedrouter can then relay these errors to zedcloud.
-			return olCfg
-		}
-		if !isOverlayNetworkInstance(networkInstanceEntry) {
-			return nil
-		}
-	} else {
-		if !isOverlayNetwork(netEnt) {
-			return nil
-		}
-		olCfg.UsesNetworkInstance = false
+	// Lookup NetworkInstance ID
+	networkInstanceEntry := lookupNetworkInstanceId(intfEnt.NetworkId,
+		cfgNetworkInstances)
+	if networkInstanceEntry == nil {
+		olCfg.Error = fmt.Sprintf("App %s - Can't find network id %s in networks or "+
+			"networkinstances. Ignoring this network",
+			cfgApp.Displayname, intfEnt.NetworkId)
+		log.Errorf("%s", olCfg.Error)
+		// XXX These errors should be propagated to zedrouter.
+		// zedrouter can then relay these errors to zedcloud.
+		return olCfg
+	}
+	if !isOverlayNetworkInstance(networkInstanceEntry) {
+		// We are not interested in non-overlays
+		olCfg.Error = fmt.Sprintf("parseOverlayNetworkConfigEntry: "+
+			"Network %s is not Overlay", intfEnt.NetworkId)
+		log.Errorf("%s", olCfg.Error)
+		return olCfg
 	}
 	uuid, err := uuid.FromString(intfEnt.NetworkId)
 	if err != nil {
@@ -1368,22 +1339,9 @@ func parseOverlayNetworkConfigEntry(
 		log.Errorf("%s", olCfg.Error)
 		return olCfg
 	}
-	if netEnt != nil {
-		if !isOverlayNetwork(netEnt) {
-			// We are not interested in non-overlays
-			return nil
-		}
-		log.Infof("parseOverlayNetworkConfigEntry: app %v net %v type %v\n",
-			cfgApp.Displayname, uuid.String(), netEnt.Type)
-	} else {
-		if !isOverlayNetworkInstance(networkInstanceEntry) {
-			// We are not interested in non-overlays
-			return nil
-		}
-		log.Infof("NetworkInstance(%s-%s): InstType %v\n",
-			cfgApp.Displayname, uuid.String(),
-			networkInstanceEntry.InstType)
-	}
+	log.Infof("NetworkInstance(%s-%s): InstType %v\n",
+		cfgApp.Displayname, uuid.String(),
+		networkInstanceEntry.InstType)
 
 	olCfg.Network = uuid
 	if intfEnt.MacAddress != "" {
