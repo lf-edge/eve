@@ -7,6 +7,7 @@ package zedagent
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -45,6 +46,9 @@ var appPersistPaths = []string{"/persist/img", "/persist/downloads/appImg.obj"}
 
 func publishMetrics(ctx *zedagentContext, iteration int) {
 	cpuMemoryStat := ExecuteXentopCmd()
+	if cpuMemoryStat == nil {
+		return
+	}
 	PublishMetricsToZedCloud(ctx, cpuMemoryStat, iteration)
 }
 
@@ -283,11 +287,14 @@ func ExecuteXentopCmd() [][]string {
 	arg6 := "2"
 	arg7 := "-f"
 
-	cmd := exec.Command(arg1, arg2, arg3, arg4, arg5, arg6, arg7)
-	stdout, err := cmd.Output()
+	stdout, ok, err := execWithTimeout(arg1, arg2, arg3, arg4, arg5, arg6, arg7)
 	if err != nil {
 		log.Errorf("xentop failed: %s", err)
 		return [][]string{}
+	}
+	if !ok {
+		log.Warnf("xentop timed out")
+		return nil
 	}
 
 	xentopInfo := string(stdout)
@@ -360,6 +367,20 @@ func ExecuteXentopCmd() [][]string {
 	}
 	log.Debugf("ExecuteXentopCmd return %+v", cpuMemoryStat)
 	return cpuMemoryStat
+}
+
+func execWithTimeout(command string, args ...string) ([]byte, bool, error) {
+
+	ctx, cancel := context.WithTimeout(context.Background(),
+		10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, command, args...)
+	out, err := cmd.Output()
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, false, nil
+	}
+	return out, true, err
 }
 
 // Returns cpuTotal, usedMemory, availableMemory, usedPercentage
