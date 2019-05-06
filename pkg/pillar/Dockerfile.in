@@ -6,7 +6,7 @@ FROM DNSMASQ_TAG as dnsmasq
 FROM STRONGSWAN_TAG as strongswan
 FROM GPTTOOLS_TAG as gpttools
 FROM WATCHDOG_TAG as watchdog
-FROM golang:1.9.1-alpine AS build
+FROM golang:1.12.4-alpine3.9 AS build
 RUN apk update
 RUN apk add --no-cache git gcc linux-headers libc-dev util-linux libpcap-dev
 

@@ -153,7 +153,7 @@ func SetUplinkAddrs(ipv4 net.IP, ipv6 net.IP) {
 	uplinks.Ipv4 = ipv4
 	uplinks.Ipv6 = ipv6
 	if debug {
-		log.Debug("SetUplinkAddrs: Storing pointer %p with ip4 %s, ipv6 %s",
+		log.Debugf("SetUplinkAddrs: Storing pointer %p with ip4 %s, ipv6 %s",
 			&uplinks, uplinks.Ipv4, uplinks.Ipv6)
 	}
 	upLinks.UpLinks = uplinks
@@ -1035,7 +1035,7 @@ func PublishLispMetrics(ctx *dptypes.DataplaneContext,
 			sslp := rlocStat.SecondsSinceLastPkt
 
 			rlocStatEntry := types.LispRlocStatistics{
-				Rloc: rloc,
+				Rloc:                   rloc,
 				SecondsSinceLastPacket: uint64(sslp),
 				Stats: types.LispPktStat{
 					Pkts:  pktCount,

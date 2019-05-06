@@ -18,7 +18,7 @@ BUILD_VERSION=$(shell scripts/getversion.sh)
 DISTDIR     := dist/$(ARCH)
 
 # Go parameters and builder
-GOVER ?= 1.9.1
+GOVER ?= 1.12.4
 GOMODULE=github.com/zededa/eve/pkg/pillar
 DOCKER_GO = mkdir -p .go/src/$(GOMODULE) ;\
     docker run -it --rm -u $(USER) -w /go/src/$(GOMODULE) \

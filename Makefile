@@ -3,7 +3,7 @@
 #
 # Run make (with no arguments) to see help on what targets are available
 
-GOVER ?= 1.9.1
+GOVER ?= 1.12.4
 PKGBASE=github.com/zededa/eve
 GOMODULE=$(PKGBASE)/pkg/pillar
 GOTREE=$(CURDIR)/pkg/pillar
@@ -250,7 +250,7 @@ shell: $(GOBUILDER)
 #
 $(LINUXKIT): CGO_ENABLED=0
 $(LINUXKIT): GOOS=$(shell uname -s | tr '[A-Z]' '[a-z]')
-$(LINUXKIT): $(CURDIR)/build-tools/src/linuxkit/Gopkg.lock $(CURDIR)/build-tools/bin/manifest-tool
+$(LINUXKIT): $(CURDIR)/build-tools/src/linuxkit/Gopkg.lock $(CURDIR)/build-tools/bin/manifest-tool $(GOBUILDER)
 	@$(DOCKER_GO) "go build -ldflags '-X version.GitCommit=$(EVE_TREE_TAG)' -o /go/bin/linuxkit \
                           vendor/github.com/linuxkit/linuxkit/src/cmd/linuxkit" $(dir $<) / $(dir $@)
 $(CURDIR)/build-tools/bin/manifest-tool: $(CURDIR)/build-tools/src/manifest-tool/Gopkg.lock
