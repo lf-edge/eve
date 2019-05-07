@@ -11,7 +11,7 @@ To get its job done, EVE leverages a lot of great open source projects: [Xen Pro
 
 # How to use
 
-You will need qemu (https://www.qemu.org/), Docker (https://www.docker.com) 
+You will need qemu 3.x+ (https://www.qemu.org/), Docker (https://www.docker.com) 
 and go 1.12+ (https://golang.org) installed in your system.
 
 Note, that since Linuxkit and manifest-tool are evolving pretty rapidly, we're
