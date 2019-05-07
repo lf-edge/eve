@@ -116,7 +116,7 @@ test: $(GOBUILDER) | $(DIST)
 
 clean:
 	rm -rf $(DIST) pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile \
-	       images/installer.yml images/rootfs.yml.in
+	       images/installer.yml images/rootfs.yml
 
 build-tools: $(LINUXKIT)
 	@echo Done building $<
