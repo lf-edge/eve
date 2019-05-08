@@ -16,7 +16,7 @@ DOCKER_TAG=zededa/ztools:local$${GOARCH:+-}$(GOARCH)
 APPS = zedbox
 APPS1 = logmanager ledmanager downloader verifier client zedrouter domainmgr \
         identitymgr zedmanager zedagent hardwaremodel ipcmonitor nim diag    \
-        baseosmgr wstunnelclient conntrack
+        baseosmgr wstunnelclient conntrack lisp-ztr waitforaddr
 
 .PHONY: all clean build test build-docker build-docker-git shell
 
