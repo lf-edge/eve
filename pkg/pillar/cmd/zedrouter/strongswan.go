@@ -651,6 +651,22 @@ func incrementVpnMetricsConnStats(vpnMetrics *types.VpnMetrics,
 	vpnMetrics.DataStat.OutPkts.Pkts += outPktStats.Pkts
 }
 
+func getUplink(ctx *zedrouterContext, portName string) (string, error) {
+
+	if portName == "" {
+		return portName, errors.New("port config is absent")
+	}
+
+	ifNameList := getIfNameListForPort(ctx, portName)
+	if len(ifNameList) != 0 {
+		portName = types.AdapterToIfName(ctx.deviceNetworkStatus,
+			ifNameList[0])
+		return portName, nil
+	}
+	errStr := fmt.Sprintf("%s is not available", portName)
+	return portName, errors.New(errStr)
+}
+
 func strongSwanConfigGet(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) (types.VpnConfig, error) {
 
@@ -659,20 +675,18 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 	vpnConfig := types.VpnConfig{}
 	appNetPresent := false
 
-	// if adapter is not set, return
-	if status.Port == "" {
-		return vpnConfig, errors.New("port config is absent")
-	}
-
-	// port ip address error
-	srcIp, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus, 0,
-		status.Port)
+	portName, err := getUplink(ctx, status.Port)
 	if err != nil {
 		return vpnConfig, err
 	}
 
-	port.Name = types.AdapterToIfName(ctx.deviceNetworkStatus,
-		status.Port)
+	port.Name = portName
+	// port ip address error
+	srcIp, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus, 0,
+		port.Name)
+	if err != nil {
+		return vpnConfig, err
+	}
 	port.IpAddr = srcIp.String()
 
 	// app net information
