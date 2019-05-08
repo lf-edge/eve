@@ -29,7 +29,7 @@ import (
 	"github.com/zededa/eve/pkg/pillar/ssh"
 	"github.com/zededa/eve/pkg/pillar/types"
 	"github.com/zededa/eve/pkg/pillar/zboot"
-	"github.com/zededa/eve/sdk/go/zconfig"
+	zconfig "github.com/zededa/eve/sdk/go/config"
 )
 
 const (

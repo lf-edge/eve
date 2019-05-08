@@ -28,7 +28,7 @@ import (
 	"github.com/zededa/eve/pkg/pillar/types"
 	"github.com/zededa/eve/pkg/pillar/zedUpload"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
-	"github.com/zededa/eve/sdk/go/zconfig"
+	zconfig "github.com/zededa/eve/sdk/go/config"
 )
 
 const (

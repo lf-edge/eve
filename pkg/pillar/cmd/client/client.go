@@ -29,7 +29,7 @@ import (
 	"github.com/zededa/eve/pkg/pillar/pubsub"
 	"github.com/zededa/eve/pkg/pillar/types"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
-	"github.com/zededa/eve/sdk/go/zmet"
+	zmet "github.com/zededa/eve/sdk/go/register"
 )
 
 const (

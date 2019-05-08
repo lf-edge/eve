@@ -22,7 +22,7 @@ import (
 	"github.com/zededa/eve/pkg/pillar/watch"
 	"github.com/zededa/eve/pkg/pillar/zboot"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
-	"github.com/zededa/eve/sdk/go/zmet"
+	"github.com/zededa/eve/sdk/go/logs"
 	"io"
 	"io/ioutil"
 	"os"
@@ -53,7 +53,6 @@ var (
 	serverName          string
 	logsUrl             string
 	zedcloudCtx         zedcloud.ZedCloudContext
-	logs                map[string]zedcloudLogs // Key is ifname string
 
 	globalDeferInprogress bool
 )
@@ -417,7 +416,7 @@ func processEvents(image string, prevLastSent time.Time,
 
 	log.Infof("processEvents(%s, %s)\n", image, prevLastSent.String())
 
-	reportLogs := new(zmet.LogBundle)
+	reportLogs := new(logs.LogBundle)
 	// XXX should we make the log interval configurable?
 	interval := time.Duration(10 * time.Second)
 	max := float64(interval)
@@ -553,7 +552,7 @@ func readLast(dirname string, image string) time.Time {
 var msgIdCounter = 1
 var iteration = 0
 
-func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
+func HandleLogEvent(event logEntry, reportLogs *logs.LogBundle, counter int) {
 	// Assign a unique msgId for each message
 	msgId := msgIdCounter
 	msgIdCounter += 1
@@ -568,7 +567,7 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 		return
 	}
 
-	logDetails := &zmet.LogEntry{}
+	logDetails := &logs.LogEntry{}
 	logDetails.Content = event.content
 	logDetails.Severity = event.severity
 	logDetails.Timestamp, _ = ptypes.TimestampProto(event.timestamp)
@@ -585,7 +584,7 @@ func HandleLogEvent(event logEntry, reportLogs *zmet.LogBundle, counter int) {
 }
 
 // Returns true if a message was successfully sent
-func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
+func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 	iteration int) bool {
 	reportLogs.Timestamp = ptypes.TimestampNow()
 	reportLogs.DevID = *proto.String(devUUID.String())
@@ -616,7 +615,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 			image)
 		zedcloud.AddDeferred(image, buf, size, logsUrl, zedcloudCtx,
 			return400)
-		reportLogs.Log = []*zmet.LogEntry{}
+		reportLogs.Log = []*logs.LogEntry{}
 		return false
 	}
 	resp, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
@@ -628,7 +627,7 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 	if resp != nil && resp.StatusCode == 400 {
 		log.Errorf("Failed sending %d bytes image %s to %s; code 400; ignored error\n",
 			size, image, logsUrl)
-		reportLogs.Log = []*zmet.LogEntry{}
+		reportLogs.Log = []*logs.LogEntry{}
 		return true
 	}
 	if err != nil {
@@ -639,11 +638,11 @@ func sendProtoStrForLogs(reportLogs *zmet.LogBundle, image string,
 		// hence we'll keep things in order for a given image
 		zedcloud.AddDeferred(image, buf, size, logsUrl, zedcloudCtx,
 			return400)
-		reportLogs.Log = []*zmet.LogEntry{}
+		reportLogs.Log = []*logs.LogEntry{}
 		return false
 	}
 	log.Debugf("Sent %d bytes image %s to %s\n", size, image, logsUrl)
-	reportLogs.Log = []*zmet.LogEntry{}
+	reportLogs.Log = []*logs.LogEntry{}
 	return true
 }
 

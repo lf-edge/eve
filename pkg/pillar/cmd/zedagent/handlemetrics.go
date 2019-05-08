@@ -33,7 +33,8 @@ import (
 	"github.com/zededa/eve/pkg/pillar/netclone"
 	"github.com/zededa/eve/pkg/pillar/types"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
-	"github.com/zededa/eve/sdk/go/zmet"
+	"github.com/zededa/eve/sdk/go/info"
+	"github.com/zededa/eve/sdk/go/metrics"
 )
 
 // Also report usage for these paths
@@ -430,15 +431,15 @@ func lookupCpuMemoryStat(cpuMemoryStat [][]string, domainname string) (uint64, u
 func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 	iteration int) {
 
-	var ReportMetrics = &zmet.ZMetricMsg{}
+	var ReportMetrics = &metrics.ZMetricMsg{}
 
-	ReportDeviceMetric := new(zmet.DeviceMetric)
-	ReportDeviceMetric.Memory = new(zmet.MemoryMetric)
-	ReportDeviceMetric.CpuMetric = new(zmet.AppCpuMetric)
+	ReportDeviceMetric := new(metrics.DeviceMetric)
+	ReportDeviceMetric.Memory = new(metrics.MemoryMetric)
+	ReportDeviceMetric.CpuMetric = new(metrics.AppCpuMetric)
 
 	ReportMetrics.DevID = *proto.String(zcdevUUID.String())
-	ReportZmetric := new(zmet.ZmetricTypes)
-	*ReportZmetric = zmet.ZmetricTypes_ZmDevice
+	ReportZmetric := new(metrics.ZmetricTypes)
+	*ReportZmetric = metrics.ZmetricTypes_ZmDevice
 
 	ReportMetrics.AtTimeStamp = ptypes.TimestampNow()
 
@@ -504,7 +505,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		if metric == nil {
 			continue
 		}
-		networkDetails := new(zmet.NetworkMetric)
+		networkDetails := new(metrics.NetworkMetric)
 		networkDetails.LocalName = metric.IfName
 		networkDetails.IName = port
 
@@ -542,7 +543,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		cms = zedcloud.Append(cms, cms1)
 	}
 	for ifname, cm := range cms {
-		metric := zmet.ZedcloudMetric{IfName: ifname,
+		metric := metrics.ZedcloudMetric{IfName: ifname,
 			Failures: cm.FailureCount,
 			Success:  cm.SuccessCount,
 		}
@@ -557,7 +558,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		for url, um := range cm.UrlCounters {
 			log.Debugf("CloudMetrics[%s] url %s %v\n",
 				ifname, url, um)
-			urlMet := new(zmet.UrlcloudMetric)
+			urlMet := new(metrics.UrlcloudMetric)
 			urlMet.Url = url
 			urlMet.TryMsgCount = um.TryMsgCount
 			urlMet.TryByteCount = um.TryByteCount
@@ -576,7 +577,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		size, _ := partitionSize(d)
 		log.Debugf("Disk/partition %s size %d\n", d, size)
 		size = RoundToMbytes(size)
-		metric := zmet.DiskMetric{Disk: d, Total: size}
+		metric := metrics.DiskMetric{Disk: d, Total: size}
 		stat, err := disk.IOCounters(d)
 		if err == nil {
 			metric.ReadBytes = RoundToMbytes(stat[d].ReadBytes)
@@ -596,7 +597,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		}
 		log.Debugf("Path %s total %d used %d free %d\n",
 			path, u.Total, u.Used, u.Free)
-		metric := zmet.DiskMetric{MountPath: path,
+		metric := metrics.DiskMetric{MountPath: path,
 			Total: RoundToMbytes(u.Total),
 			Used:  RoundToMbytes(u.Used),
 			Free:  RoundToMbytes(u.Free),
@@ -626,7 +627,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		vs := cast.CastVerifyImageStatus(st)
 		log.Debugf("verifierStatusMap %s size %d\n",
 			vs.Safename, vs.Size)
-		metric := zmet.DiskMetric{
+		metric := metrics.DiskMetric{
 			Disk:  vs.Safename,
 			Total: RoundToMbytes(uint64(vs.Size)),
 		}
@@ -641,7 +642,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 			log.Debugf("Found verifierStatusMap for %s\n", ds.Key())
 			continue
 		}
-		metric := zmet.DiskMetric{
+		metric := metrics.DiskMetric{
 			Disk:  ds.Safename,
 			Total: RoundToMbytes(uint64(ds.Size)),
 		}
@@ -652,9 +653,9 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 	// device name like ppp0 or wwan0
 	lte := readLTEMetrics()
 	for _, i := range lte {
-		item := new(zmet.MetricItem)
+		item := new(metrics.MetricItem)
 		item.Key = i.Key
-		item.Type = zmet.MetricItemType(i.Type)
+		item.Type = metrics.MetricItemType(i.Type)
 		setMetricAnyValue(item, i.Value)
 		ReportDeviceMetric.MetricItems = append(ReportDeviceMetric.MetricItems, item)
 	}
@@ -664,7 +665,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		cpuTotal, (100*cpuTotal)/uint64(info.Uptime))
 	ReportDeviceMetric.CpuMetric.Total = *proto.Uint64(cpuTotal)
 
-	ReportDeviceMetric.SystemServicesMemoryMB = new(zmet.MemoryMetric)
+	ReportDeviceMetric.SystemServicesMemoryMB = new(metrics.MemoryMetric)
 	ReportDeviceMetric.SystemServicesMemoryMB.UsedMem = usedMemory
 	ReportDeviceMetric.SystemServicesMemoryMB.AvailMem = availableMemory
 	ReportDeviceMetric.SystemServicesMemoryMB.UsedPercentage = usedMemoryPercent
@@ -675,8 +676,8 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		ReportDeviceMetric.SystemServicesMemoryMB.UsedPercentage,
 		ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage)
 
-	ReportMetrics.MetricContent = new(zmet.ZMetricMsg_Dm)
-	if x, ok := ReportMetrics.GetMetricContent().(*zmet.ZMetricMsg_Dm); ok {
+	ReportMetrics.MetricContent = new(metrics.ZMetricMsg_Dm)
+	if x, ok := ReportMetrics.GetMetricContent().(*metrics.ZMetricMsg_Dm); ok {
 		x.Dm = ReportDeviceMetric
 	}
 
@@ -686,9 +687,9 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 	for _, st := range items {
 		aiStatus := cast.CastAppInstanceStatus(st)
 
-		ReportAppMetric := new(zmet.AppMetric)
-		ReportAppMetric.Cpu = new(zmet.AppCpuMetric)
-		ReportAppMetric.Memory = new(zmet.MemoryMetric)
+		ReportAppMetric := new(metrics.AppMetric)
+		ReportAppMetric.Cpu = new(metrics.AppCpuMetric)
+		ReportAppMetric.Memory = new(metrics.MemoryMetric)
 		ReportAppMetric.AppName = aiStatus.DisplayName
 		ReportAppMetric.AppID = aiStatus.Key()
 		if !aiStatus.BootTime.IsZero() {
@@ -724,7 +725,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 			if metric == nil {
 				continue
 			}
-			networkDetails := new(zmet.NetworkMetric)
+			networkDetails := new(metrics.NetworkMetric)
 			name := appIfnameToName(&aiStatus, metric.IfName)
 			log.Debugf("app %s/%s localname %s name %s\n",
 				aiStatus.Key(), aiStatus.DisplayName,
@@ -770,7 +771,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		appDiskList := ReadAppDiskList(aiStatus.DomainName)
 		// Use the network metrics from zedrouter subscription
 		for _, diskfile := range appDiskList {
-			appDiskDetails := new(zmet.AppDiskMetric)
+			appDiskDetails := new(metrics.AppDiskMetric)
 			err := getDiskInfo(diskfile, appDiskDetails)
 			if err != nil {
 				log.Errorf("getDiskInfo(%s) failed %v\n",
@@ -789,7 +790,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 	SendMetricsProtobuf(ReportMetrics, iteration)
 }
 
-func getDiskInfo(diskfile string, appDiskDetails *zmet.AppDiskMetric) error {
+func getDiskInfo(diskfile string, appDiskDetails *metrics.AppDiskMetric) error {
 	imgInfo, err := diskmetrics.GetImgInfo(diskfile)
 	if err != nil {
 		return err
@@ -820,16 +821,16 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	iteration := ctx.iteration
 	subBaseOsStatus := ctx.subBaseOsStatus
 
-	var ReportInfo = &zmet.ZInfoMsg{}
+	var ReportInfo = &info.ZInfoMsg{}
 
-	deviceType := new(zmet.ZInfoTypes)
-	*deviceType = zmet.ZInfoTypes_ZiDevice
+	deviceType := new(info.ZInfoTypes)
+	*deviceType = info.ZInfoTypes_ZiDevice
 	ReportInfo.Ztype = *deviceType
 	deviceUUID := zcdevUUID.String()
 	ReportInfo.DevId = *proto.String(deviceUUID)
 	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
 
-	ReportDeviceInfo := new(zmet.ZInfoDevice)
+	ReportDeviceInfo := new(info.ZInfoDevice)
 
 	var machineArch string
 	machineCmd := exec.Command("uname", "-m")
@@ -883,7 +884,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		size, isPart := partitionSize(disk)
 		log.Debugf("Disk/partition %s size %d\n", disk, size)
 		size = RoundToMbytes(size)
-		is := zmet.ZInfoStorage{Device: disk, Total: size}
+		is := info.ZInfoStorage{Device: disk, Total: size}
 		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,
 			&is)
 		if isPart {
@@ -899,7 +900,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		}
 		log.Debugf("Path %s total %d used %d free %d\n",
 			path, u.Total, u.Used, u.Free)
-		is := zmet.ZInfoStorage{
+		is := info.ZInfoStorage{
 			MountPath: path, Total: RoundToMbytes(u.Total)}
 		// We know this is where we store images and keep
 		// domU virtual disks.
@@ -910,7 +911,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			&is)
 	}
 
-	ReportDeviceManufacturerInfo := new(zmet.ZInfoManufacturer)
+	ReportDeviceManufacturerInfo := new(info.ZInfoManufacturer)
 	if strings.Contains(machineArch, "x86") {
 		productManufacturer, productName, productVersion, productSerial, productUuid := hardware.GetDeviceManufacturerInfo()
 		ReportDeviceManufacturerInfo.Manufacturer = *proto.String(strings.TrimSpace(productManufacturer))
@@ -940,8 +941,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		}
 		return nil
 	}
-	getSwInfo := func(partLabel string) *zmet.ZInfoDevSW {
-		swInfo := new(zmet.ZInfoDevSW)
+	getSwInfo := func(partLabel string) *info.ZInfoDevSW {
+		swInfo := new(info.ZInfoDevSW)
 		if bos := getBaseOsStatus(partLabel); bos != nil {
 			// Get current state/version which is different than
 			// what is on disk
@@ -949,7 +950,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			swInfo.PartitionLabel = bos.PartitionLabel
 			swInfo.PartitionDevice = bos.PartitionDevice
 			swInfo.PartitionState = bos.PartitionState
-			swInfo.Status = zmet.ZSwState(bos.State)
+			swInfo.Status = info.ZSwState(bos.State)
 			swInfo.ShortVersion = bos.BaseOsVersion
 			swInfo.LongVersion = "" // XXX
 			if len(bos.StorageStatusList) > 0 {
@@ -960,7 +961,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				log.Debugf("reportMetrics sending error time %v error %v for %s\n",
 					bos.ErrorTime, bos.Error,
 					bos.BaseOsVersion)
-				errInfo := new(zmet.ErrorInfo)
+				errInfo := new(info.ErrorInfo)
 				errInfo.Description = bos.Error
 				errTime, _ := ptypes.TimestampProto(bos.ErrorTime)
 				errInfo.Timestamp = errTime
@@ -978,10 +979,10 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			}
 			if swInfo.ShortVersion != "" {
 				// Must be factory install i.e. INSTALLED
-				swInfo.Status = zmet.ZSwState(types.INSTALLED)
+				swInfo.Status = info.ZSwState(types.INSTALLED)
 				swInfo.DownloadProgress = 100
 			} else {
-				swInfo.Status = zmet.ZSwState(types.INITIAL)
+				swInfo.Status = info.ZSwState(types.INITIAL)
 				swInfo.DownloadProgress = 0
 			}
 		}
@@ -989,7 +990,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		return swInfo
 	}
 
-	ReportDeviceInfo.SwList = make([]*zmet.ZInfoDevSW, 2)
+	ReportDeviceInfo.SwList = make([]*info.ZInfoDevSW, 2)
 	ReportDeviceInfo.SwList[0] = getSwInfo(getBaseOsCurrentPartition(ctx))
 	ReportDeviceInfo.SwList[1] = getSwInfo(getBaseOsOtherPartition(ctx))
 	// Report any other BaseOsStatus which might have errors
@@ -1002,8 +1003,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		}
 		log.Debugf("reportMetrics sending unattached bos for %s\n",
 			bos.BaseOsVersion)
-		swInfo := new(zmet.ZInfoDevSW)
-		swInfo.Status = zmet.ZSwState(bos.State)
+		swInfo := new(info.ZInfoDevSW)
+		swInfo.Status = info.ZSwState(bos.State)
 		swInfo.ShortVersion = bos.BaseOsVersion
 		swInfo.LongVersion = "" // XXX
 		if len(bos.StorageStatusList) > 0 {
@@ -1013,7 +1014,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		if !bos.ErrorTime.IsZero() {
 			log.Debugf("reportMetrics sending error time %v error %v for %s\n",
 				bos.ErrorTime, bos.Error, bos.BaseOsVersion)
-			errInfo := new(zmet.ErrorInfo)
+			errInfo := new(info.ErrorInfo)
 			errInfo.Description = bos.Error
 			errTime, _ := ptypes.TimestampProto(bos.ErrorTime)
 			errInfo.Timestamp = errTime
@@ -1047,7 +1048,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	log.Debugf("resolv.conf servers %v\n", dc.Servers)
 	log.Debugf("resolv.conf search %v\n", dc.Search)
 
-	ReportDeviceInfo.Dns = new(zmet.ZInfoDNS)
+	ReportDeviceInfo.Dns = new(info.ZInfoDNS)
 	ReportDeviceInfo.Dns.DNSservers = dc.Servers
 	ReportDeviceInfo.Dns.DNSsearch = dc.Search
 
@@ -1057,8 +1058,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// We also mark current management ports as such.
 	for i := range aa.IoBundleList {
 		ib := &aa.IoBundleList[i]
-		reportAA := new(zmet.ZioBundle)
-		reportAA.Type = zmet.ZioType(ib.Type)
+		reportAA := new(info.ZioBundle)
+		reportAA.Type = info.ZioType(ib.Type)
 		reportAA.Name = ib.Name
 		reportAA.Members = ib.Members
 		if ib.IsPort {
@@ -1071,16 +1072,16 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			reportAA)
 	}
 
-	info, err := host.Info()
+	hinfo, err := host.Info()
 	if err != nil {
 		log.Fatalf("host.Info(): %s\n", err)
 	}
 	log.Debugf("uptime %d = %d days\n",
-		info.Uptime, info.Uptime/(3600*24))
-	log.Debugf("Booted at %v\n", time.Unix(int64(info.BootTime), 0).UTC())
+		hinfo.Uptime, hinfo.Uptime/(3600*24))
+	log.Debugf("Booted at %v\n", time.Unix(int64(hinfo.BootTime), 0).UTC())
 
 	bootTime, _ := ptypes.TimestampProto(
-		time.Unix(int64(info.BootTime), 0).UTC())
+		time.Unix(int64(hinfo.BootTime), 0).UTC())
 	ReportDeviceInfo.BootTime = bootTime
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -1097,10 +1098,10 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		lte = append(lte, lteNets...)
 	}
 	for _, i := range lte {
-		item := new(zmet.MetricItem)
+		item := new(info.DeprecatedMetricItem)
 		item.Key = i.Key
-		item.Type = zmet.MetricItemType(i.Type)
-		setMetricAnyValue(item, i.Value)
+		item.Type = info.DepMetricItemType(i.Type)
+		// setDeprecatedMetricAnyValue(item, i.Value)
 		ReportDeviceInfo.MetricItems = append(ReportDeviceInfo.MetricItems, item)
 	}
 
@@ -1114,8 +1115,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	ReportDeviceInfo.RestartCounter = ctx.restartCounter
 
-	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Dinfo)
-	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Dinfo); ok {
+	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
+	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
 	}
 
@@ -1141,94 +1142,94 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 }
 
 // Convert the implementation details to the user-friendly userStatus and subStatus
-func addUserSwInfo(ctx *zedagentContext, swInfo *zmet.ZInfoDevSW) {
+func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW) {
 	switch swInfo.Status {
-	case zmet.ZSwState_INITIAL:
+	case info.ZSwState_INITIAL:
 		// If Unused and partitionLabel is set them it
 		// is the uninitialized IMGB partition which we don't report
 		if swInfo.PartitionState == "unused" &&
 			swInfo.PartitionLabel != "" {
 
-			swInfo.UserStatus = zmet.BaseOsStatus_NONE
+			swInfo.UserStatus = info.BaseOsStatus_NONE
 		} else {
-			swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+			swInfo.UserStatus = info.BaseOsStatus_UPDATING
 			swInfo.SubStatus = "Initializing update"
 		}
-	case zmet.ZSwState_DOWNLOAD_STARTED:
-		swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+	case info.ZSwState_DOWNLOAD_STARTED:
+		swInfo.UserStatus = info.BaseOsStatus_UPDATING
 		swInfo.SubStatus = fmt.Sprintf("Downloading %d%% done", swInfo.DownloadProgress)
-	case zmet.ZSwState_DOWNLOADED:
+	case info.ZSwState_DOWNLOADED:
 		if swInfo.Activated {
-			swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+			swInfo.UserStatus = info.BaseOsStatus_UPDATING
 			swInfo.SubStatus = "Downloaded 100%"
 		} else {
-			swInfo.UserStatus = zmet.BaseOsStatus_NONE
+			swInfo.UserStatus = info.BaseOsStatus_NONE
 		}
-	case zmet.ZSwState_DELIVERED:
+	case info.ZSwState_DELIVERED:
 		if swInfo.Activated {
-			swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+			swInfo.UserStatus = info.BaseOsStatus_UPDATING
 			swInfo.SubStatus = "Downloaded and verified"
 		} else {
 			// XXX Remove once we have one slot
-			swInfo.UserStatus = zmet.BaseOsStatus_NONE
+			swInfo.UserStatus = info.BaseOsStatus_NONE
 		}
-	case zmet.ZSwState_INSTALLED:
+	case info.ZSwState_INSTALLED:
 		switch swInfo.PartitionState {
 		case "active":
 			if swInfo.Activated {
-				swInfo.UserStatus = zmet.BaseOsStatus_ACTIVE
+				swInfo.UserStatus = info.BaseOsStatus_ACTIVE
 			} else {
-				swInfo.UserStatus = zmet.BaseOsStatus_FALLBACK
+				swInfo.UserStatus = info.BaseOsStatus_FALLBACK
 			}
 		case "updating":
-			swInfo.UserStatus = zmet.BaseOsStatus_UPDATING
+			swInfo.UserStatus = info.BaseOsStatus_UPDATING
 			swInfo.SubStatus = "About to reboot"
 		case "inprogress":
-			swInfo.UserStatus = zmet.BaseOsStatus_TESTING
+			swInfo.UserStatus = info.BaseOsStatus_TESTING
 			swInfo.SubStatus = fmt.Sprintf("Testing for %d more seconds",
 				ctx.remainingTestTime/time.Second)
 
 		case "unused":
-			swInfo.UserStatus = zmet.BaseOsStatus_NONE
+			swInfo.UserStatus = info.BaseOsStatus_NONE
 		}
 	// XXX anything else?
 	default:
 		// The other states are use for app instances not for baseos
-		swInfo.UserStatus = zmet.BaseOsStatus_NONE
+		swInfo.UserStatus = info.BaseOsStatus_NONE
 	}
 }
 
-func setMetricAnyValue(item *zmet.MetricItem, val interface{}) {
+func setMetricAnyValue(item *metrics.MetricItem, val interface{}) {
 	switch t := val.(type) {
 	case uint32:
 		u := val.(uint32)
-		item.MetricItemValue = new(zmet.MetricItem_Uint32Value)
-		if x, ok := item.GetMetricItemValue().(*zmet.MetricItem_Uint32Value); ok {
+		item.MetricItemValue = new(metrics.MetricItem_Uint32Value)
+		if x, ok := item.GetMetricItemValue().(*metrics.MetricItem_Uint32Value); ok {
 			x.Uint32Value = u
 		}
 	case uint64:
 		u := val.(uint64)
-		item.MetricItemValue = new(zmet.MetricItem_Uint64Value)
-		if x, ok := item.GetMetricItemValue().(*zmet.MetricItem_Uint64Value); ok {
+		item.MetricItemValue = new(metrics.MetricItem_Uint64Value)
+		if x, ok := item.GetMetricItemValue().(*metrics.MetricItem_Uint64Value); ok {
 			x.Uint64Value = u
 		}
 	case bool:
 		b := val.(bool)
-		item.MetricItemValue = new(zmet.MetricItem_BoolValue)
-		if x, ok := item.GetMetricItemValue().(*zmet.MetricItem_BoolValue); ok {
+		item.MetricItemValue = new(metrics.MetricItem_BoolValue)
+		if x, ok := item.GetMetricItemValue().(*metrics.MetricItem_BoolValue); ok {
 			x.BoolValue = b
 		}
 	case float32:
 		f := val.(float32)
-		item.MetricItemValue = new(zmet.MetricItem_FloatValue)
-		if x, ok := item.GetMetricItemValue().(*zmet.MetricItem_FloatValue); ok {
+		item.MetricItemValue = new(metrics.MetricItem_FloatValue)
+		if x, ok := item.GetMetricItemValue().(*metrics.MetricItem_FloatValue); ok {
 			x.FloatValue = f
 		}
 
 	case string:
 		s := val.(string)
-		item.MetricItemValue = new(zmet.MetricItem_StringValue)
-		if x, ok := item.GetMetricItemValue().(*zmet.MetricItem_StringValue); ok {
+		item.MetricItemValue = new(metrics.MetricItem_StringValue)
+		if x, ok := item.GetMetricItemValue().(*metrics.MetricItem_StringValue); ok {
 			x.StringValue = s
 		}
 
@@ -1240,9 +1241,9 @@ func setMetricAnyValue(item *zmet.MetricItem, val interface{}) {
 var nilIPInfo = ipinfo.IPInfo{}
 
 func getNetInfo(interfaceDetail psutilnet.InterfaceStat,
-	getAddrs bool) *zmet.ZInfoNetwork {
+	getAddrs bool) *info.ZInfoNetwork {
 
-	networkInfo := new(zmet.ZInfoNetwork)
+	networkInfo := new(info.ZInfoNetwork)
 	networkInfo.LocalName = *proto.String(interfaceDetail.Name)
 	if getAddrs {
 		networkInfo.IPAddrs = make([]string, len(interfaceDetail.Addrs))
@@ -1272,7 +1273,7 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat,
 	if port != nil {
 		networkInfo.Uplink = port.IsMgmt
 		// fill in ZInfoDNS
-		networkInfo.Dns = new(zmet.ZInfoDNS)
+		networkInfo.Dns = new(info.ZInfoDNS)
 		networkInfo.Dns.DNSdomain = port.DomainName
 		for _, server := range port.DnsServers {
 			networkInfo.Dns.DNSservers = append(networkInfo.Dns.DNSservers,
@@ -1287,7 +1288,7 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat,
 			if ai.Geo == nilIPInfo {
 				continue
 			}
-			geo := new(zmet.GeoLoc)
+			geo := new(info.GeoLoc)
 			geo.UnderlayIP = *proto.String(ai.Geo.IP)
 			geo.Hostname = *proto.String(ai.Geo.Hostname)
 			geo.City = *proto.String(ai.Geo.City)
@@ -1300,7 +1301,7 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat,
 		}
 		// Any error?
 		if !port.ErrorTime.IsZero() {
-			errInfo := new(zmet.ErrorInfo)
+			errInfo := new(info.ErrorInfo)
 			errInfo.Description = port.Error
 			errTime, _ := ptypes.TimestampProto(port.ErrorTime)
 			errInfo.Timestamp = errTime
@@ -1313,11 +1314,11 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat,
 	return networkInfo
 }
 
-func encodeProxyStatus(proxyConfig *types.ProxyConfig) *zmet.ProxyStatus {
-	status := new(zmet.ProxyStatus)
-	status.Proxies = make([]*zmet.ProxyEntry, len(proxyConfig.Proxies))
+func encodeProxyStatus(proxyConfig *types.ProxyConfig) *info.ProxyStatus {
+	status := new(info.ProxyStatus)
+	status.Proxies = make([]*info.ProxyEntry, len(proxyConfig.Proxies))
 	for i, pe := range proxyConfig.Proxies {
-		pep := new(zmet.ProxyEntry)
+		pep := new(info.ProxyEntry)
 		pep.Type = uint32(pe.Type)
 		pep.Server = pe.Server
 		pep.Port = pe.Port
@@ -1332,12 +1333,12 @@ func encodeProxyStatus(proxyConfig *types.ProxyConfig) *zmet.ProxyStatus {
 	return status
 }
 
-func encodeSystemAdapterInfo(dpcl types.DevicePortConfigList) *zmet.SystemAdapterInfo {
-	info := new(zmet.SystemAdapterInfo)
-	info.CurrentIndex = uint32(dpcl.CurrentIndex)
-	info.Status = make([]*zmet.DevicePortStatus, len(dpcl.PortConfigList))
+func encodeSystemAdapterInfo(dpcl types.DevicePortConfigList) *info.SystemAdapterInfo {
+	sainfo := new(info.SystemAdapterInfo)
+	sainfo.CurrentIndex = uint32(dpcl.CurrentIndex)
+	sainfo.Status = make([]*info.DevicePortStatus, len(dpcl.PortConfigList))
 	for i, dpc := range dpcl.PortConfigList {
-		dps := new(zmet.DevicePortStatus)
+		dps := new(info.DevicePortStatus)
 		dps.Version = uint32(dpc.Version)
 		dps.Key = dpc.Key
 		ts, _ := ptypes.TimestampProto(dpc.TimePriority)
@@ -1352,18 +1353,18 @@ func encodeSystemAdapterInfo(dpcl types.DevicePortConfigList) *zmet.SystemAdapte
 		}
 		dps.LastError = dpc.LastError
 
-		dps.Ports = make([]*zmet.DevicePort, len(dpc.Ports))
+		dps.Ports = make([]*info.DevicePort, len(dpc.Ports))
 		for j, p := range dpc.Ports {
 			dps.Ports[j] = encodeNetworkPortConfig(&p)
 		}
-		info.Status[i] = dps
+		sainfo.Status[i] = dps
 	}
-	log.Debugf("encodeSystemAdapterInfo: %+v\n", info)
-	return info
+	log.Debugf("encodeSystemAdapterInfo: %+v\n", sainfo)
+	return sainfo
 }
 
-func encodeNetworkPortConfig(npc *types.NetworkPortConfig) *zmet.DevicePort {
-	dp := new(zmet.DevicePort)
+func encodeNetworkPortConfig(npc *types.NetworkPortConfig) *info.DevicePort {
+	dp := new(info.DevicePort)
 	dp.Ifname = npc.IfName
 	dp.Name = npc.Name
 	dp.IsMgmt = npc.IsMgmt
@@ -1392,22 +1393,22 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	aiStatus *types.AppInstanceStatus,
 	aa *types.AssignableAdapters, iteration int) {
 	log.Debugf("PublishAppInfoToZedCloud uuid %s\n", uuid)
-	var ReportInfo = &zmet.ZInfoMsg{}
+	var ReportInfo = &info.ZInfoMsg{}
 
-	appType := new(zmet.ZInfoTypes)
-	*appType = zmet.ZInfoTypes_ZiApp
+	appType := new(info.ZInfoTypes)
+	*appType = info.ZInfoTypes_ZiApp
 	ReportInfo.Ztype = *appType
 	ReportInfo.DevId = *proto.String(zcdevUUID.String())
 	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
 
-	ReportAppInfo := new(zmet.ZInfoApp)
+	ReportAppInfo := new(info.ZInfoApp)
 
 	ReportAppInfo.AppID = uuid
 	ReportAppInfo.SystemApp = false
-	ReportAppInfo.State = zmet.ZSwState(types.HALTED)
+	ReportAppInfo.State = info.ZSwState(types.HALTED)
 	if aiStatus != nil {
 		ReportAppInfo.AppName = aiStatus.DisplayName
-		ReportAppInfo.State = zmet.ZSwState(aiStatus.State)
+		ReportAppInfo.State = info.ZSwState(aiStatus.State)
 		ds := LookupDomainStatusUUID(uuid)
 		if ds == nil {
 			log.Infof("ReportAppInfo: Did not find DomainStatus for UUID %s\n",
@@ -1419,12 +1420,12 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			// XXX better compare? Pick REFRESHING and PURGING from
 			// aiStatus but HALTED from DomainStatus
 			if ds.State > aiStatus.State {
-				ReportAppInfo.State = zmet.ZSwState(ds.State)
+				ReportAppInfo.State = info.ZSwState(ds.State)
 			}
 		}
 
 		if !aiStatus.ErrorTime.IsZero() {
-			errInfo := new(zmet.ErrorInfo)
+			errInfo := new(info.ErrorInfo)
 			errInfo.Description = aiStatus.Error
 			errTime, _ := ptypes.TimestampProto(aiStatus.ErrorTime)
 			errInfo.Timestamp = errTime
@@ -1435,13 +1436,13 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		if len(aiStatus.StorageStatusList) == 0 {
 			log.Infof("storage status detail is empty so ignoring")
 		} else {
-			ReportAppInfo.SoftwareList = make([]*zmet.ZInfoSW, len(aiStatus.StorageStatusList))
+			ReportAppInfo.SoftwareList = make([]*info.ZInfoSW, len(aiStatus.StorageStatusList))
 			for idx, ss := range aiStatus.StorageStatusList {
-				ReportSoftwareInfo := new(zmet.ZInfoSW)
+				ReportSoftwareInfo := new(info.ZInfoSW)
 				ReportSoftwareInfo.SwVersion = aiStatus.UUIDandVersion.Version
 				ReportSoftwareInfo.ImageName = ss.Name
 				ReportSoftwareInfo.SwHash = ss.ImageSha256
-				ReportSoftwareInfo.State = zmet.ZSwState(ss.State)
+				ReportSoftwareInfo.State = info.ZSwState(ss.State)
 				ReportSoftwareInfo.DownloadProgress = uint32(ss.Progress)
 
 				ReportSoftwareInfo.Target = ss.Target
@@ -1464,8 +1465,8 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		}
 
 		for _, ib := range ds.IoAdapterList {
-			reportAA := new(zmet.ZioBundle)
-			reportAA.Type = zmet.ZioType(ib.Type)
+			reportAA := new(info.ZioBundle)
+			reportAA.Type = info.ZioType(ib.Type)
 			reportAA.Name = ib.Name
 			reportAA.UsedByAppUUID = ds.Key()
 			b := types.LookupIoBundle(aa, ib.Type, ib.Name)
@@ -1504,8 +1505,8 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		}
 	}
 
-	ReportInfo.InfoContent = new(zmet.ZInfoMsg_Ainfo)
-	if x, ok := ReportInfo.GetInfoContent().(*zmet.ZInfoMsg_Ainfo); ok {
+	ReportInfo.InfoContent = new(info.ZInfoMsg_Ainfo)
+	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Ainfo); ok {
 		x.Ainfo = ReportAppInfo
 	}
 
@@ -1565,7 +1566,7 @@ func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 // Try all (first free, then rest) until it gets through.
 // Each iteration we try a different port for load spreading.
 // For each port we try all its local IP addresses until we get a success.
-func SendMetricsProtobuf(ReportMetrics *zmet.ZMetricMsg,
+func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 	iteration int) {
 	data, err := proto.Marshal(ReportMetrics)
 	if err != nil {
