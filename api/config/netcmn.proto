@@ -3,8 +3,8 @@
 
 syntax = "proto3";
 
+option go_package = "github.com/zededa/api/config";
 option java_package = "com.zededa.cloud.uservice.proto";
-option go_package = "github.com/zededa/eve/sdk/go/zconfig";
 
 message ipRange {
 	string start = 1;
@@ -43,6 +43,11 @@ message ProxyConfig {
        string networkProxyURL = 5;
 }
 
+// deprecated use ZnetStaticDNSEntry
+message ZedServer {
+        string HostName   = 1;
+        repeated string EID = 2;
+}
 
 // These are list of static mapping that can be added to network
 message ZnetStaticDNSEntry {

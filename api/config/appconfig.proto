@@ -3,15 +3,13 @@
 
 syntax = "proto3";
 
-option go_package  = "github.com/zededa/eve/sdk/go/zconfig";
+option go_package  = "github.com/zededa/api/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
 import "devcommon.proto";
 import "storage.proto";
 import "vm.proto";
 import "netconfig.proto";
-// XXX import "zededa/api/zmet/zmet.proto";
-// import "zmet/zmet.proto";
 
 message InstanceOpsCmd {
 	uint32 counter = 2;

@@ -1,0 +1,296 @@
+// Copyright(c) 2017-2018 Zededa, Inc.
+// All rights reserved.
+
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+option go_package  = "github.com/zededa/api/metrics";
+
+option java_package = "com.zededa.cloud.uservice.proto";
+
+// Metrics from devices and applications
+
+enum ZmetricTypes {
+  ZmNop = 0;
+  ZmDevice = 1;
+  ZmApp = 3;
+}
+
+message memoryMetric {
+  uint32 usedMem = 2;            //in MBytes
+  uint32 availMem = 3;           //in MBytes
+  double usedPercentage = 4;
+  double availPercentage = 5;
+}
+
+message networkMetric {
+  string iName = 1;	// name from config; displayName for network instance
+  uint64 txBytes = 2;	// in bytes
+  uint64 rxBytes = 3;	// in bytes
+  uint64 txDrops = 4;
+  uint64 rxDrops = 5;
+  uint64 txRate = 6;  // deprecate
+  uint64 rxRate = 7;  // deprecate
+  uint64 txPkts = 8;
+  uint64 rxPkts = 9;
+  uint64 txErrors = 10;
+  uint64 rxErrors = 11;
+  uint64 txAclDrops = 12;
+  uint64 rxAclDrops = 13;
+  uint64 txAclRateLimitDrops = 14;
+  uint64 rxAclRateLimitDrops = 15;
+  string localName = 16; // local vif name e.g., nbu*
+}
+
+// Failures and successes for commuication to zedcloud
+// for each port
+message zedcloudMetric {
+    string ifName = 1;	// interface name
+    uint64 failures = 2;
+    uint64 success = 3;
+    google.protobuf.Timestamp lastFailure = 4;
+    google.protobuf.Timestamp lastSuccess = 5;
+    repeated urlcloudMetric urlMetrics = 6;
+}
+
+message urlcloudMetric {
+    string url = 1;
+    int64 tryMsgCount = 2;	// Things we might have tried to send
+    int64 tryByteCount = 3;	// or it failed before we could send them.
+    int64 sentMsgCount = 4;
+    int64 sentByteCount = 5;
+    int64 recvMsgCount = 6;
+    int64 recvByteCount = 7;
+}
+
+message appCpuMetric {
+    // uint32 cpuTotal = 2;		// deprecated
+    // double cpuPercentage = 3;		// deprecated
+    google.protobuf.Timestamp upTime = 4;
+    uint64 total = 5;                   // cpu total in secs.
+}
+
+message deviceMetric {
+  // cpuMetric cpu = 1;	// deprecated
+  memoryMetric memory = 2;
+  repeated networkMetric network = 3;
+  repeated zedcloudMetric zedcloud = 4;
+  // devCpuMetric compute = 5; // deprecated
+  repeated diskMetric disk = 6;
+  appCpuMetric cpuMetric = 7;
+  repeated MetricItem metricItems = 8;
+  uint64 runtimeStorageOverheadMB = 9;     // In MB
+  uint64 appRunTimeStorageMB = 10;         // In MB
+  memoryMetric systemServicesMemoryMB = 11;  // In MB
+}
+
+enum MetricItemType {
+  MetricItemOther = 0;		// E.g., a string like an ESSID
+  MetricItemGauge = 1;		// Goes up and down over time
+  MetricItemCounter = 2;	// Monotonically increasing (until reboot)
+  MetricItemState = 3;		// Toggles on and off; count transitions
+}
+
+// Open-ended metrics from different part of the device such as LTE modem
+// metrics.
+message MetricItem {
+	string key = 1;		// E.g., "lte-signal-strength"
+	MetricItemType type = 2;
+	oneof metricItemValue {
+		bool boolValue = 3;
+		uint32 uint32Value = 4;	// If timer this is in seconds
+		uint64 uint64Value = 5;
+		float floatValue = 6;
+		string stringValue = 7; // Use with care
+	}
+}		
+
+// For each partition; counts since boot
+message diskMetric {
+  string disk = 1;		// E.g., "mmcblk0p2"
+  string mountPath = 2;		// E.g., "/config"
+  uint64 readBytes = 3;		// In MB
+  uint64 writeBytes = 4;	// In MB
+  uint64 readCount = 5;		// Number of ops
+  uint64 writeCount = 6;	// Number of ops
+  uint64 total = 7;		// in MBytes; if we know the mountpath
+  uint64 used = 8;		// in MBytes; if we know the mountpath
+  uint64 free = 9;		// in MBytes; if we know the mountpath
+}
+
+message appDiskMetric {
+  string disk = 1;		// E.g., "mmcblk0p2"
+  uint64 provisioned = 2;	// in MBytes
+  uint64 used = 3;		// in MBytes
+  string diskType = 4;          // Type of disk, e.g., QCOW2, RAW etc.
+  bool dirty = 5;               // Dirty flag
+}
+
+message appMetric {
+  string AppID  = 1;
+  string appVersion = 10;
+  string AppName = 2;
+  appCpuMetric cpu = 3;
+  memoryMetric memory = 4;
+  repeated networkMetric network = 5;
+  repeated appDiskMetric disk = 6;
+}
+
+// Lisp stats
+message PktStat {
+	uint64 Packets = 1;
+	uint64 Bytes = 2;
+}
+
+message RlocStats {
+	string Rloc = 1;
+	PktStat Stats = 2;
+	uint64 SecondsSinceLastPacket = 3;
+}
+
+message EidStats {
+	uint64 IID = 1;
+	string EID = 2;
+	repeated RlocStats RlocStatsEntries = 3;
+}
+
+message ZMetricLisp {
+	// Encap Statistics
+	repeated EidStats EidStatsEntries = 1; // ITR Statistics
+	PktStat ItrPacketSendError = 2;
+	PktStat InvalidEidError = 3;
+
+	// Decap Statistics
+	PktStat NoDecryptKey = 4;
+	PktStat OuterHeaderError = 5;
+	PktStat BadInnerVersion = 6;
+	PktStat GoodPackets = 7;
+	PktStat ICVError = 8;
+	PktStat LispHeaderError = 9;
+	PktStat CheckSumError = 10;
+	PktStat DecapReInjectError = 11;
+	PktStat DecryptError = 12;
+}
+
+// Vpn Stats
+message ZMetricConn {
+	PktStat InPkts = 1;
+	PktStat OutPkts = 2;
+	PktStat ErrPkts = 3;
+	PktStat CarierErrPkts = 4;
+}
+
+message ZMetricVpn {
+	ZMetricConn ConnStat = 1;
+	ZMetricConn IkeStat = 2;
+	ZMetricConn NatTStat = 3;
+	ZMetricConn EspStat = 4;
+}
+
+// For other services with no specific metrics
+message ZMetricNone {
+}
+
+// flow stats
+message ZMetricFlowLink {
+  oneof Link {
+    string subNet = 1; // IpSec: Subnet
+    string eid = 2;    // LISP: EID
+  }
+  string spiId = 3;    // IpSec: SpiId
+}
+
+message ZMetricFlowEndPoint {
+  oneof Endpoint {
+    string ipAddr = 1; // IpSec: Endpoint Ip Address
+    string rloc = 2;   // LISP: RLOC
+  }
+  repeated ZMetricFlowLink link = 5;
+  PktStat stats = 10;  // traffic
+}
+
+message ZMetricFlow {
+  string id = 1;      // IpSec Conn-Id/Lisp
+  string name = 2;    // IpSec Tun-Name
+  uint32 type = 3;    // IpSec-Vpn or, LISP
+  uint64 iid  = 4;    // LISP: IID
+  uint64 estTime = 5; // in seconds
+  ZMetricFlowEndPoint lEndPoint = 10;
+  repeated ZMetricFlowEndPoint rEndPoint = 11;
+}
+
+message ZMetricLispGlobal {
+	// Encap/ITR Statistics
+	PktStat ItrPacketSendError = 2;
+	PktStat InvalidEidError = 3;
+
+	// Decap/ETR Statistics
+	PktStat NoDecryptKey = 4;
+	PktStat OuterHeaderError = 5;
+	PktStat BadInnerVersion = 6;
+	PktStat GoodPackets = 7;
+	PktStat ICVError = 8;
+	PktStat LispHeaderError = 9;
+	PktStat CheckSumError = 10;
+	PktStat DecapReInjectError = 11;
+	PktStat DecryptError = 12;
+}
+
+// XXX to be deprecated
+message ZMetricService {
+  string serviceID = 1;
+  string serviceName = 2;
+  uint32 serviceType = 3;
+  repeated networkMetric network = 4;
+  oneof ServiceContent {
+    ZMetricVpn  vpnm = 20;
+    ZMetricLisp lispm = 21;
+  }
+  repeated ZMetricFlow flowStats = 10;
+  ZMetricLispGlobal lispGlobalStats = 11;
+}
+
+message NetworkStats {
+	uint64 totalPackets = 1;
+	uint64 errors = 2;
+	uint64 drops = 3;
+	uint64 totalBytes = 4;
+}
+
+message ZMetricNetworkStats {
+	NetworkStats rx = 1;
+	NetworkStats tx = 2;
+}
+
+message ZMetricNetworkInstance {
+  string networkID = 2;		// UUID
+  string networkVersion = 3;
+
+  uint32 instType = 5;		// ZNetworkInstType
+  string displayname = 6;	// From NetworkInstance config
+  bool activated = 7;		// Forwarding enabled
+
+  repeated networkMetric network = 10;	// Aggregate counters for bridge
+  oneof InstanceContent {
+    ZMetricVpn  vpnm = 20;
+    ZMetricLisp lispm = 21;
+    ZMetricNone nonem = 22;
+  }
+  repeated ZMetricFlow flowStats = 30;
+  ZMetricLispGlobal lispGlobalStats = 31;
+
+  ZMetricNetworkStats networkStats = 40; // Network bridge interface statistics
+}
+
+message ZMetricMsg {
+  string devID = 1;
+  // ZmetricTypes ztype = 2;  // deprecated
+  google.protobuf.Timestamp atTimeStamp = 3;
+
+  oneof MetricContent {
+  	deviceMetric dm = 4;
+   }
+   repeated appMetric am = 5;
+   repeated ZMetricService sm = 6;	// XXX To be deprecated
+   repeated ZMetricNetworkInstance nm = 7;
+}

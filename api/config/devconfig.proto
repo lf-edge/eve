@@ -1,0 +1,53 @@
+// Copyright(c) 2017-2018 Zededa, Inc.
+// All rights reserved.
+
+syntax = "proto3";
+
+option go_package  = "github.com/zededa/api/config";
+option java_package = "com.zededa.cloud.uservice.proto";
+
+import "devcommon.proto";
+import "appconfig.proto";
+import "baseosconfig.proto";
+import "netconfig.proto";
+import "storage.proto";
+import "netinst.proto";
+import "mesh.proto";
+import "devmodel.proto";
+
+message EdgeDevConfig {
+	UUIDandVersion id = 1;
+	bytes deperecated1 = 2;
+	bytes deperecated2 = 3;
+
+	repeated AppInstanceConfig apps   = 4;
+	repeated NetworkConfig networks = 5;
+	repeated DatastoreConfig datastores = 6;
+
+	DeviceLispDetails lispInfo = 7;
+	repeated BaseOSConfig base = 8;	// BaseOSImage config block
+	DeviceOpsCmd reboot = 9;
+	DeviceOpsCmd backup = 10;
+
+	repeated ConfigItem configItems = 11;
+	repeated SystemAdapter systemAdapterList = 12;
+
+	// Override dmidecode info if set
+	string manufacturer = 14;
+	string productName = 15;
+
+	repeated NetworkInstanceConfig networkInstances = 16;
+
+	// Information saved in /config to make it easier find a device in EV-C
+	string enterprise = 17;
+	string name = 18;
+}
+
+message ConfigRequest {
+	string configHash = 1;
+}
+
+message ConfigResponse {
+	EdgeDevConfig config = 1;
+	string configHash = 2;
+}

@@ -1,0 +1,26 @@
+// Copyright(c) 2017-2018 Zededa, Inc.
+// All rights reserved.
+
+syntax = "proto3";
+
+option go_package  = "github.com/zededa/api/config";
+option java_package = "com.zededa.cloud.uservice.proto";
+
+import "netcmn.proto";
+
+message MapServer {
+        string NameOrIp   = 1;
+        string Credential = 2;
+}
+
+message DeviceLispDetails {
+        repeated MapServer LispMapServers = 1;
+        uint32 LispInstance = 2;
+        string EID = 4;
+        uint32 EIDHashLen = 5;
+        repeated ZedServer ZedServers = 6;
+        bytes EidAllocationPrefix = 8;
+        uint32 EidAllocationPrefixLen = 9;
+        string ClientAddr = 10;
+        bool Experimental = 20; // true: lispers.net dataplane. Default: go dataplane
+}
