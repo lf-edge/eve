@@ -72,6 +72,7 @@ github.com/golang/protobuf/ptypes
 github.com/golang/protobuf/ptypes/timestamp
 github.com/golang/protobuf/ptypes/any
 github.com/golang/protobuf/ptypes/duration
+github.com/golang/protobuf/ptypes/timestamp
 github.com/golang/protobuf/ptypes/wrappers
 github.com/golang/protobuf/jsonpb
 github.com/golang/protobuf/protoc-gen-go/generator
@@ -132,8 +133,11 @@ github.com/vishvananda/netlink/nl
 # github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc
 github.com/vishvananda/netns
 # github.com/zededa/eve/sdk/go v0.0.0-00010101000000-000000000000 => ../../sdk/go
-github.com/zededa/eve/sdk/go/zconfig
-github.com/zededa/eve/sdk/go/zmet
+github.com/zededa/eve/sdk/go/config
+github.com/zededa/eve/sdk/go/register
+github.com/zededa/eve/sdk/go/logs
+github.com/zededa/eve/sdk/go/metrics
+github.com/zededa/eve/sdk/go/info
 # go.opencensus.io v0.20.1
 go.opencensus.io/plugin/ochttp
 go.opencensus.io/plugin/ochttp/propagation/tracecontext
