@@ -15,6 +15,7 @@ require (
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/golang/protobuf v1.3.1
 	github.com/google/go-cmp v0.2.0
+	github.com/google/go-tpm v0.1.1
 	github.com/google/gopacket v1.1.16
 	github.com/gorilla/websocket v1.4.0
 	github.com/hashicorp/golang-lru v0.5.1 // indirect
