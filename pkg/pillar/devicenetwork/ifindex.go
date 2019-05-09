@@ -39,6 +39,7 @@ func IfindexToNameAdd(index int, linkName string, linkType string, relevantFlag 
 			relevantFlag: relevantFlag,
 			upFlag:       upFlag,
 		}
+		ifindexMaybeRemoveOld(index, linkName)
 		// log.Debugf("ifindexToName post add %v\n", ifindexToName)
 		return true
 	} else if m.linkName != linkName {
@@ -52,6 +53,7 @@ func IfindexToNameAdd(index int, linkName string, linkType string, relevantFlag 
 			relevantFlag: relevantFlag,
 			upFlag:       upFlag,
 		}
+		ifindexMaybeRemoveOld(index, linkName)
 		// log.Debugf("ifindexToName post add %v\n", ifindexToName)
 		return false
 	} else if m.relevantFlag != relevantFlag || m.upFlag != upFlag {
@@ -63,10 +65,23 @@ func IfindexToNameAdd(index int, linkName string, linkType string, relevantFlag 
 			relevantFlag: relevantFlag,
 			upFlag:       upFlag,
 		}
+		ifindexMaybeRemoveOld(index, linkName)
 		// log.Debugf("ifindexToName post add %v\n", ifindexToName)
 		return true
 	} else {
 		return false
+	}
+}
+
+// If the linkName exists under another index then remove it
+func ifindexMaybeRemoveOld(newIndex int, ifname string) {
+	for index, lnt := range ifindexToName {
+		if lnt.linkName == ifname && index != newIndex {
+			log.Infof("Found old ifindex %d for new %d for %s",
+				index, newIndex, ifname)
+			delete(ifindexToName, index)
+			return
+		}
 	}
 }
 
@@ -100,7 +115,7 @@ func IfindexToName(index int) (string, string, error) {
 	// Try a lookup to handle race
 	link, err := netlink.LinkByIndex(index)
 	if err != nil {
-		return "", "", errors.New(fmt.Sprintf("Unknown ifindex %d", index))
+		return "", "", errors.New(fmt.Sprintf("Unknown kernel ifindex %d", index))
 	}
 	linkName := link.Attrs().Name
 	linkType := link.Type()
@@ -120,7 +135,7 @@ func IfnameToIndex(ifname string) (int, error) {
 	// Try a lookup to handle race
 	link, err := netlink.LinkByName(ifname)
 	if err != nil {
-		return -1, errors.New(fmt.Sprintf("Unknown ifname %s", ifname))
+		return -1, errors.New(fmt.Sprintf("Unknown kernel ifname %s", ifname))
 	}
 	index := link.Attrs().Index
 	linkType := link.Type()
