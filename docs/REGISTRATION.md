@@ -19,7 +19,7 @@ On boot, the device looks in `/config/` partition to determine if it has registe
     * `onboard.cert.pem` and `onboard.key.pem` - the onboarding public certificate and private key, respectively
     * `root-certificate.pem` - the certificate of the CA that signed the Controller's certificate
 1. Device constructs all requests to `https://<contents_of_server_file>/<endpoint>`, for example, if contents of `server` are `api.zededa.com:885`, then the `ping` endpoint is at `https://api.zededa.com:885/api/v1/edgedevice/ping`
-1. Device creates a file in `/config/` partition named `self-register-pending`, with no contents, as a transactio lock file that registration is in process
+1. Device creates a file in `/config/` partition named `self-register-pending`, with no contents, as a transaction lock file that registration is in process
 1. Device generate a unique device key and certificate and saves them to persistent location. As of this writing, it is in the `/config/` partition as `device.cert.pem` and `device.key.pem`. In the future, it may be in a tpm or other hardware key/certificate generation and storage mechanism.
 1. Device sends a `POST` request to the `register` endpoint, using the onboarding certificate for mTLS authentication, per the API, with body contents of a `ZRegistrerMsg`, including the device serial and device certificate in the message
 1. Once registration is accepted, Device removes from `/config/` partition file `self-register-pending`
