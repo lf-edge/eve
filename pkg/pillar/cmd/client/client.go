@@ -29,7 +29,7 @@ import (
 	"github.com/zededa/eve/pkg/pillar/pubsub"
 	"github.com/zededa/eve/pkg/pillar/types"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
-	zmet "github.com/zededa/eve/sdk/go/register"
+	"github.com/zededa/eve/sdk/go/register"
 )
 
 const (
@@ -361,7 +361,7 @@ func Run() {
 			return false
 		}
 		zedcloudCtx.TlsConfig = tlsConfig
-		registerCreate := &zmet.ZRegisterMsg{
+		registerCreate := &register.ZRegisterMsg{
 			PemCert: []byte(base64.StdEncoding.EncodeToString(deviceCertPem)),
 			Serial:  productSerial,
 		}

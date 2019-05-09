@@ -136,8 +136,8 @@ github.com/vishvananda/netns
 github.com/zededa/eve/sdk/go/config
 github.com/zededa/eve/sdk/go/register
 github.com/zededa/eve/sdk/go/logs
-github.com/zededa/eve/sdk/go/metrics
 github.com/zededa/eve/sdk/go/info
+github.com/zededa/eve/sdk/go/metrics
 # go.opencensus.io v0.20.1
 go.opencensus.io/plugin/ochttp
 go.opencensus.io/plugin/ochttp/propagation/tracecontext

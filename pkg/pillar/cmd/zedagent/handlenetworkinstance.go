@@ -15,8 +15,8 @@ import (
 	"github.com/zededa/eve/pkg/pillar/cast"
 	"github.com/zededa/eve/pkg/pillar/types"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
-	zinfo "github.com/zededa/eve/sdk/go/info"
-	zmet "github.com/zededa/eve/sdk/go/metrics"
+	zinfo "github.com/zededa/eve/sdk/go/info"   // XXX need to stop using
+	zmet "github.com/zededa/eve/sdk/go/metrics" // zinfo and zmet here
 )
 
 func handleNetworkInstanceModify(ctxArg interface{}, key string, statusArg interface{}) {

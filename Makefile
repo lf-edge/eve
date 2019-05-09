@@ -217,8 +217,11 @@ eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).ra
 	cp pkg/eve/* Makefile images/rootfs.yml images/installer.yml $(DIST)
 	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --hash-path $(CURDIR) $(LINUXKIT_OPTS) $(DIST)
 
+sdk-vendor:
+	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) sdk
+
 sdk: $(addprefix proto-,$(PROTO_LANGS))
-	@echo Done building sdk, you may want to vendor it into pillar by running \'go mod vendor\' in pkg/pillar 
+	@echo Done building sdk, you may want to vendor it into pillar by running sdk-vendor
 
 proto-%: $(GOBUILDER)
 	rm -rf `find sdk/$*/* -type d`
@@ -305,6 +308,8 @@ help:
 	@echo "   test           run EVE tests"
 	@echo "   clean          clean build artifacts in a current directory (doesn't clean Docker)"
 	@echo "   release        prepare branch for a release (VERSION=x.y.z required)"
+	@echo "   sdk            generate EVE API SDK for Go and Python from api proto"
+	@echo "   sdk-vendor     update vendored EVE API SDK in EVE packages (e.g. pkg/pillar)"
 	@echo "   shell          drop into docker container setup for Go development"
 	@echo
 	@echo "Commonly used build targets:"
