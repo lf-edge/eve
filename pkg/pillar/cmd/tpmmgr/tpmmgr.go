@@ -25,6 +25,8 @@ func testOpen() error {
 
 func Run() {
 	curpartPtr := flag.String("c", "", "Current partition")
+	flag.Parse()
+
 	curpart := *curpartPtr
 
 	log.SetLevel(log.DebugLevel)
