@@ -25,14 +25,14 @@ echo "$(date -Ins -u) go-provision version: $(cat $BINDIR/versioninfo)"
 MEASURE=0
 while [ $# != 0 ]; do
     if [ "$1" = -h ]; then
-	USE_HW_WATCHDOG=0
+        USE_HW_WATCHDOG=0
     elif [ "$1" = -m ]; then
-	MEASURE=1
+        MEASURE=1
     elif [ "$1" = -w ]; then
-	echo "$(date -Ins -u) Got old -w"
+        echo "$(date -Ins -u) Got old -w"
     else
-	echo "Usage: device-steps.sh [-h] [-m]"
-	exit 1
+        echo "Usage: device-steps.sh [-h] [-m]"
+        exit 1
     fi
     shift
 done
@@ -41,8 +41,8 @@ mkdir -p $TMPDIR
 
 if [ -c /dev/watchdog ]; then
     if [ $USE_HW_WATCHDOG = 0 ]; then
-	echo "$(date -Ins -u) Disabling use of /dev/watchdog"
-	wdctl /dev/watchdog
+        echo "$(date -Ins -u) Disabling use of /dev/watchdog"
+        wdctl /dev/watchdog
     fi
 else
     echo "$(date -Ins -u) Platform has no /dev/watchdog"
@@ -106,12 +106,12 @@ echo "pidfile = /var/run/ntpd.pid" >>$TMPDIR/watchdogall.conf
 for AGENT in $AGENTS; do
     echo "pidfile = /var/run/$AGENT.pid" >>$TMPDIR/watchdogall.conf
     if [ "$AGENT" = "lisp-ztr" ]; then
-	continue
+        continue
     fi
     echo "file = /var/run/$AGENT.touch" >>$TMPDIR/watchdogall.conf
     echo "change = 300" >>$TMPDIR/watchdogall.conf
     if [ "$AGENT" = "zedagent" ]; then
-	cat >>$TMPDIR/watchdogall.conf <<EOF
+        cat >>$TMPDIR/watchdogall.conf <<EOF
 file = /var/run/${AGENT}config.touch
 change = 300
 file = /var/run/${AGENT}metrics.touch
@@ -136,14 +136,14 @@ DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceN
 for d in $DIRS; do
     d1=$(dirname "$d")
     if [ ! -d "$d1" ]; then
-	echo "$(date -Ins -u) Create $d1"
-	mkdir -p "$d1"
-	chmod 700 "$d1"
+        echo "$(date -Ins -u) Create $d1"
+        mkdir -p "$d1"
+        chmod 700 "$d1"
     fi
     if [ ! -d "$d" ]; then
-	echo "$(date -Ins -u) Create $d"
-	mkdir -p "$d"
-	chmod 700 "$d"
+        echo "$(date -Ins -u) Create $d"
+        mkdir -p "$d"
+        chmod 700 "$d"
     fi
 done
 
@@ -154,16 +154,16 @@ echo
 if P3=$(zboot partdev P3) && [ -n "$P3" ]; then
     echo "$(date -Ins -u) Using $P3 for $PERSISTDIR"
     if ! fsck.ext3 -y "$P3"; then
-	echo "$(date -Ins -u) mkfs on $P3 for $PERSISTDIR"
-	# XXX note that if we have a bad ext3 partition this will ask questions
-	# Need to either dd zeros over the partition of feed "yes" into mkfs.
-	if ! mkfs -t ext3 -v "$P3"; then
+        echo "$(date -Ins -u) mkfs on $P3 for $PERSISTDIR"
+        # XXX note that if we have a bad ext3 partition this will ask questions
+        # Need to either dd zeros over the partition of feed "yes" into mkfs.
+        if ! mkfs -t ext3 -v "$P3"; then
             echo "$(date -Ins -u) mkfs $P3 failed: $?"
-	    # Try mounting below
+            # Try mounting below
         fi
     fi
     if ! mount -t ext3 -o dirsync,noatime "$P3" $PERSISTDIR; then
-	echo "$(date -Ins -u) mount $P3 failed: $?"
+        echo "$(date -Ins -u) mount $P3 failed: $?"
     fi
 else
     echo "$(date -Ins -u) No separate $PERSISTDIR partition"
@@ -177,10 +177,10 @@ echo
 dir=$CONFIGDIR/GlobalConfig
 for f in "$dir"/*.json; do
     if [ "$f" = "$dir/*.json" ]; then
-	break
+        break
     fi
     if [ ! -d $GCDIR ]; then
-	mkdir -p $GCDIR
+        mkdir -p $GCDIR
     fi
     echo "$(date -Ins -u) Copying from $f to $GCDIR"
     cp -p "$f" $GCDIR
@@ -265,16 +265,16 @@ SPECIAL=$(cgpt find -l DevicePortConfig)
 if [ -n "$SPECIAL" ] && [ -b "$SPECIAL" ]; then
     echo "$(date -Ins -u) Found USB with DevicePortConfig: $SPECIAL"
     if ! mount -t vfat "$SPECIAL" /mnt; then
-	echo "$(date -Ins -u) mount $SPECIAL failed: $?"
+        echo "$(date -Ins -u) mount $SPECIAL failed: $?"
     else
-	keyfile=/mnt/usb.json
-	if [ -f $keyfile ]; then
-	    echo "$(date -Ins -u) Found $keyfile on $SPECIAL"
-	    echo "$(date -Ins -u) Copying from $keyfile to $CONFIGDIR/DevicePortConfig/"
-	    cp $keyfile $CONFIGDIR/DevicePortConfig/
-	else
-	    echo "$(date -Ins -u) $keyfile not found on $SPECIAL"
-	fi
+        keyfile=/mnt/usb.json
+        if [ -f $keyfile ]; then
+            echo "$(date -Ins -u) Found $keyfile on $SPECIAL"
+            echo "$(date -Ins -u) Copying from $keyfile to $CONFIGDIR/DevicePortConfig/"
+            cp $keyfile $CONFIGDIR/DevicePortConfig/
+        else
+            echo "$(date -Ins -u) $keyfile not found on $SPECIAL"
+        fi
     fi
 fi
 
@@ -282,7 +282,7 @@ fi
 dir=$CONFIGDIR/DevicePortConfig
 for f in "$dir"/*.json; do
     if [ "$f" = "$dir/*.json" ]; then
-	break
+        break
     fi
     echo "$(date -Ins -u) Copying from $f to $DPCDIR"
     cp -p "$f" $DPCDIR
@@ -349,12 +349,12 @@ if ! [ -f $CONFIGDIR/device.cert.pem ] || ! [ -f $CONFIGDIR/device.key.pem ]; th
 elif [ -f $CONFIGDIR/self-register-pending ]; then
     echo "$(date -Ins -u) self-register failed/killed/rebooted"
     if ! $BINDIR/client -c $CURPART -r 5 getUuid; then
-	echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid fail; redoing self-register"
-	SELF_REGISTER=1
+        echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid fail; redoing self-register"
+        SELF_REGISTER=1
     else
-	echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid pass hence already registered"
-	rm -f $CONFIGDIR/self-register-pending
-	sync
+        echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid pass hence already registered"
+        rm -f $CONFIGDIR/self-register-pending
+        sync
     fi
 else
     echo "$(date -Ins -u) Using existing device key pair and self-signed cert"
@@ -372,21 +372,21 @@ if [ $SELF_REGISTER = 1 ]; then
     # is powered off
     echo "$(date -Ins -u) Self-registering our device certificate"
     if ! [ -f $CONFIGDIR/onboard.cert.pem ] || ! [ -f $CONFIGDIR/onboard.key.pem ]; then
-	echo "$(date -Ins -u) Missing onboarding certificate. Giving up"
-	exit 1
+        echo "$(date -Ins -u) Missing onboarding certificate. Giving up"
+        exit 1
     fi
     echo "$(date -Ins -u) Starting client selfRegister"
     if ! $BINDIR/client -c $CURPART selfRegister; then
-	echo "$(date -Ins -u) client selfRegister failed with $?"
-	exit 1
+        echo "$(date -Ins -u) client selfRegister failed with $?"
+        exit 1
     fi
     rm -f $CONFIGDIR/self-register-pending
     sync
     echo "$(date -Ins -u) Starting client getUuid"
     $BINDIR/client -c $CURPART getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
-	/opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
-	echo "$(date -Ins -u) Created default hardwaremodel $(/opt/zededa/bin/hardwaremodel -c)"
+        /opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
+        echo "$(date -Ins -u) Created default hardwaremodel $(/opt/zededa/bin/hardwaremodel -c)"
     fi
     # Make sure we set the dom0 hostname, used by LISP nat traversal, to
     # a unique string. Using the uuid
@@ -394,20 +394,20 @@ if [ $SELF_REGISTER = 1 ]; then
     /bin/hostname "$uuid"
     /bin/hostname >/etc/hostname
     if ! grep -q "$uuid" /etc/hosts; then
-	# put the uuid in /etc/hosts to avoid complaints
-	echo "$(date -Ins -u) Adding $uuid to /etc/hosts"
-	echo "127.0.0.1 $uuid" >>/etc/hosts
+        # put the uuid in /etc/hosts to avoid complaints
+        echo "$(date -Ins -u) Adding $uuid to /etc/hosts"
+        echo "127.0.0.1 $uuid" >>/etc/hosts
     else
-	echo "$(date -Ins -u) Found $uuid in /etc/hosts"
+        echo "$(date -Ins -u) Found $uuid in /etc/hosts"
     fi
 else
     echo "$(date -Ins -u) Get UUID in in case device was deleted and recreated with same device cert"
     echo "$(date -Ins -u) Starting client getUuid"
     $BINDIR/client -c $CURPART getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
-	echo "$(date -Ins -u) XXX /config/hardwaremodel missing; creating"
-	/opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
-	echo "$(date -Ins -u) Created hardwaremodel $(/opt/zededa/bin/hardwaremodel -c)"
+        echo "$(date -Ins -u) XXX /config/hardwaremodel missing; creating"
+        /opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
+        echo "$(date -Ins -u) Created hardwaremodel $(/opt/zededa/bin/hardwaremodel -c)"
     fi
 
     uuid=$(cat $CONFIGDIR/uuid)
@@ -415,11 +415,11 @@ else
     /bin/hostname >/etc/hostname
 
     if ! grep -q "$uuid" /etc/hosts; then
-	# put the uuid in /etc/hosts to avoid complaints
-	echo "$(date -Ins -u) Adding $uuid to /etc/hosts"
-	echo "127.0.0.1 $uuid" >>/etc/hosts
+        # put the uuid in /etc/hosts to avoid complaints
+        echo "$(date -Ins -u) Adding $uuid to /etc/hosts"
+        echo "127.0.0.1 $uuid" >>/etc/hosts
     else
-	echo "$(date -Ins -u) Found $uuid in /etc/hosts"
+        echo "$(date -Ins -u) Found $uuid in /etc/hosts"
     fi
 fi
 
