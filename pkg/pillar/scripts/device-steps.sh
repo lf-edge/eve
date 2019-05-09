@@ -336,25 +336,24 @@ fi
 
 if ! [ -f $CONFIGDIR/device.cert.pem ] || ! [ -f $CONFIGDIR/device.key.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
-    # XXX rename self-register-failed to self-register-pending
-    touch $CONFIGDIR/self-register-failed
+    touch $CONFIGDIR/self-register-pending
     sync
     $BINDIR/generate-device.sh $CONFIGDIR/device
     # Reduce chance that we register with controller and crash before
     # the filesystem has persisted /config/device.cert.* and
-    # self-register-failed
+    # self-register-pending
     sync
     sleep 10
     sync
     SELF_REGISTER=1
-elif [ -f $CONFIGDIR/self-register-failed ]; then
+elif [ -f $CONFIGDIR/self-register-pending ]; then
     echo "$(date -Ins -u) self-register failed/killed/rebooted"
     if ! $BINDIR/client -c $CURPART -r 5 getUuid; then
 	echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid fail; redoing self-register"
 	SELF_REGISTER=1
     else
 	echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid pass hence already registered"
-	rm -f $CONFIGDIR/self-register-failed
+	rm -f $CONFIGDIR/self-register-pending
 	sync
     fi
 else
@@ -381,7 +380,8 @@ if [ $SELF_REGISTER = 1 ]; then
 	echo "$(date -Ins -u) client selfRegister failed with $?"
 	exit 1
     fi
-    rm -f $CONFIGDIR/self-register-failed
+    rm -f $CONFIGDIR/self-register-pending
+    sync
     echo "$(date -Ins -u) Starting client getUuid"
     $BINDIR/client -c $CURPART getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
