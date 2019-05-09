@@ -32,11 +32,11 @@ openssl req -new -sha256 -subj "$subject" -key "$output_key" -out "$csr"
 # Newer versions require subject - old one fail if it is there
 v=$(openssl version | awk '{print $2}')
 case $v in (1.0.*)
-	       openssl req -x509 -sha256 -days "$lifetime" -key "$output_key" -in "$csr" -out "$output_cert"
-	       ;;
-	   (*)
-	       openssl req -x509 -sha256 -subj "$subject" -days "$lifetime" -key "$output_key" -in "$csr" -out "$output_cert"
-	       ;;
+               openssl req -x509 -sha256 -days "$lifetime" -key "$output_key" -in "$csr" -out "$output_cert"
+               ;;
+           (*)
+               openssl req -x509 -sha256 -subj "$subject" -days "$lifetime" -key "$output_key" -in "$csr" -out "$output_cert"
+               ;;
 esac
 rm "$csr"
 

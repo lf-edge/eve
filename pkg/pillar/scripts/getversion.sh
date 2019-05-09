@@ -12,14 +12,14 @@ GIT_VERSION=$(git describe --match v --abbrev=8 --always --dirty)
 BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
 
 if [ -n "${RELEASE}" ]; then
-	EXTRA_VERSION=""
+        EXTRA_VERSION=""
 else
-	EXTRA_VERSION=-${GIT_VERSION}-${BUILD_DATE}
+        EXTRA_VERSION=-${GIT_VERSION}-${BUILD_DATE}
 fi
 
 if [ "${BRANCH_NAME}" = "master" ]; then
-	BUILD_VERSION=${GIT_TAG}${EXTRA_VERSION}
+        BUILD_VERSION=${GIT_TAG}${EXTRA_VERSION}
 else
-	BUILD_VERSION=${GIT_TAG}-${GIT_BRANCH}${EXTRA_VERSION}
+        BUILD_VERSION=${GIT_TAG}-${GIT_BRANCH}${EXTRA_VERSION}
 fi
 echo "${BUILD_VERSION}"

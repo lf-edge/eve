@@ -10,10 +10,10 @@ TEST=0
 
 while [ $# -gt 0 ]; do
     if [ "$1" = "-t" ]; then
-	TEST=1
-	shift
+        TEST=1
+        shift
     else
-	break
+        break
     fi
 done
 
@@ -49,9 +49,9 @@ while /bin/true; do
     echo -n 'Are you sure(Yes/No)? '
     read -r resp
     if [ "$resp" = "Yes" ]; then
-	break
+        break
     elif [ "$resp" = "No" ]; then
-    	 exit 0
+        exit 0
     fi
 done
 
