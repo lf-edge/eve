@@ -437,6 +437,13 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 			// Need a protocol as well. Checked below.
 			lport = match.Value
 		case "host":
+			// Check if this should really be an "ip" ACL
+			if isIPorCIDR(match.Value) {
+				log.Warnf("Found host ACL with IP/CIDR %s; treating as ip ACL",
+					match.Value)
+				ip = match.Value
+				break
+			}
 			if ipsetName != "" {
 				errStr := fmt.Sprintf("ACE with eidset and host not supported: %+v",
 					ace)
@@ -630,6 +637,14 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 	}
 	log.Debugf("rulesList %v\n", rulesList)
 	return rulesList, nil
+}
+
+func isIPorCIDR(str string) bool {
+	if net.ParseIP(str) != nil {
+		return true
+	}
+	_, _, err := net.ParseCIDR(str)
+	return err == nil
 }
 
 // Determine which rules to skip and what prefix/table to use
