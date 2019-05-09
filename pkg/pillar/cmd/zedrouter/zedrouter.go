@@ -48,6 +48,9 @@ type zedrouterContext struct {
 	// Legacy data plane enable/disable flag
 	legacyDataPlane bool
 
+	agentStartTime        time.Time
+	receivedConfigTime    time.Time
+	triggerNumGC          bool // For appNum and bridgeNum
 	subAppNetworkConfig   *pubsub.Subscription
 	subAppNetworkConfigAg *pubsub.Subscription // From zedagent for dom0
 
@@ -133,6 +136,7 @@ func Run() {
 	zedrouterCtx := zedrouterContext{
 		legacyDataPlane:    false,
 		assignableAdapters: &aa,
+		agentStartTime:     time.Now(),
 	}
 	zedrouterCtx.networkInstanceStatusMap =
 		make(map[uuid.UUID]*types.NetworkInstanceStatus)
@@ -325,6 +329,14 @@ func Run() {
 				"InstanceConfig change at %+v", time.Now())
 			subNetworkInstanceConfig.ProcessChange(change)
 		}
+		// Are we likely to have seen all of the initial config?
+		if zedrouterCtx.triggerNumGC &&
+			time.Since(zedrouterCtx.receivedConfigTime) > 5*time.Minute {
+
+			bridgeNumAllocatorGC(&zedrouterCtx)
+			appNumAllocatorGC(&zedrouterCtx)
+			zedrouterCtx.triggerNumGC = false
+		}
 	}
 	log.Infof("Zedmanager has restarted. Entering main Select loop\n")
 
@@ -408,6 +420,14 @@ func Run() {
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
+		}
+		// Are we likely to have seen all of the initial config?
+		if zedrouterCtx.triggerNumGC &&
+			time.Since(zedrouterCtx.receivedConfigTime) > 5*time.Minute {
+
+			bridgeNumAllocatorGC(&zedrouterCtx)
+			appNumAllocatorGC(&zedrouterCtx)
+			zedrouterCtx.triggerNumGC = false
 		}
 	}
 }
@@ -639,6 +659,13 @@ func handleAppNetworkConfigModify(ctxArg interface{}, key string, configArg inte
 	ctx := ctxArg.(*zedrouterContext)
 	config := cast.CastAppNetworkConfig(configArg)
 	log.Infof("handleAppNetworkConfigModify(%s-%s)\n", config.DisplayName, key)
+
+	// If this is the first time, update the timer for GC
+	if ctx.receivedConfigTime.IsZero() {
+		log.Infof("triggerNumGC")
+		ctx.receivedConfigTime = time.Now()
+		ctx.triggerNumGC = true
+	}
 
 	status := lookupAppNetworkStatus(ctx, key)
 	if status == nil {

@@ -93,6 +93,33 @@ func appNumAllocatorInit(ctx *zedrouterContext) {
 	}
 }
 
+// If an entry is not inUse and and its CreateTime were
+// before the agent started, then we free it up.
+func appNumAllocatorGC(ctx *zedrouterContext) {
+
+	pubUuidToNum := ctx.pubUuidToNum
+
+	log.Infof("appNumAllocatorGC")
+	freedCount := 0
+	items := pubUuidToNum.GetAll()
+	for _, st := range items {
+		status := cast.CastUuidToNum(st)
+		if status.NumType != "appNum" {
+			continue
+		}
+		if status.InUse {
+			continue
+		}
+		if status.CreateTime.After(ctx.agentStartTime) {
+			continue
+		}
+		log.Infof("appNumAllocatorGC: freeing %+v", status)
+		appNumFree(ctx, status.UUID)
+		freedCount++
+	}
+	log.Infof("appNumAllocatorGC freed %d", freedCount)
+}
+
 func appNumAllocate(ctx *zedrouterContext,
 	uuid uuid.UUID, isZedmanager bool) int {
 

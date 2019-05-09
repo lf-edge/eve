@@ -82,6 +82,33 @@ func bridgeNumAllocatorInit(ctx *zedrouterContext) {
 	}
 }
 
+// If an entry is not inUse and and its CreateTime were
+// before the agent started, then we free it up.
+func bridgeNumAllocatorGC(ctx *zedrouterContext) {
+
+	pubUuidToNum := ctx.pubUuidToNum
+
+	log.Infof("bridgeNumAllocatorGC")
+	freedCount := 0
+	items := pubUuidToNum.GetAll()
+	for _, st := range items {
+		status := cast.CastUuidToNum(st)
+		if status.NumType != "bridgeNum" {
+			continue
+		}
+		if status.InUse {
+			continue
+		}
+		if status.CreateTime.After(ctx.agentStartTime) {
+			continue
+		}
+		log.Infof("bridgeNumAllocatorGC: freeing %+v", status)
+		bridgeNumFree(ctx, status.UUID)
+		freedCount++
+	}
+	log.Infof("bridgeNumAllocatorGC freed %d", freedCount)
+}
+
 func bridgeNumAllocate(ctx *zedrouterContext, uuid uuid.UUID) int {
 
 	// Do we already have a number?
