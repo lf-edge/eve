@@ -58,6 +58,20 @@ func PbrRouteAddDefault(bridgeName string, port string) error {
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
+	// XXX do they differ?
+	link, err := netlink.LinkByName(bridgeName)
+	if err != nil {
+		errStr := fmt.Sprintf("LinkByName(%s) failed: %s",
+			bridgeName, err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+	index := link.Attrs().Index
+	if index != ifindex {
+		log.Warnf("XXX Different ifindex vs index %d vs %x",
+			ifindex, index)
+		ifindex = index
+	}
 	MyTable := FreeTable + ifindex
 	myrt := *rt
 	myrt.Table = MyTable
@@ -78,7 +92,7 @@ func PbrRouteAddDefault(bridgeName string, port string) error {
 
 // Delete the default route for the bridgeName table to the specific port
 func PbrRouteDeleteDefault(bridgeName string, port string) error {
-	log.Infof("PbrRouteAddDefault(%s, %s)\n", bridgeName, port)
+	log.Infof("PbrRouteDeleteDefault(%s, %s)\n", bridgeName, port)
 
 	ifindex, err := devicenetwork.IfnameToIndex(port)
 	if err != nil {
