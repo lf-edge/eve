@@ -218,13 +218,14 @@ eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).ra
 	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --hash-path $(CURDIR) $(LINUXKIT_OPTS) $(DIST)
 
 sdk: $(addprefix proto-,$(PROTO_LANGS))
-	mkdir -p $(GOTREE)/vendor/$(PKGBASE)
-	cp -r sdk $(GOTREE)/vendor/$(PKGBASE)
+	@echo Done building sdk, you may want to vendor it into pillar by running \'go mod vendor\' in pkg/pillar 
 
 proto-%: $(GOBUILDER)
-	for sub in $(APIDIRS); do \
+	rm -rf `find sdk/$*/* -type d`
+	@for sub in $(APIDIRS); do \
 		mkdir -p sdk/$*/$$sub; \
 		$(DOCKER_GO) "protoc -I/eve/api/$$sub --$*_out=paths=source_relative:/go/src/$(PKGBASE)/sdk/$*/$$sub /eve/api/$$sub/*.proto" $(CURDIR)/sdk/$*/ $(PKGBASE)/sdk/$*; \
+	        echo Built sdk/$*/$$sub ;\
 	done
 
 release:
