@@ -127,6 +127,10 @@ fi
 # Always run watchdog(8) in case we have a hardware watchdog timer to advance
 /usr/sbin/watchdog -c $TMPDIR/watchdogbase.conf -F -s &
 
+if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
+    echo "$(date -Ins -u) Remount $CONFIGDIR failed"
+fi
+
 DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
 
 for d in $DIRS; do
@@ -158,7 +162,7 @@ if P3=$(zboot partdev P3) && [ -n "$P3" ]; then
 	    # Try mounting below
         fi
     fi
-    if ! mount -t ext3 "$P3" $PERSISTDIR; then
+    if ! mount -t ext3 -o dirsync,noatime "$P3" $PERSISTDIR; then
 	echo "$(date -Ins -u) mount $P3 failed: $?"
     fi
 else
@@ -332,7 +336,16 @@ fi
 
 if ! [ -f $CONFIGDIR/device.cert.pem ] || ! [ -f $CONFIGDIR/device.key.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
+    # XXX rename self-register-failed to self-register-pending
+    touch $CONFIGDIR/self-register-failed
+    sync
     $BINDIR/generate-device.sh $CONFIGDIR/device
+    # Reduce chance that we register with controller and crash before
+    # the filesystem has persisted /config/device.cert.* and
+    # self-register-failed
+    sync
+    sleep 10
+    sync
     SELF_REGISTER=1
 elif [ -f $CONFIGDIR/self-register-failed ]; then
     echo "$(date -Ins -u) self-register failed/killed/rebooted"
@@ -342,6 +355,7 @@ elif [ -f $CONFIGDIR/self-register-failed ]; then
     else
 	echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid pass hence already registered"
 	rm -f $CONFIGDIR/self-register-failed
+	sync
     fi
 else
     echo "$(date -Ins -u) Using existing device key pair and self-signed cert"
@@ -357,7 +371,6 @@ if [ $SELF_REGISTER = 1 ]; then
 
     # Persistently remember we haven't finished selfRegister in case the device
     # is powered off
-    touch $CONFIGDIR/self-register-failed
     echo "$(date -Ins -u) Self-registering our device certificate"
     if ! [ -f $CONFIGDIR/onboard.cert.pem ] || ! [ -f $CONFIGDIR/onboard.key.pem ]; then
 	echo "$(date -Ins -u) Missing onboarding certificate. Giving up"
