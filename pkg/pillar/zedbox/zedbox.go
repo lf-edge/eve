@@ -18,6 +18,7 @@ import (
 	"github.com/zededa/eve/pkg/pillar/cmd/ledmanager"
 	"github.com/zededa/eve/pkg/pillar/cmd/logmanager"
 	"github.com/zededa/eve/pkg/pillar/cmd/nim"
+	"github.com/zededa/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/zededa/eve/pkg/pillar/cmd/verifier"
 	"github.com/zededa/eve/pkg/pillar/cmd/waitforaddr"
 	"github.com/zededa/eve/pkg/pillar/cmd/wstunnelclient"
@@ -69,6 +70,8 @@ func main() {
 		wstunnelclient.Run()
 	case "conntrack":
 		conntrack.Run()
+	case "tpmmgr":
+		tpmmgr.Run()
 	default:
 		fmt.Printf("Unknown package: %s\n", basename)
 	}
