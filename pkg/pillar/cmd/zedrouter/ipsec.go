@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/iptables"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/iptables"
-	"github.com/zededa/eve/pkg/pillar/pubsub"
-	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 type vpnAclRule struct {

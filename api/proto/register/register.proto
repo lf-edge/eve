@@ -3,7 +3,7 @@
 
 syntax = "proto3";
 
-option go_package  = "github.com/zededa/eve/api/go/register";
+option go_package  = "github.com/lf-edge/eve/api/go/register";
 
 // XXX is this used? Not in client.go; deprecate
 enum ZRegisterResult {

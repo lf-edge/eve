@@ -8,10 +8,10 @@
 package zedrouter
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/cast"
-	"github.com/zededa/eve/pkg/pillar/uuidtonum"
 )
 
 var AllocReservedBridgeNumBits Bitmap

@@ -6,10 +6,10 @@
 package agentlog
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/cast"
-	"github.com/zededa/eve/pkg/pillar/pubsub"
-	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 func GetGlobalConfig(sub *pubsub.Subscription) *types.GlobalConfig {

@@ -5,7 +5,7 @@ package zedUpload
 
 import (
 	"fmt"
-	zedHttp "github.com/zededa/eve/pkg/pillar/zedUpload/httputil"
+	zedHttp "github.com/lf-edge/eve/pkg/pillar/zedUpload/httputil"
 	"net"
 	"net/http"
 	"net/url"

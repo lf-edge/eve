@@ -6,12 +6,12 @@ package zedmanager
 import (
 	"errors"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/cast"
-	"github.com/zededa/eve/pkg/pillar/pubsub"
-	"github.com/zededa/eve/pkg/pillar/types"
-	"github.com/zededa/eve/pkg/pillar/uuidtonum"
 	"time"
 )
 

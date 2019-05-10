@@ -11,12 +11,12 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
+	zinfo "github.com/lf-edge/eve/api/go/info"   // XXX need to stop using
+	zmet "github.com/lf-edge/eve/api/go/metrics" // zinfo and zmet here
+	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/cast"
-	"github.com/zededa/eve/pkg/pillar/types"
-	"github.com/zededa/eve/pkg/pillar/zedcloud"
-	zinfo "github.com/zededa/eve/api/go/info"   // XXX need to stop using
-	zmet "github.com/zededa/eve/api/go/metrics" // zinfo and zmet here
 )
 
 func handleNetworkInstanceModify(ctxArg interface{}, key string, statusArg interface{}) {

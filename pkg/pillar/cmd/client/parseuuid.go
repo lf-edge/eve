@@ -10,10 +10,10 @@ import (
 	"strings"
 
 	"github.com/golang/protobuf/proto"
+	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/hardware"
-	zconfig "github.com/zededa/eve/api/go/config"
 )
 
 // Return UUID, hardwaremodel, enterprise, and devicename

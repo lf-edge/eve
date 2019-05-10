@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/wrap"
 )
 
 // Need to fill in the overlay inteface name

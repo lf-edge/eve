@@ -8,9 +8,9 @@ package devicenetwork
 
 import (
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/agentlog"
-	"github.com/zededa/eve/pkg/pillar/types"
 	"io/ioutil"
 	"net"
 	"os"

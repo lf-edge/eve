@@ -8,10 +8,10 @@ package baseosmgr
 import (
 	"errors"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/cast"
-	"github.com/zededa/eve/pkg/pillar/types"
-	"github.com/zededa/eve/pkg/pillar/zboot"
 	"os"
 	"strings"
 	"syscall"

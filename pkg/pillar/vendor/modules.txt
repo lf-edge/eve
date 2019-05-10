@@ -132,12 +132,12 @@ github.com/sirupsen/logrus
 github.com/vishvananda/netlink/nl
 # github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc
 github.com/vishvananda/netns
-# github.com/zededa/eve/sdk/go v0.0.0-00010101000000-000000000000 => ../../sdk/go
-github.com/zededa/eve/sdk/go/config
-github.com/zededa/eve/sdk/go/register
-github.com/zededa/eve/sdk/go/logs
-github.com/zededa/eve/sdk/go/info
-github.com/zededa/eve/sdk/go/metrics
+# github.com/lf-edge/eve/sdk/go v0.0.0-00010101000000-000000000000 => ../../sdk/go
+github.com/lf-edge/eve/sdk/go/config
+github.com/lf-edge/eve/sdk/go/register
+github.com/lf-edge/eve/sdk/go/logs
+github.com/lf-edge/eve/sdk/go/info
+github.com/lf-edge/eve/sdk/go/metrics
 # go.opencensus.io v0.20.1
 go.opencensus.io/plugin/ochttp
 go.opencensus.io/plugin/ochttp/propagation/tracecontext

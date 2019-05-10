@@ -4,7 +4,7 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
-option go_package  = "github.com/zededa/eve/api/go/logs";
+option go_package  = "github.com/lf-edge/eve/api/go/logs";
 
 option java_package = "com.zededa.cloud.uservice.proto";
 

@@ -16,11 +16,11 @@ import (
 	"strings"
 
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
+	"github.com/lf-edge/eve/pkg/pillar/iptables"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/cast"
-	"github.com/zededa/eve/pkg/pillar/devicenetwork"
-	"github.com/zededa/eve/pkg/pillar/iptables"
-	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 func allowSharedPort(status *types.NetworkInstanceStatus) bool {
