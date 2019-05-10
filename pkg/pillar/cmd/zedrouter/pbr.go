@@ -13,9 +13,9 @@ import (
 	"syscall"
 
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/devicenetwork"
-	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 var FreeTable = 500 // Need a FreeMgmtPort policy for NAT+underlay

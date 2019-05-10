@@ -4,7 +4,7 @@
 # Run make (with no arguments) to see help on what targets are available
 
 GOVER ?= 1.12.4
-PKGBASE=github.com/zededa/eve
+PKGBASE=github.com/lf-edge/eve
 GOMODULE=$(PKGBASE)/pkg/pillar
 GOTREE=$(CURDIR)/pkg/pillar
 PROTO_LANGS?=go python

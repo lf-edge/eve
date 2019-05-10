@@ -13,9 +13,9 @@ import (
 	"syscall"
 
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/devicenetwork"
-	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 // Return the first default route for one interface. XXX or return all?

@@ -4,8 +4,8 @@
 package zedagent
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/pubsub"
 )
 
 func downloaderSubscription(ctx *zedagentContext, objType string) *pubsub.Subscription {

@@ -4,8 +4,8 @@
 package types
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/pubsub"
 )
 
 type LedBlinkCounter struct {

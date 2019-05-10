@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/zboot"
 )
 
 const (

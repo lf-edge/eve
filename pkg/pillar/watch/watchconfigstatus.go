@@ -13,8 +13,8 @@ package watch
 
 import (
 	"github.com/fsnotify/fsnotify"
+	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/flextimer"
 	"io/ioutil"
 	"os"
 	"path"

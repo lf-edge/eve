@@ -3,7 +3,7 @@
 
 syntax = "proto3";
 
-option go_package = "github.com/zededa/eve/api/go/config";
+option go_package = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
 message ipRange {

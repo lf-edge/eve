@@ -8,10 +8,10 @@ package zedrouter
 // XXX Should we skip some class of network interfaces?
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/iptables"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	psutilnet "github.com/shirou/gopsutil/net"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/iptables"
-	"github.com/zededa/eve/pkg/pillar/types"
 	"strings"
 )
 

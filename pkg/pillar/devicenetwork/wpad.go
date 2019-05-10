@@ -7,9 +7,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/types"
-	"github.com/zededa/eve/pkg/pillar/zedcloud"
 	"mime"
 	"strings"
 )

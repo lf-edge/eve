@@ -23,9 +23,9 @@ import (
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
+	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/types"
-	zconfig "github.com/zededa/eve/api/go/config"
 )
 
 const (

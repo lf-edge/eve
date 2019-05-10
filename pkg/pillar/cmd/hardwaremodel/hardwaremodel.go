@@ -6,7 +6,7 @@ package hardwaremodel
 import (
 	"flag"
 	"fmt"
-	"github.com/zededa/eve/pkg/pillar/hardware"
+	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"os"
 )
 

@@ -5,7 +5,7 @@ package zedagent
 
 import (
 	"fmt"
-	zconfig "github.com/zededa/eve/api/go/config"
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	"unicode/utf8"
 )
 

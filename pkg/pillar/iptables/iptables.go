@@ -8,8 +8,8 @@ package iptables
 import (
 	"errors"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/wrap"
 	"os/exec"
 	"strconv"
 	"strings"

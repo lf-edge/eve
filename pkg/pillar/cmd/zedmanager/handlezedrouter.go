@@ -6,9 +6,9 @@ package zedmanager
 import (
 	"reflect"
 
+	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/cast"
-	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 func MaybeAddAppNetworkConfig(ctx *zedmanagerContext,

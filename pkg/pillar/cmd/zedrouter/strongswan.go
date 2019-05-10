@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 const (

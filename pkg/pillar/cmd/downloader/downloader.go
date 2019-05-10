@@ -18,17 +18,17 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
+	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	"github.com/lf-edge/eve/pkg/pillar/pidfile"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
+	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/agentlog"
-	"github.com/zededa/eve/pkg/pillar/cast"
-	"github.com/zededa/eve/pkg/pillar/diskmetrics"
-	"github.com/zededa/eve/pkg/pillar/flextimer"
-	"github.com/zededa/eve/pkg/pillar/pidfile"
-	"github.com/zededa/eve/pkg/pillar/pubsub"
-	"github.com/zededa/eve/pkg/pillar/types"
-	"github.com/zededa/eve/pkg/pillar/zedUpload"
-	"github.com/zededa/eve/pkg/pillar/zedcloud"
-	zconfig "github.com/zededa/eve/api/go/config"
 )
 
 const (

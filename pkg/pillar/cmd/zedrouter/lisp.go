@@ -7,9 +7,9 @@ package zedrouter
 
 import (
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/types"
-	"github.com/zededa/eve/pkg/pillar/wrap"
 	"io"
 	"io/ioutil"
 	"net"

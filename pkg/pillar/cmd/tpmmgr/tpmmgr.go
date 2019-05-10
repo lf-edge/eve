@@ -6,8 +6,8 @@ package tpmmgr
 import (
 	"flag"
 	"github.com/google/go-tpm/tpm2"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/agentlog"
 )
 
 const (

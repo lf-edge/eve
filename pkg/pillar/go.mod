@@ -1,4 +1,4 @@
-module github.com/zededa/eve/pkg/pillar
+module github.com/lf-edge/eve/pkg/pillar
 
 go 1.12
 
@@ -31,11 +31,11 @@ require (
 	github.com/sirupsen/logrus v1.2.0
 	github.com/vishvananda/netlink v0.0.0-20190319163122-f504738125a5 // indirect
 	github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc // indirect
-	github.com/zededa/eve/api/go v0.0.0-00010101000000-000000000000
+	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
 	golang.org/x/crypto v0.0.0-20190404164418-38d8ce5564a5
 	golang.org/x/net v0.0.0-20190419010253-1f3472d942ba
 	google.golang.org/api v0.3.2 // indirect
 	google.golang.org/genproto v0.0.0-20190404172233-64821d5d2107 // indirect
 )
 
-replace github.com/zededa/eve/api/go => ../../api/go
+replace github.com/lf-edge/eve/api/go => ../../api/go

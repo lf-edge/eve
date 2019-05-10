@@ -9,12 +9,12 @@ package dataplane
 import (
 	"github.com/google/gopacket/afpacket"
 	//"github.com/google/gopacket/pfring"
+	"github.com/lf-edge/eve/pkg/pillar/dataplane/dptypes"
+	"github.com/lf-edge/eve/pkg/pillar/dataplane/etr"
+	"github.com/lf-edge/eve/pkg/pillar/dataplane/fib"
+	"github.com/lf-edge/eve/pkg/pillar/dataplane/itr"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/dataplane/dptypes"
-	"github.com/zededa/eve/pkg/pillar/dataplane/etr"
-	"github.com/zededa/eve/pkg/pillar/dataplane/fib"
-	"github.com/zededa/eve/pkg/pillar/dataplane/itr"
-	"github.com/zededa/eve/pkg/pillar/types"
 )
 
 type ThreadEntry struct {

@@ -4,8 +4,8 @@
 package logmanager
 
 import (
+	"github.com/lf-edge/eve/pkg/pillar/cast"
 	log "github.com/sirupsen/logrus"
-	"github.com/zededa/eve/pkg/pillar/cast"
 )
 
 // Return the UUID of the instance based on the domainname
