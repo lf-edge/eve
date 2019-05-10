@@ -4,7 +4,7 @@
 
 syntax = "proto3";
 
-option go_package = "github.com/zededa/eve/sdk/go/config";
+option go_package = "github.com/zededa/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
 // For now we need to tell the device which virtualization mode

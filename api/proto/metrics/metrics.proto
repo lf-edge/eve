@@ -4,7 +4,7 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
-option go_package  = "github.com/zededa/eve/sdk/go/metrics";
+option go_package  = "github.com/zededa/eve/api/go/metrics";
 
 option java_package = "com.zededa.cloud.uservice.proto";
 

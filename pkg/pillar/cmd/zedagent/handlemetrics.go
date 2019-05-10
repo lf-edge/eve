@@ -33,8 +33,8 @@ import (
 	"github.com/zededa/eve/pkg/pillar/netclone"
 	"github.com/zededa/eve/pkg/pillar/types"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
-	"github.com/zededa/eve/sdk/go/info"
-	"github.com/zededa/eve/sdk/go/metrics"
+	"github.com/zededa/eve/api/go/info"
+	"github.com/zededa/eve/api/go/metrics"
 )
 
 // Also report usage for these paths

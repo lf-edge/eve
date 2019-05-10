@@ -22,7 +22,7 @@ import (
 	"github.com/zededa/eve/pkg/pillar/pubsub"
 	"github.com/zededa/eve/pkg/pillar/types"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
-	zconfig "github.com/zededa/eve/sdk/go/config"
+	zconfig "github.com/zededa/eve/api/go/config"
 )
 
 var configApi string = "api/v1/edgedevice/config"

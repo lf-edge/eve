@@ -22,7 +22,7 @@ import (
 	"github.com/zededa/eve/pkg/pillar/watch"
 	"github.com/zededa/eve/pkg/pillar/zboot"
 	"github.com/zededa/eve/pkg/pillar/zedcloud"
-	"github.com/zededa/eve/sdk/go/logs"
+	"github.com/zededa/eve/api/go/logs"
 	"io"
 	"io/ioutil"
 	"os"

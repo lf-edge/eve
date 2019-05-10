@@ -217,19 +217,15 @@ eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).ra
 	cp pkg/eve/* Makefile images/rootfs.yml images/installer.yml $(DIST)
 	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --hash-path $(CURDIR) $(LINUXKIT_OPTS) $(DIST)
 
-sdk-vendor:
-	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) sdk
+proto-vendor:
+	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
 
-sdk: $(addprefix proto-,$(PROTO_LANGS))
-	@echo Done building sdk, you may want to vendor it into pillar by running sdk-vendor
+proto: $(addprefix api/go/,$(shell ls api/proto)) $(addprefix api/python/,$(shell ls api/proto))
+	@echo Done building protobuf, you may want to vendor it into pillar by running proto-vendor
 
-proto-%: $(GOBUILDER)
-	rm -rf `find sdk/$*/* -type d`
-	@for sub in $(APIDIRS); do \
-		mkdir -p sdk/$*/$$sub; \
-		$(DOCKER_GO) "protoc -I/eve/api/$$sub --$*_out=paths=source_relative:/go/src/$(PKGBASE)/sdk/$*/$$sub /eve/api/$$sub/*.proto" $(CURDIR)/sdk/$*/ $(PKGBASE)/sdk/$*; \
-	        echo Built sdk/$*/$$sub ;\
-	done
+api/%: $(GOBUILDER)
+	rm -rf api/$* ; mkdir api/$* # building $*
+	@$(DOCKER_GO) "protoc -I./proto/$(@F) --$(notdir $(@D))_out=paths=source_relative:./$* proto/$(@F)/*.proto" $(CURDIR)/api api
 
 release:
 	@function bail() { echo "ERROR: $$@" ; exit 1 ; } ;\
@@ -308,8 +304,8 @@ help:
 	@echo "   test           run EVE tests"
 	@echo "   clean          clean build artifacts in a current directory (doesn't clean Docker)"
 	@echo "   release        prepare branch for a release (VERSION=x.y.z required)"
-	@echo "   sdk            generate EVE API SDK for Go and Python from api proto"
-	@echo "   sdk-vendor     update vendored EVE API SDK in EVE packages (e.g. pkg/pillar)"
+	@echo "   proto          generates Go and Python source from protobuf API definitions"
+	@echo "   proto-vendor   update vendored API in packages that require it (e.g. pkg/pillar)"
 	@echo "   shell          drop into docker container setup for Go development"
 	@echo
 	@echo "Commonly used build targets:"
