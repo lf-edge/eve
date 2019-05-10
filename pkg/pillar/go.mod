@@ -37,4 +37,4 @@ require (
 	google.golang.org/genproto v0.0.0-20190404172233-64821d5d2107 // indirect
 )
 
-replace github.com/zededa/eve/sdk/go => ../../sdk/go
+replace github.com/zededa/eve/sdk/go => ../../api/go
