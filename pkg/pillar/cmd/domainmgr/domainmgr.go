@@ -837,6 +837,8 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 // XXX clear the UUID assignment; leave in pciback
 func cleanupAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 	myUuid uuid.UUID) {
+
+	publishAssignableAdapters := false
 	// Look for any adapters used by us and clear UsedByUUID
 	for _, adapter := range ioAdapterList {
 		log.Debugf("cleanupAdapters processing adapter %d %s\n",
@@ -852,6 +854,10 @@ func cleanupAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 		log.Infof("cleanupAdapters clearing uuid for adapter %d %s\n",
 			adapter.Type, adapter.Name)
 		ib.UsedByUUID = nilUUID
+		publishAssignableAdapters = true
+	}
+	if publishAssignableAdapters {
+		ctx.publishAssignableAdapters()
 	}
 }
 
