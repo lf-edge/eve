@@ -39,7 +39,7 @@ services:
      image: PILLAR_TAG
 files:
    - path: /containers/services/pillar/lower/opt/zededa/bin/versioninfo
-     contents: 'ZENBUILD_VERSION'
+     contents: 'EVE_VERSION'
 trust:
   org:
     - linuxkit
