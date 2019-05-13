@@ -528,7 +528,7 @@ The purpose of [parse-pkgs](../parse-pkgs.sh) is to collect the actual hashes of
 It does the following:
 
 1. Receive the `DOCKER_ARCH_TAG` var and, if not present, determine it from `uname -m` and canonicalize it.
-2. Receive the `ZENBUILD_VERSION` var and, if not present, determine it from `zenbuild_version`.
+2. Receive the `EVE_VERSION` var and, if not present, determine it from `eve_version`.
 3. Determine the latest tag for each package in a list, roughly approximating every directory in `pkg/` using `linuxkit pkg show-tag pkg/<dir>` and save it as a var with name `<pkg-as-uppercase>_TAG`, e.g. `STRONGSWAN_TAG`
 4. For external packages - `lfedge/eve-ztools` and `lfedge/eve-lisp` - determine the tag by pulling the latest tag for the image, and then running `docker inspect --format='{{index .RepoDigests 0}}' <image>` or, if that fails, `docker inspect --format='{{.Id}}' <image>`. **Note:** This could be done in a much lighterweight fashion by inspecting the manifest. However, since docker uses content-addressable storage, it will only save slightly, since the image will need to be pulled to build anyways.
 5. For internal packages that combine other packages - `lfedge/eve-zedctr` and `lfedge/eve` - do a more complicated versioning:
