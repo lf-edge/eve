@@ -9,7 +9,7 @@ get_git_tag() {
   echo ${EVE_HASH:-$(git tag -l --points-at HEAD | grep '[0-9]*\.[0-9]*\.[0-9]*' | head -1)}
 }
 
-zenbuild_version() {
+eve_version() {
   local vers="`get_git_tag`"
 
   if [ -z "$vers" ] ; then
@@ -61,7 +61,7 @@ synthetic_tag() {
 resolve_tags() {
 sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e '/image:.*linuxkit\/.*:/s# *$#'${ARCH}# \
-    -e "s#ZENBUILD_VERSION#"$ZENBUILD_VERSION"#" \
+    -e "s#EVE_VERSION#"$EVE_VERSION"#" \
     -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
     -e "s#FW_TAG#"$FW_TAG"#" \
     -e "s#XENTOOLS_TAG#"$XENTOOLS_TAG"#" \
@@ -101,7 +101,7 @@ else
   ARCH="-${DOCKER_ARCH_TAG}"
 fi
 
-ZENBUILD_VERSION=${ZENBUILD_VERSION:-`zenbuild_version`$ARCH}
+EVE_VERSION=${EVE_VERSION:-`eve_version`$ARCH}
 
 KERNEL_TAG=$(linuxkit_tag pkg/kernel)
 FW_TAG=$(linuxkit_tag pkg/fw)

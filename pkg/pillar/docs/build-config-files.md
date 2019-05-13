@@ -15,7 +15,7 @@ which will be in place until the device connects to the controller and gets its
 configuration from there. The variables are documented in [global-config-variables.md](global-config-variables.md)
 
 
-To add either during the build, in zenbuild's conf directory create a
+To add either during the build, in EVE's conf directory create a
 subdirectory called DevicePortConfig or GlobalConfig, respectively.
 Then add the valid json file named as global.json in that directory.
 Finally:
