@@ -2287,6 +2287,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 				ib.Type, ib.Name, ib.Members,
 				ib.PciShort, ib.PciLong, ib.Unique)
 			log.Errorln(errStr)
+			return errors.New(errStr)
 		} else {
 			ib.Unique = unique
 			log.Infof("checkAndSetIoBundle(%d %s %v) %s/%s unique %s\n",
@@ -2380,7 +2381,7 @@ func checkIoBundleAll(ctx *domainContext) {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
 		err := checkIoBundle(ctx, ib)
 		if err != nil {
-			log.Errorf("checkIoBundleAll failed for %d: %s\n", i, err)
+			log.Warnf("checkIoBundleAll failed for %d: %s\n", i, err)
 		}
 	}
 }
