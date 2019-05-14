@@ -55,7 +55,7 @@ jobs:
             --console-report-file=/tmp/yetus-out/console.txt
             --brief-report-file=/tmp/yetus-out/brief.txt
             --excludes=.yetus-excludes
-            --line-comments=''
+            --linecomments=''
             --bugcomments=briefreport,htmlout,junit
             --junit-results-xml=/tmp/yetus-out/results.xml
             --continuous-improvement=true
