@@ -1,24 +1,27 @@
 # EVE go sdk
 
-SDK of generated message files for golang based on the protobuf message definitions in [api/](../../api/) in the root directory of this repository.
+SDK of generated message files for golang based on the protobuf message definitions in [api/proto](../../api/proto) in the root directory of this repository.
 
 To use:
 
 ```go
 import (
-	"github.com/lf-edge/eve/api/zconfig"
-	"github.com/lf-edge/eve/api/zmet"
+        "github.com/lf-edge/eve/api/go/register"
+        "github.com/lf-edge/eve/api/go/config"
+        "github.com/lf-edge/eve/api/go/info"
+        "github.com/lf-edge/eve/api/go/logs"
+        "github.com/lf-edge/eve/api/go/metrics"
 )
 ```
 
 To build, go to the root directory of this repository and:
 
-```
-make sdk
+```bash
+make proto
 ```
 
-You may have protobuf issues due to `.go` files in this directory and subdirectories from a previous build. To avoid that issue, run:
+To vendor the result into pillar (or any other go pacakge), go to the root directory of this repository and:
 
-```
-make clean-sdk
+```bash
+make proto-vendor
 ```
