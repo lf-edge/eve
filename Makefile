@@ -79,7 +79,7 @@ QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH))
 
 GOOS=linux
 CGO_ENABLED=1
-GOBUILDER=eve-build-$(USER)
+GOBUILDER=eve-build-$(shell echo $(USER) | tr A-Z a-z)
 
 DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; docker export $$C | tar -xf - $$2 ; docker rm $$C ; } ; _
 DOCKER_GO = _() { mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ;\
@@ -134,7 +134,7 @@ $(BIOS_IMG): $(LINUXKIT) | $(DIST)/bios
 # through the installer. It's the long road to live.img. Good for
 # testing.
 #
-# -machine dumpdtb=virt.dtb 
+# -machine dumpdtb=virt.dtb
 #
 run-installer-iso: $(BIOS_IMG)
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
@@ -151,7 +151,7 @@ run-target: $(BIOS_IMG)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
 
 run-rootfs: $(BIOS_IMG) $(EFI_PART)
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:$(EFI_PART)/..,format=raw 
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:$(EFI_PART)/..,format=raw
 
 run-grub: $(BIOS_IMG) $(EFI_PART)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=fat:rw:$(EFI_PART)/..,format=raw
