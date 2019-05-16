@@ -1146,7 +1146,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	}
 }
 
-// Convert the implementation details to the user-friendly userStatus and subStatus
+// Convert the implementation details to the user-friendly userStatus and subStatus*
 func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW) {
 	switch swInfo.Status {
 	case info.ZSwState_INITIAL:
@@ -1158,22 +1158,28 @@ func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW) {
 			swInfo.UserStatus = info.BaseOsStatus_NONE
 		} else {
 			swInfo.UserStatus = info.BaseOsStatus_UPDATING
-			swInfo.SubStatus = "Initializing update"
+			swInfo.SubStatus = info.BaseOsSubStatus_UPDATE_INITIALIZING
+			swInfo.SubStatusStr = "Initializing update"
 		}
 	case info.ZSwState_DOWNLOAD_STARTED:
-		swInfo.UserStatus = info.BaseOsStatus_UPDATING
-		swInfo.SubStatus = fmt.Sprintf("Downloading %d%% done", swInfo.DownloadProgress)
+		swInfo.UserStatus = info.BaseOsStatus_DOWNLOADING
+		swInfo.SubStatus = info.BaseOsSubStatus_DOWNLOAD_INPROGRESS
+		swInfo.SubStatusProgress = swInfo.DownloadProgress
+		swInfo.SubStatusStr = fmt.Sprintf("Download %d%% done",
+			swInfo.SubStatusProgress)
 	case info.ZSwState_DOWNLOADED:
 		if swInfo.Activated {
-			swInfo.UserStatus = info.BaseOsStatus_UPDATING
-			swInfo.SubStatus = "Downloaded 100%"
+			swInfo.UserStatus = info.BaseOsStatus_DOWNLOADING
+			swInfo.SubStatus = info.BaseOsSubStatus_DOWNLOAD_INPROGRESS
+			swInfo.SubStatusProgress = 100
+			swInfo.SubStatusStr = "Download 100% done"
 		} else {
 			swInfo.UserStatus = info.BaseOsStatus_NONE
 		}
 	case info.ZSwState_DELIVERED:
 		if swInfo.Activated {
-			swInfo.UserStatus = info.BaseOsStatus_UPDATING
-			swInfo.SubStatus = "Downloaded and verified"
+			swInfo.UserStatus = info.BaseOsStatus_DOWNLOAD_DONE
+			swInfo.SubStatusStr = "Downloaded and verified"
 		} else {
 			// XXX Remove once we have one slot
 			swInfo.UserStatus = info.BaseOsStatus_NONE
@@ -1182,17 +1188,21 @@ func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW) {
 		switch swInfo.PartitionState {
 		case "active":
 			if swInfo.Activated {
-				swInfo.UserStatus = info.BaseOsStatus_ACTIVE
+				swInfo.UserStatus = info.BaseOsStatus_UPDATED
 			} else {
 				swInfo.UserStatus = info.BaseOsStatus_FALLBACK
 			}
 		case "updating":
 			swInfo.UserStatus = info.BaseOsStatus_UPDATING
-			swInfo.SubStatus = "About to reboot"
+			swInfo.SubStatus = info.BaseOsSubStatus_UPDATE_REBOOTING
+			// XXX progress based on time left??
+			swInfo.SubStatusStr = "About to reboot"
 		case "inprogress":
-			swInfo.UserStatus = info.BaseOsStatus_TESTING
-			swInfo.SubStatus = fmt.Sprintf("Testing for %d more seconds",
-				ctx.remainingTestTime/time.Second)
+			swInfo.UserStatus = info.BaseOsStatus_UPDATING
+			swInfo.SubStatus = info.BaseOsSubStatus_UPDATE_TESTING
+			swInfo.SubStatusProgress = uint32(ctx.remainingTestTime / time.Second)
+			swInfo.SubStatusStr = fmt.Sprintf("Testing for %d more seconds",
+				swInfo.SubStatusProgress)
 
 		case "unused":
 			swInfo.UserStatus = info.BaseOsStatus_NONE
@@ -1201,6 +1211,9 @@ func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW) {
 	default:
 		// The other states are use for app instances not for baseos
 		swInfo.UserStatus = info.BaseOsStatus_NONE
+	}
+	if swInfo.SwErr.Description != "" {
+		swInfo.UserStatus = info.BaseOsStatus_FAILED
 	}
 }
 
