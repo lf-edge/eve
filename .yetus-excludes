@@ -4,7 +4,8 @@
 ^build-tools/src/manifest-tool/
 ^pkg/pillar/vendor/
 ^pkg/pillar/zedpac/
-^sdk/
+^api/python/
+^api/go/
 ^.+\.patch
 ^.+\.diff
 ^.+build.yml
