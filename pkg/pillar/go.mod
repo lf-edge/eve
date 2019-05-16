@@ -21,7 +21,7 @@ require (
 	github.com/hashicorp/golang-lru v0.5.1 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/kr/fs v0.1.0 // indirect
-	github.com/lf-edge/eve/sdk/go v0.0.0-00010101000000-000000000000 // indirect
+	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
 	github.com/mdlayher/raw v0.0.0-20190419142535-64193704e472 // indirect
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/pkg/sftp v1.10.0
@@ -31,7 +31,6 @@ require (
 	github.com/sirupsen/logrus v1.2.0
 	github.com/vishvananda/netlink v0.0.0-20190319163122-f504738125a5 // indirect
 	github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc // indirect
-	github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000
 	golang.org/x/crypto v0.0.0-20190404164418-38d8ce5564a5
 	golang.org/x/net v0.0.0-20190419010253-1f3472d942ba
 	google.golang.org/api v0.3.2 // indirect
