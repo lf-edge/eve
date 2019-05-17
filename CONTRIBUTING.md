@@ -14,10 +14,9 @@ that benefit the community at large, not just code contributions:
 
 EVE governance is conducted by the Technical Steering Committee (TSC),
 which is currently composed of 22 active members:
-   * Allen Wittenauer <aw@zededa.com>
+   * Allen Wittenauer <aw@effectivemachines.com>
    * Avi Deitcher <avi@deitcher.net>
    * Bharani Chadalavada <bharani@zededa.com>
-   * Cherry G. Mathew <cherry@zyx.in>
    * Chirag Kantharia <chirag@zededa.com>
    * Dino Farinacci <farinacci@gmail.com>
    * Donald Becker <donald.becker@gmail.com>
