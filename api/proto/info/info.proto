@@ -208,6 +208,7 @@ message ZInfoDevice {
 
   SystemAdapterInfo systemAdapter = 24;
   uint32 restartCounter = 25; // Number of times zedagent has restarted i.e., device reboot
+  string HwSecurityModule = 26; //State of hardware security modules, like TPM
 }
 
 // The current and fallback system adapter information
