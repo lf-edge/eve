@@ -1115,6 +1115,10 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	ReportDeviceInfo.RestartCounter = ctx.restartCounter
 
+	//Operational information about TPM presence/absence/usage.
+	//"Absent" for now, till we enable TPM functionality.
+	ReportDeviceInfo.HwSecurityModule = "Absent"
+
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
