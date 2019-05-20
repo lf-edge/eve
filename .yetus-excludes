@@ -9,3 +9,5 @@
 ^.+\.diff
 ^.+build.yml
 ^.+go.mod
+^api/go/
+^api/python/
