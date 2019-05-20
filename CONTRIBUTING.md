@@ -3,38 +3,40 @@
 EVE community shares the spirit of the [Apache Way](https://apache.org/theapacheway/)
 and believes in "Community over Code". We welcome any and all types of contributions
 that benefit the community at large, not just code contributions:
-   * Providing user feedback
-   * Share your use cases
-   * Evangeline or collaborate with related products and technologies
-   * Maintaining our wiki
-   * Improving documentation
-   * Contribute test scenarios and test code
-   * Add or improve hardware support
-   * Fix bugs and add new features
+
+* Providing user feedback
+* Share your use cases
+* Evangeline or collaborate with related products and technologies
+* Maintaining our wiki
+* Improving documentation
+* Contribute test scenarios and test code
+* Add or improve hardware support
+* Fix bugs and add new features
 
 EVE governance is conducted by the Technical Steering Committee (TSC),
 which is currently composed of 22 active members:
-   * Allen Wittenauer <aw@effectivemachines.com>
-   * Avi Deitcher <avi@deitcher.net>
-   * Bharani Chadalavada <bharani@zededa.com>
-   * Chirag Kantharia <chirag@zededa.com>
-   * Dino Farinacci <farinacci@gmail.com>
-   * Donald Becker <donald.becker@gmail.com>
-   * Erik Nordmark <erik@zededa.com>
-   * Gianluca Guida <glguida@gmail.com>
-   * Gopi Krishna Kodali <gkodali@zededa.com>
-   * Greg Chase <gchase@gmail.com>
-   * Hariharasubramanian C S <cshari@zededa.com>
-   * Kalyan Nidumolu <kalyan@zededa.com>
-   * Michel Onstein <michel@zededa.com>
-   * Olaf Flebbe <of@oflebbe.de>
-   * Prosenjit Pal <ppal@zededa.com>
-   * Rishabh Gupta <rgupta@zededa.com>
-   * Roman Shaposhnik <rvs@zededa.com>
-   * Sahil Satpute <ssatpute@zededa.com>
-   * Saurabh Singh <saurabh@zededa.com>
-   * Srinibas Maharana <srinibas@zededa.com>
-   * Vijay Tapaskar <vijay@zededa.com>
+
+* Allen Wittenauer <aw@effectivemachines.com>
+* Avi Deitcher <avi@deitcher.net>
+* Bharani Chadalavada <bharani@zededa.com>
+* Chirag Kantharia <chirag@zededa.com>
+* Dino Farinacci <farinacci@gmail.com>
+* Donald Becker <donald.becker@gmail.com>
+* Erik Nordmark <erik@zededa.com>
+* Gianluca Guida <glguida@gmail.com>
+* Gopi Krishna Kodali <gkodali@zededa.com>
+* Greg Chase <gchase@gmail.com>
+* Hariharasubramanian C S <cshari@zededa.com>
+* Kalyan Nidumolu <kalyan@zededa.com>
+* Michel Onstein <michel@zededa.com>
+* Olaf Flebbe <of@oflebbe.de>
+* Prosenjit Pal <ppal@zededa.com>
+* Rishabh Gupta <rgupta@zededa.com>
+* Roman Shaposhnik <rvs@zededa.com>
+* Sahil Satpute <ssatpute@zededa.com>
+* Saurabh Singh <saurabh@zededa.com>
+* Srinibas Maharana <srinibas@zededa.com>
+* Vijay Tapaskar <vijay@zededa.com>
 
 You can reach TSC at [eve-tsc@lists.lfedge.org](mailto:eve-tsc@lists.lfedge.org)
 and also [browse the archives](https://lists.lfedge.org/g/eve-tsc).
@@ -54,7 +56,7 @@ resolving the issue, please leave a comment.
 
 Also include the steps required to reproduce the problem if possible and
 applicable. This information will help us review and fix your issue faster.
-When sending lengthy log-files, consider posting them as a gist (https://gist.github.com).
+When sending lengthy log-files, consider posting them as a [gist](https://gist.github.com).
 Don't forget to remove sensitive data from your logfiles before posting (you can
 replace those parts with "REDACTED").
 
@@ -78,7 +80,7 @@ that may be out of scope for the project.
 
 Not sure if that typo is worth a pull request? Found a bug and know how to fix
 it? Do it! We will appreciate it. We are always thrilled to receive pull requests.
-We do our best to process them quickly. If your pull request is not accepted on 
+We do our best to process them quickly. If your pull request is not accepted on
 the first try, don't get discouraged!
 
 ### Commit Messages
@@ -140,7 +142,7 @@ close an issue. Including references automatically closes the issue on a merge.
 
 Any member of the TSC can merge outstanding Pull Requests, provided they pass
 the required checks configured on the repository and take care of all the
-community feedback provided. 
+community feedback provided.
 
 ### Sign your work
 
@@ -149,7 +151,7 @@ signature certifies that you wrote the patch or otherwise have the right to pass
 it on as an open-source patch. The rules are pretty simple: if you can certify
 the below (from [developercertificate.org](http://developercertificate.org/)):
 
-```
+```text
 Developer Certificate of Origin
 Version 1.1
 
