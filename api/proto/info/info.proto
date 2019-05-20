@@ -180,6 +180,13 @@ message ErrorInfo {
   google.protobuf.Timestamp timestamp = 2;
 }
 
+enum HwSecurityModuleStatus {
+    UNKNOWN  = 0;  //HSM Status is not known
+    NOTFOUND = 1;  //No HSM found
+    DISABLED = 2;  //HSM found, but not being used
+    ENABLED  = 3;  //HSM is found and being actively used
+}
+
 // Base device info, as discovered by Xen (or OS on bare metal)
 message ZInfoDevice {
   string machineArch = 4;
@@ -208,7 +215,8 @@ message ZInfoDevice {
 
   SystemAdapterInfo systemAdapter = 24;
   uint32 restartCounter = 25; // Number of times zedagent has restarted i.e., device reboot
-  string HwSecurityModule = 26; //State of hardware security modules, like TPM
+  HwSecurityModuleStatus HSMStatus = 26; //State of hardware security modules, like TPM
+  string HSMInfo = 27; //Information about HSM like TPM vendor, TEE type etc.
 }
 
 // The current and fallback system adapter information
