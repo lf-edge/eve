@@ -69,9 +69,11 @@ message SystemAdapter {
 	sWAdapterParams allocDetails = 20;
 
 	// this is part of the freelink group
+	// deprecate: look at PhysicalIO->Usage
 	bool freeUplink = 2;
 
 	// this is part of the uplink group
+	// deprecate: look at PhysicalIO->Usage
 	bool uplink = 3;
 
 	// attach this network config for this adapter
