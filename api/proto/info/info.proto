@@ -270,7 +270,7 @@ message ProxyEntry {
 
 // SW Info for the device base OS
 // Many of these fields are for debug purposes. The ones intended
-// for the UI/cli are userStatus, subStatus, shortVersion, and swErr
+// for the UI/cli are userStatus, subStatus*, shortVersion, and swErr
 message ZInfoDevSW {
   bool activated = 2;
   string partitionLabel = 3; // E.g., "IMGA"
@@ -282,17 +282,30 @@ message ZInfoDevSW {
   ErrorInfo swErr = 9;
   uint32 downloadProgress = 10; // Download progress; 0-100 percent
   BaseOsStatus userStatus = 11;
-  string subStatus = 12;	// Include progress information
+  string subStatusStr = 12;     // English formatted string
+  BaseOsSubStatus subStatus = 13;
+  uint32 subStatusProgress = 14; // Context-dependent; percentage or time
 }
 
 enum BaseOsStatus {
-  NONE		= 0;	// Should be ignored in output
-  ACTIVE	= 1;	// Running
-  UPDATING	= 2;	// subStatus will have more details
-  REBOOTING	= 3;	// device reboot under way
-  TESTING	= 4;	// verifying new image after reboot
-  FALLBACK	= 5;	// fallback image during verification
-  FAILED	= 6;	// see ErrInfo for details
+  NONE          = 0;    // Should be ignored in output
+  DOWNLOADING   = 1;    // subStatus will have more details
+  DOWNLOAD_DONE = 2;    // Terminal state if user action was to download
+  UPDATING      = 3;    // subStatus will have more details including
+                        // whether it is rebooting, or testing
+  UPDATED       = 4;    // Running the configured baseimage
+  FALLBACK      = 5;    // Fallback image during testing
+  FAILED        = 6;    // See ErrInfo for details
+}
+
+enum BaseOsSubStatus {
+  NONE_SUBSTATUS      = 0;
+  DOWNLOAD_INPROGRESS = 1;      // subStatusProgress is percentage
+  VERIFY_INPROGRESS   = 2;      // subStatusProgress is percentage
+  UPDATE_INITIALIZING = 3;
+  UPDATE_REBOOTING    = 4;      // subStatusProgress is time left
+  UPDATE_TESTING      = 5;      // subStatusProgress is time left
+  UPDATE_NEED_TEST_CONFIRM = 6; // waiting for controller to commit to new
 }
 
 // Per filesystem/partition information
