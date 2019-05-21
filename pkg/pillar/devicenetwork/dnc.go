@@ -170,6 +170,19 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 	// Restart at index zero, then skip entries with LastFailed after
 	// LastSucceeded and a recent LastFailed (a minute or less).
 	nextIndex := getNextTestableDPCIndex(ctx, 0)
+	if nextIndex == -1 {
+		log.Infof("RestartVerify: nothing testable")
+		// Need to publish so that other agents see we have initialized
+		// even if we have no IPs
+		if ctx.PubDeviceNetworkStatus != nil {
+			ctx.DeviceNetworkStatus.Testing = false
+			log.Infof("PublishDeviceNetworkStatus: %+v\n",
+				ctx.DeviceNetworkStatus)
+			ctx.PubDeviceNetworkStatus.Publish("global",
+				ctx.DeviceNetworkStatus)
+		}
+		return
+	}
 	SetupVerify(ctx, nextIndex)
 
 	VerifyDevicePortConfig(ctx)
@@ -298,7 +311,7 @@ func VerifyPending(pending *DPCPending,
 	pending.TestCount = MaxDPCRetestCount
 
 	// We want connectivity to zedcloud via atleast one Management port.
-	err := VerifyDeviceNetworkStatus(pending.PendDNS, 1)
+	err, cf := VerifyDeviceNetworkStatus(pending.PendDNS, 1)
 	status := DPC_FAIL
 	if err == nil {
 		pending.PendDPC.LastSucceeded = time.Now()
@@ -310,6 +323,12 @@ func VerifyPending(pending *DPCPending,
 		errStr := fmt.Sprintf("Failed network test: %s",
 			err)
 		log.Errorf("VerifyPending: %s\n", errStr)
+		if cf {
+			log.Errorf("VerifyPending: certificate failure")
+			// NOTE: do not increase TestCount; we retry until
+			// the certificate is fixed on the server side.
+			status = DPC_WAIT
+		}
 		pending.PendDPC.LastFailed = time.Now()
 		pending.PendDPC.LastError = errStr
 	}
@@ -381,6 +400,10 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 			// a recent LastFailed (a minute or less).
 			nextIndex := getNextTestableDPCIndex(ctx,
 				ctx.NextDPCIndex+1)
+			if nextIndex == -1 {
+				log.Infof("VerifyDevicePortConfig: nothing testable")
+				return
+			}
 			SetupVerify(ctx, nextIndex)
 			continue
 
@@ -463,7 +486,7 @@ func getNextTestableDPCIndex(ctx *DeviceNetworkContext, start int) int {
 		newIndex = (newIndex + 1) % dpcListLen
 	}
 	if count == dpcListLen {
-		newIndex = 0
+		newIndex = -1
 	}
 	log.Infof("getNextTestableDPCIndex: current index %d new %d\n", ctx.NextDPCIndex,
 		newIndex)
@@ -655,6 +678,7 @@ func (ctx *DeviceNetworkContext) doApplyDevicePortConfig(delete bool) {
 func (ctx *DeviceNetworkContext) doPublishDNSForPortConfig(
 	portConfig *types.DevicePortConfig) {
 
+	log.Infof("doPublishDNSForPortConfig()")
 	dnStatus, _ := MakeDeviceNetworkStatus(*portConfig,
 		*ctx.DeviceNetworkStatus)
 	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
