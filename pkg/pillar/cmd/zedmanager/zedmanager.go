@@ -776,10 +776,6 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)
-	if status.Testing {
-		log.Infof("handleDNSModify ignoring Testing\n")
-		return
-	}
 	if cmp.Equal(deviceNetworkStatus, status) {
 		log.Infof("handleDNSModify no change\n")
 		return

@@ -370,10 +370,6 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)
-	if status.Testing {
-		log.Infof("handleDNSModify ignoring Testing\n")
-		return
-	}
 	if cmp.Equal(deviceNetworkStatus, status) {
 		log.Infof("handleDNSModify no change\n")
 		return
@@ -618,7 +614,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		reportLogs.Log = []*logs.LogEntry{}
 		return false
 	}
-	resp, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
+	resp, _, err, _ := zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
 		size, buf, iteration, return400)
 	// XXX We seem to still get large or bad messages which are rejected
 	// by the server. Ignore them to make sure we can log subsequent ones.

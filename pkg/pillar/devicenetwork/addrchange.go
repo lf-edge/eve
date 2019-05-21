@@ -134,6 +134,8 @@ func HandleAddressChange(ctx *DeviceNetworkContext) {
 	// Check if we have more or less addresses
 	var dnStatus types.DeviceNetworkStatus
 
+	log.Infof("HandleAddressChange Pending.Inprogress %v",
+		ctx.Pending.Inprogress)
 	if !ctx.Pending.Inprogress {
 		dnStatus = *ctx.DeviceNetworkStatus
 		status, _ := MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
