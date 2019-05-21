@@ -206,9 +206,12 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 	}
 
 	const return400 = false
-	resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration, return400)
+	resp, contents, err, cf := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration, return400)
 	if err != nil {
 		log.Errorf("getLatestConfig failed: %s\n", err)
+		if cf {
+			log.Errorf("getLatestConfig certificate failure")
+		}
 		if getconfigCtx.ledManagerCount == 4 {
 			// Inform ledmanager about loss of config from cloud
 			types.UpdateLedManagerConfig(2)

@@ -277,10 +277,13 @@ func Run() {
 	// Post something without a return type.
 	// Returns true when done; false when retry
 	myPost := func(retryCount int, requrl string, reqlen int64, b *bytes.Buffer) bool {
-		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+		resp, contents, err, cf := zedcloud.SendOnAllIntf(zedcloudCtx,
 			requrl, reqlen, b, retryCount, return400)
 		if err != nil {
 			log.Errorln(err)
+			if cf {
+				log.Errorln("Certificate failure")
+			}
 			return false
 		}
 
@@ -380,10 +383,13 @@ func Run() {
 	// Returns the response when done. Caller can not use resp.Body but
 	// can use the contents []byte
 	myGet := func(requrl string, retryCount int) (bool, *http.Response, []byte) {
-		resp, contents, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+		resp, contents, err, cf := zedcloud.SendOnAllIntf(zedcloudCtx,
 			requrl, 0, nil, retryCount, return400)
 		if err != nil {
 			log.Errorln(err)
+			if cf {
+				log.Errorln("Certificate failure")
+			}
 			return false, nil, nil
 		}
 
@@ -671,10 +677,6 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)
-	if status.Testing {
-		log.Infof("handleDNSModify ignoring Testing\n")
-		return
-	}
 	if cmp.Equal(ctx.deviceNetworkStatus, status) {
 		log.Infof("handleDNSModify no change\n")
 		return

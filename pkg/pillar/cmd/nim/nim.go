@@ -589,7 +589,7 @@ func updateFilteredFallback(ctx *nimContext) {
 }
 
 func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool {
-	err := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1)
+	err, cf := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1)
 	if err == nil {
 		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
 		if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
@@ -602,7 +602,7 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 		ctx.NetworkTestTimer = time.NewTimer(time.Duration(ctx.NetworkTestInterval) * time.Second)
 		return true
 	}
-	if !ctx.CloudConnectivityWorks {
+	if !ctx.CloudConnectivityWorks && !cf {
 		// If previous cloud connectivity test also failed, it means
 		// that the current DPC configuration stopped working.
 		// In this case we start the process where device tries to
@@ -620,6 +620,11 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 			devicenetwork.RestartVerify(ctx, "tryDeviceConnectivityToCloud")
 		}
 	} else {
+		if cf {
+			log.Infof("tryDeviceConnectivityToCloud: certificate failure")
+		} else {
+			log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test restart timer due to %s", err)
+		}
 		// Restart network test timer for next slot.
 		ctx.NetworkTestTimer = time.NewTimer(time.Duration(ctx.NetworkTestInterval) * time.Second)
 		ctx.CloudConnectivityWorks = false
