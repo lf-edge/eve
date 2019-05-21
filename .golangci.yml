@@ -8,3 +8,4 @@ linters:
     - gochecknoglobals  # error on globals; unreliable output
     - lll               # line length check
     - unconvert         # Remove unnecessary type conversions; unreliable output
+    - deadcode          # dead code; unreliable output
