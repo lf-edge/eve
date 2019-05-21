@@ -1212,7 +1212,7 @@ func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW) {
 		// The other states are use for app instances not for baseos
 		swInfo.UserStatus = info.BaseOsStatus_NONE
 	}
-	if swInfo.SwErr.Description != "" {
+	if swInfo.SwErr != nil && swInfo.SwErr.Description != "" {
 		swInfo.UserStatus = info.BaseOsStatus_FAILED
 	}
 }
