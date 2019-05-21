@@ -5,4 +5,6 @@ run:
 linters:
   enable-all: true
   disable:
-    - lll  # line length check
+    - gochecknoglobals  # error on globals; unreliable output
+    - lll               # line length check
+    - unconvert         # Remove unnecessary type conversions; unreliable output
