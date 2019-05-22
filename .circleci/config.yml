@@ -68,7 +68,7 @@ jobs:
             --linecomments=''
             --bugcomments=briefreport,htmlout,junit
             --junit-results-xml=/tmp/yetus-out/results.xml
-            --tests-filter=checkmake,golang,golancilint,revive
+            --tests-filter=checkmake,golang,golangcilint
             --continuous-improvement=true
       - store_test_results:
           path: /tmp/yetus-out
