@@ -277,7 +277,7 @@ func Run() {
 	// Post something without a return type.
 	// Returns true when done; false when retry
 	myPost := func(retryCount int, requrl string, reqlen int64, b *bytes.Buffer) bool {
-		resp, contents, err, cf := zedcloud.SendOnAllIntf(zedcloudCtx,
+		resp, contents, cf, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			requrl, reqlen, b, retryCount, return400)
 		if err != nil {
 			log.Errorln(err)
@@ -383,7 +383,7 @@ func Run() {
 	// Returns the response when done. Caller can not use resp.Body but
 	// can use the contents []byte
 	myGet := func(requrl string, retryCount int) (bool, *http.Response, []byte) {
-		resp, contents, err, cf := zedcloud.SendOnAllIntf(zedcloudCtx,
+		resp, contents, cf, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			requrl, 0, nil, retryCount, return400)
 		if err != nil {
 			log.Errorln(err)

@@ -311,7 +311,7 @@ func VerifyPending(pending *DPCPending,
 	pending.TestCount = MaxDPCRetestCount
 
 	// We want connectivity to zedcloud via atleast one Management port.
-	err, cf := VerifyDeviceNetworkStatus(pending.PendDNS, 1)
+	cf, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1)
 	status := DPC_FAIL
 	if err == nil {
 		pending.PendDPC.LastSucceeded = time.Now()
