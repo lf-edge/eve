@@ -69,7 +69,7 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 
 // Check if device can talk to outside world via atleast one of the free uplinks
 func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
-	retryCount int) (error, bool) {
+	retryCount int) (bool, error) {
 
 	log.Infof("VerifyDeviceNetworkStatus() %d\n", retryCount)
 	// Check if it is 1970 in which case we declare success since
@@ -77,7 +77,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	// forward.
 	if time.Now().Year() == 1970 {
 		log.Infof("VerifyDeviceNetworkStatus skip due to 1970")
-		return nil, false
+		return false, nil
 	}
 
 	serverFileName := "/config/server"
@@ -105,7 +105,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 		if err != nil {
 			errStr := "Onboarding certificate cannot be found"
 			log.Infof("VerifyDeviceNetworkStatus: %s\n", errStr)
-			return errors.New(errStr), false
+			return false, errors.New(errStr)
 		}
 		clientCert := &onboardingCert
 		tlsConfig, err = zedcloud.GetTlsConfig(serverName, clientCert)
@@ -113,7 +113,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 			errStr := "TLS configuration for talking to Zedcloud cannot be found"
 
 			log.Infof("VerifyDeviceNetworkStatus: %s\n", errStr)
-			return errors.New(errStr), false
+			return false, errors.New(errStr)
 		}
 	}
 	zedcloudCtx.TlsConfig = tlsConfig
@@ -122,26 +122,26 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 		if err != nil {
 			errStr := fmt.Sprintf("GetNetworkProxy failed %s", err)
 			log.Errorf("VerifyDeviceNetworkStatus: %s\n", errStr)
-			return errors.New(errStr), false
+			return false, errors.New(errStr)
 		}
 	}
-	cloudReachable, err, cf := zedcloud.VerifyAllIntf(zedcloudCtx, testUrl, retryCount, 1)
+	cloudReachable, cf, err := zedcloud.VerifyAllIntf(zedcloudCtx, testUrl, retryCount, 1)
 	if err != nil {
 		log.Errorf("VerifyDeviceNetworkStatus: VerifyAllIntf failed %s\n",
 			err)
 		if cf {
 			log.Errorf("VerifyDeviceNetworkStatus: VerifyAllIntf certificate failure")
 		}
-		return err, cf
+		return cf, err
 	}
 
 	if cloudReachable {
 		log.Infof("Uplink test SUCCESS to URL: %s", testUrl)
-		return nil, cf
+		return cf, nil
 	}
 	errStr := fmt.Sprintf("Uplink test FAIL to URL: %s", testUrl)
 	log.Errorf("VerifyDeviceNetworkStatus: %s\n", errStr)
-	return errors.New(errStr), cf
+	return cf, errors.New(errStr)
 }
 
 // Calculate local IP addresses to make a types.DeviceNetworkStatus

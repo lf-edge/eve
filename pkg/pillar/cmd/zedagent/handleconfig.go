@@ -206,7 +206,7 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 	}
 
 	const return400 = false
-	resp, contents, err, cf := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration, return400)
+	resp, contents, cf, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration, return400)
 	if err != nil {
 		log.Errorf("getLatestConfig failed: %s\n", err)
 		if cf {

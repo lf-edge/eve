@@ -40,7 +40,7 @@ type ZedCloudContext struct {
 // use []byte contents return.
 // If we trip on any certificate failure (such as expired) we return that
 // as the last return parameter so that callers can tell we did reach the controller
-func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int, return400 bool) (*http.Response, []byte, error, bool) {
+func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int, return400 bool) (*http.Response, []byte, bool, error) {
 	// If failed then try the non-free
 	const allowProxy = true
 	var errorList []error
@@ -75,7 +75,7 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 		for _, intf := range intfs {
 			// XXX Hard coded timeout to 15 seconds. Might need some adjusting
 			// depending on network conditions down the road.
-			resp, contents, err, cf := SendOnIntf(ctx, url, intf, reqlen, b, allowProxy, 15)
+			resp, contents, cf, err := SendOnIntf(ctx, url, intf, reqlen, b, allowProxy, 15)
 			if cf {
 				certFailure = true
 			}
@@ -83,19 +83,19 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 				resp.StatusCode == 400 {
 				log.Infof("sendOnAllIntf: for %s reqlen %d ignore code %d\n",
 					url, reqlen, resp.StatusCode)
-				return resp, nil, err, certFailure
+				return resp, nil, certFailure, err
 			}
 			if err != nil {
 				errorList = append(errorList, err)
 				continue
 			}
-			return resp, contents, nil, certFailure
+			return resp, contents, certFailure, nil
 		}
 	}
 	errStr := fmt.Sprintf("All attempts to connect to %s failed: %v",
 		url, errorList)
 	log.Errorln(errStr)
-	return nil, nil, errors.New(errStr), certFailure
+	return nil, nil, certFailure, errors.New(errStr)
 }
 
 // We try with free interfaces first. If we find enough free interfaces through
@@ -104,7 +104,7 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 // If we trip on any certificate failure (such as expired) we return that
 // as the last return parameter so that callers can tell we did reach the controller
 func VerifyAllIntf(ctx ZedCloudContext,
-	url string, successCount int, iteration int) (bool, error, bool) {
+	url string, successCount int, iteration int) (bool, bool, error) {
 	var intfSuccessCount int = 0
 	const allowProxy = true
 	var errorList []error
@@ -112,7 +112,7 @@ func VerifyAllIntf(ctx ZedCloudContext,
 
 	if successCount <= 0 {
 		// No need to test. Just return true.
-		return true, nil, certFailure
+		return true, certFailure, nil
 	}
 
 	for try := 0; try < 2; try += 1 {
@@ -131,7 +131,7 @@ func VerifyAllIntf(ctx ZedCloudContext,
 				// We have enough uplinks with cloud connectivity working.
 				break
 			}
-			resp, _, err, cf := SendOnIntf(ctx, url, intf, 0, nil, allowProxy, 15)
+			resp, _, cf, err := SendOnIntf(ctx, url, intf, 0, nil, allowProxy, 15)
 			if cf {
 				certFailure = true
 			}
@@ -160,15 +160,15 @@ func VerifyAllIntf(ctx ZedCloudContext,
 		errStr := fmt.Sprintf("All test attempts to connect to %s failed: %v",
 			url, errorList)
 		log.Errorln(errStr)
-		return false, errors.New(errStr), certFailure
+		return false, certFailure, errors.New(errStr)
 	}
 	if intfSuccessCount < successCount {
 		errStr := fmt.Sprintf("Not enough Ports (%d) against required count %d to reach Zedcloud; last failed with %v",
 			intfSuccessCount, successCount, errorList)
 		log.Errorln(errStr)
-		return false, errors.New(errStr), certFailure
+		return false, certFailure, errors.New(errStr)
 	}
-	return true, nil, certFailure
+	return true, certFailure, nil
 }
 
 // Tries all source addresses on interface until one succeeds.
@@ -178,7 +178,7 @@ func VerifyAllIntf(ctx ZedCloudContext,
 // to allow the caller to look at StatusCode
 // If we trip on any certificate failure (such as expired) we return that
 // as the last return parameter so that callers can tell we did reach the controller
-func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool, timeout int) (*http.Response, []byte, error, bool) {
+func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool, timeout int) (*http.Response, []byte, bool, error) {
 
 	var reqUrl string
 	var useTLS bool
@@ -206,7 +206,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		errStr := fmt.Sprintf("No IP addresses to connect to %s using intf %s",
 			reqUrl, intf)
 		log.Debugln(errStr)
-		return nil, nil, errors.New(errStr), certFailure
+		return nil, nil, certFailure, errors.New(errStr)
 	}
 	// Get the transport header with proxy information filled
 	proxyUrl, err := LookupProxy(ctx.DeviceNetworkStatus, intf, reqUrl)
@@ -234,7 +234,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 			retryCount, intf)
 		if err != nil {
 			log.Error(err)
-			return nil, nil, err, certFailure
+			return nil, nil, certFailure, err
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
 		log.Debugf("Connecting to %s using intf %s source %v\n",
@@ -374,7 +374,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		switch resp.StatusCode {
 		case http.StatusOK:
 			log.Debugf("SendOnIntf to %s StatusOK\n", reqUrl)
-			return resp, contents, nil, certFailure
+			return resp, contents, certFailure, nil
 		default:
 			errStr := fmt.Sprintf("sendOnIntf to %s reqlen %d statuscode %d %s",
 				reqUrl, reqlen, resp.StatusCode,
@@ -382,7 +382,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 			log.Errorln(errStr)
 			log.Debugf("received response %v\n", resp)
 			// Get caller to schedule a retry based on StatusCode
-			return resp, nil, errors.New(errStr), certFailure
+			return resp, nil, certFailure, errors.New(errStr)
 		}
 	}
 	if ctx.FailureFunc != nil {
@@ -391,5 +391,5 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 	errStr := fmt.Sprintf("All attempts to connect to %s using intf %s failed: %v",
 		reqUrl, intf, errorList)
 	log.Errorln(errStr)
-	return nil, nil, errors.New(errStr), certFailure
+	return nil, nil, certFailure, errors.New(errStr)
 }

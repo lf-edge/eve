@@ -92,7 +92,7 @@ func (ctx *DeferredContext) handleDeferred(event time.Time,
 			}
 			log.Infof("Trying to send for %s item %d data size %d\n",
 				key, i, item.size)
-			resp, _, err, _ := SendOnAllIntf(item.zedcloudCtx, item.url,
+			resp, _, _, err := SendOnAllIntf(item.zedcloudCtx, item.url,
 				item.size, item.buf, iteration, item.return400)
 			if item.return400 && resp != nil &&
 				resp.StatusCode == 400 {
