@@ -1,0 +1,17 @@
+---
+run:
+  deadline: 30m
+
+linters:
+  enable-all: true
+  disable:
+    - gochecknoglobals  # unreliable
+    - golint            # covered by revive
+    - lll               # line length check
+    - typecheck         # See golangci/golangci-lint#419
+    - unused            # deprecated
+    - varcheck          # unreliable
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
