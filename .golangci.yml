@@ -5,7 +5,13 @@ run:
 linters:
   enable-all: true
   disable:
-    - gochecknoglobals  # error on globals; unreliable output
+    - gochecknoglobals  # unreliable
+    - golint            # covered by revive
     - lll               # line length check
-    - unconvert         # Remove unnecessary type conversions; unreliable output
-    - deadcode          # dead code; unreliable output
+    - typecheck         # See golangci/golangci-lint#419
+    - unused            # deprecated
+    - varcheck          # unreliable
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -43,6 +43,12 @@ jobs:
       - run:
           name: install libpcap-dev
           command: apt-get -q install --no-install-recommends -y libpcap-dev
+      - run:
+          name: upgrade golangci-lint
+          command: >
+                    go get
+                    github.com/golangci/golangci-lint/cmd/golangci-lint@692dacb773b703162c091c2d8c59f9cd2d6801db
+                    && mv /root/go/bin/golangci-lint /usr/local/bin
       - checkout
       # create a fake artifact so that Apache Yetus knows the URL
       - run:
