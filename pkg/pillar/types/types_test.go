@@ -2,7 +2,7 @@ package types
 
 import (
   "testing"
-
+  "errors"
   log "github.com/sirupsen/logrus"
 )
 type TestUrlToSafenameMatrixEntry struct {
@@ -13,6 +13,12 @@ type TestUrlToSafenameMatrixEntry struct {
 type TestSafenameToFilenameMatrixEntry struct {
   safename  string
   filename  string
+}
+
+type TestParseTriStateMatrixEntry struct {
+  err  error
+  ts TriState
+  value     string
 }
 
 // Test Completed, needs input/output
@@ -60,6 +66,25 @@ func TestSafenameToFilename(t *testing.T) {
 
 func TestParseTriState(t *testing.T) {
 	log.Infof("TestLookupIoBundle: START\n")
-	SafenameToFilename("Hello")
+  testMatrix := []TestParseTriStateMatrixEntry{
+		{err: "helloworld", ts = "helloworld", value: "hello"},
+		{err: "helloworld", ts = "helloworld", value: "hello"},
+    {err: "helloworld", ts = "helloworld", value: "hello"},
+    {err: "helloworld", ts = "helloworld", value: "hello"},
+    {err: "helloworld", ts = "helloworld", value: "hello"},
+	}
+
+  for index := range testMatrix {
+		entry := &testMatrix[index]
+		ts, err := ParseTriState(entry.value)
+    if ts != entry.ts {
+			t.Errorf("Test Entry Index %d Failed: Expected TS: %t, Actual TS: %t\n",
+				index, entry.ts, ts)
+		}
+    else if err != entry.err {
+      t.Errorf("Test Entry Index %d Failed: Expected Error: %t, Actual Error: %t\n",
+				index, entry.err, err)
+    }
+  }
 	log.Infof("TestLookupIoBundle: DONE\n")
 }
