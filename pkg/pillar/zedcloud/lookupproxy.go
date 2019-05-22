@@ -69,11 +69,7 @@ func LookupProxy(status *types.DeviceNetworkStatus, ifname string,
 			proxy0 = strings.Split(proxy0, " ")[1]
 			// Proxy address returned by PAC does not have the URL scheme.
 			// We prepend the scheme (http/https) of the incoming raw URL.
-			if len(u.Scheme) == 0 {
-				proxy0 = "http://" + proxy0
-			} else {
-				proxy0 = u.Scheme + "://" + proxy0
-			}
+			proxy0 = "http://" + proxy0
 			proxy, err := url.Parse(proxy0)
 			if err != nil {
 				errStr := fmt.Sprintf("LookupProxy: PAC file returned invalid proxy %s: %s",
