@@ -122,7 +122,9 @@ done
 
 # In case watchdog is running we restart it with the base file
 if [ -f /var/run/watchdog.pid ]; then
+    # XXX define killwait function?
     kill "$(cat /var/run/watchdog.pid)"
+    sleep 5 # Wait for it to exit so it can be restarted
 fi
 # Always run watchdog(8) in case we have a hardware watchdog timer to advance
 /usr/sbin/watchdog -c $TMPDIR/watchdogbase.conf -F -s &
@@ -253,6 +255,7 @@ fi
 # Restart watchdog - just for ledmanager so far
 if [ -f /var/run/watchdog.pid ]; then
     kill "$(cat /var/run/watchdog.pid)"
+    sleep 5 # Wait for it to exit so it can be restarted
 fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogled.conf -F -s &
 
@@ -295,6 +298,7 @@ $BINDIR/nim -c $CURPART &
 # Restart watchdog ledmanager and nim
 if [ -f /var/run/watchdog.pid ]; then
     kill "$(cat /var/run/watchdog.pid)"
+    sleep 5 # Wait for it to exit so it can be restarted
 fi
 /usr/sbin/watchdog -c $TMPDIR/watchdognim.conf -F -s &
 
@@ -331,6 +335,7 @@ done
 # Restart watchdog ledmanager, client, and nim
 if [ -f /var/run/watchdog.pid ]; then
     kill "$(cat /var/run/watchdog.pid)"
+    sleep 5 # Wait for it to exit so it can be restarted
 fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogclient.conf -F -s &
 
@@ -441,6 +446,7 @@ echo \{\"MaxSpace\":"$space"\} >/var/tmp/zededa/GlobalDownloadConfig/global.json
 # Restart watchdog ledmanager and nim
 if [ -f /var/run/watchdog.pid ]; then
     kill "$(cat /var/run/watchdog.pid)"
+    sleep 5 # Wait for it to exit so it can be restarted
 fi
 /usr/sbin/watchdog -c $TMPDIR/watchdognim.conf -F -s &
 
@@ -458,6 +464,7 @@ fi
 # Now run watchdog for all agents
 if [ -f /var/run/watchdog.pid ]; then
     kill "$(cat /var/run/watchdog.pid)"
+    sleep 5 # Wait for it to exit so it can be restarted
 fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
 
