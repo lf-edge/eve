@@ -614,7 +614,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		reportLogs.Log = []*logs.LogEntry{}
 		return false
 	}
-	resp, _, err, _ := zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
+	resp, _, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
 		size, buf, iteration, return400)
 	// XXX We seem to still get large or bad messages which are rejected
 	// by the server. Ignore them to make sure we can log subsequent ones.
