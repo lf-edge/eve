@@ -3,7 +3,6 @@
 EVE community shares the spirit of the [Apache Way](https://apache.org/theapacheway/)
 and believes in "Community over Code". We welcome any and all types of contributions
 that benefit the community at large, not just code contributions:
-
 * Providing user feedback
 * Share your use cases
 * Evangeline or collaborate with related products and technologies
