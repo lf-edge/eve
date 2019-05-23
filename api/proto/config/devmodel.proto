@@ -13,7 +13,7 @@ option java_package = "com.zededa.cloud.uservice.proto";
 //
 //  SystemAdapters:
 //     Are the higher level contstucts these are IP-ready network end point
-//     description.  SystemAdapters used by EVE device to connect 
+//     description.  SystemAdapters used by EVE device to connect
 //	to controller, alternatively systemAdapters are used to share the
 //      network connections for applications.
 //     
@@ -92,6 +92,10 @@ enum PhyIoType {
         PhyIoEth = 1;
         PhyIoUSB = 2;
         PhyIoCOM = 3;
+        PhyIoAudio = 4;
+        PhyIoWLAN = 5;
+        PhyIoWWAN = 6;
+        PhyIoHDMI = 7;
         PhyIoOther = 255;
 }
 
@@ -103,21 +107,36 @@ enum PhyIoMemberUsage {
 	PhyIoUsageDedicated = 3;
 }
 
-// PhysicalIO: 
-//    Absolute low level description of physical buses and ports that are 
-//    available on given platfrom. 
-//    Collection of these IOs, connstitue what we would call as hardware 
+// PhysicalIO:
+//    Absolute low level description of physical buses and ports that are
+//    available on given platfrom.
+//    Collection of these IOs, connstitue what we would call as hardware
 //    model. Each physical IO is manageable and visible to EVE software, and
-//    it can be further configured to either provide IP connectivity or 
+//    it can be further configured to either provide IP connectivity or
 //    directly be given to workloads
 message PhysicalIO {
-	PhyIoType ptype           = 100;
-	string phylabel           = 101;
-	map <string, string> phyaddrs      = 102;
-	string logicallabel       = 103;
-	string  assigngrp         = 104;
-	PhyIoMemberUsage usage    = 105; 
+	PhyIoType ptype           = 1;
+
+	// physical label typically printed on box.
+	// Example Eth0, Eth1, Wifi0, ComA, ComB
+	string phylabel           = 2;
+
+	// the hardware bus address
+	map <string, string> phyaddrs = 3;
+
+	// provides the ability to model designer to rename the physicalIO
+	// port to more understandable
+	// For example Eth0->Mgmt0
+	//      or USBA->ConfigDiskA etc
+	string logicallabel       = 4;
+
+	// Assignment Group, is unique label that is applied across PhysicalIOs
+	// EntireGroup can be assigned to application or nothing at all
+	string  assigngrp         = 5;
+
+	PhyIoMemberUsage usage    = 6;
 
 	// physical and logical attributes
-	map <string, string> cbattr = 106;
+	//    For example in WWAN to which firmware version to laod etc
+	map <string, string> cbattr = 7;
 }
