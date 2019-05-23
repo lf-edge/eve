@@ -27,9 +27,6 @@ func TestUrlToSafename(t *testing.T) {
 	testMatrix = []TestUrlToSafenameMatrixEntry{
     {safename: "helloworld", url: "helloworld", sha: "helloworld"},
     {safename: "helloworld", url: "helloworld", sha: "helloworld"},
-    {safename: "helloworld", url: "helloworld", sha: "helloworld"},
-    {safename: "helloworld", url: "helloworld", sha: "helloworld"},
-    {safename: "helloworld", url: "helloworld", sha: "helloworld"},
   }
   for index := range testMatrix {
     entry := &testMatrix[index]
