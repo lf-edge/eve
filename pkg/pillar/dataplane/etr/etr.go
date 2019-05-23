@@ -238,7 +238,9 @@ func StartEtrNat(ephPort int,
 		upLink, ephPort)
 	handle := SetupEtrPktCapture(ephPort, upLink)
 	if handle == nil {
-		log.Fatal("StartEtrNat: Unable to create ETR packet capture.\n")
+		log.Error("StartEtrNat: XXX Unable to create ETR packet capture.\n")
+		// XXX workaround for fatal when interfaces come and go
+		return nil, -1, -1
 	}
 
 	// Create raw socket for forwarding decapsulated IPv4 packets
