@@ -3,6 +3,15 @@
 
 package types
 
+type ZbootConfig struct {
+	PartitionLabel string
+	TestComplete   bool
+}
+
+func (status ZbootConfig) Key() string {
+	return status.PartitionLabel
+}
+
 type ZbootStatus struct {
 	PartitionLabel   string
 	PartitionDevname string
@@ -10,6 +19,7 @@ type ZbootStatus struct {
 	ShortVersion     string
 	LongVersion      string
 	CurrentPartition bool
+	TestComplete     bool
 }
 
 func (status ZbootStatus) Key() string {

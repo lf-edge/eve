@@ -260,7 +260,7 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 			log.Infof("getLatestConfig, curPart %s inprogress waiting for %d seconds\n", curPart, (successLimit-timePassed)/time.Second)
 			ctx.remainingTestTime = successLimit - timePassed
 		} else {
-			initiateBaseOsZedCloudTestComplete(getconfigCtx)
+			initiateBaseOsZedCloudTestComplete(ctx)
 			ctx.remainingTestTime = 0
 		}
 		// Send updated remainingTestTime to zedcloud
