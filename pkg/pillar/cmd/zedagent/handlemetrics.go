@@ -84,6 +84,11 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 // Called when globalConfig changes
 // Assumes the caller has verifier that the interval has changed
 func updateMetricsTimer(tickerHandle interface{}) {
+
+	if tickerHandle == nil {
+		log.Warnf("updateMetricsTimer: no metricsTickerHandle yet")
+		return
+	}
 	interval := time.Duration(globalConfig.MetricInterval) * time.Second
 	log.Infof("updateMetricsTimer() change to %v\n", interval)
 	max := float64(interval)
@@ -1198,11 +1203,15 @@ func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW) {
 			// XXX progress based on time left??
 			swInfo.SubStatusStr = "About to reboot"
 		case "inprogress":
-			swInfo.UserStatus = info.BaseOsStatus_UPDATING
-			swInfo.SubStatus = info.BaseOsSubStatus_UPDATE_TESTING
-			swInfo.SubStatusProgress = uint32(ctx.remainingTestTime / time.Second)
-			swInfo.SubStatusStr = fmt.Sprintf("Testing for %d more seconds",
-				swInfo.SubStatusProgress)
+			if swInfo.Activated {
+				swInfo.UserStatus = info.BaseOsStatus_UPDATING
+				swInfo.SubStatus = info.BaseOsSubStatus_UPDATE_TESTING
+				swInfo.SubStatusProgress = uint32(ctx.remainingTestTime / time.Second)
+				swInfo.SubStatusStr = fmt.Sprintf("Testing for %d more seconds",
+					swInfo.SubStatusProgress)
+			} else {
+				swInfo.UserStatus = info.BaseOsStatus_FAILED
+			}
 
 		case "unused":
 			swInfo.UserStatus = info.BaseOsStatus_NONE

@@ -157,6 +157,12 @@ func triggerGetConfig(tickerHandle interface{}) {
 // Called when globalConfig changes
 // Assumes the caller has verifier that the interval has changed
 func updateConfigTimer(tickerHandle interface{}) {
+
+	if tickerHandle == nil {
+		// Happens if we have a GlobalConfig setting in /persist/
+		log.Warnf("updateConfigTimer: no configTickerHandle yet")
+		return
+	}
 	interval := time.Duration(globalConfig.ConfigInterval) * time.Second
 	log.Infof("updateConfigTimer() change to %v\n", interval)
 	max := float64(interval)
