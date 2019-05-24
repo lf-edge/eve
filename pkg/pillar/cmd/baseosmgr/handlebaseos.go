@@ -440,7 +440,7 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 		// If there is no change to the other we don't log error
 		// but still retry later
 		status.TooEarly = true
-		errStr := fmt.Sprintf("Attempt to install baseOs update %s while testing is in progress for %s: refused",
+		errStr := fmt.Sprintf("Attempt to install baseOs update %s while testing is in progress for %s: deferred",
 			config.BaseOsVersion, curPartVersion)
 		if otherPartVersion == config.BaseOsVersion {
 			log.Infoln(errStr)
