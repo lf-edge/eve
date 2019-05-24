@@ -91,11 +91,14 @@ func publishZbootConfig(ctx *zedagentContext, config *types.ZbootConfig) {
 // mark the zedcloud health/connectivity test complete flag
 // for baseosmgr to pick up and complete the partition activation
 func initiateBaseOsZedCloudTestComplete(ctx *zedagentContext) {
+
 	log.Infof("initiateBaseOsZedCloudTestComplete():\n")
-	pub := ctx.pubZbootConfig
-	items := pub.GetAll()
-	for key, c := range items {
-		config := cast.CastZbootConfig(c)
+	partitionNames := []string{"IMGA", "IMGB"}
+	for _, key := range partitionNames {
+		config := lookupZbootConfig(ctx, key)
+		if config == nil {
+			config = &types.ZbootConfig{PartitionLabel: key}
+		}
 		if config.TestComplete {
 			continue
 		}
@@ -104,7 +107,7 @@ func initiateBaseOsZedCloudTestComplete(ctx *zedagentContext) {
 			if isBaseOsCurrentPartition(ctx, status.PartitionLabel) {
 				log.Infof("initiateBaseOsZedCloudTestComplete(%s): done\n", key)
 				config.TestComplete = true
-				publishZbootConfig(ctx, &config)
+				publishZbootConfig(ctx, config)
 			}
 		}
 	}
