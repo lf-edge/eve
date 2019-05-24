@@ -81,7 +81,8 @@ type DNSContext struct {
 type zedagentContext struct {
 	verifierRestarted         bool              // Information from handleVerifierRestarted
 	getconfigCtx              *getconfigContext // Cross link
-	zbootRestarted            bool              // published by baseosmgr
+	pubZbootConfig            *pubsub.Publication
+	zbootRestarted            bool // published by baseosmgr
 	assignableAdapters        *types.AssignableAdapters
 	subAssignableAdapters     *pubsub.Subscription
 	iteration                 int
@@ -301,6 +302,14 @@ func Run() {
 	}
 	pubBaseOsConfig.ClearRestarted()
 	getconfigCtx.pubBaseOsConfig = pubBaseOsConfig
+
+	pubZbootConfig, err := pubsub.Publish(agentName,
+		types.ZbootConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubZbootConfig.ClearRestarted()
+	zedagentCtx.pubZbootConfig = pubZbootConfig
 
 	pubDatastoreConfig, err := pubsub.Publish(agentName,
 		types.DatastoreConfig{})
@@ -972,7 +981,6 @@ func handleBaseOsStatusModify(ctxArg interface{}, key string, statusArg interfac
 		log.Errorf("handleBaseOsStatusModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.Key(), status)
 		return
 	}
-	doBaseOsZedCloudTestComplete(ctx, status)
 	doBaseOsDeviceReboot(ctx, status)
 	publishDevInfo(ctx)
 	log.Infof("handleBaseOsStatusModify(%s) done\n", key)
@@ -1067,17 +1075,24 @@ func handleAADelete(ctxArg interface{}, key string,
 
 func handleZbootStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	if isBaseOsValidPartitionLabel(key) {
-		log.Infof("handleZbootStatusModify: for %s\n", key)
+
+	ctx := ctxArg.(*zedagentContext)
+	status := cast.CastZbootStatus(statusArg)
+	if !isBaseOsValidPartitionLabel(key) {
+		log.Errorf("handleZbootStatusModify: invalid key %s\n", key)
+		return
 	}
-	// Nothing to do
+	log.Infof("handleZbootStatusModify: for %s\n", key)
+	doZbootTestComplete(ctx, status)
 }
 
 func handleZbootStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	if isBaseOsValidPartitionLabel(key) {
-		log.Infof("handleZbootStatusDelete: for %s\n", key)
+	if !isBaseOsValidPartitionLabel(key) {
+		log.Errorf("handleZbootStatusDelete: invalid key %s\n", key)
+		return
 	}
+	log.Infof("handleZbootStatusDelete: for %s\n", key)
 	// Nothing to do
 }
 

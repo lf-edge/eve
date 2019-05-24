@@ -69,6 +69,7 @@ type baseOsMgrContext struct {
 
 	subGlobalConfig          *pubsub.Subscription
 	subBaseOsConfig          *pubsub.Subscription
+	subZbootConfig           *pubsub.Subscription
 	subCertObjConfig         *pubsub.Subscription
 	subDatastoreConfig       *pubsub.Subscription
 	subBaseOsDownloadStatus  *pubsub.Subscription
@@ -156,6 +157,9 @@ func Run() {
 
 		case change := <-ctx.subBaseOsConfig.C:
 			ctx.subBaseOsConfig.ProcessChange(change)
+
+		case change := <-ctx.subZbootConfig.C:
+			ctx.subZbootConfig.ProcessChange(change)
 
 		case change := <-ctx.subDatastoreConfig.C:
 			ctx.subDatastoreConfig.ProcessChange(change)
@@ -283,15 +287,10 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 			key, status.Key(), status)
 		return
 	}
-	uuidStr := config.Key()
 	ctx := ctxArg.(*baseOsMgrContext)
 
-	log.Infof("handleBaseOsModify for %s Activate %v TestComplete %v\n",
-		config.BaseOsVersion, config.Activate, config.TestComplete)
-
-	if config.TestComplete != status.TestComplete && status.Activated {
-		handleBaseOsTestComplete(ctx, uuidStr, config, status)
-	}
+	log.Infof("handleBaseOsModify(%s) for %s Activate %v\n",
+		config.Key(), config.BaseOsVersion, config.Activate)
 
 	// Check image count
 	err := validateBaseOsConfig(ctx, config)
@@ -637,6 +636,17 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
+	// Look for ZbootConfig , from zedagent
+	subZbootConfig, err := pubsub.Subscribe("zedagent",
+		types.ZbootConfig{}, false, ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subZbootConfig.ModifyHandler = handleZbootConfigModify
+	subZbootConfig.DeleteHandler = handleZbootConfigDelete
+	ctx.subZbootConfig = subZbootConfig
+	subZbootConfig.Activate()
+
 	// Look for DatastorConfig, from zedagent
 	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
 		types.DatastoreConfig{}, false, ctx)
@@ -697,4 +707,37 @@ func initializeVerifierHandles(ctx *baseOsMgrContext) {
 	subBaseOsVerifierStatus.RestartHandler = handleVerifierRestarted
 	ctx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
 	subBaseOsVerifierStatus.Activate()
+}
+
+func handleZbootConfigModify(ctxArg interface{}, key string, configArg interface{}) {
+	ctx := ctxArg.(*baseOsMgrContext)
+	config := cast.CastZbootConfig(configArg)
+	status := getZbootStatus(ctx, key)
+	if status == nil {
+		log.Infof("handleZbootConfigModify: unknown %s\n", key)
+		return
+	}
+	log.Infof("handleZbootModify for %s TestComplete %v\n",
+		config.Key(), config.TestComplete)
+
+	if config.TestComplete != status.TestComplete {
+		handleZbootTestComplete(ctx, config, *status)
+	}
+
+	log.Infof("handleZbootConfigModify(%s) done\n", key)
+}
+
+func handleZbootConfigDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	log.Infof("handleZbootConfigDelete(%s)\n", key)
+	ctx := ctxArg.(*baseOsMgrContext)
+	status := getZbootStatus(ctx, key)
+	if status == nil {
+		log.Infof("handleZbootConfigDelete: unknown %s\n", key)
+		return
+	}
+	// Nothing to do. We report ZbootStatus for the IMG* partitions
+	// in any case
+	log.Infof("handleZbootConfigDelete(%s) done\n", key)
 }
