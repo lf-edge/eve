@@ -1084,6 +1084,7 @@ func handleZbootStatusModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleZbootStatusModify: for %s\n", key)
 	doZbootTestComplete(ctx, status)
+	publishDevInfo(ctx)
 }
 
 func handleZbootStatusDelete(ctxArg interface{}, key string,
