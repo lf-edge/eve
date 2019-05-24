@@ -30,6 +30,12 @@ if [ ! -f "$FILE" ]; then
     exit 1
 fi
 
+base=$(basename "$FILE")
+if [ "$base" != "usb.json" ]; then
+    echo "File $base must be named usb.json"
+    exit 1
+fi
+
 if ! python -m json.tool "$FILE" >/dev/null; then
     echo "Invalid json in $FILE"
     python -m json.tool "$FILE"
