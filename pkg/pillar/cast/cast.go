@@ -413,6 +413,18 @@ func CastUuidToNum(in interface{}) types.UuidToNum {
 	return output
 }
 
+func CastZbootConfig(in interface{}) types.ZbootConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in ZbootConfig")
+	}
+	var output types.ZbootConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastZbootConfig")
+	}
+	return output
+}
+
 func CastZbootStatus(in interface{}) types.ZbootStatus {
 	b, err := json.Marshal(in)
 	if err != nil {

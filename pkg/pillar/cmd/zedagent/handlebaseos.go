@@ -46,40 +46,85 @@ func lookupBaseOsStatus(ctx *zedagentContext, key string) *types.BaseOsStatus {
 	return &status
 }
 
+func lookupZbootConfig(ctx *zedagentContext, key string) *types.ZbootConfig {
+
+	pub := ctx.pubZbootConfig
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Infof("lookupZbootConfig(%s) not found\n", key)
+		return nil
+	}
+	config := cast.CastZbootConfig(c)
+	if config.Key() != key {
+		log.Errorf("lookupZbootConfig(%s) got %s; ignored %+v\n",
+			key, config.Key(), config)
+		return nil
+	}
+	return &config
+}
+
+func lookupZbootStatus(ctx *zedagentContext, key string) *types.ZbootStatus {
+	sub := ctx.subZbootStatus
+	st, _ := sub.Get(key)
+	if st == nil {
+		log.Infof("lookupZbootStatus(%s) not found\n", key)
+		return nil
+	}
+	status := cast.CastZbootStatus(st)
+	if status.Key() != key {
+		log.Errorf("lookupZbootStatus(%s) got %s; ignored %+v\n",
+			key, status.Key(), status)
+		return nil
+	}
+	return &status
+}
+
+func publishZbootConfig(ctx *zedagentContext, config *types.ZbootConfig) {
+
+	key := config.Key()
+	log.Debugf("publishZbootConfig key %s TestComplete %v\n",
+		key, config.TestComplete)
+	pub := ctx.pubZbootConfig
+	pub.Publish(key, config)
+}
+
 // mark the zedcloud health/connectivity test complete flag
 // for baseosmgr to pick up and complete the partition activation
-func initiateBaseOsZedCloudTestComplete(ctx *getconfigContext) {
+func initiateBaseOsZedCloudTestComplete(ctx *zedagentContext) {
 	log.Infof("initiateBaseOsZedCloudTestComplete():\n")
-	pub := ctx.pubBaseOsConfig
+	pub := ctx.pubZbootConfig
 	items := pub.GetAll()
 	for key, c := range items {
-		config := cast.CastBaseOsConfig(c)
+		config := cast.CastZbootConfig(c)
 		if config.TestComplete {
 			continue
 		}
-		status := lookupBaseOsStatus(ctx.zedagentCtx, key)
+		status := lookupZbootStatus(ctx, key)
 		if status != nil && status.PartitionLabel != "" {
-			if isBaseOsCurrentPartition(ctx.zedagentCtx, status.PartitionLabel) {
+			if isBaseOsCurrentPartition(ctx, status.PartitionLabel) {
 				log.Infof("initiateBaseOsZedCloudTestComplete(%s): done\n", key)
 				config.TestComplete = true
-				publishBaseOsConfig(ctx, &config)
+				publishZbootConfig(ctx, &config)
 			}
 		}
 	}
 }
 
-func doBaseOsZedCloudTestComplete(ctx *zedagentContext, status types.BaseOsStatus) {
+func doZbootTestComplete(ctx *zedagentContext, status types.ZbootStatus) {
 	key := status.Key()
 	if !status.TestComplete {
-		log.Infof("doBaseOsZedCloudTestComplete(%s): not TestComplete\n",
+		log.Infof("doZbootTestComplete(%s): not TestComplete\n",
 			key)
 	} else {
-		log.Infof("doBaseOsZedCloudTestComplete(%s):\n", key)
-		if config := lookupBaseOsConfig(ctx.getconfigCtx, key); config != nil {
-			config.TestComplete = false
-			publishBaseOsConfig(ctx.getconfigCtx, config)
-			log.Infof("doBaseOsZedCloudTestComplete(%s): done\n", key)
+		log.Infof("doZbootTestComplete(%s):\n", key)
+		config := lookupZbootConfig(ctx, key)
+		if config == nil {
+			config = &types.ZbootConfig{PartitionLabel: key}
 		}
+		config.TestComplete = false
+		publishZbootConfig(ctx, config)
+		log.Infof("doZbootTestComplete(%s): done\n", key)
+
 		if ctx.rebootCmdDeferred {
 			log.Infof("TestComplete and deferred reboot\n")
 			ctx.rebootCmdDeferred = false

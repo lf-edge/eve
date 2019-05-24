@@ -1500,7 +1500,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 			if i != 0 {
 				cfg = cfg + ", "
 			}
-			cfg = cfg + fmt.Sprintf("'%s'", pa)
+			cfg = cfg + fmt.Sprintf("'%s,rdm_policy=relaxed'", pa)
 		}
 		cfg = cfg + "]"
 		log.Debugf("Adding pci config <%s>\n", cfg)
