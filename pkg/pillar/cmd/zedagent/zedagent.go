@@ -1078,7 +1078,7 @@ func handleZbootStatusModify(ctxArg interface{}, key string,
 
 	ctx := ctxArg.(*zedagentContext)
 	status := cast.CastZbootStatus(statusArg)
-	if !isBaseOsValidPartitionLabel(key) {
+	if !isZbootValidPartitionLabel(key) {
 		log.Errorf("handleZbootStatusModify: invalid key %s\n", key)
 		return
 	}
@@ -1089,7 +1089,7 @@ func handleZbootStatusModify(ctxArg interface{}, key string,
 
 func handleZbootStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	if !isBaseOsValidPartitionLabel(key) {
+	if !isZbootValidPartitionLabel(key) {
 		log.Errorf("handleZbootStatusDelete: invalid key %s\n", key)
 		return
 	}
