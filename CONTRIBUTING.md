@@ -29,7 +29,6 @@ which is currently composed of 22 active members:
 * Hariharasubramanian C S <cshari@zededa.com>
 * Kalyan Nidumolu <kalyan@zededa.com>
 * Michel Onstein <michel@zededa.com>
-* Olaf Flebbe <of@oflebbe.de>
 * Prosenjit Pal <ppal@zededa.com>
 * Rishabh Gupta <rgupta@zededa.com>
 * Roman Shaposhnik <rvs@zededa.com>
