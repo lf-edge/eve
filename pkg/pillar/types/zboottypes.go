@@ -3,11 +3,14 @@
 
 package types
 
+// Information fed from zedagent to baseosmgr.
+// Only used to indicate that the testing of the image/partition is complete.
 type ZbootConfig struct {
 	PartitionLabel string
 	TestComplete   bool
 }
 
+// Return key used in pubsub for ZbootConfig
 func (status ZbootConfig) Key() string {
 	return status.PartitionLabel
 }

@@ -54,7 +54,7 @@ func lookupZbootConfig(ctx *zedagentContext, key string) *types.ZbootConfig {
 		log.Infof("lookupZbootConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastZbootConfig(c)
+	config := cast.ZbootConfig(c)
 	if config.Key() != key {
 		log.Errorf("lookupZbootConfig(%s) got %s; ignored %+v\n",
 			key, config.Key(), config)
