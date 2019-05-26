@@ -711,7 +711,7 @@ func initializeVerifierHandles(ctx *baseOsMgrContext) {
 
 func handleZbootConfigModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.CastZbootConfig(configArg)
+	config := cast.ZbootConfig(configArg)
 	status := getZbootStatus(ctx, key)
 	if status == nil {
 		log.Infof("handleZbootConfigModify: unknown %s\n", key)
