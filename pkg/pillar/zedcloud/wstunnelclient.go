@@ -39,6 +39,7 @@ type WSTunnelClient struct {
 	exitChan         chan struct{}     // channel to tell the tunnel goroutines to end
 	conn             *WSConnection     // reference to remote websocket connection
 	retryOnFailCount int               // no of times the ws connection attempts have continuously failed
+	requestSentChan  chan struct{}     // channel to inform that a new request was written to local relay
 }
 
 // WSConnection represents a single websocket connection
@@ -58,7 +59,7 @@ func InitializeTunnelClient(serverName string, localRelay string) *WSTunnelClien
 		TunnelServerName: serverName,
 		Tunnel:           "wss://" + serverName,
 		LocalRelayServer: localRelay,
-		Timeout:          calcTimeout(30),
+		Timeout:          30 * time.Second,
 	}
 
 	return &tunnelClient
@@ -114,13 +115,14 @@ func (t *WSTunnelClient) TestConnection(proxyURL *url.URL, localAddr net.IP) err
 		dialer.Proxy = http.ProxyURL(proxyURL)
 	}
 
-	url := fmt.Sprintf("%s/api/v1/edgedevice/connection/tunnel", t.Tunnel)
-	log.Debugf("Testing connection to url: %s", url)
-	_, resp, err := dialer.Dial(url, nil)
-	if resp != nil {
-		resp.Body.Close()
-	}
-	if err == nil {
+	pingURL := fmt.Sprintf("%s/api/v1/edgedevice/connection/ping", t.Tunnel)
+	log.Debugf("Testing connection to ping url: %s", pingURL)
+	_, resp, err := dialer.Dial(pingURL, nil)
+
+	log.Debugf("Read ping response status code: %v for ping url: %s", resp.StatusCode, pingURL)
+
+	if resp.StatusCode == http.StatusOK {
+		url := fmt.Sprintf("%s/api/v1/edgedevice/connection/tunnel", t.Tunnel)
 		t.DestURL = url
 		t.Dialer = dialer
 		log.Infof("Connection test succeeded for url: %s on local address: %v, proxy: %v", url, localAddr, proxyURL)
@@ -132,12 +134,12 @@ func (t *WSTunnelClient) TestConnection(proxyURL *url.URL, localAddr net.IP) err
 // startSession connects to configured backend on a
 // secure websocket and waits for commands from the backend
 // to forward to local relay.
-// XXX Does it ever retry using different intf/srcIp?
 func (t *WSTunnelClient) startSession() error {
 
 	// signal that tells tunnel client to exit instead of reopening
 	// a fresh connection.
 	t.exitChan = make(chan struct{}, 1)
+	t.requestSentChan = make(chan struct{}, 1)
 
 	t.retryOnFailCount = 0
 
@@ -204,6 +206,7 @@ func (t *WSTunnelClient) Stop() {
 // return the result if any.
 func (wsc *WSConnection) handleRequests() {
 	go wsc.pinger()
+	go wsc.processResponses()
 	for {
 		wsc.ws.SetReadDeadline(time.Time{}) // separate ping-pong routine does timeout
 		messageType, reader, err := wsc.ws.NextReader()
@@ -326,7 +329,7 @@ func (wsc *WSConnection) processRequest(id int16, req []byte) (err error) {
 			}
 		}
 	}
-	go wsc.listenForResponse(id)
+	wsc.tun.requestSentChan <- struct{}{}
 	return nil
 }
 
@@ -382,28 +385,47 @@ func (wsc *WSConnection) dialLocalConnection() (err error) {
 	return nil
 }
 
-// listenForResponse waits to read response message from the local relay
-// server and forwards them back over the websocket.
-func (wsc *WSConnection) listenForResponse(id int16) {
-	log.Debugf("[id=%d] Waiting for response on local connection", id)
-	wsc.localConnection.SetReadDeadline(time.Now().Add(5 * time.Second))
-	responseBuffer := make([]byte, 8192)
-	num, err := wsc.localConnection.Read(responseBuffer)
-	if err != nil {
-		log.Debugf("[id=%d] Could not read response on local connection: %s", id, err.Error())
-	} else {
-		if num > 0 {
-			response := responseBuffer[:num]
-			log.Debugf("[id=%d] Read local connection payload: \"%s\"", id, string(response))
-			wsc.writeResponseMessage(id, bytes.NewBuffer(response))
-		} else {
-			log.Debugf("[id=%d] Empty response received from local connection", id)
+// processResponses loops through waiting for responses from local relay
+// connection and forwards any received messages to the websocket.
+func (wsc *WSConnection) processResponses() {
+
+	host := wsc.tun.LocalRelayServer
+	log.Infof("Processing responses from local relay: %s", host)
+
+	var id int64
+	for {
+		select {
+		case <-wsc.tun.requestSentChan:
+
+			if err := wsc.refreshLocalConnection(host, false); err != nil {
+				log.Errorf("Error encountered while refreshing local connection: %s", err.Error())
+				break
+			}
+			wsc.localConnection.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+			responseBuffer := make([]byte, 524288)
+			responseBuffer, _ = ioutil.ReadAll(wsc.localConnection)
+			num := len(responseBuffer)
+			if num > 0 {
+				response := responseBuffer[:num]
+				log.Debugf("[id=%d] Read local connection payload: \"%s\"", id, string(response))
+
+				wsc.writeResponseMessage(id, bytes.NewBuffer(response))
+				id++
+			}
+		default:
+		}
+
+		// check whether we need to exit
+		select {
+		case <-wsc.tun.exitChan:
+			break
+		default: // non-blocking receive
 		}
 	}
 }
 
 // writeResponseMessage forwards the response message on the websocket.
-func (wsc *WSConnection) writeResponseMessage(id int16, resp *bytes.Buffer) {
+func (wsc *WSConnection) writeResponseMessage(id int64, resp *bytes.Buffer) {
 	// Get writer's lock
 	wsWriterMutex.Lock()
 	defer wsWriterMutex.Unlock()
@@ -412,6 +434,7 @@ func (wsc *WSConnection) writeResponseMessage(id int16, resp *bytes.Buffer) {
 	writer, err := wsc.ws.NextWriter(websocket.BinaryMessage)
 	// got an error, reply with a "hey, retry" to the request handler
 	if err != nil {
+		log.Errorf("[id=%d] WS could not find writer: %s", id, err.Error())
 		wsc.ws.Close()
 		return
 	}
@@ -424,12 +447,13 @@ func (wsc *WSConnection) writeResponseMessage(id int16, resp *bytes.Buffer) {
 	}
 
 	// write the response itself
-	_, err = io.Copy(writer, resp)
+	num, err := io.Copy(writer, resp)
 	if err != nil {
 		log.Errorf("WS cannot write response: %s", err.Error())
 		wsc.ws.Close()
 		return
 	}
+	log.Debugf("[id=%d] Completed writing response of length: %d", id, num)
 
 	// done
 	err = writer.Close()
@@ -437,9 +461,4 @@ func (wsc *WSConnection) writeResponseMessage(id int16, resp *bytes.Buffer) {
 		wsc.ws.Close()
 		return
 	}
-}
-
-// calcTimeout returns the timeout in seconds.
-func calcTimeout(tout int) time.Duration {
-	return time.Duration(tout) * time.Second
 }
