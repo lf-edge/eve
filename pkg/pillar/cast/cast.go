@@ -413,7 +413,7 @@ func CastUuidToNum(in interface{}) types.UuidToNum {
 	return output
 }
 
-// Return a ZbootConfig
+// ZbootConfig converts/casts from an interface to a ZbootConfig
 func ZbootConfig(in interface{}) types.ZbootConfig {
 	b, err := json.Marshal(in)
 	if err != nil {
