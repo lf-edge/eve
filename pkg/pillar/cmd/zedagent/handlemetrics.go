@@ -1334,9 +1334,7 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat,
 			errInfo.Timestamp = errTime
 			networkInfo.NetworkErr = errInfo
 		}
-		if port.Proxy != nil {
-			networkInfo.Proxy = encodeProxyStatus(port.Proxy)
-		}
+		networkInfo.Proxy = encodeProxyStatus(&port.ProxyConfig)
 	}
 	return networkInfo
 }
