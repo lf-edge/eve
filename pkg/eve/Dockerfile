@@ -1,4 +1,4 @@
-FROM alpine:edge
+FROM alpine:3.9
 
 RUN apk add --no-cache qemu-system-x86_64 qemu-system-aarch64 bash make git
 COPY . /bits/
