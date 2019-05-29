@@ -12,7 +12,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"net"
@@ -24,13 +23,13 @@ import (
 
 	"github.com/eriknordmark/ipinfo"
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
 )
 
 const (
-	deviceCertName          = identityDirname + "/device.cert.pem"
-	deviceKeyName           = identityDirname + "/device.key.pem"
 	infraFileName           = identityDirname + "/infra"
 	zedserverConfigFileName = tmpDirname + "/zedserverconfig"
 )
@@ -129,9 +128,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 
 	log.Infof("handleLookupParam: updated lispInfo %v\n", lispInfo)
 
-	// Load device cert
-	deviceCert, err := tls.LoadX509KeyPair(deviceCertName,
-		deviceKeyName)
+	deviceCert, err := zedcloud.GetClientCert()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -179,11 +176,23 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	log.Debugf("base64 hash %s\n",
 		base64.StdEncoding.EncodeToString(hash))
 	var signature string
-	switch deviceCert.PrivateKey.(type) {
+	switch key := deviceCert.PrivateKey.(type) {
 	default:
 		log.Fatal("Private Key RSA type not supported")
+	case zedcloud.TpmPrivateKey:
+		r, s, err := tpmmgr.TpmSign(hash)
+		if err != nil {
+			log.Fatal("zedcloud.Sign: ", err)
+		}
+		log.Debugf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
+			len(s.Bytes()))
+		sigres := r.Bytes()
+		sigres = append(sigres, s.Bytes()...)
+		signature = base64.StdEncoding.EncodeToString(sigres)
+		log.Debugf("sigres (len %d): % x\n",
+			len(sigres), sigres)
+		log.Debugln("signature:", signature)
 	case *ecdsa.PrivateKey:
-		key := deviceCert.PrivateKey.(*ecdsa.PrivateKey)
 		r, s, err := ecdsa.Sign(rand.Reader, key, hash)
 		if err != nil {
 			log.Fatal("ecdsa.Sign: ", err)
