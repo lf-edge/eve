@@ -1,0 +1,43 @@
+--- a/grub-core/commands/cat.c
++++ b/grub-core/commands/cat.c
+@@ -20,6 +20,7 @@
+ #include <grub/dl.h>
+ #include <grub/file.h>
+ #include <grub/disk.h>
++#include <grub/env.h>
+ #include <grub/term.h>
+ #include <grub/misc.h>
+ #include <grub/extcmd.h>
+@@ -31,6 +32,7 @@
+ static const struct grub_arg_option options[] =
+   {
+     {"dos", -1, 0, N_("Accept DOS-style CR/NL line endings."), 0, 0},
++    {"set", 's', 0, N_("Read content of the file into a variable."), N_("VARNAME"), ARG_TYPE_STRING },
+     {0, 0, 0, 0, 0, 0}
+   };
+ 
+@@ -60,6 +62,15 @@
+   if (! file)
+     return grub_errno;
+ 
++  if (ctxt->state[1].set) {
++    size = grub_file_read (file, buf, sizeof (buf));
++    if (size <= 0 || size == sizeof (buf)) {
++      return grub_error (GRUB_ERR_BAD_ARGUMENT, N_("can't read more than disk block size into variable"));    
++    }
++    grub_env_set(ctxt->state[1].arg, (const char *)buf); 
++    goto exit;
++  }
++
+   while ((size = grub_file_read (file, buf, sizeof (buf))) > 0
+ 	 && key != GRUB_TERM_ESC)
+     {
+@@ -150,6 +161,8 @@
+ 
+   grub_xputs ("\n");
+   grub_refresh ();
++
++exit:
+   grub_file_close (file);
+ 
+   return 0;

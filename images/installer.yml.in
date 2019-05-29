@@ -32,7 +32,8 @@ files:
   - path: /bits/rootfs.img
     source: rootfs.img
     mode: "0660"
+  - path: /etc/eve-release
+    contents: 'EVE_VERSION-installer'
 trust:
   org:
     - linuxkit
-
