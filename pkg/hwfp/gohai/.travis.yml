@@ -1,0 +1,24 @@
+language: go
+go:
+- '1.8'
+sudo: false
+install:
+- ./tools/build.sh
+- ./tools/package.sh
+script:
+- ./tools/publish.sh
+notifications:
+  slack:
+    secure: Imuptg78FWWZlGVb8LBuwn45CeMfnHgf+pXbftR8mSGFRsg08jw38MIRtw/MAET3RJsciwDXf22AkgM8WgZ+fcUbJI4MGn2IvnM40T/imc5deqlMn1QdE5HasWrrBwfyY7hDu8XBexit+2fmYLGGrHX2fsbvUJepT4xOV8MZbZWMYueoBuL2bxNRR+lhjqVsKMq+/8q4g7hsKxYOdStEOZQIM13qI8dbIIQK4cCPQGtdNMGlNSX0a/nEFZmxDKh3WILssZcRst7SW3QldYppJO21PcTmY/zCTLJ5b7izweLczDmV77ckv61X50B8iaarhwEMFYs9Icg8U69mAkbqeU5HsWy1d2VDPDG+QW32VMTU371pVEzsmBVzArSXvldULmRzYcA+9LoYb5P6LNbq2y7tdimETOElbkMyw53hnb4ZPiypLWlwusZibCxGsJMp41MgbxxaMKxUgrBsAY9nSBg/oj7ixditveXm5IjqBJXfFyxuxfvcxssT15AiqFI3z+Mpoarq233V7E/c0AwdYc/iJKPtW8DG2uSjb0EMIKopXjEi/tz8ykVQH1UbKww5PvGfzCw2mCNF+Bc925coTs8gwaU+XOnqQesggUheAmpaQhbdPGpNYecbLgtQ3kafEBllTrgLyTqISkXlDMZybItP1C8GrEEshGWSEzBAEGU=
+deploy:
+  provider: s3
+  access_key_id: AKIAJF4QJY2A23DY6YTQ
+  secret_access_key:
+    secure: WYYYUzhWt+eRobVROtFzQjQKdAHfzmjTU3xbFMeyHtE8lU96hEvLmMpzPcOC9FUZlHhh9sUOA0R4NQ1KkkOR33Je5zTWNRUAXM/oiaaA8z2z8q1UeAzNZT7GzjQkk3WXifewi1tJ98sJECBn6SnKHOwX2rCdRJl4SHkoUwYL9L6+jGbWKbleaHKQkzt33LFayeRVgzzIM4qXYSTlQFxKbXPBbcFm5I/Yx98TqfdFk6++MGBc2Qq3dNgiKKkYBa54lW/2q6E9CLjzjQxJ3Ks4jGDzNjop+uye6Z6UOU+1qoLZLI66vOQOyXp1D/fQgF475dlqklzf3xImlpjEDJtk3s1KueDkhCDaPsqRf37HifcxGpZLf6MGfbrCQa42hQygo5lEQXCf18MtsVIT+Mo+mtGxP9KG6gh7xfXwmJLKM6gUW+O2nP6sdkteIiDnBArxxRQVFR8pnBIxTLHLDWye2Jblu8olKRO1lXZg8JGQP/k082AsI1moIi8rg+T2MWggpUwGNHBVRxRWD6hW4B4Cg3ShG4saTrrOryaTpQWIICHU8hzzriyKfEnuHQEnLTmUQ8vsSHD4KzYEO9H2PmRt9ByVywFkTy4bvM5KNlAmgyqvxMQmU6NMq/t/nHRzXlJsMIzYOc6s6So/3WWYnR+Q1PTJjAf11SBmF2xg6Ds4aT8=
+  bucket: rackn-sledgehammer
+  region: us-west-2
+  local-dir: rackn-sledgehammer
+  acl: public_read
+  skip_cleanup: true
+  on:
+    repo: rackn/gohai
