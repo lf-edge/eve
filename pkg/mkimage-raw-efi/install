@@ -98,7 +98,8 @@ mkdir /run/conf /run/persist && \
   mount -t vfat /dev/$PERSIST_PART /run/persist && \
   mount -t vfat /dev/$DEST_CONF_PART /run/conf  && \
   echo $SERIAL_NUM > /run/conf/soft_serial && \
-  mkdir /run/persist/$SERIAL_NUM
+  mkdir /run/persist/$SERIAL_NUM && \
+  cp /parts/hwfp.json /run/persist/$SERIAL_NUM
 
 umount /run/conf
 umount /run/persist
