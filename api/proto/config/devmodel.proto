@@ -8,29 +8,27 @@ option java_package = "com.zededa.cloud.uservice.proto";
 
 //  PhysicalIO
 //     Constitutes set of parameters that define the physical devices.
-//       Mainly they describes all the I/O adapters that make up the device.
-//     
+//     Mainly they describes all the I/O adapters that make up the device.
+//
 //
 //  SystemAdapters:
 //     Are the higher level contstucts these are IP-ready network end point
 //     description.  SystemAdapters used by EVE device to connect
-//	to controller, alternatively systemAdapters are used to share the
-//      network connections for applications.
-//     
+//     to controller, alternatively systemAdapters are used to share the
+//     network connections for applications.
+//
 //     SystemAdapters, have proxy configuration, VLAN, Wifi credentials etc.
 //     System adapter refers to PhysicalIO by name.
 //
 //   NetworkAdapters:
-//	** Not in this file**
-//      Is used for the providing the direct attach information to application
+//     ** Not in this file**
+//     Is used for the providing the direct attach information to application
 //     Network adapter refers to PhysicalIO by name.
 //
 
-
 // XXX duplicate of definition in zmet.proto with uniq names (ZCio vs Zio)
 // Types of I/O adapters that can be assigned to applications
-// Deprecate in future, as we would stop using the old style
-//    definiations
+// Deprecate in future, as we would stop using the old style definiations
 enum ZCioType {
   ZCioNop = 0;
   ZCioEth = 1;          // Includes WiFi?
@@ -41,20 +39,20 @@ enum ZCioType {
 }
 
 enum sWAdapterType {
-	IGNORE = 0;
-	VLAN = 1;
-	BOND = 2;
+       IGNORE = 0;
+       VLAN = 1;
+       BOND = 2;
 }
 
 message sWAdapterParams {
-	sWAdapterType aType = 1;
+        sWAdapterType aType = 1;
 
-	// vlan
-	string underlayInterface = 8;
-        uint32 vlanId = 9;
+        // vlan
+       string underlayInterface = 8;
+       uint32 vlanId = 9;
 
-	// OR : repeated physical interfaces for bond0
-	repeated string bondgroup = 10;
+       // OR : repeated physical interfaces for bond0
+       repeated string bondgroup = 10;
 }
 
 // systemAdapters, are the higher l2 concept built on physicalIOs.
@@ -63,24 +61,24 @@ message sWAdapterParams {
 // These endpoints can be further used to connect to controller or 
 // can be shared between workload/services running on the node.
 message SystemAdapter {
-	// name of the adapter; hardware-specific e.g., eth0
-	string name = 1;
+        // name of the adapter; hardware-specific e.g., eth0
+        string name = 1;
 
-	sWAdapterParams allocDetails = 20;
+        sWAdapterParams allocDetails = 20;
 
-	// this is part of the freelink group
-	// deprecate: look at PhysicalIO->Usage
-	bool freeUplink = 2;
+        // this is part of the freelink group
+        // deprecate: look at PhysicalIO->Usage
+        bool freeUplink = 2;
 
-	// this is part of the uplink group
-	// deprecate: look at PhysicalIO->Usage
-	bool uplink = 3;
+        // this is part of the uplink group
+        // deprecate: look at PhysicalIO->Usage
+        bool uplink = 3;
 
-	// attach this network config for this adapter
-	string networkUUID = 4;
+        // attach this network config for this adapter
+        string networkUUID = 4;
 
-	// if its static network we need ip address
-	string addr = 5;
+        // if its static network we need ip address
+        string addr = 5;
 
 	// alias/logical name which will be reported to zedcloud
 	// and used for app instances
@@ -89,22 +87,30 @@ message SystemAdapter {
 
 enum PhyIoType {
         PhyIoNoop = 0;
-        PhyIoEth = 1;
+        PhyIoNetEth = 1;
         PhyIoUSB = 2;
         PhyIoCOM = 3;
         PhyIoAudio = 4;
-        PhyIoWLAN = 5;
-        PhyIoWWAN = 6;
+        PhyIoNetWLAN = 5;
+        PhyIoNetWWAN = 6;
         PhyIoHDMI = 7;
         PhyIoOther = 255;
 }
 
 // How does EVE should use them, for what purpose it is for
 enum PhyIoMemberUsage {
-	PhyIoUsageNone      = 0;
-	PhyIoUsageMgmt      = 1;
-	PhyIoUsageShared    = 2;
-	PhyIoUsageDedicated = 3;
+        PhyIoUsageNone      = 0;
+        PhyIoUsageMgmt      = 1;
+        PhyIoUsageShared    = 2;
+        PhyIoUsageDedicated = 3;
+}
+
+// Given additional details for EVE softwar to how to treat this
+// interface. Example policies could be limit use of LTE interface
+// or only use Eth1 only if Eth0 is not available etc
+message PhyIOUsagePolicy {
+	// Used only when one other normal uplinks are down 
+	bool freeUplink = 1;
 }
 
 // PhysicalIO:
@@ -115,28 +121,29 @@ enum PhyIoMemberUsage {
 //    it can be further configured to either provide IP connectivity or
 //    directly be given to workloads
 message PhysicalIO {
-	PhyIoType ptype           = 1;
+      PhyIoType ptype           = 1;
 
-	// physical label typically printed on box.
-	// Example Eth0, Eth1, Wifi0, ComA, ComB
-	string phylabel           = 2;
+      // physical label typically printed on box.
+      // Example Eth0, Eth1, Wifi0, ComA, ComB
+      string phylabel           = 2;
 
-	// the hardware bus address
-	map <string, string> phyaddrs = 3;
+      // the hardware bus address
+      map <string, string> phyaddrs = 3;
 
-	// provides the ability to model designer to rename the physicalIO
-	// port to more understandable
-	// For example Eth0->Mgmt0
-	//      or USBA->ConfigDiskA etc
-	string logicallabel       = 4;
+      // provides the ability to model designer to rename the physicalIO
+      // port to more understandable
+      // For example Eth0->Mgmt0
+      //  or USBA->ConfigDiskA etc
+      string logicallabel       = 4;
 
-	// Assignment Group, is unique label that is applied across PhysicalIOs
-	// EntireGroup can be assigned to application or nothing at all
-	string  assigngrp         = 5;
+      // Assignment Group, is unique label that is applied across PhysicalIOs
+      // EntireGroup can be assigned to application or nothing at all
+      string  assigngrp         = 5;
 
-	PhyIoMemberUsage usage    = 6;
+      PhyIoMemberUsage usage    = 6;
+      PhyIOUsagePolicy usagePolicy    = 7;
 
-	// physical and logical attributes
-	//    For example in WWAN to which firmware version to laod etc
-	map <string, string> cbattr = 7;
+      // physical and logical attributes
+      //    For example in WWAN to which firmware version to laod etc
+      map <string, string> cbattr = 8;
 }
