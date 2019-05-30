@@ -58,7 +58,7 @@ message sWAdapterParams {
 // systemAdapters, are the higher l2 concept built on physicalIOs.
 // systemAdapters, gives all the required bits to turn the physical IOs
 // into useful IP endpoints
-// These endpoints can be further used to connect to controller or 
+// These endpoints can be further used to connect to controller or
 // can be shared between workload/services running on the node.
 message SystemAdapter {
         // name of the adapter; hardware-specific e.g., eth0
@@ -109,8 +109,8 @@ enum PhyIoMemberUsage {
 // interface. Example policies could be limit use of LTE interface
 // or only use Eth1 only if Eth0 is not available etc
 message PhyIOUsagePolicy {
-	// Used only when one other normal uplinks are down 
-	bool freeUplink = 1;
+        // Used only when one other normal uplinks are down
+        bool freeUplink = 1;
 }
 
 // PhysicalIO:
