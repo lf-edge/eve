@@ -167,6 +167,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 
 	// Normal update work
 	updateAIStatusSafename(ctx, key)
+	updateAIStatusSha(ctx, config.ImageSha256)
 	log.Infof("handleVerifyImageStatusModify done for %s\n",
 		status.Safename)
 }
@@ -224,9 +225,11 @@ func lookupVerifyImageStatusAny(ctx *zedmanagerContext, safename string,
 func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
+	status := cast.CastVerifyImageStatus(statusArg)
 	log.Infof("handleVerifyImageStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	removeAIStatusSafename(ctx, key)
+	removeAIStatusSha(ctx, status.ImageSha256)
 	// If we still publish a config with RefCount == 0 we delete it.
 	config := lookupVerifyImageConfig(ctx, key)
 	if config != nil && config.RefCount == 0 {
