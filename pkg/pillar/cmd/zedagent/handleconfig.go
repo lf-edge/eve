@@ -157,6 +157,12 @@ func triggerGetConfig(tickerHandle interface{}) {
 // Called when globalConfig changes
 // Assumes the caller has verifier that the interval has changed
 func updateConfigTimer(tickerHandle interface{}) {
+
+	if tickerHandle == nil {
+		// Happens if we have a GlobalConfig setting in /persist/
+		log.Warnf("updateConfigTimer: no configTickerHandle yet")
+		return
+	}
 	interval := time.Duration(globalConfig.ConfigInterval) * time.Second
 	log.Infof("updateConfigTimer() change to %v\n", interval)
 	max := float64(interval)
@@ -249,12 +255,12 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 		successLimit := time.Second *
 			time.Duration(globalConfig.MintimeUpdateSuccess)
 		ctx := getconfigCtx.zedagentCtx
-		curPart := getBaseOsCurrentPartition(ctx)
+		curPart := getZbootCurrentPartition(ctx)
 		if timePassed < successLimit {
 			log.Infof("getLatestConfig, curPart %s inprogress waiting for %d seconds\n", curPart, (successLimit-timePassed)/time.Second)
 			ctx.remainingTestTime = successLimit - timePassed
 		} else {
-			initiateBaseOsZedCloudTestComplete(getconfigCtx)
+			initiateBaseOsZedCloudTestComplete(ctx)
 			ctx.remainingTestTime = 0
 		}
 		// Send updated remainingTestTime to zedcloud

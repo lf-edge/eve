@@ -67,7 +67,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	// to upload the other logs. If a different BaseOsVersion is provided
 	// we allow it to be installed into the inprogress partition.
 	if isBaseOsOtherPartitionStateInProgress(ctx) {
-		otherPart := getBaseOsOtherPartition(ctx)
+		otherPart := getZbootOtherPartition(ctx)
 		log.Errorf("Other %s partition contains failed update\n",
 			otherPart)
 	}

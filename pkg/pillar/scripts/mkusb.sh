@@ -30,6 +30,12 @@ if [ ! -f "$FILE" ]; then
     exit 1
 fi
 
+base=$(basename "$FILE")
+if [ "$base" != "usb.json" ]; then
+    echo "File $base must be named usb.json"
+    exit 1
+fi
+
 if ! python -m json.tool "$FILE" >/dev/null; then
     echo "Invalid json in $FILE"
     python -m json.tool "$FILE"
@@ -67,7 +73,7 @@ sgdisk --mbrtogpt "$DEV"
 NUM_PART=1
 SEC_START=2048
 SEC_END=4096
-PART_TYPE=a0ee3715-fcdc-4bd8-9f94-23a62bd53c91
+PART_TYPE=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
 
 sgdisk --new $NUM_PART:$SEC_START:$SEC_END \
        --typecode=$NUM_PART:$PART_TYPE \

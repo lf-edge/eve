@@ -84,6 +84,11 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 // Called when globalConfig changes
 // Assumes the caller has verifier that the interval has changed
 func updateMetricsTimer(tickerHandle interface{}) {
+
+	if tickerHandle == nil {
+		log.Warnf("updateMetricsTimer: no metricsTickerHandle yet")
+		return
+	}
 	interval := time.Duration(globalConfig.MetricInterval) * time.Second
 	log.Infof("updateMetricsTimer() change to %v\n", interval)
 	max := float64(interval)
@@ -968,7 +973,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				swInfo.SwErr = errInfo
 			}
 		} else {
-			partStatus := getBaseOsPartitionStatus(ctx, partLabel)
+			partStatus := getZbootPartitionStatus(ctx, partLabel)
 			swInfo.PartitionLabel = partLabel
 			if partStatus != nil {
 				swInfo.Activated = partStatus.CurrentPartition
@@ -991,8 +996,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	}
 
 	ReportDeviceInfo.SwList = make([]*info.ZInfoDevSW, 2)
-	ReportDeviceInfo.SwList[0] = getSwInfo(getBaseOsCurrentPartition(ctx))
-	ReportDeviceInfo.SwList[1] = getSwInfo(getBaseOsOtherPartition(ctx))
+	ReportDeviceInfo.SwList[0] = getSwInfo(getZbootCurrentPartition(ctx))
+	ReportDeviceInfo.SwList[1] = getSwInfo(getZbootOtherPartition(ctx))
 	// Report any other BaseOsStatus which might have errors
 	items := subBaseOsStatus.GetAll()
 	for _, st := range items {
@@ -1198,11 +1203,15 @@ func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW) {
 			// XXX progress based on time left??
 			swInfo.SubStatusStr = "About to reboot"
 		case "inprogress":
-			swInfo.UserStatus = info.BaseOsStatus_UPDATING
-			swInfo.SubStatus = info.BaseOsSubStatus_UPDATE_TESTING
-			swInfo.SubStatusProgress = uint32(ctx.remainingTestTime / time.Second)
-			swInfo.SubStatusStr = fmt.Sprintf("Testing for %d more seconds",
-				swInfo.SubStatusProgress)
+			if swInfo.Activated {
+				swInfo.UserStatus = info.BaseOsStatus_UPDATING
+				swInfo.SubStatus = info.BaseOsSubStatus_UPDATE_TESTING
+				swInfo.SubStatusProgress = uint32(ctx.remainingTestTime / time.Second)
+				swInfo.SubStatusStr = fmt.Sprintf("Testing for %d more seconds",
+					swInfo.SubStatusProgress)
+			} else {
+				swInfo.UserStatus = info.BaseOsStatus_FAILED
+			}
 
 		case "unused":
 			swInfo.UserStatus = info.BaseOsStatus_NONE
@@ -1325,9 +1334,7 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat,
 			errInfo.Timestamp = errTime
 			networkInfo.NetworkErr = errInfo
 		}
-		if port.Proxy != nil {
-			networkInfo.Proxy = encodeProxyStatus(port.Proxy)
-		}
+		networkInfo.Proxy = encodeProxyStatus(&port.ProxyConfig)
 	}
 	return networkInfo
 }
