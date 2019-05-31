@@ -153,6 +153,7 @@ echo "$(date -Ins -u) Configuration from factory/install:"
 (cd $CONFIGDIR || return; ls -l)
 echo
 
+CONFIGDEV=$(zboot partdev CONFIG)
 if P3=$(zboot partdev P3) && [ -n "$P3" ]; then
     echo "$(date -Ins -u) Using $P3 for $PERSISTDIR"
     if ! fsck.ext3 -y "$P3"; then
@@ -262,25 +263,63 @@ fi
 mkdir -p $DPCDIR
 
 # Look for a USB stick with a usb.json file
-# If found it replaces any build override file in /config
-# XXX note that filesystem on USB stick needs to be labeled with DevicePortConfig
-SPECIAL=$(cgpt find -l DevicePortConfig)
-if [ -n "$SPECIAL" ] && [ -b "$SPECIAL" ]; then
-    echo "$(date -Ins -u) Found USB with DevicePortConfig: $SPECIAL"
-    if ! mount -t vfat "$SPECIAL" /mnt; then
-        echo "$(date -Ins -u) mount $SPECIAL failed: $?"
-    else
+# XXX note that gpt on the USB stick needs to be labeled with DevicePortConfig
+# If there is a dump directory on the stick we put log and debug info
+# in there.
+# If there is an identity directory on the stick we put identifying
+# information in a subdir there.
+access_usb() {
+    # echo "$(date -Ins -u) XXX Looking for USB stick with DevicePortConfig"
+    SPECIAL=$(cgpt find -l DevicePortConfig)
+    if [ -n "$SPECIAL" ] && [ -b "$SPECIAL" ]; then
+        echo "$(date -Ins -u) Found USB with DevicePortConfig: $SPECIAL"
+        if ! mount -t vfat "$SPECIAL" /mnt; then
+            echo "$(date -Ins -u) mount $SPECIAL failed: $?"
+            return
+        fi
         keyfile=/mnt/usb.json
         if [ -f $keyfile ]; then
             echo "$(date -Ins -u) Found $keyfile on $SPECIAL"
             echo "$(date -Ins -u) Copying from $keyfile to $CONFIGDIR/DevicePortConfig/"
-            cp $keyfile $CONFIGDIR/DevicePortConfig/
+            cp -p $keyfile $DPCDIR
         else
             echo "$(date -Ins -u) $keyfile not found on $SPECIAL"
         fi
+        if [ -d /mnt/identity ] && [ -f $CONFIGDIR/device.cert.pem ]; then
+            echo "$(date -Ins -u) Saving identity to USB stick"
+            IDENTITYHASH=$(openssl sha256 $CONFIGDIR/device.cert.pem |awk '{print $2}')
+            IDENTITYDIR="/mnt/identity/$IDENTITYHASH"
+            [ -d "$IDENTITYDIR" ] || mkdir -p "$IDENTITYDIR"
+            cp -p $CONFIGDIR/device.cert.pem "$IDENTITYDIR"
+            [ ! -f $CONFIGDIR/onboard.cert.pem ] || cp -p $CONFIGDIR/onboard.cert.pem "$IDENTITYDIR"
+            [ ! -f $CONFIGDIR/uuid ] || cp -p $CONFIGDIR/uuid "$IDENTITYDIR"
+            cp -p $CONFIGDIR/root-certificate.pem "$IDENTITYDIR"
+            [ ! -f $CONFIGDIR/hardwaremodel ] || cp -p $CONFIGDIR/hardwaremodel "$IDENTITYDIR"
+            # XXX any serial number file? Both from dmidecode and from sw
+            sync
+        fi
+        if [ -d /mnt/dump ]; then
+            echo "$(date -Ins -u) Dumping diagnostics to USB stick"
+            # Check if it fits without clobbering an existing tar file
+            if tar cf /mnt/dump/diag1.tar /persist/status/ /persist/config "/persist/$CURPART/log"; then
+                mv /mnt/dump/diag1.tar /mnt/dump/diag.tar
+            else
+                rm -f /mnt/dump/diag1.tar
+            fi
+            sync
+        fi
+        umount -f /mnt
+        blockdev --flushbufs "$SPECIAL"
     fi
-fi
+}
 
+access_usb
+
+# Need to clear old usb files from /config/DevicePortConfig
+if [ -f $CONFIGDIR/DevicePortConfig/usb.json ]; then
+    echo "$(date -Ins -u) Removing old $CONFIGDIR/DevicePortConfig/usb.json"
+    rm -f $CONFIGDIR/DevicePortConfig/usb.json
+fi
 # Copy any DevicePortConfig from /config
 dir=$CONFIGDIR/DevicePortConfig
 for f in "$dir"/*.json; do
@@ -302,10 +341,15 @@ if [ -f /var/run/watchdog.pid ]; then
 fi
 /usr/sbin/watchdog -c $TMPDIR/watchdognim.conf -F -s &
 
+# Print diag output forever on changes
+$BINDIR/diag -c $CURPART -f >/dev/console 2>&1 &
+
 # Wait for having IP addresses for a few minutes
 # so that we are likely to have an address when we run ntp
 echo "$(date -Ins -u) Starting waitforaddr"
 $BINDIR/waitforaddr -c $CURPART
+
+access_usb
 
 # We need to try our best to setup time *before* we generate the certifiacte.
 # Otherwise the cert may have start date in the future or in 1970
@@ -318,10 +362,6 @@ if [ -f /usr/sbin/ntpd ]; then
 else
     echo "$(date -Ins -u) No ntpd"
 fi
-
-# Print the initial diag output
-# If we don't have a network this takes many minutes. Backgrounded
-$BINDIR/diag -c $CURPART >/dev/console 2>&1 &
 
 # The device cert generation needs the current time. Some hardware
 # doesn't have a battery-backed clock
@@ -343,13 +383,16 @@ if ! [ -f $CONFIGDIR/device.cert.pem ] || ! [ -f $CONFIGDIR/device.key.pem ]; th
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
     touch $CONFIGDIR/self-register-pending
     sync
+    blockdev --flushbufs "$CONFIGDEV"
     $BINDIR/generate-device.sh $CONFIGDIR/device
     # Reduce chance that we register with controller and crash before
     # the filesystem has persisted /config/device.cert.* and
     # self-register-pending
     sync
+    blockdev --flushbufs "$CONFIGDEV"
     sleep 10
     sync
+    blockdev --flushbufs "$CONFIGDEV"
     SELF_REGISTER=1
 elif [ -f $CONFIGDIR/self-register-pending ]; then
     echo "$(date -Ins -u) self-register failed/killed/rebooted"
@@ -360,6 +403,7 @@ elif [ -f $CONFIGDIR/self-register-pending ]; then
         echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid pass hence already registered"
         rm -f $CONFIGDIR/self-register-pending
         sync
+        blockdev --flushbufs "$CONFIGDEV"
     fi
 else
     echo "$(date -Ins -u) Using existing device key pair and self-signed cert"
@@ -369,6 +413,8 @@ if [ ! -f $CONFIGDIR/server ] || [ ! -f $CONFIGDIR/root-certificate.pem ]; then
     echo "$(date -Ins -u) No server or root-certificate to connect to. Done"
     exit 0
 fi
+
+access_usb
 
 if [ $SELF_REGISTER = 1 ]; then
     rm -f $TMPDIR/zedrouterconfig.json
@@ -387,6 +433,7 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
     rm -f $CONFIGDIR/self-register-pending
     sync
+    blockdev --flushbufs "$CONFIGDEV"
     echo "$(date -Ins -u) Starting client getUuid"
     $BINDIR/client -c $CURPART getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
@@ -468,12 +515,15 @@ if [ -f /var/run/watchdog.pid ]; then
 fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
 
+blockdev --flushbufs "$CONFIGDEV"
 echo "$(date -Ins -u) Initial setup done"
-
-# Print diag output forever on changes
-$BINDIR/diag -c $CURPART -f >/dev/console 2>&1 &
 
 if [ $MEASURE = 1 ]; then
     ping6 -c 3 -w 1000 zedcontrol
     echo "$(date -Ins -u) Measurement done"
 fi
+
+while true; do
+    access_usb
+    sleep 300
+done
