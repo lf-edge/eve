@@ -20,6 +20,7 @@ import (
 const (
 	persistDir = "/persist"
 	reasonFile = "reboot-reason"
+	stackFile  = "reboot-stack"
 )
 
 var savedAgentName string = "unknown" // Keep for signal and exit handlers
@@ -80,8 +81,10 @@ func handleSignals(sigs chan os.Signal) {
 
 // Print out our stack
 func printStack() {
-	log.Errorf("fatal stack trace:\n%v\n", getStacks(false))
+	stacks := getStacks(false)
+	log.Errorf("fatal stack trace:\n%v\n", stacks)
 	RebootReason("fatal stack trace")
+	RebootStack(stacks)
 }
 
 // Write reason in /persist/IMGx/reboot-reason, including agentName and date
@@ -97,24 +100,44 @@ func RebootReason(reason string) {
 	syscall.Sync()
 }
 
-func GetCurrentRebootReason() (string, time.Time) {
-	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
-	return statAndRead(filename)
+// Write stack in /persist/IMGx/reboot-stack
+func RebootStack(stacks string) {
+	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), stackFile)
+	log.Warnf("RebootStack to %s", filename)
+	err := printToFile(filename, fmt.Sprintf("%v\n", stacks))
+	if err != nil {
+		log.Errorf("printToFile failed %s\n", err)
+	}
+	syscall.Sync()
 }
 
-func GetOtherRebootReason() (string, time.Time) {
+func GetCurrentRebootReason() (string, time.Time, string) {
+	reasonFilename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
+	stackFilename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), stackFile)
+	reason, ts := statAndRead(reasonFilename)
+	stack, _ := statAndRead(stackFilename)
+	return reason, ts, stack
+}
+
+func GetOtherRebootReason() (string, time.Time, string) {
 	dirname := getOtherIMGdir(false)
 	if dirname == "" {
-		return "", time.Time{}
+		return "", time.Time{}, ""
 	}
-	filename := fmt.Sprintf("%s/%s", dirname, reasonFile)
-	return statAndRead(filename)
+	reasonFilename := fmt.Sprintf("%s/%s", dirname, reasonFile)
+	stackFilename := fmt.Sprintf("%s/%s", dirname, stackFile)
+	reason, ts := statAndRead(reasonFilename)
+	stack, _ := statAndRead(stackFilename)
+	return reason, ts, stack
 }
 
 // Used for failures/hangs when zboot curpart hangs
-func GetCommonRebootReason() (string, time.Time) {
-	filename := fmt.Sprintf("%s/%s", persistDir, reasonFile)
-	return statAndRead(filename)
+func GetCommonRebootReason() (string, time.Time, string) {
+	reasonFilename := fmt.Sprintf("%s/%s", persistDir, reasonFile)
+	stackFilename := fmt.Sprintf("%s/%s", persistDir, stackFile)
+	reason, ts := statAndRead(reasonFilename)
+	stack, _ := statAndRead(stackFilename)
+	return reason, ts, stack
 }
 
 // Returns content and Modtime
@@ -148,8 +171,12 @@ func printToFile(filename string, str string) error {
 }
 
 func DiscardCurrentRebootReason() {
-	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
-	if err := os.Remove(filename); err != nil {
+	reasonFilename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
+	stackFilename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), stackFile)
+	if err := os.Remove(reasonFilename); err != nil {
+		log.Errorf("DiscardCurrentRebootReason failed %s\n", err)
+	}
+	if err := os.Remove(stackFilename); err != nil {
 		log.Errorf("DiscardCurrentRebootReason failed %s\n", err)
 	}
 }
@@ -159,15 +186,23 @@ func DiscardOtherRebootReason() {
 	if dirname == "" {
 		return
 	}
-	filename := fmt.Sprintf("%s/%s", dirname, reasonFile)
-	if err := os.Remove(filename); err != nil {
+	reasonFilename := fmt.Sprintf("%s/%s", dirname, reasonFile)
+	stackFilename := fmt.Sprintf("%s/%s", dirname, stackFile)
+	if err := os.Remove(reasonFilename); err != nil {
+		log.Errorf("DiscardOtherRebootReason failed %s\n", err)
+	}
+	if err := os.Remove(stackFilename); err != nil {
 		log.Errorf("DiscardOtherRebootReason failed %s\n", err)
 	}
 }
 
 func DiscardCommonRebootReason() {
-	filename := fmt.Sprintf("%s/%s", persistDir, reasonFile)
-	if err := os.Remove(filename); err != nil {
+	reasonFilename := fmt.Sprintf("%s/%s", persistDir, reasonFile)
+	stackFilename := fmt.Sprintf("%s/%s", persistDir, stackFile)
+	if err := os.Remove(reasonFilename); err != nil {
+		log.Errorf("DiscardCommonRebootReason failed %s\n", err)
+	}
+	if err := os.Remove(stackFilename); err != nil {
 		log.Errorf("DiscardCommonRebootReason failed %s\n", err)
 	}
 }
