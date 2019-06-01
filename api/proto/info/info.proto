@@ -217,6 +217,7 @@ message ZInfoDevice {
   uint32 restartCounter = 25; // Number of times zedagent has restarted i.e., device reboot
   HwSecurityModuleStatus HSMStatus = 26; //State of hardware security modules, like TPM
   string HSMInfo = 27; //Information about HSM like TPM vendor, TEE type etc.
+  string lastRebootStack = 28;
 }
 
 // The current and fallback system adapter information
