@@ -440,7 +440,7 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 		// If there is no change to the other we don't log error
 		// but still retry later
 		status.TooEarly = true
-		errStr := fmt.Sprintf("Attempt to install baseOs update %s while testing is in progress for %s: refused",
+		errStr := fmt.Sprintf("Attempt to install baseOs update %s while testing is in progress for %s: deferred",
 			config.BaseOsVersion, curPartVersion)
 		if otherPartVersion == config.BaseOsVersion {
 			log.Infoln(errStr)
@@ -788,6 +788,22 @@ func lookupBaseOsStatus(ctx *baseOsMgrContext, key string) *types.BaseOsStatus {
 	return &status
 }
 
+func lookupBaseOsStatusByPartLabel(ctx *baseOsMgrContext, partLabel string) *types.BaseOsStatus {
+	pub := ctx.pubBaseOsStatus
+	st, _ := pub.Get(partLabel)
+	if st == nil {
+		log.Infof("lookupBaseOsStatusByPartLabel(%s) not found\n", partLabel)
+		return nil
+	}
+	status := cast.CastBaseOsStatus(st)
+	if status.Key() != partLabel {
+		log.Errorf("lookupBaseOsStatus(%s) got %s; ignored %+v\n",
+			partLabel, status.Key(), status)
+		return nil
+	}
+	return &status
+}
+
 func publishBaseOsStatus(ctx *baseOsMgrContext, status *types.BaseOsStatus) {
 
 	key := status.Key()
@@ -821,80 +837,65 @@ func validateBaseOsConfig(ctx *baseOsMgrContext, config types.BaseOsConfig) erro
 	return nil
 }
 
-func handleBaseOsTestComplete(ctx *baseOsMgrContext, uuidStr string, config types.BaseOsConfig, status types.BaseOsStatus) {
+func handleZbootTestComplete(ctx *baseOsMgrContext, config types.ZbootConfig, status types.ZbootStatus) {
 
-	log.Infof("handleBaseOsTestComplete(%s) for %s\n",
-		uuidStr, config.BaseOsVersion)
+	log.Infof("handleZbootTestComplete(%s)\n", config.Key())
 	if config.TestComplete == status.TestComplete {
 		// nothing to do
-		log.Infof("handleBaseOsTestComplete(%s) nothing to do for %s\n",
-			uuidStr, config.BaseOsVersion)
+		log.Infof("handleZbootTestComplete(%s) nothing to do\n",
+			config.Key())
 		return
 	}
 	if config.TestComplete {
-		curPartState := getPartitionState(ctx, zboot.GetCurrentPartition())
-		if curPartState != "inprogress" {
-			log.Warnf("handleBaseOsTestComplete(%s) not Inprogress for %s\n",
-				uuidStr, config.BaseOsVersion)
-		} else {
-			doPartitionStateTransition(ctx, uuidStr, config,
-				status)
+		curPart := zboot.GetCurrentPartition()
+		if curPart != config.Key() {
+			log.Infof("handleZbootTestComplete(%s) not current partition; current %s\n",
+				config.Key(), curPart)
+			return
 		}
-		return
-	}
-
-	// completed state transition, mark TestComplete as false
-	log.Infof("handleBaseOsTestComplete(%s) for %s in %s, done\n",
-		uuidStr, config.BaseOsVersion, status.PartitionLabel)
-	status.TestComplete = false
-	publishBaseOsStatus(ctx, &status)
-	updateAndPublishBaseOsStatusAll(ctx)
-}
-
-// initiate Partition State transition,
-// for current partition, from inprogress to active
-// for other partition, from active to unused
-func doPartitionStateTransition(ctx *baseOsMgrContext, uuidStr string, config types.BaseOsConfig, status types.BaseOsStatus) {
-
-	log.Infof("doPartitionStateTransition(%s) for %s in %s\n",
-		uuidStr, config.BaseOsVersion, status.PartitionLabel)
-
-	partName := zboot.GetCurrentPartition()
-	partStatus := getZbootStatus(ctx, partName)
-	if partStatus == nil {
-		return
-	}
-
-	if status.PartitionLabel != partName {
-		log.Warnf("doPartitionStateTransition(%s) wrong partLabel %s vs %s for %s\n",
-			uuidStr, status.PartitionLabel, partName,
-			config.BaseOsVersion)
-	} else if status.BaseOsVersion != partStatus.ShortVersion {
-		log.Warnf("doPartitionStateTransition(%s) wrong version %s vs %s for %s\n",
-			uuidStr, status.BaseOsVersion, partStatus.ShortVersion,
-			config.BaseOsVersion)
-	} else {
+		curPartState := getPartitionState(ctx, curPart)
+		if curPartState != "inprogress" {
+			log.Warnf("handleZbootTestComplete(%s) not Inprogress\n",
+				config.Key())
+			return
+		}
 		if err := zboot.MarkCurrentPartitionStateActive(); err != nil {
-			errStr := fmt.Sprintf("mark other active failed %s", err)
-			log.Errorf(errStr)
-			status.Error = errStr
-			status.ErrorTime = time.Now()
-			status.TestComplete = true
-			publishBaseOsStatus(ctx, &status)
+			bs := lookupBaseOsStatusByPartLabel(ctx, config.Key())
+			if bs == nil {
+				log.Errorf("handleZbootTestComplete(%s) error by not BaseOsStatus in which to report it: %s",
+					config.Key(), err)
+				return
+			}
+			bs.Error = err.Error()
+			bs.ErrorTime = time.Now()
+			publishBaseOsStatus(ctx, bs)
 			// publish the updated partition information
 			publishZbootPartitionStatusAll(ctx)
 			updateAndPublishBaseOsStatusAll(ctx)
+			log.Infof("handleZbootTestComplete(%s) to True failed\n",
+				config.Key())
 			return
 		}
 		status.TestComplete = true
-		publishBaseOsStatus(ctx, &status)
+		publishZbootStatus(ctx, status)
+
 		// publish the updated partition information
 		publishZbootPartitionStatusAll(ctx)
 		updateAndPublishBaseOsStatusAll(ctx)
 
 		// Check if we have a failed update which needs a kick
 		maybeRetryInstall(ctx)
+
+		log.Infof("handleZbootTestComplete(%s) to True done\n",
+			config.Key())
+		return
 	}
+
+	// completed state transition, mark TestComplete as false
+	log.Infof("handleZbootTestComplete(%s) to False done\n", config.Key())
+	status.TestComplete = false
+	publishZbootStatus(ctx, status)
+	updateAndPublishBaseOsStatusAll(ctx)
 }
 
 func updateAndPublishBaseOsStatusAll(ctx *baseOsMgrContext) {
@@ -968,7 +969,11 @@ func publishZbootPartitionStatus(ctx *baseOsMgrContext, partName string) {
 	if !isValidBaseOsPartitionLabel(partName) {
 		return
 	}
-	pub := ctx.pubZbootStatus
+	testComplete := false
+	partStatus := getZbootStatus(ctx, partName)
+	if partStatus != nil {
+		testComplete = partStatus.TestComplete
+	}
 	status := types.ZbootStatus{}
 	status.PartitionLabel = partName
 	status.PartitionDevname = zboot.GetPartitionDevname(partName)
@@ -976,8 +981,15 @@ func publishZbootPartitionStatus(ctx *baseOsMgrContext, partName string) {
 	status.ShortVersion = zboot.GetShortVersion(partName)
 	status.LongVersion = zboot.GetLongVersion(partName)
 	status.CurrentPartition = zboot.IsCurrentPartition(partName)
+	status.TestComplete = testComplete
 	log.Infof("publishZbootPartitionStatus: %v\n", status)
-	pub.Publish(partName, status)
+	publishZbootStatus(ctx, status)
+}
+
+func publishZbootStatus(ctx *baseOsMgrContext, status types.ZbootStatus) {
+
+	pub := ctx.pubZbootStatus
+	pub.Publish(status.PartitionLabel, status)
 	syscall.Sync()
 }
 
@@ -987,15 +999,13 @@ func getZbootStatus(ctx *baseOsMgrContext, partName string) *types.ZbootStatus {
 		return nil
 	}
 	pub := ctx.pubZbootStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := cast.CastZbootStatus(st)
-		if status.PartitionLabel == partName {
-			return &status
-		}
+	st, err := pub.Get(partName)
+	if err != nil {
+		log.Errorf("getZbootStatus(%s) not found\n", partName)
+		return nil
 	}
-	log.Errorf("getZbootStatus(%s) not found\n", partName)
-	return nil
+	status := cast.CastZbootStatus(st)
+	return &status
 }
 
 func isValidBaseOsPartitionLabel(name string) bool {

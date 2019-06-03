@@ -1,12 +1,6 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 ARG GOVER=1.12.4
-FROM LISP_TAG as lisp
-FROM XENTOOLS_TAG as xen-tools
-FROM DNSMASQ_TAG as dnsmasq
-FROM STRONGSWAN_TAG as strongswan
-FROM GPTTOOLS_TAG as gpttools
-FROM WATCHDOG_TAG as watchdog
 FROM golang:${GOVER}-alpine as build
 RUN apk update
 RUN apk add --no-cache git gcc linux-headers libc-dev util-linux libpcap-dev make
@@ -29,6 +23,19 @@ RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc) ;\
     echo "Running go fmt" && ERR=$(gofmt -e -l -s $(find . -name \*.go | grep -v /vendor/)) && \
        if [ -n "$ERR" ] ; then echo $ERR ; exit 1 ; fi && \
     make DISTDIR=/dist build
+
+# hadolint ignore=DL3006
+FROM LISP_TAG as lisp
+# hadolint ignore=DL3006
+FROM XENTOOLS_TAG as xen-tools
+# hadolint ignore=DL3006
+FROM DNSMASQ_TAG as dnsmasq
+# hadolint ignore=DL3006
+FROM STRONGSWAN_TAG as strongswan
+# hadolint ignore=DL3006
+FROM GPTTOOLS_TAG as gpttools
+# hadolint ignore=DL3006
+FROM WATCHDOG_TAG as watchdog
 
 FROM alpine:3.8
 RUN apk add --no-cache \
