@@ -280,7 +280,7 @@ access_usb() {
         keyfile=/mnt/usb.json
         if [ -f $keyfile ]; then
             echo "$(date -Ins -u) Found $keyfile on $SPECIAL"
-            echo "$(date -Ins -u) Copying from $keyfile to $CONFIGDIR/DevicePortConfig/"
+            echo "$(date -Ins -u) Copying from $keyfile to $DPCDIR"
             cp -p $keyfile $DPCDIR
         else
             echo "$(date -Ins -u) $keyfile not found on $SPECIAL"
@@ -313,6 +313,7 @@ access_usb() {
     fi
 }
 
+# Read any usb.json with DevicePortConfig, and deposit our identity
 access_usb
 
 # Need to clear old usb files from /config/DevicePortConfig
@@ -349,6 +350,7 @@ $BINDIR/diag -c $CURPART -f >/dev/console 2>&1 &
 echo "$(date -Ins -u) Starting waitforaddr"
 $BINDIR/waitforaddr -c $CURPART
 
+# Deposit any diag information from nim
 access_usb
 
 # We need to try our best to setup time *before* we generate the certifiacte.
@@ -414,6 +416,7 @@ if [ ! -f $CONFIGDIR/server ] || [ ! -f $CONFIGDIR/root-certificate.pem ]; then
     exit 0
 fi
 
+# Deposit any diag information from nim and onboarding
 access_usb
 
 if [ $SELF_REGISTER = 1 ]; then
@@ -523,6 +526,9 @@ if [ $MEASURE = 1 ]; then
     echo "$(date -Ins -u) Measurement done"
 fi
 
+# If there is a USB stick inserted and debug.enable.usb is set, we periodically
+# check for any usb.json with DevicePortConfig, deposit our identity,
+# and dump any diag information
 while true; do
     access_usb
     sleep 300
