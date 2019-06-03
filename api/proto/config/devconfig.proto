@@ -31,6 +31,7 @@ message EdgeDevConfig {
 
 	repeated ConfigItem configItems = 11;
 	repeated SystemAdapter systemAdapterList = 12;
+        repeated PhysicalIO deviceIoList = 13;
 
 	// Override dmidecode info if set
 	string manufacturer = 14;

@@ -1500,7 +1500,8 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 			if i != 0 {
 				cfg = cfg + ", "
 			}
-			cfg = cfg + fmt.Sprintf("'%s'", pa)
+			// XXX cfg = cfg + fmt.Sprintf("'%s'", pa)
+			cfg = cfg + fmt.Sprintf("'%s,rdm_policy=relaxed'", pa)
 		}
 		cfg = cfg + "]"
 		log.Debugf("Adding pci config <%s>\n", cfg)
@@ -1677,6 +1678,8 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	cleanupAdapters(ctx, status.IoAdapterList, status.UUIDandVersion.UUID)
 
 	publishDomainStatus(ctx, status)
+
+	updateUsbAccess(ctx)
 
 	// Delete xen cfg file for good measure
 	filename := xenCfgFilename(status.AppNum)
@@ -2470,14 +2473,20 @@ func updateUsbAccess(ctx *domainContext) {
 			}
 			ib.IsPCIBack = true
 		}
-		if ctx.usbAccess && ib.IsPCIBack && ib.UsedByUUID == nilUUID {
-			log.Infof("Removing %s (%s %s) from pciback\n",
-				ib.Name, ib.PciLong, ib.PciShort)
-			err := pciAssignableRemove(ib.PciLong)
-			if err != nil {
-				log.Errorf("updateUsbAccess: %s\n", err)
+		if ctx.usbAccess && ib.IsPCIBack {
+			if ib.UsedByUUID == nilUUID {
+				log.Infof("Removing %s (%s %s) from pciback\n",
+					ib.Name, ib.PciLong, ib.PciShort)
+				err := pciAssignableRemove(ib.PciLong)
+				if err != nil {
+					log.Errorf("updateUsbAccess: %s\n", err)
+				}
+				ib.IsPCIBack = false
+			} else {
+				log.Warnf("No removing %s (%s %s) from pciback: used by %s",
+					ib.Name, ib.PciLong,
+					ib.PciShort, ib.UsedByUUID)
 			}
-			ib.IsPCIBack = false
 		}
 	}
 	checkIoBundleAll(ctx)

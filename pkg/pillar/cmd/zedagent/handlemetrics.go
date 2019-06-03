@@ -973,7 +973,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				swInfo.SwErr = errInfo
 			}
 		} else {
-			partStatus := getBaseOsPartitionStatus(ctx, partLabel)
+			partStatus := getZbootPartitionStatus(ctx, partLabel)
 			swInfo.PartitionLabel = partLabel
 			if partStatus != nil {
 				swInfo.Activated = partStatus.CurrentPartition
@@ -996,8 +996,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	}
 
 	ReportDeviceInfo.SwList = make([]*info.ZInfoDevSW, 2)
-	ReportDeviceInfo.SwList[0] = getSwInfo(getBaseOsCurrentPartition(ctx))
-	ReportDeviceInfo.SwList[1] = getSwInfo(getBaseOsOtherPartition(ctx))
+	ReportDeviceInfo.SwList[0] = getSwInfo(getZbootCurrentPartition(ctx))
+	ReportDeviceInfo.SwList[1] = getSwInfo(getZbootOtherPartition(ctx))
 	// Report any other BaseOsStatus which might have errors
 	items := subBaseOsStatus.GetAll()
 	for _, st := range items {
@@ -1334,9 +1334,7 @@ func getNetInfo(interfaceDetail psutilnet.InterfaceStat,
 			errInfo.Timestamp = errTime
 			networkInfo.NetworkErr = errInfo
 		}
-		if port.Proxy != nil {
-			networkInfo.Proxy = encodeProxyStatus(port.Proxy)
-		}
+		networkInfo.Proxy = encodeProxyStatus(&port.ProxyConfig)
 	}
 	return networkInfo
 }
