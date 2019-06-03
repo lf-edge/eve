@@ -1174,6 +1174,16 @@ type VifNameMac struct {
 	AppID   uuid.UUID
 }
 
+type AppNetworkInfo struct {
+	IsMgmt     bool
+	BridgeName string
+	VifName    string
+	IpVer      int
+	BridgeIP   string
+	AppIP      string
+	UpLinks    []string
+}
+
 /*
  * Tx/Rx of bridge is equal to the total of Tx/Rx on all member
  * virtual interfaces excluding the bridge itself.

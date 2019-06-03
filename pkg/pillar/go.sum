@@ -86,6 +86,7 @@ github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORN
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0 h1:45sCR5RtlFHMR4UwH9sdQ5TC8v0qDQCHnXt+kaKSTVE=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
+github.com/lf-edge/eve v0.0.0-20190502222952-a7334767b192 h1:+ODTM9OV9NDokYKLItx1J0hHSwY4hutBAh5E230KUrY=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
 github.com/mdlayher/raw v0.0.0-20190419142535-64193704e472 h1:3QZ+iCYiorY0MXIia13+KK+uJHIsOJDHl7Y8Ul1Endc=
 github.com/mdlayher/raw v0.0.0-20190419142535-64193704e472/go.mod h1:7EpbotpCmVZcu+KCX4g9WaRNuu11uyhiW7+Le1dKawg=
@@ -129,7 +130,6 @@ github.com/vishvananda/netlink v0.0.0-20190319163122-f504738125a5 h1:FCbmjuLYUFK
 github.com/vishvananda/netlink v0.0.0-20190319163122-f504738125a5/go.mod h1:+SR5DhBJrl6ZM7CoCKvpw5BKroDKQ+PJqOg65H/2ktk=
 github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc h1:R83G5ikgLMxrBvLh22JhdfI8K6YXEPHx5P03Uu3DRs4=
 github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc/go.mod h1:ZjcWmFBXmLKZu9Nxj3WKYEafiSqer2rnvPr0en9UNpI=
-github.com/lf-edge/eve v0.0.0-20190502222952-a7334767b192 h1:+ODTM9OV9NDokYKLItx1J0hHSwY4hutBAh5E230KUrY=
 go.opencensus.io v0.19.1/go.mod h1:gug0GbSHa8Pafr0d2urOSgoXHZ6x/RUlaiT0d9pqb4A=
 go.opencensus.io v0.19.2/go.mod h1:NO/8qkisMZLZ1FCsKNqtJPwc8/TaclWyY0B6wcYNg9M=
 go.opencensus.io v0.20.0/go.mod h1:NO/8qkisMZLZ1FCsKNqtJPwc8/TaclWyY0B6wcYNg9M=

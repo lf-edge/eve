@@ -336,10 +336,10 @@ func doBridgeAclsDelete(
 			}
 			log.Infof("NetworkInstance - deleting Acls for OL Interface(%s)",
 				olStatus.Name)
-			err := deleteACLConfiglet(olStatus.Bridge,
-				olStatus.Vif, false, olStatus.ACLs,
-				olStatus.BridgeIPAddr,
-				olStatus.EID.String())
+			appNetInfo := types.AppNetworkInfo{IsMgmt: false, BridgeName: olStatus.Bridge,
+				VifName: olStatus.Vif, BridgeIP: olStatus.BridgeIPAddr, AppIP: olStatus.EID.String(),
+				UpLinks: status.IfNameList}
+			err := deleteACLConfiglet(appNetInfo, olStatus.ACLs)
 			if err != nil {
 				log.Errorf("doNetworkDelete ACL failed: %s\n",
 					err)
@@ -354,9 +354,10 @@ func doBridgeAclsDelete(
 			}
 			log.Infof("NetworkInstance - deleting Acls for UL Interface(%s)",
 				ulStatus.Name)
-			err := deleteACLConfiglet(ulStatus.Bridge,
-				ulStatus.Vif, false, ulStatus.ACLs,
-				ulStatus.BridgeIPAddr, ulStatus.AssignedIPAddr)
+			appNetInfo := types.AppNetworkInfo{IsMgmt: false, BridgeName: ulStatus.Bridge,
+				VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: ulStatus.AssignedIPAddr,
+				UpLinks: status.IfNameList}
+			err := deleteACLConfiglet(appNetInfo, ulStatus.ACLs)
 			if err != nil {
 				log.Errorf("NetworkInstance DeleteACL failed: %s\n",
 					err)

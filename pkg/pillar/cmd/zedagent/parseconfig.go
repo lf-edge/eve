@@ -532,11 +532,13 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		}
 	}
 
+	var appInstanceList []*types.AppInstanceConfig
+
 	for _, cfgApp := range Apps {
 		// Note that we repeat this even if the app config didn't
 		// change but something else in the EdgeDeviceConfig did
 		log.Debugf("New/updated app instance %v\n", cfgApp)
-		var appInstance types.AppInstanceConfig
+		appInstance := new(types.AppInstanceConfig)
 
 		appInstance.UUIDandVersion.UUID, _ = uuid.FromString(cfgApp.Uuidandversion.Uuid)
 		appInstance.UUIDandVersion.Version = cfgApp.Uuidandversion.Version
@@ -561,7 +563,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 			cfgApp.Drives)
 
 		// fill the overlay/underlay config
-		parseAppNetworkConfig(&appInstance, cfgApp, config.Networks,
+		parseAppNetworkConfig(appInstance, cfgApp, config.Networks,
 			config.NetworkInstances)
 
 		// I/O adapters
@@ -593,18 +595,57 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 
 		appInstance.CloudInitUserData = userData
 		appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
+		appInstanceList = append(appInstanceList, appInstance)
+	}
+
+	// validate app instances configuration
+	validateAppInstanceConfig(appInstanceList)
+
+	// publish the config objects
+	for _, appInstance := range appInstanceList {
+		uuidStr := appInstance.UUIDandVersion.UUID.String()
+		// write to zedmanager config directory
+		publishAppInstanceConfig(getconfigCtx, *appInstance)
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
-
-		// write to zedmanager config directory
-		uuidStr := cfgApp.Uuidandversion.Uuid
-		publishAppInstanceConfig(getconfigCtx, appInstance)
 		if certInstance != nil {
 			publishCertObjConfig(getconfigCtx, certInstance,
 				uuidStr)
 		}
 	}
+}
+
+func validateAppInstanceConfig(appInstanceList []*types.AppInstanceConfig) {
+	log.Infof("check for duplicate port map acls")
+	idx0 := 0
+	// For app instances, attached to the same network instance,
+	//  check for common port map rules
+	for _, appInstance0 := range appInstanceList {
+		idx1 := 0
+		ulCfgList0 := appInstance0.UnderlayNetworkList
+		for _, appInstance1 := range appInstanceList {
+			if idx1 > idx0 {
+				ulCfgList1 := appInstance1.UnderlayNetworkList
+				if checkUnderlayNetworkForDuplicatePortMap(ulCfgList0, ulCfgList1) {
+					log.Errorf("app instances(%s, %s) have same portmap rule\n",
+						appInstance0.DisplayName, appInstance1.DisplayName)
+					errStr0 := fmt.Sprintf("duplicate portmap rule in %s",
+						appInstance1.DisplayName)
+					appInstance0.Errors = append(appInstance0.Errors, errStr0)
+					errStr1 := fmt.Sprintf("duplicate portmap rule in %s",
+						appInstance0.DisplayName)
+					appInstance1.Errors = append(appInstance1.Errors, errStr1)
+				}
+			}
+			idx1++
+		}
+		idx0++
+	}
+
+	//TBD:XXX app instances contending for common resource
+	// check for duplicate assignments/exceeding available resource limits,
+	// e.g., cpus, network adapters, usb/audio/video, main memory, disk space etc.
 }
 
 var systemAdaptersPrevConfigHash []byte
@@ -1183,6 +1224,63 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				intfEnt.Name, ulCfg.Error)
 		}
 	}
+}
+
+func checkUnderlayNetworkForDuplicatePortMap(ulCfgList0 []types.UnderlayNetworkConfig,
+	ulCfgList1 []types.UnderlayNetworkConfig) bool {
+
+	for _, ulCfg0 := range ulCfgList0 {
+		for _, ulCfg1 := range ulCfgList1 {
+			// not on the same network instance
+			if ulCfg0.Network != ulCfg1.Network {
+				continue
+			}
+			if matchACLsForPortMap(ulCfg0.ACLs, ulCfg1.ACLs) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func matchACLsForPortMap(ACLs0 []types.ACE, ACLs1 []types.ACE) bool {
+	for _, ace0 := range ACLs0 {
+		for _, action0 := range ace0.Actions {
+			// not a portmap rule
+			if !action0.PortMap {
+				continue
+			}
+			for _, ace1 := range ACLs1 {
+				for _, action1 := range ace1.Actions {
+					// not a portmap rule
+					if !action1.PortMap {
+						continue
+					}
+					// for target port
+					if action0.TargetPort == action1.TargetPort {
+						return true
+					}
+					// for ingress port
+					if checkForMatchCondition(ace0, ace1) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+func checkForMatchCondition(ace0 types.ACE, ace1 types.ACE) bool {
+	for _, match0 := range ace0.Matches {
+		for _, match1 := range ace1.Matches {
+			if match0.Type == match1.Type &&
+				match0.Value == match1.Value {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func isOverlayNetwork(netEnt *zconfig.NetworkConfig) bool {

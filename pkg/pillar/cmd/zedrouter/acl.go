@@ -215,23 +215,22 @@ func compileOldAppInstanceIpsets(ctx *zedrouterContext,
 // For a shared bridge call aclToRules for each ifname, then aclDropRules,
 // then concat all the rules and pass to applyACLrules
 // Note that only bridgeName is set with ifMgmt
-func createACLConfiglet(bridgeName string, vifName string, isMgmt bool,
-	ACLs []types.ACE, bridgeIP string, appIP string) error {
+func createACLConfiglet(appNetInfo types.AppNetworkInfo, ACLs []types.ACE) error {
 
-	log.Infof("createACLConfiglet: ifname %s, vifName %s, ACLs %v, IP %s/%s\n",
-		bridgeName, vifName, ACLs, bridgeIP, appIP)
-	ipVer := determineIpVer(isMgmt, bridgeIP)
-	rules, err := aclToRules(bridgeName, vifName, ACLs, ipVer,
-		bridgeIP, appIP)
+	log.Infof("createACLConfiglet: ifname %s, vifName %s, IP %s/%s, ACLs %v\n",
+		appNetInfo.BridgeName, appNetInfo.VifName, appNetInfo.BridgeIP, appNetInfo.AppIP, ACLs)
+	appNetInfo.IpVer = determineIpVer(appNetInfo.IsMgmt, appNetInfo.BridgeIP)
+	rules, err := aclToRules(appNetInfo, ACLs)
 	if err != nil {
 		return err
 	}
-	dropRules, err := aclDropRules(bridgeName, vifName)
+	dropRules, err := aclDropRules(appNetInfo.BridgeName, appNetInfo.VifName)
 	if err != nil {
 		return err
 	}
 	rules = append(rules, dropRules...)
-	return applyACLRules(rules, bridgeName, vifName, isMgmt, ipVer, appIP)
+	return applyACLRules(rules, appNetInfo.BridgeName, appNetInfo.VifName,
+		appNetInfo.IsMgmt, appNetInfo.IpVer, appNetInfo.AppIP)
 }
 
 // If no valid bridgeIP we assume IPv4
@@ -308,83 +307,83 @@ func applyACLRules(rules IptablesRuleList, bridgeName string, vifName string,
 }
 
 // Returns a list of iptables commands, witout the initial "-A FORWARD"
-func aclToRules(bridgeName string, vifName string, ACLs []types.ACE, ipVer int,
-	bridgeIP string, appIP string) (IptablesRuleList, error) {
+func aclToRules(appNetInfo types.AppNetworkInfo, ACLs []types.ACE) (IptablesRuleList, error) {
 
 	rulesList := IptablesRuleList{}
-	log.Debugf("aclToRules(%s, %s, %v, %d, %s, %s\n",
-		bridgeName, vifName, ACLs, ipVer, bridgeIP, appIP)
+	log.Debugf("aclToRules(%s, %s, %d, %s, %s, %v\n",
+		appNetInfo.BridgeName, appNetInfo.VifName, appNetInfo.IpVer, appNetInfo.BridgeIP, appNetInfo.AppIP, ACLs)
 
 	// XXX should we check isMgmt instead of bridgeIP?
-	if ipVer == 6 && bridgeIP != "" {
+	if appNetInfo.IpVer == 6 && appNetInfo.BridgeIP != "" {
 		// Need to allow local communication */
 		// Only allow dhcp, dns (tcp/udp), and icmp6/nd
 		// Note that sufficient for src or dst to be local
-		rule1 := []string{"-i", bridgeName, "-m", "set", "--match-set",
+		rule1 := []string{"-i", appNetInfo.BridgeName, "-m", "set", "--match-set",
 			"ipv6.local", "dst", "-p", "ipv6-icmp", "-j", "ACCEPT"}
-		rule2 := []string{"-i", bridgeName, "-m", "set", "--match-set",
+		rule2 := []string{"-i", appNetInfo.BridgeName, "-m", "set", "--match-set",
 			"ipv6.local", "src", "-p", "ipv6-icmp", "-j", "ACCEPT"}
-		rule3 := []string{"-i", bridgeName, "-d", bridgeIP,
+		rule3 := []string{"-i", appNetInfo.BridgeName, "-d", appNetInfo.BridgeIP,
 			"-p", "ipv6-icmp", "-j", "ACCEPT"}
-		rule4 := []string{"-i", bridgeName, "-s", bridgeIP,
+		rule4 := []string{"-i", appNetInfo.BridgeName, "-s", appNetInfo.BridgeIP,
 			"-p", "ipv6-icmp", "-j", "ACCEPT"}
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
-		rule1 = []string{"-i", bridgeName, "-m", "set", "--match-set",
+		rule1 = []string{"-i", appNetInfo.BridgeName, "-m", "set", "--match-set",
 			"ipv6.local", "dst", "-p", "udp", "--dport", "dhcpv6-server",
 			"-j", "ACCEPT"}
-		rule2 = []string{"-i", bridgeName, "-m", "set", "--match-set",
+		rule2 = []string{"-i", appNetInfo.BridgeName, "-m", "set", "--match-set",
 			"ipv6.local", "src", "-p", "udp", "--sport", "dhcpv6-server",
 			"-j", "ACCEPT"}
-		rule3 = []string{"-i", bridgeName, "-d", bridgeIP,
+		rule3 = []string{"-i", appNetInfo.BridgeName, "-d", appNetInfo.BridgeIP,
 			"-p", "udp", "--dport", "dhcpv6-server", "-j", "ACCEPT"}
-		rule4 = []string{"-i", bridgeName, "-s", bridgeIP,
+		rule4 = []string{"-i", appNetInfo.BridgeName, "-s", appNetInfo.BridgeIP,
 			"-p", "udp", "--sport", "dhcpv6-server", "-j", "ACCEPT"}
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
-		rule1 = []string{"-i", bridgeName, "-d", bridgeIP,
+		rule1 = []string{"-i", appNetInfo.BridgeName, "-d", appNetInfo.BridgeIP,
 			"-p", "udp", "--dport", "domain", "-j", "ACCEPT"}
-		rule2 = []string{"-i", bridgeName, "-s", bridgeIP,
+		rule2 = []string{"-i", appNetInfo.BridgeName, "-s", appNetInfo.BridgeIP,
 			"-p", "udp", "--sport", "domain", "-j", "ACCEPT"}
-		rule3 = []string{"-i", bridgeName, "-d", bridgeIP,
+		rule3 = []string{"-i", appNetInfo.BridgeName, "-d", appNetInfo.BridgeIP,
 			"-p", "tcp", "--dport", "domain", "-j", "ACCEPT"}
-		rule4 = []string{"-i", bridgeName, "-s", bridgeIP,
+		rule4 = []string{"-i", appNetInfo.BridgeName, "-s", appNetInfo.BridgeIP,
 			"-p", "tcp", "--sport", "domain", "-j", "ACCEPT"}
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 	}
 	// The same rules as above for IPv4.
 	// If we have a bridge service then bridgeIP might be "".
-	if ipVer == 4 && bridgeIP != "" {
+	if appNetInfo.IpVer == 4 && appNetInfo.BridgeIP != "" {
 		// Need to allow local communication */
 		// Only allow dhcp and dns (tcp/udp)
 		// Note that sufficient for src or dst to be local
-		rule1 := []string{"-i", bridgeName, "-m", "set", "--match-set",
+		rule1 := []string{"-i", appNetInfo.BridgeName, "-m", "set", "--match-set",
 			"ipv4.local", "dst", "-p", "udp", "--dport", "bootps",
 			"-j", "ACCEPT"}
-		rule2 := []string{"-i", bridgeName, "-m", "set", "--match-set",
+		rule2 := []string{"-i", appNetInfo.BridgeName, "-m", "set", "--match-set",
 			"ipv4.local", "src", "-p", "udp", "--sport", "bootps",
 			"-j", "ACCEPT"}
-		rule3 := []string{"-i", bridgeName, "-d", bridgeIP,
+		rule3 := []string{"-i", appNetInfo.BridgeName, "-d", appNetInfo.BridgeIP,
 			"-p", "udp", "--dport", "bootps", "-j", "ACCEPT"}
-		rule4 := []string{"-i", bridgeName, "-s", bridgeIP,
+		rule4 := []string{"-i", appNetInfo.BridgeName, "-s", appNetInfo.BridgeIP,
 			"-p", "udp", "--sport", "bootps", "-j", "ACCEPT"}
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
-		rule1 = []string{"-i", bridgeName, "-d", bridgeIP,
+		rule1 = []string{"-i", appNetInfo.BridgeName, "-d", appNetInfo.BridgeIP,
 			"-p", "udp", "--dport", "domain", "-j", "ACCEPT"}
-		rule2 = []string{"-i", bridgeName, "-s", bridgeIP,
+		rule2 = []string{"-i", appNetInfo.BridgeName, "-s", appNetInfo.BridgeIP,
 			"-p", "udp", "--sport", "domain", "-j", "ACCEPT"}
-		rule3 = []string{"-i", bridgeName, "-d", bridgeIP,
+		rule3 = []string{"-i", appNetInfo.BridgeName, "-d", appNetInfo.BridgeIP,
 			"-p", "tcp", "--dport", "domain", "-j", "ACCEPT"}
-		rule4 = []string{"-i", bridgeName, "-s", bridgeIP,
+		rule4 = []string{"-i", appNetInfo.BridgeName, "-s", appNetInfo.BridgeIP,
 			"-p", "tcp", "--sport", "domain", "-j", "ACCEPT"}
 		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
 	}
+
 	for _, ace := range ACLs {
-		rules, err := aceToRules(bridgeName, vifName, ace, ipVer,
-			bridgeIP, appIP)
+		rules, err := aceToRules(appNetInfo, ace)
 		if err != nil {
 			return nil, err
 		}
 		rulesList = append(rulesList, rules...)
 	}
+	log.Debugf("aclToRules(%s)\n", rulesList)
 	return rulesList, nil
 }
 
@@ -406,9 +405,7 @@ func aclDropRules(bridgeName, vifName string) (IptablesRuleList, error) {
 	return rulesList, nil
 }
 
-// XXX Pass uplinkIf as argument for portmap? Caller sets if specific interface.
-// Handling "uplink" and "freeuplink" is TBD
-func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bridgeIP string, appIP string) (IptablesRuleList, error) {
+func aceToRules(appNetInfo types.AppNetworkInfo, ace types.ACE) (IptablesRuleList, error) {
 	rulesList := IptablesRuleList{}
 
 	// Extract lport and protocol from the Matches to use for PortMap
@@ -421,8 +418,8 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 	var fport string
 
 	// Always match on interface. Note that rulesPrefix adds physdev-in
-	outArgs := []string{"-i", bridgeName}
-	inArgs := []string{"-o", bridgeName}
+	inArgs := []string{"-o", appNetInfo.BridgeName}
+	outArgs := []string{"-i", appNetInfo.BridgeName}
 
 	for _, match := range ace.Matches {
 		switch match.Type {
@@ -457,7 +454,7 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 				log.Errorln("ipset create for ",
 					match.Value, err)
 			}
-			switch ipVer {
+			switch appNetInfo.IpVer {
 			case 4:
 				ipsetName = "ipv4." + match.Value
 			case 6:
@@ -471,11 +468,11 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 				return nil, errors.New(errStr)
 			}
 			// Caller adds any EIDs/IPs to set
-			switch ipVer {
+			switch appNetInfo.IpVer {
 			case 4:
-				ipsetName = "ipv4.eids." + vifName
+				ipsetName = "ipv4.eids." + appNetInfo.VifName
 			case 6:
-				ipsetName = "ipv6.eids." + vifName
+				ipsetName = "ipv6.eids." + appNetInfo.VifName
 			}
 		default:
 			errStr := fmt.Sprintf("Unsupported ACE match type: %s",
@@ -562,32 +559,39 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 				log.Errorln(errStr)
 				return nil, errors.New(errStr)
 			}
-			if appIP == "" {
+			if appNetInfo.AppIP == "" {
 				errStr := fmt.Sprintf("PortMap without appIP for lport %s/protocol %s: %+v",
 					lport, protocol, ace)
 				log.Errorln(errStr)
 				return nil, errors.New(errStr)
 			}
 			targetPort := fmt.Sprintf("%d", action.TargetPort)
-			target := fmt.Sprintf("%s:%d", appIP, action.TargetPort)
-			// These rules should only apply on the uplink
-			// interfaces but for now we just compare the protocol
-			// and port number.
-			// The DNAT/SNAT rules do not compare fport and ipset
-			rule1 := []string{"PREROUTING",
-				"-p", protocol, "--dport", lport,
-				"-j", "DNAT", "--to-destination", target}
-			// Make sure packets are returned to zedrouter and not
-			// e.g., out a directly attached interface in the domU
-			rule2 := []string{"POSTROUTING",
-				"-p", protocol, "-o", bridgeName,
-				"--dport", targetPort, "-j", "SNAT",
-				"--to-source", bridgeIP}
+			target := fmt.Sprintf("%s:%d", appNetInfo.AppIP, action.TargetPort)
+			// These rules are applied on the upLink
+			// interfaces and port number.
+			// loop through the uplink interfaces
+			for _, upLink := range appNetInfo.UpLinks {
+				log.Infof("upLink %s\n", upLink)
+				// The DNAT/SNAT rules do not compare fport and ipset
+				// Make sure packets are returned to zedrouter and not
+				// e.g., out a directly attached interface in the domU
+				rule1 := []string{"PREROUTING",
+					"-i", upLink, "-p", protocol,
+					"--dport", lport, "-j", "DNAT",
+					"--to-destination", target}
+				rule2 := []string{"POSTROUTING",
+					"-o", upLink, "-p", protocol,
+					"--dport", targetPort, "-j", "SNAT",
+					"--to-source", appNetInfo.BridgeIP}
+				rulesList = append(rulesList, rule1, rule2)
+			}
+
 			// Below we make sure the mapped packets get through
 			// Note that port/targetport change relative
 			// no normal ACL above.
-			outArgs = []string{"-i", bridgeName}
-			inArgs = []string{"-o", bridgeName}
+			outArgs = []string{"-i", appNetInfo.BridgeName}
+			inArgs = []string{"-o", appNetInfo.BridgeName}
+
 			if ip != "" {
 				outArgs = append(outArgs, "-d", ip)
 				inArgs = append(inArgs, "-s", ip)
@@ -607,7 +611,6 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 				inArgs = append(inArgs, "-m", "set",
 					"--match-set", ipsetName, "src")
 			}
-			rulesList = append(rulesList, rule1, rule2)
 		}
 		if actionCount > 1 {
 			errStr := fmt.Sprintf("ACL with combination of Drop, Limit and/or PortMap rejected: %+v",
@@ -635,7 +638,7 @@ func aceToRules(bridgeName string, vifName string, ace types.ACE, ipVer int, bri
 		log.Debugf("unlimitedInArgs %v\n", unlimitedInArgs)
 		rulesList = append(rulesList, unlimitedOutArgs, unlimitedInArgs)
 	}
-	log.Debugf("rulesList %v\n", rulesList)
+	log.Infof("rulesList %v\n", rulesList)
 	return rulesList, nil
 }
 
@@ -770,32 +773,30 @@ func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
 	return newIpsets, staleIpsets, restartDnsmasq
 }
 
-func updateACLConfiglet(bridgeName string, vifName string, isMgmt bool,
-	oldACLs []types.ACE, newACLs []types.ACE, bridgeIP string,
-	appIP string) error {
+func updateACLConfiglet(appNetInfo types.AppNetworkInfo, OldACLs []types.ACE, ACLs []types.ACE) error {
 
 	log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s, oldACLs %v newACLs %v\n",
-		bridgeName, vifName, appIP, oldACLs, newACLs)
+		appNetInfo.BridgeName, appNetInfo.VifName, appNetInfo.AppIP, OldACLs, ACLs)
 
-	ipVer := determineIpVer(isMgmt, bridgeIP)
-	oldRules, err := aclToRules(bridgeName, vifName, oldACLs, ipVer,
-		bridgeIP, appIP)
+	appNetInfo.IpVer = determineIpVer(appNetInfo.IsMgmt, appNetInfo.BridgeIP)
+	oldRules, err := aclToRules(appNetInfo, OldACLs)
 	if err != nil {
 		return err
 	}
-	newRules, err := aclToRules(bridgeName, vifName, newACLs, ipVer,
-		bridgeIP, appIP)
+
+	newRules, err := aclToRules(appNetInfo, ACLs)
 	if err != nil {
 		return err
 	}
-	return applyACLUpdate(isMgmt, ipVer, vifName, appIP, oldRules, newRules)
+	return applyACLUpdate(appNetInfo, oldRules, newRules)
 }
 
-func applyACLUpdate(isMgmt bool, ipVer int, vifName string, appIP string,
-	oldRules IptablesRuleList, newRules IptablesRuleList) error {
+func applyACLUpdate(appNetInfo types.AppNetworkInfo, oldRules IptablesRuleList,
+	newRules IptablesRuleList) error {
 
 	log.Debugf("applyACLUpdate: isMgmt %v ipVer %d vifName %s appIP %s oldRules %v newRules %v\n",
-		isMgmt, ipVer, vifName, appIP, oldRules, newRules)
+		appNetInfo.IsMgmt, appNetInfo.IpVer, appNetInfo.VifName,
+		appNetInfo.AppIP, oldRules, newRules)
 
 	var err error
 	// Look for old which should be deleted
@@ -804,19 +805,20 @@ func applyACLUpdate(isMgmt bool, ipVer int, vifName string, appIP string,
 			continue
 		}
 		log.Debugf("applyACLUpdate: delete rule %v\n", rule)
-		args := rulePrefix("-D", isMgmt, ipVer, vifName, appIP, rule)
+		args := rulePrefix("-D", appNetInfo.IsMgmt, appNetInfo.IpVer,
+			appNetInfo.VifName, appNetInfo.AppIP, rule)
 		if args == nil {
 			log.Debugf("applyACLUpdate: skipping delete rule %v\n",
 				rule)
 			continue
 		}
 		args = append(args, rule...)
-		if ipVer == 4 {
+		if appNetInfo.IpVer == 4 {
 			err = iptables.IptableCmd(args...)
-		} else if ipVer == 6 {
+		} else if appNetInfo.IpVer == 6 {
 			err = iptables.Ip6tableCmd(args...)
 		} else {
-			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", ipVer))
+			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", appNetInfo.IpVer))
 		}
 		if err != nil {
 			return err
@@ -833,19 +835,20 @@ func applyACLUpdate(isMgmt bool, ipVer int, vifName string, appIP string,
 			continue
 		}
 		log.Debugf("applyACLUpdate: add rule %v\n", rule)
-		args := rulePrefix("-I", isMgmt, ipVer, vifName, appIP, rule)
+		args := rulePrefix("-I", appNetInfo.IsMgmt, appNetInfo.IpVer,
+			appNetInfo.VifName, appNetInfo.AppIP, rule)
 		if args == nil {
 			log.Debugf("applyACLUpdate: skipping insert rule %v\n",
 				rule)
 			continue
 		}
 		args = append(args, rule...)
-		if ipVer == 4 {
+		if appNetInfo.IpVer == 4 {
 			err = iptables.IptableCmd(args...)
-		} else if ipVer == 6 {
+		} else if appNetInfo.IpVer == 6 {
 			err = iptables.Ip6tableCmd(args...)
 		} else {
-			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", ipVer))
+			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", appNetInfo.IpVer))
 		}
 		if err != nil {
 			return err
@@ -854,56 +857,55 @@ func applyACLUpdate(isMgmt bool, ipVer int, vifName string, appIP string,
 	return nil
 }
 
-func deleteACLConfiglet(bridgeName string, vifName string, isMgmt bool,
-	ACLs []types.ACE, bridgeIP string, appIP string) error {
+func deleteACLConfiglet(appNetInfo types.AppNetworkInfo, ACLs []types.ACE) error {
 
 	log.Infof("deleteACLConfiglet: ifname %s vifName %s ACLs %v\n",
-		bridgeName, vifName, ACLs)
+		appNetInfo.BridgeName, appNetInfo.VifName, ACLs)
 
-	ipVer := determineIpVer(isMgmt, bridgeIP)
-	rules, err := aclToRules(bridgeName, vifName, ACLs, ipVer,
-		bridgeIP, appIP)
+	appNetInfo.IpVer = determineIpVer(appNetInfo.IsMgmt, appNetInfo.BridgeIP)
+	rules, err := aclToRules(appNetInfo, ACLs)
 	if err != nil {
 		return err
 	}
-	dropRules, err := aclDropRules(bridgeName, vifName)
+	dropRules, err := aclDropRules(appNetInfo.BridgeName, appNetInfo.VifName)
 	if err != nil {
 		return err
 	}
 	rules = append(rules, dropRules...)
 	for _, rule := range rules {
 		log.Debugf("deleteACLConfiglet: rule %v\n", rule)
-		args := rulePrefix("-D", isMgmt, ipVer, vifName, appIP, rule)
+		args := rulePrefix("-D", appNetInfo.IsMgmt, appNetInfo.IpVer,
+			appNetInfo.VifName, appNetInfo.AppIP, rule)
 		if args == nil {
 			log.Debugf("deleteACLConfiglet: skipping rule %v\n",
 				rule)
 			continue
 		}
 		args = append(args, rule...)
-		if ipVer == 4 {
+		if appNetInfo.IpVer == 4 {
 			err = iptables.IptableCmd(args...)
-		} else if ipVer == 6 {
+		} else if appNetInfo.IpVer == 6 {
 			err = iptables.Ip6tableCmd(args...)
 		} else {
-			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", ipVer))
+			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", appNetInfo.IpVer))
 		}
 		if err != nil {
 			return err
 		}
 	}
-	if !isMgmt {
+	if !appNetInfo.IsMgmt {
 		// Remove mangle rules for IPv6 packets added above
 		// XXX error checks?
-		iptables.Ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", bridgeName,
+		iptables.Ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", appNetInfo.BridgeName,
 			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
-		iptables.Ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", bridgeName,
+		iptables.Ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", appNetInfo.BridgeName,
 			"-p", "udp", "-j", "CHECKSUM", "--checksum-fill")
 	}
 	// XXX see above
-	if false && ipVer == 6 && !isMgmt {
+	if false && appNetInfo.IpVer == 6 && !appNetInfo.IsMgmt {
 		// Manually delete the manual add above
 		// XXX error checks?
-		iptables.Ip6tableCmd("-D", "FORWARD", "-i", bridgeName, "-o", "dbo1x0",
+		iptables.Ip6tableCmd("-D", "FORWARD", "-i", appNetInfo.BridgeName, "-o", "dbo1x0",
 			"-j", "DROP")
 	}
 	return nil
