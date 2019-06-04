@@ -12,7 +12,7 @@ do not have per usage charging (to separate out e.g., LTE modems).
 
 The default.json is:
 
-```
+```json
 {
     "Uplink":["eth0","wlan0","wwan0"],
     "FreeUplinks":["eth0","wlan0"]
@@ -46,7 +46,7 @@ using several different mechanism.
 
 An example file to specify using WPAD to retrieve proxy configuration on eth0 is:
 
-```
+```json
 {
     "Version": 1,
     "Ports": [
@@ -73,7 +73,7 @@ An example file to specify using WPAD to retrieve proxy configuration on eth0 is
 
 To specify fetching from a fixed WPAD URL one would set:
 
-```
+```json
             "NetworkProxyEnable": true,
             "NetworkProxyURL": "http://wpad.sc.zededa.net/wpad.dat",
 ```
@@ -81,7 +81,7 @@ To specify fetching from a fixed WPAD URL one would set:
 To specify a particular set of http and https proxies with a set of
 exceptions one would set:
 
-```
+```json
             "Proxies": [ { "Server": "proxy.example.com", "Port":1080, "Type":1 },
                        { "Server": "proxy.example.com", "Port":1080, "Type":0 } ],
             "Exceptions": "example.com",
@@ -90,13 +90,13 @@ exceptions one would set:
 To specify a PAC file inline one would base64 encode the PAC file and set the
 result as the Pacfile e.g.,
 
-```
+```json
         Pacfile":"ZnVuY3Rpb24gRmluZFByb3h5Rm9yVVJMKHVybCxob3N0KSB7CmlmIChob3N0ID09ICIxMjcuMC4wLjEiKSB7cmV0dXJuICJESVJFQ1QiO30KaWYgKGhvc3QgPT0gImxvY2FsaG9zdCIpIHtyZXR1cm4gIkRJUkVDVCI7fQppZiAoaXNQbGFpbkhvc3ROYW1lKGhvc3QpKSB7cmV0dXJuICJESVJFQ1QiO30KZWxzZSB7IHJldHVybiAiUFJPWFkgcHJveHkucHJpdi5zYy56ZWRlZGEubmV0OjEwODAiO30KfQo=",
 ```
 
 An example file with eth0 being static and eth1 using dhcp is:
 
-```
+```json
 {
     "Version": 1,
     "Ports": [
@@ -133,7 +133,7 @@ An example file with eth0 being static and eth1 using dhcp is:
 To set up eth1 with the name Field in order to use it for a switch network,
 use DHCP 0. For example,
 
-```
+```json
 {
     "Version": 1,
     "Ports": [
@@ -185,7 +185,7 @@ It takes a usb.json as an argument, plus a few additrional arguments:
 
 The blinking pattern can be extracted from the shell using
 
-```
+```bash
 cat /var/tmp/ledmanager/config/ledconfig.json
 ```
 
@@ -196,19 +196,15 @@ onboarded), it will be 3, and if a GET of /config works it will be 4.
 
 One can test the connectivity to the controller using
 
-```
+```bash
     /opt/zededa/bin/diag
 ```
 
-The logs for the onboarding attempts are in
-
-```
-    /persist/`zboot curpart`/log/client.log
-```
+The logs for the onboarding attempts are in ```/persist/`zboot curpart`/log/client.log```
 
 If there are no IP addresses, the logs for network interface manager can help:
 
-```
+```bash
     /persist/`zboot curpart`/log/nim.log
 ```
 
