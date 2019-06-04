@@ -52,8 +52,8 @@ const (
 	certificateDirname    = persistDir + "/certs"
 	checkpointDirname     = persistDir + "/checkpoint"
 	restartCounterFile    = configDir + "/restartcounter"
-
-	partitionCount = 2
+	tmpDirname            = "/var/tmp/zededa"
+	firstbootFile         = tmpDirname + "/first-boot"
 )
 
 // Set from Makefile
@@ -200,13 +200,23 @@ func Run() {
 		zedagentCtx.rebootStack = commonRebootStack
 	}
 	if zedagentCtx.rebootReason == "" {
-		dateStr := time.Now().Format(time.RFC3339Nano)
-		reason := fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s\n",
-			dateStr)
+		zedagentCtx.rebootTime = time.Now()
+		dateStr := zedagentCtx.rebootTime.Format(time.RFC3339Nano)
+		var reason string
+		if fileExists(firstbootFile) {
+			reason = fmt.Sprintf("NORMAL: First boot of device - at %s\n",
+				dateStr)
+		} else {
+			reason = fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s\n",
+				dateStr)
+		}
 		log.Warnf(reason)
 		zedagentCtx.rebootReason = reason
 		zedagentCtx.rebootTime = time.Now()
 		zedagentCtx.rebootStack = ""
+	}
+	if fileExists(firstbootFile) {
+		os.Remove(firstbootFile)
 	}
 
 	// Read and increment restartCounter
@@ -1126,4 +1136,9 @@ func incrementRestartCounter() uint32 {
 		log.Errorf("incrementRestartCounter write: %s\n", err)
 	}
 	return restartCounter
+}
+
+func fileExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return err == nil
 }
