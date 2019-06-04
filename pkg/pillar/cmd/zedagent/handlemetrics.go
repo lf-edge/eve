@@ -1111,10 +1111,10 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	}
 
 	ReportDeviceInfo.LastRebootReason = ctx.rebootReason
-	if len(ctx.rebootStack) > 16000 {
+	if len(ctx.rebootStack) > 1600 {
 		runes := bytes.Runes([]byte(ctx.rebootStack))
-		if len(runes) > 16000 {
-			runes = runes[:16000]
+		if len(runes) > 1600 {
+			runes = runes[:1600]
 		}
 		ReportDeviceInfo.LastRebootStack = fmt.Sprintf("Truncated stack: %v",
 			ctx.rebootStack)
