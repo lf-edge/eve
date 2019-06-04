@@ -26,7 +26,7 @@ That file is /config/DevicePortConfig/override.json
 [Note that this file does not override cloud configuration. TBD: should we rename
 it to local.json instead?]
 And futher overridden by a USB memory stick plugged in when the device is powered
-on. The scripts/mkusb.sh can be used to create that script.
+on. The [scripts/mkusb.sh](../scripts/mkusb.sh) can be used to create a USB stick with a json file specifying the device connectivity based on the examples below.
 Finally, when the device is created or updated in the controller, the device
 port configuration can be specified which will be sent to the device using the systemAdapter part of the API. The most recent information DevicePortConfig
 becomes the highest priority, but the device tests that it works before using it
@@ -159,6 +159,14 @@ In addition the above configurations be specified from the EV-controller by
 specifying one or more networks with the proxy and/or static as part of the
 zcli device create.
 
+# Creating USB sticks
+
+The [scripts/mkusb.sh](../scripts/mkusb.sh) can run on Linux to create a USB stick.
+It takes a usb.json as an argument, plus a few additrional arguments:
+* -t Test the stick by mounting and reading it after written
+* -d Create a dump directory on the stick, which Eve will use to deposit any diagnostics 
+* -i Create an identity directory on the stick, which Eve will use to deposit its identity like the device certificate.
+
 # Troubleshooting
 
 The blinking pattern can be extracted from the shell using
@@ -186,5 +194,15 @@ If there are no IP addresses, the logs for network interface manager can help:
     /persist/`zboot curpart`/log/nim.log
 ```
 
-Finally zedagent.log, downloader.log, and /persist/log/logmanager.log will contain
+In addition zedagent.log, downloader.log, and /persist/log/logmanager.log will contain
 errors if those agents can not reach the controller.
+
+The ```/persist/status/nim/DevicePortConfigList/global.json``` contains the set
+of DevicePortConfig which have been tried, any errors, last time they succeeded
+and failed, etc. This is quite useful in a proxy or static IP setup, since there 
+can be IP routing issues, DNS issues, WPAD, or proxy issues.
+
+If there is no console (display and keyboard) to run diag or look at these files,
+the ```mkush.sh -d``` above can be used to get the diagnostics deposited on the
+USB stick for inspection.
+
