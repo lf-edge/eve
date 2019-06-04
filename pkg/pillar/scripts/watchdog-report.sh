@@ -22,13 +22,13 @@ if [ $# -ge 2 ]; then
     if [ -n "$agent" ]; then
         echo "pkill -USR1 /opt/zededa/bin/$agent"
         pkill -USR1 /opt/zededa/bin/"$agent"
-	sleep 5
-	# Note that logmanager.log is not json format
-	if [ "$agent" = "logmanager" ]; then
-	    stack=$(grep level=warning /persist/log/logmanager.log | grep "stack trace")
-	else
-	    stack=$(grep level...warning "/persist/$CURPART/log/$agent.log" | grep "stack trace")
-	fi
+        sleep 5
+        # Note that logmanager.log is not json format
+        if [ "$agent" = "logmanager" ]; then
+            stack=$(grep level=warning /persist/log/logmanager.log | grep "stack trace")
+        else
+            stack=$(grep level...warning "/persist/$CURPART/log/$agent.log" | grep "stack trace")
+        fi
     fi
 fi
 
@@ -43,11 +43,11 @@ if [ $# -ge 2 ]; then
     agent=$(echo "$2" | grep '/var/run/.*\.pid' | sed 's,/var/run/\(.*\)\.pid,\1,')
     # Note that logmanager.log is not json format
     if [ "$agent" = "logmanager" ]; then
-	fatal=$(grep level=fatal /persist/log/logmanager.log)
-	stack=$(grep level=error /persist/log/logmanager.log | grep "stack trace")
+        fatal=$(grep level=fatal /persist/log/logmanager.log)
+        stack=$(grep level=error /persist/log/logmanager.log | grep "stack trace")
     elif [ -n "$agent" ]; then
-	fatal=$(grep level...fatal "/persist/$CURPART/log/$agent.log")
-	stack=$(grep level...error "/persist/$CURPART/log/$agent.log" | grep "stack trace")
+        fatal=$(grep level...fatal "/persist/$CURPART/log/$agent.log")
+        stack=$(grep level...error "/persist/$CURPART/log/$agent.log" | grep "stack trace")
     fi
 fi
 if [ -n "$fatal" ]; then
