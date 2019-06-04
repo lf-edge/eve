@@ -83,11 +83,11 @@ func handleSignals(sigs chan os.Signal) {
 func printStack() {
 	stacks := getStacks(false)
 	log.Errorf("fatal stack trace:\n%v\n", stacks)
-	RebootReason("fatal stack trace")
+	RebootReason("fatal: agent exit")
 	RebootStack(stacks)
 }
 
-// Write reason in /persist/IMGx/reboot-reason, including agentName and date
+// RebootReason writes a reason string in /persist/IMGx/reboot-reason, including agentName and date
 func RebootReason(reason string) {
 	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
 	log.Warnf("RebootReason to %s: %s\n", filename, reason)
@@ -100,7 +100,7 @@ func RebootReason(reason string) {
 	syscall.Sync()
 }
 
-// Write stack in /persist/IMGx/reboot-stack
+// RebootStack writes stack in /persist/IMGx/reboot-stack
 func RebootStack(stacks string) {
 	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), stackFile)
 	log.Warnf("RebootStack to %s", filename)
