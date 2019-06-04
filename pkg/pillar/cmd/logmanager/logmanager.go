@@ -30,6 +30,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -883,6 +884,11 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 				log.Errorf(" > Failed!: %v\n", err)
 			}
 			break
+		}
+		if !utf8.ValidString(line) {
+			log.Errorf("Invalid UTF-8 - dropping line: %v",
+				line)
+			continue
 		}
 		// remove trailing "/n" from line
 		line = line[0 : len(line)-1]
