@@ -1137,15 +1137,16 @@ func appNetworkDoActivateUnderlayNetwork(
 	createDefaultIpsetConfiglet(vifName, netInstStatus.DnsNameToIPList,
 		appIPAddr)
 
-	appNetInfo := types.AppNetworkInfo{IsMgmt: false, BridgeName: bridgeName,
+	aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: vifName, BridgeIP: bridgeIPAddr, AppIP: appIPAddr,
 		UpLinks: netInstStatus.IfNameList}
 
 	// Set up ACLs
-	err = createACLConfiglet(appNetInfo, ulConfig.ACLs)
+	ruleList, err := createACLConfiglet(aclArgs, ulConfig.ACLs)
 	if err != nil {
 		addError(ctx, status, "createACL", err)
 	}
+	status.UnderlayAclList = ruleList
 
 	if appIPAddr != "" {
 		// XXX clobber any IPv6 EID entry since same name
@@ -1327,15 +1328,16 @@ func appNetworkDoActivateOverlayNetwork(
 	createDefaultIpsetConfiglet(vifName, netInstStatus.DnsNameToIPList,
 		EID.String())
 
-	appNetInfo := types.AppNetworkInfo{IsMgmt: false, BridgeName: bridgeName,
+	aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: vifName, BridgeIP: olStatus.BridgeIPAddr, AppIP: EID.String(),
 		UpLinks: netInstStatus.IfNameList}
 
 	// Set up ACLs
-	err = createACLConfiglet(appNetInfo, olConfig.ACLs)
+	ruleList, err := createACLConfiglet(aclArgs, olConfig.ACLs)
 	if err != nil {
 		addError(ctx, status, "createACL", err)
 	}
+	status.OverlayAclList = ruleList
 
 	addhostDnsmasq(bridgeName, appMac, EID.String(),
 		config.UUIDandVersion.UUID.String())
@@ -1585,14 +1587,15 @@ func doActivateAppInstanceWithMgmtLisp(
 	createDefaultIpsetConfiglet(olIfname, olConfig.MgmtDnsNameToIPList,
 		EID.String())
 
-	appNetInfo := types.AppNetworkInfo{IsMgmt: true, BridgeName: olIfname,
+	aclArgs := types.AppNetworkAclArgs{IsMgmt: true, BridgeName: olIfname,
 		VifName: olIfname}
 
 	// Set up ACLs
-	err = createACLConfiglet(appNetInfo, olConfig.ACLs)
+	ruleList, err := createACLConfiglet(aclArgs, olConfig.ACLs)
 	if err != nil {
 		addError(ctx, status, "createACL", err)
 	}
+	status.OverlayAclList = ruleList
 
 	// Save information about zedmanger EID and additional info
 	deviceEID = EID
@@ -1947,7 +1950,7 @@ func doAppNetworkModifyUnderlayNetwork(
 	netconfig := lookupNetworkInstanceConfig(ctx, ulConfig.Network.String())
 	netstatus := lookupNetworkInstanceStatus(ctx, ulConfig.Network.String())
 
-	appNetInfo := types.AppNetworkInfo{IsMgmt: false, BridgeName: bridgeName,
+	aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: appIPAddr,
 		UpLinks: netstatus.IfNameList}
 
@@ -1956,10 +1959,11 @@ func doAppNetworkModifyUnderlayNetwork(
 	// XXX could there be a change to AssignedIPAddress?
 	// If so updateNetworkACLConfiglet needs to know old and new
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
-	err := updateACLConfiglet(appNetInfo, ulStatus.ACLs, ulConfig.ACLs)
+	ruleList, err := updateACLConfiglet(aclArgs, status.UnderlayAclList, ulConfig.ACLs)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
+	status.UnderlayAclList = ruleList
 
 	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 		netstatus.BridgeIPSets)
@@ -2025,17 +2029,18 @@ func doAppNetworkModifyOverlayNetwork(
 	}
 	// We ignore any errors in netstatus
 
-	appNetInfo := types.AppNetworkInfo{IsMgmt: false, BridgeName: bridgeName,
+	aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: olStatus.Vif, BridgeIP: olStatus.BridgeIPAddr, AppIP: olConfig.EID.String(),
 		UpLinks: netstatus.IfNameList}
 
 	// XXX could there be a change to AssignedIPv6Address aka EID?
 	// If so updateACLConfiglet needs to know old and new
 	// XXX Could olStatus.Vif not be set? Means we didn't add
-	err := updateACLConfiglet(appNetInfo, olStatus.ACLs, olConfig.ACLs)
+	ruleList, err := updateACLConfiglet(aclArgs, status.OverlayAclList, olConfig.ACLs)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
+	status.OverlayAclList = ruleList
 
 	// Look for added or deleted ipsets
 	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
@@ -2075,7 +2080,6 @@ func handleAppNetworkWithMgmtLispModify(ctx *zedrouterContext,
 		log.Fatalf("IsZedmanager false. Config: %+v\n", config)
 	}
 	olConfig := &config.OverlayNetworkList[0]
-	olStatus := &status.OverlayNetworkList[0]
 	olNum := 1
 	olIfname := "dbo" + strconv.Itoa(olNum) + "x" +
 		strconv.Itoa(status.AppNum)
@@ -2083,14 +2087,15 @@ func handleAppNetworkWithMgmtLispModify(ctx *zedrouterContext,
 
 	// Note: we ignore olConfig.AppMacAddr for IsMgmt
 
-	appNetInfo := types.AppNetworkInfo{IsMgmt: true, BridgeName: olIfname,
+	aclArgs := types.AppNetworkAclArgs{IsMgmt: true, BridgeName: olIfname,
 		VifName: olIfname}
 
 	// Update ACLs
-	err := updateACLConfiglet(appNetInfo, olStatus.ACLs, olConfig.ACLs)
+	ruleList, err := updateACLConfiglet(aclArgs, status.OverlayAclList, olConfig.ACLs)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
+	status.OverlayAclList = ruleList
 
 	if config.Activate && !status.Activated {
 		doActivate(ctx, config, status)
@@ -2230,16 +2235,17 @@ func appNetworkDoInactivateUnderlayNetwork(
 			appIPAddr)
 	}
 
-	appNetInfo := types.AppNetworkInfo{IsMgmt: false, BridgeName: bridgeName,
+	aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: appIPAddr,
 		UpLinks: netstatus.IfNameList}
 
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
 	if ulStatus.Vif != "" {
-		err := deleteACLConfiglet(appNetInfo, ulStatus.ACLs)
+		ruleList, err := deleteACLConfiglet(aclArgs, status.UnderlayAclList)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
+		status.UnderlayAclList = ruleList
 	} else {
 		log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
 			status.UUIDandVersion, bridgeName,
@@ -2319,17 +2325,18 @@ func appNetworkDoInactivateOverlayNetwork(
 	removehostDnsmasq(bridgeName, olStatus.Mac,
 		olStatus.EID.String())
 
-	appNetInfo := types.AppNetworkInfo{IsMgmt: false, BridgeName: bridgeName,
+	aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: olStatus.Vif, BridgeIP: olStatus.BridgeIPAddr, AppIP: olStatus.EID.String(),
 		UpLinks: netstatus.IfNameList}
 
 	// Delete ACLs
 	// XXX Could olStatus.Vif not be set? Means we didn't add
 	if olStatus.Vif != "" {
-		err := deleteACLConfiglet(appNetInfo, olStatus.ACLs)
+		ruleList, err := deleteACLConfiglet(aclArgs, status.OverlayAclList)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
+		status.OverlayAclList = ruleList
 	} else {
 		log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
 			status.UUIDandVersion, bridgeName,
@@ -2502,13 +2509,14 @@ func doInactivateAppNetworkWithMgmtLisp(
 	// Default ipset
 	deleteDefaultIpsetConfiglet(olIfname, true)
 
-	appNetInfo := types.AppNetworkInfo{IsMgmt: true, BridgeName: olIfname,
+	aclArgs := types.AppNetworkAclArgs{IsMgmt: true, BridgeName: olIfname,
 		VifName: olIfname}
 	// Delete ACLs
-	err = deleteACLConfiglet(appNetInfo, olStatus.ACLs)
+	ruleList, err := deleteACLConfiglet(aclArgs, status.OverlayAclList)
 	if err != nil {
 		addError(ctx, status, "deleteACL", err)
 	}
+	status.OverlayAclList = ruleList
 
 	// Delete LISP configlets
 	deleteLispConfiglet(lispRunDirname, true, olStatus.MgmtIID,

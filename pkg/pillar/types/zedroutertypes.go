@@ -111,6 +111,8 @@ type AppNetworkStatus struct {
 	LegacyDataPlane     bool
 	OverlayNetworkList  []OverlayNetworkStatus
 	UnderlayNetworkList []UnderlayNetworkStatus
+	OverlayAclList      IpTablesRuleList
+	UnderlayAclList     IpTablesRuleList
 	MissingNetwork      bool // If any Missing flag is set in the networks
 	// Any errros from provisioning the network
 	Error     string
@@ -1174,15 +1176,28 @@ type VifNameMac struct {
 	AppID   uuid.UUID
 }
 
-type AppNetworkInfo struct {
+// set of args needed, while constructing
+// iptables rules
+type AppNetworkAclArgs struct {
 	IsMgmt     bool
+	IpVer      int
 	BridgeName string
 	VifName    string
-	IpVer      int
 	BridgeIP   string
 	AppIP      string
 	UpLinks    []string
 }
+
+// holder for iptables rules
+type IpTablesRule struct {
+	IpVer  int
+	Table  string
+	Chain  string
+	Prefix []string
+	Rule   []string
+}
+
+type IpTablesRuleList []IpTablesRule
 
 /*
  * Tx/Rx of bridge is equal to the total of Tx/Rx on all member

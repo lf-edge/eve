@@ -17,10 +17,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// iptablesRule is the list of parmeters after the "-A", "FORWARD"
-type IptablesRuleList []IptablesRule
-type IptablesRule []string
-
 // Go through the list of ACEs and create dnsmasq ipset configuration
 // lines required for host matches
 func compileAceIpsets(ACLs []types.ACE) []string {
@@ -215,22 +211,22 @@ func compileOldAppInstanceIpsets(ctx *zedrouterContext,
 // For a shared bridge call aclToRules for each ifname, then aclDropRules,
 // then concat all the rules and pass to applyACLrules
 // Note that only bridgeName is set with ifMgmt
-func createACLConfiglet(appNetInfo types.AppNetworkInfo, ACLs []types.ACE) error {
+func createACLConfiglet(aclArgs types.AppNetworkAclArgs,
+	ACLs []types.ACE) (types.IpTablesRuleList, error) {
 
 	log.Infof("createACLConfiglet: ifname %s, vifName %s, IP %s/%s, ACLs %v\n",
-		appNetInfo.BridgeName, appNetInfo.VifName, appNetInfo.BridgeIP, appNetInfo.AppIP, ACLs)
-	appNetInfo.IpVer = determineIpVer(appNetInfo.IsMgmt, appNetInfo.BridgeIP)
-	rules, err := aclToRules(appNetInfo, ACLs)
+		aclArgs.BridgeName, aclArgs.VifName, aclArgs.BridgeIP, aclArgs.AppIP, ACLs)
+	aclArgs.IpVer = determineIpVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
+	rules, err := aclToRules(aclArgs, ACLs)
 	if err != nil {
-		return err
+		return rules, err
 	}
-	dropRules, err := aclDropRules(appNetInfo.BridgeName, appNetInfo.VifName)
+	dropRules, err := aclDropRules(aclArgs)
 	if err != nil {
-		return err
+		return rules, err
 	}
 	rules = append(rules, dropRules...)
-	return applyACLRules(rules, appNetInfo.BridgeName, appNetInfo.VifName,
-		appNetInfo.IsMgmt, appNetInfo.IpVer, appNetInfo.AppIP)
+	return applyACLRules(aclArgs, rules)
 }
 
 // If no valid bridgeIP we assume IPv4
@@ -253,160 +249,188 @@ func determineIpVer(isMgmt bool, bridgeIP string) int {
 	}
 }
 
-func applyACLRules(rules IptablesRuleList, bridgeName string, vifName string,
-	isMgmt bool, ipVer int, appIP string) error {
-
-	log.Debugf("applyACLRules: bridgeName %s ipVer %d appIP %s with %d rules\n",
-		bridgeName, ipVer, appIP, len(rules))
+func applyACLRules(aclArgs types.AppNetworkAclArgs,
+	rules types.IpTablesRuleList) (types.IpTablesRuleList, error) {
 	var err error
+	var activeRules types.IpTablesRuleList
+	log.Debugf("applyACLRules: ipVer %d, bridgeName %s appIP %s with %d rules\n",
+		aclArgs.IpVer, aclArgs.BridgeName, aclArgs.AppIP, len(rules))
 	for _, rule := range rules {
-		log.Debugf("createACLConfiglet: rule %v\n", rule)
-		args := rulePrefix("-A", isMgmt, ipVer, vifName, appIP, rule)
-		if args == nil {
-			log.Debugf("createACLConfiglet: skipping rule %v\n",
-				rule)
+		log.Debugf("createACLConfiglet: add rule %v\n", rule)
+		if err := rulePrefix(aclArgs, &rule); err != nil {
+			log.Debugf("createACLConfiglet: skipping rule %v\n", rule)
 			continue
 		}
-		args = append(args, rule...)
-		if ipVer == 4 {
-			err = iptables.IptableCmd(args...)
-		} else if ipVer == 6 {
-			err = iptables.Ip6tableCmd(args...)
+		err = executeIpTablesRule("-A", rule)
+		if err == nil {
+			activeRules = append(activeRules, rule)
 		} else {
-			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", ipVer))
-		}
-		if err != nil {
-			return err
+			return activeRules, err
 		}
 	}
-	if !isMgmt {
+	return activeRules, err
+}
+
+// Returns a list of iptables commands, witout the initial "-A FORWARD"
+func aclToRules(aclArgs types.AppNetworkAclArgs, ACLs []types.ACE) (types.IpTablesRuleList, error) {
+
+	var rulesList types.IpTablesRuleList
+	log.Debugf("aclToRules(%s, %s, %d, %s, %s, %v\n",
+		aclArgs.BridgeName, aclArgs.VifName, aclArgs.IpVer,
+		aclArgs.BridgeIP, aclArgs.AppIP, ACLs)
+
+	var aclRule1, aclRule2, aclRule3, aclRule4 types.IpTablesRule
+	aclRule1.IpVer = aclArgs.IpVer
+	aclRule2.IpVer = aclArgs.IpVer
+	aclRule3.IpVer = aclArgs.IpVer
+	aclRule4.IpVer = aclArgs.IpVer
+	// TBD:XXX, there can be duplicates of these rules,
+	// one set of each appNetworkConfig
+	// check whether these can be handled at the network instance level
+	// XXX should we check isMgmt instead of bridgeIP?
+	if aclArgs.IpVer == 6 && aclArgs.BridgeIP != "" {
+		// Need to allow local communication */
+		// Only allow dhcp, dns (tcp/udp), and icmp6/nd
+		// Note that sufficient for src or dst to be local
+		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+			"--match-set", "ipv6.local", "dst", "-p", "ipv6-icmp", "-j", "ACCEPT"}
+		aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+			"--match-set", "ipv6.local", "src", "-p", "ipv6-icmp", "-j", "ACCEPT"}
+		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d",
+			aclArgs.BridgeIP, "-p", "ipv6-icmp", "-j", "ACCEPT"}
+		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s",
+			aclArgs.BridgeIP, "-p", "ipv6-icmp", "-j", "ACCEPT"}
+		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+
+		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+			"--match-set", "ipv6.local", "dst", "-p", "udp", "--dport", "dhcpv6-server",
+			"-j", "ACCEPT"}
+		aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+			"--match-set", "ipv6.local", "src", "-p", "udp", "--sport", "dhcpv6-server",
+			"-j", "ACCEPT"}
+		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			"-p", "udp", "--dport", "dhcpv6-server", "-j", "ACCEPT"}
+		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+			"-p", "udp", "--sport", "dhcpv6-server", "-j", "ACCEPT"}
+		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+
+		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			"-p", "udp", "--dport", "domain", "-j", "ACCEPT"}
+		aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+			"-p", "udp", "--sport", "domain", "-j", "ACCEPT"}
+		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			"-p", "tcp", "--dport", "domain", "-j", "ACCEPT"}
+		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+			"-p", "tcp", "--sport", "domain", "-j", "ACCEPT"}
+		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+	}
+	// The same rules as above for IPv4.
+	// If we have a bridge service then bridgeIP might be "".
+	if aclArgs.IpVer == 4 && aclArgs.BridgeIP != "" {
+		// Need to allow local communication */
+		// Only allow dhcp and dns (tcp/udp)
+		// Note that sufficient for src or dst to be local
+		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+			"--match-set", "ipv4.local", "dst", "-p", "udp", "--dport", "bootps",
+			"-j", "ACCEPT"}
+		aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+			"--match-set", "ipv4.local", "src", "-p", "udp", "--sport", "bootps",
+			"-j", "ACCEPT"}
+		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			"-p", "udp", "--dport", "bootps", "-j", "ACCEPT"}
+		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+			"-p", "udp", "--sport", "bootps", "-j", "ACCEPT"}
+		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+
+		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			"-p", "udp", "--dport", "domain", "-j", "ACCEPT"}
+		aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+			"-p", "udp", "--sport", "domain", "-j", "ACCEPT"}
+		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			"-p", "tcp", "--dport", "domain", "-j", "ACCEPT"}
+		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+			"-p", "tcp", "--sport", "domain", "-j", "ACCEPT"}
+		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+	}
+
+	if !aclArgs.IsMgmt {
 		// Add mangle rules for IPv6 packets from the domU (overlay or
 		// underlay) since netfront/netback thinks there is checksum
 		// offload
 		// XXX add error checks?
-		iptables.Ip6tableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
-			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
-		iptables.Ip6tableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
-			"-p", "udp", "-j", "CHECKSUM", "--checksum-fill")
-		iptables.IptableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
-			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
-		iptables.IptableCmd("-t", "mangle", "-A", "PREROUTING", "-i", bridgeName,
-			"-p", "udp", "-j", "CHECKSUM", "--checksum-fill")
+		aclRule1.IpVer = 6
+		aclRule1.Table = "mangle"
+		aclRule1.Chain = "PREROUTING"
+		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-p", "tcp",
+			"-j", "CHECKSUM", "--checksum-fill"}
+		aclRule2.IpVer = 6
+		aclRule2.Table = "mangle"
+		aclRule2.Chain = "PREROUTING"
+		aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-p", "udp",
+			"-j", "CHECKSUM", "--checksum-fill"}
+		aclRule3.IpVer = 4
+		aclRule3.Table = "mangle"
+		aclRule3.Chain = "PREROUTING"
+		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-p", "tcp",
+			"-j", "CHECKSUM", "--checksum-fill"}
+		aclRule4.IpVer = 4
+		aclRule4.Table = "mangle"
+		aclRule4.Chain = "PREROUTING"
+		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-p", "udp",
+			"-j", "CHECKSUM", "--checksum-fill"}
+		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 	}
 	// XXX isMgmt is painful; related to commenting out eidset accepts
 	// XXX won't need this when zedmanager is in a separate domU
 	// Commenting out for now
-	if false && ipVer == 6 && !isMgmt {
+	if false && aclArgs.IpVer == 6 && !aclArgs.IsMgmt {
 		// Manually add rules so that lispers.net doesn't see and drop
 		// the packet on dbo1x0
 		// XXX add error checks?
-		iptables.Ip6tableCmd("-A", "FORWARD", "-i", bridgeName, "-o", "dbo1x0",
-			"-j", "DROP")
+		aclRule1.IpVer = 6
+		aclRule1.Table = "mangle"
+		aclRule1.Chain = "FORWARD"
+		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-o", "dbo1x0",
+			"-j", "DROP"}
+		rulesList = append(rulesList, aclRule1)
 	}
-	return nil
-}
-
-// Returns a list of iptables commands, witout the initial "-A FORWARD"
-func aclToRules(appNetInfo types.AppNetworkInfo, ACLs []types.ACE) (IptablesRuleList, error) {
-
-	rulesList := IptablesRuleList{}
-	log.Debugf("aclToRules(%s, %s, %d, %s, %s, %v\n",
-		appNetInfo.BridgeName, appNetInfo.VifName, appNetInfo.IpVer, appNetInfo.BridgeIP, appNetInfo.AppIP, ACLs)
-
-	// XXX should we check isMgmt instead of bridgeIP?
-	if appNetInfo.IpVer == 6 && appNetInfo.BridgeIP != "" {
-		// Need to allow local communication */
-		// Only allow dhcp, dns (tcp/udp), and icmp6/nd
-		// Note that sufficient for src or dst to be local
-		rule1 := []string{"-i", appNetInfo.BridgeName, "-m", "set", "--match-set",
-			"ipv6.local", "dst", "-p", "ipv6-icmp", "-j", "ACCEPT"}
-		rule2 := []string{"-i", appNetInfo.BridgeName, "-m", "set", "--match-set",
-			"ipv6.local", "src", "-p", "ipv6-icmp", "-j", "ACCEPT"}
-		rule3 := []string{"-i", appNetInfo.BridgeName, "-d", appNetInfo.BridgeIP,
-			"-p", "ipv6-icmp", "-j", "ACCEPT"}
-		rule4 := []string{"-i", appNetInfo.BridgeName, "-s", appNetInfo.BridgeIP,
-			"-p", "ipv6-icmp", "-j", "ACCEPT"}
-		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
-		rule1 = []string{"-i", appNetInfo.BridgeName, "-m", "set", "--match-set",
-			"ipv6.local", "dst", "-p", "udp", "--dport", "dhcpv6-server",
-			"-j", "ACCEPT"}
-		rule2 = []string{"-i", appNetInfo.BridgeName, "-m", "set", "--match-set",
-			"ipv6.local", "src", "-p", "udp", "--sport", "dhcpv6-server",
-			"-j", "ACCEPT"}
-		rule3 = []string{"-i", appNetInfo.BridgeName, "-d", appNetInfo.BridgeIP,
-			"-p", "udp", "--dport", "dhcpv6-server", "-j", "ACCEPT"}
-		rule4 = []string{"-i", appNetInfo.BridgeName, "-s", appNetInfo.BridgeIP,
-			"-p", "udp", "--sport", "dhcpv6-server", "-j", "ACCEPT"}
-		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
-		rule1 = []string{"-i", appNetInfo.BridgeName, "-d", appNetInfo.BridgeIP,
-			"-p", "udp", "--dport", "domain", "-j", "ACCEPT"}
-		rule2 = []string{"-i", appNetInfo.BridgeName, "-s", appNetInfo.BridgeIP,
-			"-p", "udp", "--sport", "domain", "-j", "ACCEPT"}
-		rule3 = []string{"-i", appNetInfo.BridgeName, "-d", appNetInfo.BridgeIP,
-			"-p", "tcp", "--dport", "domain", "-j", "ACCEPT"}
-		rule4 = []string{"-i", appNetInfo.BridgeName, "-s", appNetInfo.BridgeIP,
-			"-p", "tcp", "--sport", "domain", "-j", "ACCEPT"}
-		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
-	}
-	// The same rules as above for IPv4.
-	// If we have a bridge service then bridgeIP might be "".
-	if appNetInfo.IpVer == 4 && appNetInfo.BridgeIP != "" {
-		// Need to allow local communication */
-		// Only allow dhcp and dns (tcp/udp)
-		// Note that sufficient for src or dst to be local
-		rule1 := []string{"-i", appNetInfo.BridgeName, "-m", "set", "--match-set",
-			"ipv4.local", "dst", "-p", "udp", "--dport", "bootps",
-			"-j", "ACCEPT"}
-		rule2 := []string{"-i", appNetInfo.BridgeName, "-m", "set", "--match-set",
-			"ipv4.local", "src", "-p", "udp", "--sport", "bootps",
-			"-j", "ACCEPT"}
-		rule3 := []string{"-i", appNetInfo.BridgeName, "-d", appNetInfo.BridgeIP,
-			"-p", "udp", "--dport", "bootps", "-j", "ACCEPT"}
-		rule4 := []string{"-i", appNetInfo.BridgeName, "-s", appNetInfo.BridgeIP,
-			"-p", "udp", "--sport", "bootps", "-j", "ACCEPT"}
-		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
-		rule1 = []string{"-i", appNetInfo.BridgeName, "-d", appNetInfo.BridgeIP,
-			"-p", "udp", "--dport", "domain", "-j", "ACCEPT"}
-		rule2 = []string{"-i", appNetInfo.BridgeName, "-s", appNetInfo.BridgeIP,
-			"-p", "udp", "--sport", "domain", "-j", "ACCEPT"}
-		rule3 = []string{"-i", appNetInfo.BridgeName, "-d", appNetInfo.BridgeIP,
-			"-p", "tcp", "--dport", "domain", "-j", "ACCEPT"}
-		rule4 = []string{"-i", appNetInfo.BridgeName, "-s", appNetInfo.BridgeIP,
-			"-p", "tcp", "--sport", "domain", "-j", "ACCEPT"}
-		rulesList = append(rulesList, rule1, rule2, rule3, rule4)
-	}
-
 	for _, ace := range ACLs {
-		rules, err := aceToRules(appNetInfo, ace)
+		rules, err := aceToRules(aclArgs, ace)
 		if err != nil {
 			return nil, err
 		}
 		rulesList = append(rulesList, rules...)
 	}
-	log.Debugf("aclToRules(%s)\n", rulesList)
+	log.Debugf("aclToRules(%v)\n", rulesList)
 	return rulesList, nil
 }
 
-func aclDropRules(bridgeName, vifName string) (IptablesRuleList, error) {
+func aclDropRules(aclArgs types.AppNetworkAclArgs) (types.IpTablesRuleList, error) {
+
+	var rulesList types.IpTablesRuleList
+	var aclRule1, aclRule2, aclRule3, aclRule4 types.IpTablesRule
+	aclRule1.IpVer = aclArgs.IpVer
+	aclRule2.IpVer = aclArgs.IpVer
+	aclRule3.IpVer = aclArgs.IpVer
+	aclRule4.IpVer = aclArgs.IpVer
 
 	log.Debugf("aclDropRules: bridgeName %s, vifName %s\n",
-		bridgeName, vifName)
+		aclArgs.BridgeName, aclArgs.VifName)
 
 	// Always match on interface. Note that rulesPrefix adds physdev-in
-	rulesList := IptablesRuleList{}
 	// Implicit drop at the end with log before it
-	outArgs1 := []string{"-i", bridgeName, "-j", "LOG", "--log-prefix",
+	aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-j", "LOG", "--log-prefix",
 		"FORWARD:FROM:", "--log-level", "3"}
-	inArgs1 := []string{"-o", bridgeName, "-j", "LOG", "--log-prefix",
+	aclRule2.Rule = []string{"-o", aclArgs.BridgeName, "-j", "LOG", "--log-prefix",
 		"FORWARD:TO:", "--log-level", "3"}
-	outArgs2 := []string{"-i", bridgeName, "-j", "DROP"}
-	inArgs2 := []string{"-o", bridgeName, "-j", "DROP"}
-	rulesList = append(rulesList, outArgs1, inArgs1, outArgs2, inArgs2)
+	aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-j", "DROP"}
+	aclRule4.Rule = []string{"-o", aclArgs.BridgeName, "-j", "DROP"}
+	rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 	return rulesList, nil
 }
 
-func aceToRules(appNetInfo types.AppNetworkInfo, ace types.ACE) (IptablesRuleList, error) {
-	rulesList := IptablesRuleList{}
+func aceToRules(aclArgs types.AppNetworkAclArgs, ace types.ACE) (types.IpTablesRuleList, error) {
+	var rulesList types.IpTablesRuleList
 
 	// Extract lport and protocol from the Matches to use for PortMap
 	// Keep others to make sure we put the protocol before the port
@@ -417,9 +441,18 @@ func aceToRules(appNetInfo types.AppNetworkInfo, ace types.ACE) (IptablesRuleLis
 	var lport string
 	var fport string
 
+	// max six rules, (2 port map rule,  2 accept rules, 2 limit drop rules)
+	var aclRule1, aclRule2, aclRule3, aclRule4, aclRule5, aclRule6 types.IpTablesRule
+	aclRule1.IpVer = aclArgs.IpVer
+	aclRule2.IpVer = aclArgs.IpVer
+	aclRule3.IpVer = aclArgs.IpVer
+	aclRule4.IpVer = aclArgs.IpVer
+	aclRule5.IpVer = aclArgs.IpVer
+	aclRule6.IpVer = aclArgs.IpVer
+
 	// Always match on interface. Note that rulesPrefix adds physdev-in
-	inArgs := []string{"-o", appNetInfo.BridgeName}
-	outArgs := []string{"-i", appNetInfo.BridgeName}
+	inArgs := []string{"-o", aclArgs.BridgeName}
+	outArgs := []string{"-i", aclArgs.BridgeName}
 
 	for _, match := range ace.Matches {
 		switch match.Type {
@@ -454,7 +487,7 @@ func aceToRules(appNetInfo types.AppNetworkInfo, ace types.ACE) (IptablesRuleLis
 				log.Errorln("ipset create for ",
 					match.Value, err)
 			}
-			switch appNetInfo.IpVer {
+			switch aclArgs.IpVer {
 			case 4:
 				ipsetName = "ipv4." + match.Value
 			case 6:
@@ -468,11 +501,11 @@ func aceToRules(appNetInfo types.AppNetworkInfo, ace types.ACE) (IptablesRuleLis
 				return nil, errors.New(errStr)
 			}
 			// Caller adds any EIDs/IPs to set
-			switch appNetInfo.IpVer {
+			switch aclArgs.IpVer {
 			case 4:
-				ipsetName = "ipv4.eids." + appNetInfo.VifName
+				ipsetName = "ipv4.eids." + aclArgs.VifName
 			case 6:
-				ipsetName = "ipv6.eids." + appNetInfo.VifName
+				ipsetName = "ipv6.eids." + aclArgs.VifName
 			}
 		default:
 			errStr := fmt.Sprintf("Unsupported ACE match type: %s",
@@ -559,38 +592,41 @@ func aceToRules(appNetInfo types.AppNetworkInfo, ace types.ACE) (IptablesRuleLis
 				log.Errorln(errStr)
 				return nil, errors.New(errStr)
 			}
-			if appNetInfo.AppIP == "" {
+			if aclArgs.AppIP == "" {
 				errStr := fmt.Sprintf("PortMap without appIP for lport %s/protocol %s: %+v",
 					lport, protocol, ace)
 				log.Errorln(errStr)
 				return nil, errors.New(errStr)
 			}
 			targetPort := fmt.Sprintf("%d", action.TargetPort)
-			target := fmt.Sprintf("%s:%d", appNetInfo.AppIP, action.TargetPort)
-			// These rules are applied on the upLink
-			// interfaces and port number.
+			target := fmt.Sprintf("%s:%d", aclArgs.AppIP, action.TargetPort)
+			// These rules are applied on the upLink interfaces and port number.
 			// loop through the uplink interfaces
-			for _, upLink := range appNetInfo.UpLinks {
+			for _, upLink := range aclArgs.UpLinks {
 				log.Infof("upLink %s\n", upLink)
 				// The DNAT/SNAT rules do not compare fport and ipset
 				// Make sure packets are returned to zedrouter and not
 				// e.g., out a directly attached interface in the domU
-				rule1 := []string{"PREROUTING",
-					"-i", upLink, "-p", protocol,
+				aclRule1.Table = "nat"
+				aclRule1.Chain = "PREROUTING"
+				aclRule1.Rule = []string{"-i", upLink, "-p", protocol,
 					"--dport", lport, "-j", "DNAT",
 					"--to-destination", target}
-				rule2 := []string{"POSTROUTING",
-					"-o", upLink, "-p", protocol,
-					"--dport", targetPort, "-j", "SNAT",
-					"--to-source", appNetInfo.BridgeIP}
-				rulesList = append(rulesList, rule1, rule2)
+				rulesList = append(rulesList, aclRule1)
 			}
+			// add the outgoing port-map translation rule to bridge port
+			aclRule2.Table = "nat"
+			aclRule2.Chain = "POSTROUTING"
+			aclRule2.Rule = []string{"-o", aclArgs.BridgeName, "-p", protocol,
+				"--dport", targetPort, "-j", "SNAT",
+				"--to-source", aclArgs.BridgeIP}
+			rulesList = append(rulesList, aclRule2)
 
 			// Below we make sure the mapped packets get through
 			// Note that port/targetport change relative
 			// no normal ACL above.
-			outArgs = []string{"-i", appNetInfo.BridgeName}
-			inArgs = []string{"-o", appNetInfo.BridgeName}
+			outArgs = []string{"-i", aclArgs.BridgeName}
+			inArgs = []string{"-o", aclArgs.BridgeName}
 
 			if ip != "" {
 				outArgs = append(outArgs, "-d", ip)
@@ -606,10 +642,10 @@ func aceToRules(appNetInfo types.AppNetworkInfo, ace types.ACE) (IptablesRuleLis
 			outArgs = append(outArgs, "--sport", targetPort)
 			inArgs = append(inArgs, "--dport", targetPort)
 			if ipsetName != "" {
-				outArgs = append(outArgs, "-m", "set",
-					"--match-set", ipsetName, "dst")
-				inArgs = append(inArgs, "-m", "set",
-					"--match-set", ipsetName, "src")
+				outArgs = append(outArgs, []string{"-m", "set",
+					"--match-set", ipsetName, "dst"}...)
+				inArgs = append(inArgs, []string{"-m", "set",
+					"--match-set", ipsetName, "src"}...)
 			}
 		}
 		if actionCount > 1 {
@@ -627,7 +663,9 @@ func aceToRules(appNetInfo types.AppNetworkInfo, ace types.ACE) (IptablesRuleLis
 		outArgs = append(outArgs, []string{"-j", "ACCEPT"}...)
 		inArgs = append(inArgs, []string{"-j", "ACCEPT"}...)
 	}
-	rulesList = append(rulesList, outArgs, inArgs)
+	aclRule3.Rule = inArgs
+	aclRule4.Rule = outArgs
+	rulesList = append(rulesList, aclRule4, aclRule3)
 	if foundLimit {
 		// Add separate DROP without the limit to count the excess
 		unlimitedOutArgs = append(unlimitedOutArgs,
@@ -636,7 +674,9 @@ func aceToRules(appNetInfo types.AppNetworkInfo, ace types.ACE) (IptablesRuleLis
 			[]string{"-j", "DROP"}...)
 		log.Debugf("unlimitedOutArgs %v\n", unlimitedOutArgs)
 		log.Debugf("unlimitedInArgs %v\n", unlimitedInArgs)
-		rulesList = append(rulesList, unlimitedOutArgs, unlimitedInArgs)
+		aclRule5.Rule = unlimitedInArgs
+		aclRule6.Rule = unlimitedOutArgs
+		rulesList = append(rulesList, aclRule5, aclRule6)
 	}
 	log.Infof("rulesList %v\n", rulesList)
 	return rulesList, nil
@@ -653,85 +693,95 @@ func isIPorCIDR(str string) bool {
 // Determine which rules to skip and what prefix/table to use
 // We append a '+' to the vifname to handle PV/qemu which for some
 // reason have a second <vifname>-emu bridge interface.
-func rulePrefix(operation string, isMgmt bool, ipVer int, vifName string,
-	appIP string, rule IptablesRule) IptablesRule {
+func rulePrefix(aclArgs types.AppNetworkAclArgs, rule *types.IpTablesRule) error {
 
-	vifName += "+"
-	prefix := []string{}
-	if isMgmt {
+	vifName := aclArgs.VifName
+
+	if vifName != "" {
+		vifName += "+"
+	}
+	if aclArgs.IsMgmt {
 		// Enforcing sending on OUTPUT. Enforcing receiving
 		// using FORWARD since packet FORWARDED from lispers.net
 		// interface.
-		if rule[0] == "-o" {
+		if rule.Rule[0] == "-o" {
 			// XXX since domU traffic is forwarded out dbo1x0
 			// we can't have the forward rule (unless we create a
 			// set for all the EIDs)
 			// This special handling will go away when ZedManager
 			// is in a domU
-			// prefix = []string{operation, "FORWARD"}
-			return nil
-		} else if rule[0] == "-i" {
-			prefix = []string{operation, "OUTPUT"}
-			rule[0] = "-o"
-		} else {
-			return nil
+			// prefix = []string{"FORWARD"}
+			errStr := fmt.Sprintf("ACL: skipping over %v", rule.Rule)
+			return errors.New(errStr)
 		}
-	} else if ipVer == 6 {
+		if rule.Rule[0] == "-i" {
+			rule.Chain = "OUTPUT"
+			rule.Rule[0] = "-o"
+		}
+		return nil
+	}
+
+	if aclArgs.IpVer == 6 {
 		// The input rules (from domU are applied to raw to intercept
 		// before lisp/pcap can pick them up.
 		// The output rules (to domU) are applied in forwarding path
 		// since packets are forwarded from lispers.net interface after
 		// decap.
 		// Note that the counter parsing code assumes this.
-		if rule[0] == "-i" {
-			prefix = []string{"-t", "raw", operation, "PREROUTING",
-				"-m", "physdev", "--physdev-in", vifName}
-		} else if rule[0] == "-o" {
-			if appIP != "" {
-				prefix = []string{operation, "FORWARD",
-					"-d", appIP}
-			} else {
-				prefix = []string{operation, "FORWARD"}
+		if rule.Rule[0] == "-i" {
+			rule.Table = "raw"
+			rule.Chain = "PREROUTING"
+			rule.Prefix = []string{"-m", "physdev", "--physdev-in", vifName}
+		} else if rule.Rule[0] == "-o" {
+			rule.Chain = "FORWARD"
+			if aclArgs.AppIP != "" {
+				rule.Prefix = []string{"-d", aclArgs.AppIP}
 			}
-		} else {
-			return nil
 		}
-	} else {
-		// Underlay; we have NAT rules and otherwise the same as
-		// for IPv6
-		if rule[0] == "PREROUTING" || rule[0] == "POSTROUTING" {
-			// NAT verbatim rule
-			prefix = []string{"-t", "nat", operation}
-		} else if rule[0] == "-i" {
-			prefix = []string{"-t", "raw", operation, "PREROUTING",
-				"-m", "physdev", "--physdev-in", vifName}
-		} else if rule[0] == "-o" {
-			if appIP != "" {
-				prefix = []string{operation, "FORWARD",
-					"-d", appIP}
-			} else {
-				prefix = []string{operation, "FORWARD"}
-			}
-		} else {
-			return nil
-		}
+		return nil
 	}
-	return prefix
+
+	// table, chain are already set, nothing extra need to be done
+	if rule.Table != "" || rule.Chain != "" {
+		// NAT verbatim rule, already set
+		// MANGLE verbatim rule, already set
+		return nil
+	}
+
+	// Underlay; we have NAT rules and otherwise the same as
+	// for IPv6
+	if rule.Rule[0] == "-i" {
+		rule.Table = "raw"
+		rule.Chain = "PREROUTING"
+		rule.Prefix = []string{"-m", "physdev", "--physdev-in", vifName}
+		return nil
+	}
+	if rule.Rule[0] == "-o" {
+		rule.Table = ""
+		rule.Chain = "FORWARD"
+		if aclArgs.AppIP != "" {
+			rule.Prefix = []string{"-d", aclArgs.AppIP}
+		}
+		return nil
+	}
+	errStr := fmt.Sprintf("ACL: Invalid Rule %v", rule.Rule)
+	return errors.New(errStr)
 }
 
-func equalRule(r1 IptablesRule, r2 IptablesRule) bool {
-	if len(r1) != len(r2) {
+func equalRule(r1 types.IpTablesRule, r2 types.IpTablesRule) bool {
+	if r1.IpVer != r2.IpVer || r1.Table != r2.Table ||
+		r1.Chain != r2.Chain || len(r1.Rule) != len(r2.Rule) {
 		return false
 	}
-	for i := range r1 {
-		if r1[i] != r2[i] {
+	for i := range r1.Rule {
+		if r1.Rule[i] != r2.Rule[i] {
 			return false
 		}
 	}
 	return true
 }
 
-func containsRule(set IptablesRuleList, member IptablesRule) bool {
+func containsRule(set types.IpTablesRuleList, member types.IpTablesRule) bool {
 	for _, r := range set {
 		if equalRule(r, member) {
 			return true
@@ -773,57 +823,61 @@ func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
 	return newIpsets, staleIpsets, restartDnsmasq
 }
 
-func updateACLConfiglet(appNetInfo types.AppNetworkInfo, OldACLs []types.ACE, ACLs []types.ACE) error {
+func updateACLConfiglet(aclArgs types.AppNetworkAclArgs,
+	oldRules types.IpTablesRuleList, ACLs []types.ACE) (types.IpTablesRuleList, error) {
 
-	log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s, oldACLs %v newACLs %v\n",
-		appNetInfo.BridgeName, appNetInfo.VifName, appNetInfo.AppIP, OldACLs, ACLs)
+	var newRules types.IpTablesRuleList
+	log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s\n",
+		aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
 
-	appNetInfo.IpVer = determineIpVer(appNetInfo.IsMgmt, appNetInfo.BridgeIP)
-	oldRules, err := aclToRules(appNetInfo, OldACLs)
+	aclArgs.IpVer = determineIpVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
+
+	rules, err := aclToRules(aclArgs, ACLs)
 	if err != nil {
-		return err
+		return oldRules, err
 	}
-
-	newRules, err := aclToRules(appNetInfo, ACLs)
-	if err != nil {
-		return err
+	// prepare the new iptables rule list
+	for _, rule := range rules {
+		err := rulePrefix(aclArgs, &rule)
+		if err != nil {
+			log.Debugf("updateACLConfiglet: skipping rule %v\n", rule)
+			continue
+		}
+		newRules = append(newRules, rule)
 	}
-	return applyACLUpdate(appNetInfo, oldRules, newRules)
+	return applyACLUpdate(aclArgs, oldRules, newRules)
 }
 
-func applyACLUpdate(appNetInfo types.AppNetworkInfo, oldRules IptablesRuleList,
-	newRules IptablesRuleList) error {
-
-	log.Debugf("applyACLUpdate: isMgmt %v ipVer %d vifName %s appIP %s oldRules %v newRules %v\n",
-		appNetInfo.IsMgmt, appNetInfo.IpVer, appNetInfo.VifName,
-		appNetInfo.AppIP, oldRules, newRules)
+// returns the set of installed iptables rules
+func applyACLUpdate(aclArgs types.AppNetworkAclArgs, oldRules types.IpTablesRuleList,
+	newRules types.IpTablesRuleList) (types.IpTablesRuleList, error) {
 
 	var err error
+	var activeRules types.IpTablesRuleList
+	log.Debugf("applyACLUpdate: isMgmt %v ipVer %d vifName %s appIP %s oldRules %v newRules %v\n",
+		aclArgs.IsMgmt, aclArgs.IpVer, aclArgs.VifName,
+		aclArgs.AppIP, oldRules, newRules)
+
 	// Look for old which should be deleted
 	for _, rule := range oldRules {
+		//existing rules
 		if containsRule(newRules, rule) {
+			activeRules = append(activeRules, rule)
 			continue
 		}
 		log.Debugf("applyACLUpdate: delete rule %v\n", rule)
-		args := rulePrefix("-D", appNetInfo.IsMgmt, appNetInfo.IpVer,
-			appNetInfo.VifName, appNetInfo.AppIP, rule)
-		if args == nil {
-			log.Debugf("applyACLUpdate: skipping delete rule %v\n",
-				rule)
-			continue
-		}
-		args = append(args, rule...)
-		if appNetInfo.IpVer == 4 {
-			err = iptables.IptableCmd(args...)
-		} else if appNetInfo.IpVer == 6 {
-			err = iptables.Ip6tableCmd(args...)
-		} else {
-			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", appNetInfo.IpVer))
-		}
 		if err != nil {
-			return err
+			activeRules = append(activeRules, rule)
+		} else {
+			// if this fails, most probably rule is not
+			// present, no need to maintain
+			err = executeIpTablesRule("-D", rule)
 		}
 	}
+	if err != nil {
+		return activeRules, err
+	}
+
 	// Look for new which should be inserted
 	// We insert at the top in reverse order so that the relative order of the new rules
 	// is preserved. Note that they are all added before any existing rules.
@@ -831,82 +885,54 @@ func applyACLUpdate(appNetInfo types.AppNetworkInfo, oldRules IptablesRuleList,
 	for numRules > 0 {
 		numRules--
 		rule := newRules[numRules]
+		// already added to activeRuleSet
 		if containsRule(oldRules, rule) {
 			continue
 		}
 		log.Debugf("applyACLUpdate: add rule %v\n", rule)
-		args := rulePrefix("-I", appNetInfo.IsMgmt, appNetInfo.IpVer,
-			appNetInfo.VifName, appNetInfo.AppIP, rule)
-		if args == nil {
-			log.Debugf("applyACLUpdate: skipping insert rule %v\n",
-				rule)
-			continue
+		if err := executeIpTablesRule("-I", rule); err != nil {
+			return activeRules, err
 		}
-		args = append(args, rule...)
-		if appNetInfo.IpVer == 4 {
-			err = iptables.IptableCmd(args...)
-		} else if appNetInfo.IpVer == 6 {
-			err = iptables.Ip6tableCmd(args...)
-		} else {
-			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", appNetInfo.IpVer))
-		}
-		if err != nil {
-			return err
-		}
+		activeRules = append(activeRules, rule)
 	}
-	return nil
+	return activeRules, nil
 }
 
-func deleteACLConfiglet(appNetInfo types.AppNetworkInfo, ACLs []types.ACE) error {
-
+func deleteACLConfiglet(aclArgs types.AppNetworkAclArgs,
+	rules types.IpTablesRuleList) (types.IpTablesRuleList, error) {
+	var err error
+	var activeRules types.IpTablesRuleList
 	log.Infof("deleteACLConfiglet: ifname %s vifName %s ACLs %v\n",
-		appNetInfo.BridgeName, appNetInfo.VifName, ACLs)
+		aclArgs.BridgeName, aclArgs.VifName, rules)
 
-	appNetInfo.IpVer = determineIpVer(appNetInfo.IsMgmt, appNetInfo.BridgeIP)
-	rules, err := aclToRules(appNetInfo, ACLs)
-	if err != nil {
-		return err
-	}
-	dropRules, err := aclDropRules(appNetInfo.BridgeName, appNetInfo.VifName)
-	if err != nil {
-		return err
-	}
-	rules = append(rules, dropRules...)
 	for _, rule := range rules {
 		log.Debugf("deleteACLConfiglet: rule %v\n", rule)
-		args := rulePrefix("-D", appNetInfo.IsMgmt, appNetInfo.IpVer,
-			appNetInfo.VifName, appNetInfo.AppIP, rule)
-		if args == nil {
-			log.Debugf("deleteACLConfiglet: skipping rule %v\n",
-				rule)
-			continue
-		}
-		args = append(args, rule...)
-		if appNetInfo.IpVer == 4 {
-			err = iptables.IptableCmd(args...)
-		} else if appNetInfo.IpVer == 6 {
-			err = iptables.Ip6tableCmd(args...)
-		} else {
-			err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", appNetInfo.IpVer))
-		}
 		if err != nil {
-			return err
+			activeRules = append(activeRules, rule)
+		} else {
+			err = executeIpTablesRule("-D", rule)
 		}
 	}
-	if !appNetInfo.IsMgmt {
-		// Remove mangle rules for IPv6 packets added above
-		// XXX error checks?
-		iptables.Ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", appNetInfo.BridgeName,
-			"-p", "tcp", "-j", "CHECKSUM", "--checksum-fill")
-		iptables.Ip6tableCmd("-t", "mangle", "-D", "PREROUTING", "-i", appNetInfo.BridgeName,
-			"-p", "udp", "-j", "CHECKSUM", "--checksum-fill")
+	return activeRules, err
+}
+
+func executeIpTablesRule(operation string, rule types.IpTablesRule) error {
+	var err error
+	ruleStr := []string{}
+	if rule.Table != "" {
+		ruleStr = append(ruleStr, "-t")
+		ruleStr = append(ruleStr, rule.Table)
 	}
-	// XXX see above
-	if false && appNetInfo.IpVer == 6 && !appNetInfo.IsMgmt {
-		// Manually delete the manual add above
-		// XXX error checks?
-		iptables.Ip6tableCmd("-D", "FORWARD", "-i", appNetInfo.BridgeName, "-o", "dbo1x0",
-			"-j", "DROP")
+	ruleStr = append(ruleStr, operation)
+	ruleStr = append(ruleStr, rule.Chain)
+	ruleStr = append(ruleStr, rule.Prefix...)
+	ruleStr = append(ruleStr, rule.Rule...)
+	if rule.IpVer == 4 {
+		err = iptables.IptableCmd(ruleStr...)
+	} else if rule.IpVer == 6 {
+		err = iptables.Ip6tableCmd(ruleStr...)
+	} else {
+		err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", rule.IpVer))
 	}
-	return nil
+	return err
 }
