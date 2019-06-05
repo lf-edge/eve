@@ -12,6 +12,8 @@ github.com/Shopify/sarama v1.19.0/go.mod h1:FVkBWblsNy7DGZRfXLU0O9RCGt5g3g3yEuWX
 github.com/Shopify/toxiproxy v2.1.4+incompatible/go.mod h1:OXgGpZ6Cli1/URJOF1DMxUHB2q5Ap20/P/eIdh4G0pI=
 github.com/StackExchange/wmi v0.0.0-20180116203802-5d049714c4a6 h1:fLjPD/aNc3UIOA6tDi6QXUemppXK3P9BI7mr2hd6gx8=
 github.com/StackExchange/wmi v0.0.0-20180116203802-5d049714c4a6/go.mod h1:3eOhrUMpNV+6aFIbp5/iudMxNCF27Vw2OZgy4xEx0Fg=
+github.com/VictorLowther/godmi v0.0.0-20190311134151-270258a8252d h1:URZ+tLrpKWG8PgJF4fLhjwx5OST48vOMtzcig71FbbQ=
+github.com/VictorLowther/godmi v0.0.0-20190311134151-270258a8252d/go.mod h1:JiYtLLi0v25VZLHRInc/p4CtOCFXUPKb9Q7vNQ6rqyk=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
 github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf/go.mod h1:ybxpYRFXyAe+OPACYpWeL0wqObRcbAqCMya13uyzqw0=
 github.com/apache/thrift v0.12.0/go.mod h1:cp2SuWMxlEZw2r+iP2GNCdIi4C1qmUzdZFSVb+bacwQ=
@@ -86,6 +88,7 @@ github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORN
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0 h1:45sCR5RtlFHMR4UwH9sdQ5TC8v0qDQCHnXt+kaKSTVE=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
+github.com/lf-edge/eve v0.0.0-20190502222952-a7334767b192 h1:+ODTM9OV9NDokYKLItx1J0hHSwY4hutBAh5E230KUrY=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
 github.com/mdlayher/raw v0.0.0-20190419142535-64193704e472 h1:3QZ+iCYiorY0MXIia13+KK+uJHIsOJDHl7Y8Ul1Endc=
 github.com/mdlayher/raw v0.0.0-20190419142535-64193704e472/go.mod h1:7EpbotpCmVZcu+KCX4g9WaRNuu11uyhiW7+Le1dKawg=
@@ -110,6 +113,8 @@ github.com/prometheus/client_model v0.0.0-20190115171406-56726106282f/go.mod h1:
 github.com/prometheus/common v0.2.0/go.mod h1:TNfzLD0ON7rHzMJeJkieUDPYmFC7Snx/y86RQel1bk4=
 github.com/prometheus/procfs v0.0.0-20181005140218-185b4288413d/go.mod h1:c3At6R/oaqEKCNdg8wHV1ftS6bRYblBhIjjI8uT2IGk=
 github.com/prometheus/procfs v0.0.0-20190117184657-bf6a532e95b1/go.mod h1:c3At6R/oaqEKCNdg8wHV1ftS6bRYblBhIjjI8uT2IGk=
+github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36 h1:MjmnT/IjFtKsMULXuPlZYc5SsNGA5nFPxwKIEbXGaZI=
+github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36/go.mod h1:1NhfVxJ6qD4S5ondz2CobWFiYlODF8ex4pNgQrKYCxc=
 github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=
 github.com/rogpeppe/fastuuid v0.0.0-20150106093220-6724a57986af/go.mod h1:XWv6SoW27p1b0cqNHllgS5HIMJraePCO15w5zCzIWYg=
 github.com/satori/go.uuid v0.0.0-20181028125025-b2ce2384e17b h1:8O/3dJ2dGfuLVN0bo2B0IdkG0L8cjpmFJ4r8eRQBCi8=
@@ -129,7 +134,6 @@ github.com/vishvananda/netlink v0.0.0-20190319163122-f504738125a5 h1:FCbmjuLYUFK
 github.com/vishvananda/netlink v0.0.0-20190319163122-f504738125a5/go.mod h1:+SR5DhBJrl6ZM7CoCKvpw5BKroDKQ+PJqOg65H/2ktk=
 github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc h1:R83G5ikgLMxrBvLh22JhdfI8K6YXEPHx5P03Uu3DRs4=
 github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc/go.mod h1:ZjcWmFBXmLKZu9Nxj3WKYEafiSqer2rnvPr0en9UNpI=
-github.com/lf-edge/eve v0.0.0-20190502222952-a7334767b192 h1:+ODTM9OV9NDokYKLItx1J0hHSwY4hutBAh5E230KUrY=
 go.opencensus.io v0.19.1/go.mod h1:gug0GbSHa8Pafr0d2urOSgoXHZ6x/RUlaiT0d9pqb4A=
 go.opencensus.io v0.19.2/go.mod h1:NO/8qkisMZLZ1FCsKNqtJPwc8/TaclWyY0B6wcYNg9M=
 go.opencensus.io v0.20.0/go.mod h1:NO/8qkisMZLZ1FCsKNqtJPwc8/TaclWyY0B6wcYNg9M=
