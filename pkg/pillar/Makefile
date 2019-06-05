@@ -40,6 +40,9 @@ $(APPS1): $(DISTDIR)
 shell:
 	make -C ../.. shell
 
+build-docker-$(APPS):
+	docker build -f Dockerfile.in --target=build .
+
 build-docker:
 	docker build $(DOCKER_ARGS) -t $(DOCKER_TAG) .
 

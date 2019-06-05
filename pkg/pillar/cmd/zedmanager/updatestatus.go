@@ -21,6 +21,7 @@ func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 	log.Infof("updateAIStatusSafename for %s\n", safename)
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
+	found := false
 	for key, st := range items {
 		status := cast.CastAppInstanceStatus(st)
 		if status.Key() != key {
@@ -36,8 +37,42 @@ func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 				log.Infof("Found StorageStatus URL %s safename %s\n",
 					ss.Name, safename)
 				updateAIStatusUUID(ctx, status.Key())
+				found = true
 			}
 		}
+	}
+	if !found {
+		log.Warnf("updateAIStatusSafename for %s not found\n", safename)
+	}
+}
+
+// Find all the config which refer to this safename.
+func updateAIStatusSha(ctx *zedmanagerContext, sha string) {
+
+	log.Infof("updateAIStatusSha for %s\n", sha)
+	pub := ctx.pubAppInstanceStatus
+	items := pub.GetAll()
+	found := false
+	for key, st := range items {
+		status := cast.CastAppInstanceStatus(st)
+		if status.Key() != key {
+			log.Errorf("updateAIStatusSha key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
+		log.Debugf("Processing AppInstanceConfig for UUID %s\n",
+			status.UUIDandVersion.UUID)
+		for _, ss := range status.StorageStatusList {
+			if sha == ss.ImageSha256 {
+				log.Infof("Found StorageStatus URL %s sha %s\n",
+					ss.Name, sha)
+				updateAIStatusUUID(ctx, status.Key())
+				found = true
+			}
+		}
+	}
+	if !found {
+		log.Warnf("updateAIStatusSha for %s not found\n", sha)
 	}
 }
 
@@ -127,6 +162,7 @@ func removeAIStatusSafename(ctx *zedmanagerContext, safename string) {
 	log.Infof("removeAIStatusSafename for %s\n", safename)
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
+	found := false
 	for key, st := range items {
 		status := cast.CastAppInstanceStatus(st)
 		if status.Key() != key {
@@ -142,8 +178,42 @@ func removeAIStatusSafename(ctx *zedmanagerContext, safename string) {
 				log.Debugf("Found StorageStatus URL %s safename %s\n",
 					ss.Name, safename2)
 				updateOrRemove(ctx, status)
+				found = true
 			}
 		}
+	}
+	if !found {
+		log.Warnf("removeAIStatusSafename for %s not found\n", safename)
+	}
+}
+
+// Find all the Status which refer to this safename.
+func removeAIStatusSha(ctx *zedmanagerContext, sha string) {
+
+	log.Infof("removeAIStatusSha for %s\n", sha)
+	pub := ctx.pubAppInstanceStatus
+	items := pub.GetAll()
+	found := false
+	for key, st := range items {
+		status := cast.CastAppInstanceStatus(st)
+		if status.Key() != key {
+			log.Errorf("removeAIStatusSha key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
+		log.Debugf("Processing AppInstanceStatus for UUID %s\n",
+			status.UUIDandVersion.UUID)
+		for _, ss := range status.StorageStatusList {
+			if sha == ss.ImageSha256 {
+				log.Debugf("Found StorageStatus URL %s sha %s\n",
+					ss.Name, sha)
+				updateOrRemove(ctx, status)
+				found = true
+			}
+		}
+	}
+	if !found {
+		log.Warnf("removeAIStatusSha for %s not found\n", sha)
 	}
 }
 

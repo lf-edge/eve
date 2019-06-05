@@ -4,13 +4,21 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Create a USB stick with the DevicePortConfig usb.json file as input
-# Usage: mkusb.sh [-t] <file> <dev>
+# Usage: mkusb.sh [-t] [-d] [-i] <file> <dev>
 
 TEST=0
+DUMP=0
+IDENTITY=0
 
 while [ $# -gt 0 ]; do
     if [ "$1" = "-t" ]; then
         TEST=1
+        shift
+    elif [ "$1" = "-d" ]; then
+        DUMP=1
+        shift
+    elif [ "$1" = "-i" ]; then
+        IDENTITY=1
         shift
     else
         break
@@ -18,7 +26,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ $# != 2 ]; then
-    echo "Usage: mkusb.sh [-t] <file> <dev>"
+    echo "Usage: mkusb.sh [-t] [-d] [-i] <file> <dev>"
     exit 1
 fi
 FILE=$1
@@ -26,7 +34,13 @@ DEV=$2
 
 if [ ! -f "$FILE" ]; then
     echo "File $FILE does not exist"
-    echo "Usage: mkusb.sh [-t] <file> <dev>"
+    echo "Usage: mkusb.sh [-t] [-d] [-i] <file> <dev>"
+    exit 1
+fi
+
+base=$(basename "$FILE")
+if [ "$base" != "usb.json" ]; then
+    echo "File $base must be named usb.json"
     exit 1
 fi
 
@@ -66,8 +80,9 @@ sgdisk --zap "$DEV"
 sgdisk --mbrtogpt "$DEV"
 NUM_PART=1
 SEC_START=2048
-SEC_END=4096
-PART_TYPE=a0ee3715-fcdc-4bd8-9f94-23a62bd53c91
+# Make sure we have some room for identity and debug dumps
+SEC_END=40960
+PART_TYPE=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
 
 sgdisk --new $NUM_PART:$SEC_START:$SEC_END \
        --typecode=$NUM_PART:$PART_TYPE \
@@ -79,15 +94,20 @@ if [ -z "$SPECIAL" ]; then
     echo "Failed to create and label DevicePortConfig"
     exit 1
 fi
-mkdosfs -I "$SPECIAL"
+mkdosfs -n EVEDPC -I "$SPECIAL"
 TMPDIR=/mnt/$$
 mkdir $TMPDIR
 mount "$SPECIAL" $TMPDIR
 cp -p "$FILE" $TMPDIR
+if [ $DUMP = 1 ]; then
+    mkdir $TMPDIR/dump
+fi
+if [ $IDENTITY = 1 ]; then
+    mkdir $TMPDIR/identity
+fi
 umount -f "$SPECIAL"
 rmdir $TMPDIR
 
-# XXX test using
 if [ $TEST = 1 ]; then
     SPECIAL=$(cgpt find -l DevicePortConfig)
     mount -t vfat "$SPECIAL" /mnt

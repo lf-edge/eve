@@ -189,9 +189,6 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 	*ctx.DevicePortConfigList = compressAndPublishDevicePortConfigList(ctx)
 }
 
-// Make DevicePortConfig have at most two zedagent entries;
-// 1. the highest priority (whether it has lastSucceeded after lastFailed or not)
-// 2. the next priority with lastSucceeded after lastFailed
 func compressAndPublishDevicePortConfigList(ctx *DeviceNetworkContext) types.DevicePortConfigList {
 
 	dpcl := compressDPCL(ctx.DevicePortConfigList)
@@ -203,31 +200,43 @@ func compressAndPublishDevicePortConfigList(ctx *DeviceNetworkContext) types.Dev
 	return dpcl
 }
 
-// XXX have to handle curindex
+// Make DevicePortConfig have at most two zedagent entries;
+// 1. the highest priority (whether it has lastSucceeded after lastFailed or not)
+// 2. the next priority with lastSucceeded after lastFailed
+// and make it have a single item for the other keys
 func compressDPCL(dpcl *types.DevicePortConfigList) types.DevicePortConfigList {
 
 	var newConfig []types.DevicePortConfig
 	currentIndex := dpcl.CurrentIndex
-	deleteFailedZedagent := false
+	moreZedagent := false
+	popped := 0
+	foundKeys := make(map[string]bool)
 	for i, dpc := range dpcl.PortConfigList {
+		_, found := foundKeys[dpc.Key]
 		if dpc.Key != "zedagent" {
-			newConfig = append(newConfig, dpc)
+			if !found {
+				newConfig = append(newConfig, dpc)
+				foundKeys[dpc.Key] = true
+			} else {
+				log.Infof("Supressing second entry for %s",
+					dpc.Key)
+			}
 			continue
 		}
-		if !deleteFailedZedagent {
+		failed := !dpc.LastFailed.IsZero() && dpc.LastFailed.After(dpc.LastSucceeded)
+		if !found {
 			newConfig = append(newConfig, dpc)
-			deleteFailedZedagent = true
+			foundKeys[dpc.Key] = true
+			moreZedagent = true
 			continue
 		}
-		if dpc.LastFailed.IsZero() {
+		if moreZedagent {
 			newConfig = append(newConfig, dpc)
+			moreZedagent = failed
 			continue
 		}
-		if dpc.LastSucceeded.After(dpc.LastFailed) {
-			newConfig = append(newConfig, dpc)
-			continue
-		}
-		// XXX what if untested i.e. LastFailed and LastSucceeded are zero?
+		moreZedagent = failed
+
 		if currentIndex == i {
 			// Don't cut off the branch we are sitting on
 			newConfig = append(newConfig, dpc)
@@ -237,11 +246,11 @@ func compressDPCL(dpcl *types.DevicePortConfigList) types.DevicePortConfigList {
 		log.Infof("compressDPCL deleting zedagent index %d: %+v",
 			i, dpc)
 		if i < currentIndex {
-			currentIndex--
+			popped++
 		}
 	}
 	return types.DevicePortConfigList{
-		CurrentIndex:   currentIndex,
+		CurrentIndex:   currentIndex - popped,
 		PortConfigList: newConfig,
 	}
 }

@@ -255,12 +255,12 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 		successLimit := time.Second *
 			time.Duration(globalConfig.MintimeUpdateSuccess)
 		ctx := getconfigCtx.zedagentCtx
-		curPart := getBaseOsCurrentPartition(ctx)
+		curPart := getZbootCurrentPartition(ctx)
 		if timePassed < successLimit {
 			log.Infof("getLatestConfig, curPart %s inprogress waiting for %d seconds\n", curPart, (successLimit-timePassed)/time.Second)
 			ctx.remainingTestTime = successLimit - timePassed
 		} else {
-			initiateBaseOsZedCloudTestComplete(getconfigCtx)
+			initiateBaseOsZedCloudTestComplete(ctx)
 			ctx.remainingTestTime = 0
 		}
 		// Send updated remainingTestTime to zedcloud
