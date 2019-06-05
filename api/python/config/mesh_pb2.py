@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\nmesh.proto\x1a\x0cnetcmn.proto\"1\n\tMapServer\x12\x10\n\x08NameOrIp\x18\x01 \x01(\t\x12\x12\n\nCredential\x18\x02 \x01(\t\"\xf5\x01\n\x11\x44\x65viceLispDetails\x12\"\n\x0eLispMapServers\x18\x01 \x03(\x0b\x32\n.MapServer\x12\x14\n\x0cLispInstance\x18\x02 \x01(\r\x12\x0b\n\x03\x45ID\x18\x04 \x01(\t\x12\x12\n\nEIDHashLen\x18\x05 \x01(\r\x12\x1e\n\nZedServers\x18\x06 \x03(\x0b\x32\n.ZedServer\x12\x1b\n\x13\x45idAllocationPrefix\x18\x08 \x01(\x0c\x12\x1e\n\x16\x45idAllocationPrefixLen\x18\t \x01(\r\x12\x12\n\nClientAddr\x18\n \x01(\t\x12\x14\n\x0c\x45xperimental\x18\x14 \x01(\x08\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\nmesh.proto\x1a\x0cnetcmn.proto\"1\n\tMapServer\x12\x10\n\x08NameOrIp\x18\x01 \x01(\t\x12\x12\n\nCredential\x18\x02 \x01(\t\"\x97\x02\n\x11\x44\x65viceLispDetails\x12\"\n\x0eLispMapServers\x18\x01 \x03(\x0b\x32\n.MapServer\x12\x14\n\x0cLispInstance\x18\x02 \x01(\r\x12\x0b\n\x03\x45ID\x18\x04 \x01(\t\x12\x12\n\nEIDHashLen\x18\x05 \x01(\r\x12\x1e\n\nZedServers\x18\x06 \x03(\x0b\x32\n.ZedServer\x12\x1b\n\x13\x45idAllocationPrefix\x18\x08 \x01(\x0c\x12\x1e\n\x16\x45idAllocationPrefixLen\x18\t \x01(\r\x12\x12\n\nClientAddr\x18\n \x01(\t\x12 \n\x03\x64ns\x18\x0b \x03(\x0b\x32\x13.ZnetStaticDNSEntry\x12\x14\n\x0c\x45xperimental\x18\x14 \x01(\x08\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
   dependencies=[netcmn__pb2.DESCRIPTOR,])
 
@@ -129,7 +129,14 @@ _DEVICELISPDETAILS = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='Experimental', full_name='DeviceLispDetails.Experimental', index=8,
+      name='dns', full_name='DeviceLispDetails.dns', index=8,
+      number=11, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='Experimental', full_name='DeviceLispDetails.Experimental', index=9,
       number=20, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
@@ -148,11 +155,12 @@ _DEVICELISPDETAILS = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=80,
-  serialized_end=325,
+  serialized_end=359,
 )
 
 _DEVICELISPDETAILS.fields_by_name['LispMapServers'].message_type = _MAPSERVER
 _DEVICELISPDETAILS.fields_by_name['ZedServers'].message_type = netcmn__pb2._ZEDSERVER
+_DEVICELISPDETAILS.fields_by_name['dns'].message_type = netcmn__pb2._ZNETSTATICDNSENTRY
 DESCRIPTOR.message_types_by_name['MapServer'] = _MAPSERVER
 DESCRIPTOR.message_types_by_name['DeviceLispDetails'] = _DEVICELISPDETAILS
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)

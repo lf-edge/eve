@@ -100,7 +100,7 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		lmsx++
 	}
 	lispConfig.DnsNameToIPList = make([]types.DnsNameToIP,
-		len(lispInfo.ZedServers))
+		len(lispInfo.ZedServers)+len(lispInfo.Dns))
 	var zsx int = 0
 	for _, zs := range lispInfo.ZedServers {
 
@@ -108,6 +108,17 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		nameToIP.HostName = zs.HostName
 		nameToIP.IPs = make([]net.IP, len(zs.EID))
 		for i, ip := range zs.EID {
+			nameToIP.IPs[i] = net.ParseIP(ip)
+		}
+		lispConfig.DnsNameToIPList[zsx] = *nameToIP
+		zsx++
+	}
+	for _, dn := range lispInfo.Dns {
+
+		nameToIP := new(types.DnsNameToIP)
+		nameToIP.HostName = dn.HostName
+		nameToIP.IPs = make([]net.IP, len(dn.Address))
+		for i, ip := range dn.Address {
 			nameToIP.IPs[i] = net.ParseIP(ip)
 		}
 		lispConfig.DnsNameToIPList[zsx] = *nameToIP

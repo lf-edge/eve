@@ -108,6 +108,11 @@ func (m *LogEntry) GetTimestamp() *timestamp.Timestamp {
 	return nil
 }
 
+// This is the request payload for POST /api/v1/edgeDevice/logs
+// ZInfoMsg carries device logs to the controller.
+// The messages need to be retransmitted until they make it to the controller.
+// The message is assumed to be protected by a TLS session bound to the
+// device certificate.
 type LogBundle struct {
 	DevID                string               `protobuf:"bytes,1,opt,name=devID,proto3" json:"devID,omitempty"`
 	Image                string               `protobuf:"bytes,2,opt,name=image,proto3" json:"image,omitempty"`
