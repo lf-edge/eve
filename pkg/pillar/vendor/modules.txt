@@ -11,6 +11,8 @@ github.com/Azure/go-autorest/tracing
 github.com/Azure/go-autorest/autorest/date
 # github.com/StackExchange/wmi v0.0.0-20180116203802-5d049714c4a6
 github.com/StackExchange/wmi
+# github.com/VictorLowther/godmi v0.0.0-20190311134151-270258a8252d
+github.com/VictorLowther/godmi
 # github.com/aws/aws-sdk-go v1.19.11
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/awserr
@@ -117,6 +119,11 @@ github.com/lf-edge/eve/api/go/metrics
 github.com/pkg/errors
 # github.com/pkg/sftp v1.10.0
 github.com/pkg/sftp
+# github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36
+github.com/rackn/gohai/plugins/dmi
+github.com/rackn/gohai/plugins/net
+github.com/rackn/gohai/plugins/storage
+github.com/rackn/gohai/plugins/system
 # github.com/satori/go.uuid v0.0.0-20181028125025-b2ce2384e17b
 github.com/satori/go.uuid
 # github.com/satori/uuid v1.2.0

@@ -13,8 +13,6 @@ onboot:
   - name: rngd
     image: RNGD_TAG
     command: ["/sbin/rngd", "-1"]
-  - name: hwfp
-    image: HWFP_TAG
   - name: installer
     image: MKRAW_TAG
     command: ["/install"]

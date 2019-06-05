@@ -97,10 +97,20 @@ DEST_CONF_PART=$(find_part CONFIG $INSTALL_DEV)
 mkdir /run/conf /run/persist && \
   mount -t vfat /dev/$PERSIST_PART /run/persist && \
   mount -t vfat /dev/$DEST_CONF_PART /run/conf  && \
-  echo $SERIAL_NUM > /run/conf/soft_serial && \
-  mkdir /run/persist/$SERIAL_NUM && \
-  cp /parts/hwfp.json /run/persist/$SERIAL_NUM
+  [ -f /run/conf/soft_serial ] || echo $SERIAL_NUM > /run/conf/soft_serial
 
+PILLAR=/mnt/containers/services/pillar/lower
+mount /parts/rootfs.img /mnt &&
+  for i in dev proc sys ; do mount --bind /$i $PILLAR/$i ; done
+
+SERIAL_NUM=$(cat /run/conf/soft_serial) && \
+  mkdir /run/persist/$SERIAL_NUM
+
+chroot $PILLAR /opt/zededa/bin/hardwaremodel -f > /run/persist/$SERIAL_NUM/hwfp.json
+chroot $PILLAR /opt/zededa/bin/hardwaremodel > /run/persist/$SERIAL_NUM/hardwaremodel.txt
+
+# lets hope this is enough to flush the caches
+sync
 umount /run/conf
 umount /run/persist
 

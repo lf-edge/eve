@@ -216,4 +216,5 @@ This product bundles portions of the github.com/estesp/manifest-tool, which is
 available under the Apache License 2.0. For details, see the build-tools/src
 
 This product bundles portions of the github.com/rackn/gohai, which is
-available under the Apache License 2.0. For details, see the pkg/hwfp
+available under the Apache License 2.0. For details, see the
+pkg/pillar/cmd/hardwaremodel
