@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('Z&github.com/lf-edge/eve/api/go/register'),
-  serialized_pb=_b('\n\x0eregister.proto\"1\n\rZRegisterResp\x12 \n\x06result\x18\x02 \x01(\x0e\x32\x10.ZRegisterResult\"W\n\x0cZRegisterMsg\x12\x12\n\nonBoardKey\x18\x01 \x01(\t\x12\x0f\n\x07pemCert\x18\x02 \x01(\x0c\x12\x0e\n\x06serial\x18\x03 \x01(\t\x12\x12\n\nsoftSerial\x18\x04 \x01(\t*z\n\x0fZRegisterResult\x12\x0c\n\x08ZRegNone\x10\x00\x12\x0f\n\x0bZRegSuccess\x10\x01\x12\x11\n\rZRegNotActive\x10\x02\x12\x13\n\x0fZRegAlreadyDone\x10\x03\x12\x10\n\x0cZRegDeviceNA\x10\x04\x12\x0e\n\nZRegFailed\x10\x05\x42(Z&github.com/lf-edge/eve/api/go/registerb\x06proto3')
+  serialized_pb=_b('\n\x0eregister.proto\"W\n\x0cZRegisterMsg\x12\x12\n\nonBoardKey\x18\x01 \x01(\t\x12\x0f\n\x07pemCert\x18\x02 \x01(\x0c\x12\x0e\n\x06serial\x18\x03 \x01(\t\x12\x12\n\nsoftSerial\x18\x04 \x01(\t\"1\n\rZRegisterResp\x12 \n\x06result\x18\x02 \x01(\x0e\x32\x10.ZRegisterResult*z\n\x0fZRegisterResult\x12\x0c\n\x08ZRegNone\x10\x00\x12\x0f\n\x0bZRegSuccess\x10\x01\x12\x11\n\rZRegNotActive\x10\x02\x12\x13\n\x0fZRegAlreadyDone\x10\x03\x12\x10\n\x0cZRegDeviceNA\x10\x04\x12\x0e\n\nZRegFailed\x10\x05\x42(Z&github.com/lf-edge/eve/api/go/registerb\x06proto3')
 )
 
 _ZREGISTERRESULT = _descriptor.EnumDescriptor(
@@ -71,37 +71,6 @@ ZRegFailed = 5
 
 
 
-_ZREGISTERRESP = _descriptor.Descriptor(
-  name='ZRegisterResp',
-  full_name='ZRegisterResp',
-  filename=None,
-  file=DESCRIPTOR,
-  containing_type=None,
-  fields=[
-    _descriptor.FieldDescriptor(
-      name='result', full_name='ZRegisterResp.result', index=0,
-      number=2, type=14, cpp_type=8, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-  ],
-  extensions=[
-  ],
-  nested_types=[],
-  enum_types=[
-  ],
-  serialized_options=None,
-  is_extendable=False,
-  syntax='proto3',
-  extension_ranges=[],
-  oneofs=[
-  ],
-  serialized_start=18,
-  serialized_end=67,
-)
-
-
 _ZREGISTERMSG = _descriptor.Descriptor(
   name='ZRegisterMsg',
   full_name='ZRegisterMsg',
@@ -149,22 +118,46 @@ _ZREGISTERMSG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=69,
+  serialized_start=18,
+  serialized_end=105,
+)
+
+
+_ZREGISTERRESP = _descriptor.Descriptor(
+  name='ZRegisterResp',
+  full_name='ZRegisterResp',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='result', full_name='ZRegisterResp.result', index=0,
+      number=2, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=107,
   serialized_end=156,
 )
 
 _ZREGISTERRESP.fields_by_name['result'].enum_type = _ZREGISTERRESULT
-DESCRIPTOR.message_types_by_name['ZRegisterResp'] = _ZREGISTERRESP
 DESCRIPTOR.message_types_by_name['ZRegisterMsg'] = _ZREGISTERMSG
+DESCRIPTOR.message_types_by_name['ZRegisterResp'] = _ZREGISTERRESP
 DESCRIPTOR.enum_types_by_name['ZRegisterResult'] = _ZREGISTERRESULT
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
-
-ZRegisterResp = _reflection.GeneratedProtocolMessageType('ZRegisterResp', (_message.Message,), dict(
-  DESCRIPTOR = _ZREGISTERRESP,
-  __module__ = 'register_pb2'
-  # @@protoc_insertion_point(class_scope:ZRegisterResp)
-  ))
-_sym_db.RegisterMessage(ZRegisterResp)
 
 ZRegisterMsg = _reflection.GeneratedProtocolMessageType('ZRegisterMsg', (_message.Message,), dict(
   DESCRIPTOR = _ZREGISTERMSG,
@@ -172,6 +165,13 @@ ZRegisterMsg = _reflection.GeneratedProtocolMessageType('ZRegisterMsg', (_messag
   # @@protoc_insertion_point(class_scope:ZRegisterMsg)
   ))
 _sym_db.RegisterMessage(ZRegisterMsg)
+
+ZRegisterResp = _reflection.GeneratedProtocolMessageType('ZRegisterResp', (_message.Message,), dict(
+  DESCRIPTOR = _ZREGISTERRESP,
+  __module__ = 'register_pb2'
+  # @@protoc_insertion_point(class_scope:ZRegisterResp)
+  ))
+_sym_db.RegisterMessage(ZRegisterResp)
 
 
 DESCRIPTOR._options = None

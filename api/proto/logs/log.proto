@@ -18,6 +18,11 @@ message LogEntry {
     google.protobuf.Timestamp timestamp = 7; // timestamp of the msg
 }
 
+// This is the request payload for POST /api/v1/edgeDevice/logs
+// ZInfoMsg carries device logs to the controller.
+// The messages need to be retransmitted until they make it to the controller.
+// The message is assumed to be protected by a TLS session bound to the
+// device certificate.
 message LogBundle {
     string devID = 1; // Device UUID
     string image = 2; // SW image the log got emitted from

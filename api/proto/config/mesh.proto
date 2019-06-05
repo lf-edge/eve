@@ -18,9 +18,11 @@ message DeviceLispDetails {
         uint32 LispInstance = 2;
         string EID = 4;
         uint32 EIDHashLen = 5;
-        repeated ZedServer ZedServers = 6;
+        repeated ZedServer ZedServers = 6; // Deprecate in favor of dns
+        // deprecated = 6;
         bytes EidAllocationPrefix = 8;
         uint32 EidAllocationPrefixLen = 9;
         string ClientAddr = 10;
+        repeated ZnetStaticDNSEntry dns = 11; // Add code in handlelookupparam.go
         bool Experimental = 20; // true: lispers.net dataplane. Default: go dataplane
 }

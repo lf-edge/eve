@@ -29,8 +29,8 @@ message networkMetric {
   uint64 rxBytes = 3;	// in bytes
   uint64 txDrops = 4;
   uint64 rxDrops = 5;
-  uint64 txRate = 6;  // deprecate
-  uint64 rxRate = 7;  // deprecate
+  // deprecated = 6;
+  // deprecated = 7;
   uint64 txPkts = 8;
   uint64 rxPkts = 9;
   uint64 txErrors = 10;
@@ -43,9 +43,9 @@ message networkMetric {
 }
 
 // Failures and successes for commuication to zedcloud
-// for each port
+// for each management port
 message zedcloudMetric {
-    string ifName = 1;	// interface name
+    string ifName = 1;          // interface name for management port
     uint64 failures = 2;
     uint64 success = 3;
     google.protobuf.Timestamp lastFailure = 4;
@@ -53,6 +53,7 @@ message zedcloudMetric {
     repeated urlcloudMetric urlMetrics = 6;
 }
 
+// Information for each API URL
 message urlcloudMetric {
     string url = 1;
     int64 tryMsgCount = 2;	// Things we might have tried to send
@@ -64,18 +65,18 @@ message urlcloudMetric {
 }
 
 message appCpuMetric {
-    // uint32 cpuTotal = 2;		// deprecated
-    // double cpuPercentage = 3;		// deprecated
+    // deprecated = 2;
+    // deprecated = 3;
     google.protobuf.Timestamp upTime = 4;
     uint64 total = 5;                   // cpu total in secs.
 }
 
 message deviceMetric {
-  // cpuMetric cpu = 1;	// deprecated
+  // deprecated = 1;
   memoryMetric memory = 2;
   repeated networkMetric network = 3;
   repeated zedcloudMetric zedcloud = 4;
-  // devCpuMetric compute = 5; // deprecated
+  // deprecated = 5;
   repeated diskMetric disk = 6;
   appCpuMetric cpuMetric = 7;
   repeated MetricItem metricItems = 8;
@@ -236,20 +237,6 @@ message ZMetricLispGlobal {
 	PktStat DecryptError = 12;
 }
 
-// XXX to be deprecated
-message ZMetricService {
-  string serviceID = 1;
-  string serviceName = 2;
-  uint32 serviceType = 3;
-  repeated networkMetric network = 4;
-  oneof ServiceContent {
-    ZMetricVpn  vpnm = 20;
-    ZMetricLisp lispm = 21;
-  }
-  repeated ZMetricFlow flowStats = 10;
-  ZMetricLispGlobal lispGlobalStats = 11;
-}
-
 message NetworkStats {
 	uint64 totalPackets = 1;
 	uint64 errors = 2;
@@ -282,15 +269,23 @@ message ZMetricNetworkInstance {
   ZMetricNetworkStats networkStats = 40; // Network bridge interface statistics
 }
 
+// This is the request payload for POST /api/v1/edgeDevice/metrics
+// ZMetricMsg carries periodic metrics; typically one message is sent for
+// all of the objects on a device (the device itself plus all of the app instances
+// and all of the network instances). As such there is normally no need to
+// retransmit these messages if there is some network failure; the next periodic
+// message will include the cumulative numbers.
+// The message is assumed to be protected by a TLS session bound to the
+// device certificate.
 message ZMetricMsg {
   string devID = 1;
-  // ZmetricTypes ztype = 2;  // deprecated
+  // deprecated = 2;
   google.protobuf.Timestamp atTimeStamp = 3;
 
   oneof MetricContent {
   	deviceMetric dm = 4;
    }
    repeated appMetric am = 5;
-   repeated ZMetricService sm = 6;	// XXX To be deprecated
+   // deprecated = 6;
    repeated ZMetricNetworkInstance nm = 7;
 }
