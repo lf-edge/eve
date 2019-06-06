@@ -16,8 +16,8 @@ message IpFlow {
   int32  protocol = 5;     // Protocol
 }
 
-message InstanceInfo {
-  string uuid = 1;           // UUID of the instance
+message ScopeInfo {
+  string uuid = 1;           // UUID of the instance or device
   string intf = 2;           // User visible name
   string localIntf = 3;      // Internal name of the interface
   string netInstUUID = 4;    // UUID of the network instance
@@ -44,7 +44,7 @@ message DnsRequest {
 
 message FlowMessage {
     string devId = 1;                 // Device UUID
-    InstanceInfo instance = 2;
+    ScopeInfo scope = 2;
     repeated FlowRecord flows = 3;
     repeated DnsRequest dnsReqs = 4;
 }

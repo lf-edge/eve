@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ%github.com/lf-edge/eve/api/go/flowlog'),
-  serialized_pb=_b('\n\rflowlog.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"X\n\x06IpFlow\x12\x0b\n\x03src\x18\x01 \x01(\t\x12\x0f\n\x07srcPort\x18\x02 \x01(\x05\x12\x0c\n\x04\x64\x65st\x18\x03 \x01(\t\x12\x10\n\x08\x64\x65stPort\x18\x04 \x01(\t\x12\x10\n\x08protocol\x18\x05 \x01(\x05\"R\n\x0cInstanceInfo\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0c\n\x04intf\x18\x02 \x01(\t\x12\x11\n\tlocalIntf\x18\x03 \x01(\t\x12\x13\n\x0bnetInstUUID\x18\x04 \x01(\t\"\xe1\x01\n\nFlowRecord\x12\x15\n\x04\x66low\x18\x01 \x01(\x0b\x32\x07.IpFlow\x12\x0e\n\x06\x61\x63lNum\x18\x02 \x01(\x05\x12\x0e\n\x06\x61\x63tion\x18\x03 \x01(\t\x12-\n\tstartTime\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12+\n\x07\x65ndTime\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07txBytes\x18\x06 \x01(\x03\x12\x0e\n\x06txPkts\x18\x07 \x01(\x03\x12\x0f\n\x07rxBytes\x18\x08 \x01(\x03\x12\x0e\n\x06rxPkts\x18\t \x01(\x03\"n\n\nDnsRequest\x12\x10\n\x08hostName\x18\x01 \x01(\t\x12\r\n\x05\x61\x64\x64rs\x18\x02 \x03(\t\x12/\n\x0brequestTime\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06\x61\x63lNum\x18\x04 \x01(\x05\"w\n\x0b\x46lowMessage\x12\r\n\x05\x64\x65vId\x18\x01 \x01(\t\x12\x1f\n\x08instance\x18\x02 \x01(\x0b\x32\r.InstanceInfo\x12\x1a\n\x05\x66lows\x18\x03 \x03(\x0b\x32\x0b.FlowRecord\x12\x1c\n\x07\x64nsReqs\x18\x04 \x03(\x0b\x32\x0b.DnsRequestBH\n\x1f\x63om.zededa.cloud.uservice.protoZ%github.com/lf-edge/eve/api/go/flowlogb\x06proto3')
+  serialized_pb=_b('\n\rflowlog.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"X\n\x06IpFlow\x12\x0b\n\x03src\x18\x01 \x01(\t\x12\x0f\n\x07srcPort\x18\x02 \x01(\x05\x12\x0c\n\x04\x64\x65st\x18\x03 \x01(\t\x12\x10\n\x08\x64\x65stPort\x18\x04 \x01(\t\x12\x10\n\x08protocol\x18\x05 \x01(\x05\"O\n\tScopeInfo\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0c\n\x04intf\x18\x02 \x01(\t\x12\x11\n\tlocalIntf\x18\x03 \x01(\t\x12\x13\n\x0bnetInstUUID\x18\x04 \x01(\t\"\xe1\x01\n\nFlowRecord\x12\x15\n\x04\x66low\x18\x01 \x01(\x0b\x32\x07.IpFlow\x12\x0e\n\x06\x61\x63lNum\x18\x02 \x01(\x05\x12\x0e\n\x06\x61\x63tion\x18\x03 \x01(\t\x12-\n\tstartTime\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12+\n\x07\x65ndTime\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07txBytes\x18\x06 \x01(\x03\x12\x0e\n\x06txPkts\x18\x07 \x01(\x03\x12\x0f\n\x07rxBytes\x18\x08 \x01(\x03\x12\x0e\n\x06rxPkts\x18\t \x01(\x03\"n\n\nDnsRequest\x12\x10\n\x08hostName\x18\x01 \x01(\t\x12\r\n\x05\x61\x64\x64rs\x18\x02 \x03(\t\x12/\n\x0brequestTime\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06\x61\x63lNum\x18\x04 \x01(\x05\"q\n\x0b\x46lowMessage\x12\r\n\x05\x64\x65vId\x18\x01 \x01(\t\x12\x19\n\x05scope\x18\x02 \x01(\x0b\x32\n.ScopeInfo\x12\x1a\n\x05\x66lows\x18\x03 \x03(\x0b\x32\x0b.FlowRecord\x12\x1c\n\x07\x64nsReqs\x18\x04 \x03(\x0b\x32\x0b.DnsRequestBH\n\x1f\x63om.zededa.cloud.uservice.protoZ%github.com/lf-edge/eve/api/go/flowlogb\x06proto3')
   ,
   dependencies=[google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
 
@@ -86,36 +86,36 @@ _IPFLOW = _descriptor.Descriptor(
 )
 
 
-_INSTANCEINFO = _descriptor.Descriptor(
-  name='InstanceInfo',
-  full_name='InstanceInfo',
+_SCOPEINFO = _descriptor.Descriptor(
+  name='ScopeInfo',
+  full_name='ScopeInfo',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='uuid', full_name='InstanceInfo.uuid', index=0,
+      name='uuid', full_name='ScopeInfo.uuid', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='intf', full_name='InstanceInfo.intf', index=1,
+      name='intf', full_name='ScopeInfo.intf', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='localIntf', full_name='InstanceInfo.localIntf', index=2,
+      name='localIntf', full_name='ScopeInfo.localIntf', index=2,
       number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='netInstUUID', full_name='InstanceInfo.netInstUUID', index=3,
+      name='netInstUUID', full_name='ScopeInfo.netInstUUID', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -134,7 +134,7 @@ _INSTANCEINFO = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=140,
-  serialized_end=222,
+  serialized_end=219,
 )
 
 
@@ -220,8 +220,8 @@ _FLOWRECORD = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=225,
-  serialized_end=450,
+  serialized_start=222,
+  serialized_end=447,
 )
 
 
@@ -272,8 +272,8 @@ _DNSREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=452,
-  serialized_end=562,
+  serialized_start=449,
+  serialized_end=559,
 )
 
 
@@ -292,7 +292,7 @@ _FLOWMESSAGE = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='instance', full_name='FlowMessage.instance', index=1,
+      name='scope', full_name='FlowMessage.scope', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -324,19 +324,19 @@ _FLOWMESSAGE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=564,
-  serialized_end=683,
+  serialized_start=561,
+  serialized_end=674,
 )
 
 _FLOWRECORD.fields_by_name['flow'].message_type = _IPFLOW
 _FLOWRECORD.fields_by_name['startTime'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _FLOWRECORD.fields_by_name['endTime'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _DNSREQUEST.fields_by_name['requestTime'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
-_FLOWMESSAGE.fields_by_name['instance'].message_type = _INSTANCEINFO
+_FLOWMESSAGE.fields_by_name['scope'].message_type = _SCOPEINFO
 _FLOWMESSAGE.fields_by_name['flows'].message_type = _FLOWRECORD
 _FLOWMESSAGE.fields_by_name['dnsReqs'].message_type = _DNSREQUEST
 DESCRIPTOR.message_types_by_name['IpFlow'] = _IPFLOW
-DESCRIPTOR.message_types_by_name['InstanceInfo'] = _INSTANCEINFO
+DESCRIPTOR.message_types_by_name['ScopeInfo'] = _SCOPEINFO
 DESCRIPTOR.message_types_by_name['FlowRecord'] = _FLOWRECORD
 DESCRIPTOR.message_types_by_name['DnsRequest'] = _DNSREQUEST
 DESCRIPTOR.message_types_by_name['FlowMessage'] = _FLOWMESSAGE
@@ -349,12 +349,12 @@ IpFlow = _reflection.GeneratedProtocolMessageType('IpFlow', (_message.Message,),
   ))
 _sym_db.RegisterMessage(IpFlow)
 
-InstanceInfo = _reflection.GeneratedProtocolMessageType('InstanceInfo', (_message.Message,), dict(
-  DESCRIPTOR = _INSTANCEINFO,
+ScopeInfo = _reflection.GeneratedProtocolMessageType('ScopeInfo', (_message.Message,), dict(
+  DESCRIPTOR = _SCOPEINFO,
   __module__ = 'flowlog_pb2'
-  # @@protoc_insertion_point(class_scope:InstanceInfo)
+  # @@protoc_insertion_point(class_scope:ScopeInfo)
   ))
-_sym_db.RegisterMessage(InstanceInfo)
+_sym_db.RegisterMessage(ScopeInfo)
 
 FlowRecord = _reflection.GeneratedProtocolMessageType('FlowRecord', (_message.Message,), dict(
   DESCRIPTOR = _FLOWRECORD,
