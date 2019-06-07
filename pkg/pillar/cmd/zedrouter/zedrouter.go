@@ -1959,7 +1959,8 @@ func doAppNetworkModifyUnderlayNetwork(
 	// XXX could there be a change to AssignedIPAddress?
 	// If so updateNetworkACLConfiglet needs to know old and new
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
-	ruleList, err := updateACLConfiglet(aclArgs, status.UnderlayAclList, ulConfig.ACLs)
+	ruleList, err := updateACLConfiglet(aclArgs,
+		ulStatus.ACLs, ulConfig.ACLs, status.UnderlayAclList)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
@@ -2036,7 +2037,8 @@ func doAppNetworkModifyOverlayNetwork(
 	// XXX could there be a change to AssignedIPv6Address aka EID?
 	// If so updateACLConfiglet needs to know old and new
 	// XXX Could olStatus.Vif not be set? Means we didn't add
-	ruleList, err := updateACLConfiglet(aclArgs, status.OverlayAclList, olConfig.ACLs)
+	ruleList, err := updateACLConfiglet(aclArgs,
+		olStatus.ACLs, olConfig.ACLs, status.OverlayAclList)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
@@ -2080,18 +2082,19 @@ func handleAppNetworkWithMgmtLispModify(ctx *zedrouterContext,
 		log.Fatalf("IsZedmanager false. Config: %+v\n", config)
 	}
 	olConfig := &config.OverlayNetworkList[0]
+	olStatus := &status.OverlayNetworkList[0]
 	olNum := 1
 	olIfname := "dbo" + strconv.Itoa(olNum) + "x" +
 		strconv.Itoa(status.AppNum)
 	// Assume there is no UUID for management overlay
 
 	// Note: we ignore olConfig.AppMacAddr for IsMgmt
-
 	aclArgs := types.AppNetworkAclArgs{IsMgmt: true, BridgeName: olIfname,
 		VifName: olIfname}
 
 	// Update ACLs
-	ruleList, err := updateACLConfiglet(aclArgs, status.OverlayAclList, olConfig.ACLs)
+	ruleList, err := updateACLConfiglet(aclArgs,
+		olStatus.ACLs, olConfig.ACLs, status.OverlayAclList)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}

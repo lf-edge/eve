@@ -210,6 +210,10 @@ func networkInstanceBridgeDelete(
 	// When bridge and sister interfaces are deleted, code in pbr.go
 	// takes care of deleting the corresponding route tables and ip rules.
 
+	aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: status.BridgeName,
+		BridgeIP: status.BridgeIPAddr}
+	handleNetworkInstanceAclConfiglet("-D", aclArgs)
+
 	// delete the sister interface
 	if status.HasEncap {
 		deleteDummyInterface(status)
@@ -538,6 +542,10 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		}
 	default:
 	}
+	// setup the ACLs for the bridge
+	aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: status.BridgeName,
+		BridgeIP: status.BridgeIPAddr}
+	handleNetworkInstanceAclConfiglet("-A", aclArgs)
 	return nil
 }
 
