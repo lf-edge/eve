@@ -194,7 +194,7 @@ The body MUST contain the UUID for the Device on each and every request. The Con
 
 The `config` endpoint, specifically the `EdgeDevConfig` message, supports arbitrary key/value pairs. These are intended to send implementation-specific configuration to a Device. For example, it might control the frequency of downloading configs, enable debug logging or enable a USB port.
 
-The `EdgeDevConfig` message can contain zero, one or more `ConfigItem` entries, each of which is an arbitrary key/value pair. These SHOULD be used to send implementation-specific configuration to a Device, other than configuration already defined in this API or the messages.
+The `EdgeDevConfig` message can contain zero, one or more `ConfigItem` entries, each of which is an arbitrary key/value pair. These SHOULD be used to send implementation-specific configuration to a Device, other than configuration already defined in this API or the messages. The items are defined in [global-config-variables](../pkg/pillar/docs/global-config-variables.md)
 
 ### Info
 
