@@ -102,6 +102,7 @@ type zedagentContext struct {
 	subZbootStatus            *pubsub.Subscription
 	rebootCmdDeferred         bool
 	rebootReason              string
+	rebootStack               string
 	rebootTime                time.Time
 	restartCounter            uint32
 	subDevicePortConfigList   *pubsub.Subscription
@@ -170,19 +171,19 @@ func Run() {
 	// (assuming the other is in inprogress) then we log it
 	// We assume the log makes it reliably to zedcloud hence we discard
 	// the reason.
-	zedagentCtx.rebootReason, zedagentCtx.rebootTime = agentlog.GetCurrentRebootReason()
+	zedagentCtx.rebootReason, zedagentCtx.rebootTime, zedagentCtx.rebootStack = agentlog.GetCurrentRebootReason()
 	if zedagentCtx.rebootReason != "" {
 		log.Warnf("Current partition rebooted reason: %s\n",
 			zedagentCtx.rebootReason)
 		agentlog.DiscardCurrentRebootReason()
 	}
-	otherRebootReason, otherRebootTime := agentlog.GetOtherRebootReason()
+	otherRebootReason, otherRebootTime, otherRebootStack := agentlog.GetOtherRebootReason()
 	if otherRebootReason != "" {
 		log.Warnf("Other partition rebooted reason: %s\n",
 			otherRebootReason)
 		agentlog.DiscardOtherRebootReason()
 	}
-	commonRebootReason, commonRebootTime := agentlog.GetCommonRebootReason()
+	commonRebootReason, commonRebootTime, commonRebootStack := agentlog.GetCommonRebootReason()
 	if commonRebootReason != "" {
 		log.Warnf("Common rebooted reason: %s\n",
 			commonRebootReason)
@@ -191,10 +192,12 @@ func Run() {
 	if zedagentCtx.rebootReason == "" {
 		zedagentCtx.rebootReason = otherRebootReason
 		zedagentCtx.rebootTime = otherRebootTime
+		zedagentCtx.rebootStack = otherRebootStack
 	}
 	if zedagentCtx.rebootReason == "" {
 		zedagentCtx.rebootReason = commonRebootReason
 		zedagentCtx.rebootTime = commonRebootTime
+		zedagentCtx.rebootStack = commonRebootStack
 	}
 	if zedagentCtx.rebootReason == "" {
 		dateStr := time.Now().Format(time.RFC3339Nano)
@@ -203,6 +206,7 @@ func Run() {
 		log.Warnf(reason)
 		zedagentCtx.rebootReason = reason
 		zedagentCtx.rebootTime = time.Now()
+		zedagentCtx.rebootStack = ""
 	}
 
 	// Read and increment restartCounter
