@@ -83,7 +83,6 @@ sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e "s#WATCHDOG_TAG#"$WATCHDOG_TAG"#" \
     -e "s#MKRAW_TAG#"$MKRAW_TAG"#" \
     -e "s#DEBUG_TAG#"$DEBUG_TAG"#" \
-    -e "s#HWFP_TAG#"$HWFP_TAG"#" \
     -e "s#LISP_TAG#"$LISP_TAG"#" \
     -e "s#EVE_TAG#${EVE_TAG}#" \
     ${1:-}
@@ -125,7 +124,6 @@ GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)
 WATCHDOG_TAG=$(linuxkit_tag pkg/watchdog)
 MKRAW_TAG=$(linuxkit_tag pkg/mkimage-raw-efi)
 DEBUG_TAG=$(linuxkit_tag pkg/debug)
-HWFP_TAG=$(linuxkit_tag pkg/hwfp)
 
 # Synthetic tags: the following tags are based on hashing
 # the contents of all the Dockerfile.in that we can find.
