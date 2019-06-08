@@ -41,10 +41,10 @@ function root_dev {
 }
 
 # find_part LABEL BLOCK_DEV
-function find_part {
-   PARTS=$(lsblk -anl -o "NAME,PARTLABEL" 2>/dev/null | sed -ne '/'$1'$/s#'$1'##p')
+find_part() {
+   PARTS=$(lsblk -anl -o "NAME,PARTLABEL" 2>/dev/null | sed -ne "/$1"'$/s#'"$1##p")
    for p in $PARTS ; do
-      [ -f /sys/block/$2/$p/dev ] && echo $p && exit 0
+      [ -f "/sys/block/$2/$p/dev" ] && echo "$p" && exit 0
    done
 }
 
@@ -65,7 +65,7 @@ fi
 [ -z "$INSTALL_DEV" ] && bail "FATAL: didn't find a single free disk"
 
 # now lets figure out whether we have installation material
-CONFIG_PART=$(find_part CONFIG $(root_dev))
+CONFIG_PART=$(find_part CONFIG "$(root_dev)")
 if [ -z "$CONFIG_PART" ] ; then
    [ -f /bits/config.img ] && ln -s /bits/config.img /parts/config.img
 else
@@ -88,26 +88,26 @@ grep -q eve_pause_before_install /proc/cmdline && sleep 100000
 # do the install
 /bin/sh -xc "/make-raw /dev/$INSTALL_DEV" || bail "Installation failed. Entering shell..."
 
-# generate a Soft Serial Number
+# generate a Soft Serial Number (if there isn't one)
 # SERIAL_NUM=$(uuidgen | sed -e 's#^.*-##')
 SERIAL_NUM=$(uuidgen)
-PERSIST_PART=$(find_part PERSIST $(root_dev))
-DEST_CONF_PART=$(find_part CONFIG $INSTALL_DEV)
+PERSIST_PART=$(find_part PERSIST "$(root_dev)")
+DEST_CONF_PART=$(find_part CONFIG "$INSTALL_DEV")
 
 mkdir /run/conf /run/persist && \
-  mount -t vfat /dev/$PERSIST_PART /run/persist && \
-  mount -t vfat /dev/$DEST_CONF_PART /run/conf  && \
-  [ -f /run/conf/soft_serial ] || echo $SERIAL_NUM > /run/conf/soft_serial
+  mount -t vfat "/dev/$PERSIST_PART" /run/persist && \
+  mount -t vfat "/dev/$DEST_CONF_PART" /run/conf  && \
+  [ -f /run/conf/soft_serial ] || echo "$SERIAL_NUM" > /run/conf/soft_serial
 
 PILLAR=/mnt/containers/services/pillar/lower
 mount /parts/rootfs.img /mnt &&
   for i in dev proc sys ; do mount --bind /$i $PILLAR/$i ; done
 
 SERIAL_NUM=$(cat /run/conf/soft_serial) && \
-  mkdir /run/persist/$SERIAL_NUM
+  mkdir "/run/persist/$SERIAL_NUM"
 
-chroot $PILLAR /opt/zededa/bin/hardwaremodel -f > /run/persist/$SERIAL_NUM/hwfp.json
-chroot $PILLAR /opt/zededa/bin/hardwaremodel > /run/persist/$SERIAL_NUM/hardwaremodel.txt
+chroot "$PILLAR" /opt/zededa/bin/hardwaremodel -f > "/run/persist/$SERIAL_NUM/hwfp.json"
+chroot "$PILLAR" /opt/zededa/bin/hardwaremodel > "/run/persist/$SERIAL_NUM/hardwaremodel.txt"
 
 # lets hope this is enough to flush the caches
 sync

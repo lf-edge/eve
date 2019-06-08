@@ -137,7 +137,7 @@ func massageCompatible(contents []byte) []byte {
 	return bytes.Map(filter, contents)
 }
 
-// returns software defined product serial number
+// GetSoftSerial returns software defined product serial number
 func GetSoftSerial() string {
 	return getOverride(softSerialFile)
 }
