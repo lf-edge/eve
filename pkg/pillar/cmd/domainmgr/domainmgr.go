@@ -1462,7 +1462,11 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	file.WriteString(fmt.Sprintf("vif = [%s]\n", vifString))
 
 	// Gather all PCI assignments into a single line
-	var pciAssignments []string
+	type typeAndPCI struct {
+		pciShort string
+		ioType   types.IoType
+	}
+	var pciAssignments []typeAndPCI
 
 	for _, adapter := range config.IoAdapterList {
 		log.Debugf("configToXenCfg processing adapter %d %s\n",
@@ -1484,10 +1488,12 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 					ib.Type, ib.Name)
 			}
 			for _, short := range ib.MPciShort {
-				pciAssignments = append(pciAssignments, short)
+				tap := typeAndPCI{pciShort: short, ioType: ib.Type}
+				pciAssignments = append(pciAssignments, tap)
 			}
 		} else if ib.PciShort != "" {
-			pciAssignments = append(pciAssignments, ib.PciShort)
+			tap := typeAndPCI{pciShort: ib.PciShort, ioType: ib.Type}
+			pciAssignments = append(pciAssignments, tap)
 		} else {
 			log.Infof("Adding io adapter config <%s>\n", ib.XenCfg)
 			file.WriteString(fmt.Sprintf("%s\n", ib.XenCfg))
@@ -1500,8 +1506,14 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 			if i != 0 {
 				cfg = cfg + ", "
 			}
-			// XXX cfg = cfg + fmt.Sprintf("'%s'", pa)
-			cfg = cfg + fmt.Sprintf("'%s,rdm_policy=relaxed'", pa)
+			// USB controller are subject to legacy USB support from
+			// some BIOS. Use relaxed to get past that.
+			if pa.ioType == types.IoUSB {
+				cfg = cfg + fmt.Sprintf("'%s,rdm_policy=relaxed'",
+					pa.pciShort)
+			} else {
+				cfg = cfg + fmt.Sprintf("'%s'", pa.pciShort)
+			}
 		}
 		cfg = cfg + "]"
 		log.Debugf("Adding pci config <%s>\n", cfg)
