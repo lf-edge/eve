@@ -73,8 +73,8 @@ QEMU_OPTS_arm64= -machine virt,gic_version=3 -machine virtualization=true -cpu c
 QEMU_OPTS_amd64= -cpu SandyBridge
 QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m 4096 -smp 4 -display none -serial mon:stdio -bios $(BIOS_IMG) \
         -rtc base=utc,clock=rt \
-        -nic user,id=eth0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::$(SSH_PORT)-:22 \
-        -nic user,id=eth1,net=192.168.2.0/24,dhcpstart=192.168.2.10
+        -netdev user,id=eth0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::$(SSH_PORT)-:22 -device e1000,netdev=eth0 \
+        -netdev user,id=eth1,net=192.168.2.0/24,dhcpstart=192.168.2.10 -device e1000,netdev=eth1
 QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH))
 
 GOOS=linux
