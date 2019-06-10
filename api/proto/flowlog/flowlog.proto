@@ -42,7 +42,7 @@ message DnsRequest {
   int32 aclNum = 4;                             // ACL that resulted in DNS lookup
 }
 
-// API api/v1/edgedevice/flowlogs
+// API api/v1/edgedevice/flowlog
 
 message FlowMessage {
     string devId = 1;                 // Device UUID
