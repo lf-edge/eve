@@ -941,6 +941,13 @@ func handleAppNetworkCreate(ctx *zedrouterContext, key string,
 	}
 	publishAppNetworkStatus(ctx, &status)
 
+	if validateAppNetworkConfig(ctx, config, &status) {
+		log.Errorf("handleCreateAppNetwork failed for %s\n", config.DisplayName)
+		status.PendingAdd = false
+		publishAppNetworkStatus(ctx, &status)
+		return
+	}
+
 	if config.Activate {
 		doActivate(ctx, config, &status)
 	}
@@ -1788,6 +1795,7 @@ func doAppNetworkConfigModify(ctx *zedrouterContext, key string,
 		config.UUIDandVersion, config.DisplayName)
 
 	if !doAppNetworkSanityCheckForModify(ctx, config, status) {
+		publishAppNetworkStatus(ctx, status)
 		log.Errorf("handleModify: Config check failed for %s\n", config.DisplayName)
 		return
 	}
@@ -1918,8 +1926,16 @@ func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
 			return false
 		}
 	}
-	return true
 
+	if validateAppNetworkConfig(ctx, config, status) {
+		publishAppNetworkStatus(ctx, status)
+		log.Errorf("handleModify: AppNetworkConfig check failed for %s\n", config.DisplayName)
+		return false
+	}
+	// we are good, reset any previous errors here
+	status.Error = ""
+	status.ErrorTime = time.Time{}
+	return true
 }
 
 func doAppNetworkModifyAllUnderlayNetworks(
@@ -2646,4 +2662,168 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	*ctx.deviceNetworkStatus = types.DeviceNetworkStatus{}
 	maybeHandleDNS(ctx)
 	log.Infof("handleDNSDelete done for %s\n", key)
+}
+
+func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetworkConfig,
+	appNetStatus *types.AppNetworkStatus) bool {
+	log.Infof("AppNetwork(%s), check for duplicate port map acls", appNetConfig.DisplayName)
+	// For App Networks, check for common port map rules
+	ulCfgList0 := appNetConfig.UnderlayNetworkList
+	if len(ulCfgList0) == 0 {
+		return false
+	}
+	sub := ctx.subAppNetworkConfig
+	items := sub.GetAll()
+	for _, cfg := range items {
+		appNetConfig1 := cast.CastAppNetworkConfig(cfg)
+		ulCfgList1 := appNetConfig1.UnderlayNetworkList
+		if appNetConfig.DisplayName == appNetConfig1.DisplayName ||
+			len(ulCfgList1) == 0 {
+			continue
+		}
+		ret, err := checkUnderlayNetworkForDuplicatePortMap(ctx, ulCfgList0,
+			ulCfgList1)
+		if err != nil {
+			addError(ctx, appNetStatus, "portmap for underlay", err)
+			return true
+		}
+		if ret {
+			log.Errorf("app Network(%s) have overlapping portmap rule with %s\n",
+				appNetStatus.DisplayName, appNetConfig1.DisplayName)
+			errStr := fmt.Sprintf("portmap rule overlap with %s",
+				appNetConfig1.DisplayName)
+			err := errors.New(errStr)
+			addError(ctx, appNetStatus, "portmap for underlay", err)
+			return true
+		}
+	}
+	return false
+}
+
+func checkUnderlayNetworkForDuplicatePortMap(ctx *zedrouterContext,
+	ulCfgList0 []types.UnderlayNetworkConfig, ulCfgList1 []types.UnderlayNetworkConfig) (bool, error) {
+	for _, ulCfg0 := range ulCfgList0 {
+		network0 := ulCfg0.Network.String()
+		for _, ulCfg1 := range ulCfgList1 {
+			network1 := ulCfg1.Network.String()
+			match, err := networkInstancesWithUplinkOverlap(ctx, network0, network1)
+			if err != nil {
+				return false, err
+			}
+			if match {
+				if matchACLsForPortMap(ulCfg0.ACLs, ulCfg1.ACLs) {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
+}
+
+// network instance or, sharing common uplink (ephimeral or, physical port)
+func networkInstancesWithUplinkOverlap(ctx *zedrouterContext, network string,
+	network1 string) (bool, error) {
+	if network == network1 {
+		log.Debugf("Same Network Instance, %s\n", network)
+		return true, nil
+	}
+	netInstConfig := lookupNetworkInstanceConfig(ctx, network)
+	netInstConfig1 := lookupNetworkInstanceConfig(ctx, network1)
+	if netInstConfig == nil || netInstConfig1 == nil {
+		return false, errors.New("invalid network instance")
+	}
+	portName := netInstConfig.Port
+	portName1 := netInstConfig1.Port
+	if portName == "" || portName1 == "" {
+		return false, nil
+	}
+	if portName == portName1 {
+		return true, nil
+	}
+	// of uplink type
+	if portName == "uplink" {
+		return isUpLink(ctx, portName1)
+	}
+	if portName1 == "uplink" {
+		return isUpLink(ctx, portName)
+	}
+
+	// of free uplink Type
+	// for free uplink type, match uplink also
+	// as free uplink group is a subset of uplink
+	if portName == "freeuplink" {
+		if portName1 == "uplink" {
+			return true, nil
+		}
+		return isFreeUpLink(ctx, portName1)
+	}
+	if portName1 == "freeuplink" {
+		if portName == "uplink" {
+			return true, nil
+		}
+		return isFreeUpLink(ctx, portName)
+	}
+	return false, nil
+}
+
+func isFreeUpLink(ctx *zedrouterContext, portName string) (bool, error) {
+	if portName == "freeuplink" {
+		return true, nil
+	}
+	if !types.IsPort(*ctx.deviceNetworkStatus, portName) {
+		return false, errors.New("invalid port")
+	}
+	// check whether this physical port belongs to freeUpLink group
+	return types.IsFreeMgmtPort(*ctx.deviceNetworkStatus, portName), nil
+}
+
+func isUpLink(ctx *zedrouterContext, portName string) (bool, error) {
+	if portName == "uplink" {
+		return true, nil
+	}
+	if !types.IsPort(*ctx.deviceNetworkStatus, portName) {
+		return false, errors.New("invalid port")
+	}
+	// check whether this physical port belongs to UpLink group
+	return types.IsMgmtPort(*ctx.deviceNetworkStatus, portName), nil
+}
+
+func matchACLsForPortMap(ACLs0 []types.ACE, ACLs1 []types.ACE) bool {
+	for _, ace0 := range ACLs0 {
+		for _, action0 := range ace0.Actions {
+			// not a portmap rule
+			if !action0.PortMap {
+				continue
+			}
+			for _, ace1 := range ACLs1 {
+				for _, action1 := range ace1.Actions {
+					// not a portmap rule
+					if !action1.PortMap {
+						continue
+					}
+					// for target port
+					if action0.TargetPort == action1.TargetPort {
+						return true
+					}
+					// for ingress port
+					if checkForMatchCondition(ace0, ace1) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+func checkForMatchCondition(ace0 types.ACE, ace1 types.ACE) bool {
+	for _, match0 := range ace0.Matches {
+		for _, match1 := range ace1.Matches {
+			if match0.Type == match1.Type &&
+				match0.Value == match1.Value {
+				return true
+			}
+		}
+	}
+	return false
 }

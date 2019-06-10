@@ -598,9 +598,6 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		appInstanceList = append(appInstanceList, appInstance)
 	}
 
-	// validate app instances configuration
-	validateAppInstanceConfig(config, appInstanceList)
-
 	// publish the config objects
 	for _, appInstance := range appInstanceList {
 		uuidStr := appInstance.UUIDandVersion.UUID.String()
@@ -614,47 +611,6 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 				uuidStr)
 		}
 	}
-}
-
-func validateAppInstanceConfig(config *zconfig.EdgeDevConfig,
-	appInstanceList []*types.AppInstanceConfig) {
-	appInstCount := len(appInstanceList)
-	log.Infof("check for duplicate port map acls")
-	// For app instances, attached to the same network instance,
-	//  check for common port map rules
-	idx0 := 0
-	for idx0 < (appInstCount - 1) {
-		appInstance0 := appInstanceList[idx0]
-		ulCfgList0 := appInstance0.UnderlayNetworkList
-		idx1 := idx0 + 1
-		for idx1 < appInstCount {
-			appInstance1 := appInstanceList[idx1]
-			ulCfgList1 := appInstance1.UnderlayNetworkList
-			match, err := checkUnderlayNetworkForDuplicatePortMap(config, ulCfgList0, ulCfgList1)
-			if err != nil {
-				errStr0 := fmt.Sprintf("app instances (%s, %s) portmap port error\n",
-					appInstance0.DisplayName, appInstance1.DisplayName)
-				appInstance0.Errors = append(appInstance0.Errors, errStr0)
-				appInstance1.Errors = append(appInstance1.Errors, errStr0)
-			}
-			if match {
-				log.Errorf("app instances(%s, %s) have overlapping portmap rule\n",
-					appInstance0.DisplayName, appInstance1.DisplayName)
-				errStr0 := fmt.Sprintf("overlapping portmap rule in %s",
-					appInstance1.DisplayName)
-				appInstance0.Errors = append(appInstance0.Errors, errStr0)
-				errStr1 := fmt.Sprintf("overlapping portmap rule in %s",
-					appInstance0.DisplayName)
-				appInstance1.Errors = append(appInstance1.Errors, errStr1)
-			}
-			idx1++
-		}
-		idx0++
-	}
-
-	//TBD:XXX app instances contending for common resource
-	// check for duplicate assignments/exceeding available resource limits,
-	// e.g., cpus, network adapters, usb/audio/video, main memory, disk space etc.
 }
 
 var systemAdaptersPrevConfigHash []byte
@@ -1233,141 +1189,6 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				intfEnt.Name, ulCfg.Error)
 		}
 	}
-}
-
-func checkUnderlayNetworkForDuplicatePortMap(config *zconfig.EdgeDevConfig,
-	ulCfgList0 []types.UnderlayNetworkConfig, ulCfgList1 []types.UnderlayNetworkConfig) (bool, error) {
-
-	for _, ulCfg0 := range ulCfgList0 {
-		network0 := ulCfg0.Network.String()
-		for _, ulCfg1 := range ulCfgList1 {
-			network1 := ulCfg1.Network.String()
-			match, err := networkInstancesWithUplinkOverlap(config, network0, network1)
-			if err != nil {
-				return false, err
-			}
-			if match {
-				if matchACLsForPortMap(ulCfg0.ACLs, ulCfg1.ACLs) {
-					return true, nil
-				}
-			}
-		}
-	}
-	return false, nil
-}
-
-// on the same network instance
-// or,sharing common uplink (ephimeral or, physical port)
-func networkInstancesWithUplinkOverlap(config *zconfig.EdgeDevConfig,
-	network string, network1 string) (bool, error) {
-	var portName, portName1 string
-	if network == network1 {
-		log.Debugf("Same Network Instance, %s\n", network)
-		return true, nil
-	}
-	netInstConfig := lookupNetworkInstanceById(network, config.NetworkInstances)
-	netInstConfig1 := lookupNetworkInstanceById(network1, config.NetworkInstances)
-	if netInstConfig == nil || netInstConfig1 == nil {
-		return false, errors.New("invalid network instance")
-	}
-	if adapter := netInstConfig.GetPort(); adapter != nil {
-		portName = adapter.GetName()
-	}
-	if adapter := netInstConfig1.GetPort(); adapter != nil {
-		portName1 = adapter.GetName()
-	}
-	if portName == "" || portName1 == "" {
-		return false, nil
-	}
-	if portName == portName1 {
-		return true, nil
-	}
-	// of uplink type
-	if portName == "uplink" {
-		return isUpLink(config, portName1)
-	}
-	if portName1 == "uplink" {
-		return isUpLink(config, portName)
-	}
-
-	// of free uplink Type
-	// for free uplink type, match uplink also
-	// as free uplink group is a subset of uplink
-	if portName == "freeuplink" {
-		if portName1 == "uplink" {
-			return true, nil
-		}
-		return isFreeUpLink(config, portName1)
-	}
-	if portName1 == "freeuplink" {
-		if portName == "uplink" {
-			return true, nil
-		}
-		return isFreeUpLink(config, portName)
-	}
-	return false, nil
-}
-
-func isFreeUpLink(config *zconfig.EdgeDevConfig, portName string) (bool, error) {
-	if portName == "freeuplink" {
-		return true, nil
-	}
-	if !types.IsPort(*deviceNetworkStatus, portName) {
-		return false, errors.New("invalid port")
-	}
-	// check whether this physical port belongs to freeUpLink group
-	return types.IsFreeMgmtPort(*deviceNetworkStatus, portName), nil
-}
-
-func isUpLink(config *zconfig.EdgeDevConfig, portName string) (bool, error) {
-	if portName == "uplink" {
-		return true, nil
-	}
-	if !types.IsPort(*deviceNetworkStatus, portName) {
-		return false, errors.New("invalid port")
-	}
-	// check whether this physical port belongs to UpLink group
-	return types.IsMgmtPort(*deviceNetworkStatus, portName), nil
-}
-
-func matchACLsForPortMap(ACLs0 []types.ACE, ACLs1 []types.ACE) bool {
-	for _, ace0 := range ACLs0 {
-		for _, action0 := range ace0.Actions {
-			// not a portmap rule
-			if !action0.PortMap {
-				continue
-			}
-			for _, ace1 := range ACLs1 {
-				for _, action1 := range ace1.Actions {
-					// not a portmap rule
-					if !action1.PortMap {
-						continue
-					}
-					// for target port
-					if action0.TargetPort == action1.TargetPort {
-						return true
-					}
-					// for ingress port
-					if checkForMatchCondition(ace0, ace1) {
-						return true
-					}
-				}
-			}
-		}
-	}
-	return false
-}
-
-func checkForMatchCondition(ace0 types.ACE, ace1 types.ACE) bool {
-	for _, match0 := range ace0.Matches {
-		for _, match1 := range ace1.Matches {
-			if match0.Type == match1.Type &&
-				match0.Value == match1.Value {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func isOverlayNetwork(netEnt *zconfig.NetworkConfig) bool {
