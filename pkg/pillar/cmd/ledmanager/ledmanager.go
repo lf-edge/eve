@@ -111,9 +111,13 @@ func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug")
 	curpartPtr := flag.String("c", "", "Current partition")
+	fatalPtr := flag.Bool("F", false, "Cause log.Fatal fault injection")
+	hangPtr := flag.Bool("H", false, "Cause watchdog .touch fault injection")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
+	fatalFlag := *fatalPtr
+	hangFlag := *hangPtr
 	if debugOverride {
 		log.SetLevel(log.DebugLevel)
 	} else {
@@ -210,7 +214,14 @@ func Run() {
 			subLedBlinkCounter.ProcessChange(change)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
+			// Fault injection
+			if fatalFlag {
+				log.Fatal("Requested fault injection to cause watchdog")
+			} else if hangFlag {
+				log.Infof("Requested to not touch to cause watchdog")
+			} else {
+				agentlog.StillRunning(agentName)
+			}
 		}
 	}
 }

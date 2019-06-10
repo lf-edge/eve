@@ -63,6 +63,7 @@ type diagContext struct {
 	serverName              string // Without port number
 	zedcloudCtx             *zedcloud.ZedCloudContext
 	cert                    *tls.Certificate
+	usingOnboardCert        bool
 }
 
 // Set from Makefile
@@ -146,7 +147,7 @@ func Run() {
 		ctx.cert = &cert
 		fmt.Printf("WARNING: no device cert; using onboarding cert at %v\n",
 			time.Now().Format(time.RFC3339Nano))
-
+		ctx.usingOnboardCert = true
 	} else {
 		fmt.Printf("ERROR: no device cert and no onboarding cert at %v\n",
 			time.Now().Format(time.RFC3339Nano))
@@ -207,6 +208,23 @@ func Run() {
 		}
 		if !ctx.forever && ctx.gotDNS && ctx.gotBC && ctx.gotDPCList {
 			break
+		}
+		if ctx.usingOnboardCert &&
+			fileExists(deviceCertName) && fileExists(deviceKeyName) {
+
+			fmt.Printf("WARNING: Switching from onboard to device cert\n")
+			cert, err := tls.LoadX509KeyPair(deviceCertName,
+				deviceKeyName)
+			if err != nil {
+				log.Fatal(err)
+			}
+			ctx.cert = &cert
+			ctx.usingOnboardCert = false
+			tlsConfig, err := zedcloud.GetTlsConfig(ctx.serverName, ctx.cert)
+			if err != nil {
+				log.Fatal(err)
+			}
+			zedcloudCtx.TlsConfig = tlsConfig
 		}
 	}
 }

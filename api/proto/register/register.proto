@@ -25,4 +25,5 @@ message ZRegisterMsg {
 
        bytes pemCert = 2;
        string serial = 3;
+       string softSerial = 4;
 }

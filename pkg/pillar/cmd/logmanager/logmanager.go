@@ -127,9 +127,13 @@ func Run() {
 	curpartPtr := flag.String("c", "", "Current partition")
 	forcePtr := flag.Bool("f", false, "Force")
 	logdirPtr := flag.String("l", defaultLogdirname, "Log file directory")
+	fatalPtr := flag.Bool("F", false, "Cause log.Fatal fault injection")
+	hangPtr := flag.Bool("H", false, "Cause watchdog .touch fault injection")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
+	fatalFlag := *fatalPtr
+	hangFlag := *hangPtr
 	if debugOverride {
 		log.SetLevel(log.DebugLevel)
 	} else {
@@ -230,7 +234,14 @@ func Run() {
 		// This wait can take an unbounded time since we wait for IP
 		// addresses. Punch StillRunning
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
+			// Fault injection
+			if fatalFlag {
+				log.Fatal("Requested fault injection to cause watchdog")
+			} else if hangFlag {
+				log.Infof("Requested to not touch to cause watchdog")
+			} else {
+				agentlog.StillRunning(agentName)
+			}
 		}
 	}
 	log.Infof("Have %d management ports with usable addresses\n",
@@ -333,7 +344,14 @@ func Run() {
 			}
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
+			// Fault injection
+			if fatalFlag {
+				log.Fatal("Requested fault injection to cause watchdog")
+			} else if hangFlag {
+				log.Infof("Requested to not touch to cause watchdog")
+			} else {
+				agentlog.StillRunning(agentName)
+			}
 		}
 	}
 }
