@@ -90,6 +90,18 @@ const (
 	TS_ENABLED
 )
 
+func (e TriState) String() string {
+	switch e {
+	case TS_NONE:
+		return "TS_NONE"
+	case TS_DISABLED:
+		return "TS_DISABLED"
+	case TS_ENABLED:
+		return "TS_ENABLED"
+	default:
+		return fmt.Sprintf("%d", int(e))
+	}
+}
 func ParseTriState(value string) (TriState, error) {
 	var ts TriState
 
