@@ -9,3 +9,5 @@
 ^.+\.patch
 ^.+\.diff
 ^.+build.yml
+^.+go.mod
+^.+go.sum

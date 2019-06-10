@@ -353,11 +353,14 @@ func Run() {
 		// logic
 		productSerial := hardware.GetProductSerial()
 		productSerial = strings.TrimSpace(productSerial)
-		log.Infof("ProductSerial %s\n", productSerial)
+		softSerial := hardware.GetSoftSerial()
+		softSerial = strings.TrimSpace(softSerial)
+		log.Infof("ProductSerial %s, SoftwareSerial %s\n", productSerial, softSerial)
 
 		registerCreate := &register.ZRegisterMsg{
-			PemCert: []byte(base64.StdEncoding.EncodeToString(deviceCertPem)),
-			Serial:  productSerial,
+			PemCert:    []byte(base64.StdEncoding.EncodeToString(deviceCertPem)),
+			Serial:     productSerial,
+			SoftSerial: softSerial,
 		}
 		b, err := proto.Marshal(registerCreate)
 		if err != nil {
