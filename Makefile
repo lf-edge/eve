@@ -83,7 +83,7 @@ GOBUILDER=eve-build-$(shell echo $(USER) | tr A-Z a-z)
 
 DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; docker export $$C | tar -xf - $$2 ; docker rm $$C ; } ; _
 DOCKER_GO = _() { mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ;\
-    docker run -it --rm -u $(USER) -w /go/src/$${3:-dummy} \
+    docker run $$DOCKER_GO_ARGS -i --rm -u $(USER) -w /go/src/$${3:-dummy} \
     -v $(CURDIR)/.go:/go -v $$2:/go/src/$${3:-dummy} -v $${4:-$(CURDIR)/.go/bin}:/go/bin -v $(CURDIR)/:/eve -v $${HOME}:/home/$(USER) \
     -e GOOS -e GOARCH -e CGO_ENABLED -e BUILD=local $(GOBUILDER) bash --noprofile --norc -c "$$1" ; } ; _
 
@@ -243,7 +243,7 @@ release:
 	 echo "  git push origin $$X.$$Y $$X.$$Y.$$Z"
 
 shell: $(GOBUILDER)
-	@$(DOCKER_GO) bash $(GOTREE) $(GOMODULE)
+	@DOCKER_GO_ARGS=-t ; $(DOCKER_GO) bash $(GOTREE) $(GOMODULE)
 
 #
 # Utility targets in support of our Dockerized build infrastrucutre
