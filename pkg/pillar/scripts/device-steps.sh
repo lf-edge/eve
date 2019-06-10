@@ -9,6 +9,7 @@ PERSISTDIR=/persist
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
 DPCDIR=$TMPDIR/DevicePortConfig
+FIRSTBOOTFILE=$TMPDIR/first-boot
 GCDIR=$PERSISTDIR/config/GlobalConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
@@ -170,6 +171,16 @@ if P3=$(zboot partdev P3) && [ -n "$P3" ]; then
     fi
 else
     echo "$(date -Ins -u) No separate $PERSISTDIR partition"
+fi
+
+if [ -f $PERSISTDIR/IMGA/reboot-reason ]; then
+    echo "IMGA reboot-reason: $(cat $PERSISTDIR/IMGA/reboot-reason)"
+fi
+if [ -f $PERSISTDIR/IMGB/reboot-reason ]; then
+    echo "IMGB reboot-reason: $(cat $PERSISTDIR/IMGB/reboot-reason)"
+fi
+if [ -f $PERSISTDIR/reboot-reason ]; then
+    echo "Common reboot-reason: $(cat $PERSISTDIR/reboot-reason)"
 fi
 
 echo "$(date -Ins -u) Current downloaded files:"
@@ -383,6 +394,7 @@ fi
 
 if ! [ -f $CONFIGDIR/device.cert.pem ] || ! [ -f $CONFIGDIR/device.key.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
+    touch $FIRSTBOOTFILE # For zedagent
     touch $CONFIGDIR/self-register-pending
     sync
     blockdev --flushbufs "$CONFIGDEV"
@@ -397,16 +409,8 @@ if ! [ -f $CONFIGDIR/device.cert.pem ] || ! [ -f $CONFIGDIR/device.key.pem ]; th
     blockdev --flushbufs "$CONFIGDEV"
     SELF_REGISTER=1
 elif [ -f $CONFIGDIR/self-register-pending ]; then
-    echo "$(date -Ins -u) self-register failed/killed/rebooted"
-    if ! $BINDIR/client -c $CURPART -r 5 getUuid; then
-        echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid fail; redoing self-register"
-        SELF_REGISTER=1
-    else
-        echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid pass hence already registered"
-        rm -f $CONFIGDIR/self-register-pending
-        sync
-        blockdev --flushbufs "$CONFIGDEV"
-    fi
+    echo "$(date -Ins -u) previous self-register failed/killed/rebooted"
+    SELF_REGISTER=1
 else
     echo "$(date -Ins -u) Using existing device key pair and self-signed cert"
     SELF_REGISTER=0
@@ -429,16 +433,14 @@ if [ $SELF_REGISTER = 1 ]; then
         echo "$(date -Ins -u) Missing onboarding certificate. Giving up"
         exit 1
     fi
-    echo "$(date -Ins -u) Starting client selfRegister"
-    if ! $BINDIR/client -c $CURPART selfRegister; then
+    echo "$(date -Ins -u) Starting client selfRegister getUuid"
+    if ! $BINDIR/client -c $CURPART selfRegister getUuid; then
         echo "$(date -Ins -u) client selfRegister failed with $?"
         exit 1
     fi
     rm -f $CONFIGDIR/self-register-pending
     sync
     blockdev --flushbufs "$CONFIGDEV"
-    echo "$(date -Ins -u) Starting client getUuid"
-    $BINDIR/client -c $CURPART getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
         /opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
         echo "$(date -Ins -u) Created default hardwaremodel $(/opt/zededa/bin/hardwaremodel -c)"
@@ -519,6 +521,7 @@ fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
 
 blockdev --flushbufs "$CONFIGDEV"
+
 echo "$(date -Ins -u) Initial setup done"
 
 if [ $MEASURE = 1 ]; then
