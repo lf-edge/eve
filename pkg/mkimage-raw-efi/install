@@ -91,11 +91,11 @@ grep -q eve_pause_before_install /proc/cmdline && sleep 100000
 # generate a Soft Serial Number (if there isn't one)
 # SERIAL_NUM=$(uuidgen | sed -e 's#^.*-##')
 SERIAL_NUM=$(uuidgen)
-PERSIST_PART=$(find_part PERSIST "$(root_dev)")
+INVENTORY_PART=$(find_part INVENTORY "$(root_dev)")
 DEST_CONF_PART=$(find_part CONFIG "$INSTALL_DEV")
 
-mkdir /run/conf /run/persist && \
-  mount -t vfat "/dev/$PERSIST_PART" /run/persist && \
+mkdir /run/conf /run/inventory && \
+  mount -t vfat "/dev/$INVENTORY_PART" /run/inventory && \
   mount -t vfat "/dev/$DEST_CONF_PART" /run/conf  && \
   [ -f /run/conf/soft_serial ] || echo "$SERIAL_NUM" > /run/conf/soft_serial
 
@@ -104,15 +104,15 @@ mount /parts/rootfs.img /mnt &&
   for i in dev proc sys ; do mount --bind /$i $PILLAR/$i ; done
 
 SERIAL_NUM=$(cat /run/conf/soft_serial) && \
-  mkdir "/run/persist/$SERIAL_NUM"
+  mkdir "/run/inventory/$SERIAL_NUM"
 
-chroot "$PILLAR" /opt/zededa/bin/hardwaremodel -f > "/run/persist/$SERIAL_NUM/hwfp.json"
-chroot "$PILLAR" /opt/zededa/bin/hardwaremodel > "/run/persist/$SERIAL_NUM/hardwaremodel.txt"
+chroot "$PILLAR" /opt/zededa/bin/hardwaremodel -f > "/run/inventory/$SERIAL_NUM/hwfp.json"
+chroot "$PILLAR" /opt/zededa/bin/hardwaremodel > "/run/inventory/$SERIAL_NUM/hardwaremodel.txt"
 
 # lets hope this is enough to flush the caches
 sync
 umount /run/conf
-umount /run/persist
+umount /run/inventory
 
 # we also maybe asked to pause after
 PAUSE_AFTER_SYNC=5
