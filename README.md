@@ -187,6 +187,41 @@ above and executing exactly the same boot command:
 Shell> fs0:\EFI\BOOT\BOOTX64.EFI
 ```
 
+# How to use on an AMD board
+The following steps have been tested on Intel UP Squared Board (AAEON UP-APL01) and the bootable USB Disk containing the installer image has been made on Ubuntu 16.04.
+
+```
+git clone https://github.com/yuganshmohan/eve.git
+cd eve
+sudo make ZARCH=amd64 installer
+```
+Find the device using
+```
+fdisk -l
+```
+
+Now format the USB Disk and run the following commands
+```
+sudo umount /dev/sdXXX
+sudo dd if=dist/amd64/installer.raw of=/dev/sdXXX
+```
+
+Now plug the USB Disk on your UP Squared Board and the installer should now replace the existing OS on the UP Squared board with EVE.
+
+You will see an installation sequence scroll on screen and the output that indicates a successful install will look like this:
+```
+[10.69716164] mmcblk0:
+[11.915943]   mmcblk0: p1
+[13.606346]   mmcblk0: p1 p2
+[29.656563]   mmcblk0: p1 p2 p3
+[30.876806]   mmcblk0: p1 p2 p3 p4
+[32.156930]   mmcblk0: p1 p2 p3 p4 p9
+NOTICE: Device will now power off. Remove the USB stick and power it back on to complete the installation.
+[43.185325]   ACPI: Preparing to enter system sleep state S5
+[43.187349]   reboot: Power down
+```
+At this point you should remove your USB Disk from the UP Squared Board slot and reboot the board. If everything went as planned you will boot right into the running system.
+
 A quick note on linuxkit: you may be wondering why do we have a container-based
 architecture for a Xen-centric environment. First of all, OCI containers
 are a key type of a workload for our platform. Which means having
