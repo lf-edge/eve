@@ -4,21 +4,64 @@
 package hardwaremodel
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
+	"github.com/rackn/gohai/plugins/dmi"
+	"github.com/rackn/gohai/plugins/net"
+	"github.com/rackn/gohai/plugins/storage"
+	"github.com/rackn/gohai/plugins/system"
+	"log"
 	"os"
 )
 
 // Set from Makefile
 var Version = "No version specified"
 
+type info interface {
+	Class() string
+}
+
+func hwFp() {
+	infos := map[string]info{}
+	dmiInfo, err := dmi.Gather()
+	if err != nil {
+		log.Fatalf("Failed to gather DMI information: %v", err)
+	}
+	infos[dmiInfo.Class()] = dmiInfo
+	netInfo, err := net.Gather()
+	if err != nil {
+		log.Fatalf("Failed to gather network info: %v", err)
+	}
+	infos[netInfo.Class()] = netInfo
+	sysInfo, err := system.Gather()
+	if err != nil {
+		log.Fatalf("Failed to gather basic OS info: %v", err)
+	}
+	infos[sysInfo.Class()] = sysInfo
+	storInfo, err := storage.Gather()
+	if err != nil {
+		log.Fatalf("Failed to gather storage info: %v", err)
+	}
+	infos[storInfo.Class()] = storInfo
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	enc.Encode(infos)
+}
+
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
 	cPtr := flag.Bool("c", false, "No CRLF")
+	hwPtr := flag.Bool("f", false, "Fingerprint hardware")
 	flag.Parse()
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
+		return
+	}
+	if *hwPtr {
+		hwFp()
 		return
 	}
 	model := hardware.GetHardwareModelNoOverride()

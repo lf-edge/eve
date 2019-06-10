@@ -9,6 +9,7 @@ PERSISTDIR=/persist
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
 DPCDIR=$TMPDIR/DevicePortConfig
+FIRSTBOOTFILE=$TMPDIR/first-boot
 GCDIR=$PERSISTDIR/config/GlobalConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
@@ -172,6 +173,16 @@ else
     echo "$(date -Ins -u) No separate $PERSISTDIR partition"
 fi
 
+if [ -f $PERSISTDIR/IMGA/reboot-reason ]; then
+    echo "IMGA reboot-reason: $(cat $PERSISTDIR/IMGA/reboot-reason)"
+fi
+if [ -f $PERSISTDIR/IMGB/reboot-reason ]; then
+    echo "IMGB reboot-reason: $(cat $PERSISTDIR/IMGB/reboot-reason)"
+fi
+if [ -f $PERSISTDIR/reboot-reason ]; then
+    echo "Common reboot-reason: $(cat $PERSISTDIR/reboot-reason)"
+fi
+
 echo "$(date -Ins -u) Current downloaded files:"
 ls -lt $PERSISTDIR/downloads/*/*
 echo
@@ -280,7 +291,7 @@ access_usb() {
         keyfile=/mnt/usb.json
         if [ -f $keyfile ]; then
             echo "$(date -Ins -u) Found $keyfile on $SPECIAL"
-            echo "$(date -Ins -u) Copying from $keyfile to $CONFIGDIR/DevicePortConfig/"
+            echo "$(date -Ins -u) Copying from $keyfile to $DPCDIR"
             cp -p $keyfile $DPCDIR
         else
             echo "$(date -Ins -u) $keyfile not found on $SPECIAL"
@@ -313,6 +324,7 @@ access_usb() {
     fi
 }
 
+# Read any usb.json with DevicePortConfig, and deposit our identity
 access_usb
 
 # Need to clear old usb files from /config/DevicePortConfig
@@ -349,6 +361,7 @@ $BINDIR/diag -c $CURPART -f >/dev/console 2>&1 &
 echo "$(date -Ins -u) Starting waitforaddr"
 $BINDIR/waitforaddr -c $CURPART
 
+# Deposit any diag information from nim
 access_usb
 
 # We need to try our best to setup time *before* we generate the certifiacte.
@@ -381,6 +394,7 @@ fi
 
 if ! [ -f $CONFIGDIR/device.cert.pem ] || ! [ -f $CONFIGDIR/device.key.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
+    touch $FIRSTBOOTFILE # For zedagent
     touch $CONFIGDIR/self-register-pending
     sync
     blockdev --flushbufs "$CONFIGDEV"
@@ -395,16 +409,8 @@ if ! [ -f $CONFIGDIR/device.cert.pem ] || ! [ -f $CONFIGDIR/device.key.pem ]; th
     blockdev --flushbufs "$CONFIGDEV"
     SELF_REGISTER=1
 elif [ -f $CONFIGDIR/self-register-pending ]; then
-    echo "$(date -Ins -u) self-register failed/killed/rebooted"
-    if ! $BINDIR/client -c $CURPART -r 5 getUuid; then
-        echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid fail; redoing self-register"
-        SELF_REGISTER=1
-    else
-        echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid pass hence already registered"
-        rm -f $CONFIGDIR/self-register-pending
-        sync
-        blockdev --flushbufs "$CONFIGDEV"
-    fi
+    echo "$(date -Ins -u) previous self-register failed/killed/rebooted"
+    SELF_REGISTER=1
 else
     echo "$(date -Ins -u) Using existing device key pair and self-signed cert"
     SELF_REGISTER=0
@@ -414,6 +420,7 @@ if [ ! -f $CONFIGDIR/server ] || [ ! -f $CONFIGDIR/root-certificate.pem ]; then
     exit 0
 fi
 
+# Deposit any diag information from nim and onboarding
 access_usb
 
 if [ $SELF_REGISTER = 1 ]; then
@@ -426,16 +433,14 @@ if [ $SELF_REGISTER = 1 ]; then
         echo "$(date -Ins -u) Missing onboarding certificate. Giving up"
         exit 1
     fi
-    echo "$(date -Ins -u) Starting client selfRegister"
-    if ! $BINDIR/client -c $CURPART selfRegister; then
+    echo "$(date -Ins -u) Starting client selfRegister getUuid"
+    if ! $BINDIR/client -c $CURPART selfRegister getUuid; then
         echo "$(date -Ins -u) client selfRegister failed with $?"
         exit 1
     fi
     rm -f $CONFIGDIR/self-register-pending
     sync
     blockdev --flushbufs "$CONFIGDEV"
-    echo "$(date -Ins -u) Starting client getUuid"
-    $BINDIR/client -c $CURPART getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
         /opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
         echo "$(date -Ins -u) Created default hardwaremodel $(/opt/zededa/bin/hardwaremodel -c)"
@@ -516,6 +521,7 @@ fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
 
 blockdev --flushbufs "$CONFIGDEV"
+
 echo "$(date -Ins -u) Initial setup done"
 
 if [ $MEASURE = 1 ]; then
@@ -523,6 +529,9 @@ if [ $MEASURE = 1 ]; then
     echo "$(date -Ins -u) Measurement done"
 fi
 
+# If there is a USB stick inserted and debug.enable.usb is set, we periodically
+# check for any usb.json with DevicePortConfig, deposit our identity,
+# and dump any diag information
 while true; do
     access_usb
     sleep 300

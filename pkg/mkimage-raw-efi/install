@@ -40,6 +40,14 @@ function root_dev {
    echo $(grep -l '^'$DEV_MM'$' /sys/block/*/dev /sys/block/*/*/dev | cut -f4 -d/)
 }
 
+# find_part LABEL BLOCK_DEV
+find_part() {
+   PARTS=$(lsblk -anl -o "NAME,PARTLABEL" 2>/dev/null | sed -ne "/$1"'$/s#'"$1##p")
+   for p in $PARTS ; do
+      [ -f "/sys/block/$2/$p/dev" ] && echo "$p" && exit 0
+   done
+}
+
 # lets see if we're told on which disk to install...
 INSTALL_DEV=`cat /proc/cmdline | tr ' ' '\012' | sed -ne '/^eve_install_disk=/s#^.*=##p'`
 
@@ -57,10 +65,7 @@ fi
 [ -z "$INSTALL_DEV" ] && bail "FATAL: didn't find a single free disk"
 
 # now lets figure out whether we have installation material
-CONFIG_PARTS=$(lsblk -anl -o "NAME,PARTLABEL" | sed -ne '/CONFIG$/s#CONFIG##p')
-for p in $CONFIG_PARTS ; do
-   [ -f /sys/block/$(root_dev)/$p/dev ] && CONFIG_PART=$p
-done
+CONFIG_PART=$(find_part CONFIG "$(root_dev)")
 if [ -z "$CONFIG_PART" ] ; then
    [ -f /bits/config.img ] && ln -s /bits/config.img /parts/config.img
 else
@@ -82,6 +87,32 @@ grep -q eve_pause_before_install /proc/cmdline && sleep 100000
 
 # do the install
 /bin/sh -xc "/make-raw /dev/$INSTALL_DEV" || bail "Installation failed. Entering shell..."
+
+# generate a Soft Serial Number (if there isn't one)
+# SERIAL_NUM=$(uuidgen | sed -e 's#^.*-##')
+SERIAL_NUM=$(uuidgen)
+INVENTORY_PART=$(find_part INVENTORY "$(root_dev)")
+DEST_CONF_PART=$(find_part CONFIG "$INSTALL_DEV")
+
+mkdir /run/conf /run/inventory && \
+  mount -t vfat "/dev/$INVENTORY_PART" /run/inventory && \
+  mount -t vfat "/dev/$DEST_CONF_PART" /run/conf  && \
+  [ -f /run/conf/soft_serial ] || echo "$SERIAL_NUM" > /run/conf/soft_serial
+
+PILLAR=/mnt/containers/services/pillar/lower
+mount /parts/rootfs.img /mnt &&
+  for i in dev proc sys ; do mount --bind /$i $PILLAR/$i ; done
+
+SERIAL_NUM=$(cat /run/conf/soft_serial) && \
+  mkdir "/run/inventory/$SERIAL_NUM"
+
+chroot "$PILLAR" /opt/zededa/bin/hardwaremodel -f > "/run/inventory/$SERIAL_NUM/hwfp.json"
+chroot "$PILLAR" /opt/zededa/bin/hardwaremodel > "/run/inventory/$SERIAL_NUM/hardwaremodel.txt"
+
+# lets hope this is enough to flush the caches
+sync
+umount /run/conf
+umount /run/inventory
 
 # we also maybe asked to pause after
 PAUSE_AFTER_SYNC=5
