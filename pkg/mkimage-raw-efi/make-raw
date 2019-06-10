@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck shell=dash
 #
 # This script creates a raw disk image partitioned with GPT partition table
 # and set up for UEFI boot sequence with a GRUB UEFI payload and a default
@@ -50,6 +51,8 @@ EFI_PART_SIZE=$((1536 * 1024))
 ROOTFS_PART_SIZE=$(( 300 * 1024 * 1024 ))
 # conf partition size in bytes
 CONF_PART_SIZE=$((1024 * 1024))
+# installer inventory parition size in bytes
+WIN_INVENTORY_PART_SIZE=$((10240 * 1024))
 
 function cp_with_backup {
   local MD5_SUM=$(md5sum "$2" | cut -f1 -d\  )
@@ -69,11 +72,12 @@ function grow_part {
 }
 
 function dir2vfat {
-  # <img name> dir2vfat <dir> <image size>
+  # <img name> dir2vfat <dir> <image size> [label]
   local IMG=`mktemp -u -p /tmp/data`
+  local LABEL=${3:-EVE}
   (rm -rf /tmp/data
    mkdir /tmp/data
-   mkfs.vfat -v -C $IMG $2
+   mkfs.vfat -v -n "$LABEL" -C "$IMG" "$2"
    mcopy -i $IMG -s $1/* ::/ ) >&2
   echo $IMG
 }
@@ -156,7 +160,24 @@ function do_conf_win {
     do_vfat $1 EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
 }
 
-function do_persist {
+function do_inventory_win {
+    eval local SEC_START="\$$1"
+    # shellcheck disable=SC2155
+    local SEC_END=$(grow_part "$SEC_START" "$WIN_INVENTORY_PART_SIZE")
+    local NUM_PART=$(( PART_OFFSET + 5 ))
+    local PART_TYPE=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
+
+    sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" \
+           --typecode="$NUM_PART:$PART_TYPE" \
+           --change-name="$NUM_PART:INVENTORY" "$IMGFILE"
+
+    # shellcheck disable=SC2046
+    dd if=$(dir2vfat $(mktemp -d) $(( (SEC_END - SEC_START) / 2)) INVENTORY) of="$IMGFILE" bs=512 conv=notrunc seek="$SEC_START"
+
+    eval "$1=$(( SEC_END + 1))"
+}
+
+do_persist() {
     eval SEC_START=\$$1
     # Persistent Purgeable Partition.  It is set at partition
     # number 9 to reserve the first 8 partitions to system types.

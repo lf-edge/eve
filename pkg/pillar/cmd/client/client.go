@@ -13,7 +13,6 @@ import (
 	"io/ioutil"
 	"mime"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -77,13 +76,10 @@ func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
-	forcePtr := flag.Bool("f", false, "Force using onboarding cert")
 	dirPtr := flag.String("D", "/config", "Directory with certs etc")
 	stdoutPtr := flag.Bool("s", false, "Use stdout")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
-	maxRetriesPtr := flag.Int("r", 0, "Max ping retries")
-	pingURLPtr := flag.String("U", "", "Override ping url")
-	insecurePtr := flag.Bool("I", false, "Do not check server cert")
+	maxRetriesPtr := flag.Int("r", 0, "Max retries")
 	flag.Parse()
 
 	versionFlag := *versionPtr
@@ -95,13 +91,10 @@ func Run() {
 		log.SetLevel(log.InfoLevel)
 	}
 	curpart := *curpartPtr
-	forceOnboardingCert := *forcePtr
 	identityDirname := *dirPtr
 	useStdout := *stdoutPtr
 	noPidFlag := *noPidPtr
 	maxRetries := *maxRetriesPtr
-	pingURL := *pingURLPtr
-	insecure := *insecurePtr
 	args := flag.Args()
 	if versionFlag {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
@@ -125,7 +118,6 @@ func Run() {
 	log.Infof("Starting %s\n", agentName)
 	operations := map[string]bool{
 		"selfRegister": false,
-		"ping":         false,
 		"getUuid":      false,
 	}
 	for _, op := range args {
@@ -238,14 +230,25 @@ func Run() {
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
 	}
+	server, err := ioutil.ReadFile(serverFileName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	serverNameAndPort := strings.TrimSpace(string(server))
+	serverName := strings.Split(serverNameAndPort, ":")[0]
+	const return400 = false
+
 	var onboardCert, deviceCert tls.Certificate
 	var deviceCertPem []byte
-	deviceCertSet := false
+	var onboardTLSConfig *tls.Config
 
-	if operations["selfRegister"] ||
-		(operations["ping"] && forceOnboardingCert) {
+	if operations["selfRegister"] {
 		var err error
 		onboardCert, err = tls.LoadX509KeyPair(onboardCertName, onboardKeyName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		onboardTLSConfig, err = zedcloud.GetTlsConfig(serverName, &onboardCert)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -255,28 +258,22 @@ func Run() {
 			log.Fatal(err)
 		}
 	}
-	if operations["getUuid"] ||
-		(operations["ping"] && !forceOnboardingCert) {
-		// Load device cert
-		var err error
-		deviceCert, err = tls.LoadX509KeyPair(deviceCertName,
-			deviceKeyName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		deviceCertSet = true
-	}
 
-	server, err := ioutil.ReadFile(serverFileName)
+	// Load device cert
+	deviceCert, err = tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
 	if err != nil {
 		log.Fatal(err)
 	}
-	serverNameAndPort := strings.TrimSpace(string(server))
-	serverName := strings.Split(serverNameAndPort, ":")[0]
-	const return400 = false
+	tlsConfig, err := zedcloud.GetTlsConfig(serverName, &deviceCert)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// Post something without a return type.
 	// Returns true when done; false when retry
-	myPost := func(retryCount int, requrl string, reqlen int64, b *bytes.Buffer) bool {
+	myPost := func(tlsConfig *tls.Config, retryCount int, requrl string, reqlen int64, b *bytes.Buffer) bool {
+
+		zedcloudCtx.TlsConfig = tlsConfig
 		resp, contents, cf, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			requrl, reqlen, b, retryCount, return400)
 		if err != nil {
@@ -351,38 +348,37 @@ func Run() {
 	}
 
 	// Returns true when done; false when retry
-	selfRegister := func(retryCount int) bool {
+	selfRegister := func(tlsConfig *tls.Config, retryCount int) bool {
 		// XXX add option to get this from a file in /config + override
 		// logic
 		productSerial := hardware.GetProductSerial()
 		productSerial = strings.TrimSpace(productSerial)
-		log.Infof("ProductSerial %s\n", productSerial)
+		softSerial := hardware.GetSoftSerial()
+		softSerial = strings.TrimSpace(softSerial)
+		log.Infof("ProductSerial %s, SoftwareSerial %s\n", productSerial, softSerial)
 
-		tlsConfig, err := zedcloud.GetTlsConfig(serverName, &onboardCert)
-		if err != nil {
-			log.Errorln(err)
-			return false
-		}
-		zedcloudCtx.TlsConfig = tlsConfig
 		registerCreate := &register.ZRegisterMsg{
-			PemCert: []byte(base64.StdEncoding.EncodeToString(deviceCertPem)),
-			Serial:  productSerial,
+			PemCert:    []byte(base64.StdEncoding.EncodeToString(deviceCertPem)),
+			Serial:     productSerial,
+			SoftSerial: softSerial,
 		}
 		b, err := proto.Marshal(registerCreate)
 		if err != nil {
 			log.Errorln(err)
 			return false
 		}
-		return myPost(retryCount,
+		return myPost(tlsConfig, retryCount,
 			serverNameAndPort+"/api/v1/edgedevice/register",
 			int64(len(b)), bytes.NewBuffer(b))
 	}
 
-	// Get something without a return type; used by ping
+	// Get something
 	// Returns true when done; false when retry.
 	// Returns the response when done. Caller can not use resp.Body but
 	// can use the contents []byte
-	myGet := func(requrl string, retryCount int) (bool, *http.Response, []byte) {
+	myGet := func(tlsConfig *tls.Config, requrl string, retryCount int) (bool, *http.Response, []byte) {
+
+		zedcloudCtx.TlsConfig = tlsConfig
 		resp, contents, cf, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			requrl, 0, nil, retryCount, return400)
 		if err != nil {
@@ -406,69 +402,33 @@ func Run() {
 		}
 	}
 
-	// Setup HTTPS client for deviceCert unless force
-	var cert tls.Certificate
-	if forceOnboardingCert || operations["selfRegister"] {
-		log.Infof("Using onboarding cert\n")
-		cert = onboardCert
-	} else if deviceCertSet {
-		log.Infof("Using device cert\n")
-		cert = deviceCert
-	} else {
-		log.Fatalf("No device certificate for %v\n", operations)
+	doGetUUID := func(retryCount int) (bool, uuid.UUID, string, string, string) {
+		var resp *http.Response
+		var contents []byte
+
+		requrl := serverNameAndPort + "/api/v1/edgedevice/config"
+		done, resp, contents = myGet(tlsConfig, requrl, retryCount)
+		if !done {
+			return false, nilUUID, "", "", ""
+		}
+		var err error
+		devUUID, hardwaremodel, enterprise, name, err := parseConfig(requrl, resp, contents)
+		if err == nil {
+			// Inform ledmanager about config received from cloud
+			if !zedcloudCtx.NoLedManager {
+				types.UpdateLedManagerConfig(4)
+			}
+			return true, devUUID, hardwaremodel, enterprise, name
+		}
+		// Keep on trying until it parses
+		log.Errorf("Failed parsing uuid: %s\n", err)
+		return false, nilUUID, "", "", ""
 	}
 
-	if operations["ping"] {
-		var requrl string
-		if pingURL == "" {
-			requrl = serverNameAndPort + "/api/v1/edgedevice/ping"
-		} else {
-			requrl = pingURL
-			u, err := url.Parse(requrl)
-			if err != nil {
-				log.Fatalf("Malformed URL %s: %v",
-					requrl, err)
-			}
-			serverName = u.Host
-		}
-		tlsConfig, err := zedcloud.GetTlsConfig(serverName, &cert)
-		if err != nil {
-			log.Fatal(err)
-		}
-		tlsConfig.InsecureSkipVerify = insecure
-		zedcloudCtx.TlsConfig = tlsConfig
-		// As we ping the cloud or other URLs, don't affect the LEDs
-		zedcloudCtx.NoLedManager = true
-
-		retryCount := 0
-		done := false
-		var delay time.Duration
-		for !done {
-			time.Sleep(delay)
-			done, _, _ = myGet(requrl, retryCount)
-			if done {
-				continue
-			}
-			retryCount += 1
-			if maxRetries != 0 && retryCount > maxRetries {
-				log.Infof("Exceeded %d retries for ping\n",
-					maxRetries)
-				os.Exit(1)
-			}
-			delay = 2 * (delay + time.Second)
-			if delay > maxDelay {
-				delay = maxDelay
-			}
-			log.Infof("Retrying ping in %d seconds\n",
-				delay/time.Second)
-		}
-	}
-
-	tlsConfig, err := zedcloud.GetTlsConfig(serverName, &cert)
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedcloudCtx.TlsConfig = tlsConfig
+	var devUUID uuid.UUID
+	var hardwaremodel string
+	var enterprise string
+	var name string
 
 	if operations["selfRegister"] {
 		retryCount := 0
@@ -476,7 +436,7 @@ func Run() {
 		var delay time.Duration
 		for !done {
 			time.Sleep(delay)
-			done = selfRegister(retryCount)
+			done = selfRegister(onboardTLSConfig, retryCount)
 			if done {
 				continue
 			}
@@ -492,48 +452,30 @@ func Run() {
 			}
 			log.Infof("Retrying selfRegister in %d seconds\n",
 				delay/time.Second)
+			if operations["getUuid"] {
+				// Check if getUUid succeeds
+				done, devUUID, hardwaremodel, enterprise, name = doGetUUID(retryCount)
+				if done {
+					log.Infof("getUUID succeeded; selfRegister no longer needed")
+				}
+			}
 		}
 	}
 
 	if operations["getUuid"] {
-		var devUUID uuid.UUID
-		var hardwaremodel string
-		var enterprise string
-		var name string
-
-		doWrite := true
-		requrl := serverNameAndPort + "/api/v1/edgedevice/config"
 		retryCount := 0
 		done := false
 		var delay time.Duration
 		for !done {
-			var resp *http.Response
-			var contents []byte
-
-			time.Sleep(delay)
-			done, resp, contents = myGet(requrl, retryCount)
+			done, devUUID, hardwaremodel, enterprise, name = doGetUUID(retryCount)
 			if done {
-				var err error
-
-				devUUID, hardwaremodel, enterprise, name, err = parseConfig(requrl, resp, contents)
-				if err == nil {
-					// Inform ledmanager about config received from cloud
-					if !zedcloudCtx.NoLedManager {
-						types.UpdateLedManagerConfig(4)
-					}
-					continue
-				}
-				// Keep on trying until it parses
-				done = false
-				log.Errorf("Failed parsing uuid: %s\n",
-					err)
-				continue
+				break
 			}
 			if oldUUID != nilUUID && retryCount > 2 {
 				log.Infof("Sticking with old UUID\n")
 				devUUID = oldUUID
 				done = true
-				continue
+				break
 			}
 
 			retryCount += 1
@@ -548,8 +490,12 @@ func Run() {
 			}
 			log.Infof("Retrying config in %d seconds\n",
 				delay/time.Second)
+			time.Sleep(delay)
 
 		}
+	}
+	if devUUID != nilUUID {
+		doWrite := true
 		if oldUUID != nilUUID {
 			if oldUUID != devUUID {
 				log.Infof("Replacing existing UUID %s\n",
