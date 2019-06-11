@@ -1,4 +1,5 @@
 # EVE is Edge Virtualization Engine
+
 [![CircleCI](https://circleci.com/gh/lf-edge/eve.svg?style=svg)](https://circleci.com/gh/lf-edge/eve)
 [![Goreport](https://goreportcard.com/badge/github.com/lf-edge/eve)](https://goreportcard.com/report/github.com/lf-edge/eve)
 [![Godoc](https://godoc.org/github.com/lf-edge/eve/pkg/pillar?status.svg)](https://godoc.org/github.com/lf-edge/eve/pkg/pillar)
@@ -188,20 +189,24 @@ Shell> fs0:\EFI\BOOT\BOOTX64.EFI
 ```
 
 # How to use on an AMD board
+
 The following steps have been tested on Intel UP Squared Board (AAEON UP-APL01) and the bootable USB Disk containing the installer image has been made on Ubuntu 16.04.
 
-```
+```bash
 git clone https://github.com/yuganshmohan/eve.git
 cd eve
 sudo make ZARCH=amd64 installer
 ```
+
 Find the device using
-```
+
+```bash
 fdisk -l
 ```
 
 Now format the USB Disk and run the following commands
-```
+
+```bash
 sudo umount /dev/sdXXX
 sudo dd if=dist/amd64/installer.raw of=/dev/sdXXX
 ```
@@ -209,7 +214,8 @@ sudo dd if=dist/amd64/installer.raw of=/dev/sdXXX
 Now plug the USB Disk on your UP Squared Board and the installer should now replace the existing OS on the UP Squared board with EVE.
 
 You will see an installation sequence scroll on screen and the output that indicates a successful install will look like this:
-```
+
+```bash
 [10.69716164] mmcblk0:
 [11.915943]   mmcblk0: p1
 [13.606346]   mmcblk0: p1 p2
@@ -220,7 +226,9 @@ NOTICE: Device will now power off. Remove the USB stick and power it back on to 
 [43.185325]   ACPI: Preparing to enter system sleep state S5
 [43.187349]   reboot: Power down
 ```
+
 At this point you should remove your USB Disk from the UP Squared Board slot and reboot the board. If everything went as planned you will boot right into the running system.
+
 
 A quick note on linuxkit: you may be wondering why do we have a container-based
 architecture for a Xen-centric environment. First of all, OCI containers
