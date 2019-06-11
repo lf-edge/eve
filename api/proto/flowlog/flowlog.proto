@@ -1,0 +1,52 @@
+// Copyright(c) 2017-2019 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+option go_package  = "github.com/lf-edge/eve/api/go/flowlog";
+
+option java_package = "com.zededa.cloud.uservice.proto";
+
+message IpFlow {
+  string src = 1;          // Source address
+  int32  srcPort = 2;      // Source port
+  string dest = 3;         // Destination address
+  string destPort = 4;     // Destination port
+  int32  protocol = 5;     // Protocol
+}
+
+message ScopeInfo {
+  string uuid = 1;           // UUID of the instance or device
+  string intf = 2;           // User visible name
+  string localIntf = 3;      // Internal name of the interface
+  string netInstUUID = 4;    // UUID of the network instance
+}
+
+message FlowRecord {
+  IpFlow flow = 1;
+  int32 aclNum = 2;                         // Matching ACL
+  string action = 3;                        // ACL Action
+  google.protobuf.Timestamp startTime = 4;  // Always non-zero
+  google.protobuf.Timestamp endTime = 5;    // Zero() if flow has not ended
+  int64 txBytes = 6;
+  int64 txPkts = 7;
+  int64 rxBytes = 8;
+  int64 rxPkts = 9;
+}
+
+message DnsRequest {
+  string hostName = 1;                          // Host name
+  repeated string addrs = 2;                    // Ipv4 or Ipv6 address
+  google.protobuf.Timestamp requestTime = 3;    // Time of DNS request
+  int32 aclNum = 4;                             // ACL that resulted in DNS lookup
+}
+
+// API api/v1/edgedevice/flowlog
+
+message FlowMessage {
+    string devId = 1;                 // Device UUID
+    ScopeInfo scope = 2;
+    repeated FlowRecord flows = 3;
+    repeated DnsRequest dnsReqs = 4;
+}
