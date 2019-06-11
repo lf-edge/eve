@@ -462,7 +462,8 @@ func getVersion(part string, verFilename string) string {
 				target, otherPrefixOld, verFilename)
 			version, err = ioutil.ReadFile(filename)
 			if err != nil {
-				log.Fatal(err)
+				log.Warn(err)
+				return ""
 			}
 		}
 		versionStr := string(version)
