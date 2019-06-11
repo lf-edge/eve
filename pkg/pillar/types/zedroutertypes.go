@@ -1176,8 +1176,8 @@ type VifNameMac struct {
 	AppID   uuid.UUID
 }
 
-// AppNetworkACLArgs: set of args needed,
-// while converting ACL to iptables rules
+// AppNetworkACLArgs
+// 		set of args for converting ACL to iptables rules
 type AppNetworkACLArgs struct {
 	IsMgmt     bool
 	IPVer      int
@@ -1188,7 +1188,8 @@ type AppNetworkACLArgs struct {
 	UpLinks    []string
 }
 
-// IPTablesRule: iptables rule holder
+// IPTablesRule
+//		iptables rule detail holder
 type IPTablesRule struct {
 	IPVer  int      // 4 or, 6
 	Table  string   // filter/nat/raw/mangle...
@@ -1197,7 +1198,8 @@ type IPTablesRule struct {
 	Rule   []string // rule match/action
 }
 
-// IPTablesRuleList: iptables rules list
+// IPTablesRuleList
+//		list of iptables rules
 type IPTablesRuleList []IPTablesRule
 
 /*
