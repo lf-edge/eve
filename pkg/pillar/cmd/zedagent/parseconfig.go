@@ -532,13 +532,11 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		}
 	}
 
-	var appInstanceList []*types.AppInstanceConfig
-
 	for _, cfgApp := range Apps {
 		// Note that we repeat this even if the app config didn't
 		// change but something else in the EdgeDeviceConfig did
 		log.Debugf("New/updated app instance %v\n", cfgApp)
-		appInstance := new(types.AppInstanceConfig)
+		var appInstance types.AppInstanceConfig
 
 		appInstance.UUIDandVersion.UUID, _ = uuid.FromString(cfgApp.Uuidandversion.Uuid)
 		appInstance.UUIDandVersion.Version = cfgApp.Uuidandversion.Version
@@ -563,7 +561,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 			cfgApp.Drives)
 
 		// fill the overlay/underlay config
-		parseAppNetworkConfig(appInstance, cfgApp, config.Networks,
+		parseAppNetworkConfig(&appInstance, cfgApp, config.Networks,
 			config.NetworkInstances)
 
 		// I/O adapters
@@ -595,17 +593,13 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 
 		appInstance.CloudInitUserData = userData
 		appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
-		appInstanceList = append(appInstanceList, appInstance)
-	}
-
-	// publish the config objects
-	for _, appInstance := range appInstanceList {
-		uuidStr := appInstance.UUIDandVersion.UUID.String()
-		// write to zedmanager config directory
-		publishAppInstanceConfig(getconfigCtx, *appInstance)
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
+
+		// write to zedmanager config directory
+		uuidStr := cfgApp.Uuidandversion.Uuid
+		publishAppInstanceConfig(getconfigCtx, appInstance)
 		if certInstance != nil {
 			publishCertObjConfig(getconfigCtx, certInstance,
 				uuidStr)

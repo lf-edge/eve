@@ -2681,114 +2681,58 @@ func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetwo
 			len(ulCfgList1) == 0 {
 			continue
 		}
-		ret, err := checkUnderlayNetworkForDuplicatePortMap(ctx, ulCfgList0,
-			ulCfgList1)
-		if err != nil {
-			addError(ctx, appNetStatus, "portmap for underlay", err)
-			return true
-		}
-		if ret {
-			log.Errorf("app Network(%s) have overlapping portmap rule with %s\n",
+		if checkUnderlayNetworkForPortMapOverlap(ctx, ulCfgList0, ulCfgList1) {
+			log.Errorf("app Network(%s) have overlapping portmap rule in %s\n",
 				appNetStatus.DisplayName, appNetConfig1.DisplayName)
-			errStr := fmt.Sprintf("portmap rule overlap with %s",
-				appNetConfig1.DisplayName)
+			errStr := fmt.Sprintf("duplicate portmap in %s", appNetConfig1.DisplayName)
 			err := errors.New(errStr)
-			addError(ctx, appNetStatus, "portmap for underlay", err)
+			addError(ctx, appNetStatus, "underlayACL", err)
 			return true
 		}
 	}
 	return false
 }
 
-func checkUnderlayNetworkForDuplicatePortMap(ctx *zedrouterContext,
-	ulCfgList0 []types.UnderlayNetworkConfig, ulCfgList1 []types.UnderlayNetworkConfig) (bool, error) {
-	for _, ulCfg0 := range ulCfgList0 {
-		network0 := ulCfg0.Network.String()
+func checkUnderlayNetworkForPortMapOverlap(ctx *zedrouterContext,
+	ulCfgList []types.UnderlayNetworkConfig, ulCfgList1 []types.UnderlayNetworkConfig) bool {
+	for _, ulCfg := range ulCfgList {
+		network := ulCfg.Network.String()
 		for _, ulCfg1 := range ulCfgList1 {
 			network1 := ulCfg1.Network.String()
-			match, err := networkInstancesWithUplinkOverlap(ctx, network0, network1)
-			if err != nil {
-				return false, err
-			}
-			if match {
-				if matchACLsForPortMap(ulCfg0.ACLs, ulCfg1.ACLs) {
-					return true, nil
+			if network == network1 || checkUplinkPortOverlap(ctx, network, network1) {
+				if matchACLsForPortMap(ulCfg.ACLs, ulCfg1.ACLs) {
+					log.Infof("ACL PortMap overlaps for %s, %s\n", network, network1)
+					return true
 				}
 			}
 		}
 	}
-	return false, nil
+	return false
 }
 
-// network instance or, sharing common uplink (ephimeral or, physical port)
-func networkInstancesWithUplinkOverlap(ctx *zedrouterContext, network string,
-	network1 string) (bool, error) {
-	if network == network1 {
-		log.Debugf("Same Network Instance, %s\n", network)
-		return true, nil
+// network instances sharing common uplink
+func checkUplinkPortOverlap(ctx *zedrouterContext, network string, network1 string) bool {
+	netInstStatus := lookupNetworkInstanceStatus(ctx, network)
+	netInstStatus1 := lookupNetworkInstanceStatus(ctx, network1)
+	if netInstStatus == nil || netInstStatus1 == nil {
+		log.Debugf("non-existent network-instance status\n")
+		return false
 	}
-	netInstConfig := lookupNetworkInstanceConfig(ctx, network)
-	netInstConfig1 := lookupNetworkInstanceConfig(ctx, network1)
-	if netInstConfig == nil || netInstConfig1 == nil {
-		return false, errors.New("invalid network instance")
-	}
-	portName := netInstConfig.Port
-	portName1 := netInstConfig1.Port
-	if portName == "" || portName1 == "" {
-		return false, nil
-	}
-	if portName == portName1 {
-		return true, nil
-	}
-	// of uplink type
-	if portName == "uplink" {
-		return isUpLink(ctx, portName1)
-	}
-	if portName1 == "uplink" {
-		return isUpLink(ctx, portName)
-	}
-
-	// of free uplink Type
-	// for free uplink type, match uplink also
-	// as free uplink group is a subset of uplink
-	if portName == "freeuplink" {
-		if portName1 == "uplink" {
-			return true, nil
+	// check the interface list for overlap
+	for _, ifName := range netInstStatus.IfNameList {
+		for _, ifName1 := range netInstStatus1.IfNameList {
+			if ifName == ifName1 {
+				log.Debugf("uplink(%s) overlaps for (%s, %s)\n", ifName, network, network1)
+				return true
+			}
 		}
-		return isFreeUpLink(ctx, portName1)
 	}
-	if portName1 == "freeuplink" {
-		if portName == "uplink" {
-			return true, nil
-		}
-		return isFreeUpLink(ctx, portName)
-	}
-	return false, nil
-}
-
-func isFreeUpLink(ctx *zedrouterContext, portName string) (bool, error) {
-	if portName == "freeuplink" {
-		return true, nil
-	}
-	if !types.IsPort(*ctx.deviceNetworkStatus, portName) {
-		return false, errors.New("invalid port")
-	}
-	// check whether this physical port belongs to freeUpLink group
-	return types.IsFreeMgmtPort(*ctx.deviceNetworkStatus, portName), nil
-}
-
-func isUpLink(ctx *zedrouterContext, portName string) (bool, error) {
-	if portName == "uplink" {
-		return true, nil
-	}
-	if !types.IsPort(*ctx.deviceNetworkStatus, portName) {
-		return false, errors.New("invalid port")
-	}
-	// check whether this physical port belongs to UpLink group
-	return types.IsMgmtPort(*ctx.deviceNetworkStatus, portName), nil
+	log.Debugf("no uplink overlaps for (%s, %s)\n", network, network1)
+	return false
 }
 
 func matchACLsForPortMap(ACLs0 []types.ACE, ACLs1 []types.ACE) bool {
+	matchTypes := []string{"protocol", "lport"}
 	for _, ace0 := range ACLs0 {
 		for _, action0 := range ace0.Actions {
 			// not a portmap rule
@@ -2801,12 +2745,8 @@ func matchACLsForPortMap(ACLs0 []types.ACE, ACLs1 []types.ACE) bool {
 					if !action1.PortMap {
 						continue
 					}
-					// for target port
-					if action0.TargetPort == action1.TargetPort {
-						return true
-					}
-					// for ingress port
-					if checkForMatchCondition(ace0, ace1) {
+					// check for ingress protocol/port
+					if checkForMatchCondition(ace0, ace1, matchTypes) {
 						return true
 					}
 				}
@@ -2816,14 +2756,28 @@ func matchACLsForPortMap(ACLs0 []types.ACE, ACLs1 []types.ACE) bool {
 	return false
 }
 
-func checkForMatchCondition(ace0 types.ACE, ace1 types.ACE) bool {
-	for _, match0 := range ace0.Matches {
-		for _, match1 := range ace1.Matches {
-			if match0.Type == match1.Type &&
-				match0.Value == match1.Value {
-				return true
+func checkForMatchCondition(ace0 types.ACE, ace1 types.ACE, matchTypes []string) bool {
+	valueList := make([]string, len(matchTypes))
+	valueList1 := make([]string, len(matchTypes))
+
+	for idx, matchType := range matchTypes {
+		for _, match := range ace0.Matches {
+			if matchType == match.Type {
+				valueList[idx] = match.Value
+			}
+		}
+		for _, match := range ace1.Matches {
+			if matchType == match.Type {
+				valueList1[idx] = match.Value
 			}
 		}
 	}
-	return false
+	for idx, value := range valueList {
+		value1 := valueList1[idx]
+		if value == "" || value1 == "" ||
+			value != value1 {
+			return false
+		}
+	}
+	return true
 }

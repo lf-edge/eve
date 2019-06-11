@@ -17,6 +17,221 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// IpSet routines
+// Go through the list of ACEs and create dnsmasq ipset configuration
+// lines required for host matches
+func compileAceIpsets(ACLs []types.ACE) []string {
+	ipsets := []string{}
+
+	for _, ace := range ACLs {
+		for _, match := range ace.Matches {
+			if match.Type == "host" {
+				ipsets = append(ipsets, match.Value)
+			}
+		}
+	}
+	return ipsets
+}
+
+func compileOverlayIpsets(ctx *zedrouterContext,
+	ollist []types.OverlayNetworkConfig) []string {
+
+	ipsets := []string{}
+	for _, olConfig := range ollist {
+		netconfig := lookupNetworkInstanceConfig(ctx,
+			olConfig.Network.String())
+		if netconfig != nil {
+			// All ipsets from everybody on this network
+			ipsets = append(ipsets, compileNetworkIpsetsConfig(ctx,
+				netconfig)...)
+		} else {
+			log.Errorf("No NetworkInstanceConfig for %s",
+				olConfig.Network.String())
+		}
+	}
+	return ipsets
+}
+
+func compileUnderlayIpsets(ctx *zedrouterContext,
+	ullist []types.UnderlayNetworkConfig) []string {
+
+	ipsets := []string{}
+	for _, ulConfig := range ullist {
+		netconfig := lookupNetworkInstanceConfig(ctx,
+			ulConfig.Network.String())
+		if netconfig != nil {
+			// All ipsets from everybody on this network
+			ipsets = append(ipsets, compileNetworkIpsetsConfig(ctx,
+				netconfig)...)
+		} else {
+			log.Errorf("No NetworkInstanceConfig for %s",
+				ulConfig.Network.String())
+		}
+	}
+	return ipsets
+}
+
+func compileAppInstanceIpsets(ctx *zedrouterContext,
+	ollist []types.OverlayNetworkConfig,
+	ullist []types.UnderlayNetworkConfig) []string {
+
+	ipsets := []string{}
+	ipsets = append(ipsets, compileOverlayIpsets(ctx, ollist)...)
+	ipsets = append(ipsets, compileUnderlayIpsets(ctx, ullist)...)
+	return ipsets
+}
+
+// If skipKey is set ignore any AppNetworkConfig with that key
+func compileNetworkIpsetsStatus(ctx *zedrouterContext,
+	netconfig *types.NetworkInstanceConfig, skipKey string) []string {
+
+	ipsets := []string{}
+	if netconfig == nil {
+		return ipsets
+	}
+	// walk all of netconfig - find all hosts which use this network
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+	for key, st := range items {
+		status := cast.CastAppNetworkStatus(st)
+		if status.Key() != key {
+			log.Errorf("compileNetworkIpsetsStatus key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
+		if skipKey != "" && status.Key() == skipKey {
+			log.Debugf("compileNetworkIpsetsStatus skipping %s\n",
+				skipKey)
+			continue
+		}
+
+		for _, olStatus := range status.OverlayNetworkList {
+			if olStatus.Network != netconfig.UUID {
+				continue
+			}
+			ipsets = append(ipsets,
+				compileAceIpsets(olStatus.ACLs)...)
+		}
+		for _, ulStatus := range status.UnderlayNetworkList {
+			if ulStatus.Network != netconfig.UUID {
+				continue
+			}
+			ipsets = append(ipsets,
+				compileAceIpsets(ulStatus.ACLs)...)
+		}
+	}
+	return ipsets
+}
+
+func compileNetworkIpsetsConfig(ctx *zedrouterContext,
+	netconfig *types.NetworkInstanceConfig) []string {
+
+	ipsets := []string{}
+	if netconfig == nil {
+		return ipsets
+	}
+	// walk all of netconfig - find all hosts which use this network
+	sub := ctx.subAppNetworkConfig
+	items := sub.GetAll()
+	for key, c := range items {
+		config := cast.CastAppNetworkConfig(c)
+		if config.Key() != key {
+			log.Errorf("compileNetworkIpsetsConfig key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, config.Key(), config)
+			continue
+		}
+		for _, olConfig := range config.OverlayNetworkList {
+			if olConfig.Network != netconfig.UUID {
+				continue
+			}
+			ipsets = append(ipsets,
+				compileAceIpsets(olConfig.ACLs)...)
+		}
+		for _, ulConfig := range config.UnderlayNetworkList {
+			if ulConfig.Network != netconfig.UUID {
+				continue
+			}
+			ipsets = append(ipsets,
+				compileAceIpsets(ulConfig.ACLs)...)
+		}
+	}
+	return ipsets
+}
+
+// If skipKey is set ignore any AppNetworkStatus with that key
+func compileOldOverlayIpsets(ctx *zedrouterContext,
+	ollist []types.OverlayNetworkStatus, skipKey string) []string {
+
+	ipsets := []string{}
+	for _, olStatus := range ollist {
+		netconfig := lookupNetworkInstanceConfig(ctx,
+			olStatus.Network.String())
+		if netconfig != nil {
+			// All ipsets from everybody on this network
+			ipsets = append(ipsets, compileNetworkIpsetsStatus(ctx,
+				netconfig, skipKey)...)
+		} else {
+			log.Errorf("No NetworkInstanceConfig for %s",
+				olStatus.Network.String())
+		}
+	}
+	return ipsets
+}
+
+// If skipKey is set ignore any AppNetworkStatus with that key
+func compileOldUnderlayIpsets(ctx *zedrouterContext,
+	ullist []types.UnderlayNetworkStatus, skipKey string) []string {
+
+	ipsets := []string{}
+	for _, ulStatus := range ullist {
+		netconfig := lookupNetworkInstanceConfig(ctx,
+			ulStatus.Network.String())
+		if netconfig != nil {
+			// All ipsets from everybody on this network
+			ipsets = append(ipsets, compileNetworkIpsetsStatus(ctx,
+				netconfig, skipKey)...)
+		} else {
+			log.Errorf("No NetworkInstanceConfig for %s",
+				ulStatus.Network.String())
+		}
+	}
+	return ipsets
+}
+
+// If skipKey is set ignore any AppNetworkStatus with that key
+func compileOldAppInstanceIpsets(ctx *zedrouterContext,
+	ollist []types.OverlayNetworkStatus,
+	ullist []types.UnderlayNetworkStatus, skipKey string) []string {
+
+	ipsets := []string{}
+	ipsets = append(ipsets, compileOldOverlayIpsets(ctx, ollist, skipKey)...)
+	ipsets = append(ipsets, compileOldUnderlayIpsets(ctx, ullist, skipKey)...)
+	return ipsets
+}
+
+// Application Network Level ACL rule handling routines
+
+// For a shared bridge call aclToRules for each ifname, then aclDropRules,
+// then concat all the rules and pass to applyACLrules
+// Note that only bridgeName is set with ifMgmt
+func createACLConfiglet(aclArgs types.AppNetworkAclArgs,
+	ACLs []types.ACE) (types.IpTablesRuleList, error) {
+
+	log.Infof("createACLConfiglet: ifname %s, vifName %s, IP %s/%s, ACLs %v\n",
+		aclArgs.BridgeName, aclArgs.VifName, aclArgs.BridgeIP, aclArgs.AppIP, ACLs)
+	aclArgs.IpVer = determineIpVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
+	rules, err := aclToRules(aclArgs, ACLs)
+	if err != nil {
+		return rules, err
+	}
+	dropRules, err := aclDropRules(aclArgs)
+	if err != nil {
+		return rules, err
+	}
+	rules = append(rules, dropRules...)
+	return applyACLRules(aclArgs, rules)
+}
+
 // handle network instance level ACL rules
 // Network Instance Level ACL rule handling routines
 func handleNetworkInstanceAclConfiglet(op string, aclArgs types.AppNetworkAclArgs) error {
@@ -81,71 +296,24 @@ func networkInstanceBridgeRules(aclArgs types.AppNetworkAclArgs) types.IpTablesR
 	return rulesList
 }
 
-// Application Network Level ACL rule handling routines
-
-// For a shared bridge call aclToRules for each ifname, then aclDropRules,
-// then concat all the rules and pass to applyACLrules
-// Note that only bridgeName is set with ifMgmt
-func createACLConfiglet(aclArgs types.AppNetworkAclArgs,
-	ACLs []types.ACE) (types.IpTablesRuleList, error) {
-
-	log.Infof("createACLConfiglet: ifname %s, vifName %s, IP %s/%s, ACLs %v\n",
-		aclArgs.BridgeName, aclArgs.VifName, aclArgs.BridgeIP, aclArgs.AppIP, ACLs)
-	aclArgs.IpVer = determineIpVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
-	rules, err := aclToRules(aclArgs, ACLs)
-	if err != nil {
-		return rules, err
+// If no valid bridgeIP we assume IPv4
+func determineIpVer(isMgmt bool, bridgeIP string) int {
+	if isMgmt {
+		return 6
 	}
-	dropRules, err := aclDropRules(aclArgs)
-	if err != nil {
-		return rules, err
+	if bridgeIP == "" {
+		return 4
 	}
-	rules = append(rules, dropRules...)
-	return applyACLRules(aclArgs, rules)
-}
-
-func deleteACLConfiglet(aclArgs types.AppNetworkAclArgs,
-	rules types.IpTablesRuleList) (types.IpTablesRuleList, error) {
-	var err error
-	var activeRules types.IpTablesRuleList
-	log.Infof("deleteACLConfiglet: ifname %s vifName %s ACLs %v\n",
-		aclArgs.BridgeName, aclArgs.VifName, rules)
-
-	for _, rule := range rules {
-		log.Debugf("deleteACLConfiglet: rule %v\n", rule)
-		if err != nil {
-			activeRules = append(activeRules, rule)
-		} else {
-			err = executeIpTablesRule("-D", rule)
-		}
+	ip := net.ParseIP(bridgeIP)
+	if ip == nil {
+		log.Fatalf("determineIpVer: ParseIP %s failed\n",
+			bridgeIP)
 	}
-	return activeRules, err
-}
-
-// it will be difficult the maintain the precedence/order of the iptables
-// rules, across multiple app instance modules
-// apply rules as a block
-// lets just delete the existing ACL iptables rules block
-// and add the new ACL rules, for the appNetwork.
-func updateACLConfiglet(aclArgs types.AppNetworkAclArgs, oldACLs []types.ACE, ACLs []types.ACE,
-	oldRules types.IpTablesRuleList) (types.IpTablesRuleList, error) {
-
-	log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s\n",
-		aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
-
-	aclArgs.IpVer = determineIpVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
-	if compareACLs(oldACLs, ACLs) == true {
-		log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: no change\n",
-			aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
-		return oldRules, nil
+	if ip.To4() == nil {
+		return 6
+	} else {
+		return 4
 	}
-	rules, err := deleteACLConfiglet(aclArgs, oldRules)
-	if err != nil {
-		log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: delete fail\n",
-			aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
-		return rules, err
-	}
-	return createACLConfiglet(aclArgs, ACLs)
 }
 
 func applyACLRules(aclArgs types.AppNetworkAclArgs,
@@ -552,6 +720,14 @@ func aceToRules(aclArgs types.AppNetworkAclArgs, ace types.ACE) (types.IpTablesR
 	return rulesList, nil
 }
 
+func isIPorCIDR(str string) bool {
+	if net.ParseIP(str) != nil {
+		return true
+	}
+	_, _, err := net.ParseCIDR(str)
+	return err == nil
+}
+
 // Determine which rules to skip and what prefix/table to use
 // We append a '+' to the vifname to handle PV/qemu which for some
 // reason have a second <vifname>-emu bridge interface.
@@ -630,225 +806,26 @@ func rulePrefix(aclArgs types.AppNetworkAclArgs, rule *types.IpTablesRule) error
 	return errors.New(errStr)
 }
 
-// utility routines
-func isIPorCIDR(str string) bool {
-	if net.ParseIP(str) != nil {
-		return true
+func equalRule(r1 types.IpTablesRule, r2 types.IpTablesRule) bool {
+	if r1.IpVer != r2.IpVer || r1.Table != r2.Table ||
+		r1.Chain != r2.Chain || len(r1.Rule) != len(r2.Rule) {
+		return false
 	}
-	_, _, err := net.ParseCIDR(str)
-	return err == nil
+	for i := range r1.Rule {
+		if r1.Rule[i] != r2.Rule[i] {
+			return false
+		}
+	}
+	return true
 }
 
-// If no valid bridgeIP we assume IPv4
-func determineIpVer(isMgmt bool, bridgeIP string) int {
-	if isMgmt {
-		return 6
-	}
-	if bridgeIP == "" {
-		return 4
-	}
-	ip := net.ParseIP(bridgeIP)
-	if ip == nil {
-		log.Fatalf("determineIpVer: ParseIP %s failed\n",
-			bridgeIP)
-	}
-	if ip.To4() == nil {
-		return 6
-	} else {
-		return 4
-	}
-}
-
-// IpSet routines
-// Go through the list of ACEs and create dnsmasq ipset configuration
-// lines required for host matches
-func compileAceIpsets(ACLs []types.ACE) []string {
-	ipsets := []string{}
-
-	for _, ace := range ACLs {
-		for _, match := range ace.Matches {
-			if match.Type == "host" {
-				ipsets = append(ipsets, match.Value)
-			}
+func containsRule(set types.IpTablesRuleList, member types.IpTablesRule) bool {
+	for _, r := range set {
+		if equalRule(r, member) {
+			return true
 		}
 	}
-	return ipsets
-}
-
-func compileOverlayIpsets(ctx *zedrouterContext,
-	ollist []types.OverlayNetworkConfig) []string {
-
-	ipsets := []string{}
-	for _, olConfig := range ollist {
-		netconfig := lookupNetworkInstanceConfig(ctx,
-			olConfig.Network.String())
-		if netconfig != nil {
-			// All ipsets from everybody on this network
-			ipsets = append(ipsets, compileNetworkIpsetsConfig(ctx,
-				netconfig)...)
-		} else {
-			log.Errorf("No NetworkInstanceConfig for %s",
-				olConfig.Network.String())
-		}
-	}
-	return ipsets
-}
-
-func compileUnderlayIpsets(ctx *zedrouterContext,
-	ullist []types.UnderlayNetworkConfig) []string {
-
-	ipsets := []string{}
-	for _, ulConfig := range ullist {
-		netconfig := lookupNetworkInstanceConfig(ctx,
-			ulConfig.Network.String())
-		if netconfig != nil {
-			// All ipsets from everybody on this network
-			ipsets = append(ipsets, compileNetworkIpsetsConfig(ctx,
-				netconfig)...)
-		} else {
-			log.Errorf("No NetworkInstanceConfig for %s",
-				ulConfig.Network.String())
-		}
-	}
-	return ipsets
-}
-
-func compileAppInstanceIpsets(ctx *zedrouterContext,
-	ollist []types.OverlayNetworkConfig,
-	ullist []types.UnderlayNetworkConfig) []string {
-
-	ipsets := []string{}
-	ipsets = append(ipsets, compileOverlayIpsets(ctx, ollist)...)
-	ipsets = append(ipsets, compileUnderlayIpsets(ctx, ullist)...)
-	return ipsets
-}
-
-// If skipKey is set ignore any AppNetworkConfig with that key
-func compileNetworkIpsetsStatus(ctx *zedrouterContext,
-	netconfig *types.NetworkInstanceConfig, skipKey string) []string {
-
-	ipsets := []string{}
-	if netconfig == nil {
-		return ipsets
-	}
-	// walk all of netconfig - find all hosts which use this network
-	pub := ctx.pubAppNetworkStatus
-	items := pub.GetAll()
-	for key, st := range items {
-		status := cast.CastAppNetworkStatus(st)
-		if status.Key() != key {
-			log.Errorf("compileNetworkIpsetsStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
-		if skipKey != "" && status.Key() == skipKey {
-			log.Debugf("compileNetworkIpsetsStatus skipping %s\n",
-				skipKey)
-			continue
-		}
-
-		for _, olStatus := range status.OverlayNetworkList {
-			if olStatus.Network != netconfig.UUID {
-				continue
-			}
-			ipsets = append(ipsets,
-				compileAceIpsets(olStatus.ACLs)...)
-		}
-		for _, ulStatus := range status.UnderlayNetworkList {
-			if ulStatus.Network != netconfig.UUID {
-				continue
-			}
-			ipsets = append(ipsets,
-				compileAceIpsets(ulStatus.ACLs)...)
-		}
-	}
-	return ipsets
-}
-
-func compileNetworkIpsetsConfig(ctx *zedrouterContext,
-	netconfig *types.NetworkInstanceConfig) []string {
-
-	ipsets := []string{}
-	if netconfig == nil {
-		return ipsets
-	}
-	// walk all of netconfig - find all hosts which use this network
-	sub := ctx.subAppNetworkConfig
-	items := sub.GetAll()
-	for key, c := range items {
-		config := cast.CastAppNetworkConfig(c)
-		if config.Key() != key {
-			log.Errorf("compileNetworkIpsetsConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, config.Key(), config)
-			continue
-		}
-		for _, olConfig := range config.OverlayNetworkList {
-			if olConfig.Network != netconfig.UUID {
-				continue
-			}
-			ipsets = append(ipsets,
-				compileAceIpsets(olConfig.ACLs)...)
-		}
-		for _, ulConfig := range config.UnderlayNetworkList {
-			if ulConfig.Network != netconfig.UUID {
-				continue
-			}
-			ipsets = append(ipsets,
-				compileAceIpsets(ulConfig.ACLs)...)
-		}
-	}
-	return ipsets
-}
-
-// If skipKey is set ignore any AppNetworkStatus with that key
-func compileOldOverlayIpsets(ctx *zedrouterContext,
-	ollist []types.OverlayNetworkStatus, skipKey string) []string {
-
-	ipsets := []string{}
-	for _, olStatus := range ollist {
-		netconfig := lookupNetworkInstanceConfig(ctx,
-			olStatus.Network.String())
-		if netconfig != nil {
-			// All ipsets from everybody on this network
-			ipsets = append(ipsets, compileNetworkIpsetsStatus(ctx,
-				netconfig, skipKey)...)
-		} else {
-			log.Errorf("No NetworkInstanceConfig for %s",
-				olStatus.Network.String())
-		}
-	}
-	return ipsets
-}
-
-// If skipKey is set ignore any AppNetworkStatus with that key
-func compileOldUnderlayIpsets(ctx *zedrouterContext,
-	ullist []types.UnderlayNetworkStatus, skipKey string) []string {
-
-	ipsets := []string{}
-	for _, ulStatus := range ullist {
-		netconfig := lookupNetworkInstanceConfig(ctx,
-			ulStatus.Network.String())
-		if netconfig != nil {
-			// All ipsets from everybody on this network
-			ipsets = append(ipsets, compileNetworkIpsetsStatus(ctx,
-				netconfig, skipKey)...)
-		} else {
-			log.Errorf("No NetworkInstanceConfig for %s",
-				ulStatus.Network.String())
-		}
-	}
-	return ipsets
-}
-
-// If skipKey is set ignore any AppNetworkStatus with that key
-func compileOldAppInstanceIpsets(ctx *zedrouterContext,
-	ollist []types.OverlayNetworkStatus,
-	ullist []types.UnderlayNetworkStatus, skipKey string) []string {
-
-	ipsets := []string{}
-	ipsets = append(ipsets, compileOldOverlayIpsets(ctx, ollist, skipKey)...)
-	ipsets = append(ipsets, compileOldUnderlayIpsets(ctx, ullist, skipKey)...)
-	return ipsets
+	return false
 }
 
 func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
@@ -882,6 +859,50 @@ func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
 	log.Infof("diffIpsets: restart %v, new %v, stale %v",
 		restartDnsmasq, newIpsets, staleIpsets)
 	return newIpsets, staleIpsets, restartDnsmasq
+}
+
+// it will be difficult the maintain the precedence/order of the iptables
+// rules, across multiple app instance modules
+// apply rules as a block
+// lets just delete the existing ACL iptables rules block
+// and add the new ACL rules, for the appNetwork.
+func updateACLConfiglet(aclArgs types.AppNetworkAclArgs, oldACLs []types.ACE, ACLs []types.ACE,
+	oldRules types.IpTablesRuleList) (types.IpTablesRuleList, error) {
+
+	log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s\n",
+		aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
+
+	aclArgs.IpVer = determineIpVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
+	if compareACLs(oldACLs, ACLs) == true {
+		log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: no change\n",
+			aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
+		return oldRules, nil
+	}
+	rules, err := deleteACLConfiglet(aclArgs, oldRules)
+	if err != nil {
+		log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: delete fail\n",
+			aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
+		return rules, err
+	}
+	return createACLConfiglet(aclArgs, ACLs)
+}
+
+func deleteACLConfiglet(aclArgs types.AppNetworkAclArgs,
+	rules types.IpTablesRuleList) (types.IpTablesRuleList, error) {
+	var err error
+	var activeRules types.IpTablesRuleList
+	log.Infof("deleteACLConfiglet: ifname %s vifName %s ACLs %v\n",
+		aclArgs.BridgeName, aclArgs.VifName, rules)
+
+	for _, rule := range rules {
+		log.Debugf("deleteACLConfiglet: rule %v\n", rule)
+		if err != nil {
+			activeRules = append(activeRules, rule)
+		} else {
+			err = executeIpTablesRule("-D", rule)
+		}
+	}
+	return activeRules, err
 }
 
 // utility routines for ACLs
@@ -934,28 +955,6 @@ func compareACE(ACE0 types.ACE, ACE1 types.ACE) bool {
 }
 
 // utility routines for IpTables Rules
-func equalRule(r1 types.IpTablesRule, r2 types.IpTablesRule) bool {
-	if r1.IpVer != r2.IpVer || r1.Table != r2.Table ||
-		r1.Chain != r2.Chain || len(r1.Rule) != len(r2.Rule) {
-		return false
-	}
-	for i := range r1.Rule {
-		if r1.Rule[i] != r2.Rule[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func containsRule(set types.IpTablesRuleList, member types.IpTablesRule) bool {
-	for _, r := range set {
-		if equalRule(r, member) {
-			return true
-		}
-	}
-	return false
-}
-
 func executeIpTablesRule(operation string, rule types.IpTablesRule) error {
 	var err error
 	ruleStr := []string{}
