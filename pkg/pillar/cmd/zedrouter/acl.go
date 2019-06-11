@@ -214,12 +214,12 @@ func compileOldAppInstanceIpsets(ctx *zedrouterContext,
 // For a shared bridge call aclToRules for each ifname, then aclDropRules,
 // then concat all the rules and pass to applyACLrules
 // Note that only bridgeName is set with ifMgmt
-func createACLConfiglet(aclArgs types.AppNetworkAclArgs,
-	ACLs []types.ACE) (types.IpTablesRuleList, error) {
+func createACLConfiglet(aclArgs types.AppNetworkACLArgs,
+	ACLs []types.ACE) (types.IPTablesRuleList, error) {
 
 	log.Infof("createACLConfiglet: ifname %s, vifName %s, IP %s/%s, ACLs %v\n",
 		aclArgs.BridgeName, aclArgs.VifName, aclArgs.BridgeIP, aclArgs.AppIP, ACLs)
-	aclArgs.IpVer = determineIpVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
+	aclArgs.IPVer = determineIPVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
 	rules, err := aclToRules(aclArgs, ACLs)
 	if err != nil {
 		return rules, err
@@ -234,34 +234,34 @@ func createACLConfiglet(aclArgs types.AppNetworkAclArgs,
 
 // handle network instance level ACL rules
 // Network Instance Level ACL rule handling routines
-func handleNetworkInstanceAclConfiglet(op string, aclArgs types.AppNetworkAclArgs) error {
+func handleNetworkInstanceACLConfiglet(op string, aclArgs types.AppNetworkACLArgs) error {
 
 	log.Infof("bridge(%s, %v) iptables op: %v\n", aclArgs.BridgeName, aclArgs.BridgeIP, op)
 	rulesList := networkInstanceBridgeRules(aclArgs)
 	for _, rule := range rulesList {
-		if err := executeIpTablesRule(op, rule); err != nil {
+		if err := executeIPTablesRule(op, rule); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func networkInstanceBridgeRules(aclArgs types.AppNetworkAclArgs) types.IpTablesRuleList {
-	var rulesList types.IpTablesRuleList
-	var aclRule1, aclRule2 types.IpTablesRule
+func networkInstanceBridgeRules(aclArgs types.AppNetworkACLArgs) types.IPTablesRuleList {
+	var rulesList types.IPTablesRuleList
+	var aclRule1, aclRule2 types.IPTablesRule
 
 	// not for dom0
 	if aclArgs.IsMgmt {
 		return rulesList
 	}
-	aclArgs.IpVer = determineIpVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
+	aclArgs.IPVer = determineIPVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
 	// two rules for ipv4
-	aclRule1.IpVer = 4
+	aclRule1.IPVer = 4
 	aclRule1.Table = "mangle"
 	aclRule1.Chain = "PREROUTING"
 	aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-p", "tcp",
 		"-j", "CHECKSUM", "--checksum-fill"}
-	aclRule2.IpVer = 4
+	aclRule2.IPVer = 4
 	aclRule2.Table = "mangle"
 	aclRule2.Chain = "PREROUTING"
 	aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-p", "udp",
@@ -269,24 +269,24 @@ func networkInstanceBridgeRules(aclArgs types.AppNetworkAclArgs) types.IpTablesR
 	rulesList = append(rulesList, aclRule1, aclRule2)
 
 	// two rules for ipv6
-	aclRule1.IpVer = 6
+	aclRule1.IPVer = 6
 	aclRule1.Table = "mangle"
 	aclRule1.Chain = "PREROUTING"
 	aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-p", "tcp",
 		"-j", "CHECKSUM", "--checksum-fill"}
-	aclRule2.IpVer = 6
+	aclRule2.IPVer = 6
 	aclRule2.Table = "mangle"
 	aclRule2.Chain = "PREROUTING"
 	aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-p", "udp",
 		"-j", "CHECKSUM", "--checksum-fill"}
 	rulesList = append(rulesList, aclRule1, aclRule2)
 
-	aclRule1.IpVer = aclArgs.IpVer
+	aclRule1.IPVer = aclArgs.IPVer
 	aclRule1.Table = ""
 	aclRule1.Chain = "FORWARD"
 	aclRule1.Rule = []string{"-o", aclArgs.BridgeName, "-j", "LOG", "--log-prefix",
 		"FORWARD:TO:", "--log-level", "3"}
-	aclRule2.IpVer = aclArgs.IpVer
+	aclRule2.IPVer = aclArgs.IPVer
 	aclRule2.Table = ""
 	aclRule2.Chain = "FORWARD"
 	aclRule2.Rule = []string{"-o", aclArgs.BridgeName, "-j", "DROP"}
@@ -297,7 +297,7 @@ func networkInstanceBridgeRules(aclArgs types.AppNetworkAclArgs) types.IpTablesR
 }
 
 // If no valid bridgeIP we assume IPv4
-func determineIpVer(isMgmt bool, bridgeIP string) int {
+func determineIPVer(isMgmt bool, bridgeIP string) int {
 	if isMgmt {
 		return 6
 	}
@@ -306,7 +306,7 @@ func determineIpVer(isMgmt bool, bridgeIP string) int {
 	}
 	ip := net.ParseIP(bridgeIP)
 	if ip == nil {
-		log.Fatalf("determineIpVer: ParseIP %s failed\n",
+		log.Fatalf("determineIPVer: ParseIP %s failed\n",
 			bridgeIP)
 	}
 	if ip.To4() == nil {
@@ -316,12 +316,12 @@ func determineIpVer(isMgmt bool, bridgeIP string) int {
 	}
 }
 
-func applyACLRules(aclArgs types.AppNetworkAclArgs,
-	rules types.IpTablesRuleList) (types.IpTablesRuleList, error) {
+func applyACLRules(aclArgs types.AppNetworkACLArgs,
+	rules types.IPTablesRuleList) (types.IPTablesRuleList, error) {
 	var err error
-	var activeRules types.IpTablesRuleList
+	var activeRules types.IPTablesRuleList
 	log.Debugf("applyACLRules: ipVer %d, bridgeName %s appIP %s with %d rules\n",
-		aclArgs.IpVer, aclArgs.BridgeName, aclArgs.AppIP, len(rules))
+		aclArgs.IPVer, aclArgs.BridgeName, aclArgs.AppIP, len(rules))
 	numRules := len(rules)
 	for numRules > 0 {
 		numRules--
@@ -331,7 +331,7 @@ func applyACLRules(aclArgs types.AppNetworkAclArgs,
 			log.Debugf("createACLConfiglet: skipping rule %v\n", rule)
 			continue
 		}
-		err = executeIpTablesRule("-I", rule)
+		err = executeIPTablesRule("-I", rule)
 		if err == nil {
 			activeRules = append(activeRules, rule)
 		} else {
@@ -342,20 +342,20 @@ func applyACLRules(aclArgs types.AppNetworkAclArgs,
 }
 
 // Returns a list of iptables commands, witout the initial "-A FORWARD"
-func aclToRules(aclArgs types.AppNetworkAclArgs, ACLs []types.ACE) (types.IpTablesRuleList, error) {
+func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTablesRuleList, error) {
 
-	var rulesList types.IpTablesRuleList
+	var rulesList types.IPTablesRuleList
 	log.Debugf("aclToRules(%s, %s, %d, %s, %s, %v\n",
-		aclArgs.BridgeName, aclArgs.VifName, aclArgs.IpVer,
+		aclArgs.BridgeName, aclArgs.VifName, aclArgs.IPVer,
 		aclArgs.BridgeIP, aclArgs.AppIP, ACLs)
 
-	var aclRule1, aclRule2, aclRule3, aclRule4 types.IpTablesRule
-	aclRule1.IpVer = aclArgs.IpVer
-	aclRule2.IpVer = aclArgs.IpVer
-	aclRule3.IpVer = aclArgs.IpVer
-	aclRule4.IpVer = aclArgs.IpVer
+	var aclRule1, aclRule2, aclRule3, aclRule4 types.IPTablesRule
+	aclRule1.IPVer = aclArgs.IPVer
+	aclRule2.IPVer = aclArgs.IPVer
+	aclRule3.IPVer = aclArgs.IPVer
+	aclRule4.IPVer = aclArgs.IPVer
 	// XXX should we check isMgmt instead of bridgeIP?
-	if aclArgs.IpVer == 6 && aclArgs.BridgeIP != "" {
+	if aclArgs.IPVer == 6 && aclArgs.BridgeIP != "" {
 		// Need to allow local communication */
 		// Only allow dhcp, dns (tcp/udp), and icmp6/nd
 		// Note that sufficient for src or dst to be local
@@ -393,7 +393,7 @@ func aclToRules(aclArgs types.AppNetworkAclArgs, ACLs []types.ACE) (types.IpTabl
 	}
 	// The same rules as above for IPv4.
 	// If we have a bridge service then bridgeIP might be "".
-	if aclArgs.IpVer == 4 && aclArgs.BridgeIP != "" {
+	if aclArgs.IPVer == 4 && aclArgs.BridgeIP != "" {
 		// Need to allow local communication */
 		// Only allow dhcp and dns (tcp/udp)
 		// Note that sufficient for src or dst to be local
@@ -423,8 +423,8 @@ func aclToRules(aclArgs types.AppNetworkAclArgs, ACLs []types.ACE) (types.IpTabl
 	// XXX isMgmt is painful; related to commenting out eidset accepts
 	// XXX won't need this when zedmanager is in a separate domU
 	// Commenting out for now
-	if false && aclArgs.IsMgmt && aclArgs.IpVer == 6 {
-		aclRule1.IpVer = 6
+	if false && aclArgs.IsMgmt && aclArgs.IPVer == 6 {
+		aclRule1.IPVer = 6
 		aclRule1.Table = "mangle"
 		aclRule1.Chain = "FORWARD"
 		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-o", "dbo1x0",
@@ -443,14 +443,14 @@ func aclToRules(aclArgs types.AppNetworkAclArgs, ACLs []types.ACE) (types.IpTabl
 	return rulesList, nil
 }
 
-func aclDropRules(aclArgs types.AppNetworkAclArgs) (types.IpTablesRuleList, error) {
+func aclDropRules(aclArgs types.AppNetworkACLArgs) (types.IPTablesRuleList, error) {
 
-	var rulesList types.IpTablesRuleList
-	var aclRule1, aclRule2, aclRule3, aclRule4 types.IpTablesRule
-	aclRule1.IpVer = aclArgs.IpVer
-	aclRule2.IpVer = aclArgs.IpVer
-	aclRule3.IpVer = aclArgs.IpVer
-	aclRule4.IpVer = aclArgs.IpVer
+	var rulesList types.IPTablesRuleList
+	var aclRule1, aclRule2, aclRule3, aclRule4 types.IPTablesRule
+	aclRule1.IPVer = aclArgs.IPVer
+	aclRule2.IPVer = aclArgs.IPVer
+	aclRule3.IPVer = aclArgs.IPVer
+	aclRule4.IPVer = aclArgs.IPVer
 
 	log.Debugf("aclDropRules: bridgeName %s, vifName %s\n",
 		aclArgs.BridgeName, aclArgs.VifName)
@@ -467,8 +467,8 @@ func aclDropRules(aclArgs types.AppNetworkAclArgs) (types.IpTablesRuleList, erro
 	return rulesList, nil
 }
 
-func aceToRules(aclArgs types.AppNetworkAclArgs, ace types.ACE) (types.IpTablesRuleList, error) {
-	var rulesList types.IpTablesRuleList
+func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesRuleList, error) {
+	var rulesList types.IPTablesRuleList
 
 	// Extract lport and protocol from the Matches to use for PortMap
 	// Keep others to make sure we put the protocol before the port
@@ -480,13 +480,13 @@ func aceToRules(aclArgs types.AppNetworkAclArgs, ace types.ACE) (types.IpTablesR
 	var fport string
 
 	// max six rules, (2 port map rule,  2 accept rules, 2 limit drop rules)
-	var aclRule1, aclRule2, aclRule3, aclRule4, aclRule5, aclRule6 types.IpTablesRule
-	aclRule1.IpVer = aclArgs.IpVer
-	aclRule2.IpVer = aclArgs.IpVer
-	aclRule3.IpVer = aclArgs.IpVer
-	aclRule4.IpVer = aclArgs.IpVer
-	aclRule5.IpVer = aclArgs.IpVer
-	aclRule6.IpVer = aclArgs.IpVer
+	var aclRule1, aclRule2, aclRule3, aclRule4, aclRule5, aclRule6 types.IPTablesRule
+	aclRule1.IPVer = aclArgs.IPVer
+	aclRule2.IPVer = aclArgs.IPVer
+	aclRule3.IPVer = aclArgs.IPVer
+	aclRule4.IPVer = aclArgs.IPVer
+	aclRule5.IPVer = aclArgs.IPVer
+	aclRule6.IPVer = aclArgs.IPVer
 
 	// Always match on interface. Note that rulePrefix adds physdev-in
 	inArgs := []string{"-o", aclArgs.BridgeName}
@@ -525,7 +525,7 @@ func aceToRules(aclArgs types.AppNetworkAclArgs, ace types.ACE) (types.IpTablesR
 				log.Errorln("ipset create for ",
 					match.Value, err)
 			}
-			switch aclArgs.IpVer {
+			switch aclArgs.IPVer {
 			case 4:
 				ipsetName = "ipv4." + match.Value
 			case 6:
@@ -539,7 +539,7 @@ func aceToRules(aclArgs types.AppNetworkAclArgs, ace types.ACE) (types.IpTablesR
 				return nil, errors.New(errStr)
 			}
 			// Caller adds any EIDs/IPs to set
-			switch aclArgs.IpVer {
+			switch aclArgs.IPVer {
 			case 4:
 				ipsetName = "ipv4.eids." + aclArgs.VifName
 			case 6:
@@ -731,7 +731,7 @@ func isIPorCIDR(str string) bool {
 // Determine which rules to skip and what prefix/table to use
 // We append a '+' to the vifname to handle PV/qemu which for some
 // reason have a second <vifname>-emu bridge interface.
-func rulePrefix(aclArgs types.AppNetworkAclArgs, rule *types.IpTablesRule) error {
+func rulePrefix(aclArgs types.AppNetworkACLArgs, rule *types.IPTablesRule) error {
 
 	vifName := aclArgs.VifName
 
@@ -759,7 +759,7 @@ func rulePrefix(aclArgs types.AppNetworkAclArgs, rule *types.IpTablesRule) error
 		return nil
 	}
 
-	if aclArgs.IpVer == 6 {
+	if aclArgs.IPVer == 6 {
 		// The input rules (from domU are applied to raw to intercept
 		// before lisp/pcap can pick them up.
 		// The output rules (to domU) are applied in forwarding path
@@ -806,8 +806,8 @@ func rulePrefix(aclArgs types.AppNetworkAclArgs, rule *types.IpTablesRule) error
 	return errors.New(errStr)
 }
 
-func equalRule(r1 types.IpTablesRule, r2 types.IpTablesRule) bool {
-	if r1.IpVer != r2.IpVer || r1.Table != r2.Table ||
+func equalRule(r1 types.IPTablesRule, r2 types.IPTablesRule) bool {
+	if r1.IPVer != r2.IPVer || r1.Table != r2.Table ||
 		r1.Chain != r2.Chain || len(r1.Rule) != len(r2.Rule) {
 		return false
 	}
@@ -819,7 +819,7 @@ func equalRule(r1 types.IpTablesRule, r2 types.IpTablesRule) bool {
 	return true
 }
 
-func containsRule(set types.IpTablesRuleList, member types.IpTablesRule) bool {
+func containsRule(set types.IPTablesRuleList, member types.IPTablesRule) bool {
 	for _, r := range set {
 		if equalRule(r, member) {
 			return true
@@ -866,13 +866,13 @@ func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
 // apply rules as a block
 // lets just delete the existing ACL iptables rules block
 // and add the new ACL rules, for the appNetwork.
-func updateACLConfiglet(aclArgs types.AppNetworkAclArgs, oldACLs []types.ACE, ACLs []types.ACE,
-	oldRules types.IpTablesRuleList) (types.IpTablesRuleList, error) {
+func updateACLConfiglet(aclArgs types.AppNetworkACLArgs, oldACLs []types.ACE, ACLs []types.ACE,
+	oldRules types.IPTablesRuleList) (types.IPTablesRuleList, error) {
 
 	log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s\n",
 		aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
 
-	aclArgs.IpVer = determineIpVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
+	aclArgs.IPVer = determineIPVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
 	if compareACLs(oldACLs, ACLs) == true {
 		log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: no change\n",
 			aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
@@ -887,10 +887,10 @@ func updateACLConfiglet(aclArgs types.AppNetworkAclArgs, oldACLs []types.ACE, AC
 	return createACLConfiglet(aclArgs, ACLs)
 }
 
-func deleteACLConfiglet(aclArgs types.AppNetworkAclArgs,
-	rules types.IpTablesRuleList) (types.IpTablesRuleList, error) {
+func deleteACLConfiglet(aclArgs types.AppNetworkACLArgs,
+	rules types.IPTablesRuleList) (types.IPTablesRuleList, error) {
 	var err error
-	var activeRules types.IpTablesRuleList
+	var activeRules types.IPTablesRuleList
 	log.Infof("deleteACLConfiglet: ifname %s vifName %s ACLs %v\n",
 		aclArgs.BridgeName, aclArgs.VifName, rules)
 
@@ -899,7 +899,7 @@ func deleteACLConfiglet(aclArgs types.AppNetworkAclArgs,
 		if err != nil {
 			activeRules = append(activeRules, rule)
 		} else {
-			err = executeIpTablesRule("-D", rule)
+			err = executeIPTablesRule("-D", rule)
 		}
 	}
 	return activeRules, err
@@ -954,8 +954,61 @@ func compareACE(ACE0 types.ACE, ACE1 types.ACE) bool {
 	return true
 }
 
+// check for portmap Acl overlap
+func matchACLsForPortMap(ACLs []types.ACE, ACLs1 []types.ACE) bool {
+	matchTypes := []string{"protocol", "lport"}
+	for _, ace := range ACLs {
+		for _, action := range ace.Actions {
+			// not a portmap rule
+			if !action.PortMap {
+				continue
+			}
+			for _, ace1 := range ACLs1 {
+				for _, action1 := range ace1.Actions {
+					// not a portmap rule
+					if !action1.PortMap {
+						continue
+					}
+					// check for ingress protocol/port
+					if checkForMatchCondition(ace, ace1, matchTypes) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// generic comparision routine for ACL match conditions
+func checkForMatchCondition(ace types.ACE, ace1 types.ACE, matchTypes []string) bool {
+	valueList := make([]string, len(matchTypes))
+	valueList1 := make([]string, len(matchTypes))
+
+	for idx, matchType := range matchTypes {
+		for _, match := range ace.Matches {
+			if matchType == match.Type {
+				valueList[idx] = match.Value
+			}
+		}
+		for _, match := range ace1.Matches {
+			if matchType == match.Type {
+				valueList1[idx] = match.Value
+			}
+		}
+	}
+	for idx, value := range valueList {
+		value1 := valueList1[idx]
+		if value == "" || value1 == "" ||
+			value != value1 {
+			return false
+		}
+	}
+	return true
+}
+
 // utility routines for IpTables Rules
-func executeIpTablesRule(operation string, rule types.IpTablesRule) error {
+func executeIPTablesRule(operation string, rule types.IPTablesRule) error {
 	var err error
 	ruleStr := []string{}
 	if rule.Table != "" {
@@ -966,12 +1019,13 @@ func executeIpTablesRule(operation string, rule types.IpTablesRule) error {
 	ruleStr = append(ruleStr, rule.Chain)
 	ruleStr = append(ruleStr, rule.Prefix...)
 	ruleStr = append(ruleStr, rule.Rule...)
-	if rule.IpVer == 4 {
+	if rule.IPVer == 4 {
 		err = iptables.IptableCmd(ruleStr...)
-	} else if rule.IpVer == 6 {
+	} else if rule.IPVer == 6 {
 		err = iptables.Ip6tableCmd(ruleStr...)
 	} else {
-		err = errors.New(fmt.Sprintf("ACL: Unknown IP version %d", rule.IpVer))
+		errStr := fmt.Sprintf("ACL: Unknown IP version %d", rule.IPVer)
+		err = errors.New(errStr)
 	}
 	return err
 }

@@ -210,9 +210,9 @@ func networkInstanceBridgeDelete(
 	// When bridge and sister interfaces are deleted, code in pbr.go
 	// takes care of deleting the corresponding route tables and ip rules.
 
-	aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: status.BridgeName,
+	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
 		BridgeIP: status.BridgeIPAddr}
-	handleNetworkInstanceAclConfiglet("-D", aclArgs)
+	handleNetworkInstanceACLConfiglet("-D", aclArgs)
 
 	// delete the sister interface
 	if status.HasEncap {
@@ -340,15 +340,15 @@ func doBridgeAclsDelete(
 			}
 			log.Infof("NetworkInstance - deleting Acls for OL Interface(%s)",
 				olStatus.Name)
-			aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: olStatus.Bridge,
+			aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: olStatus.Bridge,
 				VifName: olStatus.Vif, BridgeIP: olStatus.BridgeIPAddr, AppIP: olStatus.EID.String(),
 				UpLinks: status.IfNameList}
-			ruleList, err := deleteACLConfiglet(aclArgs, appNetStatus.OverlayAclList)
+			ruleList, err := deleteACLConfiglet(aclArgs, appNetStatus.OverlayACLList)
 			if err != nil {
 				log.Errorf("doNetworkDelete ACL failed: %s\n",
 					err)
 			}
-			appNetStatus.OverlayAclList = ruleList
+			appNetStatus.OverlayACLList = ruleList
 		}
 		for _, ulStatus := range appNetStatus.UnderlayNetworkList {
 			if ulStatus.Network != status.UUID {
@@ -359,15 +359,15 @@ func doBridgeAclsDelete(
 			}
 			log.Infof("NetworkInstance - deleting Acls for UL Interface(%s)",
 				ulStatus.Name)
-			aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: ulStatus.Bridge,
+			aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: ulStatus.Bridge,
 				VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: ulStatus.AssignedIPAddr,
 				UpLinks: status.IfNameList}
-			ruleList, err := deleteACLConfiglet(aclArgs, appNetStatus.UnderlayAclList)
+			ruleList, err := deleteACLConfiglet(aclArgs, appNetStatus.UnderlayACLList)
 			if err != nil {
 				log.Errorf("NetworkInstance DeleteACL failed: %s\n",
 					err)
 			}
-			appNetStatus.UnderlayAclList = ruleList
+			appNetStatus.UnderlayACLList = ruleList
 		}
 	}
 	return
@@ -543,9 +543,9 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	default:
 	}
 	// setup the ACLs for the bridge
-	aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: status.BridgeName,
+	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
 		BridgeIP: status.BridgeIPAddr}
-	handleNetworkInstanceAclConfiglet("-A", aclArgs)
+	handleNetworkInstanceACLConfiglet("-A", aclArgs)
 	return nil
 }
 

@@ -1144,7 +1144,7 @@ func appNetworkDoActivateUnderlayNetwork(
 	createDefaultIpsetConfiglet(vifName, netInstStatus.DnsNameToIPList,
 		appIPAddr)
 
-	aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: bridgeName,
+	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: vifName, BridgeIP: bridgeIPAddr, AppIP: appIPAddr,
 		UpLinks: netInstStatus.IfNameList}
 
@@ -1153,7 +1153,7 @@ func appNetworkDoActivateUnderlayNetwork(
 	if err != nil {
 		addError(ctx, status, "createACL", err)
 	}
-	status.UnderlayAclList = ruleList
+	status.UnderlayACLList = ruleList
 
 	if appIPAddr != "" {
 		// XXX clobber any IPv6 EID entry since same name
@@ -1335,7 +1335,7 @@ func appNetworkDoActivateOverlayNetwork(
 	createDefaultIpsetConfiglet(vifName, netInstStatus.DnsNameToIPList,
 		EID.String())
 
-	aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: bridgeName,
+	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: vifName, BridgeIP: olStatus.BridgeIPAddr, AppIP: EID.String(),
 		UpLinks: netInstStatus.IfNameList}
 
@@ -1344,7 +1344,7 @@ func appNetworkDoActivateOverlayNetwork(
 	if err != nil {
 		addError(ctx, status, "createACL", err)
 	}
-	status.OverlayAclList = ruleList
+	status.OverlayACLList = ruleList
 
 	addhostDnsmasq(bridgeName, appMac, EID.String(),
 		config.UUIDandVersion.UUID.String())
@@ -1594,7 +1594,7 @@ func doActivateAppInstanceWithMgmtLisp(
 	createDefaultIpsetConfiglet(olIfname, olConfig.MgmtDnsNameToIPList,
 		EID.String())
 
-	aclArgs := types.AppNetworkAclArgs{IsMgmt: true, BridgeName: olIfname,
+	aclArgs := types.AppNetworkACLArgs{IsMgmt: true, BridgeName: olIfname,
 		VifName: olIfname}
 
 	// Set up ACLs
@@ -1602,7 +1602,7 @@ func doActivateAppInstanceWithMgmtLisp(
 	if err != nil {
 		addError(ctx, status, "createACL", err)
 	}
-	status.OverlayAclList = ruleList
+	status.OverlayACLList = ruleList
 
 	// Save information about zedmanger EID and additional info
 	deviceEID = EID
@@ -1966,7 +1966,7 @@ func doAppNetworkModifyUnderlayNetwork(
 	netconfig := lookupNetworkInstanceConfig(ctx, ulConfig.Network.String())
 	netstatus := lookupNetworkInstanceStatus(ctx, ulConfig.Network.String())
 
-	aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: bridgeName,
+	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: appIPAddr,
 		UpLinks: netstatus.IfNameList}
 
@@ -1976,11 +1976,11 @@ func doAppNetworkModifyUnderlayNetwork(
 	// If so updateNetworkACLConfiglet needs to know old and new
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
 	ruleList, err := updateACLConfiglet(aclArgs,
-		ulStatus.ACLs, ulConfig.ACLs, status.UnderlayAclList)
+		ulStatus.ACLs, ulConfig.ACLs, status.UnderlayACLList)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
-	status.UnderlayAclList = ruleList
+	status.UnderlayACLList = ruleList
 
 	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 		netstatus.BridgeIPSets)
@@ -2046,7 +2046,7 @@ func doAppNetworkModifyOverlayNetwork(
 	}
 	// We ignore any errors in netstatus
 
-	aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: bridgeName,
+	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: olStatus.Vif, BridgeIP: olStatus.BridgeIPAddr, AppIP: olConfig.EID.String(),
 		UpLinks: netstatus.IfNameList}
 
@@ -2054,11 +2054,11 @@ func doAppNetworkModifyOverlayNetwork(
 	// If so updateACLConfiglet needs to know old and new
 	// XXX Could olStatus.Vif not be set? Means we didn't add
 	ruleList, err := updateACLConfiglet(aclArgs,
-		olStatus.ACLs, olConfig.ACLs, status.OverlayAclList)
+		olStatus.ACLs, olConfig.ACLs, status.OverlayACLList)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
-	status.OverlayAclList = ruleList
+	status.OverlayACLList = ruleList
 
 	// Look for added or deleted ipsets
 	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
@@ -2105,16 +2105,16 @@ func handleAppNetworkWithMgmtLispModify(ctx *zedrouterContext,
 	// Assume there is no UUID for management overlay
 
 	// Note: we ignore olConfig.AppMacAddr for IsMgmt
-	aclArgs := types.AppNetworkAclArgs{IsMgmt: true, BridgeName: olIfname,
+	aclArgs := types.AppNetworkACLArgs{IsMgmt: true, BridgeName: olIfname,
 		VifName: olIfname}
 
 	// Update ACLs
 	ruleList, err := updateACLConfiglet(aclArgs,
-		olStatus.ACLs, olConfig.ACLs, status.OverlayAclList)
+		olStatus.ACLs, olConfig.ACLs, status.OverlayACLList)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
-	status.OverlayAclList = ruleList
+	status.OverlayACLList = ruleList
 
 	if config.Activate && !status.Activated {
 		doActivate(ctx, config, status)
@@ -2254,17 +2254,17 @@ func appNetworkDoInactivateUnderlayNetwork(
 			appIPAddr)
 	}
 
-	aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: bridgeName,
+	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: appIPAddr,
 		UpLinks: netstatus.IfNameList}
 
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
 	if ulStatus.Vif != "" {
-		ruleList, err := deleteACLConfiglet(aclArgs, status.UnderlayAclList)
+		ruleList, err := deleteACLConfiglet(aclArgs, status.UnderlayACLList)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
-		status.UnderlayAclList = ruleList
+		status.UnderlayACLList = ruleList
 	} else {
 		log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
 			status.UUIDandVersion, bridgeName,
@@ -2344,18 +2344,18 @@ func appNetworkDoInactivateOverlayNetwork(
 	removehostDnsmasq(bridgeName, olStatus.Mac,
 		olStatus.EID.String())
 
-	aclArgs := types.AppNetworkAclArgs{IsMgmt: false, BridgeName: bridgeName,
+	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: olStatus.Vif, BridgeIP: olStatus.BridgeIPAddr, AppIP: olStatus.EID.String(),
 		UpLinks: netstatus.IfNameList}
 
 	// Delete ACLs
 	// XXX Could olStatus.Vif not be set? Means we didn't add
 	if olStatus.Vif != "" {
-		ruleList, err := deleteACLConfiglet(aclArgs, status.OverlayAclList)
+		ruleList, err := deleteACLConfiglet(aclArgs, status.OverlayACLList)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
-		status.OverlayAclList = ruleList
+		status.OverlayACLList = ruleList
 	} else {
 		log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
 			status.UUIDandVersion, bridgeName,
@@ -2528,14 +2528,14 @@ func doInactivateAppNetworkWithMgmtLisp(
 	// Default ipset
 	deleteDefaultIpsetConfiglet(olIfname, true)
 
-	aclArgs := types.AppNetworkAclArgs{IsMgmt: true, BridgeName: olIfname,
+	aclArgs := types.AppNetworkACLArgs{IsMgmt: true, BridgeName: olIfname,
 		VifName: olIfname}
 	// Delete ACLs
-	ruleList, err := deleteACLConfiglet(aclArgs, status.OverlayAclList)
+	ruleList, err := deleteACLConfiglet(aclArgs, status.OverlayACLList)
 	if err != nil {
 		addError(ctx, status, "deleteACL", err)
 	}
-	status.OverlayAclList = ruleList
+	status.OverlayACLList = ruleList
 
 	// Delete LISP configlets
 	deleteLispConfiglet(lispRunDirname, true, olStatus.MgmtIID,
@@ -2729,55 +2729,4 @@ func checkUplinkPortOverlap(ctx *zedrouterContext, network string, network1 stri
 	}
 	log.Debugf("no uplink overlaps for (%s, %s)\n", network, network1)
 	return false
-}
-
-func matchACLsForPortMap(ACLs0 []types.ACE, ACLs1 []types.ACE) bool {
-	matchTypes := []string{"protocol", "lport"}
-	for _, ace0 := range ACLs0 {
-		for _, action0 := range ace0.Actions {
-			// not a portmap rule
-			if !action0.PortMap {
-				continue
-			}
-			for _, ace1 := range ACLs1 {
-				for _, action1 := range ace1.Actions {
-					// not a portmap rule
-					if !action1.PortMap {
-						continue
-					}
-					// check for ingress protocol/port
-					if checkForMatchCondition(ace0, ace1, matchTypes) {
-						return true
-					}
-				}
-			}
-		}
-	}
-	return false
-}
-
-func checkForMatchCondition(ace0 types.ACE, ace1 types.ACE, matchTypes []string) bool {
-	valueList := make([]string, len(matchTypes))
-	valueList1 := make([]string, len(matchTypes))
-
-	for idx, matchType := range matchTypes {
-		for _, match := range ace0.Matches {
-			if matchType == match.Type {
-				valueList[idx] = match.Value
-			}
-		}
-		for _, match := range ace1.Matches {
-			if matchType == match.Type {
-				valueList1[idx] = match.Value
-			}
-		}
-	}
-	for idx, value := range valueList {
-		value1 := valueList1[idx]
-		if value == "" || value1 == "" ||
-			value != value1 {
-			return false
-		}
-	}
-	return true
 }
