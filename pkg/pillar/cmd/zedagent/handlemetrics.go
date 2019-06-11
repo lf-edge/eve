@@ -972,6 +972,10 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				errInfo.Timestamp = errTime
 				swInfo.SwErr = errInfo
 			}
+			if swInfo.ShortVersion == "" {
+				swInfo.Status = info.ZSwState(types.INITIAL)
+				swInfo.DownloadProgress = 0
+			}
 		} else {
 			partStatus := getZbootPartitionStatus(ctx, partLabel)
 			swInfo.PartitionLabel = partLabel
@@ -1170,6 +1174,8 @@ func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW) {
 		if swInfo.PartitionState == "unused" &&
 			swInfo.PartitionLabel != "" {
 
+			swInfo.UserStatus = info.BaseOsStatus_NONE
+		} else if swInfo.ShortVersion == "" {
 			swInfo.UserStatus = info.BaseOsStatus_NONE
 		} else {
 			swInfo.UserStatus = info.BaseOsStatus_UPDATING
