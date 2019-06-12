@@ -402,7 +402,7 @@ func MarkCurrentPartitionStateActive() error {
 
 // XXX known pathnames for the version file and the zededa-tools container
 const (
-	newVersionFile = "/hostfs/etc/eve-release"
+	newVersionFile = "/etc/eve-release"
 	// XXX remove use of shortVersionFile in container once the deployed
 	// images all have newVersionFile
 	shortVersionFile = "/opt/zededa/bin/versioninfo"
