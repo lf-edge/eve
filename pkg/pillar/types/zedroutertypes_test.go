@@ -4,42 +4,44 @@
 package types
 
 import (
+	"github.com/stretchr/testify/assert"
 	"testing"
-
-	log "github.com/sirupsen/logrus"
 )
 
-type TestIsIPv6MatrixEntry struct {
-	config        NetworkInstanceConfig
-	expectedValue bool
-}
-
 func TestIsIPv6(t *testing.T) {
-	log.Infof("TestIsIPv6: START\n")
-
-	testMatrix := []TestIsIPv6MatrixEntry{
-		{config: NetworkInstanceConfig{IpType: AddressTypeIPV6},
-			expectedValue: true},
-		{config: NetworkInstanceConfig{IpType: AddressTypeCryptoIPV6},
-			expectedValue: true},
-		{config: NetworkInstanceConfig{IpType: AddressTypeIPV4},
-			expectedValue: false},
-		{config: NetworkInstanceConfig{IpType: AddressTypeCryptoIPV4},
-			expectedValue: false},
-		{config: NetworkInstanceConfig{IpType: AddressTypeNone},
-			expectedValue: false},
-		{config: NetworkInstanceConfig{IpType: AddressTypeLast},
-			expectedValue: false},
+	testMatrix := map[string]struct {
+		config        NetworkInstanceConfig
+		expectedValue bool
+	}{
+		"AddressTypeIPV6": {
+			config:        NetworkInstanceConfig{IpType: AddressTypeIPV6},
+			expectedValue: true,
+		},
+		"AddressTypeCryptoIPV6": {
+			config:        NetworkInstanceConfig{IpType: AddressTypeCryptoIPV6},
+			expectedValue: true,
+		},
+		"AddressTypeIPV4": {
+			config:        NetworkInstanceConfig{IpType: AddressTypeIPV4},
+			expectedValue: false,
+		},
+		"AddressTypeCryptoIPV4": {
+			config:        NetworkInstanceConfig{IpType: AddressTypeCryptoIPV4},
+			expectedValue: false,
+		},
+		"AddressTypeNone": {
+			config:        NetworkInstanceConfig{IpType: AddressTypeNone},
+			expectedValue: false,
+		},
+		"AddressTypeLast": {
+			config:        NetworkInstanceConfig{IpType: AddressTypeLast},
+			expectedValue: false,
+		},
 	}
 
-	// Basic test
-	for index := range testMatrix {
-		entry := &testMatrix[index]
-		isIPv6 := entry.config.IsIPv6()
-		if isIPv6 != entry.expectedValue {
-			t.Errorf("Test Entry Index %d Failed: Expected %t, Actual: %t\n",
-				index, entry.expectedValue, isIPv6)
-		}
+	for testname, test := range testMatrix {
+		t.Logf("Running test case %s", testname)
+		isIPv6 := test.config.IsIPv6()
+		assert.IsType(t, test.expectedValue, isIPv6)
 	}
-	log.Infof("TestIsIPv6: DONE\n")
 }

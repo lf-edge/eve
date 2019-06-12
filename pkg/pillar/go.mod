@@ -31,6 +31,7 @@ require (
 	github.com/satori/uuid v1.2.0 // indirect
 	github.com/shirou/gopsutil v0.0.0-20190323131628-2cbc9195c892
 	github.com/sirupsen/logrus v1.2.0
+	github.com/stretchr/testify v1.3.0
 	github.com/vishvananda/netlink v0.0.0-20190319163122-f504738125a5 // indirect
 	github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc // indirect
 	golang.org/x/crypto v0.0.0-20190404164418-38d8ce5564a5
