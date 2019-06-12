@@ -33,53 +33,49 @@ func TestUrlToSafename(t *testing.T) {
 
 func TestParseTriState(t *testing.T) {
 	testMatrix := map[string]struct {
-		err		error
-		ts		TriState
-		value	string
+		err   error
+		ts    TriState
+		value string
 	}{
 		"Value none": {
-			err: nil,
-			ts: TS_NONE,
+			err:   nil,
+			ts:    TS_NONE,
 			value: "none",
 		},
 
 		"Value enable": {
-			err: nil,
-			ts: TS_ENABLED,
+			err:   nil,
+			ts:    TS_ENABLED,
 			value: "enable",
 		},
 		"Value enabled": {
-			err: nil,
-			ts: TS_ENABLED,
+			err:   nil,
+			ts:    TS_ENABLED,
 			value: "enabled",
 		},
 		"Value on": {
-			err: nil,
-			ts: TS_ENABLED,
+			err:   nil,
+			ts:    TS_ENABLED,
 			value: "on",
 		},
-		"Value disabled":
-		{
-			err: nil,
-			 ts: TS_DISABLED,
-			  value: "disabled",
+		"Value disabled": {
+			err:   nil,
+			ts:    TS_DISABLED,
+			value: "disabled",
 		},
-		"Value disable":
-		{
-			err: nil,
-			ts: TS_DISABLED,
+		"Value disable": {
+			err:   nil,
+			ts:    TS_DISABLED,
 			value: "disable",
 		},
-		"Value off":
-		{
-			err: nil,
-			ts: TS_DISABLED,
+		"Value off": {
+			err:   nil,
+			ts:    TS_DISABLED,
 			value: "off",
 		},
-		"Value bad-value":
-		{
-			err: fmt.Errorf("Bad value: bad-value"),
-			ts: TS_NONE,
+		"Value bad-value": {
+			err:   fmt.Errorf("Bad value: bad-value"),
+			ts:    TS_NONE,
 			value: "bad-value",
 		},
 	}
