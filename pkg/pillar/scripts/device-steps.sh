@@ -6,6 +6,7 @@
 USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
+PERSISTCONFIGDIR=/persist/config
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
 DPCDIR=$TMPDIR/DevicePortConfig
@@ -17,6 +18,7 @@ LOGDIRB=$PERSISTDIR/IMGB/log
 AGENTS0="logmanager ledmanager nim"
 AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr baseosmgr wstunnelclient"
 AGENTS="$AGENTS0 $AGENTS1"
+TPM_DEVICE_PATH="/dev/tpm0"
 
 PATH=$BINDIR:$PATH
 
@@ -392,13 +394,25 @@ if [ -f /var/run/watchdog.pid ]; then
 fi
 /usr/sbin/watchdog -c $TMPDIR/watchdogclient.conf -F -s &
 
-if ! [ -f $CONFIGDIR/device.cert.pem ] || ! [ -f $CONFIGDIR/device.key.pem ]; then
+if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
     touch $FIRSTBOOTFILE # For zedagent
     touch $CONFIGDIR/self-register-pending
     sync
     blockdev --flushbufs "$CONFIGDEV"
-    $BINDIR/generate-device.sh $CONFIGDIR/device
+    if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
+        echo "TPM device is present and allowed, marking mode as tpm-enabled"
+        touch $PERSISTCONFIGDIR/tpm_in_use
+        sync
+        blockdev --flushbufs "$CONFIGDEV"
+        $BINDIR/generate-device.sh -b $CONFIGDIR/device -t
+    else
+        #Just in case, it got disabled in BIOS later on.
+        rm -f $PERSISTCONFIGDIR/tpm_in_use
+        sync
+        blockdev --flushbufs "$CONFIGDEV"
+        $BINDIR/generate-device.sh -b $CONFIGDIR/device
+    fi
     # Reduce chance that we register with controller and crash before
     # the filesystem has persisted /config/device.cert.* and
     # self-register-pending
@@ -485,8 +499,10 @@ if [ ! -d $LISPDIR ]; then
     exit 1
 fi
 
-# Need a key for device-to-device map-requests
-cp -p $CONFIGDIR/device.key.pem $LISPDIR/lisp-sig.pem
+if ! [ -f $PERSISTCONFIGDIR/tpm_in_use ]; then
+    # Need a key for device-to-device map-requests
+    cp -p $CONFIGDIR/device.key.pem $LISPDIR/lisp-sig.pem
+fi
 
 # Setup default amount of space for images
 # Half of /persist by default! Convert to kbytes
