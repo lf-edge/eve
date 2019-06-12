@@ -402,6 +402,9 @@ func MarkCurrentPartitionStateActive() error {
 
 // XXX known pathnames for the version file and the zededa-tools container
 const (
+	newVersionFile = "/hostfs/etc/eve-release"
+	// XXX remove use of shortVersionFile in container once the deployed
+	// images all have newVersionFile
 	shortVersionFile = "/opt/zededa/bin/versioninfo"
 	longVersionFile  = "XXX"
 	otherPrefix      = "/containers/services/pillar/lower"
@@ -410,7 +413,11 @@ const (
 )
 
 func GetShortVersion(partName string) string {
-	return getVersion(partName, shortVersionFile)
+	ver := getVersion(partName, newVersionFile, false)
+	if ver != "" {
+		return ver
+	}
+	return getVersion(partName, shortVersionFile, true)
 }
 
 // XXX add longversion once we have a filename above
@@ -420,7 +427,7 @@ func GetLongVersion(part string) string {
 
 // XXX explore a loopback mount to be able to read version
 // from a downloaded image file
-func getVersion(part string, verFilename string) string {
+func getVersion(part string, verFilename string, inContainer bool) string {
 	validatePartitionName(part)
 
 	if part == GetCurrentPartition() {
@@ -453,11 +460,20 @@ func getVersion(part string, verFilename string) string {
 			return ""
 		}
 		defer syscall.Unmount(target, 0)
-		filename := fmt.Sprintf("%s/%s/%s",
-			target, otherPrefix, verFilename)
+		var filename string
+		if inContainer {
+			filename = fmt.Sprintf("%s/%s/%s",
+				target, otherPrefix, verFilename)
+		} else {
+			filename = fmt.Sprintf("%s/%s",
+				target, verFilename)
+		}
 		version, err := ioutil.ReadFile(filename)
 		if err != nil {
 			log.Warn(err)
+			if !inContainer {
+				return ""
+			}
 			filename := fmt.Sprintf("%s/%s/%s",
 				target, otherPrefixOld, verFilename)
 			version, err = ioutil.ReadFile(filename)
