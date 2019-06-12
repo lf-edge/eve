@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestpciLongExists(t *testing.T) {
+func TestPciLongExists(t *testing.T) {
 	testMatrix := map[string]struct {
 		long string
 		val  bool
