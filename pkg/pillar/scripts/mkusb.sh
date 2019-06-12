@@ -4,52 +4,50 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Create a USB stick with the DevicePortConfig usb.json file as input
-# Usage: mkusb.sh [-t] [-d] [-i] <file> <dev>
+# Usage: mkusb.sh [-t] [-d] [-i] [-f <file> ] <dev>
 
 TEST=0
 DUMP=0
 IDENTITY=0
+FILE=""
 
-while [ $# -gt 0 ]; do
-    if [ "$1" = "-t" ]; then
-        TEST=1
-        shift
-    elif [ "$1" = "-d" ]; then
-        DUMP=1
-        shift
-    elif [ "$1" = "-i" ]; then
-        IDENTITY=1
-        shift
-    else
-        break
-    fi
+usage() {
+    echo "Usage: $0 [-t] [-d] [-i] [-f <file>] <dev>"
+}
+
+while getopts tdif: o
+do      case "$o" in
+        t)      TEST=1;;
+        d)      DUMP=1;;
+        i)      IDENTITY=1;;
+        f)      FILE=$OPTARG;;
+        [?])    usage
+                exit 1;;
+        esac
 done
 
-if [ $# != 2 ]; then
-    echo "Usage: mkusb.sh [-t] [-d] [-i] <file> <dev>"
-    exit 1
-fi
-FILE=$1
-DEV=$2
+shift $((OPTIND-1))
 
-if [ ! -f "$FILE" ]; then
-    echo "File $FILE does not exist"
-    echo "Usage: mkusb.sh [-t] [-d] [-i] <file> <dev>"
+if [ $# != 1 ]; then
+    usage
     exit 1
+fi
+DEV=$1
+
+if [ -n "$FILE" ]; then
+    if [ ! -f "$FILE" ]; then
+	echo "File $FILE does not exist"
+	usage
+	exit 1
+    fi
+
+    if ! python -m json.tool "$FILE" >/dev/null; then
+	echo "Invalid json in $FILE"
+	python -m json.tool "$FILE"
+	exit 1
+    fi
 fi
 
-base=$(basename "$FILE")
-if [ "$base" != "usb.json" ]; then
-    echo "File $base must be named usb.json"
-    exit 1
-fi
-
-if ! python -m json.tool "$FILE" >/dev/null; then
-    echo "Invalid json in $FILE"
-    python -m json.tool "$FILE"
-    exit 1
-fi
-    
 if [ ! -b "$DEV" ]; then
     echo "Not a special device: $DEV"
     exit 1
@@ -60,7 +58,7 @@ echo "THIS WILL ERASE $DEV"
 lsblk "$DEV"
 echo ""
 while /bin/true; do
-    echo -n 'Are you sure(Yes/No)? '
+    printf 'Are you sure(Yes/No)? '
     read -r resp
     if [ "$resp" = "Yes" ]; then
         break
@@ -81,7 +79,7 @@ sgdisk --mbrtogpt "$DEV"
 NUM_PART=1
 SEC_START=2048
 # Make sure we have some room for identity and debug dumps
-SEC_END=40960
+SEC_END=409600
 PART_TYPE=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
 
 sgdisk --new $NUM_PART:$SEC_START:$SEC_END \
@@ -98,7 +96,9 @@ mkdosfs -n EVEDPC -I "$SPECIAL"
 TMPDIR=/mnt/$$
 mkdir $TMPDIR
 mount "$SPECIAL" $TMPDIR
-cp -p "$FILE" $TMPDIR
+if [ -n "$FILE" ]; then
+    cp -p "$FILE" $TMPDIR/usb.json
+fi
 if [ $DUMP = 1 ]; then
     mkdir $TMPDIR/dump
 fi
