@@ -131,9 +131,9 @@ func Run() {
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
 	}
-	if fileExists(deviceCertName) && fileExists(deviceKeyName) {
-		cert, err := tls.LoadX509KeyPair(deviceCertName,
-			deviceKeyName)
+	if fileExists(deviceCertName) {
+		// Load device cert
+		cert, err := zedcloud.GetClientCert()
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -209,12 +209,10 @@ func Run() {
 		if !ctx.forever && ctx.gotDNS && ctx.gotBC && ctx.gotDPCList {
 			break
 		}
-		if ctx.usingOnboardCert &&
-			fileExists(deviceCertName) && fileExists(deviceKeyName) {
-
+		if ctx.usingOnboardCert && fileExists(deviceCertName) {
 			fmt.Printf("WARNING: Switching from onboard to device cert\n")
-			cert, err := tls.LoadX509KeyPair(deviceCertName,
-				deviceKeyName)
+			// Load device cert
+			cert, err := zedcloud.GetClientCert()
 			if err != nil {
 				log.Fatal(err)
 			}
