@@ -228,7 +228,7 @@ api/%: $(GOBUILDER)
 	@$(DOCKER_GO) "protoc -I./proto/$(@F) --$(notdir $(@D))_out=paths=source_relative:./$* proto/$(@F)/*.proto" $(CURDIR)/api api
 
 release:
-	@function bail() { echo "ERROR: $$@" ; exit 1 ; } ;\
+	@bail() { echo "ERROR: $$@" ; exit 1 ; } ;\
 	 X=`echo $(VERSION) | cut -s -d. -f1` ; Y=`echo $(VERSION) | cut -s -d. -f2` ; Z=`echo $(VERSION) | cut -s -d. -f3` ;\
 	 [ -z "$$X" -o -z "$$Y" -o -z "$$Z" ] && bail "VERSION missing (or incorrect). Re-run as: make VERSION=x.y.z $@" ;\
 	 (git fetch && [ `git diff origin/master..master | wc -l` -eq 0 ]) || bail "origin/master is different from master" ;\
