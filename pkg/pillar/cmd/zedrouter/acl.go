@@ -258,6 +258,9 @@ func applyACLRules(aclArgs types.AppNetworkACLArgs,
 	var activeRules types.IPTablesRuleList
 	log.Debugf("applyACLRules: ipVer %d, bridgeName %s appIP %s with %d rules\n",
 		aclArgs.IPVer, aclArgs.BridgeName, aclArgs.AppIP, len(rules))
+	// the catch all drop rules are towards the end of the rule list
+	// hance we are inserting the rule in reverse order into
+	// the top of the target chain
 	numRules := len(rules)
 	for numRules > 0 {
 		numRules--
