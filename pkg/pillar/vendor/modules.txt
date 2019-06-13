@@ -57,11 +57,13 @@ github.com/census-instrumentation/opencensus-proto/gen-go/agent/trace/v1
 github.com/census-instrumentation/opencensus-proto/gen-go/metrics/v1
 github.com/census-instrumentation/opencensus-proto/gen-go/resource/v1
 github.com/census-instrumentation/opencensus-proto/gen-go/trace/v1
+# github.com/davecgh/go-spew v1.1.1
+github.com/davecgh/go-spew/spew
 # github.com/dgrijalva/jwt-go v3.2.0+incompatible
 github.com/dgrijalva/jwt-go
 # github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
 github.com/eriknordmark/ipinfo
-# github.com/eriknordmark/netlink v0.0.0-20190417195958-c63702da36e5
+# github.com/eriknordmark/netlink v0.0.0-20190613040110-e2ba823574cc
 github.com/eriknordmark/netlink
 # github.com/fsnotify/fsnotify v1.4.7
 github.com/fsnotify/fsnotify
@@ -119,6 +121,8 @@ github.com/lf-edge/eve/api/go/metrics
 github.com/pkg/errors
 # github.com/pkg/sftp v1.10.0
 github.com/pkg/sftp
+# github.com/pmezard/go-difflib v1.0.0
+github.com/pmezard/go-difflib/difflib
 # github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36
 github.com/rackn/gohai/plugins/dmi
 github.com/rackn/gohai/plugins/net
@@ -140,7 +144,9 @@ github.com/shirou/gopsutil/mem
 github.com/shirou/w32
 # github.com/sirupsen/logrus v1.2.0
 github.com/sirupsen/logrus
-# github.com/vishvananda/netlink v0.0.0-20190319163122-f504738125a5
+# github.com/stretchr/testify v1.3.0
+github.com/stretchr/testify/assert
+# github.com/vishvananda/netlink v1.0.1-0.20190613020244-d50d15ce3f00
 github.com/vishvananda/netlink/nl
 # github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc
 github.com/vishvananda/netns
