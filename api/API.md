@@ -298,6 +298,36 @@ Response:
 
 The response MUST contain no body content.
 
+### flowlog
+
+Send Device and Application logs to Controller
+
+   POST /api/v1/edgeDevice/flowlog
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `201`
+* Unknown Device: `400`
+* Missing or unprocessable body: `422`
+
+Request:
+
+The request MUST use the Device certificate for mTLS authentication.
+
+The request MUST be of mime type "application/x-proto-binary".
+
+The request body MUST be a protobuf message of type [flowlog.FlowMessage](./proto/flowlog/flowlog.proto). The message itself contains zero or more entries of type [flowlog.FlowRecord](./proto/flowlog/flowlog.proto) and/or zero or more entries of type [flowlog.DnsRequest](./proto/flowlog/flowlog.proto).
+
+A `FlowMessage` MUST NOT be larger than the maximum size specified by the Controller for the Device, but MAY be smaller than that, if insufficient messages are available or the Device network or endpoints cannot handle the maximum size. The Device MUST retrieve the maximum `FlowMessage` message size from the appropriate field of the configuration.
+
+A flowlog message is expected to be reliable. A Device MUST retry until it successfully delivers log messages. However, if there is more recent information for flows, e.g., updated counters, that information can be sent instead of retransmitting old information as long as no flows are omitted. How often log messages are sent, retries, the number of entries to bundle together into a single `FlowMessage`,  and other caching mechanisms on the Device are NOT specified here, as they are implementation questions.
+
+Response:
+
+The response MUST contain no body content.
+
 ## Caching Policy
 
 Edge Devices are expected to have intermittent connectivity, with limited bandwidth, memory and storage. It is likely that, at some point, a Device will run out of local memory or storage to cache information, logs or metrics messages that need to be sent to a Controller.
