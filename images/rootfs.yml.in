@@ -38,9 +38,10 @@ services:
    - name: pillar
      image: PILLAR_TAG
 files:
+   - path: /etc/eve-release
+     contents: 'EVE_VERSION'
    - path: /containers/services/pillar/lower/opt/zededa/bin/versioninfo
      contents: 'EVE_VERSION'
 trust:
   org:
     - linuxkit
-

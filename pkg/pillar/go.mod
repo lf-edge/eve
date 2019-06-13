@@ -6,11 +6,12 @@ require (
 	contrib.go.opencensus.io/exporter/ocagent v0.4.11 // indirect
 	github.com/Azure/azure-sdk-for-go v11.3.0-beta+incompatible
 	github.com/Azure/go-autorest v11.7.0+incompatible // indirect
+	github.com/VictorLowther/godmi v0.0.0-20190311134151-270258a8252d // indirect
 	github.com/aws/aws-sdk-go v1.19.11
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/dnaeon/go-vcr v1.0.1 // indirect
 	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
-	github.com/eriknordmark/netlink v0.0.0-20190417195958-c63702da36e5
+	github.com/eriknordmark/netlink v0.0.0-20190613040110-e2ba823574cc
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/golang/protobuf v1.3.1
@@ -25,11 +26,13 @@ require (
 	github.com/mdlayher/raw v0.0.0-20190419142535-64193704e472 // indirect
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/pkg/sftp v1.10.0
+	github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36
 	github.com/satori/go.uuid v0.0.0-20181028125025-b2ce2384e17b
 	github.com/satori/uuid v1.2.0 // indirect
 	github.com/shirou/gopsutil v0.0.0-20190323131628-2cbc9195c892
 	github.com/sirupsen/logrus v1.2.0
-	github.com/vishvananda/netlink v0.0.0-20190319163122-f504738125a5 // indirect
+	github.com/stretchr/testify v1.3.0
+	github.com/vishvananda/netlink v1.0.1-0.20190613020244-d50d15ce3f00 // indirect
 	github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc // indirect
 	golang.org/x/crypto v0.0.0-20190404164418-38d8ce5564a5
 	golang.org/x/net v0.0.0-20190419010253-1f3472d942ba

@@ -11,6 +11,7 @@ linters:
     - typecheck         # See golangci/golangci-lint#419
     - unused            # deprecated
     - varcheck          # unreliable
+    - interfacer        # unreliable
 
 issues:
   max-issues-per-linter: 0

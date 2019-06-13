@@ -52,8 +52,8 @@ const (
 	certificateDirname    = persistDir + "/certs"
 	checkpointDirname     = persistDir + "/checkpoint"
 	restartCounterFile    = configDir + "/restartcounter"
-
-	partitionCount = 2
+	tmpDirname            = "/var/tmp/zededa"
+	firstbootFile         = tmpDirname + "/first-boot"
 )
 
 // Set from Makefile
@@ -102,6 +102,7 @@ type zedagentContext struct {
 	subZbootStatus            *pubsub.Subscription
 	rebootCmdDeferred         bool
 	rebootReason              string
+	rebootStack               string
 	rebootTime                time.Time
 	restartCounter            uint32
 	subDevicePortConfigList   *pubsub.Subscription
@@ -170,19 +171,19 @@ func Run() {
 	// (assuming the other is in inprogress) then we log it
 	// We assume the log makes it reliably to zedcloud hence we discard
 	// the reason.
-	zedagentCtx.rebootReason, zedagentCtx.rebootTime = agentlog.GetCurrentRebootReason()
+	zedagentCtx.rebootReason, zedagentCtx.rebootTime, zedagentCtx.rebootStack = agentlog.GetCurrentRebootReason()
 	if zedagentCtx.rebootReason != "" {
 		log.Warnf("Current partition rebooted reason: %s\n",
 			zedagentCtx.rebootReason)
 		agentlog.DiscardCurrentRebootReason()
 	}
-	otherRebootReason, otherRebootTime := agentlog.GetOtherRebootReason()
+	otherRebootReason, otherRebootTime, otherRebootStack := agentlog.GetOtherRebootReason()
 	if otherRebootReason != "" {
 		log.Warnf("Other partition rebooted reason: %s\n",
 			otherRebootReason)
 		agentlog.DiscardOtherRebootReason()
 	}
-	commonRebootReason, commonRebootTime := agentlog.GetCommonRebootReason()
+	commonRebootReason, commonRebootTime, commonRebootStack := agentlog.GetCommonRebootReason()
 	if commonRebootReason != "" {
 		log.Warnf("Common rebooted reason: %s\n",
 			commonRebootReason)
@@ -191,18 +192,31 @@ func Run() {
 	if zedagentCtx.rebootReason == "" {
 		zedagentCtx.rebootReason = otherRebootReason
 		zedagentCtx.rebootTime = otherRebootTime
+		zedagentCtx.rebootStack = otherRebootStack
 	}
 	if zedagentCtx.rebootReason == "" {
 		zedagentCtx.rebootReason = commonRebootReason
 		zedagentCtx.rebootTime = commonRebootTime
+		zedagentCtx.rebootStack = commonRebootStack
 	}
 	if zedagentCtx.rebootReason == "" {
-		dateStr := time.Now().Format(time.RFC3339Nano)
-		reason := fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s\n",
-			dateStr)
+		zedagentCtx.rebootTime = time.Now()
+		dateStr := zedagentCtx.rebootTime.Format(time.RFC3339Nano)
+		var reason string
+		if fileExists(firstbootFile) {
+			reason = fmt.Sprintf("NORMAL: First boot of device - at %s\n",
+				dateStr)
+		} else {
+			reason = fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s\n",
+				dateStr)
+		}
 		log.Warnf(reason)
 		zedagentCtx.rebootReason = reason
 		zedagentCtx.rebootTime = time.Now()
+		zedagentCtx.rebootStack = ""
+	}
+	if fileExists(firstbootFile) {
+		os.Remove(firstbootFile)
 	}
 
 	// Read and increment restartCounter
@@ -511,7 +525,11 @@ func Run() {
 	for !DNSctx.DNSinitialized ||
 		!zedagentCtx.assignableAdapters.Initialized {
 
-		log.Infof("Waiting for DomainNetworkStatus %v and aa %v\n",
+		// XXX AA will not initialize if bad json file
+		// XXX in that case send fails with no management ports
+		// XXX and it times out due to not talking to zedcloud for 5 minutes
+		// XXX why?
+		log.Infof("Waiting for DeviceNetworkStatus %v and aa %v\n",
 			DNSctx.DNSinitialized,
 			zedagentCtx.assignableAdapters.Initialized)
 
@@ -1122,4 +1140,9 @@ func incrementRestartCounter() uint32 {
 		log.Errorf("incrementRestartCounter write: %s\n", err)
 	}
 	return restartCounter
+}
+
+func fileExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return err == nil
 }

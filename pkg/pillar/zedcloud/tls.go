@@ -6,11 +6,18 @@
 package zedcloud
 
 import (
+	"crypto"
+	"crypto/ecdsa"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/asn1"
+	"encoding/pem"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ocsp"
+	"io"
 	"io/ioutil"
+	"math/big"
 	"strings"
 	"time"
 )
@@ -22,6 +29,63 @@ const (
 	deviceKeyName   = identityDirname + "/device.key.pem"
 	rootCertName    = identityDirname + "/root-certificate.pem"
 )
+
+//TpmPrivateKey is Custom implementation of crypto.PrivateKey interface
+type TpmPrivateKey struct {
+	PublicKey crypto.PublicKey
+}
+
+//Helper structure to pack ecdsa signature for ASN1 encoding
+type ecdsaSignature struct {
+	R, S *big.Int
+}
+
+//Public implements crypto.PrivateKey interface
+func (s TpmPrivateKey) Public() crypto.PublicKey {
+	clientCertName := "/config/device.cert.pem"
+	clientCertBytes, err := ioutil.ReadFile(clientCertName)
+	if err != nil {
+		return nil
+	}
+	block, _ := pem.Decode(clientCertBytes)
+	var cert *x509.Certificate
+	cert, _ = x509.ParseCertificate(block.Bytes)
+	ecdsaPublicKey := cert.PublicKey.(*ecdsa.PublicKey)
+	return ecdsaPublicKey
+}
+
+//Sign implements cryto.PrivateKey interface
+func (s TpmPrivateKey) Sign(r io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	R, S, err := tpmmgr.TpmSign(digest)
+	if err != nil {
+		return nil, err
+	}
+	return asn1.Marshal(ecdsaSignature{R, S})
+}
+
+//GetClientCert prepares tls.Certificate to connect to the cloud Controller
+func GetClientCert() (tls.Certificate, error) {
+	if !tpmmgr.IsTpmEnabled() {
+		//Not a TPM capable device, return openssl certificate
+		return tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
+	}
+
+	// TPM capable device, return TPM bcased certificate
+	deviceCertBytes, err := ioutil.ReadFile(deviceCertName)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	deviceCertDERBytes, _ := pem.Decode(deviceCertBytes)
+	deviceTLSCert := tls.Certificate{}
+	deviceTLSCert.Certificate = append(deviceTLSCert.Certificate,
+		deviceCertDERBytes.Bytes)
+
+	tpmPrivKey := TpmPrivateKey{}
+	tpmPrivKey.PublicKey = tpmPrivKey.Public()
+
+	deviceTLSCert.PrivateKey = tpmPrivKey
+	return deviceTLSCert, nil
+}
 
 // If a server arg is specified it overrides the serverFilename content.
 // If a clientCert is specified it overrides the device*Name files.
@@ -36,12 +100,11 @@ func GetTlsConfig(serverName string, clientCert *tls.Certificate) (*tls.Config, 
 		serverName = strings.Split(strTrim, ":")[0]
 	}
 	if clientCert == nil {
-		deviceCert, err := tls.LoadX509KeyPair(deviceCertName,
-			deviceKeyName)
+		deviceTLSCert, err := GetClientCert()
 		if err != nil {
 			return nil, err
 		}
-		clientCert = &deviceCert
+		clientCert = &deviceTLSCert
 	}
 
 	// Load CA cert

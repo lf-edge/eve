@@ -25,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/api/go/metrics"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
@@ -972,6 +973,10 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				errInfo.Timestamp = errTime
 				swInfo.SwErr = errInfo
 			}
+			if swInfo.ShortVersion == "" {
+				swInfo.Status = info.ZSwState(types.INITIAL)
+				swInfo.DownloadProgress = 0
+			}
 		} else {
 			partStatus := getZbootPartitionStatus(ctx, partLabel)
 			swInfo.PartitionLabel = partLabel
@@ -1111,6 +1116,16 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	}
 
 	ReportDeviceInfo.LastRebootReason = ctx.rebootReason
+	if len(ctx.rebootStack) > 1600 {
+		runes := bytes.Runes([]byte(ctx.rebootStack))
+		if len(runes) > 1600 {
+			runes = runes[:1600]
+		}
+		ReportDeviceInfo.LastRebootStack = fmt.Sprintf("Truncated stack: %v",
+			ctx.rebootStack)
+	} else {
+		ReportDeviceInfo.LastRebootStack = ctx.rebootStack
+	}
 	if !ctx.rebootTime.IsZero() {
 		rebootTime, _ := ptypes.TimestampProto(ctx.rebootTime)
 		ReportDeviceInfo.LastRebootTime = rebootTime
@@ -1121,9 +1136,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	ReportDeviceInfo.RestartCounter = ctx.restartCounter
 
 	//Operational information about TPM presence/absence/usage.
-	//"Unknown" for now, till we enable TPM functionality.
-	ReportDeviceInfo.HSMStatus = info.HwSecurityModuleStatus_UNKNOWN
-	ReportDeviceInfo.HSMInfo = "Not Available"
+	ReportDeviceInfo.HSMStatus = tpmmgr.FetchTpmSwStatus()
+	ReportDeviceInfo.HSMInfo, _ = tpmmgr.FetchTpmHwInfo()
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
@@ -1160,6 +1174,8 @@ func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW) {
 		if swInfo.PartitionState == "unused" &&
 			swInfo.PartitionLabel != "" {
 
+			swInfo.UserStatus = info.BaseOsStatus_NONE
+		} else if swInfo.ShortVersion == "" {
 			swInfo.UserStatus = info.BaseOsStatus_NONE
 		} else {
 			swInfo.UserStatus = info.BaseOsStatus_UPDATING

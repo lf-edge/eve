@@ -45,10 +45,16 @@ A Controller MUST generate a UUID for each Device. The UUID MUST be unique acros
 
 ## Messages
 
-All messages are defined in subdirectories to this directory. As a general rule of thumb:
+All messages are defined in subdirectories to the [proto](./proto) directory.
+In general, there is one directory for each API endpoint:
 
-* `zmet`: messages sent from Device to Controller
-* `zconfig`: messages sent from Controller to Device in response to requests for information, generally configuration
+* `register`: The register message sent as part of onboarding a device
+* `config`: The EdgeDevConfig message sent from Controller to Device in response to requests for configuration
+* `info`: The ZInfoMsg message sent from Device to Controller when there is a state change for an object (device, app instance, etc
+)
+* `metrics`: The ZMetricMsg message sent from Device to Controller periodically to report on resource usage etc.
+* `logs`: The LogBundle message sent from Device to Controller containing internal device logs.
+
 
 ## Authentication
 
@@ -113,7 +119,7 @@ Request:
 
 The request MUST use the onboarding certificate for mTLS authentication. The Controller MAY retain the onboarding certificate or information within it for further purposes.
 
-The request MUST have the body of a single protobuf message [zmet/ZRegisterMsg](./zmet/zregister.proto). The message MUST include the Device certificate. In the case where the Device certificate is the same as the onboarding certificate, the Device MUST NOT assume that the Controller will extract the Device certificate from the mTLS authentication, and instead it MUST include the certificate in the message.
+The request MUST have the body of a single protobuf message of type [register.ZRegisterMsg](./proto/register/register.proto). The message MUST include the Device certificate. In the case where the Device certificate is the same as the onboarding certificate, the Device MUST NOT assume that the Controller will extract the Device certificate from the mTLS authentication, and instead it MUST include the certificate in the message.
 
 The message SHOULD include a serial string or other unique identifier for the Device.
 
@@ -180,7 +186,7 @@ The request MUST NOT contain any body content.
 Response:
 
 The response mime type MUST be "application/x-proto-binary".
-The response MUST contain a message with the entire configuration for the given Device. The body MUST be a protobuf message of type [zconfig.EdgeDevConfig](./zconfig/devconfig.proto).
+The response MUST contain a message with the entire configuration for the given Device. The body MUST be a protobuf message of type [config.EdgeDevConfig](./proto/config/devconfig.proto).
 The body MUST contain the entire configuration for the Device.
 The body MUST contain the UUID for the Device on each and every request. The Controller MUST NOT assume that the Device already has the UUID.
 
@@ -188,7 +194,7 @@ The body MUST contain the UUID for the Device on each and every request. The Con
 
 The `config` endpoint, specifically the `EdgeDevConfig` message, supports arbitrary key/value pairs. These are intended to send implementation-specific configuration to a Device. For example, it might control the frequency of downloading configs, enable debug logging or enable a USB port.
 
-The `EdgeDevConfig` message can contain zero, one or more `ConfigItem` entries, each of which is an arbitrary key/value pair. These SHOULD be used to send implementation-specific configuration to a Device, other than configuration already defined in this API or the messages.
+The `EdgeDevConfig` message can contain zero, one or more `ConfigItem` entries, each of which is an arbitrary key/value pair. These SHOULD be used to send implementation-specific configuration to a Device, other than configuration already defined in this API or the messages. The items are defined in [global-config-variables](../pkg/pillar/docs/global-config-variables.md)
 
 ### Info
 
@@ -210,7 +216,7 @@ The request MUST use the Device certificate for mTLS authentication.
 
 The request MUST be of mime type "application/x-proto-binary".
 
-The request body MUST be a protobuf message of type [zmet.ZInfoMsg](./zmet/zmet.proto). The message itself MUST be one of the types defined as [zmet.ZInfoTypes](./zmet/zmet.proto).
+The request body MUST be a protobuf message of type [info.ZInfoMsg](./proto/info/info.proto). The message itself MUST be one of the types defined as [info.ZInfoTypes](./proto/info/info.proto).
 
 The request body MUST indicate the type of information it is sending, and the content thereof. It MUST be one of:
 
@@ -244,7 +250,7 @@ The request MUST use the Device certificate for mTLS authentication.
 
 The request MUST be of mime type "application/x-proto-binary".
 
-The request body MUST be a protobuf message of type [zmet.ZMetricMsg](./zmet/zmet.proto). The message itself contains metrics of the following combinations:
+The request body MUST be a protobuf message of type [metrics.ZMetricMsg](./proto/metrics/metrics.proto). The message itself contains metrics of the following combinations:
 
 * zero or one Device metrics `DeviceMetric`
 * zero, one or many application metrics `appMetric`
@@ -278,7 +284,7 @@ The request MUST use the Device certificate for mTLS authentication.
 
 The request MUST be of mime type "application/x-proto-binary".
 
-The request body MUST be a protobuf message of type [zmet.LogBundle](./zmet/zlog.proto). The message itself contains zero, one or more entries of type [zmet.LogEntry](./zmet/zlog.proto).
+The request body MUST be a protobuf message of type [log.LogBundle](./proto/logs/log.proto). The message itself contains zero, one or more entries of type [log.LogEntry](./proto/logs/log.proto).
 
 Each `LogEntry` is a single log message indicating its timestamp, source, severity, message ID, application or process ID, and arbitrary message content. In addition, it can content an unlimited number of key/value pairs.
 
@@ -287,6 +293,36 @@ A Device SHOULD bundle many log messages together into a single `LogBundle`.
 A `LogBundle` MUST NOT be larger than the maximum size specified by the Controller for the Device, but MAY be smaller than that, if insufficient messages are available or the Device network or endpoints cannot handle the maximum size. The Device MUST retrieve the maximum `LogBundle` message size from the appropriate field of the configuration.
 
 A log message is expected to be reliable. A Device MUST retry until it successfully delivers log messages. How often log messages are sent, retries, the number of messages and which types to bundle together into a single `LogBundle`,  and other caching mechanisms on the Device are NOT specified here, as they are implementation questions.
+
+Response:
+
+The response MUST contain no body content.
+
+### flowlog
+
+Send Device and Application logs to Controller
+
+   POST /api/v1/edgeDevice/flowlog
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `201`
+* Unknown Device: `400`
+* Missing or unprocessable body: `422`
+
+Request:
+
+The request MUST use the Device certificate for mTLS authentication.
+
+The request MUST be of mime type "application/x-proto-binary".
+
+The request body MUST be a protobuf message of type [flowlog.FlowMessage](./proto/flowlog/flowlog.proto). The message itself contains zero or more entries of type [flowlog.FlowRecord](./proto/flowlog/flowlog.proto) and/or zero or more entries of type [flowlog.DnsRequest](./proto/flowlog/flowlog.proto).
+
+A `FlowMessage` MUST NOT be larger than the maximum size specified by the Controller for the Device, but MAY be smaller than that, if insufficient messages are available or the Device network or endpoints cannot handle the maximum size. The Device MUST retrieve the maximum `FlowMessage` message size from the appropriate field of the configuration.
+
+A flowlog message is expected to be reliable. A Device MUST retry until it successfully delivers log messages. However, if there is more recent information for flows, e.g., updated counters, that information can be sent instead of retransmitting old information as long as no flows are omitted. How often log messages are sent, retries, the number of entries to bundle together into a single `FlowMessage`,  and other caching mechanisms on the Device are NOT specified here, as they are implementation questions.
 
 Response:
 

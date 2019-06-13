@@ -27,6 +27,7 @@ import (
 const (
 	compatibleFile = "/proc/device-tree/compatible"
 	overrideFile   = "/config/hardwaremodel"
+	softSerialFile = "/config/soft_serial"
 )
 
 // XXX Note that this function (and the ones below) log if there is an
@@ -134,6 +135,11 @@ func massageCompatible(contents []byte) []byte {
 	}
 	contents = bytes.Replace(contents, []byte("\x00"), []byte("."), -1)
 	return bytes.Map(filter, contents)
+}
+
+// GetSoftSerial returns software defined product serial number
+func GetSoftSerial() string {
+	return getOverride(softSerialFile)
 }
 
 func GetProductSerial() string {

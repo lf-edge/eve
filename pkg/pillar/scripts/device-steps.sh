@@ -6,9 +6,11 @@
 USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
+PERSISTCONFIGDIR=/persist/config
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
 DPCDIR=$TMPDIR/DevicePortConfig
+FIRSTBOOTFILE=$TMPDIR/first-boot
 GCDIR=$PERSISTDIR/config/GlobalConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
@@ -16,6 +18,7 @@ LOGDIRB=$PERSISTDIR/IMGB/log
 AGENTS0="logmanager ledmanager nim"
 AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr baseosmgr wstunnelclient"
 AGENTS="$AGENTS0 $AGENTS1"
+TPM_DEVICE_PATH="/dev/tpm0"
 
 PATH=$BINDIR:$PATH
 
@@ -120,12 +123,21 @@ EOF
     fi
 done
 
+killwait_watchdog() {
+    if [ -f /var/run/watchdog.pid ]; then
+        echo "$(date -Ins -u) Killing watchdog $(cat /var/run/watchdog.pid)"
+        kill "$(cat /var/run/watchdog.pid)"
+        # Wait for it to exit so it can be restarted
+        while [ -f /var/run/watchdog.pid ] && kill -0 "$(cat /var/run/watchdog.pid)"; do
+            echo "$(date -Ins -u) Waiting for watchdog to exit"
+            sleep 5
+        done
+    fi
+}
+
+killwait_watchdog
+
 # In case watchdog is running we restart it with the base file
-if [ -f /var/run/watchdog.pid ]; then
-    # XXX define killwait function?
-    kill "$(cat /var/run/watchdog.pid)"
-    sleep 5 # Wait for it to exit so it can be restarted
-fi
 # Always run watchdog(8) in case we have a hardware watchdog timer to advance
 /usr/sbin/watchdog -c $TMPDIR/watchdogbase.conf -F -s &
 
@@ -170,6 +182,16 @@ if P3=$(zboot partdev P3) && [ -n "$P3" ]; then
     fi
 else
     echo "$(date -Ins -u) No separate $PERSISTDIR partition"
+fi
+
+if [ -f $PERSISTDIR/IMGA/reboot-reason ]; then
+    echo "IMGA reboot-reason: $(cat $PERSISTDIR/IMGA/reboot-reason)"
+fi
+if [ -f $PERSISTDIR/IMGB/reboot-reason ]; then
+    echo "IMGB reboot-reason: $(cat $PERSISTDIR/IMGB/reboot-reason)"
+fi
+if [ -f $PERSISTDIR/reboot-reason ]; then
+    echo "Common reboot-reason: $(cat $PERSISTDIR/reboot-reason)"
 fi
 
 echo "$(date -Ins -u) Current downloaded files:"
@@ -254,10 +276,7 @@ if ! pgrep ledmanager >/dev/null; then
 fi
 
 # Restart watchdog - just for ledmanager so far
-if [ -f /var/run/watchdog.pid ]; then
-    kill "$(cat /var/run/watchdog.pid)"
-    sleep 5 # Wait for it to exit so it can be restarted
-fi
+killwait_watchdog
 /usr/sbin/watchdog -c $TMPDIR/watchdogled.conf -F -s &
 
 mkdir -p $DPCDIR
@@ -280,7 +299,7 @@ access_usb() {
         keyfile=/mnt/usb.json
         if [ -f $keyfile ]; then
             echo "$(date -Ins -u) Found $keyfile on $SPECIAL"
-            echo "$(date -Ins -u) Copying from $keyfile to $CONFIGDIR/DevicePortConfig/"
+            echo "$(date -Ins -u) Copying from $keyfile to $DPCDIR"
             cp -p $keyfile $DPCDIR
         else
             echo "$(date -Ins -u) $keyfile not found on $SPECIAL"
@@ -295,7 +314,9 @@ access_usb() {
             [ ! -f $CONFIGDIR/uuid ] || cp -p $CONFIGDIR/uuid "$IDENTITYDIR"
             cp -p $CONFIGDIR/root-certificate.pem "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/hardwaremodel ] || cp -p $CONFIGDIR/hardwaremodel "$IDENTITYDIR"
-            # XXX any serial number file? Both from dmidecode and from sw
+            [ ! -f $CONFIGDIR/soft_serial ] || cp -p $CONFIGDIR/soft_serial "$IDENTITYDIR"
+            /opt/zededa/bin/hardwaremodel -c >"$IDENTITYDIR/hardwaremodel.dmi"
+            /opt/zededa/bin/hardwaremodel -f >"$IDENTITYDIR/hardwaremodel.txt"
             sync
         fi
         if [ -d /mnt/dump ]; then
@@ -313,6 +334,7 @@ access_usb() {
     fi
 }
 
+# Read any usb.json with DevicePortConfig, and deposit our identity
 access_usb
 
 # Need to clear old usb files from /config/DevicePortConfig
@@ -335,10 +357,7 @@ echo "$(date -Ins -u) Starting nim"
 $BINDIR/nim -c $CURPART &
 
 # Restart watchdog ledmanager and nim
-if [ -f /var/run/watchdog.pid ]; then
-    kill "$(cat /var/run/watchdog.pid)"
-    sleep 5 # Wait for it to exit so it can be restarted
-fi
+killwait_watchdog
 /usr/sbin/watchdog -c $TMPDIR/watchdognim.conf -F -s &
 
 # Print diag output forever on changes
@@ -349,6 +368,7 @@ $BINDIR/diag -c $CURPART -f >/dev/console 2>&1 &
 echo "$(date -Ins -u) Starting waitforaddr"
 $BINDIR/waitforaddr -c $CURPART
 
+# Deposit any diag information from nim
 access_usb
 
 # We need to try our best to setup time *before* we generate the certifiacte.
@@ -373,18 +393,28 @@ while [ "$YEAR" = "1970" ]; do
 done
 
 # Restart watchdog ledmanager, client, and nim
-if [ -f /var/run/watchdog.pid ]; then
-    kill "$(cat /var/run/watchdog.pid)"
-    sleep 5 # Wait for it to exit so it can be restarted
-fi
+killwait_watchdog
 /usr/sbin/watchdog -c $TMPDIR/watchdogclient.conf -F -s &
 
-if ! [ -f $CONFIGDIR/device.cert.pem ] || ! [ -f $CONFIGDIR/device.key.pem ]; then
+if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
+    touch $FIRSTBOOTFILE # For zedagent
     touch $CONFIGDIR/self-register-pending
     sync
     blockdev --flushbufs "$CONFIGDEV"
-    $BINDIR/generate-device.sh $CONFIGDIR/device
+    if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
+        echo "TPM device is present and allowed, marking mode as tpm-enabled"
+        touch $PERSISTCONFIGDIR/tpm_in_use
+        sync
+        blockdev --flushbufs "$CONFIGDEV"
+        $BINDIR/generate-device.sh -b $CONFIGDIR/device -t
+    else
+        #Just in case, it got disabled in BIOS later on.
+        rm -f $PERSISTCONFIGDIR/tpm_in_use
+        sync
+        blockdev --flushbufs "$CONFIGDEV"
+        $BINDIR/generate-device.sh -b $CONFIGDIR/device
+    fi
     # Reduce chance that we register with controller and crash before
     # the filesystem has persisted /config/device.cert.* and
     # self-register-pending
@@ -395,16 +425,8 @@ if ! [ -f $CONFIGDIR/device.cert.pem ] || ! [ -f $CONFIGDIR/device.key.pem ]; th
     blockdev --flushbufs "$CONFIGDEV"
     SELF_REGISTER=1
 elif [ -f $CONFIGDIR/self-register-pending ]; then
-    echo "$(date -Ins -u) self-register failed/killed/rebooted"
-    if ! $BINDIR/client -c $CURPART -r 5 getUuid; then
-        echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid fail; redoing self-register"
-        SELF_REGISTER=1
-    else
-        echo "$(date -Ins -u) self-register failed/killed/rebooted; getUuid pass hence already registered"
-        rm -f $CONFIGDIR/self-register-pending
-        sync
-        blockdev --flushbufs "$CONFIGDEV"
-    fi
+    echo "$(date -Ins -u) previous self-register failed/killed/rebooted"
+    SELF_REGISTER=1
 else
     echo "$(date -Ins -u) Using existing device key pair and self-signed cert"
     SELF_REGISTER=0
@@ -414,6 +436,7 @@ if [ ! -f $CONFIGDIR/server ] || [ ! -f $CONFIGDIR/root-certificate.pem ]; then
     exit 0
 fi
 
+# Deposit any diag information from nim and onboarding
 access_usb
 
 if [ $SELF_REGISTER = 1 ]; then
@@ -426,16 +449,14 @@ if [ $SELF_REGISTER = 1 ]; then
         echo "$(date -Ins -u) Missing onboarding certificate. Giving up"
         exit 1
     fi
-    echo "$(date -Ins -u) Starting client selfRegister"
-    if ! $BINDIR/client -c $CURPART selfRegister; then
+    echo "$(date -Ins -u) Starting client selfRegister getUuid"
+    if ! $BINDIR/client -c $CURPART selfRegister getUuid; then
         echo "$(date -Ins -u) client selfRegister failed with $?"
         exit 1
     fi
     rm -f $CONFIGDIR/self-register-pending
     sync
     blockdev --flushbufs "$CONFIGDEV"
-    echo "$(date -Ins -u) Starting client getUuid"
-    $BINDIR/client -c $CURPART getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
         /opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
         echo "$(date -Ins -u) Created default hardwaremodel $(/opt/zededa/bin/hardwaremodel -c)"
@@ -480,8 +501,10 @@ if [ ! -d $LISPDIR ]; then
     exit 1
 fi
 
-# Need a key for device-to-device map-requests
-cp -p $CONFIGDIR/device.key.pem $LISPDIR/lisp-sig.pem
+if ! [ -f $PERSISTCONFIGDIR/tpm_in_use ]; then
+    # Need a key for device-to-device map-requests
+    cp -p $CONFIGDIR/device.key.pem $LISPDIR/lisp-sig.pem
+fi
 
 # Setup default amount of space for images
 # Half of /persist by default! Convert to kbytes
@@ -491,10 +514,7 @@ mkdir -p /var/tmp/zededa/GlobalDownloadConfig/
 echo \{\"MaxSpace\":"$space"\} >/var/tmp/zededa/GlobalDownloadConfig/global.json
 
 # Restart watchdog ledmanager and nim
-if [ -f /var/run/watchdog.pid ]; then
-    kill "$(cat /var/run/watchdog.pid)"
-    sleep 5 # Wait for it to exit so it can be restarted
-fi
+killwait_watchdog
 /usr/sbin/watchdog -c $TMPDIR/watchdognim.conf -F -s &
 
 for AGENT in $AGENTS1; do
@@ -509,13 +529,11 @@ if ! pgrep logmanager >/dev/null; then
 fi
 
 # Now run watchdog for all agents
-if [ -f /var/run/watchdog.pid ]; then
-    kill "$(cat /var/run/watchdog.pid)"
-    sleep 5 # Wait for it to exit so it can be restarted
-fi
+killwait_watchdog
 /usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
 
 blockdev --flushbufs "$CONFIGDEV"
+
 echo "$(date -Ins -u) Initial setup done"
 
 if [ $MEASURE = 1 ]; then
@@ -523,6 +541,9 @@ if [ $MEASURE = 1 ]; then
     echo "$(date -Ins -u) Measurement done"
 fi
 
+# If there is a USB stick inserted and debug.enable.usb is set, we periodically
+# check for any usb.json with DevicePortConfig, deposit our identity,
+# and dump any diag information
 while true; do
     access_usb
     sleep 300

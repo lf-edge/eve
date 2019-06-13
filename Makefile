@@ -73,8 +73,8 @@ QEMU_OPTS_arm64= -machine virt,gic_version=3 -machine virtualization=true -cpu c
 QEMU_OPTS_amd64= -cpu SandyBridge
 QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m 4096 -smp 4 -display none -serial mon:stdio -bios $(BIOS_IMG) \
         -rtc base=utc,clock=rt \
-        -nic user,id=eth0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::$(SSH_PORT)-:22 \
-        -nic user,id=eth1,net=192.168.2.0/24,dhcpstart=192.168.2.10
+        -netdev user,id=eth0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::$(SSH_PORT)-:22 -device e1000,netdev=eth0 \
+        -netdev user,id=eth1,net=192.168.2.0/24,dhcpstart=192.168.2.10 -device e1000,netdev=eth1
 QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH))
 
 GOOS=linux
@@ -83,7 +83,7 @@ GOBUILDER=eve-build-$(shell echo $(USER) | tr A-Z a-z)
 
 DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; docker export $$C | tar -xf - $$2 ; docker rm $$C ; } ; _
 DOCKER_GO = _() { mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ;\
-    docker run -it --rm -u $(USER) -w /go/src/$${3:-dummy} \
+    docker run $$DOCKER_GO_ARGS -i --rm -u $(USER) -w /go/src/$${3:-dummy} \
     -v $(CURDIR)/.go:/go -v $$2:/go/src/$${3:-dummy} -v $${4:-$(CURDIR)/.go/bin}:/go/bin -v $(CURDIR)/:/eve -v $${HOME}:/home/$(USER) \
     -e GOOS -e GOARCH -e CGO_ENABLED -e BUILD=local $(GOBUILDER) bash --noprofile --norc -c "$$1" ; } ; _
 
@@ -192,7 +192,7 @@ $(ROOTFS_IMG)_installer.img: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | 
           echo "ERROR: size of $@ is greater than 300MB (bigger than allocated partition)" && exit 1 || :
 
 $(INSTALLER_IMG).raw: $(ROOTFS_IMG)_installer.img $(CONFIG_IMG) | $(DIST)
-	tar -C $(DIST) -c $(notdir $^) | ./tools/makeflash.sh -C 350 $@ "efi imga conf_win"
+	tar -C $(DIST) -c $(notdir $^) | ./tools/makeflash.sh -C 350 $@ "efi imga conf_win inventory_win"
 	rm $(ROOTFS_IMG)_installer.img
 
 $(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
@@ -228,7 +228,7 @@ api/%: $(GOBUILDER)
 	@$(DOCKER_GO) "protoc -I./proto/$(@F) --$(notdir $(@D))_out=paths=source_relative:./$* proto/$(@F)/*.proto" $(CURDIR)/api api
 
 release:
-	@function bail() { echo "ERROR: $$@" ; exit 1 ; } ;\
+	@bail() { echo "ERROR: $$@" ; exit 1 ; } ;\
 	 X=`echo $(VERSION) | cut -s -d. -f1` ; Y=`echo $(VERSION) | cut -s -d. -f2` ; Z=`echo $(VERSION) | cut -s -d. -f3` ;\
 	 [ -z "$$X" -o -z "$$Y" -o -z "$$Z" ] && bail "VERSION missing (or incorrect). Re-run as: make VERSION=x.y.z $@" ;\
 	 (git fetch && [ `git diff origin/master..master | wc -l` -eq 0 ]) || bail "origin/master is different from master" ;\
@@ -243,7 +243,7 @@ release:
 	 echo "  git push origin $$X.$$Y $$X.$$Y.$$Z"
 
 shell: $(GOBUILDER)
-	@$(DOCKER_GO) bash $(GOTREE) $(GOMODULE)
+	@DOCKER_GO_ARGS=-t ; $(DOCKER_GO) bash $(GOTREE) $(GOMODULE)
 
 #
 # Utility targets in support of our Dockerized build infrastrucutre
