@@ -407,7 +407,7 @@ func getFirmwareVersion(v1 uint32, v2 uint32) string {
 		get16(v2, 0), get16(v2, 1))
 }
 
-func getTpmProperty(propId uint32) (uint32, error) {
+func getTpmProperty(propID uint32) (uint32, error) {
 	lockTpmAccess()
 	defer unlockTpmAccess()
 
@@ -417,13 +417,13 @@ func getTpmProperty(propId uint32) (uint32, error) {
 	}
 	defer rw.Close()
 
-	v, _, err := tpm2.GetCapability(rw, tpm2.CapabilityTPMProperties, 1, propId)
+	v, _, err := tpm2.GetCapability(rw, tpm2.CapabilityTPMProperties, 1, propID)
 	if err != nil {
 		return 0, err
 	}
 	prop, ok := v[0].(tpm2.TaggedProperty)
 	if !ok {
-		return 0, fmt.Errorf("Unable to fetch property %d", propId)
+		return 0, fmt.Errorf("Unable to fetch property %d", propID)
 	}
 	return prop.Value, nil
 }
