@@ -428,6 +428,7 @@ func getTpmProperty(propId uint32) (uint32, error) {
 	return prop.Value, nil
 }
 
+//FetchTpmSwStatus returns states reflecting SW usage of TPM
 func FetchTpmSwStatus() info.HwSecurityModuleStatus {
 	_, err := os.Stat(TpmDevicePath)
 	if err != nil {
