@@ -18,7 +18,6 @@ import (
 	"io"
 	"io/ioutil"
 	"math/big"
-	"os"
 	"strings"
 	"time"
 )
@@ -39,12 +38,6 @@ type TpmPrivateKey struct {
 //Helper structure to pack ecdsa signature for ASN1 encoding
 type ecdsaSignature struct {
 	R, S *big.Int
-}
-
-//Is the current device TPM enabled?
-func isTpmDevice() bool {
-	_, err := os.Stat(tpmmgr.TpmEnabledFile)
-	return (err == nil)
 }
 
 //Public implements crypto.PrivateKey interface
@@ -72,7 +65,7 @@ func (s TpmPrivateKey) Sign(r io.Reader, digest []byte, opts crypto.SignerOpts) 
 
 //GetClientCert prepares tls.Certificate to connect to the cloud Controller
 func GetClientCert() (tls.Certificate, error) {
-	if !isTpmDevice() {
+	if !tpmmgr.IsTpmEnabled() {
 		//Not a TPM capable device, return openssl certificate
 		return tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
 	}

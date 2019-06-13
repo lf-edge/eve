@@ -25,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/api/go/metrics"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
@@ -1135,9 +1136,8 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	ReportDeviceInfo.RestartCounter = ctx.restartCounter
 
 	//Operational information about TPM presence/absence/usage.
-	//"Unknown" for now, till we enable TPM functionality.
-	ReportDeviceInfo.HSMStatus = info.HwSecurityModuleStatus_UNKNOWN
-	ReportDeviceInfo.HSMInfo = "Not Available"
+	ReportDeviceInfo.HSMStatus = tpmmgr.FetchTpmSwStatus()
+	ReportDeviceInfo.HSMInfo, _ = tpmmgr.FetchTpmHwInfo()
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
