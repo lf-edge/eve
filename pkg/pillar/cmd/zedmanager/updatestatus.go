@@ -785,6 +785,10 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("Waiting for AppNetworkStatus for %s\n", uuidStr)
 		return changed
 	}
+	if ns.Pending() {
+		log.Infof("Waiting for AppNetworkStatus !Pending for %s\n", uuidStr)
+		return changed
+	}
 	if ns.Error != "" {
 		log.Errorf("Received error from zedrouter for %s: %s\n",
 			uuidStr, ns.Error)
@@ -795,10 +799,6 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		return changed
 	}
 	updateAppNetworkStatus(status, ns)
-	if ns.Pending() {
-		log.Infof("Waiting for AppNetworkStatus !Pending for %s\n", uuidStr)
-		return changed
-	}
 	if !ns.Activated {
 		log.Infof("Waiting for AppNetworkStatus Activated for %s\n", uuidStr)
 		return changed

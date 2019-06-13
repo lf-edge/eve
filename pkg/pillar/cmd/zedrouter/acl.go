@@ -232,70 +232,6 @@ func createACLConfiglet(aclArgs types.AppNetworkACLArgs,
 	return applyACLRules(aclArgs, rules)
 }
 
-// handle network instance level ACL rules
-// Network Instance Level ACL rule handling routines
-func handleNetworkInstanceACLConfiglet(op string, aclArgs types.AppNetworkACLArgs) error {
-
-	log.Infof("bridge(%s, %v) iptables op: %v\n", aclArgs.BridgeName, aclArgs.BridgeIP, op)
-	rulesList := networkInstanceBridgeRules(aclArgs)
-	for _, rule := range rulesList {
-		if err := executeIPTablesRule(op, rule); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func networkInstanceBridgeRules(aclArgs types.AppNetworkACLArgs) types.IPTablesRuleList {
-	var rulesList types.IPTablesRuleList
-	var aclRule1, aclRule2 types.IPTablesRule
-
-	// not for dom0
-	if aclArgs.IsMgmt {
-		return rulesList
-	}
-	aclArgs.IPVer = determineIPVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
-	// two rules for ipv4
-	aclRule1.IPVer = 4
-	aclRule1.Table = "mangle"
-	aclRule1.Chain = "PREROUTING"
-	aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-p", "tcp",
-		"-j", "CHECKSUM", "--checksum-fill"}
-	aclRule2.IPVer = 4
-	aclRule2.Table = "mangle"
-	aclRule2.Chain = "PREROUTING"
-	aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-p", "udp",
-		"-j", "CHECKSUM", "--checksum-fill"}
-	rulesList = append(rulesList, aclRule1, aclRule2)
-
-	// two rules for ipv6
-	aclRule1.IPVer = 6
-	aclRule1.Table = "mangle"
-	aclRule1.Chain = "PREROUTING"
-	aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-p", "tcp",
-		"-j", "CHECKSUM", "--checksum-fill"}
-	aclRule2.IPVer = 6
-	aclRule2.Table = "mangle"
-	aclRule2.Chain = "PREROUTING"
-	aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-p", "udp",
-		"-j", "CHECKSUM", "--checksum-fill"}
-	rulesList = append(rulesList, aclRule1, aclRule2)
-
-	aclRule1.IPVer = aclArgs.IPVer
-	aclRule1.Table = ""
-	aclRule1.Chain = "FORWARD"
-	aclRule1.Rule = []string{"-o", aclArgs.BridgeName, "-j", "LOG", "--log-prefix",
-		"FORWARD:TO:", "--log-level", "3"}
-	aclRule2.IPVer = aclArgs.IPVer
-	aclRule2.Table = ""
-	aclRule2.Chain = "FORWARD"
-	aclRule2.Rule = []string{"-o", aclArgs.BridgeName, "-j", "DROP"}
-	rulesList = append(rulesList, aclRule1, aclRule2)
-	log.Infof("bridge(%s, %v) attach iptable rules:%v\n",
-		aclArgs.BridgeName, aclArgs.BridgeIP, rulesList)
-	return rulesList
-}
-
 // If no valid bridgeIP we assume IPv4
 func determineIPVer(isMgmt bool, bridgeIP string) int {
 	if isMgmt {
@@ -1028,4 +964,68 @@ func executeIPTablesRule(operation string, rule types.IPTablesRule) error {
 		err = errors.New(errStr)
 	}
 	return err
+}
+
+// handle network instance level ACL rules
+// Network Instance Level ACL rule handling routines
+func handleNetworkInstanceACLConfiglet(op string, aclArgs types.AppNetworkACLArgs) error {
+
+	log.Infof("bridge(%s, %v) iptables op: %v\n", aclArgs.BridgeName, aclArgs.BridgeIP, op)
+	rulesList := networkInstanceBridgeRules(aclArgs)
+	for _, rule := range rulesList {
+		if err := executeIPTablesRule(op, rule); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func networkInstanceBridgeRules(aclArgs types.AppNetworkACLArgs) types.IPTablesRuleList {
+	var rulesList types.IPTablesRuleList
+	var aclRule1, aclRule2 types.IPTablesRule
+
+	// not for dom0
+	if aclArgs.IsMgmt {
+		return rulesList
+	}
+	aclArgs.IPVer = determineIPVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
+	// two rules for ipv4
+	aclRule1.IPVer = 4
+	aclRule1.Table = "mangle"
+	aclRule1.Chain = "PREROUTING"
+	aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-p", "tcp",
+		"-j", "CHECKSUM", "--checksum-fill"}
+	aclRule2.IPVer = 4
+	aclRule2.Table = "mangle"
+	aclRule2.Chain = "PREROUTING"
+	aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-p", "udp",
+		"-j", "CHECKSUM", "--checksum-fill"}
+	rulesList = append(rulesList, aclRule1, aclRule2)
+
+	// two rules for ipv6
+	aclRule1.IPVer = 6
+	aclRule1.Table = "mangle"
+	aclRule1.Chain = "PREROUTING"
+	aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-p", "tcp",
+		"-j", "CHECKSUM", "--checksum-fill"}
+	aclRule2.IPVer = 6
+	aclRule2.Table = "mangle"
+	aclRule2.Chain = "PREROUTING"
+	aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-p", "udp",
+		"-j", "CHECKSUM", "--checksum-fill"}
+	rulesList = append(rulesList, aclRule1, aclRule2)
+
+	aclRule1.IPVer = aclArgs.IPVer
+	aclRule1.Table = ""
+	aclRule1.Chain = "FORWARD"
+	aclRule1.Rule = []string{"-o", aclArgs.BridgeName, "-j", "LOG", "--log-prefix",
+		"FORWARD:TO:", "--log-level", "3"}
+	aclRule2.IPVer = aclArgs.IPVer
+	aclRule2.Table = ""
+	aclRule2.Chain = "FORWARD"
+	aclRule2.Rule = []string{"-o", aclArgs.BridgeName, "-j", "DROP"}
+	rulesList = append(rulesList, aclRule1, aclRule2)
+	log.Infof("bridge(%s, %v) attach iptable rules:%v\n",
+		aclArgs.BridgeName, aclArgs.BridgeIP, rulesList)
+	return rulesList
 }

@@ -941,7 +941,7 @@ func handleAppNetworkCreate(ctx *zedrouterContext, key string,
 	}
 	publishAppNetworkStatus(ctx, &status)
 
-	if validateAppNetworkConfig(ctx, config, &status) {
+	if !validateAppNetworkConfig(ctx, config, &status) {
 		log.Errorf("handleCreateAppNetwork failed for %s\n", config.DisplayName)
 		status.PendingAdd = false
 		publishAppNetworkStatus(ctx, &status)
@@ -1927,7 +1927,7 @@ func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
 		}
 	}
 
-	if validateAppNetworkConfig(ctx, config, status) {
+	if !validateAppNetworkConfig(ctx, config, status) {
 		publishAppNetworkStatus(ctx, status)
 		log.Errorf("handleModify: AppNetworkConfig check failed for %s\n", config.DisplayName)
 		return false
@@ -2670,7 +2670,7 @@ func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetwo
 	// For App Networks, check for common port map rules
 	ulCfgList0 := appNetConfig.UnderlayNetworkList
 	if len(ulCfgList0) == 0 {
-		return false
+		return true
 	}
 	sub := ctx.subAppNetworkConfig
 	items := sub.GetAll()
@@ -2687,10 +2687,10 @@ func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetwo
 			errStr := fmt.Sprintf("duplicate portmap in %s", appNetConfig1.DisplayName)
 			err := errors.New(errStr)
 			addError(ctx, appNetStatus, "underlayACL", err)
-			return true
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 func checkUnderlayNetworkForPortMapOverlap(ctx *zedrouterContext,
