@@ -36,15 +36,15 @@ DEV=$1
 
 if [ -n "$FILE" ]; then
     if [ ! -f "$FILE" ]; then
-	echo "File $FILE does not exist"
-	usage
-	exit 1
+        echo "File $FILE does not exist"
+        usage
+        exit 1
     fi
 
     if ! python -m json.tool "$FILE" >/dev/null; then
-	echo "Invalid json in $FILE"
-	python -m json.tool "$FILE"
-	exit 1
+        echo "Invalid json in $FILE"
+        python -m json.tool "$FILE"
+        exit 1
     fi
 fi
 
