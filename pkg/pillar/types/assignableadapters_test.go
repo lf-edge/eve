@@ -90,32 +90,32 @@ func TestLookupIoBundleForMember(t *testing.T) {
 		expectedBundleName string
 	}{
 		"ioType: IoEth, lookupName: eth1": {
-			ioType: IoEth,
-			lookupName: "eth1",
+			ioType:             IoEth,
+			lookupName:         "eth1",
 			expectedBundleName: "eth0-1",
 		},
 		// Type should also be considered.
 		"ioType: IoUSB, lookupName: eth1": {
-			ioType: IoUSB,
-			lookupName: "eth1",
+			ioType:             IoUSB,
+			lookupName:         "eth1",
 			expectedBundleName: "",
 		},
 		"ioType: IoEth, lookupName: eth3": {
-			ioType: IoEth,
-			lookupName: "eth3",
+			ioType:             IoEth,
+			lookupName:         "eth3",
 			expectedBundleName: "",
-			}, // No such member
+		}, // No such member
 		"ioType: IoEth, lookupName: eth7": {
-			ioType: IoEth,
-			lookupName: "eth7",
+			ioType:             IoEth,
+			lookupName:         "eth7",
 			expectedBundleName: "eTH4-7",
 		},
 		// Test Ignore case
 		"ioType: IoEth, lookupName: ETH7": {
-			ioType: IoEth,
-			lookupName: "ETH7",
-			 expectedBundleName: "eTH4-7",
-		 },
+			ioType:             IoEth,
+			lookupName:         "ETH7",
+			expectedBundleName: "eTH4-7",
+		},
 	}
 
 	// Basic test
