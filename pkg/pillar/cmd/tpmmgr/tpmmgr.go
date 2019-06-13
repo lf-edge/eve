@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
+	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -16,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"time"
+	"unsafe"
 )
 
 const (
@@ -47,6 +49,7 @@ const (
 )
 
 var (
+	tpmHwInfo        = string("")
 	pcrSelection     = tpm2.PCRSelection{Hash: tpm2.AlgSHA1, PCRs: []int{7}}
 	defaultKeyParams = tpm2.Public{
 		Type:    tpm2.AlgECC,
@@ -64,6 +67,33 @@ var (
 		},
 	}
 )
+
+var vendorRegistry = map[uint32]string{
+	0x49465800: "Infineon",
+	0x414D4400: "AMD",
+	0x41544D4C: "Atmel",
+	0x4252434D: "Broadcom",
+	0x49424d00: "IBM",
+	0x494E5443: "Intel",
+	0x4C454E00: "Lenovo",
+	0x4E534D20: "National SC",
+	0x4E545A00: "Nationz",
+	0x4E544300: "Nuvoton",
+	0x51434F4D: "Qualcomm",
+	0x534D5343: "SMSC",
+	0x53544D20: "ST Microelectronics",
+	0x534D534E: "Samsung",
+	0x534E5300: "Sinosun",
+	0x54584E00: "Texas Instruments",
+	0x57454300: "Winbond",
+	0x524F4343: "Fuzhou Rockchip",
+}
+
+//IsTpmEnabled checks if TPM is being used by SW
+func IsTpmEnabled() bool {
+	_, err := os.Stat(TpmEnabledFile)
+	return (err == nil)
+}
 
 func createDeviceKey() error {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
@@ -341,19 +371,129 @@ func readCredentials() error {
 	return nil
 }
 
-func printCapability() error {
+//till we have next version of go-tpm released, use this
+const (
+	tpmPropertyManufacturer = 0x105
+	tpmPropertyVendorStr1   = 0x106
+	tpmPropertyVendorStr2   = 0x107
+	tpmPropertyFirmVer1     = 0x10b
+	tpmPropertyFirmVer2     = 0x10c
+)
+
+func getModelName(vendorValue1 uint32, vendorValue2 uint32) string {
+	uintToByteArr := func(value uint32) []byte {
+		get8 := func(val uint32, offset uint32) uint8 {
+			return (uint8)((val >> ((3 - offset) * 8)) & 0xff)
+		}
+		var i uint32
+		var bytes []byte
+		for i = 0; i < uint32(unsafe.Sizeof(value)); i++ {
+			c := get8(value, i)
+			bytes = append(bytes, c)
+		}
+		return bytes
+	}
+	var model []byte
+	model = append(model, uintToByteArr(vendorValue1)...)
+	model = append(model, uintToByteArr(vendorValue2)...)
+	return string(model)
+}
+
+func getFirmwareVersion(v1 uint32, v2 uint32) string {
+	get16 := func(val uint32, offset uint32) uint16 {
+		return uint16((val >> ((1 - offset) * 16)) & 0xFFFF)
+	}
+	return fmt.Sprintf("%d.%d.%d.%d", get16(v1, 0), get16(v1, 1),
+		get16(v2, 0), get16(v2, 1))
+}
+
+func getTpmProperty(propId uint32) (uint32, error) {
 	lockTpmAccess()
 	defer unlockTpmAccess()
 
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer rw.Close()
-	l, _, err := tpm2.GetCapability(rw, tpm2.CapabilityTPMProperties,
-		1, uint32(0x105))
-	fmt.Println(l)
-	return err
+
+	v, _, err := tpm2.GetCapability(rw, tpm2.CapabilityTPMProperties, 1, propId)
+	if err != nil {
+		return 0, err
+	}
+	prop, ok := v[0].(tpm2.TaggedProperty)
+	if !ok {
+		return 0, fmt.Errorf("Unable to fetch property %d", propId)
+	}
+	return prop.Value, nil
+}
+
+func FetchTpmSwStatus() info.HwSecurityModuleStatus {
+	_, err := os.Stat(TpmDevicePath)
+	if err != nil {
+		//No TPM found on this system
+		return info.HwSecurityModuleStatus_NOTFOUND
+	}
+
+	if IsTpmEnabled() {
+		//TPM is found and is used by software
+		return info.HwSecurityModuleStatus_ENABLED
+	}
+
+	//TPM is found but not being used by software
+	return info.HwSecurityModuleStatus_DISABLED
+}
+
+//FetchTpmHwInfo returns TPM Hardware properties in a string
+func FetchTpmHwInfo() (string, error) {
+
+	//If we had done this earlier, return the last result
+	if tpmHwInfo != "" {
+		return tpmHwInfo, nil
+	}
+
+	//Take care of non-TPM platforms
+	_, err := os.Stat(TpmDevicePath)
+	if err != nil {
+		tpmHwInfo = "Not Available"
+		return tpmHwInfo, nil
+	}
+
+	//First time. Fetch it from TPM and cache it.
+	v1, err := getTpmProperty(tpmPropertyManufacturer)
+	if err != nil {
+		return "", err
+	}
+	v2, err := getTpmProperty(tpmPropertyVendorStr1)
+	if err != nil {
+		return "", err
+	}
+	v3, err := getTpmProperty(tpmPropertyVendorStr2)
+	if err != nil {
+		return "", err
+	}
+	v4, err := getTpmProperty(tpmPropertyFirmVer1)
+	if err != nil {
+		return "", err
+	}
+	v5, err := getTpmProperty(tpmPropertyFirmVer2)
+	if err != nil {
+		return "", err
+	}
+	tpmHwInfo = fmt.Sprintf("%s-%s, FW Version %s", vendorRegistry[v1],
+		getModelName(v2, v3),
+		getFirmwareVersion(v4, v5))
+
+	return tpmHwInfo, nil
+}
+
+func printCapability() {
+	hwInfoStr, err := FetchTpmHwInfo()
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Println(hwInfoStr)
+	}
 }
 
 func Run() {
@@ -398,9 +538,6 @@ func Run() {
 			os.Exit(1)
 		}
 	case "printCapability":
-		if err = printCapability(); err != nil {
-			log.Errorln("Error in fetching capability")
-			os.Exit(1)
-		}
+		printCapability()
 	}
 }
