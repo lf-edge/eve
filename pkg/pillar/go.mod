@@ -11,7 +11,7 @@ require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/dnaeon/go-vcr v1.0.1 // indirect
 	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
-	github.com/eriknordmark/netlink v0.0.0-20190417195958-c63702da36e5
+	github.com/eriknordmark/netlink v0.0.0-20190613040110-e2ba823574cc
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/golang/protobuf v1.3.1
@@ -32,7 +32,7 @@ require (
 	github.com/shirou/gopsutil v0.0.0-20190323131628-2cbc9195c892
 	github.com/sirupsen/logrus v1.2.0
 	github.com/stretchr/testify v1.3.0
-	github.com/vishvananda/netlink v0.0.0-20190319163122-f504738125a5 // indirect
+	github.com/vishvananda/netlink v1.0.1-0.20190613020244-d50d15ce3f00 // indirect
 	github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc // indirect
 	golang.org/x/crypto v0.0.0-20190404164418-38d8ce5564a5
 	golang.org/x/net v0.0.0-20190419010253-1f3472d942ba
