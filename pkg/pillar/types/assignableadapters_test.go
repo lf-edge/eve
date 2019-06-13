@@ -84,31 +84,48 @@ func TestLookupIoBundle(t *testing.T) {
 }
 
 func TestLookupIoBundleForMember(t *testing.T) {
-	testMatrix := []TestLookupIoBundleForMemberMatrix{
-		{ioType: IoEth, lookupName: "eth1", expectedBundleName: "eth0-1"},
+	testMatrix := map[string]struct {
+		ioType             IoType
+		lookupName         string
+		expectedBundleName string
+	}{
+		"ioType: IoEth, lookupName: eth1": {
+			ioType: IoEth,
+			lookupName: "eth1",
+			expectedBundleName: "eth0-1",
+		},
 		// Type should also be considered.
-		{ioType: IoUSB, lookupName: "eth1", expectedBundleName: ""},
-		{ioType: IoEth, lookupName: "eth3", expectedBundleName: ""}, // No such member
-		{ioType: IoEth, lookupName: "eth7", expectedBundleName: "eTH4-7"},
+		"ioType: IoUSB, lookupName: eth1": {
+			ioType: IoUSB,
+			lookupName: "eth1",
+			expectedBundleName: "",
+		},
+		"ioType: IoEth, lookupName: eth3": {
+			ioType: IoEth,
+			lookupName: "eth3",
+			expectedBundleName: "",
+			}, // No such member
+		"ioType: IoEth, lookupName: eth7": {
+			ioType: IoEth,
+			lookupName: "eth7",
+			expectedBundleName: "eTH4-7",
+		},
 		// Test Ignore case
-		{ioType: IoEth, lookupName: "ETH7", expectedBundleName: "eTH4-7"},
+		"ioType: IoEth, lookupName: ETH7": {
+			ioType: IoEth,
+			lookupName: "ETH7",
+			 expectedBundleName: "eTH4-7",
+		 },
 	}
 
 	// Basic test
-	for index := range testMatrix {
-		entry := &testMatrix[index]
-		ioBundle := aa.LookupIoBundleForMember(entry.ioType,
-			entry.lookupName)
+	for testname, test := range testMatrix {
+		t.Logf("Running test case %s", testname)
+		ioBundle := aa.LookupIoBundleForMember(test.ioType, test.lookupName)
 		if ioBundle == nil {
-			if entry.expectedBundleName != "" {
-				t.Errorf("Test Entry Index %d Failed: Null bundle. Expected %s\n",
-					index, entry.expectedBundleName)
-			}
+			assert.Equal(t, test.expectedBundleName, "")
 		} else {
-			if ioBundle.Name != entry.expectedBundleName {
-				t.Errorf("Test Entry Index %d Failed: Expected %s, Actual: %s\n",
-					index, entry.expectedBundleName, ioBundle.Name)
-			}
+			assert.Equal(t, test.expectedBundleName, ioBundle.Name)
 		}
 	}
 }
