@@ -72,7 +72,7 @@ type clientContext struct {
 var debug = false
 var debugOverride bool // From command line arg
 
-func Run() {
+func Run() { //nolint:gocyclo
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
@@ -133,7 +133,6 @@ func Run() {
 	onboardCertName := identityDirname + "/onboard.cert.pem"
 	onboardKeyName := identityDirname + "/onboard.key.pem"
 	deviceCertName := identityDirname + "/device.cert.pem"
-	deviceKeyName := identityDirname + "/device.key.pem"
 	serverFileName := identityDirname + "/server"
 	uuidFileName := identityDirname + "/uuid"
 	hardwaremodelFileName := identityDirname + "/hardwaremodel"
@@ -238,7 +237,7 @@ func Run() {
 	serverName := strings.Split(serverNameAndPort, ":")[0]
 	const return400 = false
 
-	var onboardCert, deviceCert tls.Certificate
+	var onboardCert tls.Certificate
 	var deviceCertPem []byte
 	var onboardTLSConfig *tls.Config
 
@@ -260,7 +259,7 @@ func Run() {
 	}
 
 	// Load device cert
-	deviceCert, err = tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
+	deviceCert, err := zedcloud.GetClientCert()
 	if err != nil {
 		log.Fatal(err)
 	}
