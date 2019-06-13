@@ -6,7 +6,7 @@ package types
 import (
 	"testing"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 )
 
 var aa AssignableAdapters = AssignableAdapters{
@@ -40,38 +40,50 @@ type TestLookupIoBundleForMemberMatrix struct {
 }
 
 func TestLookupIoBundle(t *testing.T) {
-	log.Infof("TestLookupIoBundle: START\n")
-
-	testMatrix := []TestLookupIoBundleForMemberMatrix{
-		{ioType: IoEth, lookupName: "eth0-1", expectedBundleName: "eth0-1"},
-		// Type should also be considered.
-		{ioType: IoUSB, lookupName: "eth2", expectedBundleName: ""},
-		{ioType: IoEth, lookupName: "eth1", expectedBundleName: ""},
-		{ioType: IoEth, lookupName: "eth2", expectedBundleName: "eth2"},
-		{ioType: IoEth, lookupName: "eth4-7", expectedBundleName: "eTH4-7"}, // No such member
+	testMatrix := map[string]struct {
+		ioType             IoType
+		lookupName         string
+		expectedBundleName string
+	}{
+		"IoType: IoEth, LookupName: eth0-1": {
+			ioType:             IoEth,
+			lookupName:         "eth0-1",
+			expectedBundleName: "eth0-1",
+		},
+		"IoType: IoUSB LookupName: eth2": {
+			ioType:             IoUSB,
+			lookupName:         "eth2",
+			expectedBundleName: "",
+		},
+		"IoType: IoEth LookupName: eth1": {
+			ioType:             IoEth,
+			lookupName:         "eth1",
+			expectedBundleName: "",
+		},
+		"IoType: IoEth LookupName: eth2": {
+			ioType:             IoEth,
+			lookupName:         "eth2",
+			expectedBundleName: "eth2",
+		},
+		"IoType: IoEth LookupName: eth4-7": {
+			ioType:             IoEth,
+			lookupName:         "eth4-7",
+			expectedBundleName: "eTH4-7",
+		},
 	}
 
-	// Basic test
-	for index := range testMatrix {
-		entry := &testMatrix[index]
-		ioBundle := LookupIoBundle(&aa, entry.ioType, entry.lookupName)
+	for testname, test := range testMatrix {
+		t.Logf("Running test case %s", testname)
+		ioBundle := LookupIoBundle(&aa, test.ioType, test.lookupName)
 		if ioBundle == nil {
-			if entry.expectedBundleName != "" {
-				t.Errorf("Test Entry Index %d Failed: Null bundle. Expected %s\n",
-					index, entry.expectedBundleName)
-			}
+			assert.Equal(t, test.expectedBundleName, "")
 		} else {
-			if ioBundle.Name != entry.expectedBundleName {
-				t.Errorf("Test Entry Index %d Failed: Expected %s, Actual: %s\n",
-					index, entry.expectedBundleName, ioBundle.Name)
-			}
+			assert.Equal(t, test.expectedBundleName, ioBundle.Name)
 		}
 	}
-	log.Infof("TestLookupIoBundle: DONE\n")
 }
 
 func TestLookupIoBundleForMember(t *testing.T) {
-	log.Infof("TestLookupIoBundleForMember: START\n")
 	testMatrix := []TestLookupIoBundleForMemberMatrix{
 		{ioType: IoEth, lookupName: "eth1", expectedBundleName: "eth0-1"},
 		// Type should also be considered.
@@ -99,5 +111,4 @@ func TestLookupIoBundleForMember(t *testing.T) {
 			}
 		}
 	}
-	log.Infof("TestLookupIoBundleForMember: DONE\n")
 }
