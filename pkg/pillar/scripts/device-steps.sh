@@ -123,12 +123,21 @@ EOF
     fi
 done
 
+killwait_watchdog() {
+    if [ -f /var/run/watchdog.pid ]; then
+        echo "$(date -Ins -u) Killing watchdog $(cat /var/run/watchdog.pid)"
+        kill "$(cat /var/run/watchdog.pid)"
+        # Wait for it to exit so it can be restarted
+        while [ -f /var/run/watchdog.pid ] && kill -0 "$(cat /var/run/watchdog.pid)"; do
+            echo "$(date -Ins -u) Waiting for watchdog to exit"
+            sleep 5
+        done
+    fi
+}
+
+killwait_watchdog
+
 # In case watchdog is running we restart it with the base file
-if [ -f /var/run/watchdog.pid ]; then
-    # XXX define killwait function?
-    kill "$(cat /var/run/watchdog.pid)"
-    sleep 5 # Wait for it to exit so it can be restarted
-fi
 # Always run watchdog(8) in case we have a hardware watchdog timer to advance
 /usr/sbin/watchdog -c $TMPDIR/watchdogbase.conf -F -s &
 
@@ -267,10 +276,7 @@ if ! pgrep ledmanager >/dev/null; then
 fi
 
 # Restart watchdog - just for ledmanager so far
-if [ -f /var/run/watchdog.pid ]; then
-    kill "$(cat /var/run/watchdog.pid)"
-    sleep 5 # Wait for it to exit so it can be restarted
-fi
+killwait_watchdog
 /usr/sbin/watchdog -c $TMPDIR/watchdogled.conf -F -s &
 
 mkdir -p $DPCDIR
@@ -308,7 +314,9 @@ access_usb() {
             [ ! -f $CONFIGDIR/uuid ] || cp -p $CONFIGDIR/uuid "$IDENTITYDIR"
             cp -p $CONFIGDIR/root-certificate.pem "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/hardwaremodel ] || cp -p $CONFIGDIR/hardwaremodel "$IDENTITYDIR"
-            # XXX any serial number file? Both from dmidecode and from sw
+            [ ! -f $CONFIGDIR/soft_serial ] || cp -p $CONFIGDIR/soft_serial "$IDENTITYDIR"
+            /opt/zededa/bin/hardwaremodel -c >"$IDENTITYDIR/hardwaremodel.dmi"
+            /opt/zededa/bin/hardwaremodel -f >"$IDENTITYDIR/hardwaremodel.txt"
             sync
         fi
         if [ -d /mnt/dump ]; then
@@ -349,10 +357,7 @@ echo "$(date -Ins -u) Starting nim"
 $BINDIR/nim -c $CURPART &
 
 # Restart watchdog ledmanager and nim
-if [ -f /var/run/watchdog.pid ]; then
-    kill "$(cat /var/run/watchdog.pid)"
-    sleep 5 # Wait for it to exit so it can be restarted
-fi
+killwait_watchdog
 /usr/sbin/watchdog -c $TMPDIR/watchdognim.conf -F -s &
 
 # Print diag output forever on changes
@@ -388,10 +393,7 @@ while [ "$YEAR" = "1970" ]; do
 done
 
 # Restart watchdog ledmanager, client, and nim
-if [ -f /var/run/watchdog.pid ]; then
-    kill "$(cat /var/run/watchdog.pid)"
-    sleep 5 # Wait for it to exit so it can be restarted
-fi
+killwait_watchdog
 /usr/sbin/watchdog -c $TMPDIR/watchdogclient.conf -F -s &
 
 if [ ! -f $CONFIGDIR/device.cert.pem ]; then
@@ -512,10 +514,7 @@ mkdir -p /var/tmp/zededa/GlobalDownloadConfig/
 echo \{\"MaxSpace\":"$space"\} >/var/tmp/zededa/GlobalDownloadConfig/global.json
 
 # Restart watchdog ledmanager and nim
-if [ -f /var/run/watchdog.pid ]; then
-    kill "$(cat /var/run/watchdog.pid)"
-    sleep 5 # Wait for it to exit so it can be restarted
-fi
+killwait_watchdog
 /usr/sbin/watchdog -c $TMPDIR/watchdognim.conf -F -s &
 
 for AGENT in $AGENTS1; do
@@ -530,10 +529,7 @@ if ! pgrep logmanager >/dev/null; then
 fi
 
 # Now run watchdog for all agents
-if [ -f /var/run/watchdog.pid ]; then
-    kill "$(cat /var/run/watchdog.pid)"
-    sleep 5 # Wait for it to exit so it can be restarted
-fi
+killwait_watchdog
 /usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
 
 blockdev --flushbufs "$CONFIGDEV"
