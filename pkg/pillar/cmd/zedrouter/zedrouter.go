@@ -2681,12 +2681,7 @@ func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetwo
 			len(ulCfgList1) == 0 {
 			continue
 		}
-		if checkUnderlayNetworkForPortMapOverlap(ctx, ulCfgList0, ulCfgList1) {
-			log.Errorf("app Network(%s) have overlapping portmap rule in %s\n",
-				appNetStatus.DisplayName, appNetConfig1.DisplayName)
-			errStr := fmt.Sprintf("duplicate portmap in %s", appNetConfig1.DisplayName)
-			err := errors.New(errStr)
-			addError(ctx, appNetStatus, "underlayACL", err)
+		if checkUnderlayNetworkForPortMapOverlap(ctx, appNetStatus, ulCfgList0, ulCfgList1) {
 			return false
 		}
 	}
@@ -2694,14 +2689,29 @@ func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetwo
 }
 
 func checkUnderlayNetworkForPortMapOverlap(ctx *zedrouterContext,
-	ulCfgList []types.UnderlayNetworkConfig, ulCfgList1 []types.UnderlayNetworkConfig) bool {
+	appNetStatus *types.AppNetworkStatus, ulCfgList []types.UnderlayNetworkConfig,
+	ulCfgList1 []types.UnderlayNetworkConfig) bool {
 	for _, ulCfg := range ulCfgList {
 		network := ulCfg.Network.String()
+		// validate whether there are duplicate portmap rules
+		// within itself
+		if matchACLForPortMap(ulCfg.ACLs) {
+			log.Errorf("app Network(%s) has duplicate portmaps\n", network)
+			errStr := fmt.Sprintf("duplicate portmap rules")
+			err := errors.New(errStr)
+			addError(ctx, appNetStatus, "underlayACL", err)
+			return false
+		}
 		for _, ulCfg1 := range ulCfgList1 {
 			network1 := ulCfg1.Network.String()
 			if network == network1 || checkUplinkPortOverlap(ctx, network, network1) {
 				if matchACLsForPortMap(ulCfg.ACLs, ulCfg1.ACLs) {
 					log.Infof("ACL PortMap overlaps for %s, %s\n", network, network1)
+					log.Errorf("app Network(%s) have overlapping portmap rule in %s\n",
+						network, network1)
+					errStr := fmt.Sprintf("duplicate portmap in %s", network1)
+					err := errors.New(errStr)
+					addError(ctx, appNetStatus, "underlayACL", err)
 					return true
 				}
 			}

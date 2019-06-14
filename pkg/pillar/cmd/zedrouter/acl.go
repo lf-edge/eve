@@ -258,9 +258,13 @@ func applyACLRules(aclArgs types.AppNetworkACLArgs,
 	var activeRules types.IPTablesRuleList
 	log.Debugf("applyACLRules: ipVer %d, bridgeName %s appIP %s with %d rules\n",
 		aclArgs.IPVer, aclArgs.BridgeName, aclArgs.AppIP, len(rules))
-	// the catch all drop rules are towards the end of the rule list
-	// hance we are inserting the rule in reverse order into
-	// the top of the target chain
+
+	// the catch all log/drop rules are towards the end of the rule list
+	// hance we are inserting the rule in reverse order at
+	// the top of a target chain, to ensure the drop rules
+	// will be at the end of the rule stack, and the acl match
+	// rules will be at the top of the rule stack for an app
+	// network instance
 	numRules := len(rules)
 	for numRules > 0 {
 		numRules--
@@ -893,7 +897,41 @@ func compareACE(ACE0 types.ACE, ACE1 types.ACE) bool {
 	return true
 }
 
-// check for portmap Acl overlap
+// check for duplicate portmap rules in same set of ACLs
+// for this, we will match either the target port or
+// the ingress protocol/lport being same
+func matchACLForPortMap(ACLs []types.ACE) bool {
+	matchTypes := []string{"protocol", "lport"}
+	idx := 0
+	ruleNum := len(ACLs)
+	for idx < ruleNum-1 {
+		ace := ACLs[idx]
+		for _, action := range ace.Actions {
+			if !action.PortMap {
+				continue
+			}
+			idx1 := idx + 1
+			for idx1 < ruleNum {
+				ace1 := ACLs[idx1]
+				for _, action1 := range ace1.Actions {
+					if !action1.PortMap {
+						continue
+					}
+					if action.TargetPort == action1.TargetPort ||
+						checkForMatchCondition(ace, ace1, matchTypes) {
+						return true
+					}
+				}
+				idx1++
+			}
+		}
+		idx++
+	}
+	return false
+}
+
+// check for duplicate portmap rules in between two set of ACLs
+// for this, we will match the ingress protocol/lport being same
 func matchACLsForPortMap(ACLs []types.ACE, ACLs1 []types.ACE) bool {
 	matchTypes := []string{"protocol", "lport"}
 	for _, ace := range ACLs {
