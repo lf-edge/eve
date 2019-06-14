@@ -12,7 +12,7 @@ func TestPciLongExists(t *testing.T) {
 	}{
 		"Long value: 0000:03:00.0": {
 			long: "0000:03:00.0",
-			val:  true,
+			val:  false,
 		},
 	}
 	for testname, test := range testMatrix {
