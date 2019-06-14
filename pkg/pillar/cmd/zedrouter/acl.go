@@ -1075,18 +1075,5 @@ func networkInstanceBridgeRules(aclArgs types.AppNetworkACLArgs) types.IPTablesR
 	aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-p", "udp",
 		"-j", "CHECKSUM", "--checksum-fill"}
 	rulesList = append(rulesList, aclRule1, aclRule2)
-
-	aclRule1.IPVer = aclArgs.IPVer
-	aclRule1.Table = ""
-	aclRule1.Chain = "FORWARD"
-	aclRule1.Rule = []string{"-o", aclArgs.BridgeName, "-j", "LOG", "--log-prefix",
-		"FORWARD:TO:", "--log-level", "3"}
-	aclRule2.IPVer = aclArgs.IPVer
-	aclRule2.Table = ""
-	aclRule2.Chain = "FORWARD"
-	aclRule2.Rule = []string{"-o", aclArgs.BridgeName, "-j", "DROP"}
-	rulesList = append(rulesList, aclRule1, aclRule2)
-	log.Infof("bridge(%s, %v) attach iptable rules:%v\n",
-		aclArgs.BridgeName, aclArgs.BridgeIP, rulesList)
 	return rulesList
 }
