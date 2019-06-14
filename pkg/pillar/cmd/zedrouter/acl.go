@@ -901,7 +901,9 @@ func compareACE(ACE0 types.ACE, ACE1 types.ACE) bool {
 // for this, we will match either the target port or
 // the ingress protocol/lport being same
 func matchACLForPortMap(ACLs []types.ACE) bool {
-	matchTypes := []string{"protocol", "lport"}
+	matchTypes := []string{"protocol"}
+	matchTypes1 := []string{"protocol", "lport"}
+	matchTypes2 := []string{"protocol", "2port"}
 	idx := 0
 	ruleNum := len(ACLs)
 	for idx < ruleNum-1 {
@@ -917,8 +919,16 @@ func matchACLForPortMap(ACLs []types.ACE) bool {
 					if !action1.PortMap {
 						continue
 					}
-					if action.TargetPort == action1.TargetPort ||
+					// check for protocol
+					if action.TargetPort == action1.TargetPort &&
 						checkForMatchCondition(ace, ace1, matchTypes) {
+					}
+					// check for protocol/lport
+					if checkForMatchCondition(ace, ace1, matchTypes1) {
+						return true
+					}
+					// check for protocol/fport
+					if checkForMatchCondition(ace, ace1, matchTypes2) {
 						return true
 					}
 				}
@@ -931,9 +941,10 @@ func matchACLForPortMap(ACLs []types.ACE) bool {
 }
 
 // check for duplicate portmap rules in between two set of ACLs
-// for this, we will match the ingress protocol/lport being same
+// for this, we will match the protocol/(lport/fport) being same
 func matchACLsForPortMap(ACLs []types.ACE, ACLs1 []types.ACE) bool {
 	matchTypes := []string{"protocol", "lport"}
+	matchTypes1 := []string{"protocol", "fport"}
 	for _, ace := range ACLs {
 		for _, action := range ace.Actions {
 			// not a portmap rule
@@ -946,8 +957,12 @@ func matchACLsForPortMap(ACLs []types.ACE, ACLs1 []types.ACE) bool {
 					if !action1.PortMap {
 						continue
 					}
-					// check for ingress protocol/port
+					// match for protocol/lport
 					if checkForMatchCondition(ace, ace1, matchTypes) {
+						return true
+					}
+					// check for protocol/fport
+					if checkForMatchCondition(ace, ace1, matchTypes1) {
 						return true
 					}
 				}
@@ -1013,6 +1028,11 @@ func handleNetworkInstanceACLConfiglet(op string, aclArgs types.AppNetworkACLArg
 
 	log.Infof("bridge(%s, %v) iptables op: %v\n", aclArgs.BridgeName, aclArgs.BridgeIP, op)
 	rulesList := networkInstanceBridgeRules(aclArgs)
+	// For Network instance, we are going to do a "-A" operation
+	// so that, the rules, will at the end of the rule chain
+	// for the specific table
+	// For App Network ACLs, we are doing "-I" opration, they
+	// will be always above these Network Instance log/drop rules.
 	for _, rule := range rulesList {
 		if err := executeIPTablesRule(op, rule); err != nil {
 			return err
