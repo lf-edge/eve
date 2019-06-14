@@ -49,7 +49,7 @@ const (
 )
 
 var (
-	tpmHwInfo        = string("")
+	tpmHwInfo        = ""
 	pcrSelection     = tpm2.PCRSelection{Hash: tpm2.AlgSHA1, PCRs: []int{7}}
 	defaultKeyParams = tpm2.Public{
 		Type:    tpm2.AlgECC,
@@ -68,14 +68,20 @@ var (
 	}
 )
 
+//Refer to https://trustedcomputinggroup.org/wp-content/uploads/TCG-TPM-Vendor-ID-Registry-Version-1.01-Revision-1.00.pdf
+//These byte sequences in uint32 format is actually ASCII representation of TPM
+//vendor ID. Since they are abbreviated names, we are having a map here to show
+//a more verbose form of vendor name
 var vendorRegistry = map[uint32]string{
-	0x49465800: "Infineon",
 	0x414D4400: "AMD",
 	0x41544D4C: "Atmel",
 	0x4252434D: "Broadcom",
+	0x48504500: "HPE",
 	0x49424d00: "IBM",
+	0x49465800: "Infineon",
 	0x494E5443: "Intel",
 	0x4C454E00: "Lenovo",
+	0x4D534654: "Microsoft",
 	0x4E534D20: "National SC",
 	0x4E545A00: "Nationz",
 	0x4E544300: "Nuvoton",
@@ -87,6 +93,7 @@ var vendorRegistry = map[uint32]string{
 	0x54584E00: "Texas Instruments",
 	0x57454300: "Winbond",
 	0x524F4343: "Fuzhou Rockchip",
+	0x474F4F47: "Google",
 }
 
 //IsTpmEnabled checks if TPM is being used by SW
