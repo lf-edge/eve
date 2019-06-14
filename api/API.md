@@ -300,7 +300,9 @@ The response MUST contain no body content.
 
 ### flowlog
 
-Send Device and Application logs to Controller
+The flowlog API is used by the device to send network flow statistics (TCP and UDP
+flows with IP addresses, port numbers, counters, whether dropped or accepted),
+and also the hostname to IP address mapping as seen by the device.
 
    POST /api/v1/edgeDevice/flowlog
 
