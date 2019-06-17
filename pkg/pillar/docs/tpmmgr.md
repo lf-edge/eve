@@ -8,7 +8,7 @@ This service is responsible for managing the Trusted Platform Module on EVE syst
 Trusted Platform Module is a purpose-build hardware module, for providing tools to
 build a secure and trusted endpoint. It can securely create crypto keys, seal secrets,
 and help measure various components of the system and store the measurements in a
-tamper-proof manner. For more details, refer to https://trustedcomputinggroup.org which is
+tamper-proof manner. For more details, refer to <https://trustedcomputinggroup.org> which is
 the govering body for defining specifications for TPM implementations.
 
 
