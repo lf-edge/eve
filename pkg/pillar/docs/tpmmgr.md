@@ -11,7 +11,6 @@ and help measure various components of the system and store the measurements in 
 tamper-proof manner. For more details, refer to <https://trustedcomputinggroup.org> which is
 the govering body for defining specifications for TPM implementations.
 
-
 ## Role of tpmmgr
 
 Role of tpmmgr is to help interface with Trusted Platform Modules from Edge Virtualization Engine,
@@ -25,7 +24,7 @@ certificate by generating its ECDSA private key in TPM. More details at the LF E
 tpmmgr uses go-tpm package from Google, to interface with the TPM device, which implements TSS2.0.
 Go-tpm package is hosted at <https://github.com/google/go-tpm/>. Go-tpm is licensed under Apache License 2.0.
 
-## Debugging:
+## Debugging
 
 To print TPM vendor information, use `/opt/zededa/bin/tpmmgr printCapability`
 To see logs from tpmmgr, one can find it under `/persist/<IMGA/IMGB>/log/tpmmgr.log`
