@@ -609,7 +609,7 @@ func runHandler(ctx *domainContext, key string, c <-chan interface{}) {
 			status := lookupDomainStatus(ctx, key)
 			if status != nil {
 				verifyStatus(ctx, status)
-				maybeRetryBoot(ctx, status)
+				maybeRetry(ctx, status)
 			}
 		}
 	}
@@ -650,6 +650,12 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 	}
 }
 
+func maybeRetry(ctx *domainContext, status *types.DomainStatus) {
+
+	maybeRetryBoot(ctx, status)
+	maybeRetryAdapters(ctx, status)
+}
+
 func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 
 	if !status.BootFailed {
@@ -686,6 +692,50 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	}
 	status.BootFailed = false
 	doActivateTail(ctx, status, domainId)
+}
+
+func maybeRetryAdapters(ctx *domainContext, status *types.DomainStatus) {
+
+	if !status.AdaptersFailed {
+		return
+	}
+	log.Infof("maybeRetryAdapters(%s) after %s at %v\n",
+		status.Key(), status.LastErr, status.LastErrTime)
+
+	config := lookupDomainConfig(ctx, status.Key())
+	if config == nil {
+		log.Errorf("maybeRetryAdapters(%s) no DomainConfig\n",
+			status.Key())
+		return
+	}
+	if err := configAdapters(ctx, *config); err != nil {
+		log.Errorf("Failed to reserve adapters for %v: %s\n",
+			config, err)
+		status.PendingAdd = false
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
+		status.AdaptersFailed = true
+		publishDomainStatus(ctx, status)
+		cleanupAdapters(ctx, config.IoAdapterList,
+			config.UUIDandVersion.UUID)
+		return
+	}
+	status.AdaptersFailed = false
+	status.LastErr = ""
+	status.LastErrTime = time.Time{}
+
+	// We now have reserved all of the IoAdapters
+	status.IoAdapterList = config.IoAdapterList
+
+	// Write any Location so that it can later be deleted based on status
+	publishDomainStatus(ctx, status)
+	if config.Activate {
+		doActivate(ctx, *config, status)
+	}
+	// work done
+	publishDomainStatus(ctx, status)
+	log.Infof("maybeRetryAdapters(%s) DONE for %s\n",
+		status.Key(), status.DisplayName)
 }
 
 // Callers must be careful to publish any changes to DomainStatus
@@ -762,26 +812,6 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		return
 	}
 
-	if err := configAdapters(ctx, *config); err != nil {
-		log.Errorf("Failed to reserve adapters for %v: %s\n",
-			config, err)
-		status.PendingAdd = false
-		status.LastErr = fmt.Sprintf("%v", err)
-		status.LastErrTime = time.Now()
-		status.AdaptersFailed = true
-		publishDomainStatus(ctx, &status)
-		cleanupAdapters(ctx, config.IoAdapterList,
-			config.UUIDandVersion.UUID)
-		return
-	}
-
-	status.AdaptersFailed = false
-	// We now have reserved all of the IoAdapters
-	status.IoAdapterList = config.IoAdapterList
-
-	// Write any Location so that it can later be deleted based on status
-	publishDomainStatus(ctx, &status)
-
 	// Do we need to copy any rw files? !Preserve ones are copied upon
 	// activation.
 	for _, ds := range status.DiskStatusList {
@@ -823,6 +853,26 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		log.Infof("Copy DONE from %s to %s\n",
 			ds.FileLocation, ds.ActiveFileLocation)
 	}
+
+	if err := configAdapters(ctx, *config); err != nil {
+		log.Errorf("Failed to reserve adapters for %v: %s\n",
+			config, err)
+		status.PendingAdd = false
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
+		status.AdaptersFailed = true
+		publishDomainStatus(ctx, &status)
+		cleanupAdapters(ctx, config.IoAdapterList,
+			config.UUIDandVersion.UUID)
+		return
+	}
+
+	status.AdaptersFailed = false
+	// We now have reserved all of the IoAdapters
+	status.IoAdapterList = config.IoAdapterList
+
+	// Write any Location so that it can later be deleted based on status
+	publishDomainStatus(ctx, &status)
 
 	if config.Activate {
 		doActivate(ctx, *config, &status)
@@ -1198,7 +1248,7 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 				ib.IsPCIBack = false
 			}
 		}
-		ib.UsedByUUID = nilUUID
+		ib.UsedByUUID = nilUUID // XXX see comment above. Clear if usbAccess only?
 		checkIoBundleAll(ctx)
 	}
 	ctx.publishAssignableAdapters()
@@ -2470,7 +2520,8 @@ func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 }
 
 func updateUsbAccess(ctx *domainContext) {
-	log.Infof("updateUsbAccess()\n")
+
+	log.Infof("updateUsbAccess(%t)", ctx.usbAccess)
 	for i := range ctx.assignableAdapters.IoBundleList {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
 		if ib.Type != types.IoUSB {
