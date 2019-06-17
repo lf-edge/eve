@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Zededa, Inc.
+// Copyright (c) 2018-2019 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package diskmetrics
@@ -10,10 +10,11 @@ import (
 )
 
 func SizeFromDir(dirname string) uint64 {
-	var totalUsed uint64 = 0
+	var totalUsed uint64
 	locations, err := ioutil.ReadDir(dirname)
 	if err != nil {
-		log.Fatal(err)
+		log.Debugf("Dir %s is missing. Set the size to zero\n", dirname)
+		return totalUsed
 	}
 	for _, location := range locations {
 		filename := dirname + "/" + location.Name()
