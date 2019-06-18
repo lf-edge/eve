@@ -1077,7 +1077,14 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		} else if ib.UsedByUUID != nilUUID {
 			reportAA.UsedByAppUUID = ib.UsedByUUID.String()
 		}
-
+		for _, m := range ib.MMacAddr {
+			reportMac := new(info.IoAddresses)
+			reportMac.MacAddress = m
+			reportAA.IoAddressList = append(reportAA.IoAddressList, reportMac)
+		}
+		// XXX remove? debug?
+		log.Infof("AssignableAdapters for %s macs %v",
+			reportAA.Name, reportAA.IoAddressList)
 		ReportDeviceInfo.AssignableAdapters = append(ReportDeviceInfo.AssignableAdapters,
 			reportAA)
 	}
@@ -1513,6 +1520,14 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			b := types.LookupIoBundle(aa, ib.Type, ib.Name)
 			if b != nil {
 				reportAA.Members = b.Members
+				for _, m := range b.MMacAddr {
+					reportMac := new(info.IoAddresses)
+					reportMac.MacAddress = m
+					reportAA.IoAddressList = append(reportAA.IoAddressList, reportMac)
+				}
+				// XXX remove? debug?
+				log.Infof("AssignableAdapters for %s macs %v",
+					reportAA.Name, reportAA.IoAddressList)
 			}
 			ReportAppInfo.AssignedAdapters = append(ReportAppInfo.AssignedAdapters,
 				reportAA)
@@ -1530,11 +1545,12 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 					continue
 				}
 				networkInfo := getNetInfo(interfaceDetail, false)
-				ip, macAddr := getAppIP(ctx, aiStatus,
+				ip, allocated, macAddr := getAppIP(ctx, aiStatus,
 					ifname)
 				networkInfo.IPAddrs = make([]string, 1)
 				networkInfo.IPAddrs[0] = *proto.String(ip)
 				networkInfo.MacAddr = *proto.String(macAddr)
+				networkInfo.Up = allocated
 				name := appIfnameToName(aiStatus, ifname)
 				log.Debugf("app %s/%s localName %s devName %s\n",
 					aiStatus.Key(), aiStatus.DisplayName,
@@ -1703,28 +1719,28 @@ func getDefaultRouters(ifname string) []string {
 }
 
 // Use the ifname/vifname to find the overlay or underlay status
-// and from there the (ip, mac) addresses for the app
+// and from there the (ip, allocated, mac) addresses for the app
 func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
-	vifname string) (string, string) {
+	vifname string) (string, bool, string) {
 
 	log.Debugf("getAppIP(%s, %s)\n", aiStatus.Key(), vifname)
 	for _, ulStatus := range aiStatus.UnderlayNetworks {
 		if ulStatus.Vif != vifname {
 			continue
 		}
-		log.Debugf("getAppIP(%s, %s) found underlay %s mac %s\n",
+		log.Debugf("getAppIP(%s, %s) found underlay %s assigned %v mac %s\n",
 			aiStatus.Key(), vifname,
-			ulStatus.AssignedIPAddr, ulStatus.Mac)
-		return ulStatus.AssignedIPAddr, ulStatus.Mac
+			ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac)
+		return ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac
 	}
 	for _, olStatus := range aiStatus.OverlayNetworks {
 		if olStatus.Vif != vifname {
 			continue
 		}
-		log.Debugf("getAppIP(%s, %s) found overlay %s mac %s\n",
+		log.Debugf("getAppIP(%s, %s) found overlay %s assigned %v mac %s\n",
 			aiStatus.Key(), vifname,
-			olStatus.EID.String(), olStatus.Mac)
-		return olStatus.EID.String(), olStatus.Mac
+			olStatus.EID.String(), olStatus.Assigned, olStatus.Mac)
+		return olStatus.EID.String(), olStatus.Assigned, olStatus.Mac
 	}
-	return "", ""
+	return "", false, ""
 }

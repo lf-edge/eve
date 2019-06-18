@@ -77,8 +77,12 @@ message ZioBundle {
   repeated string members = 3;  // E.g., "com1", "com2"
   string usedByAppUUID = 4;
   bool usedByBaseOS = 5;
+  repeated IoAddresses ioAddressList = 6; // One per member
 }
 
+message IoAddresses {
+  string macAddress = 1;
+}
 
 // Manufacturing info, product name, model, version etc.
 // From dmidecode/BIOS on Intel

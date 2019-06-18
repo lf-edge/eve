@@ -362,7 +362,7 @@ func doBridgeAclsDelete(
 			log.Infof("NetworkInstance - deleting Acls for UL Interface(%s)",
 				ulStatus.Name)
 			aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: ulStatus.Bridge,
-				VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: ulStatus.AssignedIPAddr,
+				VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: ulStatus.AllocatedIPAddr,
 				UpLinks: status.IfNameList}
 			ruleList, err := deleteACLConfiglet(aclArgs, appNetStatus.UnderlayACLList)
 			if err != nil {

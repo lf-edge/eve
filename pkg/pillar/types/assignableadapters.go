@@ -54,6 +54,7 @@ type IoBundle struct {
 	MPciLong  []string // If adapter on some bus
 	MPciShort []string // If pci adapter
 	MUnique   []string // From firmware_node symlink; used for debug checks
+	MMacAddr  []string // Set for networking adapters
 
 	// IsPciBack
 	//	Is the IoBundle assigned to pciBack; means all members are assigned
