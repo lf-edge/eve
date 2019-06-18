@@ -841,6 +841,7 @@ type OverlayNetworkStatus struct {
 	VifInfo
 	BridgeMac    net.HardwareAddr
 	BridgeIPAddr string // The address for DNS/DHCP service in zedrouter
+	Assigned     bool   // Set to true once DHCP has assigned EID to domU
 	HostName     string
 }
 
@@ -874,10 +875,11 @@ type UnderlayNetworkConfig struct {
 type UnderlayNetworkStatus struct {
 	UnderlayNetworkConfig
 	VifInfo
-	BridgeMac      net.HardwareAddr
-	BridgeIPAddr   string // The address for DNS/DHCP service in zedrouter
-	AssignedIPAddr string // Assigned to domU
-	HostName       string
+	BridgeMac       net.HardwareAddr
+	BridgeIPAddr    string // The address for DNS/DHCP service in zedrouter
+	AllocatedIPAddr string // Assigned to domU
+	Assigned        bool   // Set to true once DHCP has assigned it to domU
+	HostName        string
 }
 
 type NetworkType uint8

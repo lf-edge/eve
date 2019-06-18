@@ -67,6 +67,7 @@ type zedrouterContext struct {
 	ready                  bool
 	subGlobalConfig        *pubsub.Subscription
 	pubUuidToNum           *pubsub.Publication
+	dhcpLeases             []dnsmasqLease
 
 	// NetworkInstance
 	subNetworkInstanceConfig  *pubsub.Subscription
@@ -407,6 +408,10 @@ func Run() {
 				log.Errorf("getNetworkMetrics failed %s\n", err)
 			}
 			publishNetworkInstanceMetricsAll(&zedrouterCtx)
+			// Check for changes to DHCP leases
+			// XXX can we trigger it as part of boot? Or watch file?
+			// XXX add file watch...
+			checkAndPublishDhcpLeases(&zedrouterCtx)
 
 		case change := <-subNetworkInstanceConfig.C:
 			log.Infof("NetworkInstanceConfig change at %+v", time.Now())
@@ -1132,7 +1137,7 @@ func appNetworkDoActivateUnderlayNetwork(
 	log.Infof("bridgeIPAddr %s appIPAddr %s\n", bridgeIPAddr, appIPAddr)
 	ulStatus.BridgeIPAddr = bridgeIPAddr
 	// XXX appIPAddr is "" if bridge service
-	ulStatus.AssignedIPAddr = appIPAddr
+	ulStatus.AllocatedIPAddr = appIPAddr
 	hostsDirpath := runDirname + "/hosts." + bridgeName
 	if appIPAddr != "" {
 		addToHostsConfiglet(hostsDirpath, config.DisplayName,
@@ -1961,7 +1966,7 @@ func doAppNetworkModifyUnderlayNetwork(
 	ipsets []string) {
 
 	bridgeName := ulStatus.Bridge
-	appIPAddr := ulStatus.AssignedIPAddr
+	appIPAddr := ulStatus.AllocatedIPAddr
 
 	netconfig := lookupNetworkInstanceConfig(ctx, ulConfig.Network.String())
 	netstatus := lookupNetworkInstanceStatus(ctx, ulConfig.Network.String())
@@ -1972,7 +1977,7 @@ func doAppNetworkModifyUnderlayNetwork(
 
 	// We ignore any errors in netstatus
 
-	// XXX could there be a change to AssignedIPAddress?
+	// XXX could there be a change to AllocatedIPAddress?
 	// If so updateNetworkACLConfiglet needs to know old and new
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
 	ruleList, err := updateACLConfiglet(aclArgs,
@@ -2248,7 +2253,7 @@ func appNetworkDoInactivateUnderlayNetwork(
 		}
 	}
 
-	appIPAddr := ulStatus.AssignedIPAddr
+	appIPAddr := ulStatus.AllocatedIPAddr
 	if appIPAddr != "" {
 		removehostDnsmasq(bridgeName, ulStatus.Mac,
 			appIPAddr)

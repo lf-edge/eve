@@ -8,13 +8,18 @@ package zedrouter
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -38,6 +43,8 @@ stop-dns-rebind
 rebind-localhost-ok
 neg-ttl=10
 `
+
+const leasesFile = "/var/lib/misc/dnsmasq.leases"
 
 func dnsmasqConfigFile(bridgeName string) string {
 	cfgFilename := "dnsmasq." + bridgeName + ".conf"
@@ -368,4 +375,123 @@ func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 	if delConfiglet {
 		deleteDnsmasqConfiglet(bridgeName)
 	}
+}
+
+func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
+	leases := readLeases()
+	if cmp.Equal(ctx.dhcpLeases, leases) {
+		return
+	}
+	log.Infof("lease difference: %v", cmp.Diff(ctx.dhcpLeases, leases))
+	ctx.dhcpLeases = leases
+	// Walk all and update all
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		changed := false
+		status := cast.CastAppNetworkStatus(st)
+		for i := range status.UnderlayNetworkList {
+			ulStatus := &status.UnderlayNetworkList[i]
+			l := findLease(ctx.dhcpLeases, status.Key(), ulStatus.Mac)
+			assigned := (l != nil)
+			if ulStatus.Assigned != assigned {
+				log.Infof("Changing(%s) %s mac %s to %t",
+					status.Key(), status.DisplayName,
+					ulStatus.Mac, assigned)
+				ulStatus.Assigned = assigned
+				changed = true
+			}
+		}
+		for i := range status.OverlayNetworkList {
+			olStatus := &status.OverlayNetworkList[i]
+			l := findLease(ctx.dhcpLeases, status.Key(), olStatus.Mac)
+			assigned := (l != nil)
+			if olStatus.Assigned != assigned {
+				log.Infof("Changing(%s) %s mac %s to %t",
+					status.Key(), status.DisplayName,
+					olStatus.Mac, assigned)
+				olStatus.Assigned = assigned
+				changed = true
+			}
+		}
+		if changed {
+			publishAppNetworkStatus(ctx, &status)
+		}
+	}
+}
+
+// XXX should we check that lease isn't expired?
+func findLease(leases []dnsmasqLease, hostname string, mac string) *dnsmasqLease {
+
+	for _, l := range leases {
+		if l.Hostname != hostname {
+			continue
+		}
+		if l.MacAddr != mac {
+			continue
+		}
+		log.Infof("Found %v", l)
+		return &l
+	}
+	log.Infof("Not found %s/%s", hostname, mac)
+	return nil
+}
+
+type dnsmasqLease struct {
+	LeaseTime time.Time
+	MacAddr   string
+	IpAddr    string
+	Hostname  string
+}
+
+// return a struct with mac, IP, uuid
+//
+// Example content of leasesFile
+// 1560664900 00:16:3e:00:01:01 10.1.0.3 63120af3-42c4-4d84-9faf-de0582d496c2 *
+func readLeases() []dnsmasqLease {
+
+	var leases []dnsmasqLease
+	fileDesc, err := os.Open(leasesFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return leases
+		}
+		log.Error(err)
+		return leases
+	}
+	reader := bufio.NewReader(fileDesc)
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			log.Debugln(err)
+			if err != io.EOF {
+				log.Errorln("ReadString ", err)
+				return leases
+			}
+			break
+		}
+		// remove trailing "/n" from line
+		line = line[0 : len(line)-1]
+
+		// Should have 5 space-separated fields. We only use 4.
+		tokens := strings.Split(line, " ")
+		if len(tokens) < 4 {
+			log.Errorf("Less than 4 fields in leases file: %v",
+				tokens)
+			continue
+		}
+		i, err := strconv.ParseInt(tokens[0], 10, 64)
+		if err != nil {
+			log.Errorf("Bad unix time %s: %s", tokens[0], err)
+			i = 0
+		}
+		lease := dnsmasqLease{
+			LeaseTime: time.Unix(i, 0),
+			MacAddr:   tokens[1],
+			IpAddr:    tokens[2],
+			Hostname:  tokens[3],
+		}
+		leases = append(leases, lease)
+	}
+	return leases
 }
