@@ -525,7 +525,11 @@ func Run() {
 	for !DNSctx.DNSinitialized ||
 		!zedagentCtx.assignableAdapters.Initialized {
 
-		log.Infof("Waiting for DomainNetworkStatus %v and aa %v\n",
+		// XXX AA will not initialize if bad json file
+		// XXX in that case send fails with no management ports
+		// XXX and it times out due to not talking to zedcloud for 5 minutes
+		// XXX why?
+		log.Infof("Waiting for DeviceNetworkStatus %v and aa %v\n",
 			DNSctx.DNSinitialized,
 			zedagentCtx.assignableAdapters.Initialized)
 
