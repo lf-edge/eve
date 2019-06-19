@@ -440,7 +440,7 @@ func findLease(leases []dnsmasqLease, hostname string, mac string) *dnsmasqLease
 type dnsmasqLease struct {
 	LeaseTime time.Time
 	MacAddr   string
-	IpAddr    string
+	IPAddr    string
 	Hostname  string
 }
 
@@ -488,7 +488,7 @@ func readLeases() []dnsmasqLease {
 		lease := dnsmasqLease{
 			LeaseTime: time.Unix(i, 0),
 			MacAddr:   tokens[1],
-			IpAddr:    tokens[2],
+			IPAddr:    tokens[2],
 			Hostname:  tokens[3],
 		}
 		leases = append(leases, lease)
