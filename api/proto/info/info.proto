@@ -63,7 +63,8 @@ enum ZInfoTypes {
 }
 
 // XXX duplicate from devmodel.proto:
-enum PhyIoType {
+// Needs to have a separate name
+enum IPhyIoType {
         PhyIoNoop = 0;
         PhyIoNetEth = 1;
         PhyIoUSB = 2;
@@ -77,7 +78,7 @@ enum PhyIoType {
 
 // Information about assignable I/O adapter bundles
 message ZioBundle {
-  PhyIoType type = 1;
+  IPhyIoType type = 1;
   string name = 2;              // Short hand name such as "com"
   repeated string members = 3;  // E.g., "com1", "com2"
   string usedByAppUUID = 4;

@@ -58,6 +58,7 @@ func (ZRegisterResult) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_1303fe8288f4efb6, []int{0}
 }
 
+// This is the request payload for POST /api/v1/edgeDevice/register
 // ZRegisterMsg carries the pem-encoded device certificate plus additional
 // identifying information such as device serial number(s).
 // The message is assumed to be protected by a TLS session bound to the
