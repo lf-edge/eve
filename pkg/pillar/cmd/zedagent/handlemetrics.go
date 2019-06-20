@@ -1069,7 +1069,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	for i := range aa.IoBundleList {
 		ib := &aa.IoBundleList[i]
 		reportAA := new(info.ZioBundle)
-		reportAA.Type = info.PhyIoType(ib.Type)
+		reportAA.Type = info.IPhyIoType(ib.Type)
 		reportAA.Name = ib.Name
 		reportAA.Members = ib.Members
 		if ib.IsPort {
@@ -1514,7 +1514,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 
 		for _, ib := range ds.IoAdapterList {
 			reportAA := new(info.ZioBundle)
-			reportAA.Type = info.PhyIoType(ib.Type)
+			reportAA.Type = info.IPhyIoType(ib.Type)
 			reportAA.Name = ib.Name
 			reportAA.UsedByAppUUID = ds.Key()
 			b := types.LookupIoBundle(aa, ib.Type, ib.Name)
