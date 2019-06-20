@@ -22,6 +22,8 @@ type AssignableAdapters struct {
 	IoBundleList []IoBundle
 }
 
+// XXX Flip this around to not have members but instead have a group reference
+// and one IoBundle per member/receptacle
 type IoBundle struct {
 	// Type
 	//	Type of the IoBundle
@@ -32,9 +34,7 @@ type IoBundle struct {
 	Name string // Short hand name such as "com"
 	// Members
 	//	List of members ( names )
-	//  XXX - Should this be a map?? With list, we cannot detect duplicate members
-	//		In most cases, we probably do lookups on members - they become easy with
-	//		Maps too.
+	// XXX Have Members() become a function which returns all with matching group
 	Members []string // E.g., "com1", "com2"
 	// UsedByUUID
 	//	Application UUID ( Can be Dom0 too ) that owns the Bundle.
@@ -42,11 +42,18 @@ type IoBundle struct {
 	UsedByUUID uuid.UUID
 
 	// Local information not reported to cloud
-	Lookup   bool   // Look up name to find PCI
+	Lookup   bool   // Look up name to find PCI; XXX deprecate for Ifname
+	Ifname   string // E.g., "eth1"
 	PciLong  string // If adapter on some bus and not Eth
 	PciShort string // If pci adapter and not Eth
-	XenCfg   string // If template for the bundle
-	Unique   string // From firmware_node symlink; used for debug checks
+	// For non-PCI devices such as the ISA serial ports we have:
+	// XXX deprecate XenCfg; use irq and ioports instead
+	Irq     string // E.g., "5"
+	Ioports string // E.g., "2f8-2ff"
+	Serial  string // E.g., "/dev/ttyS1"
+	XenCfg  string // Fed verbatim into xen cfg file; XXX deprecate
+
+	Unique string // From firmware_node symlink; used for debug checks
 
 	// For each member we have these with the same indicies. Only used when
 	// Lookup is set.
@@ -98,6 +105,7 @@ func LookupIoBundle(aa *AssignableAdapters, ioType IoType, name string) *IoBundl
 	return nil
 }
 
+// XXX deprecate when Member is replaced by Group
 func (aa *AssignableAdapters) LookupIoBundleForMember(
 	ioType IoType, memberName string) *IoBundle {
 	for i, b := range aa.IoBundleList {
@@ -113,6 +121,7 @@ func (aa *AssignableAdapters) LookupIoBundleForMember(
 	return nil
 }
 
+// XXX deprecate
 func (aa *AssignableAdapters) getIoBundleOrBundleForMemberByName(
 	ioType IoType, adapter string) *IoBundle {
 	ib := LookupIoBundle(aa, ioType, adapter)
