@@ -5,6 +5,6 @@
     { "Type": 2, "Name": "USB-A", "Members": [ "USB0", "USB1", "USB2", "USB3", "USB4" ], "PciLong": "0000:01:00.0", "PciShort": "01:00.0"},
     { "Type": 3, "Name": "COM1", "Members": [ "COM1" ], "XenCfg": "irqs=[4]\nioports=['3f8-3ff']\n" },
     { "Type": 3, "Name": "COM2", "Members": [ "COM2" ], "XenCfg": "irqs=[3]\nioports=['2f8-2ff']\n" },
-    { "Type": 3, "Name": "COM34", "Members": [ "COM3", "COM4" ], "XenCfg": "irqs=[7]\nioports=['3e8-3ff','2e8-2ff']\n" },
+    { "Type": 3, "Name": "COM34", "Members": [ "COM3", "COM4" ], "XenCfg": "irqs=[7]\nioports=['3e8-3ef','2e8-2ef']\n" },
     { "Type": 255, "Name": "Audio", "Members": [ "AudioOut" ], "PciLong": "0000:00:1f.3", "PciShort":"00:1f.3" }
 ] }
