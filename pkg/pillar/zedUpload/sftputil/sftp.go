@@ -71,7 +71,8 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string, prgNotify Noti
 	stats := UpdateStats{}
 	client, err := getSftpClient(host, user, pass)
 	if err != nil {
-		stats.Error = err
+		stats.Error = fmt.Errorf("sftpclient failed for %s: %s",
+				host, err)
 		return stats
 	}
 	defer client.Close()
@@ -97,7 +98,8 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string, prgNotify Noti
 	case "fetch":
 		fr, err := client.Open(remoteFile)
 		if err != nil {
-			stats.Error = err
+			stats.Error = fmt.Errorf("open failed for %s: %s",
+				remoteFile, err)
 			return stats
 		}
 		fi, err := fr.Stat()
@@ -150,12 +152,14 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string, prgNotify Noti
 		index := strings.LastIndex(tempRemoteFile, "/")
 		err := client.MkdirAll(tempRemoteFile[:index+1])
 		if err != nil {
-			stats.Error = err
+			stats.Error = fmt.Errorf("mkdir failed for %s: %s",
+				tempRemoteFile[:index+1], err)
 			return stats
 		}
 		fr, err := client.Create(remoteFile)
 		if err != nil {
-			stats.Error = err
+			stats.Error = fmt.Errorf("create failed for %s: %s",
+				remoteFile, err)
 			return stats
 		}
 		defer fr.Close()
@@ -199,6 +203,8 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string, prgNotify Noti
 	case "stat":
 		file, err := client.Lstat(remoteFile)
 		if err != nil {
+			stats.Error = fmt.Errorf("lstat failed for %s: %s",
+				remoteFile, err)
 			stats.Error = err
 			return stats
 		}
@@ -206,7 +212,10 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string, prgNotify Noti
 		return stats
 	case "rm":
 		err := client.Remove(remoteFile)
-		stats.Error = err
+		if err != nil {
+			stats.Error = fmt.Errorf("remove failed for %s: %s",
+				remoteFile, err)
+		}
 		return stats
 	default:
 		stats.Error = fmt.Errorf("unknown subcommand: %v", cmd)
