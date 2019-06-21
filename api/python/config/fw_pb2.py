@@ -3,6 +3,7 @@
 
 import sys
 _b=sys.version_info[0]<3 and (lambda x:x) or (lambda x:x.encode('latin1'))
+from google.protobuf.internal import enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from google.protobuf import reflection as _reflection
@@ -19,9 +20,39 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x08\x66w.proto\"\'\n\x08\x41\x43\x45Match\x12\x0c\n\x04type\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"\x84\x01\n\tACEAction\x12\x0c\n\x04\x64rop\x18\x01 \x01(\x08\x12\r\n\x05limit\x18\x02 \x01(\x08\x12\x11\n\tlimitrate\x18\x03 \x01(\r\x12\x11\n\tlimitunit\x18\x04 \x01(\t\x12\x12\n\nlimitburst\x18\x05 \x01(\r\x12\x0f\n\x07portmap\x18\x06 \x01(\x08\x12\x0f\n\x07\x61ppPort\x18\x07 \x01(\r\">\n\x03\x41\x43\x45\x12\x1a\n\x07matches\x18\x01 \x03(\x0b\x32\t.ACEMatch\x12\x1b\n\x07\x61\x63tions\x18\x02 \x03(\x0b\x32\n.ACEActionBG\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x08\x66w.proto\"\'\n\x08\x41\x43\x45Match\x12\x0c\n\x04type\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"\x84\x01\n\tACEAction\x12\x0c\n\x04\x64rop\x18\x01 \x01(\x08\x12\r\n\x05limit\x18\x02 \x01(\x08\x12\x11\n\tlimitrate\x18\x03 \x01(\r\x12\x11\n\tlimitunit\x18\x04 \x01(\t\x12\x12\n\nlimitburst\x18\x05 \x01(\r\x12\x0f\n\x07portmap\x18\x06 \x01(\x08\x12\x0f\n\x07\x61ppPort\x18\x07 \x01(\r\"t\n\x03\x41\x43\x45\x12\x1a\n\x07matches\x18\x01 \x03(\x0b\x32\t.ACEMatch\x12\x1b\n\x07\x61\x63tions\x18\x02 \x03(\x0b\x32\n.ACEAction\x12\x0c\n\x04name\x18\x03 \x01(\t\x12\n\n\x02id\x18\x04 \x01(\t\x12\x1a\n\x03\x64ir\x18\x05 \x01(\x0e\x32\r.ACEDirection*1\n\x0c\x41\x43\x45\x44irection\x12\x08\n\x04\x42OTH\x10\x00\x12\x0b\n\x07INGRESS\x10\x01\x12\n\n\x06\x45GRESS\x10\x02\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
 )
 
+_ACEDIRECTION = _descriptor.EnumDescriptor(
+  name='ACEDirection',
+  full_name='ACEDirection',
+  filename=None,
+  file=DESCRIPTOR,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='BOTH', index=0, number=0,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='INGRESS', index=1, number=1,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='EGRESS', index=2, number=2,
+      serialized_options=None,
+      type=None),
+  ],
+  containing_type=None,
+  serialized_options=None,
+  serialized_start=306,
+  serialized_end=355,
+)
+_sym_db.RegisterEnumDescriptor(_ACEDIRECTION)
+
+ACEDirection = enum_type_wrapper.EnumTypeWrapper(_ACEDIRECTION)
+BOTH = 0
+INGRESS = 1
+EGRESS = 2
 
 
 
@@ -157,6 +188,27 @@ _ACE = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='name', full_name='ACE.name', index=2,
+      number=3, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='id', full_name='ACE.id', index=3,
+      number=4, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='dir', full_name='ACE.dir', index=4,
+      number=5, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -170,14 +222,16 @@ _ACE = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=188,
-  serialized_end=250,
+  serialized_end=304,
 )
 
 _ACE.fields_by_name['matches'].message_type = _ACEMATCH
 _ACE.fields_by_name['actions'].message_type = _ACEACTION
+_ACE.fields_by_name['dir'].enum_type = _ACEDIRECTION
 DESCRIPTOR.message_types_by_name['ACEMatch'] = _ACEMATCH
 DESCRIPTOR.message_types_by_name['ACEAction'] = _ACEACTION
 DESCRIPTOR.message_types_by_name['ACE'] = _ACE
+DESCRIPTOR.enum_types_by_name['ACEDirection'] = _ACEDIRECTION
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 ACEMatch = _reflection.GeneratedProtocolMessageType('ACEMatch', (_message.Message,), dict(
