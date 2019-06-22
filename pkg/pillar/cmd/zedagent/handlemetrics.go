@@ -1160,11 +1160,19 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	statusUrl := serverName + "/" + statusApi
 	zedcloud.RemoveDeferred(deviceUUID)
 	buf := bytes.NewBuffer(data)
+	if buf == nil {
+		log.Fatal("malloc error")
+	}
 	size := int64(proto.Size(ReportInfo))
 	err = SendProtobuf(statusUrl, buf, size, iteration)
 	if err != nil {
 		log.Errorf("PublishDeviceInfoToZedCloud failed: %s\n", err)
 		// Try sending later
+		// The buf might have been consumed
+		buf := bytes.NewBuffer(data)
+		if buf == nil {
+			log.Fatal("malloc error")
+		}
 		zedcloud.SetDeferred(deviceUUID, buf, size, statusUrl,
 			zedcloudCtx, true)
 	} else {
@@ -1577,11 +1585,19 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 
 	zedcloud.RemoveDeferred(uuid)
 	buf := bytes.NewBuffer(data)
+	if buf == nil {
+		log.Fatal("malloc error")
+	}
 	size := int64(proto.Size(ReportInfo))
 	err = SendProtobuf(statusUrl, buf, size, iteration)
 	if err != nil {
 		log.Errorf("PublishAppInfoToZedCloud failed: %s\n", err)
 		// Try sending later
+		// The buf might have been consumed
+		buf := bytes.NewBuffer(data)
+		if buf == nil {
+			log.Fatal("malloc error")
+		}
 		zedcloud.SetDeferred(uuid, buf, size, statusUrl, zedcloudCtx,
 			true)
 	} else {
