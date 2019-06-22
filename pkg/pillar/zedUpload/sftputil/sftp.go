@@ -72,7 +72,7 @@ func ExecCmd(cmd, host, user, pass, remoteFile, localFile string, prgNotify Noti
 	client, err := getSftpClient(host, user, pass)
 	if err != nil {
 		stats.Error = fmt.Errorf("sftpclient failed for %s: %s",
-				host, err)
+			host, err)
 		return stats
 	}
 	defer client.Close()
