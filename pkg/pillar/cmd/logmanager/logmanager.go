@@ -651,6 +651,11 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		// Try sending later. The deferred state means processEvents
 		// will sleep until the timer takes care of sending this
 		// hence we'll keep things in order for a given image
+		// The buf might have been consumed
+		buf := bytes.NewBuffer(data)
+		if buf == nil {
+			log.Fatal("sendProtoStrForLogs malloc error:")
+		}
 		zedcloud.AddDeferred(image, buf, size, logsUrl, zedcloudCtx,
 			return400)
 		reportLogs.Log = []*logs.LogEntry{}
