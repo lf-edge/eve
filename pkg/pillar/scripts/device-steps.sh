@@ -296,22 +296,17 @@ access_usb() {
             echo "$(date -Ins -u) mount $SPECIAL failed: $?"
             return
         fi
-        keyfile=/mnt/usb.json
-        if [ -f $keyfile ]; then
-            echo "$(date -Ins -u) Found $keyfile on $SPECIAL"
-            echo "$(date -Ins -u) Copying from $keyfile to $DPCDIR"
-            cp -p $keyfile $DPCDIR
-        else
-            echo "$(date -Ins -u) $keyfile not found on $SPECIAL"
-        fi
-        confdir=/mnt/config
-        if [ -d $confdir ]; then
-            echo "$(date -Ins -u) Found $confdir on $SPECIAL"
-            echo "$(date -Ins -u) Copying from $confdir to /config"
-            cp -p $confdir/* /config
-        else
-            echo "$(date -Ins -u) $confdir not found on $SPECIAL"
-        fi
+        for fd in "usb.json:$DPCDIR" hosts:/config server:/config ; do
+            file=/mnt/$(echo "$fd" | cut -f1 -d:)
+            dst=$(echo "$fd" | cut -f2 -d:)
+            if [ -f "$file" ]; then
+                echo "$(date -Ins -u) Found $file on $SPECIAL"
+                echo "$(date -Ins -u) Copying from $file to $dst"
+                cp -p "$file" "$dst"
+            else
+                echo "$(date -Ins -u) $file not found on $SPECIAL"
+            fi
+        done
         if [ -d /mnt/identity ] && [ -f $CONFIGDIR/device.cert.pem ]; then
             echo "$(date -Ins -u) Saving identity to USB stick"
             IDENTITYHASH=$(openssl sha256 $CONFIGDIR/device.cert.pem |awk '{print $2}')
