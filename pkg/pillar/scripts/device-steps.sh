@@ -289,7 +289,7 @@ mkdir -p $DPCDIR
 # information in a subdir there.
 access_usb() {
     # echo "$(date -Ins -u) XXX Looking for USB stick with DevicePortConfig"
-    SPECIAL=$(cgpt find -l DevicePortConfig)
+    SPECIAL=$(lsblk -l -o name,label,partlabel | awk '/DevicePortConfig|QEMU VVFAT/ {print "/dev/"$1;}')
     if [ -n "$SPECIAL" ] && [ -b "$SPECIAL" ]; then
         echo "$(date -Ins -u) Found USB with DevicePortConfig: $SPECIAL"
         if ! mount -t vfat "$SPECIAL" /mnt; then
@@ -303,6 +303,14 @@ access_usb() {
             cp -p $keyfile $DPCDIR
         else
             echo "$(date -Ins -u) $keyfile not found on $SPECIAL"
+        fi
+        confdir=/mnt/config
+        if [ -d $confdir ]; then
+            echo "$(date -Ins -u) Found $confdir on $SPECIAL"
+            echo "$(date -Ins -u) Copying from $confdir to /config"
+            cp -p $confdir/* /config
+        else
+            echo "$(date -Ins -u) $confdir not found on $SPECIAL"
         fi
         if [ -d /mnt/identity ] && [ -f $CONFIGDIR/device.cert.pem ]; then
             echo "$(date -Ins -u) Saving identity to USB stick"
@@ -336,6 +344,9 @@ access_usb() {
 
 # Read any usb.json with DevicePortConfig, and deposit our identity
 access_usb
+
+# Update our local /etc/hosts with entries comming from /config
+[ -f /config/hosts ] && cat /config/hosts >> /etc/hosts
 
 # Need to clear old usb files from /config/DevicePortConfig
 if [ -f $CONFIGDIR/DevicePortConfig/usb.json ]; then
