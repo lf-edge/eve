@@ -59,6 +59,7 @@ func getHref(token html.Token) (ok bool, href string) {
 	return
 }
 
+// ExecCmd performs various commands such as "ls", "get", etc.
 // Note that "host" needs to contain the URL in the case of a get
 func ExecCmd(cmd, host, remoteFile, localFile string, prgNotify NotifChan, client *http.Client) UpdateStats {
 	var imgList []string
