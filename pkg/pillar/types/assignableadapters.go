@@ -22,6 +22,7 @@ type AssignableAdapters struct {
 	IoBundleList []IoBundle
 }
 
+// IoBundle has one entry per bundle listing the members and their info.
 // XXX Flip this around to not have members but instead have a group reference
 // and one IoBundle per member/receptacle
 type IoBundle struct {
@@ -36,6 +37,11 @@ type IoBundle struct {
 	//	List of members ( names )
 	// XXX Have Members() become a function which returns all with matching group
 	Members []string // E.g., "com1", "com2"
+
+	// Assignment Group, is unique label that is applied across PhysicalIOs
+	// Entire group can be assigned to application or nothing at all
+	AssignmentGroup string
+
 	// UsedByUUID
 	//	Application UUID ( Can be Dom0 too ) that owns the Bundle.
 	//	For unassigned adapters, this is not set.
@@ -95,7 +101,7 @@ const (
 	IoOther   IoType = 255
 )
 
-// Returns nil if not found
+// LookupIoBundle returns nil if not found
 func LookupIoBundle(aa *AssignableAdapters, ioType IoType, name string) *IoBundle {
 	for i, b := range aa.IoBundleList {
 		if b.Type == ioType && strings.EqualFold(b.Name, name) {
@@ -105,6 +111,7 @@ func LookupIoBundle(aa *AssignableAdapters, ioType IoType, name string) *IoBundl
 	return nil
 }
 
+// LookupIoBundleForMember looks for a mach on any member name.
 // XXX deprecate when Member is replaced by Group
 func (aa *AssignableAdapters) LookupIoBundleForMember(
 	ioType IoType, memberName string) *IoBundle {
