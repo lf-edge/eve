@@ -44,6 +44,6 @@ message ACE {
   // for future work.
   repeated ACEAction actions = 2;
   string name = 3; // User visible name of the ACL
-  string id = 4;   // identifier
+  int32  id = 4;   // identifier
   ACEDirection dir = 5; // direction
 }
