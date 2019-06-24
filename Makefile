@@ -76,7 +76,8 @@ QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m 4096 -smp 4 -display none -s
         -rtc base=utc,clock=rt \
         -netdev user,id=eth0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::$(SSH_PORT)-:22 -device e1000,netdev=eth0 \
         -netdev user,id=eth1,net=192.168.2.0/24,dhcpstart=192.168.2.10 -device e1000,netdev=eth1
-QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH)) $(shell [ -d $(CONF_PART) ] && echo '-drive file=fat:rw:$(CONF_PART),format=raw')
+QEMU_OPTS_CONF_PART=$(shell [ -d $(CONF_PART) ] && echo '-drive file=fat:rw:$(CONF_PART),format=raw')
+QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART)
 
 GOOS=linux
 CGO_ENABLED=1
