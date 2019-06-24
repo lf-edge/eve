@@ -71,7 +71,7 @@ func TestGetOverlayConfig(t *testing.T) {
 	}
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
-		config := test.config.getOverlayConfig(overlayUUID)
+		config := test.config.getOverlayConfig(test.network)
 		assert.IsType(t, test.config.OverlayNetworkList[0], *config)
 	}
 }
@@ -87,7 +87,7 @@ func TestGetUnderlayConfig(t *testing.T) {
 	}
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
-		config := test.config.getUnderlayConfig(underlayUUID)
+		config := test.config.getUnderlayConfig(test.network)
 		assert.IsType(t, test.config.UnderlayNetworkList[0], *config)
 	}
 }
