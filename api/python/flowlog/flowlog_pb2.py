@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ%github.com/lf-edge/eve/api/go/flowlog'),
-  serialized_pb=_b('\n\rflowlog.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"X\n\x06IpFlow\x12\x0b\n\x03src\x18\x01 \x01(\t\x12\x0f\n\x07srcPort\x18\x02 \x01(\x05\x12\x0c\n\x04\x64\x65st\x18\x03 \x01(\t\x12\x10\n\x08\x64\x65stPort\x18\x04 \x01(\t\x12\x10\n\x08protocol\x18\x05 \x01(\x05\"O\n\tScopeInfo\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0c\n\x04intf\x18\x02 \x01(\t\x12\x11\n\tlocalIntf\x18\x03 \x01(\t\x12\x13\n\x0bnetInstUUID\x18\x04 \x01(\t\"\xe1\x01\n\nFlowRecord\x12\x15\n\x04\x66low\x18\x01 \x01(\x0b\x32\x07.IpFlow\x12\x0e\n\x06\x61\x63lNum\x18\x02 \x01(\x05\x12\x0e\n\x06\x61\x63tion\x18\x03 \x01(\t\x12-\n\tstartTime\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12+\n\x07\x65ndTime\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07txBytes\x18\x06 \x01(\x03\x12\x0e\n\x06txPkts\x18\x07 \x01(\x03\x12\x0f\n\x07rxBytes\x18\x08 \x01(\x03\x12\x0e\n\x06rxPkts\x18\t \x01(\x03\"n\n\nDnsRequest\x12\x10\n\x08hostName\x18\x01 \x01(\t\x12\r\n\x05\x61\x64\x64rs\x18\x02 \x03(\t\x12/\n\x0brequestTime\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06\x61\x63lNum\x18\x04 \x01(\x05\"q\n\x0b\x46lowMessage\x12\r\n\x05\x64\x65vId\x18\x01 \x01(\t\x12\x19\n\x05scope\x18\x02 \x01(\x0b\x32\n.ScopeInfo\x12\x1a\n\x05\x66lows\x18\x03 \x03(\x0b\x32\x0b.FlowRecord\x12\x1c\n\x07\x64nsReqs\x18\x04 \x03(\x0b\x32\x0b.DnsRequestBH\n\x1f\x63om.zededa.cloud.uservice.protoZ%github.com/lf-edge/eve/api/go/flowlogb\x06proto3')
+  serialized_pb=_b('\n\rflowlog.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"X\n\x06IpFlow\x12\x0b\n\x03src\x18\x01 \x01(\t\x12\x0f\n\x07srcPort\x18\x02 \x01(\x05\x12\x0c\n\x04\x64\x65st\x18\x03 \x01(\t\x12\x10\n\x08\x64\x65stPort\x18\x04 \x01(\x05\x12\x10\n\x08protocol\x18\x05 \x01(\x05\"O\n\tScopeInfo\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0c\n\x04intf\x18\x02 \x01(\t\x12\x11\n\tlocalIntf\x18\x03 \x01(\t\x12\x13\n\x0bnetInstUUID\x18\x04 \x01(\t\"\x82\x02\n\nFlowRecord\x12\x15\n\x04\x66low\x18\x01 \x01(\x0b\x32\x07.IpFlow\x12\x0f\n\x07inbound\x18\x02 \x01(\x08\x12\r\n\x05\x61\x63lId\x18\x03 \x01(\x05\x12\x0f\n\x07\x61\x63lName\x18\x04 \x01(\t\x12\x0e\n\x06\x61\x63tion\x18\x05 \x01(\t\x12-\n\tstartTime\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12+\n\x07\x65ndTime\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07txBytes\x18\x08 \x01(\x03\x12\x0e\n\x06txPkts\x18\t \x01(\x03\x12\x0f\n\x07rxBytes\x18\n \x01(\x03\x12\x0e\n\x06rxPkts\x18\x0b \x01(\x03\"n\n\nDnsRequest\x12\x10\n\x08hostName\x18\x01 \x01(\t\x12\r\n\x05\x61\x64\x64rs\x18\x02 \x03(\t\x12/\n\x0brequestTime\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0e\n\x06\x61\x63lNum\x18\x04 \x01(\x05\"q\n\x0b\x46lowMessage\x12\r\n\x05\x64\x65vId\x18\x01 \x01(\t\x12\x19\n\x05scope\x18\x02 \x01(\x0b\x32\n.ScopeInfo\x12\x1a\n\x05\x66lows\x18\x03 \x03(\x0b\x32\x0b.FlowRecord\x12\x1c\n\x07\x64nsReqs\x18\x04 \x03(\x0b\x32\x0b.DnsRequestBH\n\x1f\x63om.zededa.cloud.uservice.protoZ%github.com/lf-edge/eve/api/go/flowlogb\x06proto3')
   ,
   dependencies=[google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
 
@@ -57,8 +57,8 @@ _IPFLOW = _descriptor.Descriptor(
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='destPort', full_name='IpFlow.destPort', index=3,
-      number=4, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
+      number=4, type=5, cpp_type=1, label=1,
+      has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
@@ -153,57 +153,71 @@ _FLOWRECORD = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='aclNum', full_name='FlowRecord.aclNum', index=1,
-      number=2, type=5, cpp_type=1, label=1,
+      name='inbound', full_name='FlowRecord.inbound', index=1,
+      number=2, type=8, cpp_type=7, label=1,
+      has_default_value=False, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='aclId', full_name='FlowRecord.aclId', index=2,
+      number=3, type=5, cpp_type=1, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='action', full_name='FlowRecord.action', index=2,
-      number=3, type=9, cpp_type=9, label=1,
+      name='aclName', full_name='FlowRecord.aclName', index=3,
+      number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='startTime', full_name='FlowRecord.startTime', index=3,
-      number=4, type=11, cpp_type=10, label=1,
+      name='action', full_name='FlowRecord.action', index=4,
+      number=5, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='startTime', full_name='FlowRecord.startTime', index=5,
+      number=6, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='endTime', full_name='FlowRecord.endTime', index=4,
-      number=5, type=11, cpp_type=10, label=1,
+      name='endTime', full_name='FlowRecord.endTime', index=6,
+      number=7, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='txBytes', full_name='FlowRecord.txBytes', index=5,
-      number=6, type=3, cpp_type=2, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='txPkts', full_name='FlowRecord.txPkts', index=6,
-      number=7, type=3, cpp_type=2, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='rxBytes', full_name='FlowRecord.rxBytes', index=7,
+      name='txBytes', full_name='FlowRecord.txBytes', index=7,
       number=8, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='rxPkts', full_name='FlowRecord.rxPkts', index=8,
+      name='txPkts', full_name='FlowRecord.txPkts', index=8,
       number=9, type=3, cpp_type=2, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='rxBytes', full_name='FlowRecord.rxBytes', index=9,
+      number=10, type=3, cpp_type=2, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='rxPkts', full_name='FlowRecord.rxPkts', index=10,
+      number=11, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -221,7 +235,7 @@ _FLOWRECORD = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=222,
-  serialized_end=447,
+  serialized_end=480,
 )
 
 
@@ -272,8 +286,8 @@ _DNSREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=449,
-  serialized_end=559,
+  serialized_start=482,
+  serialized_end=592,
 )
 
 
@@ -324,8 +338,8 @@ _FLOWMESSAGE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=561,
-  serialized_end=674,
+  serialized_start=594,
+  serialized_end=707,
 )
 
 _FLOWRECORD.fields_by_name['flow'].message_type = _IPFLOW

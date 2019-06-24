@@ -12,7 +12,7 @@ message IpFlow {
   string src = 1;          // Source address
   int32  srcPort = 2;      // Source port
   string dest = 3;         // Destination address
-  string destPort = 4;     // Destination port
+  int32  destPort = 4;     // Destination port
   int32  protocol = 5;     // Protocol
 }
 
@@ -25,14 +25,16 @@ message ScopeInfo {
 
 message FlowRecord {
   IpFlow flow = 1;
-  int32 aclNum = 2;                         // Matching ACL
-  string action = 3;                        // ACL Action
-  google.protobuf.Timestamp startTime = 4;  // Always non-zero
-  google.protobuf.Timestamp endTime = 5;    // Zero() if flow has not ended
-  int64 txBytes = 6;
-  int64 txPkts = 7;
-  int64 rxBytes = 8;
-  int64 rxPkts = 9;
+  bool inbound = 2;                         // true if the connection originated from outside
+  int32 aclId = 3;                          // Matching ACL
+  string aclName = 4;                       // Name of the ACL
+  string action = 5;                        // ACL Action
+  google.protobuf.Timestamp startTime = 6;  // Always non-zero
+  google.protobuf.Timestamp endTime = 7;    // Zero() if flow has not ended
+  int64 txBytes = 8;
+  int64 txPkts = 9;
+  int64 rxBytes = 10;
+  int64 rxPkts = 11;
 }
 
 message DnsRequest {
