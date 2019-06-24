@@ -1468,7 +1468,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	// XXX Should one be able to disable the serial console? Would need
 	// knob in manifest
 
-	serialString := "pty"
+	serialString := "'pty'"
 	// Always prefer CDROM vdisk over disk
 	file.WriteString(fmt.Sprintf("boot = \"%s\"\n", "dc"))
 
@@ -1577,7 +1577,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 			if serialString != "" {
 				serialString += ","
 			}
-			serialString += ib.Serial
+			serialString += "'" + ib.Serial + "'"
 		}
 
 		// XXX deprecate; end up with duplicate lines if multiple
