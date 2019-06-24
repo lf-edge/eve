@@ -346,14 +346,20 @@ func populateInitialImageStatus(ctx *domainContext, dirName string) {
 			log.Debugf("populateInitialImageStatus: directory %s ignored\n", filelocation)
 			continue
 		}
-		info, _ := os.Stat(filelocation)
+		size := int64(0)
+		info, err := os.Stat(filelocation)
+		if err != nil {
+			log.Error(err)
+		} else {
+			size = info.Size()
+		}
 		log.Debugf("populateInitialImageStatus: Processing %d Mbytes %s \n",
-			info.Size()/(1024*1024), filelocation)
+			size/(1024*1024), filelocation)
 
 		status := types.ImageStatus{
 			Filename:     location.Name(),
 			FileLocation: filelocation,
-			Size:         uint64(info.Size()),
+			Size:         uint64(size),
 			RefCount:     0,
 			LastUse:      time.Now(),
 		}
