@@ -7,8 +7,8 @@ option go_package = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
 message ipRange {
-	string start = 1;
-	string end = 2;
+        string start = 1;
+        string end = 2;
 }
 
 enum proxyProto {
@@ -56,41 +56,40 @@ message ZnetStaticDNSEntry {
 }
 
 enum DHCPType {
-	DHCPNoop = 0;
-	// Statically configure the DHCP for port
-	Static = 1;
+        DHCPNoop = 0;
+        // Statically configure the DHCP for port
+        Static = 1;
 
-	// Don't run any DHCP, we are in passthrough mode for app
-	DHCPNone = 2;
+        // Don't run any DHCP, we are in passthrough mode for app
+        DHCPNone = 2;
 
-	// Deprecated Server no longer
-	deprecated_server = 3;
+        // deprecated = 3;
 
-	// Run the DHCP client on this port
-	Client = 4;
+        // Run the DHCP client on this port
+        Client = 4;
 }
 
 // Common for IPv4 and IPv6
 message ipspec {
-	DHCPType   dhcp = 2;
+        DHCPType   dhcp = 2;
 
-	// subnet is CIDR format...x.y.z.l/nn
-	string subnet = 3;
-	string gateway = 5;
-	string domain = 6;
-	string ntp = 7;
-	repeated string dns = 8;
+        // subnet is CIDR format...x.y.z.l/nn
+        string subnet = 3;
+        string gateway = 5;
+        string domain = 6;
+        string ntp = 7;
+        repeated string dns = 8;
 
-	// for IPAM management when dhcp is turned on.
-	// If none provided, system will default pool.
-	ipRange dhcpRange = 9;
+        // for IPAM management when dhcp is turned on.
+        // If none provided, system will default pool.
+        ipRange dhcpRange = 9;
 }
 
 enum NetworkType {
-	NETWORKTYPENOOP = 0;
-	V4 = 4;
-	V6 = 6;
-	CryptoV4 = 24;
-	CryptoV6 = 26;
-	CryptoEID = 14;
+        NETWORKTYPENOOP = 0;
+        V4 = 4;
+        V6 = 6;
+        CryptoV4 = 24;
+        CryptoV6 = 26;
+        CryptoEID = 14;
 }

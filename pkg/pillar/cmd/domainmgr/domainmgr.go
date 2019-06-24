@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/eriknordmark/netlink"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/adapters"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -2343,6 +2344,12 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 					ib.MPciLong[i], ib.MUnique[i])
 			}
 		}
+		if ib.Type == types.IoEth { // XXX all network types
+			ib.MMacAddr = make([]string, len(ib.Members))
+			for i, m := range ib.Members {
+				ib.MMacAddr[i] = getMacAddr(m)
+			}
+		}
 	}
 	// Save somewhat Unique string for debug
 	if ib.PciLong != "" {
@@ -2380,6 +2387,18 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		}
 	}
 	return nil
+}
+
+func getMacAddr(ifname string) string {
+	link, err := netlink.LinkByName(ifname)
+	if err != nil {
+		log.Errorf("Can't find ifname %s", ifname)
+		return ""
+	}
+	if link.Attrs().HardwareAddr == nil {
+		return ""
+	}
+	return link.Attrs().HardwareAddr.String()
 }
 
 func removeAll(ib *types.IoBundle) {
@@ -2621,6 +2640,7 @@ func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.
 		e.MPciLong = configIb.MPciLong
 		e.MPciShort = configIb.MPciShort
 		e.MUnique = configIb.MUnique
+		e.MMacAddr = configIb.MMacAddr
 	}
 	checkIoBundleAll(ctx)
 }

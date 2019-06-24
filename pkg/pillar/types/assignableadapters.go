@@ -54,6 +54,7 @@ type IoBundle struct {
 	MPciLong  []string // If adapter on some bus
 	MPciShort []string // If pci adapter
 	MUnique   []string // From firmware_node symlink; used for debug checks
+	MMacAddr  []string // Set for networking adapters
 
 	// IsPciBack
 	//	Is the IoBundle assigned to pciBack; means all members are assigned
@@ -70,15 +71,21 @@ type IoBundle struct {
 
 }
 
-// Should match definition in appconfig.proto
+// Must match definition of PhyIoType in devmodel.proto which is an strict
+// subset of the values in ZCioType in devmodel.proto
 type IoType uint8
 
 const (
-	IoNop   IoType = 0
-	IoEth   IoType = 1
-	IoUSB   IoType = 2
-	IoCom   IoType = 3
-	IoOther IoType = 255
+	IoNop     IoType = 0
+	IoNetEth  IoType = 1
+	IoEth     IoType = 1
+	IoUSB     IoType = 2
+	IoCom     IoType = 3
+	IoAudio   IoType = 4
+	IoNetWLAN IoType = 5
+	IoNetWWAN IoType = 6
+	IoHDMI    IoType = 7
+	IoOther   IoType = 255
 )
 
 // Returns nil if not found

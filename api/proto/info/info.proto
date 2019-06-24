@@ -4,6 +4,8 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
+// XXX import "github.com/lf-edge/eve/api/config/devmodel.proto";
+
 option go_package  = "github.com/lf-edge/eve/api/go/info";
 
 option java_package = "com.zededa.cloud.uservice.proto";
@@ -53,32 +55,40 @@ message ZmetVifInfo {
 enum ZInfoTypes {
   ZiNop = 0;
   ZiDevice = 1;
-  // ZiHypervisor = 2;	// Deprecated
+  // deprecated = 2;
   ZiApp = 3;
-  ZiService = 4;	// XXX to be deprecated
-  ZiNetworkObject = 5;	// XXX to be deprecated
+  // deprecated = 4;
+  // deprecated = 5;
   ZiNetworkInstance = 6;
 }
 
-// XXX duplicate of definition in appconfig.proto
-// Types of I/O adapters that can be assigned to applications
-enum ZioType {
-  ZioNop = 0;
-  ZioEth = 1;           // Includes WiFi?
-  ZioUSB = 2;
-  ZioCOM = 3;           // Com ports
-  ZioOther = 255;
+// XXX duplicate from devmodel.proto:
+// Needs to have a separate name
+enum IPhyIoType {
+        PhyIoNoop = 0;
+        PhyIoNetEth = 1;
+        PhyIoUSB = 2;
+        PhyIoCOM = 3;
+        PhyIoAudio = 4;
+        PhyIoNetWLAN = 5;
+        PhyIoNetWWAN = 6;
+        PhyIoHDMI = 7;
+        PhyIoOther = 255;
 }
 
 // Information about assignable I/O adapter bundles
 message ZioBundle {
-  ZioType type = 1;
+  IPhyIoType type = 1;
   string name = 2;              // Short hand name such as "com"
   repeated string members = 3;  // E.g., "com1", "com2"
   string usedByAppUUID = 4;
   bool usedByBaseOS = 5;
+  repeated IoAddresses ioAddressList = 6; // One per member
 }
 
+message IoAddresses {
+  string macAddress = 1;
+}
 
 // Manufacturing info, product name, model, version etc.
 // From dmidecode/BIOS on Intel
@@ -95,8 +105,8 @@ message ZInfoManufacturer {
 }
 
 message ZInfoNetwork {
-  // string IPAddr = 1; // Deprecated. Returning first address for now
-  // string gwAddr = 2; // Deprecated; routing is richer than a single gateway
+  // deprecated = 1;
+  // deprecated = 2;
   string macAddr = 3;
   string devName = 4; // From name in config
   repeated string IPAddrs = 5; // All IP addresses with /N for subnet
@@ -133,13 +143,6 @@ message ZInfoDNS {
   repeated string DNSsearch = 3;
 }
 
-// Deprecate since we can't determine it on the device
-enum ZPeripheralTypes {
-  ZpNone = 0;
-  ZpStorage = 1;
-  ZpNetwork = 2;
-}
-
 // Enum names from OMA-TS-LWM2M_SwMgmt-V1_0-20151201-C
 enum ZSwState {
   INVALID		= 0;
@@ -154,13 +157,6 @@ enum ZSwState {
   HALTED                = 9;    // Halted
   RESTARTING            = 10;   // Restarting due to config change
   PURGING               = 11;   // Purging due to config change
-}
-
-// Deprecate since we can't determine it on the device
-message ZinfoPeripheral {
-  ZPeripheralTypes ztype = 1;
-  bool pluggable = 2;
-  ZInfoManufacturer minfo = 3;
 }
 
 //SW Info for Apps
@@ -324,8 +320,8 @@ message ZInfoApp {
   bool systemApp = 6;
   string AppName = 7;
   repeated ZInfoSW softwareList = 8;
-  // bool activated = 9;                       // deprecated
-  // google.protobuf.Timestamp errorTime = 11; //deprecated, use ErrorInfo
+  // deprecated = 9;
+  // deprecated = 11;
 
   google.protobuf.Timestamp bootTime = 12;
   repeated ZioBundle assignedAdapters = 13;
@@ -422,54 +418,6 @@ message ZInfoLisp {
 	repeated DecapKey DecapKeys = 5;
 }
 
-// Service instance state information XXX to be deprecated
-message ZInfoService {
-  string serviceID = 1;
-  string serviceName = 2;
-  uint32 serviceType = 3;
-  ZInfoSW softwareList = 4;
-  bool activated = 5;
-  google.protobuf.Timestamp upTimeStamp = 6;
-  repeated ZioBundle assignedAdapters = 7;
-  repeated ErrorInfo svcErr = 8;
-  repeated ZInfoNetwork network = 9;
-  oneof InfoContent {
-    ZInfoVpn vinfo = 20;
-    ZInfoLisp linfo = 21;
-  }
-}
-
-// Network Object information XXX to be deprecated
-message ZInfoNetworkObject {
-  string networkID = 1;		// UUID
-
-  // From NetworkObjectConfig; do we need to include all of these?
-  uint32 networkType = 2;
-  uint32 dhcpType = 3;
-  string subnet = 4;
-  string gateway = 5;
-  string domainname = 6;
-  string ntpServer = 7;
-  repeated string dnsServers = 8;
-  string dhcpRangeLow = 9;
-  string dhcpRangeHigh = 10;
-  // XXX DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
-
-  // From NetworkObjectStatus
-  uint32 bridgeNum = 12;
-  string bridgeName = 13;
-  string bridgeIPAddr = 14;
-
-  repeated ZmetIPAssignmentEntry ipAssignments = 15;
-  repeated string bridgeIPSets = 16; // Union of all ipsets for the bridge
-  repeated string vifNames = 17; // XXX to be deprecated
-  bool ipv4Eid = 18; // Track if this is a CryptoEid with IPv4 EIDs
-
-  repeated ErrorInfo networkErr = 19;
-
-  repeated ZmetVifInfo vifs = 25; // Set of vifs on this bridge
-}
-
 // Network Instance information
 message ZInfoNetworkInstance {
   string networkID = 2;		// UUID
@@ -499,15 +447,23 @@ message ZInfoNetworkInstance {
 }
 
 
+// This is the request payload for POST /api/v1/edgeDevice/info
+// ZInfoMsg carries event-triggered state changes for one object (a device,
+// an app instance, or a network instance). As such the messages are retransmitted
+// until they make it to the controller, however subsequent state change to the
+// object will replace any attempts to (re)transmit the previous message for
+// that object.
+// The message is assumed to be protected by a TLS session bound to the
+// device certificate.
 message ZInfoMsg {
   ZInfoTypes ztype = 1;
   string devId = 2;
   oneof InfoContent {
-  	ZInfoDevice dinfo = 3;
-  	ZInfoApp ainfo = 5;
-	ZInfoService sinfo = 10;	// XXX To be deprecated
-	ZInfoNetworkObject ninfo = 11;	// XXX To be deprecated
-	ZInfoNetworkInstance niinfo = 12;
-   }
+        ZInfoDevice dinfo = 3;
+        ZInfoApp ainfo = 5;
+        // deprecated = 10;
+        // deprecated = 11;
+        ZInfoNetworkInstance niinfo = 12;
+  }
   google.protobuf.Timestamp atTimeStamp = 6;
 }
