@@ -5,6 +5,7 @@ package types
 
 import (
 	"github.com/stretchr/testify/assert"
+	"github.com/satori/go.uuid"
 	"testing"
 )
 
