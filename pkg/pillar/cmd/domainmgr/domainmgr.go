@@ -942,7 +942,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 		if ib.Type != types.IoUSB {
 			continue
 		}
-		if ib.Lookup {
+		if ib.Lookup { // XXX guard against using MPciShort
 			log.Fatalf("doAssignIoAdaptersToDomain lookup for USB: %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
@@ -1236,7 +1236,7 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 		if ib.Type != types.IoUSB {
 			continue
 		}
-		if ib.Lookup {
+		if ib.Lookup { // XXX guard against using MPciShort
 			log.Fatalf("doInactivate lookup for USB: %d %s for %s\n",
 				adapter.Type, adapter.Name, status.DomainName)
 		}
@@ -1458,26 +1458,6 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	if dtString != "" {
 		file.WriteString(fmt.Sprintf("dtdev = [%s]\n", dtString))
 	}
-	irqString := ""
-	for _, irq := range config.IRQs {
-		if irqString != "" {
-			irqString += ","
-		}
-		irqString += fmt.Sprintf("%d", irq)
-	}
-	if irqString != "" {
-		file.WriteString(fmt.Sprintf("irqs = [%s]\n", irqString))
-	}
-	imString := ""
-	for _, im := range config.IOMem {
-		if imString != "" {
-			imString += ","
-		}
-		imString += fmt.Sprintf("\"%s\"", im)
-	}
-	if imString != "" {
-		file.WriteString(fmt.Sprintf("iomem = [%s]\n", imString))
-	}
 	// Note that qcow2 images might have partitions hence xvda1 by default
 	if rootDev != "" {
 		file.WriteString(fmt.Sprintf("root = \"%s\"\n", rootDev))
@@ -1485,7 +1465,10 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	if extra != "" {
 		file.WriteString(fmt.Sprintf("extra = \"%s\"\n", extra))
 	}
-	file.WriteString(fmt.Sprintf("serial = \"%s\"\n", "pty"))
+	// XXX Should one be able to disable the serial console? Would need
+	// knob in manifest
+
+	serialString := "'pty'"
 	// Always prefer CDROM vdisk over disk
 	file.WriteString(fmt.Sprintf("boot = \"%s\"\n", "dc"))
 
@@ -1518,12 +1501,35 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	}
 	file.WriteString(fmt.Sprintf("vif = [%s]\n", vifString))
 
+	imString := ""
+	for _, im := range config.IOMem {
+		if imString != "" {
+			imString += ","
+		}
+		imString += fmt.Sprintf("\"%s\"", im)
+	}
+	if imString != "" {
+		file.WriteString(fmt.Sprintf("iomem = [%s]\n", imString))
+	}
+
 	// Gather all PCI assignments into a single line
+	// Also irqs, ioports, and serials
+	// irqs and ioports are used if we are pv; serials if hvm
+	// XXX Need to suppress duplicates when we flip
 	type typeAndPCI struct {
 		pciShort string
 		ioType   types.IoType
 	}
 	var pciAssignments []typeAndPCI
+
+	ioportString := ""
+	irqString := ""
+	for _, irq := range config.IRQs {
+		if irqString != "" {
+			irqString += ","
+		}
+		irqString += fmt.Sprintf("%d", irq)
+	}
 
 	for _, adapter := range config.IoAdapterList {
 		log.Debugf("configToXenCfg processing adapter %d %s\n",
@@ -1551,7 +1557,32 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 		} else if ib.PciShort != "" {
 			tap := typeAndPCI{pciShort: ib.PciShort, ioType: ib.Type}
 			pciAssignments = append(pciAssignments, tap)
-		} else {
+		}
+		if ib.Irq != "" && config.VirtualizationMode == types.PV {
+			log.Infof("Adding irq <%s>\n", ib.Irq)
+			if irqString != "" {
+				irqString += ","
+			}
+			irqString += ib.Irq
+		}
+		if ib.Ioports != "" && config.VirtualizationMode == types.PV {
+			log.Infof("Adding ioport <%s>\n", ib.Ioports)
+			if ioportString != "" {
+				ioportString += ","
+			}
+			ioportString += ib.Ioports
+		}
+		if ib.Serial != "" && config.VirtualizationMode == types.HVM {
+			log.Infof("Adding serial <%s>\n", ib.Serial)
+			if serialString != "" {
+				serialString += ","
+			}
+			serialString += "'" + ib.Serial + "'"
+		}
+
+		// XXX deprecate; end up with duplicate lines if multiple
+		// adapters use it
+		if ib.XenCfg != "" {
 			log.Infof("Adding io adapter config <%s>\n", ib.XenCfg)
 			file.WriteString(fmt.Sprintf("%s\n", ib.XenCfg))
 		}
@@ -1575,6 +1606,15 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 		cfg = cfg + "]"
 		log.Debugf("Adding pci config <%s>\n", cfg)
 		file.WriteString(fmt.Sprintf("%s\n", cfg))
+	}
+	if irqString != "" {
+		file.WriteString(fmt.Sprintf("irqs = [%s]\n", irqString))
+	}
+	if ioportString != "" {
+		file.WriteString(fmt.Sprintf("ioports = [%s]\n", ioportString))
+	}
+	if serialString != "" {
+		file.WriteString(fmt.Sprintf("serial = [%s]\n", serialString))
 	}
 	return nil
 }
@@ -2244,6 +2284,10 @@ func handleAAModify(ctxArg interface{}, config types.AssignableAdapters,
 			statusIb.Lookup != configIb.Lookup ||
 			statusIb.PciLong != configIb.PciLong ||
 			statusIb.PciShort != configIb.PciShort ||
+			statusIb.Ifname != configIb.Ifname ||
+			statusIb.Irq != configIb.Irq ||
+			statusIb.Ioports != configIb.Ioports ||
+			statusIb.Serial != configIb.Serial ||
 			statusIb.XenCfg != configIb.XenCfg {
 
 			handleIBModify(ctx, *statusIb, configIb, status)
@@ -2323,6 +2367,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		ctx.publishAssignableAdapters()
 	}
 
+	// XXX verify the different aliases exist
 	// For a new PCI device we check if it exists in hardware/kernel
 	if ib.Lookup && ib.MPciShort == nil {
 		longs, shorts, err := types.IoBundleToPci(ib)
@@ -2639,8 +2684,12 @@ func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.
 		e.IsPort = configIb.IsPort
 		e.IsPCIBack = configIb.IsPCIBack
 		e.Lookup = configIb.Lookup
+		e.Ifname = configIb.Ifname
 		e.PciLong = configIb.PciLong
 		e.PciShort = configIb.PciShort
+		e.Irq = configIb.Irq
+		e.Ioports = configIb.Ioports
+		e.Serial = configIb.Serial
 		e.XenCfg = configIb.XenCfg
 		e.Unique = configIb.Unique
 		e.MPciLong = configIb.MPciLong
