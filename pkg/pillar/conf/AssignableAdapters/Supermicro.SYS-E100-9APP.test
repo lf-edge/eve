@@ -1,6 +1,0 @@
-{ "IoBundleList": [
-    { "Type": 1, "Name": "eth0", "Members": [ "eth0" ], "Lookup": true },
-    { "Type": 1, "Name": "eth1", "Members": [ "eth1" ], "Lookup": true },
-    { "Type": 2, "Name": "USB-C", "Members": [ "USB6" ], "PciLong": "0000:05:00.0", "Pcishort":"05:00.0" },
-    { "Type": 2, "Name": "USB-A", "Members": [ "USB0", "USB1", "USB2", "USB3", "USB4", "USB5" ], "PciLong": "0000:00:15.0", "PciShort": "00:15.0"}
-] }

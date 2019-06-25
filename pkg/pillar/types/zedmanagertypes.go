@@ -70,9 +70,10 @@ type AppInstanceOpsCmd struct {
 	ApplyTime string // XXX not currently used
 }
 
+// IoAdapter specifies that a group of ports should be assigned
 type IoAdapter struct {
 	Type IoType
-	Name string // Short hand name such as "com"
+	Name string // Short hand name such as "COM1" or "eth1-2"
 }
 
 func (config AppInstanceConfig) Key() string {

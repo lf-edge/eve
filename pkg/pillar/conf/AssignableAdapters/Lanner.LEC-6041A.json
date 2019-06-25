@@ -1,11 +1,12 @@
 { "IoBundleList": [
-    { "Type": 1, "Name": "eth0", "Members": [ "eth0" ], "Lookup": true },
-    { "Type": 1, "Name": "eth1", "Members": [ "eth1" ], "Lookup": true },
-    { "Type": 1, "Name": "eth2", "Members": [ "eth2" ], "Lookup": true },
-    { "Type": 1, "Name": "eth3", "Members": [ "eth3" ], "Lookup": true },
-    { "Type": 1, "Name": "eth4", "Members": [ "eth4" ], "Lookup": true },
-    { "Type": 1, "Name": "eth5", "Members": [ "eth5" ], "Lookup": true },
-    { "Type": 2, "Name": "USB-A", "Members": [ "USB0", "USB1" ], "PciLong": "0000:00:15.0", "PciShort": "00:15.0"},
-    { "Type": 3, "Name": "COM1", "Members": [ "COM1" ], "XenCfg": "irqs=[4]\nioports=['3f8-3ff']\n" },
-    { "Type": 3, "Name": "COM2", "Members": [ "COM2" ], "XenCfg": "irqs=[3]\nioports=['2f8-2ff']\n" }
+    { "Type": 1, "Name": "eth0", "AssignmentGroup": "eth0", "Ifname": "eth0" },
+    { "Type": 1, "Name": "eth1", "AssignmentGroup": "eth1", "Ifname": "eth1" },
+    { "Type": 1, "Name": "eth2", "AssignmentGroup": "eth2", "Ifname": "eth2" },
+    { "Type": 1, "Name": "eth3", "AssignmentGroup": "eth3", "Ifname": "eth3" },
+    { "Type": 1, "Name": "eth4", "AssignmentGroup": "eth4", "Ifname": "eth4" },
+    { "Type": 1, "Name": "eth5", "AssignmentGroup": "eth5", "Ifname": "eth5" },
+    { "Type": 2, "Name": "USB0", "AssignmentGroup": "USB-A", "PciLong": "0000:00:15.0"},
+    { "Type": 2, "Name": "USB1", "AssignmentGroup": "USB-A", "PciLong": "0000:00:15.0"},
+    { "Type": 3, "Name": "COM1", "AssignmentGroup": "COM1", "Irq": "4", "Ioports": "3f8-3ff", "Serial": "/dev/ttyS0"},
+    { "Type": 3, "Name": "COM2", "AssignmentGroup": "COM2", "Irq": "3", "Ioports": "2f8-2ff", "Serial": "/dev/ttyS1"}
 ] }
