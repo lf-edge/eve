@@ -756,8 +756,7 @@ func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
 	log.Infof("IsAnyPortInPciBack: aa init %t, %d bundles, %d ports",
 		aa.Initialized, len(aa.IoBundleList), len(portConfig.Ports))
 	for _, port := range portConfig.Ports {
-		ioBundle := aa.LookupIoBundleForMember(
-			IoEth, port.IfName)
+		ioBundle := aa.LookupIoBundleNet(port.IfName)
 		if ioBundle == nil {
 			// It is not guaranteed that all Ports are part of Assignable Adapters
 			// If not found, the adaptor is not capable of being assigned at
