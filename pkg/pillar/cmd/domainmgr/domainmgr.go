@@ -1352,7 +1352,7 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 		list := ctx.assignableAdapters.LookupIoBundleGroup(
 			adapter.Type, adapter.Name)
 		if len(list) == 0 {
-			return fmt.Errorf("Unknown adapter %d %s\n",
+			return fmt.Errorf("unknown adapter %d %s",
 				adapter.Type, adapter.Name)
 		}
 		for _, ibp := range list {
@@ -1360,12 +1360,12 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 				continue
 			}
 			if ibp.UsedByUUID != nilUUID {
-				return errors.New(fmt.Sprintf("Adapter %d %s used by %s\n",
-					adapter.Type, adapter.Name, ibp.UsedByUUID))
+				return fmt.Errorf("adapter %d %s used by %s",
+					adapter.Type, adapter.Name, ibp.UsedByUUID)
 			}
 			if isPort(ctx, ibp.Name) {
-				return errors.New(fmt.Sprintf("Adapter %d %s member %s is (part of) a zedrouter port\n",
-					adapter.Type, adapter.Name, ibp.Name))
+				return fmt.Errorf("adapter %d %s member %s is (part of) a zedrouter port",
+					adapter.Type, adapter.Name, ibp.Name)
 			}
 
 			log.Debugf("configAdapters setting uuid %s for adapter %d %s member %s",
