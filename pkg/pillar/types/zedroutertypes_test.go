@@ -15,10 +15,10 @@ var overlayUUID = uuid.UUID{0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1,
 	0x80, 0xb4, 0xd4, 0xd4, 0xd4, 0xd4, 0x30, 0xc8}
 var appNetworkConfig = AppNetworkConfig{
 	OverlayNetworkList: []OverlayNetworkConfig{
-		OverlayNetworkConfig{Network: overlayUUID},
+		{Network: overlayUUID},
 	},
 	UnderlayNetworkList: []UnderlayNetworkConfig{
-		UnderlayNetworkConfig{Network: underlayUUID},
+		{Network: underlayUUID},
 	},
 }
 
