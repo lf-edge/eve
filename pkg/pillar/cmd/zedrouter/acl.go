@@ -921,10 +921,12 @@ func matchACLForPortMap(ACLs []types.ACE) bool {
 					// check for protocol/TargetPort
 					if action.TargetPort == action1.TargetPort &&
 						checkForMatchCondition(ace, ace1, matchTypes) {
+						log.Errorf("match found for %d %d: ace %v ace1 %v", idx, idx1, ace, ace1)
 						return true
 					}
 					// check for protocol/lport
 					if checkForMatchCondition(ace, ace1, matchTypes1) {
+						log.Errorf("match found for %d %d: ace %v ace1 %v", idx, idx1, ace, ace1)
 						return true
 					}
 				}
@@ -954,6 +956,7 @@ func matchACLsForPortMap(ACLs []types.ACE, ACLs1 []types.ACE) bool {
 					}
 					// match for protocol/lport
 					if checkForMatchCondition(ace, ace1, matchTypes) {
+						log.Errorf("match found for ace %v ace1 %v", ace, ace1)
 						return true
 					}
 				}
@@ -984,6 +987,8 @@ func checkForMatchCondition(ace types.ACE, ace1 types.ACE, matchTypes []string) 
 		value1 := valueList1[idx]
 		if value == "" || value1 == "" ||
 			value != value1 {
+			log.Infof("difference for %d: value %s value1 %s",
+				idx, value, value1)
 			return false
 		}
 	}
