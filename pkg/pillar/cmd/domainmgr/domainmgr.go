@@ -1492,7 +1492,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	// knob in manifest
 
 	var serialAssignments []string
-	serialAssignments = append(serialAssignments, "'pty'")
+	serialAssignments = append(serialAssignments, "pty")
 
 	// Always prefer CDROM vdisk over disk
 	file.WriteString(fmt.Sprintf("boot = \"%s\"\n", "dc"))
