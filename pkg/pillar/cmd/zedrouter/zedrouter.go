@@ -2682,11 +2682,15 @@ func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetwo
 	for _, cfg := range items {
 		appNetConfig1 := cast.CastAppNetworkConfig(cfg)
 		ulCfgList1 := appNetConfig1.UnderlayNetworkList
+		// XXX can an delete+add of app instance with same
+		// portmap result in a failure?
 		if appNetConfig.DisplayName == appNetConfig1.DisplayName ||
 			len(ulCfgList1) == 0 {
 			continue
 		}
 		if checkUnderlayNetworkForPortMapOverlap(ctx, appNetStatus, ulCfgList0, ulCfgList1) {
+			log.Errorf("app %s and %s have duplicate portmaps",
+				appNetConfig.DisplayName, appNetConfig1.DisplayName)
 			return false
 		}
 	}

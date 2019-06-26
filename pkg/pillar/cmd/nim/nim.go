@@ -812,7 +812,7 @@ func isAssigned(ctx *nimContext, ifname string) bool {
 
 	log.Infof("isAssigned(%s) have %d bundles\n",
 		ifname, len(ctx.AssignableAdapters.IoBundleList))
-	ib := ctx.AssignableAdapters.LookupIoBundleForMember(types.IoEth, ifname)
+	ib := ctx.AssignableAdapters.LookupIoBundleNet(ifname)
 	if ib == nil {
 		return false
 	}
