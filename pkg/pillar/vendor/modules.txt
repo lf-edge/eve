@@ -105,6 +105,8 @@ github.com/grpc-ecosystem/grpc-gateway/utilities
 github.com/grpc-ecosystem/grpc-gateway/internal
 # github.com/hashicorp/golang-lru v0.5.1
 github.com/hashicorp/golang-lru/simplelru
+# github.com/jackwakefield/gopac v1.0.2
+github.com/jackwakefield/gopac
 # github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
 github.com/jmespath/go-jmespath
 # github.com/konsorten/go-windows-terminal-sequences v1.0.2
@@ -128,6 +130,14 @@ github.com/rackn/gohai/plugins/dmi
 github.com/rackn/gohai/plugins/net
 github.com/rackn/gohai/plugins/storage
 github.com/rackn/gohai/plugins/system
+# github.com/robertkrimen/otto v0.0.0-20180617131154-15f95af6e78d
+github.com/robertkrimen/otto
+github.com/robertkrimen/otto/ast
+github.com/robertkrimen/otto/dbg
+github.com/robertkrimen/otto/file
+github.com/robertkrimen/otto/parser
+github.com/robertkrimen/otto/registry
+github.com/robertkrimen/otto/token
 # github.com/satori/go.uuid v0.0.0-20181028125025-b2ce2384e17b
 github.com/satori/go.uuid
 # github.com/satori/uuid v1.2.0
@@ -239,3 +249,6 @@ google.golang.org/grpc/credentials/internal
 google.golang.org/grpc/balancer/base
 google.golang.org/grpc/binarylog/grpc_binarylog_v1
 google.golang.org/grpc/internal/syscall
+# gopkg.in/sourcemap.v1 v1.0.5
+gopkg.in/sourcemap.v1
+gopkg.in/sourcemap.v1/base64vlq
