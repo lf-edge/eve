@@ -897,6 +897,18 @@ func compareACE(ACE0 types.ACE, ACE1 types.ACE) bool {
 	return true
 }
 
+// whether the list contains a portmap rule
+func containsPortMapACE(ACLs []types.ACE) bool {
+	for _, ace := range ACLs {
+		for _, action := range ace.Actions {
+			if action.PortMap {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // check for duplicate portmap rules in same set of ACLs
 // for this, we will match either the protocol/target port or
 // the ingress protocol/lport being same
