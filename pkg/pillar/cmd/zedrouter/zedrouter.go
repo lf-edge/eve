@@ -2687,14 +2687,14 @@ func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetwo
 	if len(ulCfgList0) == 0 {
 		return true
 	}
-    if containsACLPortMapRule(ctx, ulCfgList0) {
-        log.Errorf("app (%s) on network with no uplink and has portmap rule\n",
-            appNetConfig.DisplayName)
-        errStr := fmt.Sprintf("network with no uplink, has portmap")
-        err := errors.New(errStr)
-        addError(ctx, appNetStatus, "underlayACL", err)
-        return false
-    }
+	if containsACLPortMapRule(ctx, ulCfgList0) {
+		log.Errorf("app (%s) on network with no uplink and has portmap rule\n",
+			appNetConfig.DisplayName)
+		errStr := fmt.Sprintf("network with no uplink, has portmap")
+		err := errors.New(errStr)
+		addError(ctx, appNetStatus, "underlayACL", err)
+		return false
+	}
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
 	for _, st := range items {
