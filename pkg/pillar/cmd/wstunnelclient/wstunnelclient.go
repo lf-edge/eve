@@ -42,7 +42,7 @@ type DNSContext struct {
 type wstunnelclientContext struct {
 	subGlobalConfig      *pubsub.Subscription
 	subAppInstanceConfig *pubsub.Subscription
-	serverName           string
+	serverNameAndPort    string
 	wstunnelclient       *zedcloud.WSTunnelClient
 	dnsContext           *DNSContext
 	// XXX add any output from scanAIConfigs()?
@@ -126,8 +126,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	strTrim := strings.TrimSpace(string(bytes))
-	wscCtx.serverName = strings.Split(strTrim, ":")[0]
+	wscCtx.serverNameAndPort = strings.TrimSpace(string(bytes))
+
 	subAppInstanceConfig.Activate()
 
 	wscCtx.dnsContext = &DNSctx
@@ -284,7 +284,7 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 				ifname)
 			continue
 		}
-		wstunnelclient := zedcloud.InitializeTunnelClient(ctx.serverName, "localhost:4822")
+		wstunnelclient := zedcloud.InitializeTunnelClient(ctx.serverNameAndPort, "localhost:4822")
 		destURL := wstunnelclient.Tunnel
 
 		addrCount := types.CountLocalAddrAnyNoLinkLocalIf(*deviceNetworkStatus, ifname)

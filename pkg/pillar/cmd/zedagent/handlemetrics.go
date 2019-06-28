@@ -1182,7 +1182,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		log.Fatal("PublishDeviceInfoToZedCloud proto marshaling error: ", err)
 	}
 
-	statusUrl := serverName + "/" + statusApi
+	statusUrl := serverNameAndPort + "/" + statusApi
 	zedcloud.RemoveDeferred(deviceUUID)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
@@ -1610,7 +1610,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	if err != nil {
 		log.Fatal("PublishAppInfoToZedCloud proto marshaling error: ", err)
 	}
-	statusUrl := serverName + "/" + statusApi
+	statusUrl := serverNameAndPort + "/" + statusApi
 
 	zedcloud.RemoveDeferred(uuid)
 	buf := bytes.NewBuffer(data)
@@ -1677,7 +1677,7 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 
 	buf := bytes.NewBuffer(data)
 	size := int64(proto.Size(ReportMetrics))
-	metricsUrl := serverName + "/" + metricsApi
+	metricsUrl := serverNameAndPort + "/" + metricsApi
 	const return400 = false
 	_, _, cf, err := zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
 		size, buf, iteration, return400)
