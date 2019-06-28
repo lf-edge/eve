@@ -1516,7 +1516,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 
 	vifString := ""
 	for _, net := range config.VifList {
-		oneVif := fmt.Sprintf("'bridge=%s,vifname=%s,mac=%s'",
+		oneVif := fmt.Sprintf("'bridge=%s,vifname=%s,mac=%s,type=vif'",
 			net.Bridge, net.Vif, net.Mac)
 		if vifString == "" {
 			vifString = oneVif
