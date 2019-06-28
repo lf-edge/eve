@@ -23,7 +23,8 @@ case "$1" in
           shift 2
           ${CTR_CMD} t exec --exec-id $(basename $(mktemp)) "$CONT" "$@"
           ;;
-   enter) ${CTR_CMD} t exec -t --exec-id $(basename $(mktemp))  ${2:-pillar} ${3:-sh}
+   enter) # shellcheck disable=SC2086
+          ${CTR_CMD} t exec -t --exec-id $(basename $(mktemp)) ${2:-pillar} ${3:-sh -l}
           ;;
     list) ${CTR_CMD} c ls
           ;;
