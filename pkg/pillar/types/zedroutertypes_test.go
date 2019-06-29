@@ -7,6 +7,7 @@ import (
 	"github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"time"
 )
 
 var underlayUUID = uuid.UUID{0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1,
