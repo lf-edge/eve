@@ -121,3 +121,51 @@ func TestIsNetworkUsed(t *testing.T) {
 		assert.Equal(t, networkUsed, test.expectedValue)
 	}
 }
+func TestIsDPCTestable(t *testing.T) {
+	n := time.Now()
+	testMatrix := map[string]struct {
+		devicePortConfig DevicePortConfig
+		expectedValue    bool
+	}{
+		"Diffrence is exactly 60 seconds": {
+			devicePortConfig: DevicePortConfig{
+				LastFailed:    n.Add(time.Second * 60),
+				LastSucceeded: n,
+			},
+			expectedValue: false,
+		},
+		"Diffrence is 61 seconds": {
+			devicePortConfig: DevicePortConfig{
+				LastFailed:    n.Add(time.Second * 61),
+				LastSucceeded: n,
+			},
+			expectedValue: false,
+		},
+		"Diffrence is 59 seconds": {
+			devicePortConfig: DevicePortConfig{
+				LastFailed:    n.Add(time.Second * 59),
+				LastSucceeded: n,
+			},
+			expectedValue: false,
+		},
+		"LastFailed is 0": {
+			devicePortConfig: DevicePortConfig{
+				LastFailed:    time.Time{},
+				LastSucceeded: n,
+			},
+			expectedValue: true,
+		},
+		"Last Succeded is after Last Failed": {
+			devicePortConfig: DevicePortConfig{
+				LastFailed:    n,
+				LastSucceeded: n.Add(time.Second * 61),
+			},
+			expectedValue: true,
+		},
+	}
+	for testname, test := range testMatrix {
+		t.Logf("Running test case %s", testname)
+		value := test.devicePortConfig.IsDPCTestable()
+		assert.Equal(t, value, test.expectedValue)
+	}
+}
