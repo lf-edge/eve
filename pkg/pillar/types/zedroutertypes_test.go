@@ -239,3 +239,28 @@ func TestWasDPCWorking(t *testing.T) {
 		assert.Equal(t, value, test.expectedValue)
 	}
 }
+
+func TestGetPortByName(t *testing.T) {
+	testMatrix := map[string]struct {
+		deviceNetworkStatus DeviceNetworkStatus
+		port                string
+		expectedValue       NetworkPortStatus
+	}{
+		"Test name is port one": {
+			deviceNetworkStatus: DeviceNetworkStatus{
+				Ports: []NetworkPortStatus{
+					{Name: "port one"},
+				},
+			},
+			port: "port one",
+			expectedValue: NetworkPortStatus{
+				Name: "port one",
+			},
+		},
+	}
+	for testname, test := range testMatrix {
+		t.Logf("Running test case %s", testname)
+		value := test.deviceNetworkStatus.GetPortByName(test.port)
+		assert.Equal(t, *value, test.expectedValue)
+	}
+}
