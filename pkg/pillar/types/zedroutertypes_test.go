@@ -264,3 +264,28 @@ func TestGetPortByName(t *testing.T) {
 		assert.Equal(t, *value, test.expectedValue)
 	}
 }
+
+func TestGetPortByIfName(t *testing.T) {
+	testMatrix := map[string]struct {
+		deviceNetworkStatus DeviceNetworkStatus
+		port                string
+		expectedValue       NetworkPortStatus
+	}{
+		"Test IfnName is port one": {
+			deviceNetworkStatus: DeviceNetworkStatus{
+				Ports: []NetworkPortStatus{
+					{IfName: "port one"},
+				},
+			},
+			port: "port one",
+			expectedValue: NetworkPortStatus{
+				IfName: "port one",
+			},
+		},
+	}
+	for testname, test := range testMatrix {
+		t.Logf("Running test case %s", testname)
+		value := test.deviceNetworkStatus.GetPortByIfName(test.port)
+		assert.Equal(t, *value, test.expectedValue)
+	}
+}
