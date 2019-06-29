@@ -204,3 +204,38 @@ func TestIsDPCUntested(t *testing.T) {
 		assert.Equal(t, value, test.expectedValue)
 	}
 }
+
+func TestWasDPCWorking(t *testing.T) {
+	n := time.Now()
+	testMatrix := map[string]struct {
+		devicePortConfig DevicePortConfig
+		expectedValue    bool
+	}{
+		"LastSucceeded is 0": {
+			devicePortConfig: DevicePortConfig{
+				LastFailed:    n,
+				LastSucceeded: time.Time{},
+			},
+			expectedValue: false,
+		},
+		"Last Succeded is after Last Failed": {
+			devicePortConfig: DevicePortConfig{
+				LastFailed:    n,
+				LastSucceeded: n.Add(time.Second * 60),
+			},
+			expectedValue: true,
+		},
+		"Last Failed is after Last Succeeded": {
+			devicePortConfig: DevicePortConfig{
+				LastFailed:    n.Add(time.Second * 60),
+				LastSucceeded: n,
+			},
+			expectedValue: false,
+		},
+	}
+	for testname, test := range testMatrix {
+		t.Logf("Running test case %s", testname)
+		value := test.devicePortConfig.WasDPCWorking()
+		assert.Equal(t, value, test.expectedValue)
+	}
+}
