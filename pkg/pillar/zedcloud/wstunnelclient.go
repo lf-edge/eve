@@ -29,17 +29,17 @@ const (
 // but it's important to realize that there may be goroutines handling older
 // websockets that are not fully closed yet running at any point in time
 type WSTunnelClient struct {
-	TunnelServerName string            // hostname[:port] string representation of remote tunnel server
-	Tunnel           string            // websocket server to connect to (ws[s]://hostname[:port])
-	DestURL          string            // formatted websocket endpoint URL
-	LocalRelayServer string            // local server to send received requests to
-	Timeout          time.Duration     // timeout on websocket
-	Connected        bool              // true when we have an active connection to remote server
-	Dialer           *websocket.Dialer // dialer connection initialized & tested for success
-	exitChan         chan struct{}     // channel to tell the tunnel goroutines to end
-	conn             *WSConnection     // reference to remote websocket connection
-	retryOnFailCount int               // no of times the ws connection attempts have continuously failed
-	requestSentChan  chan struct{}     // channel to inform that a new request was written to local relay
+	TunnelServerNameAndPort string            // hostname[:port] string representation of remote tunnel server
+	Tunnel                  string            // websocket server to connect to (ws[s]://hostname[:port])
+	DestURL                 string            // formatted websocket endpoint URL
+	LocalRelayServer        string            // local server to send received requests to
+	Timeout                 time.Duration     // timeout on websocket
+	Connected               bool              // true when we have an active connection to remote server
+	Dialer                  *websocket.Dialer // dialer connection initialized & tested for success
+	exitChan                chan struct{}     // channel to tell the tunnel goroutines to end
+	conn                    *WSConnection     // reference to remote websocket connection
+	retryOnFailCount        int               // no of times the ws connection attempts have continuously failed
+	requestSentChan         chan struct{}     // channel to inform that a new request was written to local relay
 }
 
 // WSConnection represents a single websocket connection
@@ -54,12 +54,12 @@ var connMutex sync.Mutex     // mutex to allow a single goroutine to check and r
 
 // InitializeTunnelClient returns a websocket tunnel client configured with the
 // requested remote and local servers.
-func InitializeTunnelClient(serverName string, localRelay string) *WSTunnelClient {
+func InitializeTunnelClient(serverNameAndPort string, localRelay string) *WSTunnelClient {
 	tunnelClient := WSTunnelClient{
-		TunnelServerName: serverName,
-		Tunnel:           "wss://" + serverName,
-		LocalRelayServer: localRelay,
-		Timeout:          30 * time.Second,
+		TunnelServerNameAndPort: serverNameAndPort,
+		Tunnel:                  "wss://" + serverNameAndPort,
+		LocalRelayServer:        localRelay,
+		Timeout:                 30 * time.Second,
 	}
 
 	return &tunnelClient
@@ -97,7 +97,8 @@ func (t *WSTunnelClient) TestConnection(proxyURL *url.URL, localAddr net.IP) err
 
 	log.Debugf("Testing connection to %s on local address: %v, proxy: %v", t.Tunnel, localAddr, proxyURL)
 
-	tlsConfig, err := GetTlsConfig(t.TunnelServerName, nil)
+	serverName := strings.Split(t.TunnelServerNameAndPort, ":")[0]
+	tlsConfig, err := GetTlsConfig(serverName, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

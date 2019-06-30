@@ -12,7 +12,7 @@ for i in `cd /sys/class/net ; echo eth*` ; do
 done
 
 # Need this for logrotate
-/usr/sbin/crond
+/usr/sbin/crond -d 8
 
 # Finally, we need to start Xen
 XENCONSOLED_ARGS='--log=all --log-dir=/var/log/xen' /etc/init.d/xencommons start
