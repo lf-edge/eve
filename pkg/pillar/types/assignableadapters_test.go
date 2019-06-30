@@ -63,7 +63,7 @@ type TestLookupIoBundleForMemberMatrix struct {
 	expectedBundleName string
 }
 
-func TestLookupIoBundle(t *testing.T) {
+func TestLookupIoBundleGroup(t *testing.T) {
 	testMatrix := map[string]struct {
 		ioType             IoType
 		lookupName         string
@@ -108,7 +108,7 @@ func TestLookupIoBundle(t *testing.T) {
 	}
 }
 
-func TestLookupIoBundleForMember(t *testing.T) {
+func TestLookupIoBundle(t *testing.T) {
 	testMatrix := map[string]struct {
 		ioType             IoType
 		lookupName         string
