@@ -99,7 +99,7 @@ func TestLookupIoBundleGroup(t *testing.T) {
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
 		list := aa.LookupIoBundleGroup(test.ioType, test.lookupName)
-		if list == nil || len(list) == 0 {
+		if len(list) == 0 {
 			assert.Equal(t, test.expectedBundleName, "")
 		} else {
 			assert.Equal(t, test.expectedBundleName,
