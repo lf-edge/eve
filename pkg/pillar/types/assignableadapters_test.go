@@ -57,12 +57,6 @@ var aa AssignableAdapters = AssignableAdapters{
 	},
 }
 
-type TestLookupIoBundleForMemberMatrix struct {
-	ioType             IoType
-	lookupName         string
-	expectedBundleName string
-}
-
 func TestLookupIoBundleGroup(t *testing.T) {
 	testMatrix := map[string]struct {
 		ioType             IoType
