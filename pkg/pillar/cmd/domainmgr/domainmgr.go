@@ -1516,7 +1516,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 
 	vifString := ""
 	for _, net := range config.VifList {
-		oneVif := fmt.Sprintf("'bridge=%s,vifname=%s,mac=%s'",
+		oneVif := fmt.Sprintf("'bridge=%s,vifname=%s,mac=%s,type=vif'",
 			net.Bridge, net.Vif, net.Mac)
 		if vifString == "" {
 			vifString = oneVif
@@ -2436,7 +2436,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 			log.Infof("checkAndSetIoBundle(%d %s %s) %s unique %s",
 				ib.Type, ib.Name, ib.AssignmentGroup, long, unique)
 		}
-		if ib.Type.IsNet() {
+		if ib.Type.IsNet() && ib.MacAddr == "" {
 			ib.MacAddr = getMacAddr(ib.Name)
 		}
 		ctx.publishAssignableAdapters()
@@ -2511,6 +2511,16 @@ func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 			ib.Type, ib.Name, ib.AssignmentGroup,
 			ib.Unique, unique)
 		return errors.New(errStr)
+	}
+	if ib.Type.IsNet() && ib.MacAddr == "" {
+		macAddr := getMacAddr(ib.Name)
+		// Will be empty string if adapter is assigned away
+		if macAddr != "" && macAddr != ib.MacAddr {
+			errStr := fmt.Sprintf("IoBundle(%d %s %s) changed MacAddr from %s to %sn",
+				ib.Type, ib.Name, ib.AssignmentGroup,
+				ib.MacAddr, macAddr)
+			return errors.New(errStr)
+		}
 	}
 	return nil
 }

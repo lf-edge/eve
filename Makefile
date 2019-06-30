@@ -66,7 +66,7 @@ CONFIG_IMG=$(DIST)/config.img
 
 BIOS_IMG=$(DIST)/bios/OVMF.fd
 EFI_PART=$(DIST)/bios/EFI
-CONF_PART=$(CURDIR)/../adam/run/adam/config
+CONF_PART=$(CURDIR)/../adam/run/config
 
 QEMU_OPTS_arm64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt
 # -drive file=./bios/flash0.img,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
