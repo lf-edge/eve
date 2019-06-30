@@ -111,7 +111,7 @@ func TestLookupIoBundle(t *testing.T) {
 		"ioType: IoNetEth, lookupName: eth1": {
 			ioType:             IoNetEth,
 			lookupName:         "eth1",
-			expectedBundleName: "eth0-1",
+			expectedBundleName: "eth1",
 		},
 		// Type should also be considered.
 		"ioType: IoUSB, lookupName: eth1": {
@@ -127,13 +127,13 @@ func TestLookupIoBundle(t *testing.T) {
 		"ioType: IoNetEth, lookupName: eth7": {
 			ioType:             IoNetEth,
 			lookupName:         "eth7",
-			expectedBundleName: "eTH4-7",
+			expectedBundleName: "eth7",
 		},
 		// Test Ignore case
 		"ioType: IoNetEth, lookupName: ETH7": {
 			ioType:             IoNetEth,
 			lookupName:         "ETH7",
-			expectedBundleName: "eTH4-7",
+			expectedBundleName: "eth7",
 		},
 	}
 
