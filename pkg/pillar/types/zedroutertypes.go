@@ -111,8 +111,6 @@ type AppNetworkStatus struct {
 	LegacyDataPlane     bool
 	OverlayNetworkList  []OverlayNetworkStatus
 	UnderlayNetworkList []UnderlayNetworkStatus
-	OverlayACLList      IPTablesRuleList
-	UnderlayACLList     IPTablesRuleList
 	MissingNetwork      bool // If any Missing flag is set in the networks
 	// Any errros from provisioning the network
 	Error     string
@@ -842,6 +840,7 @@ type OverlayNetworkStatus struct {
 	BridgeIPAddr string // The address for DNS/DHCP service in zedrouter
 	Assigned     bool   // Set to true once DHCP has assigned EID to domU
 	HostName     string
+	ACLRules     IPTablesRuleList
 }
 
 type DhcpType uint8
@@ -879,6 +878,7 @@ type UnderlayNetworkStatus struct {
 	AllocatedIPAddr string // Assigned to domU
 	Assigned        bool   // Set to true once DHCP has assigned it to domU
 	HostName        string
+	ACLRules        IPTablesRuleList
 }
 
 type NetworkType uint8

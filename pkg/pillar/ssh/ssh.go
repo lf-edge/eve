@@ -28,7 +28,7 @@ const (
 	targetAuthorizedKeysFile = runDir + "/authorized_keys"
 
 	// XXX a bit of a hack to hard-code this here
-	sshCommand = `command="ctr --namespace services.linuxkit t exec ${TERM:+-t} --exec-id $(basename $(mktemp)) pillar ${TERM:+env TERM=\"$TERM\"} ${SSH_ORIGINAL_COMMAND:-sh}"`
+	sshCommand = `command="ctr --namespace services.linuxkit t exec ${TERM:+-t} --exec-id $(basename $(mktemp)) pillar ${TERM:+env TERM=\"$TERM\"} ${SSH_ORIGINAL_COMMAND:-sh} ${TERM:+-l}"`
 )
 
 func UpdateSshAuthorizedKeys(authorizedKeys string) {
