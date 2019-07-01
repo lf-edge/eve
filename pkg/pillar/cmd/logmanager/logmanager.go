@@ -672,11 +672,12 @@ func sendCtxInit() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	strTrim := strings.TrimSpace(string(bytes))
-	serverName = strings.Split(strTrim, ":")[0]
+	// Preserve port
+	serverNameAndPort := strings.TrimSpace(string(bytes))
+	serverName = strings.Split(serverName, ":")[0]
 
 	//set log url
-	logsUrl = serverName + "/" + logsApi
+	logsUrl = serverNameAndPort + "/" + logsApi
 
 	tlsConfig, err := zedcloud.GetTlsConfig(serverName, nil)
 	if err != nil {
