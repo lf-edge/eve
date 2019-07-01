@@ -5,8 +5,8 @@
     { "Type": 1, "Name": "eth3", "AssignmentGroup": "eth3", "Ifname": "eth3" },
     { "Type": 1, "Name": "eth4", "AssignmentGroup": "eth4", "Ifname": "eth4" },
     { "Type": 1, "Name": "eth5", "AssignmentGroup": "eth5", "Ifname": "eth5" },
-    { "Type": 2, "Name": "USB0", "AssignmentGroup": "USB-A", "PciLong": "0000:00:15.0"},
-    { "Type": 2, "Name": "USB1", "AssignmentGroup": "USB-A", "PciLong": "0000:00:15.0"},
+    { "Type": 2, "Name": "USB0", "AssignmentGroup": "USB", "PciLong": "0000:00:15.0"},
+    { "Type": 2, "Name": "USB1", "AssignmentGroup": "USB", "PciLong": "0000:00:15.0"},
     { "Type": 3, "Name": "COM1", "AssignmentGroup": "COM1", "Irq": "4", "Ioports": "3f8-3ff", "Serial": "/dev/ttyS0"},
     { "Type": 3, "Name": "COM2", "AssignmentGroup": "COM2", "Irq": "3", "Ioports": "2f8-2ff", "Serial": "/dev/ttyS1"}
 ] }
