@@ -38,6 +38,7 @@ func UpdateVncAccess(enable bool) {
 	if enable {
 		allowPortRange(5900, 5999)
 	} else {
+		// XXX can only do this once; need to check old status
 		dropPortRange(5900, 5999)
 	}
 }

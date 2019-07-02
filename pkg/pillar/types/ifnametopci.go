@@ -95,6 +95,16 @@ func IoBundleToPci(ib *IoBundle) (string, error) {
 	var long string
 	if ib.PciLong != "" {
 		long = ib.PciLong
+		// Check if model matches
+		if ib.Ifname != "" {
+			l, err := ifNameToPci(ib.Ifname)
+			if err != nil {
+				if long != l {
+					log.Warnf("Ifname and PciLong mismatch: %s vs %s for %s",
+						l, long, ib.Ifname)
+				}
+			}
+		}
 	} else if ib.Ifname != "" {
 		var err error
 		long, err = ifNameToPci(ib.Ifname)
