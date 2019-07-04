@@ -20,17 +20,12 @@ which is currently composed of 22 active members:
 * Avi Deitcher <avi@deitcher.net>
 * Bharani Chadalavada <bharani@zededa.com>
 * Chirag Kantharia <chirag@zededa.com>
-* Dino Farinacci <farinacci@gmail.com>
-* Donald Becker <donald.becker@gmail.com>
 * Erik Nordmark <erik@zededa.com>
 * Gianluca Guida <glguida@gmail.com>
 * Gopi Krishna Kodali <gkodali@zededa.com>
 * Greg Chase <gchase@gmail.com>
 * Hariharasubramanian C S <cshari@zededa.com>
 * Kalyan Nidumolu <kalyan@zededa.com>
-* Michel Onstein <michel@zededa.com>
-* Prosenjit Pal <ppal@zededa.com>
-* Rishabh Gupta <rgupta@zededa.com>
 * Roman Shaposhnik <rvs@zededa.com>
 * Sahil Satpute <ssatpute@zededa.com>
 * Saurabh Singh <saurabh@zededa.com>
