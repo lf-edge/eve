@@ -48,11 +48,6 @@ if [ -n "$FILE" ]; then
     fi
 fi
 
-if [ ! -b "$DEV" ]; then
-    echo "Not a special device: $DEV"
-    exit 1
-fi
-
 echo ""
 echo "THIS WILL ERASE $DEV"
 lsblk "$DEV"

@@ -1267,8 +1267,13 @@ func handleSyncOp(ctx *downloaderContext, key string,
 					metricsUrl, 1024, 0)
 			} else {
 				// Record how much we downloaded
-				info, _ := os.Stat(locFilename)
-				size := info.Size()
+				size := int64(0)
+				info, err := os.Stat(locFilename)
+				if err != nil {
+					log.Error(err)
+				} else {
+					size = info.Size()
+				}
 				zedcloud.ZedCloudSuccess(ifname,
 					metricsUrl, 1024, size)
 				handleSyncOpResponse(ctx, config, status,
@@ -1290,8 +1295,13 @@ func handleSyncOp(ctx *downloaderContext, key string,
 					metricsUrl, 1024, 0)
 			} else {
 				// Record how much we downloaded
-				info, _ := os.Stat(locFilename)
-				size := info.Size()
+				size := int64(0)
+				info, err := os.Stat(locFilename)
+				if err != nil {
+					log.Error(err)
+				} else {
+					size = info.Size()
+				}
 				zedcloud.ZedCloudSuccess(ifname,
 					metricsUrl, 1024, size)
 				handleSyncOpResponse(ctx, config, status,
@@ -1310,8 +1320,13 @@ func handleSyncOp(ctx *downloaderContext, key string,
 					metricsUrl, 1024, 0)
 			} else {
 				// Record how much we downloaded
-				info, _ := os.Stat(locFilename)
-				size := info.Size()
+				size := int64(0)
+				info, err := os.Stat(locFilename)
+				if err != nil {
+					log.Error(err)
+				} else {
+					size = info.Size()
+				}
 				zedcloud.ZedCloudSuccess(ifname,
 					metricsUrl, 1024, size)
 				handleSyncOpResponse(ctx, config, status,
@@ -1328,6 +1343,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 }
 
 // DownloadURL format : http://<serverURL>/dpath/filename
+// XXX why can't we parse URL from font? This only works when filename starts with "/"
 func getServerUrl(config types.DownloaderConfig, filename string) string {
 	if config.Dpath != "" {
 		return strings.TrimSuffix(config.DownloadURL,

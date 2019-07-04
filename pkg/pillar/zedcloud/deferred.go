@@ -90,6 +90,11 @@ func (ctx *DeferredContext) handleDeferred(event time.Time,
 			if item.buf == nil {
 				continue
 			}
+			if item.buf.Len() == 0 {
+				log.Errorf("Zero length defered item for %s",
+					key)
+				continue
+			}
 			log.Infof("Trying to send for %s item %d data size %d\n",
 				key, i, item.size)
 			resp, _, _, err := SendOnAllIntf(item.zedcloudCtx, item.url,

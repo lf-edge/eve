@@ -341,7 +341,14 @@ type PhysicalIO struct {
 	// physical label typically printed on box.
 	// Example Eth0, Eth1, Wifi0, ComA, ComB
 	Phylabel string `protobuf:"bytes,2,opt,name=phylabel,proto3" json:"phylabel,omitempty"`
-	// the hardware bus address
+	// The hardware bus address. The key to this map can be of the following
+	// (case-insensitive) values:
+	// "pcishort": the address is a PCI id of the form 02:00.0
+	// "pcilong": the address is a PCI id of the form 0000:02:00.0
+	// "ifname": the addresss is a string for a network interface like "eth1"
+	// "serial": the address is a Linux serial port alias such as "/dev/ttyS2"
+	// "irq": the address is a number such as "5"
+	// "ioports": the address is a string such as "2f8-2ff"
 	Phyaddrs map[string]string `protobuf:"bytes,3,rep,name=phyaddrs,proto3" json:"phyaddrs,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 	// provides the ability to model designer to rename the physicalIO
 	// port to more understandable

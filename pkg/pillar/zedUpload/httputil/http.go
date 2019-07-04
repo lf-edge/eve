@@ -59,6 +59,8 @@ func getHref(token html.Token) (ok bool, href string) {
 	return
 }
 
+// ExecCmd performs various commands such as "ls", "get", etc.
+// Note that "host" needs to contain the URL in the case of a get
 func ExecCmd(cmd, host, remoteFile, localFile string, prgNotify NotifChan, client *http.Client) UpdateStats {
 	var imgList []string
 	stats := UpdateStats{}
@@ -69,12 +71,14 @@ func ExecCmd(cmd, host, remoteFile, localFile string, prgNotify NotifChan, clien
 	case "ls":
 		resp, err := http.Get(host)
 		if err != nil {
-			stats.Error = err
+			stats.Error = fmt.Errorf("get failed for ls %s: %s",
+				host, err)
 			return stats
 		}
 
 		if resp.StatusCode != 200 {
-			stats.Error = fmt.Errorf("bad response code: %d", resp.StatusCode)
+			stats.Error = fmt.Errorf("bad response code for ls %s: %d",
+				host, resp.StatusCode)
 			return stats
 		}
 
@@ -110,7 +114,8 @@ func ExecCmd(cmd, host, remoteFile, localFile string, prgNotify NotifChan, clien
 	case "get":
 		req, err := http.NewRequest(http.MethodGet, host, nil)
 		if err != nil {
-			stats.Error = err
+			stats.Error = fmt.Errorf("request failed for get %s: %s",
+				host, err)
 			return stats
 		}
 		req.Header.Set("User-Agent", userAgent)
@@ -118,11 +123,13 @@ func ExecCmd(cmd, host, remoteFile, localFile string, prgNotify NotifChan, clien
 
 		resp, err := client.Do(req)
 		if err != nil {
-			stats.Error = err
+			stats.Error = fmt.Errorf("get failed for get %s: %s",
+				host, err)
 			return stats
 		}
 		if resp.StatusCode != 200 {
-			stats.Error = fmt.Errorf("bad response code: %d", resp.StatusCode)
+			stats.Error = fmt.Errorf("bad response code for %s: %d",
+				host, resp.StatusCode)
 			return stats
 		}
 		tempLocalFile := localFile
@@ -190,13 +197,15 @@ func ExecCmd(cmd, host, remoteFile, localFile string, prgNotify NotifChan, clien
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		resp, err := client.Do(req)
 		if err != nil {
-			stats.Error = err
+			stats.Error = fmt.Errorf("request failed for post %s: %s",
+				host, err)
 			return stats
 		} else {
 			BODY := &bytes.Buffer{}
 			_, err := BODY.ReadFrom(resp.Body)
 			if err != nil {
-				stats.Error = err
+				stats.Error = fmt.Errorf("post failed for %s: %s",
+					host, err)
 				return stats
 			}
 			resp.Body.Close()
@@ -214,7 +223,8 @@ func ExecCmd(cmd, host, remoteFile, localFile string, prgNotify NotifChan, clien
 	case "meta":
 		req, err := http.NewRequest(http.MethodHead, host, nil)
 		if err != nil {
-			stats.Error = err
+			stats.Error = fmt.Errorf("request failed for meta %s: %s",
+				host, err)
 			return stats
 		}
 		req.Header.Set("User-Agent", userAgent)
@@ -222,7 +232,8 @@ func ExecCmd(cmd, host, remoteFile, localFile string, prgNotify NotifChan, clien
 
 		resp, err := client.Do(req)
 		if err != nil {
-			stats.Error = err
+			stats.Error = fmt.Errorf("head failed for meta %s: %s",
+				host, err)
 			return stats
 		}
 		stats.ContentLength = resp.ContentLength

@@ -289,21 +289,24 @@ mkdir -p $DPCDIR
 # information in a subdir there.
 access_usb() {
     # echo "$(date -Ins -u) XXX Looking for USB stick with DevicePortConfig"
-    SPECIAL=$(cgpt find -l DevicePortConfig)
+    SPECIAL=$(lsblk -l -o name,label,partlabel | awk '/DevicePortConfig|QEMU VVFAT/ {print "/dev/"$1;}')
     if [ -n "$SPECIAL" ] && [ -b "$SPECIAL" ]; then
         echo "$(date -Ins -u) Found USB with DevicePortConfig: $SPECIAL"
         if ! mount -t vfat "$SPECIAL" /mnt; then
             echo "$(date -Ins -u) mount $SPECIAL failed: $?"
             return
         fi
-        keyfile=/mnt/usb.json
-        if [ -f $keyfile ]; then
-            echo "$(date -Ins -u) Found $keyfile on $SPECIAL"
-            echo "$(date -Ins -u) Copying from $keyfile to $DPCDIR"
-            cp -p $keyfile $DPCDIR
-        else
-            echo "$(date -Ins -u) $keyfile not found on $SPECIAL"
-        fi
+        for fd in "usb.json:$DPCDIR" hosts:/config server:/config ; do
+            file=/mnt/$(echo "$fd" | cut -f1 -d:)
+            dst=$(echo "$fd" | cut -f2 -d:)
+            if [ -f "$file" ]; then
+                echo "$(date -Ins -u) Found $file on $SPECIAL"
+                echo "$(date -Ins -u) Copying from $file to $dst"
+                cp -p "$file" "$dst"
+            else
+                echo "$(date -Ins -u) $file not found on $SPECIAL"
+            fi
+        done
         if [ -d /mnt/identity ] && [ -f $CONFIGDIR/device.cert.pem ]; then
             echo "$(date -Ins -u) Saving identity to USB stick"
             IDENTITYHASH=$(openssl sha256 $CONFIGDIR/device.cert.pem |awk '{print $2}')
@@ -336,6 +339,9 @@ access_usb() {
 
 # Read any usb.json with DevicePortConfig, and deposit our identity
 access_usb
+
+# Update our local /etc/hosts with entries comming from /config
+[ -f /config/hosts ] && cat /config/hosts >> /etc/hosts
 
 # Need to clear old usb files from /config/DevicePortConfig
 if [ -f $CONFIGDIR/DevicePortConfig/usb.json ]; then

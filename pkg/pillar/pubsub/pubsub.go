@@ -11,9 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/google/go-cmp/cmp"
-	"github.com/lf-edge/eve/pkg/pillar/watch"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net"
 	"os"
@@ -23,6 +20,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/lf-edge/eve/pkg/pillar/watch"
+	log "github.com/sirupsen/logrus"
 )
 
 // Protocol over AF_UNIX or other IPC mechanism
@@ -1201,7 +1202,7 @@ func handleDelete(ctxArg interface{}, key string) {
 	if sub.DeleteHandler != nil {
 		(sub.DeleteHandler)(sub.userCtx, key, m)
 	}
-	log.Debugf("pubsub.handleModify(%s) done for key %s\n", name, key)
+	log.Debugf("pubsub.handleDelete(%s) done for key %s\n", name, key)
 }
 
 func handleRestart(ctxArg interface{}, restarted bool) {

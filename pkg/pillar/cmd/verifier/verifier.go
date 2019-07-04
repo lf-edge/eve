@@ -339,9 +339,15 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 					objType, filename, location.Name())
 			}
 		} else {
-			info, _ := os.Stat(filename)
+			size := int64(0)
+			info, err := os.Stat(filename)
+			if err != nil {
+				log.Error(err)
+			} else {
+				size = info.Size()
+			}
 			log.Debugf("populateInitialStatusFromVerified: Processing %s: %d Mbytes\n",
-				filename, info.Size()/(1024*1024))
+				filename, size/(1024*1024))
 
 			sha := parentDirname
 			// We don't know the URL; Pick a name which is unique
@@ -352,7 +358,7 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 				ObjType:     objType,
 				ImageSha256: sha,
 				State:       types.DOWNLOADED,
-				Size:        info.Size(),
+				Size:        size,
 				RefCount:    0,
 				LastUse:     time.Now(),
 			}

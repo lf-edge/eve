@@ -1066,21 +1066,46 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// Domainmgr excludes adapters which do not currently exist in
 	// what it publishes.
 	// We also mark current management ports as such.
-	for i := range aa.IoBundleList {
-		ib := &aa.IoBundleList[i]
+	var seenBundles []string
+	for _, ib := range aa.IoBundleList {
+		// Report each group once
+		seen := false
+		for _, s := range seenBundles {
+			if s == ib.AssignmentGroup {
+				seen = true
+				break
+			}
+		}
+		if seen {
+			continue
+		}
+		seenBundles = append(seenBundles, ib.AssignmentGroup)
 		reportAA := new(info.ZioBundle)
 		reportAA.Type = info.IPhyIoType(ib.Type)
-		reportAA.Name = ib.Name
-		reportAA.Members = ib.Members
+		reportAA.Name = ib.AssignmentGroup
+		list := aa.LookupIoBundleGroup(ib.Type, ib.AssignmentGroup)
+		if len(list) == 0 {
+			log.Infof("Nothing to report for %d %s",
+				ib.Type, ib.AssignmentGroup)
+			continue
+		}
+		for _, b := range list {
+			if b == nil {
+				continue
+			}
+			reportAA.Members = append(reportAA.Members,
+				b.Name)
+			if b.MacAddr != "" {
+				reportMac := new(info.IoAddresses)
+				reportMac.MacAddress = b.MacAddr
+				reportAA.IoAddressList = append(reportAA.IoAddressList,
+					reportMac)
+			}
+		}
 		if ib.IsPort {
 			reportAA.UsedByBaseOS = true
 		} else if ib.UsedByUUID != nilUUID {
 			reportAA.UsedByAppUUID = ib.UsedByUUID.String()
-		}
-		for _, m := range ib.MMacAddr {
-			reportMac := new(info.IoAddresses)
-			reportMac.MacAddress = m
-			reportAA.IoAddressList = append(reportAA.IoAddressList, reportMac)
 		}
 		// XXX remove? debug?
 		log.Infof("AssignableAdapters for %s macs %v",
@@ -1157,14 +1182,22 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		log.Fatal("PublishDeviceInfoToZedCloud proto marshaling error: ", err)
 	}
 
-	statusUrl := serverName + "/" + statusApi
+	statusUrl := serverNameAndPort + "/" + statusApi
 	zedcloud.RemoveDeferred(deviceUUID)
 	buf := bytes.NewBuffer(data)
+	if buf == nil {
+		log.Fatal("malloc error")
+	}
 	size := int64(proto.Size(ReportInfo))
 	err = SendProtobuf(statusUrl, buf, size, iteration)
 	if err != nil {
 		log.Errorf("PublishDeviceInfoToZedCloud failed: %s\n", err)
 		// Try sending later
+		// The buf might have been consumed
+		buf := bytes.NewBuffer(data)
+		if buf == nil {
+			log.Fatal("malloc error")
+		}
 		zedcloud.SetDeferred(deviceUUID, buf, size, statusUrl,
 			zedcloudCtx, true)
 	} else {
@@ -1512,18 +1545,22 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			ReportAppInfo.BootTime = bootTime
 		}
 
-		for _, ib := range ds.IoAdapterList {
+		for _, ia := range ds.IoAdapterList {
 			reportAA := new(info.ZioBundle)
-			reportAA.Type = info.IPhyIoType(ib.Type)
-			reportAA.Name = ib.Name
+			reportAA.Type = info.IPhyIoType(ia.Type)
+			reportAA.Name = ia.Name
 			reportAA.UsedByAppUUID = ds.Key()
-			b := types.LookupIoBundle(aa, ib.Type, ib.Name)
-			if b != nil {
-				reportAA.Members = b.Members
-				for _, m := range b.MMacAddr {
+			list := aa.LookupIoBundleGroup(ia.Type, ia.Name)
+			for _, ib := range list {
+				if ib == nil {
+					continue
+				}
+				reportAA.Members = append(reportAA.Members, ib.Name)
+				if ib.MacAddr != "" {
 					reportMac := new(info.IoAddresses)
-					reportMac.MacAddress = m
-					reportAA.IoAddressList = append(reportAA.IoAddressList, reportMac)
+					reportMac.MacAddress = ib.MacAddr
+					reportAA.IoAddressList = append(reportAA.IoAddressList,
+						reportMac)
 				}
 				// XXX remove? debug?
 				log.Infof("AssignableAdapters for %s macs %v",
@@ -1573,15 +1610,23 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	if err != nil {
 		log.Fatal("PublishAppInfoToZedCloud proto marshaling error: ", err)
 	}
-	statusUrl := serverName + "/" + statusApi
+	statusUrl := serverNameAndPort + "/" + statusApi
 
 	zedcloud.RemoveDeferred(uuid)
 	buf := bytes.NewBuffer(data)
+	if buf == nil {
+		log.Fatal("malloc error")
+	}
 	size := int64(proto.Size(ReportInfo))
 	err = SendProtobuf(statusUrl, buf, size, iteration)
 	if err != nil {
 		log.Errorf("PublishAppInfoToZedCloud failed: %s\n", err)
 		// Try sending later
+		// The buf might have been consumed
+		buf := bytes.NewBuffer(data)
+		if buf == nil {
+			log.Fatal("malloc error")
+		}
 		zedcloud.SetDeferred(uuid, buf, size, statusUrl, zedcloudCtx,
 			true)
 	} else {
@@ -1632,7 +1677,7 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 
 	buf := bytes.NewBuffer(data)
 	size := int64(proto.Size(ReportMetrics))
-	metricsUrl := serverName + "/" + metricsApi
+	metricsUrl := serverNameAndPort + "/" + metricsApi
 	const return400 = false
 	_, _, cf, err := zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
 		size, buf, iteration, return400)
