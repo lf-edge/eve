@@ -108,25 +108,10 @@ func (aa *AssignableAdapters) LookupIoBundleGroup(ioType IoType, group string) [
 
 	var list []*IoBundle
 	for i, b := range aa.IoBundleList {
-		if b.Type == ioType && strings.EqualFold(b.AssignmentGroup, group) {
-			list = append(list, &aa.IoBundleList[i])
-		}
-	}
-	return list
-}
-
-// LookupIoBundleOrGroup returns an empty slice if not found
-// Returns pointers into aa
-func (aa *AssignableAdapters) LookupIoBundleOrGroup(ioType IoType, nameOrGroup string) []*IoBundle {
-
-	var list []*IoBundle
-	for i, b := range aa.IoBundleList {
-		if b.Type != ioType {
+		if b.AssignmentGroup == "" {
 			continue
 		}
-		if strings.EqualFold(b.Name, nameOrGroup) ||
-			strings.EqualFold(b.AssignmentGroup, nameOrGroup) {
-
+		if b.Type == ioType && strings.EqualFold(b.AssignmentGroup, group) {
 			list = append(list, &aa.IoBundleList[i])
 		}
 	}

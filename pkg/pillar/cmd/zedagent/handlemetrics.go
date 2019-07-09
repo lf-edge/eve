@@ -1473,7 +1473,7 @@ func encodeNetworkPortConfig(npc *types.NetworkPortConfig) *info.DevicePort {
 func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	aiStatus *types.AppInstanceStatus,
 	aa *types.AssignableAdapters, iteration int) {
-	log.Debugf("PublishAppInfoToZedCloud uuid %s\n", uuid)
+	log.Infof("PublishAppInfoToZedCloud uuid %s\n", uuid)
 	var ReportInfo = &info.ZInfoMsg{}
 
 	appType := new(info.ZInfoTypes)
@@ -1604,7 +1604,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		x.Ainfo = ReportAppInfo
 	}
 
-	log.Debugf("PublishAppInfoToZedCloud sending %v\n", ReportInfo)
+	log.Infof("PublishAppInfoToZedCloud sending %v\n", ReportInfo)
 
 	data, err := proto.Marshal(ReportInfo)
 	if err != nil {

@@ -597,6 +597,8 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 			log.Infof("HandleAssignableAdaptersModify(): " +
 				"ctx.AssignableAdapters = nil\n")
 		}
+		// XXX this assumes that ioBundle.Name is the ifname known
+		// by the kernel/ifconfig
 		if ioBundle.IsPCIBack {
 			log.Infof("HandleAssignableAdaptersModify(): ioBundle (%+v) changed "+
 				"to pciBack", ioBundle.Name)
