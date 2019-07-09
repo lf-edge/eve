@@ -988,8 +988,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 
 	log.Infof("doActivate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
-
-	if status.AdaptersFailed {
+	if status.AdaptersFailed || status.PendingModify {
 		if err := configAdapters(ctx, config); err != nil {
 			log.Errorf("Failed to reserve adapters for %v: %s\n",
 				config, err)
