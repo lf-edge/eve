@@ -18,7 +18,7 @@ LOGDIRB=$PERSISTDIR/IMGB/log
 AGENTS0="logmanager ledmanager nim"
 AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr baseosmgr wstunnelclient"
 AGENTS="$AGENTS0 $AGENTS1"
-TPM_DEVICE_PATH="/dev/tpm0"
+TPM_DEVICE_PATH="/dev/tpmrm0"
 
 PATH=$BINDIR:$PATH
 
