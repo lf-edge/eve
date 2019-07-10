@@ -1107,8 +1107,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		} else if ib.UsedByUUID != nilUUID {
 			reportAA.UsedByAppUUID = ib.UsedByUUID.String()
 		}
-		// XXX remove? debug?
-		log.Infof("AssignableAdapters for %s macs %v",
+		log.Debugf("AssignableAdapters for %s macs %v",
 			reportAA.Name, reportAA.IoAddressList)
 		ReportDeviceInfo.AssignableAdapters = append(ReportDeviceInfo.AssignableAdapters,
 			reportAA)
@@ -1242,7 +1241,6 @@ func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW) {
 			swInfo.UserStatus = info.BaseOsStatus_DOWNLOAD_DONE
 			swInfo.SubStatusStr = "Downloaded and verified"
 		} else {
-			// XXX Remove once we have one slot
 			swInfo.UserStatus = info.BaseOsStatus_NONE
 		}
 	case info.ZSwState_INSTALLED:
@@ -1272,7 +1270,6 @@ func addUserSwInfo(ctx *zedagentContext, swInfo *info.ZInfoDevSW) {
 		case "unused":
 			swInfo.UserStatus = info.BaseOsStatus_NONE
 		}
-	// XXX anything else?
 	default:
 		// The other states are use for app instances not for baseos
 		swInfo.UserStatus = info.BaseOsStatus_NONE
@@ -1562,8 +1559,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 					reportAA.IoAddressList = append(reportAA.IoAddressList,
 						reportMac)
 				}
-				// XXX remove? debug?
-				log.Infof("AssignableAdapters for %s macs %v",
+				log.Debugf("AssignableAdapters for %s macs %v",
 					reportAA.Name, reportAA.IoAddressList)
 			}
 			ReportAppInfo.AssignedAdapters = append(ReportAppInfo.AssignedAdapters,
