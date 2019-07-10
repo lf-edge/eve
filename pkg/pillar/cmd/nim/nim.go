@@ -672,7 +672,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 			ctx.sshAuthorizedKeys = gcp.SshAuthorizedKeys
 			ssh.UpdateSshAuthorizedKeys(ctx.sshAuthorizedKeys)
 		}
-		if gcp.AllowAppVnc != ctx.allowAppVnc || first {
+		if gcp.AllowAppVnc != ctx.allowAppVnc {
 			ctx.allowAppVnc = gcp.AllowAppVnc
 			iptables.UpdateVncAccess(ctx.allowAppVnc)
 		}

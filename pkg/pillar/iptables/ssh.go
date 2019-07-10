@@ -38,7 +38,6 @@ func UpdateVncAccess(enable bool) {
 	if enable {
 		allowPortRange(5900, 5999)
 	} else {
-		// XXX can only do this once; need to check old status
 		dropPortRange(5900, 5999)
 	}
 }
@@ -60,9 +59,8 @@ func allowPortRange(startPort int, endPort int) {
 
 // Like above but allow for 127.0.0.1 to 127.0.0.1 and block for other IPs
 func allowLocalPortRange(startPort int, endPort int) {
-	log.Infof("allowPortRange(%d, %d)\n", startPort, endPort)
+	log.Infof("allowLocalPortRange(%d, %d)\n", startPort, endPort)
 	// Add these rules
-	// XXX note no OUTPUT allow with sport
 	// iptables -A INPUT -p tcp -s 127.0.0.1 -d 127.0.0.1 --dport 22 -j ACCEPT
 	// iptables -A INPUT -p tcp --dport 22 -j REJECT --reject-with tcp-reset
 	// iptables -A INPUT -p tcp -s ::1 -d ::1 --dport 22 -j ACCEPT
