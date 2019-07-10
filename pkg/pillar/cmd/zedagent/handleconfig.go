@@ -434,6 +434,8 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 				log.Infof("XXX Device UUID changed from %s to %s\n",
 					zcdevUUID.String(), id.String())
 				zcdevUUID = id
+				ctx := getconfigCtx.zedagentCtx
+				ctx.TriggerDeviceInfo = true
 			}
 
 		}
