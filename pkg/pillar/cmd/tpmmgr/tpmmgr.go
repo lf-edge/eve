@@ -16,7 +16,6 @@ import (
 	"math/big"
 	"os"
 	"os/exec"
-	"time"
 	"unsafe"
 )
 
@@ -28,7 +27,7 @@ const (
 	TpmDeviceCertFileName = "/config/device.cert.pem"
 
 	//TpmDevicePath is the TPM device file path
-	TpmDevicePath = "/dev/tpm0"
+	TpmDevicePath = "/dev/tpmrm0"
 
 	//TpmEnabledFile is the file to indicate if TPM is being used by SW
 	TpmEnabledFile = "/persist/config/tpm_in_use"
@@ -155,24 +154,9 @@ func createDeviceKey() error {
 	return nil
 }
 
-func lockTpmAccess() {
-	for os.Mkdir(tpmLockName, 0750) != nil {
-		log.Debugln("Waiting for TPM lock.")
-		time.Sleep(1000 * time.Millisecond)
-	}
-	//XXX check if this sleep is still required
-	time.Sleep(1000 * time.Millisecond)
-}
-
-func unlockTpmAccess() {
-	os.Remove(tpmLockName)
-}
-
 //TpmSign is used by external packages to get a digest signed by
 //device key in TPM
 func TpmSign(digest []byte) (*big.Int, *big.Int, error) {
-	lockTpmAccess()
-	defer unlockTpmAccess()
 
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
@@ -209,8 +193,6 @@ func TpmSign(digest []byte) (*big.Int, *big.Int, error) {
 }
 
 func writeDeviceCert() error {
-	lockTpmAccess()
-	defer unlockTpmAccess()
 
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
@@ -254,8 +236,6 @@ func writeDeviceCert() error {
 }
 
 func readDeviceCert() error {
-	lockTpmAccess()
-	defer unlockTpmAccess()
 
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
@@ -307,8 +287,6 @@ func genCredentials() error {
 }
 
 func writeCredentials() error {
-	lockTpmAccess()
-	defer unlockTpmAccess()
 
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
@@ -352,8 +330,6 @@ func writeCredentials() error {
 }
 
 func readCredentials() error {
-	lockTpmAccess()
-	defer unlockTpmAccess()
 
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
@@ -415,8 +391,6 @@ func getFirmwareVersion(v1 uint32, v2 uint32) string {
 }
 
 func getTpmProperty(propID uint32) (uint32, error) {
-	lockTpmAccess()
-	defer unlockTpmAccess()
 
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {

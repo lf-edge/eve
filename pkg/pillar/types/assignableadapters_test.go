@@ -57,13 +57,7 @@ var aa AssignableAdapters = AssignableAdapters{
 	},
 }
 
-type TestLookupIoBundleForMemberMatrix struct {
-	ioType             IoType
-	lookupName         string
-	expectedBundleName string
-}
-
-func TestLookupIoBundle(t *testing.T) {
+func TestLookupIoBundleGroup(t *testing.T) {
 	testMatrix := map[string]struct {
 		ioType             IoType
 		lookupName         string
@@ -99,7 +93,7 @@ func TestLookupIoBundle(t *testing.T) {
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
 		list := aa.LookupIoBundleGroup(test.ioType, test.lookupName)
-		if list == nil || len(list) == 0 {
+		if len(list) == 0 {
 			assert.Equal(t, test.expectedBundleName, "")
 		} else {
 			assert.Equal(t, test.expectedBundleName,
@@ -108,7 +102,7 @@ func TestLookupIoBundle(t *testing.T) {
 	}
 }
 
-func TestLookupIoBundleForMember(t *testing.T) {
+func TestLookupIoBundle(t *testing.T) {
 	testMatrix := map[string]struct {
 		ioType             IoType
 		lookupName         string
@@ -117,7 +111,7 @@ func TestLookupIoBundleForMember(t *testing.T) {
 		"ioType: IoNetEth, lookupName: eth1": {
 			ioType:             IoNetEth,
 			lookupName:         "eth1",
-			expectedBundleName: "eth0-1",
+			expectedBundleName: "eth1",
 		},
 		// Type should also be considered.
 		"ioType: IoUSB, lookupName: eth1": {
@@ -133,13 +127,13 @@ func TestLookupIoBundleForMember(t *testing.T) {
 		"ioType: IoNetEth, lookupName: eth7": {
 			ioType:             IoNetEth,
 			lookupName:         "eth7",
-			expectedBundleName: "eTH4-7",
+			expectedBundleName: "eth7",
 		},
 		// Test Ignore case
 		"ioType: IoNetEth, lookupName: ETH7": {
 			ioType:             IoNetEth,
 			lookupName:         "ETH7",
-			expectedBundleName: "eTH4-7",
+			expectedBundleName: "eth7",
 		},
 	}
 
