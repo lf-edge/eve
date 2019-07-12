@@ -1,6 +1,16 @@
 ---
 version: 2.1
 jobs:
+  test:
+    machine:
+      image: circleci/classic:latest
+    steps:
+      - checkout
+      - run:
+          name: Test
+          command: make test
+      - store_test_results:
+          path: dist
   build:
     machine:
       image: circleci/classic:latest
@@ -16,11 +26,6 @@ jobs:
       - run:
           name: Installing qemu-utils
           command: sudo apt-get update; sudo apt-get install -y qemu-utils
-      - run:
-          name: Test
-          command: make test
-      - store_test_results:
-          path: dist
       - run:
           name: Packages
           command: >
@@ -85,4 +90,5 @@ workflows:
   build-stuff:
     jobs:
       - yetus
+      - test
       - build
