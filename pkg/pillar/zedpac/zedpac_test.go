@@ -1731,7 +1731,7 @@ return false;
     throw 'testing error handling, url: ' + url + ' host: ' + host;
 }`,
 			[]case_table{
-				{"http://foobar.example.com/x", "foobar.example.com", "zedpac: failed to compute proxy value, javascript log: Javascript call failed: testing error handling, url: http://foobar.example.com/x host: foobar.example.com."},
+				{"http://foobar.example.com/x", "foobar.example.com", "testing error handling, url: http://foobar.example.com/x host: foobar.example.com"},
 			},
 		},
 
@@ -1740,7 +1740,7 @@ return false;
     throw new Error('testing error handling, url: ' + url + ' host: ' + host);
 }`,
 			[]case_table{
-				{"http://foobar.example.com/x", "foobar.example.com", "zedpac: failed to compute proxy value, javascript log: Javascript call failed: Error: testing error handling, url: http://foobar.example.com/x host: foobar.example.com\n    at FindProxyForURL (eval:2) preventsyield."},
+				{"http://foobar.example.com/x", "foobar.example.com", "Error: testing error handling, url: http://foobar.example.com/x host: foobar.example.com"},
 			},
 		},
 	}
