@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
@@ -92,6 +93,11 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	zedcloudCtx := zedcloud.ZedCloudContext{
 		DeviceNetworkStatus: &status,
 	}
+
+	// Get device serail number
+	zedcloudCtx.DevSerial = hardware.GetProductSerial()
+	log.Infof("NIM Get Device Serial %s\n", zedcloudCtx.DevSerial)
+
 	tlsConfig, err := zedcloud.GetTlsConfig(serverName, nil)
 	if err != nil {
 		log.Infof("VerifyDeviceNetworkStatus: " +

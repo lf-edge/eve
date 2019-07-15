@@ -32,7 +32,10 @@ type ZedCloudContext struct {
 	SuccessFunc         func(intf string, url string, reqLen int64, respLen int64)
 	NoLedManager        bool // Don't call UpdateLedManagerConfig
 	DevUUID             uuid.UUID
+	DevSerial           string
 }
+
+var sendCounter uint32
 
 // Tries all interfaces (free first) until one succeeds. interation arg
 // ensure load spreading across multiple interfaces.
@@ -268,6 +271,16 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		if devUuidStr != "" {
 			req.Header.Add("X-Request-Id", devUuidStr)
 		}
+
+		// Add Device Serial Number to the HTTP Header for initial tracability
+		devSerialNum := ctx.DevSerial
+		if devSerialNum != "" {
+			req.Header.Add("X-Serial-Number", devSerialNum)
+		}
+		log.Debugf("X-Serial-Number, count (%d), serial: %s",
+			sendCounter, devSerialNum)
+		sendCounter++
+
 		trace := &httptrace.ClientTrace{
 			GotConn: func(connInfo httptrace.GotConnInfo) {
 				log.Debugf("Got RemoteAddr: %+v, LocalAddr: %+v\n",

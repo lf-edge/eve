@@ -150,7 +150,7 @@ func GetProductSerial() string {
 			err)
 		serial = []byte{}
 	}
-	return string(serial)
+	return strings.TrimSuffix(string(serial), "\n")
 }
 
 // Returns productManufacturer, productName, productVersion, productSerial, productUuid
