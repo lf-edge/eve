@@ -131,6 +131,11 @@ func Run() {
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
 	}
+
+	// Get device serail number
+	zedcloudCtx.DevSerial = hardware.GetProductSerial()
+	log.Infof("Diag Get Device Serial %s\n", zedcloudCtx.DevSerial)
+
 	if fileExists(deviceCertName) {
 		// Load device cert
 		cert, err := zedcloud.GetClientCert()

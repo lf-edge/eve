@@ -15,6 +15,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -687,6 +688,10 @@ func sendCtxInit() {
 	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
+
+	// get the edge box serial number
+	zedcloudCtx.DevSerial = hardware.GetProductSerial()
+	log.Infof("Log Get Device Serial %s\n", zedcloudCtx.DevSerial)
 
 	// In case we run early, wait for UUID file to appear
 	for {
