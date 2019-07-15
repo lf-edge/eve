@@ -114,7 +114,7 @@ all: help
 
 test: $(GOBUILDER) | $(DIST)
 	@echo Running tests on $(GOMODULE)
-	@$(DOCKER_GO) "go test -v ./... 2>&1 | go-junit-report" $(GOTREE) $(GOMODULE) | sed -e '1d' > $(DIST)/results.xml
+	@$(DOCKER_GO) "set -o pipefail ; go test -v ./... 2>&1 | go-junit-report | sed -e 1d" $(GOTREE) $(GOMODULE) > $(DIST)/results.xml
 
 clean:
 	rm -rf $(DIST) pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile \
