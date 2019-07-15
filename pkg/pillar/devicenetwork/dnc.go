@@ -580,12 +580,12 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 
 	// ctxArg is DeviceNetworkContext
 	for _, ioBundle := range newAssignableAdapters.IoBundleList {
-		if ioBundle.Type != types.IoEth {
+		if !ioBundle.Type.IsNet() {
 			continue
 		}
 		if ctx.AssignableAdapters != nil {
-			currentIoBundle := types.LookupIoBundle(ctx.AssignableAdapters,
-				types.IoEth, ioBundle.Name)
+			currentIoBundle := ctx.AssignableAdapters.LookupIoBundle(
+				ioBundle.Type, ioBundle.Name)
 			if currentIoBundle != nil &&
 				ioBundle.IsPCIBack == currentIoBundle.IsPCIBack {
 				log.Infof("HandleAssignableAdaptersModify(): ioBundle (%+v) "+
@@ -597,6 +597,8 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 			log.Infof("HandleAssignableAdaptersModify(): " +
 				"ctx.AssignableAdapters = nil\n")
 		}
+		// XXX this assumes that ioBundle.Name is the ifname known
+		// by the kernel/ifconfig
 		if ioBundle.IsPCIBack {
 			log.Infof("HandleAssignableAdaptersModify(): ioBundle (%+v) changed "+
 				"to pciBack", ioBundle.Name)

@@ -5,6 +5,20 @@ syntax = "proto3";
 
 option go_package  = "github.com/lf-edge/eve/api/go/register";
 
+// This is the request payload for POST /api/v1/edgeDevice/register
+// ZRegisterMsg carries the pem-encoded device certificate plus additional
+// identifying information such as device serial number(s).
+// The message is assumed to be protected by a TLS session bound to the
+// onboarding certificate.
+message ZRegisterMsg {
+       string onBoardKey = 1; // deprecated
+       // deprecated = 1;
+
+       bytes pemCert = 2;
+       string serial = 3;
+       string softSerial = 4;
+}
+
 // XXX is this used? Not in client.go; deprecate
 enum ZRegisterResult {
         ZRegNone         = 0;
@@ -18,12 +32,4 @@ enum ZRegisterResult {
 // XXX is this used? Not in client.go; deprecate
 message ZRegisterResp {
         ZRegisterResult result = 2;
-}
-
-message ZRegisterMsg {
-       string onBoardKey = 1; // deprecated
-
-       bytes pemCert = 2;
-       string serial = 3;
-       string softSerial = 4;
 }

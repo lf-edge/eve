@@ -1,10 +1,13 @@
 { "IoBundleList": [
-    { "Type": 1, "Name": "eth0", "Members": [ "eth0" ], "Lookup": true },
-    { "Type": 1, "Name": "eth1", "Members": [ "eth1" ], "Lookup": true },
-    { "Type": 2, "Name": "USB", "Members": [ "USB0", "USB1", "USB2", "USB3" ], "PciLong": "0000:00:15.0", "PciShort": "00:15.0"},
-    { "Type": 3, "Name": "COM1", "Members": [ "COM1" ], "XenCfg": "irqs=[4]\nioports=['3f8-3ff']\n" },
-    { "Type": 3, "Name": "COM2", "Members": [ "COM2" ], "XenCfg": "irqs=[5]\nioports=['2f8-2ff']\n" },
-    { "Type": 3, "Name": "COM3", "Members": [ "COM3" ], "XenCfg": "irqs=[10]\nioports=['2e8-2ff']\n" },
-    { "Type": 3, "Name": "COM4", "Members": [ "COM4" ], "XenCfg": "irqs=[11]\nioports=['3e8-3ff']\n" },
-    { "Type": 255, "Name": "Audio", "Members": [ "AudioOut" ], "PciLong": "0000:00:0e.0", "PciShort":"00:0e.0" }
+    { "Type": 1, "Name": "eth0", "AssignmentGroup": "eth0", "PciLong": "0000:01:00.0", "Ifname": "eth0" },
+    { "Type": 1, "Name": "eth1", "AssignmentGroup": "eth1", "PciLong": "0000:02:00.0", "Ifname": "eth1" },
+    { "Type": 2, "Name": "USB0", "AssignmentGroup": "USB", "PciLong": "0000:00:15.0"},
+    { "Type": 2, "Name": "USB1", "AssignmentGroup": "USB", "PciLong": "0000:00:15.0"},
+    { "Type": 2, "Name": "USB2", "AssignmentGroup": "USB", "PciLong": "0000:00:15.0"},
+    { "Type": 2, "Name": "USB3", "AssignmentGroup": "USB", "PciLong": "0000:00:15.0"},
+    { "Type": 3, "Name": "COM1", "AssignmentGroup": "COM1", "Irq": "4", "Ioports": "3f8-3ff", "Serial": "/dev/ttyS0"},
+    { "Type": 3, "Name": "COM2", "AssignmentGroup": "COM2", "Irq": "3", "Ioports": "2f8-2ff", "Serial": "/dev/ttyS1"},
+    { "Type": 3, "Name": "COM3", "AssignmentGroup": "COM3", "Irq": "11", "Ioports": "3e8-3ef", "Serial": "/dev/ttyS2"},
+    { "Type": 3, "Name": "COM4", "AssignmentGroup": "COM4", "Irq": "10", "Ioports": "2e8-2ef", "Serial": "/dev/ttyS3"},
+    { "Type": 4, "Name": "Audio", "AssignmentGroup": "Audio", "PciLong": "0000:00:0e.0" }
 ] }

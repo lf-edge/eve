@@ -1,10 +1,13 @@
 { "IoBundleList": [
-    { "Type": 1, "Name": "eth0", "Members": [ "eth0" ], "Lookup": true },
-    { "Type": 1, "Name": "eth1", "Members": [ "eth1" ], "Lookup": true },
-    { "Type": 1, "Name": "eth2", "Members": [ "eth2" ], "Lookup": true },
-    { "Type": 1, "Name": "eth3", "Members": [ "eth3" ], "Lookup": true },
-    { "Type": 1, "Name": "eth4", "Members": [ "eth4" ], "Lookup": true },
-    { "Type": 1, "Name": "eth5", "Members": [ "eth5" ], "Lookup": true },
-    { "Type": 1, "Name": "wlan0", "Members": [ "wlan0" ], "PciLong": "0000:02:00.0", "PciShort": "02:00.0" },
-    { "Type": 2, "Name": "USB", "Members": [ "USB0", "USB1" ], "PciLong": "0000:00:15.0", "PciShort": "00:15.0"}
+    { "Type": 1, "Name": "eth0", "AssignmentGroup": "eth0-1", "PciLong": "0000:04:00.0", "Ifname": "eth0" },
+    { "Type": 1, "Name": "eth1", "AssignmentGroup": "eth0-1", "PciLong": "0000:04:00.1", "Ifname": "eth1" },
+    { "Type": 1, "Name": "eth2", "AssignmentGroup": "eth2-3", "PciLong": "0000:05:00.0", "Ifname": "eth2" },
+    { "Type": 1, "Name": "eth3", "AssignmentGroup": "eth2-3", "PciLong": "0000:05:00.1", "Ifname": "eth3" },
+    { "Type": 1, "Name": "eth4", "AssignmentGroup": "eth4-5", "PciLong": "0000:06:00.0", "Ifname": "eth4" },
+    { "Type": 1, "Name": "eth5", "AssignmentGroup": "eth4-5", "PciLong": "0000:06:00.1", "Ifname": "eth5" },
+    { "Type": 5, "Name": "wlan0", "AssignmentGroup": "wlan0", "PciLong": "0000:02:00.0" },
+    { "Type": 6, "Name": "wwan0", "AssignmentGroup": "wwan0", "Serial": "/dev/ttyUSB1" },
+    { "Type": 6, "Name": "wwan0", "AssignmentGroup": "wwan0", "Serial": "/dev/ttyUSB2" },
+    { "Type": 2, "Name": "USB0", "AssignmentGroup": "USB", "PciLong": "0000:00:15.0"},
+    { "Type": 2, "Name": "USB1", "AssignmentGroup": "USB", "PciLong": "0000:00:15.0"}
 ] }

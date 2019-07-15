@@ -31,6 +31,7 @@ var metricsApi string = "api/v1/edgedevice/metrics"
 
 // This is set once at init time and not changed
 var serverName string
+var serverNameAndPort string
 
 const (
 	identityDirname = "/config"
@@ -80,8 +81,8 @@ func handleConfigInit() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	strTrim := strings.TrimSpace(string(bytes))
-	serverName = strings.Split(strTrim, ":")[0]
+	serverNameAndPort = strings.TrimSpace(string(bytes))
+	serverName = strings.Split(serverNameAndPort, ":")[0]
 
 	tlsConfig, err := zedcloud.GetTlsConfig(serverName, nil)
 	if err != nil {
@@ -110,7 +111,7 @@ func handleConfigInit() {
 func configTimerTask(handleChannel chan interface{},
 	getconfigCtx *getconfigContext, updateInprogress bool) {
 
-	configUrl := serverName + "/" + configApi
+	configUrl := serverNameAndPort + "/" + configApi
 	getconfigCtx.startTime = time.Now()
 	getconfigCtx.lastReceivedConfigFromCloud = getconfigCtx.startTime
 	iteration := 0
@@ -433,6 +434,8 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 				log.Infof("XXX Device UUID changed from %s to %s\n",
 					zcdevUUID.String(), id.String())
 				zcdevUUID = id
+				ctx := getconfigCtx.zedagentCtx
+				ctx.TriggerDeviceInfo = true
 			}
 
 		}

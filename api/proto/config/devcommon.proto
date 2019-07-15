@@ -35,20 +35,16 @@ message DeviceOpsCmd {
 message ConfigItem {
         string key = 1;         // E.g., "configinterval"
         string value = 2;
-        // Below section will be deprecated
-        oneof configItemValue {
-                bool boolValue = 3;
-                uint32 uint32Value = 4; // If timer this is in seconds
-                uint64 uint64Value = 5;
-                float floatValue = 6;
-                string stringValue = 7;
-        }
+        // deprecated = 3;
+        // deprecated = 4;
+        // deprecated = 5;
+        // deprecated = 6;
+        // deprecated = 7;
 }
 
 
 // Adapter bundles corresponding to a subset of what is in ZioBundle
 message Adapter {
-  ZCioType type = 1;
+  PhyIoType type = 1;
   string name = 2;	// Short hand name such as "com" from bundle
-  // Future will have type-specific oneof definitions as needed
 }

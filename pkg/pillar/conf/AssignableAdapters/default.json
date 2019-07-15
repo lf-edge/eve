@@ -1,4 +1,4 @@
 { "IoBundleList": [
-    { "Type": 1, "Name": "eth0", "Members": [ "eth0" ], "Lookup": true },
-    { "Type": 1, "Name": "eth1", "Members": [ "eth1" ], "Lookup": true }
+    { "Type": 1, "Name": "eth0", "AssignmentGroup": "eth0", "Ifname": "eth0" },
+    { "Type": 1, "Name": "eth1", "AssignmentGroup": "eth1", "Ifname": "eth1" }
 ] }

@@ -674,14 +674,22 @@ func publishInfoToZedCloud(UUID string, infoMsg *zinfo.ZInfoMsg, iteration int) 
 	if err != nil {
 		log.Fatal("publishInfoToZedCloud proto marshaling error: ", err)
 	}
-	statusUrl := serverName + "/" + statusApi
+	statusUrl := serverNameAndPort + "/" + statusApi
 	zedcloud.RemoveDeferred(UUID)
 	buf := bytes.NewBuffer(data)
+	if buf == nil {
+		log.Fatal("malloc error")
+	}
 	size := int64(proto.Size(infoMsg))
 	err = SendProtobuf(statusUrl, buf, size, iteration)
 	if err != nil {
 		log.Errorf("publishInfoToZedCloud failed: %s\n", err)
 		// Try sending later
+		// The buf might have been consumed
+		buf := bytes.NewBuffer(data)
+		if buf == nil {
+			log.Fatal("malloc error")
+		}
 		zedcloud.SetDeferred(UUID, buf, size, statusUrl,
 			zedcloudCtx, true)
 	} else {

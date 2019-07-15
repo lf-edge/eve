@@ -26,24 +26,14 @@ option java_package = "com.zededa.cloud.uservice.proto";
 //     Network adapter refers to PhysicalIO by name.
 //
 
-// XXX duplicate of definition in zmet.proto with uniq names (ZCio vs Zio)
-// Types of I/O adapters that can be assigned to applications
-// Deprecate in future, as we would stop using the old style definiations
-enum ZCioType {
-  ZCioNop = 0;
-  ZCioEth = 1;          // Includes WiFi?
-  ZCioUSB = 2;
-  ZCioCOM = 3;          // Com ports
-  ZCioHDMI = 4; // HDMI Display
-  ZCioOther = 255;
-}
-
+// Deprecate; replace by level 2 specification
 enum sWAdapterType {
        IGNORE = 0;
        VLAN = 1;
        BOND = 2;
 }
 
+// Deprecate; replace by level 2 specification
 message sWAdapterParams {
         sWAdapterType aType = 1;
 
@@ -64,14 +54,14 @@ message SystemAdapter {
         // name of the adapter; hardware-specific e.g., eth0
         string name = 1;
 
-        sWAdapterParams allocDetails = 20;
+        // deprecated; need level 2 spec. sWAdapterParams allocDetails = 20;
 
         // this is part of the freelink group
-        // deprecate: look at PhysicalIO->Usage
+        // deprecate: look at PhysicalIO->UsagePolicy instead
         bool freeUplink = 2;
 
         // this is part of the uplink group
-        // deprecate: look at PhysicalIO->Usage
+        // deprecate: look at PhysicalIO->Usage instead
         bool uplink = 3;
 
         // attach this network config for this adapter
@@ -127,7 +117,13 @@ message PhysicalIO {
       // Example Eth0, Eth1, Wifi0, ComA, ComB
       string phylabel           = 2;
 
-      // the hardware bus address
+      // The hardware bus address. The key to this map can be of the following
+      // (case-insensitive) values:
+      // "pcilong": the address is a PCI id of the form 0000:02:00.0
+      // "ifname": the addresss is a string for a network interface like "eth1"
+      // "serial": the address is a Linux serial port alias such as "/dev/ttyS2"
+      // "irq": the address is a number such as "5"
+      // "ioports": the address is a string such as "2f8-2ff"
       map <string, string> phyaddrs = 3;
 
       // provides the ability to model designer to rename the physicalIO

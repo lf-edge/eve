@@ -672,7 +672,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 			ctx.sshAuthorizedKeys = gcp.SshAuthorizedKeys
 			ssh.UpdateSshAuthorizedKeys(ctx.sshAuthorizedKeys)
 		}
-		if gcp.AllowAppVnc != ctx.allowAppVnc || first {
+		if gcp.AllowAppVnc != ctx.allowAppVnc {
 			ctx.allowAppVnc = gcp.AllowAppVnc
 			iptables.UpdateVncAccess(ctx.allowAppVnc)
 		}
@@ -812,7 +812,7 @@ func isAssigned(ctx *nimContext, ifname string) bool {
 
 	log.Infof("isAssigned(%s) have %d bundles\n",
 		ifname, len(ctx.AssignableAdapters.IoBundleList))
-	ib := ctx.AssignableAdapters.LookupIoBundleForMember(types.IoEth, ifname)
+	ib := ctx.AssignableAdapters.LookupIoBundleNet(ifname)
 	if ib == nil {
 		return false
 	}

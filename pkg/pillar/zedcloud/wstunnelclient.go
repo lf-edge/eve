@@ -29,17 +29,16 @@ const (
 // but it's important to realize that there may be goroutines handling older
 // websockets that are not fully closed yet running at any point in time
 type WSTunnelClient struct {
-	TunnelServerName string            // hostname[:port] string representation of remote tunnel server
-	Tunnel           string            // websocket server to connect to (ws[s]://hostname[:port])
-	DestURL          string            // formatted websocket endpoint URL
-	LocalRelayServer string            // local server to send received requests to
-	Timeout          time.Duration     // timeout on websocket
-	Connected        bool              // true when we have an active connection to remote server
-	Dialer           *websocket.Dialer // dialer connection initialized & tested for success
-	exitChan         chan struct{}     // channel to tell the tunnel goroutines to end
-	conn             *WSConnection     // reference to remote websocket connection
-	retryOnFailCount int               // no of times the ws connection attempts have continuously failed
-	requestSentChan  chan struct{}     // channel to inform that a new request was written to local relay
+	TunnelServerNameAndPort string            // hostname[:port] string representation of remote tunnel server
+	Tunnel                  string            // websocket server to connect to (ws[s]://hostname[:port])
+	DestURL                 string            // formatted websocket endpoint URL
+	LocalRelayServer        string            // local server to send received requests to
+	Timeout                 time.Duration     // timeout on websocket
+	Connected               bool              // true when we have an active connection to remote server
+	Dialer                  *websocket.Dialer // dialer connection initialized & tested for success
+	exitChan                chan struct{}     // channel to tell the tunnel goroutines to end
+	conn                    *WSConnection     // reference to remote websocket connection
+	retryOnFailCount        int               // no of times the ws connection attempts have continuously failed
 }
 
 // WSConnection represents a single websocket connection
@@ -54,12 +53,12 @@ var connMutex sync.Mutex     // mutex to allow a single goroutine to check and r
 
 // InitializeTunnelClient returns a websocket tunnel client configured with the
 // requested remote and local servers.
-func InitializeTunnelClient(serverName string, localRelay string) *WSTunnelClient {
+func InitializeTunnelClient(serverNameAndPort string, localRelay string) *WSTunnelClient {
 	tunnelClient := WSTunnelClient{
-		TunnelServerName: serverName,
-		Tunnel:           "wss://" + serverName,
-		LocalRelayServer: localRelay,
-		Timeout:          30 * time.Second,
+		TunnelServerNameAndPort: serverNameAndPort,
+		Tunnel:                  "wss://" + serverNameAndPort,
+		LocalRelayServer:        localRelay,
+		Timeout:                 30 * time.Second,
 	}
 
 	return &tunnelClient
@@ -97,7 +96,8 @@ func (t *WSTunnelClient) TestConnection(proxyURL *url.URL, localAddr net.IP) err
 
 	log.Debugf("Testing connection to %s on local address: %v, proxy: %v", t.Tunnel, localAddr, proxyURL)
 
-	tlsConfig, err := GetTlsConfig(t.TunnelServerName, nil)
+	serverName := strings.Split(t.TunnelServerNameAndPort, ":")[0]
+	tlsConfig, err := GetTlsConfig(serverName, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -139,7 +139,6 @@ func (t *WSTunnelClient) startSession() error {
 	// signal that tells tunnel client to exit instead of reopening
 	// a fresh connection.
 	t.exitChan = make(chan struct{}, 1)
-	t.requestSentChan = make(chan struct{}, 1)
 
 	t.retryOnFailCount = 0
 
@@ -206,7 +205,6 @@ func (t *WSTunnelClient) Stop() {
 // return the result if any.
 func (wsc *WSConnection) handleRequests() {
 	go wsc.pinger()
-	go wsc.processResponses()
 	for {
 		wsc.ws.SetReadDeadline(time.Time{}) // separate ping-pong routine does timeout
 		messageType, reader, err := wsc.ws.NextReader()
@@ -311,9 +309,11 @@ func (wsc *WSConnection) pinger() {
 func (wsc *WSConnection) processRequest(id int16, req []byte) (err error) {
 
 	host := wsc.tun.LocalRelayServer
-	if err := wsc.refreshLocalConnection(host, false); err != nil {
-		return err
+	if wsc.localConnection == nil {
+		wsc.dialLocalConnection()
+		go wsc.processResponses()
 	}
+
 	log.Debugf("[id=%d] Forwarding request: %v to local connection: %s", id, string(req), host)
 	for tries := 1; tries <= 3; tries++ {
 		_, err := wsc.localConnection.Write(req)
@@ -324,19 +324,18 @@ func (wsc *WSConnection) processRequest(id int16, req []byte) (err error) {
 		} else {
 			log.Debugf("[id=%d] Error encountered while writing request to local connection : %s",
 				id, err.Error())
-			if err := wsc.refreshLocalConnection(host, true); err != nil {
+			if err := wsc.refreshLocalConnection(true); err != nil {
 				return err
 			}
 		}
 	}
-	wsc.tun.requestSentChan <- struct{}{}
 	return nil
 }
 
 // refreshLocalConnection checks if the cached connection is still
 // valid or else creates & caches a new one. The forceCreate flag
 // can be used to forcily update the cached local connection.
-func (wsc *WSConnection) refreshLocalConnection(host string, forceCreate bool) (err error) {
+func (wsc *WSConnection) refreshLocalConnection(forceCreate bool) (err error) {
 
 	connMutex.Lock()
 	defer connMutex.Unlock()
@@ -393,26 +392,17 @@ func (wsc *WSConnection) processResponses() {
 	log.Infof("Processing responses from local relay: %s", host)
 
 	var id int64
-	for {
-		select {
-		case <-wsc.tun.requestSentChan:
+	ticker := time.NewTicker(100 * time.Millisecond)
+	for range ticker.C {
+		responseBuffer := make([]byte, 524288)
+		wsc.localConnection.SetReadDeadline(time.Now().Add(90 * time.Millisecond))
+		num, _ := wsc.localConnection.Read(responseBuffer)
+		if num > 0 {
+			response := responseBuffer[:num]
+			log.Debugf("[id=%d] Read local connection payload: %s", id, string(response))
 
-			if err := wsc.refreshLocalConnection(host, false); err != nil {
-				log.Errorf("Error encountered while refreshing local connection: %s", err.Error())
-				break
-			}
-			wsc.localConnection.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
-			responseBuffer := make([]byte, 524288)
-			responseBuffer, _ = ioutil.ReadAll(wsc.localConnection)
-			num := len(responseBuffer)
-			if num > 0 {
-				response := responseBuffer[:num]
-				log.Debugf("[id=%d] Read local connection payload: \"%s\"", id, string(response))
-
-				wsc.writeResponseMessage(id, bytes.NewBuffer(response))
-				id++
-			}
-		default:
+			wsc.writeResponseMessage(id, bytes.NewBuffer(response))
+			id++
 		}
 
 		// check whether we need to exit

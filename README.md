@@ -9,7 +9,7 @@ EVE supports both ARM and Intel architectures and requires hardware-assisted vir
 
 To get its job done, EVE leverages a lot of great open source projects: [Xen Project](https://xenproject.org/), [Linuxkit](https://github.com/linuxkit/linuxkit) and [Alpine Linux](https://alpinelinux.org/) just to name a few. All of that functionality is being orchestrated by the Go microservices available under [pkg/pillar](pkg/pillar). Why pillar? Well, because pillar is the kind of a monolith we need to break out into true, individual microservices under [pkg/](pkg/).
 
-# How to use
+## How to use
 
 You will need qemu 3.x+ (https://www.qemu.org/), Docker (https://www.docker.com)
 and go 1.12+ (https://golang.org) installed in your system.
@@ -87,20 +87,39 @@ from containerd - use that instead).
 Once in a container you can run the usual xl commands to start VMs and
 interact with Xen.
 
-# How to use on an ARM board
+### Custom Config Partition
+
+As described in [BUILD.md](./docs/BUILD.md) and [REGISTRATION.md](./docs/REGISTRATION.md), a booting EVE looks in its config partition to determine:
+
+* the URL to a Controller
+* hostnames to add to the `/etc/hosts` file
+* certificates to trust
+
+When run in an emulator using `make run`, you can override the built-in `/config` partition by passing it the path of a directory to mount as that partition:
+
+```sh
+make run CONF_PART=/path/to/partition
+```
+
+Note that the directory must exist to be mounted; if not, it will be ignored. The most common use case is a config directory output on the run of [adam](https://github.com/zededa/adam).
+
+## How to use on an ARM board
 
 While running everything on your laptop with qemu could be fun, nothing
 beats real hardware. The most cost-effective option, not surprisingly,
-is ARM. We recommend using HiKey board (http://www.lenovator.com/product/90.html).
+is ARM. We recommend using HiKey board [http://www.lenovator.com/product/90.html](http://www.lenovator.com/product/90.html).
 Once you acquire the board you will need to build an installer image by running
 (note that if you're building it on an ARM server you can drop ZARCH=arm64 part):
-```
+
+```sh
 make ZARCH=arm64 installer
 ```
+
 and then flashing it onto an SD card. For example, here's how you can do the
 flashing on Mac OS X (where XXX is the name of your SD card as shown by
 diskutil list):
-```
+
+```sh
 diskutil list
 diskutil umountDisk /dev/rdiskXXX
 sudo dd if=dist/arm64/installer.raw of=/dev/rdiskXXX bs=1m
@@ -109,9 +128,8 @@ diskutil eject /dev/rdiskXXX
 
 Since by default HiKey is using WiFi for all its networking, you will also
 have to provide SSID and password for your WiFi network. On Mac OS X you
-can simply re-insert SD card and edit wpa_supplicant.conf that will appear 
+can simply re-insert SD card and edit wpa_supplicant.conf that will appear
 on volume called EVE.
-
 
 At this point you have everything you need to permanently install onto
 HiKey's internal flash. This, of course, will mean that if you have anything
@@ -121,12 +139,13 @@ make sure to make a backup if you nee to.
 Additionally, our installer will try to configure an entry point to the
 initial boot sequence via GRUB. Since the only reliable way to do so is
 by replacing a file called fastboot.efi in the system boot partition you
-need to make sure that you have fastboot.efi present there (since if itsn't
+need to make sure that you have fastboot.efi present there (since if isn't
 there installer will refuse to proceed). The easiest way to check for
-all that is to invoke an EFI shell on HiKey. Here's how: put the SD card 
+all that is to invoke an EFI shell on HiKey. Here's how: put the SD card
 into the KiKey, connect HiKey to your serial port, start screen, poweron
-HiKey and immediately start pressing <ESC> key to trigger EFI shell:
-```
+HiKey and immediately start pressing `<ESC>` key to trigger EFI shell:
+
+```sh
 screen /dev/tty.usbserial-* 115200
 
 [1] fastboot
@@ -147,13 +166,15 @@ reason, the previous command doesn't show fastboot.efi present on your
 system. Once you've either verified that there's an existing fastboot.efi
 (or created a dummy one via the setsize command) you can proceed with
 the rest of the installation from the same EFI shell by executing:
-```
+
+```sh
 Shell> fs0:\EFI\BOOT\BOOTX64.EFI
 ```
 
 You will see an installation sequence scroll on screen and the output
 that indicates a successful install will look like this:
-```
+
+```sh
 [   85.717414]  mmcblk0: p1 p2 p3 p4 p5 p6 p7 p8 p11
 [   87.420407]  mmcblk0: p1 p2 p3 p4 p5 p6 p7 p8 p11 p12
 [  118.754353]  mmcblk0: p1 p2 p3 p4 p5 p6 p7 p8 p11 p12 p13
@@ -174,7 +195,8 @@ Alternatively, if you're not quite ready to commit to replace your current OS
 on the HiKey, you can try running from the SD card. For that you will have to
 put a live system on the SD card, not the installer. Here's how you can do that
 on Mac OS X:
-```
+
+```sh
 vi conf/wpa_supplicant.conf
   # put your WIFI passwords in and/or add your own networks
 make ZARCH=arm64 MEDIA_SIZE=8192 live
@@ -183,11 +205,12 @@ sudo dd if=dist/arm64/live.raw of=/dev/rdiskXXX bs=1m
 
 Then you can boot into a live system from triggering UEFI shell like shown
 above and executing exactly the same boot command:
-```
+
+```sh
 Shell> fs0:\EFI\BOOT\BOOTX64.EFI
 ```
 
-# How to use on an AMD board
+## How to use on an AMD board
 
 The following steps have been tested on Intel UP Squared Board (AAEON UP-APL01) and the bootable USB Disk containing the installer image has been made on Ubuntu 16.04.
 
@@ -232,12 +255,13 @@ A quick note on linuxkit: you may be wondering why do we have a container-based
 architecture for a Xen-centric environment. First of all, OCI containers
 are a key type of a workload for our platform. Which means having
 OCI environment to run them is a key requirement. We do plan to run them
-via Stage 1 Xen (https://github.com/rkt/stage1-xen) down the road, but 
+via Stage 1 Xen [https://github.com/rkt/stage1-xen](https://github.com/rkt/stage1-xen)
+down the road, but
 while that isn't integrated fully we will be simply relying on containerd.
-In addition to that, while we plan to build a fully disagregated system 
+In addition to that, while we plan to build a fully disagregated system
 (with even device drivers running in their separate domains) right now
 we are just getting started and having containers as a first step towards
-full disagreagation seems like a very convenient stepping stone. 
+full disagreagation seems like a very convenient stepping stone.
 
-Let us know what you think by filing GitHub issues, and feel free to 
+Let us know what you think by filing GitHub issues, and feel free to
 send us pull requests if something doesn't quite work.

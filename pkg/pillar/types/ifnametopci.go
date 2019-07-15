@@ -19,8 +19,8 @@ import (
 const basePath = "/sys/class/net"
 const pciPath = "/sys/bus/pci/devices"
 
-// Returns the long and short PCI IDs
-func ifNameToPci(ifName string) (string, string, error) {
+// Returns the long PCI IDs
+func ifNameToPci(ifName string) (string, error) {
 	// Match for PCI IDs
 	re := regexp.MustCompile("([0-9a-f]){4}:([0-9a-f]){2}:([0-9a-f]){2}.[ls0-9a-f]")
 	devPath := basePath + "/" + ifName + "/device"
@@ -29,23 +29,27 @@ func ifNameToPci(ifName string) (string, string, error) {
 		if !os.IsNotExist(err) {
 			log.Errorln(err)
 		}
-		return "", "", err
+		return "", err
 	}
 	if (info.Mode() & os.ModeSymlink) == 0 {
 		log.Errorf("Skipping non-symlink %s\n", devPath)
-		return "", "", errors.New(fmt.Sprintf("Not a symlink %s", devPath))
+		return "", fmt.Errorf("Not a symlink %s", devPath)
 	}
 	link, err := os.Readlink(devPath)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	target := path.Base(link)
 	if re.MatchString(target) {
-		return target, strings.SplitAfterN(target, ":", 2)[1], nil
+		return target, nil
 	} else {
-		return target, "",
-			errors.New(fmt.Sprintf("Not PCI %s", target))
+		return target, fmt.Errorf("Not PCI %s", target)
 	}
+}
+
+// PCILongToShort returns the PCI ID without the domain id
+func PCILongToShort(long string) string {
+	return strings.SplitAfterN(long, ":", 2)[1]
 }
 
 // Check if an ID like 0000:03:00.0 exists
@@ -82,42 +86,38 @@ func PciLongToUnique(long string) (bool, string) {
 	return true, link
 }
 
-// Returns the long and short PCI IDs; if Lookup is set there can be a PCI ID for
-// each member.
-// Check if PCI ID exists on system. Returns null strings for non-PCI
+// IoBundleToPci returns the long PCI ID if the bundle refers to a PCI controller.
+// Checks if PCI ID exists on system. Returns null strings for non-PCI
 // devices since we can't check if they exist.
-func IoBundleToPci(ib *IoBundle) ([]string, []string, error) {
-	var long, short string
-	var longs, shorts []string
-	if ib.Lookup {
-		longs = make([]string, len(ib.Members))
-		shorts = make([]string, len(ib.Members))
-		var err error
-		for i, m := range ib.Members {
-			long, short, err = ifNameToPci(m)
-			if err == nil {
-				longs[i] = long
-				shorts[i] = short
+// This can handle aliases like Ifname.
+func IoBundleToPci(ib *IoBundle) (string, error) {
+
+	var long string
+	if ib.PciLong != "" {
+		long = ib.PciLong
+		// Check if model matches
+		if ib.Ifname != "" {
+			l, err := ifNameToPci(ib.Ifname)
+			if err != nil {
+				if long != l {
+					log.Warnf("Ifname and PciLong mismatch: %s vs %s for %s",
+						l, long, ib.Ifname)
+				}
 			}
 		}
+	} else if ib.Ifname != "" {
+		var err error
+		long, err = ifNameToPci(ib.Ifname)
 		if err != nil {
-			return nil, nil, err
+			return long, err
 		}
-	} else if ib.PciShort != "" {
-		if !pciLongExists(ib.PciLong) {
-			errStr := fmt.Sprintf("PCI device %s does not exist",
-				ib.PciLong)
-			return nil, nil, errors.New(errStr)
-		}
-		longs = make([]string, 1)
-		shorts = make([]string, 1)
-		longs[0] = ib.PciLong
-		shorts[0] = ib.PciShort
+	} else {
+		return "", nil
 	}
-	for i := range shorts {
-		if !pciLongExists(longs[i]) {
-			return nil, nil, errors.New(fmt.Sprintf("PCI device (%s) does not exist", longs[i]))
-		}
+	if !pciLongExists(long) {
+		errStr := fmt.Sprintf("PCI device name %s id %s does not exist",
+			ib.Name, long)
+		return long, errors.New(errStr)
 	}
-	return longs, shorts, nil
+	return long, nil
 }

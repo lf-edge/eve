@@ -67,6 +67,7 @@ type zedrouterContext struct {
 	ready                  bool
 	subGlobalConfig        *pubsub.Subscription
 	pubUuidToNum           *pubsub.Publication
+	dhcpLeases             []dnsmasqLease
 
 	// NetworkInstance
 	subNetworkInstanceConfig  *pubsub.Subscription
@@ -407,6 +408,10 @@ func Run() {
 				log.Errorf("getNetworkMetrics failed %s\n", err)
 			}
 			publishNetworkInstanceMetricsAll(&zedrouterCtx)
+			// Check for changes to DHCP leases
+			// XXX can we trigger it as part of boot? Or watch file?
+			// XXX add file watch...
+			checkAndPublishDhcpLeases(&zedrouterCtx)
 
 		case change := <-subNetworkInstanceConfig.C:
 			log.Infof("NetworkInstanceConfig change at %+v", time.Now())
@@ -670,10 +675,18 @@ func handleAppNetworkConfigModify(ctxArg interface{}, key string, configArg inte
 	status := lookupAppNetworkStatus(ctx, key)
 	if status == nil {
 		handleAppNetworkCreate(ctx, key, config)
+		status = lookupAppNetworkStatus(ctx, key)
 	} else {
 		doAppNetworkConfigModify(ctx, key, config, status)
 	}
+	// on error, relinquish the acquired resource
+	if status != nil && status.Error != "" {
+		releaseAppNetworkResources(ctx, key, status)
+	}
 	log.Infof("handleAppNetworkConfigModify(%s) done\n", key)
+	// on resource release, check whether any one else
+	// needs it
+	scanAppNetworkStatusInErrorAndUpdate(ctx, key)
 }
 
 func handleAppNetworkConfigDelete(ctxArg interface{}, key string,
@@ -688,6 +701,9 @@ func handleAppNetworkConfigDelete(ctxArg interface{}, key string,
 	}
 	handleDelete(ctx, key, status)
 	log.Infof("handleAppNetworkConfigDelete(%s) done\n", key)
+	// on resource release, check whether any one else
+	// needs it
+	scanAppNetworkStatusInErrorAndUpdate(ctx, key)
 }
 
 // This function separates Lisp service info/status into separate
@@ -941,13 +957,6 @@ func handleAppNetworkCreate(ctx *zedrouterContext, key string,
 	}
 	publishAppNetworkStatus(ctx, &status)
 
-	if !validateAppNetworkConfig(ctx, config, &status) {
-		log.Errorf("handleCreateAppNetwork failed for %s\n", config.DisplayName)
-		status.PendingAdd = false
-		publishAppNetworkStatus(ctx, &status)
-		return
-	}
-
 	if config.Activate {
 		doActivate(ctx, config, &status)
 	}
@@ -979,6 +988,12 @@ func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
 		return
 	}
 	appNetworkDoCopyNetworksToStatus(config, status)
+	if !validateAppNetworkConfig(ctx, config, status) {
+		log.Errorf("doActivate(%v) AppNetwork Config check failed for %s\n",
+			config.UUIDandVersion, config.DisplayName)
+		publishAppNetworkStatus(ctx, status)
+		return
+	}
 
 	// Note that with IPv4/IPv6/LISP interfaces the domU can do
 	// dns lookups on either IPv4 and IPv6 on any interface, hence we
@@ -1132,7 +1147,7 @@ func appNetworkDoActivateUnderlayNetwork(
 	log.Infof("bridgeIPAddr %s appIPAddr %s\n", bridgeIPAddr, appIPAddr)
 	ulStatus.BridgeIPAddr = bridgeIPAddr
 	// XXX appIPAddr is "" if bridge service
-	ulStatus.AssignedIPAddr = appIPAddr
+	ulStatus.AllocatedIPAddr = appIPAddr
 	hostsDirpath := runDirname + "/hosts." + bridgeName
 	if appIPAddr != "" {
 		addToHostsConfiglet(hostsDirpath, config.DisplayName,
@@ -1149,11 +1164,11 @@ func appNetworkDoActivateUnderlayNetwork(
 		UpLinks: netInstStatus.IfNameList}
 
 	// Set up ACLs
-	ruleList, err := createACLConfiglet(aclArgs, ulConfig.ACLs)
+	ruleList, err := createACLConfiglet(aclArgs, ulStatus.ACLs)
 	if err != nil {
 		addError(ctx, status, "createACL", err)
 	}
-	status.UnderlayACLList = ruleList
+	ulStatus.ACLRules = ruleList
 
 	if appIPAddr != "" {
 		// XXX clobber any IPv6 EID entry since same name
@@ -1344,7 +1359,7 @@ func appNetworkDoActivateOverlayNetwork(
 	if err != nil {
 		addError(ctx, status, "createACL", err)
 	}
-	status.OverlayACLList = ruleList
+	olStatus.ACLRules = ruleList
 
 	addhostDnsmasq(bridgeName, appMac, EID.String(),
 		config.UUIDandVersion.UUID.String())
@@ -1602,7 +1617,6 @@ func doActivateAppInstanceWithMgmtLisp(
 	if err != nil {
 		addError(ctx, status, "createACL", err)
 	}
-	status.OverlayACLList = ruleList
 
 	// Save information about zedmanger EID and additional info
 	deviceEID = EID
@@ -1625,6 +1639,8 @@ func doActivateAppInstanceWithMgmtLisp(
 			config.OverlayNetworkList[i]
 		// XXX set BridgeName, BridgeIPAddr?
 	}
+	// save iptables rule list here
+	status.OverlayNetworkList[0].ACLRules = ruleList
 	status.Activated = true
 	publishAppNetworkStatus(ctx, status)
 	log.Infof("doActivate done for %s\n", config.DisplayName)
@@ -1793,8 +1809,14 @@ func doAppNetworkConfigModify(ctx *zedrouterContext, key string,
 
 	log.Infof("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
+	// reset error status and mark pending modify as true
+	status.Error = ""
+	status.ErrorTime = time.Time{}
+	status.PendingModify = true
+	publishAppNetworkStatus(ctx, status)
 
 	if !doAppNetworkSanityCheckForModify(ctx, config, status) {
+		status.PendingModify = false
 		publishAppNetworkStatus(ctx, status)
 		log.Errorf("handleModify: Config check failed for %s\n", config.DisplayName)
 		return
@@ -1803,7 +1825,6 @@ func doAppNetworkConfigModify(ctx *zedrouterContext, key string,
 	// No check for version numbers since the ACLs etc might change
 	// even for the same version.
 	log.Debugf("handleModify appNum %d\n", status.AppNum)
-	status.PendingModify = true
 
 	// Check for unsupported changes
 	status.LegacyDataPlane = ctx.legacyDataPlane
@@ -1817,6 +1838,8 @@ func doAppNetworkConfigModify(ctx *zedrouterContext, key string,
 	if config.IsZedmanager {
 		log.Debugf("ZedManager AppNetwork\n")
 		handleAppNetworkWithMgmtLispModify(ctx, config, status)
+		status.PendingModify = false
+		publishAppNetworkStatus(ctx, status)
 		return
 	}
 
@@ -1864,7 +1887,6 @@ func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
 	if config.IsZedmanager != status.IsZedmanager {
 		errStr := fmt.Sprintf("Unsupported: IsZedmanager changed for %s",
 			config.UUIDandVersion)
-		status.PendingModify = false
 		addError(ctx, status, "handleModify", errors.New(errStr))
 		log.Infof("handleModify done for %s\n", config.DisplayName)
 		return false
@@ -1873,7 +1895,6 @@ func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
 		if config.LegacyDataPlane != ctx.legacyDataPlane {
 			errStr := fmt.Sprintf("Unsupported: Changing legacy data plane flag on the fly\n")
 
-			status.PendingModify = false
 			addError(ctx, status, "handleModify",
 				errors.New(errStr))
 			log.Infof("handleModify done for %s\n",
@@ -1890,7 +1911,6 @@ func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
 	if len(config.OverlayNetworkList) != len(status.OverlayNetworkList) {
 		errStr := fmt.Sprintf("Unsupported: Changed number of overlays for %s",
 			config.UUIDandVersion)
-		status.PendingModify = false
 		addError(ctx, status, "handleModify", errors.New(errStr))
 		log.Infof("handleModify done for %s\n", config.DisplayName)
 		return false
@@ -1898,7 +1918,6 @@ func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
 	if len(config.UnderlayNetworkList) != len(status.UnderlayNetworkList) {
 		errStr := fmt.Sprintf("Unsupported: Changed number of underlays for %s",
 			config.UUIDandVersion)
-		status.PendingModify = false
 		addError(ctx, status, "handleModify", errors.New(errStr))
 		log.Infof("handleModify done for %s\n", config.DisplayName)
 		return false
@@ -1932,9 +1951,6 @@ func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
 		log.Errorf("handleModify: AppNetworkConfig check failed for %s\n", config.DisplayName)
 		return false
 	}
-	// we are good, reset any previous errors here
-	status.Error = ""
-	status.ErrorTime = time.Time{}
 	return true
 }
 
@@ -1961,7 +1977,7 @@ func doAppNetworkModifyUnderlayNetwork(
 	ipsets []string) {
 
 	bridgeName := ulStatus.Bridge
-	appIPAddr := ulStatus.AssignedIPAddr
+	appIPAddr := ulStatus.AllocatedIPAddr
 
 	netconfig := lookupNetworkInstanceConfig(ctx, ulConfig.Network.String())
 	netstatus := lookupNetworkInstanceStatus(ctx, ulConfig.Network.String())
@@ -1972,15 +1988,15 @@ func doAppNetworkModifyUnderlayNetwork(
 
 	// We ignore any errors in netstatus
 
-	// XXX could there be a change to AssignedIPAddress?
+	// XXX could there be a change to AllocatedIPAddress?
 	// If so updateNetworkACLConfiglet needs to know old and new
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
 	ruleList, err := updateACLConfiglet(aclArgs,
-		ulStatus.ACLs, ulConfig.ACLs, status.UnderlayACLList)
+		ulStatus.ACLs, ulConfig.ACLs, ulStatus.ACLRules)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
-	status.UnderlayACLList = ruleList
+	ulStatus.ACLRules = ruleList
 
 	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
 		netstatus.BridgeIPSets)
@@ -2054,11 +2070,11 @@ func doAppNetworkModifyOverlayNetwork(
 	// If so updateACLConfiglet needs to know old and new
 	// XXX Could olStatus.Vif not be set? Means we didn't add
 	ruleList, err := updateACLConfiglet(aclArgs,
-		olStatus.ACLs, olConfig.ACLs, status.OverlayACLList)
+		olStatus.ACLs, olConfig.ACLs, olStatus.ACLRules)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
-	status.OverlayACLList = ruleList
+	olStatus.ACLRules = ruleList
 
 	// Look for added or deleted ipsets
 	newIpsets, staleIpsets, restartDnsmasq := diffIpsets(ipsets,
@@ -2110,16 +2126,15 @@ func handleAppNetworkWithMgmtLispModify(ctx *zedrouterContext,
 
 	// Update ACLs
 	ruleList, err := updateACLConfiglet(aclArgs,
-		olStatus.ACLs, olConfig.ACLs, status.OverlayACLList)
+		olStatus.ACLs, olConfig.ACLs, olStatus.ACLRules)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
-	status.OverlayACLList = ruleList
+	olStatus.ACLRules = ruleList
 
 	if config.Activate && !status.Activated {
 		doActivate(ctx, config, status)
 	}
-	status.PendingModify = false
 	publishAppNetworkStatus(ctx, status)
 	log.Infof("Mgmt List modify done for %s\n", config.DisplayName)
 }
@@ -2248,7 +2263,7 @@ func appNetworkDoInactivateUnderlayNetwork(
 		}
 	}
 
-	appIPAddr := ulStatus.AssignedIPAddr
+	appIPAddr := ulStatus.AllocatedIPAddr
 	if appIPAddr != "" {
 		removehostDnsmasq(bridgeName, ulStatus.Mac,
 			appIPAddr)
@@ -2260,11 +2275,11 @@ func appNetworkDoInactivateUnderlayNetwork(
 
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
 	if ulStatus.Vif != "" {
-		ruleList, err := deleteACLConfiglet(aclArgs, status.UnderlayACLList)
+		ruleList, err := deleteACLConfiglet(aclArgs, ulStatus.ACLRules)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
-		status.UnderlayACLList = ruleList
+		ulStatus.ACLRules = ruleList
 	} else {
 		log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
 			status.UUIDandVersion, bridgeName,
@@ -2351,11 +2366,11 @@ func appNetworkDoInactivateOverlayNetwork(
 	// Delete ACLs
 	// XXX Could olStatus.Vif not be set? Means we didn't add
 	if olStatus.Vif != "" {
-		ruleList, err := deleteACLConfiglet(aclArgs, status.OverlayACLList)
+		ruleList, err := deleteACLConfiglet(aclArgs, olStatus.ACLRules)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
-		status.OverlayACLList = ruleList
+		olStatus.ACLRules = ruleList
 	} else {
 		log.Warnf("doInactivate(%s): no vifName for bridge %s for %s\n",
 			status.UUIDandVersion, bridgeName,
@@ -2531,11 +2546,11 @@ func doInactivateAppNetworkWithMgmtLisp(
 	aclArgs := types.AppNetworkACLArgs{IsMgmt: true, BridgeName: olIfname,
 		VifName: olIfname}
 	// Delete ACLs
-	ruleList, err := deleteACLConfiglet(aclArgs, status.OverlayACLList)
+	ruleList, err := deleteACLConfiglet(aclArgs, olStatus.ACLRules)
 	if err != nil {
 		addError(ctx, status, "deleteACL", err)
 	}
-	status.OverlayACLList = ruleList
+	olStatus.ACLRules = ruleList
 
 	// Delete LISP configlets
 	deleteLispConfiglet(lispRunDirname, true, olStatus.MgmtIID,
@@ -2672,25 +2687,55 @@ func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetwo
 	if len(ulCfgList0) == 0 {
 		return true
 	}
-	sub := ctx.subAppNetworkConfig
-	items := sub.GetAll()
-	for _, cfg := range items {
-		appNetConfig1 := cast.CastAppNetworkConfig(cfg)
-		ulCfgList1 := appNetConfig1.UnderlayNetworkList
-		if appNetConfig.DisplayName == appNetConfig1.DisplayName ||
-			len(ulCfgList1) == 0 {
+	if containsACLPortMapRule(ctx, ulCfgList0) {
+		log.Errorf("app (%s) on network with no uplink and has portmap rule\n",
+			appNetConfig.DisplayName)
+		errStr := fmt.Sprintf("network with no uplink, has portmap")
+		err := errors.New(errStr)
+		addError(ctx, appNetStatus, "underlayACL", err)
+		return false
+	}
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		appNetStatus1 := cast.CastAppNetworkStatus(st)
+		ulCfgList1 := appNetStatus1.UnderlayNetworkList
+		// XXX can an delete+add of app instance with same
+		// portmap result in a failure?
+		if appNetStatus.DisplayName == appNetStatus1.DisplayName ||
+			appNetStatus1.Error != "" || len(ulCfgList1) == 0 {
 			continue
 		}
 		if checkUnderlayNetworkForPortMapOverlap(ctx, appNetStatus, ulCfgList0, ulCfgList1) {
+			log.Errorf("app %s and %s have duplicate portmaps",
+				appNetStatus.DisplayName, appNetStatus1.DisplayName)
 			return false
 		}
 	}
 	return true
 }
 
+// whether there is a portmap rule, on with a network instance with no
+// uplink interface
+func containsACLPortMapRule(ctx *zedrouterContext,
+	ulCfgList []types.UnderlayNetworkConfig) bool {
+	for _, ulCfg := range ulCfgList {
+		network := ulCfg.Network.String()
+		netInstStatus := lookupNetworkInstanceStatus(ctx, network)
+		if netInstStatus == nil || netInstStatus.Port != "" ||
+			len(netInstStatus.IfNameList) != 0 {
+			continue
+		}
+		if containsPortMapACE(ulCfg.ACLs) {
+			return true
+		}
+	}
+	return false
+}
+
 func checkUnderlayNetworkForPortMapOverlap(ctx *zedrouterContext,
 	appNetStatus *types.AppNetworkStatus, ulCfgList []types.UnderlayNetworkConfig,
-	ulCfgList1 []types.UnderlayNetworkConfig) bool {
+	ulCfgList1 []types.UnderlayNetworkStatus) bool {
 	for _, ulCfg := range ulCfgList {
 		network := ulCfg.Network.String()
 		// validate whether there are duplicate portmap rules
@@ -2739,4 +2784,51 @@ func checkUplinkPortOverlap(ctx *zedrouterContext, network string, network1 stri
 	}
 	log.Debugf("no uplink overlaps for (%s, %s)\n", network, network1)
 	return false
+}
+
+// scan through existing AppNetworkStatus list to bring
+// up any AppNetwork struck in error state, while
+// contending for resource
+func scanAppNetworkStatusInErrorAndUpdate(ctx *zedrouterContext, key0 string) {
+	log.Infof("scanAppNetworkStatusInErrorAndUpdate()\n")
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+	for key, st := range items {
+		status := cast.CastAppNetworkStatus(st)
+		config := lookupAppNetworkConfig(ctx, key)
+		if !config.Activate || status.Activated ||
+			status.Error == "" || key == key0 {
+			continue
+		}
+		config = lookupAppNetworkConfig(ctx, key)
+		if config != nil {
+			doAppNetworkConfigModify(ctx, key, *config, &status)
+		}
+	}
+}
+
+// in case of any failures, its better to release the set
+// of ip rules, created by this app network
+func releaseAppNetworkResources(ctx *zedrouterContext, key string,
+	status *types.AppNetworkStatus) {
+	log.Infof("relaseAppNetworkResources(%s)\n", key)
+	for _, ulStatus := range status.UnderlayNetworkList {
+		aclArgs := types.AppNetworkACLArgs{BridgeName: ulStatus.Bridge,
+			VifName: ulStatus.Vif}
+		ruleList, err := deleteACLConfiglet(aclArgs, ulStatus.ACLRules)
+		if err != nil {
+			addError(ctx, status, "deleteACL", err)
+		}
+		ulStatus.ACLRules = ruleList
+	}
+	for _, olStatus := range status.OverlayNetworkList {
+		aclArgs := types.AppNetworkACLArgs{BridgeName: olStatus.Bridge,
+			VifName: olStatus.Vif}
+		ruleList, err := deleteACLConfiglet(aclArgs, olStatus.ACLRules)
+		if err != nil {
+			addError(ctx, status, "deleteACL", err)
+		}
+		olStatus.ACLRules = ruleList
+	}
+	publishAppNetworkStatus(ctx, status)
 }

@@ -66,6 +66,7 @@ CONFIG_IMG=$(DIST)/config.img
 
 BIOS_IMG=$(DIST)/bios/OVMF.fd
 EFI_PART=$(DIST)/bios/EFI
+CONF_PART=$(CURDIR)/../adam/run/config
 
 QEMU_OPTS_arm64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt
 # -drive file=./bios/flash0.img,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
@@ -75,7 +76,8 @@ QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m 4096 -smp 4 -display none -s
         -rtc base=utc,clock=rt \
         -netdev user,id=eth0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::$(SSH_PORT)-:22 -device e1000,netdev=eth0 \
         -netdev user,id=eth1,net=192.168.2.0/24,dhcpstart=192.168.2.10 -device e1000,netdev=eth1
-QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH))
+QEMU_OPTS_CONF_PART=$(shell [ -d $(CONF_PART) ] && echo '-drive file=fat:rw:$(CONF_PART),format=raw')
+QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART)
 
 GOOS=linux
 CGO_ENABLED=1
@@ -112,7 +114,7 @@ all: help
 
 test: $(GOBUILDER) | $(DIST)
 	@echo Running tests on $(GOMODULE)
-	@$(DOCKER_GO) "go test -v ./... 2>&1 | go-junit-report" $(GOTREE) $(GOMODULE) | sed -e '1d' > $(DIST)/results.xml
+	@$(DOCKER_GO) "set -o pipefail ; go test -v ./... 2>&1 | go-junit-report | sed -e 1d" $(GOTREE) $(GOMODULE) > $(DIST)/results.xml
 
 clean:
 	rm -rf $(DIST) pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile \

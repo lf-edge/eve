@@ -111,8 +111,6 @@ type AppNetworkStatus struct {
 	LegacyDataPlane     bool
 	OverlayNetworkList  []OverlayNetworkStatus
 	UnderlayNetworkList []UnderlayNetworkStatus
-	OverlayACLList      IPTablesRuleList
-	UnderlayACLList     IPTablesRuleList
 	MissingNetwork      bool // If any Missing flag is set in the networks
 	// Any errros from provisioning the network
 	Error     string
@@ -756,8 +754,9 @@ func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
 	log.Infof("IsAnyPortInPciBack: aa init %t, %d bundles, %d ports",
 		aa.Initialized, len(aa.IoBundleList), len(portConfig.Ports))
 	for _, port := range portConfig.Ports {
-		ioBundle := aa.LookupIoBundleForMember(
-			IoEth, port.IfName)
+		// XXX this assumes that ioBundle.Name is the ifname known
+		// by the kernel/ifconfig
+		ioBundle := aa.LookupIoBundleNet(port.IfName)
 		if ioBundle == nil {
 			// It is not guaranteed that all Ports are part of Assignable Adapters
 			// If not found, the adaptor is not capable of being assigned at
@@ -841,7 +840,9 @@ type OverlayNetworkStatus struct {
 	VifInfo
 	BridgeMac    net.HardwareAddr
 	BridgeIPAddr string // The address for DNS/DHCP service in zedrouter
+	Assigned     bool   // Set to true once DHCP has assigned EID to domU
 	HostName     string
+	ACLRules     IPTablesRuleList
 }
 
 type DhcpType uint8
@@ -874,10 +875,12 @@ type UnderlayNetworkConfig struct {
 type UnderlayNetworkStatus struct {
 	UnderlayNetworkConfig
 	VifInfo
-	BridgeMac      net.HardwareAddr
-	BridgeIPAddr   string // The address for DNS/DHCP service in zedrouter
-	AssignedIPAddr string // Assigned to domU
-	HostName       string
+	BridgeMac       net.HardwareAddr
+	BridgeIPAddr    string // The address for DNS/DHCP service in zedrouter
+	AllocatedIPAddr string // Assigned to domU
+	Assigned        bool   // Set to true once DHCP has assigned it to domU
+	HostName        string
+	ACLRules        IPTablesRuleList
 }
 
 type NetworkType uint8

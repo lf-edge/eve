@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 type AssignableAdapters struct {
@@ -22,96 +23,120 @@ type AssignableAdapters struct {
 	IoBundleList []IoBundle
 }
 
+// IoBundle has one entry per individual receptacle with a reference
+// to a group name. Those sharing a group name needs to be assigned
+// together.
 type IoBundle struct {
 	// Type
 	//	Type of the IoBundle
 	Type IoType
 	// Name
-	//	Short hand name such as "com".
-	//  xxx - Any description is where this is used? How this is to be set etc??
-	Name string // Short hand name such as "com"
-	// Members
-	//	List of members ( names )
-	//  XXX - Should this be a map?? With list, we cannot detect duplicate members
-	//		In most cases, we probably do lookups on members - they become easy with
-	//		Maps too.
-	Members []string // E.g., "com1", "com2"
+	//	Short hand name such as "COM1".
+	//	Used in the API to specify that a adapter should
+	//	be assigned to an application.
+	Name string
+
+	// Assignment Group, is unique label that is applied across PhysicalIOs
+	// Entire group can be assigned to application or nothing at all
+	AssignmentGroup string
+
 	// UsedByUUID
 	//	Application UUID ( Can be Dom0 too ) that owns the Bundle.
 	//	For unassigned adapters, this is not set.
 	UsedByUUID uuid.UUID
 
-	// Local information not reported to cloud
-	Lookup   bool   // Look up name to find PCI
-	PciLong  string // If adapter on some bus and not Eth
-	PciShort string // If pci adapter and not Eth
-	XenCfg   string // If template for the bundle
-	Unique   string // From firmware_node symlink; used for debug checks
+	// The following set of I/O addresses and info/aliases are used to find
+	// a device, and also to configure it.
+	// XXX TBD: Add PciClass, PciVendor and PciDevice strings as well
+	// for matching
+	Ifname  string // Matching for network PCI devices e.g., "eth1"
+	PciLong string // Specific PCI bus address in Domain:Bus:Device.Funcion syntax
+	// For non-PCI devices such as the ISA serial ports we have:
+	Irq     string // E.g., "5"
+	Ioports string // E.g., "2f8-2ff"
+	Serial  string // E.g., "/dev/ttyS1"
 
-	// For each member we have these with the same indicies. Only used when
-	// Lookup is set.
-	// XXX a Member struct would make more sense but need compatibility with existing json
-	MPciLong  []string // If adapter on some bus
-	MPciShort []string // If pci adapter
-	MUnique   []string // From firmware_node symlink; used for debug checks
+	Unique  string // From firmware_node symlink; used for debug checks
+	MacAddr string // Set for networking adapters. XXX Note used for match.
 
 	// IsPciBack
-	//	Is the IoBundle assigned to pciBack; means all members are assigned
+	//	Is the IoBundle assigned to pciBack; means other bundles in the same group are also assigned
 	//  If the device is managed by dom0, this is False.
 	//  If the device is ( or to be ) managed by DomU, this is True
 	IsPCIBack bool // Assigned to pciback
 	IsPort    bool // Whole or part of the bundle is a zedrouter port
-
-	// DeviceExists
-	//	This is to indicate if the device exists in the system
-	//  Currently, there are many checks using pciShort to see
-	//  if the device exists. This attribute is to abstract it out.
-	// DeviceExists bool
-
 }
 
-// Should match definition in appconfig.proto
+// Must match definition of PhyIoType in devmodel.proto which is an strict
+// subset of the values in ZCioType in devmodel.proto
 type IoType uint8
 
 const (
-	IoNop   IoType = 0
-	IoEth   IoType = 1
-	IoUSB   IoType = 2
-	IoCom   IoType = 3
-	IoOther IoType = 255
+	IoNop     IoType = 0
+	IoNetEth  IoType = 1
+	IoUSB     IoType = 2
+	IoCom     IoType = 3
+	IoAudio   IoType = 4
+	IoNetWLAN IoType = 5
+	IoNetWWAN IoType = 6
+	IoHDMI    IoType = 7
+	IoOther   IoType = 255
 )
 
-// Returns nil if not found
-func LookupIoBundle(aa *AssignableAdapters, ioType IoType, name string) *IoBundle {
+// IsNet checks if the type is any of the networking types.
+func (ioType IoType) IsNet() bool {
+	switch ioType {
+	case IoNetEth, IoNetWLAN, IoNetWWAN:
+		return true
+	default:
+		return false
+	}
+}
+
+// LookupIoBundle returns nil if not found
+func (aa *AssignableAdapters) LookupIoBundle(ioType IoType, name string) *IoBundle {
 	for i, b := range aa.IoBundleList {
-		if b.Type == ioType && strings.EqualFold(b.Name, name) {
+		// XXX the new enums are sent as zero by the controller
+		// hence temporary workaround
+		if (ioType == 0 || b.Type == ioType) && strings.EqualFold(b.Name, name) {
+			if ioType == 0 {
+				log.Warnf("XXX Matching name %s for ioType 0",
+					b.Name)
+			}
 			return &aa.IoBundleList[i]
 		}
 	}
 	return nil
 }
 
-func (aa *AssignableAdapters) LookupIoBundleForMember(
-	ioType IoType, memberName string) *IoBundle {
+// LookupIoBundleGroup returns an empty slice if not found
+// Returns pointers into aa
+func (aa *AssignableAdapters) LookupIoBundleGroup(ioType IoType, group string) []*IoBundle {
+
+	var list []*IoBundle
 	for i, b := range aa.IoBundleList {
-		if b.Type != ioType {
+		if b.AssignmentGroup == "" {
 			continue
 		}
-		for _, member := range b.Members {
-			if strings.EqualFold(member, memberName) {
-				return &aa.IoBundleList[i]
+		// XXX the new enums are sent as zero by the controller
+		// hence temporary workaround
+		if (ioType == 0 || b.Type == ioType) && strings.EqualFold(b.AssignmentGroup, group) {
+			if ioType == 0 {
+				log.Warnf("XXX Matching group %s for ioType 0",
+					b.AssignmentGroup)
 			}
+			list = append(list, &aa.IoBundleList[i])
+		}
+	}
+	return list
+}
+
+// LookupIoBundleNet checks for IoNet*
+func (aa *AssignableAdapters) LookupIoBundleNet(name string) *IoBundle {
+	for i, b := range aa.IoBundleList {
+		if b.Type.IsNet() && strings.EqualFold(b.Name, name) {
+			return &aa.IoBundleList[i]
 		}
 	}
 	return nil
-}
-
-func (aa *AssignableAdapters) getIoBundleOrBundleForMemberByName(
-	ioType IoType, adapter string) *IoBundle {
-	ib := LookupIoBundle(aa, ioType, adapter)
-	if ib == nil {
-		// Check if adapter is a member of iobundle
-		ib = aa.LookupIoBundleForMember(ioType, adapter)
-	}
-	return ib
 }
