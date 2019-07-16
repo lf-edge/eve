@@ -358,7 +358,9 @@ func Run() { //nolint:gocyclo
 		// XXX add option to get this from a file in /config + override
 		// logic
 		productSerial := hardware.GetProductSerial()
+		productSerial = strings.TrimSpace(productSerial)
 		softSerial := hardware.GetSoftSerial()
+		softSerial = strings.TrimSpace(softSerial)
 		log.Infof("ProductSerial %s, SoftwareSerial %s\n", productSerial, softSerial)
 
 		registerCreate := &register.ZRegisterMsg{
