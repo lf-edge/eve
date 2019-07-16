@@ -96,7 +96,9 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 
 	// Get device serail number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
-	log.Infof("NIM Get Device Serial %s\n", zedcloudCtx.DevSerial)
+	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
+	log.Infof("NIM Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
+		zedcloudCtx.DevSoftSerial)
 
 	tlsConfig, err := zedcloud.GetTlsConfig(serverName, nil)
 	if err != nil {

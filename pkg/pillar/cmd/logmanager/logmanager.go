@@ -691,7 +691,9 @@ func sendCtxInit() {
 
 	// get the edge box serial number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
-	log.Infof("Log Get Device Serial %s\n", zedcloudCtx.DevSerial)
+	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
+	log.Infof("Log Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
+		zedcloudCtx.DevSoftSerial)
 
 	// In case we run early, wait for UUID file to appear
 	for {

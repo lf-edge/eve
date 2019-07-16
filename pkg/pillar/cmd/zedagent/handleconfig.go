@@ -94,7 +94,9 @@ func handleConfigInit() {
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
-	log.Infof("Configure Get Device Serial %s\n", zedcloudCtx.DevSerial)
+	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
+	log.Infof("Configure Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
+		zedcloudCtx.DevSoftSerial)
 
 	b, err := ioutil.ReadFile(uuidFileName)
 	if err != nil {
