@@ -33,9 +33,11 @@ type ZedCloudContext struct {
 	NoLedManager        bool // Don't call UpdateLedManagerConfig
 	DevUUID             uuid.UUID
 	DevSerial           string
+	DevSoftSerial       string
 }
 
 var sendCounter uint32
+var nilUUID = uuid.UUID{}
 
 // Tries all interfaces (free first) until one succeeds. interation arg
 // ensure load spreading across multiple interfaces.
@@ -268,18 +270,23 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		// Add Device UUID to the HTTP Header
 		// for tracability
 		devUuidStr := ctx.DevUUID.String()
-		if devUuidStr != "" {
+		if devUuidStr != "" && devUuidStr != nilUUID.String() {
 			req.Header.Add("X-Request-Id", devUuidStr)
+		} else {
+			// Add Device Serial Number to the HTTP Header for initial tracability
+			devSerialNum := ctx.DevSerial
+			if devSerialNum != "" {
+				req.Header.Add("X-Serial-Number", devSerialNum)
+			}
+			// Add Software Serial Number to the HTTP Header for initial tracability
+			devSoftSerial := ctx.DevSoftSerial
+			if devSoftSerial != "" {
+				req.Header.Add("X-Soft-Serial", devSoftSerial)
+			}
+			log.Debugf("Serial-Numbers, count (%d), serial: %s, soft-serial %s",
+				sendCounter, devSerialNum, devSoftSerial) // XXX change to debug
+			sendCounter++
 		}
-
-		// Add Device Serial Number to the HTTP Header for initial tracability
-		devSerialNum := ctx.DevSerial
-		if devSerialNum != "" {
-			req.Header.Add("X-Serial-Number", devSerialNum)
-		}
-		log.Debugf("X-Serial-Number, count (%d), serial: %s",
-			sendCounter, devSerialNum)
-		sendCounter++
 
 		trace := &httptrace.ClientTrace{
 			GotConn: func(connInfo httptrace.GotConnInfo) {

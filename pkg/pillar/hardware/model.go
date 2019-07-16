@@ -139,7 +139,7 @@ func massageCompatible(contents []byte) []byte {
 
 // GetSoftSerial returns software defined product serial number
 func GetSoftSerial() string {
-	return getOverride(softSerialFile)
+	return strings.TrimSuffix(getOverride(softSerialFile), "\n")
 }
 
 func GetProductSerial() string {

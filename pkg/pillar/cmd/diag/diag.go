@@ -134,7 +134,9 @@ func Run() {
 
 	// Get device serail number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
-	log.Infof("Diag Get Device Serial %s\n", zedcloudCtx.DevSerial)
+	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
+	log.Infof("Diag Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
+		zedcloudCtx.DevSoftSerial)
 
 	if fileExists(deviceCertName) {
 		// Load device cert

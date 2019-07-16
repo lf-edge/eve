@@ -232,7 +232,9 @@ func Run() { //nolint:gocyclo
 
 	// Get device serail number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
-	log.Infof("Client Get Device Serial %s\n", zedcloudCtx.DevSerial)
+	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
+	log.Infof("Client Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
+		zedcloudCtx.DevSoftSerial)
 
 	server, err := ioutil.ReadFile(serverFileName)
 	if err != nil {
@@ -356,9 +358,7 @@ func Run() { //nolint:gocyclo
 		// XXX add option to get this from a file in /config + override
 		// logic
 		productSerial := hardware.GetProductSerial()
-		productSerial = strings.TrimSpace(productSerial)
 		softSerial := hardware.GetSoftSerial()
-		softSerial = strings.TrimSpace(softSerial)
 		log.Infof("ProductSerial %s, SoftwareSerial %s\n", productSerial, softSerial)
 
 		registerCreate := &register.ZRegisterMsg{
