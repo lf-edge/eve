@@ -158,7 +158,7 @@ func (status AppInstanceStatus) CheckPendingDelete() bool {
 	return false
 }
 
-// Helper function
+// GetAppInterfaceList is a helper function to get all the vifnames
 func (status AppInstanceStatus) GetAppInterfaceList() []string {
 
 	var viflist []string
