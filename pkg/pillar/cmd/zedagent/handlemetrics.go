@@ -120,163 +120,21 @@ func ExecuteXlInfoCmd() map[string]string {
 	return dict
 }
 
-// Shadow copy of suscription to determine info for deletes. Key is UUID
-var domainStatus map[string]types.DomainStatus
+// Helper function
+func getAppInterfaceList(aiStatus types.AppInstanceStatus) []string {
 
-// Key is DomainName; value is array of interface names
-var appInterfaceAndNameList map[string][]string
-
-// Key is DomainName; value is array of disk images
-var appDiskAndNameList map[string][]string
-
-func handleDomainStatusModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	log.Debugf("handleDomainStatusModify for %s\n", key)
-	status := cast.CastDomainStatus(statusArg)
-	ctx := ctxArg.(*zedagentContext)
-	if status.Key() != key {
-		log.Errorf("handleDomainStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
-	// Update Progress counter even if Pending
-
-	if domainStatus == nil {
-		log.Debugf("create Domain map\n")
-		domainStatus = make(map[string]types.DomainStatus)
-	}
-	// Detect if any changes relevant to the device status report
-	old := lookupDomainStatus(ctx, key)
-	if old != nil {
-		log.Infof("handleDomainStatusModify change for %s domainname %s\n",
-			key, status.DomainName)
-		if ioAdapterListChanged(*old, status) {
-			ctx.TriggerDeviceInfo = true
-		}
-	} else {
-		log.Infof("handleDomainStatusModify add for %s domainname %s\n",
-			key, status.DomainName)
-		if ioAdapterListChanged(types.DomainStatus{}, status) {
-			ctx.TriggerDeviceInfo = true
+	var viflist []string
+	for _, ulStatus := range aiStatus.UnderlayNetworks {
+		if ulStatus.Vif != "" {
+			viflist = append(viflist, ulStatus.Vif)
 		}
 	}
-	domainStatus[key] = status
-	if appInterfaceAndNameList == nil {
-		appInterfaceAndNameList = make(map[string][]string)
-	}
-	if appDiskAndNameList == nil {
-		appDiskAndNameList = make(map[string][]string)
-	}
-	var interfaceList []string
-	for _, vif := range status.VifList {
-		interfaceList = append(interfaceList, vif.Vif)
-	}
-	appInterfaceAndNameList[status.DomainName] = interfaceList
-	var diskList []string
-	for _, ds := range status.DiskStatusList {
-		diskList = append(diskList, ds.ActiveFileLocation)
-	}
-	appDiskAndNameList[status.DomainName] = diskList
-	log.Debugf("handleDomainStatusModify appIntf %s %v\n",
-		status.DomainName, interfaceList)
-	log.Debugf("handleDomainStatusModify done for %s\n", key)
-}
-
-func handleDomainStatusDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	ctx := ctxArg.(*zedagentContext)
-	log.Infof("handleDomainStatusDelete for %s\n", key)
-	status := cast.CastDomainStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleDomainStatusDelete key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
-
-	// Detect if any changes relevant to the device status report
-	if ioAdapterListChanged(status, types.DomainStatus{}) {
-		ctx.TriggerDeviceInfo = true
-	}
-
-	if _, ok := appInterfaceAndNameList[status.DomainName]; ok {
-		log.Infof("appInterfaceAndnameList for %v\n",
-			status.DomainName)
-		delete(appInterfaceAndNameList, status.DomainName)
-	}
-
-	// XXX remove domainStatus once we can count it below? But
-	// assigning away devices to /dev/null aka pciback means not visible
-	// at boot.
-	delete(domainStatus, key)
-	log.Infof("handleDomainStatusDelete done for %s\n", key)
-}
-
-// Note that this function returns the entry even if Pending* is set.
-func lookupDomainStatus(ctx *zedagentContext, key string) *types.DomainStatus {
-	sub := ctx.subDomainStatus
-	st, _ := sub.Get(key)
-	if st == nil {
-		log.Infof("lookupDomainStatus(%s) not found\n", key)
-		return nil
-	}
-	status := cast.CastDomainStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupDomainStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
-	return &status
-}
-
-func ioAdapterListChanged(old types.DomainStatus, new types.DomainStatus) bool {
-	log.Infof("ioAdapterListChanged(%v, %v)\n",
-		old.IoAdapterList, new.IoAdapterList)
-	if len(old.IoAdapterList) != len(new.IoAdapterList) {
-		log.Infof("ioAdapterListChanged length from %d to %d\n",
-			len(old.IoAdapterList), len(new.IoAdapterList))
-		return true
-	}
-	adapterSet := make(map[types.IoAdapter]bool)
-	for _, ad := range old.IoAdapterList {
-		adapterSet[ad] = true
-	}
-	for _, ad := range new.IoAdapterList {
-		if _, ok := adapterSet[ad]; !ok {
-			log.Infof("ioAdapterListChanged %v not in old set\n",
-				ad)
-			return true
+	for _, olStatus := range aiStatus.OverlayNetworks {
+		if olStatus.Vif != "" {
+			viflist = append(viflist, olStatus.Vif)
 		}
 	}
-	log.Infof("ioAdapterListChanged: no change\n")
-	return false
-}
-
-func ReadAppInterfaceList(domainName string) []string {
-	return appInterfaceAndNameList[domainName]
-}
-
-func ReadAppDiskList(domainName string) []string {
-	return appDiskAndNameList[domainName]
-}
-
-func LookupDomainStatus(domainName string) *types.DomainStatus {
-	for _, ds := range domainStatus {
-		if strings.Compare(ds.DomainName, domainName) == 0 {
-			return &ds
-		}
-	}
-	return nil
-}
-
-func LookupDomainStatusUUID(uuid string) *types.DomainStatus {
-	for _, ds := range domainStatus {
-		if strings.Compare(ds.Key(), uuid) == 0 {
-			return &ds
-		}
-	}
-	return nil
+	return viflist
 }
 
 // XXX can we use libxenstat? /usr/local/lib/libxenstat.so on hikey
@@ -716,7 +574,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		availableMemoryPercent := 100.0 - usedMemoryPercent
 		ReportAppMetric.Memory.AvailPercentage = availableMemoryPercent
 
-		appInterfaceList := ReadAppInterfaceList(aiStatus.DomainName)
+		appInterfaceList := getAppInterfaceList(aiStatus)
 		log.Debugf("ReportMetrics: domainName %s ifs %v\n",
 			aiStatus.DomainName, appInterfaceList)
 		// Use the network metrics from zedrouter subscription
@@ -774,9 +632,8 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 				networkDetails)
 		}
 
-		appDiskList := ReadAppDiskList(aiStatus.DomainName)
-		// Use the network metrics from zedrouter subscription
-		for _, diskfile := range appDiskList {
+		for _, ss := range aiStatus.StorageStatusList {
+			diskfile := ss.ActiveFileLocation
 			appDiskDetails := new(metrics.AppDiskMetric)
 			err := getDiskInfo(diskfile, appDiskDetails)
 			if err != nil {
@@ -835,6 +692,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	deviceUUID := zcdevUUID.String()
 	ReportInfo.DevId = *proto.String(deviceUUID)
 	ReportInfo.AtTimeStamp = ptypes.TimestampNow()
+	log.Infof("PublishDeviceInfoToZedCloud uuid %s", deviceUUID)
 
 	ReportDeviceInfo := new(info.ZInfoDevice)
 
@@ -1487,20 +1345,6 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	if aiStatus != nil {
 		ReportAppInfo.AppName = aiStatus.DisplayName
 		ReportAppInfo.State = info.ZSwState(aiStatus.State)
-		ds := LookupDomainStatusUUID(uuid)
-		if ds == nil {
-			log.Infof("ReportAppInfo: Did not find DomainStatus for UUID %s\n",
-				uuid)
-			// Expect zedmanager to send us update when DomainStatus
-			// appears. We avoid nil checks below by:
-			ds = &types.DomainStatus{}
-		} else {
-			// XXX better compare? Pick REFRESHING and PURGING from
-			// aiStatus but HALTED from DomainStatus
-			if ds.State > aiStatus.State {
-				ReportAppInfo.State = info.ZSwState(ds.State)
-			}
-		}
 
 		if !aiStatus.ErrorTime.IsZero() {
 			errInfo := new(info.ErrorInfo)
@@ -1524,12 +1368,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 				ReportSoftwareInfo.DownloadProgress = uint32(ss.Progress)
 
 				ReportSoftwareInfo.Target = ss.Target
-				for _, disk := range ds.DiskStatusList {
-					if disk.ImageSha256 == ss.ImageSha256 {
-						ReportSoftwareInfo.Vdev = disk.Vdev
-						break
-					}
-				}
+				ReportSoftwareInfo.Vdev = ss.Vdev
 
 				ReportAppInfo.SoftwareList[idx] = ReportSoftwareInfo
 			}
@@ -1542,11 +1381,11 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			ReportAppInfo.BootTime = bootTime
 		}
 
-		for _, ia := range ds.IoAdapterList {
+		for _, ia := range aiStatus.IoAdapterList {
 			reportAA := new(info.ZioBundle)
 			reportAA.Type = info.IPhyIoType(ia.Type)
 			reportAA.Name = ia.Name
-			reportAA.UsedByAppUUID = ds.Key()
+			reportAA.UsedByAppUUID = aiStatus.Key()
 			list := aa.LookupIoBundleGroup(ia.Type, ia.Name)
 			for _, ib := range list {
 				if ib == nil {
@@ -1569,7 +1408,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		// Mostly reporting the UP status
 		// We extract the appIP from the dnsmasq assignment
 		interfaces, _ := psutilnet.Interfaces()
-		ifNames := ReadAppInterfaceList(aiStatus.DomainName)
+		ifNames := getAppInterfaceList(*aiStatus)
 		log.Debugf("ReportAppInfo: domainName %s ifs %v\n",
 			aiStatus.DomainName, ifNames)
 		for _, ifname := range ifNames {
