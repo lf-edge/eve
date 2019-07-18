@@ -222,6 +222,7 @@ type StorageStatus struct {
 	Progress           uint    // In percent i.e., 0-100
 	HasDownloaderRef   bool    // Reference against downloader to clean up
 	HasVerifierRef     bool    // Reference against verifier to clean up
+	Vdev               string  // Allocated
 	ActiveFileLocation string  // Location of filestystem
 	FinalObjDir        string  // Installation dir; may differ from verified
 	MissingDatastore   bool    // If DatastoreId not found
