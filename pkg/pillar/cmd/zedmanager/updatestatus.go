@@ -903,7 +903,9 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			changed = true
 		}
 	}
-
+	// XXX compare with equal before setting changed?
+	status.IoAdapterList = ds.IoAdapterList
+	changed = true
 	if ds.State < types.BOOTING {
 		log.Infof("Waiting for DomainStatus to BOOTING for %s\n",
 			uuidStr)
@@ -913,7 +915,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("Waiting for DomainStatus !Pending for %s\n", uuidStr)
 		return changed
 	}
-	// Update ActiveFileLocation from DiskStatus
+	// Update ActiveFileLocation and Vdev from DiskStatus
 	for _, disk := range ds.DiskStatusList {
 		// Need to lookup based on ImageSha256
 		found := false
@@ -927,6 +929,12 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 					log.Infof("Update SSL ActiveFileLocation for %s: %s\n",
 						uuidStr, disk.ActiveFileLocation)
 					ss.ActiveFileLocation = disk.ActiveFileLocation
+					changed = true
+				}
+				if ss.Vdev != disk.Vdev {
+					log.Infof("Update SSL Vdev for %s: %s\n",
+						uuidStr, disk.Vdev)
+					ss.Vdev = disk.Vdev
 					changed = true
 				}
 			}
@@ -1325,6 +1333,9 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 		status.ErrorTime = time.Time{}
 		changed = true
 	}
+	// XXX compare with equal before setting changed?
+	status.IoAdapterList = ds.IoAdapterList
+	changed = true
 	if ds.Pending() {
 		log.Infof("Waiting for DomainStatus !Pending for %s\n", uuidStr)
 		return changed
