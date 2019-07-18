@@ -120,23 +120,6 @@ func ExecuteXlInfoCmd() map[string]string {
 	return dict
 }
 
-// Helper function
-func getAppInterfaceList(aiStatus types.AppInstanceStatus) []string {
-
-	var viflist []string
-	for _, ulStatus := range aiStatus.UnderlayNetworks {
-		if ulStatus.Vif != "" {
-			viflist = append(viflist, ulStatus.Vif)
-		}
-	}
-	for _, olStatus := range aiStatus.OverlayNetworks {
-		if olStatus.Vif != "" {
-			viflist = append(viflist, olStatus.Vif)
-		}
-	}
-	return viflist
-}
-
 // XXX can we use libxenstat? /usr/local/lib/libxenstat.so on hikey
 // /usr/lib/libxenstat.so in container
 func ExecuteXentopCmd() [][]string {
@@ -574,7 +557,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		availableMemoryPercent := 100.0 - usedMemoryPercent
 		ReportAppMetric.Memory.AvailPercentage = availableMemoryPercent
 
-		appInterfaceList := getAppInterfaceList(aiStatus)
+		appInterfaceList := aiStatus.GetAppInterfaceList()
 		log.Debugf("ReportMetrics: domainName %s ifs %v\n",
 			aiStatus.DomainName, appInterfaceList)
 		// Use the network metrics from zedrouter subscription
@@ -1408,7 +1391,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 		// Mostly reporting the UP status
 		// We extract the appIP from the dnsmasq assignment
 		interfaces, _ := psutilnet.Interfaces()
-		ifNames := getAppInterfaceList(*aiStatus)
+		ifNames := (*aiStatus).GetAppInterfaceList()
 		log.Debugf("ReportAppInfo: domainName %s ifs %v\n",
 			aiStatus.DomainName, ifNames)
 		for _, ifname := range ifNames {
