@@ -158,6 +158,23 @@ func (status AppInstanceStatus) CheckPendingDelete() bool {
 	return false
 }
 
+// Helper function
+func (status AppInstanceStatus) GetAppInterfaceList() []string {
+
+	var viflist []string
+	for _, ulStatus := range status.UnderlayNetworks {
+		if ulStatus.Vif != "" {
+			viflist = append(viflist, ulStatus.Vif)
+		}
+	}
+	for _, olStatus := range status.OverlayNetworks {
+		if olStatus.Vif != "" {
+			viflist = append(viflist, olStatus.Vif)
+		}
+	}
+	return viflist
+}
+
 type EIDOverlayConfig struct {
 	Name string // From proto message
 	EIDConfigDetails
