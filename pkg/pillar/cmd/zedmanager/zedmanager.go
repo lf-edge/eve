@@ -170,7 +170,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppInstanceConfig.ModifyHandler = handleAppInstanceConfigModify
+	subAppInstanceConfig.ModifyHandler = handleModify
+	subAppInstanceConfig.CreateHandler = handleCreate
 	subAppInstanceConfig.DeleteHandler = handleAppInstanceConfigDelete
 	subAppInstanceConfig.RestartHandler = handleConfigRestart
 	ctx.subAppInstanceConfig = subAppInstanceConfig
@@ -381,26 +382,6 @@ func unpublishAppInstanceStatus(ctx *zedmanagerContext,
 	pub.Unpublish(key)
 }
 
-// Determine whether it is an create or modify
-func handleAppInstanceConfigModify(ctxArg interface{}, key string, configArg interface{}) {
-
-	log.Infof("handleAppInstanceConfigModify(%s)\n", key)
-	ctx := ctxArg.(*zedmanagerContext)
-	config := cast.CastAppInstanceConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleAppInstanceConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	status := lookupAppInstanceStatus(ctx, key)
-	if status == nil {
-		handleCreate(ctx, key, config)
-	} else {
-		handleModify(ctx, key, config, status)
-	}
-	log.Infof("handleAppInstanceConfigModify(%s) done\n", key)
-}
-
 func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
@@ -450,8 +431,10 @@ func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInsta
 	return &config
 }
 
-func handleCreate(ctx *zedmanagerContext, key string,
-	config types.AppInstanceConfig) {
+func handleCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	ctx := ctxArg.(*zedmanagerContext)
+	config := cast.CastAppInstanceConfig(configArg)
 
 	log.Infof("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
@@ -542,8 +525,11 @@ func handleCreate(ctx *zedmanagerContext, key string,
 	log.Infof("handleCreate done for %s\n", config.DisplayName)
 }
 
-func handleModify(ctx *zedmanagerContext, key string,
-	config types.AppInstanceConfig, status *types.AppInstanceStatus) {
+func handleModify(ctxArg interface{}, key string,
+	configArg interface{}) {
+	ctx := ctxArg.(*zedmanagerContext)
+	config := cast.CastAppInstanceConfig(configArg)
+	status := lookupAppInstanceStatus(ctx, key)
 	log.Infof("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
