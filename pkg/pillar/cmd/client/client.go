@@ -229,6 +229,13 @@ func Run() { //nolint:gocyclo
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
 	}
+
+	// Get device serail number
+	zedcloudCtx.DevSerial = hardware.GetProductSerial()
+	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
+	log.Infof("Client Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
+		zedcloudCtx.DevSoftSerial)
+
 	server, err := ioutil.ReadFile(serverFileName)
 	if err != nil {
 		log.Fatal(err)

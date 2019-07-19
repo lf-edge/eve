@@ -158,6 +158,23 @@ func (status AppInstanceStatus) CheckPendingDelete() bool {
 	return false
 }
 
+// GetAppInterfaceList is a helper function to get all the vifnames
+func (status AppInstanceStatus) GetAppInterfaceList() []string {
+
+	var viflist []string
+	for _, ulStatus := range status.UnderlayNetworks {
+		if ulStatus.Vif != "" {
+			viflist = append(viflist, ulStatus.Vif)
+		}
+	}
+	for _, olStatus := range status.OverlayNetworks {
+		if olStatus.Vif != "" {
+			viflist = append(viflist, olStatus.Vif)
+		}
+	}
+	return viflist
+}
+
 type EIDOverlayConfig struct {
 	Name string // From proto message
 	EIDConfigDetails
@@ -222,6 +239,7 @@ type StorageStatus struct {
 	Progress           uint    // In percent i.e., 0-100
 	HasDownloaderRef   bool    // Reference against downloader to clean up
 	HasVerifierRef     bool    // Reference against verifier to clean up
+	Vdev               string  // Allocated
 	ActiveFileLocation string  // Location of filestystem
 	FinalObjDir        string  // Installation dir; may differ from verified
 	MissingDatastore   bool    // If DatastoreId not found
