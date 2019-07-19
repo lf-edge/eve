@@ -89,8 +89,8 @@ func PciLongToUnique(long string) (bool, string) {
 	return true, link
 }
 
-// Return the interface name for a network PCI device.
-// Used to make sure devices don't move around
+// PciLongToIfname return the interface name for a network PCI device.
+// This is used to make sure devices don't move around
 // Returns exist bool, string
 func PciLongToIfname(long string) (bool, string) {
 
