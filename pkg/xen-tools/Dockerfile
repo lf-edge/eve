@@ -1,9 +1,10 @@
 FROM alpine:3.8 as kernel-build
+# hadolint ignore=DL3018
 RUN apk add --no-cache \
-    	    gcc make libc-dev dev86 xz-dev perl bash python-dev \
-	    gettext iasl util-linux-dev ncurses-dev glib-dev \
-	    pixman-dev libaio-dev yajl-dev argp-standalone \
-	    linux-headers git patch texinfo curl tar
+    gcc make libc-dev dev86 xz-dev perl bash python-dev \
+    gettext iasl util-linux-dev ncurses-dev glib-dev \
+    pixman-dev libaio-dev yajl-dev argp-standalone \
+    linux-headers git patch texinfo curl tar libcap-dev attr-dev
 
 # FIXME: this is really ugly -- we need to figure out xen tools dependencies
 RUN [ `uname -m` = "aarch64" ] && apk add --no-cache dtc-dev || :
@@ -35,7 +36,7 @@ RUN set -e && for patch in /patches/*.patch; do \
 RUN mkdir -p /out
 
 WORKDIR /xen
-RUN ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable-docs --disable-stubdom
+RUN ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable-docs --disable-stubdom --enable-9pfs
 RUN make && make dist
 RUN dist/install.sh /out
 

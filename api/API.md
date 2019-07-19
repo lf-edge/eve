@@ -335,3 +335,12 @@ The response MUST contain no body content.
 Edge Devices are expected to have intermittent connectivity, with limited bandwidth, memory and storage. It is likely that, at some point, a Device will run out of local memory or storage to cache information, logs or metrics messages that need to be sent to a Controller.
 
 The choice of which messages to keep, how long to keep them, which to discard, and how to handle these overflows are implementation-dependent and are NOT specified in this document.
+
+## HTTP MetaData
+
+Edge Devices may send some MetaData in HTTP header to the controller. This will help
+the controller side troubleshooting at the HTTP level. The Device UUID can be included
+in the HTTP header 'X-Request-ID'. Since the UUID on Device is obtained from the
+controller, when the UUID is not available yet, the Device Serial-Number and
+Soft-Serial-Number can be included in the HTTP header fields 'X-Serial-Number' and
+'X-Soft-Serial' respectively.

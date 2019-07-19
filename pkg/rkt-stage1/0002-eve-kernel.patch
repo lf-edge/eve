@@ -1,0 +1,38 @@
+diff --git a/build.sh b/build.sh
+index f50b892..c004297 100755
+--- a/build.sh
++++ b/build.sh
+@@ -72,8 +72,8 @@ for i in $execs; do
+ done
+ 
+ # Build the kernel and initrd
+-kernel/make-kernel
+-cp kernel/out/kernel target/rootfs
++#kernel/make-kernel
++#cp kernel/out/kernel target/rootfs
+ kernel/make-initrd
+ cp kernel/out/initrd target/rootfs
+ 
+@@ -110,7 +110,7 @@ echo 1 > systemd-version
+ cd ../..
+ 
+ # Build actool
+-go get github.com/appc/spec/actool
+-go build -o ./aci/actool github.com/appc/spec/actool
++#go get github.com/appc/spec/actool
++#go build -o ./aci/actool github.com/appc/spec/actool
+ 
+-./aci/actool build target stage1-xen.aci
++#./aci/actool build target stage1-xen.aci
+diff --git a/kernel/make-initrd b/kernel/make-initrd
+index f83c775..c4eaa4e 100755
+--- a/kernel/make-initrd
++++ b/kernel/make-initrd
+@@ -7,6 +7,7 @@ initrd=$outpath/initrd
+ init=`pwd`/kernel/init-initrd
+ rm -rf $tmpdir
+ 
++mkdir -p $outpath
+ mkdir -p $tmpdir/bin
+ mkdir -p $tmpdir/sbin
+ mkdir -p $tmpdir/etc
