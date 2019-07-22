@@ -213,7 +213,7 @@ func networkInstanceBridgeDelete(
 	// itself and not the rules for specific domU vifs.
 
 	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
-		BridgeIP: status.BridgeIPAddr}
+		BridgeIP: status.BridgeIPAddr, NIType: status.Type, UpLinks: status.IfNameList}
 	handleNetworkInstanceACLConfiglet("-D", aclArgs)
 
 	// delete the sister interface
@@ -544,13 +544,15 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		}
 	default:
 	}
-	// setup the ACLs for the bridge
-	// Here we explicitly adding the iptables rules, to the bottom of the
-	// rule chains, which are tied to the Linux bridge itself and not the
-	//  rules for any specific domU vifs.
-	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
-		BridgeIP: status.BridgeIPAddr}
-	handleNetworkInstanceACLConfiglet("-A", aclArgs)
+	/*
+		// setup the ACLs for the bridge
+		// Here we explicitly adding the iptables rules, to the bottom of the
+		// rule chains, which are tied to the Linux bridge itself and not the
+		//  rules for any specific domU vifs.
+		aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
+			BridgeIP: status.BridgeIPAddr, NIType: status.Type, UpLinks: status.IfNameList}
+		handleNetworkInstanceACLConfiglet("-A", aclArgs)
+	*/
 	return nil
 }
 
@@ -1128,6 +1130,13 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 			status.Type)
 		err = errors.New(errStr)
 	}
+	// setup the ACLs for the bridge
+	// Here we explicitly adding the iptables rules, to the bottom of the
+	// rule chains, which are tied to the Linux bridge itself and not the
+	//  rules for any specific domU vifs.
+	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
+		BridgeIP: status.BridgeIPAddr, NIType: status.Type, UpLinks: status.IfNameList}
+	handleNetworkInstanceACLConfiglet("-A", aclArgs)
 	return err
 }
 

@@ -130,6 +130,9 @@ func Run() {
 	}
 	pubUuidToNum.ClearRestarted()
 
+	// Create the dummy interface used to re-direct DROP/REJECT packets.
+	createFlowMonDummyInterface(0xFFFFFFFF)
+
 	// Pick up (mostly static) AssignableAdapters before we process
 	// any Routes; Pbr needs to know which network adapters are assignable
 
@@ -1165,7 +1168,7 @@ func appNetworkDoActivateUnderlayNetwork(
 
 	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: vifName, BridgeIP: bridgeIPAddr, AppIP: appIPAddr,
-		UpLinks: netInstStatus.IfNameList}
+		UpLinks: netInstStatus.IfNameList, NIType: netInstStatus.Type}
 
 	// Set up ACLs
 	ruleList, err := createACLConfiglet(aclArgs, ulStatus.ACLs)

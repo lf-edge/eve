@@ -1188,15 +1188,22 @@ type AppNetworkACLArgs struct {
 	BridgeIP   string
 	AppIP      string
 	UpLinks    []string
+	NIType     NetworkInstanceType
 }
 
 // IPTablesRule : iptables rule detail
 type IPTablesRule struct {
-	IPVer  int      // 4 or, 6
-	Table  string   // filter/nat/raw/mangle...
-	Chain  string   // FORWARDING/INPUT/PREROUTING...
-	Prefix []string // constructed using ACLArgs
-	Rule   []string // rule match/action
+	IPVer            int      // 4 or, 6
+	Table            string   // filter/nat/raw/mangle...
+	Chain            string   // FORWARDING/INPUT/PREROUTING...
+	Prefix           []string // constructed using ACLArgs
+	Rule             []string // rule match
+	Action           []string // rule action
+	RuleId           int32    // Unique rule ID
+	IsUserConfigured bool     // Does this rule come from user configuration/manifest?
+	IsMarkingRule    bool     // Rule does marking of packet for flow tracking.
+	IsPortMapRule    bool     // Is this a port map rule?
+	IsLimitDropRule  bool     // Is this a policer limit drop rule?
 }
 
 // IPTablesRuleList : list of iptables rules
