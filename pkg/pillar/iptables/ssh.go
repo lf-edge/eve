@@ -23,6 +23,7 @@ func UpdateSshAccess(enable bool, first bool) {
 		dropPortRange(8080, 8080)
 		allowLocalPortRange(4822, 4822)
 		allowLocalPortRange(5900, 5999)
+		allowControlFlows()
 	}
 	if enable {
 		allowPortRange(22, 22)
@@ -94,4 +95,37 @@ func dropPortRange(startPort int, endPort int) {
 	}
 	IptableCmd("-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
 	Ip6tableCmd("-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
+}
+
+func allowControlFlows() {
+	// Allow HTTP, ssh and guacamole packets
+	// Pick flow marking values 1, 2, 3 from the reserved space.
+	portStr := "8080,22,4822"
+	IptableCmd("-t", "mangle", "-I", "PREROUTING", "1", "-p", "tcp",
+		"--match", "multiport", "--dports", portStr,
+		"-j", "CONNMARK", "--set-mark", "1")
+
+	Ip6tableCmd("-t", "mangle", "-I", "PREROUTING", "1", "-p", "tcp",
+		"--match", "multiport", "--dports", portStr,
+		"-j", "CONNMARK", "--set-mark", "1")
+
+	// Allow VNC packets
+	portStr = "5900:5999"
+	IptableCmd("-t", "mangle", "-I", "PREROUTING", "2", "-p", "tcp",
+		"--match", "multiport", "--dports", portStr,
+		"-j", "CONNMARK", "--set-mark", "1")
+
+	Ip6tableCmd("-t", "mangle", "-I", "PREROUTING", "2", "-p", "tcp",
+		"--match", "multiport", "--dports", portStr,
+		"-j", "CONNMARK", "--set-mark", "1")
+
+	// Allow Lisp control/data packets
+	portStr = "4341,4342"
+	IptableCmd("-t", "mangle", "-I", "PREROUTING", "3", "-p", "udp",
+		"--match", "multiport", "--dports", portStr,
+		"-j", "CONNMARK", "--set-mark", "1")
+
+	Ip6tableCmd("-t", "mangle", "-I", "PREROUTING", "3", "-p", "udp",
+		"--match", "multiport", "--dports", portStr,
+		"-j", "CONNMARK", "--set-mark", "1")
 }
