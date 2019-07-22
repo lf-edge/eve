@@ -21,6 +21,7 @@ enum DsType {
 	DsHttps = 2;
 	DsS3    = 3;
 	DsSFTP	= 4;	
+	DsContainerRegistry	= 5;
 }
 
 message DatastoreConfig {
@@ -51,6 +52,7 @@ enum Format {
 	VMDK  = 5;
 	OVA   = 6;
 	VHDX  = 7;
+	CONTAINER  = 8;
 }
 
 message Image {
