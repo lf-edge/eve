@@ -514,7 +514,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 	// Update reserved space. Keep reserved until doDelete
 	// XXX RefCount -> 0 should keep it reserved.
 	kb := types.RoundupToKB(config.Size)
-	if !tryReserveSpace(ctx, kb) {
+	if !tryReserveSpace(ctx, &status, kb) {
 		errString := fmt.Sprintf("Would exceed remaining space %d vs %d\n",
 			kb, ctx.globalStatus.RemainingSpace)
 		log.Errorln(errString)
@@ -527,7 +527,6 @@ func handleCreate(ctx *downloaderContext, objType string,
 		log.Errorf("handleCreate failed for %s\n", config.DownloadURL)
 		return
 	}
-	status.ReservedSpace = kb
 
 	// If RefCount == 0 then we don't yet download.
 	if config.RefCount == 0 {
@@ -831,7 +830,9 @@ func initSpace(ctx *downloaderContext, kb uint64) {
 }
 
 // Returns true if there was space
-func tryReserveSpace(ctx *downloaderContext, kb uint64) bool {
+func tryReserveSpace(ctx *downloaderContext, status *types.DownloaderStatus,
+	kb uint64) bool {
+
 	ctx.globalStatusLock.Lock()
 	if kb >= ctx.globalStatus.RemainingSpace {
 		ctx.globalStatusLock.Unlock()
@@ -842,6 +843,7 @@ func tryReserveSpace(ctx *downloaderContext, kb uint64) bool {
 	ctx.globalStatusLock.Unlock()
 
 	publishGlobalStatus(ctx)
+	status.ReservedSpace = kb
 	return true
 }
 
@@ -849,8 +851,7 @@ func unreserveSpace(ctx *downloaderContext, status *types.DownloaderStatus) {
 	ctx.globalStatusLock.Lock()
 	ctx.globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
-	ctx.globalStatus.UsedSpace -= types.RoundupToKB(status.Size)
-	status.Size = 0
+	ctx.globalStatus.UsedSpace += types.RoundupToKB(status.Size)
 
 	updateRemainingSpace(ctx)
 	ctx.globalStatusLock.Unlock()
