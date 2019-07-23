@@ -1199,7 +1199,7 @@ type IPTablesRule struct {
 	Prefix           []string // constructed using ACLArgs
 	Rule             []string // rule match
 	Action           []string // rule action
-	RuleId           int32    // Unique rule ID
+	RuleID           int32    // Unique rule ID
 	IsUserConfigured bool     // Does this rule come from user configuration/manifest?
 	IsMarkingRule    bool     // Rule does marking of packet for flow tracking.
 	IsPortMapRule    bool     // Is this a port map rule?
