@@ -21,17 +21,26 @@ import (
 
 // XXX Stop gap allocator copied from zedrouter/appnumallocator.go
 // Bitmap of the reserved and allocated
-// Keeps 64K bits indexed by 0 to (64K - 1).
+
+// MAXACEID : Keeps 64K bits indexed by 0 to (64K - 1).
 const MAXACEID = 65535
+
+// MINACEID : IDs till 100 are reserverd for internal usage.
 const MINACEID = 101
 
-// size = MAXACEID/8 + 1
+// ACLBitmap : size = MAXACEID/8 + 1
 type ACLBitmap [8192]byte
 
+// IsSet : Check if bit at a given index in ACLBitmap byte array is SET to binary 1
 func (bits *ACLBitmap) IsSet(i int32) bool { return bits[i/8]&(1<<uint(7-i%8)) != 0 }
-func (bits *ACLBitmap) Set(i int32)        { bits[i/8] |= 1 << uint(7-i%8) }
-func (bits *ACLBitmap) Clear(i int32)      { bits[i/8] &^= 1 << uint(7-i%8) }
 
+// Set : Set bit at a given index in ACLBitmap to binary 1
+func (bits *ACLBitmap) Set(i int32) { bits[i/8] |= 1 << uint(7-i%8) }
+
+// Clear : Clears bit at a given index in ACLBitmap
+func (bits *ACLBitmap) Clear(i int32) { bits[i/8] &^= 1 << uint(7-i%8) }
+
+// AllocACEId : Bit map array for reserving ACE IDs.
 var AllocACEId ACLBitmap
 
 func allocACEId() int32 {
@@ -676,7 +685,7 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 				// e.g., out a directly attached interface in the domU
 				aclRule1.Table = "nat"
 				aclRule1.Chain = "PREROUTING"
-				aclRule1.RuleId = allocACEId()
+				aclRule1.RuleID = allocACEId()
 				aclRule1.Rule = []string{"-i", upLink, "-p", protocol,
 					"--dport", lport}
 				aclRule1.Action = []string{"-j", "DNAT",
@@ -691,8 +700,8 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 				aclRule1.Table = "mangle"
 				aclRule1.IsMarkingRule = true
 				chainName := fmt.Sprintf("%s-%s-%d",
-					aclArgs.BridgeName, aclArgs.VifName, aclRule1.RuleId)
-				createMarkAndAcceptChain(aclArgs, chainName, aclRule1.RuleId)
+					aclArgs.BridgeName, aclArgs.VifName, aclRule1.RuleID)
+				createMarkAndAcceptChain(aclArgs, chainName, aclRule1.RuleID)
 				aclRule1.Action = []string{"-j", chainName}
 				rulesList = append(rulesList, aclRule1)
 			}
@@ -755,11 +764,11 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 	aclRule3.Rule = inArgs
 	aclRule3.Action = inActions
 	aclRule3.IsUserConfigured = true
-	aclRule3.RuleId = allocACEId()
+	aclRule3.RuleID = allocACEId()
 
 	aclRule4.Rule = outArgs
 	aclRule4.Action = outActions
-	aclRule4.RuleId = allocACEId()
+	aclRule4.RuleID = allocACEId()
 	aclRule4.IsUserConfigured = true
 	rulesList = append(rulesList, aclRule4, aclRule3)
 
@@ -768,29 +777,29 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 		aclRule4.Table = "mangle"
 		aclRule4.Chain = "PREROUTING"
 		aclRule4.IsMarkingRule = true
-		//aclRule4.RuleId = allocACEId()
+		//aclRule4.RuleID = allocACEId()
 		chainName := fmt.Sprintf("%s-%s-%d",
-			aclArgs.BridgeName, aclArgs.VifName, aclRule4.RuleId)
-		createMarkAndAcceptChain(aclArgs, chainName, aclRule4.RuleId)
+			aclArgs.BridgeName, aclArgs.VifName, aclRule4.RuleID)
+		createMarkAndAcceptChain(aclArgs, chainName, aclRule4.RuleID)
 		aclRule4.Action = []string{"-j", chainName}
 		rulesList = append(rulesList, aclRule4)
 	case types.NetworkInstanceTypeSwitch:
 		aclRule3.Table = "mangle"
 		aclRule3.Chain = "PREROUTING"
 		aclRule3.IsMarkingRule = true
-		//aclRule3.RuleId = allocACEId()
+		//aclRule3.RuleID = allocACEId()
 		chainName := fmt.Sprintf("%s-%s-%d",
-			aclArgs.BridgeName, aclArgs.VifName, aclRule3.RuleId)
-		createMarkAndAcceptChain(aclArgs, chainName, aclRule3.RuleId)
+			aclArgs.BridgeName, aclArgs.VifName, aclRule3.RuleID)
+		createMarkAndAcceptChain(aclArgs, chainName, aclRule3.RuleID)
 		aclRule3.Action = []string{"-j", chainName}
 
 		aclRule4.Table = "mangle"
 		aclRule4.Chain = "PREROUTING"
 		aclRule4.IsMarkingRule = true
-		//aclRule4.RuleId = allocACEId()
+		//aclRule4.RuleID = allocACEId()
 		chainName = fmt.Sprintf("%s-%s-%d",
-			aclArgs.BridgeName, aclArgs.VifName, aclRule4.RuleId)
-		createMarkAndAcceptChain(aclArgs, chainName, aclRule4.RuleId)
+			aclArgs.BridgeName, aclArgs.VifName, aclRule4.RuleID)
+		createMarkAndAcceptChain(aclArgs, chainName, aclRule4.RuleID)
 		aclRule4.Action = []string{"-j", chainName}
 		rulesList = append(rulesList, aclRule4, aclRule3)
 	default:

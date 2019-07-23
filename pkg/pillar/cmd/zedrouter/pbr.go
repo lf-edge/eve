@@ -486,6 +486,8 @@ func AddOverlayRuleAndRoute(bridgeName string, iifIndex int,
 	return nil
 }
 
+// AddFwMarkRuleToDummy : Create a ip rule that sends packets marked with given mark
+// out of interface with given index.
 func AddFwMarkRuleToDummy(fwmark uint32, iifIndex int) error {
 
 	r := netlink.NewRule()
