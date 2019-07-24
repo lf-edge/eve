@@ -342,11 +342,12 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 		aclArgs.BridgeName, aclArgs.VifName, aclArgs.IPVer,
 		aclArgs.BridgeIP, aclArgs.AppIP, ACLs)
 
-	var aclRule1, aclRule2, aclRule3, aclRule4 types.IPTablesRule
+	var aclRule1, aclRule2, aclRule3, aclRule4, aclRule5 types.IPTablesRule
 	aclRule1.IPVer = aclArgs.IPVer
 	aclRule2.IPVer = aclArgs.IPVer
 	aclRule3.IPVer = aclArgs.IPVer
 	aclRule4.IPVer = aclArgs.IPVer
+	aclRule5.IPVer = aclArgs.IPVer
 	// XXX should we check isMgmt instead of bridgeIP?
 	if aclArgs.IPVer == 6 && aclArgs.BridgeIP != "" {
 		// Need to allow local communication */
@@ -427,6 +428,24 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 			"-p", "tcp", "--sport", "domain"}
 		aclRule4.Action = []string{"-j", "ACCEPT"}
 		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+
+		aclRule5.Table = "mangle"
+		aclRule5.Chain = "PREROUTING"
+		aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			"-p", "udp", "-m", "multiport", "--dports", "bootps,domain"}
+		chainName := fmt.Sprintf("%s-%s-%d",
+			aclArgs.BridgeName, aclArgs.VifName, 6)
+		createMarkAndAcceptChain(aclArgs, chainName, 6)
+		aclRule5.Action = []string{"-j", chainName}
+		rulesList = append(rulesList, aclRule5)
+
+		aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			"-p", "tcp", "--dport", "domain"}
+		chainName = fmt.Sprintf("%s-%s-%d",
+			aclArgs.BridgeName, aclArgs.VifName, 7)
+		createMarkAndAcceptChain(aclArgs, chainName, 7)
+		aclRule5.Action = []string{"-j", chainName}
+		rulesList = append(rulesList, aclRule5)
 	}
 
 	// XXX isMgmt is painful; related to commenting out eidset accepts
@@ -487,18 +506,30 @@ func aclDropRules(aclArgs types.AppNetworkACLArgs) (types.IPTablesRuleList, erro
 	aclRule2.Rule = []string{"-o", aclArgs.BridgeName}
 	aclRule2.Action = []string{"-j", "LOG", "--log-prefix",
 		"FORWARD:TO:", "--log-level", "3"}
+
+	// For flow monitoring, we need a rule that marks packet with
+	// a reserved drop/reject marking at the end of rule set in mangle table
+	// for this application instance.
 	switch aclArgs.NIType {
 	case types.NetworkInstanceTypeLocal:
-		rulesList = append(rulesList, aclRule1, aclRule2)
+		fallthrough
 	case types.NetworkInstanceTypeSwitch:
-		rulesList = append(rulesList, aclRule1, aclRule2)
+		aclRule3.Table = "mangle"
+		aclRule3.Chain = "PREROUTING"
+		aclRule3.Rule = []string{"-i", aclArgs.BridgeName}
+		aclRule3.Action = []string{"-j", "MARK", "--set-mark", "0xffffffff"}
+
+		aclRule4.Table = "mangle"
+		aclRule4.Chain = "PREROUTING"
+		aclRule4.Rule = []string{"-i", aclArgs.BridgeName}
+		aclRule4.Action = []string{"-j", "CONNMARK", "--save-mark"}
 	default:
 		aclRule3.Rule = []string{"-i", aclArgs.BridgeName}
 		aclRule3.Action = []string{"-j", "DROP"}
 		aclRule4.Rule = []string{"-o", aclArgs.BridgeName}
 		aclRule4.Action = []string{"-j", "DROP"}
-		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 	}
+	rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 	return rulesList, nil
 }
 
@@ -889,10 +920,22 @@ func rulePrefix(aclArgs types.AppNetworkACLArgs, rule *types.IPTablesRule) error
 	if rule.Table != "" || rule.Chain != "" {
 		// NAT verbatim rule, already set
 		// MANGLE verbatim rule, already set
-		if rule.Rule[0] == "-o" {
-			rule.Rule = rule.Rule[2:]
-			if aclArgs.AppIP != "" {
-				rule.Prefix = []string{"-d", aclArgs.AppIP}
+
+		// To monitor flows we install marking rule in mangle table.
+		// 1. For packets coming into device from internet we match
+		//    on the destination address in PREROUTING mangle instead of
+		//    output interface.
+		// 2. For the packets originating from App and going to internet
+		//    we we have to include the physdev match rule to differentiate
+		//    between application instances.
+		if rule.Table == "mangle" {
+			if rule.Rule[0] == "-o" {
+				rule.Rule = rule.Rule[2:]
+				if aclArgs.AppIP != "" {
+					rule.Prefix = []string{"-d", aclArgs.AppIP}
+				}
+			} else if rule.Rule[0] == "-i" && !rule.IsPortMapRule {
+				rule.Prefix = []string{"-m", "physdev", "--physdev-in", vifName}
 			}
 		}
 		return nil
@@ -1284,16 +1327,8 @@ func createFlowMonDummyInterface(fwmark uint32) {
 	}
 
 	sattrs := netlink.NewLinkAttrs()
-	// "s" for sister
 	sattrs.Name = dummyIntfName
 
-	// XXX Would this address be OK?
-	slinkMac := "00:16:3e:06:ff:ff"
-	hw, err := net.ParseMAC(slinkMac)
-	if err != nil {
-		log.Fatal("createFlowMonDummyInterface: ParseMAC failed: ", slinkMac, err)
-	}
-	sattrs.HardwareAddr = hw
 	// 1280 gives us a comfortable buffer for lisp encapsulation
 	sattrs.MTU = 1280
 	slink := &netlink.Dummy{LinkAttrs: sattrs}
