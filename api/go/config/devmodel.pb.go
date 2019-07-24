@@ -343,7 +343,6 @@ type PhysicalIO struct {
 	Phylabel string `protobuf:"bytes,2,opt,name=phylabel,proto3" json:"phylabel,omitempty"`
 	// The hardware bus address. The key to this map can be of the following
 	// (case-insensitive) values:
-	// "pcishort": the address is a PCI id of the form 02:00.0
 	// "pcilong": the address is a PCI id of the form 0000:02:00.0
 	// "ifname": the addresss is a string for a network interface like "eth1"
 	// "serial": the address is a Linux serial port alias such as "/dev/ttyS2"
