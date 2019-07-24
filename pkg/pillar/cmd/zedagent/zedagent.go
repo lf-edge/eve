@@ -87,7 +87,6 @@ type zedagentContext struct {
 	subAssignableAdapters     *pubsub.Subscription
 	iteration                 int
 	subNetworkInstanceStatus  *pubsub.Subscription
-	subDomainStatus           *pubsub.Subscription
 	subCertObjConfig          *pubsub.Subscription
 	TriggerDeviceInfo         bool
 	subBaseOsStatus           *pubsub.Subscription
@@ -374,17 +373,6 @@ func Run() {
 	subAppInstanceStatus.DeleteHandler = handleAppInstanceStatusDelete
 	getconfigCtx.subAppInstanceStatus = subAppInstanceStatus
 	subAppInstanceStatus.Activate()
-
-	// Get DomainStatus from domainmgr
-	subDomainStatus, err := pubsub.Subscribe("domainmgr",
-		types.DomainStatus{}, false, &zedagentCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDomainStatus.ModifyHandler = handleDomainStatusModify
-	subDomainStatus.DeleteHandler = handleDomainStatusDelete
-	zedagentCtx.subDomainStatus = subDomainStatus
-	subDomainStatus.Activate()
 
 	// Look for zboot status
 	subZbootStatus, err := pubsub.Subscribe("baseosmgr",
@@ -715,9 +703,6 @@ func Run() {
 				publishDevInfo(&zedagentCtx)
 				DNSctx.triggerDeviceInfo = false
 			}
-
-		case change := <-subDomainStatus.C:
-			subDomainStatus.ProcessChange(change)
 
 		case change := <-subAssignableAdapters.C:
 			subAssignableAdapters.ProcessChange(change)
@@ -1073,7 +1058,7 @@ func handleAAModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleAAModify() %+v\n", status)
 	*ctx.assignableAdapters = status
-	publishDevInfo(ctx)
+	ctx.TriggerDeviceInfo = true
 	log.Infof("handleAAModify() done\n")
 }
 
@@ -1087,7 +1072,7 @@ func handleAADelete(ctxArg interface{}, key string,
 	}
 	log.Infof("handleAADelete()\n")
 	ctx.assignableAdapters.Initialized = false
-	publishDevInfo(ctx)
+	ctx.TriggerDeviceInfo = true
 	log.Infof("handleAADelete() done\n")
 }
 
