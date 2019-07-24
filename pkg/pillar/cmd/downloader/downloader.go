@@ -32,11 +32,6 @@ import (
 )
 
 const (
-	appImgObj = "appImg.obj"
-	baseOsObj = "baseOs.obj"
-	certObj   = "cert.obj"
-	agentName = "downloader"
-
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
 )
@@ -192,6 +187,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAppImgConfig.ModifyHandler = handleAppImgModify
+	subAppImgConfig.CreateHandler = handleAppImgCreate
 	subAppImgConfig.DeleteHandler = handleAppImgDelete
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
@@ -202,6 +198,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subBaseOsConfig.ModifyHandler = handleBaseOsModify
+	subBaseOsConfig.CreateHandler = handleBaseOsCreate
 	subBaseOsConfig.DeleteHandler = handleBaseOsDelete
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
@@ -212,6 +209,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subCertObjConfig.ModifyHandler = handleCertObjModify
+	subCertObjConfig.CreateHandler = handleCertObjCreate
 	subCertObjConfig.DeleteHandler = handleCertObjDelete
 	ctx.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()
@@ -345,6 +343,12 @@ func handleAppImgModify(ctxArg interface{}, key string,
 	handleDownloaderModify(ctxArg, appImgObj, key, configArg)
 }
 
+func handleAppImgCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	handleAppImgCreate(ctxArg, appImgObj, key, configArg)
+}
+
 func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
 	handleDownloaderDelete(ctxArg, key, configArg)
 }
@@ -355,6 +359,12 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 	handleDownloaderModify(ctxArg, baseOsObj, key, configArg)
 }
 
+func handleBaseOsCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	handleDownloaderCreate(ctxArg, baseOsObj, key, configArg)
+}
+
 func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
 	handleDownloaderDelete(ctxArg, key, configArg)
 }
@@ -363,6 +373,11 @@ func handleCertObjModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	handleDownloaderModify(ctxArg, certObj, key, configArg)
+}
+func handleCertObjCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	handleDownloaderCreate(ctxArg, certObj, key, configArg)
 }
 
 func handleCertObjDelete(ctxArg interface{}, key string, configArg interface{}) {
@@ -424,7 +439,6 @@ func handlersInit() {
 // Determine whether it is an create or modify
 func handleDownloaderModify(ctxArg interface{}, objType string,
 	key string, configArg interface{}) {
-
 	log.Infof("handleDownloaderModify(%s)\n", key)
 	ctx := ctxArg.(*downloaderContext)
 	config := cast.CastDownloaderConfig(configArg)
@@ -433,17 +447,30 @@ func handleDownloaderModify(ctxArg interface{}, objType string,
 			key, config.Key(), config)
 		return
 	}
-	// Do we have a channel/goroutine?
 	h, ok := handlerMap[config.Key()]
 	if !ok {
-		h1 := make(chan interface{})
-		handlerMap[config.Key()] = h1
-		go runHandler(ctx, objType, key, h1)
-		h = h1
+		log.Fatalf("handleDownloaderModify called on config that does not exist")
 	}
-	log.Debugf("Sending config to handler\n")
 	h <- configArg
-	log.Infof("handleDownloaderModify(%s) done\n", key)
+}
+func handleDownloaderCreate(ctxArg interface{}, objType string,
+	key string, configArg interface{}) {
+	log.Infof("handleDownloaderCreate(%s)\n", key)
+	ctx := ctxArg.(*downloaderContext)
+	config := cast.CastDownloaderConfig(configArg)
+	if config.Key() != key {
+		log.Errorf("handleDownloaderCreate key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
+	h, ok := handlerMap[config.Key()]
+	if ok {
+		log.Fatalf("handleDownloaderCreate called on config that already exists")
+	}
+	h := make(chan interface{})
+	handlerMap[config.Key()] = h
+	go runHandler(ctx, objType, key, h)
+	h <- configArg
 }
 
 func handleDownloaderDelete(ctxArg interface{}, key string,
