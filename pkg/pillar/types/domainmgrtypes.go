@@ -25,6 +25,8 @@ type DomainConfig struct {
 	VifList           []VifInfo
 	IoAdapterList     []IoAdapter
 	CloudInitUserData string // base64-encoded
+	URL               string // rkt uses this URL to start the container
+	// For Fetch — Image url:   datastore.fqdn + image.name ( datastore.path is not used )
 }
 
 func (config DomainConfig) Key() string {

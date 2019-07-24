@@ -9,6 +9,7 @@
 package domainmgr
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"flag"
@@ -597,6 +598,8 @@ func runHandler(ctx *domainContext, key string, c <-chan interface{}) {
 		case configArg, ok := <-c:
 			if ok {
 				config := cast.CastDomainConfig(configArg)
+				// Hardcoding for now
+				config.URL = "docker://zededa/zcli"
 				status := lookupDomainStatus(ctx, key)
 				if status == nil {
 					handleCreate(ctx, key, &config)
@@ -780,6 +783,46 @@ func lookupDomainConfig(ctx *domainContext, key string) *types.DomainConfig {
 	return &config
 }
 
+func execWithTimeout(command string, args ...string) ([]byte, bool, error) {
+
+	ctx, cancel := context.WithTimeout(context.Background(),
+		10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, command, args...)
+	out, err := cmd.Output()
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, false, nil
+	}
+	return out, true, err
+}
+
+// Execute rkt commands
+func ExecuteRktCmd(URL string) []byte {
+
+	cmd := "rkt"
+	arg1 := "run"
+	//arg2 := "registry-1.docker.io/zededa/zcli:latest"
+	arg2 := URL
+	//arg3 := "--interactive"
+	arg3 := "--insecure-options=image"
+	arg4 := "--stage1-path=/usr/sbin/stage1-xen.aci"
+
+	stdout, ok, err := execWithTimeout(cmd, arg1, arg2, arg3, arg4)
+	if err != nil {
+		log.Errorf("rkt run failed: %s", err)
+		return nil
+	}
+
+	if !ok {
+		log.Warnf("rkt run timed out")
+		return nil
+	}
+
+	log.Infof("rkt run succeeded - output %s\n", stdout)
+	return stdout
+}
+
 func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 
 	log.Infof("handleCreate(%v) for %s\n",
@@ -920,6 +963,15 @@ func cleanupAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 	}
 }
 
+// Launch container using rkt
+// command should be an argument
+// as well as teh arguments required
+func launchRktContainer(config types.DomainConfig, status types.DomainStatus) []byte {
+
+	out := ExecuteRktCmd(config.URL)
+	return out
+}
+
 // XXX only for USB when usbAccess is set; really assign to pciback then separately
 // assign to domain
 func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
@@ -1031,6 +1083,30 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			ds.FileLocation, ds.ActiveFileLocation)
 	}
 
+	// Only in Add case
+	// Check whether a container image
+	// if (status.PendingAdd) && (config.DiskConfigList[0].Format == "container") {
+	// Looks like the value is 8 stringified and not a enum nor "container"- To Be Fixed
+	if (status.PendingAdd) && (config.DiskConfigList[0].Format == "8") {
+		// launch container thru rkt
+		// Try thrice - use status.TriedCount ??
+		// domainId ??
+		// Temporary assignment
+		domainId := 1
+		if err := launchRktContainer(config, *status); err != nil {
+			log.Errorf("Failed to launch container from rkt%v\n", config)
+			status.BootFailed = true
+			status.LastErr = fmt.Sprintf("%v", err)
+			status.LastErrTime = time.Now()
+			publishDomainStatus(ctx, status)
+			return
+		}
+		status.BootFailed = false
+		log.Infof("created domainId %d for %s\n", domainId, status.DomainName)
+		doActivateTailContainer(ctx, status, domainId)
+		return
+	}
+
 	filename := xenCfgFilename(config.AppNum)
 	file, err := os.Create(filename)
 	if err != nil {
@@ -1073,6 +1149,34 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 	status.BootFailed = false
 	doActivateTail(ctx, status, domainId)
+}
+
+func doActivateTailContainer(ctx *domainContext, status *types.DomainStatus,
+	domainId int) {
+
+	log.Infof("created domainId %d for %s\n", domainId, status.DomainName)
+	status.DomainId = domainId
+	status.Activated = true
+	status.BootTime = time.Now()
+	status.State = types.BOOTING
+	publishDomainStatus(ctx, status)
+
+	// TBD
+	// Disable offloads for all vifs
+	// err := xlDisableVifOffload(status.DomainName, domainId, len(status.VifList))
+	// err = xlUnpause(status.DomainName, domainId)
+
+	status.State = types.RUNNING
+	// TBD
+	// XXX dumping status to log
+	// xlStatus(status.DomainName, status.DomainId)
+
+	// TBD
+	// domainId, err = xlDomid(status.DomainName, status.DomainId)
+
+	publishDomainStatus(ctx, status)
+	log.Infof("doActivateTail(%v) done for %s\n",
+		status.UUIDandVersion, status.DisplayName)
 }
 
 func doActivateTail(ctx *domainContext, status *types.DomainStatus,
