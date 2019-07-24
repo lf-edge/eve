@@ -32,6 +32,10 @@ import (
 )
 
 const (
+	appImgObj = "appImg.obj"
+	baseOsObj = "baseOs.obj"
+	certObj   = "cert.obj"
+	agentName = "downloader"
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
 )
@@ -294,7 +298,7 @@ func handleAppImgModify(ctxArg interface{}, key string,
 func handleAppImgCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	handleAppImgCreate(ctxArg, appImgObj, key, configArg)
+	handleDownloaderCreate(ctxArg, appImgObj, key, configArg)
 }
 
 func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
@@ -415,9 +419,10 @@ func handleDownloaderCreate(ctxArg interface{}, objType string,
 	if ok {
 		log.Fatalf("handleDownloaderCreate called on config that already exists")
 	}
-	h := make(chan interface{})
-	handlerMap[config.Key()] = h
-	go runHandler(ctx, objType, key, h)
+	h1 = make(chan interface{})
+	handlerMap[config.Key()] = h1
+	go runHandler(ctx, objType, key, h1)
+	h = h1
 	h <- configArg
 }
 
