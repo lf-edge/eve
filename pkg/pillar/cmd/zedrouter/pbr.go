@@ -170,6 +170,7 @@ func pbrGetFreeRule(prefixStr string) (*netlink.Rule, error) {
 	freeRule.Src = prefix
 	freeRule.Table = FreeTable
 	freeRule.Family = syscall.AF_INET
+	freeRule.Priority = 10000
 	return freeRule, nil
 }
 
@@ -420,6 +421,7 @@ func addSourceRule(ifindex int, p net.IPNet, bridge bool) {
 	log.Debugf("addSourceRule(%d, %v, %v)\n", ifindex, p.String(), bridge)
 	r := netlink.NewRule()
 	r.Table = FreeTable + ifindex
+	r.Priority = 10000
 	// Add rule for /32 or /128
 	if p.IP.To4() != nil {
 		r.Family = syscall.AF_INET
@@ -452,6 +454,7 @@ func delSourceRule(ifindex int, p net.IPNet, bridge bool) {
 	log.Debugf("delSourceRule(%d, %v, %v)\n", ifindex, p.String(), bridge)
 	r := netlink.NewRule()
 	r.Table = FreeTable + ifindex
+	r.Priority = 10000
 	// Add rule for /32 or /128
 	if p.IP.To4() != nil {
 		r.Family = syscall.AF_INET
@@ -484,6 +487,7 @@ func AddOverlayRuleAndRoute(bridgeName string, iifIndex int,
 	myTable := FreeTable + iifIndex
 	r.Table = myTable
 	r.IifName = bridgeName
+	r.Priority = 10000
 	if ipnet.IP.To4() != nil {
 		r.Family = syscall.AF_INET
 	} else {
@@ -521,6 +525,8 @@ func AddFwMarkRuleToDummy(fwmark uint32, iifIndex int) error {
 	myTable := FreeTable + iifIndex
 	r.Table = myTable
 	r.Mark = int(fwmark)
+	// XXX Explain this magic number
+	r.Priority = 1000
 	//if ipnet.IP.To4() != nil {
 	//	r.Family = syscall.AF_INET
 	//} else {

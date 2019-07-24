@@ -526,6 +526,11 @@ func handleInit(runDirname string) {
 		log.Fatal("Failed setting rp_filter ", err)
 	}
 	_, err = wrap.Command("sysctl", "-w",
+		"net.netfilter.nf_conntrack_acct=1").Output()
+	if err != nil {
+		log.Fatal("Failed setting conntrack_acct ", err)
+	}
+	_, err = wrap.Command("sysctl", "-w",
 		"net.ipv4.conf.all.log_martians=1").Output()
 	if err != nil {
 		log.Fatal("Failed setting log_martians ", err)
