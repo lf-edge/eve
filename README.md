@@ -11,7 +11,7 @@ To get its job done, EVE leverages a lot of great open source projects: [Xen Pro
 
 ## How to use
 
-You will need qemu 3.x+ (https://www.qemu.org/), Docker (https://www.docker.com)
+You will need QEMU 3.x+ (https://www.qemu.org/), Docker (https://www.docker.com)
 and go 1.12+ (https://golang.org) installed in your system.
 
 Note, that since Linuxkit and manifest-tool are evolving pretty rapidly, we're
@@ -20,26 +20,19 @@ locally installed, but it also means your first build time will be much longer.
 
 If you're on MacOS the following steps should get you all the dependencies:
 
-  0. Get Go:
+### Install Dependencies
 
-  ```
-  https://golang.org/dl/
-  ```
-  1. Get Docker:
+#### Get Go:
 
-  ```
-  https://store.docker.com/editions/community/docker-ce-desktop-mac
-  ```
-  2. Make sure brew is installed:
+```
+https://golang.org/dl/
+```
 
-  ```
-  https://brew.sh/
-  ```
-  3. Brew install qemu.
+#### Get Docker:
 
-  ```
-  $ brew install qemu
-  ```
+```
+https://store.docker.com/editions/community/docker-ce-desktop-mac
+```
 
 Make sure that Docker is up and running on your system. On MacOS just start a docker Application, on Linux make sure docker service is running. Regardless of how you start Docker you can make sure that it is ready for you by running the following command and making sure that it returns both a version of the client AND a version of the server:
 
@@ -47,7 +40,21 @@ Make sure that Docker is up and running on your system. On MacOS just start a do
 docker version
 ```
 
-EVE requires beeing built in Git repository (the tools keep looking up git commit IDs). The easiest way is to clone EVE repository from GitHub:
+#### Get QEMU:
+
+##### On OSX using [Brew](https://brew.sh/):
+```
+$ brew install qemu
+```
+
+##### On Ubuntu:
+  ```
+$ sudo apt install qemu
+```
+
+#### Get Project EVE
+
+EVE requires being built in Git repository (the tools keep looking up git commit IDs). The easiest way is to clone EVE repository from GitHub:
 ```
 git clone https://github.com/lf-edge/eve.git
 cd eve
@@ -60,22 +67,28 @@ make build-tools
 make live
 ```
 This will download the relevant dockers from docker hub and create a bootable
-image 'dist/<ARCH>/live.img'.
+image `dist/<ARCH>/live.img`.
 
-Please note that not all containers will be fetched from the docker
-hub. mkimage-raw-efi in particular will be built.
+Please note that not all containers will be fetched from Docker Hub. 
+`mkimage-raw-efi` in particular will be built.
 
-Also, keep in mind that since the initial build fetches a LOT of bits
-over the network it may occasionally time out and fail. Typically
-re-running make fixes the issue. If it doesn't you can attempt a local
-build of all the required EVE packages first by running:
+> **_NOTE:_** Since the initial build fetches a LOT of bits
+> over the network it may occasionally time out and fail. Typically
+> re-running `make` fixes the issue. If it doesn't you can attempt a local
+> build of all the required EVE packages first by running `make pkgs`
 
+#### Running in QEMU
+
+Finally run the resulting image in QEMU with some default assumptions:
 ```
-make pkgs
+make run
 ```
 
-Finally run the resulting image by typing `make run`. This will launch
-qemu with some default assumptions.
+> **_NOTE:_**  The default QEMU configuration needs 4GB of memory available. 
+> If you get an error message about being unable to allocate memory, try freeing up some RAM.
+> If you can't free up 4GB, you can reduce the memory allocation in the `Makefile` from 4096 (4GB) to 2048 (2GB).
+> Running QEMU with less than 2GB of memory is not recommended.
+
 
 Once the image boots you can interact with it either by using the console
 (right there in the terminal window from which make run was executed).
@@ -87,7 +100,9 @@ from containerd - use that instead).
 Once in a container you can run the usual xl commands to start VMs and
 interact with Xen.
 
-### Custom Config Partition
+To exit out of the QEMU environment, press `Ctrl-A + C` to reach the QEMU console, then `q` to quit.
+
+### Customizing the Configuration
 
 As described in [BUILD.md](./docs/BUILD.md) and [REGISTRATION.md](./docs/REGISTRATION.md), a booting EVE looks in its config partition to determine:
 
@@ -105,7 +120,7 @@ Note that the directory must exist to be mounted; if not, it will be ignored. Th
 
 ## How to use on an ARM board
 
-While running everything on your laptop with qemu could be fun, nothing
+While running everything on your laptop with QEMU could be fun, nothing
 beats real hardware. The most cost-effective option, not surprisingly,
 is ARM. We recommend using HiKey board [http://www.lenovator.com/product/90.html](http://www.lenovator.com/product/90.html).
 Once you acquire the board you will need to build an installer image by running
