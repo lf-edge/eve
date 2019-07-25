@@ -2384,7 +2384,12 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		log.Warnf("checkAndSetIoBundle(%d %s %s) part of zedrouter port\n",
 			ib.Type, ib.Name, ib.AssignmentGroup)
 		ib.IsPort = true
-		if ib.IsPCIBack {
+		if ib.UsedByUUID != nilUUID {
+			log.Errorf("checkAndSetIoBundle(%d %s %s) used by %s",
+				ib.Type, ib.Name, ib.AssignmentGroup,
+				ib.UsedByUUID.String())
+
+		} else if ib.IsPCIBack {
 			log.Infof("checkAndSetIoBundle(%d %s %s) take back from pciback\n",
 				ib.Type, ib.Name, ib.AssignmentGroup)
 			if ib.PciLong != "" {
