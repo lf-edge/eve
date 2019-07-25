@@ -4,10 +4,22 @@
 package types
 
 import (
+	"time"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
+
+type RktCredentials struct {
+	User     string `json:"user"`
+	Password string `json:"password"`
+}
+
+type RktAuthInfo struct {
+	RktKind     string         `json:"rktkind"`
+	RktVersion  string         `json:"rktversion"`
+	Registries  []string       `json:"registries"`
+	Credentials RktCredentials `json:"credentials"`
+}
 
 // The key/index to this is the Safename which is allocated by ZedManager.
 // That is the filename in which we store the corresponding json files.
@@ -16,6 +28,8 @@ type DownloaderConfig struct {
 	Safename         string
 	Name             string
 	NameIsURL        bool // If not we form URL based on datastore info
+	DownloadURL      string
+	IsContainer      bool
 	UseFreeMgmtPorts bool
 	Size             uint64 // In bytes
 	ImageSha256      string // sha256 of immutable image
@@ -51,6 +65,7 @@ type DownloaderStatus struct {
 	Safename         string
 	Name             string
 	ObjType          string
+	IsContainer      bool
 	PendingAdd       bool
 	PendingModify    bool
 	PendingDelete    bool
@@ -59,7 +74,8 @@ type DownloaderStatus struct {
 	Expired          bool      // Handshake to client
 	NameIsURL        bool      // If not we form URL based on datastore info
 	UseFreeMgmtPorts bool
-	ImageSha256      string  // sha256 of immutable image
+	ImageSha256      string // sha256 of immutable image
+	ContainerImageId string
 	State            SwState // DOWNLOADED etc
 	ReservedSpace    uint64  // Contribution to global ReservedSpace
 	Size             uint64  // Once DOWNLOADED; in bytes

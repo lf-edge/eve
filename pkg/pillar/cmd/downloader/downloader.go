@@ -8,9 +8,17 @@
 package downloader
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"net"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -20,15 +28,11 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"net"
-	"os"
-	"strings"
-	"sync"
-	"time"
 )
 
 const (
@@ -36,8 +40,11 @@ const (
 	baseOsObj             = "baseOs.obj"
 	certObj               = "cert.obj"
 	agentName             = "downloader"
-	persistDir            = "/persist"
-	objectDownloadDirname = persistDir + "/downloads"
+	persistDir                   = "/persist"
+	objectDownloadDirname        = persistDir + "/downloads"
+	persistRktDir                = persistDir + "/rkt"
+	persistRktLocalConfigDir     = persistDir + "/rktlocal"
+	persistRktLocalConfigAuthDir = persistRktLocalConfigDir + "/auth.d"
 )
 
 // Go doesn't like this as a constant
@@ -596,6 +603,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		Safename:         config.Safename,
 		Name:             config.Name,
 		ObjType:          objType,
+		IsContainer:      config.IsContainer,
 		RefCount:         config.RefCount,
 		LastUse:          time.Now(),
 		UseFreeMgmtPorts: config.UseFreeMgmtPorts,
@@ -1298,6 +1306,162 @@ func constructDatastoreContext(config types.DownloaderConfig, status *types.Down
 	return &dsCtx
 }
 
+func rktFetch(url string, localConfigDir string) (string, error) {
+	// rkt fetch --system-config=/persist/rkt-local/ --insecure-options=image
+	//      docker://zededa/zcli-dev:latest
+	log.Debugf("rktFetch - url: %s ,  localConfigDir:%s\n",
+		url, localConfigDir)
+	cmd := "rkt"
+	args := []string{
+		"--dir=" + persistRktDir,
+		"fetch",
+		"--insecure-options=image",
+	}
+	if len(localConfigDir) > 0 {
+		args = append(args, "--system-config="+persistRktLocalConfigDir)
+	}
+	args = append(args, url)
+
+	log.Infof("rktFetch - url: %s ,  localConfigDir:%s, args: %+v\n",
+		url, localConfigDir, args)
+
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt fetch failed ", err)
+		log.Errorln("rkt fetch output ", string(stdoutStderr))
+		return "", errors.New(fmt.Sprintf("rkt fetch failed: %s\n",
+			string(stdoutStderr)))
+	}
+	log.Infof("rktFetch - image fetch successful. stdoutStderr: %s\n",
+		stdoutStderr)
+	outputStr := string(stdoutStderr)
+	log.Debugf("rktFetch - outputStr: %s\n", outputStr)
+	outputStrArray := strings.Split(outputStr, "\n")
+
+	log.Debugf("rktFetch - outputStrArray:\n")
+	for i, op := range outputStrArray {
+		log.Debugf("index:%d, op:%s", i, op)
+	}
+	log.Debugf("rktFetch - outputStrArray DONE\n")
+
+	// Get ImageId from the oputput. The last line in rkt fetch output
+	// with sha12- is the imageId
+	imageId := ""
+	for i := len(outputStrArray) - 1; i >= 0; i-- {
+		imageId = outputStrArray[i]
+		if strings.HasPrefix(imageId, "sha512-") {
+			break
+		}
+	}
+	log.Infof("rktFetch - imageId: %s\n", imageId)
+	if imageId == "" {
+		errMsg := "rkt fetch: Can't find imageId.\n Fetch Output: " +
+			outputStr
+		return "", errors.New(errMsg)
+	}
+
+	// TODO - we should run "rkt image ls" and verify image fetch went thru
+	//  without errors.
+	return imageId, nil
+}
+
+func rktAuthFilename(appName string) string {
+	return persistRktLocalConfigAuthDir + "/rktAuth" + appName + ".json"
+}
+
+func rktCreateAuthFile(config *types.DownloaderConfig) (string, error) {
+
+	if len(strings.TrimSpace(config.ApiKey)) == 0 {
+		log.Debugf("rktCreateAuthFile: empty username. Skipping AuthFile")
+		return "", nil
+	}
+
+	err := os.MkdirAll(persistRktLocalConfigAuthDir, 0755)
+	if err != nil {
+		log.Errorf("rktCreateAuthFile: empty username. Skipping AuthFile")
+		return "", errors.New(fmt.Sprintf("Failed create dir %s, "+
+			"err: %+v\n", persistRktLocalConfigAuthDir, err))
+	}
+
+	filename := rktAuthFilename(config.Safename)
+
+	rktAuth := types.RktAuthInfo{
+		RktKind:    "dockerAuth",
+		RktVersion: "v1",
+		Registries: []string{"registry-1.docker.io"},
+		Credentials: types.RktCredentials{
+			User:     config.ApiKey,
+			Password: config.Password,
+		},
+	}
+	log.Infof("rktCreateAuthFile: created Auth file %s\n"+
+		"rktAuth: %+v\n", filename, rktAuth)
+
+	file, err := json.MarshalIndent(rktAuth, "", " ")
+	if err != nil {
+		return "", errors.New(fmt.Sprintf("Failed convert rktAuth to json"+
+			"err: %+v\n", err))
+	}
+	err = ioutil.WriteFile(filename, file, 0644)
+	if err != nil {
+		return "", errors.New(fmt.Sprintf("Failed to create Auth file for"+
+			"rkt fetch: %+v\n", err))
+	}
+	return filename, nil
+}
+
+func rktFetchContainerImage(ctx *downloaderContext, key string,
+	config types.DownloaderConfig, status *types.DownloaderStatus) error {
+	// update status to DOWNLOAD STARTED
+	status.State = types.DOWNLOAD_STARTED
+	publishDownloaderStatus(ctx, status)
+
+	imageId := ""
+	// Save credentials to Auth file
+	log.Infof("rktFetchContainerImage: fetch  <%s>\n", config.DownloadURL)
+	authFile, err := rktCreateAuthFile(&config)
+	if err == nil {
+		log.Debugf("rktFetchContainerImage: authFile: %s\n", authFile)
+		// We should really move to have per-fetch directory..
+		localConfigDir := persistRktLocalConfigDir
+		if len(authFile) == 0 {
+			localConfigDir = ""
+			log.Infof("rktFetchContainerImage: no Auth File")
+		}
+		imageId, err = rktFetch(config.DownloadURL, localConfigDir)
+	} else {
+		log.Errorf("rktCreateAuthFile Failed. err: %+v", err)
+	}
+
+	if err != nil {
+		log.Errorf("rktFetchContainerImage: fetch  Failed. url:%s, "+
+			"authFile: %s, Err: %+v\n", config.DownloadURL, authFile, err)
+		status.PendingAdd = false
+		status.Size = 0
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
+		status.RetryCount += 1
+		publishDownloaderStatus(ctx, status)
+		return err
+	}
+	log.Infof("rktFetchContainerImage successful. imageId: <%s>\n",
+		imageId)
+
+	// Update globalStatus and status
+	unreserveSpace(ctx, status)
+
+	// We do not clear any status.RetryCount, LastErr, etc. The caller
+	// should look at State == DOWNLOADED to determine it is done.
+	status.ContainerImageId = imageId
+	status.ModTime = time.Now()
+	status.PendingAdd = false
+	status.State = types.DOWNLOADED
+	status.Progress = 100 // Just in case
+	publishDownloaderStatus(ctx, status)
+
+	return nil
+}
+
 // Drona APIs for object Download
 func handleSyncOp(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus,
@@ -1310,6 +1474,13 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	if status.ObjType == "" {
 		log.Fatalf("handleSyncOp: No ObjType for %s\n",
 			status.Safename)
+	}
+
+	log.Debugf("handleSyncOp: config: %+v", config)
+	log.Debugf("handleSyncOp: IsContainer: %v", config.IsContainer)
+	if config.IsContainer {
+		rktFetchContainerImage(ctx, key, config, status)
+		return
 	}
 	locDirname := objectDownloadDirname + "/" + status.ObjType
 	locFilename = locDirname + "/pending"

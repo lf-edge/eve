@@ -6,8 +6,9 @@
 package types
 
 import (
-	log "github.com/sirupsen/logrus"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // XXX more than images; rename type and clean up comments
@@ -29,6 +30,7 @@ type VerifyImageConfig struct {
 	CertificateChain []string //name of intermediate certificates
 	ImageSignature   []byte   //signature of image
 	SignatureKey     string   //certificate containing public key
+	IsContainer      bool     // Is this Domain for a Container?
 }
 
 func (config VerifyImageConfig) Key() string {
@@ -53,6 +55,7 @@ type VerifyImageStatus struct {
 	PendingAdd    bool
 	PendingModify bool
 	PendingDelete bool
+	IsContainer   bool    // Is this Domain for a Container?
 	ImageSha256   string  // sha256 of immutable image
 	State         SwState // DELIVERED; LastErr* set if failed
 	LastErr       string  // Verification error
