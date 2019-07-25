@@ -2313,6 +2313,9 @@ func appNetworkDoInactivateUnderlayNetwork(
 	netstatus.BridgeIPSets = newIpsets
 	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
 	maybeRemoveStaleIpsets(staleIpsets)
+
+	// publish the changes to network instance status
+	publishNetworkInstanceStatus(ctx, netstatus)
 }
 
 func appNetworkDoInactivateAllOverlayNetworks(ctx *zedrouterContext,
