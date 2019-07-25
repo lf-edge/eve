@@ -391,6 +391,7 @@ func handlersInit() {
 // Determine whether it is an create or modify
 func handleDownloaderModify(ctxArg interface{}, objType string,
 	key string, configArg interface{}) {
+		
 	log.Infof("handleDownloaderModify(%s)\n", key)
 	ctx := ctxArg.(*downloaderContext)
 	config := cast.CastDownloaderConfig(configArg)
@@ -405,8 +406,10 @@ func handleDownloaderModify(ctxArg interface{}, objType string,
 	}
 	h <- configArg
 }
+
 func handleDownloaderCreate(ctxArg interface{}, objType string,
 	key string, configArg interface{}) {
+
 	log.Infof("handleDownloaderCreate(%s)\n", key)
 	ctx := ctxArg.(*downloaderContext)
 	config := cast.CastDownloaderConfig(configArg)
