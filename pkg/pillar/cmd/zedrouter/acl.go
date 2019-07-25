@@ -437,6 +437,7 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 			aclArgs.BridgeName, aclArgs.VifName, 6)
 		createMarkAndAcceptChain(aclArgs, chainName, 6)
 		aclRule5.Action = []string{"-j", chainName}
+		aclRule5.ActionChainName = chainName
 		rulesList = append(rulesList, aclRule5)
 
 		aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
@@ -445,6 +446,7 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 			aclArgs.BridgeName, aclArgs.VifName, 7)
 		createMarkAndAcceptChain(aclArgs, chainName, 7)
 		aclRule5.Action = []string{"-j", chainName}
+		aclRule5.ActionChainName = chainName
 		rulesList = append(rulesList, aclRule5)
 	}
 
@@ -517,19 +519,22 @@ func aclDropRules(aclArgs types.AppNetworkACLArgs) (types.IPTablesRuleList, erro
 		aclRule3.Table = "mangle"
 		aclRule3.Chain = "PREROUTING"
 		aclRule3.Rule = []string{"-i", aclArgs.BridgeName}
-		aclRule3.Action = []string{"-j", "MARK", "--set-mark", "0xffffffff"}
-
-		aclRule4.Table = "mangle"
-		aclRule4.Chain = "PREROUTING"
-		aclRule4.Rule = []string{"-i", aclArgs.BridgeName}
-		aclRule4.Action = []string{"-j", "CONNMARK", "--save-mark"}
+		chainName := fmt.Sprintf("drop-all-%s-%s",
+			aclArgs.BridgeName, aclArgs.VifName)
+		aclRule3.ActionChainName = chainName
+		// XXX Passing 0xffffffff as int32 make golang give overflow error.
+		// Instead pass "-1" as the marking value and make createMarkAndAcceptChain
+		// handle this case separately.
+		createMarkAndAcceptChain(aclArgs, chainName, -1)
+		aclRule3.Action = []string{"-j", chainName}
+		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3)
 	default:
 		aclRule3.Rule = []string{"-i", aclArgs.BridgeName}
 		aclRule3.Action = []string{"-j", "DROP"}
 		aclRule4.Rule = []string{"-o", aclArgs.BridgeName}
 		aclRule4.Action = []string{"-j", "DROP"}
+		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 	}
-	rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 	return rulesList, nil
 }
 
@@ -734,6 +739,7 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 					aclArgs.BridgeName, aclArgs.VifName, aclRule1.RuleID)
 				createMarkAndAcceptChain(aclArgs, chainName, aclRule1.RuleID)
 				aclRule1.Action = []string{"-j", chainName}
+				aclRule1.ActionChainName = chainName
 				rulesList = append(rulesList, aclRule1)
 			}
 			// add the outgoing port-map translation rule to bridge port
@@ -813,6 +819,7 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 			aclArgs.BridgeName, aclArgs.VifName, aclRule4.RuleID)
 		createMarkAndAcceptChain(aclArgs, chainName, aclRule4.RuleID)
 		aclRule4.Action = []string{"-j", chainName}
+		aclRule4.ActionChainName = chainName
 		rulesList = append(rulesList, aclRule4)
 	case types.NetworkInstanceTypeSwitch:
 		aclRule3.Table = "mangle"
@@ -823,6 +830,7 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 			aclArgs.BridgeName, aclArgs.VifName, aclRule3.RuleID)
 		createMarkAndAcceptChain(aclArgs, chainName, aclRule3.RuleID)
 		aclRule3.Action = []string{"-j", chainName}
+		aclRule3.ActionChainName = chainName
 
 		aclRule4.Table = "mangle"
 		aclRule4.Chain = "PREROUTING"
@@ -832,6 +840,7 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 			aclArgs.BridgeName, aclArgs.VifName, aclRule4.RuleID)
 		createMarkAndAcceptChain(aclArgs, chainName, aclRule4.RuleID)
 		aclRule4.Action = []string{"-j", chainName}
+		aclRule4.ActionChainName = chainName
 		rulesList = append(rulesList, aclRule4, aclRule3)
 	default:
 	}
@@ -1236,6 +1245,15 @@ func executeIPTablesRule(operation string, rule types.IPTablesRule) error {
 	}
 	if rule.IPVer == 4 {
 		err = iptables.IptableCmd(ruleStr...)
+		if operation == "-D" && rule.ActionChainName != "" &&
+			rule.Table == "mangle" {
+			chainFlush := []string{"-t", "mangle", "--flush", rule.ActionChainName}
+			chainDelete := []string{"-t", "mangle", "-X", rule.ActionChainName}
+			err = iptables.IptableCmd(chainFlush...)
+			if err == nil {
+				iptables.IptableCmd(chainDelete...)
+			}
+		}
 	} else if rule.IPVer == 6 {
 		err = iptables.Ip6tableCmd(ruleStr...)
 	} else {
@@ -1425,8 +1443,14 @@ func createMarkAndAcceptChain(aclArgs types.AppNetworkACLArgs,
 		return err
 	}
 
-	rule1 := []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--set-mark",
-		strconv.FormatInt(int64(marking), 10)}
+	rule1 := []string{}
+	if marking == -1 {
+		rule1 = []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--set-mark",
+			"0xffffffff"}
+	} else {
+		rule1 = []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--set-mark",
+			strconv.FormatInt(int64(marking), 10)}
+	}
 	rule2 := []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--restore-mark"}
 	rule3 := []string{"-A", name, "-t", "mangle", "-j", "ACCEPT"}
 
