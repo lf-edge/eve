@@ -526,12 +526,11 @@ func AddFwMarkRuleToDummy(fwmark uint32, iifIndex int) error {
 	r.Table = myTable
 	r.Mark = int(fwmark)
 	// XXX Explain this magic number
+	// This rule gets added during the starting steps of service.
+	// Other ip rules corresponding to network instances get added after this
+	// and take higher priority. We want this ip rule to match before anything else.
+	// Hence we make the priority of this 1000 and the other rules to have 10000.
 	r.Priority = 1000
-	//if ipnet.IP.To4() != nil {
-	//	r.Family = syscall.AF_INET
-	//} else {
-	//	r.Family = syscall.AF_INET6
-	//}
 
 	// Avoid duplicate rules
 	_ = netlink.RuleDel(r)
