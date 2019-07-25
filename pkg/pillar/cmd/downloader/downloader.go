@@ -391,9 +391,8 @@ func handlersInit() {
 // Determine whether it is an create or modify
 func handleDownloaderModify(ctxArg interface{}, objType string,
 	key string, configArg interface{}) {
-		
+
 	log.Infof("handleDownloaderModify(%s)\n", key)
-	ctx := ctxArg.(*downloaderContext)
 	config := cast.CastDownloaderConfig(configArg)
 	if config.Key() != key {
 		log.Errorf("handleDownloaderModify key/UUID mismatch %s vs %s; ignored %+v\n",
