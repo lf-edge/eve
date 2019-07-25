@@ -1,4 +1,5 @@
 # EVE is Edge Virtualization Engine
+
 [![CircleCI](https://circleci.com/gh/lf-edge/eve.svg?style=svg)](https://circleci.com/gh/lf-edge/eve)
 [![Goreport](https://goreportcard.com/badge/github.com/lf-edge/eve)](https://goreportcard.com/report/github.com/lf-edge/eve)
 [![Godoc](https://godoc.org/github.com/lf-edge/eve/pkg/pillar?status.svg)](https://godoc.org/github.com/lf-edge/eve/pkg/pillar)
@@ -11,8 +12,8 @@ To get its job done, EVE leverages a lot of great open source projects: [Xen Pro
 
 ## How to use
 
-You will need QEMU 3.x+ (https://www.qemu.org/), Docker (https://www.docker.com)
-and go 1.12+ (https://golang.org) installed in your system.
+You will need [QEMU 3.x+](https://www.qemu.org/), [Docker](https://www.docker.com)
+and [go 1.12+](https://golang.org) installed in your system.
 
 Note, that since Linuxkit and manifest-tool are evolving pretty rapidly, we're
 vendoring those under build-tools/src. This means you don't have to have them
@@ -22,54 +23,58 @@ If you're on MacOS the following steps should get you all the dependencies:
 
 ### Install Dependencies
 
-#### Get Go:
+#### Get Go
 
-```
+```sh
 https://golang.org/dl/
 ```
 
-#### Get Docker:
+#### Get Docker
 
-```
+```sh
 https://store.docker.com/editions/community/docker-ce-desktop-mac
 ```
 
 Make sure that Docker is up and running on your system. On MacOS just start a docker Application, on Linux make sure docker service is running. Regardless of how you start Docker you can make sure that it is ready for you by running the following command and making sure that it returns both a version of the client AND a version of the server:
 
-```
+```sh
 docker version
 ```
 
-#### Get QEMU:
+#### Get QEMU
 
-##### On OSX using [Brew](https://brew.sh/):
-```
+##### On OSX using [Brew](https://brew.sh/)
+
+```sh
 $ brew install qemu
 ```
 
-##### On Ubuntu:
-  ```
+##### On Ubuntu
+
+```sh
 $ sudo apt install qemu
 ```
 
 #### Get Project EVE
 
 EVE requires being built in Git repository (the tools keep looking up git commit IDs). The easiest way is to clone EVE repository from GitHub:
-```
+
+```sh
 git clone https://github.com/lf-edge/eve.git
 cd eve
 ```
 
 Build both the build-tools as well as the live image in the source directory:
 
-```
+```sh
 make build-tools
 make live
 ```
+
 This will download the relevant dockers from docker hub and create a bootable
 image `dist/<ARCH>/live.img`.
 
-Please note that not all containers will be fetched from Docker Hub. 
+Please note that not all containers will be fetched from Docker Hub.
 `mkimage-raw-efi` in particular will be built.
 
 > **_NOTE:_** Since the initial build fetches a LOT of bits
@@ -80,15 +85,15 @@ Please note that not all containers will be fetched from Docker Hub.
 #### Running in QEMU
 
 Finally run the resulting image in QEMU with some default assumptions:
-```
+
+```sh
 make run
 ```
 
-> **_NOTE:_**  The default QEMU configuration needs 4GB of memory available. 
+> **_NOTE:_**  The default QEMU configuration needs 4GB of memory available.
 > If you get an error message about being unable to allocate memory, try freeing up some RAM.
 > If you can't free up 4GB, you can reduce the memory allocation in the `Makefile` from 4096 (4GB) to 2048 (2GB).
 > Running QEMU with less than 2GB of memory is not recommended.
-
 
 Once the image boots you can interact with it either by using the console
 (right there in the terminal window from which make run was executed).
