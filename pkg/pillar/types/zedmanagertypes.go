@@ -111,6 +111,11 @@ type AppInstanceStatus struct {
 	PurgeCmd            AppInstanceOpsCmd
 	RestartInprogress   Inprogress
 	PurgeInprogress     Inprogress
+
+	// Container related state
+	IsContainer  bool
+	ContainerUrl string
+
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.
 	State            SwState

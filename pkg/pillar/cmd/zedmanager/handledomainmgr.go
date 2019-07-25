@@ -24,7 +24,9 @@ const (
 )
 
 func MaybeAddDomainConfig(ctx *zedmanagerContext,
-	aiConfig types.AppInstanceConfig, ns *types.AppNetworkStatus) error {
+	aiConfig types.AppInstanceConfig,
+	aiStatus *types.AppInstanceStatus,
+	ns *types.AppNetworkStatus) error {
 
 	key := aiConfig.Key()
 	displayName := aiConfig.DisplayName
@@ -59,9 +61,11 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		DisplayName:       aiConfig.DisplayName,
 		Activate:          aiConfig.Activate,
 		AppNum:            AppNum,
+		IsContainer:       aiStatus.IsContainer,
 		VmConfig:          aiConfig.FixedResources,
 		IoAdapterList:     aiConfig.IoAdapterList,
 		CloudInitUserData: aiConfig.CloudInitUserData,
+		URL:               aiStatus.ContainerUrl,
 	}
 
 	// Determine number of "disk" targets in list
