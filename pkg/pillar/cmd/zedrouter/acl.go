@@ -462,21 +462,6 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 		rulesList = append(rulesList, aclRule1)
 	}
 
-	// XXX To monitor flows (Local/Switch instances) we should
-	// add connection tracking rules to mangle table at PREROUTING hook.
-	/*
-		switch aclArgs.NIType {
-		case types.NetworkInstanceTypeLocal:
-			rules := createFlowMatchRules(aclArgs)
-			rulesList = append(rulesList, rules...)
-		case types.NetworkInstanceTypeSwitch:
-			rules := createFlowMatchRules(aclArgs)
-			rulesList = append(rulesList, rules...)
-			// XXX May be add the extra matches rules copied from filter FORWARD
-		default:
-		}
-	*/
-
 	for _, ace := range ACLs {
 		rules, err := aceToRules(aclArgs, ace)
 		if err != nil {
