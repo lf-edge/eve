@@ -23,7 +23,7 @@ func UpdateSshAccess(enable bool, first bool) {
 		dropPortRange(8080, 8080)
 		allowLocalPortRange(4822, 4822)
 		allowLocalPortRange(5900, 5999)
-		allowControlFlows()
+		markControlFlows()
 	}
 	if enable {
 		allowPortRange(22, 22)
@@ -97,8 +97,15 @@ func dropPortRange(startPort int, endPort int) {
 	Ip6tableCmd("-A", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "REJECT", "--reject-with", "tcp-reset")
 }
 
-func allowControlFlows() {
-	// Allow HTTP, ssh and guacamole packets
+// With flow monitoring happening, any unmarked connections:
+// 1) Not matching any of the INPUT ACL in PREROUTING chain
+// 2) Not initiated by applications
+// will be dropped (sent out of dummy interface). But, we still
+// want some control protocols running on dom0 to run. We mark such
+// connections with markings from reserved space and let the ACLs
+// in INPUT chain make the ACCEPT/DROP/REJECT decisions.
+func markControlFlows() {
+	// Mark HTTP, ssh and guacamole packets
 	// Pick flow marking values 1, 2, 3 from the reserved space.
 	portStr := "8080,22,4822"
 	IptableCmd("-t", "mangle", "-I", "PREROUTING", "1", "-p", "tcp",
@@ -109,7 +116,7 @@ func allowControlFlows() {
 		"--match", "multiport", "--dports", portStr,
 		"-j", "CONNMARK", "--set-mark", "1")
 
-	// Allow VNC packets
+	// Mark VNC packets
 	portStr = "5900:5999"
 	IptableCmd("-t", "mangle", "-I", "PREROUTING", "2", "-p", "tcp",
 		"--match", "multiport", "--dports", portStr,
@@ -119,7 +126,7 @@ func allowControlFlows() {
 		"--match", "multiport", "--dports", portStr,
 		"-j", "CONNMARK", "--set-mark", "2")
 
-	// Allow Lisp control/data packets
+	// Mark Lisp control/data packets
 	portStr = "4341,4342"
 	IptableCmd("-t", "mangle", "-I", "PREROUTING", "3", "-p", "udp",
 		"--match", "multiport", "--dports", portStr,
