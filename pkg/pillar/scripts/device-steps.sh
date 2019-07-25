@@ -6,8 +6,10 @@
 USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
-PERSIST_RKT_DIR=$PERSISTDIR/rkt
 PERSISTCONFIGDIR=/persist/config
+PERSIST_RKT_DATA_DIR=$PERSISTDIR/rkt
+PERSIST_RKT_CONF_LOCAL_DIR=$PERSISTDIR/rktlocal
+PERSIST_RKT_CONF_LOCAL_AUTH_DIR=$PERSIST_RKT_CONF_LOCAL_DIR/auth.d
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
 DPCDIR=$TMPDIR/DevicePortConfig
@@ -24,7 +26,7 @@ TPM_DEVICE_PATH="/dev/tpmrm0"
 PATH=$BINDIR:$PATH
 
 echo "$(date -Ins -u) Starting device-steps.sh"
-echo "$(date -Ins -u) go-provision version: $(cat $BINDIR/versioninfo)"
+echo "$(date -Ins -u) EVE version: $(cat $BINDIR/versioninfo)"
 
 MEASURE=0
 while [ $# != 0 ]; do
@@ -152,26 +154,6 @@ if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
 fi
 
-DIRS="$CONFIGDIR $PERSISTDIR $PERSIST_RKT_DIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
-
-for d in $DIRS; do
-    d1=$(dirname "$d")
-    if [ ! -d "$d1" ]; then
-        echo "$(date -Ins -u) Create $d1"
-        mkdir -p "$d1"
-        chmod 700 "$d1"
-    fi
-    if [ ! -d "$d" ]; then
-        echo "$(date -Ins -u) Create $d"
-        mkdir -p "$d"
-        chmod 700 "$d"
-    fi
-done
-
-echo "$(date -Ins -u) Configuration from factory/install:"
-(cd $CONFIGDIR || return; ls -l)
-echo
-
 CONFIGDEV=$(zboot partdev CONFIG)
 if P3=$(zboot partdev P3) && [ -n "$P3" ]; then
     echo "$(date -Ins -u) Using $P3 for $PERSISTDIR"
@@ -190,6 +172,36 @@ if P3=$(zboot partdev P3) && [ -n "$P3" ]; then
 else
     echo "$(date -Ins -u) No separate $PERSISTDIR partition"
 fi
+
+DIRS="$CONFIGDIR $CONFIGDIR/DevicePortConfig"
+DIRS="$DIRS $TMPDIR $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
+DIRS="$DIRS $PERSISTDIR $PERSIST_RKT_DATA_DIR $PERSIST_RKT_CONF_LOCAL_DIR $PERSIST_RKT_CONF_LOCAL_AUTH_DIR"
+
+echo "DIRS: $DIRS"
+
+for d in $DIRS; do
+    echo "creating Dir $d"
+    d1=$(dirname "$d")
+    if [ ! -d "$d1" ]; then
+        echo "$(date -Ins -u) Create $d1"
+        mkdir -p "$d1"
+        chmod 700 "$d1"
+    fi
+    if [ ! -d "$d" ]; then
+        echo "$(date -Ins -u) Create $d"
+        mkdir -p "$d"
+        chmod 700 "$d"
+    fi
+done
+
+echo "ls $PERSIST_RKT_CONF_LOCAL_DIR"
+ls $PERSIST_RKT_CONF_LOCAL_DIR
+echo "ls $PERSIST_RKT_CONF_LOCAL_AUTH_DIR"
+ls $PERSIST_RKT_CONF_LOCAL_AUTH_DIR
+
+echo "$(date -Ins -u) Configuration from factory/install:"
+(cd $CONFIGDIR || return; ls -l)
+echo
 
 if [ -f $PERSISTDIR/IMGA/reboot-reason ]; then
     echo "IMGA reboot-reason: $(cat $PERSISTDIR/IMGA/reboot-reason)"
@@ -547,6 +559,12 @@ killwait_watchdog
 
 blockdev --flushbufs "$CONFIGDEV"
 
+echo "Before Initial Setup Done"
+echo "ls $PERSIST_RKT_CONF_LOCAL_DIR"
+ls $PERSIST_RKT_CONF_LOCAL_DIR
+echo "ls $PERSIST_RKT_CONF_LOCAL_AUTH_DIR"
+ls $PERSIST_RKT_CONF_LOCAL_AUTH_DIR
+
 echo "$(date -Ins -u) Initial setup done"
 
 if [ $MEASURE = 1 ]; then
@@ -561,3 +579,9 @@ while true; do
     access_usb
     sleep 300
 done
+
+echo "At the end of device steps"
+echo "ls $PERSIST_RKT_CONF_LOCAL_DIR"
+ls $PERSIST_RKT_CONF_LOCAL_DIR
+echo "ls $PERSIST_RKT_CONF_LOCAL_AUTH_DIR"
+ls $PERSIST_RKT_CONF_LOCAL_AUTH_DIR

@@ -24,7 +24,9 @@ const (
 )
 
 func MaybeAddDomainConfig(ctx *zedmanagerContext,
-	aiConfig types.AppInstanceConfig, ns *types.AppNetworkStatus) error {
+	aiConfig types.AppInstanceConfig,
+	aiStatus *types.AppInstanceStatus,
+	ns *types.AppNetworkStatus) error {
 
 	key := aiConfig.Key()
 	displayName := aiConfig.DisplayName
@@ -59,9 +61,11 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		DisplayName:       aiConfig.DisplayName,
 		Activate:          aiConfig.Activate,
 		AppNum:            AppNum,
+		IsContainer:       aiStatus.IsContainer,
 		VmConfig:          aiConfig.FixedResources,
 		IoAdapterList:     aiConfig.IoAdapterList,
 		CloudInitUserData: aiConfig.CloudInitUserData,
+		ContainerImageID:  aiStatus.ContainerImageID,
 	}
 
 	// Determine number of "disk" targets in list
@@ -79,9 +83,16 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	for _, sc := range aiConfig.StorageConfigList {
 		// Check that file is verified
 		locationDir := finalDirname + "/" + sc.ImageSha256
-		location, err := locationFromDir(locationDir)
-		if err != nil {
-			return err
+		location := ""
+		err := errors.New("")
+		if aiStatus.IsContainer {
+			location = "/persist/rkt"
+			err = nil
+		} else {
+			location, err = locationFromDir(locationDir)
+			if err != nil {
+				return err
+			}
 		}
 		switch sc.Target {
 		case "", "disk":
