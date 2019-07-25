@@ -32,10 +32,10 @@ import (
 )
 
 const (
-	appImgObj = "appImg.obj"
-	baseOsObj = "baseOs.obj"
-	certObj   = "cert.obj"
-	agentName = "downloader"
+	appImgObj             = "appImg.obj"
+	baseOsObj             = "baseOs.obj"
+	certObj               = "cert.obj"
+	agentName             = "downloader"
 	persistDir            = "/persist"
 	objectDownloadDirname = persistDir + "/downloads"
 )
