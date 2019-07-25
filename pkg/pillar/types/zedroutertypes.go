@@ -1201,10 +1201,10 @@ type IPTablesRule struct {
 	Action           []string // rule action
 	RuleID           int32    // Unique rule ID
 	RuleName         string
-	IsUserConfigured bool     // Does this rule come from user configuration/manifest?
-	IsMarkingRule    bool     // Rule does marking of packet for flow tracking.
-	IsPortMapRule    bool     // Is this a port map rule?
-	IsLimitDropRule  bool     // Is this a policer limit drop rule?
+	IsUserConfigured bool // Does this rule come from user configuration/manifest?
+	IsMarkingRule    bool // Rule does marking of packet for flow tracking.
+	IsPortMapRule    bool // Is this a port map rule?
+	IsLimitDropRule  bool // Is this a policer limit drop rule?
 }
 
 // IPTablesRuleList : list of iptables rules
