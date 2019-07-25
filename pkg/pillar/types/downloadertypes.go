@@ -4,15 +4,29 @@
 package types
 
 import (
-	log "github.com/sirupsen/logrus"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
+
+type RktCredentials struct {
+	User     string `json:"user"`
+	Password string `json:"password"`
+}
+
+type RktAuthInfo struct {
+	RktKind     string         `json:"rktkind"`
+	RktVersion  string         `json:"rktversion"`
+	Registries  []string       `json:"registries"`
+	Credentials RktCredentials `json:"credentials"`
+}
 
 // The key/index to this is the Safename which is allocated by ZedManager.
 // That is the filename in which we store the corresponding json files.
 type DownloaderConfig struct {
 	Safename         string
 	DownloadURL      string
+	IsContainer      bool
 	UseFreeMgmtPorts bool
 	TransportMethod  string // Download Method S3/HTTP/SFTP etc.
 	Dpath            string
@@ -51,6 +65,7 @@ type CertConfig struct {
 type DownloaderStatus struct {
 	Safename         string
 	ObjType          string
+	IsContainer      bool
 	PendingAdd       bool
 	PendingModify    bool
 	PendingDelete    bool

@@ -7,6 +7,9 @@ USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
 PERSISTCONFIGDIR=/persist/config
+PERSIST_RKT_DIR=/persist/rkt
+PERSIST_RKT_CONF_LOCAL_DIR=/persist/rktlocal
+PERSIST_RKT_CONF_LOCAL_AUTH_DIR=/persist/rktlocal/auth.d
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
 DPCDIR=$TMPDIR/DevicePortConfig
@@ -23,7 +26,7 @@ TPM_DEVICE_PATH="/dev/tpmrm0"
 PATH=$BINDIR:$PATH
 
 echo "$(date -Ins -u) Starting device-steps.sh"
-echo "$(date -Ins -u) go-provision version: $(cat $BINDIR/versioninfo)"
+echo "$(date -Ins -u) EVE version: $(cat $BINDIR/versioninfo)"
 
 MEASURE=0
 while [ $# != 0 ]; do
@@ -145,9 +148,14 @@ if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
 fi
 
-DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
+DIRS="$CONFIGDIR $PERSISTDIR $CONFIGDIR/DevicePortConfig"
+DIRS="$DIRS $TMPDIR $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
+DIRS="$DIRS $PERSIST_RKT_DIR $PERSIST_RKT_CONF_LOCAL_DIR $PERSIST_RKT_CONF_LOCAL_AUTH_DIR"
+
+echo "DIRS: $DIRS"
 
 for d in $DIRS; do
+    echo "creating Dir $d"
     d1=$(dirname "$d")
     if [ ! -d "$d1" ]; then
         echo "$(date -Ins -u) Create $d1"
@@ -160,6 +168,11 @@ for d in $DIRS; do
         chmod 700 "$d"
     fi
 done
+
+echo "Hello ls $PERSIST_RKT_CONF_LOCAL_DIR"
+ls $PERSIST_RKT_CONF_LOCAL_DIR
+echo "Hello ls $PERSIST_RKT_CONF_LOCAL_AUTH_DIR"
+ls $PERSIST_RKT_CONF_LOCAL_AUTH_DIR
 
 echo "$(date -Ins -u) Configuration from factory/install:"
 (cd $CONFIGDIR || return; ls -l)

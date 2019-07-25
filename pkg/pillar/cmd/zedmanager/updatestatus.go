@@ -6,13 +6,14 @@ package zedmanager
 import (
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
 
 // Find all the config which refer to this safename.
@@ -277,7 +278,7 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 			changed = changed || c
 		} else {
 			// If we have a !ReadOnly disk this will create a copy
-			err := MaybeAddDomainConfig(ctx, config, nil)
+			err := MaybeAddDomainConfig(ctx, config, status, nil)
 			if err != nil {
 				log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 					uuidStr, err)
@@ -396,6 +397,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	}
 
 	waitingForCerts := false
+
 	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
@@ -463,7 +465,18 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				continue
 			}
 			ss.MissingDatastore = false
-			AddOrRefcountDownloaderConfig(ctx, safename, ss, dst)
+			downloadUrl := dst.Fqdn + "/" + dst.Dpath + "/" + ss.Name
+			if ss.Format == "8" {
+				status.IsContainer = true
+				status.ContainerUrl = downloadUrl
+				log.Infof("doUpdate - status.IsContainer: %+v, ContainerUrl: %s\n",
+					status.IsContainer, status.ContainerUrl)
+			} else {
+				log.Infof("doUpdate - NOT a container. ss.Format: %+v\n",
+					ss.Format)
+			}
+			AddOrRefcountDownloaderConfig(ctx, safename, ss, dst, downloadUrl,
+				status.IsContainer)
 			ss.HasDownloaderRef = true
 			changed = true
 		}
@@ -804,7 +817,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	log.Debugf("Done with AppNetworkStatus for %s\n", uuidStr)
 
 	// Make sure we have a DomainConfig
-	err := MaybeAddDomainConfig(ctx, config, ns)
+	err := MaybeAddDomainConfig(ctx, config, status, ns)
 	if err != nil {
 		log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 			uuidStr, err)
@@ -1273,7 +1286,7 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 
 	// Make sure we have a DomainConfig. Clears dc.Activate based
 	// on the AppInstanceConfig's Activate
-	err := MaybeAddDomainConfig(ctx, config, ns)
+	err := MaybeAddDomainConfig(ctx, config, status, ns)
 	if err != nil {
 		log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 			uuidStr, err)

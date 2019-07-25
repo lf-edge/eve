@@ -8,9 +8,11 @@
 package downloader
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"strings"
@@ -26,6 +28,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
@@ -37,8 +40,10 @@ const (
 	certObj   = "cert.obj"
 	agentName = "downloader"
 
-	persistDir            = "/persist"
-	objectDownloadDirname = persistDir + "/downloads"
+	persistDir                   = "/persist"
+	objectDownloadDirname        = persistDir + "/downloads"
+	persistRktLocalConfigDir     = "/persist/rktlocal"
+	persistRktLocalConfigAuthDir = persistRktLocalConfigDir + "/auth.d"
 )
 
 // Go doesn't like this as a constant
@@ -501,6 +506,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 	status := types.DownloaderStatus{
 		Safename:         config.Safename,
 		ObjType:          objType,
+		IsContainer:      config.IsContainer,
 		RefCount:         config.RefCount,
 		LastUse:          time.Now(),
 		DownloadURL:      config.DownloadURL,
@@ -1176,6 +1182,105 @@ func doSftp(ctx *downloaderContext, status *types.DownloaderStatus,
 	}
 }
 
+func rktFetch(url string, authFile string) error {
+	// rkt fetch --system-config=/persist/rkt-local/ --insecure-options=image
+	//      docker://zededa/zcli-dev:latest
+	log.Infof("rktFetch - url: %s ,  authFile:%s\n", url, authFile)
+	cmd := "rkt"
+	args := []string{
+		"fetch",
+		"--system-config=" + persistRktLocalConfigDir,
+		"--insecure-options=image",
+		url,
+	}
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt fetch failed ", err)
+		log.Errorln("rkt fetch output ", string(stdoutStderr))
+		return errors.New(fmt.Sprintf("rkt fetch failed: %s\n",
+			string(stdoutStderr)))
+	}
+	// TODO - we should run "rkt image ls" and verify image fetch went thru
+	//  without errors.
+	return nil
+}
+
+func rktAuthFilename(appName string) string {
+	return persistRktLocalConfigAuthDir + "/rktAuth" + appName + ".json"
+}
+
+func rktCreateAuthFile(config *types.DownloaderConfig) (string, error) {
+
+	filename := rktAuthFilename(config.Safename)
+
+	rktAuth := types.RktAuthInfo{
+		RktKind:    "dockerAuth",
+		RktVersion: "v1",
+		Registries: []string{"registry-1.docker.io"},
+		Credentials: types.RktCredentials{
+			User:     config.ApiKey,
+			Password: config.Password,
+		},
+	}
+
+	file, err := json.MarshalIndent(rktAuth, "", " ")
+	if err != nil {
+		return "", errors.New(fmt.Sprintf("Failed convert rktAuth to json"+
+			"err: %+v\n", err))
+	}
+	err = ioutil.WriteFile(filename, file, 0644)
+	if err != nil {
+		return "", errors.New(fmt.Sprintf("Failed to create Auth file for"+
+			"rkt fetch: %+v\n", err))
+	}
+	return filename, nil
+}
+
+func rktFetchContainerImage(ctx *downloaderContext, key string,
+	config types.DownloaderConfig, status *types.DownloaderStatus) error {
+	// update status to DOWNLOAD STARTED
+	status.State = types.DOWNLOAD_STARTED
+	publishDownloaderStatus(ctx, status)
+
+	// Save credentials to Auth file
+	log.Infof("rktFetchContainerImage: fetch  <%s>\n", config.DownloadURL)
+	authFile, err := rktCreateAuthFile(&config)
+	if err == nil {
+		log.Debugf("rktFetchContainerImage: authFile: %s\n", authFile)
+		err = rktFetch(config.DownloadURL, authFile)
+	} else {
+		log.Errorf("rktCreateAuthFile Failed. %+v", err)
+	}
+
+	if err != nil {
+		log.Infof("rktFetchContainerImage: fetch  Failed. url:%s, authFile: %s\n",
+			config.DownloadURL, authFile)
+		status.PendingAdd = false
+		status.Size = 0
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
+		status.RetryCount += 1
+		publishDownloaderStatus(ctx, status)
+		return err
+	}
+
+	log.Infof("rktFetchContainerImage successful <%s> <%s>\n",
+		config.DownloadURL, authFile)
+
+	// Update globalStatus and status
+	unreserveSpace(ctx, status)
+
+	// We do not clear any status.RetryCount, LastErr, etc. The caller
+	// should look at State == DOWNLOADED to determine it is done.
+	status.ModTime = time.Now()
+	status.PendingAdd = false
+	status.State = types.DOWNLOADED
+	status.Progress = 100 // Just in case
+	publishDownloaderStatus(ctx, status)
+
+	return nil
+}
+
 // Drona APIs for object Download
 
 func handleSyncOp(ctx *downloaderContext, key string,
@@ -1189,6 +1294,12 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	if status.ObjType == "" {
 		log.Fatalf("handleSyncOp: No ObjType for %s\n",
 			status.Safename)
+	}
+
+	log.Debugf("handleSyncOp: IsContainer: %v", config.IsContainer)
+	if config.IsContainer {
+		rktFetchContainerImage(ctx, key, config, status)
+		return
 	}
 	locDirname := objectDownloadDirname + "/" + status.ObjType
 	locFilename = locDirname + "/pending"
