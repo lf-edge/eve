@@ -45,8 +45,6 @@ ENV KERNEL_SOURCE=https://www.kernel.org/pub/linux/kernel/v4.x/linux-\${KERNEL_V
 ENV KERNEL_SHA256_SUMS=https://www.kernel.org/pub/linux/kernel/v4.x/sha256sums.asc
 ENV KERNEL_PGP2_SIGN=https://www.kernel.org/pub/linux/kernel/v4.x/linux-\${KERNEL_VERSION}.tar.sign
 
-ENV IXGBE_URL=https://sourceforge.net/projects/e1000/files/ixgbe%20stable/
-ENV IXGBE_VERSION=5.3.7
 
 # The following hack allows us to build different version 
 SHELL ["/bin/sh", "-c", "export KERNEL_VERSION=$(eval echo \\$KERNEL_VERSION_$(uname -m)) ; export KERNEL_SERIES=$(eval echo \\$KERNEL_SERIES_$(uname -m)) ; eval KERNEL_SOURCE=$KERNEL_SOURCE ; eval export KERNEL_PGP2_SIGN=$KERNEL_PGP2_SIGN ; /bin/sh -c \"$1\"", "-" ]
@@ -71,7 +69,7 @@ RUN curl -fsSLO ${KERNEL_SHA256_SUMS} && \
 
 # Apply local patches
 WORKDIR /linux
-RUN set -e && for patch in /patches-${KERNEL_SERIES}/*.patch; do \
+RUN set -e ; [ ! -d /patches-"${KERNEL_SERIES}" ] || for patch in /patches-"${KERNEL_SERIES}"/*.patch; do \
         echo "Applying $patch"; \
         patch -p1 < "$patch"; \
     done
