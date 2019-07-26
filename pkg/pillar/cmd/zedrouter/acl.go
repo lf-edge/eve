@@ -8,7 +8,6 @@ package zedrouter
 import (
 	"errors"
 	"fmt"
-	"math/rand"
 	"net"
 	"strconv"
 
@@ -20,7 +19,9 @@ import (
 )
 
 // XXX Stop gap allocator copied from zedrouter/appnumallocator.go
-// Bitmap of the reserved and allocated
+// XXX The below ACL id allocation code should get removed when cloud
+// starts allocating the ACL id per ACL rule and send to device as part
+// of configuration.
 
 // MAXACEID : Keeps 64K bits indexed by 0 to (64K - 1).
 const MAXACEID = 65535
@@ -28,8 +29,11 @@ const MAXACEID = 65535
 // MINACEID : IDs till 100 are reserverd for internal usage.
 const MINACEID = 101
 
+var lastAllocatedAceID int32 = -1
+var numFreeAceIDs int32 = MAXACEID - MINACEID + 1
+
 // ACLBitmap : size = MAXACEID/8 + 1
-type ACLBitmap [8192]byte
+type ACLBitmap [MAXACEID/8 + 1]byte
 
 // IsSet : Check if bit at a given index in ACLBitmap byte array is SET to binary 1
 func (bits *ACLBitmap) IsSet(i int32) bool { return bits[i/8]&(1<<uint(7-i%8)) != 0 }
@@ -43,27 +47,56 @@ func (bits *ACLBitmap) Clear(i int32) { bits[i/8] &^= 1 << uint(7-i%8) }
 // AllocACEId : Bit map array for reserving ACE IDs.
 var AllocACEId ACLBitmap
 
-func allocACEId() int32 {
-	for {
-		candidate := rand.Int31n(MAXACEID)
-		// Make sure it is not one of the reserved IDs
-		if candidate < MINACEID {
-			continue
-		} else if AllocACEId.IsSet(candidate) {
-			// Already allocated to another rule.
-			continue
-		} else {
-			AllocACEId.Set(candidate)
-			return candidate
-		}
+func getNextACEId(candidate int32) int32 {
+	if candidate == MAXACEID {
+		// wrap around
+		return MINACEID
 	}
+	return (candidate + 1)
+}
+
+func allocACEId() int32 {
+	if numFreeAceIDs <= 0 {
+		log.Errorf("allocACEId: All ACE ids alread allocated")
+		return -1
+	}
+	if lastAllocatedAceID == -1 {
+		// This is the first allocation that we are doing.
+		AllocACEId.Set(MINACEID)
+		lastAllocatedAceID = MINACEID
+		numFreeAceIDs--
+		return MINACEID
+	}
+
+	aclIDSpaceSize := MAXACEID - MINACEID + 1
+	candidate := getNextACEId(lastAllocatedAceID)
+	for i := 0; i < aclIDSpaceSize; i++ {
+		if AllocACEId.IsSet(candidate) {
+			// Try the next ID
+			candidate = getNextACEId(candidate)
+			continue
+		}
+		AllocACEId.Set(candidate)
+		lastAllocatedAceID = candidate
+		numFreeAceIDs--
+		return candidate
+	}
+	log.Errorf("allocACEId: ACE id space full")
+	return -1
 }
 
 func freeACEId(candidate int32) {
 	if AllocACEId.IsSet(candidate) {
+		if numFreeAceIDs >= (MAXACEID - MINACEID + 1) {
+			// All IDs must be free. Nothing to be cleared.
+			// Something must have gone terribly wrong.
+			log.Errorf("freeACEId: All ACE IDs are already free.")
+			return
+		}
 		AllocACEId.Clear(candidate)
+		numFreeAceIDs++
 	} else {
-		log.Errorf("freeACEId: ID %v is not previously allocated\n", candidate)
+		log.Errorf("freeACEId: ID %v was not previously allocated\n", candidate)
 	}
 }
 
@@ -718,14 +751,23 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 				// XXX Are port map rules only valid for Local network instance?
 				// Create a copy of this rule in mangle table to mark/accept
 				// port mapping connections from outside.
-				aclRule1.Table = "mangle"
-				aclRule1.IsMarkingRule = true
-				chainName := fmt.Sprintf("%s-%s-%d",
-					aclArgs.BridgeName, aclArgs.VifName, aclRule1.RuleID)
-				createMarkAndAcceptChain(aclArgs, chainName, aclRule1.RuleID)
-				aclRule1.Action = []string{"-j", chainName}
-				aclRule1.ActionChainName = chainName
-				rulesList = append(rulesList, aclRule1)
+				if aclRule1.RuleID != -1 {
+					aclRule1.Table = "mangle"
+					aclRule1.IsMarkingRule = true
+					chainName := fmt.Sprintf("%s-%s-%d",
+						aclArgs.BridgeName, aclArgs.VifName, aclRule1.RuleID)
+
+					// Embed App id in marking value
+					markingValue := (aclArgs.AppNum << 24) | aclRule1.RuleID
+					createMarkAndAcceptChain(aclArgs, chainName, markingValue)
+					aclRule1.Action = []string{"-j", chainName}
+					aclRule1.ActionChainName = chainName
+					rulesList = append(rulesList, aclRule1)
+				} else {
+					log.Errorf("Table: %s, Chain: %s, Rule: %s, Action: %s - cannot be"+
+						" programmed due to ACL ID allocation failure",
+						aclRule1.Table, aclRule1.Chain, aclRule1.Rule, aclRule1.Action)
+				}
 			}
 			// add the outgoing port-map translation rule to bridge port
 			aclRule2.Table = "nat"
@@ -796,37 +838,62 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 
 	switch aclArgs.NIType {
 	case types.NetworkInstanceTypeLocal:
-		aclRule4.Table = "mangle"
-		aclRule4.Chain = "PREROUTING"
-		aclRule4.IsMarkingRule = true
-		//aclRule4.RuleID = allocACEId()
-		chainName := fmt.Sprintf("%s-%s-%d",
-			aclArgs.BridgeName, aclArgs.VifName, aclRule4.RuleID)
-		createMarkAndAcceptChain(aclArgs, chainName, aclRule4.RuleID)
-		aclRule4.Action = []string{"-j", chainName}
-		aclRule4.ActionChainName = chainName
-		rulesList = append(rulesList, aclRule4)
-	case types.NetworkInstanceTypeSwitch:
-		aclRule3.Table = "mangle"
-		aclRule3.Chain = "PREROUTING"
-		aclRule3.IsMarkingRule = true
-		//aclRule3.RuleID = allocACEId()
-		chainName := fmt.Sprintf("%s-%s-%d",
-			aclArgs.BridgeName, aclArgs.VifName, aclRule3.RuleID)
-		createMarkAndAcceptChain(aclArgs, chainName, aclRule3.RuleID)
-		aclRule3.Action = []string{"-j", chainName}
-		aclRule3.ActionChainName = chainName
+		if aclRule4.RuleID != -1 {
+			aclRule4.Table = "mangle"
+			aclRule4.Chain = "PREROUTING"
+			aclRule4.IsMarkingRule = true
+			chainName := fmt.Sprintf("%s-%s-%d",
+				aclArgs.BridgeName, aclArgs.VifName, aclRule4.RuleID)
 
-		aclRule4.Table = "mangle"
-		aclRule4.Chain = "PREROUTING"
-		aclRule4.IsMarkingRule = true
-		//aclRule4.RuleID = allocACEId()
-		chainName = fmt.Sprintf("%s-%s-%d",
-			aclArgs.BridgeName, aclArgs.VifName, aclRule4.RuleID)
-		createMarkAndAcceptChain(aclArgs, chainName, aclRule4.RuleID)
-		aclRule4.Action = []string{"-j", chainName}
-		aclRule4.ActionChainName = chainName
-		rulesList = append(rulesList, aclRule4, aclRule3)
+			// Embed App id in marking value
+			markingValue := (aclArgs.AppNum << 24) | aclRule4.RuleID
+			createMarkAndAcceptChain(aclArgs, chainName, markingValue)
+			aclRule4.Action = []string{"-j", chainName}
+			aclRule4.ActionChainName = chainName
+			rulesList = append(rulesList, aclRule4)
+		} else {
+			log.Errorf("Table: %s, Chain: %s, Rule: %s, Action: %s - cannot be"+
+				" programmed due to ACL ID allocation failure",
+				aclRule4.Table, aclRule4.Chain, aclRule4.Rule, aclRule4.Action)
+		}
+	case types.NetworkInstanceTypeSwitch:
+		if aclRule4.RuleID != -1 {
+			aclRule4.Table = "mangle"
+			aclRule4.Chain = "PREROUTING"
+			aclRule4.IsMarkingRule = true
+			chainName := fmt.Sprintf("%s-%s-%d",
+				aclArgs.BridgeName, aclArgs.VifName, aclRule4.RuleID)
+
+			// Embed App id in marking value
+			markingValue := (aclArgs.AppNum << 24) | aclRule4.RuleID
+			createMarkAndAcceptChain(aclArgs, chainName, markingValue)
+			aclRule4.Action = []string{"-j", chainName}
+			aclRule4.ActionChainName = chainName
+			rulesList = append(rulesList, aclRule4)
+		} else {
+			log.Errorf("Table: %s, Chain: %s, Rule: %s, Action: %s - cannot be"+
+				" programmed due to ACL ID allocation failure",
+				aclRule4.Table, aclRule4.Chain, aclRule4.Rule, aclRule4.Action)
+		}
+
+		if aclRule3.RuleID != -1 {
+			aclRule3.Table = "mangle"
+			aclRule3.Chain = "PREROUTING"
+			aclRule3.IsMarkingRule = true
+			chainName := fmt.Sprintf("%s-%s-%d",
+				aclArgs.BridgeName, aclArgs.VifName, aclRule3.RuleID)
+
+			// Embed App id in marking value
+			markingValue := (aclArgs.AppNum << 24) | aclRule3.RuleID
+			createMarkAndAcceptChain(aclArgs, chainName, markingValue)
+			aclRule3.Action = []string{"-j", chainName}
+			aclRule3.ActionChainName = chainName
+			rulesList = append(rulesList, aclRule3)
+		} else {
+			log.Errorf("Table: %s, Chain: %s, Rule: %s, Action: %s - cannot be"+
+				" programmed due to ACL ID allocation failure",
+				aclRule3.Table, aclRule3.Chain, aclRule3.Rule, aclRule3.Action)
+		}
 	default:
 	}
 
@@ -1230,13 +1297,18 @@ func executeIPTablesRule(operation string, rule types.IPTablesRule) error {
 	}
 	if rule.IPVer == 4 {
 		err = iptables.IptableCmd(ruleStr...)
-		if operation == "-D" && rule.ActionChainName != "" &&
-			rule.Table == "mangle" {
-			chainFlush := []string{"-t", "mangle", "--flush", rule.ActionChainName}
-			chainDelete := []string{"-t", "mangle", "-X", rule.ActionChainName}
-			err = iptables.IptableCmd(chainFlush...)
-			if err == nil {
-				iptables.IptableCmd(chainDelete...)
+		if operation == "-D" && rule.Table == "mangle" {
+			if rule.ActionChainName != "" {
+				chainFlush := []string{"-t", "mangle", "--flush", rule.ActionChainName}
+				chainDelete := []string{"-t", "mangle", "-X", rule.ActionChainName}
+				err = iptables.IptableCmd(chainFlush...)
+				if err == nil {
+					iptables.IptableCmd(chainDelete...)
+				}
+			}
+		} else if operation == "-D" {
+			if rule.RuleID != 0 {
+				freeACEId(rule.RuleID)
 			}
 		}
 	} else if rule.IPVer == 6 {

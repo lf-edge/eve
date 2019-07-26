@@ -1173,7 +1173,8 @@ func appNetworkDoActivateUnderlayNetwork(
 
 	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: vifName, BridgeIP: bridgeIPAddr, AppIP: appIPAddr,
-		UpLinks: netInstStatus.IfNameList, NIType: netInstStatus.Type}
+		UpLinks: netInstStatus.IfNameList, NIType: netInstStatus.Type,
+		AppNum: int32(status.AppNum)}
 
 	// Set up ACLs
 	ruleList, err := createACLConfiglet(aclArgs, ulStatus.ACLs)
@@ -1996,7 +1997,8 @@ func doAppNetworkModifyUnderlayNetwork(
 
 	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: appIPAddr,
-		UpLinks: netstatus.IfNameList}
+		UpLinks: netstatus.IfNameList, NIType: netstatus.Type,
+		AppNum: int32(status.AppNum)}
 
 	// We ignore any errors in netstatus
 
