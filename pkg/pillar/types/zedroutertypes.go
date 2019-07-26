@@ -1189,6 +1189,8 @@ type AppNetworkACLArgs struct {
 	AppIP      string
 	UpLinks    []string
 	NIType     NetworkInstanceType
+	// This is the same AppNum that comes from AppNetworkStatus
+	AppNum int32
 }
 
 // IPTablesRule : iptables rule detail
