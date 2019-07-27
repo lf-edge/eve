@@ -1182,17 +1182,24 @@ func doSftp(ctx *downloaderContext, status *types.DownloaderStatus,
 	}
 }
 
-func rktFetch(url string, authFile string) error {
+func rktFetch(url string, localConfigDir string) error {
 	// rkt fetch --system-config=/persist/rkt-local/ --insecure-options=image
 	//      docker://zededa/zcli-dev:latest
-	log.Infof("rktFetch - url: %s ,  authFile:%s\n", url, authFile)
+	log.Debugf("rktFetch - url: %s ,  localConfigDir:%s\n",
+		url, localConfigDir)
 	cmd := "rkt"
 	args := []string{
 		"fetch",
-		"--system-config=" + persistRktLocalConfigDir,
 		"--insecure-options=image",
-		url,
 	}
+	if len(localConfigDir) > 0 {
+		args = append(args, "--system-config="+persistRktLocalConfigDir)
+	}
+	args = append(args, url)
+
+	log.Infof("rktFetch - url: %s ,  localConfigDir:%s, args: %+v\n",
+		url, localConfigDir, args)
+
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Errorln("rkt fetch failed ", err)
@@ -1211,8 +1218,14 @@ func rktAuthFilename(appName string) string {
 
 func rktCreateAuthFile(config *types.DownloaderConfig) (string, error) {
 
+	if len(strings.TrimSpace(config.ApiKey)) == 0 {
+		log.Debugf("rktCreateAuthFile: empty username. Skipping AuthFile")
+		return "", nil
+	}
+
 	err := os.MkdirAll(persistRktLocalConfigAuthDir, 0755)
 	if err != nil {
+		log.Errorf("rktCreateAuthFile: empty username. Skipping AuthFile")
 		return "", errors.New(fmt.Sprintf("Failed create dir %s, "+
 			"err: %+v\n", persistRktLocalConfigAuthDir, err))
 	}
@@ -1228,6 +1241,8 @@ func rktCreateAuthFile(config *types.DownloaderConfig) (string, error) {
 			Password: config.Password,
 		},
 	}
+	log.Infof("rktCreateAuthFile: created Auth file %s\n"+
+		"rktAuth: %+v\n", filename, rktAuth)
 
 	file, err := json.MarshalIndent(rktAuth, "", " ")
 	if err != nil {
@@ -1253,14 +1268,20 @@ func rktFetchContainerImage(ctx *downloaderContext, key string,
 	authFile, err := rktCreateAuthFile(&config)
 	if err == nil {
 		log.Debugf("rktFetchContainerImage: authFile: %s\n", authFile)
-		err = rktFetch(config.DownloadURL, authFile)
+		// We should really move to have per-fetch directory..
+		localConfigDir := persistRktLocalConfigDir
+		if len(authFile) == 0 {
+			localConfigDir = ""
+			log.Infof("rktFetchContainerImage: no Auth File")
+		}
+		err = rktFetch(config.DownloadURL, localConfigDir)
 	} else {
-		log.Errorf("rktCreateAuthFile Failed. %+v", err)
+		log.Errorf("rktCreateAuthFile Failed. err: %+v", err)
 	}
 
 	if err != nil {
-		log.Infof("rktFetchContainerImage: fetch  Failed. url:%s, authFile: %s\n",
-			config.DownloadURL, authFile)
+		log.Infof("rktFetchContainerImage: fetch  Failed. url:%s, "+
+			"authFile: %s, Err: %+v\n", config.DownloadURL, authFile, err)
 		status.PendingAdd = false
 		status.Size = 0
 		status.LastErr = fmt.Sprintf("%v", err)
@@ -1302,6 +1323,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			status.Safename)
 	}
 
+	log.Debugf("handleSyncOp: config: %+v", config)
 	log.Debugf("handleSyncOp: IsContainer: %v", config.IsContainer)
 	if config.IsContainer {
 		rktFetchContainerImage(ctx, key, config, status)
