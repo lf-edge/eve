@@ -2384,7 +2384,12 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		log.Warnf("checkAndSetIoBundle(%d %s %s) part of zedrouter port\n",
 			ib.Type, ib.Name, ib.AssignmentGroup)
 		ib.IsPort = true
-		if ib.IsPCIBack {
+		if ib.UsedByUUID != nilUUID {
+			log.Errorf("checkAndSetIoBundle(%d %s %s) used by %s",
+				ib.Type, ib.Name, ib.AssignmentGroup,
+				ib.UsedByUUID.String())
+
+		} else if ib.IsPCIBack {
 			log.Infof("checkAndSetIoBundle(%d %s %s) take back from pciback\n",
 				ib.Type, ib.Name, ib.AssignmentGroup)
 			if ib.PciLong != "" {
@@ -2394,6 +2399,19 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 				if err != nil {
 					log.Errorf("checkAndSetIoBundle(%d %s %s) pciAssignableRemove %s failed %v\n",
 						ib.Type, ib.Name, ib.AssignmentGroup, ib.PciLong, err)
+				}
+				// Seems like like no risk for race; when we return
+				// from above the driver has been attached and
+				// any ifname has been registered.
+				found, ifname := types.PciLongToIfname(ib.PciLong)
+				if !found {
+					log.Errorf("Not found: %d %s %s",
+						ib.Type, ib.Name, ib.Ifname)
+				} else if ifname != ib.Ifname {
+					log.Warnf("Found: %d %s %s at %s",
+						ib.Type, ib.Name, ib.Ifname,
+						ifname)
+					types.IfRename(ifname, ib.Ifname)
 				}
 			}
 			ib.IsPCIBack = false
