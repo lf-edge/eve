@@ -7,9 +7,9 @@ USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
 PERSISTCONFIGDIR=/persist/config
-PERSIST_RKT_DIR=/persist/rkt
-PERSIST_RKT_CONF_LOCAL_DIR=/persist/rktlocal
-PERSIST_RKT_CONF_LOCAL_AUTH_DIR=/persist/rktlocal/auth.d
+PERSIST_RKT_DIR=$PERSISTDIR/rkt
+PERSIST_RKT_CONF_LOCAL_DIR=$PERSISTDIR/rktlocal
+PERSIST_RKT_CONF_LOCAL_AUTH_DIR=$PERSISTDIR/rktlocal/auth.d
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
 DPCDIR=$TMPDIR/DevicePortConfig
@@ -169,9 +169,9 @@ for d in $DIRS; do
     fi
 done
 
-echo "Hello ls $PERSIST_RKT_CONF_LOCAL_DIR"
+echo "ls $PERSIST_RKT_CONF_LOCAL_DIR"
 ls $PERSIST_RKT_CONF_LOCAL_DIR
-echo "Hello ls $PERSIST_RKT_CONF_LOCAL_AUTH_DIR"
+echo "ls $PERSIST_RKT_CONF_LOCAL_AUTH_DIR"
 ls $PERSIST_RKT_CONF_LOCAL_AUTH_DIR
 
 echo "$(date -Ins -u) Configuration from factory/install:"
@@ -553,6 +553,12 @@ killwait_watchdog
 
 blockdev --flushbufs "$CONFIGDEV"
 
+echo "Before Initial Setup Done"
+echo "ls $PERSIST_RKT_CONF_LOCAL_DIR"
+ls $PERSIST_RKT_CONF_LOCAL_DIR
+echo "ls $PERSIST_RKT_CONF_LOCAL_AUTH_DIR"
+ls $PERSIST_RKT_CONF_LOCAL_AUTH_DIR
+
 echo "$(date -Ins -u) Initial setup done"
 
 if [ $MEASURE = 1 ]; then
@@ -567,3 +573,9 @@ while true; do
     access_usb
     sleep 300
 done
+
+echo "At the end of device steps"
+echo "ls $PERSIST_RKT_CONF_LOCAL_DIR"
+ls $PERSIST_RKT_CONF_LOCAL_DIR
+echo "ls $PERSIST_RKT_CONF_LOCAL_AUTH_DIR"
+ls $PERSIST_RKT_CONF_LOCAL_AUTH_DIR
