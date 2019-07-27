@@ -42,7 +42,7 @@ const (
 
 	persistDir                   = "/persist"
 	objectDownloadDirname        = persistDir + "/downloads"
-	persistRktLocalConfigDir     = "/persist/rktlocal"
+	persistRktLocalConfigDir     = persistDir + "/rktlocal"
 	persistRktLocalConfigAuthDir = persistRktLocalConfigDir + "/auth.d"
 )
 
@@ -1210,6 +1210,12 @@ func rktAuthFilename(appName string) string {
 }
 
 func rktCreateAuthFile(config *types.DownloaderConfig) (string, error) {
+
+	err := os.MkdirAll(persistRktLocalConfigAuthDir, 0755)
+	if err != nil {
+		return "", errors.New(fmt.Sprintf("Failed create dir %s, "+
+			"err: %+v\n", persistRktLocalConfigAuthDir, err))
+	}
 
 	filename := rktAuthFilename(config.Safename)
 
