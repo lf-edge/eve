@@ -14,6 +14,10 @@ func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
 	downloadURL string, isContainer bool) {
 
 	log.Infof("AddOrRefcountDownloaderConfig for %s\n", safename)
+	log.Infof("AddOrRefcountDownloaderConfig: StorageStatus: %+v\n",
+		*ss)
+	log.Infof("AddOrRefcountDownloaderConfig: DatastoreConfig: %+v\n",
+		*ds)
 
 	m := lookupDownloaderConfig(ctx, safename)
 	if m != nil {
@@ -38,6 +42,7 @@ func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
 			ImageSha256:      ss.ImageSha256,
 			RefCount:         1,
 		}
+		log.Infof("AddOrRefcountDownloaderConfig: DownloaderConfig: %+v\n", n)
 		publishDownloaderConfig(ctx, &n)
 	}
 	log.Infof("AddOrRefcountDownloaderConfig done for %s\n",

@@ -6,6 +6,7 @@ package zedmanager
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/cast"
@@ -464,8 +465,21 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				changed = true
 				continue
 			}
+
 			ss.MissingDatastore = false
-			downloadUrl := dst.Fqdn + "/" + dst.Dpath + "/" + ss.Name
+			downloadUrl := dst.Fqdn
+			if len(strings.TrimSpace(dst.Dpath)) > 0 {
+				downloadUrl += "/" + dst.Dpath
+			} else {
+				log.Debugf("doInstall: empty Dpath")
+			}
+			if len(strings.TrimSpace(ss.Name)) > 0 {
+				downloadUrl += "/" + ss.Name
+			} else {
+				log.Debugf("doInstall: empty ss.Name")
+			}
+			log.Infof("doInstall: downloadUrl: %s", downloadUrl)
+
 			if ss.Format == "8" {
 				status.IsContainer = true
 				status.ContainerUrl = downloadUrl
