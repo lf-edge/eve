@@ -46,9 +46,10 @@ func lookupVerifyImageConfigSha256(ctx *zedmanagerContext,
 
 // If checkCerts is set this can return false. Otherwise not.
 func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, safename string,
-	ss *types.StorageStatus, checkCerts bool) bool {
+	ss *types.StorageStatus, checkCerts bool, isContainer bool) bool {
 
-	log.Infof("MaybeAddVerifyImageConfig for %s\n", safename)
+	log.Infof("MaybeAddVerifyImageConfig for %s, checkCerts: %v, "+
+		"isContainer: %v\n", safename, checkCerts, isContainer)
 
 	// check the certificate files, if not present,
 	// we can not start verification
@@ -75,8 +76,10 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, safename string,
 			CertificateChain: ss.CertificateChain,
 			ImageSignature:   ss.ImageSignature,
 			SignatureKey:     ss.SignatureKey,
+			IsContainer:      isContainer,
 		}
 		publishVerifyImageConfig(ctx, &n)
+		log.Debugf("MaybeAddVerifyImageConfig - config: %+v\n", n)
 	}
 	log.Infof("MaybeAddVerifyImageConfig done for %s\n", safename)
 	return true

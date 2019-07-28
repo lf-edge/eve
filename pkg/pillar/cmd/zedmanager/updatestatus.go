@@ -446,7 +446,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				// We don't need certs since Status already
 				// exists
 				MaybeAddVerifyImageConfig(ctx, vs.Safename,
-					ss, false)
+					ss, false, status.IsContainer)
 				ss.HasVerifierRef = true
 				changed = true
 			}
@@ -560,7 +560,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			// Kick verifier to start if it hasn't already
 			if !ss.HasVerifierRef {
 				if MaybeAddVerifyImageConfig(ctx, safename,
-					ss, true) {
+					ss, true, status.IsContainer) {
 					ss.HasVerifierRef = true
 					changed = true
 				} else {
