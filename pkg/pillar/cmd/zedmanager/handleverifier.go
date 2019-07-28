@@ -4,10 +4,11 @@
 package zedmanager
 
 import (
+	"os"
+
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"os"
 )
 
 func lookupVerifyImageConfig(ctx *zedmanagerContext,
@@ -166,7 +167,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 	}
 
 	// Normal update work
-	updateAIStatusSafename(ctx, key)
+	updateAIStatusWithStorageSafename(ctx, key, false, "")
 	updateAIStatusSha(ctx, config.ImageSha256)
 	log.Infof("handleVerifyImageStatusModify done for %s\n",
 		status.Safename)

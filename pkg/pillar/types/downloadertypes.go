@@ -74,7 +74,8 @@ type DownloaderStatus struct {
 	Expired          bool      // Handshake to client
 	DownloadURL      string
 	UseFreeMgmtPorts bool
-	ImageSha256      string  // sha256 of immutable image
+	ImageSha256      string // sha256 of immutable image
+	ContainerImageId string
 	State            SwState // DOWNLOADED etc
 	ReservedSpace    uint64  // Contribution to global ReservedSpace
 	Size             uint64  // Once DOWNLOADED; in bytes

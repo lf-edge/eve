@@ -18,16 +18,18 @@ import (
 )
 
 // Find all the config which refer to this safename.
-func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
+func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
+	safename string,
+	updateContainerImageId bool, containerImageId string) {
 
-	log.Infof("updateAIStatusSafename for %s\n", safename)
+	log.Infof("updateAIStatusWithStorageSafename for %s\n", safename)
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
 	found := false
 	for key, st := range items {
 		status := cast.CastAppInstanceStatus(st)
 		if status.Key() != key {
-			log.Errorf("updateAIStatusSafename key/UUID mismatch %s vs %s; ignored %+v\n",
+			log.Errorf("updateAIStatusWithStorageSafename key/UUID mismatch %s vs %s; ignored %+v\n",
 				key, status.Key(), status)
 			continue
 		}
@@ -38,13 +40,24 @@ func updateAIStatusSafename(ctx *zedmanagerContext, safename string) {
 			if safename == safename2 {
 				log.Infof("Found StorageStatus URL %s safename %s\n",
 					ss.Name, safename)
+				changed := false
+				if updateContainerImageId &&
+					status.ContainerImageId != containerImageId {
+					log.Debugf("Update AIS ContainerImageId: %s\n",
+						containerImageId)
+					status.ContainerImageId = containerImageId
+					changed = true
+				}
+				if changed {
+					publishAppInstanceStatus(ctx, &status)
+				}
 				updateAIStatusUUID(ctx, status.Key())
 				found = true
 			}
 		}
 	}
 	if !found {
-		log.Warnf("updateAIStatusSafename for %s not found\n", safename)
+		log.Warnf("updateAIStatusWithStorageSafename for %s not found\n", safename)
 	}
 }
 
