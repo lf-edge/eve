@@ -84,9 +84,16 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	for _, sc := range aiConfig.StorageConfigList {
 		// Check that file is verified
 		locationDir := finalDirname + "/" + sc.ImageSha256
-		location, err := locationFromDir(locationDir)
-		if err != nil {
-			return err
+		location := ""
+		err := errors.New("")
+		if aiStatus.IsContainer {
+			location = "/persist/rkt"
+			err = nil
+		} else {
+			location, err = locationFromDir(locationDir)
+			if err != nil {
+				return err
+			}
 		}
 		switch sc.Target {
 		case "", "disk":
