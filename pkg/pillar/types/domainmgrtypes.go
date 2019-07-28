@@ -26,10 +26,10 @@ type DomainConfig struct {
 	VifList           []VifInfo
 	IoAdapterList     []IoAdapter
 	CloudInitUserData string // base64-encoded
-	// Coontainer related info
+	// Container related info
 	IsContainer      bool   // Is this Domain for a Container?
-	URL              string // rkt uses this URL to start the container
-	ContainerImageId string
+	URL              string // rkt uses this URL to launch the container
+	ContainerImageId string // SHA-512 of rkt comtainer image
 }
 
 func (config DomainConfig) Key() string {
@@ -108,6 +108,10 @@ type DomainStatus struct {
 	LastErrTime        time.Time
 	BootFailed         bool
 	AdaptersFailed     bool
+	IsContainer        bool   // Is this Domain for a Container?
+	ContainerImageId   string // SHA-512 of rkt comtainer image
+	URL                string // rkt uses this URL to launch the container
+	PodUUID            string // Pod UUID outputted by rkt
 }
 
 func (status DomainStatus) Key() string {
