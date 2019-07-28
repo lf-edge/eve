@@ -1182,7 +1182,7 @@ func doSftp(ctx *downloaderContext, status *types.DownloaderStatus,
 	}
 }
 
-func rktFetch(url string, localConfigDir string) error {
+func rktFetch(url string, localConfigDir string) (string, error) {
 	// rkt fetch --system-config=/persist/rkt-local/ --insecure-options=image
 	//      docker://zededa/zcli-dev:latest
 	log.Debugf("rktFetch - url: %s ,  localConfigDir:%s\n",
@@ -1204,12 +1204,40 @@ func rktFetch(url string, localConfigDir string) error {
 	if err != nil {
 		log.Errorln("rkt fetch failed ", err)
 		log.Errorln("rkt fetch output ", string(stdoutStderr))
-		return errors.New(fmt.Sprintf("rkt fetch failed: %s\n",
+		return "", errors.New(fmt.Sprintf("rkt fetch failed: %s\n",
 			string(stdoutStderr)))
 	}
+	log.Infof("rktFetch - image fetch successful. stdoutStderr: %s\n",
+		stdoutStderr)
+	outputStr := string(stdoutStderr)
+	log.Debugf("rktFetch - outputStr: %s\n", outputStr)
+	outputStrArray := strings.Split(outputStr, "\n")
+
+	log.Debugf("rktFetch - outputStrArray:\n")
+	for i, op := range outputStrArray {
+		log.Debugf("index:%d, op:%s", i, op)
+	}
+	log.Debugf("rktFetch - outputStrArray DONE\n")
+
+	// Get ImageId from the oputput. The last line in rkt fetch output
+	// with sha12- is the imageId
+	imageId := ""
+	for i := len(outputStrArray) - 1; i >= 0; i-- {
+		imageId = outputStrArray[i]
+		if strings.HasPrefix(imageId, "sha512-") {
+			break
+		}
+	}
+	log.Infof("rktFetch - imageId: %s\n", imageId)
+	if imageId == "" {
+		errMsg := "rkt fetch: Can't find imageId.\n Fetch Output: " +
+			outputStr
+		return "", errors.New(errMsg)
+	}
+
 	// TODO - we should run "rkt image ls" and verify image fetch went thru
 	//  without errors.
-	return nil
+	return imageId, nil
 }
 
 func rktAuthFilename(appName string) string {
@@ -1263,6 +1291,7 @@ func rktFetchContainerImage(ctx *downloaderContext, key string,
 	status.State = types.DOWNLOAD_STARTED
 	publishDownloaderStatus(ctx, status)
 
+	imageId := ""
 	// Save credentials to Auth file
 	log.Infof("rktFetchContainerImage: fetch  <%s>\n", config.DownloadURL)
 	authFile, err := rktCreateAuthFile(&config)
@@ -1274,13 +1303,13 @@ func rktFetchContainerImage(ctx *downloaderContext, key string,
 			localConfigDir = ""
 			log.Infof("rktFetchContainerImage: no Auth File")
 		}
-		err = rktFetch(config.DownloadURL, localConfigDir)
+		imageId, err = rktFetch(config.DownloadURL, localConfigDir)
 	} else {
 		log.Errorf("rktCreateAuthFile Failed. err: %+v", err)
 	}
 
 	if err != nil {
-		log.Infof("rktFetchContainerImage: fetch  Failed. url:%s, "+
+		log.Errorf("rktFetchContainerImage: fetch  Failed. url:%s, "+
 			"authFile: %s, Err: %+v\n", config.DownloadURL, authFile, err)
 		status.PendingAdd = false
 		status.Size = 0
@@ -1290,15 +1319,15 @@ func rktFetchContainerImage(ctx *downloaderContext, key string,
 		publishDownloaderStatus(ctx, status)
 		return err
 	}
-
-	log.Infof("rktFetchContainerImage successful <%s> <%s>\n",
-		config.DownloadURL, authFile)
+	log.Infof("rktFetchContainerImage successful. imageId: <%s>\n",
+		imageId)
 
 	// Update globalStatus and status
 	unreserveSpace(ctx, status)
 
 	// We do not clear any status.RetryCount, LastErr, etc. The caller
 	// should look at State == DOWNLOADED to determine it is done.
+	status.ContainerImageId = imageId
 	status.ModTime = time.Now()
 	status.PendingAdd = false
 	status.State = types.DOWNLOADED

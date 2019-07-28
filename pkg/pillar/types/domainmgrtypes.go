@@ -26,8 +26,10 @@ type DomainConfig struct {
 	VifList           []VifInfo
 	IoAdapterList     []IoAdapter
 	CloudInitUserData string // base64-encoded
-	IsContainer       bool   // Is this Domain for a Container?
-	URL               string // rkt uses this URL to start the container
+	// Coontainer related info
+	IsContainer      bool   // Is this Domain for a Container?
+	URL              string // rkt uses this URL to start the container
+	ContainerImageId string
 }
 
 func (config DomainConfig) Key() string {
