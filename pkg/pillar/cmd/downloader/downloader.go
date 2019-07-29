@@ -42,6 +42,7 @@ const (
 
 	persistDir                   = "/persist"
 	objectDownloadDirname        = persistDir + "/downloads"
+	persistRktDir                = persistDir + "/rkt"
 	persistRktLocalConfigDir     = persistDir + "/rktlocal"
 	persistRktLocalConfigAuthDir = persistRktLocalConfigDir + "/auth.d"
 )
@@ -1189,6 +1190,7 @@ func rktFetch(url string, localConfigDir string) (string, error) {
 		url, localConfigDir)
 	cmd := "rkt"
 	args := []string{
+		"--dir=" + persistRktDir,
 		"fetch",
 		"--insecure-options=image",
 	}
