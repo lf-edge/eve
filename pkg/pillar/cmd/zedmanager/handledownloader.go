@@ -130,7 +130,7 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	}
 
 	// Normal update case
-	updateAIStatusWithStorageSafename(ctx, key, false, "")
+	updateAIStatusWithStorageSafename(ctx, key, true, status.ContainerImageId)
 	log.Infof("handleDownloaderStatusModify done for %s\n",
 		status.Safename)
 }
