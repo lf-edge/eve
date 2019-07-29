@@ -22,7 +22,9 @@ func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
 	safename string,
 	updateContainerImageId bool, containerImageId string) {
 
-	log.Infof("updateAIStatusWithStorageSafename for %s\n", safename)
+	log.Infof("updateAIStatusWithStorageSafename for %s - "+
+		"updateContainerImageId: %v, containerImageId: %s\n",
+		safename, updateContainerImageId, containerImageId)
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
 	found := false
@@ -47,6 +49,11 @@ func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
 						containerImageId)
 					status.ContainerImageId = containerImageId
 					changed = true
+				} else {
+					log.Debugf("No change in ContainerId in Status. "+
+						"status.ContainerImageId: %s, containerImageId: %s\n",
+						status.ContainerImageId, containerImageId)
+
 				}
 				if changed {
 					publishAppInstanceStatus(ctx, &status)
