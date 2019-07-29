@@ -783,7 +783,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 
 	log.Infof("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
-
+	log.Debugf("DomainConfig %+v\n", config)
 	// Name of Xen domain must be unique; uniqify AppNum
 	name := config.DisplayName + "." + strconv.Itoa(config.AppNum)
 
@@ -824,38 +824,40 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 	// Do we need to copy any rw files? !Preserve ones are copied upon
 	// activation.
 	for _, ds := range status.DiskStatusList {
-		if ds.ReadOnly || !ds.Preserve {
-			continue
-		}
-		log.Infof("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
-		if _, err := os.Stat(ds.ActiveFileLocation); err == nil {
-			if ds.Preserve {
-				log.Infof("Preserve and target exists - skip copy\n")
+		if !status.IsContainer {
+			if ds.ReadOnly || !ds.Preserve {
+				continue
+			}
+			log.Infof("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
+			if _, err := os.Stat(ds.ActiveFileLocation); err == nil {
+				if ds.Preserve {
+					log.Infof("Preserve and target exists - skip copy\n")
+				} else {
+					log.Infof("Not preserve and target exists - assume rebooted and preserve\n")
+				}
 			} else {
-				log.Infof("Not preserve and target exists - assume rebooted and preserve\n")
-			}
-		} else {
-			if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
-				log.Errorf("Copy failed from %s to %s: %s\n",
-					ds.FileLocation, ds.ActiveFileLocation, err)
-				status.PendingAdd = false
-				status.LastErr = fmt.Sprintf("%v", err)
-				status.LastErrTime = time.Now()
-				publishDomainStatus(ctx, &status)
-				return
-			}
-			// Do we need to expand disk?
-			err := maybeResizeDisk(ds.ActiveFileLocation,
-				ds.Maxsizebytes)
-			if err != nil {
-				errStr := fmt.Sprintf("handleCreate(%s) failed %v",
-					status.Key(), err)
-				log.Errorln(errStr)
-				status.LastErr = errStr
-				status.LastErrTime = time.Now()
-				status.PendingAdd = false
-				publishDomainStatus(ctx, &status)
-				return
+				if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
+					log.Errorf("Copy failed from %s to %s: %s\n",
+						ds.FileLocation, ds.ActiveFileLocation, err)
+					status.PendingAdd = false
+					status.LastErr = fmt.Sprintf("%v", err)
+					status.LastErrTime = time.Now()
+					publishDomainStatus(ctx, &status)
+					return
+				}
+				// Do we need to expand disk?
+				err := maybeResizeDisk(ds.ActiveFileLocation,
+					ds.Maxsizebytes)
+				if err != nil {
+					errStr := fmt.Sprintf("handleCreate(%s) failed %v",
+						status.Key(), err)
+					log.Errorln(errStr)
+					status.LastErr = errStr
+					status.LastErrTime = time.Now()
+					status.PendingAdd = false
+					publishDomainStatus(ctx, &status)
+					return
+				}
 			}
 		}
 		addImageStatus(ctx, ds.ActiveFileLocation)
@@ -1015,18 +1017,20 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	// Do we need to copy any rw files? Preserve ones are copied upon
 	// creation
 	for _, ds := range status.DiskStatusList {
-		if ds.ReadOnly || ds.Preserve {
-			continue
-		}
-		log.Infof("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
-		if _, err := os.Stat(ds.ActiveFileLocation); err == nil && ds.Preserve {
-			log.Infof("Preserve and target exists - skip copy\n")
-		} else if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
-			log.Errorf("Copy failed from %s to %s: %s\n",
-				ds.FileLocation, ds.ActiveFileLocation, err)
-			status.LastErr = fmt.Sprintf("%v", err)
-			status.LastErrTime = time.Now()
-			return
+		if !status.IsContainer {
+			if ds.ReadOnly || ds.Preserve {
+				continue
+			}
+			log.Infof("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
+			if _, err := os.Stat(ds.ActiveFileLocation); err == nil && ds.Preserve {
+				log.Infof("Preserve and target exists - skip copy\n")
+			} else if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
+				log.Errorf("Copy failed from %s to %s: %s\n",
+					ds.FileLocation, ds.ActiveFileLocation, err)
+				status.LastErr = fmt.Sprintf("%v", err)
+				status.LastErrTime = time.Now()
+				return
+			}
 		}
 		addImageStatus(ctx, ds.ActiveFileLocation)
 		log.Infof("Copy DONE from %s to %s\n",
@@ -1299,24 +1303,36 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		// map from i=1 to xvda, 2 to xvdb etc
 		xv := "xvd" + string(int('a')+i)
 		ds.Vdev = xv
-		locationDir := verifiedDirname + "/" + dc.ImageSha256
-		log.Debugf("configToStatus(%v) processing disk img %s for %s\n",
-			config.UUIDandVersion, locationDir, config.DisplayName)
-		location, err := locationFromDir(locationDir)
-		if err != nil {
-			return err
+
+		var location string
+		if status.IsContainer {
+			// ToDo
+			// location := "/persist/rkt/cas/blob/sha512/" + "FIRST TWO CHARS IN SHA" + status.ContainerImageId
+			location = "/persist/rkt/cas/blob/sha512/" + status.ContainerImageId
+		} else {
+			locationDir := verifiedDirname + "/" + dc.ImageSha256
+			log.Debugf("configToStatus(%v) processing disk img %s for %s\n",
+				config.UUIDandVersion, locationDir, config.DisplayName)
+
+			var err error
+			location, err = locationFromDir(locationDir)
+			if err != nil {
+				return err
+			}
 		}
 		ds.FileLocation = location
 		target := location
-		if !dc.ReadOnly {
-			// Pick new location for a per-guest copy
-			// Use App UUID to make sure name is the same even
-			// after adds and deletes of instances and device reboots
-			dstFilename := fmt.Sprintf("%s/%s-%s.%s",
-				rwImgDirname, dc.ImageSha256,
-				config.UUIDandVersion.UUID.String(),
-				dc.Format)
-			target = dstFilename
+		if !status.IsContainer {
+			if !dc.ReadOnly {
+				// Pick new location for a per-guest copy
+				// Use App UUID to make sure name is the same even
+				// after adds and deletes of instances and device reboots
+				dstFilename := fmt.Sprintf("%s/%s-%s.%s",
+					rwImgDirname, dc.ImageSha256,
+					config.UUIDandVersion.UUID.String(),
+					dc.Format)
+				target = dstFilename
+			}
 		}
 		ds.ActiveFileLocation = target
 	}
@@ -1883,12 +1899,14 @@ func wrapDomainCreate(status *types.DomainStatus) (int, error) {
 //  Launch app/container thru rkt
 // TBD - check whether dom is launched in pause state
 func rktRun(status *types.DomainStatus, ContainerImageId string) (int, error) {
+
+	// rkt --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file
 	log.Infof("rktRun %s - ContainerImageId %s\n", status.DomainName, ContainerImageId)
 	cmd := "rkt"
 	args := []string{
+		"--insecure-options=image",
 		"run",
 		ContainerImageId,
-		"--insecure-options=image",
 		"--stage1-path=/usr/sbin/stage1-xen.aci",
 		"--uuid-file-save=/persist/rkt/uuid_file",
 	}
