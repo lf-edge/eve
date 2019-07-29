@@ -65,9 +65,25 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 		if ipVer == 0 {
 			ipVer = 4
 		}
+
+		// DROP action is used in two case.
+		// 1. DROP rule for the packets exceeding rate-limiter.
+		// 2. Default DROP rule in the end.
+		// With flow-monitoring support, we cannot have the default DROP rule
+		// in the end of rule list. This is to avoid conntrack from deleting
+		// connections matching the default rule. Just before the default DROP
+		// rule, we add a LOG rule for logging packets that are being forwarded
+		// to dummy interface.
+		// Packets matching the default DROP rule also match the default LOG rule.
+		// Since we will not have the default DROP rule, we can copy statistics
+		// from default LOG rule as DROP statistics.
 		metric.TxAclDrops = iptables.GetIpRuleAclDrop(ac, bridgeName, vifName,
 			ipVer, inout)
+		metric.TxAclDrops += iptables.GetIpRuleAclLog(ac, bridgeName, vifName,
+			ipVer, inout)
 		metric.RxAclDrops = iptables.GetIpRuleAclDrop(ac, bridgeName, vifName,
+			ipVer, !inout)
+		metric.RxAclDrops += iptables.GetIpRuleAclLog(ac, bridgeName, vifName,
 			ipVer, !inout)
 		metric.TxAclRateLimitDrops = iptables.GetIpRuleAclRateLimitDrop(ac,
 			bridgeName, vifName, ipVer, inout)

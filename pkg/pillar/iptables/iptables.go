@@ -196,6 +196,29 @@ func GetIpRuleAclDrop(counters []AclCounters, bridgeName string, vifName string,
 	return c.Pkts
 }
 
+func GetIpRuleAclLog(counters []AclCounters, bridgeName string, vifName string,
+	ipVer int, input bool) uint64 {
+
+	var iif string
+	var piif string
+	var oif string
+	if input {
+		iif = bridgeName
+		if vifName != "" {
+			piif = vifName + "+"
+		}
+	} else {
+		oif = bridgeName
+	}
+	match := AclCounters{IIf: iif, Piif: piif, OIf: oif, IpVer: ipVer,
+		Drop: false, Limit: false, Log: true}
+	c := getIpRuleCounters(counters, &match)
+	if c == nil {
+		return 0
+	}
+	return c.Pkts
+}
+
 // Look for a DROP entry with More set.
 // acl.go appends a '+' to the vifname to handle PV/qemu which for some
 // reason have a second <vifname>-emu bridge interface. Need to match that here.
