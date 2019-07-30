@@ -1306,7 +1306,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 
 		var location string
 		if status.IsContainer {
-			// ToDo
+			// XXX: FIXME Correct the location of Container Image Id
+			// should be
 			// location := "/persist/rkt/cas/blob/sha512/" + "FIRST TWO CHARS IN SHA" + status.ContainerImageId
 			location = "/persist/rkt/cas/blob/sha512/" + status.ContainerImageId
 		} else {
@@ -1859,10 +1860,12 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	// inactivation i.e. those preserved across reboots?
 	for _, ds := range status.DiskStatusList {
 		if !ds.ReadOnly && ds.Preserve {
-			log.Infof("Delete copy at %s\n", ds.ActiveFileLocation)
-			if err := os.Remove(ds.ActiveFileLocation); err != nil {
-				log.Errorln(err)
-				// XXX return? Cleanup status?
+			if !status.IsContainer {
+				log.Infof("Delete copy at %s\n", ds.ActiveFileLocation)
+				if err := os.Remove(ds.ActiveFileLocation); err != nil {
+					log.Errorln(err)
+					// XXX return? Cleanup status?
+				}
 			}
 			delImageStatus(ctx, ds.ActiveFileLocation)
 		}
@@ -2212,6 +2215,17 @@ func wrapDomainDestroy(status types.DomainStatus) error {
 	log.Infof("wrapDomainDestroy %s %d\n", status.DomainName, status.DomainId)
 
 	if status.IsContainer {
+		// XXX: FIXME Observed that "rkt stop" or "rkt stop --force=true"
+		// is not actually stopping the pod.
+		// And the subsequent invocation of rkt rm is failing, since
+		// the pod is still in running state
+		// As a work around, issuing xl destroy, wait for 5 seconds
+		// and then issue rkt rm to cleanup
+		log.Infof("First do xl destroy ... DomainName - %s  DomainID - %d\n",
+			status.DomainName, status.DomainId)
+		err = xlDestroy(status.DomainName, status.DomainId)
+		// wait for 3 seconds
+		time.Sleep(3)
 		// Use rkt tool
 		log.Infof("Using rkt tool ... PodUUID - %s\n", status.PodUUID)
 		err = rktRm(status.PodUUID)
