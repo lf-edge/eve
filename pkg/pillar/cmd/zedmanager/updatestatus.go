@@ -19,11 +19,11 @@ import (
 // Find all the config which refer to this safename.
 func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
 	safename string,
-	updateContainerImageId bool, containerImageId string) {
+	updateContainerImageID bool, containerImageID string) {
 
 	log.Infof("updateAIStatusWithStorageSafename for %s - "+
-		"updateContainerImageId: %v, containerImageId: %s\n",
-		safename, updateContainerImageId, containerImageId)
+		"updateContainerImageID: %v, containerImageID: %s\n",
+		safename, updateContainerImageID, containerImageID)
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
 	found := false
@@ -42,16 +42,16 @@ func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
 				log.Infof("Found StorageStatus URL %s safename %s\n",
 					ss.Name, safename)
 				changed := false
-				if updateContainerImageId &&
-					status.ContainerImageId != containerImageId {
-					log.Debugf("Update AIS ContainerImageId: %s\n",
-						containerImageId)
-					status.ContainerImageId = containerImageId
+				if updateContainerImageID &&
+					status.ContainerImageID != containerImageID {
+					log.Debugf("Update AIS ContainerImageID: %s\n",
+						containerImageID)
+					status.ContainerImageID = containerImageID
 					changed = true
 				} else {
 					log.Debugf("No change in ContainerId in Status. "+
-						"status.ContainerImageId: %s, containerImageId: %s\n",
-						status.ContainerImageId, containerImageId)
+						"status.ContainerImageID: %s, containerImageID: %s\n",
+						status.ContainerImageID, containerImageID)
 
 				}
 				if changed {
@@ -298,7 +298,7 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 			changed = changed || c
 		} else {
 			// If we have a !ReadOnly disk this will create a copy
-			err := MaybeAddDomainConfig(ctx, config, status, nil)
+			err := MaybeAddDomainConfig(ctx, config, *status, nil)
 			if err != nil {
 				log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 					uuidStr, err)
@@ -471,27 +471,25 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				safename)
 			downloadUrl := dst.Fqdn
 			if len(strings.TrimSpace(dst.Dpath)) > 0 {
-				downloadUrl += "/" + dst.Dpath
+				downloadURL += "/" + dst.Dpath
 			} else {
 				log.Debugf("doInstall: empty Dpath")
 			}
 			if len(strings.TrimSpace(ss.Name)) > 0 {
-				downloadUrl += "/" + ss.Name
+				downloadURL += "/" + ss.Name
 			} else {
 				log.Debugf("doInstall: empty ss.Name")
 			}
-			log.Infof("doInstall: downloadUrl: %s", downloadUrl)
+			log.Infof("doInstall: downloadURL: %s", downloadURL)
 
-			if ss.Format == "8" {
-				status.IsContainer = true
-				status.ContainerUrl = downloadUrl
-				log.Infof("doUpdate - status.IsContainer: %+v, ContainerUrl: %s\n",
-					status.IsContainer, status.ContainerUrl)
+			if status.IsContainer {
+				status.ContainerURL = downloadURL
+				log.Infof("doUpdate - status.IsContainer: %+v, ContainerURL: %s\n",
+					status.IsContainer, status.ContainerURL)
 			} else {
-				log.Infof("doUpdate - NOT a container. ss.Format: %+v\n",
-					ss.Format)
+				log.Infof("doUpdate - NOT a container\n")
 			}
-			AddOrRefcountDownloaderConfig(ctx, safename, ss, dst, downloadUrl,
+			AddOrRefcountDownloaderConfig(ctx, safename, ss, dst, downloadURL,
 				status.IsContainer)
 			ss.HasDownloaderRef = true
 			changed = true
@@ -807,7 +805,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	log.Debugf("Done with AppNetworkStatus for %s\n", uuidStr)
 
 	// Make sure we have a DomainConfig
-	err := MaybeAddDomainConfig(ctx, config, status, ns)
+	err := MaybeAddDomainConfig(ctx, config, *status, ns)
 	if err != nil {
 		log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 			uuidStr, err)
@@ -1276,7 +1274,7 @@ func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
 
 	// Make sure we have a DomainConfig. Clears dc.Activate based
 	// on the AppInstanceConfig's Activate
-	err := MaybeAddDomainConfig(ctx, config, status, ns)
+	err := MaybeAddDomainConfig(ctx, config, *status, ns)
 	if err != nil {
 		log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 			uuidStr, err)

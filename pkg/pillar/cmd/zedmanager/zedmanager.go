@@ -492,7 +492,11 @@ func handleCreate(ctxArg interface{}, key string,
 		ss.Maxsizebytes = sc.Maxsizebytes
 		ss.Devtype = sc.Devtype
 		ss.Target = sc.Target
+		if ss.Format == "8" {
+			status.IsContainer = true
+		}
 	}
+
 	status.EIDList = make([]types.EIDStatusDetails,
 		len(config.OverlayNetworkList))
 

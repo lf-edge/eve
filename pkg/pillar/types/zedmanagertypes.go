@@ -113,11 +113,9 @@ type AppInstanceStatus struct {
 	PurgeInprogress     Inprogress
 
 	// Container related state
-	IsContainer bool
-	// ContainerUrl --> TODO - Delete this atribute. rkt run will use
-	//      ContainerImageId instead.
-	ContainerUrl     string
-	ContainerImageId string
+	IsContainer      bool
+	ContainerURL     string
+	ContainerImageID string
 
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.

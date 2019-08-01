@@ -9,11 +9,13 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// RktCredentials is a rkt based Container Credentials
 type RktCredentials struct {
 	User     string `json:"user"`
 	Password string `json:"password"`
 }
 
+// RktAuthInfo is a rkt based Container Authentication Info
 type RktAuthInfo struct {
 	RktKind     string         `json:"rktkind"`
 	RktVersion  string         `json:"rktversion"`
@@ -75,7 +77,7 @@ type DownloaderStatus struct {
 	NameIsURL        bool      // If not we form URL based on datastore info
 	UseFreeMgmtPorts bool
 	ImageSha256      string // sha256 of immutable image
-	ContainerImageId string
+	ContainerImageID string
 	State            SwState // DOWNLOADED etc
 	ReservedSpace    uint64  // Contribution to global ReservedSpace
 	Size             uint64  // Once DOWNLOADED; in bytes
