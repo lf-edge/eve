@@ -7,9 +7,9 @@ USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
 PERSISTCONFIGDIR=/persist/config
-PERSIST_RKT_DIR=$PERSISTDIR/rkt
+PERSIST_RKT_DATA_DIR=$PERSISTDIR/rkt
 PERSIST_RKT_CONF_LOCAL_DIR=$PERSISTDIR/rktlocal
-PERSIST_RKT_CONF_LOCAL_AUTH_DIR=$PERSISTDIR/rktlocal/auth.d
+PERSIST_RKT_CONF_LOCAL_AUTH_DIR=$PERSIST_RKT_CONF_LOCAL_DIR/auth.d
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
 DPCDIR=$TMPDIR/DevicePortConfig
@@ -150,7 +150,7 @@ fi
 
 DIRS="$CONFIGDIR $PERSISTDIR $CONFIGDIR/DevicePortConfig"
 DIRS="$DIRS $TMPDIR $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
-DIRS="$DIRS $PERSIST_RKT_DIR $PERSIST_RKT_CONF_LOCAL_DIR $PERSIST_RKT_CONF_LOCAL_AUTH_DIR"
+DIRS="$DIRS $PERSIST_RKT_DATA_DIR $PERSIST_RKT_CONF_LOCAL_DIR $PERSIST_RKT_CONF_LOCAL_AUTH_DIR"
 
 echo "DIRS: $DIRS"
 
@@ -210,6 +210,12 @@ fi
 echo "$(date -Ins -u) Current downloaded files:"
 ls -lt $PERSISTDIR/downloads/*/*
 echo
+
+#
+# rkt configuration - can be removed once verified it is no longer required
+# Remove any old symlink to /var/lib/rkt
+rm -f /var/lib/rkt
+ln -s $PERSIST_RKT_DATA_DIR /var/lib/rkt
 
 # Copy any GlobalConfig from /config
 dir=$CONFIGDIR/GlobalConfig

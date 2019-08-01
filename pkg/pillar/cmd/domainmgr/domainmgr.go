@@ -48,6 +48,7 @@ const (
 	AADirname         = tmpDirname + "/AssignableAdapters"
 	runDirname        = "/var/run/" + agentName
 	persistDir        = "/persist"
+	persistRktDataDir = persistDir + "/rkt"
 	rwImgDirname      = persistDir + "/img"       // We store images here
 	xenDirname        = runDirname + "/xen"       // We store xen cfg files here
 	ciDirname         = runDirname + "/cloudinit" // For cloud-init images
@@ -684,12 +685,11 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	status.LastErrTime = time.Time{}
 	status.TriedCount += 1
 
-	filename := xenCfgFilename(status.AppNum)
 	ctx.createSema.V(1)
-	domainId, err := xlCreate(status.DomainName, filename)
+	domainId, err := wrapDomainCreate(status)
 	ctx.createSema.P(1)
 	if err != nil {
-		log.Errorf("maybeRetryBoot xl create for %s: %s\n",
+		log.Errorf("maybeRetryBoot wrapDomainCreate for %s: %s\n",
 			status.DomainName, err)
 		status.BootFailed = true
 		status.LastErr = fmt.Sprintf("%v", err)
@@ -784,7 +784,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 
 	log.Infof("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
-
+	log.Debugf("DomainConfig %+v\n", config)
 	// Name of Xen domain must be unique; uniqify AppNum
 	name := config.DisplayName + "." + strconv.Itoa(config.AppNum)
 
@@ -801,6 +801,9 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		VncDisplay:         config.VncDisplay,
 		VncPasswd:          config.VncPasswd,
 		State:              types.INSTALLED,
+		IsContainer:        config.IsContainer,
+		ContainerImageId:   config.ContainerImageId,
+		URL:                config.URL,
 	}
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))
@@ -822,38 +825,40 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 	// Do we need to copy any rw files? !Preserve ones are copied upon
 	// activation.
 	for _, ds := range status.DiskStatusList {
-		if ds.ReadOnly || !ds.Preserve {
-			continue
-		}
-		log.Infof("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
-		if _, err := os.Stat(ds.ActiveFileLocation); err == nil {
-			if ds.Preserve {
-				log.Infof("Preserve and target exists - skip copy\n")
+		if !status.IsContainer {
+			if ds.ReadOnly || !ds.Preserve {
+				continue
+			}
+			log.Infof("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
+			if _, err := os.Stat(ds.ActiveFileLocation); err == nil {
+				if ds.Preserve {
+					log.Infof("Preserve and target exists - skip copy\n")
+				} else {
+					log.Infof("Not preserve and target exists - assume rebooted and preserve\n")
+				}
 			} else {
-				log.Infof("Not preserve and target exists - assume rebooted and preserve\n")
-			}
-		} else {
-			if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
-				log.Errorf("Copy failed from %s to %s: %s\n",
-					ds.FileLocation, ds.ActiveFileLocation, err)
-				status.PendingAdd = false
-				status.LastErr = fmt.Sprintf("%v", err)
-				status.LastErrTime = time.Now()
-				publishDomainStatus(ctx, &status)
-				return
-			}
-			// Do we need to expand disk?
-			err := maybeResizeDisk(ds.ActiveFileLocation,
-				ds.Maxsizebytes)
-			if err != nil {
-				errStr := fmt.Sprintf("handleCreate(%s) failed %v",
-					status.Key(), err)
-				log.Errorln(errStr)
-				status.LastErr = errStr
-				status.LastErrTime = time.Now()
-				status.PendingAdd = false
-				publishDomainStatus(ctx, &status)
-				return
+				if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
+					log.Errorf("Copy failed from %s to %s: %s\n",
+						ds.FileLocation, ds.ActiveFileLocation, err)
+					status.PendingAdd = false
+					status.LastErr = fmt.Sprintf("%v", err)
+					status.LastErrTime = time.Now()
+					publishDomainStatus(ctx, &status)
+					return
+				}
+				// Do we need to expand disk?
+				err := maybeResizeDisk(ds.ActiveFileLocation,
+					ds.Maxsizebytes)
+				if err != nil {
+					errStr := fmt.Sprintf("handleCreate(%s) failed %v",
+						status.Key(), err)
+					log.Errorln(errStr)
+					status.LastErr = errStr
+					status.LastErrTime = time.Now()
+					status.PendingAdd = false
+					publishDomainStatus(ctx, &status)
+					return
+				}
 			}
 		}
 		addImageStatus(ctx, ds.ActiveFileLocation)
@@ -1013,18 +1018,20 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	// Do we need to copy any rw files? Preserve ones are copied upon
 	// creation
 	for _, ds := range status.DiskStatusList {
-		if ds.ReadOnly || ds.Preserve {
-			continue
-		}
-		log.Infof("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
-		if _, err := os.Stat(ds.ActiveFileLocation); err == nil && ds.Preserve {
-			log.Infof("Preserve and target exists - skip copy\n")
-		} else if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
-			log.Errorf("Copy failed from %s to %s: %s\n",
-				ds.FileLocation, ds.ActiveFileLocation, err)
-			status.LastErr = fmt.Sprintf("%v", err)
-			status.LastErrTime = time.Now()
-			return
+		if !status.IsContainer {
+			if ds.ReadOnly || ds.Preserve {
+				continue
+			}
+			log.Infof("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
+			if _, err := os.Stat(ds.ActiveFileLocation); err == nil && ds.Preserve {
+				log.Infof("Preserve and target exists - skip copy\n")
+			} else if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
+				log.Errorf("Copy failed from %s to %s: %s\n",
+					ds.FileLocation, ds.ActiveFileLocation, err)
+				status.LastErr = fmt.Sprintf("%v", err)
+				status.LastErrTime = time.Now()
+				return
+			}
 		}
 		addImageStatus(ctx, ds.ActiveFileLocation)
 		log.Infof("Copy DONE from %s to %s\n",
@@ -1053,13 +1060,13 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		status.TriedCount += 1
 		var err error
 		ctx.createSema.V(1)
-		domainId, err = xlCreate(status.DomainName, filename)
+		domainId, err = wrapDomainCreate(status)
 		ctx.createSema.P(1)
 		if err == nil {
 			break
 		}
 		if status.TriedCount >= 3 {
-			log.Errorf("xl create for %s: %s\n", status.DomainName, err)
+			log.Errorf("wrapDomainCreate for %s: %s\n", status.DomainName, err)
 			status.BootFailed = true
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
@@ -1133,9 +1140,8 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 			// Do a short shutdown wait, then a shutdown -F
 			// just in case there are PV tools in guest
 			shortDelay := time.Second * 10
-			if err := xlShutdown(status.DomainName,
-				status.DomainId, false); err != nil {
-				log.Errorf("xl shutdown %s failed: %s\n",
+			if err := wrapDomainShutdown(*status, false); err != nil {
+				log.Errorf("wrapDomainShutdown %s failed: %s\n",
 					status.DomainName, err)
 			} else {
 				// Wait for the domain to go away
@@ -1147,9 +1153,8 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 				status.DomainId = 0
 				break
 			}
-			if err := xlShutdown(status.DomainName,
-				status.DomainId, true); err != nil {
-				log.Errorf("xl shutdown -F %s failed: %s\n",
+			if err := wrapDomainShutdown(*status, true); err != nil {
+				log.Errorf("wrapDomainShutdown -F %s failed: %s\n",
 					status.DomainName, err)
 			} else {
 				// Wait for the domain to go away
@@ -1163,9 +1168,8 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 			}
 
 		case types.PV:
-			if err := xlShutdown(status.DomainName,
-				status.DomainId, false); err != nil {
-				log.Errorf("xl shutdown %s failed: %s\n",
+			if err := wrapDomainShutdown(*status, false); err != nil {
+				log.Errorf("wrapDomainShutdown %s failed: %s\n",
 					status.DomainName, err)
 			} else {
 				// Wait for the domain to go away
@@ -1181,9 +1185,9 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 	}
 
 	if status.DomainId != 0 {
-		err := xlDestroy(status.DomainName, status.DomainId)
+		err := wrapDomainDestroy(*status)
 		if err != nil {
-			log.Errorf("xl shutdown %s failed: %s\n",
+			log.Errorf("wrapDomainDestroy %s failed: %s\n",
 				status.DomainName, err)
 		}
 		// Even if destroy failed we wait again
@@ -1300,24 +1304,35 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		// map from i=1 to xvda, 2 to xvdb etc
 		xv := "xvd" + string(int('a')+i)
 		ds.Vdev = xv
-		locationDir := verifiedDirname + "/" + dc.ImageSha256
-		log.Debugf("configToStatus(%v) processing disk img %s for %s\n",
-			config.UUIDandVersion, locationDir, config.DisplayName)
-		location, err := locationFromDir(locationDir)
-		if err != nil {
-			return err
+
+		var location string
+		if status.IsContainer {
+			// location := "/persist/rkt/cas/blob/sha512/" + "FIRST TWO CHARS IN SHA" + status.ContainerImageId
+			location = persistRktDataDir + "/cas/blob/sha512/" + string(status.ContainerImageId[:2]) + "/" + status.ContainerImageId
+		} else {
+			locationDir := verifiedDirname + "/" + dc.ImageSha256
+			log.Debugf("configToStatus(%v) processing disk img %s for %s\n",
+				config.UUIDandVersion, locationDir, config.DisplayName)
+
+			var err error
+			location, err = locationFromDir(locationDir)
+			if err != nil {
+				return err
+			}
 		}
 		ds.FileLocation = location
 		target := location
-		if !dc.ReadOnly {
-			// Pick new location for a per-guest copy
-			// Use App UUID to make sure name is the same even
-			// after adds and deletes of instances and device reboots
-			dstFilename := fmt.Sprintf("%s/%s-%s.%s",
-				rwImgDirname, dc.ImageSha256,
-				config.UUIDandVersion.UUID.String(),
-				dc.Format)
-			target = dstFilename
+		if !status.IsContainer {
+			if !dc.ReadOnly {
+				// Pick new location for a per-guest copy
+				// Use App UUID to make sure name is the same even
+				// after adds and deletes of instances and device reboots
+				dstFilename := fmt.Sprintf("%s/%s-%s.%s",
+					rwImgDirname, dc.ImageSha256,
+					config.UUIDandVersion.UUID.String(),
+					dc.Format)
+				target = dstFilename
+			}
 		}
 		ds.ActiveFileLocation = target
 	}
@@ -1844,10 +1859,12 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	// inactivation i.e. those preserved across reboots?
 	for _, ds := range status.DiskStatusList {
 		if !ds.ReadOnly && ds.Preserve {
-			log.Infof("Delete copy at %s\n", ds.ActiveFileLocation)
-			if err := os.Remove(ds.ActiveFileLocation); err != nil {
-				log.Errorln(err)
-				// XXX return? Cleanup status?
+			if !status.IsContainer {
+				log.Infof("Delete copy at %s\n", ds.ActiveFileLocation)
+				if err := os.Remove(ds.ActiveFileLocation); err != nil {
+					log.Errorln(err)
+					// XXX return? Cleanup status?
+				}
 			}
 			delImageStatus(ctx, ds.ActiveFileLocation)
 		}
@@ -1858,6 +1875,102 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	unpublishDomainStatus(ctx, status)
 	log.Infof("handleDelete(%v) DONE for %s\n",
 		status.UUIDandVersion, status.DisplayName)
+}
+
+// Wrapper for domain creation thru xlCreate or rktRun
+func wrapDomainCreate(status *types.DomainStatus) (int, error) {
+
+	var domainId int
+	var err error
+
+	log.Infof("wrapDomainCreate %s\n", status.DomainName)
+	if status.IsContainer {
+		// Use rkt tool
+		log.Infof("Using rkt tool ... ContainerImageId - %s\n", status.ContainerImageId)
+		domainId, err = rktRun(status, status.ContainerImageId)
+	} else {
+		// Use xl tool
+		filename := xenCfgFilename(status.AppNum)
+		log.Infof("Using xl tool ... xenCfgFilename - %s\n", filename)
+		domainId, err = xlCreate(status.DomainName, filename)
+	}
+
+	return domainId, err
+}
+
+//  Launch app/container thru rkt
+// XXX:FIXME - check whether dom is launched in pause state
+func rktRun(status *types.DomainStatus, ContainerImageId string) (int, error) {
+
+	// rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file
+	log.Infof("rktRun %s - ContainerImageId %s\n", status.DomainName, ContainerImageId)
+	cmd := "rkt"
+	args := []string{
+		"--dir=" + persistRktDataDir,
+		"--insecure-options=image",
+		"run",
+		ContainerImageId,
+		"--stage1-path=/usr/sbin/stage1-xen.aci",
+		"--uuid-file-save=/persist/rkt/uuid_file",
+	}
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt run failed ", err)
+		log.Errorln("rkt run output ", string(stdoutStderr))
+		return 0, errors.New(fmt.Sprintf("rkt run failed: %s\n",
+			string(stdoutStderr)))
+	}
+	log.Infof("rkt run done\n")
+
+	// Get Pod UUID
+	uuidData, err := ioutil.ReadFile("/persist/rkt/uuid_file")
+	if err != nil {
+		log.Errorf("Open /persist/rkt/uuid_file failed : %s\n", err)
+		return 0, errors.New(fmt.Sprintf("open /persist/rkt/uuid_file failed: %s\n", err))
+	}
+	status.PodUUID = strings.TrimSpace(string(uuidData))
+	log.Infof("PodUUID = %s\n", status.PodUUID)
+
+	// Temporary hack to obatin the domain id
+	// Current observation
+	// domain is being created with the same name as the UUID of launched rkt container
+	cmd = "xl"
+	args = []string{
+		"domid",
+		status.PodUUID,
+	}
+	stdoutStderr, err = wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("xl domid failed ", err)
+		log.Errorln("xl domid output ", string(stdoutStderr))
+		return 0, errors.New(fmt.Sprintf("xl domid failed: %s\n",
+			string(stdoutStderr)))
+	}
+	res := strings.TrimSpace(string(stdoutStderr))
+	domainId, err := strconv.Atoi(res)
+	if err != nil {
+		log.Errorf("Can't extract domainId from %s: %s\n", res, err)
+		return 0, errors.New(fmt.Sprintf("Can't extract domainId from %s: %s\n", res, err))
+	}
+	log.Infof("domainId = %d\n", domainId)
+
+	// Temporary hack to set the domain name as formulated in DomainStatus structure
+	// rename the domain
+	cmd = "xl"
+	args = []string{
+		"rename",
+		strconv.Itoa(domainId),
+		status.DomainName,
+	}
+	stdoutStderr, err = wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("xl rename failed ", err)
+		log.Errorln("xl rename output ", string(stdoutStderr))
+		return 0, errors.New(fmt.Sprintf("xl rename failed: %s\n",
+			string(stdoutStderr)))
+	}
+
+	return domainId, nil
 }
 
 // Create in paused state; Need to call xlUnpause later
@@ -2022,6 +2135,56 @@ func xlUnpause(domainName string, domainId int) error {
 	return nil
 }
 
+// Wrapper for domain shutdown thru xlShutdown or rktStop
+func wrapDomainShutdown(status types.DomainStatus, force bool) error {
+
+	var err error
+	log.Infof("wrapDomainShutdown force-%v %s %d\n", force, status.DomainName, status.DomainId)
+
+	if status.IsContainer {
+		// Use rkt tool
+		log.Infof("Using rkt tool ... PodUUID - %s\n", status.PodUUID)
+		err = rktStop(status.PodUUID, force)
+	} else {
+		// Use xl tool
+		log.Infof("Using xl tool ... DomainName - %s\n", status.DomainName)
+		err = xlShutdown(status.DomainName, status.DomainId, force)
+	}
+
+	return err
+}
+
+func rktStop(PodUUID string, force bool) error {
+	log.Infof("rktStop %s %t\n", PodUUID, force)
+	cmd := "rkt"
+	var args []string
+	if force {
+		// rkt --dir=<RKT_DATA_DIR> stop PodUUID --force=true
+		args = []string{
+			"--dir=" + persistRktDataDir,
+			"stop",
+			PodUUID,
+			"--force=true",
+		}
+	} else {
+		// rkt --dir=<RKT_DATA_DIR> stop PodUUID
+		args = []string{
+			"--dir=" + persistRktDataDir,
+			"stop",
+			PodUUID,
+		}
+	}
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt stop failed ", err)
+		log.Errorln("rkt stop output ", string(stdoutStderr))
+		return errors.New(fmt.Sprintf("rkt stop failed: %s\n",
+			string(stdoutStderr)))
+	}
+	log.Infof("rkt stop done\n")
+	return nil
+}
+
 func xlShutdown(domainName string, domainId int, force bool) error {
 	log.Infof("xlShutdown %s %d\n", domainName, domainId)
 	cmd := "xl"
@@ -2046,6 +2209,56 @@ func xlShutdown(domainName string, domainId int, force bool) error {
 			string(stdoutStderr)))
 	}
 	log.Infof("xl shutdown done\n")
+	return nil
+}
+
+// Wrapper for domain Destroy thru xlDestroy or rktRm
+func wrapDomainDestroy(status types.DomainStatus) error {
+
+	var err error
+	log.Infof("wrapDomainDestroy %s %d\n", status.DomainName, status.DomainId)
+
+	if status.IsContainer {
+		// XXX:FIXME - Observed that "rkt stop" or "rkt stop --force=true"
+		// is not actually stopping the pod.
+		// And the subsequent invocation of rkt rm is failing, since
+		// the pod is still in running state
+		// As a work around, issuing xl destroy, wait for 5 seconds
+		// and then issue rkt rm to cleanup
+		log.Infof("First do xl destroy ... DomainName - %s  DomainID - %d\n",
+			status.DomainName, status.DomainId)
+		err = xlDestroy(status.DomainName, status.DomainId)
+		// wait for 3 seconds
+		time.Sleep(3)
+		// Use rkt tool
+		log.Infof("Using rkt tool ... PodUUID - %s\n", status.PodUUID)
+		err = rktRm(status.PodUUID)
+	} else {
+		// Use xl tool
+		log.Infof("Using xl tool ... DomainName - %s\n", status.DomainName)
+		err = xlDestroy(status.DomainName, status.DomainId)
+	}
+
+	return err
+}
+
+func rktRm(PodUUID string) error {
+	log.Infof("rktRm %s\n", PodUUID)
+	// rkt --dir=<RKT_DATA_DIR> rm PodUUID
+	cmd := "rkt"
+	args := []string{
+		"--dir=" + persistRktDataDir,
+		"rm",
+		PodUUID,
+	}
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt Rm failed ", err)
+		log.Errorln("rkt Rm output ", string(stdoutStderr))
+		return errors.New(fmt.Sprintf("rkt Rm failed: %s\n",
+			string(stdoutStderr)))
+	}
+	log.Infof("rkt Rm done\n")
 	return nil
 }
 

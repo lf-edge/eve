@@ -42,7 +42,7 @@ const (
 
 	persistDir                   = "/persist"
 	objectDownloadDirname        = persistDir + "/downloads"
-	persistRktDir                = persistDir + "/rkt"
+	persistRktDataDir            = persistDir + "/rkt"
 	persistRktLocalConfigDir     = persistDir + "/rktlocal"
 	persistRktLocalConfigAuthDir = persistRktLocalConfigDir + "/auth.d"
 )
@@ -1185,19 +1185,21 @@ func doSftp(ctx *downloaderContext, status *types.DownloaderStatus,
 
 func rktFetch(url string, localConfigDir string) (string, error) {
 	// rkt fetch --system-config=/persist/rkt-local/ --insecure-options=image
+	// rkt --insecure-options=image fetch docker://zededa/zcli --full=true
 	//      docker://zededa/zcli-dev:latest
 	log.Debugf("rktFetch - url: %s ,  localConfigDir:%s\n",
 		url, localConfigDir)
 	cmd := "rkt"
 	args := []string{
-		"--dir=" + persistRktDir,
-		"fetch",
+		"--dir=" + persistRktDataDir,
 		"--insecure-options=image",
+		"fetch",
 	}
-	if len(localConfigDir) > 0 {
-		args = append(args, "--system-config="+persistRktLocalConfigDir)
-	}
+	// if len(localConfigDir) > 0 {
+	// 	args = append(args, "--system-config="+persistRktLocalConfigDir)
+	// }
 	args = append(args, url)
+	args = append(args, "--full=true")
 
 	log.Infof("rktFetch - url: %s ,  localConfigDir:%s, args: %+v\n",
 		url, localConfigDir, args)
@@ -1237,8 +1239,8 @@ func rktFetch(url string, localConfigDir string) (string, error) {
 		return "", errors.New(errMsg)
 	}
 
-	// TODO - we should run "rkt image ls" and verify image fetch went thru
-	//  without errors.
+	// XXX:FIXME - we should run "rkt image ls" and verify image fetch
+	// went thru without errors.
 	return imageId, nil
 }
 
@@ -1253,6 +1255,8 @@ func rktCreateAuthFile(config *types.DownloaderConfig) (string, error) {
 		return "", nil
 	}
 
+	// XXX:FIXME - Why should this directory be created again
+	// when it was created in the first place in device-steps.sh
 	err := os.MkdirAll(persistRktLocalConfigAuthDir, 0755)
 	if err != nil {
 		log.Errorf("rktCreateAuthFile: empty username. Skipping AuthFile")

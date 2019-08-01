@@ -114,7 +114,7 @@ type AppInstanceStatus struct {
 
 	// Container related state
 	IsContainer bool
-	// ContainerUrl --> TODO - Delete this atribute. rkt run will use
+	// XXX:FIXME - Delete ContainerUrl atribute. rkt run will use
 	//      ContainerImageId instead.
 	ContainerUrl     string
 	ContainerImageId string
