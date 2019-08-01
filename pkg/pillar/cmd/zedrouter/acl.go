@@ -877,18 +877,22 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 		}
 
 		if aclRule3.RuleID != -1 {
-			aclRule3.Table = "mangle"
-			aclRule3.Chain = "PREROUTING"
-			aclRule3.IsMarkingRule = true
-			chainName := fmt.Sprintf("%s-%s-%d",
-				aclArgs.BridgeName, aclArgs.VifName, aclRule3.RuleID)
+			for _, uplink := range aclArgs.UpLinks {
+				aclRule3.Table = "mangle"
+				aclRule3.Chain = "PREROUTING"
+				aclRule3.Rule = append(aclRule3.Rule, "-m", "physdev",
+					"--physdev-in", uplink)
+				aclRule3.IsMarkingRule = true
+				chainName := fmt.Sprintf("%s-%s-%d",
+					aclArgs.BridgeName, aclArgs.VifName, aclRule3.RuleID)
 
-			// Embed App id in marking value
-			markingValue := (aclArgs.AppNum << 24) | aclRule3.RuleID
-			createMarkAndAcceptChain(aclArgs, chainName, markingValue)
-			aclRule3.Action = []string{"-j", chainName}
-			aclRule3.ActionChainName = chainName
-			rulesList = append(rulesList, aclRule3)
+				// Embed App id in marking value
+				markingValue := (aclArgs.AppNum << 24) | aclRule3.RuleID
+				createMarkAndAcceptChain(aclArgs, chainName, markingValue)
+				aclRule3.Action = []string{"-j", chainName}
+				aclRule3.ActionChainName = chainName
+				rulesList = append(rulesList, aclRule3)
+			}
 		} else {
 			log.Errorf("Table: %s, Chain: %s, Rule: %s, Action: %s - cannot be"+
 				" programmed due to ACL ID allocation failure",
@@ -1433,8 +1437,8 @@ func createFlowMonDummyInterface(fwmark uint32) {
 	iifIndex := slink.Attrs().Index
 	err = AddFwMarkRuleToDummy(fwmark, iifIndex)
 	if err != nil {
-		log.Errorf("createFlowMonDummyInterface: FwMark rule for %s failed",
-			dummyIntfName)
+		log.Errorf("createFlowMonDummyInterface: FwMark rule for %s failed: %s",
+			dummyIntfName, err)
 	}
 }
 
@@ -1500,16 +1504,20 @@ func createMarkAndAcceptChain(aclArgs types.AppNetworkACLArgs,
 		return err
 	}
 
-	rule1 := []string{}
+	rule1 := []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--restore-mark"}
+	rule2 := []string{"-A", name, "-t", "mangle", "-m", "mark", "!", "--mark", "0",
+		"-j", "ACCEPT"}
+
+	rule3 := []string{}
 	if marking == -1 {
-		rule1 = []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--set-mark",
+		rule3 = []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--set-mark",
 			"0xffffffff"}
 	} else {
-		rule1 = []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--set-mark",
+		rule3 = []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--set-mark",
 			strconv.FormatInt(int64(marking), 10)}
 	}
-	rule2 := []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--restore-mark"}
-	rule3 := []string{"-A", name, "-t", "mangle", "-j", "ACCEPT"}
+	rule4 := []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--restore-mark"}
+	rule5 := []string{"-A", name, "-t", "mangle", "-j", "ACCEPT"}
 
 	chainFlush := []string{"-t", "mangle", "--flush", name}
 	chainDelete := []string{"-t", "mangle", "-X", name}
@@ -1534,6 +1542,22 @@ func createMarkAndAcceptChain(aclArgs types.AppNetworkACLArgs,
 	if err != nil {
 		log.Errorf("createMarkAndAcceptChain: New rule (%s) creation failed: %s",
 			rule3, err)
+		iptables.IptableCmd(chainFlush...)
+		iptables.IptableCmd(chainDelete...)
+		return err
+	}
+	err = iptables.IptableCmd(rule4...)
+	if err != nil {
+		log.Errorf("createMarkAndAcceptChain: New rule (%s) creation failed: %s",
+			rule4, err)
+		iptables.IptableCmd(chainFlush...)
+		iptables.IptableCmd(chainDelete...)
+		return err
+	}
+	err = iptables.IptableCmd(rule5...)
+	if err != nil {
+		log.Errorf("createMarkAndAcceptChain: New rule (%s) creation failed: %s",
+			rule5, err)
 		iptables.IptableCmd(chainFlush...)
 		iptables.IptableCmd(chainDelete...)
 		return err
