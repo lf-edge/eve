@@ -6,6 +6,7 @@
 USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
+PERSIST_RKT_DIR=$PERSISTDIR/rkt
 PERSISTCONFIGDIR=/persist/config
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
@@ -151,7 +152,7 @@ if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
 fi
 
-DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
+DIRS="$CONFIGDIR $PERSISTDIR $PERSIST_RKT_DIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
 
 for d in $DIRS; do
     d1=$(dirname "$d")
