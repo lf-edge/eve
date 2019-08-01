@@ -11,8 +11,9 @@ ENV GOFLAGS=-mod=vendor
 ENV GO111MODULE=on
 ENV CGO_ENABLED=1
 ARG GOARCH=
-ARG CROSS_GCC=https://musl.cc/aarch64-linux-musleabi-cross.tgz
-RUN [ -z "$GOARCH" ] || (cd / ; apk add --no-cache wget && wget -O - $CROSS_GCC | tar xzvf -)
+
+COPY packages/aarch64-linux-musl-cross.tgz /tmp
+RUN tar -C / -zxvf /tmp/aarch64-linux-musl-cross.tgz
 
 ADD ./  /pillar/
 

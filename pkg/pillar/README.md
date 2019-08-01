@@ -38,3 +38,13 @@ Make targets of note:
 * `make builder-image`: build the builder image for your user
 * `make shell`: launch a shell inside the builder image, whence you can run all commands. It also sets `BUILD=local`, so that you can run just `make build` inside.
 
+### Cross-Compiling
+
+Because of [github.com/google/gopacket](github.com/google/gopacket), we require `CGO_ENABLED=1`, which means we need appropriate C toolchains to cross-compile.
+For musl cross-compiling, we use [http://musl.cc/](http://musl.cc/). Per their recommendations:
+
+> Other Notes:
+>
+> 3. You should pin and reproduce any version of these toolchains yourself -- old binaries might not be archived. Don't trust random third-party binaries :)
+
+So we keep a local copy of the x86-64 to aarch64 cross-compile toolchain here. If we ever manage to get rid of `CGO` dependencies, this will go away.
