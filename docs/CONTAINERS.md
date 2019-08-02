@@ -48,6 +48,12 @@ Stage 1 Xen implementation has a very fixed set of settings for a domain that it
 STAGE1_SEED_XL_CFG=/tmp/xl.cfg rkt run sha512-<ID FROM PREVIOUS LINE> --interactive --insecure-options=image --stage1-path=/usr/sbin/stage1-xen.aci
 ```
 
+You can also pass extra command line options to xl create. For example, if you want to start container domain in a paused state:
+
+```bash
+STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=/tmp/xl.cfg rkt run sha512-<ID FROM PREVIOUS LINE> --interactive --insecure-options=image --stage1-path=/usr/sbin/stage1-xen.aci
+```
+
 ### What else can I do
 
 This is it for now. But we're hoping to enable it for EVE controller to run containers as easily as VMs.
