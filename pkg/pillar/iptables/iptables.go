@@ -196,7 +196,8 @@ func GetIpRuleAclDrop(counters []AclCounters, bridgeName string, vifName string,
 	return c.Pkts
 }
 
-func GetIpRuleAclLog(counters []AclCounters, bridgeName string, vifName string,
+// GetIPRuleACLLog : Get the packet/byte count of logged packets
+func GetIPRuleACLLog(counters []AclCounters, bridgeName string, vifName string,
 	ipVer int, input bool) uint64 {
 
 	var iif string
