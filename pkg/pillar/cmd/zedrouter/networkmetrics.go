@@ -79,11 +79,11 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 		// from default LOG rule as DROP statistics.
 		metric.TxAclDrops = iptables.GetIpRuleAclDrop(ac, bridgeName, vifName,
 			ipVer, inout)
-		metric.TxAclDrops += iptables.GetIpRuleAclLog(ac, bridgeName, vifName,
+		metric.TxAclDrops += iptables.GetIPRuleACLLog(ac, bridgeName, vifName,
 			ipVer, inout)
 		metric.RxAclDrops = iptables.GetIpRuleAclDrop(ac, bridgeName, vifName,
 			ipVer, !inout)
-		metric.RxAclDrops += iptables.GetIpRuleAclLog(ac, bridgeName, vifName,
+		metric.RxAclDrops += iptables.GetIPRuleACLLog(ac, bridgeName, vifName,
 			ipVer, !inout)
 		metric.TxAclRateLimitDrops = iptables.GetIpRuleAclRateLimitDrop(ac,
 			bridgeName, vifName, ipVer, inout)
