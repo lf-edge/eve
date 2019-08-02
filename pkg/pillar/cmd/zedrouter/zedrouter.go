@@ -688,7 +688,10 @@ func handleAppNetworkConfigModify(ctxArg interface{}, key string, configArg inte
 		doAppNetworkConfigModify(ctx, key, config, status)
 	}
 	// on error, relinquish the acquired resource
-	if status != nil && status.Error != "" {
+	// only when, the network is meant to be activated
+	// and it is still not
+	if status != nil && status.Error != "" &&
+		config.Activate && !status.Activated {
 		releaseAppNetworkResources(ctx, key, status)
 	}
 	log.Infof("handleAppNetworkConfigModify(%s) done\n", key)
@@ -2700,7 +2703,7 @@ func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetwo
 	if len(ulCfgList0) == 0 {
 		return true
 	}
-	if containsACLPortMapRule(ctx, ulCfgList0) {
+	if containsHangingACLPortMapRule(ctx, ulCfgList0) {
 		log.Errorf("app (%s) on network with no uplink and has portmap rule\n",
 			appNetConfig.DisplayName)
 		errStr := fmt.Sprintf("network with no uplink, has portmap")
@@ -2716,7 +2719,7 @@ func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetwo
 		// XXX can an delete+add of app instance with same
 		// portmap result in a failure?
 		if appNetStatus.DisplayName == appNetStatus1.DisplayName ||
-			appNetStatus1.Error != "" || len(ulCfgList1) == 0 {
+			(appNetStatus1.Error != "" && !appNetStatus1.Activated) || len(ulCfgList1) == 0 {
 			continue
 		}
 		if checkUnderlayNetworkForPortMapOverlap(ctx, appNetStatus, ulCfgList0, ulCfgList1) {
@@ -2730,7 +2733,7 @@ func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetwo
 
 // whether there is a portmap rule, on with a network instance with no
 // uplink interface
-func containsACLPortMapRule(ctx *zedrouterContext,
+func containsHangingACLPortMapRule(ctx *zedrouterContext,
 	ulCfgList []types.UnderlayNetworkConfig) bool {
 	for _, ulCfg := range ulCfgList {
 		network := ulCfg.Network.String()
@@ -2809,14 +2812,11 @@ func scanAppNetworkStatusInErrorAndUpdate(ctx *zedrouterContext, key0 string) {
 	for key, st := range items {
 		status := cast.CastAppNetworkStatus(st)
 		config := lookupAppNetworkConfig(ctx, key)
-		if !config.Activate || status.Activated ||
+		if config == nil || !config.Activate ||
 			status.Error == "" || key == key0 {
 			continue
 		}
-		config = lookupAppNetworkConfig(ctx, key)
-		if config != nil {
-			doAppNetworkConfigModify(ctx, key, *config, &status)
-		}
+		doAppNetworkConfigModify(ctx, key, *config, &status)
 	}
 }
 
@@ -2825,23 +2825,23 @@ func scanAppNetworkStatusInErrorAndUpdate(ctx *zedrouterContext, key0 string) {
 func releaseAppNetworkResources(ctx *zedrouterContext, key string,
 	status *types.AppNetworkStatus) {
 	log.Infof("relaseAppNetworkResources(%s)\n", key)
-	for _, ulStatus := range status.UnderlayNetworkList {
+	for idx, ulStatus := range status.UnderlayNetworkList {
 		aclArgs := types.AppNetworkACLArgs{BridgeName: ulStatus.Bridge,
 			VifName: ulStatus.Vif}
 		ruleList, err := deleteACLConfiglet(aclArgs, ulStatus.ACLRules)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
-		ulStatus.ACLRules = ruleList
+		status.UnderlayNetworkList[idx].ACLRules = ruleList
 	}
-	for _, olStatus := range status.OverlayNetworkList {
+	for idx, olStatus := range status.OverlayNetworkList {
 		aclArgs := types.AppNetworkACLArgs{BridgeName: olStatus.Bridge,
 			VifName: olStatus.Vif}
 		ruleList, err := deleteACLConfiglet(aclArgs, olStatus.ACLRules)
 		if err != nil {
 			addError(ctx, status, "deleteACL", err)
 		}
-		olStatus.ACLRules = ruleList
+		status.OverlayNetworkList[idx].ACLRules = ruleList
 	}
 	publishAppNetworkStatus(ctx, status)
 }
