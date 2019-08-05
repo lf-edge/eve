@@ -8,18 +8,20 @@ option java_package = "com.zededa.cloud.uservice.proto";
 
 import "fw.proto";
 import "netcmn.proto";
+import "devcommon.proto";
 
 message NetworkConfig {
-        string id = 1;
-        NetworkType type = 5;
+  string id = 1;
+  UUIDandVersion uuidandversion = 2;
+  NetworkType type = 5;
 
-        // network ip specification
-        ipspec ip = 6;
+  // network ip specification
+  ipspec ip = 6;
 
-        repeated ZnetStaticDNSEntry dns = 7;
+  repeated ZnetStaticDNSEntry dns = 7;
 
-        // enterprise proxy
-        ProxyConfig entProxy = 8;
+  // enterprise proxy
+  ProxyConfig entProxy = 8;
 }
 
 message NetworkAdapter {

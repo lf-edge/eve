@@ -25,21 +25,23 @@ enum DsType {
 }
 
 message DatastoreConfig {
-	string id = 100;
+  string id = 100;
 
-	DsType dType = 1;
+  UUIDandVersion uuidandversion = 101;
 
-	string fqdn = 2;
+  DsType dType = 1;
 
-	string apiKey = 3;
+  string fqdn = 2;
 
-	string password = 4;
+  string apiKey = 3;
 
-	// depending on datastore types, it could be bucket or path
-	string dpath = 5;
+  string password = 4;
 
-	// Applies for some datastore types
-	string region = 6;
+  // depending on datastore types, it could be bucket or path
+  string dpath = 5;
+
+  // Applies for some datastore types
+  string region = 6;
 }
 
 
