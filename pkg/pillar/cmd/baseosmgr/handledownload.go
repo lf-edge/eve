@@ -12,7 +12,6 @@ import (
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -38,8 +37,8 @@ func lookupDownloaderConfig(ctx *baseOsMgrContext, objType string,
 	return &config
 }
 
-func createDownloaderConfig(ctx *baseOsMgrContext, objType string,
-	safename string, sc *types.StorageConfig, ds *types.DatastoreConfig) {
+func createDownloaderConfig(ctx *baseOsMgrContext, objType string, safename string,
+	sc *types.StorageConfig) {
 
 	log.Infof("createDownloaderConfig(%s/%s)\n", objType, safename)
 
@@ -50,32 +49,11 @@ func createDownloaderConfig(ctx *baseOsMgrContext, objType string,
 		publishDownloaderConfig(ctx, objType, m)
 	} else {
 		log.Infof("createDownloaderConfig(%s) add\n", safename)
-		// XXX We rewrite Dpath for certs. Can't zedcloud use
-		// a separate datastore for the certs to remove this hack?
-		// Note that the certs seem to come as complete URLs hence
-		// this code might not be required?
-		dpath := ds.Dpath
-		if objType == certObj {
-			// Replacing -images with -certs in dpath
-			dpath = strings.Replace(dpath, "-images", "-certs", 1)
-			log.Infof("createDownloaderConfig fqdn %s ts %s dpath %s to %s\n",
-				ds.Fqdn, ds.DsType, ds.Dpath, dpath)
-		}
-
-		var downloadURL string
-		if sc.NameIsURL {
-			downloadURL = sc.Name
-		} else {
-			downloadURL = ds.Fqdn + "/" + dpath + "/" + sc.Name
-		}
 		n := types.DownloaderConfig{
+			DatastoreId:      sc.DatastoreId,
 			Safename:         safename,
-			DownloadURL:      downloadURL,
-			TransportMethod:  ds.DsType,
-			ApiKey:           ds.ApiKey,
-			Password:         ds.Password,
-			Dpath:            dpath,
-			Region:           ds.Region,
+			Name:             sc.Name,
+			NameIsURL:        sc.NameIsURL,
 			UseFreeMgmtPorts: false,
 			Size:             sc.Size,
 			ImageSha256:      sc.ImageSha256,
@@ -115,8 +93,10 @@ func updateDownloaderStatus(ctx *baseOsMgrContext,
 		log.Infof("updateDownloaderStatus adding RefCount=0 config %s\n",
 			key)
 		n := types.DownloaderConfig{
+			DatastoreId:      status.DatastoreId,
 			Safename:         status.Safename,
-			DownloadURL:      status.DownloadURL,
+			Name:             status.Name,
+			NameIsURL:        status.NameIsURL,
 			UseFreeMgmtPorts: status.UseFreeMgmtPorts,
 			Size:             status.Size,
 			ImageSha256:      status.ImageSha256,
@@ -197,7 +177,6 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 	ret.AllErrors = ""
 	ret.MinState = types.MAXSTATE
 	ret.WaitingForCerts = false
-	ret.MissingDatastore = false
 
 	for i, sc := range config {
 
@@ -267,22 +246,7 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 
 		if !ss.HasDownloaderRef {
 			log.Infof("checkStorageDownloadStatus %s, !HasDownloaderRef\n", safename)
-			dst, err := lookupDatastoreConfig(ctx, sc.DatastoreId,
-				sc.Name)
-			if err != nil {
-				// Remember to check when Datastores are added
-				ss.MissingDatastore = true
-				ret.MissingDatastore = true
-				ss.Error = fmt.Sprintf("%v", err)
-				ret.AllErrors = appendError(ret.AllErrors, "datastore",
-					ss.Error)
-				ss.ErrorTime = time.Now()
-				ret.ErrorTime = ss.ErrorTime
-				ret.Changed = true
-				continue
-			}
-			ss.MissingDatastore = false
-			createDownloaderConfig(ctx, objType, safename, &sc, dst)
+			createDownloaderConfig(ctx, objType, safename, &sc)
 			ss.HasDownloaderRef = true
 			ret.Changed = true
 		}
@@ -358,28 +322,6 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 	}
 
 	return ret
-}
-
-// Check for nil UUID (an indication the drive was missing in parseconfig)
-// and a missing datastore id.
-func lookupDatastoreConfig(ctx *baseOsMgrContext,
-	datastoreId uuid.UUID, name string) (*types.DatastoreConfig, error) {
-
-	if datastoreId == nilUUID {
-		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: No datastore ID",
-			datastoreId.String(), name)
-		log.Errorln(errStr)
-		return nil, errors.New(errStr)
-	}
-	cfg, err := ctx.subDatastoreConfig.Get(datastoreId.String())
-	if err != nil {
-		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: %v",
-			datastoreId.String(), name, err)
-		log.Errorln(errStr)
-		return nil, errors.New(errStr)
-	}
-	dst := cast.CastDatastoreConfig(cfg)
-	return &dst, nil
 }
 
 func installDownloadedObjects(objType string, uuidStr string,
