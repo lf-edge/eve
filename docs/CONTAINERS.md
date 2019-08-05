@@ -30,17 +30,30 @@ Well, as Stefano describes in his [Stage 1 documentation](https://github.com/rkt
 You will have to ssh or console logging into EVE, but once you do, here's what you can do:
 
 ```bash
-ln -s /persist/rkt /var/lib/rkt
 rkt --insecure-options=image fetch docker://alpine
 rkt run sha512-<ID FROM PREVIOUS LINE> --interactive --insecure-options=image --stage1-path=/usr/sbin/stage1-xen.aci
 ```
 
-### Why do I have to have that first line anyway
+### Where does rkt keep images and containers
 
-rkt wants to keep its state in /var/lib/rkt but on EVE you want it to be persistent -- hence keep it in /persist/rkt.
+rkt wants to keep its state in /var/lib/rkt but on EVE you want it to be persistent -- hence we have a symlink pointing to /persist/rkt.
 
-As a side note, you can also use rkt --dir /persist/rkt command line option or put that location into [permanent configuration](https://coreos.com/rkt/docs/latest/configuration.html) in /etc.
+As a side note, you can also use rkt --dir /persist/rkt command line option or put that location into [permanent configuration](https://coreos.com/rkt/docs/latest/configuration.html) in /etc. This works with all of rkt, but doesn't quite work with stage1 Xen, though. And between fixing stage1 Xen and keeping symlink -- we're keeping symlink for now.
+
+### Providing exact configuration for Xen domains
+
+Stage 1 Xen implementation has a very fixed set of settings for a domain that it creates (look it up under [files/run](https://github.com/rkt/stage1-xen/blob/master/files/run#L56)). Things like how much memory you give to the domain, etc. are pre-determined. If you want flexibility you can pass environment variable STAGE1_SEED_XL_CFG pointing to the exact xl.cfg you want:
+
+```bash
+STAGE1_SEED_XL_CFG=/tmp/xl.cfg rkt run sha512-<ID FROM PREVIOUS LINE> --interactive --insecure-options=image --stage1-path=/usr/sbin/stage1-xen.aci
+```
+
+You can also pass extra command line options to xl create. For example, if you want to start container domain in a paused state:
+
+```bash
+STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=/tmp/xl.cfg rkt run sha512-<ID FROM PREVIOUS LINE> --interactive --insecure-options=image --stage1-path=/usr/sbin/stage1-xen.aci
+```
 
 ### What else can I do
 
-This is it for now. But we're hoping to enable it for EVE controlller to run containers as easily as VMs.
+This is it for now. But we're hoping to enable it for EVE controller to run containers as easily as VMs.
