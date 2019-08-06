@@ -46,6 +46,10 @@ RUN \
 COPY xen_config* /xen/
 WORKDIR /xen/xen
 
+# Apply patches
+COPY *patch /tmp
+RUN for p in /tmp/*patch ; do patch -p2 < "$p" ; done
+
 RUN case $(uname -m) in \
     x86_64) \
         XEN_DEF_CONF=/xen/xen/arch/x86/configs/x86_64_defconfig; \
