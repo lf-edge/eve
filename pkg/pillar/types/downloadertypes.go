@@ -119,5 +119,4 @@ type DatastoreContext struct {
 	ApiKey          string
 	Password        string
 	Region          string
-	FinalObjDir     string
 }

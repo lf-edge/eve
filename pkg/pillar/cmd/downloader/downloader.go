@@ -11,12 +11,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net"
-	"os"
-	"strings"
-	"sync"
-	"time"
-
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -30,6 +24,11 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
+	"net"
+	"os"
+	"strings"
+	"sync"
+	"time"
 )
 
 const (
@@ -218,8 +217,8 @@ func Run() {
 	subCertObjConfig.Activate()
 
 	// Look for DatastoreConfig from zedagent
-	subDatastoreConfig, err := pubsub.SubscribeScope("zedagent",
-		baseOsObj, types.DatastoreConfig{}, false, &ctx)
+	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
+		types.DatastoreConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -282,6 +281,7 @@ func Run() {
 			subBaseOsConfig.ProcessChange(change)
 
 		case change := <-subDatastoreConfig.C:
+			log.Infof("datastore event received\n")
 			subDatastoreConfig.ProcessChange(change)
 
 		case change := <-subGlobalDownloadConfig.C:
@@ -537,29 +537,14 @@ func maybeRetryDownload(ctx *downloaderContext,
 	status.RetryCount += 1
 	// XXX do we need to adjust reservedspace??
 
-	dst, err := lookupDatastoreConfig(ctx, config.DatastoreId, config.Name)
+	dst, errStr := lookupDatastoreConfig(ctx, config.DatastoreId, config.Name)
 	if dst == nil {
-		log.Warnf("datastore(%s), is still not available, %s\n", config.DatastoreId, err)
+		status.LastErr = errStr
+		status.LastErrTime = time.Now()
+		publishDownloaderStatus(ctx, status)
 		return
 	}
-	dpath := dst.Dpath
-	if status.ObjType == certObj {
-		dpath = strings.Replace(dpath, "-images", "-certs", 1)
-	}
-	downloadURL := config.Name
-	if !config.NameIsURL {
-		downloadURL = dst.Fqdn + "/" + dpath + "/" + config.Name
-	}
-
-	dsCtx := types.DatastoreContext{
-		DownloadURL: downloadURL,
-		Dpath:       dpath,
-		ApiKey:      dst.ApiKey,
-		Password:    dst.Password,
-		Region:      dst.Region,
-		FinalObjDir: config.FinalObjDir,
-	}
-	handleSyncOp(ctx, status.Key(), *config, status, dsCtx)
+	handleSyncOp(ctx, status.Key(), *config, status, dst)
 }
 
 func handleCreate(ctx *downloaderContext, objType string,
@@ -620,28 +605,16 @@ func handleCreate(ctx *downloaderContext, objType string,
 		return
 	}
 
-	dst, err := lookupDatastoreConfig(ctx, config.DatastoreId, config.Name)
+	dst, errStr := lookupDatastoreConfig(ctx, config.DatastoreId, config.Name)
 	if dst == nil {
-		log.Warnf("datastore(%s) is still not available, %s\n", config.DatastoreId, err)
+		status.PendingAdd = false
+		status.LastErr = errStr
+		status.LastErrTime = time.Now()
+		status.RetryCount += 1
+		publishDownloaderStatus(ctx, &status)
 		return
 	}
-	dpath := dst.Dpath
-	if status.ObjType == certObj {
-		dpath = strings.Replace(dpath, "-images", "-certs", 1)
-	}
-	downloadURL := config.Name
-	if !config.NameIsURL {
-		downloadURL = dst.Fqdn + "/" + dpath + "/" + config.Name
-	}
-	dsCtx := types.DatastoreContext{
-		DownloadURL: downloadURL,
-		Dpath:       dpath,
-		ApiKey:      dst.ApiKey,
-		Password:    dst.Password,
-		Region:      dst.Region,
-		FinalObjDir: config.FinalObjDir,
-	}
-	handleSyncOp(ctx, key, config, &status, dsCtx)
+	handleSyncOp(ctx, key, config, &status, dst)
 }
 
 // XXX Allow to cancel by setting RefCount = 0? Such a change
@@ -1272,13 +1245,33 @@ func doSftp(ctx *downloaderContext, status *types.DownloaderStatus,
 	}
 }
 
+func constructDatastoreContext(config types.DownloaderConfig, status *types.DownloaderStatus, dst *types.DatastoreConfig) *types.DatastoreContext {
+	dpath := dst.Dpath
+	if status.ObjType == certObj {
+		dpath = strings.Replace(dpath, "-images", "-certs", 1)
+	}
+	downloadURL := config.Name
+	if !config.NameIsURL {
+		downloadURL = dst.Fqdn + "/" + dpath + "/" + config.Name
+	}
+	dsCtx := types.DatastoreContext{
+		DownloadURL:     downloadURL,
+		TransportMethod: dst.DsType,
+		Dpath:           dpath,
+		ApiKey:          dst.ApiKey,
+		Password:        dst.Password,
+		Region:          dst.Region,
+	}
+	return &dsCtx
+}
+
 // Drona APIs for object Download
 func handleSyncOp(ctx *downloaderContext, key string,
-	config types.DownloaderConfig, status *types.DownloaderStatus, dsCtx types.DatastoreContext) {
+	config types.DownloaderConfig, status *types.DownloaderStatus,
+	dst *types.DatastoreConfig) {
 	var err error
 	var errStr string
 	var locFilename string
-
 	var syncOp zedUpload.SyncOpType = zedUpload.SyncOpDownload
 
 	if status.ObjType == "" {
@@ -1287,6 +1280,9 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	}
 	locDirname := objectDownloadDirname + "/" + status.ObjType
 	locFilename = locDirname + "/pending"
+
+	// get the datastore context
+	dsCtx := constructDatastoreContext(config, status, dst)
 
 	// update status to DOWNLOAD STARTED
 	status.State = types.DOWNLOAD_STARTED
@@ -1440,7 +1436,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 // DownloadURL format : http://<serverURL>/dpath/filename
 // XXX why can't we parse URL from font? This only works when filename starts with "/"
-func getServerUrl(dsCtx types.DatastoreContext, filename string) string {
+func getServerUrl(dsCtx *types.DatastoreContext, filename string) string {
 	if dsCtx.Dpath != "" {
 		return strings.TrimSuffix(dsCtx.DownloadURL,
 			"/"+dsCtx.Dpath+"/"+filename)
@@ -1577,21 +1573,22 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 // Check for nil UUID (an indication the drive was missing in parseconfig)
 // and a missing datastore id.
 func lookupDatastoreConfig(ctx *downloaderContext,
-	datastoreId uuid.UUID, name string) (*types.DatastoreConfig, error) {
+	datastoreId uuid.UUID, name string) (*types.DatastoreConfig, string) {
 
 	if datastoreId == nilUUID {
 		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: No datastore ID",
 			datastoreId.String(), name)
 		log.Errorln(errStr)
-		return nil, errors.New(errStr)
+		return nil, errStr
 	}
 	cfg, err := ctx.subDatastoreConfig.Get(datastoreId.String())
 	if err != nil {
 		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: %v",
 			datastoreId.String(), name, err)
 		log.Errorln(errStr)
-		return nil, errors.New(errStr)
+		return nil, errStr
 	}
+	log.Infof("Found datastore(%s) for %s\n", datastoreId, name)
 	dst := cast.CastDatastoreConfig(cfg)
-	return &dst, nil
+	return &dst, ""
 }
