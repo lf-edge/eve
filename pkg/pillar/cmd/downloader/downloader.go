@@ -318,7 +318,7 @@ func handleDatastoreConfigDelete(ctxArg interface{}, key string,
 }
 
 // handle the datastore modification
-func checkAndUpdateDownloadableObjects(ctx *downloaderContext, dsid uuid.UUID) {
+func checkAndUpdateDownloadableObjects(ctx *downloaderContext, dsID uuid.UUID) {
 	publications := []*pubsub.Publication{
 		ctx.pubAppImgStatus,
 		ctx.pubBaseOsStatus,
@@ -328,7 +328,7 @@ func checkAndUpdateDownloadableObjects(ctx *downloaderContext, dsid uuid.UUID) {
 		items := pub.GetAll()
 		for _, st := range items {
 			status := cast.CastDownloaderStatus(st)
-			if status.DatastoreId == dsid {
+			if status.DatastoreID == dsID {
 				config := lookupDownloaderConfig(ctx, status.ObjType, status.Key())
 				if config != nil {
 					handleDownloaderModify(ctx, status.ObjType, status.Key(), config)
@@ -537,7 +537,7 @@ func maybeRetryDownload(ctx *downloaderContext,
 	status.RetryCount += 1
 	// XXX do we need to adjust reservedspace??
 
-	dst, errStr := lookupDatastoreConfig(ctx, config.DatastoreId, config.Name)
+	dst, errStr := lookupDatastoreConfig(ctx, config.DatastoreID, config.Name)
 	if dst == nil {
 		status.LastErr = errStr
 		status.LastErrTime = time.Now()
@@ -559,7 +559,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 	}
 	// Start by marking with PendingAdd
 	status := types.DownloaderStatus{
-		DatastoreId:      config.DatastoreId,
+		DatastoreID:      config.DatastoreID,
 		Safename:         config.Safename,
 		Name:             config.Name,
 		ObjType:          objType,
@@ -605,12 +605,12 @@ func handleCreate(ctx *downloaderContext, objType string,
 		return
 	}
 
-	dst, errStr := lookupDatastoreConfig(ctx, config.DatastoreId, config.Name)
+	dst, errStr := lookupDatastoreConfig(ctx, config.DatastoreID, config.Name)
 	if dst == nil {
 		status.PendingAdd = false
 		status.LastErr = errStr
 		status.LastErrTime = time.Now()
-		status.RetryCount += 1
+		status.RetryCount++
 		publishDownloaderStatus(ctx, &status)
 		return
 	}
@@ -1258,7 +1258,7 @@ func constructDatastoreContext(config types.DownloaderConfig, status *types.Down
 		DownloadURL:     downloadURL,
 		TransportMethod: dst.DsType,
 		Dpath:           dpath,
-		ApiKey:          dst.ApiKey,
+		APIKey:          dst.ApiKey,
 		Password:        dst.Password,
 		Region:          dst.Region,
 	}
@@ -1346,7 +1346,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			ipSrc, ifname, dsCtx.TransportMethod)
 		switch dsCtx.TransportMethod {
 		case zconfig.DsType_DsS3.String():
-			err = doS3(ctx, status, syncOp, dsCtx.DownloadURL, dsCtx.ApiKey,
+			err = doS3(ctx, status, syncOp, dsCtx.DownloadURL, dsCtx.APIKey,
 				dsCtx.Password, dsCtx.Dpath, dsCtx.Region,
 				config.Size, ifname, ipSrc, filename, locFilename)
 			if err != nil {
@@ -1374,7 +1374,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			}
 		case zconfig.DsType_DsSFTP.String():
 			serverUrl := getServerUrl(dsCtx, filename)
-			err = doSftp(ctx, status, syncOp, dsCtx.ApiKey,
+			err = doSftp(ctx, status, syncOp, dsCtx.APIKey,
 				dsCtx.Password, serverUrl, dsCtx.Dpath,
 				config.Size, ipSrc, filename, locFilename)
 			if err != nil {
@@ -1572,23 +1572,23 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 
 // Check for nil UUID (an indication the drive was missing in parseconfig)
 // and a missing datastore id.
-func lookupDatastoreConfig(ctx *downloaderContext,
-	datastoreId uuid.UUID, name string) (*types.DatastoreConfig, string) {
+func lookupDatastoreConfig(ctx *downloaderContext, dsID uuid.UUID,
+	name string) (*types.DatastoreConfig, string) {
 
-	if datastoreId == nilUUID {
+	if dsID == nilUUID {
 		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: No datastore ID",
-			datastoreId.String(), name)
+			dsID.String(), name)
 		log.Errorln(errStr)
 		return nil, errStr
 	}
-	cfg, err := ctx.subDatastoreConfig.Get(datastoreId.String())
+	cfg, err := ctx.subDatastoreConfig.Get(dsID.String())
 	if err != nil {
 		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: %v",
-			datastoreId.String(), name, err)
+			dsID.String(), name, err)
 		log.Errorln(errStr)
 		return nil, errStr
 	}
-	log.Infof("Found datastore(%s) for %s\n", datastoreId, name)
+	log.Infof("Found datastore(%s) for %s\n", dsID, name)
 	dst := cast.CastDatastoreConfig(cfg)
 	return &dst, ""
 }

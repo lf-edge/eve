@@ -12,7 +12,7 @@ import (
 // The key/index to this is the Safename which is allocated by ZedManager.
 // That is the filename in which we store the corresponding json files.
 type DownloaderConfig struct {
-	DatastoreId      uuid.UUID
+	DatastoreID      uuid.UUID
 	Safename         string
 	Name             string
 	NameIsURL        bool // If not we form URL based on datastore info
@@ -47,7 +47,7 @@ type CertConfig struct {
 // The key/index to this is the Safename which comes from DownloaderConfig.
 // That is the filename in which we store the corresponding json files.
 type DownloaderStatus struct {
-	DatastoreId      uuid.UUID
+	DatastoreID      uuid.UUID
 	Safename         string
 	Name             string
 	ObjType          string
@@ -111,12 +111,12 @@ type GlobalDownloadStatus struct {
 	RemainingSpace uint64 // MaxSpace - UsedSpace - ReservedSpace
 }
 
-// datastore configuration context
+// DatastoreContext : datastore detail
 type DatastoreContext struct {
 	DownloadURL     string
 	TransportMethod string // Download Method S3/HTTP/SFTP etc.
 	Dpath           string
-	ApiKey          string
+	APIKey          string
 	Password        string
 	Region          string
 }
