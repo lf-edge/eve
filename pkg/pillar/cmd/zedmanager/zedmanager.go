@@ -526,6 +526,12 @@ func handleCreate(ctx *zedmanagerContext, key string,
 	}
 	publishAppInstanceStatus(ctx, &status)
 
+	// if some error, return
+	if status.Error != "" {
+		return
+	}
+
+	// If there are no errors, go ahead with Instance creation.
 	uuidStr := status.Key()
 	changed := doUpdate(ctx, uuidStr, config, &status)
 	if changed {

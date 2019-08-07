@@ -281,7 +281,6 @@ func Run() {
 			subBaseOsConfig.ProcessChange(change)
 
 		case change := <-subDatastoreConfig.C:
-			log.Infof("datastore event received\n")
 			subDatastoreConfig.ProcessChange(change)
 
 		case change := <-subGlobalDownloadConfig.C:
@@ -1588,7 +1587,7 @@ func lookupDatastoreConfig(ctx *downloaderContext, dsID uuid.UUID,
 		log.Errorln(errStr)
 		return nil, errStr
 	}
-	log.Infof("Found datastore(%s) for %s\n", dsID, name)
+	log.Debugf("Found datastore(%s) for %s\n", dsID, name)
 	dst := cast.CastDatastoreConfig(cfg)
 	return &dst, ""
 }
