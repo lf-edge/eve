@@ -696,3 +696,35 @@ func publishInfoToZedCloud(UUID string, infoMsg *zinfo.ZInfoMsg, iteration int) 
 		writeSentDeviceInfoProtoMessage(data)
 	}
 }
+
+func handleAppFlowMonitorModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Infof("FlowStats: handleAppFlowMonitorModify(%s)\n", key)
+	flows := cast.CastFlowStatus(statusArg)
+	if flows.Key() != key {
+		log.Errorf("handleAppFlowMonitorModify key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, flows.Key(), flows)
+		return
+	}
+	// print first flow tuple in msg
+	if len(flows.Flows) > 0 {
+		log.Infof("FlowStats: handleAppFlowMonitorModify: src %v, dst %v, srcport %d, dstport %d, proto %d\n",
+			flows.Flows[0].Flow.Src, flows.Flows[0].Flow.Dst, flows.Flows[0].Flow.SrcPort,
+			flows.Flows[0].Flow.DstPort, flows.Flows[0].Flow.Proto)
+	}
+	// publish to zedcloud
+}
+
+func handleAppFlowMonitorDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Infof("handleAppFlowMonitorDelete(%s)\n", key)
+	flows := cast.CastFlowStatus(statusArg)
+	if flows.Key() != key {
+		log.Errorf("handleAppFlowMonitorDelete key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, flows.Key(), flows)
+		return
+	}
+	log.Infof("handleAppFlowMonitorDelete(%s) done\n", key)
+}
