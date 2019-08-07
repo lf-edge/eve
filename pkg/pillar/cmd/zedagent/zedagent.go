@@ -38,6 +38,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -109,6 +110,7 @@ type zedagentContext struct {
 	subDevicePortConfigList   *pubsub.Subscription
 	devicePortConfigList      types.DevicePortConfigList
 	remainingTestTime         time.Duration
+	physicalIoAdapterMap      map[string]types.PhysicalIOAdapter
 }
 
 var debug = false
@@ -168,12 +170,14 @@ func Run() {
 	log.Infof("Starting %s\n", agentName)
 
 	zedagentCtx := zedagentContext{}
+	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 
 	// If we have a reboot reason from this or the other partition
 	// (assuming the other is in inprogress) then we log it
 	// We assume the log makes it reliably to zedcloud hence we discard
 	// the reason.
-	zedagentCtx.rebootReason, zedagentCtx.rebootTime, zedagentCtx.rebootStack = agentlog.GetCurrentRebootReason()
+	zedagentCtx.rebootReason, zedagentCtx.rebootTime, zedagentCtx.rebootStack =
+		agentlog.GetCurrentRebootReason()
 	if zedagentCtx.rebootReason != "" {
 		log.Warnf("Current partition rebooted reason: %s\n",
 			zedagentCtx.rebootReason)
@@ -261,6 +265,14 @@ func Run() {
 	subAssignableAdapters.DeleteHandler = handleAADelete
 	zedagentCtx.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
+
+	pubPhysicalIOAdapters, err := pubsub.Publish(agentName,
+		types.PhysicalIOAdapterList{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubPhysicalIOAdapters.ClearRestarted()
+	getconfigCtx.pubPhysicalIOAdapters = pubPhysicalIOAdapters
 
 	pubDevicePortConfig, err := pubsub.Publish(agentName,
 		types.DevicePortConfig{})
@@ -524,16 +536,9 @@ func Run() {
 	updateInprogress := isBaseOsCurrentPartitionStateInProgress(&zedagentCtx)
 	log.Infof("Current partition inProgress state is %v\n", updateInprogress)
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
-	for !DNSctx.DNSinitialized ||
-		!zedagentCtx.assignableAdapters.Initialized {
-
-		// XXX AA will not initialize if bad json file
-		// XXX in that case send fails with no management ports
-		// XXX and it times out due to not talking to zedcloud for 5 minutes
-		// XXX why?
-		log.Infof("Waiting for DeviceNetworkStatus %v and aa %v\n",
-			DNSctx.DNSinitialized,
-			zedagentCtx.assignableAdapters.Initialized)
+	for !DNSctx.DNSinitialized {
+		log.Infof("Waiting for DeviceNetworkStatus %v\n",
+			DNSctx.DNSinitialized)
 
 		select {
 		case change := <-subGlobalConfig.C:

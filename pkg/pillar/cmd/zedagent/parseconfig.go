@@ -81,6 +81,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	parseNetworkXObjectConfig(config, getconfigCtx)
 
 	parseSystemAdapterConfig(config, getconfigCtx, false)
+	parseDeviceIoListConfig(config, getconfigCtx)
 
 	parseBaseOsConfig(getconfigCtx, config)
 
@@ -760,6 +761,83 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	getconfigCtx.pubDevicePortConfig.Publish("zedagent", *portConfig)
 
 	log.Infof("parseSystemAdapterConfig: Done")
+}
+
+var deviceIoListPrevConfigHash []byte
+
+func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
+	getconfigCtx *getconfigContext) {
+	log.Debugf("parseDeviceIoListConfig: EdgeDevConfig: %v\n", *config)
+
+	deviceIoList := config.GetDeviceIoList()
+	h := sha256.New()
+	for _, a := range deviceIoList {
+		computeConfigElementSha(h, a)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, deviceIoListPrevConfigHash)
+	if same {
+		log.Debugf("parseDeviceIoListConfig: deviceIo sha is unchanged: % x\n",
+			configHash)
+		return
+	}
+	if getconfigCtx.rebootFlag {
+		log.Infof("parseDeviceIoListConfig: ignoring updated config due to rebootFlag: %v\n",
+			deviceIoList)
+		return
+	}
+	log.Infof("parseDeviceIoListConfig: Applying updated config sha % x vs. % x: %v\n",
+		deviceIoListPrevConfigHash, configHash, deviceIoList)
+
+	deviceIoListPrevConfigHash = configHash
+
+	phyIoAdapterList := types.PhysicalIOAdapterList{}
+	phyIoAdapterList.AdapterList = make([]types.PhysicalIOAdapter, 0)
+
+	for indx, ioDevicePtr := range deviceIoList {
+		if ioDevicePtr == nil {
+			log.Errorf("parseDeviceIoListConfig: nil ioDevicePtr at indx %d\n",
+				indx)
+			continue
+		}
+		port := types.PhysicalIOAdapter{
+			Ptype:        ioDevicePtr.Ptype,
+			Phylabel:     ioDevicePtr.Phylabel,
+			Logicallabel: ioDevicePtr.Logicallabel,
+			Assigngrp:    ioDevicePtr.Assigngrp,
+			Usage:        ioDevicePtr.Usage,
+		}
+		if ioDevicePtr.UsagePolicy != nil {
+			port.UsagePolicy.FreeUplink = ioDevicePtr.UsagePolicy.FreeUplink
+		}
+
+		for key, value := range ioDevicePtr.Phyaddrs {
+			key = strings.ToLower(key)
+			switch key {
+			case "pcilong":
+				port.Phyaddr.PciLong = value
+			case "ifname":
+				port.Phyaddr.Ifname = value
+			case "serial":
+				port.Phyaddr.Serial = value
+			case "irq":
+				port.Phyaddr.Irq = value
+			case "ioports":
+				port.Phyaddr.Ioports = value
+			default:
+				port.Phyaddr.UnknownType = value
+				log.Warnf("Unrecognized Physical address Ignored: "+
+					"key: %s, value: %s", key, value)
+			}
+		}
+		phyIoAdapterList.AdapterList = append(phyIoAdapterList.AdapterList,
+			port)
+		getconfigCtx.zedagentCtx.physicalIoAdapterMap[port.Phylabel] = port
+	}
+	phyIoAdapterList.Initialized = true
+	getconfigCtx.pubPhysicalIOAdapters.Publish("zedagent", phyIoAdapterList)
+
+	log.Infof("parseDeviceIoListConfig: Done")
 }
 
 func lookupDatastore(datastores []*zconfig.DatastoreConfig,

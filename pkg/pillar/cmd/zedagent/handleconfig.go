@@ -52,6 +52,7 @@ type getconfigContext struct {
 	configTickerHandle          interface{}
 	metricsTickerHandle         interface{}
 	pubDevicePortConfig         *pubsub.Publication
+	pubPhysicalIOAdapters       *pubsub.Publication
 	devicePortConfig            types.DevicePortConfig
 	pubNetworkXObjectConfig     *pubsub.Publication
 	subAppInstanceStatus        *pubsub.Subscription

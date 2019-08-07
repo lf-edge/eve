@@ -6,6 +6,7 @@ package types
 import (
 	"testing"
 
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -147,4 +148,37 @@ func TestLookupIoBundle(t *testing.T) {
 			assert.Equal(t, test.expectedBundleName, ioBundle.Name)
 		}
 	}
+}
+
+func TestIoBundleFromPhyAdapter(t *testing.T) {
+	phyAdapter := PhysicalIOAdapter{
+		Ptype:        zconfig.PhyIoType_PhyIoNetEth,
+		Phylabel:     "ethernet0",
+		Logicallabel: "shopfloor",
+		Assigngrp:    "eth-grp-1",
+		Phyaddr: PhysicalAddress{
+			Ifname:  "eth0",
+			PciLong: "0000:04:00.0",
+			Irq:     "5",
+			Ioports: "3f8-3ff",
+			Serial:  "/dev/ttyS0",
+		},
+		Usage: zconfig.PhyIoMemberUsage_PhyIoUsageMgmt,
+		UsagePolicy: PhyIOUsagePolicy{
+			FreeUplink: true,
+		},
+	}
+	ibPtr := IoBundleFromPhyAdapter(phyAdapter)
+	assert.NotEqual(t, ibPtr, nil)
+	assert.Equal(t, ibPtr.Type, IoType(phyAdapter.Ptype))
+	assert.Equal(t, ibPtr.Name, phyAdapter.Phylabel)
+	assert.Equal(t, ibPtr.Logicallabel, phyAdapter.Logicallabel)
+	assert.Equal(t, ibPtr.AssignmentGroup, phyAdapter.Assigngrp)
+	assert.Equal(t, ibPtr.Ifname, phyAdapter.Phyaddr.Ifname)
+	assert.Equal(t, ibPtr.PciLong, phyAdapter.Phyaddr.PciLong)
+	assert.Equal(t, ibPtr.Irq, phyAdapter.Phyaddr.Irq)
+	assert.Equal(t, ibPtr.Ioports, phyAdapter.Phyaddr.Ioports)
+	assert.Equal(t, ibPtr.Serial, phyAdapter.Phyaddr.Serial)
+	assert.Equal(t, ibPtr.Usage, phyAdapter.Usage)
+	assert.Equal(t, ibPtr.FreeUplink, phyAdapter.UsagePolicy.FreeUplink)
 }
