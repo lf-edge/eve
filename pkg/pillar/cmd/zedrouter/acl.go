@@ -740,6 +740,7 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 				aclRule1.Table = "nat"
 				aclRule1.Chain = "PREROUTING"
 				aclRule1.RuleID = allocACEId()
+				aclRule1.ActionChainName = ""
 				aclRule1.Rule = []string{"-i", upLink, "-p", protocol,
 					"--dport", lport}
 				aclRule1.Action = []string{"-j", "DNAT",
