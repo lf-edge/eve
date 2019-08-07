@@ -286,7 +286,7 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	@$(DOCKER_GO) "dep ensure -update $(GODEP_NAME)" $(dir $@)
 	@echo Done updating $@
 
-.PHONY: all clean test run pkgs help build-tools live rootfs config installer live FORCE $(DIST)
+.PHONY: all clean test run pkgs help build-tools live rootfs config installer live FORCE $(DIST) HOSTARCH
 FORCE:
 
 help:
