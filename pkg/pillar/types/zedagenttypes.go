@@ -4,9 +4,10 @@
 package types
 
 import (
+	"time"
+
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
 
 type OsVerParams struct {
