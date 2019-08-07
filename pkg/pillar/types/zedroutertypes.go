@@ -1590,7 +1590,8 @@ type VpnMetrics struct {
 	VpnConns   []*VpnConnMetrics
 }
 
-type IpTuple struct {
+// IPTuple :
+type IPTuple struct {
 	Src     net.IP
 	Dst     net.IP
 	SrcPort int32
@@ -1598,17 +1599,19 @@ type IpTuple struct {
 	Proto   int32
 }
 
+// FlowScope :
 type FlowScope struct {
-	Uuid      uuid.UUID
+	UUID      uuid.UUID
 	Intf      string
 	Localintf string
 	NetUUID   uuid.UUID
 }
 
+// FlowRec :
 type FlowRec struct {
-	Flow      IpTuple
+	Flow      IPTuple
 	Inbound   bool
-	AclId     int32
+	ACLID     int32
 	Action    string
 	StartTime uint64
 	StopTime  uint64
@@ -1618,20 +1621,23 @@ type FlowRec struct {
 	RxPkts    int64
 }
 
-type DnsReq struct {
+// DNSReq :
+type DNSReq struct {
 	HostName    string
 	Addrs       []net.IP
 	RequestTime int64
 	aclNum      int32
 }
 
-type IpFlow struct {
-	DevId   uuid.UUID
+// IPFlow :
+type IPFlow struct {
+	DevID   uuid.UUID
 	Scope   FlowScope
 	Flows   []FlowRec
-	DnsReqs []DnsReq
+	DNSReqs []DNSReq
 }
 
-func (flows IpFlow) Key() string {
-	return flows.Scope.Uuid.String() + flows.Scope.NetUUID.String()
+// Key :
+func (flows IPFlow) Key() string {
+	return flows.Scope.UUID.String() + flows.Scope.NetUUID.String()
 }

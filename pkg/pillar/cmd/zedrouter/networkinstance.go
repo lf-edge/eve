@@ -528,7 +528,7 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 			hostsDirpath, status.BridgeIPSets, status.Ipv4Eid)
 		startDnsmasq(bridgeName)
 
-		go DnsMonitor(bridgeName, bridgeNum)
+		go DNSMonitor(bridgeName, bridgeNum)
 	}
 
 	if status.IsIPv6() {
@@ -1224,7 +1224,7 @@ func doNetworkInstanceDelete(
 		if status.IsIPv6() {
 			stopRadvd(status.BridgeName, true)
 		}
-		DnsStopMonitor(status.BridgeNum)
+		DNSStopMonitor(status.BridgeNum)
 	}
 	networkInstanceBridgeDelete(ctx, status)
 }
