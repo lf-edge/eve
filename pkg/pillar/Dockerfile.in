@@ -49,7 +49,7 @@ RUN apk add --no-cache \
     apk-cron coreutils dmidecode sudo libbz2 libuuid ipset \
     libaio logrotate pixman glib curl radvd perl ethtool \
     util-linux e2fsprogs libcrypto1.0 xorriso \
-    python libpcap libffi jq linux-pam
+    python libpcap libffi jq
 
 # The following is for xen-tools
 RUN [ `uname -m` = "aarch64" ] && apk add --no-cache libfdt || :
@@ -77,7 +77,6 @@ COPY --from=watchdog /usr/sbin /usr/sbin
 COPY --from=rkt-build /go/rkt/build-rkt-1.26.0/target/bin/rkt /usr/sbin/rkt
 COPY --from=rkt-stage1-build /go/stage1-xen-master/stage1-xen.aci /usr/sbin/stage1-xen.aci
 COPY --from=fscrypt-build /fscrypt /opt/zededa/bin/fscrypt
-COPY --from=fscrypt-build /pam_fscrypt.so /usr/lib/pam_fscrypt.so
 
 # And now a few local tweaks
 COPY rootfs/ /

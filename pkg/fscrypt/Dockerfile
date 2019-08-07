@@ -9,8 +9,9 @@ WORKDIR /go/src/github.com/google
 RUN git clone https://github.com/google/fscrypt
 WORKDIR /go/src/github.com/google/fscrypt
 RUN git reset --hard b41569d397d3e66099cde07d8eef36b2f42dd0ec
-RUN make && make install
+ADD fscrypt-patch.diff .
+RUN patch -p1 < fscrypt-patch.diff && \
+    make && make install
 
 FROM scratch
 COPY --from=build /usr/local/bin/fscrypt /
-COPY --from=build /usr/local/lib/security/pam_fscrypt.so /
