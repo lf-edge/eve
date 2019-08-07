@@ -9,7 +9,7 @@ WORKDIR /go/src/github.com/google
 RUN git clone https://github.com/google/fscrypt
 WORKDIR /go/src/github.com/google/fscrypt
 RUN git reset --hard b41569d397d3e66099cde07d8eef36b2f42dd0ec
-ADD fscrypt-patch.diff .
+COPY fscrypt-patch.diff fscrypt-patch.diff
 RUN patch -p1 < fscrypt-patch.diff && \
     make && make install
 
