@@ -213,7 +213,7 @@ func Run() {
 	}
 	zedrouterCtx.pubNetworkInstanceMetrics = pubNetworkInstanceMetrics
 
-	pubAppFlowMonitor, err := pubsub.Publish(agentName, types.IpFlow{})
+	pubAppFlowMonitor, err := pubsub.Publish(agentName, types.IPFlow{})
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -365,7 +365,7 @@ func Run() {
 	subNetworkInstanceMetrics.Activate()
 
 	subAppFlowMonitor, err := pubsub.Subscribe("zedrouter",
-		types.IpFlow{}, false, &zedagentCtx)
+		types.IPFlow{}, false, &zedagentCtx)
 	if err != nil {
 		// XXX
 		log.Errorf("FlowMonitor: create subFlowStatus failed, err %v", err)

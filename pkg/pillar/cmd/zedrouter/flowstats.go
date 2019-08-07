@@ -93,7 +93,7 @@ var loopcount int // XXX debug
 var dnssys [maxBridgeNumber]dnsSys // per bridge DNS records for the colection period
 var devUUID, nilUUID uuid.UUID
 
-// FlowStatsCollect() Timer fired to collect iptable flow stats
+// FlowStatsCollect : Timer fired to collect iptable flow stats
 func FlowStatsCollect(ctx *zedrouterContext) {
 	var instData networkAttrs
 	//ipToName := make(map[string]string)                // an IP to DNS mapping from current flows
@@ -184,13 +184,13 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 		for appIdx := range instData.appNet {
 
 			scope := types.FlowScope{
-				Uuid:      instData.appNet[appIdx],
+				UUID:      instData.appNet[appIdx],
 				Intf:      bnx,
 				Localintf: instData.bnNet[bnx].vif,
 				NetUUID:   instData.bnNet[bnx].netUUID,
 			}
-			flowdata := types.IpFlow{
-				DevId: devUUID,
+			flowdata := types.IPFlow{
+				DevID: devUUID,
 				Scope: scope,
 			}
 
@@ -240,7 +240,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 				// temp print out log for the flow
 				log.Infof("FlowStats [%d]: on bn%d %s\n", i, bnNum, tuple.String()) // just print for now
 
-				flowtuple := types.IpTuple{
+				flowtuple := types.IPTuple{
 					Src:     tuple.SrcIP,
 					Dst:     tuple.DstIP,
 					SrcPort: int32(tuple.SrcPort),
@@ -250,7 +250,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 				flowrec := types.FlowRec{
 					Flow:      flowtuple,
 					Inbound:   !tuple.AppInitiate,
-					AclId:     int32(aclattr.aclNum),
+					ACLID:     int32(aclattr.aclNum),
 					Action:    aclattr.action,
 					StartTime: tuple.TimeStart,
 					StopTime:  tuple.TimeStop,
@@ -293,18 +293,18 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					log.Infof("!!FlowStats: DNS time %v, domain %s, appIP %v, count %d, Answers %v",
 						dnsRec.TimeStamp, dnsRec.DomainName, dnsRec.AppIP, dnsRec.ANCount, dnsRec.Answers)
 
-					dnsrec := types.DnsReq{
+					dnsrec := types.DNSReq{
 						HostName:    dnsRec.DomainName,
 						Addrs:       dnsRec.Answers,
 						RequestTime: dnsRec.TimeStamp.UnixNano(),
 					}
 					dnsPacked = true
-					flowdata.DnsReqs = append(flowdata.DnsReqs, dnsrec)
+					flowdata.DNSReqs = append(flowdata.DNSReqs, dnsrec)
 				}
 			}
 			// flow record done for the bridge/app
 			//flowdata.CastFlowStatus
-			flowKey := scope.Uuid.String() + scope.NetUUID.String()
+			flowKey := scope.UUID.String() + scope.NetUUID.String()
 			pub.Publish(flowKey, &flowdata)
 		}
 	}
@@ -491,16 +491,16 @@ func checkAppAndACL(ctx *zedrouterContext, instData networkAttrs) {
 	}
 }
 
-// DNS Query and Reply monitor on bridges
-func DnsMonitor(bn string, bnNum int) {
+// DNSMonitor : DNS Query and Reply monitor on bridges
+func DNSMonitor(bn string, bnNum int) {
 	var (
 		err error
 		//action      string
-		snapshotLen int32         = 1280             // draft-madi-dnsop-udp4dns-00
-		promiscuous bool          = true             // mainly for switched network
-		timeout     time.Duration = 10 * time.Second // collect enough packets in 10sec
+		snapshotLen int32 = 1280             // draft-madi-dnsop-udp4dns-00
+		promiscuous       = true             // mainly for switched network
+		timeout           = 10 * time.Second // collect enough packets in 10sec
 		handle      *pcap.Handle
-		filter      string = "udp and port 53"
+		filter      = "udp and port 53"
 	)
 	if bnNum >= maxBridgeNumber {
 		log.Errorf("Can not snoop on brige number %d", bnNum)
@@ -539,8 +539,8 @@ func DnsMonitor(bn string, bnNum int) {
 	}
 }
 
-// Stop DNS Query monitoring
-func DnsStopMonitor(bnNum int) {
+// DNSStopMonitor : Stop DNS Query monitoring
+func DNSStopMonitor(bnNum int) {
 	log.Infof("(FlowStats) Stop DNS Monitor on bridge-num %d", bnNum)
 	dnssys[bnNum].Done <- true
 	dnssys[bnNum].Lock()
@@ -607,8 +607,6 @@ func dnsAddrIsIPv4(addr net.IP) bool {
 	if addr != nil {
 		if strings.Contains(addr.String(), ":") {
 			return false
-		} else {
-			return true
 		}
 	}
 	return true
@@ -634,6 +632,7 @@ func flowTimeOutSet(item string, origValue int) {
 	}
 }
 
+// AppFlowMonitorTimeoutAdjust :
 // Adjust the conntrack flow session timeout values
 // by adding 150 seconds on top of default seconds
 func AppFlowMonitorTimeoutAdjust() {
