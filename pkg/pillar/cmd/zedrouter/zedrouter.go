@@ -73,6 +73,7 @@ type zedrouterContext struct {
 	subNetworkInstanceConfig  *pubsub.Subscription
 	pubNetworkInstanceStatus  *pubsub.Publication
 	pubNetworkInstanceMetrics *pubsub.Publication
+	pubAppFlowMonitor         *pubsub.Publication
 	networkInstanceStatusMap  map[uuid.UUID]*types.NetworkInstanceStatus
 }
 
@@ -212,6 +213,12 @@ func Run() {
 	}
 	zedrouterCtx.pubNetworkInstanceMetrics = pubNetworkInstanceMetrics
 
+	pubAppFlowMonitor, err := pubsub.Publish(agentName, types.IpFlow{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubAppFlowMonitor = pubAppFlowMonitor
+
 	appNumAllocatorInit(&zedrouterCtx)
 	bridgeNumAllocatorInit(&zedrouterCtx)
 	handleInit(runDirname)
@@ -305,6 +312,13 @@ func Run() {
 		time.Duration(max))
 
 	updateLispConfiglets(&zedrouterCtx, zedrouterCtx.legacyDataPlane)
+
+	// XXX for flowstats
+	flowStatIntv := time.Duration(120 * time.Second) // 120 sec, flow timeout if less than150 sec
+	fmax := float64(flowStatIntv)
+	fmin := fmax * 0.9
+	flowStatTimer := flextimer.NewRangeTicker(time.Duration(fmin),
+		time.Duration(fmax))
 
 	setFreeMgmtPorts(types.GetMgmtPortsFree(*zedrouterCtx.deviceNetworkStatus, 0))
 
@@ -416,6 +430,10 @@ func Run() {
 			// XXX can we trigger it as part of boot? Or watch file?
 			// XXX add file watch...
 			checkAndPublishDhcpLeases(&zedrouterCtx)
+
+		case <-flowStatTimer.C:
+			log.Infof("**FlowStatTimer at %v", time.Now())
+			go FlowStatsCollect(&zedrouterCtx)
 
 		case change := <-subNetworkInstanceConfig.C:
 			log.Infof("NetworkInstanceConfig change at %+v", time.Now())
@@ -531,6 +549,11 @@ func handleInit(runDirname string) {
 		log.Fatal("Failed setting conntrack_acct ", err)
 	}
 	_, err = wrap.Command("sysctl", "-w",
+		"net.netfilter.nf_conntrack_timestamp=1").Output()
+	if err != nil {
+		log.Fatal("Failed setting conntrack_timestamp ", err)
+	}
+	_, err = wrap.Command("sysctl", "-w",
 		"net.ipv4.conf.all.log_martians=1").Output()
 	if err != nil {
 		log.Fatal("Failed setting log_martians ", err)
@@ -540,6 +563,7 @@ func handleInit(runDirname string) {
 	if err != nil {
 		log.Fatal("Failed setting log_martians ", err)
 	}
+	AppFlowMonitorTimeoutAdjust()
 }
 
 func publishLispDataplaneConfig(ctx *zedrouterContext,

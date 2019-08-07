@@ -1589,3 +1589,49 @@ type VpnMetrics struct {
 	PhyErrStat LinkPktStats
 	VpnConns   []*VpnConnMetrics
 }
+
+type IpTuple struct {
+	Src     net.IP
+	Dst     net.IP
+	SrcPort int32
+	DstPort int32
+	Proto   int32
+}
+
+type FlowScope struct {
+	Uuid      uuid.UUID
+	Intf      string
+	Localintf string
+	NetUUID   uuid.UUID
+}
+
+type FlowRec struct {
+	Flow      IpTuple
+	Inbound   bool
+	AclId     int32
+	Action    string
+	StartTime uint64
+	StopTime  uint64
+	TxBytes   int64
+	TxPkts    int64
+	RxBytes   int64
+	RxPkts    int64
+}
+
+type DnsReq struct {
+	HostName    string
+	Addrs       []net.IP
+	RequestTime int64
+	aclNum      int32
+}
+
+type IpFlow struct {
+	DevId   uuid.UUID
+	Scope   FlowScope
+	Flows   []FlowRec
+	DnsReqs []DnsReq
+}
+
+func (flows IpFlow) Key() string {
+	return flows.Scope.Uuid.String() + flows.Scope.NetUUID.String()
+}
