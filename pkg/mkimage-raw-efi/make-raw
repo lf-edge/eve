@@ -91,11 +91,17 @@ function do_efi {
   sgdisk --new $NUM_PART:$SEC_START:$SEC_END --typecode=$NUM_PART:ef00 --change-name=$NUM_PART:'EFI System' \
          --attributes $NUM_PART:set:2 $IMGFILE
  
-  # Initialize partition...
-  #   ...extract GRUB bootloader
-  mount -o loop "$ROOTFS_IMG" /mnt
-  cp /mnt/EFI/BOOT/BOOT*EFI /efifs/EFI/BOOT/
-  umount /mnt
+  # Extract GRUB bootloader
+  # Try squashfs tools first in case ROOTFS_IMG is squashfs, otherwise use mount
+  rm -rf /tmp/grub
+  unsquashfs -d /tmp/grub "$ROOTFS_IMG" EFI/BOOT/ || (
+      mkdir -p /tmp/grub/EFI/BOOT
+      mount -o loop "$ROOTFS_IMG" /mnt
+      cp /mnt/EFI/BOOT/BOOT*EFI /tmp/grub/EFI/BOOT/
+      umount /mnt
+  )
+  cp /tmp/grub/EFI/BOOT/BOOT*EFI /efifs/EFI/BOOT
+
   #   ...copy EFI fs to EFI partition
   dd if=`dir2vfat /efifs $(( ($SEC_END - $SEC_START) / 2))` of=$IMGFILE bs=512 conv=notrunc seek=$SEC_START
 
