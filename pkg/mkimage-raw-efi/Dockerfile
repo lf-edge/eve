@@ -7,6 +7,7 @@ RUN apk add --no-cache \
   sgdisk \
   e2fsprogs \
   util-linux \
+  squashfs-tools \
   coreutils
 
 WORKDIR /

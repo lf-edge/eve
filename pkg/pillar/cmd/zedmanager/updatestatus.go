@@ -4,7 +4,6 @@
 package zedmanager
 
 import (
-	"errors"
 	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -375,7 +374,6 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			return changed, false
 		}
 		newSs := types.StorageStatus{
-			DatastoreId:      sc.DatastoreId,
 			Name:             sc.Name,
 			ImageSha256:      sc.ImageSha256,
 			Size:             sc.Size,
@@ -398,6 +396,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	waitingForCerts := false
 	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
+		sc := config.StorageConfigList[i]
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
 		log.Infof("StorageStatus URL %s safename %s\n",
 			ss.Name, safename)
@@ -447,23 +446,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		if !ss.HasDownloaderRef {
 			log.Infof("doUpdate !HasDownloaderRef for %s\n",
 				safename)
-			dst, err := lookupDatastoreConfig(ctx, ss.DatastoreId,
-				ss.Name)
-			if err != nil {
-				// Remember to check when Datastores are added
-				ss.MissingDatastore = true
-				status.MissingDatastore = true
-				ss.Error = fmt.Sprintf("%v", err)
-				ss.ErrorSource = pubsub.TypeToName(types.DownloaderStatus{})
-				errorSource = ss.ErrorSource
-				allErrors = appendError(allErrors, "datastore",
-					ss.Error)
-				ss.ErrorTime = time.Now()
-				changed = true
-				continue
-			}
-			ss.MissingDatastore = false
-			AddOrRefcountDownloaderConfig(ctx, safename, ss, dst)
+			AddOrRefcountDownloaderConfig(ctx, safename, sc, ss)
 			ss.HasDownloaderRef = true
 			changed = true
 		}
@@ -529,10 +512,6 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				}
 			}
 		}
-	}
-	if status.MissingDatastore {
-		status.MissingDatastore = false
-		changed = true
 	}
 
 	if minState == types.MAXSTATE {
@@ -713,28 +692,6 @@ func doPrepare(ctx *zedmanagerContext, uuidStr string,
 
 // Really a constant
 var nilUUID uuid.UUID
-
-// Check for nil UUID (an indication the drive was missing in parseconfig)
-// and a missing datastore id.
-func lookupDatastoreConfig(ctx *zedmanagerContext,
-	datastoreId uuid.UUID, name string) (*types.DatastoreConfig, error) {
-
-	if datastoreId == nilUUID {
-		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: No datastore ID",
-			datastoreId.String(), name)
-		log.Errorln(errStr)
-		return nil, errors.New(errStr)
-	}
-	cfg, err := ctx.subDatastoreConfig.Get(datastoreId.String())
-	if err != nil {
-		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: %v",
-			datastoreId.String(), name, err)
-		log.Errorln(errStr)
-		return nil, errors.New(errStr)
-	}
-	dst := cast.CastDatastoreConfig(cfg)
-	return &dst, nil
-}
 
 func doActivate(ctx *zedmanagerContext, uuidStr string,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
