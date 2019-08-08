@@ -187,23 +187,6 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
 	}
 }
 
-// Wrappers around handleBaseOsCreate/Modify/Delete
-func handleBaseOsConfigModify(ctxArg interface{}, key string, configArg interface{}) {
-	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.CastBaseOsConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleBaseOsConfigModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
-		return
-	}
-	status := lookupBaseOsStatus(ctx, key)
-	if status == nil {
-		handleBaseOsCreate(ctx, key, &config)
-	} else {
-		handleBaseOsModify(ctx, key, &config, status)
-	}
-	log.Infof("handleBaseOsConfigModify(%s) done\n", key)
-}
-
 func handleBaseOsConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
@@ -274,8 +257,10 @@ func handleBaseOsCreate2(ctx *baseOsMgrContext, config types.BaseOsConfig,
 
 // base os config modify event
 func handleBaseOsModify(ctxArg interface{}, key string,
-	configArg interface{}, statusArg interface{}) {
+	configArg interface{}) {
+	ctx := ctxArg.(*baseOsMgrContext)
 	config := cast.CastBaseOsConfig(configArg)
+	statusArg := lookupBaseOsStatus(ctx, key)
 	if config.Key() != key {
 		log.Errorf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
@@ -287,7 +272,6 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 			key, status.Key(), status)
 		return
 	}
-	ctx := ctxArg.(*baseOsMgrContext)
 
 	log.Infof("handleBaseOsModify(%s) for %s Activate %v\n",
 		config.Key(), config.BaseOsVersion, config.Activate)
@@ -325,24 +309,6 @@ func handleBaseOsDelete(ctxArg interface{}, key string,
 	removeBaseOsConfig(ctx, status.Key())
 }
 
-// Wrappers around handleCertObjCreate/Modify/Delete
-
-func handleCertObjConfigModify(ctxArg interface{}, key string, configArg interface{}) {
-	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.CastCertObjConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleCertObjConfigModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
-		return
-	}
-	status := lookupCertObjStatus(ctx, key)
-	if status == nil {
-		handleCertObjCreate(ctx, key, &config)
-	} else {
-		handleCertObjModify(ctx, key, &config, status)
-	}
-	log.Infof("handleCertObjConfigModify(%s) done\n", key)
-}
-
 func handleCertObjConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
@@ -359,8 +325,9 @@ func handleCertObjConfigDelete(ctxArg interface{}, key string,
 
 // certificate config/status event handlers
 // certificate config create event
-func handleCertObjCreate(ctx *baseOsMgrContext, key string, config *types.CertObjConfig) {
-
+func handleCertObjCreate(ctxArg interface{}, key string, configArg interface{}) {
+	ctx := ctxArg.(*baseOsMgrContext)
+	config := cast.CastCertObjConfig(configArg)
 	log.Infof("handleCertObjCreate for %s\n", key)
 
 	status := types.CertObjStatus{
@@ -380,12 +347,14 @@ func handleCertObjCreate(ctx *baseOsMgrContext, key string, config *types.CertOb
 
 	publishCertObjStatus(ctx, &status)
 
-	certObjHandleStatusUpdate(ctx, config, &status)
+	certObjHandleStatusUpdate(ctx, &config, &status)
 }
 
 // certificate config modify event
-func handleCertObjModify(ctx *baseOsMgrContext, key string, config *types.CertObjConfig, status *types.CertObjStatus) {
-
+func handleCertObjModify(ctxArg interface{}, key string, configArg interface{}) {
+	ctx := ctxArg.(*baseOsMgrContext)
+	config := cast.CastCertObjConfig(configArg)
+	status := lookupCertObjStatus(ctx, key)
 	uuidStr := config.Key()
 	log.Infof("handleCertObjModify for %s\n", uuidStr)
 
@@ -398,7 +367,7 @@ func handleCertObjModify(ctx *baseOsMgrContext, key string, config *types.CertOb
 	}
 
 	// on storage config change, purge and recreate
-	if certObjCheckConfigModify(ctx, key, config, status) {
+	if certObjCheckConfigModify(ctx, key, &config, status) {
 		removeCertObjConfig(ctx, key)
 		handleCertObjCreate(ctx, key, config)
 	}
@@ -631,7 +600,8 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subBaseOsConfig.ModifyHandler = handleBaseOsConfigModify
+	subBaseOsConfig.ModifyHandler = handleBaseOsModify
+	subBaseOsConfig.CreateHandler = handleBaseOsCreate
 	subBaseOsConfig.DeleteHandler = handleBaseOsConfigDelete
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
@@ -664,7 +634,8 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subCertObjConfig.ModifyHandler = handleCertObjConfigModify
+	subCertObjConfig.ModifyHandler = handleCertObjModify
+	subCertObjConfig.CreateHandler = handleCertObjCreate
 	subCertObjConfig.DeleteHandler = handleCertObjConfigDelete
 	ctx.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()
