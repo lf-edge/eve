@@ -288,6 +288,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDomainConfig.ModifyHandler = handleDomainModify
+	subDomainConfig.CreateHandler = handleDomainCreate
 	subDomainConfig.DeleteHandler = handleDomainDelete
 	subDomainConfig.RestartHandler = handleRestart
 	domainCtx.subDomainConfig = subDomainConfig
@@ -542,24 +543,37 @@ func handlersInit() {
 func handleDomainModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("handleDomainModify(%s)\n", key)
-	ctx := ctxArg.(*domainContext)
 	config := cast.CastDomainConfig(configArg)
 	if config.Key() != key {
 		log.Errorf("handleDomainModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
-	// Do we have a channel/goroutine?
 	h, ok := handlerMap[config.Key()]
 	if !ok {
-		h1 := make(chan interface{})
-		handlerMap[config.Key()] = h1
-		go runHandler(ctx, key, h1)
-		h = h1
+		log.Fatalf("handleDomainModify called on config that does not exist")
 	}
-	log.Debugf("Sending config to handler\n")
 	h <- configArg
-	log.Infof("handleDomainModify(%s) done\n", key)
+}
+func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
+
+	log.Infof("handleDomainCreate(%s)\n", key)
+	ctx := ctxArg.(*domainContext)
+	config := cast.CastDomainConfig(configArg)
+	if config.Key() != key {
+		log.Errorf("handleDomainCreate key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
+	h, ok := handlerMap[config.Key()]
+	if ok {
+		log.Fatalf("handleDomainCreate called on config that already exists")
+	}
+	h1 := make(chan interface{})
+	handlerMap[config.Key()] = h1
+	go runHandler(ctx, key, h1)
+	h = h1
+	h <- configArg
 }
 
 func handleDomainDelete(ctxArg interface{}, key string,
@@ -988,8 +1002,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 
 	log.Infof("doActivate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
-
-	if status.AdaptersFailed {
+	if status.AdaptersFailed || status.PendingModify {
 		if err := configAdapters(ctx, config); err != nil {
 			log.Errorf("Failed to reserve adapters for %v: %s\n",
 				config, err)
@@ -2385,7 +2398,12 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		log.Warnf("checkAndSetIoBundle(%d %s %s) part of zedrouter port\n",
 			ib.Type, ib.Name, ib.AssignmentGroup)
 		ib.IsPort = true
-		if ib.IsPCIBack {
+		if ib.UsedByUUID != nilUUID {
+			log.Errorf("checkAndSetIoBundle(%d %s %s) used by %s",
+				ib.Type, ib.Name, ib.AssignmentGroup,
+				ib.UsedByUUID.String())
+
+		} else if ib.IsPCIBack {
 			log.Infof("checkAndSetIoBundle(%d %s %s) take back from pciback\n",
 				ib.Type, ib.Name, ib.AssignmentGroup)
 			if ib.PciLong != "" {
@@ -2395,6 +2413,19 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 				if err != nil {
 					log.Errorf("checkAndSetIoBundle(%d %s %s) pciAssignableRemove %s failed %v\n",
 						ib.Type, ib.Name, ib.AssignmentGroup, ib.PciLong, err)
+				}
+				// Seems like like no risk for race; when we return
+				// from above the driver has been attached and
+				// any ifname has been registered.
+				found, ifname := types.PciLongToIfname(ib.PciLong)
+				if !found {
+					log.Errorf("Not found: %d %s %s",
+						ib.Type, ib.Name, ib.Ifname)
+				} else if ifname != ib.Ifname {
+					log.Warnf("Found: %d %s %s at %s",
+						ib.Type, ib.Name, ib.Ifname,
+						ifname)
+					types.IfRename(ifname, ib.Ifname)
 				}
 			}
 			ib.IsPCIBack = false
