@@ -152,6 +152,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAppImgConfig.ModifyHandler = handleAppImgModify
+	subAppImgConfig.CreateHandler = handleAppImgCreate
 	subAppImgConfig.DeleteHandler = handleAppImgDelete
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
@@ -162,6 +163,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subBaseOsConfig.ModifyHandler = handleBaseOsModify
+	subBaseOsConfig.CreateHandler = handleBaseOsCreate
 	subBaseOsConfig.DeleteHandler = handleBaseOsDelete
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
@@ -589,6 +591,11 @@ func handleAppImgModify(ctxArg interface{}, key string,
 
 	handleVerifyImageModify(ctxArg, appImgObj, key, configArg)
 }
+func handleAppImgCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	handleVerifyImageCreate(ctxArg, appImgObj, key, configArg)
+}
 
 func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
 	handleVerifyImageDelete(ctxArg, key, configArg)
@@ -598,6 +605,12 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	handleVerifyImageModify(ctxArg, baseOsObj, key, configArg)
+}
+
+func handleBaseOsCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	handleVerifyImageCreate(ctxArg, baseOsObj, key, configArg)
 }
 
 func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
@@ -643,24 +656,40 @@ func handleVerifyImageModify(ctxArg interface{}, objType string,
 	key string, configArg interface{}) {
 
 	log.Infof("handleVerifyImageModify(%s)\n", key)
-	ctx := ctxArg.(*verifierContext)
 	config := cast.CastVerifyImageConfig(configArg)
 	if config.Key() != key {
 		log.Errorf("handleVerifyImageModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
-	// Do we have a channel/goroutine?
 	h, ok := handlerMap[config.Key()]
 	if !ok {
-		h1 := make(chan interface{})
-		handlerMap[config.Key()] = h1
-		go runHandler(ctx, objType, key, h1)
-		h = h1
+		log.Fatalf("handleVerifyImageModify called on config that does not exist")
 	}
-	log.Debugf("Sending config to handler\n")
 	h <- configArg
 	log.Infof("handleVerifyImageModify(%s) done\n", key)
+}
+func handleVerifyImageCreate(ctxArg interface{}, objType string,
+	key string, configArg interface{}) {
+
+	log.Infof("handleVerifyImageCreate(%s)\n", key)
+	ctx := ctxArg.(*verifierContext)
+	config := cast.CastVerifyImageConfig(configArg)
+	if config.Key() != key {
+		log.Errorf("handleVerifyImageCreate key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
+	h, ok := handlerMap[config.Key()]
+	if ok {
+		log.Fatalf("handleVerifyImageCreate called on config that already exists")
+	}
+	h1 := make(chan interface{})
+	handlerMap[config.Key()] = h1
+	go runHandler(ctx, objType, key, h1)
+	h = h1
+	h <- configArg
+	log.Infof("handleVerifyImageCreate(%s) done\n", key)
 }
 
 func handleVerifyImageDelete(ctxArg interface{}, key string,
