@@ -114,7 +114,7 @@ all: help
 
 test: $(GOBUILDER) | $(DIST)
 	@echo Running tests on $(GOMODULE)
-	@$(DOCKER_GO) "go test -v ./... 2>&1 | go-junit-report" $(GOTREE) $(GOMODULE) | sed -e '1d' > $(DIST)/results.xml
+	@$(DOCKER_GO) "set -o pipefail ; go test -v ./... 2>&1 | go-junit-report | sed -e 1d" $(GOTREE) $(GOMODULE) > $(DIST)/results.xml
 
 clean:
 	rm -rf $(DIST) pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile \
@@ -206,7 +206,7 @@ pkgs: FORCE_BUILD=
 pkgs: build-tools $(PKGS)
 	@echo Done building packages
 
-pkg/pillar: pkg/lisp pkg/xen-tools pkg/dnsmasq pkg/strongswan pkg/gpt-tools pkg/watchdog eve-pillar
+pkg/pillar: pkg/lisp pkg/xen-tools pkg/dnsmasq pkg/strongswan pkg/gpt-tools pkg/watchdog pkg/rkt pkg/rkt-stage1 pkg/fscrypt eve-pillar
 	@true
 pkg/qrexec-dom0: pkg/qrexec-lib pkg/xen-tools eve-qrexec-dom0
 	@true
@@ -286,7 +286,7 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	@$(DOCKER_GO) "dep ensure -update $(GODEP_NAME)" $(dir $@)
 	@echo Done updating $@
 
-.PHONY: all clean test run pkgs help build-tools live rootfs config installer live FORCE $(DIST)
+.PHONY: all clean test run pkgs help build-tools live rootfs config installer live FORCE $(DIST) HOSTARCH
 FORCE:
 
 help:

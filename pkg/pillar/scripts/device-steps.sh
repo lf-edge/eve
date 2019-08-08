@@ -6,6 +6,7 @@
 USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
+PERSIST_RKT_DIR=$PERSISTDIR/rkt
 PERSISTCONFIGDIR=/persist/config
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
@@ -18,7 +19,7 @@ LOGDIRB=$PERSISTDIR/IMGB/log
 AGENTS0="logmanager ledmanager nim"
 AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr baseosmgr wstunnelclient"
 AGENTS="$AGENTS0 $AGENTS1"
-TPM_DEVICE_PATH="/dev/tpm0"
+TPM_DEVICE_PATH="/dev/tpmrm0"
 
 PATH=$BINDIR:$PATH
 
@@ -66,7 +67,7 @@ cat >>$TMPDIR/watchdogbase.conf <<EOF
 admin =
 #realtime = yes
 #priority = 1
-interval = 10
+interval = 1
 logtick  = 60
 repair-binary=/opt/zededa/bin/watchdog-report.sh
 pidfile = /var/run/xen/qemu-dom0.pid
@@ -125,13 +126,19 @@ done
 
 killwait_watchdog() {
     if [ -f /var/run/watchdog.pid ]; then
-        echo "$(date -Ins -u) Killing watchdog $(cat /var/run/watchdog.pid)"
-        kill "$(cat /var/run/watchdog.pid)"
+        wp=$(cat /var/run/watchdog.pid)
+        echo "$(date -Ins -u) Killing watchdog $wp"
+        kill "$wp"
         # Wait for it to exit so it can be restarted
-        while [ -f /var/run/watchdog.pid ] && kill -0 "$(cat /var/run/watchdog.pid)"; do
+        while kill -0 "$wp"; do
             echo "$(date -Ins -u) Waiting for watchdog to exit"
-            sleep 5
+            if [ $USE_HW_WATCHDOG = 1 ]; then
+                wdctl
+            fi
+            sleep 1
         done
+        echo "$(date -Ins -u) Killed watchdog"
+        sync
     fi
 }
 
@@ -145,7 +152,7 @@ if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
 fi
 
-DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
+DIRS="$CONFIGDIR $PERSISTDIR $PERSIST_RKT_DIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
 
 for d in $DIRS; do
     d1=$(dirname "$d")

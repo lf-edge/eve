@@ -10,8 +10,12 @@ ARCH         ?= amd64
 DISTDIR      := dist/$(ARCH)
 BUILD_VERSION=$(shell scripts/getversion.sh 2>/dev/null)
 
-DOCKER_ARGS=$${GOARCH:+--build-arg GOARCH=}$(GOARCH)
-DOCKER_TAG=lfedge/eve-pillar:local$${GOARCH:+-}$(GOARCH)
+DOCKER_ARGS=
+DOCKER_TAG=lfedge/eve-pillar:local
+ifneq ($(GOARCH),)
+DOCKER_ARGS:=--build-arg GOARCH=$(GOARCH)
+DOCKER_TAG:=$(DOCKER_TAG)-$(GOARCH)
+endif
 
 APPS = zedbox
 APPS1 = logmanager ledmanager downloader verifier client zedrouter domainmgr \

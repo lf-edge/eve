@@ -1,6 +1,6 @@
 { "IoBundleList": [
-    { "Type": 1, "Name": "eth0", "AssignmentGroup": "eth0", "Ifname": "eth0" },
-    { "Type": 1, "Name": "eth1", "AssignmentGroup": "eth1", "Ifname": "eth1" },
+    { "Type": 1, "Name": "eth0", "AssignmentGroup": "eth0", "PciLong": "0000:01:00.0", "Ifname": "eth0" },
+    { "Type": 1, "Name": "eth1", "AssignmentGroup": "eth1", "PciLong": "0000:03:00.0", "Ifname": "eth1" },
     { "Type": 2, "Name": "USB0", "AssignmentGroup": "USB", "PciLong": "0000:00:15.0"},
     { "Type": 2, "Name": "USB1", "AssignmentGroup": "USB", "PciLong": "0000:00:15.0"},
     { "Type": 2, "Name": "USB2", "AssignmentGroup": "USB", "PciLong": "0000:00:15.0"},
