@@ -1613,8 +1613,8 @@ type FlowRec struct {
 	Inbound   bool
 	ACLID     int32
 	Action    string
-	StartTime uint64
-	StopTime  uint64
+	StartTime int64
+	StopTime  int64
 	TxBytes   int64
 	TxPkts    int64
 	RxBytes   int64
@@ -1626,7 +1626,7 @@ type DNSReq struct {
 	HostName    string
 	Addrs       []net.IP
 	RequestTime int64
-	aclNum      int32
+	AclNum      int32
 }
 
 // IPFlow :

@@ -367,8 +367,7 @@ func Run() {
 	subAppFlowMonitor, err := pubsub.Subscribe("zedrouter",
 		types.IPFlow{}, false, &zedagentCtx)
 	if err != nil {
-		// XXX
-		log.Errorf("FlowMonitor: create subFlowStatus failed, err %v", err)
+		log.Fatal(err)
 	}
 	subAppFlowMonitor.ModifyHandler = handleAppFlowMonitorModify
 	subAppFlowMonitor.DeleteHandler = handleAppFlowMonitorDelete
@@ -772,7 +771,7 @@ func Run() {
 			subDevicePortConfigList.ProcessChange(change)
 
 		case change := <-subAppFlowMonitor.C:
-			log.Infof("FlowStats: change called")
+			log.Debugf("FlowStats: change called")
 			subAppFlowMonitor.ProcessChange(change)
 
 		case <-stillRunning.C:
