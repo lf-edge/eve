@@ -114,7 +114,6 @@ type AppInstanceStatus struct {
 
 	// Container related state
 	IsContainer      bool
-	ContainerURL     string
 	ContainerImageID string
 
 	// Mininum state across all steps and all StorageStatus.
@@ -243,6 +242,7 @@ type StorageStatus struct {
 	Progress           uint    // In percent i.e., 0-100
 	HasDownloaderRef   bool    // Reference against downloader to clean up
 	HasVerifierRef     bool    // Reference against verifier to clean up
+	IsContainer        bool    // Is the imge a Container??
 	Vdev               string  // Allocated
 	ActiveFileLocation string  // Location of filestystem
 	FinalObjDir        string  // Installation dir; may differ from verified

@@ -494,6 +494,7 @@ func handleCreate(ctxArg interface{}, key string,
 		ss.Target = sc.Target
 		if ss.Format == "8" {
 			status.IsContainer = true
+			ss.IsContainer = true
 		}
 	}
 

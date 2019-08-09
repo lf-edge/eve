@@ -5,7 +5,6 @@ package zedmanager
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/cast"
@@ -451,8 +450,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 					vs.RefCount, vs.Safename)
 				// We don't need certs since Status already
 				// exists
-				MaybeAddVerifyImageConfig(ctx, vs.Safename,
-					ss, false, status.IsContainer)
+				MaybeAddVerifyImageConfig(ctx, vs.Safename, ss, false)
 				ss.HasVerifierRef = true
 				changed = true
 			}
@@ -469,28 +467,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		if !ss.HasDownloaderRef {
 			log.Infof("doUpdate !HasDownloaderRef for %s\n",
 				safename)
-			downloadUrl := dst.Fqdn
-			if len(strings.TrimSpace(dst.Dpath)) > 0 {
-				downloadURL += "/" + dst.Dpath
-			} else {
-				log.Debugf("doInstall: empty Dpath")
-			}
-			if len(strings.TrimSpace(ss.Name)) > 0 {
-				downloadURL += "/" + ss.Name
-			} else {
-				log.Debugf("doInstall: empty ss.Name")
-			}
-			log.Infof("doInstall: downloadURL: %s", downloadURL)
-
-			if status.IsContainer {
-				status.ContainerURL = downloadURL
-				log.Infof("doUpdate - status.IsContainer: %+v, ContainerURL: %s\n",
-					status.IsContainer, status.ContainerURL)
-			} else {
-				log.Infof("doUpdate - NOT a container\n")
-			}
-			AddOrRefcountDownloaderConfig(ctx, safename, ss, dst, downloadURL,
-				status.IsContainer)
+			AddOrRefcountDownloaderConfig(ctx, safename, sc, ss)
 			ss.HasDownloaderRef = true
 			changed = true
 		}
@@ -546,8 +523,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		case types.DOWNLOADED:
 			// Kick verifier to start if it hasn't already
 			if !ss.HasVerifierRef {
-				if MaybeAddVerifyImageConfig(ctx, safename,
-					ss, true, status.IsContainer) {
+				if MaybeAddVerifyImageConfig(ctx, safename, ss, true) {
 					ss.HasVerifierRef = true
 					changed = true
 				} else {
