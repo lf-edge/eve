@@ -14,7 +14,7 @@ that benefit the community at large, not just code contributions:
 * Fix bugs and add new features
 
 EVE governance is conducted by the Technical Steering Committee (TSC),
-which is currently composed of 22 active members:
+which is currently composed of the following members:
 
 * Allen Wittenauer <aw@effectivemachines.com>
 * Avi Deitcher <avi@deitcher.net>
