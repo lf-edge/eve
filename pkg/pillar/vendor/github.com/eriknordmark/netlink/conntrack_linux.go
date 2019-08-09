@@ -33,6 +33,24 @@ const (
 	seekCurrent = 1
 )
 
+// enum definition for additional CTA values
+// this is temporary define until the enums are
+// upstreamed to "github.com/vishvananda/netlink/nl"
+const (
+    CTA_PROTOINFO      = 4
+    CTA_USE            = 11
+    CTA_ID             = 12
+    CTA_TIMESTAMP      = 20
+)
+
+// enum CTA TIMESTAMP TLVs
+// CTA_TIMESTAMP_START       /* 64bit value */
+// CTA_TIMESTAMP_STOP        /* 64bit value */
+const (
+   CTA_TIMESTAMP_START = 1
+   CTA_TIMESTAMP_STOP = 2
+)
+
 // InetFamily Family type
 type InetFamily uint8
 
@@ -266,9 +284,9 @@ func parseTimeStamp(r *bytes.Reader, readSize uint16) (tstart, tstop uint64) {
 	}
 	for i := 0; i < numTimeStamps; i++ {
 		switch _, t, _ := parseNfAttrTL(r); t {
-		case nl.CTA_TIMESTAMP_START:
+		case CTA_TIMESTAMP_START:
 			parseBERaw64(r, &tstart)
-		case nl.CTA_TIMESTAMP_STOP:
+		case CTA_TIMESTAMP_STOP:
 			parseBERaw64(r, &tstop)
 		default:
 			return
@@ -322,9 +340,9 @@ func parseRawData(data []byte) *ConntrackFlow {
 				s.Forward.Bytes, s.Forward.Packets = parseByteAndPacketCounters(reader)
 			case nl.CTA_COUNTERS_REPLY:
 				s.Reverse.Bytes, s.Reverse.Packets = parseByteAndPacketCounters(reader)
-			case nl.CTA_TIMESTAMP:
+			case CTA_TIMESTAMP:
 				s.TimeStart, s.TimeStop = parseTimeStamp(reader, l)
-			case nl.CTA_PROTOINFO:
+			case CTA_PROTOINFO:
 				reader.Seek(int64(l), seekCurrent)
 			default:
 			}
@@ -334,7 +352,7 @@ func parseRawData(data []byte) *ConntrackFlow {
 				s.Mark = parseConnectionMark(reader)
 			case nl.CTA_TIMEOUT:
 				s.TimeOut = parseTimeOut(reader)
-			case nl.CTA_STATUS, nl.CTA_USE, nl.CTA_ID:
+			case nl.CTA_STATUS, CTA_USE, CTA_ID:
 				reader.Seek(int64(l), seekCurrent)
 			default:
 			}
