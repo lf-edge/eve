@@ -10,7 +10,7 @@ import (
 )
 
 func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
-	ss *types.StorageStatus, ds *types.DatastoreConfig) {
+	sc types.StorageConfig, ss *types.StorageStatus) {
 
 	log.Infof("AddOrRefcountDownloaderConfig for %s\n", safename)
 
@@ -24,13 +24,10 @@ func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
 		log.Debugf("AddOrRefcountDownloaderConfig: add for %s\n",
 			safename)
 		n := types.DownloaderConfig{
+			DatastoreID:      sc.DatastoreId,
 			Safename:         safename,
-			DownloadURL:      ds.Fqdn + "/" + ds.Dpath + "/" + ss.Name,
-			TransportMethod:  ds.DsType,
-			ApiKey:           ds.ApiKey,
-			Password:         ds.Password,
-			Dpath:            ds.Dpath,
-			Region:           ds.Region,
+			Name:             sc.Name,
+			NameIsURL:        sc.NameIsURL,
 			UseFreeMgmtPorts: true,
 			Size:             ss.Size,
 			ImageSha256:      ss.ImageSha256,
@@ -104,8 +101,10 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 		log.Infof("handleDownloaderStatusModify adding RefCount=0 config %s\n",
 			key)
 		n := types.DownloaderConfig{
+			DatastoreID:      status.DatastoreID,
 			Safename:         status.Safename,
-			DownloadURL:      status.DownloadURL,
+			Name:             status.Name,
+			NameIsURL:        status.NameIsURL,
 			UseFreeMgmtPorts: status.UseFreeMgmtPorts,
 			Size:             status.Size,
 			ImageSha256:      status.ImageSha256,

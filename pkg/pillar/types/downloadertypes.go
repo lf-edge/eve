@@ -4,6 +4,7 @@
 package types
 
 import (
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"time"
 )
@@ -11,14 +12,11 @@ import (
 // The key/index to this is the Safename which is allocated by ZedManager.
 // That is the filename in which we store the corresponding json files.
 type DownloaderConfig struct {
+	DatastoreID      uuid.UUID
 	Safename         string
-	DownloadURL      string
+	Name             string
+	NameIsURL        bool // If not we form URL based on datastore info
 	UseFreeMgmtPorts bool
-	TransportMethod  string // Download Method S3/HTTP/SFTP etc.
-	Dpath            string
-	ApiKey           string
-	Password         string
-	Region           string
 	Size             uint64 // In bytes
 	ImageSha256      string // sha256 of immutable image
 	FinalObjDir      string // final Object Store
@@ -49,7 +47,9 @@ type CertConfig struct {
 // The key/index to this is the Safename which comes from DownloaderConfig.
 // That is the filename in which we store the corresponding json files.
 type DownloaderStatus struct {
+	DatastoreID      uuid.UUID
 	Safename         string
+	Name             string
 	ObjType          string
 	PendingAdd       bool
 	PendingModify    bool
@@ -57,7 +57,7 @@ type DownloaderStatus struct {
 	RefCount         uint      // Zero means not downloaded
 	LastUse          time.Time // When RefCount dropped to zero
 	Expired          bool      // Handshake to client
-	DownloadURL      string
+	NameIsURL        bool      // If not we form URL based on datastore info
 	UseFreeMgmtPorts bool
 	ImageSha256      string  // sha256 of immutable image
 	State            SwState // DOWNLOADED etc
@@ -109,4 +109,14 @@ type GlobalDownloadStatus struct {
 	UsedSpace      uint64 // Number of kbytes used in /var/tmp/zedmanager/downloads
 	ReservedSpace  uint64 // Reserved for ongoing downloads
 	RemainingSpace uint64 // MaxSpace - UsedSpace - ReservedSpace
+}
+
+// DatastoreContext : datastore detail
+type DatastoreContext struct {
+	DownloadURL     string
+	TransportMethod string // Download Method S3/HTTP/SFTP etc.
+	Dpath           string
+	APIKey          string
+	Password        string
+	Region          string
 }

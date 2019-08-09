@@ -113,9 +113,8 @@ type AppInstanceStatus struct {
 	PurgeInprogress     Inprogress
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.
-	State            SwState
-	MissingDatastore bool // If some DatastoreId not found
-	MissingNetwork   bool // If some Network UUID not found
+	State          SwState
+	MissingNetwork bool // If some Network UUID not found
 	// All error strings across all steps and all StorageStatus
 	ErrorSource string
 	Error       string
@@ -222,7 +221,6 @@ func RoundupToKB(b uint64) uint64 {
 }
 
 type StorageStatus struct {
-	DatastoreId        uuid.UUID
 	Name               string
 	ImageSha256        string   // sha256 of immutable image
 	Size               uint64   // In bytes
@@ -242,7 +240,6 @@ type StorageStatus struct {
 	Vdev               string  // Allocated
 	ActiveFileLocation string  // Location of filestystem
 	FinalObjDir        string  // Installation dir; may differ from verified
-	MissingDatastore   bool    // If DatastoreId not found
 	Error              string  // Download or verify error
 	ErrorSource        string
 	ErrorTime          time.Time

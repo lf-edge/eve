@@ -20,7 +20,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
-	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -53,7 +52,6 @@ type zedmanagerContext struct {
 	subAppImgDownloadStatus *pubsub.Subscription
 	pubAppImgVerifierConfig *pubsub.Publication
 	subAppImgVerifierStatus *pubsub.Subscription
-	subDatastoreConfig      *pubsub.Subscription
 	subGlobalConfig         *pubsub.Subscription
 	pubUuidToNum            *pubsub.Publication
 }
@@ -172,23 +170,12 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppInstanceConfig.ModifyHandler = handleAppInstanceConfigModify
+	subAppInstanceConfig.ModifyHandler = handleModify
+	subAppInstanceConfig.CreateHandler = handleCreate
 	subAppInstanceConfig.DeleteHandler = handleAppInstanceConfigDelete
 	subAppInstanceConfig.RestartHandler = handleConfigRestart
 	ctx.subAppInstanceConfig = subAppInstanceConfig
 	subAppInstanceConfig.Activate()
-
-	// Look for DatastoreConfig from zedagent
-	// No handlers since we look at collection when we need to
-	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
-		types.DatastoreConfig{}, false, &ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
-	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
-	ctx.subDatastoreConfig = subDatastoreConfig
-	subDatastoreConfig.Activate()
 
 	// Get AppNetworkStatus from zedrouter
 	subAppNetworkStatus, err := pubsub.Subscribe("zedrouter",
@@ -313,9 +300,6 @@ func Run() {
 		case change := <-subAppInstanceConfig.C:
 			subAppInstanceConfig.ProcessChange(change)
 
-		case change := <-subDatastoreConfig.C:
-			subDatastoreConfig.ProcessChange(change)
-
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
 
@@ -398,26 +382,6 @@ func unpublishAppInstanceStatus(ctx *zedmanagerContext,
 	pub.Unpublish(key)
 }
 
-// Determine whether it is an create or modify
-func handleAppInstanceConfigModify(ctxArg interface{}, key string, configArg interface{}) {
-
-	log.Infof("handleAppInstanceConfigModify(%s)\n", key)
-	ctx := ctxArg.(*zedmanagerContext)
-	config := cast.CastAppInstanceConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleAppInstanceConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	status := lookupAppInstanceStatus(ctx, key)
-	if status == nil {
-		handleCreate(ctx, key, config)
-	} else {
-		handleModify(ctx, key, config, status)
-	}
-	log.Infof("handleAppInstanceConfigModify(%s) done\n", key)
-}
-
 func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
@@ -467,8 +431,10 @@ func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInsta
 	return &config
 }
 
-func handleCreate(ctx *zedmanagerContext, key string,
-	config types.AppInstanceConfig) {
+func handleCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	ctx := ctxArg.(*zedmanagerContext)
+	config := cast.CastAppInstanceConfig(configArg)
 
 	log.Infof("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
@@ -514,7 +480,6 @@ func handleCreate(ctx *zedmanagerContext, key string,
 		len(config.StorageConfigList))
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		ss.DatastoreId = sc.DatastoreId
 		ss.Name = sc.Name
 		ss.ImageSha256 = sc.ImageSha256
 		ss.Size = sc.Size
@@ -544,16 +509,12 @@ func handleCreate(ctx *zedmanagerContext, key string,
 	}
 	publishAppInstanceStatus(ctx, &status)
 
-	// If there are no errors, go ahead with Instance creation.
-	if status.Error == "" {
-		handleCreate2(ctx, config, status)
+	// if some error, return
+	if status.Error != "" {
+		return
 	}
 
-}
-
-func handleCreate2(ctx *zedmanagerContext, config types.AppInstanceConfig,
-	status types.AppInstanceStatus) {
-
+	// If there are no errors, go ahead with Instance creation.
 	uuidStr := status.Key()
 	changed := doUpdate(ctx, uuidStr, config, &status)
 	if changed {
@@ -564,8 +525,11 @@ func handleCreate2(ctx *zedmanagerContext, config types.AppInstanceConfig,
 	log.Infof("handleCreate done for %s\n", config.DisplayName)
 }
 
-func handleModify(ctx *zedmanagerContext, key string,
-	config types.AppInstanceConfig, status *types.AppInstanceStatus) {
+func handleModify(ctxArg interface{}, key string,
+	configArg interface{}) {
+	ctx := ctxArg.(*zedmanagerContext)
+	config := cast.CastAppInstanceConfig(configArg)
+	status := lookupAppInstanceStatus(ctx, key)
 	log.Infof("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -795,70 +759,6 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	deviceNetworkStatus = types.DeviceNetworkStatus{}
 	log.Infof("handleDNSDelete done for %s\n", key)
-}
-
-func handleDatastoreConfigModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	ctx := ctxArg.(*zedmanagerContext)
-	config := cast.CastDatastoreConfig(configArg)
-	checkAndRecreateAppInstance(ctx, config.UUID)
-	log.Infof("handleDatastoreConfigModify for %s\n", key)
-}
-
-func handleDatastoreConfigDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Infof("handleDatastoreConfigDelete for %s\n", key)
-}
-
-// Called when a DatastoreConfig is added
-// Walk all BaseOsStatus (XXX Cert?) looking for MissingDatastore, then
-// check if the DatastoreId matches.
-func checkAndRecreateAppInstance(ctx *zedmanagerContext, datastore uuid.UUID) {
-
-	log.Infof("checkAndRecreateAppInstance(%s)\n", datastore.String())
-	pub := ctx.pubAppInstanceStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := cast.CastAppInstanceStatus(st)
-		if !status.MissingDatastore {
-			continue
-		}
-		log.Infof("checkAndRecreateAppInstance(%s) missing for %s\n",
-			datastore.String(), status.DisplayName)
-
-		config := lookupAppInstanceConfig(ctx, status.Key())
-		if config == nil {
-			log.Warnf("checkAndRecreatebaseOs(%s) no config for %s\n",
-				datastore.String(), status.DisplayName)
-			continue
-		}
-
-		matched := false
-		for _, ss := range config.StorageConfigList {
-			if ss.DatastoreId != datastore {
-				continue
-			}
-			log.Infof("checkAndRecreateAppInstance(%s) found ss %s for %s\n",
-				datastore.String(), ss.Name,
-				status.DisplayName)
-			matched = true
-		}
-		if !matched {
-			continue
-		}
-		log.Infof("checkAndRecreateAppInstance(%s) recreating for %s\n",
-			datastore.String(), status.DisplayName)
-		if status.Error != "" {
-			log.Infof("checkAndRecreateAppInstance(%s) remove error %s for %s\n",
-				datastore.String(), status.Error,
-				status.DisplayName)
-			status.Error = ""
-			status.ErrorTime = time.Time{}
-		}
-		handleCreate2(ctx, *config, status)
-	}
 }
 
 func handleGlobalConfigModify(ctxArg interface{}, key string,

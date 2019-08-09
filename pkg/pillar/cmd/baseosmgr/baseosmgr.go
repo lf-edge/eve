@@ -37,7 +37,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"time"
@@ -71,7 +70,6 @@ type baseOsMgrContext struct {
 	subBaseOsConfig          *pubsub.Subscription
 	subZbootConfig           *pubsub.Subscription
 	subCertObjConfig         *pubsub.Subscription
-	subDatastoreConfig       *pubsub.Subscription
 	subBaseOsDownloadStatus  *pubsub.Subscription
 	subCertObjDownloadStatus *pubsub.Subscription
 	subBaseOsVerifierStatus  *pubsub.Subscription
@@ -161,9 +159,6 @@ func Run() {
 		case change := <-ctx.subZbootConfig.C:
 			ctx.subZbootConfig.ProcessChange(change)
 
-		case change := <-ctx.subDatastoreConfig.C:
-			ctx.subDatastoreConfig.ProcessChange(change)
-
 		case change := <-ctx.subBaseOsDownloadStatus.C:
 			ctx.subBaseOsDownloadStatus.ProcessChange(change)
 
@@ -195,13 +190,29 @@ func handleBaseOsConfigModify(ctxArg interface{}, key string, configArg interfac
 		log.Errorf("handleBaseOsConfigModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
 		return
 	}
+	uuidStr := config.Key()
 	status := lookupBaseOsStatus(ctx, key)
 	if status == nil {
-		handleBaseOsCreate(ctx, key, &config)
-	} else {
-		handleBaseOsModify(ctx, key, &config, status)
+		log.Infof("handleBaseOsCreate for %s\n", uuidStr)
+		status := types.BaseOsStatus{
+			UUIDandVersion: config.UUIDandVersion,
+			BaseOsVersion:  config.BaseOsVersion,
+			ConfigSha256:   config.ConfigSha256,
+		}
+
+		status.StorageStatusList = make([]types.StorageStatus,
+			len(config.StorageConfigList))
+
+		for i, sc := range config.StorageConfigList {
+			ss := &status.StorageStatusList[i]
+			ss.Name = sc.Name
+			ss.ImageSha256 = sc.ImageSha256
+			ss.Target = sc.Target
+		}
+		publishBaseOsStatus(ctx, &status)
 	}
-	log.Infof("handleBaseOsConfigModify(%s) done\n", key)
+	handleBaseOsModify(ctx, key, config)
+	log.Infof("handleBaseOsConfigModify(%s) done\n", uuidStr)
 }
 
 func handleBaseOsConfigDelete(ctxArg interface{}, key string,
@@ -218,76 +229,19 @@ func handleBaseOsConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleBaseOsConfigDelete(%s) done\n", key)
 }
 
-// base os config event handlers
-// base os config create event
-func handleBaseOsCreate(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	config := cast.CastBaseOsConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleBaseOsCreate key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	uuidStr := config.Key()
-	ctx := ctxArg.(*baseOsMgrContext)
-
-	log.Infof("handleBaseOsCreate for %s\n", uuidStr)
-	status := types.BaseOsStatus{
-		UUIDandVersion: config.UUIDandVersion,
-		BaseOsVersion:  config.BaseOsVersion,
-		ConfigSha256:   config.ConfigSha256,
-	}
-
-	status.StorageStatusList = make([]types.StorageStatus,
-		len(config.StorageConfigList))
-
-	for i, sc := range config.StorageConfigList {
-		ss := &status.StorageStatusList[i]
-		ss.Name = sc.Name
-		ss.ImageSha256 = sc.ImageSha256
-		ss.Target = sc.Target
-	}
-	handleBaseOsCreate2(ctx, config, status)
-}
-
-func handleBaseOsCreate2(ctx *baseOsMgrContext, config types.BaseOsConfig,
-	status types.BaseOsStatus) {
-
-	// Check image count
-	err := validateBaseOsConfig(ctx, config)
-	if err != nil {
-		errStr := fmt.Sprintf("%v", err)
-		log.Errorln(errStr)
-		status.Error = errStr
-		status.ErrorTime = time.Now()
-		publishBaseOsStatus(ctx, &status)
-		return
-	}
-
-	// Check if the version is already in one of the partions
-	baseOsGetActivationStatus(ctx, &status)
-	publishBaseOsStatus(ctx, &status)
-
-	baseOsHandleStatusUpdate(ctx, &config, &status)
-}
-
 // base os config modify event
-func handleBaseOsModify(ctxArg interface{}, key string,
-	configArg interface{}, statusArg interface{}) {
-	config := cast.CastBaseOsConfig(configArg)
+func handleBaseOsModify(ctx *baseOsMgrContext, key string, config types.BaseOsConfig) {
+
 	if config.Key() != key {
 		log.Errorf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
-	status := cast.CastBaseOsStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
+	status := lookupBaseOsStatus(ctx, key)
+	if status == nil {
+		log.Errorf("handleBaseOsModify status not found, ignored %+v\n", key)
 		return
 	}
-	ctx := ctxArg.(*baseOsMgrContext)
 
 	log.Infof("handleBaseOsModify(%s) for %s Activate %v\n",
 		config.Key(), config.BaseOsVersion, config.Activate)
@@ -299,15 +253,14 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 		log.Errorln(errStr)
 		status.Error = errStr
 		status.ErrorTime = time.Now()
-		publishBaseOsStatus(ctx, &status)
+		publishBaseOsStatus(ctx, status)
 		return
 	}
 
 	// update the version field, uuids being the same
 	status.UUIDandVersion = config.UUIDandVersion
-	publishBaseOsStatus(ctx, &status)
-
-	baseOsHandleStatusUpdate(ctx, &config, &status)
+	publishBaseOsStatus(ctx, status)
+	baseOsHandleStatusUpdate(ctx, &config, status)
 }
 
 // base os config delete event
@@ -464,72 +417,6 @@ func handleVerifierStatusDelete(ctxArg interface{}, key string,
 	// Nothing to do
 }
 
-// data store config modify event
-func handleDatastoreConfigModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.CastDatastoreConfig(configArg)
-	checkAndRecreateBaseOs(ctx, config.UUID)
-	log.Infof("handleDatastoreConfigModify for %s\n", key)
-}
-
-// data store config delete event
-func handleDatastoreConfigDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Infof("handleDatastoreConfigDelete for %s\n", key)
-}
-
-// Called when a DatastoreConfig is added
-// Walk all BaseOsStatus (XXX Cert?) looking for MissingDatastore, then
-// check if the DatastoreId matches.
-func checkAndRecreateBaseOs(ctx *baseOsMgrContext, datastore uuid.UUID) {
-
-	log.Infof("checkAndRecreateBaseOs(%s)\n", datastore.String())
-	pub := ctx.pubBaseOsStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := cast.CastBaseOsStatus(st)
-		if !status.MissingDatastore {
-			continue
-		}
-		log.Infof("checkAndRecreateBaseOs(%s) missing for %s\n",
-			datastore.String(), status.BaseOsVersion)
-
-		config := lookupBaseOsConfig(ctx, status.Key())
-		if config == nil {
-			log.Warnf("checkAndRecreatebaseOs(%s) no config for %s\n",
-				datastore.String(), status.BaseOsVersion)
-			continue
-		}
-
-		matched := false
-		for _, ss := range config.StorageConfigList {
-			if ss.DatastoreId != datastore {
-				continue
-			}
-			log.Infof("checkAndRecreateBaseOs(%s) found ss %s for %s\n",
-				datastore.String(), ss.Name,
-				status.BaseOsVersion)
-			matched = true
-		}
-		if !matched {
-			continue
-		}
-		log.Infof("checkAndRecreateBaseOs(%s) recreating for %s\n",
-			datastore.String(), status.BaseOsVersion)
-		if status.Error != "" {
-			log.Infof("checkAndRecreateBaseOs(%s) remove error %s for %s\n",
-				datastore.String(), status.Error,
-				status.BaseOsVersion)
-			status.Error = ""
-			status.ErrorTime = time.Time{}
-		}
-		handleBaseOsCreate2(ctx, *config, status)
-	}
-}
-
 func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
 }
@@ -646,17 +533,6 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	subZbootConfig.DeleteHandler = handleZbootConfigDelete
 	ctx.subZbootConfig = subZbootConfig
 	subZbootConfig.Activate()
-
-	// Look for DatastorConfig, from zedagent
-	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
-		types.DatastoreConfig{}, false, ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
-	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
-	ctx.subDatastoreConfig = subDatastoreConfig
-	subDatastoreConfig.Activate()
 
 	// Look for CertObjConfig, from zedagent
 	subCertObjConfig, err := pubsub.Subscribe("zedagent",
