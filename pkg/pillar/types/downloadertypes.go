@@ -5,6 +5,7 @@ package types
 
 import (
 	"time"
+
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -30,7 +31,6 @@ type DownloaderConfig struct {
 	Safename         string
 	Name             string
 	NameIsURL        bool // If not we form URL based on datastore info
-	DownloadURL      string
 	IsContainer      bool
 	UseFreeMgmtPorts bool
 	Size             uint64 // In bytes

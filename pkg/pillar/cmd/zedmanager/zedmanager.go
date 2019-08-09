@@ -480,19 +480,10 @@ func handleCreate(ctxArg interface{}, key string,
 		len(config.StorageConfigList))
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		ss.Name = sc.Name
-		ss.ImageSha256 = sc.ImageSha256
-		ss.Size = sc.Size
-		ss.CertificateChain = sc.CertificateChain
-		ss.ImageSignature = sc.ImageSignature
-		ss.SignatureKey = sc.SignatureKey
-		ss.ReadOnly = sc.ReadOnly
-		ss.Preserve = sc.Preserve
-		ss.Format = sc.Format
-		ss.Maxsizebytes = sc.Maxsizebytes
-		ss.Devtype = sc.Devtype
-		ss.Target = sc.Target
-		if ss.Format == "8" {
+		ss.UpdateFromStorageConfig(sc)
+		if ss.IsContainer {
+			// FIXME - We really need a top level flag to tell the app is
+			//  a container. Deriving it from Storage seems hacky.
 			status.IsContainer = true
 		}
 	}
