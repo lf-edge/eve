@@ -36,10 +36,10 @@ import (
 )
 
 const (
-	appImgObj             = "appImg.obj"
-	baseOsObj             = "baseOs.obj"
-	certObj               = "cert.obj"
-	agentName             = "downloader"
+	appImgObj                    = "appImg.obj"
+	baseOsObj                    = "baseOs.obj"
+	certObj                      = "cert.obj"
+	agentName                    = "downloader"
 	persistDir                   = "/persist"
 	objectDownloadDirname        = persistDir + "/downloads"
 	persistRktDataDir            = persistDir + "/rkt"
@@ -1293,7 +1293,13 @@ func constructDatastoreContext(config types.DownloaderConfig, status *types.Down
 	}
 	downloadURL := config.Name
 	if !config.NameIsURL {
-		downloadURL = dst.Fqdn + "/" + dpath + "/" + config.Name
+		downloadURL = dst.Fqdn
+		if len(dpath) > 0 {
+			downloadURL = downloadURL + "/" + dpath
+		}
+		if len(config.Name) > 0 {
+			downloadURL = downloadURL + "/" + config.Name
+		}
 	}
 	dsCtx := types.DatastoreContext{
 		DownloadURL:     downloadURL,
@@ -1369,10 +1375,11 @@ func rktAuthFilename(appName string) string {
 	return persistRktLocalConfigAuthDir + "/rktAuth" + appName + ".json"
 }
 
-func rktCreateAuthFile(config *types.DownloaderConfig) (string, error) {
+func rktCreateAuthFile(config *types.DownloaderConfig,
+	dsCtx types.DatastoreContext) (string, error) {
 
-	if len(strings.TrimSpace(config.ApiKey)) == 0 {
-		log.Debugf("rktCreateAuthFile: empty username. Skipping AuthFile")
+	if len(strings.TrimSpace(dsCtx.APIKey)) == 0 {
+		log.Debugf("rktCreateAuthFile: empty APIKey. Skipping AuthFile")
 		return "", nil
 	}
 
@@ -1388,10 +1395,10 @@ func rktCreateAuthFile(config *types.DownloaderConfig) (string, error) {
 	rktAuth := types.RktAuthInfo{
 		RktKind:    "dockerAuth",
 		RktVersion: "v1",
-		Registries: []string{config.DownloadURL},
+		Registries: []string{dsCtx.DownloadURL},
 		Credentials: types.RktCredentials{
-			User:     config.ApiKey,
-			Password: config.Password,
+			User:     dsCtx.APIKey,
+			Password: dsCtx.Password,
 		},
 	}
 	log.Infof("rktCreateAuthFile: created Auth file %s\n"+
@@ -1411,15 +1418,16 @@ func rktCreateAuthFile(config *types.DownloaderConfig) (string, error) {
 }
 
 func rktFetchContainerImage(ctx *downloaderContext, key string,
-	config types.DownloaderConfig, status *types.DownloaderStatus) error {
+	config types.DownloaderConfig, status *types.DownloaderStatus,
+	dsCtx types.DatastoreContext) error {
 	// update status to DOWNLOAD STARTED
 	status.State = types.DOWNLOAD_STARTED
 	publishDownloaderStatus(ctx, status)
 
 	imageID := ""
 	// Save credentials to Auth file
-	log.Infof("rktFetchContainerImage: fetch  <%s>\n", config.DownloadURL)
-	authFile, err := rktCreateAuthFile(&config)
+	log.Infof("rktFetchContainerImage: fetch  <%s>\n", dsCtx.DownloadURL)
+	authFile, err := rktCreateAuthFile(&config, dsCtx)
 	if err == nil {
 		log.Debugf("rktFetchContainerImage: authFile: %s\n", authFile)
 		// We should really move to have per-fetch directory..
@@ -1428,14 +1436,14 @@ func rktFetchContainerImage(ctx *downloaderContext, key string,
 			localConfigDir = ""
 			log.Infof("rktFetchContainerImage: no Auth File")
 		}
-		imageID, err = rktFetch(config.DownloadURL, localConfigDir)
+		imageID, err = rktFetch(dsCtx.DownloadURL, localConfigDir)
 	} else {
 		log.Errorf("rktCreateAuthFile Failed. err: %+v", err)
 	}
 
 	if err != nil {
 		log.Errorf("rktFetchContainerImage: fetch  Failed. url:%s, "+
-			"authFile: %s, Err: %+v\n", config.DownloadURL, authFile, err)
+			"authFile: %s, Err: %+v\n", dsCtx.DownloadURL, authFile, err)
 		status.PendingAdd = false
 		status.Size = 0
 		status.LastErr = fmt.Sprintf("%v", err)
@@ -1478,15 +1486,16 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	log.Debugf("handleSyncOp: config: %+v", config)
 	log.Debugf("handleSyncOp: IsContainer: %v", config.IsContainer)
+
+	// get the datastore context
+	dsCtx := constructDatastoreContext(config, status, dst)
+
 	if config.IsContainer {
-		rktFetchContainerImage(ctx, key, config, status)
+		rktFetchContainerImage(ctx, key, config, status, *dsCtx)
 		return
 	}
 	locDirname := objectDownloadDirname + "/" + status.ObjType
 	locFilename = locDirname + "/pending"
-
-	// get the datastore context
-	dsCtx := constructDatastoreContext(config, status, dst)
 
 	// update status to DOWNLOAD STARTED
 	status.State = types.DOWNLOAD_STARTED

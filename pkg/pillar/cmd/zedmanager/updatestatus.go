@@ -5,7 +5,6 @@ package zedmanager
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/cast"
@@ -24,6 +23,7 @@ func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
 	log.Infof("updateAIStatusWithStorageSafename for %s - "+
 		"updateContainerImageID: %v, containerImageID: %s\n",
 		safename, updateContainerImageID, containerImageID)
+
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
 	found := false
@@ -44,15 +44,15 @@ func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
 				changed := false
 				if updateContainerImageID &&
 					status.ContainerImageID != containerImageID {
-					log.Debugf("Update AIS ContainerImageID: %s\n",
+					log.Debugf("Update AIS containerImageID: %s\n",
 						containerImageID)
 					status.ContainerImageID = containerImageID
+					ss.ContainerImageID = containerImageID
 					changed = true
 				} else {
 					log.Debugf("No change in ContainerId in Status. "+
 						"status.ContainerImageID: %s, containerImageID: %s\n",
 						status.ContainerImageID, containerImageID)
-
 				}
 				if changed {
 					publishAppInstanceStatus(ctx, &status)
@@ -395,24 +395,11 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			changed = true
 			return changed, false
 		}
-		newSs := types.StorageStatus{
-			Name:             sc.Name,
-			ImageSha256:      sc.ImageSha256,
-			Size:             sc.Size,
-			CertificateChain: sc.CertificateChain,
-			ImageSignature:   sc.ImageSignature,
-			SignatureKey:     sc.SignatureKey,
-			ReadOnly:         sc.ReadOnly,
-			Preserve:         sc.Preserve,
-			Format:           sc.Format,
-			Maxsizebytes:     sc.Maxsizebytes,
-			Devtype:          sc.Devtype,
-			Target:           sc.Target,
-		}
+		newSs := types.StorageStatus{}
+		newSs.UpdateFromStorageConfig(sc)
 		log.Infof("Adding new StorageStatus %v\n", newSs)
 		status.StorageStatusList = append(status.StorageStatusList, newSs)
 		changed = true
-		continue
 	}
 
 	waitingForCerts := false
@@ -445,14 +432,28 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				log.Infof("doUpdate found diff safename %s\n",
 					vs.Safename)
 			}
+			if ss.IsContainer {
+				log.Debugf("doUpdate: Container. ss.ContainerImageID: %s, "+
+					"vs.IsContainer = %t, vs.ContainerImageID: %s\n",
+					ss.ContainerImageID, vs.IsContainer, vs.ContainerImageID)
+				if len(ss.ContainerImageID) == 0 {
+					ss.ContainerImageID = vs.ContainerImageID
+					status.ContainerImageID = vs.ContainerImageID
+				} else {
+					// FIXME: We really should be asserting here..
+					log.Errorf("doUpdate: ss.ContainerImageID (%s) != "+
+						"vs.ContainerImageID(%s)\n",
+						ss.ContainerImageID, vs.ContainerImageID)
+				}
+			}
 			// If we don't already have a RefCount add one
 			if !ss.HasVerifierRef {
 				log.Infof("doUpdate !HasVerifierRef vs. RefCount %d for %s\n",
 					vs.RefCount, vs.Safename)
 				// We don't need certs since Status already
 				// exists
-				MaybeAddVerifyImageConfig(ctx, vs.Safename,
-					ss, false, status.IsContainer)
+				ss.ContainerImageID = vs.ContainerImageID
+				MaybeAddVerifyImageConfig(ctx, vs.Safename, ss, false)
 				ss.HasVerifierRef = true
 				changed = true
 			}
@@ -469,28 +470,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		if !ss.HasDownloaderRef {
 			log.Infof("doUpdate !HasDownloaderRef for %s\n",
 				safename)
-			downloadUrl := dst.Fqdn
-			if len(strings.TrimSpace(dst.Dpath)) > 0 {
-				downloadURL += "/" + dst.Dpath
-			} else {
-				log.Debugf("doInstall: empty Dpath")
-			}
-			if len(strings.TrimSpace(ss.Name)) > 0 {
-				downloadURL += "/" + ss.Name
-			} else {
-				log.Debugf("doInstall: empty ss.Name")
-			}
-			log.Infof("doInstall: downloadURL: %s", downloadURL)
-
-			if status.IsContainer {
-				status.ContainerURL = downloadURL
-				log.Infof("doUpdate - status.IsContainer: %+v, ContainerURL: %s\n",
-					status.IsContainer, status.ContainerURL)
-			} else {
-				log.Infof("doUpdate - NOT a container\n")
-			}
-			AddOrRefcountDownloaderConfig(ctx, safename, ss, dst, downloadURL,
-				status.IsContainer)
+			AddOrRefcountDownloaderConfig(ctx, safename, sc, ss)
 			ss.HasDownloaderRef = true
 			changed = true
 		}
@@ -546,8 +526,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		case types.DOWNLOADED:
 			// Kick verifier to start if it hasn't already
 			if !ss.HasVerifierRef {
-				if MaybeAddVerifyImageConfig(ctx, safename,
-					ss, true, status.IsContainer) {
+				if MaybeAddVerifyImageConfig(ctx, safename, ss, true) {
 					ss.HasVerifierRef = true
 					changed = true
 				} else {
