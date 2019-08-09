@@ -31,7 +31,7 @@ type VerifyImageConfig struct {
 	ImageSignature   []byte   //signature of image
 	SignatureKey     string   //certificate containing public key
 	IsContainer      bool     // Is this Domain for a Container?
-	ContainerImageId bool     // Container Image ID
+	ContainerImageID string   // Container Image ID
 }
 
 func (config VerifyImageConfig) Key() string {
@@ -51,20 +51,21 @@ func (config VerifyImageConfig) VerifyFilename(fileName string) bool {
 // The key/index to this is the Safename which comes from VerifyImageConfig.
 // That is the filename in which we store the corresponding json files.
 type VerifyImageStatus struct {
-	Safename      string
-	ObjType       string
-	PendingAdd    bool
-	PendingModify bool
-	PendingDelete bool
-	IsContainer   bool    // Is this Domain for a Container?
-	ImageSha256   string  // sha256 of immutable image
-	State         SwState // DELIVERED; LastErr* set if failed
-	LastErr       string  // Verification error
-	LastErrTime   time.Time
-	Size          int64
-	RefCount      uint
-	LastUse       time.Time // When RefCount dropped to zero
-	Expired       bool      // Handshake to client
+	Safename         string
+	ObjType          string
+	PendingAdd       bool
+	PendingModify    bool
+	PendingDelete    bool
+	IsContainer      bool    // Is this Domain for a Container?
+	ContainerImageID string  // Container Image ID if IsContainer=true
+	ImageSha256      string  // sha256 of immutable image
+	State            SwState // DELIVERED; LastErr* set if failed
+	LastErr          string  // Verification error
+	LastErrTime      time.Time
+	Size             int64
+	RefCount         uint
+	LastUse          time.Time // When RefCount dropped to zero
+	Expired          bool      // Handshake to client
 }
 
 func (status VerifyImageStatus) Key() string {

@@ -243,6 +243,7 @@ type StorageStatus struct {
 	HasDownloaderRef   bool    // Reference against downloader to clean up
 	HasVerifierRef     bool    // Reference against verifier to clean up
 	IsContainer        bool    // Is the imge a Container??
+	ContainerImageID   string  // Container Image ID if IsContainer=true
 	Vdev               string  // Allocated
 	ActiveFileLocation string  // Location of filestystem
 	FinalObjDir        string  // Installation dir; may differ from verified
@@ -251,7 +252,7 @@ type StorageStatus struct {
 	ErrorTime          time.Time
 }
 
-func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageStatus) {
+func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	ss.Name = sc.Name
 	ss.ImageSha256 = sc.ImageSha256
 	ss.Size = sc.Size

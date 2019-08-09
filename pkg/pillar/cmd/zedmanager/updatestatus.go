@@ -23,6 +23,7 @@ func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
 	log.Infof("updateAIStatusWithStorageSafename for %s - "+
 		"updateContainerImageID: %v, containerImageID: %s\n",
 		safename, updateContainerImageID, containerImageID)
+
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
 	found := false
@@ -43,15 +44,15 @@ func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
 				changed := false
 				if updateContainerImageID &&
 					status.ContainerImageID != containerImageID {
-					log.Debugf("Update AIS ContainerImageID: %s\n",
+					log.Debugf("Update AIS containerImageID: %s\n",
 						containerImageID)
 					status.ContainerImageID = containerImageID
+					ss.ContainerImageID = containerImageID
 					changed = true
 				} else {
 					log.Debugf("No change in ContainerId in Status. "+
 						"status.ContainerImageID: %s, containerImageID: %s\n",
 						status.ContainerImageID, containerImageID)
-
 				}
 				if changed {
 					publishAppInstanceStatus(ctx, &status)
@@ -431,12 +432,27 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				log.Infof("doUpdate found diff safename %s\n",
 					vs.Safename)
 			}
+			if ss.IsContainer {
+				log.Debugf("doUpdate: Container. ss.ContainerImageID: %s, "+
+					"vs.IsContainer = %t, vs.ContainerImageID: %s\n",
+					ss.ContainerImageID, vs.IsContainer, vs.ContainerImageID)
+				if len(ss.ContainerImageID) == 0 {
+					ss.ContainerImageID = vs.ContainerImageID
+					status.ContainerImageID = vs.ContainerImageID
+				} else {
+					// FIXME: We really should be asserting here..
+					log.Errorf("doUpdate: ss.ContainerImageID (%s) != "+
+						"vs.ContainerImageID(%s)\n",
+						ss.ContainerImageID, vs.ContainerImageID)
+				}
+			}
 			// If we don't already have a RefCount add one
 			if !ss.HasVerifierRef {
 				log.Infof("doUpdate !HasVerifierRef vs. RefCount %d for %s\n",
 					vs.RefCount, vs.Safename)
 				// We don't need certs since Status already
 				// exists
+				ss.ContainerImageID = vs.ContainerImageID
 				MaybeAddVerifyImageConfig(ctx, vs.Safename, ss, false)
 				ss.HasVerifierRef = true
 				changed = true
