@@ -1436,14 +1436,14 @@ func rktFetchContainerImage(ctx *downloaderContext, key string,
 			localConfigDir = ""
 			log.Infof("rktFetchContainerImage: no Auth File")
 		}
-		imageID, err = rktFetch(config.DownloadURL, localConfigDir)
+		imageID, err = rktFetch(dsCtx.DownloadURL, localConfigDir)
 	} else {
 		log.Errorf("rktCreateAuthFile Failed. err: %+v", err)
 	}
 
 	if err != nil {
 		log.Errorf("rktFetchContainerImage: fetch  Failed. url:%s, "+
-			"authFile: %s, Err: %+v\n", config.DownloadURL, authFile, err)
+			"authFile: %s, Err: %+v\n", dsCtx.DownloadURL, authFile, err)
 		status.PendingAdd = false
 		status.Size = 0
 		status.LastErr = fmt.Sprintf("%v", err)
