@@ -11,7 +11,7 @@ import "netcmn.proto";
 import "devcommon.proto";
 
 message NetworkConfig {
-  string id = 1;
+  string id = 1; // Deprecate in favor of uuidandversion
   UUIDandVersion uuidandversion = 2;
   NetworkType type = 5;
 

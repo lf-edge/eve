@@ -25,7 +25,7 @@ enum DsType {
 }
 
 message DatastoreConfig {
-  string id = 100;
+  string id = 100; //Deprecate in favor of uuidandversion
 
   UUIDandVersion uuidandversion = 101;
 
