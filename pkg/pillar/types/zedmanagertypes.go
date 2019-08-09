@@ -251,6 +251,25 @@ type StorageStatus struct {
 	ErrorTime          time.Time
 }
 
+func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageStatus) {
+	ss.Name = sc.Name
+	ss.ImageSha256 = sc.ImageSha256
+	ss.Size = sc.Size
+	ss.CertificateChain = sc.CertificateChain
+	ss.ImageSignature = sc.ImageSignature
+	ss.SignatureKey = sc.SignatureKey
+	ss.ReadOnly = sc.ReadOnly
+	ss.Preserve = sc.Preserve
+	ss.Format = sc.Format
+	ss.Maxsizebytes = sc.Maxsizebytes
+	ss.Devtype = sc.Devtype
+	ss.Target = sc.Target
+	if ss.Format == "8" {
+		ss.IsContainer = true
+	}
+	return
+}
+
 // The Intermediate can be a byte sequence of PEM certs
 type SignatureInfo struct {
 	IntermediateCertsPem []byte

@@ -31,6 +31,7 @@ type VerifyImageConfig struct {
 	ImageSignature   []byte   //signature of image
 	SignatureKey     string   //certificate containing public key
 	IsContainer      bool     // Is this Domain for a Container?
+	ContainerImageId bool     // Container Image ID
 }
 
 func (config VerifyImageConfig) Key() string {

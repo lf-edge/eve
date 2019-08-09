@@ -394,24 +394,11 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			changed = true
 			return changed, false
 		}
-		newSs := types.StorageStatus{
-			Name:             sc.Name,
-			ImageSha256:      sc.ImageSha256,
-			Size:             sc.Size,
-			CertificateChain: sc.CertificateChain,
-			ImageSignature:   sc.ImageSignature,
-			SignatureKey:     sc.SignatureKey,
-			ReadOnly:         sc.ReadOnly,
-			Preserve:         sc.Preserve,
-			Format:           sc.Format,
-			Maxsizebytes:     sc.Maxsizebytes,
-			Devtype:          sc.Devtype,
-			Target:           sc.Target,
-		}
+		newSs := types.StorageStatus{}
+		newSs.UpdateFromStorageConfig(sc)
 		log.Infof("Adding new StorageStatus %v\n", newSs)
 		status.StorageStatusList = append(status.StorageStatusList, newSs)
 		changed = true
-		continue
 	}
 
 	waitingForCerts := false

@@ -77,6 +77,7 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, safename string,
 			ImageSignature:   ss.ImageSignature,
 			SignatureKey:     ss.SignatureKey,
 			IsContainer:      ss.IsContainer,
+			ContainerImageId: ss.ContainerImageId,
 		}
 		publishVerifyImageConfig(ctx, &n)
 		log.Debugf("MaybeAddVerifyImageConfig - config: %+v\n", n)
