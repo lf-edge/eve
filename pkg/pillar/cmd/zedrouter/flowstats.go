@@ -183,8 +183,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					//log.Infof("FlowStats: appN %d, appIdx %d not match", appN, appIdx)
 					continue
 				}
-				//aclN := tuple.aclNum
-				//aclN := 3 // XXX before we have the real number, always use this one for now
+
 				tmpMap := instData.ipaclattr[int(appN)]
 				if tmpMap != nil {
 					if _, ok := tmpMap[int(tuple.aclNum)]; !ok {
@@ -355,17 +354,17 @@ func flowMergeProcess(entry *netlink.ConntrackFlow, instData networkAttrs) flowS
 	if !forwSrcApp && !forwDstApp && !backSrcApp && !backDstApp {
 		if len(instData.intfAddrs) > 0 {
 			ipFlow.dbg1 = 6
-			if !IsInMySubnets(entry.Forward.SrcIP, instData.intfAddrs) { // forw src is remote endpoint
+			if !isInMySubnets(entry.Forward.SrcIP, instData.intfAddrs) { // forw src is remote endpoint
 				ipFlow.dbg1 = 7
 				// in this case, if the forw.src is remote, then assume the reverse.src is the app
 				backSrcApp = true
-			} else if !IsInMySubnets(entry.Reverse.SrcIP, instData.intfAddrs) {
+			} else if !isInMySubnets(entry.Reverse.SrcIP, instData.intfAddrs) {
 				ipFlow.dbg1 = 8
 				forwSrcApp = true
-			} else if !IsInMySubnets(entry.Forward.DstIP, instData.intfAddrs) {
+			} else if !isInMySubnets(entry.Forward.DstIP, instData.intfAddrs) {
 				ipFlow.dbg1 = 9
 				backDstApp = true
-			} else if !IsInMySubnets(entry.Reverse.DstIP, instData.intfAddrs) {
+			} else if !isInMySubnets(entry.Reverse.DstIP, instData.intfAddrs) {
 				ipFlow.dbg1 = 10
 				forwDstApp = true
 			}
@@ -434,7 +433,7 @@ func checkAppIPAddr(appAddrs []net.IP, entryIP net.IP) bool {
 }
 
 // check to see if the IP address is on my local subnets
-func IsInMySubnets(faddr net.IP, addrList []net.Addr) bool {
+func isInMySubnets(faddr net.IP, addrList []net.Addr) bool {
 	for _, address := range addrList {
 		if ipnet, ok := address.(*net.IPNet); ok {
 			prefix := faddr.Mask(ipnet.Mask)

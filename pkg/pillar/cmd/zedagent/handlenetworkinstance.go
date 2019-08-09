@@ -786,7 +786,7 @@ func protoEncodeAppFlowMonitorProto(ipflow types.IPFlow) *zflow.FlowMessage {
 		dnsTime := new(timestamp.Timestamp)
 		dnsTime = timeNanoToProto(dns.RequestTime)
 		pdns.RequestTime = dnsTime
-		pdns.AclNum = dns.AclNum
+		pdns.AclNum = dns.ACLNum
 		pflows.DnsReqs = append(pflows.DnsReqs, pdns)
 	}
 
@@ -801,7 +801,7 @@ func sendFlowProtobuf(pflows *zflow.FlowMessage, iteration int) {
 
 	buf := bytes.NewBuffer(data)
 	size := int64(proto.Size(pflows))
-	flowlogURL := serverNameAndPort + "/" + flowlogApi
+	flowlogURL := serverNameAndPort + "/" + flowlogAPI
 	const return400 = false
 	_, _, cf, err := zedcloud.SendOnAllIntf(zedcloudCtx, flowlogURL,
 		size, buf, iteration, return400)
@@ -812,10 +812,10 @@ func sendFlowProtobuf(pflows *zflow.FlowMessage, iteration int) {
 			log.Errorf("FlowStats: sendFlowProtobuf certificate failure")
 		}
 		return
-	} else {
-		log.Infof("Send Flow protobuf out on all intfs")
-		writeSentFlowProtoMessage(data)
 	}
+
+	log.Infof("Send Flow protobuf out on all intfs")
+	writeSentFlowProtoMessage(data)
 }
 
 func timeNanoToProto(timenum int64) *timestamp.Timestamp {

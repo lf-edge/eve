@@ -1626,7 +1626,7 @@ type DNSReq struct {
 	HostName    string
 	Addrs       []net.IP
 	RequestTime int64
-	AclNum      int32
+	ACLNum      int32
 }
 
 // IPFlow :
