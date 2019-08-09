@@ -6,6 +6,7 @@
 package zedrouter
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"strconv"
@@ -36,13 +37,14 @@ type flowStats struct {
 	SendBytes   uint64
 	RecvPkts    uint64
 	RecvBytes   uint64
-	TimeStart   uint64
-	TimeStop    uint64
+	TimeStart   int64
+	TimeStop    int64
 	TimeOut     uint32
 	aclNum      uint32
 	appNum      uint8
 	AppInitiate bool
 	IsTimeOut   bool
+	foundApp    bool
 	dbg1        int
 	dbg2        int
 }
@@ -96,19 +98,15 @@ var devUUID, nilUUID uuid.UUID
 // FlowStatsCollect : Timer fired to collect iptable flow stats
 func FlowStatsCollect(ctx *zedrouterContext) {
 	var instData networkAttrs
-	//ipToName := make(map[string]string)                // an IP to DNS mapping from current flows
+	var timeOutTuples []flowStats
+	var totalFlow int
+	var dnsPacked bool
+
 	instData.ipaclattr = make(map[int]map[int]aclAttr) // App-ID/ACL-Num/aclAttr table
 	instData.appIPAddrs = make(map[int][]net.IP)
 	instData.bnNet = make(map[string]aclAttr) // borrow the aclAttr for intf attributes
 	instData.appNet = make(map[int]uuid.UUID)
 	pub := ctx.pubAppFlowMonitor
-
-	currentEntries := ctx.subNetworkInstanceConfig.GetAll()
-	for key, entry := range currentEntries {
-		config := cast.CastNetworkInstanceConfig(entry)
-		log.Infof("FlowStatsCollect: on NetworkInstance %s (Name: %s) \n",
-			key, config.DisplayName)
-	}
 
 	IntfAddrs, err := net.InterfaceAddrs()
 	if err != nil {
@@ -131,27 +129,10 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 		}
 	}
 
-	checkAppAndACL(ctx, instData)
-
-	idx := 0
-	for appNum := range instData.ipaclattr {
-		for aclNum, val := range instData.ipaclattr[appNum] {
-			log.Infof("@@@FlowStats:ACL postcheck(%d) AppNum %d, aclNum %d, table %s, acl-name %s, action %s",
-				idx, appNum, aclNum, val.tableName, val.aclName, val.action)
-			idx++
-		}
-	}
-	//var Protocols [2]netlink.InetFamily
-	//Protocols[0] = syscall.AF_INET
-	//Protocols[1] = syscall.AF_INET6
-
-	//var flowtmp flowStats // XXX debug
-	var timeOutTuples []flowStats
-	var totalFlow int
-	var dnsPacked bool
-	Protocols := [2]netlink.InetFamily{syscall.AF_INET, syscall.AF_INET6}
+	checkAppAndACL(ctx, &instData)
 
 	// Get IPv4/v6 conntrack table flows
+	Protocols := [2]netlink.InetFamily{syscall.AF_INET, syscall.AF_INET6}
 	for _, proto := range Protocols {
 		connT, err := netlink.ConntrackTableList(netlink.ConntrackTable, proto)
 		if err != nil {
@@ -165,8 +146,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 
 			flowTuple := flowMergeProcess(entry, instData)
 			// flowTuple := FlowMergeTuple(entry, instData, ipToName)
-			if flowTuple.IsTimeOut == false {
-				//log.Infof("FlowStats ++stay++ [%d]: %s\n", i, entry.String()) // XXX remove
+			if flowTuple.IsTimeOut == false || flowTuple.foundApp == false {
 				continue
 			}
 
@@ -180,7 +160,6 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 
 	// per app/bridge packing flow stats to be uploaded
 	for bnx := range instData.bnNet {
-		log.Infof("FlowStats: loop for bnx %s\n", bnx)
 		for appIdx := range instData.appNet {
 
 			scope := types.FlowScope{
@@ -194,8 +173,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 				Scope: scope,
 			}
 
-			log.Infof("FlowStats: == bnx=%s, appidx %d, vif %v, net-uuid %v, app-uuid %v\n",
-				bnx, appIdx, instData.bnNet[bnx].vif, instData.bnNet[bnx].netUUID, instData.appNet[appIdx])
+			log.Infof("FlowStats: bnx=%s, appidx %d\n", bnx, appIdx)
 			// temp print out the flow "tuple" and stats per app/bridge
 			for i, tuple := range timeOutTuples { // search for flowstats by bridge
 				var aclattr aclAttr
@@ -263,11 +241,10 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 				flowdata.Flows = append(flowdata.Flows, flowrec)
 			}
 
-			if len(flowdata.Flows) == 0 {
+			if len(flowdata.Flows) == 0 { // this app/brigde does not match any timedout flow
 				continue
 			}
-			// temp print out DNS to Address Req/Reply
-			// only per bridge snoop for dns
+
 			var dnsrec [2]map[string]dnsEntry
 			dnsrec[0] = make(map[string]dnsEntry) // store IPv4 addresses from dns
 			dnsrec[1] = make(map[string]dnsEntry) // store IPv6 addresses from dns
@@ -302,8 +279,9 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					flowdata.DNSReqs = append(flowdata.DNSReqs, dnsrec)
 				}
 			}
+
 			// flow record done for the bridge/app
-			//flowdata.CastFlowStatus
+			// publish the flow data (per app/bridge) to zedagent now
 			flowKey := scope.UUID.String() + scope.NetUUID.String()
 			pub.Publish(flowKey, &flowdata)
 		}
@@ -338,16 +316,19 @@ func flowMergeProcess(entry *netlink.ConntrackFlow, instData networkAttrs) flowS
 	ipFlow.aclNum = entry.Mark & markMask
 	ipFlow.appNum = uint8(entry.Mark >> appShiftBits)
 	AppNum = int(ipFlow.appNum)
+	if AppNum == 0 { // only handle App related flow stats
+		return ipFlow
+	}
 
-	//AppNum := 1 // XXX hack, = ipFlow.appNum later
-	//ipFlow.appNum = uint8(AppNum)
-	ipFlow.TimeStart = entry.TimeStart
-	ipFlow.TimeStop = entry.TimeStop
+	ipFlow.TimeStart = int64(entry.TimeStart)
+	ipFlow.TimeStop = int64(entry.TimeStop)
 	ipFlow.TimeOut = entry.TimeOut
 	ipFlow.Proto = entry.Forward.Protocol
 	ipFlow.IsTimeOut = true
 
 	// Assume the App has an assigned IP address(es) first
+	// the instData.appIPAddrs has the IP addresses of an App, we want to know
+	// which one of the 4 IP addresses of the flow tuple matches the App IPs
 	if len(instData.appIPAddrs[AppNum]) > 0 {
 		ipFlow.dbg1 = 1
 		forwSrcApp = checkAppIPAddr(instData.appIPAddrs[AppNum], entry.Forward.SrcIP)
@@ -367,6 +348,34 @@ func flowMergeProcess(entry *netlink.ConntrackFlow, instData networkAttrs) flowS
 		}
 	}
 
+	// if failed to get an App IP to match flow tuple, find remote from Intf subnets
+	// and reversely getting the 'app' IP
+	// Find which endpoint of the flow is NOT on my IP subnets, assume that is the
+	// far end, then the reverse flow other end SHOULD be the App on the box
+	if !forwSrcApp && !forwDstApp && !backSrcApp && !backDstApp {
+		if len(instData.intfAddrs) > 0 {
+			ipFlow.dbg1 = 6
+			if !IsInMySubnets(entry.Forward.SrcIP, instData.intfAddrs) { // forw src is remote endpoint
+				ipFlow.dbg1 = 7
+				// in this case, if the forw.src is remote, then assume the reverse.src is the app
+				backSrcApp = true
+			} else if !IsInMySubnets(entry.Reverse.SrcIP, instData.intfAddrs) {
+				ipFlow.dbg1 = 8
+				forwSrcApp = true
+			} else if !IsInMySubnets(entry.Forward.DstIP, instData.intfAddrs) {
+				ipFlow.dbg1 = 9
+				backDstApp = true
+			} else if !IsInMySubnets(entry.Reverse.DstIP, instData.intfAddrs) {
+				ipFlow.dbg1 = 10
+				forwDstApp = true
+			}
+		}
+	}
+
+	// Assume we know which one of the 4 IP addresses is the app, then we know
+	// which 'remote' IP address is in the flow tuple. Assign the Src/Dst and Ports
+	// If the App initiated the traffic, then the forw.src is the App IP, or the reverse.dst
+	// is the App IP
 	if forwSrcApp {
 		ipFlow.dbg2 = 1
 		ipFlow.SrcIP = entry.Forward.SrcIP
@@ -395,12 +404,12 @@ func flowMergeProcess(entry *netlink.ConntrackFlow, instData networkAttrs) flowS
 		ipFlow.AppInitiate = true
 	} else { // if we can not find our App endpoint is part of the flow, something is wrong
 		ipFlow.dbg2 = 5
-		if AppNum > 0 {
-			log.Infof("FlowStats: flow entry can not locate app IP address, appNum %d, %s", AppNum, entry.String())
-		}
+		log.Infof("FlowStats: flow entry can not locate app IP address, appNum %d, %s", AppNum, entry.String())
 		return ipFlow
 	}
 
+	ipFlow.foundApp = true
+	// If App initiated traffic, forw is sending 'OUT', otherwise forw is receiving 'IN'
 	if ipFlow.AppInitiate {
 		ipFlow.SendPkts = entry.Forward.Packets
 		ipFlow.SendBytes = entry.Forward.Bytes
@@ -424,16 +433,33 @@ func checkAppIPAddr(appAddrs []net.IP, entryIP net.IP) bool {
 	return false
 }
 
+// check to see if the IP address is on my local subnets
+func IsInMySubnets(faddr net.IP, addrList []net.Addr) bool {
+	for _, address := range addrList {
+		if ipnet, ok := address.(*net.IPNet); ok {
+			prefix := faddr.Mask(ipnet.Mask)
+			_, addrA, _ := net.ParseCIDR(address.String())
+			if bytes.Compare(addrA.IP, prefix) == 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // print the FlowTuple entries
 func (s *flowStats) String() string {
-	tstart := time.Unix(0, int64(s.TimeStart))
+	tstart := time.Unix(0, s.TimeStart)
 	tout := int32(s.TimeOut)
 	return fmt.Sprintf("TS %v, TO %d(sec), proto %d src=%s dst=%s sport=%d dport=%d, snd=pkts/bytes %d/%d rcv=pkts/bytes %d/%d app-init %v, appNum %d, aclnum %d",
 		tstart, tout, s.Proto, s.SrcIP, s.DstIP, s.SrcPort, s.DstPort, s.SendPkts, s.SendBytes,
 		s.RecvPkts, s.RecvBytes, s.AppInitiate, s.appNum, s.aclNum)
 }
 
-func checkAppAndACL(ctx *zedrouterContext, instData networkAttrs) {
+// for each flow collection run, this function compiles a number of
+// caches for App IP addresses, App List, Bridge List and attributes, and
+// app/aclnum indexed acl information
+func checkAppAndACL(ctx *zedrouterContext, instData *networkAttrs) {
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
 	for _, st := range items {
@@ -442,11 +468,13 @@ func checkAppAndACL(ctx *zedrouterContext, instData networkAttrs) {
 			log.Infof("===FlowStats: (index %d) AppNum %d, VifInfo %v, IP addr %v, Hostname %s\n",
 				i, status.AppNum, ulStatus.VifInfo, ulStatus.AllocatedIPAddr, ulStatus.HostName)
 
+			// build an App-IPaddress cache indexed by App-number
 			if ulStatus.AllocatedIPAddr != "" {
 				tmpIPs := net.ParseIP(ulStatus.AllocatedIPAddr)
 				instData.appIPAddrs[status.AppNum] = append(instData.appIPAddrs[status.AppNum], tmpIPs)
 			}
 
+			// Fill in the bnNet indexed by bridge-name, used for loop through bridges, and Scope
 			ulconfig := ulStatus.UnderlayNetworkConfig
 			intfAttr := aclAttr{
 				vif:     ulStatus.VifInfo.Vif,
@@ -454,19 +482,24 @@ func checkAppAndACL(ctx *zedrouterContext, instData networkAttrs) {
 				netUUID: ulconfig.Network,
 			}
 			instData.bnNet[ulStatus.Bridge] = intfAttr
+
+			// build an App list cache, used for loop through all the Apps
 			if instData.appNet[status.AppNum] == nilUUID {
 				instData.appNet[status.AppNum] = status.UUIDandVersion.UUID
 				log.Infof("===FlowStats: appNet appNum %d, uuid %v\n", status.AppNum, instData.appNet[status.AppNum])
 			}
 
+			// build an acl cache indexed by app/aclnum, from flow MARK, we can get this aclAttr info
 			tmpMap := instData.ipaclattr[status.AppNum]
 			if tmpMap == nil {
 				tmpMap := make(map[int]aclAttr)
 				instData.ipaclattr[status.AppNum] = tmpMap
 			}
 			for _, rule := range ulStatus.ACLRules {
-				//log.Infof(" ==== FlowStats: ACL(%d), rule-ID %d, chain %s, aclname %s, prefix %v, rule %v, action %v\n",
-				//	j, rule.RuleID, rule.ActionChainName, rule.RuleName, rule.Prefix, rule.Rule, rule.Action)
+				if rule.IsUserConfigured == false { // only include user defined rules
+					continue
+				}
+
 				var tempAttr aclAttr
 				tempAttr.aclNum = uint32(rule.RuleID)
 				tempAttr.chainName = rule.ActionChainName
@@ -498,7 +531,7 @@ func DNSMonitor(bn string, bnNum int) {
 		//action      string
 		snapshotLen int32 = 1280             // draft-madi-dnsop-udp4dns-00
 		promiscuous       = true             // mainly for switched network
-		timeout           = 10 * time.Second // collect enough packets in 10sec
+		timeout           = 10 * time.Second // collect enough packets in 10sec before processing
 		handle      *pcap.Handle
 		filter      = "udp and port 53"
 	)

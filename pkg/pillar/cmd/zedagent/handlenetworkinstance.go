@@ -7,10 +7,13 @@ package zedagent
 
 import (
 	"bytes"
+	"github.com/golang/protobuf/ptypes/timestamp"
 	"strings"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
+	zflow "github.com/lf-edge/eve/api/go/flowlog"
 	zinfo "github.com/lf-edge/eve/api/go/info"   // XXX need to stop using
 	zmet "github.com/lf-edge/eve/api/go/metrics" // zinfo and zmet here
 	"github.com/lf-edge/eve/pkg/pillar/cast"
@@ -18,6 +21,8 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
 )
+
+var flowIteration int
 
 func handleNetworkInstanceModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleNetworkInstanceStatusModify(%s)\n", key)
@@ -700,20 +705,20 @@ func publishInfoToZedCloud(UUID string, infoMsg *zinfo.ZInfoMsg, iteration int) 
 func handleAppFlowMonitorModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	log.Infof("FlowStats: handleAppFlowMonitorModify(%s)\n", key)
+	log.Infof("handleAppFlowMonitorModify(%s)\n", key)
 	flows := cast.CastFlowStatus(statusArg)
 	if flows.Key() != key {
 		log.Errorf("handleAppFlowMonitorModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, flows.Key(), flows)
 		return
 	}
-	// print first flow tuple in msg
-	if len(flows.Flows) > 0 {
-		log.Infof("FlowStats: handleAppFlowMonitorModify: src %v, dst %v, srcport %d, dstport %d, proto %d\n",
-			flows.Flows[0].Flow.Src, flows.Flows[0].Flow.Dst, flows.Flows[0].Flow.SrcPort,
-			flows.Flows[0].Flow.DstPort, flows.Flows[0].Flow.Proto)
-	}
-	// publish to zedcloud
+
+	flowIteration++
+	// encoding the flows with protobuf format
+	pflows := protoEncodeAppFlowMonitorProto(flows)
+
+	// send protobuf to zedcloud
+	sendFlowProtobuf(pflows, flowIteration)
 }
 
 func handleAppFlowMonitorDelete(ctxArg interface{}, key string,
@@ -727,4 +732,97 @@ func handleAppFlowMonitorDelete(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleAppFlowMonitorDelete(%s) done\n", key)
+}
+
+func protoEncodeAppFlowMonitorProto(ipflow types.IPFlow) *zflow.FlowMessage {
+
+	pflows := new(zflow.FlowMessage)
+	pflows.DevId = ipflow.DevID.String()
+
+	// ScopeInfo fill in
+	pScope := new(zflow.ScopeInfo)
+	pScope.Uuid = ipflow.Scope.UUID.String()
+	pScope.Intf = ipflow.Scope.Intf
+	pScope.LocalIntf = ipflow.Scope.Localintf
+	pScope.NetInstUUID = ipflow.Scope.NetUUID.String()
+	pflows.Scope = pScope
+
+	// get the ip flows from the input
+	for _, rec := range ipflow.Flows {
+		prec := new(zflow.FlowRecord)
+
+		// IpFlow fill in
+		pIpflow := new(zflow.IpFlow)
+		pIpflow.Src = rec.Flow.Src.String()
+		pIpflow.Dest = rec.Flow.Dst.String()
+		pIpflow.SrcPort = int32(rec.Flow.SrcPort)
+		pIpflow.DestPort = int32(rec.Flow.DstPort)
+		pIpflow.Protocol = int32(rec.Flow.Proto)
+		prec.Flow = pIpflow
+
+		prec.Inbound = rec.Inbound
+		prec.AclId = rec.ACLID
+		// prec.AclName =
+		pStart := new(timestamp.Timestamp)
+		pStart = timeNanoToProto(rec.StartTime)
+		prec.StartTime = pStart
+		pEnd := new(timestamp.Timestamp)
+		pEnd = timeNanoToProto(rec.StopTime)
+		prec.EndTime = pEnd
+		prec.TxBytes = rec.TxBytes
+		prec.TxPkts = rec.TxPkts
+		prec.RxBytes = rec.RxBytes
+		prec.RxPkts = rec.RxPkts
+		pflows.Flows = append(pflows.Flows, prec)
+	}
+
+	// get the ip DNS records from the input
+	for _, dns := range ipflow.DNSReqs {
+		pdns := new(zflow.DnsRequest)
+		pdns.HostName = dns.HostName
+		for _, address := range dns.Addrs {
+			pdns.Addrs = append(pdns.Addrs, address.String())
+		}
+		dnsTime := new(timestamp.Timestamp)
+		dnsTime = timeNanoToProto(dns.RequestTime)
+		pdns.RequestTime = dnsTime
+		pdns.AclNum = dns.AclNum
+		pflows.DnsReqs = append(pflows.DnsReqs, pdns)
+	}
+
+	return pflows
+}
+
+func sendFlowProtobuf(pflows *zflow.FlowMessage, iteration int) {
+	data, err := proto.Marshal(pflows)
+	if err != nil {
+		log.Errorf("FlowStats: SendFlowProtobuf proto marshaling error %v", err) // XXX change to fatal
+	}
+
+	buf := bytes.NewBuffer(data)
+	size := int64(proto.Size(pflows))
+	flowlogURL := serverNameAndPort + "/" + flowlogApi
+	const return400 = false
+	_, _, cf, err := zedcloud.SendOnAllIntf(zedcloudCtx, flowlogURL,
+		size, buf, iteration, return400)
+	if err != nil {
+		// Hopefully next timeout will be more successful
+		log.Errorf("FlowStats: sendFlowProtobuf failed: %s\n", err)
+		if cf {
+			log.Errorf("FlowStats: sendFlowProtobuf certificate failure")
+		}
+		return
+	} else {
+		log.Infof("Send Flow protobuf out on all intfs")
+		writeSentFlowProtoMessage(data)
+	}
+}
+
+func timeNanoToProto(timenum int64) *timestamp.Timestamp {
+	timeProto, _ := ptypes.TimestampProto(time.Unix(0, timenum))
+	return timeProto
+}
+
+func writeSentFlowProtoMessage(contents []byte) {
+	writeProtoMessage("lastflowlog", contents)
 }
