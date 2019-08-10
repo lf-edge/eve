@@ -6,12 +6,13 @@ package vaultmgr
 import (
 	"bytes"
 	"flag"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"os/exec"
+
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -27,7 +28,6 @@ const (
 var (
 	keyFile        = keyDir + "/protector.key"
 	keyctlParams   = []string{"link", "@u", "@s"}
-	gblSetupParams = []string{"setup", "--quiet"}
 	mntPointParams = []string{"setup", mountPoint, "--quiet"}
 	statusParams   = []string{"status", mountPoint}
 	setupParams    = []string{"setup", "--quiet"}
@@ -46,7 +46,7 @@ func execCmd(command string, args ...string) (string, string, error) {
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
-	stdoutStr, stderrStr := string(stdout.Bytes()), string(stderr.Bytes())
+	stdoutStr, stderrStr := stdout.String(), stderr.String()
 	return stdoutStr, stderrStr, err
 }
 
@@ -93,21 +93,21 @@ func stageKey() error {
 	return nil
 }
 
-func unstageKey() error {
+func unstageKey() {
 	//Shred the tmpfs file, and remove it
 	if _, _, err := execCmd("shred", "--remove", keyFile); err != nil {
 		log.Fatalf("Error shredding keyFile: %v", err)
-		return err
+		return
 	}
 	if _, _, err := execCmd("umount", keyDir); err != nil {
 		log.Fatalf("Error unmounting: %v", err)
-		return err
+		return
 	}
 	if _, _, err := execCmd("rm", "-rf", keyDir); err != nil {
 		log.Fatalf("Error removing keyDir: %v", err)
-		return err
+		return
 	}
-	return nil
+	return
 }
 
 //handleFirstUse sets up vault for first time use
@@ -188,5 +188,8 @@ func Run() {
 			log.Fatal("Error in setting up vault:", err)
 			os.Exit(1)
 		}
+	default:
+		log.Errorln("Unknown Argument")
+		os.Exit(1)
 	}
 }
