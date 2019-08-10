@@ -8,9 +8,17 @@
 package downloader
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"net"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -20,24 +28,23 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"net"
-	"os"
-	"strings"
-	"sync"
-	"time"
 )
 
 const (
-	appImgObj             = "appImg.obj"
-	baseOsObj             = "baseOs.obj"
-	certObj               = "cert.obj"
-	agentName             = "downloader"
-	persistDir            = "/persist"
-	objectDownloadDirname = persistDir + "/downloads"
+	appImgObj                    = "appImg.obj"
+	baseOsObj                    = "baseOs.obj"
+	certObj                      = "cert.obj"
+	agentName                    = "downloader"
+	persistDir                   = "/persist"
+	objectDownloadDirname        = persistDir + "/downloads"
+	persistRktDataDir            = persistDir + "/rkt"
+	persistRktLocalConfigDir     = persistDir + "/rktlocal"
+	persistRktLocalConfigAuthDir = persistRktLocalConfigDir + "/auth.d"
 )
 
 // Go doesn't like this as a constant
@@ -596,6 +603,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		Safename:         config.Safename,
 		Name:             config.Name,
 		ObjType:          objType,
+		IsContainer:      config.IsContainer,
 		RefCount:         config.RefCount,
 		LastUse:          time.Now(),
 		UseFreeMgmtPorts: config.UseFreeMgmtPorts,
@@ -1285,7 +1293,13 @@ func constructDatastoreContext(config types.DownloaderConfig, status *types.Down
 	}
 	downloadURL := config.Name
 	if !config.NameIsURL {
-		downloadURL = dst.Fqdn + "/" + dpath + "/" + config.Name
+		downloadURL = dst.Fqdn
+		if len(dpath) > 0 {
+			downloadURL = downloadURL + "/" + dpath
+		}
+		if len(config.Name) > 0 {
+			downloadURL = downloadURL + "/" + config.Name
+		}
 	}
 	dsCtx := types.DatastoreContext{
 		DownloadURL:     downloadURL,
@@ -1296,6 +1310,164 @@ func constructDatastoreContext(config types.DownloaderConfig, status *types.Down
 		Region:          dst.Region,
 	}
 	return &dsCtx
+}
+
+func rktFetch(url string, localConfigDir string) (string, error) {
+	// rkt --insecure-options=image fetch <url> --dir=/persist/rkt --full=true
+	log.Debugf("rktFetch - url: %s ,  localConfigDir:%s\n",
+		url, localConfigDir)
+	cmd := "rkt"
+	args := []string{
+		"--dir=" + persistRktDataDir,
+		"--insecure-options=image",
+		"fetch",
+	}
+	// if len(localConfigDir) > 0 {
+	// 	args = append(args, "--system-config="+persistRktLocalConfigDir)
+	// }
+	args = append(args, url)
+	args = append(args, "--full=true")
+
+	log.Infof("rktFetch - url: %s ,  localConfigDir:%s, args: %+v\n",
+		url, localConfigDir, args)
+
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt fetch failed ", err)
+		log.Errorln("rkt fetch output ", string(stdoutStderr))
+		return "", fmt.Errorf("rkt fetch failed: %s\n",
+			string(stdoutStderr))
+	}
+	log.Infof("rktFetch - image fetch successful. stdoutStderr: %s\n",
+		stdoutStderr)
+	outputStr := string(stdoutStderr)
+	log.Debugf("rktFetch - outputStr: %s\n", outputStr)
+	outputStrArray := strings.Split(outputStr, "\n")
+
+	log.Debugf("rktFetch - outputStrArray:\n")
+	for i, op := range outputStrArray {
+		log.Debugf("index:%d, op:%s", i, op)
+	}
+	log.Debugf("rktFetch - outputStrArray DONE\n")
+
+	// Get ImageID from the oputput. The last line in rkt fetch output
+	// with sha12- is the imageID
+	imageID := ""
+	for i := len(outputStrArray) - 1; i >= 0; i-- {
+		imageID = outputStrArray[i]
+		if strings.HasPrefix(imageID, "sha512-") {
+			break
+		}
+	}
+	log.Infof("rktFetch - imageID: %s\n", imageID)
+	if imageID == "" {
+		errMsg := "rkt fetch: Can't find imageID.\n Fetch Output: " +
+			outputStr
+		return "", errors.New(errMsg)
+	}
+
+	// XXX:FIXME - we should run "rkt image ls" and verify image fetch
+	// went thru without errors.
+	return imageID, nil
+}
+
+func rktAuthFilename(appName string) string {
+	return persistRktLocalConfigAuthDir + "/rktAuth" + appName + ".json"
+}
+
+func rktCreateAuthFile(config *types.DownloaderConfig,
+	dsCtx types.DatastoreContext) (string, error) {
+
+	if len(strings.TrimSpace(dsCtx.APIKey)) == 0 {
+		log.Debugf("rktCreateAuthFile: empty APIKey. Skipping AuthFile")
+		return "", nil
+	}
+
+	err := os.MkdirAll(persistRktLocalConfigAuthDir, 0755)
+	if err != nil {
+		log.Errorf("rktCreateAuthFile: empty username. Skipping AuthFile")
+		return "", fmt.Errorf("Failed create dir %s, "+
+			"err: %+v\n", persistRktLocalConfigAuthDir, err)
+	}
+
+	filename := rktAuthFilename(config.Safename)
+
+	rktAuth := types.RktAuthInfo{
+		RktKind:    "dockerAuth",
+		RktVersion: "v1",
+		Registries: []string{dsCtx.DownloadURL},
+		Credentials: types.RktCredentials{
+			User:     dsCtx.APIKey,
+			Password: dsCtx.Password,
+		},
+	}
+	log.Infof("rktCreateAuthFile: created Auth file %s\n"+
+		"rktAuth: %+v\n", filename, rktAuth)
+
+	file, err := json.MarshalIndent(rktAuth, "", " ")
+	if err != nil {
+		return "", fmt.Errorf("Failed convert rktAuth to json"+
+			"err: %+v\n", err)
+	}
+	err = ioutil.WriteFile(filename, file, 0644)
+	if err != nil {
+		return "", fmt.Errorf("Failed to create Auth file for"+
+			"rkt fetch: %+v\n", err)
+	}
+	return filename, nil
+}
+
+func rktFetchContainerImage(ctx *downloaderContext, key string,
+	config types.DownloaderConfig, status *types.DownloaderStatus,
+	dsCtx types.DatastoreContext) error {
+	// update status to DOWNLOAD STARTED
+	status.State = types.DOWNLOAD_STARTED
+	publishDownloaderStatus(ctx, status)
+
+	imageID := ""
+	// Save credentials to Auth file
+	log.Infof("rktFetchContainerImage: fetch  <%s>\n", dsCtx.DownloadURL)
+	authFile, err := rktCreateAuthFile(&config, dsCtx)
+	if err == nil {
+		log.Debugf("rktFetchContainerImage: authFile: %s\n", authFile)
+		// We should really move to have per-fetch directory..
+		localConfigDir := persistRktLocalConfigDir
+		if len(authFile) == 0 {
+			localConfigDir = ""
+			log.Infof("rktFetchContainerImage: no Auth File")
+		}
+		imageID, err = rktFetch(dsCtx.DownloadURL, localConfigDir)
+	} else {
+		log.Errorf("rktCreateAuthFile Failed. err: %+v", err)
+	}
+
+	if err != nil {
+		log.Errorf("rktFetchContainerImage: fetch  Failed. url:%s, "+
+			"authFile: %s, Err: %+v\n", dsCtx.DownloadURL, authFile, err)
+		status.PendingAdd = false
+		status.Size = 0
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
+		status.RetryCount++
+		publishDownloaderStatus(ctx, status)
+		return err
+	}
+	log.Infof("rktFetchContainerImage successful. imageID: <%s>\n",
+		imageID)
+
+	// Update globalStatus and status
+	unreserveSpace(ctx, status)
+
+	// We do not clear any status.RetryCount, LastErr, etc. The caller
+	// should look at State == DOWNLOADED to determine it is done.
+	status.ContainerImageID = imageID
+	status.ModTime = time.Now()
+	status.PendingAdd = false
+	status.State = types.DOWNLOADED
+	status.Progress = 100 // Just in case
+	publishDownloaderStatus(ctx, status)
+
+	return nil
 }
 
 // Drona APIs for object Download
@@ -1311,11 +1483,19 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		log.Fatalf("handleSyncOp: No ObjType for %s\n",
 			status.Safename)
 	}
-	locDirname := objectDownloadDirname + "/" + status.ObjType
-	locFilename = locDirname + "/pending"
+
+	log.Debugf("handleSyncOp: config: %+v", config)
+	log.Debugf("handleSyncOp: IsContainer: %v", config.IsContainer)
 
 	// get the datastore context
 	dsCtx := constructDatastoreContext(config, status, dst)
+
+	if config.IsContainer {
+		rktFetchContainerImage(ctx, key, config, status, *dsCtx)
+		return
+	}
+	locDirname := objectDownloadDirname + "/" + status.ObjType
+	locFilename = locDirname + "/pending"
 
 	// update status to DOWNLOAD STARTED
 	status.State = types.DOWNLOAD_STARTED

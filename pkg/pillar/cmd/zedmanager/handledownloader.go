@@ -13,6 +13,8 @@ func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
 	sc types.StorageConfig, ss *types.StorageStatus) {
 
 	log.Infof("AddOrRefcountDownloaderConfig for %s\n", safename)
+	log.Infof("AddOrRefcountDownloaderConfig: StorageStatus: %+v\n",
+		*ss)
 
 	m := lookupDownloaderConfig(ctx, safename)
 	if m != nil {
@@ -28,11 +30,13 @@ func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
 			Safename:         safename,
 			Name:             sc.Name,
 			NameIsURL:        sc.NameIsURL,
+			IsContainer:      ss.IsContainer,
 			UseFreeMgmtPorts: true,
 			Size:             ss.Size,
 			ImageSha256:      ss.ImageSha256,
 			RefCount:         1,
 		}
+		log.Infof("AddOrRefcountDownloaderConfig: DownloaderConfig: %+v\n", n)
 		publishDownloaderConfig(ctx, &n)
 	}
 	log.Infof("AddOrRefcountDownloaderConfig done for %s\n",
@@ -105,6 +109,7 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 			Safename:         status.Safename,
 			Name:             status.Name,
 			NameIsURL:        status.NameIsURL,
+			IsContainer:      status.IsContainer,
 			UseFreeMgmtPorts: status.UseFreeMgmtPorts,
 			Size:             status.Size,
 			ImageSha256:      status.ImageSha256,
@@ -121,7 +126,7 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	}
 
 	// Normal update case
-	updateAIStatusSafename(ctx, key)
+	updateAIStatusWithStorageSafename(ctx, key, true, status.ContainerImageID)
 	log.Infof("handleDownloaderStatusModify done for %s\n",
 		status.Safename)
 }
