@@ -41,7 +41,7 @@ const (
 	//TpmPasswdHdl is the well known TPM NVIndex for TPM Credentials
 	TpmPasswdHdl tpmutil.Handle = 0x1600000
 
-	//TpmDiskHdl is the handle for constructing disk encryption key
+	//TpmDiskKeyHdl is the handle for constructing disk encryption key
 	TpmDiskKeyHdl tpmutil.Handle = 0x1700000
 
 	tpmCredentialsFileName = "/config/tpm_credential"
@@ -595,7 +595,7 @@ func Run() {
 	switch os.Args[1] {
 	case "genKey":
 		if err = createDeviceKey(); err != nil {
-			log.Fatal("Error in creating primary key, ", err)
+			log.Errorf("Error in creating primary key: %v ", err)
 			os.Exit(1)
 		}
 	case "readDeviceCert":
