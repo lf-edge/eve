@@ -6,8 +6,8 @@
 USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
-PERSIST_RKT_DIR=$PERSISTDIR/rkt
 PERSISTCONFIGDIR=/persist/config
+PERSIST_RKT_DATA_DIR=$PERSISTDIR/rkt
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
 DPCDIR=$TMPDIR/DevicePortConfig
@@ -24,7 +24,7 @@ TPM_DEVICE_PATH="/dev/tpmrm0"
 PATH=$BINDIR:$PATH
 
 echo "$(date -Ins -u) Starting device-steps.sh"
-echo "$(date -Ins -u) go-provision version: $(cat $BINDIR/versioninfo)"
+echo "$(date -Ins -u) EVE version: $(cat $BINDIR/versioninfo)"
 
 MEASURE=0
 while [ $# != 0 ]; do
@@ -152,7 +152,7 @@ if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
 fi
 
-DIRS="$CONFIGDIR $PERSISTDIR $PERSIST_RKT_DIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
+DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
 
 for d in $DIRS; do
     d1=$(dirname "$d")
@@ -189,6 +189,12 @@ if P3=$(zboot partdev P3) && [ -n "$P3" ]; then
     fi
 else
     echo "$(date -Ins -u) No separate $PERSISTDIR partition"
+fi
+
+if [ ! -d "$PERSIST_RKT_DATA_DIR" ]; then
+    echo "$(date -Ins -u) Create $PERSIST_RKT_DATA_DIR"
+    mkdir -p "$PERSIST_RKT_DATA_DIR"
+    chmod 700 "$PERSIST_RKT_DATA_DIR"
 fi
 
 if [ -f $PERSISTDIR/IMGA/reboot-reason ]; then

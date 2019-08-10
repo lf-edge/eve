@@ -4,8 +4,9 @@
 package types
 
 import (
-	log "github.com/sirupsen/logrus"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // The information XenManager needs to boot and halt domains
@@ -25,6 +26,9 @@ type DomainConfig struct {
 	VifList           []VifInfo
 	IoAdapterList     []IoAdapter
 	CloudInitUserData string // base64-encoded
+	// Container related info
+	IsContainer      bool   // Is this Domain for a Container?
+	ContainerImageID string // SHA-512 of rkt container image
 }
 
 func (config DomainConfig) Key() string {
@@ -84,7 +88,7 @@ type DomainStatus struct {
 	DisplayName        string
 	State              SwState // BOOTING and above?
 	Activated          bool    // XXX remove??
-	AppNum             int
+	AppNum             int     // From networking; makes the name unique
 	PendingAdd         bool
 	PendingModify      bool
 	PendingDelete      bool
@@ -103,6 +107,9 @@ type DomainStatus struct {
 	LastErrTime        time.Time
 	BootFailed         bool
 	AdaptersFailed     bool
+	IsContainer        bool   // Is this Domain for a Container?
+	ContainerImageID   string // SHA-512 of rkt container image
+	PodUUID            string // Pod UUID outputted by rkt
 }
 
 func (status DomainStatus) Key() string {
