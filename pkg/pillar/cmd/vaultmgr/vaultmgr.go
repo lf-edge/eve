@@ -5,6 +5,7 @@ package vaultmgr
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"io/ioutil"
 	"os"
@@ -16,13 +17,14 @@ import (
 )
 
 const (
-	fscryptPath   = "/opt/zededa/bin/fscrypt"
-	keyctlPath    = "/bin/keyctl"
-	mountPoint    = "/persist/"
-	vaultPath     = "/persist/vault"
-	keyDir        = "/TmpVaultDir"
-	protectorName = "TheVaultProtector"
-	vaultKeyLen   = 32 //bytes
+	fscryptPath     = "/opt/zededa/bin/fscrypt"
+	keyctlPath      = "/bin/keyctl"
+	mountPoint      = "/persist/"
+	vaultPath       = "/persist/vault"
+	keyDir          = "/TmpVaultDir"
+	protectorName   = "TheVaultProtector"
+	vaultKeyLen     = 32 //bytes
+	vaultHalfKeyLen = 16 //bytes
 )
 
 var (
@@ -36,6 +38,12 @@ var (
 		"--user=root"}
 	unlockParams = []string{"unlock", vaultPath, "--key=" + keyFile,
 		"--user=root"}
+)
+
+//Error values
+var (
+	ErrNoTpm       = errors.New("No TPM on this system")
+	ErrInvalKeyLen = errors.New("Unexpected key length")
 )
 
 func execCmd(command string, args ...string) (string, string, error) {
@@ -58,6 +66,61 @@ func linkKeyrings() error {
 	return nil
 }
 
+func retrieveTpmKey() ([]byte, error) {
+	var tpmKey []byte
+	var err error
+	if tpmmgr.IsTpmEnabled() {
+		tpmKey, err = tpmmgr.FetchVaultKey()
+		if err != nil {
+			log.Errorf("Error fetching TPM key: %v", err)
+			return nil, err
+		}
+		return tpmKey, nil
+	} else {
+		return nil, ErrNoTpm
+	}
+}
+
+func retrieveCloudKey() ([]byte, error) {
+	//For now, return a dummy key, until controller support is ready.
+	cloudKey := []byte("foobarfoobarfoobarfoobarfoobarfo")
+	return cloudKey, nil
+}
+
+func mergeKeys(key1 []byte, key2 []byte) ([]byte, error) {
+	if len(key1) != vaultKeyLen ||
+		len(key2) != vaultKeyLen {
+		return nil, ErrInvalKeyLen
+	}
+
+	//merge first half of key1 with second half of key2
+	v1 := vaultHalfKeyLen
+	v2 := vaultKeyLen
+	mergedKey := []byte("")
+	mergedKey = append(mergedKey, key1[0:v1]...)
+	mergedKey = append(mergedKey, key2[v1:v2]...)
+	return mergedKey, nil
+}
+
+func deriveVaultKey() ([]byte, error) {
+	//First fetch Cloud Key
+	cloudKey, err := retrieveCloudKey()
+	if err != nil {
+		return nil, err
+	}
+
+	//Next fetch TPM key, if one is available
+	tpmKey, err := retrieveTpmKey()
+	if err == ErrNoTpm {
+		return cloudKey, nil
+	} else if err == nil {
+		return mergeKeys(tpmKey, cloudKey)
+	} else {
+		//TPM is present but still error retriving the key
+		return nil, err
+	}
+}
+
 //stageKey is responsible for talking to TPM and Controller
 //and preparing the key for accessing the vault
 func stageKey() error {
@@ -72,22 +135,12 @@ func stageKey() error {
 		return err
 	}
 
-	//XXX: This section will change once Controller integration is complete.
-	//XXX: For now assumes only TPM part of the key logic
-	var tpmKey []byte
-	var err error
-	if tpmmgr.IsTpmEnabled() {
-		tpmKey, err = tpmmgr.FetchVaultKey()
-		if err != nil {
-			log.Fatalf("Error fetching TPM key: %v", err)
-			return err
-		}
-	} else {
-		//No TPM on this device.
-		tpmKey = make([]byte, vaultKeyLen)
+	vaultKey, err := deriveVaultKey()
+	if err != nil {
+		log.Errorf("Error deriving key for accessing the vault: %v", err)
+		return err
 	}
-
-	if err := ioutil.WriteFile(keyFile, tpmKey, 0700); err != nil {
+	if err := ioutil.WriteFile(keyFile, vaultKey, 0700); err != nil {
 		log.Fatalf("Error creating keyFile: %v", err)
 	}
 	return nil
@@ -110,7 +163,7 @@ func unstageKey() {
 	return
 }
 
-//handleFirstUse sets up vault for first time use
+//handleFirstUse sets up vault for the first time use
 func handleFirstUse() error {
 	//setup fscrypt.conf
 	if _, _, err := execCmd(fscryptPath, setupParams...); err != nil {
