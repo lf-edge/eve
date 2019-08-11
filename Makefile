@@ -8,6 +8,13 @@ PKGBASE=github.com/lf-edge/eve
 GOMODULE=$(PKGBASE)/pkg/pillar
 GOTREE=$(CURDIR)/pkg/pillar
 PROTO_LANGS?=go python
+YETUS_IMG ?= lfedge/eve-yetus:build
+YETUS_OUT ?= $(PWD)/yetus-out
+YETUS_ENV ?= 
+
+ifneq ($(YETUS_ENVFILE),)
+YETUS_ENV := --env-file $(YETUS_ENVFILE)
+endif
 
 APIDIRS = $(shell find ./api/* -maxdepth 1 -type d -exec basename {} \;)
 
@@ -119,6 +126,16 @@ test: $(GOBUILDER) | $(DIST)
 clean:
 	rm -rf $(DIST) pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile \
 	       images/installer.yml images/rootfs.yml
+
+yetus-image:
+	docker build -t $(YETUS_IMG) ./build-tools/src/yetus
+
+yetus: yetus-image
+	@echo Running yetus, results saved to $(YETUS_OUT)
+	@mkdir -p $(YETUS_OUT)
+	@echo "bootstrap" > $(YETUS_OUT)/bootstrap
+	docker run --rm -v $(PWD):/src -v $(YETUS_OUT):/tmp/yetus-out $(YETUS_ENV) $(YETUS_IMG)
+	
 
 build-tools: $(LINUXKIT)
 	@echo Done building $<
@@ -309,6 +326,8 @@ help:
 	@echo "   proto          generates Go and Python source from protobuf API definitions"
 	@echo "   proto-vendor   update vendored API in packages that require it (e.g. pkg/pillar)"
 	@echo "   shell          drop into docker container setup for Go development"
+	@echo "   yetus-image    build the yetus lint and format validation docker image"
+	@echo "   yetus          reun yetus lint and format validation"
 	@echo
 	@echo "Commonly used build targets:"
 	@echo "   build-tools    builds linuxkit and manifest-tool utilities under build-tools/bin"

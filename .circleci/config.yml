@@ -44,18 +44,7 @@ jobs:
     docker:
       - image: apache/yetus:master
     steps:
-      - run:
-          name: update package cache
-          command: apt-get -q update
-      - run:
-          name: install libpcap-dev
-          command: apt-get -q install --no-install-recommends -y libpcap-dev
-      - run:
-          name: upgrade golangci-lint
-          command: >
-                    go get
-                    github.com/golangci/golangci-lint/cmd/golangci-lint@692dacb773b703162c091c2d8c59f9cd2d6801db
-                    && mv /root/go/bin/golangci-lint /usr/local/bin
+      - setup_remote_docker
       - checkout
       # create a fake artifact so that Apache Yetus knows the URL
       - run:
@@ -69,22 +58,8 @@ jobs:
       - run:
           name: yetus
           command: >
-            test-patch
-            --build-tool=nobuild
-            --plugins=all,-asflicense,-shelldocs,-gitlab
-            --patch-dir=/tmp/yetus-out
-            --whitespace-tabs-ignore-list='.*Makefile.*','.*\.go','.*\.dts','.*\.md'
-            --html-report-file=/tmp/yetus-out/report.html
-            --console-report-file=/tmp/yetus-out/console.txt
-            --brief-report-file=/tmp/yetus-out/brief.txt
-            --excludes=.yetus-excludes
-            --ignore-unknown-options=true
-            --revive-config=.revive.toml
-            --linecomments=''
-            --bugcomments=briefreport,htmlout,junit
-            --junit-report-xml=/tmp/yetus-out/results.xml
-            --tests-filter=checkmake,golang,golangcilint
-            --continuous-improvement=true
+            env | awk -F= '{print $1}'| grep -v '^\(_\|-\)' > /tmp/yetus-env;
+            make yetus YETUS_ENVFILE=/tmp/yetus-env YETUS_OUT=/tmp/yetus-out
       - store_test_results:
           path: /tmp/yetus-out
       - store_artifacts:
