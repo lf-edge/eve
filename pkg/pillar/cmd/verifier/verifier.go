@@ -725,14 +725,15 @@ func handleCreate(ctx *verifierContext, objType string,
 	}
 
 	status := types.VerifyImageStatus{
-		Safename:    config.Safename,
-		ObjType:     objType,
-		ImageSha256: config.ImageSha256,
-		PendingAdd:  true,
-		State:       types.DOWNLOADED,
-		RefCount:    config.RefCount,
-		LastUse:     time.Now(),
-		IsContainer: config.IsContainer,
+		Safename:         config.Safename,
+		ObjType:          objType,
+		ImageSha256:      config.ImageSha256,
+		PendingAdd:       true,
+		State:            types.DOWNLOADED,
+		RefCount:         config.RefCount,
+		LastUse:          time.Now(),
+		IsContainer:      config.IsContainer,
+		ContainerImageID: config.ContainerImageID,
 	}
 	publishVerifyImageStatus(ctx, &status)
 
