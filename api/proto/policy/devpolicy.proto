@@ -37,7 +37,7 @@ option java_package = "com.zededa.cloud.uservice.proto";
 // For device, the sensitive data will be stored in encrypted
 // cyphertext in the storage.
 //
-// For applications, a separate directory/vault will be 
+// For applications, a separate directory/vault will be
 // created, which will be encrypted using available filesystem
 // encryption technologies, viz., aes256, adiantum, luks etc.
 //
@@ -50,8 +50,8 @@ option java_package = "com.zededa.cloud.uservice.proto";
 
 // UUID/Version structure
 message UUIDandVersion {
-	string uuid = 1;
-	string version = 2;
+    string uuid = 1;
+    string version = 2;
 }
 // data at rest encryption policy type
 // can be one of the following types,
