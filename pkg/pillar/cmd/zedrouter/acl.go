@@ -532,8 +532,6 @@ func aclDropRules(aclArgs types.AppNetworkACLArgs) (types.IPTablesRuleList, erro
 	// for this application instance.
 	switch aclArgs.NIType {
 	case types.NetworkInstanceTypeLocal:
-		fallthrough
-	case types.NetworkInstanceTypeSwitch:
 		aclRule3.Table = "mangle"
 		aclRule3.Chain = "PREROUTING"
 		aclRule3.Rule = []string{"-i", aclArgs.BridgeName}
