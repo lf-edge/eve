@@ -855,6 +855,8 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 				" programmed due to ACL ID allocation failure",
 				aclRule4.Table, aclRule4.Chain, aclRule4.Rule, aclRule4.Action)
 		}
+	case types.NetworkInstanceTypeCloud:
+		fallthrough
 	case types.NetworkInstanceTypeSwitch:
 		if aclRule4.RuleID != -1 {
 			aclRule4.Table = "mangle"
@@ -879,8 +881,10 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 			for _, uplink := range aclArgs.UpLinks {
 				aclRule3.Table = "mangle"
 				aclRule3.Chain = "PREROUTING"
-				aclRule3.Rule = append(aclRule3.Rule, "-m", "physdev",
-					"--physdev-in", uplink)
+				if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
+					aclRule3.Rule = append(aclRule3.Rule, "-m", "physdev",
+						"--physdev-in", uplink)
+				}
 				aclRule3.IsMarkingRule = true
 				chainName := fmt.Sprintf("%s-%s-%d",
 					aclArgs.BridgeName, aclArgs.VifName, aclRule3.RuleID)
