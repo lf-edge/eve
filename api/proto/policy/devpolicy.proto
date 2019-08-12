@@ -1,0 +1,153 @@
+// Copyright(c) 2017-2019 Zededa, Inc.
+// All rights reserved.
+
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+option go_package  = "github.com/lf-edge/eve/api/go/policy";
+option java_package = "com.zededa.cloud.uservice.proto";
+
+//  PolicyRequest:
+//     on bootup, after the validation of onboarding steps,
+//     device will perform a get request over /<>/policy
+//     for receiving the encryption policies and parameters for the device
+//
+//  PolicyResponse:
+//     Constitutes set of parameters that define device policy
+//     Mainly the encryption policies and parameters
+//
+
+// Security policy can be,
+//       - data at transit (for device)
+//       - data at rest (for device and applications)
+//
+// Data at transit encryption is for datastore access credentials.
+// --------------------------
+// The datastore access credentials will be encrypted by the controller,
+// using device cert, when sent to the device. The device will decrypt
+// them using the private key.
+//
+// Data at rest encryption is applicable to the following information,
+// -----------------------
+//    - for the device (access credentials, for data stores)
+//    - for the applications (mutable images containing business
+//          sensitive information)
+//
+// For device, the sensitive data will be stored in encrypted
+// cyphertext in the storage.
+//
+// For applications, a separate directory/vault will be 
+// created, which will be encrypted using available filesystem
+// encryption technologies, viz., aes256, adiantum, luks etc.
+//
+// The data at rest security will be driven using a set of policies
+// covering, the following aspects
+//     - encryption scheme(none, aes256, adiantum,..)
+//     - data handling policy(data handling across policy change)
+//     - offline activation policy(none, usb, keyboard,...)
+//     - key rotation policy(none, rotate, rotation period)
+
+// UUID/Version structure
+message UUIDandVersion {
+	string uuid = 1;
+	string version = 2;
+}
+// data at rest encryption policy type
+// can be one of the following types,
+enum EspPolicyType {
+    ESP_POLICY_NONE = 0;
+    ESP_POLICY_AES256 = 1;
+    ESP_POLICY_ADIANTUM = 2;
+    ESP_POLICY_LAST = 255;
+}
+
+// the following policies are affective,
+// only when the EspPolicy is not set to None
+
+// when the device is offline on bootup,
+// whether the device activation is allowed,
+// through some USB Key, Keyboard or, None
+enum OfflinePolicyType {
+    OFFLINE_POLICY_NONE = 0;
+    OFFLINE_POLICY_USBKEY = 1;
+    OFFLINE_POLICY_KEYBOARD = 2;
+    OFFLINE_POLICY_LAST = 255;
+}
+
+// data handling policy
+// specifies, how the data is going to be handled
+// across security policy change or, compromised device
+// detection
+enum DataPolicyType {
+    DATA_POLICY_NONE = 0;
+    DATA_POLICY_RETAIN = 1;  // on policy change
+    DATA_POLICY_DESTROY = 2; // on policy change or,
+                            // compromised device detection
+    DATA_POLICY_LAST = 255;
+}
+
+// specifies, whether keys are rotated
+enum KeyPolicyType {
+    KEY_POLICY_NONE = 0;
+    KEY_POLICY_ROTATE = 1;
+    KEY_POLICY_LAST = 255;
+}
+
+message EspPolicyInfo {
+    EspPolicyType type = 1;
+}
+
+message DataPolicyInfo {
+    DataPolicyType type = 1;
+}
+
+message OfflinePolicyInfo {
+    OfflinePolicyType type = 1;
+    uint64            timeLimit = 2; // in seconds
+}
+
+// Key management policy information
+message KeyPolicyInfo {
+    KeyPolicyType  type = 1;
+    uint64         pollInterval = 2;
+    uint64         rotationInterval = 3;
+}
+
+message KeyInfo {
+    bool   enabled = 1;
+    string key = 2;        // key in hexadecimal string
+    google.protobuf.Timestamp createTime = 3;
+}
+
+//  data at rest security policy information
+//    - policy type
+//    - key rotation policy
+//    - data handling policy
+//    - offline access policy
+message DataAtRestPolicy {
+    EspPolicyInfo      espPolicy = 1;
+    DataPolicyInfo     dataPolicy = 2;
+    OfflinePolicyInfo  offlinePolicy = 3;
+    KeyPolicyInfo      keyPolicy = 4;
+    repeated KeyInfo   keyInfo = 5;
+}
+
+// Encryption for data at transit: enabled or, not
+// Based on this parameter,  data from controller will be
+// encrypted using device cert.  Accordingly, device will
+// decrypt using the private key
+message DataAtTransitPolicy {
+    bool enabled = 1;
+}
+
+// devicePolicy
+//  - contains encryption policy information
+message devicePolicyInfo {
+    UUIDandVersion id = 1; // device uuid
+    google.protobuf.Timestamp lastupdate = 2; // last update time stamp
+
+    // security policies
+    DataAtRestPolicy    dataAtRestPolicyInfo = 3;
+    DataAtTransitPolicy dataAtTransitPolicyInfo = 4;
+}

@@ -183,6 +183,13 @@ enum HwSecurityModuleStatus {
     ENABLED  = 3;  //HSM is found and being actively used
 }
 
+enum DeviceEncryptionStatus {
+    ESP_TYPE_NONE = 0;        // Data is not encrypted
+    ESP_TYPE_RESTDATA = 1;    // Data at rest encryption enabled
+    ESP_TYPE_TRANSITDATA = 2; // Data at transit encryption enabled
+    ESP_TYPE_ALLDATA = 3;     // All sesitive data is encrypted
+}
+
 // Base device info, as discovered by Xen (or OS on bare metal)
 message ZInfoDevice {
   string machineArch = 4;
@@ -214,6 +221,7 @@ message ZInfoDevice {
   HwSecurityModuleStatus HSMStatus = 26; //State of hardware security modules, like TPM
   string HSMInfo = 27; //Information about HSM like TPM vendor, TEE type etc.
   string lastRebootStack = 28;
+  DeviceEncryptionStatus DataEncryptionStatus = 29; // data encryption status
 }
 
 // The current and fallback system adapter information
