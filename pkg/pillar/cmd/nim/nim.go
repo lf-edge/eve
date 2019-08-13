@@ -84,7 +84,7 @@ func (ctx *nimContext) processArgs() {
 	ctx.version = *versionPtr
 }
 
-func waitForDeviceNetworkConfigFile() string {
+func getDeviceNetworkConfigFile() string {
 	model := hardware.GetHardwareModel()
 
 	// To better handle new hardware platforms log and blink if we
@@ -93,29 +93,17 @@ func waitForDeviceNetworkConfigFile() string {
 	// and wwan0
 	// If we have a DevicePortConfig/override.json we proceed
 	// without a DNCFilename!
-	tries := 0
 	if fileExists(DPCOverride) {
 		model = "default"
 		return model
 	}
-	for {
-		DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
-		_, err := os.Stat(DNCFilename)
-		if err == nil {
-			break
-		}
-		// Tell the world that we have issues
-		types.UpdateLedManagerConfig(11)
-		log.Warningln(err)
-		log.Warningf("You need to create this file for this hardware: %s\n",
-			DNCFilename)
-		time.Sleep(time.Second)
-		tries++
-		if tries == 120 { // Two minutes
-			log.Infof("Falling back to using hardware model default\n")
-			model = "default"
-		}
+	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
+	_, err := os.Stat(DNCFilename)
+	if err == nil {
+		return model
 	}
+	log.Infof("Falling back to using hardware model default\n")
+	model = "default"
 	return model
 }
 
@@ -154,7 +142,7 @@ func Run() {
 	stillRunning := time.NewTicker(25 * time.Second)
 	agentlog.StillRunning(agentName)
 
-	model := waitForDeviceNetworkConfigFile()
+	model := getDeviceNetworkConfigFile()
 
 	// Make sure we have a GlobalConfig file with defaults
 	types.EnsureGCFile()
