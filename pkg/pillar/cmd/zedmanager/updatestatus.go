@@ -36,23 +36,27 @@ func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
 		}
 		log.Debugf("Processing AppInstanceConfig for UUID %s\n",
 			status.UUIDandVersion.UUID)
-		for _, ss := range status.StorageStatusList {
-			safename2 := types.UrlToSafename(ss.Name, ss.ImageSha256)
+		for ssIndx := range status.StorageStatusList {
+			ssPtr := &status.StorageStatusList[ssIndx]
+			safename2 := types.UrlToSafename(ssPtr.Name, ssPtr.ImageSha256)
 			if safename == safename2 {
 				log.Infof("Found StorageStatus URL %s safename %s\n",
-					ss.Name, safename)
+					ssPtr.Name, safename)
 				changed := false
-				if updateContainerImageID &&
-					status.ContainerImageID != containerImageID {
-					log.Debugf("Update AIS containerImageID: %s\n",
-						containerImageID)
-					status.ContainerImageID = containerImageID
-					ss.ContainerImageID = containerImageID
-					changed = true
-				} else {
-					log.Debugf("No change in ContainerId in Status. "+
-						"status.ContainerImageID: %s, containerImageID: %s\n",
-						status.ContainerImageID, containerImageID)
+				if updateContainerImageID {
+					if status.ContainerImageID != containerImageID {
+						log.Debugf("Update AIS containerImageID: %s\n",
+							containerImageID)
+						status.ContainerImageID = containerImageID
+						ssPtr.ContainerImageID = containerImageID
+						changed = true
+					} else {
+						log.Debugf("No change in ContainerId in Status. "+
+							"status.ContainerImageID: %s, containerImageID: %s, "+
+							"ssPtr.ContainerImageID: %s\n",
+							status.ContainerImageID, containerImageID,
+							ssPtr.ContainerImageID)
+					}
 				}
 				if changed {
 					publishAppInstanceStatus(ctx, &status)
@@ -420,39 +424,38 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		if vs != nil && (vs.State == types.DELIVERED || vs.State == types.DOWNLOADED) {
 			switch vs.State {
 			case types.DELIVERED:
-				log.Infof("doUpdate found verified image for %s sha %s\n",
+				log.Infof("doInstall found verified image for %s sha %s\n",
 					safename, ss.ImageSha256)
 
 			case types.DOWNLOADED:
-				log.Infof("doUpdate found downloaded/verified image for %s sha %s\n",
+				log.Infof("doInstall found downloaded/verified image for %s sha %s\n",
 					safename, ss.ImageSha256)
 			}
 			if vs.Safename != safename {
 				// If found based on sha256
-				log.Infof("doUpdate found diff safename %s\n",
+				log.Infof("doInstall found diff safename %s\n",
 					vs.Safename)
 			}
 			if ss.IsContainer {
-				log.Debugf("doUpdate: Container. ss.ContainerImageID: %s, "+
+				log.Debugf("doInstall: Container. ss.ContainerImageID: %s, "+
 					"vs.IsContainer = %t, vs.ContainerImageID: %s\n",
 					ss.ContainerImageID, vs.IsContainer, vs.ContainerImageID)
 				if len(ss.ContainerImageID) == 0 {
 					ss.ContainerImageID = vs.ContainerImageID
 					status.ContainerImageID = vs.ContainerImageID
+					changed = true
 				} else {
 					// FIXME: We really should be asserting here..
-					log.Errorf("doUpdate: ss.ContainerImageID (%s) != "+
+					log.Errorf("doInstall: ss.ContainerImageID (%s) != "+
 						"vs.ContainerImageID(%s)\n",
 						ss.ContainerImageID, vs.ContainerImageID)
 				}
 			}
 			// If we don't already have a RefCount add one
 			if !ss.HasVerifierRef {
-				log.Infof("doUpdate !HasVerifierRef vs. RefCount %d for %s\n",
+				log.Infof("doInstall !HasVerifierRef vs. RefCount %d for %s\n",
 					vs.RefCount, vs.Safename)
-				// We don't need certs since Status already
-				// exists
-				ss.ContainerImageID = vs.ContainerImageID
+				// We don't need certs since Status already exists
 				MaybeAddVerifyImageConfig(ctx, vs.Safename, ss, false)
 				ss.HasVerifierRef = true
 				changed = true
@@ -468,7 +471,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			continue
 		}
 		if !ss.HasDownloaderRef {
-			log.Infof("doUpdate !HasDownloaderRef for %s\n",
+			log.Infof("doInstall !HasDownloaderRef for %s\n",
 				safename)
 			AddOrRefcountDownloaderConfig(ctx, safename, sc, ss)
 			ss.HasDownloaderRef = true

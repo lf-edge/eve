@@ -19,6 +19,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/logmanager"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/nim"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/verifier"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/waitforaddr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/wstunnelclient"
@@ -72,6 +73,8 @@ func main() {
 		conntrack.Run()
 	case "tpmmgr":
 		tpmmgr.Run()
+	case "vaultmgr":
+		vaultmgr.Run()
 	default:
 		fmt.Printf("Unknown package: %s\n", basename)
 	}
