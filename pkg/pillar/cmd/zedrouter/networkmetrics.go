@@ -77,17 +77,17 @@ func getNetworkMetrics(ctx *zedrouterContext) types.NetworkMetrics {
 		// Packets matching the default DROP rule also match the default LOG rule.
 		// Since we will not have the default DROP rule, we can copy statistics
 		// from default LOG rule as DROP statistics.
-		metric.TxAclDrops = iptables.GetIpRuleAclDrop(ac, bridgeName, vifName,
+		metric.TxAclDrops = iptables.GetIPRuleAclDrop(ac, bridgeName, vifName,
 			ipVer, inout)
 		metric.TxAclDrops += iptables.GetIPRuleACLLog(ac, bridgeName, vifName,
 			ipVer, inout)
-		metric.RxAclDrops = iptables.GetIpRuleAclDrop(ac, bridgeName, vifName,
+		metric.RxAclDrops = iptables.GetIPRuleAclDrop(ac, bridgeName, vifName,
 			ipVer, !inout)
 		metric.RxAclDrops += iptables.GetIPRuleACLLog(ac, bridgeName, vifName,
 			ipVer, !inout)
-		metric.TxAclRateLimitDrops = iptables.GetIpRuleAclRateLimitDrop(ac,
+		metric.TxAclRateLimitDrops = iptables.GetIPRuleAclRateLimitDrop(ac,
 			bridgeName, vifName, ipVer, inout)
-		metric.RxAclRateLimitDrops = iptables.GetIpRuleAclRateLimitDrop(ac,
+		metric.RxAclRateLimitDrops = iptables.GetIPRuleAclRateLimitDrop(ac,
 			bridgeName, vifName, ipVer, !inout)
 		metrics = append(metrics, metric)
 	}

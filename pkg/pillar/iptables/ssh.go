@@ -15,7 +15,24 @@ import (
 
 // ControlProtocolMarkingIDMap : Map describing the control flow
 // marking values that we intend to use.
-var ControlProtocolMarkingIDMap map[string]string
+var ControlProtocolMarkingIDMap = map[string]string{
+	// INPUT flows for HTTP, SSH & GUACAMOLE
+	"in_http_ssh_guacamole": "1",
+	// INPUT flows for VNC
+	"in_vnc": "2",
+	// INPUT flows for Lisp destination ports 4341, 4342
+	"in_lisp_dports": "3",
+	// INPUT flows for Lisp source ports 4341, 4342
+	"in_lisp_sports": "4",
+	// OUTPUT flows for all types
+	"out_all": "5",
+	// App initiated UCP flows towards dom0 for DHCP, DNS
+	"app_udp_dhcp_dns": "6",
+	// App initiated TCP flows towards dom0 for DNS
+	"app_tcp_dns": "7",
+	// VPN control packets
+	"in_vpn_control": "8",
+}
 
 func UpdateSshAccess(enable bool, first bool) {
 
@@ -109,25 +126,6 @@ func dropPortRange(startPort int, endPort int) {
 // connections with markings from reserved space and let the ACLs
 // in INPUT chain make the ACCEPT/DROP/REJECT decisions.
 func markControlFlows() {
-	ControlProtocolMarkingIDMap = map[string]string{
-		// INPUT flows for HTTP, SSH & GUACAMOLE
-		"in_http_ssh_guacamole": "1",
-		// INPUT flows for VNC
-		"in_vnc": "2",
-		// INPUT flows for Lisp destination ports 4341, 4342
-		"in_lisp_dports": "3",
-		// INPUT flows for Lisp source ports 4341, 4342
-		"in_lisp_sports": "4",
-		// OUTPUT flows for all types
-		"out_all": "5",
-		// App initiated UCP flows towards dom0 for DHCP, DNS
-		"app_udp_dhcp_dns": "6",
-		// App initiated TCP flows towards dom0 for DNS
-		"app_tcp_dns": "7",
-		// VPN control packets
-		"in_vpn_control": "8",
-	}
-
 	// Mark HTTP, ssh and guacamole packets
 	// Pick flow marking values 1, 2, 3 from the reserved space.
 	portStr := "8080,22,4822"

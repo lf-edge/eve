@@ -39,6 +39,7 @@ const (
 	runDirname    = "/var/run/zedrouter"
 	tmpDirname    = "/var/tmp/zededa"
 	DataPlaneName = "lisp-ztr"
+	DropMarkValue = 0xFFFFFFFF
 )
 
 // Set from Makefile
@@ -132,7 +133,7 @@ func Run() {
 	pubUuidToNum.ClearRestarted()
 
 	// Create the dummy interface used to re-direct DROP/REJECT packets.
-	createFlowMonDummyInterface(0xFFFFFFFF)
+	createFlowMonDummyInterface(DropMarkValue)
 
 	// Pick up (mostly static) AssignableAdapters before we process
 	// any Routes; Pbr needs to know which network adapters are assignable
