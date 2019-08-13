@@ -83,7 +83,7 @@ func handleSignals(sigs chan os.Signal) {
 func printStack() {
 	stacks := getStacks(false)
 	log.Errorf("fatal stack trace:\n%v\n", stacks)
-	RebootReason("fatal: agent exit")
+	RebootReason(fmt.Sprintf("fatal: agent %s exit", savedAgentName))
 	RebootStack(stacks)
 }
 
