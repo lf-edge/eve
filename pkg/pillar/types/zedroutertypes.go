@@ -1605,6 +1605,7 @@ type FlowScope struct {
 	Intf      string
 	Localintf string
 	NetUUID   uuid.UUID
+	Sequence  string // used internally for limit and pkt size per app/bn
 }
 
 // FlowRec :
@@ -1639,5 +1640,5 @@ type IPFlow struct {
 
 // Key :
 func (flows IPFlow) Key() string {
-	return flows.Scope.UUID.String() + flows.Scope.NetUUID.String()
+	return flows.Scope.UUID.String() + flows.Scope.NetUUID.String() + flows.Scope.Sequence
 }

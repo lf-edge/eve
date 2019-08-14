@@ -6,7 +6,6 @@
 package zedrouter
 
 import (
-	"bytes"
 	"fmt"
 	"net"
 	"strconv"
@@ -82,6 +81,7 @@ const (
 	timeoutSec      int32  = 150    // less than 150 sec, consider done
 	markMask        uint32 = 0xffff // get the Mark bits for ACL number
 	appShiftBits    uint32 = 24     // top 8 bits for App Number
+	maxFlowPack     int    = 280    // approximate 100 bytes per flow/dns, get this under 30k
 )
 
 type dnsSys struct {
@@ -106,7 +106,6 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 	instData.appIPAddrs = make(map[int][]net.IP)
 	instData.bnNet = make(map[string]aclAttr) // borrow the aclAttr for intf attributes
 	instData.appNet = make(map[int]uuid.UUID)
-	pub := ctx.pubAppFlowMonitor
 
 	IntfAddrs, err := net.InterfaceAddrs()
 	if err != nil {
@@ -161,6 +160,8 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 	// per app/bridge packing flow stats to be uploaded
 	for bnx := range instData.bnNet {
 		for appIdx := range instData.appNet {
+
+			var sequence, flowIdx int
 
 			scope := types.FlowScope{
 				UUID:      instData.appNet[appIdx],
@@ -238,6 +239,10 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 				}
 
 				flowdata.Flows = append(flowdata.Flows, flowrec)
+				flowIdx++
+				if flowIdx > maxFlowPack {
+					flowPublish(ctx, &flowdata, &sequence, &flowIdx)
+				}
 			}
 
 			if len(flowdata.Flows) == 0 { // this app/brigde does not match any timedout flow
@@ -276,13 +281,16 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					}
 					dnsPacked = true
 					flowdata.DNSReqs = append(flowdata.DNSReqs, dnsrec)
+					flowIdx++
+					if flowIdx > maxFlowPack {
+						flowPublish(ctx, &flowdata, &sequence, &flowIdx)
+					}
 				}
 			}
 
 			// flow record done for the bridge/app
-			// publish the flow data (per app/bridge) to zedagent now
-			flowKey := scope.UUID.String() + scope.NetUUID.String()
-			pub.Publish(flowKey, &flowdata)
+			// publish the flow data (per app/bridge) and sequence (for size limit) to zedagent now
+			flowPublish(ctx, &flowdata, &sequence, &flowIdx)
 		}
 	}
 
@@ -436,9 +444,7 @@ func checkAppIPAddr(appAddrs []net.IP, entryIP net.IP) bool {
 func isInMySubnets(faddr net.IP, addrList []net.Addr) bool {
 	for _, address := range addrList {
 		if ipnet, ok := address.(*net.IPNet); ok {
-			prefix := faddr.Mask(ipnet.Mask)
-			_, addrA, _ := net.ParseCIDR(address.String())
-			if bytes.Compare(addrA.IP, prefix) == 0 {
+			if ipnet.Contains(faddr) {
 				return true
 			}
 		}
@@ -523,6 +529,21 @@ func checkAppAndACL(ctx *zedrouterContext, instData *networkAttrs) {
 	}
 }
 
+func flowPublish(ctx *zedrouterContext, flowdata *types.IPFlow, seq, idx *int) {
+	var flowKey string
+	scope := flowdata.Scope
+	if *seq > 0 {
+		scope.Sequence = strconv.Itoa(*seq)
+	}
+	flowKey = scope.UUID.String() + scope.NetUUID.String() + scope.Sequence
+	ctx.pubAppFlowMonitor.Publish(flowKey, flowdata)
+	log.Infof("FlowStats: publish to zedagent: total records %d, sequence %d\n", *idx, *seq)
+	*seq++
+	flowdata.Flows = nil
+	flowdata.DNSReqs = nil
+	*idx = 0
+}
+
 // DNSMonitor : DNS Query and Reply monitor on bridges
 func DNSMonitor(bn string, bnNum int) {
 	var (
@@ -533,6 +554,8 @@ func DNSMonitor(bn string, bnNum int) {
 		timeout           = 10 * time.Second // collect enough packets in 10sec before processing
 		handle      *pcap.Handle
 		filter      = "udp and port 53"
+		// XXX come back to handle TCP DNS snoop, more useful for zone transfer
+		// https://github.com/google/gopacket/issues/236
 	)
 	if bnNum >= maxBridgeNumber {
 		log.Errorf("Can not snoop on brige number %d", bnNum)
@@ -612,7 +635,7 @@ func checkDNSPacketInfo(bnNum int, packet gopacket.Packet) {
 					}
 					if dnsA.IP.String() != "" {
 						if checkProto == false {
-							dnsentry.isIPv4 = dnsAddrIsIPv4(dnsA.IP)
+							dnsentry.isIPv4 = dnsA.IP.To4() != nil
 							checkProto = true
 						}
 						dnsentry.Answers = append(dnsentry.Answers, dnsA.IP)
@@ -633,15 +656,6 @@ func dnsDataRemove(bnNum int) {
 	if len(dnssys[bnNum].Snoop) > 0 {
 		dnssys[bnNum].Snoop = nil
 	}
-}
-
-func dnsAddrIsIPv4(addr net.IP) bool {
-	if addr != nil {
-		if strings.Contains(addr.String(), ":") {
-			return false
-		}
-	}
-	return true
 }
 
 func bridgeStrToNum(bnStr string) (int, error) {

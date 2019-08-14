@@ -23,6 +23,7 @@
 package zedagent
 
 import (
+	"container/list"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -112,6 +113,7 @@ type zedagentContext struct {
 
 var debug = false
 var debugOverride bool // From command line arg
+var flowQ *list.List
 
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
@@ -372,6 +374,7 @@ func Run() {
 	subAppFlowMonitor.ModifyHandler = handleAppFlowMonitorModify
 	subAppFlowMonitor.DeleteHandler = handleAppFlowMonitorDelete
 	subAppFlowMonitor.Activate()
+	flowQ = list.New()
 	log.Infof("FlowStats: create subFlowStatus")
 
 	// Look for AppInstanceStatus from zedmanager

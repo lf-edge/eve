@@ -13,7 +13,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
-	zflow "github.com/lf-edge/eve/api/go/flowlog"
+	"github.com/lf-edge/eve/api/go/flowlog"
 	zinfo "github.com/lf-edge/eve/api/go/info"   // XXX need to stop using
 	zmet "github.com/lf-edge/eve/api/go/metrics" // zinfo and zmet here
 	"github.com/lf-edge/eve/pkg/pillar/cast"
@@ -713,12 +713,11 @@ func handleAppFlowMonitorModify(ctxArg interface{}, key string,
 		return
 	}
 
-	flowIteration++
 	// encoding the flows with protobuf format
 	pflows := protoEncodeAppFlowMonitorProto(flows)
 
 	// send protobuf to zedcloud
-	sendFlowProtobuf(pflows, flowIteration)
+	sendFlowProtobuf(pflows)
 }
 
 func handleAppFlowMonitorDelete(ctxArg interface{}, key string,
@@ -734,13 +733,13 @@ func handleAppFlowMonitorDelete(ctxArg interface{}, key string,
 	log.Infof("handleAppFlowMonitorDelete(%s) done\n", key)
 }
 
-func protoEncodeAppFlowMonitorProto(ipflow types.IPFlow) *zflow.FlowMessage {
+func protoEncodeAppFlowMonitorProto(ipflow types.IPFlow) *flowlog.FlowMessage {
 
-	pflows := new(zflow.FlowMessage)
+	pflows := new(flowlog.FlowMessage)
 	pflows.DevId = ipflow.DevID.String()
 
 	// ScopeInfo fill in
-	pScope := new(zflow.ScopeInfo)
+	pScope := new(flowlog.ScopeInfo)
 	pScope.Uuid = ipflow.Scope.UUID.String()
 	pScope.Intf = ipflow.Scope.Intf
 	pScope.LocalIntf = ipflow.Scope.Localintf
@@ -749,10 +748,10 @@ func protoEncodeAppFlowMonitorProto(ipflow types.IPFlow) *zflow.FlowMessage {
 
 	// get the ip flows from the input
 	for _, rec := range ipflow.Flows {
-		prec := new(zflow.FlowRecord)
+		prec := new(flowlog.FlowRecord)
 
 		// IpFlow fill in
-		pIpflow := new(zflow.IpFlow)
+		pIpflow := new(flowlog.IpFlow)
 		pIpflow.Src = rec.Flow.Src.String()
 		pIpflow.Dest = rec.Flow.Dst.String()
 		pIpflow.SrcPort = int32(rec.Flow.SrcPort)
@@ -778,7 +777,7 @@ func protoEncodeAppFlowMonitorProto(ipflow types.IPFlow) *zflow.FlowMessage {
 
 	// get the ip DNS records from the input
 	for _, dns := range ipflow.DNSReqs {
-		pdns := new(zflow.DnsRequest)
+		pdns := new(flowlog.DnsRequest)
 		pdns.HostName = dns.HostName
 		for _, address := range dns.Addrs {
 			pdns.Addrs = append(pdns.Addrs, address.String())
@@ -793,29 +792,44 @@ func protoEncodeAppFlowMonitorProto(ipflow types.IPFlow) *zflow.FlowMessage {
 	return pflows
 }
 
-func sendFlowProtobuf(pflows *zflow.FlowMessage, iteration int) {
-	data, err := proto.Marshal(pflows)
-	if err != nil {
-		log.Errorf("FlowStats: SendFlowProtobuf proto marshaling error %v", err) // XXX change to fatal
-	}
+func sendFlowProtobuf(protoflows *flowlog.FlowMessage) {
 
-	buf := bytes.NewBuffer(data)
-	size := int64(proto.Size(pflows))
-	flowlogURL := serverNameAndPort + "/" + flowlogAPI
-	const return400 = false
-	_, _, cf, err := zedcloud.SendOnAllIntf(zedcloudCtx, flowlogURL,
-		size, buf, iteration, return400)
-	if err != nil {
-		// Hopefully next timeout will be more successful
-		log.Errorf("FlowStats: sendFlowProtobuf failed: %s\n", err)
-		if cf {
-			log.Errorf("FlowStats: sendFlowProtobuf certificate failure")
+	flowQ.PushBack(*protoflows)
+
+	for flowQ.Len() > 0 {
+		ent := flowQ.Front()
+		pflows := ent.Value.(flowlog.FlowMessage)
+
+		data, err := proto.Marshal(&pflows)
+		if err != nil {
+			log.Errorf("FlowStats: SendFlowProtobuf proto marshaling error %v", err) // XXX change to fatal
 		}
-		return
-	}
 
-	log.Infof("Send Flow protobuf out on all intfs")
-	writeSentFlowProtoMessage(data)
+		flowIteration++
+		buf := bytes.NewBuffer(data)
+		size := int64(proto.Size(&pflows))
+		flowlogURL := serverNameAndPort + "/" + flowlogAPI
+		const return400 = false
+		_, _, cf, err := zedcloud.SendOnAllIntf(zedcloudCtx, flowlogURL,
+			size, buf, flowIteration, return400)
+		if err != nil {
+			log.Errorf("FlowStats: sendFlowProtobuf failed: %s\n", err)
+			if cf {
+				log.Errorf("FlowStats: sendFlowProtobuf certificate failure")
+			}
+			flowIteration--
+			if flowQ.Len() > 100 { // if fail to send for too long, start to drop
+				flowQ.Remove(ent)
+			}
+			return
+		}
+
+		log.Debugf("Send Flow protobuf out on all intfs, message size %d, flowQ size %d\n",
+			size, flowQ.Len())
+		writeSentFlowProtoMessage(data)
+
+		flowQ.Remove(ent)
+	}
 }
 
 func timeNanoToProto(timenum int64) *timestamp.Timestamp {
