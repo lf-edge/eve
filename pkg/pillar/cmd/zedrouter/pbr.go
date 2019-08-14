@@ -73,8 +73,8 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 			ifindex, index)
 		ifindex = index
 	}
+	MyTable := FreeTable + ifindex
 	for _, rt := range routes {
-		MyTable := FreeTable + ifindex
 		myrt := rt
 		myrt.Table = MyTable
 		// Clear any RTNH_F_LINKDOWN etc flags since add doesn't like them
@@ -119,8 +119,8 @@ func PbrRouteDeleteAll(bridgeName string, port string) error {
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
+	MyTable := FreeTable + ifindex
 	for _, rt := range routes {
-		MyTable := FreeTable + ifindex
 		myrt := rt
 		myrt.Table = MyTable
 		// Clear any RTNH_F_LINKDOWN etc flags since del might not like them
