@@ -314,7 +314,6 @@ func Run() {
 
 	updateLispConfiglets(&zedrouterCtx, zedrouterCtx.legacyDataPlane)
 
-	// XXX for flowstats
 	flowStatIntv := time.Duration(120 * time.Second) // 120 sec, flow timeout if less than150 sec
 	fmax := float64(flowStatIntv)
 	fmin := fmax * 0.9
@@ -432,7 +431,7 @@ func Run() {
 			checkAndPublishDhcpLeases(&zedrouterCtx)
 
 		case <-flowStatTimer.C:
-			log.Infof("**FlowStatTimer at %v", time.Now())
+			log.Debugf("FlowStatTimer at %v", time.Now())
 			go FlowStatsCollect(&zedrouterCtx)
 
 		case change := <-subNetworkInstanceConfig.C:
