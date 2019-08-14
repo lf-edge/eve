@@ -398,7 +398,8 @@ func Run() {
 				routeChanges = devicenetwork.RouteChangeInit()
 				break
 			}
-			PbrRouteChange(zedrouterCtx.deviceNetworkStatus, change)
+			PbrRouteChange(&zedrouterCtx,
+				zedrouterCtx.deviceNetworkStatus, change)
 
 		case <-publishTimer.C:
 			log.Debugln("publishTimer at", time.Now())
