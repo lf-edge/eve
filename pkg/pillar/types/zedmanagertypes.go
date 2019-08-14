@@ -242,7 +242,7 @@ type StorageStatus struct {
 	Progress           uint    // In percent i.e., 0-100
 	HasDownloaderRef   bool    // Reference against downloader to clean up
 	HasVerifierRef     bool    // Reference against verifier to clean up
-	IsContainer        bool    // Is the imge a Container??
+	IsContainer        bool    // Is the image a Container??
 	ContainerImageID   string  // Container Image ID if IsContainer=true
 	Vdev               string  // Allocated
 	ActiveFileLocation string  // Location of filestystem
