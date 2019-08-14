@@ -180,13 +180,13 @@ if P3=$(zboot partdev P3) && [ -n "$P3" ]; then
         # XXX note that if we have a bad ext3 partition this will ask questions
         # Need to either dd zeros over the partition of feed "yes" into mkfs.
         if ! mkfs -t ext3 -v "$P3"; then
-	    # XXX !? will be zero
+            # XXX !? will be zero
             echo "$(date -Ins -u) mkfs $P3 failed: $?"
             # Try mounting below
         fi
     fi
     if ! mount -t ext3 -o dirsync,noatime "$P3" $PERSISTDIR; then
-	# XXX !? will be zero
+        # XXX !? will be zero
         echo "$(date -Ins -u) mount $P3 failed: $?"
     fi
 else
@@ -308,7 +308,7 @@ access_usb() {
     if [ -n "$SPECIAL" ] && [ -b "$SPECIAL" ]; then
         echo "$(date -Ins -u) Found USB with DevicePortConfig: $SPECIAL"
         if ! mount -t vfat "$SPECIAL" /mnt; then
-	    # XXX !? will be zero
+            # XXX !? will be zero
             echo "$(date -Ins -u) mount $SPECIAL failed: $?"
             return
         fi
@@ -473,7 +473,7 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
     echo "$(date -Ins -u) Starting client selfRegister getUuid"
     if ! $BINDIR/client -c $CURPART selfRegister getUuid; then
-	# XXX $? is always zero
+        # XXX $? is always zero
         echo "$(date -Ins -u) client selfRegister failed with $?"
         exit 1
     fi
