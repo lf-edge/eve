@@ -33,7 +33,7 @@ func PbrInit(ctx *zedrouterContext) {
 	flushRules(0)
 }
 
-// Add a default route for the bridgeName table to the specific port
+// PbrRouteAddAll adds all the routes for the bridgeName table to the specific port
 // Separately we handle changes in PbrRouteChange
 func PbrRouteAddAll(bridgeName string, port string) error {
 	log.Infof("PbrRouteAddAll(%s, %s)\n", bridgeName, port)
@@ -93,7 +93,7 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 	return nil
 }
 
-// Delete all the default routes for the bridgeName table to the specific port
+// PbrRouteDeleteAll deletes all the routes for the bridgeName table to the specific port
 // Separately we handle changes in PbrRouteChange
 func PbrRouteDeleteAll(bridgeName string, port string) error {
 	log.Infof("PbrRouteDeleteAll(%s, %s)\n", bridgeName, port)
