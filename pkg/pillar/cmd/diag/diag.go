@@ -38,7 +38,6 @@ const (
 	selfRegFile     = identityDirname + "/self-register-failed"
 	serverFileName  = identityDirname + "/server"
 	deviceCertName  = identityDirname + "/device.cert.pem"
-	deviceKeyName   = identityDirname + "/device.key.pem"
 	onboardCertName = identityDirname + "/onboard.cert.pem"
 	onboardKeyName  = identityDirname + "/onboard.key.pem"
 	maxRetries      = 5

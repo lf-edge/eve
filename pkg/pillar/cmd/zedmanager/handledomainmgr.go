@@ -24,7 +24,9 @@ const (
 )
 
 func MaybeAddDomainConfig(ctx *zedmanagerContext,
-	aiConfig types.AppInstanceConfig, ns *types.AppNetworkStatus) error {
+	aiConfig types.AppInstanceConfig,
+	aiStatus types.AppInstanceStatus,
+	ns *types.AppNetworkStatus) error {
 
 	key := aiConfig.Key()
 	displayName := aiConfig.DisplayName
@@ -59,6 +61,8 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		DisplayName:       aiConfig.DisplayName,
 		Activate:          aiConfig.Activate,
 		AppNum:            AppNum,
+		IsContainer:       aiStatus.IsContainer,
+		ContainerImageID:  aiStatus.ContainerImageID,
 		VmConfig:          aiConfig.FixedResources,
 		IoAdapterList:     aiConfig.IoAdapterList,
 		CloudInitUserData: aiConfig.CloudInitUserData,
@@ -67,7 +71,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	// Determine number of "disk" targets in list
 	numDisks := 0
 	for _, sc := range aiConfig.StorageConfigList {
-		if sc.Target == "" || sc.Target == "disk" {
+		if sc.Target == "" || sc.Target == "disk" || sc.Target == "tgtunknown" {
 			numDisks++
 		} else {
 			log.Infof("Not allocating disk for Target %s\n",
@@ -79,12 +83,18 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	for _, sc := range aiConfig.StorageConfigList {
 		// Check that file is verified
 		locationDir := finalDirname + "/" + sc.ImageSha256
-		location, err := locationFromDir(locationDir)
-		if err != nil {
-			return err
+		location := ""
+		if aiStatus.IsContainer {
+			location = "/persist/rkt"
+		} else {
+			var err error
+			location, err = locationFromDir(locationDir)
+			if err != nil {
+				return err
+			}
 		}
 		switch sc.Target {
-		case "", "disk":
+		case "", "disk", "tgtunknown":
 			disk := &dc.DiskConfigList[i]
 			disk.ImageSha256 = sc.ImageSha256
 			disk.ReadOnly = sc.ReadOnly

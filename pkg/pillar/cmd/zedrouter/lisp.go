@@ -370,8 +370,8 @@ func deleteLispConfiglet(lispRunDirname string, isMgmt bool, IID uint32,
 	EID net.IP, AppIPAddr net.IP, globalStatus types.DeviceNetworkStatus,
 	legacyDataPlane bool) {
 
-	log.Debugf("deleteLispConfiglet: %s %d %s %v\n",
-		lispRunDirname, IID, EID, globalStatus)
+	log.Debugf("deleteLispConfiglet: %s %d %s %s %v\n",
+		lispRunDirname, IID, EID, AppIPAddr, globalStatus)
 
 	var cfgPathnameEID string
 	if isMgmt {

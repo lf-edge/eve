@@ -27,18 +27,19 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
 	"math/big"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/pidfile"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -724,31 +725,37 @@ func handleCreate(ctx *verifierContext, objType string,
 	}
 
 	status := types.VerifyImageStatus{
-		Safename:    config.Safename,
-		ObjType:     objType,
-		ImageSha256: config.ImageSha256,
-		PendingAdd:  true,
-		State:       types.DOWNLOADED,
-		RefCount:    config.RefCount,
-		LastUse:     time.Now(),
+		Safename:         config.Safename,
+		ObjType:          objType,
+		ImageSha256:      config.ImageSha256,
+		PendingAdd:       true,
+		State:            types.DOWNLOADED,
+		RefCount:         config.RefCount,
+		LastUse:          time.Now(),
+		IsContainer:      config.IsContainer,
+		ContainerImageID: config.ContainerImageID,
 	}
 	publishVerifyImageStatus(ctx, &status)
 
-	ok, size := markObjectAsVerifying(ctx, config, &status)
-	if !ok {
-		log.Errorf("handleCreate fail for %s\n", config.Name)
-		return
-	}
-	status.Size = size
-	publishVerifyImageStatus(ctx, &status)
+	// Skip verification steps for Container. Container image verification
+	// is done by rkt fetch itself.. No need to be done here.
+	if !config.IsContainer {
+		ok, size := markObjectAsVerifying(ctx, config, &status)
+		if !ok {
+			log.Errorf("handleCreate fail for %s\n", config.Name)
+			return
+		}
+		status.Size = size
+		publishVerifyImageStatus(ctx, &status)
 
-	if !verifyObjectSha(ctx, config, &status) {
-		log.Errorf("handleCreate fail for %s\n", config.Name)
-		return
-	}
-	publishVerifyImageStatus(ctx, &status)
+		if !verifyObjectSha(ctx, config, &status) {
+			log.Errorf("handleCreate fail for %s\n", config.Name)
+			return
+		}
+		publishVerifyImageStatus(ctx, &status)
 
-	markObjectAsVerified(ctx, config, &status)
+		markObjectAsVerified(ctx, config, &status)
+	}
 	status.PendingAdd = false
 	status.State = types.DELIVERED
 	publishVerifyImageStatus(ctx, &status)

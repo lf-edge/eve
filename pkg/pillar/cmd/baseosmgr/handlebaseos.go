@@ -12,6 +12,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	log "github.com/sirupsen/logrus"
+	"io/ioutil"
 	"os"
 	"strings"
 	"syscall"
@@ -302,7 +303,8 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	// Remove any old log files for a previous instance
 	logdir := fmt.Sprintf("/persist/%s/log", status.PartitionLabel)
 	log.Infof("Clearing old logs in %s\n", logdir)
-	if err := os.RemoveAll(logdir); err != nil {
+	// Clear content but not directory since logmanager expects dir
+	if err := removeContent(logdir); err != nil {
 		log.Errorln(err)
 	}
 
@@ -314,6 +316,22 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	}
 
 	return changed
+}
+
+func removeContent(dirName string) error {
+	locations, err := ioutil.ReadDir(dirName)
+	if err != nil {
+		return err
+	}
+
+	for _, location := range locations {
+		filelocation := dirName + "/" + location.Name()
+		err := os.RemoveAll(filelocation)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
@@ -483,7 +501,6 @@ func checkBaseOsStorageDownloadStatus(ctx *baseOsMgrContext, uuidStr string,
 		config.StorageConfigList, status.StorageStatusList)
 
 	status.State = ret.MinState
-	status.MissingDatastore = ret.MissingDatastore
 
 	if ret.AllErrors != "" {
 		status.Error = ret.AllErrors

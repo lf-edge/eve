@@ -1455,9 +1455,9 @@ func natActivate(ctx *zedrouterContext,
 			log.Errorf("IptableCmd failed: %s", err)
 			return err
 		}
-		err = PbrRouteAddDefault(status.BridgeName, a)
+		err = PbrRouteAddAll(status.BridgeName, a)
 		if err != nil {
-			log.Errorf("PbrRouteAddDefault for Bridge(%s) and interface %s failed. "+
+			log.Errorf("PbrRouteAddAll for Bridge(%s) and interface %s failed. "+
 				"Err: %s", status.BridgeName, a, err)
 			return err
 		}
@@ -1517,9 +1517,9 @@ func natInactivate(ctx *zedrouterContext,
 		if err != nil {
 			log.Errorf("natInactivate: iptableCmd failed %s\n", err)
 		}
-		err = PbrRouteDeleteDefault(status.BridgeName, a)
+		err = PbrRouteDeleteAll(status.BridgeName, a)
 		if err != nil {
-			log.Errorf("natInactivate: PbrRouteDeleteDefault failed %s\n", err)
+			log.Errorf("natInactivate: PbrRouteDeleteAll failed %s\n", err)
 		}
 	}
 	// Remove from Pbr table
@@ -1694,4 +1694,33 @@ func vifNameToBridgeName(ctx *zedrouterContext, vifName string) string {
 		}
 	}
 	return ""
+}
+
+// Get All ifindices for the Network Instances which are using ifname
+func getAllNIindices(ctx *zedrouterContext, ifname string) []int {
+
+	var indicies []int
+	pub := ctx.pubNetworkInstanceStatus
+	if pub == nil {
+		return indicies
+	}
+	instanceItems := pub.GetAll()
+	for _, st := range instanceItems {
+		status := cast.CastNetworkInstanceStatus(st)
+		if !status.IsUsingPort(ifname) {
+			continue
+		}
+		if status.BridgeName == "" {
+			continue
+		}
+		link, err := netlink.LinkByName(status.BridgeName)
+		if err != nil {
+			errStr := fmt.Sprintf("LinkByName(%s) failed: %s",
+				status.BridgeName, err)
+			log.Errorln(errStr)
+			continue
+		}
+		indicies = append(indicies, link.Attrs().Index)
+	}
+	return indicies
 }

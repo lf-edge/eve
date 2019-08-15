@@ -8,9 +8,11 @@
 package downloader
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"strings"
@@ -26,19 +28,23 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
+	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 const (
-	appImgObj = "appImg.obj"
-	baseOsObj = "baseOs.obj"
-	certObj   = "cert.obj"
-	agentName = "downloader"
-
-	persistDir            = "/persist"
-	objectDownloadDirname = persistDir + "/downloads"
+	appImgObj                    = "appImg.obj"
+	baseOsObj                    = "baseOs.obj"
+	certObj                      = "cert.obj"
+	agentName                    = "downloader"
+	persistDir                   = "/persist"
+	objectDownloadDirname        = persistDir + "/downloads"
+	persistRktDataDir            = persistDir + "/rkt"
+	persistRktLocalConfigDir     = persistDir + "/rktlocal"
+	persistRktLocalConfigAuthDir = persistRktLocalConfigDir + "/auth.d"
 )
 
 // Go doesn't like this as a constant
@@ -48,6 +54,7 @@ var (
 
 // Set from Makefile
 var Version = "No version specified"
+var nilUUID uuid.UUID
 
 type downloaderContext struct {
 	dCtx                    *zedUpload.DronaCtx
@@ -60,6 +67,7 @@ type downloaderContext struct {
 	pubCertObjStatus        *pubsub.Publication
 	subGlobalDownloadConfig *pubsub.Subscription
 	pubGlobalDownloadStatus *pubsub.Publication
+	subDatastoreConfig      *pubsub.Subscription
 	deviceNetworkStatus     types.DeviceNetworkStatus
 	globalConfig            types.GlobalDownloadConfig
 	globalStatusLock        sync.Mutex
@@ -190,6 +198,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAppImgConfig.ModifyHandler = handleAppImgModify
+	subAppImgConfig.CreateHandler = handleAppImgCreate
 	subAppImgConfig.DeleteHandler = handleAppImgDelete
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
@@ -200,6 +209,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subBaseOsConfig.ModifyHandler = handleBaseOsModify
+	subBaseOsConfig.CreateHandler = handleBaseOsCreate
 	subBaseOsConfig.DeleteHandler = handleBaseOsDelete
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
@@ -210,9 +220,21 @@ func Run() {
 		log.Fatal(err)
 	}
 	subCertObjConfig.ModifyHandler = handleCertObjModify
+	subCertObjConfig.CreateHandler = handleCertObjCreate
 	subCertObjConfig.DeleteHandler = handleCertObjDelete
 	ctx.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()
+
+	// Look for DatastoreConfig from zedagent
+	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
+		types.DatastoreConfig{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
+	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
+	ctx.subDatastoreConfig = subDatastoreConfig
+	subDatastoreConfig.Activate()
 
 	pubAppImgStatus.SignalRestarted()
 	pubBaseOsStatus.SignalRestarted()
@@ -267,6 +289,9 @@ func Run() {
 		case change := <-subBaseOsConfig.C:
 			subBaseOsConfig.ProcessChange(change)
 
+		case change := <-subDatastoreConfig.C:
+			subDatastoreConfig.ProcessChange(change)
+
 		case change := <-subGlobalDownloadConfig.C:
 			subGlobalDownloadConfig.ProcessChange(change)
 
@@ -285,12 +310,54 @@ func Run() {
 	}
 }
 
+func handleDatastoreConfigModify(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	ctx := ctxArg.(*downloaderContext)
+	config := cast.CastDatastoreConfig(configArg)
+	log.Infof("handleDatastoreConfigModify for %s\n", key)
+	checkAndUpdateDownloadableObjects(ctx, config.UUID)
+	log.Infof("handleDatastoreConfigModify for %s, done\n", key)
+}
+
+func handleDatastoreConfigDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+	log.Infof("handleDatastoreConfigDelete for %s\n", key)
+}
+
+// handle the datastore modification
+func checkAndUpdateDownloadableObjects(ctx *downloaderContext, dsID uuid.UUID) {
+	publications := []*pubsub.Publication{
+		ctx.pubAppImgStatus,
+		ctx.pubBaseOsStatus,
+		ctx.pubCertObjStatus,
+	}
+	for _, pub := range publications {
+		items := pub.GetAll()
+		for _, st := range items {
+			status := cast.CastDownloaderStatus(st)
+			if status.DatastoreID == dsID {
+				config := lookupDownloaderConfig(ctx, status.ObjType, status.Key())
+				if config != nil {
+					handleDownloaderModify(ctx, status.ObjType, status.Key(), config)
+				}
+			}
+		}
+	}
+}
+
 // Wrappers to add objType for create. The Delete wrappers are merely
 // for function name consistency
 func handleAppImgModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	handleDownloaderModify(ctxArg, appImgObj, key, configArg)
+}
+
+func handleAppImgCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	handleDownloaderCreate(ctxArg, appImgObj, key, configArg)
 }
 
 func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
@@ -303,6 +370,12 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 	handleDownloaderModify(ctxArg, baseOsObj, key, configArg)
 }
 
+func handleBaseOsCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	handleDownloaderCreate(ctxArg, baseOsObj, key, configArg)
+}
+
 func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
 	handleDownloaderDelete(ctxArg, key, configArg)
 }
@@ -311,6 +384,11 @@ func handleCertObjModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	handleDownloaderModify(ctxArg, certObj, key, configArg)
+}
+func handleCertObjCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	handleDownloaderCreate(ctxArg, certObj, key, configArg)
 }
 
 func handleCertObjDelete(ctxArg interface{}, key string, configArg interface{}) {
@@ -374,24 +452,39 @@ func handleDownloaderModify(ctxArg interface{}, objType string,
 	key string, configArg interface{}) {
 
 	log.Infof("handleDownloaderModify(%s)\n", key)
-	ctx := ctxArg.(*downloaderContext)
 	config := cast.CastDownloaderConfig(configArg)
 	if config.Key() != key {
 		log.Errorf("handleDownloaderModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
-	// Do we have a channel/goroutine?
 	h, ok := handlerMap[config.Key()]
 	if !ok {
-		h1 := make(chan interface{})
-		handlerMap[config.Key()] = h1
-		go runHandler(ctx, objType, key, h1)
-		h = h1
+		log.Fatalf("handleDownloaderModify called on config that does not exist")
 	}
-	log.Debugf("Sending config to handler\n")
 	h <- configArg
-	log.Infof("handleDownloaderModify(%s) done\n", key)
+}
+
+func handleDownloaderCreate(ctxArg interface{}, objType string,
+	key string, configArg interface{}) {
+
+	log.Infof("handleDownloaderCreate(%s)\n", key)
+	ctx := ctxArg.(*downloaderContext)
+	config := cast.CastDownloaderConfig(configArg)
+	if config.Key() != key {
+		log.Errorf("handleDownloaderCreate key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
+	h, ok := handlerMap[config.Key()]
+	if ok {
+		log.Fatalf("handleDownloaderCreate called on config that already exists")
+	}
+	h1 := make(chan interface{})
+	handlerMap[config.Key()] = h1
+	go runHandler(ctx, objType, key, h1)
+	h = h1
+	h <- configArg
 }
 
 func handleDownloaderDelete(ctxArg interface{}, key string,
@@ -484,14 +577,21 @@ func maybeRetryDownload(ctx *downloaderContext,
 	status.RetryCount += 1
 	// XXX do we need to adjust reservedspace??
 
-	handleSyncOp(ctx, status.Key(), *config, status)
+	dst, errStr := lookupDatastoreConfig(ctx, config.DatastoreID, config.Name)
+	if dst == nil {
+		status.LastErr = errStr
+		status.LastErrTime = time.Now()
+		publishDownloaderStatus(ctx, status)
+		return
+	}
+	handleSyncOp(ctx, status.Key(), *config, status, dst)
 }
 
 func handleCreate(ctx *downloaderContext, objType string,
 	config types.DownloaderConfig, key string) {
 
 	log.Infof("handleCreate(%v) objType %s for %s\n",
-		config.Safename, objType, config.DownloadURL)
+		config.Safename, objType, config.Name)
 
 	if objType == "" {
 		log.Fatalf("handleCreate: No ObjType for %s\n",
@@ -499,11 +599,13 @@ func handleCreate(ctx *downloaderContext, objType string,
 	}
 	// Start by marking with PendingAdd
 	status := types.DownloaderStatus{
+		DatastoreID:      config.DatastoreID,
 		Safename:         config.Safename,
+		Name:             config.Name,
 		ObjType:          objType,
+		IsContainer:      config.IsContainer,
 		RefCount:         config.RefCount,
 		LastUse:          time.Now(),
-		DownloadURL:      config.DownloadURL,
 		UseFreeMgmtPorts: config.UseFreeMgmtPorts,
 		ImageSha256:      config.ImageSha256,
 		PendingAdd:       true,
@@ -524,7 +626,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		status.LastErrTime = time.Now()
 		status.RetryCount += 1
 		publishDownloaderStatus(ctx, &status)
-		log.Errorf("handleCreate failed for %s\n", config.DownloadURL)
+		log.Errorf("handleCreate failed for %s\n", config.Name)
 		return
 	}
 
@@ -532,7 +634,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 	if config.RefCount == 0 {
 		// XXX odd to treat as error.
 		errString := fmt.Sprintf("RefCount==0; download deferred for %s\n",
-			config.DownloadURL)
+			config.Name)
 		log.Errorln(errString)
 		status.PendingAdd = false
 		status.Size = 0
@@ -540,11 +642,20 @@ func handleCreate(ctx *downloaderContext, objType string,
 		status.LastErrTime = time.Now()
 		status.RetryCount += 1
 		publishDownloaderStatus(ctx, &status)
-		log.Errorf("handleCreate deferred for %s\n", config.DownloadURL)
+		log.Errorf("handleCreate deferred for %s\n", config.Name)
 		return
 	}
 
-	handleSyncOp(ctx, key, config, &status)
+	dst, errStr := lookupDatastoreConfig(ctx, config.DatastoreID, config.Name)
+	if dst == nil {
+		status.PendingAdd = false
+		status.LastErr = errStr
+		status.LastErrTime = time.Now()
+		status.RetryCount++
+		publishDownloaderStatus(ctx, &status)
+		return
+	}
+	handleSyncOp(ctx, key, config, &status, dst)
 }
 
 // XXX Allow to cancel by setting RefCount = 0? Such a change
@@ -555,7 +666,7 @@ func handleModify(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus) {
 
 	log.Infof("handleModify(%v) objType %s for %s\n",
-		status.Safename, status.ObjType, status.DownloadURL)
+		status.Safename, status.ObjType, status.Name)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleModify: No ObjType for %s\n",
@@ -563,9 +674,9 @@ func handleModify(ctx *downloaderContext, key string,
 	}
 	locDirname := objectDownloadDirname + "/" + status.ObjType
 
-	if config.DownloadURL != status.DownloadURL {
+	if config.Name != status.Name {
 		log.Errorf("URL changed - not allowed %s -> %s\n",
-			config.DownloadURL, status.DownloadURL)
+			config.Name, status.Name)
 		return
 	}
 	// If the sha changes, we treat it as a delete and recreate.
@@ -578,22 +689,21 @@ func handleModify(ctx *downloaderContext, key string,
 		} else {
 			reason = "recovering from previous error"
 		}
-		log.Errorf("handleModify %s for %s\n",
-			reason, config.DownloadURL)
+		log.Errorf("handleModify %s for %s\n", reason, config.Name)
 		doDelete(ctx, key, locDirname, status)
 		handleCreate(ctx, status.ObjType, config, key)
-		log.Infof("handleModify done for %s\n", config.DownloadURL)
+		log.Infof("handleModify done for %s\n", config.Name)
 		return
 	}
 
 	log.Infof("handleModify(%v) RefCount %d to %d, Expired %v for %s\n",
 		status.Safename, status.RefCount, config.RefCount,
-		status.Expired, status.DownloadURL)
+		status.Expired, status.Name)
 
 	// If RefCount from zero to non-zero then do install
 	if status.RefCount == 0 && config.RefCount != 0 {
 		status.PendingModify = true
-		log.Infof("handleModify installing %s\n", config.DownloadURL)
+		log.Infof("handleModify installing %s\n", config.Name)
 		handleCreate(ctx, status.ObjType, config, key)
 		status.RefCount = config.RefCount
 		status.LastUse = time.Now()
@@ -610,13 +720,13 @@ func handleModify(ctx *downloaderContext, key string,
 		status.PendingModify = false
 		publishDownloaderStatus(ctx, status)
 	}
-	log.Infof("handleModify done for %s\n", config.DownloadURL)
+	log.Infof("handleModify done for %s\n", config.Name)
 }
 
 func doDelete(ctx *downloaderContext, key string, locDirname string,
 	status *types.DownloaderStatus) {
 
-	log.Infof("doDelete(%v) for %s\n", status.Safename, status.DownloadURL)
+	log.Infof("doDelete(%v) for %s\n", status.Safename, status.Name)
 
 	deletefile(locDirname+"/pending", status)
 
@@ -651,7 +761,7 @@ func handleDelete(ctx *downloaderContext, key string,
 	status *types.DownloaderStatus) {
 
 	log.Infof("handleDelete(%v) objType %s for %s RefCount %d LastUse %v Expired %v\n",
-		status.Safename, status.ObjType, status.DownloadURL,
+		status.Safename, status.ObjType, status.Name,
 		status.RefCount, status.LastUse, status.Expired)
 
 	if status.ObjType == "" {
@@ -675,7 +785,7 @@ func handleDelete(ctx *downloaderContext, key string,
 
 	// Write out what we modified to DownloaderStatus aka delete
 	unpublishDownloaderStatus(ctx, status)
-	log.Infof("handleDelete done for %s, %s\n", status.DownloadURL,
+	log.Infof("handleDelete done for %s, %s\n", status.Name,
 		locDirname)
 }
 
@@ -1176,19 +1286,213 @@ func doSftp(ctx *downloaderContext, status *types.DownloaderStatus,
 	}
 }
 
-// Drona APIs for object Download
+func constructDatastoreContext(config types.DownloaderConfig, status *types.DownloaderStatus, dst *types.DatastoreConfig) *types.DatastoreContext {
+	dpath := dst.Dpath
+	if status.ObjType == certObj {
+		dpath = strings.Replace(dpath, "-images", "-certs", 1)
+	}
+	downloadURL := config.Name
+	if !config.NameIsURL {
+		downloadURL = dst.Fqdn
+		if len(dpath) > 0 {
+			downloadURL = downloadURL + "/" + dpath
+		}
+		if len(config.Name) > 0 {
+			downloadURL = downloadURL + "/" + config.Name
+		}
+	}
+	dsCtx := types.DatastoreContext{
+		DownloadURL:     downloadURL,
+		TransportMethod: dst.DsType,
+		Dpath:           dpath,
+		APIKey:          dst.ApiKey,
+		Password:        dst.Password,
+		Region:          dst.Region,
+	}
+	return &dsCtx
+}
 
+func rktFetch(url string, localConfigDir string) (string, error) {
+	// rkt --insecure-options=image fetch <url> --dir=/persist/rkt --full=true
+	log.Debugf("rktFetch - url: %s ,  localConfigDir:%s\n",
+		url, localConfigDir)
+	cmd := "rkt"
+	args := []string{
+		"--dir=" + persistRktDataDir,
+		"--insecure-options=image",
+		"fetch",
+	}
+	// if len(localConfigDir) > 0 {
+	// 	args = append(args, "--system-config="+persistRktLocalConfigDir)
+	// }
+	args = append(args, url)
+	args = append(args, "--full=true")
+
+	log.Infof("rktFetch - url: %s ,  localConfigDir:%s, args: %+v\n",
+		url, localConfigDir, args)
+
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt fetch failed ", err)
+		log.Errorln("rkt fetch output ", string(stdoutStderr))
+		return "", fmt.Errorf("rkt fetch failed: %s\n",
+			string(stdoutStderr))
+	}
+	log.Infof("rktFetch - image fetch successful. stdoutStderr: %s\n",
+		stdoutStderr)
+	outputStr := string(stdoutStderr)
+	log.Debugf("rktFetch - outputStr: %s\n", outputStr)
+	outputStrArray := strings.Split(outputStr, "\n")
+
+	log.Debugf("rktFetch - outputStrArray:\n")
+	for i, op := range outputStrArray {
+		log.Debugf("index:%d, op:%s", i, op)
+	}
+	log.Debugf("rktFetch - outputStrArray DONE\n")
+
+	// Get ImageID from the oputput. The last line in rkt fetch output
+	// with sha12- is the imageID
+	imageID := ""
+	for i := len(outputStrArray) - 1; i >= 0; i-- {
+		imageID = outputStrArray[i]
+		if strings.HasPrefix(imageID, "sha512-") {
+			break
+		}
+	}
+	log.Infof("rktFetch - imageID: %s\n", imageID)
+	if imageID == "" {
+		errMsg := "rkt fetch: Can't find imageID.\n Fetch Output: " +
+			outputStr
+		return "", errors.New(errMsg)
+	}
+
+	// XXX:FIXME - we should run "rkt image ls" and verify image fetch
+	// went thru without errors.
+	return imageID, nil
+}
+
+func rktAuthFilename(appName string) string {
+	return persistRktLocalConfigAuthDir + "/rktAuth" + appName + ".json"
+}
+
+func rktCreateAuthFile(config *types.DownloaderConfig,
+	dsCtx types.DatastoreContext) (string, error) {
+
+	if len(strings.TrimSpace(dsCtx.APIKey)) == 0 {
+		log.Debugf("rktCreateAuthFile: empty APIKey. Skipping AuthFile")
+		return "", nil
+	}
+
+	err := os.MkdirAll(persistRktLocalConfigAuthDir, 0755)
+	if err != nil {
+		log.Errorf("rktCreateAuthFile: empty username. Skipping AuthFile")
+		return "", fmt.Errorf("Failed create dir %s, "+
+			"err: %+v\n", persistRktLocalConfigAuthDir, err)
+	}
+
+	filename := rktAuthFilename(config.Safename)
+
+	rktAuth := types.RktAuthInfo{
+		RktKind:    "dockerAuth",
+		RktVersion: "v1",
+		Registries: []string{dsCtx.DownloadURL},
+		Credentials: types.RktCredentials{
+			User:     dsCtx.APIKey,
+			Password: dsCtx.Password,
+		},
+	}
+	log.Infof("rktCreateAuthFile: created Auth file %s\n"+
+		"rktAuth: %+v\n", filename, rktAuth)
+
+	file, err := json.MarshalIndent(rktAuth, "", " ")
+	if err != nil {
+		return "", fmt.Errorf("Failed convert rktAuth to json"+
+			"err: %+v\n", err)
+	}
+	err = ioutil.WriteFile(filename, file, 0644)
+	if err != nil {
+		return "", fmt.Errorf("Failed to create Auth file for"+
+			"rkt fetch: %+v\n", err)
+	}
+	return filename, nil
+}
+
+func rktFetchContainerImage(ctx *downloaderContext, key string,
+	config types.DownloaderConfig, status *types.DownloaderStatus,
+	dsCtx types.DatastoreContext) error {
+	// update status to DOWNLOAD STARTED
+	status.State = types.DOWNLOAD_STARTED
+	publishDownloaderStatus(ctx, status)
+
+	imageID := ""
+	// Save credentials to Auth file
+	log.Infof("rktFetchContainerImage: fetch  <%s>\n", dsCtx.DownloadURL)
+	authFile, err := rktCreateAuthFile(&config, dsCtx)
+	if err == nil {
+		log.Debugf("rktFetchContainerImage: authFile: %s\n", authFile)
+		// We should really move to have per-fetch directory..
+		localConfigDir := persistRktLocalConfigDir
+		if len(authFile) == 0 {
+			localConfigDir = ""
+			log.Infof("rktFetchContainerImage: no Auth File")
+		}
+		imageID, err = rktFetch(dsCtx.DownloadURL, localConfigDir)
+	} else {
+		log.Errorf("rktCreateAuthFile Failed. err: %+v", err)
+	}
+
+	if err != nil {
+		log.Errorf("rktFetchContainerImage: fetch  Failed. url:%s, "+
+			"authFile: %s, Err: %+v\n", dsCtx.DownloadURL, authFile, err)
+		status.PendingAdd = false
+		status.Size = 0
+		status.LastErr = fmt.Sprintf("%v", err)
+		status.LastErrTime = time.Now()
+		status.RetryCount++
+		publishDownloaderStatus(ctx, status)
+		return err
+	}
+	log.Infof("rktFetchContainerImage successful. imageID: <%s>\n",
+		imageID)
+
+	// Update globalStatus and status
+	unreserveSpace(ctx, status)
+
+	// We do not clear any status.RetryCount, LastErr, etc. The caller
+	// should look at State == DOWNLOADED to determine it is done.
+	status.ContainerImageID = imageID
+	status.ModTime = time.Now()
+	status.PendingAdd = false
+	status.State = types.DOWNLOADED
+	status.Progress = 100 // Just in case
+	publishDownloaderStatus(ctx, status)
+
+	return nil
+}
+
+// Drona APIs for object Download
 func handleSyncOp(ctx *downloaderContext, key string,
-	config types.DownloaderConfig, status *types.DownloaderStatus) {
+	config types.DownloaderConfig, status *types.DownloaderStatus,
+	dst *types.DatastoreConfig) {
 	var err error
 	var errStr string
 	var locFilename string
-
 	var syncOp zedUpload.SyncOpType = zedUpload.SyncOpDownload
 
 	if status.ObjType == "" {
 		log.Fatalf("handleSyncOp: No ObjType for %s\n",
 			status.Safename)
+	}
+
+	log.Debugf("handleSyncOp: config: %+v", config)
+	log.Debugf("handleSyncOp: IsContainer: %v", config.IsContainer)
+
+	// get the datastore context
+	dsCtx := constructDatastoreContext(config, status, dst)
+
+	if config.IsContainer {
+		rktFetchContainerImage(ctx, key, config, status, *dsCtx)
+		return
 	}
 	locDirname := objectDownloadDirname + "/" + status.ObjType
 	locFilename = locDirname + "/pending"
@@ -1213,7 +1517,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	locFilename = locFilename + "/" + config.Safename
 
 	log.Infof("Downloading <%s> to <%s> using %v free management port\n",
-		config.DownloadURL, locFilename, config.UseFreeMgmtPorts)
+		config.Name, locFilename, config.UseFreeMgmtPorts)
 
 	var addrCount int
 	if config.UseFreeMgmtPorts {
@@ -1228,10 +1532,10 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	if addrCount == 0 {
 		errStr = err.Error()
 	}
-	metricsUrl := config.DownloadURL
-	if config.TransportMethod == zconfig.DsType_DsS3.String() {
+	metricsUrl := dsCtx.DownloadURL
+	if dsCtx.TransportMethod == zconfig.DsType_DsS3.String() {
 		// fake URL for metrics
-		metricsUrl = fmt.Sprintf("S3:%s/%s", config.Dpath, filename)
+		metricsUrl = fmt.Sprintf("S3:%s/%s", dsCtx.Dpath, filename)
 	}
 
 	// Loop through all interfaces until a success
@@ -1252,11 +1556,11 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		}
 		ifname := types.GetMgmtPortFromAddr(ctx.deviceNetworkStatus, ipSrc)
 		log.Infof("Using IP source %v if %s transport %v\n",
-			ipSrc, ifname, config.TransportMethod)
-		switch config.TransportMethod {
+			ipSrc, ifname, dsCtx.TransportMethod)
+		switch dsCtx.TransportMethod {
 		case zconfig.DsType_DsS3.String():
-			err = doS3(ctx, status, syncOp, config.DownloadURL, config.ApiKey,
-				config.Password, config.Dpath, config.Region,
+			err = doS3(ctx, status, syncOp, dsCtx.DownloadURL, dsCtx.APIKey,
+				dsCtx.Password, dsCtx.Dpath, dsCtx.Region,
 				config.Size, ifname, ipSrc, filename, locFilename)
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
@@ -1282,9 +1586,9 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		case zconfig.DsType_DsSFTP.String():
-			serverUrl := getServerUrl(config, filename)
-			err = doSftp(ctx, status, syncOp, config.ApiKey,
-				config.Password, serverUrl, config.Dpath,
+			serverUrl := getServerUrl(dsCtx, filename)
+			err = doSftp(ctx, status, syncOp, dsCtx.APIKey,
+				dsCtx.Password, serverUrl, dsCtx.Dpath,
 				config.Size, ipSrc, filename, locFilename)
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
@@ -1310,8 +1614,8 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		case zconfig.DsType_DsHttp.String(), zconfig.DsType_DsHttps.String(), "":
-			serverUrl := getServerUrl(config, filename)
-			err = doHttp(ctx, status, syncOp, serverUrl, config.Dpath,
+			serverUrl := getServerUrl(dsCtx, filename)
+			err = doHttp(ctx, status, syncOp, serverUrl, dsCtx.Dpath,
 				config.Size, ifname, ipSrc, filename, locFilename)
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
@@ -1345,12 +1649,12 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 // DownloadURL format : http://<serverURL>/dpath/filename
 // XXX why can't we parse URL from font? This only works when filename starts with "/"
-func getServerUrl(config types.DownloaderConfig, filename string) string {
-	if config.Dpath != "" {
-		return strings.TrimSuffix(config.DownloadURL,
-			"/"+config.Dpath+"/"+filename)
+func getServerUrl(dsCtx *types.DatastoreContext, filename string) string {
+	if dsCtx.Dpath != "" {
+		return strings.TrimSuffix(dsCtx.DownloadURL,
+			"/"+dsCtx.Dpath+"/"+filename)
 	} else {
-		return strings.TrimSuffix(config.DownloadURL,
+		return strings.TrimSuffix(dsCtx.DownloadURL,
 			"/"+filename)
 	}
 }
@@ -1374,14 +1678,14 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		status.RetryCount += 1
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("handleSyncOpResponse failed for %s, <%s>\n",
-			status.DownloadURL, errStr)
+			status.Name, errStr)
 		return
 	}
 
 	info, err := os.Stat(locFilename)
 	if err != nil {
 		log.Errorf("handleSyncOpResponse Stat failed for %s <%s>\n",
-			status.DownloadURL, err)
+			status.Name, err)
 		// Delete file
 		doDelete(ctx, key, locDirname, status)
 		status.PendingAdd = false
@@ -1398,7 +1702,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	unreserveSpace(ctx, status)
 
 	log.Infof("handleSyncOpResponse successful <%s> <%s>\n",
-		config.DownloadURL, locFilename)
+		config.Name, locFilename)
 	// We do not clear any status.RetryCount, LastErr, etc. The caller
 	// should look at State == DOWNLOADED to determine it is done.
 
@@ -1477,4 +1781,27 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+// Check for nil UUID (an indication the drive was missing in parseconfig)
+// and a missing datastore id.
+func lookupDatastoreConfig(ctx *downloaderContext, dsID uuid.UUID,
+	name string) (*types.DatastoreConfig, string) {
+
+	if dsID == nilUUID {
+		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: No datastore ID",
+			dsID.String(), name)
+		log.Errorln(errStr)
+		return nil, errStr
+	}
+	cfg, err := ctx.subDatastoreConfig.Get(dsID.String())
+	if err != nil {
+		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: %v",
+			dsID.String(), name, err)
+		log.Errorln(errStr)
+		return nil, errStr
+	}
+	log.Debugf("Found datastore(%s) for %s\n", dsID, name)
+	dst := cast.CastDatastoreConfig(cfg)
+	return &dst, ""
 }

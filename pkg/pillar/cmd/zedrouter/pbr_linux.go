@@ -18,31 +18,21 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Return the first default route for one interface. XXX or return all?
-func getDefaultIPv4Route(ifindex int) *netlink.Route {
+// Return the all routes for one interface
+func getAllIPv4Routes(ifindex int) []netlink.Route {
 	table := syscall.RT_TABLE_MAIN
-	// Default route is nil Dst.
-	filter := netlink.Route{Table: table, LinkIndex: ifindex, Dst: nil}
+	filter := netlink.Route{Table: table, LinkIndex: ifindex}
 	fflags := netlink.RT_FILTER_TABLE
 	fflags |= netlink.RT_FILTER_OIF
-	fflags |= netlink.RT_FILTER_DST
-	log.Infof("getDefaultIPv4Route(%d) filter %v\n", ifindex, filter)
+	log.Infof("getAllIPv4Routes(%d) filter %v\n", ifindex, filter)
 	routes, err := netlink.RouteListFiltered(syscall.AF_INET,
 		&filter, fflags)
 	if err != nil {
 		log.Fatalf("RouteList failed: %v\n", err)
 	}
-	log.Debugf("getDefaultIPv4Route(%d) - got %d matches\n",
+	log.Debugf("getAllIPv4Routes(%d) - got %d matches\n",
 		ifindex, len(routes))
-	for _, rt := range routes {
-		if rt.LinkIndex != ifindex {
-			continue
-		}
-		log.Debugf("getDefaultIPv4Route(%d) returning %v\n",
-			ifindex, rt)
-		return &rt
-	}
-	return nil
+	return routes
 }
 
 func getDefaultRouteTable() int {
