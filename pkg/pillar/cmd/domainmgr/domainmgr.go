@@ -1202,7 +1202,10 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 		}
 	}
 
-	if status.DomainId != 0 {
+	// Incase of rkt based container, DomainShutdown moves the
+	// container to exit state and the domain is destroyed
+	// Issue Domain Destroy irrespective in container case
+	if status.IsContainer || status.DomainId != 0 {
 		err := DomainDestroy(*status)
 		if err != nil {
 			log.Errorf("DomainDestroy %s failed: %s\n",
@@ -2235,17 +2238,6 @@ func DomainDestroy(status types.DomainStatus) error {
 	log.Infof("DomainDestroy %s %d\n", status.DomainName, status.DomainId)
 
 	if status.IsContainer {
-		// XXX:FIXME - Observed that "rkt stop" or "rkt stop --force=true"
-		// is not actually stopping the pod.
-		// And the subsequent invocation of rkt rm is failing, since
-		// the pod is still in running state
-		// As a work around, issuing xl destroy, wait for 3 seconds
-		// and then issue rkt rm to cleanup
-		log.Infof("First do xl destroy ... DomainName - %s  DomainID - %d\n",
-			status.DomainName, status.DomainId)
-		err = xlDestroy(status.DomainName, status.DomainId)
-		// wait for 3 seconds
-		time.Sleep(3)
 		// Use rkt tool
 		log.Infof("Using rkt tool ... PodUUID - %s\n", status.PodUUID)
 		err = rktRm(status.PodUUID)

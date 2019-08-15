@@ -82,7 +82,7 @@ jobs:
             --revive-config=.revive.toml
             --linecomments=''
             --bugcomments=briefreport,htmlout,junit
-            --junit-results-xml=/tmp/yetus-out/results.xml
+            --junit-report-xml=/tmp/yetus-out/results.xml
             --tests-filter=checkmake,golang,golangcilint
             --continuous-improvement=true
       - store_test_results:
