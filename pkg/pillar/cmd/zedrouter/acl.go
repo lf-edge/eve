@@ -11,11 +11,94 @@ import (
 	"net"
 	"strconv"
 
+	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
+
+// XXX Stop gap allocator copied from zedrouter/appnumallocator.go
+// XXX The below ACL id allocation code should get removed when cloud
+// starts allocating the ACL id per ACL rule and send to device as part
+// of configuration.
+
+// MAXACEID : Keeps 64K bits indexed by 0 to (64K - 1).
+const MAXACEID = 65535
+
+// MINACEID : IDs till 100 are reserverd for internal usage.
+const MINACEID = 101
+
+var lastAllocatedAceID int32 = -1
+var numFreeAceIDs int32 = MAXACEID - MINACEID + 1
+
+// ACLBitmap : size = MAXACEID/8 + 1
+type ACLBitmap [MAXACEID/8 + 1]byte
+
+// IsSet : Check if bit at a given index in ACLBitmap byte array is SET to binary 1
+func (bits *ACLBitmap) IsSet(i int32) bool { return bits[i/8]&(1<<uint(7-i%8)) != 0 }
+
+// Set : Set bit at a given index in ACLBitmap to binary 1
+func (bits *ACLBitmap) Set(i int32) { bits[i/8] |= 1 << uint(7-i%8) }
+
+// Clear : Clears bit at a given index in ACLBitmap
+func (bits *ACLBitmap) Clear(i int32) { bits[i/8] &^= 1 << uint(7-i%8) }
+
+// AllocACEId : Bit map array for reserving ACE IDs.
+var AllocACEId ACLBitmap
+
+func getNextACEId(candidate int32) int32 {
+	if candidate == MAXACEID {
+		// wrap around
+		return MINACEID
+	}
+	return (candidate + 1)
+}
+
+func allocACEId() int32 {
+	if numFreeAceIDs <= 0 {
+		log.Errorf("allocACEId: All ACE ids alread allocated")
+		return -1
+	}
+	if lastAllocatedAceID == -1 {
+		// This is the first allocation that we are doing.
+		AllocACEId.Set(MINACEID)
+		lastAllocatedAceID = MINACEID
+		numFreeAceIDs--
+		return MINACEID
+	}
+
+	aclIDSpaceSize := MAXACEID - MINACEID + 1
+	candidate := getNextACEId(lastAllocatedAceID)
+	for i := 0; i < aclIDSpaceSize; i++ {
+		if AllocACEId.IsSet(candidate) {
+			// Try the next ID
+			candidate = getNextACEId(candidate)
+			continue
+		}
+		AllocACEId.Set(candidate)
+		lastAllocatedAceID = candidate
+		numFreeAceIDs--
+		return candidate
+	}
+	log.Errorf("allocACEId: ACE id space full")
+	return -1
+}
+
+func freeACEId(candidate int32) {
+	if AllocACEId.IsSet(candidate) {
+		if numFreeAceIDs >= (MAXACEID - MINACEID + 1) {
+			// All IDs must be free. Nothing to be cleared.
+			// Something must have gone terribly wrong.
+			log.Errorf("freeACEId: All ACE IDs are already free.")
+			return
+		}
+		AllocACEId.Clear(candidate)
+		numFreeAceIDs++
+	} else {
+		log.Errorf("freeACEId: ID %v was not previously allocated\n", candidate)
+	}
+}
 
 // IpSet routines
 // Go through the list of ACEs and create dnsmasq ipset configuration
@@ -292,46 +375,57 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 		aclArgs.BridgeName, aclArgs.VifName, aclArgs.IPVer,
 		aclArgs.BridgeIP, aclArgs.AppIP, ACLs)
 
-	var aclRule1, aclRule2, aclRule3, aclRule4 types.IPTablesRule
+	var aclRule1, aclRule2, aclRule3, aclRule4, aclRule5 types.IPTablesRule
 	aclRule1.IPVer = aclArgs.IPVer
 	aclRule2.IPVer = aclArgs.IPVer
 	aclRule3.IPVer = aclArgs.IPVer
 	aclRule4.IPVer = aclArgs.IPVer
+	aclRule5.IPVer = aclArgs.IPVer
 	// XXX should we check isMgmt instead of bridgeIP?
 	if aclArgs.IPVer == 6 && aclArgs.BridgeIP != "" {
 		// Need to allow local communication */
 		// Only allow dhcp, dns (tcp/udp), and icmp6/nd
 		// Note that sufficient for src or dst to be local
 		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
-			"--match-set", "ipv6.local", "dst", "-p", "ipv6-icmp", "-j", "ACCEPT"}
+			"--match-set", "ipv6.local", "dst", "-p", "ipv6-icmp"}
+		aclRule1.Action = []string{"-j", "ACCEPT"}
 		aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
-			"--match-set", "ipv6.local", "src", "-p", "ipv6-icmp", "-j", "ACCEPT"}
+			"--match-set", "ipv6.local", "src", "-p", "ipv6-icmp"}
+		aclRule2.Action = []string{"-j", "ACCEPT"}
 		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d",
-			aclArgs.BridgeIP, "-p", "ipv6-icmp", "-j", "ACCEPT"}
+			aclArgs.BridgeIP, "-p", "ipv6-icmp"}
+		aclRule3.Action = []string{"-j", "ACCEPT"}
 		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s",
-			aclArgs.BridgeIP, "-p", "ipv6-icmp", "-j", "ACCEPT"}
+			aclArgs.BridgeIP, "-p", "ipv6-icmp"}
+		aclRule4.Action = []string{"-j", "ACCEPT"}
 		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 
 		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
-			"--match-set", "ipv6.local", "dst", "-p", "udp", "--dport", "dhcpv6-server",
-			"-j", "ACCEPT"}
+			"--match-set", "ipv6.local", "dst", "-p", "udp", "--dport", "dhcpv6-server"}
+		aclRule1.Action = []string{"-j", "ACCEPT"}
 		aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
-			"--match-set", "ipv6.local", "src", "-p", "udp", "--sport", "dhcpv6-server",
-			"-j", "ACCEPT"}
+			"--match-set", "ipv6.local", "src", "-p", "udp", "--sport", "dhcpv6-server"}
+		aclRule2.Action = []string{"-j", "ACCEPT"}
 		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
-			"-p", "udp", "--dport", "dhcpv6-server", "-j", "ACCEPT"}
+			"-p", "udp", "--dport", "dhcpv6-server"}
+		aclRule3.Action = []string{"-j", "ACCEPT"}
 		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
-			"-p", "udp", "--sport", "dhcpv6-server", "-j", "ACCEPT"}
+			"-p", "udp", "--sport", "dhcpv6-server"}
+		aclRule4.Action = []string{"-j", "ACCEPT"}
 		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 
 		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
-			"-p", "udp", "--dport", "domain", "-j", "ACCEPT"}
+			"-p", "udp", "--dport", "domain"}
+		aclRule1.Action = []string{"-j", "ACCEPT"}
 		aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
-			"-p", "udp", "--sport", "domain", "-j", "ACCEPT"}
+			"-p", "udp", "--sport", "domain"}
+		aclRule2.Action = []string{"-j", "ACCEPT"}
 		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
-			"-p", "tcp", "--dport", "domain", "-j", "ACCEPT"}
+			"-p", "tcp", "--dport", "domain"}
+		aclRule3.Action = []string{"-j", "ACCEPT"}
 		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
-			"-p", "tcp", "--sport", "domain", "-j", "ACCEPT"}
+			"-p", "tcp", "--sport", "domain"}
+		aclRule4.Action = []string{"-j", "ACCEPT"}
 		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 	}
 	// The same rules as above for IPv4.
@@ -341,26 +435,52 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 		// Only allow dhcp and dns (tcp/udp)
 		// Note that sufficient for src or dst to be local
 		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
-			"--match-set", "ipv4.local", "dst", "-p", "udp", "--dport", "bootps",
-			"-j", "ACCEPT"}
+			"--match-set", "ipv4.local", "dst", "-p", "udp", "--dport", "bootps"}
+		aclRule1.Action = []string{"-j", "ACCEPT"}
 		aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
-			"--match-set", "ipv4.local", "src", "-p", "udp", "--sport", "bootps",
-			"-j", "ACCEPT"}
+			"--match-set", "ipv4.local", "src", "-p", "udp", "--sport", "bootps"}
+		aclRule2.Action = []string{"-j", "ACCEPT"}
 		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
-			"-p", "udp", "--dport", "bootps", "-j", "ACCEPT"}
+			"-p", "udp", "--dport", "bootps"}
+		aclRule3.Action = []string{"-j", "ACCEPT"}
 		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
-			"-p", "udp", "--sport", "bootps", "-j", "ACCEPT"}
+			"-p", "udp", "--sport", "bootps"}
+		aclRule4.Action = []string{"-j", "ACCEPT"}
 		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 
 		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
-			"-p", "udp", "--dport", "domain", "-j", "ACCEPT"}
+			"-p", "udp", "--dport", "domain"}
+		aclRule1.Action = []string{"-j", "ACCEPT"}
 		aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
-			"-p", "udp", "--sport", "domain", "-j", "ACCEPT"}
+			"-p", "udp", "--sport", "domain"}
+		aclRule2.Action = []string{"-j", "ACCEPT"}
 		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
-			"-p", "tcp", "--dport", "domain", "-j", "ACCEPT"}
+			"-p", "tcp", "--dport", "domain"}
+		aclRule3.Action = []string{"-j", "ACCEPT"}
 		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
-			"-p", "tcp", "--sport", "domain", "-j", "ACCEPT"}
+			"-p", "tcp", "--sport", "domain"}
+		aclRule4.Action = []string{"-j", "ACCEPT"}
 		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+
+		aclRule5.Table = "mangle"
+		aclRule5.Chain = "PREROUTING"
+		aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			"-p", "udp", "-m", "multiport", "--dports", "bootps,domain"}
+		chainName := fmt.Sprintf("%s-%s-%d",
+			aclArgs.BridgeName, aclArgs.VifName, 6)
+		createMarkAndAcceptChain(aclArgs, chainName, 6)
+		aclRule5.Action = []string{"-j", chainName}
+		aclRule5.ActionChainName = chainName
+		rulesList = append(rulesList, aclRule5)
+
+		aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+			"-p", "tcp", "--dport", "domain"}
+		chainName = fmt.Sprintf("%s-%s-%d",
+			aclArgs.BridgeName, aclArgs.VifName, 7)
+		createMarkAndAcceptChain(aclArgs, chainName, 7)
+		aclRule5.Action = []string{"-j", chainName}
+		aclRule5.ActionChainName = chainName
+		rulesList = append(rulesList, aclRule5)
 	}
 
 	// XXX isMgmt is painful; related to commenting out eidset accepts
@@ -370,8 +490,8 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 		aclRule1.IPVer = 6
 		aclRule1.Table = "mangle"
 		aclRule1.Chain = "FORWARD"
-		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-o", "dbo1x0",
-			"-j", "DROP"}
+		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-o", "dbo1x0"}
+		aclRule1.Action = []string{"-j", "DROP"}
 		rulesList = append(rulesList, aclRule1)
 	}
 
@@ -400,17 +520,42 @@ func aclDropRules(aclArgs types.AppNetworkACLArgs) (types.IPTablesRuleList, erro
 
 	// Always match on interface. Note that rulePrefix adds physdev-in
 	// Implicit drop at the end with log before it
-	aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-j", "LOG", "--log-prefix",
+	aclRule1.Rule = []string{"-i", aclArgs.BridgeName}
+	aclRule1.Action = []string{"-j", "LOG", "--log-prefix",
 		"FORWARD:FROM:", "--log-level", "3"}
-	aclRule2.Rule = []string{"-o", aclArgs.BridgeName, "-j", "LOG", "--log-prefix",
+	aclRule2.Rule = []string{"-o", aclArgs.BridgeName}
+	aclRule2.Action = []string{"-j", "LOG", "--log-prefix",
 		"FORWARD:TO:", "--log-level", "3"}
-	aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-j", "DROP"}
-	aclRule4.Rule = []string{"-o", aclArgs.BridgeName, "-j", "DROP"}
-	rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+
+	// For flow monitoring, we need a rule that marks packet with
+	// a reserved drop/reject marking at the end of rule set in mangle table
+	// for this application instance.
+	switch aclArgs.NIType {
+	case types.NetworkInstanceTypeLocal:
+		aclRule3.Table = "mangle"
+		aclRule3.Chain = "PREROUTING"
+		aclRule3.Rule = []string{"-i", aclArgs.BridgeName}
+		chainName := fmt.Sprintf("drop-all-%s-%s",
+			aclArgs.BridgeName, aclArgs.VifName)
+		aclRule3.ActionChainName = chainName
+		// XXX Passing 0xffffffff as int32 make golang give overflow error.
+		// Instead pass "-1" as the marking value and make createMarkAndAcceptChain
+		// handle this case separately.
+		createMarkAndAcceptChain(aclArgs, chainName, -1)
+		aclRule3.Action = []string{"-j", chainName}
+		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3)
+	default:
+		aclRule3.Rule = []string{"-i", aclArgs.BridgeName}
+		aclRule3.Action = []string{"-j", "DROP"}
+		aclRule4.Rule = []string{"-o", aclArgs.BridgeName}
+		aclRule4.Action = []string{"-j", "DROP"}
+		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+	}
 	return rulesList, nil
 }
 
-func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesRuleList, error) {
+func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesRuleList,
+	error) {
 	var rulesList types.IPTablesRuleList
 
 	// Extract lport and protocol from the Matches to use for PortMap
@@ -434,6 +579,8 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 	// Always match on interface. Note that rulePrefix adds physdev-in
 	inArgs := []string{"-o", aclArgs.BridgeName}
 	outArgs := []string{"-i", aclArgs.BridgeName}
+	inActions := []string{}
+	outActions := []string{}
 
 	for _, match := range ace.Matches {
 		switch match.Type {
@@ -590,17 +737,45 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 				// e.g., out a directly attached interface in the domU
 				aclRule1.Table = "nat"
 				aclRule1.Chain = "PREROUTING"
+				aclRule1.RuleID = allocACEId()
+				aclRule1.ActionChainName = ""
 				aclRule1.Rule = []string{"-i", upLink, "-p", protocol,
-					"--dport", lport, "-j", "DNAT",
+					"--dport", lport}
+				aclRule1.Action = []string{"-j", "DNAT",
 					"--to-destination", target}
+				aclRule1.IsPortMapRule = true
+				aclRule1.IsUserConfigured = true
 				rulesList = append(rulesList, aclRule1)
+
+				// XXX Are port map rules only valid for Local network instance?
+				// Create a copy of this rule in mangle table to mark/accept
+				// port mapping connections from outside.
+				if aclRule1.RuleID != -1 {
+					aclRule1.Table = "mangle"
+					aclRule1.IsMarkingRule = true
+					chainName := fmt.Sprintf("%s-%s-%d",
+						aclArgs.BridgeName, aclArgs.VifName, aclRule1.RuleID)
+
+					// Embed App id in marking value
+					markingValue := (aclArgs.AppNum << 24) | aclRule1.RuleID
+					createMarkAndAcceptChain(aclArgs, chainName, markingValue)
+					aclRule1.Action = []string{"-j", chainName}
+					aclRule1.ActionChainName = chainName
+					rulesList = append(rulesList, aclRule1)
+				} else {
+					log.Errorf("Table: %s, Chain: %s, Rule: %s, Action: %s - cannot be"+
+						" programmed due to ACL ID allocation failure",
+						aclRule1.Table, aclRule1.Chain, aclRule1.Rule, aclRule1.Action)
+				}
 			}
 			// add the outgoing port-map translation rule to bridge port
 			aclRule2.Table = "nat"
 			aclRule2.Chain = "POSTROUTING"
 			aclRule2.Rule = []string{"-o", aclArgs.BridgeName, "-p", protocol,
-				"--dport", targetPort, "-j", "SNAT",
-				"--to-source", aclArgs.BridgeIP}
+				"--dport", targetPort}
+			aclRule2.Action = []string{"-j", "SNAT", "--to-source", aclArgs.BridgeIP}
+			aclRule2.IsPortMapRule = true
+			aclRule2.IsUserConfigured = true
 			rulesList = append(rulesList, aclRule2)
 
 			// Below we make sure the mapped packets get through
@@ -628,6 +803,10 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 				inArgs = append(inArgs, []string{"-m", "set",
 					"--match-set", ipsetName, "src"}...)
 			}
+			// XXX Port map rule is shown as inbound rule from UI.
+			// UI does not provide a way for user to configure ip, fport, ipset
+			// matches along with port mapping. Not sure if we will need mangle
+			// table for marking these connections.
 		}
 		if actionCount > 1 {
 			errStr := fmt.Sprintf("ACL with combination of Drop, Limit and/or PortMap rejected: %+v",
@@ -637,26 +816,109 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 		}
 	}
 	if foundDrop {
-		outArgs = append(outArgs, []string{"-j", "DROP"}...)
-		inArgs = append(inArgs, []string{"-j", "DROP"}...)
+		outActions = append(outActions, []string{"-j", "DROP"}...)
+		inActions = append(inActions, []string{"-j", "DROP"}...)
 	} else {
 		// Default
-		outArgs = append(outArgs, []string{"-j", "ACCEPT"}...)
-		inArgs = append(inArgs, []string{"-j", "ACCEPT"}...)
+		outActions = append(outActions, []string{"-j", "ACCEPT"}...)
+		inActions = append(inActions, []string{"-j", "ACCEPT"}...)
 	}
+
 	aclRule3.Rule = inArgs
+	aclRule3.Action = inActions
+	aclRule3.IsUserConfigured = true
+	aclRule3.RuleID = allocACEId()
+
 	aclRule4.Rule = outArgs
+	aclRule4.Action = outActions
+	aclRule4.RuleID = allocACEId()
+	aclRule4.IsUserConfigured = true
 	rulesList = append(rulesList, aclRule4, aclRule3)
+
+	switch aclArgs.NIType {
+	case types.NetworkInstanceTypeLocal:
+		if aclRule4.RuleID != -1 {
+			aclRule4.Table = "mangle"
+			aclRule4.Chain = "PREROUTING"
+			aclRule4.IsMarkingRule = true
+			chainName := fmt.Sprintf("%s-%s-%d",
+				aclArgs.BridgeName, aclArgs.VifName, aclRule4.RuleID)
+
+			// Embed App id in marking value
+			markingValue := (aclArgs.AppNum << 24) | aclRule4.RuleID
+			createMarkAndAcceptChain(aclArgs, chainName, markingValue)
+			aclRule4.Action = []string{"-j", chainName}
+			aclRule4.ActionChainName = chainName
+			rulesList = append(rulesList, aclRule4)
+		} else {
+			log.Errorf("Table: %s, Chain: %s, Rule: %s, Action: %s - cannot be"+
+				" programmed due to ACL ID allocation failure",
+				aclRule4.Table, aclRule4.Chain, aclRule4.Rule, aclRule4.Action)
+		}
+	case types.NetworkInstanceTypeCloud:
+		fallthrough
+	case types.NetworkInstanceTypeSwitch:
+		if aclRule4.RuleID != -1 {
+			aclRule4.Table = "mangle"
+			aclRule4.Chain = "PREROUTING"
+			aclRule4.IsMarkingRule = true
+			chainName := fmt.Sprintf("%s-%s-%d",
+				aclArgs.BridgeName, aclArgs.VifName, aclRule4.RuleID)
+
+			// Embed App id in marking value
+			markingValue := (aclArgs.AppNum << 24) | aclRule4.RuleID
+			createMarkAndAcceptChain(aclArgs, chainName, markingValue)
+			aclRule4.Action = []string{"-j", chainName}
+			aclRule4.ActionChainName = chainName
+			rulesList = append(rulesList, aclRule4)
+		} else {
+			log.Errorf("Table: %s, Chain: %s, Rule: %s, Action: %s - cannot be"+
+				" programmed due to ACL ID allocation failure",
+				aclRule4.Table, aclRule4.Chain, aclRule4.Rule, aclRule4.Action)
+		}
+
+		if aclRule3.RuleID != -1 {
+			for _, uplink := range aclArgs.UpLinks {
+				aclRule3.Table = "mangle"
+				aclRule3.Chain = "PREROUTING"
+				if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
+					aclRule3.Rule = append(aclRule3.Rule, "-m", "physdev",
+						"--physdev-in", uplink)
+				}
+				aclRule3.IsMarkingRule = true
+				chainName := fmt.Sprintf("%s-%s-%d",
+					aclArgs.BridgeName, aclArgs.VifName, aclRule3.RuleID)
+
+				// Embed App id in marking value
+				markingValue := (aclArgs.AppNum << 24) | aclRule3.RuleID
+				createMarkAndAcceptChain(aclArgs, chainName, markingValue)
+				aclRule3.Action = []string{"-j", chainName}
+				aclRule3.ActionChainName = chainName
+				rulesList = append(rulesList, aclRule3)
+			}
+		} else {
+			log.Errorf("Table: %s, Chain: %s, Rule: %s, Action: %s - cannot be"+
+				" programmed due to ACL ID allocation failure",
+				aclRule3.Table, aclRule3.Chain, aclRule3.Rule, aclRule3.Action)
+		}
+	default:
+	}
+
 	if foundLimit {
 		// Add separate DROP without the limit to count the excess
-		unlimitedOutArgs = append(unlimitedOutArgs,
-			[]string{"-j", "DROP"}...)
-		unlimitedInArgs = append(unlimitedInArgs,
-			[]string{"-j", "DROP"}...)
+		unlimitedOutActions := []string{"-j", "DROP"}
+		unlimitedInActions := []string{"-j", "DROP"}
 		log.Debugf("unlimitedOutArgs %v\n", unlimitedOutArgs)
 		log.Debugf("unlimitedInArgs %v\n", unlimitedInArgs)
 		aclRule5.Rule = unlimitedInArgs
+		aclRule5.Action = unlimitedInActions
+		aclRule5.IsLimitDropRule = true
+		aclRule5.IsUserConfigured = true
+
 		aclRule6.Rule = unlimitedOutArgs
+		aclRule6.Action = unlimitedOutActions
+		aclRule6.IsLimitDropRule = true
+		aclRule6.IsUserConfigured = true
 		rulesList = append(rulesList, aclRule5, aclRule6)
 	}
 	log.Infof("rulesList %v\n", rulesList)
@@ -726,6 +988,24 @@ func rulePrefix(aclArgs types.AppNetworkACLArgs, rule *types.IPTablesRule) error
 	if rule.Table != "" || rule.Chain != "" {
 		// NAT verbatim rule, already set
 		// MANGLE verbatim rule, already set
+
+		// To monitor flows we install marking rule in mangle table.
+		// 1. For packets coming into device from internet we match
+		//    on the destination address in PREROUTING mangle instead of
+		//    output interface.
+		// 2. For the packets originating from App and going to internet
+		//    we we have to include the physdev match rule to differentiate
+		//    between application instances.
+		if rule.Table == "mangle" {
+			if rule.Rule[0] == "-o" {
+				rule.Rule = rule.Rule[2:]
+				if aclArgs.AppIP != "" {
+					rule.Prefix = []string{"-d", aclArgs.AppIP}
+				}
+			} else if rule.Rule[0] == "-i" && !rule.IsPortMapRule {
+				rule.Prefix = []string{"-m", "physdev", "--physdev-in", vifName}
+			}
+		}
 		return nil
 	}
 
@@ -1019,8 +1299,25 @@ func executeIPTablesRule(operation string, rule types.IPTablesRule) error {
 	ruleStr = append(ruleStr, rule.Chain)
 	ruleStr = append(ruleStr, rule.Prefix...)
 	ruleStr = append(ruleStr, rule.Rule...)
+	if len(rule.Action) > 0 {
+		ruleStr = append(ruleStr, rule.Action...)
+	}
 	if rule.IPVer == 4 {
 		err = iptables.IptableCmd(ruleStr...)
+		if operation == "-D" && rule.Table == "mangle" {
+			if rule.ActionChainName != "" {
+				chainFlush := []string{"-t", "mangle", "--flush", rule.ActionChainName}
+				chainDelete := []string{"-t", "mangle", "-X", rule.ActionChainName}
+				err = iptables.IptableCmd(chainFlush...)
+				if err == nil {
+					iptables.IptableCmd(chainDelete...)
+				}
+			}
+		} else if operation == "-D" {
+			if rule.RuleID != 0 {
+				freeACEId(rule.RuleID)
+			}
+		}
 	} else if rule.IPVer == 6 {
 		err = iptables.Ip6tableCmd(ruleStr...)
 	} else {
@@ -1084,7 +1381,189 @@ func networkInstanceBridgeRules(aclArgs types.AppNetworkACLArgs) types.IPTablesR
 		"-j", "CHECKSUM", "--checksum-fill"}
 	rulesList = append(rulesList, aclRule1, aclRule2)
 
+	// XXX To monitor flows (Local/Switch instances) we should
+	// add connection tracking rules to mangle table at PREROUTING hook.
+	switch aclArgs.NIType {
+	case types.NetworkInstanceTypeLocal:
+		rules := createFlowMatchRules(aclArgs)
+		rulesList = append(rulesList, rules...)
+	case types.NetworkInstanceTypeSwitch:
+		rules := createFlowMatchRules(aclArgs)
+		rulesList = append(rulesList, rules...)
+		// XXX May be add the extra matches rules copied from filter FORWARD
+	default:
+	}
+
 	log.Debugf("bridge(%s, %v) attach iptable rules:%v\n",
 		aclArgs.BridgeName, aclArgs.BridgeIP, rulesList)
 	return rulesList
+}
+
+func createFlowMonDummyInterface(fwmark uint32) {
+	// Check if our dummy interface already exits.
+	dummyIntfName := "flow-mon-dummy"
+	link, err := netlink.LinkByName(dummyIntfName)
+	if link != nil {
+		log.Infof("createFlowMonDummyInterface: %s already present", dummyIntfName)
+		return
+	}
+
+	sattrs := netlink.NewLinkAttrs()
+	sattrs.Name = dummyIntfName
+
+	// 1280 gives us a comfortable buffer for lisp encapsulation
+	sattrs.MTU = 1280
+	slink := &netlink.Dummy{LinkAttrs: sattrs}
+	if err := netlink.LinkAdd(slink); err != nil {
+		errStr := fmt.Sprintf("createFlowMonDummyInterface: LinkAdd on %s failed: %s",
+			dummyIntfName, err)
+		log.Errorf(errStr)
+		return
+	}
+
+	// ip link set ${dummy-interface} up
+	if err := netlink.LinkSetUp(slink); err != nil {
+		errStr := fmt.Sprintf("createFlowMonDummyInterface: LinkSetUp on %s failed: %s",
+			dummyIntfName, err)
+		log.Errorf(errStr)
+		return
+	}
+
+	// Turn ARP off on our dummy link
+	if err := netlink.LinkSetARPOff(slink); err != nil {
+		errStr := fmt.Sprintf("createFlowMonDummyInterface: LinkSetARPOff on %s failed: %s",
+			dummyIntfName, err)
+		log.Errorf(errStr)
+		return
+	}
+
+	iifIndex := slink.Attrs().Index
+	err = AddFwMarkRuleToDummy(fwmark, iifIndex)
+	if err != nil {
+		log.Errorf("createFlowMonDummyInterface: FwMark rule for %s failed: %s",
+			dummyIntfName, err)
+	}
+}
+
+func createFlowMatchRules(aclArgs types.AppNetworkACLArgs) types.IPTablesRuleList {
+	var rulesList types.IPTablesRuleList
+	var aclRule types.IPTablesRule
+
+	// not for dom0
+	if aclArgs.IsMgmt {
+		return rulesList
+	}
+	aclArgs.IPVer = determineIPVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
+	for _, uplink := range aclArgs.UpLinks {
+		aclRule.IPVer = 4
+		aclRule.Table = "mangle"
+		aclRule.Chain = "PREROUTING"
+		aclRule.Rule = []string{"-i", uplink}
+		// Restore marking from connection into packet
+		aclRule.Action = []string{"-j", "CONNMARK", "--restore-mark"}
+		rulesList = append(rulesList, aclRule)
+
+		aclRule.IPVer = 4
+		aclRule.Table = "mangle"
+		aclRule.Chain = "PREROUTING"
+		// Check if packet has non-zero marking and ACCEPT if Yes.
+		aclRule.Rule = []string{"-i", uplink, "-m", "mark", "!", "--mark", "0"}
+		aclRule.Action = []string{"-j", "ACCEPT"}
+		rulesList = append(rulesList, aclRule)
+
+		aclRule.IPVer = 4
+		aclRule.Table = "mangle"
+		aclRule.Chain = "PREROUTING"
+		aclRule.Rule = []string{"-i", uplink}
+		// XXX Use 0xFFFFFFFF for DROP/REJECT? Might change later.
+		aclRule.Action = []string{"-j", "MARK", "--set-mark", "0xFFFFFFFF"}
+		rulesList = append(rulesList, aclRule)
+
+		aclRule.IPVer = 4
+		aclRule.Table = "mangle"
+		aclRule.Chain = "PREROUTING"
+		aclRule.Rule = []string{"-i", uplink}
+		// Save packet mark into connection
+		aclRule.Action = []string{"-j", "CONNMARK", "--save-mark"}
+		rulesList = append(rulesList, aclRule)
+	}
+	return rulesList
+}
+
+func createMarkAndAcceptChain(aclArgs types.AppNetworkACLArgs,
+	name string, marking int32) error {
+
+	// not for dom0
+	if aclArgs.IsMgmt {
+		return errors.New("Invalid chain creation")
+	}
+
+	newChain := []string{"-t", "mangle", "-N", name}
+	log.Infof("createMarkAndAcceptChain: Creating new chain (%s)", name)
+	err := iptables.IptableCmd(newChain...)
+	if err != nil {
+		log.Errorf("createMarkAndAcceptChain: New chain (%s) creation failed: %s",
+			name, err)
+		return err
+	}
+
+	rule1 := []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--restore-mark"}
+	rule2 := []string{"-A", name, "-t", "mangle", "-m", "mark", "!", "--mark", "0",
+		"-j", "ACCEPT"}
+
+	rule3 := []string{}
+	if marking == -1 {
+		rule3 = []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--set-mark",
+			"0xffffffff"}
+	} else {
+		rule3 = []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--set-mark",
+			strconv.FormatInt(int64(marking), 10)}
+	}
+	rule4 := []string{"-A", name, "-t", "mangle", "-j", "CONNMARK", "--restore-mark"}
+	rule5 := []string{"-A", name, "-t", "mangle", "-j", "ACCEPT"}
+
+	chainFlush := []string{"-t", "mangle", "--flush", name}
+	chainDelete := []string{"-t", "mangle", "-X", name}
+
+	err = iptables.IptableCmd(rule1...)
+	if err != nil {
+		log.Errorf("createMarkAndAcceptChain: New rule (%s) creation failed: %s",
+			rule1, err)
+		iptables.IptableCmd(chainFlush...)
+		iptables.IptableCmd(chainDelete...)
+		return err
+	}
+	err = iptables.IptableCmd(rule2...)
+	if err != nil {
+		log.Errorf("createMarkAndAcceptChain: New rule (%s) creation failed: %s",
+			rule2, err)
+		iptables.IptableCmd(chainFlush...)
+		iptables.IptableCmd(chainDelete...)
+		return err
+	}
+	err = iptables.IptableCmd(rule3...)
+	if err != nil {
+		log.Errorf("createMarkAndAcceptChain: New rule (%s) creation failed: %s",
+			rule3, err)
+		iptables.IptableCmd(chainFlush...)
+		iptables.IptableCmd(chainDelete...)
+		return err
+	}
+	err = iptables.IptableCmd(rule4...)
+	if err != nil {
+		log.Errorf("createMarkAndAcceptChain: New rule (%s) creation failed: %s",
+			rule4, err)
+		iptables.IptableCmd(chainFlush...)
+		iptables.IptableCmd(chainDelete...)
+		return err
+	}
+	err = iptables.IptableCmd(rule5...)
+	if err != nil {
+		log.Errorf("createMarkAndAcceptChain: New rule (%s) creation failed: %s",
+			rule5, err)
+		iptables.IptableCmd(chainFlush...)
+		iptables.IptableCmd(chainDelete...)
+		return err
+	}
+	return nil
 }

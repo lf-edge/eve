@@ -11,6 +11,7 @@ import (
         "github.com/lf-edge/eve/api/go/info"
         "github.com/lf-edge/eve/api/go/logs"
         "github.com/lf-edge/eve/api/go/metrics"
+        "github.com/lf-edge/eve/api/go/flowlog"
 )
 ```
 

@@ -39,6 +39,7 @@ const (
 	runDirname    = "/var/run/zedrouter"
 	tmpDirname    = "/var/tmp/zededa"
 	DataPlaneName = "lisp-ztr"
+	DropMarkValue = 0xFFFFFFFF
 )
 
 // Set from Makefile
@@ -73,6 +74,7 @@ type zedrouterContext struct {
 	subNetworkInstanceConfig  *pubsub.Subscription
 	pubNetworkInstanceStatus  *pubsub.Publication
 	pubNetworkInstanceMetrics *pubsub.Publication
+	pubAppFlowMonitor         *pubsub.Publication
 	networkInstanceStatusMap  map[uuid.UUID]*types.NetworkInstanceStatus
 }
 
@@ -129,6 +131,9 @@ func Run() {
 		log.Fatal(err)
 	}
 	pubUuidToNum.ClearRestarted()
+
+	// Create the dummy interface used to re-direct DROP/REJECT packets.
+	createFlowMonDummyInterface(DropMarkValue)
 
 	// Pick up (mostly static) AssignableAdapters before we process
 	// any Routes; Pbr needs to know which network adapters are assignable
@@ -208,6 +213,12 @@ func Run() {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubNetworkInstanceMetrics = pubNetworkInstanceMetrics
+
+	pubAppFlowMonitor, err := pubsub.Publish(agentName, types.IPFlow{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubAppFlowMonitor = pubAppFlowMonitor
 
 	appNumAllocatorInit(&zedrouterCtx)
 	bridgeNumAllocatorInit(&zedrouterCtx)
@@ -302,6 +313,12 @@ func Run() {
 		time.Duration(max))
 
 	updateLispConfiglets(&zedrouterCtx, zedrouterCtx.legacyDataPlane)
+
+	flowStatIntv := time.Duration(120 * time.Second) // 120 sec, flow timeout if less than150 sec
+	fmax := float64(flowStatIntv)
+	fmin := fmax * 0.9
+	flowStatTimer := flextimer.NewRangeTicker(time.Duration(fmin),
+		time.Duration(fmax))
 
 	setFreeMgmtPorts(types.GetMgmtPortsFree(*zedrouterCtx.deviceNetworkStatus, 0))
 
@@ -414,6 +431,10 @@ func Run() {
 			// XXX add file watch...
 			checkAndPublishDhcpLeases(&zedrouterCtx)
 
+		case <-flowStatTimer.C:
+			log.Debugf("FlowStatTimer at %v", time.Now())
+			go FlowStatsCollect(&zedrouterCtx)
+
 		case change := <-subNetworkInstanceConfig.C:
 			log.Infof("NetworkInstanceConfig change at %+v", time.Now())
 			subNetworkInstanceConfig.ProcessChange(change)
@@ -523,6 +544,16 @@ func handleInit(runDirname string) {
 		log.Fatal("Failed setting rp_filter ", err)
 	}
 	_, err = wrap.Command("sysctl", "-w",
+		"net.netfilter.nf_conntrack_acct=1").Output()
+	if err != nil {
+		log.Fatal("Failed setting conntrack_acct ", err)
+	}
+	_, err = wrap.Command("sysctl", "-w",
+		"net.netfilter.nf_conntrack_timestamp=1").Output()
+	if err != nil {
+		log.Fatal("Failed setting conntrack_timestamp ", err)
+	}
+	_, err = wrap.Command("sysctl", "-w",
 		"net.ipv4.conf.all.log_martians=1").Output()
 	if err != nil {
 		log.Fatal("Failed setting log_martians ", err)
@@ -532,6 +563,7 @@ func handleInit(runDirname string) {
 	if err != nil {
 		log.Fatal("Failed setting log_martians ", err)
 	}
+	AppFlowMonitorTimeoutAdjust()
 }
 
 func publishLispDataplaneConfig(ctx *zedrouterContext,
@@ -1165,7 +1197,8 @@ func appNetworkDoActivateUnderlayNetwork(
 
 	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: vifName, BridgeIP: bridgeIPAddr, AppIP: appIPAddr,
-		UpLinks: netInstStatus.IfNameList}
+		UpLinks: netInstStatus.IfNameList, NIType: netInstStatus.Type,
+		AppNum: int32(status.AppNum)}
 
 	// Set up ACLs
 	ruleList, err := createACLConfiglet(aclArgs, ulStatus.ACLs)
@@ -1988,7 +2021,8 @@ func doAppNetworkModifyUnderlayNetwork(
 
 	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: appIPAddr,
-		UpLinks: netstatus.IfNameList}
+		UpLinks: netstatus.IfNameList, NIType: netstatus.Type,
+		AppNum: int32(status.AppNum)}
 
 	// We ignore any errors in netstatus
 
@@ -2309,6 +2343,9 @@ func appNetworkDoInactivateUnderlayNetwork(
 	netstatus.BridgeIPSets = newIpsets
 	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
 	maybeRemoveStaleIpsets(staleIpsets)
+
+	// publish the changes to network instance status
+	publishNetworkInstanceStatus(ctx, netstatus)
 }
 
 func appNetworkDoInactivateAllOverlayNetworks(ctx *zedrouterContext,
