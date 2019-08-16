@@ -372,7 +372,7 @@ func FetchVaultKey() ([]byte, error) {
 	//First try to read from TPM, if it was stored earlier
 	key, err := readDiskKey()
 	if err != nil {
-		key, err := getRandom(vaultKeyLength)
+		key, err = getRandom(vaultKeyLength)
 		if err != nil {
 			log.Errorf("Error in generating random number: %v", err)
 			return nil, err
@@ -574,7 +574,8 @@ func printCapability() {
 	} else {
 		fmt.Println(hwInfoStr)
 	}
-	printNVProperties()
+	//XXX Not working, commenting for now
+	//printNVProperties()
 }
 
 func Run() {
