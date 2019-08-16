@@ -1,0 +1,321 @@
+diff --git a/pkg/pillar/cmd/baseosmgr/baseosmgr.go b/pkg/pillar/cmd/baseosmgr/baseosmgr.go
+index 6923248b..a26c3c1d 100644
+--- a/pkg/pillar/cmd/baseosmgr/baseosmgr.go
++++ b/pkg/pillar/cmd/baseosmgr/baseosmgr.go
+@@ -182,39 +182,6 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
+ 	}
+ }
+ 
+-// Wrappers around handleBaseOsCreate/Modify/Delete
+-func handleBaseOsConfigModify(ctxArg interface{}, key string, configArg interface{}) {
+-	ctx := ctxArg.(*baseOsMgrContext)
+-	config := cast.CastBaseOsConfig(configArg)
+-	if config.Key() != key {
+-		log.Errorf("handleBaseOsConfigModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
+-		return
+-	}
+-	uuidStr := config.Key()
+-	status := lookupBaseOsStatus(ctx, key)
+-	if status == nil {
+-		log.Infof("handleBaseOsCreate for %s\n", uuidStr)
+-		status := types.BaseOsStatus{
+-			UUIDandVersion: config.UUIDandVersion,
+-			BaseOsVersion:  config.BaseOsVersion,
+-			ConfigSha256:   config.ConfigSha256,
+-		}
+-
+-		status.StorageStatusList = make([]types.StorageStatus,
+-			len(config.StorageConfigList))
+-
+-		for i, sc := range config.StorageConfigList {
+-			ss := &status.StorageStatusList[i]
+-			ss.Name = sc.Name
+-			ss.ImageSha256 = sc.ImageSha256
+-			ss.Target = sc.Target
+-		}
+-		publishBaseOsStatus(ctx, &status)
+-	}
+-	handleBaseOsModify(ctx, key, config)
+-	log.Infof("handleBaseOsConfigModify(%s) done\n", uuidStr)
+-}
+-
+ func handleBaseOsConfigDelete(ctxArg interface{}, key string,
+ 	configArg interface{}) {
+ 
+@@ -230,14 +197,38 @@ func handleBaseOsConfigDelete(ctxArg interface{}, key string,
+ }
+ 
+ // base os config modify event
+-func handleBaseOsModify(ctx *baseOsMgrContext, key string, config types.BaseOsConfig) {
++func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
++
++	ctx := ctxArg.(*baseOsMgrContext)
++	config := cast.CastBaseOsConfig(configArg)
++	status := types.BaseOsStatus{
++		UUIDandVersion: config.UUIDandVersion,
++		BaseOsVersion:  config.BaseOsVersion,
++		ConfigSha256:   config.ConfigSha256,
++	}
+ 
++	status.StorageStatusList = make([]types.StorageStatus,
++		len(config.StorageConfigList))
++
++	for i, sc := range config.StorageConfigList {
++		ss := &status.StorageStatusList[i]
++		ss.Name = sc.Name
++		ss.ImageSha256 = sc.ImageSha256
++		ss.Target = sc.Target
++	}
++	publishBaseOsStatus(ctx, &status)
++
++}
++func handleBaseOsModify(ctxArg interface{}, key string, configArg interface{}) {
++
++	ctx := ctxArg.(*baseOsMgrContext)
++	config := cast.CastBaseOsConfig(configArg)
++	status := lookupBaseOsStatus(ctx, key)
+ 	if config.Key() != key {
+ 		log.Errorf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
+ 			key, config.Key(), config)
+ 		return
+ 	}
+-	status := lookupBaseOsStatus(ctx, key)
+ 	if status == nil {
+ 		log.Errorf("handleBaseOsModify status not found, ignored %+v\n", key)
+ 		return
+@@ -278,24 +269,6 @@ func handleBaseOsDelete(ctxArg interface{}, key string,
+ 	removeBaseOsConfig(ctx, status.Key())
+ }
+ 
+-// Wrappers around handleCertObjCreate/Modify/Delete
+-
+-func handleCertObjConfigModify(ctxArg interface{}, key string, configArg interface{}) {
+-	ctx := ctxArg.(*baseOsMgrContext)
+-	config := cast.CastCertObjConfig(configArg)
+-	if config.Key() != key {
+-		log.Errorf("handleCertObjConfigModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
+-		return
+-	}
+-	status := lookupCertObjStatus(ctx, key)
+-	if status == nil {
+-		handleCertObjCreate(ctx, key, &config)
+-	} else {
+-		handleCertObjModify(ctx, key, &config, status)
+-	}
+-	log.Infof("handleCertObjConfigModify(%s) done\n", key)
+-}
+-
+ func handleCertObjConfigDelete(ctxArg interface{}, key string,
+ 	configArg interface{}) {
+ 
+@@ -312,8 +285,9 @@ func handleCertObjConfigDelete(ctxArg interface{}, key string,
+ 
+ // certificate config/status event handlers
+ // certificate config create event
+-func handleCertObjCreate(ctx *baseOsMgrContext, key string, config *types.CertObjConfig) {
+-
++func handleCertObjCreate(ctxArg interface{}, key string, configArg interface{}) {
++	ctx := ctxArg.(*baseOsMgrContext)
++	config := cast.CastCertObjConfig(configArg)
+ 	log.Infof("handleCertObjCreate for %s\n", key)
+ 
+ 	status := types.CertObjStatus{
+@@ -333,12 +307,14 @@ func handleCertObjCreate(ctx *baseOsMgrContext, key string, config *types.CertOb
+ 
+ 	publishCertObjStatus(ctx, &status)
+ 
+-	certObjHandleStatusUpdate(ctx, config, &status)
++	certObjHandleStatusUpdate(ctx, &config, &status)
+ }
+ 
+ // certificate config modify event
+-func handleCertObjModify(ctx *baseOsMgrContext, key string, config *types.CertObjConfig, status *types.CertObjStatus) {
+-
++func handleCertObjModify(ctxArg interface{}, key string, configArg interface{}) {
++	ctx := ctxArg.(*baseOsMgrContext)
++	config := cast.CastCertObjConfig(configArg)
++	status := lookupCertObjStatus(ctx, key)
+ 	uuidStr := config.Key()
+ 	log.Infof("handleCertObjModify for %s\n", uuidStr)
+ 
+@@ -351,7 +327,7 @@ func handleCertObjModify(ctx *baseOsMgrContext, key string, config *types.CertOb
+ 	}
+ 
+ 	// on storage config change, purge and recreate
+-	if certObjCheckConfigModify(ctx, key, config, status) {
++	if certObjCheckConfigModify(ctx, key, &config, status) {
+ 		removeCertObjConfig(ctx, key)
+ 		handleCertObjCreate(ctx, key, config)
+ 	}
+@@ -518,7 +494,8 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
+ 	if err != nil {
+ 		log.Fatal(err)
+ 	}
+-	subBaseOsConfig.ModifyHandler = handleBaseOsConfigModify
++	subBaseOsConfig.ModifyHandler = handleBaseOsModify
++	subBaseOsConfig.CreateHandler = handleBaseOsCreate
+ 	subBaseOsConfig.DeleteHandler = handleBaseOsConfigDelete
+ 	ctx.subBaseOsConfig = subBaseOsConfig
+ 	subBaseOsConfig.Activate()
+@@ -540,7 +517,8 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
+ 	if err != nil {
+ 		log.Fatal(err)
+ 	}
+-	subCertObjConfig.ModifyHandler = handleCertObjConfigModify
++	subCertObjConfig.ModifyHandler = handleCertObjModify
++	subCertObjConfig.CreateHandler = handleCertObjCreate
+ 	subCertObjConfig.DeleteHandler = handleCertObjConfigDelete
+ 	ctx.subCertObjConfig = subCertObjConfig
+ 	subCertObjConfig.Activate()
+diff --git a/pkg/pillar/cmd/domainmgr/domainmgr.go b/pkg/pillar/cmd/domainmgr/domainmgr.go
+index 2f024653..fe147682 100644
+--- a/pkg/pillar/cmd/domainmgr/domainmgr.go
++++ b/pkg/pillar/cmd/domainmgr/domainmgr.go
+@@ -289,6 +289,7 @@ func Run() {
+ 		log.Fatal(err)
+ 	}
+ 	subDomainConfig.ModifyHandler = handleDomainModify
++	subDomainConfig.CreateHandler = handleDomainCreate
+ 	subDomainConfig.DeleteHandler = handleDomainDelete
+ 	subDomainConfig.RestartHandler = handleRestart
+ 	domainCtx.subDomainConfig = subDomainConfig
+@@ -543,24 +544,37 @@ func handlersInit() {
+ func handleDomainModify(ctxArg interface{}, key string, configArg interface{}) {
+ 
+ 	log.Infof("handleDomainModify(%s)\n", key)
+-	ctx := ctxArg.(*domainContext)
+ 	config := cast.CastDomainConfig(configArg)
+ 	if config.Key() != key {
+ 		log.Errorf("handleDomainModify key/UUID mismatch %s vs %s; ignored %+v\n",
+ 			key, config.Key(), config)
+ 		return
+ 	}
+-	// Do we have a channel/goroutine?
+ 	h, ok := handlerMap[config.Key()]
+ 	if !ok {
+-		h1 := make(chan interface{})
+-		handlerMap[config.Key()] = h1
+-		go runHandler(ctx, key, h1)
+-		h = h1
++		log.Fatalf("handleDomainModify called on config that does not exist")
++	}
++	h <- configArg
++}
++func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
++
++	log.Infof("handleDomainCreate(%s)\n", key)
++	ctx := ctxArg.(*domainContext)
++	config := cast.CastDomainConfig(configArg)
++	if config.Key() != key {
++		log.Errorf("handleDomainCreate key/UUID mismatch %s vs %s; ignored %+v\n",
++			key, config.Key(), config)
++		return
++	}
++	h, ok := handlerMap[config.Key()]
++	if ok {
++		log.Fatalf("handleDomainCreate called on config that already exists")
+ 	}
+-	log.Debugf("Sending config to handler\n")
++	h1 := make(chan interface{})
++	handlerMap[config.Key()] = h1
++	go runHandler(ctx, key, h1)
++	h = h1
+ 	h <- configArg
+-	log.Infof("handleDomainModify(%s) done\n", key)
+ }
+ 
+ func handleDomainDelete(ctxArg interface{}, key string,
+diff --git a/pkg/pillar/cmd/verifier/verifier.go b/pkg/pillar/cmd/verifier/verifier.go
+index da4b73a8..a15bc145 100644
+--- a/pkg/pillar/cmd/verifier/verifier.go
++++ b/pkg/pillar/cmd/verifier/verifier.go
+@@ -153,6 +153,7 @@ func Run() {
+ 		log.Fatal(err)
+ 	}
+ 	subAppImgConfig.ModifyHandler = handleAppImgModify
++	subAppImgConfig.CreateHandler = handleAppImgCreate
+ 	subAppImgConfig.DeleteHandler = handleAppImgDelete
+ 	ctx.subAppImgConfig = subAppImgConfig
+ 	subAppImgConfig.Activate()
+@@ -163,6 +164,7 @@ func Run() {
+ 		log.Fatal(err)
+ 	}
+ 	subBaseOsConfig.ModifyHandler = handleBaseOsModify
++	subBaseOsConfig.CreateHandler = handleBaseOsCreate
+ 	subBaseOsConfig.DeleteHandler = handleBaseOsDelete
+ 	ctx.subBaseOsConfig = subBaseOsConfig
+ 	subBaseOsConfig.Activate()
+@@ -590,6 +592,11 @@ func handleAppImgModify(ctxArg interface{}, key string,
+ 
+ 	handleVerifyImageModify(ctxArg, appImgObj, key, configArg)
+ }
++func handleAppImgCreate(ctxArg interface{}, key string,
++	configArg interface{}) {
++
++	handleVerifyImageCreate(ctxArg, appImgObj, key, configArg)
++}
+ 
+ func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
+ 	handleVerifyImageDelete(ctxArg, key, configArg)
+@@ -601,6 +608,12 @@ func handleBaseOsModify(ctxArg interface{}, key string,
+ 	handleVerifyImageModify(ctxArg, baseOsObj, key, configArg)
+ }
+ 
++func handleBaseOsCreate(ctxArg interface{}, key string,
++	configArg interface{}) {
++
++	handleVerifyImageCreate(ctxArg, baseOsObj, key, configArg)
++}
++
+ func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
+ 	handleVerifyImageDelete(ctxArg, key, configArg)
+ }
+@@ -644,25 +657,41 @@ func handleVerifyImageModify(ctxArg interface{}, objType string,
+ 	key string, configArg interface{}) {
+ 
+ 	log.Infof("handleVerifyImageModify(%s)\n", key)
+-	ctx := ctxArg.(*verifierContext)
+ 	config := cast.CastVerifyImageConfig(configArg)
+ 	if config.Key() != key {
+ 		log.Errorf("handleVerifyImageModify key/UUID mismatch %s vs %s; ignored %+v\n",
+ 			key, config.Key(), config)
+ 		return
+ 	}
+-	// Do we have a channel/goroutine?
+ 	h, ok := handlerMap[config.Key()]
+ 	if !ok {
+-		h1 := make(chan interface{})
+-		handlerMap[config.Key()] = h1
+-		go runHandler(ctx, objType, key, h1)
+-		h = h1
++		log.Fatalf("handleVerifyImageModify called on config that does not exist")
+ 	}
+-	log.Debugf("Sending config to handler\n")
+ 	h <- configArg
+ 	log.Infof("handleVerifyImageModify(%s) done\n", key)
+ }
++func handleVerifyImageCreate(ctxArg interface{}, objType string,
++	key string, configArg interface{}) {
++
++	log.Infof("handleVerifyImageCreate(%s)\n", key)
++	ctx := ctxArg.(*verifierContext)
++	config := cast.CastVerifyImageConfig(configArg)
++	if config.Key() != key {
++		log.Errorf("handleVerifyImageCreate key/UUID mismatch %s vs %s; ignored %+v\n",
++			key, config.Key(), config)
++		return
++	}
++	h, ok := handlerMap[config.Key()]
++	if ok {
++		log.Fatalf("handleVerifyImageCreate called on config that already exists")
++	}
++	h1 := make(chan interface{})
++	handlerMap[config.Key()] = h1
++	go runHandler(ctx, objType, key, h1)
++	h = h1
++	h <- configArg
++	log.Infof("handleVerifyImageCreate(%s) done\n", key)
++}
+ 
+ func handleVerifyImageDelete(ctxArg interface{}, key string,
+ 	configArg interface{}) {

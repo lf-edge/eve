@@ -289,6 +289,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDomainConfig.ModifyHandler = handleDomainModify
+	subDomainConfig.CreateHandler = handleDomainCreate
 	subDomainConfig.DeleteHandler = handleDomainDelete
 	subDomainConfig.RestartHandler = handleRestart
 	domainCtx.subDomainConfig = subDomainConfig
@@ -543,24 +544,37 @@ func handlersInit() {
 func handleDomainModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("handleDomainModify(%s)\n", key)
-	ctx := ctxArg.(*domainContext)
 	config := cast.CastDomainConfig(configArg)
 	if config.Key() != key {
 		log.Errorf("handleDomainModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
-	// Do we have a channel/goroutine?
 	h, ok := handlerMap[config.Key()]
 	if !ok {
-		h1 := make(chan interface{})
-		handlerMap[config.Key()] = h1
-		go runHandler(ctx, key, h1)
-		h = h1
+		log.Fatalf("handleDomainModify called on config that does not exist")
 	}
-	log.Debugf("Sending config to handler\n")
 	h <- configArg
-	log.Infof("handleDomainModify(%s) done\n", key)
+}
+func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
+
+	log.Infof("handleDomainCreate(%s)\n", key)
+	ctx := ctxArg.(*domainContext)
+	config := cast.CastDomainConfig(configArg)
+	if config.Key() != key {
+		log.Errorf("handleDomainCreate key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
+	h, ok := handlerMap[config.Key()]
+	if ok {
+		log.Fatalf("handleDomainCreate called on config that already exists")
+	}
+	h1 := make(chan interface{})
+	handlerMap[config.Key()] = h1
+	go runHandler(ctx, key, h1)
+	h = h1
+	h <- configArg
 }
 
 func handleDomainDelete(ctxArg interface{}, key string,
