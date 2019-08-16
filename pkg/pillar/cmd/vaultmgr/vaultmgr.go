@@ -165,12 +165,6 @@ func unstageKey() {
 
 //handleFirstUse sets up vault for the first time use
 func handleFirstUse() error {
-	//setup fscrypt.conf
-	if _, _, err := execCmd(fscryptPath, setupParams...); err != nil {
-		log.Fatalf("Error setting up fscrypt.conf: %v", err)
-		return err
-	}
-
 	//setup mountPoint for encryption
 	if _, _, err := execCmd(fscryptPath, mntPointParams...); err != nil {
 		log.Fatalf("Error setting up mountpoint for encrption: %v", err)
@@ -212,9 +206,17 @@ func unlockVault() error {
 }
 
 func setupVault() error {
+	//setup fscrypt.conf, if not done already
+	if _, _, err := execCmd(fscryptPath, setupParams...); err != nil {
+		log.Fatalf("Error setting up fscrypt.conf: %v", err)
+		return err
+	}
+	//Check if /persist is already setup for encryption
 	if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
+		//Not yet setup, set it up for the first use
 		return handleFirstUse()
 	}
+	//Already setup for encryption, go for unlocking
 	return unlockVault()
 }
 
@@ -235,7 +237,7 @@ func Run() {
 	}
 	defer logf.Close()
 
-	switch os.Args[1] {
+	switch flag.Args()[0] {
 	case "setupVault":
 		if err = setupVault(); err != nil {
 			log.Fatal("Error in setting up vault:", err)
