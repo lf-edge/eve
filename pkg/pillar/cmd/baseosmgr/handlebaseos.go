@@ -619,8 +619,9 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 	changed := false
 	removedAll := true
 
-	// If this image is on the !active partition we mark that
-	// as unused.
+	// In case this was a failed update we make sure we mark
+	// that !active partition as unused (in case it is inprogress),
+	// so that we can retry the same update.
 	if status.PartitionLabel != "" {
 		partName := status.PartitionLabel
 		partStatus := getZbootStatus(ctx, partName)
