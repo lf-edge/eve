@@ -237,7 +237,7 @@ The following steps have been tested on Intel UP Squared Board (AAEON UP-APL01) 
 ```bash
 git clone https://github.com/lf-edge/eve.git
 cd eve
-sudo make ZARCH=amd64 installer
+make ZARCH=amd64 installer
 ```
 
 Find the device using
