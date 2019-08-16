@@ -170,6 +170,7 @@ func pbrGetFreeRule(prefixStr string) (*netlink.Rule, error) {
 	freeRule.Src = prefix
 	freeRule.Table = FreeTable
 	freeRule.Family = syscall.AF_INET
+	freeRule.Priority = 10000
 	return freeRule, nil
 }
 
@@ -420,6 +421,7 @@ func addSourceRule(ifindex int, p net.IPNet, bridge bool) {
 	log.Debugf("addSourceRule(%d, %v, %v)\n", ifindex, p.String(), bridge)
 	r := netlink.NewRule()
 	r.Table = FreeTable + ifindex
+	r.Priority = 10000
 	// Add rule for /32 or /128
 	if p.IP.To4() != nil {
 		r.Family = syscall.AF_INET
@@ -452,6 +454,7 @@ func delSourceRule(ifindex int, p net.IPNet, bridge bool) {
 	log.Debugf("delSourceRule(%d, %v, %v)\n", ifindex, p.String(), bridge)
 	r := netlink.NewRule()
 	r.Table = FreeTable + ifindex
+	r.Priority = 10000
 	// Add rule for /32 or /128
 	if p.IP.To4() != nil {
 		r.Family = syscall.AF_INET
@@ -484,6 +487,7 @@ func AddOverlayRuleAndRoute(bridgeName string, iifIndex int,
 	myTable := FreeTable + iifIndex
 	r.Table = myTable
 	r.IifName = bridgeName
+	r.Priority = 10000
 	if ipnet.IP.To4() != nil {
 		r.Family = syscall.AF_INET
 	} else {
@@ -506,6 +510,49 @@ func AddOverlayRuleAndRoute(bridgeName string, iifIndex int,
 	rt := netlink.Route{Dst: ipnet, LinkIndex: oifIndex, Table: myTable, Flags: 0}
 	if err := netlink.RouteAdd(&rt); err != nil {
 		errStr := fmt.Sprintf("AddOverlayRuleAndRoute: RouteAdd %s failed: %s",
+			ipnet.String(), err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+// AddFwMarkRuleToDummy : Create a ip rule that sends packets marked with given mark
+// out of interface with given index.
+func AddFwMarkRuleToDummy(fwmark uint32, iifIndex int) error {
+
+	r := netlink.NewRule()
+	myTable := FreeTable + iifIndex
+	r.Table = myTable
+	r.Mark = int(fwmark)
+	// This rule gets added during the starting steps of service.
+	// Other ip rules corresponding to network instances get added after this
+	// and take higher priority. We want this ip rule to match before anything else.
+	// Hence we make the priority of this 1000 and the other rules to have 10000.
+	r.Priority = 1000
+
+	// Avoid duplicate rules
+	_ = netlink.RuleDel(r)
+
+	// Add rule
+	if err := netlink.RuleAdd(r); err != nil {
+		errStr := fmt.Sprintf("AddFwMarkRuleToDummy: RuleAdd %v failed with %s", r, err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+
+	// Add default route that points to dummy interface.
+	_, ipnet, err := net.ParseCIDR("0.0.0.0/0")
+	if err != nil {
+		errStr := fmt.Sprintf("AddFwMarkRuleToDummy: ParseCIDR of %s failed",
+			"0.0.0.0/0")
+		return errors.New(errStr)
+	}
+
+	// Setup a route for the current network's subnet to point out of the given oifIndex
+	rt := netlink.Route{Dst: ipnet, LinkIndex: iifIndex, Table: myTable, Flags: 0}
+	if err := netlink.RouteAdd(&rt); err != nil {
+		errStr := fmt.Sprintf("AddFwMarkRuleToDummy: RouteAdd %s failed: %s",
 			ipnet.String(), err)
 		log.Errorln(errStr)
 		return errors.New(errStr)

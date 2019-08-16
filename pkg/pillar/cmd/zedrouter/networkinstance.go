@@ -120,9 +120,9 @@ func checkPortAvailable(
 	} else {
 		// Make sure it will not be configured for IP
 		if portStatus.Dhcp != types.DT_NONE {
-			errStr := fmt.Sprintf("Port %s configured for shared use. "+
+			errStr := fmt.Sprintf("Port %s configured for shared use with DHCP type %d. "+
 				"Cannot be used by Switch Network Instance %s-%s\n",
-				status.Port, status.UUID, status.DisplayName)
+				status.Port, portStatus.Dhcp, status.UUID, status.DisplayName)
 			return errors.New(errStr)
 		}
 		// Make sure it is not used by any other NetworkInstance
@@ -213,7 +213,7 @@ func networkInstanceBridgeDelete(
 	// itself and not the rules for specific domU vifs.
 
 	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
-		BridgeIP: status.BridgeIPAddr}
+		BridgeIP: status.BridgeIPAddr, NIType: status.Type, UpLinks: status.IfNameList}
 	handleNetworkInstanceACLConfiglet("-D", aclArgs)
 
 	// delete the sister interface
@@ -527,6 +527,8 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 			status.BridgeIPAddr, &status.NetworkInstanceConfig,
 			hostsDirpath, status.BridgeIPSets, status.Ipv4Eid)
 		startDnsmasq(bridgeName)
+
+		go DNSMonitor(bridgeName, bridgeNum)
 	}
 
 	if status.IsIPv6() {
@@ -544,13 +546,6 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		}
 	default:
 	}
-	// setup the ACLs for the bridge
-	// Here we explicitly adding the iptables rules, to the bottom of the
-	// rule chains, which are tied to the Linux bridge itself and not the
-	//  rules for any specific domU vifs.
-	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
-		BridgeIP: status.BridgeIPAddr}
-	handleNetworkInstanceACLConfiglet("-A", aclArgs)
 	return nil
 }
 
@@ -1128,6 +1123,13 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 			status.Type)
 		err = errors.New(errStr)
 	}
+	// setup the ACLs for the bridge
+	// Here we explicitly adding the iptables rules, to the bottom of the
+	// rule chains, which are tied to the Linux bridge itself and not the
+	//  rules for any specific domU vifs.
+	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
+		BridgeIP: status.BridgeIPAddr, NIType: status.Type, UpLinks: status.IfNameList}
+	handleNetworkInstanceACLConfiglet("-A", aclArgs)
 	return err
 }
 
@@ -1222,6 +1224,7 @@ func doNetworkInstanceDelete(
 		if status.IsIPv6() {
 			stopRadvd(status.BridgeName, true)
 		}
+		DNSStopMonitor(status.BridgeNum)
 	}
 	networkInstanceBridgeDelete(ctx, status)
 }

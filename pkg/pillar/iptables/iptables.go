@@ -170,10 +170,11 @@ func getIpRuleCounters(counters []AclCounters, match *AclCounters) *AclCounters 
 	return match
 }
 
+// GetIPRuleACLDrop :
 // Look for a LOG entry without More; we don't have those for rate limits
 // acl.go appends a '+' to the vifname to handle PV/qemu which for some
 // reason have a second <vifname>-emu bridge interface. Need to match that here.
-func GetIpRuleAclDrop(counters []AclCounters, bridgeName string, vifName string,
+func GetIPRuleACLDrop(counters []AclCounters, bridgeName string, vifName string,
 	ipVer int, input bool) uint64 {
 
 	var iif string
@@ -196,10 +197,35 @@ func GetIpRuleAclDrop(counters []AclCounters, bridgeName string, vifName string,
 	return c.Pkts
 }
 
+// GetIPRuleACLLog : Get the packet/byte count of logged packets
+func GetIPRuleACLLog(counters []AclCounters, bridgeName string, vifName string,
+	ipVer int, input bool) uint64 {
+
+	var iif string
+	var piif string
+	var oif string
+	if input {
+		iif = bridgeName
+		if vifName != "" {
+			piif = vifName + "+"
+		}
+	} else {
+		oif = bridgeName
+	}
+	match := AclCounters{IIf: iif, Piif: piif, OIf: oif, IpVer: ipVer,
+		Drop: false, Limit: false, Log: true}
+	c := getIpRuleCounters(counters, &match)
+	if c == nil {
+		return 0
+	}
+	return c.Pkts
+}
+
+// GetIPRuleACLRateLimitDrop :
 // Look for a DROP entry with More set.
 // acl.go appends a '+' to the vifname to handle PV/qemu which for some
 // reason have a second <vifname>-emu bridge interface. Need to match that here.
-func GetIpRuleAclRateLimitDrop(counters []AclCounters, bridgeName string,
+func GetIPRuleACLRateLimitDrop(counters []AclCounters, bridgeName string,
 	vifName string, ipVer int, input bool) uint64 {
 
 	var iif string

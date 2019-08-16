@@ -450,3 +450,16 @@ func CastLedBlinkCounter(in interface{}) types.LedBlinkCounter {
 	}
 	return output
 }
+
+// CastFlowStatus : Cast interface type into types.IPFlow
+func CastFlowStatus(in interface{}) types.IPFlow { //revive:disable-line
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Errorf("json Marshal in CastFlowStats, %v", err)
+	}
+	var output types.IPFlow
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Errorf("json Unmarshal in CastFlowStatus, %v", err)
+	}
+	return output
+}

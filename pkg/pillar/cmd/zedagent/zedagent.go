@@ -23,6 +23,7 @@
 package zedagent
 
 import (
+	"container/list"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -96,6 +97,7 @@ type zedagentContext struct {
 	subAppImgDownloadStatus   *pubsub.Subscription
 	subAppImgVerifierStatus   *pubsub.Subscription
 	subNetworkInstanceMetrics *pubsub.Subscription
+	subAppFlowMonitor         *pubsub.Subscription
 	subGlobalConfig           *pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
 	subZbootStatus            *pubsub.Subscription
@@ -111,6 +113,7 @@ type zedagentContext struct {
 
 var debug = false
 var debugOverride bool // From command line arg
+var flowQ *list.List
 
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
@@ -362,6 +365,17 @@ func Run() {
 	subNetworkInstanceMetrics.DeleteHandler = handleNetworkInstanceMetricsDelete
 	zedagentCtx.subNetworkInstanceMetrics = subNetworkInstanceMetrics
 	subNetworkInstanceMetrics.Activate()
+
+	subAppFlowMonitor, err := pubsub.Subscribe("zedrouter",
+		types.IPFlow{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAppFlowMonitor.ModifyHandler = handleAppFlowMonitorModify
+	subAppFlowMonitor.DeleteHandler = handleAppFlowMonitorDelete
+	subAppFlowMonitor.Activate()
+	flowQ = list.New()
+	log.Infof("FlowStats: create subFlowStatus")
 
 	// Look for AppInstanceStatus from zedmanager
 	subAppInstanceStatus, err := pubsub.Subscribe("zedmanager",
@@ -758,6 +772,10 @@ func Run() {
 
 		case change := <-subDevicePortConfigList.C:
 			subDevicePortConfigList.ProcessChange(change)
+
+		case change := <-subAppFlowMonitor.C:
+			log.Debugf("FlowStats: change called")
+			subAppFlowMonitor.ProcessChange(change)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
