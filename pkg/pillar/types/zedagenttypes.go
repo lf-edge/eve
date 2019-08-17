@@ -61,8 +61,7 @@ type BaseOsStatus struct {
 
 	// Mininum state across all steps/StorageStatus.
 	// Error* set implies error.
-	State            SwState
-	MissingDatastore bool // If some DatastoreId not found
+	State SwState
 	// error strings across all steps/StorageStatus
 	Error     string
 	ErrorTime time.Time
@@ -128,8 +127,7 @@ type CertObjStatus struct {
 	StorageStatusList []StorageStatus
 	// Mininum state across all steps/ StorageStatus.
 	// Error* set implies error.
-	State            SwState
-	MissingDatastore bool // If some DatastoreId not found
+	State SwState
 	// error strings across all steps/StorageStatus
 	Error     string
 	ErrorTime time.Time

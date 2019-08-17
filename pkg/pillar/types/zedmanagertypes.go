@@ -111,11 +111,15 @@ type AppInstanceStatus struct {
 	PurgeCmd            AppInstanceOpsCmd
 	RestartInprogress   Inprogress
 	PurgeInprogress     Inprogress
+
+	// Container related state
+	IsContainer      bool
+	ContainerImageID string
+
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.
-	State            SwState
-	MissingDatastore bool // If some DatastoreId not found
-	MissingNetwork   bool // If some Network UUID not found
+	State          SwState
+	MissingNetwork bool // If some Network UUID not found
 	// All error strings across all steps and all StorageStatus
 	ErrorSource string
 	Error       string
@@ -156,6 +160,23 @@ func (status AppInstanceStatus) CheckPendingModify() bool {
 
 func (status AppInstanceStatus) CheckPendingDelete() bool {
 	return false
+}
+
+// GetAppInterfaceList is a helper function to get all the vifnames
+func (status AppInstanceStatus) GetAppInterfaceList() []string {
+
+	var viflist []string
+	for _, ulStatus := range status.UnderlayNetworks {
+		if ulStatus.Vif != "" {
+			viflist = append(viflist, ulStatus.Vif)
+		}
+	}
+	for _, olStatus := range status.OverlayNetworks {
+		if olStatus.Vif != "" {
+			viflist = append(viflist, olStatus.Vif)
+		}
+	}
+	return viflist
 }
 
 type EIDOverlayConfig struct {
@@ -205,7 +226,6 @@ func RoundupToKB(b uint64) uint64 {
 }
 
 type StorageStatus struct {
-	DatastoreId        uuid.UUID
 	Name               string
 	ImageSha256        string   // sha256 of immutable image
 	Size               uint64   // In bytes
@@ -222,12 +242,34 @@ type StorageStatus struct {
 	Progress           uint    // In percent i.e., 0-100
 	HasDownloaderRef   bool    // Reference against downloader to clean up
 	HasVerifierRef     bool    // Reference against verifier to clean up
+	IsContainer        bool    // Is the image a Container??
+	ContainerImageID   string  // Container Image ID if IsContainer=true
+	Vdev               string  // Allocated
 	ActiveFileLocation string  // Location of filestystem
 	FinalObjDir        string  // Installation dir; may differ from verified
-	MissingDatastore   bool    // If DatastoreId not found
 	Error              string  // Download or verify error
 	ErrorSource        string
 	ErrorTime          time.Time
+}
+
+// UpdateFromStorageConfig sets up StorageStatus based on StorageConfig struct
+func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
+	ss.Name = sc.Name
+	ss.ImageSha256 = sc.ImageSha256
+	ss.Size = sc.Size
+	ss.CertificateChain = sc.CertificateChain
+	ss.ImageSignature = sc.ImageSignature
+	ss.SignatureKey = sc.SignatureKey
+	ss.ReadOnly = sc.ReadOnly
+	ss.Preserve = sc.Preserve
+	ss.Format = sc.Format
+	ss.Maxsizebytes = sc.Maxsizebytes
+	ss.Devtype = sc.Devtype
+	ss.Target = sc.Target
+	if ss.Format == "8" {
+		ss.IsContainer = true
+	}
+	return
 }
 
 // The Intermediate can be a byte sequence of PEM certs

@@ -29,6 +29,7 @@ import (
 var configApi string = "api/v1/edgedevice/config"
 var statusApi string = "api/v1/edgedevice/info"
 var metricsApi string = "api/v1/edgedevice/metrics"
+var flowlogAPI = "api/v1/edgedevice/flowlog"
 
 // This is set once at init time and not changed
 var serverName string

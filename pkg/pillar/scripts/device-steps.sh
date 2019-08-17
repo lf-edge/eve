@@ -7,6 +7,7 @@ USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
 PERSISTCONFIGDIR=/persist/config
+PERSIST_RKT_DATA_DIR=$PERSISTDIR/rkt
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
 DPCDIR=$TMPDIR/DevicePortConfig
@@ -23,7 +24,7 @@ TPM_DEVICE_PATH="/dev/tpmrm0"
 PATH=$BINDIR:$PATH
 
 echo "$(date -Ins -u) Starting device-steps.sh"
-echo "$(date -Ins -u) go-provision version: $(cat $BINDIR/versioninfo)"
+echo "$(date -Ins -u) EVE version: $(cat $BINDIR/versioninfo)"
 
 MEASURE=0
 while [ $# != 0 ]; do
@@ -66,7 +67,7 @@ cat >>$TMPDIR/watchdogbase.conf <<EOF
 admin =
 #realtime = yes
 #priority = 1
-interval = 10
+interval = 1
 logtick  = 60
 repair-binary=/opt/zededa/bin/watchdog-report.sh
 pidfile = /var/run/xen/qemu-dom0.pid
@@ -125,13 +126,19 @@ done
 
 killwait_watchdog() {
     if [ -f /var/run/watchdog.pid ]; then
-        echo "$(date -Ins -u) Killing watchdog $(cat /var/run/watchdog.pid)"
-        kill "$(cat /var/run/watchdog.pid)"
+        wp=$(cat /var/run/watchdog.pid)
+        echo "$(date -Ins -u) Killing watchdog $wp"
+        kill "$wp"
         # Wait for it to exit so it can be restarted
-        while [ -f /var/run/watchdog.pid ] && kill -0 "$(cat /var/run/watchdog.pid)"; do
+        while kill -0 "$wp"; do
             echo "$(date -Ins -u) Waiting for watchdog to exit"
-            sleep 5
+            if [ $USE_HW_WATCHDOG = 1 ]; then
+                wdctl
+            fi
+            sleep 1
         done
+        echo "$(date -Ins -u) Killed watchdog"
+        sync
     fi
 }
 
@@ -173,15 +180,23 @@ if P3=$(zboot partdev P3) && [ -n "$P3" ]; then
         # XXX note that if we have a bad ext3 partition this will ask questions
         # Need to either dd zeros over the partition of feed "yes" into mkfs.
         if ! mkfs -t ext3 -v "$P3"; then
+            # XXX !? will be zero
             echo "$(date -Ins -u) mkfs $P3 failed: $?"
             # Try mounting below
         fi
     fi
     if ! mount -t ext3 -o dirsync,noatime "$P3" $PERSISTDIR; then
+        # XXX !? will be zero
         echo "$(date -Ins -u) mount $P3 failed: $?"
     fi
 else
     echo "$(date -Ins -u) No separate $PERSISTDIR partition"
+fi
+
+if [ ! -d "$PERSIST_RKT_DATA_DIR" ]; then
+    echo "$(date -Ins -u) Create $PERSIST_RKT_DATA_DIR"
+    mkdir -p "$PERSIST_RKT_DATA_DIR"
+    chmod 700 "$PERSIST_RKT_DATA_DIR"
 fi
 
 if [ -f $PERSISTDIR/IMGA/reboot-reason ]; then
@@ -293,6 +308,7 @@ access_usb() {
     if [ -n "$SPECIAL" ] && [ -b "$SPECIAL" ]; then
         echo "$(date -Ins -u) Found USB with DevicePortConfig: $SPECIAL"
         if ! mount -t vfat "$SPECIAL" /mnt; then
+            # XXX !? will be zero
             echo "$(date -Ins -u) mount $SPECIAL failed: $?"
             return
         fi
@@ -457,6 +473,7 @@ if [ $SELF_REGISTER = 1 ]; then
     fi
     echo "$(date -Ins -u) Starting client selfRegister getUuid"
     if ! $BINDIR/client -c $CURPART selfRegister getUuid; then
+        # XXX $? is always zero
         echo "$(date -Ins -u) client selfRegister failed with $?"
         exit 1
     fi
@@ -546,6 +563,12 @@ if [ $MEASURE = 1 ]; then
     ping6 -c 3 -w 1000 zedcontrol
     echo "$(date -Ins -u) Measurement done"
 fi
+
+# XXX remove? Looking for watchdog
+sleep 5
+ps -ef
+# XXX redundant but doesn't always start
+/usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
 
 # If there is a USB stick inserted and debug.enable.usb is set, we periodically
 # check for any usb.json with DevicePortConfig, deposit our identity,

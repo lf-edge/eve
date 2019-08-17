@@ -23,6 +23,7 @@
 package zedagent
 
 import (
+	"container/list"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -87,7 +88,6 @@ type zedagentContext struct {
 	subAssignableAdapters     *pubsub.Subscription
 	iteration                 int
 	subNetworkInstanceStatus  *pubsub.Subscription
-	subDomainStatus           *pubsub.Subscription
 	subCertObjConfig          *pubsub.Subscription
 	TriggerDeviceInfo         bool
 	subBaseOsStatus           *pubsub.Subscription
@@ -97,6 +97,7 @@ type zedagentContext struct {
 	subAppImgDownloadStatus   *pubsub.Subscription
 	subAppImgVerifierStatus   *pubsub.Subscription
 	subNetworkInstanceMetrics *pubsub.Subscription
+	subAppFlowMonitor         *pubsub.Subscription
 	subGlobalConfig           *pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
 	subZbootStatus            *pubsub.Subscription
@@ -112,6 +113,7 @@ type zedagentContext struct {
 
 var debug = false
 var debugOverride bool // From command line arg
+var flowQ *list.List
 
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
@@ -364,6 +366,17 @@ func Run() {
 	zedagentCtx.subNetworkInstanceMetrics = subNetworkInstanceMetrics
 	subNetworkInstanceMetrics.Activate()
 
+	subAppFlowMonitor, err := pubsub.Subscribe("zedrouter",
+		types.IPFlow{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAppFlowMonitor.ModifyHandler = handleAppFlowMonitorModify
+	subAppFlowMonitor.DeleteHandler = handleAppFlowMonitorDelete
+	subAppFlowMonitor.Activate()
+	flowQ = list.New()
+	log.Infof("FlowStats: create subFlowStatus")
+
 	// Look for AppInstanceStatus from zedmanager
 	subAppInstanceStatus, err := pubsub.Subscribe("zedmanager",
 		types.AppInstanceStatus{}, false, &zedagentCtx)
@@ -374,17 +387,6 @@ func Run() {
 	subAppInstanceStatus.DeleteHandler = handleAppInstanceStatusDelete
 	getconfigCtx.subAppInstanceStatus = subAppInstanceStatus
 	subAppInstanceStatus.Activate()
-
-	// Get DomainStatus from domainmgr
-	subDomainStatus, err := pubsub.Subscribe("domainmgr",
-		types.DomainStatus{}, false, &zedagentCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDomainStatus.ModifyHandler = handleDomainStatusModify
-	subDomainStatus.DeleteHandler = handleDomainStatusDelete
-	zedagentCtx.subDomainStatus = subDomainStatus
-	subDomainStatus.Activate()
 
 	// Look for zboot status
 	subZbootStatus, err := pubsub.Subscribe("baseosmgr",
@@ -716,9 +718,6 @@ func Run() {
 				DNSctx.triggerDeviceInfo = false
 			}
 
-		case change := <-subDomainStatus.C:
-			subDomainStatus.ProcessChange(change)
-
 		case change := <-subAssignableAdapters.C:
 			subAssignableAdapters.ProcessChange(change)
 
@@ -773,6 +772,10 @@ func Run() {
 
 		case change := <-subDevicePortConfigList.C:
 			subDevicePortConfigList.ProcessChange(change)
+
+		case change := <-subAppFlowMonitor.C:
+			log.Debugf("FlowStats: change called")
+			subAppFlowMonitor.ProcessChange(change)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
@@ -1073,7 +1076,7 @@ func handleAAModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleAAModify() %+v\n", status)
 	*ctx.assignableAdapters = status
-	publishDevInfo(ctx)
+	ctx.TriggerDeviceInfo = true
 	log.Infof("handleAAModify() done\n")
 }
 
@@ -1087,7 +1090,7 @@ func handleAADelete(ctxArg interface{}, key string,
 	}
 	log.Infof("handleAADelete()\n")
 	ctx.assignableAdapters.Initialized = false
-	publishDevInfo(ctx)
+	ctx.TriggerDeviceInfo = true
 	log.Infof("handleAADelete() done\n")
 }
 

@@ -1188,15 +1188,26 @@ type AppNetworkACLArgs struct {
 	BridgeIP   string
 	AppIP      string
 	UpLinks    []string
+	NIType     NetworkInstanceType
+	// This is the same AppNum that comes from AppNetworkStatus
+	AppNum int32
 }
 
 // IPTablesRule : iptables rule detail
 type IPTablesRule struct {
-	IPVer  int      // 4 or, 6
-	Table  string   // filter/nat/raw/mangle...
-	Chain  string   // FORWARDING/INPUT/PREROUTING...
-	Prefix []string // constructed using ACLArgs
-	Rule   []string // rule match/action
+	IPVer            int      // 4 or, 6
+	Table            string   // filter/nat/raw/mangle...
+	Chain            string   // FORWARDING/INPUT/PREROUTING...
+	Prefix           []string // constructed using ACLArgs
+	Rule             []string // rule match
+	Action           []string // rule action
+	RuleID           int32    // Unique rule ID
+	RuleName         string
+	ActionChainName  string
+	IsUserConfigured bool // Does this rule come from user configuration/manifest?
+	IsMarkingRule    bool // Rule does marking of packet for flow tracking.
+	IsPortMapRule    bool // Is this a port map rule?
+	IsLimitDropRule  bool // Is this a policer limit drop rule?
 }
 
 // IPTablesRuleList : list of iptables rules
@@ -1577,4 +1588,57 @@ type VpnMetrics struct {
 	ErrStat    LinkPktStats
 	PhyErrStat LinkPktStats
 	VpnConns   []*VpnConnMetrics
+}
+
+// IPTuple :
+type IPTuple struct {
+	Src     net.IP
+	Dst     net.IP
+	SrcPort int32
+	DstPort int32
+	Proto   int32
+}
+
+// FlowScope :
+type FlowScope struct {
+	UUID      uuid.UUID
+	Intf      string
+	Localintf string
+	NetUUID   uuid.UUID
+	Sequence  string // used internally for limit and pkt size per app/bn
+}
+
+// FlowRec :
+type FlowRec struct {
+	Flow      IPTuple
+	Inbound   bool
+	ACLID     int32
+	Action    string
+	StartTime int64
+	StopTime  int64
+	TxBytes   int64
+	TxPkts    int64
+	RxBytes   int64
+	RxPkts    int64
+}
+
+// DNSReq :
+type DNSReq struct {
+	HostName    string
+	Addrs       []net.IP
+	RequestTime int64
+	ACLNum      int32
+}
+
+// IPFlow :
+type IPFlow struct {
+	DevID   uuid.UUID
+	Scope   FlowScope
+	Flows   []FlowRec
+	DNSReqs []DNSReq
+}
+
+// Key :
+func (flows IPFlow) Key() string {
+	return flows.Scope.UUID.String() + flows.Scope.NetUUID.String() + flows.Scope.Sequence
 }

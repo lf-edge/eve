@@ -33,9 +33,10 @@ func PbrInit(ctx *zedrouterContext) {
 	flushRules(0)
 }
 
-// Add a default route for the bridgeName table to the specific port
-func PbrRouteAddDefault(bridgeName string, port string) error {
-	log.Infof("PbrRouteAddDefault(%s, %s)\n", bridgeName, port)
+// PbrRouteAddAll adds all the routes for the bridgeName table to the specific port
+// Separately we handle changes in PbrRouteChange
+func PbrRouteAddAll(bridgeName string, port string) error {
+	log.Infof("PbrRouteAddAll(%s, %s)\n", bridgeName, port)
 
 	ifindex, err := devicenetwork.IfnameToIndex(port)
 	if err != nil {
@@ -44,9 +45,9 @@ func PbrRouteAddDefault(bridgeName string, port string) error {
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
-	rt := getDefaultIPv4Route(ifindex)
-	if rt == nil {
-		log.Warnf("PbrRouteAddDefault(%s, %s) no default route\n",
+	routes := getAllIPv4Routes(ifindex)
+	if routes == nil {
+		log.Warnf("PbrRouteAddAll(%s, %s) no routes",
 			bridgeName, port)
 		return nil
 	}
@@ -58,7 +59,7 @@ func PbrRouteAddDefault(bridgeName string, port string) error {
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
-	// XXX do they differ?
+	// XXX do they differ? Yes
 	link, err := netlink.LinkByName(bridgeName)
 	if err != nil {
 		errStr := fmt.Sprintf("LinkByName(%s) failed: %s",
@@ -73,26 +74,29 @@ func PbrRouteAddDefault(bridgeName string, port string) error {
 		ifindex = index
 	}
 	MyTable := FreeTable + ifindex
-	myrt := *rt
-	myrt.Table = MyTable
-	// Clear any RTNH_F_LINKDOWN etc flags since add doesn't like them
-	if rt.Flags != 0 {
-		myrt.Flags = 0
-	}
-	log.Infof("PbrRouteAddDefault(%s, %s) adding %v\n",
-		bridgeName, port, myrt)
-	if err := netlink.RouteAdd(&myrt); err != nil {
-		errStr := fmt.Sprintf("Failed to add %v to %d: %s",
-			myrt, myrt.Table, err)
-		log.Errorln(errStr)
-		return errors.New(errStr)
+	for _, rt := range routes {
+		myrt := rt
+		myrt.Table = MyTable
+		// Clear any RTNH_F_LINKDOWN etc flags since add doesn't like them
+		if rt.Flags != 0 {
+			myrt.Flags = 0
+		}
+		log.Infof("PbrRouteAddAll(%s, %s) adding %v\n",
+			bridgeName, port, myrt)
+		if err := netlink.RouteAdd(&myrt); err != nil {
+			errStr := fmt.Sprintf("Failed to add %v to %d: %s",
+				myrt, myrt.Table, err)
+			log.Errorln(errStr)
+			return errors.New(errStr)
+		}
 	}
 	return nil
 }
 
-// Delete the default route for the bridgeName table to the specific port
-func PbrRouteDeleteDefault(bridgeName string, port string) error {
-	log.Infof("PbrRouteDeleteDefault(%s, %s)\n", bridgeName, port)
+// PbrRouteDeleteAll deletes all the routes for the bridgeName table to the specific port
+// Separately we handle changes in PbrRouteChange
+func PbrRouteDeleteAll(bridgeName string, port string) error {
+	log.Infof("PbrRouteDeleteAll(%s, %s)\n", bridgeName, port)
 
 	ifindex, err := devicenetwork.IfnameToIndex(port)
 	if err != nil {
@@ -101,9 +105,9 @@ func PbrRouteDeleteDefault(bridgeName string, port string) error {
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
-	rt := getDefaultIPv4Route(ifindex)
-	if rt == nil {
-		log.Warnf("PbrRouteDeleteDefault(%s, %s) no default route\n",
+	routes := getAllIPv4Routes(ifindex)
+	if routes == nil {
+		log.Warnf("PbrRouteDeleteAll(%s, %s) no routes",
 			bridgeName, port)
 		return nil
 	}
@@ -116,19 +120,21 @@ func PbrRouteDeleteDefault(bridgeName string, port string) error {
 		return errors.New(errStr)
 	}
 	MyTable := FreeTable + ifindex
-	myrt := *rt
-	myrt.Table = MyTable
-	// Clear any RTNH_F_LINKDOWN etc flags since del might not like them
-	if rt.Flags != 0 {
-		myrt.Flags = 0
-	}
-	log.Infof("PbrRouteDeleteDefault(%s, %s) deleting %v\n",
-		bridgeName, port, myrt)
-	if err := netlink.RouteDel(&myrt); err != nil {
-		errStr := fmt.Sprintf("Failed to delete %v from %d: %s",
-			myrt, myrt.Table, err)
-		log.Errorln(errStr)
-		return errors.New(errStr)
+	for _, rt := range routes {
+		myrt := rt
+		myrt.Table = MyTable
+		// Clear any RTNH_F_LINKDOWN etc flags since del might not like them
+		if rt.Flags != 0 {
+			myrt.Flags = 0
+		}
+		log.Infof("PbrRouteDeleteAll(%s, %s) deleting %v\n",
+			bridgeName, port, myrt)
+		if err := netlink.RouteDel(&myrt); err != nil {
+			errStr := fmt.Sprintf("Failed to delete %v from %d: %s",
+				myrt, myrt.Table, err)
+			log.Errorln(errStr)
+			// We continue to try to delete all
+		}
 	}
 	return nil
 }
@@ -164,11 +170,13 @@ func pbrGetFreeRule(prefixStr string) (*netlink.Rule, error) {
 	freeRule.Src = prefix
 	freeRule.Table = FreeTable
 	freeRule.Family = syscall.AF_INET
+	freeRule.Priority = 10000
 	return freeRule, nil
 }
 
 // Handle a route change
-func PbrRouteChange(deviceNetworkStatus *types.DeviceNetworkStatus,
+func PbrRouteChange(ctx *zedrouterContext,
+	deviceNetworkStatus *types.DeviceNetworkStatus,
 	change netlink.RouteUpdate) {
 
 	rt := change.Route
@@ -222,6 +230,16 @@ func PbrRouteChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 			log.Errorf("Failed to remove %v from %d: %s\n",
 				myrt, myrt.Table, err)
 		}
+		// find all bridges for network instances and del for them
+		indicies := getAllNIindices(ctx, ifname)
+		log.Infof("XXX Apply route del %v to %v", rt, indicies)
+		for _, ifindex := range indicies {
+			myrt.Table = FreeTable + ifindex
+			if err := netlink.RouteDel(&myrt); err != nil {
+				log.Errorf("Failed to remove %v from %d: %s\n",
+					myrt, myrt.Table, err)
+			}
+		}
 	} else if change.Type == getRouteUpdateTypeNEWROUTE() {
 		log.Debugf("Received route add %v\n", rt)
 		if doFreeTable {
@@ -233,6 +251,16 @@ func PbrRouteChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 		if err := netlink.RouteAdd(&myrt); err != nil {
 			log.Errorf("Failed to add %v to %d: %s\n",
 				myrt, myrt.Table, err)
+		}
+		// find all bridges for network instances and add for them
+		indicies := getAllNIindices(ctx, ifname)
+		log.Infof("XXX Apply route add %v to %v", rt, indicies)
+		for _, ifindex := range indicies {
+			myrt.Table = FreeTable + ifindex
+			if err := netlink.RouteAdd(&myrt); err != nil {
+				log.Errorf("Failed to add %v from %d: %s\n",
+					myrt, myrt.Table, err)
+			}
 		}
 	}
 }
@@ -393,6 +421,7 @@ func addSourceRule(ifindex int, p net.IPNet, bridge bool) {
 	log.Debugf("addSourceRule(%d, %v, %v)\n", ifindex, p.String(), bridge)
 	r := netlink.NewRule()
 	r.Table = FreeTable + ifindex
+	r.Priority = 10000
 	// Add rule for /32 or /128
 	if p.IP.To4() != nil {
 		r.Family = syscall.AF_INET
@@ -425,6 +454,7 @@ func delSourceRule(ifindex int, p net.IPNet, bridge bool) {
 	log.Debugf("delSourceRule(%d, %v, %v)\n", ifindex, p.String(), bridge)
 	r := netlink.NewRule()
 	r.Table = FreeTable + ifindex
+	r.Priority = 10000
 	// Add rule for /32 or /128
 	if p.IP.To4() != nil {
 		r.Family = syscall.AF_INET
@@ -457,6 +487,7 @@ func AddOverlayRuleAndRoute(bridgeName string, iifIndex int,
 	myTable := FreeTable + iifIndex
 	r.Table = myTable
 	r.IifName = bridgeName
+	r.Priority = 10000
 	if ipnet.IP.To4() != nil {
 		r.Family = syscall.AF_INET
 	} else {
@@ -479,6 +510,49 @@ func AddOverlayRuleAndRoute(bridgeName string, iifIndex int,
 	rt := netlink.Route{Dst: ipnet, LinkIndex: oifIndex, Table: myTable, Flags: 0}
 	if err := netlink.RouteAdd(&rt); err != nil {
 		errStr := fmt.Sprintf("AddOverlayRuleAndRoute: RouteAdd %s failed: %s",
+			ipnet.String(), err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+// AddFwMarkRuleToDummy : Create a ip rule that sends packets marked with given mark
+// out of interface with given index.
+func AddFwMarkRuleToDummy(fwmark uint32, iifIndex int) error {
+
+	r := netlink.NewRule()
+	myTable := FreeTable + iifIndex
+	r.Table = myTable
+	r.Mark = int(fwmark)
+	// This rule gets added during the starting steps of service.
+	// Other ip rules corresponding to network instances get added after this
+	// and take higher priority. We want this ip rule to match before anything else.
+	// Hence we make the priority of this 1000 and the other rules to have 10000.
+	r.Priority = 1000
+
+	// Avoid duplicate rules
+	_ = netlink.RuleDel(r)
+
+	// Add rule
+	if err := netlink.RuleAdd(r); err != nil {
+		errStr := fmt.Sprintf("AddFwMarkRuleToDummy: RuleAdd %v failed with %s", r, err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
+	}
+
+	// Add default route that points to dummy interface.
+	_, ipnet, err := net.ParseCIDR("0.0.0.0/0")
+	if err != nil {
+		errStr := fmt.Sprintf("AddFwMarkRuleToDummy: ParseCIDR of %s failed",
+			"0.0.0.0/0")
+		return errors.New(errStr)
+	}
+
+	// Setup a route for the current network's subnet to point out of the given oifIndex
+	rt := netlink.Route{Dst: ipnet, LinkIndex: iifIndex, Table: myTable, Flags: 0}
+	if err := netlink.RouteAdd(&rt); err != nil {
+		errStr := fmt.Sprintf("AddFwMarkRuleToDummy: RouteAdd %s failed: %s",
 			ipnet.String(), err)
 		log.Errorln(errStr)
 		return errors.New(errStr)
