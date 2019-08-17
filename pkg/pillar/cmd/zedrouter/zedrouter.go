@@ -44,6 +44,7 @@ const (
 
 // Set from Makefile
 var Version = "No version specified"
+var dnsServers map[string][]net.IP
 
 type zedrouterContext struct {
 	// Legacy data plane enable/disable flag
@@ -86,6 +87,7 @@ func Run() {
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
 	flag.Parse()
+	dnsServers = make(map[string][]net.IP)
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
@@ -2700,6 +2702,11 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	log.Infof("handleDNSModify: changed %v",
 		cmp.Diff(ctx.deviceNetworkStatus, status))
+
+	if isDnsServerChanged(&status) {
+		doDnsmasqRestart(ctx)
+	}
+
 	*ctx.deviceNetworkStatus = status
 	maybeHandleDNS(ctx)
 	log.Infof("handleDNSModify done for %s\n", key)
@@ -2869,4 +2876,48 @@ func releaseAppNetworkResources(ctx *zedrouterContext, key string,
 		status.OverlayNetworkList[idx].ACLRules = ruleList
 	}
 	publishAppNetworkStatus(ctx, status)
+}
+
+func isDnsServerChanged(new *types.DeviceNetworkStatus) bool {
+	for _, port := range new.Ports {
+		if port.IsMgmt {
+			if _, ok := dnsServers[port.Name]; !ok {
+				if len(port.DnsServers) > 0 { // just assigned
+					dnsServers[port.Name] = port.DnsServers
+				}
+			} else {
+				if len(port.DnsServers) != 0 {
+					// new one has different entries, and not the Internet disconnect case
+					if len(dnsServers[port.Name]) != len(port.DnsServers) {
+						return true
+					}
+					for idx, server := range port.DnsServers { // compare each one and update if changed
+						if server.Equal(dnsServers[port.Name][idx]) == false {
+							log.Infof("isDnsServerChanged: intf %s exist %v, new %v\n",
+								port.Name, dnsServers[port.Name], port.DnsServers)
+							dnsServers[port.Name] = port.DnsServers
+							return true
+						}
+					}
+
+				}
+			}
+		}
+	}
+	return false
+}
+
+func doDnsmasqRestart(ctx *zedrouterContext) {
+	pub := ctx.pubNetworkInstanceStatus
+	stList := pub.GetAll()
+	for _, st := range stList {
+		status := cast.CastNetworkInstanceStatus(st)
+		if status.Type != types.NetworkInstanceTypeLocal {
+			continue
+		}
+		if status.Activated {
+			log.Infof("restart dnsmasq on bridgename %s\n", status.BridgeName)
+			restartDnsmasq(ctx, &status)
+		}
+	}
 }
