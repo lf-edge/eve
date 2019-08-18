@@ -2703,7 +2703,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSModify: changed %v",
 		cmp.Diff(ctx.deviceNetworkStatus, status))
 
-	if isDnsServerChanged(&status) {
+	if isDNSServerChanged(&status) {
 		doDnsmasqRestart(ctx)
 	}
 
@@ -2878,7 +2878,7 @@ func releaseAppNetworkResources(ctx *zedrouterContext, key string,
 	publishAppNetworkStatus(ctx, status)
 }
 
-func isDnsServerChanged(new *types.DeviceNetworkStatus) bool {
+func isDNSServerChanged(new *types.DeviceNetworkStatus) bool {
 	for _, port := range new.Ports {
 		if port.IsMgmt {
 			if _, ok := dnsServers[port.Name]; !ok {
