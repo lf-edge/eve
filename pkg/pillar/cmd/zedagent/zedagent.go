@@ -1012,11 +1012,6 @@ func handleBaseOsStatusDelete(ctxArg interface{}, key string,
 
 	log.Infof("handleBaseOsStatusDelete(%s)\n", key)
 	ctx := ctxArg.(*zedagentContext)
-	status := lookupBaseOsStatus(ctx, key)
-	if status == nil {
-		log.Infof("handleBaseOsStatusDelete: unknown %s\n", key)
-		return
-	}
 	publishDevInfo(ctx)
 	log.Infof("handleBaseOsStatusDelete(%s) done\n", key)
 }
