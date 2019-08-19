@@ -8,7 +8,6 @@ package zedagent
 import (
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	log "github.com/sirupsen/logrus"
 	"strings"
 	"time"
@@ -153,9 +152,6 @@ func doBaseOsDeviceReboot(ctx *zedagentContext, status types.BaseOsStatus) {
 
 func isZbootValidPartitionLabel(name string) bool {
 	partitionNames := []string{"IMGA", "IMGB"}
-	if !zboot.IsAvailable() {
-		return false
-	}
 	for _, partName := range partitionNames {
 		if name == partName {
 			return true
@@ -188,10 +184,6 @@ func getZbootPartitionStatus(ctx *zedagentContext, partName string) *types.Zboot
 
 func getZbootCurrentPartition(ctx *zedagentContext) string {
 	var partName string
-	if !zboot.IsAvailable() {
-		log.Errorf("getZbootCurrentPartition, zboot not available\n")
-		return partName
-	}
 	items := getZbootPartitionStatusAll(ctx)
 	for _, st := range items {
 		status := cast.CastZbootStatus(st)
@@ -206,10 +198,6 @@ func getZbootCurrentPartition(ctx *zedagentContext) string {
 
 func getZbootOtherPartition(ctx *zedagentContext) string {
 	var partName string
-	if !zboot.IsAvailable() {
-		log.Errorf("getZbootOtherPartition, zboot not available\n")
-		return partName
-	}
 	items := getZbootPartitionStatusAll(ctx)
 	for _, st := range items {
 		status := cast.CastZbootStatus(st)

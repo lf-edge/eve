@@ -1029,9 +1029,6 @@ func getZbootStatus(ctx *baseOsMgrContext, partName string) *types.ZbootStatus {
 func isValidBaseOsPartitionLabel(name string) bool {
 	partitionNames := []string{"IMGA", "IMGB"}
 	name = strings.TrimSpace(name)
-	if !zboot.IsAvailable() {
-		return false
-	}
 	for _, partName := range partitionNames {
 		if name == partName {
 			return true
