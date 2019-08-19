@@ -136,11 +136,6 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 	log.Infof("parseBaseOsConfig: Applying updated config sha % x vs. % x: %v\n",
 		baseosPrevConfigHash, configHash, cfgOsList)
 
-	if !zboot.IsAvailable() {
-		log.Errorf("No zboot; ignoring baseOsConfig\n")
-		return
-	}
-
 	// First look for deleted ones
 	items := getconfigCtx.pubBaseOsConfig.GetAll()
 	for uuidStr := range items {
