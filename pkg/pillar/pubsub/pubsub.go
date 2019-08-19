@@ -1160,7 +1160,6 @@ func handleModify(ctxArg interface{}, key string, item interface{}) {
 	// NOTE: without a deepCopy we would just save a pointer since
 	// item is a pointer. That would cause failures.
 	newItem := deepCopy(item)
-	created := false
 	m, ok := sub.km.key.Load(key)
 	if ok {
 		if cmp.Equal(m, newItem) {
@@ -1173,13 +1172,12 @@ func handleModify(ctxArg interface{}, key string, item interface{}) {
 	} else {
 		log.Debugf("pubsub.handleModify(%s) add %+v for key %s\n",
 			name, newItem, key)
-		created = true
 	}
 	sub.km.key.Store(key, newItem)
 	if log.GetLevel() == log.DebugLevel {
 		sub.dump("after handleModify")
 	}
-	if created && sub.CreateHandler != nil {
+	if sub.CreateHandler != nil {
 		(sub.CreateHandler)(sub.userCtx, key, newItem)
 	} else if sub.ModifyHandler != nil {
 		(sub.ModifyHandler)(sub.userCtx, key, newItem)
