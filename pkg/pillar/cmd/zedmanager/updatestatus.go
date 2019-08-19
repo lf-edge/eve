@@ -42,14 +42,13 @@ func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
 			if safename == safename2 {
 				log.Infof("Found StorageStatus URL %s safename %s\n",
 					ssPtr.Name, safename)
-				changed := false
 				if updateContainerImageID {
 					if status.ContainerImageID != containerImageID {
 						log.Debugf("Update AIS containerImageID: %s\n",
 							containerImageID)
 						status.ContainerImageID = containerImageID
 						ssPtr.ContainerImageID = containerImageID
-						changed = true
+						publishAppInstanceStatus(ctx, &status)
 					} else {
 						log.Debugf("No change in ContainerId in Status. "+
 							"status.ContainerImageID: %s, containerImageID: %s, "+
@@ -57,9 +56,6 @@ func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
 							status.ContainerImageID, containerImageID,
 							ssPtr.ContainerImageID)
 					}
-				}
-				if changed {
-					publishAppInstanceStatus(ctx, &status)
 				}
 				updateAIStatusUUID(ctx, status.Key())
 				found = true
