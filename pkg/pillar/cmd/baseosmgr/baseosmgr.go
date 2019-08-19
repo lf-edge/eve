@@ -199,6 +199,7 @@ func handleBaseOsConfigDelete(ctxArg interface{}, key string,
 // base os config modify event
 func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
 
+	log.Infof("handleBaseOsCreate(%s)\n", key)
 	ctx := ctxArg.(*baseOsMgrContext)
 	config := cast.CastBaseOsConfig(configArg)
 	status := types.BaseOsStatus{
@@ -216,11 +217,23 @@ func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
 		ss.ImageSha256 = sc.ImageSha256
 		ss.Target = sc.Target
 	}
+	// Check image count
+	err := validateBaseOsConfig(ctx, config)
+	if err != nil {
+		errStr := fmt.Sprintf("%v", err)
+		log.Errorln(errStr)
+		status.Error = errStr
+		status.ErrorTime = time.Now()
+		publishBaseOsStatus(ctx, &status)
+		return
+	}
 	publishBaseOsStatus(ctx, &status)
-
+	baseOsHandleStatusUpdate(ctx, &config, &status)
 }
+
 func handleBaseOsModify(ctxArg interface{}, key string, configArg interface{}) {
 
+	log.Infof("handleBaseOsModify(%s)\n", key)
 	ctx := ctxArg.(*baseOsMgrContext)
 	config := cast.CastBaseOsConfig(configArg)
 	status := lookupBaseOsStatus(ctx, key)
