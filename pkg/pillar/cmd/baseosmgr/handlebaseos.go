@@ -634,12 +634,19 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 			!partStatus.CurrentPartition {
 			log.Infof("doBaseOsUninstall(%s) for %s, currently on other %s\n",
 				status.BaseOsVersion, uuidStr, partName)
-			log.Infof("Mark other partition %s, unused\n", partName)
-			zboot.SetOtherPartitionStateUnused()
-			publishZbootPartitionStatus(ctx, partName)
-			baseOsSetPartitionInfoInStatus(ctx, status,
-				status.PartitionLabel)
-			publishBaseOsStatus(ctx, status)
+			curPartState := getPartitionState(ctx,
+				zboot.GetCurrentPartition())
+			if curPartState == "active" {
+				log.Infof("Mark other partition %s, unused\n", partName)
+				zboot.SetOtherPartitionStateUnused()
+				publishZbootPartitionStatus(ctx, partName)
+				baseOsSetPartitionInfoInStatus(ctx, status,
+					status.PartitionLabel)
+				publishBaseOsStatus(ctx, status)
+			} else {
+				log.Warnf("Not mark other partition %s unused since curpart is %s",
+					partName, curPartState)
+			}
 		}
 		status.PartitionLabel = ""
 		changed = true
