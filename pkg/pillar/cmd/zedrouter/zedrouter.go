@@ -87,7 +87,7 @@ func Run() {
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
 	flag.Parse()
-	dnsServers = make(map[string][]net.IP)
+	dnsServers = make(map[string][]net.IP) // global per uplink valid and non-zero server IPs
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
@@ -2878,33 +2878,39 @@ func releaseAppNetworkResources(ctx *zedrouterContext, key string,
 	publishAppNetworkStatus(ctx, status)
 }
 
-func isDNSServerChanged(new *types.DeviceNetworkStatus) bool {
-	for _, port := range new.Ports {
-		if port.IsMgmt {
-			if _, ok := dnsServers[port.Name]; !ok {
-				if len(port.DnsServers) > 0 { // just assigned
+func isDNSServerChanged(newStatus *types.DeviceNetworkStatus) bool {
+	var dnsDiffer bool
+	for _, port := range newStatus.Ports {
+		if _, ok := dnsServers[port.Name]; !ok {
+			// if dnsServer does not have valid server IPs, assign now
+			// and if we lose uplink connection, it will not overwrite the previous server IPs
+			if len(port.DnsServers) > 0 { // just assigned
+				dnsServers[port.Name] = port.DnsServers
+			}
+		} else {
+			// only check if we have valid new DNS server sets on the uplink
+			// valid DNS server IP changes will trigger the restart of dnsmasq.
+			if len(port.DnsServers) != 0 {
+				// new one has different entries, and not the Internet disconnect case
+				if len(dnsServers[port.Name]) != len(port.DnsServers) {
 					dnsServers[port.Name] = port.DnsServers
+					dnsDiffer = true
+					continue
 				}
-			} else {
-				if len(port.DnsServers) != 0 {
-					// new one has different entries, and not the Internet disconnect case
-					if len(dnsServers[port.Name]) != len(port.DnsServers) {
-						return true
+				for idx, server := range port.DnsServers { // compare each one and update if changed
+					if server.Equal(dnsServers[port.Name][idx]) == false {
+						log.Infof("isDnsServerChanged: intf %s exist %v, new %v\n",
+							port.Name, dnsServers[port.Name], port.DnsServers)
+						dnsServers[port.Name] = port.DnsServers
+						dnsDiffer = true
+						break
 					}
-					for idx, server := range port.DnsServers { // compare each one and update if changed
-						if server.Equal(dnsServers[port.Name][idx]) == false {
-							log.Infof("isDnsServerChanged: intf %s exist %v, new %v\n",
-								port.Name, dnsServers[port.Name], port.DnsServers)
-							dnsServers[port.Name] = port.DnsServers
-							return true
-						}
-					}
+				}
 
-				}
 			}
 		}
 	}
-	return false
+	return dnsDiffer
 }
 
 func doDnsmasqRestart(ctx *zedrouterContext) {
