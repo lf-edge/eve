@@ -619,8 +619,9 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 	changed := false
 	removedAll := true
 
-	// If this image is on the !active partition we mark that
-	// as unused.
+	// In case this was a failed update we make sure we mark
+	// that !active partition as unused (in case it is inprogress),
+	// so that we can retry the same update.
 	if status.PartitionLabel != "" {
 		partName := status.PartitionLabel
 		partStatus := getZbootStatus(ctx, partName)
@@ -633,12 +634,19 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 			!partStatus.CurrentPartition {
 			log.Infof("doBaseOsUninstall(%s) for %s, currently on other %s\n",
 				status.BaseOsVersion, uuidStr, partName)
-			log.Infof("Mark other partition %s, unused\n", partName)
-			zboot.SetOtherPartitionStateUnused()
-			publishZbootPartitionStatus(ctx, partName)
-			baseOsSetPartitionInfoInStatus(ctx, status,
-				status.PartitionLabel)
-			publishBaseOsStatus(ctx, status)
+			curPartState := getPartitionState(ctx,
+				zboot.GetCurrentPartition())
+			if curPartState == "active" {
+				log.Infof("Mark other partition %s, unused\n", partName)
+				zboot.SetOtherPartitionStateUnused()
+				publishZbootPartitionStatus(ctx, partName)
+				baseOsSetPartitionInfoInStatus(ctx, status,
+					status.PartitionLabel)
+				publishBaseOsStatus(ctx, status)
+			} else {
+				log.Warnf("Not mark other partition %s unused since curpart is %s",
+					partName, curPartState)
+			}
 		}
 		status.PartitionLabel = ""
 		changed = true
@@ -1028,9 +1036,6 @@ func getZbootStatus(ctx *baseOsMgrContext, partName string) *types.ZbootStatus {
 func isValidBaseOsPartitionLabel(name string) bool {
 	partitionNames := []string{"IMGA", "IMGB"}
 	name = strings.TrimSpace(name)
-	if !zboot.IsAvailable() {
-		return false
-	}
 	for _, partName := range partitionNames {
 		if name == partName {
 			return true
