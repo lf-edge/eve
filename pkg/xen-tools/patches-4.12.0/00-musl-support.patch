@@ -1,0 +1,34 @@
+--- a/tools/libxc/xc_sr_restore.c
++++ b/tools/libxc/xc_sr_restore.c
+@@ -398,6 +398,6 @@
+     {
+         ERROR("PAGE_DATA record wrong size: length %u, expected "
+               "%zu + %zu + %lu", rec->length, sizeof(*pages),
+-              (sizeof(uint64_t) * pages->count), (PAGE_SIZE * pages_of_data));
++              (sizeof(uint64_t) * pages->count), (unsigned long)(PAGE_SIZE * pages_of_data));
+         goto err;
+     }
+
+diff --git a/tools/xenpaging/xenpaging.c b/tools/xenpaging/xenpaging.c
+index d0571cabac..7ad86e3b31 100644
+--- a/tools/xenpaging/xenpaging.c
++++ b/tools/xenpaging/xenpaging.c
+@@ -180,7 +180,7 @@ static int xenpaging_get_tot_pages(struct xenpaging *paging)
+ 
+ static void *init_page(void)
+ {
+-    void *buffer;
++    void *buffer = NULL;
+ 
+     /* Allocated page memory */
+     errno = posix_memalign(&buffer, PAGE_SIZE, PAGE_SIZE);
+--- a/tools/qemu-xen/hw/9pfs/9p.c
++++ b/tools/qemu-xen/hw/9pfs/9p.c
+@@ -25,6 +25,7 @@
+ #include "trace.h"
+ #include "migration/blocker.h"
+ #include "sysemu/qtest.h"
++#include <linux/limits.h>
+ 
+ int open_fd_hw;
+ int total_open_fd;
