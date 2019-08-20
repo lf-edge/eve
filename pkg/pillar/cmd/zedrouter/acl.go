@@ -737,7 +737,7 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 				// e.g., out a directly attached interface in the domU
 				aclRule1.Table = "nat"
 				aclRule1.Chain = "PREROUTING"
-				aclRule1.RuleID = allocACEId()
+				aclRule1.RuleID = ace.RuleID
 				aclRule1.ActionChainName = ""
 				aclRule1.Rule = []string{"-i", upLink, "-p", protocol,
 					"--dport", lport}
@@ -827,11 +827,11 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 	aclRule3.Rule = inArgs
 	aclRule3.Action = inActions
 	aclRule3.IsUserConfigured = true
-	aclRule3.RuleID = allocACEId()
+	aclRule3.RuleID = ace.RuleID
 
 	aclRule4.Rule = outArgs
 	aclRule4.Action = outActions
-	aclRule4.RuleID = allocACEId()
+	aclRule4.RuleID = ace.RuleID
 	aclRule4.IsUserConfigured = true
 	rulesList = append(rulesList, aclRule4, aclRule3)
 
@@ -1312,10 +1312,6 @@ func executeIPTablesRule(operation string, rule types.IPTablesRule) error {
 				if err == nil {
 					iptables.IptableCmd(chainDelete...)
 				}
-			}
-		} else if operation == "-D" {
-			if rule.RuleID != 0 {
-				freeACEId(rule.RuleID)
 			}
 		}
 	} else if rule.IPVer == 6 {

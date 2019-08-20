@@ -1306,10 +1306,21 @@ func (status *NetworkInstanceStatus) IsUsingPort(port string) bool {
 	return false
 }
 
+type ACEDirection uint8
+
+const (
+	ACE_DIR_BOTH    ACEDirection = iota
+	ACE_DIR_INGRESS ACEDirection = 1
+	ACE_DIR_EGRESS  ACEDirection = 2
+)
+
 // Similar support as in draft-ietf-netmod-acl-model
 type ACE struct {
 	Matches []ACEMatch
 	Actions []ACEAction
+	Name    string
+	RuleID  int32
+	Dir     ACEDirection
 }
 
 // The Type can be "ip" or "host" (aka domain name), "eidset", "protocol",
