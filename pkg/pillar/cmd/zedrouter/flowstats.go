@@ -208,11 +208,8 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					log.Infof("FlowStats: == bridge name not match %s, %s\n", bnx, bridgeName)
 					continue
 				}
-				bnNumStr := strings.Split(bridgeName, "bn")
-				bnNum, err := strconv.Atoi(bnNumStr[1])
+				bnNum, err := bridgeStrToNum(bridgeName)
 				if err != nil {
-					log.Infof("FlowStats: == string convertion error for bnNumStr %s\n", bnNumStr)
-					// error
 					continue
 				}
 				// temp print out log for the flow
@@ -668,6 +665,10 @@ func dnsDataRemove(bnNum int) {
 
 func bridgeStrToNum(bnStr string) (int, error) {
 	bnNumStr := strings.Split(bnStr, "bn")
+	if len(bnNumStr) < 2 {
+		err := fmt.Errorf("bridge name:%s incorrect", bnStr)
+		return 0, err
+	}
 	bnNum, err := strconv.Atoi(bnNumStr[1])
 	if err != nil {
 		log.Errorf("FlowStats: == string convertion error for bnNumStr %s\n", bnNumStr)
