@@ -44,7 +44,6 @@ const (
 
 // Set from Makefile
 var Version = "No version specified"
-var dnsServers map[string][]net.IP
 
 type zedrouterContext struct {
 	// Legacy data plane enable/disable flag
@@ -77,6 +76,7 @@ type zedrouterContext struct {
 	pubNetworkInstanceMetrics *pubsub.Publication
 	pubAppFlowMonitor         *pubsub.Publication
 	networkInstanceStatusMap  map[uuid.UUID]*types.NetworkInstanceStatus
+	dnsServers                map[string][]net.IP
 }
 
 var debug = false
@@ -87,7 +87,6 @@ func Run() {
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
 	flag.Parse()
-	dnsServers = make(map[string][]net.IP) // global per uplink valid and non-zero server IPs
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
@@ -145,6 +144,7 @@ func Run() {
 		legacyDataPlane:    false,
 		assignableAdapters: &aa,
 		agentStartTime:     time.Now(),
+		dnsServers:         make(map[string][]net.IP),
 	}
 	zedrouterCtx.networkInstanceStatusMap =
 		make(map[uuid.UUID]*types.NetworkInstanceStatus)
@@ -2703,7 +2703,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSModify: changed %v",
 		cmp.Diff(ctx.deviceNetworkStatus, status))
 
-	if isDNSServerChanged(&status) {
+	if isDNSServerChanged(ctx, &status) {
 		doDnsmasqRestart(ctx)
 	}
 
@@ -2878,30 +2878,30 @@ func releaseAppNetworkResources(ctx *zedrouterContext, key string,
 	publishAppNetworkStatus(ctx, status)
 }
 
-func isDNSServerChanged(newStatus *types.DeviceNetworkStatus) bool {
+func isDNSServerChanged(ctx *zedrouterContext, newStatus *types.DeviceNetworkStatus) bool {
 	var dnsDiffer bool
 	for _, port := range newStatus.Ports {
-		if _, ok := dnsServers[port.Name]; !ok {
+		if _, ok := ctx.dnsServers[port.Name]; !ok {
 			// if dnsServer does not have valid server IPs, assign now
 			// and if we lose uplink connection, it will not overwrite the previous server IPs
 			if len(port.DnsServers) > 0 { // just assigned
-				dnsServers[port.Name] = port.DnsServers
+				ctx.dnsServers[port.Name] = port.DnsServers
 			}
 		} else {
 			// only check if we have valid new DNS server sets on the uplink
 			// valid DNS server IP changes will trigger the restart of dnsmasq.
 			if len(port.DnsServers) != 0 {
 				// new one has different entries, and not the Internet disconnect case
-				if len(dnsServers[port.Name]) != len(port.DnsServers) {
-					dnsServers[port.Name] = port.DnsServers
+				if len(ctx.dnsServers[port.Name]) != len(port.DnsServers) {
+					ctx.dnsServers[port.Name] = port.DnsServers
 					dnsDiffer = true
 					continue
 				}
 				for idx, server := range port.DnsServers { // compare each one and update if changed
-					if server.Equal(dnsServers[port.Name][idx]) == false {
+					if server.Equal(ctx.dnsServers[port.Name][idx]) == false {
 						log.Infof("isDnsServerChanged: intf %s exist %v, new %v\n",
-							port.Name, dnsServers[port.Name], port.DnsServers)
-						dnsServers[port.Name] = port.DnsServers
+							port.Name, ctx.dnsServers[port.Name], port.DnsServers)
+						ctx.dnsServers[port.Name] = port.DnsServers
 						dnsDiffer = true
 						break
 					}
