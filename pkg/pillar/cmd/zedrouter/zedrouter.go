@@ -76,6 +76,7 @@ type zedrouterContext struct {
 	pubNetworkInstanceMetrics *pubsub.Publication
 	pubAppFlowMonitor         *pubsub.Publication
 	networkInstanceStatusMap  map[uuid.UUID]*types.NetworkInstanceStatus
+	dnsServers                map[string][]net.IP
 }
 
 var debug = false
@@ -143,6 +144,7 @@ func Run() {
 		legacyDataPlane:    false,
 		assignableAdapters: &aa,
 		agentStartTime:     time.Now(),
+		dnsServers:         make(map[string][]net.IP),
 	}
 	zedrouterCtx.networkInstanceStatusMap =
 		make(map[uuid.UUID]*types.NetworkInstanceStatus)
@@ -2700,6 +2702,11 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	log.Infof("handleDNSModify: changed %v",
 		cmp.Diff(ctx.deviceNetworkStatus, status))
+
+	if isDNSServerChanged(ctx, &status) {
+		doDnsmasqRestart(ctx)
+	}
+
 	*ctx.deviceNetworkStatus = status
 	maybeHandleDNS(ctx)
 	log.Infof("handleDNSModify done for %s\n", key)
@@ -2869,4 +2876,54 @@ func releaseAppNetworkResources(ctx *zedrouterContext, key string,
 		status.OverlayNetworkList[idx].ACLRules = ruleList
 	}
 	publishAppNetworkStatus(ctx, status)
+}
+
+func isDNSServerChanged(ctx *zedrouterContext, newStatus *types.DeviceNetworkStatus) bool {
+	var dnsDiffer bool
+	for _, port := range newStatus.Ports {
+		if _, ok := ctx.dnsServers[port.Name]; !ok {
+			// if dnsServer does not have valid server IPs, assign now
+			// and if we lose uplink connection, it will not overwrite the previous server IPs
+			if len(port.DnsServers) > 0 { // just assigned
+				ctx.dnsServers[port.Name] = port.DnsServers
+			}
+		} else {
+			// only check if we have valid new DNS server sets on the uplink
+			// valid DNS server IP changes will trigger the restart of dnsmasq.
+			if len(port.DnsServers) != 0 {
+				// new one has different entries, and not the Internet disconnect case
+				if len(ctx.dnsServers[port.Name]) != len(port.DnsServers) {
+					ctx.dnsServers[port.Name] = port.DnsServers
+					dnsDiffer = true
+					continue
+				}
+				for idx, server := range port.DnsServers { // compare each one and update if changed
+					if server.Equal(ctx.dnsServers[port.Name][idx]) == false {
+						log.Infof("isDnsServerChanged: intf %s exist %v, new %v\n",
+							port.Name, ctx.dnsServers[port.Name], port.DnsServers)
+						ctx.dnsServers[port.Name] = port.DnsServers
+						dnsDiffer = true
+						break
+					}
+				}
+
+			}
+		}
+	}
+	return dnsDiffer
+}
+
+func doDnsmasqRestart(ctx *zedrouterContext) {
+	pub := ctx.pubNetworkInstanceStatus
+	stList := pub.GetAll()
+	for _, st := range stList {
+		status := cast.CastNetworkInstanceStatus(st)
+		if status.Type != types.NetworkInstanceTypeLocal {
+			continue
+		}
+		if status.Activated {
+			log.Infof("restart dnsmasq on bridgename %s\n", status.BridgeName)
+			restartDnsmasq(ctx, &status)
+		}
+	}
 }
