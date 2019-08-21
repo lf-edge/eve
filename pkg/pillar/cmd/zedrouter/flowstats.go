@@ -664,14 +664,13 @@ func dnsDataRemove(bnNum int) {
 }
 
 func bridgeStrToNum(bnStr string) (int, error) {
-	bnNumStr := strings.Split(bnStr, "bn")
-	if len(bnNumStr) < 2 {
+	bnNumStr := strings.TrimPrefix(bnStr, "bn")
+	if len(bnNumStr) == len(bnStr) {
 		err := fmt.Errorf("bridge name:%s incorrect", bnStr)
 		return 0, err
 	}
-	bnNum, err := strconv.Atoi(bnNumStr[1])
+	bnNum, err := strconv.Atoi(bnNumStr)
 	if err != nil {
-		log.Errorf("FlowStats: == string convertion error for bnNumStr %s\n", bnNumStr)
 		return 0, err
 	}
 	return bnNum, nil
