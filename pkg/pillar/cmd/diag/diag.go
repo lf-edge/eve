@@ -798,14 +798,15 @@ func myGet(zedcloudCtx *zedcloud.ZedCloudContext, requrl string, ifname string,
 			ifname, proxyUrl.String(), requrl)
 	}
 	const allowProxy = true
-	resp, contents, cf, err := zedcloud.SendOnIntf(*zedcloudCtx,
+	resp, contents, rtf, err := zedcloud.SendOnIntf(*zedcloudCtx,
 		requrl, ifname, 0, nil, allowProxy, 15)
 	if err != nil {
-		fmt.Printf("ERROR: %s: get %s failed: %s\n",
-			ifname, requrl, err)
-		if cf {
-			fmt.Printf("ERROR: %s: get %s certificate failure\n",
-				ifname, requrl)
+		if rtf {
+			fmt.Printf("ERROR: %s: get %s remote temporary failure: %s\n",
+				ifname, requrl, err)
+		} else {
+			fmt.Printf("ERROR: %s: get %s failed: %s\n",
+				ifname, requrl, err)
 		}
 		return false, nil, nil
 	}
