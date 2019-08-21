@@ -541,8 +541,11 @@ func aclDropRules(aclArgs types.AppNetworkACLArgs) (types.IPTablesRuleList, erro
 		// XXX Passing 0xffffffff as int32 make golang give overflow error.
 		// Instead pass "-1" as the marking value and make createMarkAndAcceptChain
 		// handle this case separately.
-		createMarkAndAcceptChain(aclArgs, chainName, -1)
+		marking := (aclArgs.AppNum << 24) | 0xffffff
+		createMarkAndAcceptChain(aclArgs, chainName, marking)
 		aclRule3.Action = []string{"-j", chainName}
+		aclRule3.RuleID = 0xffffff
+		aclRule3.IsDefaultDrop = true
 		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3)
 	default:
 		aclRule3.Rule = []string{"-i", aclArgs.BridgeName}
@@ -737,7 +740,7 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 				// e.g., out a directly attached interface in the domU
 				aclRule1.Table = "nat"
 				aclRule1.Chain = "PREROUTING"
-				aclRule1.RuleID = allocACEId()
+				aclRule1.RuleID = ace.RuleID
 				aclRule1.ActionChainName = ""
 				aclRule1.Rule = []string{"-i", upLink, "-p", protocol,
 					"--dport", lport}
@@ -827,11 +830,11 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 	aclRule3.Rule = inArgs
 	aclRule3.Action = inActions
 	aclRule3.IsUserConfigured = true
-	aclRule3.RuleID = allocACEId()
+	aclRule3.RuleID = ace.RuleID
 
 	aclRule4.Rule = outArgs
 	aclRule4.Action = outActions
-	aclRule4.RuleID = allocACEId()
+	aclRule4.RuleID = ace.RuleID
 	aclRule4.IsUserConfigured = true
 	rulesList = append(rulesList, aclRule4, aclRule3)
 
@@ -1312,10 +1315,6 @@ func executeIPTablesRule(operation string, rule types.IPTablesRule) error {
 				if err == nil {
 					iptables.IptableCmd(chainDelete...)
 				}
-			}
-		} else if operation == "-D" {
-			if rule.RuleID != 0 {
-				freeACEId(rule.RuleID)
 			}
 		}
 	} else if rule.IPVer == 6 {

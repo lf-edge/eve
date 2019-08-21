@@ -78,10 +78,10 @@ type dnsEntry struct {
 
 const (
 	maxBridgeNumber int    = 256
-	timeoutSec      int32  = 150    // less than 150 sec, consider done
-	markMask        uint32 = 0xffff // get the Mark bits for ACL number
-	appShiftBits    uint32 = 24     // top 8 bits for App Number
-	maxFlowPack     int    = 280    // approximate 100 bytes per flow/dns, get this under 30k
+	timeoutSec      int32  = 150      // less than 150 sec, consider done
+	markMask        uint32 = 0xffffff // get the Mark bits for ACL number
+	appShiftBits    uint32 = 24       // top 8 bits for App Number
+	maxFlowPack     int    = 280      // approximate 100 bytes per flow/dns, get this under 30k
 )
 
 type dnsSys struct {
@@ -222,10 +222,16 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					DstPort: int32(tuple.DstPort),
 					Proto:   int32(tuple.Proto),
 				}
+				aclNum := aclattr.aclNum
+				if aclNum == DropMarkValue {
+					// 0xFFFFFF is the internally used marking to identify dropped flows.
+					// Cloud want the acl id for such flows to be set to ZERO.
+					aclNum = 0
+				}
 				flowrec := types.FlowRec{
 					Flow:      flowtuple,
 					Inbound:   !tuple.AppInitiate,
-					ACLID:     int32(aclattr.aclNum),
+					ACLID:     int32(aclNum),
 					Action:    aclattr.action,
 					StartTime: tuple.TimeStart,
 					StopTime:  tuple.TimeStop,
@@ -498,7 +504,9 @@ func checkAppAndACL(ctx *zedrouterContext, instData *networkAttrs) {
 				instData.ipaclattr[status.AppNum] = tmpMap
 			}
 			for _, rule := range ulStatus.ACLRules {
-				if rule.IsUserConfigured == false { // only include user defined rules
+				if (rule.IsUserConfigured == false || rule.IsMarkingRule == true) &&
+					rule.IsDefaultDrop == false {
+					// only include user defined rules and default drop rules
 					continue
 				}
 

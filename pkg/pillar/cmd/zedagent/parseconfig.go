@@ -1266,6 +1266,9 @@ func parseUnderlayNetworkConfigEntry(
 			len(acl.Matches))
 		aclCfg.Actions = make([]types.ACEAction,
 			len(acl.Actions))
+		aclCfg.RuleID = acl.Id
+		aclCfg.Name = acl.Name
+		aclCfg.Dir = types.ACEDirection(acl.Dir)
 		for matchIdx, match := range acl.Matches {
 			matchCfg := new(types.ACEMatch)
 			matchCfg.Type = match.Type
@@ -1375,6 +1378,9 @@ func parseOverlayNetworkConfigEntry(
 			len(acl.Matches))
 		aclCfg.Actions = make([]types.ACEAction,
 			len(acl.Actions))
+		aclCfg.RuleID = acl.Id
+		aclCfg.Name = acl.Name
+		aclCfg.Dir = types.ACEDirection(acl.Dir)
 		for matchIdx, match := range acl.Matches {
 			matchCfg := new(types.ACEMatch)
 			matchCfg.Type = match.Type
