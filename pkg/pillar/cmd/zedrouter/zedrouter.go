@@ -39,7 +39,7 @@ const (
 	runDirname    = "/var/run/zedrouter"
 	tmpDirname    = "/var/tmp/zededa"
 	DataPlaneName = "lisp-ztr"
-	DropMarkValue = 0xFFFFFFFF
+	DropMarkValue = 0xFFFFFF
 )
 
 // Set from Makefile

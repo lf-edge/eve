@@ -541,8 +541,11 @@ func aclDropRules(aclArgs types.AppNetworkACLArgs) (types.IPTablesRuleList, erro
 		// XXX Passing 0xffffffff as int32 make golang give overflow error.
 		// Instead pass "-1" as the marking value and make createMarkAndAcceptChain
 		// handle this case separately.
-		createMarkAndAcceptChain(aclArgs, chainName, -1)
+		marking := (aclArgs.AppNum << 24) | 0xffffff
+		createMarkAndAcceptChain(aclArgs, chainName, marking)
 		aclRule3.Action = []string{"-j", chainName}
+		aclRule3.RuleID = 0xffffff
+		aclRule3.IsDefaultDrop = true
 		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3)
 	default:
 		aclRule3.Rule = []string{"-i", aclArgs.BridgeName}
