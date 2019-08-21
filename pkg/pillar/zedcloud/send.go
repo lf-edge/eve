@@ -19,7 +19,9 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
+	"os"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -43,13 +45,13 @@ var nilUUID = uuid.UUID{}
 // ensure load spreading across multiple interfaces.
 // Returns response for first success. Caller can not use resp.Body but can
 // use []byte contents return.
-// If we trip on any certificate failure (such as expired) we return that
-// as the last return parameter so that callers can tell we did reach the controller
+// We return a bool remoteTemporaryFailure for the cases when we reached
+// the controller but it is overloaded, or has certificate issues.
 func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int, return400 bool) (*http.Response, []byte, bool, error) {
 	// If failed then try the non-free
 	const allowProxy = true
 	var errorList []error
-	certFailure := false
+	remoteTemporaryFailure := false
 
 	for try := 0; try < 2; try += 1 {
 		var intfs []string
@@ -80,44 +82,44 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 		for _, intf := range intfs {
 			// XXX Hard coded timeout to 15 seconds. Might need some adjusting
 			// depending on network conditions down the road.
-			resp, contents, cf, err := SendOnIntf(ctx, url, intf, reqlen, b, allowProxy, 15)
-			if cf {
-				certFailure = true
+			resp, contents, rtf, err := SendOnIntf(ctx, url, intf, reqlen, b, allowProxy, 15)
+			if rtf {
+				remoteTemporaryFailure = true
 			}
 			if return400 && resp != nil &&
 				resp.StatusCode == 400 {
 				log.Infof("sendOnAllIntf: for %s reqlen %d ignore code %d\n",
 					url, reqlen, resp.StatusCode)
-				return resp, nil, certFailure, err
+				return resp, nil, remoteTemporaryFailure, err
 			}
 			if err != nil {
 				errorList = append(errorList, err)
 				continue
 			}
-			return resp, contents, certFailure, nil
+			return resp, contents, remoteTemporaryFailure, nil
 		}
 	}
 	errStr := fmt.Sprintf("All attempts to connect to %s failed: %v",
 		url, errorList)
 	log.Errorln(errStr)
-	return nil, nil, certFailure, errors.New(errStr)
+	return nil, nil, remoteTemporaryFailure, errors.New(errStr)
 }
 
 // We try with free interfaces first. If we find enough free interfaces through
 // which cloud connectivity can be achieved, we won't test non-free interfaces.
 // Otherwise we test non-free interfaces also.
-// If we trip on any certificate failure (such as expired) we return that
-// as the last return parameter so that callers can tell we did reach the controller
+// We return a bool remoteTemporaryFailure for the cases when we reached
+// the controller but it is overloaded, or has certificate issues.
 func VerifyAllIntf(ctx ZedCloudContext,
 	url string, successCount int, iteration int) (bool, bool, error) {
 	var intfSuccessCount int = 0
 	const allowProxy = true
 	var errorList []error
-	certFailure := false
+	remoteTemporaryFailure := false
 
 	if successCount <= 0 {
 		// No need to test. Just return true.
-		return true, certFailure, nil
+		return true, remoteTemporaryFailure, nil
 	}
 
 	for try := 0; try < 2; try += 1 {
@@ -136,9 +138,9 @@ func VerifyAllIntf(ctx ZedCloudContext,
 				// We have enough uplinks with cloud connectivity working.
 				break
 			}
-			resp, _, cf, err := SendOnIntf(ctx, url, intf, 0, nil, allowProxy, 15)
-			if cf {
-				certFailure = true
+			resp, _, rtf, err := SendOnIntf(ctx, url, intf, 0, nil, allowProxy, 15)
+			if rtf {
+				remoteTemporaryFailure = true
 			}
 			if err != nil {
 				log.Errorf("Zedcloud un-reachable via interface %s: %s",
@@ -165,15 +167,15 @@ func VerifyAllIntf(ctx ZedCloudContext,
 		errStr := fmt.Sprintf("All test attempts to connect to %s failed: %v",
 			url, errorList)
 		log.Errorln(errStr)
-		return false, certFailure, errors.New(errStr)
+		return false, remoteTemporaryFailure, errors.New(errStr)
 	}
 	if intfSuccessCount < successCount {
 		errStr := fmt.Sprintf("Not enough Ports (%d) against required count %d to reach Zedcloud; last failed with %v",
 			intfSuccessCount, successCount, errorList)
 		log.Errorln(errStr)
-		return false, certFailure, errors.New(errStr)
+		return false, remoteTemporaryFailure, errors.New(errStr)
 	}
-	return true, certFailure, nil
+	return true, remoteTemporaryFailure, nil
 }
 
 // Tries all source addresses on interface until one succeeds.
@@ -181,13 +183,12 @@ func VerifyAllIntf(ctx ZedCloudContext,
 // use []byte contents return.
 // If we get a http response, we return that even if it was an error
 // to allow the caller to look at StatusCode
-// If we trip on any certificate failure (such as expired) we return that
-// as the last return parameter so that callers can tell we did reach the controller
+// We return a bool remoteTemporaryFailure for the cases when we reached
+// the controller but it is overloaded, or has certificate issues.
 func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool, timeout int) (*http.Response, []byte, bool, error) {
 
 	var reqUrl string
 	var useTLS bool
-	certFailure := false
 	if strings.HasPrefix(destUrl, "http:") {
 		reqUrl = destUrl
 		useTLS = false
@@ -211,14 +212,16 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		errStr := fmt.Sprintf("No IP addresses to connect to %s using intf %s",
 			reqUrl, intf)
 		log.Debugln(errStr)
-		return nil, nil, certFailure, errors.New(errStr)
+		return nil, nil, false, errors.New(errStr)
 	}
 	// Get the transport header with proxy information filled
 	proxyUrl, err := LookupProxy(ctx.DeviceNetworkStatus, intf, reqUrl)
 	var transport *http.Transport
+	var usedProxy bool
 	if err == nil && proxyUrl != nil && allowProxy {
 		log.Debugf("sendOnIntf: For input URL %s, proxy found is %s",
 			reqUrl, proxyUrl.String())
+		usedProxy = true
 		transport = &http.Transport{
 			TLSClientConfig: ctx.TlsConfig,
 			Proxy:           http.ProxyURL(proxyUrl),
@@ -234,12 +237,14 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 
 	var errorList []error
 
+	// Try all addresses
+	remoteTemporaryFailure := false
 	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
 		localAddr, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus,
 			retryCount, intf)
 		if err != nil {
 			log.Error(err)
-			return nil, nil, certFailure, err
+			return nil, nil, remoteTemporaryFailure, err
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
 		log.Debugf("Connecting to %s using intf %s source %v\n",
@@ -305,22 +310,37 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 			trace))
 		resp, err := client.Do(req)
 		if err != nil {
-			log.Errorf("client.Do fail: %v\n", err)
-			errorList = append(errorList, err)
-			if e0, ok := err.(*url.Error); ok {
-				e1 := e0.Err
-				e, cf := e1.(x509.CertificateInvalidError)
-				if cf {
-					log.Errorf("certFailure")
-					certFailure = true
-					if e.Cert != nil {
-						errStr := fmt.Sprintf("cert failure for Subject %s NotBefore %v NotAfter %v",
-							e.Cert.Subject, e.Cert.NotBefore, e.Cert.NotAfter)
-						log.Error(errStr)
-						err := errors.New(errStr)
-						errorList = append(errorList, err)
-					}
+			if cf, cert := isCertFailure(err); cf {
+				// XXX can we ever get this from a proxy?
+				// We assume we reached the controller here
+				log.Errorf("client.Do fail: certFailure")
+				remoteTemporaryFailure = true
+				if cert != nil {
+					errStr := fmt.Sprintf("cert failure for Subject %s NotBefore %v NotAfter %v",
+						cert.Subject, cert.NotBefore,
+						cert.NotAfter)
+					log.Error(errStr)
+					cerr := errors.New(errStr)
+					errorList = append(errorList, cerr)
+				} else {
+					errorList = append(errorList, err)
 				}
+			} else if isECONNREFUSED(err) {
+				if usedProxy {
+					log.Errorf("client.Do fail: ECONNREFUSED with proxy")
+				} else {
+					log.Errorf("client.Do fail: ECONNREFUSED")
+					remoteTemporaryFailure = true
+				}
+				errorList = append(errorList, err)
+			} else if isNoSuitableAddress(err) {
+				// We get lots of these due to IPv6 link-local
+				// only address on some interfaces.
+				// Do not return as errors
+				log.Warn("client.Do fail: No suitable address")
+			} else {
+				log.Errorf("client.Do fail: %v", err)
+				errorList = append(errorList, err)
 			}
 			continue
 		}
@@ -394,10 +414,10 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		switch resp.StatusCode {
 		case http.StatusOK:
 			log.Debugf("SendOnIntf to %s StatusOK\n", reqUrl)
-			return resp, contents, certFailure, nil
+			return resp, contents, false, nil
 		case http.StatusCreated:
 			log.Debugf("SendOnIntf to %s StatusCreated\n", reqUrl)
-			return resp, contents, certFailure, nil
+			return resp, contents, false, nil
 		default:
 			errStr := fmt.Sprintf("sendOnIntf to %s reqlen %d statuscode %d %s",
 				reqUrl, reqlen, resp.StatusCode,
@@ -405,7 +425,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 			log.Errorln(errStr)
 			log.Debugf("received response %v\n", resp)
 			// Get caller to schedule a retry based on StatusCode
-			return resp, nil, certFailure, errors.New(errStr)
+			return resp, nil, false, errors.New(errStr)
 		}
 	}
 	if ctx.FailureFunc != nil {
@@ -414,5 +434,53 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 	errStr := fmt.Sprintf("All attempts to connect to %s using intf %s failed: %v",
 		reqUrl, intf, errorList)
 	log.Errorln(errStr)
-	return nil, nil, certFailure, errors.New(errStr)
+	return nil, nil, remoteTemporaryFailure, errors.New(errStr)
+}
+
+func isCertFailure(err error) (bool, *x509.Certificate) {
+	e0, ok := err.(*url.Error)
+	if !ok {
+		return false, nil
+	}
+	e1, ok := e0.Err.(x509.CertificateInvalidError)
+	if !ok {
+		return false, nil
+	}
+	return true, e1.Cert
+}
+
+func isECONNREFUSED(err error) bool {
+	e0, ok := err.(*url.Error)
+	if !ok {
+		return false
+	}
+	e1, ok := e0.Err.(*net.OpError)
+	if !ok {
+		return false
+	}
+	e2, ok := e1.Err.(*os.SyscallError)
+	if !ok {
+		return false
+	}
+	errno, ok := e2.Err.(syscall.Errno)
+	if !ok {
+		return false
+	}
+	return errno == syscall.ECONNREFUSED
+}
+
+func isNoSuitableAddress(err error) bool {
+	e0, ok := err.(*url.Error)
+	if !ok {
+		return false
+	}
+	e1, ok := e0.Err.(*net.OpError)
+	if !ok {
+		return false
+	}
+	e2, ok := e1.Err.(*net.AddrError)
+	if !ok {
+		return false
+	}
+	return e2.Err == "no suitable address found"
 }

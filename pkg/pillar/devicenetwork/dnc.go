@@ -320,7 +320,7 @@ func VerifyPending(pending *DPCPending,
 	pending.TestCount = MaxDPCRetestCount
 
 	// We want connectivity to zedcloud via atleast one Management port.
-	cf, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1)
+	rtf, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1)
 	status := DPC_FAIL
 	if err == nil {
 		pending.PendDPC.LastSucceeded = time.Now()
@@ -331,12 +331,13 @@ func VerifyPending(pending *DPCPending,
 	} else {
 		errStr := fmt.Sprintf("Failed network test: %s",
 			err)
-		log.Errorf("VerifyPending: %s\n", errStr)
-		if cf {
-			log.Errorf("VerifyPending: certificate failure")
-			// NOTE: do not increase TestCount; we retry until
-			// the certificate is fixed on the server side.
+		if rtf {
+			log.Errorf("VerifyPending: remoteTemporaryFailure %s", errStr)
+			// NOTE: do not increase TestCount; we retry until e.g., the
+			// certificate or ECONNREFUSED is fixed on the server side.
 			status = DPC_WAIT
+		} else {
+			log.Errorf("VerifyPending: %s\n", errStr)
 		}
 		pending.PendDPC.LastFailed = time.Now()
 		pending.PendDPC.LastError = errStr
