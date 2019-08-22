@@ -400,9 +400,11 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 					pending.PendDPC.Key)
 			}
 			compressAndPublishDevicePortConfigList(ctx)
-			if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() {
-				log.Warn("VerifyDevicePortConfig DPC_FAIL: New DPC arrived while network testing " +
-					"was in progress. Restarting DPC verification.")
+			if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() ||
+				ctx.DevicePortConfigList.PortConfigList[0].WasDPCWorking() {
+				log.Warn("VerifyDevicePortConfig DPC_FAIL: New DPC arrived " +
+					"or an old working DPC ascended to the top of DPC list " +
+					"while network testing was in progress. Restarting DPC verification.")
 				SetupVerify(ctx, 0)
 				continue
 			}
@@ -462,12 +464,17 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	pending.Inprogress = false
 
 	// Did we get a new at index zero?
-	if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() {
-		log.Warn("VerifyDevicePortConfig DPC_SUCCESS: New DPC arrived while network testing " +
+	if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() ||
+		ctx.DevicePortConfigList.PortConfigList[0].WasDPCWorking() {
+		log.Warn("VerifyDevicePortConfig DPC_SUCCESS: New DPC arrived " +
+			"or a old working DPC moved up to top of DPC list while network testing " +
 			"was in progress. Restarting DPC verification.")
 		RestartVerify(ctx, "VerifyDevicePortConfig DPC_SUCCESS")
 		return
 	}
+
+	// We just found a new DPC that restored our cloud connectivity.
+	ctx.CloudConnectivityWorks = true
 
 	// Restart network test timer
 	duration := time.Duration(ctx.NetworkTestInterval) * time.Second
@@ -483,7 +490,7 @@ func getNextTestableDPCIndex(ctx *DeviceNetworkContext, start int) int {
 	log.Infof("getNextTestableDPCIndex: start %d\n", start)
 	// We want to wrap around, but should not keep looping around.
 	// We do one loop of the entire list searching for a testable candidate.
-	// If no suitable test candidate is found, we reset the test index to 0.
+	// If no suitable test candidate is found, we reset the test index to -1.
 	found := false
 	count := 0
 	newIndex := start % dpcListLen
