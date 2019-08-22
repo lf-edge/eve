@@ -313,7 +313,7 @@ func GetOtherLogdir() string {
 }
 
 // Debug info to tell how often/late we call stillRunning; keyed by agentName
-var lastStillMap map[string]time.Time = make(map[string]time.Time)
+var lastStillMap = make(map[string]time.Time)
 
 const (
 	errorTime      = 3 * time.Minute
