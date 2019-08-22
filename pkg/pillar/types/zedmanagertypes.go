@@ -111,6 +111,11 @@ type AppInstanceStatus struct {
 	PurgeCmd            AppInstanceOpsCmd
 	RestartInprogress   Inprogress
 	PurgeInprogress     Inprogress
+
+	// Container related state
+	IsContainer      bool
+	ContainerImageID string
+
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.
 	State          SwState
@@ -237,12 +242,34 @@ type StorageStatus struct {
 	Progress           uint    // In percent i.e., 0-100
 	HasDownloaderRef   bool    // Reference against downloader to clean up
 	HasVerifierRef     bool    // Reference against verifier to clean up
+	IsContainer        bool    // Is the image a Container??
+	ContainerImageID   string  // Container Image ID if IsContainer=true
 	Vdev               string  // Allocated
 	ActiveFileLocation string  // Location of filestystem
 	FinalObjDir        string  // Installation dir; may differ from verified
 	Error              string  // Download or verify error
 	ErrorSource        string
 	ErrorTime          time.Time
+}
+
+// UpdateFromStorageConfig sets up StorageStatus based on StorageConfig struct
+func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
+	ss.Name = sc.Name
+	ss.ImageSha256 = sc.ImageSha256
+	ss.Size = sc.Size
+	ss.CertificateChain = sc.CertificateChain
+	ss.ImageSignature = sc.ImageSignature
+	ss.SignatureKey = sc.SignatureKey
+	ss.ReadOnly = sc.ReadOnly
+	ss.Preserve = sc.Preserve
+	ss.Format = sc.Format
+	ss.Maxsizebytes = sc.Maxsizebytes
+	ss.Devtype = sc.Devtype
+	ss.Target = sc.Target
+	if ss.Format == "8" {
+		ss.IsContainer = true
+	}
+	return
 }
 
 // The Intermediate can be a byte sequence of PEM certs

@@ -4,10 +4,11 @@
 package zedmanager
 
 import (
+	"os"
+
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"os"
 )
 
 func lookupVerifyImageConfig(ctx *zedmanagerContext,
@@ -47,7 +48,8 @@ func lookupVerifyImageConfigSha256(ctx *zedmanagerContext,
 func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, safename string,
 	ss *types.StorageStatus, checkCerts bool) bool {
 
-	log.Infof("MaybeAddVerifyImageConfig for %s\n", safename)
+	log.Infof("MaybeAddVerifyImageConfig for %s, checkCerts: %v, "+
+		"isContainer: %v\n", safename, checkCerts, ss.IsContainer)
 
 	// check the certificate files, if not present,
 	// we can not start verification
@@ -64,8 +66,9 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, safename string,
 			m.RefCount, safename)
 		publishVerifyImageConfig(ctx, m)
 	} else {
-		log.Infof("MaybeAddVerifyImageConfig: add for %s\n",
-			safename)
+		log.Infof("MaybeAddVerifyImageConfig: add for %s, IsContainer: %t"+
+			"ContainerImageID: %s\n", safename, ss.IsContainer,
+			ss.ContainerImageID)
 		n := types.VerifyImageConfig{
 			Safename:         safename,
 			Name:             ss.Name,
@@ -74,8 +77,11 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, safename string,
 			CertificateChain: ss.CertificateChain,
 			ImageSignature:   ss.ImageSignature,
 			SignatureKey:     ss.SignatureKey,
+			IsContainer:      ss.IsContainer,
+			ContainerImageID: ss.ContainerImageID,
 		}
 		publishVerifyImageConfig(ctx, &n)
+		log.Debugf("MaybeAddVerifyImageConfig - config: %+v\n", n)
 	}
 	log.Infof("MaybeAddVerifyImageConfig done for %s\n", safename)
 	return true
@@ -150,10 +156,12 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 		log.Infof("handleVerifyImageStatusModify adding RefCount=0 config %s\n",
 			key)
 		n := types.VerifyImageConfig{
-			Safename:    status.Safename,
-			Name:        status.Safename,
-			ImageSha256: status.ImageSha256,
-			RefCount:    0,
+			Safename:         status.Safename,
+			Name:             status.Safename,
+			ImageSha256:      status.ImageSha256,
+			IsContainer:      status.IsContainer,
+			ContainerImageID: status.ContainerImageID,
+			RefCount:         0,
 		}
 		publishVerifyImageConfig(ctx, &n)
 		return
@@ -166,7 +174,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 	}
 
 	// Normal update work
-	updateAIStatusSafename(ctx, key)
+	updateAIStatusWithStorageSafename(ctx, key, false, "")
 	updateAIStatusSha(ctx, config.ImageSha256)
 	log.Infof("handleVerifyImageStatusModify done for %s\n",
 		status.Safename)

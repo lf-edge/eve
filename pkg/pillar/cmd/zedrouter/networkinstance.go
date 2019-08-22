@@ -120,9 +120,9 @@ func checkPortAvailable(
 	} else {
 		// Make sure it will not be configured for IP
 		if portStatus.Dhcp != types.DT_NONE {
-			errStr := fmt.Sprintf("Port %s configured for shared use. "+
+			errStr := fmt.Sprintf("Port %s configured for shared use with DHCP type %d. "+
 				"Cannot be used by Switch Network Instance %s-%s\n",
-				status.Port, status.UUID, status.DisplayName)
+				status.Port, portStatus.Dhcp, status.UUID, status.DisplayName)
 			return errors.New(errStr)
 		}
 		// Make sure it is not used by any other NetworkInstance
@@ -213,7 +213,7 @@ func networkInstanceBridgeDelete(
 	// itself and not the rules for specific domU vifs.
 
 	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
-		BridgeIP: status.BridgeIPAddr}
+		BridgeIP: status.BridgeIPAddr, NIType: status.Type, UpLinks: status.IfNameList}
 	handleNetworkInstanceACLConfiglet("-D", aclArgs)
 
 	// delete the sister interface
@@ -527,6 +527,8 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 			status.BridgeIPAddr, &status.NetworkInstanceConfig,
 			hostsDirpath, status.BridgeIPSets, status.Ipv4Eid)
 		startDnsmasq(bridgeName)
+
+		go DNSMonitor(bridgeName, bridgeNum)
 	}
 
 	if status.IsIPv6() {
@@ -544,13 +546,6 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		}
 	default:
 	}
-	// setup the ACLs for the bridge
-	// Here we explicitly adding the iptables rules, to the bottom of the
-	// rule chains, which are tied to the Linux bridge itself and not the
-	//  rules for any specific domU vifs.
-	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
-		BridgeIP: status.BridgeIPAddr}
-	handleNetworkInstanceACLConfiglet("-A", aclArgs)
 	return nil
 }
 
@@ -762,7 +757,7 @@ func getSwitchNetworkInstanceUsingPort(
 	return nil
 }
 
-func restartDnsmasq(status *types.NetworkInstanceStatus) {
+func restartDnsmasq(ctx *zedrouterContext, status *types.NetworkInstanceStatus) {
 
 	log.Infof("restartDnsmasq(%s) ipsets %v\n",
 		status.BridgeName, status.BridgeIPSets)
@@ -778,7 +773,24 @@ func restartDnsmasq(status *types.NetworkInstanceStatus) {
 	createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr,
 		&status.NetworkInstanceConfig, hostsDirpath, status.BridgeIPSets,
 		status.Ipv4Eid)
+	createHostDnsmasqFile(ctx, bridgeName)
 	startDnsmasq(bridgeName)
+}
+
+func createHostDnsmasqFile(ctx *zedrouterContext, bridge string) {
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastAppNetworkStatus(st)
+		for _, ulStatus := range status.UnderlayNetworkList {
+			if strings.Compare(bridge, ulStatus.Bridge) != 0 {
+				continue
+			}
+			addhostDnsmasq(bridge, ulStatus.Mac,
+				ulStatus.AllocatedIPAddr, status.UUIDandVersion.UUID.String())
+			log.Infof("createHostDnsmasqFile:(%s) mac=%s, IP=%s\n", bridge, ulStatus.Mac, ulStatus.AllocatedIPAddr)
+		}
+	}
 }
 
 // Returns an IP address as a string, or "" if not found.
@@ -1063,7 +1075,7 @@ func updateBridgeIPAddr(
 	if status.BridgeIPAddr != old && status.BridgeIPAddr != "" {
 		log.Infof("updateBridgeIPAddr(%s) restarting dnsmasq\n",
 			status.Key())
-		restartDnsmasq(status)
+		restartDnsmasq(ctx, status)
 	}
 }
 
@@ -1128,6 +1140,13 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 			status.Type)
 		err = errors.New(errStr)
 	}
+	// setup the ACLs for the bridge
+	// Here we explicitly adding the iptables rules, to the bottom of the
+	// rule chains, which are tied to the Linux bridge itself and not the
+	//  rules for any specific domU vifs.
+	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
+		BridgeIP: status.BridgeIPAddr, NIType: status.Type, UpLinks: status.IfNameList}
+	handleNetworkInstanceACLConfiglet("-A", aclArgs)
 	return err
 }
 
@@ -1222,6 +1241,7 @@ func doNetworkInstanceDelete(
 		if status.IsIPv6() {
 			stopRadvd(status.BridgeName, true)
 		}
+		DNSStopMonitor(status.BridgeNum)
 	}
 	networkInstanceBridgeDelete(ctx, status)
 }
@@ -1452,9 +1472,9 @@ func natActivate(ctx *zedrouterContext,
 			log.Errorf("IptableCmd failed: %s", err)
 			return err
 		}
-		err = PbrRouteAddDefault(status.BridgeName, a)
+		err = PbrRouteAddAll(status.BridgeName, a)
 		if err != nil {
-			log.Errorf("PbrRouteAddDefault for Bridge(%s) and interface %s failed. "+
+			log.Errorf("PbrRouteAddAll for Bridge(%s) and interface %s failed. "+
 				"Err: %s", status.BridgeName, a, err)
 			return err
 		}
@@ -1514,9 +1534,9 @@ func natInactivate(ctx *zedrouterContext,
 		if err != nil {
 			log.Errorf("natInactivate: iptableCmd failed %s\n", err)
 		}
-		err = PbrRouteDeleteDefault(status.BridgeName, a)
+		err = PbrRouteDeleteAll(status.BridgeName, a)
 		if err != nil {
-			log.Errorf("natInactivate: PbrRouteDeleteDefault failed %s\n", err)
+			log.Errorf("natInactivate: PbrRouteDeleteAll failed %s\n", err)
 		}
 	}
 	// Remove from Pbr table
@@ -1691,4 +1711,33 @@ func vifNameToBridgeName(ctx *zedrouterContext, vifName string) string {
 		}
 	}
 	return ""
+}
+
+// Get All ifindices for the Network Instances which are using ifname
+func getAllNIindices(ctx *zedrouterContext, ifname string) []int {
+
+	var indicies []int
+	pub := ctx.pubNetworkInstanceStatus
+	if pub == nil {
+		return indicies
+	}
+	instanceItems := pub.GetAll()
+	for _, st := range instanceItems {
+		status := cast.CastNetworkInstanceStatus(st)
+		if !status.IsUsingPort(ifname) {
+			continue
+		}
+		if status.BridgeName == "" {
+			continue
+		}
+		link, err := netlink.LinkByName(status.BridgeName)
+		if err != nil {
+			errStr := fmt.Sprintf("LinkByName(%s) failed: %s",
+				status.BridgeName, err)
+			log.Errorln(errStr)
+			continue
+		}
+		indicies = append(indicies, link.Attrs().Index)
+	}
+	return indicies
 }

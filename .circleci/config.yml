@@ -34,6 +34,8 @@ jobs:
           name: EVE
           command: >
             make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} eve
+      - store_artifacts:
+          path: dist/amd64/rootfs.img
   yetus:
     environment:
       - CGO_ENABLED: 1
@@ -76,9 +78,11 @@ jobs:
             --console-report-file=/tmp/yetus-out/console.txt
             --brief-report-file=/tmp/yetus-out/brief.txt
             --excludes=.yetus-excludes
+            --ignore-unknown-options=true
+            --revive-config=.revive.toml
             --linecomments=''
             --bugcomments=briefreport,htmlout,junit
-            --junit-results-xml=/tmp/yetus-out/results.xml
+            --junit-report-xml=/tmp/yetus-out/results.xml
             --tests-filter=checkmake,golang,golangcilint
             --continuous-improvement=true
       - store_test_results:

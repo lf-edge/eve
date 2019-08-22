@@ -39,6 +39,7 @@ const (
 	runDirname    = "/var/run/zedrouter"
 	tmpDirname    = "/var/tmp/zededa"
 	DataPlaneName = "lisp-ztr"
+	DropMarkValue = 0xFFFFFF
 )
 
 // Set from Makefile
@@ -73,7 +74,9 @@ type zedrouterContext struct {
 	subNetworkInstanceConfig  *pubsub.Subscription
 	pubNetworkInstanceStatus  *pubsub.Publication
 	pubNetworkInstanceMetrics *pubsub.Publication
+	pubAppFlowMonitor         *pubsub.Publication
 	networkInstanceStatusMap  map[uuid.UUID]*types.NetworkInstanceStatus
+	dnsServers                map[string][]net.IP
 }
 
 var debug = false
@@ -130,6 +133,9 @@ func Run() {
 	}
 	pubUuidToNum.ClearRestarted()
 
+	// Create the dummy interface used to re-direct DROP/REJECT packets.
+	createFlowMonDummyInterface(DropMarkValue)
+
 	// Pick up (mostly static) AssignableAdapters before we process
 	// any Routes; Pbr needs to know which network adapters are assignable
 
@@ -138,6 +144,7 @@ func Run() {
 		legacyDataPlane:    false,
 		assignableAdapters: &aa,
 		agentStartTime:     time.Now(),
+		dnsServers:         make(map[string][]net.IP),
 	}
 	zedrouterCtx.networkInstanceStatusMap =
 		make(map[uuid.UUID]*types.NetworkInstanceStatus)
@@ -208,6 +215,12 @@ func Run() {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubNetworkInstanceMetrics = pubNetworkInstanceMetrics
+
+	pubAppFlowMonitor, err := pubsub.Publish(agentName, types.IPFlow{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedrouterCtx.pubAppFlowMonitor = pubAppFlowMonitor
 
 	appNumAllocatorInit(&zedrouterCtx)
 	bridgeNumAllocatorInit(&zedrouterCtx)
@@ -302,6 +315,12 @@ func Run() {
 		time.Duration(max))
 
 	updateLispConfiglets(&zedrouterCtx, zedrouterCtx.legacyDataPlane)
+
+	flowStatIntv := time.Duration(120 * time.Second) // 120 sec, flow timeout if less than150 sec
+	fmax := float64(flowStatIntv)
+	fmin := fmax * 0.9
+	flowStatTimer := flextimer.NewRangeTicker(time.Duration(fmin),
+		time.Duration(fmax))
 
 	setFreeMgmtPorts(types.GetMgmtPortsFree(*zedrouterCtx.deviceNetworkStatus, 0))
 
@@ -398,7 +417,8 @@ func Run() {
 				routeChanges = devicenetwork.RouteChangeInit()
 				break
 			}
-			PbrRouteChange(zedrouterCtx.deviceNetworkStatus, change)
+			PbrRouteChange(&zedrouterCtx,
+				zedrouterCtx.deviceNetworkStatus, change)
 
 		case <-publishTimer.C:
 			log.Debugln("publishTimer at", time.Now())
@@ -412,6 +432,10 @@ func Run() {
 			// XXX can we trigger it as part of boot? Or watch file?
 			// XXX add file watch...
 			checkAndPublishDhcpLeases(&zedrouterCtx)
+
+		case <-flowStatTimer.C:
+			log.Debugf("FlowStatTimer at %v", time.Now())
+			go FlowStatsCollect(&zedrouterCtx)
 
 		case change := <-subNetworkInstanceConfig.C:
 			log.Infof("NetworkInstanceConfig change at %+v", time.Now())
@@ -522,6 +546,16 @@ func handleInit(runDirname string) {
 		log.Fatal("Failed setting rp_filter ", err)
 	}
 	_, err = wrap.Command("sysctl", "-w",
+		"net.netfilter.nf_conntrack_acct=1").Output()
+	if err != nil {
+		log.Fatal("Failed setting conntrack_acct ", err)
+	}
+	_, err = wrap.Command("sysctl", "-w",
+		"net.netfilter.nf_conntrack_timestamp=1").Output()
+	if err != nil {
+		log.Fatal("Failed setting conntrack_timestamp ", err)
+	}
+	_, err = wrap.Command("sysctl", "-w",
 		"net.ipv4.conf.all.log_martians=1").Output()
 	if err != nil {
 		log.Fatal("Failed setting log_martians ", err)
@@ -531,6 +565,7 @@ func handleInit(runDirname string) {
 	if err != nil {
 		log.Fatal("Failed setting log_martians ", err)
 	}
+	AppFlowMonitorTimeoutAdjust()
 }
 
 func publishLispDataplaneConfig(ctx *zedrouterContext,
@@ -1164,7 +1199,8 @@ func appNetworkDoActivateUnderlayNetwork(
 
 	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: vifName, BridgeIP: bridgeIPAddr, AppIP: appIPAddr,
-		UpLinks: netInstStatus.IfNameList}
+		UpLinks: netInstStatus.IfNameList, NIType: netInstStatus.Type,
+		AppNum: int32(status.AppNum)}
 
 	// Set up ACLs
 	ruleList, err := createACLConfiglet(aclArgs, ulStatus.ACLs)
@@ -1987,7 +2023,8 @@ func doAppNetworkModifyUnderlayNetwork(
 
 	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: bridgeName,
 		VifName: ulStatus.Vif, BridgeIP: ulStatus.BridgeIPAddr, AppIP: appIPAddr,
-		UpLinks: netstatus.IfNameList}
+		UpLinks: netstatus.IfNameList, NIType: netstatus.Type,
+		AppNum: int32(status.AppNum)}
 
 	// We ignore any errors in netstatus
 
@@ -2308,6 +2345,9 @@ func appNetworkDoInactivateUnderlayNetwork(
 	netstatus.BridgeIPSets = newIpsets
 	log.Infof("set BridgeIPSets to %v for %s", newIpsets, netstatus.Key())
 	maybeRemoveStaleIpsets(staleIpsets)
+
+	// publish the changes to network instance status
+	publishNetworkInstanceStatus(ctx, netstatus)
 }
 
 func appNetworkDoInactivateAllOverlayNetworks(ctx *zedrouterContext,
@@ -2662,6 +2702,11 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	log.Infof("handleDNSModify: changed %v",
 		cmp.Diff(ctx.deviceNetworkStatus, status))
+
+	if isDNSServerChanged(ctx, &status) {
+		doDnsmasqRestart(ctx)
+	}
+
 	*ctx.deviceNetworkStatus = status
 	maybeHandleDNS(ctx)
 	log.Infof("handleDNSModify done for %s\n", key)
@@ -2831,4 +2876,54 @@ func releaseAppNetworkResources(ctx *zedrouterContext, key string,
 		status.OverlayNetworkList[idx].ACLRules = ruleList
 	}
 	publishAppNetworkStatus(ctx, status)
+}
+
+func isDNSServerChanged(ctx *zedrouterContext, newStatus *types.DeviceNetworkStatus) bool {
+	var dnsDiffer bool
+	for _, port := range newStatus.Ports {
+		if _, ok := ctx.dnsServers[port.Name]; !ok {
+			// if dnsServer does not have valid server IPs, assign now
+			// and if we lose uplink connection, it will not overwrite the previous server IPs
+			if len(port.DnsServers) > 0 { // just assigned
+				ctx.dnsServers[port.Name] = port.DnsServers
+			}
+		} else {
+			// only check if we have valid new DNS server sets on the uplink
+			// valid DNS server IP changes will trigger the restart of dnsmasq.
+			if len(port.DnsServers) != 0 {
+				// new one has different entries, and not the Internet disconnect case
+				if len(ctx.dnsServers[port.Name]) != len(port.DnsServers) {
+					ctx.dnsServers[port.Name] = port.DnsServers
+					dnsDiffer = true
+					continue
+				}
+				for idx, server := range port.DnsServers { // compare each one and update if changed
+					if server.Equal(ctx.dnsServers[port.Name][idx]) == false {
+						log.Infof("isDnsServerChanged: intf %s exist %v, new %v\n",
+							port.Name, ctx.dnsServers[port.Name], port.DnsServers)
+						ctx.dnsServers[port.Name] = port.DnsServers
+						dnsDiffer = true
+						break
+					}
+				}
+
+			}
+		}
+	}
+	return dnsDiffer
+}
+
+func doDnsmasqRestart(ctx *zedrouterContext) {
+	pub := ctx.pubNetworkInstanceStatus
+	stList := pub.GetAll()
+	for _, st := range stList {
+		status := cast.CastNetworkInstanceStatus(st)
+		if status.Type != types.NetworkInstanceTypeLocal {
+			continue
+		}
+		if status.Activated {
+			log.Infof("restart dnsmasq on bridgename %s\n", status.BridgeName)
+			restartDnsmasq(ctx, &status)
+		}
+	}
 }

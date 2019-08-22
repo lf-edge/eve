@@ -41,10 +41,14 @@ const (
 	//TpmPasswdHdl is the well known TPM NVIndex for TPM Credentials
 	TpmPasswdHdl tpmutil.Handle = 0x1600000
 
+	//TpmDiskKeyHdl is the handle for constructing disk encryption key
+	TpmDiskKeyHdl tpmutil.Handle = 0x1700000
+
 	tpmCredentialsFileName = "/config/tpm_credential"
 	emptyPassword          = ""
 	tpmLockName            = "/var/tmp/zededa/tpm.lock"
-	maxPasswdLength        = 7 //limit TPM password to this length
+	maxPasswdLength        = 7  //limit TPM password to this length
+	vaultKeyLength         = 32 //Bytes
 )
 
 var (
@@ -354,13 +358,94 @@ func readCredentials() error {
 	return nil
 }
 
+func getRandom(numBytes uint16) ([]byte, error) {
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		return nil, err
+	}
+	defer rw.Close()
+	return tpm2.GetRandom(rw, numBytes)
+}
+
+//FetchVaultKey retreives TPM part of the vault key
+func FetchVaultKey() ([]byte, error) {
+	//First try to read from TPM, if it was stored earlier
+	key, err := readDiskKey()
+	if err != nil {
+		key, err = getRandom(vaultKeyLength)
+		if err != nil {
+			log.Errorf("Error in generating random number: %v", err)
+			return nil, err
+		}
+		err = writeDiskKey(key)
+		if err != nil {
+			log.Errorf("Writing Disk Key to TPM failed: %v", err)
+			return nil, err
+		}
+	}
+	return key, nil
+}
+
+func writeDiskKey(key []byte) error {
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		return err
+	}
+	defer rw.Close()
+
+	if err := tpm2.NVUndefineSpace(rw, emptyPassword,
+		tpm2.HandleOwner, TpmDiskKeyHdl,
+	); err != nil {
+		log.Debugf("NVUndefineSpace failed: %v", err)
+	}
+
+	// Define space in NV storage and clean up afterwards or subsequent runs will fail.
+	if err := tpm2.NVDefineSpace(rw,
+		tpm2.HandleOwner,
+		TpmDiskKeyHdl,
+		emptyPassword,
+		emptyPassword,
+		nil,
+		tpm2.AttrOwnerWrite|tpm2.AttrOwnerRead,
+		uint16(len(key)),
+	); err != nil {
+		log.Errorf("NVDefineSpace failed: %v", err)
+		return err
+	}
+
+	// Write the data
+	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, TpmDiskKeyHdl,
+		emptyPassword, key, 0); err != nil {
+		log.Errorf("NVWrite failed: %v", err)
+		return err
+	}
+	return nil
+}
+
+func readDiskKey() ([]byte, error) {
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		return nil, err
+	}
+	defer rw.Close()
+
+	// Read all of the data with NVReadEx
+	keyBytes, err := tpm2.NVReadEx(rw, TpmDiskKeyHdl,
+		tpm2.HandleOwner, emptyPassword, 0)
+	if err != nil {
+		log.Errorf("NVReadEx failed: %v", err)
+		return nil, err
+	}
+	return keyBytes, nil
+}
+
 //till we have next version of go-tpm released, use this
 const (
-	tpmPropertyManufacturer = 0x105
-	tpmPropertyVendorStr1   = 0x106
-	tpmPropertyVendorStr2   = 0x107
-	tpmPropertyFirmVer1     = 0x10b
-	tpmPropertyFirmVer2     = 0x10c
+	tpmPropertyManufacturer tpm2.TPMProp = 0x105
+	tpmPropertyVendorStr1   tpm2.TPMProp = 0x106
+	tpmPropertyVendorStr2   tpm2.TPMProp = 0x107
+	tpmPropertyFirmVer1     tpm2.TPMProp = 0x10b
+	tpmPropertyFirmVer2     tpm2.TPMProp = 0x10c
 )
 
 func getModelName(vendorValue1 uint32, vendorValue2 uint32) string {
@@ -390,7 +475,7 @@ func getFirmwareVersion(v1 uint32, v2 uint32) string {
 		get16(v2, 0), get16(v2, 1))
 }
 
-func getTpmProperty(propID uint32) (uint32, error) {
+func getTpmProperty(propID tpm2.TPMProp) (uint32, error) {
 
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
@@ -398,7 +483,8 @@ func getTpmProperty(propID uint32) (uint32, error) {
 	}
 	defer rw.Close()
 
-	v, _, err := tpm2.GetCapability(rw, tpm2.CapabilityTPMProperties, 1, propID)
+	v, _, err := tpm2.GetCapability(rw, tpm2.CapabilityTPMProperties,
+		1, uint32(propID))
 	if err != nil {
 		return 0, err
 	}
@@ -469,6 +555,18 @@ func FetchTpmHwInfo() (string, error) {
 	return tpmHwInfo, nil
 }
 
+func printNVProperties() {
+	if nvMaxSize, err := getTpmProperty(tpm2.NVMaxBufferSize); err != nil {
+		fmt.Printf("NV Max Size: 0x%X\n", nvMaxSize)
+	}
+	if nvIdxFirst, err := getTpmProperty(tpm2.NVIndexFirst); err != nil {
+		fmt.Printf("NV Index First: 0x%X\n", nvIdxFirst)
+	}
+	if nvIdxLast, err := getTpmProperty(tpm2.NVIndexLast); err != nil {
+		fmt.Printf("NV Index Last: 0x%X\n", nvIdxLast)
+	}
+}
+
 func printCapability() {
 	hwInfoStr, err := FetchTpmHwInfo()
 	if err != nil {
@@ -476,6 +574,8 @@ func printCapability() {
 	} else {
 		fmt.Println(hwInfoStr)
 	}
+	//XXX Not working, commenting for now
+	//printNVProperties()
 }
 
 func Run() {
@@ -496,7 +596,7 @@ func Run() {
 	switch os.Args[1] {
 	case "genKey":
 		if err = createDeviceKey(); err != nil {
-			log.Fatal("Error in creating primary key, ", err)
+			log.Errorf("Error in creating primary key: %v ", err)
 			os.Exit(1)
 		}
 	case "readDeviceCert":

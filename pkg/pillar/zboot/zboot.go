@@ -42,10 +42,6 @@ func init() {
 // reset routine
 func Reset() {
 	log.Infof("Reset..\n")
-	if !IsAvailable() {
-		log.Infof("no zboot; can't do reset\n")
-		return
-	}
 	_, err := execWithRetry(true, "zboot", "reset")
 	if err != nil {
 		log.Fatalf("zboot reset: err %v\n", err)
@@ -108,9 +104,6 @@ func SetCurpart(curpart string) {
 
 // partition routines
 func GetCurrentPartition() string {
-	if !IsAvailable() {
-		return "IMGA"
-	}
 	if currentPartition != "" {
 		return currentPartition
 	}
@@ -176,13 +169,6 @@ func IsOtherPartition(partName string) bool {
 func GetPartitionState(partName string) string {
 
 	validatePartitionName(partName)
-	if !IsAvailable() {
-		if partName == "IMGA" {
-			return "active"
-		} else {
-			return "unused"
-		}
-	}
 	ret, err := execWithRetry(false, "zboot", "partstate", partName)
 	if err != nil {
 		log.Fatalf("zboot partstate %s: err %v\n", partName, err)
@@ -221,9 +207,6 @@ var partDev = make(map[string]string)
 
 func GetPartitionDevname(partName string) string {
 	validatePartitionName(partName)
-	if !IsAvailable() {
-		return ""
-	}
 	dev, ok := partDev[partName]
 	if ok {
 		return dev
@@ -287,9 +270,6 @@ func IsOtherPartitionStateUnused() bool {
 }
 
 func IsOtherPartitionStateUpdating() bool {
-	if !IsAvailable() {
-		return false
-	}
 	partName := GetOtherPartition()
 	return IsPartitionState(partName, "updating")
 }
@@ -441,9 +421,6 @@ func getVersion(part string, verFilename string, inContainer bool) string {
 		log.Infof("%s, readCurVersion %s\n", part, versionStr)
 		return versionStr
 	} else {
-		if !IsAvailable() {
-			return ""
-		}
 		devname := GetPartitionDevname(part)
 		target, err := ioutil.TempDir("/var/run", "tmpmnt")
 		if err != nil {
@@ -486,15 +463,5 @@ func getVersion(part string, verFilename string, inContainer bool) string {
 		versionStr = strings.TrimSpace(versionStr)
 		log.Infof("%s, readOtherVersion %s\n", part, versionStr)
 		return versionStr
-	}
-}
-
-// XXX temporary? Needed to run on hikey's with no zboot yet.
-func IsAvailable() bool {
-	filename := "/usr/bin/zboot"
-	if _, err := os.Stat(filename); err != nil {
-		return false
-	} else {
-		return true
 	}
 }

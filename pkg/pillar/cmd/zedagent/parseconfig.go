@@ -136,15 +136,6 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 	log.Infof("parseBaseOsConfig: Applying updated config sha % x vs. % x: %v\n",
 		baseosPrevConfigHash, configHash, cfgOsList)
 
-	baseOsCount := len(cfgOsList)
-	if baseOsCount == 0 {
-		return
-	}
-	if !zboot.IsAvailable() {
-		log.Errorf("No zboot; ignoring baseOsConfig\n")
-		return
-	}
-
 	// First look for deleted ones
 	items := getconfigCtx.pubBaseOsConfig.GetAll()
 	for uuidStr := range items {
@@ -1275,6 +1266,9 @@ func parseUnderlayNetworkConfigEntry(
 			len(acl.Matches))
 		aclCfg.Actions = make([]types.ACEAction,
 			len(acl.Actions))
+		aclCfg.RuleID = acl.Id
+		aclCfg.Name = acl.Name
+		aclCfg.Dir = types.ACEDirection(acl.Dir)
 		for matchIdx, match := range acl.Matches {
 			matchCfg := new(types.ACEMatch)
 			matchCfg.Type = match.Type
@@ -1384,6 +1378,9 @@ func parseOverlayNetworkConfigEntry(
 			len(acl.Matches))
 		aclCfg.Actions = make([]types.ACEAction,
 			len(acl.Actions))
+		aclCfg.RuleID = acl.Id
+		aclCfg.Name = acl.Name
+		aclCfg.Dir = types.ACEDirection(acl.Dir)
 		for matchIdx, match := range acl.Matches {
 			matchCfg := new(types.ACEMatch)
 			matchCfg.Type = match.Type

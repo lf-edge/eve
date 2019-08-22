@@ -1,3 +1,19 @@
+diff --git a/actions/callback.go b/actions/callback.go
+index f15893d..65ced07 100644
+--- a/actions/callback.go
++++ b/actions/callback.go
+@@ -102,8 +102,9 @@ func unwrapProtectorKey(info ProtectorInfo, keyFn KeyFunc) (*crypto.Key, error)
+ 		case crypto.ErrBadAuth:
+ 			// After the first failure, we let the callback know we are retrying.
+ 			log.Printf("invalid wrapping key for protector %s", info.Descriptor())
+-			retry = true
+-			continue
++			return nil, err
++			//retry = true
++			//continue
+ 		default:
+ 			return nil, err
+ 		}
 diff --git a/cmd/fscrypt/keys.go b/cmd/fscrypt/keys.go
 index 872ca2a..e3304bc 100644
 --- a/cmd/fscrypt/keys.go

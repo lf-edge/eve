@@ -83,7 +83,7 @@ func handleSignals(sigs chan os.Signal) {
 func printStack() {
 	stacks := getStacks(false)
 	log.Errorf("fatal stack trace:\n%v\n", stacks)
-	RebootReason("fatal: agent exit")
+	RebootReason(fmt.Sprintf("fatal: agent %s exit", savedAgentName))
 	RebootStack(stacks)
 }
 
@@ -278,12 +278,7 @@ func getCurrentIMGdir() string {
 	if currentIMGdir != "" {
 		return currentIMGdir
 	}
-	var partName string
-	if !zboot.IsAvailable() {
-		partName = "IMGA"
-	} else {
-		partName = zboot.GetCurrentPartition()
-	}
+	partName := zboot.GetCurrentPartition()
 	currentIMGdir = fmt.Sprintf("%s/%s", persistDir, partName)
 	return currentIMGdir
 }
@@ -294,9 +289,6 @@ func getOtherIMGdir(inprogressCheck bool) string {
 
 	if otherIMGdir != "" {
 		return otherIMGdir
-	}
-	if !zboot.IsAvailable() {
-		return ""
 	}
 	if inprogressCheck && !zboot.IsOtherPartitionStateInProgress() {
 		return ""

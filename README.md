@@ -49,7 +49,6 @@ docker version
 $ brew install qemu
 ```
 
-##### On Ubuntu
 
 ```sh
 $ sudo apt install qemu
@@ -237,13 +236,21 @@ The following steps have been tested on Intel UP Squared Board (AAEON UP-APL01) 
 ```bash
 git clone https://github.com/lf-edge/eve.git
 cd eve
-sudo make ZARCH=amd64 installer
+make ZARCH=amd64 installer
 ```
 
 Find the device using
 
+##### On Ubuntu
+
 ```bash
 fdisk -l
+```
+
+##### On OSX
+
+```bash
+diskutil list
 ```
 
 Now format the USB Disk and run the following commands
@@ -252,6 +259,8 @@ Now format the USB Disk and run the following commands
 sudo umount /dev/sdXXX
 sudo dd if=dist/amd64/installer.raw of=/dev/sdXXX
 ```
+
+Alternatively the image can be written with tools like balenaEtcher: https://www.balena.io/etcher/
 
 Now plug the USB Disk on your UP Squared Board and the installer should now replace the existing OS on the UP Squared board with EVE.
 
