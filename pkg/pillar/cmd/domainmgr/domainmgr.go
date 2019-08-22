@@ -230,10 +230,14 @@ func Run() {
 		log.Infof("Waiting for DeviceNetworkStatus init\n")
 		select {
 		case change := <-subGlobalConfig.C:
+			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
+			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 		}
 	}
 
@@ -254,13 +258,19 @@ func Run() {
 		log.Infof("Waiting for AssignableAdapters")
 		select {
 		case change := <-subGlobalConfig.C:
+			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
+			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subPhysicalIOAdapter.C:
+			start := agentlog.StartTime()
 			subPhysicalIOAdapter.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 		}
 	}
 	log.Infof("Have %d assignable adapters", len(aa.IoBundleList))
@@ -285,19 +295,29 @@ func Run() {
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
+			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDomainConfig.C:
+			start := agentlog.StartTime()
 			subDomainConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
+			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subPhysicalIOAdapter.C:
+			start := agentlog.StartTime()
 			subPhysicalIOAdapter.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-gc.C:
+			start := agentlog.StartTime()
 			gcObjects(&domainCtx, rwImgDirname)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
