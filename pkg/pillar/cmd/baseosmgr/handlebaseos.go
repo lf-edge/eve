@@ -765,17 +765,15 @@ func checkInstalledVersion(ctx *baseOsMgrContext, status types.BaseOsStatus) str
 		log.Errorln(errStr)
 		return errStr
 	}
-	partStatus := getZbootStatus(ctx, status.PartitionLabel)
-	// XXX this check can result in failures when multiple updates in progress in zedcloud!
-	// XXX remove?
-	if partStatus != nil &&
-		status.BaseOsVersion != partStatus.ShortVersion {
-		errStr := fmt.Sprintf("baseOs %s, %s, does not match installed %s",
-			status.PartitionLabel, status.BaseOsVersion, partStatus.ShortVersion)
 
-		log.Errorln(errStr)
-		// XXX return errStr
-		// XXX restore
+	// Check the configured Image name is the same as the one just installed image
+	shortVer := zboot.GetShortVersion(status.PartitionLabel)
+	log.Infof("checkInstalledVersion: Cfg baseVer %s, Image shortVer %s\n",
+		status.BaseOsVersion, shortVer)
+	if status.BaseOsVersion != shortVer {
+		errString := fmt.Sprintf("checkInstalledVersion: image name not match. config %s, image ver %s\n",
+			status.BaseOsVersion, shortVer)
+		return errString
 	}
 	return ""
 }
