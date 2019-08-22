@@ -577,7 +577,7 @@ func updateFilteredFallback(ctx *nimContext) {
 }
 
 func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool {
-	cf, err := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1)
+	rtf, err := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1)
 	if err == nil {
 		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
 		if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
@@ -590,11 +590,12 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 		ctx.NetworkTestTimer = time.NewTimer(time.Duration(ctx.NetworkTestInterval) * time.Second)
 		return true
 	}
-	if !ctx.CloudConnectivityWorks && !cf {
+	if !ctx.CloudConnectivityWorks && !rtf {
 		// If previous cloud connectivity test also failed, it means
 		// that the current DPC configuration stopped working.
 		// In this case we start the process where device tries to
 		// figure out a DevicePortConfig that works.
+		// We avoid doing this for remoteTemporaryFailures
 		if ctx.Pending.Inprogress {
 			log.Infof("tryDeviceConnectivityToCloud: Device port configuration list " +
 				"verification in progress")
@@ -608,8 +609,8 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 			devicenetwork.RestartVerify(ctx, "tryDeviceConnectivityToCloud")
 		}
 	} else {
-		if cf {
-			log.Infof("tryDeviceConnectivityToCloud: certificate failure")
+		if rtf {
+			log.Warnf("tryDeviceConnectivityToCloud: remoteTemporaryFailure: %s", err)
 		} else {
 			log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test restart timer due to %s", err)
 		}

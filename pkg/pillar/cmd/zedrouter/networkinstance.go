@@ -757,7 +757,7 @@ func getSwitchNetworkInstanceUsingPort(
 	return nil
 }
 
-func restartDnsmasq(status *types.NetworkInstanceStatus) {
+func restartDnsmasq(ctx *zedrouterContext, status *types.NetworkInstanceStatus) {
 
 	log.Infof("restartDnsmasq(%s) ipsets %v\n",
 		status.BridgeName, status.BridgeIPSets)
@@ -773,7 +773,24 @@ func restartDnsmasq(status *types.NetworkInstanceStatus) {
 	createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr,
 		&status.NetworkInstanceConfig, hostsDirpath, status.BridgeIPSets,
 		status.Ipv4Eid)
+	createHostDnsmasqFile(ctx, bridgeName)
 	startDnsmasq(bridgeName)
+}
+
+func createHostDnsmasqFile(ctx *zedrouterContext, bridge string) {
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := cast.CastAppNetworkStatus(st)
+		for _, ulStatus := range status.UnderlayNetworkList {
+			if strings.Compare(bridge, ulStatus.Bridge) != 0 {
+				continue
+			}
+			addhostDnsmasq(bridge, ulStatus.Mac,
+				ulStatus.AllocatedIPAddr, status.UUIDandVersion.UUID.String())
+			log.Infof("createHostDnsmasqFile:(%s) mac=%s, IP=%s\n", bridge, ulStatus.Mac, ulStatus.AllocatedIPAddr)
+		}
+	}
 }
 
 // Returns an IP address as a string, or "" if not found.
@@ -1058,7 +1075,7 @@ func updateBridgeIPAddr(
 	if status.BridgeIPAddr != old && status.BridgeIPAddr != "" {
 		log.Infof("updateBridgeIPAddr(%s) restarting dnsmasq\n",
 			status.Key())
-		restartDnsmasq(status)
+		restartDnsmasq(ctx, status)
 	}
 }
 

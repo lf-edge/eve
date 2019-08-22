@@ -1208,6 +1208,7 @@ type IPTablesRule struct {
 	IsMarkingRule    bool // Rule does marking of packet for flow tracking.
 	IsPortMapRule    bool // Is this a port map rule?
 	IsLimitDropRule  bool // Is this a policer limit drop rule?
+	IsDefaultDrop    bool // Is this a default drop rule that forwards to dummy?
 }
 
 // IPTablesRuleList : list of iptables rules
@@ -1306,10 +1307,26 @@ func (status *NetworkInstanceStatus) IsUsingPort(port string) bool {
 	return false
 }
 
+// ACEDirection :
+// Rule direction
+type ACEDirection uint8
+
+const (
+	// AceDirBoth : Rule applies in both directions
+	AceDirBoth ACEDirection = iota
+	// AceDirIngress : Rules applies in Ingress direction (from internet to app)
+	AceDirIngress ACEDirection = 1
+	// AceDirEgress : Rules applies in Egress direction (from app to internet)
+	AceDirEgress ACEDirection = 2
+)
+
 // Similar support as in draft-ietf-netmod-acl-model
 type ACE struct {
 	Matches []ACEMatch
 	Actions []ACEAction
+	Name    string
+	RuleID  int32
+	Dir     ACEDirection
 }
 
 // The Type can be "ip" or "host" (aka domain name), "eidset", "protocol",

@@ -280,12 +280,13 @@ func Run() { //nolint:gocyclo
 	myPost := func(tlsConfig *tls.Config, retryCount int, requrl string, reqlen int64, b *bytes.Buffer) bool {
 
 		zedcloudCtx.TlsConfig = tlsConfig
-		resp, contents, cf, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+		resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			requrl, reqlen, b, retryCount, return400)
 		if err != nil {
-			log.Errorln(err)
-			if cf {
-				log.Errorln("Certificate failure")
+			if rtf {
+				log.Errorf("remoteTemporaryFailure %s", err)
+			} else {
+				log.Errorln(err)
 			}
 			return false
 		}
@@ -385,12 +386,13 @@ func Run() { //nolint:gocyclo
 	myGet := func(tlsConfig *tls.Config, requrl string, retryCount int) (bool, *http.Response, []byte) {
 
 		zedcloudCtx.TlsConfig = tlsConfig
-		resp, contents, cf, err := zedcloud.SendOnAllIntf(zedcloudCtx,
+		resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 			requrl, 0, nil, retryCount, return400)
 		if err != nil {
-			log.Errorln(err)
-			if cf {
-				log.Errorln("Certificate failure")
+			if rtf {
+				log.Errorf("remoteTemporaryFailure %s", err)
+			} else {
+				log.Errorln(err)
 			}
 			return false, nil, nil
 		}

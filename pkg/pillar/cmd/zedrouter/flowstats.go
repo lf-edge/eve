@@ -78,10 +78,10 @@ type dnsEntry struct {
 
 const (
 	maxBridgeNumber int    = 256
-	timeoutSec      int32  = 150    // less than 150 sec, consider done
-	markMask        uint32 = 0xffff // get the Mark bits for ACL number
-	appShiftBits    uint32 = 24     // top 8 bits for App Number
-	maxFlowPack     int    = 280    // approximate 100 bytes per flow/dns, get this under 30k
+	timeoutSec      int32  = 150      // less than 150 sec, consider done
+	markMask        uint32 = 0xffffff // get the Mark bits for ACL number
+	appShiftBits    uint32 = 24       // top 8 bits for App Number
+	maxFlowPack     int    = 280      // approximate 100 bytes per flow/dns, get this under 30k
 )
 
 type dnsSys struct {
@@ -208,11 +208,8 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					log.Infof("FlowStats: == bridge name not match %s, %s\n", bnx, bridgeName)
 					continue
 				}
-				bnNumStr := strings.Split(bridgeName, "bn")
-				bnNum, err := strconv.Atoi(bnNumStr[1])
+				bnNum, err := bridgeStrToNum(bridgeName)
 				if err != nil {
-					log.Infof("FlowStats: == string convertion error for bnNumStr %s\n", bnNumStr)
-					// error
 					continue
 				}
 				// temp print out log for the flow
@@ -225,10 +222,16 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					DstPort: int32(tuple.DstPort),
 					Proto:   int32(tuple.Proto),
 				}
+				aclNum := aclattr.aclNum
+				if aclNum == DropMarkValue {
+					// 0xFFFFFF is the internally used marking to identify dropped flows.
+					// Cloud want the acl id for such flows to be set to ZERO.
+					aclNum = 0
+				}
 				flowrec := types.FlowRec{
 					Flow:      flowtuple,
 					Inbound:   !tuple.AppInitiate,
-					ACLID:     int32(aclattr.aclNum),
+					ACLID:     int32(aclNum),
 					Action:    aclattr.action,
 					StartTime: tuple.TimeStart,
 					StopTime:  tuple.TimeStop,
@@ -501,7 +504,9 @@ func checkAppAndACL(ctx *zedrouterContext, instData *networkAttrs) {
 				instData.ipaclattr[status.AppNum] = tmpMap
 			}
 			for _, rule := range ulStatus.ACLRules {
-				if rule.IsUserConfigured == false { // only include user defined rules
+				if (rule.IsUserConfigured == false || rule.IsMarkingRule == true) &&
+					rule.IsDefaultDrop == false {
+					// only include user defined rules and default drop rules
 					continue
 				}
 
@@ -659,10 +664,13 @@ func dnsDataRemove(bnNum int) {
 }
 
 func bridgeStrToNum(bnStr string) (int, error) {
-	bnNumStr := strings.Split(bnStr, "bn")
-	bnNum, err := strconv.Atoi(bnNumStr[1])
+	bnNumStr := strings.TrimPrefix(bnStr, "bn")
+	if len(bnNumStr) == len(bnStr) {
+		err := fmt.Errorf("bridge name:%s incorrect", bnStr)
+		return 0, err
+	}
+	bnNum, err := strconv.Atoi(bnNumStr)
 	if err != nil {
-		log.Errorf("FlowStats: == string convertion error for bnNumStr %s\n", bnNumStr)
 		return 0, err
 	}
 	return bnNum, nil

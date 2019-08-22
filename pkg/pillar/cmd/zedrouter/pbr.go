@@ -525,6 +525,7 @@ func AddFwMarkRuleToDummy(fwmark uint32, iifIndex int) error {
 	myTable := FreeTable + iifIndex
 	r.Table = myTable
 	r.Mark = int(fwmark)
+	r.Mask = 0x00ffffff
 	// This rule gets added during the starting steps of service.
 	// Other ip rules corresponding to network instances get added after this
 	// and take higher priority. We want this ip rule to match before anything else.

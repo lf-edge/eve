@@ -810,12 +810,15 @@ func sendFlowProtobuf(protoflows *flowlog.FlowMessage) {
 		size := int64(proto.Size(&pflows))
 		flowlogURL := serverNameAndPort + "/" + flowlogAPI
 		const return400 = false
-		_, _, cf, err := zedcloud.SendOnAllIntf(zedcloudCtx, flowlogURL,
+		_, _, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, flowlogURL,
 			size, buf, flowIteration, return400)
 		if err != nil {
-			log.Errorf("FlowStats: sendFlowProtobuf failed: %s\n", err)
-			if cf {
-				log.Errorf("FlowStats: sendFlowProtobuf certificate failure")
+			if rtf {
+				log.Errorf("FlowStats: sendFlowProtobuf  remoteTemporaryFailure: %s",
+					err)
+			} else {
+				log.Errorf("FlowStats: sendFlowProtobuf failed: %s",
+					err)
 			}
 			flowIteration--
 			if flowQ.Len() > 100 { // if fail to send for too long, start to drop
