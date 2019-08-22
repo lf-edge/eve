@@ -317,9 +317,9 @@ var lastStillMap map[string]time.Time = make(map[string]time.Time)
 
 const (
 	errorTime      = 3 * time.Minute
-	warningTime    = 30 * time.Second
-	errorTimeNim   = 40 * time.Second
-	warningTimeNim = 20 * time.Second
+	warningTime    = 40 * time.Second
+	errorTimeNim   = 60 * time.Second
+	warningTimeNim = 40 * time.Second
 )
 
 // Touch a file per agentName to signal the event loop is still running
