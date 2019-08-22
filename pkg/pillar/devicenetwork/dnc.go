@@ -68,6 +68,7 @@ type DeviceNetworkContext struct {
 	DPCTestDuration           uint32 // Wait for DHCP address
 	NetworkTestInterval       uint32 // Test interval in minutes.
 	NetworkTestBetterInterval uint32 // Look for lower/better index
+	TestSendTimeout           uint32 // Timeout for HTTP/Send
 }
 
 func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
@@ -258,7 +259,7 @@ func compressDPCL(dpcl *types.DevicePortConfigList) types.DevicePortConfigList {
 var nilUUID = uuid.UUID{} // Really a const
 
 func VerifyPending(pending *DPCPending,
-	aa *types.AssignableAdapters) PendDNSStatus {
+	aa *types.AssignableAdapters, timeout uint32) PendDNSStatus {
 
 	log.Infof("VerifyPending()\n")
 	// Stop pending timer if its running.
@@ -320,7 +321,7 @@ func VerifyPending(pending *DPCPending,
 	pending.TestCount = MaxDPCRetestCount
 
 	// We want connectivity to zedcloud via atleast one Management port.
-	rtf, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1)
+	rtf, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1, timeout)
 	status := DPC_FAIL
 	if err == nil {
 		pending.PendDPC.LastSucceeded = time.Now()
@@ -360,7 +361,8 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 
 	passed := false
 	for !passed {
-		res := VerifyPending(&ctx.Pending, ctx.AssignableAdapters)
+		res := VerifyPending(&ctx.Pending, ctx.AssignableAdapters,
+			ctx.TestSendTimeout)
 		if ctx.PubDeviceNetworkStatus != nil {
 			log.Infof("PublishDeviceNetworkStatus: pending %+v\n",
 				ctx.Pending.PendDNS)

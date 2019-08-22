@@ -302,7 +302,7 @@ func Run() {
 		time.Duration(geoMax))
 
 	dnc := &nimCtx.DeviceNetworkContext
-	// TIme we wait for DHCP to get an address before giving up
+	// Time we wait for DHCP to get an address before giving up
 	dnc.DPCTestDuration = nimCtx.globalConfig.NetworkTestDuration
 
 	// Timer for checking/verifying pending device network status
@@ -317,9 +317,7 @@ func Run() {
 
 	// Periodic timer that tests device cloud connectivity
 	dnc.NetworkTestInterval = nimCtx.globalConfig.NetworkTestInterval
-	networkTestInterval := time.Duration(time.Duration(dnc.NetworkTestInterval) * time.Second)
-	networkTestTimer := time.NewTimer(networkTestInterval)
-	dnc.NetworkTestTimer = networkTestTimer
+	dnc.NetworkTestTimer = time.NewTimer(time.Duration(dnc.NetworkTestInterval) * time.Second)
 	// We start assuming cloud connectivity works
 	dnc.CloudConnectivityWorks = true
 
@@ -631,7 +629,7 @@ func updateFilteredFallback(ctx *nimContext) {
 }
 
 func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool {
-	rtf, err := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1)
+	rtf, err := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1, ctx.TestSendTimeout)
 	if err == nil {
 		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
 		if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
@@ -740,6 +738,10 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 			ctx.NetworkTestBetterInterval = gcp.NetworkTestBetterInterval
 		}
 		ctx.globalConfig = gcp
+		dnc := &ctx.DeviceNetworkContext
+		dnc.NetworkTestInterval = ctx.globalConfig.NetworkTestInterval
+		dnc.DPCTestDuration = ctx.globalConfig.NetworkTestDuration
+		dnc.TestSendTimeout = ctx.globalConfig.NetworkTestTimeout
 	}
 	ctx.GCInitialized = true
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
