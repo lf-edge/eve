@@ -43,7 +43,7 @@ type GlobalConfig struct {
 	NetworkTestDuration       uint32   // Time we wait for DHCP to complete
 	NetworkTestInterval       uint32   // Re-test DevicePortConfig
 	NetworkTestBetterInterval uint32   // Look for better DevicePortConfig
-	NetworkFallbackAnyEth     TriState // When no connectivity try any Ethernet; XXX LTE?
+	NetworkFallbackAnyEth     TriState // When no connectivity try any Ethernet, wlan, and wwan
 	NetworkTestTimeout        uint32   // Timeout for each test http/send
 
 	// zedagent, logmanager, etc

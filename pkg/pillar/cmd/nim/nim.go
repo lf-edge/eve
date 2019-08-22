@@ -91,6 +91,7 @@ func getDeviceNetworkConfigFile() string {
 	// don't have a DeviceNetworkConfig
 	// After some tries we fall back to default.json which is eth0, wlan0
 	// and wwan0
+	// XXX remove default.json
 	// If we have a DevicePortConfig/override.json we proceed
 	// without a DNCFilename!
 	if fileExists(DPCOverride) {

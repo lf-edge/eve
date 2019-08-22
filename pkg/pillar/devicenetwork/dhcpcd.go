@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Manage dhcpcd for ports including static
-// XXX wwan0? Skip for now
+// XXX wwan*? Skip for now since wwan container handles configuring IP
 
 package devicenetwork
 
@@ -65,8 +65,7 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 	log.Infof("doDhcpClientActivate(%s) dhcp %v addr %s gateway %s\n",
 		nuc.IfName, nuc.Dhcp, nuc.AddrSubnet,
 		nuc.Gateway.String())
-	// XXX skipping wwan0
-	if nuc.IfName == "wwan0" {
+	if strings.HasPrefix(nuc.IfName, "wwan") {
 		log.Infof("doDhcpClientActivate: skipping %s\n",
 			nuc.IfName)
 		return
@@ -182,8 +181,7 @@ func doDhcpClientInactivate(nuc types.NetworkPortConfig) {
 	log.Infof("doDhcpClientInactivate(%s) dhcp %v addr %s gateway %s\n",
 		nuc.IfName, nuc.Dhcp, nuc.AddrSubnet,
 		nuc.Gateway.String())
-	// XXX skipping wwan0
-	if nuc.IfName == "wwan0" {
+	if strings.HasPrefix(nuc.IfName, "wwan") {
 		log.Infof("doDhcpClientInactivate: skipping %s\n",
 			nuc.IfName)
 		return
