@@ -40,7 +40,7 @@ See [build-config-files.md](build-config-files.md) for how to include such a fil
 | timer.port.testinterval | timer in seconds | 300 | retest the current port config |
 | timer.port.timeout | timer in seconds | 15 | time for each http/send |
 | timer.port.testbetterinterval | timer in seconds | 0 (disabled) | test a higher prio port config |
-| network.fallback.any.eth | "enabled" or "disabled" | enabled | if no connectivity try any Ethernet port |
+| network.fallback.any.eth | "enabled" or "disabled" | enabled | if no connectivity try any Ethernet, WiFi, or LTE |
 | debug.enable.usb | boolean | false | allow USB e.g. keyboards on device |
 | debug.enable.ssh | boolean, or authorized ssh key | false | allow ssh to EVE |
 | debug.default.loglevel | string | info | min level saved in files on device |
