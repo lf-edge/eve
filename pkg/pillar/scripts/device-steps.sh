@@ -570,6 +570,8 @@ ps -ef
 # XXX redundant but doesn't always start
 /usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
 
+echo "$(date -Ins -u) Done starting EVE version: $(cat $BINDIR/versioninfo)"
+
 # If there is a USB stick inserted and debug.enable.usb is set, we periodically
 # check for any usb.json with DevicePortConfig, deposit our identity,
 # and dump any diag information
