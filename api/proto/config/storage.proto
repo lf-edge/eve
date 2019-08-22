@@ -22,6 +22,8 @@ enum DsType {
   DsS3      = 3;
   DsSFTP    = 4;
   DsContainerRegistry = 5;
+  DsZededaS3 = 6;
+  DsAzureBlob = 7;
 }
 
 message DatastoreConfig {
