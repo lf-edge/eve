@@ -44,6 +44,10 @@ type GlobalConfig struct {
 	NetworkTestInterval       uint32   // Re-test DevicePortConfig
 	NetworkTestBetterInterval uint32   // Look for better DevicePortConfig
 	NetworkFallbackAnyEth     TriState // When no connectivity try any Ethernet; XXX LTE?
+	NetworkTestTimeout        uint32   // Timeout for each test http/send
+
+	// zedagent, logmanager, etc
+	NetworkSendTimeout uint32 // Timeout for each http/send
 
 	// UsbAccess
 	// Determines if Dom0 can use USB devices.
@@ -100,6 +104,9 @@ var GlobalConfigDefaults = GlobalConfig{
 	NetworkTestInterval:       300, // 5 minutes
 	NetworkTestBetterInterval: 0,   // Disabled
 	NetworkFallbackAnyEth:     TS_ENABLED,
+	NetworkTestTimeout:        15,
+
+	NetworkSendTimeout: 120,
 
 	UsbAccess:             true, // Contoller likely to default to false
 	SshAccess:             true, // Contoller likely to default to false
@@ -148,6 +155,12 @@ func ApplyGlobalConfig(newgc GlobalConfig) GlobalConfig {
 
 	if newgc.NetworkFallbackAnyEth == TS_NONE {
 		newgc.NetworkFallbackAnyEth = GlobalConfigDefaults.NetworkFallbackAnyEth
+	}
+	if newgc.NetworkTestTimeout == 0 {
+		newgc.NetworkTestTimeout = GlobalConfigDefaults.NetworkTestTimeout
+	}
+	if newgc.NetworkSendTimeout == 0 {
+		newgc.NetworkSendTimeout = GlobalConfigDefaults.NetworkSendTimeout
 	}
 	if newgc.StaleConfigTime == 0 {
 		newgc.StaleConfigTime = GlobalConfigDefaults.StaleConfigTime

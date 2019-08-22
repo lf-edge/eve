@@ -1556,6 +1556,15 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			}
 			newGlobalConfig.MetricInterval = uint32(i64)
 
+		case "timer.send.timeout":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newGlobalConfig.NetworkSendTimeout = uint32(i64)
+
 		case "timer.reboot.no.network":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
@@ -1618,6 +1627,15 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				continue
 			}
 			newGlobalConfig.NetworkTestInterval = uint32(i64)
+
+		case "timer.port.timeout":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newGlobalConfig.NetworkTestTimeout = uint32(i64)
 
 		case "timer.port.testbetterinterval":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)

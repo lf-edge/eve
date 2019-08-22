@@ -70,7 +70,7 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 
 // Check if device can talk to outside world via atleast one of the free uplinks
 func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
-	retryCount int) (bool, error) {
+	retryCount int, timeout uint32) (bool, error) {
 
 	log.Infof("VerifyDeviceNetworkStatus() %d\n", retryCount)
 	// Check if it is 1970 in which case we declare success since
@@ -92,6 +92,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 
 	zedcloudCtx := zedcloud.ZedCloudContext{
 		DeviceNetworkStatus: &status,
+		NetworkSendTimeout:  timeout,
 	}
 
 	// Get device serail number
