@@ -5,8 +5,9 @@ package config
 
 import (
 	fmt "fmt"
-	proto "github.com/golang/protobuf/proto"
 	math "math"
+
+	proto "github.com/golang/protobuf/proto"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -329,6 +330,14 @@ func (m *PhyIOUsagePolicy) GetFreeUplink() bool {
 	return false
 }
 
+type PhyAddress struct {
+	Pcilong string `protobuf:"bytes,2,opt,name=pcilong,proto3" json:"pcilong,omitempty"`
+	Ifname  string `protobuf:"bytes,2,opt,name=ifname,proto3" json:"ifname,omitempty"`
+	Serial  string `protobuf:"bytes,2,opt,name=serial,proto3" json:"serial,omitempty"`
+	Irq     string `protobuf:"bytes,2,opt,name=irq,proto3" json:"irq,omitempty"`
+	Ioports string `protobuf:"bytes,2,opt,name=ioports,proto3" json:"ioports,omitempty"`
+}
+
 // PhysicalIO:
 //    Absolute low level description of physical buses and ports that are
 //    available on given platfrom.
@@ -349,6 +358,10 @@ type PhysicalIO struct {
 	// "irq": the address is a number such as "5"
 	// "ioports": the address is a string such as "2f8-2ff"
 	Phyaddrs map[string]string `protobuf:"bytes,3,rep,name=phyaddrs,proto3" json:"phyaddrs,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
+
+	// The hardware bus address. This Obsoletes Phyaddrs map above.
+	PhyAddr *PhyAddress
+
 	// provides the ability to model designer to rename the physicalIO
 	// port to more understandable
 	// For example Eth0->Mgmt0
@@ -361,6 +374,7 @@ type PhysicalIO struct {
 	UsagePolicy *PhyIOUsagePolicy `protobuf:"bytes,7,opt,name=usagePolicy,proto3" json:"usagePolicy,omitempty"`
 	// physical and logical attributes
 	//    For example in WWAN to which firmware version to laod etc
+	// OBSOLETE. TO BE REMOVED>
 	Cbattr               map[string]string `protobuf:"bytes,8,rep,name=cbattr,proto3" json:"cbattr,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 	XXX_NoUnkeyedLiteral struct{}          `json:"-"`
 	XXX_unrecognized     []byte            `json:"-"`
