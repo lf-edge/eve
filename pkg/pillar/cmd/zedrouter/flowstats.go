@@ -596,7 +596,7 @@ func DNSMonitor(bn string, bnNum int) {
 			dnsDataRemove(bnNum)
 			dnssys[bnNum].Unlock()
 
-			defer close(dnssys[bnNum].Done)
+			close(dnssys[bnNum].Done)
 			return
 		case packet = <-dnsIn:
 			dnssys[bnNum].Lock()
