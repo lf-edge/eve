@@ -65,6 +65,7 @@ type logDirDeleteHandler func(ctx interface{}, logFileName string, source string
 
 type logmanagerContext struct {
 	subGlobalConfig *pubsub.Subscription
+	globalConfig    *types.GlobalConfig
 	subDomainStatus *pubsub.Subscription
 }
 
@@ -186,7 +187,9 @@ func Run() {
 		log.Fatal(err)
 	}
 
-	logmanagerCtx := logmanagerContext{}
+	logmanagerCtx := logmanagerContext{
+		globalConfig: &types.GlobalConfigDefaults,
+	}
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
 		false, &logmanagerCtx)
@@ -257,7 +260,7 @@ func Run() {
 	DNSctx.doDeferred = true
 
 	//Get servername, set logUrl, get device id and initialize zedcloudCtx
-	sendCtxInit()
+	sendCtxInit(&logmanagerCtx)
 
 	// Publish send metrics for zedagent every 10 seconds
 	interval := time.Duration(10 * time.Second)
@@ -682,7 +685,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 	return true
 }
 
-func sendCtxInit() {
+func sendCtxInit(ctx *logmanagerContext) {
 	//get server name
 	bytes, err := ioutil.ReadFile(serverFilename)
 	if err != nil {
@@ -703,6 +706,7 @@ func sendCtxInit() {
 	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
+	zedcloudCtx.NetworkSendTimeout = ctx.globalConfig.NetworkSendTimeout
 
 	// get the edge box serial number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
@@ -1020,8 +1024,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	status := cast.CastGlobalConfig(statusArg)
-	debug, _ = agentlog.HandleGlobalConfigNoDefault(ctx.subGlobalConfig,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfigNoDefault(ctx.subGlobalConfig,
 		agentName, debugOverride)
+	if gcp != nil {
+		ctx.globalConfig = gcp
+	}
 	foundAgents := make(map[string]bool)
 	if status.DefaultRemoteLogLevel != "" {
 		foundAgents["default"] = true
@@ -1050,6 +1058,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	*ctx.globalConfig = types.GlobalConfigDefaults
 	delRemoteMapAll()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

@@ -97,6 +97,7 @@ func handleConfigInit() {
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
 	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
+	zedcloudCtx.NetworkSendTimeout = globalConfig.NetworkSendTimeout
 	log.Infof("Configure Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
