@@ -86,13 +86,14 @@ const (
 
 type dnsSys struct {
 	sync.Mutex
-	Done  chan bool
-	Snoop []dnsEntry
+	Done        chan bool
+	channelOpen bool
+	Snoop       []dnsEntry
 }
 
 var loopcount int // XXX debug
 
-var dnssys [maxBridgeNumber]dnsSys // per bridge DNS records for the colection period
+var dnssys [maxBridgeNumber]dnsSys // per bridge DNS records for the collection period
 var devUUID, nilUUID uuid.UUID
 
 // FlowStatsCollect : Timer fired to collect iptable flow stats
@@ -582,6 +583,7 @@ func DNSMonitor(bn string, bnNum int) {
 	}
 
 	dnssys[bnNum].Done = make(chan bool)
+	dnssys[bnNum].channelOpen = true
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	dnsIn := packetSource.Packets()
 	for {
@@ -589,6 +591,11 @@ func DNSMonitor(bn string, bnNum int) {
 		select {
 		case <-dnssys[bnNum].Done:
 			log.Infof("(FlowStats) DNS Monitor exit on %s(bridge-num %d)", bn, bnNum)
+			dnssys[bnNum].channelOpen = false
+			dnssys[bnNum].Lock()
+			dnsDataRemove(bnNum)
+			dnssys[bnNum].Unlock()
+
 			defer close(dnssys[bnNum].Done)
 			return
 		case packet = <-dnsIn:
@@ -602,10 +609,9 @@ func DNSMonitor(bn string, bnNum int) {
 // DNSStopMonitor : Stop DNS Query monitoring
 func DNSStopMonitor(bnNum int) {
 	log.Infof("(FlowStats) Stop DNS Monitor on bridge-num %d", bnNum)
-	dnssys[bnNum].Done <- true
-	dnssys[bnNum].Lock()
-	dnsDataRemove(bnNum)
-	dnssys[bnNum].Unlock()
+	if dnssys[bnNum].channelOpen {
+		dnssys[bnNum].Done <- true
+	}
 }
 
 func checkDNSPacketInfo(bnNum int, packet gopacket.Packet) {
