@@ -464,8 +464,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 	pending.Inprogress = false
 
 	// Did we get a new at index zero?
-	if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() ||
-		ctx.DevicePortConfigList.PortConfigList[0].WasDPCWorking() {
+	if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() {
 		log.Warn("VerifyDevicePortConfig DPC_SUCCESS: New DPC arrived " +
 			"or a old working DPC moved up to top of DPC list while network testing " +
 			"was in progress. Restarting DPC verification.")
