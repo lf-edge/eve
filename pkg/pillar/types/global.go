@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	log "github.com/sirupsen/logrus"
 )
@@ -307,6 +308,29 @@ func EnsureGCFile() {
 				log.Errorf("%s file: %s", err, globalConfigFile)
 			} else {
 				ok = true
+			}
+			// Any new fields which need defaults/mins applied?
+			changed := false
+			updated := ApplyGlobalConfig(gc)
+			if !cmp.Equal(gc, updated) {
+				log.Infof("EnsureGCFile: updated with defaults %v",
+					cmp.Diff(gc, updated))
+				changed = true
+			}
+			sane := EnforceGlobalConfigMinimums(updated)
+			if !cmp.Equal(updated, sane) {
+				log.Infof("EnsureGCFile: enforced minimums %v",
+					cmp.Diff(updated, sane))
+				changed = true
+			}
+			gc = sane
+			if changed {
+				err := pubsub.PublishToDir("/persist/config/",
+					"global", gc)
+				if err != nil {
+					log.Errorf("PublishToDir for globalConfig failed: %s",
+						err)
+				}
 			}
 		}
 		if !ok {
