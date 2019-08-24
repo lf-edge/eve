@@ -69,11 +69,6 @@ func TestLookupIoBundleGroup(t *testing.T) {
 			lookupName:         "eth0-1",
 			expectedBundleName: "eth0-1",
 		},
-		"IoType: IoUSB LookupName: eth2": {
-			ioType:             IoUSB,
-			lookupName:         "eth2",
-			expectedBundleName: "",
-		},
 		"IoType: IoNetEth LookupName: eth1": {
 			ioType:             IoNetEth,
 			lookupName:         "eth1",
@@ -93,7 +88,7 @@ func TestLookupIoBundleGroup(t *testing.T) {
 
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
-		list := aa.LookupIoBundleGroup(test.ioType, test.lookupName)
+		list := aa.LookupIoBundleGroup(test.lookupName)
 		if len(list) == 0 {
 			assert.Equal(t, test.expectedBundleName, "")
 		} else {
@@ -113,12 +108,6 @@ func TestLookupIoBundle(t *testing.T) {
 			ioType:             IoNetEth,
 			lookupName:         "eth1",
 			expectedBundleName: "eth1",
-		},
-		// Type should also be considered.
-		"ioType: IoUSB, lookupName: eth1": {
-			ioType:             IoUSB,
-			lookupName:         "eth1",
-			expectedBundleName: "",
 		},
 		"ioType: IoNetEth, lookupName: eth3": {
 			ioType:             IoNetEth,
@@ -141,7 +130,7 @@ func TestLookupIoBundle(t *testing.T) {
 	// Basic test
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
-		ioBundle := aa.LookupIoBundle(test.ioType, test.lookupName)
+		ioBundle := aa.LookupIoBundle(test.lookupName)
 		if ioBundle == nil {
 			assert.Equal(t, test.expectedBundleName, "")
 		} else {

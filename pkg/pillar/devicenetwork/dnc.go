@@ -594,7 +594,7 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 		}
 		if ctx.AssignableAdapters != nil {
 			currentIoBundle := ctx.AssignableAdapters.LookupIoBundle(
-				ioBundle.Type, ioBundle.Name)
+				ioBundle.Name)
 			if currentIoBundle != nil &&
 				ioBundle.IsPCIBack == currentIoBundle.IsPCIBack {
 				log.Infof("HandleAssignableAdaptersModify(): ioBundle (%+v) "+
