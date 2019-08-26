@@ -54,7 +54,7 @@ func createDownloaderConfig(ctx *baseOsMgrContext, objType string, safename stri
 			Safename:         safename,
 			Name:             sc.Name,
 			NameIsURL:        sc.NameIsURL,
-			UseFreeMgmtPorts: false,
+			AllowNonFreePort: allowNonFreePort(ctx, objType),
 			Size:             sc.Size,
 			ImageSha256:      sc.ImageSha256,
 			RefCount:         1,
@@ -97,7 +97,7 @@ func updateDownloaderStatus(ctx *baseOsMgrContext,
 			Safename:         status.Safename,
 			Name:             status.Name,
 			NameIsURL:        status.NameIsURL,
-			UseFreeMgmtPorts: status.UseFreeMgmtPorts,
+			AllowNonFreePort: allowNonFreePort(ctx, status.ObjType),
 			Size:             status.Size,
 			ImageSha256:      status.ImageSha256,
 			RefCount:         0,
@@ -478,4 +478,18 @@ func downloaderSubscription(ctx *baseOsMgrContext, objType string) *pubsub.Subsc
 			objType)
 	}
 	return sub
+}
+
+func allowNonFreePort(ctx *baseOsMgrContext, objType string) bool {
+
+	switch objType {
+	case baseOsObj:
+		return ctx.globalConfig.AllowNonFreeBaseImages == types.TS_ENABLED
+	case certObj:
+		return ctx.globalConfig.AllowNonFreeCerts == types.TS_ENABLED
+	default:
+		log.Fatalf("allowNonFreePort: Unknown ObjType %s\n",
+			objType)
+		return false
+	}
 }

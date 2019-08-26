@@ -31,7 +31,7 @@ func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
 			Name:             sc.Name,
 			NameIsURL:        sc.NameIsURL,
 			IsContainer:      ss.IsContainer,
-			UseFreeMgmtPorts: true,
+			AllowNonFreePort: ctx.globalConfig.AllowNonFreeAppImages == types.TS_ENABLED,
 			Size:             ss.Size,
 			ImageSha256:      ss.ImageSha256,
 			RefCount:         1,
@@ -102,6 +102,7 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 
 	config := lookupDownloaderConfig(ctx, status.Key())
 	if config == nil && status.RefCount == 0 {
+		// XXX look at objType to determine policy to apply
 		log.Infof("handleDownloaderStatusModify adding RefCount=0 config %s\n",
 			key)
 		n := types.DownloaderConfig{
@@ -110,7 +111,7 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 			Name:             status.Name,
 			NameIsURL:        status.NameIsURL,
 			IsContainer:      status.IsContainer,
-			UseFreeMgmtPorts: status.UseFreeMgmtPorts,
+			AllowNonFreePort: ctx.globalConfig.AllowNonFreeAppImages == types.TS_ENABLED,
 			Size:             status.Size,
 			ImageSha256:      status.ImageSha256,
 			RefCount:         0,

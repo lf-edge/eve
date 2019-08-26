@@ -66,11 +66,20 @@ type GlobalConfig struct {
 	SshAccess         bool
 	SshAuthorizedKeys string
 
-	AllowAppVnc           bool
+	AllowAppVnc bool
+
+	// Normally the EVE microservices as well as baseos images will download
+	// using free and non-free (e.g., WWAN) ports, while app images will
+	// only download using the free ports. These can change that behavior
+	AllowNonFreeAppImages  TriState // For app images
+	AllowNonFreeBaseImages TriState // For baseos images
+	AllowNonFreeCerts      TriState // For cert objects
+
+	// XXX add max space for downloads?
+	// XXX add max space for running images?
+
 	DefaultLogLevel       string
 	DefaultRemoteLogLevel string
-	// XXX add max space for downloads?
-	// XXX add LTE management port usage policy?
 
 	// Per agent settings of log levels; if set for an agent it
 	// overrides the Default*Level above
@@ -109,14 +118,19 @@ var GlobalConfigDefaults = GlobalConfig{
 
 	NetworkSendTimeout: 120,
 
-	UsbAccess:             true, // Contoller likely to default to false
-	SshAccess:             true, // Contoller likely to default to false
-	SshAuthorizedKeys:     "",
-	StaleConfigTime:       600,    // Use stale config for up to 10 minutes
-	DownloadGCTime:        600,    // 10 minutes
-	VdiskGCTime:           3600,   // 1 hour
-	DownloadRetryTime:     600,    // 10 minutes
-	DomainBootRetryTime:   600,    // 10 minutes
+	UsbAccess:           true, // Contoller likely to default to false
+	SshAccess:           true, // Contoller likely to default to false
+	SshAuthorizedKeys:   "",
+	StaleConfigTime:     600,  // Use stale config for up to 10 minutes
+	DownloadGCTime:      600,  // 10 minutes
+	VdiskGCTime:         3600, // 1 hour
+	DownloadRetryTime:   600,  // 10 minutes
+	DomainBootRetryTime: 600,  // 10 minutes
+
+	AllowNonFreeAppImages:  TS_DISABLED,
+	AllowNonFreeBaseImages: TS_ENABLED,
+	AllowNonFreeCerts:      TS_ENABLED,
+
 	DefaultLogLevel:       "info", // XXX Should we change to warning?
 	DefaultRemoteLogLevel: "info", // XXX Should we change to warning?
 }
@@ -183,6 +197,15 @@ func ApplyGlobalConfig(newgc GlobalConfig) GlobalConfig {
 	}
 	if newgc.DefaultRemoteLogLevel == "" {
 		newgc.DefaultRemoteLogLevel = GlobalConfigDefaults.DefaultRemoteLogLevel
+	}
+	if newgc.AllowNonFreeAppImages == TS_NONE {
+		newgc.AllowNonFreeAppImages = GlobalConfigDefaults.AllowNonFreeAppImages
+	}
+	if newgc.AllowNonFreeBaseImages == TS_NONE {
+		newgc.AllowNonFreeBaseImages = GlobalConfigDefaults.AllowNonFreeBaseImages
+	}
+	if newgc.AllowNonFreeCerts == TS_NONE {
+		newgc.AllowNonFreeCerts = GlobalConfigDefaults.AllowNonFreeCerts
 	}
 	return newgc
 }

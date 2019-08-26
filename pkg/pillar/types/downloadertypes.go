@@ -32,7 +32,7 @@ type DownloaderConfig struct {
 	Name             string
 	NameIsURL        bool // If not we form URL based on datastore info
 	IsContainer      bool
-	UseFreeMgmtPorts bool
+	AllowNonFreePort bool
 	Size             uint64 // In bytes
 	ImageSha256      string // sha256 of immutable image
 	FinalObjDir      string // final Object Store
@@ -75,7 +75,7 @@ type DownloaderStatus struct {
 	LastUse          time.Time // When RefCount dropped to zero
 	Expired          bool      // Handshake to client
 	NameIsURL        bool      // If not we form URL based on datastore info
-	UseFreeMgmtPorts bool
+	AllowNonFreePort bool
 	ImageSha256      string // sha256 of immutable image
 	ContainerImageID string
 	State            SwState // DOWNLOADED etc
