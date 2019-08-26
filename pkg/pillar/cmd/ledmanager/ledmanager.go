@@ -205,13 +205,19 @@ func Run() {
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
+			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
+			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subLedBlinkCounter.C:
+			start := agentlog.StartTime()
 			subLedBlinkCounter.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 			// Fault injection

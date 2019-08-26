@@ -74,8 +74,11 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	for {
 		select {
 		case <-ticker.C:
+			start := agentlog.StartTime()
 			iteration += 1
 			publishMetrics(ctx, iteration)
+			agentlog.CheckMaxTime(agentName+"metrics", start)
+
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName + "metrics")
 		}

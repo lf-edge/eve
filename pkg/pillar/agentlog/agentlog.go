@@ -312,11 +312,42 @@ func GetOtherLogdir() string {
 	return fmt.Sprintf("%s/log", dirname)
 }
 
+// Debug info to tell how often/late we call stillRunning; keyed by agentName
+var lastStillMap = make(map[string]time.Time)
+
+const (
+	errorTime      = 3 * time.Minute
+	warningTime    = 40 * time.Second
+	errorTimeNim   = 60 * time.Second
+	warningTimeNim = 40 * time.Second
+)
+
 // Touch a file per agentName to signal the event loop is still running
 // Could be use by watchdog
 func StillRunning(agentName string) {
 
 	log.Debugf("StillRunning(%s)\n", agentName)
+
+	errTime := errorTime
+	warnTime := warningTime
+	if agentName == "nim" {
+		errTime = errorTimeNim
+		warnTime = warningTimeNim
+	}
+	if ls, found := lastStillMap[agentName]; !found {
+		lastStillMap[agentName] = time.Now()
+	} else {
+		elapsed := time.Since(ls)
+		if elapsed > errTime {
+			log.Errorf("StillRunning(%s) XXX took a long time: %d",
+				agentName, elapsed/time.Second)
+		} else if elapsed > warnTime {
+			log.Warnf("StillRunning(%s) took a long time: %d",
+				agentName, elapsed/time.Second)
+		}
+		lastStillMap[agentName] = time.Now()
+	}
+
 	filename := fmt.Sprintf("/var/run/%s.touch", agentName)
 	_, err := os.Stat(filename)
 	if err != nil {
@@ -337,5 +368,31 @@ func StillRunning(agentName string) {
 	if err != nil {
 		log.Errorf("StillRunning: %s\n", err)
 		return
+	}
+}
+
+// StartTime returns a start time which is later passed to CheckMaxTime*
+func StartTime() time.Time {
+	return time.Now()
+}
+
+// CheckMaxTime verifies if the time for a call has exeeded a reasonable
+// number.
+func CheckMaxTime(agentName string, start time.Time) {
+	errTime := errorTime
+	warnTime := warningTime
+	if agentName == "nim" {
+		errTime = errorTimeNim
+		warnTime = warningTimeNim
+	}
+	elapsed := time.Since(start)
+	if elapsed > errTime {
+		_, fn, line, _ := runtime.Caller(1)
+		log.Errorf("handler at %s:%d in %s XXX took a long time: %d",
+			fn, line, agentName, elapsed/time.Second)
+	} else if elapsed > warnTime {
+		_, fn, line, _ := runtime.Caller(1)
+		log.Warnf("handler at %s:%d in %s took a long time: %d",
+			fn, line, agentName, elapsed/time.Second)
 	}
 }

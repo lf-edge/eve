@@ -134,13 +134,17 @@ func Run() {
 	for !ctx.verifierRestarted {
 		select {
 		case change := <-ctx.subGlobalConfig.C:
+			start := agentlog.StartTime()
 			ctx.subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subBaseOsVerifierStatus.C:
+			start := agentlog.StartTime()
 			ctx.subBaseOsVerifierStatus.ProcessChange(change)
 			if ctx.verifierRestarted {
 				log.Infof("Verifier reported restarted\n")
 			}
+			agentlog.CheckMaxTime(agentName, start)
 		}
 	}
 
@@ -148,25 +152,39 @@ func Run() {
 	for {
 		select {
 		case change := <-ctx.subGlobalConfig.C:
+			start := agentlog.StartTime()
 			ctx.subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subCertObjConfig.C:
+			start := agentlog.StartTime()
 			ctx.subCertObjConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subBaseOsConfig.C:
+			start := agentlog.StartTime()
 			ctx.subBaseOsConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subZbootConfig.C:
+			start := agentlog.StartTime()
 			ctx.subZbootConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subBaseOsDownloadStatus.C:
+			start := agentlog.StartTime()
 			ctx.subBaseOsDownloadStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subBaseOsVerifierStatus.C:
+			start := agentlog.StartTime()
 			ctx.subBaseOsVerifierStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subCertObjDownloadStatus.C:
+			start := agentlog.StartTime()
 			ctx.subCertObjDownloadStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)

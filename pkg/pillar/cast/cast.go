@@ -455,11 +455,25 @@ func CastLedBlinkCounter(in interface{}) types.LedBlinkCounter {
 func CastFlowStatus(in interface{}) types.IPFlow { //revive:disable-line
 	b, err := json.Marshal(in)
 	if err != nil {
-		log.Errorf("json Marshal in CastFlowStats, %v", err)
+		log.Fatalf("json Marshal in CastFlowStats, %v", err)
 	}
 	var output types.IPFlow
 	if err := json.Unmarshal(b, &output); err != nil {
-		log.Errorf("json Unmarshal in CastFlowStatus, %v", err)
+		log.Fatalf("json Unmarshal in CastFlowStatus, %v", err)
+	}
+	return output
+}
+
+// CastPhysicalIOAdapterList : Cast interface type into
+//       types.PhysicalIOAdapterList
+func CastPhysicalIOAdapterList(in interface{}) types.PhysicalIOAdapterList { //revive:disable-line
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatalf("json Marshal in PhysicalIOAdapterList, %v", err)
+	}
+	var output types.PhysicalIOAdapterList
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatalf("json Unmarshal in CastPhysicalIOAdapterList, %v", err)
 	}
 	return output
 }

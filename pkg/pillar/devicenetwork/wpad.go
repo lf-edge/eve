@@ -91,8 +91,9 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 }
 
 var ctx = zedcloud.ZedCloudContext{
-	FailureFunc: zedcloud.ZedCloudFailure,
-	SuccessFunc: zedcloud.ZedCloudSuccess,
+	FailureFunc:        zedcloud.ZedCloudFailure,
+	SuccessFunc:        zedcloud.ZedCloudSuccess,
+	NetworkSendTimeout: 15, // XXX short since it is part of larger operation
 }
 
 func getPacFile(status *types.DeviceNetworkStatus, url string,
@@ -102,7 +103,7 @@ func getPacFile(status *types.DeviceNetworkStatus, url string,
 	// Avoid using a proxy to fetch the wpad.dat; 15 second timeout
 	const allowProxy = false
 	resp, contents, _, err := zedcloud.SendOnIntf(ctx, url, ifname, 0, nil,
-		allowProxy, 15)
+		allowProxy)
 	if err != nil {
 		return "", err
 	}

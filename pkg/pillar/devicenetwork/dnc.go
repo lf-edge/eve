@@ -68,6 +68,7 @@ type DeviceNetworkContext struct {
 	DPCTestDuration           uint32 // Wait for DHCP address
 	NetworkTestInterval       uint32 // Test interval in minutes.
 	NetworkTestBetterInterval uint32 // Look for lower/better index
+	TestSendTimeout           uint32 // Timeout for HTTP/Send
 }
 
 func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
@@ -258,7 +259,7 @@ func compressDPCL(dpcl *types.DevicePortConfigList) types.DevicePortConfigList {
 var nilUUID = uuid.UUID{} // Really a const
 
 func VerifyPending(pending *DPCPending,
-	aa *types.AssignableAdapters) PendDNSStatus {
+	aa *types.AssignableAdapters, timeout uint32) PendDNSStatus {
 
 	log.Infof("VerifyPending()\n")
 	// Stop pending timer if its running.
@@ -320,7 +321,7 @@ func VerifyPending(pending *DPCPending,
 	pending.TestCount = MaxDPCRetestCount
 
 	// We want connectivity to zedcloud via atleast one Management port.
-	rtf, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1)
+	rtf, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1, timeout)
 	status := DPC_FAIL
 	if err == nil {
 		pending.PendDPC.LastSucceeded = time.Now()
@@ -360,7 +361,8 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 
 	passed := false
 	for !passed {
-		res := VerifyPending(&ctx.Pending, ctx.AssignableAdapters)
+		res := VerifyPending(&ctx.Pending, ctx.AssignableAdapters,
+			ctx.TestSendTimeout)
 		if ctx.PubDeviceNetworkStatus != nil {
 			log.Infof("PublishDeviceNetworkStatus: pending %+v\n",
 				ctx.Pending.PendDNS)
@@ -398,9 +400,11 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 					pending.PendDPC.Key)
 			}
 			compressAndPublishDevicePortConfigList(ctx)
-			if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() {
-				log.Warn("VerifyDevicePortConfig DPC_FAIL: New DPC arrived while network testing " +
-					"was in progress. Restarting DPC verification.")
+			if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() ||
+				ctx.DevicePortConfigList.PortConfigList[0].WasDPCWorking() {
+				log.Warn("VerifyDevicePortConfig DPC_FAIL: New DPC arrived " +
+					"or an old working DPC ascended to the top of DPC list " +
+					"while network testing was in progress. Restarting DPC verification.")
 				SetupVerify(ctx, 0)
 				continue
 			}
@@ -461,11 +465,15 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 
 	// Did we get a new at index zero?
 	if ctx.DevicePortConfigList.PortConfigList[0].IsDPCUntested() {
-		log.Warn("VerifyDevicePortConfig DPC_SUCCESS: New DPC arrived while network testing " +
+		log.Warn("VerifyDevicePortConfig DPC_SUCCESS: New DPC arrived " +
+			"or a old working DPC moved up to top of DPC list while network testing " +
 			"was in progress. Restarting DPC verification.")
 		RestartVerify(ctx, "VerifyDevicePortConfig DPC_SUCCESS")
 		return
 	}
+
+	// We just found a new DPC that restored our cloud connectivity.
+	ctx.CloudConnectivityWorks = true
 
 	// Restart network test timer
 	duration := time.Duration(ctx.NetworkTestInterval) * time.Second
@@ -481,7 +489,7 @@ func getNextTestableDPCIndex(ctx *DeviceNetworkContext, start int) int {
 	log.Infof("getNextTestableDPCIndex: start %d\n", start)
 	// We want to wrap around, but should not keep looping around.
 	// We do one loop of the entire list searching for a testable candidate.
-	// If no suitable test candidate is found, we reset the test index to 0.
+	// If no suitable test candidate is found, we reset the test index to -1.
 	found := false
 	count := 0
 	newIndex := start % dpcListLen

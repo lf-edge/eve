@@ -52,6 +52,7 @@ type getconfigContext struct {
 	configTickerHandle          interface{}
 	metricsTickerHandle         interface{}
 	pubDevicePortConfig         *pubsub.Publication
+	pubPhysicalIOAdapters       *pubsub.Publication
 	devicePortConfig            types.DevicePortConfig
 	pubNetworkXObjectConfig     *pubsub.Publication
 	subAppInstanceStatus        *pubsub.Subscription
@@ -96,6 +97,7 @@ func handleConfigInit() {
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
 	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
+	zedcloudCtx.NetworkSendTimeout = globalConfig.NetworkSendTimeout
 	log.Infof("Configure Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
@@ -139,6 +141,7 @@ func configTimerTask(handleChannel chan interface{},
 	for {
 		select {
 		case <-ticker.C:
+			start := agentlog.StartTime()
 			iteration += 1
 			// check whether the device is still in progress state
 			// once activated, it does not go back to the inprogress
@@ -149,6 +152,7 @@ func configTimerTask(handleChannel chan interface{},
 			rebootFlag := getLatestConfig(configUrl, iteration,
 				updateInprogress, getconfigCtx)
 			getconfigCtx.rebootFlag = getconfigCtx.rebootFlag || rebootFlag
+			agentlog.CheckMaxTime(agentName+"config", start)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName + "config")

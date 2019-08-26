@@ -36,6 +36,7 @@ type ZedCloudContext struct {
 	DevUUID             uuid.UUID
 	DevSerial           string
 	DevSoftSerial       string
+	NetworkSendTimeout  uint32 // In seconds
 }
 
 var sendCounter uint32
@@ -80,9 +81,7 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 			}
 		}
 		for _, intf := range intfs {
-			// XXX Hard coded timeout to 15 seconds. Might need some adjusting
-			// depending on network conditions down the road.
-			resp, contents, rtf, err := SendOnIntf(ctx, url, intf, reqlen, b, allowProxy, 15)
+			resp, contents, rtf, err := SendOnIntf(ctx, url, intf, reqlen, b, allowProxy)
 			if rtf {
 				remoteTemporaryFailure = true
 			}
@@ -138,7 +137,7 @@ func VerifyAllIntf(ctx ZedCloudContext,
 				// We have enough uplinks with cloud connectivity working.
 				break
 			}
-			resp, _, rtf, err := SendOnIntf(ctx, url, intf, 0, nil, allowProxy, 15)
+			resp, _, rtf, err := SendOnIntf(ctx, url, intf, 0, nil, allowProxy)
 			if rtf {
 				remoteTemporaryFailure = true
 			}
@@ -185,7 +184,7 @@ func VerifyAllIntf(ctx ZedCloudContext,
 // to allow the caller to look at StatusCode
 // We return a bool remoteTemporaryFailure for the cases when we reached
 // the controller but it is overloaded, or has certificate issues.
-func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool, timeout int) (*http.Response, []byte, bool, error) {
+func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool) (*http.Response, []byte, bool, error) {
 
 	var reqUrl string
 	var useTLS bool
@@ -253,8 +252,8 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		transport.Dial = d.Dial
 
 		client := &http.Client{Transport: transport}
-		if timeout != 0 {
-			client.Timeout = time.Duration(timeout) * time.Second
+		if ctx.NetworkSendTimeout != 0 {
+			client.Timeout = time.Duration(ctx.NetworkSendTimeout) * time.Second
 		}
 
 		var req *http.Request
@@ -339,7 +338,8 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 				// Do not return as errors
 				log.Warn("client.Do fail: No suitable address")
 			} else {
-				log.Errorf("client.Do fail: %v", err)
+				log.Errorf("client.Do (timeout %d) fail: %v",
+					ctx.NetworkSendTimeout, err)
 				errorList = append(errorList, err)
 			}
 			continue
@@ -347,7 +347,8 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 
 		contents, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			log.Errorf("ReadAll failed %s\n", err)
+			log.Errorf("ReadAll (timeout %d) failed: %s",
+				ctx.NetworkSendTimeout, err)
 			resp.Body.Close()
 			resp.Body = nil
 			errorList = append(errorList, err)
