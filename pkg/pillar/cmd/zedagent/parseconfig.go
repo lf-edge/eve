@@ -1731,6 +1731,24 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			}
 			newGlobalConfig.DomainBootRetryTime = uint32(i64)
 
+		case "network.allow.wwan.app.download":
+			newTs, err := types.ParseTriState(item.Value)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad tristate value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newGlobalConfig.AllowNonFreeAppImages = newTs
+
+		case "network.allow.wwan.baseos.download":
+			newTs, err := types.ParseTriState(item.Value)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad tristate value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newGlobalConfig.AllowNonFreeBaseImages = newTs
+
 		case "debug.default.loglevel":
 			newGlobalConfig.DefaultLogLevel = item.Value
 
