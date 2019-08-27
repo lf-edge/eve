@@ -1503,7 +1503,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	var errStr string
 	var locFilename string
 	var syncOp zedUpload.SyncOpType = zedUpload.SyncOpDownload
-	var serverUrl string
+	var serverURL string
 
 	if status.ObjType == "" {
 		log.Fatalf("handleSyncOp: No ObjType for %s\n",
@@ -1612,12 +1612,12 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		case zconfig.DsType_DsSFTP.String():
-			serverUrl, err = getServerUrl(dsCtx)
+			serverURL, err = getServerUrl(dsCtx)
 			if err == nil {
 				// pass in the config.Name instead of 'filename' which
 				// does not contain the prefix of the relative path with '/'s
 				err = doSftp(ctx, status, syncOp, dsCtx.APIKey,
-					dsCtx.Password, serverUrl, dsCtx.Dpath,
+					dsCtx.Password, serverURL, dsCtx.Dpath,
 					config.Size, ipSrc, config.Name, locFilename)
 			}
 			if err != nil {
@@ -1644,11 +1644,11 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		case zconfig.DsType_DsHttp.String(), zconfig.DsType_DsHttps.String(), "":
-			serverUrl, err = getServerUrl(dsCtx)
+			serverURL, err = getServerUrl(dsCtx)
 			if err == nil {
 				// pass in the config.Name instead of 'filename' which
 				// does not contain the prefix of the relative path with '/'s
-				err = doHttp(ctx, status, syncOp, serverUrl, dsCtx.Dpath,
+				err = doHttp(ctx, status, syncOp, serverURL, dsCtx.Dpath,
 					config.Size, ifname, ipSrc, config.Name, locFilename)
 			}
 			if err != nil {
