@@ -1240,7 +1240,7 @@ func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
 
 func doAzureBlob(ctx *downloaderContext, status *types.DownloaderStatus,
 	syncOp zedUpload.SyncOpType, dnldUrl string, apiKey string, password string,
-	dpath string, region string, maxsize uint64, ifname string,
+	dpath string, maxsize uint64, ifname string,
 	ipSrc net.IP, filename string, locFilename string) error {
 
 	auth := &zedUpload.AuthInput{
