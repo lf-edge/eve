@@ -38,7 +38,6 @@ const (
 	selfRegFile     = identityDirname + "/self-register-failed"
 	serverFileName  = identityDirname + "/server"
 	deviceCertName  = identityDirname + "/device.cert.pem"
-	deviceKeyName   = identityDirname + "/device.key.pem"
 	onboardCertName = identityDirname + "/onboard.cert.pem"
 	onboardKeyName  = identityDirname + "/onboard.key.pem"
 	maxRetries      = 5
@@ -53,6 +52,7 @@ type diagContext struct {
 	ledCounter              int
 	derivedLedCounter       int // Based on ledCounter + usableAddressCount
 	subGlobalConfig         *pubsub.Subscription
+	globalConfig            *types.GlobalConfig
 	subLedBlinkCounter      *pubsub.Subscription
 	subDeviceNetworkStatus  *pubsub.Subscription
 	subDevicePortConfigList *pubsub.Subscription
@@ -111,13 +111,26 @@ func Run() {
 	}
 
 	ctx := diagContext{
-		forever:     *foreverPtr,
-		pacContents: *pacContentsPtr,
+		forever:      *foreverPtr,
+		pacContents:  *pacContentsPtr,
+		globalConfig: &types.GlobalConfigDefaults,
 	}
 	ctx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
 
-	// XXX should we subscribe to and get GlobalConfig for debug??
+	// Make sure we have a GlobalConfig file with defaults
+	types.EnsureGCFile()
+
+	// Look for global config such as log levels
+	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+		false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	ctx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
 
 	server, err := ioutil.ReadFile(serverFileName)
 	if err != nil {
@@ -130,7 +143,15 @@ func Run() {
 		DeviceNetworkStatus: ctx.DeviceNetworkStatus,
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
+		NetworkSendTimeout:  ctx.globalConfig.NetworkTestTimeout,
 	}
+
+	// Get device serail number
+	zedcloudCtx.DevSerial = hardware.GetProductSerial()
+	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
+	log.Infof("Diag Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
+		zedcloudCtx.DevSoftSerial)
+
 	if fileExists(deviceCertName) {
 		// Load device cert
 		cert, err := zedcloud.GetClientCert()
@@ -194,17 +215,28 @@ func Run() {
 
 	for {
 		select {
+		case change := <-subGlobalConfig.C:
+			start := agentlog.StartTime()
+			subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
 		case change := <-subLedBlinkCounter.C:
+			start := agentlog.StartTime()
 			ctx.gotBC = true
 			subLedBlinkCounter.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
+			start := agentlog.StartTime()
 			ctx.gotDNS = true
 			subDeviceNetworkStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDevicePortConfigList.C:
+			start := agentlog.StartTime()
 			ctx.gotDPCList = true
 			subDevicePortConfigList.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 		}
 		if !ctx.forever && ctx.gotDNS && ctx.gotBC && ctx.gotDPCList {
 			break
@@ -792,14 +824,15 @@ func myGet(zedcloudCtx *zedcloud.ZedCloudContext, requrl string, ifname string,
 			ifname, proxyUrl.String(), requrl)
 	}
 	const allowProxy = true
-	resp, contents, cf, err := zedcloud.SendOnIntf(*zedcloudCtx,
-		requrl, ifname, 0, nil, allowProxy, 15)
+	resp, contents, rtf, err := zedcloud.SendOnIntf(*zedcloudCtx,
+		requrl, ifname, 0, nil, allowProxy)
 	if err != nil {
-		fmt.Printf("ERROR: %s: get %s failed: %s\n",
-			ifname, requrl, err)
-		if cf {
-			fmt.Printf("ERROR: %s: get %s certificate failure\n",
-				ifname, requrl)
+		if rtf {
+			fmt.Printf("ERROR: %s: get %s remote temporary failure: %s\n",
+				ifname, requrl, err)
+		} else {
+			fmt.Printf("ERROR: %s: get %s failed: %s\n",
+				ifname, requrl, err)
 		}
 		return false, nil, nil
 	}
@@ -816,4 +849,37 @@ func myGet(zedcloudCtx *zedcloud.ZedCloudContext, requrl string, ifname string,
 			ifname, string(contents))
 		return false, nil, nil
 	}
+}
+
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*diagContext)
+	if key != "global" {
+		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleGlobalConfigModify for %s\n", key)
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	if gcp != nil {
+		ctx.globalConfig = gcp
+	}
+	log.Infof("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*diagContext)
+	if key != "global" {
+		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	*ctx.globalConfig = types.GlobalConfigDefaults
+	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

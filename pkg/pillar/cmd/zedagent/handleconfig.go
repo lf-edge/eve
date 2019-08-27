@@ -18,6 +18,7 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -28,6 +29,7 @@ import (
 var configApi string = "api/v1/edgedevice/config"
 var statusApi string = "api/v1/edgedevice/info"
 var metricsApi string = "api/v1/edgedevice/metrics"
+var flowlogAPI = "api/v1/edgedevice/flowlog"
 
 // This is set once at init time and not changed
 var serverName string
@@ -50,6 +52,7 @@ type getconfigContext struct {
 	configTickerHandle          interface{}
 	metricsTickerHandle         interface{}
 	pubDevicePortConfig         *pubsub.Publication
+	pubPhysicalIOAdapters       *pubsub.Publication
 	devicePortConfig            types.DevicePortConfig
 	pubNetworkXObjectConfig     *pubsub.Publication
 	subAppInstanceStatus        *pubsub.Subscription
@@ -92,6 +95,11 @@ func handleConfigInit() {
 	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
+	zedcloudCtx.DevSerial = hardware.GetProductSerial()
+	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
+	zedcloudCtx.NetworkSendTimeout = globalConfig.NetworkSendTimeout
+	log.Infof("Configure Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
+		zedcloudCtx.DevSoftSerial)
 
 	b, err := ioutil.ReadFile(uuidFileName)
 	if err != nil {
@@ -133,6 +141,7 @@ func configTimerTask(handleChannel chan interface{},
 	for {
 		select {
 		case <-ticker.C:
+			start := agentlog.StartTime()
 			iteration += 1
 			// check whether the device is still in progress state
 			// once activated, it does not go back to the inprogress
@@ -143,6 +152,7 @@ func configTimerTask(handleChannel chan interface{},
 			rebootFlag := getLatestConfig(configUrl, iteration,
 				updateInprogress, getconfigCtx)
 			getconfigCtx.rebootFlag = getconfigCtx.rebootFlag || rebootFlag
+			agentlog.CheckMaxTime(agentName+"config", start)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName + "config")
@@ -213,16 +223,24 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 	}
 
 	const return400 = false
-	resp, contents, cf, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration, return400)
+	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration, return400)
 	if err != nil {
-		log.Errorf("getLatestConfig failed: %s\n", err)
-		if cf {
-			log.Errorf("getLatestConfig certificate failure")
+		newCount := 2
+		if rtf {
+			log.Errorf("getLatestConfig remoteTemporaryFailure: %s", err)
+			newCount = 3 // Almost connected to controller!
+			// Don't treat as upgrade failure
+			if updateInprogress {
+				log.Warnf("remoteTemporaryFailure don't fail update")
+				getconfigCtx.startTime = time.Now()
+			}
+		} else {
+			log.Errorf("getLatestConfig failed: %s", err)
 		}
 		if getconfigCtx.ledManagerCount == 4 {
 			// Inform ledmanager about loss of config from cloud
-			types.UpdateLedManagerConfig(2)
-			getconfigCtx.ledManagerCount = 2
+			types.UpdateLedManagerConfig(newCount)
+			getconfigCtx.ledManagerCount = newCount
 		}
 		// If we didn't yet get a config, then look for a file
 		// XXX should we try a few times?

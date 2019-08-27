@@ -19,7 +19,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -72,21 +71,25 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 			otherPart)
 	}
 
+	log.Debugf("parseConfig: EdgeDevConfig: %v\n", *config)
+
 	// Look for timers and other settings in configItems
+	// Process Config items even when rebootFlag is set.. Allows us to
+	//  recover if the system got stuck after setting rebootFlag
 	parseConfigItems(config, getconfigCtx)
-	parseDatastoreConfig(config, getconfigCtx)
 
-	// XXX Deprecated but used for systemAdapters
-	//	parseNetworkXObjectConfig
-	parseNetworkXObjectConfig(config, getconfigCtx)
-
-	parseSystemAdapterConfig(config, getconfigCtx, false)
-
-	parseBaseOsConfig(getconfigCtx, config)
-
-	parseNetworkInstanceConfig(config, getconfigCtx)
-	parseAppInstanceConfig(config, getconfigCtx)
-
+	if getconfigCtx.rebootFlag {
+		log.Debugf("parseConfig: Ignoring config as rebootFlag set\n")
+	} else {
+		parseDatastoreConfig(config, getconfigCtx)
+		// Network objects are used for systemAdapters
+		parseNetworkXObjectConfig(config, getconfigCtx)
+		parseSystemAdapterConfig(config, getconfigCtx, false)
+		parseDeviceIoListConfig(config, getconfigCtx)
+		parseBaseOsConfig(getconfigCtx, config)
+		parseNetworkInstanceConfig(config, getconfigCtx)
+		parseAppInstanceConfig(config, getconfigCtx)
+	}
 	return false
 }
 
@@ -127,23 +130,16 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 	}
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, baseosPrevConfigHash)
-	baseosPrevConfigHash = configHash
 	if same {
-		log.Debugf("parseBaseOsConfig: baseos sha is unchanged: % x\n",
-			configHash)
 		return
 	}
-	log.Infof("parseBaseOsConfig: Applying updated config sha % x vs. % x: %v\n",
+	log.Infof("parseBaseOsConfig: Applying updated config\n"+
+		"prevSha: % x\n"+
+		"NewSha : % x\n"+
+		"cfgOsList: %v\n",
 		baseosPrevConfigHash, configHash, cfgOsList)
 
-	baseOsCount := len(cfgOsList)
-	if baseOsCount == 0 {
-		return
-	}
-	if !zboot.IsAvailable() {
-		log.Errorf("No zboot; ignoring baseOsConfig\n")
-		return
-	}
+	baseosPrevConfigHash = configHash
 
 	// First look for deleted ones
 	items := getconfigCtx.pubBaseOsConfig.GetAll()
@@ -235,14 +231,15 @@ func parseNetworkXObjectConfig(config *zconfig.EdgeDevConfig,
 	}
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, networkConfigPrevConfigHash)
-	networkConfigPrevConfigHash = configHash
 	if same {
-		log.Debugf("parseNetworkXObjectConfig: network sha is unchanged: % x\n",
-			configHash)
 		return
 	}
-	log.Infof("parseNetworkXObjectConfig: Applying updated config sha % x vs. % x: %v\n",
+	log.Infof("parseNetworkXObjectConfig: Applying updated config.\n"+
+		"prevSha: % x\n"+
+		"NewSha : % x\n"+
+		"networks: %v\n",
 		networkConfigPrevConfigHash, configHash, nets)
+	networkConfigPrevConfigHash = configHash
 	// Export NetworkXObjectConfig for ourselves; systemAdapter
 	// XXX
 	// System Adapter points to network for Proxy configuration.
@@ -476,13 +473,15 @@ func parseNetworkInstanceConfig(config *zconfig.EdgeDevConfig,
 	}
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, networkInstancePrevConfigHash)
-	networkConfigPrevConfigHash = configHash
 	if same {
 		return
 	}
-	log.Infof("parseNetworkInstanceConfig: Applying updated config "+
-		"sha % x vs. % x: %v\n",
+	log.Infof("parseNetworkInstanceConfig: Applying updated config\n"+
+		"prevSha: % x\n"+
+		"NewSha : % x\n"+
+		"networkInstances: %v\n",
 		networkInstancePrevConfigHash, configHash, networkInstances)
+	networkInstancePrevConfigHash = configHash
 	// Export NetworkInstanceConfig to zedrouter
 	publishNetworkInstanceConfig(getconfigCtx, networkInstances)
 }
@@ -491,7 +490,6 @@ var appinstancePrevConfigHash []byte
 
 func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 	getconfigCtx *getconfigContext) {
-	log.Debugf("EdgeDevConfig: %v\n", *config)
 
 	Apps := config.GetApps()
 	h := sha256.New()
@@ -500,19 +498,15 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 	}
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, appinstancePrevConfigHash)
-	appinstancePrevConfigHash = configHash
 	if same {
-		log.Debugf("parseAppInstanceConfig: appinstance sha is unchanged: % x\n",
-			configHash)
 		return
 	}
-	if getconfigCtx.rebootFlag {
-		log.Infof("parseAppInstanceConfig: ignoring updated config due to rebootFlag: %v\n",
-			Apps)
-		return
-	}
-	log.Infof("parseAppInstanceConfig: Applying updated config sha % x vs. % x: %v\n",
+	log.Infof("parseAppInstanceConfig: Applying updated config\n"+
+		"prevSha: % x\n"+
+		"NewSha : % x\n"+
+		"Apps: %v\n",
 		appinstancePrevConfigHash, configHash, Apps)
+	appinstancePrevConfigHash = configHash
 
 	// First look for deleted ones
 	items := getconfigCtx.pubAppInstanceConfig.GetAll()
@@ -611,7 +605,6 @@ var systemAdaptersPrevConfigHash []byte
 
 func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	getconfigCtx *getconfigContext, forceParse bool) {
-	log.Debugf("parseSystemAdapterConfig: EdgeDevConfig: %v\n", *config)
 
 	sysAdapters := config.GetSystemAdapterList()
 	h := sha256.New()
@@ -621,16 +614,12 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, systemAdaptersPrevConfigHash)
 	if same && !forceParse {
-		log.Debugf("parseSystemAdapterConfig: system adapter sha is unchanged: % x\n",
-			configHash)
 		return
 	}
-	if getconfigCtx.rebootFlag {
-		log.Infof("parseSystemAdapterConfig: ignoring updated config due to rebootFlag: %v\n",
-			sysAdapters)
-		return
-	}
-	log.Infof("parseSystemAdapterConfig: Applying updated config sha % x vs. % x: %v\n",
+	log.Infof("parseSystemAdapterConfig: Applying updated config\n"+
+		"prevSha: % x\n"+
+		"NewSha : % x\n"+
+		"sysAdapters: %v\n",
 		systemAdaptersPrevConfigHash, configHash, sysAdapters)
 
 	systemAdaptersPrevConfigHash = configHash
@@ -754,7 +743,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	// Any content change?
 	if cmp.Equal(getconfigCtx.devicePortConfig.Ports, portConfig.Ports) &&
 		getconfigCtx.devicePortConfig.Version == portConfig.Version {
-		log.Infof("parseSystemAdapterConfig: Done with no change")
+		log.Infof("parseSystemAdapterConfig: DevicePortConfig - " +
+			"Done with no change")
 		return
 	}
 	log.Infof("parseSystemAdapterConfig: version %d/%d diff %v",
@@ -769,6 +759,78 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	getconfigCtx.pubDevicePortConfig.Publish("zedagent", *portConfig)
 
 	log.Infof("parseSystemAdapterConfig: Done")
+}
+
+var deviceIoListPrevConfigHash []byte
+
+func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
+	getconfigCtx *getconfigContext) {
+
+	deviceIoList := config.GetDeviceIoList()
+	h := sha256.New()
+	for _, a := range deviceIoList {
+		computeConfigElementSha(h, a)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, deviceIoListPrevConfigHash)
+	if same {
+		return
+	}
+	log.Infof("parseDeviceIoListConfig: Applying updated config\n"+
+		"prevSha: % x\n"+
+		"NewSha : % x\n"+
+		"deviceIoList: %v\n",
+		deviceIoListPrevConfigHash, configHash, deviceIoList)
+
+	deviceIoListPrevConfigHash = configHash
+
+	phyIoAdapterList := types.PhysicalIOAdapterList{}
+	phyIoAdapterList.AdapterList = make([]types.PhysicalIOAdapter, 0)
+
+	for indx, ioDevicePtr := range deviceIoList {
+		if ioDevicePtr == nil {
+			log.Errorf("parseDeviceIoListConfig: nil ioDevicePtr at indx %d\n",
+				indx)
+			continue
+		}
+		port := types.PhysicalIOAdapter{
+			Ptype:        ioDevicePtr.Ptype,
+			Phylabel:     ioDevicePtr.Phylabel,
+			Logicallabel: ioDevicePtr.Logicallabel,
+			Assigngrp:    ioDevicePtr.Assigngrp,
+			Usage:        ioDevicePtr.Usage,
+		}
+		if ioDevicePtr.UsagePolicy != nil {
+			port.UsagePolicy.FreeUplink = ioDevicePtr.UsagePolicy.FreeUplink
+		}
+
+		for key, value := range ioDevicePtr.Phyaddrs {
+			key = strings.ToLower(key)
+			switch key {
+			case "pcilong":
+				port.Phyaddr.PciLong = value
+			case "ifname":
+				port.Phyaddr.Ifname = value
+			case "serial":
+				port.Phyaddr.Serial = value
+			case "irq":
+				port.Phyaddr.Irq = value
+			case "ioports":
+				port.Phyaddr.Ioports = value
+			default:
+				port.Phyaddr.UnknownType = value
+				log.Warnf("Unrecognized Physical address Ignored: "+
+					"key: %s, value: %s", key, value)
+			}
+		}
+		phyIoAdapterList.AdapterList = append(phyIoAdapterList.AdapterList,
+			port)
+		getconfigCtx.zedagentCtx.physicalIoAdapterMap[port.Phylabel] = port
+	}
+	phyIoAdapterList.Initialized = true
+	getconfigCtx.pubPhysicalIOAdapters.Publish("zedagent", phyIoAdapterList)
+
+	log.Infof("parseDeviceIoListConfig: Done")
 }
 
 func lookupDatastore(datastores []*zconfig.DatastoreConfig,
@@ -794,14 +856,15 @@ func parseDatastoreConfig(config *zconfig.EdgeDevConfig,
 	}
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, datastoreConfigPrevConfigHash)
-	datastoreConfigPrevConfigHash = configHash
 	if same {
-		log.Debugf("parseDatastoreConfig: datastore sha is unchanged: % x\n",
-			configHash)
 		return
 	}
-	log.Infof("parseDatastoreConfig: Applying updated datastore config shaa % x vs. % x:  %v\n",
+	log.Infof("parseDatastoreConfig: Applying updated datastore config\n"+
+		"prevSha: % x\n"+
+		"NewSha : % x\n"+
+		"stores: %v\n",
 		datastoreConfigPrevConfigHash, configHash, stores)
+	datastoreConfigPrevConfigHash = configHash
 	publishDatastoreConfig(getconfigCtx, stores)
 }
 
@@ -1275,6 +1338,9 @@ func parseUnderlayNetworkConfigEntry(
 			len(acl.Matches))
 		aclCfg.Actions = make([]types.ACEAction,
 			len(acl.Actions))
+		aclCfg.RuleID = acl.Id
+		aclCfg.Name = acl.Name
+		aclCfg.Dir = types.ACEDirection(acl.Dir)
 		for matchIdx, match := range acl.Matches {
 			matchCfg := new(types.ACEMatch)
 			matchCfg.Type = match.Type
@@ -1384,6 +1450,9 @@ func parseOverlayNetworkConfigEntry(
 			len(acl.Matches))
 		aclCfg.Actions = make([]types.ACEAction,
 			len(acl.Actions))
+		aclCfg.RuleID = acl.Id
+		aclCfg.Name = acl.Name
+		aclCfg.Dir = types.ACEDirection(acl.Dir)
 		for matchIdx, match := range acl.Matches {
 			matchCfg := new(types.ACEMatch)
 			matchCfg.Type = match.Type
@@ -1447,11 +1516,12 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	same := bytes.Equal(configHash, itemsPrevConfigHash)
 	itemsPrevConfigHash = configHash
 	if same {
-		log.Debugf("parseConfigItems: items sha is unchanged: % x\n",
-			configHash)
 		return
 	}
-	log.Infof("parseConfigItems: Applying updated config sha % x vs. % x: %v\n",
+	log.Infof("parseConfigItems: Applying updated config\n"+
+		"prevSha: % x\n"+
+		"NewSha : % x\n"+
+		"items: %v\n",
 		itemsPrevConfigHash, configHash, items)
 
 	// Start with the defaults so that we revert to default when no data
@@ -1480,6 +1550,15 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				continue
 			}
 			newGlobalConfig.MetricInterval = uint32(i64)
+
+		case "timer.send.timeout":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newGlobalConfig.NetworkSendTimeout = uint32(i64)
 
 		case "timer.reboot.no.network":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
@@ -1543,6 +1622,15 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				continue
 			}
 			newGlobalConfig.NetworkTestInterval = uint32(i64)
+
+		case "timer.port.timeout":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newGlobalConfig.NetworkTestTimeout = uint32(i64)
 
 		case "timer.port.testbetterinterval":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
@@ -1839,8 +1927,8 @@ func unpublishCertObjConfig(getconfigCtx *getconfigContext, uuidStr string) {
 
 // Get sha256 for a subset of the protobuf message.
 // Used to determine which pieces changed
-func computeConfigSha(msg proto.Message) []byte {
-	data, err := proto.Marshal(msg)
+func computeConfigSha(msg interface{}) []byte {
+	data, err := json.Marshal(msg)
 	if err != nil {
 		log.Fatalf("computeConfigSha: proto.Marshal: %s\n", err)
 	}
@@ -1851,11 +1939,10 @@ func computeConfigSha(msg proto.Message) []byte {
 
 // Get sha256 for a subset of the protobuf message.
 // Used to determine which pieces changed
-func computeConfigElementSha(h hash.Hash, msg proto.Message) {
-	data, err := proto.Marshal(msg)
+func computeConfigElementSha(h hash.Hash, msg interface{}) {
+	data, err := json.Marshal(msg)
 	if err != nil {
-		log.Fatalf("computeConfigItemSha: proto.Marshal: %s\n",
-			err)
+		log.Fatalf("computeConfigItemSha: json.Marshal: %s\n", err)
 	}
 	h.Write(data)
 }
@@ -1891,8 +1978,6 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 	same := bytes.Equal(configHash, rebootPrevConfigHash)
 	rebootPrevConfigHash = configHash
 	if same {
-		log.Debugf("scheduleReboot: reboot sha is unchanged: % x\n",
-			configHash)
 		return rebootPrevReturn
 	}
 	log.Infof("scheduleReboot: Applying updated config %v\n", reboot)
@@ -1983,8 +2068,6 @@ func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
 	same := bytes.Equal(configHash, backupPrevConfigHash)
 	backupPrevConfigHash = configHash
 	if same {
-		log.Debugf("scheduleBackup: backup sha is unchanged: % x\n",
-			configHash)
 		return
 	}
 	log.Infof("scheduleBackup: Applying updated config %v\n", backup)

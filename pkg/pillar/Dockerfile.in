@@ -40,6 +40,8 @@ FROM WATCHDOG_TAG as watchdog
 FROM RKT_TAG as rkt-build
 # hadolint ignore=DL3006
 FROM RKT_STAGE1_TAG as rkt-stage1-build
+# hadolint ignore=DL3006
+FROM FSCRYPT_TAG as fscrypt-build
 
 FROM alpine:3.8
 RUN apk add --no-cache \
@@ -47,7 +49,7 @@ RUN apk add --no-cache \
     apk-cron coreutils dmidecode sudo libbz2 libuuid ipset \
     libaio logrotate pixman glib curl radvd perl ethtool \
     util-linux e2fsprogs libcrypto1.0 xorriso \
-    python libpcap libffi jq
+    python libpcap libffi jq e2fsprogs-extra keyutils
 
 # The following is for xen-tools
 RUN [ `uname -m` = "aarch64" ] && apk add --no-cache libfdt || :
@@ -74,6 +76,7 @@ COPY --from=strongswan / /
 COPY --from=watchdog /usr/sbin /usr/sbin
 COPY --from=rkt-build /go/rkt/build-rkt-1.26.0/target/bin/rkt /usr/sbin/rkt
 COPY --from=rkt-stage1-build /go/stage1-xen-master/stage1-xen.aci /usr/sbin/stage1-xen.aci
+COPY --from=fscrypt-build /fscrypt /opt/zededa/bin/fscrypt
 
 # And now a few local tweaks
 COPY rootfs/ /

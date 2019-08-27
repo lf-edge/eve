@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
@@ -69,7 +70,7 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 
 // Check if device can talk to outside world via atleast one of the free uplinks
 func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
-	retryCount int) (bool, error) {
+	retryCount int, timeout uint32) (bool, error) {
 
 	log.Infof("VerifyDeviceNetworkStatus() %d\n", retryCount)
 	// Check if it is 1970 in which case we declare success since
@@ -91,7 +92,15 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 
 	zedcloudCtx := zedcloud.ZedCloudContext{
 		DeviceNetworkStatus: &status,
+		NetworkSendTimeout:  timeout,
 	}
+
+	// Get device serail number
+	zedcloudCtx.DevSerial = hardware.GetProductSerial()
+	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
+	log.Infof("NIM Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
+		zedcloudCtx.DevSoftSerial)
+
 	tlsConfig, err := zedcloud.GetTlsConfig(serverName, nil)
 	if err != nil {
 		log.Infof("VerifyDeviceNetworkStatus: " +
@@ -125,23 +134,25 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 			return false, errors.New(errStr)
 		}
 	}
-	cloudReachable, cf, err := zedcloud.VerifyAllIntf(zedcloudCtx, testUrl, retryCount, 1)
+	cloudReachable, rtf, err := zedcloud.VerifyAllIntf(zedcloudCtx, testUrl, retryCount, 1)
 	if err != nil {
-		log.Errorf("VerifyDeviceNetworkStatus: VerifyAllIntf failed %s\n",
-			err)
-		if cf {
-			log.Errorf("VerifyDeviceNetworkStatus: VerifyAllIntf certificate failure")
+		if rtf {
+			log.Errorf("VerifyDeviceNetworkStatus: VerifyAllIntf remoteTemporaryFailure %s",
+				err)
+		} else {
+			log.Errorf("VerifyDeviceNetworkStatus: VerifyAllIntf failed %s",
+				err)
 		}
-		return cf, err
+		return rtf, err
 	}
 
 	if cloudReachable {
 		log.Infof("Uplink test SUCCESS to URL: %s", testUrl)
-		return cf, nil
+		return false, nil
 	}
 	errStr := fmt.Sprintf("Uplink test FAIL to URL: %s", testUrl)
 	log.Errorf("VerifyDeviceNetworkStatus: %s\n", errStr)
-	return cf, errors.New(errStr)
+	return rtf, errors.New(errStr)
 }
 
 // Calculate local IP addresses to make a types.DeviceNetworkStatus

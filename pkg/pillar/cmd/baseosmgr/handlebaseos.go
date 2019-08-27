@@ -12,6 +12,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	log "github.com/sirupsen/logrus"
+	"io/ioutil"
 	"os"
 	"strings"
 	"syscall"
@@ -302,7 +303,8 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	// Remove any old log files for a previous instance
 	logdir := fmt.Sprintf("/persist/%s/log", status.PartitionLabel)
 	log.Infof("Clearing old logs in %s\n", logdir)
-	if err := os.RemoveAll(logdir); err != nil {
+	// Clear content but not directory since logmanager expects dir
+	if err := removeContent(logdir); err != nil {
 		log.Errorln(err)
 	}
 
@@ -314,6 +316,22 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	}
 
 	return changed
+}
+
+func removeContent(dirName string) error {
+	locations, err := ioutil.ReadDir(dirName)
+	if err != nil {
+		return err
+	}
+
+	for _, location := range locations {
+		filelocation := dirName + "/" + location.Name()
+		err := os.RemoveAll(filelocation)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
@@ -483,7 +501,6 @@ func checkBaseOsStorageDownloadStatus(ctx *baseOsMgrContext, uuidStr string,
 		config.StorageConfigList, status.StorageStatusList)
 
 	status.State = ret.MinState
-	status.MissingDatastore = ret.MissingDatastore
 
 	if ret.AllErrors != "" {
 		status.Error = ret.AllErrors
@@ -602,8 +619,9 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 	changed := false
 	removedAll := true
 
-	// If this image is on the !active partition we mark that
-	// as unused.
+	// In case this was a failed update we make sure we mark
+	// that !active partition as unused (in case it is inprogress),
+	// so that we can retry the same update.
 	if status.PartitionLabel != "" {
 		partName := status.PartitionLabel
 		partStatus := getZbootStatus(ctx, partName)
@@ -616,12 +634,19 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 			!partStatus.CurrentPartition {
 			log.Infof("doBaseOsUninstall(%s) for %s, currently on other %s\n",
 				status.BaseOsVersion, uuidStr, partName)
-			log.Infof("Mark other partition %s, unused\n", partName)
-			zboot.SetOtherPartitionStateUnused()
-			publishZbootPartitionStatus(ctx, partName)
-			baseOsSetPartitionInfoInStatus(ctx, status,
-				status.PartitionLabel)
-			publishBaseOsStatus(ctx, status)
+			curPartState := getPartitionState(ctx,
+				zboot.GetCurrentPartition())
+			if curPartState == "active" {
+				log.Infof("Mark other partition %s, unused\n", partName)
+				zboot.SetOtherPartitionStateUnused()
+				publishZbootPartitionStatus(ctx, partName)
+				baseOsSetPartitionInfoInStatus(ctx, status,
+					status.PartitionLabel)
+				publishBaseOsStatus(ctx, status)
+			} else {
+				log.Warnf("Not mark other partition %s unused since curpart is %s",
+					partName, curPartState)
+			}
 		}
 		status.PartitionLabel = ""
 		changed = true
@@ -740,17 +765,15 @@ func checkInstalledVersion(ctx *baseOsMgrContext, status types.BaseOsStatus) str
 		log.Errorln(errStr)
 		return errStr
 	}
-	partStatus := getZbootStatus(ctx, status.PartitionLabel)
-	// XXX this check can result in failures when multiple updates in progress in zedcloud!
-	// XXX remove?
-	if partStatus != nil &&
-		status.BaseOsVersion != partStatus.ShortVersion {
-		errStr := fmt.Sprintf("baseOs %s, %s, does not match installed %s",
-			status.PartitionLabel, status.BaseOsVersion, partStatus.ShortVersion)
 
-		log.Errorln(errStr)
-		// XXX return errStr
-		// XXX restore
+	// Check the configured Image name is the same as the one just installed image
+	shortVer := zboot.GetShortVersion(status.PartitionLabel)
+	log.Infof("checkInstalledVersion: Cfg baseVer %s, Image shortVer %s\n",
+		status.BaseOsVersion, shortVer)
+	if status.BaseOsVersion != shortVer {
+		errString := fmt.Sprintf("checkInstalledVersion: image name not match. config %s, image ver %s\n",
+			status.BaseOsVersion, shortVer)
+		return errString
 	}
 	return ""
 }
@@ -1011,9 +1034,6 @@ func getZbootStatus(ctx *baseOsMgrContext, partName string) *types.ZbootStatus {
 func isValidBaseOsPartitionLabel(name string) bool {
 	partitionNames := []string{"IMGA", "IMGB"}
 	name = strings.TrimSpace(name)
-	if !zboot.IsAvailable() {
-		return false
-	}
 	for _, partName := range partitionNames {
 		if name == partName {
 			return true

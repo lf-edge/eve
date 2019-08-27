@@ -84,38 +84,27 @@ func (ctx *nimContext) processArgs() {
 	ctx.version = *versionPtr
 }
 
-func waitForDeviceNetworkConfigFile() string {
+func getDeviceNetworkConfigFile() string {
 	model := hardware.GetHardwareModel()
 
 	// To better handle new hardware platforms log and blink if we
 	// don't have a DeviceNetworkConfig
 	// After some tries we fall back to default.json which is eth0, wlan0
 	// and wwan0
+	// XXX remove default.json
 	// If we have a DevicePortConfig/override.json we proceed
 	// without a DNCFilename!
-	tries := 0
 	if fileExists(DPCOverride) {
 		model = "default"
 		return model
 	}
-	for {
-		DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
-		_, err := os.Stat(DNCFilename)
-		if err == nil {
-			break
-		}
-		// Tell the world that we have issues
-		types.UpdateLedManagerConfig(11)
-		log.Warningln(err)
-		log.Warningf("You need to create this file for this hardware: %s\n",
-			DNCFilename)
-		time.Sleep(time.Second)
-		tries++
-		if tries == 120 { // Two minutes
-			log.Infof("Falling back to using hardware model default\n")
-			model = "default"
-		}
+	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
+	_, err := os.Stat(DNCFilename)
+	if err == nil {
+		return model
 	}
+	log.Infof("Falling back to using hardware model default\n")
+	model = "default"
 	return model
 }
 
@@ -154,7 +143,7 @@ func Run() {
 	stillRunning := time.NewTicker(25 * time.Second)
 	agentlog.StillRunning(agentName)
 
-	model := waitForDeviceNetworkConfigFile()
+	model := getDeviceNetworkConfigFile()
 
 	// Make sure we have a GlobalConfig file with defaults
 	types.EnsureGCFile()
@@ -291,10 +280,14 @@ func Run() {
 			nimCtx.GCInitialized, nimCtx.DNCInitialized)
 		select {
 		case change := <-subGlobalConfig.C:
+			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkConfig.C:
+			start := agentlog.StartTime()
 			subDeviceNetworkConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 		}
 	}
 
@@ -310,7 +303,7 @@ func Run() {
 		time.Duration(geoMax))
 
 	dnc := &nimCtx.DeviceNetworkContext
-	// TIme we wait for DHCP to get an address before giving up
+	// Time we wait for DHCP to get an address before giving up
 	dnc.DPCTestDuration = nimCtx.globalConfig.NetworkTestDuration
 
 	// Timer for checking/verifying pending device network status
@@ -325,9 +318,7 @@ func Run() {
 
 	// Periodic timer that tests device cloud connectivity
 	dnc.NetworkTestInterval = nimCtx.globalConfig.NetworkTestInterval
-	networkTestInterval := time.Duration(time.Duration(dnc.NetworkTestInterval) * time.Second)
-	networkTestTimer := time.NewTimer(networkTestInterval)
-	dnc.NetworkTestTimer = networkTestTimer
+	dnc.NetworkTestTimer = time.NewTimer(time.Duration(dnc.NetworkTestInterval) * time.Second)
 	// We start assuming cloud connectivity works
 	dnc.CloudConnectivityWorks = true
 
@@ -359,25 +350,38 @@ func Run() {
 		log.Infof("Waiting for AA to initialize")
 		select {
 		case change := <-subGlobalConfig.C:
+			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkConfig.C:
+			start := agentlog.StartTime()
 			subDeviceNetworkConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDevicePortConfigO.C:
+			start := agentlog.StartTime()
 			subDevicePortConfigO.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDevicePortConfigS.C:
+			start := agentlog.StartTime()
 			subDevicePortConfigS.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAssignableAdapters.C:
+			start := agentlog.StartTime()
 			subAssignableAdapters.ProcessChange(change)
 			updateFilteredFallback(&nimCtx)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subNetworkInstanceStatus.C:
+			start := agentlog.StartTime()
 			subNetworkInstanceStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change, ok := <-addrChanges:
+			start := agentlog.StartTime()
 			if !ok {
 				log.Errorf("addrChanges closed\n")
 				// XXX Need to discard all cached information?
@@ -387,8 +391,10 @@ func Run() {
 					devicenetwork.HandleAddressChange(&nimCtx.DeviceNetworkContext)
 				}
 			}
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change, ok := <-linkChanges:
+			start := agentlog.StartTime()
 			if !ok {
 				log.Errorf("linkChanges closed\n")
 				linkChanges = devicenetwork.LinkChangeInit()
@@ -397,24 +403,30 @@ func Run() {
 				handleLinkChange(&nimCtx)
 				// XXX trigger testing??
 			}
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-geoTimer.C:
+			start := agentlog.StartTime()
 			log.Debugln("geoTimer at", time.Now())
 			change := devicenetwork.UpdateDeviceNetworkGeo(
 				geoRedoTime, nimCtx.DeviceNetworkStatus)
 			if change {
 				publishDeviceNetworkStatus(&nimCtx)
 			}
+			agentlog.CheckMaxTime(agentName, start)
 
 		case _, ok := <-dnc.Pending.PendTimer.C:
+			start := agentlog.StartTime()
 			if !ok {
 				log.Infof("Device port test timer stopped?")
 			} else {
 				log.Debugln("PendTimer at", time.Now())
 				devicenetwork.VerifyDevicePortConfig(dnc)
 			}
+			agentlog.CheckMaxTime(agentName, start)
 
 		case _, ok := <-dnc.NetworkTestTimer.C:
+			start := agentlog.StartTime()
 			if !ok {
 				log.Infof("Network test timer stopped?")
 			} else if nimCtx.DevicePortConfigList.CurrentIndex == -1 {
@@ -436,8 +448,10 @@ func Run() {
 						time.Since(start))
 				}
 			}
+			agentlog.CheckMaxTime(agentName, start)
 
 		case _, ok := <-dnc.NetworkTestBetterTimer.C:
+			start := agentlog.StartTime()
 			if !ok {
 				log.Infof("Network testBetterTimer stopped?")
 			} else if dnc.NextDPCIndex == 0 {
@@ -451,6 +465,7 @@ func Run() {
 				log.Infof("Network testBetterTimer done at index %d. Took %v",
 					dnc.NextDPCIndex, time.Since(start))
 			}
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
@@ -461,28 +476,43 @@ func Run() {
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
+			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkConfig.C:
+			start := agentlog.StartTime()
 			subDeviceNetworkConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDevicePortConfigA.C:
+			start := agentlog.StartTime()
 			subDevicePortConfigA.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDevicePortConfigO.C:
+			start := agentlog.StartTime()
 			subDevicePortConfigO.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDevicePortConfigS.C:
+			start := agentlog.StartTime()
 			subDevicePortConfigS.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAssignableAdapters.C:
+			start := agentlog.StartTime()
 			subAssignableAdapters.ProcessChange(change)
 			updateFilteredFallback(&nimCtx)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subNetworkInstanceStatus.C:
+			start := agentlog.StartTime()
 			subNetworkInstanceStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change, ok := <-addrChanges:
+			start := agentlog.StartTime()
 			if !ok {
 				log.Errorf("addrChanges closed\n")
 				addrChanges = devicenetwork.AddrChangeInit()
@@ -492,8 +522,10 @@ func Run() {
 					devicenetwork.HandleAddressChange(&nimCtx.DeviceNetworkContext)
 				}
 			}
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change, ok := <-linkChanges:
+			start := agentlog.StartTime()
 			if !ok {
 				log.Errorf("linkChanges closed\n")
 				linkChanges = devicenetwork.LinkChangeInit()
@@ -502,24 +534,30 @@ func Run() {
 				handleLinkChange(&nimCtx)
 				// XXX trigger testing??
 			}
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-geoTimer.C:
+			start := agentlog.StartTime()
 			log.Debugln("geoTimer at", time.Now())
 			change := devicenetwork.UpdateDeviceNetworkGeo(
 				geoRedoTime, nimCtx.DeviceNetworkStatus)
 			if change {
 				publishDeviceNetworkStatus(&nimCtx)
 			}
+			agentlog.CheckMaxTime(agentName, start)
 
 		case _, ok := <-dnc.Pending.PendTimer.C:
+			start := agentlog.StartTime()
 			if !ok {
 				log.Infof("Device port test timer stopped?")
 			} else {
 				log.Debugln("PendTimer at", time.Now())
 				devicenetwork.VerifyDevicePortConfig(dnc)
 			}
+			agentlog.CheckMaxTime(agentName, start)
 
 		case _, ok := <-dnc.NetworkTestTimer.C:
+			start := agentlog.StartTime()
 			if !ok {
 				log.Infof("Network test timer stopped?")
 			} else {
@@ -534,8 +572,10 @@ func Run() {
 						time.Since(start))
 				}
 			}
+			agentlog.CheckMaxTime(agentName, start)
 
 		case _, ok := <-dnc.NetworkTestBetterTimer.C:
+			start := agentlog.StartTime()
 			if !ok {
 				log.Infof("Network testBetterTimer stopped?")
 			} else if dnc.NextDPCIndex == 0 {
@@ -549,6 +589,7 @@ func Run() {
 				log.Infof("Network testBetterTimer done at index %d. Took %v",
 					dnc.NextDPCIndex, time.Since(start))
 			}
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
@@ -589,7 +630,7 @@ func updateFilteredFallback(ctx *nimContext) {
 }
 
 func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool {
-	cf, err := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1)
+	rtf, err := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1, ctx.TestSendTimeout)
 	if err == nil {
 		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
 		if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
@@ -602,11 +643,12 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 		ctx.NetworkTestTimer = time.NewTimer(time.Duration(ctx.NetworkTestInterval) * time.Second)
 		return true
 	}
-	if !ctx.CloudConnectivityWorks && !cf {
+	if !ctx.CloudConnectivityWorks && !rtf {
 		// If previous cloud connectivity test also failed, it means
 		// that the current DPC configuration stopped working.
 		// In this case we start the process where device tries to
 		// figure out a DevicePortConfig that works.
+		// We avoid doing this for remoteTemporaryFailures
 		if ctx.Pending.Inprogress {
 			log.Infof("tryDeviceConnectivityToCloud: Device port configuration list " +
 				"verification in progress")
@@ -620,8 +662,8 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 			devicenetwork.RestartVerify(ctx, "tryDeviceConnectivityToCloud")
 		}
 	} else {
-		if cf {
-			log.Infof("tryDeviceConnectivityToCloud: certificate failure")
+		if rtf {
+			log.Warnf("tryDeviceConnectivityToCloud: remoteTemporaryFailure: %s", err)
 		} else {
 			log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test restart timer due to %s", err)
 		}
@@ -697,6 +739,10 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 			ctx.NetworkTestBetterInterval = gcp.NetworkTestBetterInterval
 		}
 		ctx.globalConfig = gcp
+		dnc := &ctx.DeviceNetworkContext
+		dnc.NetworkTestInterval = ctx.globalConfig.NetworkTestInterval
+		dnc.DPCTestDuration = ctx.globalConfig.NetworkTestDuration
+		dnc.TestSendTimeout = ctx.globalConfig.NetworkTestTimeout
 	}
 	ctx.GCInitialized = true
 	log.Infof("handleGlobalConfigModify done for %s\n", key)

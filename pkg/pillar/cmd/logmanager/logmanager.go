@@ -15,6 +15,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
+	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -64,6 +65,7 @@ type logDirDeleteHandler func(ctx interface{}, logFileName string, source string
 
 type logmanagerContext struct {
 	subGlobalConfig *pubsub.Subscription
+	globalConfig    *types.GlobalConfig
 	subDomainStatus *pubsub.Subscription
 }
 
@@ -185,7 +187,9 @@ func Run() {
 		log.Fatal(err)
 	}
 
-	logmanagerCtx := logmanagerContext{}
+	logmanagerCtx := logmanagerContext{
+		globalConfig: &types.GlobalConfigDefaults,
+	}
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
 		false, &logmanagerCtx)
@@ -226,10 +230,14 @@ func Run() {
 	for DNSctx.usableAddressCount == 0 && !force {
 		select {
 		case change := <-subGlobalConfig.C:
+			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
+			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		// This wait can take an unbounded time since we wait for IP
 		// addresses. Punch StillRunning
@@ -252,7 +260,7 @@ func Run() {
 	DNSctx.doDeferred = true
 
 	//Get servername, set logUrl, get device id and initialize zedcloudCtx
-	sendCtxInit()
+	sendCtxInit(&logmanagerCtx)
 
 	// Publish send metrics for zedagent every 10 seconds
 	interval := time.Duration(10 * time.Second)
@@ -321,27 +329,38 @@ func Run() {
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
+			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDomainStatus.C:
+			start := agentlog.StartTime()
 			subDomainStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
+			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-publishTimer.C:
+			start := agentlog.StartTime()
 			log.Debugln("publishTimer at", time.Now())
 			err := pub.Publish("global", zedcloud.GetCloudMetrics())
 			if err != nil {
 				log.Errorln(err)
 			}
+			agentlog.CheckMaxTime(agentName, start)
+
 		case change := <-deferredChan:
+			start := agentlog.StartTime()
 			done := zedcloud.HandleDeferred(change, 1*time.Second)
 			dbg.FreeOSMemory()
 			globalDeferInprogress = !done
 			if globalDeferInprogress {
 				log.Warnf("logmanager: globalDeferInprogress")
 			}
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 			// Fault injection
@@ -666,7 +685,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 	return true
 }
 
-func sendCtxInit() {
+func sendCtxInit(ctx *logmanagerContext) {
 	//get server name
 	bytes, err := ioutil.ReadFile(serverFilename)
 	if err != nil {
@@ -687,6 +706,13 @@ func sendCtxInit() {
 	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
+	zedcloudCtx.NetworkSendTimeout = ctx.globalConfig.NetworkSendTimeout
+
+	// get the edge box serial number
+	zedcloudCtx.DevSerial = hardware.GetProductSerial()
+	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
+	log.Infof("Log Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
+		zedcloudCtx.DevSoftSerial)
 
 	// In case we run early, wait for UUID file to appear
 	for {
@@ -998,8 +1024,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
 	status := cast.CastGlobalConfig(statusArg)
-	debug, _ = agentlog.HandleGlobalConfigNoDefault(ctx.subGlobalConfig,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfigNoDefault(ctx.subGlobalConfig,
 		agentName, debugOverride)
+	if gcp != nil {
+		ctx.globalConfig = gcp
+	}
 	foundAgents := make(map[string]bool)
 	if status.DefaultRemoteLogLevel != "" {
 		foundAgents["default"] = true
@@ -1028,6 +1058,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	*ctx.globalConfig = types.GlobalConfigDefaults
 	delRemoteMapAll()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

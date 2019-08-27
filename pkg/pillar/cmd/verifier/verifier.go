@@ -27,18 +27,19 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
 	"math/big"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/pidfile"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -152,6 +153,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAppImgConfig.ModifyHandler = handleAppImgModify
+	subAppImgConfig.CreateHandler = handleAppImgCreate
 	subAppImgConfig.DeleteHandler = handleAppImgDelete
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
@@ -162,6 +164,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subBaseOsConfig.ModifyHandler = handleBaseOsModify
+	subBaseOsConfig.CreateHandler = handleBaseOsCreate
 	subBaseOsConfig.DeleteHandler = handleBaseOsDelete
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
@@ -207,16 +210,24 @@ func Run() {
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
+			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAppImgConfig.C:
+			start := agentlog.StartTime()
 			subAppImgConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subBaseOsConfig.C:
+			start := agentlog.StartTime()
 			subBaseOsConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-gc.C:
+			start := agentlog.StartTime()
 			gcVerifiedObjects(&ctx)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
@@ -589,6 +600,11 @@ func handleAppImgModify(ctxArg interface{}, key string,
 
 	handleVerifyImageModify(ctxArg, appImgObj, key, configArg)
 }
+func handleAppImgCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	handleVerifyImageCreate(ctxArg, appImgObj, key, configArg)
+}
 
 func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
 	handleVerifyImageDelete(ctxArg, key, configArg)
@@ -598,6 +614,12 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	handleVerifyImageModify(ctxArg, baseOsObj, key, configArg)
+}
+
+func handleBaseOsCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+
+	handleVerifyImageCreate(ctxArg, baseOsObj, key, configArg)
 }
 
 func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
@@ -643,24 +665,40 @@ func handleVerifyImageModify(ctxArg interface{}, objType string,
 	key string, configArg interface{}) {
 
 	log.Infof("handleVerifyImageModify(%s)\n", key)
-	ctx := ctxArg.(*verifierContext)
 	config := cast.CastVerifyImageConfig(configArg)
 	if config.Key() != key {
 		log.Errorf("handleVerifyImageModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
-	// Do we have a channel/goroutine?
 	h, ok := handlerMap[config.Key()]
 	if !ok {
-		h1 := make(chan interface{})
-		handlerMap[config.Key()] = h1
-		go runHandler(ctx, objType, key, h1)
-		h = h1
+		log.Fatalf("handleVerifyImageModify called on config that does not exist")
 	}
-	log.Debugf("Sending config to handler\n")
 	h <- configArg
 	log.Infof("handleVerifyImageModify(%s) done\n", key)
+}
+func handleVerifyImageCreate(ctxArg interface{}, objType string,
+	key string, configArg interface{}) {
+
+	log.Infof("handleVerifyImageCreate(%s)\n", key)
+	ctx := ctxArg.(*verifierContext)
+	config := cast.CastVerifyImageConfig(configArg)
+	if config.Key() != key {
+		log.Errorf("handleVerifyImageCreate key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
+	h, ok := handlerMap[config.Key()]
+	if ok {
+		log.Fatalf("handleVerifyImageCreate called on config that already exists")
+	}
+	h1 := make(chan interface{})
+	handlerMap[config.Key()] = h1
+	go runHandler(ctx, objType, key, h1)
+	h = h1
+	h <- configArg
+	log.Infof("handleVerifyImageCreate(%s) done\n", key)
 }
 
 func handleVerifyImageDelete(ctxArg interface{}, key string,
@@ -724,31 +762,37 @@ func handleCreate(ctx *verifierContext, objType string,
 	}
 
 	status := types.VerifyImageStatus{
-		Safename:    config.Safename,
-		ObjType:     objType,
-		ImageSha256: config.ImageSha256,
-		PendingAdd:  true,
-		State:       types.DOWNLOADED,
-		RefCount:    config.RefCount,
-		LastUse:     time.Now(),
+		Safename:         config.Safename,
+		ObjType:          objType,
+		ImageSha256:      config.ImageSha256,
+		PendingAdd:       true,
+		State:            types.DOWNLOADED,
+		RefCount:         config.RefCount,
+		LastUse:          time.Now(),
+		IsContainer:      config.IsContainer,
+		ContainerImageID: config.ContainerImageID,
 	}
 	publishVerifyImageStatus(ctx, &status)
 
-	ok, size := markObjectAsVerifying(ctx, config, &status)
-	if !ok {
-		log.Errorf("handleCreate fail for %s\n", config.Name)
-		return
-	}
-	status.Size = size
-	publishVerifyImageStatus(ctx, &status)
+	// Skip verification steps for Container. Container image verification
+	// is done by rkt fetch itself.. No need to be done here.
+	if !config.IsContainer {
+		ok, size := markObjectAsVerifying(ctx, config, &status)
+		if !ok {
+			log.Errorf("handleCreate fail for %s\n", config.Name)
+			return
+		}
+		status.Size = size
+		publishVerifyImageStatus(ctx, &status)
 
-	if !verifyObjectSha(ctx, config, &status) {
-		log.Errorf("handleCreate fail for %s\n", config.Name)
-		return
-	}
-	publishVerifyImageStatus(ctx, &status)
+		if !verifyObjectSha(ctx, config, &status) {
+			log.Errorf("handleCreate fail for %s\n", config.Name)
+			return
+		}
+		publishVerifyImageStatus(ctx, &status)
 
-	markObjectAsVerified(ctx, config, &status)
+		markObjectAsVerified(ctx, config, &status)
+	}
 	status.PendingAdd = false
 	status.State = types.DELIVERED
 	publishVerifyImageStatus(ctx, &status)

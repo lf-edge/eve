@@ -25,12 +25,10 @@ import (
 
 	"github.com/eriknordmark/netlink"
 	"github.com/google/go-cmp/cmp"
-	"github.com/lf-edge/eve/pkg/pillar/adapters"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
-	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
@@ -48,6 +46,7 @@ const (
 	AADirname         = tmpDirname + "/AssignableAdapters"
 	runDirname        = "/var/run/" + agentName
 	persistDir        = "/persist"
+	persistRktDataDir = persistDir + "/rkt"
 	rwImgDirname      = persistDir + "/img"       // We store images here
 	xenDirname        = runDirname + "/xen"       // We store xen cfg files here
 	ciDirname         = runDirname + "/cloudinit" // For cloud-init images
@@ -78,6 +77,7 @@ type domainContext struct {
 	assignableAdapters     *types.AssignableAdapters
 	DNSinitialized         bool // Received DeviceNetworkStatus
 	subDeviceNetworkStatus *pubsub.Subscription
+	subPhysicalIOAdapter   *pubsub.Subscription
 	subDomainConfig        *pubsub.Subscription
 	pubDomainStatus        *pubsub.Publication
 	subGlobalConfig        *pubsub.Subscription
@@ -170,6 +170,9 @@ func Run() {
 	}
 
 	domainCtx := domainContext{usbAccess: true}
+	aa := types.AssignableAdapters{}
+	domainCtx.assignableAdapters = &aa
+
 	// Allow only one concurrent xl create
 	domainCtx.createSema = sema.Create(1)
 	domainCtx.createSema.P(1)
@@ -220,29 +223,6 @@ func Run() {
 	domainCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	model := hardware.GetHardwareModel()
-	// Logic to fall back to default.json model if cloud sends wrong
-	// model string
-	tries := 0
-	for {
-		AAFilename := fmt.Sprintf("%s/%s.json", AADirname, model)
-		if _, err := os.Stat(AAFilename); err == nil {
-			break
-		}
-		log.Warningln(err)
-		log.Warningf("You need to create this file for this hardware: %s\n",
-			AAFilename)
-		time.Sleep(time.Second)
-		tries += 1
-		if tries == 10 { // 10 Seconds
-			log.Infof("Falling back to using hardware model default\n")
-			model = "default"
-		}
-	}
-
-	aa := types.AssignableAdapters{}
-	domainCtx.assignableAdapters = &aa
-
 	// Wait for DeviceNetworkStatus to be init so we know the management
 	// ports and then wait for assignableAdapters.
 	for !domainCtx.DNSinitialized {
@@ -250,36 +230,50 @@ func Run() {
 		log.Infof("Waiting for DeviceNetworkStatus init\n")
 		select {
 		case change := <-subGlobalConfig.C:
+			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
+			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 		}
 	}
 
-	// Pick up (mostly static) AssignableAdapters before we process
-	// any DomainConfig
-	var modifyFn adapters.ModifyHandler = handleAAModify
-	var deleteFn adapters.DeleteHandler = handleAADelete
-	subAa := adapters.Subscribe(&aa, model, &modifyFn, &deleteFn,
-		&domainCtx)
-	subAa.Activate()
+	// Subscribe to PhysicalIOAdapterList from zedagent
+	subPhysicalIOAdapter, err := pubsub.Subscribe("zedagent",
+		types.PhysicalIOAdapterList{}, false, &domainCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subPhysicalIOAdapter.CreateHandler = handlePhysicalIOAdapterListCreateModify
+	subPhysicalIOAdapter.ModifyHandler = handlePhysicalIOAdapterListCreateModify
+	subPhysicalIOAdapter.DeleteHandler = handlePhysicalIOAdapterListDelete
+	domainCtx.subPhysicalIOAdapter = subPhysicalIOAdapter
+	subPhysicalIOAdapter.Activate()
 
+	// Wait for PhysicalIOAdapters to be initialized.
 	for !domainCtx.assignableAdapters.Initialized {
-
-		log.Infof("Waiting for AssignableAdapters\n")
+		log.Infof("Waiting for AssignableAdapters")
 		select {
 		case change := <-subGlobalConfig.C:
+			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
+			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
-		case change := <-subAa.C:
-			subAa.ProcessChange(change)
+		case change := <-subPhysicalIOAdapter.C:
+			start := agentlog.StartTime()
+			subPhysicalIOAdapter.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 		}
 	}
-	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
+	log.Infof("Have %d assignable adapters", len(aa.IoBundleList))
 
 	// Subscribe to DomainConfig from zedmanager
 	subDomainConfig, err := pubsub.Subscribe("zedmanager",
@@ -288,6 +282,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDomainConfig.ModifyHandler = handleDomainModify
+	subDomainConfig.CreateHandler = handleDomainCreate
 	subDomainConfig.DeleteHandler = handleDomainDelete
 	subDomainConfig.RestartHandler = handleRestart
 	domainCtx.subDomainConfig = subDomainConfig
@@ -300,19 +295,29 @@ func Run() {
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
+			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDomainConfig.C:
+			start := agentlog.StartTime()
 			subDomainConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
+			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
-		case change := <-subAa.C:
-			subAa.ProcessChange(change)
+		case change := <-subPhysicalIOAdapter.C:
+			start := agentlog.StartTime()
+			subPhysicalIOAdapter.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-gc.C:
+			start := agentlog.StartTime()
 			gcObjects(&domainCtx, rwImgDirname)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
@@ -542,24 +547,37 @@ func handlersInit() {
 func handleDomainModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("handleDomainModify(%s)\n", key)
-	ctx := ctxArg.(*domainContext)
 	config := cast.CastDomainConfig(configArg)
 	if config.Key() != key {
 		log.Errorf("handleDomainModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
-	// Do we have a channel/goroutine?
 	h, ok := handlerMap[config.Key()]
 	if !ok {
-		h1 := make(chan interface{})
-		handlerMap[config.Key()] = h1
-		go runHandler(ctx, key, h1)
-		h = h1
+		log.Fatalf("handleDomainModify called on config that does not exist")
 	}
-	log.Debugf("Sending config to handler\n")
 	h <- configArg
-	log.Infof("handleDomainModify(%s) done\n", key)
+}
+func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
+
+	log.Infof("handleDomainCreate(%s)\n", key)
+	ctx := ctxArg.(*domainContext)
+	config := cast.CastDomainConfig(configArg)
+	if config.Key() != key {
+		log.Errorf("handleDomainCreate key/UUID mismatch %s vs %s; ignored %+v\n",
+			key, config.Key(), config)
+		return
+	}
+	h, ok := handlerMap[config.Key()]
+	if ok {
+		log.Fatalf("handleDomainCreate called on config that already exists")
+	}
+	h1 := make(chan interface{})
+	handlerMap[config.Key()] = h1
+	go runHandler(ctx, key, h1)
+	h = h1
+	h <- configArg
 }
 
 func handleDomainDelete(ctxArg interface{}, key string,
@@ -626,7 +644,7 @@ func runHandler(ctx *domainContext, key string, c <-chan interface{}) {
 // Check if it is still running
 // XXX would xen state be useful?
 func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
-	domainId, err := xlDomid(status.DomainName, status.DomainId)
+	domainID, err := xlDomid(status.DomainName, status.DomainId)
 	if err != nil {
 		if status.Activated {
 			errStr := fmt.Sprintf("verifyStatus(%s) failed %s",
@@ -640,18 +658,18 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 	} else {
 		if !status.Activated {
 			log.Warnf("verifyDomain(%s) domain came back alive; id  %d\n",
-				status.Key(), domainId)
+				status.Key(), domainID)
 			status.LastErr = ""
 			status.LastErrTime = time.Time{}
-			status.DomainId = domainId
+			status.DomainId = domainID
 			status.Activated = true
 			status.State = types.RUNNING
 			publishDomainStatus(ctx, status)
-		} else if domainId != status.DomainId {
+		} else if domainID != status.DomainId {
 			// XXX shutdown + create?
-			log.Warnf("verifyDomain(%s) domainId changed from %d to %d\n",
-				status.Key(), status.DomainId, domainId)
-			status.DomainId = domainId
+			log.Warnf("verifyDomain(%s) domainID changed from %d to %d\n",
+				status.Key(), status.DomainId, domainID)
+			status.DomainId = domainID
 			publishDomainStatus(ctx, status)
 		}
 	}
@@ -684,12 +702,11 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	status.LastErrTime = time.Time{}
 	status.TriedCount += 1
 
-	filename := xenCfgFilename(status.AppNum)
 	ctx.createSema.V(1)
-	domainId, err := xlCreate(status.DomainName, filename)
+	domainID, podUUID, err := DomainCreate(*status)
 	ctx.createSema.P(1)
 	if err != nil {
-		log.Errorf("maybeRetryBoot xl create for %s: %s\n",
+		log.Errorf("maybeRetryBoot DomainCreate for %s: %s\n",
 			status.DomainName, err)
 		status.BootFailed = true
 		status.LastErr = fmt.Sprintf("%v", err)
@@ -697,8 +714,9 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 		publishDomainStatus(ctx, status)
 		return
 	}
+	status.PodUUID = podUUID
 	status.BootFailed = false
-	doActivateTail(ctx, status, domainId)
+	doActivateTail(ctx, status, domainID)
 }
 
 func maybeRetryAdapters(ctx *domainContext, status *types.DomainStatus) {
@@ -784,7 +802,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 
 	log.Infof("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
-
+	log.Debugf("DomainConfig %+v\n", config)
 	// Name of Xen domain must be unique; uniqify AppNum
 	name := config.DisplayName + "." + strconv.Itoa(config.AppNum)
 
@@ -801,6 +819,8 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		VncDisplay:         config.VncDisplay,
 		VncPasswd:          config.VncPasswd,
 		State:              types.INSTALLED,
+		IsContainer:        config.IsContainer,
+		ContainerImageID:   config.ContainerImageID,
 	}
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))
@@ -822,6 +842,9 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 	// Do we need to copy any rw files? !Preserve ones are copied upon
 	// activation.
 	for _, ds := range status.DiskStatusList {
+		if status.IsContainer {
+			continue
+		}
 		if ds.ReadOnly || !ds.Preserve {
 			continue
 		}
@@ -1013,6 +1036,9 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	// Do we need to copy any rw files? Preserve ones are copied upon
 	// creation
 	for _, ds := range status.DiskStatusList {
+		if status.IsContainer {
+			continue
+		}
 		if ds.ReadOnly || ds.Preserve {
 			continue
 		}
@@ -1047,19 +1073,20 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 
 	status.TriedCount = 0
-	var domainId int
+	var domainID int
+	var podUUID string
 	// Invoke xl create; try 3 times with a timeout
 	for {
 		status.TriedCount += 1
 		var err error
 		ctx.createSema.V(1)
-		domainId, err = xlCreate(status.DomainName, filename)
+		domainID, podUUID, err = DomainCreate(*status)
 		ctx.createSema.P(1)
 		if err == nil {
 			break
 		}
 		if status.TriedCount >= 3 {
-			log.Errorf("xl create for %s: %s\n", status.DomainName, err)
+			log.Errorf("DomainCreate for %s: %s\n", status.DomainName, err)
 			status.BootFailed = true
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
@@ -1071,29 +1098,30 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		publishDomainStatus(ctx, status)
 		time.Sleep(5 * time.Second)
 	}
+	status.PodUUID = podUUID
 	status.BootFailed = false
-	doActivateTail(ctx, status, domainId)
+	doActivateTail(ctx, status, domainID)
 }
 
 func doActivateTail(ctx *domainContext, status *types.DomainStatus,
-	domainId int) {
+	domainID int) {
 
-	log.Infof("created domainId %d for %s\n", domainId, status.DomainName)
-	status.DomainId = domainId
+	log.Infof("created domainID %d for %s\n", domainID, status.DomainName)
+	status.DomainId = domainID
 	status.Activated = true
 	status.BootTime = time.Now()
 	status.State = types.BOOTING
 	publishDomainStatus(ctx, status)
 
 	// Disable offloads for all vifs
-	err := xlDisableVifOffload(status.DomainName, domainId,
+	err := xlDisableVifOffload(status.DomainName, domainID,
 		len(status.VifList))
 	if err != nil {
 		// XXX continuing even if we get a failure?
 		log.Errorf("xlDisableVifOffload for %s: %s\n",
 			status.DomainName, err)
 	}
-	err = xlUnpause(status.DomainName, domainId)
+	err = xlUnpause(status.DomainName, domainID)
 	if err != nil {
 		// XXX shouldn't we destroy it?
 		log.Errorf("xl unpause for %s: %s\n", status.DomainName, err)
@@ -1106,9 +1134,9 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	// XXX dumping status to log
 	xlStatus(status.DomainName, status.DomainId)
 
-	domainId, err = xlDomid(status.DomainName, status.DomainId)
-	if err == nil && domainId != status.DomainId {
-		status.DomainId = domainId
+	domainID, err = xlDomid(status.DomainName, status.DomainId)
+	if err == nil && domainID != status.DomainId {
+		status.DomainId = domainID
 	}
 	log.Infof("doActivateTail(%v) done for %s\n",
 		status.UUIDandVersion, status.DisplayName)
@@ -1119,9 +1147,9 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 
 	log.Infof("doInactivate(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
-	domainId, err := xlDomid(status.DomainName, status.DomainId)
-	if err == nil && domainId != status.DomainId {
-		status.DomainId = domainId
+	domainID, err := xlDomid(status.DomainName, status.DomainId)
+	if err == nil && domainID != status.DomainId {
+		status.DomainId = domainID
 	}
 	maxDelay := time.Second * 60 // 1 minute
 	if status.DomainId != 0 {
@@ -1133,9 +1161,8 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 			// Do a short shutdown wait, then a shutdown -F
 			// just in case there are PV tools in guest
 			shortDelay := time.Second * 10
-			if err := xlShutdown(status.DomainName,
-				status.DomainId, false); err != nil {
-				log.Errorf("xl shutdown %s failed: %s\n",
+			if err := DomainShutdown(*status, false); err != nil {
+				log.Errorf("DomainShutdown %s failed: %s\n",
 					status.DomainName, err)
 			} else {
 				// Wait for the domain to go away
@@ -1147,9 +1174,8 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 				status.DomainId = 0
 				break
 			}
-			if err := xlShutdown(status.DomainName,
-				status.DomainId, true); err != nil {
-				log.Errorf("xl shutdown -F %s failed: %s\n",
+			if err := DomainShutdown(*status, true); err != nil {
+				log.Errorf("DomainShutdown -F %s failed: %s\n",
 					status.DomainName, err)
 			} else {
 				// Wait for the domain to go away
@@ -1163,9 +1189,8 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 			}
 
 		case types.PV:
-			if err := xlShutdown(status.DomainName,
-				status.DomainId, false); err != nil {
-				log.Errorf("xl shutdown %s failed: %s\n",
+			if err := DomainShutdown(*status, false); err != nil {
+				log.Errorf("DomainShutdown %s failed: %s\n",
 					status.DomainName, err)
 			} else {
 				// Wait for the domain to go away
@@ -1180,10 +1205,13 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 		}
 	}
 
-	if status.DomainId != 0 {
-		err := xlDestroy(status.DomainName, status.DomainId)
+	// Incase of rkt based container, DomainShutdown moves the
+	// container to exit state and the domain is destroyed
+	// Issue Domain Destroy irrespective in container case
+	if status.IsContainer || status.DomainId != 0 {
+		err := DomainDestroy(*status)
 		if err != nil {
-			log.Errorf("xl shutdown %s failed: %s\n",
+			log.Errorf("DomainDestroy %s failed: %s\n",
 				status.DomainName, err)
 		}
 		// Even if destroy failed we wait again
@@ -1300,16 +1328,28 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		// map from i=1 to xvda, 2 to xvdb etc
 		xv := "xvd" + string(int('a')+i)
 		ds.Vdev = xv
-		locationDir := verifiedDirname + "/" + dc.ImageSha256
-		log.Debugf("configToStatus(%v) processing disk img %s for %s\n",
-			config.UUIDandVersion, locationDir, config.DisplayName)
-		location, err := locationFromDir(locationDir)
-		if err != nil {
-			return err
+
+		var location string
+		if status.IsContainer {
+			// Check if status.ContainerImageID has "sha512-" substring at the beginning
+			if strings.Index(status.ContainerImageID, "sha512-") != 0 {
+				return fmt.Errorf("status.ContainerImageID should start with sha512-, but is %s", status.ContainerImageID)
+			}
+			location = filepath.Join(persistRktDataDir, "cas", "blob", "sha512", string(status.ContainerImageID[7:9]), status.ContainerImageID)
+		} else {
+			locationDir := verifiedDirname + "/" + dc.ImageSha256
+			log.Debugf("configToStatus(%v) processing disk img %s for %s\n",
+				config.UUIDandVersion, locationDir, config.DisplayName)
+
+			var err error
+			location, err = locationFromDir(locationDir)
+			if err != nil {
+				return err
+			}
 		}
 		ds.FileLocation = location
 		target := location
-		if !dc.ReadOnly {
+		if !status.IsContainer && !dc.ReadOnly {
 			// Pick new location for a per-guest copy
 			// Use App UUID to make sure name is the same even
 			// after adds and deletes of instances and device reboots
@@ -1843,6 +1883,9 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	// Do we need to delete any rw files that were not deleted during
 	// inactivation i.e. those preserved across reboots?
 	for _, ds := range status.DiskStatusList {
+		if status.IsContainer {
+			continue
+		}
 		if !ds.ReadOnly && ds.Preserve {
 			log.Infof("Delete copy at %s\n", ds.ActiveFileLocation)
 			if err := os.Remove(ds.ActiveFileLocation); err != nil {
@@ -1860,6 +1903,90 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 		status.UUIDandVersion, status.DisplayName)
 }
 
+// DomainCreate is a wrapper for domain creation thru xlCreate or rktRun
+// returns domainID, PodUUID and error
+func DomainCreate(status types.DomainStatus) (int, string, error) {
+
+	var domainID int
+	var err error
+	podUUID := ""
+
+	filename := xenCfgFilename(status.AppNum)
+	log.Infof("DomainCreate %s ... xenCfgFilename - %s\n", status.DomainName, filename)
+	if status.IsContainer {
+		// Use rkt tool
+		log.Infof("Using rkt tool ... ContainerImageID - %s\n", status.ContainerImageID)
+		domainID, podUUID, err = rktRun(status.DomainName, status.ContainerImageID, filename)
+	} else {
+		// Use xl tool
+		log.Infof("Using xl tool ... xenCfgFilename - %s\n", filename)
+		domainID, err = xlCreate(status.DomainName, filename)
+	}
+
+	return domainID, podUUID, err
+}
+
+// Launch app/container thru rkt
+// returns domainID, podUUID and error
+func rktRun(domainName string, ContainerImageID string, xenCfgFilename string) (int, string, error) {
+
+	// STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=xenCfgFilename rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file
+	log.Infof("rktRun %s - ContainerImageID %s\n", domainName, ContainerImageID)
+	cmd := "rkt"
+	args := []string{
+		"--dir=" + persistRktDataDir,
+		"--insecure-options=image",
+		"run",
+		ContainerImageID,
+		"--stage1-path=/usr/sbin/stage1-xen.aci",
+		"--uuid-file-save=/persist/rkt/uuid_file",
+	}
+	stage1XlOpts := "STAGE1_XL_OPTS=-p"
+	stage1XlCfg := "STAGE1_SEED_XL_CFG=" + xenCfgFilename
+	log.Infof("Calling command %s %v\n", cmd, args)
+	log.Infof("Also setting env vars %s %s\n", stage1XlOpts, stage1XlCfg)
+	cmdLine := exec.Command(cmd, args...)
+	cmdLine.Env = append(os.Environ(), stage1XlOpts, stage1XlCfg)
+	stdoutStderr, err := cmdLine.CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt run failed ", err)
+		log.Errorln("rkt run output ", string(stdoutStderr))
+		return 0, "", fmt.Errorf("rkt run failed: %s\n",
+			string(stdoutStderr))
+	}
+	log.Infof("rkt run done\n")
+
+	// Get Pod UUID
+	uuidData, err := ioutil.ReadFile("/persist/rkt/uuid_file")
+	if err != nil {
+		log.Errorf("Open /persist/rkt/uuid_file failed : %s\n", err)
+		return 0, "", fmt.Errorf("open /persist/rkt/uuid_file failed: %s\n", err)
+	}
+	podUUID := strings.TrimSpace(string(uuidData))
+	log.Infof("podUUID = %s\n", podUUID)
+
+	// Obtain the domain id
+	cmd = "xl"
+	args = []string{
+		"domid",
+		domainName,
+	}
+	stdoutStderr, err = wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("xl domid failed ", err)
+		log.Errorln("xl domid output ", string(stdoutStderr))
+		return 0, "", fmt.Errorf("xl domid failed: %s\n",
+			string(stdoutStderr))
+	}
+	res := strings.TrimSpace(string(stdoutStderr))
+	domainID, err := strconv.Atoi(res)
+	if err != nil {
+		log.Errorf("Can't extract domainID from %s: %s\n", res, err)
+		return 0, "", fmt.Errorf("Can't extract domainID from %s: %s\n", res, err)
+	}
+	return domainID, podUUID, nil
+}
+
 // Create in paused state; Need to call xlUnpause later
 func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 	log.Infof("xlCreate %s %s\n", domainName, xenCfgFilename)
@@ -1873,8 +2000,8 @@ func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 	if err != nil {
 		log.Errorln("xl create failed ", err)
 		log.Errorln("xl create output ", string(stdoutStderr))
-		return 0, errors.New(fmt.Sprintf("xl create failed: %s\n",
-			string(stdoutStderr)))
+		return 0, fmt.Errorf("xl create failed: %s\n",
+			string(stdoutStderr))
 	}
 	log.Infof("xl create done\n")
 
@@ -1886,20 +2013,20 @@ func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 	if err != nil {
 		log.Errorln("xl domid failed ", err)
 		log.Errorln("xl domid output ", string(stdoutStderr))
-		return 0, errors.New(fmt.Sprintf("xl domid failed: %s\n",
-			string(stdoutStderr)))
+		return 0, fmt.Errorf("xl domid failed: %s\n",
+			string(stdoutStderr))
 	}
 	res := strings.TrimSpace(string(stdoutStderr))
-	domainId, err := strconv.Atoi(res)
+	domainID, err := strconv.Atoi(res)
 	if err != nil {
-		log.Errorf("Can't extract domainId from %s: %s\n", res, err)
-		return 0, errors.New(fmt.Sprintf("Can't extract domainId from %s: %s\n", res, err))
+		log.Errorf("Can't extract domainID from %s: %s\n", res, err)
+		return 0, fmt.Errorf("Can't extract domainID from %s: %s\n", res, err)
 	}
-	return domainId, nil
+	return domainID, nil
 }
 
-func xlStatus(domainName string, domainId int) error {
-	log.Infof("xlStatus %s %d\n", domainName, domainId)
+func xlStatus(domainName string, domainID int) error {
+	log.Infof("xlStatus %s %d\n", domainName, domainID)
 	// XXX xl list -l domainName returns json. XXX but state not included!
 	// Note that state is not very useful anyhow
 	cmd := "xl"
@@ -1912,8 +2039,8 @@ func xlStatus(domainName string, domainId int) error {
 	if err != nil {
 		log.Errorln("xl list failed ", err)
 		log.Errorln("xl list output ", string(stdoutStderr))
-		return errors.New(fmt.Sprintf("xl list failed: %s\n",
-			string(stdoutStderr)))
+		return fmt.Errorf("xl list failed: %s\n",
+			string(stdoutStderr))
 	}
 	// XXX parse json to look at state? Not currently included
 	// XXX note that there is a warning at the top of the combined
@@ -1922,10 +2049,10 @@ func xlStatus(domainName string, domainId int) error {
 	return nil
 }
 
-// If we have a domain reboot issue the domainId
+// If we have a domain reboot issue the domainID
 // can change.
-func xlDomid(domainName string, domainId int) (int, error) {
-	log.Debugf("xlDomid %s %d\n", domainName, domainId)
+func xlDomid(domainName string, domainID int) (int, error) {
+	log.Debugf("xlDomid %s %d\n", domainName, domainID)
 	cmd := "xl"
 	args := []string{
 		"domid",
@@ -1936,50 +2063,50 @@ func xlDomid(domainName string, domainId int) (int, error) {
 	if err != nil {
 		log.Debugln("xl domid failed ", err)
 		log.Debugln("xl domid output ", string(stdoutStderr))
-		return domainId, errors.New(fmt.Sprintf("xl domid failed: %s\n",
-			string(stdoutStderr)))
+		return domainID, fmt.Errorf("xl domid failed: %s\n",
+			string(stdoutStderr))
 	}
 	res := strings.TrimSpace(string(stdoutStderr))
-	domainId2, err := strconv.Atoi(res)
+	domainID2, err := strconv.Atoi(res)
 	if err != nil {
 		log.Errorf("xl domid not integer %s: failed %s\n", res, err)
-		return domainId, err
+		return domainID, err
 	}
-	if domainId2 != domainId {
+	if domainID2 != domainID {
 		log.Warningf("domainid changed from %d to %d for %s\n",
-			domainId, domainId2, domainName)
+			domainID, domainID2, domainName)
 	}
-	return domainId2, err
+	return domainID2, err
 }
 
 // Perform xenstore write to disable all of these for all VIFs
 // feature-sg, feature-gso-tcpv4, feature-gso-tcpv6, feature-ipv6-csum-offload
-func xlDisableVifOffload(domainName string, domainId int, vifCount int) error {
+func xlDisableVifOffload(domainName string, domainID int, vifCount int) error {
 	log.Infof("xlDisableVifOffload %s %d %d\n",
-		domainName, domainId, vifCount)
+		domainName, domainID, vifCount)
 	pref := "/local/domain"
 	for i := 0; i < vifCount; i += 1 {
 		varNames := []string{
 			fmt.Sprintf("%s/0/backend/vif/%d/%d/feature-sg",
-				pref, domainId, i),
+				pref, domainID, i),
 			fmt.Sprintf("%s/0/backend/vif/%d/%d/feature-gso-tcpv4",
-				pref, domainId, i),
+				pref, domainID, i),
 			fmt.Sprintf("%s/0/backend/vif/%d/%d/feature-gso-tcpv6",
-				pref, domainId, i),
+				pref, domainID, i),
 			fmt.Sprintf("%s/0/backend/vif/%d/%d/feature-ipv4-csum-offload",
-				pref, domainId, i),
+				pref, domainID, i),
 			fmt.Sprintf("%s/0/backend/vif/%d/%d/feature-ipv6-csum-offload",
-				pref, domainId, i),
+				pref, domainID, i),
 			fmt.Sprintf("%s/%d/device/vif/%d/feature-sg",
-				pref, domainId, i),
+				pref, domainID, i),
 			fmt.Sprintf("%s/%d/device/vif/%d/feature-gso-tcpv4",
-				pref, domainId, i),
+				pref, domainID, i),
 			fmt.Sprintf("%s/%d/device/vif/%d/feature-gso-tcpv6",
-				pref, domainId, i),
+				pref, domainID, i),
 			fmt.Sprintf("%s/%d/device/vif/%d/feature-ipv4-csum-offload",
-				pref, domainId, i),
+				pref, domainID, i),
 			fmt.Sprintf("%s/%d/device/vif/%d/feature-ipv6-csum-offload",
-				pref, domainId, i),
+				pref, domainID, i),
 		}
 		for _, varName := range varNames {
 			cmd := "xenstore"
@@ -1992,8 +2119,8 @@ func xlDisableVifOffload(domainName string, domainId int, vifCount int) error {
 			if err != nil {
 				log.Errorln("xenstore write failed ", err)
 				log.Errorln("xenstore write output ", string(stdoutStderr))
-				return errors.New(fmt.Sprintf("xenstore write failed: %s\n",
-					string(stdoutStderr)))
+				return fmt.Errorf("xenstore write failed: %s\n",
+					string(stdoutStderr))
 			}
 			log.Debugf("xenstore write done. Result %s\n",
 				string(stdoutStderr))
@@ -2004,8 +2131,8 @@ func xlDisableVifOffload(domainName string, domainId int, vifCount int) error {
 	return nil
 }
 
-func xlUnpause(domainName string, domainId int) error {
-	log.Infof("xlUnpause %s %d\n", domainName, domainId)
+func xlUnpause(domainName string, domainID int) error {
+	log.Infof("xlUnpause %s %d\n", domainName, domainID)
 	cmd := "xl"
 	args := []string{
 		"unpause",
@@ -2015,15 +2142,73 @@ func xlUnpause(domainName string, domainId int) error {
 	if err != nil {
 		log.Errorln("xl unpause failed ", err)
 		log.Errorln("xl unpause output ", string(stdoutStderr))
-		return errors.New(fmt.Sprintf("xl unpause failed: %s\n",
-			string(stdoutStderr)))
+		return fmt.Errorf("xl unpause failed: %s\n",
+			string(stdoutStderr))
 	}
 	log.Infof("xlUnpause done. Result %s\n", string(stdoutStderr))
 	return nil
 }
 
-func xlShutdown(domainName string, domainId int, force bool) error {
-	log.Infof("xlShutdown %s %d\n", domainName, domainId)
+// DomainShutdown is a wrapper for domain shutdown thru xlShutdown or rktStop
+func DomainShutdown(status types.DomainStatus, force bool) error {
+
+	var err error
+	log.Infof("DomainShutdown force-%v %s %d\n", force, status.DomainName, status.DomainId)
+
+	if status.IsContainer {
+		// Use rkt tool
+		log.Infof("Using rkt tool ... PodUUID - %s\n", status.PodUUID)
+		err = rktStop(status.PodUUID, force)
+		if err != nil {
+			log.Errorf("rktStop %s failed: %s\n", status.DomainName, err)
+		}
+		// Unconditionally invoke xl shutdown
+		// This is causing an error, since rkt stop is putting the container to exit state
+		// and killing the domain
+		//log.Infof("Invoke xl tool ... DomainName - %s\n", status.DomainName)
+		//err = xlShutdown(status.DomainName, status.DomainId, force)
+	} else {
+		// Use xl tool
+		log.Infof("Using xl tool ... DomainName - %s\n", status.DomainName)
+		err = xlShutdown(status.DomainName, status.DomainId, force)
+	}
+
+	return err
+}
+
+func rktStop(PodUUID string, force bool) error {
+	log.Infof("rktStop %s %t\n", PodUUID, force)
+	cmd := "rkt"
+	var args []string
+	if force {
+		// rkt --dir=<RKT_DATA_DIR> stop PodUUID --force=true
+		args = []string{
+			"--dir=" + persistRktDataDir,
+			"stop",
+			PodUUID,
+			"--force=true",
+		}
+	} else {
+		// rkt --dir=<RKT_DATA_DIR> stop PodUUID
+		args = []string{
+			"--dir=" + persistRktDataDir,
+			"stop",
+			PodUUID,
+		}
+	}
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt stop failed ", err)
+		log.Errorln("rkt stop output ", string(stdoutStderr))
+		return fmt.Errorf("rkt stop failed: %s\n",
+			string(stdoutStderr))
+	}
+	log.Infof("rkt stop done\n")
+	return nil
+}
+
+func xlShutdown(domainName string, domainID int, force bool) error {
+	log.Infof("xlShutdown %s %d\n", domainName, domainID)
 	cmd := "xl"
 	var args []string
 	if force {
@@ -2042,15 +2227,54 @@ func xlShutdown(domainName string, domainId int, force bool) error {
 	if err != nil {
 		log.Errorln("xl shutdown failed ", err)
 		log.Errorln("xl shutdown output ", string(stdoutStderr))
-		return errors.New(fmt.Sprintf("xl shutdown failed: %s\n",
-			string(stdoutStderr)))
+		return fmt.Errorf("xl shutdown failed: %s\n",
+			string(stdoutStderr))
 	}
 	log.Infof("xl shutdown done\n")
 	return nil
 }
 
-func xlDestroy(domainName string, domainId int) error {
-	log.Infof("xlDestroy %s %d\n", domainName, domainId)
+// DomainDestroy is a wrapper for domain Destroy thru xlDestroy or rktRm
+func DomainDestroy(status types.DomainStatus) error {
+
+	var err error
+	log.Infof("DomainDestroy %s %d\n", status.DomainName, status.DomainId)
+
+	if status.IsContainer {
+		// Use rkt tool
+		log.Infof("Using rkt tool ... PodUUID - %s\n", status.PodUUID)
+		err = rktRm(status.PodUUID)
+	} else {
+		// Use xl tool
+		log.Infof("Using xl tool ... DomainName - %s\n", status.DomainName)
+		err = xlDestroy(status.DomainName, status.DomainId)
+	}
+
+	return err
+}
+
+func rktRm(PodUUID string) error {
+	log.Infof("rktRm %s\n", PodUUID)
+	// rkt --dir=<RKT_DATA_DIR> rm PodUUID
+	cmd := "rkt"
+	args := []string{
+		"--dir=" + persistRktDataDir,
+		"rm",
+		PodUUID,
+	}
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt Rm failed ", err)
+		log.Errorln("rkt Rm output ", string(stdoutStderr))
+		return fmt.Errorf("rkt Rm failed: %s\n",
+			string(stdoutStderr))
+	}
+	log.Infof("rkt Rm done\n")
+	return nil
+}
+
+func xlDestroy(domainName string, domainID int) error {
+	log.Infof("xlDestroy %s %d\n", domainName, domainID)
 	cmd := "xl"
 	args := []string{
 		"destroy",
@@ -2060,8 +2284,8 @@ func xlDestroy(domainName string, domainId int) error {
 	if err != nil {
 		log.Errorln("xl destroy failed ", err)
 		log.Errorln("xl destroy output ", string(stdoutStderr))
-		return errors.New(fmt.Sprintf("xl destroy failed: %s\n",
-			string(stdoutStderr)))
+		return fmt.Errorf("xl destroy failed: %s\n",
+			string(stdoutStderr))
 	}
 	log.Infof("xl destroy done\n")
 	return nil
@@ -2081,13 +2305,13 @@ func locationFromDir(locationDir string) (string, error) {
 	}
 	if len(locations) != 1 {
 		log.Errorf("Multiple files in %s\n", locationDir)
-		return "", errors.New(fmt.Sprintf("Multiple files in %s\n",
-			locationDir))
+		return "", fmt.Errorf("Multiple files in %s\n",
+			locationDir)
 	}
 	if len(locations) == 0 {
 		log.Errorf("No files in %s\n", locationDir)
-		return "", errors.New(fmt.Sprintf("No files in %s\n",
-			locationDir))
+		return "", fmt.Errorf("No files in %s\n",
+			locationDir)
 	}
 	return locationDir + "/" + locations[0].Name(), nil
 }
@@ -2307,84 +2531,107 @@ func mkisofs(output string, dir string) error {
 	return nil
 }
 
-func handleAAModify(ctxArg interface{}, config types.AssignableAdapters,
-	status *types.AssignableAdapters) {
+func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
+	key string, configArg interface{}) {
 
 	ctx := ctxArg.(*domainContext)
-	log.Infof("handleAAModify() %+v\n", status)
-	// Any deletes?
-	for _, statusIb := range (*status).IoBundleList {
-		configIb := config.LookupIoBundle(statusIb.Type, statusIb.Name)
-		if configIb == nil {
-			handleIBDelete(ctx, statusIb, status)
-		}
-	}
-	// Any add or modify?
-	for _, configIb := range config.IoBundleList {
-		statusIb := status.LookupIoBundle(configIb.Type, configIb.Name)
-		if statusIb == nil {
-			handleIBCreate(ctx, configIb, status)
-		} else if statusIb.AssignmentGroup != configIb.AssignmentGroup ||
-			statusIb.PciLong != configIb.PciLong ||
-			statusIb.Ifname != configIb.Ifname ||
-			statusIb.Irq != configIb.Irq ||
-			statusIb.Ioports != configIb.Ioports ||
-			statusIb.Serial != configIb.Serial {
+	phyIOAdapterList := cast.CastPhysicalIOAdapterList(configArg)
+	aa := ctx.assignableAdapters
+	log.Infof("handlePhysicalIOAdapterListCreateModify: %+v\n",
+		phyIOAdapterList)
 
-			handleIBModify(ctx, *statusIb, configIb, status)
+	// Check if any adapters got deleted
+	for indx := range aa.IoBundleList {
+		name := aa.IoBundleList[indx].Name
+		phyAdapter := phyIOAdapterList.LookupAdapter(name)
+		if phyAdapter == nil {
+			handleIBDelete(ctx, name)
 		}
 	}
-	status.Initialized = true
+
+	// Any add or modify?
+	for _, phyAdapter := range phyIOAdapterList.AdapterList {
+		ib := *types.IoBundleFromPhyAdapter(phyAdapter)
+		currentIbPtr := aa.LookupIoBundle(0, phyAdapter.Phylabel)
+		if currentIbPtr == nil {
+			log.Infof("handlePhysicalIOAdapterListCreateModify: Adapter %s "+
+				"added. %+v\n", phyAdapter.Phylabel, ib)
+			handleIBCreate(ctx, ib)
+		} else if currentIbPtr.HasAdapterChanged(phyAdapter) {
+			log.Infof("handlePhysicalIOAdapterListCreateModify: Adapter %s "+
+				"changed. Current: %+v, New: %+v\n", phyAdapter.Phylabel,
+				*currentIbPtr, ib)
+			handleIBModify(ctx, ib)
+		} else {
+			log.Infof("handlePhysicalIOAdapterListCreateModify: Adapter %s "+
+				"- No Change\n", phyAdapter.Phylabel)
+		}
+	}
+	aa.Initialized = true
 	ctx.publishAssignableAdapters()
-	log.Infof("handleAAModify() done\n")
+	log.Infof("handlePhysicalIOAdapterListCreateModify() done\n")
 }
 
-func handleAADelete(ctxArg interface{}, status *types.AssignableAdapters) {
+func handlePhysicalIOAdapterListDelete(ctxArg interface{},
+	key string, value interface{}) {
 
+	phyAdapterList := cast.CastPhysicalIOAdapterList(value)
 	ctx := ctxArg.(*domainContext)
-	log.Infof("handleAADelete()\n")
-	for _, statusIb := range (*status).IoBundleList {
-		handleIBDelete(ctx, statusIb, status)
+	log.Infof("handlePhysicalIOAdapterListDelete: ALL PhysicalIoAdapters " +
+		"deleted\n")
+
+	for indx := range phyAdapterList.AdapterList {
+		name := phyAdapterList.AdapterList[indx].Phylabel
+		log.Infof("handlePhysicalIOAdapterListDelete: Deleting Adapter %s\n",
+			name)
+		handleIBDelete(ctx, name)
 	}
 	ctx.publishAssignableAdapters()
-	log.Infof("handleAADelete() done\n")
+	log.Infof("handlePhysicalIOAdapterListDelete done\n")
 }
 
 // Process new IoBundles. Check if PCI device exists, and check that not
 // used in a DevicePortConfig/DeviceNetworkStatus
 // Assign to pciback
-func handleIBCreate(ctx *domainContext, ib types.IoBundle,
-	status *types.AssignableAdapters) {
+func handleIBCreate(ctx *domainContext, ib types.IoBundle) {
 
 	log.Infof("handleIBCreate(%d %s %s)", ib.Type, ib.Name, ib.AssignmentGroup)
-	if err := checkAndSetIoBundle(ctx, &ib); err != nil {
+	aa := ctx.assignableAdapters
+	if err := checkAndSetIoBundle(ctx, &ib, false); err != nil {
 		log.Warnf("Not reporting non-existent PCI device %d %s: %v\n",
 			ib.Type, ib.Name, err)
 		return
 	}
-	status.IoBundleList = append(status.IoBundleList, ib)
+	aa.IoBundleList = append(aa.IoBundleList, ib)
 }
 
 func checkAndSetIoBundleAll(ctx *domainContext) {
 	for i := range ctx.assignableAdapters.IoBundleList {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
-		err := checkAndSetIoBundle(ctx, ib)
+		err := checkAndSetIoBundle(ctx, ib, true)
 		if err != nil {
 			log.Errorf("checkAndSetIoBundleAll failed for %d\n", i)
 		}
 	}
 }
 
-func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
+func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle,
+	publish bool) error {
 
 	// Check if part of DevicePortConfig
 	ib.IsPort = false
-	publishAssignableAdapters := false
+	changed := false
 	if types.IsPort(ctx.deviceNetworkStatus, ib.Name) {
 		log.Warnf("checkAndSetIoBundle(%d %s %s) part of zedrouter port\n",
 			ib.Type, ib.Name, ib.AssignmentGroup)
 		ib.IsPort = true
-		if ib.IsPCIBack {
+		changed = true
+		if ib.UsedByUUID != nilUUID {
+			log.Errorf("checkAndSetIoBundle(%d %s %s) used by %s",
+				ib.Type, ib.Name, ib.AssignmentGroup,
+				ib.UsedByUUID.String())
+
+		} else if ib.IsPCIBack {
 			log.Infof("checkAndSetIoBundle(%d %s %s) take back from pciback\n",
 				ib.Type, ib.Name, ib.AssignmentGroup)
 			if ib.PciLong != "" {
@@ -2395,9 +2642,22 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 					log.Errorf("checkAndSetIoBundle(%d %s %s) pciAssignableRemove %s failed %v\n",
 						ib.Type, ib.Name, ib.AssignmentGroup, ib.PciLong, err)
 				}
+				// Seems like like no risk for race; when we return
+				// from above the driver has been attached and
+				// any ifname has been registered.
+				found, ifname := types.PciLongToIfname(ib.PciLong)
+				if !found {
+					log.Errorf("Not found: %d %s %s",
+						ib.Type, ib.Name, ib.Ifname)
+				} else if ifname != ib.Ifname {
+					log.Warnf("Found: %d %s %s at %s",
+						ib.Type, ib.Name, ib.Ifname,
+						ifname)
+					types.IfRename(ifname, ib.Ifname)
+				}
 			}
 			ib.IsPCIBack = false
-			publishAssignableAdapters = true
+			changed = true
 			// Verify that it has been returned from pciback
 			_, err := types.IoBundleToPci(ib)
 			if err != nil {
@@ -2409,8 +2669,10 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		// XXX potentially move to PCIBack if not already
 		// and with USB check
 		// XXX should not do that when Testing is set.
+		log.Debugf("checkAndSetIoBundle: %s (%s) not a port\n",
+			ib.Name, ib.PciLong)
 	}
-	if publishAssignableAdapters {
+	if publish && changed {
 		ctx.publishAssignableAdapters()
 	}
 
@@ -2438,7 +2700,9 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		if ib.Type.IsNet() && ib.MacAddr == "" {
 			ib.MacAddr = getMacAddr(ib.Name)
 		}
-		ctx.publishAssignableAdapters()
+		if publish {
+			ctx.publishAssignableAdapters()
+		}
 	}
 
 	if !ib.IsPort && !ib.IsPCIBack {
@@ -2456,7 +2720,9 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 				return err
 			}
 			ib.IsPCIBack = true
-			ctx.publishAssignableAdapters()
+			if publish {
+				ctx.publishAssignableAdapters()
+			}
 		}
 	}
 	return nil
@@ -2544,7 +2810,7 @@ func maybeAssignableAdd(ctx *domainContext) {
 			continue
 		}
 		if !ib.IsPCIBack {
-			log.Infof("Assigning %s (%s) to pciback\n",
+			log.Infof("maybeAssignableAdd: Assigning %s (%s) to pciback\n",
 				ib.Name, ib.PciLong)
 			assignments = addNoDuplicate(assignments, ib.PciLong)
 			ib.IsPCIBack = true
@@ -2553,7 +2819,7 @@ func maybeAssignableAdd(ctx *domainContext) {
 	for _, long := range assignments {
 		err := pciAssignableAdd(long)
 		if err != nil {
-			log.Errorf("updateUsbAccess add failed: %s", err)
+			log.Errorf("maybeAssignableAdd: add failed: %s", err)
 		}
 	}
 	if len(assignments) != 0 {
@@ -2584,7 +2850,7 @@ func maybeAssignableRem(ctx *domainContext) {
 	for _, long := range assignments {
 		err := pciAssignableRemove(long)
 		if err != nil {
-			log.Errorf("updateUsbAccess remove failed: %s\n", err)
+			log.Errorf("maybeAssignableRem remove failed: %s\n", err)
 		}
 	}
 	if len(assignments) != 0 {
@@ -2592,10 +2858,17 @@ func maybeAssignableRem(ctx *domainContext) {
 	}
 }
 
-func handleIBDelete(ctx *domainContext, ib types.IoBundle,
-	status *types.AssignableAdapters) {
+func handleIBDelete(ctx *domainContext, name string) {
 
-	log.Infof("handleIBDelete(%d %s %s)", ib.Type, ib.Name, ib.AssignmentGroup)
+	log.Infof("handleIBDelete(%s)", name)
+	aa := ctx.assignableAdapters
+
+	ib := aa.LookupIoBundle(0, name)
+	if ib == nil {
+		log.Infof("handleIBDelete: Adapter ( %s ) not found", name)
+		return
+	}
+
 	if ib.IsPCIBack {
 		log.Infof("handleIBDelete: Assigning %s (%s) back\n",
 			ib.Name, ib.PciLong)
@@ -2609,37 +2882,38 @@ func handleIBDelete(ctx *domainContext, ib types.IoBundle,
 		}
 	}
 	replace := types.AssignableAdapters{Initialized: true,
-		IoBundleList: make([]types.IoBundle, len(status.IoBundleList)-1)}
-	for _, e := range status.IoBundleList {
+		IoBundleList: make([]types.IoBundle, len(aa.IoBundleList)-1)}
+	for _, e := range aa.IoBundleList {
 		if e.Type == ib.Type && e.Name == ib.Name {
 			continue
 		}
 		replace.IoBundleList = append(replace.IoBundleList, e)
 	}
-	*status = replace
+	*ctx.assignableAdapters = replace
 	checkIoBundleAll(ctx)
 }
 
-func handleIBModify(ctx *domainContext, statusIb types.IoBundle, configIb types.IoBundle,
-	status *types.AssignableAdapters) {
+func handleIBModify(ctx *domainContext, newIb types.IoBundle) {
+	aa := ctx.assignableAdapters
+	currentIbPtr := aa.LookupIoBundle(newIb.Type, newIb.Name)
+	if currentIbPtr == nil {
+		log.Errorf("Failed to find IoBundle (%d %s).  aa: %+v\n",
+			newIb.Type, newIb.Name, aa)
+		return
+	}
 
 	log.Infof("handleIBModify(%d %s %s) from %v to %v\n",
-		statusIb.Type, statusIb.Name, statusIb.AssignmentGroup,
-		statusIb, configIb)
+		currentIbPtr.Type, currentIbPtr.Name, currentIbPtr.AssignmentGroup,
+		*currentIbPtr, newIb)
 
-	for i := range status.IoBundleList {
-		e := &(*status).IoBundleList[i]
-		if e.Type != statusIb.Type || e.Name != statusIb.Name {
-			continue
-		}
-		// XXX can we have changes which require us to
-		// do pciAssignableRemove for the old status?
-		if err := checkAndSetIoBundle(ctx, &configIb); err != nil {
-			log.Warnf("Not reporting non-existent PCI device %d %s: %v\n",
-				configIb.Type, configIb.Name, err)
-			return
-		}
-		*e = configIb
+	if err := checkAndSetIoBundle(ctx, &newIb, false); err != nil {
+		log.Warnf("Not reporting non-existent PCI device %d %s: %v\n",
+			newIb.Type, newIb.Name, err)
+		return
 	}
+
+	// XXX can we have changes which require us to
+	// do pciAssignableRemove for the old Adapter?
+	*currentIbPtr = newIb
 	checkIoBundleAll(ctx)
 }

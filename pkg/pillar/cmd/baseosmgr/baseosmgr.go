@@ -37,7 +37,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"time"
@@ -71,7 +70,6 @@ type baseOsMgrContext struct {
 	subBaseOsConfig          *pubsub.Subscription
 	subZbootConfig           *pubsub.Subscription
 	subCertObjConfig         *pubsub.Subscription
-	subDatastoreConfig       *pubsub.Subscription
 	subBaseOsDownloadStatus  *pubsub.Subscription
 	subCertObjDownloadStatus *pubsub.Subscription
 	subBaseOsVerifierStatus  *pubsub.Subscription
@@ -136,13 +134,17 @@ func Run() {
 	for !ctx.verifierRestarted {
 		select {
 		case change := <-ctx.subGlobalConfig.C:
+			start := agentlog.StartTime()
 			ctx.subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subBaseOsVerifierStatus.C:
+			start := agentlog.StartTime()
 			ctx.subBaseOsVerifierStatus.ProcessChange(change)
 			if ctx.verifierRestarted {
 				log.Infof("Verifier reported restarted\n")
 			}
+			agentlog.CheckMaxTime(agentName, start)
 		}
 	}
 
@@ -150,28 +152,39 @@ func Run() {
 	for {
 		select {
 		case change := <-ctx.subGlobalConfig.C:
+			start := agentlog.StartTime()
 			ctx.subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subCertObjConfig.C:
+			start := agentlog.StartTime()
 			ctx.subCertObjConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subBaseOsConfig.C:
+			start := agentlog.StartTime()
 			ctx.subBaseOsConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subZbootConfig.C:
+			start := agentlog.StartTime()
 			ctx.subZbootConfig.ProcessChange(change)
-
-		case change := <-ctx.subDatastoreConfig.C:
-			ctx.subDatastoreConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subBaseOsDownloadStatus.C:
+			start := agentlog.StartTime()
 			ctx.subBaseOsDownloadStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subBaseOsVerifierStatus.C:
+			start := agentlog.StartTime()
 			ctx.subBaseOsVerifierStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subCertObjDownloadStatus.C:
+			start := agentlog.StartTime()
 			ctx.subCertObjDownloadStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
@@ -185,23 +198,6 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
 	if done {
 		ctx.verifierRestarted = true
 	}
-}
-
-// Wrappers around handleBaseOsCreate/Modify/Delete
-func handleBaseOsConfigModify(ctxArg interface{}, key string, configArg interface{}) {
-	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.CastBaseOsConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleBaseOsConfigModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
-		return
-	}
-	status := lookupBaseOsStatus(ctx, key)
-	if status == nil {
-		handleBaseOsCreate(ctx, key, &config)
-	} else {
-		handleBaseOsModify(ctx, key, &config, status)
-	}
-	log.Infof("handleBaseOsConfigModify(%s) done\n", key)
 }
 
 func handleBaseOsConfigDelete(ctxArg interface{}, key string,
@@ -218,21 +214,12 @@ func handleBaseOsConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleBaseOsConfigDelete(%s) done\n", key)
 }
 
-// base os config event handlers
-// base os config create event
-func handleBaseOsCreate(ctxArg interface{}, key string,
-	configArg interface{}) {
+// base os config modify event
+func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
 
-	config := cast.CastBaseOsConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleBaseOsCreate key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	uuidStr := config.Key()
+	log.Infof("handleBaseOsCreate(%s)\n", key)
 	ctx := ctxArg.(*baseOsMgrContext)
-
-	log.Infof("handleBaseOsCreate for %s\n", uuidStr)
+	config := cast.CastBaseOsConfig(configArg)
 	status := types.BaseOsStatus{
 		UUIDandVersion: config.UUIDandVersion,
 		BaseOsVersion:  config.BaseOsVersion,
@@ -248,12 +235,6 @@ func handleBaseOsCreate(ctxArg interface{}, key string,
 		ss.ImageSha256 = sc.ImageSha256
 		ss.Target = sc.Target
 	}
-	handleBaseOsCreate2(ctx, config, status)
-}
-
-func handleBaseOsCreate2(ctx *baseOsMgrContext, config types.BaseOsConfig,
-	status types.BaseOsStatus) {
-
 	// Check image count
 	err := validateBaseOsConfig(ctx, config)
 	if err != nil {
@@ -264,30 +245,25 @@ func handleBaseOsCreate2(ctx *baseOsMgrContext, config types.BaseOsConfig,
 		publishBaseOsStatus(ctx, &status)
 		return
 	}
-
-	// Check if the version is already in one of the partions
-	baseOsGetActivationStatus(ctx, &status)
 	publishBaseOsStatus(ctx, &status)
-
 	baseOsHandleStatusUpdate(ctx, &config, &status)
 }
 
-// base os config modify event
-func handleBaseOsModify(ctxArg interface{}, key string,
-	configArg interface{}, statusArg interface{}) {
+func handleBaseOsModify(ctxArg interface{}, key string, configArg interface{}) {
+
+	log.Infof("handleBaseOsModify(%s)\n", key)
+	ctx := ctxArg.(*baseOsMgrContext)
 	config := cast.CastBaseOsConfig(configArg)
+	status := lookupBaseOsStatus(ctx, key)
 	if config.Key() != key {
 		log.Errorf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
 			key, config.Key(), config)
 		return
 	}
-	status := cast.CastBaseOsStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
+	if status == nil {
+		log.Errorf("handleBaseOsModify status not found, ignored %+v\n", key)
 		return
 	}
-	ctx := ctxArg.(*baseOsMgrContext)
 
 	log.Infof("handleBaseOsModify(%s) for %s Activate %v\n",
 		config.Key(), config.BaseOsVersion, config.Activate)
@@ -299,15 +275,14 @@ func handleBaseOsModify(ctxArg interface{}, key string,
 		log.Errorln(errStr)
 		status.Error = errStr
 		status.ErrorTime = time.Now()
-		publishBaseOsStatus(ctx, &status)
+		publishBaseOsStatus(ctx, status)
 		return
 	}
 
 	// update the version field, uuids being the same
 	status.UUIDandVersion = config.UUIDandVersion
-	publishBaseOsStatus(ctx, &status)
-
-	baseOsHandleStatusUpdate(ctx, &config, &status)
+	publishBaseOsStatus(ctx, status)
+	baseOsHandleStatusUpdate(ctx, &config, status)
 }
 
 // base os config delete event
@@ -323,24 +298,6 @@ func handleBaseOsDelete(ctxArg interface{}, key string,
 
 	log.Infof("handleBaseOsDelete for %s\n", status.BaseOsVersion)
 	removeBaseOsConfig(ctx, status.Key())
-}
-
-// Wrappers around handleCertObjCreate/Modify/Delete
-
-func handleCertObjConfigModify(ctxArg interface{}, key string, configArg interface{}) {
-	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.CastCertObjConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleCertObjConfigModify key/UUID mismatch %s vs %s; ignored %+v\n", key, config.Key(), config)
-		return
-	}
-	status := lookupCertObjStatus(ctx, key)
-	if status == nil {
-		handleCertObjCreate(ctx, key, &config)
-	} else {
-		handleCertObjModify(ctx, key, &config, status)
-	}
-	log.Infof("handleCertObjConfigModify(%s) done\n", key)
 }
 
 func handleCertObjConfigDelete(ctxArg interface{}, key string,
@@ -359,8 +316,9 @@ func handleCertObjConfigDelete(ctxArg interface{}, key string,
 
 // certificate config/status event handlers
 // certificate config create event
-func handleCertObjCreate(ctx *baseOsMgrContext, key string, config *types.CertObjConfig) {
-
+func handleCertObjCreate(ctxArg interface{}, key string, configArg interface{}) {
+	ctx := ctxArg.(*baseOsMgrContext)
+	config := cast.CastCertObjConfig(configArg)
 	log.Infof("handleCertObjCreate for %s\n", key)
 
 	status := types.CertObjStatus{
@@ -380,12 +338,14 @@ func handleCertObjCreate(ctx *baseOsMgrContext, key string, config *types.CertOb
 
 	publishCertObjStatus(ctx, &status)
 
-	certObjHandleStatusUpdate(ctx, config, &status)
+	certObjHandleStatusUpdate(ctx, &config, &status)
 }
 
 // certificate config modify event
-func handleCertObjModify(ctx *baseOsMgrContext, key string, config *types.CertObjConfig, status *types.CertObjStatus) {
-
+func handleCertObjModify(ctxArg interface{}, key string, configArg interface{}) {
+	ctx := ctxArg.(*baseOsMgrContext)
+	config := cast.CastCertObjConfig(configArg)
+	status := lookupCertObjStatus(ctx, key)
 	uuidStr := config.Key()
 	log.Infof("handleCertObjModify for %s\n", uuidStr)
 
@@ -398,7 +358,7 @@ func handleCertObjModify(ctx *baseOsMgrContext, key string, config *types.CertOb
 	}
 
 	// on storage config change, purge and recreate
-	if certObjCheckConfigModify(ctx, key, config, status) {
+	if certObjCheckConfigModify(ctx, key, &config, status) {
 		removeCertObjConfig(ctx, key)
 		handleCertObjCreate(ctx, key, config)
 	}
@@ -462,72 +422,6 @@ func handleVerifierStatusDelete(ctxArg interface{}, key string,
 	log.Infof("handleVeriferStatusDelete RefCount %d Expired %v for %s\n",
 		status.RefCount, status.Expired, key)
 	// Nothing to do
-}
-
-// data store config modify event
-func handleDatastoreConfigModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.CastDatastoreConfig(configArg)
-	checkAndRecreateBaseOs(ctx, config.UUID)
-	log.Infof("handleDatastoreConfigModify for %s\n", key)
-}
-
-// data store config delete event
-func handleDatastoreConfigDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Infof("handleDatastoreConfigDelete for %s\n", key)
-}
-
-// Called when a DatastoreConfig is added
-// Walk all BaseOsStatus (XXX Cert?) looking for MissingDatastore, then
-// check if the DatastoreId matches.
-func checkAndRecreateBaseOs(ctx *baseOsMgrContext, datastore uuid.UUID) {
-
-	log.Infof("checkAndRecreateBaseOs(%s)\n", datastore.String())
-	pub := ctx.pubBaseOsStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := cast.CastBaseOsStatus(st)
-		if !status.MissingDatastore {
-			continue
-		}
-		log.Infof("checkAndRecreateBaseOs(%s) missing for %s\n",
-			datastore.String(), status.BaseOsVersion)
-
-		config := lookupBaseOsConfig(ctx, status.Key())
-		if config == nil {
-			log.Warnf("checkAndRecreatebaseOs(%s) no config for %s\n",
-				datastore.String(), status.BaseOsVersion)
-			continue
-		}
-
-		matched := false
-		for _, ss := range config.StorageConfigList {
-			if ss.DatastoreId != datastore {
-				continue
-			}
-			log.Infof("checkAndRecreateBaseOs(%s) found ss %s for %s\n",
-				datastore.String(), ss.Name,
-				status.BaseOsVersion)
-			matched = true
-		}
-		if !matched {
-			continue
-		}
-		log.Infof("checkAndRecreateBaseOs(%s) recreating for %s\n",
-			datastore.String(), status.BaseOsVersion)
-		if status.Error != "" {
-			log.Infof("checkAndRecreateBaseOs(%s) remove error %s for %s\n",
-				datastore.String(), status.Error,
-				status.BaseOsVersion)
-			status.Error = ""
-			status.ErrorTime = time.Time{}
-		}
-		handleBaseOsCreate2(ctx, *config, status)
-	}
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {
@@ -631,7 +525,8 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subBaseOsConfig.ModifyHandler = handleBaseOsConfigModify
+	subBaseOsConfig.ModifyHandler = handleBaseOsModify
+	subBaseOsConfig.CreateHandler = handleBaseOsCreate
 	subBaseOsConfig.DeleteHandler = handleBaseOsConfigDelete
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
@@ -647,24 +542,14 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	ctx.subZbootConfig = subZbootConfig
 	subZbootConfig.Activate()
 
-	// Look for DatastorConfig, from zedagent
-	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
-		types.DatastoreConfig{}, false, ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
-	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
-	ctx.subDatastoreConfig = subDatastoreConfig
-	subDatastoreConfig.Activate()
-
 	// Look for CertObjConfig, from zedagent
 	subCertObjConfig, err := pubsub.Subscribe("zedagent",
 		types.CertObjConfig{}, false, ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subCertObjConfig.ModifyHandler = handleCertObjConfigModify
+	subCertObjConfig.ModifyHandler = handleCertObjModify
+	subCertObjConfig.CreateHandler = handleCertObjCreate
 	subCertObjConfig.DeleteHandler = handleCertObjConfigDelete
 	ctx.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()

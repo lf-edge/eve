@@ -769,6 +769,7 @@ func (pub *Publication) GetAll() map[string]interface{} {
 	return result
 }
 
+// SubHandler is a generic handler to handle create, modify and delete
 // Usage:
 //  s1 := pubsub.Subscribe("foo", fooStruct{}, true, &myctx)
 // Or
@@ -787,15 +788,15 @@ func (pub *Publication) GetAll() map[string]interface{} {
 //  the subscribed collection. The subscribed collection can be accessed using:
 //  foo := s1.Get(key)
 //  fooAll := s1.GetAll()
-
-type SubModifyHandler func(ctx interface{}, key string, status interface{})
-type SubDeleteHandler func(ctx interface{}, key string, status interface{})
+// SubHandler is a generic handler to handle create, modify and delete
+type SubHandler func(ctx interface{}, key string, status interface{})
 type SubRestartHandler func(ctx interface{}, restarted bool)
 
 type Subscription struct {
 	C                   <-chan string
-	ModifyHandler       SubModifyHandler
-	DeleteHandler       SubDeleteHandler
+	CreateHandler       SubHandler
+	ModifyHandler       SubHandler
+	DeleteHandler       SubHandler
 	RestartHandler      SubRestartHandler
 	SynchronizedHandler SubRestartHandler
 
@@ -1159,6 +1160,7 @@ func handleModify(ctxArg interface{}, key string, item interface{}) {
 	// NOTE: without a deepCopy we would just save a pointer since
 	// item is a pointer. That would cause failures.
 	newItem := deepCopy(item)
+	created := false
 	m, ok := sub.km.key.Load(key)
 	if ok {
 		if cmp.Equal(m, newItem) {
@@ -1171,12 +1173,15 @@ func handleModify(ctxArg interface{}, key string, item interface{}) {
 	} else {
 		log.Debugf("pubsub.handleModify(%s) add %+v for key %s\n",
 			name, newItem, key)
+		created = true
 	}
 	sub.km.key.Store(key, newItem)
 	if log.GetLevel() == log.DebugLevel {
 		sub.dump("after handleModify")
 	}
-	if sub.ModifyHandler != nil {
+	if created && sub.CreateHandler != nil {
+		(sub.CreateHandler)(sub.userCtx, key, newItem)
+	} else if sub.ModifyHandler != nil {
 		(sub.ModifyHandler)(sub.userCtx, key, newItem)
 	}
 	log.Debugf("pubsub.handleModify(%s) done for key %s\n", name, key)

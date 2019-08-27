@@ -16,11 +16,13 @@ message SignatureInfo {
 }
 
 enum DsType {
-	DsUnknown = 0;
-	DsHttp  = 1;
-	DsHttps = 2;
-	DsS3    = 3;
-	DsSFTP	= 4;	
+  DsUnknown = 0;
+  DsHttp    = 1;
+  DsHttps   = 2;
+  DsS3      = 3;
+  DsSFTP    = 4;
+  DsContainerRegistry = 5;
+  DsAzureBlob = 6;
 }
 
 message DatastoreConfig {
@@ -43,14 +45,15 @@ message DatastoreConfig {
 
 
 enum Format {
-	FmtUnknown = 0;	
-	RAW   = 1;
-	QCOW  = 2;
-	QCOW2 = 3;
-	VHD   = 4;
-	VMDK  = 5;
-	OVA   = 6;
-	VHDX  = 7;
+  FmtUnknown = 0;
+  RAW   = 1;
+  QCOW  = 2;
+  QCOW2 = 3;
+  VHD   = 4;
+  VMDK  = 5;
+  OVA   = 6;
+  VHDX  = 7;
+  CONTAINER = 8;
 }
 
 message Image {
