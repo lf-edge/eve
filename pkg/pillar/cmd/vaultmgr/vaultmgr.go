@@ -192,7 +192,7 @@ func isDirEmpty(path string) bool {
 		}
 		if len(files) == 1 && files[0] == "lost+found" {
 			log.Debugf("Ignoring lost+found on %s", path)
-			execCmd("rm -rf", path+"/lost+found")
+			execCmd("rm", "-rf", path+"/lost+found")
 			return true
 		}
 	}
