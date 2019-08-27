@@ -174,23 +174,45 @@ echo
 
 CONFIGDEV=$(zboot partdev CONFIG)
 if P3=$(zboot partdev P3) && [ -n "$P3" ]; then
-    echo "$(date -Ins -u) Using $P3 for $PERSISTDIR"
-    if ! fsck.ext3 -y "$P3"; then
+    P3TYPE=$(blkid "$P3"| awk '{print $3}' | sed 's/TYPE=//' | sed 's/"//g')
+    echo "$(date -Ins -u) Using $P3 formatted with $P3TYPE for $PERSISTDIR"
+    if [ "$P3TYPE" = "ext3" ]; then
+        echo "$(date -Ins -u) Converting ext3 to ext4"
+        fsck.ext3 -pf "$P3"
+        tune2fs -O extents,uninit_bg,dir_index "$P3"
+    fi
+    if ! fsck.ext4 -y "$P3"; then
         echo "$(date -Ins -u) mkfs on $P3 for $PERSISTDIR"
-        # XXX note that if we have a bad ext3 partition this will ask questions
+        # XXX note that if we have a bad ext4 partition this will ask questions
         # Need to either dd zeros over the partition of feed "yes" into mkfs.
-        if ! mkfs -t ext3 -v "$P3"; then
+        if ! mkfs -t ext4 -v "$P3"; then
             # XXX !? will be zero
             echo "$(date -Ins -u) mkfs $P3 failed: $?"
             # Try mounting below
         fi
     fi
-    if ! mount -t ext3 -o dirsync,noatime "$P3" $PERSISTDIR; then
+    #We have a clean ext4 system, now enable file system level encryption
+    tune2fs -O encrypt "$P3"
+    if ! mount -t ext4 -o dirsync,noatime "$P3" $PERSISTDIR; then
         # XXX !? will be zero
         echo "$(date -Ins -u) mount $P3 failed: $?"
     fi
 else
     echo "$(date -Ins -u) No separate $PERSISTDIR partition"
+fi
+
+if [ ! -d $LOGDIRA ]; then
+    echo "$(date -Ins -u) Creating $LOGDIRA"
+    mkdir -p $LOGDIRA
+fi
+if [ ! -d $LOGDIRB ]; then
+    echo "$(date -Ins -u) Creating $LOGDIRB"
+    mkdir -p $LOGDIRB
+fi
+
+if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
+    #Initialize fscrypt algorithm, hash length etc.
+    $BINDIR/vaultmgr -c "$CURPART" setupVaults
 fi
 
 if [ ! -d "$PERSIST_RKT_DATA_DIR" ]; then
@@ -228,15 +250,6 @@ done
 
 if ! CURPART=$(zboot curpart); then
     CURPART="IMGA"
-fi
-
-if [ ! -d $LOGDIRA ]; then
-    echo "$(date -Ins -u) Creating $LOGDIRA"
-    mkdir -p $LOGDIRA
-fi
-if [ ! -d $LOGDIRB ]; then
-    echo "$(date -Ins -u) Creating $LOGDIRB"
-    mkdir -p $LOGDIRB
 fi
 
 if [ ! -d $PERSISTDIR/log ]; then

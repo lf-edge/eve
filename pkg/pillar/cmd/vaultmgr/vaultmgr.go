@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
@@ -20,25 +21,40 @@ const (
 	fscryptPath     = "/opt/zededa/bin/fscrypt"
 	keyctlPath      = "/bin/keyctl"
 	mountPoint      = "/persist/"
-	vaultPath       = "/persist/vault"
+	defaultImgVault = "/persist/img"
+	defaultCfgVault = "/persist/config"
 	keyDir          = "/TmpVaultDir"
-	protectorName   = "TheVaultProtector"
+	protectorPrefix = "TheVaultKey"
 	vaultKeyLen     = 32 //bytes
 	vaultHalfKeyLen = 16 //bytes
 )
 
 var (
-	keyFile        = keyDir + "/protector.key"
-	keyctlParams   = []string{"link", "@u", "@s"}
-	mntPointParams = []string{"setup", mountPoint, "--quiet"}
-	statusParams   = []string{"status", mountPoint}
-	setupParams    = []string{"setup", "--quiet"}
-	encryptParams  = []string{"encrypt", vaultPath, "--key=" + keyFile,
-		"--source=raw_key", "--name=" + protectorName,
-		"--user=root"}
-	unlockParams = []string{"unlock", vaultPath, "--key=" + keyFile,
-		"--user=root"}
+	keyFile           = keyDir + "/protector.key"
+	keyctlParams      = []string{"link", "@u", "@s"}
+	mntPointParams    = []string{"setup", mountPoint, "--quiet"}
+	statusParams      = []string{"status", mountPoint}
+	vaultStatusParams = []string{"status"}
+	setupParams       = []string{"setup", "--quiet"}
 )
+
+func getEncryptParams(vaultPath string) []string {
+	args := []string{"encrypt", vaultPath, "--key=" + keyFile,
+		"--source=raw_key", "--name=" + protectorPrefix + filepath.Base(vaultPath),
+		"--user=root"}
+	return args
+}
+
+func getUnlockParams(vaultPath string) []string {
+	args := []string{"unlock", vaultPath, "--key=" + keyFile,
+		"--user=root"}
+	return args
+}
+
+func getStatusParams(vaultPath string) []string {
+	args := vaultStatusParams
+	return append(args, vaultPath)
+}
 
 //Error values
 var (
@@ -163,49 +179,86 @@ func unstageKey() {
 	return
 }
 
-//handleFirstUse sets up vault for the first time use
+func isDirEmpty(path string) bool {
+	if f, err := os.Open(path); err == nil {
+		files, err := f.Readdirnames(0)
+		if err != nil {
+			log.Errorf("Error reading dir contents: %v", err)
+			return false
+		}
+		if len(files) == 0 {
+			log.Debugf("No files in %s", path)
+			return true
+		}
+		if len(files) == 1 && files[0] == "lost+found" {
+			log.Debugf("Ignoring lost+found on %s", path)
+			execCmd("rm -rf", path+"/lost+found")
+			return true
+		}
+	}
+	log.Debugf("Dir is not empty at %s", path)
+	return false
+}
+
+//handleFirstUse sets up mountpoint for the first time use
 func handleFirstUse() error {
 	//setup mountPoint for encryption
 	if _, _, err := execCmd(fscryptPath, mntPointParams...); err != nil {
 		log.Fatalf("Error setting up mountpoint for encrption: %v", err)
 		return err
 	}
-
-	//Create vault
-	if _, _, err := execCmd("mkdir", vaultPath); err != nil {
-		log.Fatalf("Error creating vault: %v", err)
-		return err
-	}
-
-	if err := stageKey(); err != nil {
-		return err
-	}
-	defer unstageKey()
-
-	//Encrypt vault, and unlock it for accessing
-	if _, _, err := execCmd(fscryptPath, encryptParams...); err != nil {
-		log.Errorf("Encryption failed: %v", err)
-		return err
-	}
-
-	return linkKeyrings()
+	return nil
 }
 
-func unlockVault() error {
+func unlockVault(vaultPath string) error {
 	if err := stageKey(); err != nil {
 		return err
 	}
 	defer unstageKey()
 
 	//Unlock vault for access
-	if _, _, err := execCmd(fscryptPath, unlockParams...); err != nil {
+	if _, _, err := execCmd(fscryptPath, getUnlockParams(vaultPath)...); err != nil {
 		log.Fatalf("Error unlocking vault: %v", err)
 		return err
 	}
 	return linkKeyrings()
 }
 
-func setupVault() error {
+//createVault expects an empty, existing dir at vaultPath
+func createVault(vaultPath string) error {
+	if err := stageKey(); err != nil {
+		return err
+	}
+	defer unstageKey()
+
+	//Encrypt vault, and unlock it for accessing
+	if stdout, stderr, err := execCmd(fscryptPath, getEncryptParams(vaultPath)...); err != nil {
+		log.Errorf("Encryption failed: %v, %s, %s", err, stdout, stderr)
+		return err
+	}
+	return linkKeyrings()
+}
+
+func setupVault(vaultPath string) error {
+	if _, err := os.Stat(vaultPath); os.IsNotExist(err) {
+		//Create vault dir
+		if _, _, err := execCmd("mkdir", "-p", vaultPath); err != nil {
+			return err
+		}
+	}
+	args := getStatusParams(vaultPath)
+	if _, _, err := execCmd(fscryptPath, args...); err != nil {
+		if !isDirEmpty(vaultPath) {
+			//Don't disturb existing installations
+			return nil
+		}
+		return createVault(vaultPath)
+	}
+	//Already setup for encryption, go for unlocking
+	return unlockVault(vaultPath)
+}
+
+func setupFscryptEnv() error {
 	//setup fscrypt.conf, if not done already
 	if _, _, err := execCmd(fscryptPath, setupParams...); err != nil {
 		log.Fatalf("Error setting up fscrypt.conf: %v", err)
@@ -216,8 +269,7 @@ func setupVault() error {
 		//Not yet setup, set it up for the first use
 		return handleFirstUse()
 	}
-	//Already setup for encryption, go for unlocking
-	return unlockVault()
+	return nil
 }
 
 //Run is the entrypoint for running vaultmgr as a standalone program
@@ -238,9 +290,17 @@ func Run() {
 	defer logf.Close()
 
 	switch flag.Args()[0] {
-	case "setupVault":
-		if err = setupVault(); err != nil {
-			log.Fatal("Error in setting up vault:", err)
+	case "setupVaults":
+		if err = setupFscryptEnv(); err != nil {
+			log.Fatal("Error in setting up fscrypt environment:", err)
+			os.Exit(1)
+		}
+		if err = setupVault(defaultImgVault); err != nil {
+			log.Fatalf("Error in setting up vault %s:%v", defaultImgVault, err)
+			os.Exit(1)
+		}
+		if err = setupVault(defaultCfgVault); err != nil {
+			log.Fatalf("Error in setting up vault %s %v", defaultImgVault, err)
 			os.Exit(1)
 		}
 	default:
