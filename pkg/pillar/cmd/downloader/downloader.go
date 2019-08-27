@@ -1239,6 +1239,90 @@ func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
 	}
 }
 
+func doAzureBlob(ctx *downloaderContext, status *types.DownloaderStatus,
+	syncOp zedUpload.SyncOpType, dnldUrl string, apiKey string, password string,
+	dpath string, region string, maxsize uint64, ifname string,
+	ipSrc net.IP, filename string, locFilename string) error {
+
+	auth := &zedUpload.AuthInput{
+		AuthType: "password",
+		Uname:    apiKey,
+		Password: password,
+	}
+
+	trType := zedUpload.SyncAzureTr
+
+	// create Endpoint
+	dEndPoint, err := ctx.dCtx.NewSyncerDest(trType, "", dpath, auth)
+	if err != nil {
+		log.Errorf("NewSyncerDest failed: %s\n", err)
+		return err
+	}
+	// check for proxies on the selected management port interface
+	proxyUrl, err := zedcloud.LookupProxy(
+		&ctx.deviceNetworkStatus, ifname, dnldUrl)
+	if err == nil && proxyUrl != nil {
+		log.Infof("doAzure: Using proxy %s", proxyUrl.String())
+		dEndPoint.WithSrcIpAndProxySelection(ipSrc, proxyUrl)
+	} else {
+		dEndPoint.WithSrcIpSelection(ipSrc)
+	}
+
+	var respChan = make(chan *zedUpload.DronaRequest)
+
+	log.Infof("doAzure syncOp for <%s>, <%s>\n", dpath, filename)
+	// create Request
+	// Round up from bytes to Mbytes
+	maxMB := (maxsize + 1024*1024 - 1) / (1024 * 1024)
+	req := dEndPoint.NewRequest(syncOp, filename, locFilename,
+		int64(maxMB), true, respChan)
+	if req == nil {
+		return errors.New("NewRequest failed")
+	}
+
+	req.Post()
+	for {
+		select {
+		case resp, ok := <-respChan:
+			if resp.IsDnUpdate() {
+				asize := resp.GetAsize()
+				osize := resp.GetOsize()
+				log.Infof("Update progress for %v: %v/%v",
+					resp.GetLocalName(), asize, osize)
+				if osize == 0 {
+					status.Progress = 0
+				} else {
+					percent := 100 * asize / osize
+					status.Progress = uint(percent)
+				}
+				publishDownloaderStatus(ctx, status)
+				continue
+			}
+			if !ok {
+				errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>",
+					dpath, filename)
+				log.Errorln(errStr)
+				return errors.New(errStr)
+			}
+			if syncOp == zedUpload.SyncOpDownload {
+				err = resp.GetDnStatus()
+			} else {
+				_, err = resp.GetUpStatus()
+			}
+			if resp.IsError() {
+				return err
+			} else {
+				log.Infof("Done for %v: size %v/%v",
+					resp.GetLocalName(),
+					resp.GetAsize(), resp.GetOsize())
+				status.Progress = 100
+				publishDownloaderStatus(ctx, status)
+				return nil
+			}
+		}
+	}
+}
+
 func doSftp(ctx *downloaderContext, status *types.DownloaderStatus,
 	syncOp zedUpload.SyncOpType, apiKey string, password string,
 	serverUrl string, dpath string, maxsize uint64,
@@ -1588,6 +1672,32 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			err = doS3(ctx, status, syncOp, dsCtx.DownloadURL, dsCtx.APIKey,
 				dsCtx.Password, dsCtx.Dpath, dsCtx.Region,
 				config.Size, ifname, ipSrc, filename, locFilename)
+			if err != nil {
+				log.Errorf("Source IP %s failed: %s\n",
+					ipSrc.String(), err)
+				errStr = errStr + "\n" + err.Error()
+				// XXX don't know how much we downloaded!
+				// Could have failed half-way. Using zero.
+				zedcloud.ZedCloudFailure(ifname,
+					metricsUrl, 1024, 0)
+			} else {
+				// Record how much we downloaded
+				size := int64(0)
+				info, err := os.Stat(locFilename)
+				if err != nil {
+					log.Error(err)
+				} else {
+					size = info.Size()
+				}
+				zedcloud.ZedCloudSuccess(ifname,
+					metricsUrl, 1024, size)
+				handleSyncOpResponse(ctx, config, status,
+					locFilename, key, "")
+				return
+			}
+		case zconfig.DsType_DsAzureBlob.String():
+			err = doAzureBlob(ctx, status, syncOp, dsCtx.DownloadURL, dsCtx.APIKey,
+				dsCtx.Password, dsCtx.Dpath, config.Size, ifname, ipSrc, filename, locFilename)
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
