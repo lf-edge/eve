@@ -250,11 +250,13 @@ func setupVault(vaultPath string) error {
 	if _, _, err := execCmd(fscryptPath, args...); err != nil {
 		if !isDirEmpty(vaultPath) {
 			//Don't disturb existing installations
+			log.Debugf("Not disturbing non-empty %s", vaultPath)
 			return nil
 		}
 		return createVault(vaultPath)
 	}
 	//Already setup for encryption, go for unlocking
+	log.Debugf("Unlocking %s", vaultPath)
 	return unlockVault(vaultPath)
 }
 
@@ -293,15 +295,12 @@ func Run() {
 	case "setupVaults":
 		if err = setupFscryptEnv(); err != nil {
 			log.Fatal("Error in setting up fscrypt environment:", err)
-			os.Exit(1)
 		}
 		if err = setupVault(defaultImgVault); err != nil {
 			log.Fatalf("Error in setting up vault %s:%v", defaultImgVault, err)
-			os.Exit(1)
 		}
 		if err = setupVault(defaultCfgVault); err != nil {
 			log.Fatalf("Error in setting up vault %s %v", defaultImgVault, err)
-			os.Exit(1)
 		}
 	default:
 		log.Errorln("Unknown Argument")
