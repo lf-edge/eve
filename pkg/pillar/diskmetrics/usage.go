@@ -13,7 +13,7 @@ func SizeFromDir(dirname string) uint64 {
 	var totalUsed uint64
 	locations, err := ioutil.ReadDir(dirname)
 	if err != nil {
-		log.Debugf("Dir %s is missing. Set the size to zero\n", dirname)
+		//log.Debugf("Dir %s is missing. Set the size to zero\n", dirname)
 		return totalUsed
 	}
 	for _, location := range locations {

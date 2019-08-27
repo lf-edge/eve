@@ -210,16 +210,24 @@ func Run() {
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
+			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAppImgConfig.C:
+			start := agentlog.StartTime()
 			subAppImgConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subBaseOsConfig.C:
+			start := agentlog.StartTime()
 			subBaseOsConfig.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-gc.C:
+			start := agentlog.StartTime()
 			gcVerifiedObjects(&ctx)
+			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)

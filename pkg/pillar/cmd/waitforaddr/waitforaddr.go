@@ -101,7 +101,10 @@ func Run() {
 		log.Infof("Waiting for usable address(es)\n")
 		select {
 		case change := <-subDeviceNetworkStatus.C:
+			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
 		case <-timer.C:
 			log.Infoln("Exit since we got timeout")
 			done = true

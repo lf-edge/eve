@@ -74,8 +74,11 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	for {
 		select {
 		case <-ticker.C:
+			start := agentlog.StartTime()
 			iteration += 1
 			publishMetrics(ctx, iteration)
+			agentlog.CheckMaxTime(agentName+"metrics", start)
+
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName + "metrics")
 		}
@@ -1497,13 +1500,15 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 	size := int64(proto.Size(ReportMetrics))
 	metricsUrl := serverNameAndPort + "/" + metricsApi
 	const return400 = false
-	_, _, cf, err := zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
+	_, _, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
 		size, buf, iteration, return400)
 	if err != nil {
 		// Hopefully next timeout will be more successful
-		log.Errorf("SendMetricsProtobuf failed: %s\n", err)
-		if cf {
-			log.Errorf("SendMetricsProtobuf certificate failure")
+		if rtf {
+			log.Errorf("SendMetricsProtobuf remoteTemporaryFailure: %s",
+				err)
+		} else {
+			log.Errorf("SendMetricsProtobuf failed: %s", err)
 		}
 		return
 	} else {

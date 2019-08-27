@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	log "github.com/sirupsen/logrus"
 )
@@ -43,7 +44,11 @@ type GlobalConfig struct {
 	NetworkTestDuration       uint32   // Time we wait for DHCP to complete
 	NetworkTestInterval       uint32   // Re-test DevicePortConfig
 	NetworkTestBetterInterval uint32   // Look for better DevicePortConfig
-	NetworkFallbackAnyEth     TriState // When no connectivity try any Ethernet; XXX LTE?
+	NetworkFallbackAnyEth     TriState // When no connectivity try any Ethernet, wlan, and wwan
+	NetworkTestTimeout        uint32   // Timeout for each test http/send
+
+	// zedagent, logmanager, etc
+	NetworkSendTimeout uint32 // Timeout for each http/send
 
 	// UsbAccess
 	// Determines if Dom0 can use USB devices.
@@ -100,6 +105,9 @@ var GlobalConfigDefaults = GlobalConfig{
 	NetworkTestInterval:       300, // 5 minutes
 	NetworkTestBetterInterval: 0,   // Disabled
 	NetworkFallbackAnyEth:     TS_ENABLED,
+	NetworkTestTimeout:        15,
+
+	NetworkSendTimeout: 120,
 
 	UsbAccess:             true, // Contoller likely to default to false
 	SshAccess:             true, // Contoller likely to default to false
@@ -148,6 +156,12 @@ func ApplyGlobalConfig(newgc GlobalConfig) GlobalConfig {
 
 	if newgc.NetworkFallbackAnyEth == TS_NONE {
 		newgc.NetworkFallbackAnyEth = GlobalConfigDefaults.NetworkFallbackAnyEth
+	}
+	if newgc.NetworkTestTimeout == 0 {
+		newgc.NetworkTestTimeout = GlobalConfigDefaults.NetworkTestTimeout
+	}
+	if newgc.NetworkSendTimeout == 0 {
+		newgc.NetworkSendTimeout = GlobalConfigDefaults.NetworkSendTimeout
 	}
 	if newgc.StaleConfigTime == 0 {
 		newgc.StaleConfigTime = GlobalConfigDefaults.StaleConfigTime
@@ -294,6 +308,29 @@ func EnsureGCFile() {
 				log.Errorf("%s file: %s", err, globalConfigFile)
 			} else {
 				ok = true
+			}
+			// Any new fields which need defaults/mins applied?
+			changed := false
+			updated := ApplyGlobalConfig(gc)
+			if !cmp.Equal(gc, updated) {
+				log.Infof("EnsureGCFile: updated with defaults %v",
+					cmp.Diff(gc, updated))
+				changed = true
+			}
+			sane := EnforceGlobalConfigMinimums(updated)
+			if !cmp.Equal(updated, sane) {
+				log.Infof("EnsureGCFile: enforced minimums %v",
+					cmp.Diff(updated, sane))
+				changed = true
+			}
+			gc = sane
+			if changed {
+				err := pubsub.PublishToDir("/persist/config/",
+					"global", gc)
+				if err != nil {
+					log.Errorf("PublishToDir for globalConfig failed: %s",
+						err)
+				}
 			}
 		}
 		if !ok {
