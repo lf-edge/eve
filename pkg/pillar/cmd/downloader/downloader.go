@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -1502,6 +1503,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	var errStr string
 	var locFilename string
 	var syncOp zedUpload.SyncOpType = zedUpload.SyncOpDownload
+	var serverURL string
 
 	if status.ObjType == "" {
 		log.Fatalf("handleSyncOp: No ObjType for %s\n",
@@ -1610,10 +1612,14 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		case zconfig.DsType_DsSFTP.String():
-			serverUrl := getServerUrl(dsCtx, filename)
-			err = doSftp(ctx, status, syncOp, dsCtx.APIKey,
-				dsCtx.Password, serverUrl, dsCtx.Dpath,
-				config.Size, ipSrc, filename, locFilename)
+			serverURL, err = getServerUrl(dsCtx)
+			if err == nil {
+				// pass in the config.Name instead of 'filename' which
+				// does not contain the prefix of the relative path with '/'s
+				err = doSftp(ctx, status, syncOp, dsCtx.APIKey,
+					dsCtx.Password, serverURL, dsCtx.Dpath,
+					config.Size, ipSrc, config.Name, locFilename)
+			}
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
@@ -1638,9 +1644,13 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		case zconfig.DsType_DsHttp.String(), zconfig.DsType_DsHttps.String(), "":
-			serverUrl := getServerUrl(dsCtx, filename)
-			err = doHttp(ctx, status, syncOp, serverUrl, dsCtx.Dpath,
-				config.Size, ifname, ipSrc, filename, locFilename)
+			serverURL, err = getServerUrl(dsCtx)
+			if err == nil {
+				// pass in the config.Name instead of 'filename' which
+				// does not contain the prefix of the relative path with '/'s
+				err = doHttp(ctx, status, syncOp, serverURL, dsCtx.Dpath,
+					config.Size, ifname, ipSrc, config.Name, locFilename)
+			}
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
@@ -1672,15 +1682,13 @@ func handleSyncOp(ctx *downloaderContext, key string,
 }
 
 // DownloadURL format : http://<serverURL>/dpath/filename
-// XXX why can't we parse URL from font? This only works when filename starts with "/"
-func getServerUrl(dsCtx *types.DatastoreContext, filename string) string {
-	if dsCtx.Dpath != "" {
-		return strings.TrimSuffix(dsCtx.DownloadURL,
-			"/"+dsCtx.Dpath+"/"+filename)
-	} else {
-		return strings.TrimSuffix(dsCtx.DownloadURL,
-			"/"+filename)
+func getServerUrl(dsCtx *types.DatastoreContext) (string, error) {
+	u, err := url.Parse(dsCtx.DownloadURL)
+	if err != nil {
+		log.Errorf("URL Parsing failed: %s\n", err)
+		return "", err
 	}
+	return u.Scheme + "://" + u.Host, nil
 }
 
 func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
