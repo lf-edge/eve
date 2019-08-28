@@ -273,7 +273,7 @@ func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	changed := false
 	if change.NewAddr {
 		changed = devicenetwork.IfindexToAddrsAdd(change.LinkIndex,
-			change.LinkAddress)
+			change.LinkAddress.IP)
 		if changed {
 			_, linkType, err := devicenetwork.IfindexToName(change.LinkIndex)
 			if err != nil {
@@ -286,7 +286,7 @@ func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 		}
 	} else {
 		changed = devicenetwork.IfindexToAddrsDel(change.LinkIndex,
-			change.LinkAddress)
+			change.LinkAddress.IP)
 		if changed {
 			_, linkType, err := devicenetwork.IfindexToName(change.LinkIndex)
 			if err != nil {
