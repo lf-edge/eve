@@ -190,11 +190,6 @@ func isDirEmpty(path string) bool {
 			log.Debugf("No files in %s", path)
 			return true
 		}
-		if len(files) == 1 && files[0] == "lost+found" {
-			log.Debugf("Ignoring lost+found on %s", path)
-			execCmd("rm", "-rf", path+"/lost+found")
-			return true
-		}
 	}
 	log.Debugf("Dir is not empty at %s", path)
 	return false
