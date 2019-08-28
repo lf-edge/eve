@@ -1144,10 +1144,10 @@ func getSwitchIPv4Addr(ctx *zedrouterContext,
 	}
 	for _, addr := range addrs {
 		log.Infof("getSwitchIPv4Addr(%s): found addr %s\n",
-			status.DisplayName, addr.IP.String())
+			status.DisplayName, addr.String())
 		// XXX Add IPv6 underlay; ignore link-locals.
-		if addr.IP.To4() != nil {
-			return addr.IP.String(), nil
+		if addr.To4() != nil {
+			return addr.String(), nil
 		}
 	}
 	log.Infof("getSwitchIPv4Addr(%s): no IPv4 address on %s yet\n",

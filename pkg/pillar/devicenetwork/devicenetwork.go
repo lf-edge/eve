@@ -95,7 +95,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 		NetworkSendTimeout:  timeout,
 	}
 
-	// Get device serail number
+	// Get device serial number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
 	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
 	log.Infof("NIM Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
@@ -188,7 +188,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 			err = errors.New(errStr)
 			continue
 		}
-		addrs, err := getAddrs(ifindex)
+		addrs, err := GetIPAddrs(ifindex)
 		if err != nil {
 			log.Warnf("MakeDeviceNetworkStatus addrs not found %s index %d: %s\n",
 				u.IfName, ifindex, err)
@@ -196,14 +196,18 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		}
 		globalStatus.Ports[ix].AddrInfoList = make([]types.AddrInfo,
 			len(addrs))
+		if len(addrs) == 0 {
+			log.Infof("PortAddrs(%s) found NO addresses",
+				u.IfName)
+		}
 		for i, addr := range addrs {
 			v := "IPv4"
-			if addr.IP.To4() == nil {
+			if addr.To4() == nil {
 				v = "IPv6"
 			}
 			log.Infof("PortAddrs(%s) found %s %v\n",
-				u.IfName, v, addr.IP)
-			globalStatus.Ports[ix].AddrInfoList[i].Addr = addr.IP
+				u.IfName, v, addr)
+			globalStatus.Ports[ix].AddrInfoList[i].Addr = addr
 		}
 		// Get DNS etc info from dhcpcd. Updates DomainName and DnsServers
 		err = GetDhcpInfo(&globalStatus.Ports[ix])
@@ -246,15 +250,15 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 	return globalStatus, err
 }
 
-// Return all IP addresses for an ifindex
+// GetIPAddrs return all IP addresses for an ifindex, and updates the cached info.
 // Leaves mask uninitialized
-// Also replaces what is in the Ifindex cache since AddrChange callbacks
+// It replaces what is in the Ifindex cache since AddrChange callbacks
 // are far from reliable.
 // If AddrChange worked reliably this would just be:
 // return IfindexToAddrs(ifindex)
-func getAddrs(ifindex int) ([]net.IPNet, error) {
+func GetIPAddrs(ifindex int) ([]net.IP, error) {
 
-	var addrs []net.IPNet
+	var addrs []net.IP
 
 	link, err := netlink.LinkByIndex(ifindex)
 	if err != nil {
@@ -272,22 +276,21 @@ func getAddrs(ifindex int) ([]net.IPNet, error) {
 		log.Warnf("netlink.AddrList %d V4 failed: %s", ifindex, err)
 		addrs6 = nil
 	}
+	log.Infof("GetIPAddrs(%d) found %v and %v", ifindex, addrs4, addrs6)
 	IfindexToAddrsFlush(ifindex)
 	for _, a := range addrs4 {
 		if a.IP == nil {
 			continue
 		}
-		ip := net.IPNet{IP: a.IP}
-		addrs = append(addrs, ip)
-		IfindexToAddrsAdd(ifindex, ip)
+		addrs = append(addrs, a.IP)
+		IfindexToAddrsAdd(ifindex, a.IP)
 	}
 	for _, a := range addrs6 {
 		if a.IP == nil {
 			continue
 		}
-		ip := net.IPNet{IP: a.IP}
-		addrs = append(addrs, ip)
-		IfindexToAddrsAdd(ifindex, ip)
+		addrs = append(addrs, a.IP)
+		IfindexToAddrsAdd(ifindex, a.IP)
 	}
 	return addrs, nil
 
