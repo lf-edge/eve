@@ -186,12 +186,12 @@ if P3=$(zboot partdev P3) && [ -n "$P3" ]; then
     if [ "$P3_FS_TYPE" = "ext3" ]; then
         if ! fsck.ext3 -y "$P3"; then
             FSCK_FAILED=1
-	fi
+        fi
     else
         P3_FS_TYPE="ext4"
         if ! fsck.ext4 -y "$P3"; then
             FSCK_FAILED=1
-	fi
+        fi
     fi
 
     #Any fsck error (ext3 or ext4), will lead to formatting P3 with ext4
