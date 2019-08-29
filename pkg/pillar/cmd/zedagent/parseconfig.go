@@ -910,10 +910,10 @@ func parseStorageConfigList(objType string,
 			log.Errorf("No drive.Image for drive %v\n",
 				drive)
 			// Pass on for error reporting
-			image.DatastoreId = nilUUID
+			image.DatastoreID = nilUUID
 		} else {
 			id, _ := uuid.FromString(drive.Image.DsId)
-			image.DatastoreId = id
+			image.DatastoreID = id
 			image.Name = drive.Image.Name
 
 			image.Format = strings.ToLower(drive.Image.Iformat.String())
@@ -1894,7 +1894,7 @@ func getCertObjConfig(config *types.CertObjConfig,
 	// XXX the sha for the cert should be set
 	// XXX:FIXME hardcoding Size as 100KB
 	var drive = &types.StorageConfig{
-		DatastoreId: image.DatastoreId,
+		DatastoreID: image.DatastoreID,
 		Name:        certUrl, // XXX FIXME use??
 		NameIsURL:   true,
 		Size:        100 * 1024,

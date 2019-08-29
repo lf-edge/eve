@@ -50,7 +50,7 @@ func createDownloaderConfig(ctx *baseOsMgrContext, objType string, safename stri
 	} else {
 		log.Infof("createDownloaderConfig(%s) add\n", safename)
 		n := types.DownloaderConfig{
-			DatastoreID:      sc.DatastoreId,
+			DatastoreID:      sc.DatastoreID,
 			Safename:         safename,
 			Name:             sc.Name,
 			NameIsURL:        sc.NameIsURL,
