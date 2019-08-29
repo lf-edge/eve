@@ -35,7 +35,7 @@ require (
 	github.com/shirou/gopsutil v0.0.0-20190323131628-2cbc9195c892
 	github.com/sirupsen/logrus v1.2.0
 	github.com/stretchr/testify v1.3.0
-	github.com/vishvananda/netlink v1.0.1-0.20190823182904-a1c9a648f744 // indirect
+	github.com/vishvananda/netlink v1.0.1-0.20190812020244-e825b754c0b1 // indirect
 	golang.org/x/crypto v0.0.0-20190404164418-38d8ce5564a5
 	golang.org/x/net v0.0.0-20190419010253-1f3472d942ba
 	google.golang.org/api v0.3.2 // indirect
