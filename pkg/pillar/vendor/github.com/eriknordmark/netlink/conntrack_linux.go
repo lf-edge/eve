@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"time"
+	"strings"
 
 	"github.com/vishvananda/netlink/nl"
 	"golang.org/x/sys/unix"
@@ -111,6 +112,49 @@ func (h *Handle) ConntrackDeleteFilter(table ConntrackTableType, family InetFami
 		}
 	}
 
+	return matched, nil
+}
+
+// conntrack -D
+func ConntrackDeleteIPSrc(table ConntrackTableType, family InetFamily, addr net.IP,
+	proto uint8, port uint16, debugShow bool) (uint, error) {
+	return pkgHandle.ConntrackDeleteIPSrc(table, family, addr, proto, port, debugShow)
+}
+
+// conntrack -D -s address -p protocol -P port   Delete conntrack flows matching the source IP and/or proto/port
+// the source IP address has to be specified, others are optional
+// the -s address will match either 'orig' or 'reply' addresses, can't be zero
+// protocol ID zero will match all flow protocols for flow deletion
+// port zero will match all flow source port
+func (h *Handle) ConntrackDeleteIPSrc(table ConntrackTableType, family InetFamily, addr net.IP,
+	proto uint8, port uint16, debugShow bool) (uint, error) {
+	res, err := h.dumpConntrackTable(table, family)
+	if err != nil {
+		return 0, err
+	}
+
+	var matched uint
+	var flownum int
+	for _, dataRaw := range res {
+		flow := parseRawData(dataRaw)
+		if (strings.Compare(flow.Forward.SrcIP.String(), addr.String()) == 0 ||
+			strings.Compare(flow.Reverse.SrcIP.String(), addr.String()) == 0) &&
+			(proto == 0 || flow.Forward.Protocol == proto) &&
+			(port == 0 || flow.Forward.SrcPort == port || flow.Reverse.SrcPort == port) {
+			req2 := h.newConntrackRequest(table, family, nl.IPCTNL_MSG_CT_DELETE, unix.NLM_F_ACK)
+			// skip the first 4 byte that are the netfilter header, the newConntrackRequest is adding it already
+			req2.AddRawData(dataRaw[4:])
+			req2.Execute(unix.NETLINK_NETFILTER, 0)
+			matched++
+			if debugShow {
+				fmt.Printf("[%d] flow deleted: %s\n", matched, flow.String())
+			}
+		}
+		flownum++
+	}
+	if debugShow {
+		fmt.Printf("total flow number: %d\n", flownum)
+	}
 	return matched, nil
 }
 
