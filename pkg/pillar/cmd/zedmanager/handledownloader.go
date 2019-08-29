@@ -26,7 +26,7 @@ func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
 		log.Debugf("AddOrRefcountDownloaderConfig: add for %s\n",
 			safename)
 		n := types.DownloaderConfig{
-			DatastoreID:      ss.DatastoreId,
+			DatastoreID:      ss.DatastoreID,
 			Safename:         safename,
 			Name:             ss.Name,
 			NameIsURL:        ss.NameIsURL,
