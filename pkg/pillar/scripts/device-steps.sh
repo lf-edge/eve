@@ -173,24 +173,71 @@ echo "$(date -Ins -u) Configuration from factory/install:"
 echo
 
 CONFIGDEV=$(zboot partdev CONFIG)
+
+P3_FS_TYPE="ext3"
+FSCK_FAILED=0
+#For systems with ext3 filesystem, try not to change to ext4, since it will brick
+#the device when falling back to old images expecting P3 to be ext3. Migrate to ext4
+#when we do usb install, this way the transition is more controlled.
 if P3=$(zboot partdev P3) && [ -n "$P3" ]; then
-    echo "$(date -Ins -u) Using $P3 for $PERSISTDIR"
-    if ! fsck.ext3 -y "$P3"; then
-        echo "$(date -Ins -u) mkfs on $P3 for $PERSISTDIR"
-        # XXX note that if we have a bad ext3 partition this will ask questions
-        # Need to either dd zeros over the partition of feed "yes" into mkfs.
-        if ! mkfs -t ext3 -v "$P3"; then
-            # XXX !? will be zero
-            echo "$(date -Ins -u) mkfs $P3 failed: $?"
-            # Try mounting below
+    P3_FS_TYPE=$(blkid "$P3"| awk '{print $3}' | sed 's/TYPE=//' | sed 's/"//g')
+    echo "$(date -Ins -u) Using $P3 (formatted with $P3_FS_TYPE), for $PERSISTDIR"
+
+    if [ "$P3_FS_TYPE" = "ext3" ]; then
+        if ! fsck.ext3 -y "$P3"; then
+            FSCK_FAILED=1
+        fi
+    else
+        P3_FS_TYPE="ext4"
+        if ! fsck.ext4 -y "$P3"; then
+            FSCK_FAILED=1
         fi
     fi
-    if ! mount -t ext3 -o dirsync,noatime "$P3" $PERSISTDIR; then
-        # XXX !? will be zero
-        echo "$(date -Ins -u) mount $P3 failed: $?"
+
+    #Any fsck error (ext3 or ext4), will lead to formatting P3 with ext4
+    if [ $FSCK_FAILED = 1 ]; then
+        echo "$(date -Ins -u) mkfs.ext4 on $P3 for $PERSISTDIR"
+        #Use -F option twice, to avoid any user confirmation in mkfs
+        if ! mkfs -t ext4 -v -F -F -O encrypt "$P3"; then
+            echo "$(date -Ins -u) mkfs.ext4 $P3 failed"
+        else
+            echo "$(date -Ins -u) mkfs.ext4 $P3 successful"
+            P3_FS_TYPE="ext4"
+        fi
+    fi
+
+    if [ "$P3_FS_TYPE" = "ext3" ]; then
+        if ! mount -t ext3 -o dirsync,noatime "$P3" $PERSISTDIR; then
+            echo "$(date -Ins -u) mount $P3 failed"
+        fi
+    fi
+    #On ext4, enable encryption support before mounting.
+    if [ "$P3_FS_TYPE" = "ext4" ]; then
+        tune2fs -O encrypt "$P3"
+        if ! mount -t ext4 -o dirsync,noatime "$P3" $PERSISTDIR; then
+            echo "$(date -Ins -u) mount $P3 failed"
+        fi
     fi
 else
     echo "$(date -Ins -u) No separate $PERSISTDIR partition"
+fi
+
+if [ ! -d $LOGDIRA ]; then
+    echo "$(date -Ins -u) Creating $LOGDIRA"
+    mkdir -p $LOGDIRA
+fi
+if [ ! -d $LOGDIRB ]; then
+    echo "$(date -Ins -u) Creating $LOGDIRB"
+    mkdir -p $LOGDIRB
+fi
+
+if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] && [ "$P3_FS_TYPE" = "ext4" ]; then
+    #Initialize fscrypt algorithm, hash length etc.
+    $BINDIR/vaultmgr -c "$CURPART" setupVaults
+
+    #tpm_in_use might have been wiped out during mkfs above.
+    touch $PERSISTCONFIGDIR/tpm_in_use
+    sync
 fi
 
 if [ ! -d "$PERSIST_RKT_DATA_DIR" ]; then
@@ -228,15 +275,6 @@ done
 
 if ! CURPART=$(zboot curpart); then
     CURPART="IMGA"
-fi
-
-if [ ! -d $LOGDIRA ]; then
-    echo "$(date -Ins -u) Creating $LOGDIRA"
-    mkdir -p $LOGDIRA
-fi
-if [ ! -d $LOGDIRB ]; then
-    echo "$(date -Ins -u) Creating $LOGDIRB"
-    mkdir -p $LOGDIRB
 fi
 
 if [ ! -d $PERSISTDIR/log ]; then
