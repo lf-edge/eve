@@ -424,7 +424,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 
 	disks := findDisksPartitions()
 	for _, d := range disks {
-		size, _ := partitionSize(d)
+		size, _ := diskmetrics.PartitionSize(d)
 		log.Debugf("Disk/partition %s size %d\n", d, size)
 		size = RoundToMbytes(size)
 		metric := metrics.DiskMetric{Disk: d, Total: size}
@@ -731,7 +731,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	disks := findDisksPartitions()
 	ReportDeviceInfo.Storage = *proto.Uint64(0)
 	for _, disk := range disks {
-		size, isPart := partitionSize(disk)
+		size, isPart := diskmetrics.PartitionSize(disk)
 		log.Debugf("Disk/partition %s size %d\n", disk, size)
 		size = RoundToMbytes(size)
 		is := info.ZInfoStorage{Device: disk, Total: size}
@@ -1529,29 +1529,6 @@ func findDisksPartitions() []string {
 	// Remove blank/empty string after last CR
 	res = res[:len(res)-1]
 	return res
-}
-
-// Given "sdb1" return the size of the partition; "sdb" to size of disk
-// Returns size and a bool to indicate that it is a partition.
-func partitionSize(part string) (uint64, bool) {
-	out, err := exec.Command("lsblk", "-nbdo", "SIZE", "/dev/"+part).Output()
-	if err != nil {
-		log.Errorf("lsblk -nbdo SIZE %s failed %s\n", "/dev/"+part, err)
-		return 0, false
-	}
-	res := strings.Split(string(out), "\n")
-	val, err := strconv.ParseUint(strings.TrimSpace(res[0]), 10, 64)
-	if err != nil {
-		log.Errorf("parseUint(%s) failed %s\n", res[0], err)
-		return 0, false
-	}
-	out, err = exec.Command("lsblk", "-nbdo", "TYPE", "/dev/"+part).Output()
-	if err != nil {
-		log.Errorf("lsblk -nbdo TYPE %s failed %s\n", "/dev/"+part, err)
-		return 0, false
-	}
-	isPart := strings.EqualFold(strings.TrimSpace(string(out)), "part")
-	return val, isPart
 }
 
 func getDefaultRouters(ifname string) []string {

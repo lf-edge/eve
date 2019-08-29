@@ -1326,27 +1326,18 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		xv := "xvd" + string(int('a')+i)
 		ds.Vdev = xv
 
-		var location string
-		if status.IsContainer {
-			// Check if status.ContainerImageID has "sha512-" substring at the beginning
-			if strings.Index(status.ContainerImageID, "sha512-") != 0 {
-				return fmt.Errorf("status.ContainerImageID should start with sha512-, but is %s", status.ContainerImageID)
-			}
-			location = filepath.Join(persistRktDataDir, "cas", "blob", "sha512", string(status.ContainerImageID[7:9]), status.ContainerImageID)
-		} else {
-			locationDir := verifiedDirname + "/" + dc.ImageSha256
-			log.Debugf("configToStatus(%v) processing disk img %s for %s\n",
-				config.UUIDandVersion, locationDir, config.DisplayName)
-
-			var err error
-			location, err = locationFromDir(locationDir)
-			if err != nil {
-				return err
-			}
+		target, err := types.VerifiedImageFileLocation(status.IsContainer,
+			status.ContainerImageID, dc.ImageSha256)
+		if err != nil {
+			log.Errorf("configToStatus: Failed to get Image File Location. "+
+				"err: %+s", err.Error())
+			return err
 		}
-		ds.FileLocation = location
-		target := location
+		ds.FileLocation = target
+
 		if !status.IsContainer && !dc.ReadOnly {
+			// XXX:Why are we excluding container images? Are they supposed to be
+			//  readonly
 			// Pick new location for a per-guest copy
 			// Use App UUID to make sure name is the same even
 			// after adds and deletes of instances and device reboots
@@ -2287,31 +2278,6 @@ func xlDestroy(domainName string, domainID int) error {
 	return nil
 }
 
-func locationFromDir(locationDir string) (string, error) {
-	if _, err := os.Stat(locationDir); err != nil {
-		log.Errorf("Missing directory: %s, %s\n", locationDir, err)
-		return "", err
-	}
-	// locationDir is a directory. Need to find single file inside
-	// which the verifier ensures.
-	locations, err := ioutil.ReadDir(locationDir)
-	if err != nil {
-		log.Errorln(err)
-		return "", err
-	}
-	if len(locations) != 1 {
-		log.Errorf("Multiple files in %s\n", locationDir)
-		return "", fmt.Errorf("Multiple files in %s\n",
-			locationDir)
-	}
-	if len(locations) == 0 {
-		log.Errorf("No files in %s\n", locationDir)
-		return "", fmt.Errorf("No files in %s\n",
-			locationDir)
-	}
-	return locationDir + "/" + locations[0].Name(), nil
-}
-
 func pciAssignableAdd(long string) error {
 	log.Infof("pciAssignableAdd %s\n", long)
 	cmd := "xl"
@@ -2430,7 +2396,7 @@ func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
 	if maxsizebytes == 0 {
 		return nil
 	}
-	currentSize, err := getDiskVirtualSize(diskfile)
+	currentSize, err := diskmetrics.GetDiskVirtualSize(diskfile)
 	if err != nil {
 		return err
 	}
@@ -2443,14 +2409,6 @@ func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
 	}
 	err = diskmetrics.ResizeImg(diskfile, maxsizebytes)
 	return err
-}
-
-func getDiskVirtualSize(diskfile string) (uint64, error) {
-	imgInfo, err := diskmetrics.GetImgInfo(diskfile)
-	if err != nil {
-		return 0, err
-	}
-	return imgInfo.VirtualSize, nil
 }
 
 // Create a isofs with user-data and meta-data and add it to DiskStatus
