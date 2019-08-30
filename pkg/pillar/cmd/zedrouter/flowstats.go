@@ -351,7 +351,7 @@ func flowMergeProcess(entry *netlink.ConntrackFlow, instData networkAttrs) flowS
 	ipFlow.aclNum = entry.Mark & markMask
 	ipFlow.appNum = uint8(entry.Mark >> appShiftBits)
 	AppNum = int(ipFlow.appNum)
-	if AppNum == 0 || AppNum == 255 { // only handle App related flow stats
+	if AppNum == 0 { // only handle App related flow stats, Mark set needs to zero out the app field if not app related
 		return ipFlow
 	}
 
@@ -464,8 +464,7 @@ func flowMergeProcess(entry *netlink.ConntrackFlow, instData networkAttrs) flowS
 func flowGetAppInfo(tuple flowStats, appinformation []appInfo) appInfo {
 	var appinfo appInfo
 	for _, info := range appinformation {
-		if strings.Compare(info.ipaddr.String(), tuple.SrcIP.String()) == 0 ||
-			strings.Compare(info.ipaddr.String(), tuple.DstIP.String()) == 0 {
+		if info.ipaddr.Equal(tuple.SrcIP) || info.ipaddr.Equal(tuple.DstIP) {
 			appinfo = info
 			return appinfo
 		}
@@ -475,7 +474,7 @@ func flowGetAppInfo(tuple flowStats, appinformation []appInfo) appInfo {
 
 func checkAppIPAddr(appinformation []appInfo, entryIP net.IP) bool {
 	for _, appinfo := range appinformation {
-		if strings.Compare(appinfo.ipaddr.String(), entryIP.String()) == 0 {
+		if appinfo.ipaddr.Equal(entryIP) {
 			return true
 		}
 	}
