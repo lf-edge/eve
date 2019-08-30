@@ -10,11 +10,10 @@ import (
 )
 
 func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
-	ss *types.StorageStatus) {
+	ss types.StorageStatus) {
 
 	log.Infof("AddOrRefcountDownloaderConfig for %s\n", safename)
-	log.Infof("AddOrRefcountDownloaderConfig: StorageStatus: %+v\n",
-		*ss)
+	log.Infof("AddOrRefcountDownloaderConfig: StorageStatus: %+v\n", ss)
 
 	m := lookupDownloaderConfig(ctx, safename)
 	if m != nil {
