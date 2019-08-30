@@ -944,9 +944,9 @@ func getPortIPv4Addr(ctx *zedrouterContext,
 		addrs = nil
 	}
 	for _, addr := range addrs {
-		log.Infof("found addr %s\n", addr.IP.String())
-		if addr.IP.To4() != nil {
-			return addr.IP.String(), nil
+		log.Infof("found addr %s\n", addr.String())
+		if addr.To4() != nil {
+			return addr.String(), nil
 		}
 	}
 	log.Infof("No IPv4 address on %s yet\n", status.Port)

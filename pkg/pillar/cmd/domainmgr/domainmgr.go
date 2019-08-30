@@ -42,8 +42,6 @@ const (
 	appImgObj = "appImg.obj"
 	agentName = "domainmgr"
 
-	tmpDirname        = "/var/tmp/zededa"
-	AADirname         = tmpDirname + "/AssignableAdapters"
 	runDirname        = "/var/run/" + agentName
 	persistDir        = "/persist"
 	persistRktDataDir = persistDir + "/rkt"
@@ -923,8 +921,7 @@ func cleanupAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 	for _, adapter := range ioAdapterList {
 		log.Debugf("cleanupAdapters processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
-		list := ctx.assignableAdapters.LookupIoBundleGroup(
-			adapter.Type, adapter.Name)
+		list := ctx.assignableAdapters.LookupIoBundleGroup(adapter.Name)
 		if len(list) == 0 {
 			continue
 		}
@@ -954,8 +951,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 		log.Debugf("doAssignIoAdaptersToDomain processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
 
-		list := ctx.assignableAdapters.LookupIoBundleGroup(
-			adapter.Type, adapter.Name)
+		list := ctx.assignableAdapters.LookupIoBundleGroup(adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if len(list) == 0 {
 			log.Fatalf("doAssignIoAdaptersToDomain IoBundle disappeared %d %s for %s\n",
@@ -1266,8 +1262,7 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 	for _, adapter := range status.IoAdapterList {
 		log.Debugf("doInactivate processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
-		list := ctx.assignableAdapters.LookupIoBundleGroup(
-			adapter.Type, adapter.Name)
+		list := ctx.assignableAdapters.LookupIoBundleGroup(adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if len(list) == 0 {
 			log.Fatalf("doInactivate IoBundle disappeared %d %s for %s\n",
@@ -1388,8 +1383,7 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 		log.Debugf("configAdapters processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
 		// Lookup to make sure adapter exists on this device
-		list := ctx.assignableAdapters.LookupIoBundleGroup(
-			adapter.Type, adapter.Name)
+		list := ctx.assignableAdapters.LookupIoBundleGroup(adapter.Name)
 		if len(list) == 0 {
 			return fmt.Errorf("unknown adapter %d %s",
 				adapter.Type, adapter.Name)
@@ -1590,7 +1584,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	for _, adapter := range config.IoAdapterList {
 		log.Debugf("configToXenCfg processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
-		list := aa.LookupIoBundleGroup(adapter.Type, adapter.Name)
+		list := aa.LookupIoBundleGroup(adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if len(list) == 0 {
 			log.Fatalf("configToXencfg IoBundle disappeared %d %s for %s\n",
@@ -2552,7 +2546,7 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 	// Any add or modify?
 	for _, phyAdapter := range phyIOAdapterList.AdapterList {
 		ib := *types.IoBundleFromPhyAdapter(phyAdapter)
-		currentIbPtr := aa.LookupIoBundle(0, phyAdapter.Phylabel)
+		currentIbPtr := aa.LookupIoBundle(phyAdapter.Phylabel)
 		if currentIbPtr == nil {
 			log.Infof("handlePhysicalIOAdapterListCreateModify: Adapter %s "+
 				"added. %+v\n", phyAdapter.Phylabel, ib)
@@ -2863,7 +2857,7 @@ func handleIBDelete(ctx *domainContext, name string) {
 	log.Infof("handleIBDelete(%s)", name)
 	aa := ctx.assignableAdapters
 
-	ib := aa.LookupIoBundle(0, name)
+	ib := aa.LookupIoBundle(name)
 	if ib == nil {
 		log.Infof("handleIBDelete: Adapter ( %s ) not found", name)
 		return
@@ -2895,7 +2889,7 @@ func handleIBDelete(ctx *domainContext, name string) {
 
 func handleIBModify(ctx *domainContext, newIb types.IoBundle) {
 	aa := ctx.assignableAdapters
-	currentIbPtr := aa.LookupIoBundle(newIb.Type, newIb.Name)
+	currentIbPtr := aa.LookupIoBundle(newIb.Name)
 	if currentIbPtr == nil {
 		log.Errorf("Failed to find IoBundle (%d %s).  aa: %+v\n",
 			newIb.Type, newIb.Name, aa)

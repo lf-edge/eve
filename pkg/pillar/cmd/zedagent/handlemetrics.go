@@ -927,10 +927,12 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		reportAA := new(info.ZioBundle)
 		reportAA.Type = info.IPhyIoType(ib.Type)
 		reportAA.Name = ib.AssignmentGroup
-		list := aa.LookupIoBundleGroup(ib.Type, ib.AssignmentGroup)
+		list := aa.LookupIoBundleGroup(ib.AssignmentGroup)
 		if len(list) == 0 {
-			log.Infof("Nothing to report for %d %s",
-				ib.Type, ib.AssignmentGroup)
+			if ib.AssignmentGroup != "" {
+				log.Infof("Nothing to report for %d %s",
+					ib.Type, ib.AssignmentGroup)
+			}
 			continue
 		}
 		for _, b := range list {
@@ -1372,7 +1374,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			reportAA.Type = info.IPhyIoType(ia.Type)
 			reportAA.Name = ia.Name
 			reportAA.UsedByAppUUID = aiStatus.Key()
-			list := aa.LookupIoBundleGroup(ia.Type, ia.Name)
+			list := aa.LookupIoBundleGroup(ia.Name)
 			for _, ib := range list {
 				if ib == nil {
 					continue
@@ -1538,7 +1540,7 @@ func partitionSize(part string) (uint64, bool) {
 		return 0, false
 	}
 	res := strings.Split(string(out), "\n")
-	val, err := strconv.ParseUint(res[0], 10, 64)
+	val, err := strconv.ParseUint(strings.TrimSpace(res[0]), 10, 64)
 	if err != nil {
 		log.Errorf("parseUint(%s) failed %s\n", res[0], err)
 		return 0, false

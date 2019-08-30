@@ -406,7 +406,6 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 
 	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
-		sc := config.StorageConfigList[i]
 		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
 		log.Infof("StorageStatus URL %s safename %s\n",
 			ss.Name, safename)
@@ -469,7 +468,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		if !ss.HasDownloaderRef {
 			log.Infof("doInstall !HasDownloaderRef for %s\n",
 				safename)
-			AddOrRefcountDownloaderConfig(ctx, safename, sc, ss)
+			AddOrRefcountDownloaderConfig(ctx, safename, *ss)
 			ss.HasDownloaderRef = true
 			changed = true
 		}

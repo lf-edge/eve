@@ -120,6 +120,10 @@ clean:
 	rm -rf $(DIST) pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile \
 	       images/installer.yml images/rootfs.yml
 
+yetus:
+	@echo Running yetus
+	build-tools/src/yetus/test-patch.sh
+
 build-tools: $(LINUXKIT)
 	@echo Done building $<
 
@@ -302,13 +306,14 @@ help:
 	@echo "to the make's command line. You can also run in a cross- way since"
 	@echo "all the execution is done via qemu."
 	@echo
-	@echo "Commonly used maitenance and development targets:"
+	@echo "Commonly used maintenance and development targets:"
 	@echo "   test           run EVE tests"
 	@echo "   clean          clean build artifacts in a current directory (doesn't clean Docker)"
 	@echo "   release        prepare branch for a release (VERSION=x.y.z required)"
 	@echo "   proto          generates Go and Python source from protobuf API definitions"
 	@echo "   proto-vendor   update vendored API in packages that require it (e.g. pkg/pillar)"
 	@echo "   shell          drop into docker container setup for Go development"
+	@echo "   yetus          run Apache Yetus to check the quality of the source tree"
 	@echo
 	@echo "Commonly used build targets:"
 	@echo "   build-tools    builds linuxkit and manifest-tool utilities under build-tools/bin"
