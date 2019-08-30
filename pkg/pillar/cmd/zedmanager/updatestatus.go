@@ -468,7 +468,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		if !ss.HasDownloaderRef {
 			log.Infof("doInstall !HasDownloaderRef for %s\n",
 				safename)
-			AddOrRefcountDownloaderConfig(ctx, safename, ss)
+			AddOrRefcountDownloaderConfig(ctx, safename, *ss)
 			ss.HasDownloaderRef = true
 			changed = true
 		}
