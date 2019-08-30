@@ -42,8 +42,6 @@ const (
 	appImgObj = "appImg.obj"
 	agentName = "domainmgr"
 
-	tmpDirname        = "/var/tmp/zededa"
-	AADirname         = tmpDirname + "/AssignableAdapters"
 	runDirname        = "/var/run/" + agentName
 	persistDir        = "/persist"
 	persistRktDataDir = persistDir + "/rkt"
