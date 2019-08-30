@@ -927,7 +927,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		reportAA := new(info.ZioBundle)
 		reportAA.Type = info.IPhyIoType(ib.Type)
 		reportAA.Name = ib.AssignmentGroup
-		list := aa.LookupIoBundleGroup(ib.Type, ib.AssignmentGroup)
+		list := aa.LookupIoBundleGroup(ib.AssignmentGroup)
 		if len(list) == 0 {
 			log.Infof("Nothing to report for %d %s",
 				ib.Type, ib.AssignmentGroup)
@@ -1372,7 +1372,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			reportAA.Type = info.IPhyIoType(ia.Type)
 			reportAA.Name = ia.Name
 			reportAA.UsedByAppUUID = aiStatus.Key()
-			list := aa.LookupIoBundleGroup(ia.Type, ia.Name)
+			list := aa.LookupIoBundleGroup(ia.Name)
 			for _, ib := range list {
 				if ib == nil {
 					continue

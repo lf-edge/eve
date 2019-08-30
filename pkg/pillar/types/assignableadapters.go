@@ -183,15 +183,9 @@ func (ioType IoType) IsNet() bool {
 }
 
 // LookupIoBundle returns nil if not found
-func (aa *AssignableAdapters) LookupIoBundle(ioType IoType, name string) *IoBundle {
+func (aa *AssignableAdapters) LookupIoBundle(name string) *IoBundle {
 	for i, b := range aa.IoBundleList {
-		// XXX the new enums are sent as zero by the controller
-		// hence temporary workaround
-		if (ioType == 0 || b.Type == ioType) && strings.EqualFold(b.Name, name) {
-			if ioType == 0 {
-				log.Warnf("XXX Matching name %s for ioType 0",
-					b.Name)
-			}
+		if strings.EqualFold(b.Name, name) {
 			return &aa.IoBundleList[i]
 		}
 	}
@@ -200,20 +194,14 @@ func (aa *AssignableAdapters) LookupIoBundle(ioType IoType, name string) *IoBund
 
 // LookupIoBundleGroup returns an empty slice if not found
 // Returns pointers into aa
-func (aa *AssignableAdapters) LookupIoBundleGroup(ioType IoType, group string) []*IoBundle {
+func (aa *AssignableAdapters) LookupIoBundleGroup(group string) []*IoBundle {
 
 	var list []*IoBundle
 	for i, b := range aa.IoBundleList {
 		if b.AssignmentGroup == "" {
 			continue
 		}
-		// XXX the new enums are sent as zero by the controller
-		// hence temporary workaround
-		if (ioType == 0 || b.Type == ioType) && strings.EqualFold(b.AssignmentGroup, group) {
-			if ioType == 0 {
-				log.Warnf("XXX Matching group %s for ioType 0",
-					b.AssignmentGroup)
-			}
+		if strings.EqualFold(b.AssignmentGroup, group) {
 			list = append(list, &aa.IoBundleList[i])
 		}
 	}
