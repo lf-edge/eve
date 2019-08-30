@@ -1240,7 +1240,7 @@ func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
 }
 
 func doAzureBlob(ctx *downloaderContext, status *types.DownloaderStatus,
-	syncOp zedUpload.SyncOpType, dnldUrl string, apiKey string, password string,
+	syncOp zedUpload.SyncOpType, dnldURL string, apiKey string, password string,
 	dpath string, maxsize uint64, ifname string,
 	ipSrc net.IP, filename string, locFilename string) error {
 
@@ -1259,11 +1259,11 @@ func doAzureBlob(ctx *downloaderContext, status *types.DownloaderStatus,
 		return err
 	}
 	// check for proxies on the selected management port interface
-	proxyUrl, err := zedcloud.LookupProxy(
-		&ctx.deviceNetworkStatus, ifname, dnldUrl)
-	if err == nil && proxyUrl != nil {
-		log.Infof("doAzure: Using proxy %s", proxyUrl.String())
-		dEndPoint.WithSrcIpAndProxySelection(ipSrc, proxyUrl)
+	proxyURL, err := zedcloud.LookupProxy(
+		&ctx.deviceNetworkStatus, ifname, dnldURL)
+	if err == nil && proxyURL != nil {
+		log.Infof("doAzure: Using proxy %s", proxyURL.String())
+		dEndPoint.WithSrcIpAndProxySelection(ipSrc, proxyURL)
 	} else {
 		dEndPoint.WithSrcIpSelection(ipSrc)
 	}
