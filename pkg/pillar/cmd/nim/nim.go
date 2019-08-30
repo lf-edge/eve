@@ -725,12 +725,30 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 		if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
 			cur := ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
 			cur.LastSucceeded = time.Now()
+			cur.LastError = ""
+			if ctx.PubDevicePortConfigList != nil {
+				log.Infof("publishing DevicePortConfigList: %+v\n",
+					ctx.DevicePortConfigList)
+				ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
+			}
 		}
 
 		ctx.CloudConnectivityWorks = true
 		// Restart network test timer for next slot.
 		ctx.NetworkTestTimer = time.NewTimer(time.Duration(ctx.NetworkTestInterval) * time.Second)
 		return true
+	}
+	if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
+		cur := ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
+		if cur.LastError == "" {
+			cur.LastFailed = time.Now()
+			cur.LastError = fmt.Sprintf("%s", err)
+			if ctx.PubDevicePortConfigList != nil {
+				log.Infof("publishing DevicePortConfigList: %+v\n",
+					ctx.DevicePortConfigList)
+				ctx.PubDevicePortConfigList.Publish("global", ctx.DevicePortConfigList)
+			}
+		}
 	}
 	if !ctx.CloudConnectivityWorks && !rtf {
 		// If previous cloud connectivity test also failed, it means
