@@ -15,8 +15,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Handle a link change. Returns changed bool
-func LinkChange(change netlink.LinkUpdate) bool {
+// LinkChange handles a link change. Returns ifindex for changed interface
+func LinkChange(change netlink.LinkUpdate) (bool, int) {
 
 	ifindex := change.Attrs().Index
 	ifname := change.Attrs().Name
@@ -43,7 +43,7 @@ func LinkChange(change netlink.LinkUpdate) bool {
 		log.Infof("LinkChange: changed %t index %d name %s type %s\n",
 			changed, ifindex, ifname, linkType)
 	}
-	return changed
+	return changed, ifindex
 }
 
 // Set up to be able to see LOWER-UP and NO-CARRIER in operStatus later

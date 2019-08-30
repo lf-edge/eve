@@ -10,6 +10,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 	"reflect"
+	"syscall"
 )
 
 // Returns a channel for address updates
@@ -19,13 +20,12 @@ import (
 //
 func AddrChangeInit() chan netlink.AddrUpdate {
 
-	log.Debugf("AddrChangeInit()\n")
+	log.Infof("AddrChangeInit()\n")
 
 	addrchan := make(chan netlink.AddrUpdate)
 	donechan := make(chan struct{})
 	errFunc := func(err error) {
 		log.Errorf("AddrSubscribe failed %s\n", err)
-		donechan <- struct{}{}
 	}
 	addropt := netlink.AddrSubscribeOptions{
 		ListExisting:      true,
@@ -36,25 +36,28 @@ func AddrChangeInit() chan netlink.AddrUpdate {
 		addropt); err != nil {
 		log.Fatal(err)
 	}
+	log.Infof("AddrChangeInit() DONE\n")
 	return addrchan
 }
 
-// Handle an IP address change. Returns changed bool
-func AddrChange(change netlink.AddrUpdate) bool {
+// AddrChange handles an IP address change. Returns ifindex for changed interface
+func AddrChange(change netlink.AddrUpdate) (bool, int) {
 
 	changed := false
 	if change.NewAddr {
 		log.Infof("AddrChange new %d %s\n",
 			change.LinkIndex, change.LinkAddress.String())
 		changed = IfindexToAddrsAdd(change.LinkIndex,
-			change.LinkAddress)
+			change.LinkAddress.IP)
 	} else {
 		log.Infof("AddrChange del %d %s\n",
 			change.LinkIndex, change.LinkAddress.String())
 		changed = IfindexToAddrsDel(change.LinkIndex,
-			change.LinkAddress)
+			change.LinkAddress.IP)
 	}
-	return changed
+	log.Infof("AddrChange %t %d %s", changed,
+		change.LinkIndex, change.LinkAddress.String())
+	return changed, change.LinkIndex
 }
 
 // Returns a channel for link updates
@@ -64,14 +67,13 @@ func AddrChange(change netlink.AddrUpdate) bool {
 //
 func LinkChangeInit() chan netlink.LinkUpdate {
 
-	log.Debugf("LinkChangeInit()\n")
+	log.Infof("LinkChangeInit()\n")
 
 	// Need links to get name to ifindex? Or lookup each time?
 	linkchan := make(chan netlink.LinkUpdate)
 	donechan := make(chan struct{})
 	linkErrFunc := func(err error) {
 		log.Errorf("LinkSubscribe failed %s\n", err)
-		donechan <- struct{}{}
 	}
 	linkopt := netlink.LinkSubscribeOptions{
 		ListExisting:  true,
@@ -81,6 +83,7 @@ func LinkChangeInit() chan netlink.LinkUpdate {
 		linkopt); err != nil {
 		log.Fatal(err)
 	}
+	log.Infof("LinkChangeInit() DONE\n")
 	return linkchan
 }
 
@@ -91,13 +94,12 @@ func LinkChangeInit() chan netlink.LinkUpdate {
 //
 func RouteChangeInit() chan netlink.RouteUpdate {
 
-	log.Debugf("RouteChangeInit()\n")
+	log.Infof("RouteChangeInit()\n")
 
 	routechan := make(chan netlink.RouteUpdate)
 	donechan := make(chan struct{})
 	routeErrFunc := func(err error) {
 		log.Errorf("RouteSubscribe failed %s\n", err)
-		donechan <- struct{}{}
 	}
 	rtopt := netlink.RouteSubscribeOptions{
 		ListExisting:  true,
@@ -107,6 +109,7 @@ func RouteChangeInit() chan netlink.RouteUpdate {
 		rtopt); err != nil {
 		log.Fatal(err)
 	}
+	log.Infof("RouteChangeInit() DONE\n")
 	return routechan
 }
 
@@ -142,7 +145,7 @@ func HandleAddressChange(ctx *DeviceNetworkContext) {
 			dnStatus)
 
 		if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
-			log.Debugf("HandleAddressChange: change from %v to %v\n",
+			log.Infof("HandleAddressChange: change from %v to %v\n",
 				*ctx.DeviceNetworkStatus, status)
 			*ctx.DeviceNetworkStatus = status
 			DoDNSUpdate(ctx)
@@ -150,12 +153,11 @@ func HandleAddressChange(ctx *DeviceNetworkContext) {
 			log.Infof("HandleAddressChange: No change\n")
 		}
 	} else {
-		dnStatus = ctx.Pending.PendDNS
 		dnStatus, _ = MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
-			dnStatus)
+			ctx.Pending.PendDNS)
 
 		if !reflect.DeepEqual(ctx.Pending.PendDNS, dnStatus) {
-			log.Debugf("HandleAddressChange pending: change from %v to %v\n",
+			log.Infof("HandleAddressChange pending: change from %v to %v\n",
 				ctx.Pending.PendDNS, dnStatus)
 			pingTestDNS := checkIfAllDNSPortsHaveIPAddrs(dnStatus)
 			if pingTestDNS {
@@ -168,4 +170,26 @@ func HandleAddressChange(ctx *DeviceNetworkContext) {
 			log.Infof("HandleAddressChange pending: No change\n")
 		}
 	}
+}
+
+// RouteChange checks if a route change implies that an interface IP address might have changed.
+// Returns ifindex for potentially changed interface
+func RouteChange(change netlink.RouteUpdate) (bool, int) {
+
+	rt := change.Route
+	if rt.Table != syscall.RT_TABLE_MAIN {
+		// Ignore
+		return false, 0
+	}
+	op := "NONE"
+	if change.Type == syscall.RTM_DELROUTE {
+		op = "DELROUTE"
+	} else if change.Type == syscall.RTM_NEWROUTE {
+		op = "NEWROUTE"
+	}
+	ifname, _, _ := IfindexToName(rt.LinkIndex)
+	log.Debugf("RouteChange(%d/%s) %s %+v", rt.LinkIndex, ifname, op, rt)
+	// Guess any onlink/attached route can imply an address change
+	changed := (rt.Gw == nil)
+	return changed, rt.LinkIndex
 }
