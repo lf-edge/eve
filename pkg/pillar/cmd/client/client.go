@@ -33,9 +33,6 @@ import (
 
 const (
 	agentName   = "zedclient"
-	tmpDirname  = "/var/tmp/zededa"
-	DNCDirname  = tmpDirname + "/DeviceNetworkConfig"
-	AADirname   = tmpDirname + "/AssignableAdapters"
 	maxDelay    = time.Second * 600 // 10 minutes
 	uuidMaxWait = time.Second * 60  // 1 minute
 )
@@ -531,15 +528,8 @@ func Run() { //nolint:gocyclo
 		doWrite = true
 		if hardwaremodel != "" {
 			if oldHardwaremodel != hardwaremodel {
-				if existingModel(hardwaremodel) {
-					log.Infof("Replacing existing hardwaremodel %s with %s\n",
-						oldHardwaremodel, hardwaremodel)
-				} else {
-					log.Errorf("Attempt to replace existing hardwaremodel %s with non-eixsting %s model - ignored\n",
-						oldHardwaremodel, hardwaremodel)
-					doWrite = false
-				}
-
+				log.Infof("Replacing existing hardwaremodel %s with %s\n",
+					oldHardwaremodel, hardwaremodel)
 			} else {
 				log.Infof("No change to hardwaremodel %s\n",
 					hardwaremodel)
@@ -563,7 +553,7 @@ func Run() { //nolint:gocyclo
 		// We write the strings even if empty to make sure we have the most
 		// recents. Since this is for debug use we are less careful
 		// than for the hardwaremodel.
-		b := []byte(enterprise) // Note that no CRLF
+		b = []byte(enterprise) // Note that no CRLF
 		err = ioutil.WriteFile(enterpriseFileName, b, 0644)
 		if err != nil {
 			log.Fatal("WriteFile", err, enterpriseFileName)
@@ -581,20 +571,6 @@ func Run() { //nolint:gocyclo
 	if err != nil {
 		log.Errorln(err)
 	}
-}
-
-func existingModel(model string) bool {
-	AAFilename := fmt.Sprintf("%s/%s.json", AADirname, model)
-	if _, err := os.Stat(AAFilename); err != nil {
-		log.Debugln(err)
-		return false
-	}
-	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
-	if _, err := os.Stat(DNCFilename); err != nil {
-		log.Debugln(err)
-		return false
-	}
-	return true
 }
 
 func handleGlobalConfigModify(ctxArg interface{}, key string,
