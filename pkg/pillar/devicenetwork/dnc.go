@@ -199,8 +199,7 @@ func compressAndPublishDevicePortConfigList(ctx *DeviceNetworkContext) types.Dev
 
 	dpcl := compressDPCL(ctx.DevicePortConfigList)
 	if ctx.PubDevicePortConfigList != nil {
-		log.Infof("publishing DevicePortConfigList: %+v\n",
-			ctx.DevicePortConfigList)
+		log.Infof("publishing DevicePortConfigList: %+v\n", dpcl)
 		ctx.PubDevicePortConfigList.Publish("global", dpcl)
 	}
 	return dpcl
