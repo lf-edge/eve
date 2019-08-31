@@ -54,17 +54,27 @@ type aclAttr struct {
 	aclName   string
 	chainName string
 	action    string
-	vif       string
 	bridge    string
-	netUUID   uuid.UUID
+	intfname  string // App virtual interface name assigned by cloud template
+}
+
+type bridgeAttr struct {
+	bridge  string
+	netUUID uuid.UUID
+}
+
+type appInfo struct {
+	ipaddr    net.IP
+	intf      string
+	localintf string
 }
 
 type networkAttrs struct {
-	ipaclattr  map[int]map[int]aclAttr // appNum, ACLNum, acl attributes
-	appIPAddrs map[int][]net.IP        // appNum, IP addresses (may belong to diff bridges)
-	intfAddrs  []net.Addr              // device interface addresses
-	bnNet      map[string]aclAttr      // mainly need to range all the bridge interfaces
-	appNet     map[int]uuid.UUID       // max 256 apps
+	ipaclattr map[int]map[int]aclAttr // appNum, ACLNum, acl attributes
+	appIPinfo map[int][]appInfo       // appNum, IP addresses/intfs (may belong to diff bridges)
+	intfAddrs []net.Addr              // device interface addresses
+	bnNet     map[string]bridgeAttr   // mainly need to range all the bridge interfaces
+	appNet    map[int]uuid.UUID       // max 256 apps
 }
 
 type dnsEntry struct {
@@ -104,8 +114,8 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 	var dnsPacked bool
 
 	instData.ipaclattr = make(map[int]map[int]aclAttr) // App-ID/ACL-Num/aclAttr table
-	instData.appIPAddrs = make(map[int][]net.IP)
-	instData.bnNet = make(map[string]aclAttr) // borrow the aclAttr for intf attributes
+	instData.appIPinfo = make(map[int][]appInfo)
+	instData.bnNet = make(map[string]bridgeAttr) // borrow the aclAttr for intf attributes
 	instData.appNet = make(map[int]uuid.UUID)
 
 	IntfAddrs, err := net.InterfaceAddrs()
@@ -164,10 +174,11 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 
 			var sequence, flowIdx int
 
+			// fill in the partial scope information, later the aclNum and aclAttr will decide
+			// if we have a match in this flow into app/bridge scope
 			scope := types.FlowScope{
 				UUID:      instData.appNet[appIdx],
-				Intf:      bnx,
-				Localintf: instData.bnNet[bnx].vif,
+				Localintf: instData.bnNet[bnx].bridge,
 				NetUUID:   instData.bnNet[bnx].netUUID,
 			}
 			flowdata := types.IPFlow{
@@ -179,6 +190,8 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 			// temp print out the flow "tuple" and stats per app/bridge
 			for i, tuple := range timeOutTuples { // search for flowstats by bridge
 				var aclattr aclAttr
+				var bridgeName, aclaction string
+				var aclNum int
 
 				appN := tuple.appNum
 				if int(appN) != appIdx { // allow non-App flows to be uploaded
@@ -186,29 +199,46 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					continue
 				}
 
-				tmpMap := instData.ipaclattr[int(appN)]
-				if tmpMap != nil {
-					if _, ok := tmpMap[int(tuple.aclNum)]; !ok {
-						log.Infof("FlowStats: == can not get acl map with aclN, should not happen appN %d, aclN %d; %s\n",
+				if tuple.aclNum != DropMarkValue {
+					tmpMap := instData.ipaclattr[int(appN)]
+					if tmpMap != nil {
+						if _, ok := tmpMap[int(tuple.aclNum)]; !ok {
+							log.Infof("FlowStats: == can not get acl map with aclN, should not happen appN %d, aclN %d; %s\n",
+								appN, tuple.aclNum, tuple.String())
+							continue
+						}
+						aclattr = tmpMap[int(tuple.aclNum)]
+					} else {
+						log.Infof("FlowStats: == can't get acl map with appN, should not happen, appN %d, aclN %d; %s\n",
 							appN, tuple.aclNum, tuple.String())
 						continue
 					}
-					aclattr = tmpMap[int(tuple.aclNum)]
-				} else {
-					log.Infof("FlowStats: == can't get acl map with appN, should not happen, appN %d, aclN %d; %s\n",
-						appN, tuple.aclNum, tuple.String())
-					continue
+					if aclattr.aclNum == 0 {
+						log.Infof("FlowStats: == aclN zero in attr, appN %d, aclN %d; %s\n", appN, tuple.aclNum, tuple.String())
+						// some debug info
+						continue
+					}
+
+					bridgeName = aclattr.bridge
+					if strings.Compare(bnx, bridgeName) != 0 {
+						log.Infof("FlowStats: == bridge name not match %s, %s\n", bnx, bridgeName)
+						continue
+					}
+					scope.Intf = aclattr.intfname // App side DomU internal interface name
+					aclaction = aclattr.action
+					aclNum = int(aclattr.aclNum)
+				} else { // conntrack mark aclNum field being 0xffffff
+					// special drop aclNum
+					appinfo := flowGetAppInfo(tuple, instData.appIPinfo[appIdx])
+					if appinfo.localintf != bnx {
+						continue
+					}
+					scope.Intf = appinfo.intf
+					bridgeName = appinfo.localintf
+					aclaction = "drop-" + bridgeName + "-" + appinfo.intf
+					aclNum = 0
 				}
-				if aclattr.aclNum == 0 {
-					log.Infof("FlowStats: == aclN zero in attr, appN %d, aclN %d; %s\n", appN, tuple.aclNum, tuple.String())
-					// some debug info
-					continue
-				}
-				bridgeName := aclattr.bridge
-				if strings.Compare(bnx, bridgeName) != 0 {
-					log.Infof("FlowStats: == bridge name not match %s, %s\n", bnx, bridgeName)
-					continue
-				}
+
 				bnNum, err := bridgeStrToNum(bridgeName)
 				if err != nil {
 					continue
@@ -223,17 +253,11 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					DstPort: int32(tuple.DstPort),
 					Proto:   int32(tuple.Proto),
 				}
-				aclNum := aclattr.aclNum
-				if aclNum == DropMarkValue {
-					// 0xFFFFFF is the internally used marking to identify dropped flows.
-					// Cloud want the acl id for such flows to be set to ZERO.
-					aclNum = 0
-				}
 				flowrec := types.FlowRec{
 					Flow:      flowtuple,
 					Inbound:   !tuple.AppInitiate,
 					ACLID:     int32(aclNum),
-					Action:    aclattr.action,
+					Action:    aclaction,
 					StartTime: tuple.TimeStart,
 					StopTime:  tuple.TimeStop,
 					TxBytes:   int64(tuple.SendBytes),
@@ -327,31 +351,33 @@ func flowMergeProcess(entry *netlink.ConntrackFlow, instData networkAttrs) flowS
 	ipFlow.aclNum = entry.Mark & markMask
 	ipFlow.appNum = uint8(entry.Mark >> appShiftBits)
 	AppNum = int(ipFlow.appNum)
-	if AppNum == 0 { // only handle App related flow stats
+	if AppNum == 0 { // only handle App related flow stats, Mark set needs to zero out the app field if not app related
 		return ipFlow
 	}
 
 	ipFlow.TimeStart = int64(entry.TimeStart)
-	ipFlow.TimeStop = int64(entry.TimeStop)
+	// the flow timed out timeoutSec - entry.TimeOut seconds before
+	timeStop := time.Now().Add(-(time.Second * time.Duration(timeoutSec-int32(entry.TimeOut))))
+	ipFlow.TimeStop = timeStop.UnixNano()
 	ipFlow.TimeOut = entry.TimeOut
 	ipFlow.Proto = entry.Forward.Protocol
 	ipFlow.IsTimeOut = true
 
 	// Assume the App has an assigned IP address(es) first
-	// the instData.appIPAddrs has the IP addresses of an App, we want to know
+	// the instData.appIPinfo has the IP addresses of an App, we want to know
 	// which one of the 4 IP addresses of the flow tuple matches the App IPs
-	if len(instData.appIPAddrs[AppNum]) > 0 {
+	if len(instData.appIPinfo[AppNum]) > 0 {
 		ipFlow.dbg1 = 1
-		forwSrcApp = checkAppIPAddr(instData.appIPAddrs[AppNum], entry.Forward.SrcIP)
+		forwSrcApp = checkAppIPAddr(instData.appIPinfo[AppNum], entry.Forward.SrcIP)
 		if forwSrcApp == false {
 			ipFlow.dbg1 = 2
-			forwDstApp = checkAppIPAddr(instData.appIPAddrs[AppNum], entry.Forward.DstIP)
+			forwDstApp = checkAppIPAddr(instData.appIPinfo[AppNum], entry.Forward.DstIP)
 			if forwDstApp == false {
 				ipFlow.dbg1 = 3
-				backSrcApp = checkAppIPAddr(instData.appIPAddrs[AppNum], entry.Reverse.SrcIP)
+				backSrcApp = checkAppIPAddr(instData.appIPinfo[AppNum], entry.Reverse.SrcIP)
 				if backSrcApp == false {
 					ipFlow.dbg1 = 4
-					backDstApp = checkAppIPAddr(instData.appIPAddrs[AppNum], entry.Reverse.DstIP)
+					backDstApp = checkAppIPAddr(instData.appIPinfo[AppNum], entry.Reverse.DstIP)
 				} else {
 					ipFlow.dbg1 = 5 // XXX
 				}
@@ -435,9 +461,20 @@ func flowMergeProcess(entry *netlink.ConntrackFlow, instData networkAttrs) flowS
 	return ipFlow
 }
 
-func checkAppIPAddr(appAddrs []net.IP, entryIP net.IP) bool {
-	for _, appIP := range appAddrs {
-		if strings.Compare(appIP.String(), entryIP.String()) == 0 {
+func flowGetAppInfo(tuple flowStats, appinformation []appInfo) appInfo {
+	var appinfo appInfo
+	for _, info := range appinformation {
+		if info.ipaddr.Equal(tuple.SrcIP) || info.ipaddr.Equal(tuple.DstIP) {
+			appinfo = info
+			return appinfo
+		}
+	}
+	return appinfo
+}
+
+func checkAppIPAddr(appinformation []appInfo, entryIP net.IP) bool {
+	for _, appinfo := range appinformation {
+		if appinfo.ipaddr.Equal(entryIP) {
 			return true
 		}
 	}
@@ -460,7 +497,7 @@ func isInMySubnets(faddr net.IP, addrList []net.Addr) bool {
 func (s *flowStats) String() string {
 	tstart := time.Unix(0, s.TimeStart)
 	tout := int32(s.TimeOut)
-	return fmt.Sprintf("TS %v, TO %d(sec), proto %d src=%s dst=%s sport=%d dport=%d, snd=pkts/bytes %d/%d rcv=pkts/bytes %d/%d app-init %v, appNum %d, aclnum %d",
+	return fmt.Sprintf("TS %v, TO %d(sec), proto %d src=%s dst=%s sport=%d dport=%d, snd=pkts/bytes %d/%d rcv=pkts/bytes %d/%d app-init %v, appNum %d, aclnum 0x%x",
 		tstart, tout, s.Proto, s.SrcIP, s.DstIP, s.SrcPort, s.DstPort, s.SendPkts, s.SendBytes,
 		s.RecvPkts, s.RecvBytes, s.AppInitiate, s.appNum, s.aclNum)
 }
@@ -477,16 +514,19 @@ func checkAppAndACL(ctx *zedrouterContext, instData *networkAttrs) {
 			log.Infof("===FlowStats: (index %d) AppNum %d, VifInfo %v, IP addr %v, Hostname %s\n",
 				i, status.AppNum, ulStatus.VifInfo, ulStatus.AllocatedIPAddr, ulStatus.HostName)
 
-			// build an App-IPaddress cache indexed by App-number
+			// build an App-IPaddress/intfs cache indexed by App-number
 			if ulStatus.AllocatedIPAddr != "" {
-				tmpIPs := net.ParseIP(ulStatus.AllocatedIPAddr)
-				instData.appIPAddrs[status.AppNum] = append(instData.appIPAddrs[status.AppNum], tmpIPs)
+				tmpAppInfo := appInfo{
+					ipaddr:    net.ParseIP(ulStatus.AllocatedIPAddr),
+					intf:      ulStatus.Name,
+					localintf: ulStatus.Bridge,
+				}
+				instData.appIPinfo[status.AppNum] = append(instData.appIPinfo[status.AppNum], tmpAppInfo)
 			}
 
 			// Fill in the bnNet indexed by bridge-name, used for loop through bridges, and Scope
 			ulconfig := ulStatus.UnderlayNetworkConfig
-			intfAttr := aclAttr{
-				vif:     ulStatus.VifInfo.Vif,
+			intfAttr := bridgeAttr{
 				bridge:  ulStatus.Bridge,
 				netUUID: ulconfig.Network,
 			}
@@ -516,8 +556,8 @@ func checkAppAndACL(ctx *zedrouterContext, instData *networkAttrs) {
 				tempAttr.chainName = rule.ActionChainName
 				tempAttr.aclName = rule.RuleName
 				tempAttr.tableName = rule.Table
-				tempAttr.vif = ulStatus.VifInfo.Vif
 				tempAttr.bridge = ulStatus.Bridge
+				tempAttr.intfname = ulStatus.Name
 				if len(rule.Action) >= 2 { // '-j ACCEPT', '-j drop-all-bn1-nbu2x1'
 					tempAttr.action = rule.Action[1]
 				}

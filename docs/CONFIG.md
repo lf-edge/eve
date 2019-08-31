@@ -1,4 +1,4 @@
-# Controlling EVE behavior at boot
+# Controlling EVE behavior at boot via legacy configuration management
 
 When the device boots it determines the set of network interfaces.
 By default this is determined by extracting the manufacturer and model
@@ -170,6 +170,27 @@ In addition the above configurations be specified from the EV-controller by
 specifying one or more networks with the proxy and/or static as part of the
 zcli device create.
 
+## Adding configuration to the install image
+
+It is possible to provide an initial DevicePortConfig and/or GlobalConfig
+during the build of the installation medium.
+
+The former can be used to specify proxies and static IP configuration for
+the ports, if that is necessary to have the device connect to the controller.
+But a DevicePortConfig can also be added to a USB stick in which case it
+will be copied from the USB stick on boot. See [mkusb.sh](../scripts/mkusb.sh)
+
+The latter can be used to specify the initial timers and ssh/usb behavior
+which will be in place until the device connects to the controller and gets its
+configuration from there. The variables are documented in
+[runtime configuration properties](CONFIG-PROPERTIES.md)
+
+To add either during the build, in EVE's conf directory create a
+subdirectory called DevicePortConfig or GlobalConfig, respectively.
+Then add the valid json file named as global.json in that directory.
+Finally:
+make config.img; make installer.raw
+
 ## Creating USB sticks
 
 The [scripts/mkusb.sh](../scripts/mkusb.sh) can run on Linux to create a USB stick.
@@ -219,3 +240,4 @@ can be IP routing issues, DNS issues, WPAD, or proxy issues.
 If there is no console (display and keyboard) to run diag or look at these files,
 the ```mkush.sh -d``` above can be used to get the diagnostics deposited on the
 USB stick for inspection.
+

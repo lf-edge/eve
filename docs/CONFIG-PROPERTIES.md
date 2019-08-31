@@ -1,30 +1,4 @@
-# Controlling EVE behavior at boot and later
-
-The following variables can be set in the controller and carried to the device
-using the configItem API. That can be done either on a per-project basis using e.g.,
-
-```bash
-    zcli project update <name> [--config=<key:value>...]
-```
-
-or on a per asset basis using
-
-```bash
-   zcli device update <name> [--config=<key:value>...]
-```
-
-For example,
-
-```bash
-zcli device update myqemu --config="debug.enable.ssh:`cat .ssh/id_rsa.pub`"
-```
-
-will allow ssh access to the device for debugging issues.
-
-The same variables can be specified in a json file included in /config/GlobalConfig/global.json. The format of that file is the natural json encoding of GlobalConfig as specified in types/global.go
-See [build-config-files.md](build-config-files.md) for how to include such a file in the image.
-
-## List of config variables
+# EVE Runtime Configuration Properties
 
 | Name | Type | Default | Description |
 | ---- | ---- | ------- | ----------- |
@@ -52,8 +26,7 @@ See [build-config-files.md](build-config-files.md) for how to include such a fil
 | debug.default.loglevel | string | info | min level saved in files on device |
 | debug.default.remote.loglevel | string | warning | min level sent to controller |
 
-In addition, for each agentname, there are specific overrides for the default
-ones with the names:
+In addition, for each agentname, there are specific overrides for the default ones with the names:
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
