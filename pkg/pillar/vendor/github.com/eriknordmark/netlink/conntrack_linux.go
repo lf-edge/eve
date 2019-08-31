@@ -117,17 +117,18 @@ func (h *Handle) ConntrackDeleteFilter(table ConntrackTableType, family InetFami
 
 // conntrack -D
 func ConntrackDeleteIPSrc(table ConntrackTableType, family InetFamily, addr net.IP,
-	proto uint8, port uint16, debugShow bool) (uint, error) {
-	return pkgHandle.ConntrackDeleteIPSrc(table, family, addr, proto, port, debugShow)
+	proto uint8, port uint16, mark uint32, debugShow bool) (uint, error) {
+	return pkgHandle.ConntrackDeleteIPSrc(table, family, addr, proto, port, mark, debugShow)
 }
 
-// conntrack -D -s address -p protocol -P port   Delete conntrack flows matching the source IP and/or proto/port
+// conntrack -D -s address -p protocol -P port -m Mark  Delete conntrack flows matching the source IP and/or proto/port
 // the source IP address has to be specified, others are optional
 // the -s address will match either 'orig' or 'reply' addresses, can't be zero
 // protocol ID zero will match all flow protocols for flow deletion
-// port zero will match all flow source port
+// port value zero will match all flow source port
+// mark value zero will match all flow marks
 func (h *Handle) ConntrackDeleteIPSrc(table ConntrackTableType, family InetFamily, addr net.IP,
-	proto uint8, port uint16, debugShow bool) (uint, error) {
+	proto uint8, port uint16, mark uint32, debugShow bool) (uint, error) {
 	res, err := h.dumpConntrackTable(table, family)
 	if err != nil {
 		return 0, err
@@ -140,6 +141,7 @@ func (h *Handle) ConntrackDeleteIPSrc(table ConntrackTableType, family InetFamil
 		if (strings.Compare(flow.Forward.SrcIP.String(), addr.String()) == 0 ||
 			strings.Compare(flow.Reverse.SrcIP.String(), addr.String()) == 0) &&
 			(proto == 0 || flow.Forward.Protocol == proto) &&
+			(mark == 0 || flow.Mark == mark) &&
 			(port == 0 || flow.Forward.SrcPort == port || flow.Reverse.SrcPort == port) {
 			req2 := h.newConntrackRequest(table, family, nl.IPCTNL_MSG_CT_DELETE, unix.NLM_F_ACK)
 			// skip the first 4 byte that are the netfilter header, the newConntrackRequest is adding it already
