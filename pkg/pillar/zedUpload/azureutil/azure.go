@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	SingleMB int64 = 1024 * 1024
+	SingleMB int64 = 1024 * 1024 // copy chunk size
 )
 
-type UpdateStats struct {
+type UpdateStats struct { // structure containing downloading/uploading progress
 	Size          int64    // complete size to upload/download
 	Asize         int64    // current size uploaded/downloaded
 	List          []string //list of images at given path
@@ -27,7 +27,7 @@ type UpdateStats struct {
 	ContentLength int64 // Content length in http response
 }
 
-type NotifChan chan UpdateStats
+type NotifChan chan UpdateStats // Downloading/Uploading progress notification channel
 
 func NewClient(accountName, accountKey string, httpClient *http.Client) (storage.Client, error) {
 	if httpClient == nil {
