@@ -56,7 +56,7 @@ $ sudo apt install qemu
 
 #### Get Project EVE
 
-EVE requires being built in Git repository (the tools keep looking up git commit IDs). The easiest way is to clone EVE repository from GitHub:
+EVE requires being built in a Git repository (the tools keep looking up git commit IDs). The easiest way is to clone EVE repository from GitHub:
 
 ```sh
 git clone https://github.com/lf-edge/eve.git
@@ -70,7 +70,7 @@ make build-tools
 make live
 ```
 
-This will download the relevant dockers from docker hub and create a bootable
+This will download the relevant docker images from docker hub and create a bootable
 image `dist/<ARCH>/live.img`.
 
 Please note that not all containers will be fetched from Docker Hub.
@@ -80,6 +80,23 @@ Please note that not all containers will be fetched from Docker Hub.
 > over the network it may occasionally time out and fail. Typically
 > re-running `make` fixes the issue. If it doesn't you can attempt a local
 > build of all the required EVE packages first by running `make pkgs`
+
+#### Proxies
+
+Building of the various images may require downloading packages from the Internet. If you have direct Internet access, everything will "just work".
+On the other hand, if you need to run behind a proxy, you may run into issues downloading. These manifest in two key areas:
+
+* docker: docker needs to download images from the image registries. Configuring your local installation of docker is beyond the scope of this
+document, please see [here](https://docs.docker.com/network/proxy/).
+* packages: the package updates _inside_ the images running in docker may need to use http/s proxies.
+
+To configure your build process to use proxies, you can set the following environment variables. They will be picked up automatically when running
+any `make` commands and used within the building containers. If they are _not_ set, no proxy is set:
+
+* `HTTP_PROXY`
+* `HTTPS_PROXY`
+* `ALL_PROXY`
+* `NO_PROXY`
 
 #### Running in QEMU
 
@@ -241,13 +258,13 @@ make ZARCH=amd64 installer
 
 Find the device using
 
-##### On Ubuntu
+### On Ubuntu
 
 ```bash
 fdisk -l
 ```
 
-##### On OSX
+### On OSX
 
 ```bash
 diskutil list
@@ -260,7 +277,7 @@ sudo umount /dev/sdXXX
 sudo dd if=dist/amd64/installer.raw of=/dev/sdXXX
 ```
 
-Alternatively the image can be written with tools like balenaEtcher: https://www.balena.io/etcher/
+Alternatively the image can be written with tools like [balenaEtcher](https://www.balena.io/etcher/)
 
 Now plug the USB Disk on your UP Squared Board and the installer should now replace the existing OS on the UP Squared board with EVE.
 
