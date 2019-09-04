@@ -87,7 +87,26 @@ func (ep *AzureTransportMethod) processAzureUpload(req *DronaRequest) error {
 // File download from Azure Blob Datastore
 func (ep *AzureTransportMethod) processAzureDownload(req *DronaRequest) error {
 	file := req.name
-	err := azure.DownloadAzureBlob(ep.acName, ep.acKey, ep.container, file, req.objloc, ep.hClient)
+	prgChan := make(azure.NotifChan)
+	defer close(prgChan)
+	if req.ackback {
+		go func(req *DronaRequest, prgNotif azure.NotifChan) {
+			ticker := time.NewTicker(StatsUpdateTicker)
+			var stats azure.UpdateStats
+			var ok bool
+			for {
+				select {
+				case stats, ok = <-prgNotif:
+					if !ok {
+						return
+					}
+				case <-ticker.C:
+					ep.ctx.postSize(req, stats.Size, stats.Asize)
+				}
+			}
+		}(req, prgChan)
+	}
+	err := azure.DownloadAzureBlob(ep.acName, ep.acKey, ep.container, file, req.objloc, ep.hClient, prgChan)
 	if err != nil {
 		return err
 	}
