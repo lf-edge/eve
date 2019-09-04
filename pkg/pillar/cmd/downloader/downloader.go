@@ -1783,7 +1783,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		default:
-			log.Fatal("unsupported transport method")
+			errStr = "unsupported transport method " + dsCtx.TransportMethod
 		}
 	}
 	log.Errorf("All source IP addresses failed. All errors:%s\n", errStr)
