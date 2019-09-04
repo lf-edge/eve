@@ -15,9 +15,11 @@ import (
 )
 
 const (
+	// SingleMB contains chunk size
 	SingleMB int64 = 1024 * 1024
 )
 
+// UpdateStats contains the information for the progress of an update
 type UpdateStats struct {
 	Size          int64    // complete size to upload/download
 	Asize         int64    // current size uploaded/downloaded
@@ -27,6 +29,7 @@ type UpdateStats struct {
 	ContentLength int64 // Content length in http response
 }
 
+// NotifChan is the uploading/downloading progress notification channel
 type NotifChan chan UpdateStats
 
 func NewClient(accountName, accountKey string, httpClient *http.Client) (storage.Client, error) {
