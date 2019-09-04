@@ -1,4 +1,4 @@
-From 3b433dbef349b89613caa71090fef817374d42ec Mon Sep 17 00:00:00 2001
+From 6f3f66408ee8b05b496c80ce6fd3917758e66fa9 Mon Sep 17 00:00:00 2001
 From: Sankar Patchineelam <sankar@zededa.com>
 Date: Fri, 30 Aug 2019 18:22:16 +0530
 Subject: [PATCH 1/1] Enable local networking in containers
@@ -6,9 +6,9 @@ Subject: [PATCH 1/1] Enable local networking in containers
 ---
  build.sh               |  2 +-
  files/run              |  9 ++++-
- files/udhcpc_script.sh | 78 ++++++++++++++++++++++++++++++++++++++++++
+ files/udhcpc_script.sh | 82 ++++++++++++++++++++++++++++++++++++++++++
  kernel/init-initrd     |  6 ++++
- 4 files changed, 93 insertions(+), 2 deletions(-)
+ 4 files changed, 97 insertions(+), 2 deletions(-)
  create mode 100755 files/udhcpc_script.sh
 
 diff --git a/build.sh b/build.sh
@@ -53,11 +53,15 @@ index d001b5a..fbb3a71 100755
      echo "vcpus = 2" >> $outconfig
 diff --git a/files/udhcpc_script.sh b/files/udhcpc_script.sh
 new file mode 100755
-index 0000000..3b8c2e6
+index 0000000..681c4a5
 --- /dev/null
 +++ b/files/udhcpc_script.sh
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,82 @@
 +#!/bin/busybox sh
++
++# This script is sourced from
++# https://github.com/debian-pi/raspbian-ua-netinst/blob/master/scripts/etc/udhcpc/default.script
++# and modified as per EVE requirement
 +
 +[ -z "$1" ] && echo 'Error: should be called from udhcpc' && exit 1
 +
