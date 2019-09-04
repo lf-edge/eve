@@ -111,6 +111,34 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 			info.Vifs = append(info.Vifs, vi)
 		}
 		info.Ipv4Eid = status.Ipv4Eid
+		for _, ifname := range status.IfNameList {
+			ia := ctx.assignableAdapters.LookupIoBundle(ifname)
+			if ia == nil {
+				log.Warnf("Missing adapter for ifname %s", ifname)
+				continue
+			}
+			reportAA := new(zinfo.ZioBundle)
+			reportAA.Type = zinfo.IPhyIoType(ia.Type)
+			reportAA.Name = ia.Name
+			reportAA.UsedByAppUUID = zcdevUUID.String()
+			list := ctx.assignableAdapters.LookupIoBundleGroup(ia.Name)
+			for _, ib := range list {
+				if ib == nil {
+					continue
+				}
+				reportAA.Members = append(reportAA.Members, ib.Name)
+				if ib.MacAddr != "" {
+					reportMac := new(zinfo.IoAddresses)
+					reportMac.MacAddress = ib.MacAddr
+					reportAA.IoAddressList = append(reportAA.IoAddressList,
+						reportMac)
+				}
+				log.Debugf("AssignableAdapters for %s macs %v",
+					reportAA.Name, reportAA.IoAddressList)
+			}
+			info.AssignedAdapters = append(info.AssignedAdapters,
+				reportAA)
+		}
 
 		// For now we just send an empty lispInfo to indicate deletion to cloud.
 		// It can't be omitted since protobuf requires something to satisfy
