@@ -527,9 +527,10 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 			status.BridgeIPAddr, &status.NetworkInstanceConfig,
 			hostsDirpath, status.BridgeIPSets, status.Ipv4Eid)
 		startDnsmasq(bridgeName)
-
-		go DNSMonitor(bridgeName, bridgeNum)
 	}
+
+	// monitor the DNS and DHCP information
+	go DNSMonitor(bridgeName, bridgeNum, ctx, status)
 
 	if status.IsIPv6() {
 		// XXX do we need same logic as for IPv4 dnsmasq to not
