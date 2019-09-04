@@ -82,10 +82,12 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		log.Debugf("parseConfig: Ignoring config as rebootFlag set\n")
 	} else {
 		parseDatastoreConfig(config, getconfigCtx)
+		// DeviceIoList has some defaults for Usage and UsagePolicy
+		// used by systemAdapters
+		parseDeviceIoListConfig(config, getconfigCtx)
 		// Network objects are used for systemAdapters
 		parseNetworkXObjectConfig(config, getconfigCtx)
 		parseSystemAdapterConfig(config, getconfigCtx, false)
-		parseDeviceIoListConfig(config, getconfigCtx)
 		parseBaseOsConfig(getconfigCtx, config)
 		parseNetworkInstanceConfig(config, getconfigCtx)
 		parseAppInstanceConfig(config, getconfigCtx)
@@ -637,20 +639,41 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 
 	newPorts := []types.NetworkPortConfig{}
 	for _, sysAdapter := range sysAdapters {
-		var isUplink, isFreeUplink bool = false, false
+		var isMgmt, isFree bool = false, false
 
-		// XXX Rename Uplink in proto file to IsMgmt! Ditto for FreeUplink
+		phyio := lookupDeviceIo(getconfigCtx, sysAdapter.Name)
+		if phyio == nil {
+			// We will re-check when phyio changes.
+			log.Errorf("Missing phyio for %s; ignored", sysAdapter.Name)
+			continue
+		} else {
+			isMgmt = (phyio.Usage == zconfig.PhyIoMemberUsage_PhyIoUsageMgmt)
+			isFree = phyio.UsagePolicy.FreeUplink
+			log.Infof("Found phyio for %s: %t/%t",
+				sysAdapter.Name, isMgmt, isFree)
+		}
 		if version < types.DPCIsMgmt {
-			// XXX Make Uplink and FreeUplink true
+			log.Warnf("XXX old version; assuming isMgmt and isFree")
 			// This should go away when cloud sends proper values
-			isUplink = true
-			isFreeUplink = true
+			isMgmt = true
+			isFree = true
 			version = types.DPCIsMgmt
 		} else {
-			isUplink = sysAdapter.Uplink
-			isFreeUplink = sysAdapter.FreeUplink
-			// XXX zedcloud doesn't set FreeUplink
-			isFreeUplink = isUplink
+			log.Warnf("New version for %s Mgmt/Free %t/%t vs %t/%t",
+				sysAdapter.Name, isMgmt, isFree,
+				sysAdapter.Uplink, sysAdapter.FreeUplink)
+			// Either one can set isMgmt; both need to clear
+			if sysAdapter.Uplink && !isMgmt {
+				log.Warnf("Mgmt flag forced by system adapter for %s",
+					sysAdapter.Name)
+				isMgmt = true
+			}
+			// Either one can set isFree; both need to clear
+			if sysAdapter.FreeUplink && !isFree {
+				log.Warnf("Free flag forced by system adapter for %s",
+					sysAdapter.Name)
+				isFree = true
+			}
 		}
 
 		port := types.NetworkPortConfig{}
@@ -660,8 +683,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		} else {
 			port.Name = sysAdapter.Name
 		}
-		port.IsMgmt = isUplink
-		port.Free = isFreeUplink
+		port.IsMgmt = isMgmt
+		port.Free = isFree
 
 		port.Dhcp = types.DT_NONE
 		// XXX temporary hack: if static IP 0.0.0.0 we log and
@@ -829,8 +852,18 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 	}
 	phyIoAdapterList.Initialized = true
 	getconfigCtx.pubPhysicalIOAdapters.Publish("zedagent", phyIoAdapterList)
+	parseSystemAdapterConfig(config, getconfigCtx, true)
 
 	log.Infof("parseDeviceIoListConfig: Done")
+}
+
+func lookupDeviceIo(getconfigCtx *getconfigContext, logicalLabel string) *types.PhysicalIOAdapter {
+	for _, port := range getconfigCtx.zedagentCtx.physicalIoAdapterMap {
+		if port.Logicallabel == logicalLabel {
+			return &port
+		}
+	}
+	return nil
 }
 
 func lookupDatastore(datastores []*zconfig.DatastoreConfig,
