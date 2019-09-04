@@ -666,7 +666,7 @@ func DNSStopMonitor(bnNum int) {
 
 // Monitor the dhcp packets for switched network instance
 func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContext) {
-	var isIPv4, isReplyAck, needUpdate, foundDstMac bool
+	var isReplyAck, needUpdate, foundDstMac bool
 	var vifInfo []types.VifNameMac
 	var netstatus types.NetworkInstanceStatus
 
@@ -696,22 +696,20 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 			}
 		}
 	}
-	if foundDstMac == false { // dhcp packet not for this bridge App ports
+	if !foundDstMac { // dhcp packet not for this bridge App ports
 		log.Infof("checkDHCPPacketInfo: pkt no dst mac for us\n")
 		return
 	}
 
 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
-	if ipLayer != nil {
-		isIPv4 = true
-	}
+	isIPv4 := (ipLayer != nil)
 	if isIPv4 {
 		// dhcp client will send discovery or request, server will send offer and Ack
 		// in the code we wait for the Reply from server with Ack to confirm the client's IP address
 		dhcpLayer := packet.Layer(layers.LayerTypeDHCPv4)
 		if dhcpLayer != nil {
 			dhcpv4, _ := dhcpLayer.(*layers.DHCPv4)
-			if dhcpv4.Operation == layers.DHCPOpReply {
+			if dhcpv4 != nil && dhcpv4.Operation == layers.DHCPOpReply {
 				opts := dhcpv4.Options
 				for _, opt := range opts {
 					if opt.Type == layers.DHCPOptMessageType && int(opt.Data[0]) == int(layers.DHCPMsgTypeAck) {
