@@ -8,11 +8,29 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/Azure/azure-sdk-for-go/storage"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strings"
 )
+
+const (
+	// SingleMB contains chunk size
+	SingleMB int64 = 1024 * 1024
+)
+
+// UpdateStats contains the information for the progress of an update
+type UpdateStats struct {
+	Size          int64    // complete size to upload/download
+	Asize         int64    // current size uploaded/downloaded
+	List          []string //list of images at given path
+	Error         error
+	BodyLength    int   // Body legth in http response
+	ContentLength int64 // Content length in http response
+}
+
+// NotifChan is the uploading/downloading progress notification channel
+type NotifChan chan UpdateStats
 
 func NewClient(accountName, accountKey string, httpClient *http.Client) (storage.Client, error) {
 	if httpClient == nil {
@@ -67,7 +85,8 @@ func DeleteAzureBlob(accountName, accountKey, containerName, remoteFile string, 
 	return nil
 }
 
-func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, localFile string, httpClient *http.Client) error {
+func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, localFile string, httpClient *http.Client, prgNotify NotifChan) error {
+	stats := UpdateStats{}
 	c, err := NewClient(accountName, accountKey, httpClient)
 	if err != nil {
 		return err
@@ -91,17 +110,34 @@ func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, local
 	}
 	defer file.Close()
 	blob := container.GetBlobReference(remoteFile)
+	getErr := blob.GetProperties(nil)
+	if getErr != nil {
+		return getErr
+	}
 	readCloser, err := blob.Get(nil)
 	if err != nil {
 		return err
 	}
-	bytesRead, err := ioutil.ReadAll(readCloser)
-	if err != nil {
-		return err
-	}
-	err = ioutil.WriteFile(localFile, bytesRead, 0644)
-	if err != nil {
-		return err
+	defer readCloser.Close()
+	chunkSize := SingleMB
+	var written, copiedSize int64
+	var copyErr error
+	stats.Size = int64(blob.Properties.ContentLength)
+	for {
+		if written, copyErr = io.CopyN(file, readCloser, chunkSize); copyErr != nil && copyErr != io.EOF {
+			return copyErr
+		}
+		copiedSize += written
+		if written != chunkSize {
+			break
+		}
+		stats.Asize = copiedSize
+		if prgNotify != nil {
+			select {
+			case prgNotify <- stats:
+			default: //ignore we cannot write
+			}
+		}
 	}
 	return nil
 }

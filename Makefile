@@ -83,6 +83,20 @@ GOOS=linux
 CGO_ENABLED=1
 GOBUILDER=eve-build-$(shell echo $(USER) | tr A-Z a-z)
 
+# if proxy is set, use it when building docker builder
+ifneq ($(HTTP_PROXY),)
+DOCKER_HTTP_PROXY:=--build-arg http_proxy=$(HTTP_PROXY)
+endif
+ifneq ($(HTTPS_PROXY),)
+DOCKER_HTTPS_PROXY:=--build-arg https_proxy=$(HTTPS_PROXY)
+endif
+ifneq ($(NO_PROXY),)
+DOCKER_NO_PROXY:=--build-arg no_proxy=$(NO_PROXY)
+endif
+ifneq ($(ALL_PROXY),)
+DOCKER_ALL_PROXY:=--build-arg all_proxy=$(ALL_PROXY)
+endif
+
 DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; docker export $$C | tar -xf - $$2 ; docker rm $$C ; } ; _
 DOCKER_GO = _() { mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ;\
     docker run $$DOCKER_GO_ARGS -i --rm -u $(USER) -w /go/src/$${3:-dummy} \
@@ -267,7 +281,9 @@ $(GOBUILDER):
 ifneq ($(BUILD),local)
 	@echo "Creating go builder image for user $(USER)"
 	@docker build --build-arg GOVER=$(GOVER) --build-arg USER=$(USER) --build-arg GROUP=$(GROUP) \
-                      --build-arg UID=$(UID) --build-arg GID=$(GID) -t $@ build-tools/src/scripts >/dev/null
+                      --build-arg UID=$(UID) --build-arg GID=$(GID) \
+                      $(DOCKER_HTTP_PROXY) $(DOCKER_HTTPS_PROXY) $(DOCKER_NO_PROXY) $(DOCKER_ALL_PROXY) \
+                      -t $@ build-tools/src/scripts > /dev/null
 	@echo "$@ docker container is ready to use"
 endif
 

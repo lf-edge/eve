@@ -631,7 +631,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		IsContainer:      config.IsContainer,
 		RefCount:         config.RefCount,
 		LastUse:          time.Now(),
-		UseFreeMgmtPorts: config.UseFreeMgmtPorts,
+		AllowNonFreePort: config.AllowNonFreePort,
 		ImageSha256:      config.ImageSha256,
 		PendingAdd:       true,
 	}
@@ -1626,11 +1626,11 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	locFilename = locFilename + "/" + config.Safename
 
-	log.Infof("Downloading <%s> to <%s> using %v free management port\n",
-		config.Name, locFilename, config.UseFreeMgmtPorts)
+	log.Infof("Downloading <%s> to <%s> using %v allow non-free port\n",
+		config.Name, locFilename, config.AllowNonFreePort)
 
 	var addrCount int
-	if config.UseFreeMgmtPorts {
+	if !config.AllowNonFreePort {
 		addrCount = types.CountLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus)
 		log.Infof("Have %d free management port addresses\n", addrCount)
 		err = errors.New("No free IP management port addresses for download")
@@ -1651,7 +1651,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	// Loop through all interfaces until a success
 	for addrIndex := 0; addrIndex < addrCount; addrIndex += 1 {
 		var ipSrc net.IP
-		if config.UseFreeMgmtPorts {
+		if !config.AllowNonFreePort {
 			ipSrc, err = types.GetLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus,
 				addrIndex, "")
 		} else {
