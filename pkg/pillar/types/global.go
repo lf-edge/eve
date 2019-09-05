@@ -68,9 +68,8 @@ type GlobalConfig struct {
 
 	AllowAppVnc bool
 
-	// Normally the EVE microservices as well as baseos images downloads
-	// will use free and non-free (e.g., WWAN) ports, while app images will
-	// only download using the free ports. These globals can change that behavior:
+	// These settings control how the EVE microservices
+	// will use free and non-free (e.g., WWAN) ports for image downloads.
 	AllowNonFreeAppImages  TriState // For app images
 	AllowNonFreeBaseImages TriState // For baseos images
 
@@ -126,7 +125,7 @@ var GlobalConfigDefaults = GlobalConfig{
 	DownloadRetryTime:   600,  // 10 minutes
 	DomainBootRetryTime: 600,  // 10 minutes
 
-	AllowNonFreeAppImages:  TS_DISABLED,
+	AllowNonFreeAppImages:  TS_ENABLED,
 	AllowNonFreeBaseImages: TS_ENABLED,
 
 	DefaultLogLevel:       "info", // XXX Should we change to warning?
