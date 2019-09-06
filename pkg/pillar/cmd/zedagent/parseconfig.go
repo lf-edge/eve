@@ -34,7 +34,7 @@ import (
 const (
 	MaxBaseOsCount       = 2
 	BaseOsImageCount     = 1
-	rebootConfigFilename = configDir + "/rebootConfig"
+	rebootConfigFilename = types.IdentityDirname + "/rebootConfig"
 )
 
 var rebootDelay int = 30 // take a 30 second delay
@@ -175,7 +175,7 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 
 		baseOs.StorageConfigList = make([]types.StorageConfig,
 			len(cfgOs.Drives))
-		parseStorageConfigList(baseOsObj, baseOs.StorageConfigList,
+		parseStorageConfigList(types.BaseOsObj, baseOs.StorageConfigList,
 			cfgOs.Drives)
 
 		certInstance := getCertObjects(baseOs.UUIDandVersion,
@@ -539,7 +539,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 
 		appInstance.StorageConfigList = make([]types.StorageConfig,
 			len(cfgApp.Drives))
-		parseStorageConfigList(appImgObj, appInstance.StorageConfigList,
+		parseStorageConfigList(types.AppImgObj, appInstance.StorageConfigList,
 			cfgApp.Drives)
 
 		// fill the overlay/underlay config
