@@ -6,12 +6,13 @@ package baseosmgr
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"os"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	log "github.com/sirupsen/logrus"
 )
 
 func lookupCertObjSafename(ctx *baseOsMgrContext, safename string) *types.CertObjConfig {
@@ -166,7 +167,7 @@ func doCertObjInstall(ctx *baseOsMgrContext, uuidStr string, config types.CertOb
 	}
 
 	// install the certs now
-	if installDownloadedObjects(certObj, uuidStr, &status.StorageStatusList) {
+	if installDownloadedObjects(types.CertObj, uuidStr, &status.StorageStatusList) {
 		// Automatically move from DOWNLOADED to INSTALLED
 		status.State = types.INSTALLED
 		changed = true
@@ -180,7 +181,7 @@ func doCertObjInstall(ctx *baseOsMgrContext, uuidStr string, config types.CertOb
 func checkCertObjStorageDownloadStatus(ctx *baseOsMgrContext, uuidStr string,
 	config types.CertObjConfig, status *types.CertObjStatus) (bool, bool) {
 
-	ret := checkStorageDownloadStatus(ctx, certObj, uuidStr,
+	ret := checkStorageDownloadStatus(ctx, types.CertObj, uuidStr,
 		config.StorageConfigList, status.StorageStatusList)
 
 	status.State = ret.MinState
@@ -250,12 +251,12 @@ func doCertObjUninstall(ctx *baseOsMgrContext, uuidStr string,
 			uuidStr, safename)
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {
-			removeDownloaderConfig(ctx, certObj, safename)
+			removeDownloaderConfig(ctx, types.CertObj, safename)
 			ss.HasDownloaderRef = false
 			changed = true
 		}
 
-		ds := lookupDownloaderStatus(ctx, certObj, safename)
+		ds := lookupDownloaderStatus(ctx, types.CertObj, safename)
 		// XXX if additional refs it will not go away
 		if false && ds != nil {
 			log.Infof("doCertObjUninstall(%s) download %s not yet gone\n",

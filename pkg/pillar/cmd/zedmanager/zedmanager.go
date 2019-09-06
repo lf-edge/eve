@@ -24,11 +24,7 @@ import (
 )
 
 const (
-	appImgObj = "appImg.obj"
-	certObj   = "cert.obj"
 	agentName = "zedmanager"
-
-	certificateDirname = persistDir + "/certs"
 )
 
 // Set from Makefile
@@ -132,7 +128,7 @@ func Run() {
 	pubEIDConfig.ClearRestarted()
 
 	pubAppImgDownloadConfig, err := pubsub.PublishScope(agentName,
-		appImgObj, types.DownloaderConfig{})
+		types.AppImgObj, types.DownloaderConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -140,7 +136,7 @@ func Run() {
 	ctx.pubAppImgDownloadConfig = pubAppImgDownloadConfig
 
 	pubAppImgVerifierConfig, err := pubsub.PublishScope(agentName,
-		appImgObj, types.VerifyImageConfig{})
+		types.AppImgObj, types.VerifyImageConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -204,7 +200,7 @@ func Run() {
 
 	// Look for DownloaderStatus from downloader
 	subAppImgDownloadStatus, err := pubsub.SubscribeScope("downloader",
-		appImgObj, types.DownloaderStatus{}, false, &ctx)
+		types.AppImgObj, types.DownloaderStatus{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -215,7 +211,7 @@ func Run() {
 
 	// Look for VerifyImageStatus from verifier
 	subAppImgVerifierStatus, err := pubsub.SubscribeScope("verifier",
-		appImgObj, types.VerifyImageStatus{}, false, &ctx)
+		types.AppImgObj, types.VerifyImageStatus{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}

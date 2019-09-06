@@ -172,8 +172,8 @@ func (portConfig *DevicePortConfig) DoSanitize(
 		zeroTime := time.Time{}
 		if portConfig.TimePriority == zeroTime {
 			// If we can stat the file use its modify time
-			filename := fmt.Sprintf("/var/tmp/zededa/DevicePortConfig/%s.json",
-				key)
+			filename := fmt.Sprintf("%s/DevicePortConfig/%s.json",
+				TmpDirname, key)
 			fi, err := os.Stat(filename)
 			if err == nil {
 				portConfig.TimePriority = fi.ModTime()
