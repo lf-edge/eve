@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2016-2017 VMware, Inc. All Rights Reserved.
+Copyright (c) 2016 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"sync"
 	"time"
 
 	"github.com/vmware/govmomi/vim25/soap"
@@ -243,13 +242,12 @@ func lastIndexLines(s []byte, line *int, include func(l int, m string) bool) (in
 			break
 		}
 
-		msg := string(s[o+1 : i+1])
+		msg := string(s[o:i])
+		i = o
+		*line++
 		if !include(*line, msg) {
 			done = true
 			break
-		} else {
-			i = o
-			*line++
 		}
 	}
 
@@ -258,22 +256,18 @@ func lastIndexLines(s []byte, line *int, include func(l int, m string) bool) (in
 
 // Tail seeks to the position of the last N lines of the file.
 func (f *DatastoreFile) Tail(n int) error {
-	return f.TailFunc(n, func(line int, _ string) bool { return n > line })
+	return f.TailFunc(func(line int, _ string) bool { return n > line })
 }
 
 // TailFunc will seek backwards in the datastore file until it hits a line that does
 // not satisfy the supplied `include` function.
-func (f *DatastoreFile) TailFunc(lines int, include func(line int, message string) bool) error {
+func (f *DatastoreFile) TailFunc(include func(line int, message string) bool) error {
 	// Read the file in reverse using bsize chunks
 	const bsize = int64(1024 * 16)
 
 	fsize, err := f.Seek(0, io.SeekEnd)
 	if err != nil {
 		return err
-	}
-
-	if lines == 0 {
-		return nil
 	}
 
 	chunk := int64(-1)
@@ -348,7 +342,6 @@ type followDatastoreFile struct {
 	r *DatastoreFile
 	c chan struct{}
 	i time.Duration
-	o sync.Once
 }
 
 // Read reads up to len(b) bytes from the DatastoreFile being followed.
@@ -400,15 +393,11 @@ func (f *followDatastoreFile) Read(p []byte) (int, error) {
 
 // Close will stop Follow polling and close the underlying DatastoreFile.
 func (f *followDatastoreFile) Close() error {
-	f.o.Do(func() { close(f.c) })
+	close(f.c)
 	return nil
 }
 
 // Follow returns an io.ReadCloser to stream the file contents as data is appended.
 func (f *DatastoreFile) Follow(interval time.Duration) io.ReadCloser {
-	return &followDatastoreFile{
-		r: f,
-		c: make(chan struct{}),
-		i: interval,
-	}
+	return &followDatastoreFile{f, make(chan struct{}), interval}
 }

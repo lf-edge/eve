@@ -80,24 +80,17 @@ func (c *Common) SetInventoryPath(p string) {
 func (c Common) ObjectName(ctx context.Context) (string, error) {
 	var o mo.ManagedEntity
 
+	name := c.Name()
+	if name != "" {
+		return name, nil
+	}
+
 	err := c.Properties(ctx, c.Reference(), []string{"name"}, &o)
 	if err != nil {
 		return "", err
 	}
 
-	if o.Name != "" {
-		return o.Name, nil
-	}
-
-	// Network has its own "name" field...
-	var n mo.Network
-
-	err = c.Properties(ctx, c.Reference(), []string{"name"}, &n)
-	if err != nil {
-		return "", err
-	}
-
-	return n.Name, nil
+	return o.Name, nil
 }
 
 func (c Common) Properties(ctx context.Context, r types.ManagedObjectReference, ps []string, dst interface{}) error {
