@@ -33,6 +33,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -1326,7 +1327,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		xv := "xvd" + string(int('a')+i)
 		ds.Vdev = xv
 
-		target, err := types.VerifiedImageFileLocation(status.IsContainer,
+		target, err := utils.VerifiedImageFileLocation(status.IsContainer,
 			status.ContainerImageID, dc.ImageSha256)
 		if err != nil {
 			log.Errorf("configToStatus: Failed to get Image File Location. "+

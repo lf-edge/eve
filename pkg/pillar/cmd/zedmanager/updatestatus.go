@@ -10,6 +10,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
 	"github.com/satori/go.uuid"
 	"github.com/shirou/gopsutil/disk"
@@ -259,10 +260,8 @@ func updateOrRemove(ctx *zedmanagerContext, status types.AppInstanceStatus) {
 	}
 }
 
-func checkDiskSize(ctxPtr *zedmanagerContext,
-	status types.AppInstanceStatus) error {
+func checkDiskSize(ctxPtr *zedmanagerContext) error {
 
-	log.Infof("checkDiskSize: app %s\n", status.UUIDandVersion.UUID.String())
 	var totalAppDiskSize uint64
 	appDiskSizeList := ""
 	pub := ctxPtr.pubAppInstanceStatus
@@ -274,7 +273,7 @@ func checkDiskSize(ctxPtr *zedmanagerContext,
 				iterStatus.UUIDandVersion, iterStatus.State)
 			continue
 		}
-		appDiskSize, err := iterStatus.GetDiskSize()
+		appDiskSize, err := utils.GetDiskSizeForAppInstance(iterStatus)
 		if err != nil {
 			log.Errorf("checkDiskSize: err: %s", err.Error())
 			return err
@@ -792,7 +791,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	status.ActivateInprogress = true
 
 	// Check
-	err := checkDiskSize(ctx, *status)
+	err := checkDiskSize(ctx)
 	if err != nil {
 		log.Errorf("doActivate: checkDiskSize Failed. err: %s", err)
 		status.SetError(err.Error(), "CheckDiskSize", time.Now())
