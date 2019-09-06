@@ -57,11 +57,11 @@ message SystemAdapter {
         // deprecated; need level 2 spec. sWAdapterParams allocDetails = 20;
 
         // this is part of the freelink group
-        // deprecate: look at PhysicalIO->UsagePolicy instead
+        // deprecate: have a separate device policy object in the API
         bool freeUplink = 2;
 
         // this is part of the uplink group
-        // deprecate: look at PhysicalIO->Usage instead
+        // deprecate: have a separate device policy object in the API
         bool uplink = 3;
 
         // attach this network config for this adapter
@@ -70,9 +70,9 @@ message SystemAdapter {
         // if its static network we need ip address
         string addr = 5;
 
-	// alias/logical name which will be reported to zedcloud
-	// and used for app instances
-	string logicalName = 6;
+        // alias/logical name which will be reported to zedcloud
+        // and used for app instances
+        string logicalName = 6;
 }
 
 enum PhyIoType {
@@ -98,6 +98,8 @@ enum PhyIoMemberUsage {
 // Given additional details for EVE softwar to how to treat this
 // interface. Example policies could be limit use of LTE interface
 // or only use Eth1 only if Eth0 is not available etc
+// XXX Note that this is the static information from the model.
+// Current configuration is in systemAdapter
 message PhyIOUsagePolicy {
         // Used only when one other normal uplinks are down
         bool freeUplink = 1;
@@ -138,6 +140,8 @@ message PhysicalIO {
       // EntireGroup can be assigned to application or nothing at all
       string  assigngrp         = 5;
 
+      // XXX Note that this is the static information from the model.
+      // Current configuration is in systemAdapter
       PhyIoMemberUsage usage    = 6;
       PhyIOUsagePolicy usagePolicy    = 7;
 
