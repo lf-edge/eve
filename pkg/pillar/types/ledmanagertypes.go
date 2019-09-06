@@ -13,7 +13,6 @@ type LedBlinkCounter struct {
 }
 
 const (
-	tmpDirName   = "/var/tmp/zededa/"
 	ledConfigKey = "ledconfig"
 )
 
@@ -26,9 +25,9 @@ func UpdateLedManagerConfig(count int) {
 	blinkCount := LedBlinkCounter{
 		BlinkCounter: count,
 	}
-	err := pubsub.PublishToDir(tmpDirName, ledConfigKey, &blinkCount)
+	err := pubsub.PublishToDir(TmpDirname, ledConfigKey, &blinkCount)
 	if err != nil {
-		log.Errorln("err: ", err, tmpDirName)
+		log.Errorln("err: ", err, TmpDirname)
 	} else {
 		if count != lastCount {
 			log.Infof("UpdateLedManagerConfig: set %d\n", count)

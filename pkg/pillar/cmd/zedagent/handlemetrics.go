@@ -40,12 +40,12 @@ import (
 )
 
 // Also report usage for these paths
-const persistPath = "/persist"
+const persistPath = types.PersistDir
 
 var reportPaths = []string{"/", "/config", persistPath}
 
 // Application-related files live here; includes downloads and verifications in progress
-var appPersistPaths = []string{"/persist/img", "/persist/downloads/appImg.obj"}
+var appPersistPaths = []string{"/persist/img", types.ImgCatalogDirname}
 
 func publishMetrics(ctx *zedagentContext, iteration int) {
 	cpuMemoryStat := ExecuteXentopCmd()

@@ -40,19 +40,12 @@ import (
 )
 
 const (
-	appImgObj = "appImg.obj"
-	agentName = "domainmgr"
+	agentName    = "domainmgr"
+	runDirname   = "/var/run/" + agentName
+	xenDirname   = runDirname + "/xen"       // We store xen cfg files here
+	ciDirname    = runDirname + "/cloudinit" // For cloud-init images
+	rwImgDirname = types.PersistDir + "/img" // We store images here
 
-	runDirname        = "/var/run/" + agentName
-	persistDir        = "/persist"
-	persistRktDataDir = persistDir + "/rkt"
-	rwImgDirname      = persistDir + "/img"       // We store images here
-	xenDirname        = runDirname + "/xen"       // We store xen cfg files here
-	ciDirname         = runDirname + "/cloudinit" // For cloud-init images
-	downloadDirname   = persistDir + "/downloads"
-	imgCatalogDirname = downloadDirname + "/" + appImgObj
-	// Read-only images named based on sha256 hash each in its own directory
-	verifiedDirname = imgCatalogDirname + "/verified"
 )
 
 // Really a constant
@@ -158,13 +151,13 @@ func Run() {
 			log.Fatal(err)
 		}
 	}
-	if _, err := os.Stat(imgCatalogDirname); err != nil {
-		if err := os.MkdirAll(imgCatalogDirname, 0700); err != nil {
+	if _, err := os.Stat(types.ImgCatalogDirname); err != nil {
+		if err := os.MkdirAll(types.ImgCatalogDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
-	if _, err := os.Stat(verifiedDirname); err != nil {
-		if err := os.MkdirAll(verifiedDirname, 0700); err != nil {
+	if _, err := os.Stat(types.VerifiedDirname); err != nil {
+		if err := os.MkdirAll(types.VerifiedDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -1967,7 +1960,7 @@ func rktRun(domainName string, ContainerImageID string, xenCfgFilename string) (
 	log.Infof("rktRun %s - ContainerImageID %s\n", domainName, ContainerImageID)
 	cmd := "rkt"
 	args := []string{
-		"--dir=" + persistRktDataDir,
+		"--dir=" + types.PersistRktDataDir,
 		"--insecure-options=image",
 		"run",
 		ContainerImageID,
@@ -2216,7 +2209,7 @@ func rktStop(PodUUID string, force bool) error {
 	if force {
 		// rkt --dir=<RKT_DATA_DIR> stop PodUUID --force=true
 		args = []string{
-			"--dir=" + persistRktDataDir,
+			"--dir=" + types.PersistRktDataDir,
 			"stop",
 			PodUUID,
 			"--force=true",
@@ -2224,7 +2217,7 @@ func rktStop(PodUUID string, force bool) error {
 	} else {
 		// rkt --dir=<RKT_DATA_DIR> stop PodUUID
 		args = []string{
-			"--dir=" + persistRktDataDir,
+			"--dir=" + types.PersistRktDataDir,
 			"stop",
 			PodUUID,
 		}
@@ -2291,7 +2284,7 @@ func rktRm(PodUUID string) error {
 	// rkt --dir=<RKT_DATA_DIR> rm PodUUID
 	cmd := "rkt"
 	args := []string{
-		"--dir=" + persistRktDataDir,
+		"--dir=" + types.PersistRktDataDir,
 		"rm",
 		PodUUID,
 	}

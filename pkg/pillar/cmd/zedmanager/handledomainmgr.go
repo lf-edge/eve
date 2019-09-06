@@ -14,15 +14,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const (
-	persistDir            = "/persist"
-	objectDownloadDirname = persistDir + "/downloads"
-	imgCatalogDirname     = objectDownloadDirname + "/" + appImgObj
-	pendingDirname        = imgCatalogDirname + "/pending"
-	verifierDirname       = imgCatalogDirname + "/verifier"
-	finalDirname          = imgCatalogDirname + "/verified"
-)
-
 func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	aiConfig types.AppInstanceConfig,
 	aiStatus types.AppInstanceStatus,
@@ -82,7 +73,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	i := 0
 	for _, sc := range aiConfig.StorageConfigList {
 		// Check that file is verified
-		locationDir := finalDirname + "/" + sc.ImageSha256
+		locationDir := types.VerifiedDirname + "/" + sc.ImageSha256
 		location := ""
 		if aiStatus.IsContainer {
 			location = "/persist/rkt"

@@ -74,7 +74,6 @@ func Run() { //nolint:gocyclo
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
-	dirPtr := flag.String("D", "/config", "Directory with certs etc")
 	stdoutPtr := flag.Bool("s", false, "Use stdout")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
 	maxRetriesPtr := flag.Int("r", 0, "Max retries")
@@ -89,7 +88,7 @@ func Run() { //nolint:gocyclo
 		log.SetLevel(log.InfoLevel)
 	}
 	curpart := *curpartPtr
-	identityDirname := *dirPtr
+	identityDirname := types.IdentityDirname
 	useStdout := *stdoutPtr
 	noPidFlag := *noPidPtr
 	maxRetries := *maxRetriesPtr
@@ -128,10 +127,6 @@ func Run() { //nolint:gocyclo
 		}
 	}
 
-	onboardCertName := identityDirname + "/onboard.cert.pem"
-	onboardKeyName := identityDirname + "/onboard.key.pem"
-	deviceCertName := identityDirname + "/device.cert.pem"
-	serverFileName := identityDirname + "/server"
 	uuidFileName := identityDirname + "/uuid"
 	hardwaremodelFileName := identityDirname + "/hardwaremodel"
 	enterpriseFileName := identityDirname + "/enterprise"
@@ -236,7 +231,7 @@ func Run() { //nolint:gocyclo
 	log.Infof("Client Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
-	server, err := ioutil.ReadFile(serverFileName)
+	server, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -250,7 +245,8 @@ func Run() { //nolint:gocyclo
 
 	if operations["selfRegister"] {
 		var err error
-		onboardCert, err = tls.LoadX509KeyPair(onboardCertName, onboardKeyName)
+		onboardCert, err = tls.LoadX509KeyPair(types.OnboardCertName,
+			types.OnboardKeyName)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -259,7 +255,7 @@ func Run() { //nolint:gocyclo
 			log.Fatal(err)
 		}
 		// Load device text cert for upload
-		deviceCertPem, err = ioutil.ReadFile(deviceCertName)
+		deviceCertPem, err = ioutil.ReadFile(types.DeviceCertName)
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -8,15 +8,16 @@ package baseosmgr
 import (
 	"errors"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zboot"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/zboot"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -276,7 +277,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	publishBaseOsStatus(ctx, status)
 
 	// install the image at proper partition; dd etc
-	if installDownloadedObjects(baseOsObj, uuidStr,
+	if installDownloadedObjects(types.BaseOsObj, uuidStr,
 		&status.StorageStatusList) {
 
 		changed = true
@@ -497,7 +498,7 @@ func checkBaseOsStorageDownloadStatus(ctx *baseOsMgrContext, uuidStr string,
 
 	log.Infof("checkBaseOsStorageDownloadStatus(%s) for %s\n",
 		config.BaseOsVersion, uuidStr)
-	ret := checkStorageDownloadStatus(ctx, baseOsObj, uuidStr,
+	ret := checkStorageDownloadStatus(ctx, types.BaseOsObj, uuidStr,
 		config.StorageConfigList, status.StorageStatusList)
 
 	status.State = ret.MinState
@@ -530,7 +531,7 @@ func checkBaseOsStorageDownloadStatus(ctx *baseOsMgrContext, uuidStr string,
 func checkBaseOsVerificationStatus(ctx *baseOsMgrContext, uuidStr string,
 	config types.BaseOsConfig, status *types.BaseOsStatus) (bool, bool) {
 
-	ret := checkStorageVerifierStatus(ctx, baseOsObj,
+	ret := checkStorageVerifierStatus(ctx, types.BaseOsObj,
 		uuidStr, config.StorageConfigList, status.StorageStatusList)
 
 	status.State = ret.MinState
@@ -659,7 +660,7 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 		if ss.HasVerifierRef {
 			log.Infof("doBaseOsUninstall(%s) for %s, HasVerifierRef %s\n",
 				status.BaseOsVersion, uuidStr, ss.ImageSha256)
-			MaybeRemoveVerifierConfigSha256(ctx, baseOsObj,
+			MaybeRemoveVerifierConfigSha256(ctx, types.BaseOsObj,
 				ss.ImageSha256)
 			ss.HasVerifierRef = false
 			changed = true
@@ -668,7 +669,7 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 				status.BaseOsVersion, uuidStr)
 		}
 
-		vs := lookupVerificationStatusSha256(ctx, baseOsObj,
+		vs := lookupVerificationStatusSha256(ctx, types.BaseOsObj,
 			ss.ImageSha256)
 
 		if vs != nil {
@@ -702,7 +703,7 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 			log.Infof("doBaseOsUninstall(%s) for %s, HasDownloaderRef %s\n",
 				status.BaseOsVersion, uuidStr, safename)
 
-			removeDownloaderConfig(ctx, baseOsObj, safename)
+			removeDownloaderConfig(ctx, types.BaseOsObj, safename)
 			ss.HasDownloaderRef = false
 			changed = true
 		} else {
@@ -710,7 +711,7 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 				status.BaseOsVersion, uuidStr)
 		}
 
-		ds := lookupDownloaderStatus(ctx, baseOsObj, ss.ImageSha256)
+		ds := lookupDownloaderStatus(ctx, types.BaseOsObj, ss.ImageSha256)
 		if ds != nil {
 			log.Infof("doBaseOsUninstall(%s) for %s, Download %s not yet gone; RefCount %d\n",
 				status.BaseOsVersion, uuidStr, safename,

@@ -7,15 +7,16 @@ package zedrouter
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
 	"net"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/wrap"
+	log "github.com/sirupsen/logrus"
 )
 
 // Template per map server. Pass in (dns-name, authentication-key)
@@ -159,7 +160,7 @@ lisp database-mapping {
 }
 `
 const (
-	baseFilename = tmpDirname + "/lisp.config.base"
+	baseFilename = types.TmpDirname + "/lisp.config.base"
 
 	lispDirname  = "/opt/zededa/lisp"
 	destFilename = lispDirname + "/lisp.config"

@@ -658,7 +658,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		case types.INITIAL:
 			// Nothing to do
 		default:
-			ss.ActiveFileLocation = finalDirname + "/" + vs.Safename
+			ss.ActiveFileLocation = types.VerifiedDirname + "/" + vs.Safename
 			log.Infof("Update SSL ActiveFileLocation for %s: %s\n",
 				uuidStr, ss.ActiveFileLocation)
 			changed = true

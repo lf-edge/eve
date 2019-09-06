@@ -13,12 +13,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	log "github.com/sirupsen/logrus"
 )
 
 const (
-	persistDir = "/persist"
 	reasonFile = "reboot-reason"
 	stackFile  = "reboot-stack"
 )
@@ -133,8 +133,8 @@ func GetOtherRebootReason() (string, time.Time, string) {
 
 // Used for failures/hangs when zboot curpart hangs
 func GetCommonRebootReason() (string, time.Time, string) {
-	reasonFilename := fmt.Sprintf("%s/%s", persistDir, reasonFile)
-	stackFilename := fmt.Sprintf("%s/%s", persistDir, stackFile)
+	reasonFilename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
+	stackFilename := fmt.Sprintf("%s/%s", types.PersistDir, stackFile)
 	reason, ts := statAndRead(reasonFilename)
 	stack, _ := statAndRead(stackFilename)
 	return reason, ts, stack
@@ -197,8 +197,8 @@ func DiscardOtherRebootReason() {
 }
 
 func DiscardCommonRebootReason() {
-	reasonFilename := fmt.Sprintf("%s/%s", persistDir, reasonFile)
-	stackFilename := fmt.Sprintf("%s/%s", persistDir, stackFile)
+	reasonFilename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
+	stackFilename := fmt.Sprintf("%s/%s", types.PersistDir, stackFile)
 	if err := os.Remove(reasonFilename); err != nil {
 		log.Errorf("DiscardCommonRebootReason failed %s\n", err)
 	}
@@ -279,7 +279,7 @@ func getCurrentIMGdir() string {
 		return currentIMGdir
 	}
 	partName := zboot.GetCurrentPartition()
-	currentIMGdir = fmt.Sprintf("%s/%s", persistDir, partName)
+	currentIMGdir = fmt.Sprintf("%s/%s", types.PersistDir, partName)
 	return currentIMGdir
 }
 
@@ -294,7 +294,7 @@ func getOtherIMGdir(inprogressCheck bool) string {
 		return ""
 	}
 	partName := zboot.GetOtherPartition()
-	otherIMGdir = fmt.Sprintf("%s/%s", persistDir, partName)
+	otherIMGdir = fmt.Sprintf("%s/%s", types.PersistDir, partName)
 	return otherIMGdir
 }
 
