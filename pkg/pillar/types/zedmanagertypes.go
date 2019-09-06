@@ -4,16 +4,9 @@
 package types
 
 import (
-	"errors"
-	"fmt"
-	"io/ioutil"
 	"net"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -202,42 +195,6 @@ func (statusPtr *AppInstanceStatus) ClearError() { //revive:disable-line
 	statusPtr.ErrorTime = time.Time{}
 }
 
-// GetDiskSize - Returns sum of all sizes of all disks in App Instance
-func (statusPtr *AppInstanceStatus) GetDiskSize() ( //revive:disable-line
-	uint64, error) {
-	var totalSize uint64
-	for indx := range statusPtr.StorageStatusList {
-		ssPtr := &statusPtr.StorageStatusList[indx]
-		if ssPtr.IsContainer || ssPtr.ReadOnly {
-			continue
-		}
-		fileLocation, err := VerifiedImageFileLocation(ssPtr.IsContainer,
-			ssPtr.ContainerImageID, ssPtr.ImageSha256)
-		if err != nil {
-			err = fmt.Errorf("GetDiskSize: App: %s. Failed to get "+
-				"VerifiedImageFileLocation. err: %s",
-				statusPtr.UUIDandVersion.UUID.String(),
-				err.Error())
-			log.Errorf("VerifiedImageFileLocation failed: %s", err.Error())
-			return 0, err
-		}
-		imageVirtualSize, err := diskmetrics.GetDiskVirtualSize(fileLocation)
-		if err != nil {
-			errStr := fmt.Sprintf("GetDiskSize: App: %s. Failed to get "+
-				"Virtual Size. %s", statusPtr.UUIDandVersion.UUID.String(),
-				err.Error())
-			log.Errorf("GetDiskSize failed: %s", errStr)
-			return 0, errors.New(errStr)
-		}
-		if imageVirtualSize > ssPtr.Maxsizebytes {
-			totalSize += imageVirtualSize
-		} else {
-			totalSize += ssPtr.Maxsizebytes
-		}
-	}
-	return totalSize, nil
-}
-
 type EIDOverlayConfig struct {
 	Name string // From proto message
 	EIDConfigDetails
@@ -340,54 +297,4 @@ type SignatureInfo struct {
 	IntermediateCertsPem []byte
 	SignerCertPem        []byte
 	Signature            []byte
-}
-
-func locationFromDir(locationDir string) (string, error) {
-	if _, err := os.Stat(locationDir); err != nil {
-		log.Errorf("Missing directory: %s, %s\n", locationDir, err)
-		return "", err
-	}
-	// locationDir is a directory. Need to find single file inside
-	// which the verifier ensures.
-	locations, err := ioutil.ReadDir(locationDir)
-	if err != nil {
-		log.Errorln(err)
-		return "", err
-	}
-	if len(locations) != 1 {
-		log.Errorf("Multiple files in %s\n", locationDir)
-		return "", fmt.Errorf("Multiple files in %s\n",
-			locationDir)
-	}
-	if len(locations) == 0 {
-		log.Errorf("No files in %s\n", locationDir)
-		return "", fmt.Errorf("No files in %s\n",
-			locationDir)
-	}
-	return locationDir + "/" + locations[0].Name(), nil
-}
-
-// VerifiedImageFileLocation - Gives the file location for a verified image.
-func VerifiedImageFileLocation(isContainer bool, containerImageID string,
-	imageSha256 string) (string, error) {
-	var location string
-	if isContainer {
-		// Check if statusPtr.ContainerImageID has "sha512-" substring at the beginning
-		if strings.Index(containerImageID, "sha512-") != 0 {
-			err := fmt.Errorf("status.ContainerImageID should start with "+
-				" sha512-, but is %s", containerImageID)
-			return "", err
-		}
-		location = filepath.Join(PersistRktDataDir,
-			"cas", "blob", "sha512",
-			string(containerImageID[7:9]), containerImageID)
-	} else {
-		locationDir := VerifiedDirname + "/" + imageSha256
-		var err error
-		location, err = locationFromDir(locationDir)
-		if err != nil {
-			return "", err
-		}
-	}
-	return location, nil
 }

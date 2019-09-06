@@ -891,14 +891,14 @@ func fileExists(filename string) bool {
 }
 
 func updateFallbackAnyEth(ctx *nimContext) {
-	log.Infof("updateFallbackAnyEth: enable %v ifs %v\n",
+	log.Debugf("updateFallbackAnyEth: enable %v ifs %v\n",
 		ctx.networkFallbackAnyEth, ctx.filteredFallback)
 	if ctx.networkFallbackAnyEth == types.TS_ENABLED {
 		ports := mapToKeys(ctx.filteredFallback)
 		// sort ports to reduce churn; otherwise with two they swap
 		// almost every time
 		sort.Strings(ports)
-		log.Infof("updateFallbackAnyEth: ports %+v", ports)
+		log.Debugf("updateFallbackAnyEth: ports %+v", ports)
 		devicenetwork.UpdateLastResortPortConfig(&ctx.DeviceNetworkContext,
 			ports)
 	} else if ctx.networkFallbackAnyEth == types.TS_DISABLED {
@@ -924,7 +924,7 @@ func mapToKeys(m map[string]bool) []string {
 // Exclude those in AssignableAdapters with usedByUUID!=0
 // Exclude those in NetworkInstanceStatus Type=switch
 func filterIfMap(ctx *nimContext, fallbackPortMap map[string]bool) map[string]bool {
-	log.Infof("filterIfMap: len %d\n", len(fallbackPortMap))
+	log.Debugf("filterIfMap: len %d\n", len(fallbackPortMap))
 
 	filteredFallback := make(map[string]bool, len(fallbackPortMap))
 	for ifname, upFlag := range fallbackPortMap {
@@ -945,13 +945,13 @@ var nilUUID uuid.UUID
 // Check in AssignableAdapters with usedByUUID!=0
 func isAssigned(ctx *nimContext, ifname string) bool {
 
-	log.Infof("isAssigned(%s) have %d bundles\n",
+	log.Debugf("isAssigned(%s) have %d bundles\n",
 		ifname, len(ctx.AssignableAdapters.IoBundleList))
 	ib := ctx.AssignableAdapters.LookupIoBundleNet(ifname)
 	if ib == nil {
 		return false
 	}
-	log.Infof("isAssigned(%s): pciback %t used %s\n",
+	log.Debugf("isAssigned(%s): pciback %t used %s\n",
 		ifname, ib.IsPCIBack, ib.UsedByUUID.String())
 
 	if ib.UsedByUUID != nilUUID {
@@ -966,7 +966,7 @@ func isSwitch(ctx *nimContext, ifname string) bool {
 
 	sub := ctx.subNetworkInstanceStatus
 	items := sub.GetAll()
-	log.Infof("isSwitch(%s) have %d items\n", ifname, len(items))
+	log.Debugf("isSwitch(%s) have %d items\n", ifname, len(items))
 
 	foundExcl := false
 	for _, st := range items {
@@ -975,13 +975,13 @@ func isSwitch(ctx *nimContext, ifname string) bool {
 		if !status.IsUsingPort(ifname) {
 			continue
 		}
-		log.Infof("isSwitch(%s) found use in %s/%s\n",
+		log.Debugf("isSwitch(%s) found use in %s/%s\n",
 			ifname, status.DisplayName, status.Key())
 		if status.Type != types.NetworkInstanceTypeSwitch {
 			continue
 		}
 		foundExcl = true
-		log.Infof("isSwitch(%s) found excl use in %s/%s\n",
+		log.Debugf("isSwitch(%s) found excl use in %s/%s\n",
 			ifname, status.DisplayName, status.Key())
 	}
 	return foundExcl
