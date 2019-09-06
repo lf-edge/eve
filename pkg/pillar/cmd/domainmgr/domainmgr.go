@@ -951,7 +951,8 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 		log.Debugf("doAssignIoAdaptersToDomain processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
 
-		list := ctx.assignableAdapters.LookupIoBundleGroup(adapter.Name)
+		aa := ctx.assignableAdapters
+		list := aa.LookupIoBundleGroup(adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if len(list) == 0 {
 			log.Fatalf("doAssignIoAdaptersToDomain IoBundle disappeared %d %s for %s\n",
@@ -966,7 +967,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 					ib.UsedByUUID, adapter.Type, adapter.Name,
 					status.DomainName)
 			}
-			if ib.Type != types.IoUSB {
+			if !isInUsbGroup(*aa, *ib) {
 				continue
 			}
 			if ib.PciLong == "" {
@@ -1262,7 +1263,8 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 	for _, adapter := range status.IoAdapterList {
 		log.Debugf("doInactivate processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
-		list := ctx.assignableAdapters.LookupIoBundleGroup(adapter.Name)
+		aa := ctx.assignableAdapters
+		list := aa.LookupIoBundleGroup(adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if len(list) == 0 {
 			log.Fatalf("doInactivate IoBundle disappeared %d %s for %s\n",
@@ -1279,7 +1281,7 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 				continue
 			}
 			// XXX also unassign others and assign during Activate?
-			if ib.Type != types.IoUSB {
+			if !isInUsbGroup(*aa, *ib) {
 				continue
 			}
 			if ib.PciLong == "" {
@@ -2612,28 +2614,54 @@ func checkAndSetIoBundleAll(ctx *domainContext) {
 func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle,
 	publish bool) error {
 
+	aa := ctx.assignableAdapters
+	var list []*types.IoBundle
+
+	if ib.AssignmentGroup != "" {
+		list = aa.LookupIoBundleGroup(ib.AssignmentGroup)
+	} else {
+		list = append(list, ib)
+	}
+	// Is any member a port? If so treat all as port
+	isPort := false
+	for _, ib := range list {
+		if types.IsPort(ctx.deviceNetworkStatus, ib.Name) {
+			isPort = true
+		}
+	}
+	for _, ib := range list {
+		err := checkAndSetIoMember(ctx, ib, isPort, publish)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, publish bool) error {
+	aa := ctx.assignableAdapters
 	// Check if part of DevicePortConfig
 	ib.IsPort = false
 	changed := false
-	if types.IsPort(ctx.deviceNetworkStatus, ib.Name) {
+	if isPort {
 		log.Warnf("checkAndSetIoBundle(%d %s %s) part of zedrouter port\n",
 			ib.Type, ib.Name, ib.AssignmentGroup)
 		ib.IsPort = true
 		changed = true
 		if ib.UsedByUUID != nilUUID {
-			log.Errorf("checkAndSetIoBundle(%d %s %s) used by %s",
+			log.Errorf("checkAndSetIoMember(%d %s %s) used by %s",
 				ib.Type, ib.Name, ib.AssignmentGroup,
 				ib.UsedByUUID.String())
 
 		} else if ib.IsPCIBack {
-			log.Infof("checkAndSetIoBundle(%d %s %s) take back from pciback\n",
+			log.Infof("checkAndSetIoMember(%d %s %s) take back from pciback\n",
 				ib.Type, ib.Name, ib.AssignmentGroup)
 			if ib.PciLong != "" {
 				log.Infof("Removing %s (%s) from pciback\n",
 					ib.Name, ib.PciLong)
 				err := pciAssignableRemove(ib.PciLong)
 				if err != nil {
-					log.Errorf("checkAndSetIoBundle(%d %s %s) pciAssignableRemove %s failed %v\n",
+					log.Errorf("checkAndSetIoMember(%d %s %s) pciAssignableRemove %s failed %v\n",
 						ib.Type, ib.Name, ib.AssignmentGroup, ib.PciLong, err)
 				}
 				// Seems like like no risk for race; when we return
@@ -2703,7 +2731,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle,
 		if ctx.deviceNetworkStatus.Testing && ib.Type.IsNet() {
 			log.Infof("Not assigning %s (%s) to pciback due to Testing\n",
 				ib.Name, ib.PciLong)
-		} else if ctx.usbAccess && ib.Type == types.IoUSB {
+		} else if ctx.usbAccess && isInUsbGroup(*aa, *ib) {
 			log.Infof("Not assigning %s (%s) to pciback due to usbAccess\n",
 				ib.Name, ib.PciLong)
 		} else if ib.PciLong != "" {
@@ -2798,9 +2826,13 @@ func updateUsbAccess(ctx *domainContext) {
 func maybeAssignableAdd(ctx *domainContext) {
 
 	var assignments []string
+	aa := ctx.assignableAdapters
 	for i := range ctx.assignableAdapters.IoBundleList {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
-		if ib.Type != types.IoUSB {
+		if !isInUsbGroup(*aa, *ib) {
+			continue
+		}
+		if ib.PciLong == "" {
 			continue
 		}
 		if !ib.IsPCIBack {
@@ -2824,9 +2856,13 @@ func maybeAssignableAdd(ctx *domainContext) {
 func maybeAssignableRem(ctx *domainContext) {
 
 	var assignments []string
+	aa := ctx.assignableAdapters
 	for i := range ctx.assignableAdapters.IoBundleList {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
-		if ib.Type != types.IoUSB {
+		if !isInUsbGroup(*aa, *ib) {
+			continue
+		}
+		if ib.PciLong == "" {
 			continue
 		}
 		if ib.IsPCIBack {
@@ -2910,4 +2946,25 @@ func handleIBModify(ctx *domainContext, newIb types.IoBundle) {
 	// do pciAssignableRemove for the old Adapter?
 	*currentIbPtr = newIb
 	checkIoBundleAll(ctx)
+}
+
+// usUnUsbGroup checks if either this member is of type USB, or if it is
+// in a group when some member is of type USB
+func isInUsbGroup(aa types.AssignableAdapters, ib types.IoBundle) bool {
+	if ib.Type == types.IoUSB {
+		return true
+	}
+	if ib.AssignmentGroup == "" {
+		return false
+	}
+	list := aa.LookupIoBundleGroup(ib.AssignmentGroup)
+	log.Infof("isInUsbGroup for %s found %v", ib.Name, list)
+	for _, m := range list {
+		if m.Type == types.IoUSB {
+			log.Infof("isInUsbGroup for %s found USB for %s",
+				ib.Name, m.Name)
+			return true
+		}
+	}
+	return false
 }

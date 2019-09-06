@@ -22,18 +22,21 @@ import (
 	"time"
 )
 
-// Start/modify/delete dhcpcd per interface
-func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig) {
+// UpdateDhcpClient starts/modifies/deletes dhcpcd per interface
+// Returns a retry boolean if interface does not yet exist
+func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig) bool {
 
 	// Look for adds or changes
 	log.Infof("updateDhcpClient: new %v old %v\n",
 		newConfig, oldConfig)
+	retry := false
 	for _, newU := range newConfig.Ports {
 		oldU := lookupOnIfname(oldConfig, newU.IfName)
 		if oldU == nil || oldU.Dhcp == types.DT_NONE {
 			log.Infof("updateDhcpClient: new %s\n", newU.IfName)
 			// Inactivate in case a dhcpcd is running
-			doDhcpClientActivate(newU)
+			r := doDhcpClientActivate(newU)
+			retry = retry || r
 		} else {
 			log.Infof("updateDhcpClient: found old %v\n",
 				oldU)
@@ -57,10 +60,10 @@ func UpdateDhcpClient(newConfig, oldConfig types.DevicePortConfig) {
 				newU)
 		}
 	}
-
+	return retry
 }
 
-func doDhcpClientActivate(nuc types.NetworkPortConfig) {
+func doDhcpClientActivate(nuc types.NetworkPortConfig) bool {
 
 	log.Infof("doDhcpClientActivate(%s) dhcp %v addr %s gateway %s\n",
 		nuc.IfName, nuc.Dhcp, nuc.AddrSubnet,
@@ -68,21 +71,21 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 	if strings.HasPrefix(nuc.IfName, "wwan") {
 		log.Infof("doDhcpClientActivate: skipping %s\n",
 			nuc.IfName)
-		return
+		return false
 	}
 
 	// Check the ifname exists
 	_, err := IfnameToIndex(nuc.IfName)
 	if err != nil {
 		log.Warnf("doDhcpClientActivate(%s) failed %s", nuc.IfName, err)
-		return
+		return true
 	}
 
 	switch nuc.Dhcp {
 	case types.DT_NONE:
 		log.Infof("doDhcpClientActivate(%s) DT_NONE is a no-op\n",
 			nuc.IfName)
-		return
+		return false
 	case types.DT_CLIENT:
 		for dhcpcdExists(nuc.IfName) {
 			log.Warnf("dhcpcd %s already exists", nuc.IfName)
@@ -120,7 +123,7 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 			log.Errorf("doDhcpClientActivate: missing AddrSubnet for %s\n",
 				nuc.IfName)
 			// XXX return error?
-			return
+			return false
 		}
 		// Check that we can parse it
 		_, _, err := net.ParseCIDR(nuc.AddrSubnet)
@@ -128,7 +131,7 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 			log.Errorf("doDhcpClientActivate: failed to parse %s for %s: %s\n",
 				nuc.AddrSubnet, nuc.IfName, err)
 			// XXX return error?
-			return
+			return false
 		}
 		for dhcpcdExists(nuc.IfName) {
 			log.Warnf("dhcpcd %s already exists", nuc.IfName)
@@ -174,6 +177,7 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) {
 		log.Errorf("doDhcpClientActivate: unsupported dhcp %v\n",
 			nuc.Dhcp)
 	}
+	return false
 }
 
 func doDhcpClientInactivate(nuc types.NetworkPortConfig) {

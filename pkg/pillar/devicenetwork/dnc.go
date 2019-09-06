@@ -292,7 +292,10 @@ func VerifyPending(pending *DPCPending,
 
 	if !reflect.DeepEqual(pending.PendDPC.Ports, pending.OldDPC.Ports) {
 		log.Infof("VerifyPending: DPC changed. update DhcpClient.\n")
-		UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
+		if UpdateDhcpClient(pending.PendDPC, pending.OldDPC) {
+			log.Warnf("VerifyPending: update DhcpClient: retry")
+			return DPC_WAIT
+		}
 		pending.OldDPC = pending.PendDPC
 	}
 	pend2, _ := MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
