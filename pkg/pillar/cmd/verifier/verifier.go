@@ -191,9 +191,8 @@ func Run() {
 				return
 
 			case <-stillRunning.C:
-				log.Infof("keepRunning alive")
-				agentlog.StillRunning(agentName)
 			}
+			agentlog.StillRunning(agentName)
 		}
 	}
 	doneChan := make(chan struct{})
@@ -230,8 +229,8 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 	}
 }
 

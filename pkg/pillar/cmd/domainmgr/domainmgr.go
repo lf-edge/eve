@@ -270,7 +270,12 @@ func Run() {
 			start := agentlog.StartTime()
 			subPhysicalIOAdapter.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
+
+		// Run stillRunning since we waiting for zedagent to deliver
+		// PhysicalIO which depends on cloud connectivity
+		case <-stillRunning.C:
 		}
+		agentlog.StillRunning(agentName)
 	}
 	log.Infof("Have %d assignable adapters", len(aa.IoBundleList))
 
@@ -319,8 +324,8 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 	}
 }
 

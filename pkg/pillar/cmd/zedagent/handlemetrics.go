@@ -80,8 +80,8 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 			agentlog.CheckMaxTime(agentName+"metrics", start)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName + "metrics")
 		}
+		agentlog.StillRunning(agentName + "metrics")
 	}
 }
 
