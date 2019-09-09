@@ -465,7 +465,7 @@ func updateLisp(lispRunDirname string,
 	stopLisp()
 
 	if err := os.Rename(tmpfile.Name(), destFilename); err != nil {
-		log.Errorln("Rename ", tmpfile.Name(), destFilename, err)
+		log.Errorln(err)
 		return
 	}
 	// XXX We write configuration to lisp.config.orig for debugging

@@ -216,6 +216,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 			globalStatus.Ports[ix].Error = errStr
 			globalStatus.Ports[ix].ErrorTime = time.Now()
 		}
+		GetDNSInfo(&globalStatus.Ports[ix])
 
 		// Attempt to get a wpad.dat file if so configured
 		// Result is updating the Pacfile
