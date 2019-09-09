@@ -190,8 +190,8 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 	}
 }
 

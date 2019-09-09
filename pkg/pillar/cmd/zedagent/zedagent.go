@@ -716,7 +716,10 @@ func Run() {
 			start := agentlog.StartTime()
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 			agentlog.CheckMaxTime(agentName, start)
+		case <-stillRunning.C:
 		}
+		// XXX verifierRestarted can take 5 minutes??
+		agentlog.StillRunning(agentName)
 		// UsedByUUID, baseos subStatus, DevicePortConfigList etc
 		if zedagentCtx.TriggerDeviceInfo {
 			log.Infof("triggered PublishDeviceInfo\n")
@@ -875,8 +878,8 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 		// UsedByUUID, baseos subStatus, DevicePortConfigList etc
 		if zedagentCtx.TriggerDeviceInfo {
 			log.Infof("triggered PublishDeviceInfo\n")

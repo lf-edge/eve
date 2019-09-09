@@ -267,8 +267,8 @@ func Run() {
 		// This wait can take an unbounded time since we wait for IP
 		// addresses. Punch StillRunning
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 	}
 	log.Infof("Have %d management ports addresses to use\n",
 		types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus))
@@ -330,8 +330,8 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 	}
 }
 
@@ -1783,7 +1783,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		default:
-			log.Fatal("unsupported transport method")
+			errStr = "unsupported transport method " + dsCtx.TransportMethod
 		}
 	}
 	log.Errorf("All source IP addresses failed. All errors:%s\n", errStr)

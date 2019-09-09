@@ -49,3 +49,5 @@ replace github.com/lf-edge/eve/api/go => ../../api/go
 replace github.com/vishvananda/netlink/nl => github.com/eriknordmark/netlink/nl v0.0.0-20190828001930-41fa442996b8
 
 replace github.com/vishvananda/netlink => github.com/eriknordmark/netlink v0.0.0-20190828001930-41fa442996b8
+
+replace git.apache.org/thrift.git => github.com/apache/thrift v0.12.0

@@ -140,7 +140,6 @@ type DatastoreContext struct {
 }
 
 const (
-	appImgObj = "appImg.obj"
 	baseOsObj = "baseOs.obj"
 	certObj   = "cert.obj"
 )

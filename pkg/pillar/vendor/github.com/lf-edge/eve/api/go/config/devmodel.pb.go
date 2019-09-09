@@ -202,10 +202,10 @@ type SystemAdapter struct {
 	// name of the adapter; hardware-specific e.g., eth0
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// this is part of the freelink group
-	// deprecate: look at PhysicalIO->UsagePolicy instead
+	// deprecate: have a separate device policy object in the API
 	FreeUplink bool `protobuf:"varint,2,opt,name=freeUplink,proto3" json:"freeUplink,omitempty"`
 	// this is part of the uplink group
-	// deprecate: look at PhysicalIO->Usage instead
+	// deprecate: have a separate device policy object in the API
 	Uplink bool `protobuf:"varint,3,opt,name=uplink,proto3" json:"uplink,omitempty"`
 	// attach this network config for this adapter
 	NetworkUUID string `protobuf:"bytes,4,opt,name=networkUUID,proto3" json:"networkUUID,omitempty"`
@@ -289,6 +289,8 @@ func (m *SystemAdapter) GetLogicalName() string {
 // Given additional details for EVE softwar to how to treat this
 // interface. Example policies could be limit use of LTE interface
 // or only use Eth1 only if Eth0 is not available etc
+// XXX Note that this is the static information from the model.
+// Current configuration is in systemAdapter
 type PhyIOUsagePolicy struct {
 	// Used only when one other normal uplinks are down
 	FreeUplink           bool     `protobuf:"varint,1,opt,name=freeUplink,proto3" json:"freeUplink,omitempty"`
@@ -346,7 +348,9 @@ type PhysicalIO struct {
 	// "pcilong": the address is a PCI id of the form 0000:02:00.0
 	// "ifname": the addresss is a string for a network interface like "eth1"
 	// "serial": the address is a Linux serial port alias such as "/dev/ttyS2"
-	// "irq": the address is a number such as "5"
+	// "irq": the address is a number such as "5". This can be a comma
+	//    separated list of integers or even a range of integers. Hence using
+	//    a string to address this.
 	// "ioports": the address is a string such as "2f8-2ff"
 	Phyaddrs map[string]string `protobuf:"bytes,3,rep,name=phyaddrs,proto3" json:"phyaddrs,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 	// provides the ability to model designer to rename the physicalIO
@@ -356,7 +360,9 @@ type PhysicalIO struct {
 	Logicallabel string `protobuf:"bytes,4,opt,name=logicallabel,proto3" json:"logicallabel,omitempty"`
 	// Assignment Group, is unique label that is applied across PhysicalIOs
 	// EntireGroup can be assigned to application or nothing at all
-	Assigngrp   string            `protobuf:"bytes,5,opt,name=assigngrp,proto3" json:"assigngrp,omitempty"`
+	Assigngrp string `protobuf:"bytes,5,opt,name=assigngrp,proto3" json:"assigngrp,omitempty"`
+	// XXX Note that this is the static information from the model.
+	// Current configuration is in systemAdapter
 	Usage       PhyIoMemberUsage  `protobuf:"varint,6,opt,name=usage,proto3,enum=PhyIoMemberUsage" json:"usage,omitempty"`
 	UsagePolicy *PhyIOUsagePolicy `protobuf:"bytes,7,opt,name=usagePolicy,proto3" json:"usagePolicy,omitempty"`
 	// physical and logical attributes

@@ -20,7 +20,6 @@ import (
 	"context"
 	"os"
 	"path"
-	"strings"
 
 	"github.com/vmware/govmomi/list"
 	"github.com/vmware/govmomi/object"
@@ -178,7 +177,6 @@ func (r recurser) List(ctx context.Context, s *spec, root list.Element, parts []
 		return in, nil
 	}
 
-	all := parts
 	pattern := parts[0]
 	parts = parts[1:]
 
@@ -190,12 +188,6 @@ func (r recurser) List(ctx context.Context, s *spec, root list.Element, parts []
 		}
 
 		if !matched {
-			matched = strings.HasSuffix(e.Path, "/"+path.Join(all...))
-			if matched {
-				// name contains a '/'
-				out = append(out, e)
-			}
-
 			continue
 		}
 

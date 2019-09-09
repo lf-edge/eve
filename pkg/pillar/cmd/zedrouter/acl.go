@@ -561,6 +561,13 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 	error) {
 	var rulesList types.IPTablesRuleList
 
+	// Sanity check for old/incorrect controller
+	if ace.RuleID == 0 {
+		errStr := fmt.Sprintf("ACE with zero RuleID not supported: %+v",
+			ace)
+		log.Errorln(errStr)
+		return nil, errors.New(errStr)
+	}
 	// Extract lport and protocol from the Matches to use for PortMap
 	// Keep others to make sure we put the protocol before the port
 	// number(s)
