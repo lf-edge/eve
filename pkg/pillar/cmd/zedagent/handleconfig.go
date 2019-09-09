@@ -155,8 +155,8 @@ func configTimerTask(handleChannel chan interface{},
 			agentlog.CheckMaxTime(agentName+"config", start)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName + "config")
 		}
+		agentlog.StillRunning(agentName + "config")
 	}
 }
 
