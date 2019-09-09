@@ -110,8 +110,8 @@ func Run() {
 			done = true
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 	}
 }
 
