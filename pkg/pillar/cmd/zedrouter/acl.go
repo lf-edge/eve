@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"syscall"
 
 	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
@@ -1111,6 +1112,26 @@ func updateACLConfiglet(aclArgs types.AppNetworkACLArgs, oldACLs []types.ACE, AC
 			aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
 		return oldRules, nil
 	}
+
+	// Before adding new rules, clear flows if any created matching the old rules
+	var family netlink.InetFamily = syscall.AF_INET
+	if aclArgs.IPVer == 4 {
+		family = syscall.AF_INET
+	} else {
+		family = syscall.AF_INET6
+	}
+	srcIP := net.ParseIP(aclArgs.AppIP)
+	mark := uint32(aclArgs.AppNum << 24)
+	mask := uint32(0xff << 24)
+	number, err := netlink.ConntrackDeleteIPSrc(netlink.ConntrackTable, family,
+		srcIP, 0, 0, mark, mask, false)
+	if err != nil {
+		log.Errorf("updateACLConfiglet: Error clearing flows before update - %s", err)
+	} else {
+		log.Infof("updateACLConfiglet: Cleared %d flows before updating ACLs for app num %d",
+			number, aclArgs.AppNum)
+	}
+
 	rules, err := deleteACLConfiglet(aclArgs, oldRules)
 	if err != nil {
 		log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: delete fail\n",
@@ -1481,8 +1502,9 @@ func createFlowMatchRules(aclArgs types.AppNetworkACLArgs) types.IPTablesRuleLis
 		aclRule.Table = "mangle"
 		aclRule.Chain = "PREROUTING"
 		aclRule.Rule = []string{"-i", uplink}
-		// XXX Use 0xFFFFFFFF for DROP/REJECT? Might change later.
-		aclRule.Action = []string{"-j", "MARK", "--set-mark", "0xFFFFFFFF"}
+		// XXX Use 0x00FFFFFF for DROP/REJECT? Might change later.
+		// These flows do not match any app instance
+		aclRule.Action = []string{"-j", "MARK", "--set-mark", "0x00FFFFFF"}
 		rulesList = append(rulesList, aclRule)
 
 		aclRule.IPVer = 4
