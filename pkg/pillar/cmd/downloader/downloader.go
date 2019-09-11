@@ -1696,8 +1696,10 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		case zconfig.DsType_DsAzureBlob.String():
+			// pass in the config.Name instead of 'filename' which
+			// does not contain the prefix of the relative path with '/'s
 			err = doAzureBlob(ctx, status, syncOp, dsCtx.DownloadURL, dsCtx.APIKey,
-				dsCtx.Password, dsCtx.Dpath, config.Size, ifname, ipSrc, filename, locFilename)
+				dsCtx.Password, dsCtx.Dpath, config.Size, ifname, ipSrc, config.Name, locFilename)
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
