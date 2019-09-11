@@ -93,6 +93,7 @@ enum PhyIoMemberUsage {
         PhyIoUsageMgmt      = 1;
         PhyIoUsageShared    = 2;
         PhyIoUsageDedicated = 3;
+        PhyIoUsageBlocked   = 4;
 }
 
 // Given additional details for EVE softwar to how to treat this
