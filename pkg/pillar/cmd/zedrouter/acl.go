@@ -1113,6 +1113,15 @@ func updateACLConfiglet(aclArgs types.AppNetworkACLArgs, oldACLs []types.ACE, AC
 		return oldRules, nil
 	}
 
+	rules, err := deleteACLConfiglet(aclArgs, oldRules)
+	if err != nil {
+		log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: delete fail\n",
+			aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
+		return rules, err
+	}
+
+	rulesList, err := createACLConfiglet(aclArgs, ACLs)
+
 	// Before adding new rules, clear flows if any created matching the old rules
 	var family netlink.InetFamily = syscall.AF_INET
 	if aclArgs.IPVer == 4 {
@@ -1120,25 +1129,28 @@ func updateACLConfiglet(aclArgs types.AppNetworkACLArgs, oldACLs []types.ACE, AC
 	} else {
 		family = syscall.AF_INET6
 	}
-	srcIP := net.ParseIP(aclArgs.AppIP)
-	mark := uint32(aclArgs.AppNum << 24)
-	mask := uint32(0xff << 24)
-	number, err := netlink.ConntrackDeleteIPSrc(netlink.ConntrackTable, family,
-		srcIP, 0, 0, mark, mask, false)
-	if err != nil {
-		log.Errorf("updateACLConfiglet: Error clearing flows before update - %s", err)
+	var srcIP net.IP
+	if aclArgs.AppIP == "0.0.0.0" || aclArgs.AppIP == "" {
+		srcIP = net.ParseIP("0.0.0.0")
 	} else {
-		log.Infof("updateACLConfiglet: Cleared %d flows before updating ACLs for app num %d",
-			number, aclArgs.AppNum)
+		srcIP = net.ParseIP(aclArgs.AppIP)
+	}
+	if srcIP == nil {
+		log.Errorf("updateACLConfiglet: App IP (%s) parse failed", aclArgs.AppIP)
+	} else {
+		mark := uint32(aclArgs.AppNum << 24)
+		mask := uint32(0xff << 24)
+		number, err := netlink.ConntrackDeleteIPSrc(netlink.ConntrackTable, family,
+			srcIP, 0, 0, mark, mask, false)
+		if err != nil {
+			log.Errorf("updateACLConfiglet: Error clearing flows before update - %s", err)
+		} else {
+			log.Infof("updateACLConfiglet: Cleared %d flows before updating ACLs for app num %d",
+				number, aclArgs.AppNum)
+		}
 	}
 
-	rules, err := deleteACLConfiglet(aclArgs, oldRules)
-	if err != nil {
-		log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: delete fail\n",
-			aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
-		return rules, err
-	}
-	return createACLConfiglet(aclArgs, ACLs)
+	return rulesList, err
 }
 
 func deleteACLConfiglet(aclArgs types.AppNetworkACLArgs,
