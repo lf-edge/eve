@@ -35,6 +35,8 @@ github.com/eapache/go-xerial-snappy v0.0.0-20180814174437-776d5712da21/go.mod h1
 github.com/eapache/queue v1.1.0/go.mod h1:6eCeP0CKFpHLu8blIFXhExK/dRa7WDZfr6jVFPTqq+I=
 github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9 h1:DiIi8XZvZ36gVZj+ZQ4xMT/ZknKJA1yRYv8yqi6Dcbk=
 github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9/go.mod h1:m5kR+NOoKCuA5r6T+9f7q7VfPjPhHskhmxRAebb7avM=
+github.com/eriknordmark/netlink v0.0.0-20190828001930-41fa442996b8 h1:jIRPNrNcMaJtNPIm25GxaKdCd1zQUHa13j1xTR6sMgI=
+github.com/eriknordmark/netlink v0.0.0-20190828001930-41fa442996b8/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
 github.com/eriknordmark/netlink v0.0.0-20190828001930-5709595daf04 h1:KSl1Dem33P9v3r5piLLHFXizacp3p7UbvtqhzKk8dis=
 github.com/eriknordmark/netlink v0.0.0-20190828001930-5709595daf04/go.mod h1:Uk4Y9yfmwt13sE/KQcljF65DuHfMh0hYOL6tSHjN8i8=
 github.com/eriknordmark/netlink v0.0.0-20190828143647-5cadb0247840 h1:53DaNsaU1UG2alAHhSzAvbhosZBEbNyF832Ntm0Dqvg=
@@ -47,8 +49,14 @@ github.com/eriknordmark/netlink v0.0.0-20190829004221-a8fb20143491 h1:yuuvYPyM9E
 github.com/eriknordmark/netlink v0.0.0-20190829004221-a8fb20143491/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
 github.com/eriknordmark/netlink v0.0.0-20190829011158-cf32f0d47e79 h1:SxzzjaISK8Zk4YEXXOezYpE/h07Tp3aqy0/J2oA9Eec=
 github.com/eriknordmark/netlink v0.0.0-20190829011158-cf32f0d47e79/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
+github.com/eriknordmark/netlink v0.0.0-20190829035504-41fa442996b8 h1:zw7UbmPzWp4+YjA/+F6VLioro8GLGLorIfpVhmVNOoc=
+github.com/eriknordmark/netlink v0.0.0-20190829035504-41fa442996b8/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
 github.com/eriknordmark/netlink v0.0.0-20190829035504-7ebf40544e16 h1:DRjyyYvtFWdlf50HKvKmvTcB3q0iNyyYtrVz8wNyqt4=
 github.com/eriknordmark/netlink v0.0.0-20190829035504-7ebf40544e16/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
+github.com/eriknordmark/netlink v0.0.0-20190909223052-1f4a41dfab61 h1:xfymSdH08QMQEtQq5hZMm901mYRpyqHFMES9et+pzgM=
+github.com/eriknordmark/netlink v0.0.0-20190909223052-1f4a41dfab61/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
+github.com/eriknordmark/netlink v0.0.0-20190909231655-fd5b380483db h1:rURpPLaYdPoU/yaMFeZu/EhM/WISptw4EcPX9BCb6iA=
+github.com/eriknordmark/netlink v0.0.0-20190909231655-fd5b380483db/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
 github.com/fsnotify/fsnotify v1.4.7 h1:IXs+QLmnXW2CcXuY+8Mzv/fWEsPGWxqefPtCP5CnV9I=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
 github.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=

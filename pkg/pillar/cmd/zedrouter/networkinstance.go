@@ -95,7 +95,7 @@ func checkPortAvailable(
 		// Make sure it is configured for IP or will be
 		if portStatus.Dhcp == types.DT_NONE {
 			errStr := fmt.Sprintf("Port %s not configured for shared use. "+
-				"Cannot be used by Switch Network Instance %s-%s\n",
+				"Cannot be used by non-Switch Network Instance %s-%s\n",
 				status.Port, status.UUID, status.DisplayName)
 			return errors.New(errStr)
 		}
@@ -527,9 +527,10 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 			status.BridgeIPAddr, &status.NetworkInstanceConfig,
 			hostsDirpath, status.BridgeIPSets, status.Ipv4Eid)
 		startDnsmasq(bridgeName)
-
-		go DNSMonitor(bridgeName, bridgeNum)
 	}
+
+	// monitor the DNS and DHCP information
+	go DNSMonitor(bridgeName, bridgeNum, ctx, status)
 
 	if status.IsIPv6() {
 		// XXX do we need same logic as for IPv4 dnsmasq to not

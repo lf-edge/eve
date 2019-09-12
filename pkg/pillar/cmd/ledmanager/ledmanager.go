@@ -226,11 +226,12 @@ func Run() {
 			// Fault injection
 			if fatalFlag {
 				log.Fatal("Requested fault injection to cause watchdog")
-			} else if hangFlag {
-				log.Infof("Requested to not touch to cause watchdog")
-			} else {
-				agentlog.StillRunning(agentName)
 			}
+		}
+		if hangFlag {
+			log.Infof("Requested to not touch to cause watchdog")
+		} else {
+			agentlog.StillRunning(agentName)
 		}
 	}
 }

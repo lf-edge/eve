@@ -248,7 +248,13 @@ func Run() {
 			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
+
+		// Run stillRunning since we waiting for zedagent to deliver
+		// PhysicalIO to domainmgr and it in turn deliver AA initialized to us.
+		// Former depends on cloud connectivity.
+		case <-stillRunning.C:
 		}
+		agentlog.StillRunning(agentName)
 	}
 	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
 
@@ -476,6 +482,9 @@ func Run() {
 				log.Errorf("getNetworkMetrics failed %s\n", err)
 			}
 			publishNetworkInstanceMetricsAll(&zedrouterCtx)
+			agentlog.CheckMaxTime(agentName, start)
+
+			start = agentlog.StartTime()
 			// Check for changes to DHCP leases
 			// XXX can we trigger it as part of boot? Or watch file?
 			// XXX add file watch...
@@ -506,8 +515,8 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 		// Are we likely to have seen all of the initial config?
 		if zedrouterCtx.triggerNumGC &&
 			time.Since(zedrouterCtx.receivedConfigTime) > 5*time.Minute {

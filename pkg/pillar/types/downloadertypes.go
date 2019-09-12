@@ -32,7 +32,7 @@ type DownloaderConfig struct {
 	Name             string
 	NameIsURL        bool // If not we form URL based on datastore info
 	IsContainer      bool
-	UseFreeMgmtPorts bool
+	AllowNonFreePort bool
 	Size             uint64 // In bytes
 	ImageSha256      string // sha256 of immutable image
 	FinalObjDir      string // final Object Store
@@ -75,7 +75,7 @@ type DownloaderStatus struct {
 	LastUse          time.Time // When RefCount dropped to zero
 	Expired          bool      // Handshake to client
 	NameIsURL        bool      // If not we form URL based on datastore info
-	UseFreeMgmtPorts bool
+	AllowNonFreePort bool
 	ImageSha256      string // sha256 of immutable image
 	ContainerImageID string
 	State            SwState // DOWNLOADED etc
@@ -119,7 +119,7 @@ func (status DownloaderStatus) Pending() bool {
 }
 
 type GlobalDownloadConfig struct {
-	MaxSpace uint64 // Number of kbytes allowed in /var/tmp/zedmanager/downloads
+	MaxSpace uint64 // Number of kbytes allowed in /persist/downloads
 }
 
 // These are all in kbytes
@@ -137,4 +137,28 @@ type DatastoreContext struct {
 	APIKey          string
 	Password        string
 	Region          string
+}
+
+const (
+	baseOsObj = "baseOs.obj"
+	certObj   = "cert.obj"
+)
+
+// AllowNonFreePort looks at GlobalConfig to determine which policy
+// to apply for the download of the object.
+func AllowNonFreePort(gc GlobalConfig, objType string) bool {
+
+	switch objType {
+	case appImgObj:
+		return gc.AllowNonFreeAppImages == TS_ENABLED
+	case baseOsObj:
+		return gc.AllowNonFreeBaseImages == TS_ENABLED
+	case certObj:
+		return (gc.AllowNonFreeBaseImages == TS_ENABLED) ||
+			(gc.AllowNonFreeAppImages == TS_ENABLED)
+	default:
+		log.Fatalf("AllowNonFreePort: Unknown ObjType %s\n",
+			objType)
+		return false
+	}
 }

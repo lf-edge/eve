@@ -63,7 +63,7 @@ github.com/davecgh/go-spew/spew
 github.com/dgrijalva/jwt-go
 # github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
 github.com/eriknordmark/ipinfo
-# github.com/eriknordmark/netlink v0.0.0-20190829035504-7ebf40544e16
+# github.com/eriknordmark/netlink v0.0.0-20190909231655-fd5b380483db
 github.com/eriknordmark/netlink
 # github.com/fsnotify/fsnotify v1.4.7
 github.com/fsnotify/fsnotify
@@ -157,7 +157,7 @@ github.com/shirou/w32
 github.com/sirupsen/logrus
 # github.com/stretchr/testify v1.3.0
 github.com/stretchr/testify/assert
-# github.com/vishvananda/netlink v1.0.1-0.20190823182904-a1c9a648f744 => github.com/eriknordmark/netlink v0.0.0-20190828001930-5709595daf04
+# github.com/vishvananda/netlink v1.0.1-0.20190823182904-a1c9a648f744 => github.com/eriknordmark/netlink v0.0.0-20190828001930-41fa442996b8
 github.com/vishvananda/netlink/nl
 # github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f
 github.com/vishvananda/netns
@@ -203,7 +203,7 @@ golang.org/x/net/http/httpguts
 golang.org/x/net/idna
 # golang.org/x/sync v0.0.0-20190227155943-e225da77a7e6
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.0.0-20190826190057-c7b8b68b1456
+# golang.org/x/sys v0.0.0-20190418153312-f0ce4c0180be
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/cpu

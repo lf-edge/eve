@@ -1,25 +1,12 @@
 package autorest
 
-// Copyright 2017 Microsoft Corporation
-//
-//  Licensed under the Apache License, Version 2.0 (the "License");
-//  you may not use this file except in compliance with the License.
-//  You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-//  Unless required by applicable law or agreed to in writing, software
-//  distributed under the License is distributed on an "AS IS" BASIS,
-//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//  See the License for the specific language governing permissions and
-//  limitations under the License.
-
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
 	"net/http"
-	"strconv"
 	"time"
 )
 
@@ -188,13 +175,8 @@ func DoPollForStatusCodes(duration time.Duration, delay time.Duration, codes ...
 func DoRetryForAttempts(attempts int, backoff time.Duration) SendDecorator {
 	return func(s Sender) Sender {
 		return SenderFunc(func(r *http.Request) (resp *http.Response, err error) {
-			rr := NewRetriableRequest(r)
 			for attempt := 0; attempt < attempts; attempt++ {
-				err = rr.Prepare()
-				if err != nil {
-					return resp, err
-				}
-				resp, err = s.Do(rr.Request())
+				resp, err = s.Do(r)
 				if err == nil {
 					return resp, err
 				}
@@ -212,51 +194,27 @@ func DoRetryForAttempts(attempts int, backoff time.Duration) SendDecorator {
 func DoRetryForStatusCodes(attempts int, backoff time.Duration, codes ...int) SendDecorator {
 	return func(s Sender) Sender {
 		return SenderFunc(func(r *http.Request) (resp *http.Response, err error) {
-			rr := NewRetriableRequest(r)
-			// Increment to add the first call (attempts denotes number of retries)
-			attempts++
-			for attempt := 0; attempt < attempts; {
-				err = rr.Prepare()
+			b := []byte{}
+			if r.Body != nil {
+				b, err = ioutil.ReadAll(r.Body)
 				if err != nil {
 					return resp, err
 				}
-				resp, err = s.Do(rr.Request())
-				// we want to retry if err is not nil (e.g. transient network failure).  note that for failed authentication
-				// resp and err will both have a value, so in this case we don't want to retry as it will never succeed.
-				if err == nil && !ResponseHasStatusCode(resp, codes...) || IsTokenRefreshError(err) {
+			}
+
+			// Increment to add the first call (attempts denotes number of retries)
+			attempts++
+			for attempt := 0; attempt < attempts; attempt++ {
+				r.Body = ioutil.NopCloser(bytes.NewBuffer(b))
+				resp, err = s.Do(r)
+				if err != nil || !ResponseHasStatusCode(resp, codes...) {
 					return resp, err
 				}
-				delayed := DelayWithRetryAfter(resp, r.Cancel)
-				if !delayed {
-					DelayForBackoff(backoff, attempt, r.Cancel)
-				}
-				// don't count a 429 against the number of attempts
-				// so that we continue to retry until it succeeds
-				if resp == nil || resp.StatusCode != http.StatusTooManyRequests {
-					attempt++
-				}
+				DelayForBackoff(backoff, attempt, r.Cancel)
 			}
 			return resp, err
 		})
 	}
-}
-
-// DelayWithRetryAfter invokes time.After for the duration specified in the "Retry-After" header in
-// responses with status code 429
-func DelayWithRetryAfter(resp *http.Response, cancel <-chan struct{}) bool {
-	if resp == nil {
-		return false
-	}
-	retryAfter, _ := strconv.Atoi(resp.Header.Get("Retry-After"))
-	if resp.StatusCode == http.StatusTooManyRequests && retryAfter > 0 {
-		select {
-		case <-time.After(time.Duration(retryAfter) * time.Second):
-			return true
-		case <-cancel:
-			return false
-		}
-	}
-	return false
 }
 
 // DoRetryForDuration returns a SendDecorator that retries the request until the total time is equal
@@ -266,14 +224,9 @@ func DelayWithRetryAfter(resp *http.Response, cancel <-chan struct{}) bool {
 func DoRetryForDuration(d time.Duration, backoff time.Duration) SendDecorator {
 	return func(s Sender) Sender {
 		return SenderFunc(func(r *http.Request) (resp *http.Response, err error) {
-			rr := NewRetriableRequest(r)
 			end := time.Now().Add(d)
 			for attempt := 0; time.Now().Before(end); attempt++ {
-				err = rr.Prepare()
-				if err != nil {
-					return resp, err
-				}
-				resp, err = s.Do(rr.Request())
+				resp, err = s.Do(r)
 				if err == nil {
 					return resp, err
 				}

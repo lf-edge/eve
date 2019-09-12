@@ -179,6 +179,22 @@ func (status AppInstanceStatus) GetAppInterfaceList() []string {
 	return viflist
 }
 
+// SetError - Clears error state of Status
+func (statusPtr *AppInstanceStatus) SetError( //revive:disable-line
+	errStr string, source string,
+	errTime time.Time) {
+	statusPtr.Error = errStr
+	statusPtr.ErrorSource = source
+	statusPtr.ErrorTime = errTime
+}
+
+// ClearError - Clears error state of Status
+func (statusPtr *AppInstanceStatus) ClearError() { //revive:disable-line
+	statusPtr.Error = ""
+	statusPtr.ErrorSource = ""
+	statusPtr.ErrorTime = time.Time{}
+}
+
 type EIDOverlayConfig struct {
 	Name string // From proto message
 	EIDConfigDetails
@@ -270,7 +286,7 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	ss.Maxsizebytes = sc.Maxsizebytes
 	ss.Devtype = sc.Devtype
 	ss.Target = sc.Target
-	if ss.Format == "8" {
+	if ss.Format == "container" {
 		ss.IsContainer = true
 	}
 	return

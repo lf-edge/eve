@@ -1,4 +1,5 @@
 FROM alpine:3.8 as kernel-build
+ENV GIT_HTTP=y
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
     gcc make libc-dev dev86 xz-dev perl bash python-dev \

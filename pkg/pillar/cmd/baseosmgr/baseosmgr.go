@@ -67,6 +67,7 @@ type baseOsMgrContext struct {
 	pubZbootStatus           *pubsub.Publication
 
 	subGlobalConfig          *pubsub.Subscription
+	globalConfig             *types.GlobalConfig
 	subBaseOsConfig          *pubsub.Subscription
 	subZbootConfig           *pubsub.Subscription
 	subCertObjConfig         *pubsub.Subscription
@@ -111,7 +112,9 @@ func Run() {
 	agentlog.StillRunning(agentName)
 
 	// Context to pass around
-	ctx := baseOsMgrContext{}
+	ctx := baseOsMgrContext{
+		globalConfig: &types.GlobalConfigDefaults,
+	}
 
 	// initialize publishing handles
 	initializeSelfPublishHandles(&ctx)
@@ -187,8 +190,8 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 	}
 }
 
@@ -436,8 +439,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
 		return
 	}
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	if gcp != nil {
+		ctx.globalConfig = gcp
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -452,6 +459,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	*ctx.globalConfig = types.GlobalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 

@@ -6,10 +6,12 @@ package pkglib
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 )
 
 const dctEnableEnv = "DOCKER_CONTENT_TRUST=1"
@@ -17,6 +19,14 @@ const dctEnableEnv = "DOCKER_CONTENT_TRUST=1"
 type dockerRunner struct {
 	dct   bool
 	cache bool
+
+	// Optional build context to use
+	ctx buildContext
+}
+
+type buildContext interface {
+	// Copy copies the build context to the supplied WriterCloser
+	Copy(io.WriteCloser) error
 }
 
 func newDockerRunner(dct, cache bool) dockerRunner {
@@ -31,13 +41,19 @@ func isExecErrNotFound(err error) bool {
 	return eerr.Err == exec.ErrNotFound
 }
 
+// these are the standard 4 build-args supported by `docker build`
+// plus the all_proxy/ALL_PROXY which is a socks standard one
 var proxyEnvVars = []string{
 	"http_proxy",
 	"https_proxy",
 	"no_proxy",
+	"ftp_proxy",
+	"all_proxy",
 	"HTTP_PROXY",
 	"HTTPS_PROXY",
 	"NO_PROXY",
+	"FTP_PROXY",
+	"ALL_PROXY",
 }
 
 func (dr dockerRunner) command(args ...string) error {
@@ -52,6 +68,8 @@ func (dr dockerRunner) command(args ...string) error {
 		dct = dctEnableEnv + " "
 	}
 
+	var eg errgroup.Group
+
 	if args[0] == "build" {
 		buildArgs := []string{}
 		for _, proxyVarName := range proxyEnvVars {
@@ -60,16 +78,36 @@ func (dr dockerRunner) command(args ...string) error {
 					[]string{"--build-arg", fmt.Sprintf("%s=%s", proxyVarName, value)}...)
 			}
 		}
-		cmd.Args = append(append(cmd.Args[:2], buildArgs...), cmd.Args[2:]...)
+		// cannot use usual append(append( because it overwrites part of it
+		newArgs := make([]string, len(cmd.Args)+len(buildArgs))
+		copy(newArgs[:2], cmd.Args[:2])
+		copy(newArgs[2:], buildArgs)
+		copy(newArgs[2+len(buildArgs):], cmd.Args[2:])
+		cmd.Args = newArgs
+
+		if dr.ctx != nil {
+			stdin, err := cmd.StdinPipe()
+			if err != nil {
+				return err
+			}
+			eg.Go(func() error {
+				defer stdin.Close()
+				return dr.ctx.Copy(stdin)
+			})
+
+			cmd.Args = append(cmd.Args[:len(cmd.Args)-1], "-")
+		}
 	}
 
 	log.Debugf("Executing: %s%v", dct, cmd.Args)
 
-	err := cmd.Run()
-	if isExecErrNotFound(err) {
-		return fmt.Errorf("linuxkit pkg requires docker to be installed")
+	if err := cmd.Run(); err != nil {
+		if isExecErrNotFound(err) {
+			return fmt.Errorf("linuxkit pkg requires docker to be installed")
+		}
+		return err
 	}
-	return err
+	return eg.Wait()
 }
 
 func (dr dockerRunner) pull(img string) (bool, error) {

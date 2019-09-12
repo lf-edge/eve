@@ -20,7 +20,7 @@ import (
 
 // QemuImg is the version of qemu container
 const (
-	QemuImg       = "linuxkit/qemu:5d89b7a57b638eba986df318c97fa9d5905135a5"
+	QemuImg       = "linuxkit/qemu:68b072e1ae36415cb76eea610de508dbf2bbec7c"
 	defaultFWPath = "/usr/share/ovmf/bios.bin"
 )
 
@@ -47,6 +47,8 @@ type QemuConfig struct {
 	PublishedPorts []string
 	NetdevConfig   string
 	UUID           uuid.UUID
+	USB            bool
+	Devices        []string
 }
 
 const (
@@ -92,7 +94,7 @@ func retrieveMAC(statePath string) net.HardwareAddr {
 
 	if macString, err := ioutil.ReadFile(fileName); err == nil {
 		if mac, err = net.ParseMAC(string(macString)); err != nil {
-			log.Fatal("failed to parse mac-addr file: %s\n", macString)
+			log.Fatalf("failed to parse mac-addr file: %s\n", macString)
 		}
 	} else {
 		// we did not generate a mac yet. generate one
@@ -112,7 +114,7 @@ func generateMAC() net.HardwareAddr {
 		log.WithError(err).Fatal("failed to generate random mac address")
 	}
 	if n != 6 {
-		log.WithError(err).Fatal("generated %d bytes for random mac address", n)
+		log.WithError(err).Fatalf("generated %d bytes for random mac address", n)
 	}
 	mac[0] &^= 0x01 // Clear multicast bit
 	mac[0] |= 0x2   // Set locally administered bit
@@ -179,6 +181,11 @@ func runQemu(args []string) {
 
 	publishFlags := multipleFlag{}
 	flags.Var(&publishFlags, "publish", "Publish a vm's port(s) to the host (default [])")
+
+	// USB devices
+	usbEnabled := flags.Bool("usb", false, "Enable USB controller")
+	deviceFlags := multipleFlag{}
+	flags.Var(&deviceFlags, "device", "Add USB host device(s). Format driver[,prop=value][,...] -- add device, like -device on the qemu command line.")
 
 	if err := flags.Parse(args); err != nil {
 		log.Fatal("Unable to parse args")
@@ -332,6 +339,8 @@ func runQemu(args []string) {
 		PublishedPorts: publishFlags,
 		NetdevConfig:   netdevConfig,
 		UUID:           vmUUID,
+		USB:            *usbEnabled,
+		Devices:        deviceFlags,
 	}
 
 	config = discoverBackend(config)
@@ -537,7 +546,7 @@ func buildQemuCmdline(config QemuConfig) (QemuConfig, []string) {
 	case "x86_64":
 		goArch = "amd64"
 	default:
-		log.Fatalf("%s is an unsupported architecture.")
+		log.Fatalf("%s is an unsupported architecture.", config.Arch)
 	}
 
 	if goArch != runtime.GOARCH {
@@ -661,6 +670,13 @@ func buildQemuCmdline(config QemuConfig) (QemuConfig, []string) {
 
 	if config.GUI != true {
 		qemuArgs = append(qemuArgs, "-nographic")
+	}
+
+	if config.USB == true {
+		qemuArgs = append(qemuArgs, "-usb")
+	}
+	for _, d := range config.Devices {
+		qemuArgs = append(qemuArgs, "-device", d)
 	}
 
 	return config, qemuArgs

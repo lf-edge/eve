@@ -271,8 +271,8 @@ func Run() {
 		// This wait can take an unbounded time since we wait for IP
 		// addresses. Punch StillRunning
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 	}
 	log.Infof("Have %d management ports addresses to use\n",
 		types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus))
@@ -334,8 +334,8 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 	}
 }
 
@@ -635,7 +635,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		IsContainer:      config.IsContainer,
 		RefCount:         config.RefCount,
 		LastUse:          time.Now(),
-		UseFreeMgmtPorts: config.UseFreeMgmtPorts,
+		AllowNonFreePort: config.AllowNonFreePort,
 		ImageSha256:      config.ImageSha256,
 		PendingAdd:       true,
 	}
@@ -1630,11 +1630,11 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	locFilename = locFilename + "/" + config.Safename
 
-	log.Infof("Downloading <%s> to <%s> using %v free management port\n",
-		config.Name, locFilename, config.UseFreeMgmtPorts)
+	log.Infof("Downloading <%s> to <%s> using %v allow non-free port\n",
+		config.Name, locFilename, config.AllowNonFreePort)
 
 	var addrCount int
-	if config.UseFreeMgmtPorts {
+	if !config.AllowNonFreePort {
 		addrCount = types.CountLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus)
 		log.Infof("Have %d free management port addresses\n", addrCount)
 		err = errors.New("No free IP management port addresses for download")
@@ -1655,7 +1655,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	// Loop through all interfaces until a success
 	for addrIndex := 0; addrIndex < addrCount; addrIndex += 1 {
 		var ipSrc net.IP
-		if config.UseFreeMgmtPorts {
+		if !config.AllowNonFreePort {
 			ipSrc, err = types.GetLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus,
 				addrIndex, "")
 		} else {
@@ -1700,8 +1700,10 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		case zconfig.DsType_DsAzureBlob.String():
+			// pass in the config.Name instead of 'filename' which
+			// does not contain the prefix of the relative path with '/'s
 			err = doAzureBlob(ctx, status, syncOp, dsCtx.DownloadURL, dsCtx.APIKey,
-				dsCtx.Password, dsCtx.Dpath, config.Size, ifname, ipSrc, filename, locFilename)
+				dsCtx.Password, dsCtx.Dpath, config.Size, ifname, ipSrc, config.Name, locFilename)
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
@@ -1787,7 +1789,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		default:
-			log.Fatal("unsupported transport method")
+			errStr = "unsupported transport method " + dsCtx.TransportMethod
 		}
 	}
 	log.Errorf("All source IP addresses failed. All errors:%s\n", errStr)

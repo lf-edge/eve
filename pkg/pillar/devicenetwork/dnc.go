@@ -199,8 +199,7 @@ func compressAndPublishDevicePortConfigList(ctx *DeviceNetworkContext) types.Dev
 
 	dpcl := compressDPCL(ctx.DevicePortConfigList)
 	if ctx.PubDevicePortConfigList != nil {
-		log.Infof("publishing DevicePortConfigList: %+v\n",
-			ctx.DevicePortConfigList)
+		log.Infof("publishing DevicePortConfigList: %+v\n", dpcl)
 		ctx.PubDevicePortConfigList.Publish("global", dpcl)
 	}
 	return dpcl
@@ -293,7 +292,11 @@ func VerifyPending(pending *DPCPending,
 
 	if !reflect.DeepEqual(pending.PendDPC.Ports, pending.OldDPC.Ports) {
 		log.Infof("VerifyPending: DPC changed. update DhcpClient.\n")
-		UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
+		if UpdateDhcpClient(pending.PendDPC, pending.OldDPC) {
+			log.Warnf("VerifyPending: update DhcpClient: retry")
+			pending.OldDPC = pending.PendDPC
+			return DPC_WAIT
+		}
 		pending.OldDPC = pending.PendDPC
 	}
 	pend2, _ := MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)

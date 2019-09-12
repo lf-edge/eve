@@ -10,8 +10,10 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
 	"github.com/satori/go.uuid"
+	"github.com/shirou/gopsutil/disk"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -258,6 +260,50 @@ func updateOrRemove(ctx *zedmanagerContext, status types.AppInstanceStatus) {
 	}
 }
 
+func checkDiskSize(ctxPtr *zedmanagerContext) error {
+
+	var totalAppDiskSize uint64
+	appDiskSizeList := ""
+	pub := ctxPtr.pubAppInstanceStatus
+	items := pub.GetAll()
+	for _, iterStatusJSON := range items {
+		iterStatus := cast.CastAppInstanceStatus(iterStatusJSON)
+		if iterStatus.State < types.INSTALLED {
+			log.Debugf("App %s State %d < INSTALLED",
+				iterStatus.UUIDandVersion, iterStatus.State)
+			continue
+		}
+		appDiskSize, err := utils.GetDiskSizeForAppInstance(iterStatus)
+		if err != nil {
+			log.Errorf("checkDiskSize: err: %s", err.Error())
+			return err
+		}
+		totalAppDiskSize += appDiskSize
+		appDiskSizeList += fmt.Sprintf("App: %s (Size: %d),\n",
+			iterStatus.UUIDandVersion.UUID.String(), appDiskSize)
+	}
+	deviceDiskUsage, err := disk.Usage("/persist")
+	if err != nil {
+		err := fmt.Errorf("Failed to get diskUsage for /persist. err: %s",
+			err.Error())
+		log.Errorf("checkDiskSize: err:%s", err.Error())
+		return err
+	}
+	deviceDiskSize := deviceDiskUsage.Total
+	allowedDeviceDiskSizeForApps := float64(deviceDiskSize) * 0.8
+	if allowedDeviceDiskSizeForApps < float64(totalAppDiskSize) {
+		err := fmt.Errorf("Disk space not available for app - "+
+			"deviceDiskSize: %+v, "+
+			"allowedDeviceDiskSizeForApps: %+v, totalAppDiskSize: %+v, "+
+			"AppDiskSizeList: %s",
+			deviceDiskSize, allowedDeviceDiskSizeForApps, totalAppDiskSize,
+			appDiskSizeList)
+		// XXX
+		log.Warnf("checkDiskSize: err:%s", err.Error())
+	}
+	return nil
+}
+
 func doUpdate(ctx *zedmanagerContext, uuidStr string,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
 
@@ -335,8 +381,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			len(status.StorageStatusList))
 		if status.PurgeInprogress == types.NONE {
 			log.Errorln(errString)
-			status.Error = errString
-			status.ErrorTime = time.Now()
+			status.SetError(errString, "Invalid PurgeInProgress", time.Now())
 			changed = true
 			return changed, false
 		}
@@ -358,9 +403,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				ss)
 			if status.ErrorSource == ss.ErrorSource {
 				log.Infof("Removing error %s\n", status.Error)
-				status.Error = ""
-				status.ErrorSource = ""
-				status.ErrorTime = time.Time{}
+				status.ClearError()
 			}
 			c := MaybeRemoveStorageStatus(ctx, ss)
 			if c {
@@ -714,6 +757,8 @@ func doPrepare(ctx *zedmanagerContext, uuidStr string,
 // Really a constant
 var nilUUID uuid.UUID
 
+// doActivate - Returns if the status has changed. Doesn't publish any changes.
+// It is caller's responsibility to publish.
 func doActivate(ctx *zedmanagerContext, uuidStr string,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
 
@@ -745,6 +790,14 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	// Track that we have cleanup work in case something fails
 	status.ActivateInprogress = true
 
+	// Check
+	err := checkDiskSize(ctx)
+	if err != nil {
+		log.Errorf("doActivate: checkDiskSize Failed. err: %s", err)
+		status.SetError(err.Error(), "CheckDiskSize", time.Now())
+		return true
+	}
+
 	// Make sure we have an AppNetworkConfig
 	MaybeAddAppNetworkConfig(ctx, config, status)
 
@@ -761,9 +814,8 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	if ns.Error != "" {
 		log.Errorf("Received error from zedrouter for %s: %s\n",
 			uuidStr, ns.Error)
-		status.Error = ns.Error
-		status.ErrorSource = pubsub.TypeToName(types.AppNetworkStatus{})
-		status.ErrorTime = ns.ErrorTime
+		status.SetError(ns.Error, pubsub.TypeToName(types.AppNetworkStatus{}),
+			ns.ErrorTime)
 		changed = true
 		return changed
 	}
@@ -774,15 +826,13 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	}
 	if status.ErrorSource == pubsub.TypeToName(types.AppNetworkStatus{}) {
 		log.Infof("Clearing zedrouter error %s\n", status.Error)
-		status.Error = ""
-		status.ErrorSource = ""
-		status.ErrorTime = time.Time{}
+		status.ClearError()
 		changed = true
 	}
 	log.Debugf("Done with AppNetworkStatus for %s\n", uuidStr)
 
 	// Make sure we have a DomainConfig
-	err := MaybeAddDomainConfig(ctx, config, *status, ns)
+	err = MaybeAddDomainConfig(ctx, config, *status, ns)
 	if err != nil {
 		log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
 			uuidStr, err)

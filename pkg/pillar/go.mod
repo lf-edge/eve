@@ -11,7 +11,7 @@ require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/dnaeon/go-vcr v1.0.1 // indirect
 	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
-	github.com/eriknordmark/netlink v0.0.0-20190829035504-7ebf40544e16
+	github.com/eriknordmark/netlink v0.0.0-20190909231655-fd5b380483db
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/golang/protobuf v1.3.1
@@ -36,6 +36,7 @@ require (
 	github.com/sirupsen/logrus v1.2.0
 	github.com/stretchr/testify v1.3.0
 	github.com/vishvananda/netlink v1.0.1-0.20190823182904-a1c9a648f744 // indirect
+	github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f // indirect
 	golang.org/x/crypto v0.0.0-20190404164418-38d8ce5564a5
 	golang.org/x/net v0.0.0-20190419010253-1f3472d942ba
 	google.golang.org/api v0.3.2 // indirect
@@ -45,6 +46,8 @@ require (
 
 replace github.com/lf-edge/eve/api/go => ../../api/go
 
-replace github.com/vishvananda/netlink/nl => github.com/eriknordmark/netlink/nl v0.0.0-20190828001930-5709595daf04
+replace github.com/vishvananda/netlink/nl => github.com/eriknordmark/netlink/nl v0.0.0-20190828001930-41fa442996b8
 
-replace github.com/vishvananda/netlink => github.com/eriknordmark/netlink v0.0.0-20190828001930-5709595daf04
+replace github.com/vishvananda/netlink => github.com/eriknordmark/netlink v0.0.0-20190828001930-41fa442996b8
+
+replace git.apache.org/thrift.git => github.com/apache/thrift v0.12.0

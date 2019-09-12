@@ -1,0 +1,168 @@
+From 6f3f66408ee8b05b496c80ce6fd3917758e66fa9 Mon Sep 17 00:00:00 2001
+From: Sankar Patchineelam <sankar@zededa.com>
+Date: Fri, 30 Aug 2019 18:22:16 +0530
+Subject: [PATCH 1/1] Enable local networking in containers
+
+---
+ build.sh               |  2 +-
+ files/run              |  9 ++++-
+ files/udhcpc_script.sh | 82 ++++++++++++++++++++++++++++++++++++++++++
+ kernel/init-initrd     |  6 ++++
+ 4 files changed, 97 insertions(+), 2 deletions(-)
+ create mode 100755 files/udhcpc_script.sh
+
+diff --git a/build.sh b/build.sh
+index c004297..adeb817 100755
+--- a/build.sh
++++ b/build.sh
+@@ -24,7 +24,7 @@ then
+     exit 1
+ fi
+ 
+-execs="enter run stop"
++execs="enter run stop udhcpc_script.sh"
+ netplugins="main/ptp main/bridge main/macvlan main/ipvlan ipam/host-local meta/flannel meta/tuning"
+ 
+ # Clean the repo, but save the vendor area
+diff --git a/files/run b/files/run
+index d001b5a..fbb3a71 100755
+--- a/files/run
++++ b/files/run
+@@ -12,6 +12,7 @@ gw=""
+ route=""
+ pvcalls=0
+ bridge="xenbr0"
++dhcp=1
+ 
+ for i in $*
+ do
+@@ -63,7 +64,13 @@ echo "p9=[ 'tag=share_dir,security_model=none,path=$mountpoint' ]" >> $outconfig
+ 
+ if [ -f "$STAGE1_SEED_XL_CFG" ] ; then
+     grep -Ev '^(disk|bootloader|root|extra)' < "$STAGE1_SEED_XL_CFG" >> $outconfig
+-    echo extra=\'console=hvc0 root=9p\' >> $outconfig
++    if test $dhcp -eq 0
++    then
++        echo extra=\'console=hvc0 root=9p\' >> $outconfig
++    else
++        cp $stage1/udhcpc_script.sh $stage2
++        echo extra=\'console=hvc0 root=9p dhcp=1\' >> $outconfig
++    fi
+ else	
+     echo "memory = 1024" >> $outconfig
+     echo "vcpus = 2" >> $outconfig
+diff --git a/files/udhcpc_script.sh b/files/udhcpc_script.sh
+new file mode 100755
+index 0000000..681c4a5
+--- /dev/null
++++ b/files/udhcpc_script.sh
+@@ -0,0 +1,82 @@
++#!/bin/busybox sh
++
++# This script is sourced from
++# https://github.com/debian-pi/raspbian-ua-netinst/blob/master/scripts/etc/udhcpc/default.script
++# and modified as per EVE requirement
++
++[ -z "$1" ] && echo 'Error: should be called from udhcpc' && exit 1
++
++# create etc directory if not already done
++mkdir -p /mnt/rootfs/etc
++
++# save config information for $interface
++CFG="/mnt/rootfs/etc/udhcpc.${interface}.cfg"
++
++RESOLV_CONF='/mnt/rootfs/etc/resolv.conf'
++
++# interface for which DNS is to be configured
++PEERDNS_IF=eth0
++
++case "$1" in
++  deconfig)
++    echo "udhcpc op deconfig interface ${interface}"
++    # bring interface up, but with no IP configured
++    ip addr flush dev $interface
++    ip link set $interface up
++    # remove any stored config info for this $interface
++    rm -f $CFG
++    # remove previous dns
++    rm -f $RESOLV_CONF
++    ;;
++  bound)
++    echo "udhcpc op bound interface ${interface}"
++    # save config info for $interface
++    set > $CFG
++    # configure interface and routes
++    ip addr flush dev $interface
++    ip addr add ${ip}/${mask} dev $interface
++    [ -n "$router" ] && ip route add default via ${router%% *} dev $interface
++    # setup dns
++    if [ "$interface" == "$PEERDNS_IF" ] ; then
++      [ -n "$domain" ] && echo search $domain > $RESOLV_CONF
++      for i in $dns ; do
++        echo nameserver $i >> $RESOLV_CONF
++      done
++    fi
++    ;;
++  renew)
++    echo "udhcpc op renew interface ${interface}"
++    # compare new vs. previous config info:
++    set > ${CFG}.new
++    for i in $(diff -U1 $CFG ${CFG}.new | grep -E ^[+-] \
++                                        | tail +3 \
++                                        | awk -F[+-=] '{print $2}') ; do
++      case "$i" in
++        ip|mask|router)
++          REDO_NET='yes'
++          ;;
++        domain|dns)
++          REDO_DNS='yes'
++          ;;
++      esac
++    done
++    # save new config info:
++    mv -f ${CFG}.new $CFG
++    # make only necessary changes, as per config comparison:
++    if [ -n "$REDO_NET" ] ; then
++      ip addr flush dev $interface
++      ip addr add ${ip}/${mask} dev $interface
++      [ -n "$router" ] && ip route add default via ${router%% *} dev $interface
++    fi
++    if [ -n "$REDO_DNS" -a "$interface" == "$PEERDNS_IF" ] ; then
++      # remove previous dns
++      rm -f $RESOLV_CONF
++      [ -n "$domain" ] && echo search $domain > $RESOLV_CONF
++      for i in $dns ; do
++        echo nameserver $i >> $RESOLV_CONF
++      done
++    fi
++    ;;
++esac
++
++exit 0
+diff --git a/kernel/init-initrd b/kernel/init-initrd
+index ba78cde..eb2716d 100755
+--- a/kernel/init-initrd
++++ b/kernel/init-initrd
+@@ -39,6 +39,7 @@ ip=`cat /proc/cmdline | grep -o '\bip=[^ ]*' | cut -d = -f 2`
+ gw=`cat /proc/cmdline | grep -o '\bgw=[^ ]*' | cut -d = -f 2`
+ route=`cat /proc/cmdline | grep -o '\broute=[^ ]*' | cut -d = -f 2`
+ pvcalls=`cat /proc/cmdline | grep  'pvcalls=1'`
++dhcp=`cat /proc/cmdline | grep  'dhcp=1'`
+ if test "$pvcalls"
+ then
+ 		mkdir -p /mnt/rootfs/etc
+@@ -67,6 +68,11 @@ then
+ 		mkdir -p /mnt/rootfs/etc
+ 		echo "nameserver 2001:4860:4860::8888" > /mnt/rootfs/etc/resolv.conf
+ 	fi
++elif test "$dhcp"
++then
++    ip link set dev lo up
++    ip link set dev eth0 up
++    udhcpc --interface=eth0 --script=/mnt/udhcpc_script.sh
+ fi
+ cmd=`cat /mnt/cmdline`
+ echo "Executing $cmd"
+-- 
+2.20.1 (Apple Git-117)
+
