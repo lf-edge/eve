@@ -85,15 +85,9 @@ func checkPortAvailable(
 		// XXX Fallback until we have complete Name support in UI
 		portStatus = ctx.deviceNetworkStatus.GetPortByIfName(status.Port)
 		if portStatus == nil {
-			// XXX internal airgap switch
-			if status.Port == "0" {
-				log.Infof("checkPortAvailable: port %s has no status on %s\n", status.Port, status.DisplayName)
-				return nil
-			} else {
-				errStr := fmt.Sprintf("PortStatus for %s not found for network instance %s-%s\n",
-					status.Port, status.Key(), status.DisplayName)
-				return errors.New(errStr)
-			}
+			errStr := fmt.Sprintf("PortStatus for %s not found for network instance %s-%s\n",
+				status.Port, status.Key(), status.DisplayName)
+			return errors.New(errStr)
 		}
 	}
 

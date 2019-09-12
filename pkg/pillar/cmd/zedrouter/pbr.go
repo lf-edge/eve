@@ -40,16 +40,10 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 
 	ifindex, err := devicenetwork.IfnameToIndex(port)
 	if err != nil {
-		// XXX for airgap internal sw
-		if port == "0" {
-			log.Infof("PbrRouteAddAll: ifidex error, for internal switch, allow it.\n")
-			return nil
-		} else {
-			errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
-				port, err)
-			log.Errorln(errStr)
-			return errors.New(errStr)
-		}
+		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
+			port, err)
+		log.Errorln(errStr)
+		return errors.New(errStr)
 	}
 	routes := getAllIPv4Routes(ifindex)
 	if routes == nil {
