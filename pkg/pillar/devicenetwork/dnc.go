@@ -805,7 +805,7 @@ var lastServers []net.IP
 func UpdateResolvConf(globalStatus types.DeviceNetworkStatus) int {
 
 	log.Infof("UpdateResolvConf")
-	servers := getDNSServers(globalStatus)
+	servers := types.GetDNSServers(globalStatus, "")
 	if reflect.DeepEqual(lastServers, servers) {
 		log.Infof("UpdateResolvConf: no change: %d", len(lastServers))
 		return len(lastServers)
@@ -821,19 +821,6 @@ func UpdateResolvConf(globalStatus types.DeviceNetworkStatus) int {
 	log.Infof("UpdateResolvConf DONE %d addrs", numAddrs)
 	lastServers = servers
 	return numAddrs
-}
-
-func getDNSServers(globalStatus types.DeviceNetworkStatus) []net.IP {
-	var servers []net.IP
-	for _, us := range globalStatus.Ports {
-		if !us.IsMgmt {
-			continue
-		}
-		for _, server := range us.DnsServers {
-			servers = append(servers, server)
-		}
-	}
-	return servers
 }
 
 // Note that we don't add a search nor domainname option since

@@ -36,6 +36,7 @@ require (
 	github.com/shirou/gopsutil v0.0.0-20190323131628-2cbc9195c892
 	github.com/sirupsen/logrus v1.2.0
 	github.com/stretchr/testify v1.3.0
+	github.com/tatsushid/go-fastping v0.0.0-20160108233234-d7bb493dee3e
 	github.com/vishvananda/netlink v1.0.1-0.20190823182904-a1c9a648f744 // indirect
 	github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f // indirect
 	golang.org/x/crypto v0.0.0-20190404164418-38d8ce5564a5
