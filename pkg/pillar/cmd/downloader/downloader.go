@@ -138,6 +138,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
@@ -148,6 +149,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
@@ -158,6 +160,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subGlobalDownloadConfig.ModifyHandler = handleGlobalDownloadConfigModify
+	subGlobalDownloadConfig.CreateHandler = handleGlobalDownloadConfigModify
 	ctx.subGlobalDownloadConfig = subGlobalDownloadConfig
 	subGlobalDownloadConfig.Activate()
 
@@ -233,6 +236,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
+	subDatastoreConfig.CreateHandler = handleDatastoreConfigModify
 	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
 	ctx.subDatastoreConfig = subDatastoreConfig
 	subDatastoreConfig.Activate()
