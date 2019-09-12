@@ -513,6 +513,7 @@ func initializeGlobalConfigHandles(ctx *baseOsMgrContext) {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
@@ -538,6 +539,7 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 		log.Fatal(err)
 	}
 	subZbootConfig.ModifyHandler = handleZbootConfigModify
+	subZbootConfig.CreateHandler = handleZbootConfigModify
 	subZbootConfig.DeleteHandler = handleZbootConfigDelete
 	ctx.subZbootConfig = subZbootConfig
 	subZbootConfig.Activate()
@@ -563,6 +565,7 @@ func initializeDownloaderHandles(ctx *baseOsMgrContext) {
 		log.Fatal(err)
 	}
 	subBaseOsDownloadStatus.ModifyHandler = handleDownloadStatusModify
+	subBaseOsDownloadStatus.CreateHandler = handleDownloadStatusModify
 	subBaseOsDownloadStatus.DeleteHandler = handleDownloadStatusDelete
 	ctx.subBaseOsDownloadStatus = subBaseOsDownloadStatus
 	subBaseOsDownloadStatus.Activate()
@@ -574,6 +577,7 @@ func initializeDownloaderHandles(ctx *baseOsMgrContext) {
 		log.Fatal(err)
 	}
 	subCertObjDownloadStatus.ModifyHandler = handleDownloadStatusModify
+	subCertObjDownloadStatus.CreateHandler = handleDownloadStatusModify
 	subCertObjDownloadStatus.DeleteHandler = handleDownloadStatusDelete
 	ctx.subCertObjDownloadStatus = subCertObjDownloadStatus
 	subCertObjDownloadStatus.Activate()
@@ -588,6 +592,7 @@ func initializeVerifierHandles(ctx *baseOsMgrContext) {
 		log.Fatal(err)
 	}
 	subBaseOsVerifierStatus.ModifyHandler = handleVerifierStatusModify
+	subBaseOsVerifierStatus.CreateHandler = handleVerifierStatusModify
 	subBaseOsVerifierStatus.DeleteHandler = handleVerifierStatusDelete
 	subBaseOsVerifierStatus.RestartHandler = handleVerifierRestarted
 	ctx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
