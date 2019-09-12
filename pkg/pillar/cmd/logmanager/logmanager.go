@@ -197,6 +197,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	logmanagerCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
@@ -208,6 +209,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDomainStatus.ModifyHandler = handleDomainStatusModify
+	subDomainStatus.CreateHandler = handleDomainStatusModify
 	subDomainStatus.DeleteHandler = handleDomainStatusDelete
 	logmanagerCtx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
@@ -222,6 +224,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
