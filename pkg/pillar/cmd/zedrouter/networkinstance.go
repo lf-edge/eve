@@ -85,9 +85,15 @@ func checkPortAvailable(
 		// XXX Fallback until we have complete Name support in UI
 		portStatus = ctx.deviceNetworkStatus.GetPortByIfName(status.Port)
 		if portStatus == nil {
-			errStr := fmt.Sprintf("PortStatus for %s not found for network instance %s-%s\n",
-				status.Port, status.Key(), status.DisplayName)
-			return errors.New(errStr)
+			// XXX internal airgap switch
+			if status.Port == "0" {
+				log.Infof("checkPortAvailable: port %s has no status on %s\n", status.Port, status.DisplayName)
+				return nil
+			} else {
+				errStr := fmt.Sprintf("PortStatus for %s not found for network instance %s-%s\n",
+					status.Port, status.Key(), status.DisplayName)
+				return errors.New(errStr)
+			}
 		}
 	}
 
@@ -389,6 +395,7 @@ func handleNetworkInstanceModify(
 		status.ChangeInProgress = types.ChangeInProgressTypeModify
 		pub.Publish(status.Key(), *status)
 		doNetworkInstanceModify(ctx, config, status)
+		niUpdateNIprobing(ctx, status)
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
 		publishNetworkInstanceStatus(ctx, status)
 		log.Infof("handleNetworkInstanceModify(%s) done\n", key)
@@ -440,6 +447,10 @@ func handleNetworkInstanceCreate(
 			status.Activated = true
 		}
 	}
+
+	status.PInfo = make(map[string]types.ProbeInfo)
+	niUpdateNIprobing(ctx, &status)
+
 	status.ChangeInProgress = types.ChangeInProgressTypeNone
 	publishNetworkInstanceStatus(ctx, &status)
 	// Hooks for updating dependent objects

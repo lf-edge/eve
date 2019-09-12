@@ -334,6 +334,12 @@ func Run() {
 	flowStatTimer := flextimer.NewRangeTicker(time.Duration(fmin),
 		time.Duration(fmax))
 
+	nexthopProbeIntv := time.Duration(15 * time.Second) // 15 sec
+	pmax := float64(nexthopProbeIntv)
+	pmin := pmax * 0.9
+	HostProbeTimer := flextimer.NewRangeTicker(time.Duration(pmin),
+		time.Duration(pmax))
+
 	setFreeMgmtPorts(types.GetMgmtPortsFree(*zedrouterCtx.deviceNetworkStatus, 0))
 
 	zedrouterCtx.ready = true
@@ -485,6 +491,13 @@ func Run() {
 			log.Debugf("FlowStatTimer at %v", time.Now())
 			// XXX why start a new go routine for each change?
 			go FlowStatsCollect(&zedrouterCtx)
+			agentlog.CheckMaxTime(agentName, start)
+
+		case <-HostProbeTimer.C:
+			start := agentlog.StartTime()
+			log.Infof("HostProbeTimer at %v", time.Now())
+			// launch the go function gateway/remote hosts probing check
+			go launchHostProbe(&zedrouterCtx)
 			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subNetworkInstanceConfig.C:
@@ -2766,6 +2779,9 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	*ctx.deviceNetworkStatus = status
 	maybeHandleDNS(ctx)
+
+	deviceUpdateNIprobing(ctx, &status)
+
 	log.Infof("handleDNSModify done for %s\n", key)
 }
 

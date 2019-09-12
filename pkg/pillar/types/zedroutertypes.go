@@ -781,6 +781,37 @@ const (
 	MST_LAST = 255
 )
 
+// remote probe info configured from the cloud
+type ServerProbe struct {
+	ServerURL     string // include method,host,paths
+	ServerIP      net.IP
+	ProbeInterval int // probe frequence in seconds
+}
+
+type ProbeInfo struct { // per phyical port probing info
+	IfName string
+	// local nexthop probe state
+	GatewayUP  bool
+	LocalAddr  net.IP
+	NhAddr     net.IP
+	FailedCnt  uint32
+	SuccessCnt uint32
+
+	// remote host probe state
+	RemoteHostUP    bool
+	FailedProbeCnt  uint32
+	SuccessProbeCnt uint32
+	AveLatency      int64 // average delay in msec
+}
+
+// probe status
+// per network instance
+type NetworkInstanceProbeStatus struct {
+	Config            ServerProbe          // user configuration
+	CurrentUplinkIntf string               // decided by local/remote probing
+	PInfo             map[string]ProbeInfo // per physical port eth0, eth1 probing state
+}
+
 type MapServer struct {
 	ServiceType MapServerType
 	NameOrIp    string
@@ -1126,6 +1157,7 @@ type NetworkInstanceConfig struct {
 	// For other network services - Proxy / Lisp /StrongSwan etc..
 	OpaqueConfig string
 	LispConfig   NetworkInstanceLispConfig
+	ProbeConfig  ServerProbe
 }
 
 func (config *NetworkInstanceConfig) Key() string {
@@ -1171,6 +1203,8 @@ type NetworkInstanceStatus struct {
 	VpnStatus      *VpnStatus
 	LispInfoStatus *LispInfoStatus
 	LispMetrics    *LispMetrics
+
+	NetworkInstanceProbeStatus
 }
 
 type VifNameMac struct {
