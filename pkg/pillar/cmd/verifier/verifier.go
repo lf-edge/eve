@@ -143,6 +143,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
