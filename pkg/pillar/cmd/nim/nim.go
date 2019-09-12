@@ -177,6 +177,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	subGlobalConfig.SynchronizedHandler = handleGlobalConfigSynchronized
 	nimCtx.subGlobalConfig = subGlobalConfig
@@ -208,6 +209,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDeviceNetworkConfig.ModifyHandler = devicenetwork.HandleDNCModify
+	subDeviceNetworkConfig.CreateHandler = devicenetwork.HandleDNCModify
 	subDeviceNetworkConfig.DeleteHandler = devicenetwork.HandleDNCDelete
 	nimCtx.SubDeviceNetworkConfig = subDeviceNetworkConfig
 	subDeviceNetworkConfig.Activate()
@@ -223,6 +225,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDevicePortConfigA.ModifyHandler = devicenetwork.HandleDPCModify
+	subDevicePortConfigA.CreateHandler = devicenetwork.HandleDPCModify
 	subDevicePortConfigA.DeleteHandler = devicenetwork.HandleDPCDelete
 	nimCtx.SubDevicePortConfigA = subDevicePortConfigA
 	subDevicePortConfigA.Activate()
@@ -234,6 +237,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDevicePortConfigO.ModifyHandler = devicenetwork.HandleDPCModify
+	subDevicePortConfigO.CreateHandler = devicenetwork.HandleDPCModify
 	subDevicePortConfigO.DeleteHandler = devicenetwork.HandleDPCDelete
 	nimCtx.SubDevicePortConfigO = subDevicePortConfigO
 	subDevicePortConfigO.Activate()
@@ -245,6 +249,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDevicePortConfigS.ModifyHandler = devicenetwork.HandleDPCModify
+	subDevicePortConfigS.CreateHandler = devicenetwork.HandleDPCModify
 	subDevicePortConfigS.DeleteHandler = devicenetwork.HandleDPCDelete
 	nimCtx.SubDevicePortConfigS = subDevicePortConfigS
 	subDevicePortConfigS.Activate()
@@ -256,6 +261,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAssignableAdapters.ModifyHandler = devicenetwork.HandleAssignableAdaptersModify
+	subAssignableAdapters.CreateHandler = devicenetwork.HandleAssignableAdaptersModify
 	subAssignableAdapters.DeleteHandler = devicenetwork.HandleAssignableAdaptersDelete
 	nimCtx.SubAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
@@ -266,6 +272,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subNetworkInstanceStatus.ModifyHandler = handleNetworkInstanceModify
+	subNetworkInstanceStatus.CreateHandler = handleNetworkInstanceModify
 	subNetworkInstanceStatus.DeleteHandler = handleNetworkInstanceDelete
 	nimCtx.subNetworkInstanceStatus = subNetworkInstanceStatus
 	subNetworkInstanceStatus.Activate()
