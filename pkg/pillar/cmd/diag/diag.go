@@ -128,6 +128,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
@@ -189,6 +190,7 @@ func Run() {
 		panic(errStr)
 	}
 	subLedBlinkCounter.ModifyHandler = handleLedBlinkModify
+	subLedBlinkCounter.CreateHandler = handleLedBlinkModify
 	ctx.subLedBlinkCounter = subLedBlinkCounter
 	subLedBlinkCounter.Activate()
 
@@ -199,6 +201,7 @@ func Run() {
 		panic(errStr)
 	}
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
@@ -210,6 +213,7 @@ func Run() {
 		panic(errStr)
 	}
 	subDevicePortConfigList.ModifyHandler = handleDPCModify
+	subDevicePortConfigList.CreateHandler = handleDPCModify
 	ctx.subDevicePortConfigList = subDevicePortConfigList
 	subDevicePortConfigList.Activate()
 
