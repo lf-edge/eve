@@ -158,6 +158,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
@@ -182,6 +183,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAppNetworkStatus.ModifyHandler = handleAppNetworkStatusModify
+	subAppNetworkStatus.CreateHandler = handleAppNetworkStatusModify
 	subAppNetworkStatus.DeleteHandler = handleAppNetworkStatusDelete
 	subAppNetworkStatus.RestartHandler = handleZedrouterRestarted
 	ctx.subAppNetworkStatus = subAppNetworkStatus
@@ -194,6 +196,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDomainStatus.ModifyHandler = handleDomainStatusModify
+	subDomainStatus.CreateHandler = handleDomainStatusModify
 	subDomainStatus.DeleteHandler = handleDomainStatusDelete
 	ctx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
@@ -205,6 +208,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAppImgDownloadStatus.ModifyHandler = handleDownloaderStatusModify
+	subAppImgDownloadStatus.CreateHandler = handleDownloaderStatusModify
 	subAppImgDownloadStatus.DeleteHandler = handleDownloaderStatusDelete
 	ctx.subAppImgDownloadStatus = subAppImgDownloadStatus
 	subAppImgDownloadStatus.Activate()
@@ -216,6 +220,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAppImgVerifierStatus.ModifyHandler = handleVerifyImageStatusModify
+	subAppImgVerifierStatus.CreateHandler = handleVerifyImageStatusModify
 	subAppImgVerifierStatus.DeleteHandler = handleVerifyImageStatusDelete
 	subAppImgVerifierStatus.RestartHandler = handleVerifierRestarted
 	ctx.subAppImgVerifierStatus = subAppImgVerifierStatus
@@ -228,6 +233,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subEIDStatus.ModifyHandler = handleEIDStatusModify
+	subEIDStatus.CreateHandler = handleEIDStatusModify
 	subEIDStatus.DeleteHandler = handleEIDStatusDelete
 	subEIDStatus.RestartHandler = handleIdentitymgrRestarted
 	ctx.subEIDStatus = subEIDStatus
@@ -239,6 +245,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
@@ -250,6 +257,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subCertObjStatus.ModifyHandler = handleCertObjStatusModify
+	subCertObjStatus.CreateHandler = handleCertObjStatusModify
 	subCertObjStatus.DeleteHandler = handleCertObjStatusDelete
 	ctx.subCertObjStatus = subCertObjStatus
 	subCertObjStatus.Activate()
@@ -728,6 +736,7 @@ func quantifyChanges(config types.AppInstanceConfig,
 	return needPurge, needRestart
 }
 
+// Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	status := cast.CastDeviceNetworkStatus(statusArg)
@@ -757,6 +766,7 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
