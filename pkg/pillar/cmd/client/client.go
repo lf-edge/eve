@@ -170,6 +170,7 @@ func Run() { //nolint:gocyclo
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	clientCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
@@ -180,6 +181,7 @@ func Run() { //nolint:gocyclo
 		log.Fatal(err)
 	}
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	clientCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
