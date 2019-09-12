@@ -140,8 +140,9 @@ func (h *Handle) ConntrackDeleteIPSrc(table ConntrackTableType,
 	var flownum int
 	for _, dataRaw := range res {
 		flow := parseRawData(dataRaw)
-		if (strings.Compare(flow.Forward.SrcIP.String(), addr.String()) == 0 ||
-			strings.Compare(flow.Reverse.SrcIP.String(), addr.String()) == 0) &&
+		if (addr.IsUnspecified() ||
+			addr.Equal(flow.Forward.SrcIP) ||
+			addr.Equal(flow.Reverse.SrcIP)) &&
 			(proto == 0 || flow.Forward.Protocol == proto) &&
 			(mark & markMask == 0 || flow.Mark & markMask == mark & markMask) &&
 			(port == 0 || flow.Forward.SrcPort == port || flow.Reverse.SrcPort == port) {
