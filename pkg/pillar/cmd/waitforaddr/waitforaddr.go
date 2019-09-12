@@ -88,6 +88,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
@@ -115,6 +116,7 @@ func Run() {
 	}
 }
 
+// Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	status := cast.CastDeviceNetworkStatus(statusArg)

@@ -99,6 +99,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	identityCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
@@ -109,7 +110,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subEIDConfig.ModifyHandler = handleEIDConfigModify
+	subEIDConfig.ModifyHandler = handleModify
+	subEIDConfig.CreateHandler = handleCreate
 	subEIDConfig.DeleteHandler = handleEIDConfigDelete
 	subEIDConfig.RestartHandler = handleRestart
 	identityCtx.subEIDConfig = subEIDConfig
@@ -162,28 +164,6 @@ func unpublishEIDStatus(ctx *identityContext, key string) {
 	pub.Unpublish(key)
 }
 
-// Wrappers around handleCreate, handleModify, and handleDelete
-
-// Determine whether it is an create or modify
-func handleEIDConfigModify(ctxArg interface{}, key string, configArg interface{}) {
-
-	log.Infof("handleEIDConfigModify(%s)\n", key)
-	ctx := ctxArg.(*identityContext)
-	config := cast.CastEIDConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleEIDConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	status := lookupEIDStatus(ctx, key)
-	if status == nil {
-		handleCreate(ctx, key, &config)
-	} else {
-		handleModify(ctx, key, &config, status)
-	}
-	log.Infof("handleEIDConfigModify(%s) done\n", key)
-}
-
 func handleEIDConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
@@ -233,7 +213,9 @@ func lookupEIDConfig(ctx *identityContext, key string) *types.EIDConfig {
 	return &config
 }
 
-func handleCreate(ctx *identityContext, key string, config *types.EIDConfig) {
+func handleCreate(ctxArg interface{}, key string, configArg interface{}) {
+	ctx := ctxArg.(*identityContext)
+	config := cast.CastEIDConfig(configArg)
 	log.Infof("handleCreate(%s) for %s\n", key, config.DisplayName)
 
 	// Start by marking with PendingAdd
@@ -444,8 +426,14 @@ func encodePrivateKey(keypair *ecdsa.PrivateKey) ([]byte, error) {
 // Need to compare what might have changed. If any content change
 // then we need to reboot. Thus version by itself can change but nothing
 // else. Such a version change would be e.g. due to an ACL change.
-func handleModify(ctx *identityContext, key string, config *types.EIDConfig,
-	status *types.EIDStatus) {
+func handleModify(ctxArg interface{}, key string, configArg interface{}) {
+	ctx := ctxArg.(*identityContext)
+	config := cast.CastEIDConfig(configArg)
+	status := lookupEIDStatus(ctx, key)
+
+	if status == nil {
+		log.Fatalf("status is nil in handleModify")
+	}
 
 	log.Infof("handleModify(%s) for %s\n", key, config.DisplayName)
 
@@ -482,6 +470,7 @@ func handleDelete(ctx *identityContext, key string, status *types.EIDStatus) {
 	log.Infof("handleDelete(%s) done for %s\n", key, status.DisplayName)
 }
 
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
