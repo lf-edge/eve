@@ -130,8 +130,8 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
+			agentlog.StillRunning(agentName)
 		}
-		agentlog.StillRunning(agentName)
 	}
 }
 
@@ -164,6 +164,9 @@ func unpublishEIDStatus(ctx *identityContext, key string) {
 	pub.Unpublish(key)
 }
 
+// Wrappers around handleCreate, handleModify, and handleDelete
+
+// Determine whether it is an create or modify
 func handleEIDConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
@@ -431,10 +434,6 @@ func handleModify(ctxArg interface{}, key string, configArg interface{}) {
 	config := cast.CastEIDConfig(configArg)
 	status := lookupEIDStatus(ctx, key)
 
-	if status == nil {
-		log.Fatalf("status is nil in handleModify")
-	}
-
 	log.Infof("handleModify(%s) for %s\n", key, config.DisplayName)
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
@@ -470,7 +469,6 @@ func handleDelete(ctx *identityContext, key string, status *types.EIDStatus) {
 	log.Infof("handleDelete(%s) done for %s\n", key, status.DisplayName)
 }
 
-// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
