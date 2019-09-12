@@ -225,6 +225,7 @@ func initPubsubChannels() *dptypes.DataplaneContext {
 		log.Fatal(err)
 	}
 	subLispConfig.ModifyHandler = handleExpModify
+	subLispConfig.CreateHandler = handleExpModify
 	subLispConfig.DeleteHandler = handleExpDelete
 	dataplaneContext.SubLispConfig = subLispConfig
 	subLispConfig.Activate()
@@ -236,6 +237,7 @@ func initPubsubChannels() *dptypes.DataplaneContext {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	dataplaneContext.SubGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
