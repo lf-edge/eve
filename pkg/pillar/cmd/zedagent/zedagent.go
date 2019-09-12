@@ -262,6 +262,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAssignableAdapters.ModifyHandler = handleAAModify
+	subAssignableAdapters.CreateHandler = handleAAModify
 	subAssignableAdapters.DeleteHandler = handleAADelete
 	zedagentCtx.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
@@ -354,6 +355,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	zedagentCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
@@ -364,6 +366,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subNetworkInstanceStatus.ModifyHandler = handleNetworkInstanceModify
+	subNetworkInstanceStatus.CreateHandler = handleNetworkInstanceModify
 	subNetworkInstanceStatus.DeleteHandler = handleNetworkInstanceDelete
 	zedagentCtx.subNetworkInstanceStatus = subNetworkInstanceStatus
 	subNetworkInstanceStatus.Activate()
@@ -374,6 +377,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subNetworkInstanceMetrics.ModifyHandler = handleNetworkInstanceMetricsModify
+	subNetworkInstanceMetrics.CreateHandler = handleNetworkInstanceMetricsModify
 	subNetworkInstanceMetrics.DeleteHandler = handleNetworkInstanceMetricsDelete
 	zedagentCtx.subNetworkInstanceMetrics = subNetworkInstanceMetrics
 	subNetworkInstanceMetrics.Activate()
@@ -384,6 +388,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAppFlowMonitor.ModifyHandler = handleAppFlowMonitorModify
+	subAppFlowMonitor.CreateHandler = handleAppFlowMonitorModify
 	subAppFlowMonitor.DeleteHandler = handleAppFlowMonitorDelete
 	subAppFlowMonitor.Activate()
 	flowQ = list.New()
@@ -396,6 +401,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAppInstanceStatus.ModifyHandler = handleAppInstanceStatusModify
+	subAppInstanceStatus.CreateHandler = handleAppInstanceStatusModify
 	subAppInstanceStatus.DeleteHandler = handleAppInstanceStatusDelete
 	getconfigCtx.subAppInstanceStatus = subAppInstanceStatus
 	subAppInstanceStatus.Activate()
@@ -407,6 +413,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subZbootStatus.ModifyHandler = handleZbootStatusModify
+	subZbootStatus.CreateHandler = handleZbootStatusModify
 	subZbootStatus.DeleteHandler = handleZbootStatusDelete
 	subZbootStatus.RestartHandler = handleZbootRestarted
 	zedagentCtx.subZbootStatus = subZbootStatus
@@ -418,6 +425,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subBaseOsStatus.ModifyHandler = handleBaseOsStatusModify
+	subBaseOsStatus.CreateHandler = handleBaseOsStatusModify
 	subBaseOsStatus.DeleteHandler = handleBaseOsStatusDelete
 	zedagentCtx.subBaseOsStatus = subBaseOsStatus
 	subBaseOsStatus.Activate()

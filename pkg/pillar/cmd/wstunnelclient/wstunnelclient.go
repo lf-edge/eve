@@ -96,6 +96,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	wscCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
@@ -106,6 +107,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
@@ -118,6 +120,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAppInstanceConfig.ModifyHandler = handleAppInstanceConfigModify
+	subAppInstanceConfig.CreateHandler = handleAppInstanceConfigModify
 	subAppInstanceConfig.DeleteHandler = handleAppInstanceConfigDelete
 	wscCtx.subAppInstanceConfig = subAppInstanceConfig
 
