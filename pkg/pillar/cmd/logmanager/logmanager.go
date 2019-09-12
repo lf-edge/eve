@@ -197,6 +197,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	logmanagerCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
@@ -208,6 +209,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDomainStatus.ModifyHandler = handleDomainStatusModify
+	subDomainStatus.CreateHandler = handleDomainStatusModify
 	subDomainStatus.DeleteHandler = handleDomainStatusDelete
 	logmanagerCtx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
@@ -222,6 +224,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
@@ -401,6 +404,7 @@ func handleXenLogDir(logDirChanges chan string, logDirName string,
 	}
 }
 
+// Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	status := cast.CastDeviceNetworkStatus(statusArg)
@@ -1016,6 +1020,7 @@ func logReader(logFile string, source string, logChan chan<- logEntry) {
 	log.Infof("logReader done for %s\n", logFile)
 }
 
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 

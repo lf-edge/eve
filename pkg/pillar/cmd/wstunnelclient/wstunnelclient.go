@@ -96,6 +96,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	wscCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
@@ -106,6 +107,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
@@ -118,6 +120,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAppInstanceConfig.ModifyHandler = handleAppInstanceConfigModify
+	subAppInstanceConfig.CreateHandler = handleAppInstanceConfigModify
 	subAppInstanceConfig.DeleteHandler = handleAppInstanceConfigDelete
 	wscCtx.subAppInstanceConfig = subAppInstanceConfig
 
@@ -170,6 +173,7 @@ func Run() {
 	}
 }
 
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
@@ -198,6 +202,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 
+// Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	status := cast.CastDeviceNetworkStatus(statusArg)
@@ -241,6 +246,7 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
+// Handles both create and modify events
 func handleAppInstanceConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 

@@ -121,6 +121,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
@@ -183,6 +184,7 @@ func Run() {
 		panic(errStr)
 	}
 	subLedBlinkCounter.ModifyHandler = handleLedBlinkModify
+	subLedBlinkCounter.CreateHandler = handleLedBlinkModify
 	ctx.subLedBlinkCounter = subLedBlinkCounter
 	subLedBlinkCounter.Activate()
 
@@ -193,6 +195,7 @@ func Run() {
 		panic(errStr)
 	}
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
@@ -204,6 +207,7 @@ func Run() {
 		panic(errStr)
 	}
 	subDevicePortConfigList.ModifyHandler = handleDPCModify
+	subDevicePortConfigList.CreateHandler = handleDPCModify
 	ctx.subDevicePortConfigList = subDevicePortConfigList
 	subDevicePortConfigList.Activate()
 
@@ -258,6 +262,7 @@ func fileExists(filename string) bool {
 	return err == nil
 }
 
+// Handles both create and modify events
 func handleLedBlinkModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
@@ -282,6 +287,7 @@ func handleLedBlinkModify(ctxArg interface{}, key string,
 	printOutput(ctx)
 }
 
+// Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	status := cast.CastDeviceNetworkStatus(statusArg)
@@ -342,6 +348,7 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
+// Handles both create and modify events
 func handleDPCModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	status := cast.CastDevicePortConfigList(statusArg)
@@ -833,6 +840,7 @@ func myGet(zedcloudCtx *zedcloud.ZedCloudContext, requrl string, ifname string,
 	}
 }
 
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 

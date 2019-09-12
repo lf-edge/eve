@@ -374,6 +374,7 @@ func handleCertObjDelete(ctx *baseOsMgrContext, key string,
 }
 
 // base os/certs download status modify event
+// Handles both create and modify events
 func handleDownloadStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
@@ -400,6 +401,7 @@ func handleDownloadStatusDelete(ctxArg interface{}, key string,
 }
 
 // base os verifier status modify event
+// Handles both create and modify events
 func handleVerifierStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
@@ -428,6 +430,7 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
 }
 
+// This handles both the create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
@@ -518,6 +521,7 @@ func initializeGlobalConfigHandles(ctx *baseOsMgrContext) {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
@@ -543,6 +547,7 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 		log.Fatal(err)
 	}
 	subZbootConfig.ModifyHandler = handleZbootConfigModify
+	subZbootConfig.CreateHandler = handleZbootConfigModify
 	subZbootConfig.DeleteHandler = handleZbootConfigDelete
 	ctx.subZbootConfig = subZbootConfig
 	subZbootConfig.Activate()
@@ -568,6 +573,7 @@ func initializeDownloaderHandles(ctx *baseOsMgrContext) {
 		log.Fatal(err)
 	}
 	subBaseOsDownloadStatus.ModifyHandler = handleDownloadStatusModify
+	subBaseOsDownloadStatus.CreateHandler = handleDownloadStatusModify
 	subBaseOsDownloadStatus.DeleteHandler = handleDownloadStatusDelete
 	ctx.subBaseOsDownloadStatus = subBaseOsDownloadStatus
 	subBaseOsDownloadStatus.Activate()
@@ -579,6 +585,7 @@ func initializeDownloaderHandles(ctx *baseOsMgrContext) {
 		log.Fatal(err)
 	}
 	subCertObjDownloadStatus.ModifyHandler = handleDownloadStatusModify
+	subCertObjDownloadStatus.CreateHandler = handleDownloadStatusModify
 	subCertObjDownloadStatus.DeleteHandler = handleDownloadStatusDelete
 	ctx.subCertObjDownloadStatus = subCertObjDownloadStatus
 	subCertObjDownloadStatus.Activate()
@@ -593,12 +600,14 @@ func initializeVerifierHandles(ctx *baseOsMgrContext) {
 		log.Fatal(err)
 	}
 	subBaseOsVerifierStatus.ModifyHandler = handleVerifierStatusModify
+	subBaseOsVerifierStatus.CreateHandler = handleVerifierStatusModify
 	subBaseOsVerifierStatus.DeleteHandler = handleVerifierStatusDelete
 	subBaseOsVerifierStatus.RestartHandler = handleVerifierRestarted
 	ctx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
 	subBaseOsVerifierStatus.Activate()
 }
 
+// This handles both the create and modify events
 func handleZbootConfigModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*baseOsMgrContext)
 	config := cast.ZbootConfig(configArg)
