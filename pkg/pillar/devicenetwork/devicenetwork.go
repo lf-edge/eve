@@ -15,6 +15,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -249,6 +250,25 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 	UpdateDeviceNetworkGeo(time.Second, &globalStatus)
 	log.Infof("MakeDeviceNetworkStatus() DONE\n")
 	return globalStatus, err
+}
+
+// CheckDNSUpdate sees if we should update based on DNS
+func CheckDNSUpdate(ctx *DeviceNetworkContext) {
+
+	if !ctx.Pending.Inprogress {
+		dnStatus := *ctx.DeviceNetworkStatus
+		status, _ := MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
+			dnStatus)
+
+		if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
+			log.Infof("CheckDNSUpdate: change from %v to %v\n",
+				*ctx.DeviceNetworkStatus, status)
+			*ctx.DeviceNetworkStatus = status
+			DoDNSUpdate(ctx)
+		} else {
+			log.Infof("CheckDNSUpdate: No change\n")
+		}
+	}
 }
 
 // GetIPAddrs return all IP addresses for an ifindex, and updates the cached info.

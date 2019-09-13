@@ -682,23 +682,6 @@ func lookupPortConfig(ctx *DeviceNetworkContext,
 	return nil, 0
 }
 
-func (ctx *DeviceNetworkContext) doPublishDNSForPortConfig(
-	portConfig *types.DevicePortConfig) {
-
-	log.Infof("doPublishDNSForPortConfig()")
-	dnStatus, _ := MakeDeviceNetworkStatus(*portConfig,
-		*ctx.DeviceNetworkStatus)
-	if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, dnStatus) {
-		log.Infof("doPublishDNSForPortConfig: DeviceNetworkStatus change from %v to %v\n",
-			*ctx.DeviceNetworkStatus, dnStatus)
-		*ctx.DeviceNetworkStatus = dnStatus
-		DoDNSUpdate(ctx)
-	} else {
-		log.Infof("doPublishDNSForPortConfig: No change in DNS\n")
-	}
-	return
-}
-
 // doUpdatePortConfigListAndPublish
 //		Returns if the current config has actually changed.
 func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
