@@ -65,12 +65,14 @@ func GetDhcpInfo(us *types.NetworkPortStatus) error {
 			log.Infof("getDnsInfo(%s) DnsServers %s\n", us.IfName,
 				servers)
 			// XXX multiple? How separated?
-			ip := net.ParseIP(servers)
-			if ip == nil {
-				log.Errorf("Failed to parse %s\n", servers)
-				continue
+			for _, server := range strings.Split(servers, " ") {
+				ip := net.ParseIP(server)
+				if ip == nil {
+					log.Errorf("Failed to parse %s\n", server)
+					continue
+				}
+				us.DnsServers = append(us.DnsServers, ip)
 			}
-			us.DnsServers = append(us.DnsServers, ip)
 		case "routers":
 			routers := trimQuotes(items[1])
 			log.Infof("getDnsInfo(%s) Gateway %s\n", us.IfName,
