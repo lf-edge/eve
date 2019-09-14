@@ -309,14 +309,18 @@ func VerifyPending(pending *DPCPending,
 	pending.PendDNS = pend2
 	// XXX assume we're doing at least IPv4, so count only those to check if DHCP done
 	numUsableAddrs := types.CountLocalIPv4AddrAnyNoLinkLocal(pending.PendDNS)
-	if numUsableAddrs == 0 {
+	numUsableDNSServers := types.CountDNSServers(pending.PendDNS)
+	if numUsableAddrs == 0 || numUsableDNSServers == 0 {
 		var errStr string
 		ifs := types.GetExistingInterfaceList(pending.PendDNS)
 		if len(ifs) == 0 {
 			errStr = "No interfaces exist in the pending network config"
-		} else {
+		} else if numUsableAddrs == 0 {
 			errStr = "DHCP could not resolve any usable " +
 				"IP addresses for the pending network config"
+		} else {
+			errStr = "DHCP did not yet find any DNS servers " +
+				"for the pending network config"
 		}
 		if pending.TestCount < MaxDPCRetestCount {
 			pending.TestCount += 1
@@ -550,6 +554,8 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	portConfig.DoSanitize(true, true, key, true)
 
+	// XXX really need to know whether anything with current or lower
+	// index has changed. We don't care about inserts at the end of the list.
 	configChanged := ctx.doUpdatePortConfigListAndPublish(&portConfig, false)
 	// We could have just booted up and not run RestartVerify even once.
 	// If we see a DPC configuration that we already have in the persistent
