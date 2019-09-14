@@ -439,6 +439,15 @@ func CountLocalIPv4AddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 	return count
 }
 
+// CountDNSServers returns the number of DNS servers
+func CountDNSServers(globalStatus DeviceNetworkStatus) int {
+	count := 0
+	for _, us := range globalStatus.Ports {
+		count += len(us.DnsServers)
+	}
+	return count
+}
+
 // Return number of local IP addresses for all the management ports with given name
 // excluding link-local addresses
 func CountLocalAddrFreeNoLinkLocalIf(globalStatus DeviceNetworkStatus,
