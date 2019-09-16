@@ -20,7 +20,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -129,9 +128,8 @@ func createDnsmasqConfiglet(
 	advertizeRouter := true
 	var router string
 
-	ifindex, _ := devicenetwork.IfnameToIndex(netconf.Port)
-	if ifindex <= 0 {
-		log.Infof("Internal switch case, dnsmasq create with no outbound port, ifindex %d\n", ifindex)
+	if netconf.Port == "" {
+		log.Infof("Internal switch without external port case, dnsmasq suppress router advertize\n")
 		advertizeRouter = false
 	} else if Ipv4Eid {
 		advertizeRouter = false
