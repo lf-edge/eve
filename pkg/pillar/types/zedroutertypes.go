@@ -781,6 +781,16 @@ const (
 	MST_LAST = 255
 )
 
+type IntfClass uint8
+
+const (
+	Class_NONE      IntfClass = iota
+	Class_ETHER               // Interface Ethernet Class
+	Class_LTE                 // Interface LTE WWAN Class
+	Class_SATELLITE           // Interface Satellite Class
+	Class_LAST      = Class_SATELLITE
+)
+
 // remote probe info configured from the cloud
 type ServerProbe struct {
 	ServerURL     string // include method,host,paths
@@ -794,6 +804,7 @@ type ProbeInfo struct { // per phyical port probing info
 	GatewayUP  bool
 	LocalAddr  net.IP
 	NhAddr     net.IP
+	Class      IntfClass
 	FailedCnt  uint32
 	SuccessCnt uint32
 
@@ -808,6 +819,7 @@ type ProbeInfo struct { // per phyical port probing info
 // per network instance
 type NetworkInstanceProbeStatus struct {
 	Config            ServerProbe          // user configuration
+	NeedIntfUpdate    bool                 // flag to indicate the CurrentUpLinkIntf status has changed
 	CurrentUplinkIntf string               // decided by local/remote probing
 	PInfo             map[string]ProbeInfo // per physical port eth0, eth1 probing state
 }

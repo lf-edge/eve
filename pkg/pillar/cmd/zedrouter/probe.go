@@ -6,6 +6,8 @@
 package zedrouter
 
 import (
+	"crypto/tls"
+	"io/ioutil"
 	"net"
 	"strings"
 	"time"
@@ -23,7 +25,8 @@ const (
 	maxPingWait        int    = 100 // wait for 100 millisecond for ping timeout
 	maxRemoteProbeWait uint32 = 3   // wait for 3 seconds for remote host respond
 	remoteTolocalRatio uint32 = 20  // every 20 times of local ping, perform remote probing
-	// if the local ping timer is every 15 seconds, every remote httping is every 5 minutes
+	// e.g. if the local ping timer is every 15 seconds, every remote httping is every 5 minutes
+	serverFileName string = "/config/server"
 )
 
 type probeRes struct {
@@ -32,10 +35,12 @@ type probeRes struct {
 }
 
 var iteration uint32
+var serverNameAndPort string
 var zcloudCtx = zedcloud.ZedCloudContext{
 	FailureFunc:        zedcloud.ZedCloudFailure,
 	SuccessFunc:        zedcloud.ZedCloudSuccess,
-	NetworkSendTimeout: maxRemoteProbeWait, // XXX short since it is part of larger operation
+	TlsConfig:          &tls.Config{InsecureSkipVerify: true},
+	NetworkSendTimeout: maxRemoteProbeWait,
 }
 
 // called from handleDNSModify
@@ -89,6 +94,7 @@ func niProbingUpdatePort(port types.NetworkPortStatus, netstatus *types.NetworkI
 			GatewayUP:    true,
 			NhAddr:       port.Gateway,
 			LocalAddr:    portGetIntfAddr(port),
+			Class:        getIntfClassByName(port.IfName),
 			RemoteHostUP: true,
 		}
 		netstatus.PInfo[port.IfName] = info
@@ -107,6 +113,16 @@ func niProbingUpdatePort(port types.NetworkPortStatus, netstatus *types.NetworkI
 			log.Infof("niProbingUpdatePort: %s gw matches %s", netstatus.BridgeName, port.IfName)
 		}
 	}
+}
+
+// hack for now to use the intf name string decide the interface class
+func getIntfClassByName(intfName string) types.IntfClass {
+	if strings.Contains(strings.ToLower(intfName), "eth") {
+		return types.Class_ETHER
+	} else if strings.Contains(strings.ToLower(intfName), "wwan") {
+		return types.Class_LTE
+	}
+	return types.Class_SATELLITE
 }
 
 // after port or NI changes, if we don't have a current uplink,
@@ -142,9 +158,10 @@ func portGetIntfAddr(port types.NetworkPortStatus) net.IP {
 }
 
 // a go routine driven by the HostProbeTimer in zedrouter, to perform the
-// local and remote host probing
+// local and remote(less frequent) host probing
 func launchHostProbe(ctx *zedrouterContext) {
 	var isReachable bool
+	var remoteURL string
 	nhPing := make(map[string]bool)
 	remoteProbe := make(map[string]map[string]probeRes)
 	log.Infof("launchHostProbe: enter\n")
@@ -152,6 +169,19 @@ func launchHostProbe(ctx *zedrouterContext) {
 	items := pub.GetAll()
 	dpub := ctx.subDeviceNetworkStatus
 	ditems := dpub.GetAll()
+
+	if serverNameAndPort == "" {
+		server, err := ioutil.ReadFile(serverFileName)
+		if err == nil {
+			serverNameAndPort = strings.TrimSpace(string(server))
+		}
+	}
+	if serverNameAndPort != "" {
+		remoteURL = serverNameAndPort
+	} else {
+		remoteURL = "www.google.com"
+	}
+
 	for _, st := range items {
 		netstatus := cast.CastNetworkInstanceStatus(st)
 		log.Infof("launchHostProbe: status on ni(%s) current uplink %s\n", netstatus.BridgeName, netstatus.CurrentUplinkIntf)
@@ -161,33 +191,19 @@ func launchHostProbe(ctx *zedrouterContext) {
 			log.Infof("launchHostProbe: intf %s, gw %v, statusUP %v, remoteHostUP %v\n",
 				info.IfName, info.NhAddr, info.GatewayUP, info.RemoteHostUP)
 
-			if _, ok := nhPing[info.IfName]; !ok {
-				isReachable = probeFastPing(info)
-				nhPing[info.IfName] = isReachable
-			} else {
-				isReachable = nhPing[info.IfName]
-				log.Infof("launchHostProbe: already got ping result on %s(%s) %v\n", info.IfName, info.NhAddr.String(), isReachable)
-			}
+			// Local nexthop ping, only apply to Ethernet type of interface
+			if info.Class == types.Class_ETHER {
+				if _, ok := nhPing[info.IfName]; !ok {
+					isReachable = probeFastPing(info)
+					nhPing[info.IfName] = isReachable
+				} else {
+					isReachable = nhPing[info.IfName]
+					log.Infof("launchHostProbe: already got ping result on %s(%s) %v\n", info.IfName, info.NhAddr.String(), isReachable)
+				}
 
-			probeProcessReply(&info, isReachable, 0, true)
-			log.Infof("launchHostProbe(%d): gateway up %v, success count %d, failed count %d, remote success %d, remote fail %d\n",
-				iteration, info.GatewayUP, info.SuccessCnt, info.FailedCnt, info.SuccessProbeCnt, info.FailedProbeCnt)
-
-			// probing remote host
-			remoteURL := "www.google.com"
-			tmpRes := remoteProbe[info.IfName]
-			if tmpRes == nil {
-				tmpRes := make(map[string]probeRes)
-				remoteProbe[info.IfName] = tmpRes
-			}
-			// if has already been done for this intf/remoteURL of this session, then
-			// copy the result over to other NIs
-			if _, ok := remoteProbe[info.IfName][remoteURL]; !ok {
-				needToProbe = true
-			} else {
-				isRemoteResp = remoteProbe[info.IfName][remoteURL]
-
-				log.Infof("launchHostProbe: probe on %s to remote %s, resp %v\n", info.IfName, remoteURL, isRemoteResp)
+				probeProcessReply(&info, isReachable, 0, true)
+				log.Infof("launchHostProbe(%d): gateway up %v, success count %d, failed count %d, remote success %d, remote fail %d\n",
+					iteration, info.GatewayUP, info.SuccessCnt, info.FailedCnt, info.SuccessProbeCnt, info.FailedProbeCnt)
 			}
 
 			// for every X number of nexthop ping iteration, do the remote probing
@@ -195,6 +211,22 @@ func launchHostProbe(ctx *zedrouterContext) {
 			// to do remote probing, but just in case, local nexthop ping is filtered by
 			// the gateway firewall, and since we only do X iteration, it's simpler just doing it
 			if iteration%remoteTolocalRatio == 0 {
+				// probing remote host
+				tmpRes := remoteProbe[info.IfName]
+				if tmpRes == nil {
+					tmpRes := make(map[string]probeRes)
+					remoteProbe[info.IfName] = tmpRes
+				}
+				// if has already been done for this intf/remoteURL of this session, then
+				// copy the result over to other NIs
+				if _, ok := remoteProbe[info.IfName][remoteURL]; !ok {
+					needToProbe = true
+				} else {
+					isRemoteResp = remoteProbe[info.IfName][remoteURL]
+
+					log.Infof("launchHostProbe: probe on %s to remote %s, resp %v\n", info.IfName, remoteURL, isRemoteResp)
+				}
+
 				if needToProbe {
 					var foundport bool
 					for _, st := range ditems {
@@ -212,7 +244,7 @@ func launchHostProbe(ctx *zedrouterContext) {
 					}
 					if foundport {
 						startTime := time.Now()
-						resp, _, rtf, err := zedcloud.SendOnIntf(zcloudCtx, remoteURL, info.IfName, 0, nil, false)
+						resp, _, rtf, err := zedcloud.SendOnIntf(zcloudCtx, remoteURL, info.IfName, 0, nil, true)
 						if err != nil {
 							log.Infof("launchHostProbe: send on intf err %v\n", err)
 						}
@@ -220,7 +252,7 @@ func launchHostProbe(ctx *zedrouterContext) {
 							log.Infof("launchHostProbe: remote temp failure\n")
 						}
 						if resp != nil {
-							log.Infof("launchHostProbe: status code %d\n", resp.StatusCode)
+							log.Infof("launchHostProbe: server %s status code %d\n", serverNameAndPort, resp.StatusCode)
 							//
 							// isRemoteResp.isRemoteReply = (resp.StatusCode == 200)
 							// make it any reply is good
@@ -245,19 +277,43 @@ func launchHostProbe(ctx *zedrouterContext) {
 	iteration++
 }
 
+func probeCheckStatus(status *types.NetworkInstanceStatus) {
+	if len(status.PInfo) == 0 {
+		return
+	}
+
+	// check probe stats from lower intf class to higher class
+	// continue to the next class only if there is no usable outbound intf within the lower class
+	for c := types.Class_ETHER; c <= types.Class_LAST; c++ {
+		var numOfUps int
+		probeCheckStatusUseClass(status, c)
+		currIntf := status.CurrentUplinkIntf
+		if currIntf != "" {
+			if currinfo, ok := status.PInfo[currIntf]; ok {
+				numOfUps = infoUpCount(currinfo)
+			}
+		}
+		if numOfUps > 0 {
+			break
+		}
+	}
+	log.Infof("probeCheckStatus: %s current Uplink Intf %s\n", status.BridgeName, status.CurrentUplinkIntf)
+}
+
 // How to determine the time to switch to another interface
+// -- compare only within the same interface class: ether, lte, sat
 // -- Random assign one intf intially
 // -- each intf has 3 types of states: both local and remote report UP, only one is UP, both are Down
 // -- try to pick and switch to the one has the highest degree of UPs
 // -- otherwise, don't switch
-func probeCheckStatus(status *types.NetworkInstanceStatus) {
+func probeCheckStatusUseClass(status *types.NetworkInstanceStatus, class types.IntfClass) {
 	var numOfUps, upCnt int
 	currIntf := status.CurrentUplinkIntf
 	if currIntf == "" {
-		if len(status.PInfo) == 0 {
-			return
-		}
 		for _, info := range status.PInfo {
+			if class != info.Class {
+				continue
+			}
 			upCnt = infoUpCount(info)
 			if currIntf == "" { // assign any intf for now
 				currIntf = info.IfName
@@ -279,10 +335,16 @@ func probeCheckStatus(status *types.NetworkInstanceStatus) {
 		}
 		currinfo := status.PInfo[currIntf]
 		numOfUps = infoUpCount(currinfo)
-		if numOfUps == 2 { // good, no need to change
+		if class == currinfo.Class && numOfUps == 2 { // good, no need to change
 			return
 		}
+		if class != currinfo.Class { // from a lower intf class, start over again
+			currIntf = ""
+		}
 		for _, info := range status.PInfo {
+			if class != info.Class {
+				continue
+			}
 			if strings.Compare(info.IfName, currIntf) == 0 {
 				continue
 			}
@@ -294,9 +356,10 @@ func probeCheckStatus(status *types.NetworkInstanceStatus) {
 		}
 	}
 	if strings.Compare(status.CurrentUplinkIntf, currIntf) != 0 {
-		log.Infof("probeCheckStatus: changing from %s to %s\n",
+		log.Infof("probeCheckStatusUseClass: changing from %s to %s\n",
 			status.CurrentUplinkIntf, currIntf)
 		status.CurrentUplinkIntf = currIntf
+		status.NeedIntfUpdate = true
 	}
 }
 
@@ -347,10 +410,10 @@ func probeProcessReply(info *types.ProbeInfo, gotReply bool, latency int64, isLo
 
 func probeFastPing(info types.ProbeInfo) bool {
 	var dstaddress, srcaddress net.IPAddr
-	var zeroIP net.IP
 	var pingSuccess bool
 	p := fastping.NewPinger()
 
+	zeroIP := net.ParseIP("0.0.0.0")
 	// if we don't have a gateway address or local intf address, no need to ping
 	if zeroIP.Equal(info.NhAddr) || zeroIP.Equal(info.LocalAddr) {
 		return false
