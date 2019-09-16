@@ -676,7 +676,37 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.DomainId = domainID
 			publishDomainStatus(ctx, status)
 		}
+		// check if qemu processes has crashed
+		if status.Activated && !isQemuRunning(status.DomainId) {
+			errStr := fmt.Sprintf("verifyStatus(%s) qemu crashed",
+				status.Key())
+			log.Warnln(errStr)
+			status.LastErr = "qemu crashed - please restart application instance"
+			status.LastErrTime = time.Now()
+			status.Activated = false
+			status.State = types.HALTED
+			publishDomainStatus(ctx, status)
+		}
 	}
+}
+
+func isQemuRunning(domid int) bool {
+	// create pgrep command to see if dataplane is running
+	match := fmt.Sprintf("domid %d", domid)
+	cmd := wrap.Command("pgrep", "-f", match)
+
+	// pgrep returns 0 when there is atleast one matching program running
+	// cmd.Output returns nil when pgrep returns 0, otherwise pids.
+	out, err := cmd.Output()
+
+	if err != nil {
+		log.Infof("isQemuRunning: %s process is not running: %s",
+			match, err)
+		return false
+	}
+	log.Infof("isQemuRunning: Instances of %s is running: %s",
+		match, out)
+	return true
 }
 
 func maybeRetry(ctx *domainContext, status *types.DomainStatus) {
