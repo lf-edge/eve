@@ -1,0 +1,147 @@
+# Edge Containers
+
+## Introduction
+
+While EVE provides a lot of sophisticated device management functionality, at the end of the day its success depends on a diverse and growing ecosystem of applications that it can support. EVE is *not* a traditional operating system in that it doesn't support applications packaged as executables. Instead EVE expects its applications to be:
+
+* [Traditional Virtual Machines](https://en.wikipedia.org/wiki/Virtual_machine)
+* [Unikernels](http://unikernel.org/)
+* [Docker/OCI container](https://www.opencontainers.org)
+
+Edge Container is a novel concept that allows an effective packaging and lifecycle management of all these types of applications and it consists of two parts:
+
+* Edge Container Image (ECI) - a self-contained, binary representation of an Edge Container
+* Edge Container Object (ECO) - a live copy of an Edge Container
+
+ECOs are created by users binding a single ECI to a set of hardware and software resources (e.g. memory, CPU, I/O and networks). In other words: ECOs are live, running entities that are derived from an ECI image and a set of resources given (or bound) to it. A single ECI can be used to start multiple ECOs. The primary purpose of EVE, then, is to provide the best resource abstraction and an execution environment to a set of ECOs.
+
+ECI is an application packaging and distribution mechanism that provides support for all 3 types of EVE applications while seamlessly integrating with Docker/OCI container specification and toolchains. The latter part is especially important, since Docker tooling (e.g. Docker Desktop, Docker Registry, CI/CD integrations, etc.) has become a de-facto standard in modern, cloud-native application development. ECI format is a foundation for everything else in the Edge Containers workflow. This format defines the very notion of an ECO binary the same way that [ELF format](https://en.wikipedia.org/wiki/Executable_and_Linkable_Format) defines what it means to be an application on most traditional Operating Systems today. And just like with ELF, it is the job of an operating system to load (L in ELF) and execute (E in ELF) these turning them into running ECOs.
+
+EVE TSC plans to submit ECO and ECI standards for broad Linux Foundation adoption once this document reaches the state of a formal specification. At the current stage, however, we are still collecting product requirements and recording them (together with implementation details) below.
+
+Working with ECOs will typically go through multiple stages, each with its own expectations around standardization and how they interact with the rest of the cloud-native developer and DevOps toolchains. We expect EVE users to...
+
+   1. ...build an Edge Container Image (ECI) using the usual tools typically available on developer's desktop. The final build artifact may either be hidden in a local cache of some kind (along the lines of Docker image repository, local Maven cache, etc.) or be immediately available as a self-contained binary file
+   2. ...instantiate ECOs based on a given ECI in a simulated environment that can easily run on developer's desktop (unlike a real EVE instance that typically runs on an Edge Node). Input to this stage could either be a reference to an ECI hidden in a local cache or a URL (including a local URL) for a self-contained binary file
+   3. ...share ECIs with other developers and users
+   4. ...deploy ECI on a fleet of Edge Nodes running EVE
+   5. ...manage a rich life-cycle of an ECO (creation, stopping, re-starting, etc.)
+
+In the following sections we define semantics of all these actions and expectations around how they dovetail into each other.
+
+## ECO Runtime Specification
+
+ECO Runtime Specification aims to specify the binding of ECI to Edge Node's hardware and software resources, configuration, execution environment, and lifecycle of an Edge Container. Note that unlike most of the runtimes covered by OCI specification, EVE is a self-contained execution engine. This allows us to skip a lot of details (around on-disk container runtime formats, configuration schema, etc.) that otherwise would have to be standardized.
+
+Since there is always a one-to-many mapping between ECI and ECOs (one immutable ECI can be used to create multiple running ECOs) it is important to define how a seed ECI is referenced for any ECO operation requiring it (like creating an ECO from an ECI). There are two methods that are covered in the following section: you can reference an immutable ECI via a content-addressable handle or you can reference an ECI via a human readable name that maps to an immutable one. Since the later kind of mapping can be updated at will, it is very important to understand how various transitions in the ECO state transition diagram react to an ECI mapping changing while transition is in flight.
+
+Since nothing happens with EVE unless initiated by a Controller through a certain set of configuration directives, this section focuses on:
+
+   1. ECO state transition diagram
+   2. configuration directives utilized by an EVE controller to move through the states
+   3. metrics and events communicated back by EVE to the controller after any transition is attempted
+
+### ECO Runtime State Transition Diagram
+
+We will try to align with [OCI Lifecycle](https://github.com/opencontainers/runtime-spec/blob/master/runtime.md#lifecycle) where possible, but we may need some extra states as well.
+
+### Detailed description of states
+
+Currently we support the following states for the ECOs:
+
+* ECI has been transferred to EVE's storage area
+* Resources (CPU, memory, networking, I/O) have been committed to an ECO but the container has not been started yet
+* ECO is running
+* ECO is stopped (the resources are still pinned and mutable resources such as R/W storage remain in the state they were when ECO was running)
+* ECO is restarted
+* ECO resources are purged (TBD)
+* ECO is deleted (all the resources are released)
+
+### Controller config ECO schema
+
+As part of a regular config that EVE recieves from its controller, each ECO gets configured by an entry in an array having:
+
+* displayname
+* uuidandversion
+* activate
+* purge
+* restart
+* fixedresources
+  * virtualizationMode
+    * memory
+    * maxmem
+    * vcpus
+    * rootdev
+  * interfaces
+    * name
+    * acls
+    * networkId
+  * drives
+    * drvtype
+    * target
+    * maxsizebytes
+    * readonly
+    * preserve
+    * image
+      * name
+      * uuidandversion
+        * iformat
+        * sizeBytes
+        * sha256
+        * dsId
+        * siginfo
+
+## Edge Container Image Format
+
+This specification defines an ECI, consisting of a:
+
+* manifest
+* a set of binary layers
+* a configuration
+
+Both binary layers and configuration are represented as opaque binary blobs and referenced in a [CAS manner](https://en.wikipedia.org/wiki/Content-addressable_storage) by a ``<algo>:<content hash value>``. This allows us to have a structure similar to a [Merkle tree](https://en.wikipedia.org/wiki/Merkle_tree) with every element in the structure (starting from leaves) presumed immutable. The root of this tree is always a configuration object that in turn references other components of the tree. Binary content of the ECI, then, becomes synomynous with the ``<algo>:<content hash value>`` handle for the configuration object and thus is presumed to be immutable and content addressable.
+
+You can always reference an ECI by ``<algo>:<content hash>`` handle. Human readable names are possible by binding ``<ECI repository>/<ECI name>:<ECI tag>`` strings to ``<algo>:<content hash value>``. Those symbolic names are then presumed to be mutable (you can freely change the target ``<algo>:<content hash value>``) and they are maintained at the level of ECI Distribution Specification. This later point means that whenever you encounter a self-contained, binary ECI file you never know all the symbolic names that may be associated with it. There may be a few of those symbolic names stashed away in the repositories.json file, but this is by now means an exhaustive nor a complete list. In fact, you can provide your own symbolic name to the ECI file when you make it available via various transport mechanisms.
+
+ECO Image Format is aiming at becoming a true extension to an [OCI Image Format Specification](https://github.com/opencontainers/image-spec/blob/master/spec.md). The good news is that OCI Image Spec is structured in an open-ended enough fashion to allow it. The bad news is that it mandates certain aspects of the binary Image Format to be very specific to only containers. The biggest obstacle in from of us is extending [OCI Image Media Types](https://github.com/opencontainers/image-spec/blob/master/media-types.md#oci-image-media-types) to account for binary blobs that are specific to ECI. For example, we would like to have a media type that would correspond to bootable binaries directly (kernels and unikernels) and also initrd binary blobs. Until that happens, we're going to use a workaround that represents these types of objects as binary blobs + metadata wrapped inside of an already supported [Image Layer Filesystem Changeset
+](https://github.com/opencontainers/image-spec/blob/master/layer.md#image-layer-filesystem-changeset).
+
+Following this approach brings immediate benefit of all Docker tooling working with ECIs right away. For example, it becomes possible to produce a Unikernel-based ECI by simply capturing the build of it in a multi-stage Dockerfile with the last stage always being FROM scratch and only copying the kernel binary + metadata into the final image.
+
+### ECI Configuration
+
+ECI Configuration is a json file with the following schema:
+
+    * ACKind (string -- no equivalent in OCI)
+    * ACVersion (string -- no equivalent in OCI -- should be moved to manifest)
+    * Name (string -- no equivalent in OCI -- should be moved to manifest)
+    * Owner (object -- owner.email owner.user is roughtly OCI's author)
+    * Labels (``map<string, string>`` -- OCI's config.label)
+    * Desc (object -- no equivalent in OCI)
+    * ==============
+    * EnableVnc (boolean -- no equivalent in OCI)
+    * VmMode (string -- no equivalent in OCI)
+    * ==============
+    * Resources (struct -- no equivalent in OCI -- describes CPU, memory, storage requirements)
+    * Interfaces (struct -- no equivalent in OCI -- describes image interface requirements)
+    * Images (struct -- OCI's rootfs)
+    * ==============
+    * EventHandlers (we may need it for things like offline operations - certain events and what EVE should do if ECO is killed, crashed, etc.)
+    * Annotations (deprecated)
+    * Permissions (future work item to have local resources that have been granted access: set of entitlements that allows ECO to perform intended function)
+
+## ECI Distribution Specification
+
+While ECIs are regular, self-contained binary files and can be distributed by any transport (http, ftp, etc.) in certain situations it is advantageous to define an optimized transport protocol that can be used specifically for ECI distribution.
+
+ECI Distribution Specification will closely follow [OCI Distribution Specification](https://github.com/opencontainers/distribution-spec/blob/master/spec.md) with the intent to stay compatible with the docker registry specification as much as possible.
+
+The goals for the ECI Distribution Specification is to address the following aspects of ECI distribution:
+
+  * Mapping of symbolic names to content-addressable handles
+  * Standardizing operations on metadata for collection of ECIs stored as a group
+  * Establishing trust model around managing software supply chain all the way to the final ECI
+  * Effective download of individual binary blobs corresponding to the ECI components
+  * Effective upload of individual binary blobs corresponding to the ECI components
+
+While the bulk of this portion of the specification will focus on defining RESTful HTTP API protocol, we will try to make sure that the core of these HTTP endpoints can map easily to other transports as well. After all, if we all agree to have blobs available under ``/<version>/<name>/blobs/<digest>`` the same path could map well to an S3 bucket and sftp -- not just to an HTTP REST end-point.

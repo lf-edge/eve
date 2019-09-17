@@ -128,6 +128,7 @@ func allocateTag(r *fcallRequest, m map[Tag]*fcallRequest, hint Tag) (Tag, error
 // handle takes messages off the wire and wakes up the waiting tag call.
 func (t *transport) handle() {
 	defer func() {
+		log.Println("exited handle loop")
 		close(t.closed)
 	}()
 
@@ -142,6 +143,7 @@ func (t *transport) handle() {
 	// loop to read messages off of the connection
 	go func() {
 		defer func() {
+			log.Println("exited read loop")
 			t.close() // single main loop
 		}()
 	loop:
@@ -159,7 +161,7 @@ func (t *transport) handle() {
 					}
 				}
 
-				log.Println("p9p: fatal error reading msg:", err)
+				log.Println("fatal error reading msg:", err)
 				return
 			}
 
@@ -167,6 +169,7 @@ func (t *transport) handle() {
 			case <-t.ctx.Done():
 				return
 			case <-t.closed:
+				log.Println("transport closed")
 				return
 			case responses <- fcall:
 			}

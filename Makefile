@@ -83,6 +83,20 @@ GOOS=linux
 CGO_ENABLED=1
 GOBUILDER=eve-build-$(shell echo $(USER) | tr A-Z a-z)
 
+# if proxy is set, use it when building docker builder
+ifneq ($(HTTP_PROXY),)
+DOCKER_HTTP_PROXY:=--build-arg http_proxy=$(HTTP_PROXY)
+endif
+ifneq ($(HTTPS_PROXY),)
+DOCKER_HTTPS_PROXY:=--build-arg https_proxy=$(HTTPS_PROXY)
+endif
+ifneq ($(NO_PROXY),)
+DOCKER_NO_PROXY:=--build-arg no_proxy=$(NO_PROXY)
+endif
+ifneq ($(ALL_PROXY),)
+DOCKER_ALL_PROXY:=--build-arg all_proxy=$(ALL_PROXY)
+endif
+
 DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; docker export $$C | tar -xf - $$2 ; docker rm $$C ; } ; _
 DOCKER_GO = _() { mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ;\
     docker run $$DOCKER_GO_ARGS -i --rm -u $(USER) -w /go/src/$${3:-dummy} \
@@ -119,6 +133,10 @@ test: $(GOBUILDER) | $(DIST)
 clean:
 	rm -rf $(DIST) pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile \
 	       images/installer.yml images/rootfs.yml
+
+yetus:
+	@echo Running yetus
+	build-tools/src/yetus/test-patch.sh
 
 build-tools: $(LINUXKIT)
 	@echo Done building $<
@@ -263,7 +281,9 @@ $(GOBUILDER):
 ifneq ($(BUILD),local)
 	@echo "Creating go builder image for user $(USER)"
 	@docker build --build-arg GOVER=$(GOVER) --build-arg USER=$(USER) --build-arg GROUP=$(GROUP) \
-                      --build-arg UID=$(UID) --build-arg GID=$(GID) -t $@ build-tools/src/scripts >/dev/null
+                      --build-arg UID=$(UID) --build-arg GID=$(GID) \
+                      $(DOCKER_HTTP_PROXY) $(DOCKER_HTTPS_PROXY) $(DOCKER_NO_PROXY) $(DOCKER_ALL_PROXY) \
+                      -t $@ build-tools/src/scripts > /dev/null
 	@echo "$@ docker container is ready to use"
 endif
 
@@ -302,13 +322,14 @@ help:
 	@echo "to the make's command line. You can also run in a cross- way since"
 	@echo "all the execution is done via qemu."
 	@echo
-	@echo "Commonly used maitenance and development targets:"
+	@echo "Commonly used maintenance and development targets:"
 	@echo "   test           run EVE tests"
 	@echo "   clean          clean build artifacts in a current directory (doesn't clean Docker)"
 	@echo "   release        prepare branch for a release (VERSION=x.y.z required)"
 	@echo "   proto          generates Go and Python source from protobuf API definitions"
 	@echo "   proto-vendor   update vendored API in packages that require it (e.g. pkg/pillar)"
 	@echo "   shell          drop into docker container setup for Go development"
+	@echo "   yetus          run Apache Yetus to check the quality of the source tree"
 	@echo
 	@echo "Commonly used build targets:"
 	@echo "   build-tools    builds linuxkit and manifest-tool utilities under build-tools/bin"

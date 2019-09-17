@@ -53,6 +53,7 @@ type zedmanagerContext struct {
 	pubAppImgVerifierConfig *pubsub.Publication
 	subAppImgVerifierStatus *pubsub.Subscription
 	subGlobalConfig         *pubsub.Subscription
+	globalConfig            *types.GlobalConfig
 	pubUuidToNum            *pubsub.Publication
 }
 
@@ -94,8 +95,9 @@ func Run() {
 	agentlog.StillRunning(agentName)
 
 	// Any state needed by handler functions
-	ctx := zedmanagerContext{}
-
+	ctx := zedmanagerContext{
+		globalConfig: &types.GlobalConfigDefaults,
+	}
 	// Create publish before subscribing and activating subscriptions
 	pubAppInstanceStatus, err := pubsub.Publish(agentName,
 		types.AppInstanceStatus{})
@@ -304,8 +306,8 @@ func Run() {
 			subDeviceNetworkStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 	}
 }
 
@@ -765,8 +767,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	if gcp != nil {
+		ctx.globalConfig = gcp
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -781,5 +787,6 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	*ctx.globalConfig = types.GlobalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

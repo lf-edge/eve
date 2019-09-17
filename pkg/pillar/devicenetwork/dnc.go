@@ -152,7 +152,12 @@ func SetupVerify(ctx *DeviceNetworkContext, index int) {
 	pending := &ctx.Pending
 	pending.Inprogress = true
 	pending.PendDPC = ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
-	pending.PendDNS, _ = MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
+	pend2, _ := MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
+	if !reflect.DeepEqual(pending.PendDNS, pend2) {
+		log.Infof("SetupVerify: DeviceNetworkStatus change from %v to %v\n",
+			pending.PendDNS, pend2)
+	}
+	pending.PendDNS = pend2
 	pending.TestCount = 0
 	log.Infof("SetupVerify: Started testing DPC (index %d): %v",
 		ctx.NextDPCIndex,
@@ -194,8 +199,7 @@ func compressAndPublishDevicePortConfigList(ctx *DeviceNetworkContext) types.Dev
 
 	dpcl := compressDPCL(ctx.DevicePortConfigList)
 	if ctx.PubDevicePortConfigList != nil {
-		log.Infof("publishing DevicePortConfigList: %+v\n",
-			ctx.DevicePortConfigList)
+		log.Infof("publishing DevicePortConfigList: %+v\n", dpcl)
 		ctx.PubDevicePortConfigList.Publish("global", dpcl)
 	}
 	return dpcl
@@ -288,11 +292,19 @@ func VerifyPending(pending *DPCPending,
 
 	if !reflect.DeepEqual(pending.PendDPC.Ports, pending.OldDPC.Ports) {
 		log.Infof("VerifyPending: DPC changed. update DhcpClient.\n")
-		UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
+		if UpdateDhcpClient(pending.PendDPC, pending.OldDPC) {
+			log.Warnf("VerifyPending: update DhcpClient: retry")
+			pending.OldDPC = pending.PendDPC
+			return DPC_WAIT
+		}
 		pending.OldDPC = pending.PendDPC
 	}
-	pending.PendDNS, _ = MakeDeviceNetworkStatus(pending.PendDPC,
-		pending.PendDNS)
+	pend2, _ := MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
+	if !reflect.DeepEqual(pending.PendDNS, pend2) {
+		log.Infof("VerifyPending: DeviceNetworkStatus change from %v to %v\n",
+			pending.PendDNS, pend2)
+	}
+	pending.PendDNS = pend2
 	// XXX assume we're doing at least IPv4, so count only those to check if DHCP done
 	numUsableAddrs := types.CountLocalIPv4AddrAnyNoLinkLocal(pending.PendDNS)
 	if numUsableAddrs == 0 {
@@ -594,7 +606,7 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 		}
 		if ctx.AssignableAdapters != nil {
 			currentIoBundle := ctx.AssignableAdapters.LookupIoBundle(
-				ioBundle.Type, ioBundle.Name)
+				ioBundle.Name)
 			if currentIoBundle != nil &&
 				ioBundle.IsPCIBack == currentIoBundle.IsPCIBack {
 				log.Infof("HandleAssignableAdaptersModify(): ioBundle (%+v) "+

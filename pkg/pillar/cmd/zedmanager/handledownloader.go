@@ -10,11 +10,10 @@ import (
 )
 
 func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
-	sc types.StorageConfig, ss *types.StorageStatus) {
+	ss types.StorageStatus) {
 
 	log.Infof("AddOrRefcountDownloaderConfig for %s\n", safename)
-	log.Infof("AddOrRefcountDownloaderConfig: StorageStatus: %+v\n",
-		*ss)
+	log.Infof("AddOrRefcountDownloaderConfig: StorageStatus: %+v\n", ss)
 
 	m := lookupDownloaderConfig(ctx, safename)
 	if m != nil {
@@ -26,15 +25,16 @@ func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
 		log.Debugf("AddOrRefcountDownloaderConfig: add for %s\n",
 			safename)
 		n := types.DownloaderConfig{
-			DatastoreID:      sc.DatastoreId,
-			Safename:         safename,
-			Name:             sc.Name,
-			NameIsURL:        sc.NameIsURL,
-			IsContainer:      ss.IsContainer,
-			UseFreeMgmtPorts: true,
-			Size:             ss.Size,
-			ImageSha256:      ss.ImageSha256,
-			RefCount:         1,
+			DatastoreID: ss.DatastoreID,
+			Safename:    safename,
+			Name:        ss.Name,
+			NameIsURL:   ss.NameIsURL,
+			IsContainer: ss.IsContainer,
+			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
+				appImgObj),
+			Size:        ss.Size,
+			ImageSha256: ss.ImageSha256,
+			RefCount:    1,
 		}
 		log.Infof("AddOrRefcountDownloaderConfig: DownloaderConfig: %+v\n", n)
 		publishDownloaderConfig(ctx, &n)
@@ -105,15 +105,16 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 		log.Infof("handleDownloaderStatusModify adding RefCount=0 config %s\n",
 			key)
 		n := types.DownloaderConfig{
-			DatastoreID:      status.DatastoreID,
-			Safename:         status.Safename,
-			Name:             status.Name,
-			NameIsURL:        status.NameIsURL,
-			IsContainer:      status.IsContainer,
-			UseFreeMgmtPorts: status.UseFreeMgmtPorts,
-			Size:             status.Size,
-			ImageSha256:      status.ImageSha256,
-			RefCount:         0,
+			DatastoreID: status.DatastoreID,
+			Safename:    status.Safename,
+			Name:        status.Name,
+			NameIsURL:   status.NameIsURL,
+			IsContainer: status.IsContainer,
+			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
+				appImgObj),
+			Size:        status.Size,
+			ImageSha256: status.ImageSha256,
+			RefCount:    0,
 		}
 		publishDownloaderConfig(ctx, &n)
 		return

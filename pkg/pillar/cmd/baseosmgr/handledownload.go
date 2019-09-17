@@ -50,14 +50,15 @@ func createDownloaderConfig(ctx *baseOsMgrContext, objType string, safename stri
 	} else {
 		log.Infof("createDownloaderConfig(%s) add\n", safename)
 		n := types.DownloaderConfig{
-			DatastoreID:      sc.DatastoreId,
-			Safename:         safename,
-			Name:             sc.Name,
-			NameIsURL:        sc.NameIsURL,
-			UseFreeMgmtPorts: false,
-			Size:             sc.Size,
-			ImageSha256:      sc.ImageSha256,
-			RefCount:         1,
+			DatastoreID: sc.DatastoreID,
+			Safename:    safename,
+			Name:        sc.Name,
+			NameIsURL:   sc.NameIsURL,
+			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
+				objType),
+			Size:        sc.Size,
+			ImageSha256: sc.ImageSha256,
+			RefCount:    1,
 		}
 		publishDownloaderConfig(ctx, objType, &n)
 	}
@@ -93,14 +94,15 @@ func updateDownloaderStatus(ctx *baseOsMgrContext,
 		log.Infof("updateDownloaderStatus adding RefCount=0 config %s\n",
 			key)
 		n := types.DownloaderConfig{
-			DatastoreID:      status.DatastoreID,
-			Safename:         status.Safename,
-			Name:             status.Name,
-			NameIsURL:        status.NameIsURL,
-			UseFreeMgmtPorts: status.UseFreeMgmtPorts,
-			Size:             status.Size,
-			ImageSha256:      status.ImageSha256,
-			RefCount:         0,
+			DatastoreID: status.DatastoreID,
+			Safename:    status.Safename,
+			Name:        status.Name,
+			NameIsURL:   status.NameIsURL,
+			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
+				objType),
+			Size:        status.Size,
+			ImageSha256: status.ImageSha256,
+			RefCount:    0,
 		}
 		publishDownloaderConfig(ctx, status.ObjType, &n)
 		return

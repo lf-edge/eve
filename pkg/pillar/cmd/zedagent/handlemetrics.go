@@ -26,6 +26,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
@@ -80,8 +81,8 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 			agentlog.CheckMaxTime(agentName+"metrics", start)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName + "metrics")
 		}
+		agentlog.StillRunning(agentName + "metrics")
 	}
 }
 
@@ -424,7 +425,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 
 	disks := findDisksPartitions()
 	for _, d := range disks {
-		size, _ := partitionSize(d)
+		size, _ := diskmetrics.PartitionSize(d)
 		log.Debugf("Disk/partition %s size %d\n", d, size)
 		size = RoundToMbytes(size)
 		metric := metrics.DiskMetric{Disk: d, Total: size}
@@ -731,7 +732,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	disks := findDisksPartitions()
 	ReportDeviceInfo.Storage = *proto.Uint64(0)
 	for _, disk := range disks {
-		size, isPart := partitionSize(disk)
+		size, isPart := diskmetrics.PartitionSize(disk)
 		log.Debugf("Disk/partition %s size %d\n", disk, size)
 		size = RoundToMbytes(size)
 		is := info.ZInfoStorage{Device: disk, Total: size}
@@ -927,10 +928,12 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		reportAA := new(info.ZioBundle)
 		reportAA.Type = info.IPhyIoType(ib.Type)
 		reportAA.Name = ib.AssignmentGroup
-		list := aa.LookupIoBundleGroup(ib.Type, ib.AssignmentGroup)
+		list := aa.LookupIoBundleGroup(ib.AssignmentGroup)
 		if len(list) == 0 {
-			log.Infof("Nothing to report for %d %s",
-				ib.Type, ib.AssignmentGroup)
+			if ib.AssignmentGroup != "" {
+				log.Infof("Nothing to report for %d %s",
+					ib.Type, ib.AssignmentGroup)
+			}
 			continue
 		}
 		for _, b := range list {
@@ -1013,6 +1016,12 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	//Operational information about TPM presence/absence/usage.
 	ReportDeviceInfo.HSMStatus = tpmmgr.FetchTpmSwStatus()
 	ReportDeviceInfo.HSMInfo, _ = tpmmgr.FetchTpmHwInfo()
+
+	//Operational information about Data Security At Rest
+	ReportDataSecAtRestInfo := new(info.DataSecAtRest)
+	ReportDataSecAtRestInfo.Status, ReportDataSecAtRestInfo.Info =
+		vaultmgr.GetOperInfo()
+	ReportDeviceInfo.DataSecAtRestInfo = ReportDataSecAtRestInfo
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
@@ -1372,7 +1381,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			reportAA.Type = info.IPhyIoType(ia.Type)
 			reportAA.Name = ia.Name
 			reportAA.UsedByAppUUID = aiStatus.Key()
-			list := aa.LookupIoBundleGroup(ia.Type, ia.Name)
+			list := aa.LookupIoBundleGroup(ia.Name)
 			for _, ib := range list {
 				if ib == nil {
 					continue
@@ -1527,29 +1536,6 @@ func findDisksPartitions() []string {
 	// Remove blank/empty string after last CR
 	res = res[:len(res)-1]
 	return res
-}
-
-// Given "sdb1" return the size of the partition; "sdb" to size of disk
-// Returns size and a bool to indicate that it is a partition.
-func partitionSize(part string) (uint64, bool) {
-	out, err := exec.Command("lsblk", "-nbdo", "SIZE", "/dev/"+part).Output()
-	if err != nil {
-		log.Errorf("lsblk -nbdo SIZE %s failed %s\n", "/dev/"+part, err)
-		return 0, false
-	}
-	res := strings.Split(string(out), "\n")
-	val, err := strconv.ParseUint(res[0], 10, 64)
-	if err != nil {
-		log.Errorf("parseUint(%s) failed %s\n", res[0], err)
-		return 0, false
-	}
-	out, err = exec.Command("lsblk", "-nbdo", "TYPE", "/dev/"+part).Output()
-	if err != nil {
-		log.Errorf("lsblk -nbdo TYPE %s failed %s\n", "/dev/"+part, err)
-		return 0, false
-	}
-	isPart := strings.EqualFold(strings.TrimSpace(string(out)), "part")
-	return val, isPart
 }
 
 func getDefaultRouters(ifname string) []string {

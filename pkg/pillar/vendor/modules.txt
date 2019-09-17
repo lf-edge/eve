@@ -63,7 +63,7 @@ github.com/davecgh/go-spew/spew
 github.com/dgrijalva/jwt-go
 # github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
 github.com/eriknordmark/ipinfo
-# github.com/eriknordmark/netlink v0.0.0-20190808205821-2dc4b34f7098
+# github.com/eriknordmark/netlink v0.0.0-20190912172510-3b6b45309321
 github.com/eriknordmark/netlink
 # github.com/fsnotify/fsnotify v1.4.7
 github.com/fsnotify/fsnotify
@@ -157,9 +157,9 @@ github.com/shirou/w32
 github.com/sirupsen/logrus
 # github.com/stretchr/testify v1.3.0
 github.com/stretchr/testify/assert
-# github.com/vishvananda/netlink v1.0.1-0.20190613020244-d50d15ce3f00
+# github.com/vishvananda/netlink v1.0.1-0.20190823182904-a1c9a648f744 => github.com/eriknordmark/netlink v0.0.0-20190828001930-41fa442996b8
 github.com/vishvananda/netlink/nl
-# github.com/vishvananda/netns v0.0.0-20180720170159-13995c7128cc
+# github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f
 github.com/vishvananda/netns
 # go.opencensus.io v0.20.1
 go.opencensus.io/plugin/ochttp

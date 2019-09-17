@@ -31,9 +31,6 @@ import (
 
 const (
 	agentName       = "diag"
-	tmpDirname      = "/var/tmp/zededa"
-	AADirname       = tmpDirname + "/AssignableAdapters"
-	DNCDirname      = tmpDirname + "/DeviceNetworkConfig"
 	identityDirname = "/config"
 	selfRegFile     = identityDirname + "/self-register-failed"
 	serverFileName  = identityDirname + "/server"
@@ -264,16 +261,6 @@ func fileExists(filename string) bool {
 	return err == nil
 }
 
-func DNCExists(model string) bool {
-	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
-	return fileExists(DNCFilename)
-}
-
-func AAExists(model string) bool {
-	AAFilename := fmt.Sprintf("%s/%s.json", AADirname, model)
-	return fileExists(AAFilename)
-}
-
 func handleLedBlinkModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
@@ -397,26 +384,6 @@ func printOutput(ctx *diagContext) {
 	if savedHardwareModel != "" && savedHardwareModel != hardwareModel {
 		fmt.Printf("INFO: dmidecode model string %s overridden as %s\n",
 			hardwareModel, savedHardwareModel)
-	}
-	if savedHardwareModel != "" {
-		if !DNCExists(savedHardwareModel) {
-			fmt.Printf("ERROR: /config/hardwaremodel %s does not exist in /var/tmp/zededa/DeviceNetworkConfig\n",
-				savedHardwareModel)
-			fmt.Printf("NOTE: Device is using /var/tmp/zededa/DeviceNetworkConfig/default.json\n")
-		}
-		if !AAExists(savedHardwareModel) {
-			fmt.Printf("ERROR: /config/hardwaremodel %s does not exist in /var/tmp/zededa/AssignableAdapters\n",
-				savedHardwareModel)
-			fmt.Printf("NOTE: Device is using /var/tmp/zededa/AssignableAdapters/default.json\n")
-		}
-	}
-	if !DNCExists(hardwareModel) {
-		fmt.Printf("INFO: dmidecode model %s does not exist in /var/tmp/zededa/DeviceNetworkConfig\n",
-			hardwareModel)
-	}
-	if !AAExists(hardwareModel) {
-		fmt.Printf("INFO: dmidecode model %s does not exist in /var/tmp/zededa/AssignableAdapters\n",
-			hardwareModel)
 	}
 	// XXX certificate fingerprints? What does zedcloud use?
 	if fileExists(selfRegFile) {

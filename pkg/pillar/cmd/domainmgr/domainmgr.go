@@ -33,6 +33,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -42,8 +43,6 @@ const (
 	appImgObj = "appImg.obj"
 	agentName = "domainmgr"
 
-	tmpDirname        = "/var/tmp/zededa"
-	AADirname         = tmpDirname + "/AssignableAdapters"
 	runDirname        = "/var/run/" + agentName
 	persistDir        = "/persist"
 	persistRktDataDir = persistDir + "/rkt"
@@ -271,7 +270,12 @@ func Run() {
 			start := agentlog.StartTime()
 			subPhysicalIOAdapter.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
+
+		// Run stillRunning since we waiting for zedagent to deliver
+		// PhysicalIO which depends on cloud connectivity
+		case <-stillRunning.C:
 		}
+		agentlog.StillRunning(agentName)
 	}
 	log.Infof("Have %d assignable adapters", len(aa.IoBundleList))
 
@@ -320,8 +324,8 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 	}
 }
 
@@ -923,8 +927,7 @@ func cleanupAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 	for _, adapter := range ioAdapterList {
 		log.Debugf("cleanupAdapters processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
-		list := ctx.assignableAdapters.LookupIoBundleGroup(
-			adapter.Type, adapter.Name)
+		list := ctx.assignableAdapters.LookupIoBundleGroup(adapter.Name)
 		if len(list) == 0 {
 			continue
 		}
@@ -954,8 +957,8 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 		log.Debugf("doAssignIoAdaptersToDomain processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
 
-		list := ctx.assignableAdapters.LookupIoBundleGroup(
-			adapter.Type, adapter.Name)
+		aa := ctx.assignableAdapters
+		list := aa.LookupIoBundleGroup(adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if len(list) == 0 {
 			log.Fatalf("doAssignIoAdaptersToDomain IoBundle disappeared %d %s for %s\n",
@@ -970,7 +973,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 					ib.UsedByUUID, adapter.Type, adapter.Name,
 					status.DomainName)
 			}
-			if ib.Type != types.IoUSB {
+			if !isInUsbGroup(*aa, *ib) {
 				continue
 			}
 			if ib.PciLong == "" {
@@ -1266,8 +1269,8 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 	for _, adapter := range status.IoAdapterList {
 		log.Debugf("doInactivate processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
-		list := ctx.assignableAdapters.LookupIoBundleGroup(
-			adapter.Type, adapter.Name)
+		aa := ctx.assignableAdapters
+		list := aa.LookupIoBundleGroup(adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if len(list) == 0 {
 			log.Fatalf("doInactivate IoBundle disappeared %d %s for %s\n",
@@ -1284,7 +1287,7 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 				continue
 			}
 			// XXX also unassign others and assign during Activate?
-			if ib.Type != types.IoUSB {
+			if !isInUsbGroup(*aa, *ib) {
 				continue
 			}
 			if ib.PciLong == "" {
@@ -1329,27 +1332,18 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		xv := "xvd" + string(int('a')+i)
 		ds.Vdev = xv
 
-		var location string
-		if status.IsContainer {
-			// Check if status.ContainerImageID has "sha512-" substring at the beginning
-			if strings.Index(status.ContainerImageID, "sha512-") != 0 {
-				return fmt.Errorf("status.ContainerImageID should start with sha512-, but is %s", status.ContainerImageID)
-			}
-			location = filepath.Join(persistRktDataDir, "cas", "blob", "sha512", string(status.ContainerImageID[7:9]), status.ContainerImageID)
-		} else {
-			locationDir := verifiedDirname + "/" + dc.ImageSha256
-			log.Debugf("configToStatus(%v) processing disk img %s for %s\n",
-				config.UUIDandVersion, locationDir, config.DisplayName)
-
-			var err error
-			location, err = locationFromDir(locationDir)
-			if err != nil {
-				return err
-			}
+		target, err := utils.VerifiedImageFileLocation(status.IsContainer,
+			status.ContainerImageID, dc.ImageSha256)
+		if err != nil {
+			log.Errorf("configToStatus: Failed to get Image File Location. "+
+				"err: %+s", err.Error())
+			return err
 		}
-		ds.FileLocation = location
-		target := location
+		ds.FileLocation = target
+
 		if !status.IsContainer && !dc.ReadOnly {
+			// XXX:Why are we excluding container images? Are they supposed to be
+			//  readonly
 			// Pick new location for a per-guest copy
 			// Use App UUID to make sure name is the same even
 			// after adds and deletes of instances and device reboots
@@ -1388,8 +1382,7 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 		log.Debugf("configAdapters processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
 		// Lookup to make sure adapter exists on this device
-		list := ctx.assignableAdapters.LookupIoBundleGroup(
-			adapter.Type, adapter.Name)
+		list := ctx.assignableAdapters.LookupIoBundleGroup(adapter.Name)
 		if len(list) == 0 {
 			return fmt.Errorf("unknown adapter %d %s",
 				adapter.Type, adapter.Name)
@@ -1590,7 +1583,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	for _, adapter := range config.IoAdapterList {
 		log.Debugf("configToXenCfg processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
-		list := aa.LookupIoBundleGroup(adapter.Type, adapter.Name)
+		list := aa.LookupIoBundleGroup(adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if len(list) == 0 {
 			log.Fatalf("configToXencfg IoBundle disappeared %d %s for %s\n",
@@ -2291,31 +2284,6 @@ func xlDestroy(domainName string, domainID int) error {
 	return nil
 }
 
-func locationFromDir(locationDir string) (string, error) {
-	if _, err := os.Stat(locationDir); err != nil {
-		log.Errorf("Missing directory: %s, %s\n", locationDir, err)
-		return "", err
-	}
-	// locationDir is a directory. Need to find single file inside
-	// which the verifier ensures.
-	locations, err := ioutil.ReadDir(locationDir)
-	if err != nil {
-		log.Errorln(err)
-		return "", err
-	}
-	if len(locations) != 1 {
-		log.Errorf("Multiple files in %s\n", locationDir)
-		return "", fmt.Errorf("Multiple files in %s\n",
-			locationDir)
-	}
-	if len(locations) == 0 {
-		log.Errorf("No files in %s\n", locationDir)
-		return "", fmt.Errorf("No files in %s\n",
-			locationDir)
-	}
-	return locationDir + "/" + locations[0].Name(), nil
-}
-
 func pciAssignableAdd(long string) error {
 	log.Infof("pciAssignableAdd %s\n", long)
 	cmd := "xl"
@@ -2434,7 +2402,7 @@ func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
 	if maxsizebytes == 0 {
 		return nil
 	}
-	currentSize, err := getDiskVirtualSize(diskfile)
+	currentSize, err := diskmetrics.GetDiskVirtualSize(diskfile)
 	if err != nil {
 		return err
 	}
@@ -2447,14 +2415,6 @@ func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
 	}
 	err = diskmetrics.ResizeImg(diskfile, maxsizebytes)
 	return err
-}
-
-func getDiskVirtualSize(diskfile string) (uint64, error) {
-	imgInfo, err := diskmetrics.GetImgInfo(diskfile)
-	if err != nil {
-		return 0, err
-	}
-	return imgInfo.VirtualSize, nil
 }
 
 // Create a isofs with user-data and meta-data and add it to DiskStatus
@@ -2552,7 +2512,7 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 	// Any add or modify?
 	for _, phyAdapter := range phyIOAdapterList.AdapterList {
 		ib := *types.IoBundleFromPhyAdapter(phyAdapter)
-		currentIbPtr := aa.LookupIoBundle(0, phyAdapter.Phylabel)
+		currentIbPtr := aa.LookupIoBundle(phyAdapter.Phylabel)
 		if currentIbPtr == nil {
 			log.Infof("handlePhysicalIOAdapterListCreateModify: Adapter %s "+
 				"added. %+v\n", phyAdapter.Phylabel, ib)
@@ -2618,28 +2578,54 @@ func checkAndSetIoBundleAll(ctx *domainContext) {
 func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle,
 	publish bool) error {
 
+	aa := ctx.assignableAdapters
+	var list []*types.IoBundle
+
+	if ib.AssignmentGroup != "" {
+		list = aa.LookupIoBundleGroup(ib.AssignmentGroup)
+	} else {
+		list = append(list, ib)
+	}
+	// Is any member a port? If so treat all as port
+	isPort := false
+	for _, ib := range list {
+		if types.IsPort(ctx.deviceNetworkStatus, ib.Name) {
+			isPort = true
+		}
+	}
+	for _, ib := range list {
+		err := checkAndSetIoMember(ctx, ib, isPort, publish)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, publish bool) error {
+	aa := ctx.assignableAdapters
 	// Check if part of DevicePortConfig
 	ib.IsPort = false
 	changed := false
-	if types.IsPort(ctx.deviceNetworkStatus, ib.Name) {
+	if isPort {
 		log.Warnf("checkAndSetIoBundle(%d %s %s) part of zedrouter port\n",
 			ib.Type, ib.Name, ib.AssignmentGroup)
 		ib.IsPort = true
 		changed = true
 		if ib.UsedByUUID != nilUUID {
-			log.Errorf("checkAndSetIoBundle(%d %s %s) used by %s",
+			log.Errorf("checkAndSetIoMember(%d %s %s) used by %s",
 				ib.Type, ib.Name, ib.AssignmentGroup,
 				ib.UsedByUUID.String())
 
 		} else if ib.IsPCIBack {
-			log.Infof("checkAndSetIoBundle(%d %s %s) take back from pciback\n",
+			log.Infof("checkAndSetIoMember(%d %s %s) take back from pciback\n",
 				ib.Type, ib.Name, ib.AssignmentGroup)
 			if ib.PciLong != "" {
 				log.Infof("Removing %s (%s) from pciback\n",
 					ib.Name, ib.PciLong)
 				err := pciAssignableRemove(ib.PciLong)
 				if err != nil {
-					log.Errorf("checkAndSetIoBundle(%d %s %s) pciAssignableRemove %s failed %v\n",
+					log.Errorf("checkAndSetIoMember(%d %s %s) pciAssignableRemove %s failed %v\n",
 						ib.Type, ib.Name, ib.AssignmentGroup, ib.PciLong, err)
 				}
 				// Seems like like no risk for race; when we return
@@ -2709,7 +2695,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle,
 		if ctx.deviceNetworkStatus.Testing && ib.Type.IsNet() {
 			log.Infof("Not assigning %s (%s) to pciback due to Testing\n",
 				ib.Name, ib.PciLong)
-		} else if ctx.usbAccess && ib.Type == types.IoUSB {
+		} else if ctx.usbAccess && isInUsbGroup(*aa, *ib) {
 			log.Infof("Not assigning %s (%s) to pciback due to usbAccess\n",
 				ib.Name, ib.PciLong)
 		} else if ib.PciLong != "" {
@@ -2804,9 +2790,13 @@ func updateUsbAccess(ctx *domainContext) {
 func maybeAssignableAdd(ctx *domainContext) {
 
 	var assignments []string
+	aa := ctx.assignableAdapters
 	for i := range ctx.assignableAdapters.IoBundleList {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
-		if ib.Type != types.IoUSB {
+		if !isInUsbGroup(*aa, *ib) {
+			continue
+		}
+		if ib.PciLong == "" {
 			continue
 		}
 		if !ib.IsPCIBack {
@@ -2830,9 +2820,13 @@ func maybeAssignableAdd(ctx *domainContext) {
 func maybeAssignableRem(ctx *domainContext) {
 
 	var assignments []string
+	aa := ctx.assignableAdapters
 	for i := range ctx.assignableAdapters.IoBundleList {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
-		if ib.Type != types.IoUSB {
+		if !isInUsbGroup(*aa, *ib) {
+			continue
+		}
+		if ib.PciLong == "" {
 			continue
 		}
 		if ib.IsPCIBack {
@@ -2863,7 +2857,7 @@ func handleIBDelete(ctx *domainContext, name string) {
 	log.Infof("handleIBDelete(%s)", name)
 	aa := ctx.assignableAdapters
 
-	ib := aa.LookupIoBundle(0, name)
+	ib := aa.LookupIoBundle(name)
 	if ib == nil {
 		log.Infof("handleIBDelete: Adapter ( %s ) not found", name)
 		return
@@ -2895,7 +2889,7 @@ func handleIBDelete(ctx *domainContext, name string) {
 
 func handleIBModify(ctx *domainContext, newIb types.IoBundle) {
 	aa := ctx.assignableAdapters
-	currentIbPtr := aa.LookupIoBundle(newIb.Type, newIb.Name)
+	currentIbPtr := aa.LookupIoBundle(newIb.Name)
 	if currentIbPtr == nil {
 		log.Errorf("Failed to find IoBundle (%d %s).  aa: %+v\n",
 			newIb.Type, newIb.Name, aa)
@@ -2916,4 +2910,25 @@ func handleIBModify(ctx *domainContext, newIb types.IoBundle) {
 	// do pciAssignableRemove for the old Adapter?
 	*currentIbPtr = newIb
 	checkIoBundleAll(ctx)
+}
+
+// usUnUsbGroup checks if either this member is of type USB, or if it is
+// in a group when some member is of type USB
+func isInUsbGroup(aa types.AssignableAdapters, ib types.IoBundle) bool {
+	if ib.Type == types.IoUSB {
+		return true
+	}
+	if ib.AssignmentGroup == "" {
+		return false
+	}
+	list := aa.LookupIoBundleGroup(ib.AssignmentGroup)
+	log.Infof("isInUsbGroup for %s found %v", ib.Name, list)
+	for _, m := range list {
+		if m.Type == types.IoUSB {
+			log.Infof("isInUsbGroup for %s found USB for %s",
+				ib.Name, m.Name)
+			return true
+		}
+	}
+	return false
 }

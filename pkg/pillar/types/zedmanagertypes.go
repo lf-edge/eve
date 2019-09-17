@@ -179,6 +179,22 @@ func (status AppInstanceStatus) GetAppInterfaceList() []string {
 	return viflist
 }
 
+// SetError - Clears error state of Status
+func (statusPtr *AppInstanceStatus) SetError( //revive:disable-line
+	errStr string, source string,
+	errTime time.Time) {
+	statusPtr.Error = errStr
+	statusPtr.ErrorSource = source
+	statusPtr.ErrorTime = errTime
+}
+
+// ClearError - Clears error state of Status
+func (statusPtr *AppInstanceStatus) ClearError() { //revive:disable-line
+	statusPtr.Error = ""
+	statusPtr.ErrorSource = ""
+	statusPtr.ErrorTime = time.Time{}
+}
+
 type EIDOverlayConfig struct {
 	Name string // From proto message
 	EIDConfigDetails
@@ -203,7 +219,7 @@ type EIDOverlayConfig struct {
 // - "ramdisk"
 // - "device_tree"
 type StorageConfig struct {
-	DatastoreId      uuid.UUID
+	DatastoreID      uuid.UUID
 	Name             string   // XXX Do depend on URL for clobber avoidance?
 	NameIsURL        bool     // If not we form URL based on datastore info
 	Size             uint64   // In bytes
@@ -226,8 +242,10 @@ func RoundupToKB(b uint64) uint64 {
 }
 
 type StorageStatus struct {
+	DatastoreID        uuid.UUID
 	Name               string
 	ImageSha256        string   // sha256 of immutable image
+	NameIsURL          bool     // If not we form URL based on datastore info
 	Size               uint64   // In bytes
 	CertificateChain   []string //name of intermediate certificates
 	ImageSignature     []byte   //signature of image
@@ -254,7 +272,9 @@ type StorageStatus struct {
 
 // UpdateFromStorageConfig sets up StorageStatus based on StorageConfig struct
 func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
+	ss.DatastoreID = sc.DatastoreID
 	ss.Name = sc.Name
+	ss.NameIsURL = sc.NameIsURL
 	ss.ImageSha256 = sc.ImageSha256
 	ss.Size = sc.Size
 	ss.CertificateChain = sc.CertificateChain
@@ -266,7 +286,7 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	ss.Maxsizebytes = sc.Maxsizebytes
 	ss.Devtype = sc.Devtype
 	ss.Target = sc.Target
-	if ss.Format == "8" {
+	if ss.Format == "container" {
 		ss.IsContainer = true
 	}
 	return

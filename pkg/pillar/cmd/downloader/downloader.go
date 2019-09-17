@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -266,8 +267,8 @@ func Run() {
 		// This wait can take an unbounded time since we wait for IP
 		// addresses. Punch StillRunning
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 	}
 	log.Infof("Have %d management ports addresses to use\n",
 		types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus))
@@ -329,8 +330,8 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 	}
 }
 
@@ -630,7 +631,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		IsContainer:      config.IsContainer,
 		RefCount:         config.RefCount,
 		LastUse:          time.Now(),
-		UseFreeMgmtPorts: config.UseFreeMgmtPorts,
+		AllowNonFreePort: config.AllowNonFreePort,
 		ImageSha256:      config.ImageSha256,
 		PendingAdd:       true,
 	}
@@ -1238,6 +1239,90 @@ func doS3(ctx *downloaderContext, status *types.DownloaderStatus,
 	}
 }
 
+func doAzureBlob(ctx *downloaderContext, status *types.DownloaderStatus,
+	syncOp zedUpload.SyncOpType, dnldURL string, apiKey string, password string,
+	dpath string, maxsize uint64, ifname string,
+	ipSrc net.IP, filename string, locFilename string) error {
+
+	auth := &zedUpload.AuthInput{
+		AuthType: "password",
+		Uname:    apiKey,
+		Password: password,
+	}
+
+	trType := zedUpload.SyncAzureTr
+
+	// create Endpoint
+	dEndPoint, err := ctx.dCtx.NewSyncerDest(trType, "", dpath, auth)
+	if err != nil {
+		log.Errorf("NewSyncerDest failed: %s\n", err)
+		return err
+	}
+	// check for proxies on the selected management port interface
+	proxyURL, err := zedcloud.LookupProxy(
+		&ctx.deviceNetworkStatus, ifname, dnldURL)
+	if err == nil && proxyURL != nil {
+		log.Infof("doAzure: Using proxy %s", proxyURL.String())
+		dEndPoint.WithSrcIpAndProxySelection(ipSrc, proxyURL)
+	} else {
+		dEndPoint.WithSrcIpSelection(ipSrc)
+	}
+
+	var respChan = make(chan *zedUpload.DronaRequest)
+
+	log.Infof("doAzure syncOp for <%s>, <%s>\n", dpath, filename)
+	// create Request
+	// Round up from bytes to Mbytes
+	maxMB := (maxsize + 1024*1024 - 1) / (1024 * 1024)
+	req := dEndPoint.NewRequest(syncOp, filename, locFilename,
+		int64(maxMB), true, respChan)
+	if req == nil {
+		return errors.New("NewRequest failed")
+	}
+
+	req.Post()
+	for {
+		select {
+		case resp, ok := <-respChan:
+			if resp.IsDnUpdate() {
+				asize := resp.GetAsize()
+				osize := resp.GetOsize()
+				log.Infof("Update progress for %v: %v/%v",
+					resp.GetLocalName(), asize, osize)
+				if osize == 0 {
+					status.Progress = 0
+				} else {
+					percent := 100 * asize / osize
+					status.Progress = uint(percent)
+				}
+				publishDownloaderStatus(ctx, status)
+				continue
+			}
+			if !ok {
+				errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>",
+					dpath, filename)
+				log.Errorln(errStr)
+				return errors.New(errStr)
+			}
+			if syncOp == zedUpload.SyncOpDownload {
+				err = resp.GetDnStatus()
+			} else {
+				_, err = resp.GetUpStatus()
+			}
+			if resp.IsError() {
+				return err
+			} else {
+				log.Infof("Done for %v: size %v/%v",
+					resp.GetLocalName(),
+					resp.GetAsize(), resp.GetOsize())
+				status.Progress = 100
+				publishDownloaderStatus(ctx, status)
+				return nil
+			}
+		}
+	}
+}
+
 func doSftp(ctx *downloaderContext, status *types.DownloaderStatus,
 	syncOp zedUpload.SyncOpType, apiKey string, password string,
 	serverUrl string, dpath string, maxsize uint64,
@@ -1502,6 +1587,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	var errStr string
 	var locFilename string
 	var syncOp zedUpload.SyncOpType = zedUpload.SyncOpDownload
+	var serverURL string
 
 	if status.ObjType == "" {
 		log.Fatalf("handleSyncOp: No ObjType for %s\n",
@@ -1540,11 +1626,11 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	locFilename = locFilename + "/" + config.Safename
 
-	log.Infof("Downloading <%s> to <%s> using %v free management port\n",
-		config.Name, locFilename, config.UseFreeMgmtPorts)
+	log.Infof("Downloading <%s> to <%s> using %v allow non-free port\n",
+		config.Name, locFilename, config.AllowNonFreePort)
 
 	var addrCount int
-	if config.UseFreeMgmtPorts {
+	if !config.AllowNonFreePort {
 		addrCount = types.CountLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus)
 		log.Infof("Have %d free management port addresses\n", addrCount)
 		err = errors.New("No free IP management port addresses for download")
@@ -1565,7 +1651,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	// Loop through all interfaces until a success
 	for addrIndex := 0; addrIndex < addrCount; addrIndex += 1 {
 		var ipSrc net.IP
-		if config.UseFreeMgmtPorts {
+		if !config.AllowNonFreePort {
 			ipSrc, err = types.GetLocalAddrFreeNoLinkLocal(ctx.deviceNetworkStatus,
 				addrIndex, "")
 		} else {
@@ -1609,11 +1695,43 @@ func handleSyncOp(ctx *downloaderContext, key string,
 					locFilename, key, "")
 				return
 			}
+		case zconfig.DsType_DsAzureBlob.String():
+			// pass in the config.Name instead of 'filename' which
+			// does not contain the prefix of the relative path with '/'s
+			err = doAzureBlob(ctx, status, syncOp, dsCtx.DownloadURL, dsCtx.APIKey,
+				dsCtx.Password, dsCtx.Dpath, config.Size, ifname, ipSrc, config.Name, locFilename)
+			if err != nil {
+				log.Errorf("Source IP %s failed: %s\n",
+					ipSrc.String(), err)
+				errStr = errStr + "\n" + err.Error()
+				// XXX don't know how much we downloaded!
+				// Could have failed half-way. Using zero.
+				zedcloud.ZedCloudFailure(ifname,
+					metricsUrl, 1024, 0)
+			} else {
+				// Record how much we downloaded
+				size := int64(0)
+				info, err := os.Stat(locFilename)
+				if err != nil {
+					log.Error(err)
+				} else {
+					size = info.Size()
+				}
+				zedcloud.ZedCloudSuccess(ifname,
+					metricsUrl, 1024, size)
+				handleSyncOpResponse(ctx, config, status,
+					locFilename, key, "")
+				return
+			}
 		case zconfig.DsType_DsSFTP.String():
-			serverUrl := getServerUrl(dsCtx, filename)
-			err = doSftp(ctx, status, syncOp, dsCtx.APIKey,
-				dsCtx.Password, serverUrl, dsCtx.Dpath,
-				config.Size, ipSrc, filename, locFilename)
+			serverURL, err = getServerUrl(dsCtx)
+			if err == nil {
+				// pass in the config.Name instead of 'filename' which
+				// does not contain the prefix of the relative path with '/'s
+				err = doSftp(ctx, status, syncOp, dsCtx.APIKey,
+					dsCtx.Password, serverURL, dsCtx.Dpath,
+					config.Size, ipSrc, config.Name, locFilename)
+			}
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
@@ -1638,9 +1756,13 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		case zconfig.DsType_DsHttp.String(), zconfig.DsType_DsHttps.String(), "":
-			serverUrl := getServerUrl(dsCtx, filename)
-			err = doHttp(ctx, status, syncOp, serverUrl, dsCtx.Dpath,
-				config.Size, ifname, ipSrc, filename, locFilename)
+			serverURL, err = getServerUrl(dsCtx)
+			if err == nil {
+				// pass in the config.Name instead of 'filename' which
+				// does not contain the prefix of the relative path with '/'s
+				err = doHttp(ctx, status, syncOp, serverURL, dsCtx.Dpath,
+					config.Size, ifname, ipSrc, config.Name, locFilename)
+			}
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
@@ -1663,7 +1785,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 				return
 			}
 		default:
-			log.Fatal("unsupported transport method")
+			errStr = "unsupported transport method " + dsCtx.TransportMethod
 		}
 	}
 	log.Errorf("All source IP addresses failed. All errors:%s\n", errStr)
@@ -1672,15 +1794,13 @@ func handleSyncOp(ctx *downloaderContext, key string,
 }
 
 // DownloadURL format : http://<serverURL>/dpath/filename
-// XXX why can't we parse URL from font? This only works when filename starts with "/"
-func getServerUrl(dsCtx *types.DatastoreContext, filename string) string {
-	if dsCtx.Dpath != "" {
-		return strings.TrimSuffix(dsCtx.DownloadURL,
-			"/"+dsCtx.Dpath+"/"+filename)
-	} else {
-		return strings.TrimSuffix(dsCtx.DownloadURL,
-			"/"+filename)
+func getServerUrl(dsCtx *types.DatastoreContext) (string, error) {
+	u, err := url.Parse(dsCtx.DownloadURL)
+	if err != nil {
+		log.Errorf("URL Parsing failed: %s\n", err)
+		return "", err
 	}
+	return u.Scheme + "://" + u.Host, nil
 }
 
 func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,

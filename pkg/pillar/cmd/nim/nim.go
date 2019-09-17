@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"sort"
 	"time"
 
@@ -336,6 +337,7 @@ func Run() {
 	}
 
 	// Look for address and link changes
+	routeChanges := devicenetwork.RouteChangeInit()
 	addrChanges := devicenetwork.AddrChangeInit()
 	linkChanges := devicenetwork.LinkChangeInit()
 
@@ -387,8 +389,10 @@ func Run() {
 				// XXX Need to discard all cached information?
 				addrChanges = devicenetwork.AddrChangeInit()
 			} else {
-				if devicenetwork.AddrChange(change) {
-					devicenetwork.HandleAddressChange(&nimCtx.DeviceNetworkContext)
+				ch, ifindex := devicenetwork.AddrChange(change)
+				if ch {
+					handleInterfaceChange(&nimCtx, ifindex,
+						"AddrChange", true)
 				}
 			}
 			agentlog.CheckMaxTime(agentName, start)
@@ -399,9 +403,27 @@ func Run() {
 				log.Errorf("linkChanges closed\n")
 				linkChanges = devicenetwork.LinkChangeInit()
 				// XXX Need to discard all cached information?
-			} else if devicenetwork.LinkChange(change) {
-				handleLinkChange(&nimCtx)
-				// XXX trigger testing??
+			} else {
+				ch, ifindex := devicenetwork.LinkChange(change)
+				if ch {
+					handleLinkChange(&nimCtx)
+					handleInterfaceChange(&nimCtx, ifindex,
+						"LinkChange", true)
+				}
+			}
+			agentlog.CheckMaxTime(agentName, start)
+
+		case change, ok := <-routeChanges:
+			start := agentlog.StartTime()
+			if !ok {
+				log.Errorf("routeChanges closed\n")
+				routeChanges = devicenetwork.RouteChangeInit()
+			} else {
+				ch, ifindex := devicenetwork.RouteChange(change)
+				if ch {
+					handleInterfaceChange(&nimCtx, ifindex,
+						"RouteChange", false)
+				}
 			}
 			agentlog.CheckMaxTime(agentName, start)
 
@@ -468,8 +490,8 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 	}
 	log.Infof("AA initialized")
 
@@ -518,8 +540,10 @@ func Run() {
 				addrChanges = devicenetwork.AddrChangeInit()
 				// XXX Need to discard all cached information?
 			} else {
-				if devicenetwork.AddrChange(change) {
-					devicenetwork.HandleAddressChange(&nimCtx.DeviceNetworkContext)
+				ch, ifindex := devicenetwork.AddrChange(change)
+				if ch {
+					handleInterfaceChange(&nimCtx, ifindex,
+						"AddrChange", true)
 				}
 			}
 			agentlog.CheckMaxTime(agentName, start)
@@ -530,9 +554,27 @@ func Run() {
 				log.Errorf("linkChanges closed\n")
 				linkChanges = devicenetwork.LinkChangeInit()
 				// XXX Need to discard all cached information?
-			} else if devicenetwork.LinkChange(change) {
-				handleLinkChange(&nimCtx)
-				// XXX trigger testing??
+			} else {
+				ch, ifindex := devicenetwork.LinkChange(change)
+				if ch {
+					handleLinkChange(&nimCtx)
+					handleInterfaceChange(&nimCtx, ifindex,
+						"LinkChange", true)
+				}
+			}
+			agentlog.CheckMaxTime(agentName, start)
+
+		case change, ok := <-routeChanges:
+			start := agentlog.StartTime()
+			if !ok {
+				log.Errorf("routeChanges closed\n")
+				routeChanges = devicenetwork.RouteChangeInit()
+			} else {
+				ch, ifindex := devicenetwork.RouteChange(change)
+				if ch {
+					handleInterfaceChange(&nimCtx, ifindex,
+						"RouteChange", false)
+				}
 			}
 			agentlog.CheckMaxTime(agentName, start)
 
@@ -592,8 +634,8 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName)
 	}
 }
 
@@ -618,6 +660,53 @@ func handleLinkChange(ctx *nimContext) {
 	if changed {
 		log.Infof("new fallbackPortmap: %+v\n", ctx.fallbackPortMap)
 		updateFilteredFallback(ctx)
+	}
+}
+
+// handleInterfaceChange deals with the fact that linkchange, addrchange, and
+// routechange do not reliably indicate when a link/address comes and goes, so
+// we explicitly check whether there are changes to the kernel list of IP
+// address.
+// Only applies to device ports.
+func handleInterfaceChange(ctx *nimContext, ifindex int, logstr string, force bool) {
+	// We do not see address change notifications when
+	// link drops so call directly
+	ifname, _, _ := devicenetwork.IfindexToName(ifindex)
+	log.Infof("%s(%s) ifindex %d force %t", logstr, ifname, ifindex, force)
+	if ifname != "" && !types.IsPort(*ctx.DeviceNetworkStatus, ifname) {
+		log.Debugf("%s(%s): not port", logstr, ifname)
+		return
+	}
+	if force {
+		// The caller has already purged addresses from IfindexToAddrs
+		addrs, err := devicenetwork.GetIPAddrs(ifindex)
+		if err != nil {
+			addrs = nil
+		}
+		log.Infof("%s(%s) force changed to %v",
+			logstr, ifname, addrs)
+		devicenetwork.HandleAddressChange(&ctx.DeviceNetworkContext)
+		// XXX should we trigger restarting testing?
+		return
+	}
+
+	// Compare old vs. current
+	oldAddrs, _ := devicenetwork.IfindexToAddrs(ifindex)
+	addrs, err := devicenetwork.GetIPAddrs(ifindex)
+	if err != nil {
+		log.Warnf("%s(%s %d) no addrs: %s",
+			logstr, ifname, ifindex, err)
+		addrs = nil
+	}
+	if len(oldAddrs) == 0 && len(addrs) == 0 {
+		// Equal but one might be nil
+	} else if reflect.DeepEqual(oldAddrs, addrs) {
+		// Equal
+	} else {
+		log.Infof("%s(%s) changed from %v to %v",
+			logstr, ifname, oldAddrs, addrs)
+		devicenetwork.HandleAddressChange(&ctx.DeviceNetworkContext)
+		// XXX should we trigger restarting testing?
 	}
 }
 
@@ -802,14 +891,14 @@ func fileExists(filename string) bool {
 }
 
 func updateFallbackAnyEth(ctx *nimContext) {
-	log.Infof("updateFallbackAnyEth: enable %v ifs %v\n",
+	log.Debugf("updateFallbackAnyEth: enable %v ifs %v\n",
 		ctx.networkFallbackAnyEth, ctx.filteredFallback)
 	if ctx.networkFallbackAnyEth == types.TS_ENABLED {
 		ports := mapToKeys(ctx.filteredFallback)
 		// sort ports to reduce churn; otherwise with two they swap
 		// almost every time
 		sort.Strings(ports)
-		log.Infof("updateFallbackAnyEth: ports %+v", ports)
+		log.Debugf("updateFallbackAnyEth: ports %+v", ports)
 		devicenetwork.UpdateLastResortPortConfig(&ctx.DeviceNetworkContext,
 			ports)
 	} else if ctx.networkFallbackAnyEth == types.TS_DISABLED {
@@ -835,7 +924,7 @@ func mapToKeys(m map[string]bool) []string {
 // Exclude those in AssignableAdapters with usedByUUID!=0
 // Exclude those in NetworkInstanceStatus Type=switch
 func filterIfMap(ctx *nimContext, fallbackPortMap map[string]bool) map[string]bool {
-	log.Infof("filterIfMap: len %d\n", len(fallbackPortMap))
+	log.Debugf("filterIfMap: len %d\n", len(fallbackPortMap))
 
 	filteredFallback := make(map[string]bool, len(fallbackPortMap))
 	for ifname, upFlag := range fallbackPortMap {
@@ -856,13 +945,13 @@ var nilUUID uuid.UUID
 // Check in AssignableAdapters with usedByUUID!=0
 func isAssigned(ctx *nimContext, ifname string) bool {
 
-	log.Infof("isAssigned(%s) have %d bundles\n",
+	log.Debugf("isAssigned(%s) have %d bundles\n",
 		ifname, len(ctx.AssignableAdapters.IoBundleList))
 	ib := ctx.AssignableAdapters.LookupIoBundleNet(ifname)
 	if ib == nil {
 		return false
 	}
-	log.Infof("isAssigned(%s): pciback %t used %s\n",
+	log.Debugf("isAssigned(%s): pciback %t used %s\n",
 		ifname, ib.IsPCIBack, ib.UsedByUUID.String())
 
 	if ib.UsedByUUID != nilUUID {
@@ -877,7 +966,7 @@ func isSwitch(ctx *nimContext, ifname string) bool {
 
 	sub := ctx.subNetworkInstanceStatus
 	items := sub.GetAll()
-	log.Infof("isSwitch(%s) have %d items\n", ifname, len(items))
+	log.Debugf("isSwitch(%s) have %d items\n", ifname, len(items))
 
 	foundExcl := false
 	for _, st := range items {
@@ -886,13 +975,13 @@ func isSwitch(ctx *nimContext, ifname string) bool {
 		if !status.IsUsingPort(ifname) {
 			continue
 		}
-		log.Infof("isSwitch(%s) found use in %s/%s\n",
+		log.Debugf("isSwitch(%s) found use in %s/%s\n",
 			ifname, status.DisplayName, status.Key())
 		if status.Type != types.NetworkInstanceTypeSwitch {
 			continue
 		}
 		foundExcl = true
-		log.Infof("isSwitch(%s) found excl use in %s/%s\n",
+		log.Debugf("isSwitch(%s) found excl use in %s/%s\n",
 			ifname, status.DisplayName, status.Key())
 	}
 	return foundExcl

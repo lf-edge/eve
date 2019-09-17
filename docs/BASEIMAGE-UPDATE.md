@@ -4,7 +4,7 @@ The API and EVE code supports updating the base image (the EVE rootfs including 
 
 The EVE code current makes sure the device remains functional (can connect to the controller and no agent crashes or hangs) for 10 minutes running the new version, and then the system commits to that new version. Plan is to add a handshake with the controller so that the user can run their own application tests before committing to the new version.
 
-The timer behavior can be controlled by some variables specified in [global-config-variables.md](../pkg/pillar/docs/global-config-variables.md)
+The timer behavior can be controlled by some variables specified in [configuration properties](CONFIG-PROPERTIES.md)
 
 ## API
 
