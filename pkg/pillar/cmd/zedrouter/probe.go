@@ -62,7 +62,13 @@ func deviceUpdateNIprobing(ctx *zedrouterContext, status *types.DeviceNetworkSta
 
 		for _, st := range items {
 			netstatus := cast.CastNetworkInstanceStatus(st)
-			niProbingUpdatePort(ctx, port, &netstatus)
+			portList := getIfNameListForPort(ctx, netstatus.Port)
+			for _, tmpPort := range portList {
+				if strings.Compare(tmpPort, port.Name) == 0 {
+					niProbingUpdatePort(ctx, port, &netstatus)
+					break
+				}
+			}
 			checkNIprobeUplink(ctx, &netstatus)
 		}
 	}
@@ -72,18 +78,33 @@ func deviceUpdateNIprobing(ctx *zedrouterContext, status *types.DeviceNetworkSta
 func niUpdateNIprobing(ctx *zedrouterContext, status *types.NetworkInstanceStatus) {
 	pub := ctx.subDeviceNetworkStatus
 	items := pub.GetAll()
-	log.Infof("niUpdateNIprobing: enter\n")
+	portList := getIfNameListForPort(ctx, status.Port)
+	log.Infof("niUpdateNIprobing: enter, number of ports %d\n", len(portList))
 	for _, st := range items {
 		devStatus := cast.CastDeviceNetworkStatus(st)
-		for _, port := range devStatus.Ports {
-			for _, ipinfo := range port.AddrInfoList {
-				log.Infof("niUpdateNIprobing: port %s, free %v, addr %v, Gw %v\n",
-					port.IfName, port.Free, ipinfo.Addr, port.Gateway)
+
+		for _, port := range portList {
+			devPort := getDevPort(&devStatus, port)
+			if devPort == nil {
+				continue
 			}
-			niProbingUpdatePort(ctx, port, status)
+			for _, ipinfo := range devPort.AddrInfoList {
+				log.Infof("niUpdateNIprobing: port %s, free %v, addr %v, Gw %v\n",
+					devPort.IfName, devPort.Free, ipinfo.Addr, devPort.Gateway)
+			}
+			niProbingUpdatePort(ctx, *devPort, status)
 		}
 	}
 	checkNIprobeUplink(ctx, status)
+}
+
+func getDevPort(status *types.DeviceNetworkStatus, port string) *types.NetworkPortStatus {
+	for _, tmpport := range status.Ports {
+		if strings.Compare(tmpport.Name, port) == 0 {
+			return &tmpport
+		}
+	}
+	return nil
 }
 
 func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
@@ -95,6 +116,7 @@ func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 		}
 		info := types.ProbeInfo{
 			IfName:       port.IfName,
+			IsPresent:    true,
 			GatewayUP:    true,
 			NhAddr:       port.Gateway,
 			LocalAddr:    portGetIntfAddr(port),
@@ -106,6 +128,7 @@ func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 			netstatus.BridgeName, port.IfName, len(netstatus.PInfo), info.Class)
 	} else {
 		info := netstatus.PInfo[port.IfName]
+		info.IsPresent = true
 		if !port.Gateway.Equal(info.NhAddr) {
 			info.NhAddr = port.Gateway
 			info.LocalAddr = portGetIntfAddr(port)
@@ -145,6 +168,17 @@ func getIntfClassByIOBundle(ctx *zedrouterContext, port types.NetworkPortStatus)
 // randomly assign one and publish, if we already do, leave it as is
 // each NI may have a different good uplink
 func checkNIprobeUplink(ctx *zedrouterContext, status *types.NetworkInstanceStatus) {
+	// find and remove the stale info since the port has been removed
+	for _, info := range status.PInfo {
+		if !info.IsPresent {
+			if _, ok := status.PInfo[info.IfName]; ok {
+				delete(status.PInfo, info.IfName)
+			}
+		} else {
+			info.IsPresent = false
+		}
+	}
+
 	if status.CurrentUplinkIntf != "" {
 		if _, ok := status.PInfo[status.CurrentUplinkIntf]; ok {
 			if strings.Compare(status.PInfo[status.CurrentUplinkIntf].IfName, status.CurrentUplinkIntf) == 0 {
@@ -201,6 +235,9 @@ func launchHostProbe(ctx *zedrouterContext) {
 
 	for _, st := range items {
 		netstatus := cast.CastNetworkInstanceStatus(st)
+		if netstatus.Type != types.NetworkInstanceTypeLocal {
+			continue
+		}
 		log.Infof("launchHostProbe: status on ni(%s) current uplink %s\n", netstatus.BridgeName, netstatus.CurrentUplinkIntf)
 		for _, info := range netstatus.PInfo {
 			var needToProbe bool

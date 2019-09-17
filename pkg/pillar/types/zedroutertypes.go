@@ -799,7 +799,8 @@ type ServerProbe struct {
 }
 
 type ProbeInfo struct { // per phyical port probing info
-	IfName string
+	IfName    string
+	IsPresent bool
 	// local nexthop probe state
 	GatewayUP  bool
 	LocalAddr  net.IP
