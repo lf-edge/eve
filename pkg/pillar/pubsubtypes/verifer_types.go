@@ -6,7 +6,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-type CallbackFn func() bool
+type CallbackFn func(types.AppInstanceConfig) bool
 
 type AppInstanceConfigPubSubBase struct {
 	agentName string
@@ -29,7 +29,7 @@ func (a AppInstanceConfigPubSubBase) SetItem(string key, types.AppInstanceConfig
 
 func (a AppInstanceConfigPubSubBase) IterateDb(func CallbackFn)
 	for key,value range := a.db {
-	   retval := CallbackFn( value)
+	   retval := CallbackFn(value)
 	   if retval == false {
 	      break
 	   }
