@@ -106,7 +106,7 @@ func PbrRouteDeleteAll(bridgeName string, port string) error {
 
 	// for airgap internal switch case
 	if port == "" {
-		log.Infof("PbrRouteAddAll: for internal switch, skip for ACL and Route deletion\n")
+		log.Infof("PbrRouteDeleteAll: for internal switch, skip for ACL and Route deletion\n")
 		return nil
 	}
 
