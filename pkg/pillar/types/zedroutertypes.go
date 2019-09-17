@@ -820,6 +820,7 @@ type ProbeInfo struct { // per phyical port probing info
 type NetworkInstanceProbeStatus struct {
 	Config            ServerProbe          // user configuration
 	NeedIntfUpdate    bool                 // flag to indicate the CurrentUpLinkIntf status has changed
+	PrevUplinkIntf    string               // previously used uplink interface
 	CurrentUplinkIntf string               // decided by local/remote probing
 	PInfo             map[string]ProbeInfo // per physical port eth0, eth1 probing state
 }

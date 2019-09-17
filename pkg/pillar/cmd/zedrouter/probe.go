@@ -89,6 +89,9 @@ func niUpdateNIprobing(ctx *zedrouterContext, status *types.NetworkInstanceStatu
 func niProbingUpdatePort(port types.NetworkPortStatus, netstatus *types.NetworkInstanceStatus) {
 	log.Infof("niProbingUpdatePort: enter\n")
 	if _, ok := netstatus.PInfo[port.IfName]; !ok {
+		if port.IfName == "" { // no need to probe for air-gap type of NI
+			return
+		}
 		info := types.ProbeInfo{
 			IfName:       port.IfName,
 			GatewayUP:    true,
@@ -135,6 +138,7 @@ func checkNIprobeUplink(ctx *zedrouterContext, status *types.NetworkInstanceStat
 				return
 			}
 		}
+		// if the Current Uplink intf does not have an info entry, re-pick one below
 		status.CurrentUplinkIntf = ""
 	}
 
@@ -160,7 +164,7 @@ func portGetIntfAddr(port types.NetworkPortStatus) net.IP {
 // a go routine driven by the HostProbeTimer in zedrouter, to perform the
 // local and remote(less frequent) host probing
 func launchHostProbe(ctx *zedrouterContext) {
-	var isReachable bool
+	var isReachable, needSendSignal bool
 	var remoteURL string
 	nhPing := make(map[string]bool)
 	remoteProbe := make(map[string]map[string]probeRes)
@@ -271,8 +275,13 @@ func launchHostProbe(ctx *zedrouterContext) {
 			netstatus.PInfo[info.IfName] = info
 		}
 		probeCheckStatus(&netstatus)
-
+		if netstatus.NeedIntfUpdate {
+			needSendSignal = true
+		}
 		publishNetworkInstanceStatus(ctx, &netstatus)
+	}
+	if needSendSignal {
+		ctx.checkNIUplinks <- true
 	}
 	iteration++
 }
@@ -297,7 +306,7 @@ func probeCheckStatus(status *types.NetworkInstanceStatus) {
 			break
 		}
 	}
-	log.Infof("probeCheckStatus: %s current Uplink Intf %s\n", status.BridgeName, status.CurrentUplinkIntf)
+	log.Infof("probeCheckStatus: %s current Uplink Intf %s, prev %s\n", status.BridgeName, status.CurrentUplinkIntf, status.PrevUplinkIntf)
 }
 
 // How to determine the time to switch to another interface
@@ -309,6 +318,7 @@ func probeCheckStatus(status *types.NetworkInstanceStatus) {
 func probeCheckStatusUseClass(status *types.NetworkInstanceStatus, class types.IntfClass) {
 	var numOfUps, upCnt int
 	currIntf := status.CurrentUplinkIntf
+	prevIntf := currIntf
 	if currIntf == "" {
 		for _, info := range status.PInfo {
 			if class != info.Class {
@@ -359,6 +369,7 @@ func probeCheckStatusUseClass(status *types.NetworkInstanceStatus, class types.I
 		log.Infof("probeCheckStatusUseClass: changing from %s to %s\n",
 			status.CurrentUplinkIntf, currIntf)
 		status.CurrentUplinkIntf = currIntf
+		status.PrevUplinkIntf = prevIntf
 		status.NeedIntfUpdate = true
 	}
 }

@@ -77,6 +77,7 @@ type zedrouterContext struct {
 	pubAppFlowMonitor         *pubsub.Publication
 	networkInstanceStatusMap  map[uuid.UUID]*types.NetworkInstanceStatus
 	dnsServers                map[string][]net.IP
+	checkNIUplinks            chan bool
 }
 
 var debug = false
@@ -339,6 +340,7 @@ func Run() {
 	pmin := pmax * 0.9
 	HostProbeTimer := flextimer.NewRangeTicker(time.Duration(pmin),
 		time.Duration(pmax))
+	zedrouterCtx.checkNIUplinks = make(chan bool)
 
 	setFreeMgmtPorts(types.GetMgmtPortsFree(*zedrouterCtx.deviceNetworkStatus, 0))
 
@@ -499,6 +501,9 @@ func Run() {
 			// launch the go function gateway/remote hosts probing check
 			go launchHostProbe(&zedrouterCtx)
 			agentlog.CheckMaxTime(agentName, start)
+
+		case <-zedrouterCtx.checkNIUplinks:
+			log.Infof("checkNIUplinks channel signal\n")
 
 		case change := <-subNetworkInstanceConfig.C:
 			start := agentlog.StartTime()
