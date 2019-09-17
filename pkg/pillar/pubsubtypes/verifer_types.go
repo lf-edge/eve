@@ -30,7 +30,7 @@ func (a AppInstanceConfigPubSubBase) SetItem(string key, types.AppInstanceConfig
 func (a AppInstanceConfigPubSubBase) IterateDb(func CallbackFn)
 	for key,value range := a.db {
 	   retval := CallbackFn( value)
-	   If retval == false {
+	   if retval == false {
 	      break
 	   }
 	}
