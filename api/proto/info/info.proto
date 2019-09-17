@@ -183,6 +183,18 @@ enum HwSecurityModuleStatus {
     ENABLED  = 3;  //HSM is found and being actively used
 }
 
+enum DataSecAtRestStatus {
+    DATASEC_AT_REST_UNKNOWN  = 0; // Status is unknown
+    DATASEC_AT_REST_DISABLED = 1; // Enabled, but not being used
+    DATASEC_AT_REST_ENABLED = 2;  // Enabled, and used
+    DATASEC_AT_REST_ERROR = 4;    // Enabled, but encountered an error
+}
+
+message DataSecAtRest {
+    DataSecAtRestStatus status = 1; // Current status
+    string info = 2;                // Informational string augmenting status
+}
+
 // Base device info, as discovered by Xen (or OS on bare metal)
 message ZInfoDevice {
   string machineArch = 4;
@@ -214,6 +226,7 @@ message ZInfoDevice {
   HwSecurityModuleStatus HSMStatus = 26; //State of hardware security modules, like TPM
   string HSMInfo = 27; //Information about HSM like TPM vendor, TEE type etc.
   string lastRebootStack = 28;
+  DataSecAtRest dataSecAtRestInfo = 29; //Info about Data At Rest Security
 }
 
 // The current and fallback system adapter information
