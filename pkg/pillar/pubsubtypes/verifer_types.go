@@ -1,7 +1,6 @@
 package pubsubtypes
 
 import (
-	"github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
