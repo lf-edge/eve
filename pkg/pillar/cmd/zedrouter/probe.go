@@ -62,7 +62,7 @@ func deviceUpdateNIprobing(ctx *zedrouterContext, status *types.DeviceNetworkSta
 
 		for _, st := range items {
 			netstatus := cast.CastNetworkInstanceStatus(st)
-			niProbingUpdatePort(port, &netstatus)
+			niProbingUpdatePort(ctx, port, &netstatus)
 			checkNIprobeUplink(ctx, &netstatus)
 		}
 	}
@@ -80,13 +80,14 @@ func niUpdateNIprobing(ctx *zedrouterContext, status *types.NetworkInstanceStatu
 				log.Infof("niUpdateNIprobing: port %s, free %v, addr %v, Gw %v\n",
 					port.IfName, port.Free, ipinfo.Addr, port.Gateway)
 			}
-			niProbingUpdatePort(port, status)
+			niProbingUpdatePort(ctx, port, status)
 		}
 	}
 	checkNIprobeUplink(ctx, status)
 }
 
-func niProbingUpdatePort(port types.NetworkPortStatus, netstatus *types.NetworkInstanceStatus) {
+func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
+	netstatus *types.NetworkInstanceStatus) {
 	log.Infof("niProbingUpdatePort: enter\n")
 	if _, ok := netstatus.PInfo[port.IfName]; !ok {
 		if port.IfName == "" { // no need to probe for air-gap type of NI
@@ -97,12 +98,12 @@ func niProbingUpdatePort(port types.NetworkPortStatus, netstatus *types.NetworkI
 			GatewayUP:    true,
 			NhAddr:       port.Gateway,
 			LocalAddr:    portGetIntfAddr(port),
-			Class:        getIntfClassByName(port.IfName),
+			Class:        getIntfClassByIOBundle(ctx, port),
 			RemoteHostUP: true,
 		}
 		netstatus.PInfo[port.IfName] = info
-		log.Infof("niProbingUpdatePort: %s assigned new %s, info len %d\n",
-			netstatus.BridgeName, port.IfName, len(netstatus.PInfo))
+		log.Infof("niProbingUpdatePort: %s assigned new %s, info len %d, class %v\n",
+			netstatus.BridgeName, port.IfName, len(netstatus.PInfo), info.Class)
 	} else {
 		info := netstatus.PInfo[port.IfName]
 		if !port.Gateway.Equal(info.NhAddr) {
@@ -118,14 +119,26 @@ func niProbingUpdatePort(port types.NetworkPortStatus, netstatus *types.NetworkI
 	}
 }
 
-// hack for now to use the intf name string decide the interface class
-func getIntfClassByName(intfName string) types.IntfClass {
-	if strings.Contains(strings.ToLower(intfName), "eth") {
+func getIntfClassByIOBundle(ctx *zedrouterContext, port types.NetworkPortStatus) types.IntfClass {
+	aa := ctx.assignableAdapters
+	if aa == nil { // no information
+		log.Infof("getIntfClassIOBundle: aa is nil")
 		return types.Class_ETHER
-	} else if strings.Contains(strings.ToLower(intfName), "wwan") {
+	}
+	ioBundle := aa.LookupIoBundleNet(port.IfName)
+	if ioBundle == nil {
+		log.Infof("getIntfClassIOBundle: iobundle is nil")
+		return types.Class_ETHER
+	}
+	switch ioBundle.Type {
+	case types.IoNetEth, types.IoNetWLAN:
+		// satellite can also use ethernet type, need special label on the port from user
+		return types.Class_ETHER
+	case types.IoNetWWAN:
 		return types.Class_LTE
 	}
-	return types.Class_SATELLITE
+	// catch for all
+	return types.Class_ETHER
 }
 
 // after port or NI changes, if we don't have a current uplink,
