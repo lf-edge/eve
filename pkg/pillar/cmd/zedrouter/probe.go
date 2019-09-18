@@ -62,6 +62,9 @@ func deviceUpdateNIprobing(ctx *zedrouterContext, status *types.DeviceNetworkSta
 
 		for _, st := range items {
 			netstatus := cast.CastNetworkInstanceStatus(st)
+			if !isSharedPortLabel(netstatus.Port) && netstatus.Port != port.Name {
+				continue
+			}
 			niProbingUpdatePort(ctx, port, &netstatus)
 			checkNIprobeUplink(ctx, &netstatus)
 		}
@@ -79,6 +82,9 @@ func niUpdateNIprobing(ctx *zedrouterContext, status *types.NetworkInstanceStatu
 			for _, ipinfo := range port.AddrInfoList {
 				log.Infof("niUpdateNIprobing: port %s, free %v, addr %v, Gw %v\n",
 					port.IfName, port.Free, ipinfo.Addr, port.Gateway)
+			}
+			if !isSharedPortLabel(status.Port) && status.Port != port.Name {
+				continue
 			}
 			niProbingUpdatePort(ctx, port, status)
 		}

@@ -504,6 +504,7 @@ func Run() {
 
 		case <-zedrouterCtx.checkNIUplinks:
 			log.Infof("checkNIUplinks channel signal\n")
+			checkAndReprogramNetworkInstances(&zedrouterCtx)
 
 		case change := <-subNetworkInstanceConfig.C:
 			start := agentlog.StartTime()
