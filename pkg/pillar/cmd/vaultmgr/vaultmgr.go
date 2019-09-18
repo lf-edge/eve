@@ -296,7 +296,7 @@ func GetOperInfo() (info.DataSecAtRestStatus, string) {
 			//This is due to ext3 partition
 			log.Debug("setting status to disabled, ext3 partition")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
-				"file system is incompatible, needs a disruptive upgrade"
+				"File system is incompatible, needs a disruptive upgrade"
 		}
 	}
 }
