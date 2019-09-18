@@ -35,11 +35,12 @@ import (
 )
 
 const (
-	agentName     = "zedrouter"
-	runDirname    = "/var/run/zedrouter"
-	tmpDirname    = "/var/tmp/zededa"
-	DataPlaneName = "lisp-ztr"
-	DropMarkValue = 0xFFFFFF
+	agentName      = "zedrouter"
+	runDirname     = "/var/run/zedrouter"
+	tmpDirname     = "/var/tmp/zededa"
+	DataPlaneName  = "lisp-ztr"
+	DropMarkValue  = 0xFFFFFF
+	NhProbeInteval = 15
 )
 
 // Set from Makefile
@@ -335,7 +336,7 @@ func Run() {
 	flowStatTimer := flextimer.NewRangeTicker(time.Duration(fmin),
 		time.Duration(fmax))
 
-	nexthopProbeIntv := time.Duration(15 * time.Second) // 15 sec
+	nexthopProbeIntv := time.Duration(NhProbeInteval * time.Second) // 15 sec
 	pmax := float64(nexthopProbeIntv)
 	pmin := pmax * 0.9
 	HostProbeTimer := flextimer.NewRangeTicker(time.Duration(pmin),

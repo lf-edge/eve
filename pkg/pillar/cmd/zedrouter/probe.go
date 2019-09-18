@@ -25,6 +25,7 @@ const (
 	maxPingWait        int    = 100 // wait for 100 millisecond for ping timeout
 	maxRemoteProbeWait uint32 = 3   // wait for 3 seconds for remote host respond
 	remoteTolocalRatio uint32 = 20  // every 20 times of local ping, perform remote probing
+	minProbeRatio      uint32 = 5   // user defined ratio of local/remote min will be set to 5
 	// e.g. if the local ping timer is every 15 seconds, every remote httping is every 5 minutes
 	serverFileName string = "/config/server"
 )
@@ -239,6 +240,7 @@ func launchHostProbe(ctx *zedrouterContext) {
 			continue
 		}
 		log.Infof("launchHostProbe: status on ni(%s) current uplink %s\n", netstatus.BridgeName, netstatus.CurrentUplinkIntf)
+
 		for _, info := range netstatus.PInfo {
 			var needToProbe bool
 			var isRemoteResp probeRes
@@ -264,7 +266,10 @@ func launchHostProbe(ctx *zedrouterContext) {
 			// although we could have checked if the nexthop is down, there is no need
 			// to do remote probing, but just in case, local nexthop ping is filtered by
 			// the gateway firewall, and since we only do X iteration, it's simpler just doing it
-			if iteration%remoteTolocalRatio == 0 {
+			if iteration%getProbeRatio(netstatus) == 0 {
+				// get user specified url/ip
+				remoteURL = getRemoteURL(netstatus, remoteURL)
+
 				// probing remote host
 				tmpRes := remoteProbe[info.IfName]
 				if tmpRes == nil {
@@ -432,6 +437,36 @@ func infoUpCount(info types.ProbeInfo) int {
 		upCnt = 1
 	}
 	return upCnt
+}
+
+func getRemoteURL(netstatus types.NetworkInstanceStatus, defaultURL string) string {
+	zeroIP := net.ParseIP("0.0.0.0")
+	zeroIP6 := net.ParseIP("::")
+	remoteURL := defaultURL
+	// check on User defined URL/IP address
+	if netstatus.PConfig.ServerURL != "" {
+		if strings.Contains(netstatus.PConfig.ServerURL, "http") {
+			remoteURL = netstatus.PConfig.ServerURL
+		} else {
+			// use 'http' instead of 'https'
+			remoteURL = "http://" + netstatus.PConfig.ServerURL
+		}
+	} else if netstatus.PConfig.ServerIP.To4() != nil && !netstatus.PConfig.ServerIP.Equal(zeroIP) ||
+		netstatus.PConfig.ServerIP.To16() != nil && !netstatus.PConfig.ServerIP.Equal(zeroIP6) {
+		remoteURL = "http://" + netstatus.PConfig.ServerIP.String()
+	}
+	return remoteURL
+}
+
+func getProbeRatio(netstatus types.NetworkInstanceStatus) uint32 {
+	if netstatus.PConfig.ProbeInterval != 0 {
+		ratio := netstatus.PConfig.ProbeInterval / NhProbeInteval
+		if ratio < minProbeRatio {
+			return minProbeRatio
+		}
+		return ratio
+	}
+	return remoteTolocalRatio
 }
 
 // base on the probe result, determine if the port should be good to use

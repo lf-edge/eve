@@ -795,7 +795,7 @@ const (
 type ServerProbe struct {
 	ServerURL     string // include method,host,paths
 	ServerIP      net.IP
-	ProbeInterval int // probe frequence in seconds
+	ProbeInterval uint32 // probe frequence in seconds
 }
 
 type ProbeInfo struct { // per phyical port probing info
@@ -819,7 +819,7 @@ type ProbeInfo struct { // per phyical port probing info
 // probe status
 // per network instance
 type NetworkInstanceProbeStatus struct {
-	Config            ServerProbe          // user configuration
+	PConfig           ServerProbe          // user configuration for remote server
 	NeedIntfUpdate    bool                 // flag to indicate the CurrentUpLinkIntf status has changed
 	PrevUplinkIntf    string               // previously used uplink interface
 	CurrentUplinkIntf string               // decided by local/remote probing
@@ -1171,7 +1171,6 @@ type NetworkInstanceConfig struct {
 	// For other network services - Proxy / Lisp /StrongSwan etc..
 	OpaqueConfig string
 	LispConfig   NetworkInstanceLispConfig
-	ProbeConfig  ServerProbe
 }
 
 func (config *NetworkInstanceConfig) Key() string {
