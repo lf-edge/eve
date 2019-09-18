@@ -49,9 +49,10 @@ docker version
 $ brew install qemu
 ```
 
-
+##### On Ubuntu Linux
 ```sh
-$ sudo apt install qemu
+$ sudo apt install qemu-utils # for make live
+$ sudo apt install qemu-system-x86 # for make run
 ```
 
 #### Get Project EVE
