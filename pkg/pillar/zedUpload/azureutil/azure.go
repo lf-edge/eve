@@ -180,29 +180,29 @@ func putBlockBlob(b *storage.Blob, blob io.Reader) error {
 }
 
 func UploadAzureBlob(accountName, accountKey, containerName, remoteFile, localFile string, httpClient *http.Client) error {
-        c, err := NewClient(accountName, accountKey, httpClient)
-        if err != nil {
-                return err
-        }
-        blobClient := c.GetBlobService()
-        container := blobClient.GetContainerReference(containerName)
-        containerExists, _ := container.Exists()
-        if !containerExists {
-                fmt.Printf("Container is creating")
-                err := container.Create(nil)
-                if err != nil {
-                        fmt.Printf("Error %v", err)
-                        return err
-                }
-        }
-        file, _ := os.Open(localFile)
-        defer file.Close()
-        blob := container.GetBlobReference(remoteFile)
-        putBlockErr := putBlockBlob(blob, file)
-        if putBlockErr != nil {
-                return putBlockErr
-        }
-        return nil
+	c, err := NewClient(accountName, accountKey, httpClient)
+	if err != nil {
+		return err
+	}
+	blobClient := c.GetBlobService()
+	container := blobClient.GetContainerReference(containerName)
+	containerExists, _ := container.Exists()
+	if !containerExists {
+		fmt.Printf("Container is creating")
+		err := container.Create(nil)
+		if err != nil {
+			fmt.Printf("Error %v", err)
+			return err
+		}
+	}
+	file, _ := os.Open(localFile)
+	defer file.Close()
+	blob := container.GetBlobReference(remoteFile)
+	putBlockErr := putBlockBlob(blob, file)
+	if putBlockErr != nil {
+		return putBlockErr
+	}
+	return nil
 }
 
 func GetAzureBlobMetaData(accountName, accountKey, containerName, remoteFile string, httpClient *http.Client) (int64, string, error) {
