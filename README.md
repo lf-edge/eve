@@ -122,7 +122,16 @@ from containerd - use that instead).
 Once in a container you can run the usual xl commands to start VMs and
 interact with Xen.
 
+#### Exitting
+
 To exit out of the QEMU environment, press `Ctrl-A + C` to reach the QEMU console, then `q` to quit.
+
+##### Linux
+```sh
+$ exit # leave eve
+$ poweroff -f # leave qemu
+```
+
 
 ### Customizing the Configuration
 
