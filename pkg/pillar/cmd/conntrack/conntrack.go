@@ -20,6 +20,7 @@ func Run() {
 	delFamily := flag.String("f", "", "Delete flow with ipv6")
 	delPort := flag.Int("P", 0, "Delete flow with port number")
 	delMark := flag.Int("m", 0, "Delete flow with Mark number")
+	markMask := flag.Int("mask", 0, "Delete flow with Mark mask")
 	flag.Parse()
 
 	// conntrack [-D <-s address> [-p proto][-P port][-m Mark]]
@@ -29,7 +30,7 @@ func Run() {
 			var src net.IP
 			var port uint16
 			var family netlink.InetFamily
-			var mark uint32
+			var mark, mask uint32
 
 			family = syscall.AF_INET
 			src = net.ParseIP(*delSrcIP)
@@ -45,8 +46,12 @@ func Run() {
 			if *delMark != 0 {
 				mark = uint32(*delMark)
 			}
+			mask = 0xFFFFFFFF
+			if *markMask != 0 {
+				mask = uint32(*markMask)
+			}
 
-			number, err := netlink.ConntrackDeleteIPSrc(netlink.ConntrackTable, family, src, proto, port, mark, true)
+			number, err := netlink.ConntrackDeleteIPSrc(netlink.ConntrackTable, family, src, proto, port, mark, mask, true)
 			if err != nil {
 				log.Println("ConntrackDeleteIPSrc error:", err)
 			} else {
@@ -54,7 +59,7 @@ func Run() {
 			}
 			return
 		}
-		fmt.Println("Usage: Conntrack -D <-s IP-Address> [-p Protocol][-P port][-m Mark][-f ipv6]")
+		fmt.Println("Usage: Conntrack -D <-s IP-Address> [-p Protocol][-P port][-m Mark][-mask MarkMask][-f ipv6]")
 		return
 	}
 	// XXX args := flag.Args()

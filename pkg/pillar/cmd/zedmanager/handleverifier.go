@@ -202,6 +202,10 @@ func lookupVerifyImageStatus(ctx *zedmanagerContext,
 func lookupVerifyImageStatusSha256(ctx *zedmanagerContext,
 	sha256 string) *types.VerifyImageStatus {
 
+	if sha256 == "" {
+		log.Debugf("lookupVerifyImageStatusSha256: sha256 is empty\n")
+		return nil
+	}
 	sub := ctx.subAppImgVerifierStatus
 	items := sub.GetAll()
 	for _, st := range items {

@@ -96,7 +96,7 @@ func checkPortAvailable(
 		// Make sure it is configured for IP or will be
 		if portStatus.Dhcp == types.DT_NONE {
 			errStr := fmt.Sprintf("Port %s not configured for shared use. "+
-				"Cannot be used by Switch Network Instance %s-%s\n",
+				"Cannot be used by non-Switch Network Instance %s-%s\n",
 				status.CurrentUplinkIntf, status.UUID, status.DisplayName)
 			return errors.New(errStr)
 		}
@@ -1802,15 +1802,15 @@ func doNetworkInstanceFallback(
 			return err
 		}
 		/*
-		// Go through the list of all application connected to this network instance
-		// and clear conntrack flows corresponding to them.
-		apps := ctx.pubAppNetworkStatus.GetAll()
-		for _, app := range apps {
-			appNetworkStatus := cast.CastAppNetworkStatus(app)
-		}
+			// Go through the list of all application connected to this network instance
+			// and clear conntrack flows corresponding to them.
+			apps := ctx.pubAppNetworkStatus.GetAll()
+			for _, app := range apps {
+				appNetworkStatus := cast.CastAppNetworkStatus(app)
+			}
 		*/
 		number, err := netlink.ConntrackDeleteIPSrc(netlink.ConntrackTable,
-					syscall.AF_INET, "", 0, 0, 0, 0, false)
+			syscall.AF_INET, net.ParseIP("0.0.0.0"), 0, 0, 0, 0, false)
 		if err != nil {
 			log.Errorf("doNetworkInstanceFallback: Error clearing conntrack flows: %s", err)
 		} else {

@@ -53,6 +53,14 @@ github.com/eriknordmark/netlink v0.0.0-20190829035504-41fa442996b8 h1:zw7UbmPzWp
 github.com/eriknordmark/netlink v0.0.0-20190829035504-41fa442996b8/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
 github.com/eriknordmark/netlink v0.0.0-20190829035504-7ebf40544e16 h1:DRjyyYvtFWdlf50HKvKmvTcB3q0iNyyYtrVz8wNyqt4=
 github.com/eriknordmark/netlink v0.0.0-20190829035504-7ebf40544e16/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
+github.com/eriknordmark/netlink v0.0.0-20190909223052-1f4a41dfab61 h1:xfymSdH08QMQEtQq5hZMm901mYRpyqHFMES9et+pzgM=
+github.com/eriknordmark/netlink v0.0.0-20190909223052-1f4a41dfab61/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
+github.com/eriknordmark/netlink v0.0.0-20190909231655-fd5b380483db h1:rURpPLaYdPoU/yaMFeZu/EhM/WISptw4EcPX9BCb6iA=
+github.com/eriknordmark/netlink v0.0.0-20190909231655-fd5b380483db/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
+github.com/eriknordmark/netlink v0.0.0-20190912055240-b72624f43468 h1:jKZQWuFghJWvLN6Z4FYyEoeJT9wR3zygbVPmVkTL5E0=
+github.com/eriknordmark/netlink v0.0.0-20190912055240-b72624f43468/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
+github.com/eriknordmark/netlink v0.0.0-20190912172510-3b6b45309321 h1:kOrNhuMnLwmM2pyHXX0WLOWYOOQLoQVr2orjrWZq7t0=
+github.com/eriknordmark/netlink v0.0.0-20190912172510-3b6b45309321/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
 github.com/fsnotify/fsnotify v1.4.7 h1:IXs+QLmnXW2CcXuY+8Mzv/fWEsPGWxqefPtCP5CnV9I=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
 github.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=

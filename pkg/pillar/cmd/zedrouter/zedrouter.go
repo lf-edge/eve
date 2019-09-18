@@ -482,6 +482,9 @@ func Run() {
 				log.Errorf("getNetworkMetrics failed %s\n", err)
 			}
 			publishNetworkInstanceMetricsAll(&zedrouterCtx)
+			agentlog.CheckMaxTime(agentName, start)
+
+			start = agentlog.StartTime()
 			// Check for changes to DHCP leases
 			// XXX can we trigger it as part of boot? Or watch file?
 			// XXX add file watch...

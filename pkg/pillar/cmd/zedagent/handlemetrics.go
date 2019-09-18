@@ -26,6 +26,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
@@ -1015,6 +1016,12 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	//Operational information about TPM presence/absence/usage.
 	ReportDeviceInfo.HSMStatus = tpmmgr.FetchTpmSwStatus()
 	ReportDeviceInfo.HSMInfo, _ = tpmmgr.FetchTpmHwInfo()
+
+	//Operational information about Data Security At Rest
+	ReportDataSecAtRestInfo := new(info.DataSecAtRest)
+	ReportDataSecAtRestInfo.Status, ReportDataSecAtRestInfo.Info =
+		vaultmgr.GetOperInfo()
+	ReportDeviceInfo.DataSecAtRestInfo = ReportDataSecAtRestInfo
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
