@@ -50,6 +50,7 @@ $ brew install qemu
 ```
 
 ##### On Ubuntu Linux
+
 ```sh
 $ sudo apt install qemu-utils # for make live
 $ sudo apt install qemu-system-x86 # for make run
@@ -127,11 +128,11 @@ interact with Xen.
 To exit out of the QEMU environment, press `Ctrl-A + C` to reach the QEMU console, then `q` to quit.
 
 ##### Linux
+
 ```sh
 $ exit # leave eve
 $ poweroff -f # leave qemu
 ```
-
 
 ### Customizing the Configuration
 
