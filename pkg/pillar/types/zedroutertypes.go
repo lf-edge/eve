@@ -1609,10 +1609,10 @@ type VpnMetrics struct {
 
 // IPTuple :
 type IPTuple struct {
-	Src     net.IP
-	Dst     net.IP
-	SrcPort int32
-	DstPort int32
+	Src     net.IP // local App IP address
+	Dst     net.IP // remote IP address
+	SrcPort int32  // local App IP Port
+	DstPort int32  // remote IP Port
 	Proto   int32
 }
 
