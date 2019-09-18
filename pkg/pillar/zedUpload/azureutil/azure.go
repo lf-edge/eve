@@ -147,34 +147,34 @@ func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, local
 // list at the end. This is a helper method built on top of PutBlock
 // and PutBlockList methods with sequential block ID counting logic.
 func putBlockBlob(b *storage.Blob, blob io.Reader) error {
-        chunkSize := storage.MaxBlobBlockSize
+	chunkSize := storage.MaxBlobBlockSize
 
-        chunk := make([]byte, chunkSize)
-        n, err := blob.Read(chunk)
-        if err != nil && err != io.EOF {
-                return err
-        }
+	chunk := make([]byte, chunkSize)
+	n, err := blob.Read(chunk)
+	if err != nil && err != io.EOF {
+		return err
+	}
 
-        blockList := []storage.Block{}
+	blockList := []storage.Block{}
 
-        for blockNum := 0; ; blockNum++ {
-                id := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("1d", blockNum)))
-                data := chunk[:n]
-                err = b.PutBlock(id, data, nil)
-                if err != nil {
-                        return err
-                }
+	for blockNum := 0; ; blockNum++ {
+		id := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("1d%v", blockNum)))
+		data := chunk[:n]
+		err = b.PutBlock(id, data, nil)
+		if err != nil {
+			return err
+		}
 
-                blockList = append(blockList, storage.Block{id, storage.BlockStatusLatest})
+		blockList = append(blockList, storage.Block{ID: id, Status: storage.BlockStatusLatest})
 
-                // Read next block
-                n, err = blob.Read(chunk)
-                if err != nil && err != io.EOF {
-                        return err
-                }
-                if err == io.EOF {
-                        break
-                }
+		// Read next block
+		n, err = blob.Read(chunk)
+		if err != nil && err != io.EOF {
+			return err
+		}
+		if err == io.EOF {
+			break
+		}
 	}
 	return b.PutBlockList(blockList, nil)
 }
