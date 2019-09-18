@@ -63,7 +63,7 @@ github.com/davecgh/go-spew/spew
 github.com/dgrijalva/jwt-go
 # github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
 github.com/eriknordmark/ipinfo
-# github.com/eriknordmark/netlink v0.0.0-20190829035504-41fa442996b8
+# github.com/eriknordmark/netlink v0.0.0-20190912172510-3b6b45309321
 github.com/eriknordmark/netlink
 # github.com/fsnotify/fsnotify v1.4.7
 github.com/fsnotify/fsnotify
