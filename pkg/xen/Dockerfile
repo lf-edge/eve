@@ -32,23 +32,19 @@ RUN apk add \
     libunwind-dev
 
 ENV XEN_UBOOT_ADDR 0x81000000
-ENV XEN_VERSION 4.12.0
-ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
+ENV XEN_VERSION 6c9639a72f0ca3a9430ef75f375877182281fdef
+#ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
+ENV XEN_SOURCE=https://github.com/xen-project/xen/archive/${XEN_VERSION}.tar.gz
 
 # Download and verify xen
 #TODO: verify Xen
 RUN \
-    [ -f xen-${XEN_VERSION}.tar.gz ] || curl -fsSLO ${XEN_SOURCE} && \
-    gzip -d xen-${XEN_VERSION}.tar.gz && \
-    cat xen-${XEN_VERSION}.tar | tar --absolute-names -x && mv /xen-${XEN_VERSION} /xen
+    [ -f "$(basename ${XEN_SOURCE})" ] || curl -fsSLO "${XEN_SOURCE}" && \
+    tar --absolute-names -xz < "$(basename ${XEN_SOURCE})" && mv "/xen-${XEN_VERSION}" /xen
 
 # Xen config
 COPY xen_config* /xen/
 WORKDIR /xen/xen
-
-# Apply patches
-COPY *patch /tmp
-RUN for p in /tmp/*patch ; do patch -p2 < "$p" ; done
 
 RUN case $(uname -m) in \
     x86_64) \
