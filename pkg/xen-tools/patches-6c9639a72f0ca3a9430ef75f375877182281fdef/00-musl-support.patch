@@ -1,0 +1,44 @@
+--- a/tools/libxc/xc_sr_restore.c
++++ b/tools/libxc/xc_sr_restore.c
+@@ -398,6 +398,6 @@
+     {
+         ERROR("PAGE_DATA record wrong size: length %u, expected "
+               "%zu + %zu + %lu", rec->length, sizeof(*pages),
+-              (sizeof(uint64_t) * pages->count), (PAGE_SIZE * pages_of_data));
++              (sizeof(uint64_t) * pages->count), (unsigned long)(PAGE_SIZE * pages_of_data));
+         goto err;
+     }
+
+diff --git a/tools/xenpaging/xenpaging.c b/tools/xenpaging/xenpaging.c
+index d0571cabac..7ad86e3b31 100644
+--- a/tools/xenpaging/xenpaging.c
++++ b/tools/xenpaging/xenpaging.c
+@@ -180,7 +180,7 @@ static int xenpaging_get_tot_pages(struct xenpaging *paging)
+ 
+ static void *init_page(void)
+ {
+-    void *buffer;
++    void *buffer = NULL;
+ 
+     /* Allocated page memory */
+     errno = posix_memalign(&buffer, PAGE_SIZE, PAGE_SIZE);
+--- a/tools/Makefile	2019-09-11 13:15:12.000000000 -0700
++++ b/tools/Makefile	2019-09-11 13:14:58.000000000 -0700
+@@ -245,7 +245,8 @@
+ 		--prefix=$(LIBEXEC) \
+ 		--libdir=$(LIBEXEC_LIB) \
+ 		--includedir=$(LIBEXEC_INC) \
+-		--extra-cflags="-DXC_WANT_COMPAT_EVTCHN_API=1 \
++		--extra-cflags="-DXATTR_SIZE_MAX=65536 \
++                -DXC_WANT_COMPAT_EVTCHN_API=1 \
+ 		-DXC_WANT_COMPAT_GNTTAB_API=1 \
+ 		-DXC_WANT_COMPAT_MAP_FOREIGN_API=1 \
+ 		-DXC_WANT_COMPAT_DEVICEMODEL_API=1 \
+@@ -280,6 +281,7 @@
+ 		--localstatedir=$(localstatedir) \
+ 		--disable-kvm \
+ 		--disable-docs \
++                --disable-werror \
+ 		--disable-guest-agent \
+ 		--python=$(PYTHON) \
+ 		$(CONFIG_QEMUU_EXTRA_ARGS) \
