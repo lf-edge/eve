@@ -673,7 +673,7 @@ func tryLookupIP(ctx *diagContext, ifname string) bool {
 			ifname, ctx.serverName)
 		return false
 	}
-	for retryCount := 0; retryCount < addrCount; retryCount += 1 {
+	for retryCount := 0; retryCount < addrCount; retryCount++ {
 		localAddr, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus,
 			retryCount, ifname)
 		if err != nil {
