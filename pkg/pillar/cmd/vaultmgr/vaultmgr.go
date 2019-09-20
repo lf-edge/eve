@@ -284,7 +284,7 @@ func GetOperInfo() (info.DataSecAtRestStatus, string) {
 			//fscrypt is setup, and being used on /persist
 			log.Debug("Setting status to Enabled")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED,
-				"Encrypted File Stores: Config, App Image"
+				"Using Secure Application Vault=Yes, Using Secure Configuration Vault=Yes"
 		}
 	} else {
 		if !tpmmgr.IsTpmEnabled() {
