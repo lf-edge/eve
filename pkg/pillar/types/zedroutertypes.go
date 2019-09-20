@@ -439,6 +439,15 @@ func CountLocalIPv4AddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 	return count
 }
 
+// CountDNSServers returns the number of DNS servers
+func CountDNSServers(globalStatus DeviceNetworkStatus) int {
+	count := 0
+	for _, us := range globalStatus.Ports {
+		count += len(us.DnsServers)
+	}
+	return count
+}
+
 // Return number of local IP addresses for all the management ports with given name
 // excluding link-local addresses
 func CountLocalAddrFreeNoLinkLocalIf(globalStatus DeviceNetworkStatus,
@@ -1609,10 +1618,10 @@ type VpnMetrics struct {
 
 // IPTuple :
 type IPTuple struct {
-	Src     net.IP
-	Dst     net.IP
-	SrcPort int32
-	DstPort int32
+	Src     net.IP // local App IP address
+	Dst     net.IP // remote IP address
+	SrcPort int32  // local App IP Port
+	DstPort int32  // remote IP Port
 	Proto   int32
 }
 
