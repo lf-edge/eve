@@ -24,6 +24,9 @@ func GetDhcpInfo(us *types.NetworkPortStatus) error {
 	if us.Dhcp != types.DT_CLIENT {
 		return nil
 	}
+	if strings.HasPrefix(us.IfName, "wwan") {
+		return nil
+	}
 	// XXX get error -1 unless we have -4
 	// XXX add IPv6 support
 	log.Infof("Calling dhcpcd -U -4 %s\n", us.IfName)
