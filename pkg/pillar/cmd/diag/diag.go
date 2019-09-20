@@ -6,8 +6,8 @@
 package diag
 
 import (
-	"crypto/tls"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"flag"
 	"fmt"
