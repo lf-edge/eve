@@ -40,19 +40,16 @@ type DPCPending struct {
 
 type DeviceNetworkContext struct {
 	UsableAddressCount      int
-	ManufacturerModel       string
-	DeviceNetworkConfig     *types.DeviceNetworkConfig
 	DevicePortConfig        *types.DevicePortConfig // Currently in use
 	DevicePortConfigList    *types.DevicePortConfigList
 	AssignableAdapters      *types.AssignableAdapters
 	DevicePortConfigTime    time.Time
 	DeviceNetworkStatus     *types.DeviceNetworkStatus
-	SubDeviceNetworkConfig  *pubsub.Subscription
 	SubDevicePortConfigA    *pubsub.Subscription
 	SubDevicePortConfigO    *pubsub.Subscription
 	SubDevicePortConfigS    *pubsub.Subscription
 	SubAssignableAdapters   *pubsub.Subscription
-	PubDevicePortConfig     *pubsub.Publication // Derived from DeviceNetworkConfig
+	PubDevicePortConfig     *pubsub.Publication
 	PubDevicePortConfigList *pubsub.Publication
 	PubDeviceNetworkStatus  *pubsub.Publication
 	Changed                 bool
@@ -63,71 +60,12 @@ type DeviceNetworkContext struct {
 	NetworkTestBetterTimer *time.Timer
 	NextDPCIndex           int
 	CloudConnectivityWorks bool
-	DNCInitialized         bool
 
 	// Timers in seconds
 	DPCTestDuration           uint32 // Wait for DHCP address
 	NetworkTestInterval       uint32 // Test interval in minutes.
 	NetworkTestBetterInterval uint32 // Look for lower/better index
 	TestSendTimeout           uint32 // Timeout for HTTP/Send
-}
-
-func HandleDNCModify(ctxArg interface{}, key string, configArg interface{}) {
-
-	config := cast.CastDeviceNetworkConfig(configArg)
-	ctx := ctxArg.(*DeviceNetworkContext)
-	if key != ctx.ManufacturerModel {
-		log.Debugf("HandleDNCModify: ignoring %s - expecting %s\n",
-			key, ctx.ManufacturerModel)
-		return
-	}
-	log.Infof("HandleDNCModify for %s\n", key)
-	// Get old value
-	var oldConfig types.DevicePortConfig
-	c, _ := ctx.PubDevicePortConfig.Get("global")
-	if c != nil {
-		oldConfig = cast.CastDevicePortConfig(c)
-	} else {
-		oldConfig = types.DevicePortConfig{}
-	}
-	*ctx.DeviceNetworkConfig = config
-	portConfig := MakeDevicePortConfig(config)
-	portConfig.Key = key
-	if !reflect.DeepEqual(oldConfig, portConfig) {
-		log.Infof("DevicePortConfig change from %v to %v\n",
-			oldConfig, portConfig)
-		ctx.PubDevicePortConfig.Publish("global", portConfig)
-	}
-	ctx.DNCInitialized = true
-	log.Infof("HandleDNCModify done for %s\n", key)
-}
-
-func HandleDNCDelete(ctxArg interface{}, key string, configArg interface{}) {
-
-	ctx := ctxArg.(*DeviceNetworkContext)
-	if key != ctx.ManufacturerModel {
-		log.Debugf("HandleDNCDelete: ignoring %s\n", key)
-		return
-	}
-	log.Infof("HandleDNCDelete for %s\n", key)
-	// Get old value
-	var oldConfig types.DevicePortConfig
-	c, _ := ctx.PubDevicePortConfig.Get("global")
-	if c != nil {
-		oldConfig = cast.CastDevicePortConfig(c)
-	} else {
-		oldConfig = types.DevicePortConfig{}
-	}
-	*ctx.DeviceNetworkConfig = types.DeviceNetworkConfig{}
-
-	portConfig := MakeDevicePortConfig(*ctx.DeviceNetworkConfig)
-	portConfig.Key = key
-	if !reflect.DeepEqual(oldConfig, portConfig) {
-		log.Infof("DevicePortConfig change from %v to %v\n",
-			oldConfig, portConfig)
-		ctx.PubDevicePortConfig.Publish("global", portConfig)
-	}
-	log.Infof("HandleDNCDelete done for %s\n", key)
 }
 
 func UpdateLastResortPortConfig(ctx *DeviceNetworkContext, ports []string) {
@@ -503,17 +441,22 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 // Skip entries with LastFailed after LastSucceeded and
 // a recent LastFailed (a minute or less).
 func getNextTestableDPCIndex(ctx *DeviceNetworkContext, start int) int {
-	dpcListLen := len(ctx.DevicePortConfigList.PortConfigList)
 
 	log.Infof("getNextTestableDPCIndex: start %d\n", start)
 	// We want to wrap around, but should not keep looping around.
 	// We do one loop of the entire list searching for a testable candidate.
 	// If no suitable test candidate is found, we reset the test index to -1.
+	dpcListLen := len(ctx.DevicePortConfigList.PortConfigList)
+	if dpcListLen == 0 {
+		newIndex := -1
+		log.Infof("getNextTestableDPCIndex: empty list; current index %d new %d\n", ctx.NextDPCIndex,
+			newIndex)
+		return newIndex
+	}
 	found := false
 	count := 0
 	newIndex := start % dpcListLen
 	for !found && count < dpcListLen {
-		count += 1
 		ok := ctx.DevicePortConfigList.PortConfigList[newIndex].IsDPCTestable()
 		if ok {
 			break
@@ -521,6 +464,7 @@ func getNextTestableDPCIndex(ctx *DeviceNetworkContext, start int) int {
 		log.Infof("getNextTestableDPCIndex: DPC %v is not testable",
 			ctx.DevicePortConfigList.PortConfigList[newIndex])
 		newIndex = (newIndex + 1) % dpcListLen
+		count += 1
 	}
 	if count == dpcListLen {
 		newIndex = -1
@@ -542,7 +486,7 @@ func getCurrentDPC(ctx *DeviceNetworkContext) *types.DevicePortConfig {
 // Handle three different sources in this priority order:
 // 1. zedagent with any key
 // 2. "override" key from build or USB stick file
-// 3. "global" key derived from per-platform DeviceNetworkConfig
+// 3. "lastresort" derived from the set of network interfaces
 // We determine the priority from TimePriority in the config.
 func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 
@@ -556,6 +500,7 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	// XXX really need to know whether anything with current or lower
 	// index has changed. We don't care about inserts at the end of the list.
+
 	configChanged := ctx.doUpdatePortConfigListAndPublish(&portConfig, false)
 	// We could have just booted up and not run RestartVerify even once.
 	// If we see a DPC configuration that we already have in the persistent
@@ -659,6 +604,24 @@ func HandleAssignableAdaptersDelete(ctxArg interface{}, key string,
 	log.Infof("HandleAssignableAdaptersDelete done for %s\n", key)
 }
 
+// IngestPortConfigList creates and republishes the inintial list
+func IngestPortConfigList(ctx *DeviceNetworkContext) {
+	log.Infof("IngestPortConfigList")
+	item, err := ctx.PubDevicePortConfigList.Get("global")
+	var dpcl types.DevicePortConfigList
+	if err != nil {
+		log.Errorf("No global key for DevicePortConfigList")
+		dpcl = types.DevicePortConfigList{}
+	} else {
+		dpcl = cast.CastDevicePortConfigList(item)
+	}
+	ctx.DevicePortConfigList = &dpcl
+	log.Infof("Initial DPCL %v", dpcl)
+	compressAndPublishDevicePortConfigList(ctx)
+	ctx.DevicePortConfigList.CurrentIndex = -1 // No known working one
+	log.Infof("IngestPortConfigList len %d", len(ctx.DevicePortConfigList.PortConfigList))
+}
+
 // First look for matching timestamp, then compare for identical content
 // This is needed since after a restart zedagent will provide new timestamps
 // even if we persisted the DevicePortConfig before the restart.
@@ -738,6 +701,7 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 		// No current index to update
 		log.Infof("doUpdatePortConfigListAndPublish: no current %d",
 			currentIndex)
+		*ctx.DevicePortConfigList = compressAndPublishDevicePortConfigList(ctx)
 		return true
 	}
 	newplace, newIndex := lookupPortConfig(ctx, *current)

@@ -20,16 +20,6 @@ import (
 	"time"
 )
 
-// Generate DevicePortConfig based on DeviceNetworkConfig
-// XXX retire when we have retired DeviceNetworkConfig
-func MakeDevicePortConfig(globalConfig types.DeviceNetworkConfig) types.DevicePortConfig {
-
-	config := makeDevicePortConfig(globalConfig.Uplink, globalConfig.FreeUplinks)
-	// Set to higher than all zero.
-	config.TimePriority = time.Unix(2, 0)
-	return config
-}
-
 func LastResortDevicePortConfig(ports []string) types.DevicePortConfig {
 
 	config := makeDevicePortConfig(ports, ports)
@@ -253,10 +243,16 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 }
 
 // CheckDNSUpdate sees if we should update based on DNS
+// XXX identical code to HandleAddressChange
 func CheckDNSUpdate(ctx *DeviceNetworkContext) {
 
+	// Check if we have more or less addresses
+	var dnStatus types.DeviceNetworkStatus
+
+	log.Infof("CheckDnsUpdate Pending.Inprogress %v",
+		ctx.Pending.Inprogress)
 	if !ctx.Pending.Inprogress {
-		dnStatus := *ctx.DeviceNetworkStatus
+		dnStatus = *ctx.DeviceNetworkStatus
 		status, _ := MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
 			dnStatus)
 
@@ -267,6 +263,23 @@ func CheckDNSUpdate(ctx *DeviceNetworkContext) {
 			DoDNSUpdate(ctx)
 		} else {
 			log.Infof("CheckDNSUpdate: No change\n")
+		}
+	} else {
+		dnStatus, _ = MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
+			ctx.Pending.PendDNS)
+
+		if !reflect.DeepEqual(ctx.Pending.PendDNS, dnStatus) {
+			log.Infof("CheckDNSUpdate pending: change from %v to %v\n",
+				ctx.Pending.PendDNS, dnStatus)
+			pingTestDNS := checkIfAllDNSPortsHaveIPAddrs(dnStatus)
+			if pingTestDNS {
+				// We have a suitable candiate for running our cloud ping test.
+				log.Infof("CheckDNSUpdate: Running cloud ping test now, " +
+					"Since we have suitable addresses already.")
+				VerifyDevicePortConfig(ctx)
+			}
+		} else {
+			log.Infof("CheckDNSUpdate pending: No change\n")
 		}
 	}
 }
