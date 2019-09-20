@@ -23,7 +23,6 @@ which is currently composed of the following members:
 * Erik Nordmark <erik@zededa.com>
 * Gianluca Guida <glguida@gmail.com>
 * Gopi Krishna Kodali <gkodali@zededa.com>
-* Greg Chase <gchase@gmail.com>
 * Hariharasubramanian C S <cshari@zededa.com>
 * Kalyan Nidumolu <kalyan@zededa.com>
 * Roman Shaposhnik <rvs@zededa.com>

@@ -716,9 +716,11 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 				continue
 			}
 			network := cast.CastNetworkXObjectConfig(networkXObject)
-			addrSubnet := network.Subnet
-			addrSubnet.IP = ip
-			port.AddrSubnet = addrSubnet.String()
+			if ip != nil {
+				addrSubnet := network.Subnet
+				addrSubnet.IP = ip
+				port.AddrSubnet = addrSubnet.String()
+			}
 
 			port.Gateway = network.Gateway
 			port.DomainName = network.DomainName
