@@ -7,6 +7,7 @@ package zedcloud
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -246,9 +247,17 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 			return nil, nil, remoteTemporaryFailure, err
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
+		localUDPAddr := net.UDPAddr{IP: localAddr}
 		log.Debugf("Connecting to %s using intf %s source %v\n",
 			reqUrl, intf, localTCPAddr)
-		d := net.Dialer{LocalAddr: &localTCPAddr}
+		resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
+			log.Debugf("resolverDial %v %v", network, address)
+			// XXX can we fallback to TCP? Would get a mismatched address if we do
+			d := net.Dialer{LocalAddr: &localUDPAddr}
+			return d.Dial(network, address)
+		}
+		r := net.Resolver{Dial: resolverDial}
+		d := net.Dialer{Resolver: &r, LocalAddr: &localTCPAddr}
 		transport.Dial = d.Dial
 
 		client := &http.Client{Transport: transport}
