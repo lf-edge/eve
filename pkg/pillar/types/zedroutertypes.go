@@ -131,14 +131,6 @@ func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
 	return ret
 }
 
-// Global network config. For backwards compatibility with build artifacts
-// XXX move to using DevicePortConfig in build?
-// XXX remove since it uses old "Uplink" terms. Need to fix build etc
-type DeviceNetworkConfig struct {
-	Uplink      []string // ifname; all uplinks
-	FreeUplinks []string // subset used for image downloads
-}
-
 // Array in timestamp aka priority order; first one is the most desired
 // config to use
 type DevicePortConfigList struct {
