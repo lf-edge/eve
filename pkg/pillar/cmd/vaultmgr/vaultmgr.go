@@ -281,7 +281,7 @@ func GetOperInfo() (info.DataSecAtRestStatus, string) {
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
 				"Initialization failure"
 		} else {
-			//fscrypt is setup, and being used on /persist
+			//fscrypt is setup , and being used on /persist
 			log.Debug("Setting status to Enabled")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED,
 				"Using Secure Application Vault=Yes, Using Secure Configuration Vault=Yes"
