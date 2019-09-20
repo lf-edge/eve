@@ -1,0 +1,13 @@
+--- /usr/lib/dhcpcd/dhcpcd-hooks/20-resolv.conf
++++ /usr/lib/dhcpcd/dhcpcd-hooks/20-resolv.conf
+@@ -62,8 +62,8 @@
+ 	else
+ 		echo "# /etc/resolv.conf.tail can replace this line" >> "$cf"
+ 	fi
+-	if change_file /etc/resolv.conf "$cf"; then
+-		chmod 644 /etc/resolv.conf
++	if change_file /etc/resolv.conf.new "$cf"; then
++		chmod 644 /etc/resolv.conf.new
+ 	fi
+ 	rm -f "$cf"
+ }

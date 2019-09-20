@@ -66,8 +66,9 @@ ADD scripts/device-steps.sh \
 ADD conf/AssignableAdapters /var/tmp/zededa/AssignableAdapters
 ADD conf/DeviceNetworkConfig /var/tmp/zededa/DeviceNetworkConfig
 ADD conf/lisp.config.base /var/tmp/zededa/lisp.config.base
-RUN sed '/\(change_file\|chmod\)/s,/etc/resolv.conf,/etc/resolv.conf.new,' /usr/lib/dhcpcd/dhcpcd-hooks/20-resolv.conf > /usr/lib/dhcpcd/dhcpcd-hooks/21-resolv.ifname
-RUN diff /usr/lib/dhcpcd/dhcpcd-hooks/20-resolv.conf /usr/lib/dhcpcd/dhcpcd-hooks/21-resolv.ifname || :
+
+COPY patches/* /patches/
+RUN  for p in /patches/* ; do patch -p1 < $p ; done
 
 COPY --from=build /dist /opt/zededa/bin
 COPY --from=xen-tools / /
