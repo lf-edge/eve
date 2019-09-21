@@ -789,6 +789,7 @@ func protoEncodeAppFlowMonitorProto(ipflow types.IPFlow) *flowlog.FlowMessage {
 
 		prec.Inbound = rec.Inbound
 		prec.AclId = rec.ACLID
+		prec.Action = rec.Action
 		// prec.AclName =
 		pStart := new(timestamp.Timestamp)
 		pStart = timeNanoToProto(rec.StartTime)

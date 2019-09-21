@@ -91,7 +91,7 @@ const (
 	timeoutSec      int32  = 150      // less than 150 sec, consider done
 	markMask        uint32 = 0xffffff // get the Mark bits for ACL number
 	appShiftBits    uint32 = 24       // top 8 bits for App Number
-	maxFlowPack     int    = 280      // approximate 100 bytes per flow/dns, get this under 30k
+	maxFlowPack     int    = 125      // approximate 320 bytes per flow/dns, got an assert in zedagent when size was 241
 )
 
 type dnsSys struct {
