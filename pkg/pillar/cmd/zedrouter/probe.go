@@ -47,7 +47,6 @@ var zcloudCtx = zedcloud.ZedCloudContext{
 // called from handleDNSModify
 func deviceUpdateNIprobing(ctx *zedrouterContext, status *types.DeviceNetworkStatus) {
 	pub := ctx.pubNetworkInstanceStatus
-	items := pub.GetAll()
 	log.Infof("deviceUpdateNIprobing: enter\n")
 	for _, port := range status.Ports {
 		log.Infof("deviceUpdateNIprobing: port %s\n", port.Name)
@@ -61,6 +60,7 @@ func deviceUpdateNIprobing(ctx *zedrouterContext, status *types.DeviceNetworkSta
 			break
 		}
 
+		items := pub.GetAll()
 		for _, st := range items {
 			netstatus := cast.CastNetworkInstanceStatus(st)
 			if !isSharedPortLabel(netstatus.Port) && netstatus.Port != port.Name {
@@ -133,17 +133,14 @@ func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 	} else {
 		info := netstatus.PInfo[port.IfName]
 		info.IsPresent = true
-		if !port.Gateway.Equal(info.NhAddr) {
-			info.NhAddr = port.Gateway
-			info.LocalAddr = portGetIntfAddr(port)
-			info.FailedCnt = 0
-			info.SuccessCnt = 0
-			netstatus.PInfo[port.IfName] = info
-			log.Infof("niProbingUpdatePort: %s modified %s", netstatus.BridgeName, port.IfName)
-		} else {
-			log.Infof("niProbingUpdatePort: %s gw matches %s", netstatus.BridgeName, port.IfName)
-		}
+		info.NhAddr = port.Gateway
+		info.LocalAddr = portGetIntfAddr(port)
+		info.FailedCnt = 0
+		info.SuccessCnt = 0
+		netstatus.PInfo[port.IfName] = info
+		log.Infof("niProbingUpdatePort: %s modified %s", netstatus.BridgeName, port.IfName)
 	}
+	publishNetworkInstanceStatus(ctx, netstatus)
 }
 
 func getIntfClassByIOBundle(ctx *zedrouterContext, port types.NetworkPortStatus) types.IntfClass {
@@ -239,6 +236,7 @@ func launchHostProbe(ctx *zedrouterContext) {
 
 	for _, st := range items {
 		netstatus := cast.CastNetworkInstanceStatus(st)
+		// XXX Revisit when we support other network instance types.
 		if netstatus.Type != types.NetworkInstanceTypeLocal {
 			continue
 		}
@@ -512,9 +510,8 @@ func probeFastPing(info types.ProbeInfo) bool {
 	var pingSuccess bool
 	p := fastping.NewPinger()
 
-	zeroIP := net.ParseIP("0.0.0.0")
 	// if we don't have a gateway address or local intf address, no need to ping
-	if zeroIP.Equal(info.NhAddr) || zeroIP.Equal(info.LocalAddr) {
+	if info.NhAddr.IsUnspecified() || info.LocalAddr.IsUnspecified() {
 		return false
 	}
 
@@ -523,6 +520,9 @@ func probeFastPing(info types.ProbeInfo) bool {
 
 	srcaddress.IP = info.LocalAddr
 	p.Source(srcaddress.String())
+	if srcaddress.String() == "" || dstaddress.String() == "" {
+		return false
+	}
 	p.MaxRTT = time.Millisecond * time.Duration(maxPingWait)
 	log.Infof("probeFastPing: add to ping, address %s with source %s, maxrtt %v\n",
 		dstaddress.String(), srcaddress.String(), p.MaxRTT)

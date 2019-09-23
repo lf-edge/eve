@@ -2084,7 +2084,7 @@ func doAppNetworkModifyAllUnderlayNetworks(
 		ulConfig := &config.UnderlayNetworkList[i]
 		ulStatus := &status.UnderlayNetworkList[i]
 		doAppNetworkModifyUnderlayNetwork(
-			ctx, status, ulConfig, ulStatus, ipsets)
+			ctx, status, ulConfig, ulStatus, ipsets, false)
 	}
 }
 
@@ -2093,7 +2093,7 @@ func doAppNetworkModifyUnderlayNetwork(
 	status *types.AppNetworkStatus,
 	ulConfig *types.UnderlayNetworkConfig,
 	ulStatus *types.UnderlayNetworkStatus,
-	ipsets []string) {
+	ipsets []string, force bool) {
 
 	bridgeName := ulStatus.Bridge
 	appIPAddr := ulStatus.AllocatedIPAddr
@@ -2112,7 +2112,7 @@ func doAppNetworkModifyUnderlayNetwork(
 	// If so updateNetworkACLConfiglet needs to know old and new
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
 	ruleList, err := updateACLConfiglet(aclArgs,
-		ulStatus.ACLs, ulConfig.ACLs, ulStatus.ACLRules)
+		ulStatus.ACLs, ulConfig.ACLs, ulStatus.ACLRules, force)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
@@ -2190,7 +2190,7 @@ func doAppNetworkModifyOverlayNetwork(
 	// If so updateACLConfiglet needs to know old and new
 	// XXX Could olStatus.Vif not be set? Means we didn't add
 	ruleList, err := updateACLConfiglet(aclArgs,
-		olStatus.ACLs, olConfig.ACLs, olStatus.ACLRules)
+		olStatus.ACLs, olConfig.ACLs, olStatus.ACLRules, false)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
@@ -2246,7 +2246,7 @@ func handleAppNetworkWithMgmtLispModify(ctx *zedrouterContext,
 
 	// Update ACLs
 	ruleList, err := updateACLConfiglet(aclArgs,
-		olStatus.ACLs, olConfig.ACLs, olStatus.ACLRules)
+		olStatus.ACLs, olConfig.ACLs, olStatus.ACLRules, false)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}

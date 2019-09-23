@@ -10,11 +10,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	uuid "github.com/satori/go.uuid"
 	"net"
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
 
 	"github.com/eriknordmark/netlink"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
@@ -1798,23 +1798,31 @@ func doNetworkInstanceFallback(
 		natInactivate(ctx, status, true)
 		err := natActivate(ctx, status)
 		status.NeedIntfUpdate = false
+		publishNetworkInstanceStatus(ctx, status)
 		if err != nil {
 			return err
 		}
-		/*
-			// Go through the list of all application connected to this network instance
-			// and clear conntrack flows corresponding to them.
-			apps := ctx.pubAppNetworkStatus.GetAll()
-			for _, app := range apps {
-				appNetworkStatus := cast.CastAppNetworkStatus(app)
+		// Go through the list of all application connected to this network instance
+		// and clear conntrack flows corresponding to them.
+		apps := ctx.pubAppNetworkStatus.GetAll()
+		// Find all app instances that use this network and purge flows
+		// that correspond to these applications.
+		for _, app := range apps {
+			appNetworkStatus := cast.CastAppNetworkStatus(app)
+			for i := range appNetworkStatus.UnderlayNetworkList {
+				ulStatus := &appNetworkStatus.UnderlayNetworkList[i]
+				if uuid.Equal(ulStatus.Network, status.UUID) {
+					config := lookupAppNetworkConfig(ctx, appNetworkStatus.Key())
+					ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
+						config.UnderlayNetworkList)
+					ulConfig := &config.UnderlayNetworkList[i]
+					// This should take care of re-programming any ACL rules that
+					// use input match on uplinks.
+					doAppNetworkModifyUnderlayNetwork(
+						ctx, &appNetworkStatus, ulConfig, ulStatus, ipsets, true)
+				}
 			}
-		*/
-		number, err := netlink.ConntrackDeleteIPSrc(netlink.ConntrackTable,
-			syscall.AF_INET, net.ParseIP("0.0.0.0"), 0, 0, 0, 0, false)
-		if err != nil {
-			log.Errorf("doNetworkInstanceFallback: Error clearing conntrack flows: %s", err)
-		} else {
-			log.Infof("doNetworkInstanceFallback: Clreated %d flows after changing uplink to %s", number, status.CurrentUplinkIntf)
+			publishAppNetworkStatus(ctx, &appNetworkStatus)
 		}
 	case types.NetworkInstanceTypeCloud:
 		// XXX Add support for Cloud network instance
