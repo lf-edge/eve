@@ -15,19 +15,10 @@ import (
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net"
+	"reflect"
 	"strings"
 	"time"
 )
-
-// Generate DevicePortConfig based on DeviceNetworkConfig
-// XXX retire when we have retired DeviceNetworkConfig
-func MakeDevicePortConfig(globalConfig types.DeviceNetworkConfig) types.DevicePortConfig {
-
-	config := makeDevicePortConfig(globalConfig.Uplink, globalConfig.FreeUplinks)
-	// Set to higher than all zero.
-	config.TimePriority = time.Unix(2, 0)
-	return config
-}
 
 func LastResortDevicePortConfig(ports []string) types.DevicePortConfig {
 
@@ -216,6 +207,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 			globalStatus.Ports[ix].Error = errStr
 			globalStatus.Ports[ix].ErrorTime = time.Now()
 		}
+		GetDNSInfo(&globalStatus.Ports[ix])
 
 		// Attempt to get a wpad.dat file if so configured
 		// Result is updating the Pacfile
@@ -248,6 +240,48 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 	UpdateDeviceNetworkGeo(time.Second, &globalStatus)
 	log.Infof("MakeDeviceNetworkStatus() DONE\n")
 	return globalStatus, err
+}
+
+// CheckDNSUpdate sees if we should update based on DNS
+// XXX identical code to HandleAddressChange
+func CheckDNSUpdate(ctx *DeviceNetworkContext) {
+
+	// Check if we have more or less addresses
+	var dnStatus types.DeviceNetworkStatus
+
+	log.Infof("CheckDnsUpdate Pending.Inprogress %v",
+		ctx.Pending.Inprogress)
+	if !ctx.Pending.Inprogress {
+		dnStatus = *ctx.DeviceNetworkStatus
+		status, _ := MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
+			dnStatus)
+
+		if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
+			log.Infof("CheckDNSUpdate: change from %v to %v\n",
+				*ctx.DeviceNetworkStatus, status)
+			*ctx.DeviceNetworkStatus = status
+			DoDNSUpdate(ctx)
+		} else {
+			log.Infof("CheckDNSUpdate: No change\n")
+		}
+	} else {
+		dnStatus, _ = MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
+			ctx.Pending.PendDNS)
+
+		if !reflect.DeepEqual(ctx.Pending.PendDNS, dnStatus) {
+			log.Infof("CheckDNSUpdate pending: change from %v to %v\n",
+				ctx.Pending.PendDNS, dnStatus)
+			pingTestDNS := checkIfAllDNSPortsHaveIPAddrs(dnStatus)
+			if pingTestDNS {
+				// We have a suitable candiate for running our cloud ping test.
+				log.Infof("CheckDNSUpdate: Running cloud ping test now, " +
+					"Since we have suitable addresses already.")
+				VerifyDevicePortConfig(ctx)
+			}
+		} else {
+			log.Infof("CheckDNSUpdate pending: No change\n")
+		}
+	}
 }
 
 // GetIPAddrs return all IP addresses for an ifindex, and updates the cached info.

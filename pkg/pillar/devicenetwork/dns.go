@@ -5,27 +5,26 @@ package devicenetwork
 
 import (
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/netclone"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	log "github.com/sirupsen/logrus"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 )
 
-// Get DNS etc info from dhcpcd. Updates DomainName and DnsServers, Gateway,
-// Subnet
+// GetDhcpInfo gets info from dhcpcd. Updates Gateway and Subnet
 // XXX set NtpServer once we know what name it has
-// dhcpcd -U eth0 | grep domain_name=
-// dhcpcd -U eth0 | grep domain_name_servers=
-// dhcpcd -U eth0 | grep routers=
-// XXX add IPv6 support. Where do we put if different DomainName?
-// dhcp6_domain_search='attlocal.net'
-// dhcp6_name_servers='2600:1700:daa0:cfb0::1'
+// XXX add IPv6 support?
 func GetDhcpInfo(us *types.NetworkPortStatus) error {
 
-	log.Infof("getDnsInfo(%s)\n", us.IfName)
+	log.Infof("GetDhcpInfo(%s)\n", us.IfName)
 	if us.Dhcp != types.DT_CLIENT {
+		return nil
+	}
+	if strings.HasPrefix(us.IfName, "wwan") {
 		return nil
 	}
 	// XXX get error -1 unless we have -4
@@ -37,15 +36,10 @@ func GetDhcpInfo(us *types.NetworkPortStatus) error {
 		errStr := fmt.Sprintf("dhcpcd -U failed %s: %s",
 			string(stdoutStderr), err)
 		log.Errorln(errStr)
-		// If we have no lease we get an error. Don't store those
-		us.DomainName = ""
-		us.DnsServers = []net.IP{}
 		return nil
 	}
 	log.Debugf("dhcpcd -U got %v\n", string(stdoutStderr))
 	lines := strings.Split(string(stdoutStderr), "\n")
-	us.DomainName = ""
-	us.DnsServers = []net.IP{}
 	masklen := 0
 	var subnet net.IP
 	for _, line := range lines {
@@ -55,27 +49,9 @@ func GetDhcpInfo(us *types.NetworkPortStatus) error {
 		}
 		log.Debugf("Got <%s> <%s>\n", items[0], items[1])
 		switch items[0] {
-		case "domain_name":
-			dn := trimQuotes(items[1])
-			log.Infof("getDnsInfo(%s) DomainName %s\n", us.IfName,
-				dn)
-			us.DomainName = dn
-		case "domain_name_servers":
-			servers := trimQuotes(items[1])
-			log.Infof("getDnsInfo(%s) DnsServers %s\n", us.IfName,
-				servers)
-			// XXX multiple? How separated?
-			for _, server := range strings.Split(servers, " ") {
-				ip := net.ParseIP(server)
-				if ip == nil {
-					log.Errorf("Failed to parse %s\n", server)
-					continue
-				}
-				us.DnsServers = append(us.DnsServers, ip)
-			}
 		case "routers":
 			routers := trimQuotes(items[1])
-			log.Infof("getDnsInfo(%s) Gateway %s\n", us.IfName,
+			log.Infof("GetDhcpInfo(%s) Gateway %s\n", us.IfName,
 				routers)
 			// XXX multiple? How separated?
 			ip := net.ParseIP(routers)
@@ -86,7 +62,7 @@ func GetDhcpInfo(us *types.NetworkPortStatus) error {
 			us.Gateway = ip
 		case "network_number":
 			network := trimQuotes(items[1])
-			log.Infof("getDnsInfo(%s) network_number %s\n", us.IfName,
+			log.Infof("GetDhcpInfo(%s) network_number %s\n", us.IfName,
 				network)
 			ip := net.ParseIP(network)
 			if ip == nil {
@@ -96,7 +72,7 @@ func GetDhcpInfo(us *types.NetworkPortStatus) error {
 			subnet = ip
 		case "subnet_cidr":
 			str := trimQuotes(items[1])
-			log.Infof("getDnsInfo(%s) subnet_cidr %s\n", us.IfName,
+			log.Infof("GetDhcpInfo(%s) subnet_cidr %s\n", us.IfName,
 				str)
 			masklen, err = strconv.Atoi(str)
 			if err != nil {
@@ -107,6 +83,51 @@ func GetDhcpInfo(us *types.NetworkPortStatus) error {
 	}
 	us.Subnet = net.IPNet{IP: subnet, Mask: net.CIDRMask(masklen, 32)}
 	return nil
+}
+
+// GetDNSInfo gets DNS info from /run files. Updates DomainName and DnsServers
+func GetDNSInfo(us *types.NetworkPortStatus) {
+
+	log.Infof("GetDNSInfo(%s)\n", us.IfName)
+	if us.Dhcp != types.DT_CLIENT {
+		return
+	}
+	filename := ifnameToResolvConf(us.IfName)
+	if filename == "" {
+		log.Errorf("No resolv.conf for %s", us.IfName)
+		return
+	}
+	dc := netclone.DnsReadConfig(filename)
+	log.Infof("%s servers %v, search %v\n", filename, dc.Servers, dc.Search)
+	for _, server := range dc.Servers {
+		// Might have port number
+		s := strings.Split(server, ":")
+		ip := net.ParseIP(s[0])
+		if ip == nil {
+			log.Errorf("Failed to parse %s\n", server)
+			continue
+		}
+		us.DnsServers = append(us.DnsServers, ip)
+	}
+	// XXX just pick first since have one DomainName slot
+	for _, dn := range dc.Search {
+		us.DomainName = dn
+		break
+	}
+}
+
+var resolveConfDirs = []string{"/run/dhcpcd/resolv.conf", "/run/wwan/resolv.conf"}
+
+// Look for a file created by dhcpcd
+func ifnameToResolvConf(ifname string) string {
+	for _, d := range resolveConfDirs {
+		filename := fmt.Sprintf("%s/%s.dhcp", d, ifname)
+		_, err := os.Stat(filename)
+		if err == nil {
+			return filename
+		}
+	}
+	return ""
 }
 
 // Remove single or double qoutes

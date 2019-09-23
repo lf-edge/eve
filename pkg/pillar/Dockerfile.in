@@ -67,6 +67,12 @@ ADD conf/AssignableAdapters /var/tmp/zededa/AssignableAdapters
 ADD conf/DeviceNetworkConfig /var/tmp/zededa/DeviceNetworkConfig
 ADD conf/lisp.config.base /var/tmp/zededa/lisp.config.base
 
+COPY patches/* /patches/
+RUN set -e && for patch in ../patches/*.patch; do \
+        echo "Applying $patch"; \
+        patch -p1 < "$patch"; \
+    done
+
 COPY --from=build /dist /opt/zededa/bin
 COPY --from=xen-tools / /
 COPY --from=lisp / /

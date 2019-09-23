@@ -131,14 +131,6 @@ func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
 	return ret
 }
 
-// Global network config. For backwards compatibility with build artifacts
-// XXX move to using DevicePortConfig in build?
-// XXX remove since it uses old "Uplink" terms. Need to fix build etc
-type DeviceNetworkConfig struct {
-	Uplink      []string // ifname; all uplinks
-	FreeUplinks []string // subset used for image downloads
-}
-
 // Array in timestamp aka priority order; first one is the most desired
 // config to use
 type DevicePortConfigList struct {
@@ -435,6 +427,15 @@ func CountLocalIPv4AddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 			continue
 		}
 		count += 1
+	}
+	return count
+}
+
+// CountDNSServers returns the number of DNS servers
+func CountDNSServers(globalStatus DeviceNetworkStatus) int {
+	count := 0
+	for _, us := range globalStatus.Ports {
+		count += len(us.DnsServers)
 	}
 	return count
 }
@@ -1609,10 +1610,10 @@ type VpnMetrics struct {
 
 // IPTuple :
 type IPTuple struct {
-	Src     net.IP
-	Dst     net.IP
-	SrcPort int32
-	DstPort int32
+	Src     net.IP // local App IP address
+	Dst     net.IP // remote IP address
+	SrcPort int32  // local App IP Port
+	DstPort int32  // remote IP Port
 	Proto   int32
 }
 

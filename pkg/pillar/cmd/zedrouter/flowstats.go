@@ -91,7 +91,7 @@ const (
 	timeoutSec      int32  = 150      // less than 150 sec, consider done
 	markMask        uint32 = 0xffffff // get the Mark bits for ACL number
 	appShiftBits    uint32 = 24       // top 8 bits for App Number
-	maxFlowPack     int    = 280      // approximate 100 bytes per flow/dns, get this under 30k
+	maxFlowPack     int    = 125      // approximate 320 bytes per flow/dns, got an assert in zedagent when size was 241
 )
 
 type dnsSys struct {
@@ -411,28 +411,33 @@ func flowMergeProcess(entry *netlink.ConntrackFlow, instData networkAttrs) flowS
 
 	// Assume we know which one of the 4 IP addresses is the app, then we know
 	// which 'remote' IP address is in the flow tuple. Assign the Src/Dst and Ports
-	// If the App initiated the traffic, then the forw.src is the App IP, or the reverse.dst
-	// is the App IP
+	// similar to RFC5130 to merge two bidirectional flow using the method of "Perimeter",
+	// here we define the flow src is always the local App endpoint, the flow dst will
+	// be the opposite endpoing.
 	if forwSrcApp {
+		// src initiated flow, forw-src is the src, rev-src is the flow dst
 		ipFlow.dbg2 = 1
 		ipFlow.SrcIP = entry.Forward.SrcIP
 		ipFlow.DstIP = entry.Reverse.SrcIP
 		ipFlow.SrcPort = entry.Forward.SrcPort
-		ipFlow.DstPort = entry.Reverse.DstPort
+		ipFlow.DstPort = entry.Reverse.SrcPort
 		ipFlow.AppInitiate = true
 	} else if forwDstApp {
+		// non-NAT case, outside initiated flow, forw-dst is the src, rev-dst is the flow dst
 		ipFlow.dbg2 = 2
-		ipFlow.DstIP = entry.Forward.DstIP
-		ipFlow.SrcIP = entry.Reverse.DstIP
-		ipFlow.DstPort = entry.Forward.DstPort
-		ipFlow.SrcPort = entry.Reverse.DstPort
+		ipFlow.SrcIP = entry.Forward.DstIP
+		ipFlow.DstIP = entry.Reverse.DstIP
+		ipFlow.SrcPort = entry.Forward.DstPort
+		ipFlow.DstPort = entry.Reverse.DstPort
 	} else if backSrcApp {
+		// NAT case, outside initiated flow, rev-src is the src, forw-src is the flow dst
 		ipFlow.dbg2 = 3
-		ipFlow.SrcIP = entry.Forward.SrcIP
-		ipFlow.DstIP = entry.Reverse.SrcIP
-		ipFlow.SrcPort = entry.Forward.SrcPort
-		ipFlow.DstPort = entry.Reverse.SrcPort
+		ipFlow.DstIP = entry.Forward.SrcIP
+		ipFlow.SrcIP = entry.Reverse.SrcIP
+		ipFlow.DstPort = entry.Forward.SrcPort
+		ipFlow.SrcPort = entry.Reverse.SrcPort
 	} else if backDstApp {
+		// non-NAT case, this should not happen, but rev-dst is the src, forw-dst is the flow dst
 		ipFlow.dbg2 = 4
 		ipFlow.SrcIP = entry.Reverse.DstIP
 		ipFlow.DstIP = entry.Forward.DstIP

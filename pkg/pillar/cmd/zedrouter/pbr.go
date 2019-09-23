@@ -38,6 +38,12 @@ func PbrInit(ctx *zedrouterContext) {
 func PbrRouteAddAll(bridgeName string, port string) error {
 	log.Infof("PbrRouteAddAll(%s, %s)\n", bridgeName, port)
 
+	// for airgap internal switch case
+	if port == "" {
+		log.Infof("PbrRouteAddAll: for internal switch, skip for ACL and Route installation\n")
+		return nil
+	}
+
 	ifindex, err := devicenetwork.IfnameToIndex(port)
 	if err != nil {
 		errStr := fmt.Sprintf("IfnameToIndex(%s) failed: %s",
@@ -97,6 +103,12 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 // Separately we handle changes in PbrRouteChange
 func PbrRouteDeleteAll(bridgeName string, port string) error {
 	log.Infof("PbrRouteDeleteAll(%s, %s)\n", bridgeName, port)
+
+	// for airgap internal switch case
+	if port == "" {
+		log.Infof("PbrRouteDeleteAll: for internal switch, skip for ACL and Route deletion\n")
+		return nil
+	}
 
 	ifindex, err := devicenetwork.IfnameToIndex(port)
 	if err != nil {
