@@ -54,7 +54,7 @@ fi
 
 "${TESTPATCHBIN}" \
       --build-tool=nobuild \
-      --plugins=all,-asflicense,-shelldocs,-gitlab,-findbugs \
+      --plugins=all,-asflicense,-shelldocs,-gitlab,-findbugs,-golangcilint \
       --basedir="${BINDIR}/../../.." \
       --patch-dir="${YETUS_OUT_DIR}" \
       --project="eve" \
