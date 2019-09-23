@@ -35,7 +35,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/wrap"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -1504,6 +1504,8 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 			file.WriteString(fmt.Sprintf("vncpasswd = \"%s\"\n",
 				config.VncPasswd))
 		}
+	} else {
+		file.WriteString(fmt.Sprintf("vnc = 0\n"))
 	}
 
 	// Go from kbytes to mbytes
