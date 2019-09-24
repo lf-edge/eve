@@ -42,6 +42,7 @@ require (
 	google.golang.org/api v0.3.2 // indirect
 	google.golang.org/genproto v0.0.0-20190404172233-64821d5d2107 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
+        git.apache.org/thrift.git v0.12.0 // indirect
 )
 
 replace github.com/lf-edge/eve/api/go => ../../api/go
