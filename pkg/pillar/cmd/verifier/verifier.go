@@ -178,6 +178,7 @@ func Run() {
 	// Report to zedmanager that init is done
 	pubAppImgStatus.SignalRestarted()
 	pubBaseOsStatus.SignalRestarted()
+	log.Infof("SignalRestarted done")
 
 	// Need stillRunning across handleInitUpdateVerifiedObjects since
 	// it reverifies potentially huge images

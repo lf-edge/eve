@@ -631,16 +631,17 @@ func (pub *Publication) ClearRestarted() error {
 func (pub *Publication) restartImpl(restarted bool) error {
 
 	name := pub.nameString()
-	log.Debugf("pub.restartImpl(%s, %v)\n", name, restarted)
+	log.Infof("pub.restartImpl(%s, %v)\n", name, restarted)
 
 	if restarted == pub.km.restarted {
-		log.Debugf("pub.restartImpl(%s, %v) value unchanged\n",
+		log.Infof("pub.restartImpl(%s, %v) value unchanged\n",
 			name, restarted)
 		return nil
 	}
 	pub.km.restarted = restarted
 	if restarted {
 		// XXX lock on restarted to make sure it gets noticed?
+		// XXX bug?
 		// Implicit in updaters lock??
 		pub.updatersNotify(name)
 	}
@@ -719,14 +720,14 @@ func (pub *Publication) sendDelete(sock net.Conn, key string) error {
 
 func (pub *Publication) sendRestarted(sock net.Conn) error {
 
-	log.Debugf("sendRestarted(%s)\n", pub.nameString())
+	log.Infof("sendRestarted(%s)\n", pub.nameString())
 	_, err := sock.Write([]byte(fmt.Sprintf("restarted %s", pub.topic)))
 	return err
 }
 
 func (pub *Publication) sendComplete(sock net.Conn) error {
 
-	log.Debugf("sendComplete(%s)\n", pub.nameString())
+	log.Infof("sendComplete(%s)\n", pub.nameString())
 	_, err := sock.Write([]byte(fmt.Sprintf("complete %s", pub.topic)))
 	return err
 }

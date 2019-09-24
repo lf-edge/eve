@@ -720,6 +720,8 @@ func Run() {
 		}
 		// XXX verifierRestarted can take 5 minutes??
 		agentlog.StillRunning(agentName)
+		// Need to tickle this since the configTimerTask is not yet started
+		agentlog.StillRunning(agentName + "config")
 		// UsedByUUID, baseos subStatus, DevicePortConfigList etc
 		if zedagentCtx.TriggerDeviceInfo {
 			log.Infof("triggered PublishDeviceInfo\n")
@@ -727,6 +729,10 @@ func Run() {
 			publishDevInfo(&zedagentCtx)
 			zedagentCtx.TriggerDeviceInfo = false
 			agentlog.CheckMaxTime(agentName, start)
+			agentlog.StillRunning(agentName)
+			// Need to tickle this since the configTimerTask is not
+			// yet started
+			agentlog.StillRunning(agentName + "config")
 		}
 	}
 
@@ -790,13 +796,16 @@ func Run() {
 				triggerGetConfig(configTickerHandle)
 				DNSctx.triggerGetConfig = false
 			}
+			agentlog.CheckMaxTime(agentName, start)
 			if DNSctx.triggerDeviceInfo {
 				// IP/DNS in device info could have changed
 				log.Infof("NetworkStatus triggered PublishDeviceInfo\n")
+				start := agentlog.StartTime()
 				publishDevInfo(&zedagentCtx)
 				DNSctx.triggerDeviceInfo = false
+				agentlog.CheckMaxTime(agentName, start)
+				agentlog.StillRunning(agentName)
 			}
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAssignableAdapters.C:
 			start := agentlog.StartTime()
@@ -887,6 +896,7 @@ func Run() {
 			publishDevInfo(&zedagentCtx)
 			zedagentCtx.TriggerDeviceInfo = false
 			agentlog.CheckMaxTime(agentName, start)
+			agentlog.StillRunning(agentName)
 		}
 	}
 }
