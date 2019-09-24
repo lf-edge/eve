@@ -161,8 +161,8 @@ func Run() {
 	devicenetwork.IngestPortConfigList(dnc)
 
 	// We get DevicePortConfig from three sources in this priority:
-	// 1. zedagent publishing NetworkPortConfig
-	// 2. override file in /var/tmp/zededa/NetworkPortConfig/*.json
+	// 1. zedagent publishing DevicePortConfig
+	// 2. override file in /var/tmp/zededa/DevicePortConfig/*.json
 	// 3. "lastresort" derived from the set of network interfaces
 	subDevicePortConfigA, err := pubsub.Subscribe("zedagent",
 		types.DevicePortConfig{}, false,
