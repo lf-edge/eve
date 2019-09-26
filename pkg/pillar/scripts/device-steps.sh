@@ -120,6 +120,8 @@ file = /var/run/${AGENT}config.touch
 change = 300
 file = /var/run/${AGENT}metrics.touch
 change = 300
+file = /var/run/${AGENT}devinfo.touch
+change = 300
 EOF
     fi
 done
