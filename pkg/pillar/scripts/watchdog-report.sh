@@ -21,7 +21,7 @@ if [ $# -ge 2 ]; then
     agent=$(echo "$2" | grep '/var/run/.*\.touch' | sed 's,/var/run/\(.*\)\.touch,\1,')
     if [ -n "$agent" ]; then
         # Map the various zedagent* to zedagent
-        if [ "$agent" = "zedagentmetrics" ] -o [ "$agent" = "zedagentconfig" ]; then
+        if [ "$agent" = "zedagentmetrics" ] -o [ "$agent" = "zedagentconfig" ] -o [ "$agent" = "zedagentdevinfo" ]; then
             agent="zedagent"
         fi
         echo "pkill -USR1 /opt/zededa/bin/$agent"
