@@ -114,6 +114,11 @@ func getDevPort(status *types.DeviceNetworkStatus, port string) *types.NetworkPo
 func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 	netstatus *types.NetworkInstanceStatus) {
 	log.Infof("niProbingUpdatePort: enter\n")
+	if netstatus.Error != "" {
+		log.Errorf("niProbingUpdatePort: Network instance is in errored state: %s",
+			netstatus.Error)
+		return
+	}
 	if _, ok := netstatus.PInfo[port.IfName]; !ok {
 		if port.IfName == "" { // no need to probe for air-gap type of NI
 			return
@@ -237,7 +242,8 @@ func launchHostProbe(ctx *zedrouterContext) {
 	for _, st := range items {
 		netstatus := cast.CastNetworkInstanceStatus(st)
 		// XXX Revisit when we support other network instance types.
-		if netstatus.Type != types.NetworkInstanceTypeLocal {
+		if netstatus.Type != types.NetworkInstanceTypeLocal &&
+			netstatus.Type != types.NetworkInstanceTypeCloud {
 			continue
 		}
 		log.Infof("launchHostProbe: status on ni(%s) current uplink %s\n", netstatus.BridgeName, netstatus.CurrentUplinkIntf)

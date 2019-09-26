@@ -1772,7 +1772,7 @@ func checkAndReprogramNetworkInstances(ctx *zedrouterContext) {
 	for _, instance := range instanceItems {
 		status := cast.CastNetworkInstanceStatus(instance)
 
-		if !status.NeedIntfUpdate || !status.Activated {
+		if !status.NeedIntfUpdate {
 			continue
 		}
 		log.Infof("checkAndReprogramNetworkInstances: Changing Uplink to %s from %s for "+
@@ -1795,10 +1795,11 @@ func doNetworkInstanceFallback(
 
 	switch status.Type {
 	case types.NetworkInstanceTypeLocal:
+		if !status.Activated {
+			return nil
+		}
 		natInactivate(ctx, status, true)
 		err := natActivate(ctx, status)
-		status.NeedIntfUpdate = false
-		publishNetworkInstanceStatus(ctx, status)
 		if err != nil {
 			return err
 		}
@@ -1824,10 +1825,45 @@ func doNetworkInstanceFallback(
 			}
 			publishAppNetworkStatus(ctx, &appNetworkStatus)
 		}
+	case types.NetworkInstanceTypeSwitch:
+		// NA for switch network instance.
 	case types.NetworkInstanceTypeCloud:
 		// XXX Add support for Cloud network instance
+		if status.Activated {
+			vpnInactivate(ctx, status)
+		}
+		vpnDelete(ctx, status)
+		vpnCreate(ctx, status)
+		if status.Activated {
+			vpnActivate(ctx, status)
+		}
+
+		// Go through the list of all application connected to this network instance
+		// and clear conntrack flows corresponding to them.
+		apps := ctx.pubAppNetworkStatus.GetAll()
+		// Find all app instances that use this network and purge flows
+		// that correspond to these applications.
+		for _, app := range apps {
+			appNetworkStatus := cast.CastAppNetworkStatus(app)
+			for i := range appNetworkStatus.UnderlayNetworkList {
+				ulStatus := &appNetworkStatus.UnderlayNetworkList[i]
+				if uuid.Equal(ulStatus.Network, status.UUID) {
+					config := lookupAppNetworkConfig(ctx, appNetworkStatus.Key())
+					ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
+						config.UnderlayNetworkList)
+					ulConfig := &config.UnderlayNetworkList[i]
+					// This should take care of re-programming any ACL rules that
+					// use input match on uplinks.
+					doAppNetworkModifyUnderlayNetwork(
+						ctx, &appNetworkStatus, ulConfig, ulStatus, ipsets, true)
+				}
+			}
+			publishAppNetworkStatus(ctx, &appNetworkStatus)
+		}
 	case types.NetworkInstanceTypeMesh:
 		// XXX Add support for Mesh network instance
 	}
+	status.NeedIntfUpdate = false
+	publishNetworkInstanceStatus(ctx, status)
 	return nil
 }
