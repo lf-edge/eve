@@ -290,7 +290,8 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 		return err
 	}
 	deviceDiskSize := deviceDiskUsage.Total
-	allowedDeviceDiskSizeForApps := float64(deviceDiskSize) * 0.8
+	allowedDeviceDiskSizeForApps := float64(deviceDiskSize) *
+		float64(ctxPtr.globalConfig.Dom0MinDiskUsagePercent) * 0.01
 	if allowedDeviceDiskSizeForApps < float64(totalAppDiskSize) {
 		err := fmt.Errorf("Disk space not available for app - "+
 			"deviceDiskSize: %+v, "+
