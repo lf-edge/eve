@@ -1557,6 +1557,19 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	}
 }
 
+func parseU32ConfigItem(newGlobalConfigPtr *types.GlobalConfig, key string,
+	value string, varPtr *uint32) string {
+	i64, err := strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		errStr := fmt.Sprintf("bad int value %s for %s: %s\n",
+			value, key, err)
+		log.Errorf("parseU32ConfigItem: %s", errStr)
+		return errStr
+	}
+	*varPtr = uint32(i64)
+	return ""
+}
+
 var itemsPrevConfigHash []byte
 
 func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
@@ -1581,9 +1594,14 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	// Start with the defaults so that we revert to default when no data
 	newGlobalConfig := types.GlobalConfigDefaults
 
+	errStr := ""
 	for _, item := range items {
 		log.Infof("parseConfigItems key %s value %s\n",
 			item.Key, item.Value)
+		if errStr != "" {
+			newGlobalConfig.Errors = append(newGlobalConfig.Errors, errStr)
+			errStr = ""
+		}
 
 		key := item.Key
 		switch key {
@@ -1818,6 +1836,20 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 		case "debug.default.remote.loglevel":
 			newGlobalConfig.DefaultRemoteLogLevel = item.Value
 
+		case "storage.dom0.disk.minusage.percent":
+			errStr = parseU32ConfigItem(&newGlobalConfig, key,
+				item.Value, &newGlobalConfig.Dom0MinDiskUsagePercent)
+			// Max diskspace for dom0 is 80%.
+			if newGlobalConfig.Dom0MinDiskUsagePercent > 80 {
+				errStr = fmt.Sprintf("dom0MinDiskUsagePercent (%d) "+
+					"> maxAllowed (80). Setting it to 80.",
+					newGlobalConfig.Dom0MinDiskUsagePercent)
+				log.Errorf("parseConfigItems: %s", errStr)
+				newGlobalConfig.Dom0MinDiskUsagePercent = 80
+			}
+			log.Infof("Set storage.dom0MinDiskUsagePercent to %d",
+				newGlobalConfig.Dom0MinDiskUsagePercent)
+
 		default:
 			// Handle agentname items for loglevels
 			newString := item.Value
@@ -1852,9 +1884,9 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 						agentName, current)
 				}
 			} else {
-				log.Errorf("Unknown configItem %s value %s\n",
+				errStr = fmt.Sprintf("Unknown configItem %s value %s\n",
 					key, item.Value)
-				// XXX send back error? Need device error for that
+				log.Errorf("parseConfigItems: %s", errStr)
 			}
 		}
 	}
