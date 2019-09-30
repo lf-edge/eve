@@ -192,8 +192,8 @@ $(CONFIG_IMG): conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/a
 
 $(ROOTFS_IMG): images/rootfs.yml | $(DIST)
 	./tools/makerootfs.sh $< $(ROOTFS_FORMAT) $@
-	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
-          echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
+	@[ $$(wc -c < "$@") -gt $$(( 260 * 1024 * 1024 )) ] && \
+          echo "ERROR: size of $@ is greater than 260MB (bigger than allocated partition)" && exit 1 || :
 
 $(LIVE_IMG).img: $(LIVE_IMG).$(IMG_FORMAT) | $(DIST)
 	@rm -f $@ >/dev/null 2>&1 || :
