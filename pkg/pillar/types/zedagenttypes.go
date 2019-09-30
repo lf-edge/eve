@@ -218,8 +218,10 @@ type NodeAgentStatus struct {
 	NeedsReboot       bool
 	TestComplete      bool
 	RebootReason      string
+	ErrorStr          string
 }
 
+// Key :
 func (status NodeAgentStatus) Key() string {
 	return status.Name
 }
@@ -231,6 +233,7 @@ type ZedAgentStatus struct {
 	ConfigGetFailCount     int
 }
 
+// Key :
 func (status ZedAgentStatus) Key() string {
 	return status.Name
 }
