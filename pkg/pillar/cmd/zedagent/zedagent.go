@@ -1245,7 +1245,7 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	getconfigCtx := ctxArg.(*getconfigContext)
-	status := cast.CastNodeAgentStatus(statusArg)
+	status := cast.NodeAgentStatus(statusArg)
 	if status.Key() != key {
 		log.Errorf("handleNodeAgentStatusModify: invalid key %s\n", key)
 		return
@@ -1275,7 +1275,7 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	ctx := ctxArg.(*zedagentContext)
-	status := cast.CastNodeAgentStatus(statusArg)
+	status := cast.NodeAgentStatus(statusArg)
 	if status.Key() != key {
 		log.Errorf("handleNodeAgentStatusDelete: invalid key %s\n", key)
 		return

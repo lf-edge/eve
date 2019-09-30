@@ -51,7 +51,7 @@ func lookupZbootStatus(ctx *zedagentContext, key string) *types.ZbootStatus {
 		log.Infof("lookupZbootStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastZbootStatus(st)
+	status := cast.ZbootStatus(st)
 	if status.Key() != key {
 		log.Errorf("lookupZbootStatus(%s) got %s; ignored %+v\n",
 			key, status.Key(), status)
@@ -111,7 +111,7 @@ func getZbootPartitionStatus(ctx *zedagentContext, partName string) *types.Zboot
 		log.Errorf("getZbootPartitionStatus(%s) not found\n", partName)
 		return nil
 	}
-	status := cast.CastZbootStatus(st)
+	status := cast.ZbootStatus(st)
 	return &status
 }
 
@@ -119,7 +119,7 @@ func getZbootCurrentPartition(ctx *zedagentContext) string {
 	var partName string
 	items := getZbootPartitionStatusAll(ctx)
 	for _, st := range items {
-		status := cast.CastZbootStatus(st)
+		status := cast.ZbootStatus(st)
 		if status.CurrentPartition {
 			log.Debugf("getZbootCurrentPartition:%s\n", status.PartitionLabel)
 			return status.PartitionLabel
@@ -133,7 +133,7 @@ func getZbootOtherPartition(ctx *zedagentContext) string {
 	var partName string
 	items := getZbootPartitionStatusAll(ctx)
 	for _, st := range items {
-		status := cast.CastZbootStatus(st)
+		status := cast.ZbootStatus(st)
 		if !status.CurrentPartition {
 			log.Debugf("getZbootOtherPartition:%s\n", status.PartitionLabel)
 			return status.PartitionLabel

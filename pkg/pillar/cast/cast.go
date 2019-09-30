@@ -401,8 +401,8 @@ func CastUuidToNum(in interface{}) types.UuidToNum {
 	return output
 }
 
-// CastZedAgentStatus : casts interface to ZbootConfig
-func CastZbootConfig(in interface{}) types.ZbootConfig {
+// ZedAgentConfig : casts interface to ZbootConfig
+func ZbootConfig(in interface{}) types.ZbootConfig {
 	b, err := json.Marshal(in)
 	if err != nil {
 		log.Fatal(err, "json Marshal in ZbootConfig")
@@ -414,7 +414,8 @@ func CastZbootConfig(in interface{}) types.ZbootConfig {
 	return output
 }
 
-func CastZbootStatus(in interface{}) types.ZbootStatus {
+// ZedAgentStatus : casts interface to ZbootStatus
+func ZbootStatus(in interface{}) types.ZbootStatus {
 	b, err := json.Marshal(in)
 	if err != nil {
 		log.Fatal(err, "json Marshal in ZbootStatus")
@@ -466,8 +467,8 @@ func CastPhysicalIOAdapterList(in interface{}) types.PhysicalIOAdapterList { //r
 	return output
 }
 
-// CastZedAgentStatus : casts interface to ZedAgentStatus
-func CastZedAgentStatus(in interface{}) types.ZedAgentStatus {
+// ZedAgentStatus : casts interface to ZedAgentStatus
+func ZedAgentStatus(in interface{}) types.ZedAgentStatus {
 	b, err := json.Marshal(in)
 	if err != nil {
 		log.Fatal(err, "json Marshal in CastZedAgentStatus")
@@ -480,8 +481,8 @@ func CastZedAgentStatus(in interface{}) types.ZedAgentStatus {
 	return output
 }
 
-// CastNodeAgentStatus : casts interface to NodeAgentStatus
-func CastNodeAgentStatus(in interface{}) types.NodeAgentStatus {
+// NodeAgentStatus : casts interface to NodeAgentStatus
+func NodeAgentStatus(in interface{}) types.NodeAgentStatus {
 	b, err := json.Marshal(in)
 	if err != nil {
 		log.Fatal(err, "json Marshal in CastNodeAgentStatus")
