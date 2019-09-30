@@ -15,6 +15,18 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+func getDefaultRouteTable() int {
+	return syscall.RT_TABLE_MAIN
+}
+
+func getRouteUpdateTypeDELROUTE() uint16 {
+	return syscall.RTM_DELROUTE
+}
+
+func getRouteUpdateTypeNEWROUTE() uint16 {
+	return syscall.RTM_NEWROUTE
+}
+
 // LinkChange handles a link change. Returns ifindex for changed interface
 func LinkChange(change netlink.LinkUpdate) (bool, int) {
 

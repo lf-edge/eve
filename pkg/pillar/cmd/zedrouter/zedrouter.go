@@ -334,8 +334,6 @@ func Run() {
 	flowStatTimer := flextimer.NewRangeTicker(time.Duration(fmin),
 		time.Duration(fmax))
 
-	setFreeMgmtPorts(types.GetMgmtPortsFree(*zedrouterCtx.deviceNetworkStatus, 0))
-
 	zedrouterCtx.ready = true
 	log.Infof("zedrouterCtx.ready\n")
 
@@ -527,7 +525,6 @@ func maybeHandleDNS(ctx *zedrouterContext) {
 	}
 	updateLispConfiglets(ctx, ctx.legacyDataPlane)
 
-	setFreeMgmtPorts(types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0))
 	// XXX do a NatInactivate/NatActivate if management ports changed?
 }
 

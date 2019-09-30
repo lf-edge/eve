@@ -688,7 +688,8 @@ func tryLookupIP(ctx *diagContext, ifname string) bool {
 			d := net.Dialer{LocalAddr: &localUDPAddr}
 			return d.Dial(network, address)
 		}
-		r := net.Resolver{Dial: resolverDial}
+		r := net.Resolver{Dial: resolverDial, PreferGo: true,
+			StrictErrors: false}
 		ips, err := r.LookupIPAddr(context.Background(), ctx.serverName)
 		if err != nil {
 			fmt.Printf("ERROR: %s: DNS lookup of %s failed: %s\n",

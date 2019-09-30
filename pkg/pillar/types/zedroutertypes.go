@@ -431,10 +431,20 @@ func CountLocalIPv4AddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 	return count
 }
 
-// CountDNSServers returns the number of DNS servers
-func CountDNSServers(globalStatus DeviceNetworkStatus) int {
+// CountDNSServers returns the number of DNS servers; for port if set
+func CountDNSServers(globalStatus DeviceNetworkStatus, port string) int {
+
+	var ifname string
+	if port != "" {
+		ifname = AdapterToIfName(&globalStatus, port)
+	} else {
+		ifname = port
+	}
 	count := 0
 	for _, us := range globalStatus.Ports {
+		if us.IfName != ifname && ifname != "" {
+			continue
+		}
 		count += len(us.DnsServers)
 	}
 	return count

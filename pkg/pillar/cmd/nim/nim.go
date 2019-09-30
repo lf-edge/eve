@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"reflect"
 	"sort"
@@ -355,7 +356,7 @@ func Run() {
 				// XXX Need to discard all cached information?
 				addrChanges = devicenetwork.AddrChangeInit()
 			} else {
-				ch, ifindex := devicenetwork.AddrChange(change)
+				ch, ifindex := devicenetwork.AddrChange(nimCtx.DeviceNetworkContext, change)
 				if ch {
 					handleInterfaceChange(&nimCtx, ifindex,
 						"AddrChange", true)
@@ -385,7 +386,7 @@ func Run() {
 				log.Errorf("routeChanges closed\n")
 				routeChanges = devicenetwork.RouteChangeInit()
 			} else {
-				ch, ifindex := devicenetwork.RouteChange(change)
+				ch, ifindex := devicenetwork.RouteChange(nimCtx.DeviceNetworkContext, change)
 				if ch {
 					handleInterfaceChange(&nimCtx, ifindex,
 						"RouteChange", false)
@@ -504,7 +505,7 @@ func Run() {
 				addrChanges = devicenetwork.AddrChangeInit()
 				// XXX Need to discard all cached information?
 			} else {
-				ch, ifindex := devicenetwork.AddrChange(change)
+				ch, ifindex := devicenetwork.AddrChange(nimCtx.DeviceNetworkContext, change)
 				if ch {
 					handleInterfaceChange(&nimCtx, ifindex,
 						"AddrChange", true)
@@ -534,7 +535,7 @@ func Run() {
 				log.Errorf("routeChanges closed\n")
 				routeChanges = devicenetwork.RouteChangeInit()
 			} else {
-				ch, ifindex := devicenetwork.RouteChange(change)
+				ch, ifindex := devicenetwork.RouteChange(nimCtx.DeviceNetworkContext, change)
 				if ch {
 					handleInterfaceChange(&nimCtx, ifindex,
 						"RouteChange", false)
@@ -669,6 +670,15 @@ func handleInterfaceChange(ctx *nimContext, ifindex int, logstr string, force bo
 	} else {
 		log.Infof("%s(%s) changed from %v to %v",
 			logstr, ifname, oldAddrs, addrs)
+		for _, a := range oldAddrs {
+			subnet := net.IPNet{IP: a}
+			devicenetwork.DelSourceRule(ifindex, subnet, false)
+		}
+		for _, a := range addrs {
+			subnet := net.IPNet{IP: a}
+			devicenetwork.AddSourceRule(ifindex, subnet, false)
+		}
+
 		devicenetwork.HandleAddressChange(&ctx.DeviceNetworkContext)
 		// XXX should we trigger restarting testing?
 	}

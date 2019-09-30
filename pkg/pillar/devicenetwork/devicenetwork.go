@@ -236,6 +236,9 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 			ai.LastGeoTimestamp = oai.LastGeoTimestamp
 		}
 	}
+	// Need to write resolv.conf for Geo
+	UpdateResolvConf(globalStatus)
+	updatePBR(globalStatus)
 	// Immediate check
 	UpdateDeviceNetworkGeo(time.Second, &globalStatus)
 	log.Infof("MakeDeviceNetworkStatus() DONE\n")
@@ -271,7 +274,7 @@ func CheckDNSUpdate(ctx *DeviceNetworkContext) {
 		if !reflect.DeepEqual(ctx.Pending.PendDNS, dnStatus) {
 			log.Infof("CheckDNSUpdate pending: change from %v to %v\n",
 				ctx.Pending.PendDNS, dnStatus)
-			pingTestDNS := checkIfAllDNSPortsHaveIPAddrs(dnStatus)
+			pingTestDNS := checkIfAllPortsHaveIPandDNS(dnStatus)
 			if pingTestDNS {
 				// We have a suitable candiate for running our cloud ping test.
 				log.Infof("CheckDNSUpdate: Running cloud ping test now, " +
@@ -362,6 +365,10 @@ func UpdateDeviceNetworkGeo(timelimit time.Duration, globalStatus *types.DeviceN
 				continue
 			}
 
+			numDNSServers := types.CountDNSServers(*globalStatus, u.IfName)
+			if numDNSServers == 0 {
+				continue
+			}
 			timePassed := time.Since(ai.LastGeoTimestamp)
 			if timePassed < timelimit {
 				continue
