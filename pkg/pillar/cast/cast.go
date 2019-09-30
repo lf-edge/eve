@@ -402,7 +402,7 @@ func CastUuidToNum(in interface{}) types.UuidToNum {
 }
 
 // ZbootConfig converts/casts from an interface to a ZbootConfig
-func ZbootConfig(in interface{}) types.ZbootConfig {
+func CastZbootConfig(in interface{}) types.ZbootConfig {
 	b, err := json.Marshal(in)
 	if err != nil {
 		log.Fatal(err, "json Marshal in ZbootConfig")
@@ -462,6 +462,32 @@ func CastPhysicalIOAdapterList(in interface{}) types.PhysicalIOAdapterList { //r
 	var output types.PhysicalIOAdapterList
 	if err := json.Unmarshal(b, &output); err != nil {
 		log.Fatalf("json Unmarshal in CastPhysicalIOAdapterList, %v", err)
+	}
+	return output
+}
+
+func CastZedAgentStatus(in interface{}) types.ZedAgentStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastZedAgentStatus")
+	}
+	var output types.ZedAgentStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		// File might be corrupted in /var/tmp/zededa; don't fatal
+		log.Error(err, "json Unmarshal in CastZedAgentStatus")
+	}
+	return output
+}
+
+func CastNodeAgentStatus(in interface{}) types.NodeAgentStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastNodeAgentStatus")
+	}
+	var output types.NodeAgentStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		// File might be corrupted in /var/tmp/zededa; don't fatal
+		log.Error(err, "json Unmarshal in CastNodeAgentStatus")
 	}
 	return output
 }

@@ -48,6 +48,9 @@ type getconfigContext struct {
 	ledManagerCount             int              // Current count
 	startTime                   time.Time
 	lastReceivedConfigFromCloud time.Time
+	configGetFailCount          int
+	configReceived              bool
+	updateInprogress            bool
 	readSavedConfig             bool
 	configTickerHandle          interface{}
 	metricsTickerHandle         interface{}
@@ -56,6 +59,8 @@ type getconfigContext struct {
 	devicePortConfig            types.DevicePortConfig
 	pubNetworkXObjectConfig     *pubsub.Publication
 	subAppInstanceStatus        *pubsub.Subscription
+	subNodeAgentStatus          *pubsub.Subscription
+	pubZedAgentStatus           *pubsub.Publication
 	pubAppInstanceConfig        *pubsub.Publication
 	pubAppNetworkConfig         *pubsub.Publication
 	pubCertObjConfig            *pubsub.Publication
@@ -117,15 +122,15 @@ func handleConfigInit() {
 
 // Run a periodic fetch of the config
 func configTimerTask(handleChannel chan interface{},
-	getconfigCtx *getconfigContext, updateInprogress bool) {
+	getconfigCtx *getconfigContext) {
 
 	configUrl := serverNameAndPort + "/" + configApi
 	getconfigCtx.startTime = time.Now()
 	getconfigCtx.lastReceivedConfigFromCloud = getconfigCtx.startTime
 	iteration := 0
-	ctx := getconfigCtx.zedagentCtx
 	getconfigCtx.rebootFlag = getLatestConfig(configUrl, iteration,
-		updateInprogress, getconfigCtx)
+		getconfigCtx)
+	publishZedAgentStatus(getconfigCtx)
 
 	interval := time.Duration(globalConfig.ConfigInterval) * time.Second
 	max := float64(interval)
@@ -143,18 +148,15 @@ func configTimerTask(handleChannel chan interface{},
 		case <-ticker.C:
 			start := agentlog.StartTime()
 			iteration += 1
-			// check whether the device is still in progress state
-			// once activated, it does not go back to the inprogress
-			// state
-			if updateInprogress {
-				updateInprogress = isBaseOsCurrentPartitionStateInProgress(ctx)
-			}
-			rebootFlag := getLatestConfig(configUrl, iteration,
-				updateInprogress, getconfigCtx)
+			rebootFlag := getLatestConfig(configUrl, iteration, getconfigCtx)
 			getconfigCtx.rebootFlag = getconfigCtx.rebootFlag || rebootFlag
 			agentlog.CheckMaxTime(agentName+"config", start)
+			publishZedAgentStatus(getconfigCtx)
 
 		case <-stillRunning.C:
+			if getconfigCtx.rebootFlag {
+				log.Infof("reboot flag set")
+			}
 		}
 		agentlog.StillRunning(agentName + "config")
 	}
@@ -188,49 +190,21 @@ func updateConfigTimer(tickerHandle interface{}) {
 // until one succeeds in communicating with the cloud.
 // We use the iteration argument to start at a different point each time.
 // Returns a rebootFlag
-func getLatestConfig(url string, iteration int, updateInprogress bool,
+func getLatestConfig(url string, iteration int,
 	getconfigCtx *getconfigContext) bool {
 
-	log.Debugf("getLatestConfig(%s, %d, %v)\n", url, iteration,
-		updateInprogress)
-
-	// Did we exceed the time limits?
-	timePassed := time.Since(getconfigCtx.lastReceivedConfigFromCloud)
-
-	resetLimit := time.Second * time.Duration(globalConfig.ResetIfCloudGoneTime)
-	if timePassed > resetLimit {
-		errStr := fmt.Sprintf("Exceeded outage for cloud connectivity %d by %d seconds; rebooting\n",
-			resetLimit/time.Second,
-			(timePassed-resetLimit)/time.Second)
-		log.Errorf(errStr)
-		agentlog.RebootReason(errStr)
-		shutdownAppsGlobal(getconfigCtx.zedagentCtx)
-		execReboot(true)
-		return true
-	}
-	if updateInprogress {
-		fallbackLimit := time.Second * time.Duration(globalConfig.FallbackIfCloudGoneTime)
-		if timePassed > fallbackLimit {
-			errStr := fmt.Sprintf("Exceeded fallback outage for cloud connectivity %d by %d seconds; rebooting\n",
-				fallbackLimit/time.Second,
-				(timePassed-fallbackLimit)/time.Second)
-			log.Errorf(errStr)
-			agentlog.RebootReason(errStr)
-			shutdownAppsGlobal(getconfigCtx.zedagentCtx)
-			execReboot(true)
-			return true
-		}
-	}
+	log.Debugf("getLatestConfig(%s, %d)\n", url, iteration)
 
 	const return400 = false
 	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration, return400)
 	if err != nil {
 		newCount := 2
+		getconfigCtx.configGetFailCount++
 		if rtf {
 			log.Errorf("getLatestConfig remoteTemporaryFailure: %s", err)
 			newCount = 3 // Almost connected to controller!
 			// Don't treat as upgrade failure
-			if updateInprogress {
+			if getconfigCtx.updateInprogress {
 				log.Warnf("remoteTemporaryFailure don't fail update")
 				getconfigCtx.startTime = time.Now()
 			}
@@ -245,9 +219,8 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 		// If we didn't yet get a config, then look for a file
 		// XXX should we try a few times?
 		// XXX different policy if updateInProgress? No fallback for now
-		if !updateInprogress &&
-			!getconfigCtx.readSavedConfig &&
-			getconfigCtx.lastReceivedConfigFromCloud == getconfigCtx.startTime {
+		if !getconfigCtx.updateInprogress &&
+			!getconfigCtx.readSavedConfig && !getconfigCtx.configReceived {
 
 			config, err := readSavedProtoMessage(checkpointDirname+"/lastconfig", false)
 			if err != nil {
@@ -262,28 +235,6 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 			}
 		}
 		return false
-	}
-	// now cloud connectivity is good, consider marking partition state as
-	// active if it was inprogress
-	// XXX down the road we want more diagnostics and validation
-	// before we do this.
-	if updateInprogress {
-		// Wait for a bit to detect an agent crash. Should run for
-		// at least N minutes to make sure we don't hit a watchdog.
-		timePassed := time.Since(getconfigCtx.startTime)
-		successLimit := time.Second *
-			time.Duration(globalConfig.MintimeUpdateSuccess)
-		ctx := getconfigCtx.zedagentCtx
-		curPart := getZbootCurrentPartition(ctx)
-		if timePassed < successLimit {
-			log.Infof("getLatestConfig, curPart %s inprogress waiting for %d seconds\n", curPart, (successLimit-timePassed)/time.Second)
-			ctx.remainingTestTime = successLimit - timePassed
-		} else {
-			initiateBaseOsZedCloudTestComplete(ctx)
-			ctx.remainingTestTime = 0
-		}
-		// Send updated remainingTestTime to zedcloud
-		triggerPublishDevInfo(ctx)
 	}
 
 	if err := validateConfigMessage(url, resp); err != nil {
@@ -309,6 +260,11 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 
 	getconfigCtx.lastReceivedConfigFromCloud = time.Now()
 	writeReceivedProtoMessage(contents)
+
+	if !getconfigCtx.configReceived {
+		getconfigCtx.configReceived = true
+	}
+	getconfigCtx.configGetFailCount = 0
 
 	if !changed {
 		log.Debugf("Configuration from zedcloud is unchanged\n")
@@ -462,4 +418,14 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 
 	// add new BaseOS/App instances; returns rebootFlag
 	return parseConfig(config, getconfigCtx, usingSaved)
+}
+
+func publishZedAgentStatus(getconfigCtx *getconfigContext) {
+	status := types.ZedAgentStatus{
+		Name:                   agentName,
+		LastConfigReceivedTime: getconfigCtx.lastReceivedConfigFromCloud,
+		ConfigGetFailCount:     getconfigCtx.configGetFailCount,
+	}
+	pub := getconfigCtx.pubZedAgentStatus
+	pub.Publish(agentName, status)
 }
