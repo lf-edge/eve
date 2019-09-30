@@ -207,3 +207,30 @@ type DatastoreConfig struct {
 func (config DatastoreConfig) Key() string {
 	return config.UUID.String()
 }
+
+// NodeAgentStatus :
+type NodeAgentStatus struct {
+	Name              string
+	CurPart           string
+	TestInprogress    bool
+	UpdateInprogress  bool
+	RemainingTestTime time.Duration
+	NeedsReboot       bool
+	TestComplete      bool
+	RebootReason      string
+}
+
+func (status NodeAgentStatus) Key() string {
+	return status.Name
+}
+
+// ZedAgentStatus :
+type ZedAgentStatus struct {
+	Name                   string
+	LastConfigReceivedTime time.Time
+	ConfigGetFailCount     int
+}
+
+func (status ZedAgentStatus) Key() string {
+	return status.Name
+}

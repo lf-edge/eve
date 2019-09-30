@@ -16,7 +16,7 @@ GCDIR=$PERSISTDIR/config/GlobalConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
-AGENTS0="logmanager ledmanager nim"
+AGENTS0="logmanager ledmanager nim nodeagent"
 AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr baseosmgr wstunnelclient"
 AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
@@ -88,6 +88,9 @@ cp $TMPDIR/watchdogbase.conf $TMPDIR/watchdogled.conf
 cat >>$TMPDIR/watchdogled.conf <<EOF
 pidfile = /var/run/ledmanager.pid
 file = /var/run/ledmanager.touch
+change = 300
+pidfile = /var/run/nodeagent.pid
+file = /var/run/nodeagent.touch
 change = 300
 EOF
 cp $TMPDIR/watchdogled.conf $TMPDIR/watchdognim.conf
@@ -330,6 +333,9 @@ if ! pgrep ledmanager >/dev/null; then
     echo "$(date -Ins -u) Starting ledmanager"
     ledmanager &
 fi
+sleep 10
+echo "$(date -Ins -u) Starting nodeagent"
+$BINDIR/nodeagent -c $CURPART &
 
 # Restart watchdog - just for ledmanager so far
 killwait_watchdog
