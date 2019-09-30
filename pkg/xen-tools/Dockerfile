@@ -43,6 +43,9 @@ RUN ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable
 RUN make && make dist
 RUN dist/install.sh /out
 
+# Filter out a few things that we don't currently need
+RUN rm /out/usr/share/qemu-xen/qemu/edk2-*
+
 FROM scratch
 ENTRYPOINT []
 CMD []
