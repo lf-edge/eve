@@ -84,6 +84,9 @@ COPY --from=rkt-build /go/rkt/build-rkt-1.26.0/target/bin/rkt /usr/sbin/rkt
 COPY --from=rkt-stage1-build /go/stage1-xen-master/stage1-xen.aci /usr/sbin/stage1-xen.aci
 COPY --from=fscrypt-build /fscrypt /opt/zededa/bin/fscrypt
 
+# We need to keep a slim profile, which means removing things we don't need
+RUN rm /usr/lib/libxen*.a /usr/lib/libxl*.a
+
 # And now a few local tweaks
 COPY rootfs/ /
 # logrotate requires restricted permissions
