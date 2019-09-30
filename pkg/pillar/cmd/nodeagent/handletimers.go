@@ -101,12 +101,30 @@ func resetTestStartTime(ctx *nodeagentContext) {
 	ctx.testInprogress = false
 	ctx.remainingTestTime = 0
 	ctx.testInprogress = false
-	if ctx.configGetFail {
-		ctx.configGetFailCount = 0
-		ctx.configGetFail = false
+}
+
+func setConfigGetFailState(ctx *nodeagentContext) {
+	if !ctx.configGetFail {
+		ctx.configGetFail = true
 	}
 }
 
+func resetConfigGetFailState(ctx *nodeagentContext) {
+	if ctx.configGetFail {
+		ctx.configGetFail = false
+		ctx.configGetFailCount = 0
+	}
+}
+
+func executeConfigGetFailState(ctx *nodeagentContext) {
+	if !ctx.configGetFail {
+		return
+	}
+	if ctx.configGetFailCount > maxConfigGetFailCount {
+		resetConfigGetFailState(ctx)
+		resetTestStartTime(ctx)
+	}
+}
 func checkUpgradeValidationTestTimeExpiry(ctx *nodeagentContext) bool {
 	if !ctx.testInprogress {
 		return false
@@ -132,9 +150,7 @@ func handleConfigGetFail(ctx *nodeagentContext) {
 		ctx.configGetFail = true
 	}
 	ctx.configGetFailCount++
-	if ctx.configGetFailCount >= maxConfigGetFailCount {
-		resetTestStartTime(ctx)
-	}
+	executeConfigGetFailState(ctx)
 }
 
 func updateLastConfigReceivedTime(ctx *nodeagentContext,
@@ -146,6 +162,8 @@ func updateLastConfigReceivedTime(ctx *nodeagentContext,
 		handleConfigGetFail(ctx)
 		return
 	}
+	// config get is successful
+	resetConfigGetFailState(ctx)
 	setTestStartTime(ctx)
 	ctx.lastConfigReceivedTime = status.LastConfigReceivedTime
 	if checkUpgradeValidationTestTimeExpiry(ctx) {
