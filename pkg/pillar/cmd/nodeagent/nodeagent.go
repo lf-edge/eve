@@ -40,10 +40,10 @@ const (
 	maxConfigGetFailCount = 5
 )
 
-// Set from Makefile
+// Version : module version
 var Version = "No version specified"
 var globalConfig = types.GlobalConfigDefaults
-var rebootDelay int = 30 // take a 30 second delay
+var rebootDelay = 30 // take a 30 second delay
 
 // XXX globals filled in by subscription handlers and read by handlemetrics
 // XXX could alternatively access sub object when adding them.
@@ -80,6 +80,7 @@ type nodeagentContext struct {
 var debug = false
 var debugOverride bool // From command line arg
 
+// Run : nodeagent run entry function
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")

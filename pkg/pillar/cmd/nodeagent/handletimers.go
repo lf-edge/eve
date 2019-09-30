@@ -131,7 +131,7 @@ func handleConfigGetFail(ctx *nodeagentContext) {
 	if !ctx.configGetFail {
 		ctx.configGetFail = true
 	}
-	ctx.configGetFailCount += 1
+	ctx.configGetFailCount++
 	if ctx.configGetFailCount >= maxConfigGetFailCount {
 		resetTestStartTime(ctx)
 	}

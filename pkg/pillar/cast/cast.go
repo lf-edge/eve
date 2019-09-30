@@ -401,7 +401,7 @@ func CastUuidToNum(in interface{}) types.UuidToNum {
 	return output
 }
 
-// ZbootConfig converts/casts from an interface to a ZbootConfig
+// CastZedAgentStatus : casts interface to ZbootConfig
 func CastZbootConfig(in interface{}) types.ZbootConfig {
 	b, err := json.Marshal(in)
 	if err != nil {
@@ -466,6 +466,7 @@ func CastPhysicalIOAdapterList(in interface{}) types.PhysicalIOAdapterList { //r
 	return output
 }
 
+// CastZedAgentStatus : casts interface to ZedAgentStatus
 func CastZedAgentStatus(in interface{}) types.ZedAgentStatus {
 	b, err := json.Marshal(in)
 	if err != nil {
@@ -479,6 +480,7 @@ func CastZedAgentStatus(in interface{}) types.ZedAgentStatus {
 	return output
 }
 
+// CastNodeAgentStatus : casts interface to NodeAgentStatus
 func CastNodeAgentStatus(in interface{}) types.NodeAgentStatus {
 	b, err := json.Marshal(in)
 	if err != nil {
