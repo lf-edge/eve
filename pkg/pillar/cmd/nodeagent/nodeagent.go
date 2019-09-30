@@ -423,9 +423,7 @@ func handleLedBlinkConfigModify(ctxArg interface{},
 			return
 		}
 		if lastLedCounter == 4 {
-			if !ctx.configGetFail {
-				ctx.configGetFail = true
-			}
+			setConfigGetFailState(ctx)
 		} else {
 			resetTestStartTime(ctx)
 		}
@@ -443,18 +441,14 @@ func handleLedBlinkConfigModify(ctxArg interface{},
 		// temporary connectivity/config
 		// validation failure
 		if lastLedCounter == 4 {
-			if !ctx.configGetFail {
-				ctx.configGetFail = true
-			}
+			setConfigGetFailState(ctx)
 		} else {
 			resetTestStartTime(ctx)
 		}
 
 	case 4:
 		// cloud connectivity is healthy
-		if ctx.configGetFail {
-			resetTestStartTime(ctx)
-		}
+		resetConfigGetFailState(ctx)
 		setTestStartTime(ctx)
 	}
 	log.Infof("handleLedBlinkConfigModify done for %s\n", key)
