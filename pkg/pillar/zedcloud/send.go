@@ -214,6 +214,17 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		log.Debugln(errStr)
 		return nil, nil, false, errors.New(errStr)
 	}
+	numDNSServers := types.CountDNSServers(*ctx.DeviceNetworkStatus, intf)
+	if numDNSServers == 0 {
+		if ctx.FailureFunc != nil {
+			ctx.FailureFunc(intf, reqUrl, 0, 0)
+		}
+		errStr := fmt.Sprintf("No DNS servers to connect to %s using intf %s",
+			reqUrl, intf)
+		log.Debugln(errStr)
+		return nil, nil, false, errors.New(errStr)
+	}
+
 	// Get the transport header with proxy information filled
 	proxyUrl, err := LookupProxy(ctx.DeviceNetworkStatus, intf, reqUrl)
 	var transport *http.Transport
@@ -256,7 +267,8 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 			d := net.Dialer{LocalAddr: &localUDPAddr}
 			return d.Dial(network, address)
 		}
-		r := net.Resolver{Dial: resolverDial}
+		r := net.Resolver{Dial: resolverDial, PreferGo: true,
+			StrictErrors: false}
 		d := net.Dialer{Resolver: &r, LocalAddr: &localTCPAddr}
 		transport.Dial = d.Dial
 
