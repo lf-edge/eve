@@ -45,13 +45,6 @@ var Version = "No version specified"
 var globalConfig = types.GlobalConfigDefaults
 var rebootDelay = 30 // take a 30 second delay
 
-// XXX globals filled in by subscription handlers and read by handlemetrics
-// XXX could alternatively access sub object when adding them.
-var clientMetrics interface{}
-var logmanagerMetrics interface{}
-var downloaderMetrics interface{}
-var networkMetrics types.NetworkMetrics
-
 type nodeagentContext struct {
 	GCInitialized          bool // Received initial GlobalConfig
 	subGlobalConfig        *pubsub.Subscription
@@ -213,7 +206,6 @@ func Run() {
 			subGlobalConfig.ProcessChange(change)
 
 		case change := <-subLedBlinkConfig.C:
-			log.Infof("Received LedBlinkConfig Event")
 			subLedBlinkConfig.ProcessChange(change)
 
 		case <-stillRunning.C:
@@ -460,8 +452,7 @@ func handleLedBlinkConfigModify(ctxArg interface{},
 
 	case 4:
 		// cloud connectivity is healthy
-		if ctx.configGetFail &&
-			ctx.configGetFailCount >= maxConfigGetFailCount {
+		if ctx.configGetFail {
 			resetTestStartTime(ctx)
 		}
 		setTestStartTime(ctx)

@@ -966,9 +966,9 @@ func baseOsSetPartitionInfoInStatus(ctx *baseOsMgrContext, status *types.BaseOsS
 	if partStatus != nil {
 		log.Infof("baseOsSetPartitionInfoInStatus(%s) %s found %+v\n",
 			status.Key(), partName, partStatus)
-		status.PartitionLabel = strings.TrimSpace(partName)
-		status.PartitionState = strings.TrimSpace(partStatus.PartitionState)
-		status.PartitionDevice = strings.TrimSpace(partStatus.PartitionDevname)
+		status.PartitionLabel = partName
+		status.PartitionState = partStatus.PartitionState
+		status.PartitionDevice = partStatus.PartitionDevname
 
 		// List has only one element but ...
 		for idx := range status.StorageStatusList {
