@@ -334,7 +334,7 @@ func handleGlobalConfigDelete(ctxArg interface{},
 func handleZedAgentStatusModify(ctxArg interface{},
 	key string, statusArg interface{}) {
 	ctx := ctxArg.(*nodeagentContext)
-	status := cast.CastZedAgentStatus(statusArg)
+	status := cast.ZedAgentStatus(statusArg)
 	if status.Key() != key {
 		log.Errorf("zedagentStatus key mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)
@@ -371,7 +371,7 @@ func handleBaseOsStatusDelete(ctxArg interface{},
 func handleZbootStatusModify(ctxArg interface{},
 	key string, statusArg interface{}) {
 	ctx := ctxArg.(*nodeagentContext)
-	status := cast.CastZbootStatus(statusArg)
+	status := cast.ZbootStatus(statusArg)
 	if status.Key() != key {
 		log.Errorf("zbootStatus key mismatch %s vs %s; ignored %+v\n",
 			key, status.Key(), status)

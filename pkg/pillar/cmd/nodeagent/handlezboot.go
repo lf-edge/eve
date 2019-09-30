@@ -18,7 +18,7 @@ import (
 func lookupZbootStatus(ctx *nodeagentContext, key string) *types.ZbootStatus {
 	sub := ctx.subZbootStatus
 	st, _ := sub.Get(key)
-	status := cast.CastZbootStatus(st)
+	status := cast.ZbootStatus(st)
 	if status.PartitionLabel == key {
 		return &status
 	}
@@ -34,7 +34,7 @@ func getZbootStatusAll(ctx *nodeagentContext) []types.ZbootStatus {
 		return statuslist
 	}
 	for _, st := range items {
-		status := cast.CastZbootStatus(st)
+		status := cast.ZbootStatus(st)
 		statuslist = append(statuslist, status)
 	}
 	return statuslist
@@ -44,7 +44,7 @@ func lookupZbootConfig(ctx *nodeagentContext, partName string) *types.ZbootConfi
 	partName = strings.TrimSpace(partName)
 	pub := ctx.pubZbootConfig
 	cg, _ := pub.Get(partName)
-	config := cast.CastZbootConfig(cg)
+	config := cast.ZbootConfig(cg)
 	if config.PartitionLabel == partName {
 		return &config
 	}
@@ -60,7 +60,7 @@ func getZbootConfigAll(ctx *nodeagentContext) []types.ZbootConfig {
 		return configlist
 	}
 	for _, cg := range items {
-		config := cast.CastZbootConfig(cg)
+		config := cast.ZbootConfig(cg)
 		configlist = append(configlist, config)
 	}
 	return configlist
