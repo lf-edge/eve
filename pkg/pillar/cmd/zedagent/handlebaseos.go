@@ -10,7 +10,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 	"strings"
-	"time"
 )
 
 func lookupBaseOsConfig(ctx *getconfigContext, key string) *types.BaseOsConfig {
@@ -45,23 +44,6 @@ func lookupBaseOsStatus(ctx *zedagentContext, key string) *types.BaseOsStatus {
 	return &status
 }
 
-func lookupZbootConfig(ctx *zedagentContext, key string) *types.ZbootConfig {
-
-	pub := ctx.pubZbootConfig
-	c, _ := pub.Get(key)
-	if c == nil {
-		log.Infof("lookupZbootConfig(%s) not found\n", key)
-		return nil
-	}
-	config := cast.ZbootConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupZbootConfig(%s) got %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
-	return &config
-}
-
 func lookupZbootStatus(ctx *zedagentContext, key string) *types.ZbootStatus {
 	sub := ctx.subZbootStatus
 	st, _ := sub.Get(key)
@@ -78,74 +60,25 @@ func lookupZbootStatus(ctx *zedagentContext, key string) *types.ZbootStatus {
 	return &status
 }
 
-func publishZbootConfig(ctx *zedagentContext, config *types.ZbootConfig) {
-
-	key := config.Key()
-	log.Debugf("publishZbootConfig key %s TestComplete %v\n",
-		key, config.TestComplete)
-	pub := ctx.pubZbootConfig
-	pub.Publish(key, config)
-}
-
-// mark the zedcloud health/connectivity test complete flag
-// for baseosmgr to pick up and complete the partition activation
-func initiateBaseOsZedCloudTestComplete(ctx *zedagentContext) {
-
-	log.Infof("initiateBaseOsZedCloudTestComplete():\n")
-	partitionNames := []string{"IMGA", "IMGB"}
-	for _, key := range partitionNames {
-		config := lookupZbootConfig(ctx, key)
-		if config == nil {
-			config = &types.ZbootConfig{PartitionLabel: key}
-		}
-		if config.TestComplete {
-			continue
-		}
-		status := lookupZbootStatus(ctx, key)
-		if status != nil && status.PartitionLabel != "" {
-			if isBaseOsCurrentPartition(ctx, status.PartitionLabel) {
-				log.Infof("initiateBaseOsZedCloudTestComplete(%s): done\n", key)
-				config.TestComplete = true
-				publishZbootConfig(ctx, config)
-			}
-		}
-	}
-}
-
-func doZbootTestComplete(ctx *zedagentContext, status types.ZbootStatus) {
-	key := status.Key()
-	if !status.TestComplete {
-		log.Infof("doZbootTestComplete(%s): not TestComplete\n",
-			key)
-	} else {
-		log.Infof("doZbootTestComplete(%s):\n", key)
-		config := lookupZbootConfig(ctx, key)
-		if config == nil {
-			config = &types.ZbootConfig{PartitionLabel: key}
-		}
-		config.TestComplete = false
-		publishZbootConfig(ctx, config)
-		log.Infof("doZbootTestComplete(%s): done\n", key)
-
-		if ctx.rebootCmdDeferred {
-			log.Infof("TestComplete and deferred reboot\n")
-			ctx.rebootCmdDeferred = false
-			duration := time.Second * time.Duration(rebootDelay)
-			rebootTimer = time.NewTimer(duration)
-			go handleReboot(ctx.getconfigCtx)
-		}
-	}
-}
-
 // on baseos install and activate set, the device reboot is initiated
-func doBaseOsDeviceReboot(ctx *zedagentContext, status types.BaseOsStatus) {
-	// if restart flag is set,
-	// initiate the shutdown process
-	if status.Reboot {
-		log.Infof("doBaseOsDeviceReboot(%s)", status.Key())
-		shutdownAppsGlobal(ctx)
-		startExecReboot()
+func initiateDeviceReboot(ctx *zedagentContext, infoStr string) {
+	log.Infof("handleDeviceReboot(%s)", infoStr)
+	if ctx.deviceReboot {
+		return
 	}
+	// reboot flag is set, initiate the shutdown process
+	log.Infof("initiateDeviceReboot(%s)", infoStr)
+	ctx.deviceReboot = true
+	ctx.rebootReason = infoStr
+}
+
+func doDeviceReboot(ctx *zedagentContext) {
+	if !ctx.deviceReboot {
+		return
+	}
+	log.Infof("Executing device reboot (%s)", ctx.rebootReason)
+	shutdownAppsGlobal(ctx)
+	startExecReboot(ctx.rebootReason)
 }
 
 // utility routines to access baseos partition status

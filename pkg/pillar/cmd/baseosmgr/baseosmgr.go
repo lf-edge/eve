@@ -539,8 +539,8 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
-	// Look for ZbootConfig , from zedagent
-	subZbootConfig, err := pubsub.Subscribe("zedagent",
+	// Look for ZbootConfig , from nodeagent
+	subZbootConfig, err := pubsub.Subscribe("nodeagent",
 		types.ZbootConfig{}, false, ctx)
 	if err != nil {
 		log.Fatal(err)
@@ -604,7 +604,7 @@ func initializeVerifierHandles(ctx *baseOsMgrContext) {
 
 func handleZbootConfigModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.ZbootConfig(configArg)
+	config := cast.CastZbootConfig(configArg)
 	status := getZbootStatus(ctx, key)
 	if status == nil {
 		log.Infof("handleZbootConfigModify: unknown %s\n", key)

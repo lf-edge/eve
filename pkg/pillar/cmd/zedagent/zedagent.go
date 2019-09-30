@@ -83,14 +83,13 @@ type DNSContext struct {
 type zedagentContext struct {
 	verifierRestarted         bool              // Information from handleVerifierRestarted
 	getconfigCtx              *getconfigContext // Cross link
-	pubZbootConfig            *pubsub.Publication
-	zbootRestarted            bool // published by baseosmgr
 	assignableAdapters        *types.AssignableAdapters
 	subAssignableAdapters     *pubsub.Subscription
 	iteration                 int
 	subNetworkInstanceStatus  *pubsub.Subscription
 	subCertObjConfig          *pubsub.Subscription
 	TriggerDeviceInfo         chan<- struct{}
+	zbootRestarted            bool // published by baseosmgr
 	subBaseOsStatus           *pubsub.Subscription
 	subBaseOsDownloadStatus   *pubsub.Subscription
 	subCertObjDownloadStatus  *pubsub.Subscription
@@ -103,6 +102,7 @@ type zedagentContext struct {
 	GCInitialized             bool // Received initial GlobalConfig
 	subZbootStatus            *pubsub.Subscription
 	rebootCmdDeferred         bool
+	deviceReboot              bool
 	rebootReason              string
 	rebootStack               string
 	rebootTime                time.Time
@@ -333,14 +333,13 @@ func Run() {
 	pubBaseOsConfig.ClearRestarted()
 	getconfigCtx.pubBaseOsConfig = pubBaseOsConfig
 
-	pubZbootConfig, err := pubsub.Publish(agentName,
-		types.ZbootConfig{})
+	pubZedAgentStatus, err := pubsub.Publish(agentName,
+		types.ZedAgentStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
-	pubZbootConfig.ClearRestarted()
-	zedagentCtx.pubZbootConfig = pubZbootConfig
-
+	pubZedAgentStatus.ClearRestarted()
+	getconfigCtx.pubZedAgentStatus = pubZedAgentStatus
 	pubDatastoreConfig, err := pubsub.Publish(agentName,
 		types.DatastoreConfig{})
 	if err != nil {
@@ -477,6 +476,17 @@ func Run() {
 	zedagentCtx.subAppImgDownloadStatus = subAppImgDownloadStatus
 	subAppImgDownloadStatus.Activate()
 
+	// Look for nodeagent status
+	subNodeAgentStatus, err := pubsub.Subscribe("nodeagent",
+		types.NodeAgentStatus{}, false, &getconfigCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subNodeAgentStatus.ModifyHandler = handleNodeAgentStatusModify
+	subNodeAgentStatus.DeleteHandler = handleNodeAgentStatusDelete
+	getconfigCtx.subNodeAgentStatus = subNodeAgentStatus
+	subNodeAgentStatus.Activate()
+
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 
@@ -509,15 +519,14 @@ func Run() {
 			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
+		case <-stillRunning.C:
+			doDeviceReboot(&zedagentCtx)
 		}
 	}
 
-	time1 := time.Duration(globalConfig.ResetIfCloudGoneTime)
+	time1 := time.Duration(globalConfig.FallbackIfCloudGoneTime)
+	log.Infof("Started timer for zboot status, reset for %d seconds\n", time1)
 	t1 := time.NewTimer(time1 * time.Second)
-	log.Infof("Started timer for reset for %d seconds\n", time1)
-	time2 := time.Duration(globalConfig.FallbackIfCloudGoneTime)
-	log.Infof("Started timer for fallback,  reset for %d seconds\n", time2)
-	t2 := time.NewTimer(time2 * time.Second)
 
 	// wait till, zboot status is ready
 	for !zedagentCtx.zbootRestarted {
@@ -538,11 +547,15 @@ func Run() {
 			agentlog.RebootReason(errStr)
 			execReboot(true)
 			agentlog.CheckMaxTime(agentName, start)
+
+		case <-stillRunning.C:
+			doDeviceReboot(&zedagentCtx)
 		}
 	}
 
-	updateInprogress := isBaseOsCurrentPartitionStateInProgress(&zedagentCtx)
-	log.Infof("Current partition inProgress state is %v\n", updateInprogress)
+	// stop the timer, for zboot status
+	t1.Stop()
+
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	for !DNSctx.DNSinitialized {
 		log.Infof("Waiting for DeviceNetworkStatus %v\n",
@@ -594,32 +607,18 @@ func Run() {
 			subDevicePortConfigList.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
 
+		case change := <-getconfigCtx.subNodeAgentStatus.C:
+			start := agentlog.StartTime()
+			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
 		case change := <-deferredChan:
 			start := agentlog.StartTime()
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 			agentlog.CheckMaxTime(agentName, start)
-
-		case <-t1.C:
-			start := agentlog.StartTime()
-			errStr := "Exceeded outage for cloud connectivity - rebooting"
-			log.Errorf(errStr)
-			agentlog.RebootReason(errStr)
-			execReboot(true)
-			agentlog.CheckMaxTime(agentName, start)
-
-		case <-t2.C:
-			start := agentlog.StartTime()
-			if updateInprogress {
-				errStr := "Exceeded fallback outage for cloud connectivity - rebooting"
-				log.Errorf(errStr)
-				agentlog.RebootReason(errStr)
-				execReboot(true)
-			}
-			agentlog.CheckMaxTime(agentName, start)
 		}
+		doDeviceReboot(&zedagentCtx)
 	}
-	t1.Stop()
-	t2.Stop()
 
 	// Subscribe to network metrics from zedrouter
 	subNetworkMetrics, err := pubsub.Subscribe("zedrouter",
@@ -697,6 +696,11 @@ func Run() {
 			zedagentCtx.subCertObjDownloadStatus.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
 
+		case change := <-getconfigCtx.subNodeAgentStatus.C:
+			start := agentlog.StartTime()
+			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
 		case change := <-subDeviceNetworkStatus.C:
 			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
@@ -730,7 +734,7 @@ func Run() {
 	}
 
 	// start the config fetch tasks, when zboot status is ready
-	go configTimerTask(handleChannel, &getconfigCtx, updateInprogress)
+	go configTimerTask(handleChannel, &getconfigCtx)
 	configTickerHandle := <-handleChannel
 	// XXX close handleChannels?
 	getconfigCtx.configTickerHandle = configTickerHandle
@@ -780,6 +784,11 @@ func Run() {
 		case change := <-zedagentCtx.subCertObjDownloadStatus.C:
 			start := agentlog.StartTime()
 			zedagentCtx.subCertObjDownloadStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
+		case change := <-getconfigCtx.subNodeAgentStatus.C:
+			start := agentlog.StartTime()
+			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
@@ -878,6 +887,7 @@ func Run() {
 
 		case <-stillRunning.C:
 		}
+		doDeviceReboot(&zedagentCtx)
 		agentlog.StillRunning(agentName)
 	}
 }
@@ -1121,7 +1131,6 @@ func handleBaseOsStatusModify(ctxArg interface{}, key string, statusArg interfac
 		log.Errorf("handleBaseOsStatusModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.Key(), status)
 		return
 	}
-	doBaseOsDeviceReboot(ctx, status)
 	triggerPublishDevInfo(ctx)
 	log.Infof("handleBaseOsStatusModify(%s) done\n", key)
 }
@@ -1212,14 +1221,14 @@ func handleZbootStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedagentContext)
-	status := cast.CastZbootStatus(statusArg)
 	if !isZbootValidPartitionLabel(key) {
 		log.Errorf("handleZbootStatusModify: invalid key %s\n", key)
 		return
 	}
 	log.Infof("handleZbootStatusModify: for %s\n", key)
-	doZbootTestComplete(ctx, status)
 	triggerPublishDevInfo(ctx)
+	// nothing to do
+	publishDevInfo(ctx)
 }
 
 func handleZbootStatusDelete(ctxArg interface{}, key string,
@@ -1230,6 +1239,50 @@ func handleZbootStatusDelete(ctxArg interface{}, key string,
 	}
 	log.Infof("handleZbootStatusDelete: for %s\n", key)
 	// Nothing to do
+}
+
+func handleNodeAgentStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	getconfigCtx := ctxArg.(*getconfigContext)
+	status := cast.CastNodeAgentStatus(statusArg)
+	if status.Key() != key {
+		log.Errorf("handleNodeAgentStatusModify: invalid key %s\n", key)
+		return
+	}
+	updateInprogress := getconfigCtx.updateInprogress
+	ctx := getconfigCtx.zedagentCtx
+	ctx.remainingTestTime = status.RemainingTestTime
+	getconfigCtx.updateInprogress = status.UpdateInprogress
+	if status.NeedsReboot {
+		initiateDeviceReboot(ctx, status.RebootReason)
+	} else {
+		// if config reboot command was initiated and
+		// was deferred, and the device is not in inprogress
+		// state, initiate the reboot // process
+		if ctx.rebootCmdDeferred &&
+			updateInprogress && !status.UpdateInprogress {
+			log.Infof("TestComplete and deferred reboot\n")
+			ctx.rebootCmdDeferred = false
+			infoStr := fmt.Sprintf("TestComplete and deferred Reboot\n")
+			initiateDeviceReboot(ctx, infoStr)
+		}
+	}
+	ctx.TriggerDeviceInfo = true
+	log.Infof("handleNodeAgentStatusModify: done.\n")
+}
+
+func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	ctx := ctxArg.(*zedagentContext)
+	status := cast.CastNodeAgentStatus(statusArg)
+	if status.Key() != key {
+		log.Errorf("handleNodeAgentStatusDelete: invalid key %s\n", key)
+		return
+	}
+	log.Infof("handleNodeAgentStatusDelete: for %s\n", key)
+	// Nothing to do
+	ctx.TriggerDeviceInfo = true
 }
 
 // If the file doesn't exist we pick zero.
