@@ -121,7 +121,7 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 		// Need to publish so that other agents see we have initialized
 		// even if we have no IPs
 		UpdateResolvConf(*ctx.DeviceNetworkStatus)
-		updatePBR(*ctx.DeviceNetworkStatus)
+		UpdatePBR(*ctx.DeviceNetworkStatus)
 		if ctx.PubDeviceNetworkStatus != nil {
 			ctx.DeviceNetworkStatus.Testing = false
 			log.Infof("PublishDeviceNetworkStatus: %+v\n",
@@ -247,41 +247,6 @@ func VerifyPending(pending *DPCPending,
 			pending.PendDNS, pend2)
 	}
 	pending.PendDNS = pend2
-	// XXX assume we're doing at least IPv4, so count only those to check if DHCP done
-	numUsableAddrs := types.CountLocalIPv4AddrAnyNoLinkLocal(pending.PendDNS)
-	numDNSServers := types.CountDNSServers(pending.PendDNS, "")
-	if numUsableAddrs == 0 || numDNSServers == 0 {
-		var errStr string
-		ifs := types.GetExistingInterfaceList(pending.PendDNS)
-		if len(ifs) == 0 {
-			errStr = "No interfaces exist in the pending network config"
-		} else if numUsableAddrs == 0 {
-			errStr = "DHCP could not resolve any usable " +
-				"IP addresses for the pending network config"
-		} else {
-			errStr = "DHCP did not yet find any DNS servers " +
-				"for the pending network config"
-		}
-		if pending.TestCount < MaxDPCRetestCount {
-			pending.TestCount += 1
-			log.Infof("VerifyPending: TestCount %d: %s for %+v\n",
-				pending.TestCount, errStr, pending.PendDNS)
-			return DPC_WAIT
-		} else {
-			log.Errorf("VerifyPending: exceeded TestCount: %s for %+v\n",
-				errStr, pending.PendDNS)
-			pending.PendDPC.LastFailed = time.Now()
-			pending.PendDPC.LastError = errStr
-			return DPC_FAIL
-		}
-	}
-	if false {
-		// XXX remove?
-		// Do not entertain re-testing this DPC anymore.
-		pending.TestCount = MaxDPCRetestCount
-		log.Infof("Forcing TestCount to %d for %+v", pending.TestCount,
-			pending.PendDNS)
-	}
 
 	// We want connectivity to zedcloud via atleast one Management port.
 	rtf, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1, timeout)
@@ -302,7 +267,7 @@ func VerifyPending(pending *DPCPending,
 	if !checkIfAllPortsHaveIPandDNS(pending.PendDNS) {
 		// Still waiting for IP or DNS
 		if pending.TestCount < MaxDPCRetestCount {
-			pending.TestCount += 1
+			pending.TestCount++
 			log.Infof("VerifyPending no IP/DNS: TestCount %d: %s for %+v\n",
 				pending.TestCount, errStr, pending.PendDNS)
 			return DPC_WAIT
@@ -339,7 +304,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 		res := VerifyPending(&ctx.Pending, ctx.AssignableAdapters,
 			ctx.TestSendTimeout)
 		UpdateResolvConf(ctx.Pending.PendDNS)
-		updatePBR(ctx.Pending.PendDNS)
+		UpdatePBR(ctx.Pending.PendDNS)
 		if ctx.PubDeviceNetworkStatus != nil {
 			log.Infof("PublishDeviceNetworkStatus: pending %+v\n",
 				ctx.Pending.PendDNS)
@@ -819,7 +784,7 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 		ctx.UsableAddressCount = newAddrCount
 	}
 	UpdateResolvConf(*ctx.DeviceNetworkStatus)
-	updatePBR(*ctx.DeviceNetworkStatus)
+	UpdatePBR(*ctx.DeviceNetworkStatus)
 	if ctx.PubDeviceNetworkStatus != nil {
 		ctx.DeviceNetworkStatus.Testing = false
 		log.Infof("PublishDeviceNetworkStatus: %+v\n",
@@ -832,10 +797,11 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 
 const destFilename = "/etc/resolv.conf"
 
-// UpdateResolvConf produces a /etc/resolv.conf based on the management ports
-// in DeviceNetworkStatus
+// Track changes in DNS servers.
 var lastServers []net.IP
 
+// UpdateResolvConf produces a /etc/resolv.conf based on the management ports
+// in DeviceNetworkStatus
 func UpdateResolvConf(globalStatus types.DeviceNetworkStatus) int {
 
 	log.Infof("UpdateResolvConf")
