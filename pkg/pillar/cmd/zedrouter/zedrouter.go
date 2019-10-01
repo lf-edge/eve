@@ -222,6 +222,12 @@ func Run() {
 	}
 	zedrouterCtx.pubAppFlowMonitor = pubAppFlowMonitor
 
+	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
+	pub, err := pubsub.Publish(agentName, nms)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	appNumAllocatorInit(&zedrouterCtx)
 	bridgeNumAllocatorInit(&zedrouterCtx)
 	handleInit(runDirname)
@@ -315,11 +321,6 @@ func Run() {
 	linkChanges := devicenetwork.LinkChangeInit()
 
 	// Publish network metrics for zedagent every 10 seconds
-	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
-	pub, err := pubsub.Publish(agentName, nms)
-	if err != nil {
-		log.Fatal(err)
-	}
 	interval := time.Duration(10 * time.Second)
 	max := float64(interval)
 	min := max * 0.3
