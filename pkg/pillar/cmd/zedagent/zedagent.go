@@ -169,7 +169,7 @@ func Run() {
 
 	log.Infof("Starting %s\n", agentName)
 
-	triggerDeviceInfo := make(chan struct{})
+	triggerDeviceInfo := make(chan struct{}, 1)
 	zedagentCtx := zedagentContext{TriggerDeviceInfo: triggerDeviceInfo}
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 

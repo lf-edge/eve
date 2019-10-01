@@ -505,7 +505,7 @@ func handleDownloaderCreate(ctxArg interface{}, objType string,
 	if ok {
 		log.Fatalf("handleDownloaderCreate called on config that already exists")
 	}
-	h1 := make(chan interface{})
+	h1 := make(chan interface{}, 1)
 	handlerMap[config.Key()] = h1
 	go runHandler(ctx, objType, key, h1)
 	h = h1
