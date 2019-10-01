@@ -132,6 +132,7 @@ func RouteChangeInit() chan netlink.RouteUpdate {
 // Check if ports in the given DeviceNetworkStatus have atleast one
 // IP address each and at least one DNS server.
 func checkIfAllPortsHaveIPandDNS(status types.DeviceNetworkStatus) bool {
+	log.Infof("XXX checkIfAllPortsHaveIPandDNS")
 	mgmtPorts := types.GetMgmtPortsAny(status, 0)
 	if len(mgmtPorts) == 0 {
 		log.Infof("XXX no management ports")
@@ -247,14 +248,15 @@ func RouteChange(ctx DeviceNetworkContext, change netlink.RouteUpdate) (bool, in
 	return changed, rt.LinkIndex
 }
 
-// updatePBR makes sure we have PBR rules and routing tables for all the ports
-// Track the list of old port addresses to detect if a port is added or deleted,
-// or if the set of IP addresses change
+// Track changes to set of ports where we have applied PBR
 var ifnameHasPBR = make(map[string][]net.IP)
 
-func updatePBR(status types.DeviceNetworkStatus) {
+// UpdatePBR makes sure we have PBR rules and routing tables for all the ports
+// Track the list of old port addresses to detect if a port is added or deleted,
+// or if the set of IP addresses change
+func UpdatePBR(status types.DeviceNetworkStatus) {
 
-	log.Infof("updatePBR: %d ports", len(status.Ports))
+	log.Infof("UpdatePBR: %d ports", len(status.Ports))
 	// Track any ifnames which need to have PBR deleted
 	ifnameFound := make(map[string]bool)
 

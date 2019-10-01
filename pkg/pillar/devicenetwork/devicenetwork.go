@@ -238,7 +238,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 	}
 	// Need to write resolv.conf for Geo
 	UpdateResolvConf(globalStatus)
-	updatePBR(globalStatus)
+	UpdatePBR(globalStatus)
 	// Immediate check
 	UpdateDeviceNetworkGeo(time.Second, &globalStatus)
 	log.Infof("MakeDeviceNetworkStatus() DONE\n")
