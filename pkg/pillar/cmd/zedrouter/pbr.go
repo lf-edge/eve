@@ -166,29 +166,39 @@ func PbrRouteChange(ctx *zedrouterContext,
 	}
 	ifname, linkType, err := devicenetwork.IfindexToName(rt.LinkIndex)
 	if err != nil {
-		log.Errorf("PbrRouteChange IfindexToName failed for %d: %s\n",
-			rt.LinkIndex, err)
+		log.Errorf("PbrRouteChange IfindexToName failed for %d: %s: route %v\n",
+			rt.LinkIndex, err, rt)
 		return
 	}
-	if linkType != "bridge" {
+	if linkType != "bridge" && !types.IsPort(*deviceNetworkStatus, ifname) {
 		// Ignore
+		log.Errorf("PbrRouteChange ignore %s: neither bridge nor port. route %v\n",
+			ifname, rt)
 		return
 	}
-	log.Infof("RouteChange(%d/%s) %s %+v", rt.LinkIndex, ifname, op, rt)
+	log.Debugf("RouteChange(%d/%s) %s %+v", rt.LinkIndex, ifname, op, rt)
 
-	// XXX introduce common devicenetwork.AddRouteToTable(rt, baseTableIndex + rt.LinkIndex)
-
-	// Apply to any bridges used by network instances
+	// Add to ifindex specific table and to any bridges used by network instances
 	myrt := rt
+	myrt.Table = baseTableIndex + rt.LinkIndex
 	// Clear any RTNH_F_LINKDOWN etc flags since add doesn't like them
 	if myrt.Flags != 0 {
 		myrt.Flags = 0
 	}
 	if change.Type == getRouteUpdateTypeDELROUTE() {
 		log.Infof("Received route del %v\n", rt)
+		if linkType == "bridge" {
+			log.Infof("Apply route del to bridge %s", ifname)
+			if err := netlink.RouteDel(&myrt); err != nil {
+				log.Errorf("Failed to remove %v from %d: %s\n",
+					myrt, myrt.Table, err)
+			}
+		}
 		// find all bridges for network instances and del for them
 		indicies := getAllNIindices(ctx, ifname)
-		log.Infof("XXX Apply route del %v to %v", rt, indicies)
+		if len(indicies) != 0 {
+			log.Infof("Apply route del to %v", indicies)
+		}
 		for _, ifindex := range indicies {
 			myrt.Table = baseTableIndex + ifindex
 			if err := netlink.RouteDel(&myrt); err != nil {
@@ -198,9 +208,18 @@ func PbrRouteChange(ctx *zedrouterContext,
 		}
 	} else if change.Type == getRouteUpdateTypeNEWROUTE() {
 		log.Infof("Received route add %v\n", rt)
+		if linkType == "bridge" {
+			log.Infof("Apply route add to bridge %s", ifname)
+			if err := netlink.RouteAdd(&myrt); err != nil {
+				log.Errorf("Failed to add %v to %d: %s\n",
+					myrt, myrt.Table, err)
+			}
+		}
 		// find all bridges for network instances and add for them
 		indicies := getAllNIindices(ctx, ifname)
-		log.Infof("XXX Apply route add %v to %v", rt, indicies)
+		if len(indicies) != 0 {
+			log.Infof("Apply route add to %v", indicies)
+		}
 		for _, ifindex := range indicies {
 			myrt.Table = baseTableIndex + ifindex
 			if err := netlink.RouteAdd(&myrt); err != nil {
