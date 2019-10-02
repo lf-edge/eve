@@ -434,6 +434,10 @@ func handleModify(ctxArg interface{}, key string, configArg interface{}) {
 	config := cast.CastEIDConfig(configArg)
 	status := lookupEIDStatus(ctx, key)
 
+	if status == nil {
+		log.Fatalf("status is nil in handleModify")
+	}
+
 	log.Infof("handleModify(%s) for %s\n", key, config.DisplayName)
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
