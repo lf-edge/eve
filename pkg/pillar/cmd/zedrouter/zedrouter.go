@@ -276,7 +276,7 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppNetworkConfig.ModifyHandler = doAppNetworkConfigModify
+	subAppNetworkConfig.ModifyHandler = handleAppNetworkConfigModify
 	subAppNetworkConfig.CreateHandler = handleAppNetworkCreate
 	subAppNetworkConfig.DeleteHandler = handleAppNetworkConfigDelete
 	subAppNetworkConfig.RestartHandler = handleRestart
@@ -289,7 +289,7 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppNetworkConfigAg.ModifyHandler = doAppNetworkConfigModify
+	subAppNetworkConfigAg.ModifyHandler = handleAppNetworkConfigModify
 	subAppNetworkConfigAg.CreateHandler = handleAppNetworkCreate
 	subAppNetworkConfigAg.DeleteHandler = handleAppNetworkConfigDelete
 	zedrouterCtx.subAppNetworkConfigAg = subAppNetworkConfigAg
@@ -1896,7 +1896,7 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 // Note that handleModify will not touch the EID; just ACLs
 // XXX should we check that nothing else has changed?
 // XXX If so flag other changes as errors; would need lastError in status.
-func doAppNetworkConfigModify(ctxArg interface{}, key string, configArg interface{}) {
+func handleAppNetworkConfigModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*zedrouterContext)
 	config := cast.CastAppNetworkConfig(configArg)
 	status := lookupAppNetworkStatus(ctx, key)
@@ -2907,7 +2907,7 @@ func scanAppNetworkStatusInErrorAndUpdate(ctx *zedrouterContext, key0 string) {
 			status.Error == "" || key == key0 {
 			continue
 		}
-		doAppNetworkConfigModify(ctx, key, *config)
+		handleAppNetworkConfigModify(ctx, key, *config)
 	}
 }
 
