@@ -873,6 +873,7 @@ func generateResolvConf(globalStatus types.DeviceNetworkStatus, destfile *os.Fil
 		}
 	}
 	destfile.WriteString("options rotate\n")
+	destfile.WriteString("options attempts:5\n")
 	destfile.Sync()
 	return len(written)
 }
