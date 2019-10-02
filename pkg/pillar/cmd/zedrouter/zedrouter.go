@@ -1885,6 +1885,10 @@ func doAppNetworkConfigModify(ctxArg interface{}, key string, configArg interfac
 	config := cast.CastAppNetworkConfig(configArg)
 	status := lookupAppNetworkStatus(ctx, key)
 
+	if status == nil {
+		log.Fatalf("status is nil in handleModify")
+	}
+
 	log.Infof("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 	// reset error status and mark pending modify as true
