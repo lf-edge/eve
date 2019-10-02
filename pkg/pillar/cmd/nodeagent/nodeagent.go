@@ -37,7 +37,7 @@ import (
 
 const (
 	agentName             = "nodeagent"
-	maxConfigGetFailCount = 5
+	maxConfigGetFailCount = 1
 )
 
 // Version : module version
@@ -57,7 +57,6 @@ type nodeagentContext struct {
 	curPart                string
 	ledCounter             int
 	configGetFailCount     int
-	networkSetupStartTime  time.Time
 	upgradeTestStartTime   time.Time
 	remainingTestTime      time.Duration
 	lastConfigReceivedTime time.Time
@@ -150,7 +149,6 @@ func Run() {
 	subLedBlinkConfig.Activate()
 
 	// baseline timers
-	nodeagentCtx.networkSetupStartTime = time.Now()
 	nodeagentCtx.lastConfigReceivedTime = time.Now()
 
 	// publish zboot config as of now
@@ -160,8 +158,7 @@ func Run() {
 	nodeagentCtx.updateInprogress = zboot.IsCurrentPartitionStateInProgress()
 	log.Infof("Current partition: %s, inProgress: %v\n", nodeagentCtx.curPart,
 		nodeagentCtx.updateInprogress)
-	log.Infof("networkStartTime:%v, configReceivedTime:%v\n",
-		nodeagentCtx.networkSetupStartTime, nodeagentCtx.lastConfigReceivedTime)
+	log.Infof("configReceivedTime:%v\n", nodeagentCtx.lastConfigReceivedTime)
 
 	// Read the GlobalConfig first
 	// Wait for initial GlobalConfig
@@ -196,7 +193,6 @@ func Run() {
 	// led blinker and cloud connectionnectivity status.
 
 	// baseline timers, again
-	nodeagentCtx.networkSetupStartTime = time.Now()
 	nodeagentCtx.lastConfigReceivedTime = time.Now()
 
 	log.Infof("Waiting for device registration check\n")
@@ -221,7 +217,6 @@ func Run() {
 	time.Sleep(10)
 
 	// rebase timers, again
-	nodeagentCtx.networkSetupStartTime = time.Now()
 	nodeagentCtx.lastConfigReceivedTime = time.Now()
 
 	// subscribe to zboot status events
