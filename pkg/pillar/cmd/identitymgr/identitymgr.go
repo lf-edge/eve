@@ -447,6 +447,10 @@ func encodePrivateKey(keypair *ecdsa.PrivateKey) ([]byte, error) {
 func handleModify(ctx *identityContext, key string, config *types.EIDConfig,
 	status *types.EIDStatus) {
 
+	if status == nil {
+		log.Fatalf("status is nil in handleModify")
+	}
+
 	log.Infof("handleModify(%s) for %s\n", key, config.DisplayName)
 
 	if config.UUIDandVersion.Version == status.UUIDandVersion.Version {
