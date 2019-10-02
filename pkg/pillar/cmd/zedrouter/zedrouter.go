@@ -1003,6 +1003,7 @@ var deviceIID uint32
 var additionalInfoDevice *types.AdditionalInfoDevice
 
 func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{}) {
+
 	ctx := ctxArg.(*zedrouterContext)
 	config := cast.CastAppNetworkConfig(configArg)
 	log.Infof("handleAppAppNetworkCreate(%v) for %s\n",
@@ -1010,6 +1011,12 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 
 	// Pick a local number to identify the application instance
 	// Used for IP addresses as well bridge and file names.
+	if ctx.receivedConfigTime.IsZero() {
+		log.Infof("triggerNumGC")
+		ctx.receivedConfigTime = time.Now()
+		ctx.triggerNumGC = true
+	}
+
 	appNum := appNumAllocate(ctx, config.UUIDandVersion.UUID,
 		config.IsZedmanager)
 
