@@ -1038,6 +1038,15 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 	status.PendingAdd = false
 	publishAppNetworkStatus(ctx, &status)
 	log.Infof("handleCreateAppNetwork done for %s\n", config.DisplayName)
+
+	if status != nil && status.Error != "" &&
+		config.Activate && !status.Activated {
+		releaseAppNetworkResources(ctx, key, status)
+	}
+	log.Infof("handleAppNetworkConfigModify(%s) done\n", key)
+	// on resource release, check whether any one else
+	// needs it
+	scanAppNetworkStatusInErrorAndUpdate(ctx, key)
 }
 
 func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
