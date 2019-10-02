@@ -299,16 +299,15 @@ func addPBR(status types.DeviceNetworkStatus, ifname string, addrs []net.IP) {
 		log.Errorf("addPBR can't find ifindex for %s", ifname)
 		return
 	}
+	FlushRules(ifindex)
 	for _, a := range addrs {
+		var subnet net.IPNet
 		if a.To4() != nil {
-			AddSourceRule(ifindex,
-				net.IPNet{IP: a, Mask: net.CIDRMask(32, 32)},
-				false)
+			subnet = net.IPNet{IP: a, Mask: net.CIDRMask(32, 32)}
 		} else {
-			AddSourceRule(ifindex,
-				net.IPNet{IP: a, Mask: net.CIDRMask(128, 128)},
-				false)
+			subnet = net.IPNet{IP: a, Mask: net.CIDRMask(128, 128)}
 		}
+		AddSourceRule(ifindex, subnet, false)
 	}
 	// Flush then copy all routes for this interface to the table
 	// for this ifindex
