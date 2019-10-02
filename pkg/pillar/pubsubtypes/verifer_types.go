@@ -13,21 +13,20 @@ type AppInstanceConfigPubSubBase struct {
 	db        map[string]types.AppInstanceConfig
 }
 
-func (a AppInstanceConfigPubSubBase) GetItem(key string) types.AppInstanceConfig {
-	return a.db[key]
+func (config * AppInstanceConfigPubSubBase) Get(key string) types.AppInstanceConfig {
+	return config.db[key]
 }
 
-func (a AppInstanceConfigPubSubBase) SetItem(key string, appInstanceConfig types.AppInstanceConfig) {
-	a.db[key] = appInstanceConfig
-	pubAppInstanceConfig, err := pubsub.Publish(a.agentName,
-  	types.AppInstanceConfig{})
+func (config * AppInstanceConfigPubSubBase) Set(key string, appInstanceConfig types.AppInstanceConfig) {
+	config.db[key] = appInstanceConfig
+	_, err := pubsub.Publish(config.agentName, types.AppInstanceConfig{})
  	if err != nil {
   		log.Fatal(err)
   	}
 }
 
-func (a AppInstanceConfigPubSubBase) IterateDb(fn CallbackFn) {
-	for _, value := range a.db {
+func (config * AppInstanceConfigPubSubBase) IterateDb(fn CallbackFn) {
+	for _, value := range config.db {
 	   retval := fn(value)
 	   if retval == false {
 	      break
@@ -39,6 +38,6 @@ type AppInstanceConfigPub struct {
 	base 	AppInstanceConfigPubSubBase
 }
 
-func (pub AppInstanceConfigPub) Publish() {
+func (pub * AppInstanceConfigPub) Publish() {
 	pubsub.Publish(pub.base.agentName, types.AppInstanceConfig{})
 }
