@@ -17,41 +17,20 @@ import (
 
 // called periodically from agentwatch context
 func handleDeviceTimers(ctx *nodeagentContext) {
-	handleNetworkDisconnect(ctx)
 	handleFallbackOnCloudDisconnect(ctx)
 	handleResetOnCloudDisconnect(ctx)
-}
-
-// when the network is still not active, for connected adapter(s)
-func handleNetworkDisconnect(ctx *nodeagentContext) {
-	// still nim and other modules waiting for something
-	if !ctx.updateInprogress || ctx.deviceRegistered {
-		return
-	}
-	// apply the network disconnect function
-	duration := globalConfig.NetworkTestBetterInterval + globalConfig.FallbackIfCloudGoneTime
-	expiryLimit := time.Second * time.Duration(duration*2)
-	timePassed := time.Since(ctx.networkSetupStartTime)
-	if timePassed > expiryLimit {
-		errStr := fmt.Sprintf("Exceeded netowrk outage %d by %d seconds; rebooting\n",
-			expiryLimit/time.Second,
-			(timePassed-expiryLimit)/time.Second)
-		log.Errorf(errStr)
-		execReboot(ctx, errStr)
-	}
 }
 
 // when baseos upgrade is in progress
 // on cloud disconnect for a specified amount of time, reset the node
 func handleFallbackOnCloudDisconnect(ctx *nodeagentContext) {
-	if !ctx.updateInprogress || !ctx.deviceRegistered ||
-		ctx.testInprogress {
+	if !ctx.updateInprogress {
 		return
 	}
 	// apply the fallback time function
 	fallbackLimit := time.Second * time.Duration(globalConfig.FallbackIfCloudGoneTime)
 	timePassed := time.Since(ctx.lastConfigReceivedTime)
-	if timePassed < fallbackLimit {
+	if timePassed > fallbackLimit {
 		errStr := fmt.Sprintf("Exceeded fallback outage for cloud connectivity %d by %d seconds; rebooting\n",
 			fallbackLimit/time.Second,
 			(timePassed-fallbackLimit)/time.Second)
@@ -120,11 +99,12 @@ func executeConfigGetFailState(ctx *nodeagentContext) {
 	if !ctx.configGetFail {
 		return
 	}
-	if ctx.configGetFailCount > maxConfigGetFailCount {
+	if ctx.configGetFailCount >= maxConfigGetFailCount {
 		resetConfigGetFailState(ctx)
 		resetTestStartTime(ctx)
 	}
 }
+
 func checkUpgradeValidationTestTimeExpiry(ctx *nodeagentContext) bool {
 	if !ctx.testInprogress {
 		return false
