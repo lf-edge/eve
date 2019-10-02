@@ -1,0 +1,31 @@
+From f699a24db686119c487be1398c5f8b3555651b44 Mon Sep 17 00:00:00 2001
+From: Jack Ren <jack.ren@intel.com>
+Date: Wed, 2 Oct 2019 11:50:21 +0800
+Subject: [PATCH 2/2] config: enable overlay fs
+
+Signed-off-by: Jack Ren <jack.ren@intel.com>
+---
+ kernel_config_uefi_sos | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/kernel_config_uefi_sos b/kernel_config_uefi_sos
+index 57f2d6807050..c7b48f22da75 100644
+--- a/kernel_config_uefi_sos
++++ b/kernel_config_uefi_sos
+@@ -5658,7 +5658,12 @@ CONFIG_QUOTACTL_COMPAT=y
+ # CONFIG_AUTOFS_FS is not set
+ CONFIG_FUSE_FS=y
+ # CONFIG_CUSE is not set
+-# CONFIG_OVERLAY_FS is not set
++CONFIG_OVERLAY_FS=y
++# CONFIG_OVERLAY_FS_REDIRECT_DIR is not set
++CONFIG_OVERLAY_FS_REDIRECT_ALWAYS_FOLLOW=y
++# CONFIG_OVERLAY_FS_INDEX is not set
++# CONFIG_OVERLAY_FS_XINO_AUTO is not set
++# CONFIG_OVERLAY_FS_METACOPY is not set
+ 
+ #
+ # Caches
+-- 
+2.23.0
+
