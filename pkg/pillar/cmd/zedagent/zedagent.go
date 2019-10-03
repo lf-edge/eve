@@ -519,6 +519,12 @@ func Run() {
 			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
+
+		case change := <-getconfigCtx.subNodeAgentStatus.C:
+			start := agentlog.StartTime()
+			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
 		case <-stillRunning.C:
 			doDeviceReboot(&zedagentCtx)
 		}
@@ -537,6 +543,11 @@ func Run() {
 			if zedagentCtx.zbootRestarted {
 				log.Infof("Zboot reported restarted\n")
 			}
+			agentlog.CheckMaxTime(agentName, start)
+
+		case change := <-getconfigCtx.subNodeAgentStatus.C:
+			start := agentlog.StartTime()
+			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-t1.C:
@@ -1268,7 +1279,7 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 			initiateDeviceReboot(ctx, infoStr)
 		}
 	}
-	ctx.TriggerDeviceInfo = true
+	triggerPublishDevInfo(ctx)
 	log.Infof("handleNodeAgentStatusModify: done.\n")
 }
 
@@ -1282,7 +1293,7 @@ func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
 	}
 	log.Infof("handleNodeAgentStatusDelete: for %s\n", key)
 	// Nothing to do
-	ctx.TriggerDeviceInfo = true
+	triggerPublishDevInfo(ctx)
 }
 
 // If the file doesn't exist we pick zero.
