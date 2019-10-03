@@ -13,7 +13,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"reflect"
 	"sort"
@@ -653,13 +652,7 @@ func handleInterfaceChange(ctx *nimContext, ifindex int, logstr string, force bo
 		// Do not have a baseline to delete from
 		devicenetwork.FlushRules(ifindex)
 		for _, a := range addrs {
-			var subnet net.IPNet
-			if a.To4() != nil {
-				subnet = net.IPNet{IP: a, Mask: net.CIDRMask(32, 32)}
-			} else {
-				subnet = net.IPNet{IP: a, Mask: net.CIDRMask(128, 128)}
-			}
-			devicenetwork.AddSourceRule(ifindex, subnet, false)
+			devicenetwork.AddSourceRule(ifindex, devicenetwork.HostSubnet(a), false)
 		}
 		devicenetwork.HandleAddressChange(&ctx.DeviceNetworkContext)
 		// XXX should we trigger restarting testing?
@@ -682,22 +675,10 @@ func handleInterfaceChange(ctx *nimContext, ifindex int, logstr string, force bo
 		log.Infof("%s(%s) changed from %v to %v",
 			logstr, ifname, oldAddrs, addrs)
 		for _, a := range oldAddrs {
-			var subnet net.IPNet
-			if a.To4() != nil {
-				subnet = net.IPNet{IP: a, Mask: net.CIDRMask(32, 32)}
-			} else {
-				subnet = net.IPNet{IP: a, Mask: net.CIDRMask(128, 128)}
-			}
-			devicenetwork.DelSourceRule(ifindex, subnet, false)
+			devicenetwork.DelSourceRule(ifindex, devicenetwork.HostSubnet(a), false)
 		}
 		for _, a := range addrs {
-			var subnet net.IPNet
-			if a.To4() != nil {
-				subnet = net.IPNet{IP: a, Mask: net.CIDRMask(32, 32)}
-			} else {
-				subnet = net.IPNet{IP: a, Mask: net.CIDRMask(128, 128)}
-			}
-			devicenetwork.AddSourceRule(ifindex, subnet, false)
+			devicenetwork.AddSourceRule(ifindex, devicenetwork.HostSubnet(a), false)
 		}
 
 		devicenetwork.HandleAddressChange(&ctx.DeviceNetworkContext)
