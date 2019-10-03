@@ -401,7 +401,7 @@ func CastUuidToNum(in interface{}) types.UuidToNum {
 	return output
 }
 
-// ZedAgentConfig : casts interface to ZbootConfig
+// ZbootConfig : casts interface to ZbootConfig
 func ZbootConfig(in interface{}) types.ZbootConfig {
 	b, err := json.Marshal(in)
 	if err != nil {
@@ -414,7 +414,7 @@ func ZbootConfig(in interface{}) types.ZbootConfig {
 	return output
 }
 
-// ZedAgentStatus : casts interface to ZbootStatus
+// ZbootStatus : casts interface to ZbootStatus
 func ZbootStatus(in interface{}) types.ZbootStatus {
 	b, err := json.Marshal(in)
 	if err != nil {
