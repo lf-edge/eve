@@ -12,7 +12,6 @@
 //   * global config
 //   * base os status               <baseosmgr> / <baseos> / <status>
 //   * zboot status                 <baseosmgr> / <zboot> / <status>
-//   * ledblink config              <zedagent>  /<ledblink> / <config>
 //   * zedagent status              <zedagent>/ <status>
 
 package nodeagent
@@ -36,8 +35,7 @@ import (
 )
 
 const (
-	agentName             = "nodeagent"
-	maxConfigGetFailCount = 1
+	agentName = "nodeagent"
 )
 
 // Version : module version
@@ -48,25 +46,23 @@ var rebootDelay = 30 // take a 30 second delay
 type nodeagentContext struct {
 	GCInitialized          bool // Received initial GlobalConfig
 	subGlobalConfig        *pubsub.Subscription
-	subLedBlinkConfig      *pubsub.Subscription
 	subZbootStatus         *pubsub.Subscription
 	subZedAgentStatus      *pubsub.Subscription
 	subBaseOsStatus        *pubsub.Subscription
 	pubZbootConfig         *pubsub.Publication
 	pubNodeAgentStatus     *pubsub.Publication
 	curPart                string
-	ledCounter             int
-	configGetFailCount     int
 	upgradeTestStartTime   time.Time
 	remainingTestTime      time.Duration
 	lastConfigReceivedTime time.Time
 	needsReboot            bool
-	configGetFail          bool
 	rebootReason           string
 	deviceRegistered       bool
 	updateInprogress       bool
 	updateComplete         bool
+	testComplete           bool
 	testInprogress         bool
+	configReceived         bool
 }
 
 var debug = false
@@ -111,7 +107,8 @@ func Run() {
 	types.EnsureGCFile()
 
 	// publisher of NodeAgent Status
-	pubNodeAgentStatus, err := pubsub.Publish(agentName, types.NodeAgentStatus{})
+	pubNodeAgentStatus, err := pubsub.Publish(agentName,
+		types.NodeAgentStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -137,18 +134,7 @@ func Run() {
 	nodeagentCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	// monitor device status through led blinks
-	subLedBlinkConfig, err := pubsub.Subscribe("", types.LedBlinkCounter{},
-		false, &nodeagentCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subLedBlinkConfig.ModifyHandler = handleLedBlinkConfigModify
-	subLedBlinkConfig.DeleteHandler = handleLedBlinkConfigDelete
-	nodeagentCtx.subLedBlinkConfig = subLedBlinkConfig
-	subLedBlinkConfig.Activate()
-
-	// baseline timers
+	// baseline timer
 	nodeagentCtx.lastConfigReceivedTime = time.Now()
 
 	// publish zboot config as of now
@@ -159,6 +145,7 @@ func Run() {
 	log.Infof("Current partition: %s, inProgress: %v\n", nodeagentCtx.curPart,
 		nodeagentCtx.updateInprogress)
 	log.Infof("configReceivedTime:%v\n", nodeagentCtx.lastConfigReceivedTime)
+	publishNodeAgentStatus(&nodeagentCtx)
 
 	// Read the GlobalConfig first
 	// Wait for initial GlobalConfig
@@ -167,9 +154,6 @@ func Run() {
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subLedBlinkConfig.C:
-			subLedBlinkConfig.ProcessChange(change)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
@@ -192,7 +176,7 @@ func Run() {
 	// These timer functions will be tracked using
 	// led blinker and cloud connectionnectivity status.
 
-	// baseline timers, again
+	// rebase timer, again
 	nodeagentCtx.lastConfigReceivedTime = time.Now()
 
 	log.Infof("Waiting for device registration check\n")
@@ -200,9 +184,6 @@ func Run() {
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subLedBlinkConfig.C:
-			subLedBlinkConfig.ProcessChange(change)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
@@ -213,10 +194,7 @@ func Run() {
 		}
 	}
 
-	// take a time out, for zedbox modules activation
-	time.Sleep(10)
-
-	// rebase timers, again
+	// rebase timer, again
 	nodeagentCtx.lastConfigReceivedTime = time.Now()
 
 	// subscribe to zboot status events
@@ -263,9 +241,6 @@ func Run() {
 
 		case change := <-subBaseOsStatus.C:
 			subBaseOsStatus.ProcessChange(change)
-
-		case change := <-subLedBlinkConfig.C:
-			subLedBlinkConfig.ProcessChange(change)
 
 		case change := <-subZedAgentStatus.C:
 			subZedAgentStatus.ProcessChange(change)
@@ -384,69 +359,6 @@ func handleZbootStatusDelete(ctxArg interface{},
 		return
 	}
 	log.Infof("handleZbootStatusDelete(%s) done\n", key)
-}
-
-// monitor device led blink change events
-func handleLedBlinkConfigModify(ctxArg interface{},
-	key string, configArg interface{}) {
-
-	ctx := ctxArg.(*nodeagentContext)
-	config := cast.CastLedBlinkCounter(configArg)
-
-	if key != "ledconfig" {
-		log.Errorf("handleLedBlinkConfigModify: ignoring %s\n", key)
-		return
-	}
-	if config.BlinkCounter == ctx.ledCounter {
-		return
-	}
-	log.Infof("ledBlinkCounter:%d, %d\n", ctx.ledCounter, config.BlinkCounter)
-	lastLedCounter := ctx.ledCounter
-	ctx.ledCounter = config.BlinkCounter
-
-	if ctx.ledCounter >= 3 && !ctx.deviceRegistered {
-		ctx.deviceRegistered = true
-	}
-	// when the baseos upgrade is not in progress, nothing much to do
-	if !ctx.updateInprogress {
-		return
-	}
-	switch ctx.ledCounter {
-	case 2:
-		// the cloud is not connected still or, disconnected
-		if !ctx.testInprogress {
-			return
-		}
-		if lastLedCounter == 4 {
-			setConfigGetFailState(ctx)
-		} else {
-			resetTestStartTime(ctx)
-		}
-	case 3:
-		// is received, on following cases
-		// 0. the cloud connectivity
-		// 1. temporary connection failure
-		// 2. configuration validation failed
-
-		// cloud connectivity established
-		if !ctx.testInprogress {
-			setTestStartTime(ctx)
-			return
-		}
-		// temporary connectivity/config
-		// validation failure
-		if lastLedCounter == 4 {
-			setConfigGetFailState(ctx)
-		} else {
-			resetTestStartTime(ctx)
-		}
-
-	case 4:
-		// cloud connectivity is healthy
-		resetConfigGetFailState(ctx)
-		setTestStartTime(ctx)
-	}
-	log.Infof("handleLedBlinkConfigModify done for %s\n", key)
 }
 
 // monitor device status through led blinks
