@@ -56,6 +56,7 @@ func initiateBaseOsZedCloudTestComplete(ctx *nodeagentContext) {
 	}
 	log.Infof("baseOs(%s) upgrade validation testComplete, in %s\n",
 		status.BaseOsVersion, ctx.curPart)
+	ctx.testComplete = true
 	zbootConfig.TestComplete = true
 	publishZbootConfig(ctx, *zbootConfig)
 }
@@ -95,7 +96,7 @@ func doZbootBaseOsTestValidationComplete(ctx *nodeagentContext,
 	log.Infof("baseOs(%s) upgrade validation is acknowledged, Partition %s\n",
 		status.ShortVersion, status.PartitionLabel)
 	config.TestComplete = false
-	publishZbootConfig(ctx, *config)
 	ctx.updateComplete = true
+	publishZbootConfig(ctx, *config)
 	publishNodeAgentStatus(ctx)
 }

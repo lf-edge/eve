@@ -57,7 +57,8 @@ func handleResetOnCloudDisconnect(ctx *nodeagentContext) {
 func setTestStartTime(ctx *nodeagentContext) {
 	// only when current partition state is in progress
 	// start the test
-	if !ctx.updateInprogress || ctx.testInprogress {
+	if !ctx.updateInprogress || ctx.testInprogress ||
+		ctx.testComplete || ctx.updateComplete {
 		return
 	}
 	ctx.upgradeTestStartTime = time.Now()
@@ -74,29 +75,6 @@ func resetTestStartTime(ctx *nodeagentContext) {
 	}
 	ctx.testInprogress = false
 	ctx.remainingTestTime = 0
-}
-
-func setConfigGetFailState(ctx *nodeagentContext) {
-	if !ctx.configGetFail {
-		ctx.configGetFail = true
-	}
-}
-
-func resetConfigGetFailState(ctx *nodeagentContext) {
-	if ctx.configGetFail {
-		ctx.configGetFail = false
-		ctx.configGetFailCount = 0
-	}
-}
-
-func executeConfigGetFailState(ctx *nodeagentContext) {
-	if !ctx.configGetFail {
-		return
-	}
-	if ctx.configGetFailCount >= maxConfigGetFailCount {
-		resetConfigGetFailState(ctx)
-		resetTestStartTime(ctx)
-	}
 }
 
 func checkUpgradeValidationTestTimeExpiry(ctx *nodeagentContext) bool {
@@ -116,27 +94,21 @@ func checkUpgradeValidationTestTimeExpiry(ctx *nodeagentContext) bool {
 	return true
 }
 
-func handleConfigGetFail(ctx *nodeagentContext) {
-	if !ctx.testInprogress {
-		return
-	}
-	log.Errorf("handleConfigGetFail, %d\n", ctx.configGetFailCount)
-	setConfigGetFailState(ctx)
-	ctx.configGetFailCount++
-	executeConfigGetFailState(ctx)
-}
-
 func updateLastConfigReceivedTime(ctx *nodeagentContext,
 	status types.ZedAgentStatus) {
 	log.Debugf("LastConfigReceivedTime: %v, failCount: %d\n",
 		status.LastConfigReceivedTime, status.ConfigGetFailCount)
+	// baseline with first config received timestamp, from zedagent
+	// to start the upgrade validation test
+	if !ctx.configReceived {
+		ctx.configReceived = true
+		ctx.lastConfigReceivedTime = status.LastConfigReceivedTime
+	}
 	// time stamp has not changed, since last config receive
 	if ctx.lastConfigReceivedTime == status.LastConfigReceivedTime {
-		handleConfigGetFail(ctx)
 		return
 	}
 	// config get is successful
-	resetConfigGetFailState(ctx)
 	setTestStartTime(ctx)
 	ctx.lastConfigReceivedTime = status.LastConfigReceivedTime
 	if checkUpgradeValidationTestTimeExpiry(ctx) {

@@ -71,13 +71,13 @@ func publishZbootConfig(ctx *nodeagentContext, config types.ZbootConfig) {
 		return
 	}
 	pub := ctx.pubZbootConfig
-	log.Infof("publishZbootConfig: %v\n", config)
+	log.Debugf("publishZbootConfig: %v\n", config)
 	pub.Publish(config.PartitionLabel, config)
 	syscall.Sync()
 }
 
 func publishZbootConfigAll(ctx *nodeagentContext) {
-	log.Infof("publishZbootConfigAll\n")
+	log.Debugf("publishZbootConfigAll\n")
 	partitionNames := []string{"IMGA", "IMGB"}
 	for _, partName := range partitionNames {
 		config := types.ZbootConfig{}
