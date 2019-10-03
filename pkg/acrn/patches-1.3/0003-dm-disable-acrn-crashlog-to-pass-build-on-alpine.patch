@@ -1,0 +1,26 @@
+From c5fdc4c01d53d684422dd4cdc95326106228c011 Mon Sep 17 00:00:00 2001
+From: Jack Ren <jack.ren@intel.com>
+Date: Sun, 11 Aug 2019 08:57:42 +0800
+Subject: [PATCH 3/4] dm: disable acrn-crashlog to pass build on alpine
+
+Signed-off-by: Jack Ren <jack.ren@intel.com>
+---
+ misc/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/misc/Makefile b/misc/Makefile
+index e60ad060..823cd6df 100644
+--- a/misc/Makefile
++++ b/misc/Makefile
+@@ -4,7 +4,7 @@ RELEASE ?= 0
+ 
+ .PHONY: all acrn-crashlog acrnlog acrn-manager acrntrace acrnbridge
+ ifeq ($(RELEASE),0)
+-all: acrn-crashlog acrnlog acrn-manager acrntrace acrnbridge
++all: acrnlog acrn-manager acrntrace acrnbridge
+ else
+ all: acrn-manager acrnbridge
+ endif
+-- 
+2.17.1
+

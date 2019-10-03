@@ -1480,12 +1480,6 @@ func natActivate(ctx *zedrouterContext,
 			return err
 		}
 	}
-	// Add to Pbr table
-	err := PbrNATAdd(subnetStr)
-	if err != nil {
-		log.Errorf("PbrNATAdd failed for port %s - err = %s\n", status.Port, err)
-		return err
-	}
 	return nil
 }
 
@@ -1539,11 +1533,6 @@ func natInactivate(ctx *zedrouterContext,
 		if err != nil {
 			log.Errorf("natInactivate: PbrRouteDeleteAll failed %s\n", err)
 		}
-	}
-	// Remove from Pbr table
-	err := PbrNATDel(subnetStr)
-	if err != nil {
-		log.Errorf("natInactivate: PbrNATDel failed %s\n", err)
 	}
 }
 

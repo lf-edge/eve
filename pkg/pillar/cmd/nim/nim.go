@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"reflect"
 	"sort"
@@ -355,7 +356,7 @@ func Run() {
 				// XXX Need to discard all cached information?
 				addrChanges = devicenetwork.AddrChangeInit()
 			} else {
-				ch, ifindex := devicenetwork.AddrChange(change)
+				ch, ifindex := devicenetwork.AddrChange(nimCtx.DeviceNetworkContext, change)
 				if ch {
 					handleInterfaceChange(&nimCtx, ifindex,
 						"AddrChange", true)
@@ -385,7 +386,7 @@ func Run() {
 				log.Errorf("routeChanges closed\n")
 				routeChanges = devicenetwork.RouteChangeInit()
 			} else {
-				ch, ifindex := devicenetwork.RouteChange(change)
+				ch, ifindex := devicenetwork.RouteChange(nimCtx.DeviceNetworkContext, change)
 				if ch {
 					handleInterfaceChange(&nimCtx, ifindex,
 						"RouteChange", false)
@@ -504,7 +505,7 @@ func Run() {
 				addrChanges = devicenetwork.AddrChangeInit()
 				// XXX Need to discard all cached information?
 			} else {
-				ch, ifindex := devicenetwork.AddrChange(change)
+				ch, ifindex := devicenetwork.AddrChange(nimCtx.DeviceNetworkContext, change)
 				if ch {
 					handleInterfaceChange(&nimCtx, ifindex,
 						"AddrChange", true)
@@ -534,7 +535,7 @@ func Run() {
 				log.Errorf("routeChanges closed\n")
 				routeChanges = devicenetwork.RouteChangeInit()
 			} else {
-				ch, ifindex := devicenetwork.RouteChange(change)
+				ch, ifindex := devicenetwork.RouteChange(nimCtx.DeviceNetworkContext, change)
 				if ch {
 					handleInterfaceChange(&nimCtx, ifindex,
 						"RouteChange", false)
@@ -649,6 +650,17 @@ func handleInterfaceChange(ctx *nimContext, ifindex int, logstr string, force bo
 		}
 		log.Infof("%s(%s) force changed to %v",
 			logstr, ifname, addrs)
+		// Do not have a baseline to delete from
+		devicenetwork.FlushRules(ifindex)
+		for _, a := range addrs {
+			var subnet net.IPNet
+			if a.To4() != nil {
+				subnet = net.IPNet{IP: a, Mask: net.CIDRMask(32, 32)}
+			} else {
+				subnet = net.IPNet{IP: a, Mask: net.CIDRMask(128, 128)}
+			}
+			devicenetwork.AddSourceRule(ifindex, subnet, false)
+		}
 		devicenetwork.HandleAddressChange(&ctx.DeviceNetworkContext)
 		// XXX should we trigger restarting testing?
 		return
@@ -669,6 +681,25 @@ func handleInterfaceChange(ctx *nimContext, ifindex int, logstr string, force bo
 	} else {
 		log.Infof("%s(%s) changed from %v to %v",
 			logstr, ifname, oldAddrs, addrs)
+		for _, a := range oldAddrs {
+			var subnet net.IPNet
+			if a.To4() != nil {
+				subnet = net.IPNet{IP: a, Mask: net.CIDRMask(32, 32)}
+			} else {
+				subnet = net.IPNet{IP: a, Mask: net.CIDRMask(128, 128)}
+			}
+			devicenetwork.DelSourceRule(ifindex, subnet, false)
+		}
+		for _, a := range addrs {
+			var subnet net.IPNet
+			if a.To4() != nil {
+				subnet = net.IPNet{IP: a, Mask: net.CIDRMask(32, 32)}
+			} else {
+				subnet = net.IPNet{IP: a, Mask: net.CIDRMask(128, 128)}
+			}
+			devicenetwork.AddSourceRule(ifindex, subnet, false)
+		}
+
 		devicenetwork.HandleAddressChange(&ctx.DeviceNetworkContext)
 		// XXX should we trigger restarting testing?
 	}
@@ -731,6 +762,7 @@ func publishDeviceNetworkStatus(ctx *nimContext) {
 	log.Infof("PublishDeviceNetworkStatus: %+v\n",
 		ctx.DeviceNetworkStatus)
 	devicenetwork.UpdateResolvConf(*ctx.DeviceNetworkStatus)
+	devicenetwork.UpdatePBR(*ctx.DeviceNetworkStatus)
 	ctx.DeviceNetworkStatus.Testing = false
 	ctx.PubDeviceNetworkStatus.Publish("global", ctx.DeviceNetworkStatus)
 }

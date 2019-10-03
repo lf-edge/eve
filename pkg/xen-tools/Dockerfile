@@ -6,7 +6,7 @@ RUN apk add --no-cache \
     gettext iasl util-linux-dev ncurses-dev glib-dev \
     pixman-dev libaio-dev yajl-dev argp-standalone \
     linux-headers git patch texinfo curl tar libcap-dev \
-    attr-dev flex bison
+    attr-dev flex bison cmake
 
 # FIXME: this is really ugly -- we need to figure out xen tools dependencies
 RUN [ `uname -m` = "aarch64" ] && apk add --no-cache dtc-dev || :
@@ -37,10 +37,14 @@ RUN set -e && for patch in /patches/*.patch; do \
 
 RUN mkdir -p /out
 
+COPY gmp.patch /xen/stubdom
 WORKDIR /xen
-RUN ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable-docs --disable-stubdom --enable-9pfs
+RUN ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable-docs --enable-stubdom --enable-9pfs   --enable-vtpm-stubdom --enable-vtpmmgr-stubdom
 RUN make && make dist
 RUN dist/install.sh /out
+
+# Filter out a few things that we don't currently need
+RUN rm /out/usr/share/qemu-xen/qemu/edk2-*
 
 FROM scratch
 ENTRYPOINT []

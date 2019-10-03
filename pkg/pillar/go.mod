@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	contrib.go.opencensus.io/exporter/ocagent v0.4.11 // indirect
+	git.apache.org/thrift.git v0.12.0 // indirect
 	github.com/Azure/azure-sdk-for-go v11.3.0-beta+incompatible
 	github.com/Azure/go-autorest v11.7.0+incompatible // indirect
 	github.com/VictorLowther/godmi v0.0.0-20190311134151-270258a8252d // indirect
@@ -42,7 +43,6 @@ require (
 	google.golang.org/api v0.3.2 // indirect
 	google.golang.org/genproto v0.0.0-20190404172233-64821d5d2107 // indirect
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
-        git.apache.org/thrift.git v0.12.0 // indirect
 )
 
 replace github.com/lf-edge/eve/api/go => ../../api/go
