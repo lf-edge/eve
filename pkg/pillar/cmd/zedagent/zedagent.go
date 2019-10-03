@@ -4,8 +4,9 @@
 // zedAgent interfaces with zedcloud for
 //   * config sync
 //   * metric/info publish
-// app instance config is pushed to zedmanager for orchestration
-// baseos/certs config is pushed to baseosmgr for orchestration
+// app instance config is published to zedmanager for orchestration
+// baseos/certs config is published to baseosmgr for orchestration
+// datastore config is published for downloader consideration
 // event based baseos/app instance/device info published to ZedCloud
 // periodic status/metric published to zedCloud
 
@@ -19,6 +20,8 @@
 //   <zedagent>  <certs> <config> --> <baseosmgr>   <certs> <status>
 // <app image>
 //   <zedagent>  <appimage> <config> --> <zedmanager> <appimage> <status>
+// <datastore>
+//   <zedagent>  <datastore> <config> --> <downloader>
 
 package zedagent
 

@@ -55,14 +55,11 @@ func handleResetOnCloudDisconnect(ctx *nodeagentContext) {
 
 // baseos upgrade test validation utilities
 func setTestStartTime(ctx *nodeagentContext) {
-	// test has already started or, the current
-	// partition is not in inprogress state,
-	// nothing to do
+	// only when current partition state is in progress
+	// start the test
 	if !ctx.updateInprogress || ctx.testInprogress {
 		return
 	}
-	// only when current partition state is in progress
-	// start the test
 	ctx.upgradeTestStartTime = time.Now()
 	ctx.testInprogress = true
 	successLimit := time.Second *
@@ -75,11 +72,8 @@ func resetTestStartTime(ctx *nodeagentContext) {
 	if !ctx.testInprogress {
 		return
 	}
-	// the led status has changed, incase, the test is in progress,
-	// we need to start the test again, reset first
 	ctx.testInprogress = false
 	ctx.remainingTestTime = 0
-	ctx.testInprogress = false
 }
 
 func setConfigGetFailState(ctx *nodeagentContext) {
@@ -126,16 +120,15 @@ func handleConfigGetFail(ctx *nodeagentContext) {
 	if !ctx.testInprogress {
 		return
 	}
-	if !ctx.configGetFail {
-		ctx.configGetFail = true
-	}
+	log.Errorf("handleConfigGetFail, %d\n", ctx.configGetFailCount)
+	setConfigGetFailState(ctx)
 	ctx.configGetFailCount++
 	executeConfigGetFailState(ctx)
 }
 
 func updateLastConfigReceivedTime(ctx *nodeagentContext,
 	status types.ZedAgentStatus) {
-	log.Debugf("lastConfigReceivedtime: %v, failCount: %d \n",
+	log.Debugf("LastConfigReceivedTime: %v, failCount: %d\n",
 		status.LastConfigReceivedTime, status.ConfigGetFailCount)
 	// time stamp has not changed, since last config receive
 	if ctx.lastConfigReceivedTime == status.LastConfigReceivedTime {
