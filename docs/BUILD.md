@@ -364,22 +364,28 @@ $ make proto
 Each package can be built independently via:
 
 ```
-linuxkit pkg build <directory>
+make pkg/<name>
 ```
 
 For example, to build `guacd`:
 
 ```
-linuxkit pkg build pkg/guacd
+make pkg/guacd
 ```
 
-Or from within the `pkg/guacd` directory:
+To build all of the dependent packages:
 
 ```
-linuxkit pkg build .
+make pkgs
 ```
 
-To simplify and collate building, you can run `make build` in the `pkg/` directory, or just `make -C pkg/ build`. This will build all of the dependent packages.
+In some cases, the `pkg/<name>` rule may rebuild more than intended, as they
+specify required dependencies.  In this case, it may be more efficient to use
+`make eve-<name>`, such as when testing changes in the `pillar` package:
+
+```shell
+make eve-pillar
+```
 
 All of these packages are published regularly to the dockerhub registry, so it is not strictly necessary to rebuild them, unless you are changing a package and want to publish, or are working with a local custom build.
 
