@@ -393,9 +393,15 @@ All of these packages are published regularly to the dockerhub registry, so it i
 
 ## Summary of Build Process
 
-### Live
+This section provides an overview of the processes used to create the
+following components:
 
-```
+* [Live Images]
+* [Installer Images]
+
+### Live Images
+
+```text
 +-------+                                +--------+
 | pkg/* +-------+                     +--+ conf/  |
 +-------+       |                     |  +--------+
@@ -438,10 +444,9 @@ All of these packages are published regularly to the dockerhub registry, so it i
 
 ```
 
-### Installer
+### Installer Images
 
-```
-
+```text
 +-------+                                +--------+
 | pkg/* +-------+                     +--+ conf/  |
 +-------+       |                     |  +--------+
