@@ -1,9 +1,7 @@
 FROM alpine:3.10 as kernel-build
 #linuxkit/alpine:f2f4db272c910d136380781a97e475013fabda8b AS kernel-build
 
-RUN apk update
-
-RUN apk add \
+RUN apk --no-cache add \
     argp-standalone=1.3-r3 \
     automake=1.16.1-r0 \
     bash=5.0.0-r0 \
@@ -37,9 +35,6 @@ RUN apk add \
     elfutils-dev=0.168-r2
 
 
-# libunwind-dev pkg is missed from arm64 now, below statement will be removed if the pkg is available.
-RUN [ $(uname -m) == x86_64 ] && apk add libunwind-dev=1.2.1-r3 || true
-
 # Download acrn-kernel
 ENV KERNEL_VERSION acrn-2019w39.3-150000p
 ENV KERNEL_SOURCE=https://github.com/projectacrn/acrn-kernel/archive/${KERNEL_VERSION}.tar.gz
@@ -64,33 +59,7 @@ RUN cp kernel_config_uefi_sos .config && \
     cp arch/x86_64/boot/bzImage /out/kernel; \
     cp System.map /out
 
-RUN make INSTALL_MOD_PATH=/tmp/kernel-modules modules_install && \
-    ( DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdepth 1)) && \
-      cd /tmp/kernel-modules/lib/modules/$DVER && \
-      rm build source && \
-      ln -s /usr/src/linux-headers-$DVER build ) && \
-    ( cd /tmp/kernel-modules && tar cf /out/kernel.tar lib )
-
-# Headers (userspace API)
-RUN mkdir -p /tmp/kernel-headers/usr && \
-    make INSTALL_HDR_PATH=/tmp/kernel-headers/usr headers_install && \
-    ( cd /tmp/kernel-headers && tar cf /out/kernel-headers.tar usr )
-
-# Headers (kernel development)
-RUN DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdepth 1)) && \
-    dir=/tmp/usr/src/linux-headers-$DVER && \
-    mkdir -p $dir && \
-    cp /acrn-kernel/.config $dir && \
-    cp /acrn-kernel/Module.symvers $dir && \
-    find . -path './include/*' -prune -o \
-           -path './arch/*/include' -prune -o \
-           -path './scripts/*' -prune -o \
-           -type f \( -name 'Makefile*' -o -name 'Kconfig*' -o -name 'Kbuild*' -o \
-                      -name '*.lds' -o -name '*.pl' -o -name '*.sh' \) | \
-         tar cf - -T - | (cd $dir; tar xf -) && \
-    ( cd /tmp && tar cf /out/kernel-dev.tar usr/src )
-
-RUN printf "KERNEL_SOURCE=${KERNEL_SOURCE}\n" > /out/kernel-source-info
+RUN echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info
 
 FROM scratch
 ENTRYPOINT []
