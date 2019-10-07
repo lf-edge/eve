@@ -301,13 +301,7 @@ func addPBR(status types.DeviceNetworkStatus, ifname string, addrs []net.IP) {
 	}
 	FlushRules(ifindex)
 	for _, a := range addrs {
-		var subnet net.IPNet
-		if a.To4() != nil {
-			subnet = net.IPNet{IP: a, Mask: net.CIDRMask(32, 32)}
-		} else {
-			subnet = net.IPNet{IP: a, Mask: net.CIDRMask(128, 128)}
-		}
-		AddSourceRule(ifindex, subnet, false)
+		AddSourceRule(ifindex, HostSubnet(a), false)
 	}
 	// Flush then copy all routes for this interface to the table
 	// for this ifindex
