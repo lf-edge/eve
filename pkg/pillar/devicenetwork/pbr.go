@@ -68,30 +68,29 @@ func FlushRules(ifindex int) {
 	}
 }
 
+func makeNetlinkRule(ifindex int, p net.IPNet, addForSubnet bool) *netlink.Rule {
+	r := netlink.NewRule()
+	r.Table = baseTableIndex + ifindex
+	r.Priority = 10000
+	r.Family = HostFamily(p.IP)
+
+	var subnet net.IPNet
+	if addForSubnet {
+		subnet = p
+	} else {
+		subnet = HostSubnet(p.IP)
+	}
+	r.Src = &subnet
+
+	return r
+}
+
 // AddSourceRule create a pbr rule for the address or subet which refers to the
 // specific table for the ifindex.
 func AddSourceRule(ifindex int, p net.IPNet, addForSubnet bool) {
 
 	log.Infof("AddSourceRule(%d, %v, %v)", ifindex, p.String(), addForSubnet)
-	r := netlink.NewRule()
-	r.Table = baseTableIndex + ifindex
-	r.Priority = 10000
-	// Add rule for /32 or /128
-	if p.IP.To4() != nil {
-		r.Family = syscall.AF_INET
-		if addForSubnet {
-			r.Src = &p
-		} else {
-			r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(32, 32)}
-		}
-	} else {
-		r.Family = syscall.AF_INET6
-		if addForSubnet {
-			r.Src = &p
-		} else {
-			r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(128, 128)}
-		}
-	}
+	r := makeNetlinkRule(ifindex, p, addForSubnet)
 	log.Debugf("AddSourceRule: RuleAdd %v", r)
 	// Avoid duplicate rules
 	_ = netlink.RuleDel(r)
@@ -106,25 +105,7 @@ func AddSourceRule(ifindex int, p net.IPNet, addForSubnet bool) {
 func DelSourceRule(ifindex int, p net.IPNet, addForSubnet bool) {
 
 	log.Infof("DelSourceRule(%d, %v, %v)", ifindex, p.String(), addForSubnet)
-	r := netlink.NewRule()
-	r.Table = baseTableIndex + ifindex
-	r.Priority = 10000
-	// Add rule for /32 or /128
-	if p.IP.To4() != nil {
-		r.Family = syscall.AF_INET
-		if addForSubnet {
-			r.Src = &p
-		} else {
-			r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(32, 32)}
-		}
-	} else {
-		r.Family = syscall.AF_INET6
-		if addForSubnet {
-			r.Src = &p
-		} else {
-			r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(128, 128)}
-		}
-	}
+	r := makeNetlinkRule(ifindex, p, addForSubnet)
 	log.Debugf("DelSourceRule: RuleDel %v", r)
 	if err := netlink.RuleDel(r); err != nil {
 		log.Errorf("RuleDel %v failed with %s", r, err)
