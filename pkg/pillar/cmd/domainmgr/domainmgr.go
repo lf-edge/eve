@@ -294,7 +294,10 @@ func Run() {
 
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse
+	// Update the LastUse again here since it may not get updated since the
+	// device reboot if network is not available
 	gc := time.NewTicker(vdiskGCTime / 10)
+	gcResetObjectsLastUse(&domainCtx, rwImgDirname)
 
 	for {
 		select {
@@ -2961,4 +2964,26 @@ func isInUsbGroup(aa types.AssignableAdapters, ib types.IoBundle) bool {
 		}
 	}
 	return false
+}
+
+// gc timer just started, reset the LastUse timestamp
+func gcResetObjectsLastUse(ctx *domainContext, dirName string) {
+
+	log.Debugf("gcResetObjectsLastUse()\n")
+
+	pub := ctx.pubImageStatus
+	items := pub.GetAll()
+	for key, st := range items {
+		status := cast.CastImageStatus(st)
+		if status.Key() != key {
+			log.Errorf("gcResetObjectsLastUse key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
+		if status.RefCount == 0 {
+			log.Infof("gcResetObjectsLastUse: reset %v LastUse to now\n", key)
+			status.LastUse = time.Now()
+			publishImageStatus(ctx, &status)
+		}
+	}
 }
