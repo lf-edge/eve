@@ -158,13 +158,16 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 	// find the interfaces to be deleted
 	for key, link := range EtrTable.EtrTable {
 		if _, ok := validList[key]; ok == false {
+			log.Infof("HandleDeviceNetworkChange: Stopping ETR thread for UP link %s", key)
 			link.KillChannel <- true
+			// Wait for the thread to confirm that it died
+			<-link.KillChannel
+			log.Infof("HandleDeviceNetworkChange: ETR thread for UPlink %s exited", key)
 			syscall.Close(link.Fd4)
 			syscall.Close(link.Fd6)
 			//link.Ring.Disable()
 			//link.Ring.Close()
 			delete(EtrTable.EtrTable, key)
-			log.Infof("HandleDeviceNetworkChange: Stopping ETR thread for UP link %s", key)
 		}
 	}
 
@@ -562,6 +565,7 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 				"ProcessCapturedPkts: It could be the ETR thread handle closure leading to this")
 			log.Infof("ProcessCapturedPkts: Closing packet capture handle")
 			handle.Close()
+			killChannel <- true
 			return
 		default:
 		}
