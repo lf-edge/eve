@@ -580,7 +580,7 @@ func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
 	if ok {
 		log.Fatalf("handleDomainCreate called on config that already exists")
 	}
-	h1 := make(chan interface{})
+	h1 := make(chan interface{}, 1)
 	handlerMap[config.Key()] = h1
 	go runHandler(ctx, key, h1)
 	h = h1

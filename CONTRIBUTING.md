@@ -137,6 +137,27 @@ Any member of the TSC can merge outstanding Pull Requests, provided they pass
 the required checks configured on the repository and take care of all the
 community feedback provided.
 
+### Check your changes
+
+The EVE project uses CircleCI to verify changes do not negatively impact
+the style or functionality of the documentation and code.  Some of these
+tests can be run locally to verify your work, prior to pushing them to
+GitHub.
+
+Specifically, the yetus tests may be run by using `make yetus`.  The
+first run of that rule will cause a Docker image to be built for running
+the tests, which can take a long time.  The yetus package will be
+downloaded into `/tmp/yetus`, and the results from testing the tree will
+be placed in the `/tmp/yetus-out` directory.
+
+*NOTE*: The yetus tests were added relatively late to the project,
+so pre-existing issues remain in the tree.  As a result, those issues
+may be flagged by the CI process when making unrelated changes nearby.
+Those pre-existing issues must be fixed as part of your PR, if they
+cause the CI tests to fail.  Unless directly touched by an existing
+patch in your branch, these failures should be fixed in additional
+new patches by appending them to your branch.
+
 ### Sign your work
 
 The sign-off is a simple line at the end of the explanation for the patch. Your

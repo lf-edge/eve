@@ -222,6 +222,12 @@ func Run() {
 	}
 	zedrouterCtx.pubAppFlowMonitor = pubAppFlowMonitor
 
+	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
+	pub, err := pubsub.Publish(agentName, nms)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	appNumAllocatorInit(&zedrouterCtx)
 	bridgeNumAllocatorInit(&zedrouterCtx)
 	handleInit(runDirname)
@@ -315,11 +321,6 @@ func Run() {
 	linkChanges := devicenetwork.LinkChangeInit()
 
 	// Publish network metrics for zedagent every 10 seconds
-	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
-	pub, err := pubsub.Publish(agentName, nms)
-	if err != nil {
-		log.Fatal(err)
-	}
 	interval := time.Duration(10 * time.Second)
 	max := float64(interval)
 	min := max * 0.3
@@ -333,8 +334,6 @@ func Run() {
 	fmin := fmax * 0.9
 	flowStatTimer := flextimer.NewRangeTicker(time.Duration(fmin),
 		time.Duration(fmax))
-
-	setFreeMgmtPorts(types.GetMgmtPortsFree(*zedrouterCtx.deviceNetworkStatus, 0))
 
 	zedrouterCtx.ready = true
 	log.Infof("zedrouterCtx.ready\n")
@@ -527,7 +526,6 @@ func maybeHandleDNS(ctx *zedrouterContext) {
 	}
 	updateLispConfiglets(ctx, ctx.legacyDataPlane)
 
-	setFreeMgmtPorts(types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0))
 	// XXX do a NatInactivate/NatActivate if management ports changed?
 }
 

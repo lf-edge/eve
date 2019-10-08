@@ -5,6 +5,7 @@ package devicenetwork
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"reflect"
 	"time"
@@ -17,7 +18,7 @@ import (
 )
 
 const (
-	MaxDPCRetestCount = 3
+	MaxDPCRetestCount = 5
 )
 
 type PendDNSStatus uint32
@@ -120,6 +121,7 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 		// Need to publish so that other agents see we have initialized
 		// even if we have no IPs
 		UpdateResolvConf(*ctx.DeviceNetworkStatus)
+		UpdatePBR(*ctx.DeviceNetworkStatus)
 		if ctx.PubDeviceNetworkStatus != nil {
 			ctx.DeviceNetworkStatus.Testing = false
 			log.Infof("PublishDeviceNetworkStatus: %+v\n",
@@ -245,61 +247,43 @@ func VerifyPending(pending *DPCPending,
 			pending.PendDNS, pend2)
 	}
 	pending.PendDNS = pend2
-	// XXX assume we're doing at least IPv4, so count only those to check if DHCP done
-	numUsableAddrs := types.CountLocalIPv4AddrAnyNoLinkLocal(pending.PendDNS)
-	numUsableDNSServers := types.CountDNSServers(pending.PendDNS)
-	if numUsableAddrs == 0 || numUsableDNSServers == 0 {
-		var errStr string
-		ifs := types.GetExistingInterfaceList(pending.PendDNS)
-		if len(ifs) == 0 {
-			errStr = "No interfaces exist in the pending network config"
-		} else if numUsableAddrs == 0 {
-			errStr = "DHCP could not resolve any usable " +
-				"IP addresses for the pending network config"
-		} else {
-			errStr = "DHCP did not yet find any DNS servers " +
-				"for the pending network config"
-		}
+
+	// We want connectivity to zedcloud via atleast one Management port.
+	rtf, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1, timeout)
+	if err == nil {
+		pending.PendDPC.LastSucceeded = time.Now()
+		pending.PendDPC.LastError = ""
+		log.Infof("VerifyPending: DPC passed network test: %+v",
+			pending.PendDPC)
+		return DPC_SUCCESS
+	}
+	errStr := fmt.Sprintf("Failed network test: %s", err)
+	if rtf {
+		log.Errorf("VerifyPending: remoteTemporaryFailure %s", errStr)
+		// NOTE: do not increase TestCount; we retry until e.g., the
+		// certificate or ECONNREFUSED is fixed on the server side.
+		return DPC_WAIT
+	}
+	if !checkIfAllPortsHaveIPandDNS(pending.PendDNS) {
+		// Still waiting for IP or DNS
 		if pending.TestCount < MaxDPCRetestCount {
-			pending.TestCount += 1
-			log.Infof("VerifyPending: %s for %+v\n",
-				errStr, pending.PendDNS)
+			pending.TestCount++
+			log.Infof("VerifyPending no IP/DNS: TestCount %d: %s for %+v\n",
+				pending.TestCount, errStr, pending.PendDNS)
 			return DPC_WAIT
 		} else {
-			log.Errorf("VerifyPending: %s for %+v\n",
+			log.Errorf("VerifyPending no IP/DNS: exceeded TestCount: %s for %+v\n",
 				errStr, pending.PendDNS)
 			pending.PendDPC.LastFailed = time.Now()
 			pending.PendDPC.LastError = errStr
 			return DPC_FAIL
 		}
 	}
-	// Do not entertain re-testing this DPC anymore.
+	log.Errorf("VerifyPending: %s\n", errStr)
 	pending.TestCount = MaxDPCRetestCount
-
-	// We want connectivity to zedcloud via atleast one Management port.
-	rtf, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1, timeout)
-	status := DPC_FAIL
-	if err == nil {
-		pending.PendDPC.LastSucceeded = time.Now()
-		pending.PendDPC.LastError = ""
-		status = DPC_SUCCESS
-		log.Infof("VerifyPending: DPC passed network test: %+v",
-			pending.PendDPC)
-	} else {
-		errStr := fmt.Sprintf("Failed network test: %s",
-			err)
-		if rtf {
-			log.Errorf("VerifyPending: remoteTemporaryFailure %s", errStr)
-			// NOTE: do not increase TestCount; we retry until e.g., the
-			// certificate or ECONNREFUSED is fixed on the server side.
-			status = DPC_WAIT
-		} else {
-			log.Errorf("VerifyPending: %s\n", errStr)
-		}
-		pending.PendDPC.LastFailed = time.Now()
-		pending.PendDPC.LastError = errStr
-	}
-	return status
+	pending.PendDPC.LastFailed = time.Now()
+	pending.PendDPC.LastError = errStr
+	return DPC_FAIL
 }
 
 func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
@@ -320,6 +304,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 		res := VerifyPending(&ctx.Pending, ctx.AssignableAdapters,
 			ctx.TestSendTimeout)
 		UpdateResolvConf(ctx.Pending.PendDNS)
+		UpdatePBR(ctx.Pending.PendDNS)
 		if ctx.PubDeviceNetworkStatus != nil {
 			log.Infof("PublishDeviceNetworkStatus: pending %+v\n",
 				ctx.Pending.PendDNS)
@@ -510,7 +495,8 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	// we should go ahead and call RestartVerify even when "configChanged" is false.
 	// Also if we have no working one (index -1) we restart.
 	ipAddrCount := types.CountLocalIPv4AddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus)
-	if !configChanged && ipAddrCount > 0 && ctx.DevicePortConfigList.CurrentIndex != -1 {
+	numDNSServers := types.CountDNSServers(*ctx.DeviceNetworkStatus, "")
+	if !configChanged && ipAddrCount > 0 && numDNSServers > 0 && ctx.DevicePortConfigList.CurrentIndex != -1 {
 		log.Infof("HandleDPCModify: Config already current. No changes to process\n")
 		return
 	}
@@ -798,6 +784,7 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 		ctx.UsableAddressCount = newAddrCount
 	}
 	UpdateResolvConf(*ctx.DeviceNetworkStatus)
+	UpdatePBR(*ctx.DeviceNetworkStatus)
 	if ctx.PubDeviceNetworkStatus != nil {
 		ctx.DeviceNetworkStatus.Testing = false
 		log.Infof("PublishDeviceNetworkStatus: %+v\n",
@@ -806,17 +793,23 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 			ctx.DeviceNetworkStatus)
 	}
 	ctx.Changed = true
-	// Also create a resolv.conf based on all of the management interfaces
-	UpdateResolvConf(*ctx.DeviceNetworkStatus)
 }
 
 const destFilename = "/etc/resolv.conf"
+
+// Track changes in DNS servers.
+var lastServers []net.IP
 
 // UpdateResolvConf produces a /etc/resolv.conf based on the management ports
 // in DeviceNetworkStatus
 func UpdateResolvConf(globalStatus types.DeviceNetworkStatus) int {
 
 	log.Infof("UpdateResolvConf")
+	servers := getDNSServers(globalStatus)
+	if reflect.DeepEqual(lastServers, servers) {
+		log.Infof("UpdateResolvConf: no change: %d", len(lastServers))
+		return len(lastServers)
+	}
 	destfile, err := os.Create(destFilename)
 	if err != nil {
 		log.Errorln("Create ", err)
@@ -826,14 +819,29 @@ func UpdateResolvConf(globalStatus types.DeviceNetworkStatus) int {
 
 	numAddrs := generateResolvConf(globalStatus, destfile)
 	log.Infof("UpdateResolvConf DONE %d addrs", numAddrs)
+	lastServers = servers
 	return numAddrs
 }
 
+func getDNSServers(globalStatus types.DeviceNetworkStatus) []net.IP {
+	var servers []net.IP
+	for _, us := range globalStatus.Ports {
+		if !us.IsMgmt {
+			continue
+		}
+		for _, server := range us.DnsServers {
+			servers = append(servers, server)
+		}
+	}
+	return servers
+}
+
+// Note that we don't add a search nor domainname option since
+// it seems to mess up the retry logic
 func generateResolvConf(globalStatus types.DeviceNetworkStatus, destfile *os.File) int {
 	destfile.WriteString("# Generated by nim\n")
 	destfile.WriteString("# Do not edit\n")
-	wroteDomainName := false
-	numAddrs := 0
+	var written []net.IP
 	log.Infof("generateResolvConf %d ports", len(globalStatus.Ports))
 	for _, us := range globalStatus.Ports {
 		if !us.IsMgmt {
@@ -843,24 +851,29 @@ func generateResolvConf(globalStatus types.DeviceNetworkStatus, destfile *os.Fil
 		if len(us.AddrInfoList) == 0 {
 			continue
 		}
-		log.Infof("generateResolvConf %s has %d servers",
-			us.IfName, len(us.DnsServers))
-		if us.DomainName != "" && !wroteDomainName {
-			destfile.WriteString(fmt.Sprintf("# From %s\n", us.IfName))
-			destfile.WriteString(fmt.Sprintf("domainname %s\n",
-				us.DomainName))
-			wroteDomainName = true
-		} else {
-			destfile.WriteString(fmt.Sprintf("# From %s\n", us.IfName))
-		}
-		// We do not drop duplicate IP addresses from nameservers.
+		log.Infof("generateResolvConf %s has %d servers: %v",
+			us.IfName, len(us.DnsServers), us.DnsServers)
+		destfile.WriteString(fmt.Sprintf("# From %s\n", us.IfName))
+		// Avoid duplicate IP addresses for nameservers.
 		for _, server := range us.DnsServers {
-			destfile.WriteString(fmt.Sprintf("nameserver %s\n",
-				server))
-			numAddrs++
+			duplicate := false
+			for _, a := range written {
+				if a.Equal(server) {
+					duplicate = true
+				}
+			}
+			if duplicate {
+				destfile.WriteString(fmt.Sprintf("# nameserver %s\n",
+					server))
+			} else {
+				destfile.WriteString(fmt.Sprintf("nameserver %s\n",
+					server))
+				written = append(written, server)
+			}
 		}
 	}
 	destfile.WriteString("options rotate\n")
+	destfile.WriteString("options attempts:5\n")
 	destfile.Sync()
-	return numAddrs
+	return len(written)
 }
