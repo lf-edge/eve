@@ -274,7 +274,7 @@ func CheckDNSUpdate(ctx *DeviceNetworkContext) {
 		if !reflect.DeepEqual(ctx.Pending.PendDNS, dnStatus) {
 			log.Infof("CheckDNSUpdate pending: change from %v to %v\n",
 				ctx.Pending.PendDNS, dnStatus)
-			pingTestDNS := checkIfAllPortsHaveIPandDNS(dnStatus)
+			pingTestDNS := checkIfMgmtPortsHaveIPandDNS(dnStatus)
 			if pingTestDNS {
 				// We have a suitable candiate for running our cloud ping test.
 				log.Infof("CheckDNSUpdate: Running cloud ping test now, " +

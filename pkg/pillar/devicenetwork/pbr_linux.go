@@ -27,6 +27,7 @@ func CopyRoutesTable(srcTable int, ifindex int, dstTable int) {
 	if ifindex != 0 {
 		fflags |= netlink.RT_FILTER_OIF
 	}
+	// XXX is AF_UNSPEC ok?
 	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC,
 		&filter, fflags)
 	if err != nil {
