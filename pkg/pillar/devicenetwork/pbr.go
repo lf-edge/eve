@@ -24,6 +24,7 @@ func FlushRoutesTable(table int, ifindex int) {
 	if ifindex != 0 {
 		fflags |= netlink.RT_FILTER_OIF
 	}
+	// XXX if AF_UNSPEC ok?
 	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC,
 		&filter, fflags)
 	if err != nil {
@@ -38,7 +39,7 @@ func FlushRoutesTable(table int, ifindex int) {
 		if ifindex != 0 && rt.LinkIndex != ifindex {
 			continue
 		}
-		log.Debugf("FlushRoutesTable(%d, %d) deleting %v",
+		log.Infof("FlushRoutesTable(%d, %d) deleting %v",
 			table, ifindex, rt)
 		if err := netlink.RouteDel(&rt); err != nil {
 			log.Errorf("FlushRoutesTable - RouteDel %v failed %s",
