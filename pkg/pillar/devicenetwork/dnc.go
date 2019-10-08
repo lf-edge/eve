@@ -264,7 +264,7 @@ func VerifyPending(pending *DPCPending,
 		// certificate or ECONNREFUSED is fixed on the server side.
 		return DPC_WAIT
 	}
-	if !checkIfAllPortsHaveIPandDNS(pending.PendDNS) {
+	if !checkIfMgmtPortsHaveIPandDNS(pending.PendDNS) {
 		// Still waiting for IP or DNS
 		if pending.TestCount < MaxDPCRetestCount {
 			pending.TestCount++
