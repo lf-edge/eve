@@ -62,12 +62,14 @@ resolve_tags() {
 sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e '/image:.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e "s#EVE_VERSION#"$EVE_VERSION"#" \
+    -e "s#ACRN_KERNEL_TAG#"$ACRN_KERNEL_TAG"#" \
     -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
     -e "s#FW_TAG#"$FW_TAG"#" \
     -e "s#XENTOOLS_TAG#"$XENTOOLS_TAG"#" \
     -e "s#DOM0ZTOOLS_TAG#"$DOM0ZTOOLS_TAG"#" \
     -e "s#RNGD_TAG#"$RNGD_TAG"#" \
     -e "s#XEN_TAG#"$XEN_TAG"#" \
+    -e "s#ACRN_TAG#"$ACRN_TAG"#" \
     -e "s#DNSMASQ_TAG#"$DNSMASQ_TAG"#" \
     -e "s#STRONGSWAN_TAG#"$STRONGSWAN_TAG"#" \
     -e "s#TESTCERT_TAG#"$TESTCERT_TAG"#" \
@@ -107,9 +109,11 @@ fi
 EVE_VERSION=${EVE_VERSION:-`eve_version`$ARCH}
 
 KERNEL_TAG=$(linuxkit_tag pkg/kernel)
+ACRN_KERNEL_TAG=$(linuxkit_tag pkg/acrn-kernel)
 FW_TAG=$(linuxkit_tag pkg/fw)
 XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)
 XEN_TAG=$(linuxkit_tag pkg/xen)
+ACRN_TAG=$(linuxkit_tag pkg/acrn)
 GRUB_TAG=$(linuxkit_tag pkg/grub)
 DTREES_TAG=$(linuxkit_tag pkg/device-trees)
 DNSMASQ_TAG=$(linuxkit_tag pkg/dnsmasq)
