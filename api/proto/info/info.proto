@@ -190,9 +190,16 @@ enum DataSecAtRestStatus {
     DATASEC_AT_REST_ERROR = 4;    // Enabled, but encountered an error
 }
 
+message VaultInfo {
+    string name = 1;                //Name of the vault
+    DataSecAtRestStatus status = 2; //Status of the vault
+    ErrorInfo vaultErr = 3;         //Additional info in case of failure
+}
+
 message DataSecAtRest {
-    DataSecAtRestStatus status = 1; // Current status
-    string info = 2;                // Informational string augmenting status
+    DataSecAtRestStatus status = 1;    // Current status of data security overall
+    string info = 2;                   // Informational string augmenting status
+    repeated VaultInfo vaultList = 3;  // per Vault status 
 }
 
 // Base device info, as discovered by Xen (or OS on bare metal)

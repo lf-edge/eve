@@ -1020,8 +1020,21 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	//Operational information about Data Security At Rest
 	ReportDataSecAtRestInfo := new(info.DataSecAtRest)
-	ReportDataSecAtRestInfo.Status, ReportDataSecAtRestInfo.Info =
+	var vaultList []vaultmgr.VaultStatus
+	ReportDataSecAtRestInfo.Status, ReportDataSecAtRestInfo.Info, vaultList =
 		vaultmgr.GetOperInfo()
+	ReportDataSecAtRestInfo.VaultList = make([]*info.VaultInfo, 0)
+	for _, vault := range vaultList {
+		vaultInfo := new(info.VaultInfo)
+		vaultInfo.Name = vault.Name
+		vaultInfo.Status = vault.Status
+		if !vault.ErrorTime.IsZero() {
+			vaultInfo.VaultErr = new(info.ErrorInfo)
+			vaultInfo.VaultErr.Description = vault.Error
+			vaultInfo.VaultErr.Timestamp, _ = ptypes.TimestampProto(vault.ErrorTime)
+		}
+		ReportDataSecAtRestInfo.VaultList = append(ReportDataSecAtRestInfo.VaultList, vaultInfo)
+	}
 	ReportDeviceInfo.DataSecAtRestInfo = ReportDataSecAtRestInfo
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
