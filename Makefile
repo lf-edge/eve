@@ -58,6 +58,20 @@ DIST=$(CURDIR)/dist/$(ZARCH)
 
 DOCKER_ARCH_TAG=$(ZARCH)
 
+ROOTFS_YML_xen=images/rootfs.yml
+ROOTFS_YML_acrn=images/acrn-rootfs.yml
+
+# The default hypervisor is Xen. Use 'make HV=acorn' to build ACRN images. AMD64 only
+HV ?= xen
+
+ifeq ($(ZARCH),arm64)
+	ROOTFS_YML=$(ROOTFS_YML_xen)
+endif
+ifeq ($(ZARCH),amd64)
+	ROOTFS_YML=$(ROOTFS_YML_$(HV))
+endif
+
+
 LIVE_IMG=$(DIST)/live
 ROOTFS_IMG=$(DIST)/rootfs.img
 TARGET_IMG=$(DIST)/target.img
@@ -132,7 +146,7 @@ test: $(GOBUILDER) | $(DIST)
 
 clean:
 	rm -rf $(DIST) pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile \
-	       images/installer.yml images/rootfs.yml
+	       images/installer.yml images/rootfs.yml images/acrn-rootfs.yml
 
 yetus:
 	@echo Running yetus
@@ -190,7 +204,7 @@ installer-iso: $(INSTALLER_IMG).iso
 $(CONFIG_IMG): conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/authorized_keys conf/ | $(DIST)
 	./tools/makeconfig.sh $(CONF_DIR) $@
 
-$(ROOTFS_IMG): images/rootfs.yml | $(DIST)
+$(ROOTFS_IMG): $(ROOTFS_YML) | $(DIST)
 	./tools/makerootfs.sh $< $(ROOTFS_FORMAT) $@
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
@@ -233,8 +247,8 @@ pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
 pkg/%: eve-% FORCE
 	@true
 
-eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(LIVE_IMG).img images/rootfs.yml images/installer.yml
-	cp pkg/eve/* Makefile images/rootfs.yml images/installer.yml $(DIST)
+eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(LIVE_IMG).img $(ROOTFS_YML) images/installer.yml
+	cp pkg/eve/* Makefile $(ROOTFS_YML) images/installer.yml $(DIST)
 	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --hash-path $(CURDIR) $(LINUXKIT_OPTS) $(DIST)
 
 proto-vendor:
