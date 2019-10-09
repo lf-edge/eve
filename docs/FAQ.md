@@ -37,7 +37,8 @@ Then add the valid json file named as global.json in that directory.
 Finally:
 
 ```bash
-make config.img; make installer.raw
+make config
+make installer
 ```
 
 or just copy them into the partition called EVE on the writable installation medium.
