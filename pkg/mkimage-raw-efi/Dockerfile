@@ -1,3 +1,9 @@
+# This mkimage-raw-efi produces the raw EFI partition for EVE,
+# including the files in efi-files in the image.  This includes:
+#
+#   /EFI/BOOT/grub.cfg - Chainloads main bootloader
+#   /UsbInvocationScript.txt - Enables USB boot on Dell 3000 series
+#
 FROM alpine:3.7
 
 RUN apk add --no-cache \
