@@ -1433,7 +1433,11 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 				return fmt.Errorf("adapter %d %s member %s is (part of) a zedrouter port",
 					adapter.Type, adapter.Name, ibp.Name)
 			}
-
+		}
+		for _, ibp := range list {
+			if ibp == nil {
+				continue
+			}
 			log.Debugf("configAdapters setting uuid %s for adapter %d %s member %s",
 				config.Key(), adapter.Type, adapter.Name, ibp.Name)
 			ibp.UsedByUUID = config.UUIDandVersion.UUID
