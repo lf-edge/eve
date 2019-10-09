@@ -61,6 +61,15 @@ RUN cp kernel_config_uefi_sos .config && \
 
 RUN echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info
 
+# Don't install modules for now. We should trim the config.
+RUN touch /out/kernel.tar
+RUN touch /out/kernel-dev.tar
+
+# Headers (userspace API)
+RUN mkdir -p /tmp/kernel-headers/usr && \
+    make INSTALL_HDR_PATH=/tmp/kernel-headers/usr headers_install && \
+    ( cd /tmp/kernel-headers && tar cf /out/kernel-headers.tar usr )
+
 FROM scratch
 ENTRYPOINT []
 CMD []
