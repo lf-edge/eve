@@ -69,11 +69,14 @@ var Version = "No version specified"
 
 // Any state used by handlers goes here
 type verifierContext struct {
-	subAppImgConfig *pubsub.Subscription
-	pubAppImgStatus *pubsub.Publication
-	subBaseOsConfig *pubsub.Subscription
-	pubBaseOsStatus *pubsub.Publication
-	subGlobalConfig *pubsub.Subscription
+	subAppImgConfig       *pubsub.Subscription
+	pubAppImgStatus       *pubsub.Publication
+	subBaseOsConfig       *pubsub.Subscription
+	pubBaseOsStatus       *pubsub.Publication
+	subGlobalConfig       *pubsub.Subscription
+	assignableAdapters    *types.AssignableAdapters
+	subAssignableAdapters *pubsub.Subscription
+	gc                    *time.Ticker
 }
 
 var debug = false
@@ -117,7 +120,10 @@ func Run() {
 	initializeDirs()
 
 	// Any state needed by handler functions
-	ctx := verifierContext{}
+	aa := types.AssignableAdapters{}
+	ctx := verifierContext{
+		assignableAdapters: &aa,
+	}
 
 	// Set up our publications before the subscriptions so ctx is set
 	pubAppImgStatus, err := pubsub.PublishScope(agentName, appImgObj,
@@ -169,6 +175,16 @@ func Run() {
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
+	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
+		types.AssignableAdapters{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAssignableAdapters.ModifyHandler = handleAAModify
+	subAssignableAdapters.DeleteHandler = handleAADelete
+	ctx.subAssignableAdapters = subAssignableAdapters
+	subAssignableAdapters.Activate()
+
 	// Publish status for any objects that were verified before reboot
 	// Then we report that the rest of the system can proceed.
 	// After than handleInitUpdateVerifiedObjects will recheck
@@ -205,7 +221,11 @@ func Run() {
 
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse
-	gc := time.NewTicker(downloadGCTime / 10)
+	// Here initialize the gc before the select handles it, but stop
+	// the timer since it waits until we are connected to the cloud and
+	// gets the AA init before declare something is stale and need deletion
+	ctx.gc = time.NewTicker(downloadGCTime / 10)
+	ctx.gc.Stop()
 
 	for {
 		select {
@@ -224,7 +244,12 @@ func Run() {
 			subBaseOsConfig.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
 
-		case <-gc.C:
+		case change := <-subAssignableAdapters.C:
+			start := agentlog.StartTime()
+			subAssignableAdapters.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
+		case <-ctx.gc.C:
 			start := agentlog.StartTime()
 			gcVerifiedObjects(&ctx)
 			agentlog.CheckMaxTime(agentName, start)
@@ -1261,4 +1286,62 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+func handleAAModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*verifierContext)
+	status := cast.CastAssignableAdapters(statusArg)
+	if key != "global" {
+		log.Infof("handleAAModify: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleAAModify() %+v\n", status)
+	*ctx.assignableAdapters = status
+	// the AA iniializing starts the GC timer, and need to reset the
+	// LastUse timestamp
+	if ctx.assignableAdapters.Initialized {
+		ctx.gc = time.NewTicker(downloadGCTime / 10)
+		gcResetObjectLastUse(ctx)
+		log.Infof("handleAAModify: AA initialized. verifier set gc timer\n")
+	}
+	log.Infof("handleAAModify() done\n")
+}
+
+func handleAADelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*verifierContext)
+	if key != "global" {
+		log.Infof("handleAADelete: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleAADelete()\n")
+	ctx.assignableAdapters.Initialized = false
+	log.Infof("handleAADelete() done\n")
+}
+
+// gc timer just started, reset the LastUse timestamp to now if the refcount is zero
+func gcResetObjectLastUse(ctx *verifierContext) {
+	publications := []*pubsub.Publication{
+		ctx.pubAppImgStatus,
+		ctx.pubBaseOsStatus,
+	}
+	for _, pub := range publications {
+		items := pub.GetAll()
+		for key, st := range items {
+			status := cast.CastVerifyImageStatus(st)
+			if status.Key() != key {
+				log.Errorf("gcResetObjectLastUse key/UUID mismatch %s vs %s; ignored %+v\n",
+					key, status.Key(), status)
+				continue
+			}
+			if status.RefCount == 0 {
+				status.LastUse = time.Now()
+				log.Infof("gcResetObjectLastUse: reset %v LastUse to now\n", key)
+				publishVerifyImageStatus(ctx, &status)
+			}
+		}
+	}
 }
