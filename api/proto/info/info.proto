@@ -197,8 +197,8 @@ message VaultInfo {
 }
 
 message DataSecAtRest {
-    DataSecAtRestStatus status = 1; // Deprecated 
-    string info = 2;                // Deprecated 
+    DataSecAtRestStatus status = 1;    // Deprecated 
+    string info = 2;                   // Deprecated 
     repeated VaultInfo vaultList = 3;  // per Vault status
 }
 

@@ -74,6 +74,14 @@ var (
 	ErrInvalKeyLen = errors.New("Unexpected key length")
 )
 
+//VaultStatus holds oper status of a single vault
+type VaultStatus struct {
+	Name      string
+	Status    info.DataSecAtRestStatus
+	ErrorTime time.Time
+	Error     string
+}
+
 func execCmd(command string, args ...string) (string, string, error) {
 	var stdout, stderr bytes.Buffer
 
@@ -282,31 +290,36 @@ func setupFscryptEnv() error {
 }
 
 //GetOperInfo gets the current operational state of fscrypt
-func GetOperInfo() (info.DataSecAtRestStatus, string) {
+func GetOperInfo() (info.DataSecAtRestStatus, string, []VaultStatus) {
 	_, err := os.Stat(fscryptConfFile)
 	if err == nil {
 		if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
-			//fscrypt is setup, but not being used
+			//fscrypt is setup, but not being use
 			log.Debug("Setting status to Error")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
-				"Initialization failure"
+				"Initialization failure", nil
 		} else {
 			//fscrypt is setup, and being used on /persist
 			log.Debug("Setting status to Enabled")
+
+			//for now just fill up with the detault vaults
+			//when we support user defined vaults, this will be dynamically filled up.
+			vaultList := []VaultStatus{{Name: "Application Data Store", Status: info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED},
+				{Name: "Configuration Data Store", Status: info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED}}
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED,
-				"Using Secure Application Vault=Yes, Using Secure Configuration Vault=Yes"
+				"Data Encryption at Rest is Enabled and Active", vaultList
 		}
 	} else {
 		if !tpmmgr.IsTpmEnabled() {
 			//This is due to ext3 partition
 			log.Debug("Setting status to disabled, HSM is not in use")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
-				"HSM is either absent or not in use"
+				"HSM is either absent or not in use", nil
 		} else {
 			//This is due to ext3 partition
 			log.Debug("setting status to disabled, ext3 partition")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
-				"File system is incompatible, needs a disruptive upgrade"
+				"File system is incompatible, needs a disruptive upgrade", nil
 		}
 	}
 }

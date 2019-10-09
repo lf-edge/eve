@@ -1045,7 +1045,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// Retain old code below, till Controller moves to new fields above.
 	ReportDataSecAtRestInfo.Status, ReportDataSecAtRestInfo.Info =
 		vaultmgr.GetOperInfo()
-
+	
 	ReportDeviceInfo.DataSecAtRestInfo = ReportDataSecAtRestInfo
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
