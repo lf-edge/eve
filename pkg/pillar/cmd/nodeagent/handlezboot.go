@@ -88,17 +88,6 @@ func publishZbootConfigAll(ctx *nodeagentContext) {
 	syscall.Sync()
 }
 
-func getZbootCurrentPartition(ctx *nodeagentContext) string {
-	items := getZbootStatusAll(ctx)
-	for _, status := range items {
-		if status.CurrentPartition {
-			log.Debugf("getZbootCurrentPartition:%s\n", status.PartitionLabel)
-			return status.PartitionLabel
-		}
-	}
-	return zboot.GetCurrentPartition()
-}
-
 func getZbootOtherPartition(ctx *nodeagentContext) string {
 	items := getZbootStatusAll(ctx)
 	for _, status := range items {
@@ -110,20 +99,6 @@ func getZbootOtherPartition(ctx *nodeagentContext) string {
 	return zboot.GetOtherPartition()
 }
 
-func isZbootCurrentPartition(ctx *nodeagentContext, partName string) bool {
-	if status := lookupZbootStatus(ctx, partName); status != nil {
-		return status.CurrentPartition
-	}
-	return zboot.GetCurrentPartition() == partName
-}
-
-func isZbootOtherPartition(ctx *nodeagentContext, partName string) bool {
-	if status := lookupZbootStatus(ctx, partName); status != nil {
-		return !status.CurrentPartition
-	}
-	return zboot.GetOtherPartition() == partName
-}
-
 func isZbootOtherPartitionStateUpdating(ctx *nodeagentContext) bool {
 	partName := getZbootOtherPartition(ctx)
 	if status := lookupZbootStatus(ctx, partName); status != nil {
@@ -133,39 +108,6 @@ func isZbootOtherPartitionStateUpdating(ctx *nodeagentContext) bool {
 		return false
 	}
 	return zboot.IsOtherPartitionStateUpdating()
-}
-
-func isZbootOtherPartitionStateInProgress(ctx *nodeagentContext) bool {
-	partName := getZbootOtherPartition(ctx)
-	if status := lookupZbootStatus(ctx, partName); status != nil {
-		if status.PartitionState == "inprogress" {
-			return true
-		}
-		return false
-	}
-	return zboot.IsOtherPartitionStateInProgress()
-}
-
-func isZbootCurrentPartitionStateUpdating(ctx *nodeagentContext) bool {
-	partName := getZbootCurrentPartition(ctx)
-	if status := lookupZbootStatus(ctx, partName); status != nil {
-		if status.PartitionState == "updating" {
-			return true
-		}
-		return false
-	}
-	return zboot.IsCurrentPartitionStateUpdating()
-}
-
-func isZbootCurrentPartitionStateInProgress(ctx *nodeagentContext) bool {
-	partName := getZbootCurrentPartition(ctx)
-	if status := lookupZbootStatus(ctx, partName); status != nil {
-		if status.PartitionState == "inprogress" {
-			return true
-		}
-		return false
-	}
-	return zboot.IsCurrentPartitionStateInProgress()
 }
 
 func isValidZbootPartitionLabel(name string) bool {

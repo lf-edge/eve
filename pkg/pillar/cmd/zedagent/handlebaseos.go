@@ -60,25 +60,26 @@ func lookupZbootStatus(ctx *zedagentContext, key string) *types.ZbootStatus {
 	return &status
 }
 
-// on baseos install and activate set, the device reboot is initiated
+// node reboot request received from nodeagent module
 func initiateDeviceReboot(ctx *zedagentContext, infoStr string) {
-	log.Infof("handleDeviceReboot(%s)", infoStr)
 	if ctx.deviceReboot {
+		log.Debugf("deviceReboot is already set\n")
 		return
 	}
-	// reboot flag is set, initiate the shutdown process
 	log.Infof("initiateDeviceReboot(%s)", infoStr)
-	ctx.deviceReboot = true
 	ctx.rebootReason = infoStr
+	triggerDeviceReboot(ctx)
 }
 
-func doDeviceReboot(ctx *zedagentContext) {
-	if !ctx.deviceReboot {
+func handleDeviceReboot(ctx *zedagentContext) {
+	if ctx.deviceReboot {
+		log.Debugf("deviceReboot is already set\n")
 		return
 	}
 	log.Infof("Executing device reboot (%s)", ctx.rebootReason)
+	ctx.deviceReboot = true
 	shutdownAppsGlobal(ctx)
-	startExecReboot(ctx.rebootReason)
+	scheduleExecReboot(ctx.rebootReason)
 }
 
 // utility routines to access baseos partition status

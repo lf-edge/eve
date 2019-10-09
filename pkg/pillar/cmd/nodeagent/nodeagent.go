@@ -10,7 +10,6 @@
 
 // nodeagent subscribes to the following topics
 //   * global config
-//   * base os status               <baseosmgr> / <baseos> / <status>
 //   * zboot status                 <baseosmgr> / <zboot> / <status>
 //   * zedagent status              <zedagent>/ <status>
 
@@ -27,6 +26,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -35,34 +35,36 @@ import (
 )
 
 const (
-	agentName = "nodeagent"
+	agentName        = "nodeagent"
+	timeTickInterval = 10
 )
 
 // Version : module version
 var Version = "No version specified"
-var globalConfig = types.GlobalConfigDefaults
 var rebootDelay = 30 // take a 30 second delay
 
 type nodeagentContext struct {
 	GCInitialized          bool // Received initial GlobalConfig
+	globalConfig           *types.GlobalConfig
 	subGlobalConfig        *pubsub.Subscription
 	subZbootStatus         *pubsub.Subscription
 	subZedAgentStatus      *pubsub.Subscription
-	subBaseOsStatus        *pubsub.Subscription
 	pubZbootConfig         *pubsub.Publication
 	pubNodeAgentStatus     *pubsub.Publication
 	curPart                string
-	upgradeTestStartTime   time.Time
+	upgradeTestStartTime   uint32
 	remainingTestTime      time.Duration
-	lastConfigReceivedTime time.Time
+	lastConfigReceivedTime uint32
+	configGetStatus        types.ConfigGetStatus
 	needsReboot            bool
 	rebootReason           string
 	deviceRegistered       bool
 	updateInprogress       bool
 	updateComplete         bool
+	sshAccess              bool
 	testComplete           bool
 	testInprogress         bool
-	configReceived         bool
+	timeTickCount          uint32
 }
 
 var debug = false
@@ -95,13 +97,18 @@ func Run() {
 		log.Fatal(err)
 	}
 
-	log.Infof("Starting %s\n", agentName)
+	log.Infof("Starting %s, on %s\n", agentName, curpart)
 
 	nodeagentCtx := nodeagentContext{}
 	nodeagentCtx.curPart = strings.TrimSpace(curpart)
 
+	nodeagentCtx.sshAccess = true // Kernel default - no iptables filters
+	nodeagentCtx.globalConfig = &types.GlobalConfigDefaults
+
 	// start the watchdog process timer tick
 	stillRunning := time.NewTicker(25 * time.Second)
+	tickerTimer := time.NewTicker(time.Duration(timeTickInterval) * time.Second)
+	nodeagentCtx.configGetStatus = types.CONFIG_GET_FAIL
 
 	// Make sure we have a GlobalConfig file with defaults
 	types.EnsureGCFile()
@@ -131,11 +138,9 @@ func Run() {
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	subGlobalConfig.SynchronizedHandler = handleGlobalConfigSynchronized
 	nodeagentCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
-
-	// baseline timer
-	nodeagentCtx.lastConfigReceivedTime = time.Now()
 
 	// publish zboot config as of now
 	publishZbootConfigAll(&nodeagentCtx)
@@ -144,7 +149,6 @@ func Run() {
 	nodeagentCtx.updateInprogress = zboot.IsCurrentPartitionStateInProgress()
 	log.Infof("Current partition: %s, inProgress: %v\n", nodeagentCtx.curPart,
 		nodeagentCtx.updateInprogress)
-	log.Infof("configReceivedTime:%v\n", nodeagentCtx.lastConfigReceivedTime)
 	publishNodeAgentStatus(&nodeagentCtx)
 
 	// Read the GlobalConfig first
@@ -157,27 +161,25 @@ func Run() {
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
+
+		case <-tickerTimer.C:
 			handleDeviceTimers(&nodeagentCtx)
 		}
 	}
 
 	// if current partition state is not in-progress,
 	// nothing much to do. Zedcloud connectivity is tracked,
-	// to trigger the device to reboot, on reset timeout
+	// to trigger the device to reboot, on reset timeout expiry
 	//
 	// if current partition state is in-progress,
 	// trigger the device to reboot on
-	// fallback timeout period, if the zedbox modules
-	// come up in this time period,
+	// fallback timeout expiry
 	//
 	// On zedbox modules activation, nodeagent will
 	// track the zedcloud connectivity events
 	//
 	// These timer functions will be tracked using
 	// led blinker and cloud connectionnectivity status.
-
-	// rebase timer, again
-	nodeagentCtx.lastConfigReceivedTime = time.Now()
 
 	log.Infof("Waiting for device registration check\n")
 	for !nodeagentCtx.deviceRegistered {
@@ -187,15 +189,14 @@ func Run() {
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
+
+		case <-tickerTimer.C:
 			handleDeviceTimers(&nodeagentCtx)
 		}
 		if isZedAgentAlive(&nodeagentCtx) {
 			nodeagentCtx.deviceRegistered = true
 		}
 	}
-
-	// rebase timer, again
-	nodeagentCtx.lastConfigReceivedTime = time.Now()
 
 	// subscribe to zboot status events
 	subZbootStatus, err := pubsub.Subscribe("baseosmgr",
@@ -208,17 +209,6 @@ func Run() {
 	nodeagentCtx.subZbootStatus = subZbootStatus
 	subZbootStatus.Activate()
 
-	// subscribe to baseos status events
-	subBaseOsStatus, err := pubsub.Subscribe("baseosmgr",
-		types.BaseOsStatus{}, false, &nodeagentCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subBaseOsStatus.ModifyHandler = handleBaseOsStatusModify
-	subBaseOsStatus.DeleteHandler = handleBaseOsStatusDelete
-	nodeagentCtx.subBaseOsStatus = subBaseOsStatus
-	subBaseOsStatus.Activate()
-
 	// subscribe to zedagent status events
 	subZedAgentStatus, err := pubsub.Subscribe("zedagent",
 		types.ZedAgentStatus{}, false, &nodeagentCtx)
@@ -230,7 +220,7 @@ func Run() {
 	nodeagentCtx.subZedAgentStatus = subZedAgentStatus
 	subZedAgentStatus.Activate()
 
-	log.Infof("zedbox loop start\n")
+	log.Infof("zedbox event loop\n")
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
@@ -239,16 +229,29 @@ func Run() {
 		case change := <-subZbootStatus.C:
 			subZbootStatus.ProcessChange(change)
 
-		case change := <-subBaseOsStatus.C:
-			subBaseOsStatus.ProcessChange(change)
-
 		case change := <-subZedAgentStatus.C:
 			subZedAgentStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
 			agentlog.StillRunning(agentName)
+
+		case <-tickerTimer.C:
 			handleDeviceTimers(&nodeagentCtx)
 		}
+	}
+}
+
+// In case there is no GlobalConfig.json this will move us forward
+func handleGlobalConfigSynchronized(ctxArg interface{}, done bool) {
+	ctx := ctxArg.(*nodeagentContext)
+
+	log.Infof("handleGlobalConfigSynchronized(%v)\n", done)
+	if done {
+		first := !ctx.GCInitialized
+		if first {
+			iptables.UpdateSshAccess(ctx.sshAccess, first)
+		}
+		ctx.GCInitialized = true
 	}
 }
 
@@ -271,7 +274,7 @@ func handleGlobalConfigModify(ctxArg interface{},
 		sane := types.EnforceGlobalConfigMinimums(updated)
 		log.Infof("handleGlobalConfigModify: enforced minimums %v\n",
 			cmp.Diff(updated, sane))
-		globalConfig = sane
+		ctx.globalConfig = &sane
 		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify(%s): done\n", key)
@@ -288,7 +291,7 @@ func handleGlobalConfigDelete(ctxArg interface{},
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	globalConfig = types.GlobalConfigDefaults
+	ctx.globalConfig = &types.GlobalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 
@@ -302,7 +305,7 @@ func handleZedAgentStatusModify(ctxArg interface{},
 			key, status.Key(), status)
 		return
 	}
-	updateLastConfigReceivedTime(ctx, status)
+	updateZedagentCloudConnectStatus(ctx, status)
 	log.Debugf("handleZedAgentStatusModify(%s) done\n", key)
 }
 
@@ -310,23 +313,6 @@ func handleZedAgentStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	// do nothing
 	log.Infof("handleZedAgentStatusDelete(%s) done\n", key)
-}
-
-// baseos status event handlers
-func handleBaseOsStatusModify(ctxArg interface{},
-	key string, statusArg interface{}) {
-	status := cast.CastBaseOsStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("baseOsStatus key mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
-	log.Infof("handleBaseOsStatusModify(%s) done\n", key)
-}
-
-func handleBaseOsStatusDelete(ctxArg interface{},
-	key string, statusArg interface{}) {
-	log.Infof("handleBaseOsStatusDelete(%s) done\n", key)
 }
 
 // zboot status event handlers
@@ -341,13 +327,14 @@ func handleZbootStatusModify(ctxArg interface{},
 	}
 	if status.CurrentPartition && ctx.updateInprogress &&
 		status.PartitionState == "active" {
-		log.Infof("CurPart(%s) marked as active\n", status.PartitionLabel)
+		log.Infof("CurPart(%s) transitioned to \"active\" state\n",
+			status.PartitionLabel)
 		ctx.updateInprogress = false
 		publishNodeAgentStatus(ctx)
 	}
 	doZbootBaseOsInstallationComplete(ctx, key, status)
 	doZbootBaseOsTestValidationComplete(ctx, key, status)
-	log.Infof("handleZbootStatusModify(%s) done\n", key)
+	log.Debugf("handleZbootStatusModify(%s) done\n", key)
 }
 
 func handleZbootStatusDelete(ctxArg interface{},
@@ -359,13 +346,6 @@ func handleZbootStatusDelete(ctxArg interface{},
 		return
 	}
 	log.Infof("handleZbootStatusDelete(%s) done\n", key)
-}
-
-// monitor device status through led blinks
-func handleLedBlinkConfigDelete(ctxArg interface{},
-	key string, configArg interface{}) {
-	// nothing to be done
-	log.Infof("handleLedBlinkConfigDelete done for %s\n", key)
 }
 
 // check whether zedagent module is alive

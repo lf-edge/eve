@@ -93,6 +93,7 @@ type zedagentContext struct {
 	subCertObjConfig          *pubsub.Subscription
 	TriggerDeviceInfo         chan<- struct{}
 	zbootRestarted            bool // published by baseosmgr
+	TriggerDeviceReboot       chan<- struct{}
 	subBaseOsStatus           *pubsub.Subscription
 	subBaseOsDownloadStatus   *pubsub.Subscription
 	subCertObjDownloadStatus  *pubsub.Subscription
@@ -173,7 +174,9 @@ func Run() {
 	log.Infof("Starting %s\n", agentName)
 
 	triggerDeviceInfo := make(chan struct{}, 1)
-	zedagentCtx := zedagentContext{TriggerDeviceInfo: triggerDeviceInfo}
+	triggerDeviceReboot := make(chan struct{}, 1)
+	zedagentCtx := zedagentContext{TriggerDeviceInfo: triggerDeviceInfo,
+		TriggerDeviceReboot: triggerDeviceReboot}
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 
 	// If we have a reboot reason from this or the other partition
@@ -238,6 +241,7 @@ func Run() {
 	agentlog.StillRunning(agentName + "config")
 	agentlog.StillRunning(agentName + "metrics")
 	agentlog.StillRunning(agentName + "devinfo")
+	agentlog.StillRunning(agentName + "reboot")
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
@@ -513,6 +517,9 @@ func Run() {
 	zedagentCtx.subDevicePortConfigList = subDevicePortConfigList
 	subDevicePortConfigList.Activate()
 
+	// start device reboot handler task
+	go deviceRebootTask(&zedagentCtx, triggerDeviceReboot)
+
 	// Read the GlobalConfig first
 	// Wait for initial GlobalConfig
 	for !zedagentCtx.GCInitialized {
@@ -527,15 +534,8 @@ func Run() {
 			start := agentlog.StartTime()
 			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
-
-		case <-stillRunning.C:
-			doDeviceReboot(&zedagentCtx)
 		}
 	}
-
-	time1 := time.Duration(globalConfig.FallbackIfCloudGoneTime)
-	log.Infof("Started timer for zboot status, reset for %d seconds\n", time1)
-	t1 := time.NewTimer(time1 * time.Second)
 
 	// wait till, zboot status is ready
 	for !zedagentCtx.zbootRestarted {
@@ -552,23 +552,8 @@ func Run() {
 			start := agentlog.StartTime()
 			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
-
-		case <-t1.C:
-			start := agentlog.StartTime()
-			// reboot, if not available, within a wait time
-			errStr := "zboot status is still not available - rebooting"
-			log.Errorf(errStr)
-			agentlog.RebootReason(errStr)
-			execReboot(true)
-			agentlog.CheckMaxTime(agentName, start)
-
-		case <-stillRunning.C:
-			doDeviceReboot(&zedagentCtx)
 		}
 	}
-
-	// stop the timer, for zboot status
-	t1.Stop()
 
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	for !DNSctx.DNSinitialized {
@@ -631,7 +616,6 @@ func Run() {
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 			agentlog.CheckMaxTime(agentName, start)
 		}
-		doDeviceReboot(&zedagentCtx)
 	}
 
 	// Subscribe to network metrics from zedrouter
@@ -742,6 +726,10 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 		case <-stillRunning.C:
 		}
+<<<<<<< HEAD
+=======
+		// XXX verifierRestarted can take 5 minutes??
+>>>>>>> a9240fc2... review comments
 		agentlog.StillRunning(agentName)
 		// Need to tickle this since the configTimerTask is not yet started
 		agentlog.StillRunning(agentName + "config")
@@ -901,7 +889,6 @@ func Run() {
 
 		case <-stillRunning.C:
 		}
-		doDeviceReboot(&zedagentCtx)
 		agentlog.StillRunning(agentName)
 	}
 }
@@ -930,10 +917,37 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 			PublishDeviceInfoToZedCloud(ctxPtr)
 			ctxPtr.iteration++
 			log.Info("deviceInfoTask done with message")
-			agentlog.CheckMaxTime(agentName+"config", start)
+			agentlog.CheckMaxTime(agentName+"devinfo", start)
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName + "devinfo")
+	}
+}
+
+func triggerDeviceReboot(ctxPtr *zedagentContext) {
+	log.Info("Trigger DeviceReboot")
+	select {
+	case ctxPtr.TriggerDeviceReboot <- struct{}{}:
+		// Do nothing more
+	default:
+		log.Info("Failed to send on DeviceReboot")
+	}
+}
+
+func deviceRebootTask(ctxPtr *zedagentContext, triggerDeviceReboot <-chan struct{}) {
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	for {
+		select {
+		case <-triggerDeviceReboot:
+			start := agentlog.StartTime()
+			log.Info("deviceReboot request received")
+			handleDeviceReboot(ctxPtr)
+			agentlog.CheckMaxTime(agentName+"reboot", start)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName + "reboot")
 	}
 }
 

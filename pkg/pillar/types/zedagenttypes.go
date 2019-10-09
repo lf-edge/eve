@@ -226,11 +226,18 @@ func (status NodeAgentStatus) Key() string {
 	return status.Name
 }
 
+type ConfigGetStatus uint8
+
+const (
+	CONFIG_GET_SUCCESS ConfigGetStatus = iota + 1
+	CONFIG_GET_FAIL
+	CONFIG_GET_FAIL_400
+)
+
 // ZedAgentStatus :
 type ZedAgentStatus struct {
-	Name                   string
-	LastConfigReceivedTime time.Time
-	ConfigGetFailCount     int
+	Name            string
+	ConfigGetStatus ConfigGetStatus
 }
 
 // Key :

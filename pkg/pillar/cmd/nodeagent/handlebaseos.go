@@ -7,22 +7,9 @@ package nodeagent
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
-
-func lookupBaseOsStatusOnPartition(ctx *nodeagentContext, key string) *types.BaseOsStatus {
-	sub := ctx.subBaseOsStatus
-	items := sub.GetAll()
-	for _, st := range items {
-		status := cast.CastBaseOsStatus(st)
-		if status.PartitionLabel == key {
-			return &status
-		}
-	}
-	return nil
-}
 
 // mark the zedcloud health/connectivity test complete flag
 // for baseosmgr to pick up and complete the partition activation
@@ -38,24 +25,12 @@ func initiateBaseOsZedCloudTestComplete(ctx *nodeagentContext) {
 		log.Errorf("zboot(%s) status/config get fail\n", ctx.curPart)
 		return
 	}
-	// get the baseos status information, for current partition
-	status := lookupBaseOsStatusOnPartition(ctx, ctx.curPart)
-	if status == nil {
-		log.Errorf("baseOs(%s) status get fail\n", ctx.curPart)
-		return
-	}
-	// the installed and configured version do not match
-	if status.BaseOsVersion != zbootStatus.ShortVersion {
-		log.Errorf("curPart: %s, installed %s and configured %s, baseos do not match\n",
-			ctx.curPart, zbootStatus.ShortVersion, status.BaseOsVersion)
-		return
-	}
 	if zbootConfig.TestComplete {
 		log.Errorf("zboot(%s) testComplete is already set\n", ctx.curPart)
 		return
 	}
 	log.Infof("baseOs(%s) upgrade validation testComplete, in %s\n",
-		status.BaseOsVersion, ctx.curPart)
+		zbootStatus.ShortVersion, ctx.curPart)
 	ctx.testComplete = true
 	zbootConfig.TestComplete = true
 	publishZbootConfig(ctx, *zbootConfig)
@@ -88,9 +63,8 @@ func doZbootBaseOsTestValidationComplete(ctx *nodeagentContext,
 		log.Debugf("doZbootBaseOsTestValidationComplete(%s): not TestComplete\n", key)
 		return
 	}
-	// TBD:XXX, the current partition status should be active
 	config := lookupZbootConfig(ctx, status.PartitionLabel)
-	if config == nil {
+	if config == nil || ctx.updateComplete {
 		return
 	}
 	log.Infof("baseOs(%s) upgrade validation is acknowledged, Partition %s\n",
