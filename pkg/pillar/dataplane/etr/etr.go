@@ -134,11 +134,13 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 
 			// Send a message on channel to kill the ETR thread when required.
 			killChannel := make(chan bool, 1)
+			ackChannel := make(chan bool, 1)
 
 			// Create new ETR thread
 			if EtrTable.EphPort != -1 {
 				//ring, fd = StartEtrNat(EtrTable.EphPort, link.IfName)
-				handle, fd4, fd6 = StartEtrNat(EtrTable.EphPort, link.IfName, killChannel)
+				handle, fd4, fd6 = StartEtrNat(EtrTable.EphPort, link.IfName,
+					killChannel, ackChannel)
 				log.Debugf("HandleDeviceNetworkChange: Creating ETR thread "+
 					"for UP link %s", link.IfName)
 			}
@@ -149,6 +151,7 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 				Fd4:         fd4,
 				Fd6:         fd6,
 				KillChannel: killChannel,
+				AckChannel:  ackChannel,
 			}
 			log.Infof("HandleDeviceNetworkChange: Creating ETR thread for UP link %s",
 				link.IfName)
@@ -158,13 +161,16 @@ func HandleDeviceNetworkChange(deviceNetworkStatus types.DeviceNetworkStatus) {
 	// find the interfaces to be deleted
 	for key, link := range EtrTable.EtrTable {
 		if _, ok := validList[key]; ok == false {
+			log.Infof("HandleDeviceNetworkChange: Stopping ETR thread for UP link %s", key)
 			link.KillChannel <- true
+			// Wait for the thread to confirm that it died
+			<-link.AckChannel
+			log.Infof("HandleDeviceNetworkChange: ETR thread for UPlink %s exited", key)
 			syscall.Close(link.Fd4)
 			syscall.Close(link.Fd6)
 			//link.Ring.Disable()
 			//link.Ring.Close()
 			delete(EtrTable.EtrTable, key)
-			log.Infof("HandleDeviceNetworkChange: Stopping ETR thread for UP link %s", key)
 		}
 	}
 
@@ -192,7 +198,8 @@ func HandleEtrEphPort(ephPort int) {
 				link.IfName)
 			//ring, fd := StartEtrNat(EtrTable.EphPort, link.IfName)
 			//ling.Ring = ring
-			handle, fd4, fd6 := StartEtrNat(EtrTable.EphPort, link.IfName, link.KillChannel)
+			handle, fd4, fd6 := StartEtrNat(EtrTable.EphPort, link.IfName,
+				link.KillChannel, link.AckChannel)
 			link.Handle = handle
 			link.Fd4 = fd4
 			link.Fd6 = fd6
@@ -230,7 +237,7 @@ func HandleEtrEphPort(ephPort int) {
 //func StartEtrNat(ephPort int, upLink string) (*pfring.Ring, int) {
 func StartEtrNat(ephPort int,
 	upLink string,
-	killChannel chan bool) (*afpacket.TPacket, int, int) {
+	killChannel <-chan bool, ackChannel chan<- bool) (*afpacket.TPacket, int, int) {
 
 	//ring := SetupEtrPktCapture(ephPort, upLink)
 	//if ring == nil {
@@ -263,7 +270,7 @@ func StartEtrNat(ephPort int,
 		syscall.Close(fd4)
 	}
 	//go ProcessCapturedPkts(fd, ring)
-	go ProcessCapturedPkts(fd4, fd6, handle, killChannel)
+	go ProcessCapturedPkts(fd4, fd6, handle, killChannel, ackChannel)
 
 	//return ring, fd
 	return handle, fd4, fd6
@@ -534,7 +541,7 @@ func ProcessETRPkts(fd4 int, fd6 int, serverConn *net.UDPConn) bool {
 //func ProcessCapturedPkts(fd6 int, ring *pfring.Ring) {
 func ProcessCapturedPkts(fd4 int, fd6 int,
 	handle *afpacket.TPacket,
-	killChannel chan bool) {
+	killChannel <-chan bool, ackChannel chan<- bool) {
 	// close the raw sockets when we decide to leave this function
 	defer syscall.Close(fd4)
 	defer syscall.Close(fd6)
@@ -562,6 +569,7 @@ func ProcessCapturedPkts(fd4 int, fd6 int,
 				"ProcessCapturedPkts: It could be the ETR thread handle closure leading to this")
 			log.Infof("ProcessCapturedPkts: Closing packet capture handle")
 			handle.Close()
+			ackChannel <- true
 			return
 		default:
 		}
