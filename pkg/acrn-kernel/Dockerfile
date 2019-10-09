@@ -61,6 +61,12 @@ RUN cp kernel_config_uefi_sos .config && \
 
 RUN echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info
 
+# Don't install modules for now. We should trim the config.
+RUN touch /out/kernel.tar
+RUN touch /out/kernel-dev.tar
+# Don't install the headers for now.
+RUN touch /out/kernel-headers.tar
+
 FROM scratch
 ENTRYPOINT []
 CMD []
