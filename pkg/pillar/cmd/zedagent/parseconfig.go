@@ -1995,14 +1995,15 @@ var rebootPrevReturn bool
 // Returns a rebootFlag
 func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 	getconfigCtx *getconfigContext) bool {
-
 	if reboot == nil {
 		log.Infof("scheduleReboot - removing %s\n",
 			rebootConfigFilename)
 		// stop the timer
-		if rebootTimer != nil {
+		if rebootTimer != nil &&
+			!getconfigCtx.zedagentCtx.deviceReboot {
 			rebootTimer.Stop()
 		}
+
 		// remove the existing file
 		os.Remove(rebootConfigFilename)
 		return false
@@ -2014,6 +2015,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 	if same {
 		return rebootPrevReturn
 	}
+
 	log.Infof("scheduleReboot: Applying updated config %v\n", reboot)
 
 	if _, err := os.Stat(rebootConfigFilename); err != nil {
@@ -2060,6 +2062,12 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 			}
 		}
 
+		// if device reboot is set, ignore op-command
+		if getconfigCtx.zedagentCtx.deviceReboot {
+			log.Warnf("device reboot is set\n")
+			return false
+		}
+
 		//timer was started, stop now
 		if rebootTimer != nil {
 			rebootTimer.Stop()
@@ -2067,7 +2075,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 
 		// Defer if inprogress by returning
 		ctx := getconfigCtx.zedagentCtx
-		if isBaseOsCurrentPartitionStateInProgress(ctx) {
+		if getconfigCtx.updateInprogress {
 			// Wait until TestComplete
 			log.Warnf("Rebooting even though testing inprogress; defer\n")
 			ctx.rebootCmdDeferred = true
@@ -2134,16 +2142,14 @@ func handleReboot(getconfigCtx *getconfigContext) {
 	execReboot(state)
 }
 
-// Used by doDeviceReboot only
-func startExecReboot(reasonStr string) {
+// Used by handleDeviceReboot only
+func scheduleExecReboot(reasonStr string) {
 	//timer has already been started, return
 	if rebootTimer != nil {
 		return
 	}
 	log.Infof("startExecReboot: scheduling exec reboot\n")
 
-	// start the timer again
-	// XXX:FIXME, need to handle the scheduled time
 	duration := time.Second * time.Duration(rebootDelay)
 	rebootTimer = time.NewTimer(duration)
 	log.Infof("startExecReboot: timer %d seconds\n",
@@ -2152,7 +2158,7 @@ func startExecReboot(reasonStr string) {
 	go handleExecReboot(reasonStr)
 }
 
-// Used by doDeviceReboot only
+// Used by handleDeviceReboot only
 func handleExecReboot(reasonStr string) {
 
 	<-rebootTimer.C

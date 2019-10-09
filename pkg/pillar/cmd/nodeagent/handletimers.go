@@ -15,25 +15,46 @@ import (
 
 // node health timer funcions
 
-// called periodically from agentwatch context
+// ticker function
 func handleDeviceTimers(ctx *nodeagentContext) {
+	updateTickerTimer(ctx)
+	handleUpgradeTestValidation(ctx)
 	handleFallbackOnCloudDisconnect(ctx)
 	handleResetOnCloudDisconnect(ctx)
 }
 
-// when baseos upgrade is in progress
+// for every ticker, based on the last config
+// get status received from zedagent,
+// update the timers
+func updateTickerTimer(ctx *nodeagentContext) {
+	// TBD:XXX time tick may skew, apply the diff value
+	ctx.timeTickCount += timeTickInterval
+
+	// TBD:XXX get the zedagent status for connectivity health
+	// rather than considering stored value
+	switch ctx.configGetStatus {
+	case types.CONFIG_GET_SUCCESS:
+		ctx.lastConfigReceivedTime = ctx.timeTickCount
+
+	case types.CONFIG_GET_FAIL_400:
+		resetTestStartTime(ctx)
+		setTestStartTime(ctx)
+	}
+}
+
+// when baseos upgrade is inprogress
 // on cloud disconnect for a specified amount of time, reset the node
 func handleFallbackOnCloudDisconnect(ctx *nodeagentContext) {
 	if !ctx.updateInprogress {
 		return
 	}
 	// apply the fallback time function
-	fallbackLimit := time.Second * time.Duration(globalConfig.FallbackIfCloudGoneTime)
-	timePassed := time.Since(ctx.lastConfigReceivedTime)
+	// fallback timeout + wait for network address timeout
+	fallbackLimit := 2 * ctx.globalConfig.FallbackIfCloudGoneTime
+	timePassed := ctx.timeTickCount - ctx.lastConfigReceivedTime
 	if timePassed > fallbackLimit {
 		errStr := fmt.Sprintf("Exceeded fallback outage for cloud connectivity %d by %d seconds; rebooting\n",
-			fallbackLimit/time.Second,
-			(timePassed-fallbackLimit)/time.Second)
+			fallbackLimit, timePassed-fallbackLimit)
 		log.Errorf(errStr)
 		execReboot(ctx, errStr)
 	}
@@ -42,50 +63,38 @@ func handleFallbackOnCloudDisconnect(ctx *nodeagentContext) {
 // on cloud disconnect for a specified amount time, reset the node
 func handleResetOnCloudDisconnect(ctx *nodeagentContext) {
 	// apply the reset time function
-	resetLimit := time.Second * time.Duration(globalConfig.ResetIfCloudGoneTime)
-	timePassed := time.Since(ctx.lastConfigReceivedTime)
+	resetLimit := ctx.globalConfig.ResetIfCloudGoneTime
+	timePassed := ctx.timeTickCount - ctx.lastConfigReceivedTime
 	if timePassed > resetLimit {
 		errStr := fmt.Sprintf("Exceeded outage for cloud connectivity %d by %d seconds; rebooting\n",
-			resetLimit/time.Second,
-			(timePassed-resetLimit)/time.Second)
+			resetLimit, timePassed-resetLimit)
 		log.Errorf(errStr)
 		execReboot(ctx, errStr)
 	}
 }
 
-// baseos upgrade test validation utilities
-func setTestStartTime(ctx *nodeagentContext) {
-	// only when current partition state is in progress
-	// start the test
-	if !ctx.updateInprogress || ctx.testInprogress ||
-		ctx.testComplete || ctx.updateComplete {
-		return
-	}
-	ctx.upgradeTestStartTime = time.Now()
-	ctx.testInprogress = true
-	successLimit := time.Second *
-		time.Duration(globalConfig.MintimeUpdateSuccess)
-	ctx.remainingTestTime = successLimit
-	ctx.testInprogress = true
-}
-
-func resetTestStartTime(ctx *nodeagentContext) {
+// on upgrade validation testing time expiry,
+// initiate the validation completion procedure
+func handleUpgradeTestValidation(ctx *nodeagentContext) {
 	if !ctx.testInprogress {
 		return
 	}
-	ctx.testInprogress = false
-	ctx.remainingTestTime = 0
+	if checkUpgradeValidationTestTimeExpiry(ctx) {
+		log.Infof("CurPart: %s, Upgrade Validation Test Complete\n",
+			ctx.curPart)
+		resetTestStartTime(ctx)
+		initiateBaseOsZedCloudTestComplete(ctx)
+		publishNodeAgentStatus(ctx)
+	}
 }
 
+// check for upgrade validation time expiry
 func checkUpgradeValidationTestTimeExpiry(ctx *nodeagentContext) bool {
-	if !ctx.testInprogress {
-		return false
-	}
-	timePassed := time.Since(ctx.upgradeTestStartTime)
-	successLimit := time.Second *
-		time.Duration(globalConfig.MintimeUpdateSuccess)
+	timePassed := ctx.timeTickCount - ctx.upgradeTestStartTime
+	successLimit := ctx.globalConfig.MintimeUpdateSuccess
 	if timePassed < successLimit {
-		ctx.remainingTestTime = successLimit - timePassed
+		ctx.remainingTestTime = time.Second *
+			time.Duration(successLimit-timePassed)
 		log.Infof("CurPart: %s inprogress, waiting for %d seconds\n",
 			ctx.curPart, ctx.remainingTestTime/time.Second)
 		publishNodeAgentStatus(ctx)
@@ -94,29 +103,55 @@ func checkUpgradeValidationTestTimeExpiry(ctx *nodeagentContext) bool {
 	return true
 }
 
-func updateLastConfigReceivedTime(ctx *nodeagentContext,
-	status types.ZedAgentStatus) {
-	log.Debugf("LastConfigReceivedTime: %v, failCount: %d\n",
-		status.LastConfigReceivedTime, status.ConfigGetFailCount)
-	// baseline with first config received timestamp, from zedagent
-	// to start the upgrade validation test
-	if !ctx.configReceived {
-		ctx.configReceived = true
-		ctx.lastConfigReceivedTime = status.LastConfigReceivedTime
-	}
-	// time stamp has not changed, since last config receive
-	if ctx.lastConfigReceivedTime == status.LastConfigReceivedTime {
+// baseos upgrade test validation utilities
+// set the upgrade validation test start time
+func setTestStartTime(ctx *nodeagentContext) {
+	// only when current partition state is in progress
+	// and satisfies the following conditions
+	// start the test
+	if !ctx.updateInprogress || ctx.testInprogress ||
+		ctx.testComplete || ctx.updateComplete {
 		return
 	}
-	// config get is successful
-	setTestStartTime(ctx)
-	ctx.lastConfigReceivedTime = status.LastConfigReceivedTime
-	if checkUpgradeValidationTestTimeExpiry(ctx) {
-		log.Infof("CurPart: %s, Upgrade Validation Test Complete\n",
-			ctx.curPart)
+	log.Infof("Starting upgrade validation for %d seconds\n",
+		ctx.globalConfig.MintimeUpdateSuccess)
+	ctx.testInprogress = true
+	ctx.upgradeTestStartTime = ctx.timeTickCount
+	successLimit := ctx.globalConfig.MintimeUpdateSuccess
+	ctx.remainingTestTime = time.Duration(successLimit)
+}
+
+// reset the test start time
+func resetTestStartTime(ctx *nodeagentContext) {
+	if !ctx.testInprogress {
+		return
+	}
+	log.Infof("Resetting upgrade validation\n")
+	ctx.testInprogress = false
+	ctx.remainingTestTime = time.Second * time.Duration(0)
+}
+
+// zedagent status modification event handler
+func updateZedagentCloudConnectStatus(ctx *nodeagentContext,
+	status types.ZedAgentStatus) {
+
+	// config Get Status has not changed
+	if ctx.configGetStatus == status.ConfigGetStatus {
+		return
+	}
+	ctx.configGetStatus = status.ConfigGetStatus
+	switch ctx.configGetStatus {
+	case types.CONFIG_GET_SUCCESS:
+		ctx.lastConfigReceivedTime = ctx.timeTickCount
+		setTestStartTime(ctx)
+
+	case types.CONFIG_GET_FAIL_400:
+		log.Infof("Controller connection, return code is 400\n")
 		resetTestStartTime(ctx)
-		initiateBaseOsZedCloudTestComplete(ctx)
-		publishNodeAgentStatus(ctx)
+		setTestStartTime(ctx)
+
+	case types.CONFIG_GET_FAIL:
+		log.Infof("Controller connection is broken\n")
 	}
 }
 

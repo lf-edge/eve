@@ -44,30 +44,28 @@ const (
 var globalConfig = types.GlobalConfigDefaults
 
 type getconfigContext struct {
-	zedagentCtx                 *zedagentContext // Cross link
-	ledManagerCount             int              // Current count
-	startTime                   time.Time
-	lastReceivedConfigFromCloud time.Time
-	configGetFailCount          int
-	configReceived              bool
-	updateInprogress            bool
-	readSavedConfig             bool
-	configTickerHandle          interface{}
-	metricsTickerHandle         interface{}
-	pubDevicePortConfig         *pubsub.Publication
-	pubPhysicalIOAdapters       *pubsub.Publication
-	devicePortConfig            types.DevicePortConfig
-	pubNetworkXObjectConfig     *pubsub.Publication
-	subAppInstanceStatus        *pubsub.Subscription
-	subNodeAgentStatus          *pubsub.Subscription
-	pubZedAgentStatus           *pubsub.Publication
-	pubAppInstanceConfig        *pubsub.Publication
-	pubAppNetworkConfig         *pubsub.Publication
-	pubCertObjConfig            *pubsub.Publication
-	pubBaseOsConfig             *pubsub.Publication
-	pubDatastoreConfig          *pubsub.Publication
-	pubNetworkInstanceConfig    *pubsub.Publication
-	rebootFlag                  bool
+	zedagentCtx              *zedagentContext // Cross link
+	ledManagerCount          int              // Current count
+	configReceived           bool
+	configGetStatus          types.ConfigGetStatus
+	updateInprogress         bool
+	readSavedConfig          bool
+	configTickerHandle       interface{}
+	metricsTickerHandle      interface{}
+	pubDevicePortConfig      *pubsub.Publication
+	pubPhysicalIOAdapters    *pubsub.Publication
+	devicePortConfig         types.DevicePortConfig
+	pubNetworkXObjectConfig  *pubsub.Publication
+	subAppInstanceStatus     *pubsub.Subscription
+	subNodeAgentStatus       *pubsub.Subscription
+	pubZedAgentStatus        *pubsub.Publication
+	pubAppInstanceConfig     *pubsub.Publication
+	pubAppNetworkConfig      *pubsub.Publication
+	pubCertObjConfig         *pubsub.Publication
+	pubBaseOsConfig          *pubsub.Publication
+	pubDatastoreConfig       *pubsub.Publication
+	pubNetworkInstanceConfig *pubsub.Publication
+	rebootFlag               bool
 }
 
 // tlsConfig is initialized once i.e. effectively a constant
@@ -125,8 +123,6 @@ func configTimerTask(handleChannel chan interface{},
 	getconfigCtx *getconfigContext) {
 
 	configUrl := serverNameAndPort + "/" + configApi
-	getconfigCtx.startTime = time.Now()
-	getconfigCtx.lastReceivedConfigFromCloud = getconfigCtx.startTime
 	iteration := 0
 	getconfigCtx.rebootFlag = getLatestConfig(configUrl, iteration,
 		getconfigCtx)
@@ -196,17 +192,17 @@ func getLatestConfig(url string, iteration int,
 	log.Debugf("getLatestConfig(%s, %d)\n", url, iteration)
 
 	const return400 = false
+	getconfigCtx.configGetStatus = types.CONFIG_GET_FAIL
 	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration, return400)
 	if err != nil {
 		newCount := 2
-		getconfigCtx.configGetFailCount++
 		if rtf {
 			log.Errorf("getLatestConfig remoteTemporaryFailure: %s", err)
 			newCount = 3 // Almost connected to controller!
 			// Don't treat as upgrade failure
 			if getconfigCtx.updateInprogress {
 				log.Warnf("remoteTemporaryFailure don't fail update")
-				getconfigCtx.startTime = time.Now()
+				getconfigCtx.configGetStatus = types.CONFIG_GET_FAIL_400
 			}
 		} else {
 			log.Errorf("getLatestConfig failed: %s", err)
@@ -258,13 +254,12 @@ func getLatestConfig(url string, iteration int,
 	types.UpdateLedManagerConfig(4)
 	getconfigCtx.ledManagerCount = 4
 
-	getconfigCtx.lastReceivedConfigFromCloud = time.Now()
 	writeReceivedProtoMessage(contents)
 
 	if !getconfigCtx.configReceived {
 		getconfigCtx.configReceived = true
 	}
-	getconfigCtx.configGetFailCount = 0
+	getconfigCtx.configGetStatus = types.CONFIG_GET_SUCCESS
 
 	if !changed {
 		log.Debugf("Configuration from zedcloud is unchanged\n")
@@ -422,9 +417,8 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 
 func publishZedAgentStatus(getconfigCtx *getconfigContext) {
 	status := types.ZedAgentStatus{
-		Name:                   agentName,
-		LastConfigReceivedTime: getconfigCtx.lastReceivedConfigFromCloud,
-		ConfigGetFailCount:     getconfigCtx.configGetFailCount,
+		Name:            agentName,
+		ConfigGetStatus: getconfigCtx.configGetStatus,
 	}
 	pub := getconfigCtx.pubZedAgentStatus
 	pub.Publish(agentName, status)
