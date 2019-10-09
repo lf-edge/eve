@@ -55,7 +55,8 @@ RUN case $(uname -m) in \
     rm /xen/xen_config* && \
     make defconfig && \
     make oldconfig && \
-    mkdir -p /out/boot
+    mkdir -p /out/boot && \
+    mkdir -p /out/EFI/BOOT
 
 RUN make && \
     case $(uname -m) in \
@@ -68,9 +69,11 @@ RUN make && \
         cp xen.efi /out/boot/ \
         ;; \
     esac
+WORKDIR /out/EFI/BOOT
+COPY rootfs.cfg grub.cfg
 
 FROM scratch
 ENTRYPOINT []
 CMD []
-WORKDIR /boot
-COPY --from=kernel-build /out/* .
+WORKDIR /
+COPY --from=kernel-build /out .

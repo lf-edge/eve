@@ -56,4 +56,3 @@ ENTRYPOINT []
 CMD []
 WORKDIR /EFI/BOOT
 COPY --from=grub-build /grub-lib/BOOT*.EFI ./
-COPY rootfs.cfg grub.cfg
