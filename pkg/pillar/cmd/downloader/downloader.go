@@ -339,6 +339,7 @@ func Run() {
 	}
 }
 
+// Handles both create and modify events
 func handleDatastoreConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
@@ -847,6 +848,7 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 	return dCtx
 }
 
+// Handles both create and modify events
 func handleGlobalDownloadConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
@@ -1861,6 +1863,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	publishDownloaderStatus(ctx, status)
 }
 
+// Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	ctx := ctxArg.(*downloaderContext)
@@ -1894,6 +1897,7 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 

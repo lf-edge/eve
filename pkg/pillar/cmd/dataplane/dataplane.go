@@ -155,6 +155,7 @@ func Run() {
 	handleConfig(configPipe, dataplaneContext)
 }
 
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	ctx := ctxArg.(*dptypes.DataplaneContext)
@@ -181,6 +182,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete done for %s", key)
 }
 
+// Handles both create and modify events
 func handleExpModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx := ctxArg.(*dptypes.DataplaneContext)
 

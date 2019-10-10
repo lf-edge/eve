@@ -266,6 +266,7 @@ func fileExists(filename string) bool {
 	return err == nil
 }
 
+// Handles both create and modify events
 func handleLedBlinkModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
@@ -290,6 +291,7 @@ func handleLedBlinkModify(ctxArg interface{}, key string,
 	printOutput(ctx)
 }
 
+// Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	status := cast.CastDeviceNetworkStatus(statusArg)
@@ -350,6 +352,7 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
+// Handles both create and modify events
 func handleDPCModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	status := cast.CastDevicePortConfigList(statusArg)
@@ -841,6 +844,7 @@ func myGet(zedcloudCtx *zedcloud.ZedCloudContext, requrl string, ifname string,
 	}
 }
 
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 

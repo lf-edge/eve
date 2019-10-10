@@ -377,6 +377,7 @@ func handleCertObjDelete(ctx *baseOsMgrContext, key string,
 }
 
 // base os/certs download status modify event
+// Handles both create and modify events
 func handleDownloadStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
@@ -403,6 +404,7 @@ func handleDownloadStatusDelete(ctxArg interface{}, key string,
 }
 
 // base os verifier status modify event
+// Handles both create and modify events
 func handleVerifierStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
@@ -431,6 +433,7 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
 }
 
+// This handles both the create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
@@ -607,6 +610,7 @@ func initializeVerifierHandles(ctx *baseOsMgrContext) {
 	subBaseOsVerifierStatus.Activate()
 }
 
+// This handles both the create and modify events
 func handleZbootConfigModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*baseOsMgrContext)
 	config := cast.ZbootConfig(configArg)

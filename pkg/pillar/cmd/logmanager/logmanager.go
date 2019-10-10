@@ -404,6 +404,7 @@ func handleXenLogDir(logDirChanges chan string, logDirName string,
 	}
 }
 
+// Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	status := cast.CastDeviceNetworkStatus(statusArg)
@@ -1019,6 +1020,7 @@ func logReader(logFile string, source string, logChan chan<- logEntry) {
 	log.Infof("logReader done for %s\n", logFile)
 }
 
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 

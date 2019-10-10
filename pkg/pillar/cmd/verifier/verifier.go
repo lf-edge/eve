@@ -1257,6 +1257,7 @@ func doDelete(status *types.VerifyImageStatus) {
 	log.Infof("doDelete(%v) done\n", status.Safename)
 }
 
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 

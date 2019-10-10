@@ -997,7 +997,7 @@ func initializeDirs() {
 
 // app instance event watch to capture transitions
 // and publish to zedCloud
-
+// Handles both create and modify events
 func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := cast.CastAppInstanceStatus(statusArg)
@@ -1121,7 +1121,7 @@ func handleDPCLDelete(ctxArg interface{}, key string, statusArg interface{}) {
 
 // base os status event handlers
 // Report BaseOsStatus to zedcloud
-
+// Handles both create and modify events
 func handleBaseOsStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx := ctxArg.(*zedagentContext)
 	status := cast.CastBaseOsStatus(statusArg)
@@ -1147,6 +1147,7 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
 }
 
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
@@ -1187,6 +1188,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 
+// Handles both create and modify events
 func handleAAModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
@@ -1216,6 +1218,7 @@ func handleAADelete(ctxArg interface{}, key string,
 	log.Infof("handleAADelete() done\n")
 }
 
+// Handles both create and modify events
 func handleZbootStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
