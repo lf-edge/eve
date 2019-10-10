@@ -834,31 +834,6 @@ func generateResolvConf(globalStatus types.DeviceNetworkStatus, destfile *os.Fil
 		if !us.IsMgmt {
 			continue
 		}
-		// Note that list could contain only IPv6 link-locals.
-		// With static IP address configuration, we have DNS servers
-		// coming to us as part of DevicePortConfig.
-		//
-		// UpdateResolvConf function maintains lastServers variable
-		// that it keeps track of DNS servers read in the previous pass
-		// of MakeDeviceNetworkStatus.
-		//
-		// With DT_STATIC we will have DNS servers but no IP addresses
-		// in the first pass. So, we update lastServers with configured
-		// DNS server list. Since, we won't have any IP addresses in
-		// AddrInfoList (till we spawn dhcpcd), we do not write these
-		// DNS servers to /etc/resolv.conf.
-		// In the second pass we compare the current DNS server list with
-		// lastServers and bail, since they are the same. So, we never
-		// write DNS server to /etc/resolv.conf. This leads to connectivity
-		// failure after upgrade.
-		//
-		// With DT_CLIENT both AddrInfoList and DNS server list is polulated
-		// at the same time after spawing dhcpcd. So, we do not end up in this
-		// problematic situation.
-		if !(us.Dhcp == types.DT_STATIC && len(us.DnsServers) != 0) &&
-			len(us.AddrInfoList) == 0 {
-			continue
-		}
 		log.Infof("generateResolvConf %s has %d servers: %v",
 			us.IfName, len(us.DnsServers), us.DnsServers)
 		destfile.WriteString(fmt.Sprintf("# From %s\n", us.IfName))
