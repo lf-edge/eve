@@ -271,7 +271,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAppNetworkConfig.ModifyHandler = handleAppNetworkConfigModify
-	subAppNetworkConfig.CreateHandler = handleAppNetworkCreate
+	subAppNetworkConfig.CreateHandler = handleAppNetworkConfigCreate
 	subAppNetworkConfig.DeleteHandler = handleAppNetworkConfigDelete
 	subAppNetworkConfig.RestartHandler = handleRestart
 	zedrouterCtx.subAppNetworkConfig = subAppNetworkConfig
@@ -284,7 +284,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAppNetworkConfigAg.ModifyHandler = handleAppNetworkConfigModify
-	subAppNetworkConfigAg.CreateHandler = handleAppNetworkCreate
+	subAppNetworkConfigAg.CreateHandler = handleAppNetworkConfigCreate
 	subAppNetworkConfigAg.DeleteHandler = handleAppNetworkConfigDelete
 	zedrouterCtx.subAppNetworkConfigAg = subAppNetworkConfigAg
 	subAppNetworkConfigAg.Activate()
@@ -1002,7 +1002,7 @@ var deviceEID net.IP
 var deviceIID uint32
 var additionalInfoDevice *types.AdditionalInfoDevice
 
-func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{}) {
+func handleAppNetworkConfigCreate(ctxArg interface{}, key string, configArg interface{}) {
 
 	ctx := ctxArg.(*zedrouterContext)
 	config := cast.CastAppNetworkConfig(configArg)
