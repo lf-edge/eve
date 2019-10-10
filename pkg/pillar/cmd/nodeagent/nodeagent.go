@@ -159,12 +159,12 @@ func Run() {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
 
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
-
 		case <-tickerTimer.C:
 			handleDeviceTimers(&nodeagentCtx)
+
+		case <-stillRunning.C:
 		}
+		agentlog.StillRunning(agentName)
 	}
 
 	// if current partition state is not in-progress,
@@ -187,12 +187,12 @@ func Run() {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
 
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
-
 		case <-tickerTimer.C:
 			handleDeviceTimers(&nodeagentCtx)
+
+		case <-stillRunning.C:
 		}
+		agentlog.StillRunning(agentName)
 		if isZedAgentAlive(&nodeagentCtx) {
 			nodeagentCtx.deviceRegistered = true
 		}
@@ -232,12 +232,12 @@ func Run() {
 		case change := <-subZedAgentStatus.C:
 			subZedAgentStatus.ProcessChange(change)
 
-		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
-
 		case <-tickerTimer.C:
 			handleDeviceTimers(&nodeagentCtx)
+
+		case <-stillRunning.C:
 		}
+		agentlog.StillRunning(agentName)
 	}
 }
 
@@ -330,6 +330,8 @@ func handleZbootStatusModify(ctxArg interface{},
 		log.Infof("CurPart(%s) transitioned to \"active\" state\n",
 			status.PartitionLabel)
 		ctx.updateInprogress = false
+		ctx.testComplete = false
+		ctx.updateComplete = false
 		publishNodeAgentStatus(ctx)
 	}
 	doZbootBaseOsInstallationComplete(ctx, key, status)

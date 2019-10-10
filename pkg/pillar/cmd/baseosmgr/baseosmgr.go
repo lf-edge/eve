@@ -148,7 +148,10 @@ func Run() {
 				log.Infof("Verifier reported restarted\n")
 			}
 			agentlog.CheckMaxTime(agentName, start)
+
+		case <-stillRunning.C:
 		}
+		agentlog.StillRunning(agentName)
 	}
 
 	// start the forever loop for event handling

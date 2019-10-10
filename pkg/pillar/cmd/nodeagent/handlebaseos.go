@@ -11,6 +11,24 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// baseos upgrade installation path
+// baseosmgr has flipped the partition state to updating,
+// inform zedagent to reboot
+func doZbootBaseOsInstallationComplete(ctx *nodeagentContext,
+	key string, zbootStatus types.ZbootStatus) {
+	zbootConfig := lookupZbootConfig(ctx, key)
+	if zbootConfig == nil {
+		log.Errorf("Partition(%s) Config not found\n", key)
+		return
+	}
+	if isZbootOtherPartitionStateUpdating(ctx) && !ctx.needsReboot {
+		infoStr := fmt.Sprintf("NORMAL: baseos-update(%s) reboot\n", key)
+		log.Infof(infoStr)
+		execReboot(ctx, infoStr)
+	}
+}
+
+// baseos upgrade validation and activation path
 // mark the zedcloud health/connectivity test complete flag
 // for baseosmgr to pick up and complete the partition activation
 func initiateBaseOsZedCloudTestComplete(ctx *nodeagentContext) {
@@ -36,31 +54,18 @@ func initiateBaseOsZedCloudTestComplete(ctx *nodeagentContext) {
 	publishZbootConfig(ctx, *zbootConfig)
 }
 
-// baseosmgr has flipped the partition state to updating,
-// inform zedagent to reboot
-func doZbootBaseOsInstallationComplete(ctx *nodeagentContext,
-	key string, zbootStatus types.ZbootStatus) {
-	zbootConfig := lookupZbootConfig(ctx, key)
-	if zbootConfig == nil {
-		log.Errorf("Partition(%s) Config not found\n", key)
-		return
-	}
-	if isZbootOtherPartitionStateUpdating(ctx) && !ctx.needsReboot {
-		infoStr := fmt.Sprintf("NORMAL: baseos-update(%s) reboot\n", key)
-		log.Infof(infoStr)
-		execReboot(ctx, infoStr)
-	}
-}
-
 // baseosmgr has acknowledged the baseos upgrade
 // validation complete, by setting the partition
 // state to active and setting TestComplete flag
 // reset, indicating the upgrade process as complete
 func doZbootBaseOsTestValidationComplete(ctx *nodeagentContext,
 	key string, status types.ZbootStatus) {
+	if !ctx.updateInprogress {
+		return
+	}
 	// nothing to be done
 	if !status.TestComplete {
-		log.Debugf("doZbootBaseOsTestValidationComplete(%s): not TestComplete\n", key)
+		log.Debugf("%s: not TestComplete\n", key)
 		return
 	}
 	config := lookupZbootConfig(ctx, status.PartitionLabel)
@@ -72,5 +77,4 @@ func doZbootBaseOsTestValidationComplete(ctx *nodeagentContext,
 	config.TestComplete = false
 	ctx.updateComplete = true
 	publishZbootConfig(ctx, *config)
-	publishNodeAgentStatus(ctx)
 }
