@@ -7,9 +7,10 @@ package zedagent
 
 import (
 	"bytes"
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"strings"
 	"time"
+
+	"github.com/golang/protobuf/ptypes/timestamp"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
@@ -112,12 +113,15 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 		}
 		info.Ipv4Eid = status.Ipv4Eid
 		for _, ifname := range status.IfNameList {
-			ia := ctx.assignableAdapters.LookupIoBundle(ifname)
+			// XXX - Verify Ifname in NetworkInstanceConfig is infact
+			//  IfName and not phylabel. ( We will not get Logicallabel)
+			ia := ctx.assignableAdapters.LookupIoBundleByIfname(ifname)
 			if ia == nil {
 				log.Warnf("Missing adapter for ifname %s", ifname)
 				continue
 			}
 			reportAA := new(zinfo.ZioBundle)
+			// XXX - When we report, should we use ifname instead??
 			reportAA.Type = zinfo.IPhyIoType(ia.Type)
 			reportAA.Name = ia.Name
 			reportAA.UsedByAppUUID = zcdevUUID.String()

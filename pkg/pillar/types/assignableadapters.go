@@ -156,7 +156,7 @@ func IoBundleFromPhyAdapter(phyAdapter PhysicalIOAdapter) *IoBundle {
 	return &ib
 }
 
-// Must match definition of PhyIoType in devmodel.proto which is an strict
+// Must match definition of PhyIoType in devmodel.proto which is a strict
 // subset of the values in ZCioType in devmodel.proto
 type IoType uint8
 
@@ -208,10 +208,10 @@ func (aa *AssignableAdapters) LookupIoBundleGroup(group string) []*IoBundle {
 	return list
 }
 
-// LookupIoBundleNet checks for IoNet*
-func (aa *AssignableAdapters) LookupIoBundleNet(name string) *IoBundle {
+// LookupIoBundleByIfname - checks for IoNet*
+func (aa *AssignableAdapters) LookupIoBundleByIfname(ifname string) *IoBundle {
 	for i, b := range aa.IoBundleList {
-		if b.Type.IsNet() && strings.EqualFold(b.Name, name) {
+		if b.Type.IsNet() && strings.EqualFold(b.Ifname, ifname) {
 			return &aa.IoBundleList[i]
 		}
 	}

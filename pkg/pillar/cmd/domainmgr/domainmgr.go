@@ -1429,7 +1429,7 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 				return fmt.Errorf("adapter %d %s used by %s",
 					adapter.Type, adapter.Name, ibp.UsedByUUID)
 			}
-			if isPort(ctx, ibp.Name) {
+			if isPort(ctx, ibp.Ifname) {
 				return fmt.Errorf("adapter %d %s member %s is (part of) a zedrouter port",
 					adapter.Type, adapter.Name, ibp.Name)
 			}
@@ -2658,7 +2658,7 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle,
 	// Is any member a port? If so treat all as port
 	isPort := false
 	for _, ib := range list {
-		if types.IsPort(ctx.deviceNetworkStatus, ib.Name) {
+		if types.IsPort(ctx.deviceNetworkStatus, ib.Ifname) {
 			isPort = true
 		}
 	}
@@ -2674,46 +2674,44 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle,
 	return nil
 }
 
-func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, publish bool) error {
+func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool,
+	publish bool) error {
 
-	log.Infof("checkAndSetIoMember(%d %s %s) isPort %t publish %t",
-		ib.Type, ib.Name, ib.AssignmentGroup, isPort, publish)
 	aa := ctx.assignableAdapters
 	// Check if part of DevicePortConfig
 	ib.IsPort = false
 	changed := false
+
+	logMsgPrefix := fmt.Sprintf("checkAndSetIoMember: (Type: %d, Name:%s, "+
+		"Ifname:%s, AssignmentGroup:%s)", ib.Type, ib.Name, ib.Ifname,
+		ib.AssignmentGroup)
+	log.Infof("%s isPort %t publish %t", logMsgPrefix, isPort, publish)
 	if isPort {
-		log.Warnf("checkAndSetIoMember(%d %s %s) part of zedrouter port\n",
-			ib.Type, ib.Name, ib.AssignmentGroup)
+		log.Warnf("%s part of zedrouter port", logMsgPrefix)
 		ib.IsPort = true
 		changed = true
 		if ib.UsedByUUID != nilUUID {
-			log.Errorf("checkAndSetIoMember(%d %s %s) used by %s",
-				ib.Type, ib.Name, ib.AssignmentGroup,
-				ib.UsedByUUID.String())
-
+			log.Errorf("%s used by %s", logMsgPrefix, ib.UsedByUUID.String())
 		} else if ib.IsPCIBack {
-			log.Infof("checkAndSetIoMember(%d %s %s) take back from pciback\n",
-				ib.Type, ib.Name, ib.AssignmentGroup)
+			log.Infof("%s take back from pciback", logMsgPrefix)
 			if ib.PciLong != "" {
-				log.Infof("Removing %s (%s) from pciback\n",
-					ib.Name, ib.PciLong)
+				log.Infof("%s PciLong: %s, Removing from pciback",
+					logMsgPrefix, ib.PciLong)
 				err := pciAssignableRemove(ib.PciLong)
 				if err != nil {
-					log.Errorf("checkAndSetIoMember(%d %s %s) pciAssignableRemove %s failed %v\n",
-						ib.Type, ib.Name, ib.AssignmentGroup, ib.PciLong, err)
+					log.Errorf("%s PciLong:%s pciAssignableRemove failed. "+
+						"Err: %v", logMsgPrefix, ib.PciLong, err)
 				}
 				// Seems like like no risk for race; when we return
 				// from above the driver has been attached and
 				// any ifname has been registered.
 				found, ifname := types.PciLongToIfname(ib.PciLong)
 				if !found {
-					log.Errorf("Not found: %d %s %s",
-						ib.Type, ib.Name, ib.Ifname)
+					log.Errorf("%s PciLong: %s Ifname not found",
+						logMsgPrefix, ib.PciLong)
 				} else if ifname != ib.Ifname {
-					log.Warnf("Found: %d %s %s at %s",
-						ib.Type, ib.Name, ib.Ifname,
-						ifname)
+					log.Warnf("%s  PciLong: %s Ifname Found: %s",
+						logMsgPrefix, ib.PciLong, ifname)
 					types.IfRename(ifname, ib.Ifname)
 				}
 			}
@@ -2722,10 +2720,11 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 			// Verify that it has been returned from pciback
 			_, err := types.IoBundleToPci(ib)
 			if err != nil {
-				log.Warnf("checkAndSetIoMember(%d %s %s) gone?: %s\n",
-					ib.Type, ib.Name, ib.AssignmentGroup, err)
+				log.Warnf("%s IoBundle gone? Err: %s", logMsgPrefix, err)
 			}
 		}
+	} else {
+		log.Debugf("%s: PciLong: %s not a port\n", logMsgPrefix, ib.PciLong)
 	}
 	if ib.Type.IsNet() && ib.MacAddr == "" {
 		ib.MacAddr = getMacAddr(ib.Name)
@@ -2742,42 +2741,40 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 	// For a new PCI device we check if it exists in hardware/kernel
 	long, err := types.IoBundleToPci(ib)
 	if err != nil {
-		log.Error(err)
+		log.Warnf("%s can't find PCiLong for ioBundle. err=%s",
+			logMsgPrefix, err)
 		return err
 	}
 	if long != "" {
 		ib.PciLong = long
 		changed = true
-		log.Infof("checkAndSetIoMember(%d %s %s) found %s\n",
-			ib.Type, ib.Name, ib.AssignmentGroup, long)
+		log.Infof("%s PciLong: %s found", logMsgPrefix, long)
 
 		// Save somewhat Unique string for debug
 		found, unique := types.PciLongToUnique(long)
 		if !found {
-			errStr := fmt.Sprintf("IoBundle(%d %s %s) %s unique not found",
-				ib.Type, ib.Name, ib.AssignmentGroup, long)
+			errStr := fmt.Sprintf("%s PciLong: %s unique not found",
+				logMsgPrefix, long)
 			log.Errorln(errStr)
 		} else {
 			ib.Unique = unique
 			changed = true
-			log.Infof("checkAndSetIoMember(%d %s %s) %s unique %s",
-				ib.Type, ib.Name, ib.AssignmentGroup, long, unique)
+			log.Infof("%s PciLong:%s unique %s", logMsgPrefix, long, unique)
 		}
 	} else {
-		log.Infof("checkAndSetIoMember(%d %s %s) not found PCI",
-			ib.Type, ib.Name, ib.AssignmentGroup)
+		log.Infof("%s not found PCI", logMsgPrefix)
 	}
 
 	if !ib.IsPort && !ib.IsPCIBack {
 		if ctx.deviceNetworkStatus.Testing && ib.Type.IsNet() {
-			log.Infof("Not assigning %s (%s) to pciback due to Testing\n",
-				ib.Name, ib.PciLong)
+			log.Infof("%s Not assigning (%s) to pciback due to Testing\n",
+				logMsgPrefix, ib.PciLong)
 		} else if ctx.usbAccess && isInUsbGroup(*aa, *ib) {
-			log.Infof("Not assigning %s (%s) to pciback due to usbAccess\n",
-				ib.Name, ib.PciLong)
+			log.Infof("%s Not assigning (%s) to pciback due to usbAccess\n",
+				logMsgPrefix, ib.PciLong)
 		} else if ib.PciLong != "" {
-			log.Infof("Assigning %s (%s) to pciback\n",
-				ib.Name, ib.PciLong)
+			log.Infof("%s Assigning (%s) to pciback\n",
+				logMsgPrefix, ib.PciLong)
 			err := pciAssignableAdd(ib.PciLong)
 			if err != nil {
 				return err
@@ -2832,9 +2829,9 @@ func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 	}
 	found, unique := types.PciLongToUnique(long)
 	if !found {
-		errStr := fmt.Sprintf("IoBundle(%d %s %s) %s unique %s not foun\n",
-			ib.Type, ib.Name, ib.AssignmentGroup,
-			long, ib.Unique)
+		errStr := fmt.Sprintf("IoBundle(type:%d Name:%s Ifname: %s ag: %s) %s "+
+			"unique %s not found\n", ib.Type, ib.Name, ib.Ifname,
+			ib.AssignmentGroup, long, ib.Unique)
 		return errors.New(errStr)
 	}
 	if unique != ib.Unique && ib.Unique != "" {
@@ -2844,11 +2841,11 @@ func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		return errors.New(errStr)
 	}
 	if ib.Type.IsNet() && ib.MacAddr != "" {
-		macAddr := getMacAddr(ib.Name)
+		macAddr := getMacAddr(ib.Ifname)
 		// Will be empty string if adapter is assigned away
 		if macAddr != "" && macAddr != ib.MacAddr {
-			errStr := fmt.Sprintf("IoBundle(%d %s %s) changed MacAddr from %s to %sn",
-				ib.Type, ib.Name, ib.AssignmentGroup,
+			errStr := fmt.Sprintf("IoBundle(%d %s %s %s) changed MacAddr from %s to %sn",
+				ib.Type, ib.Name, ib.Ifname, ib.AssignmentGroup,
 				ib.MacAddr, macAddr)
 			return errors.New(errStr)
 		}
