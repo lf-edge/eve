@@ -2148,7 +2148,7 @@ func scheduleExecReboot(reasonStr string) {
 	if rebootTimer != nil {
 		return
 	}
-	log.Infof("startExecReboot: scheduling exec reboot\n")
+	log.Infof("scheduleExecReboot: scheduling exec reboot\n")
 
 	duration := time.Second * time.Duration(rebootDelay)
 	rebootTimer = time.NewTimer(duration)
