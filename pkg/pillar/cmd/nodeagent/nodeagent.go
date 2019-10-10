@@ -108,7 +108,7 @@ func Run() {
 	// start the watchdog process timer tick
 	stillRunning := time.NewTicker(25 * time.Second)
 	tickerTimer := time.NewTicker(time.Duration(timeTickInterval) * time.Second)
-	nodeagentCtx.configGetStatus = types.CONFIG_GET_FAIL
+	nodeagentCtx.configGetStatus = types.ConfigGetFail
 
 	// Make sure we have a GlobalConfig file with defaults
 	types.EnsureGCFile()
@@ -365,8 +365,6 @@ func publishNodeAgentStatus(ctx *nodeagentContext) {
 	status := types.NodeAgentStatus{
 		Name:              agentName,
 		CurPart:           ctx.curPart,
-		TestInprogress:    ctx.testInprogress,
-		TestComplete:      ctx.updateComplete,
 		RemainingTestTime: ctx.remainingTestTime,
 		UpdateInprogress:  ctx.updateInprogress,
 		NeedsReboot:       ctx.needsReboot,

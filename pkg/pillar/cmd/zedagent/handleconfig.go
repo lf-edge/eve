@@ -192,7 +192,7 @@ func getLatestConfig(url string, iteration int,
 	log.Debugf("getLatestConfig(%s, %d)\n", url, iteration)
 
 	const return400 = false
-	getconfigCtx.configGetStatus = types.CONFIG_GET_FAIL
+	getconfigCtx.configGetStatus = types.ConfigGetFail
 	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration, return400)
 	if err != nil {
 		newCount := 2
@@ -202,7 +202,7 @@ func getLatestConfig(url string, iteration int,
 			// Don't treat as upgrade failure
 			if getconfigCtx.updateInprogress {
 				log.Warnf("remoteTemporaryFailure don't fail update")
-				getconfigCtx.configGetStatus = types.CONFIG_GET_FAIL_400
+				getconfigCtx.configGetStatus = types.ConfigGetTemporaryFail
 			}
 		} else {
 			log.Errorf("getLatestConfig failed: %s", err)
@@ -226,6 +226,7 @@ func getLatestConfig(url string, iteration int,
 			if config != nil {
 				log.Errorf("Using saved config %v\n", config)
 				getconfigCtx.readSavedConfig = true
+				getconfigCtx.configGetStatus = types.ConfigGetReadSaved
 				return inhaleDeviceConfig(config, getconfigCtx,
 					true)
 			}
@@ -259,7 +260,7 @@ func getLatestConfig(url string, iteration int,
 	if !getconfigCtx.configReceived {
 		getconfigCtx.configReceived = true
 	}
-	getconfigCtx.configGetStatus = types.CONFIG_GET_SUCCESS
+	getconfigCtx.configGetStatus = types.ConfigGetSuccess
 
 	if !changed {
 		log.Debugf("Configuration from zedcloud is unchanged\n")

@@ -1287,7 +1287,7 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 	} else {
 		// if config reboot command was initiated and
 		// was deferred, and the device is not in inprogress
-		// state, initiate the reboot // process
+		// state, initiate the reboot process
 		if ctx.rebootCmdDeferred &&
 			updateInprogress && !status.UpdateInprogress {
 			log.Infof("TestComplete and deferred reboot\n")
