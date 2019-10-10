@@ -6,6 +6,7 @@
 package diag
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"flag"
@@ -144,7 +145,7 @@ func Run() {
 		NetworkSendTimeout:  ctx.globalConfig.NetworkTestTimeout,
 	}
 
-	// Get device serail number
+	// Get device serial number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
 	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
 	log.Infof("Diag Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
@@ -383,12 +384,6 @@ func printOutput(ctx *diagContext) {
 
 	fmt.Printf("\nINFO: updated diag information at %v\n",
 		time.Now().Format(time.RFC3339Nano))
-	savedHardwareModel := hardware.GetHardwareModelOverride()
-	hardwareModel := hardware.GetHardwareModelNoOverride()
-	if savedHardwareModel != "" && savedHardwareModel != hardwareModel {
-		fmt.Printf("INFO: dmidecode model string %s overridden as %s\n",
-			hardwareModel, savedHardwareModel)
-	}
 	// XXX certificate fingerprints? What does zedcloud use?
 	if fileExists(selfRegFile) {
 		fmt.Printf("INFO: selfRegister is still in progress\n")
@@ -408,8 +403,6 @@ func printOutput(ctx *diagContext) {
 		fmt.Printf("INFO: Summary: Connected to EV Controller and onboarded\n")
 	case 10:
 		fmt.Printf("ERROR: Summary: Onboarding failure or conflict\n")
-	case 11:
-		fmt.Printf("ERROR: Summary: Missing /var/tmp/zededa/DeviceNetworkConfig/ model file\n")
 	case 12:
 		fmt.Printf("ERROR: Summary: Response without TLS - ignored\n")
 	case 13:
@@ -676,29 +669,55 @@ func printProxy(ctx *diagContext, port types.NetworkPortStatus,
 	}
 }
 
-// XXX should we make this and send.go use DNS on one interface?
 func tryLookupIP(ctx *diagContext, ifname string) bool {
 
-	ips, err := net.LookupIP(ctx.serverName)
-	if err != nil {
-		fmt.Printf("ERROR: %s: DNS lookup of %s failed: %s\n",
-			ifname, ctx.serverName, err)
-		return false
-	}
-	if len(ips) == 0 {
-		fmt.Printf("ERROR: %s: DNS lookup of %s returned no answers\n",
+	addrCount := types.CountLocalAddrAnyNoLinkLocalIf(*ctx.DeviceNetworkStatus, ifname)
+	if addrCount == 0 {
+		fmt.Printf("ERROR: %s: DNS lookup of %s not possible since no IP address\n",
 			ifname, ctx.serverName)
 		return false
 	}
-	for _, ip := range ips {
-		fmt.Printf("INFO: %s: DNS lookup of %s returned %s\n",
-			ifname, ctx.serverName, ip.String())
+	for retryCount := 0; retryCount < addrCount; retryCount++ {
+		localAddr, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus,
+			retryCount, ifname)
+		if err != nil {
+			fmt.Printf("ERROR: %s: DNS lookup of %s: internal error: %s address\n",
+				ifname, ctx.serverName, err)
+			return false
+		}
+		localUDPAddr := net.UDPAddr{IP: localAddr}
+		log.Debugf("tryLookupIP: using intf %s source %v", ifname, localUDPAddr)
+		resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
+			log.Debugf("resolverDial %v %v", network, address)
+			d := net.Dialer{LocalAddr: &localUDPAddr}
+			return d.Dial(network, address)
+		}
+		r := net.Resolver{Dial: resolverDial, PreferGo: true,
+			StrictErrors: false}
+		ips, err := r.LookupIPAddr(context.Background(), ctx.serverName)
+		if err != nil {
+			fmt.Printf("ERROR: %s: DNS lookup of %s failed: %s\n",
+				ifname, ctx.serverName, err)
+			continue
+		}
+		log.Debugf("tryLookupIP: got %d addresses", len(ips))
+		if len(ips) == 0 {
+			fmt.Printf("ERROR: %s: DNS lookup of %s returned no answers\n",
+				ifname, ctx.serverName)
+			return false
+		}
+		for _, ip := range ips {
+			fmt.Printf("INFO: %s: DNS lookup of %s returned %s\n",
+				ifname, ctx.serverName, ip.String())
+		}
+		if simulateDnsFailure {
+			fmt.Printf("INFO: %s: Simulate DNS lookup failure\n", ifname)
+			return false
+		}
+		return true
 	}
-	if simulateDnsFailure {
-		fmt.Printf("INFO: %s: Simulate DNS lookup failure\n", ifname)
-		return false
-	}
-	return true
+	// Tried all in loop
+	return false
 }
 
 func tryPing(ctx *diagContext, ifname string, requrl string) bool {

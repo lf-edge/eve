@@ -1,0 +1,269 @@
+From 8fcd200e27f02d0b42b95433b3073435fca1debc Mon Sep 17 00:00:00 2001
+From: Jack Ren <jack.ren@intel.com>
+Date: Sun, 11 Aug 2019 08:58:05 +0800
+Subject: [PATCH 4/4] dm: pass build on alpine
+
+Signed-off-by: Jack Ren <jack.ren@intel.com>
+---
+ devicemodel/arch/x86/pm.c                |  1 -
+ devicemodel/arch/x86/power_button.c      |  1 -
+ devicemodel/core/main.c                  |  1 +
+ devicemodel/hw/pci/lpc.c                 |  2 +-
+ devicemodel/hw/pci/uart.c                |  2 +-
+ devicemodel/hw/pci/virtio/vhost.c        |  1 -
+ devicemodel/hw/pci/virtio/virtio_coreu.c |  3 +--
+ devicemodel/hw/pci/virtio/virtio_hdcp.c  |  3 +--
+ devicemodel/hw/pci/virtio/virtio_net.c   |  2 +-
+ devicemodel/hw/platform/pit.c            |  2 ++
+ devicemodel/hw/uart_core.c               |  2 +-
+ devicemodel/include/block_if.h           |  2 +-
+ devicemodel/include/iodev.h              |  1 +
+ devicemodel/include/tree.h               |  1 -
+ misc/acrn-manager/acrn_mngr.c            |  1 +
+ misc/acrn-manager/acrnd.c                | 12 ++++++------
+ misc/tools/acrntrace/acrntrace.c         |  2 +-
+ 17 files changed, 19 insertions(+), 20 deletions(-)
+
+diff --git a/devicemodel/arch/x86/pm.c b/devicemodel/arch/x86/pm.c
+index 055cbc62..b9dd23e4 100644
+--- a/devicemodel/arch/x86/pm.c
++++ b/devicemodel/arch/x86/pm.c
+@@ -25,7 +25,6 @@
+  * SUCH DAMAGE.
+  */
+ 
+-#include <sys/cdefs.h>
+ #include <sys/types.h>
+ #include <stdio.h>
+ #include <errno.h>
+diff --git a/devicemodel/arch/x86/power_button.c b/devicemodel/arch/x86/power_button.c
+index 97477ef8..0cc80b9d 100644
+--- a/devicemodel/arch/x86/power_button.c
++++ b/devicemodel/arch/x86/power_button.c
+@@ -4,7 +4,6 @@
+  * SPDX-License-Identifier: BSD-3-Clause
+  */
+ 
+-#include <sys/cdefs.h>
+ #include <sys/types.h>
+ #include <stdio.h>
+ #include <errno.h>
+diff --git a/devicemodel/core/main.c b/devicemodel/core/main.c
+index 7de54709..39690e3d 100644
+--- a/devicemodel/core/main.c
++++ b/devicemodel/core/main.c
+@@ -37,6 +37,7 @@
+ #include <sysexits.h>
+ #include <stdbool.h>
+ #include <getopt.h>
++#include <signal.h>
+ 
+ #include "vmmapi.h"
+ #include "sw_load.h"
+diff --git a/devicemodel/hw/pci/lpc.c b/devicemodel/hw/pci/lpc.c
+index 46b07430..c42c6b43 100644
+--- a/devicemodel/hw/pci/lpc.c
++++ b/devicemodel/hw/pci/lpc.c
+@@ -31,7 +31,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <stdbool.h>
+-#include <sys/errno.h>
++#include <errno.h>
+ 
+ #include "dm.h"
+ #include "vmmapi.h"
+diff --git a/devicemodel/hw/pci/uart.c b/devicemodel/hw/pci/uart.c
+index a0eee646..a365fe41 100644
+--- a/devicemodel/hw/pci/uart.c
++++ b/devicemodel/hw/pci/uart.c
+@@ -27,7 +27,7 @@
+  */
+ 
+ #include <stdio.h>
+-#include <sys/errno.h>
++#include <errno.h>
+ 
+ #include "pci_core.h"
+ #include "uart_core.h"
+diff --git a/devicemodel/hw/pci/virtio/vhost.c b/devicemodel/hw/pci/virtio/vhost.c
+index 36f6a49f..325171fb 100644
+--- a/devicemodel/hw/pci/virtio/vhost.c
++++ b/devicemodel/hw/pci/virtio/vhost.c
+@@ -5,7 +5,6 @@
+  *
+  */
+ 
+-#include <sys/cdefs.h>
+ #include <sys/param.h>
+ #include <sys/uio.h>
+ #include <sys/ioctl.h>
+diff --git a/devicemodel/hw/pci/virtio/virtio_coreu.c b/devicemodel/hw/pci/virtio/virtio_coreu.c
+index 6437621e..ba34a848 100644
+--- a/devicemodel/hw/pci/virtio/virtio_coreu.c
++++ b/devicemodel/hw/pci/virtio/virtio_coreu.c
+@@ -50,7 +50,6 @@
+  *
+  */
+ 
+-#include <sys/cdefs.h>
+ #include <sys/param.h>
+ #include <sys/uio.h>
+ #include <err.h>
+@@ -227,7 +226,7 @@ connect_coreu_daemon()
+ 	addr.sun_family = AF_UNIX;
+ 	strncpy(addr.sun_path, COREU_SERVICE_NAME, sizeof(addr.sun_path));
+ 
+-	ret = connect(fd, &addr, sizeof(struct sockaddr_un));
++	ret = connect(fd, (const struct sockaddr *)&addr, sizeof(struct sockaddr_un));
+ 	if (ret < 0) {
+ 		WPRINTF(("connect error %d\n", errno));
+ 		close(fd);
+diff --git a/devicemodel/hw/pci/virtio/virtio_hdcp.c b/devicemodel/hw/pci/virtio/virtio_hdcp.c
+index cade5c6f..095b0327 100644
+--- a/devicemodel/hw/pci/virtio/virtio_hdcp.c
++++ b/devicemodel/hw/pci/virtio/virtio_hdcp.c
+@@ -45,7 +45,6 @@
+  *
+  */
+ 
+-#include <sys/cdefs.h>
+ #include <sys/param.h>
+ #include <sys/uio.h>
+ #include <err.h>
+@@ -363,7 +362,7 @@ connect_hdcp_daemon()
+ 	addr.sun_family = AF_UNIX;
+ 	strncpy(addr.sun_path, HDCP_SDK_SOCKET_PATH, sizeof(addr.sun_path));
+ 
+-	ret = connect(fd, &addr, sizeof(struct sockaddr_un));
++	ret = connect(fd, (const struct sockaddr *)&addr, sizeof(struct sockaddr_un));
+ 	if (ret < 0) {
+ 		WPRINTF(("connect error %d\n", errno));
+ 		close(fd);
+diff --git a/devicemodel/hw/pci/virtio/virtio_net.c b/devicemodel/hw/pci/virtio/virtio_net.c
+index d38d3ec1..9762343d 100644
+--- a/devicemodel/hw/pci/virtio/virtio_net.c
++++ b/devicemodel/hw/pci/virtio/virtio_net.c
+@@ -36,7 +36,7 @@
+ #include <openssl/md5.h>
+ #include <pthread.h>
+ #include <sys/ioctl.h>
+-#include <sys/errno.h>
++#include <errno.h>
+ #include <net/if.h>
+ #include <linux/if_tun.h>
+ 
+diff --git a/devicemodel/hw/platform/pit.c b/devicemodel/hw/platform/pit.c
+index c3fbe3ef..47501f88 100644
+--- a/devicemodel/hw/platform/pit.c
++++ b/devicemodel/hw/platform/pit.c
+@@ -40,6 +40,8 @@
+ #include "inout.h"
+ #include "pit.h"
+ 
++#include <signal.h>
++
+ #define	TMR2_OUT_STS		0x20
+ 
+ #define	PIT_8254_FREQ		(1193182)
+diff --git a/devicemodel/hw/uart_core.c b/devicemodel/hw/uart_core.c
+index d2b6d502..3f238e19 100644
+--- a/devicemodel/hw/uart_core.c
++++ b/devicemodel/hw/uart_core.c
+@@ -38,7 +38,7 @@
+ #include <sys/types.h>
+ #include <sys/socket.h>
+ #include <netinet/in.h>
+-#include <sys/errno.h>
++#include <errno.h>
+ 
+ #include "types.h"
+ #include "mevent.h"
+diff --git a/devicemodel/include/block_if.h b/devicemodel/include/block_if.h
+index d09fb380..15e324fa 100644
+--- a/devicemodel/include/block_if.h
++++ b/devicemodel/include/block_if.h
+@@ -37,7 +37,7 @@
+ #define _BLOCK_IF_H_
+ 
+ #include <sys/uio.h>
+-#include <sys/unistd.h>
++#include <unistd.h>
+ 
+ #define BLOCKIF_IOV_MAX		256	/* not practical to be IOV_MAX */
+ 
+diff --git a/devicemodel/include/iodev.h b/devicemodel/include/iodev.h
+index 8de2fbeb..4cefc1d6 100644
+--- a/devicemodel/include/iodev.h
++++ b/devicemodel/include/iodev.h
+@@ -32,6 +32,7 @@
+ #define	IODEV_PIO_READ		0
+ #define	IODEV_PIO_WRITE		1
+ 
++typedef unsigned int u_int;
+ struct iodev_pio_req {
+ 	u_int access;
+ 	u_int port;
+diff --git a/devicemodel/include/tree.h b/devicemodel/include/tree.h
+index fbd7fe8a..72f8b759 100644
+--- a/devicemodel/include/tree.h
++++ b/devicemodel/include/tree.h
+@@ -30,7 +30,6 @@
+ #ifndef	_TREE_H_
+ #define	_TREE_H_
+ 
+-#include <sys/cdefs.h>
+ 
+ /*
+  * This file defines data structures for different types of trees:
+diff --git a/misc/acrn-manager/acrn_mngr.c b/misc/acrn-manager/acrn_mngr.c
+index 9df42413..1c809165 100644
+--- a/misc/acrn-manager/acrn_mngr.c
++++ b/misc/acrn-manager/acrn_mngr.c
+@@ -8,6 +8,7 @@
+ #include <stdio.h>
+ #include <sys/queue.h>
+ #include <sys/un.h>
++#include <string.h>
+ #include <pthread.h>
+ #include <errno.h>
+ #include <sys/un.h>
+diff --git a/misc/acrn-manager/acrnd.c b/misc/acrn-manager/acrnd.c
+index 5dfbf394..ed2426ea 100644
+--- a/misc/acrn-manager/acrnd.c
++++ b/misc/acrn-manager/acrnd.c
+@@ -238,12 +238,12 @@ static void acrnd_run_vm(char *name)
+ 	/*If do not use logfile, then output to stdout,
+ 	 so that it can be redirected to journal by systemd */
+ 	if (logfile) {
+-		stdin = freopen("/dev/null", "r+", stdin);
+-		stdout = freopen("/dev/null", "r+", stdout);
+-		stderr = freopen("/dev/null", "r+", stderr);
+-		fflush(stdin);
+-		fflush(stdout);
+-		fflush(stderr);
++		FILE *fp;
++		fp = fopen("/dev/null", "r+");
++		dup2(fileno(fp), STDIN_FILENO);
++		dup2(fileno(fp), STDOUT_FILENO);
++		dup2(fileno(fp), STDERR_FILENO);
++		fclose(fp);
+ 	}
+ 
+ 	start_vm(name);
+diff --git a/misc/tools/acrntrace/acrntrace.c b/misc/tools/acrntrace/acrntrace.c
+index 03078a44..5a1c9993 100644
+--- a/misc/tools/acrntrace/acrntrace.c
++++ b/misc/tools/acrntrace/acrntrace.c
+@@ -286,7 +286,7 @@ static void destory_reader(reader_struct * reader)
+ 	if (reader->thrd) {
+ 		pthread_cancel(reader->thrd);
+ 		if (pthread_join(reader->thrd, NULL) != 0)
+-			pr_err("failed to cancel thread[%lu]\n", reader->thrd);
++			pr_err("failed to cancel thread[%lu]\n", (unsigned long)reader->thrd);
+ 		else
+ 			reader->thrd = 0;
+ 	}
+-- 
+2.17.1
+

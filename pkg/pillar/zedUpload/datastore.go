@@ -4,6 +4,7 @@
 package zedUpload
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -65,10 +66,18 @@ func httpClientSrcIP(localAddr net.IP, proxy *url.URL) *http.Client {
 	// This will make the ResolveIPAddr a TCPAddr without needing to
 	// say what SRC port number to use.
 	localTCPAddr := net.TCPAddr{IP: localAddr}
+	localUDPAddr := net.UDPAddr{IP: localAddr}
+	resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
+		// XXX can DNS fallback to TCP? Would get a mismatched address if we do
+		d := net.Dialer{LocalAddr: &localUDPAddr}
+		return d.Dial(network, address)
+	}
+	r := net.Resolver{Dial: resolverDial, PreferGo: true, StrictErrors: false}
 	webclient := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxy),
 			DialContext: (&net.Dialer{
+				Resolver:  &r,
 				LocalAddr: &localTCPAddr,
 				Timeout:   30 * time.Second,
 				KeepAlive: 30 * time.Second,

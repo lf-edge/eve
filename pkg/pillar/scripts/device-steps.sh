@@ -120,6 +120,8 @@ file = /var/run/${AGENT}config.touch
 change = 300
 file = /var/run/${AGENT}metrics.touch
 change = 300
+file = /var/run/${AGENT}devinfo.touch
+change = 300
 EOF
     fi
 done
@@ -152,6 +154,7 @@ if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
 fi
 
+# XXX Remove DNC and AA directories?
 DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
 
 for d in $DIRS; do

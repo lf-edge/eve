@@ -35,7 +35,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/wrap"
-	"github.com/satori/go.uuid"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -87,7 +87,8 @@ type domainContext struct {
 }
 
 func (ctx *domainContext) publishAssignableAdapters() {
-	ctx.pubAssignableAdapters.Publish("global", ctx.assignableAdapters)
+	log.Infof("Publishing %v", *ctx.assignableAdapters)
+	ctx.pubAssignableAdapters.Publish("global", *ctx.assignableAdapters)
 }
 
 var debug = false
@@ -296,7 +297,10 @@ func Run() {
 
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse
+	// Update the LastUse again here since it may not get updated since the
+	// device reboot if network is not available
 	gc := time.NewTicker(vdiskGCTime / 10)
+	gcResetObjectsLastUse(&domainCtx, rwImgDirname)
 
 	for {
 		select {
@@ -579,7 +583,7 @@ func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
 	if ok {
 		log.Fatalf("handleDomainCreate called on config that already exists")
 	}
-	h1 := make(chan interface{})
+	h1 := make(chan interface{}, 1)
 	handlerMap[config.Key()] = h1
 	go runHandler(ctx, key, h1)
 	h = h1
@@ -678,7 +682,37 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.DomainId = domainID
 			publishDomainStatus(ctx, status)
 		}
+		// check if qemu processes has crashed
+		if status.Activated && !isQemuRunning(status.DomainId) {
+			errStr := fmt.Sprintf("verifyStatus(%s) qemu crashed",
+				status.Key())
+			log.Warnln(errStr)
+			status.LastErr = "qemu crashed - please restart application instance"
+			status.LastErrTime = time.Now()
+			status.Activated = false
+			status.State = types.HALTED
+			publishDomainStatus(ctx, status)
+		}
 	}
+}
+
+func isQemuRunning(domid int) bool {
+	// create pgrep command to see if dataplane is running
+	match := fmt.Sprintf("domid %d", domid)
+	cmd := wrap.Command("pgrep", "-f", match)
+
+	// pgrep returns 0 when there is atleast one matching program running
+	// cmd.Output returns nil when pgrep returns 0, otherwise pids.
+	out, err := cmd.Output()
+
+	if err != nil {
+		log.Infof("isQemuRunning: %s process is not running: %s",
+			match, err)
+		return false
+	}
+	log.Infof("isQemuRunning: Instances of %s is running: %s",
+		match, out)
+	return true
 }
 
 func maybeRetry(ctx *domainContext, status *types.DomainStatus) {
@@ -1401,7 +1435,11 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 				return fmt.Errorf("adapter %d %s member %s is (part of) a zedrouter port",
 					adapter.Type, adapter.Name, ibp.Name)
 			}
-
+		}
+		for _, ibp := range list {
+			if ibp == nil {
+				continue
+			}
 			log.Debugf("configAdapters setting uuid %s for adapter %d %s member %s",
 				config.Key(), adapter.Type, adapter.Name, ibp.Name)
 			ibp.UsedByUUID = config.UUIDandVersion.UUID
@@ -1476,6 +1514,8 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 			file.WriteString(fmt.Sprintf("vncpasswd = \"%s\"\n",
 				config.VncPasswd))
 		}
+	} else {
+		file.WriteString(fmt.Sprintf("vnc = 0\n"))
 	}
 
 	// Go from kbytes to mbytes
@@ -1620,7 +1660,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 		}
 	}
 	if len(pciAssignments) != 0 {
-		log.Debugf("PCI assignments %v\n", pciAssignments)
+		log.Infof("PCI assignments %v\n", pciAssignments)
 		cfg := fmt.Sprintf("pci = [ ")
 		for i, pa := range pciAssignments {
 			if i != 0 {
@@ -2499,16 +2539,42 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 	ctx := ctxArg.(*domainContext)
 	phyIOAdapterList := cast.CastPhysicalIOAdapterList(configArg)
 	aa := ctx.assignableAdapters
-	log.Infof("handlePhysicalIOAdapterListCreateModify: %+v\n",
-		phyIOAdapterList)
+	log.Infof("handlePhysicalIOAdapterListCreateModify: current len %d, update %+v\n",
+		len(aa.IoBundleList), phyIOAdapterList)
+
+	if !aa.Initialized {
+		// Setup list first because functions lookup in IoBundleList
+		for _, phyAdapter := range phyIOAdapterList.AdapterList {
+			ib := *types.IoBundleFromPhyAdapter(phyAdapter)
+			aa.IoBundleList = append(aa.IoBundleList, ib)
+		}
+		// Now initialize each entry
+		for _, ib := range aa.IoBundleList {
+			log.Infof("handlePhysicalIOAdapterListCreateModify: new Adapter: %+v",
+				ib)
+			handleIBCreate(ctx, ib)
+		}
+		log.Infof("handlePhysicalIOAdapterListCreateModify: initialized to get len %d",
+			len(aa.IoBundleList))
+		aa.Initialized = true
+		ctx.publishAssignableAdapters()
+		log.Infof("handlePhysicalIOAdapterListCreateModify() done len %d",
+			len(aa.IoBundleList))
+		return
+	}
 
 	// Check if any adapters got deleted
+	// Loop first then delete to avoid deleting while we iterate
+	var deleteList []string
 	for indx := range aa.IoBundleList {
 		name := aa.IoBundleList[indx].Name
 		phyAdapter := phyIOAdapterList.LookupAdapter(name)
 		if phyAdapter == nil {
-			handleIBDelete(ctx, name)
+			deleteList = append(deleteList, name)
 		}
+	}
+	for _, name := range deleteList {
+		handleIBDelete(ctx, name)
 	}
 
 	// Any add or modify?
@@ -2529,9 +2595,9 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 				"- No Change\n", phyAdapter.Phylabel)
 		}
 	}
-	aa.Initialized = true
 	ctx.publishAssignableAdapters()
-	log.Infof("handlePhysicalIOAdapterListCreateModify() done\n")
+	log.Infof("handlePhysicalIOAdapterListCreateModify() done len %d",
+		len(aa.IoBundleList))
 }
 
 func handlePhysicalIOAdapterListDelete(ctxArg interface{},
@@ -2572,7 +2638,8 @@ func checkAndSetIoBundleAll(ctx *domainContext) {
 		ib := &ctx.assignableAdapters.IoBundleList[i]
 		err := checkAndSetIoBundle(ctx, ib, true)
 		if err != nil {
-			log.Errorf("checkAndSetIoBundleAll failed for %d\n", i)
+			log.Errorf("checkAndSetIoBundleAll failed for %d: %s",
+				i, err)
 		}
 	}
 }
@@ -2580,6 +2647,8 @@ func checkAndSetIoBundleAll(ctx *domainContext) {
 func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle,
 	publish bool) error {
 
+	log.Infof("checkAndSetIoBundle(%d %s %s) publish %t",
+		ib.Type, ib.Name, ib.AssignmentGroup, publish)
 	aa := ctx.assignableAdapters
 	var list []*types.IoBundle
 
@@ -2595,9 +2664,12 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle,
 			isPort = true
 		}
 	}
+	log.Infof("checkAndSetIoBundle(%d %s %s) isPort %t members %v",
+		ib.Type, ib.Name, ib.AssignmentGroup, isPort, list)
 	for _, ib := range list {
 		err := checkAndSetIoMember(ctx, ib, isPort, publish)
 		if err != nil {
+			log.Error(err)
 			return err
 		}
 	}
@@ -2605,12 +2677,15 @@ func checkAndSetIoBundle(ctx *domainContext, ib *types.IoBundle,
 }
 
 func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, publish bool) error {
+
+	log.Infof("checkAndSetIoMember(%d %s %s) isPort %t publish %t",
+		ib.Type, ib.Name, ib.AssignmentGroup, isPort, publish)
 	aa := ctx.assignableAdapters
 	// Check if part of DevicePortConfig
 	ib.IsPort = false
 	changed := false
 	if isPort {
-		log.Warnf("checkAndSetIoBundle(%d %s %s) part of zedrouter port\n",
+		log.Warnf("checkAndSetIoMember(%d %s %s) part of zedrouter port\n",
 			ib.Type, ib.Name, ib.AssignmentGroup)
 		ib.IsPort = true
 		changed = true
@@ -2649,29 +2724,33 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 			// Verify that it has been returned from pciback
 			_, err := types.IoBundleToPci(ib)
 			if err != nil {
-				log.Warnf("checkAndSetIoBundle(%d %s %s) gone?: %s\n",
+				log.Warnf("checkAndSetIoMember(%d %s %s) gone?: %s\n",
 					ib.Type, ib.Name, ib.AssignmentGroup, err)
 			}
 		}
-	} else {
-		// XXX potentially move to PCIBack if not already
-		// and with USB check
-		// XXX should not do that when Testing is set.
-		log.Debugf("checkAndSetIoBundle: %s (%s) not a port\n",
-			ib.Name, ib.PciLong)
 	}
+	if ib.Type.IsNet() && ib.MacAddr == "" {
+		ib.MacAddr = getMacAddr(ib.Name)
+		changed = true
+		log.Infof("checkAndSetIoMember(%d %s %s) long %s macaddr %s",
+			ib.Type, ib.Name, ib.AssignmentGroup, ib.PciLong, ib.MacAddr)
+	}
+
 	if publish && changed {
 		ctx.publishAssignableAdapters()
+		changed = false
 	}
 
 	// For a new PCI device we check if it exists in hardware/kernel
 	long, err := types.IoBundleToPci(ib)
 	if err != nil {
+		log.Error(err)
 		return err
 	}
 	if long != "" {
 		ib.PciLong = long
-		log.Infof("checkAndSetIoBundle(%d %s %s) found %s\n",
+		changed = true
+		log.Infof("checkAndSetIoMember(%d %s %s) found %s\n",
 			ib.Type, ib.Name, ib.AssignmentGroup, long)
 
 		// Save somewhat Unique string for debug
@@ -2682,15 +2761,13 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 			log.Errorln(errStr)
 		} else {
 			ib.Unique = unique
-			log.Infof("checkAndSetIoBundle(%d %s %s) %s unique %s",
+			changed = true
+			log.Infof("checkAndSetIoMember(%d %s %s) %s unique %s",
 				ib.Type, ib.Name, ib.AssignmentGroup, long, unique)
 		}
-		if ib.Type.IsNet() && ib.MacAddr == "" {
-			ib.MacAddr = getMacAddr(ib.Name)
-		}
-		if publish {
-			ctx.publishAssignableAdapters()
-		}
+	} else {
+		log.Infof("checkAndSetIoMember(%d %s %s) not found PCI",
+			ib.Type, ib.Name, ib.AssignmentGroup)
 	}
 
 	if !ib.IsPort && !ib.IsPCIBack {
@@ -2708,11 +2785,14 @@ func checkAndSetIoMember(ctx *domainContext, ib *types.IoBundle, isPort bool, pu
 				return err
 			}
 			ib.IsPCIBack = true
-			if publish {
-				ctx.publishAssignableAdapters()
-			}
+			changed = true
 		}
 	}
+	if publish && changed {
+		ctx.publishAssignableAdapters()
+		changed = false
+	}
+
 	return nil
 }
 
@@ -2759,13 +2839,13 @@ func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 			long, ib.Unique)
 		return errors.New(errStr)
 	}
-	if unique != ib.Unique {
+	if unique != ib.Unique && ib.Unique != "" {
 		errStr := fmt.Sprintf("IoBundle(%d %s %s) changed unique from %s to %sn",
 			ib.Type, ib.Name, ib.AssignmentGroup,
 			ib.Unique, unique)
 		return errors.New(errStr)
 	}
-	if ib.Type.IsNet() && ib.MacAddr == "" {
+	if ib.Type.IsNet() && ib.MacAddr != "" {
 		macAddr := getMacAddr(ib.Name)
 		// Will be empty string if adapter is assigned away
 		if macAddr != "" && macAddr != ib.MacAddr {
@@ -2924,7 +3004,6 @@ func isInUsbGroup(aa types.AssignableAdapters, ib types.IoBundle) bool {
 		return false
 	}
 	list := aa.LookupIoBundleGroup(ib.AssignmentGroup)
-	log.Infof("isInUsbGroup for %s found %v", ib.Name, list)
 	for _, m := range list {
 		if m.Type == types.IoUSB {
 			log.Infof("isInUsbGroup for %s found USB for %s",
@@ -2933,4 +3012,26 @@ func isInUsbGroup(aa types.AssignableAdapters, ib types.IoBundle) bool {
 		}
 	}
 	return false
+}
+
+// gc timer just started, reset the LastUse timestamp
+func gcResetObjectsLastUse(ctx *domainContext, dirName string) {
+
+	log.Debugf("gcResetObjectsLastUse()\n")
+
+	pub := ctx.pubImageStatus
+	items := pub.GetAll()
+	for key, st := range items {
+		status := cast.CastImageStatus(st)
+		if status.Key() != key {
+			log.Errorf("gcResetObjectsLastUse key/UUID mismatch %s vs %s; ignored %+v\n",
+				key, status.Key(), status)
+			continue
+		}
+		if status.RefCount == 0 {
+			log.Infof("gcResetObjectsLastUse: reset %v LastUse to now\n", key)
+			status.LastUse = time.Now()
+			publishImageStatus(ctx, &status)
+		}
+	}
 }

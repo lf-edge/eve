@@ -142,6 +142,43 @@ func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, local
 	return nil
 }
 
+// PutBlockBlob uploads given stream into a block blob by splitting
+// data stream into chunks and uploading as blocks. Commits the block
+// list at the end. This is a helper method built on top of PutBlock
+// and PutBlockList methods with sequential block ID counting logic.
+func putBlockBlob(b *storage.Blob, blob io.Reader) error {
+	chunkSize := storage.MaxBlobBlockSize
+
+	chunk := make([]byte, chunkSize)
+	n, err := blob.Read(chunk)
+	if err != nil && err != io.EOF {
+		return err
+	}
+
+	blockList := []storage.Block{}
+
+	for blockNum := 0; ; blockNum++ {
+		id := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("1d%v", blockNum)))
+		data := chunk[:n]
+		err = b.PutBlock(id, data, nil)
+		if err != nil {
+			return err
+		}
+
+		blockList = append(blockList, storage.Block{ID: id, Status: storage.BlockStatusLatest})
+
+		// Read next block
+		n, err = blob.Read(chunk)
+		if err != nil && err != io.EOF {
+			return err
+		}
+		if err == io.EOF {
+			break
+		}
+	}
+	return b.PutBlockList(blockList, nil)
+}
+
 func UploadAzureBlob(accountName, accountKey, containerName, remoteFile, localFile string, httpClient *http.Client) error {
 	c, err := NewClient(accountName, accountKey, httpClient)
 	if err != nil {
@@ -161,9 +198,9 @@ func UploadAzureBlob(accountName, accountKey, containerName, remoteFile, localFi
 	file, _ := os.Open(localFile)
 	defer file.Close()
 	blob := container.GetBlobReference(remoteFile)
-	er := blob.CreateBlockBlobFromReader(file, nil)
-	if er != nil {
-		return er
+	putBlockErr := putBlockBlob(blob, file)
+	if putBlockErr != nil {
+		return putBlockErr
 	}
 	return nil
 }

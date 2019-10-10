@@ -90,7 +90,7 @@ type zedagentContext struct {
 	iteration                 int
 	subNetworkInstanceStatus  *pubsub.Subscription
 	subCertObjConfig          *pubsub.Subscription
-	TriggerDeviceInfo         bool
+	TriggerDeviceInfo         chan<- struct{}
 	subBaseOsStatus           *pubsub.Subscription
 	subBaseOsDownloadStatus   *pubsub.Subscription
 	subCertObjDownloadStatus  *pubsub.Subscription
@@ -169,7 +169,8 @@ func Run() {
 
 	log.Infof("Starting %s\n", agentName)
 
-	zedagentCtx := zedagentContext{}
+	triggerDeviceInfo := make(chan struct{}, 1)
+	zedagentCtx := zedagentContext{TriggerDeviceInfo: triggerDeviceInfo}
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 
 	// If we have a reboot reason from this or the other partition
@@ -233,6 +234,7 @@ func Run() {
 	agentlog.StillRunning(agentName)
 	agentlog.StillRunning(agentName + "config")
 	agentlog.StillRunning(agentName + "metrics")
+	agentlog.StillRunning(agentName + "devinfo")
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
@@ -651,8 +653,12 @@ func Run() {
 		log.Fatal(err)
 	}
 
+	// Use a go routine to make sure we have wait/timeout without
+	// blocking the main select loop
+	go deviceInfoTask(&zedagentCtx, triggerDeviceInfo)
+
 	// Publish initial device info.
-	publishDevInfo(&zedagentCtx)
+	triggerPublishDevInfo(&zedagentCtx)
 
 	// start the metrics reporting task
 	handleChannel := make(chan interface{})
@@ -705,7 +711,7 @@ func Run() {
 			if DNSctx.triggerDeviceInfo {
 				// IP/DNS in device info could have changed
 				log.Infof("NetworkStatus triggered PublishDeviceInfo\n")
-				publishDevInfo(&zedagentCtx)
+				triggerPublishDevInfo(&zedagentCtx)
 				DNSctx.triggerDeviceInfo = false
 			}
 			agentlog.CheckMaxTime(agentName, start)
@@ -726,16 +732,9 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 		case <-stillRunning.C:
 		}
-		// XXX verifierRestarted can take 5 minutes??
 		agentlog.StillRunning(agentName)
-		// UsedByUUID, baseos subStatus, DevicePortConfigList etc
-		if zedagentCtx.TriggerDeviceInfo {
-			log.Infof("triggered PublishDeviceInfo\n")
-			start := agentlog.StartTime()
-			publishDevInfo(&zedagentCtx)
-			zedagentCtx.TriggerDeviceInfo = false
-			agentlog.CheckMaxTime(agentName, start)
-		}
+		// Need to tickle this since the configTimerTask is not yet started
+		agentlog.StillRunning(agentName + "config")
 	}
 
 	// start the config fetch tasks, when zboot status is ready
@@ -798,13 +797,13 @@ func Run() {
 				triggerGetConfig(configTickerHandle)
 				DNSctx.triggerGetConfig = false
 			}
+			agentlog.CheckMaxTime(agentName, start)
 			if DNSctx.triggerDeviceInfo {
 				// IP/DNS in device info could have changed
 				log.Infof("NetworkStatus triggered PublishDeviceInfo\n")
-				publishDevInfo(&zedagentCtx)
+				triggerPublishDevInfo(&zedagentCtx)
 				DNSctx.triggerDeviceInfo = false
 			}
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAssignableAdapters.C:
 			start := agentlog.StartTime()
@@ -888,20 +887,38 @@ func Run() {
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName)
-		// UsedByUUID, baseos subStatus, DevicePortConfigList etc
-		if zedagentCtx.TriggerDeviceInfo {
-			log.Infof("triggered PublishDeviceInfo\n")
-			start := agentlog.StartTime()
-			publishDevInfo(&zedagentCtx)
-			zedagentCtx.TriggerDeviceInfo = false
-			agentlog.CheckMaxTime(agentName, start)
-		}
 	}
 }
 
-func publishDevInfo(ctx *zedagentContext) {
-	PublishDeviceInfoToZedCloud(ctx)
-	ctx.iteration += 1
+func triggerPublishDevInfo(ctxPtr *zedagentContext) {
+
+	log.Info("Triggered PublishDeviceInfo")
+	select {
+	case ctxPtr.TriggerDeviceInfo <- struct{}{}:
+		// Do nothing more
+	default:
+		log.Info("Failed to send on PublishDeviceInfo")
+	}
+}
+
+func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) {
+
+	// Run a periodic timer so we always update StillRunning
+	stillRunning := time.NewTicker(25 * time.Second)
+	for {
+		select {
+		case <-triggerDeviceInfo:
+			start := agentlog.StartTime()
+			log.Info("deviceInfoTask got message")
+
+			PublishDeviceInfoToZedCloud(ctxPtr)
+			ctxPtr.iteration++
+			log.Info("deviceInfoTask done with message")
+			agentlog.CheckMaxTime(agentName+"config", start)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName + "devinfo")
+	}
 }
 
 func handleVerifierRestarted(ctxArg interface{}, done bool) {
@@ -993,7 +1010,7 @@ func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 	uuidStr := status.Key()
 	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
 		ctx.iteration)
-	ctx.iteration += 1
+	ctx.iteration++
 }
 
 func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
@@ -1003,7 +1020,7 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
 	uuidStr := key
 	PublishAppInfoToZedCloud(ctx, uuidStr, nil, ctx.assignableAdapters,
 		ctx.iteration)
-	ctx.iteration += 1
+	ctx.iteration++
 }
 
 func lookupAppInstanceStatus(ctx *zedagentContext, key string) *types.AppInstanceStatus {
@@ -1087,7 +1104,7 @@ func handleDPCLModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDPCLModify: changed %v",
 		cmp.Diff(ctx.devicePortConfigList, status))
 	ctx.devicePortConfigList = status
-	ctx.TriggerDeviceInfo = true
+	triggerPublishDevInfo(ctx)
 }
 
 func handleDPCLDelete(ctxArg interface{}, key string, statusArg interface{}) {
@@ -1099,7 +1116,7 @@ func handleDPCLDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	log.Infof("handleDPCLDelete for %s\n", key)
 	ctx.devicePortConfigList = types.DevicePortConfigList{}
-	ctx.TriggerDeviceInfo = true
+	triggerPublishDevInfo(ctx)
 }
 
 // base os status event handlers
@@ -1113,7 +1130,7 @@ func handleBaseOsStatusModify(ctxArg interface{}, key string, statusArg interfac
 		return
 	}
 	doBaseOsDeviceReboot(ctx, status)
-	publishDevInfo(ctx)
+	triggerPublishDevInfo(ctx)
 	log.Infof("handleBaseOsStatusModify(%s) done\n", key)
 }
 
@@ -1122,7 +1139,7 @@ func handleBaseOsStatusDelete(ctxArg interface{}, key string,
 
 	log.Infof("handleBaseOsStatusDelete(%s)\n", key)
 	ctx := ctxArg.(*zedagentContext)
-	publishDevInfo(ctx)
+	triggerPublishDevInfo(ctx)
 	log.Infof("handleBaseOsStatusDelete(%s) done\n", key)
 }
 
@@ -1181,7 +1198,7 @@ func handleAAModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleAAModify() %+v\n", status)
 	*ctx.assignableAdapters = status
-	ctx.TriggerDeviceInfo = true
+	triggerPublishDevInfo(ctx)
 	log.Infof("handleAAModify() done\n")
 }
 
@@ -1195,7 +1212,7 @@ func handleAADelete(ctxArg interface{}, key string,
 	}
 	log.Infof("handleAADelete()\n")
 	ctx.assignableAdapters.Initialized = false
-	ctx.TriggerDeviceInfo = true
+	triggerPublishDevInfo(ctx)
 	log.Infof("handleAADelete() done\n")
 }
 
@@ -1210,7 +1227,7 @@ func handleZbootStatusModify(ctxArg interface{}, key string,
 	}
 	log.Infof("handleZbootStatusModify: for %s\n", key)
 	doZbootTestComplete(ctx, status)
-	publishDevInfo(ctx)
+	triggerPublishDevInfo(ctx)
 }
 
 func handleZbootStatusDelete(ctxArg interface{}, key string,

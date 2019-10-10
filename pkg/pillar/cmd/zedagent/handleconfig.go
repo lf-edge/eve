@@ -283,7 +283,7 @@ func getLatestConfig(url string, iteration int, updateInprogress bool,
 			ctx.remainingTestTime = 0
 		}
 		// Send updated remainingTestTime to zedcloud
-		ctx.TriggerDeviceInfo = true
+		triggerPublishDevInfo(ctx)
 	}
 
 	if err := validateConfigMessage(url, resp); err != nil {
@@ -453,7 +453,7 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 					zcdevUUID.String(), id.String())
 				zcdevUUID = id
 				ctx := getconfigCtx.zedagentCtx
-				ctx.TriggerDeviceInfo = true
+				triggerPublishDevInfo(ctx)
 			}
 
 		}
