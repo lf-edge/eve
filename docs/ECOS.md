@@ -96,10 +96,10 @@ EVE periodically pulls the configuration from the controller. The configuration 
 The controller drives the ECO state transitions via the configuration. These state transitions are described below. Due to the eventual consistency model, a new configuration may result in zero or more state transitions for a given ECO.
 
 * Prepare an ECO
-  * The ECI(s) is transfer'ed to EVE's storage area and resources required for the ECO are reserved. 
+  * The ECI(s) is transfer'ed to EVE's storage area and resources required for the ECO are reserved.
   * EVE performs the operations to "prepare an ECO" for each entry in the array of ECO's in the new configuration and not present in older configuration.
 
-* Start an ECO 
+* Start an ECO
   * A previously stopped ECO or an ECO that has never been started, will be started. At the end of this, ECO will transition to Running state. For an ECO which is already Running, this is a no-op.
   * EVE performs the operation if the 'activate' flag is set to 'true' in the configuration.
 
@@ -166,10 +166,10 @@ ECI Distribution Specification will closely follow [OCI Distribution Specificati
 
 The goals for the ECI Distribution Specification is to address the following aspects of ECI distribution:
 
-  * Mapping of symbolic names to content-addressable handles
-  * Standardizing operations on metadata for collection of ECIs stored as a group
-  * Establishing trust model around managing software supply chain all the way to the final ECI
-  * Effective download of individual binary blobs corresponding to the ECI components
-  * Effective upload of individual binary blobs corresponding to the ECI components
+* Mapping of symbolic names to content-addressable handles
+* Standardizing operations on metadata for collection of ECIs stored as a group
+* Establishing trust model around managing software supply chain all the way to the final ECI
+* Effective download of individual binary blobs corresponding to the ECI components
+* Effective upload of individual binary blobs corresponding to the ECI components
 
 While the bulk of this portion of the specification will focus on defining RESTful HTTP API protocol, we will try to make sure that the core of these HTTP endpoints can map easily to other transports as well. After all, if we all agree to have blobs available under ``/<version>/<name>/blobs/<digest>`` the same path could map well to an S3 bucket and sftp -- not just to an HTTP REST end-point.
