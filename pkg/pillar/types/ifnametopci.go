@@ -9,12 +9,13 @@ package types
 import (
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"path"
 	"regexp"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/eriknordmark/netlink"
 )
@@ -160,8 +161,8 @@ func IoBundleToPci(ib *IoBundle) (string, error) {
 		return "", nil
 	}
 	if !pciLongExists(long) {
-		errStr := fmt.Sprintf("PCI device name %s id %s does not exist",
-			ib.Name, long)
+		errStr := fmt.Sprintf("PCI device name %s ifname %s id %s does not exist",
+			ib.Name, ib.Ifname, long)
 		return long, errors.New(errStr)
 	}
 	return long, nil

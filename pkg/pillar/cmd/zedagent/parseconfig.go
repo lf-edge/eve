@@ -848,6 +848,13 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 					"key: %s, value: %s", key, value)
 			}
 		}
+		if types.IoType(port.Ptype).IsNet() {
+			if port.Phyaddr.Ifname == "" {
+				log.Errorf("parseDeviceIoListConfig: Network Adapter %s "+
+					"doesnn't have ifname. ptype: %d",
+					port.Phylabel, port.Ptype)
+			}
+		}
 		phyIoAdapterList.AdapterList = append(phyIoAdapterList.AdapterList,
 			port)
 		getconfigCtx.zedagentCtx.physicalIoAdapterMap[port.Phylabel] = port
