@@ -25,18 +25,6 @@ func CastNetworkXObjectConfig(in interface{}) types.NetworkXObjectConfig {
 	return output
 }
 
-func CastDeviceNetworkConfig(in interface{}) types.DeviceNetworkConfig {
-	b, err := json.Marshal(in)
-	if err != nil {
-		log.Fatal(err, "json Marshal in CastDeviceNetworkConfig")
-	}
-	var output types.DeviceNetworkConfig
-	if err := json.Unmarshal(b, &output); err != nil {
-		log.Fatal(err, "json Unmarshal in CastDeviceNetworkConfig")
-	}
-	return output
-}
-
 func CastNetworkInstanceConfig(in interface{}) types.NetworkInstanceConfig {
 	b, err := json.Marshal(in)
 	if err != nil {

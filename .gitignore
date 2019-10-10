@@ -1,3 +1,4 @@
+*.swp
 obj
 dist/
 build-tools/bin/

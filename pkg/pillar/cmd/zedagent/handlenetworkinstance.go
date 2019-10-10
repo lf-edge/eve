@@ -761,6 +761,17 @@ func handleAppFlowMonitorDelete(ctxArg interface{}, key string,
 	log.Infof("handleAppFlowMonitorDelete(%s) done\n", key)
 }
 
+func aclActionToProtoAction(action string) flowlog.ACLAction {
+	switch action {
+	case "ACCEPT":
+		return flowlog.ACLAction_ActionAccept
+	case "DROP":
+		return flowlog.ACLAction_ActionDrop
+	default:
+		return flowlog.ACLAction_ActionUnknown
+	}
+}
+
 func protoEncodeAppFlowMonitorProto(ipflow types.IPFlow) *flowlog.FlowMessage {
 
 	pflows := new(flowlog.FlowMessage)
@@ -789,6 +800,7 @@ func protoEncodeAppFlowMonitorProto(ipflow types.IPFlow) *flowlog.FlowMessage {
 
 		prec.Inbound = rec.Inbound
 		prec.AclId = rec.ACLID
+		prec.Action = aclActionToProtoAction(rec.Action)
 		// prec.AclName =
 		pStart := new(timestamp.Timestamp)
 		pStart = timeNanoToProto(rec.StartTime)

@@ -16,20 +16,18 @@ Use the commands below to provide key information from your environment:
 You do NOT have to include this information if this is a FEATURE REQUEST
 -->
 
-**Description**
+# Description
 
 <!--
 Briefly describe the problem you are having in a few paragraphs.
 -->
 
-**Steps to reproduce the issue:**
+# Steps to Reproduce
 
+# Actual Results
 
-**Describe the results you received:**
+# Expected Results
 
+# Additional Information
 
-**Describe the results you expected:**
-
-
-**Additional information you deem important (e.g. issue happens only occasionally):**
-
+<!-- e.g. issue happens only occasionally -->

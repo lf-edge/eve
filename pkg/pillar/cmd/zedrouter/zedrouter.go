@@ -77,6 +77,9 @@ type zedrouterContext struct {
 	pubAppFlowMonitor         *pubsub.Publication
 	networkInstanceStatusMap  map[uuid.UUID]*types.NetworkInstanceStatus
 	dnsServers                map[string][]net.IP
+	checkNIUplinks            chan bool
+	hostProbeTimer            *time.Timer
+	hostFastProbe             bool
 }
 
 var debug = false
@@ -155,7 +158,6 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
-	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	zedrouterCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
@@ -166,7 +168,6 @@ func Run() {
 		log.Fatal(err)
 	}
 	subAssignableAdapters.ModifyHandler = handleAAModify
-	subAssignableAdapters.CreateHandler = handleAAModify
 	subAssignableAdapters.DeleteHandler = handleAADelete
 	zedrouterCtx.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
@@ -178,7 +179,6 @@ func Run() {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	zedrouterCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
@@ -225,6 +225,12 @@ func Run() {
 	}
 	zedrouterCtx.pubAppFlowMonitor = pubAppFlowMonitor
 
+	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
+	pub, err := pubsub.Publish(agentName, nms)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	appNumAllocatorInit(&zedrouterCtx)
 	bridgeNumAllocatorInit(&zedrouterCtx)
 	handleInit(runDirname)
@@ -264,7 +270,6 @@ func Run() {
 		log.Fatal(err)
 	}
 	subNetworkInstanceConfig.ModifyHandler = handleNetworkInstanceModify
-	subNetworkInstanceConfig.CreateHandler = handleNetworkInstanceModify
 	subNetworkInstanceConfig.DeleteHandler = handleNetworkInstanceDelete
 	zedrouterCtx.subNetworkInstanceConfig = subNetworkInstanceConfig
 	subNetworkInstanceConfig.Activate()
@@ -276,8 +281,7 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppNetworkConfig.ModifyHandler = doAppNetworkConfigModify
-	subAppNetworkConfig.CreateHandler = handleAppNetworkCreate
+	subAppNetworkConfig.ModifyHandler = handleAppNetworkConfigModify
 	subAppNetworkConfig.DeleteHandler = handleAppNetworkConfigDelete
 	subAppNetworkConfig.RestartHandler = handleRestart
 	zedrouterCtx.subAppNetworkConfig = subAppNetworkConfig
@@ -289,8 +293,7 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppNetworkConfigAg.ModifyHandler = doAppNetworkConfigModify
-	subAppNetworkConfigAg.CreateHandler = handleAppNetworkCreate
+	subAppNetworkConfigAg.ModifyHandler = handleAppNetworkConfigModify
 	subAppNetworkConfigAg.DeleteHandler = handleAppNetworkConfigDelete
 	zedrouterCtx.subAppNetworkConfigAg = subAppNetworkConfigAg
 	subAppNetworkConfigAg.Activate()
@@ -301,7 +304,6 @@ func Run() {
 		log.Fatal(err)
 	}
 	subLispInfoStatus.ModifyHandler = handleLispInfoModify
-	subLispInfoStatus.CreateHandler = handleLispInfoModify
 	subLispInfoStatus.DeleteHandler = handleLispInfoDelete
 	zedrouterCtx.subLispInfoStatus = subLispInfoStatus
 	subLispInfoStatus.Activate()
@@ -312,7 +314,6 @@ func Run() {
 		log.Fatal(err)
 	}
 	subLispMetrics.ModifyHandler = handleLispMetricsModify
-	subLispMetrics.CreateHandler = handleLispMetricsModify
 	subLispMetrics.DeleteHandler = handleLispMetricsDelete
 	zedrouterCtx.subLispMetrics = subLispMetrics
 	subLispMetrics.Activate()
@@ -323,11 +324,6 @@ func Run() {
 	linkChanges := devicenetwork.LinkChangeInit()
 
 	// Publish network metrics for zedagent every 10 seconds
-	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
-	pub, err := pubsub.Publish(agentName, nms)
-	if err != nil {
-		log.Fatal(err)
-	}
 	interval := time.Duration(10 * time.Second)
 	max := float64(interval)
 	min := max * 0.3
@@ -342,7 +338,8 @@ func Run() {
 	flowStatTimer := flextimer.NewRangeTicker(time.Duration(fmin),
 		time.Duration(fmax))
 
-	setFreeMgmtPorts(types.GetMgmtPortsFree(*zedrouterCtx.deviceNetworkStatus, 0))
+	setProbeTimer(&zedrouterCtx, nhProbeInterval)
+	zedrouterCtx.checkNIUplinks = make(chan bool, 1) // allow one signal without blocking
 
 	zedrouterCtx.ready = true
 	log.Infof("zedrouterCtx.ready\n")
@@ -498,6 +495,17 @@ func Run() {
 			go FlowStatsCollect(&zedrouterCtx)
 			agentlog.CheckMaxTime(agentName, start)
 
+		case <-zedrouterCtx.hostProbeTimer.C:
+			start := agentlog.StartTime()
+			log.Debugf("HostProbeTimer at %v", time.Now())
+			// launch the go function gateway/remote hosts probing check
+			go launchHostProbe(&zedrouterCtx)
+			agentlog.CheckMaxTime(agentName, start)
+
+		case <-zedrouterCtx.checkNIUplinks:
+			log.Infof("checkNIUplinks channel signal\n")
+			checkAndReprogramNetworkInstances(&zedrouterCtx)
+
 		case change := <-subNetworkInstanceConfig.C:
 			start := agentlog.StartTime()
 			log.Infof("NetworkInstanceConfig change at %+v", time.Now())
@@ -535,7 +543,6 @@ func maybeHandleDNS(ctx *zedrouterContext) {
 	}
 	updateLispConfiglets(ctx, ctx.legacyDataPlane)
 
-	setFreeMgmtPorts(types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0))
 	// XXX do a NatInactivate/NatActivate if management ports changed?
 }
 
@@ -762,6 +769,38 @@ func updateLispConfiglets(ctx *zedrouterContext, legacyDataPlane bool) {
 // Wrappers around handleCreate, handleModify, and handleDelete
 
 // Determine whether it is an create or modify
+func handleAppNetworkConfigModify(ctxArg interface{}, key string, configArg interface{}) {
+
+	ctx := ctxArg.(*zedrouterContext)
+	config := cast.CastAppNetworkConfig(configArg)
+	log.Infof("handleAppNetworkConfigModify(%s-%s)\n", config.DisplayName, key)
+
+	// If this is the first time, update the timer for GC
+	if ctx.receivedConfigTime.IsZero() {
+		log.Infof("triggerNumGC")
+		ctx.receivedConfigTime = time.Now()
+		ctx.triggerNumGC = true
+	}
+
+	status := lookupAppNetworkStatus(ctx, key)
+	if status == nil {
+		handleAppNetworkCreate(ctx, key, config)
+		status = lookupAppNetworkStatus(ctx, key)
+	} else {
+		doAppNetworkConfigModify(ctx, key, config, status)
+	}
+	// on error, relinquish the acquired resource
+	// only when, the network is meant to be activated
+	// and it is still not
+	if status != nil && status.Error != "" &&
+		config.Activate && !status.Activated {
+		releaseAppNetworkResources(ctx, key, status)
+	}
+	log.Infof("handleAppNetworkConfigModify(%s) done\n", key)
+	// on resource release, check whether any one else
+	// needs it
+	scanAppNetworkStatusInErrorAndUpdate(ctx, key)
+}
 
 func handleAppNetworkConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
@@ -1011,9 +1050,8 @@ var deviceEID net.IP
 var deviceIID uint32
 var additionalInfoDevice *types.AdditionalInfoDevice
 
-func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{}) {
-	ctx := ctxArg.(*zedrouterContext)
-	config := cast.CastAppNetworkConfig(configArg)
+func handleAppNetworkCreate(ctx *zedrouterContext, key string,
+	config types.AppNetworkConfig) {
 	log.Infof("handleAppAppNetworkCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -1259,9 +1297,12 @@ func appNetworkDoActivateUnderlayNetwork(
 
 	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
 		stopDnsmasq(bridgeName, true, false)
+		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
+			netInstStatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netInstConfig, hostsDirpath,
-			newIpsets, false)
+			newIpsets, false, netInstStatus.CurrentUplinkIntf,
+			dnsServers)
 		startDnsmasq(bridgeName)
 	}
 	networkInstanceInfo.AddVif(vifName, appMac,
@@ -1446,9 +1487,12 @@ func appNetworkDoActivateOverlayNetwork(
 
 	if restartDnsmasq && olStatus.BridgeIPAddr != "" {
 		stopDnsmasq(bridgeName, true, false)
+		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
+			netInstStatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			olStatus.BridgeIPAddr, netInstConfig, hostsDirpath,
-			newIpsets, netInstStatus.Ipv4Eid)
+			newIpsets, netInstStatus.Ipv4Eid, netInstStatus.CurrentUplinkIntf,
+			dnsServers)
 		startDnsmasq(bridgeName)
 	}
 	netInstStatus.AddVif(vifName, appMac,
@@ -1880,12 +1924,10 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 // Note that handleModify will not touch the EID; just ACLs
 // XXX should we check that nothing else has changed?
 // XXX If so flag other changes as errors; would need lastError in status.
-func doAppNetworkConfigModify(ctxArg interface{}, key string, configArg interface{}) {
-	ctx := ctxArg.(*zedrouterContext)
-	config := cast.CastAppNetworkConfig(configArg)
-	status := lookupAppNetworkStatus(ctx, key)
+func doAppNetworkConfigModify(ctx *zedrouterContext, key string,
+	config types.AppNetworkConfig, status *types.AppNetworkStatus) {
 
-	log.Infof("handleModify(%v) for %s\n",
+	log.Infof("doAppNetworkConfigModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 	// reset error status and mark pending modify as true
 	status.Error = ""
@@ -1896,13 +1938,13 @@ func doAppNetworkConfigModify(ctxArg interface{}, key string, configArg interfac
 	if !doAppNetworkSanityCheckForModify(ctx, config, status) {
 		status.PendingModify = false
 		publishAppNetworkStatus(ctx, status)
-		log.Errorf("handleModify: Config check failed for %s\n", config.DisplayName)
+		log.Errorf("doAppNetworkConfigModify: Config check failed for %s\n", config.DisplayName)
 		return
 	}
 
 	// No check for version numbers since the ACLs etc might change
 	// even for the same version.
-	log.Debugf("handleModify appNum %d\n", status.AppNum)
+	log.Debugf("doAppNetworkConfigModify appNum %d\n", status.AppNum)
 
 	// Check for unsupported changes
 	status.LegacyDataPlane = ctx.legacyDataPlane
@@ -1957,7 +1999,7 @@ func doAppNetworkConfigModify(ctxArg interface{}, key string, configArg interfac
 
 	status.PendingModify = false
 	publishAppNetworkStatus(ctx, status)
-	log.Infof("handleModify done for %s\n", config.DisplayName)
+	log.Infof("doAppNetworkConfigModify done for %s\n", config.DisplayName)
 }
 
 func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
@@ -2043,7 +2085,7 @@ func doAppNetworkModifyAllUnderlayNetworks(
 		ulConfig := &config.UnderlayNetworkList[i]
 		ulStatus := &status.UnderlayNetworkList[i]
 		doAppNetworkModifyUnderlayNetwork(
-			ctx, status, ulConfig, ulStatus, ipsets)
+			ctx, status, ulConfig, ulStatus, ipsets, false)
 	}
 }
 
@@ -2052,7 +2094,7 @@ func doAppNetworkModifyUnderlayNetwork(
 	status *types.AppNetworkStatus,
 	ulConfig *types.UnderlayNetworkConfig,
 	ulStatus *types.UnderlayNetworkStatus,
-	ipsets []string) {
+	ipsets []string, force bool) {
 
 	bridgeName := ulStatus.Bridge
 	appIPAddr := ulStatus.AllocatedIPAddr
@@ -2071,7 +2113,7 @@ func doAppNetworkModifyUnderlayNetwork(
 	// If so updateNetworkACLConfiglet needs to know old and new
 	// XXX Could ulStatus.Vif not be set? Means we didn't add
 	ruleList, err := updateACLConfiglet(aclArgs,
-		ulStatus.ACLs, ulConfig.ACLs, ulStatus.ACLRules)
+		ulStatus.ACLs, ulConfig.ACLs, ulStatus.ACLRules, force)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
@@ -2083,9 +2125,11 @@ func doAppNetworkModifyUnderlayNetwork(
 	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
 		hostsDirpath := runDirname + "/hosts." + bridgeName
 		stopDnsmasq(bridgeName, true, false)
+		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
+			netstatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-			newIpsets, false)
+			newIpsets, false, netstatus.CurrentUplinkIntf, dnsServers)
 		startDnsmasq(bridgeName)
 	}
 	netstatus.BridgeIPSets = newIpsets
@@ -2149,7 +2193,7 @@ func doAppNetworkModifyOverlayNetwork(
 	// If so updateACLConfiglet needs to know old and new
 	// XXX Could olStatus.Vif not be set? Means we didn't add
 	ruleList, err := updateACLConfiglet(aclArgs,
-		olStatus.ACLs, olConfig.ACLs, olStatus.ACLRules)
+		olStatus.ACLs, olConfig.ACLs, olStatus.ACLRules, false)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
@@ -2162,9 +2206,12 @@ func doAppNetworkModifyOverlayNetwork(
 	if restartDnsmasq && olStatus.BridgeIPAddr != "" {
 		hostsDirpath := runDirname + "/hosts." + bridgeName
 		stopDnsmasq(bridgeName, true, false)
+		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
+			netstatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			olStatus.BridgeIPAddr, netconfig, hostsDirpath,
-			newIpsets, netstatus.Ipv4Eid)
+			newIpsets, netstatus.Ipv4Eid, netstatus.CurrentUplinkIntf,
+			dnsServers)
 		startDnsmasq(bridgeName)
 	}
 	netstatus.BridgeIPSets = newIpsets
@@ -2205,7 +2252,7 @@ func handleAppNetworkWithMgmtLispModify(ctx *zedrouterContext,
 
 	// Update ACLs
 	ruleList, err := updateACLConfiglet(aclArgs,
-		olStatus.ACLs, olConfig.ACLs, olStatus.ACLRules)
+		olStatus.ACLs, olConfig.ACLs, olStatus.ACLRules, false)
 	if err != nil {
 		addError(ctx, status, "updateACL", err)
 	}
@@ -2375,9 +2422,11 @@ func appNetworkDoInactivateUnderlayNetwork(
 
 	if restartDnsmasq && ulStatus.BridgeIPAddr != "" {
 		stopDnsmasq(bridgeName, true, false)
+		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
+			netstatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			ulStatus.BridgeIPAddr, netconfig, hostsDirpath,
-			newIpsets, false)
+			newIpsets, false, netstatus.CurrentUplinkIntf, dnsServers)
 		startDnsmasq(bridgeName)
 	}
 	netstatus.RemoveVif(ulStatus.Vif)
@@ -2471,9 +2520,12 @@ func appNetworkDoInactivateOverlayNetwork(
 
 	if restartDnsmasq && olStatus.BridgeIPAddr != "" {
 		stopDnsmasq(bridgeName, true, false)
+		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
+			netstatus.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			olStatus.BridgeIPAddr, netconfig, hostsDirpath,
-			newIpsets, netstatus.Ipv4Eid)
+			newIpsets, netstatus.Ipv4Eid, netstatus.CurrentUplinkIntf,
+			dnsServers)
 		startDnsmasq(bridgeName)
 	}
 	netstatus.RemoveVif(olStatus.Vif)
@@ -2748,6 +2800,9 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	*ctx.deviceNetworkStatus = status
 	maybeHandleDNS(ctx)
+
+	deviceUpdateNIprobing(ctx, &status)
+
 	log.Infof("handleDNSModify done for %s\n", key)
 }
 
@@ -2887,7 +2942,12 @@ func scanAppNetworkStatusInErrorAndUpdate(ctx *zedrouterContext, key0 string) {
 			status.Error == "" || key == key0 {
 			continue
 		}
-		doAppNetworkConfigModify(ctx, key, *config)
+		// We wouldn't have even copied underlay/overlay
+		// networks into status. This is as good as starting
+		// from scratch all over. App num that would have been
+		// allocated will be used this time also, since the app UUID
+		// does not change.
+		handleAppNetworkCreate(ctx, key, *config)
 	}
 }
 
