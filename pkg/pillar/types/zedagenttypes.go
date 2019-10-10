@@ -212,11 +212,9 @@ func (config DatastoreConfig) Key() string {
 type NodeAgentStatus struct {
 	Name              string
 	CurPart           string
-	TestInprogress    bool
 	UpdateInprogress  bool
 	RemainingTestTime time.Duration
 	NeedsReboot       bool
-	TestComplete      bool
 	RebootReason      string
 	ErrorStr          string
 }
@@ -226,12 +224,15 @@ func (status NodeAgentStatus) Key() string {
 	return status.Name
 }
 
+// ConfigGetStatus : Config Get Status from Controller
 type ConfigGetStatus uint8
 
+// ConfigGetSuccess : Config get is successful
 const (
-	CONFIG_GET_SUCCESS ConfigGetStatus = iota + 1
-	CONFIG_GET_FAIL
-	CONFIG_GET_FAIL_400
+	ConfigGetSuccess ConfigGetStatus = iota + 1
+	ConfigGetFail
+	ConfigGetTemporaryFail
+	ConfigGetReadSaved
 )
 
 // ZedAgentStatus :

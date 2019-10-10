@@ -17,7 +17,7 @@ import (
 
 // ticker function
 func handleDeviceTimers(ctx *nodeagentContext) {
-	updateTickerTimer(ctx)
+	updateTickerTime(ctx)
 	handleUpgradeTestValidation(ctx)
 	handleFallbackOnCloudDisconnect(ctx)
 	handleResetOnCloudDisconnect(ctx)
@@ -26,17 +26,17 @@ func handleDeviceTimers(ctx *nodeagentContext) {
 // for every ticker, based on the last config
 // get status received from zedagent,
 // update the timers
-func updateTickerTimer(ctx *nodeagentContext) {
+func updateTickerTime(ctx *nodeagentContext) {
 	// TBD:XXX time tick may skew, apply the diff value
 	ctx.timeTickCount += timeTickInterval
 
 	// TBD:XXX get the zedagent status for connectivity health
 	// rather than considering stored value
 	switch ctx.configGetStatus {
-	case types.CONFIG_GET_SUCCESS:
+	case types.ConfigGetSuccess:
 		ctx.lastConfigReceivedTime = ctx.timeTickCount
 
-	case types.CONFIG_GET_FAIL_400:
+	case types.ConfigGetTemporaryFail:
 		resetTestStartTime(ctx)
 		setTestStartTime(ctx)
 	}
@@ -141,17 +141,21 @@ func updateZedagentCloudConnectStatus(ctx *nodeagentContext,
 	}
 	ctx.configGetStatus = status.ConfigGetStatus
 	switch ctx.configGetStatus {
-	case types.CONFIG_GET_SUCCESS:
+	case types.ConfigGetSuccess:
+		log.Infof("Config get from controller, is successful\n")
 		ctx.lastConfigReceivedTime = ctx.timeTickCount
 		setTestStartTime(ctx)
 
-	case types.CONFIG_GET_FAIL_400:
-		log.Infof("Controller connection, return code is 400\n")
+	case types.ConfigGetTemporaryFail:
+		log.Infof("Config get from controller, has temporarily failed\n")
 		resetTestStartTime(ctx)
 		setTestStartTime(ctx)
 
-	case types.CONFIG_GET_FAIL:
-		log.Infof("Controller connection is broken\n")
+	case types.ConfigGetReadSaved:
+		log.Infof("Config is read from saved config\n")
+
+	case types.ConfigGetFail:
+		log.Infof("Config get from controller, has failed\n")
 	}
 }
 
