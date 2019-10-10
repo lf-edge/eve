@@ -834,10 +834,6 @@ func generateResolvConf(globalStatus types.DeviceNetworkStatus, destfile *os.Fil
 		if !us.IsMgmt {
 			continue
 		}
-		// Note that list could contain only IPv6 link-locals.
-		if len(us.AddrInfoList) == 0 {
-			continue
-		}
 		log.Infof("generateResolvConf %s has %d servers: %v",
 			us.IfName, len(us.DnsServers), us.DnsServers)
 		destfile.WriteString(fmt.Sprintf("# From %s\n", us.IfName))
