@@ -164,9 +164,6 @@ func unpublishEIDStatus(ctx *identityContext, key string) {
 	pub.Unpublish(key)
 }
 
-// Wrappers around handleCreate, handleModify, and handleDelete
-
-// Determine whether it is an create or modify
 func handleEIDConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
