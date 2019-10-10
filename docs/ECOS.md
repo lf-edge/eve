@@ -96,28 +96,28 @@ EVE periodically pulls the configuration from the controller. The configuration 
 The controller drives the ECO state transitions via the configuration. These state transitions are described below. Due to the eventual consistency model, a new configuration may result in zero or more state transitions for a given ECO.
 
 * Prepare an ECO
-** The ECI(s) is transfer'ed to EVE's storage area and resources required for the ECO are reserved. 
-** EVE performs the operations to "prepare an ECO" for each entry in the array of ECO's in the new configuration and not present in older configuration.
+  * The ECI(s) is transfer'ed to EVE's storage area and resources required for the ECO are reserved. 
+  * EVE performs the operations to "prepare an ECO" for each entry in the array of ECO's in the new configuration and not present in older configuration.
 
 * Start an ECO 
-** A previously stopped ECO or an ECO that has never been started, will be started. At the end of this, ECO will transition to Running state. For an ECO which is already Running, this is a no-op.
-** The 'activate' flag being set to true drives EVE to perform this operation(s).
+  * A previously stopped ECO or an ECO that has never been started, will be started. At the end of this, ECO will transition to Running state. For an ECO which is already Running, this is a no-op.
+  * The 'activate' flag being set to true drives EVE to perform this operation(s).
 
 * Stop an ECO
-** An ECO which is either running or transitioning to running state will be stopped. However, the mutated run time state is preserved. At the end of this stage, ECO will transiton to Stopped state. A subsequent start of the ECO will start the ECO with the previously mutated runtime state.
-** The 'activate' flag being set to false drives EVE to perform this operation.
+  * An ECO which is either running or transitioning to running state will be stopped. However, the mutated run time state is preserved. At the end of this stage, ECO will transiton to Stopped state. A subsequent start of the ECO will start the ECO with the previously mutated runtime state.
+  * The 'activate' flag being set to false drives EVE to perform this operation.
 
 * Purge an ECO
-** An ECO which is either running or transitioning to running state will be stopped and the mutated run time state of the ECO is deleted. A subsequent action to start the ECO will start the ECO with a pristine runtime state.
-** The 'purge' counter in the configuration being greater than the 'purge' counter in the previous configuration results in this operation.
+  * An ECO which is either running or transitioning to running state will be stopped and the mutated run time state of the ECO is deleted. A subsequent action to start the ECO will start the ECO with a pristine runtime state.
+  * The 'purge' counter in the configuration being greater than the 'purge' counter in the previous configuration results in this operation.
 
 * Restart an ECO
-** The action of stopping an ECO and starting it again is combined in a single action of restart. Restart supports a flag which indicates whether the mutated runtime state is to be purged after stopping it.
-** The 'restart' counter in the configuration being greater than the 'restart' counter in the previous configuration results in this operation.
+  * The action of stopping an ECO and starting it again is combined in a single action of restart. Restart supports a flag which indicates whether the mutated runtime state is to be purged after stopping it.
+  * The 'restart' counter in the configuration being greater than the 'restart' counter in the previous configuration results in this operation.
 
 * Delete an ECO
-** An ECO will be deleted. The resources previously reserved for the ECO are released. The storage for the ECI may or may not be released depending on whether there are other ECO's referencing it. If there is no ECO referencing the ECI, the storage is released as part of periodic garbage collection.
-** An ECO that was present in the previous configutation and absent in the new configuration, results in EVE performing the 'delete' operation for the ECO.
+  * An ECO will be deleted. The resources previously reserved for the ECO are released. The storage for the ECI may or may not be released depending on whether there are other ECO's referencing it. If there is no ECO referencing the ECI, the storage is released as part of periodic garbage collection.
+  * An ECO that was present in the previous configutation and absent in the new configuration, results in EVE performing the 'delete' operation for the ECO.
 
 ## Edge Container Image Format
 
