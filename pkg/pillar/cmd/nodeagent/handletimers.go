@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	log "github.com/sirupsen/logrus"
@@ -169,6 +170,7 @@ func execReboot(ctx *nodeagentContext, rebootStr string) {
 
 	ctx.needsReboot = true
 	ctx.rebootReason = rebootStr
+	agentlog.RebootReason(rebootStr)
 	publishNodeAgentStatus(ctx)
 
 	// if zedagent is not alive, handle it here

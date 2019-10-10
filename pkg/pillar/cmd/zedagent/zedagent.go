@@ -552,7 +552,9 @@ func Run() {
 			start := agentlog.StartTime()
 			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
+		case <-stillRunning.C:
 		}
+		agentlog.StillRunning(agentName)
 	}
 
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
@@ -615,7 +617,9 @@ func Run() {
 			start := agentlog.StartTime()
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 			agentlog.CheckMaxTime(agentName, start)
+		case <-stillRunning.C:
 		}
+		agentlog.StillRunning(agentName)
 	}
 
 	// Subscribe to network metrics from zedrouter
