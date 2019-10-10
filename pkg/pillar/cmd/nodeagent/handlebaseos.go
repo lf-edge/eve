@@ -14,53 +14,53 @@ import (
 // baseos upgrade installation path
 // baseosmgr has flipped the partition state to updating,
 // inform zedagent to reboot
-func doZbootBaseOsInstallationComplete(ctx *nodeagentContext,
+func doZbootBaseOsInstallationComplete(ctxPtr *nodeagentContext,
 	key string, zbootStatus types.ZbootStatus) {
-	zbootConfig := lookupZbootConfig(ctx, key)
+	zbootConfig := lookupZbootConfig(ctxPtr, key)
 	if zbootConfig == nil {
 		log.Errorf("Partition(%s) Config not found\n", key)
 		return
 	}
-	if isZbootOtherPartitionStateUpdating(ctx) && !ctx.needsReboot {
+	if isZbootOtherPartitionStateUpdating(ctxPtr) && !ctxPtr.needsReboot {
 		infoStr := fmt.Sprintf("NORMAL: baseos-update(%s) reboot\n", key)
 		log.Infof(infoStr)
-		execReboot(ctx, infoStr)
+		scheduleNodeReboot(ctxPtr, infoStr)
 	}
 }
 
 // baseos upgrade validation and activation path
 // mark the zedcloud health/connectivity test complete flag
 // for baseosmgr to pick up and complete the partition activation
-func initiateBaseOsZedCloudTestComplete(ctx *nodeagentContext) {
-	if !ctx.updateInprogress {
+func initiateBaseOsZedCloudTestComplete(ctxPtr *nodeagentContext) {
+	if !ctxPtr.updateInprogress {
 		return
 	}
-	log.Infof("initiateBaseOsZedCloudTestComplete(%s)\n", ctx.curPart)
+	log.Infof("initiateBaseOsZedCloudTestComplete(%s)\n", ctxPtr.curPart)
 	// get the current partition zboot config and status
-	zbootConfig := lookupZbootConfig(ctx, ctx.curPart)
-	zbootStatus := lookupZbootStatus(ctx, ctx.curPart)
+	zbootConfig := lookupZbootConfig(ctxPtr, ctxPtr.curPart)
+	zbootStatus := lookupZbootStatus(ctxPtr, ctxPtr.curPart)
 	if zbootStatus == nil || zbootConfig == nil {
-		log.Errorf("zboot(%s) status/config get fail\n", ctx.curPart)
+		log.Errorf("zboot(%s) status/config get fail\n", ctxPtr.curPart)
 		return
 	}
 	if zbootConfig.TestComplete {
-		log.Errorf("zboot(%s) testComplete is already set\n", ctx.curPart)
+		log.Errorf("zboot(%s) testComplete is already set\n", ctxPtr.curPart)
 		return
 	}
 	log.Infof("baseOs(%s) upgrade validation testComplete, in %s\n",
-		zbootStatus.ShortVersion, ctx.curPart)
-	ctx.testComplete = true
+		zbootStatus.ShortVersion, ctxPtr.curPart)
+	ctxPtr.testComplete = true
 	zbootConfig.TestComplete = true
-	publishZbootConfig(ctx, *zbootConfig)
+	publishZbootConfig(ctxPtr, *zbootConfig)
 }
 
 // baseosmgr has acknowledged the baseos upgrade
 // validation complete, by setting the partition
 // state to active and setting TestComplete flag
 // reset, indicating the upgrade process as complete
-func doZbootBaseOsTestValidationComplete(ctx *nodeagentContext,
+func doZbootBaseOsTestValidationComplete(ctxPtr *nodeagentContext,
 	key string, status types.ZbootStatus) {
-	if !ctx.updateInprogress {
+	if !ctxPtr.updateInprogress {
 		return
 	}
 	// nothing to be done
@@ -68,13 +68,13 @@ func doZbootBaseOsTestValidationComplete(ctx *nodeagentContext,
 		log.Debugf("%s: not TestComplete\n", key)
 		return
 	}
-	config := lookupZbootConfig(ctx, status.PartitionLabel)
-	if config == nil || ctx.updateComplete {
+	config := lookupZbootConfig(ctxPtr, status.PartitionLabel)
+	if config == nil || ctxPtr.updateComplete {
 		return
 	}
 	log.Infof("baseOs(%s) upgrade validation is acknowledged, Partition %s\n",
 		status.ShortVersion, status.PartitionLabel)
 	config.TestComplete = false
-	ctx.updateComplete = true
-	publishZbootConfig(ctx, *config)
+	ctxPtr.updateComplete = true
+	publishZbootConfig(ctxPtr, *config)
 }
