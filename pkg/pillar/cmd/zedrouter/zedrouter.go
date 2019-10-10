@@ -750,10 +750,6 @@ func updateLispConfiglets(ctx *zedrouterContext, legacyDataPlane bool) {
 	}
 }
 
-// Wrappers around handleCreate, handleModify, and handleDelete
-
-// Determine whether it is an create or modify
-
 func handleAppNetworkConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
