@@ -486,6 +486,7 @@ func handleDelete(ctx *identityContext, key string, status *types.EIDStatus) {
 	log.Infof("handleDelete(%s) done for %s\n", key, status.DisplayName)
 }
 
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
