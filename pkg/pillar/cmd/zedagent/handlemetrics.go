@@ -1047,7 +1047,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		vaultmgr.GetOperInfo()
 	
 	ReportDeviceInfo.DataSecAtRestInfo = ReportDataSecAtRestInfo
-
+	
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
