@@ -735,8 +735,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 					port.Dhcp = types.DT_NONE
 					break
 				}
-				if port.Gateway.IsUnspecified() || port.AddrSubnet == "" ||
-					port.DnsServers == nil {
+				if port.AddrSubnet == "" {
 					log.Errorf("parseSystemAdapterConfig: DT_STATIC but missing parameters in %+v; ignored\n",
 						port)
 					continue
