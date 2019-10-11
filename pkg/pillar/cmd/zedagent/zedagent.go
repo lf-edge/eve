@@ -95,6 +95,7 @@ type zedagentContext struct {
 	subNetworkInstanceMetrics *pubsub.Subscription
 	subAppFlowMonitor         *pubsub.Subscription
 	subGlobalConfig           *pubsub.Subscription
+	subVaultStatus            *pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
 	subZbootStatus            *pubsub.Subscription
 	rebootCmdDeferred         bool
@@ -429,6 +430,16 @@ func Run() {
 	subBaseOsStatus.DeleteHandler = handleBaseOsStatusDelete
 	zedagentCtx.subBaseOsStatus = subBaseOsStatus
 	subBaseOsStatus.Activate()
+
+	subVaultStatus, err := pubsub.Subscribe("vaultmgr",
+		types.VaultStatus{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subVaultStatus.ModifyHandler = handleVaultStatusModify
+	subVaultStatus.DeleteHandler = handleVaultStatusDelete
+	zedagentCtx.subVaultStatus = subVaultStatus
+	subVaultStatus.Activate()
 
 	// Look for DownloaderStatus from downloader
 	// used only for downloader storage stats collection
@@ -1171,6 +1182,28 @@ func handleBaseOsStatusDelete(ctxArg interface{}, key string,
 	ctx := ctxArg.(*zedagentContext)
 	triggerPublishDevInfo(ctx)
 	log.Infof("handleBaseOsStatusDelete(%s) done\n", key)
+}
+
+// vault status event handlers
+// Report VaultStatus to zedcloud
+func handleVaultStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
+	ctx := ctxArg.(*zedagentContext)
+	status := cast.CastVaultStatus(statusArg)
+	if status.Key() != key {
+		log.Errorf("handleVaultStatusModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.Key(), status)
+		return
+	}
+	triggerPublishDevInfo(ctx)
+	log.Infof("handleVaultStatusModify(%s) done\n", key)
+}
+
+func handleVaultStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Infof("handleVaultStatusDelete(%s)\n", key)
+	ctx := ctxArg.(*zedagentContext)
+	triggerPublishDevInfo(ctx)
+	log.Infof("handleVaultStatusDelete(%s) done\n", key)
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {

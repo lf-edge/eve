@@ -197,9 +197,7 @@ message VaultInfo {
 }
 
 message DataSecAtRest {
-    DataSecAtRestStatus status = 1;    // Current status of data security overall
-    string info = 2;                   // Informational string augmenting status
-    repeated VaultInfo vaultList = 3;  // per Vault status
+    repeated VaultInfo vaultList = 1;  // per Vault status
 }
 
 // Base device info, as discovered by Xen (or OS on bare metal)
