@@ -1246,8 +1246,14 @@ func appNetworkDoActivateUnderlayNetwork(
 	ulStatus.Mac = appMac
 	ulStatus.HostName = config.Key()
 
-	bridgeIPAddr, appIPAddr := getUlAddrs(ctx, ulNum-1,
+	bridgeIPAddr, appIPAddr, err := getUlAddrs(ctx, ulNum-1,
 		status.AppNum, ulStatus, netInstStatus)
+	if err != nil {
+		addError(ctx, status, "getUlAddrs", err)
+		log.Errorf("appNetworkDoActivateUnderlayNetwork: Bridge/App IP address allocation "+
+			"failed for app %s", status.DisplayName)
+		return
+	}
 
 	// Check if we have a bridge service with an address
 	bridgeIP, err := getSwitchIPv4Addr(ctx, netInstStatus)
@@ -1861,7 +1867,7 @@ func findBridge(bridgeName string) (*netlink.Bridge, error) {
 func getUlAddrs(ctx *zedrouterContext,
 	ifnum int, appNum int,
 	status *types.UnderlayNetworkStatus,
-	netInstStatus *types.NetworkInstanceStatus) (string, string) {
+	netInstStatus *types.NetworkInstanceStatus) (string, string, error) {
 
 	log.Infof("getUlAddrs(%d/%d)\n", ifnum, appNum)
 
@@ -1872,10 +1878,13 @@ func getUlAddrs(ctx *zedrouterContext,
 	log.Infof("getUlAddrs(%d/%d for %s) bridgeMac %s\n",
 		ifnum, appNum, netInstStatus.UUID.String(),
 		status.BridgeMac.String())
-	addr, err := lookupOrAllocateIPv4(ctx, netInstStatus,
+	var err error
+	var addr string
+	addr, err = lookupOrAllocateIPv4(ctx, netInstStatus,
 		status.BridgeMac)
 	if err != nil {
-		log.Errorf("lookupOrAllocatePv4 failed %s\n", err)
+		log.Errorf("getUlAddrs: Bridge IP address allocation failed %s\n", err)
+		return bridgeIPAddr, appIPAddr, err
 	} else {
 		bridgeIPAddr = addr
 	}
@@ -1888,22 +1897,23 @@ func getUlAddrs(ctx *zedrouterContext,
 		appIPAddr = status.AppIPAddr.String()
 	} else if status.Mac != "" {
 		// XXX or change type of VifInfo.Mac to avoid parsing?
-		mac, err := net.ParseMAC(status.Mac)
+		var mac net.HardwareAddr
+		mac, err = net.ParseMAC(status.Mac)
 		if err != nil {
 			log.Fatal("ParseMAC failed: ", status.Mac, err)
 		}
 		log.Infof("getUlAddrs(%d/%d for %s) app Mac %s\n",
 			ifnum, appNum, netInstStatus.UUID.String(), mac.String())
-		addr, err := lookupOrAllocateIPv4(ctx, netInstStatus, mac)
+		addr, err = lookupOrAllocateIPv4(ctx, netInstStatus, mac)
 		if err != nil {
-			log.Errorf("lookupOrAllocateIPv4 failed %s\n", err)
+			log.Errorf("getUlAddrs: App IP address allocation failed: %s\n", err)
 		} else {
 			appIPAddr = addr
 		}
 	}
 	log.Infof("getUlAddrs(%d/%d) done %s/%s\n",
 		ifnum, appNum, bridgeIPAddr, appIPAddr)
-	return bridgeIPAddr, appIPAddr
+	return bridgeIPAddr, appIPAddr, err
 }
 
 // Caller should clear the appropriate status.Pending* if the the caller will
