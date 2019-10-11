@@ -26,7 +26,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
@@ -670,6 +669,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	aa := ctx.assignableAdapters
 	iteration := ctx.iteration
 	subBaseOsStatus := ctx.subBaseOsStatus
+	subVaultStatus := ctx.subVaultStatus
 
 	var ReportInfo = &info.ZInfoMsg{}
 
@@ -1018,23 +1018,25 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	ReportDeviceInfo.HSMInfo, _ = tpmmgr.FetchTpmHwInfo()
 
 	//Operational information about Data Security At Rest
-	ReportDataSecAtRestInfo := new(info.DataSecAtRest)
-	var vaultList []vaultmgr.VaultStatus
-	ReportDataSecAtRestInfo.Status, ReportDataSecAtRestInfo.Info, vaultList =
-		vaultmgr.GetOperInfo()
-	ReportDataSecAtRestInfo.VaultList = make([]*info.VaultInfo, 0)
-	for _, vault := range vaultList {
-		vaultInfo := new(info.VaultInfo)
-		vaultInfo.Name = vault.Name
-		vaultInfo.Status = vault.Status
-		if !vault.ErrorTime.IsZero() {
-			vaultInfo.VaultErr = new(info.ErrorInfo)
-			vaultInfo.VaultErr.Description = vault.Error
-			vaultInfo.VaultErr.Timestamp, _ = ptypes.TimestampProto(vault.ErrorTime)
+	getDataSecAtRestInfo := func() *info.DataSecAtRest {
+		ReportDataSecAtRestInfo := new(info.DataSecAtRest)
+		ReportDataSecAtRestInfo.VaultList = make([]*info.VaultInfo, 0)
+		vaultList := subVaultStatus.GetAll()
+		for _, vaultItem := range vaultList {
+			vault := cast.CastVaultStatus(vaultItem)
+			vaultInfo := new(info.VaultInfo)
+			vaultInfo.Name = vault.Name
+			vaultInfo.Status = vault.Status
+			if !vault.ErrorTime.IsZero() {
+				vaultInfo.VaultErr = new(info.ErrorInfo)
+				vaultInfo.VaultErr.Description = vault.Error
+				vaultInfo.VaultErr.Timestamp, _ = ptypes.TimestampProto(vault.ErrorTime)
+			}
+			ReportDataSecAtRestInfo.VaultList = append(ReportDataSecAtRestInfo.VaultList, vaultInfo)
 		}
-		ReportDataSecAtRestInfo.VaultList = append(ReportDataSecAtRestInfo.VaultList, vaultInfo)
+		return ReportDataSecAtRestInfo
 	}
-	ReportDeviceInfo.DataSecAtRestInfo = ReportDataSecAtRestInfo
+	ReportDeviceInfo.DataSecAtRestInfo = getDataSecAtRestInfo()
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {

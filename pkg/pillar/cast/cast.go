@@ -465,3 +465,15 @@ func CastPhysicalIOAdapterList(in interface{}) types.PhysicalIOAdapterList { //r
 	}
 	return output
 }
+
+func CastVaultStatus(in interface{}) types.VaultStatus {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastVaultStatus")
+	}
+	var output types.VaultStatus
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatal(err, "json Unmarshal in CastVaultStatus")
+	}
+	return output
+}
