@@ -842,7 +842,7 @@ func lookupOrAllocateIPv4(
 		// allocated new one. Since bridge IP address is also stored
 		// as part of IPAssignments, the actual allocated IP address
 		// numner is 1 less than the length of IPAssignments map size.
-		allocated -= 1
+		allocated--
 	}
 	a := addToIP(status.DhcpRange.Start, allocated)
 	for status.DhcpRange.End == nil ||
