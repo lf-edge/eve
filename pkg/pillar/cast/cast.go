@@ -466,8 +466,8 @@ func CastPhysicalIOAdapterList(in interface{}) types.PhysicalIOAdapterList { //r
 	return output
 }
 
-// CastVaultStatus : Cast interface type into types.VaultStatus
-func CastVaultStatus(in interface{}) types.VaultStatus {
+// VaultStatus : Cast interface type into types.VaultStatus
+func VaultStatus(in interface{}) types.VaultStatus {
 	b, err := json.Marshal(in)
 	if err != nil {
 		log.Fatal(err, "json Marshal in CastVaultStatus")

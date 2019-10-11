@@ -1150,7 +1150,7 @@ func handleBaseOsStatusDelete(ctxArg interface{}, key string,
 // Report VaultStatus to zedcloud
 func handleVaultStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx := ctxArg.(*zedagentContext)
-	status := cast.CastVaultStatus(statusArg)
+	status := cast.VaultStatus(statusArg)
 	if status.Key() != key {
 		log.Errorf("handleVaultStatusModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.Key(), status)
 		return

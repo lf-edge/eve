@@ -16,7 +16,7 @@ type VaultStatus struct {
 	ErrorTime time.Time
 }
 
-//VaultStatus.Key returns the key used for indexing into a list of Vaults
+//Key returns the key used for indexing into a list of Vaults
 func (status VaultStatus) Key() string {
 	return status.Name
 }
