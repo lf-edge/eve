@@ -1,4 +1,4 @@
-// Copyright (c) 2017 Zededa, Inc.
+// Copyright (c) 2019 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package types
@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Indexed by Vault Name
+//VaultStatus represents running status of a Vault
 type VaultStatus struct {
 	Name      string
 	Status    info.DataSecAtRestStatus
@@ -16,6 +16,7 @@ type VaultStatus struct {
 	ErrorTime time.Time
 }
 
+//VaultStatus.Key returns the key used for indexing into a list of Vaults
 func (status VaultStatus) Key() string {
 	return status.Name
 }
