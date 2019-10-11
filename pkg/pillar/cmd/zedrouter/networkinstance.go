@@ -836,9 +836,17 @@ func lookupOrAllocateIPv4(
 
 	// Starting guess based on number allocated
 	allocated := uint(len(status.IPAssignments))
+	if status.Gateway != nil {
+		// With Gateway present in network instance status,
+		// we would have used that as our Bridge IP address and not
+		// allocated new one. Since bridge IP address is also stored
+		// as part of IPAssignments, the actual allocated IP address
+		// numner is 1 less than the length of IPAssignments map size.
+		allocated--
+	}
 	a := addToIP(status.DhcpRange.Start, allocated)
 	for status.DhcpRange.End == nil ||
-		bytes.Compare(a, status.DhcpRange.End) < 0 {
+		bytes.Compare(a, status.DhcpRange.End) <= 0 {
 
 		log.Infof("lookupOrAllocateIPv4(%s) testing %s\n",
 			mac.String(), a.String())
