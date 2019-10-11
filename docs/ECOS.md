@@ -93,6 +93,26 @@ As part of a regular config that EVE recieves from its controller, each ECO gets
 
 EVE periodically pulls the configuration from the controller. The configuration specifies the desired end state. EVE implements "eventual consistentency" model. To reach the desired state from the current state of the system, EVE computes the required operations to be performed. EVE then executes those operations. At the end of each operation, EVE reports the state of the system back to the controller.
 
+The picture below provides simplified view of states and transitions for an ECO.
+
+                                                    restart
+                                    +----------+<-----------------+
+                        start       |          |                  |
+                                    |          |    stop          |
+                      +------------>+  online  +-------------+    |
+                      |             |          |             v    |
+             +--------+             |          |          +--+----+-----+
+  Prepare    |        |             +-----+----+          |             |
++----------->+ Init   |                   |    stop/purge |   stopped   |
+             |        |                   +-------------->+             |
+             +------+-+                                   +------+------+
+                    |               +----------+                 |
+                    |               |          |                 |
+                    +-------------->+  deleted +<----------------+
+                         delete     |          |     delete
+                                    +----------+
+
+
 The controller drives the ECO state transitions via the configuration. These state transitions are described below. Due to the eventual consistency model, a new configuration may result in zero or more state transitions for a given ECO.
 
 * Prepare an ECO
