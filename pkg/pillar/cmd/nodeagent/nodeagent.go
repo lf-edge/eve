@@ -37,6 +37,7 @@ import (
 const (
 	agentName               = "nodeagent"
 	timeTickInterval uint32 = 10
+	watchdogInterval uint32 = 25
 	networkUpTimeout uint32 = 300
 )
 
@@ -71,6 +72,7 @@ type nodeagentContext struct {
 	timeTickCount          uint32
 	usableAddressCount     int
 	tickerTimer            *time.Ticker
+	stillRunning           *time.Ticker
 }
 
 var debug = false
@@ -112,10 +114,11 @@ func Run() {
 	nodeagentCtx.globalConfig = &types.GlobalConfigDefaults
 
 	// start the watchdog process timer tick
-	stillRunning := time.NewTicker(25 * time.Second)
+	duration := time.Duration(watchdogInterval) * time.Second
+	nodeagentCtx.stillRunning = time.NewTicker(duration)
 
 	// set the ticker timer
-	duration := time.Duration(timeTickInterval) * time.Second
+	duration = time.Duration(timeTickInterval) * time.Second
 	nodeagentCtx.tickerTimer = time.NewTicker(duration)
 	nodeagentCtx.configGetStatus = types.ConfigGetFail
 
@@ -171,7 +174,7 @@ func Run() {
 		case <-nodeagentCtx.tickerTimer.C:
 			handleDeviceTimers(&nodeagentCtx)
 
-		case <-stillRunning.C:
+		case <-nodeagentCtx.stillRunning.C:
 		}
 		agentlog.StillRunning(agentName)
 	}
@@ -179,7 +182,7 @@ func Run() {
 	// when the partition status is inprogress state
 	// check network connectivity for 300 seconds
 	if nodeagentCtx.updateInprogress {
-		checkNetworkConnectivity(&nodeagentCtx, stillRunning)
+		checkNetworkConnectivity(&nodeagentCtx)
 	}
 
 	// if current partition state is not in-progress,
@@ -205,7 +208,7 @@ func Run() {
 		case <-nodeagentCtx.tickerTimer.C:
 			handleDeviceTimers(&nodeagentCtx)
 
-		case <-stillRunning.C:
+		case <-nodeagentCtx.stillRunning.C:
 		}
 		agentlog.StillRunning(agentName)
 		if isZedAgentAlive(&nodeagentCtx) {
@@ -250,7 +253,7 @@ func Run() {
 		case <-nodeagentCtx.tickerTimer.C:
 			handleDeviceTimers(&nodeagentCtx)
 
-		case <-stillRunning.C:
+		case <-nodeagentCtx.stillRunning.C:
 		}
 		agentlog.StillRunning(agentName)
 	}
@@ -365,20 +368,7 @@ func handleZbootStatusDelete(ctxArg interface{},
 	log.Infof("handleZbootStatusDelete(%s) done\n", key)
 }
 
-// check whether zedagent module is alive
-func isZedAgentAlive(ctxPtr *nodeagentContext) bool {
-	pgrepCmd := exec.Command("pgrep", "zedagent")
-	stdout, err := pgrepCmd.Output()
-	output := string(stdout)
-	if err == nil && output != "" {
-		return true
-	}
-	return false
-}
-
-func checkNetworkConnectivity(ctxPtr *nodeagentContext,
-	stillRunning *time.Ticker) {
-
+func checkNetworkConnectivity(ctxPtr *nodeagentContext) {
 	// for device network status
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, ctxPtr)
@@ -394,9 +384,8 @@ func checkNetworkConnectivity(ctxPtr *nodeagentContext,
 	ctxPtr.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*ctxPtr.deviceNetworkStatus)
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
 	for !ctxPtr.DNSinitialized {
-		log.Infof("Waiting for DeviceNetworkStatus %v\n",
+		log.Infof("Waiting for DeviceNetworkStatus: %v\n",
 			ctxPtr.DNSinitialized)
-
 		select {
 		case change := <-ctxPtr.subGlobalConfig.C:
 			ctxPtr.subGlobalConfig.ProcessChange(change)
@@ -407,10 +396,14 @@ func checkNetworkConnectivity(ctxPtr *nodeagentContext,
 		case <-ctxPtr.tickerTimer.C:
 			handleDeviceTimers(ctxPtr)
 
-		case <-stillRunning.C:
+		case <-ctxPtr.stillRunning.C:
 		}
 		agentlog.StillRunning(agentName)
 	}
+	log.Infof("DeviceNetworkStatus: %v\n", ctxPtr.DNSinitialized)
+
+	// reset timer tick, for all timer functions
+	ctxPtr.timeTickCount = 0
 }
 
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
@@ -456,6 +449,17 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	ctxPtr.DNSinitialized = false
 	ctxPtr.usableAddressCount = newAddrCount
 	log.Infof("handleDNSDelete done for %s\n", key)
+}
+
+// check whether zedagent module is alive
+func isZedAgentAlive(ctxPtr *nodeagentContext) bool {
+	pgrepCmd := exec.Command("pgrep", "zedagent")
+	stdout, err := pgrepCmd.Output()
+	output := string(stdout)
+	if err == nil && output != "" {
+		return true
+	}
+	return false
 }
 
 // publish nodeagent status for consumption by zedagent
