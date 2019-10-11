@@ -1024,7 +1024,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		ReportDataSecAtRestInfo.VaultList = make([]*info.VaultInfo, 0)
 		vaultList := subVaultStatus.GetAll()
 		for _, vaultItem := range vaultList {
-			vault := cast.CastVaultStatus(vaultItem)
+			vault := cast.VaultStatus(vaultItem)
 			vaultInfo := new(info.VaultInfo)
 			vaultInfo.Name = vault.Name
 			vaultInfo.Status = vault.Status
