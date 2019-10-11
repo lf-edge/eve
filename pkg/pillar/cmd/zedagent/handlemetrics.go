@@ -26,7 +26,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
@@ -692,6 +691,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	aa := ctx.assignableAdapters
 	iteration := ctx.iteration
 	subBaseOsStatus := ctx.subBaseOsStatus
+	subVaultStatus := ctx.subVaultStatus
 
 	var ReportInfo = &info.ZInfoMsg{}
 

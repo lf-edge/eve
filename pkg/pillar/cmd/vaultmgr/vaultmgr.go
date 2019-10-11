@@ -74,14 +74,6 @@ var (
 	ErrInvalKeyLen = errors.New("Unexpected key length")
 )
 
-//VaultStatus holds oper status of a single vault
-type VaultStatus struct {
-	Name      string
-	Status    info.DataSecAtRestStatus
-	ErrorTime time.Time
-	Error     string
-}
-
 func execCmd(command string, args ...string) (string, string, error) {
 	var stdout, stderr bytes.Buffer
 
@@ -289,39 +281,51 @@ func setupFscryptEnv() error {
 	return nil
 }
 
-//GetOperInfo gets the current operational state of fscrypt
-func GetOperInfo() (info.DataSecAtRestStatus, string, []VaultStatus) {
+func publishVaultStatus(ctx *vaultMgrContext, vaultName string) {
+	status := types.VaultStatus{}
+	status.Name = vaultName
 	_, err := os.Stat(fscryptConfFile)
 	if err == nil {
 		if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
 			//fscrypt is setup, but not being use
 			log.Debug("Setting status to Error")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
-				"Initialization failure", nil
+			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
+			status.Error = "Initialization failure"
+			status.ErrorTime = time.Now()
 		} else {
 			//fscrypt is setup, and being used on /persist
 			log.Debug("Setting status to Enabled")
-
-			//for now just fill up with the detault vaults
-			//when we support user defined vaults, this will be dynamically filled up.
-			vaultList := []VaultStatus{{Name: "Application Data Store", Status: info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED},
-				{Name: "Configuration Data Store", Status: info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED}}
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED,
-				"Data Encryption at Rest is Enabled and Active", vaultList
+			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED
 		}
 	} else {
 		if !tpmmgr.IsTpmEnabled() {
 			//This is due to ext3 partition
 			log.Debug("Setting status to disabled, HSM is not in use")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
-				"HSM is either absent or not in use", nil
+			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED
+			status.Error = "HSM is either absent or not in use"
+			status.ErrorTime = time.Now()
 		} else {
 			//This is due to ext3 partition
 			log.Debug("setting status to disabled, ext3 partition")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
-				"File system is incompatible, needs a disruptive upgrade", nil
+			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED
+			status.Error = "File system is incompatible, needs a disruptive upgrade"
+			status.ErrorTime = time.Now()
 		}
 	}
+	key := status.Key()
+	log.Debugf("Publishing VaultStatus %s\n", key)
+	pub := ctx.pubVaultStatus
+	pub.Publish(key, &status)
+}
+
+func initializeSelfPublishHandles(ctx *vaultMgrContext) {
+	pubVaultStatus, err := pubsub.Publish("vaultmgr",
+		types.VaultStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubVaultStatus.ClearRestarted()
+	ctx.pubVaultStatus = pubVaultStatus
 }
 
 func publishVaultStatus(ctx *vaultMgrContext,
@@ -413,12 +417,16 @@ func Run() {
 	switch flag.Args()[0] {
 	case "setupVaults":
 		if err = setupFscryptEnv(); err != nil {
+			publishVaultStatus(&ctx, defaultImgVaultName)
+			publishVaultStatus(&ctx, defaultCfgVaultName)
 			log.Fatal("Error in setting up fscrypt environment:", err)
 		}
 		if err = setupVault(defaultImgVault); err != nil {
+			publishVaultStatus(&ctx, defaultImgVaultName)
 			log.Fatalf("Error in setting up vault %s:%v", defaultImgVault, err)
 		}
 		if err = setupVault(defaultCfgVault); err != nil {
+			publishVaultStatus(&ctx, defaultCfgVaultName)
 			log.Fatalf("Error in setting up vault %s %v", defaultImgVault, err)
 		}
 	case "runAsService":
