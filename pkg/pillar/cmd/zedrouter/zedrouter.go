@@ -1907,6 +1907,7 @@ func getUlAddrs(ctx *zedrouterContext,
 		addr, err = lookupOrAllocateIPv4(ctx, netInstStatus, mac)
 		if err != nil {
 			log.Errorf("getUlAddrs: App IP address allocation failed: %s\n", err)
+			return bridgeIPAddr, appIPAddr, err
 		} else {
 			appIPAddr = addr
 		}
