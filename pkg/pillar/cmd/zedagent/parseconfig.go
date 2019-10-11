@@ -736,8 +736,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 					break
 				}
 				if port.AddrSubnet == "" {
-					log.Errorf("parseSystemAdapterConfig: DT_STATIC but missing parameters in %+v; ignored\n",
-						port)
+					log.Errorf("parseSystemAdapterConfig: DT_STATIC but missing "+
+						"subnet address in %+v; ignored", port)
 					continue
 				}
 			case types.DT_CLIENT:
