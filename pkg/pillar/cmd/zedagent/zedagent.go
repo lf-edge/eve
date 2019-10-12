@@ -899,6 +899,11 @@ func Run() {
 			subAppFlowMonitor.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
 
+		case change := <-subVaultStatus.C:
+			start := agentlog.StartTime()
+			subVaultStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName)
