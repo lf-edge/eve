@@ -197,7 +197,7 @@ func Run() {
 	// track the zedcloud connectivity events
 	//
 	// These timer functions will be tracked using
-	// led blinker and cloud connectionnectivity status.
+	// cloud connectionnectivity status.
 
 	log.Infof("Waiting for device registration check\n")
 	for !nodeagentCtx.deviceRegistered {
