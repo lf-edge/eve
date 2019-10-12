@@ -1255,9 +1255,8 @@ func handleZbootStatusModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleZbootStatusModify: for %s\n", key)
-	triggerPublishDevInfo(ctx)
 	// nothing to do
-	publishDevInfo(ctx)
+	triggerPublishDevInfo(ctx)
 }
 
 func handleZbootStatusDelete(ctxArg interface{}, key string,
