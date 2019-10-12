@@ -691,7 +691,6 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	aa := ctx.assignableAdapters
 	iteration := ctx.iteration
 	subBaseOsStatus := ctx.subBaseOsStatus
-	subVaultStatus := ctx.subVaultStatus
 
 	var ReportInfo = &info.ZInfoMsg{}
 
@@ -1040,6 +1039,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	ReportDeviceInfo.HSMInfo, _ = tpmmgr.FetchTpmHwInfo()
 
 	//Operational information about Data Security At Rest
+<<<<<<< HEAD
 	ReportDataSecAtRestInfo := getVaultInfo(ctx)
 
 	// Retain old code below, till Controller moves to new fields above.
@@ -1048,6 +1048,10 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	
 	ReportDeviceInfo.DataSecAtRestInfo = ReportDataSecAtRestInfo
 	
+=======
+	ReportDeviceInfo.DataSecAtRestInfo = getDataSecAtRestInfo(ctx)
+
+>>>>>>> c77d6635... Addressing a few bugs, and comments from @eriknordmark
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
