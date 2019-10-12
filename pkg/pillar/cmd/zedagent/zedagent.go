@@ -730,10 +730,7 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 		case <-stillRunning.C:
 		}
-<<<<<<< HEAD
-=======
 		// XXX verifierRestarted can take 5 minutes??
->>>>>>> a9240fc2... review comments
 		agentlog.StillRunning(agentName)
 		// Need to tickle this since the configTimerTask is not yet started
 		agentlog.StillRunning(agentName + "config")
