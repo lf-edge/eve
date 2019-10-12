@@ -135,7 +135,7 @@ func setTestStartTime(ctxPtr *nodeagentContext) {
 	ctxPtr.testInprogress = true
 	ctxPtr.upgradeTestStartTime = ctxPtr.timeTickCount
 	successLimit := ctxPtr.globalConfig.MintimeUpdateSuccess
-	ctxPtr.remainingTestTime = time.Duration(successLimit)
+	ctxPtr.remainingTestTime = time.Second * time.Duration(successLimit)
 }
 
 // reset the test start time
