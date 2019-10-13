@@ -19,8 +19,8 @@ import (
 // ticker function
 func handleDeviceTimers(ctxPtr *nodeagentContext) {
 	updateTickerTime(ctxPtr)
-	handleNetworkUpTimeoutExpiry(ctxPtr)
 	handleUpgradeTestValidation(ctxPtr)
+	handleNetworkUpTimeoutExpiry(ctxPtr)
 	handleFallbackOnCloudDisconnect(ctxPtr)
 	handleResetOnCloudDisconnect(ctxPtr)
 }
@@ -184,25 +184,29 @@ func scheduleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
 	}
 
 	// publish, for zedagent to pick up the reboot event
+	// TBD:XXX, all other agents can subscribe to nodeagent or,
+	// status to gracefully shutdown their states, for example
+	// downloader can teardown the existing connections
+	// and clean up its temporary states etc.
 	ctxPtr.needsReboot = true
 	ctxPtr.rebootReason = reasonStr
 	publishNodeAgentStatus(ctxPtr)
 
-	// set the reboot reason
-	agentlog.RebootReason(reasonStr)
-
 	// in any case, execute the reboot procedure
 	// with a delayed timer
-	go handleNodeReboot()
+	go handleNodeReboot(reasonStr)
 }
 
-func handleNodeReboot() {
+func handleNodeReboot(reasonStr string) {
 
 	duration := time.Second * time.Duration(rebootDelay)
 	rebootTimer := time.NewTimer(duration)
 	log.Infof("handleNodeReboot: timer %d seconds\n",
 		duration/time.Second)
 	<-rebootTimer.C
+	// set the reboot reason
+	agentlog.RebootReason(reasonStr)
+
 	// do a sync
 	log.Infof("Doing a sync..\n")
 	syscall.Sync()
