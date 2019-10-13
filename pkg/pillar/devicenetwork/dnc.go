@@ -805,7 +805,7 @@ var lastServers []net.IP
 func UpdateResolvConf(globalStatus types.DeviceNetworkStatus) int {
 
 	log.Infof("UpdateResolvConf")
-	servers := getDNSServers(globalStatus)
+	servers := types.GetDNSServers(globalStatus, "")
 	if reflect.DeepEqual(lastServers, servers) {
 		log.Infof("UpdateResolvConf: no change: %d", len(lastServers))
 		return len(lastServers)
@@ -823,19 +823,6 @@ func UpdateResolvConf(globalStatus types.DeviceNetworkStatus) int {
 	return numAddrs
 }
 
-func getDNSServers(globalStatus types.DeviceNetworkStatus) []net.IP {
-	var servers []net.IP
-	for _, us := range globalStatus.Ports {
-		if !us.IsMgmt {
-			continue
-		}
-		for _, server := range us.DnsServers {
-			servers = append(servers, server)
-		}
-	}
-	return servers
-}
-
 // Note that we don't add a search nor domainname option since
 // it seems to mess up the retry logic
 func generateResolvConf(globalStatus types.DeviceNetworkStatus, destfile *os.File) int {
@@ -845,10 +832,6 @@ func generateResolvConf(globalStatus types.DeviceNetworkStatus, destfile *os.Fil
 	log.Infof("generateResolvConf %d ports", len(globalStatus.Ports))
 	for _, us := range globalStatus.Ports {
 		if !us.IsMgmt {
-			continue
-		}
-		// Note that list could contain only IPv6 link-locals.
-		if len(us.AddrInfoList) == 0 {
 			continue
 		}
 		log.Infof("generateResolvConf %s has %d servers: %v",

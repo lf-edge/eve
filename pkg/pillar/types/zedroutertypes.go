@@ -450,6 +450,30 @@ func CountDNSServers(globalStatus DeviceNetworkStatus, port string) int {
 	return count
 }
 
+// GetDNSServers returns all, or the ones on one interface if port is set
+func GetDNSServers(globalStatus DeviceNetworkStatus, port string) []net.IP {
+
+	var ifname string
+	if port != "" {
+		ifname = AdapterToIfName(&globalStatus, port)
+	} else {
+		ifname = port
+	}
+	var servers []net.IP
+	for _, us := range globalStatus.Ports {
+		if !us.IsMgmt {
+			continue
+		}
+		if ifname != "" && ifname != us.IfName {
+			continue
+		}
+		for _, server := range us.DnsServers {
+			servers = append(servers, server)
+		}
+	}
+	return servers
+}
+
 // Return number of local IP addresses for all the management ports with given name
 // excluding link-local addresses
 func CountLocalAddrFreeNoLinkLocalIf(globalStatus DeviceNetworkStatus,
@@ -791,6 +815,55 @@ const (
 	MST_SUPPORT_SERVER
 	MST_LAST = 255
 )
+
+// CurrIntfStatusType - enum for probe current uplink intf UP/Down status
+type CurrIntfStatusType uint8
+
+// CurrentIntf status
+const (
+	CurrIntfNone CurrIntfStatusType = iota
+	CurrIntfDown
+	CurrIntfUP
+)
+
+// ServerProbe - remote probe info configured from the cloud
+type ServerProbe struct {
+	ServerURL     string // include method,host,paths
+	ServerIP      net.IP
+	ProbeInterval uint32 // probe frequence in seconds
+}
+
+// ProbeInfo - per phyical port probing info
+type ProbeInfo struct {
+	IfName    string
+	IsPresent bool // for GC purpose
+	TransDown bool // local up long time, transition to down
+	// local nexthop probe state
+	GatewayUP  bool // local nexthop is in UP state
+	LocalAddr  net.IP
+	NhAddr     net.IP
+	IsFree     bool
+	FailedCnt  uint32 // continuous ping fail count, reset when ping success
+	SuccessCnt uint32 // continous ping success count, reset when ping fail
+
+	// remote host probe state
+	RemoteHostUP    bool   // remote host is in UP state
+	FailedProbeCnt  uint32 // continuous remote ping fail count, reset when ping success
+	SuccessProbeCnt uint32 // continuous remote ping success count, reset when ping fail
+	AveLatency      int64  // average delay in msec
+}
+
+// NetworkInstanceProbeStatus - probe status per network instance
+type NetworkInstanceProbeStatus struct {
+	PConfig           ServerProbe          // user configuration for remote server
+	NeedIntfUpdate    bool                 // flag to indicate the CurrentUpLinkIntf status has changed
+	PrevUplinkIntf    string               // previously used uplink interface
+	CurrentUplinkIntf string               // decided by local/remote probing
+	ProgUplinkIntf    string               // Currently programmed uplink interface for app traffic
+	CurrIntfUP        CurrIntfStatusType   // the current picked interface can be up or down
+	TriggerCnt        uint32               // number of times Uplink change triggered
+	PInfo             map[string]ProbeInfo // per physical port eth0, eth1 probing state
+}
 
 type MapServer struct {
 	ServiceType MapServerType
@@ -1182,6 +1255,8 @@ type NetworkInstanceStatus struct {
 	VpnStatus      *VpnStatus
 	LispInfoStatus *LispInfoStatus
 	LispMetrics    *LispMetrics
+
+	NetworkInstanceProbeStatus
 }
 
 type VifNameMac struct {
