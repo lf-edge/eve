@@ -628,6 +628,12 @@ func Run() {
 			start := agentlog.StartTime()
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 			agentlog.CheckMaxTime(agentName, start)
+
+		case change := <-subVaultStatus.C:
+			start := agentlog.StartTime()
+			subVaultStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName)
@@ -739,6 +745,12 @@ func Run() {
 			start := agentlog.StartTime()
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 			agentlog.CheckMaxTime(agentName, start)
+
+		case change := <-subVaultStatus.C:
+			start := agentlog.StartTime()
+			subVaultStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
 		case <-stillRunning.C:
 		}
 		// XXX verifierRestarted can take 5 minutes??

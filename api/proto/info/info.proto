@@ -197,7 +197,9 @@ message VaultInfo {
 }
 
 message DataSecAtRest {
-    repeated VaultInfo vaultList = 1;  // per Vault status
+    DataSecAtRestStatus status = 1; // Deprecated 
+    string info = 2;                // Deprecated 
+    repeated VaultInfo vaultList = 3;  // per Vault status
 }
 
 // Base device info, as discovered by Xen (or OS on bare metal)

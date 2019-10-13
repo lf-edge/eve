@@ -21,6 +21,7 @@ The agents are:
 - dataplane (AKA lisp-ztr) - Go implementation of LISP data plane
 - domainmgr - interface with the hypervisor to start and stop application images. Includes performing device assignment
 - identitymgr - used when mesh networks desire locally created key pairs for the cryptographic application instance identities
+- vaultmgr - implement data security at rest, using native file system encryption. Encrypted directories are called vaults.
 
 In addition there are debugging tools like:
 

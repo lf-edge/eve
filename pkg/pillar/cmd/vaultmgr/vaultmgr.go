@@ -30,9 +30,9 @@ const (
 	fscryptPath         = "/opt/zededa/bin/fscrypt"
 	fscryptConfFile     = "/etc/fscrypt.conf"
 	keyctlPath          = "/bin/keyctl"
-	mountPoint      = types.PersistDir
-	defaultImgVault = types.PersistDir + "/img"
-	defaultCfgVault = types.PersistDir + "/config"
+	mountPoint          = types.PersistDir
+	defaultImgVault     = types.PersistDir + "/img"
+	defaultCfgVault     = types.PersistDir + "/config"
 	keyDir              = "/TmpVaultDir"
 	protectorPrefix     = "TheVaultKey"
 	vaultKeyLen         = 32 //bytes
@@ -279,6 +279,36 @@ func setupFscryptEnv() error {
 		return handleFirstUse()
 	}
 	return nil
+}
+
+//GetOperInfo gets the current operational state of fscrypt
+func GetOperInfo() (info.DataSecAtRestStatus, string) {
+	_, err := os.Stat(fscryptConfFile)
+	if err == nil {
+		if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
+			//fscrypt is setup, but not being used
+			log.Debug("Setting status to Error")
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
+				"Initialization failure"
+		} else {
+			//fscrypt is setup, and being used on /persist
+			log.Debug("Setting status to Enabled")
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED,
+				"Using Secure Application Vault=Yes, Using Secure Configuration Vault=Yes"
+		}
+	} else {
+		if !tpmmgr.IsTpmEnabled() {
+			//This is due to ext3 partition
+			log.Debug("Setting status to disabled, HSM is not in use")
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
+				"HSM is either absent or not in use"
+		} else {
+			//This is due to ext3 partition
+			log.Debug("setting status to disabled, ext3 partition")
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
+				"File system is incompatible, needs a disruptive upgrade"
+		}
+	}
 }
 
 func publishVaultStatus(ctx *vaultMgrContext,

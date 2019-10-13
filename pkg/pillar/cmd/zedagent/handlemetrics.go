@@ -26,6 +26,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
@@ -665,8 +666,8 @@ func RoundFromKbytesToMbytes(byteCount uint64) uint64 {
 	return (byteCount + kbyte/2) / kbyte
 }
 
-//getDataSecAtRestInfo prepares status related to Data security at Rest
-func getDataSecAtRestInfo(ctx *zedagentContext) *info.DataSecAtRest {
+//getVaultInfo prepares status related to Data security at Rest
+func getVaultInfo(ctx *zedagentContext) *info.DataSecAtRest {
 	subVaultStatus := ctx.subVaultStatus
 	ReportDataSecAtRestInfo := new(info.DataSecAtRest)
 	ReportDataSecAtRestInfo.VaultList = make([]*info.VaultInfo, 0)
@@ -1039,7 +1040,13 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	ReportDeviceInfo.HSMInfo, _ = tpmmgr.FetchTpmHwInfo()
 
 	//Operational information about Data Security At Rest
-	ReportDeviceInfo.DataSecAtRestInfo = getDataSecAtRestInfo(ctx)
+	ReportDataSecAtRestInfo := getVaultInfo(ctx)
+
+	// Retain old code below, till Controller moves to new fields above.
+	ReportDataSecAtRestInfo.Status, ReportDataSecAtRestInfo.Info =
+		vaultmgr.GetOperInfo()
+
+	ReportDeviceInfo.DataSecAtRestInfo = ReportDataSecAtRestInfo
 
 	ReportInfo.InfoContent = new(info.ZInfoMsg_Dinfo)
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
