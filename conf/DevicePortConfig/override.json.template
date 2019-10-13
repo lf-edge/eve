@@ -1,0 +1,50 @@
+{
+    "Version": 1,
+    "Ports": [
+        {
+            "Dhcp": 4,
+            "Free": true,
+            "IfName": "eth0",
+            "Name": "Management1",
+            "IsMgmt": true
+        },
+        {
+            "AddrSubnet": "192.168.1.11/24",
+            "Dhcp": 1,
+            "DnsServers": [
+                "8.8.8.8"
+            ],
+            "DomainName": "example.com",
+            "Free": true,
+            "Gateway": "192.168.1.1",
+            "IfName": "eth1",
+            "Name": "Management2",
+            "IsMgmt": true,
+            "NtpServer": "38.108.181.254",
+            "NetworkProxyEnable": false,
+            "NetworkProxyURL": "",
+            "NtpServer": "",
+            "Pacfile": "",
+            "Proxies": null
+        },
+        {
+            "AddrSubnet": "10.10.64.214/16",
+            "Dhcp": 1,
+            "DnsServers": [
+                "8.8.8.8"
+            ],
+            "DomainName": "example.com",
+            "Free": true,
+            "Gateway": "10.10.64.1",
+            "IfName": "eth2",
+            "Name": "Management3",
+            "IsMgmt": true,
+            "NtpServer": "38.108.181.254",
+            "NetworkProxyEnable": false,
+            "NetworkProxyURL": "",
+            "NtpServer": "",
+            "Pacfile": "",
+            "Proxies": null
+        }
+    ]
+}
