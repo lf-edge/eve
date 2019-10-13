@@ -1,4 +1,28 @@
-# Controlling EVE behavior at boot via legacy configuration management
+# EVE configuration
+
+While most of EVE's configuration is done via receiving a configuration object from a controller, there's always a question of a bootstrap. At the very minimum EVE has to know host name, port and certificate of the controller from which it can receive its first configuration object. On top of that there are some aspects of the early boot flow that may need to be tweaked in order for EVE to successfully bootstrap its microservices.
+
+In general, EVE is trying to make sure that its controller always has the last word in tweaking any kind of configuration knobs. The following configuration files are the only exception to that rule:
+
+* `grub.cfg` - local tweaks to an [otherwise readonly grub.cfg](README.md#runtime-lifecycle)
+* `DevicePortConfig/override.json` - initial configuration for all of EVE's network interfaces (see below for details)
+* `server` - contains a FQDN of a controller and its port (e.g. controller.acme.com:123)
+* `root-certificate.pem` - contains an x509 root certificate for the controller
+* `onboard.cert.pem` - onboarding certificate for the [initial registration](REGISTRATION.md) with the controller
+* `wpa_supplicant.conf` - a legacy way of configuring EVE's WiFi
+* `authorized_keys` - initial authorized SSH keys for accessing EVE's debug console
+
+The initial content of these configuration files is stored in the EVE's source tree under [config](../config) folder. From there, these configuration files are baked into the EVE installer images. For the read-write bootable disk installer image these files can further be tweaked by mounting the CONFIG partition and editing those files directly on the installer image. This gives you an ability to take the default installer image and tweak it for your needs without re-building EVE from scratch (obviously this is not an option for a read-only ISO installer image). A typical workflow is to take an installer image from the official EVE build, flash it onto a USB flash drive, insert that USB flash drive into your desktop and edit file on the partition called EVE.
+
+Once an installer has been run on an edge node, the content of the CONFIG partition found on the installer media is simply copied into the CONFIG partition on the edge node's local storage. From that point on, even though these files reside in the read-write CONFIG partition on the edge node, they can NOT be changed by the controller. The only option for tweaking these files is to have debug console access either via local terminal, remote ssh terminal or batch removable media configuration.
+
+## Controlling EVE behavior via batch removable media configuration
+
+EVE doesn't care how it gets its configuration objects as long as they come from the source that can be trusted. Almost always, this trusted source happens to be EVE's controller and the trust is established via TLS connection that is validated by the `root-certificate.pem`. If, for any reason, the network connection to the controller can not be established EVE can accept its configuration object on a specially formatted removable media (e.g. USB flash or hard drive). This is part of the batch removable media configuration process and it is still being actively developed.
+
+We plan to completely transition to this way of configuring all aspects of EVE in off-line situations, but before that happens you still need to be aware of the legacy configuration management described below.
+
+## Controlling EVE behavior at boot via legacy configuration management
 
 When the device boots it determines the set of network interfaces.
 By default this is determined by extracting the manufacturer and model
@@ -42,7 +66,7 @@ non-mananagement interface, and can specify static IP and DNS configuration
 (for environments where DHCP is not used). In addition it can specify proxies
 using several different mechanism.
 
-## Example DevicePortConfig
+### Example DevicePortConfig
 
 An example file to specify using WPAD to retrieve proxy configuration on eth0 is:
 
@@ -170,7 +194,7 @@ In addition the above configurations be specified from the EV-controller by
 specifying one or more networks with the proxy and/or static as part of the
 zcli device create.
 
-## Adding configuration to the install image
+### Adding configuration to the install image
 
 It is possible to provide an initial DevicePortConfig and/or GlobalConfig
 during the build of the installation medium.
@@ -191,7 +215,7 @@ Then add the valid json file named as global.json in that directory.
 Finally:
 make config.img; make installer.raw
 
-## Creating USB sticks
+### Creating USB sticks
 
 The [scripts/mkusb.sh](../scripts/mkusb.sh) can run on Linux to create a USB stick.
 It takes a usb.json as an argument, plus a few additrional arguments:
@@ -202,7 +226,7 @@ It takes a usb.json as an argument, plus a few additrional arguments:
 * -i Create an identity directory on the stick, which Eve will use to deposit
   its identity like the device certificate.
 
-## Troubleshooting
+### Troubleshooting
 
 The blinking pattern can be extracted from the shell using
 
