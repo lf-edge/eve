@@ -200,6 +200,24 @@ do_persist() {
     eval $1=0
 }
 
+do_usb_conf() {
+    eval local SEC_START=\$$1
+    # usb_conf partition is expected to be the only one and takes all available space
+    local SEC_END=0
+    local NUM_PART=$(( $PART_OFFSET + 1 ))
+    local PART_TYPE=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
+
+    sgdisk --new $NUM_PART:$SEC_START:$SEC_END \
+           --typecode=$NUM_PART:$PART_TYPE \
+	   --change-name=$NUM_PART:'DevicePortConfig' $IMGFILE
+
+    local SIZE=$(sgdisk -i $NUM_PART $IMGFILE | awk '/Partition size:/ { print $3 ; }')
+
+    mformat -i ${IMGFILE}@@$(( $SEC_START * 512 )) -h 1 -t 1 -s $SIZE -l EVEDPC ::
+    (cd /parts ; mcopy -i ${IMGFILE}@@$(( $SEC_START * 512 )) * ::)
+
+    eval $1=$(( $SEC_END + 1))
+}
 
 #
 # Extract partitions from stdin

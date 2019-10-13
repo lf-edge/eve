@@ -52,7 +52,7 @@ That file is /config/DevicePortConfig/override.json
 [Note that this file does not override cloud configuration. TBD: should we rename
 it to local.json instead?]
 And futher overridden by a USB memory stick plugged in when the device is powered
-on. The [scripts/mkusb.sh](../scripts/mkusb.sh) can be used to create a
+on. The [tools/makeusbconf.sh](../tools/makeusbconf.sh) can be used to create a
 USB stick with a json file specifying the device connectivity based on the
 examples below.
 Finally, when the device is created or updated in the controller, the device
@@ -202,7 +202,7 @@ during the build of the installation medium.
 The former can be used to specify proxies and static IP configuration for
 the ports, if that is necessary to have the device connect to the controller.
 But a DevicePortConfig can also be added to a USB stick in which case it
-will be copied from the USB stick on boot. See [mkusb.sh](../scripts/mkusb.sh)
+will be copied from the USB stick on boot. See [tools/makeusbconf.sh](../tools/makeusbconf.sh)
 
 The latter can be used to specify the initial timers and ssh/usb behavior
 which will be in place until the device connects to the controller and gets its
@@ -217,7 +217,7 @@ make config.img; make installer.raw
 
 ### Creating USB sticks
 
-The [scripts/mkusb.sh](../scripts/mkusb.sh) can run on Linux to create a USB stick.
+The [tools/makeusbconf.sh](../tools/makeusbconf.sh) can run on any system that supports Docker to create a USB stick.
 It takes a usb.json as an argument, plus a few additrional arguments:
 
 * -t Test the stick by mounting and reading it after written.

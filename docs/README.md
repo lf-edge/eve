@@ -181,7 +181,7 @@ object to EVE:
 Both methods start with obtaining a set of files (see the note below on how we
 are working towards making it a single file) and either putting them into the
 EVE configuration partition on the installation media (see [EVE Installation](#installing-eve-on-edge-nodes)
-for details) or using [mkusb.sh](../pkg/pillar/scripts/mkusb.sh) script to format
+for details) or using [tools/makeusbconf.sh](../tools/makeusbconf.sh) script to format
 removable media.
 
 It must be noted that currently we are still not quite there with out-of-band
