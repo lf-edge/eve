@@ -129,10 +129,10 @@ func RouteChangeInit() chan netlink.RouteUpdate {
 	return routechan
 }
 
-// Check if ports in the given DeviceNetworkStatus have atleast one
-// IP address each and at least one DNS server.
-func checkIfAllPortsHaveIPandDNS(status types.DeviceNetworkStatus) bool {
-	log.Infof("XXX checkIfAllPortsHaveIPandDNS")
+// Check if at least one management port in the given DeviceNetworkStatus
+// have atleast one IP address each and at least one DNS server.
+func checkIfMgmtPortsHaveIPandDNS(status types.DeviceNetworkStatus) bool {
+
 	mgmtPorts := types.GetMgmtPortsAny(status, 0)
 	if len(mgmtPorts) == 0 {
 		log.Infof("XXX no management ports")
@@ -142,18 +142,17 @@ func checkIfAllPortsHaveIPandDNS(status types.DeviceNetworkStatus) bool {
 	for _, port := range mgmtPorts {
 		numAddrs := types.CountLocalIPv4AddrAnyNoLinkLocalIf(status, port)
 		if numAddrs < 1 {
-			log.Infof("XXX No addresses on %s", port)
 			log.Debugf("No addresses on %s", port)
-			return false
+			continue
 		}
 		numDNSServers := types.CountDNSServers(status, port)
 		if numDNSServers < 1 {
-			log.Infof("XXX Have addresses but no DNS on %s", port)
 			log.Debugf("Have addresses but no DNS on %s", port)
-			return false
+			continue
 		}
+		return true
 	}
-	return true
+	return false
 }
 
 func HandleAddressChange(ctx *DeviceNetworkContext) {
@@ -183,7 +182,7 @@ func HandleAddressChange(ctx *DeviceNetworkContext) {
 		if !reflect.DeepEqual(ctx.Pending.PendDNS, dnStatus) {
 			log.Infof("HandleAddressChange pending: change from %v to %v\n",
 				ctx.Pending.PendDNS, dnStatus)
-			pingTestDNS := checkIfAllPortsHaveIPandDNS(dnStatus)
+			pingTestDNS := checkIfMgmtPortsHaveIPandDNS(dnStatus)
 			if pingTestDNS {
 				// We have a suitable candiate for running our cloud ping test.
 				log.Infof("HandleAddressChange: Running cloud ping test now, " +
@@ -301,13 +300,7 @@ func addPBR(status types.DeviceNetworkStatus, ifname string, addrs []net.IP) {
 	}
 	FlushRules(ifindex)
 	for _, a := range addrs {
-		var subnet net.IPNet
-		if a.To4() != nil {
-			subnet = net.IPNet{IP: a, Mask: net.CIDRMask(32, 32)}
-		} else {
-			subnet = net.IPNet{IP: a, Mask: net.CIDRMask(128, 128)}
-		}
-		AddSourceRule(ifindex, subnet, false)
+		AddSourceRule(ifindex, HostSubnet(a), false)
 	}
 	// Flush then copy all routes for this interface to the table
 	// for this ifindex

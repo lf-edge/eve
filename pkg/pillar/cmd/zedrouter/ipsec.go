@@ -170,6 +170,10 @@ func ipTablesRuleCreate(vpnConfig types.VpnConfig) error {
 func ipTablesRulesDelete(vpnConfig types.VpnConfig) error {
 	portConfig := vpnConfig.PortConfig
 	gatewayConfig := vpnConfig.GatewayConfig
+	if len(vpnConfig.ClientConfigList) == 0 {
+		// Network instance creation must have failed.
+		return nil
+	}
 	clientConfig := vpnConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
 
@@ -477,15 +481,17 @@ func ipRouteDelete(vpnConfig types.VpnConfig) error {
 
 	// for client config setup, create server subnet route
 	if vpnConfig.IsClient {
-		tunnelConfig := vpnConfig.ClientConfigList[0].TunnelConfig
-		cmd := exec.Command("ip", "route", "delete", gatewayConfig.SubnetBlock)
-		if _, err := cmd.Output(); err != nil {
-			log.Errorf("%s for %s %s add\n",
-				err.Error(), "iproute", gatewayConfig.SubnetBlock)
-			return err
+		if len(vpnConfig.ClientConfigList) > 0 {
+			tunnelConfig := vpnConfig.ClientConfigList[0].TunnelConfig
+			cmd := exec.Command("ip", "route", "delete", gatewayConfig.SubnetBlock)
+			if _, err := cmd.Output(); err != nil {
+				log.Errorf("%s for %s %s add\n",
+					err.Error(), "iproute", gatewayConfig.SubnetBlock)
+				return err
+			}
+			log.Infof("ipRoute(%s) %s delete OK\n", tunnelConfig.Name,
+				gatewayConfig.SubnetBlock)
 		}
-		log.Infof("ipRoute(%s) %s delete OK\n", tunnelConfig.Name,
-			gatewayConfig.SubnetBlock)
 	} else {
 		// for server config, remove all client routes
 		for _, clientConfig := range vpnConfig.ClientConfigList {
@@ -628,6 +634,9 @@ func ipLinkTunnelCreate(vpnConfig types.VpnConfig) error {
 func ipLinkTunnelDelete(vpnConfig types.VpnConfig) error {
 
 	if vpnConfig.PolicyBased {
+		return nil
+	}
+	if len(vpnConfig.ClientConfigList) == 0 {
 		return nil
 	}
 	clientConfig := vpnConfig.ClientConfigList[0]

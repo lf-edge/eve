@@ -21,7 +21,7 @@ When we started using linuxkit `linuxkit build -o kernel+squashfs` wasn't availa
 
 ### makeflash
 
-[makeflash.sh](../makeflash.sh) is a script that creates an empty file of the target disk image size. This target is then passed to [mkimage-raw-efi](../pkg/mkimage-raw-efi), which partitions the provided disk image into the requested partitions, and installs the correct bits in each partition: grub into `efi`, a pre-built rootfs into `imga` and optionally `imgb`, a pre-built config into `config`. 
+[makeflash.sh](../makeflash.sh) is a script that creates an empty file of the target disk image size. This target is then passed to [mkimage-raw-efi](../pkg/mkimage-raw-efi), which partitions the provided disk image into the requested partitions, and installs the correct bits in each partition: grub into `efi`, a pre-built rootfs into `imga` and optionally `imgb`, a pre-built config into `config`.
 
 There is no tool that currently does anything close to this. The closest option might be linuxkit, if it were to add support for multiple partitions, with optional inputs into each partition.
 
@@ -51,7 +51,7 @@ Generally, most of the support we needed was for tpm and a few other capabilitie
 2. Determine the logic used to transition between states.
 3. Determine the tools that implement the given logic.
 4. For state transitions that depend on grub, determine if grub mainstream supports it.
-5. Isolate just those elements that: are required for state transitions; are not implemented in mainstream grub; cannot be worked around in any other mainstream way. 
+5. Isolate just those elements that: are required for state transitions; are not implemented in mainstream grub; cannot be worked around in any other mainstream way.
 6. Apply just those patches.
 7. Upstream those few patches.
 
@@ -89,7 +89,7 @@ This was removed because of issues with building it. If we are sticking with Cor
 
 #### 0005-rc-may-be-used-uninitialized.patch
 
-In the function `grub_install_remove_efi_entries_by_distributor`, sets the default of `int rc = 0`, so it never is accessed uninitialized. 
+In the function `grub_install_remove_efi_entries_by_distributor`, sets the default of `int rc = 0`, so it never is accessed uninitialized.
 
 **Note:** this has been fixed in mainstream grub as of master on the date of this writing, see [grub-core/osdep/unix/platform.c#L88](http://git.savannah.gnu.org/cgit/grub.git/tree/grub-core/osdep/unix/platform.c#n88). If we update to a more recent commit, we can remove this patch, assuming, of course, that a previous patch does not break it, likely the coreos one.
 
@@ -103,9 +103,8 @@ We attempt to solve this by making the grub variables settable from within the m
 
 For upstreaming, we should:
 
-1. See if there is an easier or more canonical way to do the same thing without a custom patch. If so, use it. 
+1. See if there is an easier or more canonical way to do the same thing without a custom patch. If so, use it.
 2. If not, present the use case to grub upstream and get the patch upstreamed.
-
 
 ### devices-trees
 
@@ -113,13 +112,13 @@ For upstreaming, we should:
 
 ### fw
 
-[fw](../pkg/fw/) adds specific firmware. Most of the added firmware already is in the `alpine:3.8` and above standard distributions, added via `apk add linux-firmware-<platform>`. The package itself uses the standard except in 2 cases, one of which (`ath10k`) is in the process of being upstreamed. 
+[fw](../pkg/fw/) adds specific firmware. Most of the added firmware already is in the `alpine:3.8` and above standard distributions, added via `apk add linux-firmware-<platform>`. The package itself uses the standard except in 2 cases, one of which (`ath10k`) is in the process of being upstreamed.
 
 This is unlikely to be replaced anywhere. The closest option is linuxkit, which has no custom firmware solutions at this time. Since it is modular via OCI images, the likely solution is to use a firmware-specific OCI image in the `init` section, which is precisely what we are doing.
 
 ### xen
 
-[xen](../pkg/xen/) builds and adds the xen kernel. It downloads the official Xen source, configures and builds it, and extracts the bootable kernel. This, in turn, is used in grub to boot into `dom0`, which then boots into the dom0 kernel, as defined in the linuxkit config `kernel` section. 
+[xen](../pkg/xen/) builds and adds the xen kernel. It downloads the official Xen source, configures and builds it, and extracts the bootable kernel. This, in turn, is used in grub to boot into `dom0`, which then boots into the dom0 kernel, as defined in the linuxkit config `kernel` section.
 
 We do a custom build of the xen kernel for two reasons:
 
@@ -148,7 +147,3 @@ We will explore two options:
 [dom0-ztools](../pkg/dom0-ztools) inserts a single script, [zen](../pkg/dom0-ztools/zen) onto the base filesystem. `zen` is a utility script that wraps `ctr` to simplify access to containerd containers. This presumably is because the `ctr` commands can be convoluted and hard to remember.
 
 There is a case to be made for upstreaming this into linuxkit itself, at least in the ssh/getty containers.
-
-
-
-

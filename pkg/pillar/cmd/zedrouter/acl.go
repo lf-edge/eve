@@ -467,7 +467,7 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 		aclRule5.Chain = "PREROUTING"
 		aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
 			"-p", "udp", "-m", "multiport", "--dports", "bootps,domain"}
-		chainName := fmt.Sprintf("%s-%s-%d",
+		chainName := fmt.Sprintf("proto-%s-%s-%d",
 			aclArgs.BridgeName, aclArgs.VifName, 6)
 		createMarkAndAcceptChain(aclArgs, chainName, 6)
 		aclRule5.Action = []string{"-j", chainName}
@@ -476,7 +476,7 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 
 		aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
 			"-p", "tcp", "--dport", "domain"}
-		chainName = fmt.Sprintf("%s-%s-%d",
+		chainName = fmt.Sprintf("proto-%s-%s-%d",
 			aclArgs.BridgeName, aclArgs.VifName, 7)
 		createMarkAndAcceptChain(aclArgs, chainName, 7)
 		aclRule5.Action = []string{"-j", chainName}
@@ -1101,13 +1101,13 @@ func diffIpsets(newIpsets, oldIpsets []string) ([]string, []string, bool) {
 // lets just delete the existing ACL iptables rules block
 // and add the new ACL rules, for the appNetwork.
 func updateACLConfiglet(aclArgs types.AppNetworkACLArgs, oldACLs []types.ACE, ACLs []types.ACE,
-	oldRules types.IPTablesRuleList) (types.IPTablesRuleList, error) {
+	oldRules types.IPTablesRuleList, force bool) (types.IPTablesRuleList, error) {
 
 	log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s\n",
 		aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
 
 	aclArgs.IPVer = determineIPVer(aclArgs.IsMgmt, aclArgs.BridgeIP)
-	if compareACLs(oldACLs, ACLs) == true {
+	if compareACLs(oldACLs, ACLs) == true && !force {
 		log.Infof("updateACLConfiglet: bridgeName %s, vifName %s, appIP %s: no change\n",
 			aclArgs.BridgeName, aclArgs.VifName, aclArgs.AppIP)
 		return oldRules, nil

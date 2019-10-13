@@ -68,10 +68,10 @@ func dnsmasqDhcpHostDir(bridgeName string) string {
 func createDnsmasqConfiglet(
 	bridgeName string, bridgeIPAddr string,
 	netconf *types.NetworkInstanceConfig, hostsDir string,
-	ipsets []string, Ipv4Eid bool) {
+	ipsets []string, Ipv4Eid bool, uplink string, dnsServers []net.IP) {
 
-	log.Infof("createDnsmasqConfiglet(%s, %s) netconf %v, ipsets %v\n",
-		bridgeName, bridgeIPAddr, netconf, ipsets)
+	log.Infof("createDnsmasqConfiglet(%s, %s) netconf %v, ipsets %v uplink %s dnsServers %v",
+		bridgeName, bridgeIPAddr, netconf, ipsets, uplink, dnsServers)
 
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	// Delete if it exists
@@ -93,6 +93,14 @@ func createDnsmasqConfiglet(
 	ensureDir(dhcphostsDir)
 
 	file.WriteString(dnsmasqStatic)
+	if len(dnsServers) != 0 {
+		// Pick file where dnsmasq should send DNS read upstream
+		for _, s := range dnsServers {
+			file.WriteString(fmt.Sprintf("server=%s@%s\n", s, uplink))
+		}
+		file.WriteString("no-resolv\n")
+	}
+
 	for _, ipset := range ipsets {
 		file.WriteString(fmt.Sprintf("ipset=/%s/ipv4.%s,ipv6.%s\n",
 			ipset, ipset, ipset))
@@ -497,4 +505,20 @@ func readLeases() []dnsmasqLease {
 		leases = append(leases, lease)
 	}
 	return leases
+}
+
+// When we restart dnsmasq with smaller changes like chaging DNS server
+// file configuration, we should not delete the hosts configuration for
+// that has the IP address allotment information.
+func deleteOnlyDnsmasqConfiglet(bridgeName string) {
+
+	log.Infof("deleteOnlyDnsmasqConfiglet(%s)\n", bridgeName)
+	cfgPathname := dnsmasqConfigPath(bridgeName)
+	if _, err := os.Stat(cfgPathname); err == nil {
+		if err := os.Remove(cfgPathname); err != nil {
+			errStr := fmt.Sprintf("deleteOnlyDnsmasqConfiglet %v",
+				err)
+			log.Errorln(errStr)
+		}
+	}
 }

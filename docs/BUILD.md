@@ -6,14 +6,14 @@ This document describes how the EVE build process works, its dependencies, input
 
 Before describing how EVE is _built_, it is important to understand how EVE is _installed_. EVE has two distinct installation methods:
 
-* Live
-* Installer
+* Installing a Live Image
+* Using an Installer Image
 
-### Live
+### Installing a Live Image
 
 A live image is ready for an actual device. It is flashed directly to a USB drive or SD card, which is then installed into a final device. As such, the live image has all of the necessary partitions, and is not expected to boot anything but a live device.
 
-### Installer
+### Using an Installer Image
 
 An installer image is intended to be booted on multiple devices, each time installing a live image onto the local device. It is flashed to a USB drive or SD card. The card is then installed into a device, the device is booted, the installer installs a live image onto the device's actual long-term storage, and then the install media is disconnected and moved to the next device to repeat the process.
 
@@ -27,7 +27,7 @@ EVE uses several build tools, some of which are prerequisites, while others are 
 
 You must have the following installed in order to build EVE:
 
-* [docker](https://www.docker.com/get-started) 
+* [docker](https://www.docker.com/get-started)
 * [Go](https://golang.org) (optional) Required only if you want to build packages locally. By default, all builds happen in a docker environment.
 * [qemu](https://www.qemu.org) (optional) Required only if you wish to run the generated image. On macOS, easiest to install via [homebrew](https://brew.sh) via `brew install qemu`.
 * [git](https://git-scm.com) which you must have to clone this repository.
@@ -45,7 +45,7 @@ Each "Installed as Needed" build tool will place its final executable in `build-
 
 To build a specific tool, you can execute `make bin/<tool-name>`, e.g. `make bin/manifest-tool`, in `build-tools`, e.g.:
 
-```
+```shell
 make -C build-tools bin/manifest-tool
 ```
 
@@ -63,12 +63,13 @@ To build all of the tools, run `make -C build-tools all`, or in the project root
 
 The normal process for installing go-based binaries is to execute `go get` with options, e.g.
 
-```
+```shell
 go get -u github.com/linuxkit/linuxkit/src/cmd/linuxkit
 go get -u github.com/estesp/manifest-tool
 ```
 
-EVE uses a somewhat non-standard build process for these tools to ensure specific versions without polluting the user's normal workspace. 
+EVE uses a somewhat non-standard build process for these tools to ensure
+specific versions without polluting the user's normal workspace.
 
 ## Output Components
 
@@ -83,18 +84,18 @@ The following are the output components from the build process and their purpose
 
 #### Interim
 
-* `rootfs.img` - a live bootable rootfs filesystem image. This can be either [squashfs](https://en.wikipedia.org/wiki/SquashFS) (default) or [ext4](https://en.wikipedia.org/wiki/Ext4). 
+* `rootfs.img` - a live bootable rootfs filesystem image. This can be either [squashfs](https://en.wikipedia.org/wiki/SquashFS) (default) or [ext4](https://en.wikipedia.org/wiki/Ext4).
 * `rootfs_installer.img` - a bootable rootfs filesystem image to run as an installer.
 * `live.raw` - a live bootable disk image, will be converted to [qcow2](https://en.wikipedia.org/wiki/Qcow). Has 2 gpt partitions:
     1. UEFI partition with grub
     2. root partition from the above `rootfs.img`
-* `config.img` - 1MB FAT32 image file containing basic configuration information, including wpa supplicant, name of the controller, onboarding key/cert pair, and other configuration information. 
+* `config.img` - 1MB FAT32 image file containing basic configuration information, including wpa supplicant, name of the controller, onboarding key/cert pair, and other configuration information.
 
 ## Build Process
 
 The general rules for the build process are as follows.
 
-All bootable images are built via [linuxkit](https://github.com/linuxkit/linuxkit), using standard linuxkit yml configuration files. Read documents at the [linuxkit repository](https://github.com/linuxkit/linuxkit) to learn more about how linuxkit works, composing OCI images to create a bootable disk. 
+All bootable images are built via [linuxkit](https://github.com/linuxkit/linuxkit), using standard linuxkit yml configuration files. Read documents at the [linuxkit repository](https://github.com/linuxkit/linuxkit) to learn more about how linuxkit works, composing OCI images to create a bootable disk.
 
 EVE builds one of two bootable images using linuxkit, depending on if you are building an installer or a live image, and then modifies them with various tools.
 
@@ -107,7 +108,6 @@ For a live bootable image, named `live.img`, we create the following dependencie
 3. `live.raw`
 4. `live.qcow2`
 
-
 #### rootfs.img
 
 `rootfs.img` is a bootable root filesystem. To build it:
@@ -119,7 +119,7 @@ For a live bootable image, named `live.img`, we create the following dependencie
     3. `mkrootfs-*` takes the contents of the tar image, modifies `grub.cf`, builds it into an ext4 filesystem image, and streams it to stdout.
     4. Direct the output to the targeted filename, in this case `rootfs.img`.
 
-We now have `rootfs.img`. 
+We now have `rootfs.img`.
 
 #### config.img
 
@@ -171,9 +171,9 @@ To build `live.qcow2`:
 
 To build `live.img`:
 
-```
+```shell
 ln -s live.qcow2 live.img
-``` 
+```
 
 ### Installable
 
@@ -184,15 +184,15 @@ For an installable image, named `installer.img`, we create the following depende
 3. `rootfs_installer.img`
 4. `installer.raw`
 
-#### rootfs.img
+#### Installer: rootfs.img
 
 `rootfs.img` is built identically to how it is for a live bootable image, see [rootfs.img](#rootfs.img)
 
-#### config.img
+#### Installer: config.img
 
 `config.img` is built identically to how it is for a live bootable image, see [config.img](#config.img)
 
-#### rootfs_installer.img
+#### Installer: rootfs_installer.img
 
 `rootfs_installer.img` is the actual bootable image that installs EVE onto another storage medium, normally an on-board disk/ssd on a device.
 
@@ -205,7 +205,7 @@ To build `rootfs_installer.img`:
     3. `mkrootfs-*` takes the contents of the tar image, modifies `grub.cf`, builds it into an ext4 filesystem image, and streams it to stdout.
     4. Direct the output to the targeted filename, in this case `rootfs_installer.img`.
 
-#### installer.raw
+#### Installer: installer.raw
 
 `installer.raw` is a bootable raw disk installer image with both a rootfs and a UEFI boot partition.
 
@@ -232,11 +232,11 @@ Note that once you flash `installer.raw` on the installer media, such as USB dri
 
 As described earlier, the `yml` files used to generate the images via `linuxkit build` are in the [images/](../images/) directory. The actual files, e.g. `rootfs.yml` and `installer.yml`, are not checked in directly to source code control. Rather, these are _generated_ from `<ymlname>.yml.in`, e.g. [rootfs.yml.in](../images/rootfs.yml.in) and [installer.yml.in](../images/installer.yml.in). The generation is as follows:
 
-```
+```shell
 parse-pkgs.sh <yml>.in > <yml>
 ```
 
-This is used to replace the tags of various components in the `.yml.in` file with the correct current image name and tag for various packages, including the correct architecture. 
+This is used to replace the tags of various components in the `.yml.in` file with the correct current image name and tag for various packages, including the correct architecture.
 
 The output `.yml` file is stored in the same directory as the `.yml.in` file, i.e. [images/](../images/).
 
@@ -252,7 +252,7 @@ These are all due to constraints within the usage of the `yml` files. If a clean
 
 As described above, the bootable images - live `live.img` and installer `installer.raw` - are partitioned disk images with the following layouts:
 
-Live:
+### Live Image Contents
 
 |partition|purpose|source|
 |---|---|---|
@@ -262,7 +262,7 @@ Live:
 |conf|Config data|`config.img` from `maketestconfig.sh`|
 |persist|Persistent storage|empty|
 
-Installer:
+### Installer Image Contents
 
 |partition|purpose|
 |---|---|
@@ -273,6 +273,7 @@ Installer:
 The rest of this section describes the contents of the root filesystem, both `rootfs.img` for live and `rootfs_installer.img` for installer.
 
 ### LinuxKit Summary
+
 LinuxKit - which is used to build both `rootfs.img` and `rootfs_installer.img` - composes an operating system image from OCI container images. Depending on configuration, these are used to:
 
 * insert a kernel directly on the booting operating system
@@ -283,28 +284,28 @@ LinuxKit - which is used to build both `rootfs.img` and `rootfs_installer.img` -
 
 ### Standard Packages
 
-EVE uses a number of standard linuxkit packages. These are enumerated below. Others may be added later.  
+EVE uses a number of standard linuxkit packages. These are enumerated below. Others may be added later.
 
-**Live**
+#### Standard Live Packages
 
 * `init` packages
-    * `linuxkit/init` - for the `init` process
-    * `linuxkit/runc` - for `runc`
-    * `linuxkit/containerd` - for `containerd`
-    * `linuxkit/getty` - for `getty` to log in on console
+  * `linuxkit/init` - for the `init` process
+  * `linuxkit/runc` - for `runc`
+  * `linuxkit/containerd` - for `containerd`
+  * `linuxkit/getty` - for `getty` to log in on console
 * `onboot` packages
-    * `linuxkit/sysctl`
-    * `linuxkit/modprobe` - customized for the appropriate modules
-    * `linuxkit/mount` - customized to mount the config partition as `/var/config`
+  * `linuxkit/sysctl`
+  * `linuxkit/modprobe` - customized for the appropriate modules
+  * `linuxkit/mount` - customized to mount the config partition as `/var/config`
 * `services` packages
-    * `linuxkit/openntpd` - for ntp
+  * `linuxkit/openntpd` - for ntp
 
-**Installer**
+#### Standard Installer Packages
 
 * `init` packages
-    * `linuxkit/init` - for the `init` process
-    * `linuxkit/runc` - for `runc`
-    * `linuxkit/getty` - for `getty` to log in on console
+  * `linuxkit/init` - for the `init` process
+  * `linuxkit/runc` - for `runc`
+  * `linuxkit/getty` - for `getty` to log in on console
 
 ### Custom Packages
 
@@ -312,35 +313,35 @@ The remaining packages are custom images built for EVE. All of the packages - an
 
 The following custom packages are used:
 
-**Live**
+#### Custom Live Packages
 
 * kernel: EVE uses its own custom kernel package, rather than one of the standard linuxkit ones. This is primarily due to kernel modules and drivers, especially on arm, as well as Xen requirements.
 * `init` packages:
-    * `lfedge/eve-grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades. See [UPSTREAMING.md](./UPSTREAMING.md#grub) for a more detailed discussion of what is unique in this grub.
-    * `lfedge/eve-devices-trees` - device trees for all the ARM platforms that EVE supports.
-    * `lfedge/eve-fw` - various firmware required for device drivers.
-    * `lfedge/eve-xen` - a single Xen binary required to boot EVE.
-    * `lfedge/eve-gpt-tools` - ChromiumOS inspired tools and sgdisk required to enable CoreOS-style dual partition upgrades. See [UPSTREAMING.md](./UPSTREAMING.md#grub) for a more detailed discussion of what is unique in these versions of the gpt tools.
-    * `lfedge/eve-dom0-ztools` - catch-all containers for tools helpful in developing and debugging EVE. 
+  * `lfedge/eve-grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades. See [UPSTREAMING.md](./UPSTREAMING.md#grub) for a more detailed discussion of what is unique in this grub.
+  * `lfedge/eve-devices-trees` - device trees for all the ARM platforms that EVE supports.
+  * `lfedge/eve-fw` - various firmware required for device drivers.
+  * `lfedge/eve-xen` - a single Xen binary required to boot EVE.
+  * `lfedge/eve-gpt-tools` - ChromiumOS inspired tools and sgdisk required to enable CoreOS-style dual partition upgrades. See [UPSTREAMING.md](./UPSTREAMING.md#grub) for a more detailed discussion of what is unique in these versions of the gpt tools.
+  * `lfedge/eve-dom0-ztools` - catch-all containers for tools helpful in developing and debugging EVE.
 * `onboot` packages:
-    * `lfedge/eve-rngd` - custom `lfedge/eve-rngd` package, rather than the standard linuxkit one. This micro-fork accommodates the [following hack](https://github.com/lf-edge/eve/blob/master/pkg/rngd/cmd/rngd/rng_linux_arm64.go) which provides some semblance of seeding randomness on ARM. Without this HiKey board won't boot. 
+  * `lfedge/eve-rngd` - custom `lfedge/eve-rngd` package, rather than the standard linuxkit one. This micro-fork accommodates the [following hack](https://github.com/lf-edge/eve/blob/master/pkg/rngd/cmd/rngd/rng_linux_arm64.go) which provides some semblance of seeding randomness on ARM. Without this HiKey board won't boot.
 * `services` packages:
-    * `lfedge/eve-wwan` - WWAN drivers and software. LTE/3G/2G. Mostly experimental.
-    * `lfedge/eve-wlan` - WLAN drivers and software. Currently a glorified wrapper around wpa_supplicant.
-    * `lfedge/eve-guacd` - [Apache Guacamole service](http://guacamole.apache.org/) that provides console and VDI services to running VMs and containers. 
-    * `lfedge/eve-zedctr` - a "catch-all" package for EVE tools; see below.
+  * `lfedge/eve-wwan` - WWAN drivers and software. LTE/3G/2G. Mostly experimental.
+  * `lfedge/eve-wlan` - WLAN drivers and software. Currently a glorified wrapper around wpa_supplicant.
+  * `lfedge/eve-guacd` - [Apache Guacamole service](http://guacamole.apache.org/) that provides console and VDI services to running VMs and containers.
+  * `lfedge/eve-zedctr` - a "catch-all" package for EVE tools; see below.
 
-**Installer**
+#### Custom Installer Packages
 
 * kernel: EVE uses its own custom kernel package, rather than one of the standard linuxkit ones. Technically, the installer could use a standard linux kernel from [linuxkit/kernel](https://github.com/linuxkit/kernel). However, while _installing_ has few special requirements, _booting_ the live system _does_ have requirements, including proper xen support and appropriate device drivers functioning. Rather than having the install function, only to have the live boot fail because of driver, module or xen issues, we boot the installer with the exact same kernel as the live system, allowing it to serve double-duty as both an installer and a verifier.
 * `init` packages:
-    * `lfedge/eve-grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades.
-    * `lfedge/eve-devices-trees` - device trees for all the ARM platforms that EVE supports.
-    * `lfedge/eve-xen` - a single Xen binary required to boot EVE.
-    * `lfedge/eve-dom0-ztools` - catch-all containers for tools helpful in developing and debugging EVE.
+  * `lfedge/eve-grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades.
+  * `lfedge/eve-devices-trees` - device trees for all the ARM platforms that EVE supports.
+  * `lfedge/eve-xen` - a single Xen binary required to boot EVE.
+  * `lfedge/eve-dom0-ztools` - catch-all containers for tools helpful in developing and debugging EVE.
 * `onboot` packages:
-    * `lfedge/eve-rngd` - custom EVE rngd package, rather than the standard linuxkit one. This micro-fork accommodates the [following hack](https://github.com/lf-edge/eve/blob/master/pkg/rngd/cmd/rngd/rng_linux_arm64.go) which provides some semblance of seeding randomness on ARM. Without this HiKey board won't boot.
-    * `lfedge/eve-mkimage-raw-efi` - custom EVE version of `mkimage-raw-efi` to create an ext4 image, used to make the correct filesystems on the target install disk.
+  * `lfedge/eve-rngd` - custom EVE rngd package, rather than the standard linuxkit one. This micro-fork accommodates the [following hack](https://github.com/lf-edge/eve/blob/master/pkg/rngd/cmd/rngd/rng_linux_arm64.go) which provides some semblance of seeding randomness on ARM. Without this HiKey board won't boot.
+  * `lfedge/eve-mkimage-raw-efi` - custom EVE version of `mkimage-raw-efi` to create an ext4 image, used to make the correct filesystems on the target install disk.
 
 #### zedctr
 
@@ -352,34 +353,39 @@ The package `pillar` contains, unsurprisingly, the `pillar` services that are re
 
 `pillar` itself vendors EVE golang api, i.e. the golang-compiled protobufs defined in [api/proto](../api/proto). These can be compiled for a specific language using the makefile target `make proto-<language>`, e.g. `make proto-go` or `make proto-python`. To build them all, run:
 
- ```
-$ make proto
+```shell
+make proto
 ```
 
 `pillar` depends upon the latest versions of these being available at its compile time in its vendor directory at [pkg/pillar/vendor](../pkg/pillar/vendor). The target `make proto-vendor` will vendor them into [pkg/pillar/vendor](../pkg/pillar/vendor).
-
 
 ### Building packages
 
 Each package can be built independently via:
 
-```
-linuxkit pkg build <directory>
+```shell
+make pkg/<name>
 ```
 
 For example, to build `guacd`:
 
-```
-linuxkit pkg build pkg/guacd
-```
-
-Or from within the `pkg/guacd` directory:
-
-```
-linuxkit pkg build .
+```shell
+make pkg/guacd
 ```
 
-To simplify and collate building, you can run `make build` in the `pkg/` directory, or just `make -C pkg/ build`. This will build all of the dependent packages.
+To build all of the dependent packages:
+
+```shell
+make pkgs
+```
+
+In some cases, the `pkg/<name>` rule may rebuild more than intended, as they
+specify required dependencies.  In this case, it may be more efficient to use
+`make eve-<name>`, such as when testing changes in the `pillar` package:
+
+```shell
+make eve-pillar
+```
 
 All of these packages are published regularly to the dockerhub registry, so it is not strictly necessary to rebuild them, unless you are changing a package and want to publish, or are working with a local custom build.
 
@@ -387,9 +393,15 @@ All of these packages are published regularly to the dockerhub registry, so it i
 
 ## Summary of Build Process
 
-### Live
+This section provides an overview of the processes used to create the
+following components:
 
-```
+* Live Images
+* Installer Images
+
+### Live Images
+
+```text
 +-------+                                +--------+
 | pkg/* +-------+                     +--+ conf/  |
 +-------+       |                     |  +--------+
@@ -432,10 +444,9 @@ All of these packages are published regularly to the dockerhub registry, so it i
 
 ```
 
-### Installer
+### Installer Images
 
-```
-
+```text
 +-------+                                +--------+
 | pkg/* +-------+                     +--+ conf/  |
 +-------+       |                     |  +--------+

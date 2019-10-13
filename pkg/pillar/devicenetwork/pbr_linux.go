@@ -27,6 +27,7 @@ func CopyRoutesTable(srcTable int, ifindex int, dstTable int) {
 	if ifindex != 0 {
 		fflags |= netlink.RT_FILTER_OIF
 	}
+	// XXX is AF_UNSPEC ok?
 	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC,
 		&filter, fflags)
 	if err != nil {
@@ -57,7 +58,7 @@ func CopyRoutesTable(srcTable int, ifindex int, dstTable int) {
 		if rt.Flags != 0 {
 			art.Flags = 0
 		}
-		log.Debugf("CopyRoutesTable(%d, %d, %d) adding %v",
+		log.Infof("CopyRoutesTable(%d, %d, %d) adding %v",
 			srcTable, ifindex, dstTable, art)
 		if err := netlink.RouteAdd(&art); err != nil {
 			log.Errorf("CopyRoutesTable failed to add %v to %d: %s",

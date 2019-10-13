@@ -143,7 +143,7 @@ func IoBundleFromPhyAdapter(phyAdapter PhysicalIOAdapter) *IoBundle {
 	// XXX - We should really change IoType to type zconfig.PhyIoType
 	ib := IoBundle{}
 	ib.Type = IoType(phyAdapter.Ptype)
-	ib.Name = phyAdapter.Phylabel
+	ib.Name = phyAdapter.Phylabel // XXX should rename the field in ib to be Phylabel
 	ib.Logicallabel = phyAdapter.Logicallabel
 	ib.AssignmentGroup = phyAdapter.Assigngrp
 	ib.Ifname = phyAdapter.Phyaddr.Ifname
