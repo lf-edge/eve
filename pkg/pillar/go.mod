@@ -9,6 +9,8 @@ require (
 	github.com/Azure/go-autorest v11.7.0+incompatible // indirect
 	github.com/VictorLowther/godmi v0.0.0-20190311134151-270258a8252d // indirect
 	github.com/aws/aws-sdk-go v1.19.11
+	github.com/docker/docker/api/types v17.03.2-ce
+	github.com/docker/docker/client v17.03.2-ce
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/dnaeon/go-vcr v1.0.1 // indirect
 	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9

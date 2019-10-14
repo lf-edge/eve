@@ -5,7 +5,7 @@ package zedUpload
 
 import (
 	"fmt"
-	container "github.com/zededa/shared/libs/zedUpload/containerutil"
+	container "github.com/lf-edge/eve/pkg/pillar/zedUpload/containerutil"
 	"net"
 	"net/http"
 	"net/url"
