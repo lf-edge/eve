@@ -262,6 +262,18 @@ the ARM platforms that reserve a few of the GPT entries to host things like
 firmware. Finally, it must be said that EVE doesn't support legacy partitioning
 schemes (such as MBR).
 
+CONFIG partition is read-only from the standpoint of EVE itself, but it can be
+written to under [certain debug and recovery scenarios](CONFIG.md). This stands
+in contrast with EFI System partition that, while technically read-write, has
+absolutely no reason of ever being written to past initial installation process.
+
+P3 is a scratch space. Unlike CONFIG and EFI System partition, P3 can be wiped out
+and re-created without affecting much of edge node behaviour. The content of CONFIG
+and EFI System has to be preserved at all costs. Corrupting those parititions will
+result in an edge node that needs to be re-installed (technically IMGA and IMGB
+should be protected as well, but since they are always treated as read-only corrupting
+them is much harder).
+
 EVE's root filesystem is hosted in both IMGA and IMGB partitions. This allows
 a running EVE instance to safely update itself. If you want to know more about
 how this process works read [baseimage update](BASEIMAGE-UPDATE.md) documentation.
@@ -286,9 +298,14 @@ of EVE on an Edge Node and as a result it is kept extremely simple. The only
 role that a GRUB trampoline [plays](../pkg/mkimage-raw-efi/efi-files/EFI/BOOT/grub.cfg)
 is selecting whether to chainload second stage GRUB from IMGA or IMGB partitions.
 
-Second stage GRUB is expected to do all the [heavy lifiting](../pkg/grub/rootfs.cfg)
+Second stage GRUB is expected to do all the [heavy lifting](../pkg/grub/rootfs.cfg)
 of actually booting an EVE instance and because it resides in IMGA or IMGB
-partitions it can easily be upgraded and patched.
+partitions it can easily be upgraded and patched. Behavior of this stage of
+boot process is controlled by a read-only grub.cfg under {IMGA,IMGB}/EFI/BOOT/
+but it can further be tweaked by the grub.cfg overrides on the CONFIG partition.
+Note that an override grub.cfg is expected to be a [complete override](../pkg/grub/rootfs.cfg#L132)
+and anyone constructing its content is expected to be familiar with the overall
+flow of read-only grub.cfg.
 
 After second stage GRUB is done loading type-1 hypervisor and Control Domain
 kernel the rest of the runtime sequence relies solely on what happens with EVE

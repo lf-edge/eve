@@ -148,7 +148,10 @@ func Run() {
 				log.Infof("Verifier reported restarted\n")
 			}
 			agentlog.CheckMaxTime(agentName, start)
+
+		case <-stillRunning.C:
 		}
+		agentlog.StillRunning(agentName)
 	}
 
 	// start the forever loop for event handling
@@ -543,8 +546,8 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
-	// Look for ZbootConfig , from zedagent
-	subZbootConfig, err := pubsub.Subscribe("zedagent",
+	// Look for ZbootConfig , from nodeagent
+	subZbootConfig, err := pubsub.Subscribe("nodeagent",
 		types.ZbootConfig{}, false, ctx)
 	if err != nil {
 		log.Fatal(err)

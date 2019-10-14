@@ -53,24 +53,6 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	}
 	ctx := getconfigCtx.zedagentCtx
 
-	// updating/rebooting, ignore config??
-	if isBaseOsOtherPartitionStateUpdating(ctx) {
-		log.Infoln("OtherPartitionStatusUpdating - setting rebootFlag")
-		// Make sure we tell apps to shut down
-		shutdownApps(getconfigCtx)
-		getconfigCtx.rebootFlag = true
-	}
-
-	// If the other partition is inprogress it means update failed
-	// We leave in inprogress state so logmanager can use it to decide
-	// to upload the other logs. If a different BaseOsVersion is provided
-	// we allow it to be installed into the inprogress partition.
-	if isBaseOsOtherPartitionStateInProgress(ctx) {
-		otherPart := getZbootOtherPartition(ctx)
-		log.Errorf("Other %s partition contains failed update\n",
-			otherPart)
-	}
-
 	log.Debugf("parseConfig: EdgeDevConfig: %v\n", *config)
 
 	// Look for timers and other settings in configItems
@@ -78,7 +60,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	//  recover if the system got stuck after setting rebootFlag
 	parseConfigItems(config, getconfigCtx)
 
-	if getconfigCtx.rebootFlag {
+	if getconfigCtx.rebootFlag || ctx.deviceReboot {
 		log.Debugf("parseConfig: Ignoring config as rebootFlag set\n")
 	} else {
 		parseDatastoreConfig(config, getconfigCtx)
@@ -2013,14 +1995,15 @@ var rebootPrevReturn bool
 // Returns a rebootFlag
 func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 	getconfigCtx *getconfigContext) bool {
-
 	if reboot == nil {
 		log.Infof("scheduleReboot - removing %s\n",
 			rebootConfigFilename)
 		// stop the timer
-		if rebootTimer != nil {
+		if rebootTimer != nil &&
+			!getconfigCtx.zedagentCtx.deviceReboot {
 			rebootTimer.Stop()
 		}
+
 		// remove the existing file
 		os.Remove(rebootConfigFilename)
 		return false
@@ -2032,6 +2015,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 	if same {
 		return rebootPrevReturn
 	}
+
 	log.Infof("scheduleReboot: Applying updated config %v\n", reboot)
 
 	if _, err := os.Stat(rebootConfigFilename); err != nil {
@@ -2078,6 +2062,12 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 			}
 		}
 
+		// if device reboot is set, ignore op-command
+		if getconfigCtx.zedagentCtx.deviceReboot {
+			log.Warnf("device reboot is set\n")
+			return false
+		}
+
 		//timer was started, stop now
 		if rebootTimer != nil {
 			rebootTimer.Stop()
@@ -2085,7 +2075,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 
 		// Defer if inprogress by returning
 		ctx := getconfigCtx.zedagentCtx
-		if isBaseOsCurrentPartitionStateInProgress(ctx) {
+		if getconfigCtx.updateInprogress {
 			// Wait until TestComplete
 			log.Warnf("Rebooting even though testing inprogress; defer\n")
 			ctx.rebootCmdDeferred = true
@@ -2152,32 +2142,31 @@ func handleReboot(getconfigCtx *getconfigContext) {
 	execReboot(state)
 }
 
-// Used by doBaseOsDeviceReboot only
-func startExecReboot() {
-
-	log.Infof("startExecReboot: scheduling exec reboot\n")
-
-	//timer was started, stop now
+// Used by handleDeviceReboot only
+func scheduleExecReboot(reasonStr string) {
+	//timer has already been started, return
 	if rebootTimer != nil {
-		rebootTimer.Stop()
+		return
 	}
+	log.Infof("scheduleExecReboot: scheduling exec reboot\n")
 
-	// start the timer again
-	// XXX:FIXME, need to handle the scheduled time
 	duration := time.Second * time.Duration(rebootDelay)
 	rebootTimer = time.NewTimer(duration)
 	log.Infof("startExecReboot: timer %d seconds\n",
 		duration/time.Second)
 
-	go handleExecReboot()
+	go handleExecReboot(reasonStr)
 }
 
-// Used by doBaseOsDeviceReboot only
-func handleExecReboot() {
+// Used by handleDeviceReboot only
+func handleExecReboot(reasonStr string) {
 
 	<-rebootTimer.C
 
 	errStr := "NORMAL: baseimage-update reboot"
+	if reasonStr != "" {
+		errStr = reasonStr
+	}
 	log.Errorf(errStr)
 	agentlog.RebootReason(errStr)
 	execReboot(true)

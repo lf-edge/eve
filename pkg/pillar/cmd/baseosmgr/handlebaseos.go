@@ -1027,7 +1027,7 @@ func getZbootStatus(ctx *baseOsMgrContext, partName string) *types.ZbootStatus {
 		log.Errorf("getZbootStatus(%s) not found\n", partName)
 		return nil
 	}
-	status := cast.CastZbootStatus(st)
+	status := cast.ZbootStatus(st)
 	return &status
 }
 
