@@ -19,10 +19,10 @@ import (
 // ticker function
 func handleDeviceTimers(ctxPtr *nodeagentContext) {
 	updateTickerTime(ctxPtr)
-	handleUpgradeTestValidation(ctxPtr)
 	handleNetworkUpTimeoutExpiry(ctxPtr)
 	handleFallbackOnCloudDisconnect(ctxPtr)
 	handleResetOnCloudDisconnect(ctxPtr)
+	handleUpgradeTestValidation(ctxPtr)
 }
 
 // for every ticker, based on the last config
@@ -93,7 +93,7 @@ func handleResetOnCloudDisconnect(ctxPtr *nodeagentContext) {
 // on upgrade validation testing time expiry,
 // initiate the validation completion procedure
 func handleUpgradeTestValidation(ctxPtr *nodeagentContext) {
-	if !ctxPtr.testInprogress {
+	if !ctxPtr.testInprogress || ctxPtr.needsReboot {
 		return
 	}
 	if checkUpgradeValidationTestTimeExpiry(ctxPtr) {
