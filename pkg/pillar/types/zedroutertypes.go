@@ -136,6 +136,7 @@ func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
 type DevicePortConfigList struct {
 	CurrentIndex   int
 	PortConfigList []DevicePortConfig
+	// XXX need an error for propagation from the parser
 }
 
 // A complete set of configuration for all the ports used by zedrouter on the
