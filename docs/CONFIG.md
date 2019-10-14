@@ -220,7 +220,6 @@ make config.img; make installer.raw
 The [tools/makeusbconf.sh](../tools/makeusbconf.sh) can run on any system that supports Docker to create a USB stick.
 It takes a usb.json as an argument, plus a few additrional arguments:
 
-* -t Test the stick by mounting and reading it after written.
 * -d Create a dump directory on the stick, which Eve will use to deposit any
   diagnostics.
 * -i Create an identity directory on the stick, which Eve will use to deposit
