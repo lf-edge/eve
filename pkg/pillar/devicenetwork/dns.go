@@ -92,7 +92,7 @@ func GetDNSInfo(us *types.NetworkPortStatus) {
 	if us.Dhcp != types.DT_CLIENT {
 		return
 	}
-	filename := ifnameToResolvConf(us.IfName)
+	filename := IfnameToResolvConf(us.IfName)
 	if filename == "" {
 		log.Errorf("No resolv.conf for %s", us.IfName)
 		return
@@ -118,8 +118,8 @@ func GetDNSInfo(us *types.NetworkPortStatus) {
 
 var resolveConfDirs = []string{"/run/dhcpcd/resolv.conf", "/run/wwan/resolv.conf"}
 
-// Look for a file created by dhcpcd
-func ifnameToResolvConf(ifname string) string {
+// IfnameToResolvConf : Look for a file created by dhcpcd
+func IfnameToResolvConf(ifname string) string {
 	for _, d := range resolveConfDirs {
 		filename := fmt.Sprintf("%s/%s.dhcp", d, ifname)
 		_, err := os.Stat(filename)

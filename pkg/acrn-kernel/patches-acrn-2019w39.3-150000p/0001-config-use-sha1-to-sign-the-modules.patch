@@ -1,0 +1,49 @@
+From 4d5d0bad2880185467f93f336a59255cba9bafb7 Mon Sep 17 00:00:00 2001
+From: Jack Ren <jack.ren@intel.com>
+Date: Wed, 2 Oct 2019 11:48:34 +0800
+Subject: [PATCH 1/2] config: use sha1 to sign the modules
+
+Since  alpine 3.10 only supports low version ssl lib,
+let's use SHA1 to sign the kernel modules
+
+Signed-off-by: Jack Ren <jack.ren@intel.com>
+---
+ kernel_config_uefi_sos | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/kernel_config_uefi_sos b/kernel_config_uefi_sos
+index 782a826ac3aa..57f2d6807050 100644
+--- a/kernel_config_uefi_sos
++++ b/kernel_config_uefi_sos
+@@ -766,12 +766,12 @@ CONFIG_MODVERSIONS=y
+ CONFIG_MODULE_SIG=y
+ CONFIG_MODULE_SIG_FORCE=y
+ CONFIG_MODULE_SIG_ALL=y
+-# CONFIG_MODULE_SIG_SHA1 is not set
++CONFIG_MODULE_SIG_SHA1=y
+ # CONFIG_MODULE_SIG_SHA224 is not set
+ # CONFIG_MODULE_SIG_SHA256 is not set
+ # CONFIG_MODULE_SIG_SHA384 is not set
+-CONFIG_MODULE_SIG_SHA512=y
+-CONFIG_MODULE_SIG_HASH="sha512"
++# CONFIG_MODULE_SIG_SHA512 is not set
++CONFIG_MODULE_SIG_HASH="sha1"
+ # CONFIG_MODULE_COMPRESS is not set
+ # CONFIG_TRIM_UNUSED_KSYMS is not set
+ CONFIG_MODULES_TREE_LOOKUP=y
+@@ -1387,8 +1387,10 @@ CONFIG_DNS_RESOLVER=y
+ CONFIG_OPENVSWITCH=m
+ # CONFIG_VSOCKETS is not set
+ # CONFIG_NETLINK_DIAG is not set
+-# CONFIG_MPLS is not set
+-# CONFIG_NET_NSH is not set
++CONFIG_MPLS=y
++CONFIG_NET_MPLS_GSO=m
++# CONFIG_MPLS_ROUTING is not set
++CONFIG_NET_NSH=m
+ # CONFIG_HSR is not set
+ # CONFIG_NET_SWITCHDEV is not set
+ # CONFIG_NET_L3_MASTER_DEV is not set
+-- 
+2.23.0
+

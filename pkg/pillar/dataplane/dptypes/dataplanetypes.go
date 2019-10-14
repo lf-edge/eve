@@ -218,6 +218,8 @@ type EtrRunStatus struct {
 
 	// Kill message channel
 	KillChannel chan bool
+	// Killed ACK message channel
+	AckChannel chan bool
 
 	//Ring    *pfring.Ring
 
