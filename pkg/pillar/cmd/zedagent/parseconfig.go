@@ -325,7 +325,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 
 		switch networkInstanceConfig.Type {
 		case types.NetworkInstanceTypeSwitch:
-			// XXX zedcloud should send First/None type for switch
+			// XXX controller should send AddressTypeNone type for switch
 			// network instances
 			if networkInstanceConfig.IpType != types.AddressTypeNone {
 				log.Errorf("Switch network instance %s %s with invalid IpType %d should be %d\n",
@@ -599,118 +599,11 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 
 	newPorts := []types.NetworkPortConfig{}
 	for _, sysAdapter := range sysAdapters {
-		var isMgmt, isFree bool = false, false
-
-		phyio := lookupDeviceIo(getconfigCtx, sysAdapter.Name)
-		if phyio == nil {
-			// We will re-check when phyio changes.
-			log.Errorf("Missing phyio for %s; ignored", sysAdapter.Name)
-			continue
-		} else {
-			isFree = phyio.UsagePolicy.FreeUplink
-			log.Infof("Found phyio for %s: isFree: %t", sysAdapter.Name, isFree)
+		port := parseOneSystemAdapterConfig(getconfigCtx, sysAdapter, version)
+		if port != nil {
+			newPorts = append(newPorts, *port)
 		}
-		if version < types.DPCIsMgmt {
-			log.Warnf("XXX old version; assuming isMgmt and isFree")
-			// This should go away when cloud sends proper values
-			isMgmt = true
-			isFree = true
-			version = types.DPCIsMgmt
-		} else {
-			log.Warnf("New version for %s Mgmt/Free %t/%t vs %t/%t",
-				sysAdapter.Name, isMgmt, isFree,
-				sysAdapter.Uplink, sysAdapter.FreeUplink)
-			isMgmt = sysAdapter.Uplink
-			log.Infof("System adapter %s, isMgmt: %t", sysAdapter.Name, isMgmt)
-
-			// Either one can set isFree; both need to clear
-			if sysAdapter.FreeUplink && !isFree {
-				log.Warnf("Free flag forced by system adapter for %s",
-					sysAdapter.Name)
-				isFree = true
-			}
-		}
-
-		port := types.NetworkPortConfig{}
-		port.IfName = sysAdapter.Name
-		if sysAdapter.LogicalName != "" {
-			port.Name = sysAdapter.LogicalName
-		} else {
-			port.Name = sysAdapter.Name
-		}
-		port.IsMgmt = isMgmt
-		port.Free = isFree
-
-		port.Dhcp = types.DT_NONE
-		var ip net.IP
-		if sysAdapter.Addr != "" {
-			ip = net.ParseIP(sysAdapter.Addr)
-			if ip == nil {
-				log.Errorf("parseSystemAdapterConfig: Port %s has Bad "+
-					"sysAdapter.Addr %s - ignored\n",
-					sysAdapter.Name, sysAdapter.Addr)
-				continue
-			}
-			// XXX Note that ip is not used unless we have a network below
-		}
-		if sysAdapter.NetworkUUID != "" &&
-			sysAdapter.NetworkUUID != nilUUID.String() {
-
-			// Lookup the network with given UUID
-			// and copy proxy and other configuration
-			networkXObject, err := getconfigCtx.pubNetworkXObjectConfig.Get(sysAdapter.NetworkUUID)
-			if err != nil {
-				log.Errorf("parseSystemAdapterConfig: Network with UUID %s not found: %s\n",
-					sysAdapter.NetworkUUID, err)
-				continue
-			}
-			network := cast.CastNetworkXObjectConfig(networkXObject)
-			// XXX check if error set in network
-			if ip != nil {
-				addrSubnet := network.Subnet
-				addrSubnet.IP = ip
-				port.AddrSubnet = addrSubnet.String()
-			}
-
-			port.Gateway = network.Gateway
-			port.DomainName = network.DomainName
-			port.NtpServer = network.NtpServer
-			port.DnsServers = network.DnsServers
-			// Need to be careful since zedcloud can feed us bad Dhcp type
-			port.Dhcp = network.Dhcp
-			switch network.Dhcp {
-			case types.DT_STATIC:
-				if port.AddrSubnet == "" {
-					log.Errorf("parseSystemAdapterConfig: DT_STATIC but missing "+
-						"subnet address in %+v; ignored", port)
-					continue
-				}
-			case types.DT_CLIENT:
-				// Do nothing
-			case types.DT_NONE:
-				if isMgmt {
-					// XXX any forward error to systemAdapter
-					// we could set?
-					log.Errorf("parseSystemAdapterConfig: isMgmt with DT_NONE not supported")
-					continue
-				}
-			default:
-				log.Warnf("parseSystemAdapterConfig: ignore unsupported dhcp type %v\n",
-					network.Dhcp)
-				continue
-			}
-			// XXX use DnsNameToIpList?
-			if network.Proxy != nil {
-				port.ProxyConfig = *network.Proxy
-			}
-		} else if isMgmt {
-			// XXX any forward error to systemAdapter we could set?
-			log.Errorf("parseSystemAdapterConfig: isMgmt without networkUUID not supported")
-			return
-		}
-		newPorts = append(newPorts, port)
 	}
-
 	if len(newPorts) == 0 {
 		log.Infof("parseSystemAdapterConfig: No Port configuration present")
 		return
@@ -738,6 +631,144 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	getconfigCtx.pubDevicePortConfig.Publish("zedagent", *portConfig)
 
 	log.Infof("parseSystemAdapterConfig: Done")
+}
+
+// Returns a port if it should be added to the list; some errors result in
+// adding an port to to DevicePortConfig with ParseError set.
+func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext, sysAdapter *zconfig.SystemAdapter, version types.DevicePortConfigVersion) *types.NetworkPortConfig {
+	var isMgmt, isFree bool = false, false
+
+	port := new(types.NetworkPortConfig)
+	port.IfName = sysAdapter.Name
+	if sysAdapter.LogicalName != "" {
+		port.Name = sysAdapter.LogicalName
+	} else {
+		port.Name = sysAdapter.Name
+	}
+	phyio := lookupDeviceIo(getconfigCtx, sysAdapter.Name)
+	if phyio == nil {
+		// We will re-check when phyio changes.
+		errStr := fmt.Sprintf("Missing phyio for %s; ignored",
+			sysAdapter.Name)
+		log.Error(errStr)
+		port.ParseError = errStr
+		port.ParseErrorTime = time.Now()
+		return port
+	}
+	isFree = phyio.UsagePolicy.FreeUplink
+	log.Infof("Found phyio for %s: isFree: %t", sysAdapter.Name, isFree)
+
+	if version < types.DPCIsMgmt {
+		log.Warnf("XXX old version; assuming isMgmt and isFree")
+		// This should go away when cloud sends proper values
+		isMgmt = true
+		isFree = true
+		version = types.DPCIsMgmt
+	} else {
+		isMgmt = sysAdapter.Uplink
+		log.Infof("System adapter %s, isMgmt: %t", sysAdapter.Name, isMgmt)
+		// Either one can set isFree; both need to clear
+		if sysAdapter.FreeUplink && !isFree {
+			log.Warnf("Free flag forced by system adapter for %s",
+				sysAdapter.Name)
+			isFree = true
+		}
+	}
+
+	port.IsMgmt = isMgmt
+	port.Free = isFree
+
+	port.Dhcp = types.DT_NONE
+	var ip net.IP
+	if sysAdapter.Addr != "" {
+		ip = net.ParseIP(sysAdapter.Addr)
+		if ip == nil {
+			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s has Bad "+
+				"sysAdapter.Addr %s - ignored",
+				sysAdapter.Name, sysAdapter.Addr)
+			log.Error(errStr)
+			port.ParseError = errStr
+			port.ParseErrorTime = time.Now()
+			return port
+		}
+		// Note that ip is not used unless we have a network UUID
+	}
+	if sysAdapter.NetworkUUID != "" &&
+		sysAdapter.NetworkUUID != nilUUID.String() {
+
+		// Lookup the network with given UUID
+		// and copy proxy and other configuration
+		networkXObject, err := getconfigCtx.pubNetworkXObjectConfig.Get(sysAdapter.NetworkUUID)
+		if err != nil {
+			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s Network with UUID %s not found: %s",
+				port.IfName, sysAdapter.NetworkUUID, err)
+			log.Error(errStr)
+			port.ParseError = errStr
+			port.ParseErrorTime = time.Now()
+			return port
+		}
+		network := cast.CastNetworkXObjectConfig(networkXObject)
+		if network.Error != "" {
+			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s Network error: %v",
+				port.IfName, network.Error)
+			port.ParseError = errStr
+			port.ParseErrorTime = network.ErrorTime
+			return port
+		}
+		if ip != nil {
+			addrSubnet := network.Subnet
+			addrSubnet.IP = ip
+			port.AddrSubnet = addrSubnet.String()
+		}
+
+		port.Gateway = network.Gateway
+		port.DomainName = network.DomainName
+		port.NtpServer = network.NtpServer
+		port.DnsServers = network.DnsServers
+		// Need to be careful since zedcloud can feed us bad Dhcp type
+		port.Dhcp = network.Dhcp
+		switch network.Dhcp {
+		case types.DT_STATIC:
+			if port.AddrSubnet == "" {
+				errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s DT_STATIC but missing "+
+					"subnet address in %+v; ignored", port.IfName, port)
+				log.Error(errStr)
+				port.ParseError = errStr
+				port.ParseErrorTime = time.Now()
+				return port
+			}
+		case types.DT_CLIENT:
+			// Do nothing
+		case types.DT_NONE:
+			if isMgmt {
+				errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s: isMgmt with DT_NONE not supported",
+					port.IfName)
+				log.Error(errStr)
+				port.ParseError = errStr
+				port.ParseErrorTime = time.Now()
+				return port
+			}
+		default:
+			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s: ignore unsupported dhcp type %v",
+				port.IfName, network.Dhcp)
+			log.Error(errStr)
+			port.ParseError = errStr
+			port.ParseErrorTime = time.Now()
+			return port
+		}
+		// XXX use DnsNameToIpList?
+		if network.Proxy != nil {
+			port.ProxyConfig = *network.Proxy
+		}
+	} else if isMgmt {
+		errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s isMgmt without networkUUID not supported",
+			port.IfName)
+		log.Error(errStr)
+		port.ParseError = errStr
+		port.ParseErrorTime = time.Now()
+		return port
+	}
+	return port
 }
 
 var deviceIoListPrevConfigHash []byte
@@ -975,127 +1006,153 @@ func publishNetworkXObjectConfig(ctx *getconfigContext,
 		ctx.pubNetworkXObjectConfig.Unpublish(k)
 	}
 
-	// XXX note that we currently get repeats in the same loop.
+	// XXX note that we currently get repeats in the same loop since
+	// the controller can send the same network multiple times.
 	// Should we track them and not rewrite them?
 	for _, netEnt := range cfgNetworks {
-		id, err := uuid.FromString(netEnt.Id)
-		if err != nil {
-			log.Errorf("publishNetworkXObjectConfig: Malformed UUID ignored: %s\n",
-				err)
-			continue
+		config := parseOneNetworkXObjectConfig(ctx, netEnt)
+		if config != nil {
+			ctx.pubNetworkXObjectConfig.Publish(config.Key(),
+				config)
 		}
-		config := types.NetworkXObjectConfig{
-			UUID: id,
-			Type: types.NetworkType(netEnt.Type),
-		}
-		// proxy configuration from cloud network configuration
-		netProxyConfig := netEnt.GetEntProxy()
-		if netProxyConfig == nil {
-			log.Infof("publishNetworkXObjectConfig: EntProxy of network %s is nil",
-				netEnt.Id)
-		}
-		if netProxyConfig != nil {
-			log.Infof("publishNetworkXObjectConfig: Proxy configuration present in %s",
-				netEnt.Id)
-
-			proxyConfig := types.ProxyConfig{
-				NetworkProxyEnable: netProxyConfig.NetworkProxyEnable,
-				NetworkProxyURL:    netProxyConfig.NetworkProxyURL,
-				Pacfile:            netProxyConfig.Pacfile,
-			}
-			proxyConfig.Exceptions = netProxyConfig.Exceptions
-
-			// parse the static proxy entries
-			for _, proxy := range netProxyConfig.Proxies {
-				proxyEntry := types.ProxyEntry{
-					Server: proxy.Server,
-					Port:   proxy.Port,
-				}
-				switch proxy.Proto {
-				case zconfig.ProxyProto_PROXY_HTTP:
-					proxyEntry.Type = types.NPT_HTTP
-				case zconfig.ProxyProto_PROXY_HTTPS:
-					proxyEntry.Type = types.NPT_HTTPS
-				case zconfig.ProxyProto_PROXY_SOCKS:
-					proxyEntry.Type = types.NPT_SOCKS
-				case zconfig.ProxyProto_PROXY_FTP:
-					proxyEntry.Type = types.NPT_FTP
-				default:
-				}
-				proxyConfig.Proxies = append(proxyConfig.Proxies, proxyEntry)
-				log.Debugf("publishNetworkXObjectConfig: Adding proxy entry %s:%d in %s",
-					proxyEntry.Server, proxyEntry.Port, netEnt.Id)
-			}
-
-			config.Proxy = &proxyConfig
-		}
-
-		log.Infof("publishNetworkXObjectConfig: processing %s type %d\n",
-			config.Key(), config.Type)
-
-		ipspec := netEnt.GetIp()
-		switch config.Type {
-		case types.NT_CryptoEID, types.NT_IPV4, types.NT_IPV6:
-			if ipspec == nil {
-				log.Errorf("publishNetworkXObjectConfig: Missing ipspec for %s in %v\n",
-					id.String(), netEnt)
-				continue
-			}
-			err := parseIpspecNetworkXObject(ipspec, &config)
-			if err != nil {
-				// XXX return how?
-				log.Errorf("publishNetworkXObjectConfig: parseIpspec failed: %s\n", err)
-				continue
-			}
-		case types.NT_NOOP:
-			// XXX zedcloud is sending static and dynamic entries with DT_NOOP. Why?
-			if ipspec != nil {
-				log.Warnf("XXX NT_NOOP with ipspec %v", ipspec)
-				err := parseIpspecNetworkXObject(ipspec, &config)
-				if err != nil {
-					// XXX return how?
-					log.Errorf("publishNetworkXObjectConfig: parseIpspec ignored: %s\n", err)
-				}
-			}
-
-		default:
-			log.Errorf("publishNetworkXObjectConfig: Unknown NetworkConfig type %d for %s in %v; ignored\n",
-				config.Type, id.String(), netEnt)
-			// XXX return error? Ignore for now
-			continue
-		}
-
-		// Parse and store DnsNameToIPList form Network configuration
-		dnsEntries := netEnt.GetDns()
-
-		// Parse and populate the DnsNameToIP list
-		// This is what we will publish to zedrouter
-		nameToIPs := []types.DnsNameToIP{}
-		for _, dnsEntry := range dnsEntries {
-			hostName := dnsEntry.HostName
-
-			ips := []net.IP{}
-			for _, strAddr := range dnsEntry.Address {
-				ip := net.ParseIP(strAddr)
-				if ip != nil {
-					ips = append(ips, ip)
-				} else {
-					log.Errorf("Bad dnsEntry %s ignored\n",
-						strAddr)
-				}
-			}
-
-			nameToIP := types.DnsNameToIP{
-				HostName: hostName,
-				IPs:      ips,
-			}
-			nameToIPs = append(nameToIPs, nameToIP)
-		}
-		config.DnsNameToIPList = nameToIPs
-
-		ctx.pubNetworkXObjectConfig.Publish(config.Key(),
-			&config)
 	}
+}
+
+func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.NetworkConfig) *types.NetworkXObjectConfig {
+
+	config := new(types.NetworkXObjectConfig)
+	config.Type = types.NetworkType(netEnt.Type)
+	id, err := uuid.FromString(netEnt.Id)
+	if err != nil {
+		errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: Malformed UUID ignored: %s",
+			err)
+		config.Error = errStr
+		config.ErrorTime = time.Now()
+		return config
+	}
+	config.UUID = id
+
+	log.Infof("parseOneNetworkXObjectConfig: processing %s type %d",
+		config.Key(), config.Type)
+
+	// proxy configuration from cloud network configuration
+	netProxyConfig := netEnt.GetEntProxy()
+	if netProxyConfig == nil {
+		log.Infof("parseOneNetworkXObjectConfig: EntProxy of network %s is nil",
+			netEnt.Id)
+	} else {
+		log.Infof("parseOneNetworkXObjectConfig: Proxy configuration present in %s",
+			netEnt.Id)
+
+		proxyConfig := types.ProxyConfig{
+			NetworkProxyEnable: netProxyConfig.NetworkProxyEnable,
+			NetworkProxyURL:    netProxyConfig.NetworkProxyURL,
+			Pacfile:            netProxyConfig.Pacfile,
+		}
+		proxyConfig.Exceptions = netProxyConfig.Exceptions
+
+		// parse the static proxy entries
+		for _, proxy := range netProxyConfig.Proxies {
+			proxyEntry := types.ProxyEntry{
+				Server: proxy.Server,
+				Port:   proxy.Port,
+			}
+			switch proxy.Proto {
+			case zconfig.ProxyProto_PROXY_HTTP:
+				proxyEntry.Type = types.NPT_HTTP
+			case zconfig.ProxyProto_PROXY_HTTPS:
+				proxyEntry.Type = types.NPT_HTTPS
+			case zconfig.ProxyProto_PROXY_SOCKS:
+				proxyEntry.Type = types.NPT_SOCKS
+			case zconfig.ProxyProto_PROXY_FTP:
+				proxyEntry.Type = types.NPT_FTP
+			default:
+			}
+			proxyConfig.Proxies = append(proxyConfig.Proxies, proxyEntry)
+			log.Debugf("parseOneNetworkXObjectConfig: Adding proxy entry %s:%d in %s",
+				proxyEntry.Server, proxyEntry.Port, netEnt.Id)
+		}
+
+		config.Proxy = &proxyConfig
+	}
+
+	ipspec := netEnt.GetIp()
+	switch config.Type {
+	case types.NT_CryptoEID, types.NT_IPV4, types.NT_IPV6:
+		if ipspec == nil {
+			errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: Missing ipspec for %s in %v",
+				config.Key(), netEnt)
+			log.Error(errStr)
+			config.Error = errStr
+			config.ErrorTime = time.Now()
+			return config
+		}
+		err := parseIpspecNetworkXObject(ipspec, config)
+		if err != nil {
+			errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: parseIpspec failed for %s: %s",
+				config.Key(), err)
+			log.Error(errStr)
+			config.Error = errStr
+			config.ErrorTime = time.Now()
+			return config
+		}
+	case types.NT_NOOP:
+		// XXX is controller still sending static and dynamic entries with NT_NOOP? Why?
+		if ipspec != nil {
+			log.Warnf("XXX NT_NOOP for %s with ipspec %v",
+				config.Key(), ipspec)
+			err := parseIpspecNetworkXObject(ipspec, config)
+			if err != nil {
+				errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: parseIpspec ignored for %s: %s",
+					config.Key(), err)
+				log.Error(errStr)
+				config.Error = errStr
+				config.ErrorTime = time.Now()
+				return config
+			}
+		}
+
+	default:
+		errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: Unknown NetworkConfig type %d for %s in %v; ignored",
+			config.Type, id.String(), netEnt)
+		log.Error(errStr)
+		config.Error = errStr
+		config.ErrorTime = time.Now()
+		return config
+	}
+
+	// Parse and store DnsNameToIPList form Network configuration
+	dnsEntries := netEnt.GetDns()
+
+	// Parse and populate the DnsNameToIP list
+	// This is what we will publish to zedrouter
+	nameToIPs := []types.DnsNameToIP{}
+	for _, dnsEntry := range dnsEntries {
+		hostName := dnsEntry.HostName
+
+		ips := []net.IP{}
+		for _, strAddr := range dnsEntry.Address {
+			ip := net.ParseIP(strAddr)
+			if ip != nil {
+				ips = append(ips, ip)
+			} else {
+				errStr := fmt.Sprintf("parseOneNetworkXObjectConfig: bad dnsEntry %s for %s",
+					strAddr, config.Key())
+				log.Error(errStr)
+				config.Error = errStr
+				config.ErrorTime = time.Now()
+				return config
+			}
+		}
+
+		nameToIP := types.DnsNameToIP{
+			HostName: hostName,
+			IPs:      ips,
+		}
+		nameToIPs = append(nameToIPs, nameToIP)
+	}
+	config.DnsNameToIPList = nameToIPs
+	return config
 }
 
 func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObjectConfig) error {
