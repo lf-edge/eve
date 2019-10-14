@@ -143,9 +143,8 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 }
 
 // Calculate local IP addresses to make a types.DeviceNetworkStatus
-func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus types.DeviceNetworkStatus) (types.DeviceNetworkStatus, error) {
+func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus types.DeviceNetworkStatus) types.DeviceNetworkStatus {
 	var globalStatus types.DeviceNetworkStatus
-	var err error = nil
 
 	log.Infof("MakeDeviceNetworkStatus()\n")
 	globalStatus.Version = globalConfig.Version
@@ -167,12 +166,18 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].DomainName = u.DomainName
 		globalStatus.Ports[ix].NtpServer = u.NtpServer
 		globalStatus.Ports[ix].DnsServers = u.DnsServers
+		if u.ParseError != "" {
+			globalStatus.Ports[ix].Error = u.ParseError
+			globalStatus.Ports[ix].ErrorTime = u.ParseErrorTime
+			continue
+		}
 		ifindex, err := IfnameToIndex(u.IfName)
 		if err != nil {
 			errStr := fmt.Sprintf("Port %s does not exist - ignored",
 				u.IfName)
 			log.Errorf("MakeDeviceNetworkStatus: %s\n", errStr)
-			err = errors.New(errStr)
+			globalStatus.Ports[ix].Error = errStr
+			globalStatus.Ports[ix].ErrorTime = time.Now()
 			continue
 		}
 		addrs, err := GetIPAddrs(ifindex)
@@ -238,7 +243,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 	// Immediate check
 	UpdateDeviceNetworkGeo(time.Second, &globalStatus)
 	log.Infof("MakeDeviceNetworkStatus() DONE\n")
-	return globalStatus, err
+	return globalStatus
 }
 
 // CheckDNSUpdate sees if we should update based on DNS
@@ -252,7 +257,7 @@ func CheckDNSUpdate(ctx *DeviceNetworkContext) {
 		ctx.Pending.Inprogress)
 	if !ctx.Pending.Inprogress {
 		dnStatus = *ctx.DeviceNetworkStatus
-		status, _ := MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
+		status := MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
 			dnStatus)
 
 		if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
@@ -264,7 +269,7 @@ func CheckDNSUpdate(ctx *DeviceNetworkContext) {
 			log.Infof("CheckDNSUpdate: No change\n")
 		}
 	} else {
-		dnStatus, _ = MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
+		dnStatus = MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
 			ctx.Pending.PendDNS)
 
 		if !reflect.DeepEqual(ctx.Pending.PendDNS, dnStatus) {
