@@ -482,6 +482,53 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 		aclRule5.Action = []string{"-j", chainName}
 		aclRule5.ActionChainName = chainName
 		rulesList = append(rulesList, aclRule5)
+	} else if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
+		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+			"--match-set", "ipv4.local", "dst", "-p", "udp", "--dport", "bootps"}
+		aclRule1.Action = []string{"-j", "ACCEPT"}
+		aclRule2.Rule = []string{"-o", aclArgs.BridgeName, "-m", "set",
+			"--match-set", "ipv4.local", "src", "-p", "udp", "--sport", "bootps",
+			"-m", "physdev", "--physdev-out", aclArgs.VifName}
+
+		aclRule2.Action = []string{"-j", "ACCEPT"}
+		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-p", "udp", "--dport", "bootps"}
+		aclRule3.Action = []string{"-j", "ACCEPT"}
+		aclRule4.Rule = []string{"-o", aclArgs.BridgeName, "-p", "udp", "--sport", "bootps",
+			"-m", "physdev", "--physdev-out", aclArgs.VifName}
+		aclRule4.Action = []string{"-j", "ACCEPT"}
+		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+
+		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-p", "udp", "--dport", "domain"}
+		aclRule1.Action = []string{"-j", "ACCEPT"}
+		aclRule2.Rule = []string{"-o", aclArgs.BridgeName, "-p", "udp", "--sport", "domain",
+			"-m", "physdev", "--physdev-out", aclArgs.VifName}
+		aclRule2.Action = []string{"-j", "ACCEPT"}
+		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-p", "tcp", "--dport", "domain"}
+		aclRule3.Action = []string{"-j", "ACCEPT"}
+		aclRule4.Rule = []string{"-o", aclArgs.BridgeName, "-p", "tcp", "--sport", "domain",
+			"-m", "physdev", "--physdev-out", aclArgs.VifName}
+		aclRule4.Action = []string{"-j", "ACCEPT"}
+		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+
+		aclRule5.Table = "mangle"
+		aclRule5.Chain = "PREROUTING"
+		aclRule5.Rule = []string{"-i", aclArgs.BridgeName,
+			"-p", "udp", "-m", "multiport", "--dports", "bootps,domain"}
+		chainName := fmt.Sprintf("proto-%s-%s-%d",
+			aclArgs.BridgeName, aclArgs.VifName, 6)
+		createMarkAndAcceptChain(aclArgs, chainName, 6)
+		aclRule5.Action = []string{"-j", chainName}
+		aclRule5.ActionChainName = chainName
+		rulesList = append(rulesList, aclRule5)
+
+		aclRule5.Rule = []string{"-i", aclArgs.BridgeName,
+			"-p", "tcp", "--dport", "domain"}
+		chainName = fmt.Sprintf("proto-%s-%s-%d",
+			aclArgs.BridgeName, aclArgs.VifName, 7)
+		createMarkAndAcceptChain(aclArgs, chainName, 7)
+		aclRule5.Action = []string{"-j", chainName}
+		aclRule5.ActionChainName = chainName
+		rulesList = append(rulesList, aclRule5)
 	}
 
 	// XXX isMgmt is painful; related to commenting out eidset accepts
@@ -548,6 +595,15 @@ func aclDropRules(aclArgs types.AppNetworkACLArgs) (types.IPTablesRuleList, erro
 		aclRule3.RuleID = 0xffffff
 		aclRule3.IsDefaultDrop = true
 		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3)
+	case types.NetworkInstanceTypeSwitch:
+		aclRule2.Rule = append(aclRule2.Rule, "-m", "physdev",
+			"--physdev-out", aclArgs.VifName)
+		aclRule3.Rule = []string{"-i", aclArgs.BridgeName}
+		aclRule3.Action = []string{"-j", "DROP"}
+		aclRule4.Rule = []string{"-o", aclArgs.BridgeName, "-m", "physdev",
+			"--physdev-out", aclArgs.VifName}
+		aclRule4.Action = []string{"-j", "DROP"}
+		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 	default:
 		aclRule3.Rule = []string{"-i", aclArgs.BridgeName}
 		aclRule3.Action = []string{"-j", "DROP"}
@@ -839,6 +895,17 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 	aclRule3.Action = inActions
 	aclRule3.IsUserConfigured = true
 	aclRule3.RuleID = ace.RuleID
+	if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
+		if len(aclArgs.UpLinks) > 1 {
+			errStr := fmt.Sprintf("aceToRules: Switch network instance with more than ONE " +
+				"uplink attached is not supported now.")
+			log.Errorln(errStr)
+			return nil, errors.New(errStr)
+		} else {
+			aclRule3.Rule = append(aclRule3.Rule, "-m", "physdev",
+				"--physdev-in", aclArgs.UpLinks[0])
+		}
+	}
 
 	aclRule4.Rule = outArgs
 	aclRule4.Action = outActions
@@ -889,24 +956,18 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 		}
 
 		if aclRule3.RuleID != -1 {
-			for _, uplink := range aclArgs.UpLinks {
-				aclRule3.Table = "mangle"
-				aclRule3.Chain = "PREROUTING"
-				if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
-					aclRule3.Rule = append(aclRule3.Rule, "-m", "physdev",
-						"--physdev-in", uplink)
-				}
-				aclRule3.IsMarkingRule = true
-				chainName := fmt.Sprintf("%s-%s-%d",
-					aclArgs.BridgeName, aclArgs.VifName, aclRule3.RuleID)
+			aclRule3.Table = "mangle"
+			aclRule3.Chain = "PREROUTING"
+			aclRule3.IsMarkingRule = true
+			chainName := fmt.Sprintf("%s-%s-%d",
+				aclArgs.BridgeName, aclArgs.VifName, aclRule3.RuleID)
 
-				// Embed App id in marking value
-				markingValue := (aclArgs.AppNum << 24) | aclRule3.RuleID
-				createMarkAndAcceptChain(aclArgs, chainName, markingValue)
-				aclRule3.Action = []string{"-j", chainName}
-				aclRule3.ActionChainName = chainName
-				rulesList = append(rulesList, aclRule3)
-			}
+			// Embed App id in marking value
+			markingValue := (aclArgs.AppNum << 24) | aclRule3.RuleID
+			createMarkAndAcceptChain(aclArgs, chainName, markingValue)
+			aclRule3.Action = []string{"-j", chainName}
+			aclRule3.ActionChainName = chainName
+			rulesList = append(rulesList, aclRule3)
 		} else {
 			log.Errorf("Table: %s, Chain: %s, Rule: %s, Action: %s - cannot be"+
 				" programmed due to ACL ID allocation failure",
