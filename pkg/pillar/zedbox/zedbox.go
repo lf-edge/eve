@@ -18,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ledmanager"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/logmanager"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/nim"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/nodeagent"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/verifier"
@@ -53,6 +54,8 @@ func main() {
 		logmanager.Run()
 	case "nim":
 		nim.Run()
+	case "nodeagent":
+		nodeagent.Run()
 	case "verifier":
 		verifier.Run()
 	case "waitforaddr":
