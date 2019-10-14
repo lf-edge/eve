@@ -996,6 +996,7 @@ type NetworkXObjectConfig struct {
 	DhcpRange       IpRange
 	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
 	Proxy           *ProxyConfig
+	// XXX need an error for propagation from the parser
 }
 
 type IpRange struct {

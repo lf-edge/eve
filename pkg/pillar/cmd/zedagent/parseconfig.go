@@ -346,22 +346,19 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		if apiConfigEntry.Port != nil {
 			networkInstanceConfig.Port = apiConfigEntry.Port.Name
 		}
-		// XXX temporary hack:
-		// For switch log+force to AddressTypeNone and do not copy
-		// ipconfig but do copy opaque
-		// XXX zedcloud should send First/None type for switch
-		// network instances
 		networkInstanceConfig.IpType = types.AddressType(apiConfigEntry.IpType)
 
 		switch networkInstanceConfig.Type {
 		case types.NetworkInstanceTypeSwitch:
+			// XXX zedcloud should send First/None type for switch
+			// network instances
 			if networkInstanceConfig.IpType != types.AddressTypeNone {
-				log.Warnf("Switch network instance %s %s with invalid IpType %d overridden as %d\n",
+				log.Errorf("Switch network instance %s %s with invalid IpType %d should be %d\n",
 					networkInstanceConfig.UUID.String(),
 					networkInstanceConfig.DisplayName,
 					networkInstanceConfig.IpType,
 					types.AddressTypeNone)
-				networkInstanceConfig.IpType = types.AddressTypeNone
+				continue
 			}
 			ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
 				&networkInstanceConfig)
@@ -670,9 +667,6 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 		port.Free = isFree
 
 		port.Dhcp = types.DT_NONE
-		// XXX temporary hack: if static IP 0.0.0.0 we log and
-		// Dhcp = DT_NONE. Remove once zedcloud can send Dhcp = None
-		forceDhcpNone := false
 		var ip net.IP
 		if sysAdapter.Addr != "" {
 			ip = net.ParseIP(sysAdapter.Addr)
@@ -681,9 +675,6 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 					"sysAdapter.Addr %s - ignored\n",
 					sysAdapter.Name, sysAdapter.Addr)
 				continue
-			}
-			if ip.IsUnspecified() {
-				forceDhcpNone = true
 			}
 			// XXX Note that ip is not used unless we have a network below
 		}
@@ -699,6 +690,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 				continue
 			}
 			network := cast.CastNetworkXObjectConfig(networkXObject)
+			// XXX check if error set in network
 			if ip != nil {
 				addrSubnet := network.Subnet
 				addrSubnet.IP = ip
@@ -713,11 +705,6 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			port.Dhcp = network.Dhcp
 			switch network.Dhcp {
 			case types.DT_STATIC:
-				if forceDhcpNone {
-					log.Warnf("Forcing DT_NONE for %+v\n", port)
-					port.Dhcp = types.DT_NONE
-					break
-				}
 				if port.AddrSubnet == "" {
 					log.Errorf("parseSystemAdapterConfig: DT_STATIC but missing "+
 						"subnet address in %+v; ignored", port)
@@ -726,7 +713,12 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			case types.DT_CLIENT:
 				// Do nothing
 			case types.DT_NONE:
-				// Do nothing
+				if isMgmt {
+					// XXX any forward error to systemAdapter
+					// we could set?
+					log.Errorf("parseSystemAdapterConfig: isMgmt with DT_NONE not supported")
+					continue
+				}
 			default:
 				log.Warnf("parseSystemAdapterConfig: ignore unsupported dhcp type %v\n",
 					network.Dhcp)
@@ -736,9 +728,14 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			if network.Proxy != nil {
 				port.ProxyConfig = *network.Proxy
 			}
+		} else if isMgmt {
+			// XXX any forward error to systemAdapter we could set?
+			log.Errorf("parseSystemAdapterConfig: isMgmt without networkUUID not supported")
+			return
 		}
 		newPorts = append(newPorts, port)
 	}
+
 	if len(newPorts) == 0 {
 		log.Infof("parseSystemAdapterConfig: No Port configuration present")
 		return
@@ -1076,9 +1073,9 @@ func publishNetworkXObjectConfig(ctx *getconfigContext,
 				continue
 			}
 		case types.NT_NOOP:
-			// XXX zedcloud is sending static and dynamic entries with zero.
-			// XXX could also be for a switch without an IP address??
+			// XXX zedcloud is sending static and dynamic entries with DT_NOOP. Why?
 			if ipspec != nil {
+				log.Warnf("XXX NT_NOOP with ipspec %v", ipspec)
 				err := parseIpspecNetworkXObject(ipspec, &config)
 				if err != nil {
 					// XXX return how?
