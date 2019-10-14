@@ -38,10 +38,11 @@ const (
 type SyncTransportType string
 
 const (
-	SyncAwsTr   SyncTransportType = "s3"
-	SyncAzureTr SyncTransportType = "azure"
-	SyncHttpTr  SyncTransportType = "http"
-	SyncSftpTr  SyncTransportType = "sftp"
+	SyncAwsTr       SyncTransportType = "s3"
+	SyncAzureTr     SyncTransportType = "azure"
+	SyncHttpTr      SyncTransportType = "http"
+	SyncSftpTr      SyncTransportType = "sftp"
+	SyncContainerTr SyncTransportType = "container"
 )
 
 //
@@ -226,6 +227,14 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 			syncEp.uname = auth.Uname
 			syncEp.passwd = auth.Password
 			syncEp.keys = auth.Keys
+		}
+		syncEp.failPostTime = time.Now()
+		return syncEp, nil
+	case SyncContainerTr:
+		syncEp := &ContainerTransportMethod{transport: tr, surl: UrlOrRegion, ctx: ctx}
+		if auth != nil {
+			syncEp.uname = auth.Uname
+			syncEp.passwd = auth.Password
 		}
 		syncEp.failPostTime = time.Now()
 		return syncEp, nil

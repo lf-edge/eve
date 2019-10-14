@@ -59,6 +59,9 @@ type DronaRequest struct {
 	// field is going to be json marshalled
 	status string
 
+	// To store any response message uploading/downloading container images
+	message string
+
 	// result to be sent out
 	result chan *DronaRequest
 
