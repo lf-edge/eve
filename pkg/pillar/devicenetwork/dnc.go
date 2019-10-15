@@ -249,7 +249,7 @@ func VerifyPending(pending *DPCPending,
 	pending.PendDNS = pend2
 
 	// We want connectivity to zedcloud via atleast one Management port.
-	rtf, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1, timeout)
+	rtf, err := VerifyDeviceNetworkStatus(&pending.PendDNS, 1, timeout)
 	if err == nil {
 		pending.PendDPC.LastSucceeded = time.Now()
 		pending.PendDPC.LastError = ""

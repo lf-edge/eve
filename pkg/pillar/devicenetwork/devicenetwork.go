@@ -60,7 +60,7 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 }
 
 // Check if device can talk to outside world via atleast one of the free uplinks
-func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
+func VerifyDeviceNetworkStatus(status *types.DeviceNetworkStatus,
 	retryCount int, timeout uint32) (bool, error) {
 
 	log.Infof("VerifyDeviceNetworkStatus() %d\n", retryCount)
@@ -81,7 +81,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	testUrl := serverNameAndPort + "/api/v1/edgedevice/ping"
 
 	zedcloudCtx := zedcloud.ZedCloudContext{
-		DeviceNetworkStatus: &status,
+		DeviceNetworkStatus: status,
 		NetworkSendTimeout:  timeout,
 	}
 
@@ -114,7 +114,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	}
 	zedcloudCtx.TlsConfig = tlsConfig
 	for ix := range status.Ports {
-		err = CheckAndGetNetworkProxy(&status, &status.Ports[ix])
+		err = CheckAndGetNetworkProxy(status, &status.Ports[ix])
 		if err != nil {
 			errStr := fmt.Sprintf("GetNetworkProxy failed %s", err)
 			log.Errorf("VerifyDeviceNetworkStatus: %s\n", errStr)

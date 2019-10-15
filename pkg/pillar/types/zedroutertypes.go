@@ -294,8 +294,9 @@ type NetworkPortStatus struct {
 	NetworkXObjectConfig
 	AddrInfoList []AddrInfo
 	ProxyConfig
-	Error     string
-	ErrorTime time.Time
+	Error          string
+	ErrorTime      time.Time
+	CloudReachable bool
 }
 
 type AddrInfo struct {
@@ -313,10 +314,10 @@ type DeviceNetworkStatus struct {
 
 func (status *DeviceNetworkStatus) GetPortByName(
 	port string) *NetworkPortStatus {
-	for _, portStatus := range status.Ports {
+	for i, portStatus := range status.Ports {
 		if strings.EqualFold(portStatus.Name, port) {
 			log.Infof("Found NetworkPortStatus for %s", port)
-			return &portStatus
+			return &status.Ports[i]
 		}
 	}
 	return nil
@@ -324,10 +325,10 @@ func (status *DeviceNetworkStatus) GetPortByName(
 
 func (status *DeviceNetworkStatus) GetPortByIfName(
 	port string) *NetworkPortStatus {
-	for _, portStatus := range status.Ports {
+	for i, portStatus := range status.Ports {
 		if portStatus.IfName == port {
 			log.Infof("Found NetworkPortStatus for %s", port)
-			return &portStatus
+			return &status.Ports[i]
 		}
 	}
 	return nil

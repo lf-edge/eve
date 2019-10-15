@@ -701,7 +701,9 @@ func updateFilteredFallback(ctx *nimContext) {
 }
 
 func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool {
-	rtf, err := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1, ctx.TestSendTimeout)
+	rtf, err := devicenetwork.VerifyDeviceNetworkStatus(ctx.DeviceNetworkStatus, 1, ctx.TestSendTimeout)
+	// Some of the uplink ports might have their CloudReachable state changed
+	ctx.PubDeviceNetworkStatus.Publish("global", ctx.DeviceNetworkStatus)
 	if err == nil {
 		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
 		if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {

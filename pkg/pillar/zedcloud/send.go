@@ -82,6 +82,17 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 			}
 		}
 		for _, intf := range intfs {
+			portStatus := ctx.DeviceNetworkStatus.GetPortByIfName(intf)
+			if portStatus != nil {
+				if portStatus.CloudReachable == false {
+					log.Infof("SendOnAllIntf: XXXXX Skipping interface %s, since cloud is not "+
+						"reachable via this interface", intf)
+					continue
+				}
+			} else {
+				log.Errorf("SendOnAllIntf: Could not find DevicePortConfig for interface %s "+
+					"in DeviceNetworkStatus %+v", intf, ctx.DeviceNetworkStatus)
+			}
 			resp, contents, rtf, err := SendOnIntf(ctx, url, intf, reqlen, b, allowProxy)
 			if rtf {
 				remoteTemporaryFailure = true
@@ -134,10 +145,6 @@ func VerifyAllIntf(ctx ZedCloudContext,
 			log.Debugf("VerifyAllIntf: non-free %v\n", intfs)
 		}
 		for _, intf := range intfs {
-			if intfSuccessCount >= successCount {
-				// We have enough uplinks with cloud connectivity working.
-				break
-			}
 			resp, _, rtf, err := SendOnIntf(ctx, url, intf, 0, nil, allowProxy)
 			if rtf {
 				remoteTemporaryFailure = true
@@ -148,10 +155,12 @@ func VerifyAllIntf(ctx ZedCloudContext,
 				errorList = append(errorList, err)
 				continue
 			}
+			portStatus := ctx.DeviceNetworkStatus.GetPortByIfName(intf)
 			switch resp.StatusCode {
 			case http.StatusOK, http.StatusCreated:
 				log.Infof("VerifyAllIntf: Zedcloud reachable via interface %s", intf)
 				intfSuccessCount += 1
+				portStatus.CloudReachable = true
 			default:
 				errStr := fmt.Sprintf("Uplink test FAILED via %s to URL %s with "+
 					"status code %d and status %s",
@@ -159,6 +168,7 @@ func VerifyAllIntf(ctx ZedCloudContext,
 				log.Errorln(errStr)
 				err = errors.New(errStr)
 				errorList = append(errorList, err)
+				portStatus.CloudReachable = false
 				continue
 			}
 		}
