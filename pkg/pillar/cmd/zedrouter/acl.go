@@ -431,7 +431,7 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 	}
 	// The same rules as above for IPv4.
 	// If we have a bridge service then bridgeIP might be "".
-	if aclArgs.IPVer == 4 && aclArgs.BridgeIP != "" {
+	if aclArgs.IPVer == 4 && aclArgs.NIType != types.NetworkInstanceTypeSwitch {
 		// Need to allow local communication */
 		// Only allow dhcp and dns (tcp/udp)
 		// Note that sufficient for src or dst to be local
@@ -482,7 +482,8 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 		aclRule5.Action = []string{"-j", chainName}
 		aclRule5.ActionChainName = chainName
 		rulesList = append(rulesList, aclRule5)
-	} else if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
+	} else {
+		// Switch network instance case
 		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
 			"--match-set", "ipv4.local", "dst", "-p", "udp", "--dport", "bootps"}
 		aclRule1.Action = []string{"-j", "ACCEPT"}
@@ -571,7 +572,8 @@ func aclDropRules(aclArgs types.AppNetworkACLArgs) (types.IPTablesRuleList, erro
 	aclRule1.Rule = []string{"-i", aclArgs.BridgeName}
 	aclRule1.Action = []string{"-j", "LOG", "--log-prefix",
 		"FORWARD:FROM:", "--log-level", "3"}
-	aclRule2.Rule = []string{"-o", aclArgs.BridgeName}
+	aclRule2.Rule = []string{"-o", aclArgs.BridgeName, "-m", "physdev",
+		"--physdev-out", aclArgs.VifName}
 	aclRule2.Action = []string{"-j", "LOG", "--log-prefix",
 		"FORWARD:TO:", "--log-level", "3"}
 
@@ -595,19 +597,14 @@ func aclDropRules(aclArgs types.AppNetworkACLArgs) (types.IPTablesRuleList, erro
 		aclRule3.RuleID = 0xffffff
 		aclRule3.IsDefaultDrop = true
 		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3)
-	case types.NetworkInstanceTypeSwitch:
-		aclRule2.Rule = append(aclRule2.Rule, "-m", "physdev",
-			"--physdev-out", aclArgs.VifName)
+	default:
+		// --prefix-in match is implicitly added for this rule inside
+		// rulePrefix function
 		aclRule3.Rule = []string{"-i", aclArgs.BridgeName}
 		aclRule3.Action = []string{"-j", "DROP"}
+
 		aclRule4.Rule = []string{"-o", aclArgs.BridgeName, "-m", "physdev",
 			"--physdev-out", aclArgs.VifName}
-		aclRule4.Action = []string{"-j", "DROP"}
-		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
-	default:
-		aclRule3.Rule = []string{"-i", aclArgs.BridgeName}
-		aclRule3.Action = []string{"-j", "DROP"}
-		aclRule4.Rule = []string{"-o", aclArgs.BridgeName}
 		aclRule4.Action = []string{"-j", "DROP"}
 		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 	}
