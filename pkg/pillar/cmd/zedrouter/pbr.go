@@ -1,8 +1,8 @@
 // Copyright (c) 2017 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// Create ip rules and ip routing tables for each ifindex and also a free
-// one for the collection of free management ports.
+// Create ip rules and ip routing tables for each ifindex for the bridges used
+// for network instances.
 
 package zedrouter
 
@@ -18,23 +18,18 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var FreeTable = 500 // Need a FreeMgmtPort policy for NAT+underlay
+var baseTableIndex = 500 // Number tables from here + ifindex
 
 // Call before setting up routeChanges, addrChanges, and linkChanges
 func PbrInit(ctx *zedrouterContext) {
 
 	log.Debugf("PbrInit()\n")
-
-	setFreeMgmtPorts(types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0))
-
-	flushRoutesTable(FreeTable, 0)
-
-	// flush any old rules using RuleList
-	flushRules(0)
 }
 
 // PbrRouteAddAll adds all the routes for the bridgeName table to the specific port
 // Separately we handle changes in PbrRouteChange
+// XXX used by networkinstance only
+// XXX Can't we use MoveRoutesTable?
 func PbrRouteAddAll(bridgeName string, port string) error {
 	log.Infof("PbrRouteAddAll(%s, %s)\n", bridgeName, port)
 
@@ -79,7 +74,7 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 			ifindex, index)
 		ifindex = index
 	}
-	MyTable := FreeTable + ifindex
+	MyTable := baseTableIndex + ifindex
 	for _, rt := range routes {
 		myrt := rt
 		myrt.Table = MyTable
@@ -101,6 +96,8 @@ func PbrRouteAddAll(bridgeName string, port string) error {
 
 // PbrRouteDeleteAll deletes all the routes for the bridgeName table to the specific port
 // Separately we handle changes in PbrRouteChange
+// XXX used by networkinstance only
+// XXX can't we flush the table?
 func PbrRouteDeleteAll(bridgeName string, port string) error {
 	log.Infof("PbrRouteDeleteAll(%s, %s)\n", bridgeName, port)
 
@@ -131,7 +128,7 @@ func PbrRouteDeleteAll(bridgeName string, port string) error {
 		log.Errorln(errStr)
 		return errors.New(errStr)
 	}
-	MyTable := FreeTable + ifindex
+	MyTable := baseTableIndex + ifindex
 	for _, rt := range routes {
 		myrt := rt
 		myrt.Table = MyTable
@@ -151,41 +148,6 @@ func PbrRouteDeleteAll(bridgeName string, port string) error {
 	return nil
 }
 
-// XXX The PbrNAT functions are no-ops for now.
-// The prefix for the NAT linux bridge interface is in its own pbr table
-// XXX put the default route(s) for the selected Adapter for the service
-// into the table for the bridge to avoid using other ports.
-func PbrNATAdd(prefix string) error {
-
-	log.Debugf("PbrNATAdd(%s)\n", prefix)
-	return nil
-}
-
-// XXX The PbrNAT functions are no-ops for now.
-func PbrNATDel(prefix string) error {
-
-	log.Debugf("PbrNATDel(%s)\n", prefix)
-	return nil
-}
-
-func pbrGetFreeRule(prefixStr string) (*netlink.Rule, error) {
-
-	// Create rule for FreeTable; src NAT range
-	// XXX for IPv6 underlay we also need rules.
-	// Can we use iif match for all the bo* interfaces?
-	// If so, use bu* matches for this rule
-	freeRule := netlink.NewRule()
-	_, prefix, err := net.ParseCIDR(prefixStr)
-	if err != nil {
-		return nil, err
-	}
-	freeRule.Src = prefix
-	freeRule.Table = FreeTable
-	freeRule.Family = syscall.AF_INET
-	freeRule.Priority = 10000
-	return freeRule, nil
-}
-
 // Handle a route change
 func PbrRouteChange(ctx *zedrouterContext,
 	deviceNetworkStatus *types.DeviceNetworkStatus,
@@ -196,79 +158,70 @@ func PbrRouteChange(ctx *zedrouterContext,
 		// Ignore since we will not add to other table
 		return
 	}
-	doFreeTable := false
-	ifname, _, err := devicenetwork.IfindexToName(rt.LinkIndex)
+	op := "NONE"
+	if change.Type == getRouteUpdateTypeDELROUTE() {
+		op = "DELROUTE"
+	} else if change.Type == getRouteUpdateTypeNEWROUTE() {
+		op = "NEWROUTE"
+	}
+	ifname, linkType, err := devicenetwork.IfindexToName(rt.LinkIndex)
 	if err != nil {
-		// We'll check on ifname when we see a linkchange
-		log.Errorf("PbrRouteChange IfindexToName failed for %d: %s\n",
-			rt.LinkIndex, err)
-	} else {
-		if types.IsFreeMgmtPort(*deviceNetworkStatus, ifname) {
-			log.Debugf("Applying to FreeTable: %v\n", rt)
-			doFreeTable = true
-		}
+		log.Errorf("PbrRouteChange IfindexToName failed for %d: %s: route %v\n",
+			rt.LinkIndex, err, rt)
+		return
 	}
-	srt := rt
-	srt.Table = FreeTable
-	// Multiple IPv6 link-locals can't be added to the same
-	// table unless the Priority differs. Different
-	// LinkIndex, Src, Scope doesn't matter.
-	if rt.Dst != nil && rt.Dst.IP.IsLinkLocalUnicast() {
-		log.Debugf("Forcing IPv6 priority to %v\n", rt.LinkIndex)
-		// Hack to make the kernel routes not appear identical
-		srt.Priority = rt.LinkIndex
+	if linkType != "bridge" && !types.IsPort(*deviceNetworkStatus, ifname) {
+		// Ignore
+		log.Errorf("PbrRouteChange ignore %s: neither bridge nor port. route %v\n",
+			ifname, rt)
+		return
 	}
+	log.Debugf("RouteChange(%d/%s) %s %+v", rt.LinkIndex, ifname, op, rt)
 
-	// Add for all ifindices
-	MyTable := FreeTable + rt.LinkIndex
-
-	// Add to ifindex specific table
+	// Add to ifindex specific table and to any bridges used by network instances
 	myrt := rt
-	myrt.Table = MyTable
+	myrt.Table = baseTableIndex + rt.LinkIndex
 	// Clear any RTNH_F_LINKDOWN etc flags since add doesn't like them
-	if rt.Flags != 0 {
-		srt.Flags = 0
+	if myrt.Flags != 0 {
 		myrt.Flags = 0
 	}
 	if change.Type == getRouteUpdateTypeDELROUTE() {
-		log.Debugf("Received route del %v\n", rt)
-		if doFreeTable {
-			if err := netlink.RouteDel(&srt); err != nil {
+		log.Infof("Received route del %v\n", rt)
+		if linkType == "bridge" {
+			log.Infof("Apply route del to bridge %s", ifname)
+			if err := netlink.RouteDel(&myrt); err != nil {
 				log.Errorf("Failed to remove %v from %d: %s\n",
-					srt, srt.Table, err)
+					myrt, myrt.Table, err)
 			}
-		}
-		if err := netlink.RouteDel(&myrt); err != nil {
-			log.Errorf("Failed to remove %v from %d: %s\n",
-				myrt, myrt.Table, err)
 		}
 		// find all bridges for network instances and del for them
 		indicies := getAllNIindices(ctx, ifname)
-		log.Infof("XXX Apply route del %v to %v", rt, indicies)
+		if len(indicies) != 0 {
+			log.Infof("Apply route del to %v", indicies)
+		}
 		for _, ifindex := range indicies {
-			myrt.Table = FreeTable + ifindex
+			myrt.Table = baseTableIndex + ifindex
 			if err := netlink.RouteDel(&myrt); err != nil {
 				log.Errorf("Failed to remove %v from %d: %s\n",
 					myrt, myrt.Table, err)
 			}
 		}
 	} else if change.Type == getRouteUpdateTypeNEWROUTE() {
-		log.Debugf("Received route add %v\n", rt)
-		if doFreeTable {
-			if err := netlink.RouteAdd(&srt); err != nil {
+		log.Infof("Received route add %v\n", rt)
+		if linkType == "bridge" {
+			log.Infof("Apply route add to bridge %s", ifname)
+			if err := netlink.RouteAdd(&myrt); err != nil {
 				log.Errorf("Failed to add %v to %d: %s\n",
-					srt, srt.Table, err)
+					myrt, myrt.Table, err)
 			}
-		}
-		if err := netlink.RouteAdd(&myrt); err != nil {
-			log.Errorf("Failed to add %v to %d: %s\n",
-				myrt, myrt.Table, err)
 		}
 		// find all bridges for network instances and add for them
 		indicies := getAllNIindices(ctx, ifname)
-		log.Infof("XXX Apply route add %v to %v", rt, indicies)
+		if len(indicies) != 0 {
+			log.Infof("Apply route add to %v", indicies)
+		}
 		for _, ifindex := range indicies {
-			myrt.Table = FreeTable + ifindex
+			myrt.Table = baseTableIndex + ifindex
 			if err := netlink.RouteAdd(&myrt); err != nil {
 				log.Errorf("Failed to add %v from %d: %s\n",
 					myrt, myrt.Table, err)
@@ -292,9 +245,10 @@ func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 				log.Errorf("XXX NewAddr IfindexToName(%d) failed %s\n",
 					change.LinkIndex, err)
 			}
-			// XXX only call for ports and bridges?
-			addSourceRule(change.LinkIndex, change.LinkAddress,
-				linkType == "bridge")
+			if linkType == "bridge" {
+				devicenetwork.AddSourceRule(change.LinkIndex, change.LinkAddress,
+					linkType == "bridge")
+			}
 		}
 	} else {
 		changed = devicenetwork.IfindexToAddrsDel(change.LinkIndex,
@@ -305,9 +259,10 @@ func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 				log.Errorf("XXX DelAddr IfindexToName(%d) failed %s\n",
 					change.LinkIndex, err)
 			}
-			// XXX only call for ports and bridges?
-			delSourceRule(change.LinkIndex, change.LinkAddress,
-				linkType == "bridge")
+			if linkType == "bridge" {
+				devicenetwork.DelSourceRule(change.LinkIndex, change.LinkAddress,
+					linkType == "bridge")
+			}
 		}
 	}
 	if changed {
@@ -322,181 +277,13 @@ func PbrAddrChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	return ""
 }
 
-// We track the freeMgmtPort list to be able to detect changes and
-// update the free table with the routes from all the free management ports.
-// XXX TBD: do we need a separate table for all the management ports?
-
-var freeMgmtPortList []string // The subset we add to FreeTable
-
-// Can be called to update the list.
-func setFreeMgmtPorts(freeMgmtPorts []string) {
-
-	log.Debugf("setFreeMgmtPorts(%v)\n", freeMgmtPorts)
-	// Determine which ones were added; moveRoutesTable to add to free table
-	for _, u := range freeMgmtPorts {
-		found := false
-		for _, old := range freeMgmtPortList {
-			if old == u {
-				found = true
-				break
-			}
-		}
-		if !found {
-			ifindex, err := devicenetwork.IfnameToIndex(u)
-			if err == nil {
-				moveRoutesTable(0, ifindex, FreeTable)
-			}
-		}
-	}
-	// Determine which ones were deleted; flushRoutesTable to remove from
-	// free table
-	for _, old := range freeMgmtPortList {
-		found := false
-		for _, u := range freeMgmtPorts {
-			if old == u {
-				found = true
-				break
-			}
-		}
-		if !found {
-			ifindex, err := devicenetwork.IfnameToIndex(old)
-			if err == nil {
-				flushRoutesTable(FreeTable, ifindex)
-			}
-		}
-	}
-	freeMgmtPortList = freeMgmtPorts
-}
-
-// =====
-
-// If ifindex is non-zero we also compare it
-func flushRoutesTable(table int, ifindex int) {
-	filter := netlink.Route{Table: table, LinkIndex: ifindex}
-	fflags := netlink.RT_FILTER_TABLE
-	if ifindex != 0 {
-		fflags |= netlink.RT_FILTER_OIF
-	}
-	routes, err := netlink.RouteListFiltered(syscall.AF_UNSPEC,
-		&filter, fflags)
-	if err != nil {
-		log.Fatalf("RouteList failed: %v\n", err)
-	}
-	log.Debugf("flushRoutesTable(%d, %d) - got %d\n",
-		table, ifindex, len(routes))
-	for _, rt := range routes {
-		if rt.Table != table {
-			continue
-		}
-		if ifindex != 0 && rt.LinkIndex != ifindex {
-			continue
-		}
-		log.Debugf("flushRoutesTable(%d, %d) deleting %v\n",
-			table, ifindex, rt)
-		if err := netlink.RouteDel(&rt); err != nil {
-			// XXX was Fatalf
-			log.Errorf("flushRoutesTable - RouteDel %v failed %s\n",
-				rt, err)
-		}
-	}
-}
-
-// ==== manage the ip rules
-
-// Flush the rules we create. If ifindex is non-zero we also compare it
-// Otherwise we flush the FreeTable
-func flushRules(ifindex int) {
-	rules, err := netlink.RuleList(syscall.AF_UNSPEC)
-	if err != nil {
-		log.Fatalf("RuleList failed: %v\n", err)
-	}
-	log.Debugf("flushRules(%d) - got %d\n", ifindex, len(rules))
-	for _, r := range rules {
-		if ifindex == 0 && r.Table != FreeTable {
-			continue
-		}
-		if ifindex != 0 && r.Table != FreeTable+ifindex {
-			continue
-		}
-		log.Debugf("flushRules: RuleDel %v\n", r)
-		if err := netlink.RuleDel(&r); err != nil {
-			log.Fatalf("flushRules - RuleDel %v failed %s\n",
-				r, err)
-		}
-	}
-}
-
-// If it is a bridge interface we add a rule for the subnet. Otherwise
-// just for the host.
-func addSourceRule(ifindex int, p net.IPNet, bridge bool) {
-
-	log.Debugf("addSourceRule(%d, %v, %v)\n", ifindex, p.String(), bridge)
-	r := netlink.NewRule()
-	r.Table = FreeTable + ifindex
-	r.Priority = 10000
-	// Add rule for /32 or /128
-	if p.IP.To4() != nil {
-		r.Family = syscall.AF_INET
-		if bridge {
-			r.Src = &p
-		} else {
-			r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(32, 32)}
-		}
-	} else {
-		r.Family = syscall.AF_INET6
-		if bridge {
-			r.Src = &p
-		} else {
-			r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(128, 128)}
-		}
-	}
-	log.Debugf("addSourceRule: RuleAdd %v\n", r)
-	// Avoid duplicate rules
-	_ = netlink.RuleDel(r)
-	if err := netlink.RuleAdd(r); err != nil {
-		log.Errorf("RuleAdd %v failed with %s\n", r, err)
-		return
-	}
-}
-
-// If it is a bridge interface we add a rule for the subnet. Otherwise
-// just for the host.
-func delSourceRule(ifindex int, p net.IPNet, bridge bool) {
-
-	log.Debugf("delSourceRule(%d, %v, %v)\n", ifindex, p.String(), bridge)
-	r := netlink.NewRule()
-	r.Table = FreeTable + ifindex
-	r.Priority = 10000
-	// Add rule for /32 or /128
-	if p.IP.To4() != nil {
-		r.Family = syscall.AF_INET
-		if bridge {
-			r.Src = &p
-		} else {
-			r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(32, 32)}
-		}
-	} else {
-		r.Family = syscall.AF_INET6
-		if bridge {
-			r.Src = &p
-		} else {
-			r.Src = &net.IPNet{IP: p.IP, Mask: net.CIDRMask(128, 128)}
-		}
-	}
-	log.Debugf("delSourceRule: RuleDel %v\n", r)
-	if err := netlink.RuleDel(r); err != nil {
-		log.Errorf("RuleDel %v failed with %s\n", r, err)
-		return
-	}
-}
-
 func AddOverlayRuleAndRoute(bridgeName string, iifIndex int,
 	oifIndex int, ipnet *net.IPNet) error {
 	log.Debugf("AddOverlayRuleAndRoute: IIF index %d, Prefix %s, OIF index %d",
 		iifIndex, ipnet.String(), oifIndex)
 
 	r := netlink.NewRule()
-	myTable := FreeTable + iifIndex
+	myTable := baseTableIndex + iifIndex
 	r.Table = myTable
 	r.IifName = bridgeName
 	r.Priority = 10000
@@ -534,7 +321,7 @@ func AddOverlayRuleAndRoute(bridgeName string, iifIndex int,
 func AddFwMarkRuleToDummy(fwmark uint32, iifIndex int) error {
 
 	r := netlink.NewRule()
-	myTable := FreeTable + iifIndex
+	myTable := baseTableIndex + iifIndex
 	r.Table = myTable
 	r.Mark = int(fwmark)
 	r.Mask = 0x00ffffff

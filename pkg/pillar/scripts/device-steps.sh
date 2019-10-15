@@ -16,7 +16,7 @@ GCDIR=$PERSISTDIR/config/GlobalConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
-AGENTS0="logmanager ledmanager nim"
+AGENTS0="logmanager ledmanager nim nodeagent"
 AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr baseosmgr wstunnelclient"
 AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
@@ -89,6 +89,9 @@ cat >>$TMPDIR/watchdogled.conf <<EOF
 pidfile = /var/run/ledmanager.pid
 file = /var/run/ledmanager.touch
 change = 300
+pidfile = /var/run/nodeagent.pid
+file = /var/run/nodeagent.touch
+change = 300
 EOF
 cp $TMPDIR/watchdogled.conf $TMPDIR/watchdognim.conf
 cat >> $TMPDIR/watchdognim.conf <<EOF
@@ -119,6 +122,10 @@ for AGENT in $AGENTS; do
 file = /var/run/${AGENT}config.touch
 change = 300
 file = /var/run/${AGENT}metrics.touch
+change = 300
+file = /var/run/${AGENT}devinfo.touch
+change = 300
+file = /var/run/${AGENT}reboot.touch
 change = 300
 EOF
     fi
@@ -152,6 +159,7 @@ if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
 fi
 
+# XXX Remove DNC and AA directories?
 DIRS="$CONFIGDIR $PERSISTDIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
 
 for d in $DIRS; do
@@ -327,6 +335,8 @@ if ! pgrep ledmanager >/dev/null; then
     echo "$(date -Ins -u) Starting ledmanager"
     ledmanager &
 fi
+echo "$(date -Ins -u) Starting nodeagent"
+$BINDIR/nodeagent -c $CURPART &
 
 # Restart watchdog - just for ledmanager so far
 killwait_watchdog

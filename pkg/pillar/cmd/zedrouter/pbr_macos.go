@@ -29,10 +29,6 @@ func getRouteUpdateTypeNEWROUTE() uint16 {
 	return 0
 }
 
-func moveRoutesTable(srcTable int, ifindex int, dstTable int) {
-	return
-}
-
 // Handle a link being added or deleted
 func PbrLinkChange(deviceNetworkStatus *types.DeviceNetworkStatus,
 	change netlink.LinkUpdate) string {

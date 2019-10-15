@@ -465,7 +465,7 @@ func updateLisp(lispRunDirname string,
 	stopLisp()
 
 	if err := os.Rename(tmpfile.Name(), destFilename); err != nil {
-		log.Errorln("Rename ", tmpfile.Name(), destFilename, err)
+		log.Errorln(err)
 		return
 	}
 	// XXX We write configuration to lisp.config.orig for debugging
@@ -668,10 +668,11 @@ func maybeStopLispDataPlane() bool {
 }
 
 func isLispDataPlaneRunning() (bool, []string) {
+
 	prog := DataPlaneName
 
 	// create pgrep command to see if dataplane is running
-	cmd := wrap.Command("pgrep", "-x", prog)
+	cmd := wrap.Command("pgrep", prog)
 
 	// pgrep returns 0 when there is atleast one matching program running
 	// cmd.Output returns nil when pgrep returns 0, otherwise pids.

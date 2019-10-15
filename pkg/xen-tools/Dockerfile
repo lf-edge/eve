@@ -6,7 +6,7 @@ RUN apk add --no-cache \
     gettext iasl util-linux-dev ncurses-dev glib-dev \
     pixman-dev libaio-dev yajl-dev argp-standalone \
     linux-headers git patch texinfo curl tar libcap-dev \
-    attr-dev flex bison
+    attr-dev flex bison cmake
 
 # FIXME: this is really ugly -- we need to figure out xen tools dependencies
 RUN [ `uname -m` = "aarch64" ] && apk add --no-cache dtc-dev || :
@@ -17,15 +17,14 @@ WORKDIR /
 COPY alpine.patch /
 RUN patch -p1 < alpine.patch
 
-ENV XEN_VERSION 4.12.0
+ENV XEN_VERSION 4.13.0-rc1
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 
 # Download and verify xen
 #TODO: verify Xen
 RUN \
-    [ -f xen-${XEN_VERSION}.tar.gz ] || curl -fsSLO ${XEN_SOURCE} && \
-    gzip -d xen-${XEN_VERSION}.tar.gz && \
-    cat xen-${XEN_VERSION}.tar | tar --absolute-names -x && mv /xen-${XEN_VERSION} /xen
+    [ -f "$(basename ${XEN_SOURCE})" ] || curl -fsSLO "${XEN_SOURCE}" && \
+    tar --absolute-names -xz < "$(basename ${XEN_SOURCE})" && mv "/xen-${XEN_VERSION}" /xen
 
 # Apply local patches
 COPY patches-${XEN_VERSION} /patches
@@ -37,10 +36,14 @@ RUN set -e && for patch in /patches/*.patch; do \
 
 RUN mkdir -p /out
 
+COPY gmp.patch /xen/stubdom
 WORKDIR /xen
-RUN ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable-docs --disable-stubdom --enable-9pfs
+RUN ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable-docs --enable-stubdom --enable-9pfs   --enable-vtpm-stubdom --enable-vtpmmgr-stubdom
 RUN make && make dist
 RUN dist/install.sh /out
+
+# Filter out a few things that we don't currently need
+RUN rm /out/usr/share/qemu-xen/qemu/edk2-*
 
 FROM scratch
 ENTRYPOINT []

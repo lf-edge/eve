@@ -157,6 +157,8 @@ github.com/shirou/w32
 github.com/sirupsen/logrus
 # github.com/stretchr/testify v1.3.0
 github.com/stretchr/testify/assert
+# github.com/tatsushid/go-fastping v0.0.0-20160108233234-d7bb493dee3e
+github.com/tatsushid/go-fastping
 # github.com/vishvananda/netlink v1.0.1-0.20190823182904-a1c9a648f744 => github.com/eriknordmark/netlink v0.0.0-20190828001930-41fa442996b8
 github.com/vishvananda/netlink/nl
 # github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f
@@ -193,7 +195,12 @@ golang.org/x/crypto/internal/subtle
 # golang.org/x/net v0.0.0-20190419010253-1f3472d942ba
 golang.org/x/net/bpf
 golang.org/x/net/html
+golang.org/x/net/icmp
+golang.org/x/net/ipv4
+golang.org/x/net/ipv6
 golang.org/x/net/html/atom
+golang.org/x/net/internal/iana
+golang.org/x/net/internal/socket
 golang.org/x/net/context
 golang.org/x/net/trace
 golang.org/x/net/internal/timeseries

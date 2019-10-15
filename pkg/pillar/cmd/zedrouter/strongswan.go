@@ -659,9 +659,15 @@ func getUplink(ctx *zedrouterContext, portName string) (string, error) {
 
 	ifNameList := getIfNameListForPort(ctx, portName)
 	if len(ifNameList) != 0 {
-		portName = types.AdapterToIfName(ctx.deviceNetworkStatus,
-			ifNameList[0])
-		return portName, nil
+		for _, ifName := range ifNameList {
+			portName = types.AdapterToIfName(ctx.deviceNetworkStatus, ifName)
+			_, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus,
+				0, portName)
+			if err != nil {
+				continue
+			}
+			return portName, nil
+		}
 	}
 	errStr := fmt.Sprintf("%s is not available", portName)
 	return portName, errors.New(errStr)
@@ -675,9 +681,15 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 	vpnConfig := types.VpnConfig{}
 	appNetPresent := false
 
-	portName, err := getUplink(ctx, status.Port)
-	if err != nil {
-		return vpnConfig, err
+	var err error
+	var portName string
+	if status.CurrentUplinkIntf != "" {
+		portName, _ = getUplink(ctx, status.CurrentUplinkIntf)
+	} else {
+		portName, err = getUplink(ctx, status.Port)
+		if err != nil {
+			return vpnConfig, err
+		}
 	}
 
 	port.Name = portName

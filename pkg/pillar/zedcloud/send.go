@@ -7,6 +7,7 @@ package zedcloud
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -213,6 +214,17 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		log.Debugln(errStr)
 		return nil, nil, false, errors.New(errStr)
 	}
+	numDNSServers := types.CountDNSServers(*ctx.DeviceNetworkStatus, intf)
+	if numDNSServers == 0 {
+		if ctx.FailureFunc != nil {
+			ctx.FailureFunc(intf, reqUrl, 0, 0)
+		}
+		errStr := fmt.Sprintf("No DNS servers to connect to %s using intf %s",
+			reqUrl, intf)
+		log.Debugln(errStr)
+		return nil, nil, false, errors.New(errStr)
+	}
+
 	// Get the transport header with proxy information filled
 	proxyUrl, err := LookupProxy(ctx.DeviceNetworkStatus, intf, reqUrl)
 	var transport *http.Transport
@@ -246,9 +258,18 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 			return nil, nil, remoteTemporaryFailure, err
 		}
 		localTCPAddr := net.TCPAddr{IP: localAddr}
+		localUDPAddr := net.UDPAddr{IP: localAddr}
 		log.Debugf("Connecting to %s using intf %s source %v\n",
 			reqUrl, intf, localTCPAddr)
-		d := net.Dialer{LocalAddr: &localTCPAddr}
+		resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
+			log.Debugf("resolverDial %v %v", network, address)
+			// XXX can we fallback to TCP? Would get a mismatched address if we do
+			d := net.Dialer{LocalAddr: &localUDPAddr}
+			return d.Dial(network, address)
+		}
+		r := net.Resolver{Dial: resolverDial, PreferGo: true,
+			StrictErrors: false}
+		d := net.Dialer{Resolver: &r, LocalAddr: &localTCPAddr}
 		transport.Dial = d.Dial
 
 		client := &http.Client{Transport: transport}

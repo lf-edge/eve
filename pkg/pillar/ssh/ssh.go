@@ -89,7 +89,7 @@ func UpdateSshAuthorizedKeys(authorizedKeys string) {
 	}
 
 	if err := os.Rename(tmpfile.Name(), targetAuthorizedKeysFile); err != nil {
-		log.Errorln("Rename ", tmpfile.Name(), targetAuthorizedKeysFile, err)
+		log.Errorln(err)
 		return
 	}
 	log.Infof("UpdateSshAuthorizedKey done")
