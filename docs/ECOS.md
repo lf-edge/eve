@@ -91,6 +91,54 @@ As part of a regular config that EVE recieves from its controller, each ECO gets
         * dsId
         * siginfo
 
+EVE periodically pulls the configuration from the controller. The configuration specifies the desired end state. EVE implements "eventual consistentency" model. To reach the desired state from the current state of the system, EVE computes the required operations to be performed. EVE then executes those operations. At the end of each operation, EVE reports the state of the system back to the controller.
+
+The picture below provides simplified view of states and transitions for an ECO.
+
+                                                    restart
+                                    +----------+<-----------------+
+                        start       |          |                  |
+                                    |          |    stop          |
+                      +------------>+  online  +-------------+    |
+                      |             |          |             v    |
+             +--------+             |          |          +--+----+-----+
+  Prepare    |        |             +-----+----+          |             |
++----------->+ Init   |                   |    stop/purge |   stopped   |
+             |        |                   +-------------->+             |
+             +------+-+                                   +------+------+
+                    |               +----------+                 |
+                    |               |          |                 |
+                    +-------------->+  deleted +<----------------+
+                         delete     |          |     delete
+                                    +----------+
+
+
+The controller drives the ECO state transitions via the configuration. These state transitions are described below. Due to the eventual consistency model, a new configuration may result in zero or more state transitions for a given ECO.
+
+* Prepare an ECO
+  * The ECI(s) is transfer'ed to EVE's storage area and resources required for the ECO are reserved.
+  * EVE performs the operations to "prepare an ECO" for each entry in the array of ECO's in the new configuration and not present in older configuration.
+
+* Start an ECO
+  * A previously stopped ECO or an ECO that has never been started, will be started. At the end of this, ECO will transition to Running state. For an ECO which is already Running, this is a no-op.
+  * EVE performs the operation if the 'activate' flag is set to 'true' in the configuration.
+
+* Stop an ECO
+  * An ECO which is either running or transitioning to running state will be stopped. However, the mutated run time state is preserved. At the end of this stage, ECO will transiton to Stopped state. A subsequent start of the ECO will start the ECO with the previously mutated runtime state.
+  * EVE performs the operation if the 'activate' flag is set to 'false' in the configuration.
+
+* Purge an ECO
+  * An ECO which is either running or transitioning to running state will be stopped and the mutated run time state of the ECO is deleted. A subsequent action to start the ECO will start the ECO with a pristine runtime state.
+  * EVE performs this operation if the 'purge' counter in the configuration is greater than the 'purge' counter in the previous configuration.
+
+* Restart an ECO
+  * The action of stopping an ECO and starting it again is combined in a single action of restart. Restart supports a flag which indicates whether the mutated runtime state is to be purged after stopping it.
+  * EVE performs this operation if the 'restart' counter in the configuration is greater than the 'restart' counter in the previous configuration.
+
+* Delete an ECO
+  * An ECO will be deleted. The resources previously reserved for the ECO are released. The storage for the ECI may or may not be released depending on whether there are other ECO's referencing it. If there is no ECO referencing the ECI, the storage is released as part of periodic garbage collection.
+  * EVE performs this operation if there is an entry for an ECO was present in the previous configutation and absent in the new configuration.
+
 ## Edge Container Image Format
 
 This specification defines an ECI, consisting of a:
@@ -138,10 +186,10 @@ ECI Distribution Specification will closely follow [OCI Distribution Specificati
 
 The goals for the ECI Distribution Specification is to address the following aspects of ECI distribution:
 
-  * Mapping of symbolic names to content-addressable handles
-  * Standardizing operations on metadata for collection of ECIs stored as a group
-  * Establishing trust model around managing software supply chain all the way to the final ECI
-  * Effective download of individual binary blobs corresponding to the ECI components
-  * Effective upload of individual binary blobs corresponding to the ECI components
+* Mapping of symbolic names to content-addressable handles
+* Standardizing operations on metadata for collection of ECIs stored as a group
+* Establishing trust model around managing software supply chain all the way to the final ECI
+* Effective download of individual binary blobs corresponding to the ECI components
+* Effective upload of individual binary blobs corresponding to the ECI components
 
 While the bulk of this portion of the specification will focus on defining RESTful HTTP API protocol, we will try to make sure that the core of these HTTP endpoints can map easily to other transports as well. After all, if we all agree to have blobs available under ``/<version>/<name>/blobs/<digest>`` the same path could map well to an S3 bucket and sftp -- not just to an HTTP REST end-point.
