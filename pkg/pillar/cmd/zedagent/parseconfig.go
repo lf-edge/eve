@@ -66,10 +66,14 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		parseDatastoreConfig(config, getconfigCtx)
 		// DeviceIoList has some defaults for Usage and UsagePolicy
 		// used by systemAdapters
-		parseDeviceIoListConfig(config, getconfigCtx)
+		physioChanged := parseDeviceIoListConfig(config, getconfigCtx)
 		// Network objects are used for systemAdapters
-		parseNetworkXObjectConfig(config, getconfigCtx)
-		parseSystemAdapterConfig(config, getconfigCtx, false)
+		networksChanged := parseNetworkXObjectConfig(config, getconfigCtx)
+		if physioChanged || networksChanged {
+			parseSystemAdapterConfig(config, getconfigCtx, true)
+		} else {
+			parseSystemAdapterConfig(config, getconfigCtx, false)
+		}
 		parseBaseOsConfig(getconfigCtx, config)
 		parseNetworkInstanceConfig(config, getconfigCtx)
 		parseAppInstanceConfig(config, getconfigCtx)
@@ -206,7 +210,7 @@ func lookupBaseOsConfigPub(getconfigCtx *getconfigContext, key string) *types.Ba
 var networkConfigPrevConfigHash []byte
 
 func parseNetworkXObjectConfig(config *zconfig.EdgeDevConfig,
-	getconfigCtx *getconfigContext) {
+	getconfigCtx *getconfigContext) bool {
 
 	h := sha256.New()
 	nets := config.GetNetworks()
@@ -216,7 +220,7 @@ func parseNetworkXObjectConfig(config *zconfig.EdgeDevConfig,
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, networkConfigPrevConfigHash)
 	if same {
-		return
+		return false
 	}
 	log.Infof("parseNetworkXObjectConfig: Applying updated config.\n"+
 		"prevSha: % x\n"+
@@ -231,7 +235,7 @@ func parseNetworkXObjectConfig(config *zconfig.EdgeDevConfig,
 	// systerm adapters do not change. When we see the networks
 	// change, we should parse systerm adapters again.
 	publishNetworkXObjectConfig(getconfigCtx, nets)
-	parseSystemAdapterConfig(config, getconfigCtx, true)
+	return true
 }
 
 func unpublishDeletedNetworkInstanceConfig(ctx *getconfigContext,
@@ -770,7 +774,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 var deviceIoListPrevConfigHash []byte
 
 func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
-	getconfigCtx *getconfigContext) {
+	getconfigCtx *getconfigContext) bool {
 
 	deviceIoList := config.GetDeviceIoList()
 	h := sha256.New()
@@ -780,7 +784,7 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, deviceIoListPrevConfigHash)
 	if same {
-		return
+		return false
 	}
 	log.Infof("parseDeviceIoListConfig: Applying updated config\n"+
 		"prevSha: % x\n"+
@@ -835,9 +839,9 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 	}
 	phyIoAdapterList.Initialized = true
 	getconfigCtx.pubPhysicalIOAdapters.Publish("zedagent", phyIoAdapterList)
-	parseSystemAdapterConfig(config, getconfigCtx, true)
 
 	log.Infof("parseDeviceIoListConfig: Done")
+	return true
 }
 
 func lookupDeviceIo(getconfigCtx *getconfigContext, logicalLabel string) *types.PhysicalIOAdapter {
