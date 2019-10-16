@@ -633,10 +633,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			log.Errorf("Missing phyio for %s; ignored", sysAdapter.Name)
 			continue
 		} else {
-			isMgmt = (phyio.Usage == zconfig.PhyIoMemberUsage_PhyIoUsageMgmt)
 			isFree = phyio.UsagePolicy.FreeUplink
-			log.Infof("Found phyio for %s: %t/%t",
-				sysAdapter.Name, isMgmt, isFree)
+			log.Infof("Found phyio for %s: isFree: %t", sysAdapter.Name, isFree)
 		}
 		if version < types.DPCIsMgmt {
 			log.Warnf("XXX old version; assuming isMgmt and isFree")
@@ -648,12 +646,9 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			log.Warnf("New version for %s Mgmt/Free %t/%t vs %t/%t",
 				sysAdapter.Name, isMgmt, isFree,
 				sysAdapter.Uplink, sysAdapter.FreeUplink)
-			// Either one can set isMgmt; both need to clear
-			if sysAdapter.Uplink && !isMgmt {
-				log.Warnf("Mgmt flag forced by system adapter for %s",
-					sysAdapter.Name)
-				isMgmt = true
-			}
+			isMgmt = sysAdapter.Uplink
+			log.Infof("System adapter %s, isMgmt: %t", sysAdapter.Name, isMgmt)
+
 			// Either one can set isFree; both need to clear
 			if sysAdapter.FreeUplink && !isFree {
 				log.Warnf("Free flag forced by system adapter for %s",
