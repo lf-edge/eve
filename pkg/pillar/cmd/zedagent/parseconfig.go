@@ -835,6 +835,7 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 	}
 	phyIoAdapterList.Initialized = true
 	getconfigCtx.pubPhysicalIOAdapters.Publish("zedagent", phyIoAdapterList)
+	parseSystemAdapterConfig(config, getconfigCtx, true)
 
 	log.Infof("parseDeviceIoListConfig: Done")
 }
