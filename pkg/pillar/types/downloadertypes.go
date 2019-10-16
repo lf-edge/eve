@@ -18,10 +18,10 @@ type RktCredentials struct {
 
 // RktAuthInfo is a rkt based Container Authentication Info
 type RktAuthInfo struct {
-	RktKind     string         `json:"rktkind"`
-	RktVersion  string         `json:"rktversion"`
-	Registries  []string       `json:"registries"`
-	Credentials RktCredentials `json:"credentials"`
+	RktKind     string          `json:"rktkind"`
+	RktVersion  string          `json:"rktversion"`
+	Registries  []string        `json:"registries"`
+	Credentials *RktCredentials `json:"credentials"`
 }
 
 // The key/index to this is the Safename which is allocated by ZedManager.

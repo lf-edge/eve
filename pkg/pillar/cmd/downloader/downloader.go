@@ -1505,13 +1505,14 @@ func rktCreateAuthFile(config *types.DownloaderConfig,
 		RktKind:    "dockerAuth",
 		RktVersion: "v1",
 		Registries: []string{dsCtx.DownloadURL},
-		Credentials: types.RktCredentials{
+		Credentials: &types.RktCredentials{
 			User:     dsCtx.APIKey,
 			Password: dsCtx.Password,
 		},
 	}
 	log.Infof("rktCreateAuthFile: created Auth file %s\n"+
-		"rktAuth: %+v\n", filename, rktAuth)
+		"RktKind: %s, RktVersion: %s, Registries: %+v, \n",
+		filename, rktAuth.RktKind, rktAuth.RktVersion, rktAuth.Registries)
 
 	file, err := json.MarshalIndent(rktAuth, "", " ")
 	if err != nil {
