@@ -61,10 +61,7 @@ func deviceUpdateNIprobing(ctx *zedrouterContext, status *types.DeviceNetworkSta
 	pub := ctx.pubNetworkInstanceStatus
 	log.Debugf("deviceUpdateNIprobing: enter\n")
 	for _, port := range status.Ports {
-		log.Infof("deviceUpdateNIprobing: port %s\n", port.Name)
-		if !port.IsMgmt { // for now, only probing the uplink
-			continue
-		}
+		log.Infof("deviceUpdateNIprobing: port %s, is Mgmt %v\n", port.Name, port.IsMgmt)
 
 		items := pub.GetAll()
 		for _, st := range items {
@@ -72,10 +69,11 @@ func deviceUpdateNIprobing(ctx *zedrouterContext, status *types.DeviceNetworkSta
 			if !isSharedPortLabel(netstatus.Port) {
 				continue
 			}
+			resetIsPresentFlag(&netstatus, port.IfName)
 			if niProbingUpdatePort(ctx, port, &netstatus) {
 				needTrigPing = true
 			}
-			checkNIprobeUplink(ctx, &netstatus)
+			checkNIprobeUplink(ctx, &netstatus, port.IfName)
 		}
 	}
 	if needTrigPing {
@@ -88,7 +86,7 @@ func niUpdateNIprobing(ctx *zedrouterContext, status *types.NetworkInstanceStatu
 	pub := ctx.subDeviceNetworkStatus
 	items := pub.GetAll()
 	portList := getIfNameListForPort(ctx, status.Port)
-	log.Infof("niUpdateNIprobing: enter, number of ports %d\n", len(portList))
+	log.Infof("niUpdateNIprobing: enter, type %v, number of ports %d\n", status.Type, len(portList))
 	for _, st := range items {
 		devStatus := cast.CastDeviceNetworkStatus(st)
 
@@ -104,7 +102,7 @@ func niUpdateNIprobing(ctx *zedrouterContext, status *types.NetworkInstanceStatu
 			niProbingUpdatePort(ctx, *devPort, status)
 		}
 	}
-	checkNIprobeUplink(ctx, status)
+	checkNIprobeUplink(ctx, status, "")
 }
 
 func getDevPort(status *types.DeviceNetworkStatus, port string) *types.NetworkPortStatus {
@@ -119,10 +117,18 @@ func getDevPort(status *types.DeviceNetworkStatus, port string) *types.NetworkPo
 func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 	netstatus *types.NetworkInstanceStatus) bool {
 	var needTrigPing bool
-	log.Debugf("niProbingUpdatePort: %s enter\n", netstatus.BridgeName)
+	log.Debugf("niProbingUpdatePort: %s, type %v, enter\n", netstatus.BridgeName, netstatus.Type)
 	if netstatus.Error != "" {
 		log.Errorf("niProbingUpdatePort: Network instance is in errored state: %s",
 			netstatus.Error)
+		return needTrigPing
+	}
+	// we skip the non-Mgmt port for now
+	if !port.IsMgmt {
+		log.Infof("niProbingUpdatePort: %s is type %v, not mgmt, skip\n", port.IfName, port.Type)
+		if info, ok := netstatus.PInfo[port.IfName]; ok {
+			log.Infof("niProbingUpdatePort:   info intf %s is present %v\n", info.IfName, info.IsPresent)
+		}
 		return needTrigPing
 	}
 	if _, ok := netstatus.PInfo[port.IfName]; !ok {
@@ -141,6 +147,10 @@ func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 		netstatus.PInfo[port.IfName] = info
 		log.Infof("niProbingUpdatePort: %s assigned new %s, info len %d, isFree %v\n",
 			netstatus.BridgeName, port.IfName, len(netstatus.PInfo), info.IsFree)
+		if !ipAddrIsValid(info.LocalAddr) {
+			info.GatewayUP = false
+			info.RemoteHostUP = false
+		}
 	} else {
 		info := netstatus.PInfo[port.IfName]
 		prevLocalAddr := info.LocalAddr
@@ -154,13 +164,11 @@ func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 		if netstatus.Port == port.Name {
 			// if the intf lose ip address or gain ip address, react faster
 			// XXX detect changes to LocalAddr and NHAddr in general?
-			if prevLocalAddr != nil && !prevLocalAddr.IsUnspecified() &&
-				(info.LocalAddr == nil || info.LocalAddr.IsUnspecified()) {
+			if ipAddrIsValid(prevLocalAddr) && !ipAddrIsValid(info.LocalAddr) {
 				log.Infof("niProbingUpdatePort: %s lose addr modified %s, addrlen %d, addr %v, nh %v",
 					netstatus.BridgeName, port.IfName, len(port.AddrInfoList), info.LocalAddr, info.NhAddr)
 				needTrigPing = true
-			} else if (prevLocalAddr == nil || prevLocalAddr.IsUnspecified()) &&
-				info.LocalAddr != nil && !info.LocalAddr.IsUnspecified() {
+			} else if !ipAddrIsValid(prevLocalAddr) && ipAddrIsValid(info.LocalAddr) {
 				log.Infof("niProbingUpdatePort: %s gain addr modified %s, addr %v, nh %v",
 					netstatus.BridgeName, port.IfName, info.LocalAddr, info.NhAddr)
 				needTrigPing = true
@@ -183,28 +191,28 @@ func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 // after port or NI changes, if we don't have a current uplink,
 // randomly assign one and publish, if we already do, leave it as is
 // each NI may have a different good uplink
-func checkNIprobeUplink(ctx *zedrouterContext, status *types.NetworkInstanceStatus) {
+func checkNIprobeUplink(ctx *zedrouterContext, status *types.NetworkInstanceStatus, intf string) {
 	// find and remove the stale info since the port has been removed
 	for _, info := range status.PInfo {
+		if info.IfName != intf {
+			continue
+		}
+		log.Infof("checkNIprobeUplink: %s, intf %s, is present %v\n", status.BridgeName, info.IfName, info.IsPresent)
 		if !info.IsPresent {
 			if _, ok := status.PInfo[info.IfName]; ok {
+				log.Infof("checkNIprobeUplink: %s remove intf %s from ProbeInfo\n", status.BridgeName, info.IfName)
 				delete(status.PInfo, info.IfName)
+				publishNetworkInstanceStatus(ctx, status)
 			}
-		} else {
-			info.IsPresent = false
 		}
 	}
 
 	if status.CurrentUplinkIntf != "" {
-		if _, ok := status.PInfo[status.CurrentUplinkIntf]; ok {
-			if strings.Compare(status.PInfo[status.CurrentUplinkIntf].IfName, status.CurrentUplinkIntf) == 0 {
-				return
-			}
-		}
-		// if the Current Uplink intf does not have an info entry, re-pick one below
-		status.CurrentUplinkIntf = ""
+		// regardless of the Curr Uplink is valid or not, it was the previous run result, let probing code to handle
+		return
 	}
 
+	// if the Curr is empty, then try to fill it here
 	if len(status.PInfo) > 0 {
 		// Try and find an interface that has unicast IP address.
 		// No link local.
@@ -305,6 +313,7 @@ func launchHostProbe(ctx *zedrouterContext) {
 		// XXX Revisit when we support other network instance types.
 		if netstatus.Type != types.NetworkInstanceTypeLocal &&
 			netstatus.Type != types.NetworkInstanceTypeCloud {
+			log.Debugf("launchHostProbe: ni(%s) type %v, skip probing\n", netstatus.BridgeName, netstatus.Type)
 			continue
 		}
 		log.Debugf("launchHostProbe: ni(%s) current uplink %s, isUP %v, prev %s, update %v\n",
@@ -380,7 +389,7 @@ func launchHostProbe(ctx *zedrouterContext) {
 							break
 						}
 					}
-					if foundport {
+					if foundport && ipAddrIsValid(info.LocalAddr) {
 						startTime := time.Now()
 						resp, _, rtf, err := zedcloud.SendOnIntf(zcloudCtx, remoteURL, info.IfName, 0, nil, true)
 						if err != nil {
@@ -489,7 +498,8 @@ func probeCheckStatusUseType(status *types.NetworkInstanceStatus, free bool) {
 	var numOfUps, upCnt int
 	currIntf := status.CurrentUplinkIntf
 	log.Debugf("probeCheckStatusUseType: from %s, free %v, curr intf %s\n", status.BridgeName, free, currIntf)
-	if currIntf == "" { // if we don't have a Curr, get one from the same level free/non-free
+	// if we don't have a Curr or the Curr is removed from PInfo, get a valid one from the same level free/non-free
+	if _, ok := status.PInfo[currIntf]; !ok || currIntf == "" {
 		for _, info := range status.PInfo {
 			if free != info.IsFree {
 				continue
@@ -498,13 +508,8 @@ func probeCheckStatusUseType(status *types.NetworkInstanceStatus, free bool) {
 			currIntf = info.IfName
 		}
 	}
+
 	if currIntf != "" {
-		if _, ok := status.PInfo[currIntf]; !ok {
-			// should not happen, zero it out, come next time to process
-			log.Errorf("probeCheckStatusUseType: current Uplink Intf %s error", currIntf)
-			status.CurrentUplinkIntf = ""
-			return
-		}
 		// when we have more than two cost levels, this need to change to compare numbers
 		// if the current intf is non-free, and we are in free loop, to see if we can get free UP intf
 		if !status.PInfo[currIntf].IsFree && free {
@@ -584,7 +589,7 @@ func getRemoteURL(netstatus *types.NetworkInstanceStatus, defaultURL string) str
 			// use 'http' instead of 'https'
 			remoteURL = "http://" + netstatus.PConfig.ServerURL
 		}
-	} else if netstatus.PConfig.ServerIP != nil && !netstatus.PConfig.ServerIP.IsUnspecified() {
+	} else if ipAddrIsValid(netstatus.PConfig.ServerIP) {
 		remoteURL = "http://" + netstatus.PConfig.ServerIP.String()
 	}
 	return remoteURL
@@ -672,7 +677,7 @@ func probeFastPing(info types.ProbeInfo) (bool, bool) {
 	var pingSuccess bool
 	p := fastping.NewPinger()
 
-	if info.LocalAddr == nil || info.LocalAddr.IsUnspecified() {
+	if !ipAddrIsValid(info.LocalAddr) {
 		if info.GatewayUP || info.RemoteHostUP {
 			return false, true
 		}
@@ -680,7 +685,7 @@ func probeFastPing(info types.ProbeInfo) (bool, bool) {
 	}
 
 	// if we don't have a gateway address or local intf address, no need to ping
-	if info.NhAddr.IsUnspecified() {
+	if !ipAddrIsValid(info.NhAddr) {
 		return false, false
 	}
 
@@ -735,4 +740,24 @@ func copyProbeStats(ctx *zedrouterContext, netstatus *types.NetworkInstanceStatu
 			}
 		}
 	}
+}
+
+func resetIsPresentFlag(netstatus *types.NetworkInstanceStatus, intf string) {
+	for _, info := range netstatus.PInfo {
+		if info.IfName != intf {
+			continue
+		}
+		log.Infof("resetIsPresentFlag: was %v\n", info.IsPresent)
+		info.IsPresent = false
+		if _, ok := netstatus.PInfo[info.IfName]; ok {
+			netstatus.PInfo[info.IfName] = info
+		}
+	}
+}
+
+func ipAddrIsValid(ipAddr net.IP) bool {
+	if ipAddr == nil || ipAddr.IsUnspecified() {
+		return false
+	}
+	return true
 }
