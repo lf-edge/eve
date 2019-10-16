@@ -695,7 +695,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			if err != nil {
 				log.Errorf("parseSystemAdapterConfig: Network with UUID %s not found: %s\n",
 					sysAdapter.NetworkUUID, err)
-				continue
+				return
 			}
 			network := cast.CastNetworkXObjectConfig(networkXObject)
 			if ip != nil {
@@ -835,7 +835,6 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 	}
 	phyIoAdapterList.Initialized = true
 	getconfigCtx.pubPhysicalIOAdapters.Publish("zedagent", phyIoAdapterList)
-	parseSystemAdapterConfig(config, getconfigCtx, true)
 
 	log.Infof("parseDeviceIoListConfig: Done")
 }
