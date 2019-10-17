@@ -389,7 +389,7 @@ func launchHostProbe(ctx *zedrouterContext) {
 							break
 						}
 					}
-					if foundport && ipAddrIsValid(info.LocalAddr) {
+					if foundport {
 						startTime := time.Now()
 						resp, _, rtf, err := zedcloud.SendOnIntf(zcloudCtx, remoteURL, info.IfName, 0, nil, true)
 						if err != nil {
