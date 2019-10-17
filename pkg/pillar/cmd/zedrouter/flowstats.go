@@ -126,7 +126,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 	instData.intfAddrs = IntfAddrs
 
 	if devUUID == nilUUID {
-		b, err := ioutil.ReadFile("/config/uuid")
+		b, err := ioutil.ReadFile(types.UuidFileName)
 		if err != nil {
 			log.Errorf("error in reading uuid\n")
 			return

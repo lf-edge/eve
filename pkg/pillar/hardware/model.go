@@ -22,12 +22,14 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 const (
 	compatibleFile = "/proc/device-tree/compatible"
-	overrideFile   = "/config/hardwaremodel"
-	softSerialFile = "/config/soft_serial"
+	overrideFile   = types.IdentityDirname + "/hardwaremodel"
+	softSerialFile = types.IdentityDirname + "/soft_serial"
 )
 
 // XXX Note that this function (and the ones below) log if there is an

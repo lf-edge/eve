@@ -44,7 +44,7 @@ type DeviceLispConfig struct {
 	ClientAddr      string // To detect NATs
 }
 
-// Assumes the config files are in identityDirname, which is /config. Files are:
+// Assumes the config files are in IdentityDirname, which is /config. Files are:
 //  device.cert.pem,
 //  device.key.pem		Device certificate/key created before this
 //  		     		client is started.
