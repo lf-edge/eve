@@ -8,10 +8,10 @@
 // with VerifyImageConfig and compare against VerifyImageStatus in the status
 // dir.
 //
-// Move the file from objectDownloadDirname/pending/<claimedsha>/<safename> to
-// to objectDownloadDirname/verifier/<claimedsha>/<safename> and make RO,
+// Move the file from DownloadDirname/pending/<claimedsha>/<safename> to
+// to DownloadDirname/verifier/<claimedsha>/<safename> and make RO,
 // then attempt to verify sum.
-// Once sum is verified, move to objectDownloadDirname/verified/<sha>/<filename>// where the filename is the last part of the URL (after the last '/')
+// Once sum is verified, move to DownloadDirname/verified/<sha>/<filename>// where the filename is the last part of the URL (after the last '/')
 // Note that different URLs for same file will download to the same <sha>
 // directory. We delete duplicates assuming the file content will be the same.
 
@@ -43,25 +43,16 @@ import (
 )
 
 const (
-	appImgObj = "appImg.obj"
-	baseOsObj = "baseOs.obj"
-	agentName = "verifier"
-
-	persistDir            = "/persist"
-	objectDownloadDirname = persistDir + "/downloads"
-
-	rootCertDirname    = "/config"
-	rootCertFileName   = rootCertDirname + "/root-certificate.pem"
-	certificateDirname = persistDir + "/certs"
+	agentName        = "verifier"
+	rootCertFileName = types.IdentityDirname + "/root-certificate.pem"
 
 	// If this file is present we don't delete verified files in handleDelete
-	tmpDirname       = "/var/tmp/zededa"
-	preserveFilename = tmpDirname + "/preserve"
+	preserveFilename = types.TmpDirname + "/preserve"
 )
 
 // Go doesn't like this as a constant
 var (
-	verifierObjTypes = []string{appImgObj, baseOsObj}
+	verifierObjTypes = []string{types.AppImgObj, types.BaseOsObj}
 )
 
 // Set from Makefile
@@ -126,7 +117,7 @@ func Run() {
 	}
 
 	// Set up our publications before the subscriptions so ctx is set
-	pubAppImgStatus, err := pubsub.PublishScope(agentName, appImgObj,
+	pubAppImgStatus, err := pubsub.PublishScope(agentName, types.AppImgObj,
 		types.VerifyImageStatus{})
 	if err != nil {
 		log.Fatal(err)
@@ -134,7 +125,7 @@ func Run() {
 	ctx.pubAppImgStatus = pubAppImgStatus
 	pubAppImgStatus.ClearRestarted()
 
-	pubBaseOsStatus, err := pubsub.PublishScope(agentName, baseOsObj,
+	pubBaseOsStatus, err := pubsub.PublishScope(agentName, types.BaseOsObj,
 		types.VerifyImageStatus{})
 	if err != nil {
 		log.Fatal(err)
@@ -154,7 +145,7 @@ func Run() {
 	subGlobalConfig.Activate()
 
 	subAppImgConfig, err := pubsub.SubscribeScope("zedmanager",
-		appImgObj, types.VerifyImageConfig{}, false, &ctx)
+		types.AppImgObj, types.VerifyImageConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -165,7 +156,7 @@ func Run() {
 	subAppImgConfig.Activate()
 
 	subBaseOsConfig, err := pubsub.SubscribeScope("baseosmgr",
-		baseOsObj, types.VerifyImageConfig{}, false, &ctx)
+		types.BaseOsObj, types.VerifyImageConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -278,9 +269,9 @@ func handleInit(ctx *verifierContext) {
 
 func initializeDirs() {
 	// first the certs directory
-	if _, err := os.Stat(certificateDirname); err != nil {
-		log.Debugf("Create %s\n", certificateDirname)
-		if err := os.MkdirAll(certificateDirname, 0700); err != nil {
+	if _, err := os.Stat(types.CertificateDirname); err != nil {
+		log.Debugf("Create %s\n", types.CertificateDirname)
+		if err := os.MkdirAll(types.CertificateDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -327,7 +318,7 @@ func handleInitVerifiedObjects(ctx *verifierContext) {
 
 	for _, objType := range verifierObjTypes {
 
-		verifiedDirname := objectDownloadDirname + "/" + objType + "/verified"
+		verifiedDirname := types.DownloadDirname + "/" + objType + "/verified"
 		if _, err := os.Stat(verifiedDirname); err == nil {
 			populateInitialStatusFromVerified(ctx, objType,
 				verifiedDirname, "")
@@ -341,7 +332,7 @@ func handleInitUpdateVerifiedObjects(ctx *verifierContext) {
 	log.Infoln("handleInitUpdateVerifiedObjects")
 	for _, objType := range verifierObjTypes {
 
-		verifiedDirname := objectDownloadDirname + "/" + objType + "/verified"
+		verifiedDirname := types.DownloadDirname + "/" + objType + "/verified"
 		if _, err := os.Stat(verifiedDirname); err == nil {
 			updateInitialStatusFromVerified(ctx, objType,
 				verifiedDirname, "")
@@ -499,7 +490,7 @@ func createDownloadDirs(objTypes []string) {
 	// now create the download dirs
 	for _, objType := range objTypes {
 		for _, dirType := range workingDirTypes {
-			dirName := objectDownloadDirname + "/" + objType + "/" + dirType
+			dirName := types.DownloadDirname + "/" + objType + "/" + dirType
 			if _, err := os.Stat(dirName); err != nil {
 				log.Debugf("Create %s\n", dirName)
 				if err := os.MkdirAll(dirName, 0700); err != nil {
@@ -518,7 +509,7 @@ func clearInProgressDownloadDirs(objTypes []string) {
 	// Now remove the in-progress dirs
 	for _, objType := range objTypes {
 		for _, dirType := range inProgressDirTypes {
-			dirName := objectDownloadDirname + "/" + objType + "/" + dirType
+			dirName := types.DownloadDirname + "/" + objType + "/" + dirType
 			if _, err := os.Stat(dirName); err == nil {
 				if err := os.RemoveAll(dirName); err != nil {
 					log.Fatal(err)
@@ -607,9 +598,9 @@ func unpublishVerifyImageStatus(ctx *verifierContext,
 func verifierPublication(ctx *verifierContext, objType string) *pubsub.Publication {
 	var pub *pubsub.Publication
 	switch objType {
-	case appImgObj:
+	case types.AppImgObj:
 		pub = ctx.pubAppImgStatus
-	case baseOsObj:
+	case types.BaseOsObj:
 		pub = ctx.pubBaseOsStatus
 	default:
 		log.Fatalf("verifierPublication: Unknown ObjType %s\n",
@@ -623,12 +614,12 @@ func verifierPublication(ctx *verifierContext, objType string) *pubsub.Publicati
 func handleAppImgModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	handleVerifyImageModify(ctxArg, appImgObj, key, configArg)
+	handleVerifyImageModify(ctxArg, types.AppImgObj, key, configArg)
 }
 func handleAppImgCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	handleVerifyImageCreate(ctxArg, appImgObj, key, configArg)
+	handleVerifyImageCreate(ctxArg, types.AppImgObj, key, configArg)
 }
 
 func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
@@ -638,13 +629,13 @@ func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
 func handleBaseOsModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	handleVerifyImageModify(ctxArg, baseOsObj, key, configArg)
+	handleVerifyImageModify(ctxArg, types.BaseOsObj, key, configArg)
 }
 
 func handleBaseOsCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	handleVerifyImageCreate(ctxArg, baseOsObj, key, configArg)
+	handleVerifyImageCreate(ctxArg, types.BaseOsObj, key, configArg)
 }
 
 func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
@@ -830,13 +821,13 @@ func markObjectAsVerifying(ctx *verifierContext,
 	status *types.VerifyImageStatus) (bool, int64) {
 
 	// Form the unique filename in
-	// objectDownloadDirname/<objType>/pending/
+	// DownloadDirname/<objType>/pending/
 	// based on the claimed Sha256 and safename, and the same name
-	// in objectDownloadDirname/<objType>/verifier/. Form a shorter name for
-	// objectDownloadDirname/<objType/>verified/.
+	// in DownloadDirname/<objType>/verifier/. Form a shorter name for
+	// DownloadDirname/<objType/>verified/.
 
 	objType := status.ObjType
-	downloadDirname := objectDownloadDirname + "/" + objType
+	downloadDirname := types.DownloadDirname + "/" + objType
 	pendingDirname := downloadDirname + "/pending/" + status.ImageSha256
 	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
 
@@ -895,7 +886,7 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus) bool {
 
 	objType := status.ObjType
-	downloadDirname := objectDownloadDirname + "/" + objType
+	downloadDirname := types.DownloadDirname + "/" + objType
 	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
 	verifierFilename := verifierDirname + "/" + config.Safename
 
@@ -975,7 +966,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	//cert chain and signature verification...
 
 	serverCertName := types.UrlToFilename(config.SignatureKey)
-	serverCertificate, err := ioutil.ReadFile(certificateDirname + "/" + serverCertName)
+	serverCertificate, err := ioutil.ReadFile(types.CertificateDirname + "/" + serverCertName)
 	if err != nil {
 		cerr := fmt.Sprintf("unable to read the certificate %s: %s", serverCertName, err)
 		return cerr
@@ -1018,7 +1009,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 
 		certName := types.UrlToFilename(certUrl)
 
-		bytes, err := ioutil.ReadFile(certificateDirname + "/" + certName)
+		bytes, err := ioutil.ReadFile(types.CertificateDirname + "/" + certName)
 		if err != nil {
 			cerr := fmt.Sprintf("failed to read certificate Directory %s: %s",
 				certName, err)
@@ -1088,15 +1079,15 @@ func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus) {
 
 	objType := status.ObjType
-	downloadDirname := objectDownloadDirname + "/" + objType
+	downloadDirname := types.DownloadDirname + "/" + objType
 	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
 	verifiedDirname := downloadDirname + "/verified/" + config.ImageSha256
 
 	verifierFilename := verifierDirname + "/" + config.Safename
 	verifiedFilename := verifiedDirname + "/" + config.Safename
 
-	// Move directory from objectDownloadDirname/verifier to
-	// objectDownloadDirname/verified
+	// Move directory from DownloadDirname/verifier to
+	// DownloadDirname/verified
 	// XXX should have dom0 do this and/or have RO mounts
 	filename := types.SafenameToFilename(config.Safename)
 	verifiedFilename = verifiedDirname + "/" + filename
@@ -1231,7 +1222,7 @@ func doDelete(status *types.VerifyImageStatus) {
 	log.Infof("doDelete(%v)\n", status.Safename)
 
 	objType := status.ObjType
-	downloadDirname := objectDownloadDirname + "/" + objType
+	downloadDirname := types.DownloadDirname + "/" + objType
 	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
 	verifiedDirname := downloadDirname + "/verified/" + status.ImageSha256
 

@@ -7,16 +7,18 @@ import (
 	"crypto/x509"
 	"flag"
 	"fmt"
-	"github.com/google/go-tpm/tpm2"
-	"github.com/google/go-tpm/tpmutil"
-	"github.com/lf-edge/eve/api/go/info"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"math/big"
 	"os"
 	"os/exec"
 	"unsafe"
+
+	"github.com/google/go-tpm/tpm2"
+	"github.com/google/go-tpm/tpmutil"
+	"github.com/lf-edge/eve/api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -30,7 +32,7 @@ const (
 	TpmDevicePath = "/dev/tpmrm0"
 
 	//TpmEnabledFile is the file to indicate if TPM is being used by SW
-	TpmEnabledFile = "/persist/config/tpm_in_use"
+	TpmEnabledFile = types.PersistDir + "/config/tpm_in_use"
 
 	//TpmDeviceKeyHdl is the well known TPM permanent handle for device key
 	TpmDeviceKeyHdl tpmutil.Handle = 0x817FFFFF
@@ -46,7 +48,7 @@ const (
 
 	tpmCredentialsFileName = "/config/tpm_credential"
 	emptyPassword          = ""
-	tpmLockName            = "/var/tmp/zededa/tpm.lock"
+	tpmLockName            = types.TmpDirname + "/tpm.lock"
 	maxPasswdLength        = 7  //limit TPM password to this length
 	vaultKeyLength         = 32 //Bytes
 )

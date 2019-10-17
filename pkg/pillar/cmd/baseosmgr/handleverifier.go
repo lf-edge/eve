@@ -4,11 +4,12 @@
 package baseosmgr
 
 import (
+	"os"
+
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"os"
 )
 
 func verifierConfigGetSha256(ctx *baseOsMgrContext, objType string,
@@ -97,7 +98,7 @@ func updateVerifierStatus(ctx *baseOsMgrContext,
 		return
 	}
 
-	if status.ObjType != baseOsObj {
+	if status.ObjType != types.BaseOsObj {
 		log.Errorf("updateVerifierStatus for %s, unsupported objType %s\n",
 			key, objType)
 		return
@@ -265,7 +266,8 @@ func checkStorageVerifierStatus(ctx *baseOsMgrContext, objType string, uuidStr s
 		case types.INITIAL:
 			// Nothing to do
 		default:
-			ss.ActiveFileLocation = objectDownloadDirname + "/" + objType + "/" + vs.Safename
+			ss.ActiveFileLocation = types.DownloadDirname + "/" +
+				objType + "/" + vs.Safename
 
 			log.Infof("checkStorageVerifierStatus(%s) Update SSL ActiveFileLocation to %s\n",
 				uuidStr, ss.ActiveFileLocation)
@@ -325,7 +327,7 @@ func checkCertsForObject(safename string, sc *types.StorageConfig) error {
 
 	if sc.SignatureKey != "" {
 		safename := types.UrlToSafename(sc.SignatureKey, "")
-		filename := certificateDirname + "/" +
+		filename := types.CertificateDirname + "/" +
 			types.SafenameToFilename(safename)
 		if _, err := os.Stat(filename); err != nil {
 			log.Errorf("checkCertsForObject: %s failed %v\n",
@@ -338,7 +340,7 @@ func checkCertsForObject(safename string, sc *types.StorageConfig) error {
 	for _, certUrl := range sc.CertificateChain {
 		if certUrl != "" {
 			safename := types.UrlToSafename(certUrl, "")
-			filename := certificateDirname + "/" +
+			filename := types.CertificateDirname + "/" +
 				types.SafenameToFilename(safename)
 			if _, err := os.Stat(filename); err != nil {
 				log.Errorf("checkCertsForObject %s failed %v\n",
@@ -354,7 +356,7 @@ func checkCertsForObject(safename string, sc *types.StorageConfig) error {
 func verifierPublication(ctx *baseOsMgrContext, objType string) *pubsub.Publication {
 	var pub *pubsub.Publication
 	switch objType {
-	case baseOsObj:
+	case types.BaseOsObj:
 		pub = ctx.pubBaseOsVerifierConfig
 	default:
 		log.Fatalf("verifierPublication: Unknown ObjType %s\n",

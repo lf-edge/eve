@@ -11,6 +11,14 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/eriknordmark/ipinfo"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -21,24 +29,11 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
-	"io"
-	"io/ioutil"
-	"net"
-	"net/http"
-	"os"
-	"strings"
-	"time"
 )
 
 const (
-	agentName       = "diag"
-	identityDirname = "/config"
-	selfRegFile     = identityDirname + "/self-register-failed"
-	serverFileName  = identityDirname + "/server"
-	deviceCertName  = identityDirname + "/device.cert.pem"
-	onboardCertName = identityDirname + "/onboard.cert.pem"
-	onboardKeyName  = identityDirname + "/onboard.key.pem"
-	maxRetries      = 5
+	agentName  = "diag"
+	maxRetries = 5
 )
 
 // State passed to handlers
@@ -130,7 +125,7 @@ func Run() {
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	server, err := ioutil.ReadFile(serverFileName)
+	server, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -150,16 +145,17 @@ func Run() {
 	log.Infof("Diag Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
-	if fileExists(deviceCertName) {
+	if fileExists(types.DeviceCertName) {
 		// Load device cert
 		cert, err := zedcloud.GetClientCert()
 		if err != nil {
 			log.Fatal(err)
 		}
 		ctx.cert = &cert
-	} else if fileExists(onboardCertName) && fileExists(onboardKeyName) {
-		cert, err := tls.LoadX509KeyPair(onboardCertName,
-			onboardKeyName)
+	} else if fileExists(types.OnboardCertName) &&
+		fileExists(types.OnboardKeyName) {
+		cert, err := tls.LoadX509KeyPair(types.OnboardCertName,
+			types.OnboardKeyName)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -239,7 +235,7 @@ func Run() {
 		if !ctx.forever && ctx.gotDNS && ctx.gotBC && ctx.gotDPCList {
 			break
 		}
-		if ctx.usingOnboardCert && fileExists(deviceCertName) {
+		if ctx.usingOnboardCert && fileExists(types.DeviceCertName) {
 			fmt.Printf("WARNING: Switching from onboard to device cert\n")
 			// Load device cert
 			cert, err := zedcloud.GetClientCert()
@@ -381,7 +377,7 @@ func printOutput(ctx *diagContext) {
 	fmt.Printf("\nINFO: updated diag information at %v\n",
 		time.Now().Format(time.RFC3339Nano))
 	// XXX certificate fingerprints? What does zedcloud use?
-	if fileExists(selfRegFile) {
+	if fileExists(types.SelfRegFile) {
 		fmt.Printf("INFO: selfRegister is still in progress\n")
 		// XXX print onboarding cert
 	}
