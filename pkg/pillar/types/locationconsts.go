@@ -8,17 +8,18 @@ const (
 	TmpDirname = "/var/tmp/zededa"
 
 	// PersistDir - Location to store persistent files.
-	PersistDir = "/persist"
+	PersistDir       = "/persist"
+	PersistConfigDir = PersistDir + "/config"
 	// DownloadDirname - Location of downloaded images / objects
 	DownloadDirname = PersistDir + "/downloads"
 	// CertificateDirname - Location of certificates
 	CertificateDirname = PersistDir + "/certs"
-	// ImgCatalogDirname - location of downloaded app images. Read-only images
+	// AppImgDirname - location of downloaded app images. Read-only images
 	// named based on sha256 hash each in its own directory
-	ImgCatalogDirname = DownloadDirname + "/" + AppImgObj
-	// VerifiedDirname - Location of verified App images. Read-only images
+	AppImgDirname = DownloadDirname + "/" + AppImgObj
+	// VerifiedAppImgDirname - Location of verified App images. Read-only images
 	// named based on sha256 hash each in its own directory
-	VerifiedDirname = ImgCatalogDirname + "/verified"
+	VerifiedAppImgDirname = AppImgDirname + "/verified"
 
 	// PersistRktDataDir - Location of rkt dir,
 	PersistRktDataDir = PersistDir + "/rkt"
@@ -31,10 +32,16 @@ const (
 	ServerFileName = IdentityDirname + "/server"
 	// DeviceCertName - device certificate
 	DeviceCertName = IdentityDirname + "/device.cert.pem"
+	// DeviceKeyName - device private key (if not in TPM)
+	DeviceKeyName = IdentityDirname + "/device.key.pem"
 	// OnboardCertName - Onboard certificate
 	OnboardCertName = IdentityDirname + "/onboard.cert.pem"
 	// OnboardKeyName - onboard key
 	OnboardKeyName = IdentityDirname + "/onboard.key.pem"
+	// RootCertFileName - what we trust
+	RootCertFileName = IdentityDirname + "/root-certificate.pem"
+	// UuidFilename - device UUID
+	UuidFileName = IdentityDirname + "/uuid"
 
 	// AppImgObj - name of app image obj dir
 	AppImgObj = "appImg.obj"

@@ -15,7 +15,7 @@ require (
 	github.com/eriknordmark/netlink v0.0.0-20190912172510-3b6b45309321
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/go-ole/go-ole v1.2.4 // indirect
-	github.com/golang/protobuf v1.3.1
+	github.com/golang/protobuf v1.3.2
 	github.com/google/go-cmp v0.2.0
 	github.com/google/go-tpm v0.1.1
 	github.com/google/gopacket v1.1.16

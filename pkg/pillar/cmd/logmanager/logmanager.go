@@ -36,9 +36,7 @@ import (
 
 const (
 	agentName        = "logmanager"
-	identityDirname  = "/config"
-	serverFilename   = identityDirname + "/server"
-	uuidFileName     = identityDirname + "/uuid"
+	commonLogdir     = types.PersistDir + "/log"
 	xenLogDirname    = "/var/log/xen"
 	lastSentDirname  = "lastlogsent"  // Directory in /persist/
 	lastDeferDirname = "lastlogdefer" // Directory in /persist/
@@ -148,7 +146,7 @@ func Run() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	logf, err := agentlog.InitWithDirText(agentName, "/persist/log",
+	logf, err := agentlog.InitWithDirText(agentName, commonLogdir,
 		curpart)
 	if err != nil {
 		log.Fatal(err)
@@ -169,13 +167,13 @@ func Run() {
 	agentlog.StillRunning(agentName)
 
 	// Make sure we have the last sent directory
-	dirname := fmt.Sprintf("/persist/%s", lastSentDirname)
+	dirname := fmt.Sprintf("%s/%s", types.PersistDir, lastSentDirname)
 	if _, err := os.Stat(dirname); err != nil {
 		if err := os.MkdirAll(dirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
-	dirname = fmt.Sprintf("/persist/%s", lastDeferDirname)
+	dirname = fmt.Sprintf("%s/%s", types.PersistDir, lastDeferDirname)
 	if _, err := os.Stat(dirname); err != nil {
 		if err := os.MkdirAll(dirname, 0700); err != nil {
 			log.Fatal(err)
@@ -550,7 +548,7 @@ func processEvents(image string, prevLastSent time.Time,
 // Touch/create a file to keep track of when things where sent before a reboot
 func recordLast(dirname string, image string) {
 	log.Debugf("recordLast(%s, %s)\n", dirname, image)
-	filename := fmt.Sprintf("/persist/%s/%s", dirname, image)
+	filename := fmt.Sprintf("%s/%s/%s", types.PersistDir, dirname, image)
 	_, err := os.Stat(filename)
 	if err != nil {
 		file, err := os.Create(filename)
@@ -574,7 +572,7 @@ func recordLast(dirname string, image string) {
 }
 
 func readLast(dirname string, image string) time.Time {
-	filename := fmt.Sprintf("/persist/%s/%s", dirname, image)
+	filename := fmt.Sprintf("%s/%s/%s", types.PersistDir, dirname, image)
 	st, err := os.Stat(filename)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -689,7 +687,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 
 func sendCtxInit(ctx *logmanagerContext) {
 	//get server name
-	bytes, err := ioutil.ReadFile(serverFilename)
+	bytes, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -718,9 +716,9 @@ func sendCtxInit(ctx *logmanagerContext) {
 
 	// In case we run early, wait for UUID file to appear
 	for {
-		b, err := ioutil.ReadFile(uuidFileName)
+		b, err := ioutil.ReadFile(types.UuidFileName)
 		if err != nil {
-			log.Errorln("ReadFile", err, uuidFileName)
+			log.Errorln("ReadFile", err, types.UuidFileName)
 			time.Sleep(time.Second)
 			continue
 		}
