@@ -36,7 +36,7 @@ shift $((OPTIND-1))
 [ $# != 1 ] && bail "$USAGE"
 
 IMAGE="$1"
-[ -f "$IMAGE" ] || dd if=/dev/zero of="$IMAGE" seek="$SIZE" bs=1024 count=0
+[ -e "$IMAGE" ] || dd if=/dev/zero of="$IMAGE" seek="$SIZE" bs=1024 count=0
 
 # Docker, for unknown reasons, decides whether a passed bind mount is
 # a file or a directory based on whether is a absolute pathname or a
@@ -50,6 +50,8 @@ case "$IMAGE" in
     *) IMAGE="$PWD/$IMAGE";;
 esac
 
-(cd "$TMPDIR" || exit ; tar cvf - ./*) | docker run -v "$IMAGE:/output.img" -i "${MKFLASH_TAG}" /output.img usb_conf 2>/dev/null >&2
-
-cleanup
+if OUT=$( (cd "$TMPDIR" || exit 1; tar cvf - ./*) | docker run -v "$IMAGE:/output.img" -i "${MKFLASH_TAG}" /output.img usb_conf 2>&1) ; then
+   cleanup
+else
+   bail "ERROR: $OUT"
+fi
