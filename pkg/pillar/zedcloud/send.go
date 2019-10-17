@@ -149,13 +149,14 @@ func VerifyAllIntf(ctx ZedCloudContext,
 			if rtf {
 				remoteTemporaryFailure = true
 			}
+			portStatus := ctx.DeviceNetworkStatus.GetPortByIfName(intf)
 			if err != nil {
 				log.Errorf("Zedcloud un-reachable via interface %s: %s",
 					intf, err)
 				errorList = append(errorList, err)
+				portStatus.CloudReachable = false
 				continue
 			}
-			portStatus := ctx.DeviceNetworkStatus.GetPortByIfName(intf)
 			switch resp.StatusCode {
 			case http.StatusOK, http.StatusCreated:
 				log.Infof("VerifyAllIntf: Zedcloud reachable via interface %s", intf)

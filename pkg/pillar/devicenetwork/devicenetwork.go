@@ -254,6 +254,12 @@ func CheckDNSUpdate(ctx *DeviceNetworkContext) {
 		dnStatus = *ctx.DeviceNetworkStatus
 		status, _ := MakeDeviceNetworkStatus(*ctx.DevicePortConfig,
 			dnStatus)
+		// Copy port level cloud reachability flag
+		for i := range status.Ports {
+			ifName := status.Ports[i].IfName
+			portStatus := dnStatus.GetPortByIfName(ifName)
+			status.Ports[i].CloudReachable = portStatus.CloudReachable
+		}
 
 		if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {
 			log.Infof("CheckDNSUpdate: change from %v to %v\n",
