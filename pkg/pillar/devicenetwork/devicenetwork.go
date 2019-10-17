@@ -72,8 +72,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 		return false, nil
 	}
 
-	serverFileName := "/config/server"
-	server, err := ioutil.ReadFile(serverFileName)
+	server, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -97,11 +96,8 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 		log.Infof("VerifyDeviceNetworkStatus: " +
 			"Device certificate not found, looking for Onboarding certificate")
 
-		identityDirname := "/config"
-		onboardingCertName := identityDirname + "/onboard.cert.pem"
-		onboardingKeyName := identityDirname + "/onboard.key.pem"
-		onboardingCert, err := tls.LoadX509KeyPair(onboardingCertName,
-			onboardingKeyName)
+		onboardingCert, err := tls.LoadX509KeyPair(types.OnboardCertName,
+			types.OnboardKeyName)
 		if err != nil {
 			errStr := "Onboarding certificate cannot be found"
 			log.Infof("VerifyDeviceNetworkStatus: %s\n", errStr)

@@ -282,7 +282,7 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 		appDiskSizeList += fmt.Sprintf("App: %s (Size: %d),\n",
 			iterStatus.UUIDandVersion.UUID.String(), appDiskSize)
 	}
-	deviceDiskUsage, err := disk.Usage("/persist")
+	deviceDiskUsage, err := disk.Usage(types.PersistDir)
 	if err != nil {
 		err := fmt.Errorf("Failed to get diskUsage for /persist. err: %s",
 			err.Error())
@@ -658,7 +658,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		case types.INITIAL:
 			// Nothing to do
 		default:
-			ss.ActiveFileLocation = types.VerifiedDirname + "/" + vs.Safename
+			ss.ActiveFileLocation = types.VerifiedAppImgDirname + "/" + vs.Safename
 			log.Infof("Update SSL ActiveFileLocation for %s: %s\n",
 				uuidStr, ss.ActiveFileLocation)
 			changed = true

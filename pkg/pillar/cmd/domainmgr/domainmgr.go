@@ -45,7 +45,7 @@ const (
 	xenDirname   = runDirname + "/xen"       // We store xen cfg files here
 	ciDirname    = runDirname + "/cloudinit" // For cloud-init images
 	rwImgDirname = types.PersistDir + "/img" // We store images here
-
+	uuidFile     = types.PersistRktDataDir + "/uuid_file"
 )
 
 // Really a constant
@@ -151,13 +151,13 @@ func Run() {
 			log.Fatal(err)
 		}
 	}
-	if _, err := os.Stat(types.ImgCatalogDirname); err != nil {
-		if err := os.MkdirAll(types.ImgCatalogDirname, 0700); err != nil {
+	if _, err := os.Stat(types.AppImgDirname); err != nil {
+		if err := os.MkdirAll(types.AppImgDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
-	if _, err := os.Stat(types.VerifiedDirname); err != nil {
-		if err := os.MkdirAll(types.VerifiedDirname, 0700); err != nil {
+	if _, err := os.Stat(types.VerifiedAppImgDirname); err != nil {
+		if err := os.MkdirAll(types.VerifiedAppImgDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -1965,7 +1965,7 @@ func rktRun(domainName string, ContainerImageID string, xenCfgFilename string) (
 		"run",
 		ContainerImageID,
 		"--stage1-path=/usr/sbin/stage1-xen.aci",
-		"--uuid-file-save=/persist/rkt/uuid_file",
+		"--uuid-file-save=" + uuidFile,
 	}
 	stage1XlOpts := "STAGE1_XL_OPTS=-p"
 	stage1XlCfg := "STAGE1_SEED_XL_CFG=" + xenCfgFilename
@@ -1983,10 +1983,10 @@ func rktRun(domainName string, ContainerImageID string, xenCfgFilename string) (
 	log.Infof("rkt run done\n")
 
 	// Get Pod UUID
-	uuidData, err := ioutil.ReadFile("/persist/rkt/uuid_file")
+	uuidData, err := ioutil.ReadFile(uuidFile)
 	if err != nil {
-		log.Errorf("Open /persist/rkt/uuid_file failed : %s\n", err)
-		return 0, "", fmt.Errorf("open /persist/rkt/uuid_file failed: %s\n", err)
+		log.Errorf("Open %s failed : %s\n", uuidFile, err)
+		return 0, "", fmt.Errorf("open %s failed: %s\n", uuidFile, err)
 	}
 	podUUID := strings.TrimSpace(string(uuidData))
 	log.Infof("podUUID = %s\n", podUUID)

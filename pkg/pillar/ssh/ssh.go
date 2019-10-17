@@ -18,13 +18,13 @@ import (
 	"os"
 	"strings"
 
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
 const (
-	configDir                = "/config"
 	runDir                   = "/run"
-	baseAuthorizedKeysFile   = configDir + "/authorized_keys"
+	baseAuthorizedKeysFile   = types.IdentityDirname + "/authorized_keys"
 	targetAuthorizedKeysFile = runDir + "/authorized_keys"
 
 	// XXX a bit of a hack to hard-code this here
