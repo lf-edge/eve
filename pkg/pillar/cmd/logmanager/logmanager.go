@@ -716,9 +716,9 @@ func sendCtxInit(ctx *logmanagerContext) {
 
 	// In case we run early, wait for UUID file to appear
 	for {
-		b, err := ioutil.ReadFile(types.UuidFileName)
+		b, err := ioutil.ReadFile(types.UUIDFileName)
 		if err != nil {
-			log.Errorln("ReadFile", err, types.UuidFileName)
+			log.Errorln("ReadFile", err, types.UUIDFileName)
 			time.Sleep(time.Second)
 			continue
 		}

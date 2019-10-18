@@ -98,9 +98,9 @@ func handleConfigInit() {
 	log.Infof("Configure Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
-	b, err := ioutil.ReadFile(types.UuidFileName)
+	b, err := ioutil.ReadFile(types.UUIDFileName)
 	if err != nil {
-		log.Fatal("ReadFile", err, types.UuidFileName)
+		log.Fatal("ReadFile", err, types.UUIDFileName)
 	}
 	uuidStr := strings.TrimSpace(string(b))
 	devUUID, err = uuid.FromString(uuidStr)
