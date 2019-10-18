@@ -696,7 +696,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			if err != nil {
 				log.Errorf("parseSystemAdapterConfig: Network with UUID %s not found: %s\n",
 					sysAdapter.NetworkUUID, err)
-				return
+				continue
 			}
 			network := cast.CastNetworkXObjectConfig(networkXObject)
 			if ip != nil {
