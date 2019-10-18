@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	globalConfigDir  = "/persist/config/GlobalConfig"
+	globalConfigDir  = PersistConfigDir + "/GlobalConfig"
 	globalConfigFile = globalConfigDir + "/global.json"
 	symlinkDir       = TmpDirname + "/GlobalConfig"
 )
@@ -342,7 +342,7 @@ func EnsureGCFile() {
 			}
 			gc = sane
 			if changed {
-				err := pubsub.PublishToDir("/persist/config/",
+				err := pubsub.PublishToDir(PersistConfigDir,
 					"global", gc)
 				if err != nil {
 					log.Errorf("PublishToDir for globalConfig failed: %s",
@@ -358,7 +358,7 @@ func EnsureGCFile() {
 		}
 	}
 	if _, err := os.Stat(globalConfigFile); err != nil {
-		err := pubsub.PublishToDir("/persist/config/", "global",
+		err := pubsub.PublishToDir(PersistConfigDir, "global",
 			GlobalConfigDefaults)
 		if err != nil {
 			log.Errorf("PublishToDir for globalConfig failed %s\n",

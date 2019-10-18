@@ -40,12 +40,13 @@ import (
 )
 
 // Also report usage for these paths
-const persistPath = types.PersistDir
-
-var reportPaths = []string{"/", "/config", persistPath}
+var reportPaths = []string{"/", types.IdentityDirname, types.PersistDir}
 
 // Application-related files live here; includes downloads and verifications in progress
-var appPersistPaths = []string{"/persist/img", types.ImgCatalogDirname}
+var appPersistPaths = []string{
+	types.PersistDir + "/img",
+	types.AppImgDirname,
+}
 
 func publishMetrics(ctx *zedagentContext, iteration int) {
 	cpuMemoryStat := ExecuteXentopCmd()
@@ -457,7 +458,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 	}
 	// Determine how much we use in /persist and how much of it is
 	// for the benefits of applications
-	persistUsage := diskmetrics.SizeFromDir(persistPath)
+	persistUsage := diskmetrics.SizeFromDir(types.PersistDir)
 	var persistAppUsage uint64
 	for _, path := range appPersistPaths {
 		persistAppUsage += diskmetrics.SizeFromDir(path)
@@ -755,7 +756,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			MountPath: path, Total: RoundToMbytes(u.Total)}
 		// We know this is where we store images and keep
 		// domU virtual disks.
-		if path == persistPath {
+		if path == types.PersistDir {
 			is.StorageLocation = true
 		}
 		ReportDeviceInfo.StorageList = append(ReportDeviceInfo.StorageList,

@@ -1840,7 +1840,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.SshAuthorizedKeys)
 			ssh.UpdateSshAuthorizedKeys(globalConfig.SshAuthorizedKeys)
 		}
-		err := pubsub.PublishToDir("/persist/config/", "global",
+		err := pubsub.PublishToDir(types.PersistConfigDir, "global",
 			&globalConfig)
 		if err != nil {
 			log.Errorf("PublishToDir for globalConfig failed %s\n",

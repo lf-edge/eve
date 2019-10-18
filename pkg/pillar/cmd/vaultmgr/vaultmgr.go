@@ -15,6 +15,7 @@ import (
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -22,9 +23,9 @@ const (
 	fscryptPath     = "/opt/zededa/bin/fscrypt"
 	fscryptConfFile = "/etc/fscrypt.conf"
 	keyctlPath      = "/bin/keyctl"
-	mountPoint      = "/persist/"
-	defaultImgVault = "/persist/img"
-	defaultCfgVault = "/persist/config"
+	mountPoint      = types.PersistDir
+	defaultImgVault = types.PersistDir + "/img"
+	defaultCfgVault = types.PersistDir + "/config"
 	keyDir          = "/TmpVaultDir"
 	protectorPrefix = "TheVaultKey"
 	vaultKeyLen     = 32 //bytes
