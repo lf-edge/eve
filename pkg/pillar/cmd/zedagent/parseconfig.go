@@ -69,15 +69,12 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		physioChanged := parseDeviceIoListConfig(config, getconfigCtx)
 		// Network objects are used for systemAdapters
 		networksChanged := parseNetworkXObjectConfig(config, getconfigCtx)
-		if physioChanged || networksChanged {
-			// system adapter configuration that we send to zedrouter, depends
-			// on Physio configuration and Networks configuration. If either of
-			// Physio or Networks change, we should re-parse system adapters and
-			// send updated configuration to zedrouter.
-			parseSystemAdapterConfig(config, getconfigCtx, true)
-		} else {
-			parseSystemAdapterConfig(config, getconfigCtx, false)
-		}
+		// system adapter configuration that we publish, depends
+		// on Physio configuration and Networks configuration. If either of
+		// Physio or Networks change, we should re-parse system adapters and
+		// publish updated configuration.
+		forceSystemAdaptersParse := physioChanged || networksChanged
+		parseSystemAdapterConfig(config, getconfigCtx, forceSystemAdaptersParse)
 		parseBaseOsConfig(getconfigCtx, config)
 		parseNetworkInstanceConfig(config, getconfigCtx)
 		parseAppInstanceConfig(config, getconfigCtx)
