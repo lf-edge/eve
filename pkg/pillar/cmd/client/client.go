@@ -43,7 +43,7 @@ var nilUUID uuid.UUID
 // Set from Makefile
 var Version = "No version specified"
 
-// Assumes the config files are in identityDirname, which is /config
+// Assumes the config files are in IdentityDirname, which is /config
 // by default. The files are
 //  root-certificate.pem	Fixed? Written if redirected. factory-root-cert?
 //  server			Fixed? Written if redirected. factory-root-cert?
@@ -88,7 +88,6 @@ func Run() { //nolint:gocyclo
 		log.SetLevel(log.InfoLevel)
 	}
 	curpart := *curpartPtr
-	identityDirname := types.IdentityDirname
 	useStdout := *stdoutPtr
 	noPidFlag := *noPidPtr
 	maxRetries := *maxRetriesPtr
@@ -123,14 +122,13 @@ func Run() { //nolint:gocyclo
 		} else {
 			log.Errorf("Unknown arg %s\n", op)
 			log.Fatal("Usage: " + os.Args[0] +
-				"[-o] [-d <identityDirname> [<operations>...]]")
+				"[-o] [<operations>...]")
 		}
 	}
 
-	uuidFileName := identityDirname + "/uuid"
-	hardwaremodelFileName := identityDirname + "/hardwaremodel"
-	enterpriseFileName := identityDirname + "/enterprise"
-	nameFileName := identityDirname + "/name"
+	hardwaremodelFileName := types.IdentityDirname + "/hardwaremodel"
+	enterpriseFileName := types.IdentityDirname + "/enterprise"
+	nameFileName := types.IdentityDirname + "/name"
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := pubsub.Publish(agentName, cms)
@@ -139,7 +137,7 @@ func Run() { //nolint:gocyclo
 	}
 
 	var oldUUID uuid.UUID
-	b, err := ioutil.ReadFile(uuidFileName)
+	b, err := ioutil.ReadFile(types.UUIDFileName)
 	if err == nil {
 		uuidStr := strings.TrimSpace(string(b))
 		oldUUID, err = uuid.FromString(uuidStr)
@@ -515,9 +513,9 @@ func Run() { //nolint:gocyclo
 
 		if doWrite {
 			b := []byte(fmt.Sprintf("%s\n", devUUID))
-			err = ioutil.WriteFile(uuidFileName, b, 0644)
+			err = ioutil.WriteFile(types.UUIDFileName, b, 0644)
 			if err != nil {
-				log.Fatal("WriteFile", err, uuidFileName)
+				log.Fatal("WriteFile", err, types.UUIDFileName)
 			}
 			log.Debugf("Wrote UUID %s\n", devUUID)
 		}

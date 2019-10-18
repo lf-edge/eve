@@ -69,11 +69,12 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		physioChanged := parseDeviceIoListConfig(config, getconfigCtx)
 		// Network objects are used for systemAdapters
 		networksChanged := parseNetworkXObjectConfig(config, getconfigCtx)
-		if physioChanged || networksChanged {
-			parseSystemAdapterConfig(config, getconfigCtx, true)
-		} else {
-			parseSystemAdapterConfig(config, getconfigCtx, false)
-		}
+		// system adapter configuration that we publish, depends
+		// on Physio configuration and Networks configuration. If either of
+		// Physio or Networks change, we should re-parse system adapters and
+		// publish updated configuration.
+		forceSystemAdaptersParse := physioChanged || networksChanged
+		parseSystemAdapterConfig(config, getconfigCtx, forceSystemAdaptersParse)
 		parseBaseOsConfig(getconfigCtx, config)
 		parseNetworkInstanceConfig(config, getconfigCtx)
 		parseAppInstanceConfig(config, getconfigCtx)
@@ -607,8 +608,9 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	log.Infof("parseSystemAdapterConfig: Applying updated config\n"+
 		"prevSha: % x\n"+
 		"NewSha : % x\n"+
-		"sysAdapters: %v\n",
-		systemAdaptersPrevConfigHash, configHash, sysAdapters)
+		"sysAdapters: %v\n"+
+		"Forced parsing: %v\n",
+		systemAdaptersPrevConfigHash, configHash, sysAdapters, forceParse)
 
 	systemAdaptersPrevConfigHash = configHash
 
@@ -694,7 +696,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			if err != nil {
 				log.Errorf("parseSystemAdapterConfig: Network with UUID %s not found: %s\n",
 					sysAdapter.NetworkUUID, err)
-				return
+				continue
 			}
 			network := cast.CastNetworkXObjectConfig(networkXObject)
 			if ip != nil {
@@ -1838,7 +1840,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				globalConfig.SshAuthorizedKeys)
 			ssh.UpdateSshAuthorizedKeys(globalConfig.SshAuthorizedKeys)
 		}
-		err := pubsub.PublishToDir("/persist/config/", "global",
+		err := pubsub.PublishToDir(types.PersistConfigDir, "global",
 			&globalConfig)
 		if err != nil {
 			log.Errorf("PublishToDir for globalConfig failed %s\n",
