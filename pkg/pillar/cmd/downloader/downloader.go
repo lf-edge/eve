@@ -37,20 +37,17 @@ import (
 )
 
 const (
-	appImgObj                    = "appImg.obj"
-	baseOsObj                    = "baseOs.obj"
-	certObj                      = "cert.obj"
-	agentName                    = "downloader"
-	persistDir                   = "/persist"
-	objectDownloadDirname        = persistDir + "/downloads"
-	persistRktDataDir            = persistDir + "/rkt"
-	persistRktLocalConfigDir     = persistDir + "/rktlocal"
+	agentName = "downloader"
+	// persistRktLocalConfigDir - Location of dir used by rkt local data
+	persistRktLocalConfigDir = types.PersistDir + "/rktlocal"
+	// persistRktLocalConfigAuthDir - used for storing auth files by rkt
 	persistRktLocalConfigAuthDir = persistRktLocalConfigDir + "/auth.d"
 )
 
 // Go doesn't like this as a constant
 var (
-	downloaderObjTypes = []string{appImgObj, baseOsObj, certObj}
+	downloaderObjTypes = []string{types.AppImgObj, types.BaseOsObj,
+		types.CertObj}
 )
 
 // Set from Makefile
@@ -169,7 +166,7 @@ func Run() {
 	ctx.pubGlobalDownloadStatus = pubGlobalDownloadStatus
 
 	// Set up our publications before the subscriptions so ctx is set
-	pubAppImgStatus, err := pubsub.PublishScope(agentName, appImgObj,
+	pubAppImgStatus, err := pubsub.PublishScope(agentName, types.AppImgObj,
 		types.DownloaderStatus{})
 	if err != nil {
 		log.Fatal(err)
@@ -177,7 +174,7 @@ func Run() {
 	ctx.pubAppImgStatus = pubAppImgStatus
 	pubAppImgStatus.ClearRestarted()
 
-	pubBaseOsStatus, err := pubsub.PublishScope(agentName, baseOsObj,
+	pubBaseOsStatus, err := pubsub.PublishScope(agentName, types.BaseOsObj,
 		types.DownloaderStatus{})
 	if err != nil {
 		log.Fatal(err)
@@ -185,7 +182,7 @@ func Run() {
 	ctx.pubBaseOsStatus = pubBaseOsStatus
 	pubBaseOsStatus.ClearRestarted()
 
-	pubCertObjStatus, err := pubsub.PublishScope(agentName, certObj,
+	pubCertObjStatus, err := pubsub.PublishScope(agentName, types.CertObj,
 		types.DownloaderStatus{})
 	if err != nil {
 		log.Fatal(err)
@@ -194,7 +191,7 @@ func Run() {
 	pubCertObjStatus.ClearRestarted()
 
 	subAppImgConfig, err := pubsub.SubscribeScope("zedmanager",
-		appImgObj, types.DownloaderConfig{}, false, &ctx)
+		types.AppImgObj, types.DownloaderConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -205,7 +202,7 @@ func Run() {
 	subAppImgConfig.Activate()
 
 	subBaseOsConfig, err := pubsub.SubscribeScope("baseosmgr",
-		baseOsObj, types.DownloaderConfig{}, false, &ctx)
+		types.BaseOsObj, types.DownloaderConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -216,7 +213,7 @@ func Run() {
 	subBaseOsConfig.Activate()
 
 	subCertObjConfig, err := pubsub.SubscribeScope("baseosmgr",
-		certObj, types.DownloaderConfig{}, false, &ctx)
+		types.CertObj, types.DownloaderConfig{}, false, &ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -376,13 +373,13 @@ func checkAndUpdateDownloadableObjects(ctx *downloaderContext, dsID uuid.UUID) {
 func handleAppImgModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	handleDownloaderModify(ctxArg, appImgObj, key, configArg)
+	handleDownloaderModify(ctxArg, types.AppImgObj, key, configArg)
 }
 
 func handleAppImgCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	handleDownloaderCreate(ctxArg, appImgObj, key, configArg)
+	handleDownloaderCreate(ctxArg, types.AppImgObj, key, configArg)
 }
 
 func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
@@ -392,13 +389,13 @@ func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
 func handleBaseOsModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	handleDownloaderModify(ctxArg, baseOsObj, key, configArg)
+	handleDownloaderModify(ctxArg, types.BaseOsObj, key, configArg)
 }
 
 func handleBaseOsCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	handleDownloaderCreate(ctxArg, baseOsObj, key, configArg)
+	handleDownloaderCreate(ctxArg, types.BaseOsObj, key, configArg)
 }
 
 func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
@@ -408,12 +405,12 @@ func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
 func handleCertObjModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	handleDownloaderModify(ctxArg, certObj, key, configArg)
+	handleDownloaderModify(ctxArg, types.CertObj, key, configArg)
 }
 func handleCertObjCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	handleDownloaderCreate(ctxArg, certObj, key, configArg)
+	handleDownloaderCreate(ctxArg, types.CertObj, key, configArg)
 }
 
 func handleCertObjDelete(ctxArg interface{}, key string, configArg interface{}) {
@@ -697,7 +694,7 @@ func handleModify(ctx *downloaderContext, key string,
 		log.Fatalf("handleModify: No ObjType for %s\n",
 			status.Safename)
 	}
-	locDirname := objectDownloadDirname + "/" + status.ObjType
+	locDirname := types.DownloadDirname + "/" + status.ObjType
 
 	if config.Name != status.Name {
 		log.Errorf("URL changed - not allowed %s -> %s\n",
@@ -793,7 +790,7 @@ func handleDelete(ctx *downloaderContext, key string,
 		log.Fatalf("handleDelete: No ObjType for %s\n",
 			status.Safename)
 	}
-	locDirname := objectDownloadDirname + "/" + status.ObjType
+	locDirname := types.DownloadDirname + "/" + status.ObjType
 
 	status.PendingDelete = true
 	publishDownloaderStatus(ctx, status)
@@ -826,9 +823,9 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 	// XXX run this periodically... What about downloads inprogress
 	// when we run it?
 	// XXX look at verifier and downloader status which have Size
-	// We read objectDownloadDirname/* and determine how much space
+	// We read types.DownloadDirname/* and determine how much space
 	// is used. Place in GlobalDownloadStatus. Calculate remaining space.
-	totalUsed := diskmetrics.SizeFromDir(objectDownloadDirname)
+	totalUsed := diskmetrics.SizeFromDir(types.DownloadDirname)
 	kb := types.RoundupToKB(totalUsed)
 	initSpace(ctx, kb)
 
@@ -876,7 +873,7 @@ func createDownloadDirs(objTypes []string) {
 	// now create the download dirs
 	for _, objType := range objTypes {
 		for _, dirType := range workingDirTypes {
-			dirName := objectDownloadDirname + "/" + objType + "/" + dirType
+			dirName := types.DownloadDirname + "/" + objType + "/" + dirType
 			if _, err := os.Stat(dirName); err != nil {
 				log.Debugf("Create %s\n", dirName)
 				if err := os.MkdirAll(dirName, 0700); err != nil {
@@ -895,7 +892,8 @@ func clearInProgressDownloadDirs(objTypes []string) {
 	// now create the download dirs
 	for _, objType := range objTypes {
 		for _, dirType := range inProgressDirTypes {
-			dirName := objectDownloadDirname + "/" + objType + "/" + dirType
+			dirName := types.DownloadDirname + "/" + objType +
+				"/" + dirType
 			if _, err := os.Stat(dirName); err == nil {
 				if err := os.RemoveAll(dirName); err != nil {
 					log.Fatal(err)
@@ -1044,11 +1042,11 @@ func unpublishDownloaderStatus(ctx *downloaderContext,
 func downloaderPublication(ctx *downloaderContext, objType string) *pubsub.Publication {
 	var pub *pubsub.Publication
 	switch objType {
-	case appImgObj:
+	case types.AppImgObj:
 		pub = ctx.pubAppImgStatus
-	case baseOsObj:
+	case types.BaseOsObj:
 		pub = ctx.pubBaseOsStatus
-	case certObj:
+	case types.CertObj:
 		pub = ctx.pubCertObjStatus
 	default:
 		log.Fatalf("downloaderPublication: Unknown ObjType %s\n",
@@ -1061,11 +1059,11 @@ func downloaderSubscription(ctx *downloaderContext, objType string) *pubsub.Subs
 
 	var sub *pubsub.Subscription
 	switch objType {
-	case appImgObj:
+	case types.AppImgObj:
 		sub = ctx.subAppImgConfig
-	case baseOsObj:
+	case types.BaseOsObj:
 		sub = ctx.subBaseOsConfig
-	case certObj:
+	case types.CertObj:
 		sub = ctx.subCertObjConfig
 	default:
 		log.Fatalf("downloaderSubscription: Unknown ObjType %s\n",
@@ -1397,7 +1395,7 @@ func doSftp(ctx *downloaderContext, status *types.DownloaderStatus,
 
 func constructDatastoreContext(config types.DownloaderConfig, status *types.DownloaderStatus, dst *types.DatastoreConfig) *types.DatastoreContext {
 	dpath := dst.Dpath
-	if status.ObjType == certObj {
+	if status.ObjType == types.CertObj {
 		dpath = strings.Replace(dpath, "-images", "-certs", 1)
 	}
 	downloadURL := config.Name
@@ -1427,7 +1425,7 @@ func rktFetch(url string, localConfigDir string) (string, error) {
 		url, localConfigDir)
 	cmd := "rkt"
 	args := []string{
-		"--dir=" + persistRktDataDir,
+		"--dir=" + types.PersistRktDataDir,
 		"--insecure-options=image",
 		"fetch",
 	}
@@ -1505,13 +1503,14 @@ func rktCreateAuthFile(config *types.DownloaderConfig,
 		RktKind:    "dockerAuth",
 		RktVersion: "v1",
 		Registries: []string{dsCtx.DownloadURL},
-		Credentials: types.RktCredentials{
+		Credentials: &types.RktCredentials{
 			User:     dsCtx.APIKey,
 			Password: dsCtx.Password,
 		},
 	}
 	log.Infof("rktCreateAuthFile: created Auth file %s\n"+
-		"rktAuth: %+v\n", filename, rktAuth)
+		"RktKind: %s, RktVersion: %s, Registries: %+v, \n",
+		filename, rktAuth.RktKind, rktAuth.RktVersion, rktAuth.Registries)
 
 	file, err := json.MarshalIndent(rktAuth, "", " ")
 	if err != nil {
@@ -1604,7 +1603,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		rktFetchContainerImage(ctx, key, config, status, *dsCtx)
 		return
 	}
-	locDirname := objectDownloadDirname + "/" + status.ObjType
+	locDirname := types.DownloadDirname + "/" + status.ObjType
 	locFilename = locDirname + "/pending"
 
 	// update status to DOWNLOAD STARTED
@@ -1811,7 +1810,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		log.Fatalf("handleSyncOpResponse: No ObjType for %s\n",
 			status.Safename)
 	}
-	locDirname := objectDownloadDirname + "/" + status.ObjType
+	locDirname := types.DownloadDirname + "/" + status.ObjType
 	if errStr != "" {
 		// Delete file
 		doDelete(ctx, key, locDirname, status)

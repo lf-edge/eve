@@ -218,7 +218,8 @@ func getLatestConfig(url string, iteration int,
 		if !getconfigCtx.updateInprogress &&
 			!getconfigCtx.readSavedConfig && !getconfigCtx.configReceived {
 
-			config, err := readSavedProtoMessage(checkpointDirname+"/lastconfig", false)
+			config, err := readSavedProtoMessage(
+				checkpointDirname+"/lastconfig", false)
 			if err != nil {
 				log.Errorf("getconfig: %v\n", err)
 				return false

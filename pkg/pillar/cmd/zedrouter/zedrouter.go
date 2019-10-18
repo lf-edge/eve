@@ -37,7 +37,6 @@ import (
 const (
 	agentName     = "zedrouter"
 	runDirname    = "/var/run/zedrouter"
-	tmpDirname    = "/var/tmp/zededa"
 	DataPlaneName = "lisp-ztr"
 	DropMarkValue = 0xFFFFFF
 )

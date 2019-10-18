@@ -18,10 +18,10 @@ type RktCredentials struct {
 
 // RktAuthInfo is a rkt based Container Authentication Info
 type RktAuthInfo struct {
-	RktKind     string         `json:"rktkind"`
-	RktVersion  string         `json:"rktversion"`
-	Registries  []string       `json:"registries"`
-	Credentials RktCredentials `json:"credentials"`
+	RktKind     string          `json:"rktkind"`
+	RktVersion  string          `json:"rktversion"`
+	Registries  []string        `json:"registries"`
+	Credentials *RktCredentials `json:"credentials"`
 }
 
 // The key/index to this is the Safename which is allocated by ZedManager.
@@ -139,21 +139,16 @@ type DatastoreContext struct {
 	Region          string
 }
 
-const (
-	baseOsObj = "baseOs.obj"
-	certObj   = "cert.obj"
-)
-
 // AllowNonFreePort looks at GlobalConfig to determine which policy
 // to apply for the download of the object.
 func AllowNonFreePort(gc GlobalConfig, objType string) bool {
 
 	switch objType {
-	case appImgObj:
+	case AppImgObj:
 		return gc.AllowNonFreeAppImages == TS_ENABLED
-	case baseOsObj:
+	case BaseOsObj:
 		return gc.AllowNonFreeBaseImages == TS_ENABLED
-	case certObj:
+	case CertObj:
 		return (gc.AllowNonFreeBaseImages == TS_ENABLED) ||
 			(gc.AllowNonFreeAppImages == TS_ENABLED)
 	default:

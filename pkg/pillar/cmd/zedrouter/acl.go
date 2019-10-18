@@ -383,105 +383,206 @@ func aclToRules(aclArgs types.AppNetworkACLArgs, ACLs []types.ACE) (types.IPTabl
 	aclRule4.IPVer = aclArgs.IPVer
 	aclRule5.IPVer = aclArgs.IPVer
 	// XXX should we check isMgmt instead of bridgeIP?
-	if aclArgs.IPVer == 6 && aclArgs.BridgeIP != "" {
-		// Need to allow local communication */
-		// Only allow dhcp, dns (tcp/udp), and icmp6/nd
-		// Note that sufficient for src or dst to be local
-		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
-			"--match-set", "ipv6.local", "dst", "-p", "ipv6-icmp"}
-		aclRule1.Action = []string{"-j", "ACCEPT"}
-		aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
-			"--match-set", "ipv6.local", "src", "-p", "ipv6-icmp"}
-		aclRule2.Action = []string{"-j", "ACCEPT"}
-		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d",
-			aclArgs.BridgeIP, "-p", "ipv6-icmp"}
-		aclRule3.Action = []string{"-j", "ACCEPT"}
-		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s",
-			aclArgs.BridgeIP, "-p", "ipv6-icmp"}
-		aclRule4.Action = []string{"-j", "ACCEPT"}
-		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+	if aclArgs.IPVer == 6 {
+		if aclArgs.BridgeIP != "" && aclArgs.NIType != types.NetworkInstanceTypeSwitch {
+			// Need to allow local communication */
+			// Only allow dhcp, dns (tcp/udp), and icmp6/nd
+			// Note that sufficient for src or dst to be local
+			aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+				"--match-set", "ipv6.local", "dst", "-p", "ipv6-icmp"}
+			aclRule1.Action = []string{"-j", "ACCEPT"}
+			aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+				"--match-set", "ipv6.local", "src", "-p", "ipv6-icmp"}
+			aclRule2.Action = []string{"-j", "ACCEPT"}
+			aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d",
+				aclArgs.BridgeIP, "-p", "ipv6-icmp"}
+			aclRule3.Action = []string{"-j", "ACCEPT"}
+			aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s",
+				aclArgs.BridgeIP, "-p", "ipv6-icmp"}
+			aclRule4.Action = []string{"-j", "ACCEPT"}
+			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 
-		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
-			"--match-set", "ipv6.local", "dst", "-p", "udp", "--dport", "dhcpv6-server"}
-		aclRule1.Action = []string{"-j", "ACCEPT"}
-		aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
-			"--match-set", "ipv6.local", "src", "-p", "udp", "--sport", "dhcpv6-server"}
-		aclRule2.Action = []string{"-j", "ACCEPT"}
-		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
-			"-p", "udp", "--dport", "dhcpv6-server"}
-		aclRule3.Action = []string{"-j", "ACCEPT"}
-		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
-			"-p", "udp", "--sport", "dhcpv6-server"}
-		aclRule4.Action = []string{"-j", "ACCEPT"}
-		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+			aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+				"--match-set", "ipv6.local", "dst", "-p", "udp", "--dport", "dhcpv6-server"}
+			aclRule1.Action = []string{"-j", "ACCEPT"}
+			aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+				"--match-set", "ipv6.local", "src", "-p", "udp", "--sport", "dhcpv6-server"}
+			aclRule2.Action = []string{"-j", "ACCEPT"}
+			aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+				"-p", "udp", "--dport", "dhcpv6-server"}
+			aclRule3.Action = []string{"-j", "ACCEPT"}
+			aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+				"-p", "udp", "--sport", "dhcpv6-server"}
+			aclRule4.Action = []string{"-j", "ACCEPT"}
+			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 
-		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
-			"-p", "udp", "--dport", "domain"}
-		aclRule1.Action = []string{"-j", "ACCEPT"}
-		aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
-			"-p", "udp", "--sport", "domain"}
-		aclRule2.Action = []string{"-j", "ACCEPT"}
-		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
-			"-p", "tcp", "--dport", "domain"}
-		aclRule3.Action = []string{"-j", "ACCEPT"}
-		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
-			"-p", "tcp", "--sport", "domain"}
-		aclRule4.Action = []string{"-j", "ACCEPT"}
-		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+			aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+				"-p", "udp", "--dport", "domain"}
+			aclRule1.Action = []string{"-j", "ACCEPT"}
+			aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+				"-p", "udp", "--sport", "domain"}
+			aclRule2.Action = []string{"-j", "ACCEPT"}
+			aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+				"-p", "tcp", "--dport", "domain"}
+			aclRule3.Action = []string{"-j", "ACCEPT"}
+			aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+				"-p", "tcp", "--sport", "domain"}
+			aclRule4.Action = []string{"-j", "ACCEPT"}
+			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+		} else if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
+			aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+				"--match-set", "ipv6.local", "dst", "-p", "ipv6-icmp"}
+			aclRule1.Action = []string{"-j", "ACCEPT"}
+
+			aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+				"--match-set", "ipv6.local", "src", "-p", "ipv6-icmp"}
+			aclRule2.Action = []string{"-j", "ACCEPT"}
+
+			rulesList = append(rulesList, aclRule1, aclRule2)
+
+			// Allow DHCP
+			aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+				"--match-set", "ipv6.local", "dst", "-p", "udp", "--dport", "dhcpv6-server"}
+			aclRule1.Action = []string{"-j", "ACCEPT"}
+
+			aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+				"--match-set", "ipv6.local", "src", "-p", "udp", "--sport", "dhcpv6-server"}
+			aclRule2.Action = []string{"-j", "ACCEPT"}
+
+			aclRule3.Rule = []string{"-i", aclArgs.BridgeName,
+				"-p", "udp", "--dport", "dhcpv6-server"}
+			aclRule3.Action = []string{"-j", "ACCEPT"}
+			aclRule4.Rule = []string{"-i", aclArgs.BridgeName,
+				"-p", "udp", "--sport", "dhcpv6-server", "-m", "physdev",
+				"--physdev-out", aclArgs.VifName}
+			aclRule4.Action = []string{"-j", "ACCEPT"}
+			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+
+			// Allow DNS
+			aclRule1.Rule = []string{"-i", aclArgs.BridgeName,
+				"-p", "udp", "--dport", "domain"}
+			aclRule1.Action = []string{"-j", "ACCEPT"}
+
+			aclRule2.Rule = []string{"-i", aclArgs.BridgeName,
+				"-p", "udp", "--sport", "domain", "-m", "physdev",
+				"--physdev-out", aclArgs.VifName}
+			aclRule2.Action = []string{"-j", "ACCEPT"}
+
+			aclRule3.Rule = []string{"-i", aclArgs.BridgeName,
+				"-p", "tcp", "--dport", "domain"}
+			aclRule3.Action = []string{"-j", "ACCEPT"}
+
+			aclRule4.Rule = []string{"-i", aclArgs.BridgeName,
+				"-p", "tcp", "--sport", "domain", "-m", "physdev",
+				"--physdev-out", aclArgs.VifName}
+			aclRule4.Action = []string{"-j", "ACCEPT"}
+			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+		}
 	}
 	// The same rules as above for IPv4.
 	// If we have a bridge service then bridgeIP might be "".
-	if aclArgs.IPVer == 4 && aclArgs.BridgeIP != "" {
-		// Need to allow local communication */
-		// Only allow dhcp and dns (tcp/udp)
-		// Note that sufficient for src or dst to be local
-		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
-			"--match-set", "ipv4.local", "dst", "-p", "udp", "--dport", "bootps"}
-		aclRule1.Action = []string{"-j", "ACCEPT"}
-		aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
-			"--match-set", "ipv4.local", "src", "-p", "udp", "--sport", "bootps"}
-		aclRule2.Action = []string{"-j", "ACCEPT"}
-		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
-			"-p", "udp", "--dport", "bootps"}
-		aclRule3.Action = []string{"-j", "ACCEPT"}
-		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
-			"-p", "udp", "--sport", "bootps"}
-		aclRule4.Action = []string{"-j", "ACCEPT"}
-		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+	if aclArgs.IPVer == 4 {
+		if aclArgs.NIType != types.NetworkInstanceTypeSwitch &&
+			aclArgs.BridgeIP != "" {
+			// Need to allow local communication */
+			// Only allow dhcp and dns (tcp/udp)
+			// Note that sufficient for src or dst to be local
+			aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+				"--match-set", "ipv4.local", "dst", "-p", "udp", "--dport", "bootps"}
+			aclRule1.Action = []string{"-j", "ACCEPT"}
+			aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+				"--match-set", "ipv4.local", "src", "-p", "udp", "--sport", "bootps"}
+			aclRule2.Action = []string{"-j", "ACCEPT"}
+			aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+				"-p", "udp", "--dport", "bootps"}
+			aclRule3.Action = []string{"-j", "ACCEPT"}
+			aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+				"-p", "udp", "--sport", "bootps"}
+			aclRule4.Action = []string{"-j", "ACCEPT"}
+			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 
-		aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
-			"-p", "udp", "--dport", "domain"}
-		aclRule1.Action = []string{"-j", "ACCEPT"}
-		aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
-			"-p", "udp", "--sport", "domain"}
-		aclRule2.Action = []string{"-j", "ACCEPT"}
-		aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
-			"-p", "tcp", "--dport", "domain"}
-		aclRule3.Action = []string{"-j", "ACCEPT"}
-		aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
-			"-p", "tcp", "--sport", "domain"}
-		aclRule4.Action = []string{"-j", "ACCEPT"}
-		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+			aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+				"-p", "udp", "--dport", "domain"}
+			aclRule1.Action = []string{"-j", "ACCEPT"}
+			aclRule2.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+				"-p", "udp", "--sport", "domain"}
+			aclRule2.Action = []string{"-j", "ACCEPT"}
+			aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+				"-p", "tcp", "--dport", "domain"}
+			aclRule3.Action = []string{"-j", "ACCEPT"}
+			aclRule4.Rule = []string{"-i", aclArgs.BridgeName, "-s", aclArgs.BridgeIP,
+				"-p", "tcp", "--sport", "domain"}
+			aclRule4.Action = []string{"-j", "ACCEPT"}
+			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 
-		aclRule5.Table = "mangle"
-		aclRule5.Chain = "PREROUTING"
-		aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
-			"-p", "udp", "-m", "multiport", "--dports", "bootps,domain"}
-		chainName := fmt.Sprintf("proto-%s-%s-%d",
-			aclArgs.BridgeName, aclArgs.VifName, 6)
-		createMarkAndAcceptChain(aclArgs, chainName, 6)
-		aclRule5.Action = []string{"-j", chainName}
-		aclRule5.ActionChainName = chainName
-		rulesList = append(rulesList, aclRule5)
+			aclRule5.Table = "mangle"
+			aclRule5.Chain = "PREROUTING"
+			aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+				"-p", "udp", "-m", "multiport", "--dports", "bootps,domain"}
+			chainName := fmt.Sprintf("proto-%s-%s-%d",
+				aclArgs.BridgeName, aclArgs.VifName, 6)
+			createMarkAndAcceptChain(aclArgs, chainName, 6)
+			aclRule5.Action = []string{"-j", chainName}
+			aclRule5.ActionChainName = chainName
+			rulesList = append(rulesList, aclRule5)
 
-		aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
-			"-p", "tcp", "--dport", "domain"}
-		chainName = fmt.Sprintf("proto-%s-%s-%d",
-			aclArgs.BridgeName, aclArgs.VifName, 7)
-		createMarkAndAcceptChain(aclArgs, chainName, 7)
-		aclRule5.Action = []string{"-j", chainName}
-		aclRule5.ActionChainName = chainName
-		rulesList = append(rulesList, aclRule5)
+			aclRule5.Rule = []string{"-i", aclArgs.BridgeName, "-d", aclArgs.BridgeIP,
+				"-p", "tcp", "--dport", "domain"}
+			chainName = fmt.Sprintf("proto-%s-%s-%d",
+				aclArgs.BridgeName, aclArgs.VifName, 7)
+			createMarkAndAcceptChain(aclArgs, chainName, 7)
+			aclRule5.Action = []string{"-j", chainName}
+			aclRule5.ActionChainName = chainName
+			rulesList = append(rulesList, aclRule5)
+		} else if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
+			// Switch network instance case
+			aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-m", "set",
+				"--match-set", "ipv4.local", "dst", "-p", "udp", "--dport", "bootps"}
+			aclRule1.Action = []string{"-j", "ACCEPT"}
+			aclRule2.Rule = []string{"-o", aclArgs.BridgeName, "-m", "set",
+				"--match-set", "ipv4.local", "src", "-p", "udp", "--sport", "bootps",
+				"-m", "physdev", "--physdev-out", aclArgs.VifName}
+
+			aclRule2.Action = []string{"-j", "ACCEPT"}
+			aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-p", "udp", "--dport", "bootps"}
+			aclRule3.Action = []string{"-j", "ACCEPT"}
+			aclRule4.Rule = []string{"-o", aclArgs.BridgeName, "-p", "udp", "--sport", "bootps",
+				"-m", "physdev", "--physdev-out", aclArgs.VifName}
+			aclRule4.Action = []string{"-j", "ACCEPT"}
+			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+
+			aclRule1.Rule = []string{"-i", aclArgs.BridgeName, "-p", "udp", "--dport", "domain"}
+			aclRule1.Action = []string{"-j", "ACCEPT"}
+			aclRule2.Rule = []string{"-o", aclArgs.BridgeName, "-p", "udp", "--sport", "domain",
+				"-m", "physdev", "--physdev-out", aclArgs.VifName}
+			aclRule2.Action = []string{"-j", "ACCEPT"}
+			aclRule3.Rule = []string{"-i", aclArgs.BridgeName, "-p", "tcp", "--dport", "domain"}
+			aclRule3.Action = []string{"-j", "ACCEPT"}
+			aclRule4.Rule = []string{"-o", aclArgs.BridgeName, "-p", "tcp", "--sport", "domain",
+				"-m", "physdev", "--physdev-out", aclArgs.VifName}
+			aclRule4.Action = []string{"-j", "ACCEPT"}
+			rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
+
+			aclRule5.Table = "mangle"
+			aclRule5.Chain = "PREROUTING"
+			aclRule5.Rule = []string{"-i", aclArgs.BridgeName,
+				"-p", "udp", "-m", "multiport", "--dports", "bootps,domain"}
+			chainName := fmt.Sprintf("proto-%s-%s-%d",
+				aclArgs.BridgeName, aclArgs.VifName, 6)
+			createMarkAndAcceptChain(aclArgs, chainName, 6)
+			aclRule5.Action = []string{"-j", chainName}
+			aclRule5.ActionChainName = chainName
+			rulesList = append(rulesList, aclRule5)
+
+			aclRule5.Rule = []string{"-i", aclArgs.BridgeName,
+				"-p", "tcp", "--dport", "domain"}
+			chainName = fmt.Sprintf("proto-%s-%s-%d",
+				aclArgs.BridgeName, aclArgs.VifName, 7)
+			createMarkAndAcceptChain(aclArgs, chainName, 7)
+			aclRule5.Action = []string{"-j", chainName}
+			aclRule5.ActionChainName = chainName
+			rulesList = append(rulesList, aclRule5)
+		}
 	}
 
 	// XXX isMgmt is painful; related to commenting out eidset accepts
@@ -524,7 +625,8 @@ func aclDropRules(aclArgs types.AppNetworkACLArgs) (types.IPTablesRuleList, erro
 	aclRule1.Rule = []string{"-i", aclArgs.BridgeName}
 	aclRule1.Action = []string{"-j", "LOG", "--log-prefix",
 		"FORWARD:FROM:", "--log-level", "3"}
-	aclRule2.Rule = []string{"-o", aclArgs.BridgeName}
+	aclRule2.Rule = []string{"-o", aclArgs.BridgeName, "-m", "physdev",
+		"--physdev-out", aclArgs.VifName}
 	aclRule2.Action = []string{"-j", "LOG", "--log-prefix",
 		"FORWARD:TO:", "--log-level", "3"}
 
@@ -549,9 +651,13 @@ func aclDropRules(aclArgs types.AppNetworkACLArgs) (types.IPTablesRuleList, erro
 		aclRule3.IsDefaultDrop = true
 		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3)
 	default:
+		// --prefix-in match is implicitly added for this rule inside
+		// rulePrefix function
 		aclRule3.Rule = []string{"-i", aclArgs.BridgeName}
 		aclRule3.Action = []string{"-j", "DROP"}
-		aclRule4.Rule = []string{"-o", aclArgs.BridgeName}
+
+		aclRule4.Rule = []string{"-o", aclArgs.BridgeName, "-m", "physdev",
+			"--physdev-out", aclArgs.VifName}
 		aclRule4.Action = []string{"-j", "DROP"}
 		rulesList = append(rulesList, aclRule1, aclRule2, aclRule3, aclRule4)
 	}
@@ -839,6 +945,17 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 	aclRule3.Action = inActions
 	aclRule3.IsUserConfigured = true
 	aclRule3.RuleID = ace.RuleID
+	if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
+		if len(aclArgs.UpLinks) > 1 {
+			errStr := fmt.Sprintf("aceToRules: Switch network instance with more than ONE " +
+				"uplink attached is not supported now.")
+			log.Errorln(errStr)
+			return nil, errors.New(errStr)
+		} else {
+			aclRule3.Rule = append(aclRule3.Rule, "-m", "physdev",
+				"--physdev-in", aclArgs.UpLinks[0])
+		}
+	}
 
 	aclRule4.Rule = outArgs
 	aclRule4.Action = outActions
@@ -889,24 +1006,18 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 		}
 
 		if aclRule3.RuleID != -1 {
-			for _, uplink := range aclArgs.UpLinks {
-				aclRule3.Table = "mangle"
-				aclRule3.Chain = "PREROUTING"
-				if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
-					aclRule3.Rule = append(aclRule3.Rule, "-m", "physdev",
-						"--physdev-in", uplink)
-				}
-				aclRule3.IsMarkingRule = true
-				chainName := fmt.Sprintf("%s-%s-%d",
-					aclArgs.BridgeName, aclArgs.VifName, aclRule3.RuleID)
+			aclRule3.Table = "mangle"
+			aclRule3.Chain = "PREROUTING"
+			aclRule3.IsMarkingRule = true
+			chainName := fmt.Sprintf("%s-%s-%d",
+				aclArgs.BridgeName, aclArgs.VifName, aclRule3.RuleID)
 
-				// Embed App id in marking value
-				markingValue := (aclArgs.AppNum << 24) | aclRule3.RuleID
-				createMarkAndAcceptChain(aclArgs, chainName, markingValue)
-				aclRule3.Action = []string{"-j", chainName}
-				aclRule3.ActionChainName = chainName
-				rulesList = append(rulesList, aclRule3)
-			}
+			// Embed App id in marking value
+			markingValue := (aclArgs.AppNum << 24) | aclRule3.RuleID
+			createMarkAndAcceptChain(aclArgs, chainName, markingValue)
+			aclRule3.Action = []string{"-j", chainName}
+			aclRule3.ActionChainName = chainName
+			rulesList = append(rulesList, aclRule3)
 		} else {
 			log.Errorf("Table: %s, Chain: %s, Rule: %s, Action: %s - cannot be"+
 				" programmed due to ACL ID allocation failure",

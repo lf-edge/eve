@@ -46,19 +46,11 @@ import (
 )
 
 const (
-	appImgObj = "appImg.obj"
-	baseOsObj = "baseOs.obj"
-	certObj   = "cert.obj"
-	agentName = "zedagent"
-
-	configDir             = "/config"
-	persistDir            = "/persist"
-	objectDownloadDirname = persistDir + "/downloads"
-	certificateDirname    = persistDir + "/certs"
-	checkpointDirname     = persistDir + "/checkpoint"
-	restartCounterFile    = configDir + "/restartcounter"
-	tmpDirname            = "/var/tmp/zededa"
-	firstbootFile         = tmpDirname + "/first-boot"
+	agentName          = "zedagent"
+	restartCounterFile = types.IdentityDirname + "/restartcounter"
+	firstbootFile      = types.TmpDirname + "/first-boot"
+	// checkpointDirname - location of config checkpoint
+	checkpointDirname = types.PersistDir + "/checkpoint"
 )
 
 // Set from Makefile
@@ -433,7 +425,7 @@ func Run() {
 	// Look for DownloaderStatus from downloader
 	// used only for downloader storage stats collection
 	subBaseOsDownloadStatus, err := pubsub.SubscribeScope("downloader",
-		baseOsObj, types.DownloaderStatus{}, false, &zedagentCtx)
+		types.BaseOsObj, types.DownloaderStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -443,7 +435,7 @@ func Run() {
 	// Look for DownloaderStatus from downloader
 	// used only for downloader storage stats collection
 	subCertObjDownloadStatus, err := pubsub.SubscribeScope("downloader",
-		certObj, types.DownloaderStatus{}, false, &zedagentCtx)
+		types.CertObj, types.DownloaderStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -453,7 +445,7 @@ func Run() {
 	// Look for VerifyBaseOsImageStatus from verifier
 	// used only for verifier storage stats collection
 	subBaseOsVerifierStatus, err := pubsub.SubscribeScope("verifier",
-		baseOsObj, types.VerifyImageStatus{}, false, &zedagentCtx)
+		types.BaseOsObj, types.VerifyImageStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -466,7 +458,7 @@ func Run() {
 	// Look for VerifyImageStatus from verifier
 	// used only for verifier storage stats collection
 	subAppImgVerifierStatus, err := pubsub.SubscribeScope("verifier",
-		appImgObj, types.VerifyImageStatus{}, false, &zedagentCtx)
+		types.AppImgObj, types.VerifyImageStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -476,7 +468,7 @@ func Run() {
 	// Look for DownloaderStatus from downloader for metric reporting
 	// used only for downloader storage stats collection
 	subAppImgDownloadStatus, err := pubsub.SubscribeScope("downloader",
-		appImgObj, types.DownloaderStatus{}, false, &zedagentCtx)
+		types.AppImgObj, types.DownloaderStatus{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1000,15 +992,15 @@ func handleInit() {
 func initializeDirs() {
 
 	// create persistent holder directory
-	if _, err := os.Stat(persistDir); err != nil {
-		log.Debugf("Create %s\n", persistDir)
-		if err := os.MkdirAll(persistDir, 0700); err != nil {
+	if _, err := os.Stat(types.PersistDir); err != nil {
+		log.Debugf("Create %s\n", types.PersistDir)
+		if err := os.MkdirAll(types.PersistDir, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
-	if _, err := os.Stat(certificateDirname); err != nil {
-		log.Debugf("Create %s\n", certificateDirname)
-		if err := os.MkdirAll(certificateDirname, 0700); err != nil {
+	if _, err := os.Stat(types.CertificateDirname); err != nil {
+		log.Debugf("Create %s\n", types.CertificateDirname)
+		if err := os.MkdirAll(types.CertificateDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -1018,9 +1010,9 @@ func initializeDirs() {
 			log.Fatal(err)
 		}
 	}
-	if _, err := os.Stat(objectDownloadDirname); err != nil {
-		log.Debugf("Create %s\n", objectDownloadDirname)
-		if err := os.MkdirAll(objectDownloadDirname, 0700); err != nil {
+	if _, err := os.Stat(types.DownloadDirname); err != nil {
+		log.Debugf("Create %s\n", types.DownloadDirname)
+		if err := os.MkdirAll(types.DownloadDirname, 0700); err != nil {
 			log.Fatal(err)
 		}
 	}

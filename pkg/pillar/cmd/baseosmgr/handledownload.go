@@ -6,13 +6,14 @@ package baseosmgr
 import (
 	"errors"
 	"fmt"
+	"os"
+	"time"
+
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"os"
-	"time"
 )
 
 // Really a constant
@@ -76,7 +77,7 @@ func updateDownloaderStatus(ctx *baseOsMgrContext,
 	// Update Progress counter even if Pending
 
 	switch status.ObjType {
-	case baseOsObj, certObj:
+	case types.BaseOsObj, types.CertObj:
 		// break
 	default:
 		log.Errorf("updateDownloaderStatus for %s, unsupported objType %s\n",
@@ -116,10 +117,10 @@ func updateDownloaderStatus(ctx *baseOsMgrContext,
 
 	// Normal update work
 	switch objType {
-	case baseOsObj:
+	case types.BaseOsObj:
 		baseOsHandleStatusUpdateSafename(ctx, status.Safename)
 
-	case certObj:
+	case types.CertObj:
 		certObjHandleStatusUpdateSafename(ctx, status.Safename)
 	}
 	log.Infof("updateDownloaderStatus(%s/%s) done\n",
@@ -199,7 +200,7 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 		// Sanity check that length isn't zero
 		// XXX other sanity checks?
 		// Only meaningful for certObj
-		if objType == certObj && ss.FinalObjDir != "" {
+		if objType == types.CertObj && ss.FinalObjDir != "" {
 			dstFilename := ss.FinalObjDir + "/" + types.SafenameToFilename(safename)
 			st, err := os.Stat(dstFilename)
 			if err == nil && st.Size() != 0 {
@@ -356,7 +357,7 @@ func installDownloadedObject(objType string, safename string,
 	status *types.StorageStatus) error {
 
 	var ret error
-	var srcFilename string = objectDownloadDirname + "/" + objType
+	var srcFilename string = types.DownloadDirname + "/" + objType
 
 	log.Infof("installDownloadedObject(%s/%s, %v)\n",
 		objType, safename, status.State)
@@ -403,10 +404,10 @@ func installDownloadedObject(objType string, safename string,
 		var dstFilename string = status.FinalObjDir
 
 		switch objType {
-		case certObj:
+		case types.CertObj:
 			ret = installCertObject(srcFilename, dstFilename, safename)
 
-		case baseOsObj:
+		case types.BaseOsObj:
 			ret = installBaseOsObject(srcFilename, dstFilename)
 
 		default:
@@ -457,9 +458,9 @@ func unpublishDownloaderConfig(ctx *baseOsMgrContext, objType string,
 func downloaderPublication(ctx *baseOsMgrContext, objType string) *pubsub.Publication {
 	var pub *pubsub.Publication
 	switch objType {
-	case baseOsObj:
+	case types.BaseOsObj:
 		pub = ctx.pubBaseOsDownloadConfig
-	case certObj:
+	case types.CertObj:
 		pub = ctx.pubCertObjDownloadConfig
 	default:
 		log.Fatalf("downloaderPublication: Unknown ObjType %s\n",
@@ -471,9 +472,9 @@ func downloaderPublication(ctx *baseOsMgrContext, objType string) *pubsub.Public
 func downloaderSubscription(ctx *baseOsMgrContext, objType string) *pubsub.Subscription {
 	var sub *pubsub.Subscription
 	switch objType {
-	case baseOsObj:
+	case types.BaseOsObj:
 		sub = ctx.subBaseOsDownloadStatus
-	case certObj:
+	case types.CertObj:
 		sub = ctx.subCertObjDownloadStatus
 	default:
 		log.Fatalf("downloaderSubscription: Unknown ObjType %s\n",

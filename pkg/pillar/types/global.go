@@ -16,7 +16,7 @@ import (
 const (
 	globalConfigDir  = "/persist/config/GlobalConfig"
 	globalConfigFile = globalConfigDir + "/global.json"
-	symlinkDir       = "/var/tmp/zededa/GlobalConfig"
+	symlinkDir       = TmpDirname + "/GlobalConfig"
 )
 
 // GlobalConfig is used for log levels and timer values which are preserved

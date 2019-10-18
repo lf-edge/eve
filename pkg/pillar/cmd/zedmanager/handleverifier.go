@@ -275,7 +275,7 @@ func checkCertsForObject(safename string, ss *types.StorageStatus) bool {
 
 	if ss.SignatureKey != "" {
 		safename := types.UrlToSafename(ss.SignatureKey, "")
-		filename := certificateDirname + "/" +
+		filename := types.CertificateDirname + "/" +
 			types.SafenameToFilename(safename)
 		if _, err := os.Stat(filename); err != nil {
 			log.Errorf("checkCertsForObject() for %s, %v\n", filename, err)
@@ -287,7 +287,7 @@ func checkCertsForObject(safename string, ss *types.StorageStatus) bool {
 	for _, certUrl := range ss.CertificateChain {
 		if certUrl != "" {
 			safename := types.UrlToSafename(certUrl, "")
-			filename := certificateDirname + "/" +
+			filename := types.CertificateDirname + "/" +
 				types.SafenameToFilename(safename)
 			if _, err := os.Stat(filename); err != nil {
 				log.Errorf("checkCertsForObject() for %s, %v\n", filename, err)

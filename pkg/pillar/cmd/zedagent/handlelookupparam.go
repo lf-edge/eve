@@ -30,8 +30,8 @@ import (
 )
 
 const (
-	infraFileName           = identityDirname + "/infra"
-	zedserverConfigFileName = tmpDirname + "/zedserverconfig"
+	infraFileName           = types.IdentityDirname + "/infra"
+	zedserverConfigFileName = types.TmpDirname + "/zedserverconfig"
 )
 
 // This is local to handlelookupparam. Used to determine any changes in

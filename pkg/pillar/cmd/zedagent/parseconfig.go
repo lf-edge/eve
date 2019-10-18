@@ -34,7 +34,7 @@ import (
 const (
 	MaxBaseOsCount       = 2
 	BaseOsImageCount     = 1
-	rebootConfigFilename = configDir + "/rebootConfig"
+	rebootConfigFilename = types.IdentityDirname + "/rebootConfig"
 )
 
 var rebootDelay int = 30 // take a 30 second delay
@@ -66,10 +66,14 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		parseDatastoreConfig(config, getconfigCtx)
 		// DeviceIoList has some defaults for Usage and UsagePolicy
 		// used by systemAdapters
-		parseDeviceIoListConfig(config, getconfigCtx)
+		physioChanged := parseDeviceIoListConfig(config, getconfigCtx)
 		// Network objects are used for systemAdapters
-		parseNetworkXObjectConfig(config, getconfigCtx)
-		parseSystemAdapterConfig(config, getconfigCtx, false)
+		networksChanged := parseNetworkXObjectConfig(config, getconfigCtx)
+		if physioChanged || networksChanged {
+			parseSystemAdapterConfig(config, getconfigCtx, true)
+		} else {
+			parseSystemAdapterConfig(config, getconfigCtx, false)
+		}
 		parseBaseOsConfig(getconfigCtx, config)
 		parseNetworkInstanceConfig(config, getconfigCtx)
 		parseAppInstanceConfig(config, getconfigCtx)
@@ -171,7 +175,7 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 
 		baseOs.StorageConfigList = make([]types.StorageConfig,
 			len(cfgOs.Drives))
-		parseStorageConfigList(baseOsObj, baseOs.StorageConfigList,
+		parseStorageConfigList(types.BaseOsObj, baseOs.StorageConfigList,
 			cfgOs.Drives)
 
 		certInstance := getCertObjects(baseOs.UUIDandVersion,
@@ -206,7 +210,7 @@ func lookupBaseOsConfigPub(getconfigCtx *getconfigContext, key string) *types.Ba
 var networkConfigPrevConfigHash []byte
 
 func parseNetworkXObjectConfig(config *zconfig.EdgeDevConfig,
-	getconfigCtx *getconfigContext) {
+	getconfigCtx *getconfigContext) bool {
 
 	h := sha256.New()
 	nets := config.GetNetworks()
@@ -216,7 +220,7 @@ func parseNetworkXObjectConfig(config *zconfig.EdgeDevConfig,
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, networkConfigPrevConfigHash)
 	if same {
-		return
+		return false
 	}
 	log.Infof("parseNetworkXObjectConfig: Applying updated config.\n"+
 		"prevSha: % x\n"+
@@ -231,7 +235,7 @@ func parseNetworkXObjectConfig(config *zconfig.EdgeDevConfig,
 	// systerm adapters do not change. When we see the networks
 	// change, we should parse systerm adapters again.
 	publishNetworkXObjectConfig(getconfigCtx, nets)
-	parseSystemAdapterConfig(config, getconfigCtx, true)
+	return true
 }
 
 func unpublishDeletedNetworkInstanceConfig(ctx *getconfigContext,
@@ -535,7 +539,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 
 		appInstance.StorageConfigList = make([]types.StorageConfig,
 			len(cfgApp.Drives))
-		parseStorageConfigList(appImgObj, appInstance.StorageConfigList,
+		parseStorageConfigList(types.AppImgObj, appInstance.StorageConfigList,
 			cfgApp.Drives)
 
 		// fill the overlay/underlay config
@@ -629,10 +633,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			log.Errorf("Missing phyio for %s; ignored", sysAdapter.Name)
 			continue
 		} else {
-			isMgmt = (phyio.Usage == zconfig.PhyIoMemberUsage_PhyIoUsageMgmt)
 			isFree = phyio.UsagePolicy.FreeUplink
-			log.Infof("Found phyio for %s: %t/%t",
-				sysAdapter.Name, isMgmt, isFree)
+			log.Infof("Found phyio for %s: isFree: %t", sysAdapter.Name, isFree)
 		}
 		if version < types.DPCIsMgmt {
 			log.Warnf("XXX old version; assuming isMgmt and isFree")
@@ -644,12 +646,9 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			log.Warnf("New version for %s Mgmt/Free %t/%t vs %t/%t",
 				sysAdapter.Name, isMgmt, isFree,
 				sysAdapter.Uplink, sysAdapter.FreeUplink)
-			// Either one can set isMgmt; both need to clear
-			if sysAdapter.Uplink && !isMgmt {
-				log.Warnf("Mgmt flag forced by system adapter for %s",
-					sysAdapter.Name)
-				isMgmt = true
-			}
+			isMgmt = sysAdapter.Uplink
+			log.Infof("System adapter %s, isMgmt: %t", sysAdapter.Name, isMgmt)
+
 			// Either one can set isFree; both need to clear
 			if sysAdapter.FreeUplink && !isFree {
 				log.Warnf("Free flag forced by system adapter for %s",
@@ -695,7 +694,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			if err != nil {
 				log.Errorf("parseSystemAdapterConfig: Network with UUID %s not found: %s\n",
 					sysAdapter.NetworkUUID, err)
-				continue
+				return
 			}
 			network := cast.CastNetworkXObjectConfig(networkXObject)
 			if ip != nil {
@@ -770,7 +769,7 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 var deviceIoListPrevConfigHash []byte
 
 func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
-	getconfigCtx *getconfigContext) {
+	getconfigCtx *getconfigContext) bool {
 
 	deviceIoList := config.GetDeviceIoList()
 	h := sha256.New()
@@ -780,7 +779,7 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 	configHash := h.Sum(nil)
 	same := bytes.Equal(configHash, deviceIoListPrevConfigHash)
 	if same {
-		return
+		return false
 	}
 	log.Infof("parseDeviceIoListConfig: Applying updated config\n"+
 		"prevSha: % x\n"+
@@ -835,9 +834,9 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 	}
 	phyIoAdapterList.Initialized = true
 	getconfigCtx.pubPhysicalIOAdapters.Publish("zedagent", phyIoAdapterList)
-	parseSystemAdapterConfig(config, getconfigCtx, true)
 
 	log.Infof("parseDeviceIoListConfig: Done")
+	return true
 }
 
 func lookupDeviceIo(getconfigCtx *getconfigContext, logicalLabel string) *types.PhysicalIOAdapter {
