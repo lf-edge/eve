@@ -137,7 +137,7 @@ func Run() { //nolint:gocyclo
 	}
 
 	var oldUUID uuid.UUID
-	b, err := ioutil.ReadFile(types.UuidFileName)
+	b, err := ioutil.ReadFile(types.UUIDFileName)
 	if err == nil {
 		uuidStr := strings.TrimSpace(string(b))
 		oldUUID, err = uuid.FromString(uuidStr)
@@ -513,9 +513,9 @@ func Run() { //nolint:gocyclo
 
 		if doWrite {
 			b := []byte(fmt.Sprintf("%s\n", devUUID))
-			err = ioutil.WriteFile(types.UuidFileName, b, 0644)
+			err = ioutil.WriteFile(types.UUIDFileName, b, 0644)
 			if err != nil {
-				log.Fatal("WriteFile", err, types.UuidFileName)
+				log.Fatal("WriteFile", err, types.UUIDFileName)
 			}
 			log.Debugf("Wrote UUID %s\n", devUUID)
 		}
