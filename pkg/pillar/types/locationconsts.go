@@ -8,7 +8,8 @@ const (
 	TmpDirname = "/var/tmp/zededa"
 
 	// PersistDir - Location to store persistent files.
-	PersistDir       = "/persist"
+	PersistDir = "/persist"
+	// PersistConfigDir is where we keep some configuration across reboots
 	PersistConfigDir = PersistDir + "/config"
 	// DownloadDirname - Location of downloaded images / objects
 	DownloadDirname = PersistDir + "/downloads"
@@ -40,8 +41,8 @@ const (
 	OnboardKeyName = IdentityDirname + "/onboard.key.pem"
 	// RootCertFileName - what we trust
 	RootCertFileName = IdentityDirname + "/root-certificate.pem"
-	// UuidFilename - device UUID
-	UuidFileName = IdentityDirname + "/uuid"
+	// UUIDFileName - device UUID
+	UUIDFileName = IdentityDirname + "/uuid"
 
 	// AppImgObj - name of app image obj dir
 	AppImgObj = "appImg.obj"

@@ -126,15 +126,15 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 	instData.intfAddrs = IntfAddrs
 
 	if devUUID == nilUUID {
-		b, err := ioutil.ReadFile(types.UuidFileName)
+		b, err := ioutil.ReadFile(types.UUIDFileName)
 		if err != nil {
-			log.Errorf("error in reading uuid\n")
+			log.Errorf("error in reading uuid: %s", err)
 			return
 		}
 		uuidStr := strings.TrimSpace(string(b))
 		devUUID, err = uuid.FromString(uuidStr)
 		if err != nil {
-			log.Errorf("error in formating uuid\n")
+			log.Errorf("error in parsing uuid %s: %s", uuidStr, err)
 			return
 		}
 	}
