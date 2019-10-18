@@ -16,9 +16,16 @@ import (
 func GetDiskSizeForAppInstance(status types.AppInstanceStatus) (
 	uint64, error) {
 	var totalSize uint64
+
+	// Skip Containers. The images are private to rkt at this point.
+	//  We don't have the right location nor the exact size of the image
+	// Need to add container support innfuture to check disk size.
+	if status.IsContainer {
+		return totalSize, nil
+	}
 	for indx := range status.StorageStatusList {
 		ssPtr := &status.StorageStatusList[indx]
-		if ssPtr.IsContainer || ssPtr.ReadOnly {
+		if ssPtr.ReadOnly {
 			continue
 		}
 		fileLocation, err := VerifiedImageFileLocation(ssPtr.IsContainer,
