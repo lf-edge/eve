@@ -119,12 +119,12 @@ func (status DownloaderStatus) Pending() bool {
 }
 
 type GlobalDownloadConfig struct {
-	MaxSpace uint64 // Number of kbytes allowed in /persist/downloads
+	MaxSpace uint64 // Number of kbytes allowed in types.DownloadDirname
 }
 
 // These are all in kbytes
 type GlobalDownloadStatus struct {
-	UsedSpace      uint64 // Number of kbytes used in /var/tmp/zedmanager/downloads
+	UsedSpace      uint64 // Number of kbytes used in types.DownloadDirname
 	ReservedSpace  uint64 // Reserved for ongoing downloads
 	RemainingSpace uint64 // MaxSpace - UsedSpace - ReservedSpace
 }

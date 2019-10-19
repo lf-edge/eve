@@ -13,6 +13,7 @@ import (
 	"encoding/asn1"
 	"encoding/pem"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ocsp"
 	"io"
@@ -20,14 +21,6 @@ import (
 	"math/big"
 	"strings"
 	"time"
-)
-
-const (
-	identityDirname = "/config"
-	serverFilename  = identityDirname + "/server"
-	deviceCertName  = identityDirname + "/device.cert.pem"
-	deviceKeyName   = identityDirname + "/device.key.pem"
-	rootCertName    = identityDirname + "/root-certificate.pem"
 )
 
 //TpmPrivateKey is Custom implementation of crypto.PrivateKey interface
@@ -42,8 +35,7 @@ type ecdsaSignature struct {
 
 //Public implements crypto.PrivateKey interface
 func (s TpmPrivateKey) Public() crypto.PublicKey {
-	clientCertName := "/config/device.cert.pem"
-	clientCertBytes, err := ioutil.ReadFile(clientCertName)
+	clientCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
 	if err != nil {
 		return nil
 	}
@@ -67,11 +59,11 @@ func (s TpmPrivateKey) Sign(r io.Reader, digest []byte, opts crypto.SignerOpts) 
 func GetClientCert() (tls.Certificate, error) {
 	if !tpmmgr.IsTpmEnabled() {
 		//Not a TPM capable device, return openssl certificate
-		return tls.LoadX509KeyPair(deviceCertName, deviceKeyName)
+		return tls.LoadX509KeyPair(types.DeviceCertName, types.DeviceKeyName)
 	}
 
 	// TPM capable device, return TPM bcased certificate
-	deviceCertBytes, err := ioutil.ReadFile(deviceCertName)
+	deviceCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
 	if err != nil {
 		return tls.Certificate{}, err
 	}
@@ -92,7 +84,7 @@ func GetClientCert() (tls.Certificate, error) {
 func GetTlsConfig(serverName string, clientCert *tls.Certificate) (*tls.Config, error) {
 	if serverName == "" {
 		// get the server name
-		bytes, err := ioutil.ReadFile(serverFilename)
+		bytes, err := ioutil.ReadFile(types.ServerFileName)
 		if err != nil {
 			return nil, err
 		}
@@ -108,7 +100,7 @@ func GetTlsConfig(serverName string, clientCert *tls.Certificate) (*tls.Config, 
 	}
 
 	// Load CA cert
-	caCert, err := ioutil.ReadFile(rootCertName)
+	caCert, err := ioutil.ReadFile(types.RootCertFileName)
 	if err != nil {
 		return nil, err
 	}

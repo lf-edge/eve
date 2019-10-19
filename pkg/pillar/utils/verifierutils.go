@@ -56,7 +56,7 @@ func VerifiedImageFileLocation(isContainer bool, containerImageID string,
 			"cas", "blob", "sha512",
 			string(containerImageID[7:9]), containerImageID)
 	} else {
-		locationDir := types.VerifiedDirname + "/" + imageSha256
+		locationDir := types.VerifiedAppImgDirname + "/" + imageSha256
 		var err error
 		location, err = locationFromDir(locationDir)
 		if err != nil {

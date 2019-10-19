@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -1425,7 +1426,33 @@ func constructDatastoreContext(config types.DownloaderConfig, status *types.Down
 	return &dsCtx
 }
 
-func rktFetch(url string, localConfigDir string) (string, error) {
+// getContainerRegistry will extract container registry and form download url for the rktFetch
+func getContainerRegistry(url string) (string, string, error) {
+	var urlReg, registryReg, downReg *regexp.Regexp
+	var registry, downURL string
+	var err error
+	urlReg, err = regexp.Compile(`^docker:\/\/(?:.*).io\/(?:.*)`)
+	if err != nil {
+		return "", "", err
+	}
+	registryReg, err = regexp.Compile(`(?:.*)(?:\.io)`)
+	if err != nil {
+		return "", "", err
+	}
+	downReg, err = regexp.Compile(`(?:.*)(?:\.io)\/`)
+	if err != nil {
+		return "", "", err
+	}
+	if urlReg.MatchString(url) {
+		registry = strings.TrimPrefix(registryReg.FindString(url), "docker://")
+		downURL = downReg.ReplaceAllString(url, "docker://")
+		return registry, downURL, nil
+	}
+	return "", "", fmt.Errorf("Download URL is not formed properly")
+}
+
+func rktFetch(url string, localConfigDir string, pullPolicy string) (string, error) {
+
 	// rkt --insecure-options=image fetch <url> --dir=/persist/rkt --full=true
 	log.Debugf("rktFetch - url: %s ,  localConfigDir:%s\n",
 		url, localConfigDir)
@@ -1435,9 +1462,12 @@ func rktFetch(url string, localConfigDir string) (string, error) {
 		"--insecure-options=image",
 		"fetch",
 	}
-	// if len(localConfigDir) > 0 {
-	// 	args = append(args, "--system-config="+persistRktLocalConfigDir)
-	// }
+	if len(localConfigDir) > 0 {
+		args = append(args, "--local-config="+localConfigDir)
+	}
+	if len(pullPolicy) > 0 {
+		args = append(args, "--pull-policy="+pullPolicy)
+	}
 	args = append(args, url)
 	args = append(args, "--full=true")
 
@@ -1489,7 +1519,7 @@ func rktAuthFilename(appName string) string {
 }
 
 func rktCreateAuthFile(config *types.DownloaderConfig,
-	dsCtx types.DatastoreContext) (string, error) {
+	dsCtx types.DatastoreContext, registry string) (string, error) {
 
 	if len(strings.TrimSpace(dsCtx.APIKey)) == 0 {
 		log.Debugf("rktCreateAuthFile: empty APIKey. Skipping AuthFile")
@@ -1508,7 +1538,7 @@ func rktCreateAuthFile(config *types.DownloaderConfig,
 	rktAuth := types.RktAuthInfo{
 		RktKind:    "dockerAuth",
 		RktVersion: "v1",
-		Registries: []string{dsCtx.DownloadURL},
+		Registries: []string{registry},
 		Credentials: &types.RktCredentials{
 			User:     dsCtx.APIKey,
 			Password: dsCtx.Password,
@@ -1533,26 +1563,32 @@ func rktCreateAuthFile(config *types.DownloaderConfig,
 
 func rktFetchContainerImage(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus,
-	dsCtx types.DatastoreContext) error {
+	dsCtx types.DatastoreContext, pullPolicy string) error {
 	// update status to DOWNLOAD STARTED
 	status.State = types.DOWNLOAD_STARTED
 	publishDownloaderStatus(ctx, status)
 
 	imageID := ""
-	// Save credentials to Auth file
-	log.Infof("rktFetchContainerImage: fetch  <%s>\n", dsCtx.DownloadURL)
-	authFile, err := rktCreateAuthFile(&config, dsCtx)
+	var authFile string
+	registry, downloadURL, err := getContainerRegistry(dsCtx.DownloadURL)
 	if err == nil {
-		log.Debugf("rktFetchContainerImage: authFile: %s\n", authFile)
-		// We should really move to have per-fetch directory..
-		localConfigDir := persistRktLocalConfigDir
-		if len(authFile) == 0 {
-			localConfigDir = ""
-			log.Infof("rktFetchContainerImage: no Auth File")
+		// Save credentials to Auth file
+		log.Infof("rktFetchContainerImage: fetch  <%s>\n", dsCtx.DownloadURL)
+		authFile, err = rktCreateAuthFile(&config, dsCtx, registry)
+		if err == nil {
+			log.Debugf("rktFetchContainerImage: authFile: %s\n", authFile)
+			// We should really move to have per-fetch directory..
+			localConfigDir := persistRktLocalConfigDir
+			if len(authFile) == 0 {
+				localConfigDir = ""
+				log.Infof("rktFetchContainerImage: no Auth File")
+			}
+			imageID, err = rktFetch(downloadURL, localConfigDir, pullPolicy)
+		} else {
+			log.Errorf("rktCreateAuthFile Failed. err: %+v", err)
 		}
-		imageID, err = rktFetch(dsCtx.DownloadURL, localConfigDir)
 	} else {
-		log.Errorf("rktCreateAuthFile Failed. err: %+v", err)
+		log.Errorf("getContainerRegistry : registry and download url parsing failed. err: %+v", err)
 	}
 
 	if err != nil {
@@ -1606,7 +1642,8 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	dsCtx := constructDatastoreContext(config, status, dst)
 
 	if config.IsContainer {
-		rktFetchContainerImage(ctx, key, config, status, *dsCtx)
+		pullPolicy := "new"
+		rktFetchContainerImage(ctx, key, config, status, *dsCtx, pullPolicy)
 		return
 	}
 	locDirname := types.DownloadDirname + "/" + status.ObjType
