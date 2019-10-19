@@ -23,9 +23,7 @@ import (
 )
 
 const (
-	agentName       = "wstunnelclient"
-	identityDirname = "/config"
-	serverFilename  = identityDirname + "/server"
+	agentName = "wstunnelclient"
 )
 
 // Set from Makefile
@@ -125,7 +123,7 @@ func Run() {
 	wscCtx.subAppInstanceConfig = subAppInstanceConfig
 
 	//get server name
-	bytes, err := ioutil.ReadFile(serverFilename)
+	bytes, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
 		log.Fatal(err)
 	}

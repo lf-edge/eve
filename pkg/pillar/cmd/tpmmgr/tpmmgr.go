@@ -26,13 +26,13 @@ const (
 	TpmPubKeyName = "/var/tmp/tpm.eccpubk.der"
 
 	//TpmDeviceCertFileName is the file name to store device certificate
-	TpmDeviceCertFileName = "/config/device.cert.pem"
+	TpmDeviceCertFileName = types.DeviceCertName
 
 	//TpmDevicePath is the TPM device file path
 	TpmDevicePath = "/dev/tpmrm0"
 
 	//TpmEnabledFile is the file to indicate if TPM is being used by SW
-	TpmEnabledFile = types.PersistDir + "/config/tpm_in_use"
+	TpmEnabledFile = types.PersistConfigDir + "/tpm_in_use"
 
 	//TpmDeviceKeyHdl is the well known TPM permanent handle for device key
 	TpmDeviceKeyHdl tpmutil.Handle = 0x817FFFFF
@@ -46,7 +46,7 @@ const (
 	//TpmDiskKeyHdl is the handle for constructing disk encryption key
 	TpmDiskKeyHdl tpmutil.Handle = 0x1700000
 
-	tpmCredentialsFileName = "/config/tpm_credential"
+	tpmCredentialsFileName = types.IdentityDirname + "/tpm_credential"
 	emptyPassword          = ""
 	tpmLockName            = types.TmpDirname + "/tpm.lock"
 	maxPasswdLength        = 7  //limit TPM password to this length

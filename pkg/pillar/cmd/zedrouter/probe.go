@@ -28,7 +28,6 @@ const (
 	remoteTolocalRatio uint32 = 10  // every 10 times of local ping, perform remote probing
 	minProbeRatio      uint32 = 5   // user defined ratio of local/remote min will be set to 5
 	// e.g. if the local ping timer is every 15 seconds, every remote httping is every 2.5 minutes
-	serverFileName   string = "/config/server"
 	nhProbeInterval  uint32 = 15                    // probe interval
 	stayDownMinCount uint32 = 600 / nhProbeInterval // at least stay down for 10 min
 	stayUPMinCount   uint32 = stayDownMinCount
@@ -297,7 +296,7 @@ func launchHostProbe(ctx *zedrouterContext) {
 	ditems := dpub.GetAll()
 
 	if serverNameAndPort == "" {
-		server, err := ioutil.ReadFile(serverFileName)
+		server, err := ioutil.ReadFile(types.ServerFileName)
 		if err == nil {
 			serverNameAndPort = strings.TrimSpace(string(server))
 		}

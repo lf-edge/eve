@@ -43,8 +43,7 @@ import (
 )
 
 const (
-	agentName        = "verifier"
-	rootCertFileName = types.IdentityDirname + "/root-certificate.pem"
+	agentName = "verifier"
 
 	// If this file is present we don't delete verified files in handleDelete
 	preserveFilename = types.TmpDirname + "/preserve"
@@ -994,7 +993,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	roots := x509.NewCertPool()
 
 	// Read the root cerificates from /config
-	rootCertificate, err := ioutil.ReadFile(rootCertFileName)
+	rootCertificate, err := ioutil.ReadFile(types.RootCertFileName)
 	if err != nil {
 		log.Errorln(err)
 		cerr := fmt.Sprintf("failed to find root certificate: %s", err)

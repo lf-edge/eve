@@ -470,7 +470,7 @@ func FixedDirName(name string) string {
 }
 
 func PersistentDirName(name string) string {
-	return fmt.Sprintf("/persist/status/%s", name)
+	return fmt.Sprintf("%s/status/%s", "/persist", name)
 }
 
 func (pub *Publication) nameString() string {

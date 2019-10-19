@@ -35,12 +35,6 @@ var flowlogAPI = "api/v1/edgedevice/flowlog"
 var serverName string
 var serverNameAndPort string
 
-const (
-	identityDirname = "/config"
-	serverFilename  = identityDirname + "/server"
-	uuidFileName    = identityDirname + "/uuid"
-)
-
 var globalConfig = types.GlobalConfigDefaults
 
 type getconfigContext struct {
@@ -83,7 +77,7 @@ var nilUUID uuid.UUID
 func handleConfigInit() {
 
 	// get the server name
-	bytes, err := ioutil.ReadFile(serverFilename)
+	bytes, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -104,9 +98,9 @@ func handleConfigInit() {
 	log.Infof("Configure Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
-	b, err := ioutil.ReadFile(uuidFileName)
+	b, err := ioutil.ReadFile(types.UUIDFileName)
 	if err != nil {
-		log.Fatal("ReadFile", err, uuidFileName)
+		log.Fatal("ReadFile", err, types.UUIDFileName)
 	}
 	uuidStr := strings.TrimSpace(string(b))
 	devUUID, err = uuid.FromString(uuidStr)

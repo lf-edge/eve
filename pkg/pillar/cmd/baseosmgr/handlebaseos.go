@@ -302,7 +302,8 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	}
 
 	// Remove any old log files for a previous instance
-	logdir := fmt.Sprintf("/persist/%s/log", status.PartitionLabel)
+	logdir := fmt.Sprintf("%s/%s/log", types.PersistDir,
+		status.PartitionLabel)
 	log.Infof("Clearing old logs in %s\n", logdir)
 	// Clear content but not directory since logmanager expects dir
 	if err := removeContent(logdir); err != nil {
