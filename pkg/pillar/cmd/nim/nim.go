@@ -160,19 +160,6 @@ func Run() {
 	nimCtx.PubDeviceNetworkStatus = pubDeviceNetworkStatus
 	dnc := &nimCtx.DeviceNetworkContext
 	devicenetwork.IngestPortConfigList(dnc)
-	// Get the initial DeviceNetworkConfig
-	// Subscribe from "" means /var/tmp/zededa/
-	subDeviceNetworkConfig, err := pubsub.Subscribe("",
-		types.DeviceNetworkConfig{}, false,
-		&nimCtx.DeviceNetworkContext)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDeviceNetworkConfig.ModifyHandler = devicenetwork.HandleDNCModify
-	subDeviceNetworkConfig.CreateHandler = devicenetwork.HandleDNCModify
-	subDeviceNetworkConfig.DeleteHandler = devicenetwork.HandleDNCDelete
-	nimCtx.SubDeviceNetworkConfig = subDeviceNetworkConfig
-	subDeviceNetworkConfig.Activate()
 
 	// We get DevicePortConfig from three sources in this priority:
 	// 1. zedagent publishing DevicePortConfig
@@ -767,6 +754,7 @@ func publishDeviceNetworkStatus(ctx *nimContext) {
 	ctx.PubDeviceNetworkStatus.Publish("global", ctx.DeviceNetworkStatus)
 }
 
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
@@ -863,6 +851,7 @@ func handleGlobalConfigSynchronized(ctxArg interface{}, done bool) {
 	}
 }
 
+// Handles both create and modify events
 func handleNetworkInstanceModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	log.Infof("handleNetworkInstanceStatusModify(%s)\n", key)
