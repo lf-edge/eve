@@ -26,7 +26,7 @@ RUN apk add --no-cache \
     bash=4.4.19-r1 \
     socat=1.7.3.2-r4 \
     openssh=7.7_p1-r4 \
-    python3=3.6.8-r0 \
+    python3=3.6.9-r1 \
     libc-dev=0.7.1-r0 \
     openssl-dev=1.0.2t-r0 \
     openssl=1.0.2t-r0 \
