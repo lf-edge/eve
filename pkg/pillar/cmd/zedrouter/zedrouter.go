@@ -284,8 +284,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppNetworkConfig.ModifyHandler = handleAppNetworkConfigModify
-	subAppNetworkConfig.CreateHandler = handleAppNetworkConfigCreate
+	subAppNetworkConfig.ModifyHandler = handleAppNetworkModify
+	subAppNetworkConfig.CreateHandler = handleAppNetworkCreate
 	subAppNetworkConfig.DeleteHandler = handleAppNetworkConfigDelete
 	subAppNetworkConfig.RestartHandler = handleRestart
 	zedrouterCtx.subAppNetworkConfig = subAppNetworkConfig
@@ -297,8 +297,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppNetworkConfigAg.ModifyHandler = handleAppNetworkConfigModify
-	subAppNetworkConfigAg.CreateHandler = handleAppNetworkConfigCreate
+	subAppNetworkConfigAg.ModifyHandler = handleAppNetworkModify
+	subAppNetworkConfigAg.CreateHandler = handleAppNetworkCreate
 	subAppNetworkConfigAg.DeleteHandler = handleAppNetworkConfigDelete
 	zedrouterCtx.subAppNetworkConfigAg = subAppNetworkConfigAg
 	subAppNetworkConfigAg.Activate()
@@ -309,7 +309,6 @@ func Run() {
 		log.Fatal(err)
 	}
 	subLispInfoStatus.ModifyHandler = handleLispInfoModify
-	subLispInfoStatus.CreateHandler = handleLispInfoModify
 	subLispInfoStatus.DeleteHandler = handleLispInfoDelete
 	zedrouterCtx.subLispInfoStatus = subLispInfoStatus
 	subLispInfoStatus.Activate()
@@ -320,7 +319,6 @@ func Run() {
 		log.Fatal(err)
 	}
 	subLispMetrics.ModifyHandler = handleLispMetricsModify
-	subLispMetrics.CreateHandler = handleLispMetricsModify
 	subLispMetrics.DeleteHandler = handleLispMetricsDelete
 	zedrouterCtx.subLispMetrics = subLispMetrics
 	subLispMetrics.Activate()
@@ -1021,21 +1019,23 @@ var deviceEID net.IP
 var deviceIID uint32
 var additionalInfoDevice *types.AdditionalInfoDevice
 
-func handleAppNetworkConfigCreate(ctxArg interface{}, key string, configArg interface{}) {
-
+func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*zedrouterContext)
 	config := cast.CastAppNetworkConfig(configArg)
-	log.Infof("handleAppAppNetworkCreate(%v) for %s\n",
-		config.UUIDandVersion, config.DisplayName)
+	log.Infof("handleAppNetworkCreate(%s-%s)\n", config.DisplayName, key)
 
-	// Pick a local number to identify the application instance
-	// Used for IP addresses as well bridge and file names.
+	// If this is the first time, update the timer for GC
 	if ctx.receivedConfigTime.IsZero() {
 		log.Infof("triggerNumGC")
 		ctx.receivedConfigTime = time.Now()
 		ctx.triggerNumGC = true
 	}
 
+	log.Infof("handleAppAppNetworkCreate(%v) for %s\n",
+		config.UUIDandVersion, config.DisplayName)
+
+	// Pick a local number to identify the application instance
+	// Used for IP addresses as well bridge and file names.
 	appNum := appNumAllocate(ctx, config.UUIDandVersion.UUID,
 		config.IsZedmanager)
 
@@ -1054,13 +1054,11 @@ func handleAppNetworkConfigCreate(ctxArg interface{}, key string, configArg inte
 	}
 	status.PendingAdd = false
 	publishAppNetworkStatus(ctx, &status)
-	log.Infof("handleCreateAppNetwork done for %s\n", config.DisplayName)
-
-	if status != nil && status.Error != "" &&
-		config.Activate && !status.Activated {
-		releaseAppNetworkResources(ctx, key, status)
+	log.Infof("handleAppNetworkCreate done for %s\n", config.DisplayName)
+	if status.Error != "" && config.Activate && !status.Activated {
+		releaseAppNetworkResources(ctx, key, &status)
 	}
-	log.Infof("handleAppNetworkConfigModify(%s) done\n", key)
+	log.Infof("handleAppNetworkCreate(%s) done\n", key)
 	// on resource release, check whether any one else
 	// needs it
 	scanAppNetworkStatusInErrorAndUpdate(ctx, key)
@@ -1923,16 +1921,11 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 // Note that handleModify will not touch the EID; just ACLs
 // XXX should we check that nothing else has changed?
 // XXX If so flag other changes as errors; would need lastError in status.
-func handleAppNetworkConfigModify(ctxArg interface{}, key string, configArg interface{}) {
+func handleAppNetworkModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*zedrouterContext)
 	config := cast.CastAppNetworkConfig(configArg)
 	status := lookupAppNetworkStatus(ctx, key)
-
-	if status == nil {
-		log.Fatalf("status is nil in doAppNetworkConfigModify")
-	}
-
-	log.Infof("doAppNetworkConfigModify(%v) for %s\n",
+	log.Infof("handleAppNetworkModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 	// reset error status and mark pending modify as true
 	status.Error = ""
@@ -1943,13 +1936,13 @@ func handleAppNetworkConfigModify(ctxArg interface{}, key string, configArg inte
 	if !doAppNetworkSanityCheckForModify(ctx, config, status) {
 		status.PendingModify = false
 		publishAppNetworkStatus(ctx, status)
-		log.Errorf("doAppNetworkConfigModify: Config check failed for %s\n", config.DisplayName)
+		log.Errorf("handleAppNetworkModify: Config check failed for %s\n", config.DisplayName)
 		return
 	}
 
 	// No check for version numbers since the ACLs etc might change
 	// even for the same version.
-	log.Debugf("doAppNetworkConfigModify appNum %d\n", status.AppNum)
+	log.Debugf("handleAppNetworkModify appNum %d\n", status.AppNum)
 
 	// Check for unsupported changes
 	status.LegacyDataPlane = ctx.legacyDataPlane
@@ -2004,7 +1997,16 @@ func handleAppNetworkConfigModify(ctxArg interface{}, key string, configArg inte
 
 	status.PendingModify = false
 	publishAppNetworkStatus(ctx, status)
-	log.Infof("doAppNetworkConfigModify done for %s\n", config.DisplayName)
+	log.Infof("handleAppNetworkModify done for %s\n", config.DisplayName)
+
+	if status != nil && status.Error != "" &&
+		config.Activate && !status.Activated {
+		releaseAppNetworkResources(ctx, key, status)
+	}
+	log.Infof("handleAppNetworkModify(%s) done\n", key)
+	// on resource release, check whether any one else
+	// needs it
+	scanAppNetworkStatusInErrorAndUpdate(ctx, key)
 }
 
 func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
