@@ -136,6 +136,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
@@ -146,6 +147,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
+	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
@@ -156,6 +158,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subGlobalDownloadConfig.ModifyHandler = handleGlobalDownloadConfigModify
+	subGlobalDownloadConfig.CreateHandler = handleGlobalDownloadConfigModify
 	ctx.subGlobalDownloadConfig = subGlobalDownloadConfig
 	subGlobalDownloadConfig.Activate()
 
@@ -231,6 +234,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
+	subDatastoreConfig.CreateHandler = handleDatastoreConfigModify
 	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
 	ctx.subDatastoreConfig = subDatastoreConfig
 	subDatastoreConfig.Activate()
@@ -333,6 +337,7 @@ func Run() {
 	}
 }
 
+// Handles both create and modify events
 func handleDatastoreConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
@@ -841,6 +846,7 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 	return dCtx
 }
 
+// Handles both create and modify events
 func handleGlobalDownloadConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
@@ -1893,6 +1899,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	publishDownloaderStatus(ctx, status)
 }
 
+// Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	ctx := ctxArg.(*downloaderContext)
@@ -1926,6 +1933,7 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
