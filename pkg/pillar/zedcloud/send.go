@@ -84,7 +84,7 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 		for _, intf := range intfs {
 			portStatus := ctx.DeviceNetworkStatus.GetPortByIfName(intf)
 			if portStatus != nil {
-				if portStatus.CloudReachable == false {
+				if portStatus.CloudUnReachable == true {
 					log.Infof("SendOnAllIntf: XXXXX Skipping interface %s, since cloud is not "+
 						"reachable via this interface", intf)
 					continue
@@ -154,14 +154,14 @@ func VerifyAllIntf(ctx ZedCloudContext,
 				log.Errorf("Zedcloud un-reachable via interface %s: %s",
 					intf, err)
 				errorList = append(errorList, err)
-				portStatus.CloudReachable = false
+				portStatus.CloudUnReachable = true
 				continue
 			}
 			switch resp.StatusCode {
 			case http.StatusOK, http.StatusCreated:
 				log.Infof("VerifyAllIntf: Zedcloud reachable via interface %s", intf)
 				intfSuccessCount += 1
-				portStatus.CloudReachable = true
+				portStatus.CloudUnReachable = false
 			default:
 				errStr := fmt.Sprintf("Uplink test FAILED via %s to URL %s with "+
 					"status code %d and status %s",
@@ -169,7 +169,7 @@ func VerifyAllIntf(ctx ZedCloudContext,
 				log.Errorln(errStr)
 				err = errors.New(errStr)
 				errorList = append(errorList, err)
-				portStatus.CloudReachable = false
+				portStatus.CloudUnReachable = true
 				continue
 			}
 		}

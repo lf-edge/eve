@@ -171,7 +171,7 @@ func HandleAddressChange(ctx *DeviceNetworkContext) {
 		for i := range status.Ports {
 			ifName := status.Ports[i].IfName
 			portStatus := dnStatus.GetPortByIfName(ifName)
-			status.Ports[i].CloudReachable = portStatus.CloudReachable
+			status.Ports[i].CloudUnReachable = portStatus.CloudUnReachable
 		}
 
 		if !reflect.DeepEqual(*ctx.DeviceNetworkStatus, status) {

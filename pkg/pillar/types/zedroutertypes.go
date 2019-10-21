@@ -294,9 +294,9 @@ type NetworkPortStatus struct {
 	NetworkXObjectConfig
 	AddrInfoList []AddrInfo
 	ProxyConfig
-	Error          string
-	ErrorTime      time.Time
-	CloudReachable bool
+	Error            string
+	ErrorTime        time.Time
+	CloudUnReachable bool
 }
 
 type AddrInfo struct {
