@@ -24,9 +24,6 @@ const (
 	BaseOsImageCount = 1
 )
 
-var immediate int = 30 // take a 30 second delay
-var rebootTimer *time.Timer
-
 func lookupBaseOsSafename(ctx *baseOsMgrContext, safename string) *types.BaseOsConfig {
 	items := ctx.subBaseOsConfig.GetAll()
 	for _, c := range items {
@@ -423,9 +420,16 @@ func validatePartition(ctx *baseOsMgrContext,
 
 		errStr := fmt.Sprintf("Attempt to reinstall failed update %s in %s: refused",
 			config.BaseOsVersion, otherPartName)
+		status.ErrorTime = time.Now()
+		// we are going to quote the same error, while doing baseos
+		// upgrade validation. It is stored across reboot in reboot
+		// reason
+		if ctx.rebootReason != "" {
+			errStr = ctx.rebootReason
+			status.ErrorTime = ctx.rebootTime
+		}
 		log.Errorln(errStr)
 		status.Error = errStr
-		status.ErrorTime = time.Now()
 		changed = true
 		return changed, false
 	}
@@ -1042,4 +1046,21 @@ func isValidBaseOsPartitionLabel(name string) bool {
 		}
 	}
 	return false
+}
+
+// only thing to do is to look at the other partition and update
+// error status into the baseos status
+func updateBaseOsStatusOnReboot(ctxPtr *baseOsMgrContext) {
+	partName := zboot.GetOtherPartition()
+	partStatus := getZbootStatus(ctxPtr, partName)
+	if partStatus != nil &&
+		partStatus.PartitionState == "inprogress" {
+		status := lookupBaseOsStatusByPartLabel(ctxPtr, partName)
+		if status != nil &&
+			status.BaseOsVersion == partStatus.ShortVersion {
+			status.Error = ctxPtr.rebootReason
+			status.ErrorTime = ctxPtr.rebootTime
+			publishBaseOsStatus(ctxPtr, status)
+		}
+	}
 }

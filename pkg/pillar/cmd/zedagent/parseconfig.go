@@ -13,10 +13,8 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -26,7 +24,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -37,9 +34,6 @@ const (
 	rebootConfigFilename = types.IdentityDirname + "/rebootConfig"
 )
 
-var rebootDelay int = 30 // take a 30 second delay
-var rebootTimer *time.Timer
-
 // Returns a rebootFlag
 func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	usingSaved bool) bool {
@@ -47,8 +41,6 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	// XXX can this happen when usingSaved is set?
 	if parseOpCmds(config, getconfigCtx) {
 		log.Infoln("Reboot flag set, skipping config processing")
-		// Make sure we tell apps to shut down
-		shutdownApps(getconfigCtx)
 		return true
 	}
 	ctx := getconfigCtx.zedagentCtx
@@ -189,23 +181,6 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 				baseOs.Key())
 		}
 	}
-}
-
-func lookupBaseOsConfigPub(getconfigCtx *getconfigContext, key string) *types.BaseOsConfig {
-
-	pub := getconfigCtx.pubBaseOsConfig
-	c, _ := pub.Get(key)
-	if c == nil {
-		log.Infof("lookupBaseOsConfig(%s) not found\n", key)
-		return nil
-	}
-	config := cast.CastBaseOsConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupBaseOsConfig(%s) got %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
-	return &config
 }
 
 var networkConfigPrevConfigHash []byte
@@ -1999,12 +1974,6 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 	if reboot == nil {
 		log.Infof("scheduleReboot - removing %s\n",
 			rebootConfigFilename)
-		// stop the timer
-		if rebootTimer != nil &&
-			!getconfigCtx.zedagentCtx.deviceReboot {
-			rebootTimer.Stop()
-		}
-
 		// remove the existing file
 		os.Remove(rebootConfigFilename)
 		return false
@@ -2069,11 +2038,6 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 			return false
 		}
 
-		//timer was started, stop now
-		if rebootTimer != nil {
-			rebootTimer.Stop()
-		}
-
 		// Defer if inprogress by returning
 		ctx := getconfigCtx.zedagentCtx
 		if getconfigCtx.updateInprogress {
@@ -2083,16 +2047,8 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 			return false
 		}
 
-		// start the timer again
-		// XXX:FIXME, need to handle the scheduled time
-		duration := time.Second * time.Duration(rebootDelay)
-		rebootTimer = time.NewTimer(duration)
-
-		log.Infof("Scheduling for reboot %d %d %d seconds\n",
-			rebootConfig.Counter, reboot.Counter,
-			duration/time.Second)
-
-		go handleReboot(getconfigCtx)
+		infoStr := "NORMAL: handleReboot rebooting"
+		handleRebootCmd(ctx, infoStr)
 		rebootPrevReturn = true
 		return true
 	}
@@ -2117,98 +2073,30 @@ func scheduleBackup(backup *zconfig.DeviceOpsCmd) {
 	log.Errorf("XXX handle Backup Config: %v\n", backup)
 }
 
-// the timer channel handler
-func handleReboot(getconfigCtx *getconfigContext) {
-
-	log.Infof("handleReboot timer handler\n")
-	rebootConfig := &zconfig.DeviceOpsCmd{}
-	var state bool = true // If no file we reboot and not power off
-
-	<-rebootTimer.C
-
-	// read reboot config
-	if _, err := os.Stat(rebootConfigFilename); err == nil {
-		bytes, err := ioutil.ReadFile(rebootConfigFilename)
-		if err == nil {
-			err = json.Unmarshal(bytes, rebootConfig)
-		}
-		state = rebootConfig.DesiredState
-		log.Infof("rebootConfig.DesiredState: %v\n", state)
-	}
-
-	shutdownAppsGlobal(getconfigCtx.zedagentCtx)
-	errStr := "NORMAL: handleReboot rebooting"
-	log.Errorf(errStr)
-	agentlog.RebootReason(errStr)
-	execReboot(state)
-}
-
-// Used by handleDeviceReboot only
-func scheduleExecReboot(reasonStr string) {
-	//timer has already been started, return
-	if rebootTimer != nil {
+// user driven reboot command,
+// shutdown the application instances and
+// trigger nodeagent, to perform node reboot
+func handleRebootCmd(ctxPtr *zedagentContext, infoStr string) {
+	if ctxPtr.rebootCmd || ctxPtr.deviceReboot {
 		return
 	}
-	log.Infof("scheduleExecReboot: scheduling exec reboot\n")
-
-	duration := time.Second * time.Duration(rebootDelay)
-	rebootTimer = time.NewTimer(duration)
-	log.Infof("startExecReboot: timer %d seconds\n",
-		duration/time.Second)
-
-	go handleExecReboot(reasonStr)
+	ctxPtr.rebootCmd = true
+	// shutdown the application instances
+	shutdownAppsGlobal(ctxPtr)
+	getconfigCtx := ctxPtr.getconfigCtx
+	ctxPtr.rebootReason = infoStr
+	publishZedAgentStatus(getconfigCtx)
+	log.Infof(infoStr)
 }
 
-// Used by handleDeviceReboot only
-func handleExecReboot(reasonStr string) {
-
-	<-rebootTimer.C
-
-	errStr := "NORMAL: baseimage-update reboot"
-	if reasonStr != "" {
-		errStr = reasonStr
+// nodeagent has initiated a node reboot,
+// shutdown application instances
+func handleDeviceReboot(ctxPtr *zedagentContext) {
+	if ctxPtr.rebootCmd || ctxPtr.deviceReboot {
+		return
 	}
-	log.Errorf(errStr)
-	agentlog.RebootReason(errStr)
-	execReboot(true)
-}
-
-func execReboot(state bool) {
-
-	// do a sync
-	log.Infof("State: %t, Doing a sync..\n", state)
-	syscall.Sync()
-
-	switch state {
-
-	case true:
-		duration := time.Second * time.Duration(rebootDelay)
-		log.Infof("Rebooting... Starting timer for Duration(secs): %d\n",
-			duration/time.Second)
-
-		// Start timer to allow applications some time to shudown and for
-		//      disks to sync.
-		// We could explicitly wait for domains to shutdown, but
-		// some (which don't have a shutdown hook like the mirageOs ones) take a
-		// very long time.
-		timer := time.NewTimer(duration)
-		log.Infof("Timer started. Wait to expire\n")
-		<-timer.C
-		log.Infof("Timer Expired.. Zboot.Reset()\n")
-		zboot.Reset()
-
-	case false:
-		log.Infof("Powering Off..\n")
-		duration := time.Second * time.Duration(rebootDelay)
-		timer := time.NewTimer(duration)
-		log.Infof("Timer started (duration: %d seconds). Wait to expire\n",
-			duration/time.Second)
-		<-timer.C
-		log.Infof("Timer Expired.. do Poweroff\n")
-		poweroffCmd := exec.Command("poweroff")
-		_, err := poweroffCmd.Output()
-		if err != nil {
-			log.Errorf("poweroffCmd failed %s\n", err)
-		}
-	}
+	ctxPtr.deviceReboot = true
+	// shutdown the application instances
+	shutdownAppsGlobal(ctxPtr)
+	// nothing else to be done
 }

@@ -412,9 +412,12 @@ func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigCo
 }
 
 func publishZedAgentStatus(getconfigCtx *getconfigContext) {
+	ctx := getconfigCtx.zedagentCtx
 	status := types.ZedAgentStatus{
 		Name:            agentName,
 		ConfigGetStatus: getconfigCtx.configGetStatus,
+		RebootCmd:       ctx.rebootCmd,
+		RebootReason:    ctx.rebootReason,
 	}
 	pub := getconfigCtx.pubZedAgentStatus
 	pub.Publish(agentName, status)
