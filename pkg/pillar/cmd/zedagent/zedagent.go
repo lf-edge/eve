@@ -29,9 +29,7 @@ import (
 	"container/list"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -85,7 +83,6 @@ type zedagentContext struct {
 	subCertObjConfig          *pubsub.Subscription
 	TriggerDeviceInfo         chan<- struct{}
 	zbootRestarted            bool // published by baseosmgr
-	TriggerDeviceReboot       chan<- struct{}
 	subBaseOsStatus           *pubsub.Subscription
 	subBaseOsDownloadStatus   *pubsub.Subscription
 	subCertObjDownloadStatus  *pubsub.Subscription
@@ -97,6 +94,7 @@ type zedagentContext struct {
 	subGlobalConfig           *pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
 	subZbootStatus            *pubsub.Subscription
+	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool
 	rebootReason              string
@@ -166,66 +164,8 @@ func Run() {
 	log.Infof("Starting %s\n", agentName)
 
 	triggerDeviceInfo := make(chan struct{}, 1)
-	triggerDeviceReboot := make(chan struct{}, 1)
-	zedagentCtx := zedagentContext{TriggerDeviceInfo: triggerDeviceInfo,
-		TriggerDeviceReboot: triggerDeviceReboot}
+	zedagentCtx := zedagentContext{TriggerDeviceInfo: triggerDeviceInfo}
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
-
-	// If we have a reboot reason from this or the other partition
-	// (assuming the other is in inprogress) then we log it
-	// We assume the log makes it reliably to zedcloud hence we discard
-	// the reason.
-	zedagentCtx.rebootReason, zedagentCtx.rebootTime, zedagentCtx.rebootStack =
-		agentlog.GetCurrentRebootReason()
-	if zedagentCtx.rebootReason != "" {
-		log.Warnf("Current partition rebooted reason: %s\n",
-			zedagentCtx.rebootReason)
-		agentlog.DiscardCurrentRebootReason()
-	}
-	otherRebootReason, otherRebootTime, otherRebootStack := agentlog.GetOtherRebootReason()
-	if otherRebootReason != "" {
-		log.Warnf("Other partition rebooted reason: %s\n",
-			otherRebootReason)
-		agentlog.DiscardOtherRebootReason()
-	}
-	commonRebootReason, commonRebootTime, commonRebootStack := agentlog.GetCommonRebootReason()
-	if commonRebootReason != "" {
-		log.Warnf("Common rebooted reason: %s\n",
-			commonRebootReason)
-		agentlog.DiscardCommonRebootReason()
-	}
-	if zedagentCtx.rebootReason == "" {
-		zedagentCtx.rebootReason = otherRebootReason
-		zedagentCtx.rebootTime = otherRebootTime
-		zedagentCtx.rebootStack = otherRebootStack
-	}
-	if zedagentCtx.rebootReason == "" {
-		zedagentCtx.rebootReason = commonRebootReason
-		zedagentCtx.rebootTime = commonRebootTime
-		zedagentCtx.rebootStack = commonRebootStack
-	}
-	if zedagentCtx.rebootReason == "" {
-		zedagentCtx.rebootTime = time.Now()
-		dateStr := zedagentCtx.rebootTime.Format(time.RFC3339Nano)
-		var reason string
-		if fileExists(firstbootFile) {
-			reason = fmt.Sprintf("NORMAL: First boot of device - at %s\n",
-				dateStr)
-		} else {
-			reason = fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s\n",
-				dateStr)
-		}
-		log.Warnf(reason)
-		zedagentCtx.rebootReason = reason
-		zedagentCtx.rebootTime = time.Now()
-		zedagentCtx.rebootStack = ""
-	}
-	if fileExists(firstbootFile) {
-		os.Remove(firstbootFile)
-	}
-
-	// Read and increment restartCounter
-	zedagentCtx.restartCounter = incrementRestartCounter()
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -233,7 +173,6 @@ func Run() {
 	agentlog.StillRunning(agentName + "config")
 	agentlog.StillRunning(agentName + "metrics")
 	agentlog.StillRunning(agentName + "devinfo")
-	agentlog.StillRunning(agentName + "reboot")
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
@@ -517,9 +456,6 @@ func Run() {
 	zedagentCtx.subDevicePortConfigList = subDevicePortConfigList
 	subDevicePortConfigList.Activate()
 
-	// start device reboot handler task
-	go deviceRebootTask(&zedagentCtx, triggerDeviceReboot)
-
 	// Read the GlobalConfig first
 	// Wait for initial GlobalConfig
 	for !zedagentCtx.GCInitialized {
@@ -744,11 +680,6 @@ func Run() {
 
 	for {
 		select {
-		case change := <-subZbootStatus.C:
-			start := agentlog.StartTime()
-			subZbootStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
-
 		case change := <-subGlobalConfig.C:
 			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
@@ -922,33 +853,6 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName + "devinfo")
-	}
-}
-
-func triggerDeviceReboot(ctxPtr *zedagentContext) {
-	log.Info("Trigger DeviceReboot")
-	select {
-	case ctxPtr.TriggerDeviceReboot <- struct{}{}:
-		// Do nothing more
-	default:
-		log.Info("Failed to send on DeviceReboot")
-	}
-}
-
-func deviceRebootTask(ctxPtr *zedagentContext, triggerDeviceReboot <-chan struct{}) {
-
-	// Run a periodic timer so we always update StillRunning
-	stillRunning := time.NewTicker(25 * time.Second)
-	for {
-		select {
-		case <-triggerDeviceReboot:
-			start := agentlog.StartTime()
-			log.Info("deviceReboot request received")
-			handleDeviceReboot(ctxPtr)
-			agentlog.CheckMaxTime(agentName+"reboot", start)
-		case <-stillRunning.C:
-		}
-		agentlog.StillRunning(agentName + "reboot")
 	}
 }
 
@@ -1285,19 +1189,22 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 	ctx := getconfigCtx.zedagentCtx
 	ctx.remainingTestTime = status.RemainingTestTime
 	getconfigCtx.updateInprogress = status.UpdateInprogress
-	if status.NeedsReboot {
-		initiateDeviceReboot(ctx, status.RebootReason)
-	} else {
-		// if config reboot command was initiated and
-		// was deferred, and the device is not in inprogress
-		// state, initiate the reboot process
-		if ctx.rebootCmdDeferred &&
-			updateInprogress && !status.UpdateInprogress {
-			log.Infof("TestComplete and deferred reboot\n")
-			ctx.rebootCmdDeferred = false
-			infoStr := fmt.Sprintf("TestComplete and deferred Reboot\n")
-			initiateDeviceReboot(ctx, infoStr)
-		}
+	ctx.rebootTime = status.RebootTime
+	ctx.rebootStack = status.RebootStack
+	ctx.rebootReason = status.RebootReason
+	ctx.restartCounter = status.RestartCounter
+	// if config reboot command was initiated and
+	// was deferred, and the device is not in inprogress
+	// state, initiate the reboot process
+	if ctx.rebootCmdDeferred &&
+		updateInprogress && !status.UpdateInprogress {
+		log.Infof("TestComplete and deferred reboot\n")
+		ctx.rebootCmdDeferred = false
+		infoStr := fmt.Sprintf("TestComplete and deferred Reboot Cmd\n")
+		handleRebootCmd(ctx, infoStr)
+	}
+	if status.DeviceReboot {
+		handleDeviceReboot(ctx)
 	}
 	triggerPublishDevInfo(ctx)
 	log.Infof("handleNodeAgentStatusModify: done.\n")
@@ -1314,36 +1221,4 @@ func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
 	log.Infof("handleNodeAgentStatusDelete: for %s\n", key)
 	// Nothing to do
 	triggerPublishDevInfo(ctx)
-}
-
-// If the file doesn't exist we pick zero.
-// Return value before increment; write new value to file
-func incrementRestartCounter() uint32 {
-	var restartCounter uint32
-
-	if _, err := os.Stat(restartCounterFile); err == nil {
-		b, err := ioutil.ReadFile(restartCounterFile)
-		if err != nil {
-			log.Errorf("incrementRestartCounter: %s\n", err)
-		} else {
-			c, err := strconv.Atoi(string(b))
-			if err != nil {
-				log.Errorf("incrementRestartCounter: %s\n", err)
-			} else {
-				restartCounter = uint32(c)
-				log.Infof("incrementRestartCounter: read %d\n", restartCounter)
-			}
-		}
-	}
-	b := []byte(fmt.Sprintf("%d", restartCounter+1))
-	err := ioutil.WriteFile(restartCounterFile, b, 0644)
-	if err != nil {
-		log.Errorf("incrementRestartCounter write: %s\n", err)
-	}
-	return restartCounter
-}
-
-func fileExists(filename string) bool {
-	_, err := os.Stat(filename)
-	return err == nil
 }
