@@ -492,7 +492,12 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	if otherRebootReason != "" {
 		log.Warnf("Other partition rebooted reason: %s\n",
 			otherRebootReason)
-		agentlog.DiscardOtherRebootReason()
+		// if other partition state is "inprogress"
+		// do not erase the reboot reason, going to
+		// be used for baseos error status, across reboot
+		if !zboot.IsOtherPartitionStateInProgress() {
+			agentlog.DiscardOtherRebootReason()
+		}
 	}
 	commonRebootReason, commonRebootTime, commonRebootStack := agentlog.GetCommonRebootReason()
 	if commonRebootReason != "" {

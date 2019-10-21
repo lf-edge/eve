@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
@@ -252,6 +253,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 		log.Infof("Installing %s over unused\n",
 			config.BaseOsVersion)
 	case "inprogress":
+		agentlog.DiscardOtherRebootReason()
 		log.Infof("Installing %s over inprogress\n",
 			config.BaseOsVersion)
 	case "updating":
@@ -422,9 +424,13 @@ func validatePartition(ctx *baseOsMgrContext,
 			config.BaseOsVersion, otherPartName)
 		status.ErrorTime = time.Now()
 		// we are going to quote the same error, while doing baseos
-		// upgrade validation. It is stored across reboot in reboot
-		// reason
-		if ctx.rebootReason != "" {
+		// upgrade validation.
+		// first pick up from the partition
+		oReason, oTime, _ := agentlog.GetOtherRebootReason()
+		if oReason != "" {
+			errStr = oReason
+			status.ErrorTime = oTime
+		} else {
 			errStr = ctx.rebootReason
 			status.ErrorTime = ctx.rebootTime
 		}
@@ -644,6 +650,10 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 				zboot.GetCurrentPartition())
 			if curPartState == "active" {
 				log.Infof("Mark other partition %s, unused\n", partName)
+				// we will erase the older reboot reason
+				if zboot.IsOtherPartitionStateInProgress() {
+					agentlog.DiscardOtherRebootReason()
+				}
 				zboot.SetOtherPartitionStateUnused()
 				publishZbootPartitionStatus(ctx, partName)
 				baseOsSetPartitionInfoInStatus(ctx, status,
@@ -1058,8 +1068,15 @@ func updateBaseOsStatusOnReboot(ctxPtr *baseOsMgrContext) {
 		status := lookupBaseOsStatusByPartLabel(ctxPtr, partName)
 		if status != nil &&
 			status.BaseOsVersion == partStatus.ShortVersion {
-			status.Error = ctxPtr.rebootReason
-			status.ErrorTime = ctxPtr.rebootTime
+			// first pick up from the partition
+			oReason, oTime, _ := agentlog.GetOtherRebootReason()
+			if oReason != "" {
+				status.Error = oReason
+				status.ErrorTime = oTime
+			} else {
+				status.Error = ctxPtr.rebootReason
+				status.ErrorTime = ctxPtr.rebootTime
+			}
 			publishBaseOsStatus(ctxPtr, status)
 		}
 	}
