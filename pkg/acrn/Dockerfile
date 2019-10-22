@@ -55,6 +55,7 @@ RUN set -e && for patch in /patches/*.patch; do \
     done
 
 RUN make SCENARIO=industry PLATFORM=uefi BOARD=generic
+RUN mkdir -p /out/EFI/BOOT
 RUN mkdir -p /out/boot
 RUN mkdir -p /out/usr/bin
 RUN mkdir -p /out/usr/lib/systemd/system
@@ -77,6 +78,8 @@ RUN cp /acrn-hypervisor/build/hypervisor/acrn.32.out /out/boot
 RUN cp /acrn-hypervisor/build/devicemodel/acrn-dm /out/usr/bin/
 RUN cp /acrn-hypervisor/devicemodel/bios/* /out/usr/share/acrn/bios/
 RUN cp /acrn-hypervisor/misc/efi-stub/clearlinux/acrn.conf /out/usr/share/acrn/samples/nuc/acrn.conf
+
+COPY grub-hv.cfg /out/EFI/BOOT/grub-hv.cfg
 
 FROM scratch
 ENTRYPOINT []
