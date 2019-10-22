@@ -370,7 +370,18 @@ func startDnsmasq(bridgeName string) {
 	ts := time.Now().Format(time.RFC3339Nano)
 	fmt.Fprintf(w, "%s Starting %s %v\n", ts, name, args)
 	cmd := exec.Command(name, args...)
-	cmd.Stderr = logf
+	// Report nano timestamps
+	formatter := log.TextFormatter{
+		TimestampFormat: time.RFC3339Nano,
+	}
+	var tslog = &log.Logger{
+		Out:       logf,
+		Formatter: &formatter,
+		Hooks:     make(log.LevelHooks),
+		Level:     log.InfoLevel,
+	}
+	cmd.Stdout = tslog.Writer()
+	cmd.Stderr = tslog.Writer()
 	log.Infof("Calling command %s %v\n", name, args)
 	go cmd.Run()
 }
