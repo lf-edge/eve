@@ -281,48 +281,24 @@ func setupFscryptEnv() error {
 	return nil
 }
 
-func publishVaultStatus(ctx *vaultMgrContext,
-	vaultName string, vaultPath string,
-	fscryptStatus info.DataSecAtRestStatus,
-	fscryptError string) {
-	status := types.VaultStatus{}
-	status.Name = vaultName
-	if fscryptStatus != info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED {
-		status.Status = fscryptStatus
-		status.Error = fscryptError
-		status.ErrorTime = time.Now()
-	} else {
-		args := getStatusParams(vaultPath)
-		if stderr, _, err := execCmd(fscryptPath, args...); err != nil {
-			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
-			status.Error = stderr
-			status.ErrorTime = time.Now()
-		} else {
-			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED
-		}
-	}
-	key := status.Key()
-	log.Debugf("Publishing VaultStatus %s\n", key)
-	pub := ctx.pubVaultStatus
-	pub.Publish(key, &status)
-}
-
-func fetchFscryptStatus() (info.DataSecAtRestStatus, string) {
+//GetOperInfo gets the current operational state of fscrypt
+func GetOperInfo() (info.DataSecAtRestStatus, string) {
 	_, err := os.Stat(fscryptConfFile)
 	if err == nil {
 		if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
-			//fscrypt is setup, but not being use
+			//fscrypt is setup, but not being used
 			log.Debug("Setting status to Error")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
 				"Initialization failure"
 		} else {
 			//fscrypt is setup, and being used on /persist
 			log.Debug("Setting status to Enabled")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED, ""
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED,
+				"Using Secure Application Vault=Yes, Using Secure Configuration Vault=Yes"
 		}
 	} else {
 		if !tpmmgr.IsTpmEnabled() {
-			//This is due to lack of TPM
+			//This is due to ext3 partition
 			log.Debug("Setting status to disabled, HSM is not in use")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
 				"HSM is either absent or not in use"
@@ -333,16 +309,6 @@ func fetchFscryptStatus() (info.DataSecAtRestStatus, string) {
 				"File system is incompatible, needs a disruptive upgrade"
 		}
 	}
-}
-
-func initializeSelfPublishHandles(ctx *vaultMgrContext) {
-	pubVaultStatus, err := pubsub.Publish(agentName,
-		types.VaultStatus{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pubVaultStatus.ClearRestarted()
-	ctx.pubVaultStatus = pubVaultStatus
 }
 
 func publishVaultStatus(ctx *vaultMgrContext,
