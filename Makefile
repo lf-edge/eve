@@ -201,7 +201,7 @@ live: $(LIVE_IMG).img
 installer: $(INSTALLER_IMG).raw
 installer-iso: $(INSTALLER_IMG).iso
 
-$(CONFIG_IMG): conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/authorized_keys conf/ | $(DIST)
+$(CONFIG_IMG): conf/server conf/onboard.cert.pem conf/authorized_keys conf/ | $(DIST)
 	./tools/makeconfig.sh $(CONF_DIR) $@
 
 $(ROOTFS_IMG): $(ROOTFS_YML) | $(DIST)
