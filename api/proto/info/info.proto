@@ -76,16 +76,48 @@ enum IPhyIoType {
         IPhyIoOther = 255;
 }
 
-// Information about assignable I/O adapter bundles
+// ZioBundle - Information about assignable I/O adapter bundles
+// XXX - Does it represent a Bundle or each Member?
 message ZioBundle {
   IPhyIoType type = 1;
+  // name - deprecated. This should be set to Physicallabel
   string name = 2;              // Short hand name such as "com"
+
+  // members - Deprecated. This is a member entry.
+  //    XXX - Do we need an entry for the bundle as a whole?
   repeated string members = 3;  // E.g., "com1", "com2"
+
+  // Indicates whether assigned to Apps or used by BaseOs
   string usedByAppUUID = 4;
   bool usedByBaseOS = 5;
+
+  // ioAddressList - Deprecated. This is one per member.
+  //    assigngrp indicates the bundle of which they are part of.
   repeated IoAddresses ioAddressList = 6; // One per member
+
+  // physicalLabel - Physical Label for the Adapter
+  string physicalLabel = 10;
+
+  // logicalLabel - Logical Label for the Adapter
+  string logicalLabel = 11;
+
+  // ifname - ifname of the adapter on the device.
+  string ifname = 12;
+
+  // Assignment Group, is unique label that is applied across PhysicalIOs
+  // EntireGroup can be assigned to application or nothing at all
+  string  assigngrp         = 14;
+
+  // errors - Any errors seen by the device for this Adapter.
+  ErrorInfo errors = 15; // For instance bad proxy config
+
+  // pcilong - the address is a PCI id of the form 0000:02:00.0
+  //  In some cases, PCI address is discovered by the device. Report it to
+  //  the cloud.
+  string pcilong = 21;
 }
 
+// DEPRECATED - No longer need to be used.
 message IoAddresses {
   string macAddress = 1;
 }
@@ -104,6 +136,7 @@ message ZInfoManufacturer {
   string biosReleaseDate = 9;
 }
 
+// ZInfoNetwork - DEPRECATED
 message ZInfoNetwork {
   // deprecated = 1;
   // deprecated = 2;
@@ -121,12 +154,19 @@ message ZInfoNetwork {
   bool up = 8;      // operational up/down status.
   GeoLoc location = 9;
   bool uplink = 10; // Uplink interface  // XXX rename to isMgmt
+
   ErrorInfo networkErr = 11; // For instance bad proxy config
 
-  // Ifname from PhysicalIo - eth0, eth1 etc
-  string localName = 12;
-
+  // localName - ifname of the device from PhysicalIo - eth0, eth1 etc
+  string localName = 12; // eth0, eth1 etc.
   ProxyStatus proxy = 13;
+}
+
+// ZInfoDeviceNetwork
+// Any Status related to network objects
+message ZInfoDeviceNetwork {
+  string uuid = 1; // uuid of Network object
+  ErrorInfo networkErr = 2; // For instance bad proxy config
 }
 
 // From an IP address-based geolocation service
@@ -179,7 +219,7 @@ message ZInfoSW {
   string imageName = 9;         // Name of the disk image
 }
 
-// Errors in response to the applicatioan of configuration
+// Errors in response to the application of configuration
 message ErrorInfo {
   string description = 1;
   google.protobuf.Timestamp timestamp = 2;
@@ -232,11 +272,21 @@ message ZInfoDevice {
 
   ZInfoManufacturer minfo = 11;
 
+  // network - Deprecated. Superseded by ZInfoNetworkStatus
   // OBSOLETE. The information will be provided by DevicePort instead.
   // Newer versions will not fill in this information. Controller Needs
   // to check check if this is empty - if yes, use the DevicePortStatus instead.
   repeated ZInfoNetwork network = 13;
+
+  // networkStatus - Status for each network object used by the device.
+  //    key: UUID of network object
+  map <string, ZInfoNetworkStatus> networkStatus = 14;
+
+  // assignableAdapters - DEPRECATED by ioAdapters
+  //  Reflects back the Physical Io Adapter Information
+  //  along with any errors that may have been flagged.
   repeated ZioBundle assignableAdapters = 15;
+
   ZInfoDNS dns = 16; // What is used in resolv.conf
   repeated ZInfoStorage storageList = 17;
 
@@ -250,14 +300,29 @@ message ZInfoDevice {
   string   lastRebootReason = 22;
   google.protobuf.Timestamp lastRebootTime = 23;
 
+  // systemAdapter - This has a list of configurations of DevicePort configs,
+  //  that are used in the order of priority. The Current config being used is
+  //  also indicated.
   SystemAdapterInfo systemAdapter = 24;
+
   uint32 restartCounter = 25; // Number of times zedagent has restarted i.e., device reboot
   HwSecurityModuleStatus HSMStatus = 26; //State of hardware security modules, like TPM
   string HSMInfo = 27; //Information about HSM like TPM vendor, TEE type etc.
   string lastRebootStack = 28;
   DataSecAtRest dataSecAtRestInfo = 29; //Info about Data At Rest Security
 
+<<<<<<< HEAD
   ZInfoConfigItemStatus configItemStatus = 31;
+=======
+  // networkStatus - Status of Network Objects used by device
+  map <string, ZInfoDeviceNetwork> networkStatus = 30;
+
+  // ioAdapters - Key: phyLabel, value: ZioBundle
+  map <string, ZioBundle> ioAdapters = 31;
+
+  // networkInterfaces - Status of network interfaces on the device.
+  map <string, ZinfoNetworkInterface> networkInterfaces = 32;
+>>>>>>> 5a016898... First cut of Info message restructing. I made the changes that I think
 }
 
 // The current and fallback system adapter information
@@ -302,6 +367,42 @@ message DevicePort {
   bool up = 26;      // operational up/down status.
   GeoLoc location = 27;
   ErrorInfo err = 29; // Any errors on the interface.
+}
+
+message ZinfoNetworkInterfaceUsage {
+    // Do we need a better way of representing these fields?
+    bool isMgmt = 1;
+}
+
+enum ZinfoNetworkInterfaceAddressType {
+    StaticIP = 1;
+    Dhcp = 2;
+}
+
+// ZinfoNetworkInterface - Status of Network Interfaces on the device
+message ZinfoNetworkInterface {
+  string ifname = 1;
+  string name = 2;	// Logical name set by controller
+
+  ZinfoNetworkInterfaceUsage usage = 3;
+
+  ZinfoNetworkInterfaceAddressType addressType = 4;
+
+  // DhcpConfig
+  // XXX - Do we need to send the DHCP config? We should only include
+  //    status information corresponding to the Device interface
+  DHCPType dhcpType = 11;
+  string subnet = 12;
+  string gateway = 13;
+  string domainname = 14;
+  string ntpServer = 15;
+  repeated string dnsServers = 16;
+  string dhcpRangeLow = 17;
+  string dhcpRangeHigh = 18;
+
+  ProxyStatus proxy = 21;
+
+  // XXX Should we add Routes / Default router etc for the port?
 }
 
 message ProxyStatus {
@@ -367,21 +468,65 @@ message ZInfoStorage {
   bool storageLocation = 4; // Storage location for app disks, images etc.
 }
 
+// ZInfoAppNetworkInterface
+//  Status of Network interface used by the app.
+message ZInfoAppNetworkInterface {
+    // appInterfaceName - Name of the interface specified in App Bundle.
+    string appInterfaceName = 1;
+
+    // networkInstanceId - Network instance attached to the interface
+    string networkInstanceId = 2;
+    string networkInstanceName = 3;
+
+    // macAddr - MacAddress of the interface
+    string macAddr = 4;
+    // Ip Address(s) of the interface
+    repeated string IPAddrs = 5; // All IP addresses with /N for subnet
+    repeated string defaultRouters = 6; // If DHCP assigned
+    ZInfoDNS dns = 7; // If DHCP assigned
+    bool up = 8;      // operational up/down status.
+
+    // XXX - Should we have Acl / Rule information here? May be even
+    //  IpTable rules we program?
+}
+
+// ZInfoAppAssignedAdapter - App information for each Direct-Attach adapter
+message ZInfoAppAssignedAdapter {
+    // appAdapterName - name of the Adapter as specified in the App Bundle.
+    string appAdapterName = 1;
+    string physicalLabel = 2;
+    string logicalLabel = 3;
+}
+
 message ZInfoApp {
   string AppID = 1;
   string appVersion = 2;
 
+  // XXX - What is systemApp ?? We always seem to set this to False? Is it for
+  //    future where Dom0 itself runs on multiple Containers?
   bool systemApp = 6;
   string AppName = 7;
+
   repeated ZInfoSW softwareList = 8;
   // deprecated = 9;
   // deprecated = 11;
 
   google.protobuf.Timestamp bootTime = 12;
+
+  // assignedAdapters - DEPRECATED. Superseded by adapters
   repeated ZioBundle assignedAdapters = 13;
+
   repeated ErrorInfo appErr = 14;
   ZSwState state = 15;
+
+  // network - DEPRECATED. Superseded by networkInterfaces
   repeated ZInfoNetwork network = 16;	    // up/down; allocated IP
+
+  // adapters - Map of adapters assigned to the App.
+  map <string, ZInfoAppAssignedAdapter> adapters = 21;
+
+  // ZInfoAppNetworkInterface - NetworkInterface information used by the App.
+  map <string, ZInfoAppNetworkInterface> networkInterfaces = 31;
 }
 
 // ipSec state information
@@ -472,6 +617,13 @@ message ZInfoLisp {
 	repeated DecapKey DecapKeys = 5;
 }
 
+// networkAdapter - Information of the Network Adapter to be used by
+//  Network Instance
+message ZInfoNetworkAdapter {
+    string physicalLabel
+    string logicalLabel
+}
+
 // Network Instance information
 message ZInfoNetworkInstance {
   string networkID = 2;		// UUID
@@ -494,14 +646,21 @@ message ZInfoNetworkInstance {
   repeated ZmetVifInfo vifs = 25; // Set of vifs on this bridge
   bool ipv4Eid = 26; // Track if this is a CryptoEid with IPv4 EIDs
 
+  // assignedAdapters - DEPRECATED. Superseded by networkAdapter
   repeated ZioBundle assignedAdapters = 30;
+
   oneof InfoContent {
     ZInfoVpn vinfo = 31;
     ZInfoLisp linfo = 32;
   }
+
+  // AppAssignedAdapter - Info of Network adapter used for this Network Instance
+  // Key: ZInfoNetworkAdapter.phyLabel
+  // The phyLabel / logicalLabel point to the corresponding IoAdapter
+  map <string, ZInfoNetworkAdapter> networkAdapter = 33;
+
   repeated ErrorInfo networkErr = 40;
 }
-
 
 // This is the request payload for POST /api/v1/edgeDevice/info
 // ZInfoMsg carries event-triggered state changes for one object (a device,
