@@ -95,6 +95,7 @@ type zedagentContext struct {
 	subNetworkInstanceMetrics *pubsub.Subscription
 	subAppFlowMonitor         *pubsub.Subscription
 	subGlobalConfig           *pubsub.Subscription
+	subVaultStatus            *pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
 	subZbootStatus            *pubsub.Subscription
 	rebootCmdDeferred         bool
@@ -430,6 +431,16 @@ func Run() {
 	zedagentCtx.subBaseOsStatus = subBaseOsStatus
 	subBaseOsStatus.Activate()
 
+	subVaultStatus, err := pubsub.Subscribe("vaultmgr",
+		types.VaultStatus{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subVaultStatus.ModifyHandler = handleVaultStatusModify
+	subVaultStatus.DeleteHandler = handleVaultStatusDelete
+	zedagentCtx.subVaultStatus = subVaultStatus
+	subVaultStatus.Activate()
+
 	// Look for DownloaderStatus from downloader
 	// used only for downloader storage stats collection
 	subBaseOsDownloadStatus, err := pubsub.SubscribeScope("downloader",
@@ -613,6 +624,11 @@ func Run() {
 			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
 
+		case change := <-subVaultStatus.C:
+			start := agentlog.StartTime()
+			subVaultStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
 		case change := <-deferredChan:
 			start := agentlog.StartTime()
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
@@ -724,10 +740,16 @@ func Run() {
 			subDevicePortConfigList.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
 
+		case change := <-subVaultStatus.C:
+			start := agentlog.StartTime()
+			subVaultStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
 		case change := <-deferredChan:
 			start := agentlog.StartTime()
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 			agentlog.CheckMaxTime(agentName, start)
+
 		case <-stillRunning.C:
 		}
 		// XXX verifierRestarted can take 5 minutes??
@@ -886,6 +908,11 @@ func Run() {
 			start := agentlog.StartTime()
 			log.Debugf("FlowStats: change called")
 			subAppFlowMonitor.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
+		case change := <-subVaultStatus.C:
+			start := agentlog.StartTime()
+			subVaultStatus.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
@@ -1171,6 +1198,28 @@ func handleBaseOsStatusDelete(ctxArg interface{}, key string,
 	ctx := ctxArg.(*zedagentContext)
 	triggerPublishDevInfo(ctx)
 	log.Infof("handleBaseOsStatusDelete(%s) done\n", key)
+}
+
+// vault status event handlers
+// Report VaultStatus to zedcloud
+func handleVaultStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
+	ctx := ctxArg.(*zedagentContext)
+	status := cast.VaultStatus(statusArg)
+	if status.Key() != key {
+		log.Errorf("handleVaultStatusModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.Key(), status)
+		return
+	}
+	triggerPublishDevInfo(ctx)
+	log.Infof("handleVaultStatusModify(%s) done\n", key)
+}
+
+func handleVaultStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Infof("handleVaultStatusDelete(%s)\n", key)
+	ctx := ctxArg.(*zedagentContext)
+	triggerPublishDevInfo(ctx)
+	log.Infof("handleVaultStatusDelete(%s) done\n", key)
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {

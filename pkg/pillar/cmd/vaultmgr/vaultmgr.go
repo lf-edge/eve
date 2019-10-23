@@ -11,25 +11,34 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
+type vaultMgrContext struct {
+	pubVaultStatus *pubsub.Publication
+}
+
 const (
-	fscryptPath     = "/opt/zededa/bin/fscrypt"
-	fscryptConfFile = "/etc/fscrypt.conf"
-	keyctlPath      = "/bin/keyctl"
-	mountPoint      = types.PersistDir
-	defaultImgVault = types.PersistDir + "/img"
-	defaultCfgVault = types.PersistDir + "/config"
-	keyDir          = "/TmpVaultDir"
-	protectorPrefix = "TheVaultKey"
-	vaultKeyLen     = 32 //bytes
-	vaultHalfKeyLen = 16 //bytes
+	agentName           = "vaultmgr"
+	fscryptPath         = "/opt/zededa/bin/fscrypt"
+	fscryptConfFile     = "/etc/fscrypt.conf"
+	keyctlPath          = "/bin/keyctl"
+	mountPoint          = types.PersistDir
+	defaultImgVault     = types.PersistDir + "/img"
+	defaultCfgVault     = types.PersistDir + "/config"
+	keyDir              = "/TmpVaultDir"
+	protectorPrefix     = "TheVaultKey"
+	vaultKeyLen         = 32 //bytes
+	vaultHalfKeyLen     = 16 //bytes
+	defaultImgVaultName = "Application Data Store"
+	defaultCfgVaultName = "Configuration Data Store"
 )
 
 var (
@@ -272,7 +281,71 @@ func setupFscryptEnv() error {
 	return nil
 }
 
-//GetOperInfo gets the current operational state of fscrypt
+func publishVaultStatus(ctx *vaultMgrContext,
+	vaultName string, vaultPath string,
+	fscryptStatus info.DataSecAtRestStatus,
+	fscryptError string) {
+	status := types.VaultStatus{}
+	status.Name = vaultName
+	if fscryptStatus != info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED {
+		status.Status = fscryptStatus
+		status.Error = fscryptError
+		status.ErrorTime = time.Now()
+	} else {
+		args := getStatusParams(vaultPath)
+		if stderr, _, err := execCmd(fscryptPath, args...); err != nil {
+			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
+			status.Error = stderr
+			status.ErrorTime = time.Now()
+		} else {
+			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED
+		}
+	}
+	key := status.Key()
+	log.Debugf("Publishing VaultStatus %s\n", key)
+	pub := ctx.pubVaultStatus
+	pub.Publish(key, &status)
+}
+
+func fetchFscryptStatus() (info.DataSecAtRestStatus, string) {
+	_, err := os.Stat(fscryptConfFile)
+	if err == nil {
+		if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
+			//fscrypt is setup, but not being use
+			log.Debug("Setting status to Error")
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
+				"Initialization failure"
+		} else {
+			//fscrypt is setup , and being used on /persist
+			log.Debug("Setting status to Enabled")
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED, ""
+		}
+	} else {
+		if !tpmmgr.IsTpmEnabled() {
+			//This is due to lack of TPM
+			log.Debug("Setting status to disabled, HSM is not in use")
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
+				"HSM is either absent or not in use"
+		} else {
+			//This is due to ext3 partition
+			log.Debug("setting status to disabled, ext3 partition")
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
+				"File system is incompatible, needs a disruptive upgrade"
+		}
+	}
+}
+
+func initializeSelfPublishHandles(ctx *vaultMgrContext) {
+	pubVaultStatus, err := pubsub.Publish(agentName,
+		types.VaultStatus{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubVaultStatus.ClearRestarted()
+	ctx.pubVaultStatus = pubVaultStatus
+}
+
+//GetOperInfo gets the current operational state of fscrypt. (Deprecated)
 func GetOperInfo() (info.DataSecAtRestStatus, string) {
 	_, err := os.Stat(fscryptConfFile)
 	if err == nil {
@@ -282,7 +355,7 @@ func GetOperInfo() (info.DataSecAtRestStatus, string) {
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
 				"Initialization failure"
 		} else {
-			//fscrypt is setup , and being used on /persist
+			//fscrypt is setup, and being used on /persist
 			log.Debug("Setting status to Enabled")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED,
 				"Using Secure Application Vault=Yes, Using Secure Configuration Vault=Yes"
@@ -313,11 +386,16 @@ func Run() {
 	log.SetLevel(log.DebugLevel)
 
 	// Sending json log format to stdout
-	logf, err := agentlog.Init("vaultmgr", curpart)
+	logf, err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer logf.Close()
+
+	if len(flag.Args()) == 0 {
+		log.Error("Insufficient arguments")
+		os.Exit(1)
+	}
 
 	switch flag.Args()[0] {
 	case "setupVaults":
@@ -330,8 +408,32 @@ func Run() {
 		if err = setupVault(defaultCfgVault); err != nil {
 			log.Fatalf("Error in setting up vault %s %v", defaultImgVault, err)
 		}
+	case "runAsService":
+		log.Infof("Starting %s\n", agentName)
+
+		// Run a periodic timer so we always update StillRunning
+		stillRunning := time.NewTicker(15 * time.Second)
+		agentlog.StillRunning(agentName)
+
+		// Context to pass around
+		ctx := vaultMgrContext{}
+
+		// initialize publishing handles
+		initializeSelfPublishHandles(&ctx)
+
+		fscryptStatus, fscryptErr := fetchFscryptStatus()
+		publishVaultStatus(&ctx, defaultImgVaultName, defaultImgVault,
+			fscryptStatus, fscryptErr)
+		publishVaultStatus(&ctx, defaultCfgVaultName, defaultCfgVault,
+			fscryptStatus, fscryptErr)
+		for {
+			select {
+			case <-stillRunning.C:
+				agentlog.StillRunning(agentName)
+			}
+		}
 	default:
-		log.Errorln("Unknown Argument")
+		log.Errorf("Unknown argument %s", flag.Args()[0])
 		os.Exit(1)
 	}
 }
