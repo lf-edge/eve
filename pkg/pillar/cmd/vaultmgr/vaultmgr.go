@@ -311,7 +311,7 @@ func fetchFscryptStatus() (info.DataSecAtRestStatus, string) {
 	_, err := os.Stat(fscryptConfFile)
 	if err == nil {
 		if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
-			//fscrypt is setup, but not being use
+			//fscrypt is setup, but not being used
 			log.Debug("Setting status to Error")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
 				"Initialization failure"
