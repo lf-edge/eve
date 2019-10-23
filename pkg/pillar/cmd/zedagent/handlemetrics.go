@@ -666,6 +666,27 @@ func RoundFromKbytesToMbytes(byteCount uint64) uint64 {
 	return (byteCount + kbyte/2) / kbyte
 }
 
+//getDataSecAtRestInfo prepares status related to Data security at Rest
+func getDataSecAtRestInfo(ctx *zedagentContext) *info.DataSecAtRest {
+	subVaultStatus := ctx.subVaultStatus
+	ReportDataSecAtRestInfo := new(info.DataSecAtRest)
+	ReportDataSecAtRestInfo.VaultList = make([]*info.VaultInfo, 0)
+	vaultList := subVaultStatus.GetAll()
+	for _, vaultItem := range vaultList {
+		vault := cast.VaultStatus(vaultItem)
+		vaultInfo := new(info.VaultInfo)
+		vaultInfo.Name = vault.Name
+		vaultInfo.Status = vault.Status
+		if !vault.ErrorTime.IsZero() {
+			vaultInfo.VaultErr = new(info.ErrorInfo)
+			vaultInfo.VaultErr.Description = vault.Error
+			vaultInfo.VaultErr.Timestamp, _ = ptypes.TimestampProto(vault.ErrorTime)
+		}
+		ReportDataSecAtRestInfo.VaultList = append(ReportDataSecAtRestInfo.VaultList, vaultInfo)
+	}
+	return ReportDataSecAtRestInfo
+}
+
 // This function is called per change, hence needs to try over all management ports
 func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	aa := ctx.assignableAdapters
@@ -1019,7 +1040,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	ReportDeviceInfo.HSMInfo, _ = tpmmgr.FetchTpmHwInfo()
 
 	//Operational information about Data Security At Rest
-	ReportDataSecAtRestInfo := new(info.DataSecAtRest)
+	ReportDataSecAtRestInfo := getDataSecAtRestInfo(ctx)
+
+	//This will be removed after new fields propagate to Controller.
 	ReportDataSecAtRestInfo.Status, ReportDataSecAtRestInfo.Info =
 		vaultmgr.GetOperInfo()
 	ReportDeviceInfo.DataSecAtRestInfo = ReportDataSecAtRestInfo

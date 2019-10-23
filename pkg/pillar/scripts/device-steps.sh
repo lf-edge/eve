@@ -591,6 +591,9 @@ for AGENT in $AGENTS1; do
     $BINDIR/"$AGENT" -c $CURPART &
 done
 
+# Start vaultmgr as a service
+$BINDIR/vaultmgr -c "$CURPART" runAsService &
+
 #If logmanager is already running we don't have to strt it.
 if ! pgrep logmanager >/dev/null; then
     echo "$(date -Ins -u) Starting logmanager"
