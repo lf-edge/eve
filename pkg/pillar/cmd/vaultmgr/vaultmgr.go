@@ -281,36 +281,6 @@ func setupFscryptEnv() error {
 	return nil
 }
 
-//GetOperInfo gets the current operational state of fscrypt
-func GetOperInfo() (info.DataSecAtRestStatus, string) {
-	_, err := os.Stat(fscryptConfFile)
-	if err == nil {
-		if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
-			//fscrypt is setup, but not being used
-			log.Debug("Setting status to Error")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
-				"Initialization failure"
-		} else {
-			//fscrypt is setup, and being used on /persist
-			log.Debug("Setting status to Enabled")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED,
-				"Using Secure Application Vault=Yes, Using Secure Configuration Vault=Yes"
-		}
-	} else {
-		if !tpmmgr.IsTpmEnabled() {
-			//This is due to ext3 partition
-			log.Debug("Setting status to disabled, HSM is not in use")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
-				"HSM is either absent or not in use"
-		} else {
-			//This is due to ext3 partition
-			log.Debug("setting status to disabled, ext3 partition")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
-				"File system is incompatible, needs a disruptive upgrade"
-		}
-	}
-}
-
 func publishVaultStatus(ctx *vaultMgrContext,
 	vaultName string, vaultPath string,
 	fscryptStatus info.DataSecAtRestStatus,
@@ -346,7 +316,7 @@ func fetchFscryptStatus() (info.DataSecAtRestStatus, string) {
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
 				"Initialization failure"
 		} else {
-			//fscrypt is setup , and being used on /persist
+			//fscrypt is setup, and being used on /persist
 			log.Debug("Setting status to Enabled")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED, ""
 		}
@@ -373,6 +343,36 @@ func initializeSelfPublishHandles(ctx *vaultMgrContext) {
 	}
 	pubVaultStatus.ClearRestarted()
 	ctx.pubVaultStatus = pubVaultStatus
+}
+
+//GetOperInfo gets the current operational state of fscrypt
+func GetOperInfo() (info.DataSecAtRestStatus, string) {
+	_, err := os.Stat(fscryptConfFile)
+	if err == nil {
+		if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
+			//fscrypt is setup, but not being used
+			log.Debug("Setting status to Error")
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
+				"Initialization failure"
+		} else {
+			//fscrypt is setup, and being used on /persist
+			log.Debug("Setting status to Enabled")
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED,
+				"Using Secure Application Vault=Yes, Using Secure Configuration Vault=Yes"
+		}
+	} else {
+		if !tpmmgr.IsTpmEnabled() {
+			//This is due to ext3 partition
+			log.Debug("Setting status to disabled, HSM is not in use")
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
+				"HSM is either absent or not in use"
+		} else {
+			//This is due to ext3 partition
+			log.Debug("setting status to disabled, ext3 partition")
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
+				"File system is incompatible, needs a disruptive upgrade"
+		}
+	}
 }
 
 //Run is the entrypoint for running vaultmgr as a standalone program
