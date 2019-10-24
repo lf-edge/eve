@@ -68,6 +68,9 @@ type baseOsMgrContext struct {
 	subBaseOsDownloadStatus  *pubsub.Subscription
 	subCertObjDownloadStatus *pubsub.Subscription
 	subBaseOsVerifierStatus  *pubsub.Subscription
+	subNodeAgentStatus       *pubsub.Subscription
+	rebootReason             string
+	rebootTime               time.Time
 }
 
 var debug = false
@@ -115,6 +118,7 @@ func Run() {
 
 	// initialize module specific subscriber handles
 	initializeGlobalConfigHandles(&ctx)
+	initializeNodeAgentHandles(&ctx)
 	initializeZedagentHandles(&ctx)
 	initializeVerifierHandles(&ctx)
 	initializeDownloaderHandles(&ctx)
@@ -141,6 +145,11 @@ func Run() {
 			if ctx.verifierRestarted {
 				log.Infof("Verifier reported restarted\n")
 			}
+			agentlog.CheckMaxTime(agentName, start)
+
+		case change := <-ctx.subNodeAgentStatus.C:
+			start := agentlog.StartTime()
+			ctx.subNodeAgentStatus.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
@@ -184,6 +193,11 @@ func Run() {
 		case change := <-ctx.subCertObjDownloadStatus.C:
 			start := agentlog.StartTime()
 			ctx.subCertObjDownloadStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
+		case change := <-ctx.subNodeAgentStatus.C:
+			start := agentlog.StartTime()
+			ctx.subNodeAgentStatus.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
@@ -374,6 +388,7 @@ func handleCertObjDelete(ctx *baseOsMgrContext, key string,
 }
 
 // base os/certs download status modify event
+// Handles both create and modify events
 func handleDownloadStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
@@ -400,6 +415,7 @@ func handleDownloadStatusDelete(ctxArg interface{}, key string,
 }
 
 // base os verifier status modify event
+// Handles both create and modify events
 func handleVerifierStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
@@ -428,6 +444,7 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 	return fmt.Sprintf("%s%s: %s\n\n", allErrors, prefix, lasterr)
 }
 
+// This handles both the create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
@@ -518,9 +535,35 @@ func initializeGlobalConfigHandles(ctx *baseOsMgrContext) {
 		log.Fatal(err)
 	}
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
+	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
+}
+
+func initializeNodeAgentHandles(ctx *baseOsMgrContext) {
+	// Look for NodeAgentStatus, from zedagent
+	subNodeAgentStatus, err := pubsub.Subscribe("nodeagent",
+		types.NodeAgentStatus{}, false, ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subNodeAgentStatus.ModifyHandler = handleNodeAgentStatusModify
+	subNodeAgentStatus.DeleteHandler = handleNodeAgentStatusModify
+	ctx.subNodeAgentStatus = subNodeAgentStatus
+	subNodeAgentStatus.Activate()
+
+	// Look for ZbootConfig, from nodeagent
+	subZbootConfig, err := pubsub.Subscribe("nodeagent",
+		types.ZbootConfig{}, false, ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subZbootConfig.ModifyHandler = handleZbootConfigModify
+	subZbootConfig.CreateHandler = handleZbootConfigModify
+	subZbootConfig.DeleteHandler = handleZbootConfigDelete
+	ctx.subZbootConfig = subZbootConfig
+	subZbootConfig.Activate()
 }
 
 func initializeZedagentHandles(ctx *baseOsMgrContext) {
@@ -535,17 +578,6 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	subBaseOsConfig.DeleteHandler = handleBaseOsConfigDelete
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
-
-	// Look for ZbootConfig , from nodeagent
-	subZbootConfig, err := pubsub.Subscribe("nodeagent",
-		types.ZbootConfig{}, false, ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subZbootConfig.ModifyHandler = handleZbootConfigModify
-	subZbootConfig.DeleteHandler = handleZbootConfigDelete
-	ctx.subZbootConfig = subZbootConfig
-	subZbootConfig.Activate()
 
 	// Look for CertObjConfig, from zedagent
 	subCertObjConfig, err := pubsub.Subscribe("zedagent",
@@ -568,6 +600,7 @@ func initializeDownloaderHandles(ctx *baseOsMgrContext) {
 		log.Fatal(err)
 	}
 	subBaseOsDownloadStatus.ModifyHandler = handleDownloadStatusModify
+	subBaseOsDownloadStatus.CreateHandler = handleDownloadStatusModify
 	subBaseOsDownloadStatus.DeleteHandler = handleDownloadStatusDelete
 	ctx.subBaseOsDownloadStatus = subBaseOsDownloadStatus
 	subBaseOsDownloadStatus.Activate()
@@ -579,6 +612,7 @@ func initializeDownloaderHandles(ctx *baseOsMgrContext) {
 		log.Fatal(err)
 	}
 	subCertObjDownloadStatus.ModifyHandler = handleDownloadStatusModify
+	subCertObjDownloadStatus.CreateHandler = handleDownloadStatusModify
 	subCertObjDownloadStatus.DeleteHandler = handleDownloadStatusDelete
 	ctx.subCertObjDownloadStatus = subCertObjDownloadStatus
 	subCertObjDownloadStatus.Activate()
@@ -593,12 +627,31 @@ func initializeVerifierHandles(ctx *baseOsMgrContext) {
 		log.Fatal(err)
 	}
 	subBaseOsVerifierStatus.ModifyHandler = handleVerifierStatusModify
+	subBaseOsVerifierStatus.CreateHandler = handleVerifierStatusModify
 	subBaseOsVerifierStatus.DeleteHandler = handleVerifierStatusDelete
 	subBaseOsVerifierStatus.RestartHandler = handleVerifierRestarted
 	ctx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
 	subBaseOsVerifierStatus.Activate()
 }
 
+// This handles both the create and modify events
+func handleNodeAgentStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	ctx := ctxArg.(*baseOsMgrContext)
+	status := cast.NodeAgentStatus(statusArg)
+	ctx.rebootTime = status.RebootTime
+	ctx.rebootReason = status.RebootReason
+	updateBaseOsStatusOnReboot(ctx)
+	log.Infof("handleNodeAgentStatusModify(%s) done\n", key)
+}
+
+func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	// do nothing
+	log.Infof("handleNodeAgentStatusDelete(%s) done\n", key)
+}
+
+// This handles both the create and modify events
 func handleZbootConfigModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*baseOsMgrContext)
 	config := cast.ZbootConfig(configArg)

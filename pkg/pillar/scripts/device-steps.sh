@@ -125,8 +125,6 @@ file = /var/run/${AGENT}metrics.touch
 change = 300
 file = /var/run/${AGENT}devinfo.touch
 change = 300
-file = /var/run/${AGENT}reboot.touch
-change = 300
 EOF
     fi
 done
@@ -592,6 +590,9 @@ for AGENT in $AGENTS1; do
     echo "$(date -Ins -u) Starting $AGENT"
     $BINDIR/"$AGENT" -c $CURPART &
 done
+
+# Start vaultmgr as a service
+$BINDIR/vaultmgr -c "$CURPART" runAsService &
 
 #If logmanager is already running we don't have to strt it.
 if ! pgrep logmanager >/dev/null; then
