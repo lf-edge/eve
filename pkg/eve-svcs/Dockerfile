@@ -39,7 +39,7 @@ WORKDIR /tpm2-tools
 #expects package curl-dev to be present. Hence doing the steps below.
 
 RUN apk del openssl-dev
-RUN apk add curl-dev=7.61.1-r3
+RUN apk add --no-cache curl-dev=7.61.1-r3
 RUN ./bootstrap && \
     ./configure
 
