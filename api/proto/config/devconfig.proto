@@ -56,6 +56,14 @@ message EdgeDevConfig {
         // Information saved by device to make it easier to find in the controller
         string enterprise = 17;
         string name = 18;
+
+        // deviceIoListMap - Map of phydical Adapters present on the device.
+        //  These attributes generally don't change.
+        map <string, PhysicalIO> deviceIoListMap = 23;
+        // systemAdapterMap - Configuration of the IoAdapters
+        map <string, SystemAdapter> systemAdapterMap = 24;
+
+
 }
 
 message ConfigRequest {

@@ -45,6 +45,11 @@ message sWAdapterParams {
        repeated string bondgroup = 10;
 }
 
+// XXX - Does it make sense to separate NetworkAdapters from other system
+//  Adapters?
+//      Network Adapters -- System Adapters that are used for networking
+//      SystemAdapters - Has non-network adapters - including any Ethernet
+//          ones that
 // systemAdapters, are the higher l2 concept built on physicalIOs.
 // systemAdapters, gives all the required bits to turn the physical IOs
 // into useful IP endpoints.
@@ -66,6 +71,12 @@ message SystemAdapter {
         // deprecate: have a separate device policy object in the API
         bool uplink = 3;
 
+        // XXX Note that this is the static information from the model.
+        // Current configuration is in systemAdapter
+        PhyIoMemberUsage usage    = 6;
+        PhyIOUsagePolicy usagePolicy    = 7;
+
+        // attach this network config for this adapter
         // networkUUID - attach this network config for this adapter
         // if not set, depending on Usage of Adapter, would be treated as
         // an L2 port
@@ -161,8 +172,10 @@ message PhysicalIO {
       // "ioports": the address is a string such as "2f8-2ff"
       map <string, string> phyaddrs = 3;
 
-      // logicallabel - provides the ability to model designer to refer
-      //    the physicalIO port to using more friendly name
+      // logicallabel -- Should this move to System Adapters? This can keep
+      // changing - DEPRECATED.
+      // provides the ability to model designer to rename the physicalIO
+      // port to more understandable
       // For example Eth0->Mgmt0
       //  or USBA->ConfigDiskA etc
       string logicallabel       = 4;
@@ -184,6 +197,10 @@ message PhysicalIO {
 
       // usage - indicates the role of adapter ( mgmt / blocked / app-direct
       //    etc. )
+      // DEPRECATED - PhyIoMemberUsage and PhyIOUsagePolicy should move to
+      //    SystemAdapter
+      // XXX Note that this is the static information from the model.
+      // Current configuration is in systemAdapter
       PhyIoMemberUsage usage    = 6;
 
       // usagePolicy - Policy Object used to further refine the usage.
