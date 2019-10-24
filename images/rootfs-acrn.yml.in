@@ -1,0 +1,47 @@
+kernel:
+  image: ACRN_KERNEL_TAG
+  cmdline: "rootdelay=3"
+init:
+  - linuxkit/init:v0.5
+  - linuxkit/runc:v0.5
+  - linuxkit/containerd:v0.5
+  - linuxkit/getty:v0.5
+  - GRUB_TAG
+  - DTREES_TAG
+  - FW_TAG
+  - ACRN_TAG
+  - GPTTOOLS_TAG
+  - DOM0ZTOOLS_TAG
+onboot:
+   - name: sysctl
+     image: linuxkit/sysctl:v0.5
+   - name: modprobe
+     image: linuxkit/modprobe:v0.5
+     command: ["modprobe", "-a", "nct6775", "w83627hf_wdt", "wlcore_sdio", "wl18xx", "br_netfilter"]
+   - name: mount
+     image: linuxkit/mount:v0.5
+     command: ["/bin/sh", "-c", "/usr/bin/mountie $(/hostroot/sbin/findfs PARTLABEL=CONFIG) /var/config "]
+   - name: rngd
+     image: RNGD_TAG
+     command: ["/sbin/rngd", "-1"]
+services:
+   - name: ntpd
+     image: linuxkit/openntpd:v0.5
+   - name: sshd
+     image: linuxkit/sshd:v0.5
+   - name: wwan
+     image: WWAN_TAG
+   - name: wlan
+     image: WLAN_TAG
+   - name: guacd
+     image: GUACD_TAG
+   - name: pillar
+     image: PILLAR_TAG
+files:
+   - path: /etc/eve-release
+     contents: 'EVE_VERSION'
+   - path: /containers/services/pillar/lower/opt/zededa/bin/versioninfo
+     contents: 'EVE_VERSION'
+trust:
+  org:
+    - linuxkit

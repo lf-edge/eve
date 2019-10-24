@@ -61,29 +61,31 @@ synthetic_tag() {
 resolve_tags() {
 sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e '/image:.*linuxkit\/.*:/s# *$#'${ARCH}# \
-    -e "s#EVE_VERSION#"$EVE_VERSION"#" \
-    -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
-    -e "s#FW_TAG#"$FW_TAG"#" \
-    -e "s#XENTOOLS_TAG#"$XENTOOLS_TAG"#" \
-    -e "s#DOM0ZTOOLS_TAG#"$DOM0ZTOOLS_TAG"#" \
-    -e "s#RNGD_TAG#"$RNGD_TAG"#" \
-    -e "s#XEN_TAG#"$XEN_TAG"#" \
-    -e "s#DNSMASQ_TAG#"$DNSMASQ_TAG"#" \
-    -e "s#STRONGSWAN_TAG#"$STRONGSWAN_TAG"#" \
-    -e "s#TESTCERT_TAG#"$TESTCERT_TAG"#" \
-    -e "s#TESTMSVCS_TAG#"$TESTMSVCS_TAG"#" \
-    -e "s#PILLAR_TAG#"$PILLAR_TAG"#" \
-    -e "s#QREXECLIB_TAG#"$QREXECLIB_TAG"#" \
-    -e "s#WWAN_TAG#"$WWAN_TAG"#" \
-    -e "s#WLAN_TAG#"$WLAN_TAG"#" \
-    -e "s#GUACD_TAG#"$GUACD_TAG"#" \
-    -e "s#GRUB_TAG#"$GRUB_TAG"#" \
-    -e "s#DTREES_TAG#"$DTREES_TAG"#" \
-    -e "s#GPTTOOLS_TAG#"$GPTTOOLS_TAG"#" \
-    -e "s#WATCHDOG_TAG#"$WATCHDOG_TAG"#" \
-    -e "s#MKRAW_TAG#"$MKRAW_TAG"#" \
-    -e "s#DEBUG_TAG#"$DEBUG_TAG"#" \
-    -e "s#LISP_TAG#"$LISP_TAG"#" \
+    -e "s#EVE_VERSION#$EVE_VERSION#" \
+    -e "s#ACRN_KERNEL_TAG#$ACRN_KERNEL_TAG#" \
+    -e "s#KERNEL_TAG#$KERNEL_TAG#" \
+    -e "s#FW_TAG#$FW_TAG#" \
+    -e "s#XENTOOLS_TAG#$XENTOOLS_TAG#" \
+    -e "s#DOM0ZTOOLS_TAG#$DOM0ZTOOLS_TAG#" \
+    -e "s#RNGD_TAG#$RNGD_TAG#" \
+    -e "s#XEN_TAG#$XEN_TAG#" \
+    -e "s#ACRN_TAG#$ACRN_TAG#" \
+    -e "s#DNSMASQ_TAG#$DNSMASQ_TAG#" \
+    -e "s#STRONGSWAN_TAG#$STRONGSWAN_TAG#" \
+    -e "s#TESTCERT_TAG#$TESTCERT_TAG#" \
+    -e "s#TESTMSVCS_TAG#$TESTMSVCS_TAG#" \
+    -e "s#PILLAR_TAG#$PILLAR_TAG#" \
+    -e "s#QREXECLIB_TAG#$QREXECLIB_TAG#" \
+    -e "s#WWAN_TAG#$WWAN_TAG#" \
+    -e "s#WLAN_TAG#$WLAN_TAG#" \
+    -e "s#GUACD_TAG#$GUACD_TAG#" \
+    -e "s#GRUB_TAG#$GRUB_TAG#" \
+    -e "s#DTREES_TAG#$DTREES_TAG#" \
+    -e "s#GPTTOOLS_TAG#$GPTTOOLS_TAG#" \
+    -e "s#WATCHDOG_TAG#$WATCHDOG_TAG#" \
+    -e "s#MKRAW_TAG#$MKRAW_TAG#" \
+    -e "s#DEBUG_TAG#$DEBUG_TAG#" \
+    -e "s#LISP_TAG#$LISP_TAG#" \
     -e "s#RKT_TAG#${RKT_TAG}#" \
     -e "s#RKT_STAGE1_TAG#${RKT_STAGE1_TAG}#" \
     -e "s#FSCRYPT_TAG#${FSCRYPT_TAG}#" \
@@ -107,9 +109,11 @@ fi
 EVE_VERSION=${EVE_VERSION:-`eve_version`$ARCH}
 
 KERNEL_TAG=$(linuxkit_tag pkg/kernel)
+ACRN_KERNEL_TAG=$(linuxkit_tag pkg/acrn-kernel)
 FW_TAG=$(linuxkit_tag pkg/fw)
 XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)
 XEN_TAG=$(linuxkit_tag pkg/xen)
+ACRN_TAG=$(linuxkit_tag pkg/acrn)
 GRUB_TAG=$(linuxkit_tag pkg/grub)
 DTREES_TAG=$(linuxkit_tag pkg/device-trees)
 DNSMASQ_TAG=$(linuxkit_tag pkg/dnsmasq)

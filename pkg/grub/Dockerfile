@@ -21,7 +21,7 @@ RUN ln -s python3 /usr/bin/python
 ENV GRUB_MODULES_PORT="part_gpt fat ext2 iso9660 squash4 gzio linux acpi normal cpio crypto disk boot crc64 gpt \
 search_disk_uuid search_part_label verify xzio xfs video gfxterm efi_gop gptprio chain probe reboot regexp smbios    \
 part_msdos cat echo test configfile"
-ENV GRUB_MODULES_x86_64="multiboot2 efi_uga"
+ENV GRUB_MODULES_x86_64="multiboot multiboot2 efi_uga"
 ENV GRUB_MODULES_aarch64="xen_boot"
 ENV GRUB_COMMIT=71f9e4ac44142af52c3fc1860436cf9e432bf764
 ENV GRUB_REPO=git://git.sv.gnu.org/grub.git
