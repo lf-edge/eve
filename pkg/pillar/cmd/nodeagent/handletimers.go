@@ -93,7 +93,7 @@ func handleResetOnCloudDisconnect(ctxPtr *nodeagentContext) {
 // on upgrade validation testing time expiry,
 // initiate the validation completion procedure
 func handleUpgradeTestValidation(ctxPtr *nodeagentContext) {
-	if !ctxPtr.testInprogress || ctxPtr.needsReboot {
+	if !ctxPtr.testInprogress || ctxPtr.deviceReboot {
 		return
 	}
 	if checkUpgradeValidationTestTimeExpiry(ctxPtr) {
@@ -176,19 +176,28 @@ func updateZedagentCloudConnectStatus(ctxPtr *nodeagentContext,
 	}
 }
 
+func handleRebootCmd(ctxPtr *nodeagentContext, status types.ZedAgentStatus) {
+	if !status.RebootCmd || ctxPtr.rebootCmd {
+		return
+	}
+	ctxPtr.rebootCmd = true
+	ctxPtr.rebootReason = status.RebootReason
+	scheduleNodeReboot(ctxPtr, ctxPtr.rebootReason)
+}
+
 func scheduleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
-	log.Infof("scheduleNodeReboot(): Reboot reason(%s)\n", reasonStr)
-	if ctxPtr.needsReboot {
+	if ctxPtr.deviceReboot {
 		log.Infof("reboot flag is already set\n")
 		return
 	}
+	log.Infof("scheduleNodeReboot(): Reboot reason(%s)\n", reasonStr)
 
 	// publish, for zedagent to pick up the reboot event
 	// TBD:XXX, all other agents can subscribe to nodeagent or,
 	// status to gracefully shutdown their states, for example
 	// downloader can teardown the existing connections
 	// and clean up its temporary states etc.
-	ctxPtr.needsReboot = true
+	ctxPtr.deviceReboot = true
 	ctxPtr.rebootReason = reasonStr
 	publishNodeAgentStatus(ctxPtr)
 
