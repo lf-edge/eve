@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
@@ -23,9 +24,6 @@ import (
 const (
 	BaseOsImageCount = 1
 )
-
-var immediate int = 30 // take a 30 second delay
-var rebootTimer *time.Timer
 
 func lookupBaseOsSafename(ctx *baseOsMgrContext, safename string) *types.BaseOsConfig {
 	items := ctx.subBaseOsConfig.GetAll()
@@ -255,6 +253,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 		log.Infof("Installing %s over unused\n",
 			config.BaseOsVersion)
 	case "inprogress":
+		agentlog.DiscardOtherRebootReason()
 		log.Infof("Installing %s over inprogress\n",
 			config.BaseOsVersion)
 	case "updating":
@@ -423,9 +422,20 @@ func validatePartition(ctx *baseOsMgrContext,
 
 		errStr := fmt.Sprintf("Attempt to reinstall failed update %s in %s: refused",
 			config.BaseOsVersion, otherPartName)
+		status.ErrorTime = time.Now()
+		// we are going to quote the same error, while doing baseos
+		// upgrade validation.
+		// first pick up from the partition
+		oReason, oTime, _ := agentlog.GetOtherRebootReason()
+		if oReason != "" {
+			errStr = oReason
+			status.ErrorTime = oTime
+		} else {
+			errStr = ctx.rebootReason
+			status.ErrorTime = ctx.rebootTime
+		}
 		log.Errorln(errStr)
 		status.Error = errStr
-		status.ErrorTime = time.Now()
 		changed = true
 		return changed, false
 	}
@@ -640,6 +650,10 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 				zboot.GetCurrentPartition())
 			if curPartState == "active" {
 				log.Infof("Mark other partition %s, unused\n", partName)
+				// we will erase the older reboot reason
+				if zboot.IsOtherPartitionStateInProgress() {
+					agentlog.DiscardOtherRebootReason()
+				}
 				zboot.SetOtherPartitionStateUnused()
 				publishZbootPartitionStatus(ctx, partName)
 				baseOsSetPartitionInfoInStatus(ctx, status,
@@ -1042,4 +1056,28 @@ func isValidBaseOsPartitionLabel(name string) bool {
 		}
 	}
 	return false
+}
+
+// only thing to do is to look at the other partition and update
+// error status into the baseos status
+func updateBaseOsStatusOnReboot(ctxPtr *baseOsMgrContext) {
+	partName := zboot.GetOtherPartition()
+	partStatus := getZbootStatus(ctxPtr, partName)
+	if partStatus != nil &&
+		partStatus.PartitionState == "inprogress" {
+		status := lookupBaseOsStatusByPartLabel(ctxPtr, partName)
+		if status != nil &&
+			status.BaseOsVersion == partStatus.ShortVersion {
+			// first pick up from the partition
+			oReason, oTime, _ := agentlog.GetOtherRebootReason()
+			if oReason != "" {
+				status.Error = oReason
+				status.ErrorTime = oTime
+			} else {
+				status.Error = ctxPtr.rebootReason
+				status.ErrorTime = ctxPtr.rebootTime
+			}
+			publishBaseOsStatus(ctxPtr, status)
+		}
+	}
 }

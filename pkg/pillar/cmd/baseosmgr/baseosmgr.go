@@ -68,6 +68,9 @@ type baseOsMgrContext struct {
 	subBaseOsDownloadStatus  *pubsub.Subscription
 	subCertObjDownloadStatus *pubsub.Subscription
 	subBaseOsVerifierStatus  *pubsub.Subscription
+	subNodeAgentStatus       *pubsub.Subscription
+	rebootReason             string
+	rebootTime               time.Time
 }
 
 var debug = false
@@ -115,6 +118,7 @@ func Run() {
 
 	// initialize module specific subscriber handles
 	initializeGlobalConfigHandles(&ctx)
+	initializeNodeAgentHandles(&ctx)
 	initializeZedagentHandles(&ctx)
 	initializeVerifierHandles(&ctx)
 	initializeDownloaderHandles(&ctx)
@@ -141,6 +145,11 @@ func Run() {
 			if ctx.verifierRestarted {
 				log.Infof("Verifier reported restarted\n")
 			}
+			agentlog.CheckMaxTime(agentName, start)
+
+		case change := <-ctx.subNodeAgentStatus.C:
+			start := agentlog.StartTime()
+			ctx.subNodeAgentStatus.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
@@ -184,6 +193,11 @@ func Run() {
 		case change := <-ctx.subCertObjDownloadStatus.C:
 			start := agentlog.StartTime()
 			ctx.subCertObjDownloadStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
+		case change := <-ctx.subNodeAgentStatus.C:
+			start := agentlog.StartTime()
+			ctx.subNodeAgentStatus.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
@@ -527,6 +541,31 @@ func initializeGlobalConfigHandles(ctx *baseOsMgrContext) {
 	subGlobalConfig.Activate()
 }
 
+func initializeNodeAgentHandles(ctx *baseOsMgrContext) {
+	// Look for NodeAgentStatus, from zedagent
+	subNodeAgentStatus, err := pubsub.Subscribe("nodeagent",
+		types.NodeAgentStatus{}, false, ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subNodeAgentStatus.ModifyHandler = handleNodeAgentStatusModify
+	subNodeAgentStatus.DeleteHandler = handleNodeAgentStatusModify
+	ctx.subNodeAgentStatus = subNodeAgentStatus
+	subNodeAgentStatus.Activate()
+
+	// Look for ZbootConfig, from nodeagent
+	subZbootConfig, err := pubsub.Subscribe("nodeagent",
+		types.ZbootConfig{}, false, ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subZbootConfig.ModifyHandler = handleZbootConfigModify
+	subZbootConfig.CreateHandler = handleZbootConfigModify
+	subZbootConfig.DeleteHandler = handleZbootConfigDelete
+	ctx.subZbootConfig = subZbootConfig
+	subZbootConfig.Activate()
+}
+
 func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	// Look for BaseOsConfig , from zedagent
 	subBaseOsConfig, err := pubsub.Subscribe("zedagent",
@@ -539,18 +578,6 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	subBaseOsConfig.DeleteHandler = handleBaseOsConfigDelete
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
-
-	// Look for ZbootConfig , from nodeagent
-	subZbootConfig, err := pubsub.Subscribe("nodeagent",
-		types.ZbootConfig{}, false, ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subZbootConfig.ModifyHandler = handleZbootConfigModify
-	subZbootConfig.CreateHandler = handleZbootConfigModify
-	subZbootConfig.DeleteHandler = handleZbootConfigDelete
-	ctx.subZbootConfig = subZbootConfig
-	subZbootConfig.Activate()
 
 	// Look for CertObjConfig, from zedagent
 	subCertObjConfig, err := pubsub.Subscribe("zedagent",
@@ -605,6 +632,23 @@ func initializeVerifierHandles(ctx *baseOsMgrContext) {
 	subBaseOsVerifierStatus.RestartHandler = handleVerifierRestarted
 	ctx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
 	subBaseOsVerifierStatus.Activate()
+}
+
+// This handles both the create and modify events
+func handleNodeAgentStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	ctx := ctxArg.(*baseOsMgrContext)
+	status := cast.NodeAgentStatus(statusArg)
+	ctx.rebootTime = status.RebootTime
+	ctx.rebootReason = status.RebootReason
+	updateBaseOsStatusOnReboot(ctx)
+	log.Infof("handleNodeAgentStatusModify(%s) done\n", key)
+}
+
+func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	// do nothing
+	log.Infof("handleNodeAgentStatusDelete(%s) done\n", key)
 }
 
 // This handles both the create and modify events

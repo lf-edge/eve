@@ -11,15 +11,17 @@
 // nodeagent subscribes to the following topics
 //   * global config
 //   * zboot status                 <baseosmgr> / <zboot> / <status>
-//   * zedagent status              <zedagent>/ <status>
+//   * zedagent status              <zedagent>  / <status>
 
 package nodeagent
 
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,15 +37,19 @@ import (
 )
 
 const (
-	agentName               = "nodeagent"
-	timeTickInterval uint32 = 10
-	watchdogInterval uint32 = 25
-	networkUpTimeout uint32 = 300
+	agentName                 = "nodeagent"
+	timeTickInterval   uint32 = 10
+	watchdogInterval   uint32 = 25
+	networkUpTimeout   uint32 = 300
+	configDir                 = "/config"
+	tmpDirname                = "/var/tmp/zededa"
+	firstbootFile             = tmpDirname + "/first-boot"
+	restartCounterFile        = configDir + "/restartcounter"
 )
 
 // Version : module version
 var Version = "No version specified"
-var rebootDelay = 40 // take 40 second delay, incase zedagent fails
+var rebootDelay = 30
 
 type nodeagentContext struct {
 	GCInitialized          bool // Received initial GlobalConfig
@@ -57,12 +63,12 @@ type nodeagentContext struct {
 	pubNodeAgentStatus     *pubsub.Publication
 	curPart                string
 	upgradeTestStartTime   uint32
+	tickerTimer            *time.Ticker
+	stillRunning           *time.Ticker
 	remainingTestTime      time.Duration
 	lastConfigReceivedTime uint32
 	configGetStatus        types.ConfigGetStatus
 	deviceNetworkStatus    *types.DeviceNetworkStatus
-	needsReboot            bool
-	rebootReason           string
 	deviceRegistered       bool
 	updateInprogress       bool
 	updateComplete         bool
@@ -71,8 +77,12 @@ type nodeagentContext struct {
 	testInprogress         bool
 	timeTickCount          uint32
 	usableAddressCount     int
-	tickerTimer            *time.Ticker
-	stillRunning           *time.Ticker
+	rebootCmd              bool
+	deviceReboot           bool
+	rebootReason           string
+	rebootStack            string
+	rebootTime             time.Time
+	restartCounter         uint32
 }
 
 var debug = false
@@ -124,6 +134,9 @@ func Run() {
 
 	// Make sure we have a GlobalConfig file with defaults
 	types.EnsureGCFile()
+
+	// get the last reboot reason
+	handleLastRebootReason(&nodeagentCtx)
 
 	// publisher of NodeAgent Status
 	pubNodeAgentStatus, err := pubsub.Publish(agentName,
@@ -323,6 +336,7 @@ func handleZedAgentStatusModify(ctxArg interface{},
 			key, status.Key(), status)
 		return
 	}
+	handleRebootCmd(ctxPtr, status)
 	updateZedagentCloudConnectStatus(ctxPtr, status)
 	log.Debugf("handleZedAgentStatusModify(%s) done\n", key)
 }
@@ -462,7 +476,107 @@ func isZedAgentAlive(ctxPtr *nodeagentContext) bool {
 	return false
 }
 
-// publish nodeagent status for consumption by zedagent
+// If we have a reboot reason from this or the other partition
+// (assuming the other is in inprogress) then we log it
+// we will push this as part of baseos status
+func handleLastRebootReason(ctx *nodeagentContext) {
+
+	ctx.rebootReason, ctx.rebootTime, ctx.rebootStack =
+		agentlog.GetCurrentRebootReason()
+	if ctx.rebootReason != "" {
+		log.Warnf("Current partition rebooted reason: %s\n",
+			ctx.rebootReason)
+		agentlog.DiscardCurrentRebootReason()
+	}
+	otherRebootReason, otherRebootTime, otherRebootStack := agentlog.GetOtherRebootReason()
+	if otherRebootReason != "" {
+		log.Warnf("Other partition rebooted reason: %s\n",
+			otherRebootReason)
+		// if other partition state is "inprogress"
+		// do not erase the reboot reason, going to
+		// be used for baseos error status, across reboot
+		if !zboot.IsOtherPartitionStateInProgress() {
+			agentlog.DiscardOtherRebootReason()
+		}
+	}
+	commonRebootReason, commonRebootTime, commonRebootStack := agentlog.GetCommonRebootReason()
+	if commonRebootReason != "" {
+		log.Warnf("Common rebooted reason: %s\n",
+			commonRebootReason)
+		agentlog.DiscardCommonRebootReason()
+	}
+	// first, pick up from other partition
+	if ctx.rebootReason == "" {
+		ctx.rebootReason = otherRebootReason
+		ctx.rebootTime = otherRebootTime
+		ctx.rebootStack = otherRebootStack
+	}
+	// if still not found, pick up the common
+	if ctx.rebootReason == "" {
+		ctx.rebootReason = commonRebootReason
+		ctx.rebootTime = commonRebootTime
+		ctx.rebootStack = commonRebootStack
+	}
+
+	// still nothing, fillup the default
+	if ctx.rebootReason == "" {
+		ctx.rebootTime = time.Now()
+		dateStr := ctx.rebootTime.Format(time.RFC3339Nano)
+		var reason string
+		if fileExists(firstbootFile) {
+			reason = fmt.Sprintf("NORMAL: First boot of device - at %s\n",
+				dateStr)
+		} else {
+			reason = fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s\n",
+				dateStr)
+		}
+		log.Warnf(reason)
+		ctx.rebootReason = reason
+		ctx.rebootTime = time.Now()
+		ctx.rebootStack = ""
+	}
+	// remove the first boot file, if it is present
+	if fileExists(firstbootFile) {
+		os.Remove(firstbootFile)
+	}
+
+	// Read and increment restartCounter
+	ctx.restartCounter = incrementRestartCounter()
+}
+
+// If the file doesn't exist we pick zero.
+// Return value before increment; write new value to file
+func incrementRestartCounter() uint32 {
+	var restartCounter uint32
+
+	if _, err := os.Stat(restartCounterFile); err == nil {
+		b, err := ioutil.ReadFile(restartCounterFile)
+		if err != nil {
+			log.Errorf("incrementRestartCounter: %s\n", err)
+		} else {
+			c, err := strconv.Atoi(string(b))
+			if err != nil {
+				log.Errorf("incrementRestartCounter: %s\n", err)
+			} else {
+				restartCounter = uint32(c)
+				log.Infof("incrementRestartCounter: read %d\n", restartCounter)
+			}
+		}
+	}
+	b := []byte(fmt.Sprintf("%d", restartCounter+1))
+	err := ioutil.WriteFile(restartCounterFile, b, 0644)
+	if err != nil {
+		log.Errorf("incrementRestartCounter write: %s\n", err)
+	}
+	return restartCounter
+}
+
+func fileExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return err == nil
+}
+
+// publish nodeagent status
 func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 	pub := ctxPtr.pubNodeAgentStatus
 	status := types.NodeAgentStatus{
@@ -470,8 +584,11 @@ func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 		CurPart:           ctxPtr.curPart,
 		RemainingTestTime: ctxPtr.remainingTestTime,
 		UpdateInprogress:  ctxPtr.updateInprogress,
-		NeedsReboot:       ctxPtr.needsReboot,
+		DeviceReboot:      ctxPtr.deviceReboot,
 		RebootReason:      ctxPtr.rebootReason,
+		RebootStack:       ctxPtr.rebootStack,
+		RebootTime:        ctxPtr.rebootTime,
+		RestartCounter:    ctxPtr.restartCounter,
 	}
 	pub.Publish(agentName, status)
 }

@@ -669,7 +669,7 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 	var rulesList types.IPTablesRuleList
 
 	// Sanity check for old/incorrect controller
-	if ace.RuleID == 0 {
+	if ace.RuleID == 0 && !aclArgs.IsMgmt {
 		errStr := fmt.Sprintf("ACE with zero RuleID not supported: %+v",
 			ace)
 		log.Errorln(errStr)
