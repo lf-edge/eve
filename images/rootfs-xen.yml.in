@@ -37,6 +37,8 @@ services:
      image: GUACD_TAG
    - name: pillar
      image: PILLAR_TAG
+   - name: eve-svcs
+     image: EVE_SVCS_TAG
 files:
    - path: /etc/eve-release
      contents: 'EVE_VERSION'
