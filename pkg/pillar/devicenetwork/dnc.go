@@ -358,6 +358,10 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 				ctx.NextDPCIndex+1)
 			if nextIndex == -1 {
 				log.Infof("VerifyDevicePortConfig: nothing testable")
+				pending.Inprogress = false
+				// Restart network test timer
+				duration := time.Duration(ctx.NetworkTestInterval) * time.Second
+				ctx.NetworkTestTimer = time.NewTimer(duration)
 				return
 			}
 			SetupVerify(ctx, nextIndex)
