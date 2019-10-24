@@ -89,7 +89,7 @@ sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e "s#RKT_TAG#${RKT_TAG}#" \
     -e "s#RKT_STAGE1_TAG#${RKT_STAGE1_TAG}#" \
     -e "s#FSCRYPT_TAG#${FSCRYPT_TAG}#" \
-    -e "s#EVE_SVCS_TAG#"$EVE_SVCS_TAG"#" \
+    -e "s#EVE_SVCS_TAG#${EVE_SVCS_TAG}#" \
     -e "s#EVE_TAG#${EVE_TAG}#" \
     ${1:-}
 }
