@@ -371,7 +371,7 @@ func startDnsmasq(bridgeName string) {
 	fmt.Fprintf(w, "%s Starting %s %v\n", ts, name, args)
 	cmd := exec.Command(name, args...)
 	// Report nano timestamps
-	formatter := log.TextFormatter{
+	formatter := log.JSONFormatter{
 		TimestampFormat: time.RFC3339Nano,
 	}
 	var tslog = &log.Logger{
