@@ -92,7 +92,7 @@ func SetupVerify(ctx *DeviceNetworkContext, index int) {
 	pending := &ctx.Pending
 	pending.Inprogress = true
 	pending.PendDPC = ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
-	pend2, _ := MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
+	pend2 := MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
 	if !reflect.DeepEqual(pending.PendDNS, pend2) {
 		log.Infof("SetupVerify: DeviceNetworkStatus change from %v to %v\n",
 			pending.PendDNS, pend2)
@@ -241,7 +241,7 @@ func VerifyPending(pending *DPCPending,
 		}
 		pending.OldDPC = pending.PendDPC
 	}
-	pend2, _ := MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
+	pend2 := MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
 	if !reflect.DeepEqual(pending.PendDNS, pend2) {
 		log.Infof("VerifyPending: DeviceNetworkStatus change from %v to %v\n",
 			pending.PendDNS, pend2)

@@ -284,6 +284,9 @@ type NetworkPortConfig struct {
 	Free   bool   // Higher priority to talk to controller since no cost
 	DhcpConfig
 	ProxyConfig
+	// Errrors from the parser go here and get reflects in NetworkPortStatus
+	ParseError     string
+	ParseErrorTime time.Time
 }
 
 type NetworkPortStatus struct {
@@ -995,6 +998,9 @@ type NetworkXObjectConfig struct {
 	DhcpRange       IpRange
 	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
 	Proxy           *ProxyConfig
+	// Any errrors from the parser
+	Error     string
+	ErrorTime time.Time
 }
 
 type IpRange struct {
