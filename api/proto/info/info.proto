@@ -50,7 +50,7 @@ message ZmetVifInfo {
  * Broadly there are two types
  * Info : information that is discovered/rarely changes
  * Metrics: information that gets updated periodically
- * Protobuf definitions in this file follow the convention. 
+ * Protobuf definitions in this file follow the convention.
  */
 enum ZInfoTypes {
   ZiNop = 0;
@@ -108,7 +108,13 @@ message ZInfoNetwork {
   // deprecated = 1;
   // deprecated = 2;
   string macAddr = 3;
-  string devName = 4; // From name in config
+
+  // devName - Must be set to SystemAdapter.Name
+  string devName = 4;
+  // alias - Must be set to SystemAdapter.alias
+  string alias = 40;
+
+
   repeated string IPAddrs = 5; // All IP addresses with /N for subnet
   repeated string defaultRouters = 6; // If DHCP assigned
   ZInfoDNS dns = 7; // If DHCP assigned
@@ -116,7 +122,10 @@ message ZInfoNetwork {
   GeoLoc location = 9;
   bool uplink = 10; // Uplink interface  // XXX rename to isMgmt
   ErrorInfo networkErr = 11; // For instance bad proxy config
-  string localName = 12; // eth0, eth1 etc.
+
+  // Ifname from PhysicalIo - eth0, eth1 etc
+  string localName = 12;
+
   ProxyStatus proxy = 13;
 }
 

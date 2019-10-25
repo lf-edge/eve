@@ -24,7 +24,11 @@ message memoryMetric {
 }
 
 message networkMetric {
+  // iName - Set to SystemAdapter.Name
   string iName = 1;	// name from config; displayName for network instance
+  // alias - Set to SystemAdapter.alias
+  string alias = 20;
+
   uint64 txBytes = 2;	// in bytes
   uint64 rxBytes = 3;	// in bytes
   uint64 txDrops = 4;
@@ -39,6 +43,8 @@ message networkMetric {
   uint64 rxAclDrops = 13;
   uint64 txAclRateLimitDrops = 14;
   uint64 rxAclRateLimitDrops = 15;
+
+  // localName - Set to IfName of the Adapter
   string localName = 16; // local vif name e.g., nbu*
 }
 
@@ -104,7 +110,7 @@ message MetricItem {
 		float floatValue = 6;
 		string stringValue = 7; // Use with care
 	}
-}		
+}
 
 // For each partition; counts since boot
 message diskMetric {
