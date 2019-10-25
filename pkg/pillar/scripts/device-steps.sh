@@ -292,13 +292,13 @@ echo "$(date -Ins -u) Set up log capture"
 DOM0LOGFILES="ntpd.err.log wlan.err.log wwan.err.log ntpd.out.log wlan.out.log wwan.out.log pillar.out.log pillar.err.log"
 for f in $DOM0LOGFILES; do
     echo "$(date -Ins -u) Starting $f" >$PERSISTDIR/$CURPART/log/"$f"
-    tail -c +0 -F /var/log/dom0/"$f" >>$PERSISTDIR/$CURPART/log/"$f" &
+    tail -c +0 -F /var/log/dom0/"$f" | while IFS= read -r line; do printf "%s %s\n" "$(date -Ins -u)" "$line"; done >> $PERSISTDIR/$CURPART/log/"$f" &
 done
 tail -c +0 -F /var/log/device-steps.log >>$PERSISTDIR/$CURPART/log/device-steps.log &
 echo "$(date -Ins -u) Starting hypervisor.log" >>$PERSISTDIR/$CURPART/log/hypervisor.log
-tail -c +0 -F /var/log/xen/hypervisor.log >>$PERSISTDIR/$CURPART/log/hypervisor.log &
+tail -c +0 -F /var/log/xen/hypervisor.log | while IFS= read -r line; do printf "%s %s\n" "$(date -Ins -u)" "$line"; done >>$PERSISTDIR/$CURPART/log/hypervisor.log &
 echo "$(date -Ins -u) Starting dmesg" >>$PERSISTDIR/$CURPART/log/dmesg.log
-dmesg -T -w -l 1,2,3 --time-format iso >>$PERSISTDIR/$CURPART/log/dmesg.log &
+dmesg -T -w -l 1,2,3,4 --time-format iso | while IFS= read -r line; do printf "%s %s\n" "$(date -Ins -u)" "$line"; done >>$PERSISTDIR/$CURPART/log/dmesg.log &
 
 if [ -d $LISPDIR/logs ]; then
     echo "$(date -Ins -u) Saving old lisp logs in $LISPDIR/logs.old"
@@ -311,7 +311,7 @@ tail -c +0 -F /var/log/device-steps.log >>$PERSISTDIR/log/device-steps.log &
 echo "$(date -Ins -u) Starting pillar" >>$PERSISTDIR/log/pillar.out.log
 tail -c +0 -F /var/log/dom0/pillar.out.log >>$PERSISTDIR/log/pillar.out.log &
 echo "$(date -Ins -u) Starting dmesg" >>$PERSISTDIR/log/dmesg.log
-dmesg -T -w -l 1,2,3 --time-format iso >>$PERSISTDIR/log/dmesg.log &
+dmesg -T -w -l 1,2,3,4 --time-format iso | while IFS= read -r line; do printf "%s %s\n" "$(date -Ins -u)" "$line"; done >>$PERSISTDIR/log/dmesg.log &
 
 #
 # Remove any old symlink to different IMG directory

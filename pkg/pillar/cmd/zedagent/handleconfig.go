@@ -132,6 +132,7 @@ func configTimerTask(handleChannel chan interface{},
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName + "config")
 
 	for {
 		select {
