@@ -227,7 +227,7 @@ func dhcpcdCmd(op string, extras []string, ifname string, dolog bool) bool {
 		cmd := exec.Command(name, args...)
 
 		// Report nano timestamps
-		formatter := log.TextFormatter{
+		formatter := log.JSONFormatter{
 			TimestampFormat: time.RFC3339Nano,
 		}
 		var tslog = &log.Logger{
