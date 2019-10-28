@@ -28,17 +28,22 @@ const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
 // The message is assumed to be protected by a TLS session bound to the
 // device certificate.
 type EdgeDevConfig struct {
-	Id                *UUIDandVersion      `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Apps              []*AppInstanceConfig `protobuf:"bytes,4,rep,name=apps,proto3" json:"apps,omitempty"`
-	Networks          []*NetworkConfig     `protobuf:"bytes,5,rep,name=networks,proto3" json:"networks,omitempty"`
-	Datastores        []*DatastoreConfig   `protobuf:"bytes,6,rep,name=datastores,proto3" json:"datastores,omitempty"`
-	LispInfo          *DeviceLispDetails   `protobuf:"bytes,7,opt,name=lispInfo,proto3" json:"lispInfo,omitempty"`
-	Base              []*BaseOSConfig      `protobuf:"bytes,8,rep,name=base,proto3" json:"base,omitempty"`
-	Reboot            *DeviceOpsCmd        `protobuf:"bytes,9,opt,name=reboot,proto3" json:"reboot,omitempty"`
-	Backup            *DeviceOpsCmd        `protobuf:"bytes,10,opt,name=backup,proto3" json:"backup,omitempty"`
-	ConfigItems       []*ConfigItem        `protobuf:"bytes,11,rep,name=configItems,proto3" json:"configItems,omitempty"`
-	SystemAdapterList []*SystemAdapter     `protobuf:"bytes,12,rep,name=systemAdapterList,proto3" json:"systemAdapterList,omitempty"`
-	DeviceIoList      []*PhysicalIO        `protobuf:"bytes,13,rep,name=deviceIoList,proto3" json:"deviceIoList,omitempty"`
+	Id          *UUIDandVersion      `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Apps        []*AppInstanceConfig `protobuf:"bytes,4,rep,name=apps,proto3" json:"apps,omitempty"`
+	Networks    []*NetworkConfig     `protobuf:"bytes,5,rep,name=networks,proto3" json:"networks,omitempty"`
+	Datastores  []*DatastoreConfig   `protobuf:"bytes,6,rep,name=datastores,proto3" json:"datastores,omitempty"`
+	LispInfo    *DeviceLispDetails   `protobuf:"bytes,7,opt,name=lispInfo,proto3" json:"lispInfo,omitempty"`
+	Base        []*BaseOSConfig      `protobuf:"bytes,8,rep,name=base,proto3" json:"base,omitempty"`
+	Reboot      *DeviceOpsCmd        `protobuf:"bytes,9,opt,name=reboot,proto3" json:"reboot,omitempty"`
+	Backup      *DeviceOpsCmd        `protobuf:"bytes,10,opt,name=backup,proto3" json:"backup,omitempty"`
+	ConfigItems []*ConfigItem        `protobuf:"bytes,11,rep,name=configItems,proto3" json:"configItems,omitempty"`
+	// systemAdapterList - List of DeviceNetworkAdapters. Only Network
+	//  adapters ( Ex: eth0, wlan1 etc ) have a corresponding SystemAdapter.
+	// non-Network adapters do not have systemadapters.
+	SystemAdapterList []*SystemAdapter `protobuf:"bytes,12,rep,name=systemAdapterList,proto3" json:"systemAdapterList,omitempty"`
+	// deviceIoList - List of Physical Adapters. Includes both Network
+	//  Adapters and Non-Network Adapters ( USB / Com etc )
+	DeviceIoList []*PhysicalIO `protobuf:"bytes,13,rep,name=deviceIoList,proto3" json:"deviceIoList,omitempty"`
 	// Override dmidecode info if set
 	Manufacturer     string                   `protobuf:"bytes,14,opt,name=manufacturer,proto3" json:"manufacturer,omitempty"`
 	ProductName      string                   `protobuf:"bytes,15,opt,name=productName,proto3" json:"productName,omitempty"`
