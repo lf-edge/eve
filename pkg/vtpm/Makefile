@@ -3,7 +3,7 @@
 
 TARGET ?= vtpm_server
 SRC_DIRS ?= ./src
-INC_DIRS ?= ./proto/cpp
+INC_DIRS ?= ./proto
 PROTO_OBJS ?= vtpm_api.pb.o
 CC = g++
 
@@ -19,10 +19,10 @@ $(TARGET): $(PROTO_OBJS) $(OBJS)
 	$(CC) $(OBJS) $(PROTO_OBJS) -o $@ $(LDLIBS)
 
 protoc_files: proto/vtpm_api.proto
-	protoc --cpp_out=proto/cpp -Iproto vtpm_api.proto
+	protoc --cpp_out=proto -Iproto vtpm_api.proto
 
 $(PROTO_OBJS): protoc_files
-	$(CC) -c  -o $@ proto/cpp/vtpm_api.pb.cc
+	$(CC) -c  -o $@ proto/vtpm_api.pb.cc
 
 clean:
 	$(RM) $(TARGET) $(OBJS) $(DEPS) $(INC_DIR) $(PROTO_OBJS)
