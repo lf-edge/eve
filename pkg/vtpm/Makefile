@@ -27,6 +27,10 @@ $(PROTO_OBJS): protoc_files
 clean:
 	$(RM) $(TARGET) $(OBJS) $(DEPS) $(INC_DIR) $(PROTO_OBJS)
 
-.PHONY: clean protoc_files
+.PHONY: clean protoc_files all test
+
+all: vtpm_server
+
+test:
 
 -include $(DEPS)

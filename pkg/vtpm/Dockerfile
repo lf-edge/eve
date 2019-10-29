@@ -49,7 +49,7 @@ COPY --from=curl-dev-bits /usr/include/curl /usr/include/curl
 COPY --from=curl-dev-bits /usr/lib/libcurl.so /usr/lib/libcurl.so
 RUN make
 
-ADD ./ /vtpm_server
+COPY ./ /vtpm_server
 WORKDIR /vtpm_server
 RUN make
 

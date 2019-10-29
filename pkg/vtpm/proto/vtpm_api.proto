@@ -5,17 +5,17 @@ syntax = "proto3";
 package eve_tools;
 
 message File {
-	string Name = 1;
-	bytes  Content = 2;
+    string Name = 1;
+    bytes  Content = 2;
 }
 
 message EveTPMRequest {
-	string Command = 1;
-	repeated string ExpectedFiles = 2;
-	repeated File InputFiles = 3;
+    string Command = 1;
+    repeated string ExpectedFiles = 2;
+    repeated File InputFiles = 3;
 }
 
 message EveTPMResponse {
-	bytes Response = 1;
-	repeated File OutputFiles = 2;
+    bytes Response = 1;
+    repeated File OutputFiles = 2;
 }
