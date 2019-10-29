@@ -1,7 +1,9 @@
-#There are 3 parts:
+#There are four parts:
 # a) building tpm2-tss
 # b) building tpm2-tools
-# c) extracting only required bits from tpm2-tss and tpm2-tools
+# c) building the vtpm server from local source
+# d) extracting only required bits from tpm2-tss and tpm2-tools
+#    and the server
 
 #We need autoconf-archive from 3.8+, to satisfy autoconf
 #autoconf-archive is not available in 3.8
@@ -49,6 +51,7 @@ COPY --from=curl-dev-bits /usr/include/curl /usr/include/curl
 COPY --from=curl-dev-bits /usr/lib/libcurl.so /usr/lib/libcurl.so
 RUN make
 
+#The vTPM server
 COPY ./ /vtpm_server
 WORKDIR /vtpm_server
 RUN make
