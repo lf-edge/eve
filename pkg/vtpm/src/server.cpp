@@ -110,7 +110,7 @@ int readMessage(int sock, google::protobuf::uint32 size)
     send(sock, (void *)resp_buffer, size, 0);
 }
 
-int main(int argc, char *argv[]) 
+int main(int argc, char *argv[])
 {
 
     //Listen at IN_ADDR_ANY, SERVER_PORT
