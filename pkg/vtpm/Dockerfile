@@ -49,6 +49,10 @@ COPY --from=curl-dev-bits /usr/include/curl /usr/include/curl
 COPY --from=curl-dev-bits /usr/lib/libcurl.so /usr/lib/libcurl.so
 RUN make
 
+ADD ./ /vtpm_server
+WORKDIR /vtpm_server
+RUN make
+
 #Pull a selected set of artifacts into the final stage.
 FROM alpine:3.8
 RUN apk add --no-cache openssl=1.0.2t-r0 protobuf=3.5.2-r0
@@ -65,6 +69,7 @@ COPY --from=build /tpm2-tools/tools/tpm2_createak /usr/bin/
 COPY --from=build /tpm2-tools/tools/tpm2_createprimary /usr/bin/
 COPY --from=build /tpm2-tools/tools/tpm2_getcap /usr/bin/
 COPY --from=build /tpm2-tools/tools/tpm2_sign /usr/bin/
+COPY --from=build /vtpm_server/vtpm_server /usr/bin/
 COPY init.sh /usr/bin/
 ENTRYPOINT []
 WORKDIR /

@@ -1,4 +1,4 @@
 #!/bin/sh
 
-#TBD, fill it up with the actual server launch
-tail -f /dev/null
+#Launch the VTPM server
+/usr/bin/vtpm_server > vtpm_server.log 2>&1
