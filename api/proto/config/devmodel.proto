@@ -111,7 +111,7 @@ enum PhyIoMemberUsage {
         // used by only one app
         PhyIoUsageDedicated = 3;
         // Adapter Blocked. Do not use the Adapter.
-        PhyIoUsageBlocked   = 4;
+        PhyIoUsageDisabled   = 4;
         // Used for Management traffic only. Cannot be used by Apps.
         PhyIoUsageMgmtOnly = 5;
 }
