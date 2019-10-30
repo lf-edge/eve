@@ -92,6 +92,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 		info.BridgeNum = uint32(status.BridgeNum)
 		info.BridgeName = status.BridgeName
 		info.BridgeIPAddr = status.BridgeIPAddr
+		info.CurrentUplinkIntf = status.CurrentUplinkIntf
 
 		for mac, ip := range status.IPAssignments {
 			assignment := new(zinfo.ZmetIPAssignmentEntry)
@@ -356,6 +357,36 @@ func protoEncodeGenericInstanceMetric(status types.NetworkInstanceMetrics,
 	networkStats.Rx = rxStats
 	networkStats.Tx = txStats
 	metric.NetworkStats = networkStats
+	protoEncodeProbeMetric(status, metric)
+}
+
+func protoEncodeProbeMetric(status types.NetworkInstanceMetrics,
+	metric *zmet.ZMetricNetworkInstance) {
+	probeStats := new(zmet.ZProbeNIMetrics)
+
+	probeM := status.ProbeMetrics
+	probeStats.CurrentIntf = probeM.CurrUplinkIntf
+	probeStats.RemoteEndpoint = probeM.RemoteEndpoint
+	probeStats.PingIntv = probeM.LocalPingIntvl
+	probeStats.RemotePingIntv = probeM.RemotePingIntvl
+	probeStats.UplinkCnt = probeM.UplinkNumber
+
+	for _, intfM := range probeM.IntfProbeStats {
+		probeI := new(zmet.ZProbeNIMetrics_ZProbeIntfMetric)
+
+		probeI.IntfName = intfM.IntfName
+		probeI.GatewayNexhtop = intfM.NexthopGw.String()
+		probeI.GatewayUP = intfM.GatewayUP
+		probeI.RemoteHostUP = intfM.RmoteStatusUP
+		probeI.NexthopUpCount = intfM.GatewayUPCnt
+		probeI.NexthopDownCount = intfM.GatewayDownCnt
+		probeI.RemoteUpCount = intfM.RemoteUPCnt
+		probeI.RemoteDownCount = intfM.RemoteDownCnt
+		probeI.RemoteProbeLatency = intfM.LatencyToRemote
+
+		probeStats.IntfMetric = append(probeStats.IntfMetric, probeI)
+	}
+	metric.ProbeMetric = probeStats
 }
 
 func protoEncodeLispInstanceMetric(status types.NetworkInstanceMetrics,

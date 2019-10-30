@@ -449,6 +449,8 @@ message ZInfoNetworkInstance {
   google.protobuf.Timestamp upTimeStamp = 8;
   ZInfoSW softwareList = 9; 	// E.g., VPN version
 
+  string CurrentUplinkIntf = 10;  // current uplink interface in use by this NI
+  string CurrentUplinkAlias = 11; // user defined namestring alias to this CurrentUplinkIntf, for future
   uint32 bridgeNum = 20;
   string bridgeName = 21;
   string bridgeIPAddr = 22;

@@ -1107,8 +1107,32 @@ type NetworkInstanceMetrics struct {
 	DisplayName    string
 	Type           NetworkInstanceType
 	NetworkMetrics NetworkMetrics
+	ProbeMetrics   ProbeMetrics
 	VpnMetrics     *VpnMetrics
 	LispMetrics    *LispMetrics
+}
+
+// ProbeMetrics - NI probe metrics
+type ProbeMetrics struct {
+	CurrUplinkIntf  string             // the uplink interface probing picks
+	RemoteEndpoint  string             // remote either URL or IP address
+	LocalPingIntvl  uint32             // local ping interval in seconds
+	RemotePingIntvl uint32             // remote probing interval in seconds
+	UplinkNumber    uint32             // number of possible uplink interfaces
+	IntfProbeStats  []ProbeIntfMetrics // per dom0 intf uplink probing metrics
+}
+
+// ProbeIntfMetrics - per dom0 network uplink interface probing
+type ProbeIntfMetrics struct {
+	IntfName        string // dom0 uplink interface name
+	NexthopGw       net.IP // interface local ping nexthop address
+	GatewayUP       bool   // Is local gateway in UP status
+	RmoteStatusUP   bool   // Is remote endpoint in UP status
+	GatewayUPCnt    uint32 // local ping UP count
+	GatewayDownCnt  uint32 // local ping DOWN count
+	RemoteUPCnt     uint32 // remote probe UP count
+	RemoteDownCnt   uint32 // remote probe DOWN count
+	LatencyToRemote uint32 // probe latency to remote in msec
 }
 
 func (metrics NetworkInstanceMetrics) Key() string {
