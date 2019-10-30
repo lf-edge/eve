@@ -152,7 +152,7 @@ func TestIoBundleFromPhyAdapter(t *testing.T) {
 			Ioports: "3f8-3ff",
 			Serial:  "/dev/ttyS0",
 		},
-		Usage: zconfig.PhyIoMemberUsage_PhyIoUsageMgmt,
+		Usage: zconfig.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 		UsagePolicy: PhyIOUsagePolicy{
 			FreeUplink: true,
 		},
