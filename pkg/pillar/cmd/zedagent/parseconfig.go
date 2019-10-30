@@ -1759,6 +1759,15 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			}
 			newGlobalConfig.VdiskGCTime = uint32(i64)
 
+		case "timer.gc.rkt.graceperiod":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newGlobalConfig.RktGCGracePeriod = uint32(i64)
+
 		case "timer.download.retry":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {

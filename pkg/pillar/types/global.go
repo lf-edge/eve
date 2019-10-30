@@ -34,6 +34,7 @@ type GlobalConfig struct {
 	StaleConfigTime         uint32 // On reboot use saved config if not stale
 	DownloadGCTime          uint32 // Garbage collect if no use
 	VdiskGCTime             uint32 // Garbage collect RW disk if no use
+	RktGCGracePeriod        uint32 // GracePeriod to be used with rkt gc
 
 	DownloadRetryTime   uint32 // Retry failed download after N sec
 	DomainBootRetryTime uint32 // Retry failed boot after N sec
@@ -124,6 +125,7 @@ var GlobalConfigDefaults = GlobalConfig{
 	VdiskGCTime:         3600, // 1 hour
 	DownloadRetryTime:   600,  // 10 minutes
 	DomainBootRetryTime: 600,  // 10 minutes
+	RktGCGracePeriod:    300,  // 5 minutes
 
 	AllowNonFreeAppImages:  TS_ENABLED,
 	AllowNonFreeBaseImages: TS_ENABLED,
@@ -201,6 +203,9 @@ func ApplyGlobalConfig(newgc GlobalConfig) GlobalConfig {
 	if newgc.AllowNonFreeBaseImages == TS_NONE {
 		newgc.AllowNonFreeBaseImages = GlobalConfigDefaults.AllowNonFreeBaseImages
 	}
+	if newgc.RktGCGracePeriod == 0 {
+		newgc.RktGCGracePeriod = GlobalConfigDefaults.RktGCGracePeriod
+	}
 	return newgc
 }
 
@@ -223,6 +228,7 @@ var GlobalConfigMinimums = GlobalConfig{
 	VdiskGCTime:         60,
 	DownloadRetryTime:   60,
 	DomainBootRetryTime: 10,
+	RktGCGracePeriod:    30,
 }
 
 func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
@@ -300,6 +306,11 @@ func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
 		log.Warnf("Enforce minimum DomainBootRetryTime received %d; using %d",
 			newgc.DomainBootRetryTime, GlobalConfigMinimums.DomainBootRetryTime)
 		newgc.DomainBootRetryTime = GlobalConfigMinimums.DomainBootRetryTime
+	}
+	if newgc.RktGCGracePeriod < GlobalConfigMinimums.RktGCGracePeriod {
+		log.Warnf("Enforce minimum RktGCGracePeriod received %d; using %d",
+			newgc.RktGCGracePeriod, GlobalConfigMinimums.RktGCGracePeriod)
+		newgc.RktGCGracePeriod = GlobalConfigMinimums.RktGCGracePeriod
 	}
 	return newgc
 }
