@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+	"strconv"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -18,6 +19,94 @@ const (
 	globalConfigFile = globalConfigDir + "/global.json"
 	symlinkDir       = TmpDirname + "/GlobalConfig"
 )
+
+// ConfigItemStatus - Status of Config Items
+type ConfigItemStatus struct {
+	// Value - Current value of the item
+	Value string
+	// Err - Error from last config. nil if no error.
+	Err error
+}
+
+// GlobalStatus - Status of Global Config Items.
+type GlobalStatus struct {
+	// ConfigItems - key : Item Key Str
+	ConfigItems map[string]ConfigItemStatus
+	// UnknownConfigItems - Unrecognized ConfigItems.
+	UnknownConfigItems map[string]ConfigItemStatus
+}
+
+// setItemValue - Sets value for the key. Expects a valid key. asserts if
+//  the key is not found.
+func (gs *GlobalStatus) setItemValue(key, value string) {
+	item := gs.ConfigItems[key]
+	item.Value = value
+	gs.ConfigItems[key] = item
+}
+
+func (gs *GlobalStatus) setItemValueInt(key string, intVal uint32) {
+	value := strconv.FormatUint(uint64(intVal), 10)
+	gs.setItemValue(key, value)
+}
+
+func (gs *GlobalStatus) setItemValueTriState(key string, state TriState) {
+	value := FormatTriState(state)
+	gs.setItemValue(key, value)
+}
+
+func (gs *GlobalStatus) setItemValueBool(key string, boolVal bool) {
+	value := strconv.FormatBool(boolVal)
+	gs.setItemValue(key, value)
+}
+
+// UpdateItemValuesFromGlobalConfig - Update values of ConfigItems from
+// globalConfig
+func (gs *GlobalStatus) UpdateItemValuesFromGlobalConfig(gc GlobalConfig) {
+	// Set Int Values
+	gs.setItemValueInt("timer.config.interval", gc.ConfigInterval)
+	gs.setItemValueInt("timer.metric.interval", gc.MetricInterval)
+	gs.setItemValueInt("timer.send.timeout", gc.NetworkSendTimeout)
+	gs.setItemValueInt("timer.reboot.no.network", gc.ResetIfCloudGoneTime)
+	gs.setItemValueInt("timer.update.fallback.no.network",
+		gc.FallbackIfCloudGoneTime)
+	gs.setItemValueInt("timer.test.baseimage.update", gc.MintimeUpdateSuccess)
+	gs.setItemValueInt("timer.port.georedo", gc.NetworkGeoRedoTime)
+	gs.setItemValueInt("timer.port.georetry", gc.NetworkGeoRetryTime)
+	gs.setItemValueInt("timer.port.testduration", gc.NetworkTestDuration)
+	gs.setItemValueInt("timer.port.testinterval", gc.NetworkTestInterval)
+	gs.setItemValueInt("timer.port.timeout", gc.NetworkTestTimeout)
+	gs.setItemValueInt("timer.port.testbetterinterval", gc.NetworkTestBetterInterval)
+	gs.setItemValueInt("timer.use.config.checkpoint", gc.StaleConfigTime)
+	gs.setItemValueInt("timer.gc.download", gc.DownloadGCTime)
+	gs.setItemValueInt("timer.gc.vdisk", gc.VdiskGCTime)
+	gs.setItemValueInt("timer.gc.rkt.graceperiod", gc.RktGCGracePeriod)
+	gs.setItemValueInt("timer.download.retry", gc.DownloadRetryTime)
+	gs.setItemValueInt("timer.boot.retry", gc.DomainBootRetryTime)
+	gs.setItemValueInt("storage.dom0.disk.minusage.percent",
+		gc.Dom0MinDiskUsagePercent)
+
+	// Set TriState Values
+	gs.setItemValueTriState("network.fallback.any.eth", gc.NetworkFallbackAnyEth)
+	gs.setItemValueTriState("network.allow.wwan.app.download",
+		gc.AllowNonFreeAppImages)
+	gs.setItemValueTriState("network.allow.wwan.baseos.download",
+		gc.AllowNonFreeBaseImages)
+
+	// Set Bool
+	gs.setItemValueBool("debug.enable.usb", gc.UsbAccess)
+	gs.setItemValueBool("debug.enable.ssh", gc.SshAccess)
+	gs.setItemValueBool("app.allow.vnc", gc.AllowAppVnc)
+
+	// Set String Values
+	gs.setItemValue("debug.default.loglevel", gc.DefaultLogLevel)
+	gs.setItemValue("debug.default.remote.loglevel", gc.DefaultRemoteLogLevel)
+
+	for agentName, agentSetting := range gc.AgentSettings {
+		gs.setItemValue("debug"+agentName+"loglevel", agentSetting.LogLevel)
+		gs.setItemValue("debug"+agentName+"remote.loglevel",
+			agentSetting.RemoteLogLevel)
+	}
+}
 
 // GlobalConfig is used for log levels and timer values which are preserved
 // across reboots and baseimage-updates.
@@ -88,9 +177,6 @@ type GlobalConfig struct {
 	// Per agent settings of log levels; if set for an agent it
 	// overrides the Default*Level above
 	AgentSettings map[string]PerAgentSettings
-
-	// Any Errors seen in Config Items
-	Errors []string
 }
 
 type PerAgentSettings struct {
