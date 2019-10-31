@@ -106,6 +106,7 @@ type zedagentContext struct {
 	devicePortConfigList      types.DevicePortConfigList
 	remainingTestTime         time.Duration
 	physicalIoAdapterMap      map[string]types.PhysicalIOAdapter
+	globalStatus              types.GlobalStatus
 }
 
 var debug = false
@@ -166,6 +167,11 @@ func Run() {
 
 	triggerDeviceInfo := make(chan struct{}, 1)
 	zedagentCtx := zedagentContext{TriggerDeviceInfo: triggerDeviceInfo}
+	zedagentCtx.globalStatus.ConfigItems = make(
+		map[string]types.ConfigItemStatus)
+	zedagentCtx.globalStatus.UnknownConfigItems = make(
+		map[string]types.ConfigItemStatus)
+
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 
 	// Run a periodic timer so we always update StillRunning

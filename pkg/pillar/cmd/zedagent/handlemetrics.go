@@ -688,6 +688,29 @@ func getDataSecAtRestInfo(ctx *zedagentContext) *info.DataSecAtRest {
 	return ReportDataSecAtRestInfo
 }
 
+func createConfigItemStatus(
+	status types.GlobalStatus) *info.ZInfoConfigItemStatus {
+
+	cfgItemsPtr := new(info.ZInfoConfigItemStatus)
+
+	// Copy ConfigItems
+	cfgItemsPtr.ConfigItems = make(map[string]*info.ZInfoConfigItem)
+	for key, statusCfgItem := range status.ConfigItems {
+		cfgItemsPtr.ConfigItems[key] = &info.ZInfoConfigItem{
+			Value: statusCfgItem.Value,
+			Error: statusCfgItem.Err.Error()}
+	}
+
+	// Copy Unknown Config Items
+	cfgItemsPtr.UnknownConfigItems = make(map[string]*info.ZInfoConfigItem)
+	for key, statusUnknownCfgItem := range status.UnknownConfigItems {
+		cfgItemsPtr.UnknownConfigItems[key] = &info.ZInfoConfigItem{
+			Value: statusUnknownCfgItem.Value,
+			Error: statusUnknownCfgItem.Err.Error()}
+	}
+	return cfgItemsPtr
+}
+
 // This function is called per change, hence needs to try over all management ports
 func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	aa := ctx.assignableAdapters
@@ -1043,6 +1066,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
 	}
+
+	// Add ConfigItems to the DeviceInfo
+	ReportDeviceInfo.ConfigItemStatus = createConfigItemStatus(ctx.globalStatus)
 
 	log.Debugf("PublishDeviceInfoToZedCloud sending %v\n", ReportInfo)
 	data, err := proto.Marshal(ReportInfo)
