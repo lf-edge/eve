@@ -1,4 +1,4 @@
-image: vtpm
+image: eve-vtpm
 org: lfedge
 network: yes
 config:
