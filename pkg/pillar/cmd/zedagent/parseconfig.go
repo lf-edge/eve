@@ -635,16 +635,24 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 
 // Returns a port if it should be added to the list; some errors result in
 // adding an port to to DevicePortConfig with ParseError set.
-func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext, sysAdapter *zconfig.SystemAdapter, version types.DevicePortConfigVersion) *types.NetworkPortConfig {
+func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
+	sysAdapter *zconfig.SystemAdapter,
+	version types.DevicePortConfigVersion) *types.NetworkPortConfig {
 	var isMgmt, isFree bool = false, false
 
 	port := new(types.NetworkPortConfig)
+
+	// XXX - There seems to be an implicit Assumption here that
+	// sysAdapter.Name is same as Port.IfName
+	// CHANGE this to: port.IfName = sysAdapter.getIfname()
 	port.IfName = sysAdapter.Name
-	if sysAdapter.LogicalName != "" {
-		port.Name = sysAdapter.LogicalName
-	} else {
-		port.Name = sysAdapter.Name
-	}
+	port.Name = sysAdapter.Name
+
+	// XXX - Make the change after LowerLayerName starts to get used.
+	//  Look up using LowerLayerName ( PhysicalLabel).
+	// If LowerLayerName is not found, use sysAdapter.Name to do the lookup
+	//  Currently, lookupDeviceIo looks up using LogicalLabel. But it should
+	//  Really be physical Label.
 	phyio := lookupDeviceIo(getconfigCtx, sysAdapter.Name)
 	if phyio == nil {
 		// We will re-check when phyio changes.
@@ -1758,6 +1766,15 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				continue
 			}
 			newGlobalConfig.VdiskGCTime = uint32(i64)
+
+		case "timer.gc.rkt.graceperiod":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newGlobalConfig.RktGCGracePeriod = uint32(i64)
 
 		case "timer.download.retry":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)

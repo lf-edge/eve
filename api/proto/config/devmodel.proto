@@ -47,32 +47,46 @@ message sWAdapterParams {
 
 // systemAdapters, are the higher l2 concept built on physicalIOs.
 // systemAdapters, gives all the required bits to turn the physical IOs
-// into useful IP endpoints
+// into useful IP endpoints.
 // These endpoints can be further used to connect to controller or
 // can be shared between workload/services running on the node.
 message SystemAdapter {
-        // name of the adapter; hardware-specific e.g., eth0
+        // name - Name of the Network Interface. This is the Port Name
+        //  used in Info / Metrics / flowlog etc. Name cannot be changed.
+        // This will be the Network Port name.
         string name = 1;
 
         // deprecated; need level 2 spec. sWAdapterParams allocDetails = 20;
-
         // this is part of the freelink group
-        // deprecate: have a separate device policy object in the API
+        // DEPRECATED by PhyIoAdapter.usagePolicy.
         bool freeUplink = 2;
 
+        // uplink - DEPRECATED by PhysicalIO.Usage / PhysicalIO.UsagePolicy
         // this is part of the uplink group
         // deprecate: have a separate device policy object in the API
         bool uplink = 3;
 
-        // attach this network config for this adapter
+        // networkUUID - attach this network config for this adapter
+        // if not set, depending on Usage of Adapter, would be treated as
+        // an L2 port
         string networkUUID = 4;
 
-        // if its static network we need ip address
+        // addr - if its static network we need ip address
+        // If this is specified, networkUUID must also be specified. addr
+        // is expected to be in sync with the network object (same subnet etc ).
         string addr = 5;
 
-        // alias/logical name which will be reported to zedcloud
-        // and used for app instances
-        string logicalName = 6;
+        // deprecated = 6
+
+        // alias - Device just reflects it back in status / Metrics back to
+        // cloud.
+        string alias = 7;
+
+        // lowerLayerName - For example, if lower layer is PhysicalAdapter
+        // ( physical interface), this should point to PhyLabel of the
+        // physicalIO.
+        string lowerLayerName = 8;
+
 }
 
 enum PhyIoType {
@@ -90,10 +104,16 @@ enum PhyIoType {
 // How does EVE should use them, for what purpose it is for
 enum PhyIoMemberUsage {
         PhyIoUsageNone      = 0;
-        PhyIoUsageMgmt      = 1;
+        // Used by both management and apps.
+        PhyIoUsageMgmtAndApps = 1;
+        // Shared by multiple apps
         PhyIoUsageShared    = 2;
+        // used by only one app
         PhyIoUsageDedicated = 3;
-        PhyIoUsageBlocked   = 4;
+        // Adapter Blocked. Do not use the Adapter.
+        PhyIoUsageDisabled   = 4;
+        // Used for Management traffic only. Cannot be used by Apps.
+        PhyIoUsageMgmtOnly = 5;
 }
 
 // Given additional details for EVE softwar to how to treat this
@@ -102,8 +122,19 @@ enum PhyIoMemberUsage {
 // XXX Note that this is the static information from the model.
 // Current configuration is in systemAdapter
 message PhyIOUsagePolicy {
-        // Used only when one other normal uplinks are down
+        // DEPRECATED - Used only when one other normal uplinks are down
         bool freeUplink = 1;
+
+        // fallBackPriority
+        //  0 is the highest priority.
+        //  Lower priority interfaces are used only when NONE of the higher
+        //  priority interfaces are up.
+        //  For example:
+        //      First use all interfaces with priority 0
+        //      if no priority 0 interfaces, use interfaces with priority 1
+        //      if no priority 1 interfaces, use interfaces with priority 2
+        //      and so on..
+        uint32 fallBackPriority = 2;
 }
 
 // PhysicalIO:
@@ -131,8 +162,8 @@ message PhysicalIO {
       // "ioports": the address is a string such as "2f8-2ff"
       map <string, string> phyaddrs = 3;
 
-      // provides the ability to model designer to rename the physicalIO
-      // port to more understandable
+      // logicallabel - provides the ability to model designer to refer
+      //    the physicalIO port to using more friendly name
       // For example Eth0->Mgmt0
       //  or USBA->ConfigDiskA etc
       string logicallabel       = 4;
@@ -141,9 +172,14 @@ message PhysicalIO {
       // EntireGroup can be assigned to application or nothing at all
       string  assigngrp         = 5;
 
-      // XXX Note that this is the static information from the model.
-      // Current configuration is in systemAdapter
+      // usage - indicates the role of adapter ( mgmt / blocked / app-direct
+      //    etc. )
       PhyIoMemberUsage usage    = 6;
+
+      // usagePolicy - Policy Object used to further refine the usage.
+      // For example, specify if this should be only used as fallback?
+      //    Or used as the primary uplink? Allow App traffic? restrict
+      //    app traffic?? etc..
       PhyIOUsagePolicy usagePolicy    = 7;
 
       // physical and logical attributes
