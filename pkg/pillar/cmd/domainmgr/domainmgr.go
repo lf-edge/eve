@@ -465,7 +465,8 @@ func gcObjects(ctx *domainContext, dirName string) {
 	}
 
 	// Run rkt garbage collect
-	rktGc(ctx.RktGCGracePeriod)
+	rktGc(ctx.RktGCGracePeriod, false)
+	rktGc(ctx.RktGCGracePeriod, true)
 }
 
 // Check if the filename is used as ActiveFileLocation
@@ -2305,17 +2306,21 @@ func rktRm(PodUUID string) error {
 	return nil
 }
 
-func rktGc(gracePeriod uint32) {
+func rktGc(gracePeriod uint32, imageGc bool) {
 	log.Infof("rktGc %d\n", gracePeriod)
 
 	// rkt --dir=<RKT_DATA_DIR> rm PodUUID
 	gracePeriodOption := fmt.Sprintf("--grace-period=%ds", gracePeriod)
 	cmd := "rkt"
-	args := []string{
+	args := []string{}
+	if imageGc {
+		args = append(args, "image")
+	}
+	args = append(args, []string{
 		"gc",
 		"--dir=" + types.PersistRktDataDir,
 		gracePeriodOption,
-	}
+	}...)
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Errorf("***rkt gc failed: %+v ", err)
