@@ -37,7 +37,14 @@ message EdgeDevConfig {
         DeviceOpsCmd backup = 10;
 
         repeated ConfigItem configItems = 11;
+
+        // systemAdapterList - List of DeviceNetworkAdapters. Only Network
+        //  adapters ( Ex: eth0, wlan1 etc ) have a corresponding SystemAdapter.
+        // non-Network adapters do not have systemadapters.
         repeated SystemAdapter systemAdapterList = 12;
+
+        // deviceIoList - List of Physical Adapters. Includes both Network
+        //  Adapters and Non-Network Adapters ( USB / Com etc )
         repeated PhysicalIO deviceIoList = 13;
 
         // Override dmidecode info if set

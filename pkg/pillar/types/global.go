@@ -34,6 +34,7 @@ type GlobalConfig struct {
 	StaleConfigTime         uint32 // On reboot use saved config if not stale
 	DownloadGCTime          uint32 // Garbage collect if no use
 	VdiskGCTime             uint32 // Garbage collect RW disk if no use
+	RktGCGracePeriod        uint32 // GracePeriod to be used with rkt gc
 
 	DownloadRetryTime   uint32 // Retry failed download after N sec
 	DomainBootRetryTime uint32 // Retry failed boot after N sec
@@ -73,6 +74,10 @@ type GlobalConfig struct {
 	AllowNonFreeAppImages  TriState // For app images
 	AllowNonFreeBaseImages TriState // For baseos images
 
+	// Dom0MinDiskUsagePercent - Percentage of available storage reserved for
+	// dom0. The rest is available for Apps.
+	Dom0MinDiskUsagePercent uint32
+
 	// XXX add max space for downloads?
 	// XXX add max space for running images?
 
@@ -82,6 +87,9 @@ type GlobalConfig struct {
 	// Per agent settings of log levels; if set for an agent it
 	// overrides the Default*Level above
 	AgentSettings map[string]PerAgentSettings
+
+	// Any Errors seen in Config Items
+	Errors []string
 }
 
 type PerAgentSettings struct {
@@ -124,12 +132,15 @@ var GlobalConfigDefaults = GlobalConfig{
 	VdiskGCTime:         3600, // 1 hour
 	DownloadRetryTime:   600,  // 10 minutes
 	DomainBootRetryTime: 600,  // 10 minutes
+	RktGCGracePeriod:    300,  // 5 minutes
 
 	AllowNonFreeAppImages:  TS_ENABLED,
 	AllowNonFreeBaseImages: TS_ENABLED,
 
 	DefaultLogLevel:       "info", // XXX Should we change to warning?
 	DefaultRemoteLogLevel: "info", // XXX Should we change to warning?
+
+	Dom0MinDiskUsagePercent: 20,
 }
 
 // Check which values are set and which should come from defaults
@@ -201,6 +212,15 @@ func ApplyGlobalConfig(newgc GlobalConfig) GlobalConfig {
 	if newgc.AllowNonFreeBaseImages == TS_NONE {
 		newgc.AllowNonFreeBaseImages = GlobalConfigDefaults.AllowNonFreeBaseImages
 	}
+
+	if newgc.RktGCGracePeriod == 0 {
+		newgc.RktGCGracePeriod = GlobalConfigDefaults.RktGCGracePeriod
+	}
+
+	if newgc.Dom0MinDiskUsagePercent == 0 {
+		newgc.Dom0MinDiskUsagePercent =
+			GlobalConfigDefaults.Dom0MinDiskUsagePercent
+	}
 	return newgc
 }
 
@@ -218,11 +238,13 @@ var GlobalConfigMinimums = GlobalConfig{
 	NetworkTestInterval:       300, // 5 minutes
 	NetworkTestBetterInterval: 0,   // Disabled
 
-	StaleConfigTime:     0, // Don't use stale config
-	DownloadGCTime:      60,
-	VdiskGCTime:         60,
-	DownloadRetryTime:   60,
-	DomainBootRetryTime: 10,
+	StaleConfigTime:         0, // Don't use stale config
+	DownloadGCTime:          60,
+	VdiskGCTime:             60,
+	DownloadRetryTime:       60,
+	DomainBootRetryTime:     10,
+	Dom0MinDiskUsagePercent: 20,
+	RktGCGracePeriod:        30,
 }
 
 func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
@@ -300,6 +322,16 @@ func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
 		log.Warnf("Enforce minimum DomainBootRetryTime received %d; using %d",
 			newgc.DomainBootRetryTime, GlobalConfigMinimums.DomainBootRetryTime)
 		newgc.DomainBootRetryTime = GlobalConfigMinimums.DomainBootRetryTime
+	}
+	if newgc.RktGCGracePeriod < GlobalConfigMinimums.RktGCGracePeriod {
+		log.Warnf("Enforce minimum RktGCGracePeriod received %d; using %d",
+			newgc.RktGCGracePeriod, GlobalConfigMinimums.RktGCGracePeriod)
+		newgc.RktGCGracePeriod = GlobalConfigMinimums.RktGCGracePeriod
+	}
+	if newgc.Dom0MinDiskUsagePercent < GlobalConfigMinimums.Dom0MinDiskUsagePercent {
+		log.Warnf("Enforce minimum Dom0MinDiskUsagePercent received %d; using %d",
+			newgc.Dom0MinDiskUsagePercent, GlobalConfigMinimums.Dom0MinDiskUsagePercent)
+		newgc.Dom0MinDiskUsagePercent = GlobalConfigMinimums.Dom0MinDiskUsagePercent
 	}
 	return newgc
 }

@@ -635,16 +635,24 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 
 // Returns a port if it should be added to the list; some errors result in
 // adding an port to to DevicePortConfig with ParseError set.
-func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext, sysAdapter *zconfig.SystemAdapter, version types.DevicePortConfigVersion) *types.NetworkPortConfig {
+func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
+	sysAdapter *zconfig.SystemAdapter,
+	version types.DevicePortConfigVersion) *types.NetworkPortConfig {
 	var isMgmt, isFree bool = false, false
 
 	port := new(types.NetworkPortConfig)
+
+	// XXX - There seems to be an implicit Assumption here that
+	// sysAdapter.Name is same as Port.IfName
+	// CHANGE this to: port.IfName = sysAdapter.getIfname()
 	port.IfName = sysAdapter.Name
-	if sysAdapter.LogicalName != "" {
-		port.Name = sysAdapter.LogicalName
-	} else {
-		port.Name = sysAdapter.Name
-	}
+	port.Name = sysAdapter.Name
+
+	// XXX - Make the change after LowerLayerName starts to get used.
+	//  Look up using LowerLayerName ( PhysicalLabel).
+	// If LowerLayerName is not found, use sysAdapter.Name to do the lookup
+	//  Currently, lookupDeviceIo looks up using LogicalLabel. But it should
+	//  Really be physical Label.
 	phyio := lookupDeviceIo(getconfigCtx, sysAdapter.Name)
 	if phyio == nil {
 		// We will re-check when phyio changes.
@@ -1549,6 +1557,19 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 	}
 }
 
+func parseU32ConfigItem(newGlobalConfigPtr *types.GlobalConfig, key string,
+	value string, varPtr *uint32) string {
+	i64, err := strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		errStr := fmt.Sprintf("bad int value %s for %s: %s\n",
+			value, key, err)
+		log.Errorf("parseU32ConfigItem: %s", errStr)
+		return errStr
+	}
+	*varPtr = uint32(i64)
+	return ""
+}
+
 var itemsPrevConfigHash []byte
 
 func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
@@ -1573,9 +1594,14 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	// Start with the defaults so that we revert to default when no data
 	newGlobalConfig := types.GlobalConfigDefaults
 
+	errStr := ""
 	for _, item := range items {
 		log.Infof("parseConfigItems key %s value %s\n",
 			item.Key, item.Value)
+		if errStr != "" {
+			newGlobalConfig.Errors = append(newGlobalConfig.Errors, errStr)
+			errStr = ""
+		}
 
 		key := item.Key
 		switch key {
@@ -1759,6 +1785,15 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			}
 			newGlobalConfig.VdiskGCTime = uint32(i64)
 
+		case "timer.gc.rkt.graceperiod":
+			i64, err := strconv.ParseInt(item.Value, 10, 32)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad int value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newGlobalConfig.RktGCGracePeriod = uint32(i64)
+
 		case "timer.download.retry":
 			i64, err := strconv.ParseInt(item.Value, 10, 32)
 			if err != nil {
@@ -1801,6 +1836,20 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 		case "debug.default.remote.loglevel":
 			newGlobalConfig.DefaultRemoteLogLevel = item.Value
 
+		case "storage.dom0.disk.minusage.percent":
+			errStr = parseU32ConfigItem(&newGlobalConfig, key,
+				item.Value, &newGlobalConfig.Dom0MinDiskUsagePercent)
+			// Max diskspace for dom0 is 80%.
+			if newGlobalConfig.Dom0MinDiskUsagePercent > 80 {
+				errStr = fmt.Sprintf("dom0MinDiskUsagePercent (%d) "+
+					"> maxAllowed (80). Setting it to 80.",
+					newGlobalConfig.Dom0MinDiskUsagePercent)
+				log.Errorf("parseConfigItems: %s", errStr)
+				newGlobalConfig.Dom0MinDiskUsagePercent = 80
+			}
+			log.Infof("Set storage.dom0MinDiskUsagePercent to %d",
+				newGlobalConfig.Dom0MinDiskUsagePercent)
+
 		default:
 			// Handle agentname items for loglevels
 			newString := item.Value
@@ -1835,9 +1884,9 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 						agentName, current)
 				}
 			} else {
-				log.Errorf("Unknown configItem %s value %s\n",
+				errStr = fmt.Sprintf("Unknown configItem %s value %s\n",
 					key, item.Value)
-				// XXX send back error? Need device error for that
+				log.Errorf("parseConfigItems: %s", errStr)
 			}
 		}
 	}

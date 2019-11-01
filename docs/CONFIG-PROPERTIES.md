@@ -12,6 +12,7 @@
 | timer.use.config.checkpoint | integer in seconds | 600 | use checkpointed config if no cloud connectivity |
 | timer.gc.download | integer in seconds |  600 | garbage collect unused downloaded objects |
 | timer.gc.vdisk | integer in seconds | 1 hour | garbage collect unused instance virtual disk |
+| timer.gc.rkt.graceperiod | integer in seconds | 300 | grace period to be used in rkt gc command |
 | timer.download.retry | integer in seconds | 600 | retry a failed download |
 | timer.boot.retry | integer in seconds | 600 | retry a failed domain boot |
 | timer.port.georedo | integer in seconds | 1 hour | redo IP geolocation |
@@ -27,6 +28,7 @@
 | debug.enable.ssh | boolean, or authorized ssh key | false | allow ssh to EVE |
 | debug.default.loglevel | string | info | min level saved in files on device |
 | debug.default.remote.loglevel | string | warning | min level sent to controller |
+| storage.dom0.disk.minusage.percent | integer percent | 20 | min. percent of persist partition reserved for dom0 |
 
 In addition, for each agentname, there are specific overrides for the default ones with the names:
 

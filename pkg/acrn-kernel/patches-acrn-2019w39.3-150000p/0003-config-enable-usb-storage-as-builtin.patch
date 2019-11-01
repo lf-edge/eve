@@ -1,0 +1,67 @@
+From b97ec830d75996aec89f955cc2634b80497fc4c7 Mon Sep 17 00:00:00 2001
+From: Jack Ren <jack.ren@intel.com>
+Date: Sun, 1 Sep 2019 10:52:22 +0800
+Subject: [PATCH 3/4] config: enable usb storage as builtin
+
+Signed-off-by: Jack Ren <jack.ren@intel.com>
+---
+ kernel_config_uefi_sos | 20 ++++++++++----------
+ 1 file changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/kernel_config_uefi_sos b/kernel_config_uefi_sos
+index c7b48f2..4bbc154 100644
+--- a/kernel_config_uefi_sos
++++ b/kernel_config_uefi_sos
+@@ -4371,22 +4371,22 @@ CONFIG_USB_MON=y
+ # USB Host Controller Drivers
+ #
+ CONFIG_USB_C67X00_HCD=y
+-CONFIG_USB_XHCI_HCD=m
++CONFIG_USB_XHCI_HCD=y
+ # CONFIG_USB_XHCI_DBGCAP is not set
+-CONFIG_USB_XHCI_PCI=m
+-CONFIG_USB_XHCI_PLATFORM=m
++CONFIG_USB_XHCI_PCI=y
++CONFIG_USB_XHCI_PLATFORM=y
+ CONFIG_USB_EHCI_HCD=y
+ # CONFIG_USB_EHCI_ROOT_HUB_TT is not set
+ CONFIG_USB_EHCI_TT_NEWSCHED=y
+ CONFIG_USB_EHCI_PCI=y
+-# CONFIG_USB_EHCI_HCD_PLATFORM is not set
++CONFIG_USB_EHCI_HCD_PLATFORM=y
+ CONFIG_USB_OXU210HP_HCD=y
+ CONFIG_USB_ISP116X_HCD=y
+-CONFIG_USB_FOTG210_HCD=m
++CONFIG_USB_FOTG210_HCD=y
+ # CONFIG_USB_MAX3421_HCD is not set
+ CONFIG_USB_OHCI_HCD=y
+-# CONFIG_USB_OHCI_HCD_PCI is not set
+-# CONFIG_USB_OHCI_HCD_PLATFORM is not set
++CONFIG_USB_OHCI_HCD_PCI=y
++CONFIG_USB_OHCI_HCD_PLATFORM=y
+ CONFIG_USB_UHCI_HCD=y
+ CONFIG_USB_SL811_HCD=y
+ # CONFIG_USB_SL811_HCD_ISO is not set
+@@ -4434,16 +4434,16 @@ CONFIG_REALTEK_AUTOPM=y
+ # CONFIG_USB_MICROTEK is not set
+ # CONFIG_USBIP_CORE is not set
+ # CONFIG_USB_MUSB_HDRC is not set
+-CONFIG_USB_DWC3=m
++CONFIG_USB_DWC3=y
+ CONFIG_USB_DWC3_ULPI=y
+-# CONFIG_USB_DWC3_HOST is not set
++CONFIG_USB_DWC3_HOST=y
+ CONFIG_USB_DWC3_GADGET=y
+ # CONFIG_USB_DWC3_DUAL_ROLE is not set
+ 
+ #
+ # Platform Glue Driver Support
+ #
+-CONFIG_USB_DWC3_PCI=m
++CONFIG_USB_DWC3_PCI=y
+ CONFIG_USB_DWC3_HAPS=m
+ CONFIG_USB_DWC2=y
+ CONFIG_USB_DWC2_HOST=y
+-- 
+2.7.4
+
