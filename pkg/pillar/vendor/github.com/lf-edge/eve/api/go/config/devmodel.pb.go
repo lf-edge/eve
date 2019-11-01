@@ -228,7 +228,7 @@ type SystemAdapter struct {
 	NetworkUUID string `protobuf:"bytes,4,opt,name=networkUUID,proto3" json:"networkUUID,omitempty"`
 	// addr - if its static network we need ip address
 	// If this is specified, networkUUID must also be specified. addr
-	// is expected to be in sync with the network object.
+	// is expected to be in sync with the network object (same subnet etc ).
 	Addr string `protobuf:"bytes,5,opt,name=addr,proto3" json:"addr,omitempty"`
 	// alias - Device just reflects it back in status / Metrics back to
 	// cloud.

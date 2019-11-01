@@ -255,6 +255,26 @@ message ZMetricNetworkStats {
 	NetworkStats tx = 2;
 }
 
+message ZProbeNIMetrics {         // per NI probing stats
+  string currentIntf = 1;         // current picked uplink interface
+  string remoteEndpoint = 2;      // remote URL or IP address for probing
+  uint32 pingIntv = 3;            // local ping interval in seconds
+  uint32 remotePingIntv = 4;      // remote probe interval in seconds
+  uint32 uplinkCnt = 5;           // total number of uplink intf in consideration
+  message ZProbeIntfMetric {      // level 2
+    string intfName = 11;            // uplink interface name, e.g. eth1, wlan0
+    string gatewayNexhtop = 12;      // intf nexthop IP address
+    bool   gatewayUP = 13;           // local gateway status UP or not
+    bool   remoteHostUP = 14;        // remote url/IP status UP or not
+    uint32 nexthopUpCount = 15;      // local ping success count
+    uint32 nexthopDownCount = 16;    // local ping failure count
+    uint32 remoteUpCount = 17;       // remote probing success count
+    uint32 remoteDownCount = 18;     // remote probing failure count
+    uint32 remoteProbeLatency = 19;  // remote host probe latency in msec
+  }
+  repeated ZProbeIntfMetric intfMetric = 10; // per uplink intf probing stats
+}
+
 message ZMetricNetworkInstance {
   string networkID = 2;		// UUID
   string networkVersion = 3;
@@ -264,6 +284,7 @@ message ZMetricNetworkInstance {
   bool activated = 7;		// Forwarding enabled
 
   repeated networkMetric network = 10;	// Aggregate counters for bridge
+  ZProbeNIMetrics probeMetric = 12;     // NI uplink probing stats
   oneof InstanceContent {
     ZMetricVpn  vpnm = 20;
     ZMetricLisp lispm = 21;
