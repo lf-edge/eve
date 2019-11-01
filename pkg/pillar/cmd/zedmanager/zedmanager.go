@@ -511,6 +511,16 @@ func handleCreate(ctxArg interface{}, key string,
 		log.Errorf("App Instance %s-%s: Errors in App Instance Create.",
 			config.DisplayName, config.UUIDandVersion.UUID)
 	}
+
+	// Do some basic sanity checks.
+	if config.FixedResources.Memory == 0 {
+		errStr := "Invalid Memory Size - 0\n"
+		status.Error += errStr
+	}
+	if config.FixedResources.VCpus == 0 {
+		errStr := "Invalid Cpu count - 0\n"
+		status.Error += errStr
+	}
 	publishAppInstanceStatus(ctx, &status)
 
 	// if some error, return
