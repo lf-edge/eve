@@ -52,7 +52,10 @@ func ListAzureBlob(accountName, accountKey, containerName string, httpClient *ht
 	}
 	blobClient := c.GetBlobService()
 	container := blobClient.GetContainerReference(containerName)
-	containerExists, _ := container.Exists()
+	containerExists, err := container.Exists()
+	if err != nil {
+		return imgList, err
+	}
 	if !containerExists {
 		return imgList, fmt.Errorf("Container doesn't exist")
 	}
@@ -73,7 +76,10 @@ func DeleteAzureBlob(accountName, accountKey, containerName, remoteFile string, 
 	}
 	blobClient := c.GetBlobService()
 	container := blobClient.GetContainerReference(containerName)
-	containerExists, _ := container.Exists()
+	containerExists, err := container.Exists()
+	if err != nil {
+		return err
+	}
 	if !containerExists {
 		return fmt.Errorf("Container doesn't exist")
 	}
@@ -93,7 +99,10 @@ func DownloadAzureBlob(accountName, accountKey, containerName, remoteFile, local
 	}
 	blobClient := c.GetBlobService()
 	container := blobClient.GetContainerReference(containerName)
-	containerExists, _ := container.Exists()
+	containerExists, err := container.Exists()
+	if err != nil {
+		return err
+	}
 	if !containerExists {
 		return fmt.Errorf("Container doesn't exist")
 	}
@@ -179,10 +188,11 @@ func putBlockBlob(b *storage.Blob, blob io.Reader) error {
 	return b.PutBlockList(blockList, nil)
 }
 
-func UploadAzureBlob(accountName, accountKey, containerName, remoteFile, localFile string, httpClient *http.Client) error {
+func UploadAzureBlob(accountName, accountKey, containerName, remoteFile, localFile string, httpClient *http.Client) (string, error) {
+	var location string
 	c, err := NewClient(accountName, accountKey, httpClient)
 	if err != nil {
-		return err
+		return location, err
 	}
 	blobClient := c.GetBlobService()
 	container := blobClient.GetContainerReference(containerName)
@@ -192,7 +202,7 @@ func UploadAzureBlob(accountName, accountKey, containerName, remoteFile, localFi
 		err := container.Create(nil)
 		if err != nil {
 			fmt.Printf("Error %v", err)
-			return err
+			return location, err
 		}
 	}
 	file, _ := os.Open(localFile)
@@ -200,9 +210,10 @@ func UploadAzureBlob(accountName, accountKey, containerName, remoteFile, localFi
 	blob := container.GetBlobReference(remoteFile)
 	putBlockErr := putBlockBlob(blob, file)
 	if putBlockErr != nil {
-		return putBlockErr
+		return location, putBlockErr
 	}
-	return nil
+	location = blob.GetURL()
+	return location, nil
 }
 
 func GetAzureBlobMetaData(accountName, accountKey, containerName, remoteFile string, httpClient *http.Client) (int64, string, error) {
@@ -212,7 +223,10 @@ func GetAzureBlobMetaData(accountName, accountKey, containerName, remoteFile str
 	}
 	blobClient := c.GetBlobService()
 	container := blobClient.GetContainerReference(containerName)
-	containerExists, _ := container.Exists()
+	containerExists, err := container.Exists()
+	if err != nil {
+		return 0, "", err
+	}
 	if !containerExists {
 		return 0, "", fmt.Errorf("Container doesn't exist")
 	}
