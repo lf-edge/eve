@@ -333,7 +333,8 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 					networkInstanceConfig.DisplayName,
 					networkInstanceConfig.IpType,
 					types.AddressTypeNone)
-				continue
+				// Let's relax the requirement until cloud side update the right IpType
+				networkInstanceConfig.IpType = types.AddressTypeNone
 			}
 			ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
 				&networkInstanceConfig)

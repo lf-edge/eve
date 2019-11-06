@@ -1140,7 +1140,12 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	}
 
 	// Get a list of IfNames to the ones we have an ifIndex for.
-	status.IfNameList = getIfNameListForPort(ctx, status.CurrentUplinkIntf)
+	if status.Type == types.NetworkInstanceTypeSwitch {
+		// switched NI is not probed and does not have a CurrentUplinkIntf
+		status.IfNameList = getIfNameListForPort(ctx, status.Port)
+	} else {
+		status.IfNameList = getIfNameListForPort(ctx, status.CurrentUplinkIntf)
+	}
 	log.Infof("IfNameList: %+v", status.IfNameList)
 
 	switch status.Type {

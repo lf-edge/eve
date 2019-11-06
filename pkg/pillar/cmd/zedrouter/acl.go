@@ -946,9 +946,9 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 	aclRule3.IsUserConfigured = true
 	aclRule3.RuleID = ace.RuleID
 	if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
-		if len(aclArgs.UpLinks) > 1 {
-			errStr := fmt.Sprintf("aceToRules: Switch network instance with more than ONE " +
-				"uplink attached is not supported now.")
+		if len(aclArgs.UpLinks) != 1 {
+			errStr := fmt.Sprintf("aceToRules: Switch network instance is only supported with exactly one " +
+				"uplink attached for now.")
 			log.Errorln(errStr)
 			return nil, errors.New(errStr)
 		} else {
