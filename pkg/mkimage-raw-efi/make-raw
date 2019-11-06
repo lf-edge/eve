@@ -54,7 +54,7 @@ CONF_PART_SIZE=$((1024 * 1024))
 # installer inventory parition size in bytes
 WIN_INVENTORY_PART_SIZE=$((10240 * 1024))
 
-function sgdisk {
+sgdisk() {
   # filter out annoying messages we can't get rid of:
   #   https://github.com/kini/gptfdisk/blob/master/diskio-unix.cc#L153
   /usr/bin/sgdisk "$@" 2>&1 | grep -Ev "$(echo '^Disk device is
@@ -65,13 +65,13 @@ run partprobe.*or kpartx
 The operation has completed successfully.' | tr '\012' '|')$^"
 }
 
-function cp_with_backup {
+cp_with_backup() {
   local MD5_SUM=$(md5sum "$2" | cut -f1 -d\  )
   [ -f "$2".$MD5_SUM ] || cp "$2" "$2".$MD5_SUM
   [ $? -eq 0 ] && cp "$1" "$2"
 }
 
-function grow_part {
+grow_part() {
   # (x+1024)/1024*1024 rounds up to multiple of 1024KB, or 2048
   # sectors some firmwares get confused if the partitions are not
   # aligned on 2048 blocks we will round up to the nearest multiple of
@@ -82,7 +82,7 @@ function grow_part {
   echo $(( $1 + 2 * $IMAGE_SIZE_KB - 1))
 }
 
-function dir2vfat {
+dir2vfat() {
   # <img name> dir2vfat <dir> <image size> [label]
   local IMG=`mktemp -u -p /tmp/data`
   local LABEL=${3:-EVE}
@@ -93,7 +93,7 @@ function dir2vfat {
   echo $IMG
 }
 
-function do_efi {
+do_efi() {
   eval local SEC_START=\$$1
   local SEC_END=`grow_part $SEC_START $EFI_PART_SIZE`
   local NUM_PART=$(( $PART_OFFSET + 1 ))
@@ -120,7 +120,7 @@ function do_efi {
 }
 
 
-function do_rootfs {
+do_rootfs() {
     eval SEC_START=\$$1
     local SEC_END=`grow_part $SEC_START $ROOTFS_PART_SIZE`
     LABEL=$2
@@ -145,16 +145,16 @@ function do_rootfs {
     eval $1=$(( $SEC_END + 1))
 }
 
-function do_imga {
+do_imga() {
     do_rootfs $1 IMGA $ROOTFS_IMG
 }
 
-function do_imgb {
+do_imgb() {
     # for now we are not initializing IMGB - hence passing /dev/null
     do_rootfs $1 IMGB /dev/null
 }
 
-function do_vfat {
+do_vfat() {
     eval local SEC_START=\$$1
     local SEC_END=`grow_part $SEC_START $CONF_PART_SIZE`
     local NUM_PART=$(( $PART_OFFSET + 4 ))
@@ -169,15 +169,15 @@ function do_vfat {
     eval $1=$(( $SEC_END + 1))
 }
 
-function do_conf {
+do_conf() {
     do_vfat $1 13307e62-cd9c-4920-8f9b-91b45828b798 
 }
 
-function do_conf_win {
+do_conf_win() {
     do_vfat $1 EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
 }
 
-function do_inventory_win {
+do_inventory_win() {
     eval local SEC_START="\$$1"
     # shellcheck disable=SC2155
     local SEC_END=$(grow_part "$SEC_START" "$WIN_INVENTORY_PART_SIZE")
