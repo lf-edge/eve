@@ -54,6 +54,17 @@ CONF_PART_SIZE=$((1024 * 1024))
 # installer inventory parition size in bytes
 WIN_INVENTORY_PART_SIZE=$((10240 * 1024))
 
+function sgdisk {
+  # filter out annoying messages we can't get rid of:
+  #   https://github.com/kini/gptfdisk/blob/master/diskio-unix.cc#L153
+  /usr/bin/sgdisk "$@" 2>&1 | grep -Ev "$(echo '^Disk device is
+when determining sector size! Setting sector size to 512
+Warning: The kernel is still using the old partition table
+The new table will be used at the next reboot or after you
+run partprobe.*or kpartx
+The operation has completed successfully.' | tr '\012' '|')$^"
+}
+
 function cp_with_backup {
   local MD5_SUM=$(md5sum "$2" | cut -f1 -d\  )
   [ -f "$2".$MD5_SUM ] || cp "$2" "$2".$MD5_SUM
@@ -202,19 +213,20 @@ do_persist() {
 
 do_usb_conf() {
     eval local SEC_START="\$$1"
-    # usb_conf partition is expected to be the only one and takes all available space
-    local SEC_END=0
+    # usb_conf partition is expected to be the only one and takes all available space,
+    # but at the same time be no bigger than 6G or 12582912 in sector size
+    # shellcheck disable=SC2155
+    local SEC_END=$(sgdisk -E "$IMGFILE")
     local NUM_PART=$(( PART_OFFSET + 1 ))
     local PART_TYPE=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
+
+    [ $(( SEC_END - SEC_START - 12582912 )) -gt 0 ] && SEC_END=12582912
 
     sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" \
            --typecode="$NUM_PART:$PART_TYPE" \
            --change-name="$NUM_PART:DevicePortConfig" "$IMGFILE"
 
-    # shellcheck disable=SC2155
-    local SIZE=$(sgdisk -i "$NUM_PART" "$IMGFILE" | awk '/Partition size:/ { print $3 ; }')
-
-    mformat -i "${IMGFILE}@@$(( SEC_START * 512 ))" -h 1 -t 1 -s "$SIZE" -l EVEDPC ::
+    mformat -i "${IMGFILE}@@$(( SEC_START * 512 ))" -h 1 -t 1 -s $(( SEC_END - SEC_START )) -l EVEDPC ::
     mcopy -i "${IMGFILE}@@$(( SEC_START * 512 ))" /parts/* ::/
 
     eval "$1=$(( SEC_END + 1))"
