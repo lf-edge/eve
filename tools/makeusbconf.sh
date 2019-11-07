@@ -5,7 +5,8 @@
 #
 USAGE="Usage: $0 [-d] [-i] [-s <size in Kb>] [-f <file> ] <output.img>"
 
-MKFLASH_TAG="$(linuxkit pkg show-tag pkg/mkimage-raw-efi)"
+LINUXKIT=$(pwd)/build-tools/bin/linuxkit
+MKFLASH_TAG="$($LINUXKIT pkg show-tag pkg/mkimage-raw-efi)"
 
 cleanup() {
     rm "$TMPDIR"/* 2>/dev/null
