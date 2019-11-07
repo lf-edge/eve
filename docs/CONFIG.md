@@ -225,6 +225,21 @@ It takes a usb.json as an argument, plus a few additrional arguments:
 * -i Create an identity directory on the stick, which Eve will use to deposit
   its identity like the device certificate.
 
+On Linux the USB image can be created directly on the USB stick.
+After using e.g., lsblk to get the name of the USB stick block device (/dev/sdx in this example) run
+
+```bash
+tools/makeusbconf.sh -d -i -f ~/usb.json -s 8000 /dev/sdx
+```
+
+On MacOS the USB image can be placed in a image file e.g,
+
+```bash
+tools/makeusbconf.sh -d -i -f ~/usb.json -s 8000 usb.img
+```
+
+and then separately copied to the raw USB disk device.
+
 ### Troubleshooting
 
 The blinking pattern can be extracted from the shell using
@@ -263,4 +278,3 @@ can be IP routing issues, DNS issues, WPAD, or proxy issues.
 If there is no console (display and keyboard) to run diag or look at these files,
 the ```mkush.sh -d``` above can be used to get the diagnostics deposited on the
 USB stick for inspection.
-
