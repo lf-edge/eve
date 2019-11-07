@@ -15,14 +15,18 @@
 BBS=/run/wwan
 
 # FIXME: we really need to pick the following from some config
-APN=internetd.gdsp
 IFACE=wwan0
 QMI_DEV=/dev/cdc-wdm0
 
 WATCHDOG_TIMEOUT=300
 LTESTAT_TIMEOUT=120
 
-function mbus_publish() {
+get_apn() {
+  APN="$(cat /run/accesspoint/"$IFACE" 2>/dev/null)"
+  echo "${APN:-internetd.gdsp}"
+}
+
+mbus_publish() {
   [ -d "$BBS" ] || mkdir -p $BBS || exit 1
   cat > "$BBS/${1}.json"
 }
@@ -36,7 +40,7 @@ function qmi() {
   return 1
 }
 
-function mod_reload() {
+mod_reload() {
   local RLIST
   for mod in $* ; do
     RLIST="$mod $RLIST"
@@ -48,15 +52,15 @@ function mod_reload() {
   done
 }
 
-function start_network() {
+start_network() {
   ip link set $IFACE down
   echo Y > /sys/class/net/$IFACE/qmi/raw_ip
   ip link set $IFACE up
-  qmi --device $QMI_DEV --start-network --apn $APN --keep-client-id wds |\
+  qmi --device $QMI_DEV --start-network --apn "$(get_apn)" --keep-client-id wds |\
     mbus_publish pdh_$IFACE
 }
 
-function wait_for_wds() {
+wait_for_wds() {
   local STATUS="null"
   while [ "$STATUS" != "connected" ] ; do
     STATUS=`qmi --get-data-status | jq -r .`
@@ -64,7 +68,7 @@ function wait_for_wds() {
   done
 }
 
-function wait_for_register() {
+wait_for_register() {
   local STATUS="null"
   while [ "$STATUS" != "registered" ] ; do
     STATUS=`qmi --get-serving-system | jq -r .registration`
@@ -72,7 +76,7 @@ function wait_for_register() {
   done
 }
 
-function wait_for_settings() {
+wait_for_settings() {
   local MTU="null"
   while [ "$MTU" == "null" -o "$MTU" == ""  ] ; do
     MTU=`qmi --get-current-settings | jq -r .mtu`
@@ -80,7 +84,7 @@ function wait_for_settings() {
   done
 }
 
-function bringup_iface() {
+bringup_iface() {
   JSON=`qmi --get-current-settings`
   ifconfig $IFACE `echo "$JSON" | jq -r .ipv4.ip` \
                    netmask `echo "$JSON" | jq -r .ipv4.subnet` \
@@ -95,7 +99,7 @@ nameserver `echo "$JSON" | jq -r .ipv4.dns2`
 __EOT__
 }
 
-function reset_modem() {
+reset_modem() {
   # last ditch attempt to reset our modem -- not sure how effective :-(
   # mod_reload qcserial usb_wwan qmi_wwan cdc_wdm
   local PDH=`cat $BBS/pdh_$IFACE.json 2>/dev/null`
