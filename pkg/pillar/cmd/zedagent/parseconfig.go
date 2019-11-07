@@ -688,6 +688,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 	port.Free = isFree
 
 	port.Dhcp = types.DT_NONE
+	port.AccessPoint = sysAdapter.AccessPoint
 	var ip net.IP
 	if sysAdapter.Addr != "" {
 		ip = net.ParseIP(sysAdapter.Addr)
