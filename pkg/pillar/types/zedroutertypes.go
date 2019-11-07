@@ -284,16 +284,18 @@ type NetworkPortConfig struct {
 	Free   bool   // Higher priority to talk to controller since no cost
 	DhcpConfig
 	ProxyConfig
+	AccessPoint string // For wireless SSID or APN address
 	// Errrors from the parser go here and get reflects in NetworkPortStatus
 	ParseError     string
 	ParseErrorTime time.Time
 }
 
 type NetworkPortStatus struct {
-	IfName string
-	Name   string // New logical name set by controller/model
-	IsMgmt bool   // Used to talk to controller
-	Free   bool
+	IfName      string
+	Name        string // New logical name set by controller/model
+	IsMgmt      bool   // Used to talk to controller
+	Free        bool
+	AccessPoint string // Used for current wireless SSID/APN address/name
 	NetworkXObjectConfig
 	AddrInfoList []AddrInfo
 	ProxyConfig

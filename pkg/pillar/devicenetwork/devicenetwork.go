@@ -15,9 +15,14 @@ import (
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net"
+	"os"
 	"reflect"
 	"strings"
 	"time"
+)
+
+const (
+	apDirname = "/run/accesspoint" // For wireless access-point identifiers
 )
 
 func LastResortDevicePortConfig(ports []string) types.DevicePortConfig {
@@ -154,6 +159,11 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].IfName = u.IfName
 		globalStatus.Ports[ix].Name = u.Name
 		globalStatus.Ports[ix].IsMgmt = u.IsMgmt
+		if globalStatus.Ports[ix].AccessPoint != u.AccessPoint {
+			log.Infof("MakeDeviceNetworkStatus: port %s AP different, old %s, new %s\n", u.IfName, globalStatus.Ports[ix].AccessPoint, u.AccessPoint)
+			devPortInstallAPname(u.IfName, u.AccessPoint)
+		}
+		globalStatus.Ports[ix].AccessPoint = u.AccessPoint // save the AP string
 		globalStatus.Ports[ix].Free = u.Free
 		globalStatus.Ports[ix].ProxyConfig = u.ProxyConfig
 		// Set fields from the config...
@@ -244,6 +254,38 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 	UpdateDeviceNetworkGeo(time.Second, &globalStatus)
 	log.Infof("MakeDeviceNetworkStatus() DONE\n")
 	return globalStatus
+}
+
+// write the access-point name into /run/cccesspoint directory
+// the filenames are the physical ports with access-point address/name in content
+func devPortInstallAPname(ifname, ap string) {
+	if _, err := os.Stat(apDirname); err != nil {
+		if err := os.MkdirAll(apDirname, 0700); err != nil {
+			log.Errorln(err)
+			return
+		}
+	}
+
+	filepath := apDirname + "/" + ifname
+	if _, err := os.Stat(filepath); err == nil {
+		if err := os.Remove(filepath); err != nil {
+			log.Errorln(err)
+			return
+		}
+	}
+
+	if len(ap) == 0 {
+		return
+	}
+	file, err := os.Create(filepath)
+	if err != nil {
+		log.Errorln(err)
+		return
+	}
+
+	log.Infof("devPortInstallAPname: write file %s for name %s", filepath, ap)
+	file.WriteString(ap)
+	file.Close()
 }
 
 // CheckDNSUpdate sees if we should update based on DNS
