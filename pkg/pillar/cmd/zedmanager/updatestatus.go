@@ -299,8 +299,8 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 			"AppDiskSizeList: %s",
 			deviceDiskSize, allowedDeviceDiskSizeForApps, totalAppDiskSize,
 			appDiskSizeList)
-		// XXX
-		log.Warnf("checkDiskSize: err:%s", err.Error())
+		log.Errorf("checkDiskSize: err:%s", err.Error())
+		return err
 	}
 	return nil
 }
