@@ -1,0 +1,24 @@
+From 5fc82353eb32f334847e42f55ca1deede313da1b Mon Sep 17 00:00:00 2001
+From: Kalyan Nidumolu <kalyan@zadeda.com>
+Date: Sat, 9 Nov 2019 14:17:00 -0800
+Subject: [PATCH] Fix stage1-xen to handle containers with init commands that
+ do not have absolute path.
+
+Signed-off-by: Kalyan Nidumolu <kalyan@zadeda.com>
+---
+ kernel/init-initrd | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel/init-initrd b/kernel/init-initrd
+index ba78cde..c9e7a85 100755
+--- a/kernel/init-initrd
++++ b/kernel/init-initrd
+@@ -70,4 +70,4 @@ then
+ fi
+ cmd=`cat /mnt/cmdline`
+ echo "Executing $cmd"
+-eval chroot /mnt/rootfs $cmd
++eval chroot /mnt/rootfs /bin/sh -c “$cmd”
+-- 
+2.20.1 (Apple Git-117)
+
