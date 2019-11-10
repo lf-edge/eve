@@ -9,7 +9,7 @@ RUN apk add --no-cache \
     attr-dev flex bison cmake
 
 # FIXME: this is really ugly -- we need to figure out xen tools dependencies
-RUN [ `uname -m` = "aarch64" ] && apk add --no-cache dtc-dev || :
+RUN [ "$(uname -m)" = "aarch64" ] && apk add --no-cache dtc-dev || :
 
 # Alpine linux defines all 64bit integer types as long. Patch
 # /usr/include/bits/alltypes.h to fix compilation with -m32
@@ -38,7 +38,8 @@ RUN mkdir -p /out
 
 COPY gmp.patch /xen/stubdom
 WORKDIR /xen
-RUN ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable-docs --enable-stubdom --enable-9pfs   --enable-vtpm-stubdom --enable-vtpmmgr-stubdom
+RUN [ "$(uname -m)" = "x86_64" ] && FEATURES="--enable-stubdom --enable-vtpm-stubdom --enable-vtpmmgr-stubdom" ;\
+    ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable-docs --enable-9pfs $FEATURES
 RUN make && make dist
 RUN dist/install.sh /out
 

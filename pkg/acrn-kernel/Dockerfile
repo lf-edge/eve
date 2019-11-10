@@ -53,11 +53,13 @@ RUN set -e && for patch in /patches/*.patch; do \
 
 # build acrn-kernel
 RUN mkdir /out
-RUN cp kernel_config_uefi_sos .config && \
+RUN if [ "$(uname -m)" = "x86_64" ] ; then \
+    cp kernel_config_uefi_sos .config && \
     make olddefconfig && \
     make -j4 && \
-    cp arch/x86_64/boot/bzImage /out/kernel; \
-    cp System.map /out
+    cp arch/x86_64/boot/bzImage /out/kernel && \
+    cp System.map /out ;\
+fi
 
 RUN echo "KERNEL_SOURCE=${KERNEL_SOURCE}" > /out/kernel-source-info
 

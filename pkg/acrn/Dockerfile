@@ -1,4 +1,5 @@
 FROM alpine:3.8 as kernel-build
+
 RUN apk add --no-cache \
     gcc=6.4.0-r9 \
     make=4.2.1-r2 \
@@ -54,32 +55,29 @@ RUN set -e && for patch in /patches/*.patch; do \
         patch -p1 < "$patch"; \
     done
 
-RUN make SCENARIO=industry PLATFORM=uefi BOARD=generic
-RUN mkdir -p /out/EFI/BOOT
-RUN mkdir -p /out/boot
-RUN mkdir -p /out/usr/bin
-RUN mkdir -p /out/usr/lib/systemd/system
-RUN mkdir -p /out/usr/share/acrn/bios
-RUN mkdir -p /out/usr/share/acrn/samples/generic
-RUN mkdir -p /out/usr/share/acrn/samples/nuc
-RUN mkdir -p /out/usr/lib/acrn
-RUN cp /acrn-hypervisor/build/misc/tools/acrntrace /out/usr/bin/
-RUN cp /acrn-hypervisor/build/misc/tools/acrntrace /out/usr/bin/
-RUN cp /acrn-hypervisor/build/misc/tools/acrnlog.service /out/usr/lib/systemd/system/acrnlog.service
-RUN cp /acrn-hypervisor/build/misc//tools/acrnlog /out/usr/bin/
-RUN cp /acrn-hypervisor/build/misc/tools/acrnctl /out/usr/bin/
-RUN cp /acrn-hypervisor/build/misc/tools/acrnd /out/usr/bin/
-RUN cp /acrn-hypervisor/build/misc/tools/libacrn-mngr.a /out/usr/bin/
-RUN cp /acrn-hypervisor/build/misc/tools/acrnd.service /out/usr/lib/systemd/system/acrnd.service
-RUN cp /acrn-hypervisor/build/hypervisor/acrn.bin /out/usr/lib/acrn
-RUN cp /acrn-hypervisor/build/hypervisor/acrn.efi /out/usr/lib/acrn
-RUN cp /acrn-hypervisor/build/hypervisor/acrn.32.out /out/usr/lib/acrn
-RUN cp /acrn-hypervisor/build/hypervisor/acrn.32.out /out/boot
-RUN cp /acrn-hypervisor/build/devicemodel/acrn-dm /out/usr/bin/
-RUN cp /acrn-hypervisor/devicemodel/bios/* /out/usr/share/acrn/bios/
-RUN cp /acrn-hypervisor/misc/efi-stub/clearlinux/acrn.conf /out/usr/share/acrn/samples/nuc/acrn.conf
-
 COPY grub-hv.cfg /out/EFI/BOOT/grub-hv.cfg
+RUN mkdir -p /out/boot /out/usr/bin /out/usr/lib/systemd/system           \
+             /out/usr/share/acrn/bios /out/usr/share/acrn/samples/generic \
+             /out/usr/share/acrn/samples/nuc /out/usr/lib/acrn
+RUN if [ `uname -m` = "x86_64" ] ; then \
+   make SCENARIO=industry PLATFORM=uefi BOARD=generic &&\
+   cp /acrn-hypervisor/build/misc/tools/acrntrace /out/usr/bin/ &&\
+   cp /acrn-hypervisor/build/misc/tools/acrntrace /out/usr/bin/ &&\
+   cp /acrn-hypervisor/build/misc/tools/acrnlog.service /out/usr/lib/systemd/system/acrnlog.service &&\
+   cp /acrn-hypervisor/build/misc//tools/acrnlog /out/usr/bin/ &&\
+   cp /acrn-hypervisor/build/misc/tools/acrnctl /out/usr/bin/ &&\
+   cp /acrn-hypervisor/build/misc/tools/acrnd /out/usr/bin/ &&\
+   cp /acrn-hypervisor/build/misc/tools/libacrn-mngr.a /out/usr/bin/ &&\
+   cp /acrn-hypervisor/build/misc/tools/acrnd.service /out/usr/lib/systemd/system/acrnd.service &&\
+   cp /acrn-hypervisor/build/hypervisor/acrn.bin /out/usr/lib/acrn &&\
+   cp /acrn-hypervisor/build/hypervisor/acrn.efi /out/usr/lib/acrn &&\
+   cp /acrn-hypervisor/build/hypervisor/acrn.32.out /out/usr/lib/acrn &&\
+   cp /acrn-hypervisor/build/hypervisor/acrn.32.out /out/boot &&\
+   cp /acrn-hypervisor/build/devicemodel/acrn-dm /out/usr/bin/ &&\
+   cp /acrn-hypervisor/devicemodel/bios/* /out/usr/share/acrn/bios/ &&\
+   cp /acrn-hypervisor/misc/efi-stub/clearlinux/acrn.conf /out/usr/share/acrn/samples/nuc/acrn.conf ;\
+fi
+
 
 FROM scratch
 ENTRYPOINT []
