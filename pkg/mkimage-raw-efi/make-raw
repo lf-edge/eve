@@ -57,12 +57,17 @@ WIN_INVENTORY_PART_SIZE=$((10240 * 1024))
 sgdisk() {
   # filter out annoying messages we can't get rid of:
   #   https://github.com/kini/gptfdisk/blob/master/diskio-unix.cc#L153
-  /usr/bin/sgdisk "$@" 2>&1 | grep -Ev "$(echo '^Disk device is
+  local OUT
+  local RET
+  OUT=$(/usr/bin/sgdisk "$@" 2>&1)
+  RET=$?
+  echo "$OUT" | grep -Ev "$(echo '^Disk device is
 when determining sector size! Setting sector size to 512
 Warning: The kernel is still using the old partition table
 The new table will be used at the next reboot or after you
 run partprobe.*or kpartx
-The operation has completed successfully.' | tr '\012' '|')$^"
+The operation has completed successfully.' | tr '\012' '|')$^" || :
+  return $RET
 }
 
 cp_with_backup() {
