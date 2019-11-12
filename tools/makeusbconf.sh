@@ -65,7 +65,7 @@ IMAGE="$1"
 if [ -b "$IMAGE" ] ; then
    [ "$(uname -s)" = Linux ] || bail "ERROR: writing directly to the device is only supported on Linux"
    IMAGE_BIND_OPT="--device"
-   confirm_erase $IMAGE
+   confirm_erase "$IMAGE"
 else
    [ -e "$IMAGE" ] || silent dd if=/dev/zero of="$IMAGE" seek="$SIZE" bs=1024 count=0
    IMAGE_BIND_OPT="-v"
