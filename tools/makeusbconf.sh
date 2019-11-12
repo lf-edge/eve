@@ -5,7 +5,8 @@
 #
 USAGE="Usage: $0 [-d] [-i] [-s <size in Kb>] [-f <file> ] <output.img>"
 
-MKFLASH_TAG="$(linuxkit pkg show-tag pkg/mkimage-raw-efi)"
+LINUXKIT=$(pwd)/build-tools/bin/linuxkit
+MKFLASH_TAG="$($LINUXKIT pkg show-tag pkg/mkimage-raw-efi)"
 
 cleanup() {
     rm "$TMPDIR"/* 2>/dev/null
@@ -23,6 +24,23 @@ silent() {
     if ! OUT=$("$@" 2>&1) ; then
        bail "ERROR: $* $OUT"
     fi
+}
+
+confirm_erase() {
+    echo ""
+    echo "This will erase $1 which containts:"
+    lsblk "$1"
+    echo ""
+    while /bin/true; do
+        printf 'Are you sure(Yes/No)? '
+        read -r resp
+        if [ "$resp" = "Yes" ]; then
+            break
+        elif [ "$resp" = "No" ]; then
+            exit 0
+        fi
+    done
+    echo "Proceeding to clear $1"
 }
 
 SIZE=204800
@@ -47,6 +65,7 @@ IMAGE="$1"
 if [ -b "$IMAGE" ] ; then
    [ "$(uname -s)" = Linux ] || bail "ERROR: writing directly to the device is only supported on Linux"
    IMAGE_BIND_OPT="--device"
+   confirm_erase "$IMAGE"
 else
    [ -e "$IMAGE" ] || silent dd if=/dev/zero of="$IMAGE" seek="$SIZE" bs=1024 count=0
    IMAGE_BIND_OPT="-v"
