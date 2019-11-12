@@ -32,13 +32,13 @@ confirm_erase() {
     lsblk "$1"
     echo ""
     while /bin/true; do
-	printf 'Are you sure(Yes/No)? '
-	read -r resp
-	if [ "$resp" = "Yes" ]; then
+        printf 'Are you sure(Yes/No)? '
+        read -r resp
+        if [ "$resp" = "Yes" ]; then
             break
-	elif [ "$resp" = "No" ]; then
+        elif [ "$resp" = "No" ]; then
             exit 0
-	fi
+        fi
     done
     echo "Proceeding to clear $1"
 }
