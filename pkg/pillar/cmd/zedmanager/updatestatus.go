@@ -503,7 +503,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				log.Infof("doInstall !HasVerifierRef vs. RefCount %d for %s\n",
 					vs.RefCount, vs.Safename)
 				// We don't need certs since Status already exists
-				MaybeAddVerifyImageConfig(ctx, vs.Safename, ss, false)
+				MaybeAddVerifyImageConfig(ctx, uuidStr, vs.Safename, ss, false)
 				ss.HasVerifierRef = true
 				changed = true
 			}
@@ -576,12 +576,22 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		case types.DOWNLOADED:
 			// Kick verifier to start if it hasn't already
 			if !ss.HasVerifierRef {
-				if MaybeAddVerifyImageConfig(ctx, safename, ss, true) {
+				if MaybeAddVerifyImageConfig(ctx, uuidStr, safename, ss, true) {
 					ss.HasVerifierRef = true
 					changed = true
 				} else {
-					// Waiting for certs
-					waitingForCerts = true
+					// if errors, set the certError flag
+					// otherwise, mark as waiting for certs
+					if ss.Error != "" {
+						errorSource = ss.ErrorSource
+						allErrors = appendError(allErrors, "baseosmgr", ss.Error)
+						errorTime = ss.ErrorTime
+						changed = true
+					} else {
+						if !waitingForCerts {
+							waitingForCerts = true
+						}
+					}
 				}
 			}
 		}

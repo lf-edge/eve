@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -45,7 +46,7 @@ func lookupVerifyImageConfigSha256(ctx *zedmanagerContext,
 }
 
 // If checkCerts is set this can return false. Otherwise not.
-func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, safename string,
+func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, uuidStr string, safename string,
 	ss *types.StorageStatus, checkCerts bool) bool {
 
 	log.Infof("MaybeAddVerifyImageConfig for %s, checkCerts: %v, "+
@@ -53,10 +54,17 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, safename string,
 
 	// check the certificate files, if not present,
 	// we can not start verification
-	if checkCerts && !checkCertsForObject(safename, ss) {
-		log.Infof("MaybeAddVerifyImageConfig for %s, Certs are still not installed\n",
-			safename)
-		return false
+	if checkCerts && len(ss.ImageSignature) != 0 && containsCerts(safename, ss) {
+		if !checkCertsStatusForObject(ctx, uuidStr, safename, ss) {
+			log.Infof("MaybeAddVerifyImageConfig for %s, Certs are still not ready\n",
+				safename)
+			return false
+		}
+		if !checkCertsForObject(safename, ss) {
+			log.Infof("MaybeAddVerifyImageConfig for %s, Certs are still not installed\n",
+				safename)
+			return false
+		}
 	}
 
 	m := lookupVerifyImageConfig(ctx, safename)
@@ -256,11 +264,9 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	log.Infof("handleVerifyImageStatusDelete done for %s\n", key)
 }
 
-// check whether the cert files are installed
-func checkCertsForObject(safename string, ss *types.StorageStatus) bool {
-
-	var cidx int = 0
-
+// whether the object contains certs reference
+func containsCerts(safename string, ss *types.StorageStatus) bool {
+	cidx := 0
 	// count the number of cerificates in this object
 	if ss.SignatureKey != "" {
 		cidx++
@@ -272,10 +278,60 @@ func checkCertsForObject(safename string, ss *types.StorageStatus) bool {
 	}
 	// if no cerificates, return
 	if cidx == 0 {
-		log.Infof("checkCertsForObject() for %s, no certificates configured\n",
+		log.Infof("containsCerts() for %s, no certificates configured\n",
 			safename)
-		return true
+		return false
 	}
+	return true
+}
+
+// check for cert object status
+func checkCertsStatusForObject(ctx *zedmanagerContext, uuidStr string,
+	safename string, ss *types.StorageStatus) bool {
+
+	certObjStatus := lookupCertObjStatus(ctx, uuidStr)
+	// certificates are still not ready, for processing
+	if certObjStatus == nil {
+		return false
+	}
+	if ss.SignatureKey != "" {
+		for _, certObj := range certObjStatus.StorageStatusList {
+			if certObj.Name == ss.SignatureKey {
+				if certObj.Error != "" {
+					ss.Error = certObj.Error
+					ss.ErrorTime = certObj.ErrorTime
+					ss.ErrorSource = pubsub.TypeToName(types.VerifyImageStatus{})
+					return false
+				}
+				if certObj.State != types.DELIVERED {
+					return false
+				}
+			}
+		}
+	}
+
+	for _, certUrl := range ss.CertificateChain {
+		if certUrl != "" {
+			for _, certObj := range certObjStatus.StorageStatusList {
+				if certObj.Name == certUrl {
+					if certObj.Error != "" {
+						ss.Error = certObj.Error
+						ss.ErrorTime = certObj.ErrorTime
+						ss.ErrorSource = pubsub.TypeToName(types.VerifyImageStatus{})
+						return false
+					}
+					if certObj.State != types.DELIVERED {
+						return false
+					}
+				}
+			}
+		}
+	}
+	return true
+}
+
+// check whether the cert files are installed
+func checkCertsForObject(safename string, ss *types.StorageStatus) bool {
 
 	if ss.SignatureKey != "" {
 		safename := types.UrlToSafename(ss.SignatureKey, "")
