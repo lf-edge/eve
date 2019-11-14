@@ -57,8 +57,8 @@ func containsCerts(safename string, ss *types.StorageConfig) bool {
 	if ss.SignatureKey != "" {
 		cidx++
 	}
-	for _, certUrl := range ss.CertificateChain {
-		if certUrl != "" {
+	for _, certURL := range ss.CertificateChain {
+		if certURL != "" {
 			cidx++
 		}
 	}
@@ -95,10 +95,10 @@ func checkCertsStatusForObject(ctx *baseOsMgrContext, uuidStr string,
 		}
 	}
 
-	for _, certUrl := range ss.CertificateChain {
-		if certUrl != "" {
+	for _, certURL := range ss.CertificateChain {
+		if certURL != "" {
 			for _, certObj := range certObjStatus.StorageStatusList {
-				if certObj.Name == certUrl {
+				if certObj.Name == certURL {
 					if certObj.Error != "" {
 						ss.Error = certObj.Error
 						ss.ErrorTime = certObj.ErrorTime
@@ -385,8 +385,8 @@ func checkCertsForObject(safename string, sc *types.StorageConfig) error {
 	if sc.SignatureKey != "" {
 		cidx++
 	}
-	for _, certUrl := range sc.CertificateChain {
-		if certUrl != "" {
+	for _, certURL := range sc.CertificateChain {
+		if certURL != "" {
 			cidx++
 		}
 	}
@@ -409,9 +409,9 @@ func checkCertsForObject(safename string, sc *types.StorageConfig) error {
 		// XXX check for valid or non-zero length?
 	}
 
-	for _, certUrl := range sc.CertificateChain {
-		if certUrl != "" {
-			safename := types.UrlToSafename(certUrl, "")
+	for _, certURL := range sc.CertificateChain {
+		if certURL != "" {
+			safename := types.UrlToSafename(certURL, "")
 			filename := types.CertificateDirname + "/" +
 				types.SafenameToFilename(safename)
 			if _, err := os.Stat(filename); err != nil {
