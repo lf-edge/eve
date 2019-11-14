@@ -57,8 +57,8 @@ func containsCerts(safename string, ss *types.StorageConfig) bool {
 	if ss.SignatureKey != "" {
 		cidx++
 	}
-	for _, certUrl := range ss.CertificateChain {
-		if certUrl != "" {
+	for _, certURL := range ss.CertificateChain {
+		if certURL != "" {
 			cidx++
 		}
 	}
@@ -95,10 +95,10 @@ func checkCertsStatusForObject(ctx *baseOsMgrContext, uuidStr string,
 		}
 	}
 
-	for _, certUrl := range ss.CertificateChain {
-		if certUrl != "" {
+	for _, certURL := range ss.CertificateChain {
+		if certURL != "" {
 			for _, certObj := range certObjStatus.StorageStatusList {
-				if certObj.Name == certUrl {
+				if certObj.Name == certURL {
 					if certObj.Error != "" {
 						ss.Error = certObj.Error
 						ss.ErrorTime = certObj.ErrorTime
