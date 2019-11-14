@@ -1069,7 +1069,10 @@ func handleOtherPartRebootReason(ctxPtr *baseOsMgrContext, status *types.BaseOsS
 		status.Error = oReason
 		status.ErrorTime = oTime
 	} else {
-		status.Error = ctxPtr.rebootReason
+		dateStr := ctxPtr.rebootTime.Format(time.RFC3339Nano)
+		reason := fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s\n",
+			dateStr)
+		status.Error = reason
 		status.ErrorTime = ctxPtr.rebootTime
 	}
 }

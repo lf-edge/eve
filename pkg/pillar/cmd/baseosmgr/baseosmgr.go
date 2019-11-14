@@ -549,7 +549,7 @@ func initializeNodeAgentHandles(ctx *baseOsMgrContext) {
 		log.Fatal(err)
 	}
 	subNodeAgentStatus.ModifyHandler = handleNodeAgentStatusModify
-	subNodeAgentStatus.DeleteHandler = handleNodeAgentStatusModify
+	subNodeAgentStatus.DeleteHandler = handleNodeAgentStatusDelete
 	ctx.subNodeAgentStatus = subNodeAgentStatus
 	subNodeAgentStatus.Activate()
 
