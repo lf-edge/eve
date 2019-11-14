@@ -419,23 +419,11 @@ func validatePartition(ctx *baseOsMgrContext,
 	// version?
 	if otherPartState == "inprogress" &&
 		otherPartVersion == config.BaseOsVersion {
-
-		errStr := fmt.Sprintf("Attempt to reinstall failed update %s in %s: refused",
-			config.BaseOsVersion, otherPartName)
-		status.ErrorTime = time.Now()
 		// we are going to quote the same error, while doing baseos
 		// upgrade validation.
 		// first pick up from the partition
-		oReason, oTime, _ := agentlog.GetOtherRebootReason()
-		if oReason != "" {
-			errStr = oReason
-			status.ErrorTime = oTime
-		} else {
-			errStr = ctx.rebootReason
-			status.ErrorTime = ctx.rebootTime
-		}
-		log.Errorln(errStr)
-		status.Error = errStr
+		handleOtherPartRebootReason(ctx, status)
+		log.Errorln(status.Error)
 		changed = true
 		return changed, false
 	}
@@ -1068,16 +1056,20 @@ func updateBaseOsStatusOnReboot(ctxPtr *baseOsMgrContext) {
 		status := lookupBaseOsStatusByPartLabel(ctxPtr, partName)
 		if status != nil &&
 			status.BaseOsVersion == partStatus.ShortVersion {
-			// first pick up from the partition
-			oReason, oTime, _ := agentlog.GetOtherRebootReason()
-			if oReason != "" {
-				status.Error = oReason
-				status.ErrorTime = oTime
-			} else {
-				status.Error = ctxPtr.rebootReason
-				status.ErrorTime = ctxPtr.rebootTime
-			}
+			handleOtherPartRebootReason(ctxPtr, status)
 			publishBaseOsStatus(ctxPtr, status)
 		}
+	}
+}
+
+// first pick up from the partition
+func handleOtherPartRebootReason(ctxPtr *baseOsMgrContext, status *types.BaseOsStatus) {
+	oReason, oTime, _ := agentlog.GetOtherRebootReason()
+	if oReason != "" {
+		status.Error = oReason
+		status.ErrorTime = oTime
+	} else {
+		status.Error = ctxPtr.rebootReason
+		status.ErrorTime = ctxPtr.rebootTime
 	}
 }

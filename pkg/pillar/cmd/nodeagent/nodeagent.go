@@ -16,6 +16,7 @@
 package nodeagent
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -41,6 +42,7 @@ const (
 	timeTickInterval   uint32 = 10
 	watchdogInterval   uint32 = 25
 	networkUpTimeout   uint32 = 300
+	maxRebootStackSize        = 1600
 	configDir                 = "/config"
 	tmpDirname                = "/var/tmp/zededa"
 	firstbootFile             = tmpDirname + "/first-boot"
@@ -540,6 +542,15 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 		os.Remove(firstbootFile)
 	}
 
+	// if reboot stack size crosses max size, truncate
+	if len(ctx.rebootStack) > maxRebootStackSize {
+		runes := bytes.Runes([]byte(ctx.rebootStack))
+		if len(runes) > maxRebootStackSize {
+			runes = runes[:maxRebootStackSize]
+		}
+		ctx.rebootStack = fmt.Sprintf("Truncated stack: %v",
+			ctx.rebootStack)
+	}
 	// Read and increment restartCounter
 	ctx.restartCounter = incrementRestartCounter()
 }
