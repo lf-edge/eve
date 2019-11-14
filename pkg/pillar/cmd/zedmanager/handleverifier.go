@@ -266,4 +266,3 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	}
 	log.Infof("handleVerifyImageStatusDelete done for %s\n", key)
 }
-
