@@ -72,6 +72,11 @@ COPY --from=build /tpm2-tools/tools/tpm2_createak /usr/bin/
 COPY --from=build /tpm2-tools/tools/tpm2_createprimary /usr/bin/
 COPY --from=build /tpm2-tools/tools/tpm2_getcap /usr/bin/
 COPY --from=build /tpm2-tools/tools/tpm2_sign /usr/bin/
+COPY --from=build /tpm2-tools/tools/tpm2_verifysignature /usr/bin/
+COPY --from=build /tpm2-tools/tools/tpm2_evictcontrol /usr/bin/
+COPY --from=build /tpm2-tools/tools/tpm2_import /usr/bin/
+COPY --from=build /tpm2-tools/tools/tpm2_load /usr/bin/
+COPY --from=build /tpm2-tools/tools/tpm2_hmac /usr/bin/
 COPY --from=build /vtpm_server/vtpm_server /usr/bin/
 COPY init.sh /usr/bin/
 ENTRYPOINT []
