@@ -1436,7 +1436,8 @@ func constructDatastoreContext(config types.DownloaderConfig, status *types.Down
 	return &dsCtx
 }
 
-// getContainerRegistry will extract container registry and form download url for the rktFetch
+// getContainerRegistry will extract container registry and form download url
+// for rktFetch
 func getContainerRegistry(url string) (string, string, error) {
 	var urlReg, registryReg, downReg *regexp.Regexp
 	var registry, downURL string

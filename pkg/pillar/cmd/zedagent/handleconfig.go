@@ -35,8 +35,6 @@ var flowlogAPI = "api/v1/edgedevice/flowlog"
 var serverName string
 var serverNameAndPort string
 
-var globalConfig = types.GlobalConfigDefaults
-
 type getconfigContext struct {
 	zedagentCtx              *zedagentContext // Cross link
 	ledManagerCount          int              // Current count
@@ -74,7 +72,7 @@ var zcdevUUID uuid.UUID
 // Really a constant
 var nilUUID uuid.UUID
 
-func handleConfigInit() {
+func handleConfigInit(networkSendTimeout uint32) {
 
 	// get the server name
 	bytes, err := ioutil.ReadFile(types.ServerFileName)
@@ -94,7 +92,7 @@ func handleConfigInit() {
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
 	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
-	zedcloudCtx.NetworkSendTimeout = globalConfig.NetworkSendTimeout
+	zedcloudCtx.NetworkSendTimeout = networkSendTimeout
 	log.Infof("Configure Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
@@ -122,7 +120,8 @@ func configTimerTask(handleChannel chan interface{},
 		getconfigCtx)
 	publishZedAgentStatus(getconfigCtx)
 
-	interval := time.Duration(globalConfig.ConfigInterval) * time.Second
+	configInterval := getconfigCtx.zedagentCtx.globalConfig.ConfigInterval
+	interval := time.Duration(configInterval) * time.Second
 	max := float64(interval)
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min),
@@ -160,14 +159,14 @@ func triggerGetConfig(tickerHandle interface{}) {
 
 // Called when globalConfig changes
 // Assumes the caller has verifier that the interval has changed
-func updateConfigTimer(tickerHandle interface{}) {
+func updateConfigTimer(configInterval uint32, tickerHandle interface{}) {
 
 	if tickerHandle == nil {
 		// Happens if we have a GlobalConfig setting in /persist/
 		log.Warnf("updateConfigTimer: no configTickerHandle yet")
 		return
 	}
-	interval := time.Duration(globalConfig.ConfigInterval) * time.Second
+	interval := time.Duration(configInterval) * time.Second
 	log.Infof("updateConfigTimer() change to %v\n", interval)
 	max := float64(interval)
 	min := max * 0.3
@@ -214,6 +213,7 @@ func getLatestConfig(url string, iteration int,
 			!getconfigCtx.readSavedConfig && !getconfigCtx.configReceived {
 
 			config, err := readSavedProtoMessage(
+				getconfigCtx.zedagentCtx.globalConfig.StaleConfigTime,
 				checkpointDirname+"/lastconfig", false)
 			if err != nil {
 				log.Errorf("getconfig: %v\n", err)
@@ -317,7 +317,8 @@ func writeProtoMessage(filename string, contents []byte) {
 
 // If the file exists then read the config
 // Ignore if if older than StaleConfigTime seconds
-func readSavedProtoMessage(filename string, force bool) (*zconfig.EdgeDevConfig, error) {
+func readSavedProtoMessage(staleConfigTime uint32,
+	filename string, force bool) (*zconfig.EdgeDevConfig, error) {
 	info, err := os.Stat(filename)
 	if err != nil {
 		if os.IsNotExist(err) && !force {
@@ -327,7 +328,7 @@ func readSavedProtoMessage(filename string, force bool) (*zconfig.EdgeDevConfig,
 		}
 	}
 	age := time.Since(info.ModTime())
-	staleLimit := time.Second * time.Duration(globalConfig.StaleConfigTime)
+	staleLimit := time.Second * time.Duration(staleConfigTime)
 	if !force && age > staleLimit {
 		errStr := fmt.Sprintf("savedProto too old: age %v limit %d\n",
 			age, staleLimit)

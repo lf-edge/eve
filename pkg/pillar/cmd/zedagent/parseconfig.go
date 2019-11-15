@@ -1596,6 +1596,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	//      2) Use the Default value if Value cannot be parsed.
 	//      3) Use the Min. Value if the specified value < Min ( For Ints )
 	//      4) Use the Max. Value if the specified value > Max ( For Ints )
+	gcPtr := &ctx.zedagentCtx.globalConfig
 	newGlobalConfig := types.GlobalConfigDefaults
 
 	newGlobalStatus := types.GlobalStatus{}
@@ -1794,8 +1795,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				components[2] == "loglevel" {
 
 				agentName := components[1]
-				current := agentlog.LogLevel(&globalConfig,
-					agentName)
+				current := agentlog.LogLevel(gcPtr, agentName)
 				if current != newString && newString != "" {
 					log.Infof("parseConfigItems: %s change from %v to %v\n",
 						key, current, newString)
@@ -1808,8 +1808,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			} else if len(components) == 4 && components[0] == "debug" &&
 				components[2] == "remote" && components[3] == "loglevel" {
 				agentName := components[1]
-				current := agentlog.RemoteLogLevel(&globalConfig,
-					agentName)
+				current := agentlog.RemoteLogLevel(gcPtr, agentName)
 				if current != newString && newString != "" {
 					log.Infof("parseConfigItems: %s change from %v to %v\n",
 						key, current, newString)
@@ -1847,39 +1846,35 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	// newGlobalConfig here before checking if anything changed??
 	// Also - if we changed the Config Value based on Min / Max, we should
 	// report it to the user.
-	if !cmp.Equal(globalConfig, newGlobalConfig) {
+	if !cmp.Equal(*gcPtr, newGlobalConfig) {
 		log.Infof("parseConfigItems: change %v",
-			cmp.Diff(globalConfig, newGlobalConfig))
+			cmp.Diff(*gcPtr, newGlobalConfig))
 
-		oldGlobalConfig := globalConfig
-		globalConfig = types.EnforceGlobalConfigMinimums(newGlobalConfig)
+		oldGlobalConfig := *gcPtr
+		*gcPtr = types.EnforceGlobalConfigMinimums(newGlobalConfig)
 
 		// Set GlobalStatus Values from GlobalConfig.
-		newGlobalStatus.UpdateItemValuesFromGlobalConfig(globalConfig)
+		newGlobalStatus.UpdateItemValuesFromGlobalConfig(*gcPtr)
 
-		if globalConfig.ConfigInterval != oldGlobalConfig.ConfigInterval {
+		if gcPtr.ConfigInterval != oldGlobalConfig.ConfigInterval {
 			log.Infof("parseConfigItems: %s change from %d to %d\n",
 				"ConfigInterval",
-				oldGlobalConfig.ConfigInterval,
-				globalConfig.ConfigInterval)
-			updateConfigTimer(ctx.configTickerHandle)
+				oldGlobalConfig.ConfigInterval, gcPtr.ConfigInterval)
+			updateConfigTimer(gcPtr.ConfigInterval, ctx.configTickerHandle)
 		}
-		if globalConfig.MetricInterval != oldGlobalConfig.MetricInterval {
+		if gcPtr.MetricInterval != oldGlobalConfig.MetricInterval {
 			log.Infof("parseConfigItems: %s change from %d to %d\n",
 				"MetricInterval",
-				oldGlobalConfig.MetricInterval,
-				globalConfig.MetricInterval)
-			updateMetricsTimer(ctx.metricsTickerHandle)
+				oldGlobalConfig.MetricInterval, gcPtr.MetricInterval)
+			updateMetricsTimer(gcPtr.MetricInterval, ctx.metricsTickerHandle)
 		}
-		if globalConfig.SshAuthorizedKeys != oldGlobalConfig.SshAuthorizedKeys {
+		if gcPtr.SshAuthorizedKeys != oldGlobalConfig.SshAuthorizedKeys {
 			log.Infof("parseConfigItems: %v change from %v to %v",
 				"SshAuthorizedKeys",
-				oldGlobalConfig.SshAuthorizedKeys,
-				globalConfig.SshAuthorizedKeys)
-			ssh.UpdateSshAuthorizedKeys(globalConfig.SshAuthorizedKeys)
+				oldGlobalConfig.SshAuthorizedKeys, gcPtr.SshAuthorizedKeys)
+			ssh.UpdateSshAuthorizedKeys(gcPtr.SshAuthorizedKeys)
 		}
-		err := pubsub.PublishToDir(types.PersistConfigDir, "global",
-			&globalConfig)
+		err := pubsub.PublishToDir(types.PersistConfigDir, "global", gcPtr)
 		if err != nil {
 			// XXX - IS there a valid reason for this to Fail? If not, we should
 			//  fo log.Fatalf here..
