@@ -5,12 +5,14 @@ package zedagent
 
 import (
 	"fmt"
-	zconfig "github.com/lf-edge/eve/api/go/config"
 	"unicode/utf8"
+
+	zconfig "github.com/lf-edge/eve/api/go/config"
 )
 
-func readValidateConfig(validateFile string) (bool, *zconfig.EdgeDevConfig) {
-	config, err := readSavedProtoMessage(validateFile, true)
+func readValidateConfig(staleConfigTime uint32,
+	validateFile string) (bool, *zconfig.EdgeDevConfig) {
+	config, err := readSavedProtoMessage(staleConfigTime, validateFile, true)
 	if err != nil {
 		fmt.Printf("getconfig: %v\n", err)
 		return false, nil
