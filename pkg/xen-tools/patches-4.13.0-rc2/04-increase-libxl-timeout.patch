@@ -1,0 +1,20 @@
+Reported-by: Roman Shaposhnik <roman@zededa.com>
+Fixes: 6298f0eb8f4437 ("libxl: Re-introduce libxl__domain_resume")
+Signed-off-by: Juergen Gross <jgross@suse.com>
+---
+ tools/libxl/libxl_dom_suspend.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tools/libxl/libxl_dom_suspend.c b/tools/libxl/libxl_dom_suspend.c
+index 248dbc33e3..35ae337261 100644
+--- a/tools/libxl/libxl_dom_suspend.c
++++ b/tools/libxl/libxl_dom_suspend.c
+@@ -515,7 +515,7 @@ void libxl__dm_resume(libxl__egc *egc,
+     rc = libxl__ev_time_register_rel(dmrs->ao,
+                                      &dmrs->time,
+                                      dm_resume_timeout,
+-                                     LIBXL_DEVICE_MODEL_START_TIMEOUT);
++                                     LIBXL_DEVICE_MODEL_START_TIMEOUT * 1000);
+     if (rc) goto out;
+
+     switch (libxl__device_model_version_running(gc, domid)) {
