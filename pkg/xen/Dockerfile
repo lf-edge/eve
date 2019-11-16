@@ -32,7 +32,7 @@ RUN apk add \
     libunwind-dev
 
 ENV XEN_UBOOT_ADDR 0x81000000
-ENV XEN_VERSION 4.13.0-rc2
+ENV XEN_VERSION 4.13.0-rc1
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 
 # Download and verify xen
