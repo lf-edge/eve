@@ -27,7 +27,9 @@ type RktAuthInfo struct {
 // The key/index to this is the Safename which is allocated by ZedManager.
 // That is the filename in which we store the corresponding json files.
 type DownloaderConfig struct {
-	DatastoreID      uuid.UUID
+	DatastoreID uuid.UUID
+	// ImageID - UUID of the image
+	ImageID          uuid.UUID
 	Safename         string
 	Name             string
 	NameIsURL        bool // If not we form URL based on datastore info
@@ -63,7 +65,9 @@ type CertConfig struct {
 // The key/index to this is the Safename which comes from DownloaderConfig.
 // That is the filename in which we store the corresponding json files.
 type DownloaderStatus struct {
-	DatastoreID      uuid.UUID
+	DatastoreID uuid.UUID
+	// ImageID - UUID of the image
+	ImageID          uuid.UUID
 	Safename         string
 	Name             string
 	ObjType          string
@@ -76,8 +80,7 @@ type DownloaderStatus struct {
 	Expired          bool      // Handshake to client
 	NameIsURL        bool      // If not we form URL based on datastore info
 	AllowNonFreePort bool
-	ImageSha256      string // sha256 of immutable image
-	ContainerImageID string
+	ImageSha256      string  // sha256 of immutable image
 	State            SwState // DOWNLOADED etc
 	ReservedSpace    uint64  // Contribution to global ReservedSpace
 	Size             uint64  // Once DOWNLOADED; in bytes
@@ -86,6 +89,17 @@ type DownloaderStatus struct {
 	LastErr          string // Download error
 	LastErrTime      time.Time
 	RetryCount       int
+
+	// Conttainer Related Info
+	// ContainerImageID - Rkt ImageID of Container. This is the IMAGE ID
+	// assigned to the Container Image when rkt downloads it.
+	ContainerImageID string
+	// ContainerRktLocalDir - Local Dir ( Absolute path ) used by rkt to
+	// fetch the container
+	ContainerRktLocalConfigDir string
+	// ContainerRktAuthFileName - AuthFileName for the image. his file would
+	// be in ContainerRktLocalDir.
+	ContainerRktAuthFileName string
 }
 
 func (status DownloaderStatus) Key() string {

@@ -26,6 +26,7 @@ func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
 			safename)
 		n := types.DownloaderConfig{
 			DatastoreID: ss.DatastoreID,
+			ImageID:     ss.ImageID,
 			Safename:    safename,
 			Name:        ss.Name,
 			NameIsURL:   ss.NameIsURL,
