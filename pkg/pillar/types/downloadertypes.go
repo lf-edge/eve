@@ -134,9 +134,9 @@ type DatastoreContext struct {
 	DownloadURL     string
 	TransportMethod string // Download Method S3/HTTP/SFTP etc.
 	Dpath           string
-	APIKey          string
-	Password        string
-	Region          string
+	// Credentials - Credentials for the datastore.
+	CredentialsPtr *DsCredentials
+	Region         string
 }
 
 // AllowNonFreePort looks at GlobalConfig to determine which policy

@@ -917,8 +917,19 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		datastore.Fqdn = ds.Fqdn
 		datastore.Dpath = ds.Dpath
 		datastore.DsType = ds.DType.String()
-		datastore.ApiKey = ds.ApiKey
-		datastore.Password = ds.Password
+		if ds.Credentials == nil {
+			// XXX - Old way of doing things. Remove this once Zedcloud supports
+			//  the new definition of DataStore
+			datastore.CredentialsPtr = &types.DsCredentials{
+				APIKey:   ds.ApiKey,
+				Password: ds.Password,
+			}
+		} else {
+			datastore.CredentialsPtr = &types.DsCredentials{
+				APIKey:   ds.Credentials.ApiKey,
+				Password: ds.Credentials.Password,
+			}
+		}
 		datastore.Region = ds.Region
 		// XXX compatibility with unmodified zedcloud datastores
 		// default to "us-west-2"

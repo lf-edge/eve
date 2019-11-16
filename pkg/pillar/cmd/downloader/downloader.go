@@ -1400,7 +1400,9 @@ func doSftp(ctx *downloaderContext, status *types.DownloaderStatus,
 	}
 }
 
-func constructDatastoreContext(config types.DownloaderConfig, status *types.DownloaderStatus, dst *types.DatastoreConfig) *types.DatastoreContext {
+func constructDatastoreContext(config types.DownloaderConfig,
+	status *types.DownloaderStatus,
+	dst *types.DatastoreConfig) *types.DatastoreContext {
 	dpath := dst.Dpath
 	if status.ObjType == types.CertObj {
 		dpath = strings.Replace(dpath, "-images", "-certs", 1)
@@ -1419,10 +1421,11 @@ func constructDatastoreContext(config types.DownloaderConfig, status *types.Down
 		DownloadURL:     downloadURL,
 		TransportMethod: dst.DsType,
 		Dpath:           dpath,
-		APIKey:          dst.ApiKey,
-		Password:        dst.Password,
+		CredentialsPtr:  &types.DsCredentials{},
 		Region:          dst.Region,
 	}
+	*dsCtx.CredentialsPtr = *dst.CredentialsPtr
+
 	return &dsCtx
 }
 
@@ -1521,7 +1524,7 @@ func rktAuthFilename(appName string) string {
 func rktCreateAuthFile(config *types.DownloaderConfig,
 	dsCtx types.DatastoreContext, registry string) (string, error) {
 
-	if len(strings.TrimSpace(dsCtx.APIKey)) == 0 {
+	if len(strings.TrimSpace(dsCtx.CredentialsPtr.APIKey)) == 0 {
 		log.Debugf("rktCreateAuthFile: empty APIKey. Skipping AuthFile")
 		return "", nil
 	}
@@ -1540,8 +1543,8 @@ func rktCreateAuthFile(config *types.DownloaderConfig,
 		RktVersion: "v1",
 		Registries: []string{registry},
 		Credentials: &types.RktCredentials{
-			User:     dsCtx.APIKey,
-			Password: dsCtx.Password,
+			User:     dsCtx.CredentialsPtr.APIKey,
+			Password: dsCtx.CredentialsPtr.Password,
 		},
 	}
 	log.Infof("rktCreateAuthFile: created Auth file %s\n"+
@@ -1711,8 +1714,9 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			ipSrc, ifname, dsCtx.TransportMethod)
 		switch dsCtx.TransportMethod {
 		case zconfig.DsType_DsS3.String():
-			err = doS3(ctx, status, syncOp, dsCtx.DownloadURL, dsCtx.APIKey,
-				dsCtx.Password, dsCtx.Dpath, dsCtx.Region,
+			err = doS3(ctx, status, syncOp, dsCtx.DownloadURL,
+				dsCtx.CredentialsPtr.APIKey, dsCtx.CredentialsPtr.Password,
+				dsCtx.Dpath, dsCtx.Region,
 				config.Size, ifname, ipSrc, filename, locFilename)
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
@@ -1740,8 +1744,10 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		case zconfig.DsType_DsAzureBlob.String():
 			// pass in the config.Name instead of 'filename' which
 			// does not contain the prefix of the relative path with '/'s
-			err = doAzureBlob(ctx, status, syncOp, dsCtx.DownloadURL, dsCtx.APIKey,
-				dsCtx.Password, dsCtx.Dpath, config.Size, ifname, ipSrc, config.Name, locFilename)
+			err = doAzureBlob(ctx, status, syncOp, dsCtx.DownloadURL,
+				dsCtx.CredentialsPtr.APIKey, dsCtx.CredentialsPtr.Password,
+				dsCtx.Dpath, config.Size, ifname, ipSrc, config.Name,
+				locFilename)
 			if err != nil {
 				log.Errorf("Source IP %s failed: %s\n",
 					ipSrc.String(), err)
@@ -1770,8 +1776,8 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			if err == nil {
 				// pass in the config.Name instead of 'filename' which
 				// does not contain the prefix of the relative path with '/'s
-				err = doSftp(ctx, status, syncOp, dsCtx.APIKey,
-					dsCtx.Password, serverURL, dsCtx.Dpath,
+				err = doSftp(ctx, status, syncOp, dsCtx.CredentialsPtr.APIKey,
+					dsCtx.CredentialsPtr.Password, serverURL, dsCtx.Dpath,
 					config.Size, ipSrc, config.Name, locFilename)
 			}
 			if err != nil {

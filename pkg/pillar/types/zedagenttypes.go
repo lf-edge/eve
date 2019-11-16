@@ -194,14 +194,20 @@ const (
 	MetricItemState                         // Toggles on and off; count transitions
 )
 
-type DatastoreConfig struct {
-	UUID     uuid.UUID
-	DsType   string
-	Fqdn     string
-	ApiKey   string
+type DsCredentials struct {
+	APIKey   string
 	Password string
-	Dpath    string // depending on DsType, it could be bucket or path
-	Region   string
+}
+
+// DatastoreConfig - DataStore Config.
+type DatastoreConfig struct {
+	UUID   uuid.UUID
+	DsType string
+	Fqdn   string
+	Dpath  string // depending on DsType, it could be bucket or path
+	Region string
+	// CredentialsPtr - Pointer to Credentials for the datastore.
+	CredentialsPtr *DsCredentials
 }
 
 func (config DatastoreConfig) Key() string {
