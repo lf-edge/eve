@@ -25,6 +25,11 @@ enum DsType {
   DsAzureBlob = 6;
 }
 
+message DatastoreCredentials {
+    string apiKey = 1;
+    string password = 2;
+}
+
 message DatastoreConfig {
 	string id = 100;
 
@@ -32,8 +37,10 @@ message DatastoreConfig {
 
 	string fqdn = 2;
 
+    // apiKey - DEPRECATED. Use credentials instead.
 	string apiKey = 3;
 
+    // password - DEPRECATED. Use credentials instead.
 	string password = 4;
 
 	// depending on datastore types, it could be bucket or path
@@ -41,6 +48,8 @@ message DatastoreConfig {
 
 	// Applies for some datastore types
 	string region = 6;
+
+    DatastoreCredentials credentials = 7;
 }
 
 

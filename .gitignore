@@ -9,5 +9,6 @@ images/rootfs-acrn.yml
 pkg/pillar/Dockerfile
 pkg/qrexec-dom0/Dockerfile
 pkg/qrexec-lib/Dockerfile
+tags
 .go/
 tags
