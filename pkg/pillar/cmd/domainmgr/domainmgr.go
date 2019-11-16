@@ -1276,6 +1276,9 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 	// Do we need to delete any rw files that should
 	// not be preserved across reboots?
 	for _, ds := range status.DiskStatusList {
+		if status.IsContainer {
+			continue
+		}
 		if !ds.ReadOnly && !ds.Preserve {
 			log.Infof("Delete copy at %s\n", ds.ActiveFileLocation)
 			if err := os.Remove(ds.ActiveFileLocation); err != nil {
