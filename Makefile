@@ -55,6 +55,7 @@ QEMU_SYSTEM=$(QEMU_SYSTEM_$(ZARCH))
 
 # where we store outputs
 DIST=$(CURDIR)/dist/$(ZARCH)
+DOCKER_DIST=/eve/dist/$(ZARCH)
 
 DOCKER_ARCH_TAG=$(ZARCH)
 
@@ -142,7 +143,7 @@ all: help
 
 test: $(GOBUILDER) | $(DIST)
 	@echo Running tests on $(GOMODULE)
-	@$(DOCKER_GO) "set -o pipefail ; go test -v ./... 2>&1 | go-junit-report | sed -e 1d" $(GOTREE) $(GOMODULE) > $(DIST)/results.xml
+	@$(DOCKER_GO) "gotestsum --junitfile $(DOCKER_DIST)/results.xml" $(GOTREE) $(GOMODULE)
 
 clean:
 	rm -rf $(DIST) pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile \
