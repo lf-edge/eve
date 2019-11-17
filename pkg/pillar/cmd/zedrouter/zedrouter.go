@@ -79,6 +79,7 @@ type zedrouterContext struct {
 	checkNIUplinks            chan bool
 	hostProbeTimer            *time.Timer
 	hostFastProbe             bool
+	appNetCreateTimer         *time.Timer
 }
 
 var debug = false
@@ -346,6 +347,9 @@ func Run() {
 	setProbeTimer(&zedrouterCtx, nhProbeInterval)
 	zedrouterCtx.checkNIUplinks = make(chan bool, 1) // allow one signal without blocking
 
+	zedrouterCtx.appNetCreateTimer = time.NewTimer(1 * time.Second)
+	zedrouterCtx.appNetCreateTimer.Stop()
+
 	zedrouterCtx.ready = true
 	log.Infof("zedrouterCtx.ready\n")
 
@@ -505,6 +509,12 @@ func Run() {
 			log.Debugf("HostProbeTimer at %v", time.Now())
 			// launch the go function gateway/remote hosts probing check
 			go launchHostProbe(&zedrouterCtx)
+			agentlog.CheckMaxTime(agentName, start)
+
+		case <-zedrouterCtx.appNetCreateTimer.C:
+			start := agentlog.StartTime()
+			log.Debugf("appNetCreateTimer: at %v", time.Now())
+			scanAppNetworkStatusInErrorAndUpdate(&zedrouterCtx)
 			agentlog.CheckMaxTime(agentName, start)
 
 		case <-zedrouterCtx.checkNIUplinks:
@@ -785,7 +795,7 @@ func handleAppNetworkConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleAppNetworkConfigDelete(%s) done\n", key)
 	// on resource release, check whether any one else
 	// needs it
-	scanAppNetworkStatusInErrorAndUpdate(ctx, key)
+	checkAppNetworkErrorAndStartTimer(ctx)
 }
 
 // This function separates Lisp service info/status into separate
@@ -1061,7 +1071,7 @@ func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{
 	log.Infof("handleAppNetworkCreate(%s) done\n", key)
 	// on resource release, check whether any one else
 	// needs it
-	scanAppNetworkStatusInErrorAndUpdate(ctx, key)
+	checkAppNetworkErrorAndStartTimer(ctx)
 }
 
 func doActivate(ctx *zedrouterContext, config types.AppNetworkConfig,
@@ -2006,7 +2016,7 @@ func handleAppNetworkModify(ctxArg interface{}, key string, configArg interface{
 	log.Infof("handleAppNetworkModify(%s) done\n", key)
 	// on resource release, check whether any one else
 	// needs it
-	scanAppNetworkStatusInErrorAndUpdate(ctx, key)
+	checkAppNetworkErrorAndStartTimer(ctx)
 }
 
 func doAppNetworkSanityCheckForModify(ctx *zedrouterContext,
@@ -2935,18 +2945,17 @@ func checkUplinkPortOverlap(ctx *zedrouterContext, network string, network1 stri
 	return false
 }
 
-// scan through existing AppNetworkStatus list to bring
-// up any AppNetwork struck in error state, while
-// contending for resource
-func scanAppNetworkStatusInErrorAndUpdate(ctx *zedrouterContext, key0 string) {
-	log.Infof("scanAppNetworkStatusInErrorAndUpdate()\n")
+// scan through existing AppNetworkStatus list and set a timer
+// to retry later
+func checkAppNetworkErrorAndStartTimer(ctx *zedrouterContext) {
+	log.Infof("checkAppNetworkErrorAndStartTimer()\n")
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
 	for key, st := range items {
 		status := cast.CastAppNetworkStatus(st)
 		config := lookupAppNetworkConfig(ctx, key)
 		if config == nil || !config.Activate ||
-			status.Error == "" || key == key0 {
+			status.Error == "" {
 			continue
 		}
 		// We wouldn't have even copied underlay/overlay
@@ -2954,6 +2963,28 @@ func scanAppNetworkStatusInErrorAndUpdate(ctx *zedrouterContext, key0 string) {
 		// from scratch all over. App num that would have been
 		// allocated will be used this time also, since the app UUID
 		// does not change.
+		// When hit error while creating, set a timer for 60 sec and come back to retry
+		log.Infof("checkAppNetworkErrorAndStartTimer: set timer\n")
+		ctx.appNetCreateTimer = time.NewTimer(60 * time.Second)
+	}
+}
+
+// scan through existing AppNetworkStatus list to bring
+// up any AppNetwork struck in error state, while
+// contending for resource
+func scanAppNetworkStatusInErrorAndUpdate(ctx *zedrouterContext) {
+	log.Infof("scanAppNetworkStatusInErrorAndUpdate()\n")
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+	for key, st := range items {
+		status := cast.CastAppNetworkStatus(st)
+		config := lookupAppNetworkConfig(ctx, key)
+		if config == nil || !config.Activate ||
+			status.Error == "" {
+			continue
+		}
+		// called from the timer, run the AppNetworkCreate to retry
+		log.Infof("scanAppNetworkStatusInErrorAndUpdate: retry the AppNetworkCreate\n")
 		handleAppNetworkCreate(ctx, key, *config)
 	}
 }
