@@ -5,7 +5,7 @@ package baseosmgr
 
 import (
 	"errors"
-	"os"
+	"fmt"
 
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -50,71 +50,6 @@ func lookupVerifierConfig(ctx *baseOsMgrContext, objType string,
 	return &config
 }
 
-// whether the object contains certs reference
-func containsCerts(safename string, ss *types.StorageConfig) bool {
-	cidx := 0
-	// count the number of cerificates in this object
-	if ss.SignatureKey != "" {
-		cidx++
-	}
-	for _, certURL := range ss.CertificateChain {
-		if certURL != "" {
-			cidx++
-		}
-	}
-	// if no cerificates, return
-	if cidx == 0 {
-		log.Infof("containsCerts() for %s, no certificates configured\n", safename)
-		return false
-	}
-	return true
-}
-
-// check the cert object status
-func checkCertsStatusForObject(ctx *baseOsMgrContext, uuidStr string,
-	safename string, ss *types.StorageStatus) error {
-
-	certObjStatus := lookupCertObjStatus(ctx, uuidStr)
-	// certificates are still not ready, for processing
-	if certObjStatus == nil {
-		return errors.New("certObj: Not ready")
-	}
-	if ss.SignatureKey != "" {
-		for _, certObj := range certObjStatus.StorageStatusList {
-			if certObj.Name == ss.SignatureKey {
-				if certObj.Error != "" {
-					ss.Error = certObj.Error
-					ss.ErrorTime = certObj.ErrorTime
-					ss.ErrorSource = pubsub.TypeToName(types.VerifyImageStatus{})
-					return errors.New("certObj: Error")
-				}
-				if certObj.State != types.DELIVERED {
-					return errors.New("certObj: Not ready")
-				}
-			}
-		}
-	}
-
-	for _, certURL := range ss.CertificateChain {
-		if certURL != "" {
-			for _, certObj := range certObjStatus.StorageStatusList {
-				if certObj.Name == certURL {
-					if certObj.Error != "" {
-						ss.Error = certObj.Error
-						ss.ErrorTime = certObj.ErrorTime
-						ss.ErrorSource = pubsub.TypeToName(types.VerifyImageStatus{})
-						return errors.New("certObj: Error")
-					}
-					if certObj.State != types.DELIVERED {
-						return errors.New("certObj: Not ready")
-					}
-				}
-			}
-		}
-	}
-	return nil
-}
-
 // If checkCerts is set this can return an error. Otherwise not.
 func createVerifierConfig(ctx *baseOsMgrContext, uuidStr string, objType string,
 	safename string, sc *types.StorageConfig, ss *types.StorageStatus, checkCerts bool) error {
@@ -123,16 +58,11 @@ func createVerifierConfig(ctx *baseOsMgrContext, uuidStr string, objType string,
 
 	// check the certificate files, if not present,
 	// we can not start verification
-	if checkCerts && len(ss.ImageSignature) != 0 && containsCerts(safename, sc) {
-		if err := checkCertsStatusForObject(ctx, uuidStr, safename, ss); err != nil {
-			log.Infof("MaybeAddVerifyImageConfig for %s, Certs are still not ready\n",
-				safename)
-			return err
-		}
-		if err := checkCertsForObject(safename, sc); err != nil {
-			log.Errorf("%v for %s\n", err, safename)
-			return err
-		}
+	certObjStatus := lookupCertObjStatus(ctx, uuidStr)
+	if !ss.CheckForCerts(safename, checkCerts, uuidStr, certObjStatus) {
+		errStr := fmt.Sprintf("certObj is still not ready for %s\n", uuidStr)
+		err := errors.New(errStr)
+		return err
 	}
 
 	if m := lookupVerifierConfig(ctx, objType, safename); m != nil {
@@ -375,54 +305,6 @@ func unpublishVerifierConfig(ctx *baseOsMgrContext, objType string,
 		return
 	}
 	pub.Unpublish(key)
-}
-
-// check whether the cert files are installed
-func checkCertsForObject(safename string, sc *types.StorageConfig) error {
-	var cidx int = 0
-
-	// count the number of cerificates in this object
-	if sc.SignatureKey != "" {
-		cidx++
-	}
-	for _, certURL := range sc.CertificateChain {
-		if certURL != "" {
-			cidx++
-		}
-	}
-	// if no cerificates, return
-	if cidx == 0 {
-		log.Infof("checkCertsForObject(%s), no configured certificates\n",
-			safename)
-		return nil
-	}
-
-	if sc.SignatureKey != "" {
-		safename := types.UrlToSafename(sc.SignatureKey, "")
-		filename := types.CertificateDirname + "/" +
-			types.SafenameToFilename(safename)
-		if _, err := os.Stat(filename); err != nil {
-			log.Errorf("checkCertsForObject: %s failed %v\n",
-				filename, err)
-			return err
-		}
-		// XXX check for valid or non-zero length?
-	}
-
-	for _, certURL := range sc.CertificateChain {
-		if certURL != "" {
-			safename := types.UrlToSafename(certURL, "")
-			filename := types.CertificateDirname + "/" +
-				types.SafenameToFilename(safename)
-			if _, err := os.Stat(filename); err != nil {
-				log.Errorf("checkCertsForObject %s failed %v\n",
-					filename, err)
-				return err
-			}
-			// XXX check for valid or non-zero length?
-		}
-	}
-	return nil
 }
 
 func verifierPublication(ctx *baseOsMgrContext, objType string) *pubsub.Publication {
