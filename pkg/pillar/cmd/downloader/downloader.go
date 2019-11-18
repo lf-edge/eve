@@ -161,6 +161,20 @@ func Run() {
 	ctx.subGlobalDownloadConfig = subGlobalDownloadConfig
 	subGlobalDownloadConfig.Activate()
 
+	// Look for DatastoreConfig. We should process this
+	// before any download config ( App/baseos/cert). Without DataStore Config,
+	// Image Downloads will run into errors.
+	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
+		types.DatastoreConfig{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
+	subDatastoreConfig.CreateHandler = handleDatastoreConfigModify
+	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
+	ctx.subDatastoreConfig = subDatastoreConfig
+	subDatastoreConfig.Activate()
+
 	pubGlobalDownloadStatus, err := pubsub.Publish(agentName,
 		types.GlobalDownloadStatus{})
 	if err != nil {
@@ -225,18 +239,6 @@ func Run() {
 	subCertObjConfig.DeleteHandler = handleCertObjDelete
 	ctx.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()
-
-	// Look for DatastoreConfig from zedagent
-	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
-		types.DatastoreConfig{}, false, &ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
-	subDatastoreConfig.CreateHandler = handleDatastoreConfigModify
-	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
-	ctx.subDatastoreConfig = subDatastoreConfig
-	subDatastoreConfig.Activate()
 
 	pubAppImgStatus.SignalRestarted()
 	pubBaseOsStatus.SignalRestarted()
@@ -1535,15 +1537,15 @@ func createRktLocalDirAndAuthFile(imageID uuid.UUID,
 	// Create Local Directory with name imageSafeName
 	// The directory structure should be:
 	// <persistRktLocalConfigBase>/<uuid>/auth.d/rktAuth<appName>.json
-	localConfigDir := persistRktLocalConfigBase + "/" + imageID.String() +
-		"/auth.d"
-	authFileName := localConfigDir + "/docker.json"
-	err := os.MkdirAll(localConfigDir, 0755)
+	localConfigDir := persistRktLocalConfigBase + "/" + imageID.String()
+	authDir := localConfigDir + "/auth.d"
+	authFileName := authDir + "/docker.json"
+	err := os.MkdirAll(authDir, 0755)
 	if err != nil {
 		log.Errorf("createRktLocalDirAndAuthFile: empty username." +
 			" Skipping AuthFile")
 		return "", "", fmt.Errorf("Failed create dir %s, err: %+v\n",
-			localConfigDir, err)
+			authDir, err)
 	}
 
 	rktAuth := types.RktAuthInfo{
@@ -1559,12 +1561,12 @@ func createRktLocalDirAndAuthFile(imageID uuid.UUID,
 		"RktKind: %s, RktVersion: %s, Registries: %+v, \n",
 		authFileName, rktAuth.RktKind, rktAuth.RktVersion, rktAuth.Registries)
 
-	rktAuthJson, err := json.MarshalIndent(rktAuth, "", " ")
+	rktAuthJSON, err := json.MarshalIndent(rktAuth, "", " ")
 	if err != nil {
 		return "", "", fmt.Errorf("Failed convert rktAuth to json"+
 			"err: %+v\n", err)
 	}
-	err = ioutil.WriteFile(authFileName, rktAuthJson, 0644)
+	err = ioutil.WriteFile(authFileName, rktAuthJSON, 0644)
 	if err != nil {
 		return "", "", fmt.Errorf("Failed to create Auth file for"+
 			"rkt fetch: %+v\n", err)
