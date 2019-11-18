@@ -5,7 +5,6 @@ package zedmanager
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/cast"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -52,17 +51,9 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, uuidStr string, safename 
 
 	// check the certificate files, if not present,
 	// we can not start verification
-	if checkCerts && len(ss.ImageSignature) != 0 && containsCerts(safename, ss) {
-		if !checkCertsStatusForObject(ctx, uuidStr, safename, ss) {
-			log.Infof("MaybeAddVerifyImageConfig for %s, Certs are still not ready\n",
-				safename)
-			return false
-		}
-		if !checkCertsForObject(safename, ss) {
-			log.Infof("MaybeAddVerifyImageConfig for %s, Certs are still not installed\n",
-				safename)
-			return false
-		}
+	certObjStatus := lookupCertObjStatus(ctx, uuidStr)
+	if !ss.CheckForCerts(safename, checkCerts, uuidStr, certObjStatus) {
+		return false
 	}
 
 	m := lookupVerifyImageConfig(ctx, safename)
