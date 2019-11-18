@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -376,6 +377,30 @@ func (ssPtr *StorageStatus) checkCertsStatusForObject(safename string,
 				}
 				if certObj.State != DELIVERED {
 					return false, "", "", time.Time{}
+=======
+	return cidx
+}
+
+// CheckCertsStatusForObject: status for Certificates
+func (ssPtr *StorageStatus) CheckCertsStatusForObject(uuidStr string,
+	certObjStatus *CertObjStatus) bool {
+
+	// certificates are still not ready, for processing
+	if certObjStatus == nil {
+		log.Errorf("certObj Status is still not ready for %s\n", uuidStr)
+		return false
+	}
+
+	if ssPtr.SignatureKey != "" {
+		for _, certObj := range certObjStatus.StorageStatusList {
+			if certObj.Name == ssPtr.SignatureKey {
+				if certObj.Error != "" {
+					errSrc := pubsub.TypeToName(VerifyImageStatus{})
+					ssPtr.SetErrorInfo(certObj.Error, certObj.ErrorTime, errSrc)
+					return false
+				}
+				if certObj.State != DELIVERED {
+					return false
 				}
 			}
 		}
@@ -410,6 +435,9 @@ func (ssPtr *StorageStatus) checkCertsForObject() (bool, string, string, time.Ti
 	}
 
 	for _, certURL := range ssPtr.CertificateChain {
+		if certURL == "" {
+			log.Fatalf("Empty CertURL for %s\n", ssPtr.Name)
+		}
 		safename := UrlToSafename(certURL, "")
 		filename := CertificateDirname + "/" + SafenameToFilename(safename)
 		if _, err := os.Stat(filename); err != nil {
@@ -429,7 +457,7 @@ func (ssPtr *StorageStatus) SetErrorInfo(errorStr string, errSrc string,
 	ssPtr.ErrorSource = errSrc
 }
 
-// ClearErrorInfo clears errorInfo for the Storage Object
+// ClearErrorInfo Clears errorInfo for the Storage Object
 func (ssPtr *StorageStatus) ClearErrorInfo() {
 	ssPtr.Error = ""
 	ssPtr.ErrorSource = ""

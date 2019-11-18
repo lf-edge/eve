@@ -5,6 +5,7 @@ package baseosmgr
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -47,71 +48,6 @@ func lookupVerifierConfig(ctx *baseOsMgrContext, objType string,
 		return nil
 	}
 	return &config
-}
-
-// whether the object contains certs reference
-func containsCerts(safename string, ss *types.StorageConfig) bool {
-	cidx := 0
-	// count the number of cerificates in this object
-	if ss.SignatureKey != "" {
-		cidx++
-	}
-	for _, certURL := range ss.CertificateChain {
-		if certURL != "" {
-			cidx++
-		}
-	}
-	// if no cerificates, return
-	if cidx == 0 {
-		log.Infof("containsCerts() for %s, no certificates configured\n", safename)
-		return false
-	}
-	return true
-}
-
-// check the cert object status
-func checkCertsStatusForObject(ctx *baseOsMgrContext, uuidStr string,
-	safename string, ss *types.StorageStatus) error {
-
-	certObjStatus := lookupCertObjStatus(ctx, uuidStr)
-	// certificates are still not ready, for processing
-	if certObjStatus == nil {
-		return errors.New("certObj: Not ready")
-	}
-	if ss.SignatureKey != "" {
-		for _, certObj := range certObjStatus.StorageStatusList {
-			if certObj.Name == ss.SignatureKey {
-				if certObj.Error != "" {
-					ss.Error = certObj.Error
-					ss.ErrorTime = certObj.ErrorTime
-					ss.ErrorSource = pubsub.TypeToName(types.VerifyImageStatus{})
-					return errors.New("certObj: Error")
-				}
-				if certObj.State != types.DELIVERED {
-					return errors.New("certObj: Not ready")
-				}
-			}
-		}
-	}
-
-	for _, certURL := range ss.CertificateChain {
-		if certURL != "" {
-			for _, certObj := range certObjStatus.StorageStatusList {
-				if certObj.Name == certURL {
-					if certObj.Error != "" {
-						ss.Error = certObj.Error
-						ss.ErrorTime = certObj.ErrorTime
-						ss.ErrorSource = pubsub.TypeToName(types.VerifyImageStatus{})
-						return errors.New("certObj: Error")
-					}
-					if certObj.State != types.DELIVERED {
-						return errors.New("certObj: Not ready")
-					}
-				}
-			}
-		}
-	}
-	return nil
 }
 
 // If checkCerts is set this can return an error. Otherwise not.
