@@ -381,12 +381,12 @@ func (ssPtr *StorageStatus) checkCertsStatusForObject(safename string,
 	return cidx
 }
 
-// CheckCertsStatusForObject checks certificates for installation status
+// CheckCertsStatusForObject status for Certificates
 func (ssPtr *StorageStatus) CheckCertsStatusForObject(uuidStr string,
 	certObjStatusPtr *CertObjStatus) bool {
 
 	// certificates are still not ready, for processing
-	if certObjStatusPtr == nil {
+	if certObjStatus == nil {
 		log.Errorf("certObj Status is still not ready for %s\n", uuidStr)
 		return false
 	}
@@ -449,7 +449,7 @@ func (ssPtr *StorageStatus) CheckCertsForObject() bool {
 	return true, "", "", time.Time{}
 }
 
-// SetErrorInfo sets the errorInfo for the Storage Object
+// SetErrorInfo Sets the errorInfo for the Storage Object
 func (ssPtr *StorageStatus) SetErrorInfo(errorStr string,
 	errorTime time.Time, errSrc string) {
 	ssPtr.Error = errorStr
