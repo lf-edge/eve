@@ -5,8 +5,10 @@ package types
 
 import (
 	"net"
+	"os"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -297,6 +299,140 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 		ss.IsContainer = true
 	}
 	return
+}
+
+// CheckForCerts: certificates requirement/availability for the storage object
+// Get Certificate Status for the Storage Object
+// True, when there is no Certs or, the certificates are ready
+// False, Certificates are not ready or, there are some errors
+func (ssPtr *StorageStatus) CheckForCerts(safename string, checkCerts bool,
+	uuidStr string, certObjStatus *CertObjStatus) bool {
+	if checkCerts && ssPtr.NeedsCerts() && ssPtr.GetCertCount() != 0 {
+		if !ssPtr.CheckCertsStatusForObject(uuidStr, certObjStatus) {
+			log.Infof("MaybeAddVerifyImageConfig for %s, Certs are still not ready\n",
+				safename)
+			return false
+		}
+		if !ssPtr.CheckCertsForObject() {
+			log.Infof("MaybeAddVerifyImageConfig for %s, Certs are still not installed\n",
+				safename)
+			return false
+		}
+	}
+	return true
+}
+
+// NeedsCerts: Whether certificates are required for the Storage Object
+func (ssPtr *StorageStatus) NeedsCerts() bool {
+	if len(ssPtr.ImageSignature) != 0 {
+		return true
+	}
+	return false
+}
+
+// GetCertCount: number of certificates for the Storage Object
+func (ssPtr *StorageStatus) GetCertCount() int {
+	cidx := 0
+	if ssPtr.SignatureKey != "" {
+		cidx++
+	}
+	if len(ssPtr.CertificateChain) != 0 {
+		for _, certURL := range ssPtr.CertificateChain {
+			if certURL == "" {
+				log.Fatalf("Empty CertURL for %s\n", ssPtr.Name)
+			}
+			cidx++
+		}
+	}
+	return cidx
+}
+
+// CheckCertsStatusForObject: status for Certificates
+func (ssPtr *StorageStatus) CheckCertsStatusForObject(uuidStr string,
+	certObjStatus *CertObjStatus) bool {
+
+	// certificates are still not ready, for processing
+	if certObjStatus == nil {
+		log.Errorf("certObj Status is still not ready for %s\n", uuidStr)
+		return false
+	}
+
+	if ssPtr.SignatureKey != "" {
+		for _, certObj := range certObjStatus.StorageStatusList {
+			if certObj.Name == ssPtr.SignatureKey {
+				if certObj.Error != "" {
+					errSrc := pubsub.TypeToName(VerifyImageStatus{})
+					ssPtr.SetErrorInfo(certObj.Error, certObj.ErrorTime, errSrc)
+					return false
+				}
+				if certObj.State != DELIVERED {
+					return false
+				}
+			}
+		}
+	}
+
+	for _, certURL := range ssPtr.CertificateChain {
+		if certURL == "" {
+			log.Fatalf("Empty CertURL for %s\n", ssPtr.Name)
+		}
+		for _, certObj := range certObjStatus.StorageStatusList {
+			if certObj.Name == certURL {
+				if certObj.Error != "" {
+					errSrc := pubsub.TypeToName(VerifyImageStatus{})
+					ssPtr.SetErrorInfo(certObj.Error, certObj.ErrorTime, errSrc)
+					return false
+				}
+				if certObj.State != DELIVERED {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+// CheckCertsForObject: Availability of Certs in Disk
+func (ssPtr *StorageStatus) CheckCertsForObject() bool {
+
+	if ssPtr.SignatureKey != "" {
+		safename := UrlToSafename(ssPtr.SignatureKey, "")
+		filename := CertificateDirname + "/" + SafenameToFilename(safename)
+		if _, err := os.Stat(filename); err != nil {
+			log.Errorf("checkCertsForObject() for %s, %v\n", filename, err)
+			return false
+		}
+		// XXX check for valid or non-zero length?
+	}
+
+	for _, certURL := range ssPtr.CertificateChain {
+		if certURL == "" {
+			log.Fatalf("Empty CertURL for %s\n", ssPtr.Name)
+		}
+		safename := UrlToSafename(certURL, "")
+		filename := CertificateDirname + "/" + SafenameToFilename(safename)
+		if _, err := os.Stat(filename); err != nil {
+			log.Errorf("checkCertsForObject() for %s, %v\n", filename, err)
+			return false
+		}
+		// XXX check for valid or non-zero length?
+	}
+	return true
+}
+
+// SetErrorInfo: Sets the errorInfo for the Storage Object
+func (ssPtr *StorageStatus) SetErrorInfo(errorStr string,
+	errorTime time.Time, errSrc string) {
+	ssPtr.Error = errorStr
+	ssPtr.ErrorTime = errorTime
+	ssPtr.ErrorSource = errSrc
+}
+
+// ClearErrorInfo: Clears errorInfo for the Storage Object
+func (ssPtr *StorageStatus) ClearErrorInfo() {
+	ssPtr.Error = ""
+	ssPtr.ErrorSource = ""
+	ssPtr.ErrorTime = time.Time{}
 }
 
 // The Intermediate can be a byte sequence of PEM certs
