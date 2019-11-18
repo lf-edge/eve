@@ -1478,8 +1478,8 @@ func rktFetch(url string, localConfigDir string, pullPolicy string) (string, err
 	if err != nil {
 		log.Errorln("rkt fetch failed ", err)
 		log.Errorln("rkt fetch output ", string(stdoutStderr))
-		return "", fmt.Errorf("rkt fetch failed: %s\n",
-			string(stdoutStderr))
+		return "", fmt.Errorf("rkt fetch failed: %s\nImage URL: %s\n",
+			string(stdoutStderr), url)
 	}
 	log.Infof("rktFetch - image fetch successful. stdoutStderr: %s\n",
 		stdoutStderr)
