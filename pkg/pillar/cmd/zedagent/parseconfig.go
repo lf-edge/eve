@@ -45,7 +45,10 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	}
 	ctx := getconfigCtx.zedagentCtx
 
-	log.Debugf("parseConfig: EdgeDevConfig: %v\n", *config)
+	// XXX - DO NOT LOG entire config till secrets are spunoff into a separate
+	//  struct, referenced by a pointer. That way, the passwords won't get
+	//  printed.
+	//log.Debugf("parseConfig: EdgeDevConfig: %v\n", *config)
 
 	// Look for timers and other settings in configItems
 	// Process Config items even when rebootFlag is set.. Allows us to
@@ -889,11 +892,16 @@ func parseDatastoreConfig(config *zconfig.EdgeDevConfig,
 	if same {
 		return
 	}
+
+	// XXX - Careful not to log sensitive information. For now, just log
+	// individual fields. The next commit should separate the sensitive
+	// information into a separate structure - linked by a reference. That
+	//  way, accidental print / log statements won't expose the secrets.
 	log.Infof("parseDatastoreConfig: Applying updated datastore config\n"+
 		"prevSha: % x\n"+
 		"NewSha : % x\n"+
-		"stores: %v\n",
-		datastoreConfigPrevConfigHash, configHash, stores)
+		"Num Stores: %d\n",
+		datastoreConfigPrevConfigHash, configHash, len(stores))
 	datastoreConfigPrevConfigHash = configHash
 	publishDatastoreConfig(getconfigCtx, stores)
 }
