@@ -39,10 +39,9 @@ import (
 
 const (
 	agentName = "downloader"
-	// persistRktLocalConfigDir - Location of dir used by rkt local data
-	persistRktLocalConfigDir = types.PersistDir + "/rktlocal"
-	// persistRktLocalConfigAuthDir - used for storing auth files by rkt
-	persistRktLocalConfigAuthDir = persistRktLocalConfigDir + "/auth.d"
+	// persistRktLocalConfigBase - Base Dir used for LocalConfigDir for
+	//  rkt Container images
+	persistRktLocalConfigBase = types.PersistDir + "/rktlocal"
 )
 
 // Go doesn't like this as a constant
@@ -162,6 +161,20 @@ func Run() {
 	ctx.subGlobalDownloadConfig = subGlobalDownloadConfig
 	subGlobalDownloadConfig.Activate()
 
+	// Look for DatastoreConfig. We should process this
+	// before any download config ( App/baseos/cert). Without DataStore Config,
+	// Image Downloads will run into errors.
+	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
+		types.DatastoreConfig{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
+	subDatastoreConfig.CreateHandler = handleDatastoreConfigModify
+	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
+	ctx.subDatastoreConfig = subDatastoreConfig
+	subDatastoreConfig.Activate()
+
 	pubGlobalDownloadStatus, err := pubsub.Publish(agentName,
 		types.GlobalDownloadStatus{})
 	if err != nil {
@@ -226,18 +239,6 @@ func Run() {
 	subCertObjConfig.DeleteHandler = handleCertObjDelete
 	ctx.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()
-
-	// Look for DatastoreConfig from zedagent
-	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
-		types.DatastoreConfig{}, false, &ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
-	subDatastoreConfig.CreateHandler = handleDatastoreConfigModify
-	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
-	ctx.subDatastoreConfig = subDatastoreConfig
-	subDatastoreConfig.Activate()
 
 	pubAppImgStatus.SignalRestarted()
 	pubBaseOsStatus.SignalRestarted()
@@ -628,6 +629,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 	// Start by marking with PendingAdd
 	status := types.DownloaderStatus{
 		DatastoreID:      config.DatastoreID,
+		ImageID:          config.ImageID,
 		Safename:         config.Safename,
 		Name:             config.Name,
 		ObjType:          objType,
@@ -800,6 +802,13 @@ func handleDelete(ctx *downloaderContext, key string,
 
 	status.PendingDelete = true
 	publishDownloaderStatus(ctx, status)
+
+	// If Container, delete LocalConfigDir
+	if status.ContainerRktLocalConfigDir != "" {
+		if err := os.RemoveAll(status.ContainerRktLocalConfigDir); err != nil {
+			log.Fatal(err)
+		}
+	}
 
 	// Update globalStatus and status
 	unreserveSpace(ctx, status)
@@ -1478,8 +1487,8 @@ func rktFetch(url string, localConfigDir string, pullPolicy string) (string, err
 	if err != nil {
 		log.Errorln("rkt fetch failed ", err)
 		log.Errorln("rkt fetch output ", string(stdoutStderr))
-		return "", fmt.Errorf("rkt fetch failed: %s\n",
-			string(stdoutStderr))
+		return "", fmt.Errorf("rkt fetch failed: %s\nImage URL: %s\n",
+			string(stdoutStderr), url)
 	}
 	log.Infof("rktFetch - image fetch successful. stdoutStderr: %s\n",
 		stdoutStderr)
@@ -1514,26 +1523,30 @@ func rktFetch(url string, localConfigDir string, pullPolicy string) (string, err
 	return imageID, nil
 }
 
-func rktAuthFilename(appName string) string {
-	return persistRktLocalConfigAuthDir + "/rktAuth" + appName + ".json"
-}
-
-func rktCreateAuthFile(config *types.DownloaderConfig,
-	dsCtx types.DatastoreContext, registry string) (string, error) {
+// createRktLocalDirAndAuthFile
+//  Return Values: localConfigDir, AuthFileName, err
+func createRktLocalDirAndAuthFile(imageID uuid.UUID,
+	dsCtx types.DatastoreContext, registry string) (string, string, error) {
 
 	if len(strings.TrimSpace(dsCtx.APIKey)) == 0 {
-		log.Debugf("rktCreateAuthFile: empty APIKey. Skipping AuthFile")
-		return "", nil
+		log.Debugf("createRktLocalDirAndAuthFile: empty APIKey. " +
+			"Skipping AuthFile")
+		return "", "", nil
 	}
 
-	err := os.MkdirAll(persistRktLocalConfigAuthDir, 0755)
+	// Create Local Directory with name imageSafeName
+	// The directory structure should be:
+	// <persistRktLocalConfigBase>/<uuid>/auth.d/rktAuth<appName>.json
+	localConfigDir := persistRktLocalConfigBase + "/" + imageID.String()
+	authDir := localConfigDir + "/auth.d"
+	authFileName := authDir + "/docker.json"
+	err := os.MkdirAll(authDir, 0755)
 	if err != nil {
-		log.Errorf("rktCreateAuthFile: empty username. Skipping AuthFile")
-		return "", fmt.Errorf("Failed create dir %s, "+
-			"err: %+v\n", persistRktLocalConfigAuthDir, err)
+		log.Errorf("createRktLocalDirAndAuthFile: empty username." +
+			" Skipping AuthFile")
+		return "", "", fmt.Errorf("Failed create dir %s, err: %+v\n",
+			authDir, err)
 	}
-
-	filename := rktAuthFilename(config.Safename)
 
 	rktAuth := types.RktAuthInfo{
 		RktKind:    "dockerAuth",
@@ -1544,21 +1557,21 @@ func rktCreateAuthFile(config *types.DownloaderConfig,
 			Password: dsCtx.Password,
 		},
 	}
-	log.Infof("rktCreateAuthFile: created Auth file %s\n"+
+	log.Infof("createRktLocalDirAndAuthFile: created Auth file %s\n"+
 		"RktKind: %s, RktVersion: %s, Registries: %+v, \n",
-		filename, rktAuth.RktKind, rktAuth.RktVersion, rktAuth.Registries)
+		authFileName, rktAuth.RktKind, rktAuth.RktVersion, rktAuth.Registries)
 
-	file, err := json.MarshalIndent(rktAuth, "", " ")
+	rktAuthJSON, err := json.MarshalIndent(rktAuth, "", " ")
 	if err != nil {
-		return "", fmt.Errorf("Failed convert rktAuth to json"+
+		return "", "", fmt.Errorf("Failed convert rktAuth to json"+
 			"err: %+v\n", err)
 	}
-	err = ioutil.WriteFile(filename, file, 0644)
+	err = ioutil.WriteFile(authFileName, rktAuthJSON, 0644)
 	if err != nil {
-		return "", fmt.Errorf("Failed to create Auth file for"+
+		return "", "", fmt.Errorf("Failed to create Auth file for"+
 			"rkt fetch: %+v\n", err)
 	}
-	return filename, nil
+	return localConfigDir, authFileName, nil
 }
 
 func rktFetchContainerImage(ctx *downloaderContext, key string,
@@ -1569,18 +1582,17 @@ func rktFetchContainerImage(ctx *downloaderContext, key string,
 	publishDownloaderStatus(ctx, status)
 
 	imageID := ""
-	var authFile string
+	var authFile, localConfigDir string
 	registry, downloadURL, err := getContainerRegistry(dsCtx.DownloadURL)
 	if err == nil {
 		// Save credentials to Auth file
 		log.Infof("rktFetchContainerImage: fetch  <%s>\n", dsCtx.DownloadURL)
-		authFile, err = rktCreateAuthFile(&config, dsCtx, registry)
+		localConfigDir, authFile, err = createRktLocalDirAndAuthFile(
+			config.ImageID, dsCtx, registry)
 		if err == nil {
-			log.Debugf("rktFetchContainerImage: authFile: %s\n", authFile)
-			// We should really move to have per-fetch directory..
-			localConfigDir := persistRktLocalConfigDir
+			log.Debugf("rktFetchContainerImage: localConfigDir: %s, authFile: %s\n",
+				localConfigDir, authFile)
 			if len(authFile) == 0 {
-				localConfigDir = ""
 				log.Infof("rktFetchContainerImage: no Auth File")
 			}
 			imageID, err = rktFetch(downloadURL, localConfigDir, pullPolicy)
@@ -1611,6 +1623,8 @@ func rktFetchContainerImage(ctx *downloaderContext, key string,
 	// We do not clear any status.RetryCount, LastErr, etc. The caller
 	// should look at State == DOWNLOADED to determine it is done.
 	status.ContainerImageID = imageID
+	status.ContainerRktLocalConfigDir = localConfigDir
+	status.ContainerRktAuthFileName = authFile
 	status.ModTime = time.Now()
 	status.PendingAdd = false
 	status.State = types.DOWNLOADED

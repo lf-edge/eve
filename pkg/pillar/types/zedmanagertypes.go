@@ -219,7 +219,10 @@ type EIDOverlayConfig struct {
 // - "ramdisk"
 // - "device_tree"
 type StorageConfig struct {
-	DatastoreID      uuid.UUID
+	// DatastoreID - UUID of the DataStore
+	DatastoreID uuid.UUID
+	// ImageID - UUID of the image
+	ImageID          uuid.UUID
 	Name             string   // XXX Do depend on URL for clobber avoidance?
 	NameIsURL        bool     // If not we form URL based on datastore info
 	Size             uint64   // In bytes
@@ -242,7 +245,9 @@ func RoundupToKB(b uint64) uint64 {
 }
 
 type StorageStatus struct {
-	DatastoreID        uuid.UUID
+	DatastoreID uuid.UUID
+	// ImageID - UUID of the image
+	ImageID            uuid.UUID
 	Name               string
 	ImageSha256        string   // sha256 of immutable image
 	NameIsURL          bool     // If not we form URL based on datastore info
@@ -273,6 +278,7 @@ type StorageStatus struct {
 // UpdateFromStorageConfig sets up StorageStatus based on StorageConfig struct
 func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	ss.DatastoreID = sc.DatastoreID
+	ss.ImageID = sc.ImageID
 	ss.Name = sc.Name
 	ss.NameIsURL = sc.NameIsURL
 	ss.ImageSha256 = sc.ImageSha256
