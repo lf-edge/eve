@@ -279,36 +279,34 @@ type StorageStatus struct {
 }
 
 // UpdateFromStorageConfig sets up StorageStatus based on StorageConfig struct
-func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
-	ss.DatastoreID = sc.DatastoreID
-	ss.ImageID = sc.ImageID
-	ss.Name = sc.Name
-	ss.NameIsURL = sc.NameIsURL
-	ss.ImageSha256 = sc.ImageSha256
-	ss.Size = sc.Size
-	ss.CertificateChain = sc.CertificateChain
-	ss.ImageSignature = sc.ImageSignature
-	ss.SignatureKey = sc.SignatureKey
-	ss.ReadOnly = sc.ReadOnly
-	ss.Preserve = sc.Preserve
-	ss.Format = sc.Format
-	ss.Maxsizebytes = sc.Maxsizebytes
-	ss.Devtype = sc.Devtype
-	ss.Target = sc.Target
-	if ss.Format == "container" {
-		ss.IsContainer = true
+func (ssPtr *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
+	ssPtr.DatastoreID = sc.DatastoreID
+	ssPtr.Name = sc.Name
+	ssPtr.NameIsURL = sc.NameIsURL
+	ssPtr.ImageSha256 = sc.ImageSha256
+	ssPtr.Size = sc.Size
+	ssPtr.CertificateChain = sc.CertificateChain
+	ssPtr.ImageSignature = sc.ImageSignature
+	ssPtr.SignatureKey = sc.SignatureKey
+	ssPtr.ReadOnly = sc.ReadOnly
+	ssPtr.Preserve = sc.Preserve
+	ssPtr.Format = sc.Format
+	ssPtr.Maxsizebytes = sc.Maxsizebytes
+	ssPtr.Devtype = sc.Devtype
+	ssPtr.Target = sc.Target
+	if ssPtr.Format == "container" {
+		ssPtr.IsContainer = true
 	}
 	return
 }
 
-// CheckForCerts: certificates requirement/availability for the storage object
-// Get Certificate Status for the Storage Object
+// CheckForCerts checks certificate requirement/availability for a storage object
 // True, when there is no Certs or, the certificates are ready
 // False, Certificates are not ready or, there are some errors
 func (ssPtr *StorageStatus) CheckForCerts(safename string, checkCerts bool,
-	uuidStr string, certObjStatus *CertObjStatus) bool {
+	uuidStr string, certObjStatusPtr *CertObjStatus) bool {
 	if checkCerts && ssPtr.NeedsCerts() && ssPtr.GetCertCount() != 0 {
-		if !ssPtr.CheckCertsStatusForObject(uuidStr, certObjStatus) {
+		if !ssPtr.CheckCertsStatusForObject(uuidStr, certObjStatusPtr) {
 			log.Infof("MaybeAddVerifyImageConfig for %s, Certs are still not ready\n",
 				safename)
 			return false
@@ -322,7 +320,7 @@ func (ssPtr *StorageStatus) CheckForCerts(safename string, checkCerts bool,
 	return true
 }
 
-// NeedsCerts: Whether certificates are required for the Storage Object
+// NeedsCerts certificates are required for the Storage Object
 func (ssPtr *StorageStatus) NeedsCerts() bool {
 	if len(ssPtr.ImageSignature) != 0 {
 		return true
@@ -330,7 +328,7 @@ func (ssPtr *StorageStatus) NeedsCerts() bool {
 	return false
 }
 
-// GetCertCount: number of certificates for the Storage Object
+// GetCertCount returns the number of certificates for the Storage Object
 func (ssPtr *StorageStatus) GetCertCount() int {
 	cidx := 0
 	if ssPtr.SignatureKey != "" {
@@ -347,18 +345,18 @@ func (ssPtr *StorageStatus) GetCertCount() int {
 	return cidx
 }
 
-// CheckCertsStatusForObject: status for Certificates
+// CheckCertsStatusForObject checks certificates for installation status
 func (ssPtr *StorageStatus) CheckCertsStatusForObject(uuidStr string,
-	certObjStatus *CertObjStatus) bool {
+	certObjStatusPtr *CertObjStatus) bool {
 
 	// certificates are still not ready, for processing
-	if certObjStatus == nil {
+	if certObjStatusPtr == nil {
 		log.Errorf("certObj Status is still not ready for %s\n", uuidStr)
 		return false
 	}
 
 	if ssPtr.SignatureKey != "" {
-		for _, certObj := range certObjStatus.StorageStatusList {
+		for _, certObj := range certObjStatusPtr.StorageStatusList {
 			if certObj.Name == ssPtr.SignatureKey {
 				if certObj.Error != "" {
 					errSrc := pubsub.TypeToName(VerifyImageStatus{})
@@ -376,7 +374,7 @@ func (ssPtr *StorageStatus) CheckCertsStatusForObject(uuidStr string,
 		if certURL == "" {
 			log.Fatalf("Empty CertURL for %s\n", ssPtr.Name)
 		}
-		for _, certObj := range certObjStatus.StorageStatusList {
+		for _, certObj := range certObjStatusPtr.StorageStatusList {
 			if certObj.Name == certURL {
 				if certObj.Error != "" {
 					errSrc := pubsub.TypeToName(VerifyImageStatus{})
@@ -392,7 +390,7 @@ func (ssPtr *StorageStatus) CheckCertsStatusForObject(uuidStr string,
 	return true
 }
 
-// CheckCertsForObject: Availability of Certs in Disk
+// CheckCertsForObject checks availability of Certs in Disk
 func (ssPtr *StorageStatus) CheckCertsForObject() bool {
 
 	if ssPtr.SignatureKey != "" {
@@ -420,7 +418,7 @@ func (ssPtr *StorageStatus) CheckCertsForObject() bool {
 	return true
 }
 
-// SetErrorInfo: Sets the errorInfo for the Storage Object
+// SetErrorInfo sets the errorInfo for the Storage Object
 func (ssPtr *StorageStatus) SetErrorInfo(errorStr string,
 	errorTime time.Time, errSrc string) {
 	ssPtr.Error = errorStr
@@ -428,7 +426,7 @@ func (ssPtr *StorageStatus) SetErrorInfo(errorStr string,
 	ssPtr.ErrorSource = errSrc
 }
 
-// ClearErrorInfo: Clears errorInfo for the Storage Object
+// ClearErrorInfo clears errorInfo for the Storage Object
 func (ssPtr *StorageStatus) ClearErrorInfo() {
 	ssPtr.Error = ""
 	ssPtr.ErrorSource = ""
