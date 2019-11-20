@@ -53,11 +53,13 @@ func MaybeRemoveDownloaderConfig(ctx *zedmanagerContext, safename string) {
 			safename)
 		return
 	}
-	m.RefCount -= 1
-	if m.RefCount < 0 {
-		log.Fatalf("MaybeRemoveDownloaderConfig: negative RefCount %d for %s\n",
-			m.RefCount, safename)
+	if m.RefCount == 0 {
+		log.Fatalf("MaybeRemoveDownloaderConfig: Attempting to reduce "+
+			"0 RefCount. Image Details - Name: %s, SafeName: %s, "+
+			"ImageSha256:%s, IsContainer: %t\n",
+			m.Name, m.Safename, m.ImageSha256, m.IsContainer)
 	}
+	m.RefCount -= 1
 	log.Infof("MaybeRemoveDownloaderConfig remaining RefCount %d for %s\n",
 		m.RefCount, safename)
 	publishDownloaderConfig(ctx, m)
@@ -84,14 +86,10 @@ func unpublishDownloaderConfig(ctx *zedmanagerContext,
 func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	status := cast.CastDownloaderStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleDownloaderStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
 	ctx := ctxArg.(*zedmanagerContext)
-	log.Infof("handleDownloaderStatusModify for %s RefCount %d\n",
-		status.Safename, status.RefCount)
+	log.Infof("handleDownloaderStatusModify for %s status.RefCount %d"+
+		"status.Expired: %+v\n",
+		status.Safename, status.RefCount, status.Expired)
 
 	// Handling even if Pending is set to process Progress updates
 
