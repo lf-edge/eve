@@ -975,6 +975,17 @@ func parseStorageConfigList(objType string,
 		image.Target = strings.ToLower(drive.Target.String())
 		image.Devtype = strings.ToLower(drive.Drvtype.String())
 		image.ImageSha256 = drive.Image.Sha256
+		if image.Format == "container" && image.ImageSha256 == "" {
+			// XXX HACK - The right fix is to use ImageIDs to Track
+			// images instead of SHA.
+			// Currently, for container images, Zedcloud doesn't have
+			// The SHA for the image. Use ImageID as the Sha.
+			// Download Config add verifier config / status are keyed by SHA.
+			// TIll we move away from that, set ImageSha to ImageID to
+			// handle this case.
+			image.ImageSha256 = image.ImageID.String()
+
+		}
 		storageList[idx] = *image
 		idx++
 	}
