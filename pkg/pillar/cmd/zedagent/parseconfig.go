@@ -953,7 +953,7 @@ func parseStorageConfigList(objType string,
 			id, _ := uuid.FromString(drive.Image.DsId)
 			image.DatastoreID = id
 			image.Name = drive.Image.Name
-
+			image.ImageID, _ = uuid.FromString(drive.Image.Uuidandversion.Uuid)
 			image.Format = strings.ToLower(drive.Image.Iformat.String())
 			image.Size = uint64(drive.Image.SizeBytes)
 			image.ImageSignature = drive.Image.Siginfo.Signature
