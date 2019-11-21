@@ -34,6 +34,8 @@ RUN ./bootstrap && \
 WORKDIR /
 RUN git clone --branch=4.0.1-rc0 https://github.com/tpm2-software/tpm2-tools
 WORKDIR /tpm2-tools
+ADD patch-tpm2-tools.diff .
+RUN patch -p1 < patch-tpm2-tools.diff
 
 #There is a known issue: curl-dev and openssl-dev don't go together,
 #due to conflict between openssl-dev and libressl-dev(from curl-dev).
@@ -50,6 +52,9 @@ RUN apk add --no-cache openssl-dev=1.0.2t-r0
 COPY --from=curl-dev-bits /usr/include/curl /usr/include/curl
 COPY --from=curl-dev-bits /usr/lib/libcurl.so /usr/lib/libcurl.so
 RUN make
+RUN mkdir /out
+RUN cp lib/.libs/libcommon.so* /out/
+RUN cp tools/.libs/tpm2_* /out/
 
 #The vTPM server
 COPY ./ /vtpm_server
@@ -67,16 +72,32 @@ COPY --from=build /usr/local/lib/libtss2-esys.so.0 /usr/local/lib
 COPY --from=build /usr/local/lib/libtss2-sys.so.0.0.0 /usr/local/lib
 COPY --from=build /usr/local/lib/libtss2-sys.so.0 /usr/local/lib
 COPY --from=build /usr/local/lib/libtss2-tcti-device.so.0 /usr/local/lib
-COPY --from=build /tpm2-tools/tools/tpm2_createek /usr/bin/
-COPY --from=build /tpm2-tools/tools/tpm2_createak /usr/bin/
-COPY --from=build /tpm2-tools/tools/tpm2_createprimary /usr/bin/
-COPY --from=build /tpm2-tools/tools/tpm2_getcap /usr/bin/
-COPY --from=build /tpm2-tools/tools/tpm2_sign /usr/bin/
-COPY --from=build /tpm2-tools/tools/tpm2_verifysignature /usr/bin/
-COPY --from=build /tpm2-tools/tools/tpm2_evictcontrol /usr/bin/
-COPY --from=build /tpm2-tools/tools/tpm2_import /usr/bin/
-COPY --from=build /tpm2-tools/tools/tpm2_load /usr/bin/
-COPY --from=build /tpm2-tools/tools/tpm2_hmac /usr/bin/
+COPY --from=build /out/libcommon.so.0.0.0 /usr/local/lib
+COPY --from=build /out/libcommon.so.0 /usr/local/lib
+COPY --from=build /out/libcommon.so /usr/local/lib
+COPY --from=build /out/tpm2_createek /usr/bin/
+COPY --from=build /out/tpm2_createak /usr/bin/
+COPY --from=build /out/tpm2_createprimary /usr/bin/
+COPY --from=build /out/tpm2_getcap /usr/bin/
+COPY --from=build /out/tpm2_sign /usr/bin/
+COPY --from=build /out/tpm2_verifysignature /usr/bin/
+COPY --from=build /out/tpm2_evictcontrol /usr/bin/
+COPY --from=build /out/tpm2_import /usr/bin/
+COPY --from=build /out/tpm2_load /usr/bin/
+COPY --from=build /out/tpm2_hmac /usr/bin/
+COPY --from=build /out/tpm2_readpublic /usr/bin/
+COPY --from=build /out/tpm2_activatecredential /usr/bin
+COPY --from=build /out/tpm2_makecredential /usr/bin
+COPY --from=build /out/tpm2_dictionarylockout /usr/bin
+COPY --from=build /out/tpm2_startauthsession /usr/bin
+COPY --from=build /out/tpm2_policysecret /usr/bin
+COPY --from=build /out/tpm2_policypassword /usr/bin
+COPY --from=build /out/tpm2_policycommandcode /usr/bin
+COPY --from=build /out/tpm2_create /usr/bin
+COPY --from=build /out/tpm2_loadexternal /usr/bin
+COPY --from=build /out/tpm2_duplicate /usr/bin
+COPY --from=build /out/tpm2_flushcontext /usr/bin
+COPY --from=build /out/tpm2_rsadecrypt /usr/bin
 COPY --from=build /vtpm_server/vtpm_server /usr/bin/
 COPY init.sh /usr/bin/
 ENTRYPOINT []
