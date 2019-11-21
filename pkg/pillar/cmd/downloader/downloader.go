@@ -1518,9 +1518,37 @@ func rktFetch(url string, localConfigDir string, pullPolicy string) (string, err
 		return "", errors.New(errMsg)
 	}
 
+	err = rktImageExport(imageID)
+	if err != nil {
+		return imageID, err
+	}
+
 	// XXX:FIXME - we should run "rkt image ls" and verify image fetch
 	// went thru without errors.
 	return imageID, nil
+}
+
+func rktImageExport(imageID string) error {
+	cmd := "rkt"
+	args := []string{
+		"--dir=" + types.PersistRktDataDir,
+		"--insecure-options=image",
+		"image",
+		"export",
+		imageID,
+	}
+	aciName := "/persist/downloads/appImg.obj/" + imageID + ".aci"
+	args = append(args, aciName)
+
+	log.Infof("rkt image export args: %+v\n", args)
+
+	_, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt image export failed ", err)
+		return err
+	}
+	log.Infof("rktImageExport - image image export successful.")
+	return nil
 }
 
 // createRktLocalDirAndAuthFile
