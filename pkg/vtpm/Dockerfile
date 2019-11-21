@@ -34,7 +34,7 @@ RUN ./bootstrap && \
 WORKDIR /
 RUN git clone --branch=4.0.1-rc0 https://github.com/tpm2-software/tpm2-tools
 WORKDIR /tpm2-tools
-ADD patch-tpm2-tools.diff .
+COPY patch-tpm2-tools.diff .
 RUN patch -p1 < patch-tpm2-tools.diff
 
 #There is a known issue: curl-dev and openssl-dev don't go together,
