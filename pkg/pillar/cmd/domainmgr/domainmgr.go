@@ -1920,7 +1920,11 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	// inactivation i.e. those preserved across reboots?
 	for _, ds := range status.DiskStatusList {
 		if status.IsContainer {
-			continue
+			containerACIFile := "/persist/downloads/appImg.obj/" + status.ContainerImageID + ".aci"
+			log.Infof("Delete copy at %s\n", containerACIFile)
+			if err := os.Remove(containerACIFile); err != nil {
+				log.Errorln(err)
+			}
 		}
 		if !ds.ReadOnly && ds.Preserve {
 			log.Infof("Delete copy at %s\n", ds.ActiveFileLocation)
@@ -1973,7 +1977,7 @@ func rktRun(domainName string, ContainerImageID string, xenCfgFilename string) (
 		"--dir=" + types.PersistRktDataDir,
 		"--insecure-options=image",
 		"run",
-		ContainerImageID,
+		"/persist/downloads/appImg.obj/" + ContainerImageID + ".aci",
 		"--stage1-path=/usr/sbin/stage1-xen.aci",
 		"--uuid-file-save=" + uuidFile,
 	}
