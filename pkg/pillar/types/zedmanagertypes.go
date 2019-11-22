@@ -10,7 +10,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -377,44 +376,6 @@ func (ssPtr *StorageStatus) checkCertsStatusForObject(safename string,
 				}
 				if certObj.State != DELIVERED {
 					return false, "", "", time.Time{}
-=======
-	return cidx
-}
-
-// CheckCertsStatusForObject checks certificates for installation status
-func (ssPtr *StorageStatus) CheckCertsStatusForObject(uuidStr string,
-	certObjStatusPtr *CertObjStatus) bool {
-
-	// certificates are still not ready, for processing
-	if certObjStatusPtr == nil {
-		log.Errorf("certObj Status is still not ready for %s\n", uuidStr)
-		return false
-	}
-
-	if ssPtr.SignatureKey != "" {
-		for _, certObj := range certObjStatusPtr.StorageStatusList {
-			if certObj.Name == ssPtr.SignatureKey {
-				if certObj.Error != "" {
-					errSrc := pubsub.TypeToName(VerifyImageStatus{})
-					ssPtr.SetErrorInfo(certObj.Error, certObj.ErrorTime, errSrc)
-					return false
-				}
-				if certObj.State != DELIVERED {
-					return false
-				}
-			}
-		}
-	}
-
-	for _, certURL := range ssPtr.CertificateChain {
-		for _, certObj := range certObjStatusPtr.StorageStatusList {
-			if certObj.Name == certURL {
-				if certObj.Error != "" {
-					return false, certObj.Error, certObj.ErrorSource, certObj.ErrorTime
-				}
-				if certObj.State != DELIVERED {
-					return false, "", "", time.Time{}
-				}
 			}
 		}
 	}
@@ -422,7 +383,7 @@ func (ssPtr *StorageStatus) CheckCertsStatusForObject(uuidStr string,
 }
 
 // checkCertsForObject checks availability of Certs in Disk
-func (ssPtr *StorageStatus) CheckCertsForObject() bool {
+func (ssPtr *StorageStatus) checkCertsForObject() (bool, string, string, time.Time) {
 
 	if ssPtr.SignatureKey != "" {
 		safename := UrlToSafename(ssPtr.SignatureKey, "")
@@ -435,9 +396,6 @@ func (ssPtr *StorageStatus) CheckCertsForObject() bool {
 	}
 
 	for _, certURL := range ssPtr.CertificateChain {
-		if certURL == "" {
-			log.Fatalf("Empty CertURL for %s\n", ssPtr.Name)
-		}
 		safename := UrlToSafename(certURL, "")
 		filename := CertificateDirname + "/" + SafenameToFilename(safename)
 		if _, err := os.Stat(filename); err != nil {
@@ -450,8 +408,8 @@ func (ssPtr *StorageStatus) CheckCertsForObject() bool {
 }
 
 // SetErrorInfo sets the errorInfo for the Storage Object
-func (ssPtr *StorageStatus) SetErrorInfo(errorStr string,
-	errorTime time.Time, errSrc string) {
+func (ssPtr *StorageStatus) SetErrorInfo(errorStr string, errSrc string,
+	errTime time.Time) {
 	ssPtr.Error = errorStr
 	ssPtr.ErrorTime = errTime
 	ssPtr.ErrorSource = errSrc
