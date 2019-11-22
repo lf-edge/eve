@@ -5,7 +5,6 @@ package baseosmgr
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -58,11 +57,22 @@ func createVerifierConfig(ctx *baseOsMgrContext, uuidStr string, objType string,
 
 	// check the certificate files, if not present,
 	// we can not start verification
-	certObjStatus := lookupCertObjStatus(ctx, uuidStr)
-	if !ss.CheckForCerts(safename, checkCerts, uuidStr, certObjStatus) {
-		errStr := fmt.Sprintf("certObj is still not ready for %s\n", uuidStr)
-		err := errors.New(errStr)
-		return err
+	if checkCerts {
+		certObjStatus := lookupCertObjStatus(ctx, uuidStr)
+		ret, err := ss.IsCertsAvailable(safename)
+		if err != nil {
+			log.Fatalf("%s, invalid certificate configuration", safename)
+		}
+		if ret {
+			ret, errStr, errSrc, errTime := ss.GetCertStatus(safename, certObjStatus)
+			if errStr != "" {
+				ss.SetErrorInfo(errStr, errSrc, errTime)
+				return errors.New(errStr)
+			}
+			if !ret {
+				return nil
+			}
+		}
 	}
 
 	if m := lookupVerifierConfig(ctx, objType, safename); m != nil {
