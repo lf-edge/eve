@@ -414,8 +414,19 @@ type PhysicalIO struct {
 	// For example Eth0->Mgmt0
 	//  or USBA->ConfigDiskA etc
 	Logicallabel string `protobuf:"bytes,4,opt,name=logicallabel,proto3" json:"logicallabel,omitempty"`
+	// assigngrp
 	// Assignment Group, is unique label that is applied across PhysicalIOs
 	// EntireGroup can be assigned to application or nothing at all
+	//
+	// This is the name used in AppInstanceConfig.adapters to assign an
+	// adapter to an application.
+	//
+	// If assigngrp is not set, the Adapter cannot be assigned to any
+	// application. One example is, when the adapter is on the same Pci
+	// bus as another device required by Dom0.
+	//
+	// Even if there is only one device on the its PCIBus, the assignGrp Must
+	// be set.
 	Assigngrp string `protobuf:"bytes,5,opt,name=assigngrp,proto3" json:"assigngrp,omitempty"`
 	// usage - indicates the role of adapter ( mgmt / blocked / app-direct
 	//    etc. )
