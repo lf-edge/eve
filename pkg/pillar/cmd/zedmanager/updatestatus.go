@@ -263,6 +263,12 @@ func updateOrRemove(ctx *zedmanagerContext, status types.AppInstanceStatus) {
 func checkDiskSize(ctxPtr *zedmanagerContext) error {
 
 	var totalAppDiskSize uint64
+
+	if ctxPtr.globalConfig.IgnoreDiskCheckForApps {
+		log.Debugf("Ignoring diskchecks for Apps")
+		return nil
+	}
+
 	appDiskSizeList := ""
 	pub := ctxPtr.pubAppInstanceStatus
 	items := pub.GetAll()
