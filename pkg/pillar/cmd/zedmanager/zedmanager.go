@@ -494,6 +494,7 @@ func handleCreate(ctxArg interface{}, key string,
 			// FIXME - We really need a top level flag to tell the app is
 			//  a container. Deriving it from Storage seems hacky.
 			status.IsContainer = true
+			status.ImageID = ss.ImageID
 		}
 	}
 

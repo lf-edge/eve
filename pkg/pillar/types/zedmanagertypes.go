@@ -111,6 +111,7 @@ type AppInstanceStatus struct {
 	PurgeCmd            AppInstanceOpsCmd
 	RestartInprogress   Inprogress
 	PurgeInprogress     Inprogress
+	ImageID             uuid.UUID // UUID of the image
 
 	// Container related state
 	IsContainer      bool

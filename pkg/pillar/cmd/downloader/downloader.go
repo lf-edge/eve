@@ -1460,7 +1460,7 @@ func getContainerRegistry(url string) (string, string, error) {
 	return "", "", fmt.Errorf("Download URL is not formed properly")
 }
 
-func rktFetch(url string, localConfigDir string, pullPolicy string) (string, error) {
+func rktFetch(url string, localConfigDir string, pullPolicy string, imageUUID string, locFilename string) (string, error) {
 
 	// rkt --insecure-options=image fetch <url> --dir=/persist/rkt --full=true
 	log.Debugf("rktFetch - url: %s ,  localConfigDir:%s\n",
@@ -1518,7 +1518,7 @@ func rktFetch(url string, localConfigDir string, pullPolicy string) (string, err
 		return "", errors.New(errMsg)
 	}
 
-	err = rktImageExport(imageID)
+	err = rktImageExport(imageID, imageUUID, locFilename)
 	if err != nil {
 		return imageID, err
 	}
@@ -1528,16 +1528,29 @@ func rktFetch(url string, localConfigDir string, pullPolicy string) (string, err
 	return imageID, nil
 }
 
-func rktImageExport(imageID string) error {
+func rktImageExport(imageHash, imageUUID, locFilename string) error {
+	var aciDir string
+	var aciName string
 	cmd := "rkt"
 	args := []string{
 		"--dir=" + types.PersistRktDataDir,
 		"--insecure-options=image",
 		"image",
 		"export",
-		imageID,
+		imageHash,
 	}
-	aciName := "/persist/downloads/appImg.obj/" + imageID + ".aci"
+	if strings.HasSuffix(locFilename, "/") {
+		aciDir = locFilename + imageUUID
+	} else {
+		aciDir = locFilename + "/" + imageUUID
+	}
+	if _, err := os.Stat(aciDir); err != nil {
+		log.Debugf("Create %s\n", aciDir)
+		if err = os.MkdirAll(aciDir, 0755); err != nil {
+			log.Fatal(err)
+		}
+	}
+	aciName = aciDir + "/" + imageHash + ".aci"
 	args = append(args, aciName)
 
 	log.Infof("rkt image export args: %+v\n", args)
@@ -1547,7 +1560,7 @@ func rktImageExport(imageID string) error {
 		log.Errorln("rkt image export failed ", err)
 		return err
 	}
-	log.Infof("rktImageExport - image image export successful.")
+	log.Infof("rktImageExport - image export successful.")
 	return nil
 }
 
@@ -1604,7 +1617,7 @@ func createRktLocalDirAndAuthFile(imageID uuid.UUID,
 
 func rktFetchContainerImage(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus,
-	dsCtx types.DatastoreContext, pullPolicy string) error {
+	dsCtx types.DatastoreContext, pullPolicy, locFilename string) error {
 	// update status to DOWNLOAD STARTED
 	status.State = types.DOWNLOAD_STARTED
 	publishDownloaderStatus(ctx, status)
@@ -1623,7 +1636,7 @@ func rktFetchContainerImage(ctx *downloaderContext, key string,
 			if len(authFile) == 0 {
 				log.Infof("rktFetchContainerImage: no Auth File")
 			}
-			imageID, err = rktFetch(downloadURL, localConfigDir, pullPolicy)
+			imageID, err = rktFetch(downloadURL, localConfigDir, pullPolicy, config.ImageID.String(), locFilename)
 		} else {
 			log.Errorf("rktCreateAuthFile Failed. err: %+v", err)
 		}
@@ -1683,13 +1696,14 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	// get the datastore context
 	dsCtx := constructDatastoreContext(config, status, dst)
 
-	if config.IsContainer {
-		pullPolicy := "new"
-		rktFetchContainerImage(ctx, key, config, status, *dsCtx, pullPolicy)
-		return
-	}
 	locDirname := types.DownloadDirname + "/" + status.ObjType
 	locFilename = locDirname + "/pending"
+
+	if config.IsContainer {
+		pullPolicy := "new"
+		rktFetchContainerImage(ctx, key, config, status, *dsCtx, pullPolicy, locFilename)
+		return
+	}
 
 	// update status to DOWNLOAD STARTED
 	status.State = types.DOWNLOAD_STARTED

@@ -787,28 +787,25 @@ func handleCreate(ctx *verifierContext, objType string,
 		LastUse:          time.Now(),
 		IsContainer:      config.IsContainer,
 		ContainerImageID: config.ContainerImageID,
+		ImageID:          config.ImageID,
 	}
 	publishVerifyImageStatus(ctx, &status)
 
-	// Skip verification steps for Container. Container image verification
-	// is done by rkt fetch itself.. No need to be done here.
-	if !config.IsContainer {
-		ok, size := markObjectAsVerifying(ctx, config, &status)
-		if !ok {
-			log.Errorf("handleCreate fail for %s\n", config.Name)
-			return
-		}
-		status.Size = size
-		publishVerifyImageStatus(ctx, &status)
-
-		if !verifyObjectSha(ctx, config, &status) {
-			log.Errorf("handleCreate fail for %s\n", config.Name)
-			return
-		}
-		publishVerifyImageStatus(ctx, &status)
-
-		markObjectAsVerified(ctx, config, &status)
+	ok, size := markObjectAsVerifying(ctx, config, &status)
+	if !ok {
+		log.Errorf("handleCreate fail for %s\n", config.Name)
+		return
 	}
+	status.Size = size
+	publishVerifyImageStatus(ctx, &status)
+
+	if !verifyObjectSha(ctx, config, &status) {
+		log.Errorf("handleCreate fail for %s\n", config.Name)
+		return
+	}
+	publishVerifyImageStatus(ctx, &status)
+
+	markObjectAsVerified(ctx, config, &status)
 	status.PendingAdd = false
 	status.State = types.DELIVERED
 	publishVerifyImageStatus(ctx, &status)
@@ -826,13 +823,25 @@ func markObjectAsVerifying(ctx *verifierContext,
 	// in DownloadDirname/<objType>/verifier/. Form a shorter name for
 	// DownloadDirname/<objType/>verified/.
 
+	var pendingDirname string
+	var verifierDirname string
+	var pendingFilename string
+	var verifierFilename string
 	objType := status.ObjType
 	downloadDirname := types.DownloadDirname + "/" + objType
-	pendingDirname := downloadDirname + "/pending/" + status.ImageSha256
-	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
+	if status.IsContainer {
+		pendingDirname = downloadDirname + "/pending/" + status.ImageID.String()
+		verifierDirname = downloadDirname + "/verifier/" + status.ImageID.String()
 
-	pendingFilename := pendingDirname + "/" + config.Safename
-	verifierFilename := verifierDirname + "/" + config.Safename
+		pendingFilename = pendingDirname + "/" + status.ContainerImageID + ".aci"
+		verifierFilename = verifierDirname + "/" + status.ContainerImageID + ".aci"
+	} else {
+		pendingDirname = downloadDirname + "/pending/" + status.ImageSha256
+		verifierDirname = downloadDirname + "/verifier/" + status.ImageSha256
+
+		pendingFilename = pendingDirname + "/" + config.Safename
+		verifierFilename = verifierDirname + "/" + config.Safename
+	}
 
 	// Move to verifier directory which is RO
 	// XXX should have dom0 do this and/or have RO mounts
@@ -885,6 +894,9 @@ func markObjectAsVerifying(ctx *verifierContext,
 func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus) bool {
 
+	if status.IsContainer {
+		return true
+	}
 	objType := status.ObjType
 	downloadDirname := types.DownloadDirname + "/" + objType
 	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
@@ -1078,19 +1090,31 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus) {
 
+	var verifierDirname string
+	var verifiedDirname string
+	var verifierFilename string
+	var verifiedFilename string
 	objType := status.ObjType
 	downloadDirname := types.DownloadDirname + "/" + objType
-	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
-	verifiedDirname := downloadDirname + "/verified/" + config.ImageSha256
+	if status.IsContainer {
+		verifierDirname = downloadDirname + "/verifier/" + status.ImageID.String()
+		verifiedDirname = downloadDirname + "/verified/" + status.ImageID.String()
 
-	verifierFilename := verifierDirname + "/" + config.Safename
-	verifiedFilename := verifiedDirname + "/" + config.Safename
+		verifierFilename = verifierDirname + "/" + status.ContainerImageID + ".aci"
+		verifiedFilename = verifiedDirname + "/" + status.ContainerImageID + ".aci"
+	} else {
+		verifierDirname = downloadDirname + "/verifier/" + status.ImageSha256
+		verifiedDirname = downloadDirname + "/verified/" + config.ImageSha256
 
-	// Move directory from DownloadDirname/verifier to
-	// DownloadDirname/verified
-	// XXX should have dom0 do this and/or have RO mounts
-	filename := types.SafenameToFilename(config.Safename)
-	verifiedFilename = verifiedDirname + "/" + filename
+		verifierFilename = verifierDirname + "/" + config.Safename
+		verifiedFilename = verifiedDirname + "/" + config.Safename
+
+		// Move directory from DownloadDirname/verifier to
+		// DownloadDirname/verified
+		// XXX should have dom0 do this and/or have RO mounts
+		filename := types.SafenameToFilename(config.Safename)
+		verifiedFilename = verifiedDirname + "/" + filename
+	}
 	log.Infof("Move from %s to %s\n", verifierFilename, verifiedFilename)
 
 	if _, err := os.Stat(verifierFilename); err != nil {
@@ -1112,10 +1136,12 @@ func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 		if err != nil {
 			log.Fatal(err)
 		}
-		for _, location := range locations {
-			log.Debugf("Identical sha256 (%s) for safenames %s and %s; deleting old\n",
-				config.ImageSha256, location.Name(),
-				config.Safename)
+		if !status.IsContainer {
+			for _, location := range locations {
+				log.Debugf("Identical sha256 (%s) for safenames %s and %s; deleting old\n",
+					config.ImageSha256, location.Name(),
+					config.Safename)
+			}
 		}
 		if err := os.RemoveAll(verifiedDirname); err != nil {
 			log.Fatal(err)
