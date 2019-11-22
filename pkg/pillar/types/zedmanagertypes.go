@@ -303,7 +303,8 @@ func (ssPtr *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 
 // IsCerts checks certificate requirement/availability for a storage object
 func (ssPtr *StorageStatus) IsCertsAvailable(safename string) (bool, error) {
-	if !ssPtr.needsCerts(safename) {
+	if !ssPtr.needsCerts() {
+		log.Debugf("%s, Certs are not required\n", safename)
 		return false, nil
 	}
 	cidx, err := ssPtr.getCertCount(safename)
@@ -328,9 +329,8 @@ func (ssPtr *StorageStatus) GetCertStatus(safename string,
 }
 
 // needsCerts whether certificates are required for the Storage Object
-func (ssPtr *StorageStatus) needsCerts(safename string) bool {
+func (ssPtr *StorageStatus) needsCerts() bool {
 	if len(ssPtr.ImageSignature) == 0 {
-		log.Debugf("%s, Certs are not required\n", safename)
 		return false
 	}
 	return true
@@ -365,7 +365,6 @@ func (ssPtr *StorageStatus) checkCertsStatusForObject(safename string,
 
 	// certificates are still not ready, for processing
 	if certObjStatusPtr == nil {
-		log.Errorf("certObj Status is still not ready for %s\n", safename)
 		return false, "", "", time.Time{}
 	}
 
