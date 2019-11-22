@@ -77,6 +77,7 @@ type GlobalConfig struct {
 	// Dom0MinDiskUsagePercent - Percentage of available storage reserved for
 	// dom0. The rest is available for Apps.
 	Dom0MinDiskUsagePercent uint32
+	IgnoreDiskCheckForApps  bool
 
 	// XXX add max space for downloads?
 	// XXX add max space for running images?
@@ -141,6 +142,7 @@ var GlobalConfigDefaults = GlobalConfig{
 	DefaultRemoteLogLevel: "info", // XXX Should we change to warning?
 
 	Dom0MinDiskUsagePercent: 20,
+	IgnoreDiskCheckForApps:  false,
 }
 
 // Check which values are set and which should come from defaults

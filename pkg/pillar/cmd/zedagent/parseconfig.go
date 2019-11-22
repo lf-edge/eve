@@ -1860,6 +1860,15 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			log.Infof("Set storage.dom0MinDiskUsagePercent to %d",
 				newGlobalConfig.Dom0MinDiskUsagePercent)
 
+		case "storage.apps.ignore.disk.check":
+			newBool, err := strconv.ParseBool(item.Value)
+			if err != nil {
+				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
+					item.Value, key, err)
+				continue
+			}
+			newGlobalConfig.IgnoreDiskCheckForApps = newBool
+
 		default:
 			// Handle agentname items for loglevels
 			newString := item.Value
