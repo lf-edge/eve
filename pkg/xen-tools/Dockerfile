@@ -6,7 +6,7 @@ RUN apk add --no-cache \
     gettext iasl util-linux-dev ncurses-dev glib-dev \
     pixman-dev libaio-dev yajl-dev argp-standalone \
     linux-headers git patch texinfo curl tar libcap-dev \
-    attr-dev flex bison cmake
+    attr-dev flex bison cmake g++ nasm util-linux
 
 # FIXME: this is really ugly -- we need to figure out xen tools dependencies
 RUN [ "$(uname -m)" = "aarch64" ] && apk add --no-cache dtc-dev || :
@@ -39,7 +39,7 @@ RUN mkdir -p /out
 COPY gmp.patch /xen/stubdom
 WORKDIR /xen
 RUN [ "$(uname -m)" = "x86_64" ] && FEATURES="--enable-stubdom --enable-vtpm-stubdom --enable-vtpmmgr-stubdom" ;\
-    ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable-docs --enable-9pfs $FEATURES
+    ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable-docs --enable-9pfs --enable-ovmf $FEATURES
 RUN make && make dist
 RUN dist/install.sh /out
 
