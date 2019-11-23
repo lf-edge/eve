@@ -301,7 +301,7 @@ func (ssPtr *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	return
 }
 
-// IsCerts checks certificate requirement/availability for a storage object
+// IsCertsAvailable checks certificate requirement/availability for a storage object
 func (ssPtr *StorageStatus) IsCertsAvailable(safename string) (bool, error) {
 	if !ssPtr.needsCerts() {
 		log.Debugf("%s, Certs are not required\n", safename)
