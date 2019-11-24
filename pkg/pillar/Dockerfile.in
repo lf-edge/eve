@@ -51,7 +51,7 @@ RUN apk add --no-cache \
     apk-cron coreutils dmidecode sudo libbz2 libuuid ipset \
     libaio logrotate pixman glib curl radvd perl ethtool \
     util-linux e2fsprogs libcrypto1.0 xorriso \
-    python libpcap libffi jq e2fsprogs-extra keyutils libgcc
+    python libpcap libffi jq e2fsprogs-extra keyutils
 
 # The following is for xen-tools
 RUN [ `uname -m` = "aarch64" ] && apk add --no-cache libfdt || :
