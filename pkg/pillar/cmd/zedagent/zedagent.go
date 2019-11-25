@@ -98,6 +98,8 @@ type zedagentContext struct {
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool
+	devInfoTriggerFail        bool
+	devInfoTaskReady          bool
 	rebootReason              string
 	rebootStack               string
 	rebootTime                time.Time
@@ -627,6 +629,11 @@ func Run() {
 	log.Infof("Handling initial verifier Status\n")
 	for !zedagentCtx.verifierRestarted {
 		select {
+		case change := <-subZbootStatus.C:
+			start := agentlog.StartTime()
+			subZbootStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
 		case change := <-subGlobalConfig.C:
 			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
@@ -703,6 +710,9 @@ func Run() {
 		agentlog.StillRunning(agentName)
 		// Need to tickle this since the configTimerTask is not yet started
 		agentlog.StillRunning(agentName + "config")
+
+		//if the trigger publish device info has failed, retry
+		retryTriggerPublishDevInfo(&zedagentCtx)
 	}
 
 	// start the config fetch tasks, when zboot status is ready
@@ -713,6 +723,11 @@ func Run() {
 
 	for {
 		select {
+		case change := <-subZbootStatus.C:
+			start := agentlog.StartTime()
+			subZbootStatus.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
 		case change := <-subGlobalConfig.C:
 			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
@@ -860,17 +875,37 @@ func Run() {
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName)
+
+		//if the trigger publish device info has failed, retry
+		retryTriggerPublishDevInfo(&zedagentCtx)
+	}
+}
+
+// if trigger publish device info has failed, try again
+func retryTriggerPublishDevInfo(ctxPtr *zedagentContext) {
+	if ctxPtr.devInfoTriggerFail && ctxPtr.devInfoTaskReady {
+		log.Infof("Retrying to trigger Publish Device Info\n")
+		ctxPtr.devInfoTriggerFail = false
+		triggerPublishDevInfo(ctxPtr)
 	}
 }
 
 func triggerPublishDevInfo(ctxPtr *zedagentContext) {
 
+	// last publish event has to be complete,
+	// for handling current publish event trigger,
+	// wait until then
+	if ctxPtr.devInfoTriggerFail {
+		return
+	}
 	log.Info("Triggered PublishDeviceInfo")
 	select {
 	case ctxPtr.TriggerDeviceInfo <- struct{}{}:
 		// Do nothing more
 	default:
 		log.Info("Failed to send on PublishDeviceInfo")
+		ctxPtr.devInfoTriggerFail = true
+		ctxPtr.devInfoTaskReady = false
 	}
 }
 
@@ -878,6 +913,8 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
+
+	ctxPtr.devInfoTaskReady = true
 	for {
 		select {
 		case <-triggerDeviceInfo:
@@ -891,6 +928,11 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName + "devinfo")
+
+		// mark self as ready to receive publish trigger again
+		if !ctxPtr.devInfoTaskReady {
+			ctxPtr.devInfoTaskReady = true
+		}
 	}
 }
 
