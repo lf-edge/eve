@@ -903,9 +903,8 @@ func triggerPublishDevInfo(ctxPtr *zedagentContext) {
 	case ctxPtr.TriggerDeviceInfo <- struct{}{}:
 		// Do nothing more
 	default:
-		log.Info("Failed to send on PublishDeviceInfo")
+		log.Errorf("Failed to send on PublishDeviceInfo")
 		ctxPtr.devInfoTriggerFail = true
-		ctxPtr.devInfoTaskReady = false
 	}
 }
 
@@ -918,6 +917,7 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 	for {
 		select {
 		case <-triggerDeviceInfo:
+			ctxPtr.devInfoTaskReady = false
 			start := agentlog.StartTime()
 			log.Info("deviceInfoTask got message")
 
