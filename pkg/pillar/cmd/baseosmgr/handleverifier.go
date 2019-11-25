@@ -58,7 +58,7 @@ func createVerifierConfig(ctx *baseOsMgrContext, uuidStr string, objType string,
 
 	// check the certificate files, if not present,
 	// we can not start verification
-	if checkCerts {
+	if checkCerts && objType == types.BaseOsObj {
 		certObjStatus := lookupCertObjStatus(ctx, uuidStr)
 		ret, err := ss.IsCertsAvailable(safename)
 		if err != nil {
