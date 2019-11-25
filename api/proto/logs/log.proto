@@ -16,6 +16,8 @@ message LogEntry {
     uint64 msgid = 5;    // monotonically increasing number (detect drops)
     map <string, string> tags = 6; // additional meta info <key,value>
     google.protobuf.Timestamp timestamp = 7; // timestamp of the msg
+    string filename = 8;
+    string function = 9;
 }
 
 // This is the request payload for POST /api/v1/edgeDevice/logs

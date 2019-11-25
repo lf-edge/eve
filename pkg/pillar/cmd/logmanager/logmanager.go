@@ -8,6 +8,15 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"os"
+	dbg "runtime/debug"
+	"strings"
+	"sync"
+	"time"
+	"unicode/utf8"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/google/go-cmp/cmp"
@@ -24,14 +33,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"io"
-	"io/ioutil"
-	"os"
-	dbg "runtime/debug"
-	"strings"
-	"sync"
-	"time"
-	"unicode/utf8"
 )
 
 const (
@@ -76,6 +77,8 @@ type logEntry struct {
 	source    string // basename of filename?
 	iid       string // XXX e.g. PID - where do we get it from?
 	content   string // One line
+	filename  string // file name that generated the logmsg
+	function  string // function name that generated the log msg
 	timestamp time.Time
 }
 
@@ -612,6 +615,8 @@ func HandleLogEvent(event logEntry, reportLogs *logs.LogBundle, counter int) {
 	logDetails.Source = event.source
 	logDetails.Iid = event.iid
 	logDetails.Msgid = uint64(msgId)
+	logDetails.Filename = event.filename
+	logDetails.Function = event.function
 	oldLen := int64(proto.Size(reportLogs))
 	reportLogs.Log = append(reportLogs.Log, logDetails)
 	newLen := int64(proto.Size(reportLogs))
@@ -972,6 +977,8 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 				content:   loginfo.Time + ": " + loginfo.Msg,
 				severity:  loginfo.Level,
 				timestamp: timestamp,
+				function:  loginfo.Function,
+				filename:  loginfo.Filename,
 			}
 			lastLevel = int(level)
 		} else {
