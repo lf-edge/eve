@@ -5,6 +5,7 @@ package baseosmgr
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
