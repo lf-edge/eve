@@ -873,7 +873,7 @@ func Run() {
 // if trigger publish device info has failed, try again
 func retryTriggerPublishDevInfo(ctxPtr *zedagentContext) {
 	if ctxPtr.devInfoTriggerFail && ctxPtr.devInfoTaskReady {
-		log.Infof("Retrying to trigger Publish Device Info\n")
+		log.Infof("Retrying trigger PublishDeviceInfo\n")
 		ctxPtr.devInfoTriggerFail = false
 		triggerPublishDevInfo(ctxPtr)
 	}
