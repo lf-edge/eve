@@ -148,11 +148,12 @@ func MaybeRemoveVerifierConfigSha256(ctx *baseOsMgrContext, objType string,
 	log.Infof("MaybeRemoveVerifierConfigSha256 found safename %s\n",
 		m.Safename)
 
-	m.RefCount -= 1
-	if m.RefCount < 0 {
-		log.Fatalf("MaybeRemoveVerifyImageConfigSha256: negative RefCount %d for %s\n",
-			m.RefCount, sha256)
+	if m.RefCount == 0 {
+		log.Fatalf("MaybeRemoveVerifyImageConfigSha256: RefCount for "+
+			"objType: %s, sha256: %s already zero. Cannot decrement.",
+			objType, sha256)
 	}
+	m.RefCount -= 1
 	log.Infof("MaybeRemoveVerifierConfigSha256 remaining RefCount %d for %s\n",
 		m.RefCount, sha256)
 	publishVerifierConfig(ctx, objType, m)
