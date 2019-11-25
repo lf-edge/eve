@@ -138,11 +138,11 @@ func removeDownloaderConfig(ctx *baseOsMgrContext, objType string, safename stri
 			objType, safename)
 		return
 	}
-	config.RefCount -= 1
-	if config.RefCount < 0 {
-		log.Fatalf("removeDownloaderConfig(%s/%s): negative RefCount %d\n",
-			objType, safename, config.RefCount)
+	if config.RefCount == 0 {
+		log.Fatalf("removeDownloaderConfig(%s/%s): RefCount already 0. Cannot"+
+			" decrement it.", objType, safename)
 	}
+	config.RefCount -= 1
 	log.Infof("removeDownloaderConfig(%s/%s) decrementing refCount to %d\n",
 		objType, safename, config.RefCount)
 	publishDownloaderConfig(ctx, objType, config)
