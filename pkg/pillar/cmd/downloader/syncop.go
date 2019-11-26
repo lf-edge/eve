@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -43,7 +44,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	if config.IsContainer {
 		pullPolicy := "new"
-		locFilename = filepath.Join(locFilename, config.ImageID)
+		locFilename = filepath.Join(locFilename, config.ImageID.String())
 		if _, err := os.Stat(locFilename); err != nil {
 			log.Debugf("Create %s\n", locFilename)
 			if err = os.MkdirAll(locFilename, 0755); err != nil {
