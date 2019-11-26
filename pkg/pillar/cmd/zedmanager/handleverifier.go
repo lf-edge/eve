@@ -44,7 +44,7 @@ func lookupVerifyImageConfigSha256(ctx *zedmanagerContext,
 
 // If checkCerts is set this can return false. Otherwise not.
 func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, uuidStr string, safename string,
-	ss *types.StorageStatus, checkCerts bool) bool {
+	ss types.StorageStatus, checkCerts bool) (bool, types.ErrorInfo) {
 
 	log.Infof("MaybeAddVerifyImageConfig for %s, checkCerts: %v, "+
 		"isContainer: %v\n", safename, checkCerts, ss.IsContainer)
@@ -58,13 +58,8 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, uuidStr string, safename 
 			log.Fatalf("%s, invalid certificate configuration", safename)
 		}
 		if ret {
-			ret, errStr, errSrc, errTime := ss.GetCertStatus(safename, certObjStatus)
-			if errStr != "" {
-				ss.SetErrorInfo(errStr, errSrc, errTime)
-				return false
-			}
-			if !ret {
-				return false
+			if ret, errInfo := ss.HandleCertStatus(safename, *certObjStatus); !ret {
+				return false, errInfo
 			}
 		}
 	}
@@ -95,7 +90,7 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, uuidStr string, safename 
 		log.Debugf("MaybeAddVerifyImageConfig - config: %+v\n", n)
 	}
 	log.Infof("MaybeAddVerifyImageConfig done for %s\n", safename)
-	return true
+	return true, types.ErrorInfo{}
 }
 
 func MaybeRemoveVerifyImageConfigSha256(ctx *zedmanagerContext, sha256 string) {
