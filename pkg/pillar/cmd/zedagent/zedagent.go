@@ -98,8 +98,8 @@ type zedagentContext struct {
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool
-	devInfoTriggerFail        bool
-	devInfoTaskReady          bool
+	devInfoTriggerFail        bool // trigger for publish devInfo has failed
+	devInfoTaskProcessing     bool // devInfoTask is preparing/publishing devInfo
 	rebootReason              string
 	rebootStack               string
 	rebootTime                time.Time
@@ -883,7 +883,7 @@ func Run() {
 
 // if trigger publish device info has failed, try again
 func retryTriggerPublishDevInfo(ctxPtr *zedagentContext) {
-	if ctxPtr.devInfoTriggerFail && ctxPtr.devInfoTaskReady {
+	if ctxPtr.devInfoTriggerFail && !ctxPtr.devInfoTaskProcessing {
 		log.Infof("Retrying trigger PublishDeviceInfo\n")
 		ctxPtr.devInfoTriggerFail = false
 		triggerPublishDevInfo(ctxPtr)
@@ -892,9 +892,8 @@ func retryTriggerPublishDevInfo(ctxPtr *zedagentContext) {
 
 func triggerPublishDevInfo(ctxPtr *zedagentContext) {
 
-	// last publish event has to be complete,
-	// for handling current publish event trigger,
-	// wait until then
+	// last trigger event has failed, wait until
+	// the processing is over,
 	if ctxPtr.devInfoTriggerFail {
 		return
 	}
@@ -913,11 +912,10 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 
-	ctxPtr.devInfoTaskReady = true
 	for {
 		select {
 		case <-triggerDeviceInfo:
-			ctxPtr.devInfoTaskReady = false
+			ctxPtr.devInfoTaskProcessing = true
 			start := agentlog.StartTime()
 			log.Info("deviceInfoTask got message")
 
@@ -929,9 +927,9 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 		}
 		agentlog.StillRunning(agentName + "devinfo")
 
-		// mark self as ready to receive publish trigger again
-		if !ctxPtr.devInfoTaskReady {
-			ctxPtr.devInfoTaskReady = true
+		// processing is over, reset
+		if ctxPtr.devInfoTaskProcessing {
+			ctxPtr.devInfoTaskProcessing = false
 		}
 	}
 }
