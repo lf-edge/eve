@@ -696,9 +696,14 @@ func createConfigItemStatus(
 	// Copy ConfigItems
 	cfgItemsPtr.ConfigItems = make(map[string]*info.ZInfoConfigItem)
 	for key, statusCfgItem := range status.ConfigItems {
-		cfgItemsPtr.ConfigItems[key] = &info.ZInfoConfigItem{
-			Value: statusCfgItem.Value,
-			Error: statusCfgItem.Err.Error()}
+		if statusCfgItem.Err != nil {
+			cfgItemsPtr.ConfigItems[key] = &info.ZInfoConfigItem{
+				Value: statusCfgItem.Value,
+				Error: statusCfgItem.Err.Error()}
+		} else {
+			cfgItemsPtr.ConfigItems[key] = &info.ZInfoConfigItem{
+				Value: statusCfgItem.Value}
+		}
 	}
 
 	// Copy Unknown Config Items
