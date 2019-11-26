@@ -6,9 +6,9 @@
 package types
 
 import (
-	"time"
-
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
+	"time"
 )
 
 // XXX more than images; rename type and clean up comments
@@ -27,11 +27,12 @@ type VerifyImageConfig struct {
 	Name             string // For logging output
 	ImageSha256      string // sha256 of immutable image
 	RefCount         uint
-	CertificateChain []string //name of intermediate certificates
-	ImageSignature   []byte   //signature of image
-	SignatureKey     string   //certificate containing public key
-	IsContainer      bool     // Is this Domain for a Container?
-	ContainerImageID string   // Container Image ID
+	CertificateChain []string  //name of intermediate certificates
+	ImageSignature   []byte    //signature of image
+	SignatureKey     string    //certificate containing public key
+	IsContainer      bool      // Is this Domain for a Container?
+	ContainerImageID string    // Container Image ID
+	ImageID          uuid.UUID // UUID of the image
 }
 
 func (config VerifyImageConfig) Key() string {
@@ -66,6 +67,7 @@ type VerifyImageStatus struct {
 	RefCount         uint
 	LastUse          time.Time // When RefCount dropped to zero
 	Expired          bool      // Handshake to client
+	ImageID          uuid.UUID // UUID of the image
 }
 
 func (status VerifyImageStatus) Key() string {

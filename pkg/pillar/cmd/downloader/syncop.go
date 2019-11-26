@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -38,13 +39,21 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	// by default the metricsURL _is_ the DownloadURL, but can override in switch
 	metricsUrl := dsCtx.DownloadURL
 
-	if config.IsContainer {
-		pullPolicy := "new"
-		rktFetchContainerImage(ctx, key, config, status, *dsCtx, pullPolicy)
-		return
-	}
 	locDirname := types.DownloadDirname + "/" + status.ObjType
 	locFilename = locDirname + "/pending"
+
+	if config.IsContainer {
+		pullPolicy := "new"
+		locFilename = filepath.Join(locFilename, config.ImageID.String())
+		if _, err := os.Stat(locFilename); err != nil {
+			log.Debugf("Create %s\n", locFilename)
+			if err = os.MkdirAll(locFilename, 0755); err != nil {
+				log.Fatal(err)
+			}
+		}
+		rktFetchContainerImage(ctx, key, config, status, *dsCtx, pullPolicy, locFilename)
+		return
+	}
 
 	// update status to DOWNLOAD STARTED
 	status.State = types.DOWNLOAD_STARTED
