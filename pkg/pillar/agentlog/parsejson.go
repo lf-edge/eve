@@ -10,9 +10,11 @@ import (
 // Extend this structure with optional specific tags from
 // log.WithFields
 type Loginfo struct {
-	Level string `json:"level"`
-	Time  string `json:"time"` // RFC3339 with Nanoseconds
-	Msg   string `json:"msg"`
+	Level    string `json:"level"`
+	Time     string `json:"time"` // RFC3339 with Nanoseconds
+	Msg      string `json:"msg"`
+	Function string `json:"func"`
+	Filename string `json:"file"`
 }
 
 // Returns loginfo, ok

@@ -279,7 +279,7 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 			return err
 		}
 		totalAppDiskSize += appDiskSize
-		appDiskSizeList += fmt.Sprintf("App: %s (Size: %d),\n",
+		appDiskSizeList += fmt.Sprintf("AppUUID: %s (Size: %d),\n",
 			iterStatus.UUIDandVersion.UUID.String(), appDiskSize)
 	}
 	deviceDiskUsage, err := disk.Usage(types.PersistDir)
@@ -290,15 +290,18 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 		return err
 	}
 	deviceDiskSize := deviceDiskUsage.Total
-	allowedDeviceDiskSizeForApps := float64(deviceDiskSize) *
-		float64(ctxPtr.globalConfig.Dom0MinDiskUsagePercent) * 0.01
-	if allowedDeviceDiskSizeForApps < float64(totalAppDiskSize) {
+	diskReservedForDom0 := uint64(float64(deviceDiskSize) *
+		(float64(ctxPtr.globalConfig.Dom0MinDiskUsagePercent) * 0.01))
+	allowedDeviceDiskSizeForApps := deviceDiskSize - diskReservedForDom0
+	if allowedDeviceDiskSizeForApps < totalAppDiskSize {
 		err := fmt.Errorf("Disk space not available for app - "+
-			"deviceDiskSize: %+v, "+
-			"allowedDeviceDiskSizeForApps: %+v, totalAppDiskSize: %+v, "+
-			"AppDiskSizeList: %s",
-			deviceDiskSize, allowedDeviceDiskSizeForApps, totalAppDiskSize,
-			appDiskSizeList)
+			"Total Device Disk Size: %+v\n"+
+			"Disk Size Reserved For Dom0: %+v\n"+
+			"Allowed Disk Size For Apps: %+v\n"+
+			"Total Disk Size Used By Apps: %+v\n"+
+			"App Disk Size List:\n%s",
+			deviceDiskSize, diskReservedForDom0, allowedDeviceDiskSizeForApps,
+			totalAppDiskSize, appDiskSizeList)
 		log.Errorf("checkDiskSize: err:%s", err.Error())
 		return err
 	}

@@ -647,7 +647,8 @@ func handleCreate(ctx *downloaderContext, objType string,
 	// XXX RefCount -> 0 should keep it reserved.
 	kb := types.RoundupToKB(config.Size)
 	if !tryReserveSpace(ctx, &status, kb) {
-		errString := fmt.Sprintf("Would exceed remaining space %d vs %d\n",
+		errString := fmt.Sprintf("Would exceed remaining space. "+
+			"SizeOfAppImage: %d, RemainingSpace: %d\n",
 			kb, ctx.globalStatus.RemainingSpace)
 		log.Errorln(errString)
 		status.PendingAdd = false
