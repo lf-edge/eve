@@ -1,4 +1,4 @@
-From c43301a359d39273e669cb9f166217a791781705 Mon Sep 17 00:00:00 2001
+From 1d4ebd21736ee97c8055ef25e69c4a1156041303 Mon Sep 17 00:00:00 2001
 From: bharani-zededa <bharani@zededa.com>
 Date: Sun, 24 Nov 2019 15:02:57 -0800
 Subject: [PATCH] Set working directory for containers
@@ -7,8 +7,8 @@ Subject: [PATCH] Set working directory for containers
  build.sh           |  2 +-
  files/launcher.sh  | 12 ++++++++++++
  files/run          |  4 ++++
- kernel/init-initrd |  7 ++++++-
- 4 files changed, 23 insertions(+), 2 deletions(-)
+ kernel/init-initrd |  5 ++++-
+ 4 files changed, 21 insertions(+), 2 deletions(-)
  create mode 100644 files/launcher.sh
 
 diff --git a/build.sh b/build.sh
@@ -65,10 +65,10 @@ index 482c0ef..0ce4fa2 100755
  xl create $gargs $outconfig $STAGE1_XL_OPTS
  domname=$(sed -ne '/^name *=/s/^.*"\(.*\)"/\1/p' < "$outconfig")
 diff --git a/kernel/init-initrd b/kernel/init-initrd
-index 66d8b54..c00f05f 100755
+index 66d8b54..a6eaa62 100755
 --- a/kernel/init-initrd
 +++ b/kernel/init-initrd
-@@ -74,7 +74,12 @@ then
+@@ -74,7 +74,10 @@ then
      ip link set dev eth0 up
      udhcpc --interface=eth0 --script=/mnt/udhcpc_script.sh
  fi
@@ -79,9 +79,7 @@ index 66d8b54..c00f05f 100755
  echo "Executing $cmd"
  source /mnt/environment
 -eval chroot /mnt/rootfs $cmd
-+#export -p
 +eval chroot /mnt/rootfs /launcher.sh $cmd
-+#eval chroot /mnt/rootfs /bin/sh
 -- 
 2.11.0
 
