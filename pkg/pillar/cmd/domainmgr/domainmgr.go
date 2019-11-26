@@ -1957,7 +1957,9 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 	if status.IsContainer {
 		// Use rkt tool
 		log.Infof("Using rkt tool ... ContainerImageID - %s\n", status.ContainerImageID)
-		domainID, podUUID, err = rktRun(status.DomainName, status.ImageID.String(), status.ContainerImageID, filename)
+		aciFileName := filepath.Join(types.VerifiedAppImgDirname, status.ImageID.String(), status.ContainerImageID)
+		aciFileName = aciFileName + ".aci"
+		domainID, podUUID, err = rktRun(status.DomainName, status.ContainerImageID, filename, aciFileName)
 	} else {
 		// Use xl tool
 		log.Infof("Using xl tool ... xenCfgFilename - %s\n", filename)
@@ -1969,7 +1971,7 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 
 // Launch app/container thru rkt
 // returns domainID, podUUID and error
-func rktRun(domainName string, imageUUID string, ContainerImageID string, xenCfgFilename string) (int, string, error) {
+func rktRun(domainName string, ContainerImageID string, xenCfgFilename string, aciFileName string) (int, string, error) {
 
 	// STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=xenCfgFilename rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file
 	log.Infof("rktRun %s - ContainerImageID %s\n", domainName, ContainerImageID)
@@ -1978,7 +1980,7 @@ func rktRun(domainName string, imageUUID string, ContainerImageID string, xenCfg
 		"--dir=" + types.PersistRktDataDir,
 		"--insecure-options=image",
 		"run",
-		types.VerifiedAppImgDirname + "/" + imageUUID + "/" + ContainerImageID + ".aci",
+		aciFileName,
 		"--stage1-path=/usr/sbin/stage1-xen.aci",
 		"--uuid-file-save=" + uuidFile,
 	}
