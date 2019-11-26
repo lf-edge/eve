@@ -248,7 +248,7 @@ func RoundupToKB(b uint64) uint64 {
 	return (b + 1023) / 1024
 }
 
-// ErrorInfo: errorInfo holder structure
+// ErrorInfo errorInfo holder structure
 type ErrorInfo struct {
 	Error       string
 	ErrorSource string
@@ -285,25 +285,49 @@ type StorageStatus struct {
 }
 
 // UpdateFromStorageConfig sets up StorageStatus based on StorageConfig struct
-func (ssPtr *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
-	ssPtr.DatastoreID = sc.DatastoreID
-	ssPtr.Name = sc.Name
-	ssPtr.NameIsURL = sc.NameIsURL
-	ssPtr.ImageSha256 = sc.ImageSha256
-	ssPtr.Size = sc.Size
-	ssPtr.CertificateChain = sc.CertificateChain
-	ssPtr.ImageSignature = sc.ImageSignature
-	ssPtr.SignatureKey = sc.SignatureKey
-	ssPtr.ReadOnly = sc.ReadOnly
-	ssPtr.Preserve = sc.Preserve
-	ssPtr.Format = sc.Format
-	ssPtr.Maxsizebytes = sc.Maxsizebytes
-	ssPtr.Devtype = sc.Devtype
-	ssPtr.Target = sc.Target
-	if ssPtr.Format == "container" {
-		ssPtr.IsContainer = true
+func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
+	ss.DatastoreID = sc.DatastoreID
+	ss.Name = sc.Name
+	ss.NameIsURL = sc.NameIsURL
+	ss.ImageSha256 = sc.ImageSha256
+	ss.Size = sc.Size
+	ss.CertificateChain = sc.CertificateChain
+	ss.ImageSignature = sc.ImageSignature
+	ss.SignatureKey = sc.SignatureKey
+	ss.ReadOnly = sc.ReadOnly
+	ss.Preserve = sc.Preserve
+	ss.Format = sc.Format
+	ss.Maxsizebytes = sc.Maxsizebytes
+	ss.Devtype = sc.Devtype
+	ss.Target = sc.Target
+	if ss.Format == "container" {
+		ss.IsContainer = true
 	}
 	return
+}
+
+// GetErrorInfo sets the errorInfo for the Storage Object
+func (ss StorageStatus) GetErrorInfo() ErrorInfo {
+	errInfo := ErrorInfo{
+		Error:       ss.Error,
+		ErrorSource: ss.ErrorSource,
+		ErrorTime:   ss.ErrorTime,
+	}
+	return errInfo
+}
+
+// SetErrorInfo sets the errorInfo for the Storage Object
+func (ss *StorageStatus) SetErrorInfo(errInfo ErrorInfo) {
+	ss.Error = errInfo.Error
+	ss.ErrorTime = errInfo.ErrorTime
+	ss.ErrorSource = errInfo.ErrorSource
+}
+
+// ClearErrorInfo clears errorInfo for the Storage Object
+func (ss *StorageStatus) ClearErrorInfo() {
+	ss.Error = ""
+	ss.ErrorSource = ""
+	ss.ErrorTime = time.Time{}
 }
 
 // IsCertsAvailable checks certificate requirement/availability for a storage object
@@ -418,30 +442,6 @@ func (ss StorageStatus) checkCertsForObject() (bool, ErrorInfo) {
 		// XXX check for valid or non-zero length?
 	}
 	return true, ErrorInfo{}
-}
-
-// GetErrorInfo sets the errorInfo for the Storage Object
-func (ss StorageStatus) GetErrorInfo() ErrorInfo {
-	errInfo := ErrorInfo{
-		Error:       ss.Error,
-		ErrorSource: ss.ErrorSource,
-		ErrorTime:   ss.ErrorTime,
-	}
-	return errInfo
-}
-
-// SetErrorInfo sets the errorInfo for the Storage Object
-func (ssPtr *StorageStatus) SetErrorInfo(errInfo ErrorInfo) {
-	ssPtr.Error = errInfo.Error
-	ssPtr.ErrorTime = errInfo.ErrorTime
-	ssPtr.ErrorSource = errInfo.ErrorSource
-}
-
-// ClearErrorInfo clears errorInfo for the Storage Object
-func (ssPtr *StorageStatus) ClearErrorInfo() {
-	ssPtr.Error = ""
-	ssPtr.ErrorSource = ""
-	ssPtr.ErrorTime = time.Time{}
 }
 
 // The Intermediate can be a byte sequence of PEM certs
