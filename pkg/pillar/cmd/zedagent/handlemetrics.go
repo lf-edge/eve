@@ -63,7 +63,7 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	log.Infoln("starting report metrics timer task")
 	publishMetrics(ctx, iteration)
 
-	interval := time.Duration(globalConfig.MetricInterval) * time.Second
+	interval := time.Duration(ctx.globalConfig.MetricInterval) * time.Second
 	max := float64(interval)
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
@@ -90,13 +90,13 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 
 // Called when globalConfig changes
 // Assumes the caller has verifier that the interval has changed
-func updateMetricsTimer(tickerHandle interface{}) {
+func updateMetricsTimer(metricInterval uint32, tickerHandle interface{}) {
 
 	if tickerHandle == nil {
 		log.Warnf("updateMetricsTimer: no metricsTickerHandle yet")
 		return
 	}
-	interval := time.Duration(globalConfig.MetricInterval) * time.Second
+	interval := time.Duration(metricInterval) * time.Second
 	log.Infof("updateMetricsTimer() change to %v\n", interval)
 	max := float64(interval)
 	min := max * 0.3
@@ -688,6 +688,29 @@ func getDataSecAtRestInfo(ctx *zedagentContext) *info.DataSecAtRest {
 	return ReportDataSecAtRestInfo
 }
 
+func createConfigItemStatus(
+	status types.GlobalStatus) *info.ZInfoConfigItemStatus {
+
+	cfgItemsPtr := new(info.ZInfoConfigItemStatus)
+
+	// Copy ConfigItems
+	cfgItemsPtr.ConfigItems = make(map[string]*info.ZInfoConfigItem)
+	for key, statusCfgItem := range status.ConfigItems {
+		cfgItemsPtr.ConfigItems[key] = &info.ZInfoConfigItem{
+			Value: statusCfgItem.Value,
+			Error: statusCfgItem.Err.Error()}
+	}
+
+	// Copy Unknown Config Items
+	cfgItemsPtr.UnknownConfigItems = make(map[string]*info.ZInfoConfigItem)
+	for key, statusUnknownCfgItem := range status.UnknownConfigItems {
+		cfgItemsPtr.UnknownConfigItems[key] = &info.ZInfoConfigItem{
+			Value: statusUnknownCfgItem.Value,
+			Error: statusUnknownCfgItem.Err.Error()}
+	}
+	return cfgItemsPtr
+}
+
 // This function is called per change, hence needs to try over all management ports
 func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	aa := ctx.assignableAdapters
@@ -1043,6 +1066,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	if x, ok := ReportInfo.GetInfoContent().(*info.ZInfoMsg_Dinfo); ok {
 		x.Dinfo = ReportDeviceInfo
 	}
+
+	// Add ConfigItems to the DeviceInfo
+	ReportDeviceInfo.ConfigItemStatus = createConfigItemStatus(ctx.globalStatus)
 
 	log.Debugf("PublishDeviceInfoToZedCloud sending %v\n", ReportInfo)
 	data, err := proto.Marshal(ReportInfo)

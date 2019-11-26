@@ -211,6 +211,16 @@ message DataSecAtRest {
     repeated VaultInfo vaultList = 3; // per-Vault Info
 }
 
+message ZInfoConfigItem {
+    string value = 1;
+    string error = 2;
+}
+
+message ZInfoConfigItemStatus {
+    map<string, ZInfoConfigItem> configItems = 1;
+    map<string, ZInfoConfigItem> unknownConfigItems = 2;
+}
+
 // Base device info, as discovered by Xen (or OS on bare metal)
 message ZInfoDevice {
   string machineArch = 4;
@@ -243,6 +253,8 @@ message ZInfoDevice {
   string HSMInfo = 27; //Information about HSM like TPM vendor, TEE type etc.
   string lastRebootStack = 28;
   DataSecAtRest dataSecAtRestInfo = 29; //Info about Data At Rest Security
+
+  ZInfoConfigItemStatus configItemStatus = 31;
 }
 
 // The current and fallback system adapter information

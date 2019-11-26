@@ -106,6 +106,8 @@ type zedagentContext struct {
 	devicePortConfigList      types.DevicePortConfigList
 	remainingTestTime         time.Duration
 	physicalIoAdapterMap      map[string]types.PhysicalIOAdapter
+	globalConfig              types.GlobalConfig
+	globalStatus              types.GlobalStatus
 }
 
 var debug = false
@@ -138,7 +140,8 @@ func Run() {
 		os.Exit(1)
 	}
 	if parse != "" {
-		res, config := readValidateConfig(parse)
+		res, config := readValidateConfig(
+			types.GlobalConfigDefaults.StaleConfigTime, parse)
 		if !res {
 			fmt.Printf("Failed to parse %s\n", parse)
 			os.Exit(1)
@@ -166,6 +169,14 @@ func Run() {
 
 	triggerDeviceInfo := make(chan struct{}, 1)
 	zedagentCtx := zedagentContext{TriggerDeviceInfo: triggerDeviceInfo}
+	zedagentCtx.globalConfig = types.GlobalConfigDefaults
+	zedagentCtx.globalStatus.ConfigItems = make(
+		map[string]types.ConfigItemStatus)
+	zedagentCtx.globalStatus.UpdateItemValuesFromGlobalConfig(
+		zedagentCtx.globalConfig)
+	zedagentCtx.globalStatus.UnknownConfigItems = make(
+		map[string]types.ConfigItemStatus)
+
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 
 	// Run a periodic timer so we always update StillRunning
@@ -177,7 +188,7 @@ func Run() {
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
-	handleInit()
+	handleInit(zedagentCtx.globalConfig.NetworkSendTimeout)
 
 	// Context to pass around
 	getconfigCtx := getconfigContext{}
@@ -923,9 +934,9 @@ func handleZbootRestarted(ctxArg interface{}, done bool) {
 	}
 }
 
-func handleInit() {
+func handleInit(networkSendTimeout uint32) {
 	initializeDirs()
-	handleConfigInit()
+	handleConfigInit(networkSendTimeout)
 }
 
 func initializeDirs() {
@@ -1150,7 +1161,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		sane := types.EnforceGlobalConfigMinimums(updated)
 		log.Infof("handleGlobalConfigModify: enforced minimums %v\n",
 			cmp.Diff(updated, sane))
-		globalConfig = sane
+		ctx.globalConfig = sane
 		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
@@ -1167,7 +1178,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	globalConfig = types.GlobalConfigDefaults
+	ctx.globalConfig = types.GlobalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 

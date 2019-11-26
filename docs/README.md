@@ -1,14 +1,14 @@
 # Design and implementation of Edge Virtualization Engine
 
 1. [Introduction](#introduction)
-2. [Edge Containers](#edge-containers)
-3. [Security](#security)
-4. [EVE Controller](#eve-controller)
-5. [Runtime Configuration](#runtime-configuration)
-6. [Installing EVE on Edge Nodes](#installing-eve-on-edge-nodes)
-7. [Runtime Lifecycle](#runtime-lifecycle)
-8. [Building EVE](#building-eve)
-9. [EVE Internals](#eve-internals)
+1. [Edge Containers](#edge-containers)
+1. [Security](#security)
+1. [EVE Controller](#eve-controller)
+1. [Runtime Configuration](#runtime-configuration)
+1. [Installing EVE on Edge Nodes](#installing-eve-on-edge-nodes)
+1. [Runtime Lifecycle](#runtime-lifecycle)
+1. [Building EVE](#building-eve)
+1. [EVE Internals](#eve-internals)
 
 ## Introduction
 
@@ -79,6 +79,8 @@ Docker has [OCI Containers](https://www.opencontainers.org) - EVE has Edge Conta
 You can read a detailed specification of [Edge Containers](ECOS.md) and you should
 expect them to be available for broad Linux Foundation adoption once we are ready
 for formal submission of a self-contained specification.
+
+The ECO installation and initialization process is available [here](./ECO-INIT.md).
 
 ## Security
 

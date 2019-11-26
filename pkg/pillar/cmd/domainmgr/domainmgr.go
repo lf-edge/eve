@@ -684,7 +684,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		if status.Activated && !isQemuRunning(status.DomainId) {
 			errStr := fmt.Sprintf("verifyStatus(%s) qemu crashed",
 				status.Key())
-			log.Warnln(errStr)
+			log.Errorf(errStr)
 			status.LastErr = "qemu crashed - please restart application instance"
 			status.LastErrTime = time.Now()
 			status.Activated = false

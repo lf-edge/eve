@@ -29,14 +29,10 @@ func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
 	found := false
-	for key, st := range items {
+	for _, st := range items {
 		status := cast.CastAppInstanceStatus(st)
-		if status.Key() != key {
-			log.Errorf("updateAIStatusWithStorageSafename key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
-		log.Debugf("Processing AppInstanceConfig for UUID %s\n",
+		log.Debugf("updateAIStatusWithStorageSafename: Processing "+
+			"AppInstanceConfig for UUID %s\n",
 			status.UUIDandVersion.UUID)
 		for ssIndx := range status.StorageStatusList {
 			ssPtr := &status.StorageStatusList[ssIndx]
@@ -69,20 +65,16 @@ func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
 	}
 }
 
-// Find all the config which refer to this safename.
-func updateAIStatusSha(ctx *zedmanagerContext, sha string) {
+// updateAIStatusWithImageSha
+//  Update AI Sattus for all App Instances that use the specified image
+func updateAIStatusWithImageSha(ctx *zedmanagerContext, sha string) {
 
-	log.Infof("updateAIStatusSha for %s\n", sha)
+	log.Infof("updateAIStatusWithImageSha for %s\n", sha)
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
 	found := false
-	for key, st := range items {
+	for _, st := range items {
 		status := cast.CastAppInstanceStatus(st)
-		if status.Key() != key {
-			log.Errorf("updateAIStatusSha key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
 		log.Debugf("Processing AppInstanceConfig for UUID %s\n",
 			status.UUIDandVersion.UUID)
 		for _, ss := range status.StorageStatusList {
@@ -91,11 +83,15 @@ func updateAIStatusSha(ctx *zedmanagerContext, sha string) {
 					ss.Name, sha)
 				updateAIStatusUUID(ctx, status.Key())
 				found = true
+				break
 			}
+		}
+		if found {
+			break
 		}
 	}
 	if !found {
-		log.Warnf("updateAIStatusSha for %s not found\n", sha)
+		log.Warnf("updateAIStatusWithImageSha for %s not found\n", sha)
 	}
 }
 
@@ -263,6 +259,12 @@ func updateOrRemove(ctx *zedmanagerContext, status types.AppInstanceStatus) {
 func checkDiskSize(ctxPtr *zedmanagerContext) error {
 
 	var totalAppDiskSize uint64
+
+	if ctxPtr.globalConfig.IgnoreDiskCheckForApps {
+		log.Debugf("Ignoring diskchecks for Apps")
+		return nil
+	}
+
 	appDiskSizeList := ""
 	pub := ctxPtr.pubAppInstanceStatus
 	items := pub.GetAll()
@@ -279,7 +281,7 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 			return err
 		}
 		totalAppDiskSize += appDiskSize
-		appDiskSizeList += fmt.Sprintf("App: %s (Size: %d),\n",
+		appDiskSizeList += fmt.Sprintf("AppUUID: %s (Size: %d),\n",
 			iterStatus.UUIDandVersion.UUID.String(), appDiskSize)
 	}
 	deviceDiskUsage, err := disk.Usage(types.PersistDir)
@@ -290,15 +292,18 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 		return err
 	}
 	deviceDiskSize := deviceDiskUsage.Total
-	allowedDeviceDiskSizeForApps := float64(deviceDiskSize) *
-		float64(ctxPtr.globalConfig.Dom0MinDiskUsagePercent) * 0.01
-	if allowedDeviceDiskSizeForApps < float64(totalAppDiskSize) {
+	diskReservedForDom0 := uint64(float64(deviceDiskSize) *
+		(float64(ctxPtr.globalConfig.Dom0MinDiskUsagePercent) * 0.01))
+	allowedDeviceDiskSizeForApps := deviceDiskSize - diskReservedForDom0
+	if allowedDeviceDiskSizeForApps < totalAppDiskSize {
 		err := fmt.Errorf("Disk space not available for app - "+
-			"deviceDiskSize: %+v, "+
-			"allowedDeviceDiskSizeForApps: %+v, totalAppDiskSize: %+v, "+
-			"AppDiskSizeList: %s",
-			deviceDiskSize, allowedDeviceDiskSizeForApps, totalAppDiskSize,
-			appDiskSizeList)
+			"Total Device Disk Size: %+v\n"+
+			"Disk Size Reserved For Dom0: %+v\n"+
+			"Allowed Disk Size For Apps: %+v\n"+
+			"Total Disk Size Used By Apps: %+v\n"+
+			"App Disk Size List:\n%s",
+			deviceDiskSize, diskReservedForDom0, allowedDeviceDiskSizeForApps,
+			totalAppDiskSize, appDiskSizeList)
 		log.Errorf("checkDiskSize: err:%s", err.Error())
 		return err
 	}
@@ -388,6 +393,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		}
 		log.Warnln(errString)
 	}
+
 	// If we are purging and we failed to activate due some images
 	// which are not removed from StorageConfigList we remove them
 	if status.PurgeInprogress == types.DOWNLOAD && !status.Activated {
@@ -431,8 +437,10 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			continue
 		}
 		if status.PurgeInprogress == types.NONE {
-			errString := fmt.Sprintf("New storageConfig not allowed unless purge:\n\t%s\n\t%s",
-				sc.Name, sc.ImageSha256)
+			errString := fmt.Sprintf("New storageConfig (Name: %s, "+
+				"ImageSha256: %s, ImageId: %s) found. New Storage configs are "+
+				"not allowed unless purged",
+				sc.Name, sc.ImageSha256, sc.ImageID)
 			log.Errorln(errString)
 			status.Error = errString
 			status.ErrorTime = time.Now()
@@ -1066,6 +1074,12 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 func MaybeRemoveStorageStatus(ctx *zedmanagerContext, ss *types.StorageStatus) bool {
 
 	changed := false
+
+	log.Infof("MaybeRemoveStorageStatus: removing StorageStatus for:"+
+		"Name: %s, ImageSha256: %s, HasDownloaderRef: %t, HasVerifierRef: %t,"+
+		"IsContainer: %t, ContainerImageID: %s, Error: %s",
+		ss.Name, ss.ImageSha256, ss.HasDownloaderRef, ss.HasVerifierRef,
+		ss.IsContainer, ss.ContainerImageID, ss.Error)
 
 	// Decrease refcount if we had increased it
 	if ss.HasVerifierRef {

@@ -106,3 +106,18 @@ func ParseTriState(value string) (TriState, error) {
 	}
 	return ts, nil
 }
+
+// FormatTriState - return string format of TriState
+func FormatTriState(state TriState) string {
+	switch state {
+	case TS_NONE:
+		return "none"
+	case TS_ENABLED:
+		return "enabled"
+	case TS_DISABLED:
+		return "disabled"
+	default:
+		log.Fatalf("Invalid TriState Value: %v", state)
+	}
+	return ""
+}

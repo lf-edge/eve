@@ -98,11 +98,14 @@ func MaybeRemoveVerifyImageConfigSha256(ctx *zedmanagerContext, sha256 string) {
 			sha256)
 		return
 	}
-	m.RefCount -= 1
-	if m.RefCount < 0 {
-		log.Fatalf("MaybeRemoveVerifyImageConfigSha256: negative RefCount %d for %s\n",
-			m.RefCount, sha256)
+	if m.RefCount == 0 {
+		log.Fatalf("MaybeRemoveVerifyImageConfigSha256: Attempting to reduce "+
+			"0 RefCount. Image Details - Name: %s, SafeName: %s, "+
+			"ImageSha256:%s, IsContainer: %t, ContainerImageID: %s\n",
+			m.Name, m.Safename, m.ImageSha256, m.IsContainer,
+			m.ContainerImageID)
 	}
+	m.RefCount -= 1
 	log.Infof("MaybeRemoveVerifyImageConfigSha256: RefCount to %d for %s\n",
 		m.RefCount, sha256)
 	log.Infof("MaybeRemoveVerifyImageConfigSha256 done for %s\n", sha256)
@@ -176,7 +179,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 
 	// Normal update work
 	updateAIStatusWithStorageSafename(ctx, key, false, "")
-	updateAIStatusSha(ctx, config.ImageSha256)
+	updateAIStatusWithImageSha(ctx, config.ImageSha256)
 	log.Infof("handleVerifyImageStatusModify done for %s\n",
 		status.Safename)
 }

@@ -526,6 +526,8 @@ func handleCreate(ctxArg interface{}, key string,
 
 	// if some error, return
 	if status.Error != "" {
+		log.Debugf("AppInstance(Name:%s, UUID:%s): Errors in App Instance "+
+			"Create.", config.DisplayName, config.UUIDandVersion.UUID)
 		return
 	}
 
