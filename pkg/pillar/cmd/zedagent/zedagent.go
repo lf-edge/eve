@@ -926,11 +926,7 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName + "devinfo")
-
-		// processing is over, reset
-		if ctxPtr.devInfoTaskProcessing {
-			ctxPtr.devInfoTaskProcessing = false
-		}
+		ctxPtr.devInfoTaskProcessing = false
 	}
 }
 
