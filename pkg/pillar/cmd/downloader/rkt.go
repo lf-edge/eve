@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -50,7 +51,7 @@ func getContainerRegistry(url string) (string, string, error) {
 	return "", "", fmt.Errorf("Download URL is not formed properly")
 }
 
-func rktFetch(url string, localConfigDir string, pullPolicy string) (string, error) {
+func rktFetch(url string, localConfigDir string, pullPolicy string, aciDir string) (string, error) {
 
 	// rkt --insecure-options=image fetch <url> --dir=/persist/rkt --full=true
 	log.Debugf("rktFetch - url: %s ,  localConfigDir:%s\n",
@@ -108,9 +109,39 @@ func rktFetch(url string, localConfigDir string, pullPolicy string) (string, err
 		return "", errors.New(errMsg)
 	}
 
+	err = rktImageExport(imageID, aciDir)
+	if err != nil {
+		return "", err
+	}
+
 	// XXX:FIXME - we should run "rkt image ls" and verify image fetch
 	// went thru without errors.
 	return imageID, nil
+}
+
+func rktImageExport(imageHash, aciDir string) error {
+	var aciName string
+	cmd := "rkt"
+	args := []string{
+		"--dir=" + types.PersistRktDataDir,
+		"--insecure-options=image",
+		"image",
+		"export",
+		imageHash,
+	}
+	aciName = filepath.Join(aciDir, imageHash)
+	aciName = aciName + ".aci"
+	args = append(args, aciName)
+
+	log.Infof("rkt image export args: %+v\n", args)
+
+	_, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt image export failed ", err)
+		return err
+	}
+	log.Infof("rktImageExport - image export successful.")
+	return nil
 }
 
 // createRktLocalDirAndAuthFile
@@ -166,7 +197,7 @@ func createRktLocalDirAndAuthFile(imageID uuid.UUID,
 
 func rktFetchContainerImage(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus,
-	dsCtx types.DatastoreContext, pullPolicy string) error {
+	dsCtx types.DatastoreContext, pullPolicy string, aciDir string) error {
 	// update status to DOWNLOAD STARTED
 	status.State = types.DOWNLOAD_STARTED
 	publishDownloaderStatus(ctx, status)
@@ -185,7 +216,7 @@ func rktFetchContainerImage(ctx *downloaderContext, key string,
 			if len(authFile) == 0 {
 				log.Infof("rktFetchContainerImage: no Auth File")
 			}
-			imageID, err = rktFetch(downloadURL, localConfigDir, pullPolicy)
+			imageID, err = rktFetch(downloadURL, localConfigDir, pullPolicy, aciDir)
 		} else {
 			log.Errorf("rktCreateAuthFile Failed. err: %+v", err)
 		}
