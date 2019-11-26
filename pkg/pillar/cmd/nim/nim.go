@@ -313,7 +313,10 @@ func Run() {
 			agentlog.CheckMaxTime(agentName, start)
 			log.Infof("Got subDevicePortConfigS: len %d",
 				len(dnc.DevicePortConfigList.PortConfigList))
+		case <-stillRunning.C:
+			// Need StillRunning when ports yet Ethernets
 		}
+		agentlog.StillRunning(agentName)
 	}
 
 	devicenetwork.RestartVerify(dnc, "Initial config")
