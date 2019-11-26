@@ -228,8 +228,7 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 				// If we don't already have a RefCount add one
 				if !ss.HasVerifierRef {
 					log.Infof("checkStorageDownloadStatus %s, !HasVerifierRef\n", vs.Safename)
-					createVerifierConfig(ctx, uuidStr, objType,
-						vs.Safename, &sc, ss, false)
+					createVerifierConfig(ctx, uuidStr, objType, vs.Safename, sc, *ss, false)
 					ss.HasVerifierRef = true
 					ret.Changed = true
 				}
@@ -305,13 +304,14 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 			if sc.ImageSha256 != "" {
 				// start verifier for this object
 				if !ss.HasVerifierRef {
-					err := createVerifierConfig(ctx, uuidStr,
-						objType, safename, &sc, ss, true)
-					if err == nil {
-						ss.HasVerifierRef = true
+					val, errInfo := createVerifierConfig(ctx, uuidStr, objType,
+						safename, sc, *ss, true)
+					if val {
 						ret.Changed = true
+						ss.HasVerifierRef = true
 					} else {
-						if ss.Error != "" {
+						if errInfo.Error != "" {
+							ss.SetErrorInfo(errInfo)
 							ret.AllErrors = appendError(ret.AllErrors, "baseosmgr", ss.Error)
 							ret.ErrorTime = ss.ErrorTime
 							ret.Changed = true

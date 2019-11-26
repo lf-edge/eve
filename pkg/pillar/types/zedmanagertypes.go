@@ -248,6 +248,13 @@ func RoundupToKB(b uint64) uint64 {
 	return (b + 1023) / 1024
 }
 
+// ErrorInfo: errorInfo holder structure
+type ErrorInfo struct {
+	Error       string
+	ErrorSource string
+	ErrorTime   time.Time
+}
+
 type StorageStatus struct {
 	DatastoreID uuid.UUID
 	// ImageID - UUID of the image
@@ -274,9 +281,7 @@ type StorageStatus struct {
 	Vdev               string  // Allocated
 	ActiveFileLocation string  // Location of filestystem
 	FinalObjDir        string  // Installation dir; may differ from verified
-	Error              string  // Download or verify error
-	ErrorSource        string
-	ErrorTime          time.Time
+	ErrorInfo
 }
 
 // UpdateFromStorageConfig sets up StorageStatus based on StorageConfig struct
@@ -302,35 +307,34 @@ func (ssPtr *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 }
 
 // IsCertsAvailable checks certificate requirement/availability for a storage object
-func (ssPtr *StorageStatus) IsCertsAvailable(safename string) (bool, error) {
-	if !ssPtr.needsCerts() {
+func (ss StorageStatus) IsCertsAvailable(safename string) (bool, error) {
+	if !ss.needsCerts() {
 		log.Debugf("%s, Certs are not required\n", safename)
 		return false, nil
 	}
-	cidx, err := ssPtr.getCertCount(safename)
+	cidx, err := ss.getCertCount(safename)
 	return cidx != 0, err
 }
 
 // GetCertStatus gets the CertObject Status for the storage object
 // True, when there is no Certs or, the certificates are ready
 // False, Certificates are not ready or, there are some errors
-func (ssPtr *StorageStatus) GetCertStatus(safename string,
-	certObjStatusPtr *CertObjStatus) (bool, string, string, time.Time) {
-	if ret, errStr, errSrc, errTime := ssPtr.checkCertsStatusForObject(safename,
-		certObjStatusPtr); !ret {
+func (ss StorageStatus) HandleCertStatus(safename string,
+	certObjStatus CertObjStatus) (bool, ErrorInfo) {
+	if ret, errInfo := ss.checkCertsStatusForObject(safename, certObjStatus); !ret {
 		log.Infof("%s, Certs are still not ready\n", safename)
-		return ret, errStr, errSrc, errTime
+		return ret, errInfo
 	}
-	if ret, errStr, errSrc, errTime := ssPtr.checkCertsForObject(); !ret {
+	if ret, errInfo := ss.checkCertsForObject(); !ret {
 		log.Infof("%s, Certs are still not installed\n", safename)
-		return ret, errStr, errSrc, errTime
+		return ret, errInfo
 	}
-	return true, "", "", time.Time{}
+	return true, ErrorInfo{}
 }
 
 // needsCerts whether certificates are required for the Storage Object
-func (ssPtr *StorageStatus) needsCerts() bool {
-	if len(ssPtr.ImageSignature) == 0 {
+func (ss StorageStatus) needsCerts() bool {
+	if len(ss.ImageSignature) == 0 {
 		return false
 	}
 	return true
@@ -338,16 +342,16 @@ func (ssPtr *StorageStatus) needsCerts() bool {
 
 // getCertCount returns the number of certificates for the Storage Object
 // called with valid ImageSignature only
-func (ssPtr *StorageStatus) getCertCount(safename string) (int, error) {
+func (ss StorageStatus) getCertCount(safename string) (int, error) {
 	cidx := 0
-	if ssPtr.SignatureKey == "" {
+	if ss.SignatureKey == "" {
 		errStr := fmt.Sprintf("%s, Invalid Root CertURL\n", safename)
 		log.Errorf(errStr)
 		return cidx, errors.New(errStr)
 	}
 	cidx++
-	if len(ssPtr.CertificateChain) != 0 {
-		for _, certURL := range ssPtr.CertificateChain {
+	if len(ss.CertificateChain) != 0 {
+		for _, certURL := range ss.CertificateChain {
 			if certURL == "" {
 				errStr := fmt.Sprintf("%s, Invalid Intermediate CertURL\n", safename)
 				log.Errorf(errStr)
@@ -360,59 +364,77 @@ func (ssPtr *StorageStatus) getCertCount(safename string) (int, error) {
 }
 
 // checkCertsStatusForObject checks certificates for installation status
-func (ssPtr *StorageStatus) checkCertsStatusForObject(safename string,
-	certObjStatusPtr *CertObjStatus) (bool, string, string, time.Time) {
+func (ss StorageStatus) checkCertsStatusForObject(safename string,
+	certObjStatus CertObjStatus) (bool, ErrorInfo) {
 
-	// certificates are still not ready, for processing
-	if certObjStatusPtr == nil {
-		return false, "", "", time.Time{}
-	}
-
-	if ssPtr.SignatureKey != "" {
-		for _, certObj := range certObjStatusPtr.StorageStatusList {
-			if certObj.Name == ssPtr.SignatureKey {
+	if ss.SignatureKey != "" {
+		for _, certObj := range certObjStatus.StorageStatusList {
+			if certObj.Name == ss.SignatureKey {
 				if certObj.Error != "" {
-					return false, certObj.Error, certObj.ErrorSource, certObj.ErrorTime
+					return false, certObj.GetErrorInfo()
 				}
 				if certObj.State != DELIVERED {
-					return false, "", "", time.Time{}
+					return false, ErrorInfo{}
+				}
 			}
 		}
 	}
-	return true, "", "", time.Time{}
+
+	for _, certURL := range ss.CertificateChain {
+		for _, certObj := range certObjStatus.StorageStatusList {
+			if certObj.Name == certURL {
+				if certObj.Error != "" {
+					return false, certObj.GetErrorInfo()
+				}
+				if certObj.State != DELIVERED {
+					return false, ErrorInfo{}
+				}
+			}
+		}
+	}
+	return true, ErrorInfo{}
 }
 
 // checkCertsForObject checks availability of Certs in Disk
-func (ssPtr *StorageStatus) checkCertsForObject() (bool, string, string, time.Time) {
+func (ss StorageStatus) checkCertsForObject() (bool, ErrorInfo) {
 
-	if ssPtr.SignatureKey != "" {
-		safename := UrlToSafename(ssPtr.SignatureKey, "")
+	if ss.SignatureKey != "" {
+		safename := UrlToSafename(ss.SignatureKey, "")
 		filename := CertificateDirname + "/" + SafenameToFilename(safename)
 		if _, err := os.Stat(filename); err != nil {
 			log.Errorf("checkCertsForObject() for %s, %v\n", filename, err)
-			return false, "", "", time.Time{}
+			return false, ErrorInfo{}
 		}
 		// XXX check for valid or non-zero length?
 	}
 
-	for _, certURL := range ssPtr.CertificateChain {
+	for _, certURL := range ss.CertificateChain {
 		safename := UrlToSafename(certURL, "")
 		filename := CertificateDirname + "/" + SafenameToFilename(safename)
 		if _, err := os.Stat(filename); err != nil {
 			log.Errorf("checkCertsForObject() for %s, %v\n", filename, err)
-			return false, "", "", time.Time{}
+			return false, ErrorInfo{}
 		}
 		// XXX check for valid or non-zero length?
 	}
-	return true, "", "", time.Time{}
+	return true, ErrorInfo{}
+}
+
+// GetErrorInfo sets the errorInfo for the Storage Object
+func (ss StorageStatus) GetErrorInfo() ErrorInfo {
+	errInfo := ErrorInfo{
+		Error:       ss.Error,
+		ErrorSource: ss.ErrorSource,
+		ErrorTime:   ss.ErrorTime,
+	}
+	return errInfo
 }
 
 // SetErrorInfo sets the errorInfo for the Storage Object
-func (ssPtr *StorageStatus) SetErrorInfo(errorStr string, errSrc string,
-	errTime time.Time) {
-	ssPtr.Error = errorStr
-	ssPtr.ErrorTime = errTime
-	ssPtr.ErrorSource = errSrc
+func (ssPtr *StorageStatus) SetErrorInfo(errInfo ErrorInfo) {
+	ssPtr.Error = errInfo.Error
+	ssPtr.ErrorTime = errInfo.ErrorTime
+	ssPtr.ErrorSource = errInfo.ErrorSource
 }
 
 // ClearErrorInfo clears errorInfo for the Storage Object

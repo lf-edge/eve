@@ -4,9 +4,6 @@
 package baseosmgr
 
 import (
-	"errors"
-	"fmt"
-
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -52,7 +49,7 @@ func lookupVerifierConfig(ctx *baseOsMgrContext, objType string,
 
 // If checkCerts is set this can return an error. Otherwise not.
 func createVerifierConfig(ctx *baseOsMgrContext, uuidStr string, objType string,
-	safename string, sc *types.StorageConfig, ss *types.StorageStatus, checkCerts bool) error {
+	safename string, sc types.StorageConfig, ss types.StorageStatus, checkCerts bool) (bool, types.ErrorInfo) {
 
 	log.Infof("createVerifierConfig(%s/%s)\n", objType, safename)
 
@@ -65,10 +62,8 @@ func createVerifierConfig(ctx *baseOsMgrContext, uuidStr string, objType string,
 			log.Fatalf("%s, invalid certificate configuration", safename)
 		}
 		if ret {
-			ret, errStr, errSrc, errTime := ss.GetCertStatus(safename, certObjStatus)
-			if errStr != "" {
-				ss.SetErrorInfo(errStr, errSrc, errTime)
-				return errors.New(errStr)
+			if ret, errInfo := ss.HandleCertStatus(safename, *certObjStatus); !ret {
+				return ret, errInfo
 			}
 			if !ret {
 				return nil
@@ -93,7 +88,7 @@ func createVerifierConfig(ctx *baseOsMgrContext, uuidStr string, objType string,
 		publishVerifierConfig(ctx, objType, &n)
 	}
 	log.Infof("createVerifierConfig(%s) done\n", safename)
-	return nil
+	return true, types.ErrorInfo{}
 }
 
 func updateVerifierStatus(ctx *baseOsMgrContext,
