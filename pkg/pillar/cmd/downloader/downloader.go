@@ -11,7 +11,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -31,7 +30,6 @@ const (
 	agentName = "downloader"
 )
 
-// Go doesn't like this as a constant
 var (
 	debug              = false
 	debugOverride      bool                               // From command line arg
@@ -42,25 +40,6 @@ var (
 	nilUUID            uuid.UUID                // should be a const, just the default nil value of uuid.UUID
 	dHandler           = makeDownloadHandler()
 )
-
-type downloaderContext struct {
-	dCtx                    *zedUpload.DronaCtx
-	subDeviceNetworkStatus  *pubsub.Subscription
-	subAppImgConfig         *pubsub.Subscription
-	pubAppImgStatus         *pubsub.Publication
-	subBaseOsConfig         *pubsub.Subscription
-	pubBaseOsStatus         *pubsub.Publication
-	subCertObjConfig        *pubsub.Subscription
-	pubCertObjStatus        *pubsub.Publication
-	subGlobalDownloadConfig *pubsub.Subscription
-	pubGlobalDownloadStatus *pubsub.Publication
-	subDatastoreConfig      *pubsub.Subscription
-	deviceNetworkStatus     types.DeviceNetworkStatus
-	globalConfig            types.GlobalDownloadConfig
-	globalStatusLock        sync.Mutex
-	globalStatus            types.GlobalDownloadStatus
-	subGlobalConfig         *pubsub.Subscription
-}
 
 func Run() {
 	versionPtr := flag.Bool("v", false, "Version")
@@ -107,124 +86,14 @@ func Run() {
 	publishTimer := flextimer.NewRangeTicker(time.Duration(min),
 		time.Duration(max))
 
-	// Any state needed by handler functions
+	// create a downloader context
 	ctx := downloaderContext{}
 
-	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
-		false, &ctx)
+	// set up any state needed by handler functions
+	err = ctx.registerHandlers()
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
-	ctx.subGlobalConfig = subGlobalConfig
-	subGlobalConfig.Activate()
-
-	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
-	subDeviceNetworkStatus.CreateHandler = handleDNSModify
-	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
-	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
-	subDeviceNetworkStatus.Activate()
-
-	subGlobalDownloadConfig, err := pubsub.Subscribe("",
-		types.GlobalDownloadConfig{}, false, &ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subGlobalDownloadConfig.ModifyHandler = handleGlobalDownloadConfigModify
-	subGlobalDownloadConfig.CreateHandler = handleGlobalDownloadConfigModify
-	ctx.subGlobalDownloadConfig = subGlobalDownloadConfig
-	subGlobalDownloadConfig.Activate()
-
-	// Look for DatastoreConfig. We should process this
-	// before any download config ( App/baseos/cert). Without DataStore Config,
-	// Image Downloads will run into errors.
-	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
-		types.DatastoreConfig{}, false, &ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
-	subDatastoreConfig.CreateHandler = handleDatastoreConfigModify
-	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
-	ctx.subDatastoreConfig = subDatastoreConfig
-	subDatastoreConfig.Activate()
-
-	pubGlobalDownloadStatus, err := pubsub.Publish(agentName,
-		types.GlobalDownloadStatus{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubGlobalDownloadStatus = pubGlobalDownloadStatus
-
-	// Set up our publications before the subscriptions so ctx is set
-	pubAppImgStatus, err := pubsub.PublishScope(agentName, types.AppImgObj,
-		types.DownloaderStatus{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubAppImgStatus = pubAppImgStatus
-	pubAppImgStatus.ClearRestarted()
-
-	pubBaseOsStatus, err := pubsub.PublishScope(agentName, types.BaseOsObj,
-		types.DownloaderStatus{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubBaseOsStatus = pubBaseOsStatus
-	pubBaseOsStatus.ClearRestarted()
-
-	pubCertObjStatus, err := pubsub.PublishScope(agentName, types.CertObj,
-		types.DownloaderStatus{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	ctx.pubCertObjStatus = pubCertObjStatus
-	pubCertObjStatus.ClearRestarted()
-
-	subAppImgConfig, err := pubsub.SubscribeScope("zedmanager",
-		types.AppImgObj, types.DownloaderConfig{}, false, &ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subAppImgConfig.ModifyHandler = handleAppImgModify
-	subAppImgConfig.CreateHandler = handleAppImgCreate
-	subAppImgConfig.DeleteHandler = handleAppImgDelete
-	ctx.subAppImgConfig = subAppImgConfig
-	subAppImgConfig.Activate()
-
-	subBaseOsConfig, err := pubsub.SubscribeScope("baseosmgr",
-		types.BaseOsObj, types.DownloaderConfig{}, false, &ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subBaseOsConfig.ModifyHandler = handleBaseOsModify
-	subBaseOsConfig.CreateHandler = handleBaseOsCreate
-	subBaseOsConfig.DeleteHandler = handleBaseOsDelete
-	ctx.subBaseOsConfig = subBaseOsConfig
-	subBaseOsConfig.Activate()
-
-	subCertObjConfig, err := pubsub.SubscribeScope("baseosmgr",
-		types.CertObj, types.DownloaderConfig{}, false, &ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subCertObjConfig.ModifyHandler = handleCertObjModify
-	subCertObjConfig.CreateHandler = handleCertObjCreate
-	subCertObjConfig.DeleteHandler = handleCertObjDelete
-	ctx.subCertObjConfig = subCertObjConfig
-	subCertObjConfig.Activate()
-
-	pubAppImgStatus.SignalRestarted()
-	pubBaseOsStatus.SignalRestarted()
-	pubCertObjStatus.SignalRestarted()
 
 	// First wait to have some management ports with addresses
 	// Looking at any management ports since we can do baseOS download over all
@@ -232,26 +101,26 @@ func Run() {
 	for types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus) == 0 ||
 		ctx.globalConfig.MaxSpace == 0 {
 		log.Infof("Waiting for management port addresses or Global Config\n")
+		start := agentlog.StartTime()
+		checkMax := true
 
 		select {
-		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
-			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
+		case change := <-ctx.subGlobalConfig.C:
+			ctx.subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
-			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
+		case change := <-ctx.subDeviceNetworkStatus.C:
+			ctx.subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-subGlobalDownloadConfig.C:
-			start := agentlog.StartTime()
-			subGlobalDownloadConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
+		case change := <-ctx.subGlobalDownloadConfig.C:
+			ctx.subGlobalDownloadConfig.ProcessChange(change)
 
 		// This wait can take an unbounded time since we wait for IP
 		// addresses. Punch StillRunning
 		case <-stillRunning.C:
+			checkMax = false
+		}
+		if checkMax {
+			agentlog.CheckMaxTime(agentName, start)
 		}
 		agentlog.StillRunning(agentName)
 	}
@@ -265,56 +134,45 @@ func Run() {
 	gc := time.NewTicker(downloadGCTime / 10)
 
 	for {
+		start := agentlog.StartTime()
+		checkMax := true
+
 		select {
-		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
-			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
+		case change := <-ctx.subGlobalConfig.C:
+			ctx.subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
-			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
+		case change := <-ctx.subDeviceNetworkStatus.C:
+			ctx.subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-subCertObjConfig.C:
-			start := agentlog.StartTime()
-			subCertObjConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
+		case change := <-ctx.subCertObjConfig.C:
+			ctx.subCertObjConfig.ProcessChange(change)
 
-		case change := <-subAppImgConfig.C:
-			start := agentlog.StartTime()
-			subAppImgConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
+		case change := <-ctx.subAppImgConfig.C:
+			ctx.subAppImgConfig.ProcessChange(change)
 
-		case change := <-subBaseOsConfig.C:
-			start := agentlog.StartTime()
-			subBaseOsConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
+		case change := <-ctx.subBaseOsConfig.C:
+			ctx.subBaseOsConfig.ProcessChange(change)
 
-		case change := <-subDatastoreConfig.C:
-			start := agentlog.StartTime()
-			subDatastoreConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
+		case change := <-ctx.subDatastoreConfig.C:
+			ctx.subDatastoreConfig.ProcessChange(change)
 
-		case change := <-subGlobalDownloadConfig.C:
-			start := agentlog.StartTime()
-			subGlobalDownloadConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
+		case change := <-ctx.subGlobalDownloadConfig.C:
+			ctx.subGlobalDownloadConfig.ProcessChange(change)
 
 		case <-publishTimer.C:
-			start := agentlog.StartTime()
 			err := pub.Publish("global", zedcloud.GetCloudMetrics())
 			if err != nil {
 				log.Errorln(err)
 			}
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-gc.C:
-			start := agentlog.StartTime()
 			gcObjects(&ctx)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
+			checkMax = false
+		}
+		if checkMax {
+			agentlog.CheckMaxTime(agentName, start)
 		}
 		agentlog.StillRunning(agentName)
 	}
@@ -347,7 +205,7 @@ func checkAndUpdateDownloadableObjects(ctx *downloaderContext, dsID uuid.UUID) {
 func lookupDownloaderStatus(ctx *downloaderContext, objType string,
 	key string) *types.DownloaderStatus {
 
-	pub := downloaderPublication(ctx, objType)
+	pub := ctx.publication(objType)
 	st, _ := pub.Get(key)
 	if st == nil {
 		log.Infof("lookupDownloaderStatus(%s) not found\n", key)
@@ -365,7 +223,7 @@ func lookupDownloaderStatus(ctx *downloaderContext, objType string,
 func lookupDownloaderConfig(ctx *downloaderContext, objType string,
 	key string) *types.DownloaderConfig {
 
-	sub := downloaderSubscription(ctx, objType)
+	sub := ctx.subscription(objType)
 	c, _ := sub.Get(key)
 	if c == nil {
 		log.Infof("lookupDownloaderConfig(%s) not found\n", key)
@@ -399,9 +257,9 @@ func runHandler(ctx *downloaderContext, objType string, key string,
 				status := lookupDownloaderStatus(ctx,
 					objType, key)
 				if status == nil {
-					handleCreate(ctx, objType, config, key)
+					createObject(ctx, objType, config, key)
 				} else {
-					handleModify(ctx, key, config, status)
+					modifyObject(ctx, key, config, status)
 				}
 				// XXX if err start timer
 			} else {
@@ -409,7 +267,7 @@ func runHandler(ctx *downloaderContext, objType string, key string,
 				status := lookupDownloaderStatus(ctx,
 					objType, key)
 				if status != nil {
-					handleDelete(ctx, key, status)
+					deleteObject(ctx, key, status)
 				}
 				closed = true
 				// XXX stop timer
@@ -463,14 +321,14 @@ func maybeRetryDownload(ctx *downloaderContext,
 	handleSyncOp(ctx, status.Key(), *config, status, dst)
 }
 
-func handleCreate(ctx *downloaderContext, objType string,
+func createObject(ctx *downloaderContext, objType string,
 	config types.DownloaderConfig, key string) {
 
-	log.Infof("handleCreate(%v) objType %s for %s\n",
+	log.Infof("createObject(%v) objType %s for %s\n",
 		config.Safename, objType, config.Name)
 
 	if objType == "" {
-		log.Fatalf("handleCreate: No ObjType for %s\n",
+		log.Fatalf("createObject: No ObjType for %s\n",
 			config.Safename)
 	}
 	// Start by marking with PendingAdd
@@ -504,7 +362,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		status.LastErrTime = time.Now()
 		status.RetryCount += 1
 		publishDownloaderStatus(ctx, &status)
-		log.Errorf("handleCreate failed for %s\n", config.Name)
+		log.Errorf("createObject failed for %s\n", config.Name)
 		return
 	}
 
@@ -520,7 +378,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		status.LastErrTime = time.Now()
 		status.RetryCount += 1
 		publishDownloaderStatus(ctx, &status)
-		log.Errorf("handleCreate deferred for %s\n", config.Name)
+		log.Errorf("createObject deferred for %s\n", config.Name)
 		return
 	}
 
@@ -540,14 +398,14 @@ func handleCreate(ctx *downloaderContext, objType string,
 // would have to be detected outside of handler since the download is
 // single-threaded.
 // RefCount 0->1 means download. Ignore other changes?
-func handleModify(ctx *downloaderContext, key string,
+func modifyObject(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus) {
 
-	log.Infof("handleModify(%v) objType %s for %s\n",
+	log.Infof("modifyObject(%v) objType %s for %s\n",
 		status.Safename, status.ObjType, status.Name)
 
 	if status.ObjType == "" {
-		log.Fatalf("handleModify: No ObjType for %s\n",
+		log.Fatalf("modifyObject: No ObjType for %s\n",
 			status.Safename)
 	}
 	locDirname := types.DownloadDirname + "/" + status.ObjType
@@ -567,22 +425,22 @@ func handleModify(ctx *downloaderContext, key string,
 		} else {
 			reason = "recovering from previous error"
 		}
-		log.Errorf("handleModify %s for %s\n", reason, config.Name)
+		log.Errorf("modifyObject %s for %s\n", reason, config.Name)
 		doDelete(ctx, key, locDirname, status)
-		handleCreate(ctx, status.ObjType, config, key)
-		log.Infof("handleModify done for %s\n", config.Name)
+		createObject(ctx, status.ObjType, config, key)
+		log.Infof("modifyObject done for %s\n", config.Name)
 		return
 	}
 
-	log.Infof("handleModify(%v) RefCount %d to %d, Expired %v for %s\n",
+	log.Infof("modifyObject(%v) RefCount %d to %d, Expired %v for %s\n",
 		status.Safename, status.RefCount, config.RefCount,
 		status.Expired, status.Name)
 
 	// If RefCount from zero to non-zero then do install
 	if status.RefCount == 0 && config.RefCount != 0 {
 		status.PendingModify = true
-		log.Infof("handleModify installing %s\n", config.Name)
-		handleCreate(ctx, status.ObjType, config, key)
+		log.Infof("modifyObject installing %s\n", config.Name)
+		createObject(ctx, status.ObjType, config, key)
 		status.RefCount = config.RefCount
 		status.LastUse = time.Now()
 		status.Expired = false
@@ -598,7 +456,7 @@ func handleModify(ctx *downloaderContext, key string,
 		status.PendingModify = false
 		publishDownloaderStatus(ctx, status)
 	}
-	log.Infof("handleModify done for %s\n", config.Name)
+	log.Infof("modifyObject done for %s\n", config.Name)
 }
 
 func doDelete(ctx *downloaderContext, key string, locDirname string,
@@ -612,7 +470,7 @@ func doDelete(ctx *downloaderContext, key string, locDirname string,
 	deleteSpace(ctx, types.RoundupToKB(status.Size))
 	status.Size = 0
 
-	// XXX Asymmetric; handleCreate reserved on RefCount 0. We unreserve
+	// XXX Asymmetric; createObject reserved on RefCount 0. We unreserve
 	// going back to RefCount 0. FIXed
 	publishDownloaderStatus(ctx, status)
 }
@@ -635,15 +493,15 @@ func deletefile(dirname string, status *types.DownloaderStatus) {
 	}
 }
 
-func handleDelete(ctx *downloaderContext, key string,
+func deleteObject(ctx *downloaderContext, key string,
 	status *types.DownloaderStatus) {
 
-	log.Infof("handleDelete(%v) objType %s for %s RefCount %d LastUse %v Expired %v\n",
+	log.Infof("deleteObject(%v) objType %s for %s RefCount %d LastUse %v Expired %v\n",
 		status.Safename, status.ObjType, status.Name,
 		status.RefCount, status.LastUse, status.Expired)
 
 	if status.ObjType == "" {
-		log.Fatalf("handleDelete: No ObjType for %s\n",
+		log.Fatalf("deleteObject: No ObjType for %s\n",
 			status.Safename)
 	}
 	locDirname := types.DownloadDirname + "/" + status.ObjType
@@ -670,7 +528,7 @@ func handleDelete(ctx *downloaderContext, key string,
 
 	// Write out what we modified to DownloaderStatus aka delete
 	unpublishDownloaderStatus(ctx, status)
-	log.Infof("handleDelete done for %s, %s\n", status.Name,
+	log.Infof("deleteObject done for %s, %s\n", status.Name,
 		locDirname)
 }
 
@@ -751,7 +609,7 @@ func publishGlobalStatus(ctx *downloaderContext) {
 func publishDownloaderStatus(ctx *downloaderContext,
 	status *types.DownloaderStatus) {
 
-	pub := downloaderPublication(ctx, status.ObjType)
+	pub := ctx.publication(status.ObjType)
 	key := status.Key()
 	log.Debugf("publishDownloaderStatus(%s)\n", key)
 	pub.Publish(key, status)
@@ -760,7 +618,7 @@ func publishDownloaderStatus(ctx *downloaderContext,
 func unpublishDownloaderStatus(ctx *downloaderContext,
 	status *types.DownloaderStatus) {
 
-	pub := downloaderPublication(ctx, status.ObjType)
+	pub := ctx.publication(status.ObjType)
 	key := status.Key()
 	log.Debugf("unpublishDownloaderStatus(%s)\n", key)
 	st, _ := pub.Get(key)
@@ -771,43 +629,12 @@ func unpublishDownloaderStatus(ctx *downloaderContext,
 	pub.Unpublish(key)
 }
 
-func downloaderPublication(ctx *downloaderContext, objType string) *pubsub.Publication {
-	var pub *pubsub.Publication
-	switch objType {
-	case types.AppImgObj:
-		pub = ctx.pubAppImgStatus
-	case types.BaseOsObj:
-		pub = ctx.pubBaseOsStatus
-	case types.CertObj:
-		pub = ctx.pubCertObjStatus
-	default:
-		log.Fatalf("downloaderPublication: Unknown ObjType %s\n",
-			objType)
-	}
-	return pub
-}
-
-func downloaderSubscription(ctx *downloaderContext, objType string) *pubsub.Subscription {
-
-	var sub *pubsub.Subscription
-	switch objType {
-	case types.AppImgObj:
-		sub = ctx.subAppImgConfig
-	case types.BaseOsObj:
-		sub = ctx.subBaseOsConfig
-	case types.CertObj:
-		sub = ctx.subCertObjConfig
-	default:
-		log.Fatalf("downloaderSubscription: Unknown ObjType %s\n",
-			objType)
-	}
-	return sub
-}
-
 // Check for nil UUID (an indication the drive was missing in parseconfig)
 // and a missing datastore id.
 func lookupDatastoreConfig(ctx *downloaderContext, dsID uuid.UUID,
 	name string) (*types.DatastoreConfig, string) {
+
+	var nilUUID uuid.UUID
 
 	if dsID == nilUUID {
 		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) for %s: No datastore ID",

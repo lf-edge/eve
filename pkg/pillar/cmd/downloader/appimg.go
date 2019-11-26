@@ -4,7 +4,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
-// for function name consistency
 func handleAppImgModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
