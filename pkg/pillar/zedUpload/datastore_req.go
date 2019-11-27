@@ -82,13 +82,15 @@ func (req *DronaRequest) GetLocalName() string {
 func (req *DronaRequest) GetDnStatus() error {
 	req.Lock()
 	defer req.Unlock()
-	return fmt.Errorf("Syncer Download Status on %s - error %s", req.name, req.status)
+	return fmt.Errorf("Syncer Download Status on %s, Location: %s - error %s",
+		req.name, req.objloc, req.status)
 }
 
 func (req *DronaRequest) GetUpStatus() (string, error) {
 	req.Lock()
 	defer req.Unlock()
-	return req.objloc, fmt.Errorf("Syncer Upload Status on %s - error %s", req.name, req.status)
+	return req.objloc, fmt.Errorf("Syncer Upload Status on %s, location: %s "+
+		" - error %s", req.name, req.objloc, req.status)
 }
 
 // Return is it update
