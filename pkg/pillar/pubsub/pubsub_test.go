@@ -1,8 +1,13 @@
 package pubsub
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+const (
+	agentName = "agentName"
 )
 
 type Item struct {
@@ -12,9 +17,13 @@ type Item struct {
 var item = Item{
 	aString: "aString",
 }
-var sub, err = Subscribe("agentName", item, false, &item)
 
 func TestHandleModify(t *testing.T) {
+	sub, err := Subscribe(agentName, item, false, &item)
+	if err != nil {
+		t.Fatalf("unable to Subscribe to %s", agentName)
+	}
+
 	sub.agentScope = "agentScope"
 	sub.topic = "topic"
 	created := false
