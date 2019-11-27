@@ -13,6 +13,8 @@ init:
   - GPTTOOLS_TAG
   - DOM0ZTOOLS_TAG
 onboot:
+   - name: rsyslogd
+     image: RSYSLOGD_TAG
    - name: sysctl
      image: linuxkit/sysctl:v0.5
    - name: modprobe
