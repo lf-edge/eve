@@ -340,7 +340,7 @@ func (ss StorageStatus) IsCertsAvailable(safename string) (bool, error) {
 	return cidx != 0, err
 }
 
-// GetCertStatus gets the CertObject Status for the storage object
+// HandleCertStatus gets the CertObject Status for the storage object
 // True, when there is no Certs or, the certificates are ready
 // False, Certificates are not ready or, there are some errors
 func (ss StorageStatus) HandleCertStatus(safename string,
