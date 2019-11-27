@@ -1,38 +1,37 @@
 package pubsub
 
 import (
-	"log"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
-
-type notify struct{}
-
-// The set of channels to which we need to send notifications
-type updaters struct {
-	lock    sync.Mutex
-	servers []notifyName
-}
 
 type notifyName struct {
 	name     string // From pub.nameString()
 	instance int
-	ch       chan<- notify
+	ch       chan<- Notify
 }
 
-var updaterList updaters
+// The set of channels to which we need to send notifications
+type Updaters struct {
+	lock    sync.Mutex
+	servers []notifyName
+}
 
-func updatersAdd(updater chan notify, name string, instance int) {
-	updaterList.lock.Lock()
+// Add an updater
+func (u *Updaters) Add(updater chan Notify, name string, instance int) {
+	u.lock.Lock()
 	nn := notifyName{name: name, instance: instance, ch: updater}
-	updaterList.servers = append(updaterList.servers, nn)
-	updaterList.lock.Unlock()
+	u.servers = append(u.servers, nn)
+	u.lock.Unlock()
 }
 
-func updatersRemove(updater chan notify) {
-	updaterList.lock.Lock()
-	servers := make([]notifyName, len(updaterList.servers))
+// Remove an updater
+func (u *Updaters) Remove(updater chan Notify) {
+	u.lock.Lock()
+	servers := make([]notifyName, len(u.servers))
 	found := false
-	for _, old := range updaterList.servers {
+	for _, old := range u.servers {
 		if old.ch == updater {
 			found = true
 		} else {
@@ -40,8 +39,8 @@ func updatersRemove(updater chan notify) {
 		}
 	}
 	if !found {
-		log.Fatal("updatersRemove: not found\n")
+		log.Fatal("updaters.remove(): not found\n")
 	}
-	updaterList.servers = servers
-	updaterList.lock.Unlock()
+	u.servers = servers
+	u.lock.Unlock()
 }
