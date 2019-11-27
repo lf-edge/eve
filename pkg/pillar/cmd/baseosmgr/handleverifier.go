@@ -66,7 +66,7 @@ func createVerifierConfig(ctx *baseOsMgrContext, uuidStr string, objType string,
 				return ret, errInfo
 			}
 			if !ret {
-				return nil
+				return nil, types.ErrorInfo{}
 			}
 		}
 	}
