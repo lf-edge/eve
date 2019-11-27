@@ -65,9 +65,6 @@ func createVerifierConfig(ctx *baseOsMgrContext, uuidStr string, objType string,
 			if ret, errInfo := ss.HandleCertStatus(safename, *certObjStatus); !ret {
 				return ret, errInfo
 			}
-			if !ret {
-				return nil, types.ErrorInfo{}
-			}
 		}
 	}
 
