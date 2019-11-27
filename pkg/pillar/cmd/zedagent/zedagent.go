@@ -98,8 +98,6 @@ type zedagentContext struct {
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool
-	devInfoTriggerFail        bool // trigger for publish devInfo has failed
-	devInfoTaskProcessing     bool // devInfoTask is preparing/publishing devInfo
 	rebootReason              string
 	rebootStack               string
 	rebootTime                time.Time
@@ -699,9 +697,6 @@ func Run() {
 		agentlog.StillRunning(agentName)
 		// Need to tickle this since the configTimerTask is not yet started
 		agentlog.StillRunning(agentName + "config")
-
-		//if the trigger publish device info has failed, retry
-		retryTriggerPublishDevInfo(&zedagentCtx)
 	}
 
 	// start the config fetch tasks, when zboot status is ready
@@ -864,35 +859,17 @@ func Run() {
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName)
-
-		//if the trigger publish device info has failed, retry
-		retryTriggerPublishDevInfo(&zedagentCtx)
-	}
-}
-
-// if trigger publish device info has failed, try again
-func retryTriggerPublishDevInfo(ctxPtr *zedagentContext) {
-	if ctxPtr.devInfoTriggerFail && !ctxPtr.devInfoTaskProcessing {
-		log.Infof("Retrying trigger PublishDeviceInfo\n")
-		ctxPtr.devInfoTriggerFail = false
-		triggerPublishDevInfo(ctxPtr)
 	}
 }
 
 func triggerPublishDevInfo(ctxPtr *zedagentContext) {
 
-	// last trigger event has failed, wait until
-	// the processing is over,
-	if ctxPtr.devInfoTriggerFail {
-		return
-	}
 	log.Info("Triggered PublishDeviceInfo")
 	select {
 	case ctxPtr.TriggerDeviceInfo <- struct{}{}:
 		// Do nothing more
 	default:
 		log.Errorf("Failed to send on PublishDeviceInfo")
-		ctxPtr.devInfoTriggerFail = true
 	}
 }
 
@@ -904,7 +881,6 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 	for {
 		select {
 		case <-triggerDeviceInfo:
-			ctxPtr.devInfoTaskProcessing = true
 			start := agentlog.StartTime()
 			log.Info("deviceInfoTask got message")
 
@@ -915,7 +891,6 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName + "devinfo")
-		ctxPtr.devInfoTaskProcessing = false
 	}
 }
 
