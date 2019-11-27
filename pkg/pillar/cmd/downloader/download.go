@@ -44,7 +44,10 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 
 	var respChan = make(chan *zedUpload.DronaRequest)
 
-	log.Infof("%s syncOp for <%s>, <%s>, <%s>\n", trType, dpath, region, filename)
+	log.Infof("%s syncOp for dpath:<%s>, region: <%s>, filename: <%s>, "+
+		"downloadURL: <%s>, maxsize: %d, ifname: %s, ipSrc: %+v, locFilename: %s",
+		trType, dpath, region, filename, downloadURL, maxsize, ifname, ipSrc,
+		locFilename)
 	// create Request
 	// Round up from bytes to Mbytes
 	maxMB := (maxsize + 1024*1024 - 1) / (1024 * 1024)
