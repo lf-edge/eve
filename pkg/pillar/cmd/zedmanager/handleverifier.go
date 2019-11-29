@@ -145,12 +145,12 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 		return
 	}
 	ctx := ctxArg.(*zedmanagerContext)
-	log.Infof("handleVerifyImageStatusModify for %s RefCount %d\n",
-		status.Safename, status.RefCount)
+	log.Infof("handleVerifyImageStatusModify for ImageID: %s, Safename: %s, "+
+		" RefCount %d\n", status.ImageID, status.Safename, status.RefCount)
 	// Ignore if any Pending* flag is set
 	if status.Pending() {
-		log.Infof("handleVerifyImageStatusModify skipped due to Pending* for %s\n",
-			status.Safename)
+		log.Infof("handleVerifyImageStatusModify skipped due to Pending* for"+
+			" ImageID: %s, Safename: %s", status.ImageID, status.Safename)
 		return
 	}
 
@@ -171,6 +171,7 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 			IsContainer:      status.IsContainer,
 			ContainerImageID: status.ContainerImageID,
 			RefCount:         0,
+			ImageID:          status.ImageID,
 		}
 		publishVerifyImageConfig(ctx, &n)
 		return

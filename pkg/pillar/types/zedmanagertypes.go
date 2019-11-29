@@ -114,7 +114,6 @@ type AppInstanceStatus struct {
 	PurgeCmd            AppInstanceOpsCmd
 	RestartInprogress   Inprogress
 	PurgeInprogress     Inprogress
-	ImageID             uuid.UUID // UUID of the image
 
 	// Container related state
 	IsContainer      bool
@@ -289,6 +288,7 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	ss.DatastoreID = sc.DatastoreID
 	ss.Name = sc.Name
 	ss.NameIsURL = sc.NameIsURL
+	ss.ImageID = sc.ImageID
 	ss.ImageSha256 = sc.ImageSha256
 	ss.Size = sc.Size
 	ss.CertificateChain = sc.CertificateChain

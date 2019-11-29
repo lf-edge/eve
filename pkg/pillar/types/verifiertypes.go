@@ -6,9 +6,10 @@
 package types
 
 import (
+	"time"
+
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
 
 // XXX more than images; rename type and clean up comments

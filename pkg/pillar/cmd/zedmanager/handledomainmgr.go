@@ -57,7 +57,6 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		VmConfig:          aiConfig.FixedResources,
 		IoAdapterList:     aiConfig.IoAdapterList,
 		CloudInitUserData: aiConfig.CloudInitUserData,
-		ImageID:           aiStatus.ImageID,
 	}
 
 	// Determine number of "disk" targets in list
@@ -88,6 +87,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		switch sc.Target {
 		case "", "disk", "tgtunknown":
 			disk := &dc.DiskConfigList[i]
+			disk.ImageID = sc.ImageID
 			disk.ImageSha256 = sc.ImageSha256
 			disk.ReadOnly = sc.ReadOnly
 			disk.Preserve = sc.Preserve
