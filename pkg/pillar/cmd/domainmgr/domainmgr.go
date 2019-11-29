@@ -1899,6 +1899,15 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	if status.Activated {
 		doInactivate(ctx, status)
 	} else {
+		if status.IsContainer {
+			// Use rkt tool to remove already exited or inactivated container apps
+			log.Infof("Using rkt tool to remove already exited container app ... PodUUID - %s\n", status.PodUUID)
+			err := rktRm(status.PodUUID)
+			if err != nil {
+				log.Errorf("rktRm %s failed: %s\n",
+					status.DomainName, err)
+			}
+		}
 		pciUnassign(ctx, status, true)
 	}
 
