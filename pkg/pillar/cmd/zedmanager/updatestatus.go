@@ -438,7 +438,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		}
 		if status.PurgeInprogress == types.NONE {
 			errString := fmt.Sprintf("New storageConfig (Name: %s, "+
-				"ImageSha256: %s, ImageId: %s) found. New Storage configs are "+
+				"ImageSha256: %s, ImageID: %s) found. New Storage configs are "+
 				"not allowed unless purged",
 				sc.Name, sc.ImageSha256, sc.ImageID)
 			log.Errorln(errString)
@@ -458,13 +458,20 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 
 	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
-		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
-		log.Infof("StorageStatus URL %s safename %s\n",
-			ss.Name, safename)
+
+		safename := ""
+		if ss.IsContainer {
+			// For Containers, SafeName = ImageID.
+			safename = ss.ImageID.String()
+		} else {
+			// XXX - Move VMs to also use ImageID as the Safename.
+			safename = types.UrlToSafename(ss.Name, ss.ImageSha256)
+		}
+		log.Infof("StorageStatus Name: %s, safename %s, ImageSha256: %s",
+			ss.Name, safename, ss.ImageSha256)
 
 		// Shortcut if image is already verified
-		vs := lookupVerifyImageStatusAny(ctx, safename,
-			ss.ImageSha256)
+		vs := lookupVerifyImageStatusAny(ctx, safename, ss.ImageSha256)
 		// Handle post-reboot verification in progress by allowing
 		// types.DOWNLOADED. If the verification later fails we will
 		// get a delete of the VerifyImageStatus and skip this
@@ -515,6 +522,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				ss.Progress = 100
 				changed = true
 			}
+			log.Debugf("doInstall Name: %s, ImageID: %s,  vs.RefCount: %d"+
+				"ss.State: %d", ss.Name, ss.ImageID, vs.RefCount, ss.State)
 			continue
 		}
 		if !ss.HasDownloaderRef {
@@ -685,6 +694,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 				uuidStr, ss.ActiveFileLocation)
 			changed = true
 		}
+		log.Debugf("doInstall: StorageStatus ImageID:%s, Safename: %s, "+
+			"minState:%d", ss.ImageID, ss.Name, minState)
 	}
 	if minState == types.MAXSTATE {
 		// Odd; no StorageConfig in list
@@ -697,6 +708,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		status.State = minState
 		changed = true
 	}
+	log.Debugf("doInstall: uuidStr: %s, minState:%d", uuidStr, minState)
+
 	status.Error = allErrors
 	status.ErrorSource = errorSource
 	status.ErrorTime = errorTime
@@ -706,7 +719,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	}
 
 	if minState < types.DELIVERED {
-		log.Infof("Waiting for all verifications for %s\n", uuidStr)
+		log.Infof("doInstall: Waiting for all verifications for %s. "+
+			"minState: %d", uuidStr, minState)
 		return changed, false
 	}
 	log.Infof("Done with verifications for %s\n", uuidStr)

@@ -4,9 +4,10 @@
 package types
 
 import (
+	"time"
+
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
 
 // The information XenManager needs to boot and halt domains
@@ -27,9 +28,8 @@ type DomainConfig struct {
 	IoAdapterList     []IoAdapter
 	CloudInitUserData string // base64-encoded
 	// Container related info
-	IsContainer      bool      // Is this Domain for a Container?
-	ContainerImageID string    // SHA-512 of rkt container image
-	ImageID          uuid.UUID // UUID of the image
+	IsContainer      bool   // Is this Domain for a Container?
+	ContainerImageID string // SHA-512 of rkt container image
 }
 
 func (config DomainConfig) Key() string {
@@ -108,10 +108,9 @@ type DomainStatus struct {
 	LastErrTime        time.Time
 	BootFailed         bool
 	AdaptersFailed     bool
-	IsContainer        bool      // Is this Domain for a Container?
-	ContainerImageID   string    // SHA-512 of rkt container image
-	PodUUID            string    // Pod UUID outputted by rkt
-	ImageID            uuid.UUID // UUID of the image
+	IsContainer        bool   // Is this Domain for a Container?
+	ContainerImageID   string // SHA-512 of rkt container image
+	PodUUID            string // Pod UUID outputted by rkt
 }
 
 func (status DomainStatus) Key() string {
@@ -156,7 +155,8 @@ type VifInfo struct {
 // Note that vdev in general can be hd[x], xvd[x], sd[x] but here we only
 // use xvd
 type DiskConfig struct {
-	ImageSha256 string // sha256 of immutable image
+	ImageID     uuid.UUID // UUID of the image
+	ImageSha256 string    // sha256 of immutable image
 	ReadOnly    bool
 	Preserve    bool // If set a rw disk will be preserved across
 	// boots (acivate/inactivate)
@@ -166,7 +166,8 @@ type DiskConfig struct {
 }
 
 type DiskStatus struct {
-	ImageSha256        string // sha256 of immutable image
+	ImageID            uuid.UUID // sha256 of immutable image
+	ImageSha256        string    // sha256 of immutable image
 	ReadOnly           bool
 	Preserve           bool
 	FileLocation       string // Local location of Image

@@ -859,7 +859,6 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		State:              types.INSTALLED,
 		IsContainer:        config.IsContainer,
 		ContainerImageID:   config.ContainerImageID,
-		ImageID:            config.ImageID,
 	}
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))
@@ -1360,6 +1359,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		config.UUIDandVersion, config.DisplayName)
 	for i, dc := range config.DiskConfigList {
 		ds := &status.DiskStatusList[i]
+		ds.ImageID = dc.ImageID
 		ds.ImageSha256 = dc.ImageSha256
 		ds.ReadOnly = dc.ReadOnly
 		ds.Preserve = dc.Preserve
@@ -1921,7 +1921,8 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	// inactivation i.e. those preserved across reboots?
 	for _, ds := range status.DiskStatusList {
 		if status.IsContainer {
-			containerACIDir := types.VerifiedAppImgDirname + "/" + status.ImageID.String()
+			containerACIDir := types.VerifiedAppImgDirname + "/" +
+				ds.ImageID.String()
 			log.Infof("Delete copy at %s\n", containerACIDir)
 			if err := os.RemoveAll(containerACIDir); err != nil {
 				log.Errorln(err)
@@ -1957,7 +1958,9 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 	if status.IsContainer {
 		// Use rkt tool
 		log.Infof("Using rkt tool ... ContainerImageID - %s\n", status.ContainerImageID)
-		aciFileName := filepath.Join(types.VerifiedAppImgDirname, status.ImageID.String(), status.ContainerImageID)
+		aciFileName := filepath.Join(types.VerifiedAppImgDirname,
+			status.DiskStatusList[0].ImageID.String(),
+			status.ContainerImageID)
 		aciFileName = aciFileName + ".aci"
 		domainID, podUUID, err = rktRun(status.DomainName, status.ContainerImageID, filename, aciFileName)
 	} else {

@@ -39,6 +39,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -341,6 +342,82 @@ func handleInitUpdateVerifiedObjects(ctx *verifierContext) {
 	log.Infoln("handleInitUpdateVerifiedObjects done")
 }
 
+func verifiedImageStatusFromImageFile(
+	objType, objDirname, parentDirname, imageFileName string,
+	size int64) types.VerifyImageStatus {
+
+	status := types.VerifyImageStatus{
+		ObjType:  objType,
+		State:    types.DOWNLOADED,
+		Size:     size,
+		RefCount: 0,
+		LastUse:  time.Now(),
+	}
+
+	if objType == "appImg.obj" {
+		// Currently, for App Images, there are two conventions of
+		// ImageNames / Directory structures.
+		//  Containers - verified/<image-ID>/sha-<SHA>.aci
+		//  VMs - verified/<SHA>/safename
+		imageID, err := uuid.FromString(parentDirname)
+
+		log.Debugf("verifiedImageStatusFromImageFile: objType: %s, "+
+			"objDirname: %s, parentDirname: %s, imageFileName: %s, "+
+			"imageID: %s", objType, objDirname, parentDirname,
+			imageFileName, imageID.String())
+
+		// XXX - We are deciding if the image is a container based
+		//  on the fact that VM has a different dir structure. In future,
+		//  VMs will also move to use the same structure. We need to
+		//  revisit this logic then.
+		if err == nil {
+			// Container image
+			status.IsContainer = true
+			if strings.HasSuffix(imageFileName, ".aci") == false {
+				// XXX - Should we delete this image and not recover it??
+				log.Warnf("verifiedImageStatusFromImageFile - Container Image"+
+					"Doesn't have .aci Suffix: objType: %s, "+
+					"objDirname: %s, parentDirname: %s, imageFileName: %s, "+
+					"imageID: %s", objType, objDirname, parentDirname,
+					imageFileName, imageID.String())
+			}
+			if strings.HasPrefix(imageFileName, "sha") == false {
+				// XXX - Should we delete this image and not recover it??
+				log.Warnf("verifiedImageStatusFromImageFile - Container Image"+
+					"Doesn't have prefix sha. objType: %s, "+
+					"objDirname: %s, parentDirname: %s, imageFileName: %s, "+
+					"imageID: %s", objType, objDirname, parentDirname,
+					imageFileName, imageID.String())
+			}
+			status.ContainerImageID = strings.TrimSuffix(imageFileName, ".aci")
+			status.ImageID = imageID
+			// For Containers, ImageSha256 is ImageID
+			status.ImageSha256 = status.ImageID.String()
+			// For Containers, ImageID is the Safename
+			status.Safename = status.ImageID.String()
+		} else {
+			// VM Image
+			// XXX - Combine both the Schemes.. VM should also follow
+			//  ImageID based naming.
+			status.ImageSha256 = parentDirname
+
+			// We don't know the URL; Pick a name which is unique
+			if status.ImageSha256 != "" {
+				status.Safename = imageFileName + "." + status.ImageSha256
+			} else {
+				status.Safename = imageFileName + ".sha"
+			}
+		}
+	} else {
+		// Not App Image
+		status.ImageSha256 = parentDirname
+		status.Safename = imageFileName + "." + status.ImageSha256
+
+	}
+	log.Debugf("verifiedImageStatusFromImageFile: status: %+v", status)
+	return status
+}
+
 // Recursive scanning for verified objects,
 // to recreate the VerifyImageStatus.
 func populateInitialStatusFromVerified(ctx *verifierContext,
@@ -375,20 +452,8 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 			}
 			log.Debugf("populateInitialStatusFromVerified: Processing %s: %d Mbytes\n",
 				filename, size/(1024*1024))
-
-			sha := parentDirname
-			// We don't know the URL; Pick a name which is unique
-			safename := location.Name() + "." + sha
-
-			status := types.VerifyImageStatus{
-				Safename:    safename,
-				ObjType:     objType,
-				ImageSha256: sha,
-				State:       types.DOWNLOADED,
-				Size:        size,
-				RefCount:    0,
-				LastUse:     time.Now(),
-			}
+			status := verifiedImageStatusFromImageFile(objType, objDirname,
+				parentDirname, location.Name(), size)
 			publishVerifyImageStatus(ctx, &status)
 		}
 	}
@@ -408,6 +473,8 @@ func updateInitialStatusFromVerified(ctx *verifierContext,
 		log.Fatal(err)
 	}
 
+	// Why are we iterating over the Directories? Haven't we already built up
+	// Verifier Status??
 	for _, location := range locations {
 
 		filename := objDirname + "/" + location.Name()
@@ -422,33 +489,53 @@ func updateInitialStatusFromVerified(ctx *verifierContext,
 			log.Debugf("updateInitialStatusFromVerified: Processing %s\n",
 				filename)
 
-			sha := parentDirname
-			safename := location.Name() + "." + sha
-			status := lookupVerifyImageStatus(ctx,
-				objType, safename)
+			// Currently, for App Images, there are two conventions of
+			// ImageNames / Directory structures.
+			//  Containers - verified/<image-ID>/sha-<SHA>.aci
+			//  VMs - verified/<SHA>/safename
+			safename := ""
+			sha := ""
+			imageID, err := uuid.FromString(parentDirname)
+			if err == nil {
+				// Container..
+				safename = imageID.String()
+			} else {
+				sha = parentDirname
+				safename = location.Name() + "." + sha
+			}
+
+			status := lookupVerifyImageStatus(ctx, objType, safename)
 			if status == nil {
 				log.Errorf("updateInitialStatusFromVerified: %s/%s not found\n",
 					objType, safename)
 				continue
 			}
 
-			// We re-verify the sha on reboot/restart
-			// XXX what about signature? Do we have the certs?
-			imageHash, err := computeShaFile(filename)
-			if err != nil {
-				log.Errorf("computeShaFile %s failed %s\n",
-					filename, err)
-				doDelete(status)
-				continue
-			}
+			log.Debugf("updateInitialStatusFromVerified: Found Status. "+
+				"ImageID: %s, ImageSha256: %s, Safename: %s, "+
+				"isContainer: %t", status.ImageID,
+				status.ImageSha256, status.Safename, status.IsContainer)
 
-			got := fmt.Sprintf("%x", imageHash)
-			if got != strings.ToLower(sha) {
-				log.Errorf("computed   %s\n", got)
-				log.Errorf("configured %s\n",
-					strings.ToLower(sha))
-				doDelete(status)
-				continue
+			if !status.IsContainer {
+				// Skip image verification for Container. Do it only for VMs
+				// We re-verify the sha on reboot/restart
+				// XXX what about signature? Do we have the certs?
+				imageHash, err := computeShaFile(filename)
+				if err != nil {
+					log.Errorf("computeShaFile %s failed %s\n",
+						filename, err)
+					doDelete(status)
+					continue
+				}
+
+				got := fmt.Sprintf("%x", imageHash)
+				if got != strings.ToLower(sha) {
+					log.Errorf("computed   %s\n", got)
+					log.Errorf("configured %s\n",
+						strings.ToLower(sha))
+					doDelete(status)
+					continue
+				}
 			}
 
 			status.State = types.DELIVERED
@@ -1173,8 +1260,10 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	// Note no comparison on version
 	changed := false
 
-	log.Infof("handleModify(%v) objType %s for %s\n",
-		status.Safename, status.ObjType, config.Name)
+	log.Infof("handleModify(%v) objType %s for %s, config.RefCount: %d, "+
+		"status.RefCount: %d",
+		status.Safename, status.ObjType, config.Name, config.RefCount,
+		status.RefCount)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleModify: No ObjType for %s\n",
@@ -1199,7 +1288,7 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 		status.LastUse = time.Now()
 		status.PendingModify = false
 		publishVerifyImageStatus(ctx, status)
-		log.Infof("handleModify done for %s\n", config.Name)
+		log.Infof("handleModify: RefCount = 0. Done for %s\n", config.Name)
 		return
 	}
 
