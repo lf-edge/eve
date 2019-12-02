@@ -59,6 +59,7 @@ type DeviceNetworkContext struct {
 	Pending                DPCPending
 	NetworkTestTimer       *time.Timer
 	NetworkTestBetterTimer *time.Timer
+	WPARestartTimer        *time.Timer
 	NextDPCIndex           int
 	CloudConnectivityWorks bool
 
@@ -73,7 +74,7 @@ func UpdateLastResortPortConfig(ctx *DeviceNetworkContext, ports []string) {
 	if ports == nil || len(ports) == 0 {
 		return
 	}
-	config := LastResortDevicePortConfig(ports)
+	config := LastResortDevicePortConfig(ctx, ports)
 	config.Key = "lastresort"
 	ctx.PubDevicePortConfig.Publish("lastresort", config)
 }
@@ -682,8 +683,10 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 			log.Infof("doUpdatePortConfigListAndPublish: change from %+v to %+v\n",
 				*oldConfig, portConfig)
 		}
+		checkAndUpdateWireless(ctx, oldConfig, portConfig)
 		updatePortConfig(ctx, oldConfig, *portConfig)
 	} else {
+		checkAndUpdateWireless(ctx, nil, portConfig)
 		insertPortConfig(ctx, *portConfig)
 	}
 	// Check if current moved to a different index or was deleted
@@ -712,6 +715,32 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 	}
 	*ctx.DevicePortConfigList = compressAndPublishDevicePortConfigList(ctx)
 	return true
+}
+
+func checkAndUpdateWireless(ctx *DeviceNetworkContext, oCfg *types.DevicePortConfig, portCfg *types.DevicePortConfig) {
+	log.Infof("checkAndUpdateWireless: oCfg nil %v, portCfg Ports %v\n", oCfg == nil, portCfg.Ports)
+	for _, pCfg := range portCfg.Ports {
+		var oldPortCfg *types.NetworkPortConfig
+		if oCfg != nil {
+			for _, old := range oCfg.Ports {
+				if old.IfName == pCfg.IfName {
+					oldPortCfg = &old
+					break
+				}
+			}
+		}
+		if oldPortCfg == nil || !reflect.DeepEqual(oldPortCfg.WirelessCfg, pCfg.WirelessCfg) {
+			if pCfg.WirelessCfg.WType == types.WirelessTypeCellular ||
+				oldPortCfg != nil && oldPortCfg.WirelessCfg.WType == types.WirelessTypeCellular {
+				devPortInstallAPname(pCfg.IfName, pCfg.WirelessCfg)
+			} else if pCfg.WirelessCfg.WType == types.WirelessTypeWifi ||
+				oldPortCfg != nil && oldPortCfg.WirelessCfg.WType == types.WirelessTypeWifi {
+				if devPortInstallWifiConfig(pCfg.IfName, pCfg.WirelessCfg) {
+					ctx.WPARestartTimer = time.NewTimer(10 * time.Second)
+				}
+			}
+		}
+	}
 }
 
 // Update content and move if the timestamp changed

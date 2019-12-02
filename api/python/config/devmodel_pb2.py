@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x0e\x64\x65vmodel.proto\"n\n\x0fsWAdapterParams\x12\x1d\n\x05\x61Type\x18\x01 \x01(\x0e\x32\x0e.sWAdapterType\x12\x19\n\x11underlayInterface\x18\x08 \x01(\t\x12\x0e\n\x06vlanId\x18\t \x01(\r\x12\x11\n\tbondgroup\x18\n \x03(\t\"\xa0\x01\n\rSystemAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x12\n\nfreeUplink\x18\x02 \x01(\x08\x12\x0e\n\x06uplink\x18\x03 \x01(\x08\x12\x13\n\x0bnetworkUUID\x18\x04 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x05 \x01(\t\x12\r\n\x05\x61lias\x18\x07 \x01(\t\x12\x16\n\x0elowerLayerName\x18\x08 \x01(\t\x12\x13\n\x0b\x61\x63\x63\x65ssPoint\x18\t \x01(\t\"@\n\x10PhyIOUsagePolicy\x12\x12\n\nfreeUplink\x18\x01 \x01(\x08\x12\x18\n\x10\x66\x61llBackPriority\x18\x02 \x01(\r\"\xe2\x02\n\nPhysicalIO\x12\x19\n\x05ptype\x18\x01 \x01(\x0e\x32\n.PhyIoType\x12\x10\n\x08phylabel\x18\x02 \x01(\t\x12+\n\x08phyaddrs\x18\x03 \x03(\x0b\x32\x19.PhysicalIO.PhyaddrsEntry\x12\x14\n\x0clogicallabel\x18\x04 \x01(\t\x12\x11\n\tassigngrp\x18\x05 \x01(\t\x12 \n\x05usage\x18\x06 \x01(\x0e\x32\x11.PhyIoMemberUsage\x12&\n\x0busagePolicy\x18\x07 \x01(\x0b\x32\x11.PhyIOUsagePolicy\x12\'\n\x06\x63\x62\x61ttr\x18\x08 \x03(\x0b\x32\x17.PhysicalIO.CbattrEntry\x1a/\n\rPhyaddrsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a-\n\x0b\x43\x62\x61ttrEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*/\n\rsWAdapterType\x12\n\n\x06IGNORE\x10\x00\x12\x08\n\x04VLAN\x10\x01\x12\x08\n\x04\x42OND\x10\x02*\x9b\x01\n\tPhyIoType\x12\r\n\tPhyIoNoop\x10\x00\x12\x0f\n\x0bPhyIoNetEth\x10\x01\x12\x0c\n\x08PhyIoUSB\x10\x02\x12\x0c\n\x08PhyIoCOM\x10\x03\x12\x0e\n\nPhyIoAudio\x10\x04\x12\x10\n\x0cPhyIoNetWLAN\x10\x05\x12\x10\n\x0cPhyIoNetWWAN\x10\x06\x12\r\n\tPhyIoHDMI\x10\x07\x12\x0f\n\nPhyIoOther\x10\xff\x01*\xa0\x01\n\x10PhyIoMemberUsage\x12\x12\n\x0ePhyIoUsageNone\x10\x00\x12\x19\n\x15PhyIoUsageMgmtAndApps\x10\x01\x12\x14\n\x10PhyIoUsageShared\x10\x02\x12\x17\n\x13PhyIoUsageDedicated\x10\x03\x12\x16\n\x12PhyIoUsageDisabled\x10\x04\x12\x16\n\x12PhyIoUsageMgmtOnly\x10\x05\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x0e\x64\x65vmodel.proto\"n\n\x0fsWAdapterParams\x12\x1d\n\x05\x61Type\x18\x01 \x01(\x0e\x32\x0e.sWAdapterType\x12\x19\n\x11underlayInterface\x18\x08 \x01(\t\x12\x0e\n\x06vlanId\x18\t \x01(\r\x12\x11\n\tbondgroup\x18\n \x03(\t\"\x8b\x01\n\rSystemAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x12\n\nfreeUplink\x18\x02 \x01(\x08\x12\x0e\n\x06uplink\x18\x03 \x01(\x08\x12\x13\n\x0bnetworkUUID\x18\x04 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x05 \x01(\t\x12\r\n\x05\x61lias\x18\x07 \x01(\t\x12\x16\n\x0elowerLayerName\x18\x08 \x01(\t\"@\n\x10PhyIOUsagePolicy\x12\x12\n\nfreeUplink\x18\x01 \x01(\x08\x12\x18\n\x10\x66\x61llBackPriority\x18\x02 \x01(\r\"\xe2\x02\n\nPhysicalIO\x12\x19\n\x05ptype\x18\x01 \x01(\x0e\x32\n.PhyIoType\x12\x10\n\x08phylabel\x18\x02 \x01(\t\x12+\n\x08phyaddrs\x18\x03 \x03(\x0b\x32\x19.PhysicalIO.PhyaddrsEntry\x12\x14\n\x0clogicallabel\x18\x04 \x01(\t\x12\x11\n\tassigngrp\x18\x05 \x01(\t\x12 \n\x05usage\x18\x06 \x01(\x0e\x32\x11.PhyIoMemberUsage\x12&\n\x0busagePolicy\x18\x07 \x01(\x0b\x32\x11.PhyIOUsagePolicy\x12\'\n\x06\x63\x62\x61ttr\x18\x08 \x03(\x0b\x32\x17.PhysicalIO.CbattrEntry\x1a/\n\rPhyaddrsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a-\n\x0b\x43\x62\x61ttrEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01*/\n\rsWAdapterType\x12\n\n\x06IGNORE\x10\x00\x12\x08\n\x04VLAN\x10\x01\x12\x08\n\x04\x42OND\x10\x02*\x9b\x01\n\tPhyIoType\x12\r\n\tPhyIoNoop\x10\x00\x12\x0f\n\x0bPhyIoNetEth\x10\x01\x12\x0c\n\x08PhyIoUSB\x10\x02\x12\x0c\n\x08PhyIoCOM\x10\x03\x12\x0e\n\nPhyIoAudio\x10\x04\x12\x10\n\x0cPhyIoNetWLAN\x10\x05\x12\x10\n\x0cPhyIoNetWWAN\x10\x06\x12\r\n\tPhyIoHDMI\x10\x07\x12\x0f\n\nPhyIoOther\x10\xff\x01*\xa0\x01\n\x10PhyIoMemberUsage\x12\x12\n\x0ePhyIoUsageNone\x10\x00\x12\x19\n\x15PhyIoUsageMgmtAndApps\x10\x01\x12\x14\n\x10PhyIoUsageShared\x10\x02\x12\x17\n\x13PhyIoUsageDedicated\x10\x03\x12\x16\n\x12PhyIoUsageDisabled\x10\x04\x12\x16\n\x12PhyIoUsageMgmtOnly\x10\x05\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
 )
 
 _SWADAPTERTYPE = _descriptor.EnumDescriptor(
@@ -44,8 +44,8 @@ _SWADAPTERTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=716,
-  serialized_end=763,
+  serialized_start=695,
+  serialized_end=742,
 )
 _sym_db.RegisterEnumDescriptor(_SWADAPTERTYPE)
 
@@ -95,8 +95,8 @@ _PHYIOTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=766,
-  serialized_end=921,
+  serialized_start=745,
+  serialized_end=900,
 )
 _sym_db.RegisterEnumDescriptor(_PHYIOTYPE)
 
@@ -134,8 +134,8 @@ _PHYIOMEMBERUSAGE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=924,
-  serialized_end=1084,
+  serialized_start=903,
+  serialized_end=1063,
 )
 _sym_db.RegisterEnumDescriptor(_PHYIOMEMBERUSAGE)
 
@@ -269,13 +269,6 @@ _SYSTEMADAPTER = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='accessPoint', full_name='SystemAdapter.accessPoint', index=7,
-      number=9, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -289,7 +282,7 @@ _SYSTEMADAPTER = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=131,
-  serialized_end=291,
+  serialized_end=270,
 )
 
 
@@ -326,8 +319,8 @@ _PHYIOUSAGEPOLICY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=293,
-  serialized_end=357,
+  serialized_start=272,
+  serialized_end=336,
 )
 
 
@@ -364,8 +357,8 @@ _PHYSICALIO_PHYADDRSENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=620,
-  serialized_end=667,
+  serialized_start=599,
+  serialized_end=646,
 )
 
 _PHYSICALIO_CBATTRENTRY = _descriptor.Descriptor(
@@ -401,8 +394,8 @@ _PHYSICALIO_CBATTRENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=669,
-  serialized_end=714,
+  serialized_start=648,
+  serialized_end=693,
 )
 
 _PHYSICALIO = _descriptor.Descriptor(
@@ -480,8 +473,8 @@ _PHYSICALIO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=360,
-  serialized_end=714,
+  serialized_start=339,
+  serialized_end=693,
 )
 
 _SWADAPTERPARAMS.fields_by_name['aType'].enum_type = _SWADAPTERTYPE
