@@ -85,6 +85,7 @@ COPY --from=build /out/tpm2_evictcontrol /usr/bin/
 COPY --from=build /out/tpm2_import /usr/bin/
 COPY --from=build /out/tpm2_load /usr/bin/
 COPY --from=build /out/tpm2_hmac /usr/bin/
+COPY --from=build /out/tpm2_hash /usr/bin/
 COPY --from=build /out/tpm2_readpublic /usr/bin/
 COPY --from=build /out/tpm2_activatecredential /usr/bin
 COPY --from=build /out/tpm2_makecredential /usr/bin

@@ -10,6 +10,7 @@
 #include <fstream>
 #include <sstream>
 #include "vtpm_api.pb.h"
+#include <list>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 
 using namespace std;
@@ -33,12 +34,69 @@ google::protobuf::uint32 readHdr(char *buf)
     return size;
 }
 
+//Not some arbitrary commands, we allow only these commands to be executed
+//from the guest domains.
+std::list<string> allowed_commands = {
+"tpm2_getcap",
+"tpm2_createek",
+"tpm2_createak",
+"tpm2_create",
+"tpm2_createprimary",
+"tpm2_evictcontrol",
+"tpm2_readpublic",
+"tpm2_startauthsession",
+"tpm2_policysecret",
+"tpm2_activatecredential",
+"tpm2_flushcontext",
+"tpm2_startauthsession",
+"tpm2_policysecret",
+"tpm2_import",
+"tpm2_flushcontext",
+"tpm2_load",
+"tpm2_evictcontrol",
+"tpm2_hmac",
+"tpm2_sign",
+"tpm2_verifysignature",
+};
+
+static inline bool
+isCommandAllowed(string command_with_args)
+{
+  istringstream ss(command_with_args);
+  string command;
+  ss >> command;
+  auto it = find(allowed_commands.begin(), allowed_commands.end(), command);
+  if (it != allowed_commands.end()) {
+     return true;
+  }
+  return false;
+}
+
+static int
+sendResponse (int sock, eve_tools::EveTPMResponse &response)
+{
+    google::protobuf::uint32 size = response.ByteSize() + CODED_STRM_HDR_LEN;
+    char *resp_buffer = new char [size];
+    google::protobuf::io::ArrayOutputStream aos(resp_buffer, size);
+    CodedOutputStream *coded_output = new CodedOutputStream(&aos);
+    coded_output->WriteVarint32(response.ByteSize());
+    response.SerializeToCodedStream(coded_output);
+    int sent_bytes = send(sock, (void *)resp_buffer, size, 0);
+    delete(resp_buffer);
+    if (sent_bytes == size) {
+      return 0;
+    } else {
+      return -1;
+    }
+}
+
 //Read size bytes from the client connection, sock
 //returns 0 on success, -1 on failure.
 int readMessage(int sock, google::protobuf::uint32 size)
 {
     int bytecount = 0;
     char payload[size+CODED_STRM_HDR_LEN];
+    eve_tools::EveTPMResponse response;
     bytecount = recv(sock, (void*)payload, size+CODED_STRM_HDR_LEN, MSG_WAITALL);
     if (bytecount < 0) {
         cerr << "Error reading further payload bytes" << std::endl;
@@ -56,6 +114,21 @@ int readMessage(int sock, google::protobuf::uint32 size)
     CodedStrmInput.PopLimit(msgLimit);
 
     cout << "Received command is " << request.command() << std::endl;
+    if (!isCommandAllowed(request.command())) {
+	cout << "Not a legal command, bailing out" << std::endl;
+        response.set_response("Command forbidden!");
+        sendResponse(sock, response);
+	return 0;
+    }
+    //Clear all the files which we expect to be output by the cmd.
+    //This is to clear residual files of previous invocations, which
+    //otherwise may be interpreted as output of current invocation.
+    for (int i=0; i < request.expectedfiles_size(); i++) {
+        std::string expectedFile = request.expectedfiles(i);
+        ostringstream command;
+        command << "rm -f " << expectedFile;
+        system(command.str().c_str());
+    }
     for (int i=0; i < request.inputfiles_size(); i++) {
         const eve_tools::File& file = request.inputfiles(i);
         cout << "Processing file: " << file.name() << std::endl;
@@ -72,7 +145,6 @@ int readMessage(int sock, google::protobuf::uint32 size)
     ostringstream command;
     command << request.command() << " " << "> cmd.output 2>&1";
     system(command.str().c_str());
-    eve_tools::EveTPMResponse response;
     ifstream cmdOut;
     cmdOut.open("cmd.output", ios::in);
     if (!cmdOut) {
@@ -101,13 +173,7 @@ int readMessage(int sock, google::protobuf::uint32 size)
             output_file.close();
         }
     }
-    size = response.ByteSize() + CODED_STRM_HDR_LEN;
-    char *resp_buffer = new char [size];
-    google::protobuf::io::ArrayOutputStream aos(resp_buffer, size);
-    CodedOutputStream *coded_output = new CodedOutputStream(&aos);
-    coded_output->WriteVarint32(response.ByteSize());
-    response.SerializeToCodedStream(coded_output);
-    send(sock, (void *)resp_buffer, size, 0);
+    sendResponse(sock, response);
 }
 
 int main(int argc, char *argv[])
