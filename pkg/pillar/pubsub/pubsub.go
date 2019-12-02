@@ -62,6 +62,7 @@ const (
 	// being directory in /var/tmp/zededa
 	fixedName = "zededa"
 	fixedDir  = "/var/tmp/" + fixedName
+	maxsize   = 65535 // Max size for json which can be read or written
 )
 
 func Publish(agentName string, topicType interface{}) (*Publication, error) {
