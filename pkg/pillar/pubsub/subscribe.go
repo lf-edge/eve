@@ -138,7 +138,7 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 
 	name := sub.nameString()
 	sockName := SockName(name)
-	buf := make([]byte, 65536)
+	buf := make([]byte, maxsize+1)
 
 	// Waiting for publisher to appear; retry on error
 	for {

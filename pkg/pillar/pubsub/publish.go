@@ -228,8 +228,12 @@ func (pub *Publication) sendUpdate(sock net.Conn, key string,
 	// base64-encode to avoid having spaces in the key and val
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
 	sendVal := base64.StdEncoding.EncodeToString(b)
-	_, err = sock.Write([]byte(fmt.Sprintf("update %s %s %s",
-		pub.topic, sendKey, sendVal)))
+	buf := fmt.Sprintf("update %s %s %s", pub.topic, sendKey, sendVal)
+	if len(buf) >= maxsize {
+		log.Fatalf("Too large message (%d bytes) sent to %s topic %s key %s",
+			len(buf), pub.nameString(), pub.topic, key)
+	}
+	_, err = sock.Write([]byte(buf))
 	return err
 }
 
@@ -238,22 +242,36 @@ func (pub *Publication) sendDelete(sock net.Conn, key string) error {
 	log.Debugf("sendDelete(%s): key %s\n", pub.nameString(), key)
 	// base64-encode to avoid having spaces in the key
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
-	_, err := sock.Write([]byte(fmt.Sprintf("delete %s %s",
-		pub.topic, sendKey)))
+	buf := fmt.Sprintf("delete %s %s", pub.topic, sendKey)
+	if len(buf) >= maxsize {
+		log.Fatalf("Too large message (%d bytes) sent to %s topic %s key %s",
+			len(buf), pub.nameString(), pub.topic, key)
+	}
+	_, err := sock.Write([]byte(buf))
 	return err
 }
 
 func (pub *Publication) sendRestarted(sock net.Conn) error {
 
 	log.Infof("sendRestarted(%s)\n", pub.nameString())
-	_, err := sock.Write([]byte(fmt.Sprintf("restarted %s", pub.topic)))
+	buf := fmt.Sprintf("restarted %s", pub.topic)
+	if len(buf) >= maxsize {
+		log.Fatalf("Too large message (%d bytes) sent to %s topic %s",
+			len(buf), pub.nameString(), pub.topic)
+	}
+	_, err := sock.Write([]byte(buf))
 	return err
 }
 
 func (pub *Publication) sendComplete(sock net.Conn) error {
 
 	log.Infof("sendComplete(%s)\n", pub.nameString())
-	_, err := sock.Write([]byte(fmt.Sprintf("complete %s", pub.topic)))
+	buf := fmt.Sprintf("complete %s", pub.topic)
+	if len(buf) >= maxsize {
+		log.Fatalf("Too large message (%d bytes) sent to %s topic %s",
+			len(buf), pub.nameString(), pub.topic)
+	}
+	_, err := sock.Write([]byte(buf))
 	return err
 }
 
