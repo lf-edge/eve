@@ -687,7 +687,6 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 	port.Free = isFree
 
 	port.Dhcp = types.DT_NONE
-	port.AccessPoint = sysAdapter.AccessPoint
 	var ip net.IP
 	if sysAdapter.Addr != "" {
 		ip = net.ParseIP(sysAdapter.Addr)
@@ -730,6 +729,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			port.AddrSubnet = addrSubnet.String()
 		}
 
+		port.WirelessCfg = network.WirelessCfg
 		port.Gateway = network.Gateway
 		port.DomainName = network.DomainName
 		port.NtpServer = network.NtpServer
@@ -1102,6 +1102,51 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 		}
 
 		config.Proxy = &proxyConfig
+	}
+
+	// wireless property configuration
+	netWireless := netEnt.GetWireless()
+	if netWireless != nil {
+		log.Infof("parseOneNetworkXObjectConfig: Wireless of network present in %s, config %v", netEnt.Id, netWireless)
+		var wconfig types.WirelessConfig
+
+		wType := netWireless.GetType()
+		switch wType {
+		case zconfig.WirelessType_Cellular:
+			//
+			wconfig.WType = types.WirelessTypeCellular
+			apns := netWireless.GetCellularAPN()
+			for _, apn := range apns {
+				wconfig.APN = append(wconfig.APN, apn)
+			}
+			log.Infof("parseOneNetworkXObjectConfig: Wireless of network Cellular, %v", wconfig.APN)
+		case zconfig.WirelessType_WiFi:
+			//
+			wconfig.WType = types.WirelessTypeWifi
+			wificfgs := netWireless.GetWifiCfg()
+
+			for _, wificfg := range wificfgs {
+				var wifi types.WifiConfig
+				wifi.SSID = wificfg.GetWifiSSID()
+				if wificfg.GetKeyScheme() == zconfig.WiFiKeyScheme_WPAPSK {
+					wifi.KeyScheme = types.KeySchemeWpaPsk
+				} else if wificfg.GetKeyScheme() == zconfig.WiFiKeyScheme_WPAEAP {
+					wifi.KeyScheme = types.KeySchemeWpaEap
+				}
+				wifi.Identity = wificfg.GetIdentity()
+				wifi.Password = wificfg.GetPassword()
+				zcrypto := wificfg.GetCrypto()
+				wifi.Crypto.Identity = zcrypto.GetIdentity()
+				wifi.Crypto.Password = zcrypto.GetPassword()
+
+				wifi.Priority = wificfg.GetPriority()
+
+				wconfig.Wifi = append(wconfig.Wifi, wifi)
+			}
+			log.Infof("parseOneNetworkXObjectConfig: Wireless of network Wifi, %v", wconfig.Wifi)
+		default:
+		}
+		config.WirelessCfg = wconfig
 	}
 
 	ipspec := netEnt.GetIp()

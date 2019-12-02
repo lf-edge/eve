@@ -86,9 +86,6 @@ message SystemAdapter {
         // ( physical interface), this should point to PhyLabel of the
         // physicalIO.
         string lowerLayerName = 8;
-
-        // Access Point Address or ID, used in Wifi SSID or LTE APN
-        string accessPoint = 9;
 }
 
 enum PhyIoType {

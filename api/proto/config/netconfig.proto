@@ -20,6 +20,9 @@ message NetworkConfig {
 
         // enterprise proxy
         ProxyConfig entProxy = 8;
+
+        // wireless specification
+        WirelessConfig wireless = 10;
 }
 
 message NetworkAdapter {
@@ -43,4 +46,23 @@ message NetworkAdapter {
 
         // firewall
         repeated ACE acls = 40;
+}
+
+message WirelessConfig {
+    WirelessType type = 1;            // either LTE or Wifi
+    repeated string CellularAPN = 5;  // APN for Cellular LTE, etc
+    repeated WifiConfig wifiCfg = 10; // Wifi, can be multiple APs on a single wlan, e.g. one for 2.5Ghz, other 5Ghz SSIDs
+}
+
+message WifiConfig {
+    string wifiSSID = 1;             // SSID for WIFI
+    WiFiKeyScheme keyScheme = 2;     // key management scheme, WPA-PSK, WPS-EPA, etc
+    string identity = 5;             // WPA2 Enterprise user identity/username
+    string password = 10;            // a string of hashed psk or password
+    message cryptoblock {
+        string identity = 11;        // encrypted username if not empty
+        string password = 12;        // encrypted Password if not empty
+    }
+    cryptoblock crypto = 20;         // encrypted block
+    int32  priority = 25;            // priority of connection, default is 0
 }

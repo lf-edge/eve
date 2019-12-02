@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x0fnetconfig.proto\x1a\x08\x66w.proto\x1a\x0cnetcmn.proto\"\x8e\x01\n\rNetworkConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x1a\n\x04type\x18\x05 \x01(\x0e\x32\x0c.NetworkType\x12\x13\n\x02ip\x18\x06 \x01(\x0b\x32\x07.ipspec\x12 \n\x03\x64ns\x18\x07 \x03(\x0b\x32\x13.ZnetStaticDNSEntry\x12\x1e\n\x08\x65ntProxy\x18\x08 \x01(\x0b\x32\x0c.ProxyConfig\"\xcb\x01\n\x0eNetworkAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x11\n\tnetworkId\x18\x03 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x04 \x01(\t\x12\x10\n\x08hostname\x18\x05 \x01(\t\x12\x11\n\tcryptoEid\x18\n \x01(\t\x12\x15\n\rlispsignature\x18\x06 \x01(\t\x12\x0f\n\x07pemcert\x18\x07 \x01(\x0c\x12\x15\n\rpemprivatekey\x18\x08 \x01(\x0c\x12\x12\n\nmacAddress\x18\t \x01(\t\x12\x12\n\x04\x61\x63ls\x18( \x03(\x0b\x32\x04.ACEBG\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x0fnetconfig.proto\x1a\x08\x66w.proto\x1a\x0cnetcmn.proto\"\xb1\x01\n\rNetworkConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x1a\n\x04type\x18\x05 \x01(\x0e\x32\x0c.NetworkType\x12\x13\n\x02ip\x18\x06 \x01(\x0b\x32\x07.ipspec\x12 \n\x03\x64ns\x18\x07 \x03(\x0b\x32\x13.ZnetStaticDNSEntry\x12\x1e\n\x08\x65ntProxy\x18\x08 \x01(\x0b\x32\x0c.ProxyConfig\x12!\n\x08wireless\x18\n \x01(\x0b\x32\x0f.WirelessConfig\"\xcb\x01\n\x0eNetworkAdapter\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x11\n\tnetworkId\x18\x03 \x01(\t\x12\x0c\n\x04\x61\x64\x64r\x18\x04 \x01(\t\x12\x10\n\x08hostname\x18\x05 \x01(\t\x12\x11\n\tcryptoEid\x18\n \x01(\t\x12\x15\n\rlispsignature\x18\x06 \x01(\t\x12\x0f\n\x07pemcert\x18\x07 \x01(\x0c\x12\x15\n\rpemprivatekey\x18\x08 \x01(\x0c\x12\x12\n\nmacAddress\x18\t \x01(\t\x12\x12\n\x04\x61\x63ls\x18( \x03(\x0b\x32\x04.ACE\"`\n\x0eWirelessConfig\x12\x1b\n\x04type\x18\x01 \x01(\x0e\x32\r.WirelessType\x12\x13\n\x0b\x43\x65llularAPN\x18\x05 \x03(\t\x12\x1c\n\x07wifiCfg\x18\n \x03(\x0b\x32\x0b.WifiConfig\"\xd3\x01\n\nWifiConfig\x12\x10\n\x08wifiSSID\x18\x01 \x01(\t\x12!\n\tkeyScheme\x18\x02 \x01(\x0e\x32\x0e.WiFiKeyScheme\x12\x10\n\x08identity\x18\x05 \x01(\t\x12\x10\n\x08password\x18\n \x01(\t\x12\'\n\x06\x63rypto\x18\x14 \x01(\x0b\x32\x17.WifiConfig.cryptoblock\x12\x10\n\x08priority\x18\x19 \x01(\x05\x1a\x31\n\x0b\x63ryptoblock\x12\x10\n\x08identity\x18\x0b \x01(\t\x12\x10\n\x08password\x18\x0c \x01(\tBG\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
   dependencies=[fw__pb2.DESCRIPTOR,netcmn__pb2.DESCRIPTOR,])
 
@@ -70,6 +70,13 @@ _NETWORKCONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='wireless', full_name='NetworkConfig.wireless', index=5,
+      number=10, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -83,7 +90,7 @@ _NETWORKCONFIG = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=44,
-  serialized_end=186,
+  serialized_end=221,
 )
 
 
@@ -176,17 +183,173 @@ _NETWORKADAPTER = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=189,
-  serialized_end=392,
+  serialized_start=224,
+  serialized_end=427,
+)
+
+
+_WIRELESSCONFIG = _descriptor.Descriptor(
+  name='WirelessConfig',
+  full_name='WirelessConfig',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='type', full_name='WirelessConfig.type', index=0,
+      number=1, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='CellularAPN', full_name='WirelessConfig.CellularAPN', index=1,
+      number=5, type=9, cpp_type=9, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='wifiCfg', full_name='WirelessConfig.wifiCfg', index=2,
+      number=10, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=429,
+  serialized_end=525,
+)
+
+
+_WIFICONFIG_CRYPTOBLOCK = _descriptor.Descriptor(
+  name='cryptoblock',
+  full_name='WifiConfig.cryptoblock',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='identity', full_name='WifiConfig.cryptoblock.identity', index=0,
+      number=11, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='password', full_name='WifiConfig.cryptoblock.password', index=1,
+      number=12, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=690,
+  serialized_end=739,
+)
+
+_WIFICONFIG = _descriptor.Descriptor(
+  name='WifiConfig',
+  full_name='WifiConfig',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='wifiSSID', full_name='WifiConfig.wifiSSID', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='keyScheme', full_name='WifiConfig.keyScheme', index=1,
+      number=2, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='identity', full_name='WifiConfig.identity', index=2,
+      number=5, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='password', full_name='WifiConfig.password', index=3,
+      number=10, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='crypto', full_name='WifiConfig.crypto', index=4,
+      number=20, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='priority', full_name='WifiConfig.priority', index=5,
+      number=25, type=5, cpp_type=1, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[_WIFICONFIG_CRYPTOBLOCK, ],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=528,
+  serialized_end=739,
 )
 
 _NETWORKCONFIG.fields_by_name['type'].enum_type = netcmn__pb2._NETWORKTYPE
 _NETWORKCONFIG.fields_by_name['ip'].message_type = netcmn__pb2._IPSPEC
 _NETWORKCONFIG.fields_by_name['dns'].message_type = netcmn__pb2._ZNETSTATICDNSENTRY
 _NETWORKCONFIG.fields_by_name['entProxy'].message_type = netcmn__pb2._PROXYCONFIG
+_NETWORKCONFIG.fields_by_name['wireless'].message_type = _WIRELESSCONFIG
 _NETWORKADAPTER.fields_by_name['acls'].message_type = fw__pb2._ACE
+_WIRELESSCONFIG.fields_by_name['type'].enum_type = netcmn__pb2._WIRELESSTYPE
+_WIRELESSCONFIG.fields_by_name['wifiCfg'].message_type = _WIFICONFIG
+_WIFICONFIG_CRYPTOBLOCK.containing_type = _WIFICONFIG
+_WIFICONFIG.fields_by_name['keyScheme'].enum_type = netcmn__pb2._WIFIKEYSCHEME
+_WIFICONFIG.fields_by_name['crypto'].message_type = _WIFICONFIG_CRYPTOBLOCK
 DESCRIPTOR.message_types_by_name['NetworkConfig'] = _NETWORKCONFIG
 DESCRIPTOR.message_types_by_name['NetworkAdapter'] = _NETWORKADAPTER
+DESCRIPTOR.message_types_by_name['WirelessConfig'] = _WIRELESSCONFIG
+DESCRIPTOR.message_types_by_name['WifiConfig'] = _WIFICONFIG
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 NetworkConfig = _reflection.GeneratedProtocolMessageType('NetworkConfig', (_message.Message,), dict(
@@ -202,6 +365,28 @@ NetworkAdapter = _reflection.GeneratedProtocolMessageType('NetworkAdapter', (_me
   # @@protoc_insertion_point(class_scope:NetworkAdapter)
   ))
 _sym_db.RegisterMessage(NetworkAdapter)
+
+WirelessConfig = _reflection.GeneratedProtocolMessageType('WirelessConfig', (_message.Message,), dict(
+  DESCRIPTOR = _WIRELESSCONFIG,
+  __module__ = 'netconfig_pb2'
+  # @@protoc_insertion_point(class_scope:WirelessConfig)
+  ))
+_sym_db.RegisterMessage(WirelessConfig)
+
+WifiConfig = _reflection.GeneratedProtocolMessageType('WifiConfig', (_message.Message,), dict(
+
+  cryptoblock = _reflection.GeneratedProtocolMessageType('cryptoblock', (_message.Message,), dict(
+    DESCRIPTOR = _WIFICONFIG_CRYPTOBLOCK,
+    __module__ = 'netconfig_pb2'
+    # @@protoc_insertion_point(class_scope:WifiConfig.cryptoblock)
+    ))
+  ,
+  DESCRIPTOR = _WIFICONFIG,
+  __module__ = 'netconfig_pb2'
+  # @@protoc_insertion_point(class_scope:WifiConfig)
+  ))
+_sym_db.RegisterMessage(WifiConfig)
+_sym_db.RegisterMessage(WifiConfig.cryptoblock)
 
 
 DESCRIPTOR._options = None

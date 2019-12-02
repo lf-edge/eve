@@ -93,3 +93,15 @@ enum NetworkType {
         CryptoV6 = 26;
         CryptoEID = 14;
 }
+
+enum WirelessType {
+        TypeNOOP = 0;
+        WiFi = 1;
+        Cellular = 2;
+}
+
+enum WiFiKeyScheme {
+        SchemeNOOP = 0;
+        WPAPSK = 1;        // WPA-PSK
+        WPAEAP = 2;        // WPA-EAP or WPA2 Enterprise
+}

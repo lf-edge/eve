@@ -251,6 +251,27 @@ const (
 	NPT_LAST = 255
 )
 
+// WifiKeySchemeType - types of key management
+type WifiKeySchemeType uint8
+
+// Wifi Key-Scheme Enum
+const (
+	KeySchemeNone WifiKeySchemeType = iota
+	KeySchemeWpaPsk
+	KeySchemeWpaEap
+	KeySchemeOther
+)
+
+// WirelessType - types of wireless media
+type WirelessType uint8
+
+// Wireless type either cellur or wifi
+const (
+	WirelessTypeNone WirelessType = iota
+	WirelessTypeCellular
+	WirelessTypeWifi
+)
+
 type ProxyEntry struct {
 	Type   NetworkProxyType
 	Server string
@@ -277,6 +298,29 @@ type DhcpConfig struct {
 	DnsServers []net.IP // If not set we use Gateway as DNS server
 }
 
+// CryptoBlock - to support encrypted string in the structure
+type CryptoBlock struct {
+	Identity string // encrypted identity or username for WPA-EAP
+	Password string // encrypted string of pass phrase or password hash
+}
+
+// WifiConfig - wifi part of the configure
+type WifiConfig struct {
+	SSID      string            // wifi SSID
+	KeyScheme WifiKeySchemeType // such as WPA-PSK, WPA-EAP
+	Identity  string            // identity or username for WPA-EAP
+	Password  string            // string of pass phrase or password hash
+	Crypto    CryptoBlock       // encrypted block of items
+	Priority  int32
+}
+
+// WirelessConfig - for wireless structure
+type WirelessConfig struct {
+	WType WirelessType
+	APN   []string     // LTE APN
+	Wifi  []WifiConfig // Wifi Config params
+}
+
 type NetworkPortConfig struct {
 	IfName string
 	Name   string // New logical name set by controller/model
@@ -284,18 +328,17 @@ type NetworkPortConfig struct {
 	Free   bool   // Higher priority to talk to controller since no cost
 	DhcpConfig
 	ProxyConfig
-	AccessPoint string // For wireless SSID or APN address
+	WirelessCfg WirelessConfig
 	// Errrors from the parser go here and get reflects in NetworkPortStatus
 	ParseError     string
 	ParseErrorTime time.Time
 }
 
 type NetworkPortStatus struct {
-	IfName      string
-	Name        string // New logical name set by controller/model
-	IsMgmt      bool   // Used to talk to controller
-	Free        bool
-	AccessPoint string // Used for current wireless SSID/APN address/name
+	IfName string
+	Name   string // New logical name set by controller/model
+	IsMgmt bool   // Used to talk to controller
+	Free   bool
 	NetworkXObjectConfig
 	AddrInfoList []AddrInfo
 	ProxyConfig
@@ -1000,6 +1043,7 @@ type NetworkXObjectConfig struct {
 	DhcpRange       IpRange
 	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
 	Proxy           *ProxyConfig
+	WirelessCfg     WirelessConfig
 	// Any errrors from the parser
 	Error     string
 	ErrorTime time.Time
