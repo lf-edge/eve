@@ -6,6 +6,7 @@
 package zedrouter
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"strconv"
@@ -105,6 +106,7 @@ var loopcount int // XXX debug
 
 var dnssys [maxBridgeNumber]dnsSys // per bridge DNS records for the collection period
 var devUUID, nilUUID uuid.UUID
+var broadcastMAC = []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 
 // FlowStatsCollect : Timer fired to collect iptable flow stats
 func FlowStatsCollect(ctx *zedrouterContext) {
@@ -519,18 +521,25 @@ func checkAppAndACL(ctx *zedrouterContext, instData *networkAttrs) {
 			log.Infof("===FlowStats: (index %d) AppNum %d, VifInfo %v, IP addr %v, Hostname %s\n",
 				i, status.AppNum, ulStatus.VifInfo, ulStatus.AllocatedIPAddr, ulStatus.HostName)
 
+			ulconfig := ulStatus.UnderlayNetworkConfig
 			// build an App-IPaddress/intfs cache indexed by App-number
-			if ulStatus.AllocatedIPAddr != "" {
-				tmpAppInfo := appInfo{
-					ipaddr:    net.ParseIP(ulStatus.AllocatedIPAddr),
-					intf:      ulStatus.Name,
-					localintf: ulStatus.Bridge,
-				}
-				instData.appIPinfo[status.AppNum] = append(instData.appIPinfo[status.AppNum], tmpAppInfo)
+			tmpAppInfo := appInfo{
+				ipaddr:    net.ParseIP(ulStatus.AllocatedIPAddr),
+				intf:      ulStatus.Name,
+				localintf: ulStatus.Bridge,
 			}
+			netstatus := lookupNetworkInstanceStatus(ctx, ulconfig.Network.String())
+			if netstatus != nil {
+				if netstatus.Type == types.NetworkInstanceTypeSwitch {
+					if _, ok := netstatus.IPAssignments[ulStatus.Mac]; ok {
+						tmpAppInfo.ipaddr = netstatus.IPAssignments[ulStatus.Mac]
+						log.Infof("===FlowStats: switchnet, get ip %v\n", tmpAppInfo.ipaddr)
+					}
+				}
+			}
+			instData.appIPinfo[status.AppNum] = append(instData.appIPinfo[status.AppNum], tmpAppInfo)
 
 			// Fill in the bnNet indexed by bridge-name, used for loop through bridges, and Scope
-			ulconfig := ulStatus.UnderlayNetworkConfig
 			intfAttr := bridgeAttr{
 				bridge:  ulStatus.Bridge,
 				netUUID: ulconfig.Network,
@@ -671,9 +680,10 @@ func DNSStopMonitor(bnNum int) {
 
 // Monitor the dhcp packets for switched network instance
 func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContext) {
-	var isReplyAck, needUpdate, foundDstMac bool
+	var isReplyAck, needUpdate, foundDstMac, isBroadcast bool
 	var vifInfo []types.VifNameMac
 	var netstatus types.NetworkInstanceStatus
+	var vifTrig types.VifIPTrig
 
 	// use the IPAssigments of the NetworkInstanceStatus, since this is switched net
 	// and the field will not be assigned or modified by others
@@ -694,14 +704,20 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 	etherLayer := packet.Layer(layers.LayerTypeEthernet)
 	if etherLayer != nil {
 		etherPkt, _ := etherLayer.(*layers.Ethernet)
-		for _, vif := range vifInfo {
-			if strings.Compare(etherPkt.DstMAC.String(), vif.MacAddr) == 0 {
-				foundDstMac = true
-				break
+		if bytes.Compare(etherPkt.DstMAC, broadcastMAC) == 0 {
+			// some DHCP servers send replies with broadcast MAC address,
+			// need to check those in payload to see if it's for-us
+			isBroadcast = true
+		} else {
+			for _, vif := range vifInfo {
+				if strings.Compare(etherPkt.DstMAC.String(), vif.MacAddr) == 0 {
+					foundDstMac = true
+					break
+				}
 			}
 		}
 	}
-	if !foundDstMac { // dhcp packet not for this bridge App ports
+	if !foundDstMac && !isBroadcast { // dhcp packet not for this bridge App ports
 		log.Infof("checkDHCPPacketInfo: pkt no dst mac for us\n")
 		return
 	}
@@ -740,6 +756,7 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 								needUpdate = true
 							}
 						}
+						vifTrig.MacAddr = vif.MacAddr
 						break
 					}
 				}
@@ -764,6 +781,8 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 	if needUpdate {
 		log.Infof("checkDHCPPacketInfo: need update %v, %v\n", vifInfo, netstatus.IPAssignments)
 		publishNetworkInstanceStatus(ctx, &netstatus)
+		// trigger the AppInfo update to cloud
+		ctx.pubAppVifIPTrig.Publish(vifTrig.MacAddr, &vifTrig)
 	}
 }
 

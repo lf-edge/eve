@@ -453,6 +453,19 @@ func CastFlowStatus(in interface{}) types.IPFlow { //revive:disable-line
 	return output
 }
 
+// CastVifIPTrig : Cast interface type into types.VifIPTrig
+func CastVifIPTrig(in interface{}) types.VifIPTrig { //revive:disable-line
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatalf("json Marshal in CastVifIPTrig, %v", err)
+	}
+	var output types.VifIPTrig
+	if err := json.Unmarshal(b, &output); err != nil {
+		log.Fatalf("json Unmarshal in CastVifIPTrig, %v", err)
+	}
+	return output
+}
+
 // CastPhysicalIOAdapterList : Cast interface type into
 //       types.PhysicalIOAdapterList
 func CastPhysicalIOAdapterList(in interface{}) types.PhysicalIOAdapterList { //revive:disable-line
