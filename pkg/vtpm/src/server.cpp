@@ -115,10 +115,10 @@ int readMessage(int sock, google::protobuf::uint32 size)
 
     cout << "Received command is " << request.command() << std::endl;
     if (!isCommandAllowed(request.command())) {
-	cout << "Not a legal command, bailing out" << std::endl;
+        cout << "Not a legal command, bailing out" << std::endl;
         response.set_response("Command forbidden!");
         sendResponse(sock, response);
-	return 0;
+        return 0;
     }
     //Clear all the files which we expect to be output by the cmd.
     //This is to clear residual files of previous invocations, which
