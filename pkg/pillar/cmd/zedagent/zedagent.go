@@ -91,6 +91,7 @@ type zedagentContext struct {
 	subAppImgVerifierStatus   *pubsub.Subscription
 	subNetworkInstanceMetrics *pubsub.Subscription
 	subAppFlowMonitor         *pubsub.Subscription
+	subAppVifIPTrig           *pubsub.Subscription
 	subGlobalConfig           *pubsub.Subscription
 	subVaultStatus            *pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
@@ -344,6 +345,15 @@ func Run() {
 	subAppFlowMonitor.Activate()
 	flowQ = list.New()
 	log.Infof("FlowStats: create subFlowStatus")
+
+	subAppVifIPTrig, err := pubsub.Subscribe("zedrouter",
+		types.VifIPTrig{}, false, &zedagentCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subAppVifIPTrig.ModifyHandler = handleAppVifIPTrigModify
+	subAppVifIPTrig.CreateHandler = handleAppVifIPTrigModify
+	subAppVifIPTrig.Activate()
 
 	// Look for AppInstanceStatus from zedmanager
 	subAppInstanceStatus, err := pubsub.Subscribe("zedmanager",
@@ -860,6 +870,11 @@ func Run() {
 			start := agentlog.StartTime()
 			log.Debugf("FlowStats: change called")
 			subAppFlowMonitor.ProcessChange(change)
+			agentlog.CheckMaxTime(agentName, start)
+
+		case change := <-subAppVifIPTrig.C:
+			start := agentlog.StartTime()
+			subAppVifIPTrig.ProcessChange(change)
 			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subVaultStatus.C:

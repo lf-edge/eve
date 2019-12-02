@@ -198,6 +198,16 @@ func (statusPtr *AppInstanceStatus) ClearError() { //revive:disable-line
 	statusPtr.ErrorTime = time.Time{}
 }
 
+// HasUnderlayMacAddr - Check if the AI status has the underlay network with this Mac Address
+func (statusPtr *AppInstanceStatus) HasUnderlayMacAddr(MacAddr string) bool {
+	for _, ulStatus := range statusPtr.UnderlayNetworks {
+		if ulStatus.VifInfo.Mac == MacAddr {
+			return true
+		}
+	}
+	return false
+}
+
 type EIDOverlayConfig struct {
 	Name string // From proto message
 	EIDConfigDetails

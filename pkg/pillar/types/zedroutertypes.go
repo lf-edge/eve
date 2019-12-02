@@ -1777,3 +1777,13 @@ type IPFlow struct {
 func (flows IPFlow) Key() string {
 	return flows.Scope.UUID.String() + flows.Scope.NetUUID.String() + flows.Scope.Sequence
 }
+
+// VifIPTrig - structure contains Mac Address
+type VifIPTrig struct {
+	MacAddr string
+}
+
+// Key - VifIPTrig key function
+func (vifIP VifIPTrig) Key() string {
+	return vifIP.MacAddr
+}

@@ -761,6 +761,31 @@ func handleAppFlowMonitorDelete(ctxArg interface{}, key string,
 	log.Infof("handleAppFlowMonitorDelete(%s) done\n", key)
 }
 
+func handleAppVifIPTrigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Infof("handleAppVifIPTrigModify(%s)\n", key)
+	ctx := ctxArg.(*zedagentContext)
+	trig := cast.CastVifIPTrig(statusArg)
+	findVifAndTrigAppInfoUpload(ctx, trig.Key())
+}
+
+func findVifAndTrigAppInfoUpload(ctx *zedagentContext, macAddr string) {
+	sub := ctx.getconfigCtx.subAppInstanceStatus
+	items := sub.GetAll()
+
+	for _, st := range items {
+		aiStatus := cast.CastAppInstanceStatus(st)
+		if aiStatus.HasUnderlayMacAddr(macAddr) {
+			log.Infof("findVifAndTrigAppInfoUpload: mac address %s match, publish the info to cloud", macAddr)
+			uuidStr := aiStatus.Key()
+			PublishAppInfoToZedCloud(ctx, uuidStr, &aiStatus, ctx.assignableAdapters,
+				ctx.iteration)
+			ctx.iteration++
+		}
+	}
+}
+
 func aclActionToProtoAction(action string) flowlog.ACLAction {
 	switch action {
 	case "ACCEPT":
