@@ -18,7 +18,16 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	ipSrc net.IP, filename, locFilename string) error {
 
 	// create Endpoint
-	dEndPoint, err := ctx.dCtx.NewSyncerDest(trType, region, dpath, auth)
+	var dEndPoint zedUpload.DronaEndPoint
+	var err error
+	if trType == zedUpload.SyncHttpTr || trType == zedUpload.SyncSftpTr {
+		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, downloadURL, dpath, auth)
+	} else if trType == zedUpload.SyncAzureTr {
+		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, "", dpath, auth)
+	} else {
+		// AWS
+		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, region, dpath, auth)
+	}
 	if err != nil {
 		log.Errorf("NewSyncerDest failed: %s\n", err)
 		return err
