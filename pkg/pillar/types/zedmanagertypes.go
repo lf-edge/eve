@@ -306,6 +306,17 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	return
 }
 
+// Safename - Returns Safename for the StorageStatus
+func (ss StorageStatus) Safename() string {
+	if ss.IsContainer {
+		// For Containers, SafeName = ImageID.
+		return ss.ImageID.String()
+	}
+	// Else..VMs
+	// XXX - Move VMs to also use ImageID as the Safename.
+	return UrlToSafename(ss.Name, ss.ImageSha256)
+}
+
 // GetErrorInfo sets the errorInfo for the Storage Object
 func (ss StorageStatus) GetErrorInfo() ErrorInfo {
 	errInfo := ErrorInfo{
