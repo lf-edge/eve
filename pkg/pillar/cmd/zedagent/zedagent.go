@@ -880,7 +880,9 @@ func triggerPublishDevInfo(ctxPtr *zedagentContext) {
 	case ctxPtr.TriggerDeviceInfo <- struct{}{}:
 		// Do nothing more
 	default:
-		log.Errorf("Failed to send on PublishDeviceInfo")
+		// This occurs if we are already trying to send a device info
+		// and we get a second and third trigger before that is complete.
+		log.Warnf("Failed to send on PublishDeviceInfo")
 	}
 }
 
