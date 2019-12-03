@@ -757,6 +757,7 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 							}
 						}
 						vifTrig.MacAddr = vif.MacAddr
+						vifTrig.IPAddr = dhcpv4.YourClientIP
 						break
 					}
 				}
@@ -780,7 +781,8 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 
 	if needUpdate {
 		log.Infof("checkDHCPPacketInfo: need update %v, %v\n", vifInfo, netstatus.IPAssignments)
-		publishNetworkInstanceStatus(ctx, &netstatus)
+		pub := ctx.pubNetworkInstanceStatus
+		pub.Publish(netstatus.Key(), &netstatus)
 		// trigger the AppInfo update to cloud
 		ctx.pubAppVifIPTrig.Publish(vifTrig.MacAddr, &vifTrig)
 	}

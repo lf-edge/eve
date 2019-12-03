@@ -1781,6 +1781,7 @@ func (flows IPFlow) Key() string {
 // VifIPTrig - structure contains Mac Address
 type VifIPTrig struct {
 	MacAddr string
+	IPAddr  net.IP
 }
 
 // Key - VifIPTrig key function
