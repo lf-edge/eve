@@ -560,7 +560,8 @@ func handleModify(ctxArg interface{}, key string,
 	if needRestart ||
 		config.RestartCmd.Counter != status.RestartCmd.Counter {
 
-		log.Infof("handleModify(%v) for %s restartcmd from %d to %d need %v\n",
+		log.Infof("handleModify(%v) for %s restartcmd from %d to %d "+
+			"needRestart: %v\n",
 			config.UUIDandVersion, config.DisplayName,
 			status.RestartCmd.Counter, config.RestartCmd.Counter,
 			needRestart)
@@ -578,7 +579,8 @@ func handleModify(ctxArg interface{}, key string,
 		}
 	}
 	if needPurge || config.PurgeCmd.Counter != status.PurgeCmd.Counter {
-		log.Infof("handleModify(%v) for %s purgecmd from %d to %d need %v\n",
+		log.Infof("handleModify(%v) for %s purgecmd from %d to %d "+
+			"needPurge: %v\n",
 			config.UUIDandVersion, config.DisplayName,
 			status.PurgeCmd.Counter, config.PurgeCmd.Counter,
 			needPurge)

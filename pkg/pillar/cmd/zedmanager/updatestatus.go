@@ -36,7 +36,7 @@ func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
 			status.UUIDandVersion.UUID)
 		for ssIndx := range status.StorageStatusList {
 			ssPtr := &status.StorageStatusList[ssIndx]
-			safename2 := types.UrlToSafename(ssPtr.Name, ssPtr.ImageSha256)
+			safename2 := (*ssPtr).Safename()
 			if safename == safename2 {
 				log.Infof("Found StorageStatus URL %s safename %s\n",
 					ssPtr.Name, safename)
@@ -192,7 +192,7 @@ func removeAIStatusSafename(ctx *zedmanagerContext, safename string) {
 		log.Debugf("Processing AppInstanceStatus for UUID %s\n",
 			status.UUIDandVersion.UUID)
 		for _, ss := range status.StorageStatusList {
-			safename2 := types.UrlToSafename(ss.Name, ss.ImageSha256)
+			safename2 := ss.Safename()
 			if safename == safename2 {
 				log.Debugf("Found StorageStatus URL %s safename %s\n",
 					ss.Name, safename2)
@@ -458,15 +458,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 
 	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
-
-		safename := ""
-		if ss.IsContainer {
-			// For Containers, SafeName = ImageID.
-			safename = ss.ImageID.String()
-		} else {
-			// XXX - Move VMs to also use ImageID as the Safename.
-			safename = types.UrlToSafename(ss.Name, ss.ImageSha256)
-		}
+		safename := ss.Safename()
 		log.Infof("StorageStatus Name: %s, safename %s, ImageSha256: %s",
 			ss.Name, safename, ss.ImageSha256)
 
@@ -498,11 +490,6 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 					ss.ContainerImageID = vs.ContainerImageID
 					status.ContainerImageID = vs.ContainerImageID
 					changed = true
-				} else {
-					// FIXME: We really should be asserting here..
-					log.Errorf("doInstall: ss.ContainerImageID (%s) != "+
-						"vs.ContainerImageID(%s)\n",
-						ss.ContainerImageID, vs.ContainerImageID)
 				}
 			}
 			// If we don't already have a RefCount add one
@@ -640,7 +627,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	minState = types.MAXSTATE
 	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
-		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
+		safename := ss.Safename()
 		log.Infof("Found StorageStatus URL %s safename %s\n",
 			ss.Name, safename)
 
@@ -1116,7 +1103,7 @@ func MaybeRemoveStorageStatus(ctx *zedmanagerContext, ss *types.StorageStatus) b
 	}
 	// Decrease refcount if we had increased it
 	if ss.HasDownloaderRef {
-		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
+		safename := ss.Safename()
 		MaybeRemoveDownloaderConfig(ctx, safename)
 		ss.HasDownloaderRef = false
 		changed = true
