@@ -198,10 +198,11 @@ func (statusPtr *AppInstanceStatus) ClearError() { //revive:disable-line
 	statusPtr.ErrorTime = time.Time{}
 }
 
-// HasUnderlayMacAddr - Check if the AI status has the underlay network with this Mac Address
-func (statusPtr *AppInstanceStatus) HasUnderlayMacAddr(MacAddr string) bool {
-	for _, ulStatus := range statusPtr.UnderlayNetworks {
-		if ulStatus.VifInfo.Mac == MacAddr {
+// MaybeUpdateAppIPAddr - Check if the AI status has the underlay network with this Mac Address
+func (status *AppInstanceStatus) MaybeUpdateAppIPAddr(macAddr, ipAddr string) bool {
+	for idx, ulStatus := range status.UnderlayNetworks {
+		if ulStatus.VifInfo.Mac == macAddr {
+			status.UnderlayNetworks[idx].AllocatedIPAddr = ipAddr
 			return true
 		}
 	}

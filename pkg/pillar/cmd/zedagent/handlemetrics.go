@@ -1624,27 +1624,14 @@ func getDefaultRouters(ifname string) []string {
 func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
 	vifname string) (string, bool, string) {
 
-	sub := ctx.subNetworkInstanceStatus
 	log.Debugf("getAppIP(%s, %s)\n", aiStatus.Key(), vifname)
 	for _, ulStatus := range aiStatus.UnderlayNetworks {
 		if ulStatus.Vif != vifname {
 			continue
 		}
-		appIP := ulStatus.AllocatedIPAddr
-		ulconfig := ulStatus.UnderlayNetworkConfig
-		st, _ := sub.Get(ulconfig.Network.String())
-		if st != nil {
-			netstatus := cast.CastNetworkInstanceStatus(st)
-			if netstatus.Type == types.NetworkInstanceTypeSwitch {
-				log.Debugf("getAppIP: type switch on %s, mac %s, ip assignments %v", netstatus.BridgeName, ulStatus.Mac, netstatus.IPAssignments)
-				if _, ok := netstatus.IPAssignments[ulStatus.Mac]; ok {
-					appIP = netstatus.IPAssignments[ulStatus.Mac].String()
-				}
-			}
-		}
 		log.Debugf("getAppIP(%s, %s) found underlay %s assigned %v mac %s\n",
-			aiStatus.Key(), vifname, appIP, ulStatus.Assigned, ulStatus.Mac)
-		return appIP, ulStatus.Assigned, ulStatus.Mac
+			aiStatus.Key(), vifname, ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac)
+		return ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac
 	}
 	for _, olStatus := range aiStatus.OverlayNetworks {
 		if olStatus.Vif != vifname {

@@ -8,6 +8,7 @@ package zedagent
 import (
 	"bytes"
 	"github.com/golang/protobuf/ptypes/timestamp"
+	"net"
 	"strings"
 	"time"
 
@@ -767,21 +768,23 @@ func handleAppVifIPTrigModify(ctxArg interface{}, key string,
 	log.Infof("handleAppVifIPTrigModify(%s)\n", key)
 	ctx := ctxArg.(*zedagentContext)
 	trig := cast.CastVifIPTrig(statusArg)
-	findVifAndTrigAppInfoUpload(ctx, trig.Key())
+	findVifAndTrigAppInfoUpload(ctx, trig.MacAddr, trig.IPAddr)
 }
 
-func findVifAndTrigAppInfoUpload(ctx *zedagentContext, macAddr string) {
+func findVifAndTrigAppInfoUpload(ctx *zedagentContext, macAddr string, ipAddr net.IP) {
 	sub := ctx.getconfigCtx.subAppInstanceStatus
 	items := sub.GetAll()
 
 	for _, st := range items {
 		aiStatus := cast.CastAppInstanceStatus(st)
-		if aiStatus.HasUnderlayMacAddr(macAddr) {
-			log.Infof("findVifAndTrigAppInfoUpload: mac address %s match, publish the info to cloud", macAddr)
-			uuidStr := aiStatus.Key()
-			PublishAppInfoToZedCloud(ctx, uuidStr, &aiStatus, ctx.assignableAdapters,
-				ctx.iteration)
+		log.Debugf("findVifAndTrigAppInfoUpload: mac address %s match, ip %v, publish the info to cloud", macAddr, ipAddr)
+		uuidStr := aiStatus.Key()
+		aiStatusPtr := &aiStatus
+		if aiStatusPtr.MaybeUpdateAppIPAddr(macAddr, ipAddr.String()) {
+			log.Debugf("findVifAndTrigAppInfoUpload: underlay %v", aiStatusPtr.UnderlayNetworks)
+			PublishAppInfoToZedCloud(ctx, uuidStr, aiStatusPtr, ctx.assignableAdapters, ctx.iteration)
 			ctx.iteration++
+			break
 		}
 	}
 }
