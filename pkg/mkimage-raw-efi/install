@@ -13,7 +13,12 @@
 #   eve_install_skip_persist
 #   eve_install_skip_rootfs
 #
-set -x
+[ -n "$DEBUG" ] && set -x
+
+function pause {
+   echo "Pausing before $1. Entering shell. Type 'exit' to proceed to $1"
+   exit 0
+}
 
 function bail {
    echo "$*"
@@ -48,6 +53,15 @@ find_part() {
    done
 }
 
+# if we are running without a real root filesystem - we have to fake it here
+if [ ! -e /dev/root ]; then
+   # we are running off of an initrd or initramfs
+   # relying on init setting up mount points for us under /media
+   DEV_INIT="$(cd /media ; echo */rootfs.img | sed -e 's#/.*$##')"
+   ln -s "/media/$DEV_INIT" /bits
+   ln -s "/dev/$DEV_INIT" /dev/root
+fi
+
 # lets see if we're told on which disk to install...
 INSTALL_DEV=`cat /proc/cmdline | tr ' ' '\012' | sed -ne '/^eve_install_disk=/s#^.*=##p'`
 
@@ -65,16 +79,16 @@ fi
 [ -z "$INSTALL_DEV" ] && bail "FATAL: didn't find a single free disk"
 
 # now lets figure out whether we have installation material
+mkdir /parts || :
 CONFIG_PART=$(find_part CONFIG "$(root_dev)")
-if [ -z "$CONFIG_PART" ] ; then
-   [ -f /bits/config.img ] && ln -s /bits/config.img /parts/config.img
-else
+if [ -n "$CONFIG_PART" ] ; then
    ln -s /dev/$CONFIG_PART /parts/config.img
 fi
-[ -f /bits/rootfs*.img ] && ln -s /bits/rootfs*.img /parts/rootfs.img
-# and the ultimate default is not to install anything
-for i in config.img rootfs.img ; do
-  [ -L /parts/$i ] || ln -s /dev/null /parts/$i
+
+for i in config.img rootfs.img EFI ; do
+   SOURCE="/bits/$i"
+   [ -e "$SOURCE" ] || SOURCE=/dev/null
+   [ -L /parts/$i ] || ln -s "$SOURCE" /parts/$i
 done
 # finally lets see if we were given any overrides
 grep -q eve_install_skip_rootfs /proc/cmdline && trunc /parts/rootfs.img
@@ -83,7 +97,15 @@ grep -q eve_install_skip_config /proc/cmdline && trunc /parts/config.img
 grep -q eve_install_skip_persist /proc/cmdline || dd if=/dev/zero of=/parts/persist.img bs=1M count=1
 
 # we may be asked to pause before install procedure
-grep -q eve_pause_before_install /proc/cmdline && sleep 100000
+grep -q eve_pause_before_install /proc/cmdline && pause "formatting the /dev/$INSTALL_DEV"
+
+# FIXME: we need to run one thing from the install image to seed
+# the random generator for sgdisk invocatin via make-raw. This
+# needs to go away soon as part of the overall restructuring of
+# /install vs. make-raw vs. /init
+mkdir -p /mnt || :
+mount /parts/rootfs.img /mnt &&
+   /mnt/containers/onboot/*rngd/rootfs/sbin/rngd -1
 
 # do the install
 /bin/sh -xc "/make-raw /dev/$INSTALL_DEV" || bail "Installation failed. Entering shell..."
@@ -94,14 +116,13 @@ SERIAL_NUM=$(uuidgen)
 INVENTORY_PART=$(find_part INVENTORY "$(root_dev)")
 DEST_CONF_PART=$(find_part CONFIG "$INSTALL_DEV")
 
-mkdir /run/conf /run/inventory && \
+mkdir -p /run/conf /run/inventory && \
   mount -t vfat "/dev/$INVENTORY_PART" /run/inventory && \
   mount -t vfat "/dev/$DEST_CONF_PART" /run/conf  && \
   [ -f /run/conf/soft_serial ] || echo "$SERIAL_NUM" > /run/conf/soft_serial
 
 PILLAR=/mnt/containers/services/pillar/lower
-mount /parts/rootfs.img /mnt &&
-  for i in dev proc sys ; do mount --bind /$i $PILLAR/$i ; done
+for i in dev proc sys ; do mount --bind /$i $PILLAR/$i ; done
 
 SERIAL_NUM=$(cat /run/conf/soft_serial) && \
   mkdir "/run/inventory/$SERIAL_NUM"
@@ -115,11 +136,10 @@ umount /run/conf
 umount /run/inventory
 
 # we also maybe asked to pause after
-PAUSE_AFTER_SYNC=5
-grep -q eve_pause_after_install /proc/cmdline && PAUSE_AFTER_SYNC=100000
+grep -q eve_pause_after_install /proc/cmdline && pause "before shutting the node down"
 
 sync
-sleep $PAUSE_AFTER_SYNC
+sleep 5
 sync
 
 # we need a copy of these in tmpfs so that a block device with rootfs can be yanked
