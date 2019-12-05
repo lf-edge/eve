@@ -5,8 +5,12 @@
 #include <netinet/in.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <string.h>
+#include <stdlib.h>
+#include <fcntl.h>
 #include <unistd.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <fstream>
 #include <sstream>
 #include "vtpm_api.pb.h"
@@ -19,6 +23,9 @@ using namespace google::protobuf::io;
 #define CODED_STRM_HDR_LEN 4
 #define SERVER_PORT 8877
 #define LISTEN_BACKLOG_LIMIT 16
+#define MAX_ARGS 15
+#define BIN_PATH "/usr/bin/"
+#define CMD_OUTPUT_FILE "cmd.output"
 
 //Protobufs are sent in CodedStream format
 //Read first CODED_STRM_HDR_LEN bytes to decode the length of
@@ -55,22 +62,10 @@ std::list<string> allowed_commands = {
 "tpm2_load",
 "tpm2_evictcontrol",
 "tpm2_hmac",
+"tpm2_hash",
 "tpm2_sign",
 "tpm2_verifysignature",
 };
-
-static inline bool
-isCommandAllowed(string command_with_args)
-{
-  istringstream ss(command_with_args);
-  string command;
-  ss >> command;
-  auto it = find(allowed_commands.begin(), allowed_commands.end(), command);
-  if (it != allowed_commands.end()) {
-     return true;
-  }
-  return false;
-}
 
 static int
 sendResponse (int sock, eve_tools::EveTPMResponse &response)
@@ -88,6 +83,109 @@ sendResponse (int sock, eve_tools::EveTPMResponse &response)
     } else {
       return -1;
     }
+}
+
+static inline bool
+isCommandAllowed(string command_with_args)
+{
+  istringstream ss(command_with_args);
+  string command;
+  ss >> command;
+  auto it = find(allowed_commands.begin(), allowed_commands.end(), command);
+  if (it != allowed_commands.end()) {
+     return true;
+  }
+  return false;
+}
+
+static inline bool
+isFileNameAPath(string filename)
+{
+    return (filename.find('/') != filename.npos);
+}
+
+static int
+sanitizeCmdRequest(int sock, eve_tools::EveTPMRequest &request,
+                   eve_tools::EveTPMResponse &response)
+{
+    if (!isCommandAllowed(request.command())) {
+        cout << "Not a legal command, bailing out" << std::endl;
+        response.set_response("Command forbidden!");
+        sendResponse(sock, response);
+        return -1;
+    }
+    for (int i=0; i < request.expectedfiles_size(); i++) {
+        std::string expectedFile = request.expectedfiles(i);
+        if (isFileNameAPath(expectedFile)) {
+        response.set_response("output filename should not be a path!");
+        sendResponse(sock, response);
+        return -1;
+        }
+    }
+    for (int i=0; i < request.inputfiles_size(); i++) {
+        const eve_tools::File& file = request.inputfiles(i);
+        if (isFileNameAPath(file.name())) {
+            response.set_response("input filename should not be a path!");
+            sendResponse(sock, response);
+            return -1;
+        }
+    }
+    return 0;
+}
+
+//TBD: Change client library to send args in a list, rather in a single string
+//till then, split the given string into command and args. Once split, launch
+//the command using execve() inside a child. Parent waits for the client(i.e. command)
+//to finish.
+static int
+execCmd (string cmd) {
+    int i = 0;
+    string command_alone;
+    istringstream full_cmd(cmd);
+    const char *path[MAX_ARGS];
+    string args[MAX_ARGS];
+
+    full_cmd >> command_alone;
+    string command_with_path = BIN_PATH + command_alone;
+
+    path[i++] = command_with_path.c_str();
+    while (full_cmd >> args[i] && i < MAX_ARGS) {
+        path[i] = args[i].c_str();
+        i++;
+    }
+    path[i] = NULL;
+
+    //spawn child process
+    int child_pid = fork();
+    if (child_pid < 0) {
+        perror("fork failed with:");
+        return -1;
+    } else if (child_pid == 0) {
+        //Redirect stdout and stderr to cmd.output file
+        int fd = open(CMD_OUTPUT_FILE, O_CREAT|O_TRUNC|O_WRONLY, 0600);
+        dup2(fd, 1);
+        dup2(fd, 2);
+        close(fd);
+
+        //Flush pending stderr and stdout queues
+        fflush(stderr);
+        fflush(stdout);
+        execve(path[0], (char **)&path, NULL);
+
+        //We should never reach here, unless execve() itself fails
+        perror("execve failed with:");
+        exit(-1);
+    } else {
+        //Wait for child to exit, and collect the return code.
+        int status;
+        waitpid(child_pid, &status, 0);
+        if (WIFEXITED(status)) {
+            return (WEXITSTATUS(status));
+        } else {
+            return -1;
+        }
+    }
+    return 0;
 }
 
 //Read size bytes from the client connection, sock
@@ -114,20 +212,8 @@ int readMessage(int sock, google::protobuf::uint32 size)
     CodedStrmInput.PopLimit(msgLimit);
 
     cout << "Received command is " << request.command() << std::endl;
-    if (!isCommandAllowed(request.command())) {
-        cout << "Not a legal command, bailing out" << std::endl;
-        response.set_response("Command forbidden!");
-        sendResponse(sock, response);
-        return 0;
-    }
-    //Clear all the files which we expect to be output by the cmd.
-    //This is to clear residual files of previous invocations, which
-    //otherwise may be interpreted as output of current invocation.
-    for (int i=0; i < request.expectedfiles_size(); i++) {
-        std::string expectedFile = request.expectedfiles(i);
-        ostringstream command;
-        command << "rm -f " << expectedFile;
-        system(command.str().c_str());
+    if (sanitizeCmdRequest(sock, request, response) != 0) {
+         return -1;
     }
     for (int i=0; i < request.inputfiles_size(); i++) {
         const eve_tools::File& file = request.inputfiles(i);
@@ -135,28 +221,32 @@ int readMessage(int sock, google::protobuf::uint32 size)
         ofstream input_file;
         input_file.open(file.name(), ios::out|ios::binary);
         if (!input_file) {
-            cout << "Unable to open test file for writing" << std::endl;
+            cout << "Unable to open input file for writing" << std::endl;
             return -1;
         }
         input_file << file.content();
         input_file.close();
     }
 
-    ostringstream command;
-    command << request.command() << " " << "> cmd.output 2>&1";
-    system(command.str().c_str());
+    //sync all the input files.
+    sync();
+
+    //TBD: Propagate the return code all the way to the client, via protobuf.
+    execCmd(request.command());
+
+    //sync all the output files.
+    sync();
+
     ifstream cmdOut;
-    cmdOut.open("cmd.output", ios::in);
-    if (!cmdOut) {
-        cout << "Error opening cmd.output, skipping it" << std::endl;
-    } else {
+    cmdOut.open(CMD_OUTPUT_FILE, ios::in);
+    if (cmdOut) {
         ostringstream cmdoutstream;
         cmdoutstream << cmdOut.rdbuf();
         response.set_response(cmdoutstream.str());
         cout << "Command output is: " << std::endl;
         cout << cmdoutstream.str() << std::endl;
+        cmdOut.close();
     }
-    cmdOut.close();
     for (int i=0; i < request.expectedfiles_size(); i++) {
         std::string expectedFile = request.expectedfiles(i);
         ifstream output_file;
@@ -172,6 +262,19 @@ int readMessage(int sock, google::protobuf::uint32 size)
             outputFile->set_content(expectedFileContent.str());
             output_file.close();
         }
+    }
+    //Clear all the files: inputFiles and expectedFiles
+    for (int i=0; i < request.expectedfiles_size(); i++) {
+        std::string expectedFile = request.expectedfiles(i);
+        ostringstream command;
+        command << "rm -f " << expectedFile;
+        system(command.str().c_str());
+    }
+    for (int i=0; i < request.inputfiles_size(); i++) {
+        const eve_tools::File& inputFile = request.inputfiles(i);
+        ostringstream command;
+        command << "rm -f " << inputFile.name();
+        system(command.str().c_str());
     }
     sendResponse(sock, response);
 }
