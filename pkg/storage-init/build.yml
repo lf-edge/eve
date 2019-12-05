@@ -1,0 +1,16 @@
+# linuxkit build template 
+#
+# Copyright (c) 2018 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+org: lfedge
+image: eve-storage-init
+network: yes
+config:
+  binds:
+    - /dev:/dev
+    - /var:/var:rshared,rbind
+    - /:/hostfs
+  rootfsPropagation: shared
+  net: host
+  capabilities:
+    - CAP_SYS_ADMIN
