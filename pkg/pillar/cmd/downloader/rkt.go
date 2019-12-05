@@ -21,8 +21,6 @@ const (
 	// persistRktLocalConfigBase - Base Dir used for LocalConfigDir for
 	//  rkt Container images
 	persistRktLocalConfigBase = types.PersistDir + "/rktlocal"
-	// persistRktLocalConfigDir - Location of dir used by rkt local data
-	persistRktLocalConfigDir = types.PersistDir + "/rktlocal"
 )
 
 // getContainerRegistry will extract container registry and form download url
