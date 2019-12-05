@@ -148,6 +148,6 @@ UEFI_TAG=$(linuxkit_tag pkg/uefi)
 #
 # These tags need to be declared last sine they depend
 # on the previous tags being already defined.
-EVE_TAG=$(synthetic_tag zededa/eve pkg/pillar/Dockerfile.in)
+EVE_TAG=$(synthetic_tag zededa/eve pkg/pillar/Dockerfile.in pkg/rsyslog/Dockerfile.in)
 
 resolve_tags $1

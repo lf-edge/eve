@@ -147,7 +147,7 @@ test: $(GOBUILDER) | $(DIST)
 
 clean:
 	rm -rf $(DIST) pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile \
-		images/installer.yml $(ROOTFS_YML_xen) $(ROOTFS_YML_acrn)
+		pkg/rsyslog/Dockerfile images/installer.yml $(ROOTFS_YML_xen) $(ROOTFS_YML_acrn)
 
 yetus:
 	@echo Running yetus
@@ -244,6 +244,8 @@ pkg/pillar: pkg/lisp pkg/xen-tools pkg/dnsmasq pkg/strongswan pkg/gpt-tools pkg/
 pkg/qrexec-dom0: pkg/qrexec-lib pkg/xen-tools eve-qrexec-dom0
 	@true
 pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
+	@true
+pkg/rsyslog: pkg/gpt-tools eve-rsyslog
 	@true
 pkg/%: eve-% FORCE
 	@true
