@@ -531,11 +531,10 @@ func handleCreate(ctxArg interface{}, key string,
 	}
 
 	// If there are no errors, go ahead with Instance creation.
-	uuidStr := status.Key()
-	changed := doUpdate(ctx, uuidStr, config, &status)
+	changed := doUpdate(ctx, config, &status)
 	if changed {
-		log.Infof("handleCreate status change for %s\n",
-			uuidStr)
+		log.Infof("AppInstance(Name:%s, UUID:%s): handleCreate status change.",
+			config.DisplayName, config.UUIDandVersion.UUID)
 		publishAppInstanceStatus(ctx, &status)
 	}
 	log.Infof("handleCreate done for %s\n", config.DisplayName)
@@ -592,11 +591,9 @@ func handleModify(ctxArg interface{}, key string,
 	status.UUIDandVersion = config.UUIDandVersion
 	publishAppInstanceStatus(ctx, status)
 
-	uuidStr := status.Key()
-	changed := doUpdate(ctx, uuidStr, config, status)
+	changed := doUpdate(ctx, config, status)
 	if changed {
-		log.Infof("handleModify status change for %s\n",
-			uuidStr)
+		log.Infof("handleModify status change for %s", status.Key())
 		publishAppInstanceStatus(ctx, status)
 	}
 	status.FixedResources = config.FixedResources

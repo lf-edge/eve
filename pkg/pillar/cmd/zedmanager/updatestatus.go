@@ -41,18 +41,15 @@ func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
 				log.Infof("Found StorageStatus URL %s safename %s\n",
 					ssPtr.Name, safename)
 				if updateContainerImageID {
-					if status.ContainerImageID != containerImageID {
+					if ssPtr.ContainerImageID != containerImageID {
 						log.Debugf("Update AIS containerImageID: %s\n",
 							containerImageID)
-						status.ContainerImageID = containerImageID
 						ssPtr.ContainerImageID = containerImageID
 						publishAppInstanceStatus(ctx, &status)
 					} else {
 						log.Debugf("No change in ContainerId in Status. "+
-							"status.ContainerImageID: %s, containerImageID: %s, "+
-							"ssPtr.ContainerImageID: %s\n",
-							status.ContainerImageID, containerImageID,
-							ssPtr.ContainerImageID)
+							"ssPtr.ContainerImageID: %s, containerImageID: %s",
+							ssPtr.ContainerImageID, containerImageID)
 					}
 				}
 				updateAIStatusUUID(ctx, status.Key())
@@ -111,7 +108,7 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 		removeAIStatus(ctx, status)
 		return
 	}
-	changed := doUpdate(ctx, uuidStr, *config, status)
+	changed := doUpdate(ctx, *config, status)
 	if changed {
 		log.Infof("updateAIStatusUUID status change for %s\n",
 			uuidStr)
@@ -136,7 +133,7 @@ func removeAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	uuidStr := status.Key()
 	uninstall := (status.PurgeInprogress != types.BRING_DOWN)
-	changed, done := doRemove(ctx, uuidStr, status, uninstall)
+	changed, done := doRemove(ctx, status, uninstall)
 	if changed {
 		log.Infof("removeAIStatus status change for %s\n",
 			uuidStr)
@@ -165,7 +162,7 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	publishAppInstanceStatus(ctx, status)
 	config := lookupAppInstanceConfig(ctx, uuidStr)
 	if config != nil {
-		changed := doUpdate(ctx, uuidStr, *config, status)
+		changed := doUpdate(ctx, *config, status)
 		if changed {
 			publishAppInstanceStatus(ctx, status)
 		}
@@ -247,7 +244,7 @@ func updateOrRemove(ctx *zedmanagerContext, status types.AppInstanceStatus) {
 		removeAIStatus(ctx, &status)
 	} else {
 		log.Infof("updateOrRemove: update for %s\n", uuidStr)
-		changed := doUpdate(ctx, uuidStr, *config, &status)
+		changed := doUpdate(ctx, *config, &status)
 		if changed {
 			log.Infof("updateOrRemove status change for %s\n",
 				uuidStr)
@@ -310,14 +307,17 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 	return nil
 }
 
-func doUpdate(ctx *zedmanagerContext, uuidStr string,
-	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
+func doUpdate(ctx *zedmanagerContext,
+	config types.AppInstanceConfig,
+	status *types.AppInstanceStatus) bool {
 
-	log.Infof("doUpdate for %s\n", uuidStr)
+	uuidStr := status.Key()
+
+	log.Infof("doUpdate: UUID:%s, Name", uuidStr)
 
 	// The existence of Config is interpreted to mean the
 	// AppInstance should be INSTALLED. Activate is checked separately.
-	changed, done := doInstall(ctx, uuidStr, config, status)
+	changed, done := doInstall(ctx, config, status)
 	if !done {
 		return changed
 	}
@@ -329,7 +329,7 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 		status.PurgeInprogress = types.BRING_DOWN
 		changed = true
 		// Keep the verified images in place
-		_, done := doRemove(ctx, uuidStr, status, false)
+		_, done := doRemove(ctx, status, false)
 		if !done {
 			log.Infof("PurgeInprogress(%s) waiting for removal\n",
 				status.Key())
@@ -338,7 +338,7 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("PurgeInprogress(%s) bringing it up\n",
 			status.Key())
 	}
-	c, done := doPrepare(ctx, uuidStr, config, status)
+	c, done := doPrepare(ctx, config, status)
 	changed = changed || c
 	if !done {
 		return changed
@@ -346,13 +346,13 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 
 	if !config.Activate {
 		if status.Activated || status.ActivateInprogress {
-			c := doInactivateHalt(ctx, uuidStr, config, status)
+			c := doInactivateHalt(ctx, config, status)
 			changed = changed || c
 		} else {
 			// If we have a !ReadOnly disk this will create a copy
 			err := MaybeAddDomainConfig(ctx, config, *status, nil)
 			if err != nil {
-				log.Errorf("Error from MaybeAddDomainConfig for %s: %s\n",
+				log.Errorf("Error from MaybeAddDomainConfig for %s: %s",
 					uuidStr, err)
 				status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
 				status.Error = fmt.Sprintf("%s", err)
@@ -371,10 +371,85 @@ func doUpdate(ctx *zedmanagerContext, uuidStr string,
 	return changed
 }
 
-func doInstall(ctx *zedmanagerContext, uuidStr string,
-	config types.AppInstanceConfig, status *types.AppInstanceStatus) (bool, bool) {
+// doInstallProcessStorageEntriesWithVerifiedImage
+//  Returns: (vs, storageStatusUpdate)
+func doInstallProcessStorageEntriesWithVerifiedImage(
+	ctx *zedmanagerContext,
+	appInstUUID uuid.UUID,
+	ssPtr *types.StorageStatus) (*types.VerifyImageStatus, bool) {
 
-	log.Infof("doInstall for %s\n", uuidStr)
+	changed := false
+	safename := ssPtr.Safename()
+
+	// Shortcut if image is already verified
+	vs := lookupVerifyImageStatusAny(ctx, safename, ssPtr.ImageSha256)
+	// Handle post-reboot verification in progress by allowing
+	// types.DOWNLOADED. If the verification later fails we will
+	// get a delete of the VerifyImageStatus and skip this
+	if vs == nil {
+		log.Debugf("Verifier status not found for %s sha %s",
+			safename, ssPtr.ImageSha256)
+		return nil, false
+	}
+	if vs.Expired {
+		log.Infof("Vs.Expired Set. Re-download image %s, sha %s",
+			safename, ssPtr.ImageSha256)
+		return nil, false
+	}
+	switch vs.State {
+	case types.DELIVERED:
+		log.Infof("Found verified image for %s sha %s\n",
+			safename, ssPtr.ImageSha256)
+
+	case types.DOWNLOADED:
+		log.Infof("Found downloaded/verified image for %s sha %s\n",
+			safename, ssPtr.ImageSha256)
+	default:
+		log.Infof("vs.State (%d) not DELIVERED / DOWNLOADED. safename: %s"+
+			" sha %s", vs.State, safename, ssPtr.ImageSha256)
+		return nil, false
+	}
+	if vs.Safename != safename {
+		// If found based on sha256
+		log.Infof("Found diff safename %s\n", vs.Safename)
+	}
+	if ssPtr.IsContainer {
+		log.Debugf("Container. ssPtr.ContainerImageID: %s, "+
+			"vs.IsContainer = %t, vs.ContainerImageID: %s\n",
+			ssPtr.ContainerImageID, vs.IsContainer, vs.ContainerImageID)
+		if len(ssPtr.ContainerImageID) == 0 {
+			ssPtr.ContainerImageID = vs.ContainerImageID
+			changed = true
+		}
+	}
+
+	// If we don't already have a RefCount add one
+	if !ssPtr.HasVerifierRef {
+		log.Infof("!HasVerifierRef vs. RefCount %d for %s\n",
+			vs.RefCount, vs.Safename)
+		// We don't need certs since Status already exists
+		MaybeAddVerifyImageConfig(ctx, appInstUUID.String(), *ssPtr, false)
+		ssPtr.HasVerifierRef = true
+		changed = true
+	}
+	if vs.State != ssPtr.State {
+		ssPtr.State = vs.State
+		ssPtr.Progress = 100
+		changed = true
+	}
+	log.Debugf("Verifier Status Exists for StorageEntry: Name: %s, "+
+		"ImageID: %s,  vs.RefCount: %d, ssPtr.State: %d",
+		ssPtr.Name, ssPtr.ImageID, vs.RefCount, ssPtr.State)
+	return vs, changed
+}
+
+func doInstall(ctx *zedmanagerContext,
+	config types.AppInstanceConfig,
+	status *types.AppInstanceStatus) (bool, bool) {
+
+	uuidStr := status.Key()
+
+	log.Infof("doInstall: UUID: %s\n", uuidStr)
 	minState := types.MAXSTATE
 	allErrors := ""
 	errorSource := ""
@@ -388,8 +463,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		if status.PurgeInprogress == types.NONE {
 			log.Errorln(errString)
 			status.SetError(errString, "Invalid PurgeInProgress", time.Now())
-			changed = true
-			return changed, false
+			return true, false
 		}
 		log.Warnln(errString)
 	}
@@ -424,8 +498,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			config.Key(), len(status.StorageStatusList), len(newSs))
 		status.StorageStatusList = newSs
 		if removed {
-			log.Infof("Waiting for bad StorageStatus to go away for %s\n",
-				uuidStr)
+			log.Infof("Waiting for bad StorageStatus to go away for AppInst %s",
+				status.Key())
 			return removed, false
 		}
 	}
@@ -444,8 +518,7 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			log.Errorln(errString)
 			status.Error = errString
 			status.ErrorTime = time.Now()
-			changed = true
-			return changed, false
+			return true, false
 		}
 		newSs := types.StorageStatus{}
 		newSs.UpdateFromStorageConfig(sc)
@@ -462,55 +535,17 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("StorageStatus Name: %s, safename %s, ImageSha256: %s",
 			ss.Name, safename, ss.ImageSha256)
 
-		// Shortcut if image is already verified
-		vs := lookupVerifyImageStatusAny(ctx, safename, ss.ImageSha256)
-		// Handle post-reboot verification in progress by allowing
-		// types.DOWNLOADED. If the verification later fails we will
-		// get a delete of the VerifyImageStatus and skip this
-		if vs != nil && (vs.State == types.DELIVERED || vs.State == types.DOWNLOADED) {
-			switch vs.State {
-			case types.DELIVERED:
-				log.Infof("doInstall found verified image for %s sha %s\n",
-					safename, ss.ImageSha256)
-
-			case types.DOWNLOADED:
-				log.Infof("doInstall found downloaded/verified image for %s sha %s\n",
-					safename, ss.ImageSha256)
-			}
-			if vs.Safename != safename {
-				// If found based on sha256
-				log.Infof("doInstall found diff safename %s\n",
-					vs.Safename)
-			}
-			if ss.IsContainer {
-				log.Debugf("doInstall: Container. ss.ContainerImageID: %s, "+
-					"vs.IsContainer = %t, vs.ContainerImageID: %s\n",
-					ss.ContainerImageID, vs.IsContainer, vs.ContainerImageID)
-				if len(ss.ContainerImageID) == 0 {
-					ss.ContainerImageID = vs.ContainerImageID
-					status.ContainerImageID = vs.ContainerImageID
-					changed = true
-				}
-			}
-			// If we don't already have a RefCount add one
-			if !ss.HasVerifierRef {
-				log.Infof("doInstall !HasVerifierRef vs. RefCount %d for %s\n",
-					vs.RefCount, vs.Safename)
-				// We don't need certs since Status already exists
-				MaybeAddVerifyImageConfig(ctx, uuidStr, vs.Safename, *ss, false)
-				ss.HasVerifierRef = true
-				changed = true
-			}
+		// Check if VerifierStatus already exists.
+		vs, statusUpdated := doInstallProcessStorageEntriesWithVerifiedImage(
+			ctx, status.UUIDandVersion.UUID, ss)
+		changed = changed || statusUpdated
+		if vs != nil {
+			log.Debugf("doInstall: Verified image exists. StorageStatus "+
+				"Name: %s, safename %s, ImageSha256: %s",
+				ss.Name, safename, ss.ImageSha256)
 			if minState > vs.State {
 				minState = vs.State
 			}
-			if vs.State != ss.State {
-				ss.State = vs.State
-				ss.Progress = 100
-				changed = true
-			}
-			log.Debugf("doInstall Name: %s, ImageID: %s,  vs.RefCount: %d"+
-				"ss.State: %d", ss.Name, ss.ImageID, vs.RefCount, ss.State)
 			continue
 		}
 		if !ss.HasDownloaderRef {
@@ -521,9 +556,12 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 			changed = true
 		}
 		ds := lookupDownloaderStatus(ctx, safename)
-		if ds == nil {
-			log.Infof("lookupDownloaderStatus %s failed\n",
-				safename)
+		if ds == nil || ds.Expired {
+			if ds == nil {
+				log.Infof("downloadStatus not found. name: %s", safename)
+			} else {
+				log.Infof("downloadStatusExpired set. name: %s", safename)
+			}
 			minState = types.DOWNLOAD_STARTED
 			ss.State = types.DOWNLOAD_STARTED
 			changed = true
@@ -572,7 +610,8 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 		case types.DOWNLOADED:
 			// Kick verifier to start if it hasn't already
 			if !ss.HasVerifierRef {
-				ret, errInfo := MaybeAddVerifyImageConfig(ctx, uuidStr, safename, *ss, true)
+				ret, errInfo := MaybeAddVerifyImageConfig(ctx, uuidStr,
+					*ss, true)
 				if ret {
 					ss.HasVerifierRef = true
 					changed = true
@@ -633,9 +672,9 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 
 		vs := lookupVerifyImageStatusAny(ctx, safename,
 			ss.ImageSha256)
-		if vs == nil {
-			log.Infof("lookupVerifyImageStatusAny %s sha %s failed\n",
-				safename, ss.ImageSha256)
+		if vs == nil || vs.Expired {
+			log.Infof("VerifyImageStatus for %s sha %s not found (%v)\n",
+				safename, ss.ImageSha256, vs)
 			// Keep at current state
 			minState = types.DOWNLOADED
 			changed = true
@@ -715,9 +754,10 @@ func doInstall(ctx *zedmanagerContext, uuidStr string,
 	return changed, true
 }
 
-func doPrepare(ctx *zedmanagerContext, uuidStr string,
+func doPrepare(ctx *zedmanagerContext,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) (bool, bool) {
 
+	uuidStr := status.Key()
 	log.Infof("doPrepare for %s\n", uuidStr)
 	changed := false
 
@@ -1111,8 +1151,10 @@ func MaybeRemoveStorageStatus(ctx *zedmanagerContext, ss *types.StorageStatus) b
 	return changed
 }
 
-func doRemove(ctx *zedmanagerContext, uuidStr string,
+func doRemove(ctx *zedmanagerContext,
 	status *types.AppInstanceStatus, uninstall bool) (bool, bool) {
+
+	uuidStr := status.Key()
 
 	log.Infof("doRemove for %s uninstall %v\n", uuidStr, uninstall)
 
@@ -1293,9 +1335,10 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 // Handle Activate=false which is different than doInactivate
 // Keep DomainConfig around so the vdisks stay around
 // Keep AppInstanceConfig around and with Activate set.
-func doInactivateHalt(ctx *zedmanagerContext, uuidStr string,
+func doInactivateHalt(ctx *zedmanagerContext,
 	config types.AppInstanceConfig, status *types.AppInstanceStatus) bool {
 
+	uuidStr := status.Key()
 	log.Infof("doInactivateHalt for %s\n", uuidStr)
 	changed := false
 
