@@ -83,4 +83,5 @@ case "$IMAGE" in
     *) IMAGE="$PWD/$IMAGE";;
 esac
 
-(cd "$TMPDIR" || exit 1; tar cf - ./*) | docker run "$IMAGE_BIND_OPT" "$IMAGE:/output.img" -i "${MKFLASH_TAG}" /output.img usb_conf
+(cd "$TMPDIR" || exit 1; tar cf - ./*) | docker run "$IMAGE_BIND_OPT" "$IMAGE:/output.img" "${MKFLASH_TAG}" /output.img usb_conf
+cleanup
