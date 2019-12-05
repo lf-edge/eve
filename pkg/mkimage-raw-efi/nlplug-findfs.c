@@ -40,7 +40,44 @@
 #include <blkid.h>
 #include <libcryptsetup.h>
 
-#include "arg.h"
+extern char *argv0;
+
+/* use main(int argc, char *argv[]) */
+#define ARGBEGIN	for (argv0 = *argv, argv++, argc--;\
+					argv[0] && argv[0][0] == '-'\
+					&& argv[0][1];\
+					argc--, argv++) {\
+				char argc_;\
+				char **argv_;\
+				int brk_;\
+				if (argv[0][1] == '-' && argv[0][2] == '\0') {\
+					argv++;\
+					argc--;\
+					break;\
+				}\
+				for (brk_ = 0, argv[0]++, argv_ = argv;\
+						argv[0][0] && !brk_;\
+						argv[0]++) {\
+					if (argv_ != argv)\
+						break;\
+					argc_ = argv[0][0];\
+					switch (argc_)
+#define ARGEND			}\
+			}
+
+#define ARGC()		argc_
+
+#define EARGF(x)	((argv[0][1] == '\0' && argv[1] == NULL)?\
+				((x), abort(), (char *)0) :\
+				(brk_ = 1, (argv[0][1] != '\0')?\
+					(&argv[0][1]) :\
+					(argc--, argv++, argv[0])))
+
+#define ARGF()		((argv[0][1] == '\0' && argv[1] == NULL)?\
+				(char *)0 :\
+				(brk_ = 1, (argv[0][1] != '\0')?\
+					(&argv[0][1]) :\
+					(argc--, argv++, argv[0])))
 
 #define MAX_EVENT_TIMEOUT	5000
 #define DEFAULT_EVENT_TIMEOUT	250
@@ -50,6 +87,7 @@
 #define FOUND_DEVICE	0x1
 #define FOUND_BOOTREPO	0x2
 #define FOUND_APKOVL	0x4
+#define FOUND_ROOTFS    0x8
 
 #define LVM_PATH	"/sbin/lvm"
 #define MDADM_PATH	"/sbin/mdadm"
@@ -333,6 +371,7 @@ struct ueventconf {
 	int fork_count;
 	char *bootrepos;
 	char *apkovls;
+	char *rootfs;
 	int timeout;
 	int usb_storage_timeout;
 	int uevent_timeout;
@@ -584,7 +623,7 @@ static void *cryptsetup_thread(void *data)
 		goto notify_out;
 	}
 
-	r = crypt_load(cd, CRYPT_LUKS, params);
+	r = crypt_load(cd, CRYPT_LUKS1, params);
 	if (r < 0) {
 		warnx("crypt_load(%s)", data_devnode);
 		goto free_out;
@@ -882,7 +921,11 @@ static void scandev_cb(struct recurse_opts *opts, void *data)
 		dbg("found apkovl %s", opts->path);
 		append_line(conf->apkovls, opts->path);
 		ctx->found |= FOUND_APKOVL;
-	}
+	} else if (fnmatch("rootfs.img", opts->filename, 0) == 0) {
+                dbg("found rootfs %s", opts->path);
+                append_line(conf->rootfs, opts->path);
+                ctx->found |= FOUND_ROOTFS;
+        }
 }
 
 static int scandev(struct ueventconf *conf, const char *devnode, const char *type)
@@ -944,7 +987,7 @@ static int is_same_device(const struct uevent *ev, const char *nodepath)
 static void founddev(struct ueventconf *conf, int found)
 {
 	conf->found |= found;
-	if ((found & FOUND_DEVICE)
+	if ((found & FOUND_DEVICE) || (found & FOUND_ROOTFS)
 	    || ((found & FOUND_BOOTREPO) &&
 		(found & FOUND_APKOVL))) {
 		/* we have found everything we need, so no
@@ -1075,7 +1118,7 @@ static void uevent_handle(struct uevent *ev)
 
 	snprintf(ev->devnode, sizeof(ev->devnode), "/dev/%s", ev->devname);
 	pthread_mutex_lock(&conf->crypt.mutex);
-	found = searchdev(ev, conf->search_device, (conf->apkovls || conf->bootrepos));
+	found = searchdev(ev, conf->search_device, (conf->apkovls || conf->bootrepos || conf->rootfs));
 	pthread_mutex_unlock(&conf->crypt.mutex);
 	if (found) {
 		founddev(conf, found);
@@ -1198,6 +1241,7 @@ static void usage(int rc)
 	"options:\n"
 	" -a OUTFILE      add paths to found apkovls to OUTFILE\n"
 	" -b OUTFILE      add found boot repositories to OUTFILE\n"
+	" -r OUTFILE      add found rootfs images to OUTFILE\n"
 	" -c CRYPTDEVICE  run cryptsetup luksOpen when CRYPTDEVICE is found\n"
 	" -h              show this help\n"
 	" -H HEADERDEVICE use HEADERDEVICE as the LUKS header\n"
@@ -1304,6 +1348,9 @@ int main(int argc, char *argv[])
 		break;
 	case 'p':
 		conf.program_argv[0] = EARGF(usage(1));
+		break;
+	case 'r':
+		conf.rootfs = EARGF(usage(1));
 		break;
 	case 't':
 		conf.uevent_timeout = atoi(EARGF(usage(1)));
