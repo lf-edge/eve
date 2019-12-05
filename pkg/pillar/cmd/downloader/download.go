@@ -55,35 +55,32 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	}
 
 	req.Post()
-	for {
-		select {
-		case resp, ok := <-respChan:
-			if resp.IsDnUpdate() {
-				asize, osize, progress := resp.Progress()
-				log.Infof("Update progress for %v: %v/%v",
-					resp.GetLocalName(), asize, osize)
-				status.Progress(progress)
-				continue
-			}
-			if !ok {
-				errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>, <%s>",
-					dpath, region, filename)
-				log.Errorln(errStr)
-				return errors.New(errStr)
-			}
-			if syncOp == zedUpload.SyncOpDownload {
-				err = resp.GetDnStatus()
-			} else {
-				_, err = resp.GetUpStatus()
-			}
-			if resp.IsError() {
-				return err
-			}
-			log.Infof("Done for %v: size %v/%v",
-				resp.GetLocalName(),
-				resp.GetAsize(), resp.GetOsize())
-			status.Progress(100)
-			return nil
+	for resp := range respChan {
+		if resp.IsDnUpdate() {
+			asize, osize, progress := resp.Progress()
+			log.Infof("Update progress for %v: %v/%v",
+				resp.GetLocalName(), asize, osize)
+			status.Progress(progress)
+			continue
 		}
+		if syncOp == zedUpload.SyncOpDownload {
+			err = resp.GetDnStatus()
+		} else {
+			_, err = resp.GetUpStatus()
+		}
+		if resp.IsError() {
+			return err
+		}
+		log.Infof("Done for %v: size %v/%v",
+			resp.GetLocalName(),
+			resp.GetAsize(), resp.GetOsize())
+		status.Progress(100)
+		return nil
 	}
+	// if we got here, channel was closed
+	// range ends on a closed channel, which is the equivalent of "!ok"
+	errStr := fmt.Sprintf("respChan EOF for <%s>, <%s>, <%s>",
+		dpath, region, filename)
+	log.Errorln(errStr)
+	return errors.New(errStr)
 }
