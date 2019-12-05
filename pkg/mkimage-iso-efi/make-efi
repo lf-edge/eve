@@ -9,35 +9,35 @@
 set -e
 [ -n "$DEBUG" ] && set -x
 
-mkdir -p /tmp/efi
-cd /tmp/efi
+copy() {
+   dd if="$1" of="$2" bs=1M 2>/dev/null
+}
 
-# extract. BSD tar auto recognises compression, unlike GNU tar
-# only if stdin is a tty, if so need files volume mounted...
+#
+# Extract partitions from stdin or look them up in /bits
+#
+mkdir /parts 2>/dev/null || :
+cd /parts
+[ "$(cd /bits ; echo *)" = '*' ] || ln -s /bits/* .
 [ -t 0 ] || bsdtar xzf -
-
-# now lets take care of GRUB 
-CMDLINE="$(cat boot/cmdline)"
-sed -i'' -e "/set *linuxkit_cmdline=/s#=.*\$#=$CMDLINE#" EFI/BOOT/grub.cfg
-cp EFI/BOOT/BOOTAA64.EFI . >/dev/null 2>&1 || cp EFI/BOOT/BOOTX64.EFI .
 
 # create a ISO with a EFI boot partition
 # Stuff it into a FAT filesystem, making it as small as possible.  511KiB
 # headroom seems to be enough; (x+31)/32*32 rounds up to multiple of 32.
 mkfs.vfat -v -C boot.img \
-        $(( ($(stat -c %s BOOT*EFI) / 1024 + 511) \
+        $(( ($(stat -c %s EFI/BOOT/BOOT*EFI) / 1024 + 511) \
 		/ 32 * 32 )) > /dev/null
-echo "mtools_skip_check=1" >> /etc/mtools.conf && \
+
 mmd -i boot.img ::/EFI
 mmd -i boot.img ::/EFI/BOOT
-mcopy -i boot.img BOOT*EFI ::/EFI/BOOT/
+mcopy -i boot.img EFI/BOOT/* ::/EFI/BOOT/
 
-rm BOOT*EFI
-
+# pay attentio to the -f option: it follows symlinks which is exactly
+# what we need for installer construction but could be dangerous in the
+# generic case for this container
 xorriso -as mkisofs \
-	-R -e boot.img -hide boot.img -hide boot.catalog -no-emul-boot -o linuxkit-efi.iso .
-
-cat linuxkit-efi.iso
+	-f -R -e boot.img -hide boot.img -hide boot.catalog -no-emul-boot -o /tmp/disk.iso .
+copy /tmp/disk.iso /output.iso
 
 # How to build a VHDX. Commented out because we are currently not using it
 # Don't delete: It took too long to figure out how to do this...
