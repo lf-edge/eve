@@ -11,7 +11,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -326,22 +325,6 @@ func Run() {
 	}
 }
 
-// Handles both create and modify events
-func handleDatastoreConfigModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	ctx := ctxArg.(*downloaderContext)
-	config := cast.CastDatastoreConfig(configArg)
-	log.Infof("handleDatastoreConfigModify for %s\n", key)
-	checkAndUpdateDownloadableObjects(ctx, config.UUID)
-	log.Infof("handleDatastoreConfigModify for %s, done\n", key)
-}
-
-func handleDatastoreConfigDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-	log.Infof("handleDatastoreConfigDelete for %s\n", key)
-}
-
 // handle the datastore modification
 func checkAndUpdateDownloadableObjects(ctx *downloaderContext, dsID uuid.UUID) {
 	publications := []*pubsub.Publication{
@@ -364,53 +347,6 @@ func checkAndUpdateDownloadableObjects(ctx *downloaderContext, dsID uuid.UUID) {
 }
 
 // Wrappers to add objType for create. The Delete wrappers are merely
-// for function name consistency
-func handleAppImgModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	handleDownloaderModify(ctxArg, types.AppImgObj, key, configArg)
-}
-
-func handleAppImgCreate(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	handleDownloaderCreate(ctxArg, types.AppImgObj, key, configArg)
-}
-
-func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
-	handleDownloaderDelete(ctxArg, key, configArg)
-}
-
-func handleBaseOsModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	handleDownloaderModify(ctxArg, types.BaseOsObj, key, configArg)
-}
-
-func handleBaseOsCreate(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	handleDownloaderCreate(ctxArg, types.BaseOsObj, key, configArg)
-}
-
-func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
-	handleDownloaderDelete(ctxArg, key, configArg)
-}
-
-func handleCertObjModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	handleDownloaderModify(ctxArg, types.CertObj, key, configArg)
-}
-func handleCertObjCreate(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	handleDownloaderCreate(ctxArg, types.CertObj, key, configArg)
-}
-
-func handleCertObjDelete(ctxArg interface{}, key string, configArg interface{}) {
-	handleDownloaderDelete(ctxArg, key, configArg)
-}
 
 // Callers must be careful to publish any changes to DownloaderStatus
 func lookupDownloaderStatus(ctx *downloaderContext, objType string,
@@ -844,70 +780,6 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 	return dCtx
 }
 
-// Handles both create and modify events
-func handleGlobalDownloadConfigModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	ctx := ctxArg.(*downloaderContext)
-	config := cast.CastGlobalDownloadConfig(configArg)
-	if key != "global" {
-		log.Errorf("handleGlobalDownloadConfigModify: unexpected key %s\n", key)
-		return
-	}
-	log.Infof("handleGlobalDownloadConfigModify for %s\n", key)
-	ctx.globalConfig = config
-	log.Infof("handleGlobalDownloadConfigModify done for %s\n", key)
-}
-
-func initializeDirs() {
-
-	// Remove any files which didn't make it to the verifier.
-	// XXX space calculation doesn't take into account files in verifier
-	// XXX get space report from verifier??
-	clearInProgressDownloadDirs(downloaderObjTypes)
-
-	// create the object download directories
-	createDownloadDirs(downloaderObjTypes)
-}
-
-// Create the object download directories we own
-func createDownloadDirs(objTypes []string) {
-
-	workingDirTypes := []string{"pending"}
-
-	// now create the download dirs
-	for _, objType := range objTypes {
-		for _, dirType := range workingDirTypes {
-			dirName := types.DownloadDirname + "/" + objType + "/" + dirType
-			if _, err := os.Stat(dirName); err != nil {
-				log.Debugf("Create %s\n", dirName)
-				if err := os.MkdirAll(dirName, 0700); err != nil {
-					log.Fatal(err)
-				}
-			}
-		}
-	}
-}
-
-// clear in-progress object download directories
-func clearInProgressDownloadDirs(objTypes []string) {
-
-	inProgressDirTypes := []string{"pending"}
-
-	// now create the download dirs
-	for _, objType := range objTypes {
-		for _, dirType := range inProgressDirTypes {
-			dirName := types.DownloadDirname + "/" + objType +
-				"/" + dirType
-			if _, err := os.Stat(dirName); err == nil {
-				if err := os.RemoveAll(dirName); err != nil {
-					log.Fatal(err)
-				}
-			}
-		}
-	}
-}
-
 // If an object has a zero RefCount and dropped to zero more than
 // downloadGCTime ago, then we delete the Status. That will result in the
 // user (zedmanager or baseosmgr) deleting the Config, unless a RefCount
@@ -947,74 +819,6 @@ func gcObjects(ctx *downloaderContext) {
 			publishDownloaderStatus(ctx, &status)
 		}
 	}
-}
-
-func initSpace(ctx *downloaderContext, kb uint64) {
-	ctx.globalStatusLock.Lock()
-	ctx.globalStatus.UsedSpace = 0
-	ctx.globalStatus.ReservedSpace = 0
-	updateRemainingSpace(ctx)
-
-	ctx.globalStatus.UsedSpace = kb
-	// Note that the UsedSpace calculated during initialization can
-	// exceed MaxSpace, and RemainingSpace is a uint!
-	if ctx.globalStatus.UsedSpace > ctx.globalConfig.MaxSpace {
-		ctx.globalStatus.UsedSpace = ctx.globalConfig.MaxSpace
-	}
-	updateRemainingSpace(ctx)
-	ctx.globalStatusLock.Unlock()
-
-	publishGlobalStatus(ctx)
-}
-
-// Returns true if there was space
-func tryReserveSpace(ctx *downloaderContext, status *types.DownloaderStatus,
-	kb uint64) bool {
-
-	ctx.globalStatusLock.Lock()
-	if kb >= ctx.globalStatus.RemainingSpace {
-		ctx.globalStatusLock.Unlock()
-		return false
-	}
-	ctx.globalStatus.ReservedSpace += kb
-	updateRemainingSpace(ctx)
-	ctx.globalStatusLock.Unlock()
-
-	publishGlobalStatus(ctx)
-	status.ReservedSpace = kb
-	return true
-}
-
-func unreserveSpace(ctx *downloaderContext, status *types.DownloaderStatus) {
-	ctx.globalStatusLock.Lock()
-	ctx.globalStatus.ReservedSpace -= status.ReservedSpace
-	status.ReservedSpace = 0
-	ctx.globalStatus.UsedSpace += types.RoundupToKB(status.Size)
-
-	updateRemainingSpace(ctx)
-	ctx.globalStatusLock.Unlock()
-
-	publishGlobalStatus(ctx)
-}
-
-func deleteSpace(ctx *downloaderContext, kb uint64) {
-	ctx.globalStatusLock.Lock()
-	ctx.globalStatus.UsedSpace -= kb
-	updateRemainingSpace(ctx)
-	ctx.globalStatusLock.Unlock()
-
-	publishGlobalStatus(ctx)
-}
-
-// Caller must hold ctx.globalStatusLock.Lock() but no way to assert in go
-func updateRemainingSpace(ctx *downloaderContext) {
-
-	ctx.globalStatus.RemainingSpace = ctx.globalConfig.MaxSpace -
-		ctx.globalStatus.UsedSpace - ctx.globalStatus.ReservedSpace
-
-	log.Infof("RemainingSpace %d, maxspace %d, usedspace %d, reserved %d\n",
-		ctx.globalStatus.RemainingSpace, ctx.globalConfig.MaxSpace,
-		ctx.globalStatus.UsedSpace, ctx.globalStatus.ReservedSpace)
 }
 
 func publishGlobalStatus(ctx *downloaderContext) {
@@ -1077,71 +881,6 @@ func downloaderSubscription(ctx *downloaderContext, objType string) *pubsub.Subs
 	return sub
 }
 
-// cloud storage interface functions/APIs
-func constructDatastoreContext(config types.DownloaderConfig, status *types.DownloaderStatus, dst *types.DatastoreConfig) *types.DatastoreContext {
-	dpath := dst.Dpath
-	if status.ObjType == types.CertObj {
-		dpath = strings.Replace(dpath, "-images", "-certs", 1)
-	}
-	downloadURL := config.Name
-	if !config.NameIsURL {
-		downloadURL = dst.Fqdn
-		if len(dpath) > 0 {
-			downloadURL = downloadURL + "/" + dpath
-		}
-		if len(config.Name) > 0 {
-			downloadURL = downloadURL + "/" + config.Name
-		}
-	}
-	dsCtx := types.DatastoreContext{
-		DownloadURL:     downloadURL,
-		TransportMethod: dst.DsType,
-		Dpath:           dpath,
-		APIKey:          dst.ApiKey,
-		Password:        dst.Password,
-		Region:          dst.Region,
-	}
-	return &dsCtx
-}
-
-// Handles both create and modify events
-func handleGlobalConfigModify(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	ctx := ctxArg.(*downloaderContext)
-	if key != "global" {
-		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
-		return
-	}
-	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
-	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
-	if gcp != nil {
-		if gcp.DownloadGCTime != 0 {
-			downloadGCTime = time.Duration(gcp.DownloadGCTime) * time.Second
-		}
-		if gcp.DownloadRetryTime != 0 {
-			downloadRetryTime = time.Duration(gcp.DownloadRetryTime) * time.Second
-		}
-	}
-	log.Infof("handleGlobalConfigModify done for %s\n", key)
-}
-
-func handleGlobalConfigDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-
-	ctx := ctxArg.(*downloaderContext)
-	if key != "global" {
-		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
-		return
-	}
-	log.Infof("handleGlobalConfigDelete for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
-		debugOverride)
-	log.Infof("handleGlobalConfigDelete done for %s\n", key)
-}
-
 // Check for nil UUID (an indication the drive was missing in parseconfig)
 // and a missing datastore id.
 func lookupDatastoreConfig(ctx *downloaderContext, dsID uuid.UUID,
@@ -1163,9 +902,4 @@ func lookupDatastoreConfig(ctx *downloaderContext, dsID uuid.UUID,
 	log.Debugf("Found datastore(%s) for %s\n", dsID, name)
 	dst := cast.CastDatastoreConfig(cfg)
 	return &dst, ""
-}
-
-func sourceFailureError(ip, ifname, url string, err error) {
-	log.Errorf("Source IP %s failed: %s\n", ip, err)
-	zedcloud.ZedCloudFailure(ifname, url, 1024, 0)
 }

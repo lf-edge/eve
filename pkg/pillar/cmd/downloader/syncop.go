@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
@@ -275,4 +276,36 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	status.State = types.DOWNLOADED
 	status.Progress = 100 // Just in case
 	publishDownloaderStatus(ctx, status)
+}
+
+// cloud storage interface functions/APIs
+func constructDatastoreContext(config types.DownloaderConfig, status *types.DownloaderStatus, dst *types.DatastoreConfig) *types.DatastoreContext {
+	dpath := dst.Dpath
+	if status.ObjType == types.CertObj {
+		dpath = strings.Replace(dpath, "-images", "-certs", 1)
+	}
+	downloadURL := config.Name
+	if !config.NameIsURL {
+		downloadURL = dst.Fqdn
+		if len(dpath) > 0 {
+			downloadURL = downloadURL + "/" + dpath
+		}
+		if len(config.Name) > 0 {
+			downloadURL = downloadURL + "/" + config.Name
+		}
+	}
+	dsCtx := types.DatastoreContext{
+		DownloadURL:     downloadURL,
+		TransportMethod: dst.DsType,
+		Dpath:           dpath,
+		APIKey:          dst.ApiKey,
+		Password:        dst.Password,
+		Region:          dst.Region,
+	}
+	return &dsCtx
+}
+
+func sourceFailureError(ip, ifname, url string, err error) {
+	log.Errorf("Source IP %s failed: %s\n", ip, err)
+	zedcloud.ZedCloudFailure(ifname, url, 1024, 0)
 }
