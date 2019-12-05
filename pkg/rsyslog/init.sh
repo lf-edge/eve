@@ -1,3 +1,3 @@
 #!/bin/sh
 
-/usr/sbin/rsyslogd
+IMGP=`zboot curpart` /usr/sbin/rsyslogd
