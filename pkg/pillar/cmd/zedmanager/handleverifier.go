@@ -43,9 +43,10 @@ func lookupVerifyImageConfigSha256(ctx *zedmanagerContext,
 }
 
 // If checkCerts is set this can return false. Otherwise not.
-func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, uuidStr string, safename string,
+func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, uuidStr string,
 	ss types.StorageStatus, checkCerts bool) (bool, types.ErrorInfo) {
 
+	safename := ss.Safename()
 	log.Infof("MaybeAddVerifyImageConfig for %s, checkCerts: %v, "+
 		"isContainer: %v\n", safename, checkCerts, ss.IsContainer)
 

@@ -85,6 +85,45 @@ func (status VerifyImageStatus) VerifyFilename(fileName string) bool {
 	return ret
 }
 
+// ImageDownloadDirNames - Returns pendingDirname, verifierDirname, verifiedDirname
+// for the image.
+func (status VerifyImageStatus) ImageDownloadDirNames() (string, string, string) {
+	downloadDirname := DownloadDirname + "/" + status.ObjType
+
+	var pendingDirname, verifierDirname, verifiedDirname string
+	if status.IsContainer {
+		pendingDirname = downloadDirname + "/pending/" + status.ImageID.String()
+		verifierDirname = downloadDirname + "/verifier/" + status.ImageID.String()
+		verifiedDirname = downloadDirname + "/verified/" + status.ImageID.String()
+	} else {
+		// Else..VMs
+		pendingDirname = downloadDirname + "/pending/" + status.ImageSha256
+		verifierDirname = downloadDirname + "/verifier/" + status.ImageSha256
+		verifiedDirname = downloadDirname + "/verified/" + status.ImageSha256
+	}
+	return pendingDirname, verifierDirname, verifiedDirname
+}
+
+// ImageDownloadFilenames - Returns pendingFilename, verifierFilename, verifiedFilename
+// for the image
+func (status VerifyImageStatus) ImageDownloadFilenames() (string, string, string) {
+	var pendingFilename, verifierFilename, verifiedFilename string
+
+	pendingDirname, verifierDirname, verifiedDirname :=
+		status.ImageDownloadDirNames()
+	if status.IsContainer {
+		pendingFilename = pendingDirname + "/" + status.ContainerImageID + ".aci"
+		verifierFilename = verifierDirname + "/" + status.ContainerImageID + ".aci"
+		verifiedFilename = verifiedDirname + "/" + status.ContainerImageID + ".aci"
+	} else {
+		// Else..VMs
+		pendingFilename = pendingDirname + "/" + status.Safename
+		verifierFilename = verifierDirname + "/" + status.Safename
+		verifiedFilename = verifiedDirname + "/" + status.Safename
+	}
+	return pendingFilename, verifierFilename, verifiedFilename
+}
+
 func (status VerifyImageStatus) CheckPendingAdd() bool {
 	return status.PendingAdd
 }

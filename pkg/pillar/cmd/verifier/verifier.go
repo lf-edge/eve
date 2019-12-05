@@ -904,31 +904,8 @@ func markObjectAsVerifying(ctx *verifierContext,
 	config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus) (bool, int64) {
 
-	// Form the unique filename in
-	// DownloadDirname/<objType>/pending/
-	// based on the claimed Sha256 and safename, and the same name
-	// in DownloadDirname/<objType>/verifier/. Form a shorter name for
-	// DownloadDirname/<objType/>verified/.
-
-	var pendingDirname string
-	var verifierDirname string
-	var pendingFilename string
-	var verifierFilename string
-	objType := status.ObjType
-	downloadDirname := types.DownloadDirname + "/" + objType
-	if status.IsContainer {
-		pendingDirname = downloadDirname + "/pending/" + status.ImageID.String()
-		verifierDirname = downloadDirname + "/verifier/" + status.ImageID.String()
-
-		pendingFilename = pendingDirname + "/" + status.ContainerImageID + ".aci"
-		verifierFilename = verifierDirname + "/" + status.ContainerImageID + ".aci"
-	} else {
-		pendingDirname = downloadDirname + "/pending/" + status.ImageSha256
-		verifierDirname = downloadDirname + "/verifier/" + status.ImageSha256
-
-		pendingFilename = pendingDirname + "/" + config.Safename
-		verifierFilename = verifierDirname + "/" + config.Safename
-	}
+	pendingDirname, verifierDirname, _ := status.ImageDownloadDirNames()
+	pendingFilename, verifierFilename, _ := status.ImageDownloadFilenames()
 
 	// Move to verifier directory which is RO
 	// XXX should have dom0 do this and/or have RO mounts
@@ -982,15 +959,12 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus) bool {
 
 	if status.IsContainer {
+		log.Infof("verifyObjectSha: Container image %s. Returning success",
+			config.Name)
 		return true
 	}
-	objType := status.ObjType
-	downloadDirname := types.DownloadDirname + "/" + objType
-	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
-	verifierFilename := verifierDirname + "/" + config.Safename
-
-	log.Infof("Verifying URL %s file %s\n",
-		config.Name, verifierFilename)
+	_, verifierFilename, _ := status.ImageDownloadFilenames()
+	log.Infof("Verifying URL %s file %s\n", config.Name, verifierFilename)
 
 	imageHash, err := computeShaFile(verifierFilename)
 	if err != nil {
@@ -1177,25 +1151,9 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus) {
 
-	var verifierDirname string
-	var verifiedDirname string
-	var verifierFilename string
-	var verifiedFilename string
-	objType := status.ObjType
-	downloadDirname := types.DownloadDirname + "/" + objType
-	if status.IsContainer {
-		verifierDirname = downloadDirname + "/verifier/" + status.ImageID.String()
-		verifiedDirname = downloadDirname + "/verified/" + status.ImageID.String()
-
-		verifierFilename = verifierDirname + "/" + status.ContainerImageID + ".aci"
-		verifiedFilename = verifiedDirname + "/" + status.ContainerImageID + ".aci"
-	} else {
-		verifierDirname = downloadDirname + "/verifier/" + status.ImageSha256
-		verifiedDirname = downloadDirname + "/verified/" + config.ImageSha256
-
-		verifierFilename = verifierDirname + "/" + config.Safename
-		verifiedFilename = verifiedDirname + "/" + config.Safename
-
+	_, verifierDirname, verifiedDirname := status.ImageDownloadDirNames()
+	_, verifierFilename, verifiedFilename := status.ImageDownloadFilenames()
+	if !status.IsContainer {
 		// Move directory from DownloadDirname/verifier to
 		// DownloadDirname/verified
 		// XXX should have dom0 do this and/or have RO mounts
@@ -1235,7 +1193,7 @@ func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 		}
 	}
 
-	log.Errorf("Create %s\n", verifiedDirname)
+	log.Infof("Create %s\n", verifiedDirname)
 	if err := os.MkdirAll(verifiedDirname, 0700); err != nil {
 		log.Fatal(err)
 	}
@@ -1252,6 +1210,8 @@ func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 	if err := os.RemoveAll(verifierDirname); err != nil {
 		log.Fatal(err)
 	}
+	log.Infof("markObjectAsVerified - DOne. Moved from %s to %s\n",
+		verifierFilename, verifiedFilename)
 }
 
 func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,

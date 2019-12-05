@@ -53,7 +53,6 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		Activate:          aiConfig.Activate,
 		AppNum:            AppNum,
 		IsContainer:       aiStatus.IsContainer,
-		ContainerImageID:  aiStatus.ContainerImageID,
 		VmConfig:          aiConfig.FixedResources,
 		IoAdapterList:     aiConfig.IoAdapterList,
 		CloudInitUserData: aiConfig.CloudInitUserData,
@@ -71,12 +70,16 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	}
 	dc.DiskConfigList = make([]types.DiskConfig, numDisks)
 	i := 0
-	for _, sc := range aiConfig.StorageConfigList {
+	for index, sc := range aiConfig.StorageConfigList {
 		// Check that file is verified
 		locationDir := types.VerifiedAppImgDirname + "/" + sc.ImageSha256
 		location := ""
 		if aiStatus.IsContainer {
 			location = types.PersistRktDataDir
+			if dc.ContainerImageID == "" {
+				dc.ContainerImageID =
+					aiStatus.StorageStatusList[index].ContainerImageID
+			}
 		} else {
 			var err error
 			location, err = locationFromDir(locationDir)

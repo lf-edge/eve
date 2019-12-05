@@ -116,8 +116,7 @@ type AppInstanceStatus struct {
 	PurgeInprogress     Inprogress
 
 	// Container related state
-	IsContainer      bool
-	ContainerImageID string
+	IsContainer bool
 
 	// Mininum state across all steps and all StorageStatus.
 	// Error* set implies error.
