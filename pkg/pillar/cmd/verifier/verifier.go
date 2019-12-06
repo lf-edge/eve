@@ -53,6 +53,7 @@ const (
 // Go doesn't like this as a constant
 var (
 	verifierObjTypes = []string{types.AppImgObj, types.BaseOsObj}
+	vHandler         = makeVerifyHandler()
 )
 
 // Set from Makefile
@@ -75,7 +76,6 @@ var debugOverride bool                                // From command line arg
 var downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
 
 func Run() {
-	handlersInit()
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
@@ -696,39 +696,6 @@ func verifierPublication(ctx *verifierContext, objType string) *pubsub.Publicati
 	return pub
 }
 
-// Wrappers to add objType for create. The Delete wrappers are merely
-// for function name consistency
-func handleAppImgModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	handleVerifyImageModify(ctxArg, types.AppImgObj, key, configArg)
-}
-func handleAppImgCreate(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	handleVerifyImageCreate(ctxArg, types.AppImgObj, key, configArg)
-}
-
-func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
-	handleVerifyImageDelete(ctxArg, key, configArg)
-}
-
-func handleBaseOsModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	handleVerifyImageModify(ctxArg, types.BaseOsObj, key, configArg)
-}
-
-func handleBaseOsCreate(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	handleVerifyImageCreate(ctxArg, types.BaseOsObj, key, configArg)
-}
-
-func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
-	handleVerifyImageDelete(ctxArg, key, configArg)
-}
-
 // Callers must be careful to publish any changes to VerifyImageStatus
 func lookupVerifyImageStatus(ctx *verifierContext, objType string,
 	key string) *types.VerifyImageStatus {
@@ -746,79 +713,6 @@ func lookupVerifyImageStatus(ctx *verifierContext, objType string,
 		return nil
 	}
 	return &status
-}
-
-// We have one goroutine per provisioned domU object.
-// Channel is used to send config (new and updates)
-// Channel is closed when the object is deleted
-// The go-routine owns writing status for the object
-// The key in the map is the objects Key()
-type handlers map[string]chan<- interface{}
-
-var handlerMap handlers
-
-func handlersInit() {
-	handlerMap = make(handlers)
-}
-
-// Wrappers around handleCreate, handleModify, and handleDelete
-
-// Determine whether it is an create or modify
-func handleVerifyImageModify(ctxArg interface{}, objType string,
-	key string, configArg interface{}) {
-
-	log.Infof("handleVerifyImageModify(%s)\n", key)
-	config := cast.CastVerifyImageConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleVerifyImageModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	h, ok := handlerMap[config.Key()]
-	if !ok {
-		log.Fatalf("handleVerifyImageModify called on config that does not exist")
-	}
-	h <- configArg
-	log.Infof("handleVerifyImageModify(%s) done\n", key)
-}
-func handleVerifyImageCreate(ctxArg interface{}, objType string,
-	key string, configArg interface{}) {
-
-	log.Infof("handleVerifyImageCreate(%s)\n", key)
-	ctx := ctxArg.(*verifierContext)
-	config := cast.CastVerifyImageConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleVerifyImageCreate key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	h, ok := handlerMap[config.Key()]
-	if ok {
-		log.Fatalf("handleVerifyImageCreate called on config that already exists")
-	}
-	h1 := make(chan interface{}, 1)
-	handlerMap[config.Key()] = h1
-	go runHandler(ctx, objType, key, h1)
-	h = h1
-	h <- configArg
-	log.Infof("handleVerifyImageCreate(%s) done\n", key)
-}
-
-func handleVerifyImageDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Infof("handleVerifyImageDelete(%s)\n", key)
-	// Do we have a channel/goroutine?
-	h, ok := handlerMap[key]
-	if ok {
-		log.Debugf("Closing channel\n")
-		close(h)
-		delete(handlerMap, key)
-	} else {
-		log.Debugf("handleVerifyImageDelete: unknown %s\n", key)
-		return
-	}
-	log.Infof("handleVerifyImageDelete(%s) done\n", key)
 }
 
 // Server for each domU
