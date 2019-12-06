@@ -147,7 +147,7 @@ test: $(GOBUILDER) | $(DIST)
 
 clean:
 	rm -rf $(DIST) pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile \
-		pkg/rsyslog/Dockerfile images/installer.yml $(ROOTFS_YML_xen) $(ROOTFS_YML_acrn)
+		images/installer.yml $(ROOTFS_YML_xen) $(ROOTFS_YML_acrn)
 
 yetus:
 	@echo Running yetus
