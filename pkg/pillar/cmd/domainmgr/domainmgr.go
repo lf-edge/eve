@@ -1886,6 +1886,23 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 	return gone
 }
 
+func deleteStorageDisksForDomain(ctx *domainContext,
+	statusPtr *types.DomainStatus) {
+	if statusPtr.IsContainer {
+		log.Debugf("Container. Not deleting any images")
+	}
+	for _, ds := range statusPtr.DiskStatusList {
+		if !ds.ReadOnly && ds.Preserve {
+			log.Infof("Delete copy at %s\n", ds.ActiveFileLocation)
+			if err := os.Remove(ds.ActiveFileLocation); err != nil {
+				log.Errorln(err)
+				// XXX return? Cleanup status?
+			}
+			delImageStatus(ctx, ds.ActiveFileLocation)
+		}
+	}
+}
+
 func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 
 	log.Infof("handleDelete(%v) for %s\n",
@@ -1929,24 +1946,8 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 
 	// Do we need to delete any rw files that were not deleted during
 	// inactivation i.e. those preserved across reboots?
-	for _, ds := range status.DiskStatusList {
-		if status.IsContainer {
-			containerACIDir := types.VerifiedAppImgDirname + "/" +
-				ds.ImageID.String()
-			log.Infof("Delete copy at %s\n", containerACIDir)
-			if err := os.RemoveAll(containerACIDir); err != nil {
-				log.Errorln(err)
-			}
-		}
-		if !ds.ReadOnly && ds.Preserve {
-			log.Infof("Delete copy at %s\n", ds.ActiveFileLocation)
-			if err := os.Remove(ds.ActiveFileLocation); err != nil {
-				log.Errorln(err)
-				// XXX return? Cleanup status?
-			}
-			delImageStatus(ctx, ds.ActiveFileLocation)
-		}
-	}
+	deleteStorageDisksForDomain(ctx, status)
+
 	status.PendingDelete = false
 	publishDomainStatus(ctx, status)
 	// Write out what we modified to DomainStatus aka delete
