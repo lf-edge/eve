@@ -2299,6 +2299,7 @@ func DomainDestroy(status types.DomainStatus) error {
 		// Use rkt tool
 		log.Infof("Using rkt tool ... PodUUID - %s\n", status.PodUUID)
 		err = rktRm(status.PodUUID)
+		rktImageRm(status.ContainerImageID)
 	} else {
 		// Use xl tool
 		log.Infof("Using xl tool ... DomainName - %s\n", status.DomainName)
@@ -2326,6 +2327,26 @@ func rktRm(PodUUID string) error {
 	}
 	log.Infof("rkt Rm done\n")
 	return nil
+}
+
+// rktImageRm will remove the container images from the rkt local store
+func rktImageRm(imageHash string) {
+	cmd := "rkt"
+	args := []string{
+		"--dir=" + types.PersistRktDataDir,
+		"--insecure-options=image",
+		"image",
+		"rm",
+		imageHash,
+	}
+
+	log.Infof("rkt image rm args: %+v\n", args)
+
+	_, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt image rm failed ", err)
+	}
+	log.Infof("rktImageRm - image rm successful.")
 }
 
 func rktGc(gracePeriod uint32, imageGc bool) {

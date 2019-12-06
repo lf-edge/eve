@@ -117,6 +117,7 @@ func rktFetch(url string, localConfigDir string, pullPolicy string, aciDir strin
 	return imageID, nil
 }
 
+// rktImageExport will export the container images in ACI format
 func rktImageExport(imageHash, aciDir string) error {
 	var aciName string
 	cmd := "rkt"
