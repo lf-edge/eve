@@ -8,15 +8,15 @@ import (
 func handleAppImgModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	handleDownloaderModify(ctxArg, types.AppImgObj, key, configArg)
+	dHandler.modify(ctxArg, types.AppImgObj, key, configArg)
 }
 
 func handleAppImgCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	handleDownloaderCreate(ctxArg, types.AppImgObj, key, configArg)
+	dHandler.create(ctxArg, types.AppImgObj, key, configArg)
 }
 
 func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
-	handleDownloaderDelete(ctxArg, key, configArg)
+	dHandler.delete(ctxArg, key, configArg)
 }
