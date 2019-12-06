@@ -1269,7 +1269,8 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	handleCreate(ctx, status.ObjType, config)
 	status.PendingModify = false
 	publishVerifyImageStatus(ctx, status)
-	log.Infof("handleModify done for %s\n", config.Name)
+	log.Infof("handleModify done for %s. Status.RefCount=%d, Config.RefCount:%d",
+		config.Name, status.RefCount, config.RefCount)
 }
 
 func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
