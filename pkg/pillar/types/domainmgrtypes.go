@@ -26,7 +26,7 @@ type DomainConfig struct {
 	DiskConfigList    []DiskConfig
 	VifList           []VifInfo
 	IoAdapterList     []IoAdapter
-	CloudInitUserData string // base64-encoded
+	CloudInitUserData *string // base64-encoded
 	// Container related info
 	IsContainer      bool   // Is this Domain for a Container?
 	ContainerImageID string // SHA-512 of rkt container image

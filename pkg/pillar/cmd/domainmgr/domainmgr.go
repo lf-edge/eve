@@ -1394,7 +1394,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.ActiveFileLocation = target
 	}
 	// XXX could defer to Activate
-	if config.CloudInitUserData != "" {
+	if config.CloudInitUserData != nil {
 		ds, err := createCloudInitISO(config)
 		if err != nil {
 			return err
@@ -1712,6 +1712,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	if serialString != "" {
 		file.WriteString(fmt.Sprintf("serial = [%s]\n", serialString))
 	}
+	// XXX log file content: log.Infof("Created %s: %s
 	return nil
 }
 
@@ -2536,7 +2537,7 @@ func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
 	if err != nil {
 		log.Fatalf("createCloudInitISO failed %s\n", err)
 	}
-	ud, err := base64.StdEncoding.DecodeString(config.CloudInitUserData)
+	ud, err := base64.StdEncoding.DecodeString(*config.CloudInitUserData)
 	if err != nil {
 		errStr := fmt.Sprintf("createCloudInitISO failed %s\n", err)
 		return nil, errors.New(errStr)
