@@ -245,8 +245,6 @@ pkg/qrexec-dom0: pkg/qrexec-lib pkg/xen-tools eve-qrexec-dom0
 	@true
 pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
 	@true
-pkg/rsyslog: pkg/gpt-tools eve-rsyslog
-	@true
 pkg/%: eve-% FORCE
 	@true
 
