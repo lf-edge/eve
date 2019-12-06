@@ -690,6 +690,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.Activated = false
 			status.State = types.HALTED
 			publishDomainStatus(ctx, status)
+			doInactivate(ctx, status)
 		}
 	}
 }
