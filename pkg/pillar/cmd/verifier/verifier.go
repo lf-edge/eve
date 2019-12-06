@@ -1297,10 +1297,7 @@ func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 func doDelete(status *types.VerifyImageStatus) {
 	log.Infof("doDelete(%v)\n", status.Safename)
 
-	objType := status.ObjType
-	downloadDirname := types.DownloadDirname + "/" + objType
-	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
-	verifiedDirname := downloadDirname + "/verified/" + status.ImageSha256
+	_, verifierDirname, verifiedDirname := status.ImageDownloadDirNames()
 
 	_, err := os.Stat(verifierDirname)
 	if err == nil {
