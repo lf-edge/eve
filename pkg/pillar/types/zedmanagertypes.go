@@ -64,7 +64,7 @@ type AppInstanceConfig struct {
 	IoAdapterList       []IoAdapter
 	RestartCmd          AppInstanceOpsCmd
 	PurgeCmd            AppInstanceOpsCmd
-	CloudInitUserData   string // base64-encoded
+	CloudInitUserData   *string // base64-encoded
 	RemoteConsole       bool
 }
 
