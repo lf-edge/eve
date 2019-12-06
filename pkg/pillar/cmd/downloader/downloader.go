@@ -33,13 +33,15 @@ const (
 
 // Go doesn't like this as a constant
 var (
-	downloaderObjTypes = []string{types.AppImgObj, types.BaseOsObj,
-		types.CertObj}
+	debug              = false
+	debugOverride      bool                               // From command line arg
+	downloadGCTime     = time.Duration(600) * time.Second // Unless from GlobalConfig
+	downloadRetryTime  = time.Duration(600) * time.Second // Unless from GlobalConfig
+	downloaderObjTypes = []string{types.AppImgObj, types.BaseOsObj, types.CertObj}
+	Version            = "No version specified" // Set from Makefile
+	nilUUID            uuid.UUID                // should be a const, just the default nil value of uuid.UUID
+	dHandler           = makeDownloadHandler()
 )
-
-// Set from Makefile
-var Version = "No version specified"
-var nilUUID uuid.UUID
 
 type downloaderContext struct {
 	dCtx                    *zedUpload.DronaCtx
@@ -60,14 +62,7 @@ type downloaderContext struct {
 	subGlobalConfig         *pubsub.Subscription
 }
 
-var debug = false
-var debugOverride bool                                   // From command line arg
-var downloadGCTime = time.Duration(600) * time.Second    // Unless from GlobalConfig
-var downloadRetryTime = time.Duration(600) * time.Second // Unless from GlobalConfig
-
 func Run() {
-	handlersInit()
-
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
@@ -339,7 +334,7 @@ func checkAndUpdateDownloadableObjects(ctx *downloaderContext, dsID uuid.UUID) {
 			if status.DatastoreID == dsID {
 				config := lookupDownloaderConfig(ctx, status.ObjType, status.Key())
 				if config != nil {
-					handleDownloaderModify(ctx, status.ObjType, status.Key(), config)
+					dHandler.modify(ctx, status.ObjType, status.Key(), config)
 				}
 			}
 		}
@@ -383,78 +378,6 @@ func lookupDownloaderConfig(ctx *downloaderContext, objType string,
 		return nil
 	}
 	return &config
-}
-
-// We have one goroutine per provisioned domU object.
-// Channel is used to send config (new and updates)
-// Channel is closed when the object is deleted
-// The go-routine owns writing status for the object
-// The key in the map is the objects Key().
-type handlers map[string]chan<- interface{}
-
-var handlerMap handlers
-
-func handlersInit() {
-	handlerMap = make(handlers)
-}
-
-// Wrappers around handleCreate, handleModify, and handleDelete
-
-// Determine whether it is an create or modify
-func handleDownloaderModify(ctxArg interface{}, objType string,
-	key string, configArg interface{}) {
-
-	log.Infof("handleDownloaderModify(%s)\n", key)
-	config := cast.CastDownloaderConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleDownloaderModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	h, ok := handlerMap[config.Key()]
-	if !ok {
-		log.Fatalf("handleDownloaderModify called on config that does not exist")
-	}
-	h <- configArg
-}
-
-func handleDownloaderCreate(ctxArg interface{}, objType string,
-	key string, configArg interface{}) {
-
-	log.Infof("handleDownloaderCreate(%s)\n", key)
-	ctx := ctxArg.(*downloaderContext)
-	config := cast.CastDownloaderConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleDownloaderCreate key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	h, ok := handlerMap[config.Key()]
-	if ok {
-		log.Fatalf("handleDownloaderCreate called on config that already exists")
-	}
-	h1 := make(chan interface{}, 1)
-	handlerMap[config.Key()] = h1
-	go runHandler(ctx, objType, key, h1)
-	h = h1
-	h <- configArg
-}
-
-func handleDownloaderDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Infof("handleDownloaderDelete(%s)\n", key)
-	// Do we have a channel/goroutine?
-	h, ok := handlerMap[key]
-	if ok {
-		log.Debugf("Closing channel\n")
-		close(h)
-		delete(handlerMap, key)
-	} else {
-		log.Debugf("handleDownloaderDelete: unknown %s\n", key)
-		return
-	}
-	log.Infof("handleDownloaderDelete(%s) done\n", key)
 }
 
 // Server for each domU

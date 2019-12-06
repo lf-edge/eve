@@ -7,14 +7,14 @@ import (
 func handleCertObjModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	handleDownloaderModify(ctxArg, types.CertObj, key, configArg)
+	dHandler.modify(ctxArg, types.CertObj, key, configArg)
 }
 func handleCertObjCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	handleDownloaderCreate(ctxArg, types.CertObj, key, configArg)
+	dHandler.create(ctxArg, types.CertObj, key, configArg)
 }
 
 func handleCertObjDelete(ctxArg interface{}, key string, configArg interface{}) {
-	handleDownloaderDelete(ctxArg, key, configArg)
+	dHandler.delete(ctxArg, key, configArg)
 }
