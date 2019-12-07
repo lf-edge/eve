@@ -306,11 +306,12 @@ for p in $PARTS ; do
 done
 
 # Update embedded boot partition with our own bootloader
-if [ ${EMBED_BOOT_START:-0} -gt 0 -a ${EMBED_BOOT_SIZE:-0} -gt 0 -a -f /efifs/EFI/BOOT/BOOT*.EFI ] ; then
-  if mount $IMGFILE /mnt -o loop,offset=$(( $EMBED_BOOT_START * 512  )),sizelimit=$(( $EMBED_BOOT_SIZE * 512 )) ; then
+GRUB_IMG="$(echo /efifs/EFI/BOOT/BOOT*.EFI)"
+if [ ${EMBED_BOOT_START:-0} -gt 0 -a ${EMBED_BOOT_SIZE:-0} -gt 0 -a -f "$GRUB_IMG" ] ; then
+  if mount $IMGFILE /mnt -o loop,offset=$(( EMBED_BOOT_START * 512  )),sizelimit=$(( EMBED_BOOT_SIZE * 512 )) ; then
      FASTBOOT=$(cd /mnt/EFI/BOOT/ ; ls | grep -i '^fastboot.efi$')
      if $(set ${FASTBOOT:-. .} ; test $# -eq 1) ; then
-        cp_with_backup /efifs/EFI/BOOT/BOOT*.EFI /mnt/EFI/BOOT/$FASTBOOT
+        cp_with_backup "$GRUB_IMG" "/mnt/EFI/BOOT/$FASTBOOT"
         (echo 'set root=hd0,gpt11' ; echo 'configfile /efi/boot/grub.cfg') > /tmp/grub.cfg
         cp_with_backup /tmp/grub.cfg /mnt/EFI/BOOT/grub.cfg
      fi

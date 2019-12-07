@@ -490,7 +490,7 @@ fi
 # check if eve_installer=... was set
 if [ -n "$KOPT_eve_installer" ]; then
         [ -n "$KOPT_debug_init" ] && export DEBUG=yes
-	ebegin "Lauhcning EVE installer."
+	ebegin "Launching EVE installer."
 	/install
         eend $?
 

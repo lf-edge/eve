@@ -94,7 +94,7 @@ done
 grep -q eve_install_skip_rootfs /proc/cmdline && trunc /parts/rootfs.img
 grep -q eve_install_skip_config /proc/cmdline && trunc /parts/config.img
 # 1M of zeroes should be enough to trigger ext3 filesystem wipe
-grep -q eve_install_skip_persist /proc/cmdline || dd if=/dev/zero of=/parts/persist.img bs=1M count=1
+grep -q eve_install_skip_persist /proc/cmdline || dd if=/dev/zero of=/parts/persist.img bs=1M count=1 2>/dev/null
 
 # we may be asked to pause before install procedure
 grep -q eve_pause_before_install /proc/cmdline && pause "formatting the /dev/$INSTALL_DEV"
@@ -104,11 +104,11 @@ grep -q eve_pause_before_install /proc/cmdline && pause "formatting the /dev/$IN
 # needs to go away soon as part of the overall restructuring of
 # /install vs. make-raw vs. /init
 mkdir -p /mnt || :
-mount /parts/rootfs.img /mnt &&
+mount -o ro /parts/rootfs.img /mnt &&
    /mnt/containers/onboot/*rngd/rootfs/sbin/rngd -1
 
 # do the install
-/bin/sh -xc "/make-raw /dev/$INSTALL_DEV" || bail "Installation failed. Entering shell..."
+/make-raw "/dev/$INSTALL_DEV" || bail "Installation failed. Entering shell..."
 
 # generate a Soft Serial Number (if there isn't one)
 # SERIAL_NUM=$(uuidgen | sed -e 's#^.*-##')
@@ -117,8 +117,8 @@ INVENTORY_PART=$(find_part INVENTORY "$(root_dev)")
 DEST_CONF_PART=$(find_part CONFIG "$INSTALL_DEV")
 
 mkdir -p /run/conf /run/inventory && \
-  mount -t vfat "/dev/$INVENTORY_PART" /run/inventory && \
-  mount -t vfat "/dev/$DEST_CONF_PART" /run/conf  && \
+  mount -t vfat -o iocharset=iso8859-1 "/dev/$INVENTORY_PART" /run/inventory && \
+  mount -t vfat -o iocharset=iso8859-1 "/dev/$DEST_CONF_PART" /run/conf  && \
   [ -f /run/conf/soft_serial ] || echo "$SERIAL_NUM" > /run/conf/soft_serial
 
 PILLAR=/mnt/containers/services/pillar/lower

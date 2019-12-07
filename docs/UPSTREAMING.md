@@ -147,3 +147,7 @@ We will explore two options:
 [dom0-ztools](../pkg/dom0-ztools) inserts a single script, [zen](../pkg/dom0-ztools/zen) onto the base filesystem. `zen` is a utility script that wraps `ctr` to simplify access to containerd containers. This presumably is because the `ctr` commands can be convoluted and hard to remember.
 
 There is a case to be made for upstreaming this into linuxkit itself, at least in the ssh/getty containers.
+
+### mkinitfs
+
+There are two files [initramfs-init](../pkg/mkimage-raw-efi/initramfs-init) and [nlplug-findfs.c](../pkg/mkimage-raw-efi/nlplug-findfs.c) that came directly from Alpine's [initramfs](https://github.com/alpinelinux/mkinitfs) project but they contain a few small tweaks making them applicable to our installation needs.
