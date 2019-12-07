@@ -52,7 +52,7 @@ DOCKER_ARCH_TAG=$(ZARCH)
 ROOTFS_YML_xen_amd64=images/rootfs-xen.yml
 ROOTFS_YML_xen_arm64=images/rootfs-xen.yml
 ROOTFS_YML_acrn_amd64=images/rootfs-acrn.yml
-ROOTFS_YML_acrn_arm64=/dev/null
+ROOTFS_YML_acrn_arm64=ACRN-IS-NOT-SUPPORTED-ON-ARM
 ROOTFS_YML=$(ROOTFS_YML_$(HV)_$(ZARCH))
 
 # where we store outputs
@@ -143,7 +143,7 @@ test: $(GOBUILDER) | $(DIST)
 	@$(DOCKER_GO) "gotestsum --junitfile $(DOCKER_DIST)/results.xml" $(GOTREE) $(GOMODULE)
 
 clean:
-	rm -rf $(DIST) $(ROOTFS_YML_xen) $(ROOTFS_YML_acrn) \
+	rm -rf $(DIST) $(ROOTFS_YML_xen_$(ZARCH)) $(ROOTFS_YML_acrn_$(ZARCH)) \
                pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile
 
 yetus:
