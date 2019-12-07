@@ -220,7 +220,7 @@ func getLatestConfig(url string, iteration int,
 				return false
 			}
 			if config != nil {
-				log.Errorf("Using saved config %v\n", config)
+				log.Info("Using saved config")
 				getconfigCtx.readSavedConfig = true
 				getconfigCtx.configGetStatus = types.ConfigGetReadSaved
 				return inhaleDeviceConfig(config, getconfigCtx,

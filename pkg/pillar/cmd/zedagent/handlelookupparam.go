@@ -68,7 +68,6 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	//Fill DeviceLispConfig struct with LispInfo config...
 	var lispConfig = DeviceLispConfig{}
 
-	log.Debugf("handleLookupParam got config %v\n", devConfig)
 	lispInfo := devConfig.LispInfo
 	if lispInfo == nil {
 		log.Errorf("handleLookupParam: missing lispInfo\n")
@@ -85,6 +84,8 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		log.Debugf("handleLookupParam: lispInfo sha is unchanged\n")
 		return
 	}
+	// Note that there are no secrets in lispInfo. XXX true?
+	log.Debugf("handleLookupParam got lisp config %v", lispInfo)
 	lispConfig.LispInstance = lispInfo.LispInstance
 	lispConfig.EID = net.ParseIP(lispInfo.EID)
 	lispConfig.ClientAddr = lispInfo.ClientAddr
