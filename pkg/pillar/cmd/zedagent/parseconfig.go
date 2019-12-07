@@ -45,9 +45,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	}
 	ctx := getconfigCtx.zedagentCtx
 
-	// XXX - DO NOT LOG entire config till secrets are spunoff into a separate
-	//  struct, referenced by a pointer. That way, the passwords won't get
-	//  printed.
+	// XXX - DO NOT LOG entire config till secrets are in encrypted blobs
 	//log.Debugf("parseConfig: EdgeDevConfig: %v\n", *config)
 
 	// Look for timers and other settings in configItems
@@ -578,13 +576,15 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	if same && !forceParse {
 		return
 	}
-	log.Infof("parseSystemAdapterConfig: Applying updated config\n"+
-		"prevSha: % x\n"+
-		"NewSha : % x\n"+
-		"sysAdapters: %v\n"+
-		"Forced parsing: %v\n",
-		systemAdaptersPrevConfigHash, configHash, sysAdapters, forceParse)
-
+	// XXX secrets like wifi credentials in here
+	if false {
+		log.Infof("parseSystemAdapterConfig: Applying updated config\n"+
+			"prevSha: % x\n"+
+			"NewSha : % x\n"+
+			"sysAdapters: %v\n"+
+			"Forced parsing: %v\n",
+			systemAdaptersPrevConfigHash, configHash, sysAdapters, forceParse)
+	}
 	systemAdaptersPrevConfigHash = configHash
 
 	// Check if we have any with Uplink/IsMgmt set, in which case we
@@ -620,9 +620,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 			"Done with no change")
 		return
 	}
-	log.Infof("parseSystemAdapterConfig: version %d/%d diff %v",
-		getconfigCtx.devicePortConfig.Version, portConfig.Version,
-		cmp.Diff(getconfigCtx.devicePortConfig.Ports, portConfig.Ports))
+	log.Infof("parseSystemAdapterConfig: version %d/%d differs",
+		getconfigCtx.devicePortConfig.Version, portConfig.Version)
 
 	// This is suboptimal after a reboot since the config will be the same
 	// yet the timestamp be new. HandleDPCModify takes care of that.
@@ -796,11 +795,14 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 	if same {
 		return false
 	}
-	log.Infof("parseDeviceIoListConfig: Applying updated config\n"+
-		"prevSha: % x\n"+
-		"NewSha : % x\n"+
-		"deviceIoList: %v\n",
-		deviceIoListPrevConfigHash, configHash, deviceIoList)
+	// XXX secrets like wifi credentials in here
+	if false {
+		log.Infof("parseDeviceIoListConfig: Applying updated config\n"+
+			"prevSha: % x\n"+
+			"NewSha : % x\n"+
+			"deviceIoList: %v\n",
+			deviceIoListPrevConfigHash, configHash, deviceIoList)
+	}
 
 	deviceIoListPrevConfigHash = configHash
 
