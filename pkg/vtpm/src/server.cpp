@@ -32,7 +32,8 @@ using namespace google::protobuf::io;
 //the payload
 //TBD: Revisit if length CODED_STRM_HDR_LEN is required or
 //can be squeezed into 1.
-google::protobuf::uint32 readHdr(char *buf)
+google::protobuf::uint32
+readHdr (char *buf)
 {
     google::protobuf::uint32 size;
     google::protobuf::io::ArrayInputStream arrayStrm(buf,CODED_STRM_HDR_LEN);
@@ -67,30 +68,49 @@ std::list<string> allowed_commands = {
 "tpm2_verifysignature",
 };
 
+#define failure -1
+#define success 0
+
+// Send the given response to the given socket, after converting
+// response to Serialized Coded Stream.
+// Returns non-zero error in case of failure.
 static int
 sendResponse (int sock, eve_tools::EveTPMResponse &response)
 {
+    int rc = success;
     google::protobuf::uint32 size = response.ByteSize() + CODED_STRM_HDR_LEN;
     char *resp_buffer = new char [size];
     google::protobuf::io::ArrayOutputStream aos(resp_buffer, size);
     CodedOutputStream *coded_output = new CodedOutputStream(&aos);
-    coded_output->WriteVarint32(response.ByteSize());
-    response.SerializeToCodedStream(coded_output);
-    int sent_bytes = send(sock, (void *)resp_buffer, size, 0);
-    delete(resp_buffer);
-    if (sent_bytes == size) {
-      return 0;
-    } else {
-      return -1;
+    if (!coded_output) {
+        cerr << "Unable to create CodedOutputStream" << std::endl;
+        rc = failure;
+        goto cleanup_and_exit;
     }
+    coded_output->WriteVarint32(response.ByteSize());
+    if (!response.SerializeToCodedStream(coded_output)) {
+        cerr << "Serialization error" << std::endl;
+        rc = failure;
+        goto cleanup_and_exit;
+    }
+    if (send(sock, (void *)resp_buffer, size, 0) != size) {
+      rc = failure;
+    }
+    //Fall through for cleanup and exit;
+cleanup_and_exit:
+   if (coded_output) {
+       delete(coded_output);
+   }
+   if (resp_buffer) {
+       delete(resp_buffer);
+   }
+   return rc;
 }
 
+//Check if this command is allowed to be executed.
 static inline bool
-isCommandAllowed(string command_with_args)
+isCommandAllowed (string command)
 {
-  istringstream ss(command_with_args);
-  string command;
-  ss >> command;
   auto it = find(allowed_commands.begin(), allowed_commands.end(), command);
   if (it != allowed_commands.end()) {
      return true;
@@ -98,39 +118,94 @@ isCommandAllowed(string command_with_args)
   return false;
 }
 
+//Check if filename is a path. e.g. /foo/bar
 static inline bool
-isFileNameAPath(string filename)
+isFileNameAPath (string filename)
 {
     return (filename.find('/') != filename.npos);
 }
 
+//Check for malformed or illegal arguments, if so, set the
+//response message accordingly, and return error to the
+//caller
 static int
-sanitizeCmdRequest(int sock, eve_tools::EveTPMRequest &request,
+sanitizeCmdRequest (int sock, eve_tools::EveTPMRequest &request,
                    eve_tools::EveTPMResponse &response)
 {
-    if (!isCommandAllowed(request.command())) {
-        cout << "Not a legal command, bailing out" << std::endl;
-        response.set_response("Command forbidden!");
-        sendResponse(sock, response);
-        return -1;
+    int rc = success;
+
+    //pull just the command (w/o args) from request.
+    istringstream ss(request.command());
+    string command;
+    ss >> command;
+
+    //If command is not one of the allowed group, reject it.
+    if (!isCommandAllowed(command)) {
+        cerr << "Not a legal command, bailing out" << std::endl;
+        response.set_response(command + ":" + "Command is forbidden!");
+        rc = failure;
+        goto cleanup_and_exit;
     }
+
+    //If input or output file name contains a path (e.g. /foo/bar)
     for (int i=0; i < request.expectedfiles_size(); i++) {
         std::string expectedFile = request.expectedfiles(i);
         if (isFileNameAPath(expectedFile)) {
-        response.set_response("output filename should not be a path!");
-        sendResponse(sock, response);
-        return -1;
+            response.set_response(expectedFile + ":" +
+                                  "output filename should not be a path!");
+            rc = failure;
+            goto cleanup_and_exit;
         }
     }
     for (int i=0; i < request.inputfiles_size(); i++) {
         const eve_tools::File& file = request.inputfiles(i);
         if (isFileNameAPath(file.name())) {
-            response.set_response("input filename should not be a path!");
-            sendResponse(sock, response);
-            return -1;
+            response.set_response(file.name() + ":" +
+                                  "input filename should not be a path!");
+            return rc;
+            goto cleanup_and_exit;
         }
     }
-    return 0;
+cleanup_and_exit:
+    return rc;
+}
+
+//Prepare execve args list, from the give command.
+//Returns failure in case of too many arguments.
+static inline int
+prepareCommand(string cmd,
+               const char **cmdArgs,
+               eve_tools::EveTPMResponse &response) {
+    int i = 0, j = 0, rc = success;
+    string cmdAlone;
+    istringstream fullCmd(cmd);
+    string args[MAX_ARGS];
+
+    fullCmd >> cmdAlone;
+    string cmdWithPath = BIN_PATH + cmdAlone;
+
+    cmdArgs[i++] = cmdWithPath.c_str();
+    while (fullCmd >> args[i] && i < (MAX_ARGS - 1)) {
+        cmdArgs[i] = args[i].c_str();
+        i++;
+    }
+    if (i == (MAX_ARGS - 1)) {
+        cerr << "More than acceptable number of args" << std::endl;
+	response.set_response("Too many arguments");
+        rc = failure;
+        goto cleanup_and_exit;
+    }
+    cmdArgs[i] = NULL;
+
+    //print for debugging purposes
+    cout << "Prepared command is :" << std::endl;
+    while(cmdArgs[j]) {
+      cout << cmdArgs[j++] << " ";
+    }
+    cout << std::endl;
+
+cleanup_and_exit:
+    return rc;
 }
 
 //TBD: Change client library to send args in a list, rather in a single string
@@ -138,31 +213,21 @@ sanitizeCmdRequest(int sock, eve_tools::EveTPMRequest &request,
 //the command using execve() inside a child. Parent waits for the client(i.e. command)
 //to finish.
 static int
-execCmd (string cmd) {
-    int i = 0;
-    string command_alone;
-    istringstream full_cmd(cmd);
-    const char *path[MAX_ARGS];
-    string args[MAX_ARGS];
-
-    full_cmd >> command_alone;
-    string command_with_path = BIN_PATH + command_alone;
-
-    path[i++] = command_with_path.c_str();
-    while (full_cmd >> args[i] && i < MAX_ARGS) {
-        path[i] = args[i].c_str();
-        i++;
-    }
-    path[i] = NULL;
-
+execCmd (const char **cmdArgs) {
     //spawn child process
-    int child_pid = fork();
+    pid_t child_pid = fork();
     if (child_pid < 0) {
-        perror("fork failed with:");
-        return -1;
+        int rc = errno;
+        cerr << "fork() failed with errno " << rc << std::endl;
+        return(rc);
     } else if (child_pid == 0) {
         //Redirect stdout and stderr to cmd.output file
         int fd = open(CMD_OUTPUT_FILE, O_CREAT|O_TRUNC|O_WRONLY, 0600);
+        if (fd < 0) {
+            int rc = errno;
+            cerr << "fork() failed with errno " << rc << std::endl;
+            exit(rc);
+        }
         dup2(fd, 1);
         dup2(fd, 2);
         close(fd);
@@ -170,11 +235,11 @@ execCmd (string cmd) {
         //Flush pending stderr and stdout queues
         fflush(stderr);
         fflush(stdout);
-        execve(path[0], (char **)&path, NULL);
-
-        //We should never reach here, unless execve() itself fails
-        perror("execve failed with:");
-        exit(-1);
+        if (execve(cmdArgs[0], (char **)&cmdArgs, NULL) < 0) {
+            int rc = errno;
+            cerr << "execve() failed with errno " << rc << std::endl;
+            exit(rc);
+        }
     } else {
         //Wait for child to exit, and collect the return code.
         int status;
@@ -182,47 +247,103 @@ execCmd (string cmd) {
         if (WIFEXITED(status)) {
             return (WEXITSTATUS(status));
         } else {
-            return -1;
+            return failure;
         }
     }
     return 0;
 }
 
-//Read size bytes from the client connection, sock
-//returns 0 on success, -1 on failure.
-int readMessage(int sock, google::protobuf::uint32 size)
+// Given the socket, and the size of the request payload,
+// receive complete request payload, convert from serialized
+// coded stream format into protobuf format in eve_tools::EveTpmRequest.
+// Returns non-zero error code in case of failure, and fills up
+// response.response() with appropriate error message.
+static int
+parseRequest(int sock,
+             google::protobuf::uint32 size,
+             eve_tools::EveTPMRequest &request,
+             eve_tools::EveTPMResponse &response,
+             char *payload)
 {
-    int bytecount = 0;
-    char payload[size+CODED_STRM_HDR_LEN];
-    eve_tools::EveTPMResponse response;
-    bytecount = recv(sock, (void*)payload, size+CODED_STRM_HDR_LEN, MSG_WAITALL);
-    if (bytecount < 0) {
-        cerr << "Error reading further payload bytes" << std::endl;
-        return -1;
+    int byteCnt = 0;
+    ifstream cmdOut;
+
+    //We expect atleast one byte to read here.
+    if (size == 0) {
+        cerr << "request with 0 bytes to read" << std::endl;
+        response.set_response("Incorrect request format");
+        return failure;
+    }
+
+    byteCnt = recv(sock, (void*)payload, size+CODED_STRM_HDR_LEN, MSG_WAITALL);
+    if (byteCnt < 0) {
+        int err = errno;
+        cerr << "Error reading further payload bytes:"
+             << strerror(err) << std::endl;
+        response.set_response("recv() failure" + string(strerror(err)));
+        return failure;
     }
 
     //Convert CodedSInputStream into Protobuf fields
-    eve_tools::EveTPMRequest request;
     google::protobuf::io::ArrayInputStream arrayStrm(payload, size+CODED_STRM_HDR_LEN);
     CodedInputStream CodedStrmInput(&arrayStrm);
     CodedStrmInput.ReadVarint32(&size);
     google::protobuf::io::CodedInputStream::Limit msgLimit =
         CodedStrmInput.PushLimit(size);
-    request.ParseFromCodedStream(&CodedStrmInput);
+    if (!request.ParseFromCodedStream(&CodedStrmInput)) {
+        cerr << "Incorrect CodedStream format or read error" << std::endl;
+        response.set_response("Incorrect request format");
+        return failure;
+    }
     CodedStrmInput.PopLimit(msgLimit);
 
-    cout << "Received command is " << request.command() << std::endl;
-    if (sanitizeCmdRequest(sock, request, response) != 0) {
-         return -1;
+}
+
+//Handle an incoming request from socket. Size of
+//the request message(excluding the CodedStream header)
+//is given as input.
+//Returns non-zero error on failure.
+int
+handleRequest (int sock, google::protobuf::uint32 size)
+{
+    char payload[size+CODED_STRM_HDR_LEN];
+    eve_tools::EveTPMRequest request;
+    eve_tools::EveTPMResponse response;
+    int byteCnt = 0, rc = success;
+    const char *cmdArgs[MAX_ARGS];
+    ifstream cmdOut;
+
+    if (parseRequest(sock, size, request, response, payload) < 0) {
+        sendResponse(sock, response);
+        rc = failure;
+        goto cleanup_and_exit;
     }
+
+    if (sanitizeCmdRequest(sock, request, response) != 0) {
+        //send the error set by sanitizeCmdRequest to client.
+        sendResponse(sock, response);
+        rc = failure;
+        goto cleanup_and_exit;
+    }
+
+    if (prepareCommand(request.command(), cmdArgs, response) < 0) {
+        sendResponse(sock, response);
+        rc = failure;
+        goto cleanup_and_exit;
+    }
+
+    //Prepare input files expected by the command.
     for (int i=0; i < request.inputfiles_size(); i++) {
         const eve_tools::File& file = request.inputfiles(i);
-        cout << "Processing file: " << file.name() << std::endl;
         ofstream input_file;
         input_file.open(file.name(), ios::out|ios::binary);
         if (!input_file) {
-            cout << "Unable to open input file for writing" << std::endl;
-            return -1;
+            cerr << "Unable to open input file for writing: "
+                 << file.name() << std::endl;
+            response.set_response("Unable to open input file " + file.name());
+            sendResponse(sock, response);
+            rc = failure;
+            goto cleanup_and_exit;
         }
         input_file << file.content();
         input_file.close();
@@ -231,29 +352,41 @@ int readMessage(int sock, google::protobuf::uint32 size)
     //sync all the input files.
     sync();
 
-    //TBD: Propagate the return code all the way to the client, via protobuf.
-    execCmd(request.command());
+    rc = execCmd(cmdArgs);
+    if (rc != 0) {
+        cerr << "Command invocation failed with rc " << rc << std::endl;
+        response.set_response("Backend failure while serving the request");
+        sendResponse(sock, response);
+        rc = failure;
+        goto cleanup_and_exit;
+    }
 
     //sync all the output files.
     sync();
 
-    ifstream cmdOut;
+    //Pack stderr/stdout from command invocation.
     cmdOut.open(CMD_OUTPUT_FILE, ios::in);
     if (cmdOut) {
         ostringstream cmdoutstream;
         cmdoutstream << cmdOut.rdbuf();
+        cout << "Command output is: " << std::endl
+             << cmdoutstream.str() << std::endl;
         response.set_response(cmdoutstream.str());
-        cout << "Command output is: " << std::endl;
-        cout << cmdoutstream.str() << std::endl;
         cmdOut.close();
     }
+
+    //Pack output files expected by the client, from the command.
     for (int i=0; i < request.expectedfiles_size(); i++) {
         std::string expectedFile = request.expectedfiles(i);
         ifstream output_file;
         output_file.open(expectedFile, ios::in| ios::binary);
         if (!output_file) {
-            cout << "Unexpected: expected file " << expectedFile
+            cerr << "Unexpected: expected file " << expectedFile
                 <<  " is not present!" << std::endl;
+            response.set_response("Expected file not found " + expectedFile);
+            sendResponse(sock, response);
+            rc = failure;
+            goto cleanup_and_exit;
         } else {
             ostringstream expectedFileContent;
             expectedFileContent << output_file.rdbuf();
@@ -263,26 +396,34 @@ int readMessage(int sock, google::protobuf::uint32 size)
             output_file.close();
         }
     }
+    sendResponse(sock, response);
+    //fall through for cleanup and exit
+
+cleanup_and_exit:
     //Clear all the files: inputFiles and expectedFiles
     for (int i=0; i < request.expectedfiles_size(); i++) {
         std::string expectedFile = request.expectedfiles(i);
-        ostringstream command;
-        command << "rm -f " << expectedFile;
-        system(command.str().c_str());
+        unlink(expectedFile.c_str());
     }
     for (int i=0; i < request.inputfiles_size(); i++) {
         const eve_tools::File& inputFile = request.inputfiles(i);
-        ostringstream command;
-        command << "rm -f " << inputFile.name();
-        system(command.str().c_str());
+        unlink(inputFile.name().c_str());
     }
-    sendResponse(sock, response);
+    if (cmdOut) {
+        cmdOut.close();
+    }
+    return rc;
 }
 
-int main(int argc, char *argv[])
+int
+main (int argc, char *argv[])
 {
+    int rc  = success;
+    // socket address used to store client address
+    struct sockaddr_in clientAddr;
+    socklen_t clientAddrLen = 0;
 
-    //Listen at IN_ADDR_ANY, SERVER_PORT
+    // socket address used to store server address
     struct sockaddr_in serverAddr;
     memset(&serverAddr, 0, sizeof(serverAddr));
     serverAddr.sin_family = AF_INET;
@@ -292,23 +433,22 @@ int main(int argc, char *argv[])
     int listenSock;
     if ((listenSock = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
         cerr << "could not create listen socket" << std::endl;
-        return -1;
+        rc = failure;
+        goto cleanup_and_exit;
     }
 
     if ((bind(listenSock, (struct sockaddr *)&serverAddr,
                     sizeof(serverAddr))) < 0) {
         cerr << "Bind failure, aborting" << std::endl;
-        return -1;
+        rc = failure;
+        goto cleanup_and_exit;
     }
 
     if (listen(listenSock, LISTEN_BACKLOG_LIMIT) < 0) {
         cerr << "Listen failure, aborting" << std::endl;
-        return -1;
+        rc = failure;
+        goto cleanup_and_exit;
     }
-
-    // socket address used to store client address
-    struct sockaddr_in clientAddr;
-    socklen_t clientAddrLen = 0;
 
     while (true) {
         // open a new socket to transmit data per connection
@@ -319,10 +459,9 @@ int main(int argc, char *argv[])
         if ((sock = accept(listenSock, (struct sockaddr *)&clientAddr,
                         &clientAddrLen)) < 0) {
             cerr << "Error in accepting client connection" << std::endl;
-            return -1;
         }
 
-        int recvBytes = 0;
+        ssize_t recvBytes = 0;
         char hdrBuf[CODED_STRM_HDR_LEN];
         char *pBuf = hdrBuf;
 
@@ -330,13 +469,23 @@ int main(int argc, char *argv[])
             << std::endl;
 
         recvBytes = recv(sock, pBuf, CODED_STRM_HDR_LEN, MSG_PEEK);
-        if (recvBytes > 0) {
-            cout << "Received new request, and parsed the hdr" << std::endl;
-            readMessage(sock, readHdr(hdrBuf));
+        if (recvBytes < 0) {
+          int rc = errno;
+          cerr << "recv() from " << inet_ntoa(clientAddr.sin_addr)
+               << " failed with " << rc << std::endl;
+        } else if (recvBytes == CODED_STRM_HDR_LEN) {
+            if (handleRequest(sock, readHdr(hdrBuf)) != 0) {
+                cerr << "Failure processing the request" << std::endl;
+            }
+        } else {
+           cerr << "recv() received fewer than expected(" << recvBytes
+                << ") bytes from: " << inet_ntoa(clientAddr.sin_addr)
+                << std::endl;
         }
         close(sock);
     }
 
+cleanup_and_exit:
     close(listenSock);
-    return 0;
+    return rc;
 }
