@@ -15,22 +15,22 @@
 #
 [ -n "$DEBUG" ] && set -x
 
-function pause {
+pause() {
    echo "Pausing before $1. Entering shell. Type 'exit' to proceed to $1"
    exit 0
 }
 
-function bail {
+bail() {
    echo "$*"
    exit 1
 }
 
-function trunc {
+trunc() {
   rm "$1"
   touch "$1"
 }
 
-function root_dev {
+root_dev() {
    local MAJOR
    local MINOR
    local DEV=$(readlink -f /dev/root 2>/dev/null)
@@ -57,7 +57,7 @@ find_part() {
 if [ ! -e /dev/root ]; then
    # we are running off of an initrd or initramfs
    # relying on init setting up mount points for us under /media
-   DEV_INIT="$(cd /media ; echo */rootfs.img | sed -e 's#/.*$##')"
+   DEV_INIT="$(cd /media || exit 1 ; echo */rootfs.img | sed -e 's#/.*$##')"
    ln -s "/media/$DEV_INIT" /bits
    ln -s "/dev/$DEV_INIT" /dev/root
 fi
@@ -145,6 +145,6 @@ sync
 # we need a copy of these in tmpfs so that a block device with rootfs can be yanked
 cp /sbin/poweroff /bin/sleep /
 echo "NOTICE: Device will now power off. Remove the USB stick and power it back on to complete the installation." >/dev/console
-/sleep $PAUSE_AFTER_SYNC
+/sleep 5
 
 /poweroff -f

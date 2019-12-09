@@ -109,34 +109,34 @@ do_efi() {
          --attributes $NUM_PART:set:2 $IMGFILE
  
   # Get GRUB bootloader
-  cp $EFI_DIR/BOOT/BOOT*EFI /efifs/EFI/BOOT
-  sed -i -e 's#PATH_TO_GRUB#'"$(cd /efifs; set EFI/BOOT/BOOT*EFI; echo $1)"'#' /efifs/EFI/BOOT/grub.cfg
+  cp "$EFI_DIR"/BOOT/BOOT*EFI /efifs/EFI/BOOT
+  sed -i -e 's#PATH_TO_GRUB#'"$(cd /efifs; set EFI/BOOT/BOOT*EFI; echo "$1")"'#' /efifs/EFI/BOOT/grub.cfg
 
   #   ...copy EFI fs to EFI partition
-  dd if=`dir2vfat /efifs $(( ($SEC_END - $SEC_START) / 2))` of=$IMGFILE bs=512 conv=notrunc seek=$SEC_START
+  dd if="$(dir2vfat /efifs $(( (SEC_END - SEC_START) / 2)))" of="$IMGFILE" bs=512 conv=notrunc seek="$SEC_START"
 
-  eval $1=$(($SEC_END + 1))
+  eval "$1=$((SEC_END + 1))"
 }
 
 do_installer() {
-  eval local SEC_START=\$$1
-  local SEC_END=`grow_part $SEC_START $(( 300 * 1024 * 1024 ))`
-  local NUM_PART=$(( $PART_OFFSET + 1 ))
+  eval "local SEC_START=\$$1"
+  local SEC_END="$(grow_part "$SEC_START" $(( 300 * 1024 * 1024 )))"
+  local NUM_PART=$(( PART_OFFSET + 1 ))
 
   # Create a partition
-  sgdisk --new $NUM_PART:$SEC_START:$SEC_END --typecode=$NUM_PART:ef00 --change-name=$NUM_PART:'EFI System' \
-         --attributes $NUM_PART:set:2 $IMGFILE
+  sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" --typecode="$NUM_PART:ef00" --change-name="$NUM_PART":'EFI System' \
+         --attributes "$NUM_PART:set:2" "$IMGFILE"
 
   # Get GRUB bootloader (including the grub.cfg)
-  cp $EFI_DIR/BOOT/* /efifs/EFI/BOOT/
+  cp "$EFI_DIR"/BOOT/* /efifs/EFI/BOOT/
 
   # Get initrd.img and rootfs.img
-  cp $INITRD_IMG $ROOTFS_IMG /efifs/
+  cp "$INITRD_IMG" "$ROOTFS_IMG" /efifs/
 
   #   ...copy EFI fs to EFI partition
-  dd if=`dir2vfat /efifs $(( ($SEC_END - $SEC_START) / 2))` of=$IMGFILE bs=512 conv=notrunc seek=$SEC_START
+  dd if="$(dir2vfat /efifs $(( (SEC_END - SEC_START) / 2)))" of="$IMGFILE" bs=512 conv=notrunc seek="$SEC_START"
 
-  eval $1=$(($SEC_END + 1))
+  eval "$1=$((SEC_END + 1))"
 }
 
 do_rootfs() {
@@ -254,7 +254,7 @@ do_usb_conf() {
 #
 # Extract partitions from stdin or look them up in /bits
 #
-if [ ! -d /parts -o "$(cd /parts 2>/dev/null ; echo *)" = '*' ]; then
+if [ ! -d /parts ] || [ "$(cd /parts 2>/dev/null ; echo *)" = '*' ]; then
    mkdir /parts
    cd /parts
    [ "$(cd /bits ; echo *)" = '*' ] || ln -s /bits/* .
