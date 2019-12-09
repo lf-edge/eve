@@ -27,7 +27,7 @@ using namespace google::protobuf::io;
 #define BIN_PATH "/usr/bin/"
 #define CMD_OUTPUT_FILE "cmd.output"
 
-//Protobufs are sent in CodedStream format
+//Protobufs are sent in CodedStream format.
 //Read first CODED_STRM_HDR_LEN bytes to decode the length of
 //the payload
 //TBD: Revisit if length CODED_STRM_HDR_LEN is required or
