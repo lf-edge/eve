@@ -191,7 +191,7 @@ prepareCommand(string cmd,
     }
     if (i == (MAX_ARGS - 1)) {
         cerr << "More than acceptable number of args" << std::endl;
-	response.set_response("Too many arguments");
+        response.set_response("Too many arguments");
         rc = failure;
         goto cleanup_and_exit;
     }
