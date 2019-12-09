@@ -27,6 +27,10 @@ using namespace google::protobuf::io;
 #define BIN_PATH "/usr/bin/"
 #define CMD_OUTPUT_FILE "cmd.output"
 
+//Working list of arguments
+string args[MAX_ARGS];
+string cmdWithPath;
+
 //Protobufs are sent in CodedStream format.
 //Read first CODED_STRM_HDR_LEN bytes to decode the length of
 //the payload
@@ -179,10 +183,9 @@ prepareCommand(string cmd,
     int i = 0, j = 0, rc = success;
     string cmdAlone;
     istringstream fullCmd(cmd);
-    string args[MAX_ARGS];
 
     fullCmd >> cmdAlone;
-    string cmdWithPath = BIN_PATH + cmdAlone;
+    cmdWithPath = BIN_PATH + cmdAlone;
 
     cmdArgs[i++] = cmdWithPath.c_str();
     while (fullCmd >> args[i] && i < (MAX_ARGS - 1)) {
@@ -235,7 +238,7 @@ execCmd (const char **cmdArgs) {
         //Flush pending stderr and stdout queues
         fflush(stderr);
         fflush(stdout);
-        if (execve(cmdArgs[0], (char **)&cmdArgs, NULL) < 0) {
+        if (execve(cmdArgs[0], (char * const*)cmdArgs, NULL) < 0) {
             int rc = errno;
             cerr << "execve() failed with errno " << rc << std::endl;
             exit(rc);
