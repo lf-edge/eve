@@ -288,6 +288,7 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 			ss.Error = ds.LastErr
 			ret.AllErrors = appendError(ret.AllErrors, "downloader",
 				ds.LastErr)
+			ss.ErrorSource = pubsub.TypeToName(types.VerifyImageStatus{})
 			ss.ErrorTime = ds.LastErrTime
 			ret.ErrorTime = ss.ErrorTime
 			ret.Changed = true
@@ -436,6 +437,7 @@ func installDownloadedObject(objType string, safename string,
 		log.Infof("installDownloadedObject(%s) done\n", safename)
 	} else {
 		status.Error = fmt.Sprintf("%s", ret)
+		status.ErrorSource = pubsub.TypeToName(types.VerifyImageStatus{})
 		status.ErrorTime = time.Now()
 	}
 	return ret
