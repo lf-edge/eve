@@ -95,6 +95,7 @@ type zedagentContext struct {
 	subNetworkInstanceMetrics *pubsub.Subscription
 	subAppFlowMonitor         *pubsub.Subscription
 	subAppVifIPTrig           *pubsub.Subscription
+	pubGlobalConfig           *pubsub.Publication
 	subGlobalConfig           *pubsub.Subscription
 	subVaultStatus            *pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
@@ -183,6 +184,12 @@ func Run() {
 
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 
+	zedagentCtx.pubGlobalConfig, err = pubsub.PublishPersistent("",
+		types.GlobalConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	agentlog.StillRunning(agentName, warningTime, errorTime)
@@ -210,7 +217,7 @@ func Run() {
 	deferredChan := zedcloud.InitDeferred()
 
 	// Make sure we have a GlobalConfig file with defaults
-	types.EnsureGCFile()
+	types.EnsureGCFile(zedagentCtx.pubGlobalConfig)
 
 	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
 		types.AssignableAdapters{}, false, &zedagentCtx)

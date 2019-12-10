@@ -120,7 +120,11 @@ func Run() {
 	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	// Make sure we have a GlobalConfig file with defaults
-	types.EnsureGCFile()
+	pubGlobalConfig, err := pubsub.PublishPersistent("", types.GlobalConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	types.EnsureGCFile(pubGlobalConfig)
 
 	pubDeviceNetworkStatus, err := pubsub.Publish(agentName,
 		types.DeviceNetworkStatus{})

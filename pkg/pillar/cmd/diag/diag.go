@@ -115,7 +115,11 @@ func Run() {
 	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
 
 	// Make sure we have a GlobalConfig file with defaults
-	types.EnsureGCFile()
+	pubGlobalConfig, err := pubsub.PublishPersistent("", types.GlobalConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	types.EnsureGCFile(pubGlobalConfig)
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},

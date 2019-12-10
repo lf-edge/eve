@@ -139,7 +139,11 @@ func Run() {
 	nodeagentCtx.configGetStatus = types.ConfigGetFail
 
 	// Make sure we have a GlobalConfig file with defaults
-	types.EnsureGCFile()
+	pubGlobalConfig, err := pubsub.PublishPersistent("", types.GlobalConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	types.EnsureGCFile(pubGlobalConfig)
 
 	// get the last reboot reason
 	handleLastRebootReason(&nodeagentCtx)

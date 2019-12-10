@@ -25,7 +25,11 @@ func UpdateLedManagerConfig(count int) {
 	blinkCount := LedBlinkCounter{
 		BlinkCounter: count,
 	}
-	err := pubsub.PublishToDir(TmpDirname, ledConfigKey, &blinkCount)
+	pub, err := pubsub.Publish("", &LedBlinkCounter{})
+	if err != nil {
+		log.Fatal("Publish LedBlinkCounter")
+	}
+	err = pub.Publish(ledConfigKey, &blinkCount)
 	if err != nil {
 		log.Errorln("err: ", err, TmpDirname)
 	} else {
