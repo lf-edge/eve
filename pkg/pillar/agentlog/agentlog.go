@@ -378,23 +378,11 @@ func StartTime() time.Time {
 
 // CheckMaxTime verifies if the time for a call has exeeded a reasonable
 // number.
+// XXX this is potentially slow; callers should move to CheckMaxTimeTopic
 func CheckMaxTime(agentName string, start time.Time) {
-	errTime := errorTime
-	warnTime := warningTime
-	if agentName == "nim" {
-		errTime = errorTimeNim
-		warnTime = warningTimeNim
-	}
-	elapsed := time.Since(start)
-	if elapsed > errTime {
-		_, fn, line, _ := runtime.Caller(1)
-		log.Errorf("handler at %s:%d in %s XXX took a long time: %d",
-			fn, line, agentName, elapsed/time.Second)
-	} else if elapsed > warnTime {
-		_, fn, line, _ := runtime.Caller(1)
-		log.Warnf("handler at %s:%d in %s took a long time: %d",
-			fn, line, agentName, elapsed/time.Second)
-	}
+	_, fn, line, _ := runtime.Caller(1)
+	topic := fmt.Sprintf("Function %s line %d", fn, line)
+	CheckMaxTimeTopic(agentName, topic, start)
 }
 
 // CheckMaxTimeTopic verifies if the time for a call has exeeded a reasonable
@@ -408,12 +396,10 @@ func CheckMaxTimeTopic(agentName string, topic string, start time.Time) {
 	}
 	elapsed := time.Since(start)
 	if elapsed > errTime {
-		_, fn, line, _ := runtime.Caller(1)
-		log.Errorf("%s handler at %s:%d in %s XXX took a long time: %d",
-			topic, fn, line, agentName, elapsed/time.Second)
+		log.Errorf("%s handler in %s XXX took a long time: %d",
+			topic, agentName, elapsed/time.Second)
 	} else if elapsed > warnTime {
-		_, fn, line, _ := runtime.Caller(1)
-		log.Warnf("%s handler at %s:%d in %s took a long time: %d",
-			topic, fn, line, agentName, elapsed/time.Second)
+		log.Warnf("%s handler in %s took a long time: %d",
+			topic, agentName, elapsed/time.Second)
 	}
 }
