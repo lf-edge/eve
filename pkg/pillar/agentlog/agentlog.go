@@ -396,3 +396,24 @@ func CheckMaxTime(agentName string, start time.Time) {
 			fn, line, agentName, elapsed/time.Second)
 	}
 }
+
+// CheckMaxTimeTopic verifies if the time for a call has exeeded a reasonable
+// number.
+func CheckMaxTimeTopic(agentName string, topic string, start time.Time) {
+	errTime := errorTime
+	warnTime := warningTime
+	if agentName == "nim" {
+		errTime = errorTimeNim
+		warnTime = warningTimeNim
+	}
+	elapsed := time.Since(start)
+	if elapsed > errTime {
+		_, fn, line, _ := runtime.Caller(1)
+		log.Errorf("%s handler at %s:%d in %s XXX took a long time: %d",
+			topic, fn, line, agentName, elapsed/time.Second)
+	} else if elapsed > warnTime {
+		_, fn, line, _ := runtime.Caller(1)
+		log.Warnf("%s handler at %s:%d in %s took a long time: %d",
+			topic, fn, line, agentName, elapsed/time.Second)
+	}
+}
