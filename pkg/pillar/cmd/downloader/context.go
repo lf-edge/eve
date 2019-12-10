@@ -31,7 +31,7 @@ type downloaderContext struct {
 func (ctx *downloaderContext) registerHandlers() error {
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
-		false, &ctx)
+		false, ctx)
 	if err != nil {
 		return err
 	}
@@ -42,7 +42,7 @@ func (ctx *downloaderContext) registerHandlers() error {
 	subGlobalConfig.Activate()
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &ctx)
+		types.DeviceNetworkStatus{}, false, ctx)
 	if err != nil {
 		return err
 	}
@@ -53,7 +53,7 @@ func (ctx *downloaderContext) registerHandlers() error {
 	subDeviceNetworkStatus.Activate()
 
 	subGlobalDownloadConfig, err := pubsub.Subscribe("",
-		types.GlobalDownloadConfig{}, false, &ctx)
+		types.GlobalDownloadConfig{}, false, ctx)
 	if err != nil {
 		return err
 	}
@@ -66,7 +66,7 @@ func (ctx *downloaderContext) registerHandlers() error {
 	// before any download config ( App/baseos/cert). Without DataStore Config,
 	// Image Downloads will run into errors.
 	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
-		types.DatastoreConfig{}, false, &ctx)
+		types.DatastoreConfig{}, false, ctx)
 	if err != nil {
 		return err
 	}
@@ -109,7 +109,7 @@ func (ctx *downloaderContext) registerHandlers() error {
 	pubCertObjStatus.ClearRestarted()
 
 	subAppImgConfig, err := pubsub.SubscribeScope("zedmanager",
-		types.AppImgObj, types.DownloaderConfig{}, false, &ctx)
+		types.AppImgObj, types.DownloaderConfig{}, false, ctx)
 	if err != nil {
 		return err
 	}
@@ -120,7 +120,7 @@ func (ctx *downloaderContext) registerHandlers() error {
 	subAppImgConfig.Activate()
 
 	subBaseOsConfig, err := pubsub.SubscribeScope("baseosmgr",
-		types.BaseOsObj, types.DownloaderConfig{}, false, &ctx)
+		types.BaseOsObj, types.DownloaderConfig{}, false, ctx)
 	if err != nil {
 		return err
 	}
@@ -131,7 +131,7 @@ func (ctx *downloaderContext) registerHandlers() error {
 	subBaseOsConfig.Activate()
 
 	subCertObjConfig, err := pubsub.SubscribeScope("baseosmgr",
-		types.CertObj, types.DownloaderConfig{}, false, &ctx)
+		types.CertObj, types.DownloaderConfig{}, false, ctx)
 	if err != nil {
 		return err
 	}
