@@ -63,6 +63,12 @@ const (
 	fixedName = "zededa"
 	fixedDir  = "/var/tmp/" + fixedName
 	maxsize   = 65535 // Max size for json which can be read or written
+
+	// Copied from types package to avoid loop
+	// PersistDir - Location to store persistent files.
+	PersistDir = "/persist"
+	// PersistConfigDir is where we keep some configuration across reboots
+	PersistConfigDir = PersistDir + "/config"
 )
 
 func Publish(agentName string, topicType interface{}) (*Publication, error) {
@@ -98,9 +104,19 @@ func publishImpl(agentName string, agentScope string,
 	// We always write to the directory as a checkpoint, and only
 	// write to it when persistent is set?
 	if pub.persistent {
-		pub.dirName = PersistentDirName(name)
+		if agentName == "" {
+			pub.publishToDir = true
+			pub.dirName = fmt.Sprintf("%s/%s", PersistConfigDir, name)
+		} else {
+			pub.dirName = PersistentDirName(name)
+		}
 	} else {
-		pub.dirName = PubDirName(name)
+		if agentName == "" {
+			pub.publishToDir = true
+			pub.dirName = FixedDirName(name)
+		} else {
+			pub.dirName = PubDirName(name)
+		}
 	}
 	dirName := pub.dirName
 	if _, err := os.Stat(dirName); err != nil {
@@ -111,14 +127,14 @@ func publishImpl(agentName string, agentScope string,
 			return nil, errors.New(errStr)
 		}
 	} else {
-		// Read existig status from dir
+		// Read existing status from dir
 		pub.populate()
 		if log.GetLevel() == log.DebugLevel {
 			pub.dump("after populate")
 		}
 	}
 
-	if publishToSock {
+	if !pub.publishToDir && publishToSock {
 		sockName := SockName(name)
 		dir := path.Dir(sockName)
 		if _, err := os.Stat(dir); err != nil {
@@ -369,29 +385,6 @@ func FixedDirName(name string) string {
 
 func PersistentDirName(name string) string {
 	return fmt.Sprintf("%s/status/%s", "/persist", name)
-}
-
-// One shot create directory and publish one key in that directory
-func PublishToDir(dirName string, key string, item interface{}) error {
-	topic := TypeToName(item)
-	pub := new(Publication)
-	pub.topicType = item
-	pub.topic = topic
-	pub.km = keyMap{key: NewLockedStringMap()}
-	dirName = fmt.Sprintf("%s/%s", dirName, pub.topic)
-	pub.dirName = dirName
-	pub.publishToDir = true
-	name := pub.nameString()
-
-	if _, err := os.Stat(dirName); err != nil {
-		log.Infof("PublishToDir Create %s\n", dirName)
-		if err := os.MkdirAll(dirName, 0700); err != nil {
-			errStr := fmt.Sprintf("Publish(%s): %s",
-				name, err)
-			return errors.New(errStr)
-		}
-	}
-	return pub.Publish(key, item)
 }
 
 // Init function for Subscribe; returns a context.

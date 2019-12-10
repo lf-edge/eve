@@ -5,7 +5,6 @@ package types
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"strconv"
 
@@ -15,9 +14,8 @@ import (
 )
 
 const (
-	globalConfigDir  = PersistConfigDir + "/GlobalConfig"
-	globalConfigFile = globalConfigDir + "/global.json"
-	symlinkDir       = TmpDirname + "/GlobalConfig"
+	globalConfigDir = PersistConfigDir + "/GlobalConfig"
+	symlinkDir      = TmpDirname + "/GlobalConfig"
 )
 
 // ConfigItemStatus - Status of Config Items
@@ -426,66 +424,43 @@ func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
 
 // Agents which wait for GlobalConfig initialized should call this
 // on startup to make sure we have a GlobalConfig file.
-func EnsureGCFile() {
-	if _, err := os.Stat(globalConfigDir); err != nil {
-		log.Infof("Create %s\n", globalConfigDir)
-		if err := os.MkdirAll(globalConfigDir, 0700); err != nil {
-			log.Fatal(err)
+func EnsureGCFile(pub *pubsub.Publication) {
+	key := "global"
+	item, err := pub.Get(key)
+	if err == nil {
+		gc := castGlobalConfig(item)
+		// Any new fields which need defaults/mins applied?
+		changed := false
+		updated := ApplyGlobalConfig(gc)
+		if !cmp.Equal(gc, updated) {
+			log.Infof("EnsureGCFile: updated with defaults %v",
+				cmp.Diff(gc, updated))
+			changed = true
 		}
-	}
-	// If it exists but doesn't parse we pretend it doesn't exist
-	if _, err := os.Stat(globalConfigFile); err == nil {
-		ok := false
-		sb, err := ioutil.ReadFile(globalConfigFile)
+		sane := EnforceGlobalConfigMinimums(updated)
+		if !cmp.Equal(updated, sane) {
+			log.Infof("EnsureGCFile: enforced minimums %v",
+				cmp.Diff(updated, sane))
+			changed = true
+		}
+		gc = sane
+		if changed {
+			err := pub.Publish(key, gc)
+			if err != nil {
+				log.Errorf("Publish for globalConfig failed: %s",
+					err)
+			}
+		}
+	} else {
+		log.Warn("No globalConfig in /persist; creating it with defaults")
+		err := pub.Publish(key, GlobalConfigDefaults)
 		if err != nil {
-			log.Errorf("%s for %s", err, globalConfigFile)
-		} else {
-			gc := GlobalConfig{}
-			if err := json.Unmarshal(sb, &gc); err != nil {
-				log.Errorf("%s file: %s", err, globalConfigFile)
-			} else {
-				ok = true
-			}
-			// Any new fields which need defaults/mins applied?
-			changed := false
-			updated := ApplyGlobalConfig(gc)
-			if !cmp.Equal(gc, updated) {
-				log.Infof("EnsureGCFile: updated with defaults %v",
-					cmp.Diff(gc, updated))
-				changed = true
-			}
-			sane := EnforceGlobalConfigMinimums(updated)
-			if !cmp.Equal(updated, sane) {
-				log.Infof("EnsureGCFile: enforced minimums %v",
-					cmp.Diff(updated, sane))
-				changed = true
-			}
-			gc = sane
-			if changed {
-				err := pubsub.PublishToDir(PersistConfigDir,
-					"global", gc)
-				if err != nil {
-					log.Errorf("PublishToDir for globalConfig failed: %s",
-						err)
-				}
-			}
-		}
-		if !ok {
-			log.Warnf("Removing bad %s", globalConfigFile)
-			if err := os.RemoveAll(globalConfigFile); err != nil {
-				log.Fatal(err)
-			}
-		}
-	}
-	if _, err := os.Stat(globalConfigFile); err != nil {
-		err := pubsub.PublishToDir(PersistConfigDir, "global",
-			GlobalConfigDefaults)
-		if err != nil {
-			log.Errorf("PublishToDir for globalConfig failed %s\n",
+			log.Errorf("Publish for globalConfig failed %s\n",
 				err)
 		}
 	}
-
+	// Make sure we have a correct symlink from /var/tmp/zededa so
+	// others can subscribe from there
 	info, err := os.Lstat(symlinkDir)
 	if err == nil {
 		if (info.Mode() & os.ModeSymlink) != 0 {
@@ -499,4 +474,17 @@ func EnsureGCFile() {
 	if err := os.Symlink(globalConfigDir, symlinkDir); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func castGlobalConfig(in interface{}) GlobalConfig {
+	b, err := json.Marshal(in)
+	if err != nil {
+		log.Fatal(err, "json Marshal in CastGlobalConfig")
+	}
+	var output GlobalConfig
+	if err := json.Unmarshal(b, &output); err != nil {
+		// File can be edited by hand. Don't Fatal
+		log.Error(err, "json Unmarshal in CastGlobalConfig")
+	}
+	return output
 }
