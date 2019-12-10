@@ -543,13 +543,13 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	}
 
 	// if reboot stack size crosses max size, truncate
-	if len(ctx.rebootStack) > maxRebootStackSize {
+	headerSize := 100
+	if len(ctx.rebootStack) > (maxRebootStackSize + headerSize) {
 		runes := bytes.Runes([]byte(ctx.rebootStack))
-		if len(runes) > maxRebootStackSize {
+		if len(runes) > (maxRebootStackSize + headerSize) {
 			runes = runes[:maxRebootStackSize]
 		}
-		ctx.rebootStack = fmt.Sprintf("Truncated stack: %v",
-			ctx.rebootStack)
+		ctx.rebootStack = fmt.Sprintf("Truncated stack: %v", string(runes))
 	}
 	// Read and increment restartCounter
 	ctx.restartCounter = incrementRestartCounter()

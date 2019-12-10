@@ -6,6 +6,7 @@ package types
 import (
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -158,6 +159,25 @@ func (status CertObjStatus) CheckPendingModify() bool {
 
 func (status CertObjStatus) CheckPendingDelete() bool {
 	return false
+}
+
+// getCertObjStatus finds a certificate, and checks the status
+func (certObjStatus CertObjStatus) getCertStatus(certURL string) (bool, bool, ErrorInfo) {
+	for _, certObj := range certObjStatus.StorageStatusList {
+		if certObj.Name == certURL {
+			installed := true
+			if certObj.Error != "" || certObj.State != INSTALLED {
+				installed = false
+			}
+			return true, installed, certObj.GetErrorInfo()
+		}
+	}
+	errorInfo := ErrorInfo{
+		Error:       "Invalid Certificate, not found",
+		ErrorSource: pubsub.TypeToName(VerifyImageStatus{}),
+		ErrorTime:   time.Now(),
+	}
+	return false, false, errorInfo
 }
 
 // return value holder
