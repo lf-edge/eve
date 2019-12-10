@@ -521,12 +521,17 @@ func handleCreate(ctxArg interface{}, key string,
 		errStr := "Invalid Cpu count - 0\n"
 		status.Error += errStr
 	}
+	if status.Error != "" {
+		status.SetError(status.Error, "Zedmanager Create Handler",
+			time.Now())
+	}
 	publishAppInstanceStatus(ctx, &status)
 
 	// if some error, return
 	if status.Error != "" {
-		log.Debugf("AppInstance(Name:%s, UUID:%s): Errors in App Instance "+
-			"Create.", config.DisplayName, config.UUIDandVersion.UUID)
+		log.Errorf("AppInstance(Name:%s, UUID:%s): Errors in App Instance "+
+			"Create. Error: %s",
+			config.DisplayName, config.UUIDandVersion.UUID, status.Error)
 		return
 	}
 
