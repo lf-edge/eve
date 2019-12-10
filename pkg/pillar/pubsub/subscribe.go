@@ -382,6 +382,11 @@ func (sub *Subscription) Synchronized() bool {
 	return sub.synchronized
 }
 
+// Topic returns the string definiting the topic
+func (sub *Subscription) Topic() string {
+	return sub.topic
+}
+
 // handlers
 func handleModify(ctxArg interface{}, key string, item interface{}) {
 	sub := ctxArg.(*Subscription)
