@@ -161,7 +161,11 @@ func (status CertObjStatus) CheckPendingDelete() bool {
 	return false
 }
 
-// getCertObjStatus finds a certificate, and checks the status
+// getCertObjStatus finds a certificate, and returns the status
+// returns three values,
+//  - whether the cert object status is found
+//  - whether the cert object is installed
+//  - any error information
 func (status CertObjStatus) getCertStatus(certURL string) (bool, bool, ErrorInfo) {
 	for _, certObj := range status.StorageStatusList {
 		if certObj.Name == certURL {
