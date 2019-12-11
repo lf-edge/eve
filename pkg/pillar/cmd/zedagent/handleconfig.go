@@ -21,6 +21,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -204,7 +205,7 @@ func getLatestConfig(url string, iteration int,
 		}
 		if getconfigCtx.ledManagerCount == 4 {
 			// Inform ledmanager about loss of config from cloud
-			types.UpdateLedManagerConfig(newCount)
+			utils.UpdateLedManagerConfig(newCount)
 			getconfigCtx.ledManagerCount = newCount
 		}
 		// If we didn't yet get a config, then look for a file
@@ -234,7 +235,7 @@ func getLatestConfig(url string, iteration int,
 	if err := validateConfigMessage(url, resp); err != nil {
 		log.Errorln("validateConfigMessage: ", err)
 		// Inform ledmanager about cloud connectivity
-		types.UpdateLedManagerConfig(3)
+		utils.UpdateLedManagerConfig(3)
 		getconfigCtx.ledManagerCount = 3
 		return false
 	}
@@ -243,13 +244,13 @@ func getLatestConfig(url string, iteration int,
 	if err != nil {
 		log.Errorln("readDeviceConfigProtoMessage: ", err)
 		// Inform ledmanager about cloud connectivity
-		types.UpdateLedManagerConfig(3)
+		utils.UpdateLedManagerConfig(3)
 		getconfigCtx.ledManagerCount = 3
 		return false
 	}
 
 	// Inform ledmanager about config received from cloud
-	types.UpdateLedManagerConfig(4)
+	utils.UpdateLedManagerConfig(4)
 	getconfigCtx.ledManagerCount = 4
 
 	writeReceivedProtoMessage(contents)

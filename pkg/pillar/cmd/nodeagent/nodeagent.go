@@ -33,6 +33,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	log "github.com/sirupsen/logrus"
 )
@@ -139,11 +140,7 @@ func Run() {
 	nodeagentCtx.configGetStatus = types.ConfigGetFail
 
 	// Make sure we have a GlobalConfig file with defaults
-	pubGlobalConfig, err := pubsub.PublishPersistent("", types.GlobalConfig{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	types.EnsureGCFile(pubGlobalConfig)
+	utils.EnsureGCFile()
 
 	// get the last reboot reason
 	handleLastRebootReason(&nodeagentCtx)

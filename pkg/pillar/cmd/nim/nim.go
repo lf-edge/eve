@@ -28,6 +28,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -120,11 +121,7 @@ func Run() {
 	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	// Make sure we have a GlobalConfig file with defaults
-	pubGlobalConfig, err := pubsub.PublishPersistent("", types.GlobalConfig{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	types.EnsureGCFile(pubGlobalConfig)
+	utils.EnsureGCFile()
 
 	pubDeviceNetworkStatus, err := pubsub.Publish(agentName,
 		types.DeviceNetworkStatus{})

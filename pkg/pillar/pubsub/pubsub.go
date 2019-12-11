@@ -50,7 +50,9 @@ type keyMap struct {
 }
 
 // We always publish to our collection.
-// We always write to a file in order to have a checkpoint on restart
+// We always write to a file in order to have a checkpoint on process restart.
+// That directory could be persistent in which case it will survive
+// a reboot.
 // The special agent name "" implies always reading from the /var/run/zededa/
 // directory.
 const (
@@ -64,7 +66,7 @@ const (
 	fixedDir  = "/var/tmp/" + fixedName
 	maxsize   = 65535 // Max size for json which can be read or written
 
-	// Copied from types package to avoid loop
+	// Copied from types package to avoid cycle in package dependencies
 	// PersistDir - Location to store persistent files.
 	PersistDir = "/persist"
 	// PersistConfigDir is where we keep some configuration across reboots
@@ -101,17 +103,21 @@ func publishImpl(agentName string, agentScope string,
 
 	log.Infof("Publish(%s)\n", name)
 
-	// We always write to the directory as a checkpoint, and only
-	// write to it when persistent is set?
+	// We always write to the directory as a checkpoint for process restart
+	// That directory could be persistent in which case it will survive
+	// a reboot.
 	if pub.persistent {
 		if agentName == "" {
+			// Special case for /persist/config/
 			pub.publishToDir = true
-			pub.dirName = fmt.Sprintf("%s/%s", PersistConfigDir, name)
+			pub.dirName = fmt.Sprintf("%s/%s",
+				PersistConfigDir, name)
 		} else {
 			pub.dirName = PersistentDirName(name)
 		}
 	} else {
 		if agentName == "" {
+			// Special case for /var/tmp/zededa/
 			pub.publishToDir = true
 			pub.dirName = FixedDirName(name)
 		} else {

@@ -4,18 +4,9 @@
 package types
 
 import (
-	"encoding/json"
-	"os"
 	"strconv"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	log "github.com/sirupsen/logrus"
-)
-
-const (
-	globalConfigDir = PersistConfigDir + "/GlobalConfig"
-	symlinkDir      = TmpDirname + "/GlobalConfig"
 )
 
 // ConfigItemStatus - Status of Config Items
@@ -420,71 +411,4 @@ func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
 		newgc.Dom0MinDiskUsagePercent = GlobalConfigMinimums.Dom0MinDiskUsagePercent
 	}
 	return newgc
-}
-
-// Agents which wait for GlobalConfig initialized should call this
-// on startup to make sure we have a GlobalConfig file.
-func EnsureGCFile(pub *pubsub.Publication) {
-	key := "global"
-	item, err := pub.Get(key)
-	if err == nil {
-		gc := castGlobalConfig(item)
-		// Any new fields which need defaults/mins applied?
-		changed := false
-		updated := ApplyGlobalConfig(gc)
-		if !cmp.Equal(gc, updated) {
-			log.Infof("EnsureGCFile: updated with defaults %v",
-				cmp.Diff(gc, updated))
-			changed = true
-		}
-		sane := EnforceGlobalConfigMinimums(updated)
-		if !cmp.Equal(updated, sane) {
-			log.Infof("EnsureGCFile: enforced minimums %v",
-				cmp.Diff(updated, sane))
-			changed = true
-		}
-		gc = sane
-		if changed {
-			err := pub.Publish(key, gc)
-			if err != nil {
-				log.Errorf("Publish for globalConfig failed: %s",
-					err)
-			}
-		}
-	} else {
-		log.Warn("No globalConfig in /persist; creating it with defaults")
-		err := pub.Publish(key, GlobalConfigDefaults)
-		if err != nil {
-			log.Errorf("Publish for globalConfig failed %s\n",
-				err)
-		}
-	}
-	// Make sure we have a correct symlink from /var/tmp/zededa so
-	// others can subscribe from there
-	info, err := os.Lstat(symlinkDir)
-	if err == nil {
-		if (info.Mode() & os.ModeSymlink) != 0 {
-			return
-		}
-		log.Warnf("Removing old %s", symlinkDir)
-		if err := os.RemoveAll(symlinkDir); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if err := os.Symlink(globalConfigDir, symlinkDir); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func castGlobalConfig(in interface{}) GlobalConfig {
-	b, err := json.Marshal(in)
-	if err != nil {
-		log.Fatal(err, "json Marshal in CastGlobalConfig")
-	}
-	var output GlobalConfig
-	if err := json.Unmarshal(b, &output); err != nil {
-		// File can be edited by hand. Don't Fatal
-		log.Error(err, "json Unmarshal in CastGlobalConfig")
-	}
-	return output
 }

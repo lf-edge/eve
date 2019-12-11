@@ -27,6 +27,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
 )
@@ -115,11 +116,7 @@ func Run() {
 	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
 
 	// Make sure we have a GlobalConfig file with defaults
-	pubGlobalConfig, err := pubsub.PublishPersistent("", types.GlobalConfig{})
-	if err != nil {
-		log.Fatal(err)
-	}
-	types.EnsureGCFile(pubGlobalConfig)
+	utils.EnsureGCFile()
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},

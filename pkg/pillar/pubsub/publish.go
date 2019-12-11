@@ -37,8 +37,6 @@ type Publication struct {
 	publishToDir bool // Handle special case of file only info
 	dirName      string
 	persistent   bool
-
-	publishToSock bool
 }
 
 // Send a notification to all the matching channels which does not yet

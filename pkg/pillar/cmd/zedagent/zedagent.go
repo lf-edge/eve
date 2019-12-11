@@ -38,6 +38,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 
 	log "github.com/sirupsen/logrus"
@@ -217,7 +218,7 @@ func Run() {
 	deferredChan := zedcloud.InitDeferred()
 
 	// Make sure we have a GlobalConfig file with defaults
-	types.EnsureGCFile(zedagentCtx.pubGlobalConfig)
+	utils.ReadAndUpdateGCFile(zedagentCtx.pubGlobalConfig)
 
 	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
 		types.AssignableAdapters{}, false, &zedagentCtx)

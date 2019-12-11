@@ -3,41 +3,8 @@
 
 package types
 
-import (
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	log "github.com/sirupsen/logrus"
-)
-
 type LedBlinkCounter struct {
 	BlinkCounter int
-}
-
-const (
-	ledConfigKey = "ledconfig"
-)
-
-// Global variable to supress log messages when nothing changes from this
-// agent. Since other agents might have changed we still update the config.
-var lastCount = 0
-
-// Used by callers to change the behavior or the LED
-func UpdateLedManagerConfig(count int) {
-	blinkCount := LedBlinkCounter{
-		BlinkCounter: count,
-	}
-	pub, err := pubsub.Publish("", &LedBlinkCounter{})
-	if err != nil {
-		log.Fatal("Publish LedBlinkCounter")
-	}
-	err = pub.Publish(ledConfigKey, &blinkCount)
-	if err != nil {
-		log.Errorln("err: ", err, TmpDirname)
-	} else {
-		if count != lastCount {
-			log.Infof("UpdateLedManagerConfig: set %d\n", count)
-			lastCount = count
-		}
-	}
 }
 
 // Merge the 1/2 values based on having usable addresses or not, with
