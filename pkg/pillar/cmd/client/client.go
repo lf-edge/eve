@@ -26,6 +26,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -289,25 +290,25 @@ func Run() { //nolint:gocyclo
 
 		if !zedcloudCtx.NoLedManager {
 			// Inform ledmanager about cloud connectivity
-			types.UpdateLedManagerConfig(3)
+			utils.UpdateLedManagerConfig(3)
 		}
 		switch resp.StatusCode {
 		case http.StatusOK:
 			if !zedcloudCtx.NoLedManager {
 				// Inform ledmanager about existence in cloud
-				types.UpdateLedManagerConfig(4)
+				utils.UpdateLedManagerConfig(4)
 			}
 			log.Infof("%s StatusOK\n", requrl)
 		case http.StatusCreated:
 			if !zedcloudCtx.NoLedManager {
 				// Inform ledmanager about existence in cloud
-				types.UpdateLedManagerConfig(4)
+				utils.UpdateLedManagerConfig(4)
 			}
 			log.Infof("%s StatusCreated\n", requrl)
 		case http.StatusConflict:
 			if !zedcloudCtx.NoLedManager {
 				// Inform ledmanager about brokenness
-				types.UpdateLedManagerConfig(10)
+				utils.UpdateLedManagerConfig(10)
 			}
 			log.Errorf("%s StatusConflict\n", requrl)
 			// Retry until fixed
@@ -316,7 +317,7 @@ func Run() { //nolint:gocyclo
 		case http.StatusNotModified: // XXX from zedcloud
 			if !zedcloudCtx.NoLedManager {
 				// Inform ledmanager about brokenness
-				types.UpdateLedManagerConfig(10)
+				utils.UpdateLedManagerConfig(10)
 			}
 			log.Errorf("%s StatusNotModified\n", requrl)
 			// Retry until fixed
@@ -420,7 +421,7 @@ func Run() { //nolint:gocyclo
 		if err == nil {
 			// Inform ledmanager about config received from cloud
 			if !zedcloudCtx.NoLedManager {
-				types.UpdateLedManagerConfig(4)
+				utils.UpdateLedManagerConfig(4)
 			}
 			return true, devUUID, hardwaremodel, enterprise, name
 		}
