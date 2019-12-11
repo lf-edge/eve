@@ -170,7 +170,7 @@ func Run() {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
+	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	// Make sure we have the last sent directory
 	dirname := fmt.Sprintf("%s/%s", types.PersistDir, lastSentDirname)
@@ -259,7 +259,7 @@ func Run() {
 		if hangFlag {
 			log.Infof("Requested to not touch to cause watchdog")
 		} else {
-			agentlog.StillRunning(agentName)
+			agentlog.StillRunning(agentName, warningTime, errorTime)
 		}
 	}
 	log.Infof("Have %d management ports with usable addresses\n",
@@ -377,7 +377,7 @@ func Run() {
 		if hangFlag {
 			log.Infof("Requested to not touch to cause watchdog")
 		} else {
-			agentlog.StillRunning(agentName)
+			agentlog.StillRunning(agentName, warningTime, errorTime)
 		}
 	}
 }

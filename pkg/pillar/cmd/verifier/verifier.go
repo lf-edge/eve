@@ -108,7 +108,7 @@ func Run() {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
+	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	// create the directories
 	initializeDirs()
@@ -212,7 +212,7 @@ func Run() {
 
 			case <-stillRunning.C:
 			}
-			agentlog.StillRunning(agentName)
+			agentlog.StillRunning(agentName, warningTime, errorTime)
 		}
 	}
 	doneChan := make(chan struct{})
@@ -252,7 +252,7 @@ func Run() {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 

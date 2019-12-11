@@ -141,7 +141,7 @@ func Run() {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
+	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	model := hardware.GetHardwareModel()
 	log.Infof("Got HardwareModel %s\n", model)
@@ -231,7 +231,7 @@ func Run() {
 		if hangFlag {
 			log.Infof("Requested to not touch to cause watchdog")
 		} else {
-			agentlog.StillRunning(agentName)
+			agentlog.StillRunning(agentName, warningTime, errorTime)
 		}
 	}
 }

@@ -185,10 +185,10 @@ func Run() {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
-	agentlog.StillRunning(agentName + "config")
-	agentlog.StillRunning(agentName + "metrics")
-	agentlog.StillRunning(agentName + "devinfo")
+	agentlog.StillRunning(agentName, warningTime, errorTime)
+	agentlog.StillRunning(agentName+"config", warningTime, errorTime)
+	agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
+	agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
@@ -554,7 +554,7 @@ func Run() {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
@@ -604,7 +604,7 @@ func Run() {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	// Subscribe to network metrics from zedrouter
@@ -701,9 +701,9 @@ func Run() {
 		case <-stillRunning.C:
 		}
 		// XXX verifierRestarted can take 5 minutes??
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 		// Need to tickle this since the configTimerTask is not yet started
-		agentlog.StillRunning(agentName + "config")
+		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
 	}
 
 	// start the config fetch tasks, when zboot status is ready
@@ -827,7 +827,7 @@ func Run() {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
@@ -862,7 +862,7 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 				warningTime, errorTime)
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName + "devinfo")
+		agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
 	}
 }
 

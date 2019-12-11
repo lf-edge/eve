@@ -73,7 +73,7 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName + "metrics")
+	agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
 
 	for {
 		select {
@@ -86,7 +86,7 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName + "metrics")
+		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
 	}
 }
 
