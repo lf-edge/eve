@@ -197,7 +197,7 @@ func Run() {
 
 		case <-nodeagentCtx.stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	// when the partition status is inprogress state
@@ -231,7 +231,7 @@ func Run() {
 
 		case <-nodeagentCtx.stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 		if isZedAgentAlive(&nodeagentCtx) {
 			nodeagentCtx.deviceRegistered = true
 		}
@@ -280,7 +280,7 @@ func Run() {
 
 		case <-nodeagentCtx.stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
@@ -426,7 +426,7 @@ func checkNetworkConnectivity(ctxPtr *nodeagentContext) {
 
 		case <-ctxPtr.stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("DeviceNetworkStatus: %v\n", ctxPtr.DNSinitialized)
 

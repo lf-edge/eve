@@ -315,26 +315,11 @@ func GetOtherLogdir() string {
 // Debug info to tell how often/late we call stillRunning; keyed by agentName
 var lastStillMap = make(map[string]time.Time)
 
-// XXX make times into argument to StillRunning
-const (
-	errorTime      = 3 * time.Minute
-	warningTime    = 40 * time.Second
-	errorTimeNim   = 60 * time.Second
-	warningTimeNim = 40 * time.Second
-)
-
 // Touch a file per agentName to signal the event loop is still running
 // Could be use by watchdog
-func StillRunning(agentName string) {
-
+func StillRunning(agentName string, warnTime time.Duration, errTime time.Duration) {
 	log.Debugf("StillRunning(%s)\n", agentName)
 
-	errTime := errorTime
-	warnTime := warningTime
-	if agentName == "nim" {
-		errTime = errorTimeNim
-		warnTime = warningTimeNim
-	}
 	if ls, found := lastStillMap[agentName]; !found {
 		lastStillMap[agentName] = time.Now()
 	} else {

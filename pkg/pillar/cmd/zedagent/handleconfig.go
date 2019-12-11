@@ -131,7 +131,7 @@ func configTimerTask(handleChannel chan interface{},
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName + "config")
+	agentlog.StillRunning(agentName+"config", warningTime, errorTime)
 
 	for {
 		select {
@@ -149,7 +149,7 @@ func configTimerTask(handleChannel chan interface{},
 				log.Infof("reboot flag set")
 			}
 		}
-		agentlog.StillRunning(agentName + "config")
+		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
 	}
 }
 
