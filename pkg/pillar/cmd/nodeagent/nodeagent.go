@@ -48,6 +48,9 @@ const (
 	tmpDirname                  = "/var/tmp/zededa"
 	firstbootFile               = tmpDirname + "/first-boot"
 	restartCounterFile          = configDir + "/restartcounter"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Version : module version
@@ -164,6 +167,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subGlobalConfig.MaxProcessTimeWarn = warningTime
+	subGlobalConfig.MaxProcessTimeError = errorTime
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	subGlobalConfig.SynchronizedHandler = handleGlobalConfigSynchronized
@@ -238,6 +243,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subZbootStatus.MaxProcessTimeWarn = warningTime
+	subZbootStatus.MaxProcessTimeError = errorTime
 	subZbootStatus.ModifyHandler = handleZbootStatusModify
 	subZbootStatus.DeleteHandler = handleZbootStatusDelete
 	nodeagentCtx.subZbootStatus = subZbootStatus
@@ -249,6 +256,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subZedAgentStatus.MaxProcessTimeWarn = warningTime
+	subZedAgentStatus.MaxProcessTimeError = errorTime
 	subZedAgentStatus.ModifyHandler = handleZedAgentStatusModify
 	subZedAgentStatus.DeleteHandler = handleZedAgentStatusDelete
 	nodeagentCtx.subZedAgentStatus = subZedAgentStatus
@@ -392,6 +401,8 @@ func checkNetworkConnectivity(ctxPtr *nodeagentContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
+	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	ctxPtr.subDeviceNetworkStatus = subDeviceNetworkStatus

@@ -136,11 +136,12 @@ func configTimerTask(handleChannel chan interface{},
 	for {
 		select {
 		case <-ticker.C:
-			start := agentlog.StartTime()
+			start := time.Now()
 			iteration += 1
 			rebootFlag := getLatestConfig(configUrl, iteration, getconfigCtx)
 			getconfigCtx.rebootFlag = getconfigCtx.rebootFlag || rebootFlag
-			agentlog.CheckMaxTime(agentName+"config", start)
+			pubsub.CheckMaxTimeTopic(agentName+"config", "getLastestConfig", start,
+				warningTime, errorTime)
 			publishZedAgentStatus(getconfigCtx)
 
 		case <-stillRunning.C:

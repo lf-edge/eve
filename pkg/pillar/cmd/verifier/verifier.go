@@ -45,6 +45,9 @@ import (
 
 const (
 	agentName = "verifier"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 
 	// If this file is present we don't delete verified files in handleDelete
 	preserveFilename = types.TmpDirname + "/preserve"
@@ -139,6 +142,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subGlobalConfig.MaxProcessTimeWarn = warningTime
+	subGlobalConfig.MaxProcessTimeError = errorTime
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
@@ -150,6 +155,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subAppImgConfig.MaxProcessTimeWarn = warningTime
+	subAppImgConfig.MaxProcessTimeError = errorTime
 	subAppImgConfig.ModifyHandler = handleAppImgModify
 	subAppImgConfig.CreateHandler = handleAppImgCreate
 	subAppImgConfig.DeleteHandler = handleAppImgDelete
@@ -161,6 +168,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subBaseOsConfig.MaxProcessTimeWarn = warningTime
+	subBaseOsConfig.MaxProcessTimeError = errorTime
 	subBaseOsConfig.ModifyHandler = handleBaseOsModify
 	subBaseOsConfig.CreateHandler = handleBaseOsCreate
 	subBaseOsConfig.DeleteHandler = handleBaseOsDelete
@@ -172,6 +181,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subAssignableAdapters.MaxProcessTimeWarn = warningTime
+	subAssignableAdapters.MaxProcessTimeError = errorTime
 	subAssignableAdapters.ModifyHandler = handleAAModify
 	subAssignableAdapters.DeleteHandler = handleAADelete
 	ctx.subAssignableAdapters = subAssignableAdapters
@@ -222,29 +233,22 @@ func Run() {
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAppImgConfig.C:
-			start := agentlog.StartTime()
 			subAppImgConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subBaseOsConfig.C:
-			start := agentlog.StartTime()
 			subBaseOsConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAssignableAdapters.C:
-			start := agentlog.StartTime()
 			subAssignableAdapters.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-ctx.gc.C:
-			start := agentlog.StartTime()
+			start := time.Now()
 			gcVerifiedObjects(&ctx)
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
+				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}

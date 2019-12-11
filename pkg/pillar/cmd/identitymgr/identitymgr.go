@@ -35,6 +35,9 @@ import (
 
 const (
 	agentName = "identitymgr"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Set from Makefile
@@ -98,6 +101,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subGlobalConfig.MaxProcessTimeWarn = warningTime
+	subGlobalConfig.MaxProcessTimeError = errorTime
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
@@ -110,6 +115,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subEIDConfig.MaxProcessTimeWarn = warningTime
+	subEIDConfig.MaxProcessTimeError = errorTime
 	subEIDConfig.ModifyHandler = handleModify
 	subEIDConfig.CreateHandler = handleCreate
 	subEIDConfig.DeleteHandler = handleEIDConfigDelete
@@ -120,14 +127,10 @@ func Run() {
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subEIDConfig.C:
-			start := agentlog.StartTime()
 			subEIDConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 		}

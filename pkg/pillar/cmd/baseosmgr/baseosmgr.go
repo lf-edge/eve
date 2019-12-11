@@ -46,6 +46,9 @@ import (
 const (
 	agentName      = "baseosmgr"
 	partitionCount = 2
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Set from Makefile
@@ -135,22 +138,16 @@ func Run() {
 	for !ctx.verifierRestarted {
 		select {
 		case change := <-ctx.subGlobalConfig.C:
-			start := agentlog.StartTime()
 			ctx.subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subBaseOsVerifierStatus.C:
-			start := agentlog.StartTime()
 			ctx.subBaseOsVerifierStatus.ProcessChange(change)
 			if ctx.verifierRestarted {
 				log.Infof("Verifier reported restarted\n")
 			}
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subNodeAgentStatus.C:
-			start := agentlog.StartTime()
 			ctx.subNodeAgentStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 		}
@@ -161,44 +158,28 @@ func Run() {
 	for {
 		select {
 		case change := <-ctx.subGlobalConfig.C:
-			start := agentlog.StartTime()
 			ctx.subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subCertObjConfig.C:
-			start := agentlog.StartTime()
 			ctx.subCertObjConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subBaseOsConfig.C:
-			start := agentlog.StartTime()
 			ctx.subBaseOsConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subZbootConfig.C:
-			start := agentlog.StartTime()
 			ctx.subZbootConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subBaseOsDownloadStatus.C:
-			start := agentlog.StartTime()
 			ctx.subBaseOsDownloadStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subBaseOsVerifierStatus.C:
-			start := agentlog.StartTime()
 			ctx.subBaseOsVerifierStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subCertObjDownloadStatus.C:
-			start := agentlog.StartTime()
 			ctx.subCertObjDownloadStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-ctx.subNodeAgentStatus.C:
-			start := agentlog.StartTime()
 			ctx.subNodeAgentStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 		}
@@ -534,6 +515,8 @@ func initializeGlobalConfigHandles(ctx *baseOsMgrContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subGlobalConfig.MaxProcessTimeWarn = warningTime
+	subGlobalConfig.MaxProcessTimeError = errorTime
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
@@ -548,6 +531,8 @@ func initializeNodeAgentHandles(ctx *baseOsMgrContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subNodeAgentStatus.MaxProcessTimeWarn = warningTime
+	subNodeAgentStatus.MaxProcessTimeError = errorTime
 	subNodeAgentStatus.ModifyHandler = handleNodeAgentStatusModify
 	subNodeAgentStatus.DeleteHandler = handleNodeAgentStatusDelete
 	ctx.subNodeAgentStatus = subNodeAgentStatus
@@ -559,6 +544,8 @@ func initializeNodeAgentHandles(ctx *baseOsMgrContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subZbootConfig.MaxProcessTimeWarn = warningTime
+	subZbootConfig.MaxProcessTimeError = errorTime
 	subZbootConfig.ModifyHandler = handleZbootConfigModify
 	subZbootConfig.CreateHandler = handleZbootConfigModify
 	subZbootConfig.DeleteHandler = handleZbootConfigDelete
@@ -573,6 +560,8 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subBaseOsConfig.MaxProcessTimeWarn = warningTime
+	subBaseOsConfig.MaxProcessTimeError = errorTime
 	subBaseOsConfig.ModifyHandler = handleBaseOsModify
 	subBaseOsConfig.CreateHandler = handleBaseOsCreate
 	subBaseOsConfig.DeleteHandler = handleBaseOsConfigDelete
@@ -585,6 +574,8 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subCertObjConfig.MaxProcessTimeWarn = warningTime
+	subCertObjConfig.MaxProcessTimeError = errorTime
 	subCertObjConfig.ModifyHandler = handleCertObjModify
 	subCertObjConfig.CreateHandler = handleCertObjCreate
 	subCertObjConfig.DeleteHandler = handleCertObjConfigDelete
@@ -599,6 +590,8 @@ func initializeDownloaderHandles(ctx *baseOsMgrContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subBaseOsDownloadStatus.MaxProcessTimeWarn = warningTime
+	subBaseOsDownloadStatus.MaxProcessTimeError = errorTime
 	subBaseOsDownloadStatus.ModifyHandler = handleDownloadStatusModify
 	subBaseOsDownloadStatus.CreateHandler = handleDownloadStatusModify
 	subBaseOsDownloadStatus.DeleteHandler = handleDownloadStatusDelete
@@ -611,6 +604,8 @@ func initializeDownloaderHandles(ctx *baseOsMgrContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subCertObjDownloadStatus.MaxProcessTimeWarn = warningTime
+	subCertObjDownloadStatus.MaxProcessTimeError = errorTime
 	subCertObjDownloadStatus.ModifyHandler = handleDownloadStatusModify
 	subCertObjDownloadStatus.CreateHandler = handleDownloadStatusModify
 	subCertObjDownloadStatus.DeleteHandler = handleDownloadStatusDelete
@@ -626,6 +621,8 @@ func initializeVerifierHandles(ctx *baseOsMgrContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subBaseOsVerifierStatus.MaxProcessTimeWarn = warningTime
+	subBaseOsVerifierStatus.MaxProcessTimeError = errorTime
 	subBaseOsVerifierStatus.ModifyHandler = handleVerifierStatusModify
 	subBaseOsVerifierStatus.CreateHandler = handleVerifierStatusModify
 	subBaseOsVerifierStatus.DeleteHandler = handleVerifierStatusDelete

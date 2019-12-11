@@ -315,6 +315,7 @@ func GetOtherLogdir() string {
 // Debug info to tell how often/late we call stillRunning; keyed by agentName
 var lastStillMap = make(map[string]time.Time)
 
+// XXX make times into argument to StillRunning
 const (
 	errorTime      = 3 * time.Minute
 	warningTime    = 40 * time.Second
@@ -368,38 +369,5 @@ func StillRunning(agentName string) {
 	if err != nil {
 		log.Errorf("StillRunning: %s\n", err)
 		return
-	}
-}
-
-// StartTime returns a start time which is later passed to CheckMaxTime*
-func StartTime() time.Time {
-	return time.Now()
-}
-
-// CheckMaxTime verifies if the time for a call has exeeded a reasonable
-// number.
-// XXX this is potentially slow; callers should move to CheckMaxTimeTopic
-func CheckMaxTime(agentName string, start time.Time) {
-	_, fn, line, _ := runtime.Caller(1)
-	topic := fmt.Sprintf("Function %s line %d", fn, line)
-	CheckMaxTimeTopic(agentName, topic, start)
-}
-
-// CheckMaxTimeTopic verifies if the time for a call has exeeded a reasonable
-// number.
-func CheckMaxTimeTopic(agentName string, topic string, start time.Time) {
-	errTime := errorTime
-	warnTime := warningTime
-	if agentName == "nim" {
-		errTime = errorTimeNim
-		warnTime = warningTimeNim
-	}
-	elapsed := time.Since(start)
-	if elapsed > errTime {
-		log.Errorf("%s handler in %s XXX took a long time: %d",
-			topic, agentName, elapsed/time.Second)
-	} else if elapsed > warnTime {
-		log.Warnf("%s handler in %s took a long time: %d",
-			topic, agentName, elapsed/time.Second)
 	}
 }
