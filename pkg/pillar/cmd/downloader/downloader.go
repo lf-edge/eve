@@ -28,6 +28,9 @@ import (
 
 const (
 	agentName = "downloader"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Go doesn't like this as a constant
@@ -103,27 +106,19 @@ func Run() {
 		ctx.globalConfig.MaxSpace == 0 {
 		log.Infof("Waiting for management port addresses or Global Config\n")
 
-		start := agentlog.StartTime()
-		topic := ""
 		select {
 		case change := <-ctx.subGlobalConfig.C:
-			topic = ctx.subGlobalConfig.Topic()
 			ctx.subGlobalConfig.ProcessChange(change)
 
 		case change := <-ctx.subDeviceNetworkStatus.C:
-			topic = ctx.subDeviceNetworkStatus.Topic()
 			ctx.subDeviceNetworkStatus.ProcessChange(change)
 
 		case change := <-ctx.subGlobalDownloadConfig.C:
-			topic = ctx.subGlobalDownloadConfig.Topic()
 			ctx.subGlobalDownloadConfig.ProcessChange(change)
 
 		// This wait can take an unbounded time since we wait for IP
 		// addresses. Punch StillRunning
 		case <-stillRunning.C:
-		}
-		if topic != "" {
-			agentlog.CheckMaxTimeTopic(agentName, topic, start)
 		}
 		agentlog.StillRunning(agentName)
 	}
@@ -137,52 +132,44 @@ func Run() {
 	gc := time.NewTicker(downloadGCTime / 10)
 
 	for {
-		start := agentlog.StartTime()
-		topic := ""
 		select {
 		case change := <-ctx.subGlobalConfig.C:
-			topic = ctx.subGlobalConfig.Topic()
 			ctx.subGlobalConfig.ProcessChange(change)
 
 		case change := <-ctx.subDeviceNetworkStatus.C:
-			topic = ctx.subDeviceNetworkStatus.Topic()
 			ctx.subDeviceNetworkStatus.ProcessChange(change)
 
 		case change := <-ctx.subCertObjConfig.C:
-			topic = ctx.subCertObjConfig.Topic()
 			ctx.subCertObjConfig.ProcessChange(change)
 
 		case change := <-ctx.subAppImgConfig.C:
-			topic = ctx.subAppImgConfig.Topic()
 			ctx.subAppImgConfig.ProcessChange(change)
 
 		case change := <-ctx.subBaseOsConfig.C:
-			topic = ctx.subBaseOsConfig.Topic()
 			ctx.subBaseOsConfig.ProcessChange(change)
 
 		case change := <-ctx.subDatastoreConfig.C:
-			topic = ctx.subDatastoreConfig.Topic()
 			ctx.subDatastoreConfig.ProcessChange(change)
 
 		case change := <-ctx.subGlobalDownloadConfig.C:
-			topic = ctx.subGlobalDownloadConfig.Topic()
 			ctx.subGlobalDownloadConfig.ProcessChange(change)
 
 		case <-publishTimer.C:
-			topic = "publishTimer"
+			start := time.Now()
 			err := pub.Publish("global", zedcloud.GetCloudMetrics())
 			if err != nil {
 				log.Errorln(err)
 			}
+			pubsub.CheckMaxTimeTopic(agentName, "publishTimer", start,
+				warningTime, errorTime)
 
 		case <-gc.C:
-			topic = "gc"
+			start := time.Now()
 			gcObjects(&ctx)
+			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
+				warningTime, errorTime)
 
 		case <-stillRunning.C:
-		}
-		if topic != "" {
-			agentlog.CheckMaxTimeTopic(agentName, topic, start)
 		}
 		agentlog.StillRunning(agentName)
 	}

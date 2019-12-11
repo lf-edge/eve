@@ -48,6 +48,8 @@ type Subscription struct {
 	DeleteHandler       SubHandler
 	RestartHandler      SubRestartHandler
 	SynchronizedHandler SubRestartHandler
+	MaxProcessTimeWarn  time.Duration // If set generate warning if ProcessChange
+	MaxProcessTimeError time.Duration // If set generate warning if ProcessChange
 
 	// Private fields
 	sendChan   chan<- string
@@ -276,6 +278,7 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 // is removed by HandleStatusEvent.
 func (sub *Subscription) ProcessChange(change string) {
 
+	start := time.Now()
 	if sub.subscribeFromDir {
 		var restartFn watch.StatusRestartHandler = handleRestart
 		var completeFn watch.StatusRestartHandler = handleSynchronized
@@ -300,7 +303,7 @@ func (sub *Subscription) ProcessChange(change string) {
 				errStr := fmt.Sprintf("ProcessChange(%s): base64 failed %s",
 					name, err)
 				log.Errorln(errStr)
-				return
+				break
 			}
 			handleDelete(sub, string(key))
 
@@ -312,21 +315,21 @@ func (sub *Subscription) ProcessChange(change string) {
 				errStr := fmt.Sprintf("ProcessChange(%s): base64 failed %s",
 					name, err)
 				log.Errorln(errStr)
-				return
+				break
 			}
 			val, err := base64.StdEncoding.DecodeString(recvVal)
 			if err != nil {
 				errStr := fmt.Sprintf("ProcessChange(%s): base64 val failed %s",
 					name, err)
 				log.Errorln(errStr)
-				return
+				break
 			}
 			var output interface{}
 			if err := json.Unmarshal(val, &output); err != nil {
 				errStr := fmt.Sprintf("ProcessChange(%s): json failed %s",
 					name, err)
 				log.Errorln(errStr)
-				return
+				break
 			}
 			handleModify(sub, string(key), output)
 		}
@@ -334,6 +337,8 @@ func (sub *Subscription) ProcessChange(change string) {
 		// Enforced in Subscribe()
 		log.Fatal("ProcessChange: neither subscribeFromDir nor subscribeFromSock")
 	}
+	CheckMaxTimeTopic(sub.agentName, sub.topic, start,
+		sub.MaxProcessTimeWarn, sub.MaxProcessTimeError)
 }
 
 func (sub *Subscription) dump(infoStr string) {

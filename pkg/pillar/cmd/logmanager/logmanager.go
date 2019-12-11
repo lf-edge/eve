@@ -44,6 +44,9 @@ const (
 	logsApi          = "api/v1/edgedevice/logs"
 	logMaxMessages   = 100
 	logMaxBytes      = 32768 // Approximate - no headers counted
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 var (
@@ -197,6 +200,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subGlobalConfig.MaxProcessTimeWarn = warningTime
+	subGlobalConfig.MaxProcessTimeError = errorTime
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
@@ -209,6 +214,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDomainStatus.MaxProcessTimeWarn = warningTime
+	subDomainStatus.MaxProcessTimeError = errorTime
 	subDomainStatus.ModifyHandler = handleDomainStatusModify
 	subDomainStatus.CreateHandler = handleDomainStatusModify
 	subDomainStatus.DeleteHandler = handleDomainStatusDelete
@@ -224,6 +231,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
+	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
 	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
@@ -234,14 +243,10 @@ func Run() {
 	for DNSctx.usableAddressCount == 0 && !force {
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		// This wait can take an unbounded time since we wait for IP
 		// addresses. Punch StillRunning
@@ -334,38 +339,34 @@ func Run() {
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDomainStatus.C:
-			start := agentlog.StartTime()
 			subDomainStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-publishTimer.C:
-			start := agentlog.StartTime()
+			start := time.Now()
 			log.Debugln("publishTimer at", time.Now())
 			err := pub.Publish("global", zedcloud.GetCloudMetrics())
 			if err != nil {
 				log.Errorln(err)
 			}
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "publishTimer", start,
+				warningTime, errorTime)
 
 		case change := <-deferredChan:
-			start := agentlog.StartTime()
+			start := time.Now()
 			done := zedcloud.HandleDeferred(change, 1*time.Second)
 			dbg.FreeOSMemory()
 			globalDeferInprogress = !done
 			if globalDeferInprogress {
 				log.Warnf("logmanager: globalDeferInprogress")
 			}
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "deferredChan", start,
+				warningTime, errorTime)
 
 		case <-stillRunning.C:
 			// Fault injection

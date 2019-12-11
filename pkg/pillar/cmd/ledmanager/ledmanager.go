@@ -176,6 +176,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subLedBlinkCounter.MaxProcessTimeWarn = warningTime
+	subLedBlinkCounter.MaxProcessTimeError = errorTime
 	subLedBlinkCounter.ModifyHandler = handleLedBlinkModify
 	subLedBlinkCounter.CreateHandler = handleLedBlinkModify
 	subLedBlinkCounter.DeleteHandler = handleLedBlinkDelete
@@ -187,6 +189,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
+	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
 	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
@@ -199,6 +203,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subGlobalConfig.MaxProcessTimeWarn = warningTime
+	subGlobalConfig.MaxProcessTimeError = errorTime
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
@@ -208,19 +214,13 @@ func Run() {
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subLedBlinkCounter.C:
-			start := agentlog.StartTime()
 			subLedBlinkCounter.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 			// Fault injection
@@ -321,6 +321,9 @@ const (
 	ledFilename        = "/sys/class/leds/wifi_active"
 	triggerFilename    = ledFilename + "/trigger"
 	brightnessFilename = ledFilename + "/brightness"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Disable existimg trigger
