@@ -43,7 +43,7 @@ const (
 	watchdogInterval     uint32 = 25
 	networkUpTimeout     uint32 = 300
 	maxRebootStackSize          = 1600
-	maxJsonAttributeSize        = maxRebootStackSize + 100
+	maxJSONAttributeSize        = maxRebootStackSize + 100
 	configDir                   = "/config"
 	tmpDirname                  = "/var/tmp/zededa"
 	firstbootFile               = tmpDirname + "/first-boot"
@@ -544,9 +544,9 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	}
 
 	// if reboot stack size crosses max size, truncate
-	if len(ctx.rebootStack) > maxJsonAttributeSize {
+	if len(ctx.rebootStack) > maxJSONAttributeSize {
 		runes := bytes.Runes([]byte(ctx.rebootStack))
-		if len(runes) > maxJsonAttributeSize {
+		if len(runes) > maxJSONAttributeSize {
 			runes = runes[:maxRebootStackSize]
 		}
 		ctx.rebootStack = fmt.Sprintf("Truncated stack: %v", string(runes))
