@@ -12,7 +12,7 @@
 | timer.use.config.checkpoint | integer in seconds | 600 | use checkpointed config if no cloud connectivity |
 | timer.gc.download | integer in seconds |  600 | garbage collect unused downloaded objects |
 | timer.gc.vdisk | integer in seconds | 1 hour | garbage collect unused instance virtual disk |
-| timer.gc.rkt.graceperiod | integer in seconds | 300 | grace period to be used in rkt gc command |
+| timer.gc.rkt.graceperiod | integer in seconds | 86400 | grace period to be used in rkt gc command |
 | timer.download.retry | integer in seconds | 600 | retry a failed download |
 | timer.boot.retry | integer in seconds | 600 | retry a failed domain boot |
 | timer.port.georedo | integer in seconds | 1 hour | redo IP geolocation |
