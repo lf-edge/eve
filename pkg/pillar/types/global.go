@@ -214,12 +214,12 @@ var GlobalConfigDefaults = GlobalConfig{
 	UsbAccess:           true, // Contoller likely to default to false
 	SshAccess:           true, // Contoller likely to default to false
 	SshAuthorizedKeys:   "",
-	StaleConfigTime:     600,  // Use stale config for up to 10 minutes
-	DownloadGCTime:      600,  // 10 minutes
-	VdiskGCTime:         3600, // 1 hour
-	DownloadRetryTime:   600,  // 10 minutes
-	DomainBootRetryTime: 600,  // 10 minutes
-	RktGCGracePeriod:    300,  // 5 minutes
+	StaleConfigTime:     600,   // Use stale config for up to 10 minutes
+	DownloadGCTime:      600,   // 10 minutes
+	VdiskGCTime:         3600,  // 1 hour
+	DownloadRetryTime:   600,   // 10 minutes
+	DomainBootRetryTime: 600,   // 10 minutes
+	RktGCGracePeriod:    86400, // 24 hours
 
 	AllowNonFreeAppImages:  TS_ENABLED,
 	AllowNonFreeBaseImages: TS_ENABLED,
@@ -332,7 +332,7 @@ var GlobalConfigMinimums = GlobalConfig{
 	DownloadRetryTime:       60,
 	DomainBootRetryTime:     10,
 	Dom0MinDiskUsagePercent: 20,
-	RktGCGracePeriod:        30,
+	RktGCGracePeriod:        43200,
 }
 
 func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {

@@ -77,7 +77,6 @@ type domainContext struct {
 	pubAssignableAdapters  *pubsub.Publication
 	usbAccess              bool
 	createSema             sema.Semaphore
-	RktGCGracePeriod       uint32
 }
 
 func (ctx *domainContext) publishAssignableAdapters() {
@@ -463,10 +462,6 @@ func gcObjects(ctx *domainContext, dirName string) {
 		}
 		unpublishImageStatus(ctx, &status)
 	}
-
-	// Run rkt garbage collect
-	rktGc(ctx.RktGCGracePeriod, false)
-	rktGc(ctx.RktGCGracePeriod, true)
 }
 
 // Check if the filename is used as ActiveFileLocation
@@ -2330,31 +2325,6 @@ func rktRm(PodUUID string) error {
 	return nil
 }
 
-func rktGc(gracePeriod uint32, imageGc bool) {
-	log.Infof("rktGc %d\n", gracePeriod)
-
-	// rkt --dir=<RKT_DATA_DIR> rm PodUUID
-	gracePeriodOption := fmt.Sprintf("--grace-period=%ds", gracePeriod)
-	cmd := "rkt"
-	args := []string{}
-	if imageGc {
-		args = append(args, "image")
-	}
-	args = append(args, []string{
-		"gc",
-		"--dir=" + types.PersistRktDataDir,
-		gracePeriodOption,
-	}...)
-	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
-	if err != nil {
-		log.Errorf("***rkt gc failed: %+v ", err)
-		log.Errorf("***rkt gc output: %s", string(stdoutStderr))
-		return
-	}
-	log.Debugf("rkt gc done: %s", string(stdoutStderr))
-	return
-}
-
 func xlDestroy(domainName string, domainID int) error {
 	log.Infof("xlDestroy %s %d\n", domainName, domainID)
 	cmd := "xl"
@@ -2469,9 +2439,6 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		if gcp.UsbAccess != ctx.usbAccess {
 			ctx.usbAccess = gcp.UsbAccess
 			updateUsbAccess(ctx)
-		}
-		if gcp.RktGCGracePeriod != 0 {
-			ctx.RktGCGracePeriod = gcp.RktGCGracePeriod
 		}
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
