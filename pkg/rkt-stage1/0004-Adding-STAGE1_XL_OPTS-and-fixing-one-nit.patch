@@ -17,7 +17,7 @@ index ab63fa0..529270b 100755
  
  if [ -f "$STAGE1_SEED_XL_CFG" ] ; then
 -    grep -Ev '^(disk|type)' < "$STAGE1_SEED_XL_CFG" >> $outconfig
-+    grep -Ev '^(disk|bootloader|root|extra)' < "$STAGE1_SEED_XL_CFG" >> $outconfig
++    grep -Ev '^(disk|bootloader|root|extra|kernel)' < "$STAGE1_SEED_XL_CFG" >> $outconfig
      echo extra=\'console=hvc0 root=9p\' >> $outconfig
  else	
      echo "memory = 1024" >> $outconfig
