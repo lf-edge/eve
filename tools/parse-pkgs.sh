@@ -13,7 +13,7 @@ eve_version() {
   local vers="`get_git_tag`"
 
   if [ -z "$vers" ] ; then
-    vers="0.0.0-`git rev-parse --abbrev-ref HEAD | tr / _`-`git describe --match v --abbrev=8 --always --dirty`-`date -u +"%Y-%m-%d.%H.%M"`"
+    vers="${EVE_SNAPSHOT_VERSION:-0.0.0}-$(git rev-parse --abbrev-ref HEAD | tr / _)-$(git describe --match v --abbrev=8 --always --dirty)-$(date -u +"%Y-%m-%d.%H.%M")"
     vers=`echo ${vers} | sed -e 's#-master##'`
   fi
 
