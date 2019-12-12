@@ -38,15 +38,16 @@ import (
 )
 
 const (
-	agentName                 = "nodeagent"
-	timeTickInterval   uint32 = 10
-	watchdogInterval   uint32 = 25
-	networkUpTimeout   uint32 = 300
-	maxRebootStackSize        = 1600
-	configDir                 = "/config"
-	tmpDirname                = "/var/tmp/zededa"
-	firstbootFile             = tmpDirname + "/first-boot"
-	restartCounterFile        = configDir + "/restartcounter"
+	agentName                   = "nodeagent"
+	timeTickInterval     uint32 = 10
+	watchdogInterval     uint32 = 25
+	networkUpTimeout     uint32 = 300
+	maxRebootStackSize          = 1600
+	maxJsonAttributeSize        = maxRebootStackSize + 100
+	configDir                   = "/config"
+	tmpDirname                  = "/var/tmp/zededa"
+	firstbootFile               = tmpDirname + "/first-boot"
+	restartCounterFile          = configDir + "/restartcounter"
 )
 
 // Version : module version
@@ -543,10 +544,9 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	}
 
 	// if reboot stack size crosses max size, truncate
-	headerSize := 100
-	if len(ctx.rebootStack) > (maxRebootStackSize + headerSize) {
+	if len(ctx.rebootStack) > maxJsonAttributeSize {
 		runes := bytes.Runes([]byte(ctx.rebootStack))
-		if len(runes) > (maxRebootStackSize + headerSize) {
+		if len(runes) > maxJsonAttributeSize {
 			runes = runes[:maxRebootStackSize]
 		}
 		ctx.rebootStack = fmt.Sprintf("Truncated stack: %v", string(runes))
