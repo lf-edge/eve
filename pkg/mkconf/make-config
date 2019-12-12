@@ -1,6 +1,7 @@
 #!/bin/sh
 
-set -ex
+set -e
+[ -n "$DEBUG" ] && set -x
 
 CONFIG_FILE="$1"
 # Config is 1Mb
@@ -8,6 +9,12 @@ CONFIG_SIZE_KB=1024
 
 # Slurp the input in a form of a tarball
 (cd /conf; tar xf -)
+
+DTS=/conf/eve.dts
+if [ -f "$DTS" ]; then
+   [ "$(uname -m)" = aarch64 ] && dtc -O dtb -o /conf/eve.dtb -I dts "$DTS"
+   rm "$DTS"
+fi
 
 #
 # Create Config image
