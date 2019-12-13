@@ -28,10 +28,9 @@ using namespace google::protobuf::io;
 #define LISTEN_BACKLOG_LIMIT 16
 #define MAX_ARGS 25
 #define BIN_PATH "/usr/bin/"
-#define CLIENT_READ_TIMEOUT 2  //seconds
+#define CLIENT_READ_TIMEOUT 60  //seconds
 #define failure -1
 #define success 0
-#define PATH_PREFIX clientWorkingDir + "/"
 
 //Working list of arguments
 thread_local string args[MAX_ARGS];
@@ -259,7 +258,7 @@ execCmd (const char **cmdArgs) {
         if (fd < 0) {
             int rc = errno;
             cerr << "open() failed. error/path " << strerror(rc)
-                 << (PATH_PREFIX + cmdOutputFile).c_str() << std::endl;
+                 << (clientWorkingDir + "/" + cmdOutputFile).c_str() << std::endl;
             exit(rc);
         }
         dup2(fd, 1);
@@ -380,7 +379,8 @@ handleRequest (int sock, google::protobuf::uint32 size)
     for (int i=0; i < request.inputfiles_size(); i++) {
         const eve_tools::File& file = request.inputfiles(i);
         ofstream input_file;
-        input_file.open(PATH_PREFIX + file.name(), ios::out|ios::binary);
+        input_file.open(clientWorkingDir + "/" + file.name(),
+                        ios::out|ios::binary);
         if (!input_file) {
             cerr << "Unable to open file for writing input contents: "
                  << file.name() << std::endl;
@@ -410,7 +410,7 @@ handleRequest (int sock, google::protobuf::uint32 size)
     sync();
 
     //Pack stderr/stdout from command invocation.
-    cmdOut.open(PATH_PREFIX + cmdOutputFile, ios::in);
+    cmdOut.open(clientWorkingDir + "/" + cmdOutputFile, ios::in);
     if (cmdOut) {
         ostringstream cmdoutstream;
         //cmdOut could be empty, not an error.
@@ -425,7 +425,8 @@ handleRequest (int sock, google::protobuf::uint32 size)
     for (int i=0; i < request.expectedfiles_size(); i++) {
         std::string expectedFile = request.expectedfiles(i);
         ifstream output_file;
-        output_file.open(PATH_PREFIX + expectedFile, ios::in| ios::binary);
+        output_file.open(clientWorkingDir + "/" + expectedFile,
+                         ios::in| ios::binary);
         if (!output_file) {
             cerr << "Unexpected: expected file " << expectedFile
                 <<  " is not present!" << std::endl;
@@ -537,10 +538,6 @@ main (int argc, char *argv[])
     }
 
     while (true) {
-        // open a new socket to transmit data per connection
-        // Wait for an incoming connection.
-        // TBD: For now it is blocking call. Change it to non-blocking
-        // with select() and worker threads
         int sock;
         if ((sock = accept(listenSock, (struct sockaddr *)&clientAddr,
                         &clientAddrLen)) < 0) {
