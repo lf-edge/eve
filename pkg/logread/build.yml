@@ -1,0 +1,11 @@
+image: eve-logread
+org: lfedge
+network: yes
+config:
+  binds:
+    - /dev:/dev
+    - /var/run:/var/run
+  net: host
+  capabilities:
+    - all
+  pid: host
