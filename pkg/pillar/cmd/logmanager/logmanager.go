@@ -37,6 +37,7 @@ import (
 const (
 	agentName        = "logmanager"
 	commonLogdir     = types.PersistDir + "/log"
+	syslogDir        = types.PersistDir + "/syslog"
 	xenLogDirname    = "/var/log/xen"
 	lastSentDirname  = "lastlogsent"  // Directory in /persist/
 	lastDeferDirname = "lastlogdefer" // Directory in /persist/
@@ -343,12 +344,16 @@ func Run() {
 	xenLogDirChanges := make(chan string)
 	go watch.WatchStatus(xenLogDirname, false, xenLogDirChanges)
 
+	syslogChanges := make(chan string)
+	go watch.WatchStatus(syslogDir, false, syslogChanges)
+
 	// Run these dir -> event as goroutines since they will block
 	// when there is backpressure
 	// XXX state sharing with HandleDeferred?
 	go handleLogDir(logDirChanges, logDirName, &ctx)
 	go handleLogDir(otherLogDirChanges, otherLogDirname, &otherCtx)
 	go handleLogDir(lispLogDirChanges, lispLogDirName, &ctx)
+	go handleLogDir(syslogChanges, syslogDir, &ctx)
 	go handleXenLogDir(xenLogDirChanges, xenLogDirname, &xenCtx)
 
 	for {
@@ -980,7 +985,7 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 			level, err := log.ParseLevel(loginfo.Level)
 			if err != nil {
 				log.Errorf("ParseLevel failed: %s\n", err)
-				level = log.DebugLevel
+				level = log.InfoLevel
 			}
 			if dropEvent(r.source, level) {
 				log.Debugf("Dropping source %s level %v\n",
