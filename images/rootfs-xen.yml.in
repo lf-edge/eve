@@ -6,6 +6,7 @@ init:
   - linuxkit/runc:v0.5
   - linuxkit/containerd:v0.5
   - linuxkit/getty:v0.5
+  - linuxkit/memlogd:v0.5
   - GRUB_TAG
   - FW_TAG
   - XEN_TAG
@@ -24,6 +25,8 @@ onboot:
      command: ["modprobe", "-a", "nct6775", "w83627hf_wdt", "wlcore_sdio", "wl18xx", "br_netfilter"]
    - name: rsyslogd
      image: RSYSLOGD_TAG
+   - name: logread
+     image: LOGREAD_TAG
 services:
    - name: ntpd
      image: linuxkit/openntpd:v0.5

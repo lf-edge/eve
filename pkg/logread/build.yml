@@ -1,11 +1,10 @@
-image: eve-rsyslog
+image: eve-logread
 org: lfedge
 network: yes
 config:
   binds:
     - /dev:/dev
-    - /etc/resolv.conf:/etc/resolv.conf
-    - /var/persist:/persist
+    - /var/run:/var/run
   net: host
   capabilities:
     - all
