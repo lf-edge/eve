@@ -25,6 +25,8 @@ onboot:
      command: ["modprobe", "-a", "nct6775", "w83627hf_wdt", "wlcore_sdio", "wl18xx", "br_netfilter"]
    - name: rsyslogd
      image: RSYSLOGD_TAG
+   - name: logread
+     image: LOGREAD_TAG
 services:
    - name: ntpd
      image: linuxkit/openntpd:v0.5

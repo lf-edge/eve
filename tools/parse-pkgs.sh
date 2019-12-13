@@ -80,6 +80,7 @@ sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e "s#STORAGE_INIT_TAG#$STORAGE_INIT_TAG#" \
     -e "s#QREXECLIB_TAG#$QREXECLIB_TAG#" \
     -e "s#RSYSLOGD_TAG#$RSYSLOGD_TAG#" \
+    -e "s#LOGREAD_TAG#$LOGREAD_TAG#" \
     -e "s#WWAN_TAG#$WWAN_TAG#" \
     -e "s#WLAN_TAG#$WLAN_TAG#" \
     -e "s#GUACD_TAG#$GUACD_TAG#" \
@@ -128,6 +129,7 @@ DOM0ZTOOLS_TAG=$(linuxkit_tag pkg/dom0-ztools)
 RNGD_TAG=$(linuxkit_tag pkg/rngd)
 QREXECLIB_TAG=$(linuxkit_tag pkg/qrexec-lib)
 RSYSLOGD_TAG=$(linuxkit_tag pkg/rsyslog)
+LOGREAD_TAG=$(linuxkit_tag pkg/logread)
 WWAN_TAG=$(linuxkit_tag pkg/wwan)
 WLAN_TAG=$(linuxkit_tag pkg/wlan)
 GUACD_TAG=$(linuxkit_tag pkg/guacd)
