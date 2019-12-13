@@ -39,6 +39,9 @@ const (
 	vaultHalfKeyLen     = 16 //bytes
 	defaultImgVaultName = "Application Data Store"
 	defaultCfgVaultName = "Configuration Data Store"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 var (
@@ -413,7 +416,7 @@ func Run() {
 
 		// Run a periodic timer so we always update StillRunning
 		stillRunning := time.NewTicker(15 * time.Second)
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 
 		// Context to pass around
 		ctx := vaultMgrContext{}
@@ -429,7 +432,7 @@ func Run() {
 		for {
 			select {
 			case <-stillRunning.C:
-				agentlog.StillRunning(agentName)
+				agentlog.StillRunning(agentName, warningTime, errorTime)
 			}
 		}
 	default:

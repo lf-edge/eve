@@ -313,3 +313,8 @@ func (pub *Publication) GetAll() map[string]interface{} {
 	pub.km.key.Range(assigner)
 	return result
 }
+
+// Topic returns the string definiting the topic
+func (pub *Publication) Topic() string {
+	return pub.topic
+}

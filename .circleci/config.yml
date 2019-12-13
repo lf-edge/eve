@@ -33,9 +33,11 @@ jobs:
       - run:
           name: EVE
           command: >
-            make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} eve
+            make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push EVE_SNAPSHOT_VERSION=0.0.0-snapshot} eve
       - store_artifacts:
-          path: dist/amd64/rootfs.img
+          path: dist/amd64/installer/rootfs.img
+      - store_artifacts:
+          path: images/rootfs-xen.yml
   yetus:
     docker:
       - image: apache/yetus:0.11.0

@@ -35,6 +35,8 @@ func (ctx *downloaderContext) registerHandlers() error {
 	if err != nil {
 		return err
 	}
+	subGlobalConfig.MaxProcessTimeWarn = warningTime
+	subGlobalConfig.MaxProcessTimeError = errorTime
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
@@ -46,6 +48,8 @@ func (ctx *downloaderContext) registerHandlers() error {
 	if err != nil {
 		return err
 	}
+	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
+	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
 	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
@@ -57,6 +61,8 @@ func (ctx *downloaderContext) registerHandlers() error {
 	if err != nil {
 		return err
 	}
+	subGlobalDownloadConfig.MaxProcessTimeWarn = warningTime
+	subGlobalDownloadConfig.MaxProcessTimeError = errorTime
 	subGlobalDownloadConfig.ModifyHandler = handleGlobalDownloadConfigModify
 	subGlobalDownloadConfig.CreateHandler = handleGlobalDownloadConfigModify
 	ctx.subGlobalDownloadConfig = subGlobalDownloadConfig
@@ -70,6 +76,8 @@ func (ctx *downloaderContext) registerHandlers() error {
 	if err != nil {
 		return err
 	}
+	subDatastoreConfig.MaxProcessTimeWarn = warningTime
+	subDatastoreConfig.MaxProcessTimeError = errorTime
 	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
 	subDatastoreConfig.CreateHandler = handleDatastoreConfigModify
 	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
@@ -113,6 +121,8 @@ func (ctx *downloaderContext) registerHandlers() error {
 	if err != nil {
 		return err
 	}
+	subAppImgConfig.MaxProcessTimeWarn = warningTime
+	subAppImgConfig.MaxProcessTimeError = errorTime
 	subAppImgConfig.ModifyHandler = handleAppImgModify
 	subAppImgConfig.CreateHandler = handleAppImgCreate
 	subAppImgConfig.DeleteHandler = handleAppImgDelete
@@ -124,6 +134,8 @@ func (ctx *downloaderContext) registerHandlers() error {
 	if err != nil {
 		return err
 	}
+	subBaseOsConfig.MaxProcessTimeWarn = warningTime
+	subBaseOsConfig.MaxProcessTimeError = errorTime
 	subBaseOsConfig.ModifyHandler = handleBaseOsModify
 	subBaseOsConfig.CreateHandler = handleBaseOsCreate
 	subBaseOsConfig.DeleteHandler = handleBaseOsDelete
@@ -135,6 +147,8 @@ func (ctx *downloaderContext) registerHandlers() error {
 	if err != nil {
 		return err
 	}
+	subCertObjConfig.MaxProcessTimeWarn = warningTime
+	subCertObjConfig.MaxProcessTimeError = errorTime
 	subCertObjConfig.ModifyHandler = handleCertObjModify
 	subCertObjConfig.CreateHandler = handleCertObjCreate
 	subCertObjConfig.DeleteHandler = handleCertObjDelete

@@ -33,20 +33,25 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	log "github.com/sirupsen/logrus"
 )
 
 const (
-	agentName                 = "nodeagent"
-	timeTickInterval   uint32 = 10
-	watchdogInterval   uint32 = 25
-	networkUpTimeout   uint32 = 300
-	maxRebootStackSize        = 1600
-	configDir                 = "/config"
-	tmpDirname                = "/var/tmp/zededa"
-	firstbootFile             = tmpDirname + "/first-boot"
-	restartCounterFile        = configDir + "/restartcounter"
+	agentName                   = "nodeagent"
+	timeTickInterval     uint32 = 10
+	watchdogInterval     uint32 = 25
+	networkUpTimeout     uint32 = 300
+	maxRebootStackSize          = 1600
+	maxJSONAttributeSize        = maxRebootStackSize + 100
+	configDir                   = "/config"
+	tmpDirname                  = "/var/tmp/zededa"
+	firstbootFile               = tmpDirname + "/first-boot"
+	restartCounterFile          = configDir + "/restartcounter"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Version : module version
@@ -135,7 +140,7 @@ func Run() {
 	nodeagentCtx.configGetStatus = types.ConfigGetFail
 
 	// Make sure we have a GlobalConfig file with defaults
-	types.EnsureGCFile()
+	utils.EnsureGCFile()
 
 	// get the last reboot reason
 	handleLastRebootReason(&nodeagentCtx)
@@ -163,6 +168,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subGlobalConfig.MaxProcessTimeWarn = warningTime
+	subGlobalConfig.MaxProcessTimeError = errorTime
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	subGlobalConfig.SynchronizedHandler = handleGlobalConfigSynchronized
@@ -191,7 +198,7 @@ func Run() {
 
 		case <-nodeagentCtx.stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	// when the partition status is inprogress state
@@ -225,7 +232,7 @@ func Run() {
 
 		case <-nodeagentCtx.stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 		if isZedAgentAlive(&nodeagentCtx) {
 			nodeagentCtx.deviceRegistered = true
 		}
@@ -237,6 +244,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subZbootStatus.MaxProcessTimeWarn = warningTime
+	subZbootStatus.MaxProcessTimeError = errorTime
 	subZbootStatus.ModifyHandler = handleZbootStatusModify
 	subZbootStatus.DeleteHandler = handleZbootStatusDelete
 	nodeagentCtx.subZbootStatus = subZbootStatus
@@ -248,6 +257,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subZedAgentStatus.MaxProcessTimeWarn = warningTime
+	subZedAgentStatus.MaxProcessTimeError = errorTime
 	subZedAgentStatus.ModifyHandler = handleZedAgentStatusModify
 	subZedAgentStatus.DeleteHandler = handleZedAgentStatusDelete
 	nodeagentCtx.subZedAgentStatus = subZedAgentStatus
@@ -270,7 +281,7 @@ func Run() {
 
 		case <-nodeagentCtx.stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
@@ -391,6 +402,8 @@ func checkNetworkConnectivity(ctxPtr *nodeagentContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
+	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	ctxPtr.subDeviceNetworkStatus = subDeviceNetworkStatus
@@ -414,7 +427,7 @@ func checkNetworkConnectivity(ctxPtr *nodeagentContext) {
 
 		case <-ctxPtr.stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("DeviceNetworkStatus: %v\n", ctxPtr.DNSinitialized)
 
@@ -543,13 +556,12 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	}
 
 	// if reboot stack size crosses max size, truncate
-	if len(ctx.rebootStack) > maxRebootStackSize {
+	if len(ctx.rebootStack) > maxJSONAttributeSize {
 		runes := bytes.Runes([]byte(ctx.rebootStack))
-		if len(runes) > maxRebootStackSize {
+		if len(runes) > maxJSONAttributeSize {
 			runes = runes[:maxRebootStackSize]
 		}
-		ctx.rebootStack = fmt.Sprintf("Truncated stack: %v",
-			ctx.rebootStack)
+		ctx.rebootStack = fmt.Sprintf("Truncated stack: %v", string(runes))
 	}
 	// Read and increment restartCounter
 	ctx.restartCounter = incrementRestartCounter()

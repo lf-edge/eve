@@ -28,6 +28,9 @@ import (
 
 const (
 	agentName = "downloader"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Go doesn't like this as a constant
@@ -72,7 +75,7 @@ func Run() {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
+	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
 	pub, err := pubsub.Publish(agentName, cms)
@@ -102,8 +105,6 @@ func Run() {
 	for types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus) == 0 ||
 		ctx.globalConfig.MaxSpace == 0 {
 		log.Infof("Waiting for management port addresses or Global Config\n")
-		start := agentlog.StartTime()
-		checkMax := true
 
 		select {
 		case change := <-ctx.subGlobalConfig.C:
@@ -118,12 +119,8 @@ func Run() {
 		// This wait can take an unbounded time since we wait for IP
 		// addresses. Punch StillRunning
 		case <-stillRunning.C:
-			checkMax = false
 		}
-		if checkMax {
-			agentlog.CheckMaxTime(agentName, start)
-		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("Have %d management ports addresses to use\n",
 		types.CountLocalAddrAnyNoLinkLocal(ctx.deviceNetworkStatus))
@@ -135,8 +132,6 @@ func Run() {
 	gc := time.NewTicker(downloadGCTime / 10)
 
 	for {
-		start := agentlog.StartTime()
-		checkMax := true
 		select {
 		case change := <-ctx.subGlobalConfig.C:
 			ctx.subGlobalConfig.ProcessChange(change)
@@ -160,21 +155,23 @@ func Run() {
 			ctx.subGlobalDownloadConfig.ProcessChange(change)
 
 		case <-publishTimer.C:
+			start := time.Now()
 			err := pub.Publish("global", zedcloud.GetCloudMetrics())
 			if err != nil {
 				log.Errorln(err)
 			}
+			pubsub.CheckMaxTimeTopic(agentName, "publishTimer", start,
+				warningTime, errorTime)
 
 		case <-gc.C:
+			start := time.Now()
 			gcObjects(&ctx)
+			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
+				warningTime, errorTime)
 
 		case <-stillRunning.C:
-			checkMax = false
 		}
-		if checkMax {
-			agentlog.CheckMaxTime(agentName, start)
-		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
