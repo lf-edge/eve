@@ -25,6 +25,9 @@ import (
 
 const (
 	agentName = "zedmanager"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Set from Makefile
@@ -88,7 +91,7 @@ func Run() {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
+	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	// Any state needed by handler functions
 	ctx := zedmanagerContext{
@@ -157,6 +160,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subGlobalConfig.MaxProcessTimeWarn = warningTime
+	subGlobalConfig.MaxProcessTimeError = errorTime
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
@@ -169,6 +174,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subAppInstanceConfig.MaxProcessTimeWarn = warningTime
+	subAppInstanceConfig.MaxProcessTimeError = errorTime
 	subAppInstanceConfig.ModifyHandler = handleModify
 	subAppInstanceConfig.CreateHandler = handleCreate
 	subAppInstanceConfig.DeleteHandler = handleAppInstanceConfigDelete
@@ -182,6 +189,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subAppNetworkStatus.MaxProcessTimeWarn = warningTime
+	subAppNetworkStatus.MaxProcessTimeError = errorTime
 	subAppNetworkStatus.ModifyHandler = handleAppNetworkStatusModify
 	subAppNetworkStatus.CreateHandler = handleAppNetworkStatusModify
 	subAppNetworkStatus.DeleteHandler = handleAppNetworkStatusDelete
@@ -195,6 +204,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDomainStatus.MaxProcessTimeWarn = warningTime
+	subDomainStatus.MaxProcessTimeError = errorTime
 	subDomainStatus.ModifyHandler = handleDomainStatusModify
 	subDomainStatus.CreateHandler = handleDomainStatusModify
 	subDomainStatus.DeleteHandler = handleDomainStatusDelete
@@ -207,6 +218,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subAppImgDownloadStatus.MaxProcessTimeWarn = warningTime
+	subAppImgDownloadStatus.MaxProcessTimeError = errorTime
 	subAppImgDownloadStatus.ModifyHandler = handleDownloaderStatusModify
 	subAppImgDownloadStatus.CreateHandler = handleDownloaderStatusModify
 	subAppImgDownloadStatus.DeleteHandler = handleDownloaderStatusDelete
@@ -219,6 +232,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subAppImgVerifierStatus.MaxProcessTimeWarn = warningTime
+	subAppImgVerifierStatus.MaxProcessTimeError = errorTime
 	subAppImgVerifierStatus.ModifyHandler = handleVerifyImageStatusModify
 	subAppImgVerifierStatus.CreateHandler = handleVerifyImageStatusModify
 	subAppImgVerifierStatus.DeleteHandler = handleVerifyImageStatusDelete
@@ -232,6 +247,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subEIDStatus.MaxProcessTimeWarn = warningTime
+	subEIDStatus.MaxProcessTimeError = errorTime
 	subEIDStatus.ModifyHandler = handleEIDStatusModify
 	subEIDStatus.CreateHandler = handleEIDStatusModify
 	subEIDStatus.DeleteHandler = handleEIDStatusDelete
@@ -244,6 +261,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
+	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
 	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
@@ -256,6 +275,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subCertObjStatus.MaxProcessTimeWarn = warningTime
+	subCertObjStatus.MaxProcessTimeError = errorTime
 	subCertObjStatus.ModifyHandler = handleCertObjStatusModify
 	subCertObjStatus.CreateHandler = handleCertObjStatusModify
 	subCertObjStatus.DeleteHandler = handleCertObjStatusDelete
@@ -278,7 +299,7 @@ func Run() {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	log.Infof("Handling all inputs\n")
@@ -314,7 +335,7 @@ func Run() {
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 

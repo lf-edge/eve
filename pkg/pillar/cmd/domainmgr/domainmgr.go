@@ -46,6 +46,9 @@ const (
 	ciDirname    = runDirname + "/cloudinit" // For cloud-init images
 	rwImgDirname = types.PersistDir + "/img" // We store images here
 	uuidFile     = types.PersistRktDataDir + "/uuid_file"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Really a constant
@@ -120,7 +123,7 @@ func Run() {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
+	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	if _, err := os.Stat(runDirname); err != nil {
 		log.Debugf("Create %s\n", runDirname)
@@ -201,6 +204,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subGlobalConfig.MaxProcessTimeWarn = warningTime
+	subGlobalConfig.MaxProcessTimeError = errorTime
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
@@ -212,6 +217,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
+	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
 	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
@@ -225,14 +232,10 @@ func Run() {
 		log.Infof("Waiting for DeviceNetworkStatus init\n")
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 		}
 	}
 
@@ -242,6 +245,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subPhysicalIOAdapter.MaxProcessTimeWarn = warningTime
+	subPhysicalIOAdapter.MaxProcessTimeError = errorTime
 	subPhysicalIOAdapter.CreateHandler = handlePhysicalIOAdapterListCreateModify
 	subPhysicalIOAdapter.ModifyHandler = handlePhysicalIOAdapterListCreateModify
 	subPhysicalIOAdapter.DeleteHandler = handlePhysicalIOAdapterListDelete
@@ -253,25 +258,19 @@ func Run() {
 		log.Infof("Waiting for AssignableAdapters")
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subPhysicalIOAdapter.C:
-			start := agentlog.StartTime()
 			subPhysicalIOAdapter.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		// Run stillRunning since we waiting for zedagent to deliver
 		// PhysicalIO which depends on cloud connectivity
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("Have %d assignable adapters", len(aa.IoBundleList))
 
@@ -281,6 +280,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDomainConfig.MaxProcessTimeWarn = warningTime
+	subDomainConfig.MaxProcessTimeError = errorTime
 	subDomainConfig.ModifyHandler = handleDomainModify
 	subDomainConfig.CreateHandler = handleDomainCreate
 	subDomainConfig.DeleteHandler = handleDomainDelete
@@ -298,33 +299,26 @@ func Run() {
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDomainConfig.C:
-			start := agentlog.StartTime()
 			subDomainConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subPhysicalIOAdapter.C:
-			start := agentlog.StartTime()
 			subPhysicalIOAdapter.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-gc.C:
-			start := agentlog.StartTime()
+			start := time.Now()
 			gcObjects(&domainCtx, rwImgDirname)
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
+				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 

@@ -31,6 +31,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/shirou/gopsutil/disk"
@@ -72,19 +73,20 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName + "metrics")
+	agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
 
 	for {
 		select {
 		case <-ticker.C:
-			start := agentlog.StartTime()
+			start := time.Now()
 			iteration += 1
 			publishMetrics(ctx, iteration)
-			agentlog.CheckMaxTime(agentName+"metrics", start)
+			pubsub.CheckMaxTimeTopic(agentName+"metrics", "publishMetrics", start,
+				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName + "metrics")
+		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
 	}
 }
 

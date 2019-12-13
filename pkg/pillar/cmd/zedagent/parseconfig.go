@@ -1884,7 +1884,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				oldGlobalConfig.SshAuthorizedKeys, gcPtr.SshAuthorizedKeys)
 			ssh.UpdateSshAuthorizedKeys(gcPtr.SshAuthorizedKeys)
 		}
-		err := pubsub.PublishToDir(types.PersistConfigDir, "global", gcPtr)
+		pub := ctx.zedagentCtx.pubGlobalConfig
+		err := pub.Publish("global", gcPtr)
 		if err != nil {
 			// XXX - IS there a valid reason for this to Fail? If not, we should
 			//  fo log.Fatalf here..
