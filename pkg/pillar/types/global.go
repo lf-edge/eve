@@ -332,7 +332,7 @@ var GlobalConfigMinimums = GlobalConfig{
 	DownloadRetryTime:       60,
 	DomainBootRetryTime:     10,
 	Dom0MinDiskUsagePercent: 20,
-	RktGCGracePeriod:        43200,
+	RktGCGracePeriod:        600,
 }
 
 func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
