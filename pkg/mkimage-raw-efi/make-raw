@@ -40,6 +40,7 @@
 #   * config.tar for config partition
 #
 set -e
+[ -n "$DEBUG" ] && set -x
 
 IMGFILE=$1
 shift
@@ -107,23 +108,36 @@ do_efi() {
   sgdisk --new $NUM_PART:$SEC_START:$SEC_END --typecode=$NUM_PART:ef00 --change-name=$NUM_PART:'EFI System' \
          --attributes $NUM_PART:set:2 $IMGFILE
  
-  # Extract GRUB bootloader
-  # Try squashfs tools first in case ROOTFS_IMG is squashfs, otherwise use mount
-  rm -rf /tmp/grub
-  unsquashfs -d /tmp/grub "$ROOTFS_IMG" EFI/BOOT/ || (
-      mkdir -p /tmp/grub/EFI/BOOT
-      mount -o loop "$ROOTFS_IMG" /mnt
-      cp /mnt/EFI/BOOT/BOOT*EFI /tmp/grub/EFI/BOOT/
-      umount /mnt
-  )
-  cp /tmp/grub/EFI/BOOT/BOOT*EFI /efifs/EFI/BOOT
+  # Get GRUB bootloader
+  cp "$EFI_DIR"/BOOT/BOOT*EFI /efifs/EFI/BOOT
+  sed -i -e 's#PATH_TO_GRUB#'"$(cd /efifs; set EFI/BOOT/BOOT*EFI; echo "$1")"'#' /efifs/EFI/BOOT/grub.cfg
 
   #   ...copy EFI fs to EFI partition
-  dd if=`dir2vfat /efifs $(( ($SEC_END - $SEC_START) / 2))` of=$IMGFILE bs=512 conv=notrunc seek=$SEC_START
+  dd if="$(dir2vfat /efifs $(( (SEC_END - SEC_START) / 2)))" of="$IMGFILE" bs=512 conv=notrunc seek="$SEC_START"
 
-  eval $1=$(($SEC_END + 1))
+  eval "$1=$((SEC_END + 1))"
 }
 
+do_installer() {
+  eval "local SEC_START=\$$1"
+  local SEC_END="$(grow_part "$SEC_START" $(( 300 * 1024 * 1024 )))"
+  local NUM_PART=$(( PART_OFFSET + 1 ))
+
+  # Create a partition
+  sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" --typecode="$NUM_PART:ef00" --change-name="$NUM_PART":'EFI System' \
+         --attributes "$NUM_PART:set:2" "$IMGFILE"
+
+  # Get GRUB bootloader (including the grub.cfg)
+  cp "$EFI_DIR"/BOOT/* /efifs/EFI/BOOT/
+
+  # Get initrd.img and rootfs.img
+  cp "$INITRD_IMG" "$ROOTFS_IMG" /efifs/
+
+  #   ...copy EFI fs to EFI partition
+  dd if="$(dir2vfat /efifs $(( (SEC_END - SEC_START) / 2)))" of="$IMGFILE" bs=512 conv=notrunc seek="$SEC_START"
+
+  eval "$1=$((SEC_END + 1))"
+}
 
 do_rootfs() {
     eval SEC_START=\$$1
@@ -238,17 +252,27 @@ do_usb_conf() {
 }
 
 #
-# Extract partitions from stdin
+# Extract partitions from stdin or look them up in /bits
 #
-mkdir /parts 2>/dev/null || :
-[ -t 0 ] || (cd /parts; bsdtar xzf -)
+if [ ! -d /parts ] || [ "$(cd /parts 2>/dev/null ; echo *)" = '*' ]; then
+   mkdir /parts
+   cd /parts
+   [ "$(cd /bits ; echo *)" = '*' ] || ln -s /bits/* .
+fi
 
+cd /parts
+[ -t 0 ] || bsdtar xzf -
+
+# content of initrd installer image
+INITRD_IMG=/parts/initrd.img
 # content of rootfs partition
-ROOTFS_IMG=`echo /parts/rootfs*.img | cut -f1 -d\ `
+ROOTFS_IMG=/parts/rootfs.img
 # content of conf partition 
 CONF_FILE=/parts/config.img
 # content of persist partition
 PERSIST_FILE=/parts/persist.img
+# EFI boot directory
+EFI_DIR=/parts/EFI
 
 # offset in the GTP partition table from which we can start our numbering
 PART_OFFSET=0
@@ -282,12 +306,13 @@ for p in $PARTS ; do
 done
 
 # Update embedded boot partition with our own bootloader
-if [ ${EMBED_BOOT_START:-0} -gt 0 -a ${EMBED_BOOT_SIZE:-0} -gt 0 -a -f /efifs/EFI/BOOT/BOOTX64.EFI ] ; then
-  if mount $IMGFILE /mnt -o loop,offset=$(( $EMBED_BOOT_START * 512  )),sizelimit=$(( $EMBED_BOOT_SIZE * 512 )) ; then
+GRUB_IMG="$(echo /efifs/EFI/BOOT/BOOT*.EFI)"
+if [ ${EMBED_BOOT_START:-0} -gt 0 -a ${EMBED_BOOT_SIZE:-0} -gt 0 -a -f "$GRUB_IMG" ] ; then
+  if mount $IMGFILE /mnt -o loop,offset=$(( EMBED_BOOT_START * 512  )),sizelimit=$(( EMBED_BOOT_SIZE * 512 )) ; then
      FASTBOOT=$(cd /mnt/EFI/BOOT/ ; ls | grep -i '^fastboot.efi$')
      if $(set ${FASTBOOT:-. .} ; test $# -eq 1) ; then
-        cp_with_backup /efifs/EFI/BOOT/BOOTX64.EFI /mnt/EFI/BOOT/$FASTBOOT
-        (echo 'set root=hd0,gpt11' ; echo 'chainloader /efi/boot/bootx64.efi' ; echo 'boot') > /tmp/grub.cfg
+        cp_with_backup "$GRUB_IMG" "/mnt/EFI/BOOT/$FASTBOOT"
+        (echo 'set root=hd0,gpt11' ; echo 'configfile /efi/boot/grub.cfg') > /tmp/grub.cfg
         cp_with_backup /tmp/grub.cfg /mnt/EFI/BOOT/grub.cfg
      fi
   fi

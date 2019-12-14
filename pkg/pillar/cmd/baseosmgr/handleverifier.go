@@ -260,6 +260,7 @@ func checkStorageVerifierStatus(ctx *baseOsMgrContext, objType string, uuidStr s
 			log.Errorf("checkStorageVerifierStatus(%s) verifier error for %s: %s\n",
 				uuidStr, safename, vs.LastErr)
 			ss.Error = vs.LastErr
+			ss.ErrorSource = pubsub.TypeToName(types.VerifyImageStatus{})
 			ret.AllErrors = appendError(ret.AllErrors, "verifier",
 				vs.LastErr)
 			ss.ErrorTime = vs.LastErrTime

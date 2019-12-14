@@ -13,7 +13,7 @@ eve_version() {
   local vers="`get_git_tag`"
 
   if [ -z "$vers" ] ; then
-    vers="0.0.0-`git rev-parse --abbrev-ref HEAD`-`git describe --match v --abbrev=8 --always --dirty`-`date -u +"%Y-%m-%d.%H.%M"`"
+    vers="${EVE_SNAPSHOT_VERSION:-0.0.0}-$(git rev-parse --abbrev-ref HEAD | tr / _)-$(git describe --match v --abbrev=8 --always --dirty)-$(date -u +"%Y-%m-%d.%H.%M")"
     vers=`echo ${vers} | sed -e 's#-master##'`
   fi
 
@@ -75,6 +75,7 @@ sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e "s#TESTCERT_TAG#$TESTCERT_TAG#" \
     -e "s#TESTMSVCS_TAG#$TESTMSVCS_TAG#" \
     -e "s#PILLAR_TAG#$PILLAR_TAG#" \
+    -e "s#STORAGE_INIT_TAG#$STORAGE_INIT_TAG#" \
     -e "s#QREXECLIB_TAG#$QREXECLIB_TAG#" \
     -e "s#RSYSLOGD_TAG#$RSYSLOGD_TAG#" \
     -e "s#WWAN_TAG#$WWAN_TAG#" \
@@ -131,6 +132,7 @@ WLAN_TAG=$(linuxkit_tag pkg/wlan)
 GUACD_TAG=$(linuxkit_tag pkg/guacd)
 LISP_TAG=$(linuxkit_tag pkg/lisp)
 PILLAR_TAG=$(linuxkit_tag pkg/pillar)
+STORAGE_INIT_TAG=$(linuxkit_tag pkg/storage-init)
 GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)
 WATCHDOG_TAG=$(linuxkit_tag pkg/watchdog)
 MKRAW_TAG=$(linuxkit_tag pkg/mkimage-raw-efi)

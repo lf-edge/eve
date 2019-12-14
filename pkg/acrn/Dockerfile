@@ -19,7 +19,7 @@ RUN apk add --no-cache \
     yajl-dev=2.1.0-r0 \
     argp-standalone=1.3-r3 \
     linux-headers=4.4.6-r2 \
-    git=2.18.1-r0 \
+    git=2.18.2-r0 \
     patch=2.7.6-r4 \
     texinfo=6.5-r1 \
     curl=7.61.1-r3 \
