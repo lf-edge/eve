@@ -80,7 +80,7 @@ QEMU_SYSTEM_arm64=qemu-system-aarch64
 QEMU_SYSTEM_amd64=qemu-system-x86_64
 QEMU_SYSTEM=$(QEMU_SYSTEM_$(ZARCH))
 
-QEMU_OPTS_arm64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),format=vvfat
+QEMU_OPTS_arm64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
 # -drive file=./bios/flash0.img,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
 # [ -f bios/flash1.img ] || dd if=/dev/zero of=bios/flash1.img bs=1048576 count=64
 QEMU_OPTS_amd64= -cpu SandyBridge
