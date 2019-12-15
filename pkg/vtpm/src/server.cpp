@@ -41,7 +41,7 @@ string cmdOutputFile("cmd.output");
 //Protobufs are sent in CodedStream format.
 //Read first CODED_STRM_HDR_LEN bytes to decode the length of
 //the payload
-//TBD: Revisit if length CODED_STRM_HDR_LEN is required or
+//TBD: Revisit if length CODED_STRM_HDR_LEN is required, or
 //can be squeezed into 1.
 google::protobuf::uint32
 readHdr (char *buf)
@@ -302,9 +302,9 @@ parseRequest(int sock,
     ifstream cmdOut;
 
     //We expect atleast one byte to read here.
-    if (size == 0) {
-        cerr << "request with 0 bytes to read" << std::endl;
-        response.set_response("Incorrect request format");
+    if (size == 0 || size > MAX_REQUEST_LENGTH) {
+        cerr << "request with invalid bytes to read: " << size << std::endl;
+        response.set_response("Invalid request length:" + to_string(size));
         return failure;
     }
 
