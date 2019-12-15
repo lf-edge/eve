@@ -1,33 +1,21 @@
 #!/bin/sh
 # Usage:
 #
-#      ./makeflash.sh [-C size] <output.img> [num of partitions]
+#      ./makeflash.sh [-C size] <input dir> <output.img> [partitions]
 #
 MKFLASH_TAG="$(linuxkit pkg show-tag pkg/mkimage-raw-efi)"
 
 if [ "$1" = "-C" ]; then
-    SIZE=$2
-    IMAGE=$3
-    dd if=/dev/zero of=$IMAGE seek=$(( $SIZE * 1024 * 1024 - 1)) bs=1 count=1
+    SIZE="$2"
+    dd if=/dev/zero of="$4" seek=$(( SIZE * 1024 * 1024 - 1)) bs=1 count=1
     # If we're a non-root user, the bind mount gets permissions sensitive.
     # So we go docker^Wcowboy style
-    chmod ugo+w $IMAGE
-    NUMPARTS="$4"
-else
-    IMAGE=$1
-    NUMPARTS="$2"
+    chmod ugo+w "$4"
+    shift 2
 fi
 
-# Docker, for unknown reasons, decides whether a passed bind mount is
-# a file or a directory based on whether is a absolute pathname or a
-# relative one (!).
-#
-# Of course, BSDs do not have the GNU specific realpath, so substitute
-# it with a shell script.
+SOURCE="$(cd "$1" && pwd)"
+IMAGE="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
+shift 2
 
-case $IMAGE in
-    /*) ;;
-    *) IMAGE=$PWD/$IMAGE;;
-esac
-
-docker run --privileged -v $IMAGE:/output.img -i ${MKFLASH_TAG} /output.img "$NUMPARTS"
+docker run -v "$SOURCE:/bits" -v "$IMAGE:/output.img" "$MKFLASH_TAG" /output.img "$@"

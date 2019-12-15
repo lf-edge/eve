@@ -24,6 +24,9 @@ import (
 
 const (
 	agentName = "wstunnelclient"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Set from Makefile
@@ -79,7 +82,7 @@ func Run() {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
+	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	DNSctx := DNSContext{
 		deviceNetworkStatus: &types.DeviceNetworkStatus{},
@@ -93,6 +96,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subGlobalConfig.MaxProcessTimeWarn = warningTime
+	subGlobalConfig.MaxProcessTimeError = errorTime
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
@@ -104,6 +109,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
+	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
 	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
@@ -117,6 +124,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subAppInstanceConfig.MaxProcessTimeWarn = warningTime
+	subAppInstanceConfig.MaxProcessTimeError = errorTime
 	subAppInstanceConfig.ModifyHandler = handleAppInstanceConfigModify
 	subAppInstanceConfig.CreateHandler = handleAppInstanceConfigModify
 	subAppInstanceConfig.DeleteHandler = handleAppInstanceConfigDelete
@@ -137,37 +146,27 @@ func Run() {
 		log.Infof("Waiting for DomainNetworkStatus\n")
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 		}
 	}
 
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAppInstanceConfig.C:
-			start := agentlog.StartTime()
 			subAppInstanceConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 

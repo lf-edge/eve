@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -388,7 +389,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 				errorList = append(errorList, err)
 				// Inform ledmanager about broken cloud connectivity
 				if !ctx.NoLedManager {
-					types.UpdateLedManagerConfig(12)
+					utils.UpdateLedManagerConfig(12)
 				}
 				if ctx.FailureFunc != nil {
 					ctx.FailureFunc(intf, reqUrl, reqlen,
@@ -414,7 +415,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 					log.Errorln(errStr)
 					// Inform ledmanager about broken cloud connectivity
 					if !ctx.NoLedManager {
-						types.UpdateLedManagerConfig(13)
+						utils.UpdateLedManagerConfig(13)
 					}
 					if ctx.FailureFunc != nil {
 						ctx.FailureFunc(intf, reqUrl,

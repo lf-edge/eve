@@ -12,4 +12,6 @@ RUN \
 
 COPY . .
 
+RUN echo "mtools_skip_check=1" >> /etc/mtools.conf
+
 ENTRYPOINT [ "/make-efi" ]

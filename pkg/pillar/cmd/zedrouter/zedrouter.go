@@ -39,6 +39,9 @@ const (
 	runDirname    = "/var/run/zedrouter"
 	DataPlaneName = "lisp-ztr"
 	DropMarkValue = 0xFFFFFF
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Set from Makefile
@@ -116,7 +119,7 @@ func Run() {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
+	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	if _, err := os.Stat(runDirname); err != nil {
 		log.Infof("Create %s\n", runDirname)
@@ -158,6 +161,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
+	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
 	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
@@ -169,6 +174,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subAssignableAdapters.MaxProcessTimeWarn = warningTime
+	subAssignableAdapters.MaxProcessTimeError = errorTime
 	subAssignableAdapters.ModifyHandler = handleAAModify
 	subAssignableAdapters.CreateHandler = handleAAModify
 	subAssignableAdapters.DeleteHandler = handleAADelete
@@ -181,6 +188,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subGlobalConfig.MaxProcessTimeWarn = warningTime
+	subGlobalConfig.MaxProcessTimeError = errorTime
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
@@ -251,26 +260,20 @@ func Run() {
 		log.Infof("Waiting for AssignableAdapters\n")
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAssignableAdapters.C:
-			start := agentlog.StartTime()
 			subAssignableAdapters.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		// Run stillRunning since we waiting for zedagent to deliver
 		// PhysicalIO to domainmgr and it in turn deliver AA initialized to us.
 		// Former depends on cloud connectivity.
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
 
@@ -279,6 +282,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subNetworkInstanceConfig.MaxProcessTimeWarn = warningTime
+	subNetworkInstanceConfig.MaxProcessTimeError = errorTime
 	subNetworkInstanceConfig.ModifyHandler = handleNetworkInstanceModify
 	subNetworkInstanceConfig.CreateHandler = handleNetworkInstanceModify
 	subNetworkInstanceConfig.DeleteHandler = handleNetworkInstanceDelete
@@ -292,6 +297,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subAppNetworkConfig.MaxProcessTimeWarn = warningTime
+	subAppNetworkConfig.MaxProcessTimeError = errorTime
 	subAppNetworkConfig.ModifyHandler = handleAppNetworkModify
 	subAppNetworkConfig.CreateHandler = handleAppNetworkCreate
 	subAppNetworkConfig.DeleteHandler = handleAppNetworkConfigDelete
@@ -305,6 +312,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subAppNetworkConfigAg.MaxProcessTimeWarn = warningTime
+	subAppNetworkConfigAg.MaxProcessTimeError = errorTime
 	subAppNetworkConfigAg.ModifyHandler = handleAppNetworkModify
 	subAppNetworkConfigAg.CreateHandler = handleAppNetworkCreate
 	subAppNetworkConfigAg.DeleteHandler = handleAppNetworkConfigDelete
@@ -316,6 +325,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subLispInfoStatus.MaxProcessTimeWarn = warningTime
+	subLispInfoStatus.MaxProcessTimeError = errorTime
 	subLispInfoStatus.ModifyHandler = handleLispInfoModify
 	subLispInfoStatus.DeleteHandler = handleLispInfoDelete
 	zedrouterCtx.subLispInfoStatus = subLispInfoStatus
@@ -326,6 +337,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subLispMetrics.MaxProcessTimeWarn = warningTime
+	subLispMetrics.MaxProcessTimeError = errorTime
 	subLispMetrics.ModifyHandler = handleLispMetricsModify
 	subLispMetrics.DeleteHandler = handleLispMetricsDelete
 	zedrouterCtx.subLispMetrics = subLispMetrics
@@ -366,41 +379,32 @@ func Run() {
 		log.Infof("Waiting for zedmanager to report restarted\n")
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAssignableAdapters.C:
-			start := agentlog.StartTime()
 			subAssignableAdapters.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAppNetworkConfig.C:
-			start := agentlog.StartTime()
 			subAppNetworkConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subNetworkInstanceConfig.C:
-			start := agentlog.StartTime()
 			log.Infof("AppNetworkConfig - waiting to Restart - "+
 				"InstanceConfig change at %+v", time.Now())
 			subNetworkInstanceConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 		}
 		// Are we likely to have seen all of the initial config?
 		if zedrouterCtx.triggerNumGC &&
 			time.Since(zedrouterCtx.receivedConfigTime) > 5*time.Minute {
 
-			start := agentlog.StartTime()
+			start := time.Now()
 			bridgeNumAllocatorGC(&zedrouterCtx)
 			appNumAllocatorGC(&zedrouterCtx)
 			zedrouterCtx.triggerNumGC = false
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "allocatorGC", start,
+				warningTime, errorTime)
 		}
 	}
 	log.Infof("Zedmanager has restarted. Entering main Select loop\n")
@@ -408,36 +412,25 @@ func Run() {
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAssignableAdapters.C:
-			start := agentlog.StartTime()
 			subAssignableAdapters.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAppNetworkConfig.C:
-			start := agentlog.StartTime()
 			subAppNetworkConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAppNetworkConfigAg.C:
-			start := agentlog.StartTime()
 			subAppNetworkConfigAg.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change, ok := <-addrChanges:
-			start := agentlog.StartTime()
+			start := time.Now()
 			if !ok {
 				log.Errorf("addrChanges closed\n")
 				addrChanges = devicenetwork.AddrChangeInit()
-				agentlog.CheckMaxTime(agentName, start)
 				break
 			}
 			ifname := PbrAddrChange(zedrouterCtx.deviceNetworkStatus,
@@ -451,14 +444,14 @@ func Run() {
 				maybeUpdateBridgeIPAddr(
 					&zedrouterCtx, ifname)
 			}
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "addrChanges", start,
+				warningTime, errorTime)
 
 		case change, ok := <-linkChanges:
-			start := agentlog.StartTime()
+			start := time.Now()
 			if !ok {
 				log.Errorf("linkChanges closed\n")
 				linkChanges = devicenetwork.LinkChangeInit()
-				agentlog.CheckMaxTime(agentName, start)
 				break
 			}
 			ifname := PbrLinkChange(zedrouterCtx.deviceNetworkStatus,
@@ -472,22 +465,23 @@ func Run() {
 				maybeUpdateBridgeIPAddr(
 					&zedrouterCtx, ifname)
 			}
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "linkChanges", start,
+				warningTime, errorTime)
 
 		case change, ok := <-routeChanges:
-			start := agentlog.StartTime()
+			start := time.Now()
 			if !ok {
 				log.Errorf("routeChanges closed\n")
 				routeChanges = devicenetwork.RouteChangeInit()
-				agentlog.CheckMaxTime(agentName, start)
 				break
 			}
 			PbrRouteChange(&zedrouterCtx,
 				zedrouterCtx.deviceNetworkStatus, change)
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "routeChanges", start,
+				warningTime, errorTime)
 
 		case <-publishTimer.C:
-			start := agentlog.StartTime()
+			start := time.Now()
 			log.Debugln("publishTimer at", time.Now())
 			err := pub.Publish("global",
 				getNetworkMetrics(&zedrouterCtx))
@@ -495,66 +489,69 @@ func Run() {
 				log.Errorf("getNetworkMetrics failed %s\n", err)
 			}
 			publishNetworkInstanceMetricsAll(&zedrouterCtx)
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "publishNetworkInstanceMetrics", start,
+				warningTime, errorTime)
 
-			start = agentlog.StartTime()
+			start = time.Now()
 			// Check for changes to DHCP leases
 			// XXX can we trigger it as part of boot? Or watch file?
 			// XXX add file watch...
 			checkAndPublishDhcpLeases(&zedrouterCtx)
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "PublishDhcpLeases", start,
+				warningTime, errorTime)
 
 		case <-flowStatTimer.C:
-			start := agentlog.StartTime()
+			start := time.Now()
 			log.Debugf("FlowStatTimer at %v", time.Now())
 			// XXX why start a new go routine for each change?
 			go FlowStatsCollect(&zedrouterCtx)
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "FlowStatsCollect", start,
+				warningTime, errorTime)
 
 		case <-zedrouterCtx.hostProbeTimer.C:
-			start := agentlog.StartTime()
+			start := time.Now()
 			log.Debugf("HostProbeTimer at %v", time.Now())
 			// launch the go function gateway/remote hosts probing check
 			go launchHostProbe(&zedrouterCtx)
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "lauchHostProbe", start,
+				warningTime, errorTime)
 
 		case <-zedrouterCtx.appNetCreateTimer.C:
-			start := agentlog.StartTime()
+			start := time.Now()
 			log.Debugf("appNetCreateTimer: at %v", time.Now())
 			scanAppNetworkStatusInErrorAndUpdate(&zedrouterCtx)
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "scanAppNetworkStatus", start,
+				warningTime, errorTime)
 
 		case <-zedrouterCtx.checkNIUplinks:
+			start := time.Now()
 			log.Infof("checkNIUplinks channel signal\n")
 			checkAndReprogramNetworkInstances(&zedrouterCtx)
+			pubsub.CheckMaxTimeTopic(agentName, "checkAndReprogram", start,
+				warningTime, errorTime)
 
 		case change := <-subNetworkInstanceConfig.C:
-			start := agentlog.StartTime()
 			log.Infof("NetworkInstanceConfig change at %+v", time.Now())
 			subNetworkInstanceConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subLispInfoStatus.C:
-			start := agentlog.StartTime()
 			subLispInfoStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subLispMetrics.C:
-			start := agentlog.StartTime()
 			subLispMetrics.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 		// Are we likely to have seen all of the initial config?
 		if zedrouterCtx.triggerNumGC &&
 			time.Since(zedrouterCtx.receivedConfigTime) > 5*time.Minute {
-			start := agentlog.StartTime()
+			start := time.Now()
 			bridgeNumAllocatorGC(&zedrouterCtx)
 			appNumAllocatorGC(&zedrouterCtx)
 			zedrouterCtx.triggerNumGC = false
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "allocatorGC", start,
+				warningTime, errorTime)
 		}
 	}
 }

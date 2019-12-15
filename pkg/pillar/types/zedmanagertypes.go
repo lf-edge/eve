@@ -413,28 +413,16 @@ func (ss StorageStatus) checkCertsStatusForObject(safename string,
 	certObjStatus CertObjStatus) (bool, ErrorInfo) {
 
 	if ss.SignatureKey != "" {
-		for _, certObj := range certObjStatus.StorageStatusList {
-			if certObj.Name == ss.SignatureKey {
-				if certObj.Error != "" {
-					return false, certObj.GetErrorInfo()
-				}
-				if certObj.State != DELIVERED {
-					return false, ErrorInfo{}
-				}
-			}
+		found, installed, errInfo := certObjStatus.getCertStatus(ss.SignatureKey)
+		if !found || !installed {
+			return false, errInfo
 		}
 	}
 
 	for _, certURL := range ss.CertificateChain {
-		for _, certObj := range certObjStatus.StorageStatusList {
-			if certObj.Name == certURL {
-				if certObj.Error != "" {
-					return false, certObj.GetErrorInfo()
-				}
-				if certObj.State != DELIVERED {
-					return false, ErrorInfo{}
-				}
-			}
+		found, installed, errInfo := certObjStatus.getCertStatus(certURL)
+		if !found || !installed {
+			return false, errInfo
 		}
 	}
 	return true, ErrorInfo{}

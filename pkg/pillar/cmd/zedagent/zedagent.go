@@ -38,6 +38,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 
 	log "github.com/sirupsen/logrus"
@@ -49,6 +50,9 @@ const (
 	firstbootFile      = types.TmpDirname + "/first-boot"
 	// checkpointDirname - location of config checkpoint
 	checkpointDirname = types.PersistDir + "/checkpoint"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Set from Makefile
@@ -92,6 +96,7 @@ type zedagentContext struct {
 	subNetworkInstanceMetrics *pubsub.Subscription
 	subAppFlowMonitor         *pubsub.Subscription
 	subAppVifIPTrig           *pubsub.Subscription
+	pubGlobalConfig           *pubsub.Publication
 	subGlobalConfig           *pubsub.Subscription
 	subVaultStatus            *pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
@@ -180,12 +185,18 @@ func Run() {
 
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 
+	zedagentCtx.pubGlobalConfig, err = pubsub.PublishPersistent("",
+		types.GlobalConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
-	agentlog.StillRunning(agentName + "config")
-	agentlog.StillRunning(agentName + "metrics")
-	agentlog.StillRunning(agentName + "devinfo")
+	agentlog.StillRunning(agentName, warningTime, errorTime)
+	agentlog.StillRunning(agentName+"config", warningTime, errorTime)
+	agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
+	agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
 
 	// Tell ourselves to go ahead
 	// initialize the module specifig stuff
@@ -207,13 +218,15 @@ func Run() {
 	deferredChan := zedcloud.InitDeferred()
 
 	// Make sure we have a GlobalConfig file with defaults
-	types.EnsureGCFile()
+	utils.ReadAndUpdateGCFile(zedagentCtx.pubGlobalConfig)
 
 	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
 		types.AssignableAdapters{}, false, &zedagentCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
+	subAssignableAdapters.MaxProcessTimeWarn = warningTime
+	subAssignableAdapters.MaxProcessTimeError = errorTime
 	subAssignableAdapters.ModifyHandler = handleAAModify
 	subAssignableAdapters.CreateHandler = handleAAModify
 	subAssignableAdapters.DeleteHandler = handleAADelete
@@ -306,6 +319,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subGlobalConfig.MaxProcessTimeWarn = warningTime
+	subGlobalConfig.MaxProcessTimeError = errorTime
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
@@ -317,6 +332,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subNetworkInstanceStatus.MaxProcessTimeWarn = warningTime
+	subNetworkInstanceStatus.MaxProcessTimeError = errorTime
 	subNetworkInstanceStatus.ModifyHandler = handleNetworkInstanceModify
 	subNetworkInstanceStatus.CreateHandler = handleNetworkInstanceModify
 	subNetworkInstanceStatus.DeleteHandler = handleNetworkInstanceDelete
@@ -328,6 +345,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subNetworkInstanceMetrics.MaxProcessTimeWarn = warningTime
+	subNetworkInstanceMetrics.MaxProcessTimeError = errorTime
 	subNetworkInstanceMetrics.ModifyHandler = handleNetworkInstanceMetricsModify
 	subNetworkInstanceMetrics.CreateHandler = handleNetworkInstanceMetricsModify
 	subNetworkInstanceMetrics.DeleteHandler = handleNetworkInstanceMetricsDelete
@@ -339,6 +358,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subAppFlowMonitor.MaxProcessTimeWarn = warningTime
+	subAppFlowMonitor.MaxProcessTimeError = errorTime
 	subAppFlowMonitor.ModifyHandler = handleAppFlowMonitorModify
 	subAppFlowMonitor.CreateHandler = handleAppFlowMonitorModify
 	subAppFlowMonitor.DeleteHandler = handleAppFlowMonitorDelete
@@ -351,6 +372,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subAppVifIPTrig.MaxProcessTimeWarn = warningTime
+	subAppVifIPTrig.MaxProcessTimeError = errorTime
 	subAppVifIPTrig.ModifyHandler = handleAppVifIPTrigModify
 	subAppVifIPTrig.CreateHandler = handleAppVifIPTrigModify
 	subAppVifIPTrig.Activate()
@@ -361,6 +384,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subAppInstanceStatus.MaxProcessTimeWarn = warningTime
+	subAppInstanceStatus.MaxProcessTimeError = errorTime
 	subAppInstanceStatus.ModifyHandler = handleAppInstanceStatusModify
 	subAppInstanceStatus.CreateHandler = handleAppInstanceStatusModify
 	subAppInstanceStatus.DeleteHandler = handleAppInstanceStatusDelete
@@ -373,6 +398,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subZbootStatus.MaxProcessTimeWarn = warningTime
+	subZbootStatus.MaxProcessTimeError = errorTime
 	subZbootStatus.ModifyHandler = handleZbootStatusModify
 	subZbootStatus.CreateHandler = handleZbootStatusModify
 	subZbootStatus.DeleteHandler = handleZbootStatusDelete
@@ -385,6 +412,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subBaseOsStatus.MaxProcessTimeWarn = warningTime
+	subBaseOsStatus.MaxProcessTimeError = errorTime
 	subBaseOsStatus.ModifyHandler = handleBaseOsStatusModify
 	subBaseOsStatus.CreateHandler = handleBaseOsStatusModify
 	subBaseOsStatus.DeleteHandler = handleBaseOsStatusDelete
@@ -396,6 +425,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subVaultStatus.MaxProcessTimeWarn = warningTime
+	subVaultStatus.MaxProcessTimeError = errorTime
 	subVaultStatus.ModifyHandler = handleVaultStatusModify
 	subVaultStatus.DeleteHandler = handleVaultStatusDelete
 	zedagentCtx.subVaultStatus = subVaultStatus
@@ -408,6 +439,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subBaseOsDownloadStatus.MaxProcessTimeWarn = warningTime
+	subBaseOsDownloadStatus.MaxProcessTimeError = errorTime
 	zedagentCtx.subBaseOsDownloadStatus = subBaseOsDownloadStatus
 	subBaseOsDownloadStatus.Activate()
 
@@ -418,6 +451,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subCertObjDownloadStatus.MaxProcessTimeWarn = warningTime
+	subCertObjDownloadStatus.MaxProcessTimeError = errorTime
 	zedagentCtx.subCertObjDownloadStatus = subCertObjDownloadStatus
 	subCertObjDownloadStatus.Activate()
 
@@ -428,6 +463,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subBaseOsVerifierStatus.MaxProcessTimeWarn = warningTime
+	subBaseOsVerifierStatus.MaxProcessTimeError = errorTime
 	subBaseOsVerifierStatus.ModifyHandler = handleVerifierStatusModify
 	subBaseOsVerifierStatus.DeleteHandler = handleVerifierStatusDelete
 	subBaseOsVerifierStatus.RestartHandler = handleVerifierRestarted
@@ -441,6 +478,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subAppImgVerifierStatus.MaxProcessTimeWarn = warningTime
+	subAppImgVerifierStatus.MaxProcessTimeError = errorTime
 	zedagentCtx.subAppImgVerifierStatus = subAppImgVerifierStatus
 	subAppImgVerifierStatus.Activate()
 
@@ -451,6 +490,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subAppImgDownloadStatus.MaxProcessTimeWarn = warningTime
+	subAppImgDownloadStatus.MaxProcessTimeError = errorTime
 	zedagentCtx.subAppImgDownloadStatus = subAppImgDownloadStatus
 	subAppImgDownloadStatus.Activate()
 
@@ -460,6 +501,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subNodeAgentStatus.MaxProcessTimeWarn = warningTime
+	subNodeAgentStatus.MaxProcessTimeError = errorTime
 	subNodeAgentStatus.ModifyHandler = handleNodeAgentStatusModify
 	subNodeAgentStatus.DeleteHandler = handleNodeAgentStatusDelete
 	getconfigCtx.subNodeAgentStatus = subNodeAgentStatus
@@ -473,6 +516,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
+	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
@@ -483,6 +528,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDevicePortConfigList.MaxProcessTimeWarn = warningTime
+	subDevicePortConfigList.MaxProcessTimeError = errorTime
 	subDevicePortConfigList.ModifyHandler = handleDPCLModify
 	subDevicePortConfigList.DeleteHandler = handleDPCLDelete
 	zedagentCtx.subDevicePortConfigList = subDevicePortConfigList
@@ -494,14 +541,10 @@ func Run() {
 		log.Infof("Waiting for GCInitialized\n")
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-getconfigCtx.subNodeAgentStatus.C:
-			start := agentlog.StartTime()
 			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 		}
 	}
 
@@ -509,20 +552,17 @@ func Run() {
 	for !zedagentCtx.zbootRestarted {
 		select {
 		case change := <-subZbootStatus.C:
-			start := agentlog.StartTime()
 			subZbootStatus.ProcessChange(change)
 			if zedagentCtx.zbootRestarted {
 				log.Infof("Zboot reported restarted\n")
 			}
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-getconfigCtx.subNodeAgentStatus.C:
-			start := agentlog.StartTime()
 			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
+
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
@@ -532,67 +572,47 @@ func Run() {
 
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-zedagentCtx.subBaseOsVerifierStatus.C:
-			start := agentlog.StartTime()
 			zedagentCtx.subBaseOsVerifierStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-zedagentCtx.subBaseOsDownloadStatus.C:
-			start := agentlog.StartTime()
 			zedagentCtx.subBaseOsDownloadStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-zedagentCtx.subAppImgVerifierStatus.C:
-			start := agentlog.StartTime()
 			zedagentCtx.subAppImgVerifierStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-zedagentCtx.subAppImgDownloadStatus.C:
-			start := agentlog.StartTime()
 			zedagentCtx.subAppImgDownloadStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-zedagentCtx.subCertObjDownloadStatus.C:
-			start := agentlog.StartTime()
 			zedagentCtx.subCertObjDownloadStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAssignableAdapters.C:
-			start := agentlog.StartTime()
 			subAssignableAdapters.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDevicePortConfigList.C:
-			start := agentlog.StartTime()
 			subDevicePortConfigList.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-getconfigCtx.subNodeAgentStatus.C:
-			start := agentlog.StartTime()
 			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subVaultStatus.C:
-			start := agentlog.StartTime()
 			subVaultStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-deferredChan:
-			start := agentlog.StartTime()
+			start := time.Now()
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "deferredChan", start,
+				warningTime, errorTime)
+
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	// Subscribe to network metrics from zedrouter
@@ -638,51 +658,34 @@ func Run() {
 	for !zedagentCtx.verifierRestarted {
 		select {
 		case change := <-subZbootStatus.C:
-			start := agentlog.StartTime()
 			subZbootStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subBaseOsVerifierStatus.C:
-			start := agentlog.StartTime()
 			subBaseOsVerifierStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 			if zedagentCtx.verifierRestarted {
 				log.Infof("Verifier reported restarted\n")
 				break
 			}
 
 		case change := <-zedagentCtx.subBaseOsDownloadStatus.C:
-			start := agentlog.StartTime()
 			zedagentCtx.subBaseOsDownloadStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-zedagentCtx.subAppImgVerifierStatus.C:
-			start := agentlog.StartTime()
 			zedagentCtx.subAppImgVerifierStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-zedagentCtx.subAppImgDownloadStatus.C:
-			start := agentlog.StartTime()
 			zedagentCtx.subAppImgDownloadStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-zedagentCtx.subCertObjDownloadStatus.C:
-			start := agentlog.StartTime()
 			zedagentCtx.subCertObjDownloadStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-getconfigCtx.subNodeAgentStatus.C:
-			start := agentlog.StartTime()
 			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
 			if DNSctx.triggerDeviceInfo {
 				// IP/DNS in device info could have changed
@@ -690,34 +693,25 @@ func Run() {
 				triggerPublishDevInfo(&zedagentCtx)
 				DNSctx.triggerDeviceInfo = false
 			}
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAssignableAdapters.C:
-			start := agentlog.StartTime()
 			subAssignableAdapters.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDevicePortConfigList.C:
-			start := agentlog.StartTime()
 			subDevicePortConfigList.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subVaultStatus.C:
-			start := agentlog.StartTime()
 			subVaultStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-deferredChan:
-			start := agentlog.StartTime()
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 		}
 		// XXX verifierRestarted can take 5 minutes??
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 		// Need to tickle this since the configTimerTask is not yet started
-		agentlog.StillRunning(agentName + "config")
+		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
 	}
 
 	// start the config fetch tasks, when zboot status is ready
@@ -729,63 +723,41 @@ func Run() {
 	for {
 		select {
 		case change := <-subZbootStatus.C:
-			start := agentlog.StartTime()
 			subZbootStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAppInstanceStatus.C:
-			start := agentlog.StartTime()
 			subAppInstanceStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subBaseOsStatus.C:
-			start := agentlog.StartTime()
 			subBaseOsStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-zedagentCtx.subBaseOsVerifierStatus.C:
-			start := agentlog.StartTime()
 			zedagentCtx.subBaseOsVerifierStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-zedagentCtx.subBaseOsDownloadStatus.C:
-			start := agentlog.StartTime()
 			zedagentCtx.subBaseOsDownloadStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-zedagentCtx.subAppImgVerifierStatus.C:
-			start := agentlog.StartTime()
 			zedagentCtx.subAppImgVerifierStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-zedagentCtx.subAppImgDownloadStatus.C:
-			start := agentlog.StartTime()
 			zedagentCtx.subAppImgDownloadStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-zedagentCtx.subCertObjDownloadStatus.C:
-			start := agentlog.StartTime()
 			zedagentCtx.subCertObjDownloadStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-getconfigCtx.subNodeAgentStatus.C:
-			start := agentlog.StartTime()
 			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
 			if DNSctx.triggerGetConfig {
 				triggerGetConfig(configTickerHandle)
 				DNSctx.triggerGetConfig = false
 			}
-			agentlog.CheckMaxTime(agentName, start)
 			if DNSctx.triggerDeviceInfo {
 				// IP/DNS in device info could have changed
 				log.Infof("NetworkStatus triggered PublishDeviceInfo\n")
@@ -794,12 +766,9 @@ func Run() {
 			}
 
 		case change := <-subAssignableAdapters.C:
-			start := agentlog.StartTime()
 			subAssignableAdapters.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subNetworkMetrics.C:
-			start := agentlog.StartTime()
 			subNetworkMetrics.ProcessChange(change)
 			m, err := subNetworkMetrics.Get("global")
 			if err != nil {
@@ -808,10 +777,8 @@ func Run() {
 			} else {
 				networkMetrics = types.CastNetworkMetrics(m)
 			}
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subClientMetrics.C:
-			start := agentlog.StartTime()
 			subClientMetrics.ProcessChange(change)
 			m, err := subClientMetrics.Get("global")
 			if err != nil {
@@ -820,10 +787,8 @@ func Run() {
 			} else {
 				clientMetrics = m
 			}
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subLogmanagerMetrics.C:
-			start := agentlog.StartTime()
 			subLogmanagerMetrics.ProcessChange(change)
 			m, err := subLogmanagerMetrics.Get("global")
 			if err != nil {
@@ -832,10 +797,8 @@ func Run() {
 			} else {
 				logmanagerMetrics = m
 			}
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDownloaderMetrics.C:
-			start := agentlog.StartTime()
 			subDownloaderMetrics.ProcessChange(change)
 			m, err := subDownloaderMetrics.Get("global")
 			if err != nil {
@@ -844,47 +807,35 @@ func Run() {
 			} else {
 				downloaderMetrics = m
 			}
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-deferredChan:
-			start := agentlog.StartTime()
+			start := time.Now()
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "deferredChan", start,
+				warningTime, errorTime)
 
 		case change := <-subNetworkInstanceStatus.C:
-			start := agentlog.StartTime()
 			subNetworkInstanceStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subNetworkInstanceMetrics.C:
-			start := agentlog.StartTime()
 			subNetworkInstanceMetrics.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDevicePortConfigList.C:
-			start := agentlog.StartTime()
 			subDevicePortConfigList.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAppFlowMonitor.C:
-			start := agentlog.StartTime()
 			log.Debugf("FlowStats: change called")
 			subAppFlowMonitor.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subAppVifIPTrig.C:
-			start := agentlog.StartTime()
 			subAppVifIPTrig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subVaultStatus.C:
-			start := agentlog.StartTime()
 			subVaultStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
@@ -909,16 +860,17 @@ func deviceInfoTask(ctxPtr *zedagentContext, triggerDeviceInfo <-chan struct{}) 
 	for {
 		select {
 		case <-triggerDeviceInfo:
-			start := agentlog.StartTime()
+			start := time.Now()
 			log.Info("deviceInfoTask got message")
 
 			PublishDeviceInfoToZedCloud(ctxPtr)
 			ctxPtr.iteration++
 			log.Info("deviceInfoTask done with message")
-			agentlog.CheckMaxTime(agentName+"devinfo", start)
+			pubsub.CheckMaxTimeTopic(agentName+"devinfo", "PublishDeviceInfo", start,
+				warningTime, errorTime)
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName + "devinfo")
+		agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
 	}
 }
 
