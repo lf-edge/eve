@@ -302,8 +302,7 @@ parseRequest(int sock,
     ifstream cmdOut;
 
     //We expect atleast one byte to read here.
-    if (size == 0 || size > MAX_REQUEST_LENGTH) {
-        cerr << "request with invalid bytes to read: " << size << std::endl;
+    if (size == 0) {
         response.set_response("Invalid request length:" + to_string(size));
         return failure;
     }
