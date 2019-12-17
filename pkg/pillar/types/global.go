@@ -208,7 +208,7 @@ var GlobalConfigDefaults = GlobalConfig{
 	VdiskGCTime:         3600,  // 1 hour
 	DownloadRetryTime:   600,   // 10 minutes
 	DomainBootRetryTime: 600,   // 10 minutes
-	RktGCGracePeriod:    86400, // 24 hours
+	RktGCGracePeriod:    3600, // 1 hour
 
 	AllowNonFreeAppImages:  TS_ENABLED,
 	AllowNonFreeBaseImages: TS_ENABLED,
