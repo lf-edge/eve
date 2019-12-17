@@ -10,11 +10,11 @@ chmod 700 $PERSISTDIR
 mkdir -p $CONFIGDIR
 chmod 700 $CONFIGDIR
 if CONFIG=$(/hostfs/sbin/findfs PARTLABEL=CONFIG) && [ -n "$CONFIG" ]; then
-    if ! mount -t vfat -o dirsync,noatime "$CONFIG" $CONFIGDIR; then
-        echo "$(date -Ins -u) mount $CONFIG failed"
-    fi
     if ! fsck.vfat -y "$CONFIG"; then
         echo "$(date -Ins -u) fsck.vfat $CONFIG failed"
+    fi
+    if ! mount -t vfat -o dirsync,noatime "$CONFIG" $CONFIGDIR; then
+        echo "$(date -Ins -u) mount $CONFIG failed"
     fi
 else
     echo "$(date -Ins -u) No separate $CONFIGDIR partition"
