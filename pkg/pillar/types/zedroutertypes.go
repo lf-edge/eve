@@ -156,6 +156,19 @@ type DevicePortConfig struct {
 
 type DevicePortConfigVersion uint32
 
+// GetPortByIfName - DevicePortConfig Methord to Get Port structure by IfName
+func (portConfig *DevicePortConfig) GetPortByIfName(
+	u string) (NetworkPortConfig, error) {
+	var port NetworkPortConfig
+	for _, port = range portConfig.Ports {
+		if u == port.IfName {
+			return port, nil
+		}
+	}
+	err := fmt.Errorf("DevicePortConfig can't find port")
+	return port, err
+}
+
 // When new fields and/or new semantics are added to DevicePortConfig a new
 // version value is added here.
 const (
@@ -163,6 +176,7 @@ const (
 	DPCIsMgmt                          // Require IsMgmt to be set for management ports
 )
 
+// DoSanitize -
 func (portConfig *DevicePortConfig) DoSanitize(
 	sanitizeTimePriority bool,
 	sanitizeKey bool, key string,
@@ -205,7 +219,7 @@ func (portConfig *DevicePortConfig) DoSanitize(
 	}
 }
 
-// Return false if recent failure (less than 60 seconds ago)
+// IsDPCTestable - Return false if recent failure (less than 60 seconds ago)
 func (portConfig DevicePortConfig) IsDPCTestable() bool {
 
 	if portConfig.LastFailed.IsZero() {
@@ -219,6 +233,7 @@ func (portConfig DevicePortConfig) IsDPCTestable() bool {
 	return (timeDiff > 60)
 }
 
+// IsDPCUntested -
 func (portConfig DevicePortConfig) IsDPCUntested() bool {
 	if portConfig.LastFailed.IsZero() && portConfig.LastSucceeded.IsZero() {
 		return true
@@ -226,7 +241,7 @@ func (portConfig DevicePortConfig) IsDPCUntested() bool {
 	return false
 }
 
-// Check if the last results for the DPC was Success
+// WasDPCWorking - Check if the last results for the DPC was Success
 func (portConfig DevicePortConfig) WasDPCWorking() bool {
 
 	if portConfig.LastSucceeded.IsZero() {
@@ -254,9 +269,9 @@ const (
 // WifiKeySchemeType - types of key management
 type WifiKeySchemeType uint8
 
-// Wifi Key-Scheme Enum
+// Key Scheme type
 const (
-	KeySchemeNone WifiKeySchemeType = iota
+	KeySchemeNone WifiKeySchemeType = iota // enum for key scheme
 	KeySchemeWpaPsk
 	KeySchemeWpaEap
 	KeySchemeOther
@@ -265,9 +280,9 @@ const (
 // WirelessType - types of wireless media
 type WirelessType uint8
 
-// Wireless type either cellur or wifi
+// enum wireless type
 const (
-	WirelessTypeNone WirelessType = iota
+	WirelessTypeNone WirelessType = iota // enum for wireless type
 	WirelessTypeCellular
 	WirelessTypeWifi
 )
@@ -298,13 +313,13 @@ type DhcpConfig struct {
 	DnsServers []net.IP // If not set we use Gateway as DNS server
 }
 
-// CryptoBlock - to support encrypted string in the structure
+// CryptoBlock - crypto data
 type CryptoBlock struct {
 	Identity string // encrypted identity or username for WPA-EAP
 	Password string // encrypted string of pass phrase or password hash
 }
 
-// WifiConfig - wifi part of the configure
+// WifiConfig - Wifi structure
 type WifiConfig struct {
 	SSID      string            // wifi SSID
 	KeyScheme WifiKeySchemeType // such as WPA-PSK, WPA-EAP
@@ -314,11 +329,16 @@ type WifiConfig struct {
 	Priority  int32
 }
 
-// WirelessConfig - for wireless structure
+// CellConfig - Cellular part of the configure
+type CellConfig struct {
+	APN string // LTE APN
+}
+
+// WirelessConfig - wireless structure
 type WirelessConfig struct {
-	WType WirelessType
-	APN   []string     // LTE APN
-	Wifi  []WifiConfig // Wifi Config params
+	WType    WirelessType // Wireless Type
+	Cellular []CellConfig // LTE APN
+	Wifi     []WifiConfig // Wifi Config params
 }
 
 type NetworkPortConfig struct {

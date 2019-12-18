@@ -49,9 +49,13 @@ message NetworkAdapter {
 }
 
 message WirelessConfig {
-    WirelessType type = 1;            // either LTE or Wifi
-    repeated string CellularAPN = 5;  // APN for Cellular LTE, etc
-    repeated WifiConfig wifiCfg = 10; // Wifi, can be multiple APs on a single wlan, e.g. one for 2.5Ghz, other 5Ghz SSIDs
+    WirelessType type = 1;                   // either LTE or Wifi
+    repeated CellularConfig cellularCfg = 5; // Cellular config
+    repeated WifiConfig wifiCfg = 10;        // Wifi, can be multiple APs on a single wlan, e.g. one for 2.5Ghz, other 5Ghz SSIDs
+}
+
+message CellularConfig {
+    string APN = 1;                 // APN string
 }
 
 message WifiConfig {

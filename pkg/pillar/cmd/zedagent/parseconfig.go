@@ -1105,49 +1105,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 	}
 
 	// wireless property configuration
-	netWireless := netEnt.GetWireless()
-	if netWireless != nil {
-		log.Infof("parseOneNetworkXObjectConfig: Wireless of network present in %s, config %v", netEnt.Id, netWireless)
-		var wconfig types.WirelessConfig
-
-		wType := netWireless.GetType()
-		switch wType {
-		case zconfig.WirelessType_Cellular:
-			//
-			wconfig.WType = types.WirelessTypeCellular
-			apns := netWireless.GetCellularAPN()
-			for _, apn := range apns {
-				wconfig.APN = append(wconfig.APN, apn)
-			}
-			log.Infof("parseOneNetworkXObjectConfig: Wireless of network Cellular, %v", wconfig.APN)
-		case zconfig.WirelessType_WiFi:
-			//
-			wconfig.WType = types.WirelessTypeWifi
-			wificfgs := netWireless.GetWifiCfg()
-
-			for _, wificfg := range wificfgs {
-				var wifi types.WifiConfig
-				wifi.SSID = wificfg.GetWifiSSID()
-				if wificfg.GetKeyScheme() == zconfig.WiFiKeyScheme_WPAPSK {
-					wifi.KeyScheme = types.KeySchemeWpaPsk
-				} else if wificfg.GetKeyScheme() == zconfig.WiFiKeyScheme_WPAEAP {
-					wifi.KeyScheme = types.KeySchemeWpaEap
-				}
-				wifi.Identity = wificfg.GetIdentity()
-				wifi.Password = wificfg.GetPassword()
-				zcrypto := wificfg.GetCrypto()
-				wifi.Crypto.Identity = zcrypto.GetIdentity()
-				wifi.Crypto.Password = zcrypto.GetPassword()
-
-				wifi.Priority = wificfg.GetPriority()
-
-				wconfig.Wifi = append(wconfig.Wifi, wifi)
-			}
-			log.Infof("parseOneNetworkXObjectConfig: Wireless of network Wifi, %v", wconfig.Wifi)
-		default:
-		}
-		config.WirelessCfg = wconfig
-	}
+	config.WirelessCfg = parseNetworkWirelessConfig(netEnt)
 
 	ipspec := netEnt.GetIp()
 	switch config.Type {
@@ -1226,6 +1184,57 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 	}
 	config.DnsNameToIPList = nameToIPs
 	return config
+}
+
+func parseNetworkWirelessConfig(netEnt *zconfig.NetworkConfig) types.WirelessConfig {
+	var wconfig types.WirelessConfig
+
+	netWireless := netEnt.GetWireless()
+	if netWireless == nil {
+		return wconfig
+	}
+	log.Infof("parseNetworkWirelessConfig: Wireless of network present in %s, config %v", netEnt.Id, netWireless)
+
+	wType := netWireless.GetType()
+	switch wType {
+	case zconfig.WirelessType_Cellular:
+		//
+		wconfig.WType = types.WirelessTypeCellular
+		cellulars := netWireless.GetCellularCfg()
+		for _, cellular := range cellulars {
+			var wcell types.CellConfig
+			wcell.APN = cellular.GetAPN()
+			wconfig.Cellular = append(wconfig.Cellular, wcell)
+		}
+		log.Infof("parseNetworkWirelessConfig: Wireless of network Cellular, %v", wconfig.Cellular)
+	case zconfig.WirelessType_WiFi:
+		//
+		wconfig.WType = types.WirelessTypeWifi
+		wificfgs := netWireless.GetWifiCfg()
+
+		for _, wificfg := range wificfgs {
+			var wifi types.WifiConfig
+			wifi.SSID = wificfg.GetWifiSSID()
+			if wificfg.GetKeyScheme() == zconfig.WiFiKeyScheme_WPAPSK {
+				wifi.KeyScheme = types.KeySchemeWpaPsk
+			} else if wificfg.GetKeyScheme() == zconfig.WiFiKeyScheme_WPAEAP {
+				wifi.KeyScheme = types.KeySchemeWpaEap
+			}
+			wifi.Identity = wificfg.GetIdentity()
+			wifi.Password = wificfg.GetPassword()
+			zcrypto := wificfg.GetCrypto()
+			wifi.Crypto.Identity = zcrypto.GetIdentity()
+			wifi.Crypto.Password = zcrypto.GetPassword()
+
+			wifi.Priority = wificfg.GetPriority()
+
+			wconfig.Wifi = append(wconfig.Wifi, wifi)
+		}
+		log.Infof("parseNetworkWirelessConfig: Wireless of network Wifi, %v", wconfig.Wifi)
+	default:
+		log.Errorf("parseNetworkWirelessConfig: unsupported wireless configure type %d", wType)
+	}
+	return wconfig
 }
 
 func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObjectConfig) error {
