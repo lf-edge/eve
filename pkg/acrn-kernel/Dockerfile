@@ -12,9 +12,9 @@ RUN apk --no-cache add \
     curl=7.66.0-r0 \
     diffutils=3.7-r0 \
     flex=2.6.4-r2 \
-    git=2.22.0-r0 \
+    git=2.22.2-r0 \
     gmp-dev=6.1.2-r1 \
-    gnupg=2.2.16-r0 \
+    gnupg=2.2.19-r0 \
     installkernel=3.5-r0 \
     kmod=24-r1 \
     libressl-dev=2.7.5-r0 \
