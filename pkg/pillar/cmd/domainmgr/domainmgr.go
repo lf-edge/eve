@@ -1945,6 +1945,27 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 		status.UUIDandVersion, status.DisplayName)
 }
 
+// lookForRktRunErrors checks for xen errors or any other error which
+// are encountered while rkt run
+// rkt run returns two standard outputs when rkt runs successfully
+// so we need to remove them while checking for errors
+func lookForRktRunErrors(str string) error {
+	var output []string
+	standardOutput1 := "run: group \"rkt\" not found, will use default gid when rendering images"
+	standardOutput2 := "Parsing config from /var/lib/rkt/pods/run/"
+	strSlice := strings.Split(str, "\n")
+	for _, v := range strSlice {
+		if v != standardOutput1 && !strings.HasPrefix(v, standardOutput2) {
+			output = append(output, v)
+		}
+	}
+	errString := strings.Join(output, "\n")
+	if errString != "" {
+		return fmt.Errorf("rkt run failed: %s\n", errString)
+	}
+	return nil
+}
+
 // DomainCreate is a wrapper for domain creation thru xlCreate or rktRun
 // returns domainID, PodUUID and error
 func DomainCreate(status types.DomainStatus) (int, string, error) {
@@ -1999,6 +2020,11 @@ func rktRun(domainName string, ContainerImageID string, xenCfgFilename string, a
 		log.Errorln("rkt run output ", string(stdoutStderr))
 		return 0, "", fmt.Errorf("rkt run failed: %s\n",
 			string(stdoutStderr))
+	}
+	err = lookForRktRunErrors(string(stdoutStderr))
+	if err != nil {
+		log.Errorln(err.Error())
+		return 0, "", err
 	}
 	log.Infof("rkt run done\n")
 
