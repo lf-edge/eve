@@ -24,6 +24,8 @@ import (
 const (
 	apDirname   = "/run/accesspoint"            // For wireless access-point identifiers
 	wpaFilename = "/config/wpa_supplicant.conf" // wifi wpa_supplicant file, currently only support one
+	configDir   = "/config"
+	wpaTempname = "wpa_supplicant.temp"
 )
 
 func LastResortDevicePortConfig(ctx *DeviceNetworkContext, ports []string) types.DevicePortConfig {
@@ -50,11 +52,9 @@ func makeDevicePortConfig(ctx *DeviceNetworkContext, ports []string, free []stri
 		config.Ports[ix].IsMgmt = true
 		config.Ports[ix].Name = config.Ports[ix].IfName
 		config.Ports[ix].Dhcp = types.DT_CLIENT
-		for _, port := range ctx.DevicePortConfig.Ports {
-			if u == port.IfName {
-				config.Ports[ix].WirelessCfg = port.WirelessCfg
-				break
-			}
+		port, err := ctx.DevicePortConfig.GetPortByIfName(u)
+		if err == nil {
+			config.Ports[ix].WirelessCfg = port.WirelessCfg
 		}
 	}
 	return config
@@ -276,7 +276,7 @@ func devPortInstallAPname(ifname string, wconfig types.WirelessConfig) {
 		}
 	}
 
-	if len(wconfig.APN) == 0 {
+	if len(wconfig.Cellular) == 0 {
 		return
 	}
 
@@ -286,79 +286,84 @@ func devPortInstallAPname(ifname string, wconfig types.WirelessConfig) {
 		return
 	}
 
-	for _, apn := range wconfig.APN {
-		s := fmt.Sprintf("%s\n", apn)
+	for _, cell := range wconfig.Cellular {
+		s := fmt.Sprintf("%s\n", cell.APN)
 		file.WriteString(s)
 		break // only handle the first APN for now utill we know how to handle multiple of APNs
 	}
 	file.Close()
-	log.Infof("devPortInstallAPname: write file %s for name %s", filepath, wconfig.APN)
+	log.Infof("devPortInstallAPname: write file %s for name %v", filepath, wconfig.Cellular)
 }
 
 func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool {
-	if _, err := os.Stat(wpaFilename); err == nil {
-		if err := os.Remove(wpaFilename); err != nil {
-			log.Errorln(err)
-			return false
-		}
-	}
-
-	file, err := os.Create(wpaFilename)
+	tmpfile, err := ioutil.TempFile(configDir, wpaTempname)
 	if err != nil {
-		log.Errorln(err)
+		log.Errorln("TempFile ", err)
 		return false
 	}
+	defer tmpfile.Close()
+	defer os.Remove(tmpfile.Name())
+	tmpfile.Chmod(0600)
 
 	log.Infof("devPortInstallWifiConfig: write file %s for wifi params %v, size %d", wpaFilename, wconfig.Wifi, len(wconfig.Wifi))
-	file.WriteString("# Fill in the networks and their passwords\nnetwork={\n")
+	tmpfile.WriteString("# Fill in the networks and their passwords\nnetwork={\n")
 	if len(wconfig.Wifi) == 0 {
 		// generate dummy wpa_supplicant.conf
-		file.WriteString("       ssid=\"XXX\"\n")
-		file.WriteString("       scan_ssid=1\n")
-		file.WriteString("       key_mgmt=WPA-PSK\n")
-		file.WriteString("       psk=\"YYY\"\n")
+		tmpfile.WriteString("       ssid=\"XXX\"\n")
+		tmpfile.WriteString("       scan_ssid=1\n")
+		tmpfile.WriteString("       key_mgmt=WPA-PSK\n")
+		tmpfile.WriteString("       psk=\"YYYYYYYY\"\n")
 	} else {
 		for _, wifi := range wconfig.Wifi {
 			s := fmt.Sprintf("        ssid=\"%s\"\n", wifi.SSID)
-			file.WriteString(s)
-			file.WriteString("        scan_ssid=1\n")
+			tmpfile.WriteString(s)
+			tmpfile.WriteString("        scan_ssid=1\n")
 			if wifi.KeyScheme == types.KeySchemeWpaPsk { // WPA-PSK
-				file.WriteString("        key_mgmt=WPA-PSK\n")
+				tmpfile.WriteString("        key_mgmt=WPA-PSK\n")
 				if len(wifi.Crypto.Password) > 0 {
 					// XXX hook into TPM decryption library
 				} else {
+					// this assumes a hashed passphrase, otherwise need "" around string
 					s = fmt.Sprintf("        psk=%s\n", wifi.Password)
 				}
-				file.WriteString(s)
+				tmpfile.WriteString(s)
 			} else if wifi.KeyScheme == types.KeySchemeWpaEap { // EAP PEAP
-				file.WriteString("        key_mgmt=WPA-EAP\n        eap=PEAP\n")
+				tmpfile.WriteString("        key_mgmt=WPA-EAP\n        eap=PEAP\n")
 				if len(wifi.Crypto.Identity) > 0 {
 					// XXX hook into TPM decryption library
 				} else {
 					s = fmt.Sprintf("        identity=\"%s\"\n", wifi.Identity)
 				}
-				file.WriteString(s)
+				tmpfile.WriteString(s)
 
 				if len(wifi.Crypto.Password) > 0 {
 					// XXX hook into TPM decryption library
 				} else {
 					s = fmt.Sprintf("        password=hash:%s\n", wifi.Password)
 				}
-				file.WriteString(s)
+				tmpfile.WriteString(s)
 				// comment out the certifacatin verify. file.WriteString("        ca_cert=\"/config/ca.pem\"\n")
-				file.WriteString("        phase1=\"peaplabel=1\"\n")
-				file.WriteString("        phase2=\"auth=MSCHAPV2\"\n")
+				tmpfile.WriteString("        phase1=\"peaplabel=1\"\n")
+				tmpfile.WriteString("        phase2=\"auth=MSCHAPV2\"\n")
 			}
 			if wifi.Priority != 0 {
 				s = fmt.Sprintf("        priority=%d\n", wifi.Priority)
-				file.WriteString(s)
+				tmpfile.WriteString(s)
 			}
 		}
 	}
-	file.WriteString("}\n")
-	file.Close()
+	tmpfile.WriteString("}\n")
+	tmpfile.Sync()
+	if err := tmpfile.Close(); err != nil {
+		log.Errorln("Close ", tmpfile.Name(), err)
+		return false
+	}
 
-	// To set a timer to restart the wpa_supplicant for reading the new configure file
+	if err := os.Rename(tmpfile.Name(), wpaFilename); err != nil {
+		log.Errorln(err)
+		return false
+	}
+
 	return true
 }
 

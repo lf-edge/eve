@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"reflect"
 	"sort"
 	"time"
@@ -298,10 +297,6 @@ func Run() {
 		dnc.NetworkTestBetterTimer = networkTestBetterTimer
 	}
 
-	WPARestartTimer := time.NewTimer(1 * time.Second)
-	WPARestartTimer.Stop()
-	dnc.WPARestartTimer = WPARestartTimer
-
 	// Look for address and link changes
 	routeChanges := devicenetwork.RouteChangeInit()
 	addrChanges := devicenetwork.AddrChangeInit()
@@ -477,12 +472,6 @@ func Run() {
 			pubsub.CheckMaxTimeTopic(agentName, "TestTimer", start,
 				warningTime, errorTime)
 
-		case <-dnc.WPARestartTimer.C:
-			start := agentlog.StartTime()
-			restartWPAsupplicant()
-			log.Infof("WPARestartTimer done1")
-			agentlog.CheckMaxTime(agentName, start)
-
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
@@ -614,12 +603,6 @@ func Run() {
 			}
 			pubsub.CheckMaxTimeTopic(agentName, "TestBetterTimer", start,
 				warningTime, errorTime)
-
-		case <-dnc.WPARestartTimer.C:
-			start := agentlog.StartTime()
-			restartWPAsupplicant()
-			log.Infof("WPARestartTimer done2")
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 		}
@@ -989,14 +972,4 @@ func isSwitch(ctx *nimContext, ifname string) bool {
 			ifname, status.DisplayName, status.Key())
 	}
 	return foundExcl
-}
-
-// send a sighup to wpa_supplicant to restart
-func restartWPAsupplicant() {
-	_, err := exec.Command(pkillcmd, "-SIGHUP", "wpa_supplicant").Output()
-	if err != nil {
-		log.Errorf("restartWPAsupplicant: restart wpa_supplicant fail. %v", err.Error())
-	} else {
-		log.Infof("restartWPAsupplicant: restarted wpa_supplicant")
-	}
 }

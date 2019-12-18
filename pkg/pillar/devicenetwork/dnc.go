@@ -59,7 +59,6 @@ type DeviceNetworkContext struct {
 	Pending                DPCPending
 	NetworkTestTimer       *time.Timer
 	NetworkTestBetterTimer *time.Timer
-	WPARestartTimer        *time.Timer
 	NextDPCIndex           int
 	CloudConnectivityWorks bool
 
@@ -735,9 +734,8 @@ func checkAndUpdateWireless(ctx *DeviceNetworkContext, oCfg *types.DevicePortCon
 				devPortInstallAPname(pCfg.IfName, pCfg.WirelessCfg)
 			} else if pCfg.WirelessCfg.WType == types.WirelessTypeWifi ||
 				oldPortCfg != nil && oldPortCfg.WirelessCfg.WType == types.WirelessTypeWifi {
-				if devPortInstallWifiConfig(pCfg.IfName, pCfg.WirelessCfg) {
-					ctx.WPARestartTimer = time.NewTimer(10 * time.Second)
-				}
+				status := devPortInstallWifiConfig(pCfg.IfName, pCfg.WirelessCfg)
+				log.Infof("checkAndUpdateWireless: updated wpa file ok %v\n", status)
 			}
 		}
 	}
