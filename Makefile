@@ -41,11 +41,12 @@ HOSTARCH:=$(subst aarch64,arm64,$(subst x86_64,amd64,$(shell uname -m)))
 # by default, take the host architecture as the target architecture, but can override with `make ZARCH=foo`
 #    assuming that the toolchain supports it, of course...
 ZARCH ?= $(HOSTARCH)
+export ZARCH
 # warn if we are cross-compiling and track it
 CROSS ?=
 ifneq ($(HOSTARCH),$(ZARCH))
 CROSS = 1
-$(warning "WARNING: We are assembling a $(ZARCH) image on $(HOSTARCH). Things may break.")
+$(warning "WARNING: We are assembling an $(ZARCH) image on $(HOSTARCH). Things may break.")
 endif
 
 DOCKER_ARCH_TAG=$(ZARCH)
@@ -205,14 +206,15 @@ $(DIST) $(INSTALLER):
 	mkdir -p $@
 
 # convenience targets - so you can do `make config` instead of `make dist/config.img`, and `make installer` instead of `make dist/amd64/installer.img
+initrd: $(INITRD_IMG)
 config: $(CONFIG_IMG)
 rootfs: $(ROOTFS_IMG)
 live: $(LIVE_IMG).img
 installer: $(INSTALLER).raw
 installer-iso: $(INSTALLER).iso
 
-$(CONFIG_IMG): conf/server conf/onboard.cert.pem conf/authorized_keys conf/ | $(INSTALLER)
-	./tools/makeconfig.sh $(CONF_DIR) $@
+$(CONFIG_IMG): $(CONF_DIR) FORCE | $(INSTALLER)
+	./tools/makeconfig.sh $< $@
 
 $(ROOTFS_IMG): $(ROOTFS_YML) | $(INSTALLER)
 	./tools/makerootfs.sh $< $(ROOTFS_FORMAT) $@

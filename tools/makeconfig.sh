@@ -1,27 +1,16 @@
 #!/bin/sh
 # Usage:
 #
-#      ./maketestconfig.sh <conf dir> <output.img>
+#      ./makeconfig.sh <conf dir> <output.img>
 #
 MKCONFIG_TAG="$(linuxkit pkg show-tag pkg/mkconf)"
+SOURCE="$(cd "$1" && pwd)"
+IMAGE="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
 
-[ $# -ne 2 ] && echo "Usage: maketestconfig.sh <conf dir> <output.img>" && exit 1
+if [ ! -d "$SOURCE" ] || [ $# -ne 2 ]; then
+   echo "Usage: $0 <input dir> <output config image file>"
+   exit 1
+fi
 
-IMAGE=$2
-
-# Ensure existence of image file
-touch $IMAGE
-
-# Docker, for unknown reasons, decides whether a passed bind mount is
-# a file or a directory based on whether is a absolute pathname or a
-# relative one (!).
-#
-# Of course, BSDs do not have the GNU specific realpath, so substitute
-# it with a shell script.
-
-case $2 in
-    /*) ;;
-    *) IMAGE=$PWD/$IMAGE;;
-esac
-
-(cd $1 ; tar chf - ./*) | docker run --privileged -v "$IMAGE:/config.img" -i "${MKCONFIG_TAG}" /config.img
+touch "$IMAGE"
+(cd "$SOURCE" ; tar chf - ./*) | docker run -e ZARCH -i -v "$IMAGE:/config.img" "${MKCONFIG_TAG}" /config.img
