@@ -12,7 +12,7 @@ CONFIG_SIZE_KB=1024
 
 DTS=/conf/eve.dts
 if [ -f "$DTS" ]; then
-   [ "$(uname -m)" = aarch64 ] && dtc -O dtb -o /conf/eve.dtb -I dts "$DTS"
+   [ "$ZARCH" = arm64 ] && dtc -O dtb -o /conf/eve.dtb -I dts "$DTS"
    rm "$DTS"
 fi
 
