@@ -10,6 +10,7 @@ package domainmgr
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -2021,12 +2022,6 @@ func rktRun(domainName string, ContainerImageID string, xenCfgFilename string, a
 		return 0, "", fmt.Errorf("rkt run failed: %s\n",
 			string(stdoutStderr))
 	}
-	err = lookForRktRunErrors(string(stdoutStderr))
-	if err != nil {
-		log.Errorln(err.Error())
-		return 0, "", err
-	}
-	log.Infof("rkt run done\n")
 
 	// Get Pod UUID
 	uuidData, err := ioutil.ReadFile(uuidFile)
@@ -2036,6 +2031,15 @@ func rktRun(domainName string, ContainerImageID string, xenCfgFilename string, a
 	}
 	podUUID := strings.TrimSpace(string(uuidData))
 	log.Infof("podUUID = %s\n", podUUID)
+
+	err = lookForRktRunErrors(string(stdoutStderr))
+	if err != nil {
+		log.Errorln(err.Error())
+		if status := rktStatus(podUUID); status != "running" {
+			return 0, "", err
+		}
+	}
+	log.Infof("rkt run done\n")
 
 	// Obtain the domain id
 	cmd = "xl"
@@ -2057,6 +2061,32 @@ func rktRun(domainName string, ContainerImageID string, xenCfgFilename string, a
 		return 0, "", fmt.Errorf("Can't extract domainID from %s: %s\n", res, err)
 	}
 	return domainID, podUUID, nil
+}
+
+// rktStatus checks the status of the pod
+func rktStatus(podUUID string) string {
+	cmd := "rkt"
+	args := []string{
+		"--dir=" + types.PersistRktDataDir,
+		"status",
+		podUUID,
+		"--format=json",
+	}
+	log.Infof("Calling command %s %v\n", cmd, args)
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt status failed ", err)
+		log.Errorln("rkt status output ", string(stdoutStderr))
+		return ""
+	}
+	log.Infof("rkt status done\n")
+	var status map[string]interface{}
+	if err := json.Unmarshal(stdoutStderr, &status); err != nil {
+		log.Errorln("rkt status failed ", err)
+		log.Errorln("rkt status output ", string(stdoutStderr))
+		return ""
+	}
+	return status["state"].(string)
 }
 
 // Create in paused state; Need to call xlUnpause later
