@@ -8,18 +8,20 @@
 ip link set wlan0 up
 filetime=0
 wpaproc="wpa_supplicant"
-if [ -f /config/wpa_supplicant.conf ]; then
-  filetime=$(stat -c %Y /config/wpa_supplicant.conf)
-  wpa_supplicant -Dwext -iwlan0 -c /config/wpa_supplicant.conf -d -B
+configdir=/run/wlan
+configfile=/run/wlan/wpa_supplicant.conf
+if [ -d "$configdir" ] && [ -f "$configfile" ]; then
+  filetime=$(stat -c %Y "$configfile")
+  wpa_supplicant -Dwext -iwlan0 -c "$configfile" -d -B
 fi
 while true ; do
   sleep 10
-  if [ -f /config/wpa_supplicant.conf ]; then
-    newfiletime=$(stat -c %Y /config/wpa_supplicant.conf)
+  if [ -d "$configdir" ] && [ -f /run/wlan/wpa_supplicant.conf ]; then
+    newfiletime=$(stat -c %Y "$configfile")
     if [ "${newfiletime}" -ne "${filetime}" ]; then
       filetime=$newfiletime
       if [ -z "$(pgrep -x "wpa_supplicant")" ]; then
-        wpa_supplicant -Dwext -iwlan0 -c /config/wpa_supplicant.conf -d -B
+        wpa_supplicant -Dwext -iwlan0 -c "$configfile" -d -B
       else
         killall -s HUP $wpaproc
       fi
