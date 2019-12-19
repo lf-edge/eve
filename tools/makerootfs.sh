@@ -1,35 +1,19 @@
 #!/bin/sh
 # Usage:
 #
-#     ./makerootfs.sh <image.yml> <build-dir> <fs> <output.img>
-#
-#     will cd to <build-dir> before running `linuxkit build`
+#     ./makerootfs.sh <image.yml> <output rootfs image>  [<fs>]
 
 set -e
 
-usage() {
-    echo "Usage:"
-    echo
-    echo "$0 <image.yml> {ext4|squash} <output.img>"
-    echo "	will cd to <build-dir> before running linuxkit build"
-    echo
-    exit 1
-}
+EVE="$(cd "$(dirname "$0")" && pwd)/../"
+PATH="$EVE/build-tools/bin:$PATH"
+MKROOTFS_TAG="$(linuxkit pkg show-tag "$EVE/pkg/mkrootfs-${3:-squash}")"
+YMLFILE="$1"
+IMAGE="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
 
-if [ $# -ne 3 ]; then
-    usage
+if [ ! -f "$YMLFILE" ] || [ $# -lt 2 ]; then
+    echo "Usage: $0 <image.yml> <output rootfs image> [{ext4|squash}]"
+    exit 1
 fi
 
-case $2 in
-    ext4) MKROOTFS_PKG=mkrootfs-ext4 ;;
-    squash) MKROOTFS_PKG=mkrootfs-squash ;;
-    *) usage
-esac
-MKROOTFS_TAG="$(linuxkit pkg show-tag pkg/${MKROOTFS_PKG})"
-YMLFILE=
-case $1 in
-    /*) YMLFILE=$1 ;;
-    *) YMLFILE=$PWD/$1 ;;
-esac
-
-(cd $(dirname $3) && linuxkit build -o - $YMLFILE) | docker run -v /dev:/dev --privileged -i ${MKROOTFS_TAG} > $3
+linuxkit build -o - "$YMLFILE" | docker run -v /dev:/dev --privileged -i ${MKROOTFS_TAG} > "$IMAGE"

@@ -3,7 +3,9 @@
 #
 #      ./makeconfig.sh <conf dir> <output.img>
 #
-MKCONFIG_TAG="$(linuxkit pkg show-tag pkg/mkconf)"
+EVE="$(cd "$(dirname "$0")" && pwd)/../"
+PATH="$EVE/build-tools/bin:$PATH"
+MKCONFIG_TAG="$(linuxkit pkg show-tag "$EVE/pkg/mkconf")"
 SOURCE="$(cd "$1" && pwd)"
 IMAGE="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
 

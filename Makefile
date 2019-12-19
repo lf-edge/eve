@@ -217,7 +217,7 @@ $(CONFIG_IMG): $(CONF_DIR) FORCE | $(INSTALLER)
 	./tools/makeconfig.sh $< $@
 
 $(ROOTFS_IMG): $(ROOTFS_YML) | $(INSTALLER)
-	./tools/makerootfs.sh $< $(ROOTFS_FORMAT) $@
+	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT)
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
 

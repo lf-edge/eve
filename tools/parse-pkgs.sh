@@ -4,6 +4,8 @@
 #
 # [1] A poor man is a man on a deadline.
 #
+EVE="$(cd "$(dirname "$0")" && pwd)/../"
+PATH="$EVE/build-tools/bin:$PATH"
 
 get_git_tag() {
   echo ${EVE_HASH:-$(git tag -l --points-at HEAD | grep '[0-9]*\.[0-9]*\.[0-9]*' | head -1)}
@@ -21,7 +23,7 @@ eve_version() {
 }
 
 linuxkit_tag() {
-    echo "$(linuxkit pkg show-tag ${EVE_HASH:+--hash $EVE_HASH} """$1""")$ARCH"
+    echo "$(linuxkit pkg show-tag ${EVE_HASH:+--hash $EVE_HASH} "$EVE/$1")$ARCH"
 }
 
 immutable_tag() {
