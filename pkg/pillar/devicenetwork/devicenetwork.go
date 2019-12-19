@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	apDirname   = "/run/accesspoint"            // For wireless access-point identifiers
-	wpaFilename = "/config/wpa_supplicant.conf" // wifi wpa_supplicant file, currently only support one
-	configDir   = "/config"
+	apDirname   = "/run/accesspoint"              // For wireless access-point identifiers
+	wpaFilename = "/run/wlan/wpa_supplicant.conf" // wifi wpa_supplicant file, currently only support one
+	runwlanDir  = "/run/wlan"
 	wpaTempname = "wpa_supplicant.temp"
 )
 
@@ -296,7 +296,15 @@ func devPortInstallAPname(ifname string, wconfig types.WirelessConfig) {
 }
 
 func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool {
-	tmpfile, err := ioutil.TempFile(configDir, wpaTempname)
+	if _, err := os.Stat(runwlanDir); os.IsNotExist(err) {
+		err = os.Mkdir(runwlanDir, 600)
+		if err != nil {
+			log.Errorln("/run/wlan ", err)
+			return false
+		}
+	}
+
+	tmpfile, err := ioutil.TempFile(runwlanDir, wpaTempname)
 	if err != nil {
 		log.Errorln("TempFile ", err)
 		return false
