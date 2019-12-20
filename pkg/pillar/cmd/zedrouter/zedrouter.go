@@ -667,7 +667,7 @@ func publishLispDataplaneConfig(ctx *zedrouterContext,
 	key := "global"
 	log.Debugf("publishLispDataplaneConfig(%s)\n", key)
 	pub := ctx.pubLispDataplaneConfig
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func publishAppNetworkStatus(ctx *zedrouterContext,
@@ -676,7 +676,7 @@ func publishAppNetworkStatus(ctx *zedrouterContext,
 	key := status.Key()
 	log.Infof("publishAppNetworkStatus(%s-%s)\n", status.DisplayName, key)
 	pub := ctx.pubAppNetworkStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishAppNetworkStatus(ctx *zedrouterContext,

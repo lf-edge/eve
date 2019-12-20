@@ -182,7 +182,7 @@ func publishDomainConfig(ctx *zedmanagerContext,
 	key := status.Key()
 	log.Debugf("publishDomainConfig(%s)\n", key)
 	pub := ctx.pubDomainConfig
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishDomainConfig(ctx *zedmanagerContext, uuidStr string) {

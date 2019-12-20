@@ -836,7 +836,7 @@ func publishBaseOsStatus(ctx *baseOsMgrContext, status *types.BaseOsStatus) {
 	key := status.Key()
 	log.Debugf("Publishing BaseOsStatus %s\n", key)
 	pub := ctx.pubBaseOsStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishBaseOsStatus(ctx *baseOsMgrContext, key string) {

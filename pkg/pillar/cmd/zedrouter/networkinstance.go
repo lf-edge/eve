@@ -466,7 +466,7 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 		return
 	}
 	status.ChangeInProgress = types.ChangeInProgressTypeDelete
-	pub.Publish(status.Key(), status)
+	pub.Publish(status.Key(), *status)
 	if status.Activated {
 		doNetworkInstanceInactivate(ctx, status)
 	}
@@ -1378,14 +1378,14 @@ func publishNetworkInstanceStatus(ctx *zedrouterContext,
 	copyProbeStats(ctx, status)
 	ctx.networkInstanceStatusMap[status.UUID] = status
 	pub := ctx.pubNetworkInstanceStatus
-	pub.Publish(status.Key(), &status)
+	pub.Publish(status.Key(), status)
 }
 
 func publishNetworkInstanceMetrics(ctx *zedrouterContext,
 	status *types.NetworkInstanceMetrics) {
 
 	pub := ctx.pubNetworkInstanceMetrics
-	pub.Publish(status.Key(), &status)
+	pub.Publish(status.Key(), status)
 }
 
 // ==== Bridge

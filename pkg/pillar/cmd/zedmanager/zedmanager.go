@@ -410,7 +410,7 @@ func publishAppInstanceStatus(ctx *zedmanagerContext,
 	key := status.Key()
 	log.Debugf("publishAppInstanceStatus(%s)\n", key)
 	pub := ctx.pubAppInstanceStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishAppInstanceStatus(ctx *zedmanagerContext,

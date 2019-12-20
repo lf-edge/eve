@@ -152,7 +152,7 @@ func publishEIDStatus(ctx *identityContext, key string, status *types.EIDStatus)
 
 	log.Debugf("publishEIDStatus(%s)\n", key)
 	pub := ctx.pubEIDStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishEIDStatus(ctx *identityContext, key string) {

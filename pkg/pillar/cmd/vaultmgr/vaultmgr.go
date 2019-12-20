@@ -355,7 +355,7 @@ func publishVaultStatus(ctx *vaultMgrContext,
 	key := status.Key()
 	log.Debugf("Publishing VaultStatus %s\n", key)
 	pub := ctx.pubVaultStatus
-	pub.Publish(key, &status)
+	pub.Publish(key, status)
 }
 
 func fetchFscryptStatus() (info.DataSecAtRestStatus, string) {

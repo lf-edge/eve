@@ -294,7 +294,7 @@ func publishVerifierConfig(ctx *baseOsMgrContext, objType string,
 	key := config.Key()
 	log.Debugf("publishVerifierConfig(%s/%s)\n", objType, config.Key())
 	pub := verifierPublication(ctx, objType)
-	pub.Publish(key, config)
+	pub.Publish(key, *config)
 }
 
 func unpublishVerifierConfig(ctx *baseOsMgrContext, objType string,

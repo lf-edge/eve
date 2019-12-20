@@ -399,6 +399,7 @@ func handleModify(ctxArg interface{}, key string, item interface{}) {
 	log.Debugf("pubsub.handleModify(%s) key %s\n", name, key)
 	// NOTE: without a deepCopy we would just save a pointer since
 	// item is a pointer. That would cause failures.
+	// XXX not a pointer! Remove this copy
 	newItem := deepCopy(item)
 	created := false
 	m, ok := sub.km.key.Load(key)

@@ -124,7 +124,7 @@ func publishVerifyImageConfig(ctx *zedmanagerContext,
 	key := config.Key()
 	log.Debugf("publishVerifyImageConfig(%s)\n", key)
 	pub := ctx.pubAppImgVerifierConfig
-	pub.Publish(key, config)
+	pub.Publish(key, *config)
 }
 
 func unpublishVerifyImageConfig(ctx *zedmanagerContext,
