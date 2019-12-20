@@ -13,7 +13,6 @@ import (
 	"syscall"
 
 	"github.com/eriknordmark/netlink"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -176,13 +175,8 @@ func compileNetworkIpsetsStatus(ctx *zedrouterContext,
 	// walk all of netconfig - find all hosts which use this network
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
-	for key, st := range items {
-		status := cast.CastAppNetworkStatus(st)
-		if status.Key() != key {
-			log.Errorf("compileNetworkIpsetsStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
+	for _, st := range items {
+		status := st.(types.AppNetworkStatus)
 		if skipKey != "" && status.Key() == skipKey {
 			log.Debugf("compileNetworkIpsetsStatus skipping %s\n",
 				skipKey)
@@ -217,13 +211,8 @@ func compileNetworkIpsetsConfig(ctx *zedrouterContext,
 	// walk all of netconfig - find all hosts which use this network
 	sub := ctx.subAppNetworkConfig
 	items := sub.GetAll()
-	for key, c := range items {
-		config := cast.CastAppNetworkConfig(c)
-		if config.Key() != key {
-			log.Errorf("compileNetworkIpsetsConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, config.Key(), config)
-			continue
-		}
+	for _, c := range items {
+		config := c.(types.AppNetworkConfig)
 		for _, olConfig := range config.OverlayNetworkList {
 			if olConfig.Network != netconfig.UUID {
 				continue

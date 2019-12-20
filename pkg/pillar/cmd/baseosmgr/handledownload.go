@@ -9,7 +9,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
@@ -29,12 +28,7 @@ func lookupDownloaderConfig(ctx *baseOsMgrContext, objType string,
 			objType, safename)
 		return nil
 	}
-	config := cast.CastDownloaderConfig(c)
-	if config.Key() != safename {
-		log.Errorf("lookupDownloaderConfig(%s) got %s; ignored %+v\n",
-			safename, config.Key(), config)
-		return nil
-	}
+	config := c.(types.DownloaderConfig)
 	return &config
 }
 
@@ -160,12 +154,7 @@ func lookupDownloaderStatus(ctx *baseOsMgrContext, objType string,
 			objType, safename)
 		return nil
 	}
-	status := cast.CastDownloaderStatus(c)
-	if status.Key() != safename {
-		log.Errorf("lookupDownloaderStatus(%s) got %s; ignored %+v\n",
-			safename, status.Key(), status)
-		return nil
-	}
+	status := c.(types.DownloaderStatus)
 	return &status
 }
 

@@ -29,7 +29,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -429,7 +428,7 @@ func addImageStatus(ctx *domainContext, fileLocation string) {
 		}
 		publishImageStatus(ctx, &status)
 	} else {
-		status := cast.CastImageStatus(st)
+		status := st.(types.ImageStatus)
 		log.Infof("addImageStatus(%s) found RefCount %d LastUse %v\n",
 			filename, status.RefCount, status.LastUse)
 
@@ -451,7 +450,7 @@ func delImageStatus(ctx *domainContext, fileLocation string) {
 		log.Errorf("delImageStatus(%s) not found\n", filename)
 		return
 	}
-	status := cast.CastImageStatus(st)
+	status := st.(types.ImageStatus)
 	log.Infof("delImageStatus(%s) found RefCount %d LastUse %v\n",
 		filename, status.RefCount, status.LastUse)
 	unpublishImageStatus(ctx, &status)
@@ -464,13 +463,8 @@ func gcObjects(ctx *domainContext, dirName string) {
 
 	pub := ctx.pubImageStatus
 	items := pub.GetAll()
-	for key, st := range items {
-		status := cast.CastImageStatus(st)
-		if status.Key() != key {
-			log.Errorf("gcObjects key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
+	for _, st := range items {
+		status := st.(types.ImageStatus)
 		// Make sure we update LastUse if it is still referenced
 		// by a DomainConfig
 		filelocation := status.FileLocation
@@ -483,17 +477,17 @@ func gcObjects(ctx *domainContext, dirName string) {
 		}
 		if status.RefCount != 0 {
 			log.Debugf("gcObjects: skipping RefCount %d: %s\n",
-				status.RefCount, key)
+				status.RefCount, status.Key())
 			continue
 		}
 		timePassed := time.Since(status.LastUse)
 		if timePassed < vdiskGCTime {
 			log.Debugf("gcObjects: skipping recently used %s remains %d seconds\n",
-				key, (timePassed-vdiskGCTime)/time.Second)
+				status.Key(), (timePassed-vdiskGCTime)/time.Second)
 			continue
 		}
 		log.Infof("gcObjects: removing %s LastUse %v now %v: %s\n",
-			filelocation, status.LastUse, time.Now(), key)
+			filelocation, status.LastUse, time.Now(), status.Key())
 		if err := os.Remove(filelocation); err != nil {
 			log.Errorln(err)
 		}
@@ -506,13 +500,8 @@ func findActiveFileLocation(ctx *domainContext, filename string) bool {
 	log.Debugf("findActiveFileLocation(%v)\n", filename)
 	pub := ctx.pubDomainStatus
 	items := pub.GetAll()
-	for key, st := range items {
-		status := cast.CastDomainStatus(st)
-		if status.Key() != key {
-			log.Errorf("findActiveFileLocation key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
+	for _, st := range items {
+		status := st.(types.DomainStatus)
 		for _, ds := range status.DiskStatusList {
 			if filename == ds.ActiveFileLocation {
 				return true
@@ -587,12 +576,7 @@ func handlersInit() {
 func handleDomainModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("handleDomainModify(%s)\n", key)
-	config := cast.CastDomainConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleDomainModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
+	config := configArg.(types.DomainConfig)
 	h, ok := handlerMap[config.Key()]
 	if !ok {
 		log.Fatalf("handleDomainModify called on config that does not exist")
@@ -603,12 +587,7 @@ func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("handleDomainCreate(%s)\n", key)
 	ctx := ctxArg.(*domainContext)
-	config := cast.CastDomainConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleDomainCreate key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
+	config := configArg.(types.DomainConfig)
 	h, ok := handlerMap[config.Key()]
 	if ok {
 		log.Fatalf("handleDomainCreate called on config that already exists")
@@ -654,7 +633,7 @@ func runHandler(ctx *domainContext, key string, c <-chan interface{}) {
 		select {
 		case configArg, ok := <-c:
 			if ok {
-				config := cast.CastDomainConfig(configArg)
+				config := configArg.(types.DomainConfig)
 				status := lookupDomainStatus(ctx, key)
 				if status == nil {
 					handleCreate(ctx, key, &config)
@@ -860,12 +839,7 @@ func lookupDomainStatus(ctx *domainContext, key string) *types.DomainStatus {
 		log.Infof("lookupDomainStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastDomainStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupDomainStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.DomainStatus)
 	return &status
 }
 
@@ -877,12 +851,7 @@ func lookupDomainConfig(ctx *domainContext, key string) *types.DomainConfig {
 		log.Infof("lookupDomainConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastDomainConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupDomainConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.DomainConfig)
 	return &config
 }
 
@@ -2481,7 +2450,7 @@ func pciAssignableRemove(long string) error {
 // Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*domainContext)
 	if key != "global" {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
@@ -2654,7 +2623,7 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 	key string, configArg interface{}) {
 
 	ctx := ctxArg.(*domainContext)
-	phyIOAdapterList := cast.CastPhysicalIOAdapterList(configArg)
+	phyIOAdapterList := configArg.(types.PhysicalIOAdapterList)
 	aa := ctx.assignableAdapters
 	log.Infof("handlePhysicalIOAdapterListCreateModify: current len %d, update %+v\n",
 		len(aa.IoBundleList), phyIOAdapterList)
@@ -2720,7 +2689,7 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 func handlePhysicalIOAdapterListDelete(ctxArg interface{},
 	key string, value interface{}) {
 
-	phyAdapterList := cast.CastPhysicalIOAdapterList(value)
+	phyAdapterList := value.(types.PhysicalIOAdapterList)
 	ctx := ctxArg.(*domainContext)
 	log.Infof("handlePhysicalIOAdapterListDelete: ALL PhysicalIoAdapters " +
 		"deleted\n")
@@ -3138,15 +3107,10 @@ func gcResetObjectsLastUse(ctx *domainContext, dirName string) {
 
 	pub := ctx.pubImageStatus
 	items := pub.GetAll()
-	for key, st := range items {
-		status := cast.CastImageStatus(st)
-		if status.Key() != key {
-			log.Errorf("gcResetObjectsLastUse key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
+	for _, st := range items {
+		status := st.(types.ImageStatus)
 		if status.RefCount == 0 {
-			log.Infof("gcResetObjectsLastUse: reset %v LastUse to now\n", key)
+			log.Infof("gcResetObjectsLastUse: reset %v LastUse to now\n", status.Key())
 			status.LastUse = time.Now()
 			publishImageStatus(ctx, &status)
 		}

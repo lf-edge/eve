@@ -10,7 +10,7 @@
 package zedrouter
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -36,13 +36,8 @@ func appNumAllocatorInit(ctx *zedrouterContext) {
 	pubUuidToNum := ctx.pubUuidToNum
 
 	items := pubUuidToNum.GetAll()
-	for key, st := range items {
-		status := cast.CastUuidToNum(st)
-		if status.Key() != key {
-			log.Errorf("appNumAllocatorInit key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
+	for _, st := range items {
+		status := st.(types.UuidToNum)
 		if status.NumType != "appNum" {
 			continue
 		}
@@ -67,13 +62,8 @@ func appNumAllocatorInit(ctx *zedrouterContext) {
 	// In case zedrouter process restarted we fill in InUse from
 	// AppNetworkStatus
 	items = pubAppNetworkStatus.GetAll()
-	for key, st := range items {
-		status := cast.CastAppNetworkStatus(st)
-		if status.Key() != key {
-			log.Errorf("appNumAllocatorInit key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
+	for _, st := range items {
+		status := st.(types.AppNetworkStatus)
 		appNum := status.AppNum
 		uuid := status.UUIDandVersion.UUID
 
@@ -103,7 +93,7 @@ func appNumAllocatorGC(ctx *zedrouterContext) {
 	freedCount := 0
 	items := pubUuidToNum.GetAll()
 	for _, st := range items {
-		status := cast.CastUuidToNum(st)
+		status := st.(types.UuidToNum)
 		if status.NumType != "appNum" {
 			continue
 		}

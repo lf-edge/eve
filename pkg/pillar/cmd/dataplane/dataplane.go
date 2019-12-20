@@ -13,7 +13,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/dataplane/dptypes"
 	"github.com/lf-edge/eve/pkg/pillar/dataplane/etr"
 	"github.com/lf-edge/eve/pkg/pillar/dataplane/fib"
@@ -189,7 +188,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 func handleExpModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx := ctxArg.(*dptypes.DataplaneContext)
 
-	status := cast.CastLispDataplaneConfig(statusArg)
+	status := statusArg.(types.LispDataplaneConfig)
 	if key != "global" {
 		log.Infof("handleExpModify: ignoring %s", key)
 		return
@@ -390,7 +389,7 @@ var deviceNetworkStatus types.DeviceNetworkStatus
 
 func handleDNSModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 
 	if key != "global" {
 		log.Infof("ETR: handleDNSModify: ignoring %s", key)

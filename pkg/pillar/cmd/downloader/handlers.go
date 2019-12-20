@@ -1,7 +1,7 @@
 package downloader
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -28,12 +28,7 @@ func (d *downloadHandler) modify(ctxArg interface{}, objType string,
 	key string, configArg interface{}) {
 
 	log.Infof("downloadHandler.modify(%s)\n", key)
-	config := cast.CastDownloaderConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("downloadHandler.modify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
+	config := configArg.(types.DownloaderConfig)
 	h, ok := d.handlers[config.Key()]
 	if !ok {
 		log.Fatalf("downloadHandler.modify called on config that does not exist")
@@ -46,12 +41,7 @@ func (d *downloadHandler) create(ctxArg interface{}, objType string,
 
 	log.Infof("downloadHandler.create(%s)\n", key)
 	ctx := ctxArg.(*downloaderContext)
-	config := cast.CastDownloaderConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("downloadHandler.create key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
+	config := configArg.(types.DownloaderConfig)
 	h, ok := d.handlers[config.Key()]
 	if ok {
 		log.Fatalf("downloadHandler.create called on config that already exists")

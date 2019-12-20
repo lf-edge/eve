@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -185,7 +184,7 @@ func checkAndUpdateDownloadableObjects(ctx *downloaderContext, dsID uuid.UUID) {
 	for _, pub := range publications {
 		items := pub.GetAll()
 		for _, st := range items {
-			status := cast.CastDownloaderStatus(st)
+			status := st.(types.DownloaderStatus)
 			if status.DatastoreID == dsID {
 				config := lookupDownloaderConfig(ctx, status.ObjType, status.Key())
 				if config != nil {
@@ -208,12 +207,7 @@ func lookupDownloaderStatus(ctx *downloaderContext, objType string,
 		log.Infof("lookupDownloaderStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastDownloaderStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupDownloaderStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.DownloaderStatus)
 	return &status
 }
 
@@ -226,12 +220,7 @@ func lookupDownloaderConfig(ctx *downloaderContext, objType string,
 		log.Infof("lookupDownloaderConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastDownloaderConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupDownloaderConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.DownloaderConfig)
 	return &config
 }
 
@@ -250,7 +239,7 @@ func runHandler(ctx *downloaderContext, objType string, key string,
 		select {
 		case configArg, ok := <-c:
 			if ok {
-				config := cast.CastDownloaderConfig(configArg)
+				config := configArg.(types.DownloaderConfig)
 				status := lookupDownloaderStatus(ctx,
 					objType, key)
 				if status == nil {
@@ -572,27 +561,22 @@ func gcObjects(ctx *downloaderContext) {
 	}
 	for _, pub := range publications {
 		items := pub.GetAll()
-		for key, st := range items {
-			status := cast.CastDownloaderStatus(st)
-			if status.Key() != key {
-				log.Errorf("gcObjects key/UUID mismatch %s vs %s; ignored %+v\n",
-					key, status.Key(), status)
-				continue
-			}
+		for _, st := range items {
+			status := st.(types.DownloaderStatus)
 			if status.RefCount != 0 {
 				log.Debugf("gcObjects: skipping RefCount %d: %s\n",
-					status.RefCount, key)
+					status.RefCount, status.Key())
 				continue
 			}
 			timePassed := time.Since(status.LastUse)
 			if timePassed < downloadGCTime {
 				log.Debugf("gcObjects: skipping recently used %s remains %d seconds\n",
-					key,
+					status.Key(),
 					(timePassed-downloadGCTime)/time.Second)
 				continue
 			}
 			log.Infof("gcObjects: expiring status for %s; LastUse %v now %v\n",
-				key, status.LastUse, time.Now())
+				status.Key(), status.LastUse, time.Now())
 			status.Expired = true
 			publishDownloaderStatus(ctx, &status)
 		}
@@ -609,7 +593,7 @@ func publishDownloaderStatus(ctx *downloaderContext,
 	pub := ctx.publication(status.ObjType)
 	key := status.Key()
 	log.Debugf("publishDownloaderStatus(%s)\n", key)
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishDownloaderStatus(ctx *downloaderContext,
@@ -645,6 +629,6 @@ func lookupDatastoreConfig(ctx *downloaderContext, dsID uuid.UUID,
 		return nil, errStr
 	}
 	log.Debugf("Found datastore(%s) for %s\n", dsID, name)
-	dst := cast.CastDatastoreConfig(cfg)
+	dst := cfg.(types.DatastoreConfig)
 	return &dst, ""
 }

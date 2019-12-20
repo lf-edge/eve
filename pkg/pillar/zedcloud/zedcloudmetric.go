@@ -8,33 +8,13 @@
 package zedcloud
 
 import (
-	"encoding/json"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
 )
 
-type zedcloudMetric struct {
-	FailureCount uint64
-	SuccessCount uint64
-	LastFailure  time.Time
-	LastSuccess  time.Time
-	UrlCounters  map[string]urlcloudMetrics
-}
-
-type urlcloudMetrics struct {
-	TryMsgCount   int64
-	TryByteCount  int64
-	SentMsgCount  int64
-	SentByteCount int64
-	RecvMsgCount  int64
-	RecvByteCount int64 // Based on content-length which could be off
-}
-
-// Key is ifname string
-type metricsMap map[string]zedcloudMetric
-
-var metrics metricsMap = make(metricsMap)
+var metrics = make(types.MetricsMap)
 var mutex = &sync.Mutex{}
 
 func maybeInit(ifname string) {
@@ -43,8 +23,8 @@ func maybeInit(ifname string) {
 	}
 	if _, ok := metrics[ifname]; !ok {
 		log.Debugf("create zedcloudmetric for %s\n", ifname)
-		metrics[ifname] = zedcloudMetric{
-			UrlCounters: make(map[string]urlcloudMetrics),
+		metrics[ifname] = types.ZedcloudMetric{
+			URLCounters: make(map[string]types.UrlcloudMetrics),
 		}
 	}
 }
@@ -55,10 +35,10 @@ func ZedCloudFailure(ifname string, url string, reqLen int64, respLen int64) {
 	m := metrics[ifname]
 	m.FailureCount += 1
 	m.LastFailure = time.Now()
-	var u urlcloudMetrics
+	var u types.UrlcloudMetrics
 	var ok bool
-	if u, ok = m.UrlCounters[url]; !ok {
-		u = urlcloudMetrics{}
+	if u, ok = m.URLCounters[url]; !ok {
+		u = types.UrlcloudMetrics{}
 	}
 	u.TryMsgCount += 1
 	u.TryByteCount += reqLen
@@ -66,7 +46,7 @@ func ZedCloudFailure(ifname string, url string, reqLen int64, respLen int64) {
 		u.RecvMsgCount += 1
 		u.RecvByteCount += respLen
 	}
-	m.UrlCounters[url] = u
+	m.URLCounters[url] = u
 	metrics[ifname] = m
 	mutex.Unlock()
 }
@@ -77,41 +57,26 @@ func ZedCloudSuccess(ifname string, url string, reqLen int64, respLen int64) {
 	m := metrics[ifname]
 	m.SuccessCount += 1
 	m.LastSuccess = time.Now()
-	var u urlcloudMetrics
+	var u types.UrlcloudMetrics
 	var ok bool
-	if u, ok = m.UrlCounters[url]; !ok {
-		u = urlcloudMetrics{}
+	if u, ok = m.URLCounters[url]; !ok {
+		u = types.UrlcloudMetrics{}
 	}
 	u.SentMsgCount += 1
 	u.SentByteCount += reqLen
 	u.RecvMsgCount += 1
 	u.RecvByteCount += respLen
-	m.UrlCounters[url] = u
+	m.URLCounters[url] = u
 	metrics[ifname] = m
 	mutex.Unlock()
 }
 
-func GetCloudMetrics() metricsMap {
+func GetCloudMetrics() types.MetricsMap {
 	return metrics
 }
 
-// XXX this works but ugly as ...
-// Alternative seems to be a deep walk with type assertions in order
-// to produce the map of map of map with the correct type.
-func CastCloudMetrics(in interface{}) metricsMap {
-	b, err := json.Marshal(in)
-	if err != nil {
-		log.Fatal(err, "json Marshal in CastCloudMetrics")
-	}
-	var output metricsMap
-	if err := json.Unmarshal(b, &output); err != nil {
-		log.Fatal(err, "json Unmarshal in CastCloudMetrics")
-	}
-	return output
-}
-
 // Concatenate different interfaces and URLs into a union map
-func Append(cms metricsMap, cms1 metricsMap) metricsMap {
+func Append(cms types.MetricsMap, cms1 types.MetricsMap) types.MetricsMap {
 	for ifname, cm1 := range cms1 {
 		cm, ok := cms[ifname]
 		if !ok {
@@ -135,11 +100,11 @@ func Append(cms metricsMap, cms1 metricsMap) metricsMap {
 		}
 		cm.FailureCount += cm1.FailureCount
 		cm.SuccessCount += cm1.SuccessCount
-		if cm.UrlCounters == nil {
-			cm.UrlCounters = make(map[string]urlcloudMetrics)
+		if cm.URLCounters == nil {
+			cm.URLCounters = make(map[string]types.UrlcloudMetrics)
 		}
-		cmu := cm.UrlCounters // A pointer to the map
-		for url, um1 := range cm1.UrlCounters {
+		cmu := cm.URLCounters // A pointer to the map
+		for url, um1 := range cm1.URLCounters {
 			um, ok := cmu[url]
 			if !ok {
 				// New url; take all

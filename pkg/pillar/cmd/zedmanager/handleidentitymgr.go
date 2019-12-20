@@ -4,7 +4,6 @@
 package zedmanager
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -41,12 +40,7 @@ func lookupEIDConfig(ctx *zedmanagerContext, key string) *types.EIDConfig {
 		log.Infof("lookupEIDConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastEIDConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupEIDConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.EIDConfig)
 	return &config
 }
 
@@ -58,12 +52,7 @@ func lookupEIDStatus(ctx *zedmanagerContext, key string) *types.EIDStatus {
 		log.Infof("lookupEIDStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastEIDStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupEIDStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.EIDStatus)
 	return &status
 }
 
@@ -92,15 +81,10 @@ func unpublishEIDConfig(ctx *zedmanagerContext, uuidAndVers types.UUIDandVersion
 
 func handleEIDStatusModify(ctxArg interface{}, keyArg string,
 	statusArg interface{}) {
-	status := cast.CastEIDStatus(statusArg)
+	status := statusArg.(types.EIDStatus)
 	ctx := ctxArg.(*zedmanagerContext)
 	key := status.Key()
 	log.Infof("handleEIDStatusModify for %s\n", key)
-	if key != keyArg {
-		log.Errorf("handleEIDModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			keyArg, key, status)
-		return
-	}
 	// Ignore if any Pending* flag is set
 	if status.Pending() {
 		log.Infof("handleEIDStatusModify skipping due to Pending* for %s\n",

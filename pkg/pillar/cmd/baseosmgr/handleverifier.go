@@ -4,7 +4,6 @@
 package baseosmgr
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -16,11 +15,11 @@ func verifierConfigGetSha256(ctx *baseOsMgrContext, objType string,
 	log.Infof("verifierConfigGetSha256(%s/%s)\n", objType, sha)
 	pub := verifierPublication(ctx, objType)
 	items := pub.GetAll()
-	for key, c := range items {
-		config := cast.CastVerifyImageConfig(c)
+	for _, c := range items {
+		config := c.(types.VerifyImageConfig)
 		if config.ImageSha256 == sha {
 			log.Infof("verifierConfigGetSha256(%s): found key %s safename %s, refcount %d\n",
-				sha, key, config.Safename, config.RefCount)
+				sha, config.Key(), config.Safename, config.RefCount)
 			return &config
 		}
 	}
@@ -38,12 +37,7 @@ func lookupVerifierConfig(ctx *baseOsMgrContext, objType string,
 			objType, safename)
 		return nil
 	}
-	config := cast.CastVerifyImageConfig(c)
-	if config.Key() != safename {
-		log.Infof("lookupVerifierConfig(%s) got %s; ignored %+v\n",
-			safename, config.Key(), config)
-		return nil
-	}
+	config := c.(types.VerifyImageConfig)
 	return &config
 }
 
@@ -171,7 +165,7 @@ func lookupVerificationStatusSha256(ctx *baseOsMgrContext, objType string,
 	sub := ctx.subBaseOsVerifierStatus
 	items := sub.GetAll()
 	for _, st := range items {
-		status := cast.CastVerifyImageStatus(st)
+		status := st.(types.VerifyImageStatus)
 		if status.ImageSha256 == sha256 {
 			return &status
 		}
@@ -190,12 +184,7 @@ func lookupVerificationStatus(ctx *baseOsMgrContext, objType string,
 			objType, safename)
 		return nil
 	}
-	status := cast.CastVerifyImageStatus(c)
-	if status.Key() != safename {
-		log.Infof("lookupVerifierStatus(%s) got %s; ignored %+v\n",
-			safename, status.Key(), status)
-		return nil
-	}
+	status := c.(types.VerifyImageStatus)
 	return &status
 }
 

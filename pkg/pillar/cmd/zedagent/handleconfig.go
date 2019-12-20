@@ -99,6 +99,7 @@ func handleConfigInit(networkSendTimeout uint32) {
 
 	b, err := ioutil.ReadFile(types.UUIDFileName)
 	if err != nil {
+		// XXX this can fail if agents have crashed
 		log.Fatal("ReadFile", err, types.UUIDFileName)
 	}
 	uuidStr := strings.TrimSpace(string(b))

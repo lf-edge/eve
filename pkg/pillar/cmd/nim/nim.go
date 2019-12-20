@@ -20,7 +20,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
@@ -957,7 +956,7 @@ func isSwitch(ctx *nimContext, ifname string) bool {
 
 	foundExcl := false
 	for _, st := range items {
-		status := cast.CastNetworkInstanceStatus(st)
+		status := st.(types.NetworkInstanceStatus)
 
 		if !status.IsUsingPort(ifname) {
 			continue

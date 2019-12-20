@@ -1,7 +1,7 @@
 package verifier
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -28,12 +28,7 @@ func (v *verifyHandler) modify(ctxArg interface{}, objType string,
 	key string, configArg interface{}) {
 
 	log.Infof("verifyHandler.modify(%s)\n", key)
-	config := cast.CastVerifyImageConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("verifyHandler.modify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
+	config := configArg.(types.VerifyImageConfig)
 	h, ok := v.handlers[config.Key()]
 	if !ok {
 		log.Fatalf("verifyHandler.modify called on config that does not exist")
@@ -47,12 +42,7 @@ func (v *verifyHandler) create(ctxArg interface{}, objType string,
 
 	log.Infof("verifyHandler.create(%s)\n", key)
 	ctx := ctxArg.(*verifierContext)
-	config := cast.CastVerifyImageConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("verifyHandler.create key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
+	config := configArg.(types.VerifyImageConfig)
 	h, ok := v.handlers[config.Key()]
 	if ok {
 		log.Fatalf("verifyHandler.create called on config that already exists")

@@ -6,7 +6,6 @@ package zedmanager
 import (
 	"reflect"
 
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -100,12 +99,7 @@ func lookupAppNetworkConfig(ctx *zedmanagerContext, key string) *types.AppNetwor
 		log.Infof("lookupAppNetworkConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastAppNetworkConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupAppNetworkConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.AppNetworkConfig)
 	return &config
 }
 
@@ -117,12 +111,7 @@ func lookupAppNetworkStatus(ctx *zedmanagerContext, key string) *types.AppNetwor
 		log.Infof("lookupAppNetworkStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastAppNetworkStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupAppNetworkStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.AppNetworkStatus)
 	return &status
 }
 
@@ -150,15 +139,10 @@ func unpublishAppNetworkConfig(ctx *zedmanagerContext, uuidStr string) {
 
 func handleAppNetworkStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := cast.CastAppNetworkStatus(statusArg)
+	status := statusArg.(types.AppNetworkStatus)
 	ctx := ctxArg.(*zedmanagerContext)
 	log.Infof("handleAppNetworkStatusModify: key:%s, name:%s\n",
 		key, status.DisplayName)
-	if status.Key() != key {
-		log.Errorf("handleAppNetworkStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
 	// Ignore if any Pending* flag is set
 	if status.Pending() {
 		log.Infof("skipped AppNetworkConfigModify due to Pending* "+

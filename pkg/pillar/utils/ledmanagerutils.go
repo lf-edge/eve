@@ -4,7 +4,6 @@
 package utils
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -25,7 +24,7 @@ func UpdateLedManagerConfig(count int) {
 	}
 	item, err := pub.Get(ledConfigKey)
 	if err == nil {
-		bc := cast.CastLedBlinkCounter(item)
+		bc := item.(types.LedBlinkCounter)
 		if bc.BlinkCounter == count {
 			log.Debugf("UpdateLedManagerConfig: unchanged at %d",
 				count)

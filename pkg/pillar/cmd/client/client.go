@@ -21,7 +21,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/api/go/register"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -614,7 +613,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 // Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*clientContext)
 	if key != "global" {
 		log.Infof("handleDNSModify: ignoring %s\n", key)

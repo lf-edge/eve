@@ -15,7 +15,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -450,12 +449,7 @@ func lookupAppInstanceStatus(ctx *zedmanagerContext, key string) *types.AppInsta
 		log.Infof("lookupAppInstanceStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastAppInstanceStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupAppInstanceStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.AppInstanceStatus)
 	return &status
 }
 
@@ -467,19 +461,14 @@ func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInsta
 		log.Infof("lookupAppInstanceConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastAppInstanceConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupAppInstanceConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.AppInstanceConfig)
 	return &config
 }
 
 func handleCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 	ctx := ctxArg.(*zedmanagerContext)
-	config := cast.CastAppInstanceConfig(configArg)
+	config := configArg.(types.AppInstanceConfig)
 
 	log.Infof("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
@@ -584,7 +573,7 @@ func handleCreate(ctxArg interface{}, key string,
 func handleModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 	ctx := ctxArg.(*zedmanagerContext)
-	config := cast.CastAppInstanceConfig(configArg)
+	config := configArg.(types.AppInstanceConfig)
 	status := lookupAppInstanceStatus(ctx, key)
 	log.Infof("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
@@ -791,7 +780,7 @@ func quantifyChanges(config types.AppInstanceConfig,
 // Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	if key != "global" {
 		log.Debugf("handleDNSModify: ignoring %s\n", key)
 		return

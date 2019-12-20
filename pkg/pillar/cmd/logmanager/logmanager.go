@@ -22,7 +22,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/api/go/logs"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -409,7 +408,7 @@ func handleXenLogDir(logDirChanges chan string, logDirName string,
 // Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
@@ -1036,7 +1035,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	status := cast.CastGlobalConfig(statusArg)
+	status := statusArg.(types.GlobalConfig)
 	var gcp *types.GlobalConfig
 	debug, gcp = agentlog.HandleGlobalConfigNoDefault(ctx.subGlobalConfig,
 		agentName, debugOverride)

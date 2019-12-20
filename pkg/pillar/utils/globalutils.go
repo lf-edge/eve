@@ -9,7 +9,6 @@ import (
 	"os"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -38,7 +37,7 @@ func ReadAndUpdateGCFile(pub *pubsub.Publication) {
 	key := "global"
 	item, err := pub.Get(key)
 	if err == nil {
-		gc := cast.CastGlobalConfig(item)
+		gc := item.(types.GlobalConfig)
 		// Any new fields which need defaults/mins applied?
 		changed := false
 		updated := types.ApplyGlobalConfig(gc)

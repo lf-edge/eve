@@ -8,7 +8,6 @@ package nodeagent
 import (
 	"syscall"
 
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	log "github.com/sirupsen/logrus"
@@ -18,11 +17,12 @@ import (
 func lookupZbootStatus(ctx *nodeagentContext, key string) *types.ZbootStatus {
 	sub := ctx.subZbootStatus
 	st, _ := sub.Get(key)
-	status := cast.ZbootStatus(st)
-	if status.PartitionLabel == key {
-		return &status
+	if st == nil {
+		log.Errorf("lookupZbootStatus(%s) not found", key)
+		return nil
 	}
-	return nil
+	status := st.(types.ZbootStatus)
+	return &status
 }
 
 func getZbootStatusAll(ctx *nodeagentContext) []types.ZbootStatus {
@@ -34,7 +34,7 @@ func getZbootStatusAll(ctx *nodeagentContext) []types.ZbootStatus {
 		return statuslist
 	}
 	for _, st := range items {
-		status := cast.ZbootStatus(st)
+		status := st.(types.ZbootStatus)
 		statuslist = append(statuslist, status)
 	}
 	return statuslist
@@ -44,11 +44,12 @@ func lookupZbootConfig(ctx *nodeagentContext, partName string) *types.ZbootConfi
 	partName = strings.TrimSpace(partName)
 	pub := ctx.pubZbootConfig
 	cg, _ := pub.Get(partName)
-	config := cast.ZbootConfig(cg)
-	if config.PartitionLabel == partName {
-		return &config
+	if cg == nil {
+		log.Errorf("lookupZbootConfig(%s) not found", partName)
+		return nil
 	}
-	return nil
+	config := cg.(types.ZbootConfig)
+	return &config
 }
 
 func getZbootConfigAll(ctx *nodeagentContext) []types.ZbootConfig {
@@ -60,7 +61,7 @@ func getZbootConfigAll(ctx *nodeagentContext) []types.ZbootConfig {
 		return configlist
 	}
 	for _, cg := range items {
-		config := cast.ZbootConfig(cg)
+		config := cg.(types.ZbootConfig)
 		configlist = append(configlist, config)
 	}
 	return configlist
