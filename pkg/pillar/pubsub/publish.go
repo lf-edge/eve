@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"reflect"
 
 	"github.com/google/go-cmp/cmp"
 	log "github.com/sirupsen/logrus"
@@ -79,6 +80,11 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 			name, topic)
 		log.Fatalln(errStr)
 	}
+	val := reflect.ValueOf(item)
+	if val.Kind() == reflect.Ptr {
+		log.Fatalf("Publish got a pointer for %s", name)
+	}
+	// XXX how can we make sure caller doesn't change ... maps etc
 	// Perform a deepCopy so the Equal check will work
 	newItem := deepCopy(item)
 	if m, ok := pub.km.key.Load(key); ok {

@@ -318,7 +318,7 @@ func publishCertObjStatus(ctx *baseOsMgrContext, status *types.CertObjStatus) {
 	key := status.Key()
 	log.Debugf("publishCertObjStatus(%s)\n", key)
 	pub := ctx.pubCertObjStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishCertObjStatus(ctx *baseOsMgrContext, key string) {

@@ -132,7 +132,7 @@ func publishAppNetworkConfig(ctx *zedmanagerContext,
 	key := status.Key()
 	log.Infof("publishAppNetworkConfig(%s)\n", key)
 	pub := ctx.pubAppNetworkConfig
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishAppNetworkConfig(ctx *zedmanagerContext, uuidStr string) {

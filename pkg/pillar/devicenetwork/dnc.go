@@ -128,7 +128,7 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 			log.Infof("PublishDeviceNetworkStatus: %+v\n",
 				ctx.DeviceNetworkStatus)
 			ctx.PubDeviceNetworkStatus.Publish("global",
-				ctx.DeviceNetworkStatus)
+				*ctx.DeviceNetworkStatus)
 		}
 		return
 	}
@@ -838,7 +838,7 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 		log.Infof("PublishDeviceNetworkStatus: %+v\n",
 			ctx.DeviceNetworkStatus)
 		ctx.PubDeviceNetworkStatus.Publish("global",
-			ctx.DeviceNetworkStatus)
+			*ctx.DeviceNetworkStatus)
 	}
 	ctx.Changed = true
 }

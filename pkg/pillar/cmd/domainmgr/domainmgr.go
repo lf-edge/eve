@@ -525,7 +525,7 @@ func publishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 	key := status.Key()
 	log.Debugf("publishDomainStatus(%s)\n", key)
 	pub := ctx.pubDomainStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
@@ -546,7 +546,7 @@ func publishImageStatus(ctx *domainContext, status *types.ImageStatus) {
 	key := status.Key()
 	log.Debugf("publishImageStatus(%s)\n", key)
 	pub := ctx.pubImageStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishImageStatus(ctx *domainContext, status *types.ImageStatus) {

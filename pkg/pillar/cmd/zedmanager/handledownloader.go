@@ -71,7 +71,7 @@ func publishDownloaderConfig(ctx *zedmanagerContext,
 	key := config.Key()
 	log.Debugf("publishDownloaderConfig(%s)\n", key)
 	pub := ctx.pubAppImgDownloadConfig
-	pub.Publish(key, config)
+	pub.Publish(key, *config)
 }
 
 func unpublishDownloaderConfig(ctx *zedmanagerContext,

@@ -454,7 +454,7 @@ func publishDownloaderConfig(ctx *baseOsMgrContext, objType string,
 	key := config.Key()
 	log.Debugf("publishDownloaderConfig(%s/%s)\n", objType, config.Key())
 	pub := downloaderPublication(ctx, objType)
-	pub.Publish(key, config)
+	pub.Publish(key, *config)
 }
 
 func unpublishDownloaderConfig(ctx *baseOsMgrContext, objType string,

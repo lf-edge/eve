@@ -570,7 +570,7 @@ func publishVerifyImageStatus(ctx *verifierContext,
 
 	pub := verifierPublication(ctx, status.ObjType)
 	key := status.Key()
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishVerifyImageStatus(ctx *verifierContext,

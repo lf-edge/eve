@@ -752,7 +752,7 @@ func publishDeviceNetworkStatus(ctx *nimContext) {
 	devicenetwork.UpdateResolvConf(*ctx.DeviceNetworkStatus)
 	devicenetwork.UpdatePBR(*ctx.DeviceNetworkStatus)
 	ctx.DeviceNetworkStatus.Testing = false
-	ctx.PubDeviceNetworkStatus.Publish("global", ctx.DeviceNetworkStatus)
+	ctx.PubDeviceNetworkStatus.Publish("global", *ctx.DeviceNetworkStatus)
 }
 
 // Handles both create and modify events

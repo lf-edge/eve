@@ -600,7 +600,7 @@ func gcObjects(ctx *downloaderContext) {
 }
 
 func publishGlobalStatus(ctx *downloaderContext) {
-	ctx.pubGlobalDownloadStatus.Publish("global", &ctx.globalStatus)
+	ctx.pubGlobalDownloadStatus.Publish("global", ctx.globalStatus)
 }
 
 func publishDownloaderStatus(ctx *downloaderContext,

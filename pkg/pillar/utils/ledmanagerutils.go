@@ -19,7 +19,7 @@ func UpdateLedManagerConfig(count int) {
 	blinkCount := types.LedBlinkCounter{
 		BlinkCounter: count,
 	}
-	pub, err := pubsub.Publish("", &types.LedBlinkCounter{})
+	pub, err := pubsub.Publish("", types.LedBlinkCounter{})
 	if err != nil {
 		log.Fatal("Publish LedBlinkCounter")
 	}
@@ -36,7 +36,7 @@ func UpdateLedManagerConfig(count int) {
 	} else {
 		log.Infof("UpdateLedManagerConfig: set to %d", count)
 	}
-	err = pub.Publish(ledConfigKey, &blinkCount)
+	err = pub.Publish(ledConfigKey, blinkCount)
 	if err != nil {
 		log.Errorf("Publish failed: %s", err)
 	}

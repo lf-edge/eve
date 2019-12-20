@@ -73,7 +73,7 @@ func publishEIDConfig(ctx *zedmanagerContext,
 	key := status.Key()
 	log.Debugf("publishEIDConfig(%s)\n", key)
 	pub := ctx.pubEIDConfig
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishEIDConfig(ctx *zedmanagerContext, uuidAndVers types.UUIDandVersion,

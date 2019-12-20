@@ -338,7 +338,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 				networkInstanceConfig.IpType = types.AddressTypeNone
 			}
 			ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
-				&networkInstanceConfig)
+				networkInstanceConfig)
 
 		case types.NetworkInstanceTypeMesh:
 			// mark HasEncap as true, for special MTU handling
@@ -391,7 +391,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		}
 
 		ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
-			&networkInstanceConfig)
+			networkInstanceConfig)
 	}
 }
 
@@ -932,7 +932,7 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		if datastore.Region == "" {
 			datastore.Region = "us-west-2"
 		}
-		ctx.pubDatastoreConfig.Publish(datastore.Key(), &datastore)
+		ctx.pubDatastoreConfig.Publish(datastore.Key(), datastore)
 	}
 }
 
@@ -1939,7 +1939,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			ssh.UpdateSshAuthorizedKeys(gcPtr.SshAuthorizedKeys)
 		}
 		pub := ctx.zedagentCtx.pubGlobalConfig
-		err := pub.Publish("global", gcPtr)
+		err := pub.Publish("global", *gcPtr)
 		if err != nil {
 			// XXX - IS there a valid reason for this to Fail? If not, we should
 			//  fo log.Fatalf here..
@@ -1965,7 +1965,7 @@ func publishBaseOsConfig(getconfigCtx *getconfigContext,
 	log.Debugf("publishBaseOsConfig UUID %s, %s, activate %v\n",
 		key, config.BaseOsVersion, config.Activate)
 	pub := getconfigCtx.pubBaseOsConfig
-	pub.Publish(key, config)
+	pub.Publish(key, *config)
 }
 
 func getCertObjects(uuidAndVersion types.UUIDandVersion,
@@ -2044,7 +2044,7 @@ func publishCertObjConfig(getconfigCtx *getconfigContext,
 	key := uuidStr // XXX vs. config.Key()?
 	log.Debugf("publishCertObjConfig(%s) key %s\n", uuidStr, config.Key())
 	pub := getconfigCtx.pubCertObjConfig
-	pub.Publish(key, config)
+	pub.Publish(key, *config)
 }
 
 func unpublishCertObjConfig(getconfigCtx *getconfigContext, uuidStr string) {
