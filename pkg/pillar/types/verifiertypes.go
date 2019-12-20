@@ -119,7 +119,8 @@ func (status VerifyImageStatus) ImageDownloadFilenames() (string, string, string
 		// Else..VMs
 		pendingFilename = pendingDirname + "/" + status.Safename
 		verifierFilename = verifierDirname + "/" + status.Safename
-		verifiedFilename = verifiedDirname + "/" + status.Safename
+		filename := SafenameToFilename(status.Safename)
+		verifiedFilename = verifiedDirname + "/" + filename
 	}
 	return pendingFilename, verifierFilename, verifiedFilename
 }

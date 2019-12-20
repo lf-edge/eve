@@ -191,38 +191,13 @@ func Run() {
 	subAssignableAdapters.Activate()
 
 	// Publish status for any objects that were verified before reboot
-	// Then we report that the rest of the system can proceed.
-	// After than handleInitUpdateVerifiedObjects will recheck
-	// sha/signatures which can take many minutes, and update zedmanager.
+	// The signatures will be re-checked during handleModify for App images.
 	handleInit(&ctx)
 
 	// Report to zedmanager that init is done
 	pubAppImgStatus.SignalRestarted()
 	pubBaseOsStatus.SignalRestarted()
 	log.Infof("SignalRestarted done")
-
-	// Need stillRunning across handleInitUpdateVerifiedObjects since
-	// it reverifies potentially huge images
-	keepRunning := func(doneChan chan struct{}) {
-		log.Infof("keepRunning starting")
-		for {
-			select {
-			case <-doneChan:
-				log.Infof("keepRunning done")
-				close(doneChan)
-				return
-
-			case <-stillRunning.C:
-			}
-			agentlog.StillRunning(agentName, warningTime, errorTime)
-		}
-	}
-	doneChan := make(chan struct{})
-	go keepRunning(doneChan)
-
-	handleInitUpdateVerifiedObjects(&ctx)
-
-	doneChan <- struct{}{}
 
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse
@@ -333,21 +308,6 @@ func handleInitVerifiedObjects(ctx *verifierContext) {
 	}
 }
 
-// Verify the sha/signatures and then mark as types.DELIVERED
-func handleInitUpdateVerifiedObjects(ctx *verifierContext) {
-
-	log.Infoln("handleInitUpdateVerifiedObjects")
-	for _, objType := range verifierObjTypes {
-
-		verifiedDirname := types.DownloadDirname + "/" + objType + "/verified"
-		if _, err := os.Stat(verifiedDirname); err == nil {
-			updateInitialStatusFromVerified(ctx, objType,
-				verifiedDirname, "")
-		}
-	}
-	log.Infoln("handleInitUpdateVerifiedObjects done")
-}
-
 func verifiedImageStatusFromImageFile(
 	objType, objDirname, parentDirname, imageFileName string,
 	size int64) types.VerifyImageStatus {
@@ -418,7 +378,6 @@ func verifiedImageStatusFromImageFile(
 		// Not App Image
 		status.ImageSha256 = parentDirname
 		status.Safename = imageFileName + "." + status.ImageSha256
-
 	}
 	log.Debugf("verifiedImageStatusFromImageFile: status: %+v", status)
 	return status
@@ -461,92 +420,6 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 			status := verifiedImageStatusFromImageFile(objType, objDirname,
 				parentDirname, location.Name(), size)
 			publishVerifyImageStatus(ctx, &status)
-		}
-	}
-}
-
-// Recursive scanning for verified objects,
-// to update the VerifyImageStatus after verifying the sha/signatures.
-func updateInitialStatusFromVerified(ctx *verifierContext,
-	objType string, objDirname string, parentDirname string) {
-
-	log.Infof("updateInitialStatusFromVerified(%s, %s)\n", objDirname,
-		parentDirname)
-
-	locations, err := ioutil.ReadDir(objDirname)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Why are we iterating over the Directories? Haven't we already built up
-	// Verifier Status??
-	for _, location := range locations {
-
-		filename := objDirname + "/" + location.Name()
-
-		if location.IsDir() {
-			log.Debugf("updateInitialStatusFromVerified: Looking in %s\n", filename)
-			if _, err := os.Stat(filename); err == nil {
-				updateInitialStatusFromVerified(ctx,
-					objType, filename, location.Name())
-			}
-		} else {
-			log.Debugf("updateInitialStatusFromVerified: Processing %s\n",
-				filename)
-
-			// Currently, for App Images, there are two conventions of
-			// ImageNames / Directory structures.
-			//  Containers - verified/<image-ID>/sha-<SHA>.aci
-			//  VMs - verified/<SHA>/safename
-			safename := ""
-			sha := ""
-			imageID, err := uuid.FromString(parentDirname)
-			if err == nil {
-				// Container..
-				safename = imageID.String()
-			} else {
-				sha = parentDirname
-				safename = location.Name() + "." + sha
-			}
-
-			status := lookupVerifyImageStatus(ctx, objType, safename)
-			if status == nil {
-				log.Errorf("updateInitialStatusFromVerified: %s/%s not found\n",
-					objType, safename)
-				continue
-			}
-
-			log.Debugf("updateInitialStatusFromVerified: Found Status. "+
-				"ImageID: %s, ImageSha256: %s, Safename: %s, "+
-				"isContainer: %t", status.ImageID,
-				status.ImageSha256, status.Safename, status.IsContainer)
-
-			if !status.IsContainer {
-				// Skip image verification for Container. Do it only for VMs
-				// We re-verify the sha on reboot/restart
-				// XXX what about signature? Do we have the certs?
-				imageHash, err := computeShaFile(filename)
-				if err != nil {
-					log.Errorf("computeShaFile %s failed %s\n",
-						filename, err)
-					doDelete(status)
-					continue
-				}
-
-				got := fmt.Sprintf("%x", imageHash)
-				if got != strings.ToLower(sha) {
-					log.Errorf("computed   %s\n", got)
-					log.Errorf("configured %s\n",
-						strings.ToLower(sha))
-					doDelete(status)
-					continue
-				}
-			}
-
-			status.State = types.DELIVERED
-			// Passed sha verification
-			publishVerifyImageStatus(ctx, status)
 		}
 	}
 }
@@ -846,7 +719,7 @@ func markObjectAsVerifying(ctx *verifierContext,
 		log.Errorf("markObjectAsVerifying failed %s\n", err)
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, status, cerr)
-		log.Errorf("handleCreate failed for %s\n", config.Name)
+		log.Errorf("markObjectAsVerifying failed for %s\n", config.Name)
 		return false, 0
 	}
 
@@ -1149,13 +1022,46 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	changed := false
 
 	log.Infof("handleModify(%v) objType %s for %s, config.RefCount: %d, "+
-		"status.RefCount: %d",
+		"status.RefCount: %d, isContainer: %t",
 		status.Safename, status.ObjType, config.Name, config.RefCount,
-		status.RefCount)
+		status.RefCount, config.IsContainer)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleModify: No ObjType for %s\n",
 			status.Safename)
+	}
+
+	if status.IsContainer {
+		if status.State == types.DOWNLOADED {
+			// No verification supported for Containers. So mark it as delivered.
+			log.Debugf("handleModify - Container image (%s) state set to ."+
+				"DELIVERED", status.Safename)
+			status.State = types.DELIVERED
+			publishVerifyImageStatus(ctx, status)
+		}
+	} else if status.State == types.DOWNLOADED {
+		// VM Modify request, but status is in DOWNLOADED state. This happens
+		// during reboot. Compute the SHA
+		_, _, verifiedFilename := status.ImageDownloadFilenames()
+		imageHash, err := computeShaFile(verifiedFilename)
+		if err == nil {
+			got := fmt.Sprintf("%x", imageHash)
+			if got == strings.ToLower(status.ImageSha256) {
+				log.Debugf("handleModify - %s verification succeeded",
+					verifiedFilename)
+				status.State = types.DELIVERED
+				publishVerifyImageStatus(ctx, status)
+			} else {
+				err = fmt.Errorf("Verification Failed after rebot. "+
+					"verifiedFilename: %s\ncomputed: %s\nconfigured: %s",
+					verifiedFilename, got, strings.ToLower(status.ImageSha256))
+			}
+		}
+		if err != nil {
+			log.Errorf(err.Error())
+			doDelete(status)
+			unpublishVerifyImageStatus(ctx, status)
+		}
 	}
 
 	// Always update RefCount
