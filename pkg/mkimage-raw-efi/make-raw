@@ -232,20 +232,17 @@ do_persist() {
 
 do_usb_conf() {
     eval local SEC_START="\$$1"
-    # usb_conf partition is expected to be the only one and takes all available space,
-    # but at the same time be no bigger than 6G or 12582912 in sector size
     # shellcheck disable=SC2155
     local SEC_END=$(sgdisk -E "$IMGFILE")
     local NUM_PART=$(( PART_OFFSET + 1 ))
     local PART_TYPE=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
-
-    [ $(( SEC_END - SEC_START - 12582912 )) -gt 0 ] && SEC_END=12582912
+    local FAT_SIZE=$(( SEC_END - SEC_START ))
 
     sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" \
            --typecode="$NUM_PART:$PART_TYPE" \
            --change-name="$NUM_PART:DevicePortConfig" "$IMGFILE"
 
-    mformat -i "${IMGFILE}@@$(( SEC_START * 512 ))" -h 1 -t 1 -s $(( SEC_END - SEC_START )) -l EVEDPC ::
+    mformat -i "${IMGFILE}@@$(( SEC_START * 512 ))" -h $(( FAT_SIZE / 65535 + 1 )) -t 1 -s 65535 -l EVEDPC ::
     mcopy -i "${IMGFILE}@@$(( SEC_START * 512 ))" /parts/* ::/
 
     eval "$1=$(( SEC_END + 1))"
@@ -254,14 +251,10 @@ do_usb_conf() {
 #
 # Extract partitions from stdin or look them up in /bits
 #
-if [ ! -d /parts ] || [ "$(cd /parts 2>/dev/null ; echo *)" = '*' ]; then
+if [ ! -d /parts ]; then
    mkdir /parts
-   cd /parts
-   [ "$(cd /bits ; echo *)" = '*' ] || ln -s /bits/* .
+   (cd /parts ; bsdtar xzf -)
 fi
-
-cd /parts
-[ -t 0 ] || bsdtar xzf -
 
 # content of initrd installer image
 INITRD_IMG=/parts/initrd.img

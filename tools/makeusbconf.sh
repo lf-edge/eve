@@ -61,8 +61,7 @@ shift $((OPTIND-1))
 [ $# != 1 ] && bail "$USAGE"
 [ -z "$(ls -A "$TMPDIR")" ] && bail "ERROR: one of the -d -i or -f has to be given"
 
-
-IMAGE="$1"
+IMAGE="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 if [ -b "$IMAGE" ] ; then
    [ "$(uname -s)" = Linux ] || bail "ERROR: writing directly to the device is only supported on Linux"
    IMAGE_BIND_OPT="--device"
@@ -72,17 +71,5 @@ else
    IMAGE_BIND_OPT="-v"
 fi
 
-# Docker, for unknown reasons, decides whether a passed bind mount is
-# a file or a directory based on whether is a absolute pathname or a
-# relative one (!).
-#
-# Of course, BSDs do not have the GNU specific realpath, so substitute
-# it with a shell script.
-
-case "$IMAGE" in
-    /*) ;;
-    *) IMAGE="$PWD/$IMAGE";;
-esac
-
-(cd "$TMPDIR" || exit 1; tar cf - ./*) | docker run "$IMAGE_BIND_OPT" "$IMAGE:/output.img" "${MKFLASH_TAG}" /output.img usb_conf
+(cd "$TMPDIR" || exit 1; tar cf - ./*) | docker run -i "$IMAGE_BIND_OPT" "$IMAGE:/output.img" "${MKFLASH_TAG}" /output.img usb_conf
 cleanup
