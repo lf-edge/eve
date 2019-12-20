@@ -180,8 +180,10 @@ type DiskStatus struct {
 
 // Track the active image files in rwImgDirname
 type ImageStatus struct {
-	Filename     string // Basename; used as key
-	FileLocation string // Local location of Image
+	AppInstUUID  uuid.UUID // UUID of App Instance using the image.
+	ImageSha256  string    // ImageSha256 of original image
+	Filename     string    // Basename; used as key
+	FileLocation string    // Local location of Image
 	RefCount     uint
 	LastUse      time.Time // When RefCount dropped to zero
 	Size         uint64

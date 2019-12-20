@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -81,6 +82,22 @@ type domainContext struct {
 	pubAssignableAdapters  *pubsub.Publication
 	usbAccess              bool
 	createSema             sema.Semaphore
+}
+
+// appRwImageName - Returns name of the image ( including parent dir )
+func appRwImageName(sha256, uuidStr, format string) string {
+	return fmt.Sprintf("%s/%s-%s.%s", rwImgDirname, sha256, uuidStr, format)
+}
+
+// parseAppRwImageName - Returns rwImgDirname, sha256, uuidStr
+func parseAppRwImageName(image string) (string, string, string) {
+	re := regexp.MustCompile(`(.+)/(.+)-(.+)\.(.+)`)
+	if !re.MatchString(image) {
+		log.Errorf("AppRwImageName %s doesn't match pattern", image)
+		return "", "", ""
+	}
+	parsedStrings := re.FindStringSubmatch(image)
+	return parsedStrings[1], parsedStrings[2], parsedStrings[3]
 }
 
 func (ctx *domainContext) publishAssignableAdapters() {
@@ -333,6 +350,13 @@ func handleRestart(ctxArg interface{}, done bool) {
 	}
 }
 
+func deleteFile(filelocation string) {
+	if err := os.Remove(filelocation); err != nil {
+		log.Errorf("Failed to delete file %s. Error: %s",
+			filelocation, err.Error())
+	}
+}
+
 // recursive scanning for verified objects,
 // to recreate the status files
 func populateInitialImageStatus(ctx *domainContext, dirName string) {
@@ -349,17 +373,33 @@ func populateInitialImageStatus(ctx *domainContext, dirName string) {
 			log.Debugf("populateInitialImageStatus: directory %s ignored\n", filelocation)
 			continue
 		}
-		size := int64(0)
+
 		info, err := os.Stat(filelocation)
 		if err != nil {
-			log.Error(err)
-		} else {
-			size = info.Size()
+			log.Errorf("Error in getting file information. Err: %s. "+
+				"Deleting file %s", err, filelocation)
+			deleteFile(filelocation)
+			continue
 		}
-		log.Debugf("populateInitialImageStatus: Processing %d Mbytes %s \n",
-			size/(1024*1024), filelocation)
+
+		size := info.Size()
+		_, sha256, appUUIDStr := parseAppRwImageName(filelocation)
+		log.Debugf("populateInitialImageStatus: Processing AppUuid: %s, "+
+			"%d Mbytes, fileLocation:%s",
+			appUUIDStr, size/(1024*1024), filelocation)
+
+		appUUID, err := uuid.FromString(appUUIDStr)
+		if err != nil {
+			log.Errorf("populateInitialImageStatus: Invalid UUIDStr(%s) in "+
+				"filename (%s). err: %s. Deleting the File",
+				appUUIDStr, filelocation, err)
+			deleteFile(filelocation)
+			continue
+		}
 
 		status := types.ImageStatus{
+			AppInstUUID:  appUUID,
+			ImageSha256:  sha256,
 			Filename:     location.Name(),
 			FileLocation: filelocation,
 			Size:         uint64(size),
@@ -1375,11 +1415,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			// Pick new location for a per-guest copy
 			// Use App UUID to make sure name is the same even
 			// after adds and deletes of instances and device reboots
-			dstFilename := fmt.Sprintf("%s/%s-%s.%s",
-				rwImgDirname, dc.ImageSha256,
-				config.UUIDandVersion.UUID.String(),
-				dc.Format)
-			target = dstFilename
+			target = appRwImageName(dc.ImageSha256,
+				config.UUIDandVersion.UUID.String(), dc.Format)
 		}
 		ds.ActiveFileLocation = target
 	}
