@@ -24,7 +24,6 @@ import (
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/api/go/metrics"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
@@ -383,19 +382,14 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 
 	// Collect zedcloud metrics from ourselves and other agents
 	cms := zedcloud.GetCloudMetrics()
-	// Have to make a copy
-	cms = zedcloud.CastCloudMetrics(cms)
-	cms1 := zedcloud.CastCloudMetrics(clientMetrics)
-	if cms1 != nil {
-		cms = zedcloud.Append(cms, cms1)
+	if clientMetrics != nil {
+		cms = zedcloud.Append(cms, clientMetrics)
 	}
-	cms1 = zedcloud.CastCloudMetrics(logmanagerMetrics)
-	if cms1 != nil {
-		cms = zedcloud.Append(cms, cms1)
+	if logmanagerMetrics != nil {
+		cms = zedcloud.Append(cms, logmanagerMetrics)
 	}
-	cms1 = zedcloud.CastCloudMetrics(downloaderMetrics)
-	if cms1 != nil {
-		cms = zedcloud.Append(cms, cms1)
+	if downloaderMetrics != nil {
+		cms = zedcloud.Append(cms, downloaderMetrics)
 	}
 	for ifname, cm := range cms {
 		metric := metrics.ZedcloudMetric{IfName: ifname,
@@ -410,7 +404,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 			ls, _ := ptypes.TimestampProto(cm.LastSuccess)
 			metric.LastSuccess = ls
 		}
-		for url, um := range cm.UrlCounters {
+		for url, um := range cm.URLCounters {
 			log.Debugf("CloudMetrics[%s] url %s %v\n",
 				ifname, url, um)
 			urlMet := new(metrics.UrlcloudMetric)
@@ -479,7 +473,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 	// as disks)
 	verifierStatusMap := verifierGetAll(ctx)
 	for _, st := range verifierStatusMap {
-		vs := cast.CastVerifyImageStatus(st)
+		vs := st.(types.VerifyImageStatus)
 		log.Debugf("verifierStatusMap %s size %d\n",
 			vs.Safename, vs.Size)
 		metric := metrics.DiskMetric{
@@ -490,7 +484,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 	}
 	downloaderStatusMap := downloaderGetAll(ctx)
 	for _, st := range downloaderStatusMap {
-		ds := cast.CastDownloaderStatus(st)
+		ds := st.(types.DownloaderStatus)
 		log.Debugf("downloaderStatusMap %s size %d\n",
 			ds.Safename, ds.Size)
 		if _, found := verifierStatusMap[ds.Key()]; found {
@@ -540,7 +534,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 	sub := ctx.getconfigCtx.subAppInstanceStatus
 	items := sub.GetAll()
 	for _, st := range items {
-		aiStatus := cast.CastAppInstanceStatus(st)
+		aiStatus := st.(types.AppInstanceStatus)
 
 		ReportAppMetric := new(metrics.AppMetric)
 		ReportAppMetric.Cpu = new(metrics.AppCpuMetric)
@@ -676,7 +670,7 @@ func getDataSecAtRestInfo(ctx *zedagentContext) *info.DataSecAtRest {
 	ReportDataSecAtRestInfo.VaultList = make([]*info.VaultInfo, 0)
 	vaultList := subVaultStatus.GetAll()
 	for _, vaultItem := range vaultList {
-		vault := cast.VaultStatus(vaultItem)
+		vault := vaultItem.(types.VaultStatus)
 		vaultInfo := new(info.VaultInfo)
 		vaultInfo.Name = vault.Name
 		vaultInfo.Status = vault.Status
@@ -838,7 +832,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		// Look for a matching IMGA/IMGB in baseOsStatus
 		items := subBaseOsStatus.GetAll()
 		for _, st := range items {
-			bos := cast.CastBaseOsStatus(st)
+			bos := st.(types.BaseOsStatus)
 			if bos.PartitionLabel == partLabel {
 				return &bos
 			}
@@ -904,7 +898,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// Report any other BaseOsStatus which might have errors
 	items := subBaseOsStatus.GetAll()
 	for _, st := range items {
-		bos := cast.CastBaseOsStatus(st)
+		bos := st.(types.BaseOsStatus)
 		if bos.PartitionLabel != "" {
 			// Already reported above
 			continue

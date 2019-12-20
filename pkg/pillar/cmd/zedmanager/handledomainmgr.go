@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -150,12 +149,7 @@ func lookupDomainConfig(ctx *zedmanagerContext, key string) *types.DomainConfig 
 		log.Infof("lookupDomainConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastDomainConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupDomainConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.DomainConfig)
 	return &config
 }
 
@@ -167,12 +161,7 @@ func lookupDomainStatus(ctx *zedmanagerContext, key string) *types.DomainStatus 
 		log.Infof("lookupDomainStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastDomainStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupDomainStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.DomainStatus)
 	return &status
 }
 
@@ -201,13 +190,8 @@ func unpublishDomainConfig(ctx *zedmanagerContext, uuidStr string) {
 func handleDomainStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := cast.CastDomainStatus(statusArg)
+	status := statusArg.(types.DomainStatus)
 	ctx := ctxArg.(*zedmanagerContext)
-	if status.Key() != key {
-		log.Errorf("handleDomainStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
 	log.Infof("handleDomainStatusModify for %s\n", key)
 	// Record DomainStatus.State even if Pending() to capture HALTING
 

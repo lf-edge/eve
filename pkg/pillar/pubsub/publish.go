@@ -84,8 +84,7 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 	if val.Kind() == reflect.Ptr {
 		log.Fatalf("Publish got a pointer for %s", name)
 	}
-	// XXX how can we make sure caller doesn't change ... maps etc
-	// Perform a deepCopy so the Equal check will work
+	// Perform a deepCopy in case the caller might change a map etc
 	newItem := deepCopy(item)
 	if m, ok := pub.km.key.Load(key); ok {
 		if cmp.Equal(m, newItem) {
@@ -107,7 +106,6 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 	fileName := pub.dirName + "/" + key + ".json"
 	log.Debugf("Publish writing %s\n", fileName)
 
-	// XXX already did a marshal in deepCopy; save that result?
 	b, err := json.Marshal(item)
 	if err != nil {
 		log.Fatal("json Marshal in Publish", err)

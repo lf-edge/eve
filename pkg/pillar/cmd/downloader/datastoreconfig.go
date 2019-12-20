@@ -1,7 +1,7 @@
 package downloader
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -10,7 +10,7 @@ func handleDatastoreConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	ctx := ctxArg.(*downloaderContext)
-	config := cast.CastDatastoreConfig(configArg)
+	config := configArg.(types.DatastoreConfig)
 	log.Infof("handleDatastoreConfigModify for %s\n", key)
 	checkAndUpdateDownloadableObjects(ctx, config.UUID)
 	log.Infof("handleDatastoreConfigModify for %s, done\n", key)

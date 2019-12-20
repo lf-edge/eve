@@ -20,7 +20,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -80,13 +79,8 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 func shutdownApps(getconfigCtx *getconfigContext) {
 	pub := getconfigCtx.pubAppInstanceConfig
 	items := pub.GetAll()
-	for key, c := range items {
-		config := cast.CastAppInstanceConfig(c)
-		if config.Key() != key {
-			log.Errorf("shutdownApps key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, config.Key(), config)
-			continue
-		}
+	for _, c := range items {
+		config := c.(types.AppInstanceConfig)
 		if config.Activate {
 			log.Infof("shutdownApps: clearing Activate for %s uuid %s\n",
 				config.DisplayName, config.Key())
@@ -228,7 +222,7 @@ func unpublishDeletedNetworkInstanceConfig(ctx *getconfigContext,
 			continue
 		}
 
-		config := cast.CastNetworkInstanceConfig(entry)
+		config := entry.(types.NetworkInstanceConfig)
 		log.Infof("unpublishing NetworkInstance %s (Name: %s) \n",
 			key, config.DisplayName)
 		if err := ctx.pubNetworkInstanceConfig.Unpublish(key); err != nil {
@@ -715,7 +709,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			port.ParseErrorTime = time.Now()
 			return port
 		}
-		network := cast.CastNetworkXObjectConfig(networkXObject)
+		network := networkXObject.(types.NetworkXObjectConfig)
 		if network.Error != "" {
 			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s Network error: %v",
 				port.IfName, network.Error)
@@ -932,7 +926,7 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		if datastore.Region == "" {
 			datastore.Region = "us-west-2"
 		}
-		ctx.pubDatastoreConfig.Publish(datastore.Key(), datastore)
+		ctx.pubDatastoreConfig.Publish(datastore.Key(), *datastore)
 	}
 }
 
@@ -1041,7 +1035,7 @@ func publishNetworkXObjectConfig(ctx *getconfigContext,
 		config := parseOneNetworkXObjectConfig(ctx, netEnt)
 		if config != nil {
 			ctx.pubNetworkXObjectConfig.Publish(config.Key(),
-				config)
+				*config)
 		}
 	}
 }

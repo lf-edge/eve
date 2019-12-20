@@ -1,3 +1,6 @@
+// Copyright (c) 2019 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 package pubsub
 
 import (
@@ -12,16 +15,38 @@ import (
 	"strings"
 )
 
+// deepCopy returns the same type as what is passed as input
 func deepCopy(in interface{}) interface{} {
 	b, err := json.Marshal(in)
 	if err != nil {
 		log.Fatal("json Marshal in deepCopy", err)
 	}
-	var output interface{}
-	if err := json.Unmarshal(b, &output); err != nil {
-		log.Fatal(err, "json Unmarshal in deepCopy")
+	p := reflect.New(reflect.TypeOf(in))
+	output := p.Interface()
+	if err := json.Unmarshal(b, output); err != nil {
+		log.Fatal("json Unmarshal in deepCopy", err)
 	}
-	return output
+	val := reflect.ValueOf(output)
+	if val.Kind() != reflect.Ptr {
+		log.Fatalf("Not a pointer: %s", val.Kind())
+	}
+	val = val.Elem()
+	return val.Interface()
+}
+
+// template is a struct; returns a value of the same struct type
+func parseTemplate(sb []byte, template interface{}) (interface{}, error) {
+	p := reflect.New(reflect.TypeOf(template))
+	output := p.Interface()
+	if err := json.Unmarshal(sb, output); err != nil {
+		return nil, err
+	}
+	val := reflect.ValueOf(output)
+	if val.Kind() != reflect.Ptr {
+		log.Fatalf("Not a pointer: %s", val.Kind())
+	}
+	val = val.Elem()
+	return val.Interface(), nil
 }
 
 func lookupSlave(slaveCollection localCollection, key string) *interface{} {

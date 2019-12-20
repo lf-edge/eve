@@ -35,7 +35,6 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -281,14 +280,9 @@ func handleInitWorkinProgressObjects(ctx *verifierContext) {
 	}
 	for _, pub := range publications {
 		items := pub.GetAll()
-		for key, st := range items {
-			status := cast.CastVerifyImageStatus(st)
-			if status.Key() != key {
-				log.Errorf("handleInitWorkin key/UUID mismatch %s vs %s; ignored %+v\n",
-					key, status.Key(), status)
-				continue
-			}
-			log.Debugf("Marking with PendingDelete: %s\n", key)
+		for _, st := range items {
+			status := st.(types.VerifyImageStatus)
+			log.Debugf("Marking with PendingDelete: %s\n", status.Key())
 			status.PendingDelete = true
 			publishVerifyImageStatus(ctx, &status)
 		}
@@ -432,16 +426,11 @@ func handleInitMarkedDeletePendingObjects(ctx *verifierContext) {
 	}
 	for _, pub := range publications {
 		items := pub.GetAll()
-		for key, st := range items {
-			status := cast.CastVerifyImageStatus(st)
-			if status.Key() != key {
-				log.Errorf("handleInitMarked key/UUID mismatch %s vs %s; ignored %+v\n",
-					key, status.Key(), status)
-				continue
-			}
+		for _, st := range items {
+			status := st.(types.VerifyImageStatus)
 			if status.PendingDelete {
 				log.Infof("still PendingDelete; delete %s\n",
-					key)
+					status.Key())
 				unpublishVerifyImageStatus(ctx, &status)
 			}
 		}
@@ -498,27 +487,22 @@ func gcVerifiedObjects(ctx *verifierContext) {
 	}
 	for _, pub := range publications {
 		items := pub.GetAll()
-		for key, st := range items {
-			status := cast.CastVerifyImageStatus(st)
-			if status.Key() != key {
-				log.Errorf("gcVerifiedObjects key/UUID mismatch %s vs %s; ignored %+v\n",
-					key, status.Key(), status)
-				continue
-			}
+		for _, st := range items {
+			status := st.(types.VerifyImageStatus)
 			if status.RefCount != 0 {
 				log.Debugf("gcVerifiedObjects: skipping RefCount %d: %s\n",
-					status.RefCount, key)
+					status.RefCount, status.Key())
 				continue
 			}
 			timePassed := time.Since(status.LastUse)
 			if timePassed < downloadGCTime {
 				log.Debugf("gcverifiedObjects: skipping recently used %s remains %d seconds\n",
-					key,
+					status.Key(),
 					(timePassed-downloadGCTime)/time.Second)
 				continue
 			}
 			log.Infof("gcVerifiedObjects: expiring status for %s; LastUse %v now %v\n",
-				key, status.LastUse, time.Now())
+				status.Key(), status.LastUse, time.Now())
 			status.Expired = true
 			publishVerifyImageStatus(ctx, &status)
 		}
@@ -613,12 +597,7 @@ func lookupVerifyImageStatus(ctx *verifierContext, objType string,
 		log.Infof("lookupVerifyImageStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastVerifyImageStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupVerifyImageStatus(%s) got %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.VerifyImageStatus)
 	return &status
 }
 
@@ -633,7 +612,7 @@ func runHandler(ctx *verifierContext, objType string, key string,
 		select {
 		case configArg, ok := <-c:
 			if ok {
-				config := cast.CastVerifyImageConfig(configArg)
+				config := configArg.(types.VerifyImageConfig)
 				status := lookupVerifyImageStatus(ctx,
 					objType, key)
 				if status == nil {
@@ -1194,7 +1173,7 @@ func handleAAModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*verifierContext)
-	status := cast.CastAssignableAdapters(statusArg)
+	status := statusArg.(types.AssignableAdapters)
 	if key != "global" {
 		log.Infof("handleAAModify: ignoring %s\n", key)
 		return
@@ -1232,16 +1211,11 @@ func gcResetObjectLastUse(ctx *verifierContext) {
 	}
 	for _, pub := range publications {
 		items := pub.GetAll()
-		for key, st := range items {
-			status := cast.CastVerifyImageStatus(st)
-			if status.Key() != key {
-				log.Errorf("gcResetObjectLastUse key/UUID mismatch %s vs %s; ignored %+v\n",
-					key, status.Key(), status)
-				continue
-			}
+		for _, st := range items {
+			status := st.(types.VerifyImageStatus)
 			if status.RefCount == 0 {
 				status.LastUse = time.Now()
-				log.Infof("gcResetObjectLastUse: reset %v LastUse to now\n", key)
+				log.Infof("gcResetObjectLastUse: reset %v LastUse to now\n", status.Key())
 				publishVerifyImageStatus(ctx, &status)
 			}
 		}

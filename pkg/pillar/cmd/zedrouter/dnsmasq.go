@@ -19,7 +19,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -411,7 +410,7 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 	items := pub.GetAll()
 	for _, st := range items {
 		changed := false
-		status := cast.CastAppNetworkStatus(st)
+		status := st.(types.AppNetworkStatus)
 		for i := range status.UnderlayNetworkList {
 			ulStatus := &status.UnderlayNetworkList[i]
 			l := findLease(ctx.dhcpLeases, status.Key(), ulStatus.Mac)

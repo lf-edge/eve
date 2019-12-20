@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	log "github.com/sirupsen/logrus"
@@ -28,7 +27,7 @@ const (
 func lookupBaseOsSafename(ctx *baseOsMgrContext, safename string) *types.BaseOsConfig {
 	items := ctx.subBaseOsConfig.GetAll()
 	for _, c := range items {
-		config := cast.CastBaseOsConfig(c)
+		config := c.(types.BaseOsConfig)
 		for _, sc := range config.StorageConfigList {
 			safename1 := types.UrlToSafename(sc.Name,
 				sc.ImageSha256)
@@ -790,12 +789,7 @@ func lookupBaseOsConfig(ctx *baseOsMgrContext, key string) *types.BaseOsConfig {
 		log.Infof("lookupBaseOsConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastBaseOsConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupBaseOsConfig(%s) got %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.BaseOsConfig)
 	return &config
 }
 
@@ -806,12 +800,7 @@ func lookupBaseOsStatus(ctx *baseOsMgrContext, key string) *types.BaseOsStatus {
 		log.Infof("lookupBaseOsStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastBaseOsStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupBaseOsStatus(%s) got %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.BaseOsStatus)
 	return &status
 }
 
@@ -822,7 +811,7 @@ func lookupBaseOsStatusByPartLabel(ctx *baseOsMgrContext, partLabel string) *typ
 		log.Infof("lookupBaseOsStatusByPartLabel(%s) not found\n", partLabel)
 		return nil
 	}
-	status := cast.CastBaseOsStatus(st)
+	status := st.(types.BaseOsStatus)
 	if status.Key() != partLabel {
 		log.Errorf("lookupBaseOsStatus(%s) got %s; ignored %+v\n",
 			partLabel, status.Key(), status)
@@ -929,7 +918,7 @@ func updateAndPublishBaseOsStatusAll(ctx *baseOsMgrContext) {
 	pub := ctx.pubBaseOsStatus
 	items := pub.GetAll()
 	for _, st := range items {
-		status := cast.CastBaseOsStatus(st)
+		status := st.(types.BaseOsStatus)
 		if status.PartitionLabel == "" {
 			continue
 		}
@@ -942,7 +931,7 @@ func maybeRetryInstall(ctx *baseOsMgrContext) {
 	pub := ctx.pubBaseOsStatus
 	items := pub.GetAll()
 	for _, st := range items {
-		status := cast.CastBaseOsStatus(st)
+		status := st.(types.BaseOsStatus)
 		if !status.TooEarly {
 			log.Infof("maybeRetryInstall(%s) skipped\n",
 				status.Key())
@@ -1031,7 +1020,7 @@ func getZbootStatus(ctx *baseOsMgrContext, partName string) *types.ZbootStatus {
 		log.Errorf("getZbootStatus(%s) not found\n", partName)
 		return nil
 	}
-	status := cast.ZbootStatus(st)
+	status := st.(types.ZbootStatus)
 	return &status
 }
 

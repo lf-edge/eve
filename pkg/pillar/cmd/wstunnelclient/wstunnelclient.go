@@ -14,7 +14,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -202,7 +201,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 // Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
@@ -248,7 +247,7 @@ func handleAppInstanceConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	log.Infof("handleAppInstanceConfigModify for %s\n", key)
-	// XXX config := cast.CastAppInstanceConfig(configArg)
+	// XXX config := configArg.(types.AppInstanceConfig)
 	ctx := ctxArg.(*wstunnelclientContext)
 	scanAIConfigs(ctx)
 	log.Infof("handleAppInstanceConfigModify done for %s\n", key)
@@ -258,7 +257,7 @@ func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	log.Infof("handleAppInstanceConfigDelete for %s\n", key)
-	// XXX config := cast.CastAppInstanceConfig(configArg)]
+	// XXX config := configArg).(types.AppInstanceConfig)
 	ctx := ctxArg.(*wstunnelclientContext)
 	scanAIConfigs(ctx)
 	log.Infof("handleAppInstanceConfigDelete done for %s\n", key)
@@ -271,7 +270,7 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 	sub := ctx.subAppInstanceConfig
 	items := sub.GetAll()
 	for _, c := range items {
-		config := cast.CastAppInstanceConfig(c)
+		config := c.(types.AppInstanceConfig)
 		log.Debugf("Remote console status for app-instance: %s: %t\n",
 			config.DisplayName, config.RemoteConsole)
 		isTunnelRequired = config.RemoteConsole || isTunnelRequired

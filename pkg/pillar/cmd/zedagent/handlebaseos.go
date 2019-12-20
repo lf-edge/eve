@@ -6,7 +6,6 @@
 package zedagent
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 	"strings"
@@ -41,7 +40,7 @@ func getZbootPartitionStatus(ctx *zedagentContext, partName string) *types.Zboot
 		log.Errorf("getZbootPartitionStatus(%s) not found\n", partName)
 		return nil
 	}
-	status := cast.ZbootStatus(st)
+	status := st.(types.ZbootStatus)
 	return &status
 }
 
@@ -49,7 +48,7 @@ func getZbootCurrentPartition(ctx *zedagentContext) string {
 	var partName string
 	items := getZbootPartitionStatusAll(ctx)
 	for _, st := range items {
-		status := cast.ZbootStatus(st)
+		status := st.(types.ZbootStatus)
 		if status.CurrentPartition {
 			log.Debugf("getZbootCurrentPartition:%s\n", status.PartitionLabel)
 			return status.PartitionLabel
@@ -63,7 +62,7 @@ func getZbootOtherPartition(ctx *zedagentContext) string {
 	var partName string
 	items := getZbootPartitionStatusAll(ctx)
 	for _, st := range items {
-		status := cast.ZbootStatus(st)
+		status := st.(types.ZbootStatus)
 		if !status.CurrentPartition {
 			log.Debugf("getZbootOtherPartition:%s\n", status.PartitionLabel)
 			return status.PartitionLabel

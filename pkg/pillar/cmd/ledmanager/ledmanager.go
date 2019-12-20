@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -240,7 +239,7 @@ func Run() {
 func handleLedBlinkModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	config := cast.CastLedBlinkCounter(configArg)
+	config := configArg.(types.LedBlinkCounter)
 	ctx := ctxArg.(*ledManagerContext)
 
 	if key != "ledconfig" {
@@ -356,7 +355,7 @@ func ExecuteWifiLedCmd() {
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	ctx := ctxArg.(*ledManagerContext)
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	if key != "global" {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
 		return

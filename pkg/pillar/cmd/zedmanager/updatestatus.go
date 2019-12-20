@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -30,7 +29,7 @@ func updateAIStatusWithStorageSafename(ctx *zedmanagerContext,
 	items := pub.GetAll()
 	found := false
 	for _, st := range items {
-		status := cast.CastAppInstanceStatus(st)
+		status := st.(types.AppInstanceStatus)
 		log.Debugf("updateAIStatusWithStorageSafename: Processing "+
 			"AppInstanceConfig for UUID %s\n",
 			status.UUIDandVersion.UUID)
@@ -71,7 +70,7 @@ func updateAIStatusWithImageSha(ctx *zedmanagerContext, sha string) {
 	items := pub.GetAll()
 	found := false
 	for _, st := range items {
-		status := cast.CastAppInstanceStatus(st)
+		status := st.(types.AppInstanceStatus)
 		log.Debugf("Processing AppInstanceConfig for UUID %s\n",
 			status.UUIDandVersion.UUID)
 		for _, ss := range status.StorageStatusList {
@@ -179,13 +178,8 @@ func removeAIStatusSafename(ctx *zedmanagerContext, safename string) {
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
 	found := false
-	for key, st := range items {
-		status := cast.CastAppInstanceStatus(st)
-		if status.Key() != key {
-			log.Errorf("removeAIStatusSafename key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
+	for _, st := range items {
+		status := st.(types.AppInstanceStatus)
 		log.Debugf("Processing AppInstanceStatus for UUID %s\n",
 			status.UUIDandVersion.UUID)
 		for _, ss := range status.StorageStatusList {
@@ -210,13 +204,8 @@ func removeAIStatusSha(ctx *zedmanagerContext, sha string) {
 	pub := ctx.pubAppInstanceStatus
 	items := pub.GetAll()
 	found := false
-	for key, st := range items {
-		status := cast.CastAppInstanceStatus(st)
-		if status.Key() != key {
-			log.Errorf("removeAIStatusSha key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
+	for _, st := range items {
+		status := st.(types.AppInstanceStatus)
 		log.Debugf("Processing AppInstanceStatus for UUID %s\n",
 			status.UUIDandVersion.UUID)
 		for _, ss := range status.StorageStatusList {
@@ -266,7 +255,7 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 	pub := ctxPtr.pubAppInstanceStatus
 	items := pub.GetAll()
 	for _, iterStatusJSON := range items {
-		iterStatus := cast.CastAppInstanceStatus(iterStatusJSON)
+		iterStatus := iterStatusJSON.(types.AppInstanceStatus)
 		if iterStatus.State < types.INSTALLED {
 			log.Debugf("App %s State %d < INSTALLED",
 				iterStatus.UUIDandVersion, iterStatus.State)

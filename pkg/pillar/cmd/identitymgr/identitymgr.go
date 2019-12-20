@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -190,12 +189,7 @@ func lookupEIDStatus(ctx *identityContext, key string) *types.EIDStatus {
 		log.Infof("lookupEIDStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastEIDStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupEIDStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.EIDStatus)
 	return &status
 }
 
@@ -207,18 +201,13 @@ func lookupEIDConfig(ctx *identityContext, key string) *types.EIDConfig {
 		log.Infof("lookupEIDConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastEIDConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupEIDConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.EIDConfig)
 	return &config
 }
 
 func handleCreate(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*identityContext)
-	config := cast.CastEIDConfig(configArg)
+	config := configArg.(types.EIDConfig)
 	log.Infof("handleCreate(%s) for %s\n", key, config.DisplayName)
 
 	// Start by marking with PendingAdd
@@ -431,7 +420,7 @@ func encodePrivateKey(keypair *ecdsa.PrivateKey) ([]byte, error) {
 // else. Such a version change would be e.g. due to an ACL change.
 func handleModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*identityContext)
-	config := cast.CastEIDConfig(configArg)
+	config := configArg.(types.EIDConfig)
 	status := lookupEIDStatus(ctx, key)
 
 	if status == nil {

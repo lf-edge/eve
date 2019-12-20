@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
@@ -70,7 +69,7 @@ func deviceUpdateNIprobing(ctx *zedrouterContext, status *types.DeviceNetworkSta
 
 		items := pub.GetAll()
 		for _, st := range items {
-			netstatus := cast.CastNetworkInstanceStatus(st)
+			netstatus := st.(types.NetworkInstanceStatus)
 			if !isSharedPortLabel(netstatus.Port) {
 				continue
 			}
@@ -93,7 +92,7 @@ func niUpdateNIprobing(ctx *zedrouterContext, status *types.NetworkInstanceStatu
 	portList := getIfNameListForPort(ctx, status.Port)
 	log.Infof("niUpdateNIprobing: enter, type %v, number of ports %d\n", status.Type, len(portList))
 	for _, st := range items {
-		devStatus := cast.CastDeviceNetworkStatus(st)
+		devStatus := st.(types.DeviceNetworkStatus)
 
 		for _, port := range portList {
 			devPort := getDevPort(&devStatus, port)
@@ -374,7 +373,7 @@ func launchHostProbe(ctx *zedrouterContext) {
 				if needToProbe {
 					var foundport bool
 					for _, st := range ditems {
-						devStatus := cast.CastDeviceNetworkStatus(st)
+						devStatus := st.(types.DeviceNetworkStatus)
 						for _, port := range devStatus.Ports {
 							if strings.Compare(port.IfName, info.IfName) == 0 {
 								zcloudCtx.DeviceNetworkStatus = &devStatus

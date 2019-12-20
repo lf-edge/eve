@@ -22,7 +22,6 @@ import (
 	"github.com/eriknordmark/netlink"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
@@ -745,7 +744,7 @@ func updateLispConfiglets(ctx *zedrouterContext, legacyDataPlane bool) {
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
 	for _, st := range items {
-		status := cast.CastAppNetworkStatus(st)
+		status := st.(types.AppNetworkStatus)
 		for i, olStatus := range status.OverlayNetworkList {
 			olNum := i + 1
 			var olIfname string
@@ -834,7 +833,7 @@ func parseAndPublishLispInstanceInfo(ctx *zedrouterContext, lispInfo *types.Lisp
 	// IID to instance status map for Lisp network instances
 	stMap := make(map[uint64]types.NetworkInstanceStatus)
 	for _, st := range stList {
-		status := cast.CastNetworkInstanceStatus(st)
+		status := st.(types.NetworkInstanceStatus)
 		if status.Type != types.NetworkInstanceTypeMesh {
 			continue
 		}
@@ -863,7 +862,7 @@ func parseAndPublishLispInstanceInfo(ctx *zedrouterContext, lispInfo *types.Lisp
 func handleLispInfoModify(ctxArg interface{}, key string, configArg interface{}) {
 	log.Infof("handleLispInfoModify(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
-	lispInfo := cast.CastLispInfoStatus(configArg)
+	lispInfo := configArg.(types.LispInfoStatus)
 
 	if key != "global" {
 		log.Infof("handleLispInfoModify: ignoring %s\n", key)
@@ -922,7 +921,7 @@ func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMe
 	// IID to service status map for Lisp service instances
 	stMap := make(map[uint64]types.NetworkInstanceStatus)
 	for _, st := range stList {
-		status := cast.CastNetworkInstanceStatus(st)
+		status := st.(types.NetworkInstanceStatus)
 		if status.Type != types.NetworkInstanceTypeMesh {
 			continue
 		}
@@ -967,7 +966,7 @@ func parseAndPublishLispMetrics(ctx *zedrouterContext, lispMetrics *types.LispMe
 func handleLispMetricsModify(ctxArg interface{}, key string, configArg interface{}) {
 	log.Debugf("handleLispMetricsModify(%s)\n", key)
 	ctx := ctxArg.(*zedrouterContext)
-	lispMetrics := cast.CastLispMetrics(configArg)
+	lispMetrics := configArg.(types.LispMetrics)
 
 	if key != "global" {
 		log.Infof("handleLispMetricsModify: ignoring %s\n", key)
@@ -992,12 +991,7 @@ func lookupAppNetworkStatus(ctx *zedrouterContext, key string) *types.AppNetwork
 		log.Infof("lookupAppNetworkStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastAppNetworkStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupAppNetworkStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.AppNetworkStatus)
 	return &status
 }
 
@@ -1013,12 +1007,7 @@ func lookupAppNetworkConfig(ctx *zedrouterContext, key string) *types.AppNetwork
 			return nil
 		}
 	}
-	config := cast.CastAppNetworkConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupAppNetworkConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.AppNetworkConfig)
 	return &config
 }
 
@@ -1035,7 +1024,7 @@ var additionalInfoDevice *types.AdditionalInfoDevice
 
 func handleAppNetworkCreate(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*zedrouterContext)
-	config := cast.CastAppNetworkConfig(configArg)
+	config := configArg.(types.AppNetworkConfig)
 	log.Infof("handleAppNetworkCreate(%s-%s)\n", config.DisplayName, key)
 
 	// If this is the first time, update the timer for GC
@@ -1782,7 +1771,7 @@ func checkAndRecreateAppNetwork(
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
 	for _, st := range items {
-		status := cast.CastAppNetworkStatus(st)
+		status := st.(types.AppNetworkStatus)
 		if !status.MissingNetwork {
 			continue
 		}
@@ -1937,7 +1926,7 @@ func appendError(allErrors string, prefix string, lasterr string) string {
 // XXX If so flag other changes as errors; would need lastError in status.
 func handleAppNetworkModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*zedrouterContext)
-	config := cast.CastAppNetworkConfig(configArg)
+	config := configArg.(types.AppNetworkConfig)
 	status := lookupAppNetworkStatus(ctx, key)
 	log.Infof("handleAppNetworkModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
@@ -2776,7 +2765,7 @@ func handleAAModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedrouterContext)
-	status := cast.CastAssignableAdapters(statusArg)
+	status := statusArg.(types.AssignableAdapters)
 	if key != "global" {
 		log.Infof("handleAAModify: ignoring %s\n", key)
 		return
@@ -2801,7 +2790,7 @@ func handleAADelete(ctxArg interface{}, key string,
 
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*zedrouterContext)
 	if key != "global" {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
@@ -2861,7 +2850,7 @@ func validateAppNetworkConfig(ctx *zedrouterContext, appNetConfig types.AppNetwo
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
 	for _, st := range items {
-		appNetStatus1 := cast.CastAppNetworkStatus(st)
+		appNetStatus1 := st.(types.AppNetworkStatus)
 		ulCfgList1 := appNetStatus1.UnderlayNetworkList
 		// XXX can an delete+add of app instance with same
 		// portmap result in a failure?
@@ -2955,9 +2944,9 @@ func checkAppNetworkErrorAndStartTimer(ctx *zedrouterContext) {
 	log.Infof("checkAppNetworkErrorAndStartTimer()\n")
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
-	for key, st := range items {
-		status := cast.CastAppNetworkStatus(st)
-		config := lookupAppNetworkConfig(ctx, key)
+	for _, st := range items {
+		status := st.(types.AppNetworkStatus)
+		config := lookupAppNetworkConfig(ctx, status.Key())
 		if config == nil || !config.Activate ||
 			status.Error == "" {
 			continue
@@ -2980,16 +2969,16 @@ func scanAppNetworkStatusInErrorAndUpdate(ctx *zedrouterContext) {
 	log.Infof("scanAppNetworkStatusInErrorAndUpdate()\n")
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
-	for key, st := range items {
-		status := cast.CastAppNetworkStatus(st)
-		config := lookupAppNetworkConfig(ctx, key)
+	for _, st := range items {
+		status := st.(types.AppNetworkStatus)
+		config := lookupAppNetworkConfig(ctx, status.Key())
 		if config == nil || !config.Activate ||
 			status.Error == "" {
 			continue
 		}
 		// called from the timer, run the AppNetworkCreate to retry
 		log.Infof("scanAppNetworkStatusInErrorAndUpdate: retry the AppNetworkCreate\n")
-		handleAppNetworkCreate(ctx, key, *config)
+		handleAppNetworkCreate(ctx, status.Key(), *config)
 	}
 }
 
@@ -3058,7 +3047,7 @@ func doDnsmasqRestart(ctx *zedrouterContext) {
 	pub := ctx.pubNetworkInstanceStatus
 	stList := pub.GetAll()
 	for _, st := range stList {
-		status := cast.CastNetworkInstanceStatus(st)
+		status := st.(types.NetworkInstanceStatus)
 		if status.Type != types.NetworkInstanceTypeLocal {
 			continue
 		}

@@ -7,7 +7,6 @@
 package pubsub
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -209,8 +208,8 @@ func (pub *Publication) populate() {
 			log.Errorf("populate: %s for %s\n", err, statusFile)
 			continue
 		}
-		var item interface{}
-		if err := json.Unmarshal(sb, &item); err != nil {
+		item, err := parseTemplate(sb, pub.topicType)
+		if err != nil {
 			log.Errorf("populate: %s file: %s\n",
 				err, statusFile)
 			continue
@@ -359,14 +358,14 @@ func (pub *Publication) determineDiffs(slaveCollection localCollection) []string
 		if slave == nil {
 			log.Debugf("determineDiffs(%s): key %s added\n",
 				name, masterKey)
-			// XXX is deepCopy needed?
+			// Handle the case of the master changing while we're using the slave by making a copy
 			slaveCollection[masterKey] = deepCopy(master)
 			keys = append(keys, masterKey)
 		} else if !cmp.Equal(master, *slave) {
 			log.Debugf("determineDiffs(%s): key %s replacing due to diff %v\n",
 				name, masterKey,
 				cmp.Diff(master, *slave))
-			// XXX is deepCopy needed?
+			// Handle the case of the master changing under us
 			slaveCollection[masterKey] = deepCopy(master)
 			keys = append(keys, masterKey)
 		} else {

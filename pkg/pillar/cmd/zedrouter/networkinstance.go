@@ -17,7 +17,6 @@ import (
 	"strings"
 
 	"github.com/eriknordmark/netlink"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -333,7 +332,7 @@ func doBridgeAclsDelete(
 	// Delete ACLs attached to this network aka linux bridge
 	items := ctx.pubAppNetworkStatus.GetAll()
 	for _, ans := range items {
-		appNetStatus := cast.CastAppNetworkStatus(ans)
+		appNetStatus := ans.(types.AppNetworkStatus)
 
 		for _, olStatus := range appNetStatus.OverlayNetworkList {
 			if olStatus.Network != status.UUID {
@@ -384,7 +383,7 @@ func handleNetworkInstanceModify(
 
 	ctx := ctxArg.(*zedrouterContext)
 	pub := ctx.pubNetworkInstanceStatus
-	config := cast.CastNetworkInstanceConfig(configArg)
+	config := configArg.(types.NetworkInstanceConfig)
 	status := lookupNetworkInstanceStatus(ctx, key)
 	if status != nil {
 		log.Infof("handleNetworkInstanceModify(%s)\n", key)
@@ -744,7 +743,7 @@ func getSwitchNetworkInstanceUsingPort(
 	items := pub.GetAll()
 
 	for _, st := range items {
-		status := cast.CastNetworkInstanceStatus(st)
+		status := st.(types.NetworkInstanceStatus)
 		ifname2 := types.AdapterToIfName(ctx.deviceNetworkStatus,
 			status.Port)
 		if ifname2 != ifname {
@@ -795,7 +794,7 @@ func createHostDnsmasqFile(ctx *zedrouterContext, bridge string) {
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
 	for _, st := range items {
-		status := cast.CastAppNetworkStatus(st)
+		status := st.(types.AppNetworkStatus)
 		for _, ulStatus := range status.UnderlayNetworkList {
 			if strings.Compare(bridge, ulStatus.Bridge) != 0 {
 				continue
@@ -1289,12 +1288,7 @@ func lookupNetworkInstanceConfig(ctx *zedrouterContext, key string) *types.Netwo
 	if c == nil {
 		return nil
 	}
-	config := cast.CastNetworkInstanceConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupNetworkInstanceConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.NetworkInstanceConfig)
 	return &config
 }
 
@@ -1304,7 +1298,7 @@ func lookupNetworkInstanceStatus(ctx *zedrouterContext, key string) *types.Netwo
 	if st == nil {
 		return nil
 	}
-	status := cast.CastNetworkInstanceStatus(st)
+	status := st.(types.NetworkInstanceStatus)
 	return &status
 }
 
@@ -1314,12 +1308,7 @@ func lookupNetworkInstanceMetrics(ctx *zedrouterContext, key string) *types.Netw
 	if st == nil {
 		return nil
 	}
-	status := cast.CastNetworkInstanceMetrics(st)
-	if status.Key() != key {
-		log.Errorf("lookupNetworkInstanceMetrics key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.NetworkInstanceMetrics)
 	return &status
 }
 
@@ -1359,7 +1348,7 @@ func publishNetworkInstanceMetricsAll(ctx *zedrouterContext) {
 	}
 	nms := getNetworkMetrics(ctx)
 	for _, ni := range niList {
-		status := cast.CastNetworkInstanceStatus(ni)
+		status := ni.(types.NetworkInstanceStatus)
 		netMetrics := createNetworkInstanceMetrics(ctx, &status, &nms)
 		publishNetworkInstanceMetrics(ctx, netMetrics)
 	}
@@ -1378,14 +1367,14 @@ func publishNetworkInstanceStatus(ctx *zedrouterContext,
 	copyProbeStats(ctx, status)
 	ctx.networkInstanceStatusMap[status.UUID] = status
 	pub := ctx.pubNetworkInstanceStatus
-	pub.Publish(status.Key(), status)
+	pub.Publish(status.Key(), *status)
 }
 
 func publishNetworkInstanceMetrics(ctx *zedrouterContext,
 	status *types.NetworkInstanceMetrics) {
 
 	pub := ctx.pubNetworkInstanceMetrics
-	pub.Publish(status.Key(), status)
+	pub.Publish(status.Key(), *status)
 }
 
 // ==== Bridge
@@ -1547,7 +1536,7 @@ func lispInactivate(ctx *zedrouterContext,
 	}
 
 	for _, ans := range items {
-		appNetStatus := cast.CastAppNetworkStatus(ans)
+		appNetStatus := ans.(types.AppNetworkStatus)
 		if len(appNetStatus.OverlayNetworkList) == 0 {
 			continue
 		}
@@ -1601,7 +1590,7 @@ func lookupNetworkInstanceStatusByBridgeName(ctx *zedrouterContext,
 	pub := ctx.pubNetworkInstanceStatus
 	items := pub.GetAll()
 	for _, st := range items {
-		status := cast.CastNetworkInstanceStatus(st)
+		status := st.(types.NetworkInstanceStatus)
 		if status.BridgeName == bridgeName {
 			return &status
 		}
@@ -1749,7 +1738,7 @@ func vifNameToBridgeName(ctx *zedrouterContext, vifName string) string {
 	pub := ctx.pubNetworkInstanceStatus
 	instanceItems := pub.GetAll()
 	for _, st := range instanceItems {
-		status := cast.CastNetworkInstanceStatus(st)
+		status := st.(types.NetworkInstanceStatus)
 		if status.IsVifInBridge(vifName) {
 			return status.BridgeName
 		}
@@ -1767,7 +1756,7 @@ func getAllNIindices(ctx *zedrouterContext, ifname string) []int {
 	}
 	instanceItems := pub.GetAll()
 	for _, st := range instanceItems {
-		status := cast.CastNetworkInstanceStatus(st)
+		status := st.(types.NetworkInstanceStatus)
 		if !status.IsUsingPort(ifname) {
 			continue
 		}
@@ -1791,7 +1780,7 @@ func checkAndReprogramNetworkInstances(ctx *zedrouterContext) {
 	instanceItems := pub.GetAll()
 
 	for _, instance := range instanceItems {
-		status := cast.CastNetworkInstanceStatus(instance)
+		status := instance.(types.NetworkInstanceStatus)
 
 		if !status.NeedIntfUpdate {
 			continue
@@ -1863,7 +1852,7 @@ func doNetworkInstanceFallback(
 		// Find all app instances that use this network and purge flows
 		// that correspond to these applications.
 		for _, app := range apps {
-			appNetworkStatus := cast.CastAppNetworkStatus(app)
+			appNetworkStatus := app.(types.AppNetworkStatus)
 			for i := range appNetworkStatus.UnderlayNetworkList {
 				ulStatus := &appNetworkStatus.UnderlayNetworkList[i]
 				if uuid.Equal(ulStatus.Network, status.UUID) {
@@ -1915,7 +1904,7 @@ func doNetworkInstanceFallback(
 		// Find all app instances that use this network and purge flows
 		// that correspond to these applications.
 		for _, app := range apps {
-			appNetworkStatus := cast.CastAppNetworkStatus(app)
+			appNetworkStatus := app.(types.AppNetworkStatus)
 			for i := range appNetworkStatus.UnderlayNetworkList {
 				ulStatus := &appNetworkStatus.UnderlayNetworkList[i]
 				if uuid.Equal(ulStatus.Network, status.UUID) {

@@ -28,7 +28,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -343,12 +342,7 @@ func handleGlobalConfigDelete(ctxArg interface{},
 func handleZedAgentStatusModify(ctxArg interface{},
 	key string, statusArg interface{}) {
 	ctxPtr := ctxArg.(*nodeagentContext)
-	status := cast.ZedAgentStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("zedagentStatus key mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
+	status := statusArg.(types.ZedAgentStatus)
 	handleRebootCmd(ctxPtr, status)
 	updateZedagentCloudConnectStatus(ctxPtr, status)
 	log.Debugf("handleZedAgentStatusModify(%s) done\n", key)
@@ -364,12 +358,7 @@ func handleZedAgentStatusDelete(ctxArg interface{}, key string,
 func handleZbootStatusModify(ctxArg interface{},
 	key string, statusArg interface{}) {
 	ctxPtr := ctxArg.(*nodeagentContext)
-	status := cast.ZbootStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("zbootStatus key mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
+	status := statusArg.(types.ZbootStatus)
 	if status.CurrentPartition && ctxPtr.updateInprogress &&
 		status.PartitionState == "active" {
 		log.Infof("CurPart(%s) transitioned to \"active\" state\n",
@@ -437,7 +426,7 @@ func checkNetworkConnectivity(ctxPtr *nodeagentContext) {
 
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	ctxPtr := ctxArg.(*nodeagentContext)
 	if key != "global" {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
