@@ -20,4 +20,4 @@ SOURCE="$(cd "$1" && pwd)"
 IMAGE="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
 shift 2
 
-docker run -v "$SOURCE:/bits" -v "$IMAGE:/output.img" "$MKFLASH_TAG" /output.img "$@"
+docker run -v "$SOURCE:/parts" -v "$IMAGE:/output.img" "$MKFLASH_TAG" /output.img "$@"

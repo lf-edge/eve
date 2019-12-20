@@ -17,4 +17,4 @@ if [ ! -f "$YMLFILE" ] || [ $# -lt 2 ]; then
 fi
 
 : > "$IMAGE"
-linuxkit build -o - "$YMLFILE" | docker run -v /dev:/dev --privileged -v "$IMAGE:/rootfs.img" -i ${MKROOTFS_TAG}
+linuxkit build -o - "$YMLFILE" | docker run -i -v /dev:/dev --privileged -v "$IMAGE:/rootfs.img" "${MKROOTFS_TAG}"

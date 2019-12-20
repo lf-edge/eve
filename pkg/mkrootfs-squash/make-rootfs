@@ -12,7 +12,7 @@ set -e
 [ -n "$DEBUG" ] && set -x
 
 IMGFILE=/rootfs.img
-[ -f "$IMGFILE" ] || EXPORT_CMD="cat "$IMGFILE""
+[ -f "$IMGFILE" ] || EXPORT_CMD="cat $IMGFILE"
 
 # we want everything except the final result to stderr
 ( exec 1>&2;

@@ -14,5 +14,5 @@ if [ ! -d "$SOURCE" ] || [ $# -ne 2 ]; then
    exit 1
 fi
 
-touch "$IMAGE"
-(cd "$SOURCE" ; tar chf - ./*) | docker run -e ZARCH -i -v "$IMAGE:/config.img" "${MKCONFIG_TAG}" /config.img
+: > "$IMAGE"
+(cd "$SOURCE" ; tar chf - ./*) | docker run -i -e ZARCH -v "$IMAGE:/config.img" "${MKCONFIG_TAG}" /config.img

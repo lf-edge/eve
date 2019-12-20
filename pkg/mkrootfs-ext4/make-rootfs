@@ -12,7 +12,7 @@ set -e
 [ -n "$DEBUG" ] && set -x
 
 IMGFILE=/rootfs.img
-[ -f "$IMGFILE" ] || EXPORT_CMD="cat "$IMGFILE""
+[ -f "$IMGFILE" ] || EXPORT_CMD="cat $IMGFILE"
 
 # we want everything except the final result to stderr
 ( exec 1>&2;
@@ -44,7 +44,7 @@ IMGFILE=/rootfs.img
   ROOTFS_PART_SIZE_KB=$(( ( ($ROOTFS_PART_SIZE + 1024) / 1024 ) / 1024 * 1024 ))
   ROOTFS_PART_SECTORS=$(( $ROOTFS_PART_SIZE_KB * 2 ))
 
-  dd if=/dev/zero of=$IMGFILE bs=1024 seek=$(( $ROOTFS_PART_SIZE_KB )) count=0
+  dd if=/dev/zero of=$IMGFILE bs=1024 seek="$ROOTFS_PART_SIZE_KB" count=0
   mkfs.ext4 -b 4096 -L eve_rootfs -U "$ROOTFS_UUID" -v "$IMGFILE"
   mount -o loop $IMGFILE /mnt
   cp -R /tmp/rootfs/* /mnt

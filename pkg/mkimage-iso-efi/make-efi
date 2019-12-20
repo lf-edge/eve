@@ -18,8 +18,12 @@ copy() {
 #
 mkdir /parts 2>/dev/null || :
 cd /parts
-[ "$(cd /bits ; echo *)" = '*' ] || ln -s /bits/* .
-[ -t 0 ] || bsdtar xzf -
+if [ -d /bits ]; then
+   ln -s /bits/* .
+   rm \* >/dev/null 2>&1 || :
+else
+   bsdtar xzf -
+fi
 
 # create a ISO with a EFI boot partition
 # Stuff it into a FAT filesystem, making it as small as possible.  511KiB
