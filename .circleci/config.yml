@@ -29,7 +29,7 @@ jobs:
       - run:
           name: Packages
           command: >
-            make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} pkgs
+            make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} FORCE_BUILD=--disable-cache pkgs
       - run:
           name: EVE
           command: >
