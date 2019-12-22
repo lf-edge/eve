@@ -3,7 +3,7 @@
 #
 # Run make (with no arguments) to see help on what targets are available
 
-GOVER ?= 1.12.4
+GOVER ?= 1.13.5
 PKGBASE=github.com/lf-edge/eve
 GOMODULE=$(PKGBASE)/pkg/pillar
 GOTREE=$(CURDIR)/pkg/pillar

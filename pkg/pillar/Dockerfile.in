@@ -1,6 +1,6 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
-ARG GOVER=1.12.4
+ARG GOVER=1.13.5
 FROM golang:${GOVER}-alpine as build
 RUN apk update
 RUN apk add --no-cache git gcc linux-headers libc-dev util-linux libpcap-dev make
