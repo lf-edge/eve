@@ -39,7 +39,7 @@ index d001b5a..fbb3a71 100755
 @@ -63,7 +64,13 @@ echo "p9=[ 'tag=share_dir,security_model=none,path=$mountpoint' ]" >> $outconfig
  
  if [ -f "$STAGE1_SEED_XL_CFG" ] ; then
-     grep -Ev '^(disk|bootloader|root|extra)' < "$STAGE1_SEED_XL_CFG" >> $outconfig
+     grep -Ev '^(disk|bootloader|root|extra|kernel)' < "$STAGE1_SEED_XL_CFG" >> $outconfig
 -    echo extra=\'console=hvc0 root=9p\' >> $outconfig
 +    if test $dhcp -eq 0
 +    then
