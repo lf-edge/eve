@@ -1469,7 +1469,9 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	file.WriteString(fmt.Sprintf("type = \"%s\"\n", xen_type))
 	file.WriteString(fmt.Sprintf("uuid = \"%s\"\n",
 		config.UUIDandVersion.UUID))
-	file.WriteString(fmt.Sprintf("kernel = \"%s\"\n", kernel))
+	if kernel != "" {
+		file.WriteString(fmt.Sprintf("kernel = \"%s\"\n", kernel))
+	}
 
 	if config.Ramdisk != "" {
 		file.WriteString(fmt.Sprintf("ramdisk = \"%s\"\n",
