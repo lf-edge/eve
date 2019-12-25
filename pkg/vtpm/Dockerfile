@@ -20,7 +20,7 @@ RUN apk add --no-cache linux-headers=4.4.6-r2 git=2.18.2-r0 \
                           gcc=6.4.0-r9 g++=6.4.0-r9 autoconf=2.69-r2 \
                           automake=1.16.1-r0 libtool=2.4.6-r5 \
                           doxygen=1.8.14-r0 make=4.2.1-r2 \
-                          openssl-dev=1.0.2t-r0 protobuf-dev=3.5.2-r0
+                          openssl-dev=1.0.2u-r0 protobuf-dev=3.5.2-r0
 
 WORKDIR /
 COPY --from=alpine-3.10 /usr/share/aclocal/ /usr/share/aclocal/
@@ -48,7 +48,7 @@ RUN ./bootstrap && \
     ./configure
 
 RUN apk del curl-dev
-RUN apk add --no-cache openssl-dev=1.0.2t-r0
+RUN apk add --no-cache openssl-dev=1.0.2u-r0
 COPY --from=curl-dev-bits /usr/include/curl /usr/include/curl
 COPY --from=curl-dev-bits /usr/lib/libcurl.so /usr/lib/libcurl.so
 RUN make
@@ -63,7 +63,7 @@ RUN make
 
 #Pull a selected set of artifacts into the final stage.
 FROM alpine:3.8
-RUN apk add --no-cache openssl=1.0.2t-r0 protobuf=3.5.2-r0
+RUN apk add --no-cache openssl=1.0.2u-r0 protobuf=3.5.2-r0
 
 COPY --from=build /usr/local/lib/libtss2-tctildr.so.0 /usr/local/lib
 COPY --from=build /usr/local/lib/libtss2-rc.so.0 /usr/local/lib

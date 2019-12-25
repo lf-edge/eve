@@ -29,8 +29,8 @@ RUN apk add --no-cache \
     openssh=7.7_p1-r4 \
     python3=3.6.9-r1 \
     libc-dev=0.7.1-r0 \
-    openssl-dev=1.0.2t-r0 \
-    openssl=1.0.2t-r0 \
+    openssl-dev=1.0.2u-r0 \
+    openssl=1.0.2u-r0 \
     libpciaccess=0.13.5-r1 \
     libpciaccess-dev=0.13.5-r1 \
     bsd-compat-headers=0.7.1-r0 \
