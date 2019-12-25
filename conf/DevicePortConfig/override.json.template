@@ -57,7 +57,7 @@
             "IfName": "wlan0",
             "Name": "Management",
             "IsMgmt": true,
-            "NetworkProxyEnable": true,
+            "NetworkProxyEnable": false,
             "NetworkProxyURL": "",
             "NtpServer": "",
             "Pacfile": "",

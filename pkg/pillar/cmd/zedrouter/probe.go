@@ -429,12 +429,12 @@ func launchHostProbe(ctx *zedrouterContext) {
 			probeMutex.Lock()
 		}
 	}
+	iteration++
+	probeMutex.Unlock()
 	if needSendSignal {
 		log.Debugf("launchHostProbe: send uplink signal\n")
 		ctx.checkNIUplinks <- true
 	}
-	iteration++
-	probeMutex.Unlock()
 	setProbeTimer(ctx, nhProbeInterval)
 }
 

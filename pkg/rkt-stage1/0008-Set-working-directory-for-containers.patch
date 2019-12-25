@@ -79,7 +79,7 @@ index 66d8b54..a6eaa62 100755
  echo "Executing $cmd"
  source /mnt/environment
 -eval chroot /mnt/rootfs $cmd
-+eval chroot /mnt/rootfs /launcher.sh $cmd
++eval setsid -c chroot /mnt/rootfs /launcher.sh $cmd <> /dev/console 2>&1
 -- 
 2.11.0
 

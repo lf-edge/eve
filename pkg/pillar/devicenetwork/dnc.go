@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/cast"
@@ -674,8 +675,13 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 			if current != nil &&
 				reflect.DeepEqual(current.Ports, oldConfig.Ports) {
 
-				log.Infof("doUpdatePortConfigListAndPublish: no change and same Ports as current\n")
-				return false
+				if strings.Contains(portConfig.Key, "override") { // XXX
+					log.Infof("doUpdatePortConfigListAndPublish: override, curr %+v, old %+v\n",
+						current.Ports, oldConfig.Ports)
+				} else {
+					log.Infof("doUpdatePortConfigListAndPublish: no change and same Ports as current\n")
+					return false
+				}
 			}
 			log.Infof("doUpdatePortConfigListAndPublish: changed ports from current; reorder\n")
 		} else {
@@ -728,7 +734,18 @@ func checkAndUpdateWireless(ctx *DeviceNetworkContext, oCfg *types.DevicePortCon
 				}
 			}
 		}
-		if oldPortCfg == nil || !reflect.DeepEqual(oldPortCfg.WirelessCfg, pCfg.WirelessCfg) {
+		if oldPortCfg == nil || strings.Contains(portCfg.Key, "override") ||
+			!reflect.DeepEqual(oldPortCfg.WirelessCfg, pCfg.WirelessCfg) {
+			// XXX hack to disable the cloud configure for wifi, if the existing configure
+			// has wifi information, but the new update does not. Remove this when the zedcloud
+			// implements the wifi configure for port
+			if oldPortCfg != nil && oldPortCfg.WirelessCfg.WType == types.WirelessTypeWifi &&
+				pCfg.WirelessCfg.WType == types.WirelessTypeNone {
+				log.Infof("checkAndUpdateWireless: HACK! wifi has configure %+v, ignore the update %+v\n",
+					oldPortCfg.WirelessCfg, pCfg.WirelessCfg)
+				break
+			}
+			// XXX
 			if pCfg.WirelessCfg.WType == types.WirelessTypeCellular ||
 				oldPortCfg != nil && oldPortCfg.WirelessCfg.WType == types.WirelessTypeCellular {
 				devPortInstallAPname(pCfg.IfName, pCfg.WirelessCfg)
