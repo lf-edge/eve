@@ -37,8 +37,7 @@ RUN apk add --no-cache --initdb -p /out \
   squashfs-tools=4.3-r5     \
   coreutils=8.30-r0
 
-COPY /efi-files /out/efifs
-COPY make-raw install /out/
+COPY make-raw install grub.cfg.in UsbInvocationScript.txt /out/
 
 RUN echo "mtools_skip_check=1" >> etc/mtools.conf
 
