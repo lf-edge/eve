@@ -235,7 +235,7 @@ func PbrRouteChange(ctx *zedrouterContext,
 	}
 }
 
-func isErrno(err error, errno int) bool {
+func isErrno(err error, errno syscall.Errno) bool {
 	e1, ok := err.(syscall.Errno)
 	if !ok {
 		log.Warnf("XXX not Errno: %T", err)
