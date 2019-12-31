@@ -318,13 +318,20 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 
 // Safename - Returns Safename for the StorageStatus
 func (ss StorageStatus) Safename() string {
+	name := ss.Name
+	hash := ss.ImageSha256
 	if ss.IsContainer {
-		// For Containers, SafeName = ImageID.
-		return ss.ImageID.String()
+		// For Containers, SafeName = ImageID.sha
+		// XXX - we really need to put in the sha here correctly as well, but this
+		// will do for now, since verifier uses the status.ImageSha256 field
+		// to calculate it.
+		// We have to have *something* here, or types.SafenameToFilename() breaks.
+		name = ss.ImageID.String()
+		hash = NoHash
 	}
 	// Else..VMs
 	// XXX - Move VMs to also use ImageID as the Safename.
-	return UrlToSafename(ss.Name, ss.ImageSha256)
+	return UrlToSafename(name, hash)
 }
 
 // GetErrorInfo sets the errorInfo for the Storage Object

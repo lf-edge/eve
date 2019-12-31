@@ -1400,8 +1400,9 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		xv := "xvd" + string(int('a')+i)
 		ds.Vdev = xv
 
+		log.Infof("getting image file location IsContainer(%v), ContainerImageId(%s), ImageSha256(%s)", status.IsContainer, ds.ImageID.String(), dc.ImageSha256)
 		target, err := utils.VerifiedImageFileLocation(status.IsContainer,
-			status.ContainerImageID, dc.ImageSha256)
+			ds.ImageID.String(), dc.ImageSha256)
 		if err != nil {
 			log.Errorf("configToStatus: Failed to get Image File Location. "+
 				"err: %+s", err.Error())
@@ -1999,20 +2000,31 @@ func lookForRktRunErrors(str string) error {
 // returns domainID, PodUUID and error
 func DomainCreate(status types.DomainStatus) (int, string, error) {
 
-	var domainID int
-	var err error
-	podUUID := ""
+	var (
+		domainID int
+		err      error
+		podUUID  string
+	)
 
 	filename := xenCfgFilename(status.AppNum)
 	log.Infof("DomainCreate %s ... xenCfgFilename - %s\n", status.DomainName, filename)
 	if status.IsContainer {
 		// Use rkt tool
 		log.Infof("Using rkt tool ... ContainerImageID - %s\n", status.ContainerImageID)
-		aciFileName := filepath.Join(types.VerifiedAppImgDirname,
-			status.DiskStatusList[0].ImageID.String(),
-			status.ContainerImageID)
-		aciFileName = aciFileName + ".aci"
-		domainID, podUUID, err = rktRun(status.DomainName, status.ContainerImageID, filename, aciFileName)
+		// get the rkt image hash for this file; if we do not have it in the rkt cache,
+		// convert it
+		ociFilename, err := utils.VerifiedImageFileLocation(true,
+			status.DiskStatusList[0].ImageID.String(), status.ContainerImageID)
+		if err != nil {
+			log.Errorf("DomainCreate: Failed to get Image File Location. "+
+				"err: %+s", err.Error())
+			return domainID, podUUID, err
+		}
+		imageHash, err := ociToRktImageHash(ociFilename)
+		if err != nil {
+			return domainID, podUUID, fmt.Errorf("unable to get rkt image hash: %v", err)
+		}
+		domainID, podUUID, err = rktRun(status.DomainName, status.ContainerImageID, filename, imageHash)
 	} else {
 		// Use xl tool
 		log.Infof("Using xl tool ... xenCfgFilename - %s\n", filename)
@@ -2024,7 +2036,7 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 
 // Launch app/container thru rkt
 // returns domainID, podUUID and error
-func rktRun(domainName string, ContainerImageID string, xenCfgFilename string, aciFileName string) (int, string, error) {
+func rktRun(domainName, ContainerImageID, xenCfgFilename, imageHash string) (int, string, error) {
 
 	// STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=xenCfgFilename rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file
 	log.Infof("rktRun %s - ContainerImageID %s\n", domainName, ContainerImageID)
@@ -2033,7 +2045,7 @@ func rktRun(domainName string, ContainerImageID string, xenCfgFilename string, a
 		"--dir=" + types.PersistRktDataDir,
 		"--insecure-options=image",
 		"run",
-		aciFileName,
+		imageHash,
 		"--stage1-path=/usr/sbin/stage1-xen.aci",
 		"--uuid-file-save=" + uuidFile,
 	}

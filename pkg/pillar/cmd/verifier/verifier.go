@@ -56,8 +56,9 @@ const (
 
 // Go doesn't like this as a constant
 var (
-	verifierObjTypes = []string{types.AppImgObj, types.BaseOsObj}
-	vHandler         = makeVerifyHandler()
+	verifierObjTypes        = []string{types.AppImgObj, types.BaseOsObj}
+	vHandler                = makeVerifyHandler()
+	containerImageExtension = ".tar"
 )
 
 // Set from Makefile
@@ -310,7 +311,7 @@ func handleInitVerifiedObjects(ctx *verifierContext) {
 
 func verifiedImageStatusFromImageFile(
 	objType, objDirname, parentDirname, imageFileName string,
-	size int64) types.VerifyImageStatus {
+	size int64) *types.VerifyImageStatus {
 
 	status := types.VerifyImageStatus{
 		ObjType:  objType,
@@ -323,7 +324,7 @@ func verifiedImageStatusFromImageFile(
 	if objType == "appImg.obj" {
 		// Currently, for App Images, there are two conventions of
 		// ImageNames / Directory structures.
-		//  Containers - verified/<image-ID>/sha-<SHA>.aci
+		//  Containers - verified/<image-ID>/sha-<SHA>.<containerImageExtension>
 		//  VMs - verified/<SHA>/safename
 		imageID, err := uuid.FromString(parentDirname)
 
@@ -339,28 +340,13 @@ func verifiedImageStatusFromImageFile(
 		if err == nil {
 			// Container image
 			status.IsContainer = true
-			if strings.HasSuffix(imageFileName, ".aci") == false {
-				// XXX - Should we delete this image and not recover it??
-				log.Warnf("verifiedImageStatusFromImageFile - Container Image"+
-					"Doesn't have .aci Suffix: objType: %s, "+
-					"objDirname: %s, parentDirname: %s, imageFileName: %s, "+
-					"imageID: %s", objType, objDirname, parentDirname,
-					imageFileName, imageID.String())
-			}
-			if strings.HasPrefix(imageFileName, "sha") == false {
-				// XXX - Should we delete this image and not recover it??
-				log.Warnf("verifiedImageStatusFromImageFile - Container Image"+
-					"Doesn't have prefix sha. objType: %s, "+
-					"objDirname: %s, parentDirname: %s, imageFileName: %s, "+
-					"imageID: %s", objType, objDirname, parentDirname,
-					imageFileName, imageID.String())
-			}
-			status.ContainerImageID = strings.TrimSuffix(imageFileName, ".aci")
+			status.ContainerImageID = imageFileName
 			status.ImageID = imageID
 			// For Containers, ImageSha256 is ImageID
 			status.ImageSha256 = status.ImageID.String()
-			// For Containers, ImageID is the Safename
-			status.Safename = status.ImageID.String()
+			// For Containers, ImageID"."NoHash is the Safename
+			status.Safename = status.ImageID.String() + "." + types.NoHash
+			status.State = types.DELIVERED
 		} else {
 			// VM Image
 			// XXX - Combine both the Schemes.. VM should also follow
@@ -371,7 +357,7 @@ func verifiedImageStatusFromImageFile(
 			if status.ImageSha256 != "" {
 				status.Safename = imageFileName + "." + status.ImageSha256
 			} else {
-				status.Safename = imageFileName + ".sha"
+				status.Safename = imageFileName + "." + types.NoHash
 			}
 		}
 	} else {
@@ -380,7 +366,7 @@ func verifiedImageStatusFromImageFile(
 		status.Safename = imageFileName + "." + status.ImageSha256
 	}
 	log.Debugf("verifiedImageStatusFromImageFile: status: %+v", status)
-	return status
+	return &status
 }
 
 // Recursive scanning for verified objects,
@@ -396,6 +382,8 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	log.Debugf("populateInitialStatusFromVerified: processing locations %v", locations)
 
 	for _, location := range locations {
 
@@ -419,7 +407,9 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 				filename, size/(1024*1024))
 			status := verifiedImageStatusFromImageFile(objType, objDirname,
 				parentDirname, location.Name(), size)
-			publishVerifyImageStatus(ctx, &status)
+			if status != nil {
+				publishVerifyImageStatus(ctx, status)
+			}
 		}
 	}
 }
@@ -954,13 +944,11 @@ func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 
 	_, verifierDirname, verifiedDirname := status.ImageDownloadDirNames()
 	_, verifierFilename, verifiedFilename := status.ImageDownloadFilenames()
-	if !status.IsContainer {
-		// Move directory from DownloadDirname/verifier to
-		// DownloadDirname/verified
-		// XXX should have dom0 do this and/or have RO mounts
-		filename := types.SafenameToFilename(config.Safename)
-		verifiedFilename = verifiedDirname + "/" + filename
-	}
+	// Move directory from DownloadDirname/verifier to
+	// DownloadDirname/verified
+	// XXX should have dom0 do this and/or have RO mounts
+	filename := types.SafenameToFilename(config.Safename)
+	verifiedFilename = verifiedDirname + "/" + filename
 	log.Infof("Move from %s to %s\n", verifierFilename, verifiedFilename)
 
 	if _, err := os.Stat(verifierFilename); err != nil {
@@ -1044,20 +1032,26 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 		// during reboot. Compute the SHA
 		_, _, verifiedFilename := status.ImageDownloadFilenames()
 		imageHash, err := computeShaFile(verifiedFilename)
-		if err == nil {
-			got := fmt.Sprintf("%x", imageHash)
-			if got == strings.ToLower(status.ImageSha256) {
-				log.Debugf("handleModify - %s verification succeeded",
-					verifiedFilename)
-				status.State = types.DELIVERED
-				publishVerifyImageStatus(ctx, status)
-			} else {
-				err = fmt.Errorf("Verification Failed after rebot. "+
-					"verifiedFilename: %s\ncomputed: %s\nconfigured: %s",
-					verifiedFilename, got, strings.ToLower(status.ImageSha256))
-			}
-		}
 		if err != nil {
+			cerr := fmt.Sprintf("%s", err)
+			updateVerifyErrStatus(ctx, status, cerr)
+			log.Errorf("computeShaFile %s failed %s\n",
+				verifiedFilename, cerr)
+			log.Infof("handleModify: Done for %s", config.Name)
+			return
+		}
+		got := fmt.Sprintf("%x", imageHash)
+		if got == strings.ToLower(status.ImageSha256) {
+			log.Infof("handleModify - %s verification succeeded",
+				verifiedFilename)
+			status.State = types.DELIVERED
+			publishVerifyImageStatus(ctx, status)
+		} else {
+			// Withdraw status as if it never existed
+			// New download and verification will follow
+			err = fmt.Errorf("Verification Failed after rebot. "+
+				"verifiedFilename: %s\ncomputed: %s\nconfigured: %s",
+				verifiedFilename, got, strings.ToLower(status.ImageSha256))
 			log.Errorf(err.Error())
 			doDelete(status)
 			unpublishVerifyImageStatus(ctx, status)
