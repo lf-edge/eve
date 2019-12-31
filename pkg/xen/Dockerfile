@@ -45,10 +45,16 @@ RUN \
 COPY xen_config* /xen/
 WORKDIR /xen/xen
 
+COPY *.patch /tmp/
+RUN for p in /tmp/*.patch ; do patch -p1 < "$p" || exit 1 ; done
+
 RUN case $(uname -m) in \
     x86_64) \
         XEN_DEF_CONF=/xen/xen/arch/x86/configs/x86_64_defconfig; \
 	;; \
+    aarch64) \
+        XEN_DEF_CONF=/xen/xen/arch/arm/configs/arm64_defconfig; \
+        ;; \
     esac ;\
     cp /xen/xen_config-${XEN_VERSION}-$(uname -m) ${XEN_DEF_CONF}; \
     rm /xen/xen_config* && \
