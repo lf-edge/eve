@@ -33,6 +33,11 @@ const (
 	MAXSTATE   //
 )
 
+const (
+	// NoHash constant to indicate that we have no real hash
+	NoHash = "sha"
+)
+
 func UrlToSafename(url string, sha string) string {
 
 	var safename string
@@ -40,7 +45,7 @@ func UrlToSafename(url string, sha string) string {
 	if sha != "" {
 		safename = strings.Replace(url, "/", " ", -1) + "." + sha
 	} else {
-		safename = strings.Replace(url, "/", " ", -1) + "." + "sha"
+		safename = strings.Replace(url, "/", " ", -1) + "." + NoHash
 	}
 	return safename
 }
