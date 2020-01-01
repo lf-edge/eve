@@ -82,12 +82,14 @@ func (ep *SftpTransportMethod) Close() error {
 	return nil
 }
 
-// use the specific ip as source address for this connection
-func (ep *SftpTransportMethod) WithSrcIpSelection(localAddr net.IP) error {
+// WithSrcIPSelection use the specific ip as source address for this connection
+func (ep *SftpTransportMethod) WithSrcIPSelection(localAddr net.IP) error {
 	return fmt.Errorf("not supported")
 }
 
-func (ep *SftpTransportMethod) WithSrcIpAndProxySelection(localAddr net.IP,
+// WithSrcIPAndProxySelection use the specific ip as source address for this
+// connection and connect via the provided proxy URL
+func (ep *SftpTransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
 	proxy *url.URL) error {
 	return fmt.Errorf("not supported")
 }
