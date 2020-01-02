@@ -37,8 +37,8 @@ var Version = "No version specified"
 type zedmanagerContext struct {
 	configRestarted         bool
 	verifierRestarted       bool
-	subAppInstanceConfig    *pubsub.Subscription
-	pubAppInstanceStatus    *pubsub.Publication
+	subAppInstanceConfig    pubsub.SubscriptionIntf
+	pubAppInstanceStatus    pubsub.PublicationIntf
 	subDeviceNetworkStatus  *pubsub.Subscription
 	pubAppNetworkConfig     *pubsub.Publication
 	subAppNetworkStatus     *pubsub.Subscription
