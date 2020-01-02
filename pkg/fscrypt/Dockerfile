@@ -9,8 +9,10 @@ WORKDIR /go/src/github.com/google
 RUN git clone https://github.com/google/fscrypt
 WORKDIR /go/src/github.com/google/fscrypt
 RUN git reset --hard b41569d397d3e66099cde07d8eef36b2f42dd0ec
-COPY fscrypt-patch.diff fscrypt-patch.diff
-RUN patch -p1 < fscrypt-patch.diff && \
+COPY patch01-no-pam.diff patch01-no-pam.diff
+COPY patch02-rotate-raw-key.diff patch02-rotate-raw-key.diff
+RUN patch -p1 < patch01-no-pam.diff && \
+    patch -p1 < patch02-rotate-raw-key.diff && \
     make && make install
 
 FROM scratch
