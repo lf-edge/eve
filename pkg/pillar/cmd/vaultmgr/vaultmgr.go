@@ -75,14 +75,14 @@ func getStatusParams(vaultPath string) []string {
 	return append(args, vaultPath)
 }
 
-func getChangeProtectorParams(protectorId string) []string {
+func getChangeProtectorParams(protectorID string) []string {
 	args := []string{"metadata", "change-passphrase", "--key=" + keyFile,
 		"--old-key=" + oldKeyFile, "--source=raw_key",
-		"--protector=" + mountPoint + ":" + protectorId}
+		"--protector=" + mountPoint + ":" + protectorID}
 	return args
 }
 
-func getProtectorId(vaultPath string) ([][]string, error) {
+func getProtectorID(vaultPath string) ([][]string, error) {
 	args := getStatusParams(vaultPath)
 	stdOut, _, err := execCmd(fscryptPath, args...)
 	if err != nil {
@@ -93,8 +93,8 @@ func getProtectorId(vaultPath string) ([][]string, error) {
 }
 
 func changeProtector(vaultPath string) error {
-	protectorId, err := getProtectorId(vaultPath)
-	if protectorId != nil {
+	protectorID, err := getProtectorID(vaultPath)
+	if protectorID != nil {
 		if err := stageKey(true, oldKeyDir, oldKeyFile); err != nil {
 			return err
 		}
@@ -104,13 +104,13 @@ func changeProtector(vaultPath string) error {
 		}
 		defer unstageKey(keyDir, keyFile)
 		if stdOut, stdErr, err := execCmd(fscryptPath,
-			getChangeProtectorParams(protectorId[0][1])...); err != nil {
+			getChangeProtectorParams(protectorID[0][1])...); err != nil {
 			log.Errorf("Error changing protector key: %v", err)
 			log.Debug(stdOut)
 			log.Debug(stdErr)
 			return err
 		}
-		log.Infof("Changed key for protector %s", (protectorId[0][1]))
+		log.Infof("Changed key for protector %s", (protectorID[0][1]))
 	}
 	return err
 }
