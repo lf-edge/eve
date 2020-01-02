@@ -6,7 +6,6 @@
 USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
-PERSISTCONFIGDIR=/persist/config
 PERSIST_RKT_DATA_DIR=$PERSISTDIR/rkt
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
@@ -191,13 +190,10 @@ fi
 
 P3=$(zboot partdev P3)
 P3_FS_TYPE=$(blkid "$P3"| awk '{print $3}' | sed 's/TYPE=//' | sed 's/"//g')
-if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] && [ "$P3_FS_TYPE" = "ext4" ]; then
+if [ -c $TPM_DEVICE_PATH ] && [ "$P3_FS_TYPE" = "ext4" ]; then
+    #It is a device with TPM, and formatted with ext4, go ahead with fscrypt
     #Initialize fscrypt algorithm, hash length etc.
     $BINDIR/vaultmgr -c "$CURPART" setupVaults
-
-    #tpm_in_use might have been wiped out during mkfs above.
-    touch $PERSISTCONFIGDIR/tpm_in_use
-    sync
 fi
 
 if [ ! -d "$PERSIST_RKT_DATA_DIR" ]; then
@@ -425,14 +421,21 @@ if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     sync
     blockdev --flushbufs "$CONFIGDEV"
     if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
-        echo "TPM device is present and allowed, marking mode as tpm-enabled"
-        touch $PERSISTCONFIGDIR/tpm_in_use
-        sync
-        blockdev --flushbufs "$CONFIGDEV"
-        $BINDIR/generate-device.sh -b $CONFIGDIR/device -t
+        echo "TPM device is present and allowed, creating TPM based device key"
+        if ! $BINDIR/generate-device.sh -b $CONFIGDIR/device -t; then
+            echo "TPM is malfunctioning, falling back to software certs"
+            rm -f $CONFIGDIR/tpm_in_use
+            sync
+            blockdev --flushbufs "$CONFIGDEV"
+            $BINDIR/generate-device.sh -b $CONFIGDIR/device
+        else
+            touch $CONFIGDIR/tpm_in_use
+            sync
+            blockdev --flushbufs "$CONFIGDEV"
+        fi
     else
         #Just in case, it got disabled in BIOS later on.
-        rm -f $PERSISTCONFIGDIR/tpm_in_use
+        rm -f $CONFIGDIR/tpm_in_use
         sync
         blockdev --flushbufs "$CONFIGDEV"
         $BINDIR/generate-device.sh -b $CONFIGDIR/device
@@ -524,7 +527,7 @@ if [ ! -d $LISPDIR ]; then
     exit 1
 fi
 
-if ! [ -f $PERSISTCONFIGDIR/tpm_in_use ]; then
+if ! [ -f $CONFIGDIR/tpm_in_use ]; then
     # Need a key for device-to-device map-requests
     cp -p $CONFIGDIR/device.key.pem $LISPDIR/lisp-sig.pem
 fi
