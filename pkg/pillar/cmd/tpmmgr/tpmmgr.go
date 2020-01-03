@@ -59,7 +59,7 @@ var (
 	defaultKeyParams = tpm2.Public{
 		Type:    tpm2.AlgECC,
 		NameAlg: tpm2.AlgSHA256,
-		Attributes: tpm2.FlagSign | tpm2.FlagNoDA | tpm2.FlagDecrypt |
+		Attributes: tpm2.FlagSign | tpm2.FlagNoDA |
 			tpm2.FlagSensitiveDataOrigin |
 			tpm2.FlagUserWithAuth,
 		ECCParameters: &tpm2.ECCParams{
