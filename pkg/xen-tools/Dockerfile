@@ -39,7 +39,8 @@ RUN mkdir -p /out
 COPY gmp.patch /xen/stubdom
 WORKDIR /xen
 RUN [ "$(uname -m)" = "x86_64" ] && FEATURES="--enable-stubdom --enable-vtpm-stubdom --enable-vtpmmgr-stubdom" ;\
-    ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable-docs --enable-9pfs $FEATURES
+    ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable-docs --enable-9pfs \
+                --with-system-ovmf=/usr/lib/xen/boot/ovmf.bin $FEATURES
 RUN make && make dist
 RUN dist/install.sh /out
 
