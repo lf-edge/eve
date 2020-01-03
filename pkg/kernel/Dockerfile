@@ -111,8 +111,16 @@ RUN make -j "$(getconf _NPROCESSORS_ONLN)" KCFLAGS="-fno-pie" && \
     ([ "${EXTRA}" = "-dbg" ] && cp vmlinux /out || true)
 
 # Modules
-RUN make INSTALL_MOD_PATH=/tmp/kernel-modules modules_install && \
-    ( DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdepth 1)) && \
+RUN make INSTALL_MOD_PATH=/tmp/kernel-modules modules_install
+# Out-of-tree, creepy modules
+#  * Maxlinear USB (option #2 https://github.com/lipnitsk/xr/archive/master.zip)
+ADD https://www.maxlinear.com/document?id=21651 /tmp/xr.zip
+RUN unzip -d /tmp /tmp/xr.zip ;\
+    make -C /linux INSTALL_MOD_PATH=/tmp/kernel-modules \
+                   M=/tmp/xr_usb_serial_common_lnx-3.6-and-newer-pak \
+         modules modules_install
+# Package all the modules up
+RUN ( DVER=$(basename $(find /tmp/kernel-modules/lib/modules/ -mindepth 1 -maxdepth 1)) && \
       cd /tmp/kernel-modules/lib/modules/$DVER && \
       rm build source && \
       ln -s /usr/src/linux-headers-$DVER build ) && \
