@@ -15,6 +15,8 @@
 | timer.gc.rkt.graceperiod | integer in seconds | 3600 | grace period to be used in rkt gc command |
 | timer.download.retry | integer in seconds | 600 | retry a failed download |
 | timer.boot.retry | integer in seconds | 600 | retry a failed domain boot |
+| timer.shutdown.limit | integer in seconds | 10 | timelimit for app to shut down |
+| timer.poweroff.limit | integer in seconds | 60 | timelimit for app to power off |
 | timer.port.georedo | integer in seconds | 1 hour | redo IP geolocation |
 | timer.port.georetry | integer in seconds | 600 | retry geolocation after failure |
 | timer.port.testduration | integer in seconds | 30 | wait for DHCP to give address |

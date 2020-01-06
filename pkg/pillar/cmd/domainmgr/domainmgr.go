@@ -86,6 +86,8 @@ type domainContext struct {
 	GCInitialized          bool
 	vdiskGCTime            uint32 // In seconds
 	domainBootRetryTime    uint32 // In seconds
+	domainShutdownLimit    uint32 // In seconds
+	domainPoweroffLimit    uint32 // In seconds
 }
 
 // appRwImageName - Returns name of the image ( including parent dir )
@@ -195,6 +197,8 @@ func Run() {
 		usbAccess:           true,
 		vdiskGCTime:         3600,
 		domainBootRetryTime: 600,
+		domainShutdownLimit: 600,
+		domainPoweroffLimit: 60,
 	}
 	aa := types.AssignableAdapters{}
 	domainCtx.assignableAdapters = &aa
@@ -1290,7 +1294,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	if status.IsContainer {
 		impatient = true
 	}
-	maxDelay := time.Second * 600 // 10 minutes
+	maxDelay := time.Duration(ctx.domainShutdownLimit) * time.Second
 	if impatient {
 		maxDelay /= 10
 	}
@@ -1300,12 +1304,8 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 
 		switch status.VirtualizationMode {
 		case types.HVM, types.FML:
-			// Do a short shutdown wait, then a shutdown -F
-			// just in case there are PV tools in guest
-			shortDelay := time.Second * 60
-			if impatient {
-				shortDelay /= 10
-			}
+			// Do a shutdown and wait, in case there are PV tools in guest
+			// Then a shutdown -F to power off
 			if err := DomainShutdown(*status, false); err != nil {
 				log.Errorf("DomainShutdown %s failed: %s\n",
 					status.DomainName, err)
@@ -1314,10 +1314,14 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 				log.Infof("doInactivate(%v) for %s: waiting for domain to shutdown\n",
 					status.UUIDandVersion, status.DisplayName)
 			}
-			gone := waitForDomainGone(*status, shortDelay)
+			gone := waitForDomainGone(*status, maxDelay)
 			if gone {
 				status.DomainId = 0
 				break
+			}
+			maxDelay = time.Duration(ctx.domainPoweroffLimit) * time.Second
+			if impatient {
+				maxDelay /= 10
 			}
 			if err := DomainShutdown(*status, true); err != nil {
 				log.Errorf("DomainShutdown -F %s failed: %s\n",
@@ -1376,6 +1380,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 		log.Infof("doInactivate(%v) for %s: waiting for domain to be destroyed\n",
 			status.UUIDandVersion, status.DisplayName)
 
+		maxDelay = time.Duration(ctx.domainShutdownLimit) * time.Second
 		gone := waitForDomainGone(*status, maxDelay)
 		if gone {
 			status.DomainId = 0
@@ -2658,6 +2663,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		}
 		if gcp.DomainBootRetryTime != 0 {
 			ctx.domainBootRetryTime = gcp.DomainBootRetryTime
+		}
+		if gcp.DomainShutdownLimit != 0 {
+			ctx.domainShutdownLimit = gcp.DomainShutdownLimit
+		}
+		if gcp.DomainPoweroffLimit != 0 {
+			ctx.domainPoweroffLimit = gcp.DomainPoweroffLimit
 		}
 		if gcp.UsbAccess != ctx.usbAccess {
 			ctx.usbAccess = gcp.UsbAccess

@@ -71,6 +71,8 @@ func (gs *GlobalStatus) UpdateItemValuesFromGlobalConfig(gc GlobalConfig) {
 	gs.setItemValueInt("timer.gc.rkt.graceperiod", gc.RktGCGracePeriod)
 	gs.setItemValueInt("timer.download.retry", gc.DownloadRetryTime)
 	gs.setItemValueInt("timer.boot.retry", gc.DomainBootRetryTime)
+	gs.setItemValueInt("timer.shutdown.limit", gc.DomainShutdownLimit)
+	gs.setItemValueInt("timer.poweroff.limit", gc.DomainPoweroffLimit)
 	gs.setItemValueInt("storage.dom0.disk.minusage.percent",
 		gc.Dom0MinDiskUsagePercent)
 
@@ -116,6 +118,8 @@ type GlobalConfig struct {
 
 	DownloadRetryTime   uint32 // Retry failed download after N sec
 	DomainBootRetryTime uint32 // Retry failed boot after N sec
+	DomainShutdownLimit uint32 // Abandon shutdown after N sec
+	DomainPoweroffLimit uint32 // Abandon poweroff after N sec
 
 	// Control NIM testing behavior: In seconds
 	NetworkGeoRedoTime        uint32   // Periodic IP geolocation
@@ -208,6 +212,8 @@ var GlobalConfigDefaults = GlobalConfig{
 	VdiskGCTime:         3600, // 1 hour
 	DownloadRetryTime:   600,  // 10 minutes
 	DomainBootRetryTime: 600,  // 10 minutes
+	DomainShutdownLimit: 60,   // 1 minute
+	DomainPoweroffLimit: 600,  // 10 minutes
 	RktGCGracePeriod:    3600, // 1 hour
 
 	AllowNonFreeAppImages:  TS_ENABLED,
@@ -277,6 +283,12 @@ func ApplyGlobalConfig(newgc GlobalConfig) GlobalConfig {
 	if newgc.DomainBootRetryTime == 0 {
 		newgc.DomainBootRetryTime = GlobalConfigDefaults.DomainBootRetryTime
 	}
+	if newgc.DomainShutdownLimit == 0 {
+		newgc.DomainShutdownLimit = GlobalConfigDefaults.DomainShutdownLimit
+	}
+	if newgc.DomainPoweroffLimit == 0 {
+		newgc.DomainPoweroffLimit = GlobalConfigDefaults.DomainPoweroffLimit
+	}
 	if newgc.DefaultLogLevel == "" {
 		newgc.DefaultLogLevel = GlobalConfigDefaults.DefaultLogLevel
 	}
@@ -320,6 +332,8 @@ var GlobalConfigMinimums = GlobalConfig{
 	VdiskGCTime:             60,
 	DownloadRetryTime:       60,
 	DomainBootRetryTime:     10,
+	DomainShutdownLimit:     10,
+	DomainPoweroffLimit:     10,
 	Dom0MinDiskUsagePercent: 20,
 	RktGCGracePeriod:        600,
 }
@@ -399,6 +413,16 @@ func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
 		log.Warnf("Enforce minimum DomainBootRetryTime received %d; using %d",
 			newgc.DomainBootRetryTime, GlobalConfigMinimums.DomainBootRetryTime)
 		newgc.DomainBootRetryTime = GlobalConfigMinimums.DomainBootRetryTime
+	}
+	if newgc.DomainShutdownLimit < GlobalConfigMinimums.DomainShutdownLimit {
+		log.Warnf("Enforce minimum DomainShutdownLimit received %d; using %d",
+			newgc.DomainShutdownLimit, GlobalConfigMinimums.DomainShutdownLimit)
+		newgc.DomainShutdownLimit = GlobalConfigMinimums.DomainShutdownLimit
+	}
+	if newgc.DomainPoweroffLimit < GlobalConfigMinimums.DomainPoweroffLimit {
+		log.Warnf("Enforce minimum DomainPoweroffLimit received %d; using %d",
+			newgc.DomainPoweroffLimit, GlobalConfigMinimums.DomainPoweroffLimit)
+		newgc.DomainPoweroffLimit = GlobalConfigMinimums.DomainPoweroffLimit
 	}
 	if newgc.RktGCGracePeriod < GlobalConfigMinimums.RktGCGracePeriod {
 		log.Warnf("Enforce minimum RktGCGracePeriod received %d; using %d",

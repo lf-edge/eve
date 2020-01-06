@@ -1791,6 +1791,18 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				newGlobalConfig.DomainBootRetryTime = uint32(i64)
 			}
 
+		case "timer.shutdown.limit":
+			i64, err := strconv.ParseUint(item.Value, 10, 32)
+			if err == nil {
+				newGlobalConfig.DomainShutdownLimit = uint32(i64)
+			}
+
+		case "timer.poweroff.limit":
+			i64, err := strconv.ParseUint(item.Value, 10, 32)
+			if err == nil {
+				newGlobalConfig.DomainPoweroffLimit = uint32(i64)
+			}
+
 		case "network.allow.wwan.app.download":
 			newTs, err := types.ParseTriState(item.Value)
 			if err == nil {
