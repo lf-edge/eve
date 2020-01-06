@@ -1,37 +1,39 @@
-FROM alpine:3.9 AS mirror
+ARG ALPINE_VERSION=3.9
+FROM alpine:${ALPINE_VERSION} AS cache
+RUN mkdir /mirror || :
+
+FROM alpine:${ALPINE_VERSION} AS mirror
+ARG ALPINE_VERSION=3.9
+
+# pull packages from a *previous* mirror
+COPY --from=cache /mirror /mirror/${ALPINE_VERSION}
 
 # update base image
 RUN apk update && apk upgrade -a
 
 # Copy Dockerfile so we can include it in the hash
 COPY Dockerfile /Dockerfile
-COPY packages* /tmp/
+COPY mirrors /tmp/mirrors/
+COPY build-cache.sh /bin/
 
-# mirror packages
-RUN cat /tmp/packages.$(uname -m) >> /tmp/packages && \
-   mkdir -p /mirror/$(apk --print-arch) && \
-   apk fetch --recursive -o /mirror/$(apk --print-arch) $(apk info; cat /tmp/packages)
-
-# install abuild for signing
-RUN apk add --no-cache abuild
+# install abuild for signing (which requires gcc as well)
+RUN apk add --no-cache abuild gcc
 
 # install a new key into /etc/apk/keys
 RUN abuild-keygen -a -i -n
 
-# index the new repo
-RUN apk index --rewrite-arch $(apk --print-arch) -o /mirror/$(apk --print-arch)/APKINDEX.unsigned.tar.gz /mirror/$(apk --print-arch)/*.apk
+# create all the mirrors
+RUN for p in /tmp/mirrors/[0-9]*; do v="$(basename "$p")" ;\
+      build-cache.sh "$v" "/mirror/$v" $(cat "$p")        ;\
+      echo "/mirror/$v" > "/etc/apk/repositories.$v"      ;\
+    done
+    
+# set the default repository to use
+RUN mv /etc/apk/repositories /etc/apk/repositories.upstream && cp /etc/apk/repositories.${ALPINE_VERSION} /etc/apk/repositories && apk update
 
-# sign the index
-RUN cp /mirror/$(apk --print-arch)/APKINDEX.unsigned.tar.gz /mirror/$(apk --print-arch)/APKINDEX.tar.gz
-RUN abuild-sign /mirror/$(apk --print-arch)/APKINDEX.tar.gz
+FROM alpine:${ALPINE_VERSION}
 
-# set this as our repo but keep a copy of the upstream for downstream use
-RUN mv /etc/apk/repositories /etc/apk/repositories.upstream && echo "/mirror" > /etc/apk/repositories && apk update
-
-FROM alpine:3.9
-
-COPY --from=mirror /etc/apk/repositories /etc/apk/repositories
-COPY --from=mirror /etc/apk/repositories.upstream /etc/apk/repositories.upstream
+COPY --from=mirror /etc/apk/repositories* /etc/apk/
 COPY --from=mirror /etc/apk/keys /etc/apk/keys/
 COPY --from=mirror /mirror /mirror/
 COPY --from=mirror /Dockerfile /Dockerfile
