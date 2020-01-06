@@ -34,8 +34,8 @@ github.com/eapache/go-xerial-snappy v0.0.0-20180814174437-776d5712da21/go.mod h1
 github.com/eapache/queue v1.1.0/go.mod h1:6eCeP0CKFpHLu8blIFXhExK/dRa7WDZfr6jVFPTqq+I=
 github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9 h1:DiIi8XZvZ36gVZj+ZQ4xMT/ZknKJA1yRYv8yqi6Dcbk=
 github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9/go.mod h1:m5kR+NOoKCuA5r6T+9f7q7VfPjPhHskhmxRAebb7avM=
-github.com/eriknordmark/netlink v0.0.0-20190828001930-41fa442996b8 h1:jIRPNrNcMaJtNPIm25GxaKdCd1zQUHa13j1xTR6sMgI=
-github.com/eriknordmark/netlink v0.0.0-20190828001930-41fa442996b8/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
+github.com/eriknordmark/netlink v0.0.0-20190903203740-41fa442996b8 h1:uPKC3A+BbS/QM5SfdGCVWFjGRDQX6KMNd9M5VE96UMM=
+github.com/eriknordmark/netlink v0.0.0-20190903203740-41fa442996b8/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
 github.com/eriknordmark/netlink v0.0.0-20190828001930-5709595daf04 h1:KSl1Dem33P9v3r5piLLHFXizacp3p7UbvtqhzKk8dis=
 github.com/eriknordmark/netlink v0.0.0-20190828001930-5709595daf04/go.mod h1:Uk4Y9yfmwt13sE/KQcljF65DuHfMh0hYOL6tSHjN8i8=
 github.com/eriknordmark/netlink v0.0.0-20190828143647-5cadb0247840 h1:53DaNsaU1UG2alAHhSzAvbhosZBEbNyF832Ntm0Dqvg=
@@ -162,8 +162,8 @@ github.com/stretchr/testify v1.2.2 h1:bSDNvY7ZPG5RlJ8otE/7V6gMiyenm9RtJ7IUVIAoJ1
 github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXfy6kDkUVs=
 github.com/stretchr/testify v1.3.0 h1:TivCn/peBQ7UY8ooIcPgZFpTNSz0Q2U6UrFlUfqbe0Q=
 github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
-github.com/tatsushid/go-fastping v0.0.0-20160108233234-d7bb493dee3e h1:m7f2kcjNk0IsOllX6IF4g7npsEGSlD7nctWbwulzTfo=
-github.com/tatsushid/go-fastping v0.0.0-20160108233234-d7bb493dee3e/go.mod h1:B4+Kq1u5FlULTjFSM707Q6e/cOHFv0z/6QRoxubDIQ8=
+github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e h1:nt2877sKfojlHCTOBXbpWjBkuWKritFaGIfgQwbQUls=
+github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e/go.mod h1:B4+Kq1u5FlULTjFSM707Q6e/cOHFv0z/6QRoxubDIQ8=
 github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f h1:nBX3nTcmxEtHSERBJaIo1Qa26VwRaopnZmfDQUXsF4I=
 github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f/go.mod h1:ZjcWmFBXmLKZu9Nxj3WKYEafiSqer2rnvPr0en9UNpI=
 go.opencensus.io v0.19.1/go.mod h1:gug0GbSHa8Pafr0d2urOSgoXHZ6x/RUlaiT0d9pqb4A=
