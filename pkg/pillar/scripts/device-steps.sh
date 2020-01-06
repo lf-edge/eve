@@ -6,6 +6,7 @@
 USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
+PERSISTCONFIGDIR=/persist/config
 PERSIST_RKT_DATA_DIR=$PERSISTDIR/rkt
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
@@ -194,6 +195,9 @@ if [ -c $TPM_DEVICE_PATH ] && [ "$P3_FS_TYPE" = "ext4" ]; then
     #It is a device with TPM, and formatted with ext4, go ahead with fscrypt
     #Initialize fscrypt algorithm, hash length etc.
     $BINDIR/vaultmgr -c "$CURPART" setupVaults
+
+    #Migrate old installations to new location
+    mv $PERSISTCONFIGDIR/tpm_in_use $CONFIGDIR/tpm_in_use
 fi
 
 if [ ! -d "$PERSIST_RKT_DATA_DIR" ]; then
