@@ -32,6 +32,6 @@ cp "$CACHE/APKINDEX.unsigned.tar.gz" "$CACHE/APKINDEX.tar.gz"
 abuild-sign "$CACHE/APKINDEX.tar.gz"
 
 mkdir -p "$ROOTFS/etc/apk"
-cp -r /etc/apk/keys "$ROOTFS/etc/apk/keys"
+cp -r /etc/apk/keys "$ROOTFS/etc/apk"
 echo "$CACHE/.." > "$ROOTFS/etc/apk/repositories"
 apk add -X "$CACHE/.." --no-cache --initdb -p "$ROOTFS" busybox
