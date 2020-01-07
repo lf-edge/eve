@@ -34,8 +34,8 @@ const (
 	mountPoint          = types.PersistDir
 	defaultImgVault     = types.PersistDir + "/img"
 	defaultCfgVault     = types.PersistDir + "/config"
-	keyDir              = "/TmpVaultDir1"
-	oldKeyDir           = "/TmpVaultDir2"
+	oldKeyDir           = "/TmpVaultDir1"
+	keyDir              = "/TmpVaultDir2"
 	protectorPrefix     = "TheVaultKey"
 	vaultKeyLen         = 32 //bytes
 	vaultHalfKeyLen     = 16 //bytes
@@ -174,13 +174,14 @@ func mergeKeys(key1 []byte, key2 []byte) ([]byte, error) {
 	return mergedKey, nil
 }
 
-func deriveVaultKey(oldKeyMode bool) ([]byte, error) {
+//cloudKeyOnlyMode is set when the key is used only from cloud, and not from TPM.
+func deriveVaultKey(cloudKeyOnlyMode bool) ([]byte, error) {
 	//First fetch Cloud Key
 	cloudKey, err := retrieveCloudKey()
 	if err != nil {
 		return nil, err
 	}
-	if oldKeyMode {
+	if cloudKeyOnlyMode {
 		return cloudKey, nil
 	}
 	tpmKey, err := retrieveTpmKey()
@@ -194,7 +195,7 @@ func deriveVaultKey(oldKeyMode bool) ([]byte, error) {
 
 //stageKey is responsible for talking to TPM and Controller
 //and preparing the key for accessing the vault
-func stageKey(oldKeyMode bool, keyDirName string, keyFileName string) error {
+func stageKey(cloudKeyOnlyMode bool, keyDirName string, keyFileName string) error {
 	//Create a tmpfs file to pass the secret to fscrypt
 	if _, _, err := execCmd("mkdir", keyDirName); err != nil {
 		log.Fatalf("Error creating keyDir %s %v", keyDirName, err)
@@ -206,7 +207,7 @@ func stageKey(oldKeyMode bool, keyDirName string, keyFileName string) error {
 		return err
 	}
 
-	vaultKey, err := deriveVaultKey(oldKeyMode)
+	vaultKey, err := deriveVaultKey(cloudKeyOnlyMode)
 	if err != nil {
 		log.Errorf("Error deriving key for accessing the vault: %v", err)
 		return err
@@ -260,8 +261,8 @@ func handleFirstUse() error {
 	return nil
 }
 
-func unlockVault(vaultPath string, oldKeyMode bool) error {
-	if err := stageKey(oldKeyMode, keyDir, keyFile); err != nil {
+func unlockVault(vaultPath string, cloudKeyOnlyMode bool) error {
+	if err := stageKey(cloudKeyOnlyMode, keyDir, keyFile); err != nil {
 		return err
 	}
 	defer unstageKey(keyDir, keyFile)

@@ -191,13 +191,17 @@ fi
 
 P3=$(zboot partdev P3)
 P3_FS_TYPE=$(blkid "$P3"| awk '{print $3}' | sed 's/TYPE=//' | sed 's/"//g')
-if [ -c $TPM_DEVICE_PATH ] && [ "$P3_FS_TYPE" = "ext4" ]; then
+if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] && [ "$P3_FS_TYPE" = "ext4" ]; then
     #It is a device with TPM, and formatted with ext4, go ahead with fscrypt
     #Initialize fscrypt algorithm, hash length etc.
     $BINDIR/vaultmgr -c "$CURPART" setupVaults
 
     #Migrate old installations to new location
-    mv $PERSISTCONFIGDIR/tpm_in_use $CONFIGDIR/tpm_in_use
+    if [ -f $PERSISTCONFIGDIR/tpm_in_use ]; then
+        echo "$(date -Ins -u) Moving tpm_in_use from $PERSISTCONFIGDIR to $CONFIGDIR"
+        mv $PERSISTCONFIGDIR/tpm_in_use $CONFIGDIR/tpm_in_use
+        sync
+    fi
 fi
 
 if [ ! -d "$PERSIST_RKT_DATA_DIR" ]; then
@@ -425,9 +429,9 @@ if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     sync
     blockdev --flushbufs "$CONFIGDEV"
     if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
-        echo "TPM device is present and allowed, creating TPM based device key"
+        echo "$(date -Ins -u) TPM device is present and allowed, creating TPM based device key"
         if ! $BINDIR/generate-device.sh -b $CONFIGDIR/device -t; then
-            echo "TPM is malfunctioning, falling back to software certs"
+            echo "$(date -Ins -u) TPM is malfunctioning, falling back to software certs"
             rm -f $CONFIGDIR/tpm_in_use
             sync
             blockdev --flushbufs "$CONFIGDEV"
