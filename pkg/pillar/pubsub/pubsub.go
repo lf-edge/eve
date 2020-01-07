@@ -72,15 +72,15 @@ const (
 	PersistConfigDir = PersistDir + "/config"
 )
 
-func Publish(agentName string, topicType interface{}) (*Publication, error) {
+func Publish(agentName string, topicType interface{}) (*PublicationImpl, error) {
 	return publishImpl(agentName, "", topicType, false)
 }
 
-func PublishPersistent(agentName string, topicType interface{}) (*Publication, error) {
+func PublishPersistent(agentName string, topicType interface{}) (*PublicationImpl, error) {
 	return publishImpl(agentName, "", topicType, true)
 }
 
-func PublishScope(agentName string, agentScope string, topicType interface{}) (*Publication, error) {
+func PublishScope(agentName string, agentScope string, topicType interface{}) (*PublicationImpl, error) {
 	return publishImpl(agentName, agentScope, topicType, false)
 }
 
@@ -88,10 +88,10 @@ func PublishScope(agentName string, agentScope string, topicType interface{}) (*
 // We read any checkpointed state from dirName and insert in pub.km as initial
 // values.
 func publishImpl(agentName string, agentScope string,
-	topicType interface{}, persistent bool) (*Publication, error) {
+	topicType interface{}, persistent bool) (*PublicationImpl, error) {
 
 	topic := TypeToName(topicType)
-	pub := new(Publication)
+	pub := new(PublicationImpl)
 	pub.topicType = topicType
 	pub.agentName = agentName
 	pub.agentScope = agentScope
@@ -171,7 +171,7 @@ func publishImpl(agentName string, agentScope string,
 }
 
 // Only reads json files. Sets restarted if that file was found.
-func (pub *Publication) populate() {
+func (pub *PublicationImpl) populate() {
 	name := pub.nameString()
 	dirName := pub.dirName
 	foundRestarted := false
@@ -221,7 +221,7 @@ func (pub *Publication) populate() {
 }
 
 // go routine which runs the AF_UNIX server.
-func (pub *Publication) publisher() {
+func (pub *PublicationImpl) publisher() {
 	name := pub.nameString()
 	instance := 0
 	for {
@@ -235,7 +235,7 @@ func (pub *Publication) publisher() {
 	}
 }
 
-func (pub *Publication) serveConnection(s net.Conn, instance int) {
+func (pub *PublicationImpl) serveConnection(s net.Conn, instance int) {
 	name := pub.nameString()
 	log.Infof("serveConnection(%s/%d)\n", name, instance)
 	defer s.Close()
@@ -336,7 +336,7 @@ func (pub *Publication) serveConnection(s net.Conn, instance int) {
 }
 
 // Returns the deleted keys before the added/modified ones
-func (pub *Publication) determineDiffs(slaveCollection localCollection) []string {
+func (pub *PublicationImpl) determineDiffs(slaveCollection localCollection) []string {
 
 	var keys []string
 	name := pub.nameString()
@@ -398,30 +398,30 @@ func PersistentDirName(name string) string {
 // watch ensures that any restart/restarted notification is after any other
 // notifications from ReadDir
 func Subscribe(agentName string, topicType interface{}, activate bool,
-	ctx interface{}) (*Subscription, error) {
+	ctx interface{}) (*SubscriptionImpl, error) {
 
 	return subscribeImpl(agentName, "", topicType, activate, ctx, false)
 }
 
 func SubscribeScope(agentName string, agentScope string, topicType interface{},
-	activate bool, ctx interface{}) (*Subscription, error) {
+	activate bool, ctx interface{}) (*SubscriptionImpl, error) {
 
 	return subscribeImpl(agentName, agentScope, topicType, activate, ctx,
 		false)
 }
 
 func SubscribePersistent(agentName string, topicType interface{}, activate bool,
-	ctx interface{}) (*Subscription, error) {
+	ctx interface{}) (*SubscriptionImpl, error) {
 
 	return subscribeImpl(agentName, "", topicType, activate, ctx, true)
 }
 
 func subscribeImpl(agentName string, agentScope string, topicType interface{},
-	activate bool, ctx interface{}, persistent bool) (*Subscription, error) {
+	activate bool, ctx interface{}, persistent bool) (*SubscriptionImpl, error) {
 
 	topic := TypeToName(topicType)
 	changes := make(chan string)
-	sub := new(Subscription)
+	sub := new(SubscriptionImpl)
 	sub.C = changes
 	sub.sendChan = changes
 	sub.topicType = topicType

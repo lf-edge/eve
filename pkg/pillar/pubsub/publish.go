@@ -25,7 +25,9 @@ import (
 //  foo := p1.Get(key)
 //  fooAll := p1.GetAll()
 
-type Publication struct {
+// PublicationImpl - Publixation Implementation. The main structure that implements
+//  Publication interface.
+type PublicationImpl struct {
 	// Private fields
 	topicType  interface{}
 	agentName  string
@@ -42,7 +44,7 @@ type Publication struct {
 
 // Send a notification to all the matching channels which does not yet
 // have one queued.
-func (pub *Publication) updatersNotify(name string) {
+func (pub *PublicationImpl) updatersNotify(name string) {
 	updaterList.lock.Lock()
 	for _, nn := range updaterList.servers {
 		if nn.name != name {
@@ -60,7 +62,7 @@ func (pub *Publication) updatersNotify(name string) {
 	updaterList.lock.Unlock()
 }
 
-func (pub *Publication) nameString() string {
+func (pub *PublicationImpl) nameString() string {
 	if pub.publishToDir {
 		return pub.dirName
 	} else if pub.agentScope == "" {
@@ -72,7 +74,7 @@ func (pub *Publication) nameString() string {
 }
 
 // Publish publish an item on a given key
-func (pub *Publication) Publish(key string, item interface{}) error {
+func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 	topic := TypeToName(item)
 	name := pub.nameString()
 	if topic != pub.topic {
@@ -118,7 +120,7 @@ func (pub *Publication) Publish(key string, item interface{}) error {
 }
 
 // Unpublish unpublish the value at a given key
-func (pub *Publication) Unpublish(key string) error {
+func (pub *PublicationImpl) Unpublish(key string) error {
 	name := pub.nameString()
 	if m, ok := pub.km.key.Load(key); ok {
 		log.Debugf("Unpublish(%s/%s) removing %+v\n", name, key, m)
@@ -145,19 +147,19 @@ func (pub *Publication) Unpublish(key string) error {
 }
 
 // SignalRestarted signal that a publication is restarted
-func (pub *Publication) SignalRestarted() error {
+func (pub *PublicationImpl) SignalRestarted() error {
 	log.Debugf("pub.SignalRestarted(%s)\n", pub.nameString())
 	return pub.restartImpl(true)
 }
 
 // ClearRestarted clear the restart signal
-func (pub *Publication) ClearRestarted() error {
+func (pub *PublicationImpl) ClearRestarted() error {
 	log.Debugf("pub.ClearRestarted(%s)\n", pub.nameString())
 	return pub.restartImpl(false)
 }
 
 // Record the restarted state and send over socket/file.
-func (pub *Publication) restartImpl(restarted bool) error {
+func (pub *PublicationImpl) restartImpl(restarted bool) error {
 
 	name := pub.nameString()
 	log.Infof("pub.restartImpl(%s, %v)\n", name, restarted)
@@ -194,7 +196,7 @@ func (pub *Publication) restartImpl(restarted bool) error {
 	return nil
 }
 
-func (pub *Publication) serialize(sock net.Conn, keys []string,
+func (pub *PublicationImpl) serialize(sock net.Conn, keys []string,
 	sendToPeer localCollection) error {
 
 	name := pub.nameString()
@@ -221,7 +223,7 @@ func (pub *Publication) serialize(sock net.Conn, keys []string,
 	return nil
 }
 
-func (pub *Publication) sendUpdate(sock net.Conn, key string,
+func (pub *PublicationImpl) sendUpdate(sock net.Conn, key string,
 	val interface{}) error {
 
 	log.Debugf("sendUpdate(%s): key %s\n", pub.nameString(), key)
@@ -241,7 +243,7 @@ func (pub *Publication) sendUpdate(sock net.Conn, key string,
 	return err
 }
 
-func (pub *Publication) sendDelete(sock net.Conn, key string) error {
+func (pub *PublicationImpl) sendDelete(sock net.Conn, key string) error {
 
 	log.Debugf("sendDelete(%s): key %s\n", pub.nameString(), key)
 	// base64-encode to avoid having spaces in the key
@@ -255,7 +257,7 @@ func (pub *Publication) sendDelete(sock net.Conn, key string) error {
 	return err
 }
 
-func (pub *Publication) sendRestarted(sock net.Conn) error {
+func (pub *PublicationImpl) sendRestarted(sock net.Conn) error {
 
 	log.Infof("sendRestarted(%s)\n", pub.nameString())
 	buf := fmt.Sprintf("restarted %s", pub.topic)
@@ -267,7 +269,7 @@ func (pub *Publication) sendRestarted(sock net.Conn) error {
 	return err
 }
 
-func (pub *Publication) sendComplete(sock net.Conn) error {
+func (pub *PublicationImpl) sendComplete(sock net.Conn) error {
 
 	log.Infof("sendComplete(%s)\n", pub.nameString())
 	buf := fmt.Sprintf("complete %s", pub.topic)
@@ -279,7 +281,7 @@ func (pub *Publication) sendComplete(sock net.Conn) error {
 	return err
 }
 
-func (pub *Publication) dump(infoStr string) {
+func (pub *PublicationImpl) dump(infoStr string) {
 
 	name := pub.nameString()
 	log.Debugf("dump(%s) %s\n", name, infoStr)
@@ -296,7 +298,7 @@ func (pub *Publication) dump(infoStr string) {
 }
 
 // Get get the value for a specific key
-func (pub *Publication) Get(key string) (interface{}, error) {
+func (pub *PublicationImpl) Get(key string) (interface{}, error) {
 	m, ok := pub.km.key.Load(key)
 	if ok {
 		return m, nil
@@ -308,7 +310,7 @@ func (pub *Publication) Get(key string) (interface{}, error) {
 }
 
 // GetAll enumerate all the key, value for the collection
-func (pub *Publication) GetAll() map[string]interface{} {
+func (pub *PublicationImpl) GetAll() map[string]interface{} {
 	result := make(map[string]interface{})
 	assigner := func(key string, val interface{}) bool {
 		result[key] = val
@@ -319,6 +321,6 @@ func (pub *Publication) GetAll() map[string]interface{} {
 }
 
 // Topic returns the string definiting the topic
-func (pub *Publication) Topic() string {
+func (pub *PublicationImpl) Topic() string {
 	return pub.topic
 }

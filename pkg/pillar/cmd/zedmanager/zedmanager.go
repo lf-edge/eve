@@ -36,24 +36,24 @@ var Version = "No version specified"
 type zedmanagerContext struct {
 	configRestarted         bool
 	verifierRestarted       bool
-	subAppInstanceConfig    pubsub.SubscriptionIntf
-	pubAppInstanceStatus    pubsub.PublicationIntf
-	subDeviceNetworkStatus  *pubsub.Subscription
-	pubAppNetworkConfig     *pubsub.Publication
-	subAppNetworkStatus     *pubsub.Subscription
-	pubDomainConfig         *pubsub.Publication
-	subDomainStatus         *pubsub.Subscription
-	subImageStatus          *pubsub.Subscription
-	pubEIDConfig            *pubsub.Publication
-	subEIDStatus            *pubsub.Subscription
-	subCertObjStatus        *pubsub.Subscription
-	pubAppImgDownloadConfig *pubsub.Publication
-	subAppImgDownloadStatus *pubsub.Subscription
-	pubAppImgVerifierConfig *pubsub.Publication
-	subAppImgVerifierStatus *pubsub.Subscription
-	subGlobalConfig         *pubsub.Subscription
+	subAppInstanceConfig    pubsub.Subscription
+	pubAppInstanceStatus    pubsub.Publication
+	subDeviceNetworkStatus  pubsub.Subscription
+	pubAppNetworkConfig     pubsub.Publication
+	subAppNetworkStatus     pubsub.Subscription
+	pubDomainConfig         pubsub.Publication
+	subDomainStatus         pubsub.Subscription
+	subImageStatus          pubsub.Subscription
+	pubEIDConfig            pubsub.Publication
+	subEIDStatus            pubsub.Subscription
+	subCertObjStatus        pubsub.Subscription
+	pubAppImgDownloadConfig pubsub.Publication
+	subAppImgDownloadStatus pubsub.Subscription
+	pubAppImgVerifierConfig pubsub.Publication
+	subAppImgVerifierStatus pubsub.Subscription
+	subGlobalConfig         pubsub.Subscription
 	globalConfig            *types.GlobalConfig
-	pubUuidToNum            *pubsub.Publication
+	pubUuidToNum            pubsub.Publication
 	GCInitialized           bool
 }
 

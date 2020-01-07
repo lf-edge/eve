@@ -5,22 +5,28 @@
 
 package pubsub
 
-// PublicationIntf - Interface to be implemented by a Publication
-type PublicationIntf interface {
+// Publication - Interface to be implemented by a Publication
+type Publication interface {
 	// Publish - Publish an object
 	Publish(key string, item interface{}) error
 	// Unpublish - Delete / UnPublish an object
 	Unpublish(key string) error
+	// SignalRestarted - Signal the publisher has started.
+	SignalRestarted() error
 	// Get - Lookup an object
 	Get(key string) (interface{}, error)
 	// GetAll - Get a copy of the objects.
 	GetAll() map[string]interface{}
 }
 
-// SubscriptionIntf - Interface to be implemented by a Subscription
-type SubscriptionIntf interface {
+// Subscription - Interface to be implemented by a Subscription
+type Subscription interface {
 	// Get - get / lookup an object by key
 	Get(key string) (interface{}, error)
 	// GetAll - Get a copy of the objects.
 	GetAll() map[string]interface{}
+	// ProcessChange - Invoked on the string msg from Subscription Channel
+	ProcessChange(change string)
+	// MsgChan - Message Channel for Subscription
+	MsgChan() <-chan string
 }

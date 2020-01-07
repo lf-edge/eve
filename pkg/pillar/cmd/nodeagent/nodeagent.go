@@ -61,12 +61,12 @@ type nodeagentContext struct {
 	GCInitialized          bool // Received initial GlobalConfig
 	DNSinitialized         bool // Received DeviceNetworkStatus
 	globalConfig           *types.GlobalConfig
-	subGlobalConfig        *pubsub.Subscription
-	subZbootStatus         *pubsub.Subscription
-	subZedAgentStatus      *pubsub.Subscription
-	subDeviceNetworkStatus *pubsub.Subscription
-	pubZbootConfig         *pubsub.Publication
-	pubNodeAgentStatus     *pubsub.Publication
+	subGlobalConfig        pubsub.Subscription
+	subZbootStatus         pubsub.Subscription
+	subZedAgentStatus      pubsub.Subscription
+	subDeviceNetworkStatus pubsub.Subscription
+	pubZbootConfig         pubsub.Publication
+	pubNodeAgentStatus     pubsub.Publication
 	curPart                string
 	upgradeTestStartTime   uint32
 	tickerTimer            *time.Ticker
@@ -402,14 +402,15 @@ func checkNetworkConnectivity(ctxPtr *nodeagentContext) {
 	ctxPtr.deviceNetworkStatus = &types.DeviceNetworkStatus{}
 	ctxPtr.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*ctxPtr.deviceNetworkStatus)
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
+
 	for !ctxPtr.DNSinitialized {
 		log.Infof("Waiting for DeviceNetworkStatus: %v\n",
 			ctxPtr.DNSinitialized)
 		select {
-		case change := <-ctxPtr.subGlobalConfig.C:
+		case change := <-ctxPtr.subGlobalConfig.MsgChan():
 			ctxPtr.subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
 		case <-ctxPtr.tickerTimer.C:

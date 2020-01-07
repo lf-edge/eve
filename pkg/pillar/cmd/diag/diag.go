@@ -47,11 +47,11 @@ type diagContext struct {
 	pacContents             bool // Print PAC file contents
 	ledCounter              int
 	derivedLedCounter       int // Based on ledCounter + usableAddressCount
-	subGlobalConfig         *pubsub.Subscription
+	subGlobalConfig         pubsub.Subscription
 	globalConfig            *types.GlobalConfig
-	subLedBlinkCounter      *pubsub.Subscription
-	subDeviceNetworkStatus  *pubsub.Subscription
-	subDevicePortConfigList *pubsub.Subscription
+	subLedBlinkCounter      pubsub.Subscription
+	subDeviceNetworkStatus  pubsub.Subscription
+	subDevicePortConfigList pubsub.Subscription
 	gotBC                   bool
 	gotDNS                  bool
 	gotDPCList              bool

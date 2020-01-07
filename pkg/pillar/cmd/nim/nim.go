@@ -41,14 +41,14 @@ const (
 
 type nimContext struct {
 	devicenetwork.DeviceNetworkContext
-	subGlobalConfig   *pubsub.Subscription
+	subGlobalConfig   pubsub.Subscription
 	GCInitialized     bool // Received initial GlobalConfig
 	globalConfig      *types.GlobalConfig
 	sshAccess         bool
 	sshAuthorizedKeys string
 	allowAppVnc       bool
 
-	subNetworkInstanceStatus *pubsub.Subscription
+	subNetworkInstanceStatus pubsub.Subscription
 
 	networkFallbackAnyEth types.TriState
 	fallbackPortMap       map[string]bool

@@ -63,10 +63,10 @@ var Version = "No version specified"
 //
 
 type clientContext struct {
-	subDeviceNetworkStatus *pubsub.Subscription
+	subDeviceNetworkStatus pubsub.Subscription
 	deviceNetworkStatus    *types.DeviceNetworkStatus
 	usableAddressCount     int
-	subGlobalConfig        *pubsub.Subscription
+	subGlobalConfig        pubsub.Subscription
 	globalConfig           *types.GlobalConfig
 }
 

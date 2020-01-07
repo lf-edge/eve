@@ -65,9 +65,9 @@ type logDirModifyHandler func(ctx interface{}, logFileName string, source string
 type logDirDeleteHandler func(ctx interface{}, logFileName string, source string)
 
 type logmanagerContext struct {
-	subGlobalConfig *pubsub.Subscription
+	subGlobalConfig pubsub.Subscription
 	globalConfig    *types.GlobalConfig
-	subDomainStatus *pubsub.Subscription
+	subDomainStatus pubsub.Subscription
 	GCInitialized   bool
 }
 
@@ -115,7 +115,7 @@ type imageLoggerContext struct {
 // Context for handleDNSModify
 type DNSContext struct {
 	usableAddressCount     int
-	subDeviceNetworkStatus *pubsub.Subscription
+	subDeviceNetworkStatus pubsub.Subscription
 	doDeferred             bool
 }
 

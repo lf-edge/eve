@@ -5,15 +5,17 @@ package dptypes
 
 import (
 	"crypto/cipher"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	//"github.com/google/gopacket/pfring"
+	"syscall"
+
 	"github.com/google/gopacket/afpacket"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	"syscall"
 )
 
 const (
@@ -271,10 +273,10 @@ type ITRConfiguration struct {
 }
 
 type DataplaneContext struct {
-	PubLispInfoStatus      *pubsub.Publication
-	PubLispMetrics         *pubsub.Publication
-	SubLispConfig          *pubsub.Subscription
-	SubDeviceNetworkStatus *pubsub.Subscription
-	SubGlobalConfig        *pubsub.Subscription
+	PubLispInfoStatus      pubsub.Publication
+	PubLispMetrics         pubsub.Publication
+	SubLispConfig          pubsub.Subscription
+	SubDeviceNetworkStatus pubsub.Subscription
+	SubGlobalConfig        pubsub.Subscription
 	Legacy                 bool
 }

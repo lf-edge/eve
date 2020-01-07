@@ -35,14 +35,14 @@ var Version = "No version specified"
 type DNSContext struct {
 	usableAddressCount     int
 	DNSinitialized         bool // Received initial DeviceNetworkStatus
-	subDeviceNetworkStatus *pubsub.Subscription
+	subDeviceNetworkStatus pubsub.Subscription
 	deviceNetworkStatus    *types.DeviceNetworkStatus
 }
 
 type wstunnelclientContext struct {
-	subGlobalConfig      *pubsub.Subscription
+	subGlobalConfig      pubsub.Subscription
 	GCInitialized        bool
-	subAppInstanceConfig *pubsub.Subscription
+	subAppInstanceConfig pubsub.Subscription
 	serverNameAndPort    string
 	wstunnelclient       *zedcloud.WSTunnelClient
 	dnsContext           *DNSContext
