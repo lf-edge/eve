@@ -10,6 +10,7 @@ package domainmgr
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -46,6 +47,9 @@ const (
 	ciDirname    = runDirname + "/cloudinit" // For cloud-init images
 	rwImgDirname = types.PersistDir + "/img" // We store images here
 	uuidFile     = types.PersistRktDataDir + "/uuid_file"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Really a constant
@@ -77,7 +81,6 @@ type domainContext struct {
 	pubAssignableAdapters  *pubsub.Publication
 	usbAccess              bool
 	createSema             sema.Semaphore
-	RktGCGracePeriod       uint32
 }
 
 func (ctx *domainContext) publishAssignableAdapters() {
@@ -121,7 +124,7 @@ func Run() {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
+	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	if _, err := os.Stat(runDirname); err != nil {
 		log.Debugf("Create %s\n", runDirname)
@@ -202,6 +205,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subGlobalConfig.MaxProcessTimeWarn = warningTime
+	subGlobalConfig.MaxProcessTimeError = errorTime
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
@@ -213,6 +218,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
+	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
 	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
@@ -226,14 +233,10 @@ func Run() {
 		log.Infof("Waiting for DeviceNetworkStatus init\n")
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 		}
 	}
 
@@ -243,6 +246,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subPhysicalIOAdapter.MaxProcessTimeWarn = warningTime
+	subPhysicalIOAdapter.MaxProcessTimeError = errorTime
 	subPhysicalIOAdapter.CreateHandler = handlePhysicalIOAdapterListCreateModify
 	subPhysicalIOAdapter.ModifyHandler = handlePhysicalIOAdapterListCreateModify
 	subPhysicalIOAdapter.DeleteHandler = handlePhysicalIOAdapterListDelete
@@ -254,25 +259,19 @@ func Run() {
 		log.Infof("Waiting for AssignableAdapters")
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subPhysicalIOAdapter.C:
-			start := agentlog.StartTime()
 			subPhysicalIOAdapter.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		// Run stillRunning since we waiting for zedagent to deliver
 		// PhysicalIO which depends on cloud connectivity
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("Have %d assignable adapters", len(aa.IoBundleList))
 
@@ -282,6 +281,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDomainConfig.MaxProcessTimeWarn = warningTime
+	subDomainConfig.MaxProcessTimeError = errorTime
 	subDomainConfig.ModifyHandler = handleDomainModify
 	subDomainConfig.CreateHandler = handleDomainCreate
 	subDomainConfig.DeleteHandler = handleDomainDelete
@@ -299,33 +300,26 @@ func Run() {
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDomainConfig.C:
-			start := agentlog.StartTime()
 			subDomainConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subPhysicalIOAdapter.C:
-			start := agentlog.StartTime()
 			subPhysicalIOAdapter.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-gc.C:
-			start := agentlog.StartTime()
+			start := time.Now()
 			gcObjects(&domainCtx, rwImgDirname)
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
+				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
@@ -463,10 +457,6 @@ func gcObjects(ctx *domainContext, dirName string) {
 		}
 		unpublishImageStatus(ctx, &status)
 	}
-
-	// Run rkt garbage collect
-	rktGc(ctx.RktGCGracePeriod, false)
-	rktGc(ctx.RktGCGracePeriod, true)
 }
 
 // Check if the filename is used as ActiveFileLocation
@@ -681,7 +671,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			publishDomainStatus(ctx, status)
 		}
 		// check if qemu processes has crashed
-		if status.Activated && !isQemuRunning(status.DomainId) {
+		if status.Activated && status.VirtualizationMode == types.HVM && !isQemuRunning(status.DomainId) {
 			errStr := fmt.Sprintf("verifyStatus(%s) qemu crashed",
 				status.Key())
 			log.Errorf(errStr)
@@ -1456,30 +1446,23 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	aa *types.AssignableAdapters, file *os.File) error {
 
-	xen_type := "pv"
+	xen_type := "pvh"
 	rootDev := ""
 	extra := ""
 	bootLoader := ""
+	kernel := ""
 	uuidStr := fmt.Sprintf("appuuid=%s ", config.UUIDandVersion.UUID)
 
 	switch config.VirtualizationMode {
 	case types.PV:
-		xen_type = "pv"
-		// Note that qcow2 images might have partitions hence xvda1 by default
-		rootDev = config.RootDev
-		if rootDev == "" {
-			rootDev = "/dev/xvda1"
-		}
+		xen_type = "pvh"
 		extra = "console=hvc0 " + uuidStr + config.ExtraArgs
-		// XXX zedcloud should really set "pygrub"
-		bootLoader = config.BootLoader
-		if strings.HasSuffix(bootLoader, "pygrub") {
-			log.Warnf("Changing from %s to pygrub for %s\n",
-				bootLoader, config.Key())
-			bootLoader = "pygrub"
-		}
+		kernel = "/usr/lib/xen/boot/ovmf-pvh.bin"
 	case types.HVM:
 		xen_type = "hvm"
+		if config.Kernel != "" {
+			kernel = config.Kernel
+		}
 	}
 
 	file.WriteString("# This file is automatically generated by domainmgr\n")
@@ -1487,10 +1470,8 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	file.WriteString(fmt.Sprintf("type = \"%s\"\n", xen_type))
 	file.WriteString(fmt.Sprintf("uuid = \"%s\"\n",
 		config.UUIDandVersion.UUID))
-
-	if config.Kernel != "" {
-		file.WriteString(fmt.Sprintf("kernel = \"%s\"\n",
-			config.Kernel))
+	if kernel != "" {
+		file.WriteString(fmt.Sprintf("kernel = \"%s\"\n", kernel))
 	}
 
 	if config.Ramdisk != "" {
@@ -1956,6 +1937,27 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 		status.UUIDandVersion, status.DisplayName)
 }
 
+// lookForRktRunErrors checks for xen errors or any other error which
+// are encountered while rkt run
+// rkt run returns two standard outputs when rkt runs successfully
+// so we need to remove them while checking for errors
+func lookForRktRunErrors(str string) error {
+	var output []string
+	standardOutput1 := "run: group \"rkt\" not found, will use default gid when rendering images"
+	standardOutput2 := "Parsing config from /var/lib/rkt/pods/run/"
+	strSlice := strings.Split(str, "\n")
+	for _, v := range strSlice {
+		if v != standardOutput1 && !strings.HasPrefix(v, standardOutput2) {
+			output = append(output, v)
+		}
+	}
+	errString := strings.Join(output, "\n")
+	if errString != "" {
+		return fmt.Errorf("rkt run failed: %s\n", errString)
+	}
+	return nil
+}
+
 // DomainCreate is a wrapper for domain creation thru xlCreate or rktRun
 // returns domainID, PodUUID and error
 func DomainCreate(status types.DomainStatus) (int, string, error) {
@@ -2011,7 +2013,6 @@ func rktRun(domainName string, ContainerImageID string, xenCfgFilename string, a
 		return 0, "", fmt.Errorf("rkt run failed: %s\n",
 			string(stdoutStderr))
 	}
-	log.Infof("rkt run done\n")
 
 	// Get Pod UUID
 	uuidData, err := ioutil.ReadFile(uuidFile)
@@ -2021,6 +2022,15 @@ func rktRun(domainName string, ContainerImageID string, xenCfgFilename string, a
 	}
 	podUUID := strings.TrimSpace(string(uuidData))
 	log.Infof("podUUID = %s\n", podUUID)
+
+	err = lookForRktRunErrors(string(stdoutStderr))
+	if err != nil {
+		log.Errorln(err.Error())
+		if status := rktStatus(podUUID); status != "running" {
+			return 0, "", err
+		}
+	}
+	log.Infof("rkt run done\n")
 
 	// Obtain the domain id
 	cmd = "xl"
@@ -2042,6 +2052,32 @@ func rktRun(domainName string, ContainerImageID string, xenCfgFilename string, a
 		return 0, "", fmt.Errorf("Can't extract domainID from %s: %s\n", res, err)
 	}
 	return domainID, podUUID, nil
+}
+
+// rktStatus checks the status of the pod
+func rktStatus(podUUID string) string {
+	cmd := "rkt"
+	args := []string{
+		"--dir=" + types.PersistRktDataDir,
+		"status",
+		podUUID,
+		"--format=json",
+	}
+	log.Infof("Calling command %s %v\n", cmd, args)
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt status failed ", err)
+		log.Errorln("rkt status output ", string(stdoutStderr))
+		return ""
+	}
+	log.Infof("rkt status done\n")
+	var status map[string]interface{}
+	if err := json.Unmarshal(stdoutStderr, &status); err != nil {
+		log.Errorln("rkt status failed ", err)
+		log.Errorln("rkt status output ", string(stdoutStderr))
+		return ""
+	}
+	return status["state"].(string)
 }
 
 // Create in paused state; Need to call xlUnpause later
@@ -2330,31 +2366,6 @@ func rktRm(PodUUID string) error {
 	return nil
 }
 
-func rktGc(gracePeriod uint32, imageGc bool) {
-	log.Infof("rktGc %d\n", gracePeriod)
-
-	// rkt --dir=<RKT_DATA_DIR> rm PodUUID
-	gracePeriodOption := fmt.Sprintf("--grace-period=%ds", gracePeriod)
-	cmd := "rkt"
-	args := []string{}
-	if imageGc {
-		args = append(args, "image")
-	}
-	args = append(args, []string{
-		"gc",
-		"--dir=" + types.PersistRktDataDir,
-		gracePeriodOption,
-	}...)
-	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
-	if err != nil {
-		log.Errorf("***rkt gc failed: %+v ", err)
-		log.Errorf("***rkt gc output: %s", string(stdoutStderr))
-		return
-	}
-	log.Debugf("rkt gc done: %s", string(stdoutStderr))
-	return
-}
-
 func xlDestroy(domainName string, domainID int) error {
 	log.Infof("xlDestroy %s %d\n", domainName, domainID)
 	cmd := "xl"
@@ -2469,9 +2480,6 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		if gcp.UsbAccess != ctx.usbAccess {
 			ctx.usbAccess = gcp.UsbAccess
 			updateUsbAccess(ctx)
-		}
-		if gcp.RktGCGracePeriod != 0 {
-			ctx.RktGCGracePeriod = gcp.RktGCGracePeriod
 		}
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)

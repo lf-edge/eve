@@ -37,9 +37,9 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		&ctx.deviceNetworkStatus, ifname, downloadURL)
 	if err == nil && proxyUrl != nil {
 		log.Infof("%s: Using proxy %s", trType, proxyUrl.String())
-		dEndPoint.WithSrcIpAndProxySelection(ipSrc, proxyUrl)
+		dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyUrl)
 	} else {
-		dEndPoint.WithSrcIpSelection(ipSrc)
+		dEndPoint.WithSrcIPSelection(ipSrc)
 	}
 
 	var respChan = make(chan *zedUpload.DronaRequest)

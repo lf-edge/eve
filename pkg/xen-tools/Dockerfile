@@ -17,7 +17,7 @@ WORKDIR /
 COPY alpine.patch /
 RUN patch -p1 < alpine.patch
 
-ENV XEN_VERSION 4.13.0-rc4
+ENV XEN_VERSION 4.13.0
 ENV XEN_SOURCE=https://downloads.xenproject.org/release/xen/${XEN_VERSION}/xen-${XEN_VERSION}.tar.gz
 
 # Download and verify xen
@@ -39,7 +39,8 @@ RUN mkdir -p /out
 COPY gmp.patch /xen/stubdom
 WORKDIR /xen
 RUN [ "$(uname -m)" = "x86_64" ] && FEATURES="--enable-stubdom --enable-vtpm-stubdom --enable-vtpmmgr-stubdom" ;\
-    ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable-docs --enable-9pfs $FEATURES
+    ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable-docs --enable-9pfs \
+                --with-system-ovmf=/usr/lib/xen/boot/ovmf.bin $FEATURES
 RUN make && make dist
 RUN dist/install.sh /out
 

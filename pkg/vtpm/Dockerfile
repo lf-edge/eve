@@ -16,7 +16,7 @@ RUN apk add --no-cache curl-dev=7.61.1-r3
 
 #Build TPM2-TSS and TPM2-TOOLS
 FROM alpine:3.8 as build
-RUN apk add --no-cache linux-headers=4.4.6-r2 git=2.18.1-r0 \
+RUN apk add --no-cache linux-headers=4.4.6-r2 git=2.18.2-r0 \
                           gcc=6.4.0-r9 g++=6.4.0-r9 autoconf=2.69-r2 \
                           automake=1.16.1-r0 libtool=2.4.6-r5 \
                           doxygen=1.8.14-r0 make=4.2.1-r2 \

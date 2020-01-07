@@ -4,20 +4,9 @@
 package types
 
 import (
-	"encoding/json"
-	"io/ioutil"
-	"os"
 	"strconv"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	log "github.com/sirupsen/logrus"
-)
-
-const (
-	globalConfigDir  = PersistConfigDir + "/GlobalConfig"
-	globalConfigFile = globalConfigDir + "/global.json"
-	symlinkDir       = TmpDirname + "/GlobalConfig"
 )
 
 // ConfigItemStatus - Status of Config Items
@@ -219,7 +208,7 @@ var GlobalConfigDefaults = GlobalConfig{
 	VdiskGCTime:         3600, // 1 hour
 	DownloadRetryTime:   600,  // 10 minutes
 	DomainBootRetryTime: 600,  // 10 minutes
-	RktGCGracePeriod:    300,  // 5 minutes
+	RktGCGracePeriod:    3600, // 1 hour
 
 	AllowNonFreeAppImages:  TS_ENABLED,
 	AllowNonFreeBaseImages: TS_ENABLED,
@@ -332,7 +321,7 @@ var GlobalConfigMinimums = GlobalConfig{
 	DownloadRetryTime:       60,
 	DomainBootRetryTime:     10,
 	Dom0MinDiskUsagePercent: 20,
-	RktGCGracePeriod:        30,
+	RktGCGracePeriod:        600,
 }
 
 func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
@@ -422,81 +411,4 @@ func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
 		newgc.Dom0MinDiskUsagePercent = GlobalConfigMinimums.Dom0MinDiskUsagePercent
 	}
 	return newgc
-}
-
-// Agents which wait for GlobalConfig initialized should call this
-// on startup to make sure we have a GlobalConfig file.
-func EnsureGCFile() {
-	if _, err := os.Stat(globalConfigDir); err != nil {
-		log.Infof("Create %s\n", globalConfigDir)
-		if err := os.MkdirAll(globalConfigDir, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-	// If it exists but doesn't parse we pretend it doesn't exist
-	if _, err := os.Stat(globalConfigFile); err == nil {
-		ok := false
-		sb, err := ioutil.ReadFile(globalConfigFile)
-		if err != nil {
-			log.Errorf("%s for %s", err, globalConfigFile)
-		} else {
-			gc := GlobalConfig{}
-			if err := json.Unmarshal(sb, &gc); err != nil {
-				log.Errorf("%s file: %s", err, globalConfigFile)
-			} else {
-				ok = true
-			}
-			// Any new fields which need defaults/mins applied?
-			changed := false
-			updated := ApplyGlobalConfig(gc)
-			if !cmp.Equal(gc, updated) {
-				log.Infof("EnsureGCFile: updated with defaults %v",
-					cmp.Diff(gc, updated))
-				changed = true
-			}
-			sane := EnforceGlobalConfigMinimums(updated)
-			if !cmp.Equal(updated, sane) {
-				log.Infof("EnsureGCFile: enforced minimums %v",
-					cmp.Diff(updated, sane))
-				changed = true
-			}
-			gc = sane
-			if changed {
-				err := pubsub.PublishToDir(PersistConfigDir,
-					"global", gc)
-				if err != nil {
-					log.Errorf("PublishToDir for globalConfig failed: %s",
-						err)
-				}
-			}
-		}
-		if !ok {
-			log.Warnf("Removing bad %s", globalConfigFile)
-			if err := os.RemoveAll(globalConfigFile); err != nil {
-				log.Fatal(err)
-			}
-		}
-	}
-	if _, err := os.Stat(globalConfigFile); err != nil {
-		err := pubsub.PublishToDir(PersistConfigDir, "global",
-			GlobalConfigDefaults)
-		if err != nil {
-			log.Errorf("PublishToDir for globalConfig failed %s\n",
-				err)
-		}
-	}
-
-	info, err := os.Lstat(symlinkDir)
-	if err == nil {
-		if (info.Mode() & os.ModeSymlink) != 0 {
-			return
-		}
-		log.Warnf("Removing old %s", symlinkDir)
-		if err := os.RemoveAll(symlinkDir); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if err := os.Symlink(globalConfigDir, symlinkDir); err != nil {
-		log.Fatal(err)
-	}
 }

@@ -22,18 +22,21 @@ import (
 )
 
 const (
-	apDirname = "/run/accesspoint" // For wireless access-point identifiers
+	apDirname   = "/run/accesspoint"              // For wireless access-point identifiers
+	wpaFilename = "/run/wlan/wpa_supplicant.conf" // wifi wpa_supplicant file, currently only support one
+	runwlanDir  = "/run/wlan"
+	wpaTempname = "wpa_supplicant.temp"
 )
 
-func LastResortDevicePortConfig(ports []string) types.DevicePortConfig {
+func LastResortDevicePortConfig(ctx *DeviceNetworkContext, ports []string) types.DevicePortConfig {
 
-	config := makeDevicePortConfig(ports, ports)
+	config := makeDevicePortConfig(ctx, ports, ports)
 	// Set to higher than all zero but lower than the hardware model derived one above
 	config.TimePriority = time.Unix(0, 0)
 	return config
 }
 
-func makeDevicePortConfig(ports []string, free []string) types.DevicePortConfig {
+func makeDevicePortConfig(ctx *DeviceNetworkContext, ports []string, free []string) types.DevicePortConfig {
 	var config types.DevicePortConfig
 
 	config.Version = types.DPCIsMgmt
@@ -49,6 +52,10 @@ func makeDevicePortConfig(ports []string, free []string) types.DevicePortConfig 
 		config.Ports[ix].IsMgmt = true
 		config.Ports[ix].Name = config.Ports[ix].IfName
 		config.Ports[ix].Dhcp = types.DT_CLIENT
+		port, err := ctx.DevicePortConfig.GetPortByIfName(u)
+		if err == nil {
+			config.Ports[ix].WirelessCfg = port.WirelessCfg
+		}
 	}
 	return config
 }
@@ -159,11 +166,6 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		globalStatus.Ports[ix].IfName = u.IfName
 		globalStatus.Ports[ix].Name = u.Name
 		globalStatus.Ports[ix].IsMgmt = u.IsMgmt
-		if globalStatus.Ports[ix].AccessPoint != u.AccessPoint {
-			log.Infof("MakeDeviceNetworkStatus: port %s AP different, old %s, new %s\n", u.IfName, globalStatus.Ports[ix].AccessPoint, u.AccessPoint)
-			devPortInstallAPname(u.IfName, u.AccessPoint)
-		}
-		globalStatus.Ports[ix].AccessPoint = u.AccessPoint // save the AP string
 		globalStatus.Ports[ix].Free = u.Free
 		globalStatus.Ports[ix].ProxyConfig = u.ProxyConfig
 		// Set fields from the config...
@@ -258,7 +260,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 
 // write the access-point name into /run/cccesspoint directory
 // the filenames are the physical ports with access-point address/name in content
-func devPortInstallAPname(ifname, ap string) {
+func devPortInstallAPname(ifname string, wconfig types.WirelessConfig) {
 	if _, err := os.Stat(apDirname); err != nil {
 		if err := os.MkdirAll(apDirname, 0700); err != nil {
 			log.Errorln(err)
@@ -274,18 +276,103 @@ func devPortInstallAPname(ifname, ap string) {
 		}
 	}
 
-	if len(ap) == 0 {
+	if len(wconfig.Cellular) == 0 {
 		return
 	}
+
 	file, err := os.Create(filepath)
 	if err != nil {
 		log.Errorln(err)
 		return
 	}
 
-	log.Infof("devPortInstallAPname: write file %s for name %s", filepath, ap)
-	file.WriteString(ap)
+	for _, cell := range wconfig.Cellular {
+		s := fmt.Sprintf("%s\n", cell.APN)
+		file.WriteString(s)
+		break // only handle the first APN for now utill we know how to handle multiple of APNs
+	}
 	file.Close()
+	log.Infof("devPortInstallAPname: write file %s for name %v", filepath, wconfig.Cellular)
+}
+
+func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool {
+	if _, err := os.Stat(runwlanDir); os.IsNotExist(err) {
+		err = os.Mkdir(runwlanDir, 600)
+		if err != nil {
+			log.Errorln("/run/wlan ", err)
+			return false
+		}
+	}
+
+	tmpfile, err := ioutil.TempFile(runwlanDir, wpaTempname)
+	if err != nil {
+		log.Errorln("TempFile ", err)
+		return false
+	}
+	defer tmpfile.Close()
+	defer os.Remove(tmpfile.Name())
+	tmpfile.Chmod(0600)
+
+	log.Infof("devPortInstallWifiConfig: write file %s for wifi params %v, size %d", wpaFilename, wconfig.Wifi, len(wconfig.Wifi))
+	tmpfile.WriteString("# Fill in the networks and their passwords\nnetwork={\n")
+	if len(wconfig.Wifi) == 0 {
+		// generate dummy wpa_supplicant.conf
+		tmpfile.WriteString("       ssid=\"XXX\"\n")
+		tmpfile.WriteString("       scan_ssid=1\n")
+		tmpfile.WriteString("       key_mgmt=WPA-PSK\n")
+		tmpfile.WriteString("       psk=\"YYYYYYYY\"\n")
+	} else {
+		for _, wifi := range wconfig.Wifi {
+			s := fmt.Sprintf("        ssid=\"%s\"\n", wifi.SSID)
+			tmpfile.WriteString(s)
+			tmpfile.WriteString("        scan_ssid=1\n")
+			if wifi.KeyScheme == types.KeySchemeWpaPsk { // WPA-PSK
+				tmpfile.WriteString("        key_mgmt=WPA-PSK\n")
+				if len(wifi.Crypto.Password) > 0 {
+					// XXX hook into TPM decryption library
+				} else {
+					// this assumes a hashed passphrase, otherwise need "" around string
+					s = fmt.Sprintf("        psk=%s\n", wifi.Password)
+				}
+				tmpfile.WriteString(s)
+			} else if wifi.KeyScheme == types.KeySchemeWpaEap { // EAP PEAP
+				tmpfile.WriteString("        key_mgmt=WPA-EAP\n        eap=PEAP\n")
+				if len(wifi.Crypto.Identity) > 0 {
+					// XXX hook into TPM decryption library
+				} else {
+					s = fmt.Sprintf("        identity=\"%s\"\n", wifi.Identity)
+				}
+				tmpfile.WriteString(s)
+
+				if len(wifi.Crypto.Password) > 0 {
+					// XXX hook into TPM decryption library
+				} else {
+					s = fmt.Sprintf("        password=hash:%s\n", wifi.Password)
+				}
+				tmpfile.WriteString(s)
+				// comment out the certifacatin verify. file.WriteString("        ca_cert=\"/config/ca.pem\"\n")
+				tmpfile.WriteString("        phase1=\"peaplabel=1\"\n")
+				tmpfile.WriteString("        phase2=\"auth=MSCHAPV2\"\n")
+			}
+			if wifi.Priority != 0 {
+				s = fmt.Sprintf("        priority=%d\n", wifi.Priority)
+				tmpfile.WriteString(s)
+			}
+		}
+	}
+	tmpfile.WriteString("}\n")
+	tmpfile.Sync()
+	if err := tmpfile.Close(); err != nil {
+		log.Errorln("Close ", tmpfile.Name(), err)
+		return false
+	}
+
+	if err := os.Rename(tmpfile.Name(), wpaFilename); err != nil {
+		log.Errorln(err)
+		return false
+	}
+
+	return true
 }
 
 // CheckDNSUpdate sees if we should update based on DNS

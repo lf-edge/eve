@@ -156,6 +156,19 @@ type DevicePortConfig struct {
 
 type DevicePortConfigVersion uint32
 
+// GetPortByIfName - DevicePortConfig Methord to Get Port structure by IfName
+func (portConfig *DevicePortConfig) GetPortByIfName(
+	u string) (NetworkPortConfig, error) {
+	var port NetworkPortConfig
+	for _, port = range portConfig.Ports {
+		if u == port.IfName {
+			return port, nil
+		}
+	}
+	err := fmt.Errorf("DevicePortConfig can't find port")
+	return port, err
+}
+
 // When new fields and/or new semantics are added to DevicePortConfig a new
 // version value is added here.
 const (
@@ -163,6 +176,7 @@ const (
 	DPCIsMgmt                          // Require IsMgmt to be set for management ports
 )
 
+// DoSanitize -
 func (portConfig *DevicePortConfig) DoSanitize(
 	sanitizeTimePriority bool,
 	sanitizeKey bool, key string,
@@ -205,7 +219,7 @@ func (portConfig *DevicePortConfig) DoSanitize(
 	}
 }
 
-// Return false if recent failure (less than 60 seconds ago)
+// IsDPCTestable - Return false if recent failure (less than 60 seconds ago)
 func (portConfig DevicePortConfig) IsDPCTestable() bool {
 
 	if portConfig.LastFailed.IsZero() {
@@ -219,6 +233,7 @@ func (portConfig DevicePortConfig) IsDPCTestable() bool {
 	return (timeDiff > 60)
 }
 
+// IsDPCUntested -
 func (portConfig DevicePortConfig) IsDPCUntested() bool {
 	if portConfig.LastFailed.IsZero() && portConfig.LastSucceeded.IsZero() {
 		return true
@@ -226,7 +241,7 @@ func (portConfig DevicePortConfig) IsDPCUntested() bool {
 	return false
 }
 
-// Check if the last results for the DPC was Success
+// WasDPCWorking - Check if the last results for the DPC was Success
 func (portConfig DevicePortConfig) WasDPCWorking() bool {
 
 	if portConfig.LastSucceeded.IsZero() {
@@ -249,6 +264,27 @@ const (
 	NPT_FTP
 	NPT_NOPROXY
 	NPT_LAST = 255
+)
+
+// WifiKeySchemeType - types of key management
+type WifiKeySchemeType uint8
+
+// Key Scheme type
+const (
+	KeySchemeNone WifiKeySchemeType = iota // enum for key scheme
+	KeySchemeWpaPsk
+	KeySchemeWpaEap
+	KeySchemeOther
+)
+
+// WirelessType - types of wireless media
+type WirelessType uint8
+
+// enum wireless type
+const (
+	WirelessTypeNone WirelessType = iota // enum for wireless type
+	WirelessTypeCellular
+	WirelessTypeWifi
 )
 
 type ProxyEntry struct {
@@ -277,6 +313,34 @@ type DhcpConfig struct {
 	DnsServers []net.IP // If not set we use Gateway as DNS server
 }
 
+// CryptoBlock - crypto data
+type CryptoBlock struct {
+	Identity string // encrypted identity or username for WPA-EAP
+	Password string // encrypted string of pass phrase or password hash
+}
+
+// WifiConfig - Wifi structure
+type WifiConfig struct {
+	SSID      string            // wifi SSID
+	KeyScheme WifiKeySchemeType // such as WPA-PSK, WPA-EAP
+	Identity  string            // identity or username for WPA-EAP
+	Password  string            // string of pass phrase or password hash
+	Crypto    CryptoBlock       // encrypted block of items
+	Priority  int32
+}
+
+// CellConfig - Cellular part of the configure
+type CellConfig struct {
+	APN string // LTE APN
+}
+
+// WirelessConfig - wireless structure
+type WirelessConfig struct {
+	WType    WirelessType // Wireless Type
+	Cellular []CellConfig // LTE APN
+	Wifi     []WifiConfig // Wifi Config params
+}
+
 type NetworkPortConfig struct {
 	IfName string
 	Name   string // New logical name set by controller/model
@@ -284,18 +348,17 @@ type NetworkPortConfig struct {
 	Free   bool   // Higher priority to talk to controller since no cost
 	DhcpConfig
 	ProxyConfig
-	AccessPoint string // For wireless SSID or APN address
+	WirelessCfg WirelessConfig
 	// Errrors from the parser go here and get reflects in NetworkPortStatus
 	ParseError     string
 	ParseErrorTime time.Time
 }
 
 type NetworkPortStatus struct {
-	IfName      string
-	Name        string // New logical name set by controller/model
-	IsMgmt      bool   // Used to talk to controller
-	Free        bool
-	AccessPoint string // Used for current wireless SSID/APN address/name
+	IfName string
+	Name   string // New logical name set by controller/model
+	IsMgmt bool   // Used to talk to controller
+	Free   bool
 	NetworkXObjectConfig
 	AddrInfoList []AddrInfo
 	ProxyConfig
@@ -1000,6 +1063,7 @@ type NetworkXObjectConfig struct {
 	DhcpRange       IpRange
 	DnsNameToIPList []DnsNameToIP // Used for DNS and ACL ipset
 	Proxy           *ProxyConfig
+	WirelessCfg     WirelessConfig
 	// Any errrors from the parser
 	Error     string
 	ErrorTime time.Time

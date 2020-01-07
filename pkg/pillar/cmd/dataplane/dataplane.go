@@ -31,6 +31,9 @@ import (
 
 const (
 	agentName = "lisp-ztr"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 var lispConfigDir string
@@ -226,6 +229,8 @@ func initPubsubChannels() *dptypes.DataplaneContext {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subLispConfig.MaxProcessTimeWarn = warningTime
+	subLispConfig.MaxProcessTimeError = errorTime
 	subLispConfig.ModifyHandler = handleExpModify
 	subLispConfig.CreateHandler = handleExpModify
 	subLispConfig.DeleteHandler = handleExpDelete
@@ -238,6 +243,8 @@ func initPubsubChannels() *dptypes.DataplaneContext {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subGlobalConfig.MaxProcessTimeWarn = warningTime
+	subGlobalConfig.MaxProcessTimeError = errorTime
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
@@ -413,6 +420,8 @@ func handleConfig(c *net.UnixConn, dpContext *dptypes.DataplaneContext) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
+	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	dpContext.SubDeviceNetworkStatus = subDeviceNetworkStatus

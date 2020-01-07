@@ -27,6 +27,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
 )
@@ -34,6 +35,9 @@ import (
 const (
 	agentName  = "diag"
 	maxRetries = 5
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // State passed to handlers
@@ -112,7 +116,7 @@ func Run() {
 	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
 
 	// Make sure we have a GlobalConfig file with defaults
-	types.EnsureGCFile()
+	utils.EnsureGCFile()
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
@@ -120,6 +124,8 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	subGlobalConfig.MaxProcessTimeWarn = warningTime
+	subGlobalConfig.MaxProcessTimeError = errorTime
 	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
 	subGlobalConfig.CreateHandler = handleGlobalConfigModify
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
@@ -183,6 +189,8 @@ func Run() {
 		errStr := fmt.Sprintf("ERROR: internal Subscribe failed %s\n", err)
 		panic(errStr)
 	}
+	subLedBlinkCounter.MaxProcessTimeWarn = warningTime
+	subLedBlinkCounter.MaxProcessTimeError = errorTime
 	subLedBlinkCounter.ModifyHandler = handleLedBlinkModify
 	subLedBlinkCounter.CreateHandler = handleLedBlinkModify
 	ctx.subLedBlinkCounter = subLedBlinkCounter
@@ -194,6 +202,8 @@ func Run() {
 		errStr := fmt.Sprintf("ERROR: internal Subscribe failed %s\n", err)
 		panic(errStr)
 	}
+	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
+	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
 	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
 	subDeviceNetworkStatus.CreateHandler = handleDNSModify
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
@@ -214,27 +224,19 @@ func Run() {
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subLedBlinkCounter.C:
-			start := agentlog.StartTime()
 			ctx.gotBC = true
 			subLedBlinkCounter.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDeviceNetworkStatus.C:
-			start := agentlog.StartTime()
 			ctx.gotDNS = true
 			subDeviceNetworkStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case change := <-subDevicePortConfigList.C:
-			start := agentlog.StartTime()
 			ctx.gotDPCList = true
 			subDevicePortConfigList.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 		}
 		if !ctx.forever && ctx.gotDNS && ctx.gotBC && ctx.gotDPCList {
 			break

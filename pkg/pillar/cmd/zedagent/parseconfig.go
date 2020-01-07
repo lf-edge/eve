@@ -687,7 +687,6 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 	port.Free = isFree
 
 	port.Dhcp = types.DT_NONE
-	port.AccessPoint = sysAdapter.AccessPoint
 	var ip net.IP
 	if sysAdapter.Addr != "" {
 		ip = net.ParseIP(sysAdapter.Addr)
@@ -730,6 +729,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			port.AddrSubnet = addrSubnet.String()
 		}
 
+		port.WirelessCfg = network.WirelessCfg
 		port.Gateway = network.Gateway
 		port.DomainName = network.DomainName
 		port.NtpServer = network.NtpServer
@@ -1104,6 +1104,9 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 		config.Proxy = &proxyConfig
 	}
 
+	// wireless property configuration
+	config.WirelessCfg = parseNetworkWirelessConfig(netEnt)
+
 	ipspec := netEnt.GetIp()
 	switch config.Type {
 	case types.NT_CryptoEID, types.NT_IPV4, types.NT_IPV6:
@@ -1181,6 +1184,57 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 	}
 	config.DnsNameToIPList = nameToIPs
 	return config
+}
+
+func parseNetworkWirelessConfig(netEnt *zconfig.NetworkConfig) types.WirelessConfig {
+	var wconfig types.WirelessConfig
+
+	netWireless := netEnt.GetWireless()
+	if netWireless == nil {
+		return wconfig
+	}
+	log.Infof("parseNetworkWirelessConfig: Wireless of network present in %s, config %v", netEnt.Id, netWireless)
+
+	wType := netWireless.GetType()
+	switch wType {
+	case zconfig.WirelessType_Cellular:
+		//
+		wconfig.WType = types.WirelessTypeCellular
+		cellulars := netWireless.GetCellularCfg()
+		for _, cellular := range cellulars {
+			var wcell types.CellConfig
+			wcell.APN = cellular.GetAPN()
+			wconfig.Cellular = append(wconfig.Cellular, wcell)
+		}
+		log.Infof("parseNetworkWirelessConfig: Wireless of network Cellular, %v", wconfig.Cellular)
+	case zconfig.WirelessType_WiFi:
+		//
+		wconfig.WType = types.WirelessTypeWifi
+		wificfgs := netWireless.GetWifiCfg()
+
+		for _, wificfg := range wificfgs {
+			var wifi types.WifiConfig
+			wifi.SSID = wificfg.GetWifiSSID()
+			if wificfg.GetKeyScheme() == zconfig.WiFiKeyScheme_WPAPSK {
+				wifi.KeyScheme = types.KeySchemeWpaPsk
+			} else if wificfg.GetKeyScheme() == zconfig.WiFiKeyScheme_WPAEAP {
+				wifi.KeyScheme = types.KeySchemeWpaEap
+			}
+			wifi.Identity = wificfg.GetIdentity()
+			wifi.Password = wificfg.GetPassword()
+			zcrypto := wificfg.GetCrypto()
+			wifi.Crypto.Identity = zcrypto.GetIdentity()
+			wifi.Crypto.Password = zcrypto.GetPassword()
+
+			wifi.Priority = wificfg.GetPriority()
+
+			wconfig.Wifi = append(wconfig.Wifi, wifi)
+		}
+		log.Infof("parseNetworkWirelessConfig: Wireless of network Wifi, %v", wconfig.Wifi)
+	default:
+		log.Errorf("parseNetworkWirelessConfig: unsupported wireless configure type %d", wType)
+	}
+	return wconfig
 }
 
 func parseIpspecNetworkXObject(ipspec *zconfig.Ipspec, config *types.NetworkXObjectConfig) error {
@@ -1884,7 +1938,8 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 				oldGlobalConfig.SshAuthorizedKeys, gcPtr.SshAuthorizedKeys)
 			ssh.UpdateSshAuthorizedKeys(gcPtr.SshAuthorizedKeys)
 		}
-		err := pubsub.PublishToDir(types.PersistConfigDir, "global", gcPtr)
+		pub := ctx.zedagentCtx.pubGlobalConfig
+		err := pub.Publish("global", gcPtr)
 		if err != nil {
 			// XXX - IS there a valid reason for this to Fail? If not, we should
 			//  fo log.Fatalf here..

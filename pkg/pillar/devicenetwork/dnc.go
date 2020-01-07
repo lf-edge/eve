@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/cast"
@@ -73,7 +74,7 @@ func UpdateLastResortPortConfig(ctx *DeviceNetworkContext, ports []string) {
 	if ports == nil || len(ports) == 0 {
 		return
 	}
-	config := LastResortDevicePortConfig(ports)
+	config := LastResortDevicePortConfig(ctx, ports)
 	config.Key = "lastresort"
 	ctx.PubDevicePortConfig.Publish("lastresort", config)
 }
@@ -674,16 +675,23 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 			if current != nil &&
 				reflect.DeepEqual(current.Ports, oldConfig.Ports) {
 
-				log.Infof("doUpdatePortConfigListAndPublish: no change and same Ports as current\n")
-				return false
+				if strings.Contains(portConfig.Key, "override") { // XXX
+					log.Infof("doUpdatePortConfigListAndPublish: override, curr %+v, old %+v\n",
+						current.Ports, oldConfig.Ports)
+				} else {
+					log.Infof("doUpdatePortConfigListAndPublish: no change and same Ports as current\n")
+					return false
+				}
 			}
 			log.Infof("doUpdatePortConfigListAndPublish: changed ports from current; reorder\n")
 		} else {
 			log.Infof("doUpdatePortConfigListAndPublish: change from %+v to %+v\n",
 				*oldConfig, portConfig)
 		}
+		checkAndUpdateWireless(ctx, oldConfig, portConfig)
 		updatePortConfig(ctx, oldConfig, *portConfig)
 	} else {
+		checkAndUpdateWireless(ctx, nil, portConfig)
 		insertPortConfig(ctx, *portConfig)
 	}
 	// Check if current moved to a different index or was deleted
@@ -712,6 +720,42 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 	}
 	*ctx.DevicePortConfigList = compressAndPublishDevicePortConfigList(ctx)
 	return true
+}
+
+func checkAndUpdateWireless(ctx *DeviceNetworkContext, oCfg *types.DevicePortConfig, portCfg *types.DevicePortConfig) {
+	log.Infof("checkAndUpdateWireless: oCfg nil %v, portCfg Ports %v\n", oCfg == nil, portCfg.Ports)
+	for _, pCfg := range portCfg.Ports {
+		var oldPortCfg *types.NetworkPortConfig
+		if oCfg != nil {
+			for _, old := range oCfg.Ports {
+				if old.IfName == pCfg.IfName {
+					oldPortCfg = &old
+					break
+				}
+			}
+		}
+		if oldPortCfg == nil || strings.Contains(portCfg.Key, "override") ||
+			!reflect.DeepEqual(oldPortCfg.WirelessCfg, pCfg.WirelessCfg) {
+			// XXX hack to disable the cloud configure for wifi, if the existing configure
+			// has wifi information, but the new update does not. Remove this when the zedcloud
+			// implements the wifi configure for port
+			if oldPortCfg != nil && oldPortCfg.WirelessCfg.WType == types.WirelessTypeWifi &&
+				pCfg.WirelessCfg.WType == types.WirelessTypeNone {
+				log.Infof("checkAndUpdateWireless: HACK! wifi has configure %+v, ignore the update %+v\n",
+					oldPortCfg.WirelessCfg, pCfg.WirelessCfg)
+				break
+			}
+			// XXX
+			if pCfg.WirelessCfg.WType == types.WirelessTypeCellular ||
+				oldPortCfg != nil && oldPortCfg.WirelessCfg.WType == types.WirelessTypeCellular {
+				devPortInstallAPname(pCfg.IfName, pCfg.WirelessCfg)
+			} else if pCfg.WirelessCfg.WType == types.WirelessTypeWifi ||
+				oldPortCfg != nil && oldPortCfg.WirelessCfg.WType == types.WirelessTypeWifi {
+				status := devPortInstallWifiConfig(pCfg.IfName, pCfg.WirelessCfg)
+				log.Infof("checkAndUpdateWireless: updated wpa file ok %v\n", status)
+			}
+		}
+	}
 }
 
 // Update content and move if the timestamp changed

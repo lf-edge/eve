@@ -5,8 +5,9 @@
 #
 USAGE="Usage: $0 [-d] [-i] [-s <size in Kb>] [-f <file> ] <output.img>"
 
-LINUXKIT=$(pwd)/build-tools/bin/linuxkit
-MKFLASH_TAG="$($LINUXKIT pkg show-tag pkg/mkimage-raw-efi)"
+EVE="$(cd "$(dirname "$0")" && pwd)/../"
+PATH="$EVE/build-tools/bin:$PATH"
+MKFLASH_TAG="$(linuxkit pkg show-tag "$EVE/pkg/mkimage-raw-efi")"
 
 cleanup() {
     rm "$TMPDIR"/* 2>/dev/null
@@ -60,8 +61,7 @@ shift $((OPTIND-1))
 [ $# != 1 ] && bail "$USAGE"
 [ -z "$(ls -A "$TMPDIR")" ] && bail "ERROR: one of the -d -i or -f has to be given"
 
-
-IMAGE="$1"
+IMAGE="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 if [ -b "$IMAGE" ] ; then
    [ "$(uname -s)" = Linux ] || bail "ERROR: writing directly to the device is only supported on Linux"
    IMAGE_BIND_OPT="--device"
@@ -71,16 +71,5 @@ else
    IMAGE_BIND_OPT="-v"
 fi
 
-# Docker, for unknown reasons, decides whether a passed bind mount is
-# a file or a directory based on whether is a absolute pathname or a
-# relative one (!).
-#
-# Of course, BSDs do not have the GNU specific realpath, so substitute
-# it with a shell script.
-
-case "$IMAGE" in
-    /*) ;;
-    *) IMAGE="$PWD/$IMAGE";;
-esac
-
-(cd "$TMPDIR" || exit 1; tar cf - ./*) | docker run "$IMAGE_BIND_OPT" "$IMAGE:/output.img" -i "${MKFLASH_TAG}" /output.img usb_conf
+(cd "$TMPDIR" || exit 1; tar cf - ./*) | docker run -i "$IMAGE_BIND_OPT" "$IMAGE:/output.img" "${MKFLASH_TAG}" /output.img usb_conf
+cleanup

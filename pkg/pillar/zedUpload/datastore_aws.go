@@ -5,13 +5,14 @@ package zedUpload
 
 import (
 	"fmt"
-	zedAWS "github.com/lf-edge/eve/pkg/pillar/zedUpload/awsutil"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
+
+	zedAWS "github.com/lf-edge/eve/pkg/pillar/zedUpload/awsutil"
 )
 
 //
@@ -57,13 +58,15 @@ func (ep *AwsTransportMethod) Close() error {
 	return nil
 }
 
-// use the specific ip as source address for this connection
-func (ep *AwsTransportMethod) WithSrcIpSelection(localAddr net.IP) error {
+// WithSrcIPSelection use the specific ip as source address for this connection
+func (ep *AwsTransportMethod) WithSrcIPSelection(localAddr net.IP) error {
 	ep.hClient = httpClientSrcIP(localAddr, nil)
 	return nil
 }
 
-func (ep *AwsTransportMethod) WithSrcIpAndProxySelection(localAddr net.IP,
+// WithSrcIPAndProxySelection use the specific ip as source address for this
+// connection and connect via the provided proxy URL
+func (ep *AwsTransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
 	proxy *url.URL) error {
 	ep.hClient = httpClientSrcIP(localAddr, proxy)
 	return nil
