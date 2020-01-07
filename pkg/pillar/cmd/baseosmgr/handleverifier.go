@@ -300,8 +300,8 @@ func unpublishVerifierConfig(ctx *baseOsMgrContext, objType string,
 	pub.Unpublish(key)
 }
 
-func verifierPublication(ctx *baseOsMgrContext, objType string) *pubsub.Publication {
-	var pub *pubsub.Publication
+func verifierPublication(ctx *baseOsMgrContext, objType string) pubsub.Publication {
+	var pub pubsub.Publication
 	switch objType {
 	case types.BaseOsObj:
 		pub = ctx.pubBaseOsVerifierConfig

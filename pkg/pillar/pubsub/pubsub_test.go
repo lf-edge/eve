@@ -37,7 +37,7 @@ func TestHandleModify(t *testing.T) {
 	}
 
 	testMatrix := map[string]struct {
-		ctxArg         Subscription
+		ctxArg         SubscriptionImpl
 		key            string
 		item           interface{}
 		modifyHandler  SubHandler

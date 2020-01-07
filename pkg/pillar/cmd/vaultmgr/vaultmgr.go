@@ -23,7 +23,7 @@ import (
 )
 
 type vaultMgrContext struct {
-	pubVaultStatus *pubsub.Publication
+	pubVaultStatus pubsub.Publication
 }
 
 const (

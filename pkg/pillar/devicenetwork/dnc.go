@@ -46,15 +46,15 @@ type DeviceNetworkContext struct {
 	AssignableAdapters      *types.AssignableAdapters
 	DevicePortConfigTime    time.Time
 	DeviceNetworkStatus     *types.DeviceNetworkStatus
-	SubDevicePortConfigA    *pubsub.Subscription
-	SubDevicePortConfigO    *pubsub.Subscription
-	SubDevicePortConfigS    *pubsub.Subscription
-	SubAssignableAdapters   *pubsub.Subscription
-	PubDevicePortConfig     *pubsub.Publication
-	PubDevicePortConfigList *pubsub.Publication
-	PubDeviceNetworkStatus  *pubsub.Publication
+	SubDevicePortConfigA    pubsub.Subscription
+	SubDevicePortConfigO    pubsub.Subscription
+	SubDevicePortConfigS    pubsub.Subscription
+	SubAssignableAdapters   pubsub.Subscription
+	PubDevicePortConfig     pubsub.Publication
+	PubDevicePortConfigList pubsub.Publication
+	PubDeviceNetworkStatus  pubsub.Publication
 	Changed                 bool
-	SubGlobalConfig         *pubsub.Subscription
+	SubGlobalConfig         pubsub.Subscription
 
 	Pending                DPCPending
 	NetworkTestTimer       *time.Timer

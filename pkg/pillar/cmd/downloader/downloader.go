@@ -102,7 +102,7 @@ func Run() {
 	for !ctx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
-		case change := <-ctx.subGlobalConfig.C:
+		case change := <-ctx.subGlobalConfig.MsgChan():
 			ctx.subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
@@ -118,13 +118,13 @@ func Run() {
 		log.Infof("Waiting for management port addresses or Global Config\n")
 
 		select {
-		case change := <-ctx.subGlobalConfig.C:
+		case change := <-ctx.subGlobalConfig.MsgChan():
 			ctx.subGlobalConfig.ProcessChange(change)
 
-		case change := <-ctx.subDeviceNetworkStatus.C:
+		case change := <-ctx.subDeviceNetworkStatus.MsgChan():
 			ctx.subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-ctx.subGlobalDownloadConfig.C:
+		case change := <-ctx.subGlobalDownloadConfig.MsgChan():
 			ctx.subGlobalDownloadConfig.ProcessChange(change)
 
 		// This wait can take an unbounded time since we wait for IP
@@ -144,25 +144,25 @@ func Run() {
 
 	for {
 		select {
-		case change := <-ctx.subGlobalConfig.C:
+		case change := <-ctx.subGlobalConfig.MsgChan():
 			ctx.subGlobalConfig.ProcessChange(change)
 
-		case change := <-ctx.subDeviceNetworkStatus.C:
+		case change := <-ctx.subDeviceNetworkStatus.MsgChan():
 			ctx.subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-ctx.subCertObjConfig.C:
+		case change := <-ctx.subCertObjConfig.MsgChan():
 			ctx.subCertObjConfig.ProcessChange(change)
 
-		case change := <-ctx.subAppImgConfig.C:
+		case change := <-ctx.subAppImgConfig.MsgChan():
 			ctx.subAppImgConfig.ProcessChange(change)
 
-		case change := <-ctx.subBaseOsConfig.C:
+		case change := <-ctx.subBaseOsConfig.MsgChan():
 			ctx.subBaseOsConfig.ProcessChange(change)
 
-		case change := <-ctx.subDatastoreConfig.C:
+		case change := <-ctx.subDatastoreConfig.MsgChan():
 			ctx.subDatastoreConfig.ProcessChange(change)
 
-		case change := <-ctx.subGlobalDownloadConfig.C:
+		case change := <-ctx.subGlobalDownloadConfig.MsgChan():
 			ctx.subGlobalDownloadConfig.ProcessChange(change)
 
 		case <-publishTimer.C:
@@ -188,7 +188,7 @@ func Run() {
 
 // handle the datastore modification
 func checkAndUpdateDownloadableObjects(ctx *downloaderContext, dsID uuid.UUID) {
-	publications := []*pubsub.Publication{
+	publications := []pubsub.Publication{
 		ctx.pubAppImgStatus,
 		ctx.pubBaseOsStatus,
 		ctx.pubCertObjStatus,
@@ -566,7 +566,7 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 // XXX Note that this runs concurrently with the handler.
 func gcObjects(ctx *downloaderContext) {
 	log.Debugf("gcObjects()\n")
-	publications := []*pubsub.Publication{
+	publications := []pubsub.Publication{
 		ctx.pubAppImgStatus,
 		ctx.pubBaseOsStatus,
 		ctx.pubCertObjStatus,

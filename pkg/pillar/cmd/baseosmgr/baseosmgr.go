@@ -55,23 +55,23 @@ var Version = "No version specified"
 
 type baseOsMgrContext struct {
 	verifierRestarted        bool // Information from handleVerifierRestarted
-	pubBaseOsStatus          *pubsub.Publication
-	pubBaseOsDownloadConfig  *pubsub.Publication
-	pubBaseOsVerifierConfig  *pubsub.Publication
-	pubCertObjStatus         *pubsub.Publication
-	pubCertObjDownloadConfig *pubsub.Publication
-	pubZbootStatus           *pubsub.Publication
+	pubBaseOsStatus          pubsub.Publication
+	pubBaseOsDownloadConfig  pubsub.Publication
+	pubBaseOsVerifierConfig  pubsub.Publication
+	pubCertObjStatus         pubsub.Publication
+	pubCertObjDownloadConfig pubsub.Publication
+	pubZbootStatus           pubsub.Publication
 
-	subGlobalConfig          *pubsub.Subscription
+	subGlobalConfig          pubsub.Subscription
 	globalConfig             *types.GlobalConfig
 	GCInitialized            bool
-	subBaseOsConfig          *pubsub.Subscription
-	subZbootConfig           *pubsub.Subscription
-	subCertObjConfig         *pubsub.Subscription
-	subBaseOsDownloadStatus  *pubsub.Subscription
-	subCertObjDownloadStatus *pubsub.Subscription
-	subBaseOsVerifierStatus  *pubsub.Subscription
-	subNodeAgentStatus       *pubsub.Subscription
+	subBaseOsConfig          pubsub.Subscription
+	subZbootConfig           pubsub.Subscription
+	subCertObjConfig         pubsub.Subscription
+	subBaseOsDownloadStatus  pubsub.Subscription
+	subCertObjDownloadStatus pubsub.Subscription
+	subBaseOsVerifierStatus  pubsub.Subscription
+	subNodeAgentStatus       pubsub.Subscription
 	rebootReason             string
 	rebootTime               time.Time
 }
@@ -136,7 +136,7 @@ func Run() {
 	for !ctx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
-		case change := <-ctx.subGlobalConfig.C:
+		case change := <-ctx.subGlobalConfig.MsgChan():
 			ctx.subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
@@ -149,16 +149,16 @@ func Run() {
 	log.Infof("Handling initial verifier Status\n")
 	for !ctx.verifierRestarted {
 		select {
-		case change := <-ctx.subGlobalConfig.C:
+		case change := <-ctx.subGlobalConfig.MsgChan():
 			ctx.subGlobalConfig.ProcessChange(change)
 
-		case change := <-ctx.subBaseOsVerifierStatus.C:
+		case change := <-ctx.subBaseOsVerifierStatus.MsgChan():
 			ctx.subBaseOsVerifierStatus.ProcessChange(change)
 			if ctx.verifierRestarted {
 				log.Infof("Verifier reported restarted\n")
 			}
 
-		case change := <-ctx.subNodeAgentStatus.C:
+		case change := <-ctx.subNodeAgentStatus.MsgChan():
 			ctx.subNodeAgentStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
@@ -169,28 +169,28 @@ func Run() {
 	// start the forever loop for event handling
 	for {
 		select {
-		case change := <-ctx.subGlobalConfig.C:
+		case change := <-ctx.subGlobalConfig.MsgChan():
 			ctx.subGlobalConfig.ProcessChange(change)
 
-		case change := <-ctx.subCertObjConfig.C:
+		case change := <-ctx.subCertObjConfig.MsgChan():
 			ctx.subCertObjConfig.ProcessChange(change)
 
-		case change := <-ctx.subBaseOsConfig.C:
+		case change := <-ctx.subBaseOsConfig.MsgChan():
 			ctx.subBaseOsConfig.ProcessChange(change)
 
-		case change := <-ctx.subZbootConfig.C:
+		case change := <-ctx.subZbootConfig.MsgChan():
 			ctx.subZbootConfig.ProcessChange(change)
 
-		case change := <-ctx.subBaseOsDownloadStatus.C:
+		case change := <-ctx.subBaseOsDownloadStatus.MsgChan():
 			ctx.subBaseOsDownloadStatus.ProcessChange(change)
 
-		case change := <-ctx.subBaseOsVerifierStatus.C:
+		case change := <-ctx.subBaseOsVerifierStatus.MsgChan():
 			ctx.subBaseOsVerifierStatus.ProcessChange(change)
 
-		case change := <-ctx.subCertObjDownloadStatus.C:
+		case change := <-ctx.subCertObjDownloadStatus.MsgChan():
 			ctx.subCertObjDownloadStatus.ProcessChange(change)
 
-		case change := <-ctx.subNodeAgentStatus.C:
+		case change := <-ctx.subNodeAgentStatus.MsgChan():
 			ctx.subNodeAgentStatus.ProcessChange(change)
 
 		case <-stillRunning.C:

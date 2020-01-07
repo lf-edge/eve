@@ -73,13 +73,13 @@ type domainContext struct {
 	dnsLock                sync.Mutex
 	assignableAdapters     *types.AssignableAdapters
 	DNSinitialized         bool // Received DeviceNetworkStatus
-	subDeviceNetworkStatus *pubsub.Subscription
-	subPhysicalIOAdapter   *pubsub.Subscription
-	subDomainConfig        *pubsub.Subscription
-	pubDomainStatus        *pubsub.Publication
-	subGlobalConfig        *pubsub.Subscription
-	pubImageStatus         *pubsub.Publication
-	pubAssignableAdapters  *pubsub.Publication
+	subDeviceNetworkStatus pubsub.Subscription
+	subPhysicalIOAdapter   pubsub.Subscription
+	subDomainConfig        pubsub.Subscription
+	pubDomainStatus        pubsub.Publication
+	subGlobalConfig        pubsub.Subscription
+	pubImageStatus         pubsub.Publication
+	pubAssignableAdapters  pubsub.Publication
 	usbAccess              bool
 	createSema             sema.Semaphore
 	GCInitialized          bool
