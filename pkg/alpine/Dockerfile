@@ -1,12 +1,11 @@
 ARG ALPINE_VERSION=3.9
-FROM alpine:${ALPINE_VERSION} AS cache
-RUN mkdir /mirror || :
+FROM lfedge/eve-alpine:8c4f2b213f09cfdbbbf1f900afc80f9dbb84f081 AS cache
 
 FROM alpine:${ALPINE_VERSION} AS mirror
 ARG ALPINE_VERSION=3.9
 
 # pull packages from a *previous* mirror
-COPY --from=cache /mirror /mirror/${ALPINE_VERSION}
+COPY --from=cache /mirror /mirror
 
 # update base image
 RUN apk update && apk upgrade -a
