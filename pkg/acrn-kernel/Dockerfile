@@ -1,37 +1,35 @@
-FROM alpine:3.10 as kernel-build
-#linuxkit/alpine:f2f4db272c910d136380781a97e475013fabda8b AS kernel-build
+FROM lfedge/eve-alpine:8727b17d0d3c6d85ed6634637e76e6fbab83b726 as kernel-build
 
 RUN apk --no-cache add \
     argp-standalone=1.3-r3 \
     automake=1.16.1-r0 \
-    bash=5.0.0-r0 \
-    bc=1.07.1-r1 \
-    binutils-dev=2.32-r0 \
-    bison=3.3.2-r0 \
+    bash=4.4.19-r1 \
+    bc=1.07.1-r0 \
+    binutils-dev=2.31.1-r2 \
+    bison=3.0.5-r0 \
     build-base=0.5-r1 \
-    curl=7.66.0-r0 \
+    curl=7.64.0-r3 \
     diffutils=3.7-r0 \
-    flex=2.6.4-r2 \
-    git=2.22.2-r0 \
+    flex=2.6.4-r1 \
+    git=2.20.2-r0 \
     gmp-dev=6.1.2-r1 \
     gnupg=2.2.19-r0 \
     installkernel=3.5-r0 \
     kmod=24-r1 \
     libressl-dev=2.7.5-r0 \
-    linux-headers=4.19.36-r0 \
-    ncurses-dev=6.1_p20190518-r0 \
-    python2=2.7.16-r1 \
+    linux-headers=4.18.13-r1 \
+    ncurses-dev=6.1_p20190105-r0 \
+    python2=2.7.16-r2 \
     findutils=4.6.0-r1 \
-    sed=4.7-r0 \
+    sed=4.5-r0 \
     squashfs-tools=4.3-r5 \
     tar=1.32-r0 \
     xz=5.2.4-r0 \
     xz-dev=5.2.4-r0 \
     zlib-dev=1.2.11-r1 \
-    openssl=1.1.1d-r0 \
-    lz4=1.9.1-r0 \
+    openssl=1.1.1d-r2 \
+    lz4-libs=1.8.3-r2 \
     elfutils-libelf=0.168-r2 \
-    elfutils=0.168-r2 \
     elfutils-dev=0.168-r2
 
 
