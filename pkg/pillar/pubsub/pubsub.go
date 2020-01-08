@@ -176,7 +176,7 @@ func (pub *Publication) populate() {
 	dirName := pub.dirName
 	foundRestarted := false
 
-	log.Infof("populate(%s)\n", name)
+	log.Debugf("populate(%s)\n", name)
 
 	files, err := ioutil.ReadDir(dirName)
 	if err != nil {
@@ -201,7 +201,7 @@ func (pub *Publication) populate() {
 			continue
 		}
 
-		log.Infof("populate found key %s file %s\n", key, statusFile)
+		log.Debugf("populate found key %s file %s\n", key, statusFile)
 
 		sb, err := ioutil.ReadFile(statusFile)
 		if err != nil {
@@ -217,7 +217,7 @@ func (pub *Publication) populate() {
 		pub.km.key.Store(key, item)
 	}
 	pub.km.restarted = foundRestarted
-	log.Infof("populate(%s) done\n", name)
+	log.Debugf("populate(%s) done\n", name)
 }
 
 // go routine which runs the AF_UNIX server.
