@@ -63,7 +63,7 @@ func FlushRules(ifindex int) {
 		}
 		log.Infof("FlushRules: RuleDel %v", r)
 		if err := netlink.RuleDel(&r); err != nil {
-			log.Fatalf("FlushRules - RuleDel %v failed %s",
+			log.Errorf("FlushRules - RuleDel %v failed %s",
 				r, err)
 		}
 	}
