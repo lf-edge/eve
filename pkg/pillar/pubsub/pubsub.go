@@ -100,7 +100,7 @@ func publishImpl(agentName string, agentScope string,
 	pub.persistent = persistent
 	name := pub.nameString()
 
-	log.Infof("Publish(%s)\n", name)
+	log.Debugf("Publish(%s)\n", name)
 
 	// We always write to the directory as a checkpoint for process restart
 	// That directory could be persistent in which case it will survive
