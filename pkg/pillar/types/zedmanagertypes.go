@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -247,10 +248,10 @@ type StorageConfig struct {
 	ReadOnly    bool
 	Preserve    bool // If set a rw disk will be preserved across
 	// boots (acivate/inactivate)
-	Maxsizebytes uint64 // Resize filesystem to this size if set
-	Format       string // Default "raw"; could be raw, qcow, qcow2, vhd
-	Devtype      string // Default ""; could be e.g. "cdrom"
-	Target       string // Default "" is interpreted as "disk"
+	Maxsizebytes uint64         // Resize filesystem to this size if set
+	Format       zconfig.Format // Default "raw"; could be raw, qcow, qcow2, vhd
+	Devtype      string         // Default ""; could be e.g. "cdrom"
+	Target       string         // Default "" is interpreted as "disk"
 }
 
 func RoundupToKB(b uint64) uint64 {
@@ -278,7 +279,7 @@ type StorageStatus struct {
 	ReadOnly           bool
 	Preserve           bool
 	Maxsizebytes       uint64 // Resize filesystem to this size if set
-	Format             string
+	Format             zconfig.Format
 	Devtype            string
 	Target             string  // Default "" is interpreted as "disk"
 	State              SwState // DOWNLOADED etc
@@ -310,7 +311,7 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	ss.Maxsizebytes = sc.Maxsizebytes
 	ss.Devtype = sc.Devtype
 	ss.Target = sc.Target
-	if ss.Format == "container" {
+	if ss.Format == zconfig.Format_CONTAINER {
 		ss.IsContainer = true
 	}
 	return

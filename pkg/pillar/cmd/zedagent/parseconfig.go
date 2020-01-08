@@ -953,7 +953,7 @@ func parseStorageConfigList(objType string,
 			image.DatastoreID = id
 			image.Name = drive.Image.Name
 			image.ImageID, _ = uuid.FromString(drive.Image.Uuidandversion.Uuid)
-			image.Format = strings.ToLower(drive.Image.Iformat.String())
+			image.Format = drive.Image.Iformat
 			image.Size = uint64(drive.Image.SizeBytes)
 			image.ImageSignature = drive.Image.Siginfo.Signature
 			image.SignatureKey = drive.Image.Siginfo.Signercerturl
@@ -974,7 +974,7 @@ func parseStorageConfigList(objType string,
 		image.Target = strings.ToLower(drive.Target.String())
 		image.Devtype = strings.ToLower(drive.Drvtype.String())
 		image.ImageSha256 = drive.Image.Sha256
-		if image.Format == "container" && image.ImageSha256 == "" {
+		if image.Format == zconfig.Format_CONTAINER && image.ImageSha256 == "" {
 			// XXX HACK - The right fix is to use ImageIDs to Track
 			// images instead of SHA.
 			// Currently, for container images, Zedcloud doesn't have

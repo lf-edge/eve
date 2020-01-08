@@ -27,6 +27,7 @@ import (
 
 	"github.com/eriknordmark/netlink"
 	"github.com/google/go-cmp/cmp"
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
@@ -85,8 +86,9 @@ type domainContext struct {
 }
 
 // appRwImageName - Returns name of the image ( including parent dir )
-func appRwImageName(sha256, uuidStr, format string) string {
-	return fmt.Sprintf("%s/%s-%s.%s", rwImgDirname, sha256, uuidStr, format)
+func appRwImageName(sha256, uuidStr string, format zconfig.Format) string {
+	formatStr := strings.ToLower(format.String())
+	return fmt.Sprintf("%s/%s-%s.%s", rwImgDirname, sha256, uuidStr, formatStr)
 }
 
 // parseAppRwImageName - Returns rwImgDirname, sha256, uuidStr
@@ -2616,7 +2618,7 @@ func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
 
 	ds := new(types.DiskStatus)
 	ds.ActiveFileLocation = fileName
-	ds.Format = "raw"
+	ds.Format = zconfig.Format_RAW
 	ds.Vdev = "hdc"
 	ds.ReadOnly = false
 	ds.Preserve = true // Prevent attempt to copy
