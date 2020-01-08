@@ -545,7 +545,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		ReportAppMetric.Memory = new(metrics.MemoryMetric)
 		ReportAppMetric.AppName = aiStatus.DisplayName
 		ReportAppMetric.AppID = aiStatus.Key()
-		if !aiStatus.BootTime.IsZero() {
+		if !aiStatus.BootTime.IsZero() && aiStatus.Activated {
 			elapsed := time.Since(aiStatus.BootTime)
 			uptime, _ := ptypes.TimestampProto(
 				time.Unix(0, elapsed.Nanoseconds()).UTC())
