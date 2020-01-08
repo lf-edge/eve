@@ -68,6 +68,7 @@ type zedrouterContext struct {
 	deviceNetworkStatus    *types.DeviceNetworkStatus
 	ready                  bool
 	subGlobalConfig        *pubsub.Subscription
+	GCInitialized          bool
 	pubUuidToNum           *pubsub.Publication
 	dhcpLeases             []dnsmasqLease
 
@@ -248,6 +249,18 @@ func Run() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// Pick up debug aka log level before we start real work
+	for !zedrouterCtx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
 
 	appNumAllocatorInit(&zedrouterCtx)
 	bridgeNumAllocatorInit(&zedrouterCtx)
@@ -2742,8 +2755,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	if gcp != nil {
+		ctx.GCInitialized = true
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 

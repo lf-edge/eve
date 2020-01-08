@@ -252,6 +252,7 @@ func Run() {
 			subGlobalConfig.ProcessChange(change)
 		}
 	}
+	log.Infof("processed GlobalConfig")
 
 	// We refresh the gelocation information when the underlay
 	// IP address(es) change, plus periodically based on this timer

@@ -47,6 +47,7 @@ type identityContext struct {
 	subEIDConfig    *pubsub.Subscription
 	pubEIDStatus    *pubsub.Publication
 	subGlobalConfig *pubsub.Subscription
+	GCInitialized   bool
 }
 
 var debug = false
@@ -122,6 +123,18 @@ func Run() {
 	subEIDConfig.RestartHandler = handleRestart
 	identityCtx.subEIDConfig = subEIDConfig
 	subEIDConfig.Activate()
+
+	// Pick up debug aka log level before we start real work
+	for !identityCtx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
 
 	for {
 		select {
@@ -472,8 +485,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	if gcp != nil {
+		ctx.GCInitialized = true
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 

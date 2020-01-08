@@ -98,6 +98,18 @@ func Run() {
 		log.Fatal(err)
 	}
 
+	// Pick up debug aka log level before we start real work
+	for !ctx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-ctx.subGlobalConfig.C:
+			ctx.subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
+
 	// First wait to have some management ports with addresses
 	// Looking at any management ports since we can do baseOS download over all
 	// Also ensure GlobalDownloadConfig has been read

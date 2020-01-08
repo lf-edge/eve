@@ -26,6 +26,7 @@ type downloaderContext struct {
 	globalStatusLock        sync.Mutex
 	globalStatus            types.GlobalDownloadStatus
 	subGlobalConfig         *pubsub.Subscription
+	GCInitialized           bool
 }
 
 func (ctx *downloaderContext) registerHandlers() error {

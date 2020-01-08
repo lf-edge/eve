@@ -534,8 +534,7 @@ func Run() {
 	zedagentCtx.subDevicePortConfigList = subDevicePortConfigList
 	subDevicePortConfigList.Activate()
 
-	// Read the GlobalConfig first
-	// Wait for initial GlobalConfig
+	// Pick up debug aka log level before we start real work
 	for !zedagentCtx.GCInitialized {
 		log.Infof("Waiting for GCInitialized\n")
 		select {
@@ -546,6 +545,7 @@ func Run() {
 			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
 		}
 	}
+	log.Infof("processed GlobalConfig")
 
 	// wait till, zboot status is ready
 	for !zedagentCtx.zbootRestarted {

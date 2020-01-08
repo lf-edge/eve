@@ -73,6 +73,7 @@ type verifierContext struct {
 	subAssignableAdapters *pubsub.Subscription
 	gc                    *time.Ticker
 	RktGCGracePeriod      uint32
+	GCInitialized         bool
 }
 
 var debug = false
@@ -189,6 +190,18 @@ func Run() {
 	ctx.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
+	// Pick up debug aka log level before we start real work
+	for !ctx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
+
 	// Publish status for any objects that were verified before reboot
 	// The signatures will be re-checked during handleModify for App images.
 	handleInit(&ctx)
@@ -290,6 +303,7 @@ func handleInitWorkinProgressObjects(ctx *verifierContext) {
 }
 
 // Recreate status files for verified objects as types.DOWNLOADED
+// except containers which we mark as types.DELIVERED
 func handleInitVerifiedObjects(ctx *verifierContext) {
 
 	for _, objType := range verifierObjTypes {
@@ -1146,11 +1160,14 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	var gcp *types.GlobalConfig
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	if gcp != nil && gcp.DownloadGCTime != 0 {
-		downloadGCTime = time.Duration(gcp.DownloadGCTime) * time.Second
+	if gcp != nil {
+		if gcp.DownloadGCTime != 0 {
+			downloadGCTime = time.Duration(gcp.DownloadGCTime) * time.Second
+		}
 		if gcp.RktGCGracePeriod != 0 {
 			ctx.RktGCGracePeriod = gcp.RktGCGracePeriod
 		}
+		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }

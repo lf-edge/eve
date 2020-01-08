@@ -68,6 +68,7 @@ type logmanagerContext struct {
 	subGlobalConfig *pubsub.Subscription
 	globalConfig    *types.GlobalConfig
 	subDomainStatus *pubsub.Subscription
+	GCInitialized   bool
 }
 
 // Set from Makefile
@@ -237,6 +238,18 @@ func Run() {
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
+
+	// Pick up debug aka log level before we start real work
+	for !logmanagerCtx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
 
 	log.Infof("Waiting until we have some management ports with usable addresses\n")
 	for DNSctx.usableAddressCount == 0 && !force {
@@ -1041,6 +1054,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		agentName, debugOverride)
 	if gcp != nil {
 		ctx.globalConfig = gcp
+		ctx.GCInitialized = true
 	}
 	foundAgents := make(map[string]bool)
 	if status.DefaultRemoteLogLevel != "" {
