@@ -679,6 +679,23 @@ func runHandler(ctx *domainContext, key string, c <-chan interface{}) {
 	log.Infof("runHandler(%s) DONE\n", key)
 }
 
+// doStopDestroyDomain will destroy the domain of an instance if qemu is crashed
+func doStopDestroyDomain(status *types.DomainStatus) {
+	var err error
+	if status.IsContainer {
+		// Use rkt tool
+		log.Infof("Using rkt tool to stop the running pod ... PodUUID - %s\n", status.PodUUID)
+		err = rktStop(status.PodUUID, false)
+		if err != nil {
+			log.Errorf("rktStop %s failed: %s\n", status.DomainName, err)
+		}
+	}
+	err = DomainDestroy(*status)
+	if err != nil {
+		log.Errorf("DomainDestroy %s failed: %s\n", status.DomainName, err)
+	}
+}
+
 // Check if it is still running
 // XXX would xen state be useful?
 func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
@@ -720,6 +737,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.Activated = false
 			status.State = types.HALTED
 			publishDomainStatus(ctx, status)
+			doStopDestroyDomain(status)
 		}
 	}
 }
