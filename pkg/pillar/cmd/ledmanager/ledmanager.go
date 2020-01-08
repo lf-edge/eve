@@ -49,6 +49,7 @@ type ledManagerContext struct {
 	deviceNetworkStatus    types.DeviceNetworkStatus
 	usableAddressCount     int
 	derivedLedCounter      int // Based on ledCounter + usableAddressCount
+	GCInitialized          bool
 }
 
 type Blink200msFunc func()
@@ -210,6 +211,18 @@ func Run() {
 	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
+
+	// Pick up debug aka log level before we start real work
+	for !ctx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
 
 	for {
 		select {
@@ -414,8 +427,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	if gcp != nil {
+		ctx.GCInitialized = true
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 

@@ -65,6 +65,7 @@ type baseOsMgrContext struct {
 
 	subGlobalConfig          *pubsub.Subscription
 	globalConfig             *types.GlobalConfig
+	GCInitialized            bool
 	subBaseOsConfig          *pubsub.Subscription
 	subZbootConfig           *pubsub.Subscription
 	subCertObjConfig         *pubsub.Subscription
@@ -131,6 +132,18 @@ func Run() {
 
 	// report other agents, about, zboot status availability
 	ctx.pubZbootStatus.SignalRestarted()
+
+	// Pick up debug aka log level before we start real work
+	for !ctx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-ctx.subGlobalConfig.C:
+			ctx.subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
 
 	// First we process the verifierStatus to avoid downloading
 	// an image we already have in place.
@@ -439,6 +452,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		debugOverride)
 	if gcp != nil {
 		ctx.globalConfig = gcp
+		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }

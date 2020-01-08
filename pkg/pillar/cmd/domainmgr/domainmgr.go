@@ -83,6 +83,7 @@ type domainContext struct {
 	pubAssignableAdapters  *pubsub.Publication
 	usbAccess              bool
 	createSema             sema.Semaphore
+	GCInitialized          bool
 }
 
 // appRwImageName - Returns name of the image ( including parent dir )
@@ -245,6 +246,18 @@ func Run() {
 	domainCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
+	// Pick up debug aka log level before we start real work
+	for !domainCtx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
+
 	// Wait for DeviceNetworkStatus to be init so we know the management
 	// ports and then wait for assignableAdapters.
 	for !domainCtx.DNSinitialized {
@@ -256,7 +269,9 @@ func Run() {
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
+		case <-stillRunning.C:
 		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	// Subscribe to PhysicalIOAdapterList from zedagent
@@ -2538,6 +2553,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 			ctx.usbAccess = gcp.UsbAccess
 			updateUsbAccess(ctx)
 		}
+		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }

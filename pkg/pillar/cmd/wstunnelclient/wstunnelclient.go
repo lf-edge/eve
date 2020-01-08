@@ -42,6 +42,7 @@ type DNSContext struct {
 
 type wstunnelclientContext struct {
 	subGlobalConfig      *pubsub.Subscription
+	GCInitialized        bool
 	subAppInstanceConfig *pubsub.Subscription
 	serverNameAndPort    string
 	wstunnelclient       *zedcloud.WSTunnelClient
@@ -140,6 +141,18 @@ func Run() {
 
 	subAppInstanceConfig.Activate()
 
+	// Pick up debug aka log level before we start real work
+	for !wscCtx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
+
 	wscCtx.dnsContext = &DNSctx
 	// Wait for knowledge about IP addresses. XXX needed?
 	for !DNSctx.DNSinitialized {
@@ -180,8 +193,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	if gcp != nil {
+		ctx.GCInitialized = true
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 

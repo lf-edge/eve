@@ -185,10 +185,10 @@ func Run() {
 		nodeagentCtx.updateInprogress)
 	publishNodeAgentStatus(&nodeagentCtx)
 
-	// Read the GlobalConfig first
-	// Wait for initial GlobalConfig
+	// Pick up debug aka log level before we start real work
 	log.Infof("Waiting for GCInitialized\n")
 	for !nodeagentCtx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
 		select {
 		case change := <-subGlobalConfig.C:
 			subGlobalConfig.ProcessChange(change)
@@ -200,6 +200,7 @@ func Run() {
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
+	log.Infof("processed GlobalConfig")
 
 	// when the partition status is inprogress state
 	// check network connectivity for 300 seconds
