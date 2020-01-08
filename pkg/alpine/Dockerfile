@@ -1,5 +1,5 @@
 ARG ALPINE_VERSION=3.9
-FROM lfedge/eve-alpine:8c4f2b213f09cfdbbbf1f900afc80f9dbb84f081 AS cache
+FROM lfedge/eve-alpine:a653b9e953fabc6bd2ec07899a050e625786f76b AS cache
 
 FROM alpine:${ALPINE_VERSION} AS mirror
 ARG ALPINE_VERSION=3.9
