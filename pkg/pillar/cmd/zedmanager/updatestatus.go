@@ -372,75 +372,91 @@ func doUpdate(ctx *zedmanagerContext,
 }
 
 // doInstallProcessStorageEntriesWithVerifiedImage
-//  Returns: (vs, storageStatusUpdate)
+//  Returns: (imageStatusPtr, vsPtr, storageStatusUpdate)
 func doInstallProcessStorageEntriesWithVerifiedImage(
 	ctx *zedmanagerContext,
 	appInstUUID uuid.UUID,
-	ssPtr *types.StorageStatus) (*types.VerifyImageStatus, bool) {
+	ssPtr *types.StorageStatus) (*types.ImageStatus,
+	*types.VerifyImageStatus, bool) {
 
 	changed := false
 	safename := ssPtr.Safename()
 
-	// Shortcut if image is already verified
-	vs := lookupVerifyImageStatusAny(ctx, safename, ssPtr.ImageSha256)
-	// Handle post-reboot verification in progress by allowing
-	// types.DOWNLOADED. If the verification later fails we will
-	// get a delete of the VerifyImageStatus and skip this
-	if vs == nil {
-		log.Debugf("Verifier status not found for %s sha %s",
-			safename, ssPtr.ImageSha256)
-		return nil, false
-	}
-	if vs.Expired {
-		log.Infof("Vs.Expired Set. Re-download image %s, sha %s",
-			safename, ssPtr.ImageSha256)
-		return nil, false
-	}
-	switch vs.State {
-	case types.DELIVERED:
-		log.Infof("Found verified image for %s sha %s\n",
-			safename, ssPtr.ImageSha256)
+	// Check if the image is already present in ImageStatus. If yes,
+	// go ahead and use it.
 
-	case types.DOWNLOADED:
-		log.Infof("Found downloaded/verified image for %s sha %s\n",
-			safename, ssPtr.ImageSha256)
-	default:
-		log.Infof("vs.State (%d) not DELIVERED / DOWNLOADED. safename: %s"+
-			" sha %s", vs.State, safename, ssPtr.ImageSha256)
-		return nil, false
-	}
-	if vs.Safename != safename {
-		// If found based on sha256
-		log.Infof("Found diff safename %s\n", vs.Safename)
-	}
-	if ssPtr.IsContainer {
-		log.Debugf("Container. ssPtr.ContainerImageID: %s, "+
-			"vs.IsContainer = %t, vs.ContainerImageID: %s\n",
-			ssPtr.ContainerImageID, vs.IsContainer, vs.ContainerImageID)
-		if len(ssPtr.ContainerImageID) == 0 {
-			ssPtr.ContainerImageID = vs.ContainerImageID
+	var vs *types.VerifyImageStatus
+	isPtr := lookupImageStatusForApp(ctx, appInstUUID, ssPtr.ImageSha256)
+	if isPtr != nil {
+		// DiskStatus found for he App.
+		log.Debugf("Image Status found for app UUID: %s. ImageStatus: %+v",
+			appInstUUID.String(), *isPtr)
+		if ssPtr.State != types.DELIVERED {
+			ssPtr.State = types.DELIVERED
+			ssPtr.Progress = 100
+			changed = true
+		}
+	} else {
+		// Check if image is already verified
+		vs = lookupVerifyImageStatusAny(ctx, safename, ssPtr.ImageSha256)
+		// Handle post-reboot verification in progress by allowing
+		// types.DOWNLOADED. If the verification later fails we will
+		// get a delete of the VerifyImageStatus and skip this
+		if vs == nil {
+			log.Debugf("Verifier status not found for %s sha %s",
+				safename, ssPtr.ImageSha256)
+			return nil, nil, false
+		}
+		if vs.Expired {
+			log.Infof("Vs.Expired Set. Re-download image %s, sha %s",
+				safename, ssPtr.ImageSha256)
+			return nil, nil, false
+		}
+		switch vs.State {
+		case types.DELIVERED:
+			log.Infof("Found verified image for %s sha %s\n",
+				safename, ssPtr.ImageSha256)
+
+		case types.DOWNLOADED:
+			log.Infof("Found downloaded/verified image for %s sha %s\n",
+				safename, ssPtr.ImageSha256)
+		default:
+			log.Infof("vs.State (%d) not DELIVERED / DOWNLOADED. safename: %s"+
+				" sha %s", vs.State, safename, ssPtr.ImageSha256)
+			return nil, nil, false
+		}
+		if vs.Safename != safename {
+			// If found based on sha256
+			log.Infof("Found diff safename %s\n", vs.Safename)
+		}
+		if ssPtr.IsContainer {
+			log.Debugf("Container. ssPtr.ContainerImageID: %s, "+
+				"vs.IsContainer = %t, vs.ContainerImageID: %s\n",
+				ssPtr.ContainerImageID, vs.IsContainer, vs.ContainerImageID)
+			if len(ssPtr.ContainerImageID) == 0 {
+				ssPtr.ContainerImageID = vs.ContainerImageID
+				changed = true
+			}
+		}
+		if vs.State != ssPtr.State {
+			ssPtr.State = vs.State
+			ssPtr.Progress = 100
 			changed = true
 		}
 	}
 
 	// If we don't already have a RefCount add one
 	if !ssPtr.HasVerifierRef {
-		log.Infof("!HasVerifierRef vs. RefCount %d for %s\n",
-			vs.RefCount, vs.Safename)
+		log.Infof("!HasVerifierRef")
 		// We don't need certs since Status already exists
 		MaybeAddVerifyImageConfig(ctx, appInstUUID.String(), *ssPtr, false)
 		ssPtr.HasVerifierRef = true
 		changed = true
 	}
-	if vs.State != ssPtr.State {
-		ssPtr.State = vs.State
-		ssPtr.Progress = 100
-		changed = true
-	}
 	log.Debugf("Verifier Status Exists for StorageEntry: Name: %s, "+
 		"ImageID: %s,  vs.RefCount: %d, ssPtr.State: %d",
 		ssPtr.Name, ssPtr.ImageID, vs.RefCount, ssPtr.State)
-	return vs, changed
+	return isPtr, vs, changed
 }
 
 func doInstall(ctx *zedmanagerContext,
@@ -536,9 +552,19 @@ func doInstall(ctx *zedmanagerContext,
 			ss.Name, safename, ss.ImageSha256)
 
 		// Check if VerifierStatus already exists.
-		vs, statusUpdated := doInstallProcessStorageEntriesWithVerifiedImage(
+		isPtr, vs, statusUpdated := doInstallProcessStorageEntriesWithVerifiedImage(
 			ctx, status.UUIDandVersion.UUID, ss)
 		changed = changed || statusUpdated
+		if isPtr != nil {
+			log.Debugf("doInstall: Installed image exists. StorageStatus "+
+				"Name: %s, safename %s, ImageSha256: %s",
+				ss.Name, safename, ss.ImageSha256)
+			// Image with imageStatus is in INSTALLED state
+			if minState > types.INSTALLED {
+				minState = types.INSTALLED
+			}
+			continue
+		}
 		if vs != nil {
 			log.Debugf("doInstall: Verified image exists. StorageStatus "+
 				"Name: %s, safename %s, ImageSha256: %s",
@@ -670,55 +696,61 @@ func doInstall(ctx *zedmanagerContext,
 		log.Infof("Found StorageStatus URL %s safename %s\n",
 			ss.Name, safename)
 
-		vs := lookupVerifyImageStatusAny(ctx, safename,
+		isPtr := lookupImageStatusForApp(ctx, config.UUIDandVersion.UUID,
 			ss.ImageSha256)
-		if vs == nil || vs.Expired {
-			log.Infof("VerifyImageStatus for %s sha %s not found (%v)\n",
-				safename, ss.ImageSha256, vs)
-			// Keep at current state
-			minState = types.DOWNLOADED
-			changed = true
-			continue
-		}
-		if minState > vs.State {
-			minState = vs.State
-		}
-		if vs.State != ss.State {
-			ss.State = vs.State
-			changed = true
-		}
-		if vs.Pending() {
-			log.Infof("lookupVerifyImageStatusAny %s Pending\n",
-				safename)
-			continue
-		}
-		if vs.LastErr != "" {
-			log.Errorf("Received error from verifier for %s: %s\n",
-				safename, vs.LastErr)
-			ss.Error = vs.LastErr
-			ss.ErrorSource = pubsub.TypeToName(types.VerifyImageStatus{})
-			errorSource = ss.ErrorSource
-			allErrors = appendError(allErrors, "verifier",
-				vs.LastErr)
-			ss.ErrorTime = vs.LastErrTime
-			errorTime = vs.LastErrTime
-			changed = true
-			continue
-		} else if ss.ErrorSource == pubsub.TypeToName(types.VerifyImageStatus{}) {
-			log.Infof("Clearing verifier error %s\n", ss.Error)
-			ss.Error = ""
-			ss.ErrorSource = ""
-			ss.ErrorTime = time.Time{}
-			changed = true
-		}
-		switch vs.State {
-		case types.INITIAL:
-			// Nothing to do
-		default:
-			ss.ActiveFileLocation = types.VerifiedAppImgDirname + "/" + vs.Safename
+		if isPtr != nil {
+			ss.ActiveFileLocation = types.VerifiedAppImgDirname + "/" + safename
 			log.Infof("Update SSL ActiveFileLocation for %s: %s\n",
 				uuidStr, ss.ActiveFileLocation)
 			changed = true
+		} else {
+			vs := lookupVerifyImageStatusAny(ctx, safename, ss.ImageSha256)
+			if vs == nil || vs.Expired {
+				log.Infof("VerifyImageStatus for %s sha %s not found (%v)\n",
+					safename, ss.ImageSha256, vs)
+				// Keep at current state
+				minState = types.DOWNLOADED
+				changed = true
+				continue
+			}
+			if minState > vs.State {
+				minState = vs.State
+			}
+			if vs.State != ss.State {
+				ss.State = vs.State
+				changed = true
+			}
+			if vs.Pending() {
+				log.Infof("lookupVerifyImageStatusAny %s Pending\n", safename)
+				continue
+			}
+			if vs.LastErr != "" {
+				log.Errorf("Received error from verifier for %s: %s\n",
+					safename, vs.LastErr)
+				ss.Error = vs.LastErr
+				ss.ErrorSource = pubsub.TypeToName(types.VerifyImageStatus{})
+				errorSource = ss.ErrorSource
+				allErrors = appendError(allErrors, "verifier", vs.LastErr)
+				ss.ErrorTime = vs.LastErrTime
+				errorTime = vs.LastErrTime
+				changed = true
+				continue
+			} else if ss.ErrorSource == pubsub.TypeToName(types.VerifyImageStatus{}) {
+				log.Infof("Clearing verifier error %s\n", ss.Error)
+				ss.Error = ""
+				ss.ErrorSource = ""
+				ss.ErrorTime = time.Time{}
+				changed = true
+			}
+			switch vs.State {
+			case types.INITIAL:
+				// Nothing to do
+			default:
+				ss.ActiveFileLocation = types.VerifiedAppImgDirname + "/" + vs.Safename
+				log.Infof("Update SSL ActiveFileLocation for %s: %s\n",
+					uuidStr, ss.ActiveFileLocation)
+				changed = true
+			}
 		}
 		log.Debugf("doInstall: StorageStatus ImageID:%s, Safename: %s, "+
 			"minState:%d", ss.ImageID, ss.Name, minState)

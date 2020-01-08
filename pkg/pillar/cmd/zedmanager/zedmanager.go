@@ -44,6 +44,7 @@ type zedmanagerContext struct {
 	subAppNetworkStatus     *pubsub.Subscription
 	pubDomainConfig         *pubsub.Publication
 	subDomainStatus         *pubsub.Subscription
+	subImageStatus          *pubsub.Subscription
 	pubEIDConfig            *pubsub.Publication
 	subEIDStatus            *pubsub.Subscription
 	subCertObjStatus        *pubsub.Subscription
@@ -212,6 +213,17 @@ func Run() {
 	ctx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
 
+	// Get DomainStatus from domainmgr
+	subImageStatus, err := pubsub.Subscribe("domainmgr",
+		types.ImageStatus{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subImageStatus.MaxProcessTimeWarn = warningTime
+	subImageStatus.MaxProcessTimeError = errorTime
+	ctx.subImageStatus = subImageStatus
+	subImageStatus.Activate()
+
 	// Look for DownloaderStatus from downloader
 	subAppImgDownloadStatus, err := pubsub.SubscribeScope("downloader",
 		types.AppImgObj, types.DownloaderStatus{}, false, &ctx)
@@ -326,6 +338,9 @@ func Run() {
 
 		case change := <-subDomainStatus.C:
 			subDomainStatus.ProcessChange(change)
+
+		case change := <-subImageStatus.C:
+			subImageStatus.ProcessChange(change)
 
 		case change := <-subAppInstanceConfig.C:
 			subAppInstanceConfig.ProcessChange(change)
