@@ -11,6 +11,8 @@ const (
 	PersistDir = "/persist"
 	// PersistConfigDir is where we keep some configuration across reboots
 	PersistConfigDir = PersistDir + "/config"
+	// PersistStatusDir is where we keep some configuration across reboots
+	PersistStatusDir = PersistDir + "/status"
 	// DownloadDirname - Location of downloaded images / objects
 	DownloadDirname = PersistDir + "/downloads"
 	// CertificateDirname - Location of certificates
@@ -21,9 +23,6 @@ const (
 	// VerifiedAppImgDirname - Location of verified App images. Read-only images
 	// named based on sha256 hash each in its own directory
 	VerifiedAppImgDirname = AppImgDirname + "/verified"
-
-	// PersistRktDataDir - Location of rkt dir,
-	PersistRktDataDir = PersistDir + "/rkt"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"
@@ -45,6 +44,11 @@ const (
 	V2TLSCertShaFilename = CertificateDirname + "/v2tlsbaseroot-certificates.sha256"
 	// UUIDFileName - device UUID
 	UUIDFileName = IdentityDirname + "/uuid"
+
+	// APIV2FileName - user can statically allow for API v2
+	APIV2FileName = IdentityDirname + "/Force-API-V2"
+	// ServerSigningCertFileName - filename for server signing leaf certificate
+	ServerSigningCertFileName = CertificateDirname + "/server-signing-cert.pem"
 
 	// AppImgObj - name of app image obj dir
 	AppImgObj = "appImg.obj"

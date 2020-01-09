@@ -24,12 +24,17 @@ type DomainConfig struct {
 	Activate       bool   // Actually start the domU as opposed to prepare
 	AppNum         int    // From networking; makes the name unique
 	VmConfig
-	DiskConfigList    []DiskConfig
-	VifList           []VifInfo
-	IoAdapterList     []IoAdapter
+	DiskConfigList []DiskConfig
+	VifList        []VifInfo
+	IoAdapterList  []IoAdapter
+
+	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string // base64-encoded
 	// Container related info
 	IsContainer bool // Is this Domain for a Container?
+
+	// CipherBlockStatus, for encrypted cloud-init data
+	CipherBlockStatus
 }
 
 func (config DomainConfig) Key() string {
@@ -120,7 +125,6 @@ type DomainStatus struct {
 	BootFailed         bool
 	AdaptersFailed     bool
 	IsContainer        bool              // Is this Domain for a Container?
-	PodUUID            string            // Pod UUID outputted by rkt
 	EnvVariables       map[string]string // List of environment variables to be set in container
 }
 
@@ -199,6 +203,7 @@ type DiskStatus struct {
 	Devtype            string // From config
 	Vdev               string // Allocated
 	ActiveFileLocation string // Allocated; private copy if RW; FileLocation if RO
+	FSVolumeLocation   string // Allocated; for containers this has path to the FSVolume
 }
 
 // Track the active image files in rwImgDirname

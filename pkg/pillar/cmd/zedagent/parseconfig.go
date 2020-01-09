@@ -14,13 +14,11 @@ import (
 	"net"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -1714,252 +1712,28 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 		itemsPrevConfigHash, configHash, items)
 
 	// Start with the defaults so that we revert to default when no data
-	// If there is Error Value for an item, we use the Default value
-	// instead - NOT the current value. This guarantees a known state for the
-	// Config item:
-	//      1) Use the specified Value if no Errors
-	//      2) Use the Default value if Value cannot be parsed.
-	//      3) Use the Min. Value if the specified value < Min ( For Ints )
-	//      4) Use the Max. Value if the specified value > Max ( For Ints )
+	// 1) Use the specified Value if no Errors
+	// 2) Is there are Errors ( Parse Errors or > Max or  < Min errors),
+	//  retain the previous value with Error set. In case of val > Max
+	//  or val < Min, Do not try to correct it. Either take the specified
+	//  value or retain the previous value.
 	gcPtr := &ctx.zedagentCtx.globalConfig
-	newGlobalConfig := types.GlobalConfigDefaults
+	newGlobalConfig := types.DefaultConfigItemValueMap()
+	newGlobalStatus := types.NewGlobalStatus()
 
-	newGlobalStatus := types.GlobalStatus{}
-	newGlobalStatus.ConfigItems = make(map[string]types.ConfigItemStatus)
-	newGlobalStatus.UnknownConfigItems = make(map[string]types.ConfigItemStatus)
-
-	unknownConfigItem := false
-	var err error
 	for _, item := range items {
-		key := item.Key
-		log.Infof("parseConfigItems key %s value %s\n", key, item.Value)
-		switch key {
-		case "timer.config.interval":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.ConfigInterval = uint32(i64)
-			}
-
-		case "timer.metric.interval":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.MetricInterval = uint32(i64)
-			}
-
-		case "timer.send.timeout":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.NetworkSendTimeout = uint32(i64)
-			}
-
-		case "timer.reboot.no.network":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.ResetIfCloudGoneTime = uint32(i64)
-			}
-
-		case "timer.update.fallback.no.network":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.FallbackIfCloudGoneTime = uint32(i64)
-			}
-
-		case "timer.test.baseimage.update":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.MintimeUpdateSuccess = uint32(i64)
-			}
-
-		case "timer.port.georedo":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.NetworkGeoRedoTime = uint32(i64)
-			}
-
-		case "timer.port.georetry":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.NetworkGeoRetryTime = uint32(i64)
-			}
-
-		case "timer.port.testduration":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.NetworkTestDuration = uint32(i64)
-			}
-
-		case "timer.port.testinterval":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.NetworkTestInterval = uint32(i64)
-			}
-
-		case "timer.port.timeout":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.NetworkTestTimeout = uint32(i64)
-			}
-
-		case "timer.port.testbetterinterval":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.NetworkTestBetterInterval = uint32(i64)
-			}
-
-		case "network.fallback.any.eth":
-			newTs, err := types.ParseTriState(item.Value)
-			if err == nil {
-				newGlobalConfig.NetworkFallbackAnyEth = newTs
-			}
-
-		case "debug.enable.usb":
-			newBool, err := strconv.ParseBool(item.Value)
-			if err == nil {
-				newGlobalConfig.UsbAccess = newBool
-			}
-
-		case "debug.enable.ssh":
-			if strings.HasPrefix(item.Value, "ssh") {
-				newGlobalConfig.SshAuthorizedKeys = item.Value
-				newGlobalConfig.SshAccess = true
-			} else {
-				err = fmt.Errorf("Invalid value for debug.enable.ssh. "+
-					"Not starting with prefix ssh. Value: %s", item.Value)
-			}
-
-		case "app.allow.vnc":
-			newBool, err := strconv.ParseBool(item.Value)
-			if err == nil {
-				newGlobalConfig.AllowAppVnc = newBool
-			}
-
-		case "timer.use.config.checkpoint":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.StaleConfigTime = uint32(i64)
-			}
-
-		case "timer.gc.download":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.DownloadGCTime = uint32(i64)
-			}
-
-		case "timer.gc.vdisk":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.VdiskGCTime = uint32(i64)
-			}
-
-		case "timer.download.retry":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.DownloadRetryTime = uint32(i64)
-			}
-
-		case "timer.boot.retry":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.DomainBootRetryTime = uint32(i64)
-			}
-
-		case "network.allow.wwan.app.download":
-			newTs, err := types.ParseTriState(item.Value)
-			if err == nil {
-				newGlobalConfig.AllowNonFreeAppImages = newTs
-			}
-
-		case "network.allow.wwan.baseos.download":
-			newTs, err := types.ParseTriState(item.Value)
-			if err == nil {
-				newGlobalConfig.AllowNonFreeBaseImages = newTs
-			}
-
-		case "debug.default.loglevel":
-			newGlobalConfig.DefaultLogLevel = item.Value
-
-		case "debug.default.remote.loglevel":
-			newGlobalConfig.DefaultRemoteLogLevel = item.Value
-
-		case "storage.dom0.disk.minusage.percent":
-			i64, err := strconv.ParseUint(item.Value, 10, 32)
-			if err == nil {
-				newGlobalConfig.Dom0MinDiskUsagePercent = uint32(i64)
-			}
-			// Max diskspace for dom0 is 80%.
-			if newGlobalConfig.Dom0MinDiskUsagePercent > 80 {
-				err = fmt.Errorf("dom0MinDiskUsagePercent (%d) "+
-					"> maxAllowed (80). Setting it to 80.",
-					newGlobalConfig.Dom0MinDiskUsagePercent)
-				log.Errorf("parseConfigItems: %s", err)
-				newGlobalConfig.Dom0MinDiskUsagePercent = 80
-			}
-			log.Infof("Set storage.dom0MinDiskUsagePercent to %d",
-				newGlobalConfig.Dom0MinDiskUsagePercent)
-
-		case "storage.apps.ignore.disk.check":
-			newBool, err := strconv.ParseBool(item.Value)
-			if err != nil {
-				log.Errorf("parseConfigItems: bad bool value %s for %s: %s\n",
-					item.Value, key, err)
-				continue
-			}
-			newGlobalConfig.IgnoreDiskCheckForApps = newBool
-
-		default:
-			// Handle agentname items for loglevels
-			newString := item.Value
-			components := strings.Split(key, ".")
-			if len(components) == 3 && components[0] == "debug" &&
-				components[2] == "loglevel" {
-
-				agentName := components[1]
-				current := agentlog.LogLevel(gcPtr, agentName)
-				if current != newString && newString != "" {
-					log.Infof("parseConfigItems: %s change from %v to %v\n",
-						key, current, newString)
-					agentlog.SetLogLevel(&newGlobalConfig,
-						agentName, newString)
-				} else {
-					agentlog.SetLogLevel(&newGlobalConfig,
-						agentName, current)
-				}
-			} else if len(components) == 4 && components[0] == "debug" &&
-				components[2] == "remote" && components[3] == "loglevel" {
-				agentName := components[1]
-				current := agentlog.RemoteLogLevel(gcPtr, agentName)
-				if current != newString && newString != "" {
-					log.Infof("parseConfigItems: %s change from %v to %v\n",
-						key, current, newString)
-					agentlog.SetRemoteLogLevel(&newGlobalConfig,
-						agentName, newString)
-				} else {
-					agentlog.SetRemoteLogLevel(&newGlobalConfig,
-						agentName, current)
-				}
-			} else {
-				unknownConfigItem = true
-				err = fmt.Errorf("Unknown configItem %s value %s\n",
-					key, item.Value)
-				log.Errorf("parseConfigItems: %s", err)
-			}
+		itemValue, err := ctx.zedagentCtx.specMap.ParseItem(newGlobalConfig,
+			gcPtr, item.Key, item.Value)
+		newGlobalStatus.ConfigItems[item.Key] = types.ConfigItemStatus{
+			Err:   err,
+			Value: itemValue.StringValue(),
 		}
-		if err != nil {
-			if unknownConfigItem {
-				newGlobalStatus.UnknownConfigItems[key] =
-					types.ConfigItemStatus{Value: item.Value, Err: err}
-			} else {
-				err = fmt.Errorf("bad value %s for %s. Error: %s\n",
-					item.Value, key, err)
-				newGlobalStatus.ConfigItems[key] =
-					types.ConfigItemStatus{Err: err}
-				log.Errorf("parseConfigItems: %s", err)
-			}
-			unknownConfigItem = false
-			err = nil
-		}
+		log.Debugf("Processed ConfigItem: key: %s, Value: %s, itemValue: %+v",
+			item.Key, item.Value, itemValue)
 	}
-	newGlobalConfig = types.ApplyGlobalConfig(newGlobalConfig)
+	log.Debugf("Done with Parsing ConfigItems. globalStatus: %+v",
+		*newGlobalStatus)
+	ctx.zedagentCtx.globalStatus = *newGlobalStatus
 	// XXX - Should we also not call EnforceGlobalConfigMinimums on
 	// newGlobalConfig here before checking if anything changed??
 	// Also - if we changed the Config Value based on Min / Max, we should
@@ -1967,40 +1741,42 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 	if !cmp.Equal(*gcPtr, newGlobalConfig) {
 		log.Infof("parseConfigItems: change %v",
 			cmp.Diff(*gcPtr, newGlobalConfig))
-
 		oldGlobalConfig := *gcPtr
-		*gcPtr = types.EnforceGlobalConfigMinimums(newGlobalConfig)
+		*gcPtr = *newGlobalConfig
 
 		// Set GlobalStatus Values from GlobalConfig.
-		newGlobalStatus.UpdateItemValuesFromGlobalConfig(*gcPtr)
-		ctx.zedagentCtx.globalStatus = newGlobalStatus
+		oldConfigInterval := oldGlobalConfig.GlobalValueInt(types.ConfigInterval)
+		newConfigInterval := newGlobalConfig.GlobalValueInt(types.ConfigInterval)
 
-		if gcPtr.ConfigInterval != oldGlobalConfig.ConfigInterval {
+		oldMetricInterval := oldGlobalConfig.GlobalValueInt(types.MetricInterval)
+		newMetricInterval := newGlobalConfig.GlobalValueInt(types.MetricInterval)
+
+		oldSSHAuthorizedKeys := oldGlobalConfig.GlobalValueString(types.SSHAuthorizedKeys)
+		newSSHAuthorizedKeys := newGlobalConfig.GlobalValueString(types.SSHAuthorizedKeys)
+
+		if newConfigInterval != oldConfigInterval {
 			log.Infof("parseConfigItems: %s change from %d to %d\n",
-				"ConfigInterval",
-				oldGlobalConfig.ConfigInterval, gcPtr.ConfigInterval)
-			updateConfigTimer(gcPtr.ConfigInterval, ctx.configTickerHandle)
+				"ConfigInterval", oldConfigInterval, newConfigInterval)
+			updateConfigTimer(newConfigInterval, ctx.configTickerHandle)
 		}
-		if gcPtr.MetricInterval != oldGlobalConfig.MetricInterval {
+		if newMetricInterval != oldMetricInterval {
 			log.Infof("parseConfigItems: %s change from %d to %d\n",
-				"MetricInterval",
-				oldGlobalConfig.MetricInterval, gcPtr.MetricInterval)
-			updateMetricsTimer(gcPtr.MetricInterval, ctx.metricsTickerHandle)
+				"MetricInterval", oldMetricInterval, newMetricInterval)
+			updateMetricsTimer(newMetricInterval, ctx.metricsTickerHandle)
 		}
-		if gcPtr.SshAuthorizedKeys != oldGlobalConfig.SshAuthorizedKeys {
-			log.Infof("parseConfigItems: %v change from %v to %v",
-				"SshAuthorizedKeys",
-				oldGlobalConfig.SshAuthorizedKeys, gcPtr.SshAuthorizedKeys)
-			ssh.UpdateSshAuthorizedKeys(gcPtr.SshAuthorizedKeys)
+		if newSSHAuthorizedKeys != oldSSHAuthorizedKeys {
+			log.Infof("parseConfigItems: %s changed from %v to %v",
+				"SshAuthorizedKeys", oldSSHAuthorizedKeys, newSSHAuthorizedKeys)
+			ssh.UpdateSshAuthorizedKeys(newSSHAuthorizedKeys)
 		}
 		pub := ctx.zedagentCtx.pubGlobalConfig
 		err := pub.Publish("global", *gcPtr)
 		if err != nil {
 			// XXX - IS there a valid reason for this to Fail? If not, we should
 			//  fo log.Fatalf here..
-			log.Errorf("PublishToDir for globalConfig failed %s\n",
-				err)
+			log.Errorf("PublishToDir for globalConfig failed %s", err)
 		}
+		triggerPublishDevInfo(ctx.zedagentCtx)
 	}
 }
 

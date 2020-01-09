@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"strings"
+	"reflect"
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
@@ -148,7 +148,8 @@ type DevicePortConfig struct {
 	// All zeros means never tested.
 	LastFailed    time.Time
 	LastSucceeded time.Time
-	LastError     string // Set when LastFailed is updated
+	LastError     string    // Set when LastFailed is updated
+	LastIPAndDNS  time.Time // Time when we got some IP addresses and DNS
 
 	Ports []NetworkPortConfig
 }
@@ -157,14 +158,14 @@ type DevicePortConfigVersion uint32
 
 // GetPortByIfName - DevicePortConfig Methord to Get Port structure by IfName
 func (portConfig *DevicePortConfig) GetPortByIfName(
-	u string) (NetworkPortConfig, error) {
+	ifname string) (NetworkPortConfig, error) {
 	var port NetworkPortConfig
 	for _, port = range portConfig.Ports {
-		if u == port.IfName {
+		if ifname == port.IfName {
 			return port, nil
 		}
 	}
-	err := fmt.Errorf("DevicePortConfig can't find port %s", u)
+	err := fmt.Errorf("DevicePortConfig can't find port %s", ifname)
 	return port, err
 }
 
@@ -205,22 +206,74 @@ func (portConfig *DevicePortConfig) DoSanitize(
 		}
 	}
 	if sanitizeName {
-		// In case Name isn't set we make it match IfName
+		// In case Phylabel isn't set we make it match IfName. Ditto for Logicallabel
 		// XXX still needed?
 		for i := range portConfig.Ports {
 			port := &portConfig.Ports[i]
-			if port.Name == "" {
-				port.Name = port.IfName
-				log.Infof("DoSanitize: Forcing Name for %s ifname %s\n",
+			if port.Phylabel == "" {
+				port.Phylabel = port.IfName
+				log.Infof("XXX DoSanitize: Forcing Phylabel for %s ifname %s\n",
+					key, port.IfName)
+			}
+			if port.Logicallabel == "" {
+				port.Logicallabel = port.IfName
+				log.Infof("XXX DoSanitize: Forcing Logicallabel for %s ifname %s\n",
 					key, port.IfName)
 			}
 		}
 	}
 }
 
+// CountMgmtPorts returns the number of management ports
+// Exclude any broken ones with Dhcp = DT_NONE
+func (portConfig *DevicePortConfig) CountMgmtPorts() int {
+
+	count := 0
+	for _, port := range portConfig.Ports {
+		if port.IsMgmt && port.Dhcp != DT_NONE {
+			count++
+		}
+	}
+	return count
+}
+
+// Equal compares two DevicePortConfig but skips things that are
+// more of status such as the timestamps and the ParseError
+// XXX Compare Version or not?
+// We compare the Ports in array order.
+func (portConfig *DevicePortConfig) Equal(portConfig2 *DevicePortConfig) bool {
+
+	if portConfig.Key != portConfig2.Key {
+		return false
+	}
+	if len(portConfig.Ports) != len(portConfig2.Ports) {
+		return false
+	}
+	for i, p1 := range portConfig.Ports {
+		p2 := portConfig2.Ports[i]
+		if p1.IfName != p2.IfName ||
+			p1.Phylabel != p2.Phylabel ||
+			p1.Logicallabel != p2.Logicallabel ||
+			p1.IsMgmt != p2.IsMgmt ||
+			p1.Free != p2.Free {
+			return false
+		}
+		if !reflect.DeepEqual(p1.DhcpConfig, p2.DhcpConfig) ||
+			!reflect.DeepEqual(p1.ProxyConfig, p2.ProxyConfig) ||
+			!reflect.DeepEqual(p1.WirelessCfg, p2.WirelessCfg) {
+			return false
+		}
+	}
+	return true
+}
+
 // IsDPCTestable - Return false if recent failure (less than 60 seconds ago)
+// Also returns false if it isn't usable
 func (portConfig DevicePortConfig) IsDPCTestable() bool {
 
+	if !portConfig.IsDPCUsable() {
+		return false
+	}
 	if portConfig.LastFailed.IsZero() {
 		return true
 	}
@@ -232,12 +285,21 @@ func (portConfig DevicePortConfig) IsDPCTestable() bool {
 	return (timeDiff > 60)
 }
 
-// IsDPCUntested -
+// IsDPCUntested - returns true if this is something we might want to test now.
+// Checks if it is Usable since there is no point in testing unusable things.
 func (portConfig DevicePortConfig) IsDPCUntested() bool {
-	if portConfig.LastFailed.IsZero() && portConfig.LastSucceeded.IsZero() {
+	if portConfig.LastFailed.IsZero() && portConfig.LastSucceeded.IsZero() &&
+		portConfig.IsDPCUsable() {
 		return true
 	}
 	return false
+}
+
+// IsDPCUsable - checks whether something is invalid; no management IP
+// addresses means it isn't usable hence we return false if none.
+func (portConfig DevicePortConfig) IsDPCUsable() bool {
+	mgmtCount := portConfig.CountMgmtPorts()
+	return mgmtCount > 0
 }
 
 // WasDPCWorking - Check if the last results for the DPC was Success
@@ -313,20 +375,20 @@ type DhcpConfig struct {
 	DnsServers []net.IP // If not set we use Gateway as DNS server
 }
 
-// CryptoBlock - crypto data
-type CryptoBlock struct {
-	Identity string // encrypted identity or username for WPA-EAP
-	Password string // encrypted string of pass phrase or password hash
-}
-
 // WifiConfig - Wifi structure
 type WifiConfig struct {
 	SSID      string            // wifi SSID
 	KeyScheme WifiKeySchemeType // such as WPA-PSK, WPA-EAP
-	Identity  string            // identity or username for WPA-EAP
-	Password  string            // string of pass phrase or password hash
-	Crypto    CryptoBlock       // encrypted block of items
-	Priority  int32
+
+	// XXX: to be deprecated, use CipherBlockStatus instead
+	Identity string // identity or username for WPA-EAP
+
+	// XXX: to be deprecated, use CipherBlockStatus instead
+	Password string // string of pass phrase or password hash
+	Priority int32
+
+	// CipherBlockStatus, for encrypted credentials
+	CipherBlockStatus
 }
 
 // CellConfig - Cellular part of the configure
@@ -341,11 +403,15 @@ type WirelessConfig struct {
 	Wifi     []WifiConfig // Wifi Config params
 }
 
+// NetworkPortConfig has the configuration and some status like ParseErrors
+// for one IfName.
+// Note that if fields are added the Equal function needs to be updated.
 type NetworkPortConfig struct {
-	IfName string
-	Name   string // New logical name set by controller/model
-	IsMgmt bool   // Used to talk to controller
-	Free   bool   // Higher priority to talk to controller since no cost
+	IfName       string
+	Phylabel     string // Physical name set by controller/model
+	Logicallabel string
+	IsMgmt       bool // Used to talk to controller
+	Free         bool // Higher priority to talk to controller since no cost
 	DhcpConfig
 	ProxyConfig
 	WirelessCfg WirelessConfig
@@ -355,10 +421,11 @@ type NetworkPortConfig struct {
 }
 
 type NetworkPortStatus struct {
-	IfName string
-	Name   string // New logical name set by controller/model
-	IsMgmt bool   // Used to talk to controller
-	Free   bool
+	IfName       string
+	Phylabel     string // Physical name set by controller/model
+	Logicallabel string
+	IsMgmt       bool // Used to talk to controller
+	Free         bool
 	NetworkXObjectConfig
 	AddrInfoList []AddrInfo
 	ProxyConfig
@@ -379,22 +446,11 @@ type DeviceNetworkStatus struct {
 	Ports   []NetworkPortStatus
 }
 
-func (status *DeviceNetworkStatus) GetPortByName(
-	port string) *NetworkPortStatus {
-	for _, portStatus := range status.Ports {
-		if strings.EqualFold(portStatus.Name, port) {
-			log.Infof("Found NetworkPortStatus for %s", port)
-			return &portStatus
-		}
-	}
-	return nil
-}
-
 func (status *DeviceNetworkStatus) GetPortByIfName(
-	port string) *NetworkPortStatus {
+	ifname string) *NetworkPortStatus {
 	for _, portStatus := range status.Ports {
-		if portStatus.IfName == port {
-			log.Infof("Found NetworkPortStatus for %s", port)
+		if portStatus.IfName == ifname {
+			log.Infof("Found NetworkPortStatus for %s", ifname)
 			return &portStatus
 		}
 	}
@@ -428,7 +484,7 @@ func GetMgmtPortsNonFree(globalStatus DeviceNetworkStatus, rotation int) []strin
 func getMgmtPortsImpl(globalStatus DeviceNetworkStatus, rotation int,
 	freeOnly bool, nonfreeOnly bool) []string {
 
-	var ports []string
+	var ifnameList []string
 	for _, us := range globalStatus.Ports {
 		if freeOnly && !us.Free {
 			continue
@@ -440,9 +496,9 @@ func getMgmtPortsImpl(globalStatus DeviceNetworkStatus, rotation int,
 			!us.IsMgmt {
 			continue
 		}
-		ports = append(ports, us.IfName)
+		ifnameList = append(ifnameList, us.IfName)
 	}
-	return rotate(ports, rotation)
+	return rotate(ifnameList, rotation)
 }
 
 // Return number of local IP addresses for all the management ports
@@ -457,10 +513,10 @@ func CountLocalAddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 // Return number of local IP addresses for all the management ports
 // excluding link-local addresses
 func CountLocalAddrAnyNoLinkLocalIf(globalStatus DeviceNetworkStatus,
-	port string) int {
+	phylabelOrIfname string) int {
 
 	// Count the number of addresses which apply
-	addrs, _ := getInterfaceAddr(globalStatus, false, port, false)
+	addrs, _ := getInterfaceAddr(globalStatus, false, phylabelOrIfname, false)
 	return len(addrs)
 }
 
@@ -499,14 +555,14 @@ func CountLocalIPv4AddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus) int {
 	return count
 }
 
-// CountDNSServers returns the number of DNS servers; for port if set
-func CountDNSServers(globalStatus DeviceNetworkStatus, port string) int {
+// CountDNSServers returns the number of DNS servers; for phylabelOrIfname if set
+func CountDNSServers(globalStatus DeviceNetworkStatus, phylabelOrIfname string) int {
 
 	var ifname string
-	if port != "" {
-		ifname = AdapterToIfName(&globalStatus, port)
+	if phylabelOrIfname != "" {
+		ifname = PhylabelToIfName(&globalStatus, phylabelOrIfname)
 	} else {
-		ifname = port
+		ifname = phylabelOrIfname
 	}
 	count := 0
 	for _, us := range globalStatus.Ports {
@@ -518,15 +574,9 @@ func CountDNSServers(globalStatus DeviceNetworkStatus, port string) int {
 	return count
 }
 
-// GetDNSServers returns all, or the ones on one interface if port is set
-func GetDNSServers(globalStatus DeviceNetworkStatus, port string) []net.IP {
+// GetDNSServers returns all, or the ones on one interface if ifname is set
+func GetDNSServers(globalStatus DeviceNetworkStatus, ifname string) []net.IP {
 
-	var ifname string
-	if port != "" {
-		ifname = AdapterToIfName(&globalStatus, port)
-	} else {
-		ifname = port
-	}
 	var servers []net.IP
 	for _, us := range globalStatus.Ports {
 		if !us.IsMgmt {
@@ -545,10 +595,10 @@ func GetDNSServers(globalStatus DeviceNetworkStatus, port string) []net.IP {
 // Return number of local IP addresses for all the management ports with given name
 // excluding link-local addresses
 func CountLocalAddrFreeNoLinkLocalIf(globalStatus DeviceNetworkStatus,
-	port string) int {
+	phylabelOrIfname string) int {
 
 	// Count the number of addresses which apply
-	addrs, _ := getInterfaceAddr(globalStatus, true, port, false)
+	addrs, _ := getInterfaceAddr(globalStatus, true, phylabelOrIfname, false)
 	return len(addrs)
 }
 
@@ -556,13 +606,13 @@ func CountLocalAddrFreeNoLinkLocalIf(globalStatus DeviceNetworkStatus,
 // excluding link-local addresses
 // Only IPv4 counted
 func CountLocalIPv4AddrAnyNoLinkLocalIf(globalStatus DeviceNetworkStatus,
-	port string) int {
+	phylabelOrIfname string) int {
 
 	// Count the number of addresses which apply
-	addrs, _ := getInterfaceAddr(globalStatus, true, port, false)
+	addrs, _ := getInterfaceAddr(globalStatus, true, phylabelOrIfname, false)
 	count := 0
 	log.Infof("CountLocalIPv4AddrAnyNoLinkLocalIf(%s): total %d: %v\n",
-		port, len(addrs), addrs)
+		phylabelOrIfname, len(addrs), addrs)
 	for _, addr := range addrs {
 		if addr.To4() == nil {
 			continue
@@ -572,50 +622,50 @@ func CountLocalIPv4AddrAnyNoLinkLocalIf(globalStatus DeviceNetworkStatus,
 	return count
 }
 
-// Pick one address from all of the management ports, unless if port is set
-// in which we pick from that port. Includes link-local addresses.
+// Pick one address from all of the management ports, unless if phylabelOrIfname is set
+// in which we pick from that phylabelOrIfname. Includes link-local addresses.
 // We put addresses from the free management ports first in the list i.e.,
 // returned for the lower 'pickNum'
 func GetLocalAddrAny(globalStatus DeviceNetworkStatus, pickNum int,
-	port string) (net.IP, error) {
+	phylabelOrIfname string) (net.IP, error) {
 
 	freeOnly := false
 	includeLinkLocal := true
-	return getLocalAddrImpl(globalStatus, pickNum, port, freeOnly,
+	return getLocalAddrImpl(globalStatus, pickNum, phylabelOrIfname, freeOnly,
 		includeLinkLocal)
 }
 
-// Pick one address from all of the management ports, unless if port is set
-// in which we pick from that port. Excludes link-local addresses.
+// Pick one address from all of the management ports, unless if phylabelOrIfname is set
+// in which we pick from that phylabelOrIfname. Excludes link-local addresses.
 // We put addresses from the free management ports first in the list i.e.,
 // returned for the lower 'pickNum'
 func GetLocalAddrAnyNoLinkLocal(globalStatus DeviceNetworkStatus, pickNum int,
-	port string) (net.IP, error) {
+	phylabelOrIfname string) (net.IP, error) {
 
 	freeOnly := false
 	includeLinkLocal := false
-	return getLocalAddrImpl(globalStatus, pickNum, port, freeOnly,
+	return getLocalAddrImpl(globalStatus, pickNum, phylabelOrIfname, freeOnly,
 		includeLinkLocal)
 }
 
-// Pick one address from the free management ports, unless if port is set
-// in which we pick from that port. Excludes link-local addresses.
+// Pick one address from the free management ports, unless if phylabelOrIfname is set
+// in which we pick from that phylabelOrIfname. Excludes link-local addresses.
 // We put addresses from the free management ports first in the list i.e.,
 // returned for the lower 'pickNum'
 func GetLocalAddrFreeNoLinkLocal(globalStatus DeviceNetworkStatus, pickNum int,
-	port string) (net.IP, error) {
+	phylabelOrIfname string) (net.IP, error) {
 
 	freeOnly := true
 	includeLinkLocal := false
-	return getLocalAddrImpl(globalStatus, pickNum, port, freeOnly,
+	return getLocalAddrImpl(globalStatus, pickNum, phylabelOrIfname, freeOnly,
 		includeLinkLocal)
 }
 
 func getLocalAddrImpl(globalStatus DeviceNetworkStatus, pickNum int,
-	port string, freeOnly bool, includeLinkLocal bool) (net.IP, error) {
+	phylabelOrIfname string, freeOnly bool, includeLinkLocal bool) (net.IP, error) {
 
 	// Count the number of addresses which apply
-	addrs, err := getInterfaceAddr(globalStatus, freeOnly, port,
+	addrs, err := getInterfaceAddr(globalStatus, freeOnly, phylabelOrIfname,
 		includeLinkLocal)
 	if err != nil {
 		return net.IP{}, err
@@ -625,15 +675,15 @@ func getLocalAddrImpl(globalStatus DeviceNetworkStatus, pickNum int,
 	return addrs[pickNum], nil
 }
 
-func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, port string,
+func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, phylabelOrIfname string,
 	includeLinkLocal bool) ([]NetworkPortStatus, error) {
 
 	var links []NetworkPortStatus
 	var ifname string
-	if port != "" {
-		ifname = AdapterToIfName(&globalStatus, port)
+	if phylabelOrIfname != "" {
+		ifname = PhylabelToIfName(&globalStatus, phylabelOrIfname)
 	} else {
-		ifname = port
+		ifname = phylabelOrIfname
 	}
 	for _, us := range globalStatus.Ports {
 		if globalStatus.Version >= DPCIsMgmt &&
@@ -649,10 +699,11 @@ func getInterfaceAndAddr(globalStatus DeviceNetworkStatus, free bool, port strin
 		}
 
 		link := NetworkPortStatus{
-			IfName: us.IfName,
-			Name:   us.Name,
-			IsMgmt: us.IsMgmt,
-			Free:   us.Free,
+			IfName:       us.IfName,
+			Phylabel:     us.Phylabel,
+			Logicallabel: us.Logicallabel,
+			IsMgmt:       us.IsMgmt,
+			Free:         us.Free,
 		}
 		if includeLinkLocal {
 			link.AddrInfoList = us.AddrInfoList
@@ -694,10 +745,10 @@ func GetExistingInterfaceList(globalStatus DeviceNetworkStatus) []string {
 	return ifs
 }
 
-// Check if an interface/adapter name is a port owned by zedrouter
-func IsPort(globalStatus DeviceNetworkStatus, port string) bool {
+// Check if an interface name is a port owned by zedrouter
+func IsPort(globalStatus DeviceNetworkStatus, ifname string) bool {
 	for _, us := range globalStatus.Ports {
-		if us.Name != port && us.IfName != port {
+		if us.IfName != ifname {
 			continue
 		}
 		return true
@@ -705,10 +756,10 @@ func IsPort(globalStatus DeviceNetworkStatus, port string) bool {
 	return false
 }
 
-// Check if an interface/adapter name is a management port
-func IsMgmtPort(globalStatus DeviceNetworkStatus, port string) bool {
+// Check if a physical label or ifname is a management port
+func IsMgmtPort(globalStatus DeviceNetworkStatus, phylabelOrIfname string) bool {
 	for _, us := range globalStatus.Ports {
-		if us.Name != port && us.IfName != port {
+		if us.Phylabel != phylabelOrIfname && us.IfName != phylabelOrIfname {
 			continue
 		}
 		if globalStatus.Version >= DPCIsMgmt &&
@@ -720,10 +771,10 @@ func IsMgmtPort(globalStatus DeviceNetworkStatus, port string) bool {
 	return false
 }
 
-// Check if an interface/adapter name is a free management port
-func IsFreeMgmtPort(globalStatus DeviceNetworkStatus, port string) bool {
+// Check if a physical label or ifname is a free management port
+func IsFreeMgmtPort(globalStatus DeviceNetworkStatus, phylabelOrIfname string) bool {
 	for _, us := range globalStatus.Ports {
-		if us.Name != port && us.IfName != port {
+		if us.Phylabel != phylabelOrIfname && us.IfName != phylabelOrIfname {
 			continue
 		}
 		if globalStatus.Version >= DPCIsMgmt &&
@@ -735,9 +786,9 @@ func IsFreeMgmtPort(globalStatus DeviceNetworkStatus, port string) bool {
 	return false
 }
 
-func GetPort(globalStatus DeviceNetworkStatus, port string) *NetworkPortStatus {
+func GetPort(globalStatus DeviceNetworkStatus, phylabelOrIfname string) *NetworkPortStatus {
 	for _, us := range globalStatus.Ports {
-		if us.Name != port && us.IfName != port {
+		if us.Phylabel != phylabelOrIfname && us.IfName != phylabelOrIfname {
 			continue
 		}
 		if globalStatus.Version < DPCIsMgmt {
@@ -768,15 +819,15 @@ func GetMgmtPortFromAddr(globalStatus DeviceNetworkStatus, addr net.IP) string {
 // IPv6 link-locals. Only applies to management ports.
 // If free is not set, the addresses from the free management ports are first.
 func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool,
-	port string, includeLinkLocal bool) ([]net.IP, error) {
+	phylabelOrIfname string, includeLinkLocal bool) ([]net.IP, error) {
 
 	var freeAddrs []net.IP
 	var nonfreeAddrs []net.IP
 	var ifname string
-	if port != "" {
-		ifname = AdapterToIfName(&globalStatus, port)
+	if phylabelOrIfname != "" {
+		ifname = PhylabelToIfName(&globalStatus, phylabelOrIfname)
 	} else {
-		ifname = port
+		ifname = phylabelOrIfname
 	}
 	for _, us := range globalStatus.Ports {
 		if free && !us.Free {
@@ -810,44 +861,59 @@ func getInterfaceAddr(globalStatus DeviceNetworkStatus, free bool,
 	}
 }
 
-// Return list of port names we will report in info and metrics
-func ReportPorts(deviceNetworkStatus DeviceNetworkStatus) []string {
+// ReportPhylabels returns a list of Phylabels we will report in info and metrics
+func ReportPhylabels(deviceNetworkStatus DeviceNetworkStatus) []string {
 
 	var names []string
 	for _, port := range deviceNetworkStatus.Ports {
-		names = append(names, port.Name)
+		names = append(names, port.Phylabel)
 	}
 	return names
 }
 
-// lookup port Name to find IfName
-// Can also match on IfName
-// If not found, return the adapter string
-func AdapterToIfName(deviceNetworkStatus *DeviceNetworkStatus,
-	adapter string) string {
+// PhylabelToIfName looks up a port Phylabel or IfName to find an existing IfName
+// If not found, return the phylabelOrIfname argument string
+func PhylabelToIfName(deviceNetworkStatus *DeviceNetworkStatus,
+	phylabelOrIfname string) string {
 
 	for _, p := range deviceNetworkStatus.Ports {
-		if p.Name == adapter {
-			log.Debugf("AdapterToIfName: found %s for %s\n",
-				p.IfName, adapter)
+		if p.Phylabel == phylabelOrIfname {
+			log.Debugf("PhylabelToIfName: found %s for %s\n",
+				p.IfName, phylabelOrIfname)
 			return p.IfName
 		}
 	}
 	for _, p := range deviceNetworkStatus.Ports {
-		if p.IfName == adapter {
-			log.Debugf("AdapterToIfName: matched %s\n", adapter)
-			return adapter
+		if p.IfName == phylabelOrIfname {
+			log.Debugf("PhylabelToIfName: matched %s\n", phylabelOrIfname)
+			return phylabelOrIfname
 		}
 	}
-	log.Debugf("AdapterToIfName: no match for %s\n", adapter)
-	return adapter
+	log.Debugf("PhylabelToIfName: no match for %s\n", phylabelOrIfname)
+	return phylabelOrIfname
+}
+
+// LogicallabelToIfName looks up a port Logical label to find an existing IfName
+// If not found, return the logicallabel argument string
+func LogicallabelToIfName(deviceNetworkStatus *DeviceNetworkStatus,
+	logicallabel string) string {
+
+	for _, p := range deviceNetworkStatus.Ports {
+		if p.Logicallabel == logicallabel {
+			log.Infof("XXX LogicallabelToIfName: found %s for %s\n",
+				p.IfName, logicallabel)
+			return p.IfName
+		}
+	}
+	log.Infof("XXX LogicallabelToIfName: no match for %s\n", logicallabel)
+	return logicallabel
 }
 
 // IsAnyPortInPciBack
-//		Checks is any of the Ports are part of IO bundles which are in PCIback.
-//		If true, it also returns the portName ( NOT bundle name )
-//		Also returns whether it is currently used by an application by
-//		returning a UUID. If the UUID is zero it is in PCIback but available.
+//	Checks is any of the Ports are part of IO bundles which are in PCIback.
+//	If true, it also returns the ifName ( NOT bundle name )
+//	Also returns whether it is currently used by an application by
+//	returning a UUID. If the UUID is zero it is in PCIback but available.
 func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
 	aa *AssignableAdapters) (bool, string, uuid.UUID) {
 	if aa == nil {
@@ -857,12 +923,10 @@ func (portConfig *DevicePortConfig) IsAnyPortInPciBack(
 	log.Infof("IsAnyPortInPciBack: aa init %t, %d bundles, %d ports",
 		aa.Initialized, len(aa.IoBundleList), len(portConfig.Ports))
 	for _, port := range portConfig.Ports {
-		// XXX this assumes that ioBundle.Name is the ifname known
-		// by the kernel/ifconfig
-		ioBundle := aa.LookupIoBundleNet(port.IfName)
+		ioBundle := aa.LookupIoBundleIfName(port.IfName)
 		if ioBundle == nil {
 			// It is not guaranteed that all Ports are part of Assignable Adapters
-			// If not found, the adaptor is not capable of being assigned at
+			// If not found, the adapter is not capable of being assigned at
 			// PCI level. So it cannot be in PCI back.
 			log.Infof("IsAnyPortInPciBack: ifname %s not found",
 				port.IfName)
@@ -1011,6 +1075,7 @@ type UnderlayNetworkConfig struct {
 	Name       string           // From proto message
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
+	IntfOrder  int32            // XXX need to get from API
 
 	// Error
 	//	If there is a parsing error and this uLNetwork config cannot be
@@ -1041,7 +1106,7 @@ const (
 	NT_NOOP      NetworkType = 0
 	NT_IPV4                  = 4
 	NT_IPV6                  = 6
-	NT_CryptoEID             = 14 // Either IPv6 or IPv4; adapter Addr
+	NT_CryptoEID             = 14 // Either IPv6 or IPv4; IP Address
 	// determines whether IPv4 EIDs are in use.
 	NT_CryptoV4 = 24 // Not used
 	NT_CryptoV6 = 26 // Not used
@@ -1084,7 +1149,7 @@ type NetworkInstanceInfo struct {
 	BridgeIPAddr string
 	BridgeMac    string
 
-	// interface names for the Port
+	// interface names for the Logicallabel
 	IfNameList []string // Recorded at time of activate
 
 	// Collection of address assignments; from MAC address to IP address
@@ -1274,8 +1339,9 @@ type NetworkInstanceConfig struct {
 	// Activate - Activate the config.
 	Activate bool
 
-	// Port - Port name specified in the Device Config.
-	Port string
+	// Logicallabel - name specified in the Device Config.
+	// Can be a specific logicallabel for an interface, or a tag like "uplink"
+	Logicallabel string
 
 	// IP configuration for the Application
 	IpType          AddressType
@@ -1461,13 +1527,10 @@ func (status *NetworkInstanceStatus) IsIpAssigned(ip net.IP) bool {
 	return false
 }
 
-// Check if port is used even if a label like "uplink" is used to specify it
-func (status *NetworkInstanceStatus) IsUsingPort(port string) bool {
-	if strings.EqualFold(port, status.Port) {
-		return true
-	}
-	for _, ifname := range status.IfNameList {
-		if ifname == port {
+// IsUsingIfName checks if ifname is used
+func (status *NetworkInstanceStatus) IsUsingIfName(ifname string) bool {
+	for _, ifname2 := range status.IfNameList {
+		if ifname2 == ifname {
 			return true
 		}
 	}
@@ -1569,7 +1632,7 @@ type VpnConfig struct {
 }
 
 type NetLinkConfig struct {
-	Name        string
+	IfName      string
 	IpAddr      string
 	SubnetBlock string
 }
@@ -1836,4 +1899,9 @@ type VifIPTrig struct {
 // Key - VifIPTrig key function
 func (vifIP VifIPTrig) Key() string {
 	return vifIP.MacAddr
+}
+
+// OnboardingStatus - UUID, etc. advertised by client process
+type OnboardingStatus struct {
+	DeviceUUID uuid.UUID
 }

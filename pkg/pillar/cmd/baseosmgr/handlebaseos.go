@@ -22,7 +22,8 @@ import (
 )
 
 const (
-	BaseOsImageCount = 1
+	BaseOsImageCount     = 1
+	LastImageVersionFile = types.PersistStatusDir + "/last-image-version"
 )
 
 func lookupBaseOsImageID(ctx *baseOsMgrContext, imageID uuid.UUID) *types.BaseOsConfig {
@@ -846,7 +847,8 @@ func validateBaseOsConfig(ctx *baseOsMgrContext, config types.BaseOsConfig) erro
 	return nil
 }
 
-func handleZbootTestComplete(ctx *baseOsMgrContext, config types.ZbootConfig, status types.ZbootStatus) {
+func handleZbootTestComplete(ctx *baseOsMgrContext, config types.ZbootConfig,
+	status types.ZbootStatus) {
 
 	log.Infof("handleZbootTestComplete(%s)\n", config.Key())
 	if config.TestComplete == status.TestComplete {

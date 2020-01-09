@@ -64,7 +64,7 @@ var Version = "No version specified"
 type nodeagentContext struct {
 	GCInitialized          bool // Received initial GlobalConfig
 	DNSinitialized         bool // Received DeviceNetworkStatus
-	globalConfig           *types.GlobalConfig
+	globalConfig           *types.ConfigItemValueMap
 	subGlobalConfig        pubsub.Subscription
 	subZbootStatus         pubsub.Subscription
 	subZedAgentStatus      pubsub.Subscription
@@ -113,7 +113,7 @@ func newNodeagentContext() nodeagentContext {
 	nodeagentCtx.domainHaltWaitIncrement = domainHaltWaitIncrement
 
 	nodeagentCtx.sshAccess = true // Kernel default - no iptables filters
-	nodeagentCtx.globalConfig = &types.GlobalConfigDefaults
+	nodeagentCtx.globalConfig = types.DefaultConfigItemValueMap()
 
 	// start the watchdog process timer tick
 	duration := time.Duration(watchdogInterval) * time.Second
@@ -190,7 +190,7 @@ func Run(ps *pubsub.PubSub) {
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
-		TopicImpl:     types.GlobalConfig{},
+		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
 		Ctx:           &nodeagentCtx,
 		ModifyHandler: handleGlobalConfigModify,
@@ -359,17 +359,11 @@ func handleGlobalConfigModify(ctxArg interface{},
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctxPtr.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil && !ctxPtr.GCInitialized {
-		updated := types.ApplyGlobalConfig(*gcp)
-		log.Infof("handleGlobalConfigModify setting initials to %+v\n",
-			updated)
-		sane := types.EnforceGlobalConfigMinimums(updated)
-		log.Infof("handleGlobalConfigModify: enforced minimums %v\n",
-			cmp.Diff(updated, sane))
-		ctxPtr.globalConfig = &sane
+		ctxPtr.globalConfig = gcp
 		ctxPtr.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify(%s): done\n", key)
@@ -386,7 +380,7 @@ func handleGlobalConfigDelete(ctxArg interface{},
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctxPtr.subGlobalConfig, agentName,
 		debugOverride)
-	ctxPtr.globalConfig = &types.GlobalConfigDefaults
+	ctxPtr.globalConfig = types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 

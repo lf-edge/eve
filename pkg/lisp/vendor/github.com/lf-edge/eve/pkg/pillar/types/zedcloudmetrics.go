@@ -12,11 +12,11 @@ type MetricsMap map[string]ZedcloudMetric
 
 // ZedcloudMetric are metrics for one interface
 type ZedcloudMetric struct {
-	FailureCount uint64
-	SuccessCount uint64
-	LastFailure  time.Time
-	LastSuccess  time.Time
-	URLCounters  map[string]UrlcloudMetrics
+	FailureCount  uint64
+	SuccessCount  uint64
+	LastFailure   time.Time
+	LastSuccess   time.Time
+	URLCounters   map[string]UrlcloudMetrics
 	AuthFailCount uint64
 }
 

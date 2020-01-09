@@ -11,6 +11,8 @@ const (
 	PersistDir = "/persist"
 	// PersistConfigDir is where we keep some configuration across reboots
 	PersistConfigDir = PersistDir + "/config"
+	// PersistStatusDir is where we keep some configuration across reboots
+	PersistStatusDir = PersistDir + "/status"
 	// DownloadDirname - Location of downloaded images / objects
 	DownloadDirname = PersistDir + "/downloads"
 	// CertificateDirname - Location of certificates

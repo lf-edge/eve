@@ -187,22 +187,25 @@ func (pub *PublicationImpl) updatersNotify(name string) {
 func (pub *PublicationImpl) populate() {
 	name := pub.nameString()
 
-	log.Infof("populate(%s)\n", name)
+	log.Debugf("populate(%s)\n", name)
 
 	pairs, restarted, err := pub.driver.Load()
 	if err != nil {
-		log.Fatalf(err.Error())
+		// Could be a truncated or empty file
+		log.Error(err)
+		return
 	}
 	for key, itemB := range pairs {
 		item, err := parseTemplate(itemB, pub.topicType)
 		if err != nil {
-			log.Fatalf(err.Error())
-			return
+			// Handle bad files such as those of size zero
+			log.Error(err)
+			continue
 		}
 		pub.km.key.Store(key, item)
 	}
 	pub.km.restarted = restarted
-	log.Infof("populate(%s) done\n", name)
+	log.Debugf("populate(%s) done\n", name)
 }
 
 // go routine which runs the AF_UNIX server.
