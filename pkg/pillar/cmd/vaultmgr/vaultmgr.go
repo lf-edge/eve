@@ -277,7 +277,7 @@ func unlockVault(vaultPath string, cloudKeyOnlyMode bool) error {
 
 //createVault expects an empty, existing dir at vaultPath
 func createVault(vaultPath string) error {
-	if err := stageKey(false, keyDir, keyFile); err != nil {
+	if err := stageKey(true, keyDir, keyFile); err != nil {
 		return err
 	}
 	defer unstageKey(keyDir, keyFile)
@@ -313,7 +313,7 @@ func setupVault(vaultPath string) error {
 		if err := unlockVault(vaultPath, true); err != nil {
 			return err
 		}
-		return changeProtector(vaultPath)
+		//return changeProtector(vaultPath)
 	}
 	return nil
 }
