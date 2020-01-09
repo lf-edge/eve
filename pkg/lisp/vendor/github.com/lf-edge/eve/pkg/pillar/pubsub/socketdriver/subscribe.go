@@ -100,7 +100,10 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 			if err != nil {
 				errStr := fmt.Sprintf("connectAndRead(%s): Dial failed %s",
 					s.name, err)
-				log.Warnln(errStr)
+				// During startup and after a publisher has
+				// exited we get these failures; treat
+				// as debug
+				log.Debugln(errStr)
 				time.Sleep(10 * time.Second)
 				continue
 			}
@@ -129,7 +132,9 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 
 		if res == len(buf) {
 			// Likely truncated
-			log.Fatalf("connectAndRead(%s) request likely truncated\n", s.name)
+			// Peer process could have died
+			log.Errorf("connectAndRead(%s) request likely truncated\n", s.name)
+			continue
 		}
 		reply := strings.Split(string(buf[0:res]), " ")
 		count := len(reply)

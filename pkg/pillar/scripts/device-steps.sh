@@ -13,7 +13,7 @@ TMPDIR=/persist/tmp
 ZTMPDIR=/var/tmp/zededa
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
-GCDIR=$PERSISTDIR/config/GlobalConfig
+GCDIR=$PERSISTDIR/config/ConfigItemValueMap
 AGENTS0="logmanager ledmanager nim nodeagent"
 AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent baseosmgr wstunnelclient"
 AGENTS="$AGENTS0 $AGENTS1"
@@ -164,6 +164,11 @@ if [ ! -d $PERSISTDIR/log ]; then
     echo "$(date -Ins -u) Creating $PERSISTDIR/log"
     mkdir $PERSISTDIR/log
 fi
+
+# Run upgradeconverter
+echo "$(date -Ins -u) device-steps: Starting upgradeconverter"
+status=$($BINDIR/upgradeconverter)
+echo "$(date -Ins -u) device-steps: upgradeconverter Completed. Status: $status"
 
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least

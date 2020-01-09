@@ -64,7 +64,7 @@ type baseOsMgrContext struct {
 	pubZbootStatus           pubsub.Publication
 
 	subGlobalConfig          pubsub.Subscription
-	globalConfig             *types.GlobalConfig
+	globalConfig             *types.ConfigItemValueMap
 	GCInitialized            bool
 	subBaseOsConfig          pubsub.Subscription
 	subZbootConfig           pubsub.Subscription
@@ -115,7 +115,7 @@ func Run(ps *pubsub.PubSub) {
 
 	// Context to pass around
 	ctx := baseOsMgrContext{
-		globalConfig: &types.GlobalConfigDefaults,
+		globalConfig: types.DefaultConfigItemValueMap(),
 	}
 
 	// initialize publishing handles
@@ -454,7 +454,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
 		return
 	}
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
@@ -475,7 +475,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	*ctx.globalConfig = types.GlobalConfigDefaults
+	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 
@@ -568,7 +568,7 @@ func initializeGlobalConfigHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	subGlobalConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "",
-			TopicImpl:     types.GlobalConfig{},
+			TopicImpl:     types.ConfigItemValueMap{},
 			Activate:      false,
 			Ctx:           ctx,
 			CreateHandler: handleGlobalConfigModify,

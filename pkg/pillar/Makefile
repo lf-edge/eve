@@ -21,7 +21,7 @@ APPS = zedbox
 APPS1 = logmanager ledmanager downloader verifier client zedrouter domainmgr \
         identitymgr zedmanager zedagent hardwaremodel ipcmonitor nim diag    \
         baseosmgr wstunnelclient conntrack waitforaddr tpmmgr vaultmgr nodeagent \
-	executor command
+	executor command upgradeconverter
 
 .PHONY: all clean build test build-docker build-docker-git shell
 

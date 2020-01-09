@@ -24,6 +24,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/nim"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/nodeagent"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/upgradeconverter"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/verifier"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/waitforaddr"
@@ -36,29 +37,30 @@ import (
 )
 
 var entrypoints = map[string]func(*pubsub.PubSub){
-	"client":         client.Run,
-	"command":        command.Run,
-	"diag":           diag.Run,
-	"domainmgr":      domainmgr.Run,
-	"downloader":     downloader.Run,
-	"executor":       executor.Run,
-	"hardwaremodel":  hardwaremodel.Run,
-	"identitymgr":    identitymgr.Run,
-	"ledmanager":     ledmanager.Run,
-	"logmanager":     logmanager.Run,
-	"nim":            nim.Run,
-	"nodeagent":      nodeagent.Run,
-	"verifier":       verifier.Run,
-	"waitforaddr":    waitforaddr.Run,
-	"zedagent":       zedagent.Run,
-	"zedmanager":     zedmanager.Run,
-	"zedrouter":      zedrouter.Run,
-	"ipcmonitor":     ipcmonitor.Run,
-	"baseosmgr":      baseosmgr.Run,
-	"wstunnelclient": wstunnelclient.Run,
-	"conntrack":      conntrack.Run,
-	"tpmmgr":         tpmmgr.Run,
-	"vaultmgr":       vaultmgr.Run,
+	"client":           client.Run,
+	"command":          command.Run,
+	"diag":             diag.Run,
+	"domainmgr":        domainmgr.Run,
+	"downloader":       downloader.Run,
+	"executor":         executor.Run,
+	"hardwaremodel":    hardwaremodel.Run,
+	"identitymgr":      identitymgr.Run,
+	"ledmanager":       ledmanager.Run,
+	"logmanager":       logmanager.Run,
+	"nim":              nim.Run,
+	"nodeagent":        nodeagent.Run,
+	"verifier":         verifier.Run,
+	"waitforaddr":      waitforaddr.Run,
+	"zedagent":         zedagent.Run,
+	"zedmanager":       zedmanager.Run,
+	"zedrouter":        zedrouter.Run,
+	"ipcmonitor":       ipcmonitor.Run,
+	"baseosmgr":        baseosmgr.Run,
+	"wstunnelclient":   wstunnelclient.Run,
+	"conntrack":        conntrack.Run,
+	"tpmmgr":           tpmmgr.Run,
+	"vaultmgr":         vaultmgr.Run,
+	"upgradeconverter": upgradeconverter.Run,
 }
 
 func main() {

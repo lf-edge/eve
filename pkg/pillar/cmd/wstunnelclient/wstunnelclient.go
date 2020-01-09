@@ -92,7 +92,7 @@ func Run(ps *pubsub.PubSub) {
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "",
-		TopicImpl:     types.GlobalConfig{},
+		TopicImpl:     types.ConfigItemValueMap{},
 		Activate:      false,
 		Ctx:           &wscCtx,
 		CreateHandler: handleGlobalConfigModify,
@@ -203,7 +203,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {

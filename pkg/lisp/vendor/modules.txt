@@ -21,6 +21,7 @@ github.com/google/gopacket/pcap
 # github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000 => ../../api/go
+github.com/lf-edge/eve/api/go/certs
 github.com/lf-edge/eve/api/go/config
 github.com/lf-edge/eve/api/go/info
 # github.com/lf-edge/eve/pkg/pillar v0.0.0-20200211160554-32163b631888 => ../pillar
@@ -44,5 +45,5 @@ github.com/vishvananda/netlink/nl
 github.com/vishvananda/netns
 # golang.org/x/net v0.0.0-20191004110552-13f9640d40b9
 golang.org/x/net/bpf
-# golang.org/x/sys v0.0.0-20191010194322-b09406accb47
+# golang.org/x/sys v0.0.0-20200120151820-655fe14d7479
 golang.org/x/sys/unix

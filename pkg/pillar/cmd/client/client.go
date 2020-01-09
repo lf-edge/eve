@@ -69,7 +69,7 @@ type clientContext struct {
 	deviceNetworkStatus    *types.DeviceNetworkStatus
 	usableAddressCount     int
 	subGlobalConfig        pubsub.Subscription
-	globalConfig           *types.GlobalConfig
+	globalConfig           *types.ConfigItemValueMap
 	zedcloudCtx            *zedcloud.ZedCloudContext
 	getCertsTimer          *time.Timer
 }
@@ -165,20 +165,21 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 
 	clientCtx := clientContext{
 		deviceNetworkStatus: &types.DeviceNetworkStatus{},
-		globalConfig:        &types.GlobalConfigDefaults,
+		globalConfig:        types.DefaultConfigItemValueMap(),
 	}
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
 		CreateHandler: handleGlobalConfigModify,
 		ModifyHandler: handleGlobalConfigModify,
 		DeleteHandler: handleGlobalConfigDelete,
 		WarningTime:   warningTime,
 		ErrorTime:     errorTime,
-		TopicImpl:     types.GlobalConfig{},
+		Activate:      false,
+		TopicImpl:     types.ConfigItemValueMap{},
 		Ctx:           &clientCtx,
 	})
-
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -200,10 +201,9 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	}
 	clientCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
-
 	zedcloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
 		DevNetworkStatus: clientCtx.deviceNetworkStatus,
-		Timeout:          clientCtx.globalConfig.NetworkSendTimeout,
+		Timeout:          clientCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 		NeedStatsFunc:    true,
 		Serial:           hardware.GetProductSerial(),
 		SoftSerial:       hardware.GetSoftSerial(),
@@ -667,7 +667,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
@@ -687,7 +687,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	*ctx.globalConfig = types.GlobalConfigDefaults
+	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 

@@ -283,7 +283,7 @@ func Run(ps *pubsub.PubSub) {
 	subGlobalConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "",
-			TopicImpl:     types.GlobalConfig{},
+			TopicImpl:     types.ConfigItemValueMap{},
 			Activate:      false,
 			Ctx:           &domainCtx,
 			CreateHandler: handleGlobalConfigModify,
@@ -2142,27 +2142,27 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
-		if gcp.VdiskGCTime != 0 {
-			ctx.vdiskGCTime = gcp.VdiskGCTime
+		if gcp.GlobalValueInt(types.VdiskGCTime) != 0 {
+			ctx.vdiskGCTime = gcp.GlobalValueInt(types.VdiskGCTime)
 		}
-		if gcp.DomainBootRetryTime != 0 {
-			ctx.domainBootRetryTime = gcp.DomainBootRetryTime
+		if gcp.GlobalValueInt(types.DomainBootRetryTime) != 0 {
+			ctx.domainBootRetryTime = gcp.GlobalValueInt(types.DomainBootRetryTime)
 		}
-		if gcp.UsbAccess != ctx.usbAccess {
-			ctx.usbAccess = gcp.UsbAccess
+		if gcp.GlobalValueBool(types.UsbAccess) != ctx.usbAccess {
+			ctx.usbAccess = gcp.GlobalValueBool(types.UsbAccess)
 			updateUsbAccess(ctx)
 		}
-		if gcp.MetricInterval != 0 {
-			ctx.metricInterval = gcp.MetricInterval
+		if gcp.GlobalValueInt(types.MetricInterval) != 0 {
+			ctx.metricInterval = gcp.GlobalValueInt(types.MetricInterval)
 		}
 		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify done for %s. VdiskGCTime: %d, "+
-		"DomainBootRetryTime: %d, usbAccess: %t, metricInterval: %d, "+
+		"DomainBootRetryTime: %d, usbAccess: %t, metricInterval: %d",
 		key, ctx.vdiskGCTime, ctx.domainBootRetryTime, ctx.usbAccess,
 		ctx.metricInterval)
 }
