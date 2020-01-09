@@ -4,9 +4,10 @@
 package types
 
 import (
-	"strconv"
-
+	"fmt"
 	log "github.com/sirupsen/logrus"
+	"strconv"
+	"strings"
 )
 
 // ConfigItemStatus - Status of Config Items
@@ -19,10 +20,15 @@ type ConfigItemStatus struct {
 
 // GlobalStatus - Status of Global Config Items.
 type GlobalStatus struct {
-	// ConfigItems - key : Item Key Str
 	ConfigItems map[string]ConfigItemStatus
-	// UnknownConfigItems - Unrecognized ConfigItems.
 	UnknownConfigItems map[string]ConfigItemStatus
+}
+
+func NewGlobalStatus() *GlobalStatus {
+	newGlobalStatus := GlobalStatus{}
+	newGlobalStatus.ConfigItems = make(map[string]ConfigItemStatus)
+	newGlobalStatus.UnknownConfigItems = make(map[string]ConfigItemStatus)
+	return &newGlobalStatus
 }
 
 // setItemValue - Sets value for the key. Expects a valid key. asserts if
@@ -50,50 +56,46 @@ func (gs *GlobalStatus) setItemValueBool(key string, boolVal bool) {
 
 // UpdateItemValuesFromGlobalConfig - Update values of ConfigItems from
 // globalConfig
-func (gs *GlobalStatus) UpdateItemValuesFromGlobalConfig(gc GlobalConfig) {
+
+func (gs *GlobalStatus) UpdateItemValuesFromGlobalConfig(gc ConfigItemValueMap) {
 	// Set Int Values
-	gs.setItemValueInt("timer.config.interval", gc.ConfigInterval)
-	gs.setItemValueInt("timer.metric.interval", gc.MetricInterval)
-	gs.setItemValueInt("timer.send.timeout", gc.NetworkSendTimeout)
-	gs.setItemValueInt("timer.reboot.no.network", gc.ResetIfCloudGoneTime)
-	gs.setItemValueInt("timer.update.fallback.no.network",
-		gc.FallbackIfCloudGoneTime)
-	gs.setItemValueInt("timer.test.baseimage.update", gc.MintimeUpdateSuccess)
-	gs.setItemValueInt("timer.port.georedo", gc.NetworkGeoRedoTime)
-	gs.setItemValueInt("timer.port.georetry", gc.NetworkGeoRetryTime)
-	gs.setItemValueInt("timer.port.testduration", gc.NetworkTestDuration)
-	gs.setItemValueInt("timer.port.testinterval", gc.NetworkTestInterval)
-	gs.setItemValueInt("timer.port.timeout", gc.NetworkTestTimeout)
-	gs.setItemValueInt("timer.port.testbetterinterval", gc.NetworkTestBetterInterval)
-	gs.setItemValueInt("timer.use.config.checkpoint", gc.StaleConfigTime)
-	gs.setItemValueInt("timer.gc.download", gc.DownloadGCTime)
-	gs.setItemValueInt("timer.gc.vdisk", gc.VdiskGCTime)
-	gs.setItemValueInt("timer.gc.rkt.graceperiod", gc.RktGCGracePeriod)
-	gs.setItemValueInt("timer.download.retry", gc.DownloadRetryTime)
-	gs.setItemValueInt("timer.boot.retry", gc.DomainBootRetryTime)
-	gs.setItemValueInt("storage.dom0.disk.minusage.percent",
-		gc.Dom0MinDiskUsagePercent)
+	gs.setItemValueInt("timer.config.interval", gc.GlobalValueInt(ConfigInterval))
+	gs.setItemValueInt("timer.metric.interval", gc.GlobalValueInt(MetricInterval))
+	gs.setItemValueInt("timer.send.timeout", gc.GlobalValueInt(NetworkSendTimeout))
+	gs.setItemValueInt("timer.reboot.no.network", gc.GlobalValueInt(ResetIfCloudGoneTime))
+	gs.setItemValueInt("timer.update.fallback.no.network", gc.GlobalValueInt(FallbackIfCloudGoneTime))
+	gs.setItemValueInt("timer.test.baseimage.update", gc.GlobalValueInt(MintimeUpdateSuccess))
+	gs.setItemValueInt("timer.port.georedo", gc.GlobalValueInt(NetworkGeoRedoTime))
+	gs.setItemValueInt("timer.port.georetry", gc.GlobalValueInt(NetworkGeoRetryTime))
+	gs.setItemValueInt("timer.port.testduration", gc.GlobalValueInt(NetworkTestDuration))
+	gs.setItemValueInt("timer.port.testinterval", gc.GlobalValueInt(NetworkTestInterval))
+	gs.setItemValueInt("timer.port.timeout", gc.GlobalValueInt(NetworkTestTimeout))
+	gs.setItemValueInt("timer.port.testbetterinterval", gc.GlobalValueInt(NetworkTestBetterInterval))
+	gs.setItemValueInt("timer.use.config.checkpoint", gc.GlobalValueInt(StaleConfigTime))
+	gs.setItemValueInt("timer.gc.download", gc.GlobalValueInt(DownloadGCTime))
+	gs.setItemValueInt("timer.gc.vdisk", gc.GlobalValueInt(VdiskGCTime))
+	gs.setItemValueInt("timer.gc.rkt.graceperiod", gc.GlobalValueInt(RktGCGracePeriod))
+	gs.setItemValueInt("timer.download.retry", gc.GlobalValueInt(DownloadRetryTime))
+	gs.setItemValueInt("timer.boot.retry", gc.GlobalValueInt(DomainBootRetryTime))
+	gs.setItemValueInt("storage.dom0.disk.minusage.percent", gc.GlobalValueInt(Dom0MinDiskUsagePercent))
 
 	// Set TriState Values
-	gs.setItemValueTriState("network.fallback.any.eth", gc.NetworkFallbackAnyEth)
-	gs.setItemValueTriState("network.allow.wwan.app.download",
-		gc.AllowNonFreeAppImages)
-	gs.setItemValueTriState("network.allow.wwan.baseos.download",
-		gc.AllowNonFreeBaseImages)
+	gs.setItemValueTriState("network.fallback.any.eth", gc.GlobalValueTristate(NetworkFallbackAnyEth))
+	gs.setItemValueTriState("network.allow.wwan.app.download", gc.GlobalValueTristate(AllowNonFreeAppImages))
+	gs.setItemValueTriState("network.allow.wwan.baseos.download", gc.GlobalValueTristate(AllowNonFreeBaseImages))
 
 	// Set Bool
-	gs.setItemValueBool("debug.enable.usb", gc.UsbAccess)
-	gs.setItemValueBool("debug.enable.ssh", gc.SshAccess)
-	gs.setItemValueBool("app.allow.vnc", gc.AllowAppVnc)
+	gs.setItemValueBool("debug.enable.usb", gc.GlobalValueBool(UsbAccess))
+	gs.setItemValueBool("debug.enable.ssh", gc.GlobalValueBool(SshAccess))
+	gs.setItemValueBool("app.allow.vnc", gc.GlobalValueBool(AllowAppVnc))
 
 	// Set String Values
-	gs.setItemValue("debug.default.loglevel", gc.DefaultLogLevel)
-	gs.setItemValue("debug.default.remote.loglevel", gc.DefaultRemoteLogLevel)
+	gs.setItemValue("debug.default.loglevel", gc.GlobalValueString(DefaultLogLevel))
+	gs.setItemValue("debug.default.remote.loglevel", gc.GlobalValueString(DefaultRemoteLogLevel))
 
-	for agentName, agentSetting := range gc.AgentSettings {
-		gs.setItemValue("debug"+agentName+"loglevel", agentSetting.LogLevel)
-		gs.setItemValue("debug"+agentName+"remote.loglevel",
-			agentSetting.RemoteLogLevel)
+	for agentName := range gc.AgentSettings {
+		gs.setItemValue("debug"+agentName+"loglevel", gc.AgentSettingStringValue(agentName, LogLevel))
+		gs.setItemValue("debug"+agentName+"remote.loglevel", gc.AgentSettingStringValue(agentName, RemoteLogLevel))
 	}
 }
 
@@ -103,312 +105,423 @@ func (gs *GlobalStatus) UpdateItemValuesFromGlobalConfig(gc GlobalConfig) {
 // Agents subscribe to this info to get at least the log levels
 // A value of zero means we should use the default
 // All times are in seconds.
-type GlobalConfig struct {
-	ConfigInterval          uint32 // Try get of device config
-	MetricInterval          uint32 // push metrics to cloud
-	ResetIfCloudGoneTime    uint32 // reboot if no cloud connectivity
-	FallbackIfCloudGoneTime uint32 // ... and shorter during update
-	MintimeUpdateSuccess    uint32 // time before zedagent declares success
-	StaleConfigTime         uint32 // On reboot use saved config if not stale
-	DownloadGCTime          uint32 // Garbage collect if no use
-	VdiskGCTime             uint32 // Garbage collect RW disk if no use
-	RktGCGracePeriod        uint32 // GracePeriod to be used with rkt gc
+type GlobalSettingKey string
 
-	DownloadRetryTime   uint32 // Retry failed download after N sec
-	DomainBootRetryTime uint32 // Retry failed boot after N sec
+const (
+	ConfigInterval            GlobalSettingKey = "timer.config.interval"
+	MetricInterval            GlobalSettingKey = "timer.metric.interval"
+	ResetIfCloudGoneTime      GlobalSettingKey = "timer.reboot.no.network"
+	FallbackIfCloudGoneTime   GlobalSettingKey = "timer.update.fallback.no.network"
+	MintimeUpdateSuccess      GlobalSettingKey = "timer.test.baseimage.update"
+	StaleConfigTime           GlobalSettingKey = "timer.use.config.checkpoint"
+	DownloadGCTime            GlobalSettingKey = "timer.gc.download"
+	VdiskGCTime               GlobalSettingKey = "timer.gc.vdisk"
+	RktGCGracePeriod          GlobalSettingKey = "timer.gc.rkt.graceperiod"
+	DownloadRetryTime         GlobalSettingKey = "timer.download.retry"
+	DomainBootRetryTime       GlobalSettingKey = "timer.boot.retry"
+	NetworkGeoRedoTime        GlobalSettingKey = "timer.port.georedo"
+	NetworkGeoRetryTime       GlobalSettingKey = "timer.port.georetry"
+	NetworkTestDuration       GlobalSettingKey = "timer.port.testduration"
+	NetworkTestInterval       GlobalSettingKey = "timer.port.testinterval"
+	NetworkTestBetterInterval GlobalSettingKey = "timer.port.testbetterinterval"
+	NetworkTestTimeout        GlobalSettingKey = "timer.port.timeout"
+	NetworkSendTimeout        GlobalSettingKey = "timer.send.timeout"
+	UsbAccess                 GlobalSettingKey = "debug.enable.usb"
+	NetworkFallbackAnyEth     GlobalSettingKey = "network.fallback.any.eth"
+	SshAccess                 GlobalSettingKey = "debug.enable.ssh"
+	SshAuthorizedKeys         GlobalSettingKey = "debug.enable.ssh"
+	AllowAppVnc               GlobalSettingKey = "app.allow.vnc"
+	AllowNonFreeAppImages     GlobalSettingKey = "network.allow.wwan.app.download"
+	AllowNonFreeBaseImages    GlobalSettingKey = "network.allow.wwan.baseos.download"
+	Dom0MinDiskUsagePercent   GlobalSettingKey = "storage.dom0.disk.minusage.percent"
+	IgnoreDiskCheckForApps    GlobalSettingKey = "storage.apps.ignore.disk.check"
+	DefaultLogLevel			  GlobalSettingKey = "debug.default.loglevel"
+	DefaultRemoteLogLevel	  GlobalSettingKey = "debug.default.remote.loglevel"
+)
 
-	// Control NIM testing behavior: In seconds
-	NetworkGeoRedoTime        uint32   // Periodic IP geolocation
-	NetworkGeoRetryTime       uint32   // Redo IP geolocation failure
-	NetworkTestDuration       uint32   // Time we wait for DHCP to complete
-	NetworkTestInterval       uint32   // Re-test DevicePortConfig
-	NetworkTestBetterInterval uint32   // Look for better DevicePortConfig
-	NetworkFallbackAnyEth     TriState // When no connectivity try any Ethernet, wlan, and wwan
-	NetworkTestTimeout        uint32   // Timeout for each test http/send
+type AgentSettingKey string
 
-	// zedagent, logmanager, etc
-	NetworkSendTimeout uint32 // Timeout for each http/send
+const (
+	LogLevel       AgentSettingKey = "debug.loglevel"
+	RemoteLogLevel AgentSettingKey = "debug.remote.loglevel"
+)
 
-	// UsbAccess
-	// Determines if Dom0 can use USB devices.
-	// If false:
-	//		USB devices can only be passed through to the applications
-	//		( pciBack=true). The devices are in pci-assignable-list
-	// If true:
-	// 		dom0 can use these devices as well.
-	//		All USB devices will be assigned to dom0. pciBack=false.
-	//		But these devices are still available in pci-assignable-list.
-	UsbAccess bool
+type ConfigItemType uint8
 
-	// Normal operation is to SshAuthorizedKeys from EVE build or using
-	// the configItem. SshAccess is used to enable/disable the filter.
-	SshAccess         bool
-	SshAuthorizedKeys string
+const (
+	ConfigItemTypeInt ConfigItemType = iota + 1
+	ConfigItemTypeBool
+	ConfigItemTypeString
+	ConfigItemTypeTristate
+)
 
-	AllowAppVnc bool
+type ConfigItemSpec struct {
+	Key      string
+	ItemType ConfigItemType
 
-	// These settings control how the EVE microservices
-	// will use free and non-free (e.g., WWAN) ports for image downloads.
-	AllowNonFreeAppImages  TriState // For app images
-	AllowNonFreeBaseImages TriState // For baseos images
+	IntMin     uint32
+	IntMax     uint32
+	IntDefault uint32
 
-	// Dom0MinDiskUsagePercent - Percentage of available storage reserved for
-	// dom0. The rest is available for Apps.
-	Dom0MinDiskUsagePercent uint32
-	IgnoreDiskCheckForApps  bool
-
-	// XXX add max space for downloads?
-	// XXX add max space for running images?
-
-	DefaultLogLevel       string
-	DefaultRemoteLogLevel string
-
-	// Per agent settings of log levels; if set for an agent it
-	// overrides the Default*Level above
-	AgentSettings map[string]PerAgentSettings
+	StringDefault   string
+	BoolDefault     bool
+	TriStateDefault TriState
 }
 
-type PerAgentSettings struct {
-	LogLevel       string // What we log to files
-	RemoteLogLevel string // What we log to zedcloud
+func (configSpec ConfigItemSpec) DefaultValue() ConfigItemValue {
+	var item ConfigItemValue
+	item.Key = configSpec.Key
+	item.ItemType = configSpec.ItemType
+	switch configSpec.ItemType {
+	case ConfigItemTypeBool:
+		item.boolValue = configSpec.BoolDefault
+	case ConfigItemTypeInt:
+		item.intValue = configSpec.IntDefault
+	case ConfigItemTypeString:
+		item.stringValue = configSpec.StringDefault
+	case ConfigItemTypeTristate:
+		item.triStateValue = configSpec.TriStateDefault
+	}
+	return item
 }
 
-// Default values until/unless we receive them from the cloud
-// We do a GET of config every 60 seconds,
-// PUT of metrics every 60 seconds,
-// If we don't hear anything from the cloud in a week, then we reboot,
-// and during a post-update boot that time is reduced to 10 minutes.
-// On reboot if we can't get a config, then we use a saved one if the saved is
-// not older than 10 minutes.
-// A downloaded image which isn't used is garbage collected after 10 minutes.
-// If a instance has been removed its read/write vdisks are deleted after
-// one hour.
-var GlobalConfigDefaults = GlobalConfig{
-	ConfigInterval:          60,
-	MetricInterval:          60,
-	ResetIfCloudGoneTime:    7 * 24 * 3600,
-	FallbackIfCloudGoneTime: 300,
-	MintimeUpdateSuccess:    600,
-
-	NetworkGeoRedoTime:        3600, // 1 hour
-	NetworkGeoRetryTime:       600,  // 10 minutes
-	NetworkTestDuration:       30,
-	NetworkTestInterval:       300, // 5 minutes
-	NetworkTestBetterInterval: 0,   // Disabled
-	NetworkFallbackAnyEth:     TS_ENABLED,
-	NetworkTestTimeout:        15,
-
-	NetworkSendTimeout: 120,
-
-	UsbAccess:           true, // Contoller likely to default to false
-	SshAccess:           true, // Contoller likely to default to false
-	SshAuthorizedKeys:   "",
-	StaleConfigTime:     600,  // Use stale config for up to 10 minutes
-	DownloadGCTime:      600,  // 10 minutes
-	VdiskGCTime:         3600, // 1 hour
-	DownloadRetryTime:   600,  // 10 minutes
-	DomainBootRetryTime: 600,  // 10 minutes
-	RktGCGracePeriod:    3600, // 1 hour
-
-	AllowNonFreeAppImages:  TS_ENABLED,
-	AllowNonFreeBaseImages: TS_ENABLED,
-
-	DefaultLogLevel:       "info", // XXX Should we change to warning?
-	DefaultRemoteLogLevel: "info", // XXX Should we change to warning?
-
-	Dom0MinDiskUsagePercent: 20,
-	IgnoreDiskCheckForApps:  false,
+type ConfigItemSpecMap struct {
+	// GlobalSettings - Map Key: GlobalSettingKey, ConfigItemValue.Key: GlobalSettingKey
+	GlobalSettings map[GlobalSettingKey]ConfigItemSpec
+	// AgentSettingKey - Map Key: AgentSettingKey, ConfigItemValue.Key: AgentSettingKey
+	AgentSettings map[AgentSettingKey]ConfigItemSpec
 }
 
-// Check which values are set and which should come from defaults
-// Zero integers means to use default
-func ApplyGlobalConfig(newgc GlobalConfig) GlobalConfig {
-
-	if newgc.ConfigInterval == 0 {
-		newgc.ConfigInterval = GlobalConfigDefaults.ConfigInterval
+func (specMap *ConfigItemSpecMap) AddIntItem(key GlobalSettingKey, defaultInt uint32, min uint32, max uint32) {
+	if defaultInt < min || defaultInt > max {
+		log.Fatalf("Adding int item %s failed. Value does not meet given min/max criteria", key)
 	}
-	if newgc.MetricInterval == 0 {
-		newgc.MetricInterval = GlobalConfigDefaults.MetricInterval
+	configItem := ConfigItemSpec{
+		ItemType:   ConfigItemTypeInt,
+		Key:        string(key),
+		IntDefault: defaultInt,
+		IntMin:     min,
+		IntMax:     max,
 	}
-	if newgc.ResetIfCloudGoneTime == 0 {
-		newgc.ResetIfCloudGoneTime = GlobalConfigDefaults.ResetIfCloudGoneTime
-	}
-	if newgc.FallbackIfCloudGoneTime == 0 {
-		newgc.FallbackIfCloudGoneTime = GlobalConfigDefaults.FallbackIfCloudGoneTime
-	}
-	if newgc.MintimeUpdateSuccess == 0 {
-		newgc.MintimeUpdateSuccess = GlobalConfigDefaults.MintimeUpdateSuccess
-	}
-	if newgc.NetworkGeoRedoTime == 0 {
-		newgc.NetworkGeoRedoTime = GlobalConfigDefaults.NetworkGeoRedoTime
-	}
-	if newgc.NetworkGeoRetryTime == 0 {
-		newgc.NetworkGeoRetryTime = GlobalConfigDefaults.NetworkGeoRetryTime
-	}
-	if newgc.NetworkTestDuration == 0 {
-		newgc.NetworkTestDuration = GlobalConfigDefaults.NetworkTestDuration
-	}
-	if newgc.NetworkTestInterval == 0 {
-		newgc.NetworkTestInterval = GlobalConfigDefaults.NetworkTestInterval
-	}
-	// We allow newgc.NetworkTestBetterInterval to be zero meaning disabled
-
-	if newgc.NetworkFallbackAnyEth == TS_NONE {
-		newgc.NetworkFallbackAnyEth = GlobalConfigDefaults.NetworkFallbackAnyEth
-	}
-	if newgc.NetworkTestTimeout == 0 {
-		newgc.NetworkTestTimeout = GlobalConfigDefaults.NetworkTestTimeout
-	}
-	if newgc.NetworkSendTimeout == 0 {
-		newgc.NetworkSendTimeout = GlobalConfigDefaults.NetworkSendTimeout
-	}
-	if newgc.StaleConfigTime == 0 {
-		newgc.StaleConfigTime = GlobalConfigDefaults.StaleConfigTime
-	}
-	if newgc.DownloadGCTime == 0 {
-		newgc.DownloadGCTime = GlobalConfigDefaults.DownloadGCTime
-	}
-	if newgc.VdiskGCTime == 0 {
-		newgc.VdiskGCTime = GlobalConfigDefaults.VdiskGCTime
-	}
-	if newgc.DownloadRetryTime == 0 {
-		newgc.DownloadRetryTime = GlobalConfigDefaults.DownloadRetryTime
-	}
-	if newgc.DomainBootRetryTime == 0 {
-		newgc.DomainBootRetryTime = GlobalConfigDefaults.DomainBootRetryTime
-	}
-	if newgc.DefaultLogLevel == "" {
-		newgc.DefaultLogLevel = GlobalConfigDefaults.DefaultLogLevel
-	}
-	if newgc.DefaultRemoteLogLevel == "" {
-		newgc.DefaultRemoteLogLevel = GlobalConfigDefaults.DefaultRemoteLogLevel
-	}
-	if newgc.AllowNonFreeAppImages == TS_NONE {
-		newgc.AllowNonFreeAppImages = GlobalConfigDefaults.AllowNonFreeAppImages
-	}
-	if newgc.AllowNonFreeBaseImages == TS_NONE {
-		newgc.AllowNonFreeBaseImages = GlobalConfigDefaults.AllowNonFreeBaseImages
-	}
-
-	if newgc.RktGCGracePeriod == 0 {
-		newgc.RktGCGracePeriod = GlobalConfigDefaults.RktGCGracePeriod
-	}
-
-	if newgc.Dom0MinDiskUsagePercent == 0 {
-		newgc.Dom0MinDiskUsagePercent =
-			GlobalConfigDefaults.Dom0MinDiskUsagePercent
-	}
-	return newgc
+	specMap.GlobalSettings[key] = configItem
+	log.Debugf("Added int item %s", key)
 }
 
-// We enforce that timers are not below these values
-var GlobalConfigMinimums = GlobalConfig{
-	ConfigInterval:          5,
-	MetricInterval:          5,
-	ResetIfCloudGoneTime:    120,
-	FallbackIfCloudGoneTime: 60,
-	MintimeUpdateSuccess:    30,
-
-	NetworkGeoRedoTime:        60,
-	NetworkGeoRetryTime:       5,
-	NetworkTestDuration:       10,  // Wait for DHCP client
-	NetworkTestInterval:       300, // 5 minutes
-	NetworkTestBetterInterval: 0,   // Disabled
-
-	StaleConfigTime:         0, // Don't use stale config
-	DownloadGCTime:          60,
-	VdiskGCTime:             60,
-	DownloadRetryTime:       60,
-	DomainBootRetryTime:     10,
-	Dom0MinDiskUsagePercent: 20,
-	RktGCGracePeriod:        600,
+func (specMap *ConfigItemSpecMap) AddBoolItem(key GlobalSettingKey, defaultBool bool) {
+	configItem := ConfigItemSpec{
+		ItemType:    ConfigItemTypeBool,
+		Key:         string(key),
+		BoolDefault: defaultBool,
+	}
+	specMap.GlobalSettings[key] = configItem
+	log.Debugf("Added bool item %s", key)
 }
 
-func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
+func (specMap *ConfigItemSpecMap) AddStringItem(key GlobalSettingKey, defaultString string) {
+	configItem := ConfigItemSpec{
+		ItemType:      ConfigItemTypeString,
+		Key:           string(key),
+		StringDefault: defaultString,
+	}
+	specMap.GlobalSettings[key] = configItem
+	log.Debugf("Added string item %s", key)
+}
 
-	if newgc.ConfigInterval < GlobalConfigMinimums.ConfigInterval {
-		log.Warnf("Enforce minimum ConfigInterval received %d; using %d",
-			newgc.ConfigInterval, GlobalConfigMinimums.ConfigInterval)
-		newgc.ConfigInterval = GlobalConfigMinimums.ConfigInterval
+func (specMap *ConfigItemSpecMap) AddTriStateItem(key GlobalSettingKey, defaultTriState TriState) {
+	configItem := ConfigItemSpec{
+		Key:             string(key),
+		ItemType:        ConfigItemTypeTristate,
+		TriStateDefault: defaultTriState,
 	}
-	if newgc.MetricInterval < GlobalConfigMinimums.MetricInterval {
-		log.Warnf("Enforce minimum MetricInterval received %d; using %d",
-			newgc.MetricInterval, GlobalConfigMinimums.MetricInterval)
-		newgc.MetricInterval = GlobalConfigMinimums.MetricInterval
-	}
-	if newgc.ResetIfCloudGoneTime < GlobalConfigMinimums.ResetIfCloudGoneTime {
-		log.Warnf("Enforce minimum XXX received %d; using %d",
-			newgc.ResetIfCloudGoneTime, GlobalConfigMinimums.ResetIfCloudGoneTime)
-		newgc.ResetIfCloudGoneTime = GlobalConfigMinimums.ResetIfCloudGoneTime
-	}
-	if newgc.FallbackIfCloudGoneTime < GlobalConfigMinimums.FallbackIfCloudGoneTime {
-		log.Warnf("Enforce minimum FallbackIfCloudGoneTime received %d; using %d",
-			newgc.FallbackIfCloudGoneTime, GlobalConfigMinimums.FallbackIfCloudGoneTime)
-		newgc.FallbackIfCloudGoneTime = GlobalConfigMinimums.FallbackIfCloudGoneTime
-	}
-	if newgc.MintimeUpdateSuccess < GlobalConfigMinimums.MintimeUpdateSuccess {
-		log.Warnf("Enforce minimum MintimeUpdateSuccess received %d; using %d",
-			newgc.MintimeUpdateSuccess, GlobalConfigMinimums.MintimeUpdateSuccess)
-		newgc.MintimeUpdateSuccess = GlobalConfigMinimums.MintimeUpdateSuccess
-	}
-	if newgc.NetworkGeoRedoTime < GlobalConfigMinimums.NetworkGeoRedoTime {
-		log.Warnf("Enforce minimum NetworkGeoRedoTime received %d; using %d",
-			newgc.NetworkGeoRedoTime, GlobalConfigMinimums.NetworkGeoRedoTime)
-		newgc.NetworkGeoRedoTime = GlobalConfigMinimums.NetworkGeoRedoTime
-	}
-	if newgc.NetworkGeoRetryTime < GlobalConfigMinimums.NetworkGeoRetryTime {
-		log.Warnf("Enforce minimum NetworkGeoRetryTime received %d; using %d",
-			newgc.NetworkGeoRetryTime, GlobalConfigMinimums.NetworkGeoRetryTime)
-		newgc.NetworkGeoRetryTime = GlobalConfigMinimums.NetworkGeoRetryTime
-	}
-	if newgc.NetworkTestDuration < GlobalConfigMinimums.NetworkTestDuration {
-		log.Warnf("Enforce minimum NetworkTestDuration received %d; using %d",
-			newgc.NetworkTestDuration, GlobalConfigMinimums.NetworkTestDuration)
-		newgc.NetworkTestDuration = GlobalConfigMinimums.NetworkTestDuration
-	}
-	if newgc.NetworkTestInterval < GlobalConfigMinimums.NetworkTestInterval {
-		newgc.NetworkTestInterval = GlobalConfigMinimums.NetworkTestInterval
-	}
-	if newgc.NetworkTestBetterInterval < GlobalConfigMinimums.NetworkTestBetterInterval {
-		log.Warnf("Enforce minimum NetworkTestInterval received %d; using %d",
-			newgc.NetworkTestBetterInterval, GlobalConfigMinimums.NetworkTestBetterInterval)
-		newgc.NetworkTestBetterInterval = GlobalConfigMinimums.NetworkTestBetterInterval
-	}
+	specMap.GlobalSettings[key] = configItem
+	log.Debugf("Added tristate item %s", key)
+}
 
-	if newgc.StaleConfigTime < GlobalConfigMinimums.StaleConfigTime {
-		log.Warnf("Enforce minimum StaleConfigTime received %d; using %d",
-			newgc.StaleConfigTime, GlobalConfigMinimums.StaleConfigTime)
-		newgc.StaleConfigTime = GlobalConfigMinimums.StaleConfigTime
+func (specMap *ConfigItemSpecMap) AddAgentSettingStringItem(key AgentSettingKey, defaultString string) {
+	configItem := ConfigItemSpec{
+		ItemType:      ConfigItemTypeString,
+		Key:           string(key),
+		StringDefault: defaultString,
 	}
-	if newgc.DownloadGCTime < GlobalConfigMinimums.DownloadGCTime {
-		log.Warnf("Enforce minimum DownloadGCTime received %d; using %d",
-			newgc.DownloadGCTime, GlobalConfigMinimums.DownloadGCTime)
-		newgc.DownloadGCTime = GlobalConfigMinimums.DownloadGCTime
+	specMap.AgentSettings[key] = configItem
+	log.Debugf("Added string item %s", key)
+}
+
+func (specMap *ConfigItemSpecMap) ParseItem(configMap *ConfigItemValueMap, value string, key string) error {
+	// legacy per-agent setting key debug.<agentname>.xxx
+	// new per-agent setting key agent.<agentname>.debug.xxx
+	var itemSpec ConfigItemSpec
+	agentSetting := false
+	globalSetting := false
+	var agentName string
+	components := strings.Split(key, ".")
+	if strings.HasPrefix(key, "agent") || specMap.isLegacyAgent(key) {
+		agentName = components[1]
+		if strings.HasPrefix(key, "agent") && len(components) > 2 {
+			components = components[2:]
+		} else if strings.HasPrefix(key, "debug") && len(components) > 2 {
+			components[1] = ""
+		} else {
+			return fmt.Errorf("Unable to find agent name for per-agent setting. Key: %s", key)
+		}
+		key = strings.Join(components, ".")
+		agentSetting = true
+	} else if _, ok := specMap.GlobalSettings[GlobalSettingKey(key)]; ok {
+		globalSetting = true
+	} else {
+		return fmt.Errorf("Item is neither a global nor a per-agent setting. Key: %s", key)
 	}
-	if newgc.VdiskGCTime < GlobalConfigMinimums.VdiskGCTime {
-		log.Warnf("Enforce minimum VdiskGCTime received %d; using %d",
-			newgc.VdiskGCTime, GlobalConfigMinimums.VdiskGCTime)
-		newgc.VdiskGCTime = GlobalConfigMinimums.VdiskGCTime
+	if agentSetting {
+		itemSpec = specMap.AgentSettings[AgentSettingKey(key)]
+		val, err := itemSpec.parseValue(value)
+		if err == nil {
+			agentMap, ok := configMap.AgentSettings[agentName]
+			if !ok {
+				agentMap = make(map[AgentSettingKey]ConfigItemValue)
+			}
+			agentMap[AgentSettingKey(key)] = val
+			configMap.AgentSettings[agentName] = agentMap
+		} else {
+			return err
+		}
+	} else if globalSetting {
+		itemSpec = specMap.GlobalSettings[GlobalSettingKey(key)]
+		val, err := itemSpec.parseValue(value)
+		if err == nil {
+			configMap.GlobalSettings[GlobalSettingKey(key)] = val
+		} else {
+			return err
+		}
 	}
-	if newgc.DownloadRetryTime < GlobalConfigMinimums.DownloadRetryTime {
-		log.Warnf("Enforce minimum DownloadRetryTime received %d; using %d",
-			newgc.DownloadRetryTime, GlobalConfigMinimums.DownloadRetryTime)
-		newgc.DownloadRetryTime = GlobalConfigMinimums.DownloadRetryTime
+	return nil
+}
+
+type ConfigItemValue struct {
+	Key      string
+	ItemType ConfigItemType
+
+	intValue      uint32
+	stringValue   string
+	boolValue     bool
+	triStateValue TriState
+}
+
+type ConfigItemValueMap struct {
+	// GlobalSettings - Map Key: GlobalSettingKey, ConfigItemValue.Key: GlobalSettingKey
+	GlobalSettings map[GlobalSettingKey]ConfigItemValue
+	// AgentSettings - Map Outer Key: agentName, Map Inner Key: AgentSettingKey ConfigItemValue.Key: AgentSettingKey
+	AgentSettings map[string]map[AgentSettingKey]ConfigItemValue
+}
+
+func (configPtr *ConfigItemValueMap) globalConfigItemValue(key GlobalSettingKey) (ConfigItemValue, error) {
+	specMapPtr := NewConfigItemSpecMap()
+	val, okVal := configPtr.GlobalSettings[key]
+	spec, _ := specMapPtr.GlobalSettings[key]
+	if okVal {
+		return val, nil
+	} else {
+		return spec.DefaultValue(), fmt.Errorf("Global setting not found. Default value was returned. Key %s", key)
 	}
-	if newgc.DomainBootRetryTime < GlobalConfigMinimums.DomainBootRetryTime {
-		log.Warnf("Enforce minimum DomainBootRetryTime received %d; using %d",
-			newgc.DomainBootRetryTime, GlobalConfigMinimums.DomainBootRetryTime)
-		newgc.DomainBootRetryTime = GlobalConfigMinimums.DomainBootRetryTime
+}
+
+func (configPtr *ConfigItemValueMap) agentConfigItemValue(agentName string, key AgentSettingKey) (ConfigItemValue, error) {
+	agent, ok := configPtr.AgentSettings[agentName]
+	var blankValue = ConfigItemValue {}
+	if ok {
+		val, ok := agent[key]
+		if ok {
+			return val, nil
+		} else {
+			return blankValue, fmt.Errorf("Failed to find %s settings for %s", string(key), agentName)
+		}
+	} else {
+		return blankValue, fmt.Errorf("Failed to find any per-agent settings for agent %s", agentName)
 	}
-	if newgc.RktGCGracePeriod < GlobalConfigMinimums.RktGCGracePeriod {
-		log.Warnf("Enforce minimum RktGCGracePeriod received %d; using %d",
-			newgc.RktGCGracePeriod, GlobalConfigMinimums.RktGCGracePeriod)
-		newgc.RktGCGracePeriod = GlobalConfigMinimums.RktGCGracePeriod
+}
+
+func (configPtr *ConfigItemValueMap) AgentSettingStringValue(agentName string, agentSettingKey AgentSettingKey) string {
+	val, err := configPtr.agentConfigItemValue(agentName, agentSettingKey)
+	if err != nil {
+		return ""
 	}
-	if newgc.Dom0MinDiskUsagePercent < GlobalConfigMinimums.Dom0MinDiskUsagePercent {
-		log.Warnf("Enforce minimum Dom0MinDiskUsagePercent received %d; using %d",
-			newgc.Dom0MinDiskUsagePercent, GlobalConfigMinimums.Dom0MinDiskUsagePercent)
-		newgc.Dom0MinDiskUsagePercent = GlobalConfigMinimums.Dom0MinDiskUsagePercent
+	if val.ItemType != ConfigItemTypeString {
+		log.Fatalf("Agent setting is not of type string. agent-name %s, agentSettingKey %s",
+			agentName, string(agentSettingKey))
 	}
-	return newgc
+	return val.stringValue
+}
+
+func (configPtr *ConfigItemValueMap) GlobalValueInt(key GlobalSettingKey) uint32 {
+	val, err := configPtr.globalConfigItemValue(key)
+	if val.ItemType == ConfigItemTypeInt {
+		return val.intValue
+	} else {
+		log.Fatalf("Failed to find bool value for key %s, err %s", key, err)
+		return 0
+	}
+}
+
+func (configPtr *ConfigItemValueMap) GlobalValueString(key GlobalSettingKey) string {
+	val, err := configPtr.globalConfigItemValue(key)
+	if val.ItemType == ConfigItemTypeString {
+		return val.stringValue
+	} else {
+		log.Fatalf("Failed to find string value for key %s, err %s", key, err)
+		return ""
+	}
+}
+
+func (configPtr *ConfigItemValueMap) GlobalValueTristate(key GlobalSettingKey) TriState {
+	val, err := configPtr.globalConfigItemValue(key)
+	if val.ItemType == ConfigItemTypeTristate {
+		return val.triStateValue
+	} else {
+		log.Fatalf("Failed to find tristate value for key %s, err %s", key, err)
+		return TS_NONE
+	}
+}
+
+func (configPtr *ConfigItemValueMap) GlobalValueBool(key GlobalSettingKey) bool {
+	val, err := configPtr.globalConfigItemValue(key)
+	if val.ItemType == ConfigItemTypeBool {
+		return val.boolValue
+	} else {
+		log.Fatalf("Failed to find bool value for key %s, err %s", key, err)
+		return false
+	}
+}
+
+func (configPtr *ConfigItemValueMap) SetAgentSettingStringValue(key AgentSettingKey, agentName string, newValue string) error {
+	configItemValue := ConfigItemValue {
+		Key: string(key),
+		ItemType: ConfigItemTypeString,
+		stringValue: newValue,
+	}
+	settingMap, ok := configPtr.AgentSettings[agentName]
+	if !ok {
+		// Agent Map not yet set. Create the map
+		settingMap := make(map[AgentSettingKey]ConfigItemValue)
+		configPtr.AgentSettings[agentName] = settingMap
+	}
+	settingMap[key] = configItemValue
+	return nil
+}
+
+func (configPtr *ConfigItemValueMap) DelAgentValue(key AgentSettingKey, agentName string)  {
+	settingMap, ok := configPtr.AgentSettings[agentName]
+	if !ok {
+		return
+	}
+	delete(settingMap, key)
+	if len(settingMap) > 0 {
+		configPtr.AgentSettings[agentName] = settingMap
+	} else {
+		// No more settings for Agent.. So delete it from AgentSettings
+		delete(configPtr.AgentSettings, agentName)
+	}
+}
+
+func (configPtr *ConfigItemValueMap) ResetGlobalValue(key GlobalSettingKey) {
+	specMap := NewConfigItemSpecMap()
+	configPtr.GlobalSettings[key] = specMap.GlobalSettings[key].DefaultValue()
+}
+
+func (spec ConfigItemSpec) parseValue(itemValue string) (ConfigItemValue, error) {
+	value := spec.DefaultValue()
+	var retErr error
+	if spec.ItemType == ConfigItemTypeInt {
+		i64, err := strconv.ParseUint(itemValue, 10, 32)
+		if err == nil {
+			val := uint32(i64)
+			if val > spec.IntMax || val < spec.IntMin {
+				retErr = fmt.Errorf("value out of bounds. Parsed value: %d, Max: %d, Min: %d",
+					val, spec.IntMax, spec.IntMin)
+			} else {
+				value.intValue = val
+			}
+		} else {
+			value.intValue = spec.IntDefault
+			retErr = err
+		}
+	} else if spec.ItemType == ConfigItemTypeTristate {
+		newTs, err := ParseTriState(itemValue)
+		if err == nil {
+			value.triStateValue = newTs
+		} else {
+			value.triStateValue = spec.TriStateDefault
+			retErr = err
+		}
+	} else if spec.ItemType == ConfigItemTypeBool {
+		newBool, err := strconv.ParseBool(itemValue)
+		if err == nil {
+			value.boolValue = newBool
+		} else {
+			value.boolValue = spec.BoolDefault
+			retErr = err
+		}
+	} else if spec.ItemType == ConfigItemTypeString {
+		value.stringValue = itemValue
+	}
+	return value, retErr
+}
+
+func NewConfigItemSpecMap() ConfigItemSpecMap {
+	var configItemSpecMap ConfigItemSpecMap
+	configItemSpecMap.GlobalSettings = make(map[GlobalSettingKey]ConfigItemSpec)
+	configItemSpecMap.AgentSettings = make(map[AgentSettingKey]ConfigItemSpec)
+	configItemSpecMap.AddIntItem(ConfigInterval, 60, 5, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(MetricInterval, 60, 5, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkSendTimeout,  0, 0, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(ResetIfCloudGoneTime, 7*24*3600, 120, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(FallbackIfCloudGoneTime, 300, 5, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(MintimeUpdateSuccess, 60, 5, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkGeoRedoTime,  3600, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkGeoRetryTime,  600, 5, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkTestDuration, 30, 10, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkTestInterval, 300, 300, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkTestTimeout,  15, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem(NetworkTestBetterInterval, 0, 0, 0xFFFFFFFF)
+	configItemSpecMap.AddTriStateItem("network.fallback.any.eth", TS_ENABLED)
+	configItemSpecMap.AddTriStateItem("network.allow.wwan.app.download", TS_ENABLED)
+	configItemSpecMap.AddTriStateItem("network.allow.wwan.baseos.download",  TS_ENABLED)
+	configItemSpecMap.AddBoolItem("debug.enable.usb",  true)
+	configItemSpecMap.AddBoolItem("debug.enable.usb", true)
+	configItemSpecMap.AddBoolItem("app.allow.vnc",  false)
+	configItemSpecMap.AddIntItem("app.allow.vnc", 60, 5, 0xFFFFFFFF)               //UNSURE OF VALUES
+	configItemSpecMap.AddIntItem("timer.use.config.checkpoint",  60, 5, 0xFFFFFFFF) //UNSURE OF VALUES
+	configItemSpecMap.AddIntItem("timer.gc.download", 600, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem("timer.gc.vdisk",  3600, 60, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem("timer.gc.rkt.graceperiod",  3600, 600, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem("timer.download.retry", 600, 0, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem("timer.boot.retry", 600, 10, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem("network.allow.wwan.app.download", 0, 0, 0xFFFFFFFF)    //UNSURE OF VALUES
+	configItemSpecMap.AddIntItem("network.allow.wwan.baseos.download", 0, 0, 0xFFFFFFFF) //UNSURE OF VALUES
+	configItemSpecMap.AddAgentSettingStringItem("debug.default.loglevel",  "info")
+	configItemSpecMap.AddAgentSettingStringItem("debug.default.remote.loglevel", "info")
+	configItemSpecMap.AddIntItem("storage.dom0.disk.minusage.percent", 20, 20, 0xFFFFFFFF)
+	configItemSpecMap.AddIntItem("storage.apps.ignore.disk.check",  0, 5, 80)
+	return configItemSpecMap
+}
+
+func DefaultConfigItemValueMap() *ConfigItemValueMap {
+	configMap := NewConfigItemSpecMap()
+	var valueMap ConfigItemValueMap
+	for key, configItemSpec := range configMap.GlobalSettings {
+		valueMap.GlobalSettings[key] = configItemSpec.DefaultValue()
+	}
+	// By default there are no per-agent settings.
+	return &valueMap
+}
+
+func (specMap ConfigItemSpecMap) isLegacyAgent(key string) bool {
+	if !strings.HasPrefix(key, "debug") {
+		return false
+	}
+	components := strings.Split(key, ".")
+	if len(components) < 3 {
+		return false
+	}
+	agentKey := components[0] + strings.Join(components[2:], "")
+	_, ok := specMap.AgentSettings[AgentSettingKey(agentKey)]
+	return ok
 }
