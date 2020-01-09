@@ -1618,7 +1618,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 			access = "ro"
 		}
 		oneDisk := fmt.Sprintf("'%s,%s,%s,%s'",
-			ds.ActiveFileLocation, ds.Format, ds.Vdev, access)
+			ds.ActiveFileLocation, strings.ToLower(ds.Format.String()), ds.Vdev, access)
 		log.Debugf("Processing disk %d: %s\n", i, oneDisk)
 		if diskString == "" {
 			diskString = oneDisk
