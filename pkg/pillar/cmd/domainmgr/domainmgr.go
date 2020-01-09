@@ -1222,7 +1222,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
 	}
-	maxDelay := time.Second * 60 // 1 minute
+	maxDelay := time.Second * 600 // 10 minutes
 	if status.DomainId != 0 {
 		status.State = types.HALTING
 		publishDomainStatus(ctx, status)
@@ -1231,7 +1231,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 		case types.HVM:
 			// Do a short shutdown wait, then a shutdown -F
 			// just in case there are PV tools in guest
-			shortDelay := time.Second * 10
+			shortDelay := time.Second * 60
 			if err := DomainShutdown(*status, false); err != nil {
 				log.Errorf("DomainShutdown %s failed: %s\n",
 					status.DomainName, err)
