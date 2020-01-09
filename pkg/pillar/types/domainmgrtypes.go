@@ -6,6 +6,7 @@ package types
 import (
 	"time"
 
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -161,7 +162,7 @@ type DiskConfig struct {
 	Preserve    bool // If set a rw disk will be preserved across
 	// boots (acivate/inactivate)
 	Maxsizebytes uint64 // Resize filesystem to this size if set
-	Format       string // Default "raw"; could be raw, qcow, qcow2, vhd
+	Format       zconfig.Format
 	Devtype      string // Default ""; could be e.g. "cdrom"
 }
 
@@ -172,7 +173,7 @@ type DiskStatus struct {
 	Preserve           bool
 	FileLocation       string // Local location of Image
 	Maxsizebytes       uint64 // Resize filesystem to this size if set
-	Format             string // From config
+	Format             zconfig.Format
 	Devtype            string // From config
 	Vdev               string // Allocated
 	ActiveFileLocation string // Allocated; private copy if RW; FileLocation if RO
