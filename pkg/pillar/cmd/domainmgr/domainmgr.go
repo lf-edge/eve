@@ -730,7 +730,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			publishDomainStatus(ctx, status)
 		}
 		// check if qemu processes has crashed
-		if status.Activated && status.VirtualizationMode == types.HVM && !isQemuRunning(status.DomainId) {
+		if status.Activated && (status.VirtualizationMode == types.HVM || status.IsContainer) && !isQemuRunning(status.DomainId) {
 			errStr := fmt.Sprintf("verifyStatus(%s) qemu crashed",
 				status.Key())
 			log.Errorf(errStr)
