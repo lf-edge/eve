@@ -1,16 +1,17 @@
 package ociutil
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"os"
 	"path"
 
 	"github.com/google/go-containerregistry/pkg/authn"
-	"github.com/google/go-containerregistry/pkg/legacy/tarball"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -74,7 +75,7 @@ func Manifest(registry, repo, username, apiKey string, client *http.Client, prgc
 	return manifestDirect, manifestResolved, size, err
 }
 
-// Pull downloads the a repo from a rregisty and save it as a tar file at the provided location.
+// Pull downloads the a repo from a registry and saves it as a tar file at the provided location.
 // Optionally, can use authentication of username and apiKey as provided, else defaults
 // to the local user config. Also can use a given http client, else uses the default.
 // Returns the manifest of the repo passed to it, the manifest of the resolved image,
@@ -104,17 +105,6 @@ func Pull(registry, repo, localFile, username, apiKey string, client *http.Clien
 	stats.Size = size
 	sendStats(prgchan, stats)
 
-	// This is where it uses the manifest to save the layers
-	// taken straight from pkg/crane.Save, but they don't have the options there
-	tag, ok := ref.(name.Tag)
-	if !ok {
-		d, ok := ref.(name.Digest)
-		if !ok {
-			return manifestDirect, manifestResolved, size, fmt.Errorf("ref wasn't a tag or digest")
-		}
-		tag = d.Repository.Tag(digestTag)
-	}
-
 	// create our local file and save to it
 	localDir := path.Dir(localFile)
 	err = os.MkdirAll(localDir, 0755)
@@ -123,15 +113,11 @@ func Pull(registry, repo, localFile, username, apiKey string, client *http.Clien
 	}
 
 	// create a local file to write the output
-	// TODO: this uses the legacy/tarball to write it, rather than the newer v1
-	// we should switch to v1/tarball, but only can when we retire docker2aci,
-	// as it depends on the legacy format.
-	w, err := os.Create(localFile)
-	if err != nil {
-		return manifestDirect, manifestResolved, size, fmt.Errorf("unable to open file %s to write legacy docker tar file: %v", localFile, err)
-	}
-	defer w.Close()
-	err = tarball.Write(tag, img, w)
+	// this uses the v1/tarball to write it, which is fully compatible with docker save.
+	// However, it is missing the "repositories" file, so we add it.
+	// Eventially, we may want to move to an entire cache of the registry in the
+	// OCI layout format.
+	err = tarball.WriteToFile(localFile, ref, img)
 	if err != nil {
 		return manifestDirect, manifestResolved, size, fmt.Errorf("error saving to %s: %v", localFile, err)
 	}
@@ -172,4 +158,27 @@ func options(username, apiKey string, client *http.Client) []remote.Option {
 		remote.WithAuth(auth),
 		remote.WithTransport(client.Transport),
 	}
+}
+
+// LayersFromManifest get the descriptors for layers from a raw image manifest
+func LayersFromManifest(imageManifest []byte) ([]v1.Descriptor, error) {
+	manifest, err := v1.ParseManifest(bytes.NewReader(imageManifest))
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse manifest: %v", err)
+	}
+	return manifest.Layers, nil
+}
+
+// DockerHashFromManifest get the sha256 hash as a string from a raw image
+// manifest. The "docker hash" is what is used for the image, i.e. the topmost
+// layer.
+func DockerHashFromManifest(imageManifest []byte) (string, error) {
+	layers, err := LayersFromManifest(imageManifest)
+	if err != nil {
+		return "", fmt.Errorf("unable to get layers: %v", err)
+	}
+	if len(layers) < 1 {
+		return "", fmt.Errorf("no layers found")
+	}
+	return layers[len(layers)-1].Digest.Hex, nil
 }

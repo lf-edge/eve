@@ -55,9 +55,8 @@ const (
 
 // Go doesn't like this as a constant
 var (
-	verifierObjTypes        = []string{types.AppImgObj, types.BaseOsObj}
-	vHandler                = makeVerifyHandler()
-	containerImageExtension = ".tar"
+	verifierObjTypes = []string{types.AppImgObj, types.BaseOsObj}
+	vHandler         = makeVerifyHandler()
 )
 
 // Set from Makefile
@@ -742,15 +741,10 @@ func markObjectAsVerifying(ctx *verifierContext,
 func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus) bool {
 
-	if status.IsContainer {
-		log.Infof("verifyObjectSha: Container image %s. Returning success",
-			config.Name)
-		return true
-	}
 	_, verifierFilename, _ := status.ImageDownloadFilenames()
 	log.Infof("Verifying URL %s file %s\n", config.Name, verifierFilename)
 
-	imageHash, err := computeShaFile(verifierFilename)
+	imageHashB, err := computeShaFileByType(verifierFilename, status.IsContainer)
 	if err != nil {
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, status, cerr)
@@ -758,13 +752,27 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 			config.Name, cerr)
 		return false
 	}
+	log.Infof("internal hash consistency validated for URL %s file %s", config.Name, verifierFilename)
 
-	got := fmt.Sprintf("%x", imageHash)
-	if got != strings.ToLower(config.ImageSha256) {
-		log.Errorf("computed   %s\n", got)
-		log.Errorf("configured %s\n", strings.ToLower(config.ImageSha256))
+	imageHash := fmt.Sprintf("%x", imageHashB)
+	configuredHash := strings.ToLower(config.ImageSha256)
+	// XXX: the ImageSha256 property should never be filled with anything
+	// other than a sha256 hash of the image. It should be valid as blank,
+	// which means "do not verify, as I have nothing to verify against."
+	// Unfortunately, some parts of the code assume that ImageSha256 alwats will
+	// have something, so containers override it with the imageUUID. Once that is
+	// changed, this code should go away.
+	if _, err := uuid.FromString(config.ImageSha256); err == nil {
+		configuredHash = ""
+	}
+
+	if configuredHash == "" {
+		log.Infof("no image hash provided, skipping root validation")
+	} else if imageHash != configuredHash {
+		log.Errorf("computed   %s\n", imageHash)
+		log.Errorf("configured %s\n", configuredHash)
 		cerr := fmt.Sprintf("computed %s configured %s",
-			got, config.ImageSha256)
+			imageHash, configuredHash)
 		status.PendingAdd = false
 		updateVerifyErrStatus(ctx, status, cerr)
 		log.Errorf("verifyObjectSha %s failed %s\n",
@@ -774,15 +782,30 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 
 	log.Infof("Sha validation successful for %s\n", config.Name)
 
-	if cerr := verifyObjectShaSignature(status, config, imageHash); cerr != "" {
-		updateVerifyErrStatus(ctx, status, cerr)
-		log.Errorf("Signature validation failed for %s, %s\n",
-			config.Name, cerr)
-		return false
+	// we only do this for non-OCI images for now, as we do not have hash signing
+	if !status.IsContainer {
+		if cerr := verifyObjectShaSignature(status, config, imageHashB); cerr != "" {
+			updateVerifyErrStatus(ctx, status, cerr)
+			log.Errorf("Signature validation failed for %s, %s\n",
+				config.Name, cerr)
+			return false
+		}
 	}
 	return true
 }
 
+// compute the hash for different file types. If the file itself contains
+// sub-dependencies with hashes as well, example inside a tar file, validate
+// those hashes as well.
+// Returns the hash of the file itself, or the root of the dependencies.
+func computeShaFileByType(filename string, container bool) ([]byte, error) {
+	if container {
+		return computeShaOCITar(filename)
+	}
+	return computeShaFile(filename)
+}
+
+// compute the sha for a straight file
 func computeShaFile(filename string) ([]byte, error) {
 	f, err := os.Open(filename)
 	if err != nil {
