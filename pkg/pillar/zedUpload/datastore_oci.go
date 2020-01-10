@@ -6,11 +6,13 @@ package zedUpload
 import (
 	"archive/tar"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	ociutil "github.com/lf-edge/eve/pkg/pillar/zedUpload/ociutil"
@@ -150,6 +152,7 @@ func (ep *OCITransportMethod) processDownload(req *DronaRequest) (int64, error) 
 	if err != nil {
 		return size, fmt.Errorf("unable to append image manifest to tar at %s: %v", req.objloc, err)
 	}
+	err = appendImageRepositories(req.objloc, ep.registry, ep.path, imageManifest)
 
 	// we do not need to convert the file to aci, or import it
 	// into rkt, as that is done elsewhere. The zedUpload's job is to download
@@ -243,9 +246,8 @@ func (ep *OCITransportMethod) NewRequest(opType SyncOpType, objname, objloc stri
 	return dR
 }
 
-// appendImageManifest add the given manifest to the given tar file. Opinionated
-// about the name of the file to "imagemanifest-<hash>.json"
-func appendImageManifest(tarfile string, manifest []byte) error {
+// appendToTarfile add the given bytes to the tarfile with the given filename
+func appendToTarfile(tarfile, filename string, content []byte) error {
 	var (
 		f   *os.File
 		err error
@@ -263,22 +265,63 @@ func appendImageManifest(tarfile string, manifest []byte) error {
 
 	tw := tar.NewWriter(f)
 
-	hash := sha256.Sum256(manifest)
 	hdr := &tar.Header{
-		Name: fmt.Sprintf("%s-%x.json", "imagemanifest", hash),
-		Size: int64(len(manifest)),
+		Name: filename,
+		Size: int64(len(content)),
 	}
 
 	if err := tw.WriteHeader(hdr); err != nil {
-		return fmt.Errorf("failed to write image manifest tar header: %v", err)
+		return fmt.Errorf("failed to write %s tar header: %v", filename, err)
 	}
 
-	if _, err := tw.Write(manifest); err != nil {
-		return fmt.Errorf("failed to write image manifest tar body: %v", err)
+	if _, err := tw.Write(content); err != nil {
+		return fmt.Errorf("failed to write %s tar body: %v", filename, err)
 	}
 
 	if err := tw.Close(); err != nil {
 		return fmt.Errorf("failed to close tar writer: %v", err)
 	}
 	return nil
+}
+
+// appendImageManifest add the given manifest to the given tar file. Opinionated
+// about the name of the file to "imagemanifest-<hash>.json"
+func appendImageManifest(tarfile string, manifest []byte) error {
+	hash := sha256.Sum256(manifest)
+	return appendToTarfile(tarfile, fmt.Sprintf("%s-%x.json", "imagemanifest", hash), manifest)
+}
+
+func appendImageRepositories(tarfile, registry, path string, imageManifest []byte) error {
+	// get the top layer for the manifest bytes
+	layerHash, err := ociutil.DockerHashFromManifest(imageManifest)
+	if err != nil {
+		return fmt.Errorf("unable to get top layer hash: %v", err)
+	}
+	// need to take out the tag
+	parts := strings.Split(path, ":")
+	var tag, repo string
+	switch len(parts) {
+	case 0:
+		return fmt.Errorf("malformed repository path %s", path)
+	case 1:
+		repo = parts[0]
+		tag = "latest"
+	case 2:
+		repo = parts[0]
+		tag = parts[1]
+	default:
+		return fmt.Errorf("malformed repository path has too many ':' %s", path)
+	}
+	fullRepo := fmt.Sprintf("%s/%s", registry, repo)
+	// now build the tag we are after
+	var data = map[string]map[string]string{}
+	data[fullRepo] = map[string]string{}
+	data[fullRepo][tag] = layerHash
+
+	j, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("unable to convert repositories data to json: %v", err)
+	}
+
+	return appendToTarfile(tarfile, "repositories", j)
 }
