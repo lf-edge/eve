@@ -36,7 +36,6 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -65,6 +64,7 @@ type baseOsMgrContext struct {
 
 	subGlobalConfig          *pubsub.Subscription
 	globalConfig             *types.GlobalConfig
+	GCInitialized            bool
 	subBaseOsConfig          *pubsub.Subscription
 	subZbootConfig           *pubsub.Subscription
 	subCertObjConfig         *pubsub.Subscription
@@ -131,6 +131,18 @@ func Run() {
 
 	// report other agents, about, zboot status availability
 	ctx.pubZbootStatus.SignalRestarted()
+
+	// Pick up debug aka log level before we start real work
+	for !ctx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-ctx.subGlobalConfig.C:
+			ctx.subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
 
 	// First we process the verifierStatus to avoid downloading
 	// an image we already have in place.
@@ -214,7 +226,7 @@ func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("handleBaseOsCreate(%s)\n", key)
 	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.CastBaseOsConfig(configArg)
+	config := configArg.(types.BaseOsConfig)
 	status := types.BaseOsStatus{
 		UUIDandVersion: config.UUIDandVersion,
 		BaseOsVersion:  config.BaseOsVersion,
@@ -248,13 +260,8 @@ func handleBaseOsModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("handleBaseOsModify(%s)\n", key)
 	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.CastBaseOsConfig(configArg)
+	config := configArg.(types.BaseOsConfig)
 	status := lookupBaseOsStatus(ctx, key)
-	if config.Key() != key {
-		log.Errorf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
 	if status == nil {
 		log.Errorf("handleBaseOsModify status not found, ignored %+v\n", key)
 		return
@@ -281,15 +288,8 @@ func handleBaseOsModify(ctxArg interface{}, key string, configArg interface{}) {
 }
 
 // base os config delete event
-func handleBaseOsDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	status := statusArg.(*types.BaseOsStatus)
-	if status.Key() != key {
-		log.Errorf("handleBaseOsDelete key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
-	ctx := ctxArg.(*baseOsMgrContext)
+func handleBaseOsDelete(ctx *baseOsMgrContext, key string,
+	status *types.BaseOsStatus) {
 
 	log.Infof("handleBaseOsDelete for %s\n", status.BaseOsVersion)
 	removeBaseOsConfig(ctx, status.Key())
@@ -313,7 +313,7 @@ func handleCertObjConfigDelete(ctxArg interface{}, key string,
 // certificate config create event
 func handleCertObjCreate(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.CastCertObjConfig(configArg)
+	config := configArg.(types.CertObjConfig)
 	log.Infof("handleCertObjCreate for %s\n", key)
 
 	status := types.CertObjStatus{
@@ -339,7 +339,7 @@ func handleCertObjCreate(ctxArg interface{}, key string, configArg interface{}) 
 // certificate config modify event
 func handleCertObjModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.CastCertObjConfig(configArg)
+	config := configArg.(types.CertObjConfig)
 	status := lookupCertObjStatus(ctx, key)
 	uuidStr := config.Key()
 	log.Infof("handleCertObjModify for %s\n", uuidStr)
@@ -373,12 +373,7 @@ func handleCertObjDelete(ctx *baseOsMgrContext, key string,
 func handleDownloadStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := cast.CastDownloaderStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleDownloadStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
+	status := statusArg.(types.DownloaderStatus)
 	ctx := ctxArg.(*baseOsMgrContext)
 	log.Infof("handleDownloadStatusModify for %s\n",
 		status.Safename)
@@ -389,7 +384,7 @@ func handleDownloadStatusModify(ctxArg interface{}, key string,
 func handleDownloadStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := cast.CastDownloaderStatus(statusArg)
+	status := statusArg.(types.DownloaderStatus)
 	log.Infof("handleDownloadStatusDelete RefCount %d Expired %v for %s\n",
 		status.RefCount, status.Expired, key)
 	// Nothing to do
@@ -400,12 +395,7 @@ func handleDownloadStatusDelete(ctxArg interface{}, key string,
 func handleVerifierStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := cast.CastVerifyImageStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleVerifierStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
+	status := statusArg.(types.VerifyImageStatus)
 	ctx := ctxArg.(*baseOsMgrContext)
 	log.Infof("handleVerifierStatusModify for %s\n", status.Safename)
 	updateVerifierStatus(ctx, &status)
@@ -415,7 +405,7 @@ func handleVerifierStatusModify(ctxArg interface{}, key string,
 func handleVerifierStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := cast.CastVerifyImageStatus(statusArg)
+	status := statusArg.(types.VerifyImageStatus)
 	log.Infof("handleVeriferStatusDelete RefCount %d Expired %v for %s\n",
 		status.RefCount, status.Expired, key)
 	// Nothing to do
@@ -439,6 +429,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		debugOverride)
 	if gcp != nil {
 		ctx.globalConfig = gcp
+		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
@@ -635,7 +626,7 @@ func initializeVerifierHandles(ctx *baseOsMgrContext) {
 func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	ctx := ctxArg.(*baseOsMgrContext)
-	status := cast.NodeAgentStatus(statusArg)
+	status := statusArg.(types.NodeAgentStatus)
 	ctx.rebootTime = status.RebootTime
 	ctx.rebootReason = status.RebootReason
 	updateBaseOsStatusOnReboot(ctx)
@@ -651,7 +642,7 @@ func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
 // This handles both the create and modify events
 func handleZbootConfigModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.ZbootConfig(configArg)
+	config := configArg.(types.ZbootConfig)
 	status := getZbootStatus(ctx, key)
 	if status == nil {
 		log.Infof("handleZbootConfigModify: unknown %s\n", key)

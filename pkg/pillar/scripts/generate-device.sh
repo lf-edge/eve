@@ -27,7 +27,12 @@ done
 lifetime=$((365 * 20))
 dir=$(dirname "$0")
 if [ "$use_tpm" = true ]; then
-"$dir"/generate-self-signed.sh -t -b "$output_base" -l "$lifetime"
+    if ! "$dir"/generate-self-signed.sh -t -b "$output_base" -l "$lifetime"; then
+        exit 1
+    fi
 else
-"$dir"/generate-self-signed.sh -b "$output_base" -l "$lifetime"
+    if ! "$dir"/generate-self-signed.sh -b "$output_base" -l "$lifetime"; then
+        exit 1
+    fi
 fi
+exit 0

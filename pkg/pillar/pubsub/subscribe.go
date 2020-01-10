@@ -282,8 +282,7 @@ func (sub *Subscription) ProcessChange(change string) {
 	if sub.subscribeFromDir {
 		var restartFn watch.StatusRestartHandler = handleRestart
 		var completeFn watch.StatusRestartHandler = handleSynchronized
-		watch.HandleStatusEvent(change, sub,
-			sub.dirName, &sub.topicType,
+		watch.HandleStatusEvent(change, sub, sub.dirName,
 			handleModify, handleDelete, &restartFn,
 			&completeFn)
 	} else if subscribeFromSock {
@@ -324,14 +323,7 @@ func (sub *Subscription) ProcessChange(change string) {
 				log.Errorln(errStr)
 				break
 			}
-			var output interface{}
-			if err := json.Unmarshal(val, &output); err != nil {
-				errStr := fmt.Sprintf("ProcessChange(%s): json failed %s",
-					name, err)
-				log.Errorln(errStr)
-				break
-			}
-			handleModify(sub, string(key), output)
+			handleModify(sub, string(key), val)
 		}
 	} else {
 		// Enforced in Subscribe()
@@ -393,36 +385,40 @@ func (sub *Subscription) Topic() string {
 }
 
 // handlers
-func handleModify(ctxArg interface{}, key string, item interface{}) {
+func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 	sub := ctxArg.(*Subscription)
 	name := sub.nameString()
 	log.Debugf("pubsub.handleModify(%s) key %s\n", name, key)
-	// NOTE: without a deepCopy we would just save a pointer since
-	// item is a pointer. That would cause failures.
-	newItem := deepCopy(item)
+	item, err := parseTemplate(itemcb, sub.topicType)
+	if err != nil {
+		errStr := fmt.Sprintf("handleModify(%s): json failed %s",
+			name, err)
+		log.Errorln(errStr)
+		return
+	}
 	created := false
 	m, ok := sub.km.key.Load(key)
 	if ok {
-		if cmp.Equal(m, newItem) {
+		if cmp.Equal(m, item) {
 			log.Debugf("pubsub.handleModify(%s/%s) unchanged\n",
 				name, key)
 			return
 		}
 		log.Debugf("pubsub.handleModify(%s/%s) replacing due to diff %s\n",
-			name, key, cmp.Diff(m, newItem))
+			name, key, cmp.Diff(m, item))
 	} else {
 		log.Debugf("pubsub.handleModify(%s) add %+v for key %s\n",
-			name, newItem, key)
+			name, item, key)
 		created = true
 	}
-	sub.km.key.Store(key, newItem)
+	sub.km.key.Store(key, item)
 	if log.GetLevel() == log.DebugLevel {
 		sub.dump("after handleModify")
 	}
 	if created && sub.CreateHandler != nil {
-		(sub.CreateHandler)(sub.userCtx, key, newItem)
+		(sub.CreateHandler)(sub.userCtx, key, item)
 	} else if sub.ModifyHandler != nil {
-		(sub.ModifyHandler)(sub.userCtx, key, newItem)
+		(sub.ModifyHandler)(sub.userCtx, key, item)
 	}
 	log.Debugf("pubsub.handleModify(%s) done for key %s\n", name, key)
 }

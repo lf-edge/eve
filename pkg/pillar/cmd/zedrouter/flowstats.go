@@ -18,7 +18,6 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/satori/go.uuid"
@@ -516,7 +515,7 @@ func checkAppAndACL(ctx *zedrouterContext, instData *networkAttrs) {
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
 	for _, st := range items {
-		status := cast.CastAppNetworkStatus(st)
+		status := st.(types.AppNetworkStatus)
 		for i, ulStatus := range status.UnderlayNetworkList {
 			log.Infof("===FlowStats: (index %d) AppNum %d, VifInfo %v, IP addr %v, Hostname %s\n",
 				i, status.AppNum, ulStatus.VifInfo, ulStatus.AllocatedIPAddr, ulStatus.HostName)
@@ -596,7 +595,7 @@ func flowPublish(ctx *zedrouterContext, flowdata *types.IPFlow, seq, idx *int) {
 		scope.Sequence = strconv.Itoa(*seq)
 	}
 	flowKey = scope.UUID.String() + scope.NetUUID.String() + scope.Sequence
-	ctx.pubAppFlowMonitor.Publish(flowKey, flowdata)
+	ctx.pubAppFlowMonitor.Publish(flowKey, *flowdata)
 	log.Infof("FlowStats: publish to zedagent: total records %d, sequence %d\n", *idx, *seq)
 	*seq++
 	flowdata.Flows = nil
@@ -690,7 +689,7 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 	pub := ctx.pubNetworkInstanceStatus
 	items := pub.GetAll()
 	for _, st := range items {
-		netstatus = cast.CastNetworkInstanceStatus(st)
+		netstatus = st.(types.NetworkInstanceStatus)
 		if netstatus.Type != types.NetworkInstanceTypeSwitch || netstatus.BridgeNum != bnNum {
 			continue
 		}
@@ -782,9 +781,9 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 	if needUpdate {
 		log.Infof("checkDHCPPacketInfo: need update %v, %v\n", vifInfo, netstatus.IPAssignments)
 		pub := ctx.pubNetworkInstanceStatus
-		pub.Publish(netstatus.Key(), &netstatus)
+		pub.Publish(netstatus.Key(), netstatus)
 		// trigger the AppInfo update to cloud
-		ctx.pubAppVifIPTrig.Publish(vifTrig.MacAddr, &vifTrig)
+		ctx.pubAppVifIPTrig.Publish(vifTrig.MacAddr, vifTrig)
 	}
 }
 

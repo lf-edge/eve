@@ -22,7 +22,6 @@ import (
 	"github.com/eriknordmark/ipinfo"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -268,7 +267,7 @@ func fileExists(filename string) bool {
 func handleLedBlinkModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	config := cast.CastLedBlinkCounter(configArg)
+	config := configArg.(types.LedBlinkCounter)
 	ctx := ctxArg.(*diagContext)
 
 	if key != "ledconfig" {
@@ -292,7 +291,7 @@ func handleLedBlinkModify(ctxArg interface{}, key string,
 // Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*diagContext)
 	if key != "global" {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
@@ -353,7 +352,7 @@ func handleDNSDelete(ctxArg interface{}, key string,
 // Handles both create and modify events
 func handleDPCModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDevicePortConfigList(statusArg)
+	status := statusArg.(types.DevicePortConfigList)
 	ctx := ctxArg.(*diagContext)
 	if key != "global" {
 		log.Infof("handleDPCModify: ignoring %s\n", key)

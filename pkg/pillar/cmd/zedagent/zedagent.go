@@ -34,7 +34,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -63,9 +62,9 @@ var deviceNetworkStatus *types.DeviceNetworkStatus = &types.DeviceNetworkStatus{
 
 // XXX globals filled in by subscription handlers and read by handlemetrics
 // XXX could alternatively access sub object when adding them.
-var clientMetrics interface{}
-var logmanagerMetrics interface{}
-var downloaderMetrics interface{}
+var clientMetrics types.MetricsMap
+var logmanagerMetrics types.MetricsMap
+var downloaderMetrics types.MetricsMap
 var networkMetrics types.NetworkMetrics
 
 // Context for handleDNSModify
@@ -535,8 +534,7 @@ func Run() {
 	zedagentCtx.subDevicePortConfigList = subDevicePortConfigList
 	subDevicePortConfigList.Activate()
 
-	// Read the GlobalConfig first
-	// Wait for initial GlobalConfig
+	// Pick up debug aka log level before we start real work
 	for !zedagentCtx.GCInitialized {
 		log.Infof("Waiting for GCInitialized\n")
 		select {
@@ -547,6 +545,7 @@ func Run() {
 			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
 		}
 	}
+	log.Infof("processed GlobalConfig")
 
 	// wait till, zboot status is ready
 	for !zedagentCtx.zbootRestarted {
@@ -775,7 +774,7 @@ func Run() {
 				log.Errorf("subNetworkMetrics.Get failed: %s\n",
 					err)
 			} else {
-				networkMetrics = types.CastNetworkMetrics(m)
+				networkMetrics = m.(types.NetworkMetrics)
 			}
 
 		case change := <-subClientMetrics.C:
@@ -785,7 +784,7 @@ func Run() {
 				log.Errorf("subClientMetrics.Get failed: %s\n",
 					err)
 			} else {
-				clientMetrics = m
+				clientMetrics = m.(types.MetricsMap)
 			}
 
 		case change := <-subLogmanagerMetrics.C:
@@ -795,7 +794,7 @@ func Run() {
 				log.Errorf("subLogmanagerMetrics.Get failed: %s\n",
 					err)
 			} else {
-				logmanagerMetrics = m
+				logmanagerMetrics = m.(types.MetricsMap)
 			}
 
 		case change := <-subDownloaderMetrics.C:
@@ -805,7 +804,7 @@ func Run() {
 				log.Errorf("subDownloaderMetrics.Get failed: %s\n",
 					err)
 			} else {
-				downloaderMetrics = m
+				downloaderMetrics = m.(types.MetricsMap)
 			}
 
 		case change := <-deferredChan:
@@ -886,12 +885,7 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
 func handleVerifierStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := cast.CastVerifyImageStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleVerifierStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
+	status := statusArg.(types.VerifyImageStatus)
 	log.Infof("handleVerifierStatusModify for %s\n", status.Safename)
 	// Nothing to do
 }
@@ -900,7 +894,7 @@ func handleVerifierStatusModify(ctxArg interface{}, key string,
 func handleVerifierStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := cast.CastVerifyImageStatus(statusArg)
+	status := statusArg.(types.VerifyImageStatus)
 	log.Infof("handleVeriferStatusDelete RefCount %d Expired %v for %s\n",
 		status.RefCount, status.Expired, key)
 	// Nothing to do
@@ -953,12 +947,7 @@ func initializeDirs() {
 // Handles both create and modify events
 func handleAppInstanceStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := cast.CastAppInstanceStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleAppInstanceStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
+	status := statusArg.(types.AppInstanceStatus)
 	ctx := ctxArg.(*zedagentContext)
 	uuidStr := status.Key()
 	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
@@ -984,18 +973,13 @@ func lookupAppInstanceStatus(ctx *zedagentContext, key string) *types.AppInstanc
 		log.Infof("lookupAppInstanceStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastAppInstanceStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupAppInstanceStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.AppInstanceStatus)
 	return &status
 }
 
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
@@ -1042,7 +1026,7 @@ func handleDNSDelete(ctxArg interface{}, key string,
 
 func handleDPCLModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDevicePortConfigList(statusArg)
+	status := statusArg.(types.DevicePortConfigList)
 	ctx := ctxArg.(*zedagentContext)
 	if key != "global" {
 		log.Infof("handleDPCLModify: ignoring %s\n", key)
@@ -1077,11 +1061,6 @@ func handleDPCLDelete(ctxArg interface{}, key string, statusArg interface{}) {
 // Handles both create and modify events
 func handleBaseOsStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx := ctxArg.(*zedagentContext)
-	status := cast.CastBaseOsStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleBaseOsStatusModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.Key(), status)
-		return
-	}
 	triggerPublishDevInfo(ctx)
 	log.Infof("handleBaseOsStatusModify(%s) done\n", key)
 }
@@ -1099,11 +1078,6 @@ func handleBaseOsStatusDelete(ctxArg interface{}, key string,
 // Report VaultStatus to zedcloud
 func handleVaultStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx := ctxArg.(*zedagentContext)
-	status := cast.VaultStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleVaultStatusModify key/UUID mismatch %s vs %s; ignored %+v\n", key, status.Key(), status)
-		return
-	}
 	triggerPublishDevInfo(ctx)
 	log.Infof("handleVaultStatusModify(%s) done\n", key)
 }
@@ -1167,7 +1141,7 @@ func handleAAModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*zedagentContext)
-	status := cast.CastAssignableAdapters(statusArg)
+	status := statusArg.(types.AssignableAdapters)
 	if key != "global" {
 		log.Infof("handleAAModify: ignoring %s\n", key)
 		return
@@ -1220,11 +1194,7 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	getconfigCtx := ctxArg.(*getconfigContext)
-	status := cast.NodeAgentStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleNodeAgentStatusModify: invalid key %s\n", key)
-		return
-	}
+	status := statusArg.(types.NodeAgentStatus)
 	updateInprogress := getconfigCtx.updateInprogress
 	ctx := getconfigCtx.zedagentCtx
 	ctx.remainingTestTime = status.RemainingTestTime
@@ -1253,11 +1223,6 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	ctx := ctxArg.(*zedagentContext)
-	status := cast.NodeAgentStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleNodeAgentStatusDelete: invalid key %s\n", key)
-		return
-	}
 	log.Infof("handleNodeAgentStatusDelete: for %s\n", key)
 	// Nothing to do
 	triggerPublishDevInfo(ctx)

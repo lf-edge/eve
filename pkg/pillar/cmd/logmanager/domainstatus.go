@@ -4,7 +4,7 @@
 package logmanager
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -23,12 +23,7 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	log.Infof("handleDomainStatusModify for %s\n", key)
-	status := cast.CastDomainStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleDomainStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
+	status := statusArg.(types.DomainStatus)
 	// Record the domainName even if Pending* is set
 	log.Infof("handleDomainStatusModify add %s to %s\n",
 		status.DomainName, status.UUIDandVersion.UUID.String())
@@ -40,12 +35,7 @@ func handleDomainStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	log.Infof("handleDomainStatusDelete for %s\n", key)
-	status := cast.CastDomainStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleDomainStatusDelete key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
+	status := statusArg.(types.DomainStatus)
 	if _, ok := domainUuid[status.DomainName]; !ok {
 		log.Errorf("handleDomainStatusDelete UUID %s not in map\n",
 			status.UUIDandVersion.UUID.String())

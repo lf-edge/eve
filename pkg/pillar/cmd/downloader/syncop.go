@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -42,19 +41,6 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	locDirname := types.DownloadDirname + "/" + status.ObjType
 	locFilename = locDirname + "/pending"
-
-	if config.IsContainer {
-		pullPolicy := "new"
-		locFilename = filepath.Join(locFilename, config.ImageID.String())
-		if _, err := os.Stat(locFilename); err != nil {
-			log.Debugf("Create %s\n", locFilename)
-			if err = os.MkdirAll(locFilename, 0755); err != nil {
-				log.Fatal(err)
-			}
-		}
-		rktFetchContainerImage(ctx, key, config, status, *dsCtx, pullPolicy, locFilename)
-		return
-	}
 
 	// update status to DOWNLOAD STARTED
 	status.State = types.DOWNLOAD_STARTED
@@ -93,6 +79,18 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	}
 
 	switch dsCtx.TransportMethod {
+	case zconfig.DsType_DsContainerRegistry.String():
+		auth = &zedUpload.AuthInput{
+			AuthType: "apikey",
+			Uname:    dsCtx.APIKey,
+			Password: dsCtx.Password,
+		}
+		trType = zedUpload.SyncOCIRegistryTr
+		// get the name of the repository and the URL for the registry
+		serverURL, remoteName, err = ociRepositorySplit(dsCtx.DownloadURL)
+		if err != nil {
+			errStr = fmt.Sprintf("invalid OCI registry URL: %s", serverURL)
+		}
 	case zconfig.DsType_DsS3.String():
 		auth = &zedUpload.AuthInput{
 			AuthType: "s3",

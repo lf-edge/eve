@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
@@ -129,7 +128,7 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 			log.Infof("PublishDeviceNetworkStatus: %+v\n",
 				ctx.DeviceNetworkStatus)
 			ctx.PubDeviceNetworkStatus.Publish("global",
-				ctx.DeviceNetworkStatus)
+				*ctx.DeviceNetworkStatus)
 		}
 		return
 	}
@@ -484,7 +483,7 @@ func getCurrentDPC(ctx *DeviceNetworkContext) *types.DevicePortConfig {
 // We determine the priority from TimePriority in the config.
 func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 
-	portConfig := cast.CastDevicePortConfig(configArg)
+	portConfig := configArg.(types.DevicePortConfig)
 	ctx := ctxArg.(*DeviceNetworkContext)
 
 	log.Infof("HandleDPCModify: Current Config: %+v, portConfig: %+v\n",
@@ -519,7 +518,7 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("HandleDPCDelete for %s\n", key)
 	ctx := ctxArg.(*DeviceNetworkContext)
-	portConfig := cast.CastDevicePortConfig(configArg)
+	portConfig := configArg.(types.DevicePortConfig)
 
 	log.Infof("HandleDPCDelete for %s current time %v deleted time %v\n",
 		key, ctx.DevicePortConfig.TimePriority, portConfig.TimePriority)
@@ -545,7 +544,7 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 		return
 	}
 	ctx := ctxArg.(*DeviceNetworkContext)
-	newAssignableAdapters := cast.CastAssignableAdapters(statusArg)
+	newAssignableAdapters := statusArg.(types.AssignableAdapters)
 	log.Infof("HandleAssignableAdaptersModify() %+v\n", newAssignableAdapters)
 
 	// ctxArg is DeviceNetworkContext
@@ -608,7 +607,7 @@ func IngestPortConfigList(ctx *DeviceNetworkContext) {
 		log.Errorf("No global key for DevicePortConfigList")
 		dpcl = types.DevicePortConfigList{}
 	} else {
-		dpcl = cast.CastDevicePortConfigList(item)
+		dpcl = item.(types.DevicePortConfigList)
 	}
 	ctx.DevicePortConfigList = &dpcl
 	log.Infof("Initial DPCL %v", dpcl)
@@ -848,7 +847,7 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 		log.Infof("PublishDeviceNetworkStatus: %+v\n",
 			ctx.DeviceNetworkStatus)
 		ctx.PubDeviceNetworkStatus.Publish("global",
-			ctx.DeviceNetworkStatus)
+			*ctx.DeviceNetworkStatus)
 	}
 	ctx.Changed = true
 }

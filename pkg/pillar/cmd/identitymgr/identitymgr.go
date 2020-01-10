@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -48,6 +47,7 @@ type identityContext struct {
 	subEIDConfig    *pubsub.Subscription
 	pubEIDStatus    *pubsub.Publication
 	subGlobalConfig *pubsub.Subscription
+	GCInitialized   bool
 }
 
 var debug = false
@@ -124,6 +124,18 @@ func Run() {
 	identityCtx.subEIDConfig = subEIDConfig
 	subEIDConfig.Activate()
 
+	// Pick up debug aka log level before we start real work
+	for !identityCtx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
+
 	for {
 		select {
 		case change := <-subGlobalConfig.C:
@@ -152,7 +164,7 @@ func publishEIDStatus(ctx *identityContext, key string, status *types.EIDStatus)
 
 	log.Debugf("publishEIDStatus(%s)\n", key)
 	pub := ctx.pubEIDStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishEIDStatus(ctx *identityContext, key string) {
@@ -190,12 +202,7 @@ func lookupEIDStatus(ctx *identityContext, key string) *types.EIDStatus {
 		log.Infof("lookupEIDStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastEIDStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupEIDStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.EIDStatus)
 	return &status
 }
 
@@ -207,18 +214,13 @@ func lookupEIDConfig(ctx *identityContext, key string) *types.EIDConfig {
 		log.Infof("lookupEIDConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastEIDConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupEIDConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.EIDConfig)
 	return &config
 }
 
 func handleCreate(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*identityContext)
-	config := cast.CastEIDConfig(configArg)
+	config := configArg.(types.EIDConfig)
 	log.Infof("handleCreate(%s) for %s\n", key, config.DisplayName)
 
 	// Start by marking with PendingAdd
@@ -431,7 +433,7 @@ func encodePrivateKey(keypair *ecdsa.PrivateKey) ([]byte, error) {
 // else. Such a version change would be e.g. due to an ACL change.
 func handleModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*identityContext)
-	config := cast.CastEIDConfig(configArg)
+	config := configArg.(types.EIDConfig)
 	status := lookupEIDStatus(ctx, key)
 
 	if status == nil {
@@ -483,8 +485,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	if gcp != nil {
+		ctx.GCInitialized = true
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 

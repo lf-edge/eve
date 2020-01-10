@@ -7,7 +7,6 @@
 package pubsub
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -101,7 +100,7 @@ func publishImpl(agentName string, agentScope string,
 	pub.persistent = persistent
 	name := pub.nameString()
 
-	log.Infof("Publish(%s)\n", name)
+	log.Debugf("Publish(%s)\n", name)
 
 	// We always write to the directory as a checkpoint for process restart
 	// That directory could be persistent in which case it will survive
@@ -177,7 +176,7 @@ func (pub *Publication) populate() {
 	dirName := pub.dirName
 	foundRestarted := false
 
-	log.Infof("populate(%s)\n", name)
+	log.Debugf("populate(%s)\n", name)
 
 	files, err := ioutil.ReadDir(dirName)
 	if err != nil {
@@ -202,15 +201,15 @@ func (pub *Publication) populate() {
 			continue
 		}
 
-		log.Infof("populate found key %s file %s\n", key, statusFile)
+		log.Debugf("populate found key %s file %s\n", key, statusFile)
 
 		sb, err := ioutil.ReadFile(statusFile)
 		if err != nil {
 			log.Errorf("populate: %s for %s\n", err, statusFile)
 			continue
 		}
-		var item interface{}
-		if err := json.Unmarshal(sb, &item); err != nil {
+		item, err := parseTemplate(sb, pub.topicType)
+		if err != nil {
 			log.Errorf("populate: %s file: %s\n",
 				err, statusFile)
 			continue
@@ -218,7 +217,7 @@ func (pub *Publication) populate() {
 		pub.km.key.Store(key, item)
 	}
 	pub.km.restarted = foundRestarted
-	log.Infof("populate(%s) done\n", name)
+	log.Debugf("populate(%s) done\n", name)
 }
 
 // go routine which runs the AF_UNIX server.
@@ -359,14 +358,14 @@ func (pub *Publication) determineDiffs(slaveCollection localCollection) []string
 		if slave == nil {
 			log.Debugf("determineDiffs(%s): key %s added\n",
 				name, masterKey)
-			// XXX is deepCopy needed?
+			// Handle the case of the master changing while we're using the slave by making a copy
 			slaveCollection[masterKey] = deepCopy(master)
 			keys = append(keys, masterKey)
 		} else if !cmp.Equal(master, *slave) {
 			log.Debugf("determineDiffs(%s): key %s replacing due to diff %v\n",
 				name, masterKey,
 				cmp.Diff(master, *slave))
-			// XXX is deepCopy needed?
+			// Handle the case of the master changing under us
 			slaveCollection[masterKey] = deepCopy(master)
 			keys = append(keys, masterKey)
 		} else {

@@ -2,7 +2,6 @@ package downloader
 
 import (
 	"github.com/google/go-cmp/cmp"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -11,7 +10,7 @@ import (
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	ctx := ctxArg.(*downloaderContext)
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	if key != "global" {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
 		return

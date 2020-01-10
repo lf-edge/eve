@@ -15,7 +15,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -37,13 +36,14 @@ var Version = "No version specified"
 type zedmanagerContext struct {
 	configRestarted         bool
 	verifierRestarted       bool
-	subAppInstanceConfig    *pubsub.Subscription
-	pubAppInstanceStatus    *pubsub.Publication
+	subAppInstanceConfig    pubsub.SubscriptionIntf
+	pubAppInstanceStatus    pubsub.PublicationIntf
 	subDeviceNetworkStatus  *pubsub.Subscription
 	pubAppNetworkConfig     *pubsub.Publication
 	subAppNetworkStatus     *pubsub.Subscription
 	pubDomainConfig         *pubsub.Publication
 	subDomainStatus         *pubsub.Subscription
+	subImageStatus          *pubsub.Subscription
 	pubEIDConfig            *pubsub.Publication
 	subEIDStatus            *pubsub.Subscription
 	subCertObjStatus        *pubsub.Subscription
@@ -54,6 +54,7 @@ type zedmanagerContext struct {
 	subGlobalConfig         *pubsub.Subscription
 	globalConfig            *types.GlobalConfig
 	pubUuidToNum            *pubsub.Publication
+	GCInitialized           bool
 }
 
 var deviceNetworkStatus types.DeviceNetworkStatus
@@ -212,6 +213,17 @@ func Run() {
 	ctx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
 
+	// Get DomainStatus from domainmgr
+	subImageStatus, err := pubsub.Subscribe("domainmgr",
+		types.ImageStatus{}, false, &ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	subImageStatus.MaxProcessTimeWarn = warningTime
+	subImageStatus.MaxProcessTimeError = errorTime
+	ctx.subImageStatus = subImageStatus
+	subImageStatus.Activate()
+
 	// Look for DownloaderStatus from downloader
 	subAppImgDownloadStatus, err := pubsub.SubscribeScope("downloader",
 		types.AppImgObj, types.DownloaderStatus{}, false, &ctx)
@@ -283,6 +295,18 @@ func Run() {
 	ctx.subCertObjStatus = subCertObjStatus
 	subCertObjStatus.Activate()
 
+	// Pick up debug aka log level before we start real work
+	for !ctx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
+
 	// First we process the verifierStatus to avoid downloading
 	// an image we already have in place.
 	log.Infof("Handling initial verifier Status\n")
@@ -326,6 +350,9 @@ func Run() {
 
 		case change := <-subDomainStatus.C:
 			subDomainStatus.ProcessChange(change)
+
+		case change := <-subImageStatus.C:
+			subImageStatus.ProcessChange(change)
 
 		case change := <-subAppInstanceConfig.C:
 			subAppInstanceConfig.ProcessChange(change)
@@ -395,7 +422,7 @@ func publishAppInstanceStatus(ctx *zedmanagerContext,
 	key := status.Key()
 	log.Debugf("publishAppInstanceStatus(%s)\n", key)
 	pub := ctx.pubAppInstanceStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishAppInstanceStatus(ctx *zedmanagerContext,
@@ -435,12 +462,7 @@ func lookupAppInstanceStatus(ctx *zedmanagerContext, key string) *types.AppInsta
 		log.Infof("lookupAppInstanceStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastAppInstanceStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupAppInstanceStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.AppInstanceStatus)
 	return &status
 }
 
@@ -452,19 +474,14 @@ func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInsta
 		log.Infof("lookupAppInstanceConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastAppInstanceConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupAppInstanceConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.AppInstanceConfig)
 	return &config
 }
 
 func handleCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 	ctx := ctxArg.(*zedmanagerContext)
-	config := cast.CastAppInstanceConfig(configArg)
+	config := configArg.(types.AppInstanceConfig)
 
 	log.Infof("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
@@ -569,7 +586,7 @@ func handleCreate(ctxArg interface{}, key string,
 func handleModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 	ctx := ctxArg.(*zedmanagerContext)
-	config := cast.CastAppInstanceConfig(configArg)
+	config := configArg.(types.AppInstanceConfig)
 	status := lookupAppInstanceStatus(ctx, key)
 	log.Infof("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
@@ -776,7 +793,7 @@ func quantifyChanges(config types.AppInstanceConfig,
 // Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	if key != "global" {
 		log.Debugf("handleDNSModify: ignoring %s\n", key)
 		return
@@ -818,6 +835,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		debugOverride)
 	if gcp != nil {
 		ctx.globalConfig = gcp
+		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }

@@ -1,7 +1,7 @@
 package downloader
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -10,7 +10,7 @@ func handleGlobalDownloadConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	ctx := ctxArg.(*downloaderContext)
-	config := cast.CastGlobalDownloadConfig(configArg)
+	config := configArg.(types.GlobalDownloadConfig)
 	if key != "global" {
 		log.Errorf("handleGlobalDownloadConfigModify: unexpected key %s\n", key)
 		return

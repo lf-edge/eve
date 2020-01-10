@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -25,43 +23,44 @@ func locationFromDir(locationDir string) (string, error) {
 	// which the verifier ensures.
 	locations, err := ioutil.ReadDir(locationDir)
 	if err != nil {
-		log.Errorln(err)
 		return "", err
 	}
 	if len(locations) != 1 {
-		log.Errorf("Multiple files in %s\n", locationDir)
 		return "", fmt.Errorf("Multiple files in %s\n",
 			locationDir)
 	}
 	if len(locations) == 0 {
-		log.Errorf("No files in %s\n", locationDir)
 		return "", fmt.Errorf("No files in %s\n",
 			locationDir)
 	}
 	return locationDir + "/" + locations[0].Name(), nil
 }
 
+// VerifiedImageDirLocation - Gives the directory for a verified image, but not
+// the file itself, which is subject to possible algorithms
+func VerifiedImageDirLocation(isContainer bool, containerImageID string,
+	imageSha256 string) string {
+	var locationDir string
+	if isContainer {
+		locationDir = types.VerifiedAppImgDirname + "/" + containerImageID
+	} else {
+		locationDir = types.VerifiedAppImgDirname + "/" + imageSha256
+	}
+	return locationDir
+}
+
 // VerifiedImageFileLocation - Gives the file location for a verified image.
 func VerifiedImageFileLocation(isContainer bool, containerImageID string,
 	imageSha256 string) (string, error) {
-	var location string
-	if isContainer {
-		// Check if statusPtr.ContainerImageID has "sha512-" substring at the beginning
-		if strings.Index(containerImageID, "sha512-") != 0 {
-			err := fmt.Errorf("status.ContainerImageID should start with "+
-				" sha512-, but is %s", containerImageID)
-			return "", err
-		}
-		location = filepath.Join(types.PersistRktDataDir,
-			"cas", "blob", "sha512",
-			string(containerImageID[7:9]), containerImageID)
-	} else {
-		locationDir := types.VerifiedAppImgDirname + "/" + imageSha256
-		var err error
-		location, err = locationFromDir(locationDir)
-		if err != nil {
-			return "", err
-		}
+	locationDir := VerifiedImageDirLocation(isContainer, containerImageID, imageSha256)
+	location, err := locationFromDir(locationDir)
+	// logging the error here kind of violates functional principles,
+	// since it would be legitimate to ask, "where is the verified image file,
+	// and let me decide if the returned error really is an error". Similar to,
+	// sometimes an err isn't an error, e.g. io.EOF, where the caller decides
+	// but this minimizes the changes
+	if err != nil {
+		log.Errorln(err)
 	}
-	return location, nil
+	return location, err
 }

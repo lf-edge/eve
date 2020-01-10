@@ -20,7 +20,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -80,13 +79,8 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 func shutdownApps(getconfigCtx *getconfigContext) {
 	pub := getconfigCtx.pubAppInstanceConfig
 	items := pub.GetAll()
-	for key, c := range items {
-		config := cast.CastAppInstanceConfig(c)
-		if config.Key() != key {
-			log.Errorf("shutdownApps key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, config.Key(), config)
-			continue
-		}
+	for _, c := range items {
+		config := c.(types.AppInstanceConfig)
 		if config.Activate {
 			log.Infof("shutdownApps: clearing Activate for %s uuid %s\n",
 				config.DisplayName, config.Key())
@@ -228,7 +222,7 @@ func unpublishDeletedNetworkInstanceConfig(ctx *getconfigContext,
 			continue
 		}
 
-		config := cast.CastNetworkInstanceConfig(entry)
+		config := entry.(types.NetworkInstanceConfig)
 		log.Infof("unpublishing NetworkInstance %s (Name: %s) \n",
 			key, config.DisplayName)
 		if err := ctx.pubNetworkInstanceConfig.Unpublish(key); err != nil {
@@ -338,7 +332,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 				networkInstanceConfig.IpType = types.AddressTypeNone
 			}
 			ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
-				&networkInstanceConfig)
+				networkInstanceConfig)
 
 		case types.NetworkInstanceTypeMesh:
 			// mark HasEncap as true, for special MTU handling
@@ -391,7 +385,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 		}
 
 		ctx.pubNetworkInstanceConfig.Publish(networkInstanceConfig.UUID.String(),
-			&networkInstanceConfig)
+			networkInstanceConfig)
 	}
 }
 
@@ -715,7 +709,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			port.ParseErrorTime = time.Now()
 			return port
 		}
-		network := cast.CastNetworkXObjectConfig(networkXObject)
+		network := networkXObject.(types.NetworkXObjectConfig)
 		if network.Error != "" {
 			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s Network error: %v",
 				port.IfName, network.Error)
@@ -932,7 +926,7 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		if datastore.Region == "" {
 			datastore.Region = "us-west-2"
 		}
-		ctx.pubDatastoreConfig.Publish(datastore.Key(), &datastore)
+		ctx.pubDatastoreConfig.Publish(datastore.Key(), *datastore)
 	}
 }
 
@@ -953,7 +947,7 @@ func parseStorageConfigList(objType string,
 			image.DatastoreID = id
 			image.Name = drive.Image.Name
 			image.ImageID, _ = uuid.FromString(drive.Image.Uuidandversion.Uuid)
-			image.Format = strings.ToLower(drive.Image.Iformat.String())
+			image.Format = drive.Image.Iformat
 			image.Size = uint64(drive.Image.SizeBytes)
 			image.ImageSignature = drive.Image.Siginfo.Signature
 			image.SignatureKey = drive.Image.Siginfo.Signercerturl
@@ -974,7 +968,7 @@ func parseStorageConfigList(objType string,
 		image.Target = strings.ToLower(drive.Target.String())
 		image.Devtype = strings.ToLower(drive.Drvtype.String())
 		image.ImageSha256 = drive.Image.Sha256
-		if image.Format == "container" && image.ImageSha256 == "" {
+		if image.Format == zconfig.Format_CONTAINER && image.ImageSha256 == "" {
 			// XXX HACK - The right fix is to use ImageIDs to Track
 			// images instead of SHA.
 			// Currently, for container images, Zedcloud doesn't have
@@ -1041,7 +1035,7 @@ func publishNetworkXObjectConfig(ctx *getconfigContext,
 		config := parseOneNetworkXObjectConfig(ctx, netEnt)
 		if config != nil {
 			ctx.pubNetworkXObjectConfig.Publish(config.Key(),
-				config)
+				*config)
 		}
 	}
 }
@@ -1939,7 +1933,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			ssh.UpdateSshAuthorizedKeys(gcPtr.SshAuthorizedKeys)
 		}
 		pub := ctx.zedagentCtx.pubGlobalConfig
-		err := pub.Publish("global", gcPtr)
+		err := pub.Publish("global", *gcPtr)
 		if err != nil {
 			// XXX - IS there a valid reason for this to Fail? If not, we should
 			//  fo log.Fatalf here..
@@ -1965,7 +1959,7 @@ func publishBaseOsConfig(getconfigCtx *getconfigContext,
 	log.Debugf("publishBaseOsConfig UUID %s, %s, activate %v\n",
 		key, config.BaseOsVersion, config.Activate)
 	pub := getconfigCtx.pubBaseOsConfig
-	pub.Publish(key, config)
+	pub.Publish(key, *config)
 }
 
 func getCertObjects(uuidAndVersion types.UUIDandVersion,
@@ -2044,7 +2038,7 @@ func publishCertObjConfig(getconfigCtx *getconfigContext,
 	key := uuidStr // XXX vs. config.Key()?
 	log.Debugf("publishCertObjConfig(%s) key %s\n", uuidStr, config.Key())
 	pub := getconfigCtx.pubCertObjConfig
-	pub.Publish(key, config)
+	pub.Publish(key, *config)
 }
 
 func unpublishCertObjConfig(getconfigCtx *getconfigContext, uuidStr string) {

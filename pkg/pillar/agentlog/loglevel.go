@@ -6,7 +6,6 @@
 package agentlog
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -18,7 +17,7 @@ func GetGlobalConfig(sub *pubsub.Subscription) *types.GlobalConfig {
 		log.Infof("GlobalConfig failed %s\n", err)
 		return nil
 	}
-	gc := cast.CastGlobalConfig(m)
+	gc := m.(types.GlobalConfig)
 	return &gc
 }
 
@@ -39,7 +38,7 @@ func getLogLevelImpl(sub *pubsub.Subscription, agentName string,
 		log.Infof("GetLogLevel failed %s\n", err)
 		return "", false
 	}
-	gc := cast.CastGlobalConfig(m)
+	gc := m.(types.GlobalConfig)
 	// Do we have an entry for this agent?
 	as, ok := gc.AgentSettings[agentName]
 	if ok && as.LogLevel != "" {
@@ -69,7 +68,7 @@ func getRemoteLogLevelImpl(sub *pubsub.Subscription, agentName string,
 		log.Infof("GetRemoteLogLevel failed %s\n", err)
 		return "", false
 	}
-	gc := cast.CastGlobalConfig(m)
+	gc := m.(types.GlobalConfig)
 	// Do we have an entry for this agent?
 	as, ok := gc.AgentSettings[agentName]
 	if ok && as.RemoteLogLevel != "" {

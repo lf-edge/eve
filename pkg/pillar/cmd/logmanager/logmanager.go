@@ -22,7 +22,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/api/go/logs"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -69,6 +68,7 @@ type logmanagerContext struct {
 	subGlobalConfig *pubsub.Subscription
 	globalConfig    *types.GlobalConfig
 	subDomainStatus *pubsub.Subscription
+	GCInitialized   bool
 }
 
 // Set from Makefile
@@ -238,6 +238,18 @@ func Run() {
 	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
+
+	// Pick up debug aka log level before we start real work
+	for !logmanagerCtx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
 
 	log.Infof("Waiting until we have some management ports with usable addresses\n")
 	for DNSctx.usableAddressCount == 0 && !force {
@@ -409,7 +421,7 @@ func handleXenLogDir(logDirChanges chan string, logDirName string,
 // Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
@@ -1036,12 +1048,13 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	status := cast.CastGlobalConfig(statusArg)
+	status := statusArg.(types.GlobalConfig)
 	var gcp *types.GlobalConfig
 	debug, gcp = agentlog.HandleGlobalConfigNoDefault(ctx.subGlobalConfig,
 		agentName, debugOverride)
 	if gcp != nil {
 		ctx.globalConfig = gcp
+		ctx.GCInitialized = true
 	}
 	foundAgents := make(map[string]bool)
 	if status.DefaultRemoteLogLevel != "" {

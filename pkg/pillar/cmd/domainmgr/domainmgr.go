@@ -10,6 +10,7 @@ package domainmgr
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,8 +27,8 @@ import (
 
 	"github.com/eriknordmark/netlink"
 	"github.com/google/go-cmp/cmp"
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -80,6 +82,24 @@ type domainContext struct {
 	pubAssignableAdapters  *pubsub.Publication
 	usbAccess              bool
 	createSema             sema.Semaphore
+	GCInitialized          bool
+}
+
+// appRwImageName - Returns name of the image ( including parent dir )
+func appRwImageName(sha256, uuidStr string, format zconfig.Format) string {
+	formatStr := strings.ToLower(format.String())
+	return fmt.Sprintf("%s/%s-%s.%s", rwImgDirname, sha256, uuidStr, formatStr)
+}
+
+// parseAppRwImageName - Returns rwImgDirname, sha256, uuidStr
+func parseAppRwImageName(image string) (string, string, string) {
+	re := regexp.MustCompile(`(.+)/(.+)-(.+)\.(.+)`)
+	if !re.MatchString(image) {
+		log.Errorf("AppRwImageName %s doesn't match pattern", image)
+		return "", "", ""
+	}
+	parsedStrings := re.FindStringSubmatch(image)
+	return parsedStrings[1], parsedStrings[2], parsedStrings[3]
 }
 
 func (ctx *domainContext) publishAssignableAdapters() {
@@ -225,6 +245,18 @@ func Run() {
 	domainCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
+	// Pick up debug aka log level before we start real work
+	for !domainCtx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
+
 	// Wait for DeviceNetworkStatus to be init so we know the management
 	// ports and then wait for assignableAdapters.
 	for !domainCtx.DNSinitialized {
@@ -236,7 +268,9 @@ func Run() {
 
 		case change := <-subDeviceNetworkStatus.C:
 			subDeviceNetworkStatus.ProcessChange(change)
+		case <-stillRunning.C:
 		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	// Subscribe to PhysicalIOAdapterList from zedagent
@@ -332,6 +366,13 @@ func handleRestart(ctxArg interface{}, done bool) {
 	}
 }
 
+func deleteFile(filelocation string) {
+	if err := os.Remove(filelocation); err != nil {
+		log.Errorf("Failed to delete file %s. Error: %s",
+			filelocation, err.Error())
+	}
+}
+
 // recursive scanning for verified objects,
 // to recreate the status files
 func populateInitialImageStatus(ctx *domainContext, dirName string) {
@@ -348,17 +389,33 @@ func populateInitialImageStatus(ctx *domainContext, dirName string) {
 			log.Debugf("populateInitialImageStatus: directory %s ignored\n", filelocation)
 			continue
 		}
-		size := int64(0)
+
 		info, err := os.Stat(filelocation)
 		if err != nil {
-			log.Error(err)
-		} else {
-			size = info.Size()
+			log.Errorf("Error in getting file information. Err: %s. "+
+				"Deleting file %s", err, filelocation)
+			deleteFile(filelocation)
+			continue
 		}
-		log.Debugf("populateInitialImageStatus: Processing %d Mbytes %s \n",
-			size/(1024*1024), filelocation)
+
+		size := info.Size()
+		_, sha256, appUUIDStr := parseAppRwImageName(filelocation)
+		log.Debugf("populateInitialImageStatus: Processing AppUuid: %s, "+
+			"%d Mbytes, fileLocation:%s",
+			appUUIDStr, size/(1024*1024), filelocation)
+
+		appUUID, err := uuid.FromString(appUUIDStr)
+		if err != nil {
+			log.Errorf("populateInitialImageStatus: Invalid UUIDStr(%s) in "+
+				"filename (%s). err: %s. Deleting the File",
+				appUUIDStr, filelocation, err)
+			deleteFile(filelocation)
+			continue
+		}
 
 		status := types.ImageStatus{
+			AppInstUUID:  appUUID,
+			ImageSha256:  sha256,
 			Filename:     location.Name(),
 			FileLocation: filelocation,
 			Size:         uint64(size),
@@ -386,7 +443,7 @@ func addImageStatus(ctx *domainContext, fileLocation string) {
 		}
 		publishImageStatus(ctx, &status)
 	} else {
-		status := cast.CastImageStatus(st)
+		status := st.(types.ImageStatus)
 		log.Infof("addImageStatus(%s) found RefCount %d LastUse %v\n",
 			filename, status.RefCount, status.LastUse)
 
@@ -408,7 +465,7 @@ func delImageStatus(ctx *domainContext, fileLocation string) {
 		log.Errorf("delImageStatus(%s) not found\n", filename)
 		return
 	}
-	status := cast.CastImageStatus(st)
+	status := st.(types.ImageStatus)
 	log.Infof("delImageStatus(%s) found RefCount %d LastUse %v\n",
 		filename, status.RefCount, status.LastUse)
 	unpublishImageStatus(ctx, &status)
@@ -421,13 +478,8 @@ func gcObjects(ctx *domainContext, dirName string) {
 
 	pub := ctx.pubImageStatus
 	items := pub.GetAll()
-	for key, st := range items {
-		status := cast.CastImageStatus(st)
-		if status.Key() != key {
-			log.Errorf("gcObjects key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
+	for _, st := range items {
+		status := st.(types.ImageStatus)
 		// Make sure we update LastUse if it is still referenced
 		// by a DomainConfig
 		filelocation := status.FileLocation
@@ -440,17 +492,17 @@ func gcObjects(ctx *domainContext, dirName string) {
 		}
 		if status.RefCount != 0 {
 			log.Debugf("gcObjects: skipping RefCount %d: %s\n",
-				status.RefCount, key)
+				status.RefCount, status.Key())
 			continue
 		}
 		timePassed := time.Since(status.LastUse)
 		if timePassed < vdiskGCTime {
 			log.Debugf("gcObjects: skipping recently used %s remains %d seconds\n",
-				key, (timePassed-vdiskGCTime)/time.Second)
+				status.Key(), (timePassed-vdiskGCTime)/time.Second)
 			continue
 		}
 		log.Infof("gcObjects: removing %s LastUse %v now %v: %s\n",
-			filelocation, status.LastUse, time.Now(), key)
+			filelocation, status.LastUse, time.Now(), status.Key())
 		if err := os.Remove(filelocation); err != nil {
 			log.Errorln(err)
 		}
@@ -463,13 +515,8 @@ func findActiveFileLocation(ctx *domainContext, filename string) bool {
 	log.Debugf("findActiveFileLocation(%v)\n", filename)
 	pub := ctx.pubDomainStatus
 	items := pub.GetAll()
-	for key, st := range items {
-		status := cast.CastDomainStatus(st)
-		if status.Key() != key {
-			log.Errorf("findActiveFileLocation key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
+	for _, st := range items {
+		status := st.(types.DomainStatus)
 		for _, ds := range status.DiskStatusList {
 			if filename == ds.ActiveFileLocation {
 				return true
@@ -484,7 +531,7 @@ func publishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
 	key := status.Key()
 	log.Debugf("publishDomainStatus(%s)\n", key)
 	pub := ctx.pubDomainStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishDomainStatus(ctx *domainContext, status *types.DomainStatus) {
@@ -505,7 +552,7 @@ func publishImageStatus(ctx *domainContext, status *types.ImageStatus) {
 	key := status.Key()
 	log.Debugf("publishImageStatus(%s)\n", key)
 	pub := ctx.pubImageStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishImageStatus(ctx *domainContext, status *types.ImageStatus) {
@@ -544,12 +591,7 @@ func handlersInit() {
 func handleDomainModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("handleDomainModify(%s)\n", key)
-	config := cast.CastDomainConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleDomainModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
+	config := configArg.(types.DomainConfig)
 	h, ok := handlerMap[config.Key()]
 	if !ok {
 		log.Fatalf("handleDomainModify called on config that does not exist")
@@ -560,12 +602,7 @@ func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("handleDomainCreate(%s)\n", key)
 	ctx := ctxArg.(*domainContext)
-	config := cast.CastDomainConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleDomainCreate key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
+	config := configArg.(types.DomainConfig)
 	h, ok := handlerMap[config.Key()]
 	if ok {
 		log.Fatalf("handleDomainCreate called on config that already exists")
@@ -611,7 +648,7 @@ func runHandler(ctx *domainContext, key string, c <-chan interface{}) {
 		select {
 		case configArg, ok := <-c:
 			if ok {
-				config := cast.CastDomainConfig(configArg)
+				config := configArg.(types.DomainConfig)
 				status := lookupDomainStatus(ctx, key)
 				if status == nil {
 					handleCreate(ctx, key, &config)
@@ -636,6 +673,23 @@ func runHandler(ctx *domainContext, key string, c <-chan interface{}) {
 		}
 	}
 	log.Infof("runHandler(%s) DONE\n", key)
+}
+
+// doStopDestroyDomain will destroy the domain of an instance if qemu is crashed
+func doStopDestroyDomain(status *types.DomainStatus) {
+	var err error
+	if status.IsContainer {
+		// Use rkt tool
+		log.Infof("Using rkt tool to stop the running pod ... PodUUID - %s\n", status.PodUUID)
+		err = rktStop(status.PodUUID, false)
+		if err != nil {
+			log.Errorf("rktStop %s failed: %s\n", status.DomainName, err)
+		}
+	}
+	err = DomainDestroy(*status)
+	if err != nil {
+		log.Errorf("DomainDestroy %s failed: %s\n", status.DomainName, err)
+	}
 }
 
 // Check if it is still running
@@ -670,7 +724,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			publishDomainStatus(ctx, status)
 		}
 		// check if qemu processes has crashed
-		if status.Activated && status.VirtualizationMode == types.HVM && !isQemuRunning(status.DomainId) {
+		if status.Activated && (status.VirtualizationMode == types.HVM || status.IsContainer) && !isQemuRunning(status.DomainId) {
 			errStr := fmt.Sprintf("verifyStatus(%s) qemu crashed",
 				status.Key())
 			log.Errorf(errStr)
@@ -679,6 +733,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.Activated = false
 			status.State = types.HALTED
 			publishDomainStatus(ctx, status)
+			doStopDestroyDomain(status)
 		}
 	}
 }
@@ -799,12 +854,7 @@ func lookupDomainStatus(ctx *domainContext, key string) *types.DomainStatus {
 		log.Infof("lookupDomainStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastDomainStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupDomainStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.DomainStatus)
 	return &status
 }
 
@@ -816,12 +866,7 @@ func lookupDomainConfig(ctx *domainContext, key string) *types.DomainConfig {
 		log.Infof("lookupDomainConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastDomainConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupDomainConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.DomainConfig)
 	return &config
 }
 
@@ -1177,7 +1222,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
 	}
-	maxDelay := time.Second * 60 // 1 minute
+	maxDelay := time.Second * 600 // 10 minutes
 	if status.DomainId != 0 {
 		status.State = types.HALTING
 		publishDomainStatus(ctx, status)
@@ -1186,7 +1231,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 		case types.HVM:
 			// Do a short shutdown wait, then a shutdown -F
 			// just in case there are PV tools in guest
-			shortDelay := time.Second * 10
+			shortDelay := time.Second * 60
 			if err := DomainShutdown(*status, false); err != nil {
 				log.Errorf("DomainShutdown %s failed: %s\n",
 					status.DomainName, err)
@@ -1359,8 +1404,9 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		xv := "xvd" + string(int('a')+i)
 		ds.Vdev = xv
 
+		log.Infof("getting image file location IsContainer(%v), ContainerImageId(%s), ImageSha256(%s)", status.IsContainer, ds.ImageID.String(), dc.ImageSha256)
 		target, err := utils.VerifiedImageFileLocation(status.IsContainer,
-			status.ContainerImageID, dc.ImageSha256)
+			ds.ImageID.String(), dc.ImageSha256)
 		if err != nil {
 			log.Errorf("configToStatus: Failed to get Image File Location. "+
 				"err: %+s", err.Error())
@@ -1374,11 +1420,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			// Pick new location for a per-guest copy
 			// Use App UUID to make sure name is the same even
 			// after adds and deletes of instances and device reboots
-			dstFilename := fmt.Sprintf("%s/%s-%s.%s",
-				rwImgDirname, dc.ImageSha256,
-				config.UUIDandVersion.UUID.String(),
-				dc.Format)
-			target = dstFilename
+			target = appRwImageName(dc.ImageSha256,
+				config.UUIDandVersion.UUID.String(), dc.Format)
 		}
 		ds.ActiveFileLocation = target
 	}
@@ -1560,7 +1603,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 			access = "ro"
 		}
 		oneDisk := fmt.Sprintf("'%s,%s,%s,%s'",
-			ds.ActiveFileLocation, ds.Format, ds.Vdev, access)
+			ds.ActiveFileLocation, strings.ToLower(ds.Format.String()), ds.Vdev, access)
 		log.Debugf("Processing disk %d: %s\n", i, oneDisk)
 		if diskString == "" {
 			diskString = oneDisk
@@ -1936,24 +1979,56 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 		status.UUIDandVersion, status.DisplayName)
 }
 
+// lookForRktRunErrors checks for xen errors or any other error which
+// are encountered while rkt run
+// rkt run returns two standard outputs when rkt runs successfully
+// so we need to remove them while checking for errors
+func lookForRktRunErrors(str string) error {
+	var output []string
+	standardOutput1 := "run: group \"rkt\" not found, will use default gid when rendering images"
+	standardOutput2 := "Parsing config from /var/lib/rkt/pods/run/"
+	strSlice := strings.Split(str, "\n")
+	for _, v := range strSlice {
+		if v != standardOutput1 && !strings.HasPrefix(v, standardOutput2) {
+			output = append(output, v)
+		}
+	}
+	errString := strings.Join(output, "\n")
+	if errString != "" {
+		return fmt.Errorf("rkt run failed: %s\n", errString)
+	}
+	return nil
+}
+
 // DomainCreate is a wrapper for domain creation thru xlCreate or rktRun
 // returns domainID, PodUUID and error
 func DomainCreate(status types.DomainStatus) (int, string, error) {
 
-	var domainID int
-	var err error
-	podUUID := ""
+	var (
+		domainID int
+		err      error
+		podUUID  string
+	)
 
 	filename := xenCfgFilename(status.AppNum)
 	log.Infof("DomainCreate %s ... xenCfgFilename - %s\n", status.DomainName, filename)
 	if status.IsContainer {
 		// Use rkt tool
 		log.Infof("Using rkt tool ... ContainerImageID - %s\n", status.ContainerImageID)
-		aciFileName := filepath.Join(types.VerifiedAppImgDirname,
-			status.DiskStatusList[0].ImageID.String(),
-			status.ContainerImageID)
-		aciFileName = aciFileName + ".aci"
-		domainID, podUUID, err = rktRun(status.DomainName, status.ContainerImageID, filename, aciFileName)
+		// get the rkt image hash for this file; if we do not have it in the rkt cache,
+		// convert it
+		ociFilename, err := utils.VerifiedImageFileLocation(true,
+			status.DiskStatusList[0].ImageID.String(), status.ContainerImageID)
+		if err != nil {
+			log.Errorf("DomainCreate: Failed to get Image File Location. "+
+				"err: %+s", err.Error())
+			return domainID, podUUID, err
+		}
+		imageHash, err := ociToRktImageHash(ociFilename)
+		if err != nil {
+			return domainID, podUUID, fmt.Errorf("unable to get rkt image hash: %v", err)
+		}
+		domainID, podUUID, err = rktRun(status.DomainName, status.ContainerImageID, filename, imageHash)
 	} else {
 		// Use xl tool
 		log.Infof("Using xl tool ... xenCfgFilename - %s\n", filename)
@@ -1965,7 +2040,7 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 
 // Launch app/container thru rkt
 // returns domainID, podUUID and error
-func rktRun(domainName string, ContainerImageID string, xenCfgFilename string, aciFileName string) (int, string, error) {
+func rktRun(domainName, ContainerImageID, xenCfgFilename, imageHash string) (int, string, error) {
 
 	// STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=xenCfgFilename rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file
 	log.Infof("rktRun %s - ContainerImageID %s\n", domainName, ContainerImageID)
@@ -1974,7 +2049,7 @@ func rktRun(domainName string, ContainerImageID string, xenCfgFilename string, a
 		"--dir=" + types.PersistRktDataDir,
 		"--insecure-options=image",
 		"run",
-		aciFileName,
+		imageHash,
 		"--stage1-path=/usr/sbin/stage1-xen.aci",
 		"--uuid-file-save=" + uuidFile,
 	}
@@ -1991,7 +2066,6 @@ func rktRun(domainName string, ContainerImageID string, xenCfgFilename string, a
 		return 0, "", fmt.Errorf("rkt run failed: %s\n",
 			string(stdoutStderr))
 	}
-	log.Infof("rkt run done\n")
 
 	// Get Pod UUID
 	uuidData, err := ioutil.ReadFile(uuidFile)
@@ -2001,6 +2075,15 @@ func rktRun(domainName string, ContainerImageID string, xenCfgFilename string, a
 	}
 	podUUID := strings.TrimSpace(string(uuidData))
 	log.Infof("podUUID = %s\n", podUUID)
+
+	err = lookForRktRunErrors(string(stdoutStderr))
+	if err != nil {
+		log.Errorln(err.Error())
+		if status := rktStatus(podUUID); status != "running" {
+			return 0, "", err
+		}
+	}
+	log.Infof("rkt run done\n")
 
 	// Obtain the domain id
 	cmd = "xl"
@@ -2022,6 +2105,32 @@ func rktRun(domainName string, ContainerImageID string, xenCfgFilename string, a
 		return 0, "", fmt.Errorf("Can't extract domainID from %s: %s\n", res, err)
 	}
 	return domainID, podUUID, nil
+}
+
+// rktStatus checks the status of the pod
+func rktStatus(podUUID string) string {
+	cmd := "rkt"
+	args := []string{
+		"--dir=" + types.PersistRktDataDir,
+		"status",
+		podUUID,
+		"--format=json",
+	}
+	log.Infof("Calling command %s %v\n", cmd, args)
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt status failed ", err)
+		log.Errorln("rkt status output ", string(stdoutStderr))
+		return ""
+	}
+	log.Infof("rkt status done\n")
+	var status map[string]interface{}
+	if err := json.Unmarshal(stdoutStderr, &status); err != nil {
+		log.Errorln("rkt status failed ", err)
+		log.Errorln("rkt status output ", string(stdoutStderr))
+		return ""
+	}
+	return status["state"].(string)
 }
 
 // Create in paused state; Need to call xlUnpause later
@@ -2368,7 +2477,7 @@ func pciAssignableRemove(long string) error {
 // Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*domainContext)
 	if key != "global" {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
@@ -2425,6 +2534,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 			ctx.usbAccess = gcp.UsbAccess
 			updateUsbAccess(ctx)
 		}
+		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
@@ -2505,7 +2615,7 @@ func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
 
 	ds := new(types.DiskStatus)
 	ds.ActiveFileLocation = fileName
-	ds.Format = "raw"
+	ds.Format = zconfig.Format_RAW
 	ds.Vdev = "hdc"
 	ds.ReadOnly = false
 	ds.Preserve = true // Prevent attempt to copy
@@ -2541,7 +2651,7 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 	key string, configArg interface{}) {
 
 	ctx := ctxArg.(*domainContext)
-	phyIOAdapterList := cast.CastPhysicalIOAdapterList(configArg)
+	phyIOAdapterList := configArg.(types.PhysicalIOAdapterList)
 	aa := ctx.assignableAdapters
 	log.Infof("handlePhysicalIOAdapterListCreateModify: current len %d, update %+v\n",
 		len(aa.IoBundleList), phyIOAdapterList)
@@ -2607,7 +2717,7 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 func handlePhysicalIOAdapterListDelete(ctxArg interface{},
 	key string, value interface{}) {
 
-	phyAdapterList := cast.CastPhysicalIOAdapterList(value)
+	phyAdapterList := value.(types.PhysicalIOAdapterList)
 	ctx := ctxArg.(*domainContext)
 	log.Infof("handlePhysicalIOAdapterListDelete: ALL PhysicalIoAdapters " +
 		"deleted\n")
@@ -3025,15 +3135,10 @@ func gcResetObjectsLastUse(ctx *domainContext, dirName string) {
 
 	pub := ctx.pubImageStatus
 	items := pub.GetAll()
-	for key, st := range items {
-		status := cast.CastImageStatus(st)
-		if status.Key() != key {
-			log.Errorf("gcResetObjectsLastUse key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
+	for _, st := range items {
+		status := st.(types.ImageStatus)
 		if status.RefCount == 0 {
-			log.Infof("gcResetObjectsLastUse: reset %v LastUse to now\n", key)
+			log.Infof("gcResetObjectsLastUse: reset %v LastUse to now\n", status.Key())
 			status.LastUse = time.Now()
 			publishImageStatus(ctx, &status)
 		}

@@ -29,10 +29,20 @@ ACCEL=
 # Location of the EVE configuration folder to be used in builds
 CONF_DIR=conf
 
+UNAME_S := $(shell uname -s)
+
 USER         = $(shell id -u -n)
 GROUP        = $(shell id -g -n)
 UID          = $(shell id -u)
 GID          = $(shell id -g)
+
+#for MacOS - use predefined user and group IDs
+ifeq ($(UNAME_S),Darwin)
+	USER         = eve
+	GROUP        = eve
+	UID          = 1001
+	GID          = 1001
+endif
 
 EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty)
 APIDIRS = $(shell find ./api/* -maxdepth 1 -type d -exec basename {} \;)

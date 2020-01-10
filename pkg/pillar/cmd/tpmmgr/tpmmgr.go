@@ -32,7 +32,7 @@ const (
 	TpmDevicePath = "/dev/tpmrm0"
 
 	//TpmEnabledFile is the file to indicate if TPM is being used by SW
-	TpmEnabledFile = types.PersistConfigDir + "/tpm_in_use"
+	TpmEnabledFile = types.IdentityDirname + "/tpm_in_use"
 
 	//TpmDeviceKeyHdl is the well known TPM permanent handle for device key
 	TpmDeviceKeyHdl tpmutil.Handle = 0x817FFFFF
@@ -59,14 +59,10 @@ var (
 	defaultKeyParams = tpm2.Public{
 		Type:    tpm2.AlgECC,
 		NameAlg: tpm2.AlgSHA256,
-		Attributes: tpm2.FlagSign | tpm2.FlagNoDA |
+		Attributes: tpm2.FlagSign | tpm2.FlagNoDA | tpm2.FlagDecrypt |
 			tpm2.FlagSensitiveDataOrigin |
 			tpm2.FlagUserWithAuth,
 		ECCParameters: &tpm2.ECCParams{
-			Sign: &tpm2.SigScheme{
-				Alg:  tpm2.AlgECDSA,
-				Hash: tpm2.AlgSHA256,
-			},
 			CurveID: tpm2.CurveNISTP256,
 			Point:   tpm2.ECPoint{X: big.NewInt(0), Y: big.NewInt(0)},
 		},

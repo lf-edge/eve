@@ -29,7 +29,6 @@ func PbrInit(ctx *zedrouterContext) {
 // PbrRouteAddAll adds all the routes for the bridgeName table to the specific port
 // Separately we handle changes in PbrRouteChange
 // XXX used by networkinstance only
-// XXX Can't we use MoveRoutesTable?
 func PbrRouteAddAll(bridgeName string, port string) error {
 	log.Infof("PbrRouteAddAll(%s, %s)\n", bridgeName, port)
 
@@ -172,7 +171,7 @@ func PbrRouteChange(ctx *zedrouterContext,
 	}
 	if linkType != "bridge" && !types.IsPort(*deviceNetworkStatus, ifname) {
 		// Ignore
-		log.Errorf("PbrRouteChange ignore %s: neither bridge nor port. route %v\n",
+		log.Infof("PbrRouteChange ignore %s: neither bridge nor port. route %v\n",
 			ifname, rt)
 		return
 	}
@@ -211,8 +210,14 @@ func PbrRouteChange(ctx *zedrouterContext,
 		if linkType == "bridge" {
 			log.Infof("Apply route add to bridge %s", ifname)
 			if err := netlink.RouteAdd(&myrt); err != nil {
-				log.Errorf("Failed to add %v to %d: %s\n",
-					myrt, myrt.Table, err)
+				// XXX ditto for ENXIO?? for del?
+				if isErrno(err, syscall.EEXIST) {
+					log.Infof("Failed to add %v to %d: %s\n",
+						myrt, myrt.Table, err)
+				} else {
+					log.Errorf("Failed to add %v to %d: %s\n",
+						myrt, myrt.Table, err)
+				}
 			}
 		}
 		// find all bridges for network instances and add for them
@@ -223,11 +228,20 @@ func PbrRouteChange(ctx *zedrouterContext,
 		for _, ifindex := range indicies {
 			myrt.Table = baseTableIndex + ifindex
 			if err := netlink.RouteAdd(&myrt); err != nil {
-				log.Errorf("Failed to add %v from %d: %s\n",
+				log.Errorf("Failed to add %v to %d: %s\n",
 					myrt, myrt.Table, err)
 			}
 		}
 	}
+}
+
+func isErrno(err error, errno syscall.Errno) bool {
+	e1, ok := err.(syscall.Errno)
+	if !ok {
+		log.Warnf("XXX not Errno: %T", err)
+		return false
+	}
+	return e1 == errno
 }
 
 // Handle an IP address change

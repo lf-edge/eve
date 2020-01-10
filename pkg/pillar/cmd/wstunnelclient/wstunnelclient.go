@@ -14,7 +14,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -42,6 +41,7 @@ type DNSContext struct {
 
 type wstunnelclientContext struct {
 	subGlobalConfig      *pubsub.Subscription
+	GCInitialized        bool
 	subAppInstanceConfig *pubsub.Subscription
 	serverNameAndPort    string
 	wstunnelclient       *zedcloud.WSTunnelClient
@@ -140,6 +140,18 @@ func Run() {
 
 	subAppInstanceConfig.Activate()
 
+	// Pick up debug aka log level before we start real work
+	for !wscCtx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.C:
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
+
 	wscCtx.dnsContext = &DNSctx
 	// Wait for knowledge about IP addresses. XXX needed?
 	for !DNSctx.DNSinitialized {
@@ -180,8 +192,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	if gcp != nil {
+		ctx.GCInitialized = true
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -202,7 +218,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 // Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*DNSContext)
 	if key != "global" {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
@@ -248,7 +264,7 @@ func handleAppInstanceConfigModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	log.Infof("handleAppInstanceConfigModify for %s\n", key)
-	// XXX config := cast.CastAppInstanceConfig(configArg)
+	// XXX config := configArg.(types.AppInstanceConfig)
 	ctx := ctxArg.(*wstunnelclientContext)
 	scanAIConfigs(ctx)
 	log.Infof("handleAppInstanceConfigModify done for %s\n", key)
@@ -258,7 +274,7 @@ func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	log.Infof("handleAppInstanceConfigDelete for %s\n", key)
-	// XXX config := cast.CastAppInstanceConfig(configArg)]
+	// XXX config := configArg).(types.AppInstanceConfig)
 	ctx := ctxArg.(*wstunnelclientContext)
 	scanAIConfigs(ctx)
 	log.Infof("handleAppInstanceConfigDelete done for %s\n", key)
@@ -271,7 +287,7 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 	sub := ctx.subAppInstanceConfig
 	items := sub.GetAll()
 	for _, c := range items {
-		config := cast.CastAppInstanceConfig(c)
+		config := c.(types.AppInstanceConfig)
 		log.Debugf("Remote console status for app-instance: %s: %t\n",
 			config.DisplayName, config.RemoteConsole)
 		isTunnelRequired = config.RemoteConsole || isTunnelRequired
