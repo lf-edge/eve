@@ -200,7 +200,7 @@ func checkAndUpdateDownloadableObjects(ctx *downloaderContext, dsID uuid.UUID) {
 			if status.DatastoreID == dsID {
 				config := lookupDownloaderConfig(ctx, status.ObjType, status.Key())
 				if config != nil {
-					dHandler.modify(ctx, status.ObjType, status.Key(), config)
+					dHandler.modify(ctx, status.ObjType, status.Key(), *config)
 				}
 			}
 		}
