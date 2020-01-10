@@ -67,8 +67,6 @@ ADD scripts/device-steps.sh \
     scripts/handlezedserverconfig.sh \
     scripts/watchdog-report.sh \
   /opt/zededa/bin/
-ADD conf/AssignableAdapters /var/tmp/zededa/AssignableAdapters
-ADD conf/DeviceNetworkConfig /var/tmp/zededa/DeviceNetworkConfig
 ADD conf/lisp.config.base /var/tmp/zededa/lisp.config.base
 
 COPY patches/* /patches/
