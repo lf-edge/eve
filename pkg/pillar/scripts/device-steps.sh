@@ -157,8 +157,7 @@ if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
 fi
 
-# XXX Remove DNC and AA directories?
-DIRS="$CONFIGDIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
+DIRS="$CONFIGDIR $TMPDIR $CONFIGDIR/DevicePortConfig"
 
 for d in $DIRS; do
     d1=$(dirname "$d")
