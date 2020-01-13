@@ -233,10 +233,9 @@ type EIDOverlayConfig struct {
 // - "ramdisk"
 // - "device_tree"
 type StorageConfig struct {
-	// DatastoreID - UUID of the DataStore
-	DatastoreID uuid.UUID
 	// ImageID - UUID of the image
 	ImageID          uuid.UUID
+	DatastoreID      uuid.UUID
 	Name             string   // XXX Do depend on URL for clobber avoidance?
 	NameIsURL        bool     // If not we form URL based on datastore info
 	Size             uint64   // In bytes
@@ -266,9 +265,9 @@ type ErrorInfo struct {
 }
 
 type StorageStatus struct {
-	DatastoreID uuid.UUID
 	// ImageID - UUID of the image
 	ImageID            uuid.UUID
+	DatastoreID        uuid.UUID
 	Name               string
 	ImageSha256        string   // sha256 of immutable image
 	NameIsURL          bool     // If not we form URL based on datastore info
@@ -287,7 +286,6 @@ type StorageStatus struct {
 	HasDownloaderRef   bool    // Reference against downloader to clean up
 	HasVerifierRef     bool    // Reference against verifier to clean up
 	IsContainer        bool    // Is the image a Container??
-	ContainerImageID   string  // Container Image ID if IsContainer=true
 	Vdev               string  // Allocated
 	ActiveFileLocation string  // Location of filestystem
 	FinalObjDir        string  // Installation dir; may differ from verified
@@ -317,24 +315,6 @@ func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
 	return
 }
 
-// Safename - Returns Safename for the StorageStatus
-func (ss StorageStatus) Safename() string {
-	name := ss.Name
-	hash := ss.ImageSha256
-	if ss.IsContainer {
-		// For Containers, SafeName = ImageID.sha
-		// XXX - we really need to put in the sha here correctly as well, but this
-		// will do for now, since verifier uses the status.ImageSha256 field
-		// to calculate it.
-		// We have to have *something* here, or types.SafenameToFilename() breaks.
-		name = ss.ImageID.String()
-		hash = NoHash
-	}
-	// Else..VMs
-	// XXX - Move VMs to also use ImageID as the Safename.
-	return UrlToSafename(name, hash)
-}
-
 // GetErrorInfo sets the errorInfo for the Storage Object
 func (ss StorageStatus) GetErrorInfo() ErrorInfo {
 	errInfo := ErrorInfo{
@@ -360,27 +340,27 @@ func (ss *StorageStatus) ClearErrorInfo() {
 }
 
 // IsCertsAvailable checks certificate requirement/availability for a storage object
-func (ss StorageStatus) IsCertsAvailable(safename string) (bool, error) {
+func (ss StorageStatus) IsCertsAvailable(displaystr string) (bool, error) {
 	if !ss.needsCerts() {
-		log.Debugf("%s, Certs are not required\n", safename)
+		log.Debugf("%s, Certs are not required\n", displaystr)
 		return false, nil
 	}
-	cidx, err := ss.getCertCount(safename)
+	cidx, err := ss.getCertCount(displaystr)
 	return cidx != 0, err
 }
 
 // HandleCertStatus gets the CertObject Status for the storage object
 // True, when there is no Certs or, the certificates are ready
 // False, Certificates are not ready or, there are some errors
-func (ss StorageStatus) HandleCertStatus(safename string,
+func (ss StorageStatus) HandleCertStatus(displaystr string,
 	certObjStatus CertObjStatus) (bool, ErrorInfo) {
-	if ret, errInfo := ss.checkCertsStatusForObject(safename, certObjStatus); !ret {
-		log.Infof("%s, Certs are still not ready\n", safename)
+	if ret, errInfo := ss.checkCertsStatusForObject(certObjStatus); !ret {
+		log.Infof("%s, Certs are still not ready\n", displaystr)
 		return ret, errInfo
 	}
-	if ret, errInfo := ss.checkCertsForObject(); !ret {
-		log.Infof("%s, Certs are still not installed\n", safename)
-		return ret, errInfo
+	if ret := ss.checkCertsForObject(); !ret {
+		log.Infof("%s, Certs are still not installed\n", displaystr)
+		return ret, ErrorInfo{}
 	}
 	return true, ErrorInfo{}
 }
@@ -395,10 +375,10 @@ func (ss StorageStatus) needsCerts() bool {
 
 // getCertCount returns the number of certificates for the Storage Object
 // called with valid ImageSignature only
-func (ss StorageStatus) getCertCount(safename string) (int, error) {
+func (ss StorageStatus) getCertCount(displaystr string) (int, error) {
 	cidx := 0
 	if ss.SignatureKey == "" {
-		errStr := fmt.Sprintf("%s, Invalid Root CertURL\n", safename)
+		errStr := fmt.Sprintf("%s, Invalid Root CertURL\n", displaystr)
 		log.Errorf(errStr)
 		return cidx, errors.New(errStr)
 	}
@@ -406,7 +386,7 @@ func (ss StorageStatus) getCertCount(safename string) (int, error) {
 	if len(ss.CertificateChain) != 0 {
 		for _, certURL := range ss.CertificateChain {
 			if certURL == "" {
-				errStr := fmt.Sprintf("%s, Invalid Intermediate CertURL\n", safename)
+				errStr := fmt.Sprintf("%s, Invalid Intermediate CertURL\n", displaystr)
 				log.Errorf(errStr)
 				return 0, errors.New(errStr)
 			}
@@ -417,8 +397,7 @@ func (ss StorageStatus) getCertCount(safename string) (int, error) {
 }
 
 // checkCertsStatusForObject checks certificates for installation status
-func (ss StorageStatus) checkCertsStatusForObject(safename string,
-	certObjStatus CertObjStatus) (bool, ErrorInfo) {
+func (ss StorageStatus) checkCertsStatusForObject(certObjStatus CertObjStatus) (bool, ErrorInfo) {
 
 	if ss.SignatureKey != "" {
 		found, installed, errInfo := certObjStatus.getCertStatus(ss.SignatureKey)
@@ -437,14 +416,15 @@ func (ss StorageStatus) checkCertsStatusForObject(safename string,
 }
 
 // checkCertsForObject checks availability of Certs in Disk
-func (ss StorageStatus) checkCertsForObject() (bool, ErrorInfo) {
+func (ss StorageStatus) checkCertsForObject() bool {
 
 	if ss.SignatureKey != "" {
 		safename := UrlToSafename(ss.SignatureKey, "")
 		filename := CertificateDirname + "/" + SafenameToFilename(safename)
+		// XXX result is just the sha? Or "serverCert.<sha>?
 		if _, err := os.Stat(filename); err != nil {
 			log.Errorf("checkCertsForObject() for %s, %v\n", filename, err)
-			return false, ErrorInfo{}
+			return false
 		}
 		// XXX check for valid or non-zero length?
 	}
@@ -452,13 +432,14 @@ func (ss StorageStatus) checkCertsForObject() (bool, ErrorInfo) {
 	for _, certURL := range ss.CertificateChain {
 		safename := UrlToSafename(certURL, "")
 		filename := CertificateDirname + "/" + SafenameToFilename(safename)
+		// XXX result is just the sha? Or "serverCert.<sha>?
 		if _, err := os.Stat(filename); err != nil {
 			log.Errorf("checkCertsForObject() for %s, %v\n", filename, err)
-			return false, ErrorInfo{}
+			return false
 		}
 		// XXX check for valid or non-zero length?
 	}
-	return true, ErrorInfo{}
+	return true
 }
 
 // The Intermediate can be a byte sequence of PEM certs

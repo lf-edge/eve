@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// XXX deprecate? We might need something for certs
 func TestUrlToSafename(t *testing.T) {
 	testMatrix := map[string]struct {
 		safename string

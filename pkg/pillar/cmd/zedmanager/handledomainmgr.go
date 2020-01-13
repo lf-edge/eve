@@ -80,17 +80,11 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			return errors.New(errStr)
 		}
 
-		if aiStatus.IsContainer {
-			if dc.ContainerImageID == "" {
-				dc.ContainerImageID =
-					aiStatus.StorageStatusList[index].ContainerImageID
-			}
-		}
 		switch sc.Target {
 		case "", "disk", "tgtunknown":
 			disk := &dc.DiskConfigList[i]
 			disk.ImageID = sc.ImageID
-			disk.ImageSha256 = sc.ImageSha256
+			disk.ImageSha256 = sc.ImageSha256 // For compat with running images
 			disk.ReadOnly = sc.ReadOnly
 			disk.Preserve = sc.Preserve
 			disk.Format = sc.Format

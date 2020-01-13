@@ -322,25 +322,23 @@ func maybeRetryDownload(ctx *downloaderContext,
 func handleCreate(ctx *downloaderContext, objType string,
 	config types.DownloaderConfig, key string) {
 
-	log.Infof("handleCreate(%v) objType %s for %s\n",
-		config.Safename, objType, config.Name)
+	log.Infof("handleCreate(%s) objType %s for %s\n",
+		config.ImageID, objType, config.Name)
 
 	if objType == "" {
 		log.Fatalf("handleCreate: No ObjType for %s\n",
-			config.Safename)
+			config.ImageID)
 	}
 	// Start by marking with PendingAdd
 	status := types.DownloaderStatus{
-		DatastoreID:      config.DatastoreID,
 		ImageID:          config.ImageID,
-		Safename:         config.Safename,
+		DatastoreID:      config.DatastoreID,
 		Name:             config.Name,
 		ObjType:          objType,
 		IsContainer:      config.IsContainer,
 		RefCount:         config.RefCount,
 		LastUse:          time.Now(),
 		AllowNonFreePort: config.AllowNonFreePort,
-		ImageSha256:      config.ImageSha256,
 		PendingAdd:       true,
 	}
 	publishDownloaderStatus(ctx, &status)
@@ -399,39 +397,30 @@ func handleCreate(ctx *downloaderContext, objType string,
 func handleModify(ctx *downloaderContext, key string,
 	config types.DownloaderConfig, status *types.DownloaderStatus) {
 
-	log.Infof("handleModify(%v) objType %s for %s\n",
-		status.Safename, status.ObjType, status.Name)
+	log.Infof("handleModify(%s) objType %s for %s\n",
+		status.ImageID, status.ObjType, status.Name)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleModify: No ObjType for %s\n",
-			status.Safename)
+			status.ImageID)
 	}
-	locDirname := types.DownloadDirname + "/" + status.ObjType
-
 	if config.Name != status.Name {
-		log.Errorf("URL changed - not allowed %s -> %s\n",
+		errStr := fmt.Sprintf("Name changed - not allowed %s -> %s\n",
 			config.Name, status.Name)
+		log.Error(errStr)
+		status.LastErr = errStr
+		status.LastErrTime = time.Now()
+		publishDownloaderStatus(ctx, status)
 		return
 	}
-	// If the sha changes, we treat it as a delete and recreate.
-	// Ditto if we had a failure.
-	if (status.ImageSha256 != "" && status.ImageSha256 != config.ImageSha256) ||
-		status.LastErr != "" {
-		reason := ""
-		if status.ImageSha256 != config.ImageSha256 {
-			reason = "sha256 changed"
-		} else {
-			reason = "recovering from previous error"
-		}
-		log.Errorf("handleModify %s for %s\n", reason, config.Name)
-		doDelete(ctx, key, locDirname, status)
-		handleCreate(ctx, status.ObjType, config, key)
-		log.Infof("handleModify done for %s\n", config.Name)
-		return
+	if config.IsContainer != status.IsContainer {
+		log.Infof("handleModify: Setting IsContainer to %t for %s",
+			config.IsContainer, status.ImageID)
+		status.IsContainer = config.IsContainer
+		publishDownloaderStatus(ctx, status)
 	}
-
-	log.Infof("handleModify(%v) RefCount %d to %d, Expired %v for %s\n",
-		status.Safename, status.RefCount, config.RefCount,
+	log.Infof("handleModify(%s) RefCount %d to %d, Expired %v for %s\n",
+		status.ImageID, status.RefCount, config.RefCount,
 		status.Expired, status.Name)
 
 	// If RefCount from zero to non-zero then do install
@@ -460,7 +449,7 @@ func handleModify(ctx *downloaderContext, key string,
 func doDelete(ctx *downloaderContext, key string, locDirname string,
 	status *types.DownloaderStatus) {
 
-	log.Infof("doDelete(%v) for %s\n", status.Safename, status.Name)
+	log.Infof("doDelete(%s) for %s\n", status.ImageID, status.Name)
 
 	deletefile(locDirname+"/pending", status)
 
@@ -474,19 +463,16 @@ func doDelete(ctx *downloaderContext, key string, locDirname string,
 }
 
 func deletefile(dirname string, status *types.DownloaderStatus) {
-	if status.ImageSha256 != "" {
-		dirname = dirname + "/" + status.ImageSha256
-	}
+	// XXX common routines to determine pathname?
+	dirname = dirname + "/" + status.ImageID.String()
 
+	// XXX delete whole directory?
 	if _, err := os.Stat(dirname); err == nil {
-		filename := dirname + "/" + status.Safename
-		if _, err := os.Stat(filename); err == nil {
-			log.Infof("Deleting %s\n", filename)
-			// Remove file
-			if err := os.Remove(filename); err != nil {
-				log.Errorf("Failed to remove %s: err %s\n",
-					filename, err)
-			}
+		log.Infof("Deleting %s\n", dirname)
+		// Remove directory
+		if err := os.RemoveAll(dirname); err != nil {
+			log.Errorf("Failed to remove %s: err %s\n",
+				dirname, err)
 		}
 	}
 }
@@ -494,25 +480,18 @@ func deletefile(dirname string, status *types.DownloaderStatus) {
 func handleDelete(ctx *downloaderContext, key string,
 	status *types.DownloaderStatus) {
 
-	log.Infof("handleDelete(%v) objType %s for %s RefCount %d LastUse %v Expired %v\n",
-		status.Safename, status.ObjType, status.Name,
+	log.Infof("handleDelete(%s) objType %s for %s RefCount %d LastUse %v Expired %v\n",
+		status.ImageID, status.ObjType, status.Name,
 		status.RefCount, status.LastUse, status.Expired)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleDelete: No ObjType for %s\n",
-			status.Safename)
+			status.ImageID)
 	}
 	locDirname := types.DownloadDirname + "/" + status.ObjType
 
 	status.PendingDelete = true
 	publishDownloaderStatus(ctx, status)
-
-	// If Container, delete LocalConfigDir
-	if status.ContainerRktLocalConfigDir != "" {
-		if err := os.RemoveAll(status.ContainerRktLocalConfigDir); err != nil {
-			log.Fatal(err)
-		}
-	}
 
 	// Update globalStatus and status
 	unreserveSpace(ctx, status)

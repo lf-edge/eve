@@ -86,6 +86,8 @@ type domainContext struct {
 }
 
 // appRwImageName - Returns name of the image ( including parent dir )
+// Note that we still use the sha in the filename to not impact running images. Otherwise
+// we could switch this to imageID
 func appRwImageName(sha256, uuidStr string, format zconfig.Format) string {
 	formatStr := strings.ToLower(format.String())
 	return fmt.Sprintf("%s/%s-%s.%s", rwImgDirname, sha256, uuidStr, formatStr)
@@ -420,7 +422,7 @@ func populateInitialImageStatus(ctx *domainContext, dirName string) {
 
 		status := types.ImageStatus{
 			AppInstUUID:  appUUID,
-			ImageSha256:  sha256,
+			ImageSha256:  sha256, // Included in case app has multiple vdisks
 			Filename:     location.Name(),
 			FileLocation: filelocation,
 			Size:         uint64(size),
@@ -439,10 +441,27 @@ func addImageStatus(ctx *domainContext, fileLocation string) {
 	st, _ := pub.Get(filename)
 	if st == nil {
 		log.Infof("addImageStatus(%s) not found\n", filename)
+		info, err := os.Stat(fileLocation)
+		var size int64
+		if err != nil {
+			log.Errorf("Error in getting file information: %s", err)
+			size = 0
+		} else {
+			size = info.Size()
+		}
+		_, sha256, appUUIDStr := parseAppRwImageName(fileLocation)
+		appUUID, err := uuid.FromString(appUUIDStr)
+		if err != nil {
+			log.Errorf("Invalid UUIDStr(%s) in filename (%s):: %s",
+				appUUIDStr, fileLocation, err)
+			appUUID = nilUUID
+		}
 		status := types.ImageStatus{
+			AppInstUUID:  appUUID,
+			ImageSha256:  sha256, // Included in case app has multiple vdisks
 			Filename:     filename,
 			FileLocation: fileLocation,
-			Size:         0, // XXX
+			Size:         uint64(size),
 			RefCount:     1,
 			LastUse:      time.Now(),
 		}
@@ -897,7 +916,6 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		VncPasswd:          config.VncPasswd,
 		State:              types.INSTALLED,
 		IsContainer:        config.IsContainer,
-		ContainerImageID:   config.ContainerImageID,
 	}
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))
@@ -1403,7 +1421,6 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	for i, dc := range config.DiskConfigList {
 		ds := &status.DiskStatusList[i]
 		ds.ImageID = dc.ImageID
-		ds.ImageSha256 = dc.ImageSha256
 		ds.ReadOnly = dc.ReadOnly
 		ds.Preserve = dc.Preserve
 		ds.Format = dc.Format
@@ -1432,8 +1449,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		} else {
 			log.Infof("getting image file location IsContainer(%v), ContainerImageId(%s), ImageSha256(%s)",
 				status.IsContainer, ds.ImageID.String(), dc.ImageSha256)
-			location, err := utils.VerifiedImageFileLocation(status.IsContainer,
-				ds.ImageID.String(), dc.ImageSha256)
+			location, err := utils.VerifiedImageFileLocation(ds.ImageID)
 			if err != nil {
 				log.Errorf("configToStatus: Failed to get Image File Location. "+
 					"err: %+s", err.Error())
@@ -2037,11 +2053,11 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 	log.Infof("DomainCreate %s ... xenCfgFilename - %s\n", status.DomainName, filename)
 	if status.IsContainer {
 		// Use rkt tool
-		log.Infof("Using rkt tool ... ContainerImageID - %s\n", status.ContainerImageID)
 		// get the rkt image hash for this file; if we do not have it in the rkt cache,
 		// convert it
-		ociFilename, err := utils.VerifiedImageFileLocation(true,
-			status.DiskStatusList[0].ImageID.String(), status.ContainerImageID)
+		// XXX we assume a container has one image. XXX do we check somewhere?
+		imageID := status.DiskStatusList[0].ImageID
+		ociFilename, err := utils.VerifiedImageFileLocation(imageID)
 		if err != nil {
 			log.Errorf("DomainCreate: Failed to get Image File Location. "+
 				"err: %+s", err.Error())
@@ -2051,7 +2067,7 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 		if err != nil {
 			return domainID, podUUID, fmt.Errorf("unable to get rkt image hash: %v", err)
 		}
-		domainID, podUUID, err = rktRun(status.DomainName, status.ContainerImageID, filename, imageHash)
+		domainID, podUUID, err = rktRun(status.DomainName, filename, imageHash)
 	} else {
 		// Use xl tool
 		log.Infof("Using xl tool ... xenCfgFilename - %s\n", filename)
@@ -2063,10 +2079,10 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 
 // Launch app/container thru rkt
 // returns domainID, podUUID and error
-func rktRun(domainName, ContainerImageID, xenCfgFilename, imageHash string) (int, string, error) {
+func rktRun(domainName, xenCfgFilename, imageHash string) (int, string, error) {
 
 	// STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=xenCfgFilename rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file
-	log.Infof("rktRun %s - ContainerImageID %s\n", domainName, ContainerImageID)
+	log.Infof("rktRun %s\n", domainName)
 	cmd := "rkt"
 	args := []string{
 		"--dir=" + types.PersistRktDataDir,
@@ -2978,7 +2994,7 @@ func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		return errors.New(errStr)
 	}
 	if unique != ib.Unique && ib.Unique != "" {
-		errStr := fmt.Sprintf("IoBundle(%d %s %s) changed unique from %s to %sn",
+		errStr := fmt.Sprintf("IoBundle(%d %s %s) changed unique from %s to %s",
 			ib.Type, ib.Name, ib.AssignmentGroup,
 			ib.Unique, unique)
 		return errors.New(errStr)
@@ -2987,7 +3003,7 @@ func checkIoBundle(ctx *domainContext, ib *types.IoBundle) error {
 		macAddr := getMacAddr(ib.Name)
 		// Will be empty string if adapter is assigned away
 		if macAddr != "" && macAddr != ib.MacAddr {
-			errStr := fmt.Sprintf("IoBundle(%d %s %s) changed MacAddr from %s to %sn",
+			errStr := fmt.Sprintf("IoBundle(%d %s %s) changed MacAddr from %s to %s",
 				ib.Type, ib.Name, ib.AssignmentGroup,
 				ib.MacAddr, macAddr)
 			return errors.New(errStr)

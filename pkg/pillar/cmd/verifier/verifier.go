@@ -8,12 +8,10 @@
 // with VerifyImageConfig and compare against VerifyImageStatus in the status
 // dir.
 //
-// Move the file from DownloadDirname/pending/<claimedsha>/<safename> to
-// to DownloadDirname/verifier/<claimedsha>/<safename> and make RO,
+// Move the file from DownloadDirname/pending/<imageID> to
+// to DownloadDirname/verifier/<imageID> and make RO,
 // then attempt to verify sum.
-// Once sum is verified, move to DownloadDirname/verified/<sha>/<filename>// where the filename is the last part of the URL (after the last '/')
-// Note that different URLs for same file will download to the same <sha>
-// directory. We delete duplicates assuming the file content will be the same.
+// Once sum is verified, move to DownloadDirname/verified/<imageID>/<filename> where the filename is the last part of the URL (after the last '/')
 
 package verifier
 
@@ -322,9 +320,10 @@ func handleInitVerifiedObjects(ctx *verifierContext) {
 
 func verifiedImageStatusFromImageFile(
 	objType, objDirname, parentDirname, imageFileName string,
-	size int64) *types.VerifyImageStatus {
+	size int64, filename string) *types.VerifyImageStatus {
 
 	status := types.VerifyImageStatus{
+		Name:     imageFileName,
 		ObjType:  objType,
 		State:    types.DOWNLOADED,
 		Size:     size,
@@ -332,50 +331,21 @@ func verifiedImageStatusFromImageFile(
 		LastUse:  time.Now(),
 	}
 
-	if objType == "appImg.obj" {
-		// Currently, for App Images, there are two conventions of
-		// ImageNames / Directory structures.
-		//  Containers - verified/<image-ID>/sha-<SHA>.<containerImageExtension>
-		//  VMs - verified/<SHA>/safename
-		imageID, err := uuid.FromString(parentDirname)
+	// The parentDirname is always the imageID
+	imageID, err := uuid.FromString(parentDirname)
 
-		log.Debugf("verifiedImageStatusFromImageFile: objType: %s, "+
-			"objDirname: %s, parentDirname: %s, imageFileName: %s, "+
-			"imageID: %s", objType, objDirname, parentDirname,
-			imageFileName, imageID.String())
+	log.Debugf("verifiedImageStatusFromImageFile: objType: %s, "+
+		"objDirname: %s, parentDirname: %s, imageFileName: %s, "+
+		"imageID: %s", objType, objDirname, parentDirname,
+		imageFileName, imageID.String())
 
-		// XXX - We are deciding if the image is a container based
-		//  on the fact that VM has a different dir structure. In future,
-		//  VMs will also move to use the same structure. We need to
-		//  revisit this logic then.
-		if err == nil {
-			// Container image
-			status.IsContainer = true
-			status.ContainerImageID = imageFileName
-			status.ImageID = imageID
-			// For Containers, ImageSha256 is ImageID
-			status.ImageSha256 = status.ImageID.String()
-			// For Containers, ImageID"."NoHash is the Safename
-			status.Safename = status.ImageID.String() + "." + types.NoHash
-			status.State = types.DELIVERED
-		} else {
-			// VM Image
-			// XXX - Combine both the Schemes.. VM should also follow
-			//  ImageID based naming.
-			status.ImageSha256 = parentDirname
-
-			// We don't know the URL; Pick a name which is unique
-			if status.ImageSha256 != "" {
-				status.Safename = imageFileName + "." + status.ImageSha256
-			} else {
-				status.Safename = imageFileName + "." + types.NoHash
-			}
-		}
-	} else {
-		// Not App Image
-		status.ImageSha256 = parentDirname
-		status.Safename = imageFileName + "." + status.ImageSha256
+	if err != nil {
+		log.Errorf("parentDirname %s without valid UUID for %s: %s",
+			parentDirname, imageFileName, err)
+		return nil
 	}
+	status.FileLocation = filename
+	status.ImageID = imageID
 	log.Debugf("verifiedImageStatusFromImageFile: status: %+v", status)
 	return &status
 }
@@ -410,6 +380,7 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 			size := int64(0)
 			info, err := os.Stat(filename)
 			if err != nil {
+				// XXX Delete file?
 				log.Error(err)
 			} else {
 				size = info.Size()
@@ -417,7 +388,7 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 			log.Debugf("populateInitialStatusFromVerified: Processing %s: %d Mbytes\n",
 				filename, size/(1024*1024))
 			status := verifiedImageStatusFromImageFile(objType, objDirname,
-				parentDirname, location.Name(), size)
+				parentDirname, location.Name(), size, filename)
 			if status != nil {
 				publishVerifyImageStatus(ctx, status)
 			}
@@ -557,7 +528,7 @@ func publishVerifyImageStatus(ctx *verifierContext,
 	status *types.VerifyImageStatus) {
 
 	log.Debugf("publishVerifyImageStatus(%s, %s)\n",
-		status.ObjType, status.Safename)
+		status.ObjType, status.ImageID)
 
 	pub := verifierPublication(ctx, status.ObjType)
 	key := status.Key()
@@ -568,7 +539,7 @@ func unpublishVerifyImageStatus(ctx *verifierContext,
 	status *types.VerifyImageStatus) {
 
 	log.Debugf("publishVerifyImageStatus(%s, %s)\n",
-		status.ObjType, status.Safename)
+		status.ObjType, status.ImageID)
 
 	pub := verifierPublication(ctx, status.ObjType)
 	key := status.Key()
@@ -644,24 +615,23 @@ func runHandler(ctx *verifierContext, objType string, key string,
 func handleCreate(ctx *verifierContext, objType string,
 	config *types.VerifyImageConfig) {
 
-	log.Infof("handleCreate(%v) objType %s for %s\n",
-		config.Safename, objType, config.Name)
+	log.Infof("handleCreate(%s) objType %s for %s\n",
+		config.ImageID, objType, config.Name)
 	if objType == "" {
 		log.Fatalf("handleCreate: No ObjType for %s\n",
-			config.Safename)
+			config.ImageID)
 	}
 
 	status := types.VerifyImageStatus{
-		Safename:         config.Safename,
-		ObjType:          objType,
-		ImageSha256:      config.ImageSha256,
-		PendingAdd:       true,
-		State:            types.DOWNLOADED,
-		RefCount:         config.RefCount,
-		LastUse:          time.Now(),
-		IsContainer:      config.IsContainer,
-		ContainerImageID: config.ContainerImageID,
-		ImageID:          config.ImageID,
+		ImageID:     config.ImageID,
+		Name:        config.Name,
+		ObjType:     objType,
+		ImageSha256: config.ImageSha256,
+		PendingAdd:  true,
+		State:       types.DOWNLOADED,
+		RefCount:    config.RefCount,
+		LastUse:     time.Now(),
+		IsContainer: config.IsContainer,
 	}
 	publishVerifyImageStatus(ctx, &status)
 
@@ -734,7 +704,7 @@ func markObjectAsVerifying(ctx *verifierContext,
 	if err := os.Chmod(verifierFilename, 0400); err != nil {
 		log.Fatal(err)
 	}
-
+	status.FileLocation = verifierFilename
 	// Clean up empty directory
 	if err := os.RemoveAll(pendingDirname); err != nil {
 		log.Fatal(err)
@@ -967,8 +937,6 @@ func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 	// Move directory from DownloadDirname/verifier to
 	// DownloadDirname/verified
 	// XXX should have dom0 do this and/or have RO mounts
-	filename := types.SafenameToFilename(config.Safename)
-	verifiedFilename = verifiedDirname + "/" + filename
 	log.Infof("Move from %s to %s\n", verifierFilename, verifiedFilename)
 
 	if _, err := os.Stat(verifierFilename); err != nil {
@@ -983,20 +951,7 @@ func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 	}
 
 	if _, err := os.Stat(verifiedDirname); err == nil {
-		// Directory exists thus we have a sha256 collision presumably
-		// due to multiple safenames (i.e., URLs) for the same content.
-		// Delete existing to avoid wasting space.
-		locations, err := ioutil.ReadDir(verifiedDirname)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if !status.IsContainer {
-			for _, location := range locations {
-				log.Debugf("Identical sha256 (%s) for safenames %s and %s; deleting old\n",
-					config.ImageSha256, location.Name(),
-					config.Safename)
-			}
-		}
+		log.Warn(verifiedDirname + ": directory exists")
 		if err := os.RemoveAll(verifiedDirname); err != nil {
 			log.Fatal(err)
 		}
@@ -1015,6 +970,8 @@ func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 		log.Fatal(err)
 	}
 
+	status.FileLocation = verifiedFilename
+
 	// Clean up empty directory
 	if err := os.RemoveAll(verifierDirname); err != nil {
 		log.Fatal(err)
@@ -1029,21 +986,34 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	// Note no comparison on version
 	changed := false
 
-	log.Infof("handleModify(%v) objType %s for %s, config.RefCount: %d, "+
+	log.Infof("handleModify(%s) objType %s for %s, config.RefCount: %d, "+
 		"status.RefCount: %d, isContainer: %t",
-		status.Safename, status.ObjType, config.Name, config.RefCount,
+		status.ImageID, status.ObjType, config.Name, config.RefCount,
 		status.RefCount, config.IsContainer)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleModify: No ObjType for %s\n",
-			status.Safename)
+			status.ImageID)
+	}
+
+	if config.IsContainer != status.IsContainer {
+		log.Infof("handleModify: Setting IsContainer to %t for %s",
+			config.IsContainer, status.ImageID)
+		status.IsContainer = config.IsContainer
+		changed = true
+	}
+	if status.ImageSha256 == "" && config.ImageSha256 != "" {
+		log.Infof("handleModify: Setting ImageSha256 to %s for %s",
+			config.ImageSha256, status.ImageID)
+		status.ImageSha256 = config.ImageSha256
+		changed = true
 	}
 
 	if status.IsContainer {
 		if status.State == types.DOWNLOADED {
 			// No verification supported for Containers. So mark it as delivered.
 			log.Debugf("handleModify - Container image (%s) state set to ."+
-				"DELIVERED", status.Safename)
+				"DELIVERED", status.ImageID)
 			status.State = types.DELIVERED
 			publishVerifyImageStatus(ctx, status)
 		}
@@ -1100,42 +1070,28 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 		return
 	}
 
-	// If identical we do nothing. Otherwise we do a delete and create.
-	if config.Safename == status.Safename &&
-		config.ImageSha256 == status.ImageSha256 {
-		if changed {
-			publishVerifyImageStatus(ctx, status)
-		}
-		log.Infof("handleModify: no (other) change for %s\n",
-			config.Name)
-		return
+	if changed {
+		publishVerifyImageStatus(ctx, status)
 	}
-
-	status.PendingModify = true
-	publishVerifyImageStatus(ctx, status)
-	handleDelete(ctx, status)
-	handleCreate(ctx, status.ObjType, config)
-	status.PendingModify = false
-	publishVerifyImageStatus(ctx, status)
 	log.Infof("handleModify done for %s. Status.RefCount=%d, Config.RefCount:%d",
 		config.Name, status.RefCount, config.RefCount)
 }
 
 func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 
-	log.Infof("handleDelete(%v) objType %s refcount %d lastUse %v Expired %v\n",
-		status.Safename, status.ObjType, status.RefCount,
+	log.Infof("handleDelete(%s) objType %s refcount %d lastUse %v Expired %v\n",
+		status.ImageID, status.ObjType, status.RefCount,
 		status.LastUse, status.Expired)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleDelete: No ObjType for %s\n",
-			status.Safename)
+			status.ImageID)
 	}
 
 	doDelete(status)
 
 	unpublishVerifyImageStatus(ctx, status)
-	log.Infof("handleDelete done for %s\n", status.Safename)
+	log.Infof("handleDelete done for %s\n", status.ImageID)
 }
 
 // Remove the file from any of the three directories
@@ -1143,7 +1099,7 @@ func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 // to avoid deleting a different verified file with same sha as this claimed
 // to have
 func doDelete(status *types.VerifyImageStatus) {
-	log.Infof("doDelete(%v)\n", status.Safename)
+	log.Infof("doDelete(%s)\n", status.ImageID)
 
 	_, verifierDirname, verifiedDirname := status.ImageDownloadDirNames()
 
@@ -1165,7 +1121,7 @@ func doDelete(status *types.VerifyImageStatus) {
 			log.Infof("doDelete preserving %s\n", verifiedDirname)
 		}
 	}
-	log.Infof("doDelete(%v) done\n", status.Safename)
+	log.Infof("doDelete(%s) done\n", status.ImageID)
 }
 
 // Handles both create and modify events

@@ -5,72 +5,69 @@ package zedmanager
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 func lookupVerifyImageConfig(ctx *zedmanagerContext,
-	safename string) *types.VerifyImageConfig {
+	imageID uuid.UUID) *types.VerifyImageConfig {
 
 	pub := ctx.pubAppImgVerifierConfig
-	c, _ := pub.Get(safename)
+	c, _ := pub.Get(imageID.String())
 	if c == nil {
 		log.Infof("lookupVerifyImageConfig(%s) not found\n",
-			safename)
+			imageID)
 		return nil
 	}
 	config := c.(types.VerifyImageConfig)
 	return &config
 }
 
-func lookupVerifyImageConfigSha256(ctx *zedmanagerContext,
-	sha256 string) *types.VerifyImageConfig {
-
-	pub := ctx.pubAppImgVerifierConfig
-	items := pub.GetAll()
-	for _, c := range items {
-		config := c.(types.VerifyImageConfig)
-		if config.ImageSha256 == sha256 {
-			return &config
-		}
-	}
-	return nil
-}
-
 // If checkCerts is set this can return false. Otherwise not.
 func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, uuidStr string,
 	ss types.StorageStatus, checkCerts bool) (bool, types.ErrorInfo) {
 
-	safename := ss.Safename()
+	imageID := ss.ImageID
 	log.Infof("MaybeAddVerifyImageConfig for %s, checkCerts: %v, "+
-		"isContainer: %v\n", safename, checkCerts, ss.IsContainer)
+		"isContainer: %v\n", imageID, checkCerts, ss.IsContainer)
 
 	// check the certificate files, if not present,
 	// we can not start verification
 	if checkCerts {
 		certObjStatus := lookupCertObjStatus(ctx, uuidStr)
-		ret, err := ss.IsCertsAvailable(safename)
+		displaystr := imageID.String()
+		ret, err := ss.IsCertsAvailable(displaystr)
 		if err != nil {
-			log.Fatalf("%s, invalid certificate configuration", safename)
+			log.Fatalf("%s, invalid certificate configuration", displaystr)
 		}
 		if ret {
-			if ret, errInfo := ss.HandleCertStatus(safename, *certObjStatus); !ret {
+			if ret, errInfo := ss.HandleCertStatus(displaystr, *certObjStatus); !ret {
 				return false, errInfo
 			}
 		}
 	}
 
-	m := lookupVerifyImageConfig(ctx, safename)
+	m := lookupVerifyImageConfig(ctx, imageID)
 	if m != nil {
 		m.RefCount += 1
 		log.Infof("MaybeAddVerifyImageConfig: refcnt to %d for %s\n",
-			m.RefCount, safename)
+			m.RefCount, imageID)
+		if m.IsContainer != ss.IsContainer {
+			log.Infof("MaybeAddVerifyImageConfig: change IsContainer to %t for %s",
+				ss.IsContainer, imageID)
+		}
+		m.IsContainer = ss.IsContainer
+		if m.ImageSha256 != ss.ImageSha256 {
+			log.Infof("MaybeAddVerifyImageConfig: change ImageSha256 to %s for %s",
+				ss.ImageSha256, imageID)
+		}
+		m.ImageSha256 = ss.ImageSha256
 		publishVerifyImageConfig(ctx, m)
 	} else {
-		log.Infof("MaybeAddVerifyImageConfig: add for %s, IsContainer: %t"+
-			"ContainerImageID: %s\n", safename, ss.IsContainer,
-			ss.ContainerImageID)
+		log.Infof("MaybeAddVerifyImageConfig: add for %s, IsContainer: %t",
+			imageID, ss.IsContainer)
 		n := types.VerifyImageConfig{
-			Safename:         safename,
+			ImageID:          ss.ImageID,
 			Name:             ss.Name,
 			ImageSha256:      ss.ImageSha256,
 			RefCount:         1,
@@ -78,37 +75,36 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, uuidStr string,
 			ImageSignature:   ss.ImageSignature,
 			SignatureKey:     ss.SignatureKey,
 			IsContainer:      ss.IsContainer,
-			ContainerImageID: ss.ContainerImageID,
-			ImageID:          ss.ImageID,
 		}
 		publishVerifyImageConfig(ctx, &n)
 		log.Debugf("MaybeAddVerifyImageConfig - config: %+v\n", n)
 	}
-	log.Infof("MaybeAddVerifyImageConfig done for %s\n", safename)
+	log.Infof("MaybeAddVerifyImageConfig done for %s\n", imageID)
 	return true, types.ErrorInfo{}
 }
 
-func MaybeRemoveVerifyImageConfigSha256(ctx *zedmanagerContext, sha256 string) {
+// MaybeRemoveVerifyImageConfig decreases the refcount and if it
+// reaches zero it removes the VerifyImageConfig
+func MaybeRemoveVerifyImageConfig(ctx *zedmanagerContext, imageID uuid.UUID) {
 
-	log.Infof("MaybeRemoveVerifyImageConfig for %s\n", sha256)
+	log.Infof("MaybeRemoveVerifyImageConfig for %s\n", imageID)
 
-	m := lookupVerifyImageConfigSha256(ctx, sha256)
+	m := lookupVerifyImageConfig(ctx, imageID)
 	if m == nil {
-		log.Infof("MaybeRemoveVerifyImageConfigSha256: config missing for %s\n",
-			sha256)
+		log.Infof("MaybeRemoveVerifyImageConfig: config missing for %s\n",
+			imageID)
 		return
 	}
 	if m.RefCount == 0 {
-		log.Fatalf("MaybeRemoveVerifyImageConfigSha256: Attempting to reduce "+
-			"0 RefCount. Image Details - Name: %s, SafeName: %s, "+
-			"ImageSha256:%s, IsContainer: %t, ContainerImageID: %s\n",
-			m.Name, m.Safename, m.ImageSha256, m.IsContainer,
-			m.ContainerImageID)
+		log.Fatalf("MaybeRemoveVerifyImageConfig: Attempting to reduce "+
+			"0 RefCount. Image Details - Name: %s, ImageID: %s, "+
+			"ImageSha256:%s, IsContainer: %t",
+			m.Name, m.ImageID, m.ImageSha256, m.IsContainer)
 	}
 	m.RefCount -= 1
-	log.Infof("MaybeRemoveVerifyImageConfigSha256: RefCount to %d for %s\n",
-		m.RefCount, sha256)
-	log.Infof("MaybeRemoveVerifyImageConfigSha256 done for %s\n", sha256)
+	log.Infof("MaybeRemoveVerifyImageConfig: RefCount to %d for %s\n",
+		m.RefCount, imageID)
+	log.Infof("MaybeRemoveVerifyImageConfig done for %s\n", imageID)
 	publishVerifyImageConfig(ctx, m)
 }
 
@@ -135,12 +131,12 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 
 	status := statusArg.(types.VerifyImageStatus)
 	ctx := ctxArg.(*zedmanagerContext)
-	log.Infof("handleVerifyImageStatusModify for ImageID: %s, Safename: %s, "+
-		" RefCount %d\n", status.ImageID, status.Safename, status.RefCount)
+	log.Infof("handleVerifyImageStatusModify for ImageID: %s, "+
+		" RefCount %d\n", status.ImageID, status.RefCount)
 	// Ignore if any Pending* flag is set
 	if status.Pending() {
 		log.Infof("handleVerifyImageStatusModify skipped due to Pending* for"+
-			" ImageID: %s, Safename: %s", status.ImageID, status.Safename)
+			" ImageID: %s", status.ImageID)
 		return
 	}
 
@@ -150,18 +146,17 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 	// 2. verifier set Expired in status when garbage collecting.
 	// If we have no RefCount we delete the config.
 
-	config := lookupVerifyImageConfig(ctx, status.Key())
+	config := lookupVerifyImageConfig(ctx, status.ImageID)
 	if config == nil && status.RefCount == 0 {
 		log.Infof("handleVerifyImageStatusModify adding RefCount=0 config %s\n",
 			key)
 		n := types.VerifyImageConfig{
-			Safename:         status.Safename,
-			Name:             status.Safename,
-			ImageSha256:      status.ImageSha256,
-			IsContainer:      status.IsContainer,
-			ContainerImageID: status.ContainerImageID,
-			RefCount:         0,
-			ImageID:          status.ImageID,
+			ImageID:     status.ImageID,
+			Name:        status.Name,
+			ImageSha256: status.ImageSha256,
+			// IsContainer might not be known by verifier
+			IsContainer: status.IsContainer,
+			RefCount:    0,
 		}
 		publishVerifyImageConfig(ctx, &n)
 		return
@@ -174,59 +169,22 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 	}
 
 	// Normal update work
-	updateAIStatusWithStorageSafename(ctx, key, false, "")
-	updateAIStatusWithImageSha(ctx, config.ImageSha256)
-	log.Infof("handleVerifyImageStatusModify done for %s\n",
-		status.Safename)
+	updateAIStatusWithStorageImageID(ctx, status.ImageID)
+	log.Infof("handleVerifyImageStatusModify done for %s", status.ImageID)
 }
 
 // Note that this function returns the entry even if Pending* is set.
 func lookupVerifyImageStatus(ctx *zedmanagerContext,
-	safename string) *types.VerifyImageStatus {
+	imageID uuid.UUID) *types.VerifyImageStatus {
 
 	sub := ctx.subAppImgVerifierStatus
-	c, _ := sub.Get(safename)
+	c, _ := sub.Get(imageID.String())
 	if c == nil {
-		log.Infof("lookupVerifyImageStatus(%s) not found\n", safename)
+		log.Infof("lookupVerifyImageStatus(%s) not found\n", imageID)
 		return nil
 	}
 	status := c.(types.VerifyImageStatus)
 	return &status
-}
-
-func lookupVerifyImageStatusSha256(ctx *zedmanagerContext,
-	sha256 string) *types.VerifyImageStatus {
-
-	if sha256 == "" {
-		log.Debugf("lookupVerifyImageStatusSha256: sha256 is empty\n")
-		return nil
-	}
-	sub := ctx.subAppImgVerifierStatus
-	items := sub.GetAll()
-	for _, st := range items {
-		status := st.(types.VerifyImageStatus)
-		if status.ImageSha256 == sha256 {
-			return &status
-		}
-	}
-	return nil
-}
-
-// Note that this function returns the entry even if Pending* is set.
-func lookupVerifyImageStatusAny(ctx *zedmanagerContext, safename string,
-	sha256 string) *types.VerifyImageStatus {
-
-	m := lookupVerifyImageStatus(ctx, safename)
-	if m != nil {
-		return m
-	}
-	m = lookupVerifyImageStatusSha256(ctx, sha256)
-	if m != nil {
-		log.Debugf("lookupVerifyImageStatusAny: found based on sha %s\n",
-			sha256)
-		return m
-	}
-	return nil
 }
 
 func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
@@ -235,10 +193,9 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	status := statusArg.(types.VerifyImageStatus)
 	log.Infof("handleVerifyImageStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
-	removeAIStatusSafename(ctx, key)
-	removeAIStatusSha(ctx, status.ImageSha256)
+	removeAIStatusImageID(ctx, status.ImageID)
 	// If we still publish a config with RefCount == 0 we delete it.
-	config := lookupVerifyImageConfig(ctx, key)
+	config := lookupVerifyImageConfig(ctx, status.ImageID)
 	if config != nil && config.RefCount == 0 {
 		log.Infof("handleVerifyImageStatusDelete delete config for %s\n",
 			key)
