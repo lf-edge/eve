@@ -31,9 +31,6 @@ const (
 	//TpmDevicePath is the TPM device file path
 	TpmDevicePath = "/dev/tpmrm0"
 
-	//TpmEnabledFile is the file to indicate if TPM is being used by SW
-	TpmEnabledFile = types.IdentityDirname + "/tpm_in_use"
-
 	//TpmDeviceKeyHdl is the well known TPM permanent handle for device key
 	TpmDeviceKeyHdl tpmutil.Handle = 0x817FFFFF
 
@@ -97,10 +94,14 @@ var vendorRegistry = map[uint32]string{
 	0x474F4F47: "Google",
 }
 
-//IsTpmEnabled checks if TPM is being used by SW
+func fileExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return err == nil
+}
+
+//IsTpmEnabled checks if TPM is being used by SW for creating device cert
 func IsTpmEnabled() bool {
-	_, err := os.Stat(TpmEnabledFile)
-	return (err == nil)
+	return fileExists(types.DeviceCertName) && !fileExists(types.DeviceKeyName)
 }
 
 func createDeviceKey() error {
