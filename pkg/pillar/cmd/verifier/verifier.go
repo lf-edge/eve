@@ -140,7 +140,7 @@ func Run() {
 	pubBaseOsStatus.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsub.Subscribe("", types.ConfigItemValueMap{},
 		false, &ctx)
 	if err != nil {
 		log.Fatal(err)
@@ -1151,15 +1151,17 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
-		if gcp.DownloadGCTime != 0 {
-			downloadGCTime = time.Duration(gcp.DownloadGCTime) * time.Second
+		gcpDownloadGCTime := gcp.GlobalValueInt(types.DownloadGCTime)
+		rktGCGracePeriod := gcp.GlobalValueInt(types.RktGCGracePeriod)
+		if gcpDownloadGCTime != 0 {
+			downloadGCTime = time.Duration(gcpDownloadGCTime) * time.Second
 		}
-		if gcp.RktGCGracePeriod != 0 {
-			ctx.RktGCGracePeriod = gcp.RktGCGracePeriod
+		if rktGCGracePeriod != 0 {
+			ctx.RktGCGracePeriod = rktGCGracePeriod
 		}
 		ctx.GCInitialized = true
 	}

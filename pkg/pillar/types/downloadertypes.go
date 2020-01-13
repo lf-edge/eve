@@ -155,16 +155,16 @@ type DatastoreContext struct {
 
 // AllowNonFreePort looks at GlobalConfig to determine which policy
 // to apply for the download of the object.
-func AllowNonFreePort(gc GlobalConfig, objType string) bool {
+func AllowNonFreePort(gc ConfigItemValueMap, objType string) bool {
 
 	switch objType {
 	case AppImgObj:
-		return gc.AllowNonFreeAppImages == TS_ENABLED
+		return gc.GlobalValueTriState(AllowNonFreeAppImages) == TS_ENABLED
 	case BaseOsObj:
-		return gc.AllowNonFreeBaseImages == TS_ENABLED
+		return gc.GlobalValueTriState(AllowNonFreeBaseImages) == TS_ENABLED
 	case CertObj:
-		return (gc.AllowNonFreeBaseImages == TS_ENABLED) ||
-			(gc.AllowNonFreeAppImages == TS_ENABLED)
+		return (gc.GlobalValueTriState(AllowNonFreeBaseImages) == TS_ENABLED) ||
+			(gc.GlobalValueTriState(AllowNonFreeBaseImages) == TS_ENABLED)
 	default:
 		log.Fatalf("AllowNonFreePort: Unknown ObjType %s\n",
 			objType)

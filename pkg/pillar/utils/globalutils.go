@@ -8,7 +8,6 @@ package utils
 import (
 	"os"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -22,7 +21,7 @@ const (
 // EnsureGCFile is used by agents which wait for GlobalConfig to become initialized
 // on startup in order to make sure we have a GlobalConfig file.
 func EnsureGCFile() {
-	pubGlobalConfig, err := pubsub.PublishPersistent("", types.GlobalConfig{})
+	pubGlobalConfig, err := pubsub.PublishPersistent("", types.ConfigItemValueMap{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -35,34 +34,10 @@ func EnsureGCFile() {
 // of EVE.
 func ReadAndUpdateGCFile(pub *pubsub.Publication) {
 	key := "global"
-	item, err := pub.Get(key)
-	if err == nil {
-		gc := item.(types.GlobalConfig)
-		// Any new fields which need defaults/mins applied?
-		changed := false
-		updated := types.ApplyGlobalConfig(gc)
-		if !cmp.Equal(gc, updated) {
-			log.Infof("EnsureGCFile: updated with defaults %v",
-				cmp.Diff(gc, updated))
-			changed = true
-		}
-		sane := types.EnforceGlobalConfigMinimums(updated)
-		if !cmp.Equal(updated, sane) {
-			log.Infof("EnsureGCFile: enforced minimums %v",
-				cmp.Diff(updated, sane))
-			changed = true
-		}
-		gc = sane
-		if changed {
-			err := pub.Publish(key, gc)
-			if err != nil {
-				log.Errorf("Publish for globalConfig failed: %s",
-					err)
-			}
-		}
-	} else {
+	_, err := pub.Get(key)
+	if err != nil {
 		log.Warn("No globalConfig in /persist; creating it with defaults")
-		err := pub.Publish(key, types.GlobalConfigDefaults)
+		err := pub.Publish(key, types.DefaultConfigItemValueMap())
 		if err != nil {
 			log.Errorf("Publish for globalConfig failed %s\n",
 				err)

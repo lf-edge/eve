@@ -48,7 +48,7 @@ type diagContext struct {
 	ledCounter              int
 	derivedLedCounter       int // Based on ledCounter + usableAddressCount
 	subGlobalConfig         *pubsub.Subscription
-	globalConfig            *types.GlobalConfig
+	globalConfig            *types.ConfigItemValueMap
 	subLedBlinkCounter      *pubsub.Subscription
 	subDeviceNetworkStatus  *pubsub.Subscription
 	subDevicePortConfigList *pubsub.Subscription
@@ -109,7 +109,7 @@ func Run() {
 	ctx := diagContext{
 		forever:      *foreverPtr,
 		pacContents:  *pacContentsPtr,
-		globalConfig: &types.GlobalConfigDefaults,
+		globalConfig: types.DefaultConfigItemValueMap(),
 	}
 	ctx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
@@ -118,7 +118,7 @@ func Run() {
 	utils.EnsureGCFile()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsub.Subscribe("", types.ConfigItemValueMap{},
 		false, &ctx)
 	if err != nil {
 		log.Fatal(err)
@@ -142,7 +142,7 @@ func Run() {
 		DeviceNetworkStatus: ctx.DeviceNetworkStatus,
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
-		NetworkSendTimeout:  ctx.globalConfig.NetworkTestTimeout,
+		NetworkSendTimeout:  ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 	}
 
 	// Get device serial number
@@ -851,7 +851,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
@@ -871,6 +871,6 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	*ctx.globalConfig = types.GlobalConfigDefaults
+	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

@@ -11,51 +11,51 @@ import (
 func TestParseGlobalItem(t *testing.T) {
 	specMap := ConfigItemSpecMap{}
 	specMap.GlobalSettings = make(map[GlobalSettingKey]ConfigItemSpec)
-	specMap.GlobalSettings[ConfigInterval] = ConfigItemSpec {
-		ItemType:ConfigItemTypeString,
+	specMap.GlobalSettings[ConfigInterval] = ConfigItemSpec{
+		ItemType: ConfigItemTypeString,
 	}
-	specMap.GlobalSettings[MetricInterval] = ConfigItemSpec {
-		ItemType:ConfigItemTypeInt,
+	specMap.GlobalSettings[MetricInterval] = ConfigItemSpec{
+		ItemType: ConfigItemTypeInt,
 	}
-	specMap.GlobalSettings[MintimeUpdateSuccess] = ConfigItemSpec {
-		ItemType:ConfigItemTypeBool,
+	specMap.GlobalSettings[MintimeUpdateSuccess] = ConfigItemSpec{
+		ItemType: ConfigItemTypeBool,
 	}
-	specMap.GlobalSettings[DefaultLogLevel] = ConfigItemSpec {
-		ItemType:ConfigItemTypeTristate,
+	specMap.GlobalSettings[DefaultLogLevel] = ConfigItemSpec{
+		ItemType: ConfigItemTypeTriState,
 	}
 	globalConfig := ConfigItemValueMap{}
 	globalConfig.GlobalSettings = make(map[GlobalSettingKey]ConfigItemValue)
 	testMatrix := map[string]struct {
-		item 			config.ConfigItem
-		itemType 		ConfigItemType
+		item     config.ConfigItem
+		itemType ConfigItemType
 	}{
 		"Global String Setting": {
 			item: config.ConfigItem{
-				Key: string(ConfigInterval),
+				Key:   string(ConfigInterval),
 				Value: "testValue",
 			},
-			itemType:ConfigItemTypeString,
+			itemType: ConfigItemTypeString,
 		},
 		"Global Int Setting": {
 			item: config.ConfigItem{
-				Key: string(MetricInterval),
+				Key:   string(MetricInterval),
 				Value: "10",
 			},
-			itemType:ConfigItemTypeInt,
+			itemType: ConfigItemTypeInt,
 		},
 		"Global Bool Setting": {
 			item: config.ConfigItem{
-				Key: string(MintimeUpdateSuccess),
+				Key:   string(MintimeUpdateSuccess),
 				Value: "false",
 			},
-			itemType:ConfigItemTypeBool,
+			itemType: ConfigItemTypeBool,
 		},
 		"Global Tristate Setting": {
 			item: config.ConfigItem{
-				Key: string(DefaultLogLevel),
+				Key:   string(DefaultLogLevel),
 				Value: "TS_NONE",
 			},
-			itemType:ConfigItemTypeTristate,
+			itemType: ConfigItemTypeTriState,
 		},
 	}
 	for testname, test := range testMatrix {
@@ -70,7 +70,7 @@ func TestParseGlobalItem(t *testing.T) {
 		if test.itemType == ConfigItemTypeBool && err == nil {
 			assert.Equal(t, false, (globalConfig).GlobalSettings[GlobalSettingKey(test.item.Key)].boolValue)
 		}
-		if test.itemType == ConfigItemTypeTristate && err == nil {
+		if test.itemType == ConfigItemTypeTriState && err == nil {
 			assert.Equal(t, TS_NONE, (globalConfig).GlobalSettings[GlobalSettingKey(test.item.Key)].triStateValue)
 		}
 	}
@@ -78,27 +78,27 @@ func TestParseGlobalItem(t *testing.T) {
 func TestParseAgentItem(t *testing.T) {
 	specMap := ConfigItemSpecMap{}
 	specMap.AgentSettings = make(map[AgentSettingKey]ConfigItemSpec)
-	specMap.AgentSettings[LogLevel] = ConfigItemSpec {
-		ItemType:ConfigItemTypeString,
+	specMap.AgentSettings[LogLevel] = ConfigItemSpec{
+		ItemType: ConfigItemTypeString,
 	}
-	specMap.AgentSettings[RemoteLogLevel] = ConfigItemSpec {
-		ItemType:ConfigItemTypeString,
+	specMap.AgentSettings[RemoteLogLevel] = ConfigItemSpec{
+		ItemType: ConfigItemTypeString,
 	}
 	globalConfig := ConfigItemValueMap{}
 	globalConfig.AgentSettings = make(map[string]map[AgentSettingKey]ConfigItemValue)
 	testMatrix := map[string]struct {
-		item 			config.ConfigItem
-		itemType 		ConfigItemType
+		item     config.ConfigItem
+		itemType ConfigItemType
 	}{
 		"Agent Setting": {
 			item: config.ConfigItem{
-				Key: "agent.zedagent.debug.loglevel",
+				Key:   "agent.zedagent.debug.loglevel",
 				Value: "info",
 			},
 		},
 		"Agent Legacy Setting": {
 			item: config.ConfigItem{
-				Key: "debug.zedagent.loglevel",
+				Key:   "debug.zedagent.loglevel",
 				Value: "info",
 			},
 		},
@@ -115,18 +115,18 @@ func TestAddIntItem(t *testing.T) {
 	specMap := ConfigItemSpecMap{}
 	specMap.GlobalSettings = make(map[GlobalSettingKey]ConfigItemSpec)
 	testMatrix := map[string]struct {
-		key				GlobalSettingKey
-		defaultInt 		uint32
-		min 			uint32
-		max 			uint32
-		expectedVal		uint32
+		key         GlobalSettingKey
+		defaultInt  uint32
+		min         uint32
+		max         uint32
+		expectedVal uint32
 	}{
 		"Within Constraints": {
-			key:			MintimeUpdateSuccess,
-			defaultInt: 	90,
-			min: 			0,
-			max: 			150,
-			expectedVal: 	90,
+			key:         MintimeUpdateSuccess,
+			defaultInt:  90,
+			min:         0,
+			max:         150,
+			expectedVal: 90,
 		},
 	}
 	for testname, test := range testMatrix {
@@ -139,19 +139,19 @@ func TestAddBoolItem(t *testing.T) {
 	specMap := ConfigItemSpecMap{}
 	specMap.GlobalSettings = make(map[GlobalSettingKey]ConfigItemSpec)
 	testMatrix := map[string]struct {
-		key				GlobalSettingKey
-		defaultBool 	bool
-		expectedVal		bool
+		key         GlobalSettingKey
+		defaultBool bool
+		expectedVal bool
 	}{
 		"Test True": {
-			key:			MintimeUpdateSuccess,
-			defaultBool:	true,
-			expectedVal: 	true,
+			key:         MintimeUpdateSuccess,
+			defaultBool: true,
+			expectedVal: true,
 		},
 		"Test False": {
-			key:			MetricInterval,
-			defaultBool:	false,
-			expectedVal: 	false,
+			key:         MetricInterval,
+			defaultBool: false,
+			expectedVal: false,
 		},
 	}
 	for testname, test := range testMatrix {
@@ -164,24 +164,24 @@ func TestAddTriStateItem(t *testing.T) {
 	specMap := ConfigItemSpecMap{}
 	specMap.GlobalSettings = make(map[GlobalSettingKey]ConfigItemSpec)
 	testMatrix := map[string]struct {
-		key				GlobalSettingKey
+		key             GlobalSettingKey
 		defaultTristate TriState
-		expectedVal		TriState
+		expectedVal     TriState
 	}{
 		"Test None": {
-			key:				ConfigInterval,
-			defaultTristate:	TS_NONE,
-			expectedVal: 		TS_NONE,
+			key:             ConfigInterval,
+			defaultTristate: TS_NONE,
+			expectedVal:     TS_NONE,
 		},
 		"Test Enabled": {
-			key:				MetricInterval,
-			defaultTristate:	TS_ENABLED,
-			expectedVal: 		TS_ENABLED,
+			key:             MetricInterval,
+			defaultTristate: TS_ENABLED,
+			expectedVal:     TS_ENABLED,
 		},
 		"Test Disabled": {
-			key:				MintimeUpdateSuccess,
-			defaultTristate:	TS_DISABLED,
-			expectedVal: 		TS_DISABLED,
+			key:             MintimeUpdateSuccess,
+			defaultTristate: TS_DISABLED,
+			expectedVal:     TS_DISABLED,
 		},
 	}
 	for testname, test := range testMatrix {

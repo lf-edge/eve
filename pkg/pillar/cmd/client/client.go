@@ -67,7 +67,7 @@ type clientContext struct {
 	deviceNetworkStatus    *types.DeviceNetworkStatus
 	usableAddressCount     int
 	subGlobalConfig        *pubsub.Subscription
-	globalConfig           *types.GlobalConfig
+	globalConfig           *types.ConfigItemValueMap
 }
 
 var debug = false
@@ -153,11 +153,11 @@ func Run() { //nolint:gocyclo
 
 	clientCtx := clientContext{
 		deviceNetworkStatus: &types.DeviceNetworkStatus{},
-		globalConfig:        &types.GlobalConfigDefaults,
+		globalConfig:        types.DefaultConfigItemValueMap(),
 	}
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsub.Subscribe("", types.ConfigItemValueMap{},
 		false, &clientCtx)
 	if err != nil {
 		log.Fatal(err)
@@ -229,7 +229,7 @@ func Run() { //nolint:gocyclo
 		DeviceNetworkStatus: clientCtx.deviceNetworkStatus,
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
-		NetworkSendTimeout:  clientCtx.globalConfig.NetworkSendTimeout,
+		NetworkSendTimeout:  clientCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
 	}
 
 	// Get device serail number
@@ -586,7 +586,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
@@ -606,7 +606,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	*ctx.globalConfig = types.GlobalConfigDefaults
+	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 

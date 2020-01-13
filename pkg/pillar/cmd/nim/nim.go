@@ -43,7 +43,7 @@ type nimContext struct {
 	devicenetwork.DeviceNetworkContext
 	subGlobalConfig   *pubsub.Subscription
 	GCInitialized     bool // Received initial GlobalConfig
-	globalConfig      *types.GlobalConfig
+	globalConfig      *types.ConfigItemValueMap
 	sshAccess         bool
 	sshAuthorizedKeys string
 	allowAppVnc       bool
@@ -92,7 +92,7 @@ func Run() {
 	}
 	nimCtx.AssignableAdapters = &types.AssignableAdapters{}
 	nimCtx.sshAccess = true // Kernel default - no iptables filters
-	nimCtx.globalConfig = &types.GlobalConfigDefaults
+	nimCtx.globalConfig = types.DefaultConfigItemValueMap()
 
 	nimCtx.processArgs()
 	if nimCtx.version {
@@ -144,7 +144,7 @@ func Run() {
 	pubDevicePortConfigList.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsub.Subscribe("", types.ConfigItemValueMap{},
 		false, &nimCtx)
 	if err != nil {
 		log.Fatal(err)
@@ -256,17 +256,17 @@ func Run() {
 
 	// We refresh the gelocation information when the underlay
 	// IP address(es) change, plus periodically based on this timer
-	geoRedoTime := time.Duration(nimCtx.globalConfig.NetworkGeoRedoTime) * time.Second
+	geoRedoTime := time.Duration(nimCtx.globalConfig.GlobalValueInt(types.NetworkGeoRedoTime)) * time.Second
 
 	// Timer for retries after failure etc. Should be less than geoRedoTime
-	geoInterval := time.Duration(nimCtx.globalConfig.NetworkGeoRetryTime) * time.Second
+	geoInterval := time.Duration(nimCtx.globalConfig.GlobalValueInt(types.NetworkGeoRetryTime)) * time.Second
 	geoMax := float64(geoInterval)
 	geoMin := geoMax * 0.3
 	geoTimer := flextimer.NewRangeTicker(time.Duration(geoMin),
 		time.Duration(geoMax))
 
 	// Time we wait for DHCP to get an address before giving up
-	dnc.DPCTestDuration = nimCtx.globalConfig.NetworkTestDuration
+	dnc.DPCTestDuration = nimCtx.globalConfig.GlobalValueInt(types.NetworkTestDuration)
 
 	// Timer for checking/verifying pending device network status
 	// We stop this timer before using in the select loop below, because
@@ -279,12 +279,12 @@ func Run() {
 	dnc.Pending.PendTimer = pendTimer
 
 	// Periodic timer that tests device cloud connectivity
-	dnc.NetworkTestInterval = nimCtx.globalConfig.NetworkTestInterval
+	dnc.NetworkTestInterval = nimCtx.globalConfig.GlobalValueInt(types.NetworkTestInterval)
 	dnc.NetworkTestTimer = time.NewTimer(time.Duration(dnc.NetworkTestInterval) * time.Second)
 	// We start assuming cloud connectivity works
 	dnc.CloudConnectivityWorks = true
 
-	dnc.NetworkTestBetterInterval = nimCtx.globalConfig.NetworkTestBetterInterval
+	dnc.NetworkTestBetterInterval = nimCtx.globalConfig.GlobalValueInt(types.NetworkTestBetterInterval)
 	if dnc.NetworkTestBetterInterval == 0 {
 		log.Warnln("NOT running TestBetterTimer")
 		// Dummy which is stopped needed for select loop
@@ -765,59 +765,55 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	ctx.debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
 	first := !ctx.GCInitialized
 	if gcp != nil {
 		if !cmp.Equal(ctx.globalConfig, *gcp) {
-			log.Infof("handleGlobalConfigModify: diff %v\n",
-				cmp.Diff(ctx.globalConfig, *gcp))
-			updated := types.ApplyGlobalConfig(*gcp)
-			log.Infof("handleGlobalConfigModify: updated with defaults %v\n",
-				cmp.Diff(*gcp, updated))
-			sane := types.EnforceGlobalConfigMinimums(updated)
-			log.Infof("handleGlobalConfigModify: enforced minimums %v\n",
-				cmp.Diff(updated, sane))
-			*gcp = sane
+			*gcp = *ctx.globalConfig
 		}
-		if gcp.SshAccess != ctx.sshAccess || first {
-			ctx.sshAccess = gcp.SshAccess
+		sshAccess := gcp.GlobalValueBool(types.SSHAccess)
+		sshAuthorizedKeys := gcp.GlobalValueString(types.SSHAuthorizedKeys)
+		allowAppVnc := gcp.GlobalValueBool(types.AllowAppVnc)
+		networkFallbackAnyEth := gcp.GlobalValueTriState(types.NetworkFallbackAnyEth)
+		if sshAccess != ctx.sshAccess || first {
+			ctx.sshAccess = sshAccess
 			iptables.UpdateSshAccess(ctx.sshAccess, first)
 		}
-		if gcp.SshAuthorizedKeys != ctx.sshAuthorizedKeys || first {
-			ctx.sshAuthorizedKeys = gcp.SshAuthorizedKeys
+		if sshAuthorizedKeys != ctx.sshAuthorizedKeys || first {
+			ctx.sshAuthorizedKeys = sshAuthorizedKeys
 			ssh.UpdateSshAuthorizedKeys(ctx.sshAuthorizedKeys)
 		}
-		if gcp.AllowAppVnc != ctx.allowAppVnc {
-			ctx.allowAppVnc = gcp.AllowAppVnc
+		if allowAppVnc != ctx.allowAppVnc {
+			ctx.allowAppVnc = allowAppVnc
 			iptables.UpdateVncAccess(ctx.allowAppVnc)
 		}
-		if gcp.NetworkFallbackAnyEth != ctx.networkFallbackAnyEth || first {
-			ctx.networkFallbackAnyEth = gcp.NetworkFallbackAnyEth
+		if networkFallbackAnyEth != ctx.networkFallbackAnyEth || first {
+			ctx.networkFallbackAnyEth = networkFallbackAnyEth
 			updateFallbackAnyEth(ctx)
 		}
 		// Check for change to NetworkTestBetterInterval
-		if ctx.NetworkTestBetterInterval != gcp.NetworkTestBetterInterval {
-			if gcp.NetworkTestBetterInterval == 0 {
+		networkTestBetterInterval := gcp.GlobalValueInt(types.NetworkTestBetterInterval)
+		if ctx.NetworkTestBetterInterval != networkTestBetterInterval {
+			if networkTestBetterInterval == 0 {
 				log.Warnln("NOT running TestBetterTimer")
 				networkTestBetterTimer := time.NewTimer(time.Hour)
 				networkTestBetterTimer.Stop()
 				ctx.NetworkTestBetterTimer = networkTestBetterTimer
 			} else {
-				log.Infof("Starting TestBetterTimer: %d",
-					gcp.NetworkTestBetterInterval)
+				log.Infof("Starting TestBetterTimer: %d", networkTestBetterInterval)
 				networkTestBetterInterval := time.Duration(ctx.NetworkTestBetterInterval) * time.Second
 				networkTestBetterTimer := time.NewTimer(networkTestBetterInterval)
 				ctx.NetworkTestBetterTimer = networkTestBetterTimer
 			}
-			ctx.NetworkTestBetterInterval = gcp.NetworkTestBetterInterval
+			ctx.NetworkTestBetterInterval = networkTestBetterInterval
 		}
 		ctx.globalConfig = gcp
 		dnc := &ctx.DeviceNetworkContext
-		dnc.NetworkTestInterval = ctx.globalConfig.NetworkTestInterval
-		dnc.DPCTestDuration = ctx.globalConfig.NetworkTestDuration
-		dnc.TestSendTimeout = ctx.globalConfig.NetworkTestTimeout
+		dnc.NetworkTestInterval = ctx.globalConfig.GlobalValueInt(types.NetworkTestInterval)
+		dnc.DPCTestDuration = ctx.globalConfig.GlobalValueInt(types.NetworkTestDuration)
+		dnc.TestSendTimeout = ctx.globalConfig.GlobalValueInt(types.NetworkTestTimeout)
 	}
 	ctx.GCInitialized = true
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
@@ -834,7 +830,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	ctx.debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		ctx.debugOverride)
-	*ctx.globalConfig = types.GlobalConfigDefaults
+	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 

@@ -219,7 +219,7 @@ func Run() {
 	pubAssignableAdapters.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsub.Subscribe("", types.ConfigItemValueMap{},
 		false, &domainCtx)
 	if err != nil {
 		log.Fatal(err)
@@ -2520,18 +2520,18 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.GlobalConfig
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
-		if gcp.VdiskGCTime != 0 {
-			vdiskGCTime = time.Duration(gcp.VdiskGCTime) * time.Second
+		if gcp.GlobalValueInt(types.VdiskGCTime) != 0 {
+			vdiskGCTime = time.Duration(gcp.GlobalValueInt(types.VdiskGCTime)) * time.Second
 		}
-		if gcp.DomainBootRetryTime != 0 {
-			domainBootRetryTime = time.Duration(gcp.DomainBootRetryTime) * time.Second
+		if gcp.GlobalValueInt(types.DomainBootRetryTime) != 0 {
+			domainBootRetryTime = time.Duration(gcp.GlobalValueInt(types.DomainBootRetryTime)) * time.Second
 		}
-		if gcp.UsbAccess != ctx.usbAccess {
-			ctx.usbAccess = gcp.UsbAccess
+		if gcp.GlobalValueBool(types.UsbAccess) != ctx.usbAccess {
+			ctx.usbAccess = gcp.GlobalValueBool(types.UsbAccess)
 			updateUsbAccess(ctx)
 		}
 		ctx.GCInitialized = true

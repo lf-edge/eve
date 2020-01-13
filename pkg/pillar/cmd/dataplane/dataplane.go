@@ -238,7 +238,7 @@ func initPubsubChannels() *dptypes.DataplaneContext {
 
 	// Look for global config like debug
 	subGlobalConfig, err := pubsub.Subscribe("",
-		types.GlobalConfig{}, false, dataplaneContext)
+		types.ConfigItemValueMap{}, false, dataplaneContext)
 	if err != nil {
 		log.Fatal(err)
 	}

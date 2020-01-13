@@ -31,7 +31,7 @@ type downloaderContext struct {
 
 func (ctx *downloaderContext) registerHandlers() error {
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsub.Subscribe("", types.ConfigItemValueMap{},
 		false, ctx)
 	if err != nil {
 		return err

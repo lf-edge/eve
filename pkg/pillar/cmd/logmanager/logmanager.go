@@ -66,7 +66,7 @@ type logDirDeleteHandler func(ctx interface{}, logFileName string, source string
 
 type logmanagerContext struct {
 	subGlobalConfig *pubsub.Subscription
-	globalConfig    *types.GlobalConfig
+	globalConfig    *types.ConfigItemValueMap
 	subDomainStatus *pubsub.Subscription
 	GCInitialized   bool
 }
@@ -192,10 +192,10 @@ func Run() {
 	}
 
 	logmanagerCtx := logmanagerContext{
-		globalConfig: &types.GlobalConfigDefaults,
+		globalConfig: types.DefaultConfigItemValueMap(),
 	}
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsub.Subscribe("", types.ConfigItemValueMap{},
 		false, &logmanagerCtx)
 	if err != nil {
 		log.Fatal(err)
@@ -728,7 +728,7 @@ func sendCtxInit(ctx *logmanagerContext) {
 	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
-	zedcloudCtx.NetworkSendTimeout = ctx.globalConfig.NetworkSendTimeout
+	zedcloudCtx.NetworkSendTimeout = ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout)
 
 	// get the edge box serial number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
@@ -1048,8 +1048,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	status := statusArg.(types.GlobalConfig)
-	var gcp *types.GlobalConfig
+	status := statusArg.(types.ConfigItemValueMap)
+	var gcp *types.ConfigItemValueMap
 	debug, gcp = agentlog.HandleGlobalConfigNoDefault(ctx.subGlobalConfig,
 		agentName, debugOverride)
 	if gcp != nil {
@@ -1057,15 +1057,17 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		ctx.GCInitialized = true
 	}
 	foundAgents := make(map[string]bool)
-	if status.DefaultRemoteLogLevel != "" {
+	defaultRemoteLogLevel := status.GlobalValueString(types.DefaultRemoteLogLevel)
+	if defaultRemoteLogLevel != "" {
 		foundAgents["default"] = true
-		addRemoteMap("default", status.DefaultRemoteLogLevel)
+		addRemoteMap("default", defaultRemoteLogLevel)
 	}
-	for agentName, perAgentSetting := range status.AgentSettings {
+	for agentName := range status.AgentSettings {
 		log.Debugf("Processing agentName %s\n", agentName)
 		foundAgents[agentName] = true
-		if perAgentSetting.RemoteLogLevel != "" {
-			addRemoteMap(agentName, perAgentSetting.RemoteLogLevel)
+		remoteLogLevel := status.AgentSettingStringValue(agentName, types.LogLevel)
+		if remoteLogLevel != "" {
+			addRemoteMap(agentName, remoteLogLevel)
 		}
 	}
 	// Any deletes?
@@ -1084,7 +1086,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	*ctx.globalConfig = types.GlobalConfigDefaults
+	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
 	delRemoteMapAll()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
