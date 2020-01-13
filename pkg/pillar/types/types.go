@@ -33,11 +33,14 @@ const (
 	MAXSTATE   //
 )
 
+// NoHash should XXX deprecate?
 const (
 	// NoHash constant to indicate that we have no real hash
 	NoHash = "sha"
 )
 
+// UrlToSafename returns a safename
+// XXX deprecate? We might need something for certs
 func UrlToSafename(url string, sha string) string {
 
 	var safename string
@@ -50,8 +53,10 @@ func UrlToSafename(url string, sha string) string {
 	return safename
 }
 
+// SafenameToFilename returns the filename from inside the safename
 // Remove initial part up to last '/' in URL. Note that '/' was converted
 // to ' ' in Safename
+// XXX deprecate? We might need something for certs
 func SafenameToFilename(safename string) string {
 	comp := strings.Split(safename, " ")
 	last := comp[len(comp)-1]
@@ -65,6 +70,9 @@ func SafenameToFilename(safename string) string {
 	return last
 }
 
+// UrlToFilename returns the last component of a URL.
+// XXX deprecate? We might need something for certs
+// XXX assumes len
 func UrlToFilename(urlName string) string {
 	comp := strings.Split(urlName, "/")
 	last := comp[len(comp)-1]

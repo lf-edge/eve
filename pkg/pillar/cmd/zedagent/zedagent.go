@@ -913,7 +913,7 @@ func handleVerifierStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := statusArg.(types.VerifyImageStatus)
-	log.Infof("handleVerifierStatusModify for %s\n", status.Safename)
+	log.Infof("handleVerifierStatusModify for %s\n", status.ImageID)
 	// Nothing to do
 }
 

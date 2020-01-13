@@ -240,7 +240,7 @@ func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
 		ss.Name = sc.Name
-		ss.ImageSha256 = sc.ImageSha256
+		ss.ImageID = sc.ImageID
 		ss.Target = sc.Target
 	}
 	// Check image count
@@ -328,7 +328,7 @@ func handleCertObjCreate(ctxArg interface{}, key string, configArg interface{}) 
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
 		ss.Name = sc.Name
-		ss.ImageSha256 = sc.ImageSha256
+		ss.ImageID = sc.ImageID
 		ss.FinalObjDir = types.CertificateDirname
 	}
 
@@ -377,7 +377,7 @@ func handleDownloadStatusModify(ctxArg interface{}, key string,
 	status := statusArg.(types.DownloaderStatus)
 	ctx := ctxArg.(*baseOsMgrContext)
 	log.Infof("handleDownloadStatusModify for %s\n",
-		status.Safename)
+		status.ImageID)
 	updateDownloaderStatus(ctx, &status)
 }
 
@@ -398,7 +398,7 @@ func handleVerifierStatusModify(ctxArg interface{}, key string,
 
 	status := statusArg.(types.VerifyImageStatus)
 	ctx := ctxArg.(*baseOsMgrContext)
-	log.Infof("handleVerifierStatusModify for %s\n", status.Safename)
+	log.Infof("handleVerifierStatusModify for %s\n", status.ImageID)
 	updateVerifierStatus(ctx, &status)
 }
 

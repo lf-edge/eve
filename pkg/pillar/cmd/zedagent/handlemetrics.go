@@ -475,9 +475,9 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 	for _, st := range verifierStatusMap {
 		vs := st.(types.VerifyImageStatus)
 		log.Debugf("verifierStatusMap %s size %d\n",
-			vs.Safename, vs.Size)
+			vs.Name, vs.Size)
 		metric := metrics.DiskMetric{
-			Disk:  vs.Safename,
+			Disk:  vs.Name,
 			Total: RoundToMbytes(uint64(vs.Size)),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
@@ -486,13 +486,13 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 	for _, st := range downloaderStatusMap {
 		ds := st.(types.DownloaderStatus)
 		log.Debugf("downloaderStatusMap %s size %d\n",
-			ds.Safename, ds.Size)
+			ds.Name, ds.Size)
 		if _, found := verifierStatusMap[ds.Key()]; found {
 			log.Debugf("Found verifierStatusMap for %s\n", ds.Key())
 			continue
 		}
 		metric := metrics.DiskMetric{
-			Disk:  ds.Safename,
+			Disk:  ds.Name,
 			Total: RoundToMbytes(uint64(ds.Size)),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)

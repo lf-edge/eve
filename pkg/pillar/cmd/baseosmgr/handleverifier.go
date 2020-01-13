@@ -6,35 +6,18 @@ package baseosmgr
 import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
-func verifierConfigGetSha256(ctx *baseOsMgrContext, objType string,
-	sha string) *types.VerifyImageConfig {
-
-	log.Infof("verifierConfigGetSha256(%s/%s)\n", objType, sha)
-	pub := verifierPublication(ctx, objType)
-	items := pub.GetAll()
-	for _, c := range items {
-		config := c.(types.VerifyImageConfig)
-		if config.ImageSha256 == sha {
-			log.Infof("verifierConfigGetSha256(%s): found key %s safename %s, refcount %d\n",
-				sha, config.Key(), config.Safename, config.RefCount)
-			return &config
-		}
-	}
-	log.Infof("verifierConfigGetSha256(%s): not found\n", sha)
-	return nil
-}
-
 func lookupVerifierConfig(ctx *baseOsMgrContext, objType string,
-	safename string) *types.VerifyImageConfig {
+	imageID uuid.UUID) *types.VerifyImageConfig {
 
 	pub := verifierPublication(ctx, objType)
-	c, _ := pub.Get(safename)
+	c, _ := pub.Get(imageID.String())
 	if c == nil {
 		log.Infof("lookupVerifierConfig(%s/%s) not found\n",
-			objType, safename)
+			objType, imageID)
 		return nil
 	}
 	config := c.(types.VerifyImageConfig)
@@ -43,32 +26,33 @@ func lookupVerifierConfig(ctx *baseOsMgrContext, objType string,
 
 // If checkCerts is set this can return an error. Otherwise not.
 func createVerifierConfig(ctx *baseOsMgrContext, uuidStr string, objType string,
-	safename string, sc types.StorageConfig, ss types.StorageStatus, checkCerts bool) (bool, types.ErrorInfo) {
+	imageID uuid.UUID, sc types.StorageConfig, ss types.StorageStatus, checkCerts bool) (bool, types.ErrorInfo) {
 
-	log.Infof("createVerifierConfig(%s/%s)\n", objType, safename)
+	log.Infof("createVerifierConfig(%s/%s)\n", objType, imageID)
 
 	// check the certificate files, if not present,
 	// we can not start verification
 	if checkCerts && objType == types.BaseOsObj {
 		certObjStatus := lookupCertObjStatus(ctx, uuidStr)
-		ret, err := ss.IsCertsAvailable(safename)
+		displaystr := imageID.String()
+		ret, err := ss.IsCertsAvailable(displaystr)
 		if err != nil {
-			log.Fatalf("%s, invalid certificate configuration", safename)
+			log.Fatalf("%s, invalid certificate configuration", displaystr)
 		}
 		if ret {
-			if ret, errInfo := ss.HandleCertStatus(safename, *certObjStatus); !ret {
+			if ret, errInfo := ss.HandleCertStatus(displaystr, *certObjStatus); !ret {
 				return ret, errInfo
 			}
 		}
 	}
 
-	if m := lookupVerifierConfig(ctx, objType, safename); m != nil {
+	if m := lookupVerifierConfig(ctx, objType, imageID); m != nil {
 		m.RefCount += 1
 		publishVerifierConfig(ctx, objType, m)
 	} else {
-		log.Infof("createVerifierConfig(%s) add\n", safename)
+		log.Infof("createVerifierConfig(%s) add\n", imageID)
 		n := types.VerifyImageConfig{
-			Safename:         safename,
+			ImageID:          imageID,
 			Name:             sc.Name,
 			ImageSha256:      sc.ImageSha256,
 			CertificateChain: sc.CertificateChain,
@@ -78,7 +62,7 @@ func createVerifierConfig(ctx *baseOsMgrContext, uuidStr string, objType string,
 		}
 		publishVerifierConfig(ctx, objType, &n)
 	}
-	log.Infof("createVerifierConfig(%s) done\n", safename)
+	log.Infof("createVerifierConfig(%s) done\n", imageID)
 	return true, types.ErrorInfo{}
 }
 
@@ -107,13 +91,13 @@ func updateVerifierStatus(ctx *baseOsMgrContext,
 	// 2. verifier set Expired in status when garbage collecting.
 	// If we have no RefCount we delete the config.
 
-	config := lookupVerifierConfig(ctx, status.ObjType, status.Key())
+	config := lookupVerifierConfig(ctx, status.ObjType, status.ImageID)
 	if config == nil && status.RefCount == 0 {
 		log.Infof("updateVerifierStatus adding RefCount=0 config %s\n",
 			key)
 		n := types.VerifyImageConfig{
-			Safename:    status.Safename,
-			Name:        status.Safename,
+			ImageID:     status.ImageID,
+			Name:        status.Name,
 			ImageSha256: status.ImageSha256,
 			RefCount:    0,
 		}
@@ -128,80 +112,51 @@ func updateVerifierStatus(ctx *baseOsMgrContext,
 	}
 
 	// Normal update work
-	baseOsHandleStatusUpdateSafename(ctx, status.Safename)
+	baseOsHandleStatusUpdateImageID(ctx, status.ImageID)
 	log.Infof("updateVerifierStatus(%s) done\n", key)
 }
 
-func MaybeRemoveVerifierConfigSha256(ctx *baseOsMgrContext, objType string,
-	sha256 string) {
+// MaybeRemoveVerifierConfig decreases the refcount and if it
+// reaches zero it removes the VerifyImageConfig
+func MaybeRemoveVerifierConfig(ctx *baseOsMgrContext, objType string,
+	imageID uuid.UUID) {
 
-	log.Infof("MaybeRemoveVerifierConfigSha256(%s/%s)\n", objType, sha256)
+	log.Infof("MaybeRemoveVerifierConfig(%s/%s)\n", objType, imageID)
 
-	m := verifierConfigGetSha256(ctx, objType, sha256)
+	m := lookupVerifierConfig(ctx, objType, imageID)
 	if m == nil {
-		log.Errorf("MaybeRemoveVerifierConfigSha256: not found %s\n",
-			sha256)
+		log.Errorf("MaybeRemoveVerifierConfig: not found %s\n",
+			imageID)
 		return
 	}
-	log.Infof("MaybeRemoveVerifierConfigSha256 found safename %s\n",
-		m.Safename)
+	log.Infof("MaybeRemoveVerifierConfig found imageID %s\n",
+		m.ImageID)
 
 	if m.RefCount == 0 {
-		log.Fatalf("MaybeRemoveVerifyImageConfigSha256: RefCount for "+
-			"objType: %s, sha256: %s already zero. Cannot decrement.",
-			objType, sha256)
+		log.Fatalf("MaybeRemoveVerifierConfig: RefCount for "+
+			"objType: %s, imageID: %s already zero. Cannot decrement.",
+			objType, imageID)
 	}
 	m.RefCount -= 1
-	log.Infof("MaybeRemoveVerifierConfigSha256 remaining RefCount %d for %s\n",
-		m.RefCount, sha256)
+	log.Infof("MaybeRemoveVerifierConfig remaining RefCount %d for %s\n",
+		m.RefCount, imageID)
 	publishVerifierConfig(ctx, objType, m)
-	log.Infof("MaybeRemoveVerifierConfigSha256 done for %s\n", sha256)
-}
-
-// Note that this function returns the entry even if Pending* is set.
-func lookupVerificationStatusSha256(ctx *baseOsMgrContext, objType string,
-	sha256 string) *types.VerifyImageStatus {
-
-	sub := ctx.subBaseOsVerifierStatus
-	items := sub.GetAll()
-	for _, st := range items {
-		status := st.(types.VerifyImageStatus)
-		if status.ImageSha256 == sha256 {
-			return &status
-		}
-	}
-	return nil
+	log.Infof("MaybeRemoveVerifierConfig done for %s\n", imageID)
 }
 
 // Note that this function returns the entry even if Pending* is set.
 func lookupVerificationStatus(ctx *baseOsMgrContext, objType string,
-	safename string) *types.VerifyImageStatus {
+	imageID uuid.UUID) *types.VerifyImageStatus {
 
 	sub := ctx.subBaseOsVerifierStatus
-	c, _ := sub.Get(safename)
+	c, _ := sub.Get(imageID.String())
 	if c == nil {
 		log.Infof("lookupVerifierStatus(%s/%s) not found\n",
-			objType, safename)
+			objType, imageID)
 		return nil
 	}
 	status := c.(types.VerifyImageStatus)
 	return &status
-}
-
-// Note that this function returns the entry even if Pending* is set.
-func lookupVerificationStatusAny(ctx *baseOsMgrContext, objType string,
-	safename string, sha256 string) *types.VerifyImageStatus {
-
-	m := lookupVerificationStatus(ctx, objType, safename)
-	if m != nil {
-		return m
-	}
-	m = lookupVerificationStatusSha256(ctx, objType, sha256)
-	if m != nil {
-		log.Infof("lookupVerifyImageStatusAny: found based on sha %s\n", sha256)
-		return m
-	}
-	return nil
 }
 
 func checkStorageVerifierStatus(ctx *baseOsMgrContext, objType string, uuidStr string,
@@ -218,8 +173,6 @@ func checkStorageVerifierStatus(ctx *baseOsMgrContext, objType string, uuidStr s
 	for i, sc := range config {
 		ss := &status[i]
 
-		safename := types.UrlToSafename(sc.Name, sc.ImageSha256)
-
 		log.Infof("checkStorageVerifierStatus: url %s stat %v\n",
 			sc.Name, ss.State)
 
@@ -228,10 +181,9 @@ func checkStorageVerifierStatus(ctx *baseOsMgrContext, objType string, uuidStr s
 			continue
 		}
 
-		vs := lookupVerificationStatusAny(ctx, objType, safename,
-			sc.ImageSha256)
+		vs := lookupVerificationStatus(ctx, objType, sc.ImageID)
 		if vs == nil || vs.Pending() {
-			log.Infof("checkStorageVerifierStatus: %s not found\n", safename)
+			log.Infof("checkStorageVerifierStatus: %s not found\n", sc.ImageID)
 			// Keep at current state
 			ret.MinState = types.DOWNLOADED
 			continue
@@ -241,13 +193,13 @@ func checkStorageVerifierStatus(ctx *baseOsMgrContext, objType string, uuidStr s
 		}
 		if vs.State != ss.State {
 			log.Infof("checkStorageVerifierStatus(%s) set ss.State %d\n",
-				safename, vs.State)
+				sc.ImageID, vs.State)
 			ss.State = vs.State
 			ret.Changed = true
 		}
 		if vs.LastErr != "" {
 			log.Errorf("checkStorageVerifierStatus(%s) verifier error for %s: %s\n",
-				uuidStr, safename, vs.LastErr)
+				uuidStr, sc.ImageID, vs.LastErr)
 			ss.Error = vs.LastErr
 			ss.ErrorSource = pubsub.TypeToName(types.VerifyImageStatus{})
 			ret.AllErrors = appendError(ret.AllErrors, "verifier",
@@ -261,9 +213,7 @@ func checkStorageVerifierStatus(ctx *baseOsMgrContext, objType string, uuidStr s
 		case types.INITIAL:
 			// Nothing to do
 		default:
-			ss.ActiveFileLocation = types.DownloadDirname + "/" +
-				objType + "/" + vs.Safename
-
+			ss.ActiveFileLocation = vs.FileLocation
 			log.Infof("checkStorageVerifierStatus(%s) Update SSL ActiveFileLocation to %s\n",
 				uuidStr, ss.ActiveFileLocation)
 			ret.Changed = true
