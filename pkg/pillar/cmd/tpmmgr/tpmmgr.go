@@ -4,13 +4,22 @@
 package tpmmgr
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/pem"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/big"
 	"os"
 	"os/exec"
+	"reflect"
 	"unsafe"
 
 	"github.com/google/go-tpm/tpm2"
@@ -576,6 +585,141 @@ func printCapability() {
 	//printNVProperties()
 }
 
+func testTpmEcdhSupport() error {
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		log.Errorln(err)
+		return err
+	}
+	defer rw.Close()
+
+	z, p, err := tpm2.GenerateSharedECCSecret(rw, TpmDeviceKeyHdl, emptyPassword)
+	if err != nil {
+		fmt.Printf("generating Shared Secret failed: %s", err)
+		return err
+	}
+	tpmOwnerPasswdBytes, err := ioutil.ReadFile(tpmCredentialsFileName)
+	if err != nil {
+		fmt.Printf("Reading from %s failed: %s", tpmCredentialsFileName, err)
+		return err
+	}
+
+	tpmOwnerPasswd := string(tpmOwnerPasswdBytes)
+	if len(tpmOwnerPasswd) > maxPasswdLength {
+		tpmOwnerPasswd = tpmOwnerPasswd[0:maxPasswdLength]
+	}
+
+	z1, err := tpm2.RecoverSharedECCSecret(rw, TpmDeviceKeyHdl, tpmOwnerPasswd, p)
+	if err != nil {
+		fmt.Printf("recovering Shared Secret failed: %s", err)
+		return err
+	}
+	fmt.Println(reflect.DeepEqual(z, z1))
+	return nil
+}
+
+func aesEncrypt(ciphertext, plaintext, key, iv []byte) error {
+	aesBlockEncrypter, err := aes.NewCipher([]byte(key))
+	if err != nil {
+		return err
+	}
+	aesEncrypter := cipher.NewCFBEncrypter(aesBlockEncrypter, iv)
+	aesEncrypter.XORKeyStream(ciphertext, plaintext)
+	return nil
+}
+
+func aesDecrypt(plaintext, ciphertext, key, iv []byte) error {
+	aesBlockDecrypter, err := aes.NewCipher([]byte(key))
+	if err != nil {
+		return err
+	}
+	aesDecrypter := cipher.NewCFBDecrypter(aesBlockDecrypter, iv)
+	aesDecrypter.XORKeyStream(plaintext, ciphertext)
+	return nil
+}
+
+func sha256FromECPoint(X, Y *big.Int) [32]byte {
+	var bytes = make([]byte, 0)
+	bytes = append(bytes, X.Bytes()...)
+	bytes = append(bytes, Y.Bytes()...)
+	return sha256.Sum256(bytes)
+}
+
+//DecryptSecretWithEcdhKey recovers plaintext from given X, Y, iv and the ciphertext
+func DecryptSecretWithEcdhKey(X, Y *big.Int, iv, ciphertext, plaintext []byte) error {
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		log.Errorln(err)
+		return err
+	}
+	defer rw.Close()
+
+	p := tpm2.ECPoint{X: X, Y: Y}
+	tpmOwnerPasswdBytes, err := ioutil.ReadFile(tpmCredentialsFileName)
+	if err != nil {
+		fmt.Printf("Reading from %s failed: %s", tpmCredentialsFileName, err)
+		return err
+	}
+	//Recover the key, and decrypt the message (EVE node Part)
+	tpmOwnerPasswd := string(tpmOwnerPasswdBytes)
+	if len(tpmOwnerPasswd) > maxPasswdLength {
+		tpmOwnerPasswd = tpmOwnerPasswd[0:maxPasswdLength]
+	}
+	z, err := tpm2.RecoverSharedECCSecret(rw, TpmDeviceKeyHdl, tpmOwnerPasswd, p)
+	if err != nil {
+		fmt.Printf("recovering Shared Secret failed: %s", err)
+		return err
+	}
+	decryptKey := sha256FromECPoint(z.X, z.Y)
+	return aesDecrypt(plaintext, ciphertext, decryptKey[:], iv)
+}
+
+//Test ECDH key exchange and a symmetric cipher based on ECDH
+func testEcdhAES() error {
+	//Simulate Controller generating an ephemeral key
+	privateA, publicAX, publicAY, err := elliptic.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		fmt.Printf("Failed to generate A private/public key pair: %s\n", err)
+	}
+
+	//read public key from device certificate
+	certBytes, err := ioutil.ReadFile("/config/device.cert.pem")
+	if err != nil {
+		fmt.Printf("error in reading device cert file: %v", err)
+		return err
+	}
+	block, _ := pem.Decode(certBytes)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		fmt.Printf("error in parsing device cert file: %v", err)
+		return err
+	}
+	publicB := cert.PublicKey.(*ecdsa.PublicKey)
+
+	//multiply privateA with publicB (Controller Part)
+	X, Y := elliptic.P256().Params().ScalarMult(publicB.X, publicB.Y, privateA)
+
+	fmt.Printf("publicAX, publicAY, X/Y = %v, %v, %v, %v\n", publicAX, publicAY, X, Y)
+	encryptKey := sha256FromECPoint(X, Y)
+	iv := make([]byte, aes.BlockSize)
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		fmt.Printf("Unable to generate Initial Value %v\n", err)
+	}
+
+	msg := []byte("this is the secret")
+	ciphertext := make([]byte, len(msg))
+	aesEncrypt(ciphertext, msg, encryptKey[:], iv)
+
+	recoveredMsg := make([]byte, len(ciphertext))
+	err = DecryptSecretWithEcdhKey(publicAX, publicAY, iv, ciphertext, recoveredMsg)
+	if err != nil {
+		fmt.Printf("Decryption failed with error %v\n", err)
+		return err
+	}
+	fmt.Println(reflect.DeepEqual(msg, recoveredMsg))
+	return nil
+}
+
 func Run() {
 	curpartPtr := flag.String("c", "", "Current partition")
 	flag.Parse()
@@ -619,5 +763,9 @@ func Run() {
 		}
 	case "printCapability":
 		printCapability()
+	case "testTpmEcdhSupport":
+		testTpmEcdhSupport()
+	case "testEcdhAES":
+		testEcdhAES()
 	}
 }

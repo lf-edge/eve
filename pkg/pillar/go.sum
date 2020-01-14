@@ -49,6 +49,8 @@ github.com/coreos/ioprogress v0.0.0-20151023204047-4637e494fd9b/go.mod h1:JIWRG8
 github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f h1:lBNOc5arjvs8E5mO2tbpBpLoyyu8B6e44T7hJy6potg=
 github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f/go.mod h1:E3G3o1h8I7cfcXa63jLwjI0eiQQMgzzUDFVpN/nH/eA=
 github.com/cpuguy83/go-md2man v1.0.10/go.mod h1:SmD6nW6nTyfqj6ABTjUi3V3JVMnlJmwcJI5acqYI6dE=
+github.com/cshari-zededa/go-tpm v0.0.0-20200113112746-a8476c2d6eb3 h1:CGFBX/G+8V5NkeIK2xpEMO9A2Kme/dtAMmvqX+r2cMM=
+github.com/cshari-zededa/go-tpm v0.0.0-20200113112746-a8476c2d6eb3/go.mod h1:OGEdc1XfzTyNEQyahgeXVq+E0lMq3Vu/Y3bT9EfpRnE=
 github.com/davecgh/go-spew v0.0.0-20151105211317-5215b55f46b2/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
@@ -74,8 +76,6 @@ github.com/emicklei/go-restful v0.0.0-20170410110728-ff4f55a20633/go.mod h1:otzb
 github.com/emicklei/go-restful v2.9.5+incompatible/go.mod h1:otzb+WCGbkyDHkqmQmT5YD2WR4BBwUdeQoFo8l/7tVs=
 github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9 h1:DiIi8XZvZ36gVZj+ZQ4xMT/ZknKJA1yRYv8yqi6Dcbk=
 github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9/go.mod h1:m5kR+NOoKCuA5r6T+9f7q7VfPjPhHskhmxRAebb7avM=
-github.com/eriknordmark/netlink v0.0.0-20190903203740-41fa442996b8 h1:uPKC3A+BbS/QM5SfdGCVWFjGRDQX6KMNd9M5VE96UMM=
-github.com/eriknordmark/netlink v0.0.0-20190903203740-41fa442996b8/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
 github.com/eriknordmark/netlink v0.0.0-20190828001930-5709595daf04 h1:KSl1Dem33P9v3r5piLLHFXizacp3p7UbvtqhzKk8dis=
 github.com/eriknordmark/netlink v0.0.0-20190828001930-5709595daf04/go.mod h1:Uk4Y9yfmwt13sE/KQcljF65DuHfMh0hYOL6tSHjN8i8=
 github.com/eriknordmark/netlink v0.0.0-20190828143647-5cadb0247840 h1:53DaNsaU1UG2alAHhSzAvbhosZBEbNyF832Ntm0Dqvg=
@@ -92,6 +92,8 @@ github.com/eriknordmark/netlink v0.0.0-20190829035504-41fa442996b8 h1:zw7UbmPzWp
 github.com/eriknordmark/netlink v0.0.0-20190829035504-41fa442996b8/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
 github.com/eriknordmark/netlink v0.0.0-20190829035504-7ebf40544e16 h1:DRjyyYvtFWdlf50HKvKmvTcB3q0iNyyYtrVz8wNyqt4=
 github.com/eriknordmark/netlink v0.0.0-20190829035504-7ebf40544e16/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
+github.com/eriknordmark/netlink v0.0.0-20190903203740-41fa442996b8 h1:uPKC3A+BbS/QM5SfdGCVWFjGRDQX6KMNd9M5VE96UMM=
+github.com/eriknordmark/netlink v0.0.0-20190903203740-41fa442996b8/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
 github.com/eriknordmark/netlink v0.0.0-20190909223052-1f4a41dfab61 h1:xfymSdH08QMQEtQq5hZMm901mYRpyqHFMES9et+pzgM=
 github.com/eriknordmark/netlink v0.0.0-20190909223052-1f4a41dfab61/go.mod h1:soOZqKlU/iJvZpZ7sm+okQFBzrlpol0IIQr+gWeZS0k=
 github.com/eriknordmark/netlink v0.0.0-20190909231655-fd5b380483db h1:rURpPLaYdPoU/yaMFeZu/EhM/WISptw4EcPX9BCb6iA=
@@ -293,10 +295,10 @@ github.com/stretchr/testify v1.2.2 h1:bSDNvY7ZPG5RlJ8otE/7V6gMiyenm9RtJ7IUVIAoJ1
 github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXfy6kDkUVs=
 github.com/stretchr/testify v1.3.0 h1:TivCn/peBQ7UY8ooIcPgZFpTNSz0Q2U6UrFlUfqbe0Q=
 github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
-github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e h1:nt2877sKfojlHCTOBXbpWjBkuWKritFaGIfgQwbQUls=
-github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e/go.mod h1:B4+Kq1u5FlULTjFSM707Q6e/cOHFv0z/6QRoxubDIQ8=
 github.com/stretchr/testify v1.4.0 h1:2E4SXV/wtOkTonXsotYi4li6zVWxYlZuYNCXe9XRJyk=
 github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=
+github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e h1:nt2877sKfojlHCTOBXbpWjBkuWKritFaGIfgQwbQUls=
+github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e/go.mod h1:B4+Kq1u5FlULTjFSM707Q6e/cOHFv0z/6QRoxubDIQ8=
 github.com/ugorji/go/codec v0.0.0-20181204163529-d75b2dcb6bc8/go.mod h1:VFNgLljTbGfSG7qAOspJ7OScBnGdDN/yBr0sguwnwf0=
 github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f h1:nBX3nTcmxEtHSERBJaIo1Qa26VwRaopnZmfDQUXsF4I=
 github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f/go.mod h1:ZjcWmFBXmLKZu9Nxj3WKYEafiSqer2rnvPr0en9UNpI=
