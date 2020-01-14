@@ -581,6 +581,10 @@ func Run() {
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
+		// Need to tickle this since the configTimerTask is not yet started
+		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
+		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
+		agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
 	}
 
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
@@ -631,6 +635,10 @@ func Run() {
 		case <-stillRunning.C:
 		}
 		agentlog.StillRunning(agentName, warningTime, errorTime)
+		// Need to tickle this since the configTimerTask is not yet started
+		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
+		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
+		agentlog.StillRunning(agentName+"devinfo", warningTime, errorTime)
 	}
 
 	// Subscribe to network metrics from zedrouter
@@ -726,7 +734,6 @@ func Run() {
 
 		case <-stillRunning.C:
 		}
-		// XXX verifierRestarted can take 5 minutes??
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 		// Need to tickle this since the configTimerTask is not yet started
 		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
@@ -1005,8 +1012,10 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)
+	// XXX empty is equal
 	if cmp.Equal(*deviceNetworkStatus, status) {
 		log.Infof("handleDNSModify no change\n")
+		ctx.DNSinitialized = true
 		return
 	}
 	log.Infof("handleDNSModify: changed %v",
