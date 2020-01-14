@@ -44,6 +44,8 @@ FROM RKT_STAGE1_TAG as rkt-stage1-build
 FROM FSCRYPT_TAG as fscrypt-build
 # hadolint ignore=DL3006
 FROM UEFI_TAG as uefi-build
+# hadolint ignore=DL3006
+FROM ACTOOL_TAG as actool-build
 
 FROM linuxkit/memlogd:v0.5 as memlogd
 
@@ -89,6 +91,7 @@ COPY --from=rkt-stage1-build /go/stage1-xen-master/stage1-xen.aci /usr/sbin/stag
 COPY --from=fscrypt-build /fscrypt /opt/zededa/bin/fscrypt
 COPY --from=uefi-build /OVMF.fd /usr/lib/xen/boot/ovmf.bin
 COPY --from=uefi-build /OVMF_PVH.fd /usr/lib/xen/boot/ovmf-pvh.bin
+COPY --from=actool-build /go/spec/bin/actool /usr/sbin/actool
 COPY --from=memlogd /usr/bin/logread /usr/bin/logread
 
 # We need to keep a slim profile, which means removing things we don't need
