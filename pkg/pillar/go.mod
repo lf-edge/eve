@@ -62,3 +62,6 @@ replace git.apache.org/thrift.git => github.com/apache/thrift v0.12.0
 // with the requirements from github.com/google/go-containerregistry.
 // REMOVE this as soon as docker2aci is done!
 replace github.com/opencontainers/image-spec => github.com/opencontainers/image-spec v1.0.0-rc2
+
+//Till we upstream ECDH TPM APIs
+replace github.com/google/go-tpm => github.com/cshari-zededa/go-tpm v0.0.0-20200113112746-a8476c2d6eb3
