@@ -2490,6 +2490,7 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 	if cmp.Equal(ctx.deviceNetworkStatus, status) {
 		log.Infof("handleDNSModify unchanged\n")
+		ctx.DNSinitialized = true
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)

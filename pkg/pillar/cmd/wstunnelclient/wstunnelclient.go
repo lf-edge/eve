@@ -158,7 +158,7 @@ func Run() {
 	wscCtx.dnsContext = &DNSctx
 	// Wait for knowledge about IP addresses. XXX needed?
 	for !DNSctx.DNSinitialized {
-		log.Infof("Waiting for DomainNetworkStatus\n")
+		log.Infof("Waiting for DeviceNetworkStatus\n")
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -228,8 +228,10 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		return
 	}
 	log.Infof("handleDNSModify for %s\n", key)
+	// XXX empty is equal?
 	if cmp.Equal(*ctx.deviceNetworkStatus, status) {
 		log.Infof("handleDNSModify no change\n")
+		ctx.DNSinitialized = true
 		return
 	}
 	log.Infof("handleDNSModify: changed %v",
