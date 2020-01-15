@@ -290,7 +290,7 @@ func maybeRetryDownload(ctx *downloaderContext,
 	t := time.Now()
 	elapsed := t.Sub(status.LastErrTime)
 	if elapsed < downloadRetryTime {
-		log.Infof("maybeRetryDownload(%s) %v remaining\n",
+		log.Infof("maybeRetryDownload(%s) %d remaining\n",
 			status.Key(),
 			(downloadRetryTime-elapsed)/time.Second)
 		return
