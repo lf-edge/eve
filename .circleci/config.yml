@@ -27,6 +27,10 @@ jobs:
           name: Installing qemu-utils
           command: sudo apt-get update; sudo apt-get install -y qemu-utils
       - run:
+          name: Alpine Cache
+          command: >
+            make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} FORCE_BUILD=--disable-cache pkg/alpine
+      - run:
           name: Packages
           command: >
             make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} FORCE_BUILD=--disable-cache pkgs
