@@ -36,6 +36,7 @@ var Version = "No version specified"
 type zedmanagerContext struct {
 	configRestarted         bool
 	verifierRestarted       bool
+	rwImageAvailable        bool
 	subAppInstanceConfig    pubsub.Subscription
 	pubAppInstanceStatus    pubsub.Publication
 	subDeviceNetworkStatus  pubsub.Subscription
@@ -220,8 +221,9 @@ func Run() {
 	// Get DomainStatus from domainmgr
 	subImageStatus, err := pubsub.Subscribe("domainmgr",
 		types.ImageStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
-			WarningTime: warningTime,
-			ErrorTime:   errorTime,
+			WarningTime:    warningTime,
+			ErrorTime:      errorTime,
+			RestartHandler: handleImageStatusRestarted,
 		})
 	if err != nil {
 		log.Fatal(err)
@@ -317,10 +319,12 @@ func Run() {
 	}
 	log.Infof("processed GlobalConfig")
 
-	// First we process the verifierStatus to avoid downloading
+	// First we process the verifierStatus and ImageStatus to avoid downloading
 	// an image we already have in place.
-	log.Infof("Handling initial verifier Status\n")
-	for !ctx.verifierRestarted {
+	for !ctx.verifierRestarted || !ctx.rwImageAvailable {
+		log.Infof("Waiting for verifier %t rwImageAvailable %t",
+			ctx.verifierRestarted, ctx.rwImageAvailable)
+
 		select {
 		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
@@ -329,6 +333,12 @@ func Run() {
 			subAppImgVerifierStatus.ProcessChange(change)
 			if ctx.verifierRestarted {
 				log.Infof("Verifier reported restarted\n")
+			}
+
+		case change := <-subImageStatus.C:
+			subImageStatus.ProcessChange(change)
+			if ctx.rwImageAvailable {
+				log.Infof("rwImageAvailable\n")
 			}
 
 		case <-stillRunning.C:
@@ -405,6 +415,15 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
 		if ctx.configRestarted {
 			ctx.pubEIDConfig.SignalRestarted()
 		}
+	}
+}
+
+func handleImageStatusRestarted(ctxArg interface{}, done bool) {
+	ctx := ctxArg.(*zedmanagerContext)
+
+	log.Infof("handleImageStatusRestarted(%v)\n", done)
+	if done {
+		ctx.rwImageAvailable = true
 	}
 }
 
