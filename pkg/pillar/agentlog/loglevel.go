@@ -11,7 +11,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func GetGlobalConfig(sub *pubsub.Subscription) *types.ConfigItemValueMap {
+func GetGlobalConfig(sub pubsub.Subscription) *types.ConfigItemValueMap {
+
 	m, err := sub.Get("global")
 	if err != nil {
 		log.Infof("GlobalConfig failed %s\n", err)
@@ -22,15 +23,15 @@ func GetGlobalConfig(sub *pubsub.Subscription) *types.ConfigItemValueMap {
 }
 
 // Returns (value, ok)
-func GetLogLevel(sub *pubsub.Subscription, agentName string) (string, bool) {
+func GetLogLevel(sub pubsub.Subscription, agentName string) (string, bool) {
 	return getLogLevelImpl(sub, agentName, true)
 }
 
-func GetLogLevelNoDefault(sub *pubsub.Subscription, agentName string) (string, bool) {
+func GetLogLevelNoDefault(sub pubsub.Subscription, agentName string) (string, bool) {
 	return getLogLevelImpl(sub, agentName, false)
 }
 
-func getLogLevelImpl(sub *pubsub.Subscription, agentName string,
+func getLogLevelImpl(sub pubsub.Subscription, agentName string,
 	allowDefault bool) (string, bool) {
 
 	m, err := sub.Get("global")
@@ -53,15 +54,15 @@ func getLogLevelImpl(sub *pubsub.Subscription, agentName string,
 }
 
 // Returns (value, ok)
-func GetRemoteLogLevel(sub *pubsub.Subscription, agentName string) (string, bool) {
+func GetRemoteLogLevel(sub pubsub.Subscription, agentName string) (string, bool) {
 	return getRemoteLogLevelImpl(sub, agentName, true)
 }
 
-func GetRemoteLogLevelNoDefault(sub *pubsub.Subscription, agentName string) (string, bool) {
+func GetRemoteLogLevelNoDefault(sub pubsub.Subscription, agentName string) (string, bool) {
 	return getRemoteLogLevelImpl(sub, agentName, false)
 }
 
-func getRemoteLogLevelImpl(sub *pubsub.Subscription, agentName string,
+func getRemoteLogLevelImpl(sub pubsub.Subscription, agentName string,
 	allowDefault bool) (string, bool) {
 
 	m, err := sub.Get("global")
@@ -94,22 +95,23 @@ func LogLevel(gc *types.ConfigItemValueMap, agentName string) string {
 
 // Update LogLevel setting based on GlobalConfig and debugOverride
 // Return debug bool
-func HandleGlobalConfig(sub *pubsub.Subscription, agentName string,
+func HandleGlobalConfig(sub pubsub.Subscription, agentName string,
 	debugOverride bool) (bool, *types.ConfigItemValueMap) {
 
 	log.Infof("HandleGlobalConfig(%s, %v)\n", agentName, debugOverride)
 	return handleGlobalConfigImpl(sub, agentName, debugOverride, true)
 }
 
-func HandleGlobalConfigNoDefault(sub *pubsub.Subscription, agentName string,
+func HandleGlobalConfigNoDefault(sub pubsub.Subscription, agentName string,
 	debugOverride bool) (bool, *types.ConfigItemValueMap) {
 
 	log.Infof("HandleGlobalConfig(%s, %v)\n", agentName, debugOverride)
 	return handleGlobalConfigImpl(sub, agentName, debugOverride, false)
 }
 
-func handleGlobalConfigImpl(sub *pubsub.Subscription, agentName string,
+func handleGlobalConfigImpl(sub pubsub.Subscription, agentName string,
 	debugOverride bool, allowDefault bool) (bool, *types.ConfigItemValueMap) {
+
 	level := log.InfoLevel
 	debug := false
 	gcp := GetGlobalConfig(sub)

@@ -110,46 +110,73 @@ func (gs *GlobalStatus) UpdateItemValuesFromGlobalConfig(gc ConfigItemValueMap) 
 type GlobalSettingKey string
 
 const (
-	// Constants for all
-	// global config global setting items
-	ConfigInterval            GlobalSettingKey = "timer.config.interval"
-	MetricInterval            GlobalSettingKey = "timer.metric.interval"
-	ResetIfCloudGoneTime      GlobalSettingKey = "timer.reboot.no.network"
-	FallbackIfCloudGoneTime   GlobalSettingKey = "timer.update.fallback.no.network"
-	MintimeUpdateSuccess      GlobalSettingKey = "timer.test.baseimage.update"
-	StaleConfigTime           GlobalSettingKey = "timer.use.config.checkpoint"
-	DownloadGCTime            GlobalSettingKey = "timer.gc.download"
-	VdiskGCTime               GlobalSettingKey = "timer.gc.vdisk"
-	RktGCGracePeriod          GlobalSettingKey = "timer.gc.rkt.graceperiod"
-	DownloadRetryTime         GlobalSettingKey = "timer.download.retry"
-	DomainBootRetryTime       GlobalSettingKey = "timer.boot.retry"
-	NetworkGeoRedoTime        GlobalSettingKey = "timer.port.georedo"
-	NetworkGeoRetryTime       GlobalSettingKey = "timer.port.georetry"
-	NetworkTestDuration       GlobalSettingKey = "timer.port.testduration"
-	NetworkTestInterval       GlobalSettingKey = "timer.port.testinterval"
+	// ConfigInterval global setting key
+	ConfigInterval GlobalSettingKey = "timer.config.interval"
+	// MetricInterval global setting key
+	MetricInterval GlobalSettingKey = "timer.metric.interval"
+	// ResetIfCloudGoneTime global setting key
+	ResetIfCloudGoneTime GlobalSettingKey = "timer.reboot.no.network"
+	// FallbackIfCloudGoneTime global setting key
+	FallbackIfCloudGoneTime GlobalSettingKey = "timer.update.fallback.no.network"
+	// MintimeUpdateSuccess global setting key
+	MintimeUpdateSuccess GlobalSettingKey = "timer.test.baseimage.update"
+	// StaleConfigTime global setting key
+	StaleConfigTime GlobalSettingKey = "timer.use.config.checkpoint"
+	// DownloadGCTime global setting key
+	DownloadGCTime GlobalSettingKey = "timer.gc.download"
+	// VdiskGCTime global setting key
+	VdiskGCTime GlobalSettingKey = "timer.gc.vdisk"
+	// RktGCGracePeriod global setting key
+	RktGCGracePeriod GlobalSettingKey = "timer.gc.rkt.graceperiod"
+	// DownloadRetryTime global setting key
+	DownloadRetryTime GlobalSettingKey = "timer.download.retry"
+	// DomainBootRetryTime global setting key
+	DomainBootRetryTime GlobalSettingKey = "timer.boot.retry"
+	// NetworkGeoRedoTime global setting key
+	NetworkGeoRedoTime GlobalSettingKey = "timer.port.georedo"
+	// NetworkGeoRetryTime global setting key
+	NetworkGeoRetryTime GlobalSettingKey = "timer.port.georetry"
+	// NetworkTestDuration global setting key
+	NetworkTestDuration GlobalSettingKey = "timer.port.testduration"
+	// NetworkTestInterval global setting key
+	NetworkTestInterval GlobalSettingKey = "timer.port.testinterval"
+	// NetworkTestBetterInterval global setting key
 	NetworkTestBetterInterval GlobalSettingKey = "timer.port.testbetterinterval"
-	NetworkTestTimeout        GlobalSettingKey = "timer.port.timeout"
-	NetworkSendTimeout        GlobalSettingKey = "timer.send.timeout"
-	UsbAccess                 GlobalSettingKey = "debug.enable.usb"
-	NetworkFallbackAnyEth     GlobalSettingKey = "network.fallback.any.eth"
-	SSHAccess                 GlobalSettingKey = "debug.enable.ssh"
-	SSHAuthorizedKeys         GlobalSettingKey = "debug.enable.ssh"
-	AllowAppVnc               GlobalSettingKey = "app.allow.vnc"
-	AllowNonFreeAppImages     GlobalSettingKey = "network.allow.wwan.app.download"
-	AllowNonFreeBaseImages    GlobalSettingKey = "network.allow.wwan.baseos.download"
-	Dom0MinDiskUsagePercent   GlobalSettingKey = "storage.dom0.disk.minusage.percent"
-	IgnoreDiskCheckForApps    GlobalSettingKey = "storage.apps.ignore.disk.check"
-	DefaultLogLevel           GlobalSettingKey = "debug.default.loglevel"
-	DefaultRemoteLogLevel     GlobalSettingKey = "debug.default.remote.loglevel"
+	// NetworkTestTimeout global setting key
+	NetworkTestTimeout GlobalSettingKey = "timer.port.timeout"
+	// NetworkSendTimeout global setting key
+	NetworkSendTimeout GlobalSettingKey = "timer.send.timeout"
+	// UsbAccess global setting key
+	UsbAccess GlobalSettingKey = "debug.enable.usb"
+	// NetworkFallbackAnyEth global setting key
+	NetworkFallbackAnyEth GlobalSettingKey = "network.fallback.any.eth"
+	// SSHAccess global setting key
+	SSHAccess GlobalSettingKey = "debug.enable.ssh"
+	// SSHAuthorizedKeys global setting key
+	SSHAuthorizedKeys GlobalSettingKey = "debug.enable.ssh"
+	// AllowAppVnc global setting key
+	AllowAppVnc GlobalSettingKey = "app.allow.vnc"
+	// AllowNonFreeAppImages global setting key
+	AllowNonFreeAppImages GlobalSettingKey = "network.allow.wwan.app.download"
+	// AllowNonFreeBaseImages global setting key
+	AllowNonFreeBaseImages GlobalSettingKey = "network.allow.wwan.baseos.download"
+	// Dom0MinDiskUsagePercent global setting key
+	Dom0MinDiskUsagePercent GlobalSettingKey = "storage.dom0.disk.minusage.percent"
+	// IgnoreDiskCheckForApps global setting key
+	IgnoreDiskCheckForApps GlobalSettingKey = "storage.apps.ignore.disk.check"
+	// DefaultLogLevel global setting key
+	DefaultLogLevel GlobalSettingKey = "debug.default.loglevel"
+	// DefaultRemoteLogLevel global setting key
+	DefaultRemoteLogLevel GlobalSettingKey = "debug.default.remote.loglevel"
 )
 
 // AgentSettingKey - keys for per-agent settings
 type AgentSettingKey string
 
 const (
-	// Define all
-	// per-agent settings
-	LogLevel       AgentSettingKey = "debug.loglevel"
+	// LogLevel per-agent setting key
+	LogLevel AgentSettingKey = "debug.loglevel"
+	// RemoteLogLevel per-agent setting key
 	RemoteLogLevel AgentSettingKey = "debug.remote.loglevel"
 )
 
@@ -157,11 +184,13 @@ const (
 type ConfigItemType uint8
 
 const (
-	// Define all
-	// item types
+	// ConfigItemTypeInt - for config item's who's value is an integer
 	ConfigItemTypeInt ConfigItemType = iota + 1
+	// ConfigItemTypeBool - for config item's who's value is a boolean
 	ConfigItemTypeBool
+	// ConfigItemTypeString - for config item's who's value is a string
 	ConfigItemTypeString
+	// ConfigItemTypeTriState - for config item's who's value is a tristate
 	ConfigItemTypeTriState
 )
 
@@ -174,6 +203,7 @@ type ConfigItemSpec struct {
 	IntMax     uint32
 	IntDefault uint32
 
+	StringValidator Validator
 	StringDefault   string
 	BoolDefault     bool
 	TriStateDefault TriState
@@ -196,6 +226,9 @@ func (configSpec ConfigItemSpec) DefaultValue() ConfigItemValue {
 	}
 	return item
 }
+
+// Validator - pass in function to validate a string
+type Validator func(string) error
 
 // ConfigItemSpecMap - Map of all specifications
 type ConfigItemSpecMap struct {
@@ -233,16 +266,18 @@ func (specMap *ConfigItemSpecMap) AddBoolItem(key GlobalSettingKey, defaultBool 
 }
 
 // AddStringItem - Adds string item to specMap
-func (specMap *ConfigItemSpecMap) AddStringItem(key GlobalSettingKey, defaultString string) {
+func (specMap *ConfigItemSpecMap) AddStringItem(key GlobalSettingKey, defaultString string, validator Validator) {
 	configItem := ConfigItemSpec{
-		ItemType:      ConfigItemTypeString,
-		Key:           string(key),
-		StringDefault: defaultString,
+		ItemType:        ConfigItemTypeString,
+		Key:             string(key),
+		StringDefault:   defaultString,
+		StringValidator: validator,
 	}
 	specMap.GlobalSettings[key] = configItem
 	log.Debugf("Added string item %s", key)
 }
 
+// AddTriStateItem - Adds tristate item to specMap
 func (specMap *ConfigItemSpecMap) AddTriStateItem(key GlobalSettingKey, defaultTriState TriState) {
 	configItem := ConfigItemSpec{
 		Key:             string(key),
@@ -254,11 +289,12 @@ func (specMap *ConfigItemSpecMap) AddTriStateItem(key GlobalSettingKey, defaultT
 }
 
 // AddAgentSettingStringItem - Adds string item for a per-agent setting
-func (specMap *ConfigItemSpecMap) AddAgentSettingStringItem(key AgentSettingKey, defaultString string) {
+func (specMap *ConfigItemSpecMap) AddAgentSettingStringItem(key AgentSettingKey, defaultString string, validator Validator) {
 	configItem := ConfigItemSpec{
-		ItemType:      ConfigItemTypeString,
-		Key:           string(key),
-		StringDefault: defaultString,
+		ItemType:        ConfigItemTypeString,
+		Key:             string(key),
+		StringDefault:   defaultString,
+		StringValidator: validator,
 	}
 	specMap.AgentSettings[key] = configItem
 	log.Debugf("Added string item %s", key)
@@ -269,8 +305,6 @@ func (specMap *ConfigItemSpecMap) ParseItem(configMap *ConfigItemValueMap, value
 	// legacy per-agent setting key debug.<agentname>.xxx
 	// new per-agent setting key agent.<agentname>.debug.xxx
 	var itemSpec ConfigItemSpec
-	agentSetting := false
-	globalSetting := false
 	var agentName string
 	components := strings.Split(key, ".")
 	if strings.HasPrefix(key, "agent") || specMap.isLegacyAgent(key) {
@@ -283,13 +317,6 @@ func (specMap *ConfigItemSpecMap) ParseItem(configMap *ConfigItemValueMap, value
 			return fmt.Errorf("Unable to find agent name for per-agent setting. Key: %s", key)
 		}
 		key = strings.Join(components, ".")
-		agentSetting = true
-	} else if _, ok := specMap.GlobalSettings[GlobalSettingKey(key)]; ok {
-		globalSetting = true
-	} else {
-		return fmt.Errorf("Item is neither a global nor a per-agent setting. Key: %s", key)
-	}
-	if agentSetting {
 		itemSpec = specMap.AgentSettings[AgentSettingKey(key)]
 		val, err := itemSpec.parseValue(value)
 		if err == nil {
@@ -302,7 +329,7 @@ func (specMap *ConfigItemSpecMap) ParseItem(configMap *ConfigItemValueMap, value
 		} else {
 			return err
 		}
-	} else if globalSetting {
+	} else if _, ok := specMap.GlobalSettings[GlobalSettingKey(key)]; ok {
 		itemSpec = specMap.GlobalSettings[GlobalSettingKey(key)]
 		val, err := itemSpec.parseValue(value)
 		if err == nil {
@@ -310,6 +337,8 @@ func (specMap *ConfigItemSpecMap) ParseItem(configMap *ConfigItemValueMap, value
 		} else {
 			return err
 		}
+	} else {
+		return fmt.Errorf("Item is neither a global nor a per-agent setting. Key: %s", key)
 	}
 	return nil
 }
@@ -383,7 +412,7 @@ func (configPtr *ConfigItemValueMap) GlobalValueInt(key GlobalSettingKey) uint32
 	}
 }
 
-// GlobalValueInt - Gets a string global setting value
+// GlobalValueString - Gets a string global setting value
 func (configPtr *ConfigItemValueMap) GlobalValueString(key GlobalSettingKey) string {
 	val, err := configPtr.globalConfigItemValue(key)
 	if val.ItemType == ConfigItemTypeString {
@@ -394,7 +423,7 @@ func (configPtr *ConfigItemValueMap) GlobalValueString(key GlobalSettingKey) str
 	}
 }
 
-// GlobalValueInt - Gets a tristate global setting value
+// GlobalValueTriState - Gets a tristate global setting value
 func (configPtr *ConfigItemValueMap) GlobalValueTriState(key GlobalSettingKey) TriState {
 	val, err := configPtr.globalConfigItemValue(key)
 	if val.ItemType == ConfigItemTypeTriState {
@@ -405,7 +434,7 @@ func (configPtr *ConfigItemValueMap) GlobalValueTriState(key GlobalSettingKey) T
 	}
 }
 
-// GlobalValueInt - Gets a boolean global setting value
+// GlobalValueBool - Gets a boolean global setting value
 func (configPtr *ConfigItemValueMap) GlobalValueBool(key GlobalSettingKey) bool {
 	val, err := configPtr.globalConfigItemValue(key)
 	if val.ItemType == ConfigItemTypeBool {
@@ -488,7 +517,12 @@ func (configSpec ConfigItemSpec) parseValue(itemValue string) (ConfigItemValue, 
 			retErr = err
 		}
 	} else if configSpec.ItemType == ConfigItemTypeString {
-		value.stringValue = itemValue
+		err := configSpec.StringValidator(itemValue)
+		if err == nil {
+			value.stringValue = itemValue
+		} else {
+			return value, err
+		}
 	}
 	return value, retErr
 }
@@ -525,11 +559,17 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddIntItem("timer.boot.retry", 600, 10, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem("network.allow.wwan.app.download", 0, 0, 0xFFFFFFFF)    //UNSURE OF VALUES
 	configItemSpecMap.AddIntItem("network.allow.wwan.baseos.download", 0, 0, 0xFFFFFFFF) //UNSURE OF VALUES
-	configItemSpecMap.AddStringItem(DefaultLogLevel, "info")
-	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info")
+	configItemSpecMap.AddStringItem(DefaultLogLevel, "info", parseLevel)
+	configItemSpecMap.AddStringItem(DefaultRemoteLogLevel, "info", parseLevel)
 	configItemSpecMap.AddIntItem("storage.dom0.disk.minusage.percent", 20, 20, 0xFFFFFFFF)
 	configItemSpecMap.AddIntItem("storage.apps.ignore.disk.check", 0, 5, 80)
 	return configItemSpecMap
+}
+
+// parseLevel - Wrapper that ignores the 'Level' output of the log.ParseLevel function
+func parseLevel(level string) error {
+	_, err := log.ParseLevel(level)
+	return err
 }
 
 // DefaultConfigItemValueMap - converts default specmap into value map

@@ -79,10 +79,12 @@ func TestParseAgentItem(t *testing.T) {
 	specMap := ConfigItemSpecMap{}
 	specMap.AgentSettings = make(map[AgentSettingKey]ConfigItemSpec)
 	specMap.AgentSettings[LogLevel] = ConfigItemSpec{
-		ItemType: ConfigItemTypeString,
+		ItemType:        ConfigItemTypeString,
+		StringValidator: parseLevel,
 	}
 	specMap.AgentSettings[RemoteLogLevel] = ConfigItemSpec{
-		ItemType: ConfigItemTypeString,
+		ItemType:        ConfigItemTypeString,
+		StringValidator: parseLevel,
 	}
 	globalConfig := ConfigItemValueMap{}
 	globalConfig.AgentSettings = make(map[string]map[AgentSettingKey]ConfigItemValue)
@@ -206,7 +208,7 @@ func TestAddStringItem(t *testing.T) {
 	}
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
-		(&specMap).AddStringItem(test.key, test.defaultString)
+		(&specMap).AddStringItem(test.key, test.defaultString, parseLevel)
 		assert.Equal(t, test.expectedVal, specMap.GlobalSettings[test.key].StringDefault)
 	}
 }
