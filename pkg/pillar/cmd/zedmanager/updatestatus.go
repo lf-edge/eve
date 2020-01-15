@@ -374,7 +374,6 @@ func doInstallProcessStorageEntriesWithVerifiedImage(
 	// Check if the image is already present in ImageStatus. If yes,
 	// go ahead and use it.
 
-	var vs *types.VerifyImageStatus
 	isPtr := lookupImageStatusForApp(ctx, appInstUUID, ssPtr.ImageSha256)
 	if isPtr != nil {
 		// DiskStatus found for he App.
@@ -385,53 +384,53 @@ func doInstallProcessStorageEntriesWithVerifiedImage(
 			ssPtr.Progress = 100
 			changed = true
 		}
-	} else {
-		// Check if image is already verified
-		vs = lookupVerifyImageStatusAny(ctx, safename, ssPtr.ImageSha256)
-		// Handle post-reboot verification in progress by allowing
-		// types.DOWNLOADED. If the verification later fails we will
-		// get a delete of the VerifyImageStatus and skip this
-		if vs == nil {
-			log.Debugf("Verifier status not found for %s sha %s",
-				safename, ssPtr.ImageSha256)
-			return nil, nil, false
-		}
-		if vs.Expired {
-			log.Infof("Vs.Expired Set. Re-download image %s, sha %s",
-				safename, ssPtr.ImageSha256)
-			return nil, nil, false
-		}
-		switch vs.State {
-		case types.DELIVERED:
-			log.Infof("Found verified image for %s sha %s\n",
-				safename, ssPtr.ImageSha256)
+		return isPtr, nil, changed
+	}
+	// Check if image is already verified
+	vs := lookupVerifyImageStatusAny(ctx, safename, ssPtr.ImageSha256)
+	// Handle post-reboot verification in progress by allowing
+	// types.DOWNLOADED. If the verification later fails we will
+	// get a delete of the VerifyImageStatus and skip this
+	if vs == nil {
+		log.Debugf("Verifier status not found for %s sha %s",
+			safename, ssPtr.ImageSha256)
+		return nil, nil, false
+	}
+	if vs.Expired {
+		log.Infof("Vs.Expired Set. Re-download image %s, sha %s",
+			safename, ssPtr.ImageSha256)
+		return nil, nil, false
+	}
+	switch vs.State {
+	case types.DELIVERED:
+		log.Infof("Found verified image for %s sha %s\n",
+			safename, ssPtr.ImageSha256)
 
-		case types.DOWNLOADED:
-			log.Infof("Found downloaded/verified image for %s sha %s\n",
-				safename, ssPtr.ImageSha256)
-		default:
-			log.Infof("vs.State (%d) not DELIVERED / DOWNLOADED. safename: %s"+
-				" sha %s", vs.State, safename, ssPtr.ImageSha256)
-			return nil, nil, false
-		}
-		if vs.Safename != safename {
-			// If found based on sha256
-			log.Infof("Found diff safename %s\n", vs.Safename)
-		}
-		if ssPtr.IsContainer {
-			log.Debugf("Container. ssPtr.ContainerImageID: %s, "+
-				"vs.IsContainer = %t, vs.ContainerImageID: %s\n",
-				ssPtr.ContainerImageID, vs.IsContainer, vs.ContainerImageID)
-			if len(ssPtr.ContainerImageID) == 0 {
-				ssPtr.ContainerImageID = vs.ContainerImageID
-				changed = true
-			}
-		}
-		if vs.State != ssPtr.State {
-			ssPtr.State = vs.State
-			ssPtr.Progress = 100
+	case types.DOWNLOADED:
+		log.Infof("Found downloaded/verified image for %s sha %s\n",
+			safename, ssPtr.ImageSha256)
+	default:
+		log.Infof("vs.State (%d) not DELIVERED / DOWNLOADED. safename: %s"+
+			" sha %s", vs.State, safename, ssPtr.ImageSha256)
+		return nil, nil, false
+	}
+	if vs.Safename != safename {
+		// If found based on sha256
+		log.Infof("Found diff safename %s\n", vs.Safename)
+	}
+	if ssPtr.IsContainer {
+		log.Debugf("Container. ssPtr.ContainerImageID: %s, "+
+			"vs.IsContainer = %t, vs.ContainerImageID: %s\n",
+			ssPtr.ContainerImageID, vs.IsContainer, vs.ContainerImageID)
+		if len(ssPtr.ContainerImageID) == 0 {
+			ssPtr.ContainerImageID = vs.ContainerImageID
 			changed = true
 		}
+	}
+	if vs.State != ssPtr.State {
+		ssPtr.State = vs.State
+		ssPtr.Progress = 100
+		changed = true
 	}
 
 	// If we don't already have a RefCount add one
