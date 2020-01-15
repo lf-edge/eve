@@ -8,7 +8,8 @@ import (
 )
 
 const (
-	agentName = "agentName"
+	agentName  = "agentName"
+	agentScope = "agentScope"
 )
 
 type Item struct {
@@ -20,13 +21,15 @@ var item = Item{
 }
 
 func TestHandleModify(t *testing.T) {
-	sub, err := Subscribe(agentName, item, false, &item)
+	sub, err := SubscribeScope(agentName, agentScope, item, false, &item, nil)
 	if err != nil {
 		t.Fatalf("unable to Subscribe to %s", agentName)
 	}
+	subImpl, ok := sub.(*SubscriptionImpl)
+	if !ok {
+		t.Fatal("Subscription was not a *SubscriptionImpl")
+	}
 
-	sub.agentScope = "agentScope"
-	sub.topic = "topic"
 	created := false
 	modified := false
 	subCreateHandler := func(ctxArg interface{}, key string, status interface{}) {
@@ -37,7 +40,7 @@ func TestHandleModify(t *testing.T) {
 	}
 
 	testMatrix := map[string]struct {
-		ctxArg         SubscriptionImpl
+		ctxArg         *SubscriptionImpl
 		key            string
 		item           interface{}
 		modifyHandler  SubHandler
@@ -46,7 +49,7 @@ func TestHandleModify(t *testing.T) {
 		expectedModify bool
 	}{
 		"Modify Handler is nil": {
-			ctxArg:         *sub,
+			ctxArg:         subImpl,
 			key:            "key_0",
 			item:           item,
 			modifyHandler:  nil,
@@ -55,7 +58,7 @@ func TestHandleModify(t *testing.T) {
 			expectedModify: false,
 		},
 		"Create Handler is nil": {
-			ctxArg:         *sub,
+			ctxArg:         subImpl,
 			key:            "key_1",
 			item:           item,
 			modifyHandler:  subModifyHandler,
@@ -64,7 +67,7 @@ func TestHandleModify(t *testing.T) {
 			expectedModify: true,
 		},
 		"Create Handler and Modify Handler are nil": {
-			ctxArg:         *sub,
+			ctxArg:         subImpl,
 			key:            "key_2",
 			item:           item,
 			modifyHandler:  nil,
@@ -81,7 +84,7 @@ func TestHandleModify(t *testing.T) {
 		if err != nil {
 			t.Fatalf("json.Marshal failed: %s", err)
 		}
-		handleModify(&test.ctxArg, test.key, b)
+		handleModify(test.ctxArg, test.key, b)
 		// Make sure both weren't called
 		assert.Equal(t, created, test.expectedCreate)
 		assert.Equal(t, modified, test.expectedModify)
