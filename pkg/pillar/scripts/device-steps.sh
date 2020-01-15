@@ -224,6 +224,10 @@ echo "$(date -Ins -u) Current downloaded files:"
 ls -lt $PERSISTDIR/downloads/*/*
 echo
 
+echo "$(date -Ins -u) Preserved images:"
+ls -lt $PERSISTDIR/img/
+echo
+
 # Copy any GlobalConfig from /config
 dir=$CONFIGDIR/GlobalConfig
 for f in "$dir"/*.json; do
