@@ -65,9 +65,9 @@ type logDirModifyHandler func(ctx interface{}, logFileName string, source string
 type logDirDeleteHandler func(ctx interface{}, logFileName string, source string)
 
 type logmanagerContext struct {
-	subGlobalConfig *pubsub.Subscription
-	globalConfig    *types.ConfigItemValueMap
-	subDomainStatus *pubsub.Subscription
+	subGlobalConfig pubsub.Subscription
+	globalConfig    *types.GlobalConfig
+	subDomainStatus pubsub.Subscription
 	GCInitialized   bool
 }
 
@@ -115,7 +115,7 @@ type imageLoggerContext struct {
 // Context for handleDNSModify
 type DNSContext struct {
 	usableAddressCount     int
-	subDeviceNetworkStatus *pubsub.Subscription
+	subDeviceNetworkStatus pubsub.Subscription
 	doDeferred             bool
 }
 
@@ -192,33 +192,35 @@ func Run() {
 	}
 
 	logmanagerCtx := logmanagerContext{
-		globalConfig: types.DefaultConfigItemValueMap(),
+		globalConfig: &types.GlobalConfigDefaults,
 	}
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.ConfigItemValueMap{},
-		false, &logmanagerCtx)
+	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+		false, &logmanagerCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.MaxProcessTimeWarn = warningTime
-	subGlobalConfig.MaxProcessTimeError = errorTime
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	logmanagerCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
 	// Get DomainStatus from domainmgr
 	subDomainStatus, err := pubsub.Subscribe("domainmgr",
-		types.DomainStatus{}, false, &logmanagerCtx)
+		types.DomainStatus{}, false, &logmanagerCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleDomainStatusModify,
+			ModifyHandler: handleDomainStatusModify,
+			DeleteHandler: handleDomainStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDomainStatus.MaxProcessTimeWarn = warningTime
-	subDomainStatus.MaxProcessTimeError = errorTime
-	subDomainStatus.ModifyHandler = handleDomainStatusModify
-	subDomainStatus.CreateHandler = handleDomainStatusModify
-	subDomainStatus.DeleteHandler = handleDomainStatusDelete
 	logmanagerCtx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
 
@@ -227,15 +229,16 @@ func Run() {
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &DNSctx)
+		types.DeviceNetworkStatus{}, false, &DNSctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleDNSModify,
+			ModifyHandler: handleDNSModify,
+			DeleteHandler: handleDNSDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
-	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
-	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
-	subDeviceNetworkStatus.CreateHandler = handleDNSModify
-	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
@@ -243,7 +246,7 @@ func Run() {
 	for !logmanagerCtx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
@@ -254,10 +257,10 @@ func Run() {
 	log.Infof("Waiting until we have some management ports with usable addresses\n")
 	for DNSctx.usableAddressCount == 0 && !force {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
 		// This wait can take an unbounded time since we wait for IP
@@ -350,13 +353,13 @@ func Run() {
 
 	for {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDomainStatus.C:
+		case change := <-subDomainStatus.MsgChan():
 			subDomainStatus.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
 		case <-publishTimer.C:
@@ -728,7 +731,7 @@ func sendCtxInit(ctx *logmanagerContext) {
 	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
-	zedcloudCtx.NetworkSendTimeout = ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout)
+	zedcloudCtx.NetworkSendTimeout = ctx.globalConfig.NetworkSendTimeout
 
 	// get the edge box serial number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
@@ -1048,8 +1051,8 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	status := statusArg.(types.ConfigItemValueMap)
-	var gcp *types.ConfigItemValueMap
+	status := statusArg.(types.GlobalConfig)
+	var gcp *types.GlobalConfig
 	debug, gcp = agentlog.HandleGlobalConfigNoDefault(ctx.subGlobalConfig,
 		agentName, debugOverride)
 	if gcp != nil {
@@ -1057,17 +1060,15 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		ctx.GCInitialized = true
 	}
 	foundAgents := make(map[string]bool)
-	defaultRemoteLogLevel := status.GlobalValueString(types.DefaultRemoteLogLevel)
-	if defaultRemoteLogLevel != "" {
+	if status.DefaultRemoteLogLevel != "" {
 		foundAgents["default"] = true
-		addRemoteMap("default", defaultRemoteLogLevel)
+		addRemoteMap("default", status.DefaultRemoteLogLevel)
 	}
-	for agentName := range status.AgentSettings {
+	for agentName, perAgentSetting := range status.AgentSettings {
 		log.Debugf("Processing agentName %s\n", agentName)
 		foundAgents[agentName] = true
-		remoteLogLevel := status.AgentSettingStringValue(agentName, types.LogLevel)
-		if remoteLogLevel != "" {
-			addRemoteMap(agentName, remoteLogLevel)
+		if perAgentSetting.RemoteLogLevel != "" {
+			addRemoteMap(agentName, perAgentSetting.RemoteLogLevel)
 		}
 	}
 	// Any deletes?
@@ -1086,7 +1087,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
+	*ctx.globalConfig = types.GlobalConfigDefaults
 	delRemoteMapAll()
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

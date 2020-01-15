@@ -63,11 +63,11 @@ var Version = "No version specified"
 //
 
 type clientContext struct {
-	subDeviceNetworkStatus *pubsub.Subscription
+	subDeviceNetworkStatus pubsub.Subscription
 	deviceNetworkStatus    *types.DeviceNetworkStatus
 	usableAddressCount     int
-	subGlobalConfig        *pubsub.Subscription
-	globalConfig           *types.ConfigItemValueMap
+	subGlobalConfig        pubsub.Subscription
+	globalConfig           *types.GlobalConfig
 }
 
 var debug = false
@@ -153,33 +153,35 @@ func Run() { //nolint:gocyclo
 
 	clientCtx := clientContext{
 		deviceNetworkStatus: &types.DeviceNetworkStatus{},
-		globalConfig:        types.DefaultConfigItemValueMap(),
+		globalConfig:        &types.GlobalConfigDefaults,
 	}
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.ConfigItemValueMap{},
-		false, &clientCtx)
+	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+		false, &clientCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.MaxProcessTimeWarn = warningTime
-	subGlobalConfig.MaxProcessTimeError = errorTime
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	clientCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &clientCtx)
+		types.DeviceNetworkStatus{}, false, &clientCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleDNSModify,
+			ModifyHandler: handleDNSModify,
+			DeleteHandler: handleDNSDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
-	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
-	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
-	subDeviceNetworkStatus.CreateHandler = handleDNSModify
-	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	clientCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
@@ -194,10 +196,10 @@ func Run() { //nolint:gocyclo
 		log.Infof("Waiting for usableAddressCount %d and done %v\n",
 			clientCtx.usableAddressCount, done)
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 			done = clientCtx.usableAddressCount != 0
 
@@ -229,7 +231,7 @@ func Run() { //nolint:gocyclo
 		DeviceNetworkStatus: clientCtx.deviceNetworkStatus,
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
-		NetworkSendTimeout:  clientCtx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
+		NetworkSendTimeout:  clientCtx.globalConfig.NetworkSendTimeout,
 	}
 
 	// Get device serail number
@@ -586,7 +588,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.ConfigItemValueMap
+	var gcp *types.GlobalConfig
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
@@ -606,7 +608,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
+	*ctx.globalConfig = types.GlobalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 

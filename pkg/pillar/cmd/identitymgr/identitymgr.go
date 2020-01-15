@@ -96,31 +96,33 @@ func Run() {
 	pubEIDStatus.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.ConfigItemValueMap{},
-		false, &identityCtx)
+	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+		false, &identityCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.MaxProcessTimeWarn = warningTime
-	subGlobalConfig.MaxProcessTimeError = errorTime
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	identityCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
 	// Subscribe to EIDConfig from zedmanager
 	subEIDConfig, err := pubsub.Subscribe("zedmanager",
-		types.EIDConfig{}, false, &identityCtx)
+		types.EIDConfig{}, false, &identityCtx, &pubsub.SubscriptionOptions{
+			CreateHandler:  handleCreate,
+			ModifyHandler:  handleModify,
+			DeleteHandler:  handleEIDConfigDelete,
+			RestartHandler: handleRestart,
+			WarningTime:    warningTime,
+			ErrorTime:      errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subEIDConfig.MaxProcessTimeWarn = warningTime
-	subEIDConfig.MaxProcessTimeError = errorTime
-	subEIDConfig.ModifyHandler = handleModify
-	subEIDConfig.CreateHandler = handleCreate
-	subEIDConfig.DeleteHandler = handleEIDConfigDelete
-	subEIDConfig.RestartHandler = handleRestart
 	identityCtx.subEIDConfig = subEIDConfig
 	subEIDConfig.Activate()
 
@@ -128,7 +130,7 @@ func Run() {
 	for !identityCtx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
@@ -138,10 +140,10 @@ func Run() {
 
 	for {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subEIDConfig.C:
+		case change := <-subEIDConfig.MsgChan():
 			subEIDConfig.ProcessChange(change)
 
 		case <-stillRunning.C:
@@ -485,7 +487,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.ConfigItemValueMap
+	var gcp *types.GlobalConfig
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {

@@ -225,29 +225,31 @@ func initPubsubChannels() *dptypes.DataplaneContext {
 	dataplaneContext.PubLispMetrics = pubLispMetrics
 
 	subLispConfig, err := pubsub.Subscribe("zedrouter",
-		types.LispDataplaneConfig{}, false, dataplaneContext)
+		types.LispDataplaneConfig{}, false, dataplaneContext, &pubsub.SubscriptionOptions{
+			CreateHandler: handleExpModify,
+			ModifyHandler: handleExpModify,
+			DeleteHandler: handleExpDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subLispConfig.MaxProcessTimeWarn = warningTime
-	subLispConfig.MaxProcessTimeError = errorTime
-	subLispConfig.ModifyHandler = handleExpModify
-	subLispConfig.CreateHandler = handleExpModify
-	subLispConfig.DeleteHandler = handleExpDelete
 	dataplaneContext.SubLispConfig = subLispConfig
 	subLispConfig.Activate()
 
 	// Look for global config like debug
 	subGlobalConfig, err := pubsub.Subscribe("",
-		types.ConfigItemValueMap{}, false, dataplaneContext)
+		types.GlobalConfig{}, false, dataplaneContext, &pubsub.SubscriptionOptions{
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.MaxProcessTimeWarn = warningTime
-	subGlobalConfig.MaxProcessTimeError = errorTime
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	dataplaneContext.SubGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
@@ -416,14 +418,15 @@ func handleConfig(c *net.UnixConn, dpContext *dptypes.DataplaneContext) {
 	defer c.Close()
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, nil)
+		types.DeviceNetworkStatus{}, false, nil, &pubsub.SubscriptionOptions{
+			ModifyHandler: handleDNSModify,
+			DeleteHandler: handleDNSDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
-	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
-	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
-	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	dpContext.SubDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
@@ -431,7 +434,7 @@ func handleConfig(c *net.UnixConn, dpContext *dptypes.DataplaneContext) {
 	buf := make([]byte, 8192)
 	for {
 		select {
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 			log.Debugf("handleConfig: Detected a change in DeviceNetworkStatus")
 			ManageEtrDNS(deviceNetworkStatus)

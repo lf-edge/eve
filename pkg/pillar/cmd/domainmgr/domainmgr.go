@@ -219,29 +219,31 @@ func Run() {
 	pubAssignableAdapters.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.ConfigItemValueMap{},
-		false, &domainCtx)
+	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+		false, &domainCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.MaxProcessTimeWarn = warningTime
-	subGlobalConfig.MaxProcessTimeError = errorTime
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	domainCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &domainCtx)
+		types.DeviceNetworkStatus{}, false, &domainCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleDNSModify,
+			ModifyHandler: handleDNSModify,
+			DeleteHandler: handleDNSDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
-	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
-	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
-	subDeviceNetworkStatus.CreateHandler = handleDNSModify
-	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	domainCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
@@ -249,7 +251,7 @@ func Run() {
 	for !domainCtx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
@@ -263,10 +265,10 @@ func Run() {
 
 		log.Infof("Waiting for DeviceNetworkStatus init\n")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 		case <-stillRunning.C:
 		}
@@ -275,15 +277,16 @@ func Run() {
 
 	// Subscribe to PhysicalIOAdapterList from zedagent
 	subPhysicalIOAdapter, err := pubsub.Subscribe("zedagent",
-		types.PhysicalIOAdapterList{}, false, &domainCtx)
+		types.PhysicalIOAdapterList{}, false, &domainCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handlePhysicalIOAdapterListCreateModify,
+			ModifyHandler: handlePhysicalIOAdapterListCreateModify,
+			DeleteHandler: handlePhysicalIOAdapterListDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subPhysicalIOAdapter.MaxProcessTimeWarn = warningTime
-	subPhysicalIOAdapter.MaxProcessTimeError = errorTime
-	subPhysicalIOAdapter.CreateHandler = handlePhysicalIOAdapterListCreateModify
-	subPhysicalIOAdapter.ModifyHandler = handlePhysicalIOAdapterListCreateModify
-	subPhysicalIOAdapter.DeleteHandler = handlePhysicalIOAdapterListDelete
 	domainCtx.subPhysicalIOAdapter = subPhysicalIOAdapter
 	subPhysicalIOAdapter.Activate()
 
@@ -291,13 +294,13 @@ func Run() {
 	for !domainCtx.assignableAdapters.Initialized {
 		log.Infof("Waiting for AssignableAdapters")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-subPhysicalIOAdapter.C:
+		case change := <-subPhysicalIOAdapter.MsgChan():
 			subPhysicalIOAdapter.ProcessChange(change)
 
 		// Run stillRunning since we waiting for zedagent to deliver
@@ -310,16 +313,17 @@ func Run() {
 
 	// Subscribe to DomainConfig from zedmanager
 	subDomainConfig, err := pubsub.Subscribe("zedmanager",
-		types.DomainConfig{}, false, &domainCtx)
+		types.DomainConfig{}, false, &domainCtx, &pubsub.SubscriptionOptions{
+			CreateHandler:  handleDomainCreate,
+			ModifyHandler:  handleDomainModify,
+			DeleteHandler:  handleDomainDelete,
+			RestartHandler: handleRestart,
+			WarningTime:    warningTime,
+			ErrorTime:      errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDomainConfig.MaxProcessTimeWarn = warningTime
-	subDomainConfig.MaxProcessTimeError = errorTime
-	subDomainConfig.ModifyHandler = handleDomainModify
-	subDomainConfig.CreateHandler = handleDomainCreate
-	subDomainConfig.DeleteHandler = handleDomainDelete
-	subDomainConfig.RestartHandler = handleRestart
 	domainCtx.subDomainConfig = subDomainConfig
 	subDomainConfig.Activate()
 
@@ -332,16 +336,16 @@ func Run() {
 
 	for {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDomainConfig.C:
+		case change := <-subDomainConfig.MsgChan():
 			subDomainConfig.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-subPhysicalIOAdapter.C:
+		case change := <-subPhysicalIOAdapter.MsgChan():
 			subPhysicalIOAdapter.ProcessChange(change)
 
 		case <-gc.C:
@@ -2520,18 +2524,18 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.ConfigItemValueMap
+	var gcp *types.GlobalConfig
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
-		if gcp.GlobalValueInt(types.VdiskGCTime) != 0 {
-			vdiskGCTime = time.Duration(gcp.GlobalValueInt(types.VdiskGCTime)) * time.Second
+		if gcp.VdiskGCTime != 0 {
+			vdiskGCTime = time.Duration(gcp.VdiskGCTime) * time.Second
 		}
-		if gcp.GlobalValueInt(types.DomainBootRetryTime) != 0 {
-			domainBootRetryTime = time.Duration(gcp.GlobalValueInt(types.DomainBootRetryTime)) * time.Second
+		if gcp.DomainBootRetryTime != 0 {
+			domainBootRetryTime = time.Duration(gcp.DomainBootRetryTime) * time.Second
 		}
-		if gcp.GlobalValueBool(types.UsbAccess) != ctx.usbAccess {
-			ctx.usbAccess = gcp.GlobalValueBool(types.UsbAccess)
+		if gcp.UsbAccess != ctx.usbAccess {
+			ctx.usbAccess = gcp.UsbAccess
 			updateUsbAccess(ctx)
 		}
 		ctx.GCInitialized = true

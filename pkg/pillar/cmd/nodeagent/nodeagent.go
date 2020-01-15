@@ -60,13 +60,13 @@ var rebootDelay = 30
 type nodeagentContext struct {
 	GCInitialized          bool // Received initial GlobalConfig
 	DNSinitialized         bool // Received DeviceNetworkStatus
-	globalConfig           *types.ConfigItemValueMap
-	subGlobalConfig        *pubsub.Subscription
-	subZbootStatus         *pubsub.Subscription
-	subZedAgentStatus      *pubsub.Subscription
-	subDeviceNetworkStatus *pubsub.Subscription
-	pubZbootConfig         *pubsub.Publication
-	pubNodeAgentStatus     *pubsub.Publication
+	globalConfig           *types.GlobalConfig
+	subGlobalConfig        pubsub.Subscription
+	subZbootStatus         pubsub.Subscription
+	subZedAgentStatus      pubsub.Subscription
+	subDeviceNetworkStatus pubsub.Subscription
+	pubZbootConfig         pubsub.Publication
+	pubNodeAgentStatus     pubsub.Publication
 	curPart                string
 	upgradeTestStartTime   uint32
 	tickerTimer            *time.Ticker
@@ -127,7 +127,7 @@ func Run() {
 	nodeagentCtx.curPart = strings.TrimSpace(curpart)
 
 	nodeagentCtx.sshAccess = true // Kernel default - no iptables filters
-	nodeagentCtx.globalConfig = types.DefaultConfigItemValueMap()
+	nodeagentCtx.globalConfig = &types.GlobalConfigDefaults
 
 	// start the watchdog process timer tick
 	duration := time.Duration(watchdogInterval) * time.Second
@@ -162,16 +162,17 @@ func Run() {
 	nodeagentCtx.pubZbootConfig = pubZbootConfig
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.ConfigItemValueMap{},
-		false, &nodeagentCtx)
+	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+		false, &nodeagentCtx, &pubsub.SubscriptionOptions{
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			SyncHandler:   handleGlobalConfigSynchronized,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.MaxProcessTimeWarn = warningTime
-	subGlobalConfig.MaxProcessTimeError = errorTime
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
-	subGlobalConfig.SynchronizedHandler = handleGlobalConfigSynchronized
 	nodeagentCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
@@ -189,7 +190,7 @@ func Run() {
 	for !nodeagentCtx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
 		case <-nodeagentCtx.tickerTimer.C:
@@ -224,7 +225,7 @@ func Run() {
 	log.Infof("Waiting for device registration check\n")
 	for !nodeagentCtx.deviceRegistered {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
 		case <-nodeagentCtx.tickerTimer.C:
@@ -240,40 +241,42 @@ func Run() {
 
 	// subscribe to zboot status events
 	subZbootStatus, err := pubsub.Subscribe("baseosmgr",
-		types.ZbootStatus{}, false, &nodeagentCtx)
+		types.ZbootStatus{}, false, &nodeagentCtx, &pubsub.SubscriptionOptions{
+			ModifyHandler: handleZbootStatusModify,
+			DeleteHandler: handleZbootStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subZbootStatus.MaxProcessTimeWarn = warningTime
-	subZbootStatus.MaxProcessTimeError = errorTime
-	subZbootStatus.ModifyHandler = handleZbootStatusModify
-	subZbootStatus.DeleteHandler = handleZbootStatusDelete
 	nodeagentCtx.subZbootStatus = subZbootStatus
 	subZbootStatus.Activate()
 
 	// subscribe to zedagent status events
 	subZedAgentStatus, err := pubsub.Subscribe("zedagent",
-		types.ZedAgentStatus{}, false, &nodeagentCtx)
+		types.ZedAgentStatus{}, false, &nodeagentCtx, &pubsub.SubscriptionOptions{
+			ModifyHandler: handleZedAgentStatusModify,
+			DeleteHandler: handleZedAgentStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subZedAgentStatus.MaxProcessTimeWarn = warningTime
-	subZedAgentStatus.MaxProcessTimeError = errorTime
-	subZedAgentStatus.ModifyHandler = handleZedAgentStatusModify
-	subZedAgentStatus.DeleteHandler = handleZedAgentStatusDelete
 	nodeagentCtx.subZedAgentStatus = subZedAgentStatus
 	subZedAgentStatus.Activate()
 
 	log.Infof("zedbox event loop\n")
 	for {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subZbootStatus.C:
+		case change := <-subZbootStatus.MsgChan():
 			subZbootStatus.ProcessChange(change)
 
-		case change := <-subZedAgentStatus.C:
+		case change := <-subZedAgentStatus.MsgChan():
 			subZedAgentStatus.ProcessChange(change)
 
 		case <-nodeagentCtx.tickerTimer.C:
@@ -308,11 +311,17 @@ func handleGlobalConfigModify(ctxArg interface{},
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.ConfigItemValueMap
+	var gcp *types.GlobalConfig
 	debug, gcp = agentlog.HandleGlobalConfig(ctxPtr.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil && !ctxPtr.GCInitialized {
-		ctxPtr.globalConfig = gcp
+		updated := types.ApplyGlobalConfig(*gcp)
+		log.Infof("handleGlobalConfigModify setting initials to %+v\n",
+			updated)
+		sane := types.EnforceGlobalConfigMinimums(updated)
+		log.Infof("handleGlobalConfigModify: enforced minimums %v\n",
+			cmp.Diff(updated, sane))
+		ctxPtr.globalConfig = &sane
 		ctxPtr.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify(%s): done\n", key)
@@ -329,7 +338,7 @@ func handleGlobalConfigDelete(ctxArg interface{},
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctxPtr.subGlobalConfig, agentName,
 		debugOverride)
-	ctxPtr.globalConfig = types.DefaultConfigItemValueMap()
+	ctxPtr.globalConfig = &types.GlobalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 
@@ -382,28 +391,30 @@ func handleZbootStatusDelete(ctxArg interface{},
 func checkNetworkConnectivity(ctxPtr *nodeagentContext) {
 	// for device network status
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, ctxPtr)
+		types.DeviceNetworkStatus{}, false, ctxPtr, &pubsub.SubscriptionOptions{
+			ModifyHandler: handleDNSModify,
+			DeleteHandler: handleDNSDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
-	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
-	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
-	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	ctxPtr.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
 	ctxPtr.deviceNetworkStatus = &types.DeviceNetworkStatus{}
 	ctxPtr.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*ctxPtr.deviceNetworkStatus)
 	log.Infof("Waiting until we have some uplinks with usable addresses\n")
+
 	for !ctxPtr.DNSinitialized {
 		log.Infof("Waiting for DeviceNetworkStatus: %v\n",
 			ctxPtr.DNSinitialized)
 		select {
-		case change := <-ctxPtr.subGlobalConfig.C:
+		case change := <-ctxPtr.subGlobalConfig.MsgChan():
 			ctxPtr.subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
 		case <-ctxPtr.tickerTimer.C:

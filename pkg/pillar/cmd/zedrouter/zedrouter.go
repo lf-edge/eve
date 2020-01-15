@@ -157,42 +157,45 @@ func Run() {
 		make(map[uuid.UUID]*types.NetworkInstanceStatus)
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &zedrouterCtx)
+		types.DeviceNetworkStatus{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleDNSModify,
+			ModifyHandler: handleDNSModify,
+			DeleteHandler: handleDNSDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
-	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
-	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
-	subDeviceNetworkStatus.CreateHandler = handleDNSModify
-	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	zedrouterCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
 	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
-		types.AssignableAdapters{}, false, &zedrouterCtx)
+		types.AssignableAdapters{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleAAModify,
+			ModifyHandler: handleAAModify,
+			DeleteHandler: handleAADelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAssignableAdapters.MaxProcessTimeWarn = warningTime
-	subAssignableAdapters.MaxProcessTimeError = errorTime
-	subAssignableAdapters.ModifyHandler = handleAAModify
-	subAssignableAdapters.CreateHandler = handleAAModify
-	subAssignableAdapters.DeleteHandler = handleAADelete
 	zedrouterCtx.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.ConfigItemValueMap{},
-		false, &zedrouterCtx)
+	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+		false, &zedrouterCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.MaxProcessTimeWarn = warningTime
-	subGlobalConfig.MaxProcessTimeError = errorTime
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	zedrouterCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
@@ -254,7 +257,7 @@ func Run() {
 	for !zedrouterCtx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
@@ -271,13 +274,13 @@ func Run() {
 	for !zedrouterCtx.assignableAdapters.Initialized {
 		log.Infof("Waiting for AssignableAdapters\n")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subAssignableAdapters.C:
+		case change := <-subAssignableAdapters.MsgChan():
 			subAssignableAdapters.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
 		// Run stillRunning since we waiting for zedagent to deliver
@@ -290,69 +293,74 @@ func Run() {
 	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
 
 	subNetworkInstanceConfig, err := pubsub.Subscribe("zedagent",
-		types.NetworkInstanceConfig{}, false, &zedrouterCtx)
+		types.NetworkInstanceConfig{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleNetworkInstanceModify,
+			ModifyHandler: handleNetworkInstanceModify,
+			DeleteHandler: handleNetworkInstanceDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subNetworkInstanceConfig.MaxProcessTimeWarn = warningTime
-	subNetworkInstanceConfig.MaxProcessTimeError = errorTime
-	subNetworkInstanceConfig.ModifyHandler = handleNetworkInstanceModify
-	subNetworkInstanceConfig.CreateHandler = handleNetworkInstanceModify
-	subNetworkInstanceConfig.DeleteHandler = handleNetworkInstanceDelete
 	zedrouterCtx.subNetworkInstanceConfig = subNetworkInstanceConfig
 	subNetworkInstanceConfig.Activate()
 	log.Infof("Subscribed to NetworkInstanceConfig")
 
 	// Subscribe to AppNetworkConfig from zedmanager and from zedagent
 	subAppNetworkConfig, err := pubsub.Subscribe("zedmanager",
-		types.AppNetworkConfig{}, false, &zedrouterCtx)
+		types.AppNetworkConfig{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
+			CreateHandler:  handleAppNetworkCreate,
+			ModifyHandler:  handleAppNetworkModify,
+			DeleteHandler:  handleAppNetworkConfigDelete,
+			RestartHandler: handleRestart,
+			WarningTime:    warningTime,
+			ErrorTime:      errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppNetworkConfig.MaxProcessTimeWarn = warningTime
-	subAppNetworkConfig.MaxProcessTimeError = errorTime
-	subAppNetworkConfig.ModifyHandler = handleAppNetworkModify
-	subAppNetworkConfig.CreateHandler = handleAppNetworkCreate
-	subAppNetworkConfig.DeleteHandler = handleAppNetworkConfigDelete
-	subAppNetworkConfig.RestartHandler = handleRestart
 	zedrouterCtx.subAppNetworkConfig = subAppNetworkConfig
 	subAppNetworkConfig.Activate()
 
 	// Subscribe to AppNetworkConfig from zedmanager
 	subAppNetworkConfigAg, err := pubsub.Subscribe("zedagent",
-		types.AppNetworkConfig{}, false, &zedrouterCtx)
+		types.AppNetworkConfig{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleAppNetworkCreate,
+			ModifyHandler: handleAppNetworkModify,
+			DeleteHandler: handleAppNetworkConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppNetworkConfigAg.MaxProcessTimeWarn = warningTime
-	subAppNetworkConfigAg.MaxProcessTimeError = errorTime
-	subAppNetworkConfigAg.ModifyHandler = handleAppNetworkModify
-	subAppNetworkConfigAg.CreateHandler = handleAppNetworkCreate
-	subAppNetworkConfigAg.DeleteHandler = handleAppNetworkConfigDelete
 	zedrouterCtx.subAppNetworkConfigAg = subAppNetworkConfigAg
 	subAppNetworkConfigAg.Activate()
 
 	subLispInfoStatus, err := pubsub.Subscribe("lisp-ztr",
-		types.LispInfoStatus{}, false, &zedrouterCtx)
+		types.LispInfoStatus{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
+			ModifyHandler: handleLispInfoModify,
+			DeleteHandler: handleLispInfoDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subLispInfoStatus.MaxProcessTimeWarn = warningTime
-	subLispInfoStatus.MaxProcessTimeError = errorTime
-	subLispInfoStatus.ModifyHandler = handleLispInfoModify
-	subLispInfoStatus.DeleteHandler = handleLispInfoDelete
 	zedrouterCtx.subLispInfoStatus = subLispInfoStatus
 	subLispInfoStatus.Activate()
 
 	subLispMetrics, err := pubsub.Subscribe("lisp-ztr",
-		types.LispMetrics{}, false, &zedrouterCtx)
+		types.LispMetrics{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
+			ModifyHandler: handleLispMetricsModify,
+			DeleteHandler: handleLispMetricsDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subLispMetrics.MaxProcessTimeWarn = warningTime
-	subLispMetrics.MaxProcessTimeError = errorTime
-	subLispMetrics.ModifyHandler = handleLispMetricsModify
-	subLispMetrics.DeleteHandler = handleLispMetricsDelete
 	zedrouterCtx.subLispMetrics = subLispMetrics
 	subLispMetrics.Activate()
 
@@ -390,19 +398,19 @@ func Run() {
 	for !subAppNetworkConfig.Restarted() {
 		log.Infof("Waiting for zedmanager to report restarted\n")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subAssignableAdapters.C:
+		case change := <-subAssignableAdapters.MsgChan():
 			subAssignableAdapters.ProcessChange(change)
 
-		case change := <-subAppNetworkConfig.C:
+		case change := <-subAppNetworkConfig.MsgChan():
 			subAppNetworkConfig.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-subNetworkInstanceConfig.C:
+		case change := <-subNetworkInstanceConfig.MsgChan():
 			log.Infof("AppNetworkConfig - waiting to Restart - "+
 				"InstanceConfig change at %+v", time.Now())
 			subNetworkInstanceConfig.ProcessChange(change)
@@ -423,19 +431,19 @@ func Run() {
 
 	for {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subAssignableAdapters.C:
+		case change := <-subAssignableAdapters.MsgChan():
 			subAssignableAdapters.ProcessChange(change)
 
-		case change := <-subAppNetworkConfig.C:
+		case change := <-subAppNetworkConfig.MsgChan():
 			subAppNetworkConfig.ProcessChange(change)
 
-		case change := <-subAppNetworkConfigAg.C:
+		case change := <-subAppNetworkConfigAg.MsgChan():
 			subAppNetworkConfigAg.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
 		case change, ok := <-addrChanges:
@@ -542,14 +550,14 @@ func Run() {
 			pubsub.CheckMaxTimeTopic(agentName, "checkAndReprogram", start,
 				warningTime, errorTime)
 
-		case change := <-subNetworkInstanceConfig.C:
+		case change := <-subNetworkInstanceConfig.MsgChan():
 			log.Infof("NetworkInstanceConfig change at %+v", time.Now())
 			subNetworkInstanceConfig.ProcessChange(change)
 
-		case change := <-subLispInfoStatus.C:
+		case change := <-subLispInfoStatus.MsgChan():
 			subLispInfoStatus.ProcessChange(change)
 
-		case change := <-subLispMetrics.C:
+		case change := <-subLispMetrics.MsgChan():
 			subLispMetrics.ProcessChange(change)
 
 		case <-stillRunning.C:
@@ -2755,7 +2763,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.ConfigItemValueMap
+	var gcp *types.GlobalConfig
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {

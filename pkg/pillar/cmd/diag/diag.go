@@ -47,11 +47,11 @@ type diagContext struct {
 	pacContents             bool // Print PAC file contents
 	ledCounter              int
 	derivedLedCounter       int // Based on ledCounter + usableAddressCount
-	subGlobalConfig         *pubsub.Subscription
-	globalConfig            *types.ConfigItemValueMap
-	subLedBlinkCounter      *pubsub.Subscription
-	subDeviceNetworkStatus  *pubsub.Subscription
-	subDevicePortConfigList *pubsub.Subscription
+	subGlobalConfig         pubsub.Subscription
+	globalConfig            *types.GlobalConfig
+	subLedBlinkCounter      pubsub.Subscription
+	subDeviceNetworkStatus  pubsub.Subscription
+	subDevicePortConfigList pubsub.Subscription
 	gotBC                   bool
 	gotDNS                  bool
 	gotDPCList              bool
@@ -109,7 +109,7 @@ func Run() {
 	ctx := diagContext{
 		forever:      *foreverPtr,
 		pacContents:  *pacContentsPtr,
-		globalConfig: types.DefaultConfigItemValueMap(),
+		globalConfig: &types.GlobalConfigDefaults,
 	}
 	ctx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
@@ -118,16 +118,17 @@ func Run() {
 	utils.EnsureGCFile()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.ConfigItemValueMap{},
-		false, &ctx)
+	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+		false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.MaxProcessTimeWarn = warningTime
-	subGlobalConfig.MaxProcessTimeError = errorTime
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
@@ -142,7 +143,7 @@ func Run() {
 		DeviceNetworkStatus: ctx.DeviceNetworkStatus,
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
-		NetworkSendTimeout:  ctx.globalConfig.GlobalValueInt(types.NetworkSendTimeout),
+		NetworkSendTimeout:  ctx.globalConfig.NetworkTestTimeout,
 	}
 
 	// Get device serial number
@@ -183,57 +184,60 @@ func Run() {
 	ctx.zedcloudCtx = &zedcloudCtx
 
 	subLedBlinkCounter, err := pubsub.Subscribe("", types.LedBlinkCounter{},
-		false, &ctx)
+		false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleLedBlinkModify,
+			ModifyHandler: handleLedBlinkModify,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		errStr := fmt.Sprintf("ERROR: internal Subscribe failed %s\n", err)
 		panic(errStr)
 	}
-	subLedBlinkCounter.MaxProcessTimeWarn = warningTime
-	subLedBlinkCounter.MaxProcessTimeError = errorTime
-	subLedBlinkCounter.ModifyHandler = handleLedBlinkModify
-	subLedBlinkCounter.CreateHandler = handleLedBlinkModify
 	ctx.subLedBlinkCounter = subLedBlinkCounter
 	subLedBlinkCounter.Activate()
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &ctx)
+		types.DeviceNetworkStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleDNSModify,
+			ModifyHandler: handleDNSModify,
+			DeleteHandler: handleDNSDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		errStr := fmt.Sprintf("ERROR: internal Subscribe failed %s\n", err)
 		panic(errStr)
 	}
-	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
-	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
-	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
-	subDeviceNetworkStatus.CreateHandler = handleDNSModify
-	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
 	subDevicePortConfigList, err := pubsub.SubscribePersistent("nim",
-		types.DevicePortConfigList{}, false, &ctx)
+		types.DevicePortConfigList{}, false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleDPCModify,
+			ModifyHandler: handleDPCModify,
+		})
 	if err != nil {
 		errStr := fmt.Sprintf("ERROR: internal Subscribe failed %s\n", err)
 		panic(errStr)
 	}
-	subDevicePortConfigList.ModifyHandler = handleDPCModify
-	subDevicePortConfigList.CreateHandler = handleDPCModify
 	ctx.subDevicePortConfigList = subDevicePortConfigList
 	subDevicePortConfigList.Activate()
 
 	for {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subLedBlinkCounter.C:
+		case change := <-subLedBlinkCounter.MsgChan():
 			ctx.gotBC = true
 			subLedBlinkCounter.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			ctx.gotDNS = true
 			subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-subDevicePortConfigList.C:
+		case change := <-subDevicePortConfigList.MsgChan():
 			ctx.gotDPCList = true
 			subDevicePortConfigList.ProcessChange(change)
 		}
@@ -851,7 +855,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	var gcp *types.ConfigItemValueMap
+	var gcp *types.GlobalConfig
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	if gcp != nil {
@@ -871,6 +875,6 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	*ctx.globalConfig = *types.DefaultConfigItemValueMap()
+	*ctx.globalConfig = types.GlobalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
