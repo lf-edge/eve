@@ -777,7 +777,7 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	t := time.Now()
 	elapsed := t.Sub(status.LastErrTime)
 	if elapsed < domainBootRetryTime {
-		log.Infof("maybeRetryBoot(%s) %v remaining\n",
+		log.Infof("maybeRetryBoot(%s) %d remaining\n",
 			status.Key(),
 			(domainBootRetryTime-elapsed)/time.Second)
 		return
