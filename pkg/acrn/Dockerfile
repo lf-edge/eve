@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:8727b17d0d3c6d85ed6634637e76e6fbab83b726 as kernel-build
+FROM lfedge/eve-alpine:9cf408427ca05cd7795e92ca827cc678e3c295cc as kernel-build
 
 RUN apk add --no-cache \
     gcc=8.3.0-r0 \

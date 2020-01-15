@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:8727b17d0d3c6d85ed6634637e76e6fbab83b726 as kernel-build
+FROM lfedge/eve-alpine:9cf408427ca05cd7795e92ca827cc678e3c295cc as kernel-build
 
 RUN apk --no-cache add \
     argp-standalone=1.3-r3 \
@@ -28,6 +28,7 @@ RUN apk --no-cache add \
     xz-dev=5.2.4-r0 \
     zlib-dev=1.2.11-r1 \
     openssl=1.1.1d-r2 \
+    lz4=1.8.3-r2 \
     lz4-libs=1.8.3-r2 \
     elfutils-libelf=0.168-r2 \
     elfutils-dev=0.168-r2
