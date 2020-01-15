@@ -32,40 +32,43 @@ type downloaderContext struct {
 func (ctx *downloaderContext) registerHandlers() error {
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
-		false, ctx)
+		false, ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		return err
 	}
-	subGlobalConfig.MaxProcessTimeWarn = warningTime
-	subGlobalConfig.MaxProcessTimeError = errorTime
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, ctx)
+		types.DeviceNetworkStatus{}, false, ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleDNSModify,
+			ModifyHandler: handleDNSModify,
+			DeleteHandler: handleDNSDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		return err
 	}
-	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
-	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
-	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
-	subDeviceNetworkStatus.CreateHandler = handleDNSModify
-	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
 	subGlobalDownloadConfig, err := pubsub.Subscribe("",
-		types.GlobalDownloadConfig{}, false, ctx)
+		types.GlobalDownloadConfig{}, false, ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleGlobalDownloadConfigModify,
+			ModifyHandler: handleGlobalDownloadConfigModify,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		return err
 	}
-	subGlobalDownloadConfig.MaxProcessTimeWarn = warningTime
-	subGlobalDownloadConfig.MaxProcessTimeError = errorTime
-	subGlobalDownloadConfig.ModifyHandler = handleGlobalDownloadConfigModify
-	subGlobalDownloadConfig.CreateHandler = handleGlobalDownloadConfigModify
 	ctx.subGlobalDownloadConfig = subGlobalDownloadConfig
 	subGlobalDownloadConfig.Activate()
 
@@ -73,15 +76,16 @@ func (ctx *downloaderContext) registerHandlers() error {
 	// before any download config ( App/baseos/cert). Without DataStore Config,
 	// Image Downloads will run into errors.
 	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
-		types.DatastoreConfig{}, false, ctx)
+		types.DatastoreConfig{}, false, ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleDatastoreConfigModify,
+			ModifyHandler: handleDatastoreConfigModify,
+			DeleteHandler: handleDatastoreConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		return err
 	}
-	subDatastoreConfig.MaxProcessTimeWarn = warningTime
-	subDatastoreConfig.MaxProcessTimeError = errorTime
-	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
-	subDatastoreConfig.CreateHandler = handleDatastoreConfigModify
-	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
 	ctx.subDatastoreConfig = subDatastoreConfig
 	subDatastoreConfig.Activate()
 
@@ -118,41 +122,44 @@ func (ctx *downloaderContext) registerHandlers() error {
 	pubCertObjStatus.ClearRestarted()
 
 	subAppImgConfig, err := pubsub.SubscribeScope("zedmanager",
-		types.AppImgObj, types.DownloaderConfig{}, false, ctx)
+		types.AppImgObj, types.DownloaderConfig{}, false, ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleAppImgCreate,
+			ModifyHandler: handleAppImgModify,
+			DeleteHandler: handleAppImgDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		return err
 	}
-	subAppImgConfig.MaxProcessTimeWarn = warningTime
-	subAppImgConfig.MaxProcessTimeError = errorTime
-	subAppImgConfig.ModifyHandler = handleAppImgModify
-	subAppImgConfig.CreateHandler = handleAppImgCreate
-	subAppImgConfig.DeleteHandler = handleAppImgDelete
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
 
 	subBaseOsConfig, err := pubsub.SubscribeScope("baseosmgr",
-		types.BaseOsObj, types.DownloaderConfig{}, false, ctx)
+		types.BaseOsObj, types.DownloaderConfig{}, false, ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleBaseOsCreate,
+			ModifyHandler: handleBaseOsModify,
+			DeleteHandler: handleBaseOsDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		return err
 	}
-	subBaseOsConfig.MaxProcessTimeWarn = warningTime
-	subBaseOsConfig.MaxProcessTimeError = errorTime
-	subBaseOsConfig.ModifyHandler = handleBaseOsModify
-	subBaseOsConfig.CreateHandler = handleBaseOsCreate
-	subBaseOsConfig.DeleteHandler = handleBaseOsDelete
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
 	subCertObjConfig, err := pubsub.SubscribeScope("baseosmgr",
-		types.CertObj, types.DownloaderConfig{}, false, ctx)
+		types.CertObj, types.DownloaderConfig{}, false, ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleCertObjCreate,
+			ModifyHandler: handleCertObjModify,
+			DeleteHandler: handleCertObjDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		return err
 	}
-	subCertObjConfig.MaxProcessTimeWarn = warningTime
-	subCertObjConfig.MaxProcessTimeError = errorTime
-	subCertObjConfig.ModifyHandler = handleCertObjModify
-	subCertObjConfig.CreateHandler = handleCertObjCreate
-	subCertObjConfig.DeleteHandler = handleCertObjDelete
 	ctx.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()
 

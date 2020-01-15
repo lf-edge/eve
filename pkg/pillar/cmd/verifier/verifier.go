@@ -141,53 +141,57 @@ func Run() {
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
-		false, &ctx)
+		false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.MaxProcessTimeWarn = warningTime
-	subGlobalConfig.MaxProcessTimeError = errorTime
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
 	subAppImgConfig, err := pubsub.SubscribeScope("zedmanager",
-		types.AppImgObj, types.VerifyImageConfig{}, false, &ctx)
+		types.AppImgObj, types.VerifyImageConfig{}, false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleAppImgCreate,
+			ModifyHandler: handleAppImgModify,
+			DeleteHandler: handleAppImgDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppImgConfig.MaxProcessTimeWarn = warningTime
-	subAppImgConfig.MaxProcessTimeError = errorTime
-	subAppImgConfig.ModifyHandler = handleAppImgModify
-	subAppImgConfig.CreateHandler = handleAppImgCreate
-	subAppImgConfig.DeleteHandler = handleAppImgDelete
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
 
 	subBaseOsConfig, err := pubsub.SubscribeScope("baseosmgr",
-		types.BaseOsObj, types.VerifyImageConfig{}, false, &ctx)
+		types.BaseOsObj, types.VerifyImageConfig{}, false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleBaseOsCreate,
+			ModifyHandler: handleBaseOsModify,
+			DeleteHandler: handleBaseOsDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subBaseOsConfig.MaxProcessTimeWarn = warningTime
-	subBaseOsConfig.MaxProcessTimeError = errorTime
-	subBaseOsConfig.ModifyHandler = handleBaseOsModify
-	subBaseOsConfig.CreateHandler = handleBaseOsCreate
-	subBaseOsConfig.DeleteHandler = handleBaseOsDelete
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
 	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
-		types.AssignableAdapters{}, false, &ctx)
+		types.AssignableAdapters{}, false, &ctx, &pubsub.SubscriptionOptions{
+			ModifyHandler: handleAAModify,
+			DeleteHandler: handleAADelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAssignableAdapters.MaxProcessTimeWarn = warningTime
-	subAssignableAdapters.MaxProcessTimeError = errorTime
-	subAssignableAdapters.ModifyHandler = handleAAModify
-	subAssignableAdapters.DeleteHandler = handleAADelete
 	ctx.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
@@ -195,7 +199,7 @@ func Run() {
 	for !ctx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
@@ -222,16 +226,16 @@ func Run() {
 
 	for {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subAppImgConfig.C:
+		case change := <-subAppImgConfig.MsgChan():
 			subAppImgConfig.ProcessChange(change)
 
-		case change := <-subBaseOsConfig.C:
+		case change := <-subBaseOsConfig.MsgChan():
 			subBaseOsConfig.ProcessChange(change)
 
-		case change := <-subAssignableAdapters.C:
+		case change := <-subAssignableAdapters.MsgChan():
 			subAssignableAdapters.ProcessChange(change)
 
 		case <-ctx.gc.C:
