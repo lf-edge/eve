@@ -502,15 +502,16 @@ func initializeGlobalConfigHandles(ctx *baseOsMgrContext) {
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
-		false, ctx)
+		false, ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.MaxProcessTimeWarn = warningTime
-	subGlobalConfig.MaxProcessTimeError = errorTime
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 }
@@ -518,28 +519,30 @@ func initializeGlobalConfigHandles(ctx *baseOsMgrContext) {
 func initializeNodeAgentHandles(ctx *baseOsMgrContext) {
 	// Look for NodeAgentStatus, from zedagent
 	subNodeAgentStatus, err := pubsub.Subscribe("nodeagent",
-		types.NodeAgentStatus{}, false, ctx)
+		types.NodeAgentStatus{}, false, ctx, &pubsub.SubscriptionOptions{
+			ModifyHandler: handleNodeAgentStatusModify,
+			DeleteHandler: handleNodeAgentStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subNodeAgentStatus.MaxProcessTimeWarn = warningTime
-	subNodeAgentStatus.MaxProcessTimeError = errorTime
-	subNodeAgentStatus.ModifyHandler = handleNodeAgentStatusModify
-	subNodeAgentStatus.DeleteHandler = handleNodeAgentStatusDelete
 	ctx.subNodeAgentStatus = subNodeAgentStatus
 	subNodeAgentStatus.Activate()
 
 	// Look for ZbootConfig, from nodeagent
 	subZbootConfig, err := pubsub.Subscribe("nodeagent",
-		types.ZbootConfig{}, false, ctx)
+		types.ZbootConfig{}, false, ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleZbootConfigModify,
+			ModifyHandler: handleZbootConfigModify,
+			DeleteHandler: handleZbootConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subZbootConfig.MaxProcessTimeWarn = warningTime
-	subZbootConfig.MaxProcessTimeError = errorTime
-	subZbootConfig.ModifyHandler = handleZbootConfigModify
-	subZbootConfig.CreateHandler = handleZbootConfigModify
-	subZbootConfig.DeleteHandler = handleZbootConfigDelete
 	ctx.subZbootConfig = subZbootConfig
 	subZbootConfig.Activate()
 }
@@ -547,29 +550,31 @@ func initializeNodeAgentHandles(ctx *baseOsMgrContext) {
 func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	// Look for BaseOsConfig , from zedagent
 	subBaseOsConfig, err := pubsub.Subscribe("zedagent",
-		types.BaseOsConfig{}, false, ctx)
+		types.BaseOsConfig{}, false, ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleBaseOsCreate,
+			ModifyHandler: handleBaseOsModify,
+			DeleteHandler: handleBaseOsConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subBaseOsConfig.MaxProcessTimeWarn = warningTime
-	subBaseOsConfig.MaxProcessTimeError = errorTime
-	subBaseOsConfig.ModifyHandler = handleBaseOsModify
-	subBaseOsConfig.CreateHandler = handleBaseOsCreate
-	subBaseOsConfig.DeleteHandler = handleBaseOsConfigDelete
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
 	// Look for CertObjConfig, from zedagent
 	subCertObjConfig, err := pubsub.Subscribe("zedagent",
-		types.CertObjConfig{}, false, ctx)
+		types.CertObjConfig{}, false, ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleCertObjCreate,
+			ModifyHandler: handleCertObjModify,
+			DeleteHandler: handleCertObjConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subCertObjConfig.MaxProcessTimeWarn = warningTime
-	subCertObjConfig.MaxProcessTimeError = errorTime
-	subCertObjConfig.ModifyHandler = handleCertObjModify
-	subCertObjConfig.CreateHandler = handleCertObjCreate
-	subCertObjConfig.DeleteHandler = handleCertObjConfigDelete
 	ctx.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()
 }
@@ -577,29 +582,31 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 func initializeDownloaderHandles(ctx *baseOsMgrContext) {
 	// Look for BaseOs DownloaderStatus from downloader
 	subBaseOsDownloadStatus, err := pubsub.SubscribeScope("downloader",
-		types.BaseOsObj, types.DownloaderStatus{}, false, ctx)
+		types.BaseOsObj, types.DownloaderStatus{}, false, ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleDownloadStatusModify,
+			ModifyHandler: handleDownloadStatusModify,
+			DeleteHandler: handleDownloadStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subBaseOsDownloadStatus.MaxProcessTimeWarn = warningTime
-	subBaseOsDownloadStatus.MaxProcessTimeError = errorTime
-	subBaseOsDownloadStatus.ModifyHandler = handleDownloadStatusModify
-	subBaseOsDownloadStatus.CreateHandler = handleDownloadStatusModify
-	subBaseOsDownloadStatus.DeleteHandler = handleDownloadStatusDelete
 	ctx.subBaseOsDownloadStatus = subBaseOsDownloadStatus
 	subBaseOsDownloadStatus.Activate()
 
 	// Look for Certs DownloaderStatus from downloader
 	subCertObjDownloadStatus, err := pubsub.SubscribeScope("downloader",
-		types.CertObj, types.DownloaderStatus{}, false, ctx)
+		types.CertObj, types.DownloaderStatus{}, false, ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleDownloadStatusModify,
+			ModifyHandler: handleDownloadStatusModify,
+			DeleteHandler: handleDownloadStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subCertObjDownloadStatus.MaxProcessTimeWarn = warningTime
-	subCertObjDownloadStatus.MaxProcessTimeError = errorTime
-	subCertObjDownloadStatus.ModifyHandler = handleDownloadStatusModify
-	subCertObjDownloadStatus.CreateHandler = handleDownloadStatusModify
-	subCertObjDownloadStatus.DeleteHandler = handleDownloadStatusDelete
 	ctx.subCertObjDownloadStatus = subCertObjDownloadStatus
 	subCertObjDownloadStatus.Activate()
 
@@ -608,16 +615,16 @@ func initializeDownloaderHandles(ctx *baseOsMgrContext) {
 func initializeVerifierHandles(ctx *baseOsMgrContext) {
 	// Look for VerifyImageStatus from verifier
 	subBaseOsVerifierStatus, err := pubsub.SubscribeScope("verifier",
-		types.BaseOsObj, types.VerifyImageStatus{}, false, ctx)
+		types.BaseOsObj, types.VerifyImageStatus{}, false, ctx, &pubsub.SubscriptionOptions{
+			CreateHandler:  handleVerifierStatusModify,
+			ModifyHandler:  handleVerifierStatusModify,
+			RestartHandler: handleVerifierRestarted,
+			WarningTime:    warningTime,
+			ErrorTime:      errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subBaseOsVerifierStatus.MaxProcessTimeWarn = warningTime
-	subBaseOsVerifierStatus.MaxProcessTimeError = errorTime
-	subBaseOsVerifierStatus.ModifyHandler = handleVerifierStatusModify
-	subBaseOsVerifierStatus.CreateHandler = handleVerifierStatusModify
-	subBaseOsVerifierStatus.DeleteHandler = handleVerifierStatusDelete
-	subBaseOsVerifierStatus.RestartHandler = handleVerifierRestarted
 	ctx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
 	subBaseOsVerifierStatus.Activate()
 }

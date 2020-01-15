@@ -173,42 +173,45 @@ func Run() {
 	go TriggerBlinkOnDevice(ctx.countChange, blinkFunc)
 
 	subLedBlinkCounter, err := pubsub.Subscribe("", types.LedBlinkCounter{},
-		false, &ctx)
+		false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleLedBlinkModify,
+			ModifyHandler: handleLedBlinkModify,
+			DeleteHandler: handleLedBlinkDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subLedBlinkCounter.MaxProcessTimeWarn = warningTime
-	subLedBlinkCounter.MaxProcessTimeError = errorTime
-	subLedBlinkCounter.ModifyHandler = handleLedBlinkModify
-	subLedBlinkCounter.CreateHandler = handleLedBlinkModify
-	subLedBlinkCounter.DeleteHandler = handleLedBlinkDelete
 	ctx.subLedBlinkCounter = subLedBlinkCounter
 	subLedBlinkCounter.Activate()
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &ctx)
+		types.DeviceNetworkStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleDNSModify,
+			ModifyHandler: handleDNSModify,
+			DeleteHandler: handleDNSDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
-	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
-	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
-	subDeviceNetworkStatus.CreateHandler = handleDNSModify
-	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
-		false, &ctx)
+		false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.MaxProcessTimeWarn = warningTime
-	subGlobalConfig.MaxProcessTimeError = errorTime
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
@@ -216,7 +219,7 @@ func Run() {
 	for !ctx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
@@ -226,13 +229,13 @@ func Run() {
 
 	for {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-subLedBlinkCounter.C:
+		case change := <-subLedBlinkCounter.MsgChan():
 			subLedBlinkCounter.ProcessChange(change)
 
 		case <-stillRunning.C:

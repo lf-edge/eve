@@ -145,16 +145,17 @@ func Run() {
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
-		false, &nimCtx)
+		false, &nimCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			SyncHandler:   handleGlobalConfigSynchronized,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.MaxProcessTimeWarn = warningTime
-	subGlobalConfig.MaxProcessTimeError = errorTime
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
-	subGlobalConfig.SynchronizedHandler = handleGlobalConfigSynchronized
 	nimCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
@@ -172,70 +173,75 @@ func Run() {
 	// 3. "lastresort" derived from the set of network interfaces
 	subDevicePortConfigA, err := pubsub.Subscribe("zedagent",
 		types.DevicePortConfig{}, false,
-		&nimCtx.DeviceNetworkContext)
+		&nimCtx.DeviceNetworkContext, &pubsub.SubscriptionOptions{
+			CreateHandler: devicenetwork.HandleDPCModify,
+			ModifyHandler: devicenetwork.HandleDPCModify,
+			DeleteHandler: devicenetwork.HandleDPCDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDevicePortConfigA.MaxProcessTimeWarn = warningTime
-	subDevicePortConfigA.MaxProcessTimeError = errorTime
-	subDevicePortConfigA.ModifyHandler = devicenetwork.HandleDPCModify
-	subDevicePortConfigA.CreateHandler = devicenetwork.HandleDPCModify
-	subDevicePortConfigA.DeleteHandler = devicenetwork.HandleDPCDelete
 	nimCtx.SubDevicePortConfigA = subDevicePortConfigA
 	subDevicePortConfigA.Activate()
 
 	subDevicePortConfigO, err := pubsub.Subscribe("",
 		types.DevicePortConfig{}, false,
-		&nimCtx.DeviceNetworkContext)
+		&nimCtx.DeviceNetworkContext, &pubsub.SubscriptionOptions{
+			CreateHandler: devicenetwork.HandleDPCModify,
+			ModifyHandler: devicenetwork.HandleDPCModify,
+			DeleteHandler: devicenetwork.HandleDPCDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDevicePortConfigO.MaxProcessTimeWarn = warningTime
-	subDevicePortConfigO.MaxProcessTimeError = errorTime
-	subDevicePortConfigO.ModifyHandler = devicenetwork.HandleDPCModify
-	subDevicePortConfigO.CreateHandler = devicenetwork.HandleDPCModify
-	subDevicePortConfigO.DeleteHandler = devicenetwork.HandleDPCDelete
 	nimCtx.SubDevicePortConfigO = subDevicePortConfigO
 	subDevicePortConfigO.Activate()
 
 	subDevicePortConfigS, err := pubsub.Subscribe(agentName,
 		types.DevicePortConfig{}, false,
-		&nimCtx.DeviceNetworkContext)
+		&nimCtx.DeviceNetworkContext, &pubsub.SubscriptionOptions{
+			CreateHandler: devicenetwork.HandleDPCModify,
+			ModifyHandler: devicenetwork.HandleDPCModify,
+			DeleteHandler: devicenetwork.HandleDPCDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDevicePortConfigS.MaxProcessTimeWarn = warningTime
-	subDevicePortConfigS.MaxProcessTimeError = errorTime
-	subDevicePortConfigS.ModifyHandler = devicenetwork.HandleDPCModify
-	subDevicePortConfigS.CreateHandler = devicenetwork.HandleDPCModify
-	subDevicePortConfigS.DeleteHandler = devicenetwork.HandleDPCDelete
 	nimCtx.SubDevicePortConfigS = subDevicePortConfigS
 	subDevicePortConfigS.Activate()
 
 	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
 		types.AssignableAdapters{}, false,
-		&nimCtx.DeviceNetworkContext)
+		&nimCtx.DeviceNetworkContext, &pubsub.SubscriptionOptions{
+			CreateHandler: devicenetwork.HandleAssignableAdaptersModify,
+			ModifyHandler: devicenetwork.HandleAssignableAdaptersModify,
+			DeleteHandler: devicenetwork.HandleAssignableAdaptersDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAssignableAdapters.MaxProcessTimeWarn = warningTime
-	subAssignableAdapters.MaxProcessTimeError = errorTime
-	subAssignableAdapters.ModifyHandler = devicenetwork.HandleAssignableAdaptersModify
-	subAssignableAdapters.CreateHandler = devicenetwork.HandleAssignableAdaptersModify
-	subAssignableAdapters.DeleteHandler = devicenetwork.HandleAssignableAdaptersDelete
 	nimCtx.SubAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
 	subNetworkInstanceStatus, err := pubsub.Subscribe("zedrouter",
-		types.NetworkInstanceStatus{}, false, &nimCtx)
+		types.NetworkInstanceStatus{}, false, &nimCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleNetworkInstanceModify,
+			ModifyHandler: handleNetworkInstanceModify,
+			DeleteHandler: handleNetworkInstanceDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subNetworkInstanceStatus.MaxProcessTimeWarn = warningTime
-	subNetworkInstanceStatus.MaxProcessTimeError = errorTime
-	subNetworkInstanceStatus.ModifyHandler = handleNetworkInstanceModify
-	subNetworkInstanceStatus.CreateHandler = handleNetworkInstanceModify
-	subNetworkInstanceStatus.DeleteHandler = handleNetworkInstanceDelete
 	nimCtx.subNetworkInstanceStatus = subNetworkInstanceStatus
 	subNetworkInstanceStatus.Activate()
 
@@ -248,7 +254,7 @@ func Run() {
 	for !nimCtx.GCInitialized {
 		log.Infof("Waiting for GCInitialized")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 		}
 	}
@@ -316,10 +322,10 @@ func Run() {
 	for nimCtx.networkFallbackAnyEth == types.TS_ENABLED &&
 		len(dnc.DevicePortConfigList.PortConfigList) == 0 {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDevicePortConfigS.C:
+		case change := <-subDevicePortConfigS.MsgChan():
 			subDevicePortConfigS.ProcessChange(change)
 			log.Infof("Got subDevicePortConfigS: len %d",
 				len(dnc.DevicePortConfigList.PortConfigList))
@@ -342,20 +348,20 @@ func Run() {
 	for !nimCtx.AssignableAdapters.Initialized {
 		log.Infof("Waiting for AA to initialize")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDevicePortConfigO.C:
+		case change := <-subDevicePortConfigO.MsgChan():
 			subDevicePortConfigO.ProcessChange(change)
 
-		case change := <-subDevicePortConfigS.C:
+		case change := <-subDevicePortConfigS.MsgChan():
 			subDevicePortConfigS.ProcessChange(change)
 
-		case change := <-subAssignableAdapters.C:
+		case change := <-subAssignableAdapters.MsgChan():
 			subAssignableAdapters.ProcessChange(change)
 			updateFilteredFallback(&nimCtx)
 
-		case change := <-subNetworkInstanceStatus.C:
+		case change := <-subNetworkInstanceStatus.MsgChan():
 			subNetworkInstanceStatus.ProcessChange(change)
 
 		case change, ok := <-addrChanges:
@@ -480,23 +486,23 @@ func Run() {
 
 	for {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDevicePortConfigA.C:
+		case change := <-subDevicePortConfigA.MsgChan():
 			subDevicePortConfigA.ProcessChange(change)
 
-		case change := <-subDevicePortConfigO.C:
+		case change := <-subDevicePortConfigO.MsgChan():
 			subDevicePortConfigO.ProcessChange(change)
 
-		case change := <-subDevicePortConfigS.C:
+		case change := <-subDevicePortConfigS.MsgChan():
 			subDevicePortConfigS.ProcessChange(change)
 
-		case change := <-subAssignableAdapters.C:
+		case change := <-subAssignableAdapters.MsgChan():
 			subAssignableAdapters.ProcessChange(change)
 			updateFilteredFallback(&nimCtx)
 
-		case change := <-subNetworkInstanceStatus.C:
+		case change := <-subNetworkInstanceStatus.MsgChan():
 			subNetworkInstanceStatus.ProcessChange(change)
 
 		case change, ok := <-addrChanges:

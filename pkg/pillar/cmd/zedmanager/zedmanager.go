@@ -157,141 +157,151 @@ func Run() {
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
-		false, &ctx)
+		false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.MaxProcessTimeWarn = warningTime
-	subGlobalConfig.MaxProcessTimeError = errorTime
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
 	// Get AppInstanceConfig from zedagent
 	subAppInstanceConfig, err := pubsub.Subscribe("zedagent",
-		types.AppInstanceConfig{}, false, &ctx)
+		types.AppInstanceConfig{}, false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler:  handleCreate,
+			ModifyHandler:  handleModify,
+			DeleteHandler:  handleAppInstanceConfigDelete,
+			RestartHandler: handleConfigRestart,
+			WarningTime:    warningTime,
+			ErrorTime:      errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppInstanceConfig.MaxProcessTimeWarn = warningTime
-	subAppInstanceConfig.MaxProcessTimeError = errorTime
-	subAppInstanceConfig.ModifyHandler = handleModify
-	subAppInstanceConfig.CreateHandler = handleCreate
-	subAppInstanceConfig.DeleteHandler = handleAppInstanceConfigDelete
-	subAppInstanceConfig.RestartHandler = handleConfigRestart
 	ctx.subAppInstanceConfig = subAppInstanceConfig
 	subAppInstanceConfig.Activate()
 
 	// Get AppNetworkStatus from zedrouter
 	subAppNetworkStatus, err := pubsub.Subscribe("zedrouter",
-		types.AppNetworkStatus{}, false, &ctx)
+		types.AppNetworkStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler:  handleAppNetworkStatusModify,
+			ModifyHandler:  handleAppNetworkStatusModify,
+			DeleteHandler:  handleAppNetworkStatusDelete,
+			RestartHandler: handleZedrouterRestarted,
+			WarningTime:    warningTime,
+			ErrorTime:      errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppNetworkStatus.MaxProcessTimeWarn = warningTime
-	subAppNetworkStatus.MaxProcessTimeError = errorTime
-	subAppNetworkStatus.ModifyHandler = handleAppNetworkStatusModify
-	subAppNetworkStatus.CreateHandler = handleAppNetworkStatusModify
-	subAppNetworkStatus.DeleteHandler = handleAppNetworkStatusDelete
-	subAppNetworkStatus.RestartHandler = handleZedrouterRestarted
 	ctx.subAppNetworkStatus = subAppNetworkStatus
 	subAppNetworkStatus.Activate()
 
 	// Get DomainStatus from domainmgr
 	subDomainStatus, err := pubsub.Subscribe("domainmgr",
-		types.DomainStatus{}, false, &ctx)
+		types.DomainStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleDomainStatusModify,
+			ModifyHandler: handleDomainStatusModify,
+			DeleteHandler: handleDomainStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDomainStatus.MaxProcessTimeWarn = warningTime
-	subDomainStatus.MaxProcessTimeError = errorTime
-	subDomainStatus.ModifyHandler = handleDomainStatusModify
-	subDomainStatus.CreateHandler = handleDomainStatusModify
-	subDomainStatus.DeleteHandler = handleDomainStatusDelete
 	ctx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
 
 	// Get DomainStatus from domainmgr
 	subImageStatus, err := pubsub.Subscribe("domainmgr",
-		types.ImageStatus{}, false, &ctx)
+		types.ImageStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
+			WarningTime: warningTime,
+			ErrorTime:   errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subImageStatus.MaxProcessTimeWarn = warningTime
-	subImageStatus.MaxProcessTimeError = errorTime
 	ctx.subImageStatus = subImageStatus
 	subImageStatus.Activate()
 
 	// Look for DownloaderStatus from downloader
 	subAppImgDownloadStatus, err := pubsub.SubscribeScope("downloader",
-		types.AppImgObj, types.DownloaderStatus{}, false, &ctx)
+		types.AppImgObj, types.DownloaderStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleDownloaderStatusModify,
+			ModifyHandler: handleDownloaderStatusModify,
+			DeleteHandler: handleDownloaderStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppImgDownloadStatus.MaxProcessTimeWarn = warningTime
-	subAppImgDownloadStatus.MaxProcessTimeError = errorTime
-	subAppImgDownloadStatus.ModifyHandler = handleDownloaderStatusModify
-	subAppImgDownloadStatus.CreateHandler = handleDownloaderStatusModify
-	subAppImgDownloadStatus.DeleteHandler = handleDownloaderStatusDelete
 	ctx.subAppImgDownloadStatus = subAppImgDownloadStatus
 	subAppImgDownloadStatus.Activate()
 
 	// Look for VerifyImageStatus from verifier
 	subAppImgVerifierStatus, err := pubsub.SubscribeScope("verifier",
-		types.AppImgObj, types.VerifyImageStatus{}, false, &ctx)
+		types.AppImgObj, types.VerifyImageStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler:  handleVerifyImageStatusModify,
+			ModifyHandler:  handleVerifyImageStatusModify,
+			DeleteHandler:  handleVerifyImageStatusDelete,
+			RestartHandler: handleVerifierRestarted,
+			WarningTime:    warningTime,
+			ErrorTime:      errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppImgVerifierStatus.MaxProcessTimeWarn = warningTime
-	subAppImgVerifierStatus.MaxProcessTimeError = errorTime
-	subAppImgVerifierStatus.ModifyHandler = handleVerifyImageStatusModify
-	subAppImgVerifierStatus.CreateHandler = handleVerifyImageStatusModify
-	subAppImgVerifierStatus.DeleteHandler = handleVerifyImageStatusDelete
-	subAppImgVerifierStatus.RestartHandler = handleVerifierRestarted
 	ctx.subAppImgVerifierStatus = subAppImgVerifierStatus
 	subAppImgVerifierStatus.Activate()
 
 	// Get IdentityStatus from identitymgr
 	subEIDStatus, err := pubsub.Subscribe("identitymgr",
-		types.EIDStatus{}, false, &ctx)
+		types.EIDStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler:  handleEIDStatusModify,
+			ModifyHandler:  handleEIDStatusModify,
+			DeleteHandler:  handleEIDStatusDelete,
+			RestartHandler: handleIdentitymgrRestarted,
+			WarningTime:    warningTime,
+			ErrorTime:      errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subEIDStatus.MaxProcessTimeWarn = warningTime
-	subEIDStatus.MaxProcessTimeError = errorTime
-	subEIDStatus.ModifyHandler = handleEIDStatusModify
-	subEIDStatus.CreateHandler = handleEIDStatusModify
-	subEIDStatus.DeleteHandler = handleEIDStatusDelete
-	subEIDStatus.RestartHandler = handleIdentitymgrRestarted
 	ctx.subEIDStatus = subEIDStatus
 	subEIDStatus.Activate()
 
 	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &ctx)
+		types.DeviceNetworkStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleDNSModify,
+			ModifyHandler: handleDNSModify,
+			DeleteHandler: handleDNSDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceNetworkStatus.MaxProcessTimeWarn = warningTime
-	subDeviceNetworkStatus.MaxProcessTimeError = errorTime
-	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
-	subDeviceNetworkStatus.CreateHandler = handleDNSModify
-	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
 	// Look for CertObjStatus from baseosmgr
 	subCertObjStatus, err := pubsub.Subscribe("baseosmgr",
-		types.CertObjStatus{}, false, &ctx)
+		types.CertObjStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleCertObjStatusModify,
+			ModifyHandler: handleCertObjStatusModify,
+			DeleteHandler: handleCertObjStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subCertObjStatus.MaxProcessTimeWarn = warningTime
-	subCertObjStatus.MaxProcessTimeError = errorTime
-	subCertObjStatus.ModifyHandler = handleCertObjStatusModify
-	subCertObjStatus.CreateHandler = handleCertObjStatusModify
-	subCertObjStatus.DeleteHandler = handleCertObjStatusDelete
 	ctx.subCertObjStatus = subCertObjStatus
 	subCertObjStatus.Activate()
 
@@ -299,7 +309,7 @@ func Run() {
 	for !ctx.GCInitialized {
 		log.Infof("waiting for GCInitialized")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 		case <-stillRunning.C:
 		}
@@ -312,10 +322,10 @@ func Run() {
 	log.Infof("Handling initial verifier Status\n")
 	for !ctx.verifierRestarted {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subAppImgVerifierStatus.C:
+		case change := <-subAppImgVerifierStatus.MsgChan():
 			subAppImgVerifierStatus.ProcessChange(change)
 			if ctx.verifierRestarted {
 				log.Infof("Verifier reported restarted\n")
@@ -329,35 +339,35 @@ func Run() {
 	log.Infof("Handling all inputs\n")
 	for {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
 		// handle cert ObjectsChanges
-		case change := <-subCertObjStatus.C:
+		case change := <-subCertObjStatus.MsgChan():
 			subCertObjStatus.ProcessChange(change)
 
-		case change := <-subAppImgDownloadStatus.C:
+		case change := <-subAppImgDownloadStatus.MsgChan():
 			subAppImgDownloadStatus.ProcessChange(change)
 
-		case change := <-subAppImgVerifierStatus.C:
+		case change := <-subAppImgVerifierStatus.MsgChan():
 			subAppImgVerifierStatus.ProcessChange(change)
 
-		case change := <-subEIDStatus.C:
+		case change := <-subEIDStatus.MsgChan():
 			subEIDStatus.ProcessChange(change)
 
-		case change := <-subAppNetworkStatus.C:
+		case change := <-subAppNetworkStatus.MsgChan():
 			subAppNetworkStatus.ProcessChange(change)
 
-		case change := <-subDomainStatus.C:
+		case change := <-subDomainStatus.MsgChan():
 			subDomainStatus.ProcessChange(change)
 
-		case change := <-subImageStatus.C:
+		case change := <-subImageStatus.MsgChan():
 			subImageStatus.ProcessChange(change)
 
-		case change := <-subAppInstanceConfig.C:
+		case change := <-subAppInstanceConfig.MsgChan():
 			subAppInstanceConfig.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
