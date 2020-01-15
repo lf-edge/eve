@@ -93,7 +93,7 @@ func appRwImageName(sha256, uuidStr string, format zconfig.Format) string {
 
 // parseAppRwImageName - Returns rwImgDirname, sha256, uuidStr
 func parseAppRwImageName(image string) (string, string, string) {
-	re := regexp.MustCompile(`(.+)/(.+)-(.+)\.(.+)`)
+	re := regexp.MustCompile(`(.+)/([0-9A-F]+)-(.+)\.(.+)`)
 	if !re.MatchString(image) {
 		log.Errorf("AppRwImageName %s doesn't match pattern", image)
 		return "", "", ""
@@ -209,6 +209,7 @@ func Run() {
 
 	// Publish existing images with RefCount zero
 	populateInitialImageStatus(&domainCtx, rwImgDirname)
+	pubImageStatus.SignalRestarted()
 
 	pubAssignableAdapters, err := pubsub.Publish(agentName,
 		types.AssignableAdapters{})
