@@ -5,10 +5,12 @@ package zedUpload
 
 import (
 	"fmt"
-	azure "github.com/lf-edge/eve/pkg/pillar/zedUpload/azureutil"
 	"net"
 	"net/http"
 	"net/url"
+
+	azure "github.com/lf-edge/eve/pkg/pillar/zedUpload/azureutil"
+
 	//	"strings"
 	"time"
 )
@@ -55,13 +57,15 @@ func (ep *AzureTransportMethod) Close() error {
 	return nil
 }
 
-// use the specific ip as source address for this connection
-func (ep *AzureTransportMethod) WithSrcIpSelection(localAddr net.IP) error {
+// WithSrcIPSelection use the specific ip as source address for this connection
+func (ep *AzureTransportMethod) WithSrcIPSelection(localAddr net.IP) error {
 	ep.hClient = httpClientSrcIP(localAddr, nil)
 	return nil
 }
 
-func (ep *AzureTransportMethod) WithSrcIpAndProxySelection(localAddr net.IP,
+// WithSrcIPAndProxySelection use the specific ip as source address for this
+// connection and connect via the provided proxy URL
+func (ep *AzureTransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
 	proxy *url.URL) error {
 	ep.hClient = httpClientSrcIP(localAddr, proxy)
 	return nil

@@ -20,13 +20,17 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	// create Endpoint
 	var dEndPoint zedUpload.DronaEndPoint
 	var err error
-	if trType == zedUpload.SyncHttpTr || trType == zedUpload.SyncSftpTr {
+	switch trType {
+	case zedUpload.SyncHttpTr, zedUpload.SyncSftpTr:
 		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, downloadURL, dpath, auth)
-	} else if trType == zedUpload.SyncAzureTr {
+	case zedUpload.SyncAzureTr:
 		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, "", dpath, auth)
-	} else {
-		// AWS
+	case zedUpload.SyncAwsTr:
 		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, region, dpath, auth)
+	case zedUpload.SyncOCIRegistryTr:
+		dEndPoint, err = ctx.dCtx.NewSyncerDest(trType, downloadURL, filename, auth)
+	default:
+		err = fmt.Errorf("unknown transfer type: %s", trType)
 	}
 	if err != nil {
 		log.Errorf("NewSyncerDest failed: %s\n", err)
@@ -37,9 +41,9 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 		&ctx.deviceNetworkStatus, ifname, downloadURL)
 	if err == nil && proxyUrl != nil {
 		log.Infof("%s: Using proxy %s", trType, proxyUrl.String())
-		dEndPoint.WithSrcIpAndProxySelection(ipSrc, proxyUrl)
+		dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyUrl)
 	} else {
-		dEndPoint.WithSrcIpSelection(ipSrc)
+		dEndPoint.WithSrcIPSelection(ipSrc)
 	}
 
 	var respChan = make(chan *zedUpload.DronaRequest)

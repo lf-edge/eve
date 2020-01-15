@@ -22,6 +22,8 @@ import (
 	"crypto/rsa"
 	"fmt"
 	"io"
+        "io/ioutil"
+        "math/big"
 
 	"github.com/google/go-tpm/tpmutil"
 )
@@ -1384,4 +1386,103 @@ func ReadPCR(rw io.ReadWriter, pcr int, hashAlg Algorithm) ([]byte, error) {
 		return nil, fmt.Errorf("PCR %d value missing from response", pcr)
 	}
 	return pcrVal, nil
+}
+
+func encodeRecoverSharedECCSecret(eccKeyHandle tpmutil.Handle, ownerPassword string, eccPoint ECPoint) ([]byte, error) {
+	ha, err := tpmutil.Pack(eccKeyHandle)
+	if err != nil {
+		return nil, err
+	}
+	auth, err := encodeAuthArea(AuthCommand{Session: HandlePasswordSession,
+                                                Attributes: AttrContinueSession,
+                                                Auth: []byte(ownerPassword)})
+	if err != nil {
+		return nil, err
+	}
+	point, err := tpmutil.Pack(eccPoint.x().Bytes(), eccPoint.y().Bytes())
+	if err != nil {
+		return nil, err
+	}
+
+        params, err := tpmutil.Pack(uint16(len(point)))
+	if err != nil {
+		return nil, err
+	}
+	return concat(ha, auth, params, point)
+}
+
+func decodeRecoverSharedECCSecret(buf []byte) (ECPoint, error) {
+        in := bytes.NewBuffer(buf)
+        ioutil.WriteFile("keygen_output", buf, 0644)
+	zPoint := ECPoint{X: big.NewInt(0), Y: big.NewInt(0)}
+
+        var x1, y1 []byte
+        var paramSize1 uint32
+        var paramSize2 uint16
+	if err := tpmutil.UnpackBuf(in, &paramSize1); err != nil {
+		return zPoint, fmt.Errorf("decoding zPoint1: %v", err)
+	}
+	if err := tpmutil.UnpackBuf(in, &paramSize2); err != nil {
+		return zPoint, fmt.Errorf("decoding zPoint1: %v", err)
+	}
+	if err := tpmutil.UnpackBuf(in, &x1, &y1); err != nil {
+		return zPoint, fmt.Errorf("decoding zPoint2: %v", err)
+	}
+	zPoint.X = new(big.Int).SetBytes(x1)
+	zPoint.Y = new(big.Int).SetBytes(y1)
+	return zPoint, nil
+}
+
+func RecoverSharedECCSecret(rw io.ReadWriter, eccHandle tpmutil.Handle, ownerPassword string, eccPoint ECPoint) (ECPoint, error) {
+	cmd, err := encodeRecoverSharedECCSecret(eccHandle, ownerPassword, eccPoint)
+	if err != nil {
+		return ECPoint{X: big.NewInt(0), Y: big.NewInt(0)}, err
+	}
+	resp, err := runCommand(rw, TagSessions, cmdEcdhZgen, tpmutil.RawBytes(cmd))
+	if err != nil {
+		return ECPoint{X: big.NewInt(0), Y: big.NewInt(0)}, err
+	}
+	return decodeRecoverSharedECCSecret(resp)
+}
+
+func encodeGenerateSharedECCSecret(eccKeyHandle tpmutil.Handle, ownerPassword string) ([]byte, error) {
+	ha, err := tpmutil.Pack(eccKeyHandle)
+	if err != nil {
+		return nil, err
+	}
+        return ha, nil
+}
+
+func decodeGenerateSharedECCSecret(buf []byte) (ECPoint, ECPoint, error) {
+        in := bytes.NewBuffer(buf)
+	zPoint := ECPoint{X: big.NewInt(0), Y: big.NewInt(0)}
+	pubPoint := ECPoint{X: big.NewInt(0), Y: big.NewInt(0)}
+
+        var x1, y1 []byte
+        var paramSize1 uint16
+	if err := tpmutil.UnpackBuf(in, &paramSize1, &x1, &y1); err != nil {
+		return zPoint, pubPoint, fmt.Errorf("decoding zPoint: %v", err)
+	}
+        var x2, y2 []byte
+        var paramSize2 uint16
+	if err := tpmutil.UnpackBuf(in, &paramSize2, &x2, &y2); err != nil {
+                return zPoint, pubPoint, err
+	}
+	zPoint.X = new(big.Int).SetBytes(x1)
+	zPoint.Y = new(big.Int).SetBytes(y1)
+	pubPoint.X = new(big.Int).SetBytes(x2)
+	pubPoint.Y = new(big.Int).SetBytes(y2)
+	return zPoint, pubPoint, nil
+}
+
+func GenerateSharedECCSecret(rw io.ReadWriter, eccHandle tpmutil.Handle, ownerPassword string) (ECPoint, ECPoint, error) {
+	cmd, err := encodeGenerateSharedECCSecret(eccHandle, ownerPassword)
+	if err != nil {
+		return ECPoint{X: big.NewInt(0), Y: big.NewInt(0)}, ECPoint{X: big.NewInt(0), Y: big.NewInt(0)}, err
+	}
+	resp, err := runCommand(rw, TagNoSessions, cmdEcdhKeyGen, tpmutil.RawBytes(cmd))
+	if err != nil {
+		return ECPoint{X: big.NewInt(0), Y: big.NewInt(0)}, ECPoint{X: big.NewInt(0), Y: big.NewInt(0)}, err
+	}
+	return decodeGenerateSharedECCSecret(resp)
 }

@@ -20,7 +20,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
@@ -42,14 +41,14 @@ const (
 
 type nimContext struct {
 	devicenetwork.DeviceNetworkContext
-	subGlobalConfig   *pubsub.Subscription
+	subGlobalConfig   pubsub.Subscription
 	GCInitialized     bool // Received initial GlobalConfig
 	globalConfig      *types.GlobalConfig
 	sshAccess         bool
 	sshAuthorizedKeys string
 	allowAppVnc       bool
 
-	subNetworkInstanceStatus *pubsub.Subscription
+	subNetworkInstanceStatus pubsub.Subscription
 
 	networkFallbackAnyEth types.TriState
 	fallbackPortMap       map[string]bool
@@ -253,6 +252,7 @@ func Run() {
 			subGlobalConfig.ProcessChange(change)
 		}
 	}
+	log.Infof("processed GlobalConfig")
 
 	// We refresh the gelocation information when the underlay
 	// IP address(es) change, plus periodically based on this timer
@@ -752,7 +752,7 @@ func publishDeviceNetworkStatus(ctx *nimContext) {
 	devicenetwork.UpdateResolvConf(*ctx.DeviceNetworkStatus)
 	devicenetwork.UpdatePBR(*ctx.DeviceNetworkStatus)
 	ctx.DeviceNetworkStatus.Testing = false
-	ctx.PubDeviceNetworkStatus.Publish("global", ctx.DeviceNetworkStatus)
+	ctx.PubDeviceNetworkStatus.Publish("global", *ctx.DeviceNetworkStatus)
 }
 
 // Handles both create and modify events
@@ -957,7 +957,7 @@ func isSwitch(ctx *nimContext, ifname string) bool {
 
 	foundExcl := false
 	for _, st := range items {
-		status := cast.CastNetworkInstanceStatus(st)
+		status := st.(types.NetworkInstanceStatus)
 
 		if !status.IsUsingPort(ifname) {
 			continue

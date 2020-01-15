@@ -10,7 +10,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -19,13 +18,8 @@ func lookupCertObjSafename(ctx *baseOsMgrContext, safename string) *types.CertOb
 
 	sub := ctx.subCertObjConfig
 	items := sub.GetAll()
-	for key, c := range items {
-		config := cast.CastCertObjConfig(c)
-		if config.Key() != key {
-			log.Errorf("certObjHandleStatusUpdateSafename key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, config.Key(), config)
-			continue
-		}
+	for _, c := range items {
+		config := c.(types.CertObjConfig)
 		for _, sc := range config.StorageConfigList {
 			safename1 := types.UrlToSafename(sc.Name,
 				sc.ImageSha256)
@@ -288,12 +282,7 @@ func lookupCertObjConfig(ctx *baseOsMgrContext, key string) *types.CertObjConfig
 		log.Infof("lookupCertObjConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastCertObjConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupCertObjConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.CertObjConfig)
 	return &config
 }
 
@@ -304,12 +293,7 @@ func lookupCertObjStatus(ctx *baseOsMgrContext, key string) *types.CertObjStatus
 		log.Infof("lookupCertObjStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastCertObjStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupCertObjStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.CertObjStatus)
 	return &status
 }
 
@@ -318,7 +302,7 @@ func publishCertObjStatus(ctx *baseOsMgrContext, status *types.CertObjStatus) {
 	key := status.Key()
 	log.Debugf("publishCertObjStatus(%s)\n", key)
 	pub := ctx.pubCertObjStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishCertObjStatus(ctx *baseOsMgrContext, key string) {

@@ -12,8 +12,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/dataplane/dptypes"
 	"github.com/lf-edge/eve/pkg/pillar/dataplane/etr"
 	"github.com/lf-edge/eve/pkg/pillar/dataplane/fib"
@@ -22,11 +27,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"net"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 )
 
 const (
@@ -96,7 +96,7 @@ func Run() {
 	log.Infof("Waiting for configuration from zedrouter")
 	for {
 		select {
-		case change := <-dataplaneContext.SubLispConfig.C:
+		case change := <-dataplaneContext.SubLispConfig.MsgChan():
 			dataplaneContext.SubLispConfig.ProcessChange(change)
 		}
 		// We keep waiting till we are enabled
@@ -189,7 +189,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 func handleExpModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx := ctxArg.(*dptypes.DataplaneContext)
 
-	status := cast.CastLispDataplaneConfig(statusArg)
+	status := statusArg.(types.LispDataplaneConfig)
 	if key != "global" {
 		log.Infof("handleExpModify: ignoring %s", key)
 		return
@@ -390,7 +390,7 @@ var deviceNetworkStatus types.DeviceNetworkStatus
 
 func handleDNSModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 
 	if key != "global" {
 		log.Infof("ETR: handleDNSModify: ignoring %s", key)
@@ -435,7 +435,7 @@ func handleConfig(c *net.UnixConn, dpContext *dptypes.DataplaneContext) {
 			subDeviceNetworkStatus.ProcessChange(change)
 			log.Debugf("handleConfig: Detected a change in DeviceNetworkStatus")
 			ManageEtrDNS(deviceNetworkStatus)
-		case change := <-dpContext.SubGlobalConfig.C:
+		case change := <-dpContext.SubGlobalConfig.MsgChan():
 			dpContext.SubGlobalConfig.ProcessChange(change)
 		default:
 			n, err := c.Read(buf[:])

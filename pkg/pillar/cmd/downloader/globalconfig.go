@@ -28,6 +28,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		if gcp.DownloadRetryTime != 0 {
 			downloadRetryTime = time.Duration(gcp.DownloadRetryTime) * time.Second
 		}
+		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }

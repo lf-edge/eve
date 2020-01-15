@@ -111,15 +111,17 @@ func (status VerifyImageStatus) ImageDownloadFilenames() (string, string, string
 
 	pendingDirname, verifierDirname, verifiedDirname :=
 		status.ImageDownloadDirNames()
+	pendingFilename = pendingDirname + "/" + status.Safename
+	verifierFilename = verifierDirname + "/" + status.Safename
+	// TODO:
+	// most of the filename and safename for containers and VMs have been
+	// unified, so we need fewer "if IsContainer" but this one still needs to
+	// exist. It should be cleaned up.
 	if status.IsContainer {
-		pendingFilename = pendingDirname + "/" + status.ContainerImageID + ".aci"
-		verifierFilename = verifierDirname + "/" + status.ContainerImageID + ".aci"
-		verifiedFilename = verifiedDirname + "/" + status.ContainerImageID + ".aci"
-	} else {
-		// Else..VMs
-		pendingFilename = pendingDirname + "/" + status.Safename
-		verifierFilename = verifierDirname + "/" + status.Safename
 		verifiedFilename = verifiedDirname + "/" + status.Safename
+	} else {
+		filename := SafenameToFilename(status.Safename)
+		verifiedFilename = verifiedDirname + "/" + filename
 	}
 	return pendingFilename, verifierFilename, verifiedFilename
 }

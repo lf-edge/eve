@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
@@ -47,15 +46,15 @@ type DeviceNetworkContext struct {
 	AssignableAdapters      *types.AssignableAdapters
 	DevicePortConfigTime    time.Time
 	DeviceNetworkStatus     *types.DeviceNetworkStatus
-	SubDevicePortConfigA    *pubsub.Subscription
-	SubDevicePortConfigO    *pubsub.Subscription
-	SubDevicePortConfigS    *pubsub.Subscription
-	SubAssignableAdapters   *pubsub.Subscription
-	PubDevicePortConfig     *pubsub.Publication
-	PubDevicePortConfigList *pubsub.Publication
-	PubDeviceNetworkStatus  *pubsub.Publication
+	SubDevicePortConfigA    pubsub.Subscription
+	SubDevicePortConfigO    pubsub.Subscription
+	SubDevicePortConfigS    pubsub.Subscription
+	SubAssignableAdapters   pubsub.Subscription
+	PubDevicePortConfig     pubsub.Publication
+	PubDevicePortConfigList pubsub.Publication
+	PubDeviceNetworkStatus  pubsub.Publication
 	Changed                 bool
-	SubGlobalConfig         *pubsub.Subscription
+	SubGlobalConfig         pubsub.Subscription
 
 	Pending                DPCPending
 	NetworkTestTimer       *time.Timer
@@ -64,10 +63,11 @@ type DeviceNetworkContext struct {
 	CloudConnectivityWorks bool
 
 	// Timers in seconds
-	DPCTestDuration           uint32 // Wait for DHCP address
-	NetworkTestInterval       uint32 // Test interval in minutes.
-	NetworkTestBetterInterval uint32 // Look for lower/better index
-	TestSendTimeout           uint32 // Timeout for HTTP/Send
+	DPCTestDuration           uint32                  // Wait for DHCP address
+	NetworkTestInterval       uint32                  // Test interval in minutes.
+	NetworkTestBetterInterval uint32                  // Look for lower/better index
+	TestSendTimeout           uint32                  // Timeout for HTTP/Send
+	wifiPortCfg               types.NetworkPortConfig // XXX hack until zedcloud wifi support
 }
 
 func UpdateLastResortPortConfig(ctx *DeviceNetworkContext, ports []string) {
@@ -128,7 +128,7 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 			log.Infof("PublishDeviceNetworkStatus: %+v\n",
 				ctx.DeviceNetworkStatus)
 			ctx.PubDeviceNetworkStatus.Publish("global",
-				ctx.DeviceNetworkStatus)
+				*ctx.DeviceNetworkStatus)
 		}
 		return
 	}
@@ -234,6 +234,9 @@ func VerifyPending(pending *DPCPending,
 		"parsing device port config list")
 
 	if !reflect.DeepEqual(pending.PendDPC.Ports, pending.OldDPC.Ports) {
+		log.Infof("VerifyPending: DPC changed. check Wireless %v\n", pending.PendDPC)
+		checkAndUpdateWireless(nil, &pending.OldDPC, &pending.PendDPC)
+
 		log.Infof("VerifyPending: DPC changed. update DhcpClient.\n")
 		if UpdateDhcpClient(pending.PendDPC, pending.OldDPC) {
 			log.Warnf("VerifyPending: update DhcpClient: retry")
@@ -480,7 +483,7 @@ func getCurrentDPC(ctx *DeviceNetworkContext) *types.DevicePortConfig {
 // We determine the priority from TimePriority in the config.
 func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 
-	portConfig := cast.CastDevicePortConfig(configArg)
+	portConfig := configArg.(types.DevicePortConfig)
 	ctx := ctxArg.(*DeviceNetworkContext)
 
 	log.Infof("HandleDPCModify: Current Config: %+v, portConfig: %+v\n",
@@ -515,7 +518,7 @@ func HandleDPCDelete(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("HandleDPCDelete for %s\n", key)
 	ctx := ctxArg.(*DeviceNetworkContext)
-	portConfig := cast.CastDevicePortConfig(configArg)
+	portConfig := configArg.(types.DevicePortConfig)
 
 	log.Infof("HandleDPCDelete for %s current time %v deleted time %v\n",
 		key, ctx.DevicePortConfig.TimePriority, portConfig.TimePriority)
@@ -541,7 +544,7 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 		return
 	}
 	ctx := ctxArg.(*DeviceNetworkContext)
-	newAssignableAdapters := cast.CastAssignableAdapters(statusArg)
+	newAssignableAdapters := statusArg.(types.AssignableAdapters)
 	log.Infof("HandleAssignableAdaptersModify() %+v\n", newAssignableAdapters)
 
 	// ctxArg is DeviceNetworkContext
@@ -604,7 +607,7 @@ func IngestPortConfigList(ctx *DeviceNetworkContext) {
 		log.Errorf("No global key for DevicePortConfigList")
 		dpcl = types.DevicePortConfigList{}
 	} else {
-		dpcl = cast.CastDevicePortConfigList(item)
+		dpcl = item.(types.DevicePortConfigList)
 	}
 	ctx.DevicePortConfigList = &dpcl
 	log.Infof("Initial DPCL %v", dpcl)
@@ -651,6 +654,12 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 	current := getCurrentDPC(ctx) // Used to determine if index needs to change
 	currentIndex := ctx.DevicePortConfigList.CurrentIndex
 	oldConfig, _ := lookupPortConfig(ctx, *portConfig)
+	if strings.Contains(portConfig.Key, "override") {
+		checkAndUpdateWireless(ctx, oldConfig, portConfig)
+	} else {
+		// XXX remove this when controller supports WIFI
+		checkAndCopyWireless(ctx, portConfig)
+	}
 	if delete {
 		if oldConfig == nil {
 			log.Errorf("doUpdatePortConfigListAndPublish - Delete. "+
@@ -674,24 +683,16 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 
 			if current != nil &&
 				reflect.DeepEqual(current.Ports, oldConfig.Ports) {
-
-				if strings.Contains(portConfig.Key, "override") { // XXX
-					log.Infof("doUpdatePortConfigListAndPublish: override, curr %+v, old %+v\n",
-						current.Ports, oldConfig.Ports)
-				} else {
-					log.Infof("doUpdatePortConfigListAndPublish: no change and same Ports as current\n")
-					return false
-				}
+				log.Infof("doUpdatePortConfigListAndPublish: no change and same Ports as current\n")
+				return false
 			}
 			log.Infof("doUpdatePortConfigListAndPublish: changed ports from current; reorder\n")
 		} else {
 			log.Infof("doUpdatePortConfigListAndPublish: change from %+v to %+v\n",
 				*oldConfig, portConfig)
 		}
-		checkAndUpdateWireless(ctx, oldConfig, portConfig)
 		updatePortConfig(ctx, oldConfig, *portConfig)
 	} else {
-		checkAndUpdateWireless(ctx, nil, portConfig)
 		insertPortConfig(ctx, *portConfig)
 	}
 	// Check if current moved to a different index or was deleted
@@ -724,6 +725,7 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 
 func checkAndUpdateWireless(ctx *DeviceNetworkContext, oCfg *types.DevicePortConfig, portCfg *types.DevicePortConfig) {
 	log.Infof("checkAndUpdateWireless: oCfg nil %v, portCfg Ports %v\n", oCfg == nil, portCfg.Ports)
+	isOverride := strings.Contains(portCfg.Key, "override")
 	for _, pCfg := range portCfg.Ports {
 		var oldPortCfg *types.NetworkPortConfig
 		if oCfg != nil {
@@ -734,18 +736,9 @@ func checkAndUpdateWireless(ctx *DeviceNetworkContext, oCfg *types.DevicePortCon
 				}
 			}
 		}
-		if oldPortCfg == nil || strings.Contains(portCfg.Key, "override") ||
-			!reflect.DeepEqual(oldPortCfg.WirelessCfg, pCfg.WirelessCfg) {
-			// XXX hack to disable the cloud configure for wifi, if the existing configure
-			// has wifi information, but the new update does not. Remove this when the zedcloud
-			// implements the wifi configure for port
-			if oldPortCfg != nil && oldPortCfg.WirelessCfg.WType == types.WirelessTypeWifi &&
-				pCfg.WirelessCfg.WType == types.WirelessTypeNone {
-				log.Infof("checkAndUpdateWireless: HACK! wifi has configure %+v, ignore the update %+v\n",
-					oldPortCfg.WirelessCfg, pCfg.WirelessCfg)
-				break
-			}
-			// XXX
+		// XXX need to test out after the controller supports WIFI, if the 'isOverride' is not
+		// needed by then, will remove that
+		if oldPortCfg == nil || isOverride || !reflect.DeepEqual(oldPortCfg.WirelessCfg, pCfg.WirelessCfg) {
 			if pCfg.WirelessCfg.WType == types.WirelessTypeCellular ||
 				oldPortCfg != nil && oldPortCfg.WirelessCfg.WType == types.WirelessTypeCellular {
 				devPortInstallAPname(pCfg.IfName, pCfg.WirelessCfg)
@@ -754,6 +747,25 @@ func checkAndUpdateWireless(ctx *DeviceNetworkContext, oCfg *types.DevicePortCon
 				status := devPortInstallWifiConfig(pCfg.IfName, pCfg.WirelessCfg)
 				log.Infof("checkAndUpdateWireless: updated wpa file ok %v\n", status)
 			}
+		}
+
+		// XXX remove when controller supports WIFI config
+		if ctx != nil && isOverride && pCfg.WirelessCfg.WType == types.WirelessTypeWifi {
+			ctx.wifiPortCfg = pCfg
+		}
+	}
+}
+
+// hack for temp solution until zedcloud support wifi
+func checkAndCopyWireless(ctx *DeviceNetworkContext, portCfg *types.DevicePortConfig) {
+	if ctx.wifiPortCfg.WirelessCfg.WType == types.WirelessTypeNone {
+		return
+	}
+	for idx, pCfg := range portCfg.Ports {
+		if ctx.wifiPortCfg.IfName == pCfg.IfName {
+			portCfg.Ports[idx].WirelessCfg = ctx.wifiPortCfg.WirelessCfg
+			log.Infof("checkAndCopyWireless: portCfg %+v\n", portCfg.Ports[idx])
+			return
 		}
 	}
 }
@@ -838,7 +850,7 @@ func DoDNSUpdate(ctx *DeviceNetworkContext) {
 		log.Infof("PublishDeviceNetworkStatus: %+v\n",
 			ctx.DeviceNetworkStatus)
 		ctx.PubDeviceNetworkStatus.Publish("global",
-			ctx.DeviceNetworkStatus)
+			*ctx.DeviceNetworkStatus)
 	}
 	ctx.Changed = true
 }

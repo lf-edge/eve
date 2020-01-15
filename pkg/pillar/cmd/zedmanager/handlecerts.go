@@ -4,7 +4,6 @@
 package zedmanager
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -12,16 +11,11 @@ import (
 func handleCertObjStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := cast.CastCertObjStatus(statusArg)
+	status := statusArg.(types.CertObjStatus)
 	ctx := ctxArg.(*zedmanagerContext)
 	uuidStr := status.Key()
 
 	log.Infof("handlCertObjStatusModify for %s\n", uuidStr)
-	if status.Key() != key {
-		log.Errorf("handleCertObjStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
 	updateAIStatusUUID(ctx, uuidStr)
 	log.Infof("handleCertObjStatusModify done for %s\n", uuidStr)
 }
@@ -44,11 +38,6 @@ func lookupCertObjStatus(ctx *zedmanagerContext, key string) *types.CertObjStatu
 		log.Infof("lookupCertObjStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastCertObjStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupCertObjStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.CertObjStatus)
 	return &status
 }

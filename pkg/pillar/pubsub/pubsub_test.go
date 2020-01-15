@@ -1,6 +1,7 @@
 package pubsub
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,7 +37,7 @@ func TestHandleModify(t *testing.T) {
 	}
 
 	testMatrix := map[string]struct {
-		ctxArg         Subscription
+		ctxArg         SubscriptionImpl
 		key            string
 		item           interface{}
 		modifyHandler  SubHandler
@@ -76,7 +77,11 @@ func TestHandleModify(t *testing.T) {
 		t.Logf("Running test case %s", testname)
 		test.ctxArg.CreateHandler = test.createHandler
 		test.ctxArg.ModifyHandler = test.modifyHandler
-		handleModify(&test.ctxArg, test.key, test.item)
+		b, err := json.Marshal(test.item)
+		if err != nil {
+			t.Fatalf("json.Marshal failed: %s", err)
+		}
+		handleModify(&test.ctxArg, test.key, b)
 		// Make sure both weren't called
 		assert.Equal(t, created, test.expectedCreate)
 		assert.Equal(t, modified, test.expectedModify)

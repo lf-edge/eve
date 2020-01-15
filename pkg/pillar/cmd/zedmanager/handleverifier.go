@@ -4,7 +4,6 @@
 package zedmanager
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -19,12 +18,7 @@ func lookupVerifyImageConfig(ctx *zedmanagerContext,
 			safename)
 		return nil
 	}
-	config := cast.CastVerifyImageConfig(c)
-	if config.Key() != safename {
-		log.Errorf("lookupVerifyImageConfig(%s) got %s; ignored %+v\n",
-			safename, config.Key(), config)
-		return nil
-	}
+	config := c.(types.VerifyImageConfig)
 	return &config
 }
 
@@ -34,7 +28,7 @@ func lookupVerifyImageConfigSha256(ctx *zedmanagerContext,
 	pub := ctx.pubAppImgVerifierConfig
 	items := pub.GetAll()
 	for _, c := range items {
-		config := cast.CastVerifyImageConfig(c)
+		config := c.(types.VerifyImageConfig)
 		if config.ImageSha256 == sha256 {
 			return &config
 		}
@@ -124,7 +118,7 @@ func publishVerifyImageConfig(ctx *zedmanagerContext,
 	key := config.Key()
 	log.Debugf("publishVerifyImageConfig(%s)\n", key)
 	pub := ctx.pubAppImgVerifierConfig
-	pub.Publish(key, config)
+	pub.Publish(key, *config)
 }
 
 func unpublishVerifyImageConfig(ctx *zedmanagerContext,
@@ -139,12 +133,7 @@ func unpublishVerifyImageConfig(ctx *zedmanagerContext,
 func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := cast.CastVerifyImageStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleVerifyImageStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
+	status := statusArg.(types.VerifyImageStatus)
 	ctx := ctxArg.(*zedmanagerContext)
 	log.Infof("handleVerifyImageStatusModify for ImageID: %s, Safename: %s, "+
 		" RefCount %d\n", status.ImageID, status.Safename, status.RefCount)
@@ -201,12 +190,7 @@ func lookupVerifyImageStatus(ctx *zedmanagerContext,
 		log.Infof("lookupVerifyImageStatus(%s) not found\n", safename)
 		return nil
 	}
-	status := cast.CastVerifyImageStatus(c)
-	if status.Key() != safename {
-		log.Errorf("lookupVerifyImageStatus(%s) got %s; ignored %+v\n",
-			safename, status.Key(), status)
-		return nil
-	}
+	status := c.(types.VerifyImageStatus)
 	return &status
 }
 
@@ -220,7 +204,7 @@ func lookupVerifyImageStatusSha256(ctx *zedmanagerContext,
 	sub := ctx.subAppImgVerifierStatus
 	items := sub.GetAll()
 	for _, st := range items {
-		status := cast.CastVerifyImageStatus(st)
+		status := st.(types.VerifyImageStatus)
 		if status.ImageSha256 == sha256 {
 			return &status
 		}
@@ -248,7 +232,7 @@ func lookupVerifyImageStatusAny(ctx *zedmanagerContext, safename string,
 func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := cast.CastVerifyImageStatus(statusArg)
+	status := statusArg.(types.VerifyImageStatus)
 	log.Infof("handleVerifyImageStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
 	removeAIStatusSafename(ctx, key)

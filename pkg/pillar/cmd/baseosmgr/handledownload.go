@@ -9,7 +9,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
@@ -29,12 +28,7 @@ func lookupDownloaderConfig(ctx *baseOsMgrContext, objType string,
 			objType, safename)
 		return nil
 	}
-	config := cast.CastDownloaderConfig(c)
-	if config.Key() != safename {
-		log.Errorf("lookupDownloaderConfig(%s) got %s; ignored %+v\n",
-			safename, config.Key(), config)
-		return nil
-	}
+	config := c.(types.DownloaderConfig)
 	return &config
 }
 
@@ -160,12 +154,7 @@ func lookupDownloaderStatus(ctx *baseOsMgrContext, objType string,
 			objType, safename)
 		return nil
 	}
-	status := cast.CastDownloaderStatus(c)
-	if status.Key() != safename {
-		log.Errorf("lookupDownloaderStatus(%s) got %s; ignored %+v\n",
-			safename, status.Key(), status)
-		return nil
-	}
+	status := c.(types.DownloaderStatus)
 	return &status
 }
 
@@ -454,7 +443,7 @@ func publishDownloaderConfig(ctx *baseOsMgrContext, objType string,
 	key := config.Key()
 	log.Debugf("publishDownloaderConfig(%s/%s)\n", objType, config.Key())
 	pub := downloaderPublication(ctx, objType)
-	pub.Publish(key, config)
+	pub.Publish(key, *config)
 }
 
 func unpublishDownloaderConfig(ctx *baseOsMgrContext, objType string,
@@ -471,8 +460,8 @@ func unpublishDownloaderConfig(ctx *baseOsMgrContext, objType string,
 	pub.Unpublish(key)
 }
 
-func downloaderPublication(ctx *baseOsMgrContext, objType string) *pubsub.Publication {
-	var pub *pubsub.Publication
+func downloaderPublication(ctx *baseOsMgrContext, objType string) pubsub.Publication {
+	var pub pubsub.Publication
 	switch objType {
 	case types.BaseOsObj:
 		pub = ctx.pubBaseOsDownloadConfig
@@ -485,8 +474,8 @@ func downloaderPublication(ctx *baseOsMgrContext, objType string) *pubsub.Public
 	return pub
 }
 
-func downloaderSubscription(ctx *baseOsMgrContext, objType string) *pubsub.Subscription {
-	var sub *pubsub.Subscription
+func downloaderSubscription(ctx *baseOsMgrContext, objType string) pubsub.Subscription {
+	var sub pubsub.Subscription
 	switch objType {
 	case types.BaseOsObj:
 		sub = ctx.subBaseOsDownloadStatus

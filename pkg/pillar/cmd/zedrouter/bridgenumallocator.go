@@ -8,7 +8,7 @@
 package zedrouter
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -26,13 +26,8 @@ func bridgeNumAllocatorInit(ctx *zedrouterContext) {
 	pubUuidToNum := ctx.pubUuidToNum
 
 	items := pubUuidToNum.GetAll()
-	for key, st := range items {
-		status := cast.CastUuidToNum(st)
-		if status.Key() != key {
-			log.Errorf("bridgeNumAllocatorInit key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
+	for _, st := range items {
+		status := st.(types.UuidToNum)
 		if status.NumType != "bridgeNum" {
 			continue
 		}
@@ -56,13 +51,8 @@ func bridgeNumAllocatorInit(ctx *zedrouterContext) {
 	// In case zedrouter process restarted we fill in InUse from
 	// NetworkInstanceStatus
 	items = pubNetworkInstanceStatus.GetAll()
-	for key, st := range items {
-		status := cast.CastNetworkInstanceStatus(st)
-		if status.Key() != key {
-			log.Errorf("bridgeNumAllocatorInit key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
+	for _, st := range items {
+		status := st.(types.NetworkInstanceStatus)
 		bridgeNum := status.BridgeNum
 		uuid := status.UUID
 
@@ -92,7 +82,7 @@ func bridgeNumAllocatorGC(ctx *zedrouterContext) {
 	freedCount := 0
 	items := pubUuidToNum.GetAll()
 	for _, st := range items {
-		status := cast.CastUuidToNum(st)
+		status := st.(types.UuidToNum)
 		if status.NumType != "bridgeNum" {
 			continue
 		}

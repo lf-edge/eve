@@ -6,19 +6,19 @@ package uuidtonum
 import (
 	"errors"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"time"
+
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
 
 // Update LastUseTime; set CreateTime if no entry, set InUse
 // The number can be updated as part of this. Entry could already be InUse
 // If mustCreate is set the entry should not exist.
 // XXX doesn't allocate; merely reserves the number for the UUID
-func UuidToNumAllocate(pub *pubsub.Publication, uuid uuid.UUID,
+func UuidToNumAllocate(pub pubsub.Publication, uuid uuid.UUID,
 	number int, mustCreate bool, numType string) {
 
 	log.Infof("UuidToNumAllocate(%s, %d, %v)\n", uuid.String(), number,
@@ -38,7 +38,7 @@ func UuidToNumAllocate(pub *pubsub.Publication, uuid uuid.UUID,
 		pub.Publish(u.Key(), u)
 		return
 	}
-	u := cast.CastUuidToNum(i)
+	u := i.(types.UuidToNum)
 	if u.NumType != numType {
 		log.Fatalf("UuidToNumAllocate(%s) wrong numType %s vs. %s\n",
 			uuid.String(), u.NumType, numType)
@@ -68,14 +68,14 @@ func UuidToNumAllocate(pub *pubsub.Publication, uuid uuid.UUID,
 }
 
 // Clear InUse
-func UuidToNumFree(pub *pubsub.Publication, uuid uuid.UUID) {
+func UuidToNumFree(pub pubsub.Publication, uuid uuid.UUID) {
 
 	log.Infof("UuidToNumFree(%s)\n", uuid.String())
 	i, err := pub.Get(uuid.String())
 	if err != nil {
 		log.Fatalf("UuidToNumFree(%s) does not exist\n", uuid.String())
 	}
-	u := cast.CastUuidToNum(i)
+	u := i.(types.UuidToNum)
 	u.InUse = false
 	u.LastUseTime = time.Now()
 	log.Infof("UuidToNumFree(%s) publishing updated %v\n",
@@ -86,7 +86,7 @@ func UuidToNumFree(pub *pubsub.Publication, uuid uuid.UUID) {
 	}
 }
 
-func UuidToNumDelete(pub *pubsub.Publication, uuid uuid.UUID) {
+func UuidToNumDelete(pub pubsub.Publication, uuid uuid.UUID) {
 
 	log.Infof("UuidToNumDelete(%s)\n", uuid.String())
 	_, err := pub.Get(uuid.String())
@@ -100,7 +100,7 @@ func UuidToNumDelete(pub *pubsub.Publication, uuid uuid.UUID) {
 	}
 }
 
-func UuidToNumGet(pub *pubsub.Publication, uuid uuid.UUID,
+func UuidToNumGet(pub pubsub.Publication, uuid uuid.UUID,
 	numType string) (int, error) {
 
 	key := uuid.String()
@@ -109,18 +109,12 @@ func UuidToNumGet(pub *pubsub.Publication, uuid uuid.UUID,
 	if err != nil {
 		return 0, err
 	}
-	u := cast.CastUuidToNum(i)
-	if u.Key() != key {
-		errStr := fmt.Sprintf("UuidToNumGet key/UUID mismatch %s vs %s; ignored %+v",
-			key, u.Key(), u)
-		log.Errorln(errStr)
-		return 0, errors.New(errStr)
-	}
+	u := i.(types.UuidToNum)
 	log.Infof("UuidToNumGet(%s, %s) found %v\n", key, numType, u)
 	return u.Number, nil
 }
 
-func UuidToNumGetOldestUnused(pub *pubsub.Publication,
+func UuidToNumGetOldestUnused(pub pubsub.Publication,
 	numType string) (uuid.UUID, int, error) {
 
 	log.Infof("UuidToNumGetOldestUnused(%s)\n", numType)
@@ -128,13 +122,8 @@ func UuidToNumGetOldestUnused(pub *pubsub.Publication,
 	// Will have a LastUseTime of zero
 	oldest := new(types.UuidToNum)
 	items := pub.GetAll()
-	for key, st := range items {
-		status := cast.CastUuidToNum(st)
-		if status.Key() != key {
-			log.Errorf("UuidToNumGetOldestUnused key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
+	for _, st := range items {
+		status := st.(types.UuidToNum)
 		if status.NumType != numType || status.InUse {
 			continue
 		}

@@ -6,32 +6,31 @@
 package agentlog
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
-func GetGlobalConfig(sub *pubsub.Subscription) *types.GlobalConfig {
+func GetGlobalConfig(sub pubsub.Subscription) *types.GlobalConfig {
 	m, err := sub.Get("global")
 	if err != nil {
 		log.Infof("GlobalConfig failed %s\n", err)
 		return nil
 	}
-	gc := cast.CastGlobalConfig(m)
+	gc := m.(types.GlobalConfig)
 	return &gc
 }
 
 // Returns (value, ok)
-func GetLogLevel(sub *pubsub.Subscription, agentName string) (string, bool) {
+func GetLogLevel(sub pubsub.Subscription, agentName string) (string, bool) {
 	return getLogLevelImpl(sub, agentName, true)
 }
 
-func GetLogLevelNoDefault(sub *pubsub.Subscription, agentName string) (string, bool) {
+func GetLogLevelNoDefault(sub pubsub.Subscription, agentName string) (string, bool) {
 	return getLogLevelImpl(sub, agentName, false)
 }
 
-func getLogLevelImpl(sub *pubsub.Subscription, agentName string,
+func getLogLevelImpl(sub pubsub.Subscription, agentName string,
 	allowDefault bool) (string, bool) {
 
 	m, err := sub.Get("global")
@@ -39,7 +38,7 @@ func getLogLevelImpl(sub *pubsub.Subscription, agentName string,
 		log.Infof("GetLogLevel failed %s\n", err)
 		return "", false
 	}
-	gc := cast.CastGlobalConfig(m)
+	gc := m.(types.GlobalConfig)
 	// Do we have an entry for this agent?
 	as, ok := gc.AgentSettings[agentName]
 	if ok && as.LogLevel != "" {
@@ -53,15 +52,15 @@ func getLogLevelImpl(sub *pubsub.Subscription, agentName string,
 }
 
 // Returns (value, ok)
-func GetRemoteLogLevel(sub *pubsub.Subscription, agentName string) (string, bool) {
+func GetRemoteLogLevel(sub pubsub.Subscription, agentName string) (string, bool) {
 	return getRemoteLogLevelImpl(sub, agentName, true)
 }
 
-func GetRemoteLogLevelNoDefault(sub *pubsub.Subscription, agentName string) (string, bool) {
+func GetRemoteLogLevelNoDefault(sub pubsub.Subscription, agentName string) (string, bool) {
 	return getRemoteLogLevelImpl(sub, agentName, false)
 }
 
-func getRemoteLogLevelImpl(sub *pubsub.Subscription, agentName string,
+func getRemoteLogLevelImpl(sub pubsub.Subscription, agentName string,
 	allowDefault bool) (string, bool) {
 
 	m, err := sub.Get("global")
@@ -69,7 +68,7 @@ func getRemoteLogLevelImpl(sub *pubsub.Subscription, agentName string,
 		log.Infof("GetRemoteLogLevel failed %s\n", err)
 		return "", false
 	}
-	gc := cast.CastGlobalConfig(m)
+	gc := m.(types.GlobalConfig)
 	// Do we have an entry for this agent?
 	as, ok := gc.AgentSettings[agentName]
 	if ok && as.RemoteLogLevel != "" {
@@ -142,21 +141,21 @@ func SetRemoteLogLevel(gc *types.GlobalConfig, agentName string, loglevel string
 
 // Update LogLevel setting based on GlobalConfig and debugOverride
 // Return debug bool
-func HandleGlobalConfig(sub *pubsub.Subscription, agentName string,
+func HandleGlobalConfig(sub pubsub.Subscription, agentName string,
 	debugOverride bool) (bool, *types.GlobalConfig) {
 
 	log.Infof("HandleGlobalConfig(%s, %v)\n", agentName, debugOverride)
 	return handleGlobalConfigImpl(sub, agentName, debugOverride, true)
 }
 
-func HandleGlobalConfigNoDefault(sub *pubsub.Subscription, agentName string,
+func HandleGlobalConfigNoDefault(sub pubsub.Subscription, agentName string,
 	debugOverride bool) (bool, *types.GlobalConfig) {
 
 	log.Infof("HandleGlobalConfig(%s, %v)\n", agentName, debugOverride)
 	return handleGlobalConfigImpl(sub, agentName, debugOverride, false)
 }
 
-func handleGlobalConfigImpl(sub *pubsub.Subscription, agentName string,
+func handleGlobalConfigImpl(sub pubsub.Subscription, agentName string,
 	debugOverride bool, allowDefault bool) (bool, *types.GlobalConfig) {
 	level := log.InfoLevel
 	debug := false

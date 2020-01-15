@@ -157,8 +157,7 @@ if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
 fi
 
-# XXX Remove DNC and AA directories?
-DIRS="$CONFIGDIR $TMPDIR $CONFIGDIR/DevicePortConfig $TMPDIR/DeviceNetworkConfig/ $TMPDIR/AssignableAdapters"
+DIRS="$CONFIGDIR $TMPDIR $CONFIGDIR/DevicePortConfig"
 
 for d in $DIRS; do
     d1=$(dirname "$d")
@@ -192,11 +191,16 @@ fi
 P3=$(zboot partdev P3)
 P3_FS_TYPE=$(blkid "$P3"| awk '{print $3}' | sed 's/TYPE=//' | sed 's/"//g')
 if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] && [ "$P3_FS_TYPE" = "ext4" ]; then
+    #It is a device with TPM, and formatted with ext4, setup fscrypt
+    echo "$(date -Ins -u) EXT4 partitioned $PERSISTDIR, enabling fscrypt"
     #Initialize fscrypt algorithm, hash length etc.
     $BINDIR/vaultmgr -c "$CURPART" setupVaults
+fi
 
-    #tpm_in_use might have been wiped out during mkfs above.
-    touch $PERSISTCONFIGDIR/tpm_in_use
+#Migrate old installations to new location
+if [ -f $PERSISTCONFIGDIR/tpm_in_use ]; then
+    echo "$(date -Ins -u) Copying tpm_in_use from $PERSISTCONFIGDIR to $CONFIGDIR"
+    cp -p $PERSISTCONFIGDIR/tpm_in_use $CONFIGDIR/tpm_in_use
     sync
 fi
 
@@ -425,14 +429,21 @@ if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     sync
     blockdev --flushbufs "$CONFIGDEV"
     if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ]; then
-        echo "TPM device is present and allowed, marking mode as tpm-enabled"
-        touch $PERSISTCONFIGDIR/tpm_in_use
-        sync
-        blockdev --flushbufs "$CONFIGDEV"
-        $BINDIR/generate-device.sh -b $CONFIGDIR/device -t
+        echo "$(date -Ins -u) TPM device is present and allowed, creating TPM based device key"
+        if ! $BINDIR/generate-device.sh -b $CONFIGDIR/device -t; then
+            echo "$(date -Ins -u) TPM is malfunctioning, falling back to software certs"
+            rm -f $CONFIGDIR/tpm_in_use
+            sync
+            blockdev --flushbufs "$CONFIGDEV"
+            $BINDIR/generate-device.sh -b $CONFIGDIR/device
+        else
+            touch $CONFIGDIR/tpm_in_use
+            sync
+            blockdev --flushbufs "$CONFIGDEV"
+        fi
     else
         #Just in case, it got disabled in BIOS later on.
-        rm -f $PERSISTCONFIGDIR/tpm_in_use
+        rm -f $CONFIGDIR/tpm_in_use
         sync
         blockdev --flushbufs "$CONFIGDEV"
         $BINDIR/generate-device.sh -b $CONFIGDIR/device
@@ -524,7 +535,7 @@ if [ ! -d $LISPDIR ]; then
     exit 1
 fi
 
-if ! [ -f $PERSISTCONFIGDIR/tpm_in_use ]; then
+if ! [ -f $CONFIGDIR/tpm_in_use ]; then
     # Need a key for device-to-device map-requests
     cp -p $CONFIGDIR/device.key.pem $LISPDIR/lisp-sig.pem
 fi

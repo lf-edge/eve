@@ -4,7 +4,6 @@
 package zedmanager
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -71,7 +70,7 @@ func publishDownloaderConfig(ctx *zedmanagerContext,
 	key := config.Key()
 	log.Debugf("publishDownloaderConfig(%s)\n", key)
 	pub := ctx.pubAppImgDownloadConfig
-	pub.Publish(key, config)
+	pub.Publish(key, *config)
 }
 
 func unpublishDownloaderConfig(ctx *zedmanagerContext,
@@ -85,7 +84,7 @@ func unpublishDownloaderConfig(ctx *zedmanagerContext,
 
 func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := cast.CastDownloaderStatus(statusArg)
+	status := statusArg.(types.DownloaderStatus)
 	ctx := ctxArg.(*zedmanagerContext)
 	log.Infof("handleDownloaderStatusModify for %s status.RefCount %d"+
 		"status.Expired: %+v\n",
@@ -145,12 +144,7 @@ func lookupDownloaderConfig(ctx *zedmanagerContext,
 		log.Infof("lookupDownloaderConfig(%s) not found\n", safename)
 		return nil
 	}
-	config := cast.CastDownloaderConfig(c)
-	if config.Key() != safename {
-		log.Errorf("lookupDownloaderConfig(%s) got %s; ignored %+v\n",
-			safename, config.Key(), config)
-		return nil
-	}
+	config := c.(types.DownloaderConfig)
 	return &config
 }
 
@@ -164,12 +158,7 @@ func lookupDownloaderStatus(ctx *zedmanagerContext,
 		log.Infof("lookupDownloaderStatus(%s) not found\n", safename)
 		return nil
 	}
-	status := cast.CastDownloaderStatus(c)
-	if status.Key() != safename {
-		log.Errorf("lookupDownloaderStatus(%s) got %s; ignored %+v\n",
-			safename, status.Key(), status)
-		return nil
-	}
+	status := c.(types.DownloaderStatus)
 	return &status
 }
 
