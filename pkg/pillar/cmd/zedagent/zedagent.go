@@ -1214,6 +1214,8 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 
 	getconfigCtx := ctxArg.(*getconfigContext)
 	status := statusArg.(types.NodeAgentStatus)
+	log.Infof("handleNodeAgentStatusModify: updateInProgress %t rebootReason %s",
+		status.UpdateInprogress, status.RebootReason)
 	updateInprogress := getconfigCtx.updateInprogress
 	ctx := getconfigCtx.zedagentCtx
 	ctx.remainingTestTime = status.RemainingTestTime
