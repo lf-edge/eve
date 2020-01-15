@@ -28,21 +28,12 @@ func GetDiskSizeForAppInstance(status types.AppInstanceStatus) (
 		if ssPtr.ReadOnly {
 			continue
 		}
-		fileLocation, err := VerifiedImageFileLocation(ssPtr.IsContainer,
-			ssPtr.ContainerImageID, ssPtr.ImageSha256)
-		if err != nil {
-			err = fmt.Errorf("GetDiskSize: App: %s. Failed to get "+
-				"VerifiedImageFileLocation. err: %s",
-				status.UUIDandVersion.UUID.String(),
-				err.Error())
-			log.Errorf("VerifiedImageFileLocation failed: %s", err.Error())
-			return 0, err
-		}
+		fileLocation := ssPtr.ActiveFileLocation
 		imageVirtualSize, err := diskmetrics.GetDiskVirtualSize(fileLocation)
 		if err != nil {
 			errStr := fmt.Sprintf("GetDiskSize: App: %s. Failed to get "+
-				"Virtual Size. %s", status.UUIDandVersion.UUID.String(),
-				err.Error())
+				"Virtual Size for %s: %s", status.UUIDandVersion.UUID.String(),
+				fileLocation, err)
 			log.Errorf("GetDiskSize failed: %s", errStr)
 			return 0, errors.New(errStr)
 		}
