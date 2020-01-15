@@ -36,6 +36,17 @@ import (
 //	"complete" topic (aka synchronized)
 //	"restarted" topic
 
+// SubscriptionOptions options to pass when creating a Subscription
+type SubscriptionOptions struct {
+	CreateHandler  SubHandler
+	ModifyHandler  SubHandler
+	DeleteHandler  SubHandler
+	RestartHandler SubRestartHandler
+	SyncHandler    SubRestartHandler
+	WarningTime    time.Duration
+	ErrorTime      time.Duration
+}
+
 // Used locally by each serverConnection goroutine to track updates
 // to send.
 type localCollection map[string]interface{}
@@ -72,15 +83,15 @@ const (
 	PersistConfigDir = PersistDir + "/config"
 )
 
-func Publish(agentName string, topicType interface{}) (*PublicationImpl, error) {
+func Publish(agentName string, topicType interface{}) (Publication, error) {
 	return publishImpl(agentName, "", topicType, false)
 }
 
-func PublishPersistent(agentName string, topicType interface{}) (*PublicationImpl, error) {
+func PublishPersistent(agentName string, topicType interface{}) (Publication, error) {
 	return publishImpl(agentName, "", topicType, true)
 }
 
-func PublishScope(agentName string, agentScope string, topicType interface{}) (*PublicationImpl, error) {
+func PublishScope(agentName string, agentScope string, topicType interface{}) (Publication, error) {
 	return publishImpl(agentName, agentScope, topicType, false)
 }
 
@@ -88,7 +99,7 @@ func PublishScope(agentName string, agentScope string, topicType interface{}) (*
 // We read any checkpointed state from dirName and insert in pub.km as initial
 // values.
 func publishImpl(agentName string, agentScope string,
-	topicType interface{}, persistent bool) (*PublicationImpl, error) {
+	topicType interface{}, persistent bool) (Publication, error) {
 
 	topic := TypeToName(topicType)
 	pub := new(PublicationImpl)
@@ -398,26 +409,26 @@ func PersistentDirName(name string) string {
 // watch ensures that any restart/restarted notification is after any other
 // notifications from ReadDir
 func Subscribe(agentName string, topicType interface{}, activate bool,
-	ctx interface{}) (*SubscriptionImpl, error) {
+	ctx interface{}, options *SubscriptionOptions) (Subscription, error) {
 
-	return subscribeImpl(agentName, "", topicType, activate, ctx, false)
+	return subscribeImpl(agentName, "", topicType, activate, ctx, false, options)
 }
 
 func SubscribeScope(agentName string, agentScope string, topicType interface{},
-	activate bool, ctx interface{}) (*SubscriptionImpl, error) {
+	activate bool, ctx interface{}, options *SubscriptionOptions) (Subscription, error) {
 
 	return subscribeImpl(agentName, agentScope, topicType, activate, ctx,
-		false)
+		false, options)
 }
 
 func SubscribePersistent(agentName string, topicType interface{}, activate bool,
-	ctx interface{}) (*SubscriptionImpl, error) {
+	ctx interface{}, options *SubscriptionOptions) (Subscription, error) {
 
-	return subscribeImpl(agentName, "", topicType, activate, ctx, true)
+	return subscribeImpl(agentName, "", topicType, activate, ctx, true, options)
 }
 
 func subscribeImpl(agentName string, agentScope string, topicType interface{},
-	activate bool, ctx interface{}, persistent bool) (*SubscriptionImpl, error) {
+	activate bool, ctx interface{}, persistent bool, options *SubscriptionOptions) (Subscription, error) {
 
 	topic := TypeToName(topicType)
 	changes := make(chan string)
@@ -431,6 +442,16 @@ func subscribeImpl(agentName string, agentScope string, topicType interface{},
 	sub.userCtx = ctx
 	sub.km = keyMap{key: NewLockedStringMap()}
 	sub.persistent = persistent
+	if options != nil {
+		sub.CreateHandler = options.CreateHandler
+		sub.ModifyHandler = options.ModifyHandler
+		sub.DeleteHandler = options.DeleteHandler
+		sub.RestartHandler = options.RestartHandler
+		sub.SynchronizedHandler = options.SyncHandler
+		sub.MaxProcessTimeWarn = options.WarningTime
+		sub.MaxProcessTimeError = options.ErrorTime
+	}
+
 	name := sub.nameString()
 
 	// Special case for files in /var/tmp/zededa/ and also
