@@ -335,7 +335,7 @@ func Run() {
 				log.Infof("Verifier reported restarted\n")
 			}
 
-		case change := <-subImageStatus.C:
+		case change := <-subImageStatus.MsgChan():
 			subImageStatus.ProcessChange(change)
 			if ctx.rwImageAvailable {
 				log.Infof("rwImageAvailable\n")
