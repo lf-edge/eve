@@ -354,6 +354,14 @@ func doUpdate(ctx *zedmanagerContext,
 		return changed
 	}
 	log.Infof("Have config.Activate for %s\n", uuidStr)
+	// doActive/checkDiskSize does a GetAll to look at all app instances
+	// so we have to publish here
+	if changed {
+		log.Infof("doupdate status change for %s\n",
+			uuidStr)
+		publishAppInstanceStatus(ctx, status)
+		changed = false
+	}
 	c = doActivate(ctx, uuidStr, config, status)
 	changed = changed || c
 	log.Infof("doUpdate done for %s\n", uuidStr)
@@ -376,8 +384,8 @@ func doInstallProcessStorageEntriesWithVerifiedImage(
 
 	isPtr := lookupImageStatusForApp(ctx, appInstUUID, ssPtr.ImageSha256)
 	if isPtr != nil {
-		// DiskStatus found for he App.
-		log.Debugf("Image Status found for app UUID: %s. ImageStatus: %+v",
+		// ImageStatus found for the Image
+		log.Infof("Image Status found for app UUID: %s. ImageStatus: %+v",
 			appInstUUID.String(), *isPtr)
 		if ssPtr.State != types.DELIVERED {
 			ssPtr.State = types.DELIVERED
@@ -544,7 +552,7 @@ func doInstall(ctx *zedmanagerContext,
 			ctx, status.UUIDandVersion.UUID, ss)
 		changed = changed || statusUpdated
 		if isPtr != nil {
-			log.Debugf("doInstall: Installed image exists. StorageStatus "+
+			log.Infof("doInstall: Installed image exists. StorageStatus "+
 				"Name: %s, safename %s, ImageSha256: %s",
 				ss.Name, safename, ss.ImageSha256)
 			// Image with imageStatus is in INSTALLED state
@@ -554,7 +562,7 @@ func doInstall(ctx *zedmanagerContext,
 			continue
 		}
 		if vs != nil {
-			log.Debugf("doInstall: Verified image exists. StorageStatus "+
+			log.Infof("doInstall: Verified image exists. StorageStatus "+
 				"Name: %s, safename %s, ImageSha256: %s",
 				ss.Name, safename, ss.ImageSha256)
 			if minState > vs.State {
@@ -681,26 +689,31 @@ func doInstall(ctx *zedmanagerContext,
 	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
 		safename := ss.Safename()
-		log.Infof("Found StorageStatus URL %s safename %s\n",
-			ss.Name, safename)
-
 		isPtr := lookupImageStatusForApp(ctx, config.UUIDandVersion.UUID,
 			ss.ImageSha256)
 		if isPtr != nil {
-			ss.ActiveFileLocation = types.VerifiedAppImgDirname + "/" + safename
-			log.Infof("Update SSL ActiveFileLocation for %s: %s\n",
-				uuidStr, ss.ActiveFileLocation)
-			changed = true
+			log.Infof("Found ImageStatus %s for URL %s safename %s\n",
+				isPtr.FileLocation, ss.Name, safename)
+
+			if ss.ActiveFileLocation != isPtr.FileLocation {
+				ss.ActiveFileLocation = isPtr.FileLocation
+				log.Infof("Update SSL ActiveFileLocation for %s: %s\n",
+					uuidStr, ss.ActiveFileLocation)
+				changed = true
+			}
 		} else {
 			vs := lookupVerifyImageStatusAny(ctx, safename, ss.ImageSha256)
 			if vs == nil || vs.Expired {
-				log.Infof("VerifyImageStatus for %s sha %s not found (%v)\n",
+				log.Infof("VerifyImageStatus for %s sha %s not found or Expired (%v)\n",
 					safename, ss.ImageSha256, vs)
 				// Keep at current state
 				minState = types.DOWNLOADED
 				changed = true
 				continue
 			}
+			log.Infof("Found VerifyImageStatus for URL %s safename %s\n",
+				ss.Name, safename)
+
 			if minState > vs.State {
 				minState = vs.State
 			}
@@ -734,14 +747,18 @@ func doInstall(ctx *zedmanagerContext,
 			case types.INITIAL:
 				// Nothing to do
 			default:
-				ss.ActiveFileLocation = types.VerifiedAppImgDirname + "/" + vs.Safename
-				log.Infof("Update SSL ActiveFileLocation for %s: %s\n",
-					uuidStr, ss.ActiveFileLocation)
-				changed = true
+				_, _, filelocation := vs.ImageDownloadFilenames()
+				if ss.ActiveFileLocation != filelocation {
+					ss.ActiveFileLocation = filelocation
+					log.Infof("Update SSL ActiveFileLocation for %s: %s\n",
+						uuidStr, ss.ActiveFileLocation)
+					changed = true
+				}
 			}
 		}
-		log.Debugf("doInstall: StorageStatus ImageID:%s, Safename: %s, "+
-			"minState:%d", ss.ImageID, ss.Name, minState)
+		log.Infof("doInstall: StorageStatus ImageID:%s, Safename: %s, "+
+			"minState:%d ActiveFileLocation:%s",
+			ss.ImageID, ss.Name, minState, ss.ActiveFileLocation)
 	}
 	if minState == types.MAXSTATE {
 		// Odd; no StorageConfig in list

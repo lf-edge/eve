@@ -925,7 +925,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		if ds.ReadOnly || !ds.Preserve {
 			continue
 		}
-		log.Infof("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
+		log.Infof("Potentially copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
 		if _, err := os.Stat(ds.ActiveFileLocation); err == nil {
 			if ds.Preserve {
 				log.Infof("Preserve and target exists - skip copy\n")
@@ -933,6 +933,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 				log.Infof("Not preserve and target exists - assume rebooted and preserve\n")
 			}
 		} else {
+			log.Infof("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
 			if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
 				log.Errorf("Copy failed from %s to %s: %s\n",
 					ds.FileLocation, ds.ActiveFileLocation, err)
@@ -955,10 +956,10 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 				publishDomainStatus(ctx, &status)
 				return
 			}
+			log.Infof("Copy DONE from %s to %s\n",
+				ds.FileLocation, ds.ActiveFileLocation)
 		}
 		addImageStatus(ctx, ds.ActiveFileLocation)
-		log.Infof("Copy DONE from %s to %s\n",
-			ds.FileLocation, ds.ActiveFileLocation)
 	}
 
 	if err := configAdapters(ctx, *config); err != nil {
@@ -1118,19 +1119,22 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		if ds.ReadOnly || ds.Preserve {
 			continue
 		}
-		log.Infof("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
+		log.Infof("Potentially copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
 		if _, err := os.Stat(ds.ActiveFileLocation); err == nil && ds.Preserve {
 			log.Infof("Preserve and target exists - skip copy\n")
-		} else if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
-			log.Errorf("Copy failed from %s to %s: %s\n",
-				ds.FileLocation, ds.ActiveFileLocation, err)
-			status.LastErr = fmt.Sprintf("%v", err)
-			status.LastErrTime = time.Now()
-			return
+		} else {
+			log.Infof("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
+			if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
+				log.Errorf("Copy failed from %s to %s: %s\n",
+					ds.FileLocation, ds.ActiveFileLocation, err)
+				status.LastErr = fmt.Sprintf("%v", err)
+				status.LastErrTime = time.Now()
+				return
+			}
+			log.Infof("Copy DONE from %s to %s\n",
+				ds.FileLocation, ds.ActiveFileLocation)
 		}
 		addImageStatus(ctx, ds.ActiveFileLocation)
-		log.Infof("Copy DONE from %s to %s\n",
-			ds.FileLocation, ds.ActiveFileLocation)
 	}
 
 	filename := xenCfgFilename(config.AppNum)
@@ -1409,16 +1413,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		xv := "xvd" + string(int('a')+i)
 		ds.Vdev = xv
 
-		log.Infof("getting image file location IsContainer(%v), ContainerImageId(%s), ImageSha256(%s)", status.IsContainer, ds.ImageID.String(), dc.ImageSha256)
-		target, err := utils.VerifiedImageFileLocation(status.IsContainer,
-			ds.ImageID.String(), dc.ImageSha256)
-		if err != nil {
-			log.Errorf("configToStatus: Failed to get Image File Location. "+
-				"err: %+s", err.Error())
-			return err
-		}
-		ds.FileLocation = target
-
+		target := ""
 		if !status.IsContainer && !dc.ReadOnly {
 			// XXX:Why are we excluding container images? Are they supposed to be
 			//  readonly
@@ -1428,7 +1423,30 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			target = appRwImageName(dc.ImageSha256,
 				config.UUIDandVersion.UUID.String(), dc.Format)
 		}
-		ds.ActiveFileLocation = target
+		if _, err := os.Stat(target); err == nil && target != "" {
+			log.Infof("using existing rw image file location %s for ImageID(%s), ImageSha256(%s)",
+				target, ds.ImageID.String(), dc.ImageSha256)
+
+			ds.ActiveFileLocation = target
+			ds.FileLocation = target
+		} else {
+			log.Infof("getting image file location IsContainer(%v), ContainerImageId(%s), ImageSha256(%s)",
+				status.IsContainer, ds.ImageID.String(), dc.ImageSha256)
+			location, err := utils.VerifiedImageFileLocation(status.IsContainer,
+				ds.ImageID.String(), dc.ImageSha256)
+			if err != nil {
+				log.Errorf("configToStatus: Failed to get Image File Location. "+
+					"err: %+s", err.Error())
+				return err
+			}
+			ds.FileLocation = location
+			if target != "" {
+				ds.ActiveFileLocation = target
+			} else {
+				ds.ActiveFileLocation = location
+			}
+		}
+
 	}
 	// XXX could defer to Activate
 	if config.CloudInitUserData != nil {

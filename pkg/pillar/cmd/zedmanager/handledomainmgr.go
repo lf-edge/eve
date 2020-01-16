@@ -6,8 +6,6 @@ package zedmanager
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -70,20 +68,22 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	dc.DiskConfigList = make([]types.DiskConfig, numDisks)
 	i := 0
 	for index, sc := range aiConfig.StorageConfigList {
-		// Check that file is verified
-		locationDir := types.VerifiedAppImgDirname + "/" + sc.ImageSha256
-		location := ""
+		if index >= len(aiStatus.StorageStatusList) {
+			errStr := fmt.Sprintf("More StorageStatus than StorageConfig: %d vs %d", len(aiConfig.StorageConfigList), len(aiStatus.StorageStatusList))
+			log.Error(errStr)
+			return errors.New(errStr)
+		}
+		location := aiStatus.StorageStatusList[index].ActiveFileLocation
+		if location == "" {
+			errStr := "No ActiveFileLocation"
+			log.Error(errStr)
+			return errors.New(errStr)
+		}
+
 		if aiStatus.IsContainer {
-			location = types.PersistRktDataDir
 			if dc.ContainerImageID == "" {
 				dc.ContainerImageID =
 					aiStatus.StorageStatusList[index].ContainerImageID
-			}
-		} else {
-			var err error
-			location, err = locationFromDir(locationDir)
-			if err != nil {
-				return err
 			}
 		}
 		switch sc.Target {
@@ -206,29 +206,4 @@ func handleDomainStatusDelete(ctxArg interface{}, key string,
 	ctx := ctxArg.(*zedmanagerContext)
 	removeAIStatusUUID(ctx, key)
 	log.Infof("handleDomainStatusDelete done for %s\n", key)
-}
-
-func locationFromDir(locationDir string) (string, error) {
-	if _, err := os.Stat(locationDir); err != nil {
-		log.Errorf("Missing directory: %s, %s\n", locationDir, err)
-		return "", err
-	}
-	// locationDir is a directory. Need to find single file inside
-	// which the verifier ensures.
-	locations, err := ioutil.ReadDir(locationDir)
-	if err != nil {
-		log.Errorln(err)
-		return "", err
-	}
-	if len(locations) != 1 {
-		log.Errorf("Multiple files in %s\n", locationDir)
-		return "", errors.New(fmt.Sprintf("Multiple files in %s\n",
-			locationDir))
-	}
-	if len(locations) == 0 {
-		log.Errorf("No files in %s\n", locationDir)
-		return "", errors.New(fmt.Sprintf("No files in %s\n",
-			locationDir))
-	}
-	return locationDir + "/" + locations[0].Name(), nil
 }
