@@ -26,6 +26,8 @@ PATH=$BINDIR:$PATH
 echo "$(date -Ins -u) Starting device-steps.sh"
 echo "$(date -Ins -u) EVE version: $(cat $BINDIR/versioninfo)"
 
+/usr/bin/logread -F -socket /hostfs/var/run/memlogdq.sock | logger &
+
 MEASURE=0
 while [ $# != 0 ]; do
     if [ "$1" = -h ]; then
