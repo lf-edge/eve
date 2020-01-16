@@ -46,6 +46,15 @@ const (
 	//TpmDeviceKeyHdl is the well known TPM permanent handle for device key
 	TpmDeviceKeyHdl tpmutil.Handle = 0x817FFFFF
 
+	//TpmEKHdl is the well known TPM permanent handle for Endorsement key
+	TpmEKHdl tpmutil.Handle = 0x81000001
+
+	//TpmSRKHdl is the well known TPM permanent handle for Storage key
+	TpmSRKHdl tpmutil.Handle = 0x81000002
+
+	//TpmAKHdl is the well known TPM permanent handle for AIK key
+	TpmAKHdl tpmutil.Handle = 0x81000003
+
 	//TpmDeviceCertHdl is the well known TPM NVIndex for device cert
 	TpmDeviceCertHdl tpmutil.Handle = 0x1500000
 
@@ -65,6 +74,7 @@ const (
 var (
 	tpmHwInfo        = ""
 	pcrSelection     = tpm2.PCRSelection{Hash: tpm2.AlgSHA1, PCRs: []int{7}}
+	pcrListForQuote  = tpm2.PCRSelection{Hash: tpm2.AlgSHA1, PCRs: []int{0, 1, 2, 3, 4, 5, 6, 7, 8}}
 	defaultKeyParams = tpm2.Public{
 		Type:    tpm2.AlgECC,
 		NameAlg: tpm2.AlgSHA256,
@@ -74,6 +84,64 @@ var (
 		ECCParameters: &tpm2.ECCParams{
 			CurveID: tpm2.CurveNISTP256,
 			Point:   tpm2.ECPoint{X: big.NewInt(0), Y: big.NewInt(0)},
+		},
+	}
+	//Default Ek Template as per
+	//https://trustedcomputinggroup.org/wp-content/uploads/Credential_Profile_EK_V2.0_R14_published.pdf
+	defaultEkTemplate = tpm2.Public{
+		Type:    tpm2.AlgRSA,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
+			tpm2.FlagAdminWithPolicy | tpm2.FlagRestricted | tpm2.FlagDecrypt,
+		AuthPolicy: []byte{
+			0x83, 0x71, 0x97, 0x67, 0x44, 0x84,
+			0xB3, 0xF8, 0x1A, 0x90, 0xCC, 0x8D,
+			0x46, 0xA5, 0xD7, 0x24, 0xFD, 0x52,
+			0xD7, 0x6E, 0x06, 0x52, 0x0B, 0x64,
+			0xF2, 0xA1, 0xDA, 0x1B, 0x33, 0x14,
+			0x69, 0xAA,
+		},
+		RSAParameters: &tpm2.RSAParams{
+			Symmetric: &tpm2.SymScheme{
+				Alg:     tpm2.AlgAES,
+				KeyBits: 128,
+				Mode:    tpm2.AlgCFB,
+			},
+			KeyBits:    2048,
+			ModulusRaw: make([]byte, 256),
+		},
+	}
+	//This is for ActivateCredentials() usage(Decrypt key)
+	defaultSrkTemplate = tpm2.Public{
+		Type:    tpm2.AlgRSA,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent |
+			tpm2.FlagSensitiveDataOrigin | tpm2.FlagUserWithAuth |
+			tpm2.FlagRestricted | tpm2.FlagDecrypt | tpm2.FlagNoDA,
+		RSAParameters: &tpm2.RSAParams{
+			Symmetric: &tpm2.SymScheme{
+				Alg:     tpm2.AlgAES,
+				KeyBits: 128,
+				Mode:    tpm2.AlgCFB,
+			},
+			KeyBits:    2048,
+			ModulusRaw: make([]byte, 256),
+		},
+	}
+	//This is a restricted signing key, for PCR Quote and other such uses
+	defaultAkTemplate = tpm2.Public{
+		Type:    tpm2.AlgRSA,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent |
+			tpm2.FlagSensitiveDataOrigin | tpm2.FlagUserWithAuth |
+			tpm2.FlagRestricted | tpm2.FlagSign | tpm2.FlagNoDA,
+		RSAParameters: &tpm2.RSAParams{
+			Sign: &tpm2.SigScheme{
+				Alg:  tpm2.AlgRSASSA,
+				Hash: tpm2.AlgSHA256,
+			},
+			KeyBits:    2048,
+			ModulusRaw: make([]byte, 256),
 		},
 	}
 )
@@ -110,6 +178,39 @@ var vendorRegistry = map[uint32]string{
 func IsTpmEnabled() bool {
 	_, err := os.Stat(TpmEnabledFile)
 	return (err == nil)
+}
+
+//Helps creating various keys, according to the supplied template, and hierarchy
+func createKey(keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public) error {
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		log.Errorln(err)
+		return err
+	}
+	defer rw.Close()
+	handle, _, err := tpm2.CreatePrimary(rw,
+		tpm2.HandleOwner,
+		pcrSelection,
+		emptyPassword,
+		emptyPassword,
+		template)
+	if err != nil {
+		log.Errorf("create 0x%x failed: %s, do BIOS reset of TPM", keyHandle, err)
+		return err
+	}
+	if err := tpm2.EvictControl(rw, emptyPassword,
+		tpm2.HandleOwner,
+		keyHandle,
+		keyHandle); err != nil {
+		log.Debugf("EvictControl failed: %v", err)
+	}
+	if err := tpm2.EvictControl(rw, emptyPassword,
+		tpm2.HandleOwner, handle,
+		keyHandle); err != nil {
+		log.Errorf("EvictControl failed: %v, do BIOS reset of TPM", err)
+		return err
+	}
+	return nil
 }
 
 func createDeviceKey() error {
@@ -509,7 +610,6 @@ func FetchTpmSwStatus() info.HwSecurityModuleStatus {
 		//No TPM found on this system
 		return info.HwSecurityModuleStatus_NOTFOUND
 	}
-
 	if IsTpmEnabled() {
 		//TPM is found and is used by software
 		return info.HwSecurityModuleStatus_ENABLED
@@ -583,6 +683,33 @@ func printCapability() {
 	}
 	//XXX Not working, commenting for now
 	//printNVProperties()
+}
+
+func printPCRs() {
+	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	if err != nil {
+		return
+	}
+	defer rw.Close()
+	for i := 0; i < 23; i++ {
+		pcrVal, err := tpm2.ReadPCR(rw, i, tpm2.AlgSHA256)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("PCR %d: Value: 0x%X\n", i, pcrVal)
+	}
+	attestData, pcrQuote, err := tpm2.Quote(rw, TpmAKHdl,
+		emptyPassword,
+		emptyPassword,
+		[]byte("nonce"),
+		pcrListForQuote,
+		tpm2.AlgNull)
+	if err != nil {
+		fmt.Printf("Error in creating quote: %v\n", err)
+	} else {
+		fmt.Printf("attestData = %v\n", attestData)
+		fmt.Printf("pcrQuote = %v, %v\n", pcrQuote.Alg, *pcrQuote.RSA)
+	}
 }
 
 func testTpmEcdhSupport() error {
@@ -738,7 +865,19 @@ func Run() {
 	switch os.Args[1] {
 	case "genKey":
 		if err = createDeviceKey(); err != nil {
-			log.Errorf("Error in creating primary key: %v ", err)
+			log.Errorf("Error in creating device primary key: %v ", err)
+			os.Exit(1)
+		}
+		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate); err != nil {
+			log.Errorf("Error in creating Endorsement key: %v ", err)
+			os.Exit(1)
+		}
+		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate); err != nil {
+			log.Errorf("Error in creating Srk key: %v ", err)
+			os.Exit(1)
+		}
+		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate); err != nil {
+			log.Errorf("Error in creating Attestation key: %v ", err)
 			os.Exit(1)
 		}
 	case "readDeviceCert":
@@ -763,6 +902,8 @@ func Run() {
 		}
 	case "printCapability":
 		printCapability()
+	case "printPCRs":
+		printPCRs()
 	case "testTpmEcdhSupport":
 		testTpmEcdhSupport()
 	case "testEcdhAES":
