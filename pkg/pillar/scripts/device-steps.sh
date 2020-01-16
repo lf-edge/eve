@@ -56,8 +56,8 @@ else
 fi
 
 LOGREAD_PID=$(pgrep logread)
-if [ ! -z $LOGREAD_PID ]; then
-    echo $LOGREAD_PID > /var/run/logread.pid
+if [ -n "$LOGREAD_PID" ]; then
+    echo "$LOGREAD_PID" > /var/run/logread.pid
 else
     echo "$(date -Ins -u) Error: logread has not started"
 fi
