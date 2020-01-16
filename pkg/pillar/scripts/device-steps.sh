@@ -55,6 +55,13 @@ else
     USE_HW_WATCHDOG=0
 fi
 
+LOGREAD_PID=$(pgrep logread)
+if [ ! -z $LOGREAD_PID ]; then
+    echo $LOGREAD_PID > /var/run/logread.pid
+else
+    echo "$(date -Ins -u) Error: logread has not started"
+fi
+
 # Create the watchdog(8) config files we will use
 # XXX should we enable realtime in the kernel?
 if [ $USE_HW_WATCHDOG = 1 ]; then
@@ -76,6 +83,7 @@ pidfile = /var/run/xen/qemu-dom0.pid
 pidfile = /var/run/xen/xenconsoled.pid
 pidfile = /var/run/xen/xenstored.pid
 pidfile = /var/run/crond.pid
+pidfile = /var/run/logread.pid
 EOF
 # XXX Other processes we should potentially watch but they run outside
 # of this container:
