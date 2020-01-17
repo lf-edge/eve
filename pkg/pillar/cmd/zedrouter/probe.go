@@ -97,6 +97,8 @@ func niUpdateNIprobing(ctx *zedrouterContext, status *types.NetworkInstanceStatu
 		for _, port := range portList {
 			devPort := getDevPort(&devStatus, port)
 			if devPort == nil {
+				log.Infof("niUpdateNIprobing: Port %s not found in DeviceNetworkStatus %+v",
+					port, devStatus)
 				continue
 			}
 			if !isSharedPortLabel(status.Port) &&
@@ -111,7 +113,7 @@ func niUpdateNIprobing(ctx *zedrouterContext, status *types.NetworkInstanceStatu
 
 func getDevPort(status *types.DeviceNetworkStatus, port string) *types.NetworkPortStatus {
 	for _, tmpport := range status.Ports {
-		if strings.Compare(tmpport.Name, port) == 0 {
+		if strings.Compare(tmpport.IfName, port) == 0 {
 			return &tmpport
 		}
 	}
