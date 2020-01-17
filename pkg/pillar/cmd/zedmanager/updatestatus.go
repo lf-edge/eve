@@ -261,14 +261,14 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 				iterStatus.UUIDandVersion, iterStatus.State)
 			continue
 		}
-		appDiskSize, err := utils.GetDiskSizeForAppInstance(iterStatus)
+		appDiskSize, diskSizeList, err := utils.GetDiskSizeForAppInstance(iterStatus)
 		if err != nil {
 			log.Errorf("checkDiskSize: err: %s", err.Error())
 			return err
 		}
 		totalAppDiskSize += appDiskSize
-		appDiskSizeList += fmt.Sprintf("AppUUID: %s (Size: %d),\n",
-			iterStatus.UUIDandVersion.UUID.String(), appDiskSize)
+		appDiskSizeList += fmt.Sprintf("App: %s (Size: %d)\n%s\n",
+			iterStatus.UUIDandVersion.UUID.String(), appDiskSize, diskSizeList)
 	}
 	deviceDiskUsage, err := disk.Usage(types.PersistDir)
 	if err != nil {
