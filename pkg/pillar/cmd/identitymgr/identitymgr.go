@@ -44,9 +44,9 @@ var Version = "No version specified"
 
 // Information for handleCreate/Modify/Delete
 type identityContext struct {
-	subEIDConfig    *pubsub.Subscription
-	pubEIDStatus    *pubsub.Publication
-	subGlobalConfig *pubsub.Subscription
+	subEIDConfig    pubsub.Subscription
+	pubEIDStatus    pubsub.Publication
+	subGlobalConfig pubsub.Subscription
 	GCInitialized   bool
 }
 

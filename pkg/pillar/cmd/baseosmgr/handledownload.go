@@ -460,8 +460,8 @@ func unpublishDownloaderConfig(ctx *baseOsMgrContext, objType string,
 	pub.Unpublish(key)
 }
 
-func downloaderPublication(ctx *baseOsMgrContext, objType string) *pubsub.Publication {
-	var pub *pubsub.Publication
+func downloaderPublication(ctx *baseOsMgrContext, objType string) pubsub.Publication {
+	var pub pubsub.Publication
 	switch objType {
 	case types.BaseOsObj:
 		pub = ctx.pubBaseOsDownloadConfig
@@ -474,8 +474,8 @@ func downloaderPublication(ctx *baseOsMgrContext, objType string) *pubsub.Public
 	return pub
 }
 
-func downloaderSubscription(ctx *baseOsMgrContext, objType string) *pubsub.Subscription {
-	var sub *pubsub.Subscription
+func downloaderSubscription(ctx *baseOsMgrContext, objType string) pubsub.Subscription {
+	var sub pubsub.Subscription
 	switch objType {
 	case types.BaseOsObj:
 		sub = ctx.subBaseOsDownloadStatus

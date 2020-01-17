@@ -9,15 +9,16 @@ package waitforaddr
 import (
 	"flag"
 	"fmt"
+	"io"
+	"os"
+	"time"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"io"
-	"os"
-	"time"
 )
 
 const (
@@ -35,7 +36,7 @@ type DNSContext struct {
 	deviceNetworkStatus    types.DeviceNetworkStatus
 	usableAddressCount     int
 	DNSinitialized         bool // Received DeviceNetworkStatus
-	subDeviceNetworkStatus *pubsub.Subscription
+	subDeviceNetworkStatus pubsub.Subscription
 }
 
 var debug = false

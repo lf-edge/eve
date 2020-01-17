@@ -45,19 +45,19 @@ type getconfigContext struct {
 	readSavedConfig          bool
 	configTickerHandle       interface{}
 	metricsTickerHandle      interface{}
-	pubDevicePortConfig      *pubsub.Publication
-	pubPhysicalIOAdapters    *pubsub.Publication
+	pubDevicePortConfig      pubsub.Publication
+	pubPhysicalIOAdapters    pubsub.Publication
 	devicePortConfig         types.DevicePortConfig
-	pubNetworkXObjectConfig  *pubsub.Publication
-	subAppInstanceStatus     *pubsub.Subscription
-	subNodeAgentStatus       *pubsub.Subscription
-	pubZedAgentStatus        *pubsub.Publication
-	pubAppInstanceConfig     *pubsub.Publication
-	pubAppNetworkConfig      *pubsub.Publication
-	pubCertObjConfig         *pubsub.Publication
-	pubBaseOsConfig          *pubsub.Publication
-	pubDatastoreConfig       *pubsub.Publication
-	pubNetworkInstanceConfig *pubsub.Publication
+	pubNetworkXObjectConfig  pubsub.Publication
+	subAppInstanceStatus     pubsub.Subscription
+	subNodeAgentStatus       pubsub.Subscription
+	pubZedAgentStatus        pubsub.Publication
+	pubAppInstanceConfig     pubsub.Publication
+	pubAppNetworkConfig      pubsub.Publication
+	pubCertObjConfig         pubsub.Publication
+	pubBaseOsConfig          pubsub.Publication
+	pubDatastoreConfig       pubsub.Publication
+	pubNetworkInstanceConfig pubsub.Publication
 	rebootFlag               bool
 }
 

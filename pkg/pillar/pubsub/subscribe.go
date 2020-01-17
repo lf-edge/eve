@@ -40,8 +40,8 @@ type SubHandler func(ctx interface{}, key string, status interface{})
 // SubRestartHandler is a generic handler to handle restart and synchronized
 type SubRestartHandler func(ctx interface{}, restarted bool)
 
-// Subscription holds subscription to a single topic with its channel
-type Subscription struct {
+// SubscriptionImpl holds subscription to a single topic with its channel
+type SubscriptionImpl struct {
 	C                   <-chan string
 	CreateHandler       SubHandler
 	ModifyHandler       SubHandler
@@ -67,7 +67,12 @@ type Subscription struct {
 	persistent       bool
 }
 
-func (sub *Subscription) nameString() string {
+// MsgChan - Returns the Message Channel for the Subscription.
+func (sub *SubscriptionImpl) MsgChan() <-chan string {
+	return sub.C
+}
+
+func (sub *SubscriptionImpl) nameString() string {
 	agentName := sub.agentName
 	if agentName == "" {
 		agentName = fixedName
@@ -80,8 +85,8 @@ func (sub *Subscription) nameString() string {
 	}
 }
 
-// If the agentName is empty we interpret that as being dir /var/tmp/zededa
-func (sub *Subscription) Activate() error {
+// Activate - If the agentName is empty we interpret that as being dir /var/tmp/zededa
+func (sub *SubscriptionImpl) Activate() error {
 
 	name := sub.nameString()
 	if sub.subscribeFromDir {
@@ -108,7 +113,7 @@ func (sub *Subscription) Activate() error {
 	}
 }
 
-func (sub *Subscription) watchSock() {
+func (sub *SubscriptionImpl) watchSock() {
 
 	for {
 		msg, key, val := sub.connectAndRead()
@@ -136,7 +141,7 @@ func (sub *Subscription) watchSock() {
 
 // Returns msg, key, val
 // key and val are base64-encoded
-func (sub *Subscription) connectAndRead() (string, string, string) {
+func (sub *SubscriptionImpl) connectAndRead() (string, string, string) {
 
 	name := sub.nameString()
 	sockName := SockName(name)
@@ -273,10 +278,11 @@ func (sub *Subscription) connectAndRead() (string, string, string) {
 	}
 }
 
+// ProcessChange - Process message received on Msg Chan.
 // We handle both subscribeFromDir and subscribeFromSock
 // Note that change filename includes .json for subscribeFromDir. That
 // is removed by HandleStatusEvent.
-func (sub *Subscription) ProcessChange(change string) {
+func (sub *SubscriptionImpl) ProcessChange(change string) {
 
 	start := time.Now()
 	if sub.subscribeFromDir {
@@ -333,7 +339,7 @@ func (sub *Subscription) ProcessChange(change string) {
 		sub.MaxProcessTimeWarn, sub.MaxProcessTimeError)
 }
 
-func (sub *Subscription) dump(infoStr string) {
+func (sub *SubscriptionImpl) dump(infoStr string) {
 	name := sub.nameString()
 	log.Debugf("dump(%s) %s\n", name, infoStr)
 	dumper := func(key string, val interface{}) bool {
@@ -349,7 +355,8 @@ func (sub *Subscription) dump(infoStr string) {
 	log.Debugf("\tsynchronized %t\n", sub.synchronized)
 }
 
-func (sub *Subscription) Get(key string) (interface{}, error) {
+// Get - Get object with specified Key from this Subscription.
+func (sub *SubscriptionImpl) Get(key string) (interface{}, error) {
 	m, ok := sub.km.key.Load(key)
 	if ok {
 		return m, nil
@@ -360,8 +367,8 @@ func (sub *Subscription) Get(key string) (interface{}, error) {
 	}
 }
 
-// Enumerate all the key, value for the collection
-func (sub *Subscription) GetAll() map[string]interface{} {
+// GetAll - Enumerate all the key, value for the collection
+func (sub *SubscriptionImpl) GetAll() map[string]interface{} {
 	result := make(map[string]interface{})
 	assigner := func(key string, val interface{}) bool {
 		result[key] = val
@@ -371,22 +378,24 @@ func (sub *Subscription) GetAll() map[string]interface{} {
 	return result
 }
 
-func (sub *Subscription) Restarted() bool {
+// Restarted - Check if the Publisher has Restarted
+func (sub *SubscriptionImpl) Restarted() bool {
 	return sub.km.restarted
 }
 
-func (sub *Subscription) Synchronized() bool {
+// Synchronized -
+func (sub *SubscriptionImpl) Synchronized() bool {
 	return sub.synchronized
 }
 
 // Topic returns the string definiting the topic
-func (sub *Subscription) Topic() string {
+func (sub *SubscriptionImpl) Topic() string {
 	return sub.topic
 }
 
 // handlers
 func handleModify(ctxArg interface{}, key string, itemcb []byte) {
-	sub := ctxArg.(*Subscription)
+	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
 	log.Debugf("pubsub.handleModify(%s) key %s\n", name, key)
 	item, err := parseTemplate(itemcb, sub.topicType)
@@ -424,7 +433,7 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 }
 
 func handleDelete(ctxArg interface{}, key string) {
-	sub := ctxArg.(*Subscription)
+	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
 	log.Debugf("pubsub.handleDelete(%s) key %s\n", name, key)
 
@@ -447,7 +456,7 @@ func handleDelete(ctxArg interface{}, key string) {
 }
 
 func handleRestart(ctxArg interface{}, restarted bool) {
-	sub := ctxArg.(*Subscription)
+	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
 	log.Debugf("pubsub.handleRestart(%s) restarted %v\n", name, restarted)
 	if restarted == sub.km.restarted {
@@ -463,7 +472,7 @@ func handleRestart(ctxArg interface{}, restarted bool) {
 }
 
 func handleSynchronized(ctxArg interface{}, synchronized bool) {
-	sub := ctxArg.(*Subscription)
+	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
 	log.Debugf("pubsub.handleSynchronized(%s) synchronized %v\n", name, synchronized)
 	if synchronized == sub.synchronized {

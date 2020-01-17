@@ -11,21 +11,21 @@ import (
 
 type downloaderContext struct {
 	dCtx                    *zedUpload.DronaCtx
-	subDeviceNetworkStatus  *pubsub.Subscription
-	subAppImgConfig         *pubsub.Subscription
-	pubAppImgStatus         *pubsub.Publication
-	subBaseOsConfig         *pubsub.Subscription
-	pubBaseOsStatus         *pubsub.Publication
-	subCertObjConfig        *pubsub.Subscription
-	pubCertObjStatus        *pubsub.Publication
-	subGlobalDownloadConfig *pubsub.Subscription
-	pubGlobalDownloadStatus *pubsub.Publication
-	subDatastoreConfig      *pubsub.Subscription
+	subDeviceNetworkStatus  pubsub.Subscription
+	subAppImgConfig         pubsub.Subscription
+	pubAppImgStatus         pubsub.Publication
+	subBaseOsConfig         pubsub.Subscription
+	pubBaseOsStatus         pubsub.Publication
+	subCertObjConfig        pubsub.Subscription
+	pubCertObjStatus        pubsub.Publication
+	subGlobalDownloadConfig pubsub.Subscription
+	pubGlobalDownloadStatus pubsub.Publication
+	subDatastoreConfig      pubsub.Subscription
 	deviceNetworkStatus     types.DeviceNetworkStatus
 	globalConfig            types.GlobalDownloadConfig
 	globalStatusLock        sync.Mutex
 	globalStatus            types.GlobalDownloadStatus
-	subGlobalConfig         *pubsub.Subscription
+	subGlobalConfig         pubsub.Subscription
 	GCInitialized           bool
 }
 
@@ -163,8 +163,8 @@ func (ctx *downloaderContext) registerHandlers() error {
 	return nil
 }
 
-func (ctx *downloaderContext) subscription(objType string) *pubsub.Subscription {
-	var sub *pubsub.Subscription
+func (ctx *downloaderContext) subscription(objType string) pubsub.Subscription {
+	var sub pubsub.Subscription
 	switch objType {
 	case types.AppImgObj:
 		sub = ctx.subAppImgConfig
@@ -179,8 +179,8 @@ func (ctx *downloaderContext) subscription(objType string) *pubsub.Subscription 
 	return sub
 }
 
-func (ctx *downloaderContext) publication(objType string) *pubsub.Publication {
-	var pub *pubsub.Publication
+func (ctx *downloaderContext) publication(objType string) pubsub.Publication {
+	var pub pubsub.Publication
 	switch objType {
 	case types.AppImgObj:
 		pub = ctx.pubAppImgStatus

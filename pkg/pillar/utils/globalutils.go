@@ -32,7 +32,7 @@ func EnsureGCFile() {
 // GlobalConfig based on the current definition of GlobalConfig which
 // might be different than the file stored on disk if we did an update
 // of EVE.
-func ReadAndUpdateGCFile(pub *pubsub.Publication) {
+func ReadAndUpdateGCFile(pub pubsub.Publication) {
 	key := "global"
 	_, err := pub.Get(key)
 	if err != nil {

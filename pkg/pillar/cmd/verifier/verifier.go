@@ -65,13 +65,13 @@ var Version = "No version specified"
 
 // Any state used by handlers goes here
 type verifierContext struct {
-	subAppImgConfig       *pubsub.Subscription
-	pubAppImgStatus       *pubsub.Publication
-	subBaseOsConfig       *pubsub.Subscription
-	pubBaseOsStatus       *pubsub.Publication
-	subGlobalConfig       *pubsub.Subscription
+	subAppImgConfig       pubsub.Subscription
+	pubAppImgStatus       pubsub.Publication
+	subBaseOsConfig       pubsub.Subscription
+	pubBaseOsStatus       pubsub.Publication
+	subGlobalConfig       pubsub.Subscription
 	assignableAdapters    *types.AssignableAdapters
-	subAssignableAdapters *pubsub.Subscription
+	subAssignableAdapters pubsub.Subscription
 	gc                    *time.Ticker
 	RktGCGracePeriod      uint32
 	GCInitialized         bool
@@ -288,7 +288,7 @@ func initializeDirs() {
 // has PendingDelete set.
 func handleInitWorkinProgressObjects(ctx *verifierContext) {
 
-	publications := []*pubsub.Publication{
+	publications := []pubsub.Publication{
 		ctx.pubAppImgStatus,
 		ctx.pubBaseOsStatus,
 	}
@@ -424,7 +424,7 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 
 // remove the status files marked as pending delete
 func handleInitMarkedDeletePendingObjects(ctx *verifierContext) {
-	publications := []*pubsub.Publication{
+	publications := []pubsub.Publication{
 		ctx.pubAppImgStatus,
 		ctx.pubBaseOsStatus,
 	}
@@ -485,7 +485,7 @@ func clearInProgressDownloadDirs(objTypes []string) {
 // XXX Note that this runs concurrently with the handler.
 func gcVerifiedObjects(ctx *verifierContext) {
 	log.Debugf("gcVerifiedObjects()\n")
-	publications := []*pubsub.Publication{
+	publications := []pubsub.Publication{
 		ctx.pubAppImgStatus,
 		ctx.pubBaseOsStatus,
 	}
@@ -577,8 +577,8 @@ func unpublishVerifyImageStatus(ctx *verifierContext,
 	pub.Unpublish(key)
 }
 
-func verifierPublication(ctx *verifierContext, objType string) *pubsub.Publication {
-	var pub *pubsub.Publication
+func verifierPublication(ctx *verifierContext, objType string) pubsub.Publication {
+	var pub pubsub.Publication
 	switch objType {
 	case types.AppImgObj:
 		pub = ctx.pubAppImgStatus
@@ -1218,7 +1218,7 @@ func handleAADelete(ctxArg interface{}, key string,
 
 // gc timer just started, reset the LastUse timestamp to now if the refcount is zero
 func gcResetObjectLastUse(ctx *verifierContext) {
-	publications := []*pubsub.Publication{
+	publications := []pubsub.Publication{
 		ctx.pubAppImgStatus,
 		ctx.pubBaseOsStatus,
 	}

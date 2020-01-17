@@ -9,8 +9,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func verifierSubscription(ctx *zedagentContext, objType string) *pubsub.Subscription {
-	var sub *pubsub.Subscription
+func verifierSubscription(ctx *zedagentContext, objType string) pubsub.Subscription {
+	var sub pubsub.Subscription
 	switch objType {
 	case types.BaseOsObj:
 		sub = ctx.subBaseOsVerifierStatus

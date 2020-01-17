@@ -20,6 +20,11 @@ package ledmanager
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"time"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
@@ -27,10 +32,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"io/ioutil"
-	"os"
-	"os/exec"
-	"time"
 )
 
 const (
@@ -42,9 +43,9 @@ const (
 type ledManagerContext struct {
 	countChange            chan int
 	ledCounter             int // Supress work and logging if no change
-	subGlobalConfig        *pubsub.Subscription
-	subLedBlinkCounter     *pubsub.Subscription
-	subDeviceNetworkStatus *pubsub.Subscription
+	subGlobalConfig        pubsub.Subscription
+	subLedBlinkCounter     pubsub.Subscription
+	subDeviceNetworkStatus pubsub.Subscription
 	deviceNetworkStatus    types.DeviceNetworkStatus
 	usableAddressCount     int
 	derivedLedCounter      int // Based on ledCounter + usableAddressCount

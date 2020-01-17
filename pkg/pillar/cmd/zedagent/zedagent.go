@@ -71,7 +71,7 @@ var networkMetrics types.NetworkMetrics
 type DNSContext struct {
 	usableAddressCount     int
 	DNSinitialized         bool // Received DeviceNetworkStatus
-	subDeviceNetworkStatus *pubsub.Subscription
+	subDeviceNetworkStatus pubsub.Subscription
 	triggerGetConfig       bool
 	triggerDeviceInfo      bool
 }
@@ -80,26 +80,26 @@ type zedagentContext struct {
 	verifierRestarted         bool              // Information from handleVerifierRestarted
 	getconfigCtx              *getconfigContext // Cross link
 	assignableAdapters        *types.AssignableAdapters
-	subAssignableAdapters     *pubsub.Subscription
+	subAssignableAdapters     pubsub.Subscription
 	iteration                 int
-	subNetworkInstanceStatus  *pubsub.Subscription
-	subCertObjConfig          *pubsub.Subscription
+	subNetworkInstanceStatus  pubsub.Subscription
+	subCertObjConfig          pubsub.Subscription
 	TriggerDeviceInfo         chan<- struct{}
 	zbootRestarted            bool // published by baseosmgr
-	subBaseOsStatus           *pubsub.Subscription
-	subBaseOsDownloadStatus   *pubsub.Subscription
-	subCertObjDownloadStatus  *pubsub.Subscription
-	subBaseOsVerifierStatus   *pubsub.Subscription
-	subAppImgDownloadStatus   *pubsub.Subscription
-	subAppImgVerifierStatus   *pubsub.Subscription
-	subNetworkInstanceMetrics *pubsub.Subscription
-	subAppFlowMonitor         *pubsub.Subscription
-	subAppVifIPTrig           *pubsub.Subscription
-	pubGlobalConfig           *pubsub.Publication
-	subGlobalConfig           *pubsub.Subscription
-	subVaultStatus            *pubsub.Subscription
+	subBaseOsStatus           pubsub.Subscription
+	subBaseOsDownloadStatus   pubsub.Subscription
+	subCertObjDownloadStatus  pubsub.Subscription
+	subBaseOsVerifierStatus   pubsub.Subscription
+	subAppImgDownloadStatus   pubsub.Subscription
+	subAppImgVerifierStatus   pubsub.Subscription
+	subNetworkInstanceMetrics pubsub.Subscription
+	subAppFlowMonitor         pubsub.Subscription
+	subAppVifIPTrig           pubsub.Subscription
+	pubGlobalConfig           pubsub.Publication
+	subGlobalConfig           pubsub.Subscription
+	subVaultStatus            pubsub.Subscription
 	GCInitialized             bool // Received initial GlobalConfig
-	subZbootStatus            *pubsub.Subscription
+	subZbootStatus            pubsub.Subscription
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool
@@ -107,7 +107,7 @@ type zedagentContext struct {
 	rebootStack               string
 	rebootTime                time.Time
 	restartCounter            uint32
-	subDevicePortConfigList   *pubsub.Subscription
+	subDevicePortConfigList   pubsub.Subscription
 	devicePortConfigList      types.DevicePortConfigList
 	remainingTestTime         time.Duration
 	physicalIoAdapterMap      map[string]types.PhysicalIOAdapter
@@ -536,13 +536,14 @@ func Run() {
 	subDevicePortConfigList.Activate()
 
 	// Pick up debug aka log level before we start real work
+
 	for !zedagentCtx.GCInitialized {
 		log.Infof("Waiting for GCInitialized\n")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-getconfigCtx.subNodeAgentStatus.C:
+		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
 			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
 		}
 	}
@@ -551,13 +552,13 @@ func Run() {
 	// wait till, zboot status is ready
 	for !zedagentCtx.zbootRestarted {
 		select {
-		case change := <-subZbootStatus.C:
+		case change := <-subZbootStatus.MsgChan():
 			subZbootStatus.ProcessChange(change)
 			if zedagentCtx.zbootRestarted {
 				log.Infof("Zboot reported restarted\n")
 			}
 
-		case change := <-getconfigCtx.subNodeAgentStatus.C:
+		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
 			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
@@ -571,37 +572,37 @@ func Run() {
 			DNSctx.DNSinitialized)
 
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-zedagentCtx.subBaseOsVerifierStatus.C:
+		case change := <-zedagentCtx.subBaseOsVerifierStatus.MsgChan():
 			zedagentCtx.subBaseOsVerifierStatus.ProcessChange(change)
 
-		case change := <-zedagentCtx.subBaseOsDownloadStatus.C:
-			zedagentCtx.subBaseOsDownloadStatus.ProcessChange(change)
+		case change := <-subBaseOsDownloadStatus.MsgChan():
+			subBaseOsDownloadStatus.ProcessChange(change)
 
-		case change := <-zedagentCtx.subAppImgVerifierStatus.C:
-			zedagentCtx.subAppImgVerifierStatus.ProcessChange(change)
+		case change := <-subAppImgVerifierStatus.MsgChan():
+			subAppImgVerifierStatus.ProcessChange(change)
 
-		case change := <-zedagentCtx.subAppImgDownloadStatus.C:
-			zedagentCtx.subAppImgDownloadStatus.ProcessChange(change)
+		case change := <-subAppImgDownloadStatus.MsgChan():
+			subAppImgDownloadStatus.ProcessChange(change)
 
-		case change := <-zedagentCtx.subCertObjDownloadStatus.C:
-			zedagentCtx.subCertObjDownloadStatus.ProcessChange(change)
+		case change := <-subCertObjDownloadStatus.MsgChan():
+			subCertObjDownloadStatus.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-subAssignableAdapters.C:
+		case change := <-subAssignableAdapters.MsgChan():
 			subAssignableAdapters.ProcessChange(change)
 
-		case change := <-subDevicePortConfigList.C:
+		case change := <-subDevicePortConfigList.MsgChan():
 			subDevicePortConfigList.ProcessChange(change)
 
-		case change := <-getconfigCtx.subNodeAgentStatus.C:
-			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
+		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
+			subNodeAgentStatus.ProcessChange(change)
 
-		case change := <-subVaultStatus.C:
+		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
 
 		case change := <-deferredChan:
@@ -657,35 +658,35 @@ func Run() {
 	log.Infof("Handling initial verifier Status\n")
 	for !zedagentCtx.verifierRestarted {
 		select {
-		case change := <-subZbootStatus.C:
+		case change := <-subZbootStatus.MsgChan():
 			subZbootStatus.ProcessChange(change)
 
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subBaseOsVerifierStatus.C:
+		case change := <-subBaseOsVerifierStatus.MsgChan():
 			subBaseOsVerifierStatus.ProcessChange(change)
 			if zedagentCtx.verifierRestarted {
 				log.Infof("Verifier reported restarted\n")
 				break
 			}
 
-		case change := <-zedagentCtx.subBaseOsDownloadStatus.C:
+		case change := <-subBaseOsDownloadStatus.MsgChan():
 			zedagentCtx.subBaseOsDownloadStatus.ProcessChange(change)
 
-		case change := <-zedagentCtx.subAppImgVerifierStatus.C:
-			zedagentCtx.subAppImgVerifierStatus.ProcessChange(change)
+		case change := <-subAppImgVerifierStatus.MsgChan():
+			subAppImgVerifierStatus.ProcessChange(change)
 
-		case change := <-zedagentCtx.subAppImgDownloadStatus.C:
-			zedagentCtx.subAppImgDownloadStatus.ProcessChange(change)
+		case change := <-subAppImgDownloadStatus.MsgChan():
+			subAppImgDownloadStatus.ProcessChange(change)
 
-		case change := <-zedagentCtx.subCertObjDownloadStatus.C:
-			zedagentCtx.subCertObjDownloadStatus.ProcessChange(change)
+		case change := <-subCertObjDownloadStatus.MsgChan():
+			subCertObjDownloadStatus.ProcessChange(change)
 
-		case change := <-getconfigCtx.subNodeAgentStatus.C:
-			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
+		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
+			subNodeAgentStatus.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 			if DNSctx.triggerDeviceInfo {
 				// IP/DNS in device info could have changed
@@ -694,13 +695,13 @@ func Run() {
 				DNSctx.triggerDeviceInfo = false
 			}
 
-		case change := <-subAssignableAdapters.C:
+		case change := <-subAssignableAdapters.MsgChan():
 			subAssignableAdapters.ProcessChange(change)
 
-		case change := <-subDevicePortConfigList.C:
+		case change := <-subDevicePortConfigList.MsgChan():
 			subDevicePortConfigList.ProcessChange(change)
 
-		case change := <-subVaultStatus.C:
+		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
 
 		case change := <-deferredChan:
@@ -722,37 +723,37 @@ func Run() {
 
 	for {
 		select {
-		case change := <-subZbootStatus.C:
+		case change := <-subZbootStatus.MsgChan():
 			subZbootStatus.ProcessChange(change)
 
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subAppInstanceStatus.C:
+		case change := <-subAppInstanceStatus.MsgChan():
 			subAppInstanceStatus.ProcessChange(change)
 
-		case change := <-subBaseOsStatus.C:
+		case change := <-subBaseOsStatus.MsgChan():
 			subBaseOsStatus.ProcessChange(change)
 
-		case change := <-zedagentCtx.subBaseOsVerifierStatus.C:
-			zedagentCtx.subBaseOsVerifierStatus.ProcessChange(change)
+		case change := <-subBaseOsVerifierStatus.MsgChan():
+			subBaseOsVerifierStatus.ProcessChange(change)
 
-		case change := <-zedagentCtx.subBaseOsDownloadStatus.C:
-			zedagentCtx.subBaseOsDownloadStatus.ProcessChange(change)
+		case change := <-subBaseOsDownloadStatus.MsgChan():
+			subBaseOsDownloadStatus.ProcessChange(change)
 
-		case change := <-zedagentCtx.subAppImgVerifierStatus.C:
-			zedagentCtx.subAppImgVerifierStatus.ProcessChange(change)
+		case change := <-subAppImgVerifierStatus.MsgChan():
+			subAppImgVerifierStatus.ProcessChange(change)
 
-		case change := <-zedagentCtx.subAppImgDownloadStatus.C:
-			zedagentCtx.subAppImgDownloadStatus.ProcessChange(change)
+		case change := <-subAppImgDownloadStatus.MsgChan():
+			subAppImgDownloadStatus.ProcessChange(change)
 
-		case change := <-zedagentCtx.subCertObjDownloadStatus.C:
-			zedagentCtx.subCertObjDownloadStatus.ProcessChange(change)
+		case change := <-subCertObjDownloadStatus.MsgChan():
+			subCertObjDownloadStatus.ProcessChange(change)
 
-		case change := <-getconfigCtx.subNodeAgentStatus.C:
-			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
+		case change := <-getconfigCtx.subNodeAgentStatus.MsgChan():
+			subNodeAgentStatus.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 			if DNSctx.triggerGetConfig {
 				triggerGetConfig(configTickerHandle)
@@ -765,10 +766,10 @@ func Run() {
 				DNSctx.triggerDeviceInfo = false
 			}
 
-		case change := <-subAssignableAdapters.C:
+		case change := <-subAssignableAdapters.MsgChan():
 			subAssignableAdapters.ProcessChange(change)
 
-		case change := <-subNetworkMetrics.C:
+		case change := <-subNetworkMetrics.MsgChan():
 			subNetworkMetrics.ProcessChange(change)
 			m, err := subNetworkMetrics.Get("global")
 			if err != nil {
@@ -778,7 +779,7 @@ func Run() {
 				networkMetrics = m.(types.NetworkMetrics)
 			}
 
-		case change := <-subClientMetrics.C:
+		case change := <-subClientMetrics.MsgChan():
 			subClientMetrics.ProcessChange(change)
 			m, err := subClientMetrics.Get("global")
 			if err != nil {
@@ -788,7 +789,7 @@ func Run() {
 				clientMetrics = m.(types.MetricsMap)
 			}
 
-		case change := <-subLogmanagerMetrics.C:
+		case change := <-subLogmanagerMetrics.MsgChan():
 			subLogmanagerMetrics.ProcessChange(change)
 			m, err := subLogmanagerMetrics.Get("global")
 			if err != nil {
@@ -798,7 +799,7 @@ func Run() {
 				logmanagerMetrics = m.(types.MetricsMap)
 			}
 
-		case change := <-subDownloaderMetrics.C:
+		case change := <-subDownloaderMetrics.MsgChan():
 			subDownloaderMetrics.ProcessChange(change)
 			m, err := subDownloaderMetrics.Get("global")
 			if err != nil {
@@ -814,23 +815,23 @@ func Run() {
 			pubsub.CheckMaxTimeTopic(agentName, "deferredChan", start,
 				warningTime, errorTime)
 
-		case change := <-subNetworkInstanceStatus.C:
+		case change := <-subNetworkInstanceStatus.MsgChan():
 			subNetworkInstanceStatus.ProcessChange(change)
 
-		case change := <-subNetworkInstanceMetrics.C:
+		case change := <-subNetworkInstanceMetrics.MsgChan():
 			subNetworkInstanceMetrics.ProcessChange(change)
 
-		case change := <-subDevicePortConfigList.C:
+		case change := <-subDevicePortConfigList.MsgChan():
 			subDevicePortConfigList.ProcessChange(change)
 
-		case change := <-subAppFlowMonitor.C:
+		case change := <-subAppFlowMonitor.MsgChan():
 			log.Debugf("FlowStats: change called")
 			subAppFlowMonitor.ProcessChange(change)
 
-		case change := <-subAppVifIPTrig.C:
+		case change := <-subAppVifIPTrig.MsgChan():
 			subAppVifIPTrig.ProcessChange(change)
 
-		case change := <-subVaultStatus.C:
+		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
 
 		case <-stillRunning.C:

@@ -53,31 +53,31 @@ type zedrouterContext struct {
 	agentStartTime        time.Time
 	receivedConfigTime    time.Time
 	triggerNumGC          bool // For appNum and bridgeNum
-	subAppNetworkConfig   *pubsub.Subscription
-	subAppNetworkConfigAg *pubsub.Subscription // From zedagent for dom0
+	subAppNetworkConfig   pubsub.Subscription
+	subAppNetworkConfigAg pubsub.Subscription // From zedagent for dom0
 
-	pubAppNetworkStatus *pubsub.Publication
+	pubAppNetworkStatus pubsub.Publication
 
-	pubLispDataplaneConfig *pubsub.Publication
-	subLispInfoStatus      *pubsub.Subscription
-	subLispMetrics         *pubsub.Subscription
+	pubLispDataplaneConfig pubsub.Publication
+	subLispInfoStatus      pubsub.Subscription
+	subLispMetrics         pubsub.Subscription
 
 	assignableAdapters     *types.AssignableAdapters
-	subAssignableAdapters  *pubsub.Subscription
-	subDeviceNetworkStatus *pubsub.Subscription
+	subAssignableAdapters  pubsub.Subscription
+	subDeviceNetworkStatus pubsub.Subscription
 	deviceNetworkStatus    *types.DeviceNetworkStatus
 	ready                  bool
-	subGlobalConfig        *pubsub.Subscription
+	subGlobalConfig        pubsub.Subscription
 	GCInitialized          bool
-	pubUuidToNum           *pubsub.Publication
+	pubUuidToNum           pubsub.Publication
 	dhcpLeases             []dnsmasqLease
 
 	// NetworkInstance
-	subNetworkInstanceConfig  *pubsub.Subscription
-	pubNetworkInstanceStatus  *pubsub.Publication
-	pubNetworkInstanceMetrics *pubsub.Publication
-	pubAppFlowMonitor         *pubsub.Publication
-	pubAppVifIPTrig           *pubsub.Publication
+	subNetworkInstanceConfig  pubsub.Subscription
+	pubNetworkInstanceStatus  pubsub.Publication
+	pubNetworkInstanceMetrics pubsub.Publication
+	pubAppFlowMonitor         pubsub.Publication
+	pubAppVifIPTrig           pubsub.Publication
 	networkInstanceStatusMap  map[uuid.UUID]*types.NetworkInstanceStatus
 	dnsServers                map[string][]net.IP
 	checkNIUplinks            chan bool
