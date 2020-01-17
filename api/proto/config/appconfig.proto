@@ -54,4 +54,11 @@ message AppInstanceConfig {
     // Config flag if the app-instance should be made accessible
     // through a remote console session established by the device.
     bool remoteConsole = 12;
+
+    // Trigger refresh of Images used by the App Instance.
+    // This will trigger re-download of images. If we have a new version of the
+    // image, this will result in a purge of the image.
+    // All the images used by the App Instance would be refreshed, except
+    // the ones of type HDD_EMPTY
+    InstanceOpsCmd refreshImage = 13;
 }
