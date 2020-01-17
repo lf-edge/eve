@@ -1,0 +1,21 @@
+// Copyright(c) 2020 Zededa, Inc.
+// All rights reserved.
+
+
+syntax = "proto3";
+
+option go_package = "github.com/lf-edge/eve/api/go/config";
+option java_package = "com.zededa.cloud.uservice.proto";
+//common cipher info for all
+//sensitive data.
+
+enum CryptoAlgorithm {
+  NONE  = 0;
+  ECDH  = 1;
+}
+
+message CipherInfo {
+	CryptoAlgorithm cAlgo = 1;
+	bytes initialValue = 2;
+	bytes publicKey = 3;
+}
