@@ -232,6 +232,9 @@ message ZInfoDevice {
 
   ZInfoManufacturer minfo = 11;
 
+  // OBSOLETE. The information will be provided by DevicePort instead.
+  // Newer versions will not fill in this information. Controller Needs
+  // to check check if this is empty - if yes, use the DevicePortStatus instead.
   repeated ZInfoNetwork network = 13;
   repeated ZioBundle assignableAdapters = 15;
   ZInfoDNS dns = 16; // What is used in resolv.conf
@@ -289,6 +292,14 @@ message DevicePort {
   string dhcpRangeHigh = 18;
 
   ProxyStatus proxy = 21;
+  string macAddr = 22;
+  repeated string IPAddrs = 23; // All IP addresses with /N for subnet
+  repeated string defaultRouters = 24; // If DHCP assigned
+  ZInfoDNS dns = 25; // If DHCP assigned
+  bool up = 26;      // operational up/down status.
+  GeoLoc location = 27;
+  bool uplink = 28; // Uplink interface  // XXX rename to isMgmt
+  ErrorInfo err = 29; // Any errors on the interface.
 }
 
 message ProxyStatus {
