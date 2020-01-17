@@ -20,34 +20,59 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x10\x63ipherinfo.proto\"V\n\nCipherInfo\x12\x1f\n\x05\x63\x41lgo\x18\x01 \x01(\x0e\x32\x10.CryptoAlgorithm\x12\x14\n\x0cinitialValue\x18\x02 \x01(\x0c\x12\x11\n\tpublicKey\x18\x03 \x01(\x0c*%\n\x0f\x43ryptoAlgorithm\x12\x08\n\x04NONE\x10\x00\x12\x08\n\x04\x45\x43\x44H\x10\x01\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x10\x63ipherinfo.proto\"\x91\x01\n\nCipherInfo\x12.\n\x0fKeyExchangeAlgo\x18\x01 \x01(\x0e\x32\x15.KeyExchangeAlgoTypes\x12*\n\rSymmetricAlgo\x18\x02 \x01(\x0e\x32\x13.SymmetricAlgoTypes\x12\x14\n\x0cinitialValue\x18\x03 \x01(\x0c\x12\x11\n\tpublicKey\x18\x04 \x01(\x0c*2\n\x14KeyExchangeAlgoTypes\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*5\n\x12SymmetricAlgoTypes\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
 )
 
-_CRYPTOALGORITHM = _descriptor.EnumDescriptor(
-  name='CryptoAlgorithm',
-  full_name='CryptoAlgorithm',
+_KEYEXCHANGEALGOTYPES = _descriptor.EnumDescriptor(
+  name='KeyExchangeAlgoTypes',
+  full_name='KeyExchangeAlgoTypes',
   filename=None,
   file=DESCRIPTOR,
   values=[
     _descriptor.EnumValueDescriptor(
-      name='NONE', index=0, number=0,
+      name='KEA_NONE', index=0, number=0,
       serialized_options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='ECDH', index=1, number=1,
+      name='KEA_ECDH', index=1, number=1,
       serialized_options=None,
       type=None),
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=108,
-  serialized_end=145,
+  serialized_start=168,
+  serialized_end=218,
 )
-_sym_db.RegisterEnumDescriptor(_CRYPTOALGORITHM)
+_sym_db.RegisterEnumDescriptor(_KEYEXCHANGEALGOTYPES)
 
-CryptoAlgorithm = enum_type_wrapper.EnumTypeWrapper(_CRYPTOALGORITHM)
-NONE = 0
-ECDH = 1
+KeyExchangeAlgoTypes = enum_type_wrapper.EnumTypeWrapper(_KEYEXCHANGEALGOTYPES)
+_SYMMETRICALGOTYPES = _descriptor.EnumDescriptor(
+  name='SymmetricAlgoTypes',
+  full_name='SymmetricAlgoTypes',
+  filename=None,
+  file=DESCRIPTOR,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='SA_NONE', index=0, number=0,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='SA_AES_256_CFB', index=1, number=1,
+      serialized_options=None,
+      type=None),
+  ],
+  containing_type=None,
+  serialized_options=None,
+  serialized_start=220,
+  serialized_end=273,
+)
+_sym_db.RegisterEnumDescriptor(_SYMMETRICALGOTYPES)
+
+SymmetricAlgoTypes = enum_type_wrapper.EnumTypeWrapper(_SYMMETRICALGOTYPES)
+KEA_NONE = 0
+KEA_ECDH = 1
+SA_NONE = 0
+SA_AES_256_CFB = 1
 
 
 
@@ -59,22 +84,29 @@ _CIPHERINFO = _descriptor.Descriptor(
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='cAlgo', full_name='CipherInfo.cAlgo', index=0,
+      name='KeyExchangeAlgo', full_name='CipherInfo.KeyExchangeAlgo', index=0,
       number=1, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='initialValue', full_name='CipherInfo.initialValue', index=1,
-      number=2, type=12, cpp_type=9, label=1,
+      name='SymmetricAlgo', full_name='CipherInfo.SymmetricAlgo', index=1,
+      number=2, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='initialValue', full_name='CipherInfo.initialValue', index=2,
+      number=3, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='publicKey', full_name='CipherInfo.publicKey', index=2,
-      number=3, type=12, cpp_type=9, label=1,
+      name='publicKey', full_name='CipherInfo.publicKey', index=3,
+      number=4, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -91,13 +123,15 @@ _CIPHERINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=20,
-  serialized_end=106,
+  serialized_start=21,
+  serialized_end=166,
 )
 
-_CIPHERINFO.fields_by_name['cAlgo'].enum_type = _CRYPTOALGORITHM
+_CIPHERINFO.fields_by_name['KeyExchangeAlgo'].enum_type = _KEYEXCHANGEALGOTYPES
+_CIPHERINFO.fields_by_name['SymmetricAlgo'].enum_type = _SYMMETRICALGOTYPES
 DESCRIPTOR.message_types_by_name['CipherInfo'] = _CIPHERINFO
-DESCRIPTOR.enum_types_by_name['CryptoAlgorithm'] = _CRYPTOALGORITHM
+DESCRIPTOR.enum_types_by_name['KeyExchangeAlgoTypes'] = _KEYEXCHANGEALGOTYPES
+DESCRIPTOR.enum_types_by_name['SymmetricAlgoTypes'] = _SYMMETRICALGOTYPES
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 CipherInfo = _reflection.GeneratedProtocolMessageType('CipherInfo', (_message.Message,), dict(
