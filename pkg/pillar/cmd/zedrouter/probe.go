@@ -111,9 +111,9 @@ func niUpdateNIprobing(ctx *zedrouterContext, status *types.NetworkInstanceStatu
 	checkNIprobeUplink(ctx, status, "")
 }
 
-func getDevPort(status *types.DeviceNetworkStatus, port string) *types.NetworkPortStatus {
+func getDevPort(status *types.DeviceNetworkStatus, ifName string) *types.NetworkPortStatus {
 	for _, tmpport := range status.Ports {
-		if strings.Compare(tmpport.IfName, port) == 0 {
+		if strings.Compare(tmpport.IfName, ifName) == 0 {
 			return &tmpport
 		}
 	}
