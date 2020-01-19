@@ -6,11 +6,11 @@ syntax = "proto3";
 option go_package  = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
-import "cipherinfo.proto";
 import "devcommon.proto";
 import "storage.proto";
 import "vm.proto";
 import "netconfig.proto";
+import "cipherinfo.proto";
 
 message InstanceOpsCmd {
 	uint32 counter = 2;
@@ -56,9 +56,9 @@ message AppInstanceConfig {
     // through a remote console session established by the device.
     bool remoteConsole = 12;
 
-    // encrypted userData
-    bytes cipherTextUserData = 13;
+	// encrypted userData
+	bytes cipherTextUserData = 13;
 
-    // cipher information to handle encrption/decryption
-    CipherInfo cInfo = 14;
+	// cipher information to handle encrption/decryption
+	CipherInfo cInfo = 14;
 }
