@@ -43,11 +43,11 @@ message DatastoreConfig {
 	// Applies for some datastore types
 	string region = 6;
 
-	// encrypted password
-	bytes cipherTextPassword = 7;
+    // encrypted password
+    bytes cipherTextPassword = 7;
 
-	// cipher information, to decrypt the password
-	CipherInfo cInfo = 8;
+    // cipher information, for encryption/decryption
+    CipherInfo cInfo = 8;
 }
 
 

@@ -242,7 +242,7 @@ type DatastoreConfig struct {
 	Region string `protobuf:"bytes,6,opt,name=region,proto3" json:"region,omitempty"`
 	// encrypted password
 	CipherTextPassword []byte `protobuf:"bytes,7,opt,name=cipherTextPassword,proto3" json:"cipherTextPassword,omitempty"`
-	// cipher information, to decrypt the password
+	// cipher information, for encryption/decryption
 	CInfo                *CipherInfo `protobuf:"bytes,8,opt,name=cInfo,proto3" json:"cInfo,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}    `json:"-"`
 	XXX_unrecognized     []byte      `json:"-"`

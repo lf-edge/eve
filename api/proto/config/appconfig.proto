@@ -56,9 +56,9 @@ message AppInstanceConfig {
     // through a remote console session established by the device.
     bool remoteConsole = 12;
 
-	// encrypted userData
-	bytes cipherTextUserData = 13;
+    // encrypted userData
+    bytes cipherTextUserData = 13;
 
-	// cipher information to handle encrption/decryption
-	CipherInfo cInfo = 14;
+    // cipher information to handle encrption/decryption
+    CipherInfo cInfo = 14;
 }
