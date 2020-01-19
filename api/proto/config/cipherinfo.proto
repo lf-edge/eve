@@ -10,18 +10,18 @@ option java_package = "com.zededa.cloud.uservice.proto";
 //sensitive data.
 
 enum KeyExchangeAlgoTypes {
-  KEA_NONE  = 0;
-  KEA_ECDH  = 1;
+    KEA_NONE  = 0;
+    KEA_ECDH  = 1;
 }
 
 enum SymmetricAlgoTypes {
-  SA_NONE  = 0;
-  SA_AES_256_CFB = 1;
+    SA_NONE  = 0;
+    SA_AES_256_CFB = 1;
 }
 
 message CipherInfo {
-  KeyExchangeAlgoTypes KeyExchangeAlgo = 1;
-  SymmetricAlgoTypes SymmetricAlgo = 2;
-  bytes initialValue = 3;
-  bytes publicKey = 4;
+    KeyExchangeAlgoTypes KeyExchangeAlgo = 1;
+    SymmetricAlgoTypes SymmetricAlgo = 2;
+    bytes initialValue = 3;
+    bytes publicKey = 4;
 }

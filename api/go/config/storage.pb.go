@@ -239,8 +239,10 @@ type DatastoreConfig struct {
 	// depending on datastore types, it could be bucket or path
 	Dpath string `protobuf:"bytes,5,opt,name=dpath,proto3" json:"dpath,omitempty"`
 	// Applies for some datastore types
-	Region               string      `protobuf:"bytes,6,opt,name=region,proto3" json:"region,omitempty"`
-	CipherTextPassword   []byte      `protobuf:"bytes,7,opt,name=cipherTextPassword,proto3" json:"cipherTextPassword,omitempty"`
+	Region string `protobuf:"bytes,6,opt,name=region,proto3" json:"region,omitempty"`
+	// encrypted password
+	CipherTextPassword []byte `protobuf:"bytes,7,opt,name=cipherTextPassword,proto3" json:"cipherTextPassword,omitempty"`
+	// cipher information, to decrypt the password
 	CInfo                *CipherInfo `protobuf:"bytes,8,opt,name=cInfo,proto3" json:"cInfo,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}    `json:"-"`
 	XXX_unrecognized     []byte      `json:"-"`
