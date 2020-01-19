@@ -76,8 +76,8 @@ message CipherInfo {
     bytes publicCert = 4;
 
     // sha of the public certificate
-    string sha256 = 6;
+    string sha256 = 5;
 
     // signature for the sha
-    bytes signature = 5;
+    bytes signature = 6;
 }

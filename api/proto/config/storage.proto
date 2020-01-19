@@ -46,7 +46,7 @@ message DatastoreConfig {
     bytes cipherTextPassword = 7;
 
     // cipher information, for encryption/decryption
-    // CipherInfo cInfo = 8;
+    CipherInfo cInfo = 8;
 }
 
 
