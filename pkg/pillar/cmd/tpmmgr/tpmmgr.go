@@ -176,7 +176,7 @@ func fileExists(filename string) bool {
 	return err == nil
 }
 
-//IsTpmEnabled checks if TPM is being used by SW for creating device cert
+//IsTpmEnabled checks if TPM is being used by software for creating device cert
 func IsTpmEnabled() bool {
 	return fileExists(types.DeviceCertName) && !fileExists(types.DeviceKeyName)
 }
