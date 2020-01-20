@@ -34,7 +34,7 @@ message DatastoreConfig {
 
 	string apiKey = 3;
 
-	string password = 4;
+	string password = 4;  // to be depcrecated
 
 	// depending on datastore types, it could be bucket or path
 	string dpath = 5;
