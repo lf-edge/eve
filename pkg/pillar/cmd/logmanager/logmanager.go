@@ -6,6 +6,7 @@ package logmanager
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -126,6 +127,11 @@ type zedcloudLogs struct {
 	SuccessCount uint64
 	LastFailure  time.Time
 	LastSuccess  time.Time
+}
+
+type inputLogFormat struct {
+	Source string
+	// NOTE: We are not interested in parsing the other fields at this point.
 }
 
 func Run() {
@@ -402,18 +408,20 @@ func Run() {
 }
 
 func parseAndSendSyslogEntries(ctx *loggerContext) {
-	log_channel := make(syslog.LogPartsChannel)
-	handler := syslog.NewChannelHandler(log_channel)
+	logChannel := make(syslog.LogPartsChannel)
+	handler := syslog.NewChannelHandler(logChannel)
 	server := syslog.NewServer()
 	server.SetFormat(syslog.RFC3164)
 	server.SetHandler(handler)
 	server.ListenTCP("localhost:5140")
 	server.Boot()
-	for logParts := range log_channel {
+	for logParts := range logChannel {
+		var logContent inputLogFormat
+		json.Unmarshal([]byte(logParts["content"].(string)), &logContent)
 		timestamp := logParts["timestamp"].(time.Time)
 		logMsg := logEntry{
-			source:    logParts["tag"].(string),
-			content:   timestamp.String() + ":" + logParts["content"].(string),
+			source:    logContent.Source,
+			content:   logParts["content"].(string),
 			severity:  strconv.Itoa(logParts["severity"].(int)),
 			timestamp: timestamp,
 		}
