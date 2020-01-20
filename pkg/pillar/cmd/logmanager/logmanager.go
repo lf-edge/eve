@@ -127,11 +127,6 @@ type zedcloudLogs struct {
 	LastSuccess  time.Time
 }
 
-type inputLogFormat struct {
-	Source string
-	// NOTE: We are not interested in parsing the other fields at this point.
-}
-
 func Run() {
 	defaultLogdirname := agentlog.GetCurrentLogdir()
 	versionPtr := flag.Bool("v", false, "Version")
