@@ -421,7 +421,7 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 		timestamp := logParts["timestamp"].(time.Time)
 		logMsg := logEntry{
 			source:    logContent.Source,
-			content:   logParts["content"].(string),
+			content:   timestamp.String() + ": " + logParts["content"].(string),
 			severity:  strconv.Itoa(logParts["severity"].(int)),
 			timestamp: timestamp,
 		}
