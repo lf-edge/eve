@@ -6,6 +6,7 @@ package agentlog
 import (
 	"fmt"
 	"io/ioutil"
+	"log/syslog"
 	"os"
 	"os/signal"
 	"runtime"
@@ -16,6 +17,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	log "github.com/sirupsen/logrus"
+	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
 )
 
 const (
@@ -28,14 +30,38 @@ var savedAgentName string = "unknown" // Keep for signal and exit handlers
 func initImpl(agentName string, logdir string, redirect bool,
 	text bool) (*os.File, error) {
 
-	logfile := fmt.Sprintf("%s/%s.log", logdir, agentName)
-	logf, err := os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND,
-		0666)
-	if err != nil {
-		return nil, err
+	var err error
+	var logf *os.File = nil
+	var logToSyslog bool = false
+	if os.Getenv("LOG_TO_SYSLOG") != "" {
+		logToSyslog = true
+	}
+
+	if text {
+		logfile := fmt.Sprintf("%s/%s.log", logdir, agentName)
+		logf, err = os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND,
+			0666)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if redirect {
-		log.SetOutput(logf)
+		if text {
+			log.SetOutput(logf)
+		} else if logToSyslog {
+			log.SetOutput(ioutil.Discard)
+			syslogFlags := syslog.LOG_INFO | syslog.LOG_DEBUG | syslog.LOG_ERR |
+				syslog.LOG_NOTICE | syslog.LOG_WARNING | syslog.LOG_CRIT |
+				syslog.LOG_ALERT | syslog.LOG_EMERG
+			hook, err := lSyslog.NewSyslogHook("", "", syslogFlags, agentName)
+			if err == nil {
+				log.AddHook(hook)
+			} else {
+				return nil, err
+			}
+		} else {
+			log.SetOutput(os.Stdout)
+		}
 		if text {
 			// Report nano timestamps
 			formatter := log.TextFormatter{
