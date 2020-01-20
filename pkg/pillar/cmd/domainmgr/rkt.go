@@ -8,12 +8,16 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 
 	docker2aci "github.com/appc/docker2aci/lib"
 	"github.com/appc/docker2aci/lib/common"
 	acilog "github.com/appc/docker2aci/pkg/log"
+	legacytarball "github.com/google/go-containerregistry/pkg/legacy/tarball"
+	"github.com/google/go-containerregistry/pkg/name"
+	v1tarball "github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -44,10 +48,54 @@ type RktManifest struct {
 // with thanks to https://github.com/appc/docker2aci
 // from is the file to convert from; to is the path where to place the aci file
 func rktConvertTarToAci(from, to string) ([]string, error) {
+	var convertTag string
+	legacyTmpDir, err := ioutil.TempDir("", "v1ToLegacyTarContainer")
+	if err != nil {
+		return nil, fmt.Errorf("error creating temporary directory for v1 to legacy tar conversion")
+	}
+	defer os.RemoveAll(legacyTmpDir)
+	legacyPath := path.Join(legacyTmpDir, "legacytar")
 	tmpDir, err := ioutil.TempDir("", "docker2aci")
 	if err != nil {
 		return nil, fmt.Errorf("error creating temporary directory for aci conversion")
 	}
+	// first convert from v1 to legacy
+	img, err := v1tarball.ImageFromPath(from, nil)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get image from v1 tarball %s input: %v", from, err)
+	}
+	// get the tag
+	if convertTag == "" {
+		tags, err := getTagsFromV1Tar(from)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read tags from v1 tar at %s: %v", from, err)
+		}
+		if len(tags) < 1 {
+			return nil, fmt.Errorf("no tags in tar file at %s and none provided on command line", from)
+		}
+		convertTag = tags[0]
+	}
+	// taken straight from pkg/crane.Save, but they don't have the options there
+	ref, err := name.ParseReference(convertTag)
+	if err != nil {
+		return nil, fmt.Errorf("parsing reference %q: %v", convertTag, err)
+	}
+	tag, ok := ref.(name.Tag)
+	if !ok {
+		return nil, fmt.Errorf("ref wasn't a tag or digest")
+	}
+	var w *os.File
+	w, err = os.Create(legacyPath)
+	if err != nil {
+		return nil, fmt.Errorf("unable to open %s to write legacy tar file: %v", legacyPath, err)
+	}
+	defer w.Close()
+	err = legacytarball.Write(tag, img, w)
+	if err != nil {
+		return nil, fmt.Errorf("unable to write legacy tar file %s: %v", legacyPath, err)
+	}
+	w.Close()
+
 	cfg := docker2aci.CommonConfig{
 		Squash:      true,
 		OutputDir:   to,
@@ -61,7 +109,7 @@ func rktConvertTarToAci(from, to string) ([]string, error) {
 		CommonConfig: cfg,
 		DockerURL:    "",
 	}
-	return docker2aci.ConvertSavedFile(from, fileConfig)
+	return docker2aci.ConvertSavedFile(legacyPath, fileConfig)
 }
 
 // ociToRktImageHash given an OCI tar file, get the rkt hash for it.
@@ -313,4 +361,69 @@ func rktImportAciFile(aciFilename string) (string, error) {
 	}
 	// do not forget to remove the trailing CRLF
 	return strings.Trim(outerr, "\n"), nil
+}
+
+func getTagsFromV1Tar(tarfile string) ([]string, error) {
+	// open the tar file for reading
+	var (
+		f     *os.File
+		err   error
+		repob []byte
+	)
+	type tags map[string]string
+	type apps map[string]tags
+
+	// open the existing file
+	if f, err = os.Open(tarfile); err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	tr := tar.NewReader(f)
+	// cycle through until we find the "repositories" file
+tarloop:
+	for {
+		header, err := tr.Next()
+
+		switch {
+		// if no more files are found
+		case err == io.EOF:
+			break tarloop
+		case err != nil:
+			return nil, fmt.Errorf("error reading tar entry: %v", err)
+		case header == nil:
+			continue
+		// we only care about a regular file named "repositories"
+		case header.Typeflag == tar.TypeReg:
+			clean := filepath.Clean(header.Name)
+			// we only are looking at the repositories file
+			if clean != "repositories" {
+				continue
+			}
+			repob, err = ioutil.ReadAll(tr)
+			if err != nil {
+				return nil, fmt.Errorf("error reading repositories file: %v", err)
+			}
+			// we already saved the bytes, so break; we are done with the file
+			break tarloop
+		}
+	}
+
+	// did we load anything?
+	if len(repob) == 0 {
+		return nil, nil
+	}
+	// load the json content of the "repositories" file into an apps struct
+	var repos apps
+	if err := json.Unmarshal(repob, &repos); err != nil {
+		return nil, fmt.Errorf("error unmarshaling repositories file")
+	}
+
+	tagList := make([]string, 0)
+	for reponame, v := range repos {
+		for repotag := range v {
+			tagList = append(tagList, fmt.Sprintf("%s:%s", reponame, repotag))
+		}
+	}
+	return tagList, nil
 }
