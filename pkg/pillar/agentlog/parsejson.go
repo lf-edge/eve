@@ -15,6 +15,7 @@ type Loginfo struct {
 	Msg      string `json:"msg"`
 	Function string `json:"func"`
 	Filename string `json:"file"`
+	Source   string `json:"source"`
 }
 
 // Returns loginfo, ok

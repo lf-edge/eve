@@ -47,6 +47,7 @@ require (
 	golang.org/x/net v0.0.0-20191004110552-13f9640d40b9
 	google.golang.org/api v0.3.2 // indirect
 	google.golang.org/genproto v0.0.0-20190404172233-64821d5d2107 // indirect
+	gopkg.in/mcuadros/go-syslog.v2 v2.3.0
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 )
 

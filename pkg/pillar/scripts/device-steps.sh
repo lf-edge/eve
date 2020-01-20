@@ -216,7 +216,7 @@ if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] && [ "$P3_FS_TYPE"
     #It is a device with TPM, and formatted with ext4, setup fscrypt
     echo "$(date -Ins -u) EXT4 partitioned $PERSISTDIR, enabling fscrypt"
     #Initialize fscrypt algorithm, hash length etc.
-    $BINDIR/vaultmgr -c "$CURPART" setupVaults
+    LOG_TO_SYSLOG=1 $BINDIR/vaultmgr -c "$CURPART" setupVaults
 fi
 
 if [ ! -d "$PERSIST_RKT_DATA_DIR" ]; then
@@ -308,10 +308,10 @@ echo '{"BlinkCounter": 1}' > '/var/tmp/zededa/LedBlinkCounter/ledconfig.json'
 # TBD: Should we start it earlier before wwan and wlan services?
 if ! pgrep ledmanager >/dev/null; then
     echo "$(date -Ins -u) Starting ledmanager"
-    ledmanager &
+    LOG_TO_SYSLOG=1 ledmanager &
 fi
 echo "$(date -Ins -u) Starting nodeagent"
-$BINDIR/nodeagent -c $CURPART &
+LOG_TO_SYSLOG=1 $BINDIR/nodeagent -c $CURPART &
 
 # Restart watchdog - just for ledmanager so far
 killwait_watchdog
@@ -399,19 +399,19 @@ done
 
 # Get IP addresses
 echo "$(date -Ins -u) Starting nim"
-$BINDIR/nim -c $CURPART &
+LOG_TO_SYSLOG=1 $BINDIR/nim -c $CURPART &
 
 # Restart watchdog ledmanager and nim
 killwait_watchdog
 /usr/sbin/watchdog -c $TMPDIR/watchdognim.conf -F -s &
 
 # Print diag output forever on changes
-$BINDIR/diag -c $CURPART -f >/dev/console 2>&1 &
+LOG_TO_SYSLOG=1 $BINDIR/diag -c $CURPART -f >/dev/console 2>&1 &
 
 # Wait for having IP addresses for a few minutes
 # so that we are likely to have an address when we run ntp
 echo "$(date -Ins -u) Starting waitforaddr"
-$BINDIR/waitforaddr -c $CURPART
+LOG_TO_SYSLOG=1 $BINDIR/waitforaddr -c $CURPART
 
 # Deposit any diag information from nim
 access_usb
@@ -491,7 +491,7 @@ if [ $SELF_REGISTER = 1 ]; then
         exit 1
     fi
     echo "$(date -Ins -u) Starting client selfRegister getUuid"
-    if ! $BINDIR/client -c $CURPART selfRegister getUuid; then
+    if ! LOG_TO_SYSLOG=1 $BINDIR/client -c $CURPART selfRegister getUuid; then
         # XXX $? is always zero
         echo "$(date -Ins -u) client selfRegister failed with $?"
         exit 1
@@ -518,7 +518,7 @@ if [ $SELF_REGISTER = 1 ]; then
 else
     echo "$(date -Ins -u) Get UUID in in case device was deleted and recreated with same device cert"
     echo "$(date -Ins -u) Starting client getUuid"
-    $BINDIR/client -c $CURPART getUuid
+    LOG_TO_SYSLOG=1 $BINDIR/client -c $CURPART getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
         echo "$(date -Ins -u) XXX /config/hardwaremodel missing; creating"
         /opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
@@ -561,11 +561,11 @@ killwait_watchdog
 
 for AGENT in $AGENTS1; do
     echo "$(date -Ins -u) Starting $AGENT"
-    $BINDIR/"$AGENT" -c $CURPART &
+    LOG_TO_SYSLOG=1 $BINDIR/"$AGENT" -c $CURPART &
 done
 
 # Start vaultmgr as a service
-$BINDIR/vaultmgr -c "$CURPART" runAsService &
+LOG_TO_SYSLOG=1 $BINDIR/vaultmgr -c "$CURPART" runAsService &
 
 #If logmanager is already running we don't have to strt it.
 if ! pgrep logmanager >/dev/null; then

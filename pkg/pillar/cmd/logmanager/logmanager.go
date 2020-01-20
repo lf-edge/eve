@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"os"
 	dbg "runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,12 +33,12 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
+	"gopkg.in/mcuadros/go-syslog.v2"
 )
 
 const (
 	agentName        = "logmanager"
 	commonLogdir     = types.PersistDir + "/log"
-	syslogDir        = types.PersistDir + "/syslog"
 	xenLogDirname    = "/var/log/xen"
 	lastSentDirname  = "lastlogsent"  // Directory in /persist/
 	lastDeferDirname = "lastlogdefer" // Directory in /persist/
@@ -344,17 +345,15 @@ func Run() {
 	xenLogDirChanges := make(chan string)
 	go watch.WatchStatus(xenLogDirname, false, xenLogDirChanges)
 
-	syslogChanges := make(chan string)
-	go watch.WatchStatus(syslogDir, false, syslogChanges)
-
 	// Run these dir -> event as goroutines since they will block
 	// when there is backpressure
 	// XXX state sharing with HandleDeferred?
 	go handleLogDir(logDirChanges, logDirName, &ctx)
 	go handleLogDir(otherLogDirChanges, otherLogDirname, &otherCtx)
 	go handleLogDir(lispLogDirChanges, lispLogDirName, &ctx)
-	go handleLogDir(syslogChanges, syslogDir, &ctx)
 	go handleXenLogDir(xenLogDirChanges, xenLogDirname, &xenCtx)
+
+	go parseAndSendSyslogEntries(&ctx)
 
 	for {
 		select {
@@ -399,6 +398,26 @@ func Run() {
 		} else {
 			agentlog.StillRunning(agentName, warningTime, errorTime)
 		}
+	}
+}
+
+func parseAndSendSyslogEntries(ctx *loggerContext) {
+	log_channel := make(syslog.LogPartsChannel)
+	handler := syslog.NewChannelHandler(log_channel)
+	server := syslog.NewServer()
+	server.SetFormat(syslog.RFC3164)
+	server.SetHandler(handler)
+	server.ListenTCP("localhost:5140")
+	server.Boot()
+	for logParts := range log_channel {
+		timestamp := logParts["timestamp"].(time.Time)
+		logMsg := logEntry{
+			source:    logParts["tag"].(string),
+			content:   timestamp.String() + ":" + logParts["content"].(string),
+			severity:  strconv.Itoa(logParts["severity"].(int)),
+			timestamp: timestamp,
+		}
+		ctx.logChan <- logMsg
 	}
 }
 
@@ -994,7 +1013,11 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 			}
 			// XXX set iid to PID? From where?
 			// We add time to front of msg.
-			logChan <- logEntry{source: r.source,
+			logSource := r.source
+			if loginfo.Source != "" {
+				logSource = loginfo.Source
+			}
+			logChan <- logEntry{source: logSource,
 				content:   loginfo.Time + ": " + loginfo.Msg,
 				severity:  loginfo.Level,
 				timestamp: timestamp,

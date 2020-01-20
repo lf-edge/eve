@@ -220,6 +220,7 @@ github.com/shirou/gopsutil/mem
 github.com/shirou/w32
 # github.com/sirupsen/logrus v1.4.2
 github.com/sirupsen/logrus
+github.com/sirupsen/logrus/hooks/syslog
 # github.com/spf13/pflag v1.0.5
 github.com/spf13/pflag
 # github.com/stretchr/testify v1.4.0
@@ -331,6 +332,12 @@ google.golang.org/grpc/binarylog/grpc_binarylog_v1
 google.golang.org/grpc/internal/syscall
 # gopkg.in/inf.v0 v0.9.1
 gopkg.in/inf.v0
+# gopkg.in/mcuadros/go-syslog.v2 v2.3.0
+gopkg.in/mcuadros/go-syslog.v2
+gopkg.in/mcuadros/go-syslog.v2/format
+gopkg.in/mcuadros/go-syslog.v2/internal/syslogparser
+gopkg.in/mcuadros/go-syslog.v2/internal/syslogparser/rfc3164
+gopkg.in/mcuadros/go-syslog.v2/internal/syslogparser/rfc5424
 # gopkg.in/sourcemap.v1 v1.0.5
 gopkg.in/sourcemap.v1
 gopkg.in/sourcemap.v1/base64vlq
