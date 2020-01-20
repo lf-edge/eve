@@ -6,14 +6,12 @@ package logmanager
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	dbg "runtime/debug"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -416,14 +414,18 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 	server.ListenTCP("localhost:5140")
 	server.Boot()
 	for logParts := range logChannel {
-		var logContent inputLogFormat
-		json.Unmarshal([]byte(logParts["content"].(string)), &logContent)
+		logInfo, ok := agentlog.ParseLoginfo(logParts["content"].(string))
+		if !ok {
+			continue
+		}
 		timestamp := logParts["timestamp"].(time.Time)
 		logMsg := logEntry{
-			source:    logContent.Source,
+			source:    logInfo.Source,
 			content:   timestamp.String() + ": " + logParts["content"].(string),
-			severity:  strconv.Itoa(logParts["severity"].(int)),
+			severity:  logInfo.Level,
 			timestamp: timestamp,
+			function:  logInfo.Function,
+			filename:  logInfo.Filename,
 		}
 		ctx.logChan <- logMsg
 	}
