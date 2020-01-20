@@ -24,7 +24,6 @@ index fbb3a71..482c0ef 100755
 +  VALUE=$(echo $row | jq -r .value)
 +  echo export $KEY=\'$VALUE\' >> $stage2env
 +done
-+cat $workpath/environment >> $stage2env
 +
  xl create $gargs $outconfig $STAGE1_XL_OPTS
  domname=$(sed -ne '/^name *=/s/^.*"\(.*\)"/\1/p' < "$outconfig")

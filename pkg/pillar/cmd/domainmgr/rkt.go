@@ -35,13 +35,79 @@ type KeyValue struct {
 
 // RktManifest represents a rkt manifest
 type RktManifest struct {
-	ACKind      string
-	ACVersion   string
-	Name        string
-	Labels      []KeyValue
-	Annotations []KeyValue
-	// we don't care about the App part
-	App interface{}
+	ACKind        string       `json:"acKind"`
+	ACVersion     string       `json:"acVersion"`
+	Name          string       `json:"name"`
+	Labels        []Label      `json:"labels,omitempty"`
+	App           App          `json:"app,omitempty"`
+	Dependencies  []Dependency `json:"dependencies,omitempty"`
+	PathWhitelist []string     `json:"pathWhitelist,omitempty"`
+	Annotations   []Annotation `json:"annotations,omitempty"`
+}
+
+type Annotation struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+type Label struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type Dependency struct {
+	ImageName string  `json:"imageName"`
+	ImageID   string  `json:"imageID,omitempty"`
+	Labels    []Label `json:"labels,omitempty"`
+	Size      uint    `json:"size,omitempty"`
+}
+
+type EventHandler struct {
+	Name string   `json:"name"`
+	Exec []string `json:"exec"`
+}
+
+type EnvironmentVariable struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type MountPoint struct {
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	ReadOnly bool   `json:"readOnly,omitempty"`
+}
+
+type Port struct {
+	Name            string `json:"name"`
+	Protocol        string `json:"protocol"`
+	Port            uint   `json:"port"`
+	Count           uint   `json:"count"`
+	SocketActivated bool   `json:"socketActivated"`
+}
+
+type IsolatorValue struct {
+	Request string `json:"request"`
+	Limit   string `json:"limit"`
+}
+
+type Isolator struct {
+	Name  string        `json:"name"`
+	Value IsolatorValue `json:"value"`
+}
+
+type App struct {
+	Exec              []string              `json:"exec"`
+	EventHandlers     []EventHandler        `json:"eventHandlers,omitempty"`
+	User              string                `json:"user"`
+	Group             string                `json:"group"`
+	SupplementaryGIDs []int                 `json:"supplementaryGIDs,omitempty"`
+	WorkingDirectory  string                `json:"workingDirectory,omitempty"`
+	Environment       []EnvironmentVariable `json:"environment,omitempty"`
+	MountPoints       []MountPoint          `json:"mountPoints,omitempty"`
+	Ports             []Port                `json:"ports,omitempty"`
+	Isolators         []Isolator            `json:"isolators,omitempty"`
+	UserAnnotations   map[string]string     `json:"userAnnotations,omitempty"`
+	UserLabels        map[string]string     `json:"userLabels,omitempty"`
 }
 
 // rktConvertTarToAci convert an OCI image tarfile into an ACI bundle
@@ -112,6 +178,77 @@ func rktConvertTarToAci(from, to string) ([]string, error) {
 	return docker2aci.ConvertSavedFile(legacyPath, fileConfig)
 }
 
+// rktAddEnvVariableManifest extracts the the given ACI, adds the passed environment variable to it
+// and overwrite the existing ACI file with Actool
+func rktAddEnvVariableManifest(aciFilepaths []string, envVars []EnvironmentVariable) ([]string, error) {
+
+	//Below If statement is only for Testing purpose.
+	//Once passing env var from UI is implemented, then this If condition will be removed.
+	if envVars == nil {
+		envVars = append(envVars, EnvironmentVariable{
+			Name:  "FOO",
+			Value: "bar",
+		})
+	}
+
+	tarCmd := "tar"
+	tarBaseArg := "xvf"
+	actoolCmd := "actool"
+	actoolBaseArg := []string{"build", "--overwrite"}
+
+	//Adding passed env variables to all the ACI file in the list
+	for _, aciFilePath := range aciFilepaths {
+		tmpDirExtract, err := ioutil.TempDir("", "aciFileExtract")
+		if err != nil {
+			return []string{}, fmt.Errorf("error creating temporary directory for aci caching")
+		}
+		tarArgs := []string{
+			tarBaseArg,
+			aciFilePath,
+			"-C",
+			tmpDirExtract,
+		}
+		log.Infof("Calling command %s %v\n", tarCmd, tarArgs)
+		cmdLine := exec.Command(tarCmd, tarArgs...)
+		stdoutStderr, err := cmdLine.CombinedOutput()
+		if err != nil {
+			outerr := string(stdoutStderr)
+			log.Errorf("ACI file %s extract failed: %v", aciFilePath, err)
+			return []string{}, fmt.Errorf("ACI file %s extract failed: %v", aciFilePath, outerr)
+		}
+		manifestFile, err := os.Open(tmpDirExtract + "/manifest")
+		manifestFileBytes, _ := ioutil.ReadAll(manifestFile)
+		var manifest RktManifest
+		err = json.Unmarshal(manifestFileBytes, &manifest)
+		manifest.App.Environment = append(manifest.App.Environment, envVars...)
+		file, err := json.MarshalIndent(manifest, "", " ")
+		if err != nil {
+			log.Errorf("ACI file %s write failed: %v", aciFilePath, err)
+			return []string{}, fmt.Errorf("ACI file %s write failed: %v", aciFilePath, err)
+		}
+
+		err = ioutil.WriteFile(tmpDirExtract+"/manifest", file, 0644)
+		if err != nil {
+			log.Errorf("ACI file %s write failed: %v", aciFilePath, err)
+			return []string{}, fmt.Errorf("ACI file %s write failed: %v", aciFilePath, err)
+		}
+
+		actoolArgs := append(actoolBaseArg, tmpDirExtract, aciFilePath)
+		log.Infof("Calling command %s %v\n", actoolCmd, actoolArgs)
+		cmdLine = exec.Command(actoolCmd, actoolArgs...)
+		stdoutStderr, err = cmdLine.CombinedOutput()
+		if err != nil {
+			outerr := string(stdoutStderr)
+			log.Errorf("ACI file %s re-create failed: %v", aciFilePath, outerr)
+			return []string{}, fmt.Errorf("ACI file %s re-create  failed: %v", aciFilePath, outerr)
+		}
+
+		os.RemoveAll(tmpDirExtract)
+		manifestFile.Close()
+	}
+	return aciFilepaths, nil
+}
+
 // ociToRktImageHash given an OCI tar file, get the rkt hash for it.
 // Searches in the rkt image cache. If it finds a matching image by docker
 // manifest hash, it returns the rkt hash for the image. If it does not find a
@@ -150,8 +287,16 @@ func ociToRktImageHash(ociFilename string) (string, error) {
 		return "", fmt.Errorf("convert %s to aci did not return aci file", ociFilename)
 	}
 
+	updatedAciFiles, err := rktAddEnvVariableManifest(aciFiles, nil)
+	if err != nil {
+		return "", fmt.Errorf("unable to add enviornment variable to aci: %v. Error: %v", err, aciFiles[0])
+	}
+	if len(aciFiles) < 1 {
+		return "", fmt.Errorf("add enviornment variable to aci: %v, did not return aci file", aciFiles[0])
+	}
+
 	// import the aciFile
-	rktHash, err := rktImportAciFile(aciFiles[0])
+	rktHash, err := rktImportAciFile(updatedAciFiles[0])
 	if err != nil {
 		return rktHash, fmt.Errorf("unable to import aci file %s from tarfile %s to rkt: %v", aciFiles[0], ociFilename, err)
 	}
