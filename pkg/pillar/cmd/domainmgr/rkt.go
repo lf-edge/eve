@@ -182,8 +182,8 @@ func rktConvertTarToAci(from, to string) ([]string, error) {
 // and overwrite the existing ACI file with Actool
 func rktAddEnvVariableManifest(aciFilepaths []string, envVars []EnvironmentVariable) ([]string, error) {
 
-	//Below If statement is only for Testing purpose.
-	//Once passing env var from UI is implemented, then this If condition will be removed.
+	//Below If statement is only to test if env var is set properly.
+	//TODO: Once passing env var from UI is implemented, then this If condition will be removed.
 	if envVars == nil {
 		envVars = append(envVars, EnvironmentVariable{
 			Name:  "FOO",
@@ -198,6 +198,7 @@ func rktAddEnvVariableManifest(aciFilepaths []string, envVars []EnvironmentVaria
 
 	//Adding passed env variables to all the ACI file in the list
 	for _, aciFilePath := range aciFilepaths {
+		//Creating a temp dir where ACI file will be extracted
 		tmpDirExtract, err := ioutil.TempDir("", "aciFileExtract")
 		if err != nil {
 			return []string{}, fmt.Errorf("error creating temporary directory for aci caching")
@@ -216,10 +217,14 @@ func rktAddEnvVariableManifest(aciFilepaths []string, envVars []EnvironmentVaria
 			log.Errorf("ACI file %s extract failed: %v", aciFilePath, err)
 			return []string{}, fmt.Errorf("ACI file %s extract failed: %v", aciFilePath, outerr)
 		}
+
+		//Reading the manifest of extracted ACI file and Unmarshalling it into 'RktManifest' struct
 		manifestFile, err := os.Open(tmpDirExtract + "/manifest")
 		manifestFileBytes, _ := ioutil.ReadAll(manifestFile)
 		var manifest RktManifest
 		err = json.Unmarshal(manifestFileBytes, &manifest)
+
+		//Add environment variables
 		manifest.App.Environment = append(manifest.App.Environment, envVars...)
 		file, err := json.MarshalIndent(manifest, "", " ")
 		if err != nil {
@@ -227,12 +232,14 @@ func rktAddEnvVariableManifest(aciFilepaths []string, envVars []EnvironmentVaria
 			return []string{}, fmt.Errorf("ACI file %s write failed: %v", aciFilePath, err)
 		}
 
+		//Updating extracted ACI's manifest
 		err = ioutil.WriteFile(tmpDirExtract+"/manifest", file, 0644)
 		if err != nil {
 			log.Errorf("ACI file %s write failed: %v", aciFilePath, err)
 			return []string{}, fmt.Errorf("ACI file %s write failed: %v", aciFilePath, err)
 		}
 
+		//Rebuilding ACI file with updated manifest. This is overwrite the existing ACI file.
 		actoolArgs := append(actoolBaseArg, tmpDirExtract, aciFilePath)
 		log.Infof("Calling command %s %v\n", actoolCmd, actoolArgs)
 		cmdLine = exec.Command(actoolCmd, actoolArgs...)
