@@ -16,6 +16,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
@@ -91,7 +92,7 @@ func Run() {
 	wscCtx := wstunnelclientContext{}
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
 		false, &wscCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
@@ -105,7 +106,7 @@ func Run() {
 	wscCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
+	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &DNSctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleDNSModify,
 			ModifyHandler: handleDNSModify,
@@ -121,7 +122,7 @@ func Run() {
 
 	// Look for AppInstanceConfig from zedagent
 	// XXX is it better to look for AppInstanceStatus from zedmanager?
-	subAppInstanceConfig, err := pubsub.Subscribe("zedagent",
+	subAppInstanceConfig, err := pubsublegacy.Subscribe("zedagent",
 		types.AppInstanceConfig{}, false, &wscCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleAppInstanceConfigModify,
 			ModifyHandler: handleAppInstanceConfigModify,

@@ -37,6 +37,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/satori/go.uuid"
@@ -122,7 +123,7 @@ func Run() {
 	}
 
 	// Set up our publications before the subscriptions so ctx is set
-	pubAppImgStatus, err := pubsub.PublishScope(agentName, types.AppImgObj,
+	pubAppImgStatus, err := pubsublegacy.PublishScope(agentName, types.AppImgObj,
 		types.VerifyImageStatus{})
 	if err != nil {
 		log.Fatal(err)
@@ -130,7 +131,7 @@ func Run() {
 	ctx.pubAppImgStatus = pubAppImgStatus
 	pubAppImgStatus.ClearRestarted()
 
-	pubBaseOsStatus, err := pubsub.PublishScope(agentName, types.BaseOsObj,
+	pubBaseOsStatus, err := pubsublegacy.PublishScope(agentName, types.BaseOsObj,
 		types.VerifyImageStatus{})
 	if err != nil {
 		log.Fatal(err)
@@ -139,7 +140,7 @@ func Run() {
 	pubBaseOsStatus.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
 		false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
@@ -153,7 +154,7 @@ func Run() {
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	subAppImgConfig, err := pubsub.SubscribeScope("zedmanager",
+	subAppImgConfig, err := pubsublegacy.SubscribeScope("zedmanager",
 		types.AppImgObj, types.VerifyImageConfig{}, false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleAppImgCreate,
 			ModifyHandler: handleAppImgModify,
@@ -167,7 +168,7 @@ func Run() {
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
 
-	subBaseOsConfig, err := pubsub.SubscribeScope("baseosmgr",
+	subBaseOsConfig, err := pubsublegacy.SubscribeScope("baseosmgr",
 		types.BaseOsObj, types.VerifyImageConfig{}, false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleBaseOsCreate,
 			ModifyHandler: handleBaseOsModify,
@@ -181,7 +182,7 @@ func Run() {
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
-	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
+	subAssignableAdapters, err := pubsublegacy.Subscribe("domainmgr",
 		types.AssignableAdapters{}, false, &ctx, &pubsub.SubscriptionOptions{
 			ModifyHandler: handleAAModify,
 			DeleteHandler: handleAADelete,

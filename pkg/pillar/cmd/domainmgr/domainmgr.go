@@ -33,6 +33,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -193,14 +194,14 @@ func Run() {
 	domainCtx.createSema = sema.Create(1)
 	domainCtx.createSema.P(1)
 
-	pubDomainStatus, err := pubsub.Publish(agentName, types.DomainStatus{})
+	pubDomainStatus, err := pubsublegacy.Publish(agentName, types.DomainStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	domainCtx.pubDomainStatus = pubDomainStatus
 	pubDomainStatus.ClearRestarted()
 
-	pubImageStatus, err := pubsub.Publish(agentName, types.ImageStatus{})
+	pubImageStatus, err := pubsublegacy.Publish(agentName, types.ImageStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -211,7 +212,7 @@ func Run() {
 	populateInitialImageStatus(&domainCtx, rwImgDirname)
 	pubImageStatus.SignalRestarted()
 
-	pubAssignableAdapters, err := pubsub.Publish(agentName,
+	pubAssignableAdapters, err := pubsublegacy.Publish(agentName,
 		types.AssignableAdapters{})
 	if err != nil {
 		log.Fatal(err)
@@ -220,7 +221,7 @@ func Run() {
 	pubAssignableAdapters.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
 		false, &domainCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
@@ -234,7 +235,7 @@ func Run() {
 	domainCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
+	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &domainCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleDNSModify,
 			ModifyHandler: handleDNSModify,
@@ -277,7 +278,7 @@ func Run() {
 	}
 
 	// Subscribe to PhysicalIOAdapterList from zedagent
-	subPhysicalIOAdapter, err := pubsub.Subscribe("zedagent",
+	subPhysicalIOAdapter, err := pubsublegacy.Subscribe("zedagent",
 		types.PhysicalIOAdapterList{}, false, &domainCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handlePhysicalIOAdapterListCreateModify,
 			ModifyHandler: handlePhysicalIOAdapterListCreateModify,
@@ -313,7 +314,7 @@ func Run() {
 	log.Infof("Have %d assignable adapters", len(aa.IoBundleList))
 
 	// Subscribe to DomainConfig from zedmanager
-	subDomainConfig, err := pubsub.Subscribe("zedmanager",
+	subDomainConfig, err := pubsublegacy.Subscribe("zedmanager",
 		types.DomainConfig{}, false, &domainCtx, &pubsub.SubscriptionOptions{
 			CreateHandler:  handleDomainCreate,
 			ModifyHandler:  handleDomainModify,

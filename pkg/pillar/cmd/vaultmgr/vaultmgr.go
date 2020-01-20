@@ -18,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -388,7 +389,7 @@ func fetchFscryptStatus() (info.DataSecAtRestStatus, string) {
 }
 
 func initializeSelfPublishHandles(ctx *vaultMgrContext) {
-	pubVaultStatus, err := pubsub.Publish(agentName,
+	pubVaultStatus, err := pubsublegacy.Publish(agentName,
 		types.VaultStatus{})
 	if err != nil {
 		log.Fatal(err)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -22,7 +23,7 @@ const (
 // EnsureGCFile is used by agents which wait for GlobalConfig to become initialized
 // on startup in order to make sure we have a GlobalConfig file.
 func EnsureGCFile() {
-	pubGlobalConfig, err := pubsub.PublishPersistent("", types.GlobalConfig{})
+	pubGlobalConfig, err := pubsublegacy.PublishPersistent("", types.GlobalConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}

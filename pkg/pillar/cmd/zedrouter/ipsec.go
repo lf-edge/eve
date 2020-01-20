@@ -12,8 +12,8 @@ import (
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -869,7 +869,7 @@ func sysctlConfigSet() error {
 
 func ipSecConfigFileWrite(filename string, writeStr string) error {
 	data := []byte(writeStr)
-	if err := pubsub.WriteRename(filename, data); err != nil {
+	if err := fileutils.WriteRename(filename, data); err != nil {
 		return err
 	}
 	return nil

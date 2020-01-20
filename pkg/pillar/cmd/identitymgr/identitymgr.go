@@ -28,6 +28,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -87,7 +88,7 @@ func Run() {
 
 	identityCtx := identityContext{}
 
-	pubEIDStatus, err := pubsub.Publish(agentName,
+	pubEIDStatus, err := pubsublegacy.Publish(agentName,
 		types.EIDStatus{})
 	if err != nil {
 		log.Fatal(err)
@@ -96,7 +97,7 @@ func Run() {
 	pubEIDStatus.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
 		false, &identityCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
@@ -111,7 +112,7 @@ func Run() {
 	subGlobalConfig.Activate()
 
 	// Subscribe to EIDConfig from zedmanager
-	subEIDConfig, err := pubsub.Subscribe("zedmanager",
+	subEIDConfig, err := pubsublegacy.Subscribe("zedmanager",
 		types.EIDConfig{}, false, &identityCtx, &pubsub.SubscriptionOptions{
 			CreateHandler:  handleCreate,
 			ModifyHandler:  handleModify,
