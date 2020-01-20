@@ -1,20 +1,30 @@
 package pubsub
 
 import (
-	"encoding/base64"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
-	"os"
 	"reflect"
 
 	"github.com/google/go-cmp/cmp"
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	// Global fixed string for a global subject, i.e. no agent
+	Global = "global"
+)
+
+// LocalCollection represents an entire local copy of a set of key-value pairs
+type LocalCollection map[string][]byte
+
+// Notify simple struct to pass notification messages
+type Notify struct{}
+
+// Publication to publish to an individual topic
 // Usage:
-//  p1, err := pubsub.Publish("foo", fooStruct{})
+//  p1, err := pubsublegacy.Publish("foo", fooStruct{})
 //  ...
 //  // Optional
 //  p1.SignalRestarted()
@@ -25,55 +35,28 @@ import (
 //  foo := p1.Get(key)
 //  fooAll := p1.GetAll()
 
-// PublicationImpl - Publixation Implementation. The main structure that implements
+// PublicationImpl - Publication Implementation. The main structure that implements
 //  Publication interface.
 type PublicationImpl struct {
 	// Private fields
-	topicType  interface{}
-	agentName  string
-	agentScope string
-	topic      string
-	km         keyMap
-	sockName   string
-	listener   net.Listener
+	topicType   reflect.Type
+	agentName   string
+	agentScope  string
+	topic       string
+	km          keyMap
+	global      bool
+	defaultName string
+	updaterList *Updaters
 
-	publishToDir bool // Handle special case of file only info
-	dirName      string
-	persistent   bool
+	driver DriverPublisher
 }
 
-// Send a notification to all the matching channels which does not yet
-// have one queued.
-func (pub *PublicationImpl) updatersNotify(name string) {
-	updaterList.lock.Lock()
-	for _, nn := range updaterList.servers {
-		if nn.name != name {
-			continue
-		}
-		select {
-		case nn.ch <- notify{}:
-			log.Debugf("updaterNotify sent to %s/%d\n",
-				nn.name, nn.instance)
-		default:
-			log.Debugf("updaterNotify NOT sent to %s/%d\n",
-				nn.name, nn.instance)
-		}
-	}
-	updaterList.lock.Unlock()
+// IsRestarted has this publication been set to "restarted"
+func (pub *PublicationImpl) IsRestarted() bool {
+	return pub.km.restarted
 }
 
-func (pub *PublicationImpl) nameString() string {
-	if pub.publishToDir {
-		return pub.dirName
-	} else if pub.agentScope == "" {
-		return fmt.Sprintf("%s/%s", pub.agentName, pub.topic)
-	} else {
-		return fmt.Sprintf("%s/%s/%s", pub.agentName, pub.agentScope,
-			pub.topic)
-	}
-}
-
-// Publish publish an item on a given key
+// Publish publish a key-value pair
 func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 	topic := TypeToName(item)
 	name := pub.nameString()
@@ -104,22 +87,16 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 		pub.dump("after Publish")
 	}
 	pub.updatersNotify(name)
-
-	fileName := pub.dirName + "/" + key + ".json"
-	log.Debugf("Publish writing %s\n", fileName)
-
+	// marshal to json bytes to send to the driver
 	b, err := json.Marshal(item)
 	if err != nil {
-		log.Fatal("json Marshal in Publish", err)
+		log.Fatal("json Marshal in socketdriver Publish", err)
 	}
-	err = WriteRename(fileName, b)
-	if err != nil {
-		return err
-	}
-	return nil
+
+	return pub.driver.Publish(key, b)
 }
 
-// Unpublish unpublish the value at a given key
+// Unpublish delete a key from the key-value map
 func (pub *PublicationImpl) Unpublish(key string) error {
 	name := pub.nameString()
 	if m, ok := pub.km.key.Load(key); ok {
@@ -136,14 +113,7 @@ func (pub *PublicationImpl) Unpublish(key string) error {
 	}
 	pub.updatersNotify(name)
 
-	fileName := pub.dirName + "/" + key + ".json"
-	log.Debugf("Unpublish deleting file %s\n", fileName)
-	if err := os.Remove(fileName); err != nil {
-		errStr := fmt.Sprintf("Unpublish(%s/%s): failed %s",
-			name, key, err)
-		return errors.New(errStr)
-	}
-	return nil
+	return pub.driver.Unpublish(key)
 }
 
 // SignalRestarted signal that a publication is restarted
@@ -158,9 +128,136 @@ func (pub *PublicationImpl) ClearRestarted() error {
 	return pub.restartImpl(false)
 }
 
+// Get the value for a given key
+func (pub *PublicationImpl) Get(key string) (interface{}, error) {
+	m, ok := pub.km.key.Load(key)
+	if ok {
+		return m, nil
+	} else {
+		name := pub.nameString()
+		errStr := fmt.Sprintf("Get(%s) unknown key %s", name, key)
+		return nil, errors.New(errStr)
+	}
+}
+
+// GetAll enumerate all the key-value pairs for the collection
+func (pub *PublicationImpl) GetAll() map[string]interface{} {
+	result := make(map[string]interface{})
+	assigner := func(key string, val interface{}) bool {
+		result[key] = val
+		return true
+	}
+	pub.km.key.Range(assigner)
+	return result
+}
+
+// methods just for this implementation of Publisher
+
+// updatersNotify send a notification to all the matching channels which does not yet
+// have one queued.
+func (pub *PublicationImpl) updatersNotify(name string) {
+	pub.updaterList.lock.Lock()
+	for _, nn := range pub.updaterList.servers {
+		if nn.name != name {
+			continue
+		}
+		select {
+		case nn.ch <- Notify{}:
+			log.Debugf("updaterNotify sent to %s/%d\n",
+				nn.name, nn.instance)
+		default:
+			log.Debugf("updaterNotify NOT sent to %s/%d\n",
+				nn.name, nn.instance)
+		}
+	}
+	pub.updaterList.lock.Unlock()
+}
+
+// Only reads json files. Sets restarted if that file was found.
+func (pub *PublicationImpl) populate() {
+	name := pub.nameString()
+
+	log.Infof("populate(%s)\n", name)
+
+	pairs, restarted, err := pub.driver.Load()
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	for key, itemB := range pairs {
+		item, err := parseTemplate(itemB, pub.topicType)
+		if err != nil {
+			log.Fatalf(err.Error())
+			return
+		}
+		pub.km.key.Store(key, item)
+	}
+	pub.km.restarted = restarted
+	log.Infof("populate(%s) done\n", name)
+}
+
+// go routine which runs the AF_UNIX server.
+func (pub *PublicationImpl) publisher() {
+	pub.driver.Start()
+}
+
+// DetermineDiffs update a provided LocalCollection to the current state,
+// and return the deleted keys before the added/modified ones
+func (pub *PublicationImpl) DetermineDiffs(slaveCollection LocalCollection) []string {
+	var keys []string
+	name := pub.nameString()
+	items := pub.GetAll()
+	// Look for deleted
+	for slaveKey := range slaveCollection {
+		_, ok := items[slaveKey]
+		if !ok {
+			log.Debugf("determineDiffs(%s): key %s deleted\n",
+				name, slaveKey)
+			delete(slaveCollection, slaveKey)
+			keys = append(keys, slaveKey)
+		}
+	}
+	// Look for new/changed
+	for masterKey, master := range items {
+		masterb, err := json.Marshal(master)
+		if err != nil {
+			log.Fatalf("json Marshal in DetermineDiffs for master key %s: %v", masterKey, err)
+		}
+
+		slave := lookupSlave(slaveCollection, masterKey)
+		if slave == nil {
+			log.Debugf("determineDiffs(%s): key %s added\n",
+				name, masterKey)
+			slaveCollection[masterKey] = masterb
+			keys = append(keys, masterKey)
+		} else if bytes.Compare(masterb, slave) != 0 {
+			log.Debugf("determineDiffs(%s): key %s replacing due to diff\n",
+				name, masterKey)
+			// XXX is deepCopy needed?
+			slaveCollection[masterKey] = masterb
+			keys = append(keys, masterKey)
+		} else {
+			log.Debugf("determineDiffs(%s): key %s unchanged\n",
+				name, masterKey)
+		}
+	}
+	return keys
+}
+
+func (pub *PublicationImpl) nameString() string {
+	var name string
+	switch {
+	case pub.global:
+		name = Global
+	case pub.agentScope == "":
+		name = fmt.Sprintf("%s/%s", pub.agentName, pub.topic)
+	default:
+		name = fmt.Sprintf("%s/%s/%s", pub.agentName, pub.agentScope, pub.topic)
+	}
+	return name
+}
+
 // Record the restarted state and send over socket/file.
 func (pub *PublicationImpl) restartImpl(restarted bool) error {
-
 	name := pub.nameString()
 	log.Infof("pub.restartImpl(%s, %v)\n", name, restarted)
 
@@ -176,109 +273,7 @@ func (pub *PublicationImpl) restartImpl(restarted bool) error {
 		// Implicit in updaters lock??
 		pub.updatersNotify(name)
 	}
-
-	restartFile := pub.dirName + "/" + "restarted"
-	if restarted {
-		f, err := os.OpenFile(restartFile, os.O_RDONLY|os.O_CREATE, 0600)
-		if err != nil {
-			errStr := fmt.Sprintf("pub.restartImpl(%s): openfile failed %s",
-				name, err)
-			return errors.New(errStr)
-		}
-		f.Close()
-	} else {
-		if err := os.Remove(restartFile); err != nil {
-			errStr := fmt.Sprintf("pub.restartImpl(%s): remove failed %s",
-				name, err)
-			return errors.New(errStr)
-		}
-	}
-	return nil
-}
-
-func (pub *PublicationImpl) serialize(sock net.Conn, keys []string,
-	sendToPeer localCollection) error {
-
-	name := pub.nameString()
-	log.Debugf("serialize(%s, %v)\n", name, keys)
-
-	for _, key := range keys {
-		val, ok := sendToPeer[key]
-		if ok {
-			err := pub.sendUpdate(sock, key, val)
-			if err != nil {
-				log.Errorf("serialize(%s) sendUpdate failed %s\n",
-					name, err)
-				return err
-			}
-		} else {
-			err := pub.sendDelete(sock, key)
-			if err != nil {
-				log.Errorf("serialize(%s) sendDelete failed %s\n",
-					name, err)
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (pub *PublicationImpl) sendUpdate(sock net.Conn, key string,
-	val interface{}) error {
-
-	log.Debugf("sendUpdate(%s): key %s\n", pub.nameString(), key)
-	b, err := json.Marshal(val)
-	if err != nil {
-		log.Fatal("json Marshal in sendUpdate", err)
-	}
-	// base64-encode to avoid having spaces in the key and val
-	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
-	sendVal := base64.StdEncoding.EncodeToString(b)
-	buf := fmt.Sprintf("update %s %s %s", pub.topic, sendKey, sendVal)
-	if len(buf) >= maxsize {
-		log.Fatalf("Too large message (%d bytes) sent to %s topic %s key %s",
-			len(buf), pub.nameString(), pub.topic, key)
-	}
-	_, err = sock.Write([]byte(buf))
-	return err
-}
-
-func (pub *PublicationImpl) sendDelete(sock net.Conn, key string) error {
-
-	log.Debugf("sendDelete(%s): key %s\n", pub.nameString(), key)
-	// base64-encode to avoid having spaces in the key
-	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
-	buf := fmt.Sprintf("delete %s %s", pub.topic, sendKey)
-	if len(buf) >= maxsize {
-		log.Fatalf("Too large message (%d bytes) sent to %s topic %s key %s",
-			len(buf), pub.nameString(), pub.topic, key)
-	}
-	_, err := sock.Write([]byte(buf))
-	return err
-}
-
-func (pub *PublicationImpl) sendRestarted(sock net.Conn) error {
-
-	log.Infof("sendRestarted(%s)\n", pub.nameString())
-	buf := fmt.Sprintf("restarted %s", pub.topic)
-	if len(buf) >= maxsize {
-		log.Fatalf("Too large message (%d bytes) sent to %s topic %s",
-			len(buf), pub.nameString(), pub.topic)
-	}
-	_, err := sock.Write([]byte(buf))
-	return err
-}
-
-func (pub *PublicationImpl) sendComplete(sock net.Conn) error {
-
-	log.Infof("sendComplete(%s)\n", pub.nameString())
-	buf := fmt.Sprintf("complete %s", pub.topic)
-	if len(buf) >= maxsize {
-		log.Fatalf("Too large message (%d bytes) sent to %s topic %s",
-			len(buf), pub.nameString(), pub.topic)
-	}
-	_, err := sock.Write([]byte(buf))
-	return err
+	return pub.driver.Restart(restarted)
 }
 
 func (pub *PublicationImpl) dump(infoStr string) {
@@ -295,32 +290,4 @@ func (pub *PublicationImpl) dump(infoStr string) {
 	}
 	pub.km.key.Range(dumper)
 	log.Debugf("\trestarted %t\n", pub.km.restarted)
-}
-
-// Get get the value for a specific key
-func (pub *PublicationImpl) Get(key string) (interface{}, error) {
-	m, ok := pub.km.key.Load(key)
-	if ok {
-		return m, nil
-	} else {
-		name := pub.nameString()
-		errStr := fmt.Sprintf("Get(%s) unknown key %s", name, key)
-		return nil, errors.New(errStr)
-	}
-}
-
-// GetAll enumerate all the key, value for the collection
-func (pub *PublicationImpl) GetAll() map[string]interface{} {
-	result := make(map[string]interface{})
-	assigner := func(key string, val interface{}) bool {
-		result[key] = val
-		return true
-	}
-	pub.km.key.Range(assigner)
-	return result
-}
-
-// Topic returns the string definiting the topic
-func (pub *PublicationImpl) Topic() string {
-	return pub.topic
 }
