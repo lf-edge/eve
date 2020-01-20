@@ -31,8 +31,8 @@ func initImpl(agentName string, logdir string, redirect bool,
 	text bool) (*os.File, error) {
 
 	var err error
-	var logf *os.File = nil
-	var logToSyslog bool = false
+	var logf *os.File
+	var logToSyslog = false
 	if os.Getenv("LOG_TO_SYSLOG") != "" {
 		logToSyslog = true
 	}
