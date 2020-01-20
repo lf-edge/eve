@@ -4,7 +4,7 @@
 package utils
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -18,7 +18,7 @@ func UpdateLedManagerConfig(count int) {
 	blinkCount := types.LedBlinkCounter{
 		BlinkCounter: count,
 	}
-	pub, err := pubsub.Publish("", types.LedBlinkCounter{})
+	pub, err := pubsublegacy.Publish("", types.LedBlinkCounter{})
 	if err != nil {
 		log.Fatal("Publish LedBlinkCounter")
 	}

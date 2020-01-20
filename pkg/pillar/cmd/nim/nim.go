@@ -25,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -122,21 +123,21 @@ func Run() {
 	// Make sure we have a GlobalConfig file with defaults
 	utils.EnsureGCFile()
 
-	pubDeviceNetworkStatus, err := pubsub.Publish(agentName,
+	pubDeviceNetworkStatus, err := pubsublegacy.Publish(agentName,
 		types.DeviceNetworkStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubDeviceNetworkStatus.ClearRestarted()
 
-	pubDevicePortConfig, err := pubsub.Publish(agentName,
+	pubDevicePortConfig, err := pubsublegacy.Publish(agentName,
 		types.DevicePortConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubDevicePortConfig.ClearRestarted()
 
-	pubDevicePortConfigList, err := pubsub.PublishPersistent(agentName,
+	pubDevicePortConfigList, err := pubsublegacy.PublishPersistent(agentName,
 		types.DevicePortConfigList{})
 	if err != nil {
 		log.Fatal(err)
@@ -144,7 +145,7 @@ func Run() {
 	pubDevicePortConfigList.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
 		false, &nimCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
@@ -171,7 +172,7 @@ func Run() {
 	// 1. zedagent publishing DevicePortConfig
 	// 2. override file in /var/tmp/zededa/DevicePortConfig/*.json
 	// 3. "lastresort" derived from the set of network interfaces
-	subDevicePortConfigA, err := pubsub.Subscribe("zedagent",
+	subDevicePortConfigA, err := pubsublegacy.Subscribe("zedagent",
 		types.DevicePortConfig{}, false,
 		&nimCtx.DeviceNetworkContext, &pubsub.SubscriptionOptions{
 			CreateHandler: devicenetwork.HandleDPCModify,
@@ -186,7 +187,7 @@ func Run() {
 	nimCtx.SubDevicePortConfigA = subDevicePortConfigA
 	subDevicePortConfigA.Activate()
 
-	subDevicePortConfigO, err := pubsub.Subscribe("",
+	subDevicePortConfigO, err := pubsublegacy.Subscribe("",
 		types.DevicePortConfig{}, false,
 		&nimCtx.DeviceNetworkContext, &pubsub.SubscriptionOptions{
 			CreateHandler: devicenetwork.HandleDPCModify,
@@ -201,7 +202,7 @@ func Run() {
 	nimCtx.SubDevicePortConfigO = subDevicePortConfigO
 	subDevicePortConfigO.Activate()
 
-	subDevicePortConfigS, err := pubsub.Subscribe(agentName,
+	subDevicePortConfigS, err := pubsublegacy.Subscribe(agentName,
 		types.DevicePortConfig{}, false,
 		&nimCtx.DeviceNetworkContext, &pubsub.SubscriptionOptions{
 			CreateHandler: devicenetwork.HandleDPCModify,
@@ -216,7 +217,7 @@ func Run() {
 	nimCtx.SubDevicePortConfigS = subDevicePortConfigS
 	subDevicePortConfigS.Activate()
 
-	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
+	subAssignableAdapters, err := pubsublegacy.Subscribe("domainmgr",
 		types.AssignableAdapters{}, false,
 		&nimCtx.DeviceNetworkContext, &pubsub.SubscriptionOptions{
 			CreateHandler: devicenetwork.HandleAssignableAdaptersModify,
@@ -231,7 +232,7 @@ func Run() {
 	nimCtx.SubAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
-	subNetworkInstanceStatus, err := pubsub.Subscribe("zedrouter",
+	subNetworkInstanceStatus, err := pubsublegacy.Subscribe("zedrouter",
 		types.NetworkInstanceStatus{}, false, &nimCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleNetworkInstanceModify,
 			ModifyHandler: handleNetworkInstanceModify,

@@ -30,6 +30,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -172,7 +173,7 @@ func Run() {
 	ctx.countChange = make(chan int)
 	go TriggerBlinkOnDevice(ctx.countChange, blinkFunc)
 
-	subLedBlinkCounter, err := pubsub.Subscribe("", types.LedBlinkCounter{},
+	subLedBlinkCounter, err := pubsublegacy.Subscribe("", types.LedBlinkCounter{},
 		false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleLedBlinkModify,
 			ModifyHandler: handleLedBlinkModify,
@@ -186,7 +187,7 @@ func Run() {
 	ctx.subLedBlinkCounter = subLedBlinkCounter
 	subLedBlinkCounter.Activate()
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
+	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleDNSModify,
 			ModifyHandler: handleDNSModify,
@@ -201,7 +202,7 @@ func Run() {
 	subDeviceNetworkStatus.Activate()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
 		false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,

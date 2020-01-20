@@ -31,6 +31,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
@@ -145,7 +146,7 @@ func Run() {
 	handleLastRebootReason(&nodeagentCtx)
 
 	// publisher of NodeAgent Status
-	pubNodeAgentStatus, err := pubsub.Publish(agentName,
+	pubNodeAgentStatus, err := pubsublegacy.Publish(agentName,
 		types.NodeAgentStatus{})
 	if err != nil {
 		log.Fatal(err)
@@ -154,7 +155,7 @@ func Run() {
 	nodeagentCtx.pubNodeAgentStatus = pubNodeAgentStatus
 
 	// publisher of Zboot Config
-	pubZbootConfig, err := pubsub.Publish(agentName, types.ZbootConfig{})
+	pubZbootConfig, err := pubsublegacy.Publish(agentName, types.ZbootConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -162,7 +163,7 @@ func Run() {
 	nodeagentCtx.pubZbootConfig = pubZbootConfig
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
 		false, &nodeagentCtx, &pubsub.SubscriptionOptions{
 			ModifyHandler: handleGlobalConfigModify,
 			DeleteHandler: handleGlobalConfigDelete,
@@ -240,7 +241,7 @@ func Run() {
 	}
 
 	// subscribe to zboot status events
-	subZbootStatus, err := pubsub.Subscribe("baseosmgr",
+	subZbootStatus, err := pubsublegacy.Subscribe("baseosmgr",
 		types.ZbootStatus{}, false, &nodeagentCtx, &pubsub.SubscriptionOptions{
 			ModifyHandler: handleZbootStatusModify,
 			DeleteHandler: handleZbootStatusDelete,
@@ -254,7 +255,7 @@ func Run() {
 	subZbootStatus.Activate()
 
 	// subscribe to zedagent status events
-	subZedAgentStatus, err := pubsub.Subscribe("zedagent",
+	subZedAgentStatus, err := pubsublegacy.Subscribe("zedagent",
 		types.ZedAgentStatus{}, false, &nodeagentCtx, &pubsub.SubscriptionOptions{
 			ModifyHandler: handleZedAgentStatusModify,
 			DeleteHandler: handleZedAgentStatusDelete,
@@ -390,7 +391,7 @@ func handleZbootStatusDelete(ctxArg interface{},
 
 func checkNetworkConnectivity(ctxPtr *nodeagentContext) {
 	// for device network status
-	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
+	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, ctxPtr, &pubsub.SubscriptionOptions{
 			ModifyHandler: handleDNSModify,
 			DeleteHandler: handleDNSDelete,

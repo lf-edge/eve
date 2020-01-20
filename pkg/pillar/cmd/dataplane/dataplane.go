@@ -25,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/dataplane/itr"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -210,21 +211,21 @@ func initPubsubChannels() *dptypes.DataplaneContext {
 	dataplaneContext := &dptypes.DataplaneContext{}
 
 	// Create pubsub publish channels for LispInfo and Metrics
-	pubLispInfoStatus, err := pubsub.Publish(agentName,
+	pubLispInfoStatus, err := pubsublegacy.Publish(agentName,
 		types.LispInfoStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	dataplaneContext.PubLispInfoStatus = pubLispInfoStatus
 
-	pubLispMetrics, err := pubsub.Publish(agentName,
+	pubLispMetrics, err := pubsublegacy.Publish(agentName,
 		types.LispMetrics{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	dataplaneContext.PubLispMetrics = pubLispMetrics
 
-	subLispConfig, err := pubsub.Subscribe("zedrouter",
+	subLispConfig, err := pubsublegacy.Subscribe("zedrouter",
 		types.LispDataplaneConfig{}, false, dataplaneContext, &pubsub.SubscriptionOptions{
 			CreateHandler: handleExpModify,
 			ModifyHandler: handleExpModify,
@@ -239,7 +240,7 @@ func initPubsubChannels() *dptypes.DataplaneContext {
 	subLispConfig.Activate()
 
 	// Look for global config like debug
-	subGlobalConfig, err := pubsub.Subscribe("",
+	subGlobalConfig, err := pubsublegacy.Subscribe("",
 		types.GlobalConfig{}, false, dataplaneContext, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
@@ -417,7 +418,7 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 func handleConfig(c *net.UnixConn, dpContext *dptypes.DataplaneContext) {
 	defer c.Close()
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
+	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, nil, &pubsub.SubscriptionOptions{
 			ModifyHandler: handleDNSModify,
 			DeleteHandler: handleDNSDelete,

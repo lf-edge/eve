@@ -26,6 +26,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/watch"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
@@ -187,7 +188,7 @@ func Run() {
 		}
 	}
 	cms := zedcloud.GetCloudMetrics() // Need type of data
-	pub, err := pubsub.Publish(agentName, cms)
+	pub, err := pubsublegacy.Publish(agentName, cms)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -196,7 +197,7 @@ func Run() {
 		globalConfig: &types.GlobalConfigDefaults,
 	}
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
 		false, &logmanagerCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
@@ -211,7 +212,7 @@ func Run() {
 	subGlobalConfig.Activate()
 
 	// Get DomainStatus from domainmgr
-	subDomainStatus, err := pubsub.Subscribe("domainmgr",
+	subDomainStatus, err := pubsublegacy.Subscribe("domainmgr",
 		types.DomainStatus{}, false, &logmanagerCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleDomainStatusModify,
 			ModifyHandler: handleDomainStatusModify,
@@ -229,7 +230,7 @@ func Run() {
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
+	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &DNSctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleDNSModify,
 			ModifyHandler: handleDNSModify,

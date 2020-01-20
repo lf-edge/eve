@@ -27,6 +27,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/satori/go.uuid"
@@ -133,7 +134,7 @@ func Run() {
 		}
 	}
 
-	pubUuidToNum, err := pubsub.PublishPersistent(agentName,
+	pubUuidToNum, err := pubsublegacy.PublishPersistent(agentName,
 		types.UuidToNum{})
 	if err != nil {
 		log.Fatal(err)
@@ -156,7 +157,7 @@ func Run() {
 	zedrouterCtx.networkInstanceStatusMap =
 		make(map[uuid.UUID]*types.NetworkInstanceStatus)
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
+	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleDNSModify,
 			ModifyHandler: handleDNSModify,
@@ -170,7 +171,7 @@ func Run() {
 	zedrouterCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
+	subAssignableAdapters, err := pubsublegacy.Subscribe("domainmgr",
 		types.AssignableAdapters{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleAAModify,
 			ModifyHandler: handleAAModify,
@@ -185,7 +186,7 @@ func Run() {
 	subAssignableAdapters.Activate()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
 		false, &zedrouterCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
@@ -206,14 +207,14 @@ func Run() {
 	// Also need to do this before we wait for IP addresses since
 	// zedagent waits for these to be published/exist, and zedagent
 	// runs the fallback timers after that wait.
-	pubNetworkInstanceStatus, err := pubsub.Publish(agentName,
+	pubNetworkInstanceStatus, err := pubsublegacy.Publish(agentName,
 		types.NetworkInstanceStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubNetworkInstanceStatus = pubNetworkInstanceStatus
 
-	pubAppNetworkStatus, err := pubsub.Publish(agentName,
+	pubAppNetworkStatus, err := pubsublegacy.Publish(agentName,
 		types.AppNetworkStatus{})
 	if err != nil {
 		log.Fatal(err)
@@ -221,34 +222,34 @@ func Run() {
 	zedrouterCtx.pubAppNetworkStatus = pubAppNetworkStatus
 	pubAppNetworkStatus.ClearRestarted()
 
-	pubLispDataplaneConfig, err := pubsub.Publish(agentName,
+	pubLispDataplaneConfig, err := pubsublegacy.Publish(agentName,
 		types.LispDataplaneConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubLispDataplaneConfig = pubLispDataplaneConfig
 
-	pubNetworkInstanceMetrics, err := pubsub.Publish(agentName,
+	pubNetworkInstanceMetrics, err := pubsublegacy.Publish(agentName,
 		types.NetworkInstanceMetrics{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubNetworkInstanceMetrics = pubNetworkInstanceMetrics
 
-	pubAppFlowMonitor, err := pubsub.Publish(agentName, types.IPFlow{})
+	pubAppFlowMonitor, err := pubsublegacy.Publish(agentName, types.IPFlow{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubAppFlowMonitor = pubAppFlowMonitor
 
-	pubAppVifIPTrig, err := pubsub.Publish(agentName, types.VifIPTrig{})
+	pubAppVifIPTrig, err := pubsublegacy.Publish(agentName, types.VifIPTrig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubAppVifIPTrig = pubAppVifIPTrig
 
 	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
-	pub, err := pubsub.Publish(agentName, nms)
+	pub, err := pubsublegacy.Publish(agentName, nms)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -292,7 +293,7 @@ func Run() {
 	}
 	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
 
-	subNetworkInstanceConfig, err := pubsub.Subscribe("zedagent",
+	subNetworkInstanceConfig, err := pubsublegacy.Subscribe("zedagent",
 		types.NetworkInstanceConfig{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleNetworkInstanceModify,
 			ModifyHandler: handleNetworkInstanceModify,
@@ -308,7 +309,7 @@ func Run() {
 	log.Infof("Subscribed to NetworkInstanceConfig")
 
 	// Subscribe to AppNetworkConfig from zedmanager and from zedagent
-	subAppNetworkConfig, err := pubsub.Subscribe("zedmanager",
+	subAppNetworkConfig, err := pubsublegacy.Subscribe("zedmanager",
 		types.AppNetworkConfig{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
 			CreateHandler:  handleAppNetworkCreate,
 			ModifyHandler:  handleAppNetworkModify,
@@ -324,7 +325,7 @@ func Run() {
 	subAppNetworkConfig.Activate()
 
 	// Subscribe to AppNetworkConfig from zedmanager
-	subAppNetworkConfigAg, err := pubsub.Subscribe("zedagent",
+	subAppNetworkConfigAg, err := pubsublegacy.Subscribe("zedagent",
 		types.AppNetworkConfig{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleAppNetworkCreate,
 			ModifyHandler: handleAppNetworkModify,
@@ -338,7 +339,7 @@ func Run() {
 	zedrouterCtx.subAppNetworkConfigAg = subAppNetworkConfigAg
 	subAppNetworkConfigAg.Activate()
 
-	subLispInfoStatus, err := pubsub.Subscribe("lisp-ztr",
+	subLispInfoStatus, err := pubsublegacy.Subscribe("lisp-ztr",
 		types.LispInfoStatus{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
 			ModifyHandler: handleLispInfoModify,
 			DeleteHandler: handleLispInfoDelete,
@@ -351,7 +352,7 @@ func Run() {
 	zedrouterCtx.subLispInfoStatus = subLispInfoStatus
 	subLispInfoStatus.Activate()
 
-	subLispMetrics, err := pubsub.Subscribe("lisp-ztr",
+	subLispMetrics, err := pubsublegacy.Subscribe("lisp-ztr",
 		types.LispMetrics{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
 			ModifyHandler: handleLispMetricsModify,
 			DeleteHandler: handleLispMetricsDelete,

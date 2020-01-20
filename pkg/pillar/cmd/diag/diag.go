@@ -25,6 +25,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -118,7 +119,7 @@ func Run() {
 	utils.EnsureGCFile()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
 		false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
@@ -183,7 +184,7 @@ func Run() {
 	zedcloudCtx.TlsConfig = tlsConfig
 	ctx.zedcloudCtx = &zedcloudCtx
 
-	subLedBlinkCounter, err := pubsub.Subscribe("", types.LedBlinkCounter{},
+	subLedBlinkCounter, err := pubsublegacy.Subscribe("", types.LedBlinkCounter{},
 		false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleLedBlinkModify,
 			ModifyHandler: handleLedBlinkModify,
@@ -197,7 +198,7 @@ func Run() {
 	ctx.subLedBlinkCounter = subLedBlinkCounter
 	subLedBlinkCounter.Activate()
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
+	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleDNSModify,
 			ModifyHandler: handleDNSModify,
@@ -212,7 +213,7 @@ func Run() {
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	subDevicePortConfigList, err := pubsub.SubscribePersistent("nim",
+	subDevicePortConfigList, err := pubsublegacy.SubscribePersistent("nim",
 		types.DevicePortConfigList{}, false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleDPCModify,
 			ModifyHandler: handleDPCModify,

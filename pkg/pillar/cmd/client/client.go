@@ -24,6 +24,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -134,7 +135,7 @@ func Run() { //nolint:gocyclo
 	nameFileName := types.IdentityDirname + "/name"
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
-	pub, err := pubsub.Publish(agentName, cms)
+	pub, err := pubsublegacy.Publish(agentName, cms)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -157,7 +158,7 @@ func Run() { //nolint:gocyclo
 	}
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
 		false, &clientCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
@@ -171,7 +172,7 @@ func Run() { //nolint:gocyclo
 	clientCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
+	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &clientCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleDNSModify,
 			ModifyHandler: handleDNSModify,

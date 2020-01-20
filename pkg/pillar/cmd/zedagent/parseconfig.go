@@ -20,9 +20,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -2115,7 +2115,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 		if err != nil {
 			log.Fatal(err)
 		}
-		err = pubsub.WriteRename(rebootConfigFilename, bytes)
+		err = fileutils.WriteRename(rebootConfigFilename, bytes)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -2144,7 +2144,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 		// store current config, persistently
 		bytes, err = json.Marshal(reboot)
 		if err == nil {
-			err := pubsub.WriteRename(rebootConfigFilename, bytes)
+			err := fileutils.WriteRename(rebootConfigFilename, bytes)
 			if err != nil {
 				log.Errorf("scheduleReboot: failed %s\n",
 					err)

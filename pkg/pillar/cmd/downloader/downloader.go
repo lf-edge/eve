@@ -18,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -77,7 +78,7 @@ func Run() {
 	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
-	pub, err := pubsub.Publish(agentName, cms)
+	pub, err := pubsublegacy.Publish(agentName, cms)
 	if err != nil {
 		log.Fatal(err)
 	}

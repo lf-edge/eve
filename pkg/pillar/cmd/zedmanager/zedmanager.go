@@ -17,6 +17,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
 	log "github.com/sirupsen/logrus"
@@ -100,7 +101,7 @@ func Run() {
 		globalConfig: &types.GlobalConfigDefaults,
 	}
 	// Create publish before subscribing and activating subscriptions
-	pubAppInstanceStatus, err := pubsub.Publish(agentName,
+	pubAppInstanceStatus, err := pubsublegacy.Publish(agentName,
 		types.AppInstanceStatus{})
 	if err != nil {
 		log.Fatal(err)
@@ -108,7 +109,7 @@ func Run() {
 	ctx.pubAppInstanceStatus = pubAppInstanceStatus
 	pubAppInstanceStatus.ClearRestarted()
 
-	pubAppNetworkConfig, err := pubsub.Publish(agentName,
+	pubAppNetworkConfig, err := pubsublegacy.Publish(agentName,
 		types.AppNetworkConfig{})
 	if err != nil {
 		log.Fatal(err)
@@ -116,7 +117,7 @@ func Run() {
 	ctx.pubAppNetworkConfig = pubAppNetworkConfig
 	pubAppNetworkConfig.ClearRestarted()
 
-	pubDomainConfig, err := pubsub.Publish(agentName,
+	pubDomainConfig, err := pubsublegacy.Publish(agentName,
 		types.DomainConfig{})
 	if err != nil {
 		log.Fatal(err)
@@ -124,7 +125,7 @@ func Run() {
 	ctx.pubDomainConfig = pubDomainConfig
 	pubDomainConfig.ClearRestarted()
 
-	pubEIDConfig, err := pubsub.Publish(agentName,
+	pubEIDConfig, err := pubsublegacy.Publish(agentName,
 		types.EIDConfig{})
 	if err != nil {
 		log.Fatal(err)
@@ -132,7 +133,7 @@ func Run() {
 	ctx.pubEIDConfig = pubEIDConfig
 	pubEIDConfig.ClearRestarted()
 
-	pubAppImgDownloadConfig, err := pubsub.PublishScope(agentName,
+	pubAppImgDownloadConfig, err := pubsublegacy.PublishScope(agentName,
 		types.AppImgObj, types.DownloaderConfig{})
 	if err != nil {
 		log.Fatal(err)
@@ -140,7 +141,7 @@ func Run() {
 	pubAppImgDownloadConfig.ClearRestarted()
 	ctx.pubAppImgDownloadConfig = pubAppImgDownloadConfig
 
-	pubAppImgVerifierConfig, err := pubsub.PublishScope(agentName,
+	pubAppImgVerifierConfig, err := pubsublegacy.PublishScope(agentName,
 		types.AppImgObj, types.VerifyImageConfig{})
 	if err != nil {
 		log.Fatal(err)
@@ -148,7 +149,7 @@ func Run() {
 	pubAppImgVerifierConfig.ClearRestarted()
 	ctx.pubAppImgVerifierConfig = pubAppImgVerifierConfig
 
-	pubUuidToNum, err := pubsub.PublishPersistent(agentName,
+	pubUuidToNum, err := pubsublegacy.PublishPersistent(agentName,
 		types.UuidToNum{})
 	if err != nil {
 		log.Fatal(err)
@@ -157,7 +158,7 @@ func Run() {
 	pubUuidToNum.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
 		false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
@@ -172,7 +173,7 @@ func Run() {
 	subGlobalConfig.Activate()
 
 	// Get AppInstanceConfig from zedagent
-	subAppInstanceConfig, err := pubsub.Subscribe("zedagent",
+	subAppInstanceConfig, err := pubsublegacy.Subscribe("zedagent",
 		types.AppInstanceConfig{}, false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler:  handleCreate,
 			ModifyHandler:  handleModify,
@@ -188,7 +189,7 @@ func Run() {
 	subAppInstanceConfig.Activate()
 
 	// Get AppNetworkStatus from zedrouter
-	subAppNetworkStatus, err := pubsub.Subscribe("zedrouter",
+	subAppNetworkStatus, err := pubsublegacy.Subscribe("zedrouter",
 		types.AppNetworkStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler:  handleAppNetworkStatusModify,
 			ModifyHandler:  handleAppNetworkStatusModify,
@@ -204,7 +205,7 @@ func Run() {
 	subAppNetworkStatus.Activate()
 
 	// Get DomainStatus from domainmgr
-	subDomainStatus, err := pubsub.Subscribe("domainmgr",
+	subDomainStatus, err := pubsublegacy.Subscribe("domainmgr",
 		types.DomainStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleDomainStatusModify,
 			ModifyHandler: handleDomainStatusModify,
@@ -219,7 +220,7 @@ func Run() {
 	subDomainStatus.Activate()
 
 	// Get DomainStatus from domainmgr
-	subImageStatus, err := pubsub.Subscribe("domainmgr",
+	subImageStatus, err := pubsublegacy.Subscribe("domainmgr",
 		types.ImageStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
 			WarningTime:    warningTime,
 			ErrorTime:      errorTime,
@@ -232,7 +233,7 @@ func Run() {
 	subImageStatus.Activate()
 
 	// Look for DownloaderStatus from downloader
-	subAppImgDownloadStatus, err := pubsub.SubscribeScope("downloader",
+	subAppImgDownloadStatus, err := pubsublegacy.SubscribeScope("downloader",
 		types.AppImgObj, types.DownloaderStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleDownloaderStatusModify,
 			ModifyHandler: handleDownloaderStatusModify,
@@ -247,7 +248,7 @@ func Run() {
 	subAppImgDownloadStatus.Activate()
 
 	// Look for VerifyImageStatus from verifier
-	subAppImgVerifierStatus, err := pubsub.SubscribeScope("verifier",
+	subAppImgVerifierStatus, err := pubsublegacy.SubscribeScope("verifier",
 		types.AppImgObj, types.VerifyImageStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler:  handleVerifyImageStatusModify,
 			ModifyHandler:  handleVerifyImageStatusModify,
@@ -263,7 +264,7 @@ func Run() {
 	subAppImgVerifierStatus.Activate()
 
 	// Get IdentityStatus from identitymgr
-	subEIDStatus, err := pubsub.Subscribe("identitymgr",
+	subEIDStatus, err := pubsublegacy.Subscribe("identitymgr",
 		types.EIDStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler:  handleEIDStatusModify,
 			ModifyHandler:  handleEIDStatusModify,
@@ -278,7 +279,7 @@ func Run() {
 	ctx.subEIDStatus = subEIDStatus
 	subEIDStatus.Activate()
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
+	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleDNSModify,
 			ModifyHandler: handleDNSModify,
@@ -293,7 +294,7 @@ func Run() {
 	subDeviceNetworkStatus.Activate()
 
 	// Look for CertObjStatus from baseosmgr
-	subCertObjStatus, err := pubsub.Subscribe("baseosmgr",
+	subCertObjStatus, err := pubsublegacy.Subscribe("baseosmgr",
 		types.CertObjStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleCertObjStatusModify,
 			ModifyHandler: handleCertObjStatusModify,
