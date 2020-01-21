@@ -135,8 +135,13 @@ func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 		if info, ok := netstatus.PInfo[port.IfName]; ok {
 			log.Infof("niProbingUpdatePort:   info intf %s is present %v\n", info.IfName, info.IsPresent)
 		}
+		if netstatus.CurrentUplinkIntf == "" { // assign the CurrentUplinkIntf even for non-Mgmt port
+			netstatus.CurrentUplinkIntf = port.IfName
+			publishNetworkInstanceStatus(ctx, netstatus)
+		}
 		return needTrigPing
 	}
+
 	if _, ok := netstatus.PInfo[port.IfName]; !ok {
 		if port.IfName == "" { // no need to probe for air-gap type of NI
 			return needTrigPing
