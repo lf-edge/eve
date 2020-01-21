@@ -6,6 +6,7 @@
 USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
+PERSISTCONFIGDIR=/persist/config
 PERSIST_RKT_DATA_DIR=$PERSISTDIR/rkt
 BINDIR=/opt/zededa/bin
 TMPDIR=/var/tmp/zededa
@@ -204,6 +205,13 @@ if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] && [ "$P3_FS_TYPE"
     echo "$(date -Ins -u) EXT4 partitioned $PERSISTDIR, enabling fscrypt"
     #Initialize fscrypt algorithm, hash length etc.
     $BINDIR/vaultmgr -c "$CURPART" setupVaults
+fi
+
+#Migrate old installations to new location
+if [ -f $PERSISTCONFIGDIR/tpm_in_use ]; then
+    echo "$(date -Ins -u) Copying tpm_in_use from $PERSISTCONFIGDIR to $CONFIGDIR"
+    cp -p $PERSISTCONFIGDIR/tpm_in_use $CONFIGDIR/tpm_in_use
+    sync
 fi
 
 if [ ! -d "$PERSIST_RKT_DATA_DIR" ]; then
@@ -438,9 +446,20 @@ if [ ! -f $CONFIGDIR/device.cert.pem ]; then
         echo "$(date -Ins -u) TPM device is present and allowed, creating TPM based device key"
         if ! $BINDIR/generate-device.sh -b $CONFIGDIR/device -t; then
             echo "$(date -Ins -u) TPM is malfunctioning, falling back to software certs"
+            rm -f $CONFIGDIR/tpm_in_use
+            sync
+            blockdev --flushbufs "$CONFIGDEV"
             $BINDIR/generate-device.sh -b $CONFIGDIR/device
+        else
+            touch $CONFIGDIR/tpm_in_use
+            sync
+            blockdev --flushbufs "$CONFIGDEV"
         fi
     else
+        #Just in case, it got disabled in BIOS later on.
+        rm -f $CONFIGDIR/tpm_in_use
+        sync
+        blockdev --flushbufs "$CONFIGDEV"
         $BINDIR/generate-device.sh -b $CONFIGDIR/device
     fi
     # Reduce chance that we register with controller and crash before
@@ -530,7 +549,7 @@ if [ ! -d $LISPDIR ]; then
     exit 1
 fi
 
-if [ -f $CONFIGDIR/device.key.pem ]; then
+if ! [ -f $CONFIGDIR/tpm_in_use ]; then
     # Need a key for device-to-device map-requests
     cp -p $CONFIGDIR/device.key.pem $LISPDIR/lisp-sig.pem
 fi
