@@ -708,9 +708,9 @@ func quantifyChanges(config types.AppInstanceConfig,
 	} else {
 		for i, sc := range config.StorageConfigList {
 			ss := status.StorageStatusList[i]
-			if ss.ImageSha256 != sc.ImageSha256 {
-				log.Infof("quantifyChanges storage sha changed from %s to %s\n",
-					ss.ImageSha256, sc.ImageSha256)
+			if ss.ImageID != sc.ImageID {
+				log.Infof("quantifyChanges storage imageID changed from %s to %s\n",
+					ss.ImageID, sc.ImageID)
 				needPurge = true
 			}
 			if ss.ReadOnly != sc.ReadOnly {

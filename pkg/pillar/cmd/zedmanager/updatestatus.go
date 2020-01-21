@@ -327,6 +327,7 @@ func doInstallProcessStorageEntriesWithVerifiedImage(
 	// types.DOWNLOADED. If the verification later fails we will
 	// get a delete of the VerifyImageStatus and skip this
 	if vs == nil {
+		// XXX look for matching sha is ssPtr.ImageSha256 is set
 		log.Debugf("Verifier status not found for %s sha %s",
 			imageID, ssPtr.ImageSha256)
 		return nil, nil, false
@@ -349,9 +350,15 @@ func doInstallProcessStorageEntriesWithVerifiedImage(
 			" sha %s", vs.State, imageID, ssPtr.ImageSha256)
 		return nil, nil, false
 	}
+	if ssPtr.ImageSha256 != vs.ImageSha256 {
+		log.Infof("updating imagesha from %s to %s", ssPtr.ImageSha256,
+			vs.ImageSha256)
+		ssPtr.ImageSha256 = vs.ImageSha256
+		changed = true
+	}
 	if ssPtr.IsContainer {
-		log.Debugf("Container. vs.IsContainer = %t, vs.ImageID: %s",
-			vs.IsContainer, vs.ImageID)
+		log.Debugf("Container. vs.IsContainer = %t, vs.ImageID: %s, sha: %s",
+			vs.IsContainer, vs.ImageID, vs.ImageSha256)
 	}
 	if vs.State != ssPtr.State {
 		ssPtr.State = vs.State
@@ -624,6 +631,7 @@ func doInstall(ctx *zedmanagerContext,
 				uuidStr, ss.ActiveFileLocation)
 			changed = true
 		} else {
+			// XXX also looks for non-empty ImageSha256
 			vs := lookupVerifyImageStatus(ctx, ss.ImageID)
 			if vs == nil || vs.Expired {
 				log.Infof("VerifyImageStatus for %s sha %s not found or Expired (%v)\n",
@@ -633,9 +641,15 @@ func doInstall(ctx *zedmanagerContext,
 				changed = true
 				continue
 			}
-			log.Infof("Found VerifyImageStatus for URL %s imageID %s\n",
-				ss.Name, imageID)
+			log.Infof("Found VerifyImageStatus for URL %s imageID %s sha %s",
+				ss.Name, imageID, vs.ImageSha256)
 
+			if ss.ImageSha256 != vs.ImageSha256 {
+				log.Infof("updating image sha from %s to %s",
+					ss.ImageSha256, vs.ImageSha256)
+				ss.ImageSha256 = vs.ImageSha256
+				changed = true
+			}
 			if minState > vs.State {
 				minState = vs.State
 			}
@@ -1022,10 +1036,9 @@ func lookupStorageStatus(status *types.AppInstanceStatus, sc types.StorageConfig
 
 	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
-		if ss.Name == sc.Name &&
-			ss.ImageSha256 == sc.ImageSha256 {
+		if ss.ImageID == sc.ImageID {
 			log.Debugf("lookupStorageStatus found %s %s\n",
-				ss.Name, ss.ImageSha256)
+				ss.Name, ss.ImageID)
 			return ss
 		}
 	}
@@ -1036,10 +1049,9 @@ func lookupStorageConfig(config *types.AppInstanceConfig, ss types.StorageStatus
 
 	for i := range config.StorageConfigList {
 		sc := &config.StorageConfigList[i]
-		if ss.Name == sc.Name &&
-			ss.ImageSha256 == sc.ImageSha256 {
+		if ss.ImageID == sc.ImageID {
 			log.Debugf("lookupStorageConfig found SC %s %s\n",
-				sc.Name, sc.ImageSha256)
+				sc.Name, sc.ImageID)
 			return sc
 		}
 	}
@@ -1062,7 +1074,7 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 			continue
 		}
 		log.Debugf("purgeCmdDone(%s) unused SS %s %s\n",
-			config.Key(), ss.Name, ss.ImageSha256)
+			config.Key(), ss.Name, ss.ImageID)
 		c := MaybeRemoveStorageStatus(ctx, ss)
 		if c {
 			changed = true

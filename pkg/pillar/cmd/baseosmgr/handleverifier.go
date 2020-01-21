@@ -188,6 +188,12 @@ func checkStorageVerifierStatus(ctx *baseOsMgrContext, objType string, uuidStr s
 			ret.MinState = types.DOWNLOADED
 			continue
 		}
+		if ss.ImageSha256 != vs.ImageSha256 {
+			log.Infof("updating imagesha from %s to %s",
+				ss.ImageSha256, vs.ImageSha256)
+			ss.ImageSha256 = vs.ImageSha256
+			ret.Changed = true
+		}
 		if ret.MinState > vs.State {
 			ret.MinState = vs.State
 		}

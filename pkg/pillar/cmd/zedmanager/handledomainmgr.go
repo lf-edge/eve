@@ -73,7 +73,8 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			log.Error(errStr)
 			return errors.New(errStr)
 		}
-		location := aiStatus.StorageStatusList[index].ActiveFileLocation
+		ssPtr := &aiStatus.StorageStatusList[index]
+		location := ssPtr.ActiveFileLocation
 		if location == "" {
 			errStr := "No ActiveFileLocation"
 			log.Error(errStr)
@@ -84,7 +85,8 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		case "", "disk", "tgtunknown":
 			disk := &dc.DiskConfigList[i]
 			disk.ImageID = sc.ImageID
-			disk.ImageSha256 = sc.ImageSha256 // For compat with running images
+			// Pick up sha from verifier
+			disk.ImageSha256 = ssPtr.ImageSha256
 			disk.ReadOnly = sc.ReadOnly
 			disk.Preserve = sc.Preserve
 			disk.Format = sc.Format

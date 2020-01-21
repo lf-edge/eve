@@ -166,6 +166,7 @@ type DiskConfig struct {
 
 type DiskStatus struct {
 	ImageID            uuid.UUID // UUID of immutable image
+	ImageSha256        string    // sha256 of immutable image
 	ReadOnly           bool
 	Preserve           bool
 	FileLocation       string // Local location of Image

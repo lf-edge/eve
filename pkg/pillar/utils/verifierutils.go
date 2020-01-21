@@ -11,7 +11,6 @@ import (
 	"os"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -39,14 +38,13 @@ func locationFromDir(locationDir string) (string, error) {
 
 // VerifiedImageDirLocation - Gives the directory for a verified image, but not
 // the file itself, which is subject to possible algorithms
-// XXX sha or uuid?
-func VerifiedImageDirLocation(imageID uuid.UUID) string {
-	return types.VerifiedAppImgDirname + "/" + imageID.String()
+func VerifiedImageDirLocation(sha256 string) string {
+	return types.VerifiedAppImgDirname + "/" + sha256
 }
 
 // VerifiedImageFileLocation - Gives the file location for a verified image.
-func VerifiedImageFileLocation(imageID uuid.UUID) (string, error) {
-	locationDir := VerifiedImageDirLocation(imageID)
+func VerifiedImageFileLocation(sha256 string) (string, error) {
+	locationDir := VerifiedImageDirLocation(sha256)
 	location, err := locationFromDir(locationDir)
 	// logging the error here kind of violates functional principles,
 	// since it would be legitimate to ask, "where is the verified image file,

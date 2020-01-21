@@ -730,18 +730,9 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 
 	imageHash := fmt.Sprintf("%x", imageHashB)
 	configuredHash := strings.ToLower(config.ImageSha256)
-	// XXX: the ImageSha256 property should never be filled with anything
-	// other than a sha256 hash of the image. It should be valid as blank,
-	// which means "do not verify, as I have nothing to verify against."
-	// Unfortunately, some parts of the code assume that ImageSha256 alwats will
-	// have something, so containers override it with the imageUUID. Once that is
-	// changed, this code should go away.
-	if _, err := uuid.FromString(config.ImageSha256); err == nil {
-		configuredHash = ""
-	}
-
 	if configuredHash == "" {
-		log.Infof("no image hash provided, skipping root validation")
+		log.Infof("no image hash provided, skipping root validation. Setting to %s for %s", imageHash, config.ImageID)
+		status.ImageSha256 = strings.ToUpper(imageHash)
 	} else if imageHash != configuredHash {
 		log.Errorf("computed   %s\n", imageHash)
 		log.Errorf("configured %s\n", configuredHash)

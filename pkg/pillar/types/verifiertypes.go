@@ -89,8 +89,7 @@ func (status VerifyImageStatus) ImageDownloadDirNames() (string, string, string)
 	var pendingDirname, verifierDirname, verifiedDirname string
 	pendingDirname = downloadDirname + "/pending/" + status.ImageID.String()
 	verifierDirname = downloadDirname + "/verifier/" + status.ImageID.String()
-	// XXX change to be sha/uuid? Parser on boot?
-	verifiedDirname = downloadDirname + "/verified/" + status.ImageID.String()
+	verifiedDirname = downloadDirname + "/verified/" + status.ImageSha256
 	return pendingDirname, verifierDirname, verifiedDirname
 }
 
