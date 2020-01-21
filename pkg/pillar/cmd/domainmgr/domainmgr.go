@@ -1422,6 +1422,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	for i, dc := range config.DiskConfigList {
 		ds := &status.DiskStatusList[i]
 		ds.ImageID = dc.ImageID
+		ds.ImageSha256 = dc.ImageSha256
 		ds.ReadOnly = dc.ReadOnly
 		ds.Preserve = dc.Preserve
 		ds.Format = dc.Format
@@ -1450,7 +1451,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		} else {
 			log.Infof("getting image file location IsContainer(%v), ContainerImageId(%s), ImageSha256(%s)",
 				status.IsContainer, ds.ImageID.String(), dc.ImageSha256)
-			location, err := utils.VerifiedImageFileLocation(ds.ImageID)
+			location, err := utils.VerifiedImageFileLocation(ds.ImageSha256)
 			if err != nil {
 				log.Errorf("configToStatus: Failed to get Image File Location. "+
 					"err: %+s", err.Error())
@@ -2057,15 +2058,16 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 		// get the rkt image hash for this file; if we do not have it in the rkt cache,
 		// convert it
 		// XXX we assume a container has one image. XXX do we check somewhere?
-		imageID := status.DiskStatusList[0].ImageID
-		ociFilename, err := utils.VerifiedImageFileLocation(imageID)
+		ociFilename, err := utils.VerifiedImageFileLocation(status.DiskStatusList[0].ImageSha256)
 		if err != nil {
 			log.Errorf("DomainCreate: Failed to get Image File Location. "+
 				"err: %+s", err.Error())
 			return domainID, podUUID, err
 		}
+		log.Infof("ociFilename %s sha %s", ociFilename, status.DiskStatusList[0].ImageSha256)
 		imageHash, err := ociToRktImageHash(ociFilename)
 		if err != nil {
+			log.Error(err)
 			return domainID, podUUID, fmt.Errorf("unable to get rkt image hash: %v", err)
 		}
 		domainID, podUUID, err = rktRun(status.DomainName, filename, imageHash)

@@ -138,6 +138,7 @@ func ociToRktImageHash(ociFilename string) (string, error) {
 	// this will not be true long-run, but this all goes away when rkt does.
 	dockerHash, err := ociGetHash(ociFilename)
 	if err != nil {
+		log.Errorf(err.Error())
 		return "", fmt.Errorf("error getting hash of repository for OCI file %s: %v", ociFilename, err)
 	}
 	// if we already have it, just return it
