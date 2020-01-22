@@ -322,7 +322,7 @@ parseRequest(int sock,
         return failure;
     }
     CodedStrmInput.PopLimit(msgLimit);
-
+    return success;
 }
 
 //Handle an incoming request from socket. Size of
