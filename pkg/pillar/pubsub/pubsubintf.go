@@ -30,9 +30,9 @@ type Subscription interface {
 	// Restarted report if this subscription has been marked as restarted
 	Restarted() bool
 	// ProcessChange - Invoked on the string msg from Subscription Channel
-	ProcessChange(change string)
+	ProcessChange(change Change)
 	// MsgChan - Message Channel for Subscription
-	MsgChan() <-chan string
+	MsgChan() <-chan Change
 	// Activate start the subscription
 	Activate() error
 }

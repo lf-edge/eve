@@ -7,34 +7,11 @@
 package pubsub
 
 import (
-	"errors"
-	"fmt"
-	"io/ioutil"
-	"net"
-	"os"
-	"path"
-	"strings"
+	"reflect"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	log "github.com/sirupsen/logrus"
 )
-
-// Protocol over AF_UNIX or other IPC mechanism
-// "request" from client after connect to sanity check subject.
-// Server sends the other messages; "update" for initial values.
-// "complete" once all initial keys/values in collection have been sent.
-// "restarted" if/when pub.km.restarted is set.
-// Ongoing we send "update" and "delete" messages.
-// They keys and values are base64-encoded since they might contain spaces.
-// We include typeName after command word for sanity checks.
-// Hence the message format is
-//	"request" topic
-//	"hello"  topic
-//	"update" topic key json-val
-//	"delete" topic key
-//	"complete" topic (aka synchronized)
-//	"restarted" topic
 
 // SubscriptionOptions options to pass when creating a Subscription
 type SubscriptionOptions struct {
@@ -47,9 +24,25 @@ type SubscriptionOptions struct {
 	ErrorTime      time.Duration
 }
 
-// Used locally by each serverConnection goroutine to track updates
-// to send.
-type localCollection map[string]interface{}
+// SubHandler is a generic handler to handle create, modify and delete
+// Usage:
+//  s1 := pubsublegacy.Subscribe("foo", fooStruct{}, true, &myctx)
+// Or
+//  s1 := pubsublegacy.Subscribe("foo", fooStruct{}, false, &myctx)
+//  s1.ModifyHandler = func(...), // Optional
+//  s1.DeleteHandler = func(...), // Optional
+//  s1.RestartHandler = func(...), // Optional
+//  [ Initialize myctx ]
+//  s1.Activate()
+//  ...
+//  select {
+//     case change := <- s1.C:
+//         s1.ProcessChange(change, ctx)
+//  }
+type SubHandler func(ctx interface{}, key string, status interface{})
+
+// SubRestartHandler generic handler for restarts
+type SubRestartHandler func(ctx interface{}, restarted bool)
 
 // Maintain a collection which is used to handle the restart of a subscriber
 // map of agentname, key to get a json string
@@ -59,389 +52,88 @@ type keyMap struct {
 	key       *LockedStringMap
 }
 
-// We always publish to our collection.
-// We always write to a file in order to have a checkpoint on process restart.
-// That directory could be persistent in which case it will survive
-// a reboot.
-// The special agent name "" implies always reading from the /var/run/zededa/
-// directory.
-const (
-	publishToSock     = true  // XXX
-	subscribeFromDir  = false // XXX
-	subscribeFromSock = true  // XXX
-
-	// For a subscription, if the agentName is empty we interpret that as
-	// being directory in /var/tmp/zededa
-	fixedName = "zededa"
-	fixedDir  = "/var/tmp/" + fixedName
-	maxsize   = 65535 // Max size for json which can be read or written
-
-	// Copied from types package to avoid cycle in package dependencies
-	// PersistDir - Location to store persistent files.
-	PersistDir = "/persist"
-	// PersistConfigDir is where we keep some configuration across reboots
-	PersistConfigDir = PersistDir + "/config"
-)
-
-func Publish(agentName string, topicType interface{}) (Publication, error) {
-	return publishImpl(agentName, "", topicType, false)
+// PubSub is a system for publishing and subscribing to messages
+// it manages the creation of Publication and Subscription, which handle the actual
+// implementation of in-memory structures and logic
+// the message passing and persistence are handled by a Driver.
+// Should not be called directly. Instead use the `New()` function.
+type PubSub struct {
+	driver      Driver
+	updaterList *Updaters
 }
 
-func PublishPersistent(agentName string, topicType interface{}) (Publication, error) {
-	return publishImpl(agentName, "", topicType, true)
-}
-
-func PublishScope(agentName string, agentScope string, topicType interface{}) (Publication, error) {
-	return publishImpl(agentName, agentScope, topicType, false)
-}
-
-// Init function to create directory and socket listener based on above settings
-// We read any checkpointed state from dirName and insert in pub.km as initial
-// values.
-func publishImpl(agentName string, agentScope string,
-	topicType interface{}, persistent bool) (Publication, error) {
-
-	topic := TypeToName(topicType)
-	pub := new(PublicationImpl)
-	pub.topicType = topicType
-	pub.agentName = agentName
-	pub.agentScope = agentScope
-	pub.topic = topic
-	pub.km = keyMap{key: NewLockedStringMap()}
-	pub.persistent = persistent
-	name := pub.nameString()
-
-	log.Debugf("Publish(%s)\n", name)
-
-	// We always write to the directory as a checkpoint for process restart
-	// That directory could be persistent in which case it will survive
-	// a reboot.
-	if pub.persistent {
-		if agentName == "" {
-			// Special case for /persist/config/
-			pub.publishToDir = true
-			pub.dirName = fmt.Sprintf("%s/%s",
-				PersistConfigDir, name)
-		} else {
-			pub.dirName = PersistentDirName(name)
-		}
-	} else {
-		if agentName == "" {
-			// Special case for /var/tmp/zededa/
-			pub.publishToDir = true
-			pub.dirName = FixedDirName(name)
-		} else {
-			pub.dirName = PubDirName(name)
-		}
-	}
-	dirName := pub.dirName
-	if _, err := os.Stat(dirName); err != nil {
-		log.Infof("Publish Create %s\n", dirName)
-		if err := os.MkdirAll(dirName, 0700); err != nil {
-			errStr := fmt.Sprintf("Publish(%s): %s",
-				name, err)
-			return nil, errors.New(errStr)
-		}
-	} else {
-		// Read existing status from dir
-		pub.populate()
-		if log.GetLevel() == log.DebugLevel {
-			pub.dump("after populate")
-		}
-	}
-
-	if !pub.publishToDir && publishToSock {
-		sockName := SockName(name)
-		dir := path.Dir(sockName)
-		if _, err := os.Stat(dir); err != nil {
-			log.Infof("Publish Create %s\n", dir)
-			if err := os.MkdirAll(dir, 0700); err != nil {
-				errStr := fmt.Sprintf("Publish(%s): %s",
-					name, err)
-				return nil, errors.New(errStr)
-			}
-		}
-		if _, err := os.Stat(sockName); err == nil {
-			if err := os.Remove(sockName); err != nil {
-				errStr := fmt.Sprintf("Publish(%s): %s",
-					name, err)
-				return nil, errors.New(errStr)
-			}
-		}
-		s, err := net.Listen("unixpacket", sockName)
-		if err != nil {
-			errStr := fmt.Sprintf("Publish(%s): failed %s",
-				name, err)
-			return nil, errors.New(errStr)
-		}
-		pub.sockName = sockName
-		pub.listener = s
-		go pub.publisher()
-	}
-	return pub, nil
-}
-
-// Only reads json files. Sets restarted if that file was found.
-func (pub *PublicationImpl) populate() {
-	name := pub.nameString()
-	dirName := pub.dirName
-	foundRestarted := false
-
-	log.Debugf("populate(%s)\n", name)
-
-	files, err := ioutil.ReadDir(dirName)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, file := range files {
-		if !strings.HasSuffix(file.Name(), ".json") {
-			if file.Name() == "restarted" {
-				foundRestarted = true
-			}
-			continue
-		}
-		// Remove .json from name */
-		key := strings.Split(file.Name(), ".json")[0]
-
-		statusFile := dirName + "/" + file.Name()
-		if _, err := os.Stat(statusFile); err != nil {
-			// File just vanished!
-			log.Errorf("populate: File disappeared <%s>\n",
-				statusFile)
-			continue
-		}
-
-		log.Debugf("populate found key %s file %s\n", key, statusFile)
-
-		sb, err := ioutil.ReadFile(statusFile)
-		if err != nil {
-			log.Errorf("populate: %s for %s\n", err, statusFile)
-			continue
-		}
-		item, err := parseTemplate(sb, pub.topicType)
-		if err != nil {
-			log.Errorf("populate: %s file: %s\n",
-				err, statusFile)
-			continue
-		}
-		pub.km.key.Store(key, item)
-	}
-	pub.km.restarted = foundRestarted
-	log.Debugf("populate(%s) done\n", name)
-}
-
-// go routine which runs the AF_UNIX server.
-func (pub *PublicationImpl) publisher() {
-	name := pub.nameString()
-	instance := 0
-	for {
-		c, err := pub.listener.Accept()
-		if err != nil {
-			log.Errorf("publisher(%s) failed %s\n", name, err)
-			continue
-		}
-		go pub.serveConnection(c, instance)
-		instance++
+// New create a new `PubSub` with a given `Driver`.
+func New(driver Driver) *PubSub {
+	return &PubSub{
+		driver: driver,
 	}
 }
 
-func (pub *PublicationImpl) serveConnection(s net.Conn, instance int) {
-	name := pub.nameString()
-	log.Infof("serveConnection(%s/%d)\n", name, instance)
-	defer s.Close()
-
-	// Track the set of keys/values we are sending to the peer
-	sendToPeer := make(localCollection)
-	sentRestarted := false
-	// Read request
-	buf := make([]byte, 65536)
-	res, err := s.Read(buf)
-	if err != nil {
-		// Likely truncated
-		log.Fatalf("serveConnection(%s/%d) read error: %v", name, instance, err)
-	}
-	if res == len(buf) {
-		// Likely truncated
-		log.Fatalf("serveConnection(%s/%d) request likely truncated\n",
-			name, instance)
-	}
-
-	request := strings.Split(string(buf[0:res]), " ")
-	log.Infof("serveConnection read %d: %v\n", len(request), request)
-	if len(request) != 2 || request[0] != "request" || request[1] != pub.topic {
-		log.Errorf("Invalid request message: %v\n", request)
-		return
-	}
-
-	_, err = s.Write([]byte(fmt.Sprintf("hello %s", pub.topic)))
-	if err != nil {
-		log.Errorf("serveConnection(%s/%d) failed %s\n",
-			name, instance, err)
-		return
-	}
-	// Insert our notification channel before we get the initial
-	// snapshot to avoid missing any updates/deletes.
-	updater := make(chan notify, 1)
-	updatersAdd(updater, name, instance)
-	defer updatersRemove(updater)
-
-	// Get a local snapshot of the collection and the set of keys
-	// we need to send these. Updates the slave collection.
-	keys := pub.determineDiffs(sendToPeer)
-
-	// Send the keys we just determined; all since this is the initial
-	err = pub.serialize(s, keys, sendToPeer)
-	if err != nil {
-		log.Errorf("serveConnection(%s/%d) serialize failed %s\n",
-			name, instance, err)
-		return
-	}
-	err = pub.sendComplete(s)
-	if err != nil {
-		log.Errorf("serveConnection(%s/%d) sendComplete failed %s\n",
-			name, instance, err)
-		return
-	}
-	if pub.km.restarted && !sentRestarted {
-		err = pub.sendRestarted(s)
-		if err != nil {
-			log.Errorf("serveConnection(%s/%d) sendRestarted failed %s\n",
-				name, instance, err)
-			return
-		}
-		sentRestarted = true
-	}
-
-	// Handle any changes
-	for {
-		log.Debugf("serveConnection(%s/%d) waiting for notification\n",
-			name, instance)
-		startWait := time.Now()
-		<-updater
-		waitTime := time.Since(startWait)
-		log.Debugf("serveConnection(%s/%d) received notification waited %d seconds\n",
-			name, instance, waitTime/time.Second)
-
-		// Update and determine which keys changed
-		keys := pub.determineDiffs(sendToPeer)
-
-		// Send the updates and deletes for those keys
-		err = pub.serialize(s, keys, sendToPeer)
-		if err != nil {
-			log.Errorf("serveConnection(%s/%d) serialize failed %s\n",
-				name, instance, err)
-			return
-		}
-
-		if pub.km.restarted && !sentRestarted {
-			err = pub.sendRestarted(s)
-			if err != nil {
-				log.Errorf("serveConnection(%s/%d) sendRestarted failed %s\n",
-					name, instance, err)
-				return
-			}
-			sentRestarted = true
-		}
-	}
+// Publish create a `Publication` for the given agent name and topic type.
+func (p *PubSub) Publish(agentName string, topicType interface{}) (Publication, error) {
+	return p.publishImpl(agentName, "", topicType, false)
 }
 
-// Returns the deleted keys before the added/modified ones
-func (pub *PublicationImpl) determineDiffs(slaveCollection localCollection) []string {
-
-	var keys []string
-	name := pub.nameString()
-	items := pub.GetAll()
-	// Look for deleted
-	for slaveKey := range slaveCollection {
-		_, ok := items[slaveKey]
-		if !ok {
-			log.Debugf("determineDiffs(%s): key %s deleted\n",
-				name, slaveKey)
-			delete(slaveCollection, slaveKey)
-			keys = append(keys, slaveKey)
-		}
-
-	}
-	// Look for new/changed
-	for masterKey, master := range items {
-		slave := lookupSlave(slaveCollection, masterKey)
-		if slave == nil {
-			log.Debugf("determineDiffs(%s): key %s added\n",
-				name, masterKey)
-			// Handle the case of the master changing while we're using the slave by making a copy
-			slaveCollection[masterKey] = deepCopy(master)
-			keys = append(keys, masterKey)
-		} else if !cmp.Equal(master, *slave) {
-			log.Debugf("determineDiffs(%s): key %s replacing due to diff %v\n",
-				name, masterKey,
-				cmp.Diff(master, *slave))
-			// Handle the case of the master changing under us
-			slaveCollection[masterKey] = deepCopy(master)
-			keys = append(keys, masterKey)
-		} else {
-			log.Debugf("determineDiffs(%s): key %s unchanged\n",
-				name, masterKey)
-		}
-	}
-	return keys
+// PublishPersistent create a `Publication` for the given agent name and topic
+// type, but with persistence of the messages across reboots.
+func (p *PubSub) PublishPersistent(agentName string, topicType interface{}) (Publication, error) {
+	return p.publishImpl(agentName, "", topicType, true)
 }
 
-func SockName(name string) string {
-	return fmt.Sprintf("/var/run/%s.sock", name)
+// PublishScope create a `Publication` for the given agent name and topic,
+// restricted to a given scope.
+func (p *PubSub) PublishScope(agentName string, agentScope string, topicType interface{}) (Publication, error) {
+	return p.publishImpl(agentName, agentScope, topicType, false)
 }
 
-func PubDirName(name string) string {
-	return fmt.Sprintf("/var/run/%s", name)
-}
-
-func FixedDirName(name string) string {
-	return fmt.Sprintf("%s/%s", fixedDir, name)
-}
-
-func PersistentDirName(name string) string {
-	return fmt.Sprintf("%s/status/%s", "/persist", name)
-}
-
-// Init function for Subscribe; returns a context.
-// Assumption is that agent with call Get(key) later or specify
-// handleModify and/or handleDelete functions
-// watch ensures that any restart/restarted notification is after any other
-// notifications from ReadDir
-func Subscribe(agentName string, topicType interface{}, activate bool,
+// Subscribe create a subscription for the given agent name and topic
+// optionally activating immediately. If `activate` is set to `false`
+// (the default), then the subscription will not begin to send messages
+// on the channel or process them until `Subscription.Start()` is called.
+func (p *PubSub) Subscribe(agentName string, topicType interface{}, activate bool,
 	ctx interface{}, options *SubscriptionOptions) (Subscription, error) {
-
-	return subscribeImpl(agentName, "", topicType, activate, ctx, false, options)
+	return p.subscribeImpl(agentName, "", topicType, activate, ctx, false, options)
 }
 
-func SubscribeScope(agentName string, agentScope string, topicType interface{},
+// SubscribeScope create a subscription for the given agent name and topic,
+// limited to a given scope,
+// optionally activating immediately. If `activate` is set to `false`
+// (the default), then the subscription will not begin to send messages
+// on the channel or process them until `Subscription.Start()` is called.
+func (p *PubSub) SubscribeScope(agentName string, agentScope string, topicType interface{},
 	activate bool, ctx interface{}, options *SubscriptionOptions) (Subscription, error) {
-
-	return subscribeImpl(agentName, agentScope, topicType, activate, ctx,
+	return p.subscribeImpl(agentName, agentScope, topicType, activate, ctx,
 		false, options)
 }
 
-func SubscribePersistent(agentName string, topicType interface{}, activate bool,
+// SubscribePersistent create a subscription for the given agent name and topic,
+// persistent,
+// optionally activating immediately. If `activate` is set to `false`
+// (the default), then the subscription will not begin to send messages
+// on the channel or process them until `Subscription.Start()` is called.
+func (p *PubSub) SubscribePersistent(agentName string, topicType interface{}, activate bool,
 	ctx interface{}, options *SubscriptionOptions) (Subscription, error) {
-
-	return subscribeImpl(agentName, "", topicType, activate, ctx, true, options)
+	return p.subscribeImpl(agentName, "", topicType, activate, ctx, true, options)
 }
 
-func subscribeImpl(agentName string, agentScope string, topicType interface{},
+// methods unique to this implementation
+
+func (p *PubSub) subscribeImpl(agentName string, agentScope string, topicImpl interface{},
 	activate bool, ctx interface{}, persistent bool, options *SubscriptionOptions) (Subscription, error) {
 
-	topic := TypeToName(topicType)
-	changes := make(chan string)
-	sub := new(SubscriptionImpl)
-	sub.C = changes
-	sub.sendChan = changes
-	sub.topicType = topicType
-	sub.agentName = agentName
-	sub.agentScope = agentScope
-	sub.topic = topic
-	sub.userCtx = ctx
-	sub.km = keyMap{key: NewLockedStringMap()}
-	sub.persistent = persistent
+	topic := TypeToName(topicImpl)
+	topicType := reflect.TypeOf(topicImpl)
+	changes := make(chan Change)
+	sub := &SubscriptionImpl{
+		C:           changes,
+		agentName:   agentName,
+		agentScope:  agentScope,
+		topic:       topic,
+		topicType:   topicType,
+		userCtx:     ctx,
+		km:          keyMap{key: NewLockedStringMap()},
+		defaultName: p.driver.DefaultName(),
+	}
 	if options != nil {
 		sub.CreateHandler = options.CreateHandler
 		sub.ModifyHandler = options.ModifyHandler
@@ -451,30 +143,61 @@ func subscribeImpl(agentName string, agentScope string, topicType interface{},
 		sub.MaxProcessTimeWarn = options.WarningTime
 		sub.MaxProcessTimeError = options.ErrorTime
 	}
-
 	name := sub.nameString()
-
-	// Special case for files in /var/tmp/zededa/ and also
-	// for zedclient going away yet metrics being read after it
-	// is gone.
-	if agentName == "" {
-		sub.subscribeFromDir = true
-		sub.dirName = FixedDirName(name)
-	} else if agentName == "zedclient" {
-		sub.subscribeFromDir = true
-		sub.dirName = PubDirName(name)
-	} else if persistent {
-		sub.subscribeFromDir = true
-		sub.dirName = PersistentDirName(name)
-	} else {
-		sub.subscribeFromDir = subscribeFromDir
-		sub.dirName = PubDirName(name)
+	global := agentName == ""
+	driver, err := p.driver.Subscriber(global, name, topic, persistent, changes)
+	if err != nil {
+		return sub, err
 	}
+	sub.driver = driver
+
 	log.Infof("Subscribe(%s)\n", name)
 	if activate {
 		if err := sub.Activate(); err != nil {
-			return nil, err
+			return sub, err
 		}
 	}
 	return sub, nil
+}
+
+// publishImpl init function to create directory and socket listener based on above settings
+// We read any checkpointed state from dirName and insert in pub.km as initial
+// values.
+func (p *PubSub) publishImpl(agentName string, agentScope string,
+	topicType interface{}, persistent bool) (Publication, error) {
+
+	topic := TypeToName(topicType)
+	// ensure the updaterlist is populated. This is the only place we consume it,
+	//  so fine to set it here
+	if p.updaterList == nil {
+		p.updaterList = &Updaters{}
+	}
+	pub := &PublicationImpl{
+		agentName:   agentName,
+		agentScope:  agentScope,
+		topic:       topic,
+		topicType:   reflect.TypeOf(topicType),
+		km:          keyMap{key: NewLockedStringMap()},
+		updaterList: p.updaterList,
+		defaultName: p.driver.DefaultName(),
+	}
+	// create the driver
+	name := pub.nameString()
+	global := agentName == ""
+	log.Infof("publishImpl agentName(%s), agentScope(%s), topic(%s), nameString(%s), global(%v), persistent(%v)\n", agentName, agentScope, topic, name, global, persistent)
+	driver, err := p.driver.Publisher(global, name, topic, persistent, p.updaterList, pub, pub)
+	if err != nil {
+		return pub, err
+	}
+	pub.driver = driver
+
+	pub.populate()
+	if log.GetLevel() == log.DebugLevel {
+		pub.dump("after populate")
+	}
+	log.Infof("Publish(%s)\n", name)
+
+	pub.publisher()
+
+	return pub, nil
 }

@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	log "github.com/sirupsen/logrus"
@@ -31,7 +32,7 @@ type downloaderContext struct {
 
 func (ctx *downloaderContext) registerHandlers() error {
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
 		false, ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
@@ -45,7 +46,7 @@ func (ctx *downloaderContext) registerHandlers() error {
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
+	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleDNSModify,
 			ModifyHandler: handleDNSModify,
@@ -59,7 +60,7 @@ func (ctx *downloaderContext) registerHandlers() error {
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	subGlobalDownloadConfig, err := pubsub.Subscribe("",
+	subGlobalDownloadConfig, err := pubsublegacy.Subscribe("",
 		types.GlobalDownloadConfig{}, false, ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalDownloadConfigModify,
 			ModifyHandler: handleGlobalDownloadConfigModify,
@@ -75,7 +76,7 @@ func (ctx *downloaderContext) registerHandlers() error {
 	// Look for DatastoreConfig. We should process this
 	// before any download config ( App/baseos/cert). Without DataStore Config,
 	// Image Downloads will run into errors.
-	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
+	subDatastoreConfig, err := pubsublegacy.Subscribe("zedagent",
 		types.DatastoreConfig{}, false, ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleDatastoreConfigModify,
 			ModifyHandler: handleDatastoreConfigModify,
@@ -89,7 +90,7 @@ func (ctx *downloaderContext) registerHandlers() error {
 	ctx.subDatastoreConfig = subDatastoreConfig
 	subDatastoreConfig.Activate()
 
-	pubGlobalDownloadStatus, err := pubsub.Publish(agentName,
+	pubGlobalDownloadStatus, err := pubsublegacy.Publish(agentName,
 		types.GlobalDownloadStatus{})
 	if err != nil {
 		return err
@@ -97,7 +98,7 @@ func (ctx *downloaderContext) registerHandlers() error {
 	ctx.pubGlobalDownloadStatus = pubGlobalDownloadStatus
 
 	// Set up our publications before the subscriptions so ctx is set
-	pubAppImgStatus, err := pubsub.PublishScope(agentName, types.AppImgObj,
+	pubAppImgStatus, err := pubsublegacy.PublishScope(agentName, types.AppImgObj,
 		types.DownloaderStatus{})
 	if err != nil {
 		return err
@@ -105,7 +106,7 @@ func (ctx *downloaderContext) registerHandlers() error {
 	ctx.pubAppImgStatus = pubAppImgStatus
 	pubAppImgStatus.ClearRestarted()
 
-	pubBaseOsStatus, err := pubsub.PublishScope(agentName, types.BaseOsObj,
+	pubBaseOsStatus, err := pubsublegacy.PublishScope(agentName, types.BaseOsObj,
 		types.DownloaderStatus{})
 	if err != nil {
 		return err
@@ -113,7 +114,7 @@ func (ctx *downloaderContext) registerHandlers() error {
 	ctx.pubBaseOsStatus = pubBaseOsStatus
 	pubBaseOsStatus.ClearRestarted()
 
-	pubCertObjStatus, err := pubsub.PublishScope(agentName, types.CertObj,
+	pubCertObjStatus, err := pubsublegacy.PublishScope(agentName, types.CertObj,
 		types.DownloaderStatus{})
 	if err != nil {
 		return err
@@ -121,7 +122,7 @@ func (ctx *downloaderContext) registerHandlers() error {
 	ctx.pubCertObjStatus = pubCertObjStatus
 	pubCertObjStatus.ClearRestarted()
 
-	subAppImgConfig, err := pubsub.SubscribeScope("zedmanager",
+	subAppImgConfig, err := pubsublegacy.SubscribeScope("zedmanager",
 		types.AppImgObj, types.DownloaderConfig{}, false, ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleAppImgCreate,
 			ModifyHandler: handleAppImgModify,
@@ -135,7 +136,7 @@ func (ctx *downloaderContext) registerHandlers() error {
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
 
-	subBaseOsConfig, err := pubsub.SubscribeScope("baseosmgr",
+	subBaseOsConfig, err := pubsublegacy.SubscribeScope("baseosmgr",
 		types.BaseOsObj, types.DownloaderConfig{}, false, ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleBaseOsCreate,
 			ModifyHandler: handleBaseOsModify,
@@ -149,7 +150,7 @@ func (ctx *downloaderContext) registerHandlers() error {
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
-	subCertObjConfig, err := pubsub.SubscribeScope("baseosmgr",
+	subCertObjConfig, err := pubsublegacy.SubscribeScope("baseosmgr",
 		types.CertObj, types.DownloaderConfig{}, false, ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleCertObjCreate,
 			ModifyHandler: handleCertObjModify,

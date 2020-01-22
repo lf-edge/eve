@@ -48,6 +48,7 @@ type RktManifest struct {
 // with thanks to https://github.com/appc/docker2aci
 // from is the file to convert from; to is the path where to place the aci file
 func rktConvertTarToAci(from, to string) ([]string, error) {
+	log.Infof("rktConvertTarToAci from v1 tar file %s to aci directory %s", from, to)
 	var convertTag string
 	legacyTmpDir, err := ioutil.TempDir("", "v1ToLegacyTarContainer")
 	if err != nil {
@@ -60,6 +61,7 @@ func rktConvertTarToAci(from, to string) ([]string, error) {
 		return nil, fmt.Errorf("error creating temporary directory for aci conversion")
 	}
 	// first convert from v1 to legacy
+	log.Infof("rktConvertAciTar: converting v1 tarball %s to legacy tarball %s", from, legacyPath)
 	img, err := v1tarball.ImageFromPath(from, nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get image from v1 tarball %s input: %v", from, err)
@@ -95,6 +97,9 @@ func rktConvertTarToAci(from, to string) ([]string, error) {
 		return nil, fmt.Errorf("unable to write legacy tar file %s: %v", legacyPath, err)
 	}
 	w.Close()
+	log.Infof("rktConvertAciTar: done converting v1 tarball %s to legacy tarball %s", from, legacyPath)
+
+	log.Infof("rktConvertAciTar: converting legacy tarball %s to aci file", legacyPath)
 
 	cfg := docker2aci.CommonConfig{
 		Squash:      true,
@@ -109,7 +114,12 @@ func rktConvertTarToAci(from, to string) ([]string, error) {
 		CommonConfig: cfg,
 		DockerURL:    "",
 	}
-	return docker2aci.ConvertSavedFile(legacyPath, fileConfig)
+	aciFiles, err := docker2aci.ConvertSavedFile(legacyPath, fileConfig)
+	if err != nil {
+		return nil, fmt.Errorf("docker2aci error: %v", err)
+	}
+	log.Infof("rktConvertTarToAci done: v1 tar file %s converted to aci files: %v", from, aciFiles)
+	return aciFiles, nil
 }
 
 // ociToRktImageHash given an OCI tar file, get the rkt hash for it.
@@ -128,6 +138,7 @@ func ociToRktImageHash(ociFilename string) (string, error) {
 	// this will not be true long-run, but this all goes away when rkt does.
 	dockerHash, err := ociGetHash(ociFilename)
 	if err != nil {
+		log.Errorf(err.Error())
 		return "", fmt.Errorf("error getting hash of repository for OCI file %s: %v", ociFilename, err)
 	}
 	// if we already have it, just return it

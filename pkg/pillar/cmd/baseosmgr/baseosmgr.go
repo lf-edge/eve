@@ -38,6 +38,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -239,7 +240,7 @@ func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
 		ss.Name = sc.Name
-		ss.ImageSha256 = sc.ImageSha256
+		ss.ImageID = sc.ImageID
 		ss.Target = sc.Target
 	}
 	// Check image count
@@ -327,7 +328,7 @@ func handleCertObjCreate(ctxArg interface{}, key string, configArg interface{}) 
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
 		ss.Name = sc.Name
-		ss.ImageSha256 = sc.ImageSha256
+		ss.ImageID = sc.ImageID
 		ss.FinalObjDir = types.CertificateDirname
 	}
 
@@ -376,7 +377,7 @@ func handleDownloadStatusModify(ctxArg interface{}, key string,
 	status := statusArg.(types.DownloaderStatus)
 	ctx := ctxArg.(*baseOsMgrContext)
 	log.Infof("handleDownloadStatusModify for %s\n",
-		status.Safename)
+		status.ImageID)
 	updateDownloaderStatus(ctx, &status)
 }
 
@@ -397,7 +398,7 @@ func handleVerifierStatusModify(ctxArg interface{}, key string,
 
 	status := statusArg.(types.VerifyImageStatus)
 	ctx := ctxArg.(*baseOsMgrContext)
-	log.Infof("handleVerifierStatusModify for %s\n", status.Safename)
+	log.Infof("handleVerifierStatusModify for %s\n", status.ImageID)
 	updateVerifierStatus(ctx, &status)
 }
 
@@ -450,7 +451,7 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 }
 
 func initializeSelfPublishHandles(ctx *baseOsMgrContext) {
-	pubBaseOsStatus, err := pubsub.Publish(agentName,
+	pubBaseOsStatus, err := pubsublegacy.Publish(agentName,
 		types.BaseOsStatus{})
 	if err != nil {
 		log.Fatal(err)
@@ -458,7 +459,7 @@ func initializeSelfPublishHandles(ctx *baseOsMgrContext) {
 	pubBaseOsStatus.ClearRestarted()
 	ctx.pubBaseOsStatus = pubBaseOsStatus
 
-	pubBaseOsDownloadConfig, err := pubsub.PublishScope(agentName,
+	pubBaseOsDownloadConfig, err := pubsublegacy.PublishScope(agentName,
 		types.BaseOsObj, types.DownloaderConfig{})
 	if err != nil {
 		log.Fatal(err)
@@ -466,7 +467,7 @@ func initializeSelfPublishHandles(ctx *baseOsMgrContext) {
 	pubBaseOsDownloadConfig.ClearRestarted()
 	ctx.pubBaseOsDownloadConfig = pubBaseOsDownloadConfig
 
-	pubBaseOsVerifierConfig, err := pubsub.PublishScope(agentName,
+	pubBaseOsVerifierConfig, err := pubsublegacy.PublishScope(agentName,
 		types.BaseOsObj, types.VerifyImageConfig{})
 	if err != nil {
 		log.Fatal(err)
@@ -474,7 +475,7 @@ func initializeSelfPublishHandles(ctx *baseOsMgrContext) {
 	pubBaseOsVerifierConfig.ClearRestarted()
 	ctx.pubBaseOsVerifierConfig = pubBaseOsVerifierConfig
 
-	pubCertObjStatus, err := pubsub.Publish(agentName,
+	pubCertObjStatus, err := pubsublegacy.Publish(agentName,
 		types.CertObjStatus{})
 	if err != nil {
 		log.Fatal(err)
@@ -482,7 +483,7 @@ func initializeSelfPublishHandles(ctx *baseOsMgrContext) {
 	pubCertObjStatus.ClearRestarted()
 	ctx.pubCertObjStatus = pubCertObjStatus
 
-	pubCertObjDownloadConfig, err := pubsub.PublishScope(agentName,
+	pubCertObjDownloadConfig, err := pubsublegacy.PublishScope(agentName,
 		types.CertObj, types.DownloaderConfig{})
 	if err != nil {
 		log.Fatal(err)
@@ -490,7 +491,7 @@ func initializeSelfPublishHandles(ctx *baseOsMgrContext) {
 	pubCertObjDownloadConfig.ClearRestarted()
 	ctx.pubCertObjDownloadConfig = pubCertObjDownloadConfig
 
-	pubZbootStatus, err := pubsub.Publish(agentName, types.ZbootStatus{})
+	pubZbootStatus, err := pubsublegacy.Publish(agentName, types.ZbootStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -501,7 +502,7 @@ func initializeSelfPublishHandles(ctx *baseOsMgrContext) {
 func initializeGlobalConfigHandles(ctx *baseOsMgrContext) {
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
 		false, ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
@@ -518,7 +519,7 @@ func initializeGlobalConfigHandles(ctx *baseOsMgrContext) {
 
 func initializeNodeAgentHandles(ctx *baseOsMgrContext) {
 	// Look for NodeAgentStatus, from zedagent
-	subNodeAgentStatus, err := pubsub.Subscribe("nodeagent",
+	subNodeAgentStatus, err := pubsublegacy.Subscribe("nodeagent",
 		types.NodeAgentStatus{}, false, ctx, &pubsub.SubscriptionOptions{
 			ModifyHandler: handleNodeAgentStatusModify,
 			DeleteHandler: handleNodeAgentStatusDelete,
@@ -532,7 +533,7 @@ func initializeNodeAgentHandles(ctx *baseOsMgrContext) {
 	subNodeAgentStatus.Activate()
 
 	// Look for ZbootConfig, from nodeagent
-	subZbootConfig, err := pubsub.Subscribe("nodeagent",
+	subZbootConfig, err := pubsublegacy.Subscribe("nodeagent",
 		types.ZbootConfig{}, false, ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleZbootConfigModify,
 			ModifyHandler: handleZbootConfigModify,
@@ -549,7 +550,7 @@ func initializeNodeAgentHandles(ctx *baseOsMgrContext) {
 
 func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	// Look for BaseOsConfig , from zedagent
-	subBaseOsConfig, err := pubsub.Subscribe("zedagent",
+	subBaseOsConfig, err := pubsublegacy.Subscribe("zedagent",
 		types.BaseOsConfig{}, false, ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleBaseOsCreate,
 			ModifyHandler: handleBaseOsModify,
@@ -564,7 +565,7 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	subBaseOsConfig.Activate()
 
 	// Look for CertObjConfig, from zedagent
-	subCertObjConfig, err := pubsub.Subscribe("zedagent",
+	subCertObjConfig, err := pubsublegacy.Subscribe("zedagent",
 		types.CertObjConfig{}, false, ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleCertObjCreate,
 			ModifyHandler: handleCertObjModify,
@@ -581,7 +582,7 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 
 func initializeDownloaderHandles(ctx *baseOsMgrContext) {
 	// Look for BaseOs DownloaderStatus from downloader
-	subBaseOsDownloadStatus, err := pubsub.SubscribeScope("downloader",
+	subBaseOsDownloadStatus, err := pubsublegacy.SubscribeScope("downloader",
 		types.BaseOsObj, types.DownloaderStatus{}, false, ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleDownloadStatusModify,
 			ModifyHandler: handleDownloadStatusModify,
@@ -596,7 +597,7 @@ func initializeDownloaderHandles(ctx *baseOsMgrContext) {
 	subBaseOsDownloadStatus.Activate()
 
 	// Look for Certs DownloaderStatus from downloader
-	subCertObjDownloadStatus, err := pubsub.SubscribeScope("downloader",
+	subCertObjDownloadStatus, err := pubsublegacy.SubscribeScope("downloader",
 		types.CertObj, types.DownloaderStatus{}, false, ctx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleDownloadStatusModify,
 			ModifyHandler: handleDownloadStatusModify,
@@ -614,7 +615,7 @@ func initializeDownloaderHandles(ctx *baseOsMgrContext) {
 
 func initializeVerifierHandles(ctx *baseOsMgrContext) {
 	// Look for VerifyImageStatus from verifier
-	subBaseOsVerifierStatus, err := pubsub.SubscribeScope("verifier",
+	subBaseOsVerifierStatus, err := pubsublegacy.SubscribeScope("verifier",
 		types.BaseOsObj, types.VerifyImageStatus{}, false, ctx, &pubsub.SubscriptionOptions{
 			CreateHandler:  handleVerifierStatusModify,
 			ModifyHandler:  handleVerifierStatusModify,

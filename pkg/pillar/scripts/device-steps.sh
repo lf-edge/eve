@@ -3,6 +3,8 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+LOGREAD_PID_WAIT=3600
+LOG_TO_SYSLOG=1
 USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
@@ -21,6 +23,7 @@ AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
 
 PATH=$BINDIR:$PATH
+export LOG_TO_SYSLOG
 
 echo "$(date -Ins -u) Starting device-steps.sh"
 echo "$(date -Ins -u) EVE version: $(cat $BINDIR/versioninfo)"
@@ -53,6 +56,18 @@ else
     echo "$(date -Ins -u) Platform has no /dev/watchdog"
     USE_HW_WATCHDOG=0
 fi
+
+LOOP_COUNT=0
+while [ -z "$(pgrep logread)" ];
+do
+    sleep 1
+    LOOP_COUNT=$((LOOP_COUNT + 1))
+    if [ "$LOOP_COUNT" -ge "$LOGREAD_PID_WAIT" ]; then
+        echo "$(date -Ins -u) Error: Could not find logread process"
+        sleep 1
+        reboot
+    fi
+done
 
 LOGREAD_PID=$(pgrep logread)
 if [ -n "$LOGREAD_PID" ]; then

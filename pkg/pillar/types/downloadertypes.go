@@ -24,32 +24,28 @@ type RktAuthInfo struct {
 	Credentials *RktCredentials `json:"credentials"`
 }
 
-// The key/index to this is the Safename which is allocated by ZedManager.
-// That is the filename in which we store the corresponding json files.
+// The key/index to this is the ImageID which is allocated by the controller.
 type DownloaderConfig struct {
-	DatastoreID uuid.UUID
-	// ImageID - UUID of the image
 	ImageID          uuid.UUID
-	Safename         string
+	DatastoreID      uuid.UUID
 	Name             string
 	NameIsURL        bool // If not we form URL based on datastore info
 	IsContainer      bool
 	AllowNonFreePort bool
 	Size             uint64 // In bytes
-	ImageSha256      string // sha256 of immutable image
 	FinalObjDir      string // final Object Store
 	RefCount         uint
 }
 
 func (config DownloaderConfig) Key() string {
-	return config.Safename
+	return config.ImageID.String()
 }
 
 func (config DownloaderConfig) VerifyFilename(fileName string) bool {
 	expect := config.Key() + ".json"
 	ret := expect == fileName
 	if !ret {
-		log.Errorf("Mismatch between filename and contained Safename: %s vs. %s\n",
+		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
 			fileName, expect)
 	}
 	return ret
@@ -62,15 +58,13 @@ type CertConfig struct {
 	CertChain  []DownloaderConfig
 }
 
-// The key/index to this is the Safename which comes from DownloaderConfig.
-// That is the filename in which we store the corresponding json files.
+// The key/index to this is the ImageID which comes from DownloaderConfig.
 type DownloaderStatus struct {
-	DatastoreID uuid.UUID
-	// ImageID - UUID of the image
 	ImageID          uuid.UUID
-	Safename         string
+	DatastoreID      uuid.UUID
 	Name             string
 	ObjType          string
+	FileLocation     string // Filename where downloaded; replace with file info
 	IsContainer      bool
 	PendingAdd       bool
 	PendingModify    bool
@@ -80,7 +74,6 @@ type DownloaderStatus struct {
 	Expired          bool      // Handshake to client
 	NameIsURL        bool      // If not we form URL based on datastore info
 	AllowNonFreePort bool
-	ImageSha256      string  // sha256 of immutable image
 	State            SwState // DOWNLOADED etc
 	ReservedSpace    uint64  // Contribution to global ReservedSpace
 	Size             uint64  // Once DOWNLOADED; in bytes
@@ -89,28 +82,17 @@ type DownloaderStatus struct {
 	LastErr          string // Download error
 	LastErrTime      time.Time
 	RetryCount       int
-
-	// Conttainer Related Info
-	// ContainerImageID - Rkt ImageID of Container. This is the IMAGE ID
-	// assigned to the Container Image when rkt downloads it.
-	ContainerImageID string
-	// ContainerRktLocalDir - Local Dir ( Absolute path ) used by rkt to
-	// fetch the container
-	ContainerRktLocalConfigDir string
-	// ContainerRktAuthFileName - AuthFileName for the image. his file would
-	// be in ContainerRktLocalDir.
-	ContainerRktAuthFileName string
 }
 
 func (status DownloaderStatus) Key() string {
-	return status.Safename
+	return status.ImageID.String()
 }
 
 func (status DownloaderStatus) VerifyFilename(fileName string) bool {
 	expect := status.Key() + ".json"
 	ret := expect == fileName
 	if !ret {
-		log.Errorf("Mismatch between filename and contained Safename: %s vs. %s\n",
+		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
 			fileName, expect)
 	}
 	return ret

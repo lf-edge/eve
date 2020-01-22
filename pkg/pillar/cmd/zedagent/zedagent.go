@@ -36,6 +36,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -184,7 +185,7 @@ func Run() {
 
 	zedagentCtx.physicalIoAdapterMap = make(map[string]types.PhysicalIOAdapter)
 
-	zedagentCtx.pubGlobalConfig, err = pubsub.PublishPersistent("",
+	zedagentCtx.pubGlobalConfig, err = pubsublegacy.PublishPersistent("",
 		types.GlobalConfig{})
 	if err != nil {
 		log.Fatal(err)
@@ -219,7 +220,7 @@ func Run() {
 	// Make sure we have a GlobalConfig file with defaults
 	utils.ReadAndUpdateGCFile(zedagentCtx.pubGlobalConfig)
 
-	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
+	subAssignableAdapters, err := pubsublegacy.Subscribe("domainmgr",
 		types.AssignableAdapters{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleAAModify,
 			ModifyHandler: handleAAModify,
@@ -233,7 +234,7 @@ func Run() {
 	zedagentCtx.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
-	pubPhysicalIOAdapters, err := pubsub.Publish(agentName,
+	pubPhysicalIOAdapters, err := pubsublegacy.Publish(agentName,
 		types.PhysicalIOAdapterList{})
 	if err != nil {
 		log.Fatal(err)
@@ -241,7 +242,7 @@ func Run() {
 	pubPhysicalIOAdapters.ClearRestarted()
 	getconfigCtx.pubPhysicalIOAdapters = pubPhysicalIOAdapters
 
-	pubDevicePortConfig, err := pubsub.Publish(agentName,
+	pubDevicePortConfig, err := pubsublegacy.Publish(agentName,
 		types.DevicePortConfig{})
 	if err != nil {
 		log.Fatal(err)
@@ -249,21 +250,21 @@ func Run() {
 	getconfigCtx.pubDevicePortConfig = pubDevicePortConfig
 
 	// Publish NetworkXObjectConfig and for outselves. XXX remove
-	pubNetworkXObjectConfig, err := pubsub.Publish(agentName,
+	pubNetworkXObjectConfig, err := pubsublegacy.Publish(agentName,
 		types.NetworkXObjectConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	getconfigCtx.pubNetworkXObjectConfig = pubNetworkXObjectConfig
 
-	pubNetworkInstanceConfig, err := pubsub.Publish(agentName,
+	pubNetworkInstanceConfig, err := pubsublegacy.Publish(agentName,
 		types.NetworkInstanceConfig{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	getconfigCtx.pubNetworkInstanceConfig = pubNetworkInstanceConfig
 
-	pubAppInstanceConfig, err := pubsub.Publish(agentName,
+	pubAppInstanceConfig, err := pubsublegacy.Publish(agentName,
 		types.AppInstanceConfig{})
 	if err != nil {
 		log.Fatal(err)
@@ -271,7 +272,7 @@ func Run() {
 	getconfigCtx.pubAppInstanceConfig = pubAppInstanceConfig
 	pubAppInstanceConfig.ClearRestarted()
 
-	pubAppNetworkConfig, err := pubsub.Publish(agentName,
+	pubAppNetworkConfig, err := pubsublegacy.Publish(agentName,
 		types.AppNetworkConfig{})
 	if err != nil {
 		log.Fatal(err)
@@ -282,7 +283,7 @@ func Run() {
 	// XXX defer this until we have some config from cloud or saved copy
 	pubAppInstanceConfig.SignalRestarted()
 
-	pubCertObjConfig, err := pubsub.Publish(agentName,
+	pubCertObjConfig, err := pubsublegacy.Publish(agentName,
 		types.CertObjConfig{})
 	if err != nil {
 		log.Fatal(err)
@@ -290,7 +291,7 @@ func Run() {
 	pubCertObjConfig.ClearRestarted()
 	getconfigCtx.pubCertObjConfig = pubCertObjConfig
 
-	pubBaseOsConfig, err := pubsub.Publish(agentName,
+	pubBaseOsConfig, err := pubsublegacy.Publish(agentName,
 		types.BaseOsConfig{})
 	if err != nil {
 		log.Fatal(err)
@@ -298,14 +299,14 @@ func Run() {
 	pubBaseOsConfig.ClearRestarted()
 	getconfigCtx.pubBaseOsConfig = pubBaseOsConfig
 
-	pubZedAgentStatus, err := pubsub.Publish(agentName,
+	pubZedAgentStatus, err := pubsublegacy.Publish(agentName,
 		types.ZedAgentStatus{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubZedAgentStatus.ClearRestarted()
 	getconfigCtx.pubZedAgentStatus = pubZedAgentStatus
-	pubDatastoreConfig, err := pubsub.Publish(agentName,
+	pubDatastoreConfig, err := pubsublegacy.Publish(agentName,
 		types.DatastoreConfig{})
 	if err != nil {
 		log.Fatal(err)
@@ -314,7 +315,7 @@ func Run() {
 	pubDatastoreConfig.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
+	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
 		false, &zedagentCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
@@ -328,7 +329,7 @@ func Run() {
 	zedagentCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	subNetworkInstanceStatus, err := pubsub.Subscribe("zedrouter",
+	subNetworkInstanceStatus, err := pubsublegacy.Subscribe("zedrouter",
 		types.NetworkInstanceStatus{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleNetworkInstanceModify,
 			ModifyHandler: handleNetworkInstanceModify,
@@ -342,7 +343,7 @@ func Run() {
 	zedagentCtx.subNetworkInstanceStatus = subNetworkInstanceStatus
 	subNetworkInstanceStatus.Activate()
 
-	subNetworkInstanceMetrics, err := pubsub.Subscribe("zedrouter",
+	subNetworkInstanceMetrics, err := pubsublegacy.Subscribe("zedrouter",
 		types.NetworkInstanceMetrics{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleNetworkInstanceMetricsModify,
 			ModifyHandler: handleNetworkInstanceMetricsModify,
@@ -356,7 +357,7 @@ func Run() {
 	zedagentCtx.subNetworkInstanceMetrics = subNetworkInstanceMetrics
 	subNetworkInstanceMetrics.Activate()
 
-	subAppFlowMonitor, err := pubsub.Subscribe("zedrouter",
+	subAppFlowMonitor, err := pubsublegacy.Subscribe("zedrouter",
 		types.IPFlow{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleAppFlowMonitorModify,
 			ModifyHandler: handleAppFlowMonitorModify,
@@ -371,7 +372,7 @@ func Run() {
 	flowQ = list.New()
 	log.Infof("FlowStats: create subFlowStatus")
 
-	subAppVifIPTrig, err := pubsub.Subscribe("zedrouter",
+	subAppVifIPTrig, err := pubsublegacy.Subscribe("zedrouter",
 		types.VifIPTrig{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleAppVifIPTrigModify,
 			ModifyHandler: handleAppVifIPTrigModify,
@@ -384,7 +385,7 @@ func Run() {
 	subAppVifIPTrig.Activate()
 
 	// Look for AppInstanceStatus from zedmanager
-	subAppInstanceStatus, err := pubsub.Subscribe("zedmanager",
+	subAppInstanceStatus, err := pubsublegacy.Subscribe("zedmanager",
 		types.AppInstanceStatus{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleAppInstanceStatusModify,
 			ModifyHandler: handleAppInstanceStatusModify,
@@ -399,7 +400,7 @@ func Run() {
 	subAppInstanceStatus.Activate()
 
 	// Look for zboot status
-	subZbootStatus, err := pubsub.Subscribe("baseosmgr",
+	subZbootStatus, err := pubsublegacy.Subscribe("baseosmgr",
 		types.ZbootStatus{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
 			CreateHandler:  handleZbootStatusModify,
 			ModifyHandler:  handleZbootStatusModify,
@@ -414,7 +415,7 @@ func Run() {
 	zedagentCtx.subZbootStatus = subZbootStatus
 	subZbootStatus.Activate()
 
-	subBaseOsStatus, err := pubsub.Subscribe("baseosmgr",
+	subBaseOsStatus, err := pubsublegacy.Subscribe("baseosmgr",
 		types.BaseOsStatus{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
 			CreateHandler: handleBaseOsStatusModify,
 			ModifyHandler: handleBaseOsStatusModify,
@@ -428,7 +429,7 @@ func Run() {
 	zedagentCtx.subBaseOsStatus = subBaseOsStatus
 	subBaseOsStatus.Activate()
 
-	subVaultStatus, err := pubsub.Subscribe("vaultmgr",
+	subVaultStatus, err := pubsublegacy.Subscribe("vaultmgr",
 		types.VaultStatus{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
 			ModifyHandler: handleVaultStatusModify,
 			DeleteHandler: handleVaultStatusDelete,
@@ -443,7 +444,7 @@ func Run() {
 
 	// Look for DownloaderStatus from downloader
 	// used only for downloader storage stats collection
-	subBaseOsDownloadStatus, err := pubsub.SubscribeScope("downloader",
+	subBaseOsDownloadStatus, err := pubsublegacy.SubscribeScope("downloader",
 		types.BaseOsObj, types.DownloaderStatus{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
 			WarningTime: warningTime,
 			ErrorTime:   errorTime,
@@ -456,7 +457,7 @@ func Run() {
 
 	// Look for DownloaderStatus from downloader
 	// used only for downloader storage stats collection
-	subCertObjDownloadStatus, err := pubsub.SubscribeScope("downloader",
+	subCertObjDownloadStatus, err := pubsublegacy.SubscribeScope("downloader",
 		types.CertObj, types.DownloaderStatus{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
 			WarningTime: warningTime,
 			ErrorTime:   errorTime,
@@ -469,7 +470,7 @@ func Run() {
 
 	// Look for VerifyBaseOsImageStatus from verifier
 	// used only for verifier storage stats collection
-	subBaseOsVerifierStatus, err := pubsub.SubscribeScope("verifier",
+	subBaseOsVerifierStatus, err := pubsublegacy.SubscribeScope("verifier",
 		types.BaseOsObj, types.VerifyImageStatus{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
 			ModifyHandler:  handleVerifierStatusModify,
 			DeleteHandler:  handleVerifierStatusDelete,
@@ -485,7 +486,7 @@ func Run() {
 
 	// Look for VerifyImageStatus from verifier
 	// used only for verifier storage stats collection
-	subAppImgVerifierStatus, err := pubsub.SubscribeScope("verifier",
+	subAppImgVerifierStatus, err := pubsublegacy.SubscribeScope("verifier",
 		types.AppImgObj, types.VerifyImageStatus{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
 			WarningTime: warningTime,
 			ErrorTime:   errorTime,
@@ -498,7 +499,7 @@ func Run() {
 
 	// Look for DownloaderStatus from downloader for metric reporting
 	// used only for downloader storage stats collection
-	subAppImgDownloadStatus, err := pubsub.SubscribeScope("downloader",
+	subAppImgDownloadStatus, err := pubsublegacy.SubscribeScope("downloader",
 		types.AppImgObj, types.DownloaderStatus{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
 			WarningTime: warningTime,
 			ErrorTime:   errorTime,
@@ -510,7 +511,7 @@ func Run() {
 	subAppImgDownloadStatus.Activate()
 
 	// Look for nodeagent status
-	subNodeAgentStatus, err := pubsub.Subscribe("nodeagent",
+	subNodeAgentStatus, err := pubsublegacy.Subscribe("nodeagent",
 		types.NodeAgentStatus{}, false, &getconfigCtx, &pubsub.SubscriptionOptions{
 			ModifyHandler: handleNodeAgentStatusModify,
 			DeleteHandler: handleNodeAgentStatusDelete,
@@ -526,7 +527,7 @@ func Run() {
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
+	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
 		types.DeviceNetworkStatus{}, false, &DNSctx, &pubsub.SubscriptionOptions{
 			ModifyHandler: handleDNSModify,
 			DeleteHandler: handleDNSDelete,
@@ -539,7 +540,7 @@ func Run() {
 	DNSctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	subDevicePortConfigList, err := pubsub.Subscribe("nim",
+	subDevicePortConfigList, err := pubsublegacy.Subscribe("nim",
 		types.DevicePortConfigList{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
 			ModifyHandler: handleDPCLModify,
 			DeleteHandler: handleDPCLDelete,
@@ -642,24 +643,24 @@ func Run() {
 	}
 
 	// Subscribe to network metrics from zedrouter
-	subNetworkMetrics, err := pubsub.Subscribe("zedrouter",
+	subNetworkMetrics, err := pubsublegacy.Subscribe("zedrouter",
 		types.NetworkMetrics{}, true, &zedagentCtx, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	// Subscribe to cloud metrics from different agents
 	cms := zedcloud.GetCloudMetrics()
-	subClientMetrics, err := pubsub.Subscribe("zedclient", cms,
+	subClientMetrics, err := pubsublegacy.Subscribe("zedclient", cms,
 		true, &zedagentCtx, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subLogmanagerMetrics, err := pubsub.Subscribe("logmanager",
+	subLogmanagerMetrics, err := pubsublegacy.Subscribe("logmanager",
 		cms, true, &zedagentCtx, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDownloaderMetrics, err := pubsub.Subscribe("downloader",
+	subDownloaderMetrics, err := pubsublegacy.Subscribe("downloader",
 		cms, true, &zedagentCtx, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -912,7 +913,7 @@ func handleVerifierStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := statusArg.(types.VerifyImageStatus)
-	log.Infof("handleVerifierStatusModify for %s\n", status.Safename)
+	log.Infof("handleVerifierStatusModify for %s\n", status.ImageID)
 	// Nothing to do
 }
 

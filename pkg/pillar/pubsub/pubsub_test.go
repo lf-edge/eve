@@ -16,14 +16,53 @@ type Item struct {
 	aString string
 }
 
-var item = Item{
-	aString: "aString",
+var (
+	item = Item{
+		aString: "aString",
+	}
+)
+
+type EmptyDriver struct{}
+
+func (e *EmptyDriver) Publisher(global bool, name, topic string, persistent bool, updaterList *Updaters, restarted Restarted, differ Differ) (DriverPublisher, error) {
+	return &EmptyDriverPublisher{}, nil
+}
+func (e *EmptyDriver) Subscriber(global bool, name, topic string, persistent bool, C chan Change) (DriverSubscriber, error) {
+	return &EmptyDriverSubscriber{}, nil
+}
+func (e *EmptyDriver) DefaultName() string {
+	return "empty"
+}
+
+type EmptyDriverPublisher struct{}
+
+func (e *EmptyDriverPublisher) Start() error {
+	return nil
+}
+func (e *EmptyDriverPublisher) Load() (map[string][]byte, bool, error) {
+	return make(map[string][]byte), false, nil
+}
+func (e *EmptyDriverPublisher) Publish(key string, item []byte) error {
+	return nil
+}
+func (e *EmptyDriverPublisher) Unpublish(key string) error {
+	return nil
+}
+func (e *EmptyDriverPublisher) Restart(restarted bool) error {
+	return nil
+}
+
+type EmptyDriverSubscriber struct{}
+
+func (e *EmptyDriverSubscriber) Start() error {
+	return nil
 }
 
 func TestHandleModify(t *testing.T) {
-	sub, err := SubscribeScope(agentName, agentScope, item, false, &item, nil)
+	ps := New(&EmptyDriver{})
+	sub, err := ps.SubscribeScope(agentName, agentScope, item, false, &item, nil)
 	if err != nil {
-		t.Fatalf("unable to Subscribe to %s", agentName)
+		t.Fatalf("unable to subscribe: %v", err)
 	}
 	subImpl, ok := sub.(*SubscriptionImpl)
 	if !ok {

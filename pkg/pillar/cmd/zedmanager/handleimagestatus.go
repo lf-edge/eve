@@ -9,6 +9,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// The /persist/img directory does not include ImageIDs and we don't want to add
+// it in order to avoid a flag day for running applications. Hence we lookup on
+// the ImageSha256 and not ImageID in this function
 func lookupImageStatusForApp(
 	ctx *zedmanagerContext, appUUID uuid.UUID,
 	imageSha string) *types.ImageStatus {
@@ -16,7 +19,7 @@ func lookupImageStatusForApp(
 	imageStatusList := ctx.subImageStatus.GetAll()
 	for _, item := range imageStatusList {
 		status := item.(types.ImageStatus)
-		if status.AppInstUUID == appUUID && status.ImageSha256 == imageSha {
+		if uuid.Equal(status.AppInstUUID, appUUID) && status.ImageSha256 == imageSha {
 			log.Debugf("lookupImageStatusForApp: IS found. appUUID: %s, "+
 				"imageSha: %s", appUUID.String(), imageSha)
 			return &status

@@ -38,21 +38,13 @@ func locationFromDir(locationDir string) (string, error) {
 
 // VerifiedImageDirLocation - Gives the directory for a verified image, but not
 // the file itself, which is subject to possible algorithms
-func VerifiedImageDirLocation(isContainer bool, containerImageID string,
-	imageSha256 string) string {
-	var locationDir string
-	if isContainer {
-		locationDir = types.VerifiedAppImgDirname + "/" + containerImageID
-	} else {
-		locationDir = types.VerifiedAppImgDirname + "/" + imageSha256
-	}
-	return locationDir
+func VerifiedImageDirLocation(sha256 string) string {
+	return types.VerifiedAppImgDirname + "/" + sha256
 }
 
 // VerifiedImageFileLocation - Gives the file location for a verified image.
-func VerifiedImageFileLocation(isContainer bool, containerImageID string,
-	imageSha256 string) (string, error) {
-	locationDir := VerifiedImageDirLocation(isContainer, containerImageID, imageSha256)
+func VerifiedImageFileLocation(sha256 string) (string, error) {
+	locationDir := VerifiedImageDirLocation(sha256)
 	location, err := locationFromDir(locationDir)
 	// logging the error here kind of violates functional principles,
 	// since it would be legitimate to ask, "where is the verified image file,

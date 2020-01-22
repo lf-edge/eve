@@ -30,7 +30,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	if status.ObjType == "" {
 		log.Fatalf("handleSyncOp: No ObjType for %s\n",
-			status.Safename)
+			status.ImageID)
 	}
 
 	// get the datastore context
@@ -41,14 +41,13 @@ func handleSyncOp(ctx *downloaderContext, key string,
 
 	locDirname := types.DownloadDirname + "/" + status.ObjType
 	locFilename = locDirname + "/pending"
+	// XXX common routines to determine pathnames?
+	locFilename = locFilename + "/" + config.ImageID.String()
 
 	// update status to DOWNLOAD STARTED
+	status.FileLocation = locFilename
 	status.State = types.DOWNLOAD_STARTED
 	publishDownloaderStatus(ctx, status)
-
-	if config.ImageSha256 != "" {
-		locFilename = locFilename + "/" + config.ImageSha256
-	}
 
 	if _, err := os.Stat(locFilename); err != nil {
 		log.Debugf("Create %s\n", locFilename)
@@ -57,9 +56,8 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		}
 	}
 
-	filename := types.SafenameToFilename(config.Safename)
-
-	locFilename = locFilename + "/" + config.Safename
+	filename := config.Name // XXX set for containers?
+	locFilename = locFilename + "/" + config.Name
 
 	log.Infof("Downloading <%s> to <%s> using %v allow non-free port\n",
 		config.Name, locFilename, config.AllowNonFreePort)
@@ -228,7 +226,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 
 	if status.ObjType == "" {
 		log.Fatalf("handleSyncOpResponse: No ObjType for %s\n",
-			status.Safename)
+			status.ImageID)
 	}
 	locDirname := types.DownloadDirname + "/" + status.ObjType
 	if errStr != "" {

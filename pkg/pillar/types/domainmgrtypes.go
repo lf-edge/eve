@@ -11,7 +11,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// The information XenManager needs to boot and halt domains
+// The information DomainManager needs to boot and halt domains
 // If the the version (in UUIDandVersion) changes then the domain needs to
 // halted and booted?? NO, because an ACL change from ZedControl would bump
 // the version. Who determines which changes require halt+reboot?
@@ -29,8 +29,7 @@ type DomainConfig struct {
 	IoAdapterList     []IoAdapter
 	CloudInitUserData *string // base64-encoded
 	// Container related info
-	IsContainer      bool   // Is this Domain for a Container?
-	ContainerImageID string // SHA-512 of rkt container image
+	IsContainer bool // Is this Domain for a Container?
 }
 
 func (config DomainConfig) Key() string {
@@ -110,7 +109,6 @@ type DomainStatus struct {
 	BootFailed         bool
 	AdaptersFailed     bool
 	IsContainer        bool   // Is this Domain for a Container?
-	ContainerImageID   string // SHA-512 of rkt container image
 	PodUUID            string // Pod UUID outputted by rkt
 }
 
@@ -150,7 +148,7 @@ type VifInfo struct {
 	Mac    string
 }
 
-// XenManager will pass these to the xen xl config file
+// DomainManager will pass these to the xen xl config file
 // The vdev is automatically assigned as xvd[x], where X is a, b, c etc,
 // based on the order in the DiskList
 // Note that vdev in general can be hd[x], xvd[x], sd[x] but here we only
@@ -167,7 +165,7 @@ type DiskConfig struct {
 }
 
 type DiskStatus struct {
-	ImageID            uuid.UUID // sha256 of immutable image
+	ImageID            uuid.UUID // UUID of immutable image
 	ImageSha256        string    // sha256 of immutable image
 	ReadOnly           bool
 	Preserve           bool
@@ -180,6 +178,9 @@ type DiskStatus struct {
 }
 
 // Track the active image files in rwImgDirname
+// The ImageSha256 is used when an app instance has multiple virtual disks.
+// We do not have an imageID in the pathnames for the RW images hence we can't report
+// an imageID on startup.
 type ImageStatus struct {
 	AppInstUUID  uuid.UUID // UUID of App Instance using the image.
 	ImageSha256  string    // ImageSha256 of original image

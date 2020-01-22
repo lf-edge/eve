@@ -17,6 +17,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -24,16 +25,12 @@ const (
 	BaseOsImageCount = 1
 )
 
-func lookupBaseOsSafename(ctx *baseOsMgrContext, safename string) *types.BaseOsConfig {
+func lookupBaseOsImageID(ctx *baseOsMgrContext, imageID uuid.UUID) *types.BaseOsConfig {
 	items := ctx.subBaseOsConfig.GetAll()
 	for _, c := range items {
 		config := c.(types.BaseOsConfig)
 		for _, sc := range config.StorageConfigList {
-			safename1 := types.UrlToSafename(sc.Name,
-				sc.ImageSha256)
-
-			// base os config contains the current image
-			if safename == safename1 {
+			if uuid.Equal(sc.ImageID, imageID) {
 				return &config
 			}
 		}
@@ -41,24 +38,24 @@ func lookupBaseOsSafename(ctx *baseOsMgrContext, safename string) *types.BaseOsC
 	return nil
 }
 
-func baseOsHandleStatusUpdateSafename(ctx *baseOsMgrContext, safename string) {
+func baseOsHandleStatusUpdateImageID(ctx *baseOsMgrContext, imageID uuid.UUID) {
 
-	log.Infof("baseOsStatusUpdateSafename for %s\n", safename)
-	config := lookupBaseOsSafename(ctx, safename)
+	log.Infof("baseOsHandleStatusUpdateImageID for %s\n", imageID)
+	config := lookupBaseOsImageID(ctx, imageID)
 	if config == nil {
-		log.Infof("baseOsHandleStatusUpdateSafename(%s) not found\n",
-			safename)
+		log.Infof("baseOsHandleStatusUpdateImageID(%s) not found\n",
+			imageID)
 		return
 	}
 	uuidStr := config.Key()
 	status := lookupBaseOsStatus(ctx, uuidStr)
 	if status == nil {
-		log.Infof("baseOsHandleStatusUpdateSafename(%s) no status\n",
-			safename)
+		log.Infof("baseOsHandleStatusUpdateImageID(%s) no status\n",
+			imageID)
 		return
 	}
-	log.Infof("baseOsHandleStatusUpdateSafename(%s) found %s\n",
-		safename, uuidStr)
+	log.Infof("baseOsHandleStatusUpdateImageID(%s) found %s\n",
+		imageID, uuidStr)
 
 	// handle the change event for this base os config
 	baseOsHandleStatusUpdate(ctx, config, status)
@@ -343,13 +340,12 @@ func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
 
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		if ss.Name != sc.Name ||
-			ss.ImageSha256 != sc.ImageSha256 {
+		if ss.Name != sc.Name || !uuid.Equal(ss.ImageID, sc.ImageID) {
 			// Report to zedcloud
 			errString := fmt.Sprintf("%s, for %s, Storage config mismatch:\n\t%s\n\t%s\n\t%s\n\t%s\n\n", uuidStr,
 				config.BaseOsVersion,
 				sc.Name, ss.Name,
-				sc.ImageSha256, ss.ImageSha256)
+				sc.ImageID, ss.ImageID)
 			log.Errorln(errString)
 			status.Error = errString
 			status.ErrorTime = time.Now()
@@ -661,9 +657,9 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 		// Decrease refcount if we had increased it
 		if ss.HasVerifierRef {
 			log.Infof("doBaseOsUninstall(%s) for %s, HasVerifierRef %s\n",
-				status.BaseOsVersion, uuidStr, ss.ImageSha256)
-			MaybeRemoveVerifierConfigSha256(ctx, types.BaseOsObj,
-				ss.ImageSha256)
+				status.BaseOsVersion, uuidStr, ss.ImageID)
+			MaybeRemoveVerifierConfig(ctx, types.BaseOsObj,
+				ss.ImageID)
 			ss.HasVerifierRef = false
 			changed = true
 		} else {
@@ -671,12 +667,10 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 				status.BaseOsVersion, uuidStr)
 		}
 
-		vs := lookupVerificationStatusSha256(ctx, types.BaseOsObj,
-			ss.ImageSha256)
-
+		vs := lookupVerificationStatus(ctx, types.BaseOsObj, ss.ImageID)
 		if vs != nil {
 			log.Infof("doBaseOsUninstall(%s) for %s, Verifier %s not yet gone; RefCount %d\n",
-				status.BaseOsVersion, uuidStr, ss.ImageSha256,
+				status.BaseOsVersion, uuidStr, ss.ImageID,
 				vs.RefCount)
 			removedAll = false
 			continue
@@ -699,13 +693,12 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 	for i := range status.StorageStatusList {
 
 		ss := &status.StorageStatusList[i]
-		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {
 			log.Infof("doBaseOsUninstall(%s) for %s, HasDownloaderRef %s\n",
-				status.BaseOsVersion, uuidStr, safename)
+				status.BaseOsVersion, uuidStr, ss.ImageID)
 
-			removeDownloaderConfig(ctx, types.BaseOsObj, safename)
+			removeDownloaderConfig(ctx, types.BaseOsObj, ss.ImageID)
 			ss.HasDownloaderRef = false
 			changed = true
 		} else {
@@ -713,10 +706,10 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 				status.BaseOsVersion, uuidStr)
 		}
 
-		ds := lookupDownloaderStatus(ctx, types.BaseOsObj, ss.ImageSha256)
+		ds := lookupDownloaderStatus(ctx, types.BaseOsObj, ss.ImageID)
 		if ds != nil {
 			log.Infof("doBaseOsUninstall(%s) for %s, Download %s not yet gone; RefCount %d\n",
-				status.BaseOsVersion, uuidStr, safename,
+				status.BaseOsVersion, uuidStr, ss.ImageID,
 				ds.RefCount)
 			removedAll = false
 			continue

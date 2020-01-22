@@ -20,9 +20,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -968,17 +968,6 @@ func parseStorageConfigList(objType string,
 		image.Target = strings.ToLower(drive.Target.String())
 		image.Devtype = strings.ToLower(drive.Drvtype.String())
 		image.ImageSha256 = drive.Image.Sha256
-		if image.Format == zconfig.Format_CONTAINER && image.ImageSha256 == "" {
-			// XXX HACK - The right fix is to use ImageIDs to Track
-			// images instead of SHA.
-			// Currently, for container images, Zedcloud doesn't have
-			// The SHA for the image. Use ImageID as the Sha.
-			// Download Config add verifier config / status are keyed by SHA.
-			// TIll we move away from that, set ImageSha to ImageID to
-			// handle this case.
-			image.ImageSha256 = image.ImageID.String()
-
-		}
 		storageList[idx] = *image
 		idx++
 	}
@@ -2115,7 +2104,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 		if err != nil {
 			log.Fatal(err)
 		}
-		err = pubsub.WriteRename(rebootConfigFilename, bytes)
+		err = fileutils.WriteRename(rebootConfigFilename, bytes)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -2144,7 +2133,7 @@ func scheduleReboot(reboot *zconfig.DeviceOpsCmd,
 		// store current config, persistently
 		bytes, err = json.Marshal(reboot)
 		if err == nil {
-			err := pubsub.WriteRename(rebootConfigFilename, bytes)
+			err := fileutils.WriteRename(rebootConfigFilename, bytes)
 			if err != nil {
 				log.Errorf("scheduleReboot: failed %s\n",
 					err)

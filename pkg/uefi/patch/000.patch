@@ -10,3 +10,16 @@
  #endif
  
  ///
+--- OvmfPkg/PlatformPei/Xen.c.orig
++++ OvmfPkg/PlatformPei/Xen.c
+@@ -137,6 +137,10 @@
+       mXen = TRUE;
+       return TRUE;
+     }
++    if (!AsciiStrCmp ((CHAR8 *) Signature, "ZenZenZenZen")) {
++      mXen = TRUE;
++      return TRUE;
++    }
+   }
+ 
+   mXenLeaf = 0;
