@@ -6,7 +6,7 @@
 #    and the server
 
 #Build TPM2-TSS and TPM2-TOOLS
-FROM lfedge/eve-alpine:75ea5607a3f76f01b4386c72090d8c7396f65c50 as build
+FROM lfedge/eve-alpine:7f9eb149210025d124027b8c31d6e72fae726da9 as build
 RUN apk add --no-cache linux-headers=4.18.13-r1 git=2.20.2-r0 \
                           gcc=8.3.0-r0 g++=8.3.0-r0 autoconf=2.69-r2 \
                           automake=1.16.1-r0 libtool=2.4.6-r5 \
