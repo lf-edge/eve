@@ -50,13 +50,20 @@ type RktManifest struct {
 func rktConvertTarToAci(from, to string) ([]string, error) {
 	log.Infof("rktConvertTarToAci from v1 tar file %s to aci directory %s", from, to)
 	var convertTag string
-	legacyTmpDir, err := ioutil.TempDir("", "v1ToLegacyTarContainer")
+
+	// ensure that the base tmpdir exists
+	conversionTmpDir := path.Join(types.PersistDir, "tmp")
+	if err := os.MkdirAll(conversionTmpDir, 0700); err != nil {
+		return nil, fmt.Errorf("error creating base temporary directory %s: %v", conversionTmpDir, err)
+	}
+
+	legacyTmpDir, err := ioutil.TempDir(conversionTmpDir, "v1ToLegacyTarContainer")
 	if err != nil {
 		return nil, fmt.Errorf("error creating temporary directory for v1 to legacy tar conversion")
 	}
 	defer os.RemoveAll(legacyTmpDir)
 	legacyPath := path.Join(legacyTmpDir, "legacytar")
-	tmpDir, err := ioutil.TempDir("", "docker2aci")
+	tmpDir, err := ioutil.TempDir(conversionTmpDir, "docker2aci")
 	if err != nil {
 		return nil, fmt.Errorf("error creating temporary directory for aci conversion")
 	}
