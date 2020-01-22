@@ -9,6 +9,7 @@ The agents are:
 - ledmanager - make LEDs light/blink for feedback to the person installing the hardware
 - nim - network interface manager (ensures that there is connectivity to the controller)
 - waitforaddr - merely waiting for a few minutes max for IP address(es) for a more orderly boot in the normal case
+- waitforsyslog - waits until the AF_UNIX syslog service is available. That service is provided by rsyslogd
 - vaultmgr - responsible of creation and operations over, encrypted vault(s) for mutable application images and device configuration data
 - nodeagent - montior the device health, while node is in baseos upgrade or normal operation mode. Also orchestrates baseos installation and upgrade validation by interacting with baseosmgr and zedagent.
 - zedagent - communicate using the device API to the controller to retrieve configuration and send status and metrics

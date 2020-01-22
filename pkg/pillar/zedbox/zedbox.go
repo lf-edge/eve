@@ -23,6 +23,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/verifier"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/waitforaddr"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/waitforsyslog"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/wstunnelclient"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedagent"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedmanager"
@@ -60,6 +61,8 @@ func main() {
 		verifier.Run()
 	case "waitforaddr":
 		waitforaddr.Run()
+	case "waitforsyslog":
+		waitforsyslog.Run()
 	case "zedagent":
 		zedagent.Run()
 	case "zedmanager":
