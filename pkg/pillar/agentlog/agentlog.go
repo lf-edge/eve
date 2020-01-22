@@ -67,6 +67,7 @@ func initImpl(agentName string, logdir string, redirect bool,
 			if err == nil {
 				log.AddHook(hook)
 			} else {
+				fmt.Printf("NewSyslogHook fatal failed %s: %s\n", agentName, err)
 				return nil, err
 			}
 		} else {
