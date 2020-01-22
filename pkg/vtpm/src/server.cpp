@@ -57,11 +57,6 @@ readHdr (char *buf)
 //from the guest domains.
 std::list<string> allowed_commands = {
 "tpm2_getcap",
-"tpm2_createek",
-"tpm2_createak",
-"tpm2_create",
-"tpm2_createprimary",
-"tpm2_evictcontrol",
 "tpm2_readpublic",
 "tpm2_startauthsession",
 "tpm2_policysecret",
@@ -72,7 +67,6 @@ std::list<string> allowed_commands = {
 "tpm2_import",
 "tpm2_flushcontext",
 "tpm2_load",
-"tpm2_evictcontrol",
 "tpm2_hmac",
 "tpm2_hash",
 "tpm2_sign",
