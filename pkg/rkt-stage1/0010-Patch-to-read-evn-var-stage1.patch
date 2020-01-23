@@ -84,3 +84,13 @@ index 94c0f4c..a9965f4 100644
  func main() {
  	rp := parseFlags()
  	stage1initcommon.InitDebug(debug)
+diff --git a/kernel/init-initrd b/kernel/init-initrd
+index 317d698..98b2256 100755
+--- a/kernel/init-initrd
++++ b/kernel/init-initrd
+@@ -82,4 +82,5 @@ chmod +x /mnt/rootfs/launcher.sh
+ cmd=`cat /mnt/cmdline`
+ echo "Executing $cmd"
+ source /mnt/environment
++source /mnt/external-environment
+ eval setsid -c chroot /mnt/rootfs /launcher.sh $cmd <> /dev/console 2>&1
