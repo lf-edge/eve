@@ -3,7 +3,7 @@
 
 // Wait for being able to connect to the syslog service for
 // at most maxTime
-package waitforsyslog
+package main
 
 import (
 	"fmt"
@@ -11,8 +11,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
+	"github.com/sirupsen/logrus"
 	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
 )
 
@@ -23,14 +22,9 @@ const (
 	maxTime     = 300 * time.Second
 )
 
-func Run() {
+func main() {
 	fmt.Printf("Starting %s\n", agentName)
 	startTime := time.Now()
-
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-		fmt.Printf("Fatal error for %s: %s\n", agentName, err)
-	}
-	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	syslogFlags := syslog.LOG_INFO | syslog.LOG_DEBUG | syslog.LOG_ERR |
 		syslog.LOG_NOTICE | syslog.LOG_WARNING | syslog.LOG_CRIT |
@@ -42,9 +36,12 @@ func Run() {
 
 	for {
 		fmt.Printf("NewSyslogHook called for %s\n", agentName)
-		_, err := lSyslog.NewSyslogHook("", "", syslogFlags, agentName)
+		hook, err := lSyslog.NewSyslogHook("", "", syslogFlags, agentName)
 		elapsed := time.Since(startTime)
 		if err == nil {
+			log := logrus.New()
+			log.Hooks.Add(hook)
+			log.Info("rsyslog is up and running")
 			fmt.Printf("NewSyslogHook success for %s\n", agentName)
 			fmt.Printf("%s DONE after %d seconds\n", agentName,
 				elapsed/time.Second)
@@ -59,6 +56,5 @@ func Run() {
 		fmt.Printf("%s has %d seconds remaining\n", agentName,
 			(maxTime-elapsed)/time.Second)
 		<-stillRunning.C
-		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 }
