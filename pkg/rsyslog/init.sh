@@ -12,5 +12,8 @@ if [ ! -d "$RSYSLOG_WORK_DIR" ]; then
   mkdir -p $RSYSLOG_WORK_DIR
   chmod 644 $RSYSLOG_WORK_DIR
 fi
+
 # XXX IMGB?
 IMGP=IMGA /usr/sbin/rsyslogd
+
+waitforsyslog

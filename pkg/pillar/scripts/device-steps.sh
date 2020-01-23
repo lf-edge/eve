@@ -177,11 +177,6 @@ killwait_watchdog
 # Always run watchdog(8) in case we have a hardware watchdog timer to advance
 /usr/sbin/watchdog -c $TMPDIR/watchdogbase.conf -F -s &
 
-# XXX could add watchdog or check error return
-echo "$(date -Ins -u) Starting waitforsyslog"
-$BINDIR/waitforsyslog
-echo "$(date -Ins -u) Done waitforsyslog"
-
 if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
 fi
