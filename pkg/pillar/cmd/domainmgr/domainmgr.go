@@ -1242,7 +1242,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 }
 
 // shutdown and wait for the domain to go away; if that fails destroy and wait
-func doInactivate(ctx *domainContext, status *types.DomainStatus) {
+func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool) {
 
 	log.Infof("doInactivate(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
@@ -1251,6 +1251,9 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 		status.DomainId = domainID
 	}
 	maxDelay := time.Second * 600 // 10 minutes
+	if impatient {
+		maxDelay /= 10
+	}
 	if status.DomainId != 0 {
 		status.State = types.HALTING
 		publishDomainStatus(ctx, status)
@@ -1260,6 +1263,9 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 			// Do a short shutdown wait, then a shutdown -F
 			// just in case there are PV tools in guest
 			shortDelay := time.Second * 60
+			if impatient {
+				shortDelay /= 10
+			}
 			if err := DomainShutdown(*status, false); err != nil {
 				log.Errorf("DomainShutdown %s failed: %s\n",
 					status.DomainName, err)
@@ -1857,7 +1863,7 @@ func handleModify(ctx *domainContext, key string,
 			status.LastErr = ""
 			status.LastErrTime = time.Time{}
 			publishDomainStatus(ctx, status)
-			doInactivate(ctx, status)
+			doInactivate(ctx, status, false)
 		}
 		updateStatusFromConfig(status, *config)
 		doActivate(ctx, *config, status)
@@ -1869,11 +1875,11 @@ func handleModify(ctx *domainContext, key string,
 			status.LastErr = ""
 			status.LastErrTime = time.Time{}
 			publishDomainStatus(ctx, status)
-			doInactivate(ctx, status)
+			doInactivate(ctx, status, false)
 			updateStatusFromConfig(status, *config)
 			changed = true
 		} else if status.Activated {
-			doInactivate(ctx, status)
+			doInactivate(ctx, status, false)
 			updateStatusFromConfig(status, *config)
 			changed = true
 		}
@@ -1979,7 +1985,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	publishDomainStatus(ctx, status)
 
 	if status.Activated {
-		doInactivate(ctx, status)
+		doInactivate(ctx, status, true)
 	} else {
 		if status.IsContainer {
 			// Use rkt tool to remove already exited or inactivated container apps
