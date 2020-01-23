@@ -1,10 +1,10 @@
 diff --git a/init/init.go b/init/init.go
-index 94c0f4c..a9965f4 100644
+index 94c0f4c..4eab62c 100644
 --- a/init/init.go
 +++ b/init/init.go
 @@ -15,6 +15,7 @@
  package main
- 
+
  import (
 +	"bytes"
  	"errors"
@@ -13,10 +13,10 @@ index 94c0f4c..a9965f4 100644
 @@ -202,6 +203,15 @@ func stage1(rp *stage1commontypes.RuntimePod) int {
  		}
  	}
- 
+
 +	ra := p.Manifest.Apps[0]
 +	appEnv := composeEnviron(ra.App.Environment)
-+	appsPath := common.AppsPath(p.Root)
++	appsPath := common.AppPath(p.Root, ra.Name)
 +
 +	if err := writeEnvFile(appsPath, appEnv); err != nil {
 +		log.PrintE("can't write env", err)
