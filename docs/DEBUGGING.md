@@ -226,3 +226,17 @@ created by github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver.(*Publisher).St
 ```
 
 Looking at the above, we can see all of the go routines. Specifically, the `main` routine shows where it is processing and in which file.
+
+### Log Files in QEMU
+
+If you are running in qemu and want to pull the log files off, use the following utility:
+
+```sh
+tools/extract-persist.sh [<type>] [<arch>]
+```
+
+It will extract the contents of the `/persist` partition to `./tmp/persist.tgz` for the given type and architecture.
+
+* `type`: either `live` or `installer`. Defaults to `live`.
+* `arch`: any supported architecture, currently `arm64` or `amd64`. Defaults to `amd64`.
+
