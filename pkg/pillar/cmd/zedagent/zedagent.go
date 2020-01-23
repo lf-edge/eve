@@ -126,9 +126,13 @@ func Run() {
 	curpartPtr := flag.String("c", "", "Current partition")
 	parsePtr := flag.String("p", "", "parse checkpoint file")
 	validatePtr := flag.Bool("V", false, "validate UTF-8 in checkpoint")
+	fatalPtr := flag.Bool("F", false, "Cause log.Fatal fault injection")
+	hangPtr := flag.Bool("H", false, "Cause watchdog .touch fault injection")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
+	fatalFlag := *fatalPtr
+	hangFlag := *hangPtr
 	if debugOverride {
 		log.SetLevel(log.DebugLevel)
 	} else {
@@ -580,8 +584,16 @@ func Run() {
 			getconfigCtx.subNodeAgentStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
+			// Fault injection
+			if fatalFlag {
+				log.Fatal("Requested fault injection to cause watchdog")
+			}
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		if hangFlag {
+			log.Infof("Requested to not touch to cause watchdog")
+		} else {
+			agentlog.StillRunning(agentName, warningTime, errorTime)
+		}
 		// Need to tickle this since the configTimerTask is not yet started
 		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
 		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
@@ -634,8 +646,16 @@ func Run() {
 				warningTime, errorTime)
 
 		case <-stillRunning.C:
+			// Fault injection
+			if fatalFlag {
+				log.Fatal("Requested fault injection to cause watchdog")
+			}
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		if hangFlag {
+			log.Infof("Requested to not touch to cause watchdog")
+		} else {
+			agentlog.StillRunning(agentName, warningTime, errorTime)
+		}
 		// Need to tickle this since the configTimerTask is not yet started
 		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
 		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
@@ -734,8 +754,16 @@ func Run() {
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
 
 		case <-stillRunning.C:
+			// Fault injection
+			if fatalFlag {
+				log.Fatal("Requested fault injection to cause watchdog")
+			}
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		if hangFlag {
+			log.Infof("Requested to not touch to cause watchdog")
+		} else {
+			agentlog.StillRunning(agentName, warningTime, errorTime)
+		}
 		// Need to tickle this since the configTimerTask is not yet started
 		agentlog.StillRunning(agentName+"config", warningTime, errorTime)
 	}
@@ -860,8 +888,16 @@ func Run() {
 			subVaultStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
+			// Fault injection
+			if fatalFlag {
+				log.Fatal("Requested fault injection to cause watchdog")
+			}
 		}
-		agentlog.StillRunning(agentName, warningTime, errorTime)
+		if hangFlag {
+			log.Infof("Requested to not touch to cause watchdog")
+		} else {
+			agentlog.StillRunning(agentName, warningTime, errorTime)
+		}
 	}
 }
 
