@@ -2083,8 +2083,15 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 // Launch app/container thru rkt
 // returns domainID, podUUID and error
 func rktRun(domainName, xenCfgFilename, imageHash string) (int, string, error) {
-
-	// STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=xenCfgFilename rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file
+	// STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=xenCfgFilename rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file --set-env=ENV-KEY=env-value
+	//TODO: envVars must be read from image config once we decide on how we will be passing this info from UI
+	envVars := map[string]string{}
+	var (
+		envVarSlice = make([]string, 0)
+	)
+	for k, v := range envVars {
+		envVarSlice = append(envVarSlice, fmt.Sprintf("--set-env=%s=%s", k, v))
+	}
 	log.Infof("rktRun %s\n", domainName)
 	cmd := "rkt"
 	args := []string{
@@ -2098,6 +2105,7 @@ func rktRun(domainName, xenCfgFilename, imageHash string) (int, string, error) {
 		"--stage1-path=/usr/sbin/stage1-xen.aci",
 		"--uuid-file-save=" + uuidFile,
 	}
+	args = append(args, envVarSlice...)
 	stage1XlOpts := "STAGE1_XL_OPTS=-p"
 	stage1XlCfg := "STAGE1_SEED_XL_CFG=" + xenCfgFilename
 	log.Infof("Calling command %s %v\n", cmd, args)

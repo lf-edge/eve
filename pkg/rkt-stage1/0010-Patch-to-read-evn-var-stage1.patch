@@ -1,5 +1,5 @@
 diff --git a/init/init.go b/init/init.go
-index 94c0f4c..4eab62c 100644
+index 94c0f4c..91317b2 100644
 --- a/init/init.go
 +++ b/init/init.go
 @@ -15,6 +15,7 @@
@@ -15,7 +15,7 @@ index 94c0f4c..4eab62c 100644
  	}
 
 +	ra := p.Manifest.Apps[0]
-+	appEnv := composeEnviron(ra.App.Environment)
++	appEnv := composeEnvironment(ra.App.Environment)
 +	appsPath := common.AppPath(p.Root, ra.Name)
 +
 +	if err := writeEnvFile(appsPath, appEnv); err != nil {
@@ -26,14 +26,14 @@ index 94c0f4c..4eab62c 100644
  	args, env, err := getArgsEnv(p, flavor, debug, n)
  	if err != nil {
  		log.FatalE("cannot get environment", err)
-@@ -221,9 +231,57 @@ func stage1(rp *stage1commontypes.RuntimePod) int {
+@@ -221,9 +231,54 @@ func stage1(rp *stage1commontypes.RuntimePod) int {
  		log.FatalE(fmt.Sprintf("failed to execute %q", args[0]), err)
  	}
- 
+
 +
  	return 0
  }
- 
+
 +// writeEnvFile creates an external-environment file under appDir
 +// with entries from PodManifest.App.Environments
 +func writeEnvFile(appDir string, environment types.Environment) error {
@@ -57,11 +57,8 @@ index 94c0f4c..4eab62c 100644
 +	return nil
 +}
 +
-+// ComposeEnviron formats the environment into a slice of strings,
-+// each of the form "key=value".  The minimum required environment
-+// variables by the appc spec will be set to sensible defaults here if
-+// they're not provided by env.
-+func composeEnviron(env types.Environment) types.Environment {
++// composeEnvironment formats the environment into a slice of types.Environment.
++func composeEnvironment(env types.Environment) types.Environment {
 +	var composed types.Environment
 +	var defaultEnv = map[string]string{
 +		"PATH":    "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
