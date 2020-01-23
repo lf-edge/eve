@@ -24,7 +24,7 @@ index 32d45dc..283b41b 100644
          libxl_defbool_setdefault(&b_info->u.hvm.nx,                 true);
          libxl_defbool_setdefault(&b_info->u.hvm.viridian,           false);
 +        libxl_defbool_setdefault(&b_info->u.hvm.spoof_viridian,     false);
-+        libxl_defbool_setdefault(&b_info->u.hvm.spoof_xen,          true);
++        libxl_defbool_setdefault(&b_info->u.hvm.spoof_xen,          false);
          libxl_defbool_setdefault(&b_info->u.hvm.hpet,               true);
          libxl_defbool_setdefault(&b_info->u.hvm.vpt_align,          true);
          libxl_defbool_setdefault(&b_info->u.hvm.altp2m,             false);
@@ -191,3 +191,18 @@ index 36832e4..2be4178 100644
 +#define HVM_NR_PARAMS          41
  
  #endif /* __XEN_PUBLIC_HVM_PARAMS_H__ */
+diff --git a/tools/xl/xl_parse.c b/tools/xl/xl_parse.c
+index 36832e4..2be4178 100644
+--- a/tools/xl/xl_parse.c
++++ b/tools/xl/xl_parse.c
+@@ -1670,6 +1670,10 @@
+         xlu_cfg_get_defbool(config, "vpt_align", &b_info->u.hvm.vpt_align, 0);
+         xlu_cfg_get_defbool(config, "apic", &b_info->apic, 0);
+ 
++        /* For spoofing Xen */
++        xlu_cfg_get_defbool(config, "spoof_xen", &b_info->u.hvm.spoof_xen, 0);
++        xlu_cfg_get_defbool(config, "spoof_viridian", &b_info->u.hvm.spoof_viridian, 0);
++
+         switch (xlu_cfg_get_list(config, "viridian",
+                                  &viridian, &num_viridian, 1))
+         {
