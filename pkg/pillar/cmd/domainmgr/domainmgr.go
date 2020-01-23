@@ -2099,9 +2099,6 @@ func rktRun(domainName, xenCfgFilename, imageHash string) (int, string, error) {
 		"--insecure-options=image",
 		"run",
 		imageHash,
-		//This is added to verify that setting env var works.
-		//TODO: Remove this once passing env var flow from UI is setup
-		"--set-env=FOO=bar",
 		"--stage1-path=/usr/sbin/stage1-xen.aci",
 		"--uuid-file-save=" + uuidFile,
 	}
