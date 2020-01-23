@@ -357,7 +357,7 @@ tarloop:
 // rktImportAciFile import a local aci file into the rkt cache. returns the
 // rkt hash and any errors.
 func rktImportAciFile(aciFilename string) (string, error) {
-	log.Info("rktGetHashes")
+	log.Info("rktImportAciFile")
 
 	cmd := "rkt"
 	baseArgs := []string{
