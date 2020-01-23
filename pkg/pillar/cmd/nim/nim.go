@@ -107,8 +107,12 @@ func Run() {
 	}
 	defer logf.Close()
 	if nimCtx.useStdout {
-		multi := io.MultiWriter(logf, os.Stdout)
-		log.SetOutput(multi)
+		if logf == nil {
+			log.SetOutput(os.Stdout)
+		} else {
+			multi := io.MultiWriter(logf, os.Stdout)
+			log.SetOutput(multi)
+		}
 	}
 
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
