@@ -1,0 +1,57 @@
+diff --git a/init/init.go b/init/init.go
+index 94c0f4c..29426e0 100644
+--- a/init/init.go
++++ b/init/init.go
+@@ -18,6 +18,7 @@ import (
+ 	"errors"
+ 	"flag"
+ 	"fmt"
++	"github.com/rkt/rkt/pkg/user"
+ 	"io/ioutil"
+ 	"net"
+ 	"os"
+@@ -217,6 +218,13 @@ func stage1(rp *stage1commontypes.RuntimePod) int {
+ 		return syscall.Exec(args[0], args, env)
+ 	})
+ 
++	ra := p.Manifest.Apps[0]
++	appEnv := composeEnviron(ra.App.Environment)
++	if err = common.WriteEnvFile(appEnv, user.NewBlankUidRange(), stage1initcommon.EnvFilePath(p.Root, ra.Name)); err != nil {
++		log.PrintE("can't write env", err)
++		return 254
++	}
++
+ 	if err != nil {
+ 		log.FatalE(fmt.Sprintf("failed to execute %q", args[0]), err)
+ 	}
+@@ -224,6 +232,30 @@ func stage1(rp *stage1commontypes.RuntimePod) int {
+ 	return 0
+ }
+ 
++// ComposeEnviron formats the environment into a slice of strings,
++// each of the form "key=value".  The minimum required environment
++// variables by the appc spec will be set to sensible defaults here if
++// they're not provided by env.
++func composeEnviron(env types.Environment) types.Environment {
++	var composed types.Environment
++	var defaultEnv = map[string]string{
++		"PATH":    "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
++		"SHELL":   "/bin/sh",
++		"USER":    "root",
++		"LOGNAME": "root",
++		"HOME":    "/root",
++	}
++
++	for dk, dv := range defaultEnv {
++		if _, exists := env.Get(dk); !exists {
++			composed = append(composed, types.EnvironmentVariable{Name:dk, Value:dv})
++		}
++	}
++
++	composed = append(composed, env...)
++	return composed
++}
++
+ func main() {
+ 	rp := parseFlags()
+ 	stage1initcommon.InitDebug(debug)
