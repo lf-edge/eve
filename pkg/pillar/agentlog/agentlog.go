@@ -73,6 +73,8 @@ func initImpl(agentName string, logdir string, redirect bool,
 		} else {
 			log.SetOutput(os.Stdout)
 		}
+		hook := new(FatalHook)
+		log.AddHook(hook)
 		if text {
 			// Report nano timestamps
 			formatter := log.TextFormatter{
@@ -97,6 +99,25 @@ func initImpl(agentName string, logdir string, redirect bool,
 	return logf, nil
 }
 
+// FatalHook is used make sure we save the fatal and panic strings to a file
+type FatalHook struct {
+}
+
+// Fire saves the reason for the log.Fatal or log.Panic
+func (hook *FatalHook) Fire(entry *log.Entry) error {
+	reason := fmt.Sprintf("fatal: agent %s: %s", savedAgentName, entry.Message)
+	RebootReason(reason)
+	return nil
+}
+
+// Levels installs the FatalHook for Fatal and Panic levels
+func (hook *FatalHook) Levels() []log.Level {
+	return []log.Level{
+		log.FatalLevel,
+		log.PanicLevel,
+	}
+}
+
 // Wait on channel then handle the signals
 func handleSignals(sigs chan os.Signal) {
 	for {
@@ -105,8 +126,11 @@ func handleSignals(sigs chan os.Signal) {
 			log.Infof("handleSignals: received %v\n", sig)
 			switch sig {
 			case syscall.SIGUSR1:
-				log.Warnf("SIGUSR1 triggered stack traces:\n%v\n",
-					getStacks(true))
+				stacks := getStacks(true)
+				log.Warnf("SIGUSR1 triggered stack traces:\n%v\n", stacks)
+				// Could result in a watchdog reboot hence
+				// we save it as a reboot-stack
+				RebootStack(stacks)
 			case syscall.SIGUSR2:
 				log.Warnf("SIGUSR2 triggered memory info:\n")
 				logMemUsage()
@@ -125,14 +149,15 @@ func printStack() {
 }
 
 // RebootReason writes a reason string in /persist/IMGx/reboot-reason, including agentName and date
+// Note: can not use log here since we are called from a log hook!
 func RebootReason(reason string) {
 	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
-	log.Warnf("RebootReason to %s: %s\n", filename, reason)
 	dateStr := time.Now().Format(time.RFC3339Nano)
 	err := printToFile(filename, fmt.Sprintf("Reboot from agent %s at %s: %s\n",
 		savedAgentName, dateStr, reason))
 	if err != nil {
-		log.Errorf("printToFile failed %s\n", err)
+		// Note: can not use log here since we are called from a log hook!
+		fmt.Printf("printToFile failed %s\n", err)
 	}
 	syscall.Sync()
 }

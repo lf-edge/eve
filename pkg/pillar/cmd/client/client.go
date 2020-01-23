@@ -107,8 +107,12 @@ func Run() { //nolint:gocyclo
 	}
 	defer logf.Close()
 	if useStdout {
-		multi := io.MultiWriter(logf, os.Stdout)
-		log.SetOutput(multi)
+		if logf == nil {
+			log.SetOutput(os.Stdout)
+		} else {
+			multi := io.MultiWriter(logf, os.Stdout)
+			log.SetOutput(multi)
+		}
 	}
 	if !noPidFlag {
 		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
