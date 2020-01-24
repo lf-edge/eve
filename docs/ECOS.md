@@ -66,6 +66,7 @@ As part of a regular config that EVE recieves from its controller, each ECO gets
 * activate
 * purge
 * restart
+* refreshImage
 * fixedresources
   * virtualizationMode
     * memory
@@ -112,6 +113,14 @@ The picture below provides simplified view of states and transitions for an ECO.
                     +-------------->+  deleted +<----------------+
                          delete     |          |     delete
                                     +----------+
+                                                                        restart
+                                                                          ^
+                                  +-----------+       +---------+         |
+      +----------+  ImageRefresh  | New Image |  YES  | Download|    +----|---+
+      | Online   | -------------->| Available |------>| Image   |----| Stopped|
+      +----------+                +-----------+       +---------+    +--------+
+        |           NO New Image        |
+        +-----------------<-------------+
 ```
 
 The controller drives the ECO state transitions via the configuration. These state transitions are described below. Due to the eventual consistency model, a new configuration may result in zero or more state transitions for a given ECO.
