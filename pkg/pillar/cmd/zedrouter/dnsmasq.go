@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -360,27 +359,7 @@ func startDnsmasq(bridgeName string) {
 		"-C",
 		cfgPathname,
 	}
-	logFilename := fmt.Sprintf("dnsmasq.%s", bridgeName)
-	logf, err := agentlog.InitChild(logFilename)
-	if err != nil {
-		log.Fatalf("startDnsmasq agentlog failed: %s\n", err)
-	}
-	w := bufio.NewWriter(logf)
-	ts := time.Now().Format(time.RFC3339Nano)
-	fmt.Fprintf(w, "%s Starting %s %v\n", ts, name, args)
 	cmd := exec.Command(name, args...)
-	// Report nano timestamps
-	formatter := log.JSONFormatter{
-		TimestampFormat: time.RFC3339Nano,
-	}
-	var tslog = &log.Logger{
-		Out:       logf,
-		Formatter: &formatter,
-		Hooks:     make(log.LevelHooks),
-		Level:     log.InfoLevel,
-	}
-	cmd.Stdout = tslog.Writer()
-	cmd.Stderr = tslog.Writer()
 	log.Infof("Calling command %s %v\n", name, args)
 	go cmd.Run()
 }
