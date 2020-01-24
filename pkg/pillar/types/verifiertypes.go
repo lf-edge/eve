@@ -6,6 +6,7 @@
 package types
 
 import (
+	"path"
 	"time"
 
 	uuid "github.com/satori/go.uuid"
@@ -100,9 +101,11 @@ func (status VerifyImageStatus) ImageDownloadFilenames() (string, string, string
 
 	pendingDirname, verifierDirname, verifiedDirname :=
 		status.ImageDownloadDirNames()
-	pendingFilename = pendingDirname + "/" + status.Name
-	verifierFilename = verifierDirname + "/" + status.Name
-	verifiedFilename = verifiedDirname + "/" + status.Name
+	// Handle names which are paths
+	filename := path.Base(status.Name)
+	pendingFilename = pendingDirname + "/" + filename
+	verifierFilename = verifierDirname + "/" + filename
+	verifiedFilename = verifiedDirname + "/" + filename
 	return pendingFilename, verifierFilename, verifiedFilename
 }
 
