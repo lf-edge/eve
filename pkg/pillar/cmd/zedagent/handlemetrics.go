@@ -1377,11 +1377,16 @@ func encodeNetworkPortConfig(npc *types.NetworkPortConfig) *info.DevicePort {
 	// DhcpConfig
 	dp.DhcpType = uint32(npc.Dhcp)
 	dp.Subnet = npc.AddrSubnet
-	dp.Gateway = npc.Gateway.String()
-	dp.Domainname = npc.DomainName
+
+	dp.DefaultRouters = make([]string, 0)
+	dp.DefaultRouters = append(dp.DefaultRouters, npc.Gateway.String())
+
 	dp.NtpServer = npc.NtpServer.String()
+
+	dp.Dns.DNSdomain = npc.DomainName
+	dp.Dns.DNSservers = make([]string, 0)
 	for _, d := range npc.DnsServers {
-		dp.DnsServers = append(dp.DnsServers, d.String())
+		dp.Dns.DNSservers = append(dp.Dns.DNSservers, d.String())
 	}
 	// XXX Not in definition. Remove?
 	// XXX  string dhcpRangeLow = 17;
