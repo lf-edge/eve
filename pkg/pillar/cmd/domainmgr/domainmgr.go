@@ -86,6 +86,7 @@ type domainContext struct {
 	GCInitialized          bool
 }
 
+//Holds mount information which will be used when bringing up container.
 type Mounts struct {
 	sourcePath string //Source path to be mounted
 	targetPath string //Target path inside VM or container
