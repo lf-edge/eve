@@ -749,7 +749,8 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			publishDomainStatus(ctx, status)
 		}
 		// check if qemu processes has crashed
-		if status.Activated && (status.VirtualizationMode == types.HVM || status.IsContainer) && !isQemuRunning(status.DomainId) {
+		hasQemu := status.VirtualizationMode == types.HVM || status.VirtualizationMode == types.FML || status.IsContainer
+		if status.Activated && hasQemu && !isQemuRunning(status.DomainId) {
 			errStr := fmt.Sprintf("verifyStatus(%s) qemu crashed",
 				status.Key())
 			log.Errorf(errStr)
@@ -1259,7 +1260,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 		publishDomainStatus(ctx, status)
 
 		switch status.VirtualizationMode {
-		case types.HVM:
+		case types.HVM, types.FML:
 			// Do a short shutdown wait, then a shutdown -F
 			// just in case there are PV tools in guest
 			shortDelay := time.Second * 60
@@ -1547,7 +1548,8 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 		xen_type = "pvh"
 		extra = "console=hvc0 " + uuidStr + config.ExtraArgs
 		kernel = "/usr/lib/xen/boot/ovmf-pvh.bin"
-	case types.HVM:
+	case types.HVM, types.FML:
+		// XXX fill in FML differences
 		xen_type = "hvm"
 		if config.Kernel != "" {
 			kernel = config.Kernel
@@ -1725,7 +1727,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 				log.Infof("Adding ioport <%s>\n", ib.Ioports)
 				ioportsAssignments = addNoDuplicate(ioportsAssignments, ib.Ioports)
 			}
-			if ib.Serial != "" && config.VirtualizationMode == types.HVM {
+			if ib.Serial != "" && (config.VirtualizationMode == types.HVM || config.VirtualizationMode == types.FML) {
 				log.Infof("Adding serial <%s>\n", ib.Serial)
 				serialAssignments = addNoDuplicate(serialAssignments, ib.Serial)
 			}
