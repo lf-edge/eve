@@ -300,14 +300,3 @@ index 91317b2..02a7974 100644
  // writeEnvFile creates an external-environment file under appDir
  // with entries from PodManifest.App.Environments
  func writeEnvFile(appDir string, environment types.Environment) error {
-diff --git a/kernel/init-initrd b/kernel/init-initrd
-index 98b2256..165efe4 100755
---- a/kernel/init-initrd
-+++ b/kernel/init-initrd
-@@ -82,5 +82,5 @@ chmod +x /mnt/rootfs/launcher.sh
- cmd=`cat /mnt/cmdline`
- echo "Executing $cmd"
- source /mnt/environment
--source /mnt/external-environment
-+#source /mnt/external-environment
- eval setsid -c chroot /mnt/rootfs /launcher.sh $cmd <> /dev/console 2>&1
