@@ -284,9 +284,12 @@ message DevicePort {
   // DhcpConfig
   uint32 dhcpType = 11;
   string subnet = 12;
+  // gateway - OBSOLETE - obsoleted by defaultRouters
   string gateway = 13;
+  // domainname - OBSOLETE - obsoleted by dns
   string domainname = 14;
   string ntpServer = 15;
+  // dnsServers - OBSOLETE - obsoleted by dns
   repeated string dnsServers = 16;
   string dhcpRangeLow = 17;
   string dhcpRangeHigh = 18;
@@ -298,7 +301,6 @@ message DevicePort {
   ZInfoDNS dns = 25; // If DHCP assigned
   bool up = 26;      // operational up/down status.
   GeoLoc location = 27;
-  bool uplink = 28; // Uplink interface  // XXX rename to isMgmt
   ErrorInfo err = 29; // Any errors on the interface.
 }
 
