@@ -1,5 +1,5 @@
 diff --git a/init/init.go b/init/init.go
-index 91317b2..73d4e42 100644
+index 91317b2..02a7974 100644
 --- a/init/init.go
 +++ b/init/init.go
 @@ -19,11 +19,15 @@ import (
@@ -182,7 +182,7 @@ index 91317b2..73d4e42 100644
  // getArgsEnv returns the nspawn or lkvm args and env according to the flavor
  // as the first two return values respectively.
  func getArgsEnv(p *stage1commontypes.Pod, flavor string, debug bool, n *networking.Networking) ([]string, []string, error) {
-@@ -204,8 +358,112 @@ func stage1(rp *stage1commontypes.RuntimePod) int {
+@@ -204,6 +358,109 @@ func stage1(rp *stage1commontypes.RuntimePod) int {
  	}
  
  	ra := p.Manifest.Apps[0]
@@ -290,38 +290,16 @@ index 91317b2..73d4e42 100644
 +
 +
  	appEnv := composeEnvironment(ra.App.Environment)
--	appsPath := common.AppPath(p.Root, ra.Name)
-+	//appsPath := common.AppPath(p.Root, ra.Name)
-+	appsPath := common.Stage1RootfsPath(root)+  "/rkt/env/" + ra.Name.String()
+ 	appsPath := common.AppPath(p.Root, ra.Name)
  
- 	if err := writeEnvFile(appsPath, appEnv); err != nil {
- 		log.PrintE("can't write env", err)
-@@ -238,6 +496,25 @@ func stage1(rp *stage1commontypes.RuntimePod) int {
+@@ -235,6 +492,7 @@ func stage1(rp *stage1commontypes.RuntimePod) int {
+ 	return 0
+ }
+ 
++
  // writeEnvFile creates an external-environment file under appDir
  // with entries from PodManifest.App.Environments
  func writeEnvFile(appDir string, environment types.Environment) error {
-+	ef := bytes.Buffer{}
-+
-+	for _, v := range environment {
-+		fmt.Fprintf(&ef, "%s=%s\n", v.Name, v.Value)
-+	}
-+
-+	if err := os.MkdirAll(filepath.Dir(appDir), 0755); err != nil {
-+		return err
-+	}
-+
-+	if err := ioutil.WriteFile(appDir, ef.Bytes(), 0644); err != nil {
-+		return err
-+	}
-+	return nil
-+}
-+
-+// writeEnvFile creates an external-environment file under appDir
-+// with entries from PodManifest.App.Environments
-+func writeEnvFile2(appDir string, environment types.Environment) error {
- 	envFilePath := filepath.Join(appDir, "external-environment")
- 	ef := bytes.Buffer{}
- 
 diff --git a/kernel/init-initrd b/kernel/init-initrd
 index 98b2256..165efe4 100755
 --- a/kernel/init-initrd
