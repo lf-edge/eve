@@ -352,16 +352,20 @@ func startDnsmasq(bridgeName string) {
 	log.Infof("startDnsmasq(%s)\n", bridgeName)
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	name := "nohup"
-	//    XXX currently running as root with -d above
 	args := []string{
 		"/opt/zededa/bin/dnsmasq",
-		"-d",
 		"-C",
 		cfgPathname,
 	}
 	cmd := exec.Command(name, args...)
 	log.Infof("Calling command %s %v\n", name, args)
-	go cmd.Run()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Errorf("startDnsmasq: Failed starting dnsmasq for bridge %s (%s)",
+			bridgeName, err)
+	} else {
+		log.Infof("startDnsmasq: Started dnsmasq with output: %s", out)
+	}
 }
 
 //    pkill -u nobody -f dnsmasq.${BRIDGENAME}.conf
@@ -369,7 +373,6 @@ func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 
 	log.Infof("stopDnsmasq(%s)\n", bridgeName)
 	cfgFilename := dnsmasqConfigFile(bridgeName)
-	// XXX currently running as root with -d above
 	pkillUserArgs("root", cfgFilename, printOnError)
 
 	if delConfiglet {

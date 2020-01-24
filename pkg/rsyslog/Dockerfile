@@ -16,6 +16,7 @@ RUN apk add --no-cache \
             rsyslog-mmjsonparse=8.1904.0-r1
 COPY rsyslog.conf /etc/rsyslog.conf
 COPY init.sh /init.sh
+COPY rotate.sh /rotate.sh
 COPY --from=build /go/bin/waitforsyslog /bin/
 
 ENTRYPOINT []
