@@ -5,7 +5,6 @@ package zedagent
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"fmt"
 	"io/ioutil"
 	"mime"
@@ -190,7 +189,14 @@ func getLatestConfig(url string, iteration int,
 
 	const return400 = false
 	getconfigCtx.configGetStatus = types.ConfigGetFail
-	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, 0, nil, iteration, return400)
+	b, cr, err := generateConfigRequest()
+	if err != nil {
+		// XXX	fatal?
+		return false
+	}
+	buf := bytes.NewBuffer(b)
+	size := int64(proto.Size(cr))
+	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, size, buf, iteration, return400)
 	if err != nil {
 		newCount := 2
 		if rtf {
@@ -241,9 +247,9 @@ func getLatestConfig(url string, iteration int,
 		return false
 	}
 
-	changed, config, err := readDeviceConfigProtoMessage(contents)
+	changed, config, err := readConfigResponseProtoMessage(resp, contents)
 	if err != nil {
-		log.Errorln("readDeviceConfigProtoMessage: ", err)
+		log.Errorln("readConfigResponseProtoMessage: ", err)
 		// Inform ledmanager about cloud connectivity
 		utils.UpdateLedManagerConfig(3)
 		getconfigCtx.ledManagerCount = 3
@@ -354,29 +360,56 @@ func readSavedProtoMessage(staleConfigTime uint32,
 	return config, nil
 }
 
-var prevConfigHash []byte
+// The most recent config hash we received. Starts empty
+var prevConfigHash string
 
-// Returns changed, config, error. The changed is based on a comparison of
-// the hash of the protobuf message.
-func readDeviceConfigProtoMessage(contents []byte) (bool, *zconfig.EdgeDevConfig, error) {
+func generateConfigRequest() ([]byte, *zconfig.ConfigRequest, error) {
+	log.Debugf("generateConfigRequest() sending hash %s", prevConfigHash)
+	configRequest := &zconfig.ConfigRequest{
+		ConfigHash: prevConfigHash,
+	}
+	b, err := proto.Marshal(configRequest)
+	if err != nil {
+		log.Errorln(err)
+		return nil, nil, err
+	}
+	return b, configRequest, nil
+}
 
-	var config = &zconfig.EdgeDevConfig{}
+// Returns changed, config, error. The changed is based the ConfigRequest vs
+// the ConfigResponse hash
+func readConfigResponseProtoMessage(resp *http.Response, contents []byte) (bool, *zconfig.EdgeDevConfig, error) {
 
-	// compute sha256 of the image and match it
-	// with the one in config file...
-	h := sha256.New()
-	h.Write(contents)
-	configHash := h.Sum(nil)
-	same := bytes.Equal(configHash, prevConfigHash)
-	prevConfigHash = configHash
-	log.Debugf("readDeviceConfigProtoMessage: same %v config sha % x vs. % x\n",
-		same, prevConfigHash, configHash)
-	err := proto.Unmarshal(contents, config)
+	if resp.StatusCode == http.StatusNotModified {
+		log.Debugf("StatusNotModified")
+		if len(contents) > 0 {
+			// XXX controller should omit full content
+			log.Infof("XXX StatusNotModified with len %d",
+				len(contents))
+		}
+		return false, nil, nil
+	}
+
+	var configResponse = &zconfig.ConfigResponse{}
+	err := proto.Unmarshal(contents, configResponse)
 	if err != nil {
 		log.Errorf("Unmarshalling failed: %v", err)
 		return false, nil, err
 	}
-	return !same, config, nil
+	hash := configResponse.GetConfigHash()
+	if hash == prevConfigHash {
+		log.Debugf("Same ConfigHash %s", hash)
+		if len(contents) > 0 {
+			// XXX controller should omit full content
+			log.Infof("XXX same hash %s with len %d",
+				hash, len(contents))
+		}
+		return false, nil, nil
+	}
+	log.Debugf("Change in ConfigHash from %s to %s", prevConfigHash, hash)
+	prevConfigHash = hash
+	config := configResponse.GetConfig()
+	return true, config, nil
 }
 
 // Returns a rebootFlag

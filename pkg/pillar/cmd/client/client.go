@@ -287,7 +287,7 @@ func Run() { //nolint:gocyclo
 
 	// Post something without a return type.
 	// Returns true when done; false when retry
-	myPost := func(tlsConfig *tls.Config, retryCount int, requrl string, reqlen int64, b *bytes.Buffer) bool {
+	myPost := func(tlsConfig *tls.Config, requrl string, retryCount int, reqlen int64, b *bytes.Buffer) (bool, *http.Response, []byte) {
 
 		zedcloudCtx.TlsConfig = tlsConfig
 		resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx,
@@ -298,7 +298,7 @@ func Run() { //nolint:gocyclo
 			} else {
 				log.Errorln(err)
 			}
-			return false
+			return false, resp, contents
 		}
 
 		if !zedcloudCtx.NoLedManager {
@@ -326,42 +326,36 @@ func Run() { //nolint:gocyclo
 			log.Errorf("%s StatusConflict\n", requrl)
 			// Retry until fixed
 			log.Errorf("%s\n", string(contents))
-			return false
-		case http.StatusNotModified: // XXX from zedcloud
-			if !zedcloudCtx.NoLedManager {
-				// Inform ledmanager about brokenness
-				utils.UpdateLedManagerConfig(10)
-			}
-			log.Errorf("%s StatusNotModified\n", requrl)
-			// Retry until fixed
-			log.Errorf("%s\n", string(contents))
-			return false
+			return false, resp, contents
+		case http.StatusNotModified:
+			// Caller needs to handle
+			return false, resp, contents
 		default:
 			log.Errorf("%s statuscode %d %s\n",
 				requrl, resp.StatusCode,
 				http.StatusText(resp.StatusCode))
 			log.Errorf("%s\n", string(contents))
-			return false
+			return false, resp, contents
 		}
 
 		contentType := resp.Header.Get("Content-Type")
 		if contentType == "" {
 			log.Errorf("%s no content-type\n", requrl)
-			return false
+			return false, resp, contents
 		}
 		mimeType, _, err := mime.ParseMediaType(contentType)
 		if err != nil {
 			log.Errorf("%s ParseMediaType failed %v\n", requrl, err)
-			return false
+			return false, resp, contents
 		}
 		switch mimeType {
 		case "application/x-proto-binary", "application/json", "text/plain":
 			log.Debugf("Received reply %s\n", string(contents))
 		default:
 			log.Errorln("Incorrect Content-Type " + mimeType)
-			return false
+			return false, resp, contents
 		}
-		return true
+		return true, resp, contents
 	}
 
 	// Returns true when done; false when retry
@@ -384,40 +378,22 @@ func Run() { //nolint:gocyclo
 			log.Errorln(err)
 			return false
 		}
-		return myPost(tlsConfig, retryCount,
-			serverNameAndPort+"/api/v1/edgedevice/register",
+		requrl := serverNameAndPort + "/api/v1/edgedevice/register"
+		done, resp, contents := myPost(tlsConfig,
+			requrl, retryCount,
 			int64(len(b)), bytes.NewBuffer(b))
-	}
-
-	// Get something
-	// Returns true when done; false when retry.
-	// Returns the response when done. Caller can not use resp.Body but
-	// can use the contents []byte
-	myGet := func(tlsConfig *tls.Config, requrl string, retryCount int) (bool, *http.Response, []byte) {
-
-		zedcloudCtx.TlsConfig = tlsConfig
-		resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx,
-			requrl, 0, nil, retryCount, return400)
-		if err != nil {
-			if rtf {
-				log.Errorf("remoteTemporaryFailure %s", err)
-			} else {
-				log.Errorln(err)
-			}
-			return false, nil, nil
-		}
-
 		switch resp.StatusCode {
-		case http.StatusOK:
-			log.Infof("%s StatusOK\n", requrl)
-			return true, resp, contents
-		default:
-			log.Errorf("%s statuscode %d %s\n",
-				requrl, resp.StatusCode,
-				http.StatusText(resp.StatusCode))
-			log.Errorf("Received %s\n", string(contents))
-			return false, nil, nil
+		case http.StatusNotModified:
+			if !zedcloudCtx.NoLedManager {
+				// Inform ledmanager about brokenness
+				utils.UpdateLedManagerConfig(10)
+			}
+			log.Errorf("%s StatusNotModified\n", requrl)
+			// Retry until fixed
+			log.Errorf("%s\n", string(contents))
+			done = false
 		}
+		return done
 	}
 
 	doGetUUID := func(retryCount int) (bool, uuid.UUID, string, string, string) {
@@ -425,11 +401,21 @@ func Run() { //nolint:gocyclo
 		var contents []byte
 
 		requrl := serverNameAndPort + "/api/v1/edgedevice/config"
-		done, resp, contents = myGet(tlsConfig, requrl, retryCount)
+		b, err := generateConfigRequest()
+		if err != nil {
+			log.Errorln(err)
+			return false, nilUUID, "", "", ""
+		}
+		done, resp, contents = myPost(tlsConfig, requrl, retryCount,
+			int64(len(b)), bytes.NewBuffer(b))
+		switch resp.StatusCode {
+		case http.StatusNotModified:
+			// Acceptable response for a ConfigRequest POST
+			done = true
+		}
 		if !done {
 			return false, nilUUID, "", "", ""
 		}
-		var err error
 		devUUID, hardwaremodel, enterprise, name, err := parseConfig(requrl, resp, contents)
 		if err == nil {
 			// Inform ledmanager about config received from cloud

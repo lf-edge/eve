@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Zededa, Inc.
+// Copyright (c) 2018,2019 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // Utility to dump diagnostic information about connectivity
@@ -6,6 +6,7 @@
 package diag
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/base64"
@@ -13,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -20,7 +22,9 @@ import (
 	"time"
 
 	"github.com/eriknordmark/ipinfo"
+	"github.com/golang/protobuf/proto"
 	"github.com/google/go-cmp/cmp"
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
@@ -587,7 +591,7 @@ func printOutput(ctx *diagContext) {
 			ctx.zedcloudCtx.TlsConfig = tlsConfig
 			continue
 		}
-		if !tryGetUuid(ctx, ifname) {
+		if !tryPostUUID(ctx, ifname) {
 			continue
 		}
 		if isMgmt {
@@ -730,11 +734,11 @@ func tryLookupIP(ctx *diagContext, ifname string) bool {
 	return false
 }
 
-func tryPing(ctx *diagContext, ifname string, requrl string) bool {
+func tryPing(ctx *diagContext, ifname string, reqURL string) bool {
 
 	zedcloudCtx := ctx.zedcloudCtx
-	if requrl == "" {
-		requrl = ctx.serverNameAndPort + "/api/v1/edgedevice/ping"
+	if reqURL == "" {
+		reqURL = ctx.serverNameAndPort + "/api/v1/edgedevice/ping"
 	} else {
 		tlsConfig, err := zedcloud.GetTlsConfig(ctx.serverName,
 			ctx.cert)
@@ -755,7 +759,7 @@ func tryPing(ctx *diagContext, ifname string, requrl string) bool {
 	var delay time.Duration
 	for !done {
 		time.Sleep(delay)
-		done, _, _ = myGet(zedcloudCtx, requrl, ifname, retryCount)
+		done, _, _ = myGet(zedcloudCtx, reqURL, ifname, retryCount)
 		if done {
 			break
 		}
@@ -774,10 +778,22 @@ func tryPing(ctx *diagContext, ifname string, requrl string) bool {
 	return true
 }
 
-func tryGetUuid(ctx *diagContext, ifname string) bool {
+// The most recent config hash we received
+var prevConfigHash string
 
+func tryPostUUID(ctx *diagContext, ifname string) bool {
+
+	log.Debugf("tryPostUUID() sending hash %s", prevConfigHash)
+	configRequest := &zconfig.ConfigRequest{
+		ConfigHash: prevConfigHash,
+	}
+	b, err := proto.Marshal(configRequest)
+	if err != nil {
+		log.Errorln(err)
+		return false
+	}
 	zedcloudCtx := ctx.zedcloudCtx
-	requrl := ctx.serverNameAndPort + "/api/v1/edgedevice/config"
+	reqURL := ctx.serverNameAndPort + "/api/v1/edgedevice/config"
 	// As we ping the cloud or other URLs, don't affect the LEDs
 	zedcloudCtx.NoLedManager = true
 	retryCount := 0
@@ -785,8 +801,12 @@ func tryGetUuid(ctx *diagContext, ifname string) bool {
 	var delay time.Duration
 	for !done {
 		time.Sleep(delay)
-		done, _, _ = myGet(zedcloudCtx, requrl, ifname, retryCount)
+		var resp *http.Response
+		var buf []byte
+		done, resp, buf = myPost(zedcloudCtx, reqURL, ifname, retryCount,
+			int64(len(b)), bytes.NewBuffer(b))
 		if done {
+			parsePrint(reqURL, resp, buf)
 			break
 		}
 		retryCount += 1
@@ -800,50 +820,174 @@ func tryGetUuid(ctx *diagContext, ifname string) bool {
 	return true
 }
 
+func parsePrint(configURL string, resp *http.Response, contents []byte) {
+	if err := validateConfigMessage(configURL, resp); err != nil {
+		log.Errorln("validateConfigMessage: ", err)
+		return
+	}
+
+	if resp.StatusCode == http.StatusNotModified {
+		log.Infof("StatusNotModified")
+		if len(contents) > 0 {
+			log.Infof("XXX StatusNotModified with len %d",
+				len(contents))
+		}
+		return
+	}
+
+	configResponse, err := readConfigResponseProtoMessage(contents)
+	if err != nil {
+		log.Errorln("readConfigResponseProtoMessage: ", err)
+		return
+	}
+	hash := configResponse.GetConfigHash()
+	if hash == prevConfigHash {
+		log.Infof("Same ConfigHash")
+		if len(contents) > 0 {
+			// XXX controller should omit full content
+			log.Infof("XXX len %d hash %s",
+				len(contents), hash)
+		}
+		return
+	}
+	log.Infof("Change in ConfigHash from %s to %s", prevConfigHash, hash)
+	prevConfigHash = hash
+	config := configResponse.GetConfig()
+	uuidStr := strings.TrimSpace(config.GetId().Uuid)
+	log.Infof("Changed ConfigResponse with uuid %s", uuidStr)
+}
+
+// From zedagent/handleconfig.go
+func validateConfigMessage(configURL string, r *http.Response) error {
+
+	var ctTypeStr = "Content-Type"
+	var ctTypeProtoStr = "application/x-proto-binary"
+
+	ct := r.Header.Get(ctTypeStr)
+	if ct == "" {
+		return fmt.Errorf("No content-type")
+	}
+	mimeType, _, err := mime.ParseMediaType(ct)
+	if err != nil {
+		return fmt.Errorf("Get Content-type error")
+	}
+	switch mimeType {
+	case ctTypeProtoStr:
+		return nil
+	default:
+		return fmt.Errorf("Content-type %s not supported",
+			mimeType)
+	}
+}
+
+func readConfigResponseProtoMessage(contents []byte) (*zconfig.ConfigResponse, error) {
+	var configResponse = &zconfig.ConfigResponse{}
+
+	err := proto.Unmarshal(contents, configResponse)
+	if err != nil {
+		log.Errorf("Unmarshalling failed: %v", err)
+		return nil, err
+	}
+	return configResponse, nil
+}
+
 // Get something without a return type; used by ping
 // Returns true when done; false when retry.
 // Returns the response when done. Caller can not use resp.Body but
 // can use the contents []byte
-func myGet(zedcloudCtx *zedcloud.ZedCloudContext, requrl string, ifname string,
+func myGet(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 	retryCount int) (bool, *http.Response, []byte) {
 
-	var preqUrl string
-	if strings.HasPrefix(requrl, "http:") {
-		preqUrl = requrl
-	} else if strings.HasPrefix(requrl, "https:") {
-		preqUrl = requrl
+	var preqURL string
+	if strings.HasPrefix(reqURL, "http:") {
+		preqURL = reqURL
+	} else if strings.HasPrefix(reqURL, "https:") {
+		preqURL = reqURL
 	} else {
-		preqUrl = "https://" + requrl
+		preqURL = "https://" + reqURL
 	}
-	proxyUrl, err := zedcloud.LookupProxy(zedcloudCtx.DeviceNetworkStatus,
-		ifname, preqUrl)
+	proxyURL, err := zedcloud.LookupProxy(zedcloudCtx.DeviceNetworkStatus,
+		ifname, preqURL)
 	if err != nil {
 		fmt.Printf("ERROR: %s: LookupProxy failed: %s\n", ifname, err)
-	} else if proxyUrl != nil {
+	} else if proxyURL != nil {
 		fmt.Printf("INFO: %s: Proxy %s to reach %s\n",
-			ifname, proxyUrl.String(), requrl)
+			ifname, proxyURL.String(), reqURL)
 	}
 	const allowProxy = true
 	resp, contents, rtf, err := zedcloud.SendOnIntf(*zedcloudCtx,
-		requrl, ifname, 0, nil, allowProxy)
+		reqURL, ifname, 0, nil, allowProxy)
 	if err != nil {
 		if rtf {
 			fmt.Printf("ERROR: %s: get %s remote temporary failure: %s\n",
-				ifname, requrl, err)
+				ifname, reqURL, err)
 		} else {
 			fmt.Printf("ERROR: %s: get %s failed: %s\n",
-				ifname, requrl, err)
+				ifname, reqURL, err)
 		}
 		return false, nil, nil
 	}
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		fmt.Printf("INFO: %s: %s StatusOK\n", ifname, requrl)
+		fmt.Printf("INFO: %s: %s StatusOK\n", ifname, reqURL)
+		return true, resp, contents
+	case http.StatusNotModified:
+		fmt.Printf("INFO: %s: %s StatusNotModified\n", ifname, reqURL)
 		return true, resp, contents
 	default:
 		fmt.Printf("ERROR: %s: %s statuscode %d %s\n",
-			ifname, requrl, resp.StatusCode,
+			ifname, reqURL, resp.StatusCode,
+			http.StatusText(resp.StatusCode))
+		fmt.Printf("ERRROR: %s: Received %s\n",
+			ifname, string(contents))
+		return false, nil, nil
+	}
+}
+
+func myPost(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
+	retryCount int, reqlen int64, b *bytes.Buffer) (bool, *http.Response, []byte) {
+
+	var preqURL string
+	if strings.HasPrefix(reqURL, "http:") {
+		preqURL = reqURL
+	} else if strings.HasPrefix(reqURL, "https:") {
+		preqURL = reqURL
+	} else {
+		preqURL = "https://" + reqURL
+	}
+	proxyURL, err := zedcloud.LookupProxy(zedcloudCtx.DeviceNetworkStatus,
+		ifname, preqURL)
+	if err != nil {
+		fmt.Printf("ERROR: %s: LookupProxy failed: %s\n", ifname, err)
+	} else if proxyURL != nil {
+		fmt.Printf("INFO: %s: Proxy %s to reach %s\n",
+			ifname, proxyURL.String(), reqURL)
+	}
+	const allowProxy = true
+	resp, contents, rtf, err := zedcloud.SendOnIntf(*zedcloudCtx,
+		reqURL, ifname, reqlen, b, allowProxy)
+	if err != nil {
+		if rtf {
+			fmt.Printf("ERROR: %s: post %s remote temporary failure: %s\n",
+				ifname, reqURL, err)
+		} else {
+			fmt.Printf("ERROR: %s: get %s failed: %s\n",
+				ifname, reqURL, err)
+		}
+		return false, nil, nil
+	}
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		fmt.Printf("INFO: %s: %s StatusOK\n", ifname, reqURL)
+		return true, resp, contents
+	case http.StatusNotModified:
+		fmt.Printf("INFO: %s: %s StatusNotModified\n", ifname, reqURL)
+		return true, resp, contents
+	default:
+		fmt.Printf("ERROR: %s: %s statuscode %d %s\n",
+			ifname, reqURL, resp.StatusCode,
 			http.StatusText(resp.StatusCode))
 		fmt.Printf("ERRROR: %s: Received %s\n",
 			ifname, string(contents))
