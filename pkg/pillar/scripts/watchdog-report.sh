@@ -33,6 +33,26 @@ echo "Watchdog report done" >>/persist/log/watchdog.log
 CURPART=$(zboot curpart)
 echo "Watchdog report at $DATE: $*" >>/persist/"$CURPART"/reboot-reason
 
+# If a /var/run/<agent.pid> then look for an oom message in dmesg for that agent
+oom=""
+if [ $# -ge 2 ]; then
+    agent=$(echo "$2" | grep '/var/run/.*\.pid' | sed 's,/var/run/\(.*\)\.pid,\1,')
+    if [ -n "$agent" ]; then
+        oom=$(dmesg | grep oom_reaper | grep "$agent")
+    fi
+fi
+if [ -z "$oom" ]; then
+    # Any other oom message?
+    oom=$(dmesg | grep oom_reaper)
+fi
+if [ -z "$oom" ]; then
+    # Any other oom message?
+    oom=$(dmesg | grep "Out of memory")
+fi
+if [ -n "$oom" ]; then
+   echo "$oom" >>/persist/"$CURPART"/reboot-reason
+fi
+
 sync
 sleep 30
 sync
