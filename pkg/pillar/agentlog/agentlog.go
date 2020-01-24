@@ -290,6 +290,13 @@ func logGCStats() {
 	log.Infof("GCStats %+v\n", m)
 }
 
+// LogMemoryUsage provides for user-triggered memory reports
+func LogMemoryUsage() {
+	log.Info("User-triggered memory report")
+	logMemUsage()
+	logGCStats()
+}
+
 func logMemUsage() {
 	var m runtime.MemStats
 
