@@ -2137,7 +2137,9 @@ func rktRun(domainName, xenCfgFilename, imageHash string) (int, string, error) {
 	err = lookForRktRunErrors(string(stdoutStderr))
 	if err != nil {
 		log.Errorln(err.Error())
-		if status := rktStatus(podUUID); status != "running" {
+		// XXX we might be checking to quickly to see the exited status
+		// XXX if status := rktStatus(podUUID); status != "running" {
+		if true {
 			return 0, "", err
 		}
 	}
