@@ -13,7 +13,7 @@ if [ ! -d "$RSYSLOG_WORK_DIR" ]; then
   chmod 644 $RSYSLOG_WORK_DIR
 fi
 
-# XXX IMGB?
-IMGP=IMGA /usr/sbin/rsyslogd
+IMGP=$(cat /run/eve.id 2>/dev/null)
+IMGP=${IMGP:-IMGX} /usr/sbin/rsyslogd
 
 waitforsyslog
