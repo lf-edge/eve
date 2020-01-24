@@ -45,6 +45,25 @@ while [ $# != 0 ]; do
     shift
 done
 
+# Sleep for a bit until /var/run/$1.touch exists
+wait_for_touch() {
+    if [ "$1" = "lisp-ztr" ]; then
+        return
+    fi
+    f=/var/run/"$1".touch
+    waited=0
+    while [ ! -f "$f" ] && [ "$waited" -lt 60 ]; do
+            echo "$(date -Ins -u) waiting for $f"
+            sleep 3
+            waited=$((waited + 3))
+    done
+    if [ ! -f "$f" ]; then
+        echo "$(date -Ins -u) gave up waiting for $f"
+    else
+        echo "$(date -Ins -u) waited $waited for $f"
+    fi
+}
+
 mkdir -p $TMPDIR
 
 if [ -c /dev/watchdog ]; then
@@ -311,9 +330,11 @@ echo '{"BlinkCounter": 1}' > '/var/tmp/zededa/LedBlinkCounter/ledconfig.json'
 if ! pgrep ledmanager >/dev/null; then
     echo "$(date -Ins -u) Starting ledmanager"
     ledmanager &
+    wait_for_touch ledmanager
 fi
 echo "$(date -Ins -u) Starting nodeagent"
 $BINDIR/nodeagent -c $CURPART &
+wait_for_touch nodeagent
 
 # Restart watchdog - just for ledmanager so far
 killwait_watchdog
@@ -402,6 +423,7 @@ done
 # Get IP addresses
 echo "$(date -Ins -u) Starting nim"
 $BINDIR/nim -c $CURPART &
+wait_for_touch nim
 
 # Restart watchdog ledmanager and nim
 killwait_watchdog
@@ -564,15 +586,18 @@ killwait_watchdog
 for AGENT in $AGENTS1; do
     echo "$(date -Ins -u) Starting $AGENT"
     $BINDIR/"$AGENT" -c $CURPART &
+    wait_for_touch "$AGENT"
 done
 
 # Start vaultmgr as a service
 $BINDIR/vaultmgr -c "$CURPART" runAsService &
+wait_for_touch vaultmgr
 
-#If logmanager is already running we don't have to strt it.
+#If logmanager is already running we don't have to start it.
 if ! pgrep logmanager >/dev/null; then
     echo "$(date -Ins -u) Starting logmanager"
     $BINDIR/logmanager -c $CURPART &
+    wait_for_touch logmanager
 fi
 
 # Now run watchdog for all agents
