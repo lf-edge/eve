@@ -49,8 +49,7 @@ func initImpl(agentName string, logdir string, redirect bool,
 
 	if text {
 		logfile := fmt.Sprintf("%s/%s.log", logdir, agentName)
-		logf, err = os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND,
-			0666)
+		logf, err = os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
 			return nil, err
 		}
@@ -330,7 +329,7 @@ func InitWithDirText(agentName string, logdir string, curpart string) (*os.File,
 // Setup and return a logf, but don't redirect our log.*
 func InitChild(agentName string) (*os.File, error) {
 	logdir := GetCurrentLogdir()
-	return initImpl(agentName, logdir, false, false)
+	return initImpl(agentName, logdir, false, true)
 }
 
 var currentIMGdir = ""
