@@ -8,6 +8,7 @@ option go_package = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
 import "devcommon.proto";
+import "cipherinfo.proto";
 
 message SignatureInfo {
 	string intercertsurl = 1;
@@ -41,6 +42,10 @@ message DatastoreConfig {
 
 	// Applies for some datastore types
 	string region = 6;
+
+	bytes  cipherTextPassword = 7;
+
+	CipherInfo CInfo = 8;
 }
 
 

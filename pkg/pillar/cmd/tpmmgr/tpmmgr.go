@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
+	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -846,6 +848,70 @@ func testEcdhAES() error {
 	}
 	fmt.Println(reflect.DeepEqual(msg, recoveredMsg))
 	return nil
+}
+
+// Decryption API, for encrypted object information received from controller
+func DecryptWithCipherInfo(cipherInfo *types.CipherInfo, cipherText []byte) (string, error) {
+	// TBD:XXX, for nodes not having tpm chip, the device private key can be used
+	// which can be wrqpped up inside DecryptWithEcdhKey
+	if !IsTpmEnabled() {
+		return "", errors.New("Not supported")
+	}
+	if cipherInfo == nil || len(cipherText) == 0 {
+		return "", errors.New("Invalid Information")
+	}
+	if cipherInfo.KeyExchangeScheme == zconfig.KeyExchangeScheme_KEA_NONE ||
+		cipherInfo.EncryptionScheme == zconfig.EncryptionScheme_SA_NONE {
+		return "", errors.New("No Encryption")
+	}
+	if cipherInfo.KeyExchangeScheme != zconfig.KeyExchangeScheme_KEA_ECDH ||
+		cipherInfo.EncryptionScheme != zconfig.EncryptionScheme_SA_AES_256_CFB {
+		return "", errors.New("Unsupported Encryption protocols")
+	}
+	// currently, its ecdh/aes256
+	cert, err := getPublicCertInfo(cipherInfo)
+	if err != nil {
+		log.Printf("Could not extract Certificate Information")
+		return "", err
+	}
+	plainText := make([]byte, len(cipherText))
+	err = DecryptSecretWithEcdhKey(cert.X, cert.Y, cipherInfo.InitialValue, cipherText, plainText)
+	if err != nil {
+		fmt.Printf("Decryption failed with error %v\n", err)
+		return "", err
+	}
+	return string(plainText), nil
+}
+
+func getPublicCertInfo(cipherInfo *types.CipherInfo) (*ecdsa.PublicKey, error) {
+	var ecdhPubKey *ecdsa.PublicKey
+	if len(cipherInfo.PublicCert) == 0 || len(cipherInfo.InitialValue) == 0 {
+		return ecdhPubKey, errors.New("Invalid Cipher Information")
+	}
+	// TBD:XXX, validate the sha and signature of the public cert
+
+	block := cipherInfo.PublicCert
+	certs := []*x509.Certificate{}
+	for b, rest := pem.Decode(block); b != nil; b, rest = pem.Decode(rest) {
+		if b.Type == "CERTIFICATE" {
+			c, e := x509.ParseCertificates(b.Bytes)
+			if e != nil {
+				continue
+			}
+			certs = append(certs, c...)
+		}
+	}
+	if len(certs) == 0 {
+		return nil, errors.New("No X509 Certificate")
+	}
+	// use the first valid certificate in the chain
+	switch certs[0].PublicKey.(type) {
+	case *ecdsa.PublicKey:
+		ecdhPubKey = certs[0].PublicKey.(*ecdsa.PublicKey)
+	default:
+		return ecdhPubKey, errors.New("Not ECDSA Key")
+	}
+	return ecdhPubKey, nil
 }
 
 func Run() {

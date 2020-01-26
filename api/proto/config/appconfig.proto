@@ -7,6 +7,7 @@ option go_package  = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
 import "devcommon.proto";
+import "cipherinfo.proto";
 import "storage.proto";
 import "vm.proto";
 import "netconfig.proto";
@@ -49,9 +50,16 @@ message AppInstanceConfig {
     // App Instance initialization configuration data provided by user
     // This will be used as "user-data" in cloud-init
     // Empty string will indicate that cloud-init is not required
+    // to be deprecated, replaced by cipherTextUserData
     string userData = 11;
 
     // Config flag if the app-instance should be made accessible
     // through a remote console session established by the device.
     bool remoteConsole = 12;
+
+    // encrypted userData
+    bytes cipherTextUserData = 13;
+
+    // cipher information to handle encrption/decryption
+    CipherInfo cInfo = 14;
 }

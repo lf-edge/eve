@@ -219,13 +219,15 @@ const (
 )
 
 type DatastoreConfig struct {
-	UUID     uuid.UUID
-	DsType   string
-	Fqdn     string
-	ApiKey   string
-	Password string
-	Dpath    string // depending on DsType, it could be bucket or path
-	Region   string
+	UUID           uuid.UUID
+	DsType         string
+	Fqdn           string
+	ApiKey         string
+	Password       string
+	Dpath          string // depending on DsType, it could be bucket or path
+	Region         string
+	CipherPassword []byte
+	CipherInfo     *CipherInfo
 }
 
 func (config DatastoreConfig) Key() string {

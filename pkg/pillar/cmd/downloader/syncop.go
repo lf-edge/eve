@@ -11,6 +11,7 @@ import (
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -292,6 +293,12 @@ func constructDatastoreContext(config types.DownloaderConfig, status *types.Down
 			downloadURL = downloadURL + "/" + config.Name
 		}
 	}
+	if dst.CipherInfo != nil && len(dst.CipherPassword) != 0 {
+		password, err := cipherDecrypt(dst.CipherInfo, dst.CipherPassword)
+		if len(password) != 0 && err == nil {
+			dst.Password = password
+		}
+	}
 	dsCtx := types.DatastoreContext{
 		DownloadURL:     downloadURL,
 		TransportMethod: dst.DsType,
@@ -306,4 +313,13 @@ func constructDatastoreContext(config types.DownloaderConfig, status *types.Down
 func sourceFailureError(ip, ifname, url string, err error) {
 	log.Errorf("Source IP %s failed: %s\n", ip, err)
 	zedcloud.ZedCloudFailure(ifname, url, 1024, 0)
+}
+
+//  decrypt the cipher text into plain text
+func cipherDecrypt(cipherInfo *types.CipherInfo,
+	cipherText []byte) (string, error) {
+	if !tpmmgr.IsTpmEnabled() || cipherInfo == nil || len(cipherText) == 0 {
+		return "", nil
+	}
+	return tpmmgr.DecryptWithCipherInfo(cipherInfo, cipherText)
 }

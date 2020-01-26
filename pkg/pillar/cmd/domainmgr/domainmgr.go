@@ -29,6 +29,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -1552,7 +1553,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 
 	}
 	// XXX could defer to Activate
-	if config.CloudInitUserData != nil {
+	if config.CloudInitUserData != nil ||
+		len(config.CipherTextUserData) != 0 {
 		if status.IsContainer {
 			envList, err := fetchEnvVariablesFromCloudInit(config)
 			if err != nil {
@@ -2779,6 +2781,12 @@ func fetchEnvVariablesFromCloudInit(config types.DomainConfig) (map[string]strin
 // Create a isofs with user-data and meta-data and add it to DiskStatus
 func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
 
+	if config.CipherInfo != nil && len(config.CipherTextUserData) != 0 {
+		userData, err := cipherDecrypt(config.CipherInfo, config.CipherTextUserData)
+		if len(userData) != 0 && err == nil {
+			config.CloudInitUserData = &userData
+		}
+	}
 	fileName := fmt.Sprintf("%s/%s.cidata",
 		ciDirname, config.UUIDandVersion.UUID.String())
 
@@ -2823,6 +2831,15 @@ func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
 	ds.ReadOnly = false
 	ds.Preserve = true // Prevent attempt to copy
 	return ds, nil
+}
+
+//  decrypt the cipher text into plain text
+func cipherDecrypt(cipherInfo *types.CipherInfo,
+	cipherText []byte) (string, error) {
+	if !tpmmgr.IsTpmEnabled() || cipherInfo == nil || len(cipherText) == 0 {
+		return "", nil
+	}
+	return tpmmgr.DecryptWithCipherInfo(cipherInfo, cipherText)
 }
 
 // mkisofs -output %s -volid cidata -joliet -rock %s, fileName, dir

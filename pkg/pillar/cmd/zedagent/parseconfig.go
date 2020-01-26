@@ -541,6 +541,12 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 			appInstance.CloudInitUserData = &userData
 		}
 		appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
+		if cuserData := cfgApp.GetCipherTextUserData(); len(cuserData) != 0 {
+			appInstance.CipherTextUserData = cuserData
+		}
+		if cipherInfo := parseCipherInfo(cfgApp.CInfo); cipherInfo != nil {
+			appInstance.CipherInfo = cipherInfo
+		}
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
@@ -925,6 +931,12 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		// default to "us-west-2"
 		if datastore.Region == "" {
 			datastore.Region = "us-west-2"
+		}
+		if password := ds.GetCipherTextPassword(); len(password) != 0 {
+			datastore.CipherPassword = password
+		}
+		if cipherInfo := parseCipherInfo(ds.CInfo); cipherInfo != nil {
+			datastore.CipherInfo = cipherInfo
 		}
 		ctx.pubDatastoreConfig.Publish(datastore.Key(), *datastore)
 	}
@@ -2041,6 +2053,22 @@ func unpublishCertObjConfig(getconfigCtx *getconfigContext, uuidStr string) {
 		return
 	}
 	pub.Unpublish(key)
+}
+
+// handle cipher information received from controller
+func parseCipherInfo(config *zconfig.CipherInfo) *types.CipherInfo {
+	if config == nil {
+		return nil
+	}
+	cipherInfo := new(types.CipherInfo)
+	cipherInfo.Id = config.GetId()
+	cipherInfo.KeyExchangeScheme = config.GetKeyExchangeScheme()
+	cipherInfo.EncryptionScheme = config.GetEncryptionScheme()
+	cipherInfo.InitialValue = config.GetInitialValue()
+	cipherInfo.PublicCert = config.GetPublicCert()
+	cipherInfo.Sha256 = config.GetSha256()
+	cipherInfo.Signature = config.GetSignature()
+	return cipherInfo
 }
 
 // Get sha256 for a subset of the protobuf message.
