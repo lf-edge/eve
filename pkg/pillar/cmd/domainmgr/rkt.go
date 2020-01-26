@@ -119,7 +119,7 @@ func rktConvertTarToAci(from, to string) ([]string, error) {
 		Squash:      true,
 		OutputDir:   to,
 		TmpDir:      tmpDir,
-		Compression: common.GzipCompression,
+		Compression: common.NoCompression,
 		Debug:       acilog.NewNopLogger(),
 		Info:        acilog.NewStdLogger(os.Stderr),
 	}
