@@ -382,8 +382,7 @@ func Run() { //nolint:gocyclo
 		done, resp, contents := myPost(tlsConfig,
 			requrl, retryCount,
 			int64(len(b)), bytes.NewBuffer(b))
-		switch resp.StatusCode {
-		case http.StatusNotModified:
+		if resp != nil && resp.StatusCode == http.StatusNotModified {
 			if !zedcloudCtx.NoLedManager {
 				// Inform ledmanager about brokenness
 				utils.UpdateLedManagerConfig(10)
@@ -408,8 +407,7 @@ func Run() { //nolint:gocyclo
 		}
 		done, resp, contents = myPost(tlsConfig, requrl, retryCount,
 			int64(len(b)), bytes.NewBuffer(b))
-		switch resp.StatusCode {
-		case http.StatusNotModified:
+		if resp != nil && resp.StatusCode == http.StatusNotModified {
 			// Acceptable response for a ConfigRequest POST
 			done = true
 		}
