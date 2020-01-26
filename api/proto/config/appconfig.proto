@@ -50,7 +50,7 @@ message AppInstanceConfig {
     // App Instance initialization configuration data provided by user
     // This will be used as "user-data" in cloud-init
     // Empty string will indicate that cloud-init is not required
-    // to be deprecated, replaced by cipherTextUserData
+    // to be deprecated, use cipherTextUserData instead
     string userData = 11;
 
     // Config flag if the app-instance should be made accessible

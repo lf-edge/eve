@@ -96,7 +96,7 @@ type AppInstanceConfig struct {
 	// App Instance initialization configuration data provided by user
 	// This will be used as "user-data" in cloud-init
 	// Empty string will indicate that cloud-init is not required
-	// to be deprecated, replaced by cipherTextUserData
+	// to be deprecated, use cipherTextUserData instead
 	UserData string `protobuf:"bytes,11,opt,name=userData,proto3" json:"userData,omitempty"`
 	// Config flag if the app-instance should be made accessible
 	// through a remote console session established by the device.

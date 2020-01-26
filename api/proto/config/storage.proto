@@ -35,7 +35,8 @@ message DatastoreConfig {
 
 	string apiKey = 3;
 
-	string password = 4;
+    // to be decrypted, use cipherTextPassword instead
+    string password = 4;
 
 	// depending on datastore types, it could be bucket or path
 	string dpath = 5;
@@ -43,9 +44,9 @@ message DatastoreConfig {
 	// Applies for some datastore types
 	string region = 6;
 
-	bytes  cipherTextPassword = 7;
+    bytes cipherTextPassword = 7;
 
-	CipherInfo CInfo = 8;
+    CipherInfo CInfo = 8;
 }
 
 
