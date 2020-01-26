@@ -10,9 +10,10 @@ CONFIGDIR=/config
 PERSISTDIR=/persist
 PERSIST_RKT_DATA_DIR=$PERSISTDIR/rkt
 BINDIR=/opt/zededa/bin
-TMPDIR=/var/tmp/zededa
-DPCDIR=$TMPDIR/DevicePortConfig
-FIRSTBOOTFILE=$TMPDIR/first-boot
+TMPDIR=/persist/tmp
+ZTMPDIR=/var/tmp/zededa
+DPCDIR=$ZTMPDIR/DevicePortConfig
+FIRSTBOOTFILE=$ZTMPDIR/first-boot
 GCDIR=$PERSISTDIR/config/GlobalConfig
 LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
@@ -64,7 +65,14 @@ wait_for_touch() {
     fi
 }
 
+mkdir -p $ZTMPDIR
+if [ -d $TMPDIR ]; then
+    echo "$(date -Ins -u) Old TMPDIR files:"
+    ls -lt $TMPDIR
+    rm -rf $TMPDIR
+fi
 mkdir -p $TMPDIR
+export TMPDIR
 
 if [ -c /dev/watchdog ]; then
     if [ $USE_HW_WATCHDOG = 0 ]; then
@@ -98,14 +106,14 @@ fi
 # Create the watchdog(8) config files we will use
 # XXX should we enable realtime in the kernel?
 if [ $USE_HW_WATCHDOG = 1 ]; then
-    cat >$TMPDIR/watchdogbase.conf <<EOF
+    cat >$ZTMPDIR/watchdogbase.conf <<EOF
 watchdog-device = /dev/watchdog
 EOF
 else
-    cat >$TMPDIR/watchdogbase.conf <<EOF
+    cat >$ZTMPDIR/watchdogbase.conf <<EOF
 EOF
 fi
-cat >>$TMPDIR/watchdogbase.conf <<EOF
+cat >>$ZTMPDIR/watchdogbase.conf <<EOF
 admin =
 #realtime = yes
 #priority = 1
@@ -127,8 +135,8 @@ EOF
 # services.linuxkit/ntpd/init.pid
 # services.linuxkit/guacd/init.pid
 
-cp $TMPDIR/watchdogbase.conf $TMPDIR/watchdogled.conf
-cat >>$TMPDIR/watchdogled.conf <<EOF
+cp $ZTMPDIR/watchdogbase.conf $ZTMPDIR/watchdogled.conf
+cat >>$ZTMPDIR/watchdogled.conf <<EOF
 pidfile = /var/run/ledmanager.pid
 file = /var/run/ledmanager.touch
 change = 300
@@ -136,14 +144,14 @@ pidfile = /var/run/nodeagent.pid
 file = /var/run/nodeagent.touch
 change = 300
 EOF
-cp $TMPDIR/watchdogled.conf $TMPDIR/watchdognim.conf
-cat >> $TMPDIR/watchdognim.conf <<EOF
+cp $ZTMPDIR/watchdogled.conf $ZTMPDIR/watchdognim.conf
+cat >> $ZTMPDIR/watchdognim.conf <<EOF
 pidfile = /var/run/nim.pid
 file = /var/run/nim.touch
 change = 300
 EOF
-cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogclient.conf
-cat >>$TMPDIR/watchdogclient.conf <<EOF
+cp $ZTMPDIR/watchdogled.conf $ZTMPDIR/watchdogclient.conf
+cat >>$ZTMPDIR/watchdogclient.conf <<EOF
 pidfile = /var/run/zedclient.pid
 pidfile = /var/run/nim.pid
 pidfile = /var/run/ntpd.pid
@@ -151,17 +159,17 @@ file = /var/run/nim.touch
 change = 300
 EOF
 
-cp $TMPDIR/watchdogled.conf $TMPDIR/watchdogall.conf
-echo "pidfile = /var/run/ntpd.pid" >>$TMPDIR/watchdogall.conf
+cp $ZTMPDIR/watchdogled.conf $ZTMPDIR/watchdogall.conf
+echo "pidfile = /var/run/ntpd.pid" >>$ZTMPDIR/watchdogall.conf
 for AGENT in $AGENTS; do
-    echo "pidfile = /var/run/$AGENT.pid" >>$TMPDIR/watchdogall.conf
+    echo "pidfile = /var/run/$AGENT.pid" >>$ZTMPDIR/watchdogall.conf
     if [ "$AGENT" = "lisp-ztr" ]; then
         continue
     fi
-    echo "file = /var/run/$AGENT.touch" >>$TMPDIR/watchdogall.conf
-    echo "change = 300" >>$TMPDIR/watchdogall.conf
+    echo "file = /var/run/$AGENT.touch" >>$ZTMPDIR/watchdogall.conf
+    echo "change = 300" >>$ZTMPDIR/watchdogall.conf
     if [ "$AGENT" = "zedagent" ]; then
-        cat >>$TMPDIR/watchdogall.conf <<EOF
+        cat >>$ZTMPDIR/watchdogall.conf <<EOF
 file = /var/run/${AGENT}config.touch
 change = 300
 file = /var/run/${AGENT}metrics.touch
@@ -194,13 +202,13 @@ killwait_watchdog
 
 # In case watchdog is running we restart it with the base file
 # Always run watchdog(8) in case we have a hardware watchdog timer to advance
-/usr/sbin/watchdog -c $TMPDIR/watchdogbase.conf -F -s &
+/usr/sbin/watchdog -c $ZTMPDIR/watchdogbase.conf -F -s &
 
 if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
 fi
 
-DIRS="$CONFIGDIR $TMPDIR $CONFIGDIR/DevicePortConfig"
+DIRS="$CONFIGDIR $ZTMPDIR $CONFIGDIR/DevicePortConfig"
 
 for d in $DIRS; do
     d1=$(dirname "$d")
@@ -331,7 +339,7 @@ wait_for_touch nodeagent
 
 # Restart watchdog - just for ledmanager so far
 killwait_watchdog
-/usr/sbin/watchdog -c $TMPDIR/watchdogled.conf -F -s &
+/usr/sbin/watchdog -c $ZTMPDIR/watchdogled.conf -F -s &
 
 mkdir -p $DPCDIR
 
@@ -420,7 +428,7 @@ wait_for_touch nim
 
 # Restart watchdog ledmanager and nim
 killwait_watchdog
-/usr/sbin/watchdog -c $TMPDIR/watchdognim.conf -F -s &
+/usr/sbin/watchdog -c $ZTMPDIR/watchdognim.conf -F -s &
 
 # Print diag output forever on changes
 $BINDIR/diag -c $CURPART -f >/dev/console 2>&1 &
@@ -456,7 +464,7 @@ done
 
 # Restart watchdog ledmanager, client, and nim
 killwait_watchdog
-/usr/sbin/watchdog -c $TMPDIR/watchdogclient.conf -F -s &
+/usr/sbin/watchdog -c $ZTMPDIR/watchdogclient.conf -F -s &
 
 if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
@@ -498,7 +506,7 @@ fi
 access_usb
 
 if [ $SELF_REGISTER = 1 ]; then
-    rm -f $TMPDIR/zedrouterconfig.json
+    rm -f $ZTMPDIR/zedrouterconfig.json
 
     # Persistently remember we haven't finished selfRegister in case the device
     # is powered off
@@ -574,7 +582,7 @@ echo \{\"MaxSpace\":"$space"\} >/var/tmp/zededa/GlobalDownloadConfig/global.json
 
 # Restart watchdog ledmanager and nim
 killwait_watchdog
-/usr/sbin/watchdog -c $TMPDIR/watchdognim.conf -F -s &
+/usr/sbin/watchdog -c $ZTMPDIR/watchdognim.conf -F -s &
 
 for AGENT in $AGENTS1; do
     echo "$(date -Ins -u) Starting $AGENT"
@@ -595,7 +603,7 @@ fi
 
 # Now run watchdog for all agents
 killwait_watchdog
-/usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
+/usr/sbin/watchdog -c $ZTMPDIR/watchdogall.conf -F -s &
 
 blockdev --flushbufs "$CONFIGDEV"
 
@@ -610,7 +618,7 @@ fi
 sleep 5
 ps -ef
 # XXX redundant but doesn't always start
-/usr/sbin/watchdog -c $TMPDIR/watchdogall.conf -F -s &
+/usr/sbin/watchdog -c $ZTMPDIR/watchdogall.conf -F -s &
 
 echo "$(date -Ins -u) Done starting EVE version: $(cat $BINDIR/versioninfo)"
 
