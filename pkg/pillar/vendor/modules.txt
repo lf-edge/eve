@@ -132,7 +132,6 @@ github.com/google/go-cmp/cmp/internal/value
 # github.com/google/go-containerregistry v0.0.0-20200123184029-53ce695e4179
 github.com/google/go-containerregistry/pkg/legacy/tarball
 github.com/google/go-containerregistry/pkg/name
-github.com/google/go-containerregistry/pkg/v1/remote
 github.com/google/go-containerregistry/pkg/v1/tarball
 github.com/google/go-containerregistry/pkg/v1
 github.com/google/go-containerregistry/pkg/authn
@@ -140,15 +139,9 @@ github.com/google/go-containerregistry/pkg/v1/remote
 github.com/google/go-containerregistry/pkg/legacy
 github.com/google/go-containerregistry/pkg/v1/partial
 github.com/google/go-containerregistry/pkg/v1/types
-<<<<<<< HEAD
 github.com/google/go-containerregistry/pkg/v1/v1util
 github.com/google/go-containerregistry/pkg/logs
 github.com/google/go-containerregistry/pkg/internal/retry
-=======
-github.com/google/go-containerregistry/pkg/logs
-github.com/google/go-containerregistry/pkg/internal/retry
-github.com/google/go-containerregistry/pkg/v1/partial
->>>>>>> 760dc39e... object level security at transit
 github.com/google/go-containerregistry/pkg/v1/remote/transport
 github.com/google/go-containerregistry/pkg/internal/retry/wait
 # github.com/google/go-tpm v0.1.1 => github.com/cshari-zededa/go-tpm v0.0.0-20200113112746-a8476c2d6eb3
