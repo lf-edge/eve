@@ -58,16 +58,12 @@ func initImpl(agentName string, logdir string, redirect bool,
 		if text {
 			log.SetOutput(logf)
 		} else if logToSyslog {
-			log.SetOutput(ioutil.Discard)
-			syslogFlags := syslog.LOG_INFO | syslog.LOG_DEBUG | syslog.LOG_ERR |
-				syslog.LOG_NOTICE | syslog.LOG_WARNING | syslog.LOG_CRIT |
-				syslog.LOG_ALERT | syslog.LOG_EMERG
-			hook, err := lSyslog.NewSyslogHook("", "", syslogFlags, agentName)
-			if err == nil {
-				log.AddHook(hook)
-			} else {
-				fmt.Printf("NewSyslogHook fatal failed %s: %s\n", agentName, err)
-				return nil, err
+			err := setupSyslog(agentName)
+			if err != nil {
+				fmt.Printf("setupSyslog failed %s: %s\n",
+					agentName, err)
+				log.SetOutput(os.Stdout)
+				// Let application continue
 			}
 		} else {
 			log.SetOutput(os.Stdout)
@@ -96,6 +92,31 @@ func initImpl(agentName string, logdir string, redirect bool,
 		go handleSignals(sigs)
 	}
 	return logf, nil
+}
+
+func setupSyslog(agentName string) error {
+	log.SetOutput(ioutil.Discard)
+	syslogFlags := syslog.LOG_INFO | syslog.LOG_DEBUG | syslog.LOG_ERR |
+		syslog.LOG_NOTICE | syslog.LOG_WARNING | syslog.LOG_CRIT |
+		syslog.LOG_ALERT | syslog.LOG_EMERG
+
+	maxCount := 10
+	var err error
+	for count := 0; count < maxCount; count++ {
+		hook, err1 := lSyslog.NewSyslogHook("", "", syslogFlags, agentName)
+		if err1 != nil {
+			err = err1
+			fmt.Printf("NewSyslogHook failed %s retry: %s\n",
+				agentName, err)
+			time.Sleep(time.Second)
+			continue
+		}
+		log.AddHook(hook)
+		return nil
+	}
+	fmt.Printf("NewSyslogHook failed %s bail: %s\n",
+		agentName, err)
+	return err
 }
 
 // FatalHook is used make sure we save the fatal and panic strings to a file
