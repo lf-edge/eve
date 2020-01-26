@@ -871,13 +871,14 @@ func DecryptWithCipherInfo(cipherInfo *types.CipherInfo, cipherText []byte) (str
 	// currently, its ecdh/aes256
 	cert, err := getPublicCertInfo(cipherInfo)
 	if err != nil {
-		log.Printf("Could not extract Certificate Information")
+		log.Errorf("Could not extract Certificate Information")
 		return "", err
 	}
 	plainText := make([]byte, len(cipherText))
-	err = DecryptSecretWithEcdhKey(cert.X, cert.Y, cipherInfo.InitialValue, cipherText, plainText)
+	err = DecryptSecretWithEcdhKey(cert.X, cert.Y,
+			cipherInfo.InitialValue, cipherText, plainText)
 	if err != nil {
-		fmt.Printf("Decryption failed with error %v\n", err)
+		log.Errorf("Decryption failed with error %v\n", err)
 		return "", err
 	}
 	return string(plainText), nil
