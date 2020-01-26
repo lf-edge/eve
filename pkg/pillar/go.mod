@@ -19,7 +19,7 @@ require (
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/golang/protobuf v1.3.2
 	github.com/google/go-cmp v0.2.0
-	github.com/google/go-containerregistry v0.0.0-20191218175032-34fb8ff33bed
+	github.com/google/go-containerregistry v0.0.0-20200123184029-53ce695e4179
 	github.com/google/go-tpm v0.1.1
 	github.com/google/gopacket v1.1.16
 	github.com/gorilla/websocket v1.4.0

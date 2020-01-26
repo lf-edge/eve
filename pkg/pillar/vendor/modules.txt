@@ -129,7 +129,7 @@ github.com/google/go-cmp/cmp
 github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/function
 github.com/google/go-cmp/cmp/internal/value
-# github.com/google/go-containerregistry v0.0.0-20191218175032-34fb8ff33bed
+# github.com/google/go-containerregistry v0.0.0-20200123184029-53ce695e4179
 github.com/google/go-containerregistry/pkg/legacy/tarball
 github.com/google/go-containerregistry/pkg/name
 github.com/google/go-containerregistry/pkg/v1/tarball
