@@ -79,10 +79,10 @@ type VmConfig struct {
 type VmMode uint8
 
 const (
-	PV     VmMode = iota + 0 // Default
-	HVM           = iota + 1
-	Filler        = iota + 2 // PVH
-	FML           = iota + 3 // Experimental machine learning mode
+	PV VmMode = iota + 0 // Default
+	HVM
+	Filler
+	FML
 )
 
 type DomainStatus struct {
