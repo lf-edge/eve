@@ -39,8 +39,29 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Also report usage for these paths
-var reportPaths = []string{"/", types.IdentityDirname, types.PersistDir}
+// Report disk usage for these paths
+var reportDiskPaths = []string{
+	"/",
+	types.IdentityDirname,
+	types.PersistDir,
+}
+
+// Report directory usage for these paths
+var reportDirPaths = []string{
+	types.PersistDir,
+	types.PersistDir + "/downloads",
+	types.PersistDir + "/img",
+	types.PersistDir + "/tmp",
+	types.PersistDir + "/log",
+	types.PersistDir + "/rsyslog",
+	types.PersistDir + "/config",
+	types.PersistDir + "/status",
+	types.PersistDir + "/certs",
+	types.PersistDir + "/checkpoint",
+	types.PersistDir + "/rkt",
+	types.PersistDir + "/IMGA",
+	types.PersistDir + "/IMGB",
+}
 
 // Application-related files live here; includes downloads and verifications in progress
 var appPersistPaths = []string{
@@ -437,7 +458,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		// XXX do we have a mountpath? Combine with paths below if same?
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
-	for _, path := range reportPaths {
+	for _, path := range reportDiskPaths {
 		u, err := disk.Usage(path)
 		if err != nil {
 			// Happens e.g., if we don't have a /persist
@@ -450,6 +471,14 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 			Total: RoundToMbytes(u.Total),
 			Used:  RoundToMbytes(u.Used),
 			Free:  RoundToMbytes(u.Free),
+		}
+		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
+	}
+	for _, path := range reportDirPaths {
+		usage := diskmetrics.SizeFromDir(path)
+		log.Debugf("Path %s usage %d", path, usage)
+		metric := metrics.DiskMetric{MountPath: path,
+			Used: RoundToMbytes(usage),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
@@ -479,6 +508,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		metric := metrics.DiskMetric{
 			Disk:  vs.Name,
 			Total: RoundToMbytes(uint64(vs.Size)),
+			Used:  RoundToMbytes(uint64(vs.Size)),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
@@ -494,6 +524,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		metric := metrics.DiskMetric{
 			Disk:  ds.Name,
 			Total: RoundToMbytes(uint64(ds.Size)),
+			Used:  RoundToMbytes(uint64(ds.Size)),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
@@ -789,7 +820,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			ReportDeviceInfo.Storage += *proto.Uint64(size)
 		}
 	}
-	for _, path := range reportPaths {
+	for _, path := range reportDiskPaths {
 		u, err := disk.Usage(path)
 		if err != nil {
 			// Happens e.g., if we don't have a /persist
