@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	dbg "runtime/debug"
 	"strings"
 
 	docker2aci "github.com/appc/docker2aci/lib"
@@ -19,7 +18,6 @@ import (
 	legacytarball "github.com/google/go-containerregistry/pkg/legacy/tarball"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1tarball "github.com/google/go-containerregistry/pkg/v1/tarball"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -72,14 +70,12 @@ func rktConvertTarToAci(from, to string) ([]string, error) {
 	// first convert from v1 to legacy
 	log.Infof("rktConvertAciTar: converting v1 tarball %s to legacy tarball %s", from, legacyPath)
 	img, err := v1tarball.ImageFromPath(from, nil)
-	dbg.FreeOSMemory()
 	if err != nil {
 		return nil, fmt.Errorf("unable to get image from v1 tarball %s input: %v", from, err)
 	}
 	// get the tag
 	if convertTag == "" {
 		tags, err := getTagsFromV1Tar(from)
-		dbg.FreeOSMemory()
 		if err != nil {
 			return nil, fmt.Errorf("unable to read tags from v1 tar at %s: %v", from, err)
 		}
@@ -108,9 +104,6 @@ func rktConvertTarToAci(from, to string) ([]string, error) {
 		return nil, fmt.Errorf("unable to write legacy tar file %s: %v", legacyPath, err)
 	}
 	w.Close()
-	img = nil // Attempt to unref memory
-	dbg.FreeOSMemory()
-
 	log.Infof("rktConvertAciTar: done converting v1 tarball %s to legacy tarball %s", from, legacyPath)
 
 	log.Infof("rktConvertAciTar: converting legacy tarball %s to aci file", legacyPath)
@@ -129,7 +122,6 @@ func rktConvertTarToAci(from, to string) ([]string, error) {
 		DockerURL:    "",
 	}
 	aciFiles, err := docker2aci.ConvertSavedFile(legacyPath, fileConfig)
-	dbg.FreeOSMemory()
 	if err != nil {
 		return nil, fmt.Errorf("docker2aci error: %v", err)
 	}
@@ -145,7 +137,6 @@ func rktConvertTarToAci(from, to string) ([]string, error) {
 func ociToRktImageHash(ociFilename string) (string, error) {
 	// first get the list of hashes available in rkt already
 	hashes, err := rktGetHashes()
-	dbg.FreeOSMemory()
 	if err != nil {
 		return "", fmt.Errorf("error getting rkt hashes: %v", err)
 	}
@@ -153,7 +144,6 @@ func ociToRktImageHash(ociFilename string) (string, error) {
 	// we are assuming that there is only one repo tag in the "repositories" file.
 	// this will not be true long-run, but this all goes away when rkt does.
 	dockerHash, err := ociGetHash(ociFilename)
-	dbg.FreeOSMemory()
 	if err != nil {
 		log.Errorf(err.Error())
 		return "", fmt.Errorf("error getting hash of repository for OCI file %s: %v", ociFilename, err)
@@ -171,8 +161,6 @@ func ociToRktImageHash(ociFilename string) (string, error) {
 	}
 	defer os.RemoveAll(tmpDir)
 	aciFiles, err := rktConvertTarToAci(ociFilename, tmpDir)
-	dbg.FreeOSMemory()
-	agentlog.LogMemoryUsage()
 	if err != nil {
 		return "", fmt.Errorf("unable to convert %s to aci: %v", ociFilename, err)
 	}
