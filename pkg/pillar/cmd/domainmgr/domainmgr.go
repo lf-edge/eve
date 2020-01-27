@@ -85,6 +85,8 @@ type domainContext struct {
 	usbAccess              bool
 	createSema             sema.Semaphore
 	GCInitialized          bool
+	vdiskGCTime            uint32 // In seconds
+	domainBootRetryTime    uint32 // In seconds
 }
 
 // appRwImageName - Returns name of the image ( including parent dir )
@@ -112,9 +114,7 @@ func (ctx *domainContext) publishAssignableAdapters() {
 }
 
 var debug = false
-var debugOverride bool                                     // From command line arg
-var vdiskGCTime = time.Duration(3600) * time.Second        // Unless from GlobalConfig
-var domainBootRetryTime = time.Duration(600) * time.Second // Unless from GlobalConfig
+var debugOverride bool // From command line arg
 
 func Run() {
 	handlersInit()
@@ -191,7 +191,12 @@ func Run() {
 		}
 	}
 
-	domainCtx := domainContext{usbAccess: true}
+	// These settings can be overridden by GlobalConfig
+	domainCtx := domainContext{
+		usbAccess:           true,
+		vdiskGCTime:         3600,
+		domainBootRetryTime: 600,
+	}
 	aa := types.AssignableAdapters{}
 	domainCtx.assignableAdapters = &aa
 
@@ -339,7 +344,8 @@ func Run() {
 	// We run timer 10 times more often than the limit on LastUse
 	// Update the LastUse again here since it may not get updated since the
 	// device reboot if network is not available
-	gc := time.NewTicker(vdiskGCTime / 10)
+	duration := time.Duration(domainCtx.vdiskGCTime / 10)
+	gc := time.NewTicker(duration * time.Second)
 	gcResetObjectsLastUse(&domainCtx, rwImgDirname)
 
 	for {
@@ -525,9 +531,10 @@ func gcObjects(ctx *domainContext, dirName string) {
 			continue
 		}
 		timePassed := time.Since(status.LastUse)
-		if timePassed < vdiskGCTime {
+		timeLimit := time.Duration(ctx.vdiskGCTime) * time.Second
+		if timePassed < timeLimit {
 			log.Debugf("gcObjects: skipping recently used %s remains %d seconds\n",
-				status.Key(), (timePassed-vdiskGCTime)/time.Second)
+				status.Key(), (timePassed-timeLimit)/time.Second)
 			continue
 		}
 		log.Infof("gcObjects: removing %s LastUse %v now %v: %s\n",
@@ -801,10 +808,11 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 
 	t := time.Now()
 	elapsed := t.Sub(status.LastErrTime)
-	if elapsed < domainBootRetryTime {
-		log.Infof("maybeRetryBoot(%s) %d remaining\n",
+	timeLimit := time.Duration(ctx.domainBootRetryTime) * time.Second
+	if elapsed < timeLimit {
+		log.Infof("maybeRetryBoot(%s) %v remaining\n",
 			status.Key(),
-			(domainBootRetryTime-elapsed)/time.Second)
+			(timeLimit-elapsed)/time.Second)
 		return
 	}
 	log.Infof("maybeRetryBoot(%s) after %s at %v\n",
@@ -1289,7 +1297,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 					status.DomainName, err)
 			} else {
 				// Wait for the domain to go away
-				log.Infof("doInactivate(%v) for %s: waiting for domain to shutdown\n",
+				log.Infof("doInactivate(%v) for %s: waiting for domain to poweroff\n",
 					status.UUIDandVersion, status.DisplayName)
 			}
 			gone = waitForDomainGone(*status, maxDelay)
@@ -1953,7 +1961,7 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 			delay = 2 * (delay + time.Second)
 			if delay > maxDelay {
 				// Give up
-				log.Infof("waitForDomainGone(%v) for %s: giving up\n",
+				log.Warnf("waitForDomainGone(%v) for %s: giving up\n",
 					status.UUIDandVersion, status.DisplayName)
 				break
 			}
@@ -2594,10 +2602,10 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		debugOverride)
 	if gcp != nil {
 		if gcp.VdiskGCTime != 0 {
-			vdiskGCTime = time.Duration(gcp.VdiskGCTime) * time.Second
+			ctx.vdiskGCTime = gcp.VdiskGCTime
 		}
 		if gcp.DomainBootRetryTime != 0 {
-			domainBootRetryTime = time.Duration(gcp.DomainBootRetryTime) * time.Second
+			ctx.domainBootRetryTime = gcp.DomainBootRetryTime
 		}
 		if gcp.UsbAccess != ctx.usbAccess {
 			ctx.usbAccess = gcp.UsbAccess
