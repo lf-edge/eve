@@ -336,6 +336,12 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	@$(DOCKER_GO) "dep ensure -update $(GODEP_NAME)" $(dir $@)
 	@echo Done updating $@
 
+oldimages:
+	./tools/oldimages.sh
+
+imageclean:
+	docker rmi -f $(shell ./tools/oldimages.sh)
+
 .PHONY: all clean test run pkgs help build-tools live rootfs config installer live FORCE $(DIST) HOSTARCH
 FORCE:
 

@@ -1,0 +1,2 @@
+#!/bin/sh
+zboot curpart > /run/eve.id

@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -56,8 +57,9 @@ func handleSyncOp(ctx *downloaderContext, key string,
 		}
 	}
 
-	filename := config.Name // XXX set for containers?
-	locFilename = locFilename + "/" + config.Name
+	// Handle names which are paths
+	filename := path.Base(config.Name)
+	locFilename = locFilename + "/" + filename
 
 	log.Infof("Downloading <%s> to <%s> using %v allow non-free port\n",
 		config.Name, locFilename, config.AllowNonFreePort)

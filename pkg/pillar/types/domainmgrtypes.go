@@ -81,7 +81,8 @@ type VmMode uint8
 const (
 	PV VmMode = iota + 0 // Default
 	HVM
-	// PVH
+	Filler
+	FML
 )
 
 type DomainStatus struct {

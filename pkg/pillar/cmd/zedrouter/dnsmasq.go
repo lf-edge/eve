@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -353,36 +352,20 @@ func startDnsmasq(bridgeName string) {
 	log.Infof("startDnsmasq(%s)\n", bridgeName)
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	name := "nohup"
-	//    XXX currently running as root with -d above
 	args := []string{
 		"/opt/zededa/bin/dnsmasq",
-		"-d",
 		"-C",
 		cfgPathname,
 	}
-	logFilename := fmt.Sprintf("dnsmasq.%s", bridgeName)
-	logf, err := agentlog.InitChild(logFilename)
-	if err != nil {
-		log.Fatalf("startDnsmasq agentlog failed: %s\n", err)
-	}
-	w := bufio.NewWriter(logf)
-	ts := time.Now().Format(time.RFC3339Nano)
-	fmt.Fprintf(w, "%s Starting %s %v\n", ts, name, args)
 	cmd := exec.Command(name, args...)
-	// Report nano timestamps
-	formatter := log.JSONFormatter{
-		TimestampFormat: time.RFC3339Nano,
-	}
-	var tslog = &log.Logger{
-		Out:       logf,
-		Formatter: &formatter,
-		Hooks:     make(log.LevelHooks),
-		Level:     log.InfoLevel,
-	}
-	cmd.Stdout = tslog.Writer()
-	cmd.Stderr = tslog.Writer()
 	log.Infof("Calling command %s %v\n", name, args)
-	go cmd.Run()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Errorf("startDnsmasq: Failed starting dnsmasq for bridge %s (%s)",
+			bridgeName, err)
+	} else {
+		log.Infof("startDnsmasq: Started dnsmasq with output: %s", out)
+	}
 }
 
 //    pkill -u nobody -f dnsmasq.${BRIDGENAME}.conf
@@ -390,7 +373,6 @@ func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 
 	log.Infof("stopDnsmasq(%s)\n", bridgeName)
 	cfgFilename := dnsmasqConfigFile(bridgeName)
-	// XXX currently running as root with -d above
 	pkillUserArgs("root", cfgFilename, printOnError)
 
 	if delConfiglet {

@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	dbg "runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -144,6 +145,8 @@ func Run() {
 	}
 	log.Infof("Starting %s\n", agentName)
 
+	dbg.SetGCPercent(20)
+
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	agentlog.StillRunning(agentName, warningTime, errorTime)
@@ -213,6 +216,7 @@ func Run() {
 	// Publish existing images with RefCount zero
 	populateInitialImageStatus(&domainCtx, rwImgDirname)
 	pubImageStatus.SignalRestarted()
+	dbg.FreeOSMemory()
 
 	pubAssignableAdapters, err := pubsublegacy.Publish(agentName,
 		types.AssignableAdapters{})
@@ -749,7 +753,8 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			publishDomainStatus(ctx, status)
 		}
 		// check if qemu processes has crashed
-		if status.Activated && (status.VirtualizationMode == types.HVM || status.IsContainer) && !isQemuRunning(status.DomainId) {
+		hasQemu := status.VirtualizationMode == types.HVM || status.VirtualizationMode == types.FML || status.IsContainer
+		if status.Activated && hasQemu && !isQemuRunning(status.DomainId) {
 			errStr := fmt.Sprintf("verifyStatus(%s) qemu crashed",
 				status.Key())
 			log.Errorf(errStr)
@@ -1242,7 +1247,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 }
 
 // shutdown and wait for the domain to go away; if that fails destroy and wait
-func doInactivate(ctx *domainContext, status *types.DomainStatus) {
+func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool) {
 
 	log.Infof("doInactivate(%v) for %s\n",
 		status.UUIDandVersion, status.DisplayName)
@@ -1251,15 +1256,21 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus) {
 		status.DomainId = domainID
 	}
 	maxDelay := time.Second * 600 // 10 minutes
+	if impatient {
+		maxDelay /= 10
+	}
 	if status.DomainId != 0 {
 		status.State = types.HALTING
 		publishDomainStatus(ctx, status)
 
 		switch status.VirtualizationMode {
-		case types.HVM:
+		case types.HVM, types.FML:
 			// Do a short shutdown wait, then a shutdown -F
 			// just in case there are PV tools in guest
 			shortDelay := time.Second * 60
+			if impatient {
+				shortDelay /= 10
+			}
 			if err := DomainShutdown(*status, false); err != nil {
 				log.Errorf("DomainShutdown %s failed: %s\n",
 					status.DomainName, err)
@@ -1541,7 +1552,8 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 		xen_type = "pvh"
 		extra = "console=hvc0 " + uuidStr + config.ExtraArgs
 		kernel = "/usr/lib/xen/boot/ovmf-pvh.bin"
-	case types.HVM:
+	case types.HVM, types.FML:
+		// XXX fill in FML differences
 		xen_type = "hvm"
 		if config.Kernel != "" {
 			kernel = config.Kernel
@@ -1719,7 +1731,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 				log.Infof("Adding ioport <%s>\n", ib.Ioports)
 				ioportsAssignments = addNoDuplicate(ioportsAssignments, ib.Ioports)
 			}
-			if ib.Serial != "" && config.VirtualizationMode == types.HVM {
+			if ib.Serial != "" && (config.VirtualizationMode == types.HVM || config.VirtualizationMode == types.FML) {
 				log.Infof("Adding serial <%s>\n", ib.Serial)
 				serialAssignments = addNoDuplicate(serialAssignments, ib.Serial)
 			}
@@ -1857,7 +1869,7 @@ func handleModify(ctx *domainContext, key string,
 			status.LastErr = ""
 			status.LastErrTime = time.Time{}
 			publishDomainStatus(ctx, status)
-			doInactivate(ctx, status)
+			doInactivate(ctx, status, false)
 		}
 		updateStatusFromConfig(status, *config)
 		doActivate(ctx, *config, status)
@@ -1869,11 +1881,11 @@ func handleModify(ctx *domainContext, key string,
 			status.LastErr = ""
 			status.LastErrTime = time.Time{}
 			publishDomainStatus(ctx, status)
-			doInactivate(ctx, status)
+			doInactivate(ctx, status, false)
 			updateStatusFromConfig(status, *config)
 			changed = true
 		} else if status.Activated {
-			doInactivate(ctx, status)
+			doInactivate(ctx, status, false)
 			updateStatusFromConfig(status, *config)
 			changed = true
 		}
@@ -1979,7 +1991,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	publishDomainStatus(ctx, status)
 
 	if status.Activated {
-		doInactivate(ctx, status)
+		doInactivate(ctx, status, true)
 	} else {
 		if status.IsContainer {
 			// Use rkt tool to remove already exited or inactivated container apps
@@ -2066,6 +2078,10 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 		}
 		log.Infof("ociFilename %s sha %s", ociFilename, status.DiskStatusList[0].ImageSha256)
 		imageHash, err := ociToRktImageHash(ociFilename)
+		// XXX looks like the conversion uses lots of memory. Need to
+		// free to avoid OOM
+		dbg.FreeOSMemory()
+		agentlog.LogMemoryUsage()
 		if err != nil {
 			log.Error(err)
 			return domainID, podUUID, fmt.Errorf("unable to get rkt image hash: %v", err)
@@ -2083,8 +2099,15 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 // Launch app/container thru rkt
 // returns domainID, podUUID and error
 func rktRun(domainName, xenCfgFilename, imageHash string) (int, string, error) {
-
-	// STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=xenCfgFilename rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file
+	// STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=xenCfgFilename rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file --set-env=ENV-KEY=env-value
+	//TODO: envVars must be read from image config once we decide on how we will be passing this info from UI
+	envVars := map[string]string{}
+	var (
+		envVarSlice = make([]string, 0)
+	)
+	for k, v := range envVars {
+		envVarSlice = append(envVarSlice, fmt.Sprintf("--set-env=%s=%s", k, v))
+	}
 	log.Infof("rktRun %s\n", domainName)
 	cmd := "rkt"
 	args := []string{
@@ -2095,6 +2118,7 @@ func rktRun(domainName, xenCfgFilename, imageHash string) (int, string, error) {
 		"--stage1-path=/usr/sbin/stage1-xen.aci",
 		"--uuid-file-save=" + uuidFile,
 	}
+	args = append(args, envVarSlice...)
 	stage1XlOpts := "STAGE1_XL_OPTS=-p"
 	stage1XlCfg := "STAGE1_SEED_XL_CFG=" + xenCfgFilename
 	log.Infof("Calling command %s %v\n", cmd, args)
@@ -2121,7 +2145,9 @@ func rktRun(domainName, xenCfgFilename, imageHash string) (int, string, error) {
 	err = lookForRktRunErrors(string(stdoutStderr))
 	if err != nil {
 		log.Errorln(err.Error())
-		if status := rktStatus(podUUID); status != "running" {
+		// XXX we might be checking to quickly to see the exited status
+		// XXX if status := rktStatus(podUUID); status != "running" {
+		if true {
 			return 0, "", err
 		}
 	}

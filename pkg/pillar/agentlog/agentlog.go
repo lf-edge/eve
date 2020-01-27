@@ -49,8 +49,7 @@ func initImpl(agentName string, logdir string, redirect bool,
 
 	if text {
 		logfile := fmt.Sprintf("%s/%s.log", logdir, agentName)
-		logf, err = os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND,
-			0666)
+		logf, err = os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
 			return nil, err
 		}
@@ -59,19 +58,18 @@ func initImpl(agentName string, logdir string, redirect bool,
 		if text {
 			log.SetOutput(logf)
 		} else if logToSyslog {
-			log.SetOutput(ioutil.Discard)
-			syslogFlags := syslog.LOG_INFO | syslog.LOG_DEBUG | syslog.LOG_ERR |
-				syslog.LOG_NOTICE | syslog.LOG_WARNING | syslog.LOG_CRIT |
-				syslog.LOG_ALERT | syslog.LOG_EMERG
-			hook, err := lSyslog.NewSyslogHook("", "", syslogFlags, agentName)
-			if err == nil {
-				log.AddHook(hook)
-			} else {
-				return nil, err
+			err := setupSyslog(agentName)
+			if err != nil {
+				fmt.Printf("setupSyslog failed %s: %s\n",
+					agentName, err)
+				log.SetOutput(os.Stdout)
+				// Let application continue
 			}
 		} else {
 			log.SetOutput(os.Stdout)
 		}
+		hook := new(FatalHook)
+		log.AddHook(hook)
 		if text {
 			// Report nano timestamps
 			formatter := log.TextFormatter{
@@ -96,6 +94,50 @@ func initImpl(agentName string, logdir string, redirect bool,
 	return logf, nil
 }
 
+func setupSyslog(agentName string) error {
+	log.SetOutput(ioutil.Discard)
+	syslogFlags := syslog.LOG_INFO | syslog.LOG_DEBUG | syslog.LOG_ERR |
+		syslog.LOG_NOTICE | syslog.LOG_WARNING | syslog.LOG_CRIT |
+		syslog.LOG_ALERT | syslog.LOG_EMERG
+
+	maxCount := 10
+	var err error
+	for count := 0; count < maxCount; count++ {
+		hook, err1 := lSyslog.NewSyslogHook("", "", syslogFlags, agentName)
+		if err1 != nil {
+			err = err1
+			fmt.Printf("NewSyslogHook failed %s retry: %s\n",
+				agentName, err)
+			time.Sleep(time.Second)
+			continue
+		}
+		log.AddHook(hook)
+		return nil
+	}
+	fmt.Printf("NewSyslogHook failed %s bail: %s\n",
+		agentName, err)
+	return err
+}
+
+// FatalHook is used make sure we save the fatal and panic strings to a file
+type FatalHook struct {
+}
+
+// Fire saves the reason for the log.Fatal or log.Panic
+func (hook *FatalHook) Fire(entry *log.Entry) error {
+	reason := fmt.Sprintf("fatal: agent %s: %s", savedAgentName, entry.Message)
+	RebootReason(reason)
+	return nil
+}
+
+// Levels installs the FatalHook for Fatal and Panic levels
+func (hook *FatalHook) Levels() []log.Level {
+	return []log.Level{
+		log.FatalLevel,
+		log.PanicLevel,
+	}
+}
+
 // Wait on channel then handle the signals
 func handleSignals(sigs chan os.Signal) {
 	for {
@@ -104,8 +146,11 @@ func handleSignals(sigs chan os.Signal) {
 			log.Infof("handleSignals: received %v\n", sig)
 			switch sig {
 			case syscall.SIGUSR1:
-				log.Warnf("SIGUSR1 triggered stack traces:\n%v\n",
-					getStacks(true))
+				stacks := getStacks(true)
+				log.Warnf("SIGUSR1 triggered stack traces:\n%v\n", stacks)
+				// Could result in a watchdog reboot hence
+				// we save it as a reboot-stack
+				RebootStack(stacks)
 			case syscall.SIGUSR2:
 				log.Warnf("SIGUSR2 triggered memory info:\n")
 				logMemUsage()
@@ -124,14 +169,15 @@ func printStack() {
 }
 
 // RebootReason writes a reason string in /persist/IMGx/reboot-reason, including agentName and date
+// Note: can not use log here since we are called from a log hook!
 func RebootReason(reason string) {
 	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
-	log.Warnf("RebootReason to %s: %s\n", filename, reason)
 	dateStr := time.Now().Format(time.RFC3339Nano)
 	err := printToFile(filename, fmt.Sprintf("Reboot from agent %s at %s: %s\n",
 		savedAgentName, dateStr, reason))
 	if err != nil {
-		log.Errorf("printToFile failed %s\n", err)
+		// Note: can not use log here since we are called from a log hook!
+		fmt.Printf("printToFile failed %s\n", err)
 	}
 	syscall.Sync()
 }
@@ -265,6 +311,13 @@ func logGCStats() {
 	log.Infof("GCStats %+v\n", m)
 }
 
+// LogMemoryUsage provides for user-triggered memory reports
+func LogMemoryUsage() {
+	log.Info("User-triggered memory report")
+	logMemUsage()
+	logGCStats()
+}
+
 func logMemUsage() {
 	var m runtime.MemStats
 
@@ -304,7 +357,7 @@ func InitWithDirText(agentName string, logdir string, curpart string) (*os.File,
 // Setup and return a logf, but don't redirect our log.*
 func InitChild(agentName string) (*os.File, error) {
 	logdir := GetCurrentLogdir()
-	return initImpl(agentName, logdir, false, false)
+	return initImpl(agentName, logdir, false, true)
 }
 
 var currentIMGdir = ""

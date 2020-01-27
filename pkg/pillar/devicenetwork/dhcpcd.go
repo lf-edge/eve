@@ -7,9 +7,7 @@
 package devicenetwork
 
 import (
-	"bufio"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -93,8 +91,7 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) bool {
 			time.Sleep(10 * time.Second)
 		}
 		log.Infof("dhcpcd %s not running", nuc.IfName)
-		extras := []string{"-f", "/dhcpcd.conf", "--nobackground",
-			"-d", "--noipv4ll"}
+		extras := []string{"-f", "/dhcpcd.conf", "--noipv4ll"}
 		if nuc.Gateway != nil && nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
 		}
@@ -141,7 +138,7 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) bool {
 		log.Infof("dhcpcd %s not running", nuc.IfName)
 		args := []string{fmt.Sprintf("ip_address=%s", nuc.AddrSubnet)}
 
-		extras := []string{"-f", "/dhcpcd.conf", "--nobackground", "-d"}
+		extras := []string{"-f", "/dhcpcd.conf"}
 		if nuc.Gateway == nil || nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
 		} else if nuc.Gateway.String() != "" {
@@ -216,31 +213,17 @@ func dhcpcdCmd(op string, extras []string, ifname string, dolog bool) bool {
 	args := append([]string{op}, extras...)
 	args = append(args, ifname)
 	if dolog {
-		logFilename := fmt.Sprintf("dhcpcd.%s", ifname)
-		logf, err := agentlog.InitChild(logFilename)
-		if err != nil {
-			log.Fatalf("agentlog dhcpcdCmd failed: %s\n", err)
-		}
-		w := bufio.NewWriter(logf)
-		ts := time.Now().Format(time.RFC3339Nano)
-		fmt.Fprintf(w, "%s Starting %s %v\n", ts, name, args)
 		cmd := exec.Command(name, args...)
 
-		// Report nano timestamps
-		formatter := log.JSONFormatter{
-			TimestampFormat: time.RFC3339Nano,
-		}
-		var tslog = &log.Logger{
-			Out:       logf,
-			Formatter: &formatter,
-			Hooks:     make(log.LevelHooks),
-			Level:     log.InfoLevel,
-		}
-		cmd.Stdout = tslog.Writer()
-		cmd.Stderr = tslog.Writer()
-
 		log.Infof("Background command %s %v\n", name, args)
-		go cmd.Run()
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Errorf("dhcpcdCmd: Error starting dhcpcd on interface %s with error: %s",
+				ifname, err)
+		} else {
+			log.Infof("dhcpcdCmd: Started dhcpcd on interface %s with output: %s",
+				ifname, out)
+		}
 	} else {
 		log.Infof("Calling command %s %v\n", name, args)
 		out, err := exec.Command(name, args...).CombinedOutput()

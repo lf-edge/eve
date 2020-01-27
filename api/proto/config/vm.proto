@@ -14,7 +14,8 @@ option java_package = "com.zededa.cloud.uservice.proto";
 enum VmMode {
   PV = 0;
   HVM = 1;
-  // PVH = 2;
+  Filler = 2; // PVH = 2;
+  FML = 3; // Experimental machine learning mode
 }
 
 message VmConfig {
