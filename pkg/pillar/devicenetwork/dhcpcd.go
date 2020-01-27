@@ -165,11 +165,22 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) bool {
 			log.Errorf("doDhcpClientActivate: request failed for %s\n",
 				nuc.IfName)
 		}
+		// Wait for a bit then give up
+		waitCount := 0
+		failed := false
 		for !dhcpcdExists(nuc.IfName) {
 			log.Warnf("dhcpcd %s not yet running", nuc.IfName)
+			waitCount++
+			if waitCount >= 3 {
+				log.Errorf("dhcpcd %s not yet running", nuc.IfName)
+				failed = true
+				break
+			}
 			time.Sleep(10 * time.Second)
 		}
-		log.Infof("dhcpcd %s is running", nuc.IfName)
+		if !failed {
+			log.Infof("dhcpcd %s is running", nuc.IfName)
+		}
 	default:
 		log.Errorf("doDhcpClientActivate: unsupported dhcp %v\n",
 			nuc.Dhcp)
@@ -218,8 +229,10 @@ func dhcpcdCmd(op string, extras []string, ifname string, dolog bool) bool {
 		log.Infof("Background command %s %v\n", name, args)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			log.Errorf("dhcpcdCmd: Error starting dhcpcd on interface %s with error: %s",
-				ifname, err)
+			errStr := fmt.Sprintf("dhcpcdCmd: dhcpcd command %s failed %s output %s",
+				args, err, out)
+			log.Errorln(errStr)
+			return false
 		} else {
 			log.Infof("dhcpcdCmd: Started dhcpcd on interface %s with output: %s",
 				ifname, out)
