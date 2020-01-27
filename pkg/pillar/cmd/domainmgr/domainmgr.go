@@ -20,7 +20,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	dbg "runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -145,8 +144,6 @@ func Run() {
 	}
 	log.Infof("Starting %s\n", agentName)
 
-	dbg.SetGCPercent(20)
-
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
 	agentlog.StillRunning(agentName, warningTime, errorTime)
@@ -221,7 +218,6 @@ func Run() {
 	// Publish existing images with RefCount zero
 	populateInitialImageStatus(&domainCtx, rwImgDirname)
 	pubImageStatus.SignalRestarted()
-	dbg.FreeOSMemory()
 
 	pubAssignableAdapters, err := pubsublegacy.Publish(agentName,
 		types.AssignableAdapters{})
@@ -2086,10 +2082,6 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 		}
 		log.Infof("ociFilename %s sha %s", ociFilename, status.DiskStatusList[0].ImageSha256)
 		imageHash, err := ociToRktImageHash(ociFilename)
-		// XXX looks like the conversion uses lots of memory. Need to
-		// free to avoid OOM
-		dbg.FreeOSMemory()
-		agentlog.LogMemoryUsage()
 		if err != nil {
 			log.Error(err)
 			return domainID, podUUID, fmt.Errorf("unable to get rkt image hash: %v", err)
