@@ -46,6 +46,16 @@ func (config DomainConfig) VerifyFilename(fileName string) bool {
 	return ret
 }
 
+// VirtualizationModeOrDefault sets the default to PV
+func (config DomainConfig) VirtualizationModeOrDefault() VmMode {
+	switch config.VirtualizationMode {
+	case PV, HVM, FML:
+		return config.VirtualizationMode
+	default:
+		return PV
+	}
+}
+
 // Some of these items can be overridden by matching Targets in
 // StorageConfigList. For example, a Target of "kernel" means to set/override
 // the Kernel attribute below.
