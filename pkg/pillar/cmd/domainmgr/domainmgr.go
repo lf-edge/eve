@@ -1323,6 +1323,19 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 				status.DomainId = 0
 				break
 			}
+			if err := DomainShutdown(*status, true); err != nil {
+				log.Errorf("DomainShutdown -F %s failed: %s\n",
+					status.DomainName, err)
+			} else {
+				// Wait for the domain to go away
+				log.Infof("doInactivate(%v) for %s: waiting for domain to poweroff\n",
+					status.UUIDandVersion, status.DisplayName)
+			}
+			gone = waitForDomainGone(*status, maxDelay)
+			if gone {
+				status.DomainId = 0
+				break
+			}
 		}
 	}
 
@@ -1953,23 +1966,30 @@ func updateStatusFromConfig(status *types.DomainStatus, config types.DomainConfi
 // Used to wait both after shutdown and destroy
 func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 	gone := false
-	var delay time.Duration
+	delay := time.Second
+	var waited time.Duration
 	for {
 		log.Infof("waitForDomainGone(%v) for %s: waiting for %v\n",
 			status.UUIDandVersion, status.DisplayName, delay)
-		time.Sleep(delay)
+		if delay != 0 {
+			time.Sleep(delay)
+			waited += delay
+		}
 		if err := xlStatus(status.DomainName, status.DomainId); err != nil {
 			log.Infof("waitForDomainGone(%v) for %s: domain is gone\n",
 				status.UUIDandVersion, status.DisplayName)
 			gone = true
 			break
 		} else {
-			delay = 2 * (delay + time.Second)
-			if delay > maxDelay {
+			if waited > maxDelay {
 				// Give up
 				log.Warnf("waitForDomainGone(%v) for %s: giving up\n",
 					status.UUIDandVersion, status.DisplayName)
 				break
+			}
+			delay = 2 * delay
+			if delay > time.Minute {
+				delay = time.Minute
 			}
 		}
 	}
@@ -2154,12 +2174,11 @@ func rktRun(domainName, xenCfgFilename, imageHash string) (int, string, error) {
 
 	err = lookForRktRunErrors(string(stdoutStderr))
 	if err != nil {
-		log.Errorln(err.Error())
-		// XXX we might be checking to quickly to see the exited status
-		// XXX if status := rktStatus(podUUID); status != "running" {
-		if true {
+		if status := rktStatus(podUUID); status != "running" {
+			log.Errorf("status = %s, err = %s", status, err)
 			return 0, "", err
 		}
+		log.Errorf("running ignore rkt err = %s", err)
 	}
 	log.Infof("rkt run done\n")
 
