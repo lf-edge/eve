@@ -47,23 +47,17 @@ type RktManifest struct {
 // rktConvertTarToAci convert an OCI image tarfile into an ACI bundle
 // with thanks to https://github.com/appc/docker2aci
 // from is the file to convert from; to is the path where to place the aci file
-func rktConvertTarToAci(from, to string) ([]string, error) {
+func rktConvertTarToAci(from, to, tmpBase string) ([]string, error) {
 	log.Infof("rktConvertTarToAci from v1 tar file %s to aci directory %s", from, to)
 	var convertTag string
 
-	// ensure that the base tmpdir exists
-	conversionTmpDir := path.Join(types.PersistDir, "tmp")
-	if err := os.MkdirAll(conversionTmpDir, 0700); err != nil {
-		return nil, fmt.Errorf("error creating base temporary directory %s: %v", conversionTmpDir, err)
-	}
-
-	legacyTmpDir, err := ioutil.TempDir(conversionTmpDir, "v1ToLegacyTarContainer")
+	legacyTmpDir, err := ioutil.TempDir(tmpBase, "v1ToLegacyTarContainer")
 	if err != nil {
 		return nil, fmt.Errorf("error creating temporary directory for v1 to legacy tar conversion")
 	}
 	defer os.RemoveAll(legacyTmpDir)
 	legacyPath := path.Join(legacyTmpDir, "legacytar")
-	tmpDir, err := ioutil.TempDir(conversionTmpDir, "docker2aci")
+	tmpDir, err := ioutil.TempDir(tmpBase, "docker2aci")
 	if err != nil {
 		return nil, fmt.Errorf("error creating temporary directory for aci conversion")
 	}
@@ -155,12 +149,41 @@ func ociToRktImageHash(ociFilename string) (string, error) {
 	}
 
 	// if we made it here, we didn't find it, so convert the file to an aci and load it
-	tmpDir, err := ioutil.TempDir("", "acifile")
+
+	// first make sure that the base tmpdir exists, since ioutil.TempDir(base, sub)
+	// requires that "base" already exists
+	tmpBase := path.Join(types.PersistDir, "tmp")
+	if err := os.MkdirAll(tmpBase, 0700); err != nil {
+		return "", fmt.Errorf("error creating base temporary directory %s: %v", tmpBase, err)
+	}
+
+	// create a base temporary directory for all of our conversion work in this instance.
+	// This leads to tmp working directories as:
+	//
+	//    /persist/tmp/rktconversion-12234/v1tolegacy-1111
+	//    /persist/tmp/rktconversion-12234/legacy-toaci-222
+	//    /persist/tmp/rktconversion-12234/acisquash-5544
+	//
+	// if another one is running concurrently, we will have
+	//
+	//    /persist/tmp/rktconversion-7890/v1tolegacy-3456
+	//    /persist/tmp/rktconversion-7890/legacy-toaci-1234
+	//    /persist/tmp/rktconversion-7890/acisquash-6427
+	//
+	// we could simplify it to having those be directly in /persist/tmp,
+	// i.e. eliminate a middle tier, but this structure makes it easier to track
+	// down when things go haywire, which conersions are connected to each other.
+	tmpAciBase, err := ioutil.TempDir(tmpBase, "rktconversion")
 	if err != nil {
 		return "", fmt.Errorf("error creating temporary directory for aci caching")
 	}
-	defer os.RemoveAll(tmpDir)
-	aciFiles, err := rktConvertTarToAci(ociFilename, tmpDir)
+	defer os.RemoveAll(tmpAciBase)
+
+	tmpDir, err := ioutil.TempDir(tmpAciBase, "acifile")
+	if err != nil {
+		return "", fmt.Errorf("error creating temporary directory for aci caching")
+	}
+	aciFiles, err := rktConvertTarToAci(ociFilename, tmpDir, tmpAciBase)
 	if err != nil {
 		return "", fmt.Errorf("unable to convert %s to aci: %v", ociFilename, err)
 	}
