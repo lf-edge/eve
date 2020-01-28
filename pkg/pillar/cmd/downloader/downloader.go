@@ -440,6 +440,8 @@ func handleModify(ctx *downloaderContext, key string,
 		status.Expired, status.Name)
 
 	status.PendingModify = true
+	publishDownloaderStatus(ctx, status)
+
 	if config.IsContainer != status.IsContainer {
 		log.Infof("handleModify: Setting IsContainer to %t for %s",
 			config.IsContainer, status.ImageID)
