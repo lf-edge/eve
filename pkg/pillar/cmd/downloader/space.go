@@ -26,6 +26,9 @@ func initSpace(ctx *downloaderContext, kb uint64) {
 // Returns true if there was space
 func tryReserveSpace(ctx *downloaderContext, status *types.DownloaderStatus,
 	kb uint64) bool {
+	if status.ReservedSpace != 0 {
+		return true
+	}
 
 	ctx.globalStatusLock.Lock()
 	if kb >= ctx.globalStatus.RemainingSpace {
@@ -42,23 +45,45 @@ func tryReserveSpace(ctx *downloaderContext, status *types.DownloaderStatus,
 }
 
 func unreserveSpace(ctx *downloaderContext, status *types.DownloaderStatus) {
+	if status.ReservedSpace == 0 {
+		return
+	}
 	ctx.globalStatusLock.Lock()
 	ctx.globalStatus.ReservedSpace -= status.ReservedSpace
 	status.ReservedSpace = 0
-	ctx.globalStatus.UsedSpace += types.RoundupToKB(status.Size)
-
 	updateRemainingSpace(ctx)
 	ctx.globalStatusLock.Unlock()
 
 	publishGlobalStatus(ctx)
 }
 
-func deleteSpace(ctx *downloaderContext, kb uint64) {
+// convert reserved storage to used storage
+func allocateSpace(ctx *downloaderContext, status *types.DownloaderStatus,
+	size uint64) {
+	if status.Size != 0 {
+		return
+	}
+	kb := types.RoundupToKB(size)
+	ctx.globalStatusLock.Lock()
+	ctx.globalStatus.ReservedSpace -= status.ReservedSpace
+	ctx.globalStatus.UsedSpace += kb
+	updateRemainingSpace(ctx)
+	ctx.globalStatusLock.Unlock()
+	status.ReservedSpace = 0
+	status.Size = size
+	publishGlobalStatus(ctx)
+}
+
+func deleteSpace(ctx *downloaderContext, status *types.DownloaderStatus) {
+	if status.Size == 0 {
+		return
+	}
+	kb := types.RoundupToKB(status.Size)
 	ctx.globalStatusLock.Lock()
 	ctx.globalStatus.UsedSpace -= kb
 	updateRemainingSpace(ctx)
 	ctx.globalStatusLock.Unlock()
-
+	status.Size = 0
 	publishGlobalStatus(ctx)
 }
 
