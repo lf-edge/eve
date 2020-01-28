@@ -114,6 +114,17 @@ func (status DownloaderStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }
 
+func (status *DownloaderStatus) SetErrorInfo(errStr string) {
+	status.RetryCount++
+	status.LastErr = errStr
+	status.LastErrTime = time.Now()
+}
+
+func (status *DownloaderStatus) ClearErrorInfo() {
+	status.LastErr = ""
+	status.LastErrTime = time.Time{}
+}
+
 type GlobalDownloadConfig struct {
 	MaxSpace uint64 // Number of kbytes allowed in types.DownloadDirname
 }
