@@ -2063,7 +2063,7 @@ func parseCipherInfo(config *zconfig.CipherInfo) *types.CipherInfo {
 		return nil
 	}
 	cipherInfo := new(types.CipherInfo)
-	cipherInfo.Id = config.GetId()
+	cipherInfo.ID = config.GetId()
 	cipherInfo.KeyExchangeScheme = config.GetKeyExchangeScheme()
 	cipherInfo.EncryptionScheme = config.GetEncryptionScheme()
 	cipherInfo.InitialValue = config.GetInitialValue()

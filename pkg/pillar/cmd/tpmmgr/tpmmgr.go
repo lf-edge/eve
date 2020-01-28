@@ -850,7 +850,7 @@ func testEcdhAES() error {
 	return nil
 }
 
-// Decryption API, for encrypted object information received from controller
+// DecryptWithCipherInfo : Decryption API, for encrypted object information received from controller
 func DecryptWithCipherInfo(cipherInfo *types.CipherInfo, cipherText []byte) (string, error) {
 	// TBD:XXX, for nodes not having tpm chip, the device private key can be used
 	// which can be wrqpped up inside DecryptWithEcdhKey
