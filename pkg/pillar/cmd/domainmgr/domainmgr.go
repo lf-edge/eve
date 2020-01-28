@@ -98,7 +98,9 @@ func appRwImageName(sha256, uuidStr string, format zconfig.Format) string {
 
 // parseAppRwImageName - Returns rwImgDirname, sha256, uuidStr
 func parseAppRwImageName(image string) (string, string, string) {
-	re := regexp.MustCompile(`(.+)/([0-9A-F]+)-(.+)\.(.+)`)
+	// ImageSha is provided by the controller - it can be uppercase
+	// or lowercase.
+	re := regexp.MustCompile(`(.+)/([0-9A-Fa-f]+)-(.+)\.(.+)`)
 	if !re.MatchString(image) {
 		log.Errorf("AppRwImageName %s doesn't match pattern", image)
 		return "", "", ""
