@@ -7,6 +7,7 @@
 package pubsub
 
 import (
+	"fmt"
 	"reflect"
 	"time"
 
@@ -60,6 +61,28 @@ type keyMap struct {
 type PubSub struct {
 	driver      Driver
 	updaterList *Updaters
+}
+
+// PublicationOptions defines all the possible options a new publication may have
+type PublicationOptions struct {
+	AgentName  string
+	AgentScope string
+	TopicType  interface{}
+	Persistent bool
+}
+
+// NewPublication creates a new publication with given options
+func (p *PubSub) Publication(options PublicationOptions) (Publication, error) {
+	if options.AgentScope != "" && options.Persistent == true {
+		return nil, fmt.Errorf("cannot create a persitent publication with a scope agentName %s", options.AgentName)
+	}
+	if options.AgentName == "" {
+		return nil, fmt.Errorf("cannot create a publication with a nil agentName")
+	}
+	if options.TopicType == nil {
+		return nil, fmt.Errorf("cannot create a publication with a nil topic type")
+	}
+	return p.publishImpl(options.AgentName, options.AgentScope, options.TopicType, options.Persistent)
 }
 
 // New create a new `PubSub` with a given `Driver`.
