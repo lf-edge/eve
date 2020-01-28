@@ -29,12 +29,15 @@ message CipherInfo {
     // Initial Value for ECDH computation
     bytes initialValue = 3;
 
-    // controller provided public certificate
-    bytes publicCert = 4;
+    // controller certificate
+    bytes controllerCert = 4;
 
-    // sha of the public certificate
-    string sha256 = 5;
+    // controller certificate sha
+    string controllerCertSha256 = 5;
+
+    // device certificate sha
+    string deviceCertSha256 = 6;
 
     // signature for the sha
-    bytes signature = 6;
+    bytes controllerCertShaSignature = 7;
 }

@@ -2065,9 +2065,10 @@ func parseCipherInfo(config *zconfig.CipherInfo) *types.CipherInfo {
 	cipherInfo.KeyExchangeScheme = config.GetKeyExchangeScheme()
 	cipherInfo.EncryptionScheme = config.GetEncryptionScheme()
 	cipherInfo.InitialValue = config.GetInitialValue()
-	cipherInfo.PublicCert = config.GetPublicCert()
-	cipherInfo.Sha256 = config.GetSha256()
-	cipherInfo.Signature = config.GetSignature()
+	cipherInfo.ControllerCert = config.GetControllerCert()
+	cipherInfo.ControllerCertSha256 = config.GetControllerCertSha256()
+	cipherInfo.DeviceCertSha256 = config.GetControllerCertSha256()
+	cipherInfo.ControllerCertShaSignature = config.GetControllerCertShaSignature()
 	return cipherInfo
 }
 

@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x10\x63ipherinfo.proto\"\xc1\x01\n\nCipherInfo\x12\n\n\x02id\x18\x64 \x01(\t\x12-\n\x11keyExchangeScheme\x18\x01 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x02 \x01(\x0e\x32\x11.EncryptionScheme\x12\x14\n\x0cinitialValue\x18\x03 \x01(\x0c\x12\x12\n\npublicCert\x18\x04 \x01(\x0c\x12\x0e\n\x06sha256\x18\x05 \x01(\t\x12\x11\n\tsignature\x18\x06 \x01(\x0c*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x10\x63ipherinfo.proto\"\xfe\x01\n\nCipherInfo\x12\n\n\x02id\x18\x64 \x01(\t\x12-\n\x11keyExchangeScheme\x18\x01 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x02 \x01(\x0e\x32\x11.EncryptionScheme\x12\x14\n\x0cinitialValue\x18\x03 \x01(\x0c\x12\x16\n\x0e\x63ontrollerCert\x18\x04 \x01(\x0c\x12\x1c\n\x14\x63ontrollerCertSha256\x18\x05 \x01(\t\x12\x18\n\x10\x64\x65viceCertSha256\x18\x06 \x01(\t\x12\"\n\x1a\x63ontrollerCertShaSignature\x18\x07 \x01(\x0c*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
 )
 
 _KEYEXCHANGESCHEME = _descriptor.EnumDescriptor(
@@ -40,8 +40,8 @@ _KEYEXCHANGESCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=216,
-  serialized_end=263,
+  serialized_start=277,
+  serialized_end=324,
 )
 _sym_db.RegisterEnumDescriptor(_KEYEXCHANGESCHEME)
 
@@ -63,8 +63,8 @@ _ENCRYPTIONSCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=265,
-  serialized_end=316,
+  serialized_start=326,
+  serialized_end=377,
 )
 _sym_db.RegisterEnumDescriptor(_ENCRYPTIONSCHEME)
 
@@ -112,22 +112,29 @@ _CIPHERINFO = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='publicCert', full_name='CipherInfo.publicCert', index=4,
+      name='controllerCert', full_name='CipherInfo.controllerCert', index=4,
       number=4, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='sha256', full_name='CipherInfo.sha256', index=5,
+      name='controllerCertSha256', full_name='CipherInfo.controllerCertSha256', index=5,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='signature', full_name='CipherInfo.signature', index=6,
-      number=6, type=12, cpp_type=9, label=1,
+      name='deviceCertSha256', full_name='CipherInfo.deviceCertSha256', index=6,
+      number=6, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='controllerCertShaSignature', full_name='CipherInfo.controllerCertShaSignature', index=7,
+      number=7, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -145,7 +152,7 @@ _CIPHERINFO = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=21,
-  serialized_end=214,
+  serialized_end=275,
 )
 
 _CIPHERINFO.fields_by_name['keyExchangeScheme'].enum_type = _KEYEXCHANGESCHEME

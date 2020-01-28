@@ -13,16 +13,16 @@ import "vm.proto";
 import "netconfig.proto";
 
 message InstanceOpsCmd {
-	uint32 counter = 2;
-	string opsTime = 4;
+    uint32 counter = 2;
+    string opsTime = 4;
 }
 
 message AppInstanceConfig {
-	UUIDandVersion uuidandversion = 1;
-	string displayname = 2;
-	VmConfig fixedresources = 3;
-	repeated Drive drives = 4;
-	bool activate = 5;
+    UUIDandVersion uuidandversion = 1;
+    string displayname = 2;
+    VmConfig fixedresources = 3;
+    repeated Drive drives = 4;
+    bool activate = 5;
 
     // NetworkAdapter are virtual adapters assigned to the application
     // Physical adapters such as eth1 are part of Adapter

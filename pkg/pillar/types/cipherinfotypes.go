@@ -10,13 +10,14 @@ import (
 // CipherInfo : Contains the decryption information
 // supplied by controller, for sensitive encrypted data
 type CipherInfo struct {
-	Id                string
-	KeyExchangeScheme zconfig.KeyExchangeScheme
-	EncryptionScheme  zconfig.EncryptionScheme
-	InitialValue      []byte
-	PublicCert        []byte
-	Sha256            string
-	Signature         []byte
+	Id                         string
+	KeyExchangeScheme          zconfig.KeyExchangeScheme
+	EncryptionScheme           zconfig.EncryptionScheme
+	InitialValue               []byte
+	ControllerCert             []byte
+	ControllerCertSha256       string
+	DeviceCertSha256           string
+	ControllerCertShaSignature []byte
 }
 
 // Key :

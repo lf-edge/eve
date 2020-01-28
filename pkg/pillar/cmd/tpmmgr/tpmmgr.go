@@ -869,14 +869,14 @@ func DecryptWithCipherInfo(cipherInfo *types.CipherInfo, cipherText []byte) (str
 		return "", errors.New("Unsupported Encryption protocols")
 	}
 	// currently, its ecdh/aes256
-	cert, err := getPublicCertInfo(cipherInfo)
+	cert, err := getControllerCertInfo(cipherInfo)
 	if err != nil {
 		log.Errorf("Could not extract Certificate Information")
 		return "", err
 	}
 	plainText := make([]byte, len(cipherText))
 	err = DecryptSecretWithEcdhKey(cert.X, cert.Y,
-			cipherInfo.InitialValue, cipherText, plainText)
+		cipherInfo.InitialValue, cipherText, plainText)
 	if err != nil {
 		log.Errorf("Decryption failed with error %v\n", err)
 		return "", err
@@ -884,14 +884,14 @@ func DecryptWithCipherInfo(cipherInfo *types.CipherInfo, cipherText []byte) (str
 	return string(plainText), nil
 }
 
-func getPublicCertInfo(cipherInfo *types.CipherInfo) (*ecdsa.PublicKey, error) {
+func getControllerCertInfo(cipherInfo *types.CipherInfo) (*ecdsa.PublicKey, error) {
 	var ecdhPubKey *ecdsa.PublicKey
-	if len(cipherInfo.PublicCert) == 0 || len(cipherInfo.InitialValue) == 0 {
+	if len(cipherInfo.ControllerCert) == 0 || len(cipherInfo.InitialValue) == 0 {
 		return ecdhPubKey, errors.New("Invalid Cipher Information")
 	}
-	// TBD:XXX, validate the sha and signature of the public cert
+	// TBD:XXX, validate the sha and signature of the controller cert
 
-	block := cipherInfo.PublicCert
+	block := cipherInfo.ControllerCert
 	certs := []*x509.Certificate{}
 	for b, rest := pem.Decode(block); b != nil; b, rest = pem.Decode(rest) {
 		if b.Type == "CERTIFICATE" {
