@@ -109,8 +109,9 @@ type DomainStatus struct {
 	LastErrTime        time.Time
 	BootFailed         bool
 	AdaptersFailed     bool
-	IsContainer        bool   // Is this Domain for a Container?
-	PodUUID            string // Pod UUID outputted by rkt
+	IsContainer        bool              // Is this Domain for a Container?
+	PodUUID            string            // Pod UUID outputted by rkt
+	EnvVariables       map[string]string // List of environment variables to be set in container
 }
 
 func (status DomainStatus) Key() string {
