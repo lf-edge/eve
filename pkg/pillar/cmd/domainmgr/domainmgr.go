@@ -1505,13 +1505,21 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	}
 	// XXX could defer to Activate
 	if config.CloudInitUserData != nil {
-		ds, err := createCloudInitISO(config)
-		if err != nil {
-			return err
-		}
-		if ds != nil {
-			status.DiskStatusList = append(status.DiskStatusList,
-				*ds)
+		if status.IsContainer {
+			envList, err := fetchEnvVariablesFromCloudInit(config)
+			if err != nil {
+				return err
+			}
+			status.EnvVariables = envList
+		} else {
+			ds, err := createCloudInitISO(config)
+			if err != nil {
+				return err
+			}
+			if ds != nil {
+				status.DiskStatusList = append(status.DiskStatusList,
+					*ds)
+			}
 		}
 	}
 	return nil
@@ -2118,7 +2126,7 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 			log.Error(err)
 			return domainID, podUUID, fmt.Errorf("unable to get rkt image hash: %v", err)
 		}
-		domainID, podUUID, err = rktRun(status.DomainName, filename, imageHash)
+		domainID, podUUID, err = rktRun(status.DomainName, filename, imageHash, status.EnvVariables)
 	} else {
 		// Use xl tool
 		log.Infof("Using xl tool ... xenCfgFilename - %s\n", filename)
@@ -2130,14 +2138,13 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 
 // Launch app/container thru rkt
 // returns domainID, podUUID and error
-func rktRun(domainName, xenCfgFilename, imageHash string) (int, string, error) {
+func rktRun(domainName, xenCfgFilename, imageHash string, envList map[string]string) (int, string, error) {
 	// STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=xenCfgFilename rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file --set-env=ENV-KEY=env-value
 	//TODO: envVars must be read from image config once we decide on how we will be passing this info from UI
-	envVars := map[string]string{}
 	var (
 		envVarSlice = make([]string, 0)
 	)
-	for k, v := range envVars {
+	for k, v := range envList {
 		envVarSlice = append(envVarSlice, fmt.Sprintf("--set-env=%s=%s", k, v))
 	}
 	log.Infof("rktRun %s\n", domainName)
@@ -2671,6 +2678,27 @@ func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
 	}
 	err = diskmetrics.ResizeImg(diskfile, maxsizebytes)
 	return err
+}
+
+// Fetch the list of environment variables from the cloud init
+// We are expecting the environment variables to be pass in particular format in cloud-int
+// Example:
+// Key1:Val1
+// Key2:Val2 ...
+func fetchEnvVariablesFromCloudInit(config types.DomainConfig) (map[string]string, error) {
+	ud, err := base64.StdEncoding.DecodeString(*config.CloudInitUserData)
+	if err != nil {
+		errStr := fmt.Sprintf("fetchEnvVariablesFromCloudInit failed %s\n", err)
+		return nil, errors.New(errStr)
+	}
+	envList := make(map[string]string, 0)
+	list := strings.Split(string(ud), "\n")
+	for _, v := range list {
+		pair := strings.Split(v, ":")
+		envList[pair[0]] = pair[1]
+	}
+
+	return envList, nil
 }
 
 // Create a isofs with user-data and meta-data and add it to DiskStatus
