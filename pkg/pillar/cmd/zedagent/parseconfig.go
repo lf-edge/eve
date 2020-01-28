@@ -544,9 +544,11 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 		if cuserData := cfgApp.GetCipherTextUserData(); len(cuserData) != 0 {
 			appInstance.CipherTextUserData = cuserData
 		}
-		if cipherInfo := parseCipherInfo(cfgApp.CInfo); cipherInfo != nil {
-			appInstance.CipherInfo = cipherInfo
-		}
+		// TBD:XXX Will enable once yetus issue is fixed,
+		// commented out for end-o-end testing with conttoller now
+		//if cipherInfo := parseCipherInfo(cfgApp.CInfo); cipherInfo != nil {
+		//	appInstance.CipherInfo = cipherInfo
+		//}
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
 			appInstance.ConfigSha256, appInstance.StorageConfigList)
