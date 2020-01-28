@@ -114,12 +114,14 @@ func (status DownloaderStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }
 
+// SetErrorInfo:
 func (status *DownloaderStatus) SetErrorInfo(errStr string) {
 	status.RetryCount++
 	status.LastErr = errStr
 	status.LastErrTime = time.Now()
 }
 
+// ClearErrorInfo:
 func (status *DownloaderStatus) ClearErrorInfo() {
 	status.LastErr = ""
 	status.LastErrTime = time.Time{}
