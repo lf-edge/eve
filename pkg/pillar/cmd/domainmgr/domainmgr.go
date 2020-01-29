@@ -951,6 +951,10 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		State:              types.INSTALLED,
 		IsContainer:        config.IsContainer,
 	}
+	// Note that the -emu interface doesn't exist until after boot of the domU, but we
+	// initialize the VifList here with the VifUsed.
+	status.VifList = checkIfEmu(status.VifList)
+
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))
 	publishDomainStatus(ctx, &status)
@@ -1261,6 +1265,9 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 		status.LastErrTime = time.Now()
 		return
 	}
+	// The -emu interfaces were most likely created as result of the boot so we
+	// update VifUsed here.
+	status.VifList = checkIfEmu(status.VifList)
 
 	status.State = types.RUNNING
 	// XXX dumping status to log
@@ -1914,7 +1921,7 @@ func handleModify(ctx *domainContext, key string,
 		name := config.DisplayName + "." + strconv.Itoa(config.AppNum)
 		status.DomainName = name
 		status.AppNum = config.AppNum
-		status.VifList = config.VifList
+		status.VifList = checkIfEmu(config.VifList)
 		publishDomainStatus(ctx, status)
 		log.Infof("handleModify(%v) set domainName %s for %s\n",
 			config.UUIDandVersion, status.DomainName,
@@ -1993,6 +2000,23 @@ func updateStatusFromConfig(status *types.DomainStatus, config types.DomainConfi
 	status.EnableVnc = config.EnableVnc
 	status.VncDisplay = config.VncDisplay
 	status.VncPasswd = config.VncPasswd
+}
+
+// If we have a -emu named interface we assume it is being used
+func checkIfEmu(vifList []types.VifInfo) []types.VifInfo {
+	var retList []types.VifInfo
+
+	for _, net := range vifList {
+		net.VifUsed = net.Vif
+		emuIfname := net.Vif + "-emu"
+		_, err := netlink.LinkByName(emuIfname)
+		if err == nil && net.VifUsed != emuIfname {
+			log.Infof("Found EMU %s and update %s", emuIfname, net.VifUsed)
+			net.VifUsed = emuIfname
+		}
+		retList = append(retList, net)
+	}
+	return retList
 }
 
 // Used to wait both after shutdown and destroy
