@@ -239,7 +239,7 @@ func lookupDownloaderConfig(ctx *downloaderContext, objType string,
 
 // Server for each domU
 func runHandler(ctx *downloaderContext, objType string, key string,
-	c <-chan interface{}) {
+	c <-chan Notify) {
 
 	log.Infof("runHandler starting\n")
 
@@ -250,9 +250,15 @@ func runHandler(ctx *downloaderContext, objType string, key string,
 	closed := false
 	for !closed {
 		select {
-		case configArg, ok := <-c:
+		case _, ok := <-c:
 			if ok {
-				config := configArg.(types.DownloaderConfig)
+				sub := ctx.subscription(objType)
+				c, err := sub.Get(key)
+				if err != nil {
+					log.Errorf("runHandler no config for %s", key)
+					continue
+				}
+				config := c.(types.DownloaderConfig)
 				status := lookupDownloaderStatus(ctx,
 					objType, key)
 				if status == nil {

@@ -606,12 +606,15 @@ func xenCfgFilename(appNum int) string {
 	return xenDirname + "/xen" + strconv.Itoa(appNum) + ".cfg"
 }
 
+// Notify simple struct to pass notification messages
+type Notify struct{}
+
 // We have one goroutine per provisioned domU object.
-// Channel is used to send config (new and updates)
+// Channel is used to send notifications about config (add and updates)
 // Channel is closed when the object is deleted
 // The go-routine owns writing status for the object
 // The key in the map is the objects Key() - UUID in this case
-type handlers map[string]chan<- interface{}
+type handlers map[string]chan<- Notify
 
 var handlerMap handlers
 
@@ -630,8 +633,15 @@ func handleDomainModify(ctxArg interface{}, key string, configArg interface{}) {
 	if !ok {
 		log.Fatalf("handleDomainModify called on config that does not exist")
 	}
-	h <- configArg
+	select {
+	case h <- Notify{}:
+		log.Infof("handleDomainModify(%s) sent notify", key)
+	default:
+		// handler is slow
+		log.Warnf("handleDomainModify(%s) NOT sent notify. Slow handler?", key)
+	}
 }
+
 func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("handleDomainCreate(%s)\n", key)
@@ -641,11 +651,17 @@ func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
 	if ok {
 		log.Fatalf("handleDomainCreate called on config that already exists")
 	}
-	h1 := make(chan interface{}, 1)
+	h1 := make(chan Notify, 1)
 	handlerMap[config.Key()] = h1
 	go runHandler(ctx, key, h1)
 	h = h1
-	h <- configArg
+	select {
+	case h <- Notify{}:
+		log.Infof("handleDomainCreate(%s) sent notify", key)
+	default:
+		// Shouldn't happen since we just created channel
+		log.Fatalf("handleDomainCreate(%s) NOT sent notify", key)
+	}
 }
 
 func handleDomainDelete(ctxArg interface{}, key string,
@@ -667,7 +683,7 @@ func handleDomainDelete(ctxArg interface{}, key string,
 
 // Server for each domU
 // Runs timer every 30 seconds to update status
-func runHandler(ctx *domainContext, key string, c <-chan interface{}) {
+func runHandler(ctx *domainContext, key string, c <-chan Notify) {
 
 	log.Infof("runHandler starting\n")
 
@@ -680,9 +696,15 @@ func runHandler(ctx *domainContext, key string, c <-chan interface{}) {
 	closed := false
 	for !closed {
 		select {
-		case configArg, ok := <-c:
+		case _, ok := <-c:
 			if ok {
-				config := configArg.(types.DomainConfig)
+				sub := ctx.subDomainConfig
+				c, err := sub.Get(key)
+				if err != nil {
+					log.Errorf("runHandler no config for %s", key)
+					continue
+				}
+				config := c.(types.DomainConfig)
 				status := lookupDomainStatus(ctx, key)
 				if status == nil {
 					handleCreate(ctx, key, &config)
