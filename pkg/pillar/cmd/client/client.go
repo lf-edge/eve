@@ -432,6 +432,7 @@ func Run() { //nolint:gocyclo
 	var enterprise string
 	var name string
 
+	gotUUID := false
 	if operations["selfRegister"] {
 		retryCount := 0
 		done := false
@@ -459,6 +460,7 @@ func Run() { //nolint:gocyclo
 				done, devUUID, hardwaremodel, enterprise, name = doGetUUID(retryCount)
 				if done {
 					log.Infof("getUUID succeeded; selfRegister no longer needed")
+					gotUUID = true
 				}
 			}
 		}
@@ -466,7 +468,8 @@ func Run() { //nolint:gocyclo
 
 	if operations["getUuid"] {
 		retryCount := 0
-		done := false
+		// If we already have a UUID, then we don't redo the operation
+		done := gotUUID
 		var delay time.Duration
 		for !done {
 			done, devUUID, hardwaremodel, enterprise, name = doGetUUID(retryCount)
