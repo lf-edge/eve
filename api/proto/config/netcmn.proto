@@ -41,6 +41,11 @@ message ProxyConfig {
 
        // Direct URL for wpad.dat download
        string networkProxyURL = 5;
+
+       // Uploaded proxy certificate or certifcate chain for MITM
+       // this may be needed either in explicit (has ProxyServer items), automatic
+       // (networkProxyEnable) or transparent (network layer not aware of proxy)
+       repeated bytes proxyCertPEM = 6;
 }
 
 // deprecated use ZnetStaticDNSEntry

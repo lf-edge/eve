@@ -53,6 +53,19 @@ if [ -n "$oom" ]; then
    echo "$oom" >>/persist/"$CURPART"/reboot-reason
 fi
 
+# Check if it is rsyslogd that crashed.
+# Tar the contents inside /persist/rsyslog directory and reboot.
+if [ $# -ge 2 ]; then
+    agent=$(echo "$2" | grep '/run/.*\.pid' | sed 's,/run/\(.*\)\.pid,\1,')
+    if [ "$agent" = "rsyslogd" ]; then
+        mkdir -p /persist/rsyslog-backup
+        # Tar contents of /persist/rsyslog
+        NAME="rsyslogd-$(date '+%Y-%m-%d-%H-%M-%S').tar.gz"
+        tar -cvzf "/persist/rsyslog-backup/$NAME" /persist/rsyslog/*
+        rm -rf /persist/rsyslog
+    fi
+fi
+
 sync
 sleep 30
 sync

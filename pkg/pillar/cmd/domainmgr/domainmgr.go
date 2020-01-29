@@ -20,7 +20,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	dbg "runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -85,6 +84,8 @@ type domainContext struct {
 	usbAccess              bool
 	createSema             sema.Semaphore
 	GCInitialized          bool
+	vdiskGCTime            uint32 // In seconds
+	domainBootRetryTime    uint32 // In seconds
 }
 
 // appRwImageName - Returns name of the image ( including parent dir )
@@ -97,7 +98,9 @@ func appRwImageName(sha256, uuidStr string, format zconfig.Format) string {
 
 // parseAppRwImageName - Returns rwImgDirname, sha256, uuidStr
 func parseAppRwImageName(image string) (string, string, string) {
-	re := regexp.MustCompile(`(.+)/([0-9A-F]+)-(.+)\.(.+)`)
+	// ImageSha is provided by the controller - it can be uppercase
+	// or lowercase.
+	re := regexp.MustCompile(`(.+)/([0-9A-Fa-f]+)-(.+)\.(.+)`)
 	if !re.MatchString(image) {
 		log.Errorf("AppRwImageName %s doesn't match pattern", image)
 		return "", "", ""
@@ -112,9 +115,7 @@ func (ctx *domainContext) publishAssignableAdapters() {
 }
 
 var debug = false
-var debugOverride bool                                     // From command line arg
-var vdiskGCTime = time.Duration(3600) * time.Second        // Unless from GlobalConfig
-var domainBootRetryTime = time.Duration(600) * time.Second // Unless from GlobalConfig
+var debugOverride bool // From command line arg
 
 func Run() {
 	handlersInit()
@@ -144,8 +145,6 @@ func Run() {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s\n", agentName)
-
-	dbg.SetGCPercent(20)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -191,7 +190,12 @@ func Run() {
 		}
 	}
 
-	domainCtx := domainContext{usbAccess: true}
+	// These settings can be overridden by GlobalConfig
+	domainCtx := domainContext{
+		usbAccess:           true,
+		vdiskGCTime:         3600,
+		domainBootRetryTime: 600,
+	}
 	aa := types.AssignableAdapters{}
 	domainCtx.assignableAdapters = &aa
 
@@ -216,7 +220,6 @@ func Run() {
 	// Publish existing images with RefCount zero
 	populateInitialImageStatus(&domainCtx, rwImgDirname)
 	pubImageStatus.SignalRestarted()
-	dbg.FreeOSMemory()
 
 	pubAssignableAdapters, err := pubsublegacy.Publish(agentName,
 		types.AssignableAdapters{})
@@ -339,7 +342,8 @@ func Run() {
 	// We run timer 10 times more often than the limit on LastUse
 	// Update the LastUse again here since it may not get updated since the
 	// device reboot if network is not available
-	gc := time.NewTicker(vdiskGCTime / 10)
+	duration := time.Duration(domainCtx.vdiskGCTime / 10)
+	gc := time.NewTicker(duration * time.Second)
 	gcResetObjectsLastUse(&domainCtx, rwImgDirname)
 
 	for {
@@ -525,9 +529,10 @@ func gcObjects(ctx *domainContext, dirName string) {
 			continue
 		}
 		timePassed := time.Since(status.LastUse)
-		if timePassed < vdiskGCTime {
+		timeLimit := time.Duration(ctx.vdiskGCTime) * time.Second
+		if timePassed < timeLimit {
 			log.Debugf("gcObjects: skipping recently used %s remains %d seconds\n",
-				status.Key(), (timePassed-vdiskGCTime)/time.Second)
+				status.Key(), (timePassed-timeLimit)/time.Second)
 			continue
 		}
 		log.Infof("gcObjects: removing %s LastUse %v now %v: %s\n",
@@ -601,12 +606,15 @@ func xenCfgFilename(appNum int) string {
 	return xenDirname + "/xen" + strconv.Itoa(appNum) + ".cfg"
 }
 
+// Notify simple struct to pass notification messages
+type Notify struct{}
+
 // We have one goroutine per provisioned domU object.
-// Channel is used to send config (new and updates)
+// Channel is used to send notifications about config (add and updates)
 // Channel is closed when the object is deleted
 // The go-routine owns writing status for the object
 // The key in the map is the objects Key() - UUID in this case
-type handlers map[string]chan<- interface{}
+type handlers map[string]chan<- Notify
 
 var handlerMap handlers
 
@@ -625,8 +633,15 @@ func handleDomainModify(ctxArg interface{}, key string, configArg interface{}) {
 	if !ok {
 		log.Fatalf("handleDomainModify called on config that does not exist")
 	}
-	h <- configArg
+	select {
+	case h <- Notify{}:
+		log.Infof("handleDomainModify(%s) sent notify", key)
+	default:
+		// handler is slow
+		log.Warnf("handleDomainModify(%s) NOT sent notify. Slow handler?", key)
+	}
 }
+
 func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("handleDomainCreate(%s)\n", key)
@@ -636,11 +651,17 @@ func handleDomainCreate(ctxArg interface{}, key string, configArg interface{}) {
 	if ok {
 		log.Fatalf("handleDomainCreate called on config that already exists")
 	}
-	h1 := make(chan interface{}, 1)
+	h1 := make(chan Notify, 1)
 	handlerMap[config.Key()] = h1
 	go runHandler(ctx, key, h1)
 	h = h1
-	h <- configArg
+	select {
+	case h <- Notify{}:
+		log.Infof("handleDomainCreate(%s) sent notify", key)
+	default:
+		// Shouldn't happen since we just created channel
+		log.Fatalf("handleDomainCreate(%s) NOT sent notify", key)
+	}
 }
 
 func handleDomainDelete(ctxArg interface{}, key string,
@@ -662,7 +683,7 @@ func handleDomainDelete(ctxArg interface{}, key string,
 
 // Server for each domU
 // Runs timer every 30 seconds to update status
-func runHandler(ctx *domainContext, key string, c <-chan interface{}) {
+func runHandler(ctx *domainContext, key string, c <-chan Notify) {
 
 	log.Infof("runHandler starting\n")
 
@@ -675,9 +696,15 @@ func runHandler(ctx *domainContext, key string, c <-chan interface{}) {
 	closed := false
 	for !closed {
 		select {
-		case configArg, ok := <-c:
+		case _, ok := <-c:
 			if ok {
-				config := configArg.(types.DomainConfig)
+				sub := ctx.subDomainConfig
+				c, err := sub.Get(key)
+				if err != nil {
+					log.Errorf("runHandler no config for %s", key)
+					continue
+				}
+				config := c.(types.DomainConfig)
 				status := lookupDomainStatus(ctx, key)
 				if status == nil {
 					handleCreate(ctx, key, &config)
@@ -801,10 +828,11 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 
 	t := time.Now()
 	elapsed := t.Sub(status.LastErrTime)
-	if elapsed < domainBootRetryTime {
+	timeLimit := time.Duration(ctx.domainBootRetryTime) * time.Second
+	if elapsed < timeLimit {
 		log.Infof("maybeRetryBoot(%s) %d remaining\n",
 			status.Key(),
-			(domainBootRetryTime-elapsed)/time.Second)
+			(timeLimit-elapsed)/time.Second)
 		return
 	}
 	log.Infof("maybeRetryBoot(%s) after %s at %v\n",
@@ -916,7 +944,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		DomainName:         name,
 		AppNum:             config.AppNum,
 		VifList:            config.VifList,
-		VirtualizationMode: config.VirtualizationMode,
+		VirtualizationMode: config.VirtualizationModeOrDefault(),
 		EnableVnc:          config.EnableVnc,
 		VncDisplay:         config.VncDisplay,
 		VncPasswd:          config.VncPasswd,
@@ -1255,6 +1283,13 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
 	}
+	// If this is a delete of the App Instance we wait for a shorter time
+	// since all of the read-write disk images will be deleted.
+	// A container only has a read-only image hence it can also be
+	// torn down with less waiting.
+	if status.IsContainer {
+		impatient = true
+	}
 	maxDelay := time.Second * 600 // 10 minutes
 	if impatient {
 		maxDelay /= 10
@@ -1289,7 +1324,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 					status.DomainName, err)
 			} else {
 				// Wait for the domain to go away
-				log.Infof("doInactivate(%v) for %s: waiting for domain to shutdown\n",
+				log.Infof("doInactivate(%v) for %s: waiting for domain to poweroff\n",
 					status.UUIDandVersion, status.DisplayName)
 			}
 			gone = waitForDomainGone(*status, maxDelay)
@@ -1308,6 +1343,19 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 					status.UUIDandVersion, status.DisplayName)
 			}
 			gone := waitForDomainGone(*status, maxDelay)
+			if gone {
+				status.DomainId = 0
+				break
+			}
+			if err := DomainShutdown(*status, true); err != nil {
+				log.Errorf("DomainShutdown -F %s failed: %s\n",
+					status.DomainName, err)
+			} else {
+				// Wait for the domain to go away
+				log.Infof("doInactivate(%v) for %s: waiting for domain to poweroff\n",
+					status.UUIDandVersion, status.DisplayName)
+			}
+			gone = waitForDomainGone(*status, maxDelay)
 			if gone {
 				status.DomainId = 0
 				break
@@ -1479,13 +1527,21 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	}
 	// XXX could defer to Activate
 	if config.CloudInitUserData != nil {
-		ds, err := createCloudInitISO(config)
-		if err != nil {
-			return err
-		}
-		if ds != nil {
-			status.DiskStatusList = append(status.DiskStatusList,
-				*ds)
+		if status.IsContainer {
+			envList, err := fetchEnvVariablesFromCloudInit(config)
+			if err != nil {
+				return err
+			}
+			status.EnvVariables = envList
+		} else {
+			ds, err := createCloudInitISO(config)
+			if err != nil {
+				return err
+			}
+			if ds != nil {
+				status.DiskStatusList = append(status.DiskStatusList,
+					*ds)
+			}
 		}
 	}
 	return nil
@@ -1547,7 +1603,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	kernel := ""
 	uuidStr := fmt.Sprintf("appuuid=%s ", config.UUIDandVersion.UUID)
 
-	switch config.VirtualizationMode {
+	switch status.VirtualizationMode {
 	case types.PV:
 		xen_type = "pvh"
 		extra = "console=hvc0 " + uuidStr + config.ExtraArgs
@@ -1558,6 +1614,9 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 		if config.Kernel != "" {
 			kernel = config.Kernel
 		}
+	default:
+		log.Errorf("Internal error: Unknown virtualizationMode %d",
+			status.VirtualizationMode)
 	}
 
 	file.WriteString("# This file is automatically generated by domainmgr\n")
@@ -1722,16 +1781,16 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 				tap := typeAndPCI{pciLong: ib.PciLong, ioType: ib.Type}
 				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
 			}
-			if ib.Irq != "" && config.VirtualizationMode == types.PV {
+			if ib.Irq != "" && status.VirtualizationMode == types.PV {
 				log.Infof("Adding irq <%s>\n", ib.Irq)
 				irqAssignments = addNoDuplicate(irqAssignments,
 					ib.Irq)
 			}
-			if ib.Ioports != "" && config.VirtualizationMode == types.PV {
+			if ib.Ioports != "" && status.VirtualizationMode == types.PV {
 				log.Infof("Adding ioport <%s>\n", ib.Ioports)
 				ioportsAssignments = addNoDuplicate(ioportsAssignments, ib.Ioports)
 			}
-			if ib.Serial != "" && (config.VirtualizationMode == types.HVM || config.VirtualizationMode == types.FML) {
+			if ib.Serial != "" && (status.VirtualizationMode == types.HVM || status.VirtualizationMode == types.FML) {
 				log.Infof("Adding serial <%s>\n", ib.Serial)
 				serialAssignments = addNoDuplicate(serialAssignments, ib.Serial)
 			}
@@ -1930,7 +1989,7 @@ func handleModify(ctx *domainContext, key string,
 }
 
 func updateStatusFromConfig(status *types.DomainStatus, config types.DomainConfig) {
-	status.VirtualizationMode = config.VirtualizationMode
+	status.VirtualizationMode = config.VirtualizationModeOrDefault()
 	status.EnableVnc = config.EnableVnc
 	status.VncDisplay = config.VncDisplay
 	status.VncPasswd = config.VncPasswd
@@ -1939,23 +1998,30 @@ func updateStatusFromConfig(status *types.DomainStatus, config types.DomainConfi
 // Used to wait both after shutdown and destroy
 func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 	gone := false
-	var delay time.Duration
+	delay := time.Second
+	var waited time.Duration
 	for {
 		log.Infof("waitForDomainGone(%v) for %s: waiting for %v\n",
 			status.UUIDandVersion, status.DisplayName, delay)
-		time.Sleep(delay)
+		if delay != 0 {
+			time.Sleep(delay)
+			waited += delay
+		}
 		if err := xlStatus(status.DomainName, status.DomainId); err != nil {
 			log.Infof("waitForDomainGone(%v) for %s: domain is gone\n",
 				status.UUIDandVersion, status.DisplayName)
 			gone = true
 			break
 		} else {
-			delay = 2 * (delay + time.Second)
-			if delay > maxDelay {
+			if waited > maxDelay {
 				// Give up
-				log.Infof("waitForDomainGone(%v) for %s: giving up\n",
+				log.Warnf("waitForDomainGone(%v) for %s: giving up\n",
 					status.UUIDandVersion, status.DisplayName)
 				break
+			}
+			delay = 2 * delay
+			if delay > time.Minute {
+				delay = time.Minute
 			}
 		}
 	}
@@ -2078,15 +2144,11 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 		}
 		log.Infof("ociFilename %s sha %s", ociFilename, status.DiskStatusList[0].ImageSha256)
 		imageHash, err := ociToRktImageHash(ociFilename)
-		// XXX looks like the conversion uses lots of memory. Need to
-		// free to avoid OOM
-		dbg.FreeOSMemory()
-		agentlog.LogMemoryUsage()
 		if err != nil {
 			log.Error(err)
 			return domainID, podUUID, fmt.Errorf("unable to get rkt image hash: %v", err)
 		}
-		domainID, podUUID, err = rktRun(status.DomainName, filename, imageHash)
+		domainID, podUUID, err = rktRun(status.DomainName, filename, imageHash, status.EnvVariables)
 	} else {
 		// Use xl tool
 		log.Infof("Using xl tool ... xenCfgFilename - %s\n", filename)
@@ -2098,14 +2160,13 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 
 // Launch app/container thru rkt
 // returns domainID, podUUID and error
-func rktRun(domainName, xenCfgFilename, imageHash string) (int, string, error) {
+func rktRun(domainName, xenCfgFilename, imageHash string, envList map[string]string) (int, string, error) {
 	// STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=xenCfgFilename rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file --set-env=ENV-KEY=env-value
 	//TODO: envVars must be read from image config once we decide on how we will be passing this info from UI
-	envVars := map[string]string{}
 	var (
 		envVarSlice = make([]string, 0)
 	)
-	for k, v := range envVars {
+	for k, v := range envList {
 		envVarSlice = append(envVarSlice, fmt.Sprintf("--set-env=%s=%s", k, v))
 	}
 	log.Infof("rktRun %s\n", domainName)
@@ -2144,12 +2205,11 @@ func rktRun(domainName, xenCfgFilename, imageHash string) (int, string, error) {
 
 	err = lookForRktRunErrors(string(stdoutStderr))
 	if err != nil {
-		log.Errorln(err.Error())
-		// XXX we might be checking to quickly to see the exited status
-		// XXX if status := rktStatus(podUUID); status != "running" {
-		if true {
+		if status := rktStatus(podUUID); status != "running" {
+			log.Errorf("status = %s, err = %s", status, err)
 			return 0, "", err
 		}
+		log.Errorf("running ignore rkt err = %s", err)
 	}
 	log.Infof("rkt run done\n")
 
@@ -2594,10 +2654,10 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		debugOverride)
 	if gcp != nil {
 		if gcp.VdiskGCTime != 0 {
-			vdiskGCTime = time.Duration(gcp.VdiskGCTime) * time.Second
+			ctx.vdiskGCTime = gcp.VdiskGCTime
 		}
 		if gcp.DomainBootRetryTime != 0 {
-			domainBootRetryTime = time.Duration(gcp.DomainBootRetryTime) * time.Second
+			ctx.domainBootRetryTime = gcp.DomainBootRetryTime
 		}
 		if gcp.UsbAccess != ctx.usbAccess {
 			ctx.usbAccess = gcp.UsbAccess
@@ -2640,6 +2700,27 @@ func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
 	}
 	err = diskmetrics.ResizeImg(diskfile, maxsizebytes)
 	return err
+}
+
+// Fetch the list of environment variables from the cloud init
+// We are expecting the environment variables to be pass in particular format in cloud-int
+// Example:
+// Key1:Val1
+// Key2:Val2 ...
+func fetchEnvVariablesFromCloudInit(config types.DomainConfig) (map[string]string, error) {
+	ud, err := base64.StdEncoding.DecodeString(*config.CloudInitUserData)
+	if err != nil {
+		errStr := fmt.Sprintf("fetchEnvVariablesFromCloudInit failed %s\n", err)
+		return nil, errors.New(errStr)
+	}
+	envList := make(map[string]string, 0)
+	list := strings.Split(string(ud), "\n")
+	for _, v := range list {
+		pair := strings.Split(v, ":")
+		envList[pair[0]] = pair[1]
+	}
+
+	return envList, nil
 }
 
 // Create a isofs with user-data and meta-data and add it to DiskStatus

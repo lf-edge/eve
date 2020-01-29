@@ -46,6 +46,16 @@ func (config DomainConfig) VerifyFilename(fileName string) bool {
 	return ret
 }
 
+// VirtualizationModeOrDefault sets the default to PV
+func (config DomainConfig) VirtualizationModeOrDefault() VmMode {
+	switch config.VirtualizationMode {
+	case PV, HVM, FML:
+		return config.VirtualizationMode
+	default:
+		return PV
+	}
+}
+
 // Some of these items can be overridden by matching Targets in
 // StorageConfigList. For example, a Target of "kernel" means to set/override
 // the Kernel attribute below.
@@ -109,8 +119,9 @@ type DomainStatus struct {
 	LastErrTime        time.Time
 	BootFailed         bool
 	AdaptersFailed     bool
-	IsContainer        bool   // Is this Domain for a Container?
-	PodUUID            string // Pod UUID outputted by rkt
+	IsContainer        bool              // Is this Domain for a Container?
+	PodUUID            string            // Pod UUID outputted by rkt
+	EnvVariables       map[string]string // List of environment variables to be set in container
 }
 
 func (status DomainStatus) Key() string {

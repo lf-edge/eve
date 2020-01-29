@@ -1,0 +1,21 @@
+// Copyright(c) 2020 Zededa, Inc.
+// All rights reserved.
+
+syntax = "proto3";
+
+option go_package  = "github.com/lf-edge/eve/api/go/auth";
+option java_package = "com.zededa.cloud.uservice.proto";
+
+
+message AuthBody {
+    bytes  payload = 1;
+}
+
+message AuthContainer {
+    AuthBody authPayload = 1;      // envolope body, a marshalled protobuf data or it can be null
+    // if the length of senderCertHash received is not 16 bytes, then the protobuf
+    // message either is not AuthContainer type, or is corrupted. Otherwise, the
+    // reciever may not have the sender's signing certificate
+    string   senderCertHash = 2;   // 16 bytes in length, 1st 16 char of sender siging cert sha256 hash
+    bytes    signatureHash = 3;    // signature of the sha256 hash of the payload
+}

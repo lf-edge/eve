@@ -34,7 +34,8 @@ func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.U
 			log.Infof("XXX StatusNotModified with len %d",
 				len(contents))
 		}
-		return devUUID, hardwaremodel, enterprise, name, nil
+		// Signal as error since we are not returning any useful values.
+		return devUUID, hardwaremodel, enterprise, name, fmt.Errorf("Unchanged StatusNotModified")
 	}
 
 	configResponse, err := readConfigResponseProtoMessage(contents)
@@ -50,7 +51,8 @@ func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.U
 			log.Infof("XXX same hash %s with len %d",
 				hash, len(contents))
 		}
-		return devUUID, hardwaremodel, enterprise, name, err
+		// Signal as error since we are not returning any useful values.
+		return devUUID, hardwaremodel, enterprise, name, fmt.Errorf("Unchanged config hash")
 	}
 	log.Infof("Change in ConfigHash from %s to %s", prevConfigHash, hash)
 	prevConfigHash = hash
