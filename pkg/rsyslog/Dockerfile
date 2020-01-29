@@ -6,6 +6,8 @@ RUN apk add --no-cache \
 COPY rsyslog.conf /etc/rsyslog.conf
 COPY init.sh /init.sh
 COPY rotate.sh /rotate.sh
+COPY start-rsyslogd.sh /start-rsyslogd.sh
+COPY monitor-rsyslog.sh /monitor-rsyslog.sh
 
 ENTRYPOINT []
 CMD ["/init.sh"]
