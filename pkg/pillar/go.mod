@@ -5,7 +5,7 @@ go 1.12
 require (
 	contrib.go.opencensus.io/exporter/ocagent v0.4.11 // indirect
 	github.com/Azure/azure-sdk-for-go v19.1.1+incompatible
-	github.com/Azure/go-autorest v11.7.0+incompatible // indirect
+	github.com/Azure/go-autorest v13.0.1+incompatible // indirect
 	github.com/VictorLowther/godmi v0.0.0-20190311134151-270258a8252d // indirect
 	github.com/appc/docker2aci v0.17.2
 	github.com/appc/spec v0.8.11 // indirect
