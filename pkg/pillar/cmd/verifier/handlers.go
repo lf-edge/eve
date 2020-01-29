@@ -5,19 +5,22 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// Notify simple struct to pass notification messages
+type Notify struct{}
+
 type verifyHandler struct {
 	// We have one goroutine per provisioned domU object.
-	// Channel is used to send config (new and updates)
+	// Channel is used to send notifications about config (add and updates)
 	// Channel is closed when the object is deleted
 	// The go-routine owns writing status for the object
 	// The key in the map is the objects Key()
 
-	handlers map[string]chan<- interface{}
+	handlers map[string]chan<- Notify
 }
 
 func makeVerifyHandler() *verifyHandler {
 	return &verifyHandler{
-		handlers: make(map[string]chan<- interface{}),
+		handlers: make(map[string]chan<- Notify),
 	}
 }
 
@@ -33,7 +36,13 @@ func (v *verifyHandler) modify(ctxArg interface{}, objType string,
 	if !ok {
 		log.Fatalf("verifyHandler.modify called on config that does not exist")
 	}
-	h <- configArg
+	select {
+	case h <- Notify{}:
+		log.Infof("verifyHandler.modify(%s) sent notify", key)
+	default:
+		// handler is slow
+		log.Warnf("verifyHandler.modify(%s) NOT sent notify. Slow handler?", key)
+	}
 	log.Infof("verifyHandler.modify(%s) done\n", key)
 }
 
@@ -47,11 +56,17 @@ func (v *verifyHandler) create(ctxArg interface{}, objType string,
 	if ok {
 		log.Fatalf("verifyHandler.create called on config that already exists")
 	}
-	h1 := make(chan interface{}, 1)
+	h1 := make(chan Notify, 1)
 	v.handlers[config.Key()] = h1
 	go runHandler(ctx, objType, key, h1)
 	h = h1
-	h <- configArg
+	select {
+	case h <- Notify{}:
+		log.Infof("verifyHandler.create(%s) sent notify", key)
+	default:
+		// Shouldn't happen since we just created channel
+		log.Fatalf("verifyHandler.create(%s) NOT sent notify", key)
+	}
 	log.Infof("verifyHandler.create(%s) done\n", key)
 }
 

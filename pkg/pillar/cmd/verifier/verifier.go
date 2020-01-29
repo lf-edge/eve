@@ -566,6 +566,20 @@ func verifierPublication(ctx *verifierContext, objType string) pubsub.Publicatio
 	return pub
 }
 
+func verifierSubscription(ctx *verifierContext, objType string) pubsub.Subscription {
+	var sub pubsub.Subscription
+	switch objType {
+	case types.AppImgObj:
+		sub = ctx.subAppImgConfig
+	case types.BaseOsObj:
+		sub = ctx.subBaseOsConfig
+	default:
+		log.Fatalf("verifierSubscription: Unknown ObjType %s\n",
+			objType)
+	}
+	return sub
+}
+
 // Callers must be careful to publish any changes to VerifyImageStatus
 func lookupVerifyImageStatus(ctx *verifierContext, objType string,
 	key string) *types.VerifyImageStatus {
@@ -582,16 +596,22 @@ func lookupVerifyImageStatus(ctx *verifierContext, objType string,
 
 // Server for each domU
 func runHandler(ctx *verifierContext, objType string, key string,
-	c <-chan interface{}) {
+	c <-chan Notify) {
 
 	log.Infof("runHandler starting\n")
 
 	closed := false
 	for !closed {
 		select {
-		case configArg, ok := <-c:
+		case _, ok := <-c:
 			if ok {
-				config := configArg.(types.VerifyImageConfig)
+				sub := verifierSubscription(ctx, objType)
+				c, err := sub.Get(key)
+				if err != nil {
+					log.Errorf("runHandler no config for %s", key)
+					continue
+				}
+				config := c.(types.VerifyImageConfig)
 				status := lookupVerifyImageStatus(ctx,
 					objType, key)
 				if status == nil {
