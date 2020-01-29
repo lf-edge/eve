@@ -22,5 +22,5 @@ type CipherInfo struct {
 
 // Key :
 func (cipherInfo *CipherInfo) Key() string {
-	return cipherInfo.Id
+	return cipherInfo.ID
 }
