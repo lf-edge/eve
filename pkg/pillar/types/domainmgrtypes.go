@@ -154,10 +154,22 @@ func (status DomainStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }
 
+// VifInfoByVif looks up based on the name aka Vif
+func (status DomainStatus) VifInfoByVif(vif string) *VifInfo {
+	for i := range status.VifList {
+		net := &status.VifList[i]
+		if net.Vif == vif {
+			return net
+		}
+	}
+	return nil
+}
+
 type VifInfo struct {
-	Bridge string
-	Vif    string
-	Mac    string
+	Bridge  string
+	Vif     string
+	VifUsed string // Has -emu in name in Status if appropriate
+	Mac     string
 }
 
 // DomainManager will pass these to the xen xl config file

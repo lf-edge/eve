@@ -1540,12 +1540,12 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 
 func appIfnameToName(aiStatus *types.AppInstanceStatus, vifname string) string {
 	for _, ulStatus := range aiStatus.UnderlayNetworks {
-		if ulStatus.Vif == vifname {
+		if ulStatus.VifUsed == vifname {
 			return ulStatus.Name
 		}
 	}
 	for _, olStatus := range aiStatus.OverlayNetworks {
-		if olStatus.Vif == vifname {
+		if olStatus.VifUsed == vifname {
 			return olStatus.Name
 		}
 	}
@@ -1653,7 +1653,7 @@ func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
 
 	log.Debugf("getAppIP(%s, %s)\n", aiStatus.Key(), vifname)
 	for _, ulStatus := range aiStatus.UnderlayNetworks {
-		if ulStatus.Vif != vifname {
+		if ulStatus.VifUsed != vifname {
 			continue
 		}
 		log.Debugf("getAppIP(%s, %s) found underlay %s assigned %v mac %s\n",
@@ -1661,7 +1661,7 @@ func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
 		return ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac
 	}
 	for _, olStatus := range aiStatus.OverlayNetworks {
-		if olStatus.Vif != vifname {
+		if olStatus.VifUsed != vifname {
 			continue
 		}
 		log.Debugf("getAppIP(%s, %s) found overlay %s assigned %v mac %s\n",

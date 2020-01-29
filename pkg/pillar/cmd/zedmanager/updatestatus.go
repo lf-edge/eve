@@ -803,19 +803,25 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		// If !status.Activated e.g, due to error, then
 		// need to bring down first.
 		ds := lookupDomainStatus(ctx, config.Key())
-		if ds != nil && status.DomainName != ds.DomainName {
-			status.DomainName = ds.DomainName
-			changed = true
-		}
-		if ds != nil && status.BootTime != ds.BootTime {
-			status.BootTime = ds.BootTime
-			changed = true
-		}
-		if ds != nil && !ds.Activated && ds.LastErr == "" {
-			log.Infof("RestartInprogress(%s) came down - set bring up\n",
-				status.Key())
-			status.RestartInprogress = types.BRING_UP
-			changed = true
+		if ds != nil {
+			if status.DomainName != ds.DomainName {
+				status.DomainName = ds.DomainName
+				changed = true
+			}
+			if status.BootTime != ds.BootTime {
+				status.BootTime = ds.BootTime
+				changed = true
+			}
+			c := updateVifUsed(status, *ds)
+			if c {
+				changed = true
+			}
+			if !ds.Activated && ds.LastErr == "" {
+				log.Infof("RestartInprogress(%s) came down - set bring up\n",
+					status.Key())
+				status.RestartInprogress = types.BRING_UP
+				changed = true
+			}
 		}
 	}
 
@@ -889,6 +895,10 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	}
 	if status.BootTime != ds.BootTime {
 		status.BootTime = ds.BootTime
+		changed = true
+	}
+	c := updateVifUsed(status, *ds)
+	if c {
 		changed = true
 	}
 	// Are we doing a restart?
@@ -1032,6 +1042,32 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	return changed
 }
 
+// Check if VifUsed has changed and return true if it has
+func updateVifUsed(statusPtr *types.AppInstanceStatus, ds types.DomainStatus) bool {
+	changed := false
+	for i := range statusPtr.UnderlayNetworks {
+		ulStatus := &statusPtr.UnderlayNetworks[i]
+		net := ds.VifInfoByVif(ulStatus.Vif)
+		if net != nil && net.VifUsed != ulStatus.VifUsed {
+			log.Infof("Found VifUsed %s for Vif %s", net.VifUsed, ulStatus.Vif)
+			ulStatus.VifUsed = net.VifUsed
+			changed = true
+		}
+	}
+	for i := range statusPtr.OverlayNetworks {
+		olStatus := &statusPtr.OverlayNetworks[i]
+		net := ds.VifInfoByVif(olStatus.Vif)
+		if net != nil && net.VifUsed != olStatus.VifUsed {
+			log.Infof("Found VifUsed %s for Vif %s", net.VifUsed, olStatus.Vif)
+			olStatus.VifUsed = net.VifUsed
+			changed = true
+		}
+	}
+
+	// for _, ec := range config.OverlayNetworkList {
+	return changed
+}
+
 func lookupStorageStatus(status *types.AppInstanceStatus, sc types.StorageConfig) *types.StorageStatus {
 
 	for i := range status.StorageStatusList {
@@ -1166,6 +1202,10 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 		}
 		if status.BootTime != ds.BootTime {
 			status.BootTime = ds.BootTime
+			changed = true
+		}
+		c := updateVifUsed(status, *ds)
+		if c {
 			changed = true
 		}
 		log.Infof("Waiting for DomainStatus removal for %s\n", uuidStr)
@@ -1363,6 +1403,10 @@ func doInactivateHalt(ctx *zedmanagerContext,
 	}
 	if status.BootTime != ds.BootTime {
 		status.BootTime = ds.BootTime
+		changed = true
+	}
+	c := updateVifUsed(status, *ds)
+	if c {
 		changed = true
 	}
 	if ds.State != status.State {

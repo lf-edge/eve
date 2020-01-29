@@ -170,13 +170,13 @@ func (status AppInstanceStatus) GetAppInterfaceList() []string {
 
 	var viflist []string
 	for _, ulStatus := range status.UnderlayNetworks {
-		if ulStatus.Vif != "" {
-			viflist = append(viflist, ulStatus.Vif)
+		if ulStatus.VifUsed != "" {
+			viflist = append(viflist, ulStatus.VifUsed)
 		}
 	}
 	for _, olStatus := range status.OverlayNetworks {
-		if olStatus.Vif != "" {
-			viflist = append(viflist, olStatus.Vif)
+		if olStatus.VifUsed != "" {
+			viflist = append(viflist, olStatus.VifUsed)
 		}
 	}
 	return viflist
