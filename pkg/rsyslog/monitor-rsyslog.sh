@@ -2,9 +2,15 @@
 
 wait_for_rsyslogd()
 {
+    # limit the wait to 30 seconds
+    LOOP_COUNT=0
     while [ -z "$(pgrep rsyslogd)" ];
     do
         echo "Waiting for rsyslogd to start"
+        LOOP_COUNT=$((LOOP_COUNT + 1))
+        if [ "$LOOP_COUNT" -ge 30 ]; then
+            break
+        fi
         sleep 1
     done
 }
@@ -42,14 +48,18 @@ do
         # It can take some time for /run/rsyslogd.pid to get
         # updated with new pid. Wait till that happens.
         PID=$(pgrep rsyslogd)
-        while [ "$RSYSLOG_PID" != "$PID" ];
+        while [ "$PID" != 0 ] && [ "$RSYSLOG_PID" != "$PID" ];
         do
-            echo "Error: rsyslogd PID: $PID is not in sync with /run/rsyslogd.pid: $(RSYSLOG_PID)"
+            echo "Error: rsyslogd PID: $PID is not in sync with /run/rsyslogd.pid: $RSYSLOG_PID"
             sleep 1
             PID=$(pgrep rsyslogd)
             RSYSLOG_PID=$(cat /run/rsyslogd.pid)
         done
-        echo "Started rsyslogd again with pid $RSYSLOG_PID"
+        if [ "$PID" != 0 ]; then
+            echo "Started rsyslogd again with pid $RSYSLOG_PID"
+        fi
     fi
-    echo "rsyslogd running with pid $RSYSLOG_PID"
+    if [ "$PID" != 0 ]; then
+        echo "rsyslogd running with pid $PID"
+    fi
 done
