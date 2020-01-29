@@ -1,0 +1,302 @@
+diff --git a/init/init.go b/init/init.go
+index 91317b2..02a7974 100644
+--- a/init/init.go
++++ b/init/init.go
+@@ -19,11 +19,15 @@ import (
+ 	"errors"
+ 	"flag"
+ 	"fmt"
++	"github.com/appc/spec/schema"
++	"github.com/rkt/rkt/pkg/fs"
++	"github.com/rkt/rkt/pkg/mountinfo"
+ 	"io/ioutil"
+ 	"net"
+ 	"os"
+ 	"path/filepath"
+ 	"runtime"
++	"strings"
+ 	"syscall"
+ 
+ 	"github.com/appc/spec/schema/types"
+@@ -41,6 +45,19 @@ import (
+ 	"github.com/rkt/rkt/pkg/sys"
+ )
+ 
++type xenMount struct {
++	HostPath         string
++	TargetPrefixPath string
++	RelTargetPath    string
++	Fs               string
++	Flags            uintptr
++}
++
++type volumeMountTuple struct {
++	V types.Volume
++	M schema.Mount
++}
++
+ var (
+ 	debug       bool
+ 	localhostIP net.IP
+@@ -97,6 +114,143 @@ func init() {
+ 	}
+ }
+ 
++func addMountPoints(namedVolumeMounts map[types.ACName]volumeMountTuple, mountpoints []types.MountPoint) error {
++	for _, mp := range mountpoints {
++		tuple, exists := namedVolumeMounts[mp.Name]
++		switch {
++		case exists && tuple.M.Path != mp.Path:
++			return fmt.Errorf("conflicting path information from mount and mountpoint %q", mp.Name)
++		case !exists:
++			namedVolumeMounts[mp.Name] = volumeMountTuple{M: schema.Mount{Volume: mp.Name, Path: mp.Path}}
++			diag.Printf("adding %+v", namedVolumeMounts[mp.Name])
++		}
++	}
++	return nil
++}
++
++func evaluateMounts(rfs string, app string, p *stage1commontypes.Pod) ([]xenMount, error) {
++	namedVolumeMounts := map[types.ACName]volumeMountTuple{}
++
++	// Insert the PodManifest's first RuntimeApp's Mounts
++	for _, m := range p.Manifest.Apps[0].Mounts {
++		_, exists := namedVolumeMounts[m.Volume]
++		if exists {
++			return nil, fmt.Errorf("duplicate mount given: %q", m.Volume)
++		}
++		namedVolumeMounts[m.Volume] = volumeMountTuple{M: m}
++		diag.Printf("adding %+v", namedVolumeMounts[m.Volume])
++	}
++
++	// Merge command-line Mounts with ImageManifest's MountPoints
++	var imAppManifestMPs []types.MountPoint
++	if imApp := p.Images[app].App; imApp != nil {
++		imAppManifestMPs = imApp.MountPoints
++		if err := addMountPoints(namedVolumeMounts, imAppManifestMPs); err != nil {
++			return nil, err
++		}
++	}
++
++	// Merge command-line Mounts with PodManifest's RuntimeApp's App's MountPoints
++	raApp := p.Manifest.Apps[0]
++	if err := addMountPoints(namedVolumeMounts, raApp.App.MountPoints); err != nil {
++		return nil, err
++	}
++
++	// Insert the command-line Volumes
++	for _, v := range p.Manifest.Volumes {
++		// Check if we have a mount for this volume
++		tuple, exists := namedVolumeMounts[v.Name]
++		if !exists {
++			diag.Printf("skipping unused volume %q", v.Name)
++			continue
++		}
++
++		// Assertion regarding the implementation, should never happen
++		if tuple.M.Volume != v.Name {
++			return nil, fmt.Errorf("mismatched volume:mount pair: %q != %q", v.Name, tuple.M.Volume)
++		}
++
++		// Augment and replace mount entry, adding volume info
++		namedVolumeMounts[v.Name] = volumeMountTuple{V: v, M: tuple.M}
++		diag.Printf("adding %+v", namedVolumeMounts[v.Name])
++	}
++
++	// Merge command-line Volumes with ImageManifest's MountPoints
++	for _, mp := range imAppManifestMPs {
++		// Check if we have a volume for this mountpoint
++		tuple, exists := namedVolumeMounts[mp.Name]
++		if !exists || tuple.V.Name == "" {
++			return nil, fmt.Errorf("missing volume for mountpoint %q", mp.Name)
++		}
++
++		// If empty, fill in ReadOnly bit
++		if tuple.V.ReadOnly == nil {
++			v := tuple.V
++			v.ReadOnly = &mp.ReadOnly
++			namedVolumeMounts[mp.Name] = volumeMountTuple{M: tuple.M, V: v}
++			diag.Printf("adding %+v", namedVolumeMounts[mp.Name])
++		}
++	}
++
++	// Gather host mounts which we make MS_SHARED if passed as a volume source
++	hostMounts := map[string]struct{}{}
++	mnts, err := mountinfo.ParseMounts(0)
++	if err != nil {
++		return nil, errwrap.Wrap(errors.New("can't gather host mounts"), err)
++	}
++	for _, m := range mnts {
++		hostMounts[m.MountPoint] = struct{}{}
++	}
++
++	argXenMounts := []xenMount{}
++	for _, tuple := range namedVolumeMounts {
++		if _, isHostMount := hostMounts[tuple.V.Source]; isHostMount {
++			// Mark the host mount as SHARED so the container's changes to the mount are propagated to the host
++			argXenMounts = append(argXenMounts,
++				xenMount{"", "", tuple.V.Source, "none", syscall.MS_REC | syscall.MS_SHARED},
++			)
++		}
++
++		var (
++			flags     uintptr = syscall.MS_BIND
++			recursive         = tuple.V.Recursive != nil && *tuple.V.Recursive
++			ro                = tuple.V.ReadOnly != nil && *tuple.V.ReadOnly
++		)
++
++		// If Recursive is not set, default to non-recursive.
++		if recursive {
++			flags |= syscall.MS_REC
++		}
++
++		argXenMounts = append(argXenMounts,
++			xenMount{tuple.V.Source, rfs, tuple.M.Path, "none", flags},
++		)
++
++		if ro {
++			argXenMounts = append(argXenMounts,
++				xenMount{"", rfs, tuple.M.Path, "none", flags | syscall.MS_REMOUNT | syscall.MS_RDONLY},
++			)
++
++			if recursive {
++				// Every sub-mount needs to be remounted read-only separately
++				mnts, err := mountinfo.ParseMounts(0)
++				if err != nil {
++					return nil, errwrap.Wrap(fmt.Errorf("error getting mounts under %q from mountinfo", tuple.V.Source), err)
++				}
++				mnts = mnts.Filter(mountinfo.HasPrefix(tuple.V.Source + "/"))
++
++				for _, mnt := range mnts {
++					innerRelPath := tuple.M.Path + strings.Replace(mnt.MountPoint, tuple.V.Source, "", -1)
++					argXenMounts = append(argXenMounts,
++						xenMount{"", rfs, innerRelPath, "none", flags | syscall.MS_REMOUNT | syscall.MS_RDONLY},
++					)
++				}
++			}
++		}
++	}
++	return argXenMounts, nil
++}
++
+ // getArgsEnv returns the nspawn or lkvm args and env according to the flavor
+ // as the first two return values respectively.
+ func getArgsEnv(p *stage1commontypes.Pod, flavor string, debug bool, n *networking.Networking) ([]string, []string, error) {
+@@ -204,6 +358,109 @@ func stage1(rp *stage1commontypes.RuntimePod) int {
+ 	}
+ 
+ 	ra := p.Manifest.Apps[0]
++	rfs := filepath.Join(common.AppPath(p.Root, ra.Name), "rootfs")
++
++	argFlyMounts, err := evaluateMounts(rfs, string(ra.Name), p)
++	if err != nil {
++		log.PrintE("can't evaluate mounts", err)
++		return 254
++	}
++
++	effectiveMounts := append(
++		[]xenMount{
++			{"", "", "/dev", "none", syscall.MS_REC | syscall.MS_SHARED},
++			{"/dev", rfs, "/dev", "none", syscall.MS_BIND | syscall.MS_REC},
++
++			{"", "", "/proc", "none", syscall.MS_REC | syscall.MS_SHARED},
++			{"/proc", rfs, "/proc", "none", syscall.MS_BIND | syscall.MS_REC},
++
++			{"", "", "/sys", "none", syscall.MS_REC | syscall.MS_SHARED},
++			{"/sys", rfs, "/sys", "none", syscall.MS_BIND | syscall.MS_REC},
++
++			{"tmpfs", rfs, "/tmp", "tmpfs", 0},
++		},
++		argFlyMounts...,
++	)
++
++	mounter := fs.NewLoggingMounter(
++		fs.MounterFunc(syscall.Mount),
++		fs.UnmounterFunc(syscall.Unmount),
++		diag.Printf,
++	)
++	for _, mount := range effectiveMounts {
++		var (
++			err            error
++			hostPathInfo   os.FileInfo
++			targetPathInfo os.FileInfo
++		)
++
++		if strings.HasPrefix(mount.HostPath, "/") {
++			if hostPathInfo, err = os.Stat(mount.HostPath); err != nil {
++				log.PrintE(fmt.Sprintf("stat of host path %s", mount.HostPath), err)
++				return 254
++			}
++		} else {
++			hostPathInfo = nil
++		}
++
++		absTargetPath := mount.RelTargetPath
++		if mount.TargetPrefixPath != "" {
++			absStage2RootFS := common.AppRootfsPath(p.Root, ra.Name)
++			targetPath, err := stage1initcommon.EvaluateSymlinksInsideApp(absStage2RootFS, mount.RelTargetPath)
++			if err != nil {
++				log.PrintE(fmt.Sprintf("evaluate target path %q in %q", mount.RelTargetPath, absStage2RootFS), err)
++				return 254
++			}
++			absTargetPath = filepath.Join(absStage2RootFS, targetPath)
++		}
++		if targetPathInfo, err = os.Stat(absTargetPath); err != nil && !os.IsNotExist(err) {
++			log.PrintE(fmt.Sprintf("stat of target path %s", absTargetPath), err)
++			return 254
++		}
++
++		switch {
++		case (mount.Flags & syscall.MS_REMOUNT) != 0:
++			{
++				diag.Printf("don't attempt to create files for remount of %q", absTargetPath)
++			}
++		case targetPathInfo == nil:
++			absTargetPathParent, _ := filepath.Split(absTargetPath)
++			if err := os.MkdirAll(absTargetPathParent, 0755); err != nil {
++				log.PrintE(fmt.Sprintf("can't create directory %q", absTargetPath), err)
++				return 254
++			}
++			switch {
++			case hostPathInfo == nil || hostPathInfo.IsDir():
++				if err := os.Mkdir(absTargetPath, 0755); err != nil {
++					log.PrintE(fmt.Sprintf("can't create directory %q", absTargetPath), err)
++					return 254
++				}
++			case !hostPathInfo.IsDir():
++				file, err := os.OpenFile(absTargetPath, os.O_CREATE, 0700)
++				if err != nil {
++					log.PrintE(fmt.Sprintf("can't create file %q", absTargetPath), err)
++					return 254
++				}
++				file.Close()
++			}
++		case hostPathInfo != nil:
++			switch {
++			case hostPathInfo.IsDir() && !targetPathInfo.IsDir():
++				log.Printf("can't mount because %q is a directory while %q is not", mount.HostPath, absTargetPath)
++				return 254
++			case !hostPathInfo.IsDir() && targetPathInfo.IsDir():
++				log.Printf("can't mount because %q is not a directory while %q is", mount.HostPath, absTargetPath)
++				return 254
++			}
++		}
++
++		if err := mounter.Mount(mount.HostPath, absTargetPath, mount.Fs, mount.Flags, ""); err != nil {
++			log.PrintE(fmt.Sprintf("can't mount %q on %q with flags %v", mount.HostPath, absTargetPath, mount.Flags), err)
++			return 254
++		}
++	}
++
++
+ 	appEnv := composeEnvironment(ra.App.Environment)
+ 	appsPath := common.AppPath(p.Root, ra.Name)
+ 
+@@ -235,6 +492,7 @@ func stage1(rp *stage1commontypes.RuntimePod) int {
+ 	return 0
+ }
+ 
++
+ // writeEnvFile creates an external-environment file under appDir
+ // with entries from PodManifest.App.Environments
+ func writeEnvFile(appDir string, environment types.Environment) error {
