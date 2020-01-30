@@ -1,5 +1,32 @@
 #!/bin/sh
 
+start_rsyslogd()
+{
+    RSYSLOG_WORK_DIR=/persist/rsyslog
+    OLD_DIR=/persist/syslog
+    # We need to clean up old state it seems. Use $OLD_DIR as the hint
+    if [ -d "$OLD_DIR" ]; then
+        echo "Moving old $OLD_DIR and $RSYSLOG_WORK_DIR out of the way"
+        mv "$OLD_DIR" "$OLD_DIR".old
+        mv "$RSYSLOG_WORK_DIR" "$RSYSLOG_WORK_DIR".old
+    fi
+    if [ ! -d "$RSYSLOG_WORK_DIR" ]; then
+        mkdir -p $RSYSLOG_WORK_DIR
+        chmod 644 $RSYSLOG_WORK_DIR
+    fi
+
+    IMGP=$(cat /run/eve.id 2>/dev/null)
+    PERSIST_LOG_PATH="/persist/$IMGP/syslog"
+    if [ ! -d "$PERSIST_LOG_PATH" ]; then
+        mkdir -p "$PERSIST_LOG_PATH"
+    fi
+    if [ ! -L "$RSYSLOG_WORK_DIR/syslog" ]; then
+        rm "$RSYSLOG_WORK_DIR/syslog"
+    fi
+    ln -s "$PERSIST_LOG_PATH" "$RSYSLOG_WORK_DIR/syslog"
+    IMGP=${IMGP:-IMGX} /usr/sbin/rsyslogd -n &
+}
+
 wait_for_rsyslogd()
 {
     # limit the wait to 30 seconds
@@ -14,6 +41,12 @@ wait_for_rsyslogd()
         sleep 1
     done
 }
+
+# write our own PID to /run/monitor-rsyslogd.pid
+echo $$ > /run/monitor-rsyslogd.pid
+
+# start rsyslogd for the fist time after device boot
+start_rsyslogd
 
 # wait for rsyslogd to start
 wait_for_rsyslogd
@@ -30,6 +63,8 @@ do
     RSYSLOG_PID=$(cat /run/rsyslogd.pid)
 done
 
+RSYSLOGD_RESTART_COUNT=0
+RSYSLOGD_MAX_RESTART_COUNT=30
 while true;
 do
     sleep 10
@@ -41,25 +76,30 @@ do
         tar -cvzf "/persist/rsyslog-backup/$NAME" /persist/rsyslog/*
         rm -rf /persist/rsyslog
 
-        # restart rsyslogd
-        ./start-rsyslogd.sh
+        # restart and wait for rsyslogd
+        if [ "$RSYSLOGD_RESTART_COUNT" -ge "$RSYSLOGD_MAX_RESTART_COUNT" ]; then
+            exit
+        fi
+        start_rsyslogd
+        RSYSLOGD_RESTART_COUNT=$((RSYSLOGD_RESTART_COUNT + 1))
         wait_for_rsyslogd
 
         # It can take some time for /run/rsyslogd.pid to get
         # updated with new pid. Wait till that happens.
         PID=$(pgrep rsyslogd)
-        while [ "$PID" != 0 ] && [ "$RSYSLOG_PID" != "$PID" ];
+        while [ -n "$PID" ] && [ "$RSYSLOG_PID" != "$PID" ];
         do
             echo "Error: rsyslogd PID: $PID is not in sync with /run/rsyslogd.pid: $RSYSLOG_PID"
             sleep 1
             PID=$(pgrep rsyslogd)
             RSYSLOG_PID=$(cat /run/rsyslogd.pid)
         done
-        if [ "$PID" != 0 ]; then
+        if [ -n "$PID" ]; then
+            RSYSLOGD_RESTART_COUNT=0
             echo "Started rsyslogd again with pid $RSYSLOG_PID"
         fi
     fi
-    if [ "$PID" != 0 ]; then
+    if [ -n "$PID" ]; then
         echo "rsyslogd running with pid $PID"
     fi
 done
