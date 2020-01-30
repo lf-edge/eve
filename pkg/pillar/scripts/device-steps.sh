@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 LOGREAD_PID_WAIT=3600
-LOG_TO_SYSLOG=1
 USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
@@ -24,7 +23,6 @@ AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
 
 PATH=$BINDIR:$PATH
-export LOG_TO_SYSLOG
 
 echo "$(date -Ins -u) Starting device-steps.sh"
 echo "$(date -Ins -u) EVE version: $(cat $BINDIR/versioninfo)"
