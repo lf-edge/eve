@@ -16,5 +16,4 @@ fi
 IMGP=$(cat /run/eve.id 2>/dev/null)
 IMGP=${IMGP:-IMGX} /usr/sbin/rsyslogd
 
-# XXX this can hang forever?? And we don't have a way to recover
-# waitforsyslog
+while true; do /usr/bin/logread -F -socket /run/memlogdq.sock | logger ; done

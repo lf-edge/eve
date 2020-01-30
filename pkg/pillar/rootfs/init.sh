@@ -20,5 +20,4 @@ XENCONSOLED_ARGS='--log=all --log-dir=/var/log/xen' /etc/init.d/xencommons start
 sleep 5 # Let it come up
 
 echo 'Starting device-steps'
-/opt/zededa/bin/device-steps.sh >/var/log/device-steps.log 2>&1
-
+/opt/zededa/bin/device-steps.sh
