@@ -418,7 +418,7 @@ killwait_watchdog
 /usr/sbin/watchdog -c $ZTMPDIR/watchdognim.conf -F -s &
 
 # Print diag output forever on changes
-$BINDIR/diag -c $CURPART -f -o /dev/console
+$BINDIR/diag -c $CURPART -f -o /dev/console &
 
 # Wait for having IP addresses for a few minutes
 # so that we are likely to have an address when we run ntp
