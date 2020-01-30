@@ -29,14 +29,11 @@ message CipherContext {
     KeyExchangeScheme keyExchangeScheme = 1;
     EncryptionScheme encryptionScheme = 2;
 
-    // Initial Value for Symmetric Key derivation
-    bytes initialValue = 3;
-
     // controller certificate
-    bytes controllerCert = 4;
+    bytes controllerCert = 3;
 
     // device certificate identifier/sha
-    string deviceCertId = 5;
+    string deviceCertId = 4;
 }
 
 // Encrypted sensitive data information
@@ -44,11 +41,14 @@ message CipherBlock {
     // cipher context id
     UUIDandVersion cipherContextId = 1;
 
+    // Initial Value for Symmetric Key derivation
+    bytes initialValue = 2;
+
     // encrypted sensitive data
-    bytes cipherData = 2;
+    bytes cipherData = 3;
 
     // sha256 of the plaintext sensitive data
-    bytes sha256 = 3;
+    bytes sha256 = 4;
 }
 
 
