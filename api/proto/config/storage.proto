@@ -44,9 +44,8 @@ message DatastoreConfig {
 	// Applies for some datastore types
 	string region = 6;
 
-    bytes cipherTextPassword = 7;
-
-    CipherInfo CInfo = 8;
+    // contains the cipher payload
+    CipherBlock cipherData = 7;
 }
 
 

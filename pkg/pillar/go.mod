@@ -4,26 +4,24 @@ go 1.12
 
 require (
 	contrib.go.opencensus.io/exporter/ocagent v0.4.11 // indirect
-	github.com/Azure/azure-sdk-for-go v19.1.1+incompatible
+	github.com/Azure/azure-sdk-for-go v38.0.0+incompatible
 	github.com/Azure/go-autorest v13.0.1+incompatible // indirect
 	github.com/VictorLowther/godmi v0.0.0-20190311134151-270258a8252d // indirect
 	github.com/appc/docker2aci v0.17.2
 	github.com/appc/spec v0.8.11 // indirect
-	github.com/aws/aws-sdk-go v1.19.11
+	github.com/aws/aws-sdk-go v1.27.1
 	github.com/coreos/ioprogress v0.0.0-20151023204047-4637e494fd9b // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
-	github.com/dnaeon/go-vcr v1.0.1 // indirect
 	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
 	github.com/eriknordmark/netlink v0.0.0-20190912172510-3b6b45309321
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/golang/protobuf v1.3.2
-	github.com/google/go-cmp v0.2.0
+	github.com/google/go-cmp v0.3.0
 	github.com/google/go-containerregistry v0.0.0-20200123184029-53ce695e4179
 	github.com/google/go-tpm v0.1.1
 	github.com/google/gopacket v1.1.16
 	github.com/gorilla/websocket v1.4.0
-	github.com/hashicorp/golang-lru v0.5.1 // indirect
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/klauspost/compress v1.9.4 // indirect
 	github.com/klauspost/pgzip v1.2.1 // indirect
@@ -35,7 +33,7 @@ require (
 	github.com/pkg/sftp v1.10.0
 	github.com/rackn/gohai v0.0.0-20190321191141-5053e7f1fa36
 	github.com/robertkrimen/otto v0.0.0-20180617131154-15f95af6e78d // indirect
-	github.com/satori/go.uuid v0.0.0-20181028125025-b2ce2384e17b
+	github.com/satori/go.uuid v1.2.0
 	github.com/shirou/gopsutil v0.0.0-20190323131628-2cbc9195c892
 	github.com/sirupsen/logrus v1.4.2
 	github.com/stretchr/testify v1.4.0
@@ -43,10 +41,8 @@ require (
 	github.com/vishvananda/netlink v1.0.1-0.20190823182904-a1c9a648f744 // indirect
 	github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f // indirect
 	go4.org v0.0.0-20191010144846-132d2879e1e9 // indirect
-	golang.org/x/crypto v0.0.0-20190611184440-5c40567a22f8
+	golang.org/x/crypto v0.0.0-20191206172530-e9b2fee46413
 	golang.org/x/net v0.0.0-20191004110552-13f9640d40b9
-	google.golang.org/api v0.3.2 // indirect
-	google.golang.org/genproto v0.0.0-20190404172233-64821d5d2107 // indirect
 	gopkg.in/mcuadros/go-syslog.v2 v2.3.0
 	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 )

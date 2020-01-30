@@ -13,6 +13,7 @@ from google.protobuf import symbol_database as _symbol_database
 _sym_db = _symbol_database.Default()
 
 
+import devcommon_pb2 as devcommon__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(
@@ -20,8 +21,9 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x10\x63ipherinfo.proto\"\xfe\x01\n\nCipherInfo\x12\n\n\x02id\x18\x64 \x01(\t\x12-\n\x11keyExchangeScheme\x18\x01 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x02 \x01(\x0e\x32\x11.EncryptionScheme\x12\x14\n\x0cinitialValue\x18\x03 \x01(\x0c\x12\x16\n\x0e\x63ontrollerCert\x18\x04 \x01(\x0c\x12\x1c\n\x14\x63ontrollerCertSha256\x18\x05 \x01(\t\x12\x18\n\x10\x64\x65viceCertSha256\x18\x06 \x01(\t\x12\"\n\x1a\x63ontrollerCertShaSignature\x18\x07 \x01(\x0c*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
-)
+  serialized_pb=_b('\n\x10\x63ipherinfo.proto\x1a\x0f\x64\x65vcommon.proto\"\xd8\x01\n\rCipherContext\x12\'\n\x0euuidandversion\x18\x64 \x01(\x0b\x32\x0f.UUIDandVersion\x12-\n\x11keyExchangeScheme\x18\x01 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x02 \x01(\x0e\x32\x11.EncryptionScheme\x12\x14\n\x0cinitialValue\x18\x03 \x01(\x0c\x12\x16\n\x0e\x63ontrollerCert\x18\x04 \x01(\x0c\x12\x14\n\x0c\x64\x65viceCertId\x18\x05 \x01(\t\"_\n\x0b\x43ipherBlock\x12(\n\x0f\x63ipherContextId\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x12\n\ncipherData\x18\x02 \x01(\x0c\x12\x12\n\ndataSha256\x18\x03 \x01(\x0c\"5\n\x0f\x43redentialBlock\x12\x10\n\x08identity\x18\x01 \x01(\t\x12\x10\n\x08password\x18\x02 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  ,
+  dependencies=[devcommon__pb2.DESCRIPTOR,])
 
 _KEYEXCHANGESCHEME = _descriptor.EnumDescriptor(
   name='KeyExchangeScheme',
@@ -40,8 +42,8 @@ _KEYEXCHANGESCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=277,
-  serialized_end=324,
+  serialized_start=408,
+  serialized_end=455,
 )
 _sym_db.RegisterEnumDescriptor(_KEYEXCHANGESCHEME)
 
@@ -63,8 +65,8 @@ _ENCRYPTIONSCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=326,
-  serialized_end=377,
+  serialized_start=457,
+  serialized_end=508,
 )
 _sym_db.RegisterEnumDescriptor(_ENCRYPTIONSCHEME)
 
@@ -76,65 +78,96 @@ SA_AES_256_CFB = 1
 
 
 
-_CIPHERINFO = _descriptor.Descriptor(
-  name='CipherInfo',
-  full_name='CipherInfo',
+_CIPHERCONTEXT = _descriptor.Descriptor(
+  name='CipherContext',
+  full_name='CipherContext',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='id', full_name='CipherInfo.id', index=0,
-      number=100, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
+      name='uuidandversion', full_name='CipherContext.uuidandversion', index=0,
+      number=100, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='keyExchangeScheme', full_name='CipherInfo.keyExchangeScheme', index=1,
+      name='keyExchangeScheme', full_name='CipherContext.keyExchangeScheme', index=1,
       number=1, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='encryptionScheme', full_name='CipherInfo.encryptionScheme', index=2,
+      name='encryptionScheme', full_name='CipherContext.encryptionScheme', index=2,
       number=2, type=14, cpp_type=8, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='initialValue', full_name='CipherInfo.initialValue', index=3,
+      name='initialValue', full_name='CipherContext.initialValue', index=3,
       number=3, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='controllerCert', full_name='CipherInfo.controllerCert', index=4,
+      name='controllerCert', full_name='CipherContext.controllerCert', index=4,
       number=4, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='controllerCertSha256', full_name='CipherInfo.controllerCertSha256', index=5,
+      name='deviceCertId', full_name='CipherContext.deviceCertId', index=5,
       number=5, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=38,
+  serialized_end=254,
+)
+
+
+_CIPHERBLOCK = _descriptor.Descriptor(
+  name='CipherBlock',
+  full_name='CipherBlock',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
     _descriptor.FieldDescriptor(
-      name='deviceCertSha256', full_name='CipherInfo.deviceCertSha256', index=6,
-      number=6, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
+      name='cipherContextId', full_name='CipherBlock.cipherContextId', index=0,
+      number=1, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='controllerCertShaSignature', full_name='CipherInfo.controllerCertShaSignature', index=7,
-      number=7, type=12, cpp_type=9, label=1,
+      name='cipherData', full_name='CipherBlock.cipherData', index=1,
+      number=2, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='dataSha256', full_name='CipherBlock.dataSha256', index=2,
+      number=3, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -151,23 +184,79 @@ _CIPHERINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=21,
-  serialized_end=275,
+  serialized_start=256,
+  serialized_end=351,
 )
 
-_CIPHERINFO.fields_by_name['keyExchangeScheme'].enum_type = _KEYEXCHANGESCHEME
-_CIPHERINFO.fields_by_name['encryptionScheme'].enum_type = _ENCRYPTIONSCHEME
-DESCRIPTOR.message_types_by_name['CipherInfo'] = _CIPHERINFO
+
+_CREDENTIALBLOCK = _descriptor.Descriptor(
+  name='CredentialBlock',
+  full_name='CredentialBlock',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='identity', full_name='CredentialBlock.identity', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='password', full_name='CredentialBlock.password', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=353,
+  serialized_end=406,
+)
+
+_CIPHERCONTEXT.fields_by_name['uuidandversion'].message_type = devcommon__pb2._UUIDANDVERSION
+_CIPHERCONTEXT.fields_by_name['keyExchangeScheme'].enum_type = _KEYEXCHANGESCHEME
+_CIPHERCONTEXT.fields_by_name['encryptionScheme'].enum_type = _ENCRYPTIONSCHEME
+_CIPHERBLOCK.fields_by_name['cipherContextId'].message_type = devcommon__pb2._UUIDANDVERSION
+DESCRIPTOR.message_types_by_name['CipherContext'] = _CIPHERCONTEXT
+DESCRIPTOR.message_types_by_name['CipherBlock'] = _CIPHERBLOCK
+DESCRIPTOR.message_types_by_name['CredentialBlock'] = _CREDENTIALBLOCK
 DESCRIPTOR.enum_types_by_name['KeyExchangeScheme'] = _KEYEXCHANGESCHEME
 DESCRIPTOR.enum_types_by_name['EncryptionScheme'] = _ENCRYPTIONSCHEME
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
-CipherInfo = _reflection.GeneratedProtocolMessageType('CipherInfo', (_message.Message,), dict(
-  DESCRIPTOR = _CIPHERINFO,
+CipherContext = _reflection.GeneratedProtocolMessageType('CipherContext', (_message.Message,), dict(
+  DESCRIPTOR = _CIPHERCONTEXT,
   __module__ = 'cipherinfo_pb2'
-  # @@protoc_insertion_point(class_scope:CipherInfo)
+  # @@protoc_insertion_point(class_scope:CipherContext)
   ))
-_sym_db.RegisterMessage(CipherInfo)
+_sym_db.RegisterMessage(CipherContext)
+
+CipherBlock = _reflection.GeneratedProtocolMessageType('CipherBlock', (_message.Message,), dict(
+  DESCRIPTOR = _CIPHERBLOCK,
+  __module__ = 'cipherinfo_pb2'
+  # @@protoc_insertion_point(class_scope:CipherBlock)
+  ))
+_sym_db.RegisterMessage(CipherBlock)
+
+CredentialBlock = _reflection.GeneratedProtocolMessageType('CredentialBlock', (_message.Message,), dict(
+  DESCRIPTOR = _CREDENTIALBLOCK,
+  __module__ = 'cipherinfo_pb2'
+  # @@protoc_insertion_point(class_scope:CredentialBlock)
+  ))
+_sym_db.RegisterMessage(CredentialBlock)
 
 
 DESCRIPTOR._options = None

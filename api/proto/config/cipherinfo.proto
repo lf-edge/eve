@@ -6,6 +6,8 @@ syntax = "proto3";
 option go_package  = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
+import "devcommon.proto";
+
 // Cipher information for sensitive data.
 
 // Security Key Exchange Method
@@ -20,24 +22,40 @@ enum EncryptionScheme {
     SA_AES_256_CFB = 1;
 }
 
-message CipherInfo {
-    string id = 100;
+// Cipher information to decrypt Sensitive Data
+message CipherContext {
+    UUIDandVersion uuidandversion = 100;
 
     KeyExchangeScheme keyExchangeScheme = 1;
     EncryptionScheme encryptionScheme = 2;
 
-    // Initial Value for ECDH computation
+    // Initial Value for Symmetric Key derivation
     bytes initialValue = 3;
 
     // controller certificate
     bytes controllerCert = 4;
 
-    // controller certificate sha
-    string controllerCertSha256 = 5;
+    // device certificate identifier/sha
+    string deviceCertId = 5;
+}
 
-    // device certificate sha
-    string deviceCertSha256 = 6;
+// Encrypted sensitive data information
+message CipherBlock {
+    // cipher context id
+	UUIDandVersion cipherContextId = 1;
 
-    // signature for the sha
-    bytes controllerCertShaSignature = 7;
+    // encrypted sensitive data
+    bytes cipherData = 2;
+
+    // sha256 of the plaintext sensitive data
+    bytes dataSha256 = 3;
+}
+
+
+// This message will be filled with the
+// credential details and will be encrypted
+// across wire for data in transit
+message CredentialBlock {
+    string identity = 1;
+    string password = 2;
 }

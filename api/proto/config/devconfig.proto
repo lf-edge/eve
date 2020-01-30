@@ -9,6 +9,7 @@ option java_package = "com.zededa.cloud.uservice.proto";
 import "devcommon.proto";
 import "appconfig.proto";
 import "baseosconfig.proto";
+import "cipherinfo.proto";
 import "netconfig.proto";
 import "storage.proto";
 import "netinst.proto";
@@ -56,6 +57,11 @@ message EdgeDevConfig {
         // Information saved by device to make it easier to find in the controller
         string enterprise = 17;
         string name = 18;
+
+        // Controller supplies a list of cipher contexts
+        // indexed by uuid/version, containing certificate and other
+        // information, to be used for sensitive data decryption
+        repeated CipherContext cipherContexts = 19;
 }
 
 message ConfigRequest {

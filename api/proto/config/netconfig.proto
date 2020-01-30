@@ -6,6 +6,7 @@ syntax = "proto3";
 option go_package = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
+import "cipherinfo.proto";
 import "fw.proto";
 import "netcmn.proto";
 
@@ -69,4 +70,7 @@ message WifiConfig {
     }
     cryptoblock crypto = 20;         // encrypted block
     int32  priority = 25;            // priority of connection, default is 0
+
+    // contains the cipher payload
+    CipherBlock cipherData = 30;
 }
