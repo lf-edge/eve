@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x10\x63ipherinfo.proto\x1a\x0f\x64\x65vcommon.proto\"\xd8\x01\n\rCipherContext\x12\'\n\x0euuidandversion\x18\x64 \x01(\x0b\x32\x0f.UUIDandVersion\x12-\n\x11keyExchangeScheme\x18\x01 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x02 \x01(\x0e\x32\x11.EncryptionScheme\x12\x14\n\x0cinitialValue\x18\x03 \x01(\x0c\x12\x16\n\x0e\x63ontrollerCert\x18\x04 \x01(\x0c\x12\x14\n\x0c\x64\x65viceCertId\x18\x05 \x01(\t\"_\n\x0b\x43ipherBlock\x12(\n\x0f\x63ipherContextId\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x12\n\ncipherData\x18\x02 \x01(\x0c\x12\x12\n\ndataSha256\x18\x03 \x01(\x0c\"5\n\x0f\x43redentialBlock\x12\x10\n\x08identity\x18\x01 \x01(\t\x12\x10\n\x08password\x18\x02 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x10\x63ipherinfo.proto\x1a\x0f\x64\x65vcommon.proto\"\xd8\x01\n\rCipherContext\x12\'\n\x0euuidandversion\x18\x64 \x01(\x0b\x32\x0f.UUIDandVersion\x12-\n\x11keyExchangeScheme\x18\x01 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x02 \x01(\x0e\x32\x11.EncryptionScheme\x12\x14\n\x0cinitialValue\x18\x03 \x01(\x0c\x12\x16\n\x0e\x63ontrollerCert\x18\x04 \x01(\x0c\x12\x14\n\x0c\x64\x65viceCertId\x18\x05 \x01(\t\"[\n\x0b\x43ipherBlock\x12(\n\x0f\x63ipherContextId\x18\x01 \x01(\x0b\x32\x0f.UUIDandVersion\x12\x12\n\ncipherData\x18\x02 \x01(\x0c\x12\x0e\n\x06sha256\x18\x03 \x01(\x0c\"5\n\x0f\x43redentialBlock\x12\x10\n\x08identity\x18\x01 \x01(\t\x12\x10\n\x08password\x18\x02 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
   dependencies=[devcommon__pb2.DESCRIPTOR,])
 
@@ -42,8 +42,8 @@ _KEYEXCHANGESCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=408,
-  serialized_end=455,
+  serialized_start=404,
+  serialized_end=451,
 )
 _sym_db.RegisterEnumDescriptor(_KEYEXCHANGESCHEME)
 
@@ -65,8 +65,8 @@ _ENCRYPTIONSCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=457,
-  serialized_end=508,
+  serialized_start=453,
+  serialized_end=504,
 )
 _sym_db.RegisterEnumDescriptor(_ENCRYPTIONSCHEME)
 
@@ -166,7 +166,7 @@ _CIPHERBLOCK = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dataSha256', full_name='CipherBlock.dataSha256', index=2,
+      name='sha256', full_name='CipherBlock.sha256', index=2,
       number=3, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
@@ -185,7 +185,7 @@ _CIPHERBLOCK = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=256,
-  serialized_end=351,
+  serialized_end=347,
 )
 
 
@@ -222,8 +222,8 @@ _CREDENTIALBLOCK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=353,
-  serialized_end=406,
+  serialized_start=349,
+  serialized_end=402,
 )
 
 _CIPHERCONTEXT.fields_by_name['uuidandversion'].message_type = devcommon__pb2._UUIDANDVERSION
