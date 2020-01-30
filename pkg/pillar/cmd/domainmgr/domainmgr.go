@@ -88,6 +88,14 @@ type domainContext struct {
 	domainBootRetryTime    uint32 // In seconds
 }
 
+//Mounts - Holds mount information which will be used when bringing up container
+type Mounts struct {
+	sourcePath string //Source path to be mounted
+	targetPath string //Target path inside VM or container
+	kind       string //Kind of mount (host or empty)
+	readOnly   bool   //default value is false
+}
+
 // appRwImageName - Returns name of the image ( including parent dir )
 // Note that we still use the sha in the filename to not impact running images. Otherwise
 // we could switch this to imageID
@@ -2186,24 +2194,57 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 // returns domainID, podUUID and error
 func rktRun(domainName, xenCfgFilename, imageHash string, envList map[string]string) (int, string, error) {
 	// STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=xenCfgFilename rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file --set-env=ENV-KEY=env-value
-	//TODO: envVars must be read from image config once we decide on how we will be passing this info from UI
+	//TODO: mounts must be read from image config once we decide on how we will be passing this info from UI
+	mounts := map[string]Mounts{} //mounts map holds collection of dir to be mounter where key = volume name and value = Mounts struct which holds source and target path.
+
 	var (
-		envVarSlice = make([]string, 0)
+		envVarSlice  = make([]string, 0) //Holds environment sub-query
+		volumesSlice = make([]string, 0) //Holds volume sub-query
+		mountSlice   = make([]string, 0) //Holds mount sub-query
 	)
 	for k, v := range envList {
 		envVarSlice = append(envVarSlice, fmt.Sprintf("--set-env=%s=%s", k, v))
 	}
+
+	for volName, mount := range mounts {
+		if mount.kind != "empty" && mount.sourcePath == "" {
+			return 0, "", fmt.Errorf("Creating mount failed. Source path cannot be empty for kind: %s\n",
+				mount.kind)
+		}
+		if mount.targetPath == "" {
+			return 0, "", fmt.Errorf("Creating mount failed. Target path cannot be empty")
+		}
+
+		switch mount.kind {
+		//Default value of kind will be host.
+		case "", "host":
+			volumesSlice = append(volumesSlice, fmt.Sprintf("--volume %s,kind=%s,source=%s,readOnly=%t",
+				volName, mount.kind, mount.sourcePath, mount.readOnly))
+		case "empty": //empty kind will not have a source path
+			volumesSlice = append(volumesSlice, fmt.Sprintf("--volume %s,kind=%s,readOnly=%t",
+				volName, mount.kind, mount.readOnly))
+		default:
+			return 0, "", fmt.Errorf("Creating mount failed. Invalid mount kind: %s\n", mount.kind)
+
+		}
+		mountSlice = append(mountSlice, fmt.Sprintf("--mount volume=%s,target=%s", volName, mount.targetPath))
+	}
+
 	log.Infof("rktRun %s\n", domainName)
 	cmd := "rkt"
 	args := []string{
 		"--dir=" + types.PersistRktDataDir,
 		"--insecure-options=image",
-		"run",
-		imageHash,
+		"run"}
+	args = append(args, volumesSlice...) //Volumes should be added before we specify Apps
+	args = append(args, imageHash)
+	args = append(args, mountSlice...) //Mount should follow App, so that rkt know which mount belongs to which App
+
+	args = append(args,
 		"--stage1-path=/usr/sbin/stage1-xen.aci",
-		"--uuid-file-save=" + uuidFile,
-	}
+		"--uuid-file-save="+uuidFile)
 	args = append(args, envVarSlice...)
+
 	stage1XlOpts := "STAGE1_XL_OPTS=-p"
 	stage1XlCfg := "STAGE1_SEED_XL_CFG=" + xenCfgFilename
 	log.Infof("Calling command %s %v\n", cmd, args)
