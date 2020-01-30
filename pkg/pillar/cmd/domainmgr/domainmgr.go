@@ -1608,6 +1608,8 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	extra := ""
 	bootLoader := ""
 	kernel := ""
+	vif_type := "vif"
+	xen_global := ""
 	uuidStr := fmt.Sprintf("appuuid=%s ", config.UUIDandVersion.UUID)
 
 	switch status.VirtualizationMode {
@@ -1615,12 +1617,15 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 		xen_type = "pvh"
 		extra = "console=hvc0 " + uuidStr + config.ExtraArgs
 		kernel = "/usr/lib/xen/boot/ovmf-pvh.bin"
-	case types.HVM, types.FML:
-		// XXX fill in FML differences
+	case types.HVM:
 		xen_type = "hvm"
 		if config.Kernel != "" {
 			kernel = config.Kernel
 		}
+	case types.FML:
+		xen_type = "hvm"
+		vif_type = "ioemu"
+		xen_global = "hdtype = \"ahci\"\nspoof_xen = 1\npci_permissive = 1\n"
 	default:
 		log.Errorf("Internal error: Unknown virtualizationMode %d",
 			status.VirtualizationMode)
@@ -1631,6 +1636,8 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	file.WriteString(fmt.Sprintf("type = \"%s\"\n", xen_type))
 	file.WriteString(fmt.Sprintf("uuid = \"%s\"\n",
 		config.UUIDandVersion.UUID))
+	file.WriteString(xen_global)
+
 	if kernel != "" {
 		file.WriteString(fmt.Sprintf("kernel = \"%s\"\n", kernel))
 	}
@@ -1734,8 +1741,8 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 
 	vifString := ""
 	for _, net := range config.VifList {
-		oneVif := fmt.Sprintf("'bridge=%s,vifname=%s,mac=%s,type=vif'",
-			net.Bridge, net.Vif, net.Mac)
+		oneVif := fmt.Sprintf("'bridge=%s,vifname=%s,mac=%s,type=%s'",
+			net.Bridge, net.Vif, net.Mac, vif_type)
 		if vifString == "" {
 			vifString = oneVif
 		} else {
