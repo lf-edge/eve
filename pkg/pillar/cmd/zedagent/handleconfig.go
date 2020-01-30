@@ -49,6 +49,8 @@ type getconfigContext struct {
 	devicePortConfig         types.DevicePortConfig
 	pubNetworkXObjectConfig  pubsub.Publication
 	subAppInstanceStatus     pubsub.Subscription
+	subDomainMetric          pubsub.Subscription
+	subHostMemory            pubsub.Subscription
 	subNodeAgentStatus       pubsub.Subscription
 	pubZedAgentStatus        pubsub.Publication
 	pubAppInstanceConfig     pubsub.Publication

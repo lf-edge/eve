@@ -218,3 +218,26 @@ type ImageStatus struct {
 func (status ImageStatus) Key() string {
 	return status.Filename
 }
+
+// DomainMetric carries CPU and memory usage. UUID=devUUID for the dom0/host metrics overhead
+type DomainMetric struct {
+	UUIDandVersion    UUIDandVersion
+	CPUTotal          uint64 // Seconds since Domain boot
+	UsedMemory        uint32
+	AvailableMemory   uint32
+	UsedMemoryPercent float64
+}
+
+// Key returns the key for pubsub
+func (metric DomainMetric) Key() string {
+	return metric.UUIDandVersion.UUID.String()
+}
+
+// HostMemory reports global stats. Published under "global" key
+// Note that Ncpus is the set of physical CPUs which is different
+// than the set of CPUs assigned to dom0
+type HostMemory struct {
+	TotalMemoryMB uint64
+	FreeMemoryMB  uint64
+	Ncpus         uint32
+}
