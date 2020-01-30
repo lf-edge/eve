@@ -16,14 +16,6 @@ start_rsyslogd()
     fi
 
     IMGP=$(cat /run/eve.id 2>/dev/null)
-    PERSIST_LOG_PATH="/persist/$IMGP/syslog"
-    if [ ! -d "$PERSIST_LOG_PATH" ]; then
-        mkdir -p "$PERSIST_LOG_PATH"
-    fi
-    if [ ! -L "$RSYSLOG_WORK_DIR/syslog" ]; then
-        rm "$RSYSLOG_WORK_DIR/syslog"
-    fi
-    ln -s "$PERSIST_LOG_PATH" "$RSYSLOG_WORK_DIR/syslog"
     IMGP=${IMGP:-IMGX} /usr/sbin/rsyslogd -n &
 }
 
