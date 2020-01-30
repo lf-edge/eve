@@ -123,7 +123,7 @@ pidfile = /var/run/xen/xenconsoled.pid
 pidfile = /var/run/xen/xenstored.pid
 pidfile = /var/run/crond.pid
 pidfile = /var/run/logread.pid
-pidfile = /run/rsyslogd.pid
+pidfile = /run/monitor-rsyslogd.pid
 EOF
 # XXX Other processes we should potentially watch but they run outside
 # of this container:
