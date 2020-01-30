@@ -403,6 +403,27 @@ func Run() {
 	getconfigCtx.subAppInstanceStatus = subAppInstanceStatus
 	subAppInstanceStatus.Activate()
 
+	// Look for DomainMetric from domainmgr
+	subDomainMetric, err := pubsublegacy.Subscribe("domainmgr",
+		types.DomainMetric{}, true, &zedagentCtx, &pubsub.SubscriptionOptions{
+			WarningTime: warningTime,
+			ErrorTime:   errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.subDomainMetric = subDomainMetric
+
+	subHostMemory, err := pubsublegacy.Subscribe("domainmgr",
+		types.HostMemory{}, true, &zedagentCtx, &pubsub.SubscriptionOptions{
+			WarningTime: warningTime,
+			ErrorTime:   errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	getconfigCtx.subHostMemory = subHostMemory
+
 	// Look for zboot status
 	subZbootStatus, err := pubsublegacy.Subscribe("baseosmgr",
 		types.ZbootStatus{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
@@ -784,6 +805,12 @@ func Run() {
 
 		case change := <-subAppInstanceStatus.MsgChan():
 			subAppInstanceStatus.ProcessChange(change)
+
+		case change := <-subDomainMetric.MsgChan():
+			subDomainMetric.ProcessChange(change)
+
+		case change := <-subHostMemory.MsgChan():
+			subHostMemory.ProcessChange(change)
 
 		case change := <-subBaseOsStatus.MsgChan():
 			subBaseOsStatus.ProcessChange(change)
