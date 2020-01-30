@@ -55,6 +55,8 @@ In general, there is one directory for each API endpoint:
 * `metrics`: The ZMetricMsg message sent from Device to Controller periodically to report on resource usage etc.
 * `logs`: The LogBundle message sent from Device to Controller containing internal device logs.
 * `apps/instances/{app-instance-uuid}/logs`: The LogBundle message sent from Device to Controller containing internal device logs.
+* `certs`: The ZEdgeNodeCert message is sent from Device to Controller to publish public key certificates used by Device. The ZControllerCert message is sent from Controller to Device, and contains the list of certificates used by Controller.
+* `attest`: The ZAttestNonceReq message is sent from Device to Controller to request nonce to include in the next attest quote. The ZAttestNonceResp is sent from Controller to Device as response to ZAttestNonceReq. The ZAttestQuoteReq is sent from Device to Controller to send the attestation quote. The ZAttestQuoteRespmessage is sent from Controller to Device carries the response to ZAttestNonceReq.
 
 
 ## Authentication
@@ -196,6 +198,104 @@ The body MUST contain the UUID for the Device on each and every request. The Con
 The `config` endpoint, specifically the `EdgeDevConfig` message, supports arbitrary key/value pairs. These are intended to send implementation-specific configuration to a Device. For example, it might control the frequency of downloading configs, enable debug logging or enable a USB port.
 
 The `EdgeDevConfig` message can contain zero, one or more `ConfigItem` entries, each of which is an arbitrary key/value pair. These SHOULD be used to send implementation-specific configuration to a Device, other than configuration already defined in this API or the messages. The items are defined in [configuration properties](../docs/CONFIG-PROPERTIES.md)
+
+### Controller Certificates
+
+Retrieve Certificates that Controller will use. Controller can include one or more certificates in the response, and include information about each certificate such as unique identifier for the certificate, the target usage for the certificate and any other properties related to the certificate. Each certificate MUST be a X.509 certificate in PEM format.
+
+   GET /api/v1/edgeDevice/ControllerCerts
+
+Return codes:
+
+* No such certificates to send: `404`
+* One or more certificates found: `200`
+
+Request:
+
+The request MUST use HTTP for this request
+
+The request MUST NOT contain any body content
+
+Response:
+
+The response mime type MUST be "application/x-proto-binary".
+The response MUST contain a message with a list of certificates Controller is using. The body MUST be a protobuf message of type [certs.ZControllerCert](./proto/certs/certs.proto).
+
+### Edge Node Certificates
+
+Publish certificates that edge device would use for signing or any key exchanges. Edge node can include one or more certificates in the request, and include information about each certificate such as unique identifier for the certificate, the target usage for the certificate and any other properties related to the certificate. Each certificate MUST be a X.509 certificate in PEM format. If `isIMutable` property is not set, Controller should reject any request that would overwrite an existing certificate previously published.
+
+   POST /api/v1/edgeDevice/EdgeNodeCerts
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `201`
+* Unknown Device: `400`
+* Missing or unprocessable body: `422`
+
+Request:
+
+The request MUST use the Device certificate for mTLS authentication.
+
+The request mime type MUST be "application/x-proto-binary".
+The request MUST contain a message with list of certificates to use with this edge node. The body MUST be a protobuf message of type [certs.ZEdgeNodeCert](./proto/certs/certs.proto).
+
+Response:
+
+The response MUST NOT contain any body content.
+
+### Attestation Nonce
+
+Retrieve a nonce to use in Edge node while constructing the next attestation quote. The next attestation quote published by the edge node MUST include this nonce
+
+   POST /api/v1/edgeDevice/attestNonce
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `201`
+* Unknown Device: `400`
+* Missing or unprocessable body: `422`
+
+Request:
+
+The request MUST use the Device certificate for mTLS authentication.
+
+The request mime type MUST be "application/x-proto-binary".
+The body MUST be a protobuf message of type [attest.ZAttestNonceReq](./proto/attest/attest.proto).
+
+Response:
+
+The request mime type MUST be "application/x-proto-binary".
+The body MUST be a protobuf message of type [attest.ZAttestNonceResp](./proto/attest/attest.proto).
+
+### Attestation Quote
+
+Publish PCR quote computed by Trusted Platform Module, by including the latest nonce provided by the Controller
+
+   POST /api/v1/edgeDevice/attestQuote
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Success: `201`
+* Unknown Device: `400`
+* Missing or unprocessable body: `422`
+
+Request:
+
+The request MUST use the Device certificate for mTLS authentication.
+
+The request mime type MUST be "application/x-proto-binary".
+The body MUST be a protobuf message of type [attest.ZAttestQuoteReq](./proto/attest/attest.proto).
+
+Response:
+
+The request mime type MUST be "application/x-proto-binary".
+The body MUST be a protobuf message of type [attest.ZAttestQuoteResp](./proto/attest/attest.proto).
 
 ### Info
 
