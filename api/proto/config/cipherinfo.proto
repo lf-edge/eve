@@ -42,13 +42,13 @@ message CipherContext {
 // Encrypted sensitive data information
 message CipherBlock {
     // cipher context id
-	UUIDandVersion cipherContextId = 1;
+    UUIDandVersion cipherContextId = 1;
 
     // encrypted sensitive data
     bytes cipherData = 2;
 
     // sha256 of the plaintext sensitive data
-    bytes dataSha256 = 3;
+    bytes sha256 = 3;
 }
 
 

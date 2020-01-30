@@ -541,9 +541,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 			appInstance.CloudInitUserData = &userData
 		}
 		appInstance.RemoteConsole = cfgApp.GetRemoteConsole()
-		if cuserData := cfgApp.GetCipherTextUserData(); len(cuserData) != 0 {
-			appInstance.CipherTextUserData = cuserData
-		}
+
 		// TBD:XXX Will enable once yetus issue is fixed,
 		// commented out for end-o-end testing with conttoller now
 		//if cipherInfo := parseCipherInfo(cfgApp.CInfo); cipherInfo != nil {
@@ -934,12 +932,9 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		if datastore.Region == "" {
 			datastore.Region = "us-west-2"
 		}
-		if password := ds.GetCipherTextPassword(); len(password) != 0 {
-			datastore.CipherPassword = password
-		}
-		if cipherInfo := parseCipherInfo(ds.CInfo); cipherInfo != nil {
-			datastore.CipherInfo = cipherInfo
-		}
+		//if cipherInfo := parseCipherInfo(ds.CInfo); cipherInfo != nil {
+		//	datastore.CipherInfo = cipherInfo
+		//}
 		ctx.pubDatastoreConfig.Publish(datastore.Key(), *datastore)
 	}
 }
@@ -2058,21 +2053,21 @@ func unpublishCertObjConfig(getconfigCtx *getconfigContext, uuidStr string) {
 }
 
 // handle cipher information received from controller
-func parseCipherInfo(config *zconfig.CipherInfo) *types.CipherInfo {
-	if config == nil {
-		return nil
-	}
-	cipherInfo := new(types.CipherInfo)
-	cipherInfo.ID = config.GetId()
-	cipherInfo.KeyExchangeScheme = config.GetKeyExchangeScheme()
-	cipherInfo.EncryptionScheme = config.GetEncryptionScheme()
-	cipherInfo.InitialValue = config.GetInitialValue()
-	cipherInfo.ControllerCert = config.GetControllerCert()
-	cipherInfo.ControllerCertSha256 = config.GetControllerCertSha256()
-	cipherInfo.DeviceCertSha256 = config.GetControllerCertSha256()
-	cipherInfo.ControllerCertShaSignature = config.GetControllerCertShaSignature()
-	return cipherInfo
-}
+// func parseCipherInfo(config *zconfig.CipherInfo) *types.CipherInfo {
+// 	if config == nil {
+// 		return nil
+// 	}
+// 	cipherInfo := new(types.CipherInfo)
+// 	cipherInfo.ID = config.GetId()
+// 	cipherInfo.KeyExchangeScheme = config.GetKeyExchangeScheme()
+// 	cipherInfo.EncryptionScheme = config.GetEncryptionScheme()
+// 	cipherInfo.InitialValue = config.GetInitialValue()
+// 	cipherInfo.ControllerCert = config.GetControllerCert()
+// 	cipherInfo.ControllerCertSha256 = config.GetControllerCertSha256()
+// 	cipherInfo.DeviceCertSha256 = config.GetControllerCertSha256()
+// 	cipherInfo.ControllerCertShaSignature = config.GetControllerCertShaSignature()
+// 	return cipherInfo
+// }
 
 // Get sha256 for a subset of the protobuf message.
 // Used to determine which pieces changed
