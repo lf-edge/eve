@@ -20,7 +20,7 @@ message ZEdgeNodeCert {
 
 // This is the response payload for GET /api/v1/edgeDevice/ControllerCerts
 // or /api/v2/edgeDevice/ControllerCerts
-// ZEdgeNodeCert carries a set of X.509 certificate and their properties
+// ZControllerCert carries a set of X.509 certificate and their properties
 // from Controller to EVE.
 message ZControllerCert {
   repeated ZCert certs = 1;  //list of certificates sent by controller
@@ -53,4 +53,3 @@ enum ZCertType {
 message ZCertProperties {
    bool isMutable = 1; //set to false for immutable certificates
 }
-
