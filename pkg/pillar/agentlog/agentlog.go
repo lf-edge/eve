@@ -95,7 +95,6 @@ func initImpl(agentName string, logdir string, redirect bool,
 }
 
 func setupSyslog(agentName string) error {
-	log.SetOutput(ioutil.Discard)
 	syslogFlags := syslog.LOG_INFO | syslog.LOG_DEBUG | syslog.LOG_ERR |
 		syslog.LOG_NOTICE | syslog.LOG_WARNING | syslog.LOG_CRIT |
 		syslog.LOG_ALERT | syslog.LOG_EMERG

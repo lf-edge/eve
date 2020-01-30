@@ -1383,6 +1383,7 @@ func encodeNetworkPortConfig(npc *types.NetworkPortConfig) *info.DevicePort {
 
 	dp.NtpServer = npc.NtpServer.String()
 
+	dp.Dns = new(info.ZInfoDNS)
 	dp.Dns.DNSdomain = npc.DomainName
 	dp.Dns.DNSservers = make([]string, 0)
 	for _, d := range npc.DnsServers {
