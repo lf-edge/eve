@@ -858,7 +858,7 @@ func DecryptWithCipherInfo(cipherBlock *types.CipherBlock) (string, error) {
 		return "", errors.New("Not supported")
 	}
 	if cipherBlock == nil || len(cipherBlock.CipherData) == 0 {
-		return "", errors.New("Invalid Information")
+		return "", errors.New("Invalid Cipher Information")
 	}
 	if cipherBlock.KeyExchangeScheme == zconfig.KeyExchangeScheme_KEA_NONE ||
 		cipherBlock.EncryptionScheme == zconfig.EncryptionScheme_SA_NONE {
@@ -914,14 +914,6 @@ func getControllerCertInfo(cipherBlock *types.CipherBlock) (*ecdsa.PublicKey, er
 		return ecdhPubKey, errors.New("Not ECDSA Key")
 	}
 	return ecdhPubKey, nil
-}
-
-//  CipherDecrypt : decrypt the cipher text into plain text
-func CipherDecrypt(cipherBlock *types.CipherBlock) (string, error) {
-	if !IsTpmEnabled() || cipherBlock == nil {
-		return "", nil
-	}
-	return DecryptWithCipherInfo(cipherBlock)
 }
 
 func Run() {
