@@ -38,6 +38,10 @@ services:
      image: GUACD_TAG
    - name: pillar
      image: PILLAR_TAG
+   - name: vtpm
+     image: VTPM_TAG
+   - name: watchdog
+     image: WATCHDOG_TAG
 files:
    - path: /etc/eve-release
      contents: 'EVE_VERSION'

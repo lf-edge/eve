@@ -1,0 +1,19 @@
+admin =
+#realtime = yes
+#priority = 1
+interval = 1
+logtick  = 60
+repair-binary=/sbin/watchdog-report.sh
+pidfile = /run/xen/qemu-dom0.pid
+pidfile = /run/xen/xenconsoled.pid
+pidfile = /run/xen/xenstored.pid
+pidfile = /run/crond.pid
+pidfile = /run/monitor-rsyslogd.pid
+# XXX Other processes we should potentially watch but they run outside
+# of this container:
+# sshd.pid
+# services.linuxkit/zededa-tools/init.pid
+# services.linuxkit/wwan/init.pid
+# services.linuxkit/wlan/init.pid
+# services.linuxkit/ntpd/init.pid
+# services.linuxkit/guacd/init.pid

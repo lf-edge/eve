@@ -35,8 +35,6 @@ FROM STRONGSWAN_TAG as strongswan
 # hadolint ignore=DL3006
 FROM GPTTOOLS_TAG as gpttools
 # hadolint ignore=DL3006
-FROM WATCHDOG_TAG as watchdog
-# hadolint ignore=DL3006
 FROM RKT_TAG as rkt-build
 # hadolint ignore=DL3006
 FROM RKT_STAGE1_TAG as rkt-stage1-build
@@ -65,7 +63,6 @@ ADD scripts/device-steps.sh \
     scripts/generate-device.sh \
     scripts/generate-self-signed.sh \
     scripts/handlezedserverconfig.sh \
-    scripts/watchdog-report.sh \
   /opt/zededa/bin/
 ADD conf/lisp.config.base /var/tmp/zededa/lisp.config.base
 
@@ -81,7 +78,6 @@ COPY --from=lisp / /
 COPY --from=gpttools / /
 COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
 COPY --from=strongswan / /
-COPY --from=watchdog /usr/sbin /usr/sbin
 COPY --from=rkt-build /go/rkt/build-rkt-1.26.0/target/bin/rkt /usr/sbin/rkt
 COPY --from=rkt-stage1-build /go/stage1-xen-master/stage1-xen.aci /usr/sbin/stage1-xen.aci
 COPY --from=fscrypt-build /fscrypt /opt/zededa/bin/fscrypt

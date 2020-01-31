@@ -9,7 +9,7 @@
 
 # First log to /persist in case zboot/kernel is hung on disk
 
-DATE=$(date -Ins)
+DATE=$(date -Is)
 echo "Watchdog report at $DATE: $*" >>/persist/reboot-reason
 sync
 
