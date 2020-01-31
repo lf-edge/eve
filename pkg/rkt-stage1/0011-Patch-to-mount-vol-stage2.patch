@@ -1,0 +1,87 @@
+diff --git a/files/mount_disk.sh b/files/mount_disk.sh
+new file mode 100644
+index 0000000..9a199d7
+--- /dev/null
++++ b/files/mount_disk.sh
+@@ -0,0 +1,62 @@
++#!/bin/sh
++
++ls /sys/block/ | grep xvd | while read -r disk ; do
++        echo "Processing $disk"
++
++        #Fetching Major and Minor device
++        IN=$(cat /sys/block/$disk/dev | tr ":" "\n")
++        major=$(echo ${IN} | cut -d' ' -f1)
++        minor=$(echo ${IN} | cut -d' ' -f2)
++
++        #Creating a block device under /dev with Major and minor devices
++        echo "Creating device file /dev/$disk"
++        mknod /dev/$disk b $major $minor && \
++        echo "Successfully created device file for /dev/$disk" || \
++        echo "Failed to create device file for /dev/$disk"
++        echo
++        echo
++
++        #Creating partition on block device
++        partition_number=1
++        first_sector=
++        last_sector=
++        echo "Creating partition:$partition_number for /dev/$disk"
++        (echo n; echo p; echo $partition_number; echo $first_sector; echo $last_sector; echo w) | fdisk /dev/$disk && \
++        echo "Successfully created partition:$partition_number for /dev/$disk" || \
++        echo "Failed to create partition:$partition_number for /dev/$disk"
++        echo
++        echo
++
++        #Creating a block device with partitioned disk
++        partedDisk="$disk"1
++        echo "Creating device file /dev/$partedDisk"
++        mknod /dev/$partedDisk b $major $(($minor + 1)) && \
++        echo "Successfully created device file for /dev/$partedDisk" || \
++        echo "Failed to create device file for /dev/$partedDisk"
++        echo
++        echo
++
++        #Creating a file system inside the partition
++        fileSystem=vfat
++        echo "Creating $fileSystem file system on /dev/$partedDisk"
++        mkfs.$fileSystem /dev/$partedDisk && \
++        echo "Successfully created $fileSystem file system on /dev/$partedDisk" || \
++        echo "Failed to create $fileSystem file system on /dev/$partedDisk"
++        echo
++        echo
++
++        #Mounting the partition onto a target directory
++        targetDir=/mnt
++        diskAccess=$(cat /sys/block/$disk/ro)
++        if [ $diskAccess -eq 0 ]; then
++          accessRight=rw
++        else
++          accessRight=ro
++        fi
++
++        echo "Mounting /dev/$partedDisk on $targetDir with access: $accessRight"
++        mkdir -p $targetDir
++        mount -o remount,$accessRight /dev/$partedDisk $targetDir && \
++        echo "Successfully mounted file system:/dev/$partedDisk on $targetDir" || \
++        echo "Failed to mount file system:/dev/$partedDisk on $targetDir"
++done
+\ No newline at end of file
+diff --git a/files/run b/files/run
+index a26edca..d16ad28 100755
+--- a/files/run
++++ b/files/run
+@@ -62,8 +62,12 @@ fi
+ echo "ramdisk='$workpath/initrd'" >> $outconfig
+ echo "p9=[ 'tag=share_dir,security_model=none,path=$mountpoint' ]" >> $outconfig
+ 
++if [ -f "$STAGE1_SEED_MNT_PT" ] ; then
++  cp "$STAGE1_SEED_MNT_PT" $stage2
++fi
++
+ if [ -f "$STAGE1_SEED_XL_CFG" ] ; then
+-    grep -Ev '^(disk|bootloader|root|extra|kernel)' < "$STAGE1_SEED_XL_CFG" >> $outconfig
++    grep -Ev '^(bootloader|root|extra|kernel)' < "$STAGE1_SEED_XL_CFG" >> $outconfig
+     if test $dhcp -eq 0
+     then
+         echo extra=\'console=hvc0 root=9p\' >> $outconfig
