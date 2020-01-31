@@ -3,7 +3,7 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-USE_HW_WATCHDOG=1
+WATCHDOG_CTL=/run/watchdog.ctl
 CONFIGDIR=/config
 PERSISTDIR=/persist
 PERSIST_RKT_DATA_DIR=$PERSISTDIR/rkt
@@ -21,6 +21,21 @@ AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent
 AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
 
+WATCHDOG_LED="@/var/run/ledmanager.pid /var/run/ledmanager.touch /var/run/nodeagent.touch"
+WATCHDOG_NIM="$WATCHDOG_LED @/var/run/nim.pid /var/run/nim.touch"
+WATCHDOG_CLIENT="$WATCHDOG_NIM @/var/run/zedclient.pid @/var/run/ntpd.pid"
+WATCHDOG_ALL="$WATCHDOG_LED @/var/run/ntpd.pid"
+for AGENT in $AGENTS; do
+    WATCHDOG_ALL="$WATCHDOG_ALL @/var/run/$AGENT.pid"
+    if [ "$AGENT" = "lisp-ztr" ]; then
+        continue
+    fi
+    WATCHDOG_ALL="$WATCHDOG_ALL /var/run/$AGENT.touch"
+    if [ "$AGENT" = "zedagent" ]; then
+        WATCHDOG_ALL="$WATCHDOG_ALL /var/run/${AGENT}config.touch /var/run/${AGENT}metrics.touch /var/run/${AGENT}devinfo.touch"
+    fi
+done
+
 PATH=$BINDIR:$PATH
 
 echo "$(date -Ins -u) Starting device-steps.sh"
@@ -28,9 +43,7 @@ echo "$(date -Ins -u) EVE version: $(cat $BINDIR/versioninfo)"
 
 MEASURE=0
 while [ $# != 0 ]; do
-    if [ "$1" = -h ]; then
-        USE_HW_WATCHDOG=0
-    elif [ "$1" = -m ]; then
+    if [ "$1" = -m ]; then
         MEASURE=1
     elif [ "$1" = -w ]; then
         echo "$(date -Ins -u) Got old -w"
@@ -60,6 +73,14 @@ wait_for_touch() {
     fi
 }
 
+register_watchdog() {
+  set $@
+  [ -p "$WATCHDOG_CTL" ] || (rm -rf "$WATCHDOG_CTL" ; mkfifo "$WATCHDOG_CTL")
+  for i in "$@"; do
+    echo "$i" >> "$WATCHDOG_CTL"
+  done
+}
+
 mkdir -p $ZTMPDIR
 if [ -d $TMPDIR ]; then
     echo "$(date -Ins -u) Old TMPDIR files:"
@@ -68,118 +89,6 @@ if [ -d $TMPDIR ]; then
 fi
 mkdir -p $TMPDIR
 export TMPDIR
-
-if [ -c /dev/watchdog ]; then
-    if [ $USE_HW_WATCHDOG = 0 ]; then
-        echo "$(date -Ins -u) Disabling use of /dev/watchdog"
-        wdctl /dev/watchdog
-    fi
-else
-    echo "$(date -Ins -u) Platform has no /dev/watchdog"
-    USE_HW_WATCHDOG=0
-fi
-
-# Create the watchdog(8) config files we will use
-# XXX should we enable realtime in the kernel?
-if [ $USE_HW_WATCHDOG = 1 ]; then
-    cat >$ZTMPDIR/watchdogbase.conf <<EOF
-watchdog-device = /dev/watchdog
-EOF
-else
-    cat >$ZTMPDIR/watchdogbase.conf <<EOF
-EOF
-fi
-cat >>$ZTMPDIR/watchdogbase.conf <<EOF
-admin =
-#realtime = yes
-#priority = 1
-interval = 1
-logtick  = 60
-repair-binary=/opt/zededa/bin/watchdog-report.sh
-pidfile = /var/run/xen/qemu-dom0.pid
-pidfile = /var/run/xen/xenconsoled.pid
-pidfile = /var/run/xen/xenstored.pid
-pidfile = /var/run/crond.pid
-pidfile = /run/logread.pid
-pidfile = /run/monitor-rsyslogd.pid
-EOF
-# XXX Other processes we should potentially watch but they run outside
-# of this container:
-# sshd.pid
-# services.linuxkit/zededa-tools/init.pid
-# services.linuxkit/wwan/init.pid
-# services.linuxkit/wlan/init.pid
-# services.linuxkit/ntpd/init.pid
-# services.linuxkit/guacd/init.pid
-
-cp $ZTMPDIR/watchdogbase.conf $ZTMPDIR/watchdogled.conf
-cat >>$ZTMPDIR/watchdogled.conf <<EOF
-pidfile = /var/run/ledmanager.pid
-file = /var/run/ledmanager.touch
-change = 300
-pidfile = /var/run/nodeagent.pid
-file = /var/run/nodeagent.touch
-change = 300
-EOF
-cp $ZTMPDIR/watchdogled.conf $ZTMPDIR/watchdognim.conf
-cat >> $ZTMPDIR/watchdognim.conf <<EOF
-pidfile = /var/run/nim.pid
-file = /var/run/nim.touch
-change = 300
-EOF
-cp $ZTMPDIR/watchdogled.conf $ZTMPDIR/watchdogclient.conf
-cat >>$ZTMPDIR/watchdogclient.conf <<EOF
-pidfile = /var/run/zedclient.pid
-pidfile = /var/run/nim.pid
-pidfile = /var/run/ntpd.pid
-file = /var/run/nim.touch
-change = 300
-EOF
-
-cp $ZTMPDIR/watchdogled.conf $ZTMPDIR/watchdogall.conf
-echo "pidfile = /var/run/ntpd.pid" >>$ZTMPDIR/watchdogall.conf
-for AGENT in $AGENTS; do
-    echo "pidfile = /var/run/$AGENT.pid" >>$ZTMPDIR/watchdogall.conf
-    if [ "$AGENT" = "lisp-ztr" ]; then
-        continue
-    fi
-    echo "file = /var/run/$AGENT.touch" >>$ZTMPDIR/watchdogall.conf
-    echo "change = 300" >>$ZTMPDIR/watchdogall.conf
-    if [ "$AGENT" = "zedagent" ]; then
-        cat >>$ZTMPDIR/watchdogall.conf <<EOF
-file = /var/run/${AGENT}config.touch
-change = 300
-file = /var/run/${AGENT}metrics.touch
-change = 300
-file = /var/run/${AGENT}devinfo.touch
-change = 300
-EOF
-    fi
-done
-
-killwait_watchdog() {
-    if [ -f /var/run/watchdog.pid ]; then
-        wp=$(cat /var/run/watchdog.pid)
-        echo "$(date -Ins -u) Killing watchdog $wp"
-        kill "$wp"
-        # Wait for it to exit so it can be restarted
-        while kill -0 "$wp"; do
-            echo "$(date -Ins -u) Waiting for watchdog to exit"
-            if [ $USE_HW_WATCHDOG = 1 ]; then
-                wdctl
-            fi
-            sleep 1
-        done
-        echo "$(date -Ins -u) Killed watchdog"
-        sync
-    fi
-}
-
-killwait_watchdog
-
-# In case watchdog is running we restart it with the base file
-# Always run watchdog(8) in case we have a hardware watchdog timer to advance
-/usr/sbin/watchdog -c $ZTMPDIR/watchdogbase.conf -F -s &
 
 if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
@@ -328,9 +237,7 @@ echo "$(date -Ins -u) Starting nodeagent"
 $BINDIR/nodeagent -c $CURPART &
 wait_for_touch nodeagent
 
-# Restart watchdog - just for ledmanager so far
-killwait_watchdog
-/usr/sbin/watchdog -c $ZTMPDIR/watchdogled.conf -F -s &
+register_watchdog "$WATCHDOG_LED"
 
 mkdir -p $DPCDIR
 
@@ -419,8 +326,7 @@ $BINDIR/nim -c $CURPART &
 wait_for_touch nim
 
 # Restart watchdog ledmanager and nim
-killwait_watchdog
-/usr/sbin/watchdog -c $ZTMPDIR/watchdognim.conf -F -s &
+register_watchdog "$WATCHDOG_NIM"
 
 # Print diag output forever on changes
 $BINDIR/diag -c $CURPART -f -o /dev/console &
@@ -455,8 +361,7 @@ while [ "$YEAR" = "1970" ]; do
 done
 
 # Restart watchdog ledmanager, client, and nim
-killwait_watchdog
-/usr/sbin/watchdog -c $ZTMPDIR/watchdogclient.conf -F -s &
+register_watchdog "$WATCHDOG_CLIENT"
 
 if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
@@ -573,8 +478,7 @@ mkdir -p /var/tmp/zededa/GlobalDownloadConfig/
 echo \{\"MaxSpace\":"$space"\} >/var/tmp/zededa/GlobalDownloadConfig/global.json
 
 # Restart watchdog ledmanager and nim
-killwait_watchdog
-/usr/sbin/watchdog -c $ZTMPDIR/watchdognim.conf -F -s &
+register_watchdog "$WATCHDOG_NIM"
 
 for AGENT in $AGENTS1; do
     echo "$(date -Ins -u) Starting $AGENT"
@@ -594,8 +498,7 @@ if ! pgrep logmanager >/dev/null; then
 fi
 
 # Now run watchdog for all agents
-killwait_watchdog
-/usr/sbin/watchdog -c $ZTMPDIR/watchdogall.conf -F -s &
+register_watchdog "$WATCHDOG_ALL"
 
 blockdev --flushbufs "$CONFIGDEV"
 
@@ -605,12 +508,6 @@ if [ $MEASURE = 1 ]; then
     ping6 -c 3 -w 1000 zedcontrol
     echo "$(date -Ins -u) Measurement done"
 fi
-
-# XXX remove? Looking for watchdog
-sleep 5
-ps -ef
-# XXX redundant but doesn't always start
-/usr/sbin/watchdog -c $ZTMPDIR/watchdogall.conf -F -s &
 
 echo "$(date -Ins -u) Done starting EVE version: $(cat $BINDIR/versioninfo)"
 
