@@ -1,0 +1,2 @@
+#!/bin/sh
+exec chroot /hostfs eve exec xen-tools $(basename $0) "$@"

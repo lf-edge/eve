@@ -47,7 +47,17 @@ RUN dist/install.sh /out
 # Filter out a few things that we don't currently need
 RUN rm -rf /out/usr/share/qemu-xen/qemu/edk2-* /out/var/run
 
-FROM scratch
-ENTRYPOINT []
-CMD []
+FROM alpine:3.8
+RUN apk add --no-cache bash libaio libbz2 libbz2 glib pixman yajl xz-libs
+RUN [ `uname -m` = "aarch64" ] && apk add --no-cache libfdt || :
 COPY --from=kernel-build /out/ /
+COPY init.sh /
+
+# We need to keep a slim profile, which means removing things we don't need
+RUN rm -rf /usr/lib/libxen*.a /usr/lib/libxl*.a /usr/lib/debug
+
+# Adjust /var/run to be shared
+RUN rm -rf /var/run && ln -s /run /var/run
+
+ENTRYPOINT []
+CMD ["/init.sh"]

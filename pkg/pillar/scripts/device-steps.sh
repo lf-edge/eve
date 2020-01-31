@@ -178,9 +178,6 @@ if [ ! -d $PERSISTDIR/log ]; then
     mkdir $PERSISTDIR/log
 fi
 
-echo "$(date -Ins -u) Starting hypervisor.log" >>$PERSISTDIR/$CURPART/log/hypervisor.log
-tail -c +0 -F /var/log/xen/hypervisor.log | while IFS= read -r line; do printf "%s %s\n" "$(date -Ins -u)" "$line"; done >>$PERSISTDIR/$CURPART/log/hypervisor.log &
-
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least
 # one free uplink with IP address(s)
