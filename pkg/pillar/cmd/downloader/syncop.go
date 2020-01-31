@@ -317,6 +317,9 @@ func constructDatastoreContext(config types.DownloaderConfig, status *types.Down
 				errStr := fmt.Sprintf("%v", err)
 				return nil, errStr
 			}
+		} else {
+			errStr := fmt.Sprintf("%v", err)
+			return nil, errStr
 		}
 	}
 	dsCtx := types.DatastoreContext{

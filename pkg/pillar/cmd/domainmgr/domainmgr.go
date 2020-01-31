@@ -2769,6 +2769,8 @@ func getCloudInitUserData(config types.DomainConfig) (*string, error) {
 		plainText, err := tpmmgr.DecryptWithCipherInfo(config.CipherBlock)
 		if len(plainText) != 0 || err == nil {
 			return &plainText, nil
+		} else {
+			return nil, err
 		}
 	}
 	return nil, nil
