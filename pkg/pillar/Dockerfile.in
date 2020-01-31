@@ -45,8 +45,6 @@ FROM FSCRYPT_TAG as fscrypt-build
 # hadolint ignore=DL3006
 FROM UEFI_TAG as uefi-build
 
-FROM linuxkit/memlogd:v0.5 as memlogd
-
 FROM alpine:3.8
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
@@ -89,7 +87,6 @@ COPY --from=rkt-stage1-build /go/stage1-xen-master/stage1-xen.aci /usr/sbin/stag
 COPY --from=fscrypt-build /fscrypt /opt/zededa/bin/fscrypt
 COPY --from=uefi-build /OVMF.fd /usr/lib/xen/boot/ovmf.bin
 COPY --from=uefi-build /OVMF_PVH.fd /usr/lib/xen/boot/ovmf-pvh.bin
-COPY --from=memlogd /usr/bin/logread /usr/bin/logread
 
 # We need to keep a slim profile, which means removing things we don't need
 RUN rm /usr/lib/libxen*.a /usr/lib/libxl*.a

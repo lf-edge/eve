@@ -6,7 +6,6 @@ package agentlog
 import (
 	"fmt"
 	"io/ioutil"
-	"log/syslog"
 	"os"
 	"os/signal"
 	"runtime"
@@ -17,7 +16,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	log "github.com/sirupsen/logrus"
-	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
 )
 
 const (
@@ -42,11 +40,6 @@ func initImpl(agentName string, logdir string, redirect bool,
 
 	var err error
 	var logf *os.File
-	var logToSyslog = false
-	if os.Getenv("LOG_TO_SYSLOG") != "" {
-		logToSyslog = true
-	}
-
 	if text {
 		logfile := fmt.Sprintf("%s/%s.log", logdir, agentName)
 		logf, err = os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
@@ -57,14 +50,6 @@ func initImpl(agentName string, logdir string, redirect bool,
 	if redirect {
 		if text {
 			log.SetOutput(logf)
-		} else if logToSyslog {
-			err := setupSyslog(agentName)
-			if err != nil {
-				fmt.Printf("setupSyslog failed %s: %s\n",
-					agentName, err)
-				log.SetOutput(os.Stdout)
-				// Let application continue
-			}
 		} else {
 			log.SetOutput(os.Stdout)
 		}
@@ -92,31 +77,6 @@ func initImpl(agentName string, logdir string, redirect bool,
 		go handleSignals(sigs)
 	}
 	return logf, nil
-}
-
-func setupSyslog(agentName string) error {
-	log.SetOutput(ioutil.Discard)
-	syslogFlags := syslog.LOG_INFO | syslog.LOG_DEBUG | syslog.LOG_ERR |
-		syslog.LOG_NOTICE | syslog.LOG_WARNING | syslog.LOG_CRIT |
-		syslog.LOG_ALERT | syslog.LOG_EMERG
-
-	maxCount := 10
-	var err error
-	for count := 0; count < maxCount; count++ {
-		hook, err1 := lSyslog.NewSyslogHook("", "", syslogFlags, agentName)
-		if err1 != nil {
-			err = err1
-			fmt.Printf("NewSyslogHook failed %s retry: %s\n",
-				agentName, err)
-			time.Sleep(time.Second)
-			continue
-		}
-		log.AddHook(hook)
-		return nil
-	}
-	fmt.Printf("NewSyslogHook failed %s bail: %s\n",
-		agentName, err)
-	return err
 }
 
 // FatalHook is used make sure we save the fatal and panic strings to a file

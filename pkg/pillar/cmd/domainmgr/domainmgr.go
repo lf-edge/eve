@@ -951,6 +951,10 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		State:              types.INSTALLED,
 		IsContainer:        config.IsContainer,
 	}
+	// Note that the -emu interface doesn't exist until after boot of the domU, but we
+	// initialize the VifList here with the VifUsed.
+	status.VifList = checkIfEmu(status.VifList)
+
 	status.DiskStatusList = make([]types.DiskStatus,
 		len(config.DiskConfigList))
 	publishDomainStatus(ctx, &status)
@@ -1261,6 +1265,9 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 		status.LastErrTime = time.Now()
 		return
 	}
+	// The -emu interfaces were most likely created as result of the boot so we
+	// update VifUsed here.
+	status.VifList = checkIfEmu(status.VifList)
 
 	status.State = types.RUNNING
 	// XXX dumping status to log
@@ -1601,6 +1608,8 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	extra := ""
 	bootLoader := ""
 	kernel := ""
+	vif_type := "vif"
+	xen_global := ""
 	uuidStr := fmt.Sprintf("appuuid=%s ", config.UUIDandVersion.UUID)
 
 	switch status.VirtualizationMode {
@@ -1608,12 +1617,15 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 		xen_type = "pvh"
 		extra = "console=hvc0 " + uuidStr + config.ExtraArgs
 		kernel = "/usr/lib/xen/boot/ovmf-pvh.bin"
-	case types.HVM, types.FML:
-		// XXX fill in FML differences
+	case types.HVM:
 		xen_type = "hvm"
 		if config.Kernel != "" {
 			kernel = config.Kernel
 		}
+	case types.FML:
+		xen_type = "hvm"
+		vif_type = "ioemu"
+		xen_global = "hdtype = \"ahci\"\nspoof_xen = 1\npci_permissive = 1\n"
 	default:
 		log.Errorf("Internal error: Unknown virtualizationMode %d",
 			status.VirtualizationMode)
@@ -1624,6 +1636,8 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	file.WriteString(fmt.Sprintf("type = \"%s\"\n", xen_type))
 	file.WriteString(fmt.Sprintf("uuid = \"%s\"\n",
 		config.UUIDandVersion.UUID))
+	file.WriteString(xen_global)
+
 	if kernel != "" {
 		file.WriteString(fmt.Sprintf("kernel = \"%s\"\n", kernel))
 	}
@@ -1727,8 +1741,8 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 
 	vifString := ""
 	for _, net := range config.VifList {
-		oneVif := fmt.Sprintf("'bridge=%s,vifname=%s,mac=%s,type=vif'",
-			net.Bridge, net.Vif, net.Mac)
+		oneVif := fmt.Sprintf("'bridge=%s,vifname=%s,mac=%s,type=%s'",
+			net.Bridge, net.Vif, net.Mac, vif_type)
 		if vifString == "" {
 			vifString = oneVif
 		} else {
@@ -1914,7 +1928,7 @@ func handleModify(ctx *domainContext, key string,
 		name := config.DisplayName + "." + strconv.Itoa(config.AppNum)
 		status.DomainName = name
 		status.AppNum = config.AppNum
-		status.VifList = config.VifList
+		status.VifList = checkIfEmu(config.VifList)
 		publishDomainStatus(ctx, status)
 		log.Infof("handleModify(%v) set domainName %s for %s\n",
 			config.UUIDandVersion, status.DomainName,
@@ -1993,6 +2007,23 @@ func updateStatusFromConfig(status *types.DomainStatus, config types.DomainConfi
 	status.EnableVnc = config.EnableVnc
 	status.VncDisplay = config.VncDisplay
 	status.VncPasswd = config.VncPasswd
+}
+
+// If we have a -emu named interface we assume it is being used
+func checkIfEmu(vifList []types.VifInfo) []types.VifInfo {
+	var retList []types.VifInfo
+
+	for _, net := range vifList {
+		net.VifUsed = net.Vif
+		emuIfname := net.Vif + "-emu"
+		_, err := netlink.LinkByName(emuIfname)
+		if err == nil && net.VifUsed != emuIfname {
+			log.Infof("Found EMU %s and update %s", emuIfname, net.VifUsed)
+			net.VifUsed = emuIfname
+		}
+		retList = append(retList, net)
+	}
+	return retList
 }
 
 // Used to wait both after shutdown and destroy

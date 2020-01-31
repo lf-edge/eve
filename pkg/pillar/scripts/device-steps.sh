@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 LOGREAD_PID_WAIT=3600
-LOG_TO_SYSLOG=1
 USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
@@ -24,12 +23,9 @@ AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
 
 PATH=$BINDIR:$PATH
-export LOG_TO_SYSLOG
 
 echo "$(date -Ins -u) Starting device-steps.sh"
 echo "$(date -Ins -u) EVE version: $(cat $BINDIR/versioninfo)"
-
-/usr/bin/logread -F -socket /hostfs/var/run/memlogdq.sock | logger &
 
 MEASURE=0
 while [ $# != 0 ]; do
@@ -125,7 +121,7 @@ pidfile = /var/run/xen/xenconsoled.pid
 pidfile = /var/run/xen/xenstored.pid
 pidfile = /var/run/crond.pid
 pidfile = /var/run/logread.pid
-pidfile = /run/rsyslogd.pid
+pidfile = /run/monitor-rsyslogd.pid
 EOF
 # XXX Other processes we should potentially watch but they run outside
 # of this container:
@@ -295,23 +291,13 @@ if [ ! -d $PERSISTDIR/log ]; then
     mkdir $PERSISTDIR/log
 fi
 
-echo "$(date -Ins -u) Set up log capture"
-tail -c +0 -F /var/log/device-steps.log >>$PERSISTDIR/$CURPART/log/device-steps.log &
 echo "$(date -Ins -u) Starting hypervisor.log" >>$PERSISTDIR/$CURPART/log/hypervisor.log
 tail -c +0 -F /var/log/xen/hypervisor.log | while IFS= read -r line; do printf "%s %s\n" "$(date -Ins -u)" "$line"; done >>$PERSISTDIR/$CURPART/log/hypervisor.log &
-echo "$(date -Ins -u) Starting dmesg" >>$PERSISTDIR/$CURPART/log/dmesg.log
-dmesg -T -w -l 1,2,3,4 --time-format iso | while IFS= read -r line; do printf "%s %s\n" "$(date -Ins -u)" "$line"; done >>$PERSISTDIR/$CURPART/log/dmesg.log &
 
 if [ -d $LISPDIR/logs ]; then
     echo "$(date -Ins -u) Saving old lisp logs in $LISPDIR/logs.old"
     mv $LISPDIR/logs $LISPDIR/logs.old
 fi
-
-# Save any device-steps.log's to /persist/log/ so we can look for watchdog's
-# in there. Also save dmesg in case it tells something about reboots.
-tail -c +0 -F /var/log/device-steps.log >>$PERSISTDIR/log/device-steps.log &
-echo "$(date -Ins -u) Starting dmesg" >>$PERSISTDIR/log/dmesg.log
-dmesg -T -w -l 1,2,3,4 --time-format iso | while IFS= read -r line; do printf "%s %s\n" "$(date -Ins -u)" "$line"; done >>$PERSISTDIR/log/dmesg.log &
 
 #
 # Remove any old symlink to different IMG directory
@@ -432,7 +418,7 @@ killwait_watchdog
 /usr/sbin/watchdog -c $ZTMPDIR/watchdognim.conf -F -s &
 
 # Print diag output forever on changes
-$BINDIR/diag -c $CURPART -f >/dev/console 2>&1 &
+$BINDIR/diag -c $CURPART -f -o /dev/console &
 
 # Wait for having IP addresses for a few minutes
 # so that we are likely to have an address when we run ntp

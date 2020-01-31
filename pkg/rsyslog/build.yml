@@ -7,6 +7,7 @@ config:
     - /dev:/dev
     - /etc/resolv.conf:/etc/resolv.conf
     - /var/persist:/persist
+    - /usr/bin/logread:/usr/bin/logread
   net: host
   capabilities:
     - all
