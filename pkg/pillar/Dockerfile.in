@@ -25,8 +25,6 @@ RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc) ;\
     make DISTDIR=/dist build
 
 # hadolint ignore=DL3006
-FROM XENTOOLS_TAG as xen-tools
-# hadolint ignore=DL3006
 FROM DNSMASQ_TAG as dnsmasq
 # hadolint ignore=DL3006
 FROM STRONGSWAN_TAG as strongswan
@@ -51,9 +49,6 @@ RUN apk add --no-cache \
     util-linux e2fsprogs libcrypto1.0 xorriso \
     python libpcap libffi jq e2fsprogs-extra keyutils
 
-# The following is for xen-tools
-RUN [ `uname -m` = "aarch64" ] && apk add --no-cache libfdt || :
-
 # We have to make sure configs survive in some location, but they don't pollute
 # the default /config (since that is expected to be an empty mount point)
 ADD conf/root-certificate.pem conf/server conf/server.production /opt/zededa/examples/config/
@@ -71,7 +66,6 @@ RUN set -e && for patch in ../patches/*.patch; do \
     done
 
 COPY --from=build /dist /opt/zededa/bin
-COPY --from=xen-tools / /
 COPY --from=gpttools / /
 COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
 COPY --from=strongswan / /
@@ -80,9 +74,6 @@ COPY --from=rkt-stage1-build /go/stage1-xen-master/stage1-xen.aci /usr/sbin/stag
 COPY --from=fscrypt-build /fscrypt /opt/zededa/bin/fscrypt
 COPY --from=uefi-build /OVMF.fd /usr/lib/xen/boot/ovmf.bin
 COPY --from=uefi-build /OVMF_PVH.fd /usr/lib/xen/boot/ovmf-pvh.bin
-
-# We need to keep a slim profile, which means removing things we don't need
-RUN rm /usr/lib/libxen*.a /usr/lib/libxl*.a
 
 # And now a few local tweaks
 COPY rootfs/ /
