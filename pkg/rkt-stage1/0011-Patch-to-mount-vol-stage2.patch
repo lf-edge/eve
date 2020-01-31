@@ -68,16 +68,17 @@ index 0000000..9a199d7
 +done
 \ No newline at end of file
 diff --git a/files/run b/files/run
-index a26edca..d16ad28 100755
+index a26edca..aed470a 100755
 --- a/files/run
 +++ b/files/run
-@@ -62,8 +62,12 @@ fi
+@@ -62,8 +62,13 @@ fi
  echo "ramdisk='$workpath/initrd'" >> $outconfig
  echo "p9=[ 'tag=share_dir,security_model=none,path=$mountpoint' ]" >> $outconfig
- 
+
 +if [ -f "$STAGE1_SEED_MNT_PT" ] ; then
 +  cp "$STAGE1_SEED_MNT_PT" $stage2
 +fi
++cp $stage1/mount_disk.sh $stage2
 +
  if [ -f "$STAGE1_SEED_XL_CFG" ] ; then
 -    grep -Ev '^(disk|bootloader|root|extra|kernel)' < "$STAGE1_SEED_XL_CFG" >> $outconfig

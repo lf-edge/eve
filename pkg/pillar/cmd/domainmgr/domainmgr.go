@@ -69,12 +69,12 @@ func isPort(ctx *domainContext, ifname string) bool {
 //MountPoints - Holds mount target information which will be used when bringing up container
 type MountPoints struct {
 	targetPath string //Target path inside VM or container. Mandatory
-	fileSystem     string //What type of file-system is expected to be mounted. Not mandatory, default: vfat
-	partition   int   //Which partition of the disk should be mounted. Not mandatory, default:efault: 1
+	fileSystem string //What type of file-system is expected to be mounted. Not mandatory, default: vfat
+	partition  int    //Which partition of the disk should be mounted. Not mandatory, default:efault: 1
 }
 
 var FileSystems = map[string]int32{
-	"vfat":     0,
+	"vfat": 0,
 }
 
 // Information for handleCreate/Modify/Delete
@@ -1667,12 +1667,12 @@ func writeMountPointsToFile(mountPoints []MountPoints, status types.DomainStatus
 	//}
 
 	for i, mp := range mountPoints {
-		if mp.fileSystem == ""{
+		if mp.fileSystem == "" {
 			mp.fileSystem = "vfat"
 		} else {
-			if _, ok := FileSystems[mp.fileSystem]; !ok{
+			if _, ok := FileSystems[mp.fileSystem]; !ok {
 				err := fmt.Errorf("writeMountPointsToFile: Invalid/unrecognized filesystem: %v", mp.fileSystem)
-				log.Errorf(err.Error() )
+				log.Errorf(err.Error())
 				return err
 			}
 		}
@@ -1680,19 +1680,19 @@ func writeMountPointsToFile(mountPoints []MountPoints, status types.DomainStatus
 			mp.partition = 1
 		} else {
 			if mp.partition > 4 || mp.partition < 0 {
-				err := fmt.Errorf("writeMountPointsToFile: Invalid partition: %v. Must be between 1 - 4", mp.partition )
-				log.Errorf(err.Error() )
+				err := fmt.Errorf("writeMountPointsToFile: Invalid partition: %v. Must be between 1 - 4", mp.partition)
+				log.Errorf(err.Error())
 				return err
 			}
 		}
-		if mp.targetPath == ""{
+		if mp.targetPath == "" {
 			err := fmt.Errorf("writeMountPointsToFile: targetPath cannot be empty")
-			log.Errorf(err.Error() )
+			log.Errorf(err.Error())
 			return err
-		}else if !strings.HasPrefix(mp.targetPath, "/"){
+		} else if !strings.HasPrefix(mp.targetPath, "/") {
 			//Target path is expected to be absolute.
 			err := fmt.Errorf("writeMountPointsToFile: targetPath should be absolute")
-			log.Errorf(err.Error() )
+			log.Errorf(err.Error())
 			return err
 		}
 		targetString := fmt.Sprintf("%s:%s:%d", mp.targetPath, mp.fileSystem, mp.partition)
