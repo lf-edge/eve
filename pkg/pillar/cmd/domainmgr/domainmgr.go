@@ -994,7 +994,7 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 	// Do we need to copy any rw files? !Preserve ones are copied upon
 	// activation.
 	for _, ds := range status.DiskStatusList {
-		if zconfig.Format_CONTAINER == ds.Format {
+		if ds.Format == zconfig.Format_CONTAINER {
 			continue
 		}
 		if ds.ReadOnly || !ds.Preserve {
@@ -1188,7 +1188,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	// Do we need to copy any rw files? Preserve ones are copied upon
 	// creation
 	for _, ds := range status.DiskStatusList {
-		if zconfig.Format_CONTAINER == ds.Format {
+		if ds.Format == zconfig.Format_CONTAINER {
 			continue
 		}
 		if ds.ReadOnly || ds.Preserve {
@@ -1423,7 +1423,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	// Do we need to delete any rw files that should
 	// not be preserved across reboots?
 	for _, ds := range status.DiskStatusList {
-		if zconfig.Format_CONTAINER == ds.Format {
+		if ds.Format == zconfig.Format_CONTAINER {
 			continue
 		}
 		if !ds.ReadOnly && !ds.Preserve {
@@ -1743,6 +1743,9 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 
 	diskString := ""
 	for i, ds := range status.DiskStatusList {
+		if ds.Format == zconfig.Format_CONTAINER {
+			continue
+		}
 		access := "rw"
 		if ds.ReadOnly {
 			access = "ro"
