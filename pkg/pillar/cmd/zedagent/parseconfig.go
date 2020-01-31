@@ -2130,8 +2130,9 @@ func unpublishCertObjConfig(getconfigCtx *getconfigContext, uuidStr string) {
 	pub.Unpublish(key)
 }
 
-// parseCpherBlock : handle cipher information received from controller
-// consolidate both the zconfig.CipherContext and zconfig.CipherBlock to types.CipherBlock.
+// parseCipherBlock : handle cipher information received from controller
+// consolidate both the zconfig.CipherContext and zconfig.CipherBlock
+// to types.CipherBlock.
 // The interested agents will get the whole information
 func parseCipherBlock(ctx *getconfigContext,
 	config *zconfig.CipherBlock) (types.CipherBlock, bool) {
