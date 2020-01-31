@@ -7,12 +7,9 @@ package zedagent
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -69,16 +66,7 @@ var appPersistPaths = []string{
 	types.AppImgDirname,
 }
 
-func publishMetrics(ctx *zedagentContext, iteration int) {
-	cpuMemoryStat := ExecuteXentopCmd()
-	if cpuMemoryStat == nil {
-		return
-	}
-	PublishMetricsToZedCloud(ctx, cpuMemoryStat, iteration)
-}
-
 // Run a periodic post of the metrics
-
 func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	iteration := 0
 	log.Infoln("starting report metrics timer task")
@@ -128,183 +116,20 @@ func updateMetricsTimer(metricInterval uint32, tickerHandle interface{}) {
 	flextimer.TickNow(tickerHandle)
 }
 
-func ExecuteXlInfoCmd() map[string]string {
-	xlCmd := exec.Command("xl", "info")
-	stdout, err := xlCmd.Output()
-	if err != nil {
-		log.Errorf("xl info failed %s\n", err)
+// Key is device UUID for host and app instance UUID for app instances
+// Returns DomainMetric
+func lookupDomainMetric(ctx *zedagentContext, uuidStr string) *types.DomainMetric {
+	sub := ctx.getconfigCtx.subDomainMetric
+	m, _ := sub.Get(uuidStr)
+	if m == nil {
+		log.Infof("lookupDomainMetric(%s) not found\n", uuidStr)
 		return nil
 	}
-	xlInfo := string(stdout)
-	splitXlInfo := strings.Split(xlInfo, "\n")
-
-	dict := make(map[string]string, len(splitXlInfo)-1)
-	for _, str := range splitXlInfo {
-		res := strings.SplitN(str, ":", 2)
-		if len(res) == 2 {
-			dict[strings.TrimSpace(res[0])] = strings.TrimSpace(res[1])
-		}
-	}
-	return dict
+	metric := m.(types.DomainMetric)
+	return &metric
 }
 
-// XXX can we use libxenstat? /usr/local/lib/libxenstat.so on hikey
-// /usr/lib/libxenstat.so in container
-func ExecuteXentopCmd() [][]string {
-	var cpuMemoryStat [][]string
-
-	count := 0
-	counter := 0
-	arg1 := "xentop"
-	arg2 := "-b"
-	arg3 := "-d"
-	arg4 := "1"
-	arg5 := "-i"
-	arg6 := "2"
-	arg7 := "-f"
-
-	stdout, ok, err := execWithTimeout(arg1, arg2, arg3, arg4, arg5, arg6, arg7)
-	if err != nil {
-		log.Errorf("xentop failed: %s", err)
-		return [][]string{}
-	}
-	if !ok {
-		log.Warnf("xentop timed out")
-		return nil
-	}
-
-	xentopInfo := string(stdout)
-
-	splitXentopInfo := strings.Split(xentopInfo, "\n")
-
-	splitXentopInfoLength := len(splitXentopInfo)
-	var i int
-	var start int
-
-	for i = 0; i < splitXentopInfoLength; i++ {
-
-		str := splitXentopInfo[i]
-		re := regexp.MustCompile(" ")
-
-		spaceRemovedsplitXentopInfo := re.ReplaceAllLiteralString(str, "")
-		matched, err := regexp.MatchString("NAMESTATECPU.*", spaceRemovedsplitXentopInfo)
-
-		if err != nil {
-			log.Debugf("MatchString failed: %s", err)
-		} else if matched {
-
-			count++
-			log.Debugf("string matched: %s", str)
-			if count == 2 {
-				start = i + 1
-				log.Debugf("value of i: %d", start)
-			}
-		}
-	}
-
-	length := splitXentopInfoLength - 1 - start
-	finalOutput := make([][]string, length)
-
-	for j := start; j < splitXentopInfoLength-1; j++ {
-
-		finalOutput[j-start] = strings.Fields(strings.TrimSpace(splitXentopInfo[j]))
-	}
-
-	cpuMemoryStat = make([][]string, length)
-
-	for i := range cpuMemoryStat {
-		cpuMemoryStat[i] = make([]string, 20)
-	}
-
-	// Need to treat "no limit" as one token
-	for f := 0; f < length; f++ {
-
-		// First name and state
-		out := 0
-		counter++
-		cpuMemoryStat[f][counter] = finalOutput[f][out]
-		out++
-		counter++
-		cpuMemoryStat[f][counter] = finalOutput[f][out]
-		out++
-		for ; out < len(finalOutput[f]); out++ {
-
-			if finalOutput[f][out] == "no" {
-
-			} else if finalOutput[f][out] == "limit" {
-				counter++
-				cpuMemoryStat[f][counter] = "no limit"
-			} else {
-				counter++
-				cpuMemoryStat[f][counter] = finalOutput[f][out]
-			}
-		}
-		counter = 0
-	}
-	log.Debugf("ExecuteXentopCmd return %+v", cpuMemoryStat)
-	return cpuMemoryStat
-}
-
-func execWithTimeout(command string, args ...string) ([]byte, bool, error) {
-
-	ctx, cancel := context.WithTimeout(context.Background(),
-		10*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, command, args...)
-	out, err := cmd.Output()
-	if ctx.Err() == context.DeadlineExceeded {
-		return nil, false, nil
-	}
-	return out, true, err
-}
-
-// Returns cpuTotal, usedMemory, availableMemory, usedPercentage
-func lookupCpuMemoryStat(cpuMemoryStat [][]string, domainname string) (uint64, uint32, uint32, float64) {
-
-	for _, stat := range cpuMemoryStat {
-		if len(stat) <= 2 {
-			continue
-		}
-		dn := strings.TrimSpace(stat[1])
-		if dn == domainname {
-			if len(stat) <= 6 {
-				return 0, 0, 0, 0.0
-			}
-			log.Debugf("lookupCpuMemoryStat for %s %d elem: %+v",
-				domainname, len(stat), stat)
-			cpuTotal, err := strconv.ParseUint(stat[3], 10, 0)
-			if err != nil {
-				log.Errorf("ParseUint(%s) failed: %s",
-					stat[3], err)
-				cpuTotal = 0
-			}
-			// This is in kbytes
-			totalMemory, err := strconv.ParseUint(stat[5], 10, 0)
-			if err != nil {
-				log.Errorf("ParseUint(%s) failed: %s",
-					stat[5], err)
-				totalMemory = 0
-			}
-			totalMemory = RoundFromKbytesToMbytes(totalMemory)
-			usedMemoryPercent, err := strconv.ParseFloat(stat[6], 10)
-			if err != nil {
-				log.Errorf("ParseFloat(%s) failed: %s",
-					stat[6], err)
-				usedMemoryPercent = 0
-			}
-			usedMemory := (float64(totalMemory) * (usedMemoryPercent)) / 100
-			availableMemory := float64(totalMemory) - usedMemory
-
-			return cpuTotal, uint32(usedMemory), uint32(availableMemory),
-				float64(usedMemoryPercent)
-		}
-	}
-	return 0, 0, 0, 0.0
-}
-
-func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
-	iteration int) {
+func publishMetrics(ctx *zedagentContext, iteration int) {
 
 	var ReportMetrics = &metrics.ZMetricMsg{}
 
@@ -334,20 +159,13 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 	ReportDeviceMetric.CpuMetric.UpTime = uptime
 
 	// Memory related info for the device
-	dict := ExecuteXlInfoCmd()
 	var totalMemory, freeMemory uint64
-	if dict != nil {
-		var err error
-		totalMemory, err = strconv.ParseUint(dict["total_memory"], 10, 64)
-		if err != nil {
-			log.Errorf("Failed parsing total_memory: %s", err)
-			totalMemory = 0
-		}
-		freeMemory, err = strconv.ParseUint(dict["free_memory"], 10, 64)
-		if err != nil {
-			log.Errorf("Failed parsing free_memory: %s", err)
-			freeMemory = 0
-		}
+	sub := ctx.getconfigCtx.subHostMemory
+	m, _ := sub.Get("global")
+	if m != nil {
+		metric := m.(types.HostMemory)
+		totalMemory = metric.TotalMemoryMB
+		freeMemory = metric.FreeMemoryMB
 	}
 	// total_memory and free_memory is in MBytes
 	used := totalMemory - freeMemory
@@ -540,21 +358,24 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		ReportDeviceMetric.MetricItems = append(ReportDeviceMetric.MetricItems, item)
 	}
 
-	cpuTotal, usedMemory, availableMemory, usedMemoryPercent := lookupCpuMemoryStat(cpuMemoryStat, "Domain-0")
-	log.Debugf("Domain-0 CPU from xentop: %d, percent used %d\n",
-		cpuTotal, (100*cpuTotal)/uint64(info.Uptime))
-	ReportDeviceMetric.CpuMetric.Total = *proto.Uint64(cpuTotal)
+	// Get device info using nil UUID
+	dm := lookupDomainMetric(ctx, nilUUID.String())
+	if dm != nil {
+		log.Debugf("host CPU: %d, percent used %d\n",
+			dm.CPUTotal, (100*dm.CPUTotal)/uint64(info.Uptime))
+		ReportDeviceMetric.CpuMetric.Total = *proto.Uint64(dm.CPUTotal)
 
-	ReportDeviceMetric.SystemServicesMemoryMB = new(metrics.MemoryMetric)
-	ReportDeviceMetric.SystemServicesMemoryMB.UsedMem = usedMemory
-	ReportDeviceMetric.SystemServicesMemoryMB.AvailMem = availableMemory
-	ReportDeviceMetric.SystemServicesMemoryMB.UsedPercentage = usedMemoryPercent
-	ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage = (100.0 - (usedMemoryPercent))
-	log.Debugf("dom-0 Memory from xentop: %v %v %v %v",
-		ReportDeviceMetric.SystemServicesMemoryMB.UsedMem,
-		ReportDeviceMetric.SystemServicesMemoryMB.AvailMem,
-		ReportDeviceMetric.SystemServicesMemoryMB.UsedPercentage,
-		ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage)
+		ReportDeviceMetric.SystemServicesMemoryMB = new(metrics.MemoryMetric)
+		ReportDeviceMetric.SystemServicesMemoryMB.UsedMem = dm.UsedMemory
+		ReportDeviceMetric.SystemServicesMemoryMB.AvailMem = dm.AvailableMemory
+		ReportDeviceMetric.SystemServicesMemoryMB.UsedPercentage = dm.UsedMemoryPercent
+		ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage = (100.0 - (dm.UsedMemoryPercent))
+		log.Debugf("host Memory: %v %v %v %v",
+			ReportDeviceMetric.SystemServicesMemoryMB.UsedMem,
+			ReportDeviceMetric.SystemServicesMemoryMB.AvailMem,
+			ReportDeviceMetric.SystemServicesMemoryMB.UsedPercentage,
+			ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage)
+	}
 
 	ReportMetrics.MetricContent = new(metrics.ZMetricMsg_Dm)
 	if x, ok := ReportMetrics.GetMetricContent().(*metrics.ZMetricMsg_Dm); ok {
@@ -562,7 +383,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 	}
 
 	// Loop over AppInstanceStatus so we report before the instance has booted
-	sub := ctx.getconfigCtx.subAppInstanceStatus
+	sub = ctx.getconfigCtx.subAppInstanceStatus
 	items := sub.GetAll()
 	for _, st := range items {
 		aiStatus := st.(types.AppInstanceStatus)
@@ -579,16 +400,18 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 			ReportAppMetric.Cpu.UpTime = uptime
 		}
 
-		appCpuTotal, usedMemory, availableMemory, usedMemoryPercent := lookupCpuMemoryStat(cpuMemoryStat, aiStatus.DomainName)
-		log.Debugf("xentop for %s CPU %d, usedMem %v, availMem %v, availMemPercent %v",
-			aiStatus.DomainName, appCpuTotal, usedMemory,
-			availableMemory, usedMemoryPercent)
-		ReportAppMetric.Cpu.Total = *proto.Uint64(appCpuTotal)
-		ReportAppMetric.Memory.UsedMem = usedMemory
-		ReportAppMetric.Memory.AvailMem = availableMemory
-		ReportAppMetric.Memory.UsedPercentage = usedMemoryPercent
-		availableMemoryPercent := 100.0 - usedMemoryPercent
-		ReportAppMetric.Memory.AvailPercentage = availableMemoryPercent
+		dm := lookupDomainMetric(ctx, aiStatus.Key())
+		if dm != nil {
+			log.Debugf("metrics for %s CPU %d, usedMem %v, availMem %v, availMemPercent %v",
+				aiStatus.DomainName, dm.CPUTotal, dm.UsedMemory,
+				dm.AvailableMemory, dm.UsedMemoryPercent)
+			ReportAppMetric.Cpu.Total = *proto.Uint64(dm.CPUTotal)
+			ReportAppMetric.Memory.UsedMem = dm.UsedMemory
+			ReportAppMetric.Memory.AvailMem = dm.AvailableMemory
+			ReportAppMetric.Memory.UsedPercentage = dm.UsedMemoryPercent
+			availableMemoryPercent := 100.0 - dm.UsedMemoryPercent
+			ReportAppMetric.Memory.AvailPercentage = availableMemoryPercent
+		}
 
 		appInterfaceList := aiStatus.GetAppInterfaceList()
 		log.Debugf("ReportMetrics: domainName %s ifs %v\n",
@@ -688,12 +511,6 @@ func RoundToMbytes(byteCount uint64) uint64 {
 	return (byteCount + mbyte/2) / mbyte
 }
 
-func RoundFromKbytesToMbytes(byteCount uint64) uint64 {
-	const kbyte = 1024
-
-	return (byteCount + kbyte/2) / kbyte
-}
-
 //getDataSecAtRestInfo prepares status related to Data security at Rest
 func getDataSecAtRestInfo(ctx *zedagentContext) *info.DataSecAtRest {
 	subVaultStatus := ctx.subVaultStatus
@@ -789,23 +606,13 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		ReportDeviceInfo.Platform = *proto.String(strings.TrimSpace(platform))
 	}
 
-	dict := ExecuteXlInfoCmd()
-	if dict != nil {
-		// Note that this is the set of physical CPUs which is different
-		// than the set of CPUs assigned to dom0
-		ncpus, err := strconv.ParseUint(dict["nr_cpus"], 10, 32)
-		if err != nil {
-			log.Errorln("error while converting ncpus to int: ", err)
-		} else {
-			ReportDeviceInfo.Ncpu = *proto.Uint32(uint32(ncpus))
-		}
-		totalMemory, err := strconv.ParseUint(dict["total_memory"], 10, 64)
-		if err == nil {
-			// totalMemory is in MBytes
-			ReportDeviceInfo.Memory = *proto.Uint64(uint64(totalMemory))
-		}
+	sub := ctx.getconfigCtx.subHostMemory
+	m, _ := sub.Get("global")
+	if m != nil {
+		metric := m.(types.HostMemory)
+		ReportDeviceInfo.Ncpu = *proto.Uint32(metric.Ncpus)
+		ReportDeviceInfo.Memory = *proto.Uint64(metric.TotalMemoryMB)
 	}
-
 	// Find all disks and partitions
 	disks := findDisksPartitions()
 	ReportDeviceInfo.Storage = *proto.Uint64(0)

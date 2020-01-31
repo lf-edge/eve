@@ -414,6 +414,16 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 		if !ok {
 			continue
 		}
+		level, err := log.ParseLevel(logInfo.Level)
+		if err != nil {
+			log.Errorf("ParseLevel failed: %s\n", err)
+			level = log.InfoLevel
+		}
+		if dropEvent(logInfo.Source, level) {
+			log.Debugf("Dropping source %s level %v\n",
+				logInfo.Source, level)
+			continue
+		}
 		timestamp := logParts["timestamp"].(time.Time)
 		logMsg := logEntry{
 			source:    logInfo.Source,

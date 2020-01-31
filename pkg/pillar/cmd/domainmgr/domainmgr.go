@@ -81,11 +81,14 @@ type domainContext struct {
 	subGlobalConfig        pubsub.Subscription
 	pubImageStatus         pubsub.Publication
 	pubAssignableAdapters  pubsub.Publication
+	pubDomainMetric        pubsub.Publication
+	pubHostMemory          pubsub.Publication
 	usbAccess              bool
 	createSema             sema.Semaphore
 	GCInitialized          bool
 	vdiskGCTime            uint32 // In seconds
 	domainBootRetryTime    uint32 // In seconds
+	metricInterval         uint32 // In seconds
 }
 
 // appRwImageName - Returns name of the image ( including parent dir )
@@ -227,7 +230,21 @@ func Run() {
 		log.Fatal(err)
 	}
 	domainCtx.pubAssignableAdapters = pubAssignableAdapters
-	pubAssignableAdapters.ClearRestarted()
+
+	pubDomainMetric, err := pubsublegacy.Publish(agentName,
+		types.DomainMetric{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.pubDomainMetric = pubDomainMetric
+
+	pubHostMemory, err := pubsublegacy.Publish(agentName,
+		types.HostMemory{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.pubHostMemory = pubHostMemory
+	pubHostMemory.ClearRestarted()
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
@@ -269,6 +286,8 @@ func Run() {
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("processed GlobalConfig")
+
+	go metricsTimerTask(&domainCtx)
 
 	// Wait for DeviceNetworkStatus to be init so we know the management
 	// ports and then wait for assignableAdapters.
@@ -2693,6 +2712,9 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		if gcp.UsbAccess != ctx.usbAccess {
 			ctx.usbAccess = gcp.UsbAccess
 			updateUsbAccess(ctx)
+		}
+		if gcp.MetricInterval != 0 {
+			ctx.metricInterval = gcp.MetricInterval
 		}
 		ctx.GCInitialized = true
 	}
