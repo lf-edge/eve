@@ -916,7 +916,7 @@ func getControllerCertInfo(cipherBlock *types.CipherBlock) (*ecdsa.PublicKey, er
 	return ecdhPubKey, nil
 }
 
-//  decrypt the cipher text into plain text
+//  CipherDecrypt : decrypt the cipher text into plain text
 func CipherDecrypt(cipherBlock *types.CipherBlock) (string, error) {
 	if !IsTpmEnabled() || cipherBlock == nil {
 		return "", nil

@@ -7,7 +7,7 @@ import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
 )
 
-// CipherContain : Decryption information
+// CipherContext : Decryption information
 // supplied by controller, for sensitive encrypted data
 type CipherContext struct {
 	ID                   UUIDandVersion
