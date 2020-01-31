@@ -3,7 +3,6 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-LOGREAD_PID_WAIT=3600
 USE_HW_WATCHDOG=1
 CONFIGDIR=/config
 PERSISTDIR=/persist
@@ -80,25 +79,6 @@ else
     USE_HW_WATCHDOG=0
 fi
 
-LOOP_COUNT=0
-while [ -z "$(pgrep logread)" ];
-do
-    sleep 1
-    LOOP_COUNT=$((LOOP_COUNT + 1))
-    if [ "$LOOP_COUNT" -ge "$LOGREAD_PID_WAIT" ]; then
-        echo "$(date -Ins -u) Error: Could not find logread process"
-        sleep 1
-        reboot
-    fi
-done
-
-LOGREAD_PID=$(pgrep logread)
-if [ -n "$LOGREAD_PID" ]; then
-    echo "$LOGREAD_PID" > /var/run/logread.pid
-else
-    echo "$(date -Ins -u) Error: logread has not started"
-fi
-
 # Create the watchdog(8) config files we will use
 # XXX should we enable realtime in the kernel?
 if [ $USE_HW_WATCHDOG = 1 ]; then
@@ -120,7 +100,7 @@ pidfile = /var/run/xen/qemu-dom0.pid
 pidfile = /var/run/xen/xenconsoled.pid
 pidfile = /var/run/xen/xenstored.pid
 pidfile = /var/run/crond.pid
-pidfile = /var/run/logread.pid
+pidfile = /run/logread.pid
 pidfile = /run/monitor-rsyslogd.pid
 EOF
 # XXX Other processes we should potentially watch but they run outside
