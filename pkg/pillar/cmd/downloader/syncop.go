@@ -283,9 +283,6 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 // cloud storage interface functions/APIs
 func constructDatastoreContext(config types.DownloaderConfig, status *types.DownloaderStatus, dst *types.DatastoreConfig) *types.DatastoreContext {
 	dpath := dst.Dpath
-	if status.ObjType == types.CertObj {
-		dpath = strings.Replace(dpath, "-images", "-certs", 1)
-	}
 	downloadURL := config.Name
 	if !config.NameIsURL {
 		downloadURL = dst.Fqdn
