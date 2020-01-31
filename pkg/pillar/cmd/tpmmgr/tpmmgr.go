@@ -851,47 +851,48 @@ func testEcdhAES() error {
 }
 
 // DecryptWithCipherInfo : Decryption API, for encrypted object information received from controller
-func DecryptWithCipherInfo(cipherInfo *types.CipherInfo, cipherText []byte) (string, error) {
+func DecryptWithCipherInfo(cipherBlock *types.CipherBlock) (string, error) {
 	// TBD:XXX, for nodes not having tpm chip, the device private key can be used
 	// which can be wrqpped up inside DecryptWithEcdhKey
 	if !IsTpmEnabled() {
 		return "", errors.New("Not supported")
 	}
-	if cipherInfo == nil || len(cipherText) == 0 {
+	if cipherBlock == nil || len(cipherBlock.CipherData) == 0 {
 		return "", errors.New("Invalid Information")
 	}
-	if cipherInfo.KeyExchangeScheme == zconfig.KeyExchangeScheme_KEA_NONE ||
-		cipherInfo.EncryptionScheme == zconfig.EncryptionScheme_SA_NONE {
+	if cipherBlock.KeyExchangeScheme == zconfig.KeyExchangeScheme_KEA_NONE ||
+		cipherBlock.EncryptionScheme == zconfig.EncryptionScheme_SA_NONE {
 		return "", errors.New("No Encryption")
 	}
-	if cipherInfo.KeyExchangeScheme != zconfig.KeyExchangeScheme_KEA_ECDH ||
-		cipherInfo.EncryptionScheme != zconfig.EncryptionScheme_SA_AES_256_CFB {
+	if cipherBlock.KeyExchangeScheme != zconfig.KeyExchangeScheme_KEA_ECDH ||
+		cipherBlock.EncryptionScheme != zconfig.EncryptionScheme_SA_AES_256_CFB {
 		return "", errors.New("Unsupported Encryption protocols")
 	}
 	// currently, its ecdh/aes256
-	cert, err := getControllerCertInfo(cipherInfo)
+	cert, err := getControllerCertInfo(cipherBlock)
 	if err != nil {
 		log.Errorf("Could not extract Certificate Information")
 		return "", err
 	}
-	plainText := make([]byte, len(cipherText))
+	bytes := make([]byte, len(cipherBlock.CipherData))
 	err = DecryptSecretWithEcdhKey(cert.X, cert.Y,
-		cipherInfo.InitialValue, cipherText, plainText)
+		cipherBlock.InitialValue, cipherBlock.CipherData, bytes)
 	if err != nil {
 		log.Errorf("Decryption failed with error %v\n", err)
 		return "", err
 	}
-	return string(plainText), nil
+	// TBD:XXX, validate plaintext sha
+	return string(bytes), nil
 }
 
-func getControllerCertInfo(cipherInfo *types.CipherInfo) (*ecdsa.PublicKey, error) {
+func getControllerCertInfo(cipherBlock *types.CipherBlock) (*ecdsa.PublicKey, error) {
 	var ecdhPubKey *ecdsa.PublicKey
-	if len(cipherInfo.ControllerCert) == 0 || len(cipherInfo.InitialValue) == 0 {
+	if len(cipherBlock.ControllerCert) == 0 || len(cipherBlock.InitialValue) == 0 {
 		return ecdhPubKey, errors.New("Invalid Cipher Information")
 	}
-	// TBD:XXX, validate the sha and signature of the controller cert
+	// TBD:XXX, validate the ControllerCert Signing
 
-	block := cipherInfo.ControllerCert
+	block := cipherBlock.ControllerCert
 	certs := []*x509.Certificate{}
 	for b, rest := pem.Decode(block); b != nil; b, rest = pem.Decode(rest) {
 		if b.Type == "CERTIFICATE" {
@@ -913,6 +914,14 @@ func getControllerCertInfo(cipherInfo *types.CipherInfo) (*ecdsa.PublicKey, erro
 		return ecdhPubKey, errors.New("Not ECDSA Key")
 	}
 	return ecdhPubKey, nil
+}
+
+//  decrypt the cipher text into plain text
+func CipherDecrypt(cipherBlock *types.CipherBlock) (string, error) {
+	if !IsTpmEnabled() || cipherBlock == nil {
+		return "", nil
+	}
+	return DecryptWithCipherInfo(cipherBlock)
 }
 
 func Run() {

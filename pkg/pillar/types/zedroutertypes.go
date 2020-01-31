@@ -320,12 +320,14 @@ type CryptoBlock struct {
 
 // WifiConfig - Wifi structure
 type WifiConfig struct {
-	SSID      string            // wifi SSID
-	KeyScheme WifiKeySchemeType // such as WPA-PSK, WPA-EAP
-	Identity  string            // identity or username for WPA-EAP
-	Password  string            // string of pass phrase or password hash
-	Crypto    CryptoBlock       // encrypted block of items
-	Priority  int32
+	SSID        string            // wifi SSID
+	KeyScheme   WifiKeySchemeType // such as WPA-PSK, WPA-EAP
+	Identity    string            // identity or username for WPA-EAP
+	Password    string            // string of pass phrase or password hash
+	Crypto      CryptoBlock       // encrypted block of items
+	Priority    int32
+	IsCipher    bool
+	CipherBlock *CipherBlock
 }
 
 // CellConfig - Cellular part of the configure

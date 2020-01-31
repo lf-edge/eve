@@ -39,7 +39,7 @@ message CipherContext {
 // Encrypted sensitive data information
 message CipherBlock {
     // cipher context id
-    UUIDandVersion cipherContextId = 1;
+    string cipherContextId = 1;
 
     // Initial Value for Symmetric Key derivation
     bytes initialValue = 2;
@@ -48,7 +48,7 @@ message CipherBlock {
     bytes cipherData = 3;
 
     // sha256 of the plaintext sensitive data
-    bytes sha256 = 4;
+    string sha256 = 4;
 }
 
 

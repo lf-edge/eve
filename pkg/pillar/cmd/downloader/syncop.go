@@ -1,6 +1,7 @@
 package downloader
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -35,8 +36,17 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			status.ImageID)
 	}
 
-	// get the datastore context
-	dsCtx := constructDatastoreContext(config, status, dst)
+	// prepare the datastore context
+	dsCtx, errStr := constructDatastoreContext(config, status, dst)
+	if dsCtx == nil {
+		log.Errorln(errStr)
+		status.LastErr = errStr
+		status.LastErrTime = time.Now()
+		status.RetryCount++
+		publishDownloaderStatus(ctx, status)
+		log.Errorf("handleSyncOp deferred for %s\n", config.Name)
+		return
+	}
 
 	// by default the metricsURL _is_ the DownloadURL, but can override in switch
 	metricsUrl := dsCtx.DownloadURL
@@ -278,7 +288,8 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 }
 
 // cloud storage interface functions/APIs
-func constructDatastoreContext(config types.DownloaderConfig, status *types.DownloaderStatus, dst *types.DatastoreConfig) *types.DatastoreContext {
+func constructDatastoreContext(config types.DownloaderConfig, status *types.DownloaderStatus,
+	dst *types.DatastoreConfig) (*types.DatastoreContext, string) {
 	dpath := dst.Dpath
 	if status.ObjType == types.CertObj {
 		dpath = strings.Replace(dpath, "-images", "-certs", 1)
@@ -293,33 +304,33 @@ func constructDatastoreContext(config types.DownloaderConfig, status *types.Down
 			downloadURL = downloadURL + "/" + config.Name
 		}
 	}
-	if dst.CipherInfo != nil && len(dst.CipherPassword) != 0 {
-		password, err := cipherDecrypt(dst.CipherInfo, dst.CipherPassword)
-		if len(password) != 0 && err == nil {
-			dst.Password = password
+
+	cred := types.CredentialBlock{
+		Identity: dst.ApiKey,
+		Password: dst.Password,
+	}
+	if dst.IsCipher {
+		plainText, err := tpmmgr.CipherDecrypt(dst.CipherBlock)
+		if len(plainText) != 0 && err == nil {
+			err = json.Unmarshal([]byte(plainText), &cred)
+			if err != nil {
+				errStr := fmt.Sprintf("%v", err)
+				return nil, errStr
+			}
 		}
 	}
 	dsCtx := types.DatastoreContext{
 		DownloadURL:     downloadURL,
 		TransportMethod: dst.DsType,
 		Dpath:           dpath,
-		APIKey:          dst.ApiKey,
-		Password:        dst.Password,
+		APIKey:          cred.Identity,
+		Password:        cred.Password,
 		Region:          dst.Region,
 	}
-	return &dsCtx
+	return &dsCtx, ""
 }
 
 func sourceFailureError(ip, ifname, url string, err error) {
 	log.Errorf("Source IP %s failed: %s\n", ip, err)
 	zedcloud.ZedCloudFailure(ifname, url, 1024, 0)
-}
-
-//  decrypt the cipher text into plain text
-func cipherDecrypt(cipherInfo *types.CipherInfo,
-	cipherText []byte) (string, error) {
-	if !tpmmgr.IsTpmEnabled() || cipherInfo == nil || len(cipherText) == 0 {
-		return "", nil
-	}
-	return tpmmgr.DecryptWithCipherInfo(cipherInfo, cipherText)
 }

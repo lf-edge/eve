@@ -55,6 +55,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 	if getconfigCtx.rebootFlag || ctx.deviceReboot {
 		log.Debugf("parseConfig: Ignoring config as rebootFlag set\n")
 	} else {
+		parseCipherContextConfig(getconfigCtx, config)
 		parseDatastoreConfig(config, getconfigCtx)
 		// DeviceIoList has some defaults for Usage and UsagePolicy
 		// used by systemAdapters
@@ -178,6 +179,62 @@ func parseBaseOsConfig(getconfigCtx *getconfigContext,
 	}
 }
 
+var cipherContextPrevConfigHash []byte
+
+func parseCipherContextConfig(getconfigCtx *getconfigContext,
+	config *zconfig.EdgeDevConfig) {
+
+	cfgCipherContextList := config.GetCipherContexts()
+	h := sha256.New()
+	for _, os := range cfgCipherContextList {
+		computeConfigElementSha(h, os)
+	}
+	configHash := h.Sum(nil)
+	same := bytes.Equal(configHash, cipherContextPrevConfigHash)
+	if same {
+		return
+	}
+	log.Infof("parseCipherContextConfig: Applying updated config\n"+
+		"prevSha: % x\n"+
+		"NewSha : % x\n"+
+		"cfgCipherContextList: %v\n",
+		cipherContextPrevConfigHash, configHash, cfgCipherContextList)
+
+	cipherContextPrevConfigHash = configHash
+
+	// First look for deleted ones
+	items := getconfigCtx.pubCipherContextConfig.GetAll()
+	for uuidStr := range items {
+		found := false
+		for _, cipherCtx := range cfgCipherContextList {
+			if cipherCtx.Uuidandversion.Uuid == uuidStr {
+				found = true
+				break
+			}
+		}
+		// cipherContext not found, delete
+		if !found {
+			log.Infof("parseCipherContextConfig: deleting %s\n", uuidStr)
+			getconfigCtx.pubCipherContextConfig.Unpublish(uuidStr)
+		}
+	}
+
+	for _, cfgCipherContext := range cfgCipherContextList {
+		cipherContext := new(types.CipherContext)
+		cipherContext.ID.UUID, _ = uuid.FromString(cfgCipherContext.Uuidandversion.Uuid)
+		cipherContext.ID.Version = cfgCipherContext.Uuidandversion.Version
+		cipherContext.KeyExchangeScheme = cfgCipherContext.GetKeyExchangeScheme()
+		cipherContext.EncryptionScheme = cfgCipherContext.GetEncryptionScheme()
+		if certValue := cfgCipherContext.GetControllerCert(); certValue != nil {
+			cipherContext.ControllerCert = certValue
+		}
+		if shaValue := cfgCipherContext.GetDeviceCertId(); len(shaValue) != 0 {
+			cipherContext.DeviceCertSha256 = shaValue
+		}
+		publishCipherContextConfig(getconfigCtx, cipherContext)
+	}
+}
+
 var networkConfigPrevConfigHash []byte
 
 func parseNetworkXObjectConfig(config *zconfig.EdgeDevConfig,
@@ -232,8 +289,7 @@ func unpublishDeletedNetworkInstanceConfig(ctx *getconfigContext,
 	}
 }
 
-func parseDnsNameToIpList(
-	apiConfigEntry *zconfig.NetworkInstanceConfig,
+func parseDnsNameToIpList(apiConfigEntry *zconfig.NetworkInstanceConfig,
 	config *types.NetworkInstanceConfig) {
 
 	// Parse and store DnsNameToIPList form Network configuration
@@ -524,6 +580,7 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 				types.IoAdapter{Type: types.IoType(adapter.Type),
 					Name: adapter.Name})
 		}
+
 		log.Infof("Got adapters %v\n", appInstance.IoAdapterList)
 
 		cmd := cfgApp.GetRestart()
@@ -544,8 +601,9 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 
 		// TBD:XXX Will enable once yetus issue is fixed,
 		// commented out for end-o-end testing with conttoller now
-		//if cipherInfo := parseCipherInfo(cfgApp.CInfo); cipherInfo != nil {
-		//	appInstance.CipherInfo = cipherInfo
+		//if cipherBlock, appInstance.IsCipher := parseCipherBlock(getConfigCtx,
+		//	 cfgApp.GetCipherData()); cipherBlock != nil {
+		//	appInstance.CipherBlock = cipherBlock
 		//}
 		// get the certs for image sha verification
 		certInstance := getCertObjects(appInstance.UUIDandVersion,
@@ -932,9 +990,9 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		if datastore.Region == "" {
 			datastore.Region = "us-west-2"
 		}
-		//if cipherInfo := parseCipherInfo(ds.CInfo); cipherInfo != nil {
-		//	datastore.CipherInfo = cipherInfo
-		//}
+		cipherBlock, isCipher := parseCipherBlock(ctx, ds.GetCipherData())
+		datastore.IsCipher = isCipher
+		datastore.CipherBlock = cipherBlock
 		ctx.pubDatastoreConfig.Publish(datastore.Key(), *datastore)
 	}
 }
@@ -1097,7 +1155,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 	}
 
 	// wireless property configuration
-	config.WirelessCfg = parseNetworkWirelessConfig(netEnt)
+	config.WirelessCfg = parseNetworkWirelessConfig(ctx, netEnt)
 
 	ipspec := netEnt.GetIp()
 	switch config.Type {
@@ -1178,7 +1236,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 	return config
 }
 
-func parseNetworkWirelessConfig(netEnt *zconfig.NetworkConfig) types.WirelessConfig {
+func parseNetworkWirelessConfig(ctx *getconfigContext, netEnt *zconfig.NetworkConfig) types.WirelessConfig {
 	var wconfig types.WirelessConfig
 
 	netWireless := netEnt.GetWireless()
@@ -1219,6 +1277,9 @@ func parseNetworkWirelessConfig(netEnt *zconfig.NetworkConfig) types.WirelessCon
 			wifi.Crypto.Password = zcrypto.GetPassword()
 
 			wifi.Priority = wificfg.GetPriority()
+			cipherBlock, isCipher := parseCipherBlock(ctx, wificfg.GetCipherData())
+			wifi.IsCipher = isCipher
+			wifi.CipherBlock = cipherBlock
 
 			wconfig.Wifi = append(wconfig.Wifi, wifi)
 		}
@@ -1960,6 +2021,22 @@ func publishBaseOsConfig(getconfigCtx *getconfigContext,
 	pub.Publish(key, *config)
 }
 
+func publishCipherContextConfig(getconfigCtx *getconfigContext,
+	config *types.CipherContext) {
+
+	key := config.Key()
+	log.Debugf("publishCipherContextConfig UUID %s\n", key)
+	pub := getconfigCtx.pubCipherContextConfig
+	pub.Publish(key, *config)
+}
+
+func getCipherContext(getconfigCtx *getconfigContext,
+	key string) (*types.CipherContext, error) {
+	text, err := getconfigCtx.pubCipherContextConfig.Get(key)
+	cipherContext := text.(types.CipherContext)
+	return &cipherContext, err
+}
+
 func getCertObjects(uuidAndVersion types.UUIDandVersion,
 	sha256 string, drives []types.StorageConfig) *types.CertObjConfig {
 
@@ -2052,22 +2129,28 @@ func unpublishCertObjConfig(getconfigCtx *getconfigContext, uuidStr string) {
 	pub.Unpublish(key)
 }
 
-// handle cipher information received from controller
-// func parseCipherInfo(config *zconfig.CipherInfo) *types.CipherInfo {
-// 	if config == nil {
-// 		return nil
-// 	}
-// 	cipherInfo := new(types.CipherInfo)
-// 	cipherInfo.ID = config.GetId()
-// 	cipherInfo.KeyExchangeScheme = config.GetKeyExchangeScheme()
-// 	cipherInfo.EncryptionScheme = config.GetEncryptionScheme()
-// 	cipherInfo.InitialValue = config.GetInitialValue()
-// 	cipherInfo.ControllerCert = config.GetControllerCert()
-// 	cipherInfo.ControllerCertSha256 = config.GetControllerCertSha256()
-// 	cipherInfo.DeviceCertSha256 = config.GetControllerCertSha256()
-// 	cipherInfo.ControllerCertShaSignature = config.GetControllerCertShaSignature()
-// 	return cipherInfo
-// }
+// parseCpherBlock : handle cipher information received from controller
+// consolidate both the zconfig.CipherContext and zconfig.CipherBlock to types.CipherBlock.
+// The interested agents will get the whole information
+func parseCipherBlock(ctx *getconfigContext, config *zconfig.CipherBlock) (*types.CipherBlock, bool) {
+	if config == nil {
+		return nil, false
+	}
+	cipherContext, err := getCipherContext(ctx, config.GetCipherContextId())
+	if cipherContext == nil || err != nil {
+		return nil, true
+	}
+	cipherBlock := new(types.CipherBlock)
+	cipherBlock.ID = config.GetCipherContextId()
+	cipherBlock.InitialValue = config.GetInitialValue()
+	cipherBlock.CipherData = config.GetCipherData()
+	cipherBlock.DataSha256 = config.GetSha256()
+	cipherBlock.KeyExchangeScheme = cipherContext.KeyExchangeScheme
+	cipherBlock.EncryptionScheme = cipherContext.EncryptionScheme
+	cipherBlock.ControllerCert = cipherContext.ControllerCert
+	cipherBlock.DeviceCertSha256 = cipherContext.DeviceCertSha256
+	return cipherBlock, true
+}
 
 // Get sha256 for a subset of the protobuf message.
 // Used to determine which pieces changed

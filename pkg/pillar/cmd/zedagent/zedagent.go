@@ -303,6 +303,14 @@ func Run() {
 	pubBaseOsConfig.ClearRestarted()
 	getconfigCtx.pubBaseOsConfig = pubBaseOsConfig
 
+	pubCipherContextConfig, err := pubsublegacy.Publish(agentName,
+		types.CipherContext{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubCipherContextConfig.ClearRestarted()
+	getconfigCtx.pubCipherContextConfig = pubCipherContextConfig
+
 	pubZedAgentStatus, err := pubsublegacy.Publish(agentName,
 		types.ZedAgentStatus{})
 	if err != nil {

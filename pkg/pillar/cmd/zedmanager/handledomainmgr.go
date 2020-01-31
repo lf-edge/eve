@@ -45,16 +45,16 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	}
 
 	dc := types.DomainConfig{
-		UUIDandVersion:     aiConfig.UUIDandVersion,
-		DisplayName:        aiConfig.DisplayName,
-		Activate:           aiConfig.Activate,
-		AppNum:             AppNum,
-		IsContainer:        aiStatus.IsContainer,
-		VmConfig:           aiConfig.FixedResources,
-		IoAdapterList:      aiConfig.IoAdapterList,
-		CloudInitUserData:  aiConfig.CloudInitUserData,
-		CipherInfo:         aiConfig.CipherInfo,
-		CipherTextUserData: aiConfig.CipherTextUserData,
+		UUIDandVersion:    aiConfig.UUIDandVersion,
+		DisplayName:       aiConfig.DisplayName,
+		Activate:          aiConfig.Activate,
+		AppNum:            AppNum,
+		IsContainer:       aiStatus.IsContainer,
+		VmConfig:          aiConfig.FixedResources,
+		IoAdapterList:     aiConfig.IoAdapterList,
+		CloudInitUserData: aiConfig.CloudInitUserData,
+		IsCipher:          aiConfig.IsCipher,
+		CipherBlock:       aiConfig.CipherBlock,
 	}
 
 	// Determine number of "disk" targets in list

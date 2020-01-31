@@ -1505,6 +1505,9 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 
 	log.Infof("configToStatus(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
+	if config.IsCipher && config.CipherBlock == nil {
+		return errors.New("Cipher Block Information is not ready")
+	}
 	for i, dc := range config.DiskConfigList {
 		ds := &status.DiskStatusList[i]
 		ds.ImageID = dc.ImageID
@@ -1554,7 +1557,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	}
 	// XXX could defer to Activate
 	if config.CloudInitUserData != nil ||
-		len(config.CipherTextUserData) != 0 {
+		(config.IsCipher && config.CipherBlock != nil && len(config.CipherBlock.CipherData) != 0) {
 		if status.IsContainer {
 			envList, err := fetchEnvVariablesFromCloudInit(config)
 			if err != nil {
@@ -2757,13 +2760,32 @@ func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
 	return err
 }
 
+func getCloudInitUserData(config types.DomainConfig) (*string, error) {
+
+	if !config.IsCipher {
+		return config.CloudInitUserData, nil
+	}
+	if config.CipherBlock != nil {
+		plainText, err := tpmmgr.CipherDecrypt(config.CipherBlock)
+		if len(plainText) != 0 || err == nil {
+			return &plainText, nil
+		}
+	}
+	return nil, nil
+}
+
 // Fetch the list of environment variables from the cloud init
 // We are expecting the environment variables to be pass in particular format in cloud-int
 // Example:
 // Key1:Val1
 // Key2:Val2 ...
 func fetchEnvVariablesFromCloudInit(config types.DomainConfig) (map[string]string, error) {
-	ud, err := base64.StdEncoding.DecodeString(*config.CloudInitUserData)
+
+	userData, err := getCloudInitUserData(config)
+	if userData == nil || err != nil {
+		return nil, err
+	}
+	ud, err := base64.StdEncoding.DecodeString(*userData)
 	if err != nil {
 		errStr := fmt.Sprintf("fetchEnvVariablesFromCloudInit failed %s\n", err)
 		return nil, errors.New(errStr)
@@ -2781,11 +2803,10 @@ func fetchEnvVariablesFromCloudInit(config types.DomainConfig) (map[string]strin
 // Create a isofs with user-data and meta-data and add it to DiskStatus
 func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
 
-	if config.CipherInfo != nil && len(config.CipherTextUserData) != 0 {
-		userData, err := cipherDecrypt(config.CipherInfo, config.CipherTextUserData)
-		if len(userData) != 0 && err == nil {
-			config.CloudInitUserData = &userData
-		}
+	userData, err := getCloudInitUserData(config)
+
+	if userData == nil || err != nil {
+		return nil, err
 	}
 	fileName := fmt.Sprintf("%s/%s.cidata",
 		ciDirname, config.UUIDandVersion.UUID.String())
@@ -2811,7 +2832,7 @@ func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
 	if err != nil {
 		log.Fatalf("createCloudInitISO failed %s\n", err)
 	}
-	ud, err := base64.StdEncoding.DecodeString(*config.CloudInitUserData)
+	ud, err := base64.StdEncoding.DecodeString(*userData)
 	if err != nil {
 		errStr := fmt.Sprintf("createCloudInitISO failed %s\n", err)
 		return nil, errors.New(errStr)
@@ -2831,15 +2852,6 @@ func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
 	ds.ReadOnly = false
 	ds.Preserve = true // Prevent attempt to copy
 	return ds, nil
-}
-
-//  decrypt the cipher text into plain text
-func cipherDecrypt(cipherInfo *types.CipherInfo,
-	cipherText []byte) (string, error) {
-	if !tpmmgr.IsTpmEnabled() || cipherInfo == nil || len(cipherText) == 0 {
-		return "", nil
-	}
-	return tpmmgr.DecryptWithCipherInfo(cipherInfo, cipherText)
 }
 
 // mkisofs -output %s -volid cidata -joliet -rock %s, fileName, dir

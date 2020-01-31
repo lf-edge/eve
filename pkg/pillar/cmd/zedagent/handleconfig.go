@@ -59,6 +59,7 @@ type getconfigContext struct {
 	pubBaseOsConfig          pubsub.Publication
 	pubDatastoreConfig       pubsub.Publication
 	pubNetworkInstanceConfig pubsub.Publication
+	pubCipherContextConfig   pubsub.Publication
 	rebootFlag               bool
 }
 

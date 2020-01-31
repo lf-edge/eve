@@ -67,8 +67,8 @@ type AppInstanceConfig struct {
 	PurgeCmd            AppInstanceOpsCmd
 	CloudInitUserData   *string // base64-encoded
 	RemoteConsole       bool
-	CipherTextUserData  []byte
-	CipherInfo          *CipherInfo
+	IsCipher            bool
+	CipherBlock         *CipherBlock
 }
 
 type AppInstanceOpsCmd struct {
