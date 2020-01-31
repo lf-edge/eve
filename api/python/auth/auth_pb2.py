@@ -3,6 +3,7 @@
 
 import sys
 _b=sys.version_info[0]<3 and (lambda x:x) or (lambda x:x.encode('latin1'))
+from google.protobuf.internal import enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from google.protobuf import reflection as _reflection
@@ -19,9 +20,34 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/auth'),
-  serialized_pb=_b('\n\nauth.proto\"\x1b\n\x08\x41uthBody\x12\x0f\n\x07payload\x18\x01 \x01(\x0c\"^\n\rAuthContainer\x12\x1e\n\x0b\x61uthPayload\x18\x01 \x01(\x0b\x32\t.AuthBody\x12\x16\n\x0esenderCertHash\x18\x02 \x01(\t\x12\x15\n\rsignatureHash\x18\x03 \x01(\x0c\x42\x45\n\x1f\x63om.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/authb\x06proto3')
+  serialized_pb=_b('\n\nauth.proto\"\x1b\n\x08\x41uthBody\x12\x0f\n\x07payload\x18\x01 \x01(\x0c\"|\n\rAuthContainer\x12\x1e\n\x0b\x61uthPayload\x18\x01 \x01(\x0b\x32\t.AuthBody\x12\x1c\n\x04\x61lgo\x18\x02 \x01(\x0e\x32\x0e.hashAlgorithm\x12\x16\n\x0esenderCertHash\x18\x03 \x01(\x0c\x12\x15\n\rsignatureHash\x18\x04 \x01(\x0c*7\n\rhashAlgorithm\x12\r\n\tHASH_NONE\x10\x00\x12\x17\n\x13HASH_SHA256_16bytes\x10\x01\x42\x45\n\x1f\x63om.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/authb\x06proto3')
 )
 
+_HASHALGORITHM = _descriptor.EnumDescriptor(
+  name='hashAlgorithm',
+  full_name='hashAlgorithm',
+  filename=None,
+  file=DESCRIPTOR,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='HASH_NONE', index=0, number=0,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='HASH_SHA256_16bytes', index=1, number=1,
+      serialized_options=None,
+      type=None),
+  ],
+  containing_type=None,
+  serialized_options=None,
+  serialized_start=169,
+  serialized_end=224,
+)
+_sym_db.RegisterEnumDescriptor(_HASHALGORITHM)
+
+hashAlgorithm = enum_type_wrapper.EnumTypeWrapper(_HASHALGORITHM)
+HASH_NONE = 0
+HASH_SHA256_16bytes = 1
 
 
 
@@ -71,15 +97,22 @@ _AUTHCONTAINER = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='senderCertHash', full_name='AuthContainer.senderCertHash', index=1,
-      number=2, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
+      name='algo', full_name='AuthContainer.algo', index=1,
+      number=2, type=14, cpp_type=8, label=1,
+      has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='signatureHash', full_name='AuthContainer.signatureHash', index=2,
+      name='senderCertHash', full_name='AuthContainer.senderCertHash', index=2,
       number=3, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='signatureHash', full_name='AuthContainer.signatureHash', index=3,
+      number=4, type=12, cpp_type=9, label=1,
       has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -97,12 +130,14 @@ _AUTHCONTAINER = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=43,
-  serialized_end=137,
+  serialized_end=167,
 )
 
 _AUTHCONTAINER.fields_by_name['authPayload'].message_type = _AUTHBODY
+_AUTHCONTAINER.fields_by_name['algo'].enum_type = _HASHALGORITHM
 DESCRIPTOR.message_types_by_name['AuthBody'] = _AUTHBODY
 DESCRIPTOR.message_types_by_name['AuthContainer'] = _AUTHCONTAINER
+DESCRIPTOR.enum_types_by_name['hashAlgorithm'] = _HASHALGORITHM
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 AuthBody = _reflection.GeneratedProtocolMessageType('AuthBody', (_message.Message,), dict(
