@@ -851,13 +851,14 @@ func testEcdhAES() error {
 }
 
 // DecryptWithCipherInfo : Decryption API, for encrypted object information received from controller
-func DecryptWithCipherInfo(cipherBlock *types.CipherBlock) (string, error) {
+func DecryptWithCipherInfo(cipherBlock types.CipherBlock) (string, error) {
 	// TBD:XXX, for nodes not having tpm chip, the device private key can be used
-	// which can be wrqpped up inside DecryptWithEcdhKey
+	// as a software only solution, which can be wrqpped up
+	// inside DecryptWithEcdhKey
 	if !IsTpmEnabled() {
 		return "", errors.New("Not supported")
 	}
-	if cipherBlock == nil || len(cipherBlock.CipherData) == 0 {
+	if len(cipherBlock.CipherData) == 0 {
 		return "", errors.New("Invalid Cipher Information")
 	}
 	if cipherBlock.KeyExchangeScheme == zconfig.KeyExchangeScheme_KEA_NONE ||
@@ -885,7 +886,7 @@ func DecryptWithCipherInfo(cipherBlock *types.CipherBlock) (string, error) {
 	return string(bytes), nil
 }
 
-func getControllerCertInfo(cipherBlock *types.CipherBlock) (*ecdsa.PublicKey, error) {
+func getControllerCertInfo(cipherBlock types.CipherBlock) (*ecdsa.PublicKey, error) {
 	var ecdhPubKey *ecdsa.PublicKey
 	if len(cipherBlock.ControllerCert) == 0 || len(cipherBlock.InitialValue) == 0 {
 		return ecdhPubKey, errors.New("Invalid Cipher Information")

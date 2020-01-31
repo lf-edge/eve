@@ -53,8 +53,9 @@ message CipherBlock {
 
 
 // This message will be filled with the
-// credential details and will be encrypted
-// across wire for data in transit
+// credential details and encrypted across
+//  wire for data in transit, by the controller
+// for encryption
 message CredentialBlock {
     string identity = 1;
     string password = 2;

@@ -326,8 +326,8 @@ type WifiConfig struct {
 	Password    string            // string of pass phrase or password hash
 	Crypto      CryptoBlock       // encrypted block of items
 	Priority    int32
-	IsCipher    bool
-	CipherBlock *CipherBlock
+	IsCipher    bool // if set, ignore Identity/Password
+	CipherBlock      // contains encrypted Identity/Password
 }
 
 // CellConfig - Cellular part of the configure

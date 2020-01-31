@@ -215,8 +215,9 @@ func (m *CipherBlock) GetSha256() string {
 }
 
 // This message will be filled with the
-// credential details and will be encrypted
-// across wire for data in transit
+// credential details and encrypted across
+//  wire for data in transit, by the controller
+// for encryption
 type CredentialBlock struct {
 	Identity             string   `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
 	Password             string   `protobuf:"bytes,2,opt,name=password,proto3" json:"password,omitempty"`

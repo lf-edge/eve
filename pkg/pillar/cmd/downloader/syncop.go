@@ -309,7 +309,7 @@ func constructDatastoreContext(config types.DownloaderConfig, status *types.Down
 		Identity: dst.ApiKey,
 		Password: dst.Password,
 	}
-	if dst.IsCipher {
+	if dst.IsCipher && len(dst.CipherBlock.CipherData) != 0 {
 		plainText, err := tpmmgr.DecryptWithCipherInfo(dst.CipherBlock)
 		if len(plainText) != 0 && err == nil {
 			err = json.Unmarshal([]byte(plainText), &cred)

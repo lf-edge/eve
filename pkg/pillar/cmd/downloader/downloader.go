@@ -628,7 +628,7 @@ func lookupDatastoreConfig(ctx *downloaderContext, dsID uuid.UUID,
 	}
 	log.Debugf("Found datastore(%s) for %s\n", dsID, name)
 	dst := cfg.(types.DatastoreConfig)
-	if dst.IsCipher && dst.CipherBlock == nil {
+	if dst.IsCipher && len(dst.CipherBlock.CipherData) == 0 {
 		errStr := fmt.Sprintf("lookupDatastoreConfig(%s) CipherBlock is Not Ready",
 			dsID.String())
 		log.Errorln(errStr)

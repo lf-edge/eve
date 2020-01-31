@@ -312,12 +312,15 @@ func (m *CellularConfig) GetAPN() string {
 }
 
 type WifiConfig struct {
-	WifiSSID  string                 `protobuf:"bytes,1,opt,name=wifiSSID,proto3" json:"wifiSSID,omitempty"`
-	KeyScheme WiFiKeyScheme          `protobuf:"varint,2,opt,name=keyScheme,proto3,enum=WiFiKeyScheme" json:"keyScheme,omitempty"`
-	Identity  string                 `protobuf:"bytes,5,opt,name=identity,proto3" json:"identity,omitempty"`
-	Password  string                 `protobuf:"bytes,10,opt,name=password,proto3" json:"password,omitempty"`
-	Crypto    *WifiConfigCryptoblock `protobuf:"bytes,20,opt,name=crypto,proto3" json:"crypto,omitempty"`
-	Priority  int32                  `protobuf:"varint,25,opt,name=priority,proto3" json:"priority,omitempty"`
+	WifiSSID  string        `protobuf:"bytes,1,opt,name=wifiSSID,proto3" json:"wifiSSID,omitempty"`
+	KeyScheme WiFiKeyScheme `protobuf:"varint,2,opt,name=keyScheme,proto3,enum=WiFiKeyScheme" json:"keyScheme,omitempty"`
+	// to be deprecated, use cipherData instead
+	Identity string `protobuf:"bytes,5,opt,name=identity,proto3" json:"identity,omitempty"`
+	// to be deprecated, use cipherData instead
+	Password string `protobuf:"bytes,10,opt,name=password,proto3" json:"password,omitempty"`
+	// do be deprecated, use cipherData instead
+	Crypto   *WifiConfigCryptoblock `protobuf:"bytes,20,opt,name=crypto,proto3" json:"crypto,omitempty"`
+	Priority int32                  `protobuf:"varint,25,opt,name=priority,proto3" json:"priority,omitempty"`
 	// contains the cipher payload
 	CipherData           *CipherBlock `protobuf:"bytes,30,opt,name=cipherData,proto3" json:"cipherData,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}     `json:"-"`
@@ -399,6 +402,7 @@ func (m *WifiConfig) GetCipherData() *CipherBlock {
 	return nil
 }
 
+// do be deprecated, use cipherData instead
 type WifiConfigCryptoblock struct {
 	Identity             string   `protobuf:"bytes,11,opt,name=identity,proto3" json:"identity,omitempty"`
 	Password             string   `protobuf:"bytes,12,opt,name=password,proto3" json:"password,omitempty"`

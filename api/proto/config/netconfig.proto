@@ -62,15 +62,11 @@ message CellularConfig {
 message WifiConfig {
     string wifiSSID = 1;             // SSID for WIFI
     WiFiKeyScheme keyScheme = 2;     // key management scheme, WPA-PSK, WPS-EPA, etc
+    // to be deprecated, use cipherData instead
     string identity = 5;             // WPA2 Enterprise user identity/username
+    // to be deprecated, use cipherData instead
     string password = 10;            // a string of hashed psk or password
-    message cryptoblock {
-        string identity = 11;        // encrypted username if not empty
-        string password = 12;        // encrypted Password if not empty
-    }
-    cryptoblock crypto = 20;         // encrypted block
     int32  priority = 25;            // priority of connection, default is 0
 
-    // contains the cipher payload
-    CipherBlock cipherData = 30;
+    CipherBlock cipherData = 30;     // contains encrypted credential information
 }

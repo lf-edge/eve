@@ -1505,7 +1505,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 
 	log.Infof("configToStatus(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
-	if config.IsCipher && config.CipherBlock == nil {
+	if config.IsCipher && len(config.CipherBlock.CipherData) == 0 {
 		return errors.New("Cipher Block Information is not ready")
 	}
 	for i, dc := range config.DiskConfigList {
@@ -1557,7 +1557,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	}
 	// XXX could defer to Activate
 	if config.CloudInitUserData != nil ||
-		(config.IsCipher && config.CipherBlock != nil && len(config.CipherBlock.CipherData) != 0) {
+		(config.IsCipher && len(config.CipherBlock.CipherData) != 0) {
 		if status.IsContainer {
 			envList, err := fetchEnvVariablesFromCloudInit(config)
 			if err != nil {
@@ -2765,7 +2765,7 @@ func getCloudInitUserData(config types.DomainConfig) (*string, error) {
 	if !config.IsCipher {
 		return config.CloudInitUserData, nil
 	}
-	if config.CipherBlock != nil {
+	if len(config.CipherBlock.CipherData) != 0 {
 		plainText, err := tpmmgr.DecryptWithCipherInfo(config.CipherBlock)
 		if len(plainText) != 0 || err == nil {
 			return &plainText, nil

@@ -231,11 +231,12 @@ func (m *SignatureInfo) GetSignature() []byte {
 }
 
 type DatastoreConfig struct {
-	Id     string `protobuf:"bytes,100,opt,name=id,proto3" json:"id,omitempty"`
-	DType  DsType `protobuf:"varint,1,opt,name=dType,proto3,enum=DsType" json:"dType,omitempty"`
-	Fqdn   string `protobuf:"bytes,2,opt,name=fqdn,proto3" json:"fqdn,omitempty"`
+	Id    string `protobuf:"bytes,100,opt,name=id,proto3" json:"id,omitempty"`
+	DType DsType `protobuf:"varint,1,opt,name=dType,proto3,enum=DsType" json:"dType,omitempty"`
+	Fqdn  string `protobuf:"bytes,2,opt,name=fqdn,proto3" json:"fqdn,omitempty"`
+	// to be deprecated, use cipherData instead
 	ApiKey string `protobuf:"bytes,3,opt,name=apiKey,proto3" json:"apiKey,omitempty"`
-	// to be decrypted, use cipherTextPassword instead
+	// to be deprecated, use cipherData instead
 	Password string `protobuf:"bytes,4,opt,name=password,proto3" json:"password,omitempty"`
 	// depending on datastore types, it could be bucket or path
 	Dpath string `protobuf:"bytes,5,opt,name=dpath,proto3" json:"dpath,omitempty"`

@@ -30,8 +30,8 @@ type DomainConfig struct {
 	CloudInitUserData *string // base64-encoded
 	// Container related info
 	IsContainer bool // Is this Domain for a Container?
-	IsCipher    bool
-	CipherBlock *CipherBlock
+	IsCipher    bool // if set, ignore CloudInitUserData
+	CipherBlock      // contains encrypted CloudInitUserData
 }
 
 func (config DomainConfig) Key() string {

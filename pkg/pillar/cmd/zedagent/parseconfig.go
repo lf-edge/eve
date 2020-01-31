@@ -601,8 +601,9 @@ func parseAppInstanceConfig(config *zconfig.EdgeDevConfig,
 
 		// TBD:XXX Will enable once yetus issue is fixed,
 		// commented out for end-o-end testing with conttoller now
-		//if cipherBlock, appInstance.IsCipher := parseCipherBlock(getConfigCtx,
-		//	 cfgApp.GetCipherData()); cipherBlock != nil {
+		//if cipherBlock, isCipher := parseCipherBlock(getConfigCtx,
+		//	 cfgApp.GetCipherData())
+		//	appInstance.IsCipher = isCipher
 		//	appInstance.CipherBlock = cipherBlock
 		//}
 		// get the certs for image sha verification
@@ -2132,15 +2133,16 @@ func unpublishCertObjConfig(getconfigCtx *getconfigContext, uuidStr string) {
 // parseCpherBlock : handle cipher information received from controller
 // consolidate both the zconfig.CipherContext and zconfig.CipherBlock to types.CipherBlock.
 // The interested agents will get the whole information
-func parseCipherBlock(ctx *getconfigContext, config *zconfig.CipherBlock) (*types.CipherBlock, bool) {
+func parseCipherBlock(ctx *getconfigContext,
+	config *zconfig.CipherBlock) (types.CipherBlock, bool) {
+	cipherBlock := types.CipherBlock{}
 	if config == nil {
-		return nil, false
+		return cipherBlock, false
 	}
 	cipherContext, err := getCipherContext(ctx, config.GetCipherContextId())
 	if cipherContext == nil || err != nil {
-		return nil, true
+		return cipherBlock, true
 	}
-	cipherBlock := new(types.CipherBlock)
 	cipherBlock.ID = config.GetCipherContextId()
 	cipherBlock.InitialValue = config.GetInitialValue()
 	cipherBlock.CipherData = config.GetCipherData()

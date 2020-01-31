@@ -226,8 +226,8 @@ type DatastoreConfig struct {
 	Fqdn        string
 	Dpath       string // depending on DsType, it could be bucket or path
 	Region      string
-	IsCipher    bool
-	CipherBlock *CipherBlock
+	IsCipher    bool // if set, ignore ApiKey/Password
+	CipherBlock      // contains encrypted ApiKey/Password
 }
 
 func (config DatastoreConfig) Key() string {
