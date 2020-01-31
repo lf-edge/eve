@@ -86,3 +86,17 @@ index a26edca..aed470a 100755
      if test $dhcp -eq 0
      then
          echo extra=\'console=hvc0 root=9p\' >> $outconfig
+diff --git a/kernel/init-initrd b/kernel/init-initrd
+index 98b2256..8ec35c5 100755
+--- a/kernel/init-initrd
++++ b/kernel/init-initrd
+@@ -78,7 +78,9 @@ then
+ fi
+ cp /mnt/cmdline /mnt/rootfs
+ cp /mnt/launcher.sh /mnt/rootfs
++cp /mnt/mount_disk.sh /mnt/rootfs
+ chmod +x /mnt/rootfs/launcher.sh
++chmod +x /mnt/rootfs/mount_disk.sh
+ cmd=`cat /mnt/cmdline`
+ echo "Executing $cmd"
+ source /mnt/environment
