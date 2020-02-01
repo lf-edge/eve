@@ -12,6 +12,8 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/pem"
+	"errors"
+	"fmt"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -79,9 +81,23 @@ func GetClientCert() (tls.Certificate, error) {
 	return deviceTLSCert, nil
 }
 
+// UpdateTLSConfig sets the TlsConfig based on current root CA certificates
 // If a server arg is specified it overrides the serverFilename content.
 // If a clientCert is specified it overrides the device*Name files.
-func GetTlsConfig(serverName string, clientCert *tls.Certificate) (*tls.Config, error) {
+func UpdateTLSConfig(zedcloudCtx *ZedCloudContext, serverName string, clientCert *tls.Certificate) error {
+	tlsConfig, err := GetTlsConfig(zedcloudCtx.DeviceNetworkStatus, serverName, clientCert,
+		zedcloudCtx.V2API)
+	if err != nil {
+		return err
+	}
+	zedcloudCtx.TlsConfig = tlsConfig
+	return nil
+}
+
+// GetTlsConfig creates and returns a TlsConfig based on current root CA certificates
+// If a server arg is specified it overrides the serverFilename content.
+// If a clientCert is specified it overrides the device*Name files.
+func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert *tls.Certificate, v2api bool) (*tls.Config, error) {
 	if serverName == "" {
 		// get the server name
 		bytes, err := ioutil.ReadFile(types.ServerFileName)
@@ -99,14 +115,49 @@ func GetTlsConfig(serverName string, clientCert *tls.Certificate) (*tls.Config, 
 		clientCert = &deviceTLSCert
 	}
 
-	// Load CA cert
-	caCert, err := ioutil.ReadFile(types.RootCertFileName)
-	if err != nil {
-		return nil, err
-	}
+	// Load CA certificates
 	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
-
+	if v2api {
+		line, err := ioutil.ReadFile(types.V2TLSCertShaFilename)
+		if err != nil {
+			return nil, err
+		}
+		sha := strings.TrimSpace(string(line))
+		v2RootFilename := types.CertificateDirname + "/" + sha
+		caCert, err := ioutil.ReadFile(v2RootFilename)
+		if err != nil {
+			return nil, err
+		}
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			errStr := fmt.Sprintf("Failed to append certs from %s",
+				v2RootFilename)
+			log.Errorf(errStr)
+			return nil, errors.New(errStr)
+		}
+		// Append any proxy certs from any interface/port to caCertPool
+		for _, port := range dns.Ports {
+			for _, pem := range port.ProxyConfig.ProxyCertPEM {
+				log.Infof("XXX adding proxycerts from %s", port.IfName)
+				if !caCertPool.AppendCertsFromPEM(pem) {
+					errStr := fmt.Sprintf("Failed to append ProxyCertPEM %s for %s",
+						string(pem), port.IfName)
+					log.Errorf(errStr)
+					return nil, errors.New(errStr)
+				}
+			}
+		}
+	} else {
+		caCert, err := ioutil.ReadFile(types.RootCertFileName)
+		if err != nil {
+			return nil, err
+		}
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			errStr := fmt.Sprintf("Failed to append certs from %s",
+				types.RootCertFileName)
+			log.Errorf(errStr)
+			return nil, errors.New(errStr)
+		}
+	}
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{*clientCert},
 		ServerName:   serverName,

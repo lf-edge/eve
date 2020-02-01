@@ -39,6 +39,7 @@ type ZedCloudContext struct {
 	DevSerial           string
 	DevSoftSerial       string
 	NetworkSendTimeout  uint32 // In seconds
+	V2API               bool   // XXX Needed?
 }
 
 var sendCounter uint32

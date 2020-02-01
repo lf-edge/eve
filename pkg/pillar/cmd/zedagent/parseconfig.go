@@ -1059,6 +1059,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 			NetworkProxyEnable: netProxyConfig.NetworkProxyEnable,
 			NetworkProxyURL:    netProxyConfig.NetworkProxyURL,
 			Pacfile:            netProxyConfig.Pacfile,
+			ProxyCertPEM:       netProxyConfig.ProxyCertPEM,
 		}
 		proxyConfig.Exceptions = netProxyConfig.Exceptions
 

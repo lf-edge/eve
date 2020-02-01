@@ -86,6 +86,7 @@ func Run() {
 	simulateDnsFailurePtr := flag.Bool("D", false, "simulateDnsFailure flag")
 	simulatePingFailurePtr := flag.Bool("P", false, "simulatePingFailure flag")
 	outputFilePtr := flag.String("o", "", "file or device for output")
+	twoPtr := flag.Bool("2", false, "V2 API (for testing purposes only)")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
@@ -163,6 +164,7 @@ func Run() {
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
 		NetworkSendTimeout:  ctx.globalConfig.NetworkTestTimeout,
+		V2API:               *twoPtr, // XXX for testing purposes
 	}
 
 	// Get device serial number
@@ -194,12 +196,6 @@ func Run() {
 			time.Now().Format(time.RFC3339Nano))
 		os.Exit(1)
 	}
-
-	tlsConfig, err := zedcloud.GetTlsConfig(ctx.serverName, ctx.cert)
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedcloudCtx.TlsConfig = tlsConfig
 	ctx.zedcloudCtx = &zedcloudCtx
 
 	subLedBlinkCounter, err := pubsublegacy.Subscribe("", types.LedBlinkCounter{},
@@ -272,11 +268,6 @@ func Run() {
 			}
 			ctx.cert = &cert
 			ctx.usingOnboardCert = false
-			tlsConfig, err := zedcloud.GetTlsConfig(ctx.serverName, ctx.cert)
-			if err != nil {
-				log.Fatal(err)
-			}
-			zedcloudCtx.TlsConfig = tlsConfig
 		}
 	}
 }
@@ -589,15 +580,6 @@ func printOutput(ctx *diagContext) {
 			}
 			ctx.serverName = origServerName
 			ctx.serverNameAndPort = origServerNameAndPort
-			// restore TLS
-			tlsConfig, err := zedcloud.GetTlsConfig(ctx.serverName,
-				ctx.cert)
-			if err != nil {
-				errStr := fmt.Sprintf("ERROR: %s: internal GetTlsConfig failed %s\n",
-					ifname, err)
-				panic(errStr)
-			}
-			ctx.zedcloudCtx.TlsConfig = tlsConfig
 			continue
 		}
 		if !tryPostUUID(ctx, ifname) {
@@ -746,18 +728,23 @@ func tryLookupIP(ctx *diagContext, ifname string) bool {
 func tryPing(ctx *diagContext, ifname string, reqURL string) bool {
 
 	zedcloudCtx := ctx.zedcloudCtx
+	// Set the TLS config on each attempt in case it has changed due to proxies etc
 	if reqURL == "" {
 		reqURL = ctx.serverNameAndPort + "/api/v1/edgedevice/ping"
-	} else {
-		tlsConfig, err := zedcloud.GetTlsConfig(ctx.serverName,
-			ctx.cert)
+		err := zedcloud.UpdateTLSConfig(zedcloudCtx, ctx.serverName, ctx.cert)
 		if err != nil {
-			errStr := fmt.Sprintf("ERROR: %s: internal GetTlsConfig failed %s\n",
+			errStr := fmt.Sprintf("ERROR: %s: internal UpdateTLSConfig failed %s\n",
 				ifname, err)
 			panic(errStr)
 		}
-		zedcloudCtx.TlsConfig = tlsConfig
-		tlsConfig.InsecureSkipVerify = true
+	} else {
+		err := zedcloud.UpdateTLSConfig(zedcloudCtx, ctx.serverName, ctx.cert)
+		if err != nil {
+			errStr := fmt.Sprintf("ERROR: %s: internal UpdateTLSConfig failed %s\n",
+				ifname, err)
+			panic(errStr)
+		}
+		zedcloudCtx.TlsConfig.InsecureSkipVerify = true
 	}
 
 	// As we ping the cloud or other URLs, don't affect the LEDs
@@ -803,6 +790,13 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 	}
 	zedcloudCtx := ctx.zedcloudCtx
 	reqURL := ctx.serverNameAndPort + "/api/v1/edgedevice/config"
+	// Set the TLS config on each attempt in case it has changed due to proxies etc
+	err = zedcloud.UpdateTLSConfig(zedcloudCtx, ctx.serverName, ctx.cert)
+	if err != nil {
+		errStr := fmt.Sprintf("ERROR: %s: internal UpdateTLSConfig failed %s\n",
+			ifname, err)
+		panic(errStr)
+	}
 	// As we ping the cloud or other URLs, don't affect the LEDs
 	zedcloudCtx.NoLedManager = true
 	retryCount := 0

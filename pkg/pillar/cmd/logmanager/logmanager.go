@@ -763,21 +763,24 @@ func sendCtxInit(ctx *logmanagerContext) {
 	//set log url
 	logsUrl = serverNameAndPort + "/" + logsApi
 
-	tlsConfig, err := zedcloud.GetTlsConfig(serverName, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
+	v2api := false // XXX set
 	zedcloudCtx.DeviceNetworkStatus = deviceNetworkStatus
-	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 	zedcloudCtx.NetworkSendTimeout = ctx.globalConfig.NetworkSendTimeout
+	zedcloudCtx.V2API = v2api
 
 	// get the edge box serial number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
 	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
 	log.Infof("Log Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
+
+	// XXX need to redo this since the root certificates can change when DeviceNetworkStatus changes
+	err = zedcloud.UpdateTLSConfig(&zedcloudCtx, serverName, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// In case we run early, wait for UUID file to appear
 	for {

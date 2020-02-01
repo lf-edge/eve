@@ -858,7 +858,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	//Create the set of root certificates...
 	roots := x509.NewCertPool()
 
-	// Read the root cerificates from /config
+	// Read the signing root cerificates from /config
 	rootCertificate, err := ioutil.ReadFile(types.RootCertFileName)
 	if err != nil {
 		log.Errorln(err)
@@ -882,6 +882,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 			return cerr
 		}
 
+		// XXX must put these in Intermediates not Rootfs
 		if ok := roots.AppendCertsFromPEM(bytes); !ok {
 			cerr := fmt.Sprintf("failed to parse intermediate certificate")
 			return cerr

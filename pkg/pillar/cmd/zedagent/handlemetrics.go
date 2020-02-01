@@ -1141,6 +1141,7 @@ func encodeProxyStatus(proxyConfig *types.ProxyConfig) *info.ProxyStatus {
 	status.NetworkProxyEnable = proxyConfig.NetworkProxyEnable
 	status.NetworkProxyURL = proxyConfig.NetworkProxyURL
 	status.WpadURL = proxyConfig.WpadURL
+	// XXX add? status.ProxyCertPEM = proxyConfig.ProxyCertPEM
 	log.Debugf("encodeProxyStatus: %+v\n", status)
 	return status
 }
