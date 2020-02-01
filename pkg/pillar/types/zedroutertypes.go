@@ -164,7 +164,7 @@ func (portConfig *DevicePortConfig) GetPortByIfName(
 			return port, nil
 		}
 	}
-	err := fmt.Errorf("DevicePortConfig can't find port")
+	err := fmt.Errorf("DevicePortConfig can't find port %s", u)
 	return port, err
 }
 
