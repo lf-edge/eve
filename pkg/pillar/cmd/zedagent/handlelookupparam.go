@@ -44,18 +44,6 @@ type DeviceLispConfig struct {
 	ClientAddr      string // To detect NATs
 }
 
-// Assumes the config files are in IdentityDirname, which is /config. Files are:
-//  device.cert.pem,
-//  device.key.pem		Device certificate/key created before this
-//  		     		client is started.
-//  infra			If this file exists assume zedcontrol and do not
-//  				create ACLs
-//  root-certificate.pem	Root CA cert(s)
-//
-//  In addition we have:
-//  /var/tmp/zededa/zedserverconfig Written by us; zed server EIDs
-//  /var/tmp/zededa/uuid	Written by us
-//
 var lispPrevConfigHash []byte
 var prevLispConfig DeviceLispConfig
 

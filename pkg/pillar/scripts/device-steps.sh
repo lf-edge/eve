@@ -205,6 +205,30 @@ echo "$(date -Ins -u) Configuration from factory/install:"
 (cd $CONFIGDIR || return; ls -l)
 echo
 
+# Make sure we have a v2tlsbaseroot-certificates.pem for the V2 API. If none was in /config
+# from the installer we pick the one from Alpine. This ensures that updated systems have a
+# useful file in place.
+# NOTE: The V2 API does not trust the /config/root-certificates.pem for TLS, however
+# that file expresses the root for the trust in the signed configuration.
+# We also make sure that we have this file in /persist/certs/ under a sha-based name.
+# Finally, the currently used base file is indicated by the content of
+# /persist/certs/v2tlsbaseroot-certificates.sha256. This is to prepare for a future
+# feature where the controller can update the base file.
+# Note that programatically we add any proxy certificates to the list of roots we trust.
+if [ ! -f /config/v2tlsbaseroot-certificates.pem ]; then
+    echo "$(date -Ins -u) Creating default /config/v2tlsbaseroot-certificates.pem"
+    cp -p /etc/ssl/certs/ca-certificates.crt /config/v2tlsbaseroot-certificates.pem
+fi
+sha=$(openssl sha256 /config/v2tlsbaseroot-certificates.pem | awk '{print $2}')
+if [ ! -f "/persist/certs/$sha" ]; then
+    echo "$(date -Ins -u) Adding /config/v2tlsbaseroot-certificates.pem to /persist/certs"
+    cp /config/v2tlsbaseroot-certificates.pem "/persist/certs/$sha"
+fi
+if [ ! -f /persist/certs/v2tlsbaseroot-certificates.sha256 ]; then
+    echo "$(date -Ins -u) Setting /config/v2tlsbaseroot-certificates.pem as current"
+    echo "$sha" >/persist/certs/v2tlsbaseroot-certificates.sha256
+fi
+
 CONFIGDEV=$(zboot partdev CONFIG)
 
 if [ ! -d $LOGDIRA ]; then
@@ -346,6 +370,7 @@ access_usb() {
             [ ! -f $CONFIGDIR/onboard.cert.pem ] || cp -p $CONFIGDIR/onboard.cert.pem "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/uuid ] || cp -p $CONFIGDIR/uuid "$IDENTITYDIR"
             cp -p $CONFIGDIR/root-certificate.pem "$IDENTITYDIR"
+            [ ! -f $CONFIGDIR/v2tlsbaseroot-certificates.pem ] || cp -p $CONFIGDIR/v2tlsbaseroot-certificates.pem "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/hardwaremodel ] || cp -p $CONFIGDIR/hardwaremodel "$IDENTITYDIR"
             [ ! -f $CONFIGDIR/soft_serial ] || cp -p $CONFIGDIR/soft_serial "$IDENTITYDIR"
             /opt/zededa/bin/hardwaremodel -c >"$IDENTITYDIR/hardwaremodel.dmi"

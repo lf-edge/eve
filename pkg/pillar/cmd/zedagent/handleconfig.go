@@ -84,19 +84,22 @@ func handleConfigInit(networkSendTimeout uint32) {
 	serverNameAndPort = strings.TrimSpace(string(bytes))
 	serverName = strings.Split(serverNameAndPort, ":")[0]
 
-	tlsConfig, err := zedcloud.GetTlsConfig(serverName, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
+	v2api := false // XXX set
 	zedcloudCtx.DeviceNetworkStatus = deviceNetworkStatus
-	zedcloudCtx.TlsConfig = tlsConfig
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
 	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
 	zedcloudCtx.NetworkSendTimeout = networkSendTimeout
+	zedcloudCtx.V2API = v2api
 	log.Infof("Configure Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
+
+	// XXX need to redo this since the root certificates can change
+	err = zedcloud.UpdateTLSConfig(&zedcloudCtx, serverName, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	b, err := ioutil.ReadFile(types.UUIDFileName)
 	if err != nil {

@@ -298,9 +298,10 @@ type ProxyConfig struct {
 	Pacfile    string
 	// If Enable is set we use WPAD. If the URL is not set we try
 	// the various DNS suffixes until we can download a wpad.dat file
-	NetworkProxyEnable bool   // Enable WPAD
-	NetworkProxyURL    string // Complete URL i.e., with /wpad.dat
-	WpadURL            string // The URL determined from DNS
+	NetworkProxyEnable bool     // Enable WPAD
+	NetworkProxyURL    string   // Complete URL i.e., with /wpad.dat
+	WpadURL            string   // The URL determined from DNS
+	ProxyCertPEM       [][]byte // List of certs which will be added to TLS trust
 }
 
 type DhcpConfig struct {

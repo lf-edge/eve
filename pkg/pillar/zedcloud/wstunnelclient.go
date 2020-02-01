@@ -97,7 +97,8 @@ func (t *WSTunnelClient) TestConnection(proxyURL *url.URL, localAddr net.IP) err
 	log.Debugf("Testing connection to %s on local address: %v, proxy: %v", t.Tunnel, localAddr, proxyURL)
 
 	serverName := strings.Split(t.TunnelServerNameAndPort, ":")[0]
-	tlsConfig, err := GetTlsConfig(serverName, nil)
+	// XXX assume v1 API for now
+	tlsConfig, err := GetTlsConfig(nil, serverName, nil, false)
 	if err != nil {
 		log.Fatal(err)
 	}

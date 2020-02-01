@@ -49,7 +49,7 @@ var Version = "No version specified"
 
 // Assumes the config files are in IdentityDirname, which is /config
 // by default. The files are
-//  root-certificate.pem	Fixed? Written if redirected. factory-root-cert?
+//  root-certificate.pem	Root CA cert(s) for object signing
 //  server			Fixed? Written if redirected. factory-root-cert?
 //  onboard.cert.pem, onboard.key.pem	Per device onboarding certificate/key
 //  		   		for selfRegister operation
@@ -232,11 +232,14 @@ func Run() { //nolint:gocyclo
 	log.Infof("Got for deviceNetworkConfig: %d addresses\n",
 		clientCtx.usableAddressCount)
 
+	// XXX set propertly
+	v2api := false
 	zedcloudCtx := zedcloud.ZedCloudContext{
 		DeviceNetworkStatus: clientCtx.deviceNetworkStatus,
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
 		NetworkSendTimeout:  clientCtx.globalConfig.NetworkSendTimeout,
+		V2API:               v2api,
 	}
 
 	// Get device serail number
@@ -264,7 +267,8 @@ func Run() { //nolint:gocyclo
 		if err != nil {
 			log.Fatal(err)
 		}
-		onboardTLSConfig, err = zedcloud.GetTlsConfig(serverName, &onboardCert)
+		onboardTLSConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
+			serverName, &onboardCert, zedcloudCtx.V2API)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -280,7 +284,8 @@ func Run() { //nolint:gocyclo
 	if err != nil {
 		log.Fatal(err)
 	}
-	tlsConfig, err := zedcloud.GetTlsConfig(serverName, &deviceCert)
+	tlsConfig, err := zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
+		serverName, &deviceCert, zedcloudCtx.V2API)
 	if err != nil {
 		log.Fatal(err)
 	}
