@@ -12,6 +12,7 @@ register_watchdog() {
 }
 
 reload_watchdog() {
+    # Firs thinsg first: kill it!
     if [ -f /var/run/watchdog.pid ]; then
         wp=$(cat /var/run/watchdog.pid)
         log "Killing watchdog $wp"
@@ -27,6 +28,14 @@ reload_watchdog() {
         log "Killed watchdog"
         sync
     fi
+
+    # Now lets rebuild the configuration file
+    rm -f /etc/watchdog.conf
+    cp /etc/watchdog.conf.seed /etc/watchdog.conf
+    find /cache -type f | sed -e 's#/cache/pid#pidfile = #' \
+      -e '/\/cache\/file/a change = 300' -e 's#/cache/file#file = #' >> /etc/watchdog.conf
+
+    # And finally re-start
     /usr/sbin/watchdog -F -s &
 }
 
@@ -34,6 +43,28 @@ log() {
    echo "$(date -Is) $*"
 }
 
+run_watchdog() {
+   local LAST_RELOAD
+   LAST_RELOAD="$(date -u +%s)"
+   while true; do
+      read cmd
+      log "Received the following watchdog request $cmd"
+      case "$cmd" in
+         .*) rm "/cache/$cmd"
+             ;;
+         ?*) mkdir -p "/cache/$(dirname "$cmd")"
+             touch "/cache/$cmd"
+             ;;
+      esac
+      # do the reload every 30 seconds only to not oscillate too much
+      if [ $((LAST_RELOAD + 30)) -lt "$(date -u +%s)" ]; then
+         reload_watchdog
+         LAST_RELOAD="$(date -u +%s)"
+      else
+         [ "$cmd" ] && (sleep 33 ; echo "" >> "$WATCHDOG_CTL") &
+      fi
+   done
+}
 
 # Lets get this party started
 
@@ -56,24 +87,4 @@ fi
 # Create a control channel if it doesn't exist yet
 [ -p "$WATCHDOG_CTL" ] || (rm -rf "$WATCHDOG_CTL" ; mkfifo "$WATCHDOG_CTL")
 
-LAST_RELOAD="$(date -u +%s)"
-while true; do
-   read cmd < "$WATCHDOG_CTL"
-   log "Received the following watchdog request $cmd"
-   rm -f /etc/watchdog.conf
-   (cat /etc/watchdog.conf.seed
-   case "$cmd" in
-      /*) echo "file = $cmd"
-          echo "change = 300"
-          ;;
-      @*) echo "pidfile = ${cmd//@/}"
-          ;;
-   esac) >> /etc/watchdog.conf
-   # do the reload every 30 seconds only to not oscilate too much
-   if [ $((LAST_RELOAD + 30)) -lt "$(date -u +%s)" ]; then
-      reload_watchdog
-      LAST_RELOAD="$(date -u +%s)"
-   else
-      [ "$cmd" ] && (sleep 30 ; echo "" >> "$WATCHDOG_CTL") &
-   fi
-done
+run_watchdog < "$WATCHDOG_CTL" 123>>"$WATCHDOG_CTL"
