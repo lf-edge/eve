@@ -21,21 +21,6 @@ AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent
 AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
 
-WATCHDOG_LED="@/var/run/ledmanager.pid /var/run/ledmanager.touch /var/run/nodeagent.touch"
-WATCHDOG_NIM="$WATCHDOG_LED @/var/run/nim.pid /var/run/nim.touch"
-WATCHDOG_CLIENT="$WATCHDOG_NIM @/var/run/zedclient.pid @/var/run/ntpd.pid"
-WATCHDOG_ALL="$WATCHDOG_LED @/var/run/ntpd.pid"
-for AGENT in $AGENTS; do
-    WATCHDOG_ALL="$WATCHDOG_ALL @/var/run/$AGENT.pid"
-    if [ "$AGENT" = "lisp-ztr" ]; then
-        continue
-    fi
-    WATCHDOG_ALL="$WATCHDOG_ALL /var/run/$AGENT.touch"
-    if [ "$AGENT" = "zedagent" ]; then
-        WATCHDOG_ALL="$WATCHDOG_ALL /var/run/${AGENT}config.touch /var/run/${AGENT}metrics.touch /var/run/${AGENT}devinfo.touch"
-    fi
-done
-
 PATH=$BINDIR:$PATH
 
 echo "$(date -Ins -u) Starting device-steps.sh"
@@ -237,7 +222,7 @@ echo "$(date -Ins -u) Starting nodeagent"
 $BINDIR/nodeagent -c $CURPART &
 wait_for_touch nodeagent
 
-register_watchdog "$WATCHDOG_LED"
+register_watchdog /pid/run/crond.pid /pid/run/ledmanager.pid /file/run/ledmanager.touch /file/run/nodeagent.touch
 
 mkdir -p $DPCDIR
 
@@ -326,7 +311,7 @@ $BINDIR/nim -c $CURPART &
 wait_for_touch nim
 
 # Restart watchdog ledmanager and nim
-register_watchdog "$WATCHDOG_NIM"
+register_watchdog /pid/run/nim.pid /file/run/nim.touch
 
 # Print diag output forever on changes
 $BINDIR/diag -c $CURPART -f -o /dev/console &
@@ -361,7 +346,7 @@ while [ "$YEAR" = "1970" ]; do
 done
 
 # Restart watchdog ledmanager, client, and nim
-register_watchdog "$WATCHDOG_CLIENT"
+register_watchdog /pid/run/zedclient.pid /pid/run/ntpd.pid
 
 if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
@@ -477,8 +462,8 @@ space=$((size / 2048))
 mkdir -p /var/tmp/zededa/GlobalDownloadConfig/
 echo \{\"MaxSpace\":"$space"\} >/var/tmp/zededa/GlobalDownloadConfig/global.json
 
-# Restart watchdog ledmanager and nim
-register_watchdog "$WATCHDOG_NIM"
+# Remove zedclient.pid from watchdog (get back to ledmanager and nim)
+register_watchdog ./pid/run/zedclient.pid
 
 for AGENT in $AGENTS1; do
     echo "$(date -Ins -u) Starting $AGENT"
@@ -498,7 +483,14 @@ if ! pgrep logmanager >/dev/null; then
 fi
 
 # Now run watchdog for all agents
-register_watchdog "$WATCHDOG_ALL"
+for AGENT in $AGENTS; do
+    register_watchdog "/pid/run/$AGENT.pid"
+    [ "$AGENT" = "lisp-ztr" ] && continue
+    register_watchdog "/file/run/$AGENT.touch"
+    if [ "$AGENT" = "zedagent" ]; then
+       register_watchdog "/file/run/${AGENT}config.touch" "/file/run/${AGENT}metrics.touch" "/file/run/${AGENT}devinfo.touch"
+    fi
+done
 
 blockdev --flushbufs "$CONFIGDEV"
 
