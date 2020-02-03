@@ -1623,7 +1623,7 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 func createMountPointFile(imageHash, mpFileName string, status types.DomainStatus) error {
 	file, err := os.Create(mpFileName)
 	if err != nil {
-		log.Errorf("os.Create for ", mpFileName, err)
+		log.Errorf("createMountPointFile: os.Create for %v, failed: %v", mpFileName, err.Error())
 	}
 	defer file.Close()
 
