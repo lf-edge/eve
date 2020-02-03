@@ -32,7 +32,7 @@ message LogBundle {
     google.protobuf.Timestamp timestamp = 4; // upload timestamp
 }
 
-// This is the request payload for POST /api/v1/edgeDevice/apps/instances<app-instance-uuid>/logs
+// This is the request payload for POST /api/v1/edgeDevice/apps/instances/id/<app-instance-uuid>/logs
 message AppInstanceLogBundle {
     repeated LogEntry log = 1; // Log entries
     google.protobuf.Timestamp timestamp = 2; // upload timestamp
