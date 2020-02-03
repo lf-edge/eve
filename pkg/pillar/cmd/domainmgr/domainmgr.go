@@ -73,7 +73,8 @@ type MountPoints struct {
 	partition  int    //Which partition of the disk should be mounted. Not mandatory, default: 1
 }
 
-var FileSystems = map[string]int32{
+//fileSystems - map of supported file-systems
+var fileSystems = map[string]int32{
 	"vfat": 0,
 }
 
@@ -1648,10 +1649,10 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 }
 
 func writeMountPointsToFile(mountPoints []MountPoints, status types.DomainStatus, file *os.File) error {
-	if len(mountPoints) != len(status.DiskStatusList){
+	if len(mountPoints) != len(status.DiskStatusList) {
 		err := fmt.Errorf("writeMountPointsToFile: Number of source: %v and target: %v mismatch.",
 			len(status.DiskStatusList), len(mountPoints))
-		log.Errorf(err.Error() )
+		log.Errorf(err.Error())
 		return err
 	}
 
@@ -1659,7 +1660,7 @@ func writeMountPointsToFile(mountPoints []MountPoints, status types.DomainStatus
 		if mp.fileSystem == "" {
 			mp.fileSystem = "vfat"
 		} else {
-			if _, ok := FileSystems[mp.fileSystem]; !ok {
+			if _, ok := fileSystems[mp.fileSystem]; !ok {
 				err := fmt.Errorf("writeMountPointsToFile: Invalid/unrecognized filesystem: %v", mp.fileSystem)
 				log.Errorf(err.Error())
 				return err
