@@ -10,7 +10,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/dataplane/dptypes"
+	"github.com/lf-edge/eve/pkg/lisp/dataplane/dptypes"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 	"math/rand"

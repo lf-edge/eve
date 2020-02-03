@@ -9,10 +9,10 @@ package dataplane
 import (
 	"github.com/google/gopacket/afpacket"
 	//"github.com/google/gopacket/pfring"
-	"github.com/lf-edge/eve/pkg/pillar/dataplane/dptypes"
-	"github.com/lf-edge/eve/pkg/pillar/dataplane/etr"
-	"github.com/lf-edge/eve/pkg/pillar/dataplane/fib"
-	"github.com/lf-edge/eve/pkg/pillar/dataplane/itr"
+	"github.com/lf-edge/eve/pkg/lisp/dataplane/dptypes"
+	"github.com/lf-edge/eve/pkg/lisp/dataplane/etr"
+	"github.com/lf-edge/eve/pkg/lisp/dataplane/fib"
+	"github.com/lf-edge/eve/pkg/lisp/dataplane/itr"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
