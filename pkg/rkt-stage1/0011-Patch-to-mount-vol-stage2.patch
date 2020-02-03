@@ -116,15 +116,10 @@ index a26edca..32d0b7d 100755
  export IFS=$'\n'
  stage2manifest=$mountpoint/manifest
 diff --git a/kernel/init-initrd b/kernel/init-initrd
-index 98b2256..caa744c 100755
+index 98b2256..d1109c2 100755
 --- a/kernel/init-initrd
 +++ b/kernel/init-initrd
-@@ -79,8 +79,13 @@ fi
- cp /mnt/cmdline /mnt/rootfs
- cp /mnt/launcher.sh /mnt/rootfs
- chmod +x /mnt/rootfs/launcher.sh
-+chmod +x /mnt/rootfs/mount_disk.sh
- cmd=`cat /mnt/cmdline`
+@@ -83,4 +83,8 @@ cmd=`cat /mnt/cmdline`
  echo "Executing $cmd"
  source /mnt/environment
  source /mnt/external-environment

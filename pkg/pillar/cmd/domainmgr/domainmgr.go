@@ -70,7 +70,7 @@ func isPort(ctx *domainContext, ifname string) bool {
 type MountPoints struct {
 	targetPath string //Target path inside VM or container. Mandatory
 	fileSystem string //What type of file-system is expected to be mounted. Not mandatory, default: vfat
-	partition  int    //Which partition of the disk should be mounted. Not mandatory, default:efault: 1
+	partition  int    //Which partition of the disk should be mounted. Not mandatory, default: 1
 }
 
 var FileSystems = map[string]int32{
@@ -1648,12 +1648,12 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 }
 
 func writeMountPointsToFile(mountPoints []MountPoints, status types.DomainStatus, file *os.File) error {
-	//if len(mountPoints) != len(status.DiskStatusList){
-	//	err := fmt.Errorf("writeMountPointsToFile: Number of source: %v and target: %v mismatch.",
-	//		len(status.DiskStatusList), len(mountPoints))
-	//	log.Errorf(err.Error() )
-	//	return err
-	//}
+	if len(mountPoints) != len(status.DiskStatusList){
+		err := fmt.Errorf("writeMountPointsToFile: Number of source: %v and target: %v mismatch.",
+			len(status.DiskStatusList), len(mountPoints))
+		log.Errorf(err.Error() )
+		return err
+	}
 
 	for i, mp := range mountPoints {
 		if mp.fileSystem == "" {
@@ -2214,7 +2214,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 		log.Errorln(err)
 	}
 
-	// Delete mountPoint file for good measure
+	// Delete mountPoint file
 	mpFileName := mountPointFileName(status.AppNum)
 	if err := os.Remove(mpFileName); err != nil {
 		log.Errorln(err)
@@ -2317,11 +2317,11 @@ func rktRun(domainName, xenCfgFilename, mountPointFileName, imageHash string, en
 	args = append(args, envVarSlice...)
 	stage1XlOpts := "STAGE1_XL_OPTS=-p"
 	stage1XlCfg := "STAGE1_SEED_XL_CFG=" + xenCfgFilename
-	stage1MP := "STAGE2_MNT_PTS=" + mountPointFileName
+	stage2MP := "STAGE2_MNT_PTS=" + mountPointFileName
 	log.Infof("Calling command %s %v\n", cmd, args)
-	log.Infof("Also setting env vars %s %s %s\n", stage1XlOpts, stage1XlCfg, stage1MP)
+	log.Infof("Also setting env vars %s %s %s\n", stage1XlOpts, stage1XlCfg, stage2MP)
 	cmdLine := exec.Command(cmd, args...)
-	cmdLine.Env = append(os.Environ(), stage1XlOpts, stage1XlCfg, stage1MP)
+	cmdLine.Env = append(os.Environ(), stage1XlOpts, stage1XlCfg, stage2MP)
 	stdoutStderr, err := cmdLine.CombinedOutput()
 	if err != nil {
 		log.Errorln("rkt run failed ", err)
