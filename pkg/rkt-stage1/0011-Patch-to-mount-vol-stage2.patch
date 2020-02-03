@@ -13,23 +13,15 @@ index 04fceb6..9c623f3 100755
  # Clean the repo, but save the vendor area
 diff --git a/files/mount_disk.sh b/files/mount_disk.sh
 new file mode 100644
-index 0000000..c7fb944
+index 0000000..d51f1e8
 --- /dev/null
 +++ b/files/mount_disk.sh
-@@ -0,0 +1,70 @@
+@@ -0,0 +1,62 @@
 +#!/bin/sh
 +
 +mountPointLineNo=1
 +ls /sys/block/ | grep xvd | while read -r disk ; do
 +  echo "Processing $disk"
-+
-+  #Fetching corresponding mount point from mountPoint file
-+  moint_point=$(sed "${mountPointLineNo}q;d" mountPoint | tr ":" "\n")
-+  if [ -z "$moint_point" ]
-+    then
-+      echo "Error while mounting: No Mount-Point found for $disk."
-+      exit 0
-+  fi
 +
 +  #Fetching Major and Minor device
 +  IN=$(cat /sys/block/$disk/dev | tr ":" "\n")
@@ -54,7 +46,7 @@ index 0000000..c7fb944
 +  echo
 +
 +  #Creating a block device with partitioned disk
-+  partitionToBeMounted=$(echo ${moint_point} | cut -d' ' -f3)
++  partitionToBeMounted=1
 +  partedDisk="$disk""$partitionToBeMounted"
 +  echo "Creating device file /dev/$partedDisk"
 +  mknod /dev/$partedDisk b $major $(($minor + 1)) && \
@@ -63,7 +55,7 @@ index 0000000..c7fb944
 +  echo
 +
 +  #Creating a file system inside the partition
-+  fileSystem=$(echo ${moint_point} | cut -d' ' -f2)
++  fileSystem="vfat"
 +  echo "Creating $fileSystem file system on /dev/$partedDisk"
 +  mkfs.$fileSystem /dev/$partedDisk && \
 +  echo "Successfully created $fileSystem file system on /dev/$partedDisk" || \
@@ -71,17 +63,17 @@ index 0000000..c7fb944
 +  echo
 +
 +  #Mounting the partition onto a target directory
-+  targetDir=$(echo ${moint_point} | cut -d' ' -f1)
++  targetDir=$(sed "${mountPointLineNo}q;d" /mnt/mountPoints)
 +  diskAccess=$(cat /sys/block/$disk/ro)
 +  if [ $diskAccess -eq 0 ]; then
 +    accessRight=rw
 +  else
 +    accessRight=ro
 +  fi
-+
-+  echo "Mounting /dev/$partedDisk on $targetDir with access: $accessRight"
-+  mkdir -p $targetDir
-+  mount -O remount,$accessRight /dev/$partedDisk $targetDir && \
++  stage2TargetPath="/mnt/rootfs"$targetDir
++  echo "Mounting /dev/$partedDisk on $stage2TargetPath with access: $accessRight"
++  mkdir -p $stage2TargetPath
++  mount -O remount,$accessRight /dev/$partedDisk $stage2TargetPath && \
 +  echo "Successfully mounted file system:/dev/$partedDisk on $targetDir" || \
 +  echo "Failed to mount file system:/dev/$partedDisk on $targetDir"
 +

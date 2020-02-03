@@ -1243,22 +1243,6 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		return
 	}
 
-	//TODO: mountPoints must be fill with target paths on the container once we decide UI to domainmgr flow for vol mount.
-	mountPoints := make([]MountPoints, 0)
-	mpFileName := mountPointFileName(config.AppNum)
-	mpFile, err := os.Create(mpFileName)
-	if err != nil {
-		log.Fatal("os.Create for ", mpFileName, err)
-	}
-	defer mpFile.Close()
-
-	if err := writeMountPointsToFile(mountPoints, *status, mpFile); err != nil {
-		log.Errorf("Failed to create mount point file. %v", err.Error())
-		status.LastErr = fmt.Sprintf("%v", err)
-		status.LastErrTime = time.Now()
-		return
-	}
-
 	status.TriedCount = 0
 	var domainID int
 	var podUUID string
@@ -1648,45 +1632,41 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 	return nil
 }
 
-func writeMountPointsToFile(mountPoints []MountPoints, status types.DomainStatus, file *os.File) error {
-	if len(mountPoints) != len(status.DiskStatusList) {
-		err := fmt.Errorf("writeMountPointsToFile: Number of source: %v and target: %v mismatch.",
-			len(status.DiskStatusList), len(mountPoints))
-		log.Errorf(err.Error())
-		return err
+func createMountPointFile(imageHash, mpFileName string, status types.DomainStatus) error {
+	file, err := os.Create(mpFileName)
+	if err != nil {
+		log.Fatal("os.Create for ", mpFileName, err)
+	}
+	defer file.Close()
+
+	appManifest, err := getAppManifest(imageHash)
+	if err != nil {
+		return fmt.Errorf("createMountPointFile: Error while fetching app manfest: %v", err.Error())
 	}
 
-	for i, mp := range mountPoints {
-		if mp.fileSystem == "" {
-			mp.fileSystem = "vfat"
+	if (len(status.DiskStatusList) - 1) != len(appManifest.App.MountPoints) {
+		if len(status.DiskStatusList) > len(appManifest.App.MountPoints) {
+			log.Warnf("createMountPointFile: Number of volumes provided: %v is more than number of mount-points: %v. "+
+				"Excessive volumes will be ignored", len(status.DiskStatusList)-1, len(appManifest.App.MountPoints))
 		} else {
-			if _, ok := fileSystems[mp.fileSystem]; !ok {
-				err := fmt.Errorf("writeMountPointsToFile: Invalid/unrecognized filesystem: %v", mp.fileSystem)
-				log.Errorf(err.Error())
-				return err
-			}
+			return fmt.Errorf("createMountPointFile: Number of volumes provided: %v is less than number of mount-points: %v. ",
+				len(status.DiskStatusList)-1, len(appManifest.App.MountPoints))
 		}
-		if mp.partition == 0 { //Assuming if mp.partition = 0, then it is not set
-			mp.partition = 1
-		} else {
-			if mp.partition > 4 || mp.partition < 0 {
-				err := fmt.Errorf("writeMountPointsToFile: Invalid partition: %v. Must be between 1 - 4", mp.partition)
-				log.Errorf(err.Error())
-				return err
-			}
-		}
-		if mp.targetPath == "" {
-			err := fmt.Errorf("writeMountPointsToFile: targetPath cannot be empty")
+	}
+
+	for i, mp := range appManifest.App.MountPoints {
+		if mp.Path == "" {
+			err := fmt.Errorf("createMountPointFile: targetPath cannot be empty")
 			log.Errorf(err.Error())
 			return err
-		} else if !strings.HasPrefix(mp.targetPath, "/") {
+		} else if !strings.HasPrefix(mp.Path, "/") {
 			//Target path is expected to be absolute.
-			err := fmt.Errorf("writeMountPointsToFile: targetPath should be absolute")
+			err := fmt.Errorf("createMountPointFile: targetPath should be absolute")
 			log.Errorf(err.Error())
 			return err
 		}
-		targetString := fmt.Sprintf("%s:%s:%d\n", mp.targetPath, mp.fileSystem, mp.partition)
-		log.Infof("writeMountPointsToFile: Processing mount point %d: %s\n", i, targetString)
+		targetString := fmt.Sprintf("%s\n", mp.Path)
+		log.Infof("createMountPointFile: Processing mount point %d: %s\n", i, targetString)
 		file.WriteString(targetString)
 	}
 	return nil
@@ -2284,6 +2264,13 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 			log.Error(err)
 			return domainID, podUUID, fmt.Errorf("unable to get rkt image hash: %v", err)
 		}
+
+		err = createMountPointFile(imageHash, mpFileName, status)
+		if err != nil {
+			log.Error(err)
+			return domainID, podUUID, fmt.Errorf("unable to create mountPointFile: %v", err)
+		}
+
 		domainID, podUUID, err = rktRun(status.DomainName, filename, mpFileName, imageHash, status.EnvVariables)
 	} else {
 		// Use xl tool
@@ -2298,7 +2285,6 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 // returns domainID, podUUID and error
 func rktRun(domainName, xenCfgFilename, mountPointFileName, imageHash string, envList map[string]string) (int, string, error) {
 	// STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=xenCfgFilename rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file --set-env=ENV-KEY=env-value
-	//TODO: envVars must be read from image config once we decide on how we will be passing this info from UI
 	var (
 		envVarSlice = make([]string, 0)
 	)
