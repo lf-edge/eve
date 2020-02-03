@@ -66,18 +66,6 @@ func isPort(ctx *domainContext, ifname string) bool {
 	return types.IsPort(ctx.deviceNetworkStatus, ifname)
 }
 
-//MountPoints - Holds mount target information which will be used when bringing up container
-type MountPoints struct {
-	targetPath string //Target path inside VM or container. Mandatory
-	fileSystem string //What type of file-system is expected to be mounted. Not mandatory, default: vfat
-	partition  int    //Which partition of the disk should be mounted. Not mandatory, default: 1
-}
-
-//fileSystems - map of supported file-systems
-var fileSystems = map[string]int32{
-	"vfat": 0,
-}
-
 // Information for handleCreate/Modify/Delete
 type domainContext struct {
 	// The isPort function is called by different goroutines
@@ -1635,7 +1623,7 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 func createMountPointFile(imageHash, mpFileName string, status types.DomainStatus) error {
 	file, err := os.Create(mpFileName)
 	if err != nil {
-		log.Fatal("os.Create for ", mpFileName, err)
+		log.Errorf("os.Create for ", mpFileName, err)
 	}
 	defer file.Close()
 
@@ -1644,6 +1632,7 @@ func createMountPointFile(imageHash, mpFileName string, status types.DomainStatu
 		return fmt.Errorf("createMountPointFile: Error while fetching app manfest: %v", err.Error())
 	}
 
+	//Ignoring container image in status.DiskStatusList
 	if (len(status.DiskStatusList) - 1) != len(appManifest.App.MountPoints) {
 		if len(status.DiskStatusList) > len(appManifest.App.MountPoints) {
 			log.Warnf("createMountPointFile: Number of volumes provided: %v is more than number of mount-points: %v. "+
