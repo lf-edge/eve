@@ -266,7 +266,7 @@ The response MUST contain no body content.
 
 ### logs
 
-Send Device and Application logs to Controller
+Send Device logs to Controller
 
    POST /api/v1/edgeDevice/logs
 
@@ -298,6 +298,39 @@ Response:
 
 The response MUST contain no body content.
 
+### Application Instance logs
+
+Send Application logs to Controller
+
+   POST /api/v1/edgeDevice/apps/instances/<app-instance-uuid>/logs
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `201`
+* Unknown Application Instance: `400`
+* Missing or unprocessable body: `422`
+
+Request:
+
+The request MUST use the Device certificate for mTLS authentication.
+
+The request MUST be of mime type "application/x-proto-binary".
+
+The request body MUST be a protobuf message of type [log.AppInstanceLogBundle](./proto/logs/log.proto). The message itself contains zero, one or more entries of type [log.LogEntry](./proto/logs/log.proto).
+
+Each `LogEntry` is a single log message indicating its timestamp, source, severity, message ID, application or process ID, and arbitrary message content. In addition, it can contain an unlimited number of key/value pairs.
+
+A Device SHOULD bundle many log messages together into a single `LogBundle`.
+
+A `LogBundle` MUST NOT be larger than the maximum size specified by the Controller for the Device, but MAY be smaller than that, if insufficient messages are available or the Device network or endpoints cannot handle the maximum size. The Device MUST retrieve the maximum `LogBundle` message size from the appropriate field of the configuration.
+
+A log message is expected to be reliable. A Device MUST retry until it successfully delivers log messages. How often log messages are sent, retries, the number of messages and which types to bundle together into a single `LogBundle`,  and other caching mechanisms on the Device are NOT specified here, as they are implementation questions.
+
+Response:
+
+The response MUST contain no body content.
 ### flowlog
 
 The flowlog API is used by the device to send network flow statistics (TCP and UDP
