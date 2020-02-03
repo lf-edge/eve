@@ -116,7 +116,6 @@ func (status DownloaderStatus) Pending() bool {
 
 // SetErrorInfo : Set Error Information for DownloaderStatus
 func (status *DownloaderStatus) SetErrorInfo(errStr string) {
-	status.RetryCount++
 	status.LastErr = errStr
 	status.LastErrTime = time.Now()
 }
@@ -125,6 +124,23 @@ func (status *DownloaderStatus) SetErrorInfo(errStr string) {
 func (status *DownloaderStatus) ClearErrorInfo() {
 	status.LastErr = ""
 	status.LastErrTime = time.Time{}
+}
+
+// ClearPendingStatus : Clear Pending Status for DownloaderStatus
+func (status *DownloaderStatus) ClearPendingStatus() {
+	if status.PendingAdd {
+		status.PendingAdd = false
+	}
+	if status.PendingModify {
+		status.PendingModify = false
+	}
+}
+
+// HandleDownloadFail : Do Failure specific tasks
+func (status *DownloaderStatus) HandleDownloadFail(errStr string) {
+	status.RetryCount++
+	status.SetErrorInfo(errStr)
+	status.ClearPendingStatus()
 }
 
 type GlobalDownloadConfig struct {
