@@ -302,7 +302,7 @@ The response MUST contain no body content.
 
 Send Application logs to Controller
 
-   POST /api/v1/edgeDevice/apps/instances/<app-instance-uuid>/logs
+   POST /api/v1/edgeDevice/apps/instances/{app-instance-uuid}/logs
 
 Return codes:
 
@@ -331,6 +331,7 @@ A log message is expected to be reliable. A Device MUST retry until it successfu
 Response:
 
 The response MUST contain no body content.
+
 ### flowlog
 
 The flowlog API is used by the device to send network flow statistics (TCP and UDP
