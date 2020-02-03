@@ -1262,7 +1262,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 	defer mpFile.Close()
 
-	if err := writeMountPointsToFile(mountPoints, *status, file); err != nil {
+	if err := writeMountPointsToFile(mountPoints, *status, mpFile); err != nil {
 		log.Errorf("Failed to create mount point file. %v", err.Error())
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
@@ -1695,8 +1695,8 @@ func writeMountPointsToFile(mountPoints []MountPoints, status types.DomainStatus
 			log.Errorf(err.Error())
 			return err
 		}
-		targetString := fmt.Sprintf("%s:%s:%d", mp.targetPath, mp.fileSystem, mp.partition)
-		log.Debugf("Processing mount point %d: %s\n", i, targetString)
+		targetString := fmt.Sprintf("%s:%s:%d\n", mp.targetPath, mp.fileSystem, mp.partition)
+		log.Infof("writeMountPointsToFile: Processing mount point %d: %s\n", i, targetString)
 		file.WriteString(targetString)
 	}
 	return nil
@@ -2225,6 +2225,12 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 		log.Errorln(err)
 	}
 
+	// Delete mountPoint file for good measure
+	mpFileName := mountPointFileName(status.AppNum)
+	if err := os.Remove(mpFileName); err != nil {
+		log.Errorln(err)
+	}
+
 	// Do we need to delete any rw files that were not deleted during
 	// inactivation i.e. those preserved across reboots?
 	deleteStorageDisksForDomain(ctx, status)
@@ -2322,7 +2328,7 @@ func rktRun(domainName, xenCfgFilename, mountPointFileName, imageHash string, en
 	args = append(args, envVarSlice...)
 	stage1XlOpts := "STAGE1_XL_OPTS=-p"
 	stage1XlCfg := "STAGE1_SEED_XL_CFG=" + xenCfgFilename
-	stage1MP := "STAGE1_SEED_MNT_PT=" + mountPointFileName
+	stage1MP := "STAGE2_MNT_PTS=" + mountPointFileName
 	log.Infof("Calling command %s %v\n", cmd, args)
 	log.Infof("Also setting env vars %s %s %s\n", stage1XlOpts, stage1XlCfg, stage1MP)
 	cmdLine := exec.Command(cmd, args...)
