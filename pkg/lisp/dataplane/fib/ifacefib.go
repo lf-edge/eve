@@ -5,7 +5,7 @@ package fib
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/dataplane/dptypes"
+	"github.com/lf-edge/eve/pkg/lisp/dataplane/dptypes"
 	log "github.com/sirupsen/logrus"
 	"net"
 )
