@@ -14,11 +14,10 @@ ZTMPDIR=/var/tmp/zededa
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 GCDIR=$PERSISTDIR/config/GlobalConfig
-LISPDIR=/opt/zededa/lisp
 LOGDIRA=$PERSISTDIR/IMGA/log
 LOGDIRB=$PERSISTDIR/IMGB/log
 AGENTS0="logmanager ledmanager nim nodeagent"
-AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent lisp-ztr baseosmgr wstunnelclient"
+AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent baseosmgr wstunnelclient"
 AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
 
@@ -42,9 +41,6 @@ done
 
 # Sleep for a bit until /var/run/$1.touch exists
 wait_for_touch() {
-    if [ "$1" = "lisp-ztr" ]; then
-        return
-    fi
     f=/var/run/"$1".touch
     waited=0
     while [ ! -f "$f" ] && [ "$waited" -lt 60 ]; do
@@ -184,19 +180,6 @@ fi
 
 echo "$(date -Ins -u) Starting hypervisor.log" >>$PERSISTDIR/$CURPART/log/hypervisor.log
 tail -c +0 -F /var/log/xen/hypervisor.log | while IFS= read -r line; do printf "%s %s\n" "$(date -Ins -u)" "$line"; done >>$PERSISTDIR/$CURPART/log/hypervisor.log &
-
-if [ -d $LISPDIR/logs ]; then
-    echo "$(date -Ins -u) Saving old lisp logs in $LISPDIR/logs.old"
-    mv $LISPDIR/logs $LISPDIR/logs.old
-fi
-
-#
-# Remove any old symlink to different IMG directory
-rm -f $LISPDIR/logs
-if [ ! -d $PERSISTDIR/$CURPART/log/lisp ]; then
-    mkdir -p $PERSISTDIR/$CURPART/log/lisp
-fi
-ln -s $PERSISTDIR/$CURPART/log/lisp $LISPDIR/logs
 
 # BlinkCounter 1 means we have started; might not yet have IP addresses
 # client/selfRegister and zedagent update this when the found at least
@@ -445,16 +428,6 @@ else
     fi
 fi
 
-if [ ! -d $LISPDIR ]; then
-    echo "$(date -Ins -u) Missing $LISPDIR directory. Giving up"
-    exit 1
-fi
-
-if [ -f $CONFIGDIR/device.key.pem ]; then
-    # Need a key for device-to-device map-requests
-    cp -p $CONFIGDIR/device.key.pem $LISPDIR/lisp-sig.pem
-fi
-
 # Setup default amount of space for images
 # Half of /persist by default! Convert to kbytes
 size=$(df -B1 --output=size $PERSISTDIR | tail -1)
@@ -485,7 +458,6 @@ fi
 # Now run watchdog for all agents
 for AGENT in $AGENTS; do
     touch "$WATCHDOG_PID/$AGENT.pid"
-    [ "$AGENT" = "lisp-ztr" ] && continue
     touch "$WATCHDOG_FILE/$AGENT.touch"
     if [ "$AGENT" = "zedagent" ]; then
        touch "$WATCHDOG_FILE/${AGENT}config.touch" "$WATCHDOG_FILE/${AGENT}metrics.touch" "$WATCHDOG_FILE/${AGENT}devinfo.touch"

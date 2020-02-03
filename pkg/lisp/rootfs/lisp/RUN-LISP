@@ -73,24 +73,6 @@ if python -V 2>&1 | egrep -vq 2.7 ; then
 fi
 
 #
-# Create logs directory if it does not exist.
-#
-[ -d logs ] || mkdir ./logs
-
-#
-# Check to see if lisp-save-logs script exists.
-#
-[ -f lisp-save-logs.pyo ] || bail "File lisp-save-logs.pyo not found, script requires binary files"
-
-#
-# Skip if no log files found. If found, save them.
-#
-if ls ./logs/*.log >/dev/null 2>&1 ; then
-    python -O lisp-save-logs.pyo
-    rm -fr ./logs/lisp-traceback.log
-fi
-
-#
 # Remove file descriptors if last time we crashed.
 #
 python -O remove-lisp-locks.pyo
@@ -98,7 +80,7 @@ python -O remove-lisp-locks.pyo
 #
 # Now run core process that starts the configured LISP components.
 #
-python -O lisp-core.pyo $1 > ./logs/lisp-core.log 2>&1 &
+python -O lisp-core.pyo $1 &
 
 #
 # Run the lisp-xtr golang data-plane.

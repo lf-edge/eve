@@ -25,8 +25,6 @@ RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc) ;\
     make DISTDIR=/dist build
 
 # hadolint ignore=DL3006
-FROM LISP_TAG as lisp
-# hadolint ignore=DL3006
 FROM XENTOOLS_TAG as xen-tools
 # hadolint ignore=DL3006
 FROM DNSMASQ_TAG as dnsmasq
@@ -47,8 +45,8 @@ FROM alpine:3.8
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
 RUN apk add --no-cache \
-    yajl xz bash openssl iptables ip6tables iproute2 dhcpcd \
-    apk-cron coreutils dmidecode sudo libbz2 libuuid ipset \
+    yajl xz bash openssl iptables ip6tables iproute2 dhcpcd      \
+    apk-cron coreutils dmidecode sudo libbz2 libuuid ipset       \
     libaio logrotate pixman glib curl radvd perl ethtool \
     util-linux e2fsprogs libcrypto1.0 xorriso \
     python libpcap libffi jq e2fsprogs-extra keyutils
@@ -74,7 +72,6 @@ RUN set -e && for patch in ../patches/*.patch; do \
 
 COPY --from=build /dist /opt/zededa/bin
 COPY --from=xen-tools / /
-COPY --from=lisp / /
 COPY --from=gpttools / /
 COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
 COPY --from=strongswan / /

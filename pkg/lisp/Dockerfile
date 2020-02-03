@@ -1,3 +1,18 @@
+ARG GOVER=1.12.4
+FROM golang:${GOVER}-alpine as build
+RUN apk add --no-cache git gcc linux-headers libc-dev util-linux libpcap-dev make
+
+# These three are supporting rudimentary cross-build capabilities.
+# The only one supported so far is cross compiling for aarch64 on x86
+ENV GOFLAGS=-mod=vendor
+ENV GO111MODULE=on
+ENV CGO_ENABLED=1
+
+ADD ./  /lisp/
+WORKDIR /lisp
+RUN go build -mod=vendor -o lisp-ztr ./cmd/lisp-ztr
+RUN strip lisp-ztr
+
 FROM alpine:3.8 AS lisp
 ENV LISP_VERSION=release-0.488
 
@@ -17,10 +32,20 @@ RUN pip install --upgrade pip && pip install -r /lisp/pip-requirements.txt
 RUN apk del py2-pip py2-pyflakes
 
 # Putting it all together
-FROM scratch
+FROM alpine:3.8
 
-COPY --from=lisp /lisp /opt/zededa/lisp/
+RUN apk add --no-cache python libffi openssl libpcap iproute2
+
+COPY --from=lisp /lisp /lisp/
 COPY --from=lisp /usr/bin/pydoc /usr/bin/smtpd.py /usr/bin/
 COPY --from=lisp /usr/lib/python2.7/site-packages /usr/lib/python2.7/site-packages 
 
+COPY --from=build /lisp/lisp-ztr /lisp/
+
 ADD rootfs/ /
+
+EXPOSE 8080
+
+WORKDIR /lisp
+ENTRYPOINT []
+CMD ["/init.sh"]

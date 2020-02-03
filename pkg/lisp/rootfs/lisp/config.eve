@@ -1,0 +1,114 @@
+#
+# lispers.net lisp.config file, last changed: <sample>
+#
+# (1) Only commands between the first pair of dotted lines will be processed.
+#
+# (2) Any lines you find prepended with "#>>>" are errors found during command
+#     processing.
+#
+# (3) You may comment out lines by placing a "#" in the first column of any
+#     line between the section between the first pair of dotted lines.
+#
+# (4) Note the modification timestamp above is auto generated after you have
+#     saved this file and it has been processed.
+#
+# (5) Deleting configuration can be achieved by deleting lines and restarting
+#     the LISP component or by use of the LISP API.
+#
+# (6) The landing web page on any device provides detailed Command and API
+#     documentation.
+#
+# (7) Any name references must follow their definitions. Examples are
+#     elp-names and rle-names when referred to in static map-cache entries.
+#
+# DO NOT WRITE TO ANY OTHER PART OF THIS FILE. YOU MUST ONLY ADD, CHANGE, OR
+# REMOVE LINES BETWEEN THE FIRST PAIR OF DOTTED LINES SECTION.
+#
+#-----------------------------------------------------------------------------
+lisp enable {
+    itr = yes
+    etr = yes
+    rtr = no
+    map-server = no
+    map-resolver = no
+    ddt-node = no
+}
+lisp debug {
+    core = no
+    itr = no
+    etr = no
+    rtr = no
+    map-server = no
+    map-resolver = no
+    ddt-node = no
+}
+lisp user-account {
+    username = root
+    password = =b9e5c39708999f844a3c864e863c12618bf8a3f5
+    super-user = yes
+}
+lisp xtr-parameters {
+    rloc-probing = yes
+    data-plane-security = yes
+    nat-traversal = yes
+    nonce-echoing = no
+    data-plane-logging = no
+    flow-logging = no
+    checkpoint-map-cache = no
+    register-reachable-rtrs = yes
+    ipc-data-plane = yes
+}
+lisp json {
+    json-name = signature
+    json-string = { "signature-eid": "[1000]fdea:d5c9:647d:26ae:6511:3af:9b5a:3de4", "signature" : "rZ5j49OLtZ9N/Uuy0JzeyAHBmnmWCcGqvuiPDoB/7+Wz7rSvx19HaDHK7R7Sgu9l8i1v2rw0RMzMd5Sd2VqzZw==" }
+}
+lisp json {
+    json-name = additional-info
+    json-string = {"UnderlayIP":"38.104.135.67","City":"Washington","Region":"Virginia","Country":"US","Loc":"38.9014,-77.0504","Org":"AS174 Cogent Communications"}
+}
+lisp interface {
+    interface-name = overlay-mgmt
+    device = dbo1x2
+    instance-id = 1000
+}
+lisp database-mapping {
+    prefix {
+        instance-id = 1000
+        eid-prefix = fdea:d5c9:647d:26ae:6511:3af:9b5a:3de4/128
+        signature-eid = yes
+    }
+    rloc {
+        json-name = signature
+        priority = 255
+    }
+    rloc {
+        json-name = additional-info
+        priority = 255
+    }
+    rloc {
+        interface = eth0
+    }
+    rloc {
+        address = 192.168.254.3
+        priority = 0
+    }
+    rloc {
+        address = fe80::f43e:d3a6:ac41:186a
+        priority = 2
+    }
+}
+lisp map-resolver {
+	dns-name = zedcontrol.alpha.zededa.net
+}
+lisp map-server {
+    dns-name = zedcontrol.alpha.zededa.net
+    authentication-key = zededa-lispers.net
+    want-map-notify = yes
+}
+lisp map-cache {
+    prefix {
+        instance-id = 1000
+        eid-prefix = fd00::/8
+        send-map-request = yes
+    }
+}
