@@ -43,12 +43,14 @@ type RktManifest struct {
 	App         App        `json:"app,omitempty"`
 }
 
+// MountPoint - represents mountpoints of an app
 type MountPoint struct {
 	Name     string `json:"name"`
 	Path     string `json:"path"`
 	ReadOnly bool   `json:"readOnly,omitempty"`
 }
 
+// App - holds app details in manifest
 type App struct {
 	MountPoints []MountPoint `json:"mountPoints,omitempty"`
 }
