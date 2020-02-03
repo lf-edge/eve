@@ -1244,17 +1244,6 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 
 	//TODO: mountPoints must be fill with target paths on the container once we decide UI to domainmgr flow for vol mount.
 	mountPoints := make([]MountPoints, 0)
-	mountPoints = append(mountPoints, MountPoints{
-		targetPath: "/mnt/dir1",
-		fileSystem: "vfat",
-		partition:  1,
-	})
-
-	mountPoints = append(mountPoints, MountPoints{
-		targetPath: "/mnt/dir2",
-		fileSystem: "",
-		partition:  0,
-	})
 	mpFileName := mountPointFileName(config.AppNum)
 	mpFile, err := os.Create(mpFileName)
 	if err != nil {
