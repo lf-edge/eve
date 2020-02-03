@@ -234,32 +234,31 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		log.Fatalf("handleSyncOpResponse: No ObjType for %s\n",
 			status.ImageID)
 	}
+
 	locDirname := types.DownloadDirname + "/" + status.ObjType
 	if errStr != "" {
 		// Delete file, and update the storage
 		doDelete(ctx, key, locDirname, status)
 		// free the reserved storage
 		unreserveSpace(ctx, status)
-		status.PendingAdd = false
-		status.SetErrorInfo(errStr)
+		status.HandleDownloadFail(errStr)
 		publishDownloaderStatus(ctx, status)
-		log.Errorf("handleSyncOpResponse failed for %s, <%s>\n",
+		log.Errorf("handleSyncOpResponse(%s): failed for with %s\n",
 			status.Name, errStr)
 		return
 	}
 
 	info, err := os.Stat(locFilename)
 	if err != nil {
-		log.Errorf("handleSyncOpResponse Stat failed for %s <%s>\n",
-			status.Name, err)
 		// Delete file, and update the storage
 		doDelete(ctx, key, locDirname, status)
 		// free the reserved storage
 		unreserveSpace(ctx, status)
-		status.PendingAdd = false
 		errStr := fmt.Sprintf("%v", err)
-		status.SetErrorInfo(errStr)
+		status.HandleDownloadFail(errStr)
 		publishDownloaderStatus(ctx, status)
+		log.Errorf("handleSyncOpResponse(%s): failed for with %s\n",
+			status.Name, errStr)
 		return
 	}
 	size := uint64(info.Size())
@@ -267,15 +266,15 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 	// and convert it to used space
 	allocateSpace(ctx, status, size)
 
-	log.Infof("handleSyncOpResponse successful <%s> <%s>\n",
+	log.Infof("handleSyncOpResponse(%s): successful <%s>\n",
 		config.Name, locFilename)
 	// We do not clear any status.RetryCount, LastErr, etc. The caller
 	// should look at State == DOWNLOADED to determine it is done.
 
 	status.ModTime = time.Now()
-	status.PendingAdd = false
 	status.State = types.DOWNLOADED
 	status.Progress = 100 // Just in case
+	status.ClearPendingStatus()
 	publishDownloaderStatus(ctx, status)
 }
 
