@@ -13,16 +13,21 @@ index 04fceb6..9c623f3 100755
  # Clean the repo, but save the vendor area
 diff --git a/files/mount_disk.sh b/files/mount_disk.sh
 new file mode 100644
-index 0000000..d51f1e8
+index 0000000..db70141
 --- /dev/null
 +++ b/files/mount_disk.sh
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,56 @@
 +#!/bin/sh
 +
 +mountPointLineNo=1
 +ls /sys/block/ | grep xvd | while read -r disk ; do
 +  echo "Processing $disk"
-+
++  targetDir=$(sed "${mountPointLineNo}q;d" /mnt/mountPoints)
++  if [ -z "$targetDir" ]
++    then
++      echo "Error while mounting: No Mount-Point found for $disk."
++      exit 0
++  fi
 +  #Fetching Major and Minor device
 +  IN=$(cat /sys/block/$disk/dev | tr ":" "\n")
 +  major=$(echo ${IN} | cut -d' ' -f1)
@@ -33,16 +38,6 @@ index 0000000..d51f1e8
 +  mknod /dev/$disk b $major $minor && \
 +  echo "Successfully created device file for /dev/$disk" || \
 +  echo "Failed to create device file for /dev/$disk"
-+  echo
-+
-+  #Creating partition on block device
-+  partition_number=1
-+  first_sector=
-+  last_sector=
-+  echo "Creating partition:$partition_number for /dev/$disk"
-+  (echo n; echo p; echo $partition_number; echo $first_sector; echo $last_sector; echo w) | fdisk /dev/$disk && \
-+  echo "Successfully created partition:$partition_number for /dev/$disk" || \
-+  echo "Failed to create partition:$partition_number for /dev/$disk"
 +  echo
 +
 +  #Creating a block device with partitioned disk
@@ -63,7 +58,6 @@ index 0000000..d51f1e8
 +  echo
 +
 +  #Mounting the partition onto a target directory
-+  targetDir=$(sed "${mountPointLineNo}q;d" /mnt/mountPoints)
 +  diskAccess=$(cat /sys/block/$disk/ro)
 +  if [ $diskAccess -eq 0 ]; then
 +    accessRight=rw
