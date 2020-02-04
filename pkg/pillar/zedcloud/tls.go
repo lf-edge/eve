@@ -172,6 +172,30 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert 
 	return tlsConfig, nil
 }
 
+// UpdateTLSProxyCerts - Update when DeviceNetworkStatus changes
+func UpdateTLSProxyCerts(ctx *ZedCloudContext) {
+	tlsCfg := ctx.TlsConfig
+	devNS := ctx.DeviceNetworkStatus
+	if tlsCfg == nil || devNS == nil {
+		log.Errorln("UpdateTLSProxyCerts: tlsconfig or dev NS missing")
+		return
+	}
+
+	var updated bool
+	caCertPool := tlsCfg.RootCAs
+	// AppendCertsFromPEM checks duplicates inside
+	for _, port := range devNS.Ports {
+		for _, pem := range port.ProxyCertPEM {
+			caCertPool.AppendCertsFromPEM(pem)
+			updated = true
+		}
+	}
+	if updated {
+		log.Infof("UpdateTLSProxyCerts: root CA updated")
+		ctx.TlsConfig.RootCAs = caCertPool
+	}
+}
+
 func stapledCheck(connState *tls.ConnectionState) bool {
 	if connState.VerifiedChains == nil {
 		log.Errorln("stapledCheck: No VerifiedChains")

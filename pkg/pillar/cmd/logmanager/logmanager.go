@@ -119,6 +119,7 @@ type DNSContext struct {
 	usableAddressCount     int
 	subDeviceNetworkStatus pubsub.Subscription
 	doDeferred             bool
+	zedcloudCtx            *zedcloud.ZedCloudContext
 }
 
 type zedcloudLogs struct {
@@ -284,7 +285,7 @@ func Run() {
 	DNSctx.doDeferred = true
 
 	//Get servername, set logUrl, get device id and initialize zedcloudCtx
-	sendCtxInit(&logmanagerCtx)
+	sendCtxInit(&logmanagerCtx, &DNSctx)
 
 	// Publish send metrics for zedagent every 10 seconds
 	interval := time.Duration(10 * time.Second)
@@ -479,6 +480,11 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		if globalDeferInprogress {
 			log.Warnf("handleDNSModify: globalDeferInprogress")
 		}
+	}
+
+	// update proxy certs if configured
+	if ctx.zedcloudCtx != nil && ctx.zedcloudCtx.V2API {
+		zedcloud.UpdateTLSProxyCerts(ctx.zedcloudCtx)
 	}
 	log.Infof("handleDNSModify done for %s; %d usable\n",
 		key, newAddrCount)
@@ -748,7 +754,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 	return true
 }
 
-func sendCtxInit(ctx *logmanagerContext) {
+func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 	//get server name
 	bytes, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
@@ -771,6 +777,7 @@ func sendCtxInit(ctx *logmanagerContext) {
 	// get the edge box serial number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
 	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
+	dnsCtx.zedcloudCtx = &zedcloudCtx
 	log.Infof("Log Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
