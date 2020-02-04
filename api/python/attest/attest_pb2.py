@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ#github.com/lf-edge/eve/api/go/certs'),
-  serialized_pb=_b('\n\x0c\x61ttest.proto\"%\n\x0fZAttestNonceReq\x12\x12\n\ndeviceUuid\x18\x01 \x01(\t\"!\n\x10ZAttestNonceResp\x12\r\n\x05nonce\x18\x01 \x01(\t\"L\n\x0fZAttestQuoteReq\x12\x12\n\ndeviceUuid\x18\x01 \x01(\t\x12\x12\n\nattestData\x18\x02 \x01(\t\x12\x11\n\tsignature\x18\x03 \x01(\t\":\n\x10ZAttestQuoteResp\x12&\n\x08response\x18\x01 \x01(\x0e\x32\x14.ZAttestResponseCode*O\n\x13ZAttestResponseCode\x12\x1b\n\x17\x41TTEST_RESPONSE_SUCCESS\x10\x00\x12\x1b\n\x17\x41TTEST_RESPONSE_FAILURE\x10\x01\x42\x46\n\x1f\x63om.zededa.cloud.uservice.protoZ#github.com/lf-edge/eve/api/go/certsb\x06proto3')
+  serialized_pb=_b('\n\x0c\x61ttest.proto\"%\n\x0fZAttestNonceReq\x12\x12\n\ndeviceUuid\x18\x01 \x01(\t\"!\n\x10ZAttestNonceResp\x12\r\n\x05nonce\x18\x01 \x01(\x0c\"L\n\x0fZAttestQuoteReq\x12\x12\n\ndeviceUuid\x18\x01 \x01(\t\x12\x12\n\nattestData\x18\x02 \x01(\x0c\x12\x11\n\tsignature\x18\x03 \x01(\x0c\":\n\x10ZAttestQuoteResp\x12&\n\x08response\x18\x01 \x01(\x0e\x32\x14.ZAttestResponseCode*O\n\x13ZAttestResponseCode\x12\x1b\n\x17\x41TTEST_RESPONSE_SUCCESS\x10\x00\x12\x1b\n\x17\x41TTEST_RESPONSE_FAILURE\x10\x01\x42\x46\n\x1f\x63om.zededa.cloud.uservice.protoZ#github.com/lf-edge/eve/api/go/certsb\x06proto3')
 )
 
 _ZATTESTRESPONSECODE = _descriptor.EnumDescriptor(
@@ -91,8 +91,8 @@ _ZATTESTNONCERESP = _descriptor.Descriptor(
   fields=[
     _descriptor.FieldDescriptor(
       name='nonce', full_name='ZAttestNonceResp.nonce', index=0,
-      number=1, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
+      number=1, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
@@ -129,15 +129,15 @@ _ZATTESTQUOTEREQ = _descriptor.Descriptor(
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='attestData', full_name='ZAttestQuoteReq.attestData', index=1,
-      number=2, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
+      number=2, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='signature', full_name='ZAttestQuoteReq.signature', index=2,
-      number=3, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
+      number=3, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),

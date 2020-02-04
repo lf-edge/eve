@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ#github.com/lf-edge/eve/api/go/certs'),
-  serialized_pb=_b('\n\x0b\x63\x65rts.proto\":\n\rZEdgeNodeCert\x12\x12\n\ndeviceUuid\x18\x01 \x01(\t\x12\x15\n\x05\x63\x65rts\x18\x02 \x03(\x0b\x32\x06.ZCert\"(\n\x0fZControllerCert\x12\x15\n\x05\x63\x65rts\x18\x01 \x03(\x0b\x32\x06.ZCert\"e\n\x05ZCert\x12\x0e\n\x06\x63\x65rtId\x18\x01 \x01(\t\x12\x18\n\x04type\x18\x02 \x01(\x0e\x32\n.ZCertType\x12\x0c\n\x04\x63\x65rt\x18\x03 \x01(\t\x12$\n\nproperties\x18\x04 \x01(\x0b\x32\x10.ZCertProperties\"$\n\x0fZCertProperties\x12\x11\n\tisMutable\x18\x01 \x01(\x08*\xe9\x01\n\tZCertType\x12\x1f\n\x1b\x43\x45RT_TYPE_DEVICE_ONBOARDING\x10\x00\x12\'\n#CERT_TYPE_DEVICE_RESTRICTED_SIGNING\x10\x01\x12$\n CERT_TYPE_DEVICE_ENDORSEMENT_RSA\x10\x02\x12\"\n\x1e\x43\x45RT_TYPE_DEVICE_ECDH_EXCHANGE\x10\x03\x12 \n\x1c\x43\x45RT_TYPE_CONTROLLER_SIGNING\x10\x04\x12&\n\"CERT_TYPE_CONTROLLER_ECDH_EXCHANGE\x10\x05\x42\x46\n\x1f\x63om.zededa.cloud.uservice.protoZ#github.com/lf-edge/eve/api/go/certsb\x06proto3')
+  serialized_pb=_b('\n\x0b\x63\x65rts.proto\":\n\rZEdgeNodeCert\x12\x12\n\ndeviceUuid\x18\x01 \x01(\t\x12\x15\n\x05\x63\x65rts\x18\x02 \x03(\x0b\x32\x06.ZCert\"(\n\x0fZControllerCert\x12\x15\n\x05\x63\x65rts\x18\x01 \x03(\x0b\x32\x06.ZCert\"e\n\x05ZCert\x12\x0e\n\x06\x63\x65rtId\x18\x01 \x01(\x0c\x12\x18\n\x04type\x18\x02 \x01(\x0e\x32\n.ZCertType\x12\x0c\n\x04\x63\x65rt\x18\x03 \x01(\x0c\x12$\n\nproperties\x18\x04 \x01(\x0b\x32\x10.ZCertProperties\"$\n\x0fZCertProperties\x12\x11\n\tisMutable\x18\x01 \x01(\x08*\xe9\x01\n\tZCertType\x12\x1f\n\x1b\x43\x45RT_TYPE_DEVICE_ONBOARDING\x10\x00\x12\'\n#CERT_TYPE_DEVICE_RESTRICTED_SIGNING\x10\x01\x12$\n CERT_TYPE_DEVICE_ENDORSEMENT_RSA\x10\x02\x12\"\n\x1e\x43\x45RT_TYPE_DEVICE_ECDH_EXCHANGE\x10\x03\x12 \n\x1c\x43\x45RT_TYPE_CONTROLLER_SIGNING\x10\x04\x12&\n\"CERT_TYPE_CONTROLLER_ECDH_EXCHANGE\x10\x05\x42\x46\n\x1f\x63om.zededa.cloud.uservice.protoZ#github.com/lf-edge/eve/api/go/certsb\x06proto3')
 )
 
 _ZCERTTYPE = _descriptor.EnumDescriptor(
@@ -149,8 +149,8 @@ _ZCERT = _descriptor.Descriptor(
   fields=[
     _descriptor.FieldDescriptor(
       name='certId', full_name='ZCert.certId', index=0,
-      number=1, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
+      number=1, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
@@ -163,8 +163,8 @@ _ZCERT = _descriptor.Descriptor(
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='cert', full_name='ZCert.cert', index=2,
-      number=3, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
+      number=3, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
