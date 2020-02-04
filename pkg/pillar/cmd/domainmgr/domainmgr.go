@@ -1526,7 +1526,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.Vdev = xv
 
 		target := ""
-		if !status.IsContainer && !dc.ReadOnly {
+		if ds.Format != zconfig.Format_CONTAINER && !dc.ReadOnly {
 			// XXX:Why are we excluding container images? Are they supposed to be
 			//  readonly
 			// Pick new location for a per-guest copy
@@ -2251,14 +2251,25 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 		// Use rkt tool
 		// get the rkt image hash for this file; if we do not have it in the rkt cache,
 		// convert it
-		// XXX we assume a container has one image. XXX do we check somewhere?
-		ociFilename, err := utils.VerifiedImageFileLocation(status.DiskStatusList[0].ImageSha256)
+		var containerImageSha256 []string
+		for _, ds := range status.DiskStatusList {
+			if ds.Format == zconfig.Format_CONTAINER {
+				containerImageSha256 = append(containerImageSha256, ds.ImageSha256)
+			}
+		}
+		if len(containerImageSha256) > 1 {
+			err := `Bundle contains more than one container disk, running multiple containers 
+				inside a pod is not supported now.`
+			log.Errorf(err)
+			return domainID, podUUID, fmt.Errorf(err)
+		}
+		ociFilename, err := utils.VerifiedImageFileLocation(containerImageSha256[0])
 		if err != nil {
 			log.Errorf("DomainCreate: Failed to get Image File Location. "+
 				"err: %+s", err.Error())
 			return domainID, podUUID, err
 		}
-		log.Infof("ociFilename %s sha %s", ociFilename, status.DiskStatusList[0].ImageSha256)
+		log.Infof("ociFilename %s sha %s", ociFilename, containerImageSha256[0])
 		imageHash, err := ociToRktImageHash(ociFilename)
 		if err != nil {
 			log.Error(err)
