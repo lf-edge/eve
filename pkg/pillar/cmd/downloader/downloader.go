@@ -292,7 +292,7 @@ func maybeRetryDownload(ctx *downloaderContext,
 	status *types.DownloaderStatus) {
 
 	// object is either in download progress or,
-	// successfully downloaded
+	// successfully downloaded, nothing to do
 	if status.LastErr == "" {
 		return
 	}
@@ -380,6 +380,7 @@ func handleModify(ctx *downloaderContext, key string,
 	if config.Name != status.Name {
 		errStr := fmt.Sprintf("Name changed - not allowed %s -> %s\n",
 			config.Name, status.Name)
+		status.RetryCount++
 		status.HandleDownloadFail(errStr)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("handleModify(%s): failed with %s\n", config.Name, errStr)
@@ -428,10 +429,11 @@ func doDelete(ctx *downloaderContext, key string, locDirname string,
 // perform download of the object, by reserving storage
 func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *types.DownloaderStatus) {
 
-	// If RefCount == 0 then we don't yet download.
+	// If RefCount == 0 then we don't yet need to download.
 	if config.RefCount == 0 {
 		errStr := fmt.Sprintf("RefCount==0; download deferred for %s\n",
 			config.Name)
+		status.RetryCount++
 		status.HandleDownloadFail(errStr)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("doDownload(%s): deferred with %s\n", config.Name, errStr)
@@ -440,19 +442,17 @@ func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *t
 
 	dst, errStr := lookupDatastoreConfig(ctx, config.DatastoreID, config.Name)
 	if dst == nil {
+		status.RetryCount++
 		status.HandleDownloadFail(errStr)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("doDownload(%s): deferred with %s\n", config.Name, errStr)
 		return
 	}
 
-	// try to reserve storage
-	// must be released on error
+	// try to reserve storage, must be released on error
 	kb := types.RoundupToKB(config.Size)
-	if !tryReserveSpace(ctx, status, kb) {
-		errStr := fmt.Sprintf("Would exceed remaining space. "+
-			"SizeOfAppImage: %d, RemainingSpace: %d\n",
-			kb, ctx.globalStatus.RemainingSpace)
+	if ret, errStr := tryReserveSpace(ctx, status, kb); !ret {
+		status.RetryCount++
 		status.HandleDownloadFail(errStr)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("doDownload(%s): deferred with %s\n", config.Name, errStr)
