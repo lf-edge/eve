@@ -329,6 +329,11 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 		log.Infof("counter %d usableAddr %d, derived %d\n",
 			ctx.ledCounter, ctx.UsableAddressCount, ctx.derivedLedCounter)
 	}
+
+	// update proxy certs if configured
+	if ctx.zedcloudCtx != nil && ctx.zedcloudCtx.V2API {
+		zedcloud.UpdateTLSProxyCerts(ctx.zedcloudCtx)
+	}
 	// XXX can we limit to interfaces which changed?
 	// XXX wait in case we get another handle call?
 	// XXX set output sched in ctx; print one second later?
@@ -670,6 +675,10 @@ func printProxy(ctx *diagContext, port types.NetworkPortStatus,
 				fmt.Fprintf(outfile, "INFO: %s: https proxy %s\n",
 					ifname, httpsProxy)
 			}
+		}
+
+		if len(port.ProxyCertPEM) > 0 {
+			fmt.Fprintf(outfile, "INFO: %d proxy certificate(s)", len(port.ProxyCertPEM))
 		}
 	}
 }

@@ -62,6 +62,7 @@ func makeDevicePortConfig(ctx *DeviceNetworkContext, ports []string, free []stri
 
 func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 	if len(proxyConfig.Proxies) == 0 &&
+		len(proxyConfig.ProxyCertPEM) == 0 &&
 		proxyConfig.Exceptions == "" &&
 		proxyConfig.Pacfile == "" &&
 		proxyConfig.NetworkProxyEnable == false &&

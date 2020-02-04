@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -76,7 +77,7 @@ func (t *WSTunnelClient) Start() {
 // TestConnection validates the configured parameters for correctness
 // and further attempts an actual connection request to confirm
 // if the client can successfully connect to remote backend server.
-func (t *WSTunnelClient) TestConnection(proxyURL *url.URL, localAddr net.IP) error {
+func (t *WSTunnelClient) TestConnection(devNetStatus *types.DeviceNetworkStatus, proxyURL *url.URL, localAddr net.IP) error {
 
 	if t.Tunnel == "" {
 		return fmt.Errorf("Must specify tunnel server ws://hostname:port")
@@ -98,7 +99,7 @@ func (t *WSTunnelClient) TestConnection(proxyURL *url.URL, localAddr net.IP) err
 
 	serverName := strings.Split(t.TunnelServerNameAndPort, ":")[0]
 	// XXX assume v1 API for now
-	tlsConfig, err := GetTlsConfig(nil, serverName, nil, false)
+	tlsConfig, err := GetTlsConfig(devNetStatus, serverName, nil, false)
 	if err != nil {
 		log.Fatal(err)
 	}
