@@ -1,15 +1,6 @@
 #!/bin/sh
 
 USE_HW_WATCHDOG=1
-WATCHDOG_CTL=/run/watchdog.ctl
-
-register_watchdog() {
-  set $@
-  [ -p "$WATCHDOG_CTL" ] || (rm -rf "$WATCHDOG_CTL" ; mkfifo "$WATCHDOG_CTL")
-  for i in "$@"; do
-    echo "$i" >> "$WATCHDOG_CTL"
-  done
-}
 
 reload_watchdog() {
     # Firs thinsg first: kill it!
@@ -29,11 +20,8 @@ reload_watchdog() {
         sync
     fi
 
-    # Now lets rebuild the configuration file
-    rm -f /etc/watchdog.conf
-    cp /etc/watchdog.conf.seed /etc/watchdog.conf
-    find /cache -type f | sed -e 's#/cache/pid#pidfile = #' \
-      -e '/\/cache\/file/a change = 300' -e 's#/cache/file#file = #' >> /etc/watchdog.conf
+    # Now lets replace the configuration file
+    cp -f "$1" /etc/watchdog.conf
 
     # And finally re-start
     /usr/sbin/watchdog -F -s &
@@ -44,25 +32,17 @@ log() {
 }
 
 run_watchdog() {
-   local LAST_RELOAD
-   LAST_RELOAD="$(date -u +%s)"
    while true; do
-      read cmd
-      log "Received the following watchdog request $cmd"
-      case "$cmd" in
-         .*) rm "/cache/$cmd"
-             ;;
-         ?*) mkdir -p "/cache/$(dirname "$cmd")"
-             touch "/cache/$cmd"
-             ;;
-      esac
-      # do the reload every 30 seconds only to not oscillate too much
-      if [ $((LAST_RELOAD + 30)) -lt "$(date -u +%s)" ]; then
-         reload_watchdog
-         LAST_RELOAD="$(date -u +%s)"
-      else
-         [ "$cmd" ] && (sleep 33 ; echo "" >> "$WATCHDOG_CTL") &
-      fi
+      # Now lets see if we need to rebuild the configuration file
+      (cat /etc/watchdog.conf.seed
+       find /run/watchdog -type f | sed -e 's#/run/watchdog/pid#pidfile = /run#' \
+          -e '/\/run\/watchdog\/file/a change = 300'                             \
+          -e 's#/run/watchdog/file#file = /run#') > /etc/watchdog.conf.latest
+
+      # If the configuration changed: reload watchdog
+      cmp -s /etc/watchdog.conf.latest /etc/watchdog.conf || reload_watchdog /etc/watchdog.conf.latest
+
+      sleep 30
    done
 }
 
@@ -84,7 +64,7 @@ if [ $USE_HW_WATCHDOG = 1 ]; then
    echo 'watchdog-device = /dev/watchdog' >> /etc/watchdog.conf.seed
 fi
 
-# Create a control channel if it doesn't exist yet
-[ -p "$WATCHDOG_CTL" ] || (rm -rf "$WATCHDOG_CTL" ; mkfifo "$WATCHDOG_CTL")
+# Create configuration end-points
+mkdir -p /run/watchdog/pid /run/watchdog/file 2> /dev/null || :
 
-run_watchdog < "$WATCHDOG_CTL" 123>>"$WATCHDOG_CTL"
+run_watchdog
