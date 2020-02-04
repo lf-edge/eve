@@ -1515,7 +1515,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	numOfContainerDisks := 0
 	for i, dc := range config.DiskConfigList {
 		if dc.Format == zconfig.Format_CONTAINER {
-			numOfContainerDisks += 1
+			numOfContainerDisks++
 		}
 		ds := &status.DiskStatusList[i]
 		ds.ImageID = dc.ImageID
