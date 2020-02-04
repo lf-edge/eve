@@ -92,9 +92,12 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	serverName := strings.Split(serverNameAndPort, ":")[0]
 	testUrl := serverNameAndPort + "/api/v1/edgedevice/ping"
 
+	// XXX set by caller?
+	v2api := false
 	zedcloudCtx := zedcloud.ZedCloudContext{
 		DeviceNetworkStatus: &status,
 		NetworkSendTimeout:  timeout,
+		V2API:               v2api,
 	}
 
 	// Get device serial number
@@ -103,7 +106,8 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	log.Infof("NIM Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
-	tlsConfig, err := zedcloud.GetTlsConfig(serverName, nil)
+	tlsConfig, err := zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus, serverName,
+		nil, zedcloudCtx.V2API)
 	if err != nil {
 		log.Infof("VerifyDeviceNetworkStatus: " +
 			"Device certificate not found, looking for Onboarding certificate")
@@ -116,7 +120,8 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 			return false, errors.New(errStr)
 		}
 		clientCert := &onboardingCert
-		tlsConfig, err = zedcloud.GetTlsConfig(serverName, clientCert)
+		tlsConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
+			serverName, clientCert, zedcloudCtx.V2API)
 		if err != nil {
 			errStr := "TLS configuration for talking to Zedcloud cannot be found"
 

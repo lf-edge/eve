@@ -311,6 +311,8 @@ message ProxyStatus {
   bool networkProxyEnable = 4;
   string networkProxyURL = 5;
   string wpadURL = 6;
+  // XXX add? In config
+  // repeated bytes proxyCertPEM = 7;
 }
 
 message ProxyEntry {

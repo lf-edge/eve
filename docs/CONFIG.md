@@ -7,7 +7,8 @@ In general, EVE is trying to make sure that its controller always has the last w
 * `grub.cfg` - local tweaks to an [otherwise readonly grub.cfg](README.md#runtime-lifecycle)
 * `DevicePortConfig/override.json` - initial configuration for all of EVE's network interfaces (see below for details)
 * `server` - contains a FQDN of a controller and its port (e.g. controller.acme.com:123)
-* `root-certificate.pem` - contains an x509 root certificate for the controller
+* `root-certificate.pem` - contains an x509 root certificate to trust for the controller for TLS in V1 API and object signing in V2 API
+* `v2tlsbaseroot-certificates.pem` - contains the x509 root certificate to trust for the TLS to the controller when using the V2 API
 * `onboard.cert.pem` - onboarding certificate for the [initial registration](REGISTRATION.md) with the controller
 * `wpa_supplicant.conf` - a legacy way of configuring EVE's WiFi
 * `authorized_keys` - initial authorized SSH keys for accessing EVE's debug console

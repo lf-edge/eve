@@ -56,7 +56,8 @@ The EVE contributors and community need to prioritize which security risks to fo
 Recall that EVE's deployment model presupposes a controller that can exercise arbitrary control over Edge Nodes. EVE provides the following capabilities that can protect against an adversary trying to take control over an Edge Node by pretending to be a controller:
 
 * The controller's network address (hostname and port) is considered immutable and can only be changed by a total reinstall of EVE
-* The controller's identity is verified by a Root CA which is also considered immutable and sealed in TPM where possible
+* The controller's identity is verified by a Root CA which is also considered immutable and sealed in TPM where possible. This is used in the TLS verification for API V1 and in the object signature verification in API V2
+ * The TLS identity of the controller is verified by a Root CA. This is a single Root CA in API V1 and a larger set of root CAs plus the ability to express trust in proxy certificates in API V2.
 
 The principle that EVE's node forever gets bound to a fixed controller may strike some as too restrictive, but it allows a much easier reasoning about security properties and, since controller gets identified by the DNS name still allows a certain flexibility in deployment. It does, however, stand in stark contrast to EVE's fundamental guarantee of never ever requiring a "truck roll" to manage software on Edge Nodes. Unfortunately, avoiding a "truck roll" in this particular case will require us to design a comprehensive asset transfer protocol that tackles a whole host of thorny problems like:
 
@@ -65,7 +66,7 @@ The principle that EVE's node forever gets bound to a fixed controller may strik
 
 Given the complexity of designing such a protocol for EVE (especially solving the hardware validation problem), we are currently punting on the problem and declaring software-based asset transfer out of scope for now. However, we are in no way suggesting that this should be a permanent state of affairs.
 
-If there's an attempted modification of either controller's address (stored in /config/server) and controller's Root CA (/config/root.cert.pem) Edge Node should get disconnected from the controller and should be forced to do a hardware-assisted clear operation and start all over again.
+If there's an attempted modification of either controller's address (stored in /config/server) and controller's Root CA (/config/root-certificate.pem) Edge Node should get disconnected from the controller and should be forced to do a hardware-assisted clear operation and start all over again.
 
 On systems where TPM is available, the idea is to change TPM authentication policy from password to HMAC based authentication (TPM2_PolicyAuthValue), with hash calculated from the Root CA.  When device key is created, HMAC from Root CA will be passed, which is to be honored for every TPM command related to the key entity. i.e Each time Sign command is passed to TPM, the Root CA hash needs to be the same. If someone changes Root CA, HMAC will not match, and the device will be disconnected from zedCloud, forcing the user to do a TPM clear and start all over again.
 
