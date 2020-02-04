@@ -274,6 +274,7 @@ The body MUST be a protobuf message of type [attest.ZAttestNonceResp](./proto/at
 
 ### Attestation Quote
 
+
 Publish PCR quote computed by Trusted Platform Module, by including the latest nonce provided by the Controller
 
    POST /api/v1/edgeDevice/attestQuote
