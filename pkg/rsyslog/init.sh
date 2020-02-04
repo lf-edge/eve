@@ -1,16 +1,7 @@
 #!/bin/sh
 
-register_watchdog() {
-  local WATCHDOG_CTL
-  WATCHDOG_CTL=/run/watchdog.ctl
-  set $@
-  [ -p "$WATCHDOG_CTL" ] || (rm -rf "$WATCHDOG_CTL" ; mkfifo "$WATCHDOG_CTL")
-  for i in "$@"; do
-    echo "$i" >> "$WATCHDOG_CTL"
-  done
-}
-
-register_watchdog /pid/run/logread.pid /pid/run/rsyslogd.pid /pid/run/monitor-rsyslogd.pid
+mkdir -p /run/watchdog/pid 2>/dev/null || :
+(cd /run/watchdog/pid && touch logread.pid rsyslogd.pid monitor-rsyslogd.pid)
 
 ./monitor-rsyslog.sh &
 

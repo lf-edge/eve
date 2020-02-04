@@ -6,3 +6,9 @@ logtick  = 60
 repair-binary=/sbin/watchdog-report.sh
 # XXX Other processes we should potentially watch but they run outside
 # of this container:
+# sshd.pid
+# services.linuxkit/zededa-tools/init.pid
+# services.linuxkit/wwan/init.pid
+# services.linuxkit/wlan/init.pid
+# services.linuxkit/ntpd/init.pid
+# services.linuxkit/guacd/init.pid

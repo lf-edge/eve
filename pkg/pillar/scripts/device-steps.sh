@@ -3,7 +3,8 @@
 # Copyright (c) 2018 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-WATCHDOG_CTL=/run/watchdog.ctl
+WATCHDOG_PID=/run/watchdog/pid
+WATCHDOG_FILE=/run/watchdog/file
 CONFIGDIR=/config
 PERSISTDIR=/persist
 PERSIST_RKT_DATA_DIR=$PERSISTDIR/rkt
@@ -56,14 +57,6 @@ wait_for_touch() {
     else
         echo "$(date -Ins -u) waited $waited for $f"
     fi
-}
-
-register_watchdog() {
-  set $@
-  [ -p "$WATCHDOG_CTL" ] || (rm -rf "$WATCHDOG_CTL" ; mkfifo "$WATCHDOG_CTL")
-  for i in "$@"; do
-    echo "$i" >> "$WATCHDOG_CTL"
-  done
 }
 
 mkdir -p $ZTMPDIR
@@ -222,7 +215,13 @@ echo "$(date -Ins -u) Starting nodeagent"
 $BINDIR/nodeagent -c $CURPART &
 wait_for_touch nodeagent
 
-register_watchdog /pid/run/crond.pid /pid/run/ledmanager.pid /file/run/ledmanager.touch /file/run/nodeagent.touch
+mkdir -p "$WATCHDOG_PID" "$WATCHDOG_PID"
+touch "$WATCHDOG_PID/crond.pid"                                      \
+      "$WATCHDOG_PID/nodeagent.pid" "$WATCHDOG_FILE/nodeagent.touch" \
+      "$WATCHDOG_PID/ledmanager.pid" "$WATCHDOG_FILE/ledmanager.touch"
+# FIXME: the following will get removed once xen-tools is standalone
+mkdir -p "$WATCHDOG_PID/xen"
+(cd "$WATCHDOG_PID/xen" && touch qemu-dom0.pid xenconsoled.pid xenstored.pid)
 
 mkdir -p $DPCDIR
 
@@ -311,7 +310,7 @@ $BINDIR/nim -c $CURPART &
 wait_for_touch nim
 
 # Restart watchdog ledmanager and nim
-register_watchdog /pid/run/nim.pid /file/run/nim.touch
+touch "$WATCHDOG_PID/nim.pid" "$WATCHDOG_FILE/nim.touch"
 
 # Print diag output forever on changes
 $BINDIR/diag -c $CURPART -f -o /dev/console &
@@ -346,7 +345,8 @@ while [ "$YEAR" = "1970" ]; do
 done
 
 # Restart watchdog ledmanager, client, and nim
-register_watchdog /pid/run/zedclient.pid /pid/run/ntpd.pid
+touch "$WATCHDOG_PID/zedclient.pid" \
+      "$WATCHDOG_PID/ntpd.pid"
 
 if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
@@ -463,7 +463,7 @@ mkdir -p /var/tmp/zededa/GlobalDownloadConfig/
 echo \{\"MaxSpace\":"$space"\} >/var/tmp/zededa/GlobalDownloadConfig/global.json
 
 # Remove zedclient.pid from watchdog (get back to ledmanager and nim)
-register_watchdog ./pid/run/zedclient.pid
+rm "$WATCHDOG_PID/zedclient.pid"
 
 for AGENT in $AGENTS1; do
     echo "$(date -Ins -u) Starting $AGENT"
@@ -484,11 +484,11 @@ fi
 
 # Now run watchdog for all agents
 for AGENT in $AGENTS; do
-    register_watchdog "/pid/run/$AGENT.pid"
+    touch "$WATCHDOG_PID/$AGENT.pid"
     [ "$AGENT" = "lisp-ztr" ] && continue
-    register_watchdog "/file/run/$AGENT.touch"
+    touch "$WATCHDOG_FILE/$AGENT.touch"
     if [ "$AGENT" = "zedagent" ]; then
-       register_watchdog "/file/run/${AGENT}config.touch" "/file/run/${AGENT}metrics.touch" "/file/run/${AGENT}devinfo.touch"
+       touch "$WATCHDOG_FILE/${AGENT}config.touch" "$WATCHDOG_FILE/${AGENT}metrics.touch" "$WATCHDOG_FILE/${AGENT}devinfo.touch"
     fi
 done
 

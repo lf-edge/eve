@@ -45,7 +45,7 @@ RUN make && make dist
 RUN dist/install.sh /out
 
 # Filter out a few things that we don't currently need
-RUN rm /out/usr/share/qemu-xen/qemu/edk2-*
+RUN rm -rf /out/usr/share/qemu-xen/qemu/edk2-* /out/var/run
 
 FROM scratch
 ENTRYPOINT []
