@@ -1512,7 +1512,11 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 
 	log.Infof("configToStatus(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
+	numOfContainerDisks := 0
 	for i, dc := range config.DiskConfigList {
+		if dc.Format == zconfig.Format_CONTAINER {
+			numOfContainerDisks += 1
+		}
 		ds := &status.DiskStatusList[i]
 		ds.ImageID = dc.ImageID
 		ds.ImageSha256 = dc.ImageSha256
@@ -1558,6 +1562,12 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			}
 		}
 
+	}
+	if numOfContainerDisks > 1 {
+		err := `Bundle contains more than one container disk, running multiple containers
+				inside a pod is not supported now.`
+		log.Errorf(err)
+		return fmt.Errorf(err)
 	}
 	// XXX could defer to Activate
 	if config.CloudInitUserData != nil {
@@ -2251,25 +2261,20 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 		// Use rkt tool
 		// get the rkt image hash for this file; if we do not have it in the rkt cache,
 		// convert it
-		var containerImageSha256 []string
+		var containerImageSha256 string
 		for _, ds := range status.DiskStatusList {
 			if ds.Format == zconfig.Format_CONTAINER {
-				containerImageSha256 = append(containerImageSha256, ds.ImageSha256)
+				containerImageSha256 = ds.ImageSha256
+				break
 			}
 		}
-		if len(containerImageSha256) > 1 {
-			err := `Bundle contains more than one container disk, running multiple containers 
-				inside a pod is not supported now.`
-			log.Errorf(err)
-			return domainID, podUUID, fmt.Errorf(err)
-		}
-		ociFilename, err := utils.VerifiedImageFileLocation(containerImageSha256[0])
+		ociFilename, err := utils.VerifiedImageFileLocation(containerImageSha256)
 		if err != nil {
 			log.Errorf("DomainCreate: Failed to get Image File Location. "+
 				"err: %+s", err.Error())
 			return domainID, podUUID, err
 		}
-		log.Infof("ociFilename %s sha %s", ociFilename, containerImageSha256[0])
+		log.Infof("ociFilename %s sha %s", ociFilename, containerImageSha256)
 		imageHash, err := ociToRktImageHash(ociFilename)
 		if err != nil {
 			log.Error(err)
