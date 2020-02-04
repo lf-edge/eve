@@ -315,6 +315,7 @@ func maybeRetryDownload(ctx *downloaderContext,
 	}
 
 	// reset ErrorInfo, to start download again
+	status.RetryCount++
 	status.ClearErrorInfo()
 	publishDownloaderStatus(ctx, status)
 
