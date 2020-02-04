@@ -1627,19 +1627,26 @@ func createMountPointFile(imageHash, mpFileName string, status types.DomainStatu
 	}
 	defer file.Close()
 
-	appManifest, err := getAppManifest(imageHash)
+	appManifest, err := getRktManifest(imageHash)
 	if err != nil {
 		return fmt.Errorf("createMountPointFile: Error while fetching app manfest: %v", err.Error())
 	}
 
 	//Ignoring container image in status.DiskStatusList
-	if (len(status.DiskStatusList) - 1) != len(appManifest.App.MountPoints) {
-		if len(status.DiskStatusList) > len(appManifest.App.MountPoints) {
+	noOfDisks := len(status.DiskStatusList) - 1
+
+	//Validating if there are enough disks provided for the mount-points
+	if noOfDisks != len(appManifest.App.MountPoints) {
+
+		if noOfDisks > len(appManifest.App.MountPoints) {
+			//If no. of disks is (strictly) greater than no. of mount-points provided, we will ignore excessive disks.
 			log.Warnf("createMountPointFile: Number of volumes provided: %v is more than number of mount-points: %v. "+
-				"Excessive volumes will be ignored", len(status.DiskStatusList)-1, len(appManifest.App.MountPoints))
+				"Excessive volumes will be ignored", noOfDisks, len(appManifest.App.MountPoints))
 		} else {
+			//If no. of mount-points is (strictly) greater than no. of disks provided, we need to throw an error as there
+			// won't be enough disks to satisfy required mount-points.
 			return fmt.Errorf("createMountPointFile: Number of volumes provided: %v is less than number of mount-points: %v. ",
-				len(status.DiskStatusList)-1, len(appManifest.App.MountPoints))
+				noOfDisks, len(appManifest.App.MountPoints))
 		}
 	}
 

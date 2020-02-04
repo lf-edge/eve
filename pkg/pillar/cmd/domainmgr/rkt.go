@@ -240,7 +240,7 @@ func rktGetHashes() (map[string]string, error) {
 	rktHashes := strings.Fields(string(stdoutStderr))
 	// now go through each one and get its docker hash
 	for _, rh := range rktHashes {
-		manifest, err := getAppManifest(rh)
+		manifest, err := getRktManifest(rh)
 		if err != nil {
 			return m, fmt.Errorf("rkt manifect fetch failed: %s", err.Error())
 		}
@@ -258,7 +258,7 @@ func rktGetHashes() (map[string]string, error) {
 	return m, nil
 }
 
-func getAppManifest(imageHash string) (RktManifest, error) {
+func getRktManifest(imageHash string) (RktManifest, error) {
 	// process the json to get the exact item we need
 	var manifest RktManifest
 
