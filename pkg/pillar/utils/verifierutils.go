@@ -25,7 +25,7 @@ func locationFromDir(locationDir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(locations) != 1 {
+	if len(locations) > 1 {
 		return "", fmt.Errorf("Multiple files in %s\n",
 			locationDir)
 	}
