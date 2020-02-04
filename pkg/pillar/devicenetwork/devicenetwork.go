@@ -319,15 +319,18 @@ func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool 
 	tmpfile.Chmod(0600)
 
 	log.Infof("devPortInstallWifiConfig: write file %s for wifi params %v, size %d", wpaFilename, wconfig.Wifi, len(wconfig.Wifi))
-	tmpfile.WriteString("# Fill in the networks and their passwords\nnetwork={\n")
 	if len(wconfig.Wifi) == 0 {
 		// generate dummy wpa_supplicant.conf
+		tmpfile.WriteString("# Fill in the networks and their passwords\nnetwork={\n")
 		tmpfile.WriteString("       ssid=\"XXX\"\n")
 		tmpfile.WriteString("       scan_ssid=1\n")
 		tmpfile.WriteString("       key_mgmt=WPA-PSK\n")
 		tmpfile.WriteString("       psk=\"YYYYYYYY\"\n")
+		tmpfile.WriteString("}\n")
 	} else {
+		tmpfile.WriteString("# Automatically generated\n")
 		for _, wifi := range wconfig.Wifi {
+			tmpfile.WriteString("network={\n")
 			s := fmt.Sprintf("        ssid=\"%s\"\n", wifi.SSID)
 			tmpfile.WriteString(s)
 			tmpfile.WriteString("        scan_ssid=1\n")
@@ -363,9 +366,9 @@ func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool 
 				s = fmt.Sprintf("        priority=%d\n", wifi.Priority)
 				tmpfile.WriteString(s)
 			}
+			tmpfile.WriteString("}\n")
 		}
 	}
-	tmpfile.WriteString("}\n")
 	tmpfile.Sync()
 	if err := tmpfile.Close(); err != nil {
 		log.Errorln("Close ", tmpfile.Name(), err)
