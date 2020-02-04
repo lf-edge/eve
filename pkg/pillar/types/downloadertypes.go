@@ -138,7 +138,6 @@ func (status *DownloaderStatus) ClearPendingStatus() {
 
 // HandleDownloadFail : Do Failure specific tasks
 func (status *DownloaderStatus) HandleDownloadFail(errStr string) {
-	status.RetryCount++
 	status.SetErrorInfo(errStr)
 	status.ClearPendingStatus()
 }

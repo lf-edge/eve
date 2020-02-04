@@ -241,9 +241,10 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		doDelete(ctx, key, locDirname, status)
 		// free the reserved storage
 		unreserveSpace(ctx, status)
+		status.RetryCount++
 		status.HandleDownloadFail(errStr)
 		publishDownloaderStatus(ctx, status)
-		log.Errorf("handleSyncOpResponse(%s): failed for with %s\n",
+		log.Errorf("handleSyncOpResponse(%s): failed with %s\n",
 			status.Name, errStr)
 		return
 	}
@@ -255,14 +256,15 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 		// free the reserved storage
 		unreserveSpace(ctx, status)
 		errStr := fmt.Sprintf("%v", err)
+		status.RetryCount++
 		status.HandleDownloadFail(errStr)
 		publishDownloaderStatus(ctx, status)
-		log.Errorf("handleSyncOpResponse(%s): failed for with %s\n",
+		log.Errorf("handleSyncOpResponse(%s): failed with %s\n",
 			status.Name, errStr)
 		return
 	}
 	size := uint64(info.Size())
-	// we need to release the reservered space
+	// we need to release the reserved space
 	// and convert it to used space
 	allocateSpace(ctx, status, size)
 
