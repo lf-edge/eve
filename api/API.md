@@ -54,6 +54,7 @@ In general, there is one directory for each API endpoint:
 )
 * `metrics`: The ZMetricMsg message sent from Device to Controller periodically to report on resource usage etc.
 * `logs`: The LogBundle message sent from Device to Controller containing internal device logs.
+* `apps/instances/{app-instance-uuid}/logs`: The LogBundle message sent from Device to Controller containing internal device logs.
 
 
 ## Authentication
