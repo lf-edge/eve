@@ -5,10 +5,10 @@ export LISP_ITR_WAIT_TIME=1
 
 #
 # Note about RTRs that are deployed in cloud providers, which means they
-# are behind NATs. You need to configure the global address on the 
-# loopback interface since it needs to know to get the ETR's RLOC address 
-# from the mapping versus its own address it could mistakenly select as an 
-# ETR RLOC because the RTR is comparing its local address to its global 
+# are behind NATs. You need to configure the global address on the
+# loopback interface since it needs to know to get the ETR's RLOC address
+# from the mapping versus its own address it could mistakenly select as an
+# ETR RLOC because the RTR is comparing its local address to its global
 # address in the mapping, when it isn't the same. So use the commands below
 # to start the RTR.
 #

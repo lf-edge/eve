@@ -98,7 +98,7 @@ lisp database-mapping {
     }
 }
 lisp map-resolver {
-	dns-name = zedcontrol.alpha.zededa.net
+        dns-name = zedcontrol.alpha.zededa.net
 }
 lisp map-server {
     dns-name = zedcontrol.alpha.zededa.net
