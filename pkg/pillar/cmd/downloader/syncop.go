@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"strings"
 	"time"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
