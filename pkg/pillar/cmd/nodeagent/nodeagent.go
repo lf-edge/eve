@@ -52,11 +52,15 @@ const (
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
+
+	// Timer values ( in sec ) to handle reboot
+	minRebootDelay          uint32 = 30
+	maxDomainHaltTime       uint32 = 300
+	domainHaltWaitIncrement uint32 = 5
 )
 
 // Version : module version
 var Version = "No version specified"
-var rebootDelay = 30
 
 type nodeagentContext struct {
 	GCInitialized          bool // Received initial GlobalConfig
@@ -66,6 +70,7 @@ type nodeagentContext struct {
 	subZbootStatus         pubsub.Subscription
 	subZedAgentStatus      pubsub.Subscription
 	subDeviceNetworkStatus pubsub.Subscription
+	subDomainStatus        pubsub.Subscription
 	pubZbootConfig         pubsub.Publication
 	pubNodeAgentStatus     pubsub.Publication
 	curPart                string
@@ -90,10 +95,35 @@ type nodeagentContext struct {
 	rebootStack            string
 	rebootTime             time.Time
 	restartCounter         uint32
+
+	// Some contants.. Declared here as variables to enable unit tests
+	minRebootDelay          uint32
+	maxDomainHaltTime       uint32
+	domainHaltWaitIncrement uint32
 }
 
 var debug = false
 var debugOverride bool // From command line arg
+
+func newNodeagentContext() nodeagentContext {
+	nodeagentCtx := nodeagentContext{}
+	nodeagentCtx.minRebootDelay = minRebootDelay
+	nodeagentCtx.maxDomainHaltTime = maxDomainHaltTime
+	nodeagentCtx.domainHaltWaitIncrement = domainHaltWaitIncrement
+
+	nodeagentCtx.sshAccess = true // Kernel default - no iptables filters
+	nodeagentCtx.globalConfig = &types.GlobalConfigDefaults
+
+	// start the watchdog process timer tick
+	duration := time.Duration(watchdogInterval) * time.Second
+	nodeagentCtx.stillRunning = time.NewTicker(duration)
+
+	// set the ticker timer
+	duration = time.Duration(timeTickInterval) * time.Second
+	nodeagentCtx.tickerTimer = time.NewTicker(duration)
+	nodeagentCtx.configGetStatus = types.ConfigGetFail
+	return nodeagentCtx
+}
 
 // Run : nodeagent run entry function
 func Run() {
@@ -124,20 +154,8 @@ func Run() {
 
 	log.Infof("Starting %s, on %s\n", agentName, curpart)
 
-	nodeagentCtx := nodeagentContext{}
+	nodeagentCtx := newNodeagentContext()
 	nodeagentCtx.curPart = strings.TrimSpace(curpart)
-
-	nodeagentCtx.sshAccess = true // Kernel default - no iptables filters
-	nodeagentCtx.globalConfig = &types.GlobalConfigDefaults
-
-	// start the watchdog process timer tick
-	duration := time.Duration(watchdogInterval) * time.Second
-	nodeagentCtx.stillRunning = time.NewTicker(duration)
-
-	// set the ticker timer
-	duration = time.Duration(timeTickInterval) * time.Second
-	nodeagentCtx.tickerTimer = time.NewTicker(duration)
-	nodeagentCtx.configGetStatus = types.ConfigGetFail
 
 	// Make sure we have a GlobalConfig file with defaults
 	utils.EnsureGCFile()
@@ -185,6 +203,16 @@ func Run() {
 	log.Infof("Current partition: %s, inProgress: %v\n", nodeagentCtx.curPart,
 		nodeagentCtx.updateInprogress)
 	publishNodeAgentStatus(&nodeagentCtx)
+
+	// Get DomainStatus from domainmgr
+	subDomainStatus, err := pubsublegacy.Subscribe("domainmgr",
+		types.DomainStatus{}, false, &nodeagentCtx,
+		&pubsub.SubscriptionOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	nodeagentCtx.subDomainStatus = subDomainStatus
+	subDomainStatus.Activate()
 
 	// Pick up debug aka log level before we start real work
 	log.Infof("Waiting for GCInitialized\n")
