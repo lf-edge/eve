@@ -34,7 +34,7 @@ RUN apk del py2-pip py2-pyflakes
 # Putting it all together
 FROM alpine:3.8
 
-RUN apk add --no-cache python libffi openssl libpcap iproute2
+RUN apk add --no-cache python libffi openssl libpcap iproute2 tini
 
 COPY --from=lisp /lisp /lisp/
 COPY --from=lisp /usr/bin/pydoc /usr/bin/smtpd.py /usr/bin/
@@ -48,4 +48,4 @@ EXPOSE 8080
 
 WORKDIR /lisp
 ENTRYPOINT []
-CMD ["/init.sh"]
+CMD ["/sbin/tini", "/init.sh"]

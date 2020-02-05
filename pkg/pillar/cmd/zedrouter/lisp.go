@@ -165,8 +165,6 @@ const (
 	lispDirname  = "/opt/zededa/lisp"
 	destFilename = "/run/lisp.config"
 	RLFilename   = "/run/lisp.config.sh"
-	RestartCmd   = "/bin/true"
-	StopCmd      = "/bin/true"
 )
 
 // We write files with the IID-specifics (and not EID) to files
@@ -463,9 +461,6 @@ func updateLisp(lispRunDirname string,
 		return
 	}
 
-	// This seems safer; make sure it is stopped before rewriting file
-	stopLisp()
-
 	if err := os.Rename(tmpfile.Name(), destFilename); err != nil {
 		log.Errorln(err)
 		return
@@ -506,8 +501,6 @@ func updateLisp(lispRunDirname string,
 	}
 	// Check how many EIDs we have configured. If none we stop lisp
 	if eidCount == 0 {
-		stopLisp()
-
 		// XXX We have changed the design to have lisp-ztr dataplane
 		// always run and not do anything unless zedrouter sends `Legacy = false`
 		// configuration to lisp-ztr process via pubsub.
@@ -610,16 +603,6 @@ func restartLisp(portStatus []types.NetworkPortStatus, devices string) {
 		return
 	}
 	log.Debugf("Wrote %s\n", RLFilename)
-
-	log.Debugf("Restarting LISP\n")
-	cmd := wrap.Command(RestartCmd)
-	stdoutStderr, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Errorln("restarting lisp failed ", err)
-		log.Errorf("restarting list produced %s\n", string(stdoutStderr))
-		return
-	}
-	log.Infof("restartLisp done: output %s\n", string(stdoutStderr))
 }
 
 func maybeStartLispDataPlane() {
@@ -681,17 +664,4 @@ func isLispDataPlaneRunning() (bool, []string) {
 	pids = pids[:len(pids)-1]
 
 	return true, pids
-}
-
-func stopLisp() {
-
-	log.Debugf("stopLisp\n")
-	cmd := wrap.Command(StopCmd)
-	stdoutStderr, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Errorln("stopping lisp failed ", err)
-		log.Errorf("stopping list produced %s\n", string(stdoutStderr))
-		return
-	}
-	log.Debugf("stopLisp done: output %s\n", string(stdoutStderr))
 }

@@ -161,14 +161,10 @@ func Run() {
 	}
 	defer logf.Close()
 
-	// Note that LISP needs a separate directory since it moves
-	// old content to a subdir when it (re)starts
-	lispLogDirName := fmt.Sprintf("%s/%s", logDirName, "lisp")
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("Starting %s watching %s\n", agentName, logDirName)
-	log.Infof("watching %s\n", lispLogDirName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
@@ -339,9 +335,6 @@ func Run() {
 	logDirChanges := make(chan string)
 	go watch.WatchStatus(logDirName, false, logDirChanges)
 
-	lispLogDirChanges := make(chan string)
-	go watch.WatchStatus(lispLogDirName, false, lispLogDirChanges)
-
 	xenLogDirChanges := make(chan string)
 	go watch.WatchStatus(xenLogDirname, false, xenLogDirChanges)
 
@@ -350,7 +343,6 @@ func Run() {
 	// XXX state sharing with HandleDeferred?
 	go handleLogDir(logDirChanges, logDirName, &ctx)
 	go handleLogDir(otherLogDirChanges, otherLogDirname, &otherCtx)
-	go handleLogDir(lispLogDirChanges, lispLogDirName, &ctx)
 	go handleXenLogDir(xenLogDirChanges, xenLogDirname, &xenCtx)
 
 	go parseAndSendSyslogEntries(&ctx)
