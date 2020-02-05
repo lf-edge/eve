@@ -1,7 +1,6 @@
 #!/bin/sh
 
 mkdir -p /run/watchdog/pid 2>/dev/null || :
-(cd /run/watchdog/pid && touch logread.pid rsyslogd.pid monitor-rsyslogd.pid)
 
 ./monitor-rsyslog.sh &
 
@@ -14,6 +13,7 @@ do
     fi
     (/usr/bin/logread -F -socket /run/memlogdq.sock | logger) &
     echo $! > /run/logread.pid
+    touch /run/watchdog/pid/logread.pid
 
     LOOP_COUNT=0
     while [ -z "$(pgrep logread)" ];

@@ -17,6 +17,7 @@ start_rsyslogd()
 
     IMGP=$(cat /run/eve.id 2>/dev/null)
     IMGP=${IMGP:-IMGX} /usr/sbin/rsyslogd -n &
+    touch /run/watchdog/pid/rsyslogd.pid
 }
 
 wait_for_rsyslogd()
@@ -36,6 +37,7 @@ wait_for_rsyslogd()
 
 # write our own PID to /run/monitor-rsyslogd.pid
 echo $$ > /run/monitor-rsyslogd.pid
+touch /run/watchdog/pid/monitor-rsyslogd.pid
 
 # start rsyslogd for the fist time after device boot
 start_rsyslogd
