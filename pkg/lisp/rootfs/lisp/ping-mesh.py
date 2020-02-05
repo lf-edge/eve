@@ -26,7 +26,7 @@ def get_iid(xtr):
         return(iid.split("[")[1])
     #endfor
     return("?")
-#endif    
+#endif
 
 #------------------------------------------------------------------------------
 
@@ -71,6 +71,3 @@ for i in range(0, iterations):
 #endfor
 
 exit(0)
-
-
-    

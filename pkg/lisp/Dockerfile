@@ -8,7 +8,7 @@ ENV GOFLAGS=-mod=vendor
 ENV GO111MODULE=on
 ENV CGO_ENABLED=1
 
-ADD ./  /lisp/
+COPY ./  /lisp/
 WORKDIR /lisp
 RUN go build -mod=vendor -o lisp-ztr ./cmd/lisp-ztr
 RUN strip lisp-ztr
