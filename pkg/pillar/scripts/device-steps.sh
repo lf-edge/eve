@@ -215,7 +215,7 @@ echo "$(date -Ins -u) Starting nodeagent"
 $BINDIR/nodeagent -c $CURPART &
 wait_for_touch nodeagent
 
-mkdir -p "$WATCHDOG_PID" "$WATCHDOG_PID"
+mkdir -p "$WATCHDOG_PID" "$WATCHDOG_FILE"
 touch "$WATCHDOG_PID/crond.pid"                                      \
       "$WATCHDOG_PID/nodeagent.pid" "$WATCHDOG_FILE/nodeagent.touch" \
       "$WATCHDOG_PID/ledmanager.pid" "$WATCHDOG_FILE/ledmanager.touch"

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-mkdir -p /run/watchdog/pid 2>/dev/null || :
+mkdir -p /run/watchdog/pid
 
 ./monitor-rsyslog.sh &
 
