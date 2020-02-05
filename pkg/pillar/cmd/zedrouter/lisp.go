@@ -164,7 +164,7 @@ const (
 
 	lispDirname  = "/opt/zededa/lisp"
 	destFilename = "/run/lisp.config"
-	RLFilename   = "/run/lisp.config.sh"
+	shFilename   = "/run/lisp.config.sh"
 )
 
 // We write files with the IID-specifics (and not EID) to files
@@ -438,7 +438,7 @@ func updateLisp(lispRunDirname string,
 	for _, file := range files {
 		// The IID files are named by the IID hence an integer
 		if _, err := strconv.Atoi(file.Name()); err != nil {
-			eidCount += 1
+			eidCount++
 		}
 		filename := lispRunDirname + "/" + file.Name()
 		log.Debugf("Copying from %s to %s\n",
@@ -597,12 +597,12 @@ func restartLisp(portStatus []types.NetworkPortStatus, devices string) {
 		"export LISP_PORT_IFNAME=%s\n"
 
 	b := []byte(fmt.Sprintf(RLTemplate, devices, itrTimeout, port.IfName))
-	err := ioutil.WriteFile(RLFilename, b, 0744)
+	err := ioutil.WriteFile(shFilename, b, 0744)
 	if err != nil {
-		log.Fatal("WriteFile", err, RLFilename)
+		log.Fatal("WriteFile", err, shFilename)
 		return
 	}
-	log.Debugf("Wrote %s\n", RLFilename)
+	log.Debugf("Wrote %s\n", shFilename)
 }
 
 func maybeStartLispDataPlane() {

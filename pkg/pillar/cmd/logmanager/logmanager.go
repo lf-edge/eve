@@ -42,7 +42,7 @@ const (
 	xenLogDirname    = "/var/log/xen"
 	lastSentDirname  = "lastlogsent"  // Directory in /persist/
 	lastDeferDirname = "lastlogdefer" // Directory in /persist/
-	logsApi          = "api/v1/edgedevice/logs"
+	logsAPI          = "api/v1/edgedevice/logs"
 	logMaxMessages   = 100
 	logMaxBytes      = 32768 // Approximate - no headers counted
 	// Time limits for event loop handlers
@@ -56,7 +56,7 @@ var (
 	debug               bool
 	debugOverride       bool // From command line arg
 	serverName          string
-	logsUrl             string
+	logsURL             string
 	zedcloudCtx         zedcloud.ZedCloudContext
 
 	globalDeferInprogress bool
@@ -73,7 +73,7 @@ type logmanagerContext struct {
 	GCInitialized   bool
 }
 
-// Set from Makefile
+// Version is set from Makefile
 var Version = "No version specified"
 
 // Based on the proto file
@@ -114,7 +114,7 @@ type imageLoggerContext struct {
 	logfileReaders []imageLogfileReader
 }
 
-// Context for handleDNSModify
+// DNSContext holds context for handleDNSModify
 type DNSContext struct {
 	usableAddressCount     int
 	subDeviceNetworkStatus pubsub.Subscription
@@ -128,6 +128,7 @@ type zedcloudLogs struct {
 	LastSuccess  time.Time
 }
 
+// Run is an entry point into running logmanager
 func Run() {
 	defaultLogdirname := agentlog.GetCurrentLogdir()
 	versionPtr := flag.Bool("v", false, "Version")
@@ -435,7 +436,7 @@ func handleLogDir(logDirChanges chan string, logDirName string,
 	for {
 		select {
 		case change := <-logDirChanges:
-			HandleLogDirEvent(change, logDirName, ctx,
+			handleLogDirEvent(change, logDirName, ctx,
 				handleLogDirModify, handleLogDirDelete)
 		}
 	}
@@ -447,7 +448,7 @@ func handleXenLogDir(logDirChanges chan string, logDirName string,
 	for {
 		select {
 		case change := <-logDirChanges:
-			HandleLogDirEvent(change, logDirName, ctx,
+			handleLogDirEvent(change, logDirName, ctx,
 				handleXenLogDirModify, handleXenLogDirDelete)
 		}
 	}
@@ -554,7 +555,7 @@ func processEvents(image string, prevLastSent time.Time,
 				dropped++
 				break
 			}
-			HandleLogEvent(event, reportLogs, messageCount)
+			handleLogEvent(event, reportLogs, messageCount)
 			messageCount++
 			// Bytes before appending this one
 			byteCount := proto.Size(reportLogs)
@@ -570,7 +571,7 @@ func processEvents(image string, prevLastSent time.Time,
 			sent = sendProtoStrForLogs(reportLogs, image,
 				iteration)
 			messageCount = 0
-			iteration += 1
+			iteration++
 			if sent {
 				recordLast(lastSentDirname, image)
 			} else {
@@ -589,7 +590,7 @@ func processEvents(image string, prevLastSent time.Time,
 			sent := sendProtoStrForLogs(reportLogs, image,
 				iteration)
 			messageCount = 0
-			iteration += 1
+			iteration++
 			if sent {
 				recordLast(lastSentDirname, image)
 			} else {
@@ -638,20 +639,20 @@ func readLast(dirname string, image string) time.Time {
 	return st.ModTime()
 }
 
-var msgIdCounter = 1
+var msgIDCounter = 1
 var iteration = 0
 
-func HandleLogEvent(event logEntry, reportLogs *logs.LogBundle, counter int) {
-	// Assign a unique msgId for each message
-	msgId := msgIdCounter
-	msgIdCounter += 1
+func handleLogEvent(event logEntry, reportLogs *logs.LogBundle, counter int) {
+	// Assign a unique msgID for each message
+	msgID := msgIDCounter
+	msgIDCounter++
 	log.Debugf("Read event from %s time %v id %d: %s\n",
-		event.source, event.timestamp, msgId, event.content)
+		event.source, event.timestamp, msgID, event.content)
 	// Have to discard if too large since service doesn't
 	// handle above 64k; we limit payload at 32k
 	strLen := len(event.content)
 	if strLen > logMaxBytes {
-		log.Errorf("HandleLogEvent: dropping source %s %d bytes: %s\n",
+		log.Errorf("handleLogEvent: dropping source %s %d bytes: %s\n",
 			event.source, strLen, event.content)
 		return
 	}
@@ -662,14 +663,14 @@ func HandleLogEvent(event logEntry, reportLogs *logs.LogBundle, counter int) {
 	logDetails.Timestamp, _ = ptypes.TimestampProto(event.timestamp)
 	logDetails.Source = event.source
 	logDetails.Iid = event.iid
-	logDetails.Msgid = uint64(msgId)
+	logDetails.Msgid = uint64(msgID)
 	logDetails.Filename = event.filename
 	logDetails.Function = event.function
 	oldLen := int64(proto.Size(reportLogs))
 	reportLogs.Log = append(reportLogs.Log, logDetails)
 	newLen := int64(proto.Size(reportLogs))
 	if newLen > logMaxBytes {
-		log.Warnf("HandleLogEvent: source %s from %d to %d bytes: %s\n",
+		log.Warnf("handleLogEvent: source %s from %d to %d bytes: %s\n",
 			event.source, oldLen, newLen, event.content)
 	}
 }
@@ -704,12 +705,12 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 	if zedcloud.HasDeferred(image) {
 		log.Infof("SendProtoStrForLogs queued after existing for %s\n",
 			image)
-		zedcloud.AddDeferred(image, buf, size, logsUrl, zedcloudCtx,
+		zedcloud.AddDeferred(image, buf, size, logsURL, zedcloudCtx,
 			return400)
 		reportLogs.Log = []*logs.LogEntry{}
 		return false
 	}
-	resp, _, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, logsUrl,
+	resp, _, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, logsURL,
 		size, buf, iteration, return400)
 	// XXX We seem to still get large or bad messages which are rejected
 	// by the server. Ignore them to make sure we can log subsequent ones.
@@ -717,7 +718,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 	// this one?
 	if resp != nil && resp.StatusCode == 400 {
 		log.Errorf("Failed sending %d bytes image %s to %s; code 400; ignored error\n",
-			size, image, logsUrl)
+			size, image, logsURL)
 		reportLogs.Log = []*logs.LogEntry{}
 		return true
 	}
@@ -732,12 +733,12 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		if buf == nil {
 			log.Fatal("sendProtoStrForLogs malloc error:")
 		}
-		zedcloud.AddDeferred(image, buf, size, logsUrl, zedcloudCtx,
+		zedcloud.AddDeferred(image, buf, size, logsURL, zedcloudCtx,
 			return400)
 		reportLogs.Log = []*logs.LogEntry{}
 		return false
 	}
-	log.Debugf("Sent %d bytes image %s to %s\n", size, image, logsUrl)
+	log.Debugf("Sent %d bytes image %s to %s\n", size, image, logsURL)
 	reportLogs.Log = []*logs.LogEntry{}
 	return true
 }
@@ -753,7 +754,7 @@ func sendCtxInit(ctx *logmanagerContext) {
 	serverName = strings.Split(serverName, ":")[0]
 
 	//set log url
-	logsUrl = serverNameAndPort + "/" + logsApi
+	logsURL = serverNameAndPort + "/" + logsAPI
 
 	v2api := false // XXX set
 	zedcloudCtx.DeviceNetworkStatus = deviceNetworkStatus
@@ -795,7 +796,7 @@ func sendCtxInit(ctx *logmanagerContext) {
 	log.Infof("Read UUID %s\n", devUUID)
 }
 
-func HandleLogDirEvent(change string, logDirName string, ctx interface{},
+func handleLogDirEvent(change string, logDirName string, ctx interface{},
 	handleLogDirModifyFunc logDirModifyHandler,
 	handleLogDirDeleteFunc logDirDeleteHandler) {
 
