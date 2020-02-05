@@ -9,7 +9,7 @@ if [ "$SVC" == "ztr1" ] || [ "$SVC" == "ztr2" ] || [ "$SVC" == "ztr3" ] || \
    [ "$SVC" == "ztr41" ]; then
         mkdir -p /persist/IMGA/log/
         mkdir -p /var/run/zedrouter/DeviceNetworkStatus/
-        cp global.json.$SVC /var/run/zedrouter/DeviceNetworkStatus/global.json
+        cp "global.json.$SVC" /var/run/zedrouter/DeviceNetworkStatus/global.json
 fi
 
 #

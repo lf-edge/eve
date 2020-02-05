@@ -1,9 +1,11 @@
 ARG GOVER=1.12.4
 FROM golang:${GOVER}-alpine as build
-RUN apk add --no-cache git gcc linux-headers libc-dev util-linux libpcap-dev make
+RUN apk add --no-cache           \
+        gcc=8.3.0-r0             \
+        linux-headers=4.18.13-r1 \
+        libc-dev=0.7.1-r0        \
+        libpcap-dev=1.9.0-r1
 
-# These three are supporting rudimentary cross-build capabilities.
-# The only one supported so far is cross compiling for aarch64 on x86
 ENV GOFLAGS=-mod=vendor
 ENV GO111MODULE=on
 ENV CGO_ENABLED=1
@@ -34,7 +36,14 @@ RUN apk del py2-pip py2-pyflakes
 # Putting it all together
 FROM alpine:3.8
 
-RUN apk add --no-cache python libffi openssl libpcap iproute2 tini
+RUN echo da
+RUN apk add --no-cache \
+        libffi=3.2.1-r4    \
+        libpcap=1.8.1-r1   \
+        python=2.7.15-r3   \
+        openssl=1.0.2u-r0  \
+        iproute2=4.13.0-r0 \
+        tini=0.18.0-r0
 
 COPY --from=lisp /lisp /lisp/
 COPY --from=lisp /usr/bin/pydoc /usr/bin/smtpd.py /usr/bin/
