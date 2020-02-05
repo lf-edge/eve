@@ -71,7 +71,7 @@ type PublicationOptions struct {
 	Persistent bool
 }
 
-// NewPublication creates a new publication with given options
+// Publication creates a new publication with given options
 func (p *PubSub) Publication(options PublicationOptions) (Publication, error) {
 	if options.AgentScope != "" && options.Persistent == true {
 		return nil, fmt.Errorf("cannot create a persitent publication with a scope agentName %s", options.AgentName)
