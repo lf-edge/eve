@@ -14,8 +14,7 @@ option java_package = "com.zededa.cloud.uservice.proto";
 // device certificate for v1.
 // The message is assumed to be protected by signing envelope for v2.
 message ZEdgeNodeCert {
-  string deviceUuid = 1;      //UUID of the device, assigned during register
-  repeated ZCert certs = 2;   //list of certificates sent by edge node
+  repeated ZCert certs = 1;   //list of certificates sent by edge node
 }
 
 // This is the response payload for GET /api/v1/edgeDevice/ControllerCerts

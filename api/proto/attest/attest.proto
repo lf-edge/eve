@@ -6,17 +6,12 @@ syntax = "proto3";
 option go_package  = "github.com/lf-edge/eve/api/go/certs";
 option java_package = "com.zededa.cloud.uservice.proto";
 
-// ZAttestNonceReq is request payload for POST /api/v1/edgeDevice/attestNonce
-// or /api/v2/edgeDevice/attestNonce
 // ZAttestNonceResp is response payload for POST /api/v1/edgeDevice/attestNonce
-// or /api/v2/edgeDevice/attestNonce
+// or /api/v2/edgeDevice/attestNonce. It is an empty POST from the client
 // The message is assumed to be protected by a TLS session bound to the
 // device certificate for v1.
 // The message is assumed to be protected by signing envelope for v2.
 
-message ZAttestNonceReq {
-  string deviceUuid = 1;  //UUID assigned by the controller during register
-}
 message ZAttestNonceResp {
   bytes nonce = 1;      //nonce to use in quote generation
 }
@@ -27,10 +22,9 @@ message ZAttestNonceResp {
 // device certificate for v1.
 // The message is assumed to be protected by signing envelope for v2.
 message ZAttestQuoteReq {
-  string deviceUuid = 1; //UUID assigned by the controller during register
-  bytes attestData = 2;  //TPMS_ATTEST (Table 2:123) in https://trustedcomputinggroup.org/wp-content/uploads/TPM-Rev-2.0-Part-2-Structures-01.38.pdf
+  bytes attestData = 1;  //TPMS_ATTEST (Table 2:123) in https://trustedcomputinggroup.org/wp-content/uploads/TPM-Rev-2.0-Part-2-Structures-01.38.pdf
                          //nonce is included in attestData
-  bytes signature = 3;   //signature to verify attestData
+  bytes signature = 2;   //signature to verify attestData
 }
 
 // This is the response payload for POST /api/v1/edgeDevice/attestQuote
