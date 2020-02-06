@@ -270,7 +270,7 @@ func Run() { //nolint:gocyclo
 			log.Fatal(err)
 		}
 		onboardTLSConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
-			serverName, &onboardCert, zedcloudCtx.V2API)
+			serverName, &onboardCert, &zedcloudCtx)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -287,7 +287,7 @@ func Run() { //nolint:gocyclo
 		log.Fatal(err)
 	}
 	tlsConfig, err := zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
-		serverName, &deviceCert, zedcloudCtx.V2API)
+		serverName, &deviceCert, &zedcloudCtx)
 	if err != nil {
 		log.Fatal(err)
 	}

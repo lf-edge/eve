@@ -99,7 +99,7 @@ func (t *WSTunnelClient) TestConnection(devNetStatus *types.DeviceNetworkStatus,
 
 	serverName := strings.Split(t.TunnelServerNameAndPort, ":")[0]
 	// XXX assume v1 API for now
-	tlsConfig, err := GetTlsConfig(devNetStatus, serverName, nil, false)
+	tlsConfig, err := GetTlsConfig(devNetStatus, serverName, nil, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
