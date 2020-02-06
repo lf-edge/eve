@@ -12,7 +12,6 @@ config:
     - /etc/resolv.conf:/etc/resolv.conf
     - /run:/run
     - /var/config:/config
-    - /var/log:/var/log/dom0
     - /:/hostfs
     - /var/persist:/persist
     - /etc/eve-release:/etc/eve-release

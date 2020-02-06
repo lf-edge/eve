@@ -1,2 +1,2 @@
 #!/bin/sh
-exec chroot /hostfs eve exec xen-tools $(basename $0) "$@"
+exec chroot /hostfs /usr/bin/ctr --namespace services.linuxkit t exec --cwd / ${TERM:+-t} --exec-id $(basename $(mktemp)) xen-tools env ${TERM:+TERM=}$TERM $(basename $0) "$@"
