@@ -91,6 +91,17 @@ func (sub *SubscriptionImpl) GetAll() map[string]interface{} {
 	return result
 }
 
+// Iterate - performs some callback function on all items
+func (sub *SubscriptionImpl) Iterate(function CallBackFunction) {
+	items := sub.GetAll()
+	for key, item := range items {
+		cont := function(key, item)
+		if !cont {
+			break
+		}
+	}
+}
+
 // Restarted - Check if the Publisher has Restarted
 func (sub *SubscriptionImpl) Restarted() bool {
 	return sub.km.restarted
