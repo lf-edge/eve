@@ -38,8 +38,9 @@ type ZedCloudContext struct {
 	DevUUID             uuid.UUID
 	DevSerial           string
 	DevSoftSerial       string
-	NetworkSendTimeout  uint32 // In seconds
-	V2API               bool   // XXX Needed?
+	NetworkSendTimeout  uint32   // In seconds
+	V2API               bool     // XXX Needed?
+	PrevCertPEM         [][]byte // cached proxy certs for later comparison
 }
 
 var sendCounter uint32
