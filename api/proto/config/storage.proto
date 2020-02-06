@@ -7,6 +7,7 @@ syntax = "proto3";
 option go_package = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
+import "cipherinfo.proto";
 import "devcommon.proto";
 
 message SignatureInfo {
@@ -32,8 +33,10 @@ message DatastoreConfig {
 
 	string fqdn = 2;
 
+    // to be deprecated, use cipherData instead
 	string apiKey = 3;
 
+    // to be deprecated, use cipherData instead
 	string password = 4;
 
 	// depending on datastore types, it could be bucket or path
@@ -41,6 +44,9 @@ message DatastoreConfig {
 
 	// Applies for some datastore types
 	string region = 6;
+
+    // contains the encrypted credentials
+    CipherBlock cipherData = 7;
 }
 
 
