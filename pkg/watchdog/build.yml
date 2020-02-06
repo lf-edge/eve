@@ -7,3 +7,5 @@ config:
     - /etc/resolv.conf:/etc/resolv.conf
     - /var/persist:/persist
   pid: host
+  capabilities:
+    - all
