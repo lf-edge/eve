@@ -39,11 +39,14 @@ ENV CONFIGURE_OPTS "--disable-nfs"
 RUN \
     CPPFLAGS=-I/usr/include/tirpc ./configure ${CONFIGURE_OPTS} && make && make install DESTDIR=/out
 
-FROM scratch
-ENTRYPOINT []
-CMD []
+FROM alpine:3.8
 WORKDIR /
 COPY --from=watchdog-build /out/etc /etc
 COPY --from=watchdog-build /out/usr/sbin /usr/sbin
 COPY --from=watchdog-build /out/usr/share /usr/share
+COPY init.sh /
+COPY watchdog.conf.seed /etc/
+COPY watchdog-report.sh /sbin/
 
+ENTRYPOINT []
+CMD ["/init.sh"]

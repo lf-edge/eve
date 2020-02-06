@@ -782,6 +782,10 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			log.Warnln(errStr)
 			status.Activated = false
 			status.State = types.HALTED
+			if status.IsContainer {
+				status.LastErr = "container exited - please restart application instance"
+				status.LastErrTime = time.Now()
+			}
 		}
 		status.DomainId = 0
 		publishDomainStatus(ctx, status)

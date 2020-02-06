@@ -1,2 +1,9 @@
 image: eve-watchdog
 org: lfedge
+config:
+  binds:
+    - /run:/run
+    - /dev:/dev
+    - /etc/resolv.conf:/etc/resolv.conf
+    - /var/persist:/persist
+  pid: host
