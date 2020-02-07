@@ -1,0 +1,21 @@
+diff --git a/files/mount_disk.sh b/files/mount_disk.sh
+index db70141..9c1b102 100644
+--- a/files/mount_disk.sh
++++ b/files/mount_disk.sh
+@@ -21,6 +21,16 @@ ls /sys/block/ | grep xvd | while read -r disk ; do
+   echo "Failed to create device file for /dev/$disk"
+   echo
+ 
++  #Creating partition on block device
++  partition_number=1
++  first_sector=
++  last_sector=
++  echo "Creating partition:$partition_number for /dev/$disk"
++  (echo n; echo p; echo $partition_number; echo $first_sector; echo $last_sector; echo w) | fdisk /dev/$disk && \
++  echo "Successfully created partition:$partition_number for /dev/$disk" || \
++  echo "Failed to create partition:$partition_number for /dev/$disk"
++  echo
++
+   #Creating a block device with partitioned disk
+   partitionToBeMounted=1
+   partedDisk="$disk""$partitionToBeMounted"
