@@ -262,7 +262,7 @@ func runHandler(ctx *downloaderContext, objType string, key string,
 				status := lookupDownloaderStatus(ctx,
 					objType, key)
 				if status == nil {
-					handleCreate(ctx, objType, config, key)
+					handleCreate(ctx, objType, config, status, key)
 				} else {
 					handleModify(ctx, key, config, status)
 				}
@@ -291,6 +291,8 @@ func runHandler(ctx *downloaderContext, objType string, key string,
 func maybeRetryDownload(ctx *downloaderContext,
 	status *types.DownloaderStatus) {
 
+	// object is either in download progress or,
+	// successfully downloaded, nothing to do
 	if status.LastErr == "" {
 		return
 	}
@@ -311,23 +313,17 @@ func maybeRetryDownload(ctx *downloaderContext,
 			status.Key())
 		return
 	}
-	status.LastErr = ""
-	status.LastErrTime = time.Time{}
-	status.RetryCount += 1
-	// XXX do we need to adjust reservedspace??
 
-	dst, errStr := lookupDatastoreConfig(ctx, config.DatastoreID, config.Name)
-	if dst == nil {
-		status.LastErr = errStr
-		status.LastErrTime = time.Now()
-		publishDownloaderStatus(ctx, status)
-		return
-	}
-	handleSyncOp(ctx, status.Key(), *config, status, dst)
+	// reset ErrorInfo, to start download again
+	status.RetryCount++
+	status.ClearErrorInfo()
+	publishDownloaderStatus(ctx, status)
+
+	doDownload(ctx, *config, status)
 }
 
 func handleCreate(ctx *downloaderContext, objType string,
-	config types.DownloaderConfig, key string) {
+	config types.DownloaderConfig, status *types.DownloaderStatus, key string) {
 
 	log.Infof("handleCreate(%s) objType %s for %s\n",
 		config.ImageID, objType, config.Name)
@@ -336,65 +332,33 @@ func handleCreate(ctx *downloaderContext, objType string,
 		log.Fatalf("handleCreate: No ObjType for %s\n",
 			config.ImageID)
 	}
-	// Start by marking with PendingAdd
-	status := types.DownloaderStatus{
-		ImageID:          config.ImageID,
-		DatastoreID:      config.DatastoreID,
-		Name:             config.Name,
-		ObjType:          objType,
-		IsContainer:      config.IsContainer,
-		RefCount:         config.RefCount,
-		LastUse:          time.Now(),
-		AllowNonFreePort: config.AllowNonFreePort,
-		PendingAdd:       true,
+	if status == nil {
+		// Start by marking with PendingAdd
+		status0 := types.DownloaderStatus{
+			ImageID:          config.ImageID,
+			DatastoreID:      config.DatastoreID,
+			Name:             config.Name,
+			ObjType:          objType,
+			IsContainer:      config.IsContainer,
+			RefCount:         config.RefCount,
+			LastUse:          time.Now(),
+			AllowNonFreePort: config.AllowNonFreePort,
+			PendingAdd:       true,
+		}
+		status = &status0
+	} else {
+		// when refcount moves from 0 to a non-zero number,
+		// should trigger a fresh download of the object
+		status.ImageID = config.ImageID
+		status.DatastoreID = config.DatastoreID
+		status.IsContainer = config.IsContainer
+		status.RefCount = config.RefCount
+		status.LastUse = time.Now()
+		status.Expired = false
 	}
-	publishDownloaderStatus(ctx, &status)
+	publishDownloaderStatus(ctx, status)
 
-	// Check if we have space
-	// Update reserved space. Keep reserved until doDelete
-	// XXX RefCount -> 0 should keep it reserved.
-	kb := types.RoundupToKB(config.Size)
-	if !tryReserveSpace(ctx, &status, kb) {
-		errString := fmt.Sprintf("Would exceed remaining space. "+
-			"SizeOfAppImage: %d, RemainingSpace: %d\n",
-			kb, ctx.globalStatus.RemainingSpace)
-		log.Errorln(errString)
-		status.PendingAdd = false
-		status.Size = 0
-		status.LastErr = errString
-		status.LastErrTime = time.Now()
-		status.RetryCount += 1
-		publishDownloaderStatus(ctx, &status)
-		log.Errorf("handleCreate failed for %s\n", config.Name)
-		return
-	}
-
-	// If RefCount == 0 then we don't yet download.
-	if config.RefCount == 0 {
-		// XXX odd to treat as error.
-		errString := fmt.Sprintf("RefCount==0; download deferred for %s\n",
-			config.Name)
-		log.Errorln(errString)
-		status.PendingAdd = false
-		status.Size = 0
-		status.LastErr = errString
-		status.LastErrTime = time.Now()
-		status.RetryCount += 1
-		publishDownloaderStatus(ctx, &status)
-		log.Errorf("handleCreate deferred for %s\n", config.Name)
-		return
-	}
-
-	dst, errStr := lookupDatastoreConfig(ctx, config.DatastoreID, config.Name)
-	if dst == nil {
-		status.PendingAdd = false
-		status.LastErr = errStr
-		status.LastErrTime = time.Now()
-		status.RetryCount++
-		publishDownloaderStatus(ctx, &status)
-		return
-	}
-	handleSyncOp(ctx, key, config, &status, dst)
+	doDownload(ctx, config, status)
 }
 
 // XXX Allow to cancel by setting RefCount = 0? Such a change
@@ -407,6 +371,9 @@ func handleModify(ctx *downloaderContext, key string,
 	log.Infof("handleModify(%s) objType %s for %s\n",
 		status.ImageID, status.ObjType, status.Name)
 
+	status.PendingModify = true
+	publishDownloaderStatus(ctx, status)
+
 	if status.ObjType == "" {
 		log.Fatalf("handleModify: No ObjType for %s\n",
 			status.ImageID)
@@ -414,42 +381,34 @@ func handleModify(ctx *downloaderContext, key string,
 	if config.Name != status.Name {
 		errStr := fmt.Sprintf("Name changed - not allowed %s -> %s\n",
 			config.Name, status.Name)
-		log.Error(errStr)
-		status.LastErr = errStr
-		status.LastErrTime = time.Now()
+		status.RetryCount++
+		status.HandleDownloadFail(errStr)
 		publishDownloaderStatus(ctx, status)
+		log.Errorf("handleModify(%s): failed with %s\n", config.Name, errStr)
 		return
 	}
+
+	log.Infof("handleModify(%s) RefCount %d to %d, Expired %v for %s\n",
+		status.ImageID, status.RefCount, config.RefCount,
+		status.Expired, status.Name)
+
 	if config.IsContainer != status.IsContainer {
 		log.Infof("handleModify: Setting IsContainer to %t for %s",
 			config.IsContainer, status.ImageID)
 		status.IsContainer = config.IsContainer
 		publishDownloaderStatus(ctx, status)
 	}
-	log.Infof("handleModify(%s) RefCount %d to %d, Expired %v for %s\n",
-		status.ImageID, status.RefCount, config.RefCount,
-		status.Expired, status.Name)
-
 	// If RefCount from zero to non-zero then do install
 	if status.RefCount == 0 && config.RefCount != 0 {
-		status.PendingModify = true
 		log.Infof("handleModify installing %s\n", config.Name)
-		handleCreate(ctx, status.ObjType, config, key)
-		status.RefCount = config.RefCount
-		status.LastUse = time.Now()
-		status.Expired = false
-		status.PendingModify = false
-		publishDownloaderStatus(ctx, status)
+		handleCreate(ctx, status.ObjType, config, status, key)
 	} else if status.RefCount != config.RefCount {
 		status.RefCount = config.RefCount
-		status.LastUse = time.Now()
-		status.Expired = false
-		status.PendingModify = false
-		publishDownloaderStatus(ctx, status)
-	} else {
-		status.PendingModify = false
-		publishDownloaderStatus(ctx, status)
 	}
+	status.LastUse = time.Now()
+	status.Expired = false
+	status.ClearPendingStatus()
+	publishDownloaderStatus(ctx, status)
 	log.Infof("handleModify done for %s\n", config.Name)
 }
 
@@ -461,12 +420,46 @@ func doDelete(ctx *downloaderContext, key string, locDirname string,
 	deletefile(locDirname+"/pending", status)
 
 	status.State = types.INITIAL
-	deleteSpace(ctx, types.RoundupToKB(status.Size))
-	status.Size = 0
+	deleteSpace(ctx, status)
 
 	// XXX Asymmetric; handleCreate reserved on RefCount 0. We unreserve
 	// going back to RefCount 0. FIXed
 	publishDownloaderStatus(ctx, status)
+}
+
+// perform download of the object, by reserving storage
+func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *types.DownloaderStatus) {
+
+	// If RefCount == 0 then we don't yet need to download.
+	if config.RefCount == 0 {
+		errStr := fmt.Sprintf("RefCount==0; download deferred for %s\n",
+			config.Name)
+		status.RetryCount++
+		status.HandleDownloadFail(errStr)
+		publishDownloaderStatus(ctx, status)
+		log.Errorf("doDownload(%s): deferred with %s\n", config.Name, errStr)
+		return
+	}
+
+	dst, errStr := lookupDatastoreConfig(ctx, config.DatastoreID, config.Name)
+	if dst == nil {
+		status.RetryCount++
+		status.HandleDownloadFail(errStr)
+		publishDownloaderStatus(ctx, status)
+		log.Errorf("doDownload(%s): deferred with %s\n", config.Name, errStr)
+		return
+	}
+
+	// try to reserve storage, must be released on error
+	kb := types.RoundupToKB(config.Size)
+	if ret, errStr := tryReserveSpace(ctx, status, kb); !ret {
+		status.RetryCount++
+		status.HandleDownloadFail(errStr)
+		publishDownloaderStatus(ctx, status)
+		log.Errorf("doDownload(%s): deferred with %s\n", config.Name, errStr)
+		return
+	}
+	handleSyncOp(ctx, status.Key(), config, status, dst)
 }
 
 func deletefile(dirname string, status *types.DownloaderStatus) {

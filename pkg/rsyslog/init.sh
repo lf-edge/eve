@@ -1,5 +1,7 @@
 #!/bin/sh
 
+mkdir -p /run/watchdog/pid
+
 ./monitor-rsyslog.sh &
 
 LOGREAD_PID_WAIT=3600
@@ -9,7 +11,9 @@ do
         sleep 10
         continue
     fi
-    /usr/bin/logread -F -socket /run/memlogdq.sock | logger &
+    (/usr/bin/logread -F -socket /run/memlogdq.sock | logger) &
+    echo $! > /run/logread.pid
+    touch /run/watchdog/pid/logread.pid
 
     LOOP_COUNT=0
     while [ -z "$(pgrep logread)" ];

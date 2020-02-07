@@ -18,7 +18,6 @@ The agents are:
 - verifier - verify cryptographic checksums and signatures on downloaded objects
 - zedmanager - drive the application instance lifecycle
 - zedrouter - drive the lifecycle for the connectivity for the instances. Includes services like DHCP, DNS, and Access Control Lists. Provides different connectivity like local, switch, cloud, and mesh networks
-- dataplane (AKA lisp-ztr) - Go implementation of LISP data plane
 - domainmgr - interface with the hypervisor to start and stop application images. Includes performing device assignment
 - identitymgr - used when mesh networks desire locally created key pairs for the cryptographic application instance identities
 

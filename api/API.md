@@ -54,6 +54,9 @@ In general, there is one directory for each API endpoint:
 )
 * `metrics`: The ZMetricMsg message sent from Device to Controller periodically to report on resource usage etc.
 * `logs`: The LogBundle message sent from Device to Controller containing internal device logs.
+* `apps/instances/{app-instance-uuid}/logs`: The LogBundle message sent from Device to Controller containing internal device logs.
+* `certs`: The ZEdgeNodeCert message is sent from Device to Controller to publish public key certificates used by Device. The ZControllerCert message is sent from Controller to Device, and contains the list of certificates used by Controller. Controller overwrites its list with the list coming in from each ZEdgeNodeCert message. Similarly, each ZControllerCert message replaces the current list on EVE with the new list of certificates. Therefore, if an empty list is sent in these messages, it resets the list on the receiving side. The `isMutable` property for a certificate indicates if the certificate can be overwritten by omitting/replacing it in the subsequent cert messages. If this property is not set for a certificate, that certificate is added only once, and can never be replaced with another certificate of the same type. This is to prevent some crucial certificates(like the attestation certificate) from being overwritten by a compromised software on the sending side.
+* `attest`: The ZAttestNonceResp message is sent from Controller to Device in response to request for nonce. The ZAttestQuoteReq is sent from Device to Controller to send the attestation quote. The ZAttestQuoteRespmessage is sent from Controller to Device carries the response to ZAttestNonceReq.
 
 
 ## Authentication
@@ -196,6 +199,104 @@ The `config` endpoint, specifically the `EdgeDevConfig` message, supports arbitr
 
 The `EdgeDevConfig` message can contain zero, one or more `ConfigItem` entries, each of which is an arbitrary key/value pair. These SHOULD be used to send implementation-specific configuration to a Device, other than configuration already defined in this API or the messages. The items are defined in [configuration properties](../docs/CONFIG-PROPERTIES.md)
 
+### Controller Certificates
+
+Retrieve Certificates that Controller will use. Controller can include one or more certificates in the response, and include information about each certificate such as unique identifier for the certificate, the target usage for the certificate and any other properties related to the certificate. Each certificate MUST be a X.509 certificate in PEM format.
+
+   GET /api/v1/edgeDevice/ControllerCerts
+
+Return codes:
+
+* No such certificates to send: `404`
+* One or more certificates found: `200`
+
+Request:
+
+The request MUST use HTTP for this request
+
+The request MUST NOT contain any body content
+
+Response:
+
+The response mime type MUST be "application/x-proto-binary".
+The response MUST contain a message with a list of certificates Controller is using. The body MUST be a protobuf message of type [certs.ZControllerCert](./proto/certs/certs.proto).
+
+### Edge Node Certificates
+
+Publish certificates that edge device would use for signing or any key exchanges. Edge node can include one or more certificates in the request, and include information about each certificate such as unique identifier for the certificate, the target usage for the certificate and any other properties related to the certificate. Each certificate MUST be a X.509 certificate in PEM format. If `isIMutable` property is not set, Controller should reject any request that would overwrite an existing certificate previously published.
+
+   POST /api/v1/edgeDevice/EdgeNodeCerts
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `201`
+* Unknown Device: `400`
+* Missing or unprocessable body: `422`
+
+Request:
+
+The request MUST use the Device certificate for mTLS authentication.
+
+The request mime type MUST be "application/x-proto-binary".
+The request MUST contain a message with list of certificates to use with this edge node. The body MUST be a protobuf message of type [certs.ZEdgeNodeCert](./proto/certs/certs.proto).
+
+Response:
+
+The response MUST NOT contain any body content.
+
+### Attestation Nonce
+
+Retrieve a nonce to use in Edge node while constructing the next attestation quote. The next attestation quote published by the edge node MUST include this nonce
+
+   POST /api/v1/edgeDevice/attestNonce
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `201`
+* Unknown Device: `400`
+* Missing or unprocessable body: `422`
+
+Request:
+
+The request MUST use the Device certificate for mTLS authentication.
+
+The request mime type MUST be "application/x-proto-binary".
+The body MUST be a protobuf message of type [attest.ZAttestNonceReq](./proto/attest/attest.proto).
+
+Response:
+
+The request mime type MUST be "application/x-proto-binary".
+The body MUST be a protobuf message of type [attest.ZAttestNonceResp](./proto/attest/attest.proto).
+
+### Attestation Quote
+
+Publish PCR quote computed by Trusted Platform Module, by including the latest nonce provided by the Controller
+
+   POST /api/v1/edgeDevice/attestQuote
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Success: `201`
+* Unknown Device: `400`
+* Missing or unprocessable body: `422`
+
+Request:
+
+The request MUST use the Device certificate for mTLS authentication.
+
+The request mime type MUST be "application/x-proto-binary".
+The body MUST be a protobuf message of type [attest.ZAttestQuoteReq](./proto/attest/attest.proto).
+
+Response:
+
+The request mime type MUST be "application/x-proto-binary".
+The body MUST be a protobuf message of type [attest.ZAttestQuoteResp](./proto/attest/attest.proto).
+
 ### Info
 
 Send Device status information to Controller
@@ -266,7 +367,7 @@ The response MUST contain no body content.
 
 ### logs
 
-Send Device and Application logs to Controller
+Send Device logs to Controller
 
    POST /api/v1/edgeDevice/logs
 
@@ -287,6 +388,40 @@ The request MUST be of mime type "application/x-proto-binary".
 The request body MUST be a protobuf message of type [log.LogBundle](./proto/logs/log.proto). The message itself contains zero, one or more entries of type [log.LogEntry](./proto/logs/log.proto).
 
 Each `LogEntry` is a single log message indicating its timestamp, source, severity, message ID, application or process ID, and arbitrary message content. In addition, it can content an unlimited number of key/value pairs.
+
+A Device SHOULD bundle many log messages together into a single `LogBundle`.
+
+A `LogBundle` MUST NOT be larger than the maximum size specified by the Controller for the Device, but MAY be smaller than that, if insufficient messages are available or the Device network or endpoints cannot handle the maximum size. The Device MUST retrieve the maximum `LogBundle` message size from the appropriate field of the configuration.
+
+A log message is expected to be reliable. A Device MUST retry until it successfully delivers log messages. How often log messages are sent, retries, the number of messages and which types to bundle together into a single `LogBundle`,  and other caching mechanisms on the Device are NOT specified here, as they are implementation questions.
+
+Response:
+
+The response MUST contain no body content.
+
+### Application Instance logs
+
+Send Application logs to Controller
+
+   POST /api/v1/edgeDevice/apps/instances/{app-instance-uuid}/logs
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `201`
+* Unknown Application Instance: `400`
+* Missing or unprocessable body: `422`
+
+Request:
+
+The request MUST use the Device certificate for mTLS authentication.
+
+The request MUST be of mime type "application/x-proto-binary".
+
+The request body MUST be a protobuf message of type [log.AppInstanceLogBundle](./proto/logs/log.proto). The message itself contains zero, one or more entries of type [log.LogEntry](./proto/logs/log.proto).
+
+Each `LogEntry` is a single log message indicating its timestamp, source, severity, message ID, application or process ID, and arbitrary message content. In addition, it can contain an unlimited number of key/value pairs.
 
 A Device SHOULD bundle many log messages together into a single `LogBundle`.
 

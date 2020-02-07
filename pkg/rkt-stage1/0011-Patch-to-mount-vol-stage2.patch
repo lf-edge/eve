@@ -1,0 +1,116 @@
+diff --git a/build.sh b/build.sh
+index 04fceb6..9c623f3 100755
+--- a/build.sh
++++ b/build.sh
+@@ -24,7 +24,7 @@ then
+     exit 1
+ fi
+
+-execs="enter run stop udhcpc_script.sh launcher.sh"
++execs="enter run stop udhcpc_script.sh launcher.sh mount_disk.sh"
+ netplugins="main/ptp main/bridge main/macvlan main/ipvlan ipam/host-local meta/flannel meta/tuning"
+
+ # Clean the repo, but save the vendor area
+diff --git a/files/mount_disk.sh b/files/mount_disk.sh
+new file mode 100644
+index 0000000..db70141
+--- /dev/null
++++ b/files/mount_disk.sh
+@@ -0,0 +1,56 @@
++#!/bin/sh
++
++mountPointLineNo=1
++ls /sys/block/ | grep xvd | while read -r disk ; do
++  echo "Processing $disk"
++  targetDir=$(sed "${mountPointLineNo}q;d" /mnt/mountPoints)
++  if [ -z "$targetDir" ]
++    then
++      echo "Error while mounting: No Mount-Point found for $disk."
++      exit 0
++  fi
++  #Fetching Major and Minor device
++  IN=$(cat /sys/block/$disk/dev | tr ":" "\n")
++  major=$(echo ${IN} | cut -d' ' -f1)
++  minor=$(echo ${IN} | cut -d' ' -f2)
++
++  #Creating a block device under /dev with Major and minor devices
++  echo "Creating device file /dev/$disk"
++  mknod /dev/$disk b $major $minor && \
++  echo "Successfully created device file for /dev/$disk" || \
++  echo "Failed to create device file for /dev/$disk"
++  echo
++
++  #Creating a block device with partitioned disk
++  partitionToBeMounted=1
++  partedDisk="$disk""$partitionToBeMounted"
++  echo "Creating device file /dev/$partedDisk"
++  mknod /dev/$partedDisk b $major $(($minor + 1)) && \
++  echo "Successfully created device file for /dev/$partedDisk" || \
++  echo "Failed to create device file for /dev/$partedDisk"
++  echo
++
++  #Creating a file system inside the partition
++  fileSystem="vfat"
++  echo "Creating $fileSystem file system on /dev/$partedDisk"
++  mkfs.$fileSystem /dev/$partedDisk && \
++  echo "Successfully created $fileSystem file system on /dev/$partedDisk" || \
++  echo "Failed to create $fileSystem file system on /dev/$partedDisk"
++  echo
++
++  #Mounting the partition onto a target directory
++  diskAccess=$(cat /sys/block/$disk/ro)
++  if [ $diskAccess -eq 0 ]; then
++    accessRight=rw
++  else
++    accessRight=ro
++  fi
++  stage2TargetPath="/mnt/rootfs"$targetDir
++  echo "Mounting /dev/$partedDisk on $stage2TargetPath with access: $accessRight"
++  mkdir -p $stage2TargetPath
++  mount -O remount,$accessRight /dev/$partedDisk $stage2TargetPath && \
++  echo "Successfully mounted file system:/dev/$partedDisk on $targetDir" || \
++  echo "Failed to mount file system:/dev/$partedDisk on $targetDir"
++
++  mountPointLineNo=$(expr $mountPointLineNo + 1)
++done
+\ No newline at end of file
+diff --git a/files/run b/files/run
+index a26edca..32d0b7d 100755
+--- a/files/run
++++ b/files/run
+@@ -62,8 +62,12 @@ fi
+ echo "ramdisk='$workpath/initrd'" >> $outconfig
+ echo "p9=[ 'tag=share_dir,security_model=none,path=$mountpoint' ]" >> $outconfig
+
++if [ -f "$STAGE2_MNT_PTS" ] ; then
++  cp "$STAGE2_MNT_PTS" $stage2/mountPoints
++fi
++
+ if [ -f "$STAGE1_SEED_XL_CFG" ] ; then
+-    grep -Ev '^(disk|bootloader|root|extra|kernel)' < "$STAGE1_SEED_XL_CFG" >> $outconfig
++    grep -Ev '^(bootloader|root|extra|kernel)' < "$STAGE1_SEED_XL_CFG" >> $outconfig
+     if test $dhcp -eq 0
+     then
+         echo extra=\'console=hvc0 root=9p\' >> $outconfig
+@@ -95,6 +99,8 @@ fi
+
+ cp $stage1/launcher.sh $stage2
+ chmod +x $stage2/launcher.sh
++cp $stage1/mount_disk.sh $stage2
++chmod +x $stage2/mount_disk.sh
+ echo $cmdline > $mountpoint/cmdline
+ export IFS=$'\n'
+ stage2manifest=$mountpoint/manifest
+diff --git a/kernel/init-initrd b/kernel/init-initrd
+index 98b2256..d1109c2 100755
+--- a/kernel/init-initrd
++++ b/kernel/init-initrd
+@@ -83,4 +83,8 @@ cmd=`cat /mnt/cmdline`
+ echo "Executing $cmd"
+ source /mnt/environment
+ source /mnt/external-environment
++
++echo "Executing /mnt/mount_disk.sh"
++/mnt/mount_disk.sh
++
+ eval setsid -c chroot /mnt/rootfs /launcher.sh $cmd <> /dev/console 2>&1

@@ -8,7 +8,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/baseosmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/client"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/conntrack"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/dataplane"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/diag"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/domainmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/downloader"
@@ -48,8 +47,6 @@ func main() {
 		identitymgr.Run()
 	case "ledmanager":
 		ledmanager.Run()
-	case "lisp-ztr":
-		dataplane.Run()
 	case "logmanager":
 		logmanager.Run()
 	case "nim":

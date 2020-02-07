@@ -140,7 +140,7 @@ func RestartVerify(ctx *DeviceNetworkContext, caller string) {
 
 func compressAndPublishDevicePortConfigList(ctx *DeviceNetworkContext) types.DevicePortConfigList {
 
-	dpcl := compressDPCL(ctx.DevicePortConfigList)
+	dpcl := compressDPCL(ctx)
 	if ctx.PubDevicePortConfigList != nil {
 		log.Infof("publishing DevicePortConfigList: %+v\n", dpcl)
 		ctx.PubDevicePortConfigList.Publish("global", dpcl)
@@ -152,53 +152,49 @@ func compressAndPublishDevicePortConfigList(ctx *DeviceNetworkContext) types.Dev
 // 1. the highest priority (whether it has lastSucceeded after lastFailed or not)
 // 2. the next priority with lastSucceeded after lastFailed
 // and make it have a single item for the other keys
-func compressDPCL(dpcl *types.DevicePortConfigList) types.DevicePortConfigList {
+func compressDPCL(ctx *DeviceNetworkContext) types.DevicePortConfigList {
 
 	var newConfig []types.DevicePortConfig
-	currentIndex := dpcl.CurrentIndex
-	moreZedagent := false
-	popped := 0
-	foundKeys := make(map[string]bool)
-	for i, dpc := range dpcl.PortConfigList {
-		_, found := foundKeys[dpc.Key]
-		if dpc.Key != "zedagent" {
-			if !found {
-				newConfig = append(newConfig, dpc)
-				foundKeys[dpc.Key] = true
-			} else {
-				log.Infof("Supressing second entry for %s",
-					dpc.Key)
-			}
-			continue
-		}
-		failed := !dpc.LastFailed.IsZero() && dpc.LastFailed.After(dpc.LastSucceeded)
-		if !found {
-			newConfig = append(newConfig, dpc)
-			foundKeys[dpc.Key] = true
-			moreZedagent = true
-			continue
-		}
-		if moreZedagent {
-			newConfig = append(newConfig, dpc)
-			moreZedagent = failed
-			continue
-		}
-		moreZedagent = failed
 
-		if currentIndex == i {
-			// Don't cut off the branch we are sitting on
+	dpcl := ctx.DevicePortConfigList
+
+	if ctx.Pending.Inprogress || dpcl.CurrentIndex != 0 ||
+		len(dpcl.PortConfigList) == 0 {
+		log.Debugf("compressDPCL: DPCL still changing - ctx.Pending.Inprogress: %t, "+
+			"dpcl.CurrentIndex: %d, len(PortConfigList): %d",
+			ctx.Pending.Inprogress, dpcl.CurrentIndex, len(dpcl.PortConfigList))
+		return *dpcl
+	}
+	firstEntry := dpcl.PortConfigList[0]
+	if firstEntry.Key != "zedagent" || !firstEntry.WasDPCWorking() {
+		log.Debugf("compressDPCL: firstEntry not stable. key: %s, "+
+			"WasWorking: %t, firstEntry: %+v",
+			firstEntry.Key, firstEntry.WasDPCWorking(), firstEntry)
+		return *dpcl
+	}
+	log.Debugf("compressDPCL: numEntries: %d, dpcl: %+v",
+		len(dpcl.PortConfigList), dpcl)
+	for i, dpc := range dpcl.PortConfigList {
+		if i == 0 {
+			// Always add Current Index ( index 0 )
 			newConfig = append(newConfig, dpc)
-			continue
-		}
-		// delete by not appending
-		log.Infof("compressDPCL deleting zedagent index %d: %+v",
-			i, dpc)
-		if i < currentIndex {
-			popped++
+			log.Debugf("compressDPCL: Adding Current Index: i = %d, dpc: %+v",
+				i, dpc)
+		} else {
+			// Retain the lastresort. Delete everything else.
+			if dpc.Key == "lastresort" {
+				log.Debugf("compressDPCL: Retaining last resort. i = %d, dpc: %+v",
+					i, dpc)
+				newConfig = append(newConfig, dpc)
+				// last resort also found.. discard all remaining entries
+				break
+			}
+			log.Debugf("compressDPCL: Ignoring - i = %d, dpc: %+v", i, dpc)
 		}
 	}
+
 	return types.DevicePortConfigList{
-		CurrentIndex:   currentIndex - popped,
+		CurrentIndex:   0,
 		PortConfigList: newConfig,
 	}
 }
@@ -486,8 +482,8 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 	portConfig := configArg.(types.DevicePortConfig)
 	ctx := ctxArg.(*DeviceNetworkContext)
 
-	log.Infof("HandleDPCModify: Current Config: %+v, portConfig: %+v\n",
-		ctx.DevicePortConfig, portConfig)
+	log.Infof("HandleDPCModify: key: %s, Current Config: %+v, portConfig: %+v\n",
+		key, ctx.DevicePortConfig, portConfig)
 
 	portConfig.DoSanitize(true, true, key, true)
 
@@ -654,12 +650,17 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 	current := getCurrentDPC(ctx) // Used to determine if index needs to change
 	currentIndex := ctx.DevicePortConfigList.CurrentIndex
 	oldConfig, _ := lookupPortConfig(ctx, *portConfig)
+
+	// There is no Controller support for Wifi Yet. Only way to configure
+	//  Wifi is through override.json. Copy the existing Wifi config into
+	// Portconfig if wifi is not present in Port Config
 	if strings.Contains(portConfig.Key, "override") {
 		checkAndUpdateWireless(ctx, oldConfig, portConfig)
 	} else {
 		// XXX remove this when controller supports WIFI
 		checkAndCopyWireless(ctx, portConfig)
 	}
+
 	if delete {
 		if oldConfig == nil {
 			log.Errorf("doUpdatePortConfigListAndPublish - Delete. "+
@@ -678,6 +679,8 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 		if oldConfig.Key == portConfig.Key &&
 			oldConfig.Version == portConfig.Version &&
 			reflect.DeepEqual(oldConfig.Ports, portConfig.Ports) {
+			// XXX - Should we not update the timestamp of Old Config since
+			//  it is now coming in as new config???
 			log.Infof("doUpdatePortConfigListAndPublish: no change but timestamps %v %v\n",
 				oldConfig.TimePriority, portConfig.TimePriority)
 
@@ -705,6 +708,8 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 	}
 	newplace, newIndex := lookupPortConfig(ctx, *current)
 	if newplace == nil {
+		// Current Got deleted. If [0] was working we stick to it, otherwise we
+		// restart looking through the list.
 		if ctx.DevicePortConfigList.PortConfigList[0].WasDPCWorking() {
 			ctx.DevicePortConfigList.CurrentIndex = 0
 		} else {

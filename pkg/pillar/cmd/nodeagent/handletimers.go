@@ -203,16 +203,60 @@ func scheduleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
 
 	// in any case, execute the reboot procedure
 	// with a delayed timer
-	go handleNodeReboot(reasonStr)
+	go handleNodeReboot(ctxPtr, reasonStr)
 }
 
-func handleNodeReboot(reasonStr string) {
+func allDomainsHalted(ctxPtr *nodeagentContext) bool {
+	// Check if all domains have been halted.
+	items := ctxPtr.subDomainStatus.GetAll()
+	for _, c := range items {
+		ds := c.(types.DomainStatus)
+		if ds.Activated {
+			log.Debugf("allDomainsHalted: Domain (UUID: %s, name: %s) "+
+				"not halted. State: %d",
+				ds.UUIDandVersion.UUID.String(), ds.DisplayName, ds.State)
+			return false
+		}
+	}
+	log.Debugf("allDomainsHalted: All Domains Halted.")
+	return true
 
-	duration := time.Second * time.Duration(rebootDelay)
+}
+
+// waitForAllDomainsHalted
+//  blocks till all domains are halted. Should only be invoked from
+//  a thread.
+func waitForAllDomainsHalted(ctxPtr *nodeagentContext) {
+
+	var totalWaitTime uint32
+	for totalWaitTime = 0; totalWaitTime < ctxPtr.maxDomainHaltTime; totalWaitTime += ctxPtr.domainHaltWaitIncrement {
+		if allDomainsHalted(ctxPtr) {
+			return
+		}
+
+		duration := time.Second * time.Duration(ctxPtr.domainHaltWaitIncrement)
+		domainHaltWaitTimer := time.NewTimer(duration)
+		log.Debugf("waitForAllDomainsHalted: Waiting for all domains to be halted. "+
+			"totalWaitTime: %d sec, domainHaltWaitIncrement: %d sec",
+			totalWaitTime, domainHaltWaitIncrement)
+		<-domainHaltWaitTimer.C
+	}
+	log.Infof("waitForAllDomainsHalted: Max waittime for DomainsHalted."+
+		"totalWaitTime: %d sec, maxDomainHaltTime: %d sec. Proceeding "+
+		"with reboot", totalWaitTime, maxDomainHaltTime)
+}
+
+func handleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
+	// Wait for MinRebootDelay time
+	duration := time.Second * time.Duration(minRebootDelay)
 	rebootTimer := time.NewTimer(duration)
-	log.Infof("handleNodeReboot: timer %d seconds\n",
+	log.Infof("handleNodeReboot: minRebootDelay timer %d seconds\n",
 		duration/time.Second)
 	<-rebootTimer.C
+
+	// Wait for All Domains Halted
+	waitForAllDomainsHalted(ctxPtr)
+
 	// set the reboot reason
 	agentlog.RebootReason(reasonStr)
 

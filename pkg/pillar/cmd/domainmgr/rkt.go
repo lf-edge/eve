@@ -35,13 +35,24 @@ type KeyValue struct {
 
 // RktManifest represents a rkt manifest
 type RktManifest struct {
-	ACKind      string
-	ACVersion   string
-	Name        string
-	Labels      []KeyValue
-	Annotations []KeyValue
-	// we don't care about the App part
-	App interface{}
+	ACKind      string     `json:"acKind"`
+	ACVersion   string     `json:"acVersion"`
+	Name        string     `json:"name"`
+	Labels      []KeyValue `json:"labels,omitempty"`
+	Annotations []KeyValue `json:"annotations,omitempty"`
+	App         App        `json:"app,omitempty"`
+}
+
+// MountPoint - represents mountpoints of an app
+type MountPoint struct {
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	ReadOnly bool   `json:"readOnly,omitempty"`
+}
+
+// App - holds app details in manifest
+type App struct {
+	MountPoints []MountPoint `json:"mountPoints,omitempty"`
 }
 
 // rktConvertTarToAci convert an OCI image tarfile into an ACI bundle
@@ -229,23 +240,9 @@ func rktGetHashes() (map[string]string, error) {
 	rktHashes := strings.Fields(string(stdoutStderr))
 	// now go through each one and get its docker hash
 	for _, rh := range rktHashes {
-		args = append(baseArgs,
-			"image",
-			"cat-manifest",
-			rh,
-		)
-		cmdLine = exec.Command(cmd, args...)
-		stdoutStderr, err = cmdLine.CombinedOutput()
+		manifest, err := getRktManifest(rh)
 		if err != nil {
-			log.Errorf("rkt image cat-manifest %s failed: %v", rh, err)
-			log.Errorf("rkt image cat-manifest %s output: %v", rh, string(stdoutStderr))
-			return m, fmt.Errorf("rkt image cat-manifest %s failed: %s", rh, string(stdoutStderr))
-		}
-		// process the json to get the exact item we need
-		var manifest RktManifest
-		err = json.Unmarshal(stdoutStderr, &manifest)
-		if err != nil {
-			return m, fmt.Errorf("error parsing rkt manifest for %s: %v", rh, err)
+			return m, fmt.Errorf("rkt manifect fetch failed: %s", err.Error())
 		}
 		// go through the annotations to find the hash for the correct label
 		for _, a := range manifest.Annotations {
@@ -259,6 +256,36 @@ func rktGetHashes() (map[string]string, error) {
 	log.Infof("rkt hashes load complete; found %d images with docker hashes", len(m))
 	log.Debugf("rkt hashes: %+v", m)
 	return m, nil
+}
+
+func getRktManifest(imageHash string) (RktManifest, error) {
+	// process the json to get the exact item we need
+	var manifest RktManifest
+
+	cmd := "rkt"
+	baseArgs := []string{
+		"--dir=" + types.PersistRktDataDir,
+		"--insecure-options=image",
+	}
+
+	args := append(baseArgs,
+		"image",
+		"cat-manifest",
+		imageHash,
+	)
+	cmdLine := exec.Command(cmd, args...)
+	stdoutStderr, err := cmdLine.CombinedOutput()
+	if err != nil {
+		log.Errorf("rkt image cat-manifest %s failed: %v", imageHash, err)
+		log.Errorf("rkt image cat-manifest %s output: %v", imageHash, string(stdoutStderr))
+		return manifest, fmt.Errorf("rkt image cat-manifest %s failed: %s", imageHash, string(stdoutStderr))
+	}
+
+	err = json.Unmarshal(stdoutStderr, &manifest)
+	if err != nil {
+		return manifest, fmt.Errorf("error parsing rkt manifest for %s: %v", imageHash, err)
+	}
+	return manifest, nil
 }
 
 // ociGetHash extract the hash from an OCI tar file

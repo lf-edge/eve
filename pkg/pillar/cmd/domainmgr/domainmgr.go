@@ -625,6 +625,10 @@ func xenCfgFilename(appNum int) string {
 	return xenDirname + "/xen" + strconv.Itoa(appNum) + ".cfg"
 }
 
+func mountPointFileName(appNum int) string {
+	return xenDirname + "/mountPoint" + strconv.Itoa(appNum) + ".cfg"
+}
+
 // Notify simple struct to pass notification messages
 type Notify struct{}
 
@@ -778,6 +782,10 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			log.Warnln(errStr)
 			status.Activated = false
 			status.State = types.HALTED
+			if status.IsContainer {
+				status.LastErr = "container exited - please restart application instance"
+				status.LastErrTime = time.Now()
+			}
 		}
 		status.DomainId = 0
 		publishDomainStatus(ctx, status)
@@ -1616,6 +1624,54 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 	return nil
 }
 
+func createMountPointFile(imageHash, mpFileName string, status types.DomainStatus) error {
+	file, err := os.Create(mpFileName)
+	if err != nil {
+		log.Errorf("createMountPointFile: os.Create for %v, failed: %v", mpFileName, err.Error())
+	}
+	defer file.Close()
+
+	appManifest, err := getRktManifest(imageHash)
+	if err != nil {
+		return fmt.Errorf("createMountPointFile: Error while fetching app manfest: %v", err.Error())
+	}
+
+	//Ignoring container image in status.DiskStatusList
+	noOfDisks := len(status.DiskStatusList) - 1
+
+	//Validating if there are enough disks provided for the mount-points
+	if noOfDisks != len(appManifest.App.MountPoints) {
+
+		if noOfDisks > len(appManifest.App.MountPoints) {
+			//If no. of disks is (strictly) greater than no. of mount-points provided, we will ignore excessive disks.
+			log.Warnf("createMountPointFile: Number of volumes provided: %v is more than number of mount-points: %v. "+
+				"Excessive volumes will be ignored", noOfDisks, len(appManifest.App.MountPoints))
+		} else {
+			//If no. of mount-points is (strictly) greater than no. of disks provided, we need to throw an error as there
+			// won't be enough disks to satisfy required mount-points.
+			return fmt.Errorf("createMountPointFile: Number of volumes provided: %v is less than number of mount-points: %v. ",
+				noOfDisks, len(appManifest.App.MountPoints))
+		}
+	}
+
+	for i, mp := range appManifest.App.MountPoints {
+		if mp.Path == "" {
+			err := fmt.Errorf("createMountPointFile: targetPath cannot be empty")
+			log.Errorf(err.Error())
+			return err
+		} else if !strings.HasPrefix(mp.Path, "/") {
+			//Target path is expected to be absolute.
+			err := fmt.Errorf("createMountPointFile: targetPath should be absolute")
+			log.Errorf(err.Error())
+			return err
+		}
+		targetString := fmt.Sprintf("%s\n", mp.Path)
+		log.Infof("createMountPointFile: Processing mount point %d: %s\n", i, targetString)
+		file.WriteString(targetString)
+	}
+	return nil
+}
+
 // Produce the xen cfg file based on the config and status created above
 // XXX or produce output to a string instead of file to make comparison
 // easier?
@@ -2139,6 +2195,12 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 		log.Errorln(err)
 	}
 
+	// Delete mountPoint file
+	mpFileName := mountPointFileName(status.AppNum)
+	if err := os.Remove(mpFileName); err != nil {
+		log.Errorln(err)
+	}
+
 	// Do we need to delete any rw files that were not deleted during
 	// inactivation i.e. those preserved across reboots?
 	deleteStorageDisksForDomain(ctx, status)
@@ -2183,6 +2245,7 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 	)
 
 	filename := xenCfgFilename(status.AppNum)
+	mpFileName := mountPointFileName(status.AppNum)
 	log.Infof("DomainCreate %s ... xenCfgFilename - %s\n", status.DomainName, filename)
 	if status.IsContainer {
 		// Use rkt tool
@@ -2201,7 +2264,14 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 			log.Error(err)
 			return domainID, podUUID, fmt.Errorf("unable to get rkt image hash: %v", err)
 		}
-		domainID, podUUID, err = rktRun(status.DomainName, filename, imageHash, status.EnvVariables)
+
+		err = createMountPointFile(imageHash, mpFileName, status)
+		if err != nil {
+			log.Error(err)
+			return domainID, podUUID, fmt.Errorf("unable to create mountPointFile: %v", err)
+		}
+
+		domainID, podUUID, err = rktRun(status.DomainName, filename, mpFileName, imageHash, status.EnvVariables)
 	} else {
 		// Use xl tool
 		log.Infof("Using xl tool ... xenCfgFilename - %s\n", filename)
@@ -2213,9 +2283,8 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 
 // Launch app/container thru rkt
 // returns domainID, podUUID and error
-func rktRun(domainName, xenCfgFilename, imageHash string, envList map[string]string) (int, string, error) {
+func rktRun(domainName, xenCfgFilename, mountPointFileName, imageHash string, envList map[string]string) (int, string, error) {
 	// STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=xenCfgFilename rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file --set-env=ENV-KEY=env-value
-	//TODO: envVars must be read from image config once we decide on how we will be passing this info from UI
 	var (
 		envVarSlice = make([]string, 0)
 	)
@@ -2235,10 +2304,11 @@ func rktRun(domainName, xenCfgFilename, imageHash string, envList map[string]str
 	args = append(args, envVarSlice...)
 	stage1XlOpts := "STAGE1_XL_OPTS=-p"
 	stage1XlCfg := "STAGE1_SEED_XL_CFG=" + xenCfgFilename
+	stage2MP := "STAGE2_MNT_PTS=" + mountPointFileName
 	log.Infof("Calling command %s %v\n", cmd, args)
-	log.Infof("Also setting env vars %s %s\n", stage1XlOpts, stage1XlCfg)
+	log.Infof("Also setting env vars %s %s %s\n", stage1XlOpts, stage1XlCfg, stage2MP)
 	cmdLine := exec.Command(cmd, args...)
-	cmdLine.Env = append(os.Environ(), stage1XlOpts, stage1XlCfg)
+	cmdLine.Env = append(os.Environ(), stage1XlOpts, stage1XlCfg, stage2MP)
 	stdoutStderr, err := cmdLine.CombinedOutput()
 	if err != nil {
 		log.Errorln("rkt run failed ", err)

@@ -1,0 +1,43 @@
+// Copyright(c) 2020 Zededa, Inc.
+// All rights reserved.
+
+syntax = "proto3";
+
+option go_package  = "github.com/lf-edge/eve/api/go/certs";
+option java_package = "com.zededa.cloud.uservice.proto";
+
+// ZAttestNonceResp is response payload for POST /api/v1/edgeDevice/attestNonce
+// or /api/v2/edgeDevice/attestNonce. It is an empty POST from the client
+// The message is assumed to be protected by a TLS session bound to the
+// device certificate for v1.
+// The message is assumed to be protected by signing envelope for v2.
+
+message ZAttestNonceResp {
+  bytes nonce = 1;      //nonce to use in quote generation
+}
+
+// This is the request payload for POST /api/v1/edgeDevice/attestQuote
+// or /api/v2/edgeDevice/attestQuote
+// The message is assumed to be protected by a TLS session bound to the
+// device certificate for v1.
+// The message is assumed to be protected by signing envelope for v2.
+message ZAttestQuoteReq {
+  bytes attestData = 1;  //TPMS_ATTEST (Table 2:123) in https://trustedcomputinggroup.org/wp-content/uploads/TPM-Rev-2.0-Part-2-Structures-01.38.pdf
+                         //nonce is included in attestData
+  bytes signature = 2;   //signature to verify attestData
+}
+
+// This is the response payload for POST /api/v1/edgeDevice/attestQuote
+// or /api/v2/edgeDevice/attestQuote
+// The message is assumed to be protected by a TLS session bound to the
+// device certificate for v1.
+// The message is assumed to be protected by signing envelope for v2.
+message ZAttestQuoteResp {
+   ZAttestResponseCode response = 1; //result of quote validation
+}
+
+enum ZAttestResponseCode {
+   ATTEST_RESPONSE_SUCCESS = 0;  //Attestation successful
+   ATTEST_RESPONSE_FAILURE = 1;  //Attestation failed
+}
+

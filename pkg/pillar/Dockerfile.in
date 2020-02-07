@@ -25,8 +25,6 @@ RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc) ;\
     make DISTDIR=/dist build
 
 # hadolint ignore=DL3006
-FROM LISP_TAG as lisp
-# hadolint ignore=DL3006
 FROM XENTOOLS_TAG as xen-tools
 # hadolint ignore=DL3006
 FROM DNSMASQ_TAG as dnsmasq
@@ -34,8 +32,6 @@ FROM DNSMASQ_TAG as dnsmasq
 FROM STRONGSWAN_TAG as strongswan
 # hadolint ignore=DL3006
 FROM GPTTOOLS_TAG as gpttools
-# hadolint ignore=DL3006
-FROM WATCHDOG_TAG as watchdog
 # hadolint ignore=DL3006
 FROM RKT_TAG as rkt-build
 # hadolint ignore=DL3006
@@ -49,8 +45,8 @@ FROM alpine:3.8
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
 RUN apk add --no-cache \
-    yajl xz bash openssl iptables ip6tables iproute2 dhcpcd \
-    apk-cron coreutils dmidecode sudo libbz2 libuuid ipset \
+    yajl xz bash openssl iptables ip6tables iproute2 dhcpcd      \
+    apk-cron coreutils dmidecode sudo libbz2 libuuid ipset       \
     libaio logrotate pixman glib curl radvd perl ethtool \
     util-linux e2fsprogs libcrypto1.0 xorriso \
     python libpcap libffi jq e2fsprogs-extra keyutils
@@ -65,7 +61,6 @@ ADD scripts/device-steps.sh \
     scripts/generate-device.sh \
     scripts/generate-self-signed.sh \
     scripts/handlezedserverconfig.sh \
-    scripts/watchdog-report.sh \
   /opt/zededa/bin/
 ADD conf/lisp.config.base /var/tmp/zededa/lisp.config.base
 
@@ -77,11 +72,9 @@ RUN set -e && for patch in ../patches/*.patch; do \
 
 COPY --from=build /dist /opt/zededa/bin
 COPY --from=xen-tools / /
-COPY --from=lisp / /
 COPY --from=gpttools / /
 COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
 COPY --from=strongswan / /
-COPY --from=watchdog /usr/sbin /usr/sbin
 COPY --from=rkt-build /go/rkt/build-rkt-1.26.0/target/bin/rkt /usr/sbin/rkt
 COPY --from=rkt-stage1-build /go/stage1-xen-master/stage1-xen.aci /usr/sbin/stage1-xen.aci
 COPY --from=fscrypt-build /fscrypt /opt/zededa/bin/fscrypt

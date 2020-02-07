@@ -94,6 +94,10 @@ var mToF = []modelToFuncs{
 		initFunc:  InitWifiLedCmd,
 		blinkFunc: ExecuteWifiLedCmd},
 	{
+		model:     "LeMaker.HiKey-6220",
+		initFunc:  InitWifiLedCmd,
+		blinkFunc: ExecuteWifiLedCmd},
+	{
 		model: "QEMU.Standard PC (i440FX + PIIX, 1996)",
 		// No dd disk light blinking on QEMU
 	},
