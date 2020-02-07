@@ -4,6 +4,7 @@
 package devicenetwork
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -214,6 +215,7 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 			log.Errorf("VerifyPending: %s\n", errStr)
 			pending.PendDPC.LastError = errStr
 			pending.PendDPC.LastFailed = time.Now()
+			pending.PendDPC.SetPortErrorByIfname(portName, errors.New(errStr))
 			return DPC_FAIL
 		}
 		log.Infof("VerifyPending: port %s still in PCIBack. "+
@@ -252,7 +254,9 @@ func VerifyPending(ctx *DeviceNetworkContext, pending *DPCPending,
 	pending.PendDNS = pend2
 
 	// We want connectivity to zedcloud via atleast one Management port.
-	rtf, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1, timeout)
+	rtf, intfErrMap, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1, timeout)
+	pending.PendDPC.SetPortErrorsFromIntfErrMap(intfErrMap)
+
 	if err == nil {
 		if checkIfMgmtPortsHaveIPandDNS(pending.PendDNS) {
 			pending.PendDPC.LastIPAndDNS = time.Now()

@@ -18,6 +18,25 @@ type ErrorAndTime struct {
 	ErrorTime time.Time
 }
 
+// SetOrAppendError - Add or Append an error to ErrorAndTime
+func (etPtr *ErrorAndTime) SetOrAppendError(et ErrorAndTime) {
+	if etPtr.HasError() {
+		// Error Alread Set. Append errors
+		// This is a simplistic way to carry all the errors. If we see this
+		// happening more and more, maintain an array of ErrorAndTime
+		if et.HasError() {
+			// Error Already set. Append errors
+			etPtr.Error = etPtr.Error + " \n " + et.Error
+			// Retain the timestamp of first error
+		}
+		// Else - new et doesn't have an error. etPtr already has an error.
+		//  Ignore et
+	} else {
+		// Current state is success - so just update it.
+		*etPtr = et
+	}
+}
+
 // SetErrorNow uses the current time
 func (etPtr *ErrorAndTime) SetErrorNow(errStr string) {
 	etPtr.Error = errStr
@@ -44,6 +63,11 @@ func (etPtr *ErrorAndTime) HasError() bool {
 // NewErrorAndTime returns instance of ErrorAndTime with the specified values
 func NewErrorAndTime(errStr string, errTime time.Time) ErrorAndTime {
 	return ErrorAndTime{Error: errStr, ErrorTime: errTime}
+}
+
+// NewErrorAndTimeNow returns instance of ErrorAndTime with the specified values
+func NewErrorAndTimeNow(errStr string) ErrorAndTime {
+	return ErrorAndTime{Error: errStr, ErrorTime: time.Now()}
 }
 
 // ErrorAndTimeWithSource has an additional field "ErrorSourceType"

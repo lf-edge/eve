@@ -12,10 +12,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/utils"
-	"github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -25,6 +21,11 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 // XXX should we add some Init() function to create this?
@@ -128,21 +129,39 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 	return nil, nil, remoteTemporaryFailure, errors.New(errStr)
 }
 
-// We try with free interfaces first. If we find enough free interfaces through
+// VerifyAllIntf
+// We try with free interfaces in firstiteration.
+//      We test interfaces in sequence and as soon as we find the first working
+//      interface, we stop. Other interfaces are not tested.
+// If we find enough free interfaces through
 // which cloud connectivity can be achieved, we won't test non-free interfaces.
 // Otherwise we test non-free interfaces also.
 // We return a bool remoteTemporaryFailure for the cases when we reached
 // the controller but it is overloaded, or has certificate issues.
+// Return Values:
+//    success/Failure, remoteTemporaryFailure, error, intfErrMap
+//    If Failure,
+//       remoteTemporaryFailure - indicates if it is a remote failure
+//       error  - indicates details of Errors
+//    PerInterfaceErrorMap - This has per-interface errors seen during
+//      the verification.
+//      Includes entries for all interfaces that were tested.
+//      If an intf is success, Error == "" Else - Set to appropriate Error
+//      ErrorTime will always be set for the interface.
 func VerifyAllIntf(ctx *ZedCloudContext,
-	url string, successCount int, iteration int) (bool, bool, error) {
+	url string, successCount int,
+	iteration int) (bool, bool, types.PerInterfaceErrorMap, error) {
 	var intfSuccessCount int = 0
 	const allowProxy = true
 	var errorList []error
+
 	remoteTemporaryFailure := false
+	// Map of per-interface errors
+	intfErrMap := *types.NewPerInterfaceErrorMap()
 
 	if successCount <= 0 {
 		// No need to test. Just return true.
-		return true, remoteTemporaryFailure, nil
+		return true, remoteTemporaryFailure, intfErrMap, nil
 	}
 
 	for try := 0; try < 2; try += 1 {
@@ -171,11 +190,13 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 				log.Errorf("Zedcloud un-reachable via interface %s: %s",
 					intf, err)
 				errorList = append(errorList, err)
+				intfErrMap.AddError(intf, types.NewErrorAndTimeNow(err.Error()))
 				continue
 			}
 			switch resp.StatusCode {
 			case http.StatusOK, http.StatusCreated:
 				log.Debugf("VerifyAllIntf: Zedcloud reachable via interface %s", intf)
+				intfErrMap.ClearIntfError(intf)
 				intfSuccessCount += 1
 			default:
 				errStr := fmt.Sprintf("Uplink test FAILED via %s to URL %s with "+
@@ -184,23 +205,26 @@ func VerifyAllIntf(ctx *ZedCloudContext,
 				log.Errorln(errStr)
 				err = errors.New(errStr)
 				errorList = append(errorList, err)
+				intfErrMap.AddError(intf, types.NewErrorAndTimeNow(err.Error()))
 				continue
 			}
 		}
 	}
 	if intfSuccessCount == 0 {
-		errStr := fmt.Sprintf("All test attempts to connect to %s failed: %v",
-			url, errorList)
+		errStr := fmt.Sprintf("All test attempts to connect to %s failed: %v,"+
+			" intfErrMap: %+v", url, errorList, intfErrMap)
 		log.Errorln(errStr)
-		return false, remoteTemporaryFailure, errors.New(errStr)
+		return false, remoteTemporaryFailure, intfErrMap, errors.New(errStr)
 	}
 	if intfSuccessCount < successCount {
-		errStr := fmt.Sprintf("Not enough Ports (%d) against required count %d to reach Zedcloud; last failed with %v",
-			intfSuccessCount, successCount, errorList)
+		errStr := fmt.Sprintf("Not enough Ports (%d) against required count %d"+
+			" to reach Zedcloud; last failed with %v. intfErrMap: %+v",
+			intfSuccessCount, successCount, errorList, intfErrMap)
 		log.Errorln(errStr)
-		return false, remoteTemporaryFailure, errors.New(errStr)
+		return false, remoteTemporaryFailure, intfErrMap, errors.New(errStr)
 	}
-	return true, remoteTemporaryFailure, nil
+	log.Debugf("VerifyAllIntf: Verifiy done. intfErrMap: %+v", intfErrMap)
+	return true, remoteTemporaryFailure, intfErrMap, nil
 }
 
 // Tries all source addresses on interface until one succeeds.

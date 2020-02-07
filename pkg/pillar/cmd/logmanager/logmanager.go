@@ -336,7 +336,7 @@ func Run(ps *pubsub.PubSub) {
 				warningTime, errorTime)
 
 		case change := <-deferredChan:
-			_, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, 1, 15)
+			_, _, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, 1, 15)
 			if err != nil {
 				log.Errorf("logmanager(Run): log message processing still in "+
 					"deferred state. err: %s", err)
@@ -506,7 +506,7 @@ func processEvents(image string, logChan <-chan logEntry,
 					image)
 				continue
 			}
-			_, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, 1, 15)
+			_, _, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, 1, 15)
 			if err != nil {
 				log.Warnf("processEvents:(%s) log message processing still"+
 					" in deferred state", image)
