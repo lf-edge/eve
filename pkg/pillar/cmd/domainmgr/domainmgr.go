@@ -1525,8 +1525,17 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.Format = dc.Format
 		ds.Maxsizebytes = dc.Maxsizebytes
 		ds.Devtype = dc.Devtype
-		// map from i=1 to xvda, 2 to xvdb etc
-		xv := "xvd" + string(int('a')+i)
+		var xv string
+		if status.IsContainer {
+			// map from i=1 to xvdb, 2 to xvdc etc
+			// For container instances xvda will be used for container disk
+			// So for other disks we are starting from xvdb
+			// Currently, we are not supporting multiple container disks inside a pod
+			xv = "xvd" + string(int('b')+i)
+		} else {
+			// map from i=1 to xvda, 2 to xvdb etc
+			xv = "xvd" + string(int('a')+i)
+		}
 		ds.Vdev = xv
 
 		target := ""
