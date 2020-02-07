@@ -1,21 +1,47 @@
 diff --git a/files/mount_disk.sh b/files/mount_disk.sh
-index db70141..9c1b102 100644
+index db70141..ad27612 100644
 --- a/files/mount_disk.sh
 +++ b/files/mount_disk.sh
-@@ -21,6 +21,16 @@ ls /sys/block/ | grep xvd | while read -r disk ; do
+@@ -21,21 +21,12 @@ ls /sys/block/ | grep xvd | while read -r disk ; do
    echo "Failed to create device file for /dev/$disk"
    echo
- 
-+  #Creating partition on block device
-+  partition_number=1
-+  first_sector=
-+  last_sector=
-+  echo "Creating partition:$partition_number for /dev/$disk"
-+  (echo n; echo p; echo $partition_number; echo $first_sector; echo $last_sector; echo w) | fdisk /dev/$disk && \
-+  echo "Successfully created partition:$partition_number for /dev/$disk" || \
-+  echo "Failed to create partition:$partition_number for /dev/$disk"
-+  echo
-+
-   #Creating a block device with partitioned disk
-   partitionToBeMounted=1
-   partedDisk="$disk""$partitionToBeMounted"
+
+-  #Creating a block device with partitioned disk
+-  partitionToBeMounted=1
+-  partedDisk="$disk""$partitionToBeMounted"
+-  echo "Creating device file /dev/$partedDisk"
+-  mknod /dev/$partedDisk b $major $(($minor + 1)) && \
+-  echo "Successfully created device file for /dev/$partedDisk" || \
+-  echo "Failed to create device file for /dev/$partedDisk"
+-  echo
+-
+   #Creating a file system inside the partition
+   fileSystem="vfat"
+-  echo "Creating $fileSystem file system on /dev/$partedDisk"
+-  mkfs.$fileSystem /dev/$partedDisk && \
+-  echo "Successfully created $fileSystem file system on /dev/$partedDisk" || \
+-  echo "Failed to create $fileSystem file system on /dev/$partedDisk"
++  echo "Creating $fileSystem file system on /dev/$disk"
++  mkfs.$fileSystem /dev/$disk && \
++  echo "Successfully created $fileSystem file system on /dev/$disk" || \
++  echo "Failed to create $fileSystem file system on /dev/$disk"
+   echo
+
+   #Mounting the partition onto a target directory
+@@ -46,11 +37,11 @@ ls /sys/block/ | grep xvd | while read -r disk ; do
+     accessRight=ro
+   fi
+   stage2TargetPath="/mnt/rootfs"$targetDir
+-  echo "Mounting /dev/$partedDisk on $stage2TargetPath with access: $accessRight"
++  echo "Mounting /dev/$disk on $stage2TargetPath with access: $accessRight"
+   mkdir -p $stage2TargetPath
+-  mount -O remount,$accessRight /dev/$partedDisk $stage2TargetPath && \
+-  echo "Successfully mounted file system:/dev/$partedDisk on $targetDir" || \
+-  echo "Failed to mount file system:/dev/$partedDisk on $targetDir"
++  mount -O remount,$accessRight /dev/$disk $stage2TargetPath && \
++  echo "Successfully mounted file system:/dev/$disk on $targetDir" || \
++  echo "Failed to mount file system:/dev/$disk on $targetDir"
+
+   mountPointLineNo=$(expr $mountPointLineNo + 1)
+ done
+\ No newline at end of file
