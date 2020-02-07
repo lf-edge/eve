@@ -128,6 +128,50 @@ func (status AppNetworkStatus) VerifyFilename(fileName string) bool {
 			fileName, expect)
 	}
 	return ret
+
+}
+
+// PerInterfaceErrorMap - Used to return per-interface errors.
+//  ifName is usually used as the key
+//  In most usecases, Includes entries for all interfaces that were tested.
+//  If an intf is success, ErrorAndTime.Error == "" Else - Set to appropriate Error
+//  ErrorAndTime.ErrorTime will always be set for the interface.
+type PerInterfaceErrorMap struct {
+	IntfErrorMap map[string]ErrorAndTime
+}
+
+// AddError - Add an error into PerInterfaceErrorMap. If en entry already
+//  exists for the interface, it is appended.
+// This is for the case of adding errors. To clear error on an interface, use
+//  ClearIntfError.
+func (intfMap *PerInterfaceErrorMap) AddError(ifName string, et ErrorAndTime) {
+	errAndtime, ok := intfMap.IntfErrorMap[ifName]
+	if ok {
+		errAndtime.SetOrAppendError(et)
+	} else {
+		// No Existing Error. Set new one
+		errAndtime = et
+	}
+	intfMap.IntfErrorMap[ifName] = errAndtime
+}
+
+// ClearIntfError - Clears errors on the interface.
+func (intfMap *PerInterfaceErrorMap) ClearIntfError(ifName string) {
+	intfMap.IntfErrorMap[ifName] = NewErrorAndTimeNow("")
+}
+
+// AddMap - Add all the entries from the given per-interface map
+func (intfMap *PerInterfaceErrorMap) AddMap(target PerInterfaceErrorMap) {
+	for intf, et := range target.IntfErrorMap {
+		intfMap.AddError(intf, et)
+	}
+}
+
+// NewPerInterfaceErrorMap - Create a new instance of PerInterfaceErrorMap
+func NewPerInterfaceErrorMap() *PerInterfaceErrorMap {
+	intfErrMap := PerInterfaceErrorMap{}
+	intfErrMap.IntfErrorMap = make(map[string]ErrorAndTime)
+	return &intfErrMap
 }
 
 // Array in timestamp aka priority order; first one is the most desired
@@ -325,6 +369,23 @@ func (portConfig DevicePortConfig) WasDPCWorking() bool {
 	return false
 }
 
+// SetPortErrorsFromIntfErrMap - Set Port Errors for ports in portConfig to
+// those from intfErrMap. If a port is not found in intfErrMap, it means
+// the port was not tested. So retain the original error info for the port.
+// If the Interface succeeded, it would still be in intfErrMap and hence would
+// be reset by the new ErrorAndTime from the map.
+func (portConfig *DevicePortConfig) SetPortErrorsFromIntfErrMap(
+	intfErrMap PerInterfaceErrorMap) {
+	for indx := range portConfig.Ports {
+		portPtr := &portConfig.Ports[indx]
+		et, ok := intfErrMap.IntfErrorMap[portPtr.IfName]
+		if ok {
+			portPtr.ErrorAndTime = et
+		}
+		// Else - Port not tested. Retain the ErrorAndTime on the port.
+	}
+}
+
 type NetworkProxyType uint8
 
 // Values if these definitions should match the values
@@ -458,6 +519,7 @@ type DeviceNetworkStatus struct {
 	Ports   []NetworkPortStatus
 }
 
+// GetPortByIfName - Get Port Status for port with given Ifname
 func (status *DeviceNetworkStatus) GetPortByIfName(
 	ifname string) *NetworkPortStatus {
 	for _, portStatus := range status.Ports {
