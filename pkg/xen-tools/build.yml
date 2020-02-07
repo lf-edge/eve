@@ -12,3 +12,4 @@ config:
   capabilities:
     - all
   pid: host
+  userns: host
