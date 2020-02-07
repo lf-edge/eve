@@ -658,7 +658,12 @@ func handleLogEvent(event logEntry, reportLogs *logs.LogBundle, counter int) {
 	}
 
 	logDetails := &logs.LogEntry{}
-	logDetails.Content = event.content
+	logDetails.Content = strings.Map(func(r rune) rune {
+		if r == utf8.RuneError {
+			return -1
+		}
+		return r
+	}, event.content)
 	logDetails.Severity = event.severity
 	logDetails.Timestamp, _ = ptypes.TimestampProto(event.timestamp)
 	logDetails.Source = event.source
