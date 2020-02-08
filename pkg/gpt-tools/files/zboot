@@ -71,6 +71,16 @@ partdev() {
 }
 
 #
+# PARTDEVALL: get device from partition label, search all drives
+#
+partdevall() {
+    if [ ! $# -eq 1 ]; then
+	usage
+    fi
+    cgpt find -l $1
+}
+
+#
 # PARTSTATE <LABEL>: get state from partition label
 #
 partstate() {
@@ -133,6 +143,7 @@ shift 1
 case $cmd in
     curpart) curpart ;;
     partdev) partdev "$@" ;;
+    partdevall) partdevall "$@" ;;
     partstate) partstate "$@" ;;
     set_partstate) set_partstate "$@" ;;
     reset) reset ;;
