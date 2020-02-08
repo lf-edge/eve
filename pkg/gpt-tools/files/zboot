@@ -75,9 +75,9 @@ partdev() {
 #
 partdevall() {
     if [ ! $# -eq 1 ]; then
-	usage
+        usage
     fi
-    cgpt find -l $1
+    cgpt find -l "$1"
 }
 
 #
