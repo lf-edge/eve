@@ -43,7 +43,7 @@ RUN mkdir -p /out
 COPY gmp.patch /xen/stubdom
 WORKDIR /xen
 RUN ./configure --prefix=/usr --disable-xen --disable-qemu-traditional --disable-docs --enable-9pfs \
-                --with-system-ovmf=/usr/lib/xen/boot/ovmf.bin $FEATURES
+                --with-system-ovmf=/usr/lib/xen/boot/ovmf.bin --disable-stubdom
 RUN make && make dist
 RUN dist/install.sh /out
 

@@ -1,39 +1,12 @@
-From 1925ba4357cd0b79386d741e8852ec601990a2cc Mon Sep 17 00:00:00 2001
-From: Roman Shaposhnik <rvs@zededa.com>
-Date: Sat, 8 Feb 2020 19:53:07 -0800
-Subject: [PATCH] Adding external logger
-
----
- tools/console/Makefile                  |  1 +
- tools/console/daemon/io.c               | 23 +++++++++++++
- tools/libs/toollog/include/xentoollog.h |  3 ++
- tools/libs/toollog/libxentoollog.map    |  1 +
- tools/libs/toollog/xtl_core.c           | 59 +++++++++++++++++++++++++++++++++
- tools/libxl/libxl_dm.c                  |  6 ++++
- tools/xl/xl_utils.c                     | 19 +++++++----
- 7 files changed, 105 insertions(+), 7 deletions(-)
-
-diff --git a/tools/console/Makefile b/tools/console/Makefile
-index 84796eac8f..a8f306866e 100644
---- a/tools/console/Makefile
-+++ b/tools/console/Makefile
-@@ -7,6 +7,7 @@ CFLAGS  += $(CFLAGS_libxenctrl)
- CFLAGS  += $(CFLAGS_libxenstore)
- LDLIBS += $(LDLIBS_libxenctrl)
- LDLIBS += $(LDLIBS_libxenstore)
-+LDLIBS += $(LDLIBS_libxentoollog)
- LDLIBS += $(SOCKET_LIBS)
- 
- LDLIBS_xenconsoled += $(UTIL_LIBS)
 diff --git a/tools/console/daemon/io.c b/tools/console/daemon/io.c
-index a43c57edad..be624bec69 100644
+index a43c57edad..d0bf636c10 100644
 --- a/tools/console/daemon/io.c
 +++ b/tools/console/daemon/io.c
 @@ -27,6 +27,8 @@
  #include <xen/io/console.h>
  #include <xen/grant_table.h>
  
-+#include "xentoollog.h"
++#include "xentoollog_external.h"
 +
  #include <stdlib.h>
  #include <errno.h>
@@ -83,61 +56,23 @@ index a43c57edad..be624bec69 100644
  
  	fd = open(logfile, O_WRONLY|O_CREAT|O_APPEND, 0644);
  	if (fd == -1)
-diff --git a/tools/libs/toollog/include/xentoollog.h b/tools/libs/toollog/include/xentoollog.h
-index 76f17fe125..cd11adfa05 100644
---- a/tools/libs/toollog/include/xentoollog.h
-+++ b/tools/libs/toollog/include/xentoollog.h
-@@ -70,6 +70,8 @@ struct xentoollog_logger {
- #define XTL_STDIOSTREAM_PROGRESS_USE_CR     010u /* default is to */
- #define XTL_STDIOSTREAM_PROGRESS_NO_CR      020u /* use \r to ttys */
- 
-+#define XTL_EXTERNAL_LOGGER_SOCKET          "/var/run/linuxkit-external-logging.sock"
+diff --git a/tools/libs/toollog/include/xentoollog_external.h b/tools/libs/toollog/include/xentoollog_external.h
+new file mode 100644
+index 0000000000..4b664fc36e
+--- /dev/null
++++ b/tools/libs/toollog/include/xentoollog_external.h
+@@ -0,0 +1,68 @@
++#ifndef XENTOOLLOG_EXTERNAL_H
++#define XENTOOLLOG_EXTERNAL_H
 +
- typedef struct xentoollog_logger_stdiostream  xentoollog_logger_stdiostream;
- 
- xentoollog_logger_stdiostream *xtl_createlogger_stdiostream
-@@ -85,6 +87,7 @@ void xtl_stdiostream_adjust_flags(xentoollog_logger_stdiostream*,
- 
- void xtl_logger_destroy(struct xentoollog_logger *logger /* 0 is ok */);
- 
-+int xtl_logger_create_external(char *name);
- 
- /*---------- facilities for generating log messages ----------*/
- 
-diff --git a/tools/libs/toollog/libxentoollog.map b/tools/libs/toollog/libxentoollog.map
-index c183cf555d..a0e2b9307c 100644
---- a/tools/libs/toollog/libxentoollog.map
-+++ b/tools/libs/toollog/libxentoollog.map
-@@ -4,6 +4,7 @@ VERS_1.0 {
- 		xtl_level_to_string;
- 		xtl_log;
- 		xtl_logger_destroy;
-+		xtl_logger_create_external;
- 		xtl_logv;
- 		xtl_progress;
- 		xtl_stdiostream_adjust_flags;
-diff --git a/tools/libs/toollog/xtl_core.c b/tools/libs/toollog/xtl_core.c
-index 099d2f3095..92c87ebcb3 100644
---- a/tools/libs/toollog/xtl_core.c
-+++ b/tools/libs/toollog/xtl_core.c
-@@ -26,6 +26,11 @@
- #include <errno.h>
- #include <limits.h>
- 
-+#include <sys/socket.h>
-+#include <sys/un.h>
 +#include <unistd.h>
 +#include <string.h>
++#include <sys/socket.h>
++#include <sys/un.h>
 +
- static const char *level_strings[XTL_NUM_LEVELS]= {
-     "[BUG:XTL_NONE]",
-     "debug", "verbose", "detail",  /* normally off by default */
-@@ -77,6 +80,62 @@ void xtl_progress(struct xentoollog_logger *logger,
-     logger->progress(logger, context, doing_what, percent, done, total);
- }
- 
++#define XTL_EXTERNAL_LOGGER_SOCKET          "/var/run/linuxkit-external-logging.sock"
++extern int xtl_logger_create_external(char *name);
 +int xtl_logger_create_external(char *name) {
-+    int res = -1;
 +    int fds[2];
 +    int fd;
 +    struct sockaddr_un addr;
@@ -145,9 +80,6 @@ index 099d2f3095..92c87ebcb3 100644
 +    struct iovec iov[1];
 +    struct cmsghdr *control_message = NULL;
 +    char ctrl_buf[CMSG_SPACE(sizeof(int))];
-+
-+    if (pipe(fds))
-+        goto bail;
 +
 +    /* fill out all the required C paperwork */
 +    memset(&addr, 0, sizeof(addr));
@@ -170,40 +102,43 @@ index 099d2f3095..92c87ebcb3 100644
 +    control_message->cmsg_level = SOL_SOCKET;
 +    control_message->cmsg_type = SCM_RIGHTS;
 +    control_message->cmsg_len = CMSG_LEN(sizeof(int));
-+    *((int *) CMSG_DATA(control_message)) = fds[0];
 +
 +    /* now, do the deed */
 +    fd = socket(AF_UNIX, SOCK_DGRAM, 0);
 +    if (fd < 0)
-+	goto bail_fds;
++	goto bail;
++
++    if (pipe(fds))
++        goto bail_fd;
++
++    *((int *) CMSG_DATA(control_message)) = fds[0];
 +
 +    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
 +        goto bail_fd_fds;
 +
-+    if (sendmsg(fd, &message, 0) >= 0)
-+        res = fds[1];
++    if (sendmsg(fd, &message, 0) >= 0) {
++        return fds[1];
++    }
 +
 +bail_fd_fds:
-+    close(fd);
-+bail_fds:
 +    close(fds[0]);
 +    close(fds[1]);
++bail_fd:
++    close(fd);
 +bail:
-+    return res;
++    return -1;
 +}
 +
- void xtl_logger_destroy(struct xentoollog_logger *logger) {
-     if (!logger) return;
-     logger->destroy(logger);
++#endif /* XENTOOLLOG_EXTERNAL_H */
 diff --git a/tools/libxl/libxl_dm.c b/tools/libxl/libxl_dm.c
-index dac1b8ddb8..5cd9923c23 100644
+index dac1b8ddb8..a368fe6ba0 100644
 --- a/tools/libxl/libxl_dm.c
 +++ b/tools/libxl/libxl_dm.c
 @@ -25,6 +25,8 @@
  #include <pwd.h>
  #include <grp.h>
  
-+#include "xentoollog.h"
++#include "xentoollog_external.h"
 +
  static const char *libxl_tapif_script(libxl__gc *gc)
  {
@@ -220,14 +155,14 @@ index dac1b8ddb8..5cd9923c23 100644
      if (rc) return rc;
  
 diff --git a/tools/xl/xl_utils.c b/tools/xl/xl_utils.c
-index 4503ac7ea0..aedc573aed 100644
+index 4503ac7ea0..1f646c6400 100644
 --- a/tools/xl/xl_utils.c
 +++ b/tools/xl/xl_utils.c
 @@ -27,6 +27,8 @@
  #include "xl.h"
  #include "xl_utils.h"
  
-+#include "xentoollog.h"
++#include "xentoollog_external.h"
 +
  void dolog(const char *file, int line, const char *func, char *fmt, ...)
  {
@@ -257,6 +192,3 @@ index 4503ac7ea0..aedc573aed 100644
      assert(logfile >= 3);
  
      CHK_SYSCALL(nullfd = open("/dev/null", O_RDONLY));
--- 
-2.15.1
-
