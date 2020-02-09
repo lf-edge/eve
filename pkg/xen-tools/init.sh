@@ -17,11 +17,15 @@ if [ -d /proc/xen/ ]; then
    mkdir -p /var/run/xen/ /var/run/xenstored
    XENCONSOLED_ARGS='--log=all --log-dir=/var/log/xen' /etc/init.d/xencommons start
 
-   # spin for now, but later we can add Xen checks here 
+   # Now start the watchdog
+   mkdir -p /run/watchdog/pid/xen
+   (cd /run/watchdog/pid/xen && touch qemu-dom0.pid xenconsoled.pid xenstored.pid)
+
+   # spin for now, but later we can add Xen checks here
    while true ; do sleep 60 ; done
 
 elif [ -e /dev/kvm ]; then
-   echo "KVM hypervisor support detected"   
+   echo "KVM hypervisor support detected"
 
 else
    echo "No hypervisor support detected, feel free to run bare-metail containers"

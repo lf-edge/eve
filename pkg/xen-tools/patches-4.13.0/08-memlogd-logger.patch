@@ -1,6 +1,238 @@
+From 1925ba4357cd0b79386d741e8852ec601990a2cc Mon Sep 17 00:00:00 2001
+From: Roman Shaposhnik <rvs@zededa.com>
+Date: Sat, 8 Feb 2020 19:53:07 -0800
+Subject: [PATCH] Adding external logger
+
+---
+ tools/console/Makefile                  |  1 +
+ tools/console/daemon/io.c               | 23 +++++++++++++
+ tools/libs/toollog/include/xentoollog.h |  3 ++
+ tools/libs/toollog/libxentoollog.map    |  1 +
+ tools/libs/toollog/xtl_core.c           | 59 +++++++++++++++++++++++++++++++++
+ tools/libxl/libxl_dm.c                  |  6 ++++
+ tools/xl/xl_utils.c                     | 19 +++++++----
+ 7 files changed, 105 insertions(+), 7 deletions(-)
+
+diff --git a/tools/console/Makefile b/tools/console/Makefile
+index 84796eac8f..a8f306866e 100644
+--- a/tools/console/Makefile
++++ b/tools/console/Makefile
+@@ -7,6 +7,7 @@ CFLAGS  += $(CFLAGS_libxenctrl)
+ CFLAGS  += $(CFLAGS_libxenstore)
+ LDLIBS += $(LDLIBS_libxenctrl)
+ LDLIBS += $(LDLIBS_libxenstore)
++LDLIBS += $(LDLIBS_libxentoollog)
+ LDLIBS += $(SOCKET_LIBS)
+ 
+ LDLIBS_xenconsoled += $(UTIL_LIBS)
+diff --git a/tools/console/daemon/io.c b/tools/console/daemon/io.c
+index a43c57edad..be624bec69 100644
+--- a/tools/console/daemon/io.c
++++ b/tools/console/daemon/io.c
+@@ -27,6 +27,8 @@
+ #include <xen/io/console.h>
+ #include <xen/grant_table.h>
+ 
++#include "xentoollog.h"
++
+ #include <stdlib.h>
+ #include <errno.h>
+ #include <string.h>
+@@ -420,6 +422,15 @@ static int create_hv_log(void)
+ {
+ 	char logfile[PATH_MAX];
+ 	int fd;
++
++        fd = xtl_logger_create_external("hypervisor");
++        if (fd < 0) {
++            dolog(LOG_ERR, "Failed to establish connection with the external logger - falling back %d (%s)",
++                            errno, strerror(errno));
++        } else {
++            return fd;
++        }
++
+ 	snprintf(logfile, PATH_MAX-1, "%s/hypervisor.log", log_dir);
+ 	logfile[PATH_MAX-1] = '\0';
+ 
+@@ -444,6 +455,7 @@ static int create_hv_log(void)
+ static int create_console_log(struct console *con)
+ {
+ 	char logfile[PATH_MAX];
++        char logname[PATH_MAX];
+ 	char *namepath, *data, *s;
+ 	int fd;
+ 	unsigned int len;
+@@ -468,9 +480,20 @@ static int create_console_log(struct console *con)
+ 
+ 	snprintf(logfile, PATH_MAX-1, "%s/guest-%s%s.log",
+ 		 log_dir, data, con->log_suffix);
++        snprintf(logname, PATH_MAX-1, "guest_vm/%s%s",
++                 data, con->log_suffix);
+ 
+ 	free(data);
+ 	logfile[PATH_MAX-1] = '\0';
++        logname[PATH_MAX-1] = '\0';
++
++        fd = xtl_logger_create_external(logname);
++        if (fd < 0) {
++            dolog(LOG_ERR, "Failed to establish connection with the external logger - falling back %d (%s)",
++                            errno, strerror(errno));
++        } else {
++            return fd;
++        }
+ 
+ 	fd = open(logfile, O_WRONLY|O_CREAT|O_APPEND, 0644);
+ 	if (fd == -1)
+diff --git a/tools/libs/toollog/include/xentoollog.h b/tools/libs/toollog/include/xentoollog.h
+index 76f17fe125..cd11adfa05 100644
+--- a/tools/libs/toollog/include/xentoollog.h
++++ b/tools/libs/toollog/include/xentoollog.h
+@@ -70,6 +70,8 @@ struct xentoollog_logger {
+ #define XTL_STDIOSTREAM_PROGRESS_USE_CR     010u /* default is to */
+ #define XTL_STDIOSTREAM_PROGRESS_NO_CR      020u /* use \r to ttys */
+ 
++#define XTL_EXTERNAL_LOGGER_SOCKET          "/var/run/linuxkit-external-logging.sock"
++
+ typedef struct xentoollog_logger_stdiostream  xentoollog_logger_stdiostream;
+ 
+ xentoollog_logger_stdiostream *xtl_createlogger_stdiostream
+@@ -85,6 +87,7 @@ void xtl_stdiostream_adjust_flags(xentoollog_logger_stdiostream*,
+ 
+ void xtl_logger_destroy(struct xentoollog_logger *logger /* 0 is ok */);
+ 
++int xtl_logger_create_external(char *name);
+ 
+ /*---------- facilities for generating log messages ----------*/
+ 
+diff --git a/tools/libs/toollog/libxentoollog.map b/tools/libs/toollog/libxentoollog.map
+index c183cf555d..a0e2b9307c 100644
+--- a/tools/libs/toollog/libxentoollog.map
++++ b/tools/libs/toollog/libxentoollog.map
+@@ -4,6 +4,7 @@ VERS_1.0 {
+ 		xtl_level_to_string;
+ 		xtl_log;
+ 		xtl_logger_destroy;
++		xtl_logger_create_external;
+ 		xtl_logv;
+ 		xtl_progress;
+ 		xtl_stdiostream_adjust_flags;
+diff --git a/tools/libs/toollog/xtl_core.c b/tools/libs/toollog/xtl_core.c
+index 099d2f3095..92c87ebcb3 100644
+--- a/tools/libs/toollog/xtl_core.c
++++ b/tools/libs/toollog/xtl_core.c
+@@ -26,6 +26,11 @@
+ #include <errno.h>
+ #include <limits.h>
+ 
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <unistd.h>
++#include <string.h>
++
+ static const char *level_strings[XTL_NUM_LEVELS]= {
+     "[BUG:XTL_NONE]",
+     "debug", "verbose", "detail",  /* normally off by default */
+@@ -77,6 +80,62 @@ void xtl_progress(struct xentoollog_logger *logger,
+     logger->progress(logger, context, doing_what, percent, done, total);
+ }
+ 
++int xtl_logger_create_external(char *name) {
++    int res = -1;
++    int fds[2];
++    int fd;
++    struct sockaddr_un addr;
++    struct msghdr message;
++    struct iovec iov[1];
++    struct cmsghdr *control_message = NULL;
++    char ctrl_buf[CMSG_SPACE(sizeof(int))];
++
++    if (pipe(fds))
++        goto bail;
++
++    /* fill out all the required C paperwork */
++    memset(&addr, 0, sizeof(addr));
++    addr.sun_family = AF_UNIX;
++    strcpy(addr.sun_path, XTL_EXTERNAL_LOGGER_SOCKET);
++
++    memset(&message, 0, sizeof(struct msghdr));
++    memset(ctrl_buf, 0, CMSG_SPACE(sizeof(int)));
++    iov[0].iov_base = name;
++    iov[0].iov_len = strlen(name);
++
++    message.msg_name = NULL;
++    message.msg_namelen = 0;
++    message.msg_iov = iov;
++    message.msg_iovlen = 1;
++    message.msg_controllen =  CMSG_SPACE(sizeof(int));
++    message.msg_control = ctrl_buf;
++
++    control_message = CMSG_FIRSTHDR(&message);
++    control_message->cmsg_level = SOL_SOCKET;
++    control_message->cmsg_type = SCM_RIGHTS;
++    control_message->cmsg_len = CMSG_LEN(sizeof(int));
++    *((int *) CMSG_DATA(control_message)) = fds[0];
++
++    /* now, do the deed */
++    fd = socket(AF_UNIX, SOCK_DGRAM, 0);
++    if (fd < 0)
++	goto bail_fds;
++
++    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
++        goto bail_fd_fds;
++
++    if (sendmsg(fd, &message, 0) >= 0)
++        res = fds[1];
++
++bail_fd_fds:
++    close(fd);
++bail_fds:
++    close(fds[0]);
++    close(fds[1]);
++bail:
++    return res;
++}
++
+ void xtl_logger_destroy(struct xentoollog_logger *logger) {
+     if (!logger) return;
+     logger->destroy(logger);
+diff --git a/tools/libxl/libxl_dm.c b/tools/libxl/libxl_dm.c
+index dac1b8ddb8..5cd9923c23 100644
+--- a/tools/libxl/libxl_dm.c
++++ b/tools/libxl/libxl_dm.c
+@@ -25,6 +25,8 @@
+ #include <pwd.h>
+ #include <grp.h>
+ 
++#include "xentoollog.h"
++
+ static const char *libxl_tapif_script(libxl__gc *gc)
+ {
+ #if defined(__linux__) || defined(__FreeBSD__)
+@@ -49,6 +51,10 @@ static int libxl__create_qemu_logfile(libxl__gc *gc, char *name)
+     char *logfile;
+     int rc, logfile_w;
+ 
++    logfile_w = xtl_logger_create_external(name);
++    if (logfile_w >= 0)
++        return logfile_w;
++
+     rc = libxl_create_logfile(CTX, name, &logfile);
+     if (rc) return rc;
+ 
+diff --git a/tools/xl/xl_utils.c b/tools/xl/xl_utils.c
+index 4503ac7ea0..aedc573aed 100644
 --- a/tools/xl/xl_utils.c
 +++ b/tools/xl/xl_utils.c
-@@ -264,14 +264,18 @@
+@@ -27,6 +27,8 @@
+ #include "xl.h"
+ #include "xl_utils.h"
+ 
++#include "xentoollog.h"
++
+ void dolog(const char *file, int line, const char *func, char *fmt, ...)
+ {
+     va_list ap;
+@@ -264,14 +266,17 @@ int do_daemonize(char *name, const char *pidfile)
  
      postfork();
  
@@ -9,14 +241,13 @@
 -        LOG("failed to open logfile %s: %s",fullname,strerror(errno));
 -        exit(-1);
 -    }
-+    logfile = libxl_create_external_logger(name);
++    logfile = xtl_logger_create_external(name);
 +    if (logfile < 0) {
 +        ret = libxl_create_logfile(ctx, name, &fullname);
 +        if (ret) {
 +            LOG("failed to open logfile %s: %s",fullname,strerror(errno));
 +            exit(-1);
 +        }
-+    
  
 -    CHK_SYSCALL(logfile = open(fullname, O_WRONLY|O_CREAT|O_APPEND, 0644));
 -    free(fullname);
@@ -26,221 +257,6 @@
      assert(logfile >= 3);
  
      CHK_SYSCALL(nullfd = open("/dev/null", O_RDONLY));
---- a/tools/libxl/libxl_dm.c
-+++ b/tools/libxl/libxl_dm.c
-@@ -49,6 +49,11 @@
-     char *logfile;
-     int rc, logfile_w;
- 
-+    logfile_w = libxl_create_external_logger(name);
-+    if (logfile_w >= 0) {
-+	return logfile_w;
-+    }
-+
-     rc = libxl_create_logfile(CTX, name, &logfile);
-     if (rc) return rc;
- 
---- a/tools/libxl/libxl_utils.c
-+++ b/tools/libxl/libxl_utils.c
-@@ -16,6 +16,8 @@
- #include "libxl_osdeps.h" /* must come before any other headers */
- 
- #include <ctype.h>
-+#include <sys/socket.h>
-+#include <sys/un.h>
- 
- #include "libxl_internal.h"
- #include "_paths.h"
-@@ -253,6 +255,66 @@
-         return ERROR_FAIL;
-     }
-     return 0;
-+}
-+
-+static int send_fd_to_logger(int shared_fd, char *name, char *logger) {
-+    int fd;
-+    struct sockaddr_un addr;
-+    struct msghdr message;
-+    struct iovec iov[1];
-+    struct cmsghdr *control_message = NULL;
-+    char ctrl_buf[CMSG_SPACE(sizeof(int))];
-+
-+    /* fill out all the required C paperwork */
-+    memset(&addr, 0, sizeof(addr));
-+    addr.sun_family = AF_UNIX;
-+    strcpy(addr.sun_path, logger);
-+
-+    memset(&message, 0, sizeof(struct msghdr));
-+    memset(ctrl_buf, 0, CMSG_SPACE(sizeof(int)));
-+    iov[0].iov_base = name;
-+    iov[0].iov_len = strlen(name);
-+
-+    message.msg_name = NULL;
-+    message.msg_namelen = 0;
-+    message.msg_iov = iov;
-+    message.msg_iovlen = 1;
-+    message.msg_controllen =  CMSG_SPACE(sizeof(int));
-+    message.msg_control = ctrl_buf;
-+
-+    control_message = CMSG_FIRSTHDR(&message);
-+    control_message->cmsg_level = SOL_SOCKET;
-+    control_message->cmsg_type = SCM_RIGHTS;
-+    control_message->cmsg_len = CMSG_LEN(sizeof(int));
-+    *((int *) CMSG_DATA(control_message)) = shared_fd;
-+
-+    /* now, do the deed */
-+    fd = socket(AF_UNIX, SOCK_DGRAM, 0);
-+    if (fd < 0)
-+	goto bail;
-+
-+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-+        goto bail;
-+
-+    if (sendmsg(fd, &message, 0) < 0)
-+        goto bail;
-+
-+    return 1;
-+
-+bail:
-+    return 0;
-+}
-+
-+int libxl_create_external_logger(char *name) {
-+    int fds[2];
-+
-+    pipe(fds);
-+    if (send_fd_to_logger(fds[0], name, "/var/run/linuxkit-external-logging.sock")) {
-+        return fds[1];
-+    }
-+    close(fds[0]);
-+    close(fds[1]);
-+    return -1;
- }
- 
- int libxl_create_logfile(libxl_ctx *ctx, const char *name, char **full_name)
---- a/tools/libxl/libxl_utils.h
-+++ b/tools/libxl/libxl_utils.h
-@@ -37,6 +37,7 @@
- int libxl_get_stubdom_id(libxl_ctx *ctx, int guest_domid);
- int libxl_is_stubdom(libxl_ctx *ctx, uint32_t domid, uint32_t *target_domid);
- int libxl_create_logfile(libxl_ctx *ctx, const char *name, char **full_name);
-+int libxl_create_external_logger(char *name);
- int libxl_string_to_backend(libxl_ctx *ctx, char *s, libxl_disk_backend *backend);
- 
- int libxl_read_file_contents(libxl_ctx *ctx, const char *filename,
---- a/tools/console/daemon/io.c
-+++ b/tools/console/daemon/io.c
-@@ -39,6 +39,8 @@
- #include <time.h>
- #include <assert.h>
- #include <sys/types.h>
-+#include <sys/socket.h>
-+#include <sys/un.h>
- #if defined(__NetBSD__) || defined(__OpenBSD__)
- #include <util.h>
- #elif defined(__linux__)
-@@ -416,10 +418,70 @@
- 	return ret;
- }
- 
-+static int send_fd_to_logger(int shared_fd, char *name, char *logger) {
-+    int fd;
-+    struct sockaddr_un addr;
-+    struct msghdr message;
-+    struct iovec iov[1];
-+    struct cmsghdr *control_message = NULL;
-+    char ctrl_buf[CMSG_SPACE(sizeof(int))];
-+
-+    /* fill out all the required C paperwork */
-+    memset(&addr, 0, sizeof(addr));
-+    addr.sun_family = AF_UNIX;
-+    strcpy(addr.sun_path, logger);
-+
-+    memset(&message, 0, sizeof(struct msghdr));
-+    memset(ctrl_buf, 0, CMSG_SPACE(sizeof(int)));
-+    iov[0].iov_base = name;
-+    iov[0].iov_len = strlen(name);
-+
-+    message.msg_name = NULL;
-+    message.msg_namelen = 0;
-+    message.msg_iov = iov;
-+    message.msg_iovlen = 1;
-+    message.msg_controllen =  CMSG_SPACE(sizeof(int));
-+    message.msg_control = ctrl_buf;
-+
-+    control_message = CMSG_FIRSTHDR(&message);
-+    control_message->cmsg_level = SOL_SOCKET;
-+    control_message->cmsg_type = SCM_RIGHTS;
-+    control_message->cmsg_len = CMSG_LEN(sizeof(int));
-+    *((int *) CMSG_DATA(control_message)) = shared_fd;
-+
-+    /* now, do the deed */
-+    fd = socket(AF_UNIX, SOCK_DGRAM, 0);
-+    if (fd < 0)
-+	goto bail;
-+
-+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-+        goto bail;
-+
-+    if (sendmsg(fd, &message, 0) < 0)
-+        goto bail;
-+
-+    return 1;
-+
-+bail:
-+    return 0;
-+}
-+
- static int create_hv_log(void)
- {
- 	char logfile[PATH_MAX];
- 	int fd;
-+	int fds[2];
-+
-+	pipe(fds);
-+	if (send_fd_to_logger(fds[0], "hypervisor", "/var/run/linuxkit-external-logging.sock")) {
-+		return fds[1];
-+	} else {
-+		dolog(LOG_ERR, "Failed to establish connection with the logger %d (%s)",
-+				errno, strerror(errno));
-+		close(fds[0]);
-+		close(fds[1]);
-+	}
-+
- 	snprintf(logfile, PATH_MAX-1, "%s/hypervisor.log", log_dir);
- 	logfile[PATH_MAX-1] = '\0';
- 
-@@ -444,8 +506,10 @@
- static int create_console_log(struct console *con)
- {
- 	char logfile[PATH_MAX];
-+	char logname[PATH_MAX];
- 	char *namepath, *data, *s;
- 	int fd;
-+	int fds[2];
- 	unsigned int len;
- 	struct domain *dom = con->d;
- 
-@@ -468,9 +532,22 @@
- 
- 	snprintf(logfile, PATH_MAX-1, "%s/guest-%s%s.log",
- 		 log_dir, data, con->log_suffix);
-+	snprintf(logname, PATH_MAX-1, "guest_vm/%s%s",
-+		 data, con->log_suffix);
- 
- 	free(data);
- 	logfile[PATH_MAX-1] = '\0';
-+	logname[PATH_MAX-1] = '\0';
-+
-+        pipe(fds);
-+        if (send_fd_to_logger(fds[0], logname, "/var/run/linuxkit-external-logging.sock")) {
-+                return fds[1];
-+        } else {
-+                dolog(LOG_ERR, "Failed to establish connection with the logger %d (%s)",
-+                                errno, strerror(errno));
-+                close(fds[0]);
-+                close(fds[1]);
-+        }
- 
- 	fd = open(logfile, O_WRONLY|O_CREAT|O_APPEND, 0644);
- 	if (fd == -1)
+-- 
+2.15.1
+
