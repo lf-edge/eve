@@ -123,7 +123,7 @@ if [ ! -d $LOGDIRB ]; then
     mkdir -p $LOGDIRB
 fi
 
-P3=$(zboot partdev P3)
+P3=$(/hostfs/sbin/findfs PARTLABEL=P3)
 P3_FS_TYPE=$(blkid "$P3"| awk '{print $3}' | sed 's/TYPE=//' | sed 's/"//g')
 if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] && [ "$P3_FS_TYPE" = "ext4" ]; then
     #It is a device with TPM, and formatted with ext4, setup fscrypt
