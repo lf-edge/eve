@@ -11,8 +11,5 @@ for i in $(cd /sys/class/net || return ; echo eth*) ; do
   ethtool -K "$i" sg off
 done
 
-# Need this for logrotate
-/usr/sbin/crond -d 8
-
 echo 'Starting device-steps'
 /opt/zededa/bin/device-steps.sh
