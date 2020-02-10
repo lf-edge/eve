@@ -7,6 +7,9 @@ config:
     - /dev:/dev
     - /etc/resolv.conf:/etc/resolv.conf
     - /var/persist:/persist
+    - /:/hostfs
   net: host
   capabilities:
     - all
+  pid: host
+  userns: host
