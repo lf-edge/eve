@@ -1,20 +1,33 @@
 #!/bin/sh
-#
 
-# Finally, we need to start Xen
-# In case it hangs and we have no hardware watchdog we run it in the background
-XENCONSOLED_ARGS='--log=all --log-dir=/var/log/xen' /etc/init.d/xencommons start
+if [ -d /proc/xen/ ]; then
+   echo "Xen hypervisor support detected"
 
-# We have the following filesystem logs from Xen to care about under /var/log/xen
-#   hypervisor.log
-#   xen-hotplug.log
-#   guest-DOMAIN_NAME.log
-#   qemu-dm-DOMAIN_NAME.log
-#   xl-DOMAIN_NAME.log
-# For now we will only take care of the two that don't change its name
+   # set things up for log collection
+   mkdir -p /var/log/xen
+   mkfifo /var/log/xen/xen-hotplug.log
 
-while true; do
-  echo "$(date -Is -u) Starting hypervisor.log"
-  tail -c +0 -F /var/log/xen/hypervisor.log /var/log/xen/xen-hotplug.log |\
-    while IFS= read -r line; do printf "%s %s\n" "$(date -Is -u)" "$line"; done
-done
+   # start collecting logs (make sure that FIFO remains alway open for
+   # writing - so readers don't get EOF, but rather block)
+   tail -f /var/log/xen/xen-hotplug.log &
+   sh -c 'kill -STOP $$' 3>>/var/log/xen/xen-hotplug.log &
+
+   # Finally, we need to start Xen
+   # In case it hangs and we have no hardware watchdog we run it in the background
+   mkdir -p /var/run/xen/ /var/run/xenstored
+   XENCONSOLED_ARGS='--log=all --log-dir=/var/log/xen' /etc/init.d/xencommons start
+
+   # Now start the watchdog
+   mkdir -p /run/watchdog/pid/xen
+   (cd /run/watchdog/pid/xen && touch qemu-dom0.pid xenconsoled.pid xenstored.pid)
+
+   # spin for now, but later we can add Xen checks here
+   while true ; do sleep 60 ; done
+
+elif [ -e /dev/kvm ]; then
+   echo "KVM hypervisor support detected"
+
+else
+   echo "No hypervisor support detected, feel free to run bare-metail containers"
+
+fi
