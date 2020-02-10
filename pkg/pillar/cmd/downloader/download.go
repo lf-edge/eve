@@ -71,7 +71,7 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 			// showing it has downloaded, more than it is supposed to
 			// aborting download, marking it as an error
 			if asize > osize {
-				errStr := fmt.Sprintf("%s, download Error, downloaded %v out of %v",
+				errStr := fmt.Sprintf("%s, downloaded more than 100%% (%v / %v). Which is impossible. Aborting the download",
 					resp.GetLocalName(), asize, osize)
 				log.Errorln(errStr)
 				return errors.New(errStr)
