@@ -71,5 +71,8 @@ RUN rm -rf /usr/lib/libxen*.a /usr/lib/libxl*.a /usr/lib/debug
 # Adjust /var/run to be shared
 RUN rm -rf /var/run && ln -s /run /var/run
 
+# FIXME: this needs to go away with rkt
+RUN ln -s /persist/rkt /var/lib/rkt && ln -s /persist/rkt-cni /var/lib/cni
+
 ENTRYPOINT []
 CMD ["/init.sh"]

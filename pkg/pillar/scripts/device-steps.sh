@@ -8,6 +8,7 @@ WATCHDOG_FILE=/run/watchdog/file
 CONFIGDIR=/config
 PERSISTDIR=/persist
 PERSIST_RKT_DATA_DIR=$PERSISTDIR/rkt
+PERSIST_RKT_CNI_DIR=$PERSISTDIR/rkt-cni
 BINDIR=/opt/zededa/bin
 TMPDIR=/persist/tmp
 ZTMPDIR=/var/tmp/zededa
@@ -132,10 +133,16 @@ if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] && [ "$P3_FS_TYPE"
     $BINDIR/vaultmgr -c "$CURPART" setupVaults
 fi
 
+# FIXME: remove these two once we get rid of rkt (or move it to xen-tools)
 if [ ! -d "$PERSIST_RKT_DATA_DIR" ]; then
     echo "$(date -Ins -u) Create $PERSIST_RKT_DATA_DIR"
     mkdir -p "$PERSIST_RKT_DATA_DIR"
     chmod 700 "$PERSIST_RKT_DATA_DIR"
+fi
+if [ ! -d "$PERSIST_RKT_CNI_DIR" ]; then
+    echo "$(date -Ins -u) Create $PERSIST_RKT_CNI_DIR"
+    mkdir -p "$PERSIST_RKT_CNI_DIR"
+    chmod 744 "$PERSIST_RKT_CNI_DIR"
 fi
 
 if [ -f $PERSISTDIR/IMGA/reboot-reason ]; then
