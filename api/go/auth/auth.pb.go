@@ -20,6 +20,8 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.ProtoPackageIsVersion3 // please upgrade the proto package
 
+//This is same as certHashAlgorithm in certs/certs.proto
+//Keep these two definitions in sync
 type HashAlgorithm int32
 
 const (
