@@ -203,12 +203,8 @@ $BINDIR/nodeagent -c $CURPART &
 wait_for_touch nodeagent
 
 mkdir -p "$WATCHDOG_PID" "$WATCHDOG_FILE"
-touch "$WATCHDOG_PID/crond.pid"                                      \
-      "$WATCHDOG_PID/nodeagent.pid" "$WATCHDOG_FILE/nodeagent.touch" \
+touch "$WATCHDOG_PID/nodeagent.pid" "$WATCHDOG_FILE/nodeagent.touch" \
       "$WATCHDOG_PID/ledmanager.pid" "$WATCHDOG_FILE/ledmanager.touch"
-# FIXME: the following will get removed once xen-tools is standalone
-mkdir -p "$WATCHDOG_PID/xen"
-(cd "$WATCHDOG_PID/xen" && touch qemu-dom0.pid xenconsoled.pid xenstored.pid)
 
 mkdir -p $DPCDIR
 
