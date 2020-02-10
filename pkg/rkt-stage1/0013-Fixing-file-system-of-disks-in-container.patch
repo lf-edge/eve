@@ -1,0 +1,42 @@
+From 588c88916c45f6d9e6ad9378c289895f46f99a59 Mon Sep 17 00:00:00 2001
+From: zed-rishabh <rgupta@zededa.com>
+Date: Mon, 10 Feb 2020 13:10:25 +0530
+Subject: [PATCH] Fixing file system of disks in container
+
+Creating file system inside disk for container causing existing data
+loss in disk. So, we are checking for existing file system if not
+present then we are crreating one.
+---
+ files/mount_disk.sh | 15 +++++++++------
+ 1 file changed, 9 insertions(+), 6 deletions(-)
+
+diff --git a/files/mount_disk.sh b/files/mount_disk.sh
+index 4361c51..c0c49a2 100644
+--- a/files/mount_disk.sh
++++ b/files/mount_disk.sh
+@@ -21,13 +21,16 @@ ls /sys/block/ | grep xvd | while read -r disk ; do
+   echo "Failed to create device file for /dev/$disk"
+   echo
+ 
+-  #Creating a file system inside the partition
++  #Checking and creating a file system inside the partition
+   fileSystem="vfat"
+-  echo "Creating $fileSystem file system on /dev/$disk"
+-  mkfs.$fileSystem /dev/$disk && \
+-  echo "Successfully created $fileSystem file system on /dev/$disk" || \
+-  echo "Failed to create $fileSystem file system on /dev/$disk"
+-  echo
++  existingFileSystem="$(eval $(blkid /dev/$disk | awk ' { print $3 } '); echo $TYPE)"
++  if [ "$existingFileSystem" == "" ]; then
++    echo "Creating $fileSystem file system on /dev/$disk"
++    mkfs.$fileSystem /dev/$disk && \
++    echo "Successfully created $fileSystem file system on /dev/$disk" || \
++    echo "Failed to create $fileSystem file system on /dev/$disk"
++    echo
++  fi
+ 
+   #Mounting the partition onto a target directory
+   diskAccess=$(cat /sys/block/$disk/ro)
+-- 
+2.17.1
+
