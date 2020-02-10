@@ -73,8 +73,6 @@ COPY --from=fscrypt-build /fscrypt /opt/zededa/bin/fscrypt
 
 # And now a few local tweaks
 COPY rootfs/ /
-# logrotate requires restricted permissions
-RUN chmod 644 /etc/logrotate.d/zededa
 
 # We will start experimenting with stripping go binaries on ARM only for now
 RUN if [ "$(uname -m)" = "aarch64" ] ; then                                             \
