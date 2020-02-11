@@ -127,11 +127,13 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 			// log.Debugln("WatchConfigStatus remove/re-add", configDir)
 			err = w.Remove(configDir)
 			if err != nil {
-				log.Fatal(err, "Remove: ", configDir)
+				log.Error(err, " Remove: ", configDir)
 			}
 			err = w.Add(configDir)
 			if err != nil {
-				log.Fatal(err, "Add: ", configDir)
+				log.Error(err, " Add: ", configDir)
+				// Check again when timer fires
+				continue
 			}
 			foundRestart, foundRestarted := watchReadDir(configDir,
 				fileChanges, true, true)
@@ -261,11 +263,13 @@ func WatchStatus(statusDir string, jsonOnly bool, fileChanges chan<- string) {
 			// log.Debugln("WatchStatus remove/re-add", statusDir)
 			err = w.Remove(statusDir)
 			if err != nil {
-				log.Fatal(err, "Remove: ", statusDir)
+				log.Error(err, " Remove: ", statusDir)
 			}
 			err = w.Add(statusDir)
 			if err != nil {
-				log.Fatal(err, "Add: ", statusDir)
+				log.Error(err, " Add: ", statusDir)
+				// Try again on next timeout
+				continue
 			}
 			foundRestart, foundRestarted := watchReadDir(statusDir,
 				fileChanges, true, jsonOnly)
