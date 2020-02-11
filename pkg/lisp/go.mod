@@ -3,8 +3,11 @@ module github.com/lf-edge/eve/pkg/lisp
 go 1.12
 
 require (
+	contrib.go.opencensus.io/exporter/ocagent v0.4.11 // indirect
+	github.com/Azure/go-autorest v13.0.1+incompatible // indirect
 	github.com/google/gopacket v1.1.16
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20200203060116-d5cb7c3fb58a
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20200211160554-32163b631888
+	github.com/marstr/guid v1.1.0 // indirect
 	github.com/sirupsen/logrus v1.4.2
 	golang.org/x/net v0.0.0-20191004110552-13f9640d40b9
 )
