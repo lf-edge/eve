@@ -13,9 +13,9 @@ DATE=$(date -Is)
 echo "Watchdog report at $DATE: $*" >>/persist/reboot-reason
 sync
 
-# If a /var/run/<agent.touch> then try sending a SIGUSR1 to get a stack trace
+# If a /run/<agent.touch> then try sending a SIGUSR1 to get a stack trace
 if [ $# -ge 2 ]; then
-    agent=$(echo "$2" | grep '/var/run/.*\.touch' | sed 's,/var/run/\(.*\)\.touch,\1,')
+    agent=$(echo "$2" | grep '/run/.*\.touch' | sed 's,/run/\(.*\)\.touch,\1,')
     if [ -n "$agent" ]; then
         # Map the various zedagent* to zedagent
         if [ "$agent" = "zedagentmetrics" ] -o [ "$agent" = "zedagentconfig" ] -o [ "$agent" = "zedagentdevinfo" ]; then
@@ -33,10 +33,10 @@ echo "Watchdog report done" >>/persist/log/watchdog.log
 CURPART=$(zboot curpart)
 echo "Watchdog report at $DATE: $*" >>/persist/"$CURPART"/reboot-reason
 
-# If a /var/run/<agent.pid> then look for an oom message in dmesg for that agent
+# If a /run/<agent.pid> then look for an oom message in dmesg for that agent
 oom=""
 if [ $# -ge 2 ]; then
-    agent=$(echo "$2" | grep '/var/run/.*\.pid' | sed 's,/var/run/\(.*\)\.pid,\1,')
+    agent=$(echo "$2" | grep '/run/.*\.pid' | sed 's,/run/\(.*\)\.pid,\1,')
     if [ -n "$agent" ]; then
         oom=$(dmesg | grep oom_reaper | grep "$agent")
     fi
