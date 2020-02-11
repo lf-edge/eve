@@ -2867,7 +2867,7 @@ func fetchEnvVariablesFromCloudInit(config types.DomainConfig) (map[string]strin
 	envList := make(map[string]string, 0)
 	list := strings.Split(string(ud), "\n")
 	for _, v := range list {
-		pair := strings.Split(v, ":")
+		pair := strings.SplitN(v, ":", 2)
 		envList[pair[0]] = pair[1]
 	}
 
