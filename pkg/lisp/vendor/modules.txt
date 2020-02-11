@@ -23,7 +23,7 @@ github.com/konsorten/go-windows-terminal-sequences
 # github.com/lf-edge/eve/api/go v0.0.0-00010101000000-000000000000 => ../../api/go
 github.com/lf-edge/eve/api/go/config
 github.com/lf-edge/eve/api/go/info
-# github.com/lf-edge/eve/pkg/pillar v0.0.0-20200203060116-d5cb7c3fb58a
+# github.com/lf-edge/eve/pkg/pillar v0.0.0-20200211160554-32163b631888
 github.com/lf-edge/eve/pkg/pillar/agentlog
 github.com/lf-edge/eve/pkg/pillar/pidfile
 github.com/lf-edge/eve/pkg/pillar/pubsub

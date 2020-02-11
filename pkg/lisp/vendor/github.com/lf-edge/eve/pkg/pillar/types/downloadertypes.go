@@ -114,6 +114,34 @@ func (status DownloaderStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }
 
+// SetErrorInfo : Set Error Information for DownloaderStatus
+func (status *DownloaderStatus) SetErrorInfo(errStr string) {
+	status.LastErr = errStr
+	status.LastErrTime = time.Now()
+}
+
+// ClearErrorInfo : Clear Error Information for DownloaderStatus
+func (status *DownloaderStatus) ClearErrorInfo() {
+	status.LastErr = ""
+	status.LastErrTime = time.Time{}
+}
+
+// ClearPendingStatus : Clear Pending Status for DownloaderStatus
+func (status *DownloaderStatus) ClearPendingStatus() {
+	if status.PendingAdd {
+		status.PendingAdd = false
+	}
+	if status.PendingModify {
+		status.PendingModify = false
+	}
+}
+
+// HandleDownloadFail : Do Failure specific tasks
+func (status *DownloaderStatus) HandleDownloadFail(errStr string) {
+	status.SetErrorInfo(errStr)
+	status.ClearPendingStatus()
+}
+
 type GlobalDownloadConfig struct {
 	MaxSpace uint64 // Number of kbytes allowed in types.DownloadDirname
 }
