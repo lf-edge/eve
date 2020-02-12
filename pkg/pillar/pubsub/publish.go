@@ -135,7 +135,8 @@ func (pub *PublicationImpl) ClearRestarted() error {
 func (pub *PublicationImpl) Get(key string) (interface{}, error) {
 	m, ok := pub.km.key.Load(key)
 	if ok {
-		return m, nil
+		newIntf := deepCopy(m)
+		return newIntf, nil
 	} else {
 		name := pub.nameString()
 		errStr := fmt.Sprintf("Get(%s) unknown key %s", name, key)
@@ -147,7 +148,8 @@ func (pub *PublicationImpl) Get(key string) (interface{}, error) {
 func (pub *PublicationImpl) GetAll() map[string]interface{} {
 	result := make(map[string]interface{})
 	assigner := func(key string, val interface{}) bool {
-		result[key] = val
+		newVal := deepCopy(val)
+		result[key] = newVal
 		return true
 	}
 	pub.km.key.Range(assigner)
