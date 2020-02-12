@@ -2954,7 +2954,11 @@ func fetchEnvVariablesFromCloudInit(config types.DomainConfig) (map[string]strin
 	envList := make(map[string]string, 0)
 	list := strings.Split(string(ud), "\n")
 	for _, v := range list {
-		pair := strings.SplitN(v, ":", 2)
+		pair := strings.SplitN(v, "=", 2)
+		if len(pair) != 2 {
+			errStr := fmt.Sprintf("Variable \"%s\" not defined properly\nKey value pair should be delimited by \"=\"", pair[0])
+			return nil, errors.New(errStr)
+		}
 		envList[pair[0]] = pair[1]
 	}
 
