@@ -17,6 +17,7 @@ import (
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -24,7 +25,9 @@ import (
 )
 
 type vaultMgrContext struct {
-	pubVaultStatus pubsub.Publication
+	pubVaultStatus  pubsub.Publication
+	subGlobalConfig pubsub.Subscription
+	GCInitialized   bool // GlobalConfig initialized
 }
 
 const (
@@ -56,6 +59,8 @@ var (
 	statusParams      = []string{"status", mountPoint}
 	vaultStatusParams = []string{"status"}
 	setupParams       = []string{"setup", "--quiet"}
+	debug             = false
+	debugOverride     bool // From command line arg
 )
 
 func getEncryptParams(vaultPath string) []string {
@@ -432,11 +437,16 @@ func GetOperInfo() (info.DataSecAtRestStatus, string) {
 func Run() {
 
 	curpartPtr := flag.String("c", "", "Current partition")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
-
+	debug = *debugPtr
+	debugOverride = debug
+	if debugOverride {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 	curpart := *curpartPtr
-
-	log.SetLevel(log.DebugLevel)
 
 	// Sending json log format to stdout
 	logf, err := agentlog.Init(agentName, curpart)
@@ -446,8 +456,7 @@ func Run() {
 	defer logf.Close()
 
 	if len(flag.Args()) == 0 {
-		log.Error("Insufficient arguments")
-		os.Exit(1)
+		log.Fatal("Insufficient arguments")
 	}
 
 	switch flag.Args()[0] {
@@ -464,12 +473,42 @@ func Run() {
 	case "runAsService":
 		log.Infof("Starting %s\n", agentName)
 
+		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+			log.Fatal(err)
+		}
 		// Run a periodic timer so we always update StillRunning
 		stillRunning := time.NewTicker(15 * time.Second)
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 
 		// Context to pass around
 		ctx := vaultMgrContext{}
+
+		// Look for global config such as log levels
+		subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
+			false, &ctx, &pubsub.SubscriptionOptions{
+				CreateHandler: handleGlobalConfigModify,
+				ModifyHandler: handleGlobalConfigModify,
+				DeleteHandler: handleGlobalConfigDelete,
+				WarningTime:   warningTime,
+				ErrorTime:     errorTime,
+			})
+		if err != nil {
+			log.Fatal(err)
+		}
+		ctx.subGlobalConfig = subGlobalConfig
+		subGlobalConfig.Activate()
+
+		// Pick up debug aka log level before we start real work
+		for !ctx.GCInitialized {
+			log.Infof("waiting for GCInitialized")
+			select {
+			case change := <-subGlobalConfig.MsgChan():
+				subGlobalConfig.ProcessChange(change)
+			case <-stillRunning.C:
+			}
+			agentlog.StillRunning(agentName, warningTime, errorTime)
+		}
+		log.Infof("processed GlobalConfig")
 
 		// initialize publishing handles
 		initializeSelfPublishHandles(&ctx)
@@ -486,7 +525,39 @@ func Run() {
 			}
 		}
 	default:
-		log.Errorf("Unknown argument %s", flag.Args()[0])
-		os.Exit(1)
+		log.Fatalf("Unknown argument %s", flag.Args()[0])
 	}
+}
+
+// Handles both create and modify events
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*vaultMgrContext)
+	if key != "global" {
+		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleGlobalConfigModify for %s\n", key)
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	if gcp != nil {
+		ctx.GCInitialized = true
+	}
+	log.Infof("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*vaultMgrContext)
+	if key != "global" {
+		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

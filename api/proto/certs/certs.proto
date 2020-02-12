@@ -6,19 +6,8 @@ syntax = "proto3";
 option go_package  = "github.com/lf-edge/eve/api/go/certs";
 option java_package = "com.zededa.cloud.uservice.proto";
 
-// This is the request payload for POST /api/v1/edgeDevice/EdgeNodeCerts
-// or /api/v2/edgeDevice/EdgeNodeCerts
-// ZEdgeNodeCert carries a set of X.509 certificate and their properties
-// from EVE to Controller.
-// The message is assumed to be protected by a TLS session bound to the
-// device certificate for v1.
-// The message is assumed to be protected by signing envelope for v2.
-message ZEdgeNodeCert {
-  repeated ZCert certs = 1;   //list of certificates sent by edge node
-}
-
-// This is the response payload for GET /api/v1/edgeDevice/ControllerCerts
-// or /api/v2/edgeDevice/ControllerCerts
+// This is the response payload for GET /api/v1/edgeDevice/certs
+// or /api/v2/edgeDevice/certs
 // ZControllerCert carries a set of X.509 certificate and their properties
 // from Controller to EVE.
 message ZControllerCert {
@@ -32,23 +21,16 @@ enum certHashAlgorithm {
     HASH_NONE = 0;
     HASH_SHA256_16bytes = 1;  // hash with sha256, the 1st 16 bytes of result in 'certHash'
 }
+
 message ZCert {
    certHashAlgorithm hashAlgo = 1; //hash method used to arrive at certHash
-   bytes certHash = 2;             //Hash of the cert, computed using hashAlgo
+   bytes certHash = 2;             //truncated hash of the cert, according to hashing scheme in hashAlgo
    ZCertType type = 3;             //what kind of certificate(to identify the target use case)
    bytes cert = 4;                 //X509 cert in .PEM format
-   ZCertProperties properties = 5; //properties of this certificate
 }
 
 enum ZCertType {
-   CERT_TYPE_DEVICE_ONBOARDING = 0;         //set for certificate used by edge node for identifying the device
-   CERT_TYPE_DEVICE_RESTRICTED_SIGNING = 1; //set for certificate used by edge node for attestation
-   CERT_TYPE_DEVICE_ENDORSEMENT_RSA = 2;    //set for endorsement key certificate with RSASSA signing algorithm
-   CERT_TYPE_DEVICE_ECDH_EXCHANGE = 3;      //set for certificate used by edge node to share symmetric key using ECDH
-   CERT_TYPE_CONTROLLER_SIGNING = 4;        //set for certificate used by controller to sign payload envelopes
-   CERT_TYPE_CONTROLLER_ECDH_EXCHANGE = 5;  //set for certificate used by controller to share any symmetric key using ECDH
-}
-
-message ZCertProperties {
-   bool isMutable = 1; //set to false for immutable certificates
+   CERT_TYPE_CONTROLLER_SIGNING = 0;        //set for the leaf certificate used by controller to sign payload envelopes
+   CERT_TYPE_CONTROLLER_INTERMEDIATE = 1;   //set for intermediate certs used to validate the certificates
+   CERT_TYPE_CONTROLLER_ECDH_EXCHANGE = 2;  //set for certificate used by controller to share any symmetric key using ECDH
 }
