@@ -28,9 +28,16 @@ import (
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
+
+type tpmMgrContext struct {
+	subGlobalConfig pubsub.Subscription
+	GCInitialized   bool // GlobalConfig initialized
+}
 
 const (
 	agentName = "tpmmgr"
@@ -927,6 +934,36 @@ func Run() {
 		stillRunning := time.NewTicker(15 * time.Second)
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 
+		// Context to pass around
+		ctx := tpmMgrContext{}
+
+		// Look for global config such as log levels
+		subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
+			false, &ctx, &pubsub.SubscriptionOptions{
+				CreateHandler: handleGlobalConfigModify,
+				ModifyHandler: handleGlobalConfigModify,
+				DeleteHandler: handleGlobalConfigDelete,
+				WarningTime:   warningTime,
+				ErrorTime:     errorTime,
+			})
+		if err != nil {
+			log.Fatal(err)
+		}
+		ctx.subGlobalConfig = subGlobalConfig
+		subGlobalConfig.Activate()
+
+		// Pick up debug aka log level before we start real work
+		for !ctx.GCInitialized {
+			log.Infof("waiting for GCInitialized")
+			select {
+			case change := <-subGlobalConfig.MsgChan():
+				subGlobalConfig.ProcessChange(change)
+			case <-stillRunning.C:
+			}
+			agentlog.StillRunning(agentName, warningTime, errorTime)
+		}
+		log.Infof("processed GlobalConfig")
+
 		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
 			log.Fatalf("Error in creating Endorsement key: %v ", err)
 		}
@@ -953,4 +990,37 @@ func Run() {
 	default:
 		log.Fatalf("Unknown argument %s", flag.Args()[0])
 	}
+}
+
+// Handles both create and modify events
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*tpmMgrContext)
+	if key != "global" {
+		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleGlobalConfigModify for %s\n", key)
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	if gcp != nil {
+		ctx.GCInitialized = true
+	}
+	log.Infof("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*tpmMgrContext)
+	if key != "global" {
+		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
