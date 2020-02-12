@@ -419,7 +419,7 @@ func readConfigResponseProtoMessage(resp *http.Response, contents []byte) (bool,
 
 // Returns a rebootFlag
 func inhaleDeviceConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext, usingSaved bool) bool {
-	log.Debugf("Inhaling config %v\n", config)
+	log.Debugf("Inhaling config")
 
 	// if they match return
 	var devId = &zconfig.UUIDandVersion{}
