@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/logs'),
-  serialized_pb=_b('\n\tlog.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfc\x01\n\x08LogEntry\x12\x10\n\x08severity\x18\x01 \x01(\t\x12\x0e\n\x06source\x18\x02 \x01(\t\x12\x0b\n\x03iid\x18\x03 \x01(\t\x12\x0f\n\x07\x63ontent\x18\x04 \x01(\t\x12\r\n\x05msgid\x18\x05 \x01(\x04\x12!\n\x04tags\x18\x06 \x03(\x0b\x32\x13.LogEntry.TagsEntry\x12-\n\ttimestamp\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x10\n\x08\x66ilename\x18\x08 \x01(\t\x12\x10\n\x08\x66unction\x18\t \x01(\t\x1a+\n\tTagsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"p\n\tLogBundle\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12\r\n\x05image\x18\x02 \x01(\t\x12\x16\n\x03log\x18\x03 \x03(\x0b\x32\t.LogEntry\x12-\n\ttimestamp\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.TimestampBE\n\x1f\x63om.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/logsb\x06proto3')
+  serialized_pb=_b('\n\tlog.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfc\x01\n\x08LogEntry\x12\x10\n\x08severity\x18\x01 \x01(\t\x12\x0e\n\x06source\x18\x02 \x01(\t\x12\x0b\n\x03iid\x18\x03 \x01(\t\x12\x0f\n\x07\x63ontent\x18\x04 \x01(\t\x12\r\n\x05msgid\x18\x05 \x01(\x04\x12!\n\x04tags\x18\x06 \x03(\x0b\x32\x13.LogEntry.TagsEntry\x12-\n\ttimestamp\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x10\n\x08\x66ilename\x18\x08 \x01(\t\x12\x10\n\x08\x66unction\x18\t \x01(\t\x1a+\n\tTagsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"p\n\tLogBundle\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12\r\n\x05image\x18\x02 \x01(\t\x12\x16\n\x03log\x18\x03 \x03(\x0b\x32\t.LogEntry\x12-\n\ttimestamp\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"]\n\x14\x41ppInstanceLogBundle\x12\x16\n\x03log\x18\x01 \x03(\x0b\x32\t.LogEntry\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampBE\n\x1f\x63om.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/logsb\x06proto3')
   ,
   dependencies=[google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
 
@@ -202,13 +202,54 @@ _LOGBUNDLE = _descriptor.Descriptor(
   serialized_end=413,
 )
 
+
+_APPINSTANCELOGBUNDLE = _descriptor.Descriptor(
+  name='AppInstanceLogBundle',
+  full_name='AppInstanceLogBundle',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='log', full_name='AppInstanceLogBundle.log', index=0,
+      number=1, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='timestamp', full_name='AppInstanceLogBundle.timestamp', index=1,
+      number=2, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=415,
+  serialized_end=508,
+)
+
 _LOGENTRY_TAGSENTRY.containing_type = _LOGENTRY
 _LOGENTRY.fields_by_name['tags'].message_type = _LOGENTRY_TAGSENTRY
 _LOGENTRY.fields_by_name['timestamp'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _LOGBUNDLE.fields_by_name['log'].message_type = _LOGENTRY
 _LOGBUNDLE.fields_by_name['timestamp'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
+_APPINSTANCELOGBUNDLE.fields_by_name['log'].message_type = _LOGENTRY
+_APPINSTANCELOGBUNDLE.fields_by_name['timestamp'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 DESCRIPTOR.message_types_by_name['LogEntry'] = _LOGENTRY
 DESCRIPTOR.message_types_by_name['LogBundle'] = _LOGBUNDLE
+DESCRIPTOR.message_types_by_name['AppInstanceLogBundle'] = _APPINSTANCELOGBUNDLE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 LogEntry = _reflection.GeneratedProtocolMessageType('LogEntry', (_message.Message,), dict(
@@ -232,6 +273,13 @@ LogBundle = _reflection.GeneratedProtocolMessageType('LogBundle', (_message.Mess
   # @@protoc_insertion_point(class_scope:LogBundle)
   ))
 _sym_db.RegisterMessage(LogBundle)
+
+AppInstanceLogBundle = _reflection.GeneratedProtocolMessageType('AppInstanceLogBundle', (_message.Message,), dict(
+  DESCRIPTOR = _APPINSTANCELOGBUNDLE,
+  __module__ = 'log_pb2'
+  # @@protoc_insertion_point(class_scope:AppInstanceLogBundle)
+  ))
+_sym_db.RegisterMessage(AppInstanceLogBundle)
 
 
 DESCRIPTOR._options = None

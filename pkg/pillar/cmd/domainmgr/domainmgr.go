@@ -1512,7 +1512,11 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 
 	log.Infof("configToStatus(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
+	numOfContainerDisks := 0
 	for i, dc := range config.DiskConfigList {
+		if dc.Format == zconfig.Format_CONTAINER {
+			numOfContainerDisks++
+		}
 		ds := &status.DiskStatusList[i]
 		ds.ImageID = dc.ImageID
 		ds.ImageSha256 = dc.ImageSha256
@@ -1521,12 +1525,21 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.Format = dc.Format
 		ds.Maxsizebytes = dc.Maxsizebytes
 		ds.Devtype = dc.Devtype
-		// map from i=1 to xvda, 2 to xvdb etc
-		xv := "xvd" + string(int('a')+i)
+		var xv string
+		if status.IsContainer {
+			// map from i=1 to xvdb, 2 to xvdc etc
+			// For container instances xvda will be used for container disk
+			// So for other disks we are starting from xvdb
+			// Currently, we are not supporting multiple container disks inside a pod
+			xv = "xvd" + string(int('b')+i)
+		} else {
+			// map from i=1 to xvda, 2 to xvdb etc
+			xv = "xvd" + string(int('a')+i)
+		}
 		ds.Vdev = xv
 
 		target := ""
-		if !status.IsContainer && !dc.ReadOnly {
+		if ds.Format != zconfig.Format_CONTAINER && !dc.ReadOnly {
 			// XXX:Why are we excluding container images? Are they supposed to be
 			//  readonly
 			// Pick new location for a per-guest copy
@@ -1558,6 +1571,12 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			}
 		}
 
+	}
+	if numOfContainerDisks > 1 {
+		err := `Bundle contains more than one container disk, running multiple containers
+				inside a pod is not supported now.`
+		log.Errorf(err)
+		return fmt.Errorf(err)
 	}
 	// XXX could defer to Activate
 	if config.CloudInitUserData != nil {
@@ -2251,14 +2270,20 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 		// Use rkt tool
 		// get the rkt image hash for this file; if we do not have it in the rkt cache,
 		// convert it
-		// XXX we assume a container has one image. XXX do we check somewhere?
-		ociFilename, err := utils.VerifiedImageFileLocation(status.DiskStatusList[0].ImageSha256)
+		var containerImageSha256 string
+		for _, ds := range status.DiskStatusList {
+			if ds.Format == zconfig.Format_CONTAINER {
+				containerImageSha256 = ds.ImageSha256
+				break
+			}
+		}
+		ociFilename, err := utils.VerifiedImageFileLocation(containerImageSha256)
 		if err != nil {
 			log.Errorf("DomainCreate: Failed to get Image File Location. "+
 				"err: %+s", err.Error())
 			return domainID, podUUID, err
 		}
-		log.Infof("ociFilename %s sha %s", ociFilename, status.DiskStatusList[0].ImageSha256)
+		log.Infof("ociFilename %s sha %s", ociFilename, containerImageSha256)
 		imageHash, err := ociToRktImageHash(ociFilename)
 		if err != nil {
 			log.Error(err)
@@ -2842,7 +2867,7 @@ func fetchEnvVariablesFromCloudInit(config types.DomainConfig) (map[string]strin
 	envList := make(map[string]string, 0)
 	list := strings.Split(string(ud), "\n")
 	for _, v := range list {
-		pair := strings.Split(v, ":")
+		pair := strings.SplitN(v, ":", 2)
 		envList[pair[0]] = pair[1]
 	}
 

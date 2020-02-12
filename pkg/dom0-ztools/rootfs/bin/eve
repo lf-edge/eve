@@ -32,7 +32,7 @@ list_partitions() {
 }
 
 relabel_dev() {
-  /usr/bin/sgdisk -c 9:"$1" "$2"
+  /usr/bin/sgdisk -c "$num_p3_part":"$1" "$2"
 }
 
 clear_gpt() {
@@ -83,19 +83,24 @@ case "$1" in
                      [ -z "$curr_p3_dev" ] && echo "Failed to find current P3 device" && exit 1
                      curr_p3_dsk="/dev/"$(lsblk -no pkname "$curr_p3_dev")
 
-                     #rename current partition label
-                     relabel_dev "$p3_old_tag" "$curr_p3_dsk"
+                     #Attach must be idempotent
+                     [ "$curr_p3_dsk" = "$1" ] && echo "Persist is already on the given disk. Nothing to be done." && exit 0
 
                      #Clear GPT on new device, and create P3 partition
                      clear_gpt "$1"
                      create_new_p3_part "$1"
 
-                     #check the result
-                     new_p3_dev=$(/sbin/findfs PARTLABEL=P3)
+                     #check the result. At this point we should have two P3 partitions.
+                     #since findfs returns only the first P3, use cgpt to be more specific
+                     new_p3_dev=$(/usr/bin/cgpt find -l P3 "$1")
                      new_p3_dsk="/dev/"$(lsblk -no pkname "$new_p3_dev")
                      [ "$new_p3_dsk" != "$1" ] && echo "Failed to attach persist to $1" && exit 1
-                     echo "Attached persist to $1"
 
+                     #now rename current partition label
+                     echo "Removing P3 label from the old partition $curr_p3_dev"
+                     relabel_dev "$p3_old_tag" "$curr_p3_dsk"
+
+                     echo "Done. Attached persist to $1"
                      #print the partition
                      list_partitions
                      ;;

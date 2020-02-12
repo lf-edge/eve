@@ -6,6 +6,7 @@
 package zedcloud
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/tls"
@@ -86,7 +87,7 @@ func GetClientCert() (tls.Certificate, error) {
 // If a clientCert is specified it overrides the device*Name files.
 func UpdateTLSConfig(zedcloudCtx *ZedCloudContext, serverName string, clientCert *tls.Certificate) error {
 	tlsConfig, err := GetTlsConfig(zedcloudCtx.DeviceNetworkStatus, serverName, clientCert,
-		zedcloudCtx.V2API)
+		zedcloudCtx)
 	if err != nil {
 		return err
 	}
@@ -97,7 +98,7 @@ func UpdateTLSConfig(zedcloudCtx *ZedCloudContext, serverName string, clientCert
 // GetTlsConfig creates and returns a TlsConfig based on current root CA certificates
 // If a server arg is specified it overrides the serverFilename content.
 // If a clientCert is specified it overrides the device*Name files.
-func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert *tls.Certificate, v2api bool) (*tls.Config, error) {
+func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert *tls.Certificate, ctx *ZedCloudContext) (*tls.Config, error) {
 	if serverName == "" {
 		// get the server name
 		bytes, err := ioutil.ReadFile(types.ServerFileName)
@@ -115,6 +116,13 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert 
 		clientCert = &deviceTLSCert
 	}
 
+	var v2api bool
+	if ctx != nil {
+		v2api = ctx.V2API
+	} else {
+		// XXX wstunnel currently not passing ctx, assume v1 for now
+		v2api = false
+	}
 	// Load CA certificates
 	caCertPool := x509.NewCertPool()
 	if v2api {
@@ -146,6 +154,10 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert 
 				}
 			}
 		}
+		if ctx != nil {
+			// save the proxy certs in zedcloud Context, could be empty
+			ctx.PrevCertPEM = cacheProxyCerts(dns)
+		}
 	} else {
 		caCert, err := ioutil.ReadFile(types.RootCertFileName)
 		if err != nil {
@@ -170,6 +182,111 @@ func GetTlsConfig(dns *types.DeviceNetworkStatus, serverName string, clientCert 
 	}
 	tlsConfig.BuildNameToCertificate()
 	return tlsConfig, nil
+}
+
+func cacheProxyCerts(dns *types.DeviceNetworkStatus) [][]byte {
+	var certPEM [][]byte
+	// find all unique certs and save them
+	for _, port := range dns.Ports {
+		for _, pem := range port.ProxyCertPEM {
+			if !containsCert(certPEM, pem) {
+				certPEM = append(certPEM, pem)
+			}
+		}
+	}
+	return certPEM
+}
+
+func containsCert(certPEM [][]byte, pem []byte) bool {
+	for _, prevPEM := range certPEM {
+		if bytes.Equal(prevPEM, pem) {
+			return true
+		}
+	}
+	return false
+}
+
+// check to see if all the dns new proxy certs we already have
+func checkProxyCertsChanged(ctx *ZedCloudContext, dns *types.DeviceNetworkStatus) bool {
+	newCerts := cacheProxyCerts(dns)
+	if len(newCerts) != len(ctx.PrevCertPEM) {
+		return false
+	}
+
+	for _, pem := range newCerts {
+		foundIt := false
+		for _, pem2 := range ctx.PrevCertPEM {
+			if bytes.Equal(pem, pem2) {
+				foundIt = true
+				break
+			}
+		}
+		if !foundIt {
+			return false // new one not in prev
+		}
+	}
+
+	return true // both has same pems or both empty, no change
+}
+
+// UpdateTLSProxyCerts - Update when DeviceNetworkStatus changes
+func UpdateTLSProxyCerts(ctx *ZedCloudContext) {
+	tlsCfg := ctx.TlsConfig
+	devNS := ctx.DeviceNetworkStatus
+	if tlsCfg == nil || devNS == nil {
+		log.Errorln("UpdateTLSProxyCerts: tlsconfig or dev NS missing")
+		return
+	}
+
+	if checkProxyCertsChanged(ctx, devNS) {
+		// we have the proxy certs already or both empty, no change
+		return
+	}
+
+	var caCertPool *x509.CertPool
+	if len(ctx.PrevCertPEM) > 0 {
+
+		// previous certs we have are different, lets rebuild from beginning
+		caCertPool = x509.NewCertPool()
+		line, err := ioutil.ReadFile(types.V2TLSCertShaFilename)
+		if err != nil {
+			errStr := fmt.Sprintf("Failed to read V2TLSCertShaFilename")
+			log.Errorf(errStr)
+			return
+		}
+		sha := strings.TrimSpace(string(line))
+		v2RootFilename := types.CertificateDirname + "/" + sha
+		caCert, err := ioutil.ReadFile(v2RootFilename)
+		if err != nil {
+			errStr := fmt.Sprintf("Failed to read v2RootFilename")
+			log.Errorf(errStr)
+			return
+		}
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			errStr := fmt.Sprintf("Failed to append certs from %s", v2RootFilename)
+			log.Errorf(errStr)
+			return
+		}
+		log.Infof("UpdateTLSProxyCerts: rebuild root CA\n")
+	} else {
+		// we don't have proxy certs, add them if any exist
+		caCertPool = tlsCfg.RootCAs
+	}
+	// AppendCertsFromPEM checks duplicates inside
+	for _, port := range devNS.Ports {
+		for _, pem := range port.ProxyCertPEM {
+			if !caCertPool.AppendCertsFromPEM(pem) {
+				errStr := fmt.Sprintf("Failed to append certs from proxy pem")
+				log.Errorf(errStr)
+				return
+			}
+		}
+	}
+
+	log.Infof("UpdateTLSProxyCerts: root CA updated")
+	ctx.TlsConfig.RootCAs = caCertPool
+	// save the new proxy Certs, or null it out
+	ctx.PrevCertPEM = cacheProxyCerts(devNS)
 }
 
 func stapledCheck(connState *tls.ConnectionState) bool {

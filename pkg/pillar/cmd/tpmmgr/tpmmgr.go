@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"time"
 	"unsafe"
 
 	"github.com/google/go-tpm/tpm2"
@@ -31,6 +32,7 @@ import (
 )
 
 const (
+	agentName = "tpmmgr"
 	//TpmPubKeyName is the file to store TPM public key file
 	TpmPubKeyName = "/var/tmp/tpm.eccpubk.der"
 
@@ -66,12 +68,16 @@ const (
 	tpmLockName            = types.TmpDirname + "/tpm.lock"
 	maxPasswdLength        = 7  //limit TPM password to this length
 	vaultKeyLength         = 32 //Bytes
+
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 var (
 	tpmHwInfo        = ""
 	pcrSelection     = tpm2.PCRSelection{Hash: tpm2.AlgSHA1, PCRs: []int{7}}
-	pcrListForQuote  = tpm2.PCRSelection{Hash: tpm2.AlgSHA1, PCRs: []int{0, 1, 2, 3, 4, 5, 6, 7, 8}}
+	pcrListForQuote  = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 5, 6, 7, 8}}
 	defaultKeyParams = tpm2.Public{
 		Type:    tpm2.AlgECC,
 		NameAlg: tpm2.AlgSHA256,
@@ -182,13 +188,19 @@ func IsTpmEnabled() bool {
 }
 
 //Helps creating various keys, according to the supplied template, and hierarchy
-func createKey(keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public) error {
+func createKey(keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public, overwrite bool) error {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		log.Errorln(err)
 		return err
 	}
 	defer rw.Close()
+	if !overwrite {
+		//don't overwrite if key already exists
+		if _, _, _, err := tpm2.ReadPublic(rw, keyHandle); err == nil {
+			return nil
+		}
+	}
 	handle, _, err := tpm2.CreatePrimary(rw,
 		tpm2.HandleOwner,
 		pcrSelection,
@@ -863,21 +875,25 @@ func Run() {
 	}
 	defer logf.Close()
 
-	switch os.Args[1] {
+	if len(flag.Args()) == 0 {
+		log.Error("Insufficient arguments")
+		os.Exit(1)
+	}
+	switch flag.Args()[0] {
 	case "genKey":
 		if err = createDeviceKey(); err != nil {
 			log.Errorf("Error in creating device primary key: %v ", err)
 			os.Exit(1)
 		}
-		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate); err != nil {
+		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, true); err != nil {
 			log.Errorf("Error in creating Endorsement key: %v ", err)
 			os.Exit(1)
 		}
-		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate); err != nil {
+		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, true); err != nil {
 			log.Errorf("Error in creating Srk key: %v ", err)
 			os.Exit(1)
 		}
-		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate); err != nil {
+		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, true); err != nil {
 			log.Errorf("Error in creating Attestation key: %v ", err)
 			os.Exit(1)
 		}
@@ -901,6 +917,31 @@ func Run() {
 			log.Errorln("Error in generating credentials")
 			os.Exit(1)
 		}
+	case "runAsService":
+		log.Infof("Starting %s\n", agentName)
+
+		// Run a periodic timer so we always update StillRunning
+		stillRunning := time.NewTicker(15 * time.Second)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+
+		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
+			log.Errorf("Error in creating Endorsement key: %v ", err)
+			os.Exit(1)
+		}
+		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, false); err != nil {
+			log.Errorf("Error in creating Srk key: %v ", err)
+			os.Exit(1)
+		}
+		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, false); err != nil {
+			log.Errorf("Error in creating Attestation key: %v ", err)
+			os.Exit(1)
+		}
+		for {
+			select {
+			case <-stillRunning.C:
+				agentlog.StillRunning(agentName, warningTime, errorTime)
+			}
+		}
 	case "printCapability":
 		printCapability()
 	case "printPCRs":
@@ -909,5 +950,8 @@ func Run() {
 		testTpmEcdhSupport()
 	case "testEcdhAES":
 		testEcdhAES()
+	default:
+		log.Errorf("Unknown argument %s", flag.Args()[0])
+		os.Exit(1)
 	}
 }

@@ -91,6 +91,11 @@ func (sub *SubscriptionImpl) GetAll() map[string]interface{} {
 	return result
 }
 
+// Iterate - performs some callback function on all items
+func (sub *SubscriptionImpl) Iterate(function fn) {
+	sub.km.key.Range(function)
+}
+
 // Restarted - Check if the Publisher has Restarted
 func (sub *SubscriptionImpl) Restarted() bool {
 	return sub.km.restarted
@@ -124,11 +129,12 @@ func (sub *SubscriptionImpl) dump(infoStr string) {
 	name := sub.nameString()
 	log.Debugf("dump(%s) %s\n", name, infoStr)
 	dumper := func(key string, val interface{}) bool {
-		b, err := json.Marshal(val)
+		_, err := json.Marshal(val)
 		if err != nil {
 			log.Fatal("json Marshal in dump", err)
 		}
-		log.Debugf("\tkey %s val %s\n", key, b)
+		// DO NOT log Values. They may contain sensitive information.
+		log.Debugf("\tkey %s", key)
 		return true
 	}
 	sub.km.key.Range(dumper)
@@ -156,11 +162,12 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 				name, key)
 			return
 		}
-		log.Debugf("pubsub.handleModify(%s/%s) replacing due to diff %s\n",
-			name, key, cmp.Diff(m, item))
+		log.Debugf("pubsub.handleModify(%s/%s) replacing due to diff",
+			name, key)
 	} else {
-		log.Debugf("pubsub.handleModify(%s) add %+v for key %s\n",
-			name, item, key)
+		// DO NOT log Values. They may contain sensitive information.
+		log.Debugf("pubsub.handleModify(%s) add for key %s\n",
+			name, key)
 		created = true
 	}
 	sub.km.key.Store(key, item)
@@ -186,8 +193,8 @@ func handleDelete(ctxArg interface{}, key string) {
 			name, key)
 		return
 	}
-	log.Debugf("pubsub.handleDelete(%s) key %s value %+v\n",
-		name, key, m)
+	// DO NOT log Values. They may contain sensitive information.
+	log.Debugf("pubsub.handleDelete(%s) key %s", name, key)
 	sub.km.key.Delete(key)
 	if log.GetLevel() == log.DebugLevel {
 		sub.dump("after handleDelete")

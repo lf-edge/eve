@@ -19,6 +19,8 @@ type Publication interface {
 	Get(key string) (interface{}, error)
 	// GetAll - Get a copy of the objects.
 	GetAll() map[string]interface{}
+	// Iterate - Perform some action on all items
+	Iterate(function fn)
 }
 
 // Subscription - Interface to be implemented by a Subscription
@@ -27,6 +29,8 @@ type Subscription interface {
 	Get(key string) (interface{}, error)
 	// GetAll - Get a copy of the objects.
 	GetAll() map[string]interface{}
+	// Iterate - Perform some action on all items
+	Iterate(function fn)
 	// Restarted report if this subscription has been marked as restarted
 	Restarted() bool
 	// ProcessChange - Invoked on the string msg from Subscription Channel

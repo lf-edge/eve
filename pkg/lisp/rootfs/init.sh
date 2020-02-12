@@ -18,6 +18,13 @@ tail -f logs/lisp-flow.log &
 # don't get EOF, but rather block)
 sh -c 'kill -STOP $$' 3>>logs/lisp-traceback.log 4>>logs/lisp-flow.log &
 
+# Need to wait for /persist/config to be decrypted by tpmmgr in the pillar container
+# XXX Remove this when we have move to subscribing to GlobalStatus and not GlobalConfig
+while [ ! -d /persist/config/GlobalConfig ]; do
+    echo "Waiting for /persist/config/GlobalConfig"
+    sleep 10
+done
+
 # run lisp main loop
 while true; do
   if [ -e /run/lisp.config ] && [ -e /run/lisp.config.sh ]; then

@@ -344,7 +344,7 @@ func scanAIConfigs(ctx *wstunnelclientContext) {
 
 			proxyURL, _ := zedcloud.LookupProxy(deviceNetworkStatus,
 				ifname, destURL)
-			if err := wstunnelclient.TestConnection(proxyURL, localAddr); err != nil {
+			if err := wstunnelclient.TestConnection(deviceNetworkStatus, proxyURL, localAddr); err != nil {
 				log.Info(err)
 				continue
 			}

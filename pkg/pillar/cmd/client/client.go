@@ -69,6 +69,7 @@ type clientContext struct {
 	usableAddressCount     int
 	subGlobalConfig        pubsub.Subscription
 	globalConfig           *types.GlobalConfig
+	zedcloudCtx            *zedcloud.ZedCloudContext
 }
 
 var debug = false
@@ -245,6 +246,7 @@ func Run() { //nolint:gocyclo
 	// Get device serail number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
 	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
+	clientCtx.zedcloudCtx = &zedcloudCtx
 	log.Infof("Client Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
@@ -268,7 +270,7 @@ func Run() { //nolint:gocyclo
 			log.Fatal(err)
 		}
 		onboardTLSConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
-			serverName, &onboardCert, zedcloudCtx.V2API)
+			serverName, &onboardCert, &zedcloudCtx)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -285,7 +287,7 @@ func Run() { //nolint:gocyclo
 		log.Fatal(err)
 	}
 	tlsConfig, err := zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
-		serverName, &deviceCert, zedcloudCtx.V2API)
+		serverName, &deviceCert, &zedcloudCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -633,6 +635,11 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 			ctx.usableAddressCount, newAddrCount)
 		// ledmanager subscribes to DeviceNetworkStatus to see changes
 		ctx.usableAddressCount = newAddrCount
+	}
+
+	// update proxy certs if configured
+	if ctx.zedcloudCtx != nil && ctx.zedcloudCtx.V2API {
+		zedcloud.UpdateTLSProxyCerts(ctx.zedcloudCtx)
 	}
 	log.Infof("handleDNSModify done for %s\n", key)
 }

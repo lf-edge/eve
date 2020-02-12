@@ -1096,6 +1096,10 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx.DNSinitialized = true
 	ctx.usableAddressCount = newAddrCount
 	ctx.triggerDeviceInfo = true
+
+	if zedcloudCtx.V2API {
+		zedcloud.UpdateTLSProxyCerts(&zedcloudCtx)
+	}
 	log.Infof("handleDNSModify done for %s\n", key)
 }
 

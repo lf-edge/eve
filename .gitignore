@@ -11,3 +11,4 @@ pkg/qrexec-dom0/Dockerfile
 pkg/qrexec-lib/Dockerfile
 .go/
 tags
+tmp/

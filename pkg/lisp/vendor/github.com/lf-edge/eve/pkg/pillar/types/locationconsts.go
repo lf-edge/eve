@@ -39,8 +39,10 @@ const (
 	OnboardCertName = IdentityDirname + "/onboard.cert.pem"
 	// OnboardKeyName - onboard key
 	OnboardKeyName = IdentityDirname + "/onboard.key.pem"
-	// RootCertFileName - what we trust
+	// RootCertFileName - what we trust for signatures and object encryption
 	RootCertFileName = IdentityDirname + "/root-certificate.pem"
+	// V2TLSCertShaFilename - find TLS root cert for API V2 based on this sha
+	V2TLSCertShaFilename = CertificateDirname + "/v2tlsbaseroot-certificates.sha256"
 	// UUIDFileName - device UUID
 	UUIDFileName = IdentityDirname + "/uuid"
 
