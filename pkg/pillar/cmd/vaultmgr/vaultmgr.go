@@ -25,7 +25,9 @@ import (
 )
 
 type vaultMgrContext struct {
-	pubVaultStatus pubsub.Publication
+	pubVaultStatus  pubsub.Publication
+	subGlobalConfig pubsub.Subscription
+	GCInitialized   bool // GlobalConfig initialized
 }
 
 const (
@@ -481,6 +483,33 @@ func Run() {
 		// Context to pass around
 		ctx := vaultMgrContext{}
 
+		// Look for global config such as log levels
+		subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
+			false, &ctx, &pubsub.SubscriptionOptions{
+				CreateHandler: handleGlobalConfigModify,
+				ModifyHandler: handleGlobalConfigModify,
+				DeleteHandler: handleGlobalConfigDelete,
+				WarningTime:   warningTime,
+				ErrorTime:     errorTime,
+			})
+		if err != nil {
+			log.Fatal(err)
+		}
+		ctx.subGlobalConfig = subGlobalConfig
+		subGlobalConfig.Activate()
+
+		// Pick up debug aka log level before we start real work
+		for !ctx.GCInitialized {
+			log.Infof("waiting for GCInitialized")
+			select {
+			case change := <-subGlobalConfig.MsgChan():
+				subGlobalConfig.ProcessChange(change)
+			case <-stillRunning.C:
+			}
+			agentlog.StillRunning(agentName, warningTime, errorTime)
+		}
+		log.Infof("processed GlobalConfig")
+
 		// initialize publishing handles
 		initializeSelfPublishHandles(&ctx)
 
@@ -498,4 +527,37 @@ func Run() {
 	default:
 		log.Fatalf("Unknown argument %s", flag.Args()[0])
 	}
+}
+
+// Handles both create and modify events
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*vaultMgrContext)
+	if key != "global" {
+		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleGlobalConfigModify for %s\n", key)
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	if gcp != nil {
+		ctx.GCInitialized = true
+	}
+	log.Infof("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*vaultMgrContext)
+	if key != "global" {
+		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
