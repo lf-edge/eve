@@ -17,6 +17,7 @@ import (
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -56,6 +57,8 @@ var (
 	statusParams      = []string{"status", mountPoint}
 	vaultStatusParams = []string{"status"}
 	setupParams       = []string{"setup", "--quiet"}
+	debug             = false
+	debugOverride     bool // From command line arg
 )
 
 func getEncryptParams(vaultPath string) []string {
@@ -432,11 +435,16 @@ func GetOperInfo() (info.DataSecAtRestStatus, string) {
 func Run() {
 
 	curpartPtr := flag.String("c", "", "Current partition")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
-
+	debug = *debugPtr
+	debugOverride = debug
+	if debugOverride {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 	curpart := *curpartPtr
-
-	log.SetLevel(log.DebugLevel)
 
 	// Sending json log format to stdout
 	logf, err := agentlog.Init(agentName, curpart)
@@ -446,8 +454,7 @@ func Run() {
 	defer logf.Close()
 
 	if len(flag.Args()) == 0 {
-		log.Error("Insufficient arguments")
-		os.Exit(1)
+		log.Fatal("Insufficient arguments")
 	}
 
 	switch flag.Args()[0] {
@@ -464,6 +471,9 @@ func Run() {
 	case "runAsService":
 		log.Infof("Starting %s\n", agentName)
 
+		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+			log.Fatal(err)
+		}
 		// Run a periodic timer so we always update StillRunning
 		stillRunning := time.NewTicker(15 * time.Second)
 		agentlog.StillRunning(agentName, warningTime, errorTime)
@@ -486,7 +496,6 @@ func Run() {
 			}
 		}
 	default:
-		log.Errorf("Unknown argument %s", flag.Args()[0])
-		os.Exit(1)
+		log.Fatalf("Unknown argument %s", flag.Args()[0])
 	}
 }

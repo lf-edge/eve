@@ -27,6 +27,7 @@ import (
 	"github.com/google/go-tpm/tpmutil"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -147,6 +148,8 @@ var (
 			ModulusRaw: make([]byte, 256),
 		},
 	}
+	debug         = false
+	debugOverride bool // From command line arg
 )
 
 //Refer to https://trustedcomputinggroup.org/wp-content/uploads/TCG-TPM-Vendor-ID-Registry-Version-1.01-Revision-1.00.pdf
@@ -862,12 +865,17 @@ func testEcdhAES() error {
 
 func Run() {
 	curpartPtr := flag.String("c", "", "Current partition")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
+	debug = *debugPtr
+	debugOverride = debug
+	if debugOverride {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 
 	curpart := *curpartPtr
-
-	log.SetLevel(log.DebugLevel)
-
 	// Sending json log format to stdout
 	logf, err := agentlog.Init("tpmmgr", curpart)
 	if err != nil {
@@ -876,65 +884,57 @@ func Run() {
 	defer logf.Close()
 
 	if len(flag.Args()) == 0 {
-		log.Error("Insufficient arguments")
-		os.Exit(1)
+		log.Fatal("Insufficient arguments")
 	}
 	switch flag.Args()[0] {
 	case "genKey":
 		if err = createDeviceKey(); err != nil {
-			log.Errorf("Error in creating device primary key: %v ", err)
-			os.Exit(1)
+			log.Fatalf("Error in creating device primary key: %v ", err)
 		}
 		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, true); err != nil {
-			log.Errorf("Error in creating Endorsement key: %v ", err)
-			os.Exit(1)
+			log.Fatalf("Error in creating Endorsement key: %v ", err)
 		}
 		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, true); err != nil {
-			log.Errorf("Error in creating Srk key: %v ", err)
-			os.Exit(1)
+			log.Fatalf("Error in creating Srk key: %v ", err)
 		}
 		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, true); err != nil {
-			log.Errorf("Error in creating Attestation key: %v ", err)
-			os.Exit(1)
+			log.Fatalf("Error in creating Attestation key: %v ", err)
 		}
 	case "readDeviceCert":
 		if err = readDeviceCert(); err != nil {
-			log.Errorln("Error in reading device cert")
-			os.Exit(1)
+			log.Fatalf("Error in reading device cert: %v", err)
 		}
 	case "writeDeviceCert":
 		if err = writeDeviceCert(); err != nil {
-			log.Errorln("Error in writing device cert")
-			os.Exit(1)
+			log.Fatalf("Error in writing device cert: %v", err)
 		}
 	case "readCredentials":
 		if err = readCredentials(); err != nil {
-			log.Errorln("Error in reading credentials")
-			os.Exit(1)
+			log.Fatalf("Error in reading credentials: %v", err)
 		}
 	case "genCredentials":
 		if err = genCredentials(); err != nil {
-			log.Errorln("Error in generating credentials")
-			os.Exit(1)
+			log.Fatalf("Error in generating credentials: %v", err)
 		}
 	case "runAsService":
 		log.Infof("Starting %s\n", agentName)
+
+		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+			log.Fatal(err)
+		}
 
 		// Run a periodic timer so we always update StillRunning
 		stillRunning := time.NewTicker(15 * time.Second)
 		agentlog.StillRunning(agentName, warningTime, errorTime)
 
 		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
-			log.Errorf("Error in creating Endorsement key: %v ", err)
-			os.Exit(1)
+			log.Fatalf("Error in creating Endorsement key: %v ", err)
 		}
 		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, false); err != nil {
-			log.Errorf("Error in creating Srk key: %v ", err)
-			os.Exit(1)
+			log.Fatalf("Error in creating Srk key: %v ", err)
 		}
 		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, false); err != nil {
-			log.Errorf("Error in creating Attestation key: %v ", err)
-			os.Exit(1)
+			log.Fatalf("Error in creating Attestation key: %v ", err)
 		}
 		for {
 			select {
@@ -951,7 +951,6 @@ func Run() {
 	case "testEcdhAES":
 		testEcdhAES()
 	default:
-		log.Errorf("Unknown argument %s", flag.Args()[0])
-		os.Exit(1)
+		log.Fatalf("Unknown argument %s", flag.Args()[0])
 	}
 }
