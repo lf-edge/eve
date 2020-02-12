@@ -447,12 +447,14 @@ done
 # Start vaultmgr as a service
 $BINDIR/vaultmgr -c "$CURPART" runAsService &
 wait_for_touch vaultmgr
+touch "$WATCHDOG_PID/vaultmgr.pid" "$WATCHDOG_FILE/vaultmgr.touch"
 
 # Start tpmmgr as a service
 if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] ; then
     echo "$(date -Ins -u) Starting tpmmgr as a service agent"
     $BINDIR/tpmmgr -c "$CURPART" runAsService &
     wait_for_touch tpmmgr
+    touch "$WATCHDOG_PID/tpmmgr.pid" "$WATCHDOG_FILE/tpmmgr.touch"
 fi
 
 #If logmanager is already running we don't have to start it.
@@ -460,6 +462,7 @@ if ! pgrep logmanager >/dev/null; then
     echo "$(date -Ins -u) Starting logmanager"
     $BINDIR/logmanager -c $CURPART &
     wait_for_touch logmanager
+    touch "$WATCHDOG_PID/logmanager.pid" "$WATCHDOG_FILE/logmanager.touch"
 fi
 
 # Now run watchdog for all agents
