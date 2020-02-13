@@ -65,8 +65,12 @@ type AppInstanceConfig struct {
 	IoAdapterList       []IoAdapter
 	RestartCmd          AppInstanceOpsCmd
 	PurgeCmd            AppInstanceOpsCmd
-	CloudInitUserData   *string // base64-encoded
-	RemoteConsole       bool
+	// XXX: to be deprecated, use CipherBlock instead
+	CloudInitUserData *string // base64-encoded
+	RemoteConsole     bool
+
+	// CipherBlock, for encrypted cloud-init data
+	CipherBlock
 }
 
 type AppInstanceOpsCmd struct {

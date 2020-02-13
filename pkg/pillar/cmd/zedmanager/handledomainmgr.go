@@ -53,6 +53,7 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		VmConfig:          aiConfig.FixedResources,
 		IoAdapterList:     aiConfig.IoAdapterList,
 		CloudInitUserData: aiConfig.CloudInitUserData,
+		CipherBlock:       aiConfig.CipherBlock,
 	}
 
 	// Determine number of "disk" targets in list

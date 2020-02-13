@@ -29,6 +29,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -1586,7 +1587,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		return fmt.Errorf(err)
 	}
 	// XXX could defer to Activate
-	if config.CloudInitUserData != nil {
+	if config.IsCipher || config.CloudInitUserData != nil {
 		if status.IsContainer {
 			envList, err := fetchEnvVariablesFromCloudInit(config)
 			if err != nil {
@@ -2860,13 +2861,39 @@ func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
 	return err
 }
 
+// getCloudInitData : returns decrypted cloud-init data
+func getCloudInitData(config types.DomainConfig) (*string, error) {
+	if !config.IsCipher {
+		return config.CloudInitUserData, nil
+	}
+	if !config.IsValidCipher {
+		errStr := fmt.Sprintf("%s, Cipher Block is not ready", config.DisplayName)
+		return nil, errors.New(errStr)
+	}
+	clearData, err := tpmmgr.DecryptCipherBlock(config.CipherBlock)
+	if err != nil {
+		log.Errorf("%s, cloud-init data decryption failed, %v\n",
+			config.DisplayName, err)
+		return nil, err
+	}
+	cloudInitData := base64.StdEncoding.EncodeToString(clearData)
+	return &cloudInitData, nil
+}
+
 // Fetch the list of environment variables from the cloud init
 // We are expecting the environment variables to be pass in particular format in cloud-int
 // Example:
 // Key1:Val1
 // Key2:Val2 ...
 func fetchEnvVariablesFromCloudInit(config types.DomainConfig) (map[string]string, error) {
-	ud, err := base64.StdEncoding.DecodeString(*config.CloudInitUserData)
+	userData, err := getCloudInitData(config)
+	if err != nil {
+		errStr := fmt.Sprintf("%s, cloud-init data get failed %s\n",
+			config.DisplayName, err)
+		return nil, errors.New(errStr)
+	}
+
+	ud, err := base64.StdEncoding.DecodeString(*userData)
 	if err != nil {
 		errStr := fmt.Sprintf("fetchEnvVariablesFromCloudInit failed %s\n", err)
 		return nil, errors.New(errStr)
@@ -2908,7 +2935,12 @@ func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
 	if err != nil {
 		log.Fatalf("createCloudInitISO failed %s\n", err)
 	}
-	ud, err := base64.StdEncoding.DecodeString(*config.CloudInitUserData)
+
+	userData, err := getCloudInitData(config)
+	if err != nil {
+		return nil, err
+	}
+	ud, err := base64.StdEncoding.DecodeString(*userData)
 	if err != nil {
 		errStr := fmt.Sprintf("createCloudInitISO failed %s\n", err)
 		return nil, errors.New(errStr)

@@ -83,6 +83,8 @@ type zedagentContext struct {
 	assignableAdapters        *types.AssignableAdapters
 	subAssignableAdapters     pubsub.Subscription
 	iteration                 int
+	subCipherContextConfig    pubsub.Subscription
+	subControllerCertConfig   pubsub.Subscription
 	subNetworkInstanceStatus  pubsub.Subscription
 	subCertObjConfig          pubsub.Subscription
 	TriggerDeviceInfo         chan<- struct{}
@@ -317,6 +319,52 @@ func Run(ps *pubsub.PubSub) {
 	}
 	getconfigCtx.pubDatastoreConfig = pubDatastoreConfig
 	pubDatastoreConfig.ClearRestarted()
+
+	pubCipherContextConfig, err := pubsublegacy.Publish(agentName,
+		types.CipherContext{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubCipherContextConfig.ClearRestarted()
+	getconfigCtx.pubCipherContextConfig = pubCipherContextConfig
+
+	pubControllerCertConfig, err := pubsublegacy.Publish(agentName,
+		types.ControllerCertificate{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubControllerCertConfig.ClearRestarted()
+	getconfigCtx.pubControllerCertConfig = pubControllerCertConfig
+
+	// for handling changes in the cipher context
+	subCipherContextConfig, err := pubsublegacy.Subscribe(agentName,
+		types.CipherContext{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleCipherContextModify,
+			ModifyHandler: handleCipherContextModify,
+			DeleteHandler: handleCipherContextDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subCipherContextConfig = subCipherContextConfig
+	subCipherContextConfig.Activate()
+
+	// for handling changes in the controller certificate
+	subControllerCertConfig, err := pubsublegacy.Subscribe(agentName,
+		types.ControllerCertificate{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
+			CreateHandler: handleControllerCertModify,
+			ModifyHandler: handleControllerCertModify,
+			DeleteHandler: handleControllerCertDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subControllerCertConfig = subControllerCertConfig
+	subControllerCertConfig.Activate()
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
@@ -660,6 +708,12 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
 
+		case change := <-subCipherContextConfig.MsgChan():
+			subCipherContextConfig.ProcessChange(change)
+
+		case change := <-subControllerCertConfig.MsgChan():
+			subControllerCertConfig.ProcessChange(change)
+
 		case change := <-deferredChan:
 			start := time.Now()
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
@@ -770,6 +824,12 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
+
+		case change := <-subCipherContextConfig.MsgChan():
+			subCipherContextConfig.ProcessChange(change)
+
+		case change := <-subControllerCertConfig.MsgChan():
+			subControllerCertConfig.ProcessChange(change)
 
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
@@ -913,6 +973,12 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subVaultStatus.MsgChan():
 			subVaultStatus.ProcessChange(change)
+
+		case change := <-subCipherContextConfig.MsgChan():
+			subCipherContextConfig.ProcessChange(change)
+
+		case change := <-subControllerCertConfig.MsgChan():
+			subControllerCertConfig.ProcessChange(change)
 
 		case <-stillRunning.C:
 			// Fault injection
