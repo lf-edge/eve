@@ -63,31 +63,32 @@ func checkPortAvailable(
 		status.DisplayName, status.UUID, status.Port,
 		status.CurrentUplinkIntf)
 
-	if status.Port == "" {
+	if status.CurrentUplinkIntf == "" {
 		log.Infof("Port not specified\n")
 		return nil
 	}
+
 	if allowSharedPort(status) {
-		if isSharedPortLabel(status.Port) {
+		if isSharedPortLabel(status.CurrentUplinkIntf) {
 			log.Infof("allowSharedPort: %t, isSharedPortLabel:%t",
-				allowSharedPort(status), isSharedPortLabel(status.Port))
+				allowSharedPort(status), isSharedPortLabel(status.CurrentUplinkIntf))
 			return nil
 		}
 	} else {
-		if isSharedPortLabel(status.Port) {
+		if isSharedPortLabel(status.CurrentUplinkIntf) {
 			errStr := fmt.Sprintf("SharedPortLabel %s not allowed for exclusive network instance %s-%s\n",
-				status.Port, status.Key(), status.DisplayName)
+				status.CurrentUplinkIntf, status.Key(), status.DisplayName)
 			log.Errorln(errStr)
 			return errors.New(errStr)
 		}
 	}
-	portStatus := ctx.deviceNetworkStatus.GetPortByName(status.Port)
+	portStatus := ctx.deviceNetworkStatus.GetPortByName(status.CurrentUplinkIntf)
 	if portStatus == nil {
 		// XXX Fallback until we have complete Name support in UI
-		portStatus = ctx.deviceNetworkStatus.GetPortByIfName(status.Port)
+		portStatus = ctx.deviceNetworkStatus.GetPortByIfName(status.CurrentUplinkIntf)
 		if portStatus == nil {
 			errStr := fmt.Sprintf("PortStatus for %s not found for network instance %s-%s\n",
-				status.Port, status.Key(), status.DisplayName)
+				status.CurrentUplinkIntf, status.Key(), status.DisplayName)
 			return errors.New(errStr)
 		}
 	}
@@ -97,7 +98,7 @@ func checkPortAvailable(
 		if portStatus.Dhcp == types.DT_NONE {
 			errStr := fmt.Sprintf("Port %s not configured for shared use. "+
 				"Cannot be used by Switch Network Instance %s-%s\n",
-				status.Port, status.UUID, status.DisplayName)
+				status.CurrentUplinkIntf, status.UUID, status.DisplayName)
 			return errors.New(errStr)
 		}
 		// Make sure it is not used by a NetworkInstance of type Switch
@@ -105,14 +106,14 @@ func checkPortAvailable(
 			if status == iterStatusEntry {
 				continue
 			}
-			if !iterStatusEntry.IsUsingPort(status.Port) {
+			if !iterStatusEntry.IsUsingPort(status.CurrentUplinkIntf) {
 				continue
 			}
 			if !allowSharedPort(iterStatusEntry) {
 				errStr := fmt.Sprintf("Port %s already used by "+
 					"Switch NetworkInstance %s-%s. It cannot be used by "+
 					"any other Network Instance such as %s-%s\n",
-					status.Port, iterStatusEntry.UUID,
+					status.CurrentUplinkIntf, iterStatusEntry.UUID,
 					iterStatusEntry.DisplayName,
 					status.UUID, status.DisplayName)
 				return errors.New(errStr)
@@ -123,7 +124,7 @@ func checkPortAvailable(
 		if portStatus.Dhcp != types.DT_NONE {
 			errStr := fmt.Sprintf("Port %s configured for shared use with DHCP type %d. "+
 				"Cannot be used by Switch Network Instance %s-%s\n",
-				status.Port, portStatus.Dhcp, status.UUID, status.DisplayName)
+				status.CurrentUplinkIntf, portStatus.Dhcp, status.UUID, status.DisplayName)
 			return errors.New(errStr)
 		}
 		// Make sure it is not used by any other NetworkInstance
@@ -131,10 +132,10 @@ func checkPortAvailable(
 			if status == iterStatusEntry {
 				continue
 			}
-			if iterStatusEntry.IsUsingPort(status.Port) {
+			if iterStatusEntry.IsUsingPort(status.CurrentUplinkIntf) {
 				errStr := fmt.Sprintf("Port %s already used by NetworkInstance %s-%s. "+
 					"Cannot be used by Switch Network Instance %s-%s\n",
-					status.Port, iterStatusEntry.UUID, iterStatusEntry.DisplayName,
+					status.CurrentUplinkIntf, iterStatusEntry.UUID, iterStatusEntry.DisplayName,
 					status.UUID, status.DisplayName)
 				return errors.New(errStr)
 			}
@@ -529,7 +530,6 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	stopDnsmasq(bridgeName, false, false)
 
 	if status.BridgeIPAddr != "" {
-		// XXX CurrentUplinkIntf could be empty!
 		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
 			status.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
@@ -584,7 +584,7 @@ func doNetworkInstanceSanityCheck(
 
 	if err := checkPortAvailable(ctx, status); err != nil {
 		log.Errorf("checkPortAvailable failed: Port: %s, err:%s",
-			status.Port, err)
+			status.CurrentUplinkIntf, err)
 		return err
 	}
 
@@ -1136,7 +1136,7 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	err := checkPortAvailable(ctx, status)
 	if err != nil {
 		log.Errorf("checkPortAvailable failed: Port: %s, err:%s",
-			status.Port, err)
+			status.CurrentUplinkIntf, err)
 		return err
 	}
 
@@ -1144,16 +1144,10 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 	if status.Type == types.NetworkInstanceTypeSwitch {
 		// switched NI is not probed and does not have a CurrentUplinkIntf
 		status.IfNameList = getIfNameListForPort(ctx, status.Port)
-	} else if status.CurrentUplinkIntf == "" {
-		// Initially we might not have a CurrentUplinkInterface
-		status.IfNameList = getIfNameListForPort(ctx, status.Port)
 	} else {
 		status.IfNameList = getIfNameListForPort(ctx, status.CurrentUplinkIntf)
 	}
-	// XXX should we error and bail of status.IfNameList is empty? Only
-	// if port was set.
-	log.Infof("Port: %s, CurrentUplinkIntf: %s, IfNameList: %+v",
-		status.Port, status.CurrentUplinkIntf, status.IfNameList)
+	log.Infof("IfNameList: %+v", status.IfNameList)
 
 	switch status.Type {
 	case types.NetworkInstanceTypeSwitch:
@@ -1172,7 +1166,6 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 			status.Type)
 		err = errors.New(errStr)
 	}
-	// XXX do we care if these are empty initially?
 	status.ProgUplinkIntf = status.CurrentUplinkIntf
 	// setup the ACLs for the bridge
 	// Here we explicitly adding the iptables rules, to the bottom of the
@@ -1567,7 +1560,6 @@ func natInactivate(ctx *zedrouterContext,
 	} else {
 		oldUplinkIntf = status.CurrentUplinkIntf
 	}
-	// XXX oldUplinkIntf can be empty!
 	err := iptables.IptableCmd("-t", "nat", "-D", "POSTROUTING", "-o", oldUplinkIntf,
 		"-s", subnetStr, "-j", "MASQUERADE")
 	if err != nil {
@@ -1808,11 +1800,7 @@ func doNetworkInstanceFallback(
 
 	var err error
 	// Get a list of IfNames to the ones we have an ifIndex for.
-	if status.CurrentUplinkIntf != "" {
-		status.IfNameList = getIfNameListForPort(ctx, status.CurrentUplinkIntf)
-	} else {
-		status.IfNameList = getIfNameListForPort(ctx, status.Port)
-	}
+	status.IfNameList = getIfNameListForPort(ctx, status.CurrentUplinkIntf)
 	publishNetworkInstanceStatus(ctx, status)
 	log.Infof("IfNameList: %+v", status.IfNameList)
 
@@ -1835,8 +1823,6 @@ func doNetworkInstanceFallback(
 		stopDnsmasq(bridgeName, false, false)
 
 		if status.BridgeIPAddr != "" {
-			// XXX do we need to force CurrentUplinkIntf to
-			// be set before probing?
 			dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
 				status.CurrentUplinkIntf)
 			createDnsmasqConfiglet(bridgeName,
