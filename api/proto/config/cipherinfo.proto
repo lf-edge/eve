@@ -20,7 +20,7 @@ enum EncryptionScheme {
     SA_AES_256_CFB = 1;
 }
 
-enum hashAlgorithm {
+enum cipherHashAlgorithm {
     HASH_NONE = 0;
     HASH_SHA256_16bytes = 1;  // hash with sha256, the 1st 16 bytes of result in 'senderCertHash'
 }
@@ -31,7 +31,7 @@ message CipherContext {
     string contextId = 1;
 
     // algorithm used to compute hash for certificates
-    hashAlgorithm hashScheme = 2;
+    cipherHashAlgorithm hashScheme = 2;
 
     // for key exchange scheme, like ECDH etc.
     KeyExchangeScheme keyExchangeScheme = 3;

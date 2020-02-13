@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x10\x63ipherinfo.proto\"\xd6\x01\n\rCipherContext\x12\x11\n\tcontextId\x18\x01 \x01(\t\x12\"\n\nhashScheme\x18\x02 \x01(\x0e\x32\x0e.hashAlgorithm\x12-\n\x11keyExchangeScheme\x18\x03 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x04 \x01(\x0e\x32\x11.EncryptionScheme\x12\x16\n\x0e\x64\x65viceCertHash\x18\x05 \x01(\x0c\x12\x1a\n\x12\x63ontrollerCertHash\x18\x06 \x01(\x0c\"i\n\x0b\x43ipherBlock\x12\x17\n\x0f\x63ipherContextId\x18\x01 \x01(\t\x12\x14\n\x0cinitialValue\x18\x02 \x01(\x0c\x12\x12\n\ncipherData\x18\x03 \x01(\x0c\x12\x17\n\x0f\x63learTextSha256\x18\x04 \x01(\x0c\"5\n\x0f\x43redentialBlock\x12\x10\n\x08identity\x18\x01 \x01(\t\x12\x10\n\x08password\x18\x02 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01*7\n\rhashAlgorithm\x12\r\n\tHASH_NONE\x10\x00\x12\x17\n\x13HASH_SHA256_16bytes\x10\x01\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x10\x63ipherinfo.proto\"\xdc\x01\n\rCipherContext\x12\x11\n\tcontextId\x18\x01 \x01(\t\x12(\n\nhashScheme\x18\x02 \x01(\x0e\x32\x14.cipherHashAlgorithm\x12-\n\x11keyExchangeScheme\x18\x03 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x04 \x01(\x0e\x32\x11.EncryptionScheme\x12\x16\n\x0e\x64\x65viceCertHash\x18\x05 \x01(\x0c\x12\x1a\n\x12\x63ontrollerCertHash\x18\x06 \x01(\x0c\"i\n\x0b\x43ipherBlock\x12\x17\n\x0f\x63ipherContextId\x18\x01 \x01(\t\x12\x14\n\x0cinitialValue\x18\x02 \x01(\x0c\x12\x12\n\ncipherData\x18\x03 \x01(\x0c\x12\x17\n\x0f\x63learTextSha256\x18\x04 \x01(\x0c\"5\n\x0f\x43redentialBlock\x12\x10\n\x08identity\x18\x01 \x01(\t\x12\x10\n\x08password\x18\x02 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01*=\n\x13\x63ipherHashAlgorithm\x12\r\n\tHASH_NONE\x10\x00\x12\x17\n\x13HASH_SHA256_16bytes\x10\x01\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
 )
 
 _KEYEXCHANGESCHEME = _descriptor.EnumDescriptor(
@@ -40,8 +40,8 @@ _KEYEXCHANGESCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=399,
-  serialized_end=446,
+  serialized_start=405,
+  serialized_end=452,
 )
 _sym_db.RegisterEnumDescriptor(_KEYEXCHANGESCHEME)
 
@@ -63,15 +63,15 @@ _ENCRYPTIONSCHEME = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=448,
-  serialized_end=499,
+  serialized_start=454,
+  serialized_end=505,
 )
 _sym_db.RegisterEnumDescriptor(_ENCRYPTIONSCHEME)
 
 EncryptionScheme = enum_type_wrapper.EnumTypeWrapper(_ENCRYPTIONSCHEME)
-_HASHALGORITHM = _descriptor.EnumDescriptor(
-  name='hashAlgorithm',
-  full_name='hashAlgorithm',
+_CIPHERHASHALGORITHM = _descriptor.EnumDescriptor(
+  name='cipherHashAlgorithm',
+  full_name='cipherHashAlgorithm',
   filename=None,
   file=DESCRIPTOR,
   values=[
@@ -86,12 +86,12 @@ _HASHALGORITHM = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=501,
-  serialized_end=556,
+  serialized_start=507,
+  serialized_end=568,
 )
-_sym_db.RegisterEnumDescriptor(_HASHALGORITHM)
+_sym_db.RegisterEnumDescriptor(_CIPHERHASHALGORITHM)
 
-hashAlgorithm = enum_type_wrapper.EnumTypeWrapper(_HASHALGORITHM)
+cipherHashAlgorithm = enum_type_wrapper.EnumTypeWrapper(_CIPHERHASHALGORITHM)
 KEA_NONE = 0
 KEA_ECDH = 1
 SA_NONE = 0
@@ -163,7 +163,7 @@ _CIPHERCONTEXT = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=21,
-  serialized_end=235,
+  serialized_end=241,
 )
 
 
@@ -214,8 +214,8 @@ _CIPHERBLOCK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=237,
-  serialized_end=342,
+  serialized_start=243,
+  serialized_end=348,
 )
 
 
@@ -252,11 +252,11 @@ _CREDENTIALBLOCK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=344,
-  serialized_end=397,
+  serialized_start=350,
+  serialized_end=403,
 )
 
-_CIPHERCONTEXT.fields_by_name['hashScheme'].enum_type = _HASHALGORITHM
+_CIPHERCONTEXT.fields_by_name['hashScheme'].enum_type = _CIPHERHASHALGORITHM
 _CIPHERCONTEXT.fields_by_name['keyExchangeScheme'].enum_type = _KEYEXCHANGESCHEME
 _CIPHERCONTEXT.fields_by_name['encryptionScheme'].enum_type = _ENCRYPTIONSCHEME
 DESCRIPTOR.message_types_by_name['CipherContext'] = _CIPHERCONTEXT
@@ -264,7 +264,7 @@ DESCRIPTOR.message_types_by_name['CipherBlock'] = _CIPHERBLOCK
 DESCRIPTOR.message_types_by_name['CredentialBlock'] = _CREDENTIALBLOCK
 DESCRIPTOR.enum_types_by_name['KeyExchangeScheme'] = _KEYEXCHANGESCHEME
 DESCRIPTOR.enum_types_by_name['EncryptionScheme'] = _ENCRYPTIONSCHEME
-DESCRIPTOR.enum_types_by_name['hashAlgorithm'] = _HASHALGORITHM
+DESCRIPTOR.enum_types_by_name['cipherHashAlgorithm'] = _CIPHERHASHALGORITHM
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 CipherContext = _reflection.GeneratedProtocolMessageType('CipherContext', (_message.Message,), dict(
