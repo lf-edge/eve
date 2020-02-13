@@ -49,7 +49,7 @@ All messages are defined in subdirectories to the [proto](./proto) directory.
 In general, there is one directory for each API endpoint:
 
 * `register`: The register message sent as part of onboarding a device
-* `config`: The EdgeDevConfig message sent from Controller to Device in response to requests for configuration
+* `config`: The ConfigRequest message sent from the device and the ConfigResponse with EdgeDevConfig message sent from Controller to Device in response.
 * `info`: The ZInfoMsg message sent from Device to Controller when there is a state change for an object (device, app instance, etc
 )
 * `metrics`: The ZMetricMsg message sent from Device to Controller periodically to report on resource usage etc.
@@ -121,6 +121,7 @@ Request:
 
 The request MUST use the onboarding certificate for mTLS authentication. The Controller MAY retain the onboarding certificate or information within it for further purposes.
 
+The request mime type MUST be "application/x-proto-binary".
 The request MUST have the body of a single protobuf message of type [register.ZRegisterMsg](./proto/register/register.proto). The message MUST include the Device certificate. In the case where the Device certificate is the same as the onboarding certificate, the Device MUST NOT assume that the Controller will extract the Device certificate from the mTLS authentication, and instead it MUST include the certificate in the message.
 
 The message SHOULD include a serial string or other unique identifier for the Device.
@@ -169,6 +170,30 @@ The response MUST NOT contain any body content.
 ### Configuration
 
 Retrieve configuration for a specific Device.
+
+   POST /api/v1/edgeDevice/config
+
+Return codes:
+
+* Unauthenticated or invalid credentials: `401`
+* Valid credentials without authorization: `403`
+* Success: `200`
+* Unknown Device: `400`
+
+Request:
+
+The request MUST use the Device certificate for mTLS authentication.
+
+The request mime type MUST be "application/x-proto-binary".
+The request MUST have the body of a single protobuf message of type [config.ConfigRequest](./proto/config/devconfig.proto). The message should include the previous configHash from a previous ConfigResponse message to reduce network utilization when there is no configuration change.
+
+Response:
+
+The response mime type MUST be "application/x-proto-binary".
+The response MUST contain a single protobuf message of type [config.ConfigResponse](./proto/config/devconfig.proto). If the configHash is the same as in the ConfigRequest then the EdgeDevConfig should not be included. Otherwise the EdgeDevConfig will contain the entire configuration for the given Device.
+The body MUST contain the UUID for the Device on each and every request. The Controller MUST NOT assume that the Device already has the UUID.
+
+#### Configuration (deprecated GET method)
 
    GET /api/v1/edgeDevice/config
 
