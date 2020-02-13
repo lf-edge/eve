@@ -19,14 +19,16 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"strings"
+
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	log "github.com/sirupsen/logrus"
 )
 
 var debugOverride bool // From command line arg
 
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	agentNamePtr := flag.String("a", "zedrouter",
 		"Agent name")
 	agentScopePtr := flag.String("s", "", "agentScope")

@@ -26,55 +26,59 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedagent"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedmanager"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedrouter"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
 	"os"
 	"path/filepath"
 )
 
 func main() {
+	ps := pubsub.New(&socketdriver.SocketDriver{})
+
 	basename := filepath.Base(os.Args[0])
 	switch basename {
 	case "client":
-		client.Run()
+		client.Run(ps)
 	case "diag":
-		diag.Run()
+		diag.Run(ps)
 	case "domainmgr":
-		domainmgr.Run()
+		domainmgr.Run(ps)
 	case "downloader":
-		downloader.Run()
+		downloader.Run(ps)
 	case "hardwaremodel":
-		hardwaremodel.Run()
+		hardwaremodel.Run(ps)
 	case "identitymgr":
-		identitymgr.Run()
+		identitymgr.Run(ps)
 	case "ledmanager":
-		ledmanager.Run()
+		ledmanager.Run(ps)
 	case "logmanager":
-		logmanager.Run()
+		logmanager.Run(ps)
 	case "nim":
-		nim.Run()
+		nim.Run(ps)
 	case "nodeagent":
-		nodeagent.Run()
+		nodeagent.Run(ps)
 	case "verifier":
-		verifier.Run()
+		verifier.Run(ps)
 	case "waitforaddr":
-		waitforaddr.Run()
+		waitforaddr.Run(ps)
 	case "zedagent":
-		zedagent.Run()
+		zedagent.Run(ps)
 	case "zedmanager":
-		zedmanager.Run()
+		zedmanager.Run(ps)
 	case "zedrouter":
-		zedrouter.Run()
+		zedrouter.Run(ps)
 	case "ipcmonitor":
-		ipcmonitor.Run()
+		ipcmonitor.Run(ps)
 	case "baseosmgr":
-		baseosmgr.Run()
+		baseosmgr.Run(ps)
 	case "wstunnelclient":
-		wstunnelclient.Run()
+		wstunnelclient.Run(ps)
 	case "conntrack":
-		conntrack.Run()
+		conntrack.Run(ps)
 	case "tpmmgr":
-		tpmmgr.Run()
+		tpmmgr.Run(ps)
 	case "vaultmgr":
-		vaultmgr.Run()
+		vaultmgr.Run(ps)
 	default:
 		fmt.Printf("Unknown package: %s\n", basename)
 	}

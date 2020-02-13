@@ -870,7 +870,7 @@ func testEcdhAES() error {
 	return nil
 }
 
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	curpartPtr := flag.String("c", "", "Current partition")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()

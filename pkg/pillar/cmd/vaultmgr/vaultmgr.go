@@ -434,7 +434,7 @@ func GetOperInfo() (info.DataSecAtRestStatus, string) {
 }
 
 //Run is the entrypoint for running vaultmgr as a standalone program
-func Run() {
+func Run(ps *pubsub.PubSub) {
 
 	curpartPtr := flag.String("c", "", "Current partition")
 	debugPtr := flag.Bool("d", false, "Debug flag")
