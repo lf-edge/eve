@@ -25,6 +25,7 @@ const (
 
 var savedAgentName = "unknown" // Keep for signal and exit handlers
 var savedRebootReason = "unknown"
+var savedPid = 0
 
 // Parameter description
 // 1. agentName: Name with which disk log file will be created.
@@ -79,6 +80,8 @@ func initImpl(agentName string, logdir string, redirect bool,
 		signal.Notify(sigs, syscall.SIGUSR2)
 		go handleSignals(sigs)
 	}
+	log.Infof("XXX initImpl(agentName %s, logdir %s, redirect %t, text %t",
+		agentName, logdir, redirect, text)
 	return logf, nil
 }
 
@@ -88,7 +91,7 @@ type FatalHook struct {
 
 // Fire saves the reason for the log.Fatal or log.Panic
 func (hook *FatalHook) Fire(entry *log.Entry) error {
-	reason := fmt.Sprintf("fatal: agent %s: %s", savedAgentName, entry.Message)
+	reason := fmt.Sprintf("fatal: agent %s[%d]: %s", savedAgentName, savedPid, entry.Message)
 	savedRebootReason = reason
 	RebootReason(reason)
 	return nil
@@ -103,13 +106,13 @@ func (hook *FatalHook) Levels() []log.Level {
 }
 
 // SourceHook is used to add source=agentName
-// XXX should we also add pid?
 type SourceHook struct {
 }
 
 // Fire adds source=agentName
 func (hook *SourceHook) Fire(entry *log.Entry) error {
 	entry.Data["source"] = savedAgentName
+	entry.Data["pid"] = savedPid
 	return nil
 }
 
@@ -144,7 +147,7 @@ func handleSignals(sigs chan os.Signal) {
 func printStack() {
 	stacks := getStacks(false)
 	log.Errorf("fatal stack trace due to %s:\n%v\n", savedRebootReason, stacks)
-	RebootReason(fmt.Sprintf("fatal: agent %s exit", savedAgentName))
+	RebootReason(fmt.Sprintf("fatal: agent %s[%d] exit", savedAgentName, savedPid))
 	RebootStack(stacks)
 }
 
@@ -153,8 +156,8 @@ func printStack() {
 func RebootReason(reason string) {
 	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
 	dateStr := time.Now().Format(time.RFC3339Nano)
-	err := printToFile(filename, fmt.Sprintf("Reboot from agent %s at %s: %s\n",
-		savedAgentName, dateStr, reason))
+	err := printToFile(filename, fmt.Sprintf("Reboot from agent %s[%d] at %s: %s\n",
+		savedAgentName, savedPid, dateStr, reason))
 	if err != nil {
 		// Note: can not use log here since we are called from a log hook!
 		fmt.Printf("printToFile failed %s\n", err)
@@ -323,6 +326,7 @@ func Init(agentName string, curpart string) (*os.File, error) {
 	}
 	logdir := GetCurrentLogdir()
 	savedAgentName = agentName
+	savedPid = os.Getpid()
 	return initImpl(agentName, logdir, true, false)
 }
 
@@ -331,6 +335,7 @@ func InitWithDirText(agentName string, logdir string, curpart string) (*os.File,
 		zboot.SetCurpart(curpart)
 	}
 	savedAgentName = agentName
+	savedPid = os.Getpid()
 	return initImpl(agentName, logdir, true, true)
 }
 
