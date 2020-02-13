@@ -56,6 +56,8 @@ func initImpl(agentName string, logdir string, redirect bool,
 		}
 		hook := new(FatalHook)
 		log.AddHook(hook)
+		hook2 := new(SourceHook)
+		log.AddHook(hook2)
 		if text {
 			// Report nano timestamps
 			formatter := log.TextFormatter{
@@ -98,6 +100,22 @@ func (hook *FatalHook) Levels() []log.Level {
 		log.FatalLevel,
 		log.PanicLevel,
 	}
+}
+
+// SourceHook is used to add source=agentName
+// XXX should we also add pid?
+type SourceHook struct {
+}
+
+// Fire adds source=agentName
+func (hook *SourceHook) Fire(entry *log.Entry) error {
+	entry.Data["source"] = savedAgentName
+	return nil
+}
+
+// Levels installs the SourceHook for all levels
+func (hook *SourceHook) Levels() []log.Level {
+	return log.AllLevels
 }
 
 // Wait on channel then handle the signals
