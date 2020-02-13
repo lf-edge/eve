@@ -66,6 +66,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		// on Physio configuration and Networks configuration. If either of
 		// Physio or Networks change, we should re-parse system adapters and
 		// publish updated configuration.
+		parseCipherContextConfig(getconfigCtx, config)
 		forceSystemAdaptersParse := physioChanged || networksChanged
 		parseSystemAdapterConfig(config, getconfigCtx, forceSystemAdaptersParse)
 		parseBaseOsConfig(getconfigCtx, config)
@@ -927,6 +928,7 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		if datastore.Region == "" {
 			datastore.Region = "us-west-2"
 		}
+		datastore.CipherBlock = parseCipherBlock(ctx, ds.GetCipherData())
 		ctx.pubDatastoreConfig.Publish(datastore.Key(), *datastore)
 	}
 }
@@ -1090,7 +1092,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 	}
 
 	// wireless property configuration
-	config.WirelessCfg = parseNetworkWirelessConfig(netEnt)
+	config.WirelessCfg = parseNetworkWirelessConfig(ctx, netEnt)
 
 	ipspec := netEnt.GetIp()
 	switch config.Type {
@@ -1171,7 +1173,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 	return config
 }
 
-func parseNetworkWirelessConfig(netEnt *zconfig.NetworkConfig) types.WirelessConfig {
+func parseNetworkWirelessConfig(ctx *getconfigContext, netEnt *zconfig.NetworkConfig) types.WirelessConfig {
 	var wconfig types.WirelessConfig
 
 	netWireless := netEnt.GetWireless()
@@ -1207,11 +1209,8 @@ func parseNetworkWirelessConfig(netEnt *zconfig.NetworkConfig) types.WirelessCon
 			}
 			wifi.Identity = wificfg.GetIdentity()
 			wifi.Password = wificfg.GetPassword()
-			zcrypto := wificfg.GetCrypto()
-			wifi.Crypto.Identity = zcrypto.GetIdentity()
-			wifi.Crypto.Password = zcrypto.GetPassword()
-
 			wifi.Priority = wificfg.GetPriority()
+			wifi.CipherBlock = parseCipherBlock(ctx, wificfg.GetCipherData())
 
 			wconfig.Wifi = append(wconfig.Wifi, wifi)
 		}

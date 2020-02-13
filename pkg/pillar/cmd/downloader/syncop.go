@@ -9,7 +9,9 @@ import (
 	"path"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -33,8 +35,13 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			status.ImageID)
 	}
 
-	// get the datastore context
-	dsCtx := constructDatastoreContext(config, status, dst)
+	// construct the datastore context
+	dsCtx, err := constructDatastoreContext(config, status, *dst)
+	if err != nil {
+		errStr := fmt.Sprintf("%s, Datastore construction failed, %s", config.Name, err)
+		handleSyncOpResponse(ctx, config, status, locFilename, key, errStr)
+		return
+	}
 
 	// by default the metricsURL _is_ the DownloadURL, but can override in switch
 	metricsUrl := dsCtx.DownloadURL
@@ -280,7 +287,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 }
 
 // cloud storage interface functions/APIs
-func constructDatastoreContext(config types.DownloaderConfig, status *types.DownloaderStatus, dst *types.DatastoreConfig) *types.DatastoreContext {
+func constructDatastoreContext(config types.DownloaderConfig, status *types.DownloaderStatus, dst types.DatastoreConfig) (*types.DatastoreContext, error) {
 	dpath := dst.Dpath
 	downloadURL := config.Name
 	if !config.NameIsURL {
@@ -292,18 +299,51 @@ func constructDatastoreContext(config types.DownloaderConfig, status *types.Down
 			downloadURL = downloadURL + "/" + config.Name
 		}
 	}
+
+	// get the decrypted credentials
+	cred, err := getDatastoreCredential(dst)
+	if err != nil {
+		return nil, err
+	}
+
 	dsCtx := types.DatastoreContext{
 		DownloadURL:     downloadURL,
 		TransportMethod: dst.DsType,
 		Dpath:           dpath,
-		APIKey:          dst.ApiKey,
-		Password:        dst.Password,
+		APIKey:          cred.Identity,
+		Password:        cred.Password,
 		Region:          dst.Region,
 	}
-	return &dsCtx
+	return &dsCtx, nil
 }
 
 func sourceFailureError(ip, ifname, url string, err error) {
 	log.Errorf("Source IP %s failed: %s\n", ip, err)
 	zedcloud.ZedCloudFailure(ifname, url, 1024, 0)
+}
+
+func getDatastoreCredential(dst types.DatastoreConfig) (zconfig.CredentialBlock, error) {
+	cred := zconfig.CredentialBlock{}
+	if !dst.IsCipher {
+		cred.Identity = dst.ApiKey
+		cred.Password = dst.Password
+		return cred, nil
+	}
+	if !dst.IsValidCipher {
+		errStr := fmt.Sprintf("%s, Cipher Block is not ready", dst.Key())
+		log.Errorln(errStr)
+		return cred, errors.New(errStr)
+	}
+	clearData, err := tpmmgr.DecryptCipherBlock(dst.CipherBlock)
+	if err != nil {
+		log.Errorf("%s, dataStore CipherData decryption failed, %v\n",
+			dst.Key(), err)
+		return cred, err
+	}
+	if err := proto.Unmarshal(clearData, &cred); err != nil {
+		log.Errorf("%s, dataStore Credential unmarshall failed, %v\n",
+			dst.Key(), err)
+		return cred, err
+	}
+	return cred, nil
 }

@@ -222,10 +222,13 @@ type DatastoreConfig struct {
 	UUID     uuid.UUID
 	DsType   string
 	Fqdn     string
-	ApiKey   string
-	Password string
+	ApiKey   string // XXX: to be deprecated, use CipherBlock instead
+	Password string // XXX: to be deprecated, use CipherBlock instead
 	Dpath    string // depending on DsType, it could be bucket or path
 	Region   string
+
+	// CipherBlock, for encrypted credentials
+	CipherBlock
 }
 
 func (config DatastoreConfig) Key() string {
