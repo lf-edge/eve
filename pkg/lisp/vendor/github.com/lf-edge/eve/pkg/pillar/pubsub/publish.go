@@ -151,6 +151,11 @@ func (pub *PublicationImpl) GetAll() map[string]interface{} {
 	return result
 }
 
+// Iterate - performs some callback function on all items
+func (pub *PublicationImpl) Iterate(function fn) {
+	pub.km.key.Range(function)
+}
+
 // methods just for this implementation of Publisher
 
 // updatersNotify send a notification to all the matching channels which does not yet

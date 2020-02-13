@@ -6,34 +6,42 @@ syntax = "proto3";
 option go_package  = "github.com/lf-edge/eve/api/go/certs";
 option java_package = "com.zededa.cloud.uservice.proto";
 
-// ZAttestNonceResp is response payload for POST /api/v1/edgeDevice/attestNonce
-// or /api/v2/edgeDevice/attestNonce. It is an empty POST from the client
-// The message is assumed to be protected by a TLS session bound to the
-// device certificate for v1.
-// The message is assumed to be protected by signing envelope for v2.
+// This is the request payload for POST /api/v2/edgeDevice/id/<uuid>/attest
+// The message is assumed to be protected by signing envelope
+message ZAttestReq {
+    ZAttestReqType reqType = 1;  //type of the request
+    ZAttestQuote quote = 2;      //attestation quote msg
+    repeated ZEveCert certs = 3; //X509 certs in .PEM format, signed by device certificate
+}
+
+// This is the response payload for POST /api/v2/edgeDevice/id/<uuid>/attest
+// The message is assumed to be protected by signing envelope
+message ZAttestResponse {
+    ZAttestRespType respType = 1;    //type of the response
+    ZAttestNonceResp nonce = 2;      //nonce from Controller
+    ZAttestQuoteResp quoteResp = 3;  //attest quote response from Controller
+}
+
+enum ZAttestReqType {
+    ATTEST_REQ_CERT = 0;   //EVE X.509 certificates
+    ATTEST_REQ_NONCE = 1;  //nonce request to Controller
+    ATTEST_REQ_QUOTE = 2;  //quote msg
+}
+
+enum ZAttestRespType {
+    ATTEST_RESP_CERT = 0;       //response to cert msg
+    ATTEST_RESP_NONCE = 1;      //response to quote request
+    ATTEST_RESP_QUOTE_RESP = 2; //response to quote msg
+}
 
 message ZAttestNonceResp {
-  bytes nonce = 1;      //nonce to use in quote generation
+   bytes nonce = 1;      //nonce to use in quote generation
 }
 
-// This is the request payload for POST /api/v1/edgeDevice/attestQuote
-// or /api/v2/edgeDevice/attestQuote
-// The message is assumed to be protected by a TLS session bound to the
-// device certificate for v1.
-// The message is assumed to be protected by signing envelope for v2.
-message ZAttestQuoteReq {
-  bytes attestData = 1;  //TPMS_ATTEST (Table 2:123) in https://trustedcomputinggroup.org/wp-content/uploads/TPM-Rev-2.0-Part-2-Structures-01.38.pdf
-                         //nonce is included in attestData
-  bytes signature = 2;   //signature to verify attestData
-}
-
-// This is the response payload for POST /api/v1/edgeDevice/attestQuote
-// or /api/v2/edgeDevice/attestQuote
-// The message is assumed to be protected by a TLS session bound to the
-// device certificate for v1.
-// The message is assumed to be protected by signing envelope for v2.
-message ZAttestQuoteResp {
-   ZAttestResponseCode response = 1; //result of quote validation
+message ZAttestQuote {
+   bytes attestData = 1;  //TPMS_ATTEST (Table 2:123) in https://trustedcomputinggroup.org/wp-content/uploads/TPM-Rev-2.0-Part-2-Structures-01.38.pdf
+                          //nonce is included in attestData
+   bytes signature = 2;   //signature to verify attestData
 }
 
 enum ZAttestResponseCode {
@@ -41,3 +49,30 @@ enum ZAttestResponseCode {
    ATTEST_RESPONSE_FAILURE = 1;  //Attestation failed
 }
 
+message ZAttestQuoteResp {
+   ZAttestResponseCode response = 1; //result of quote validation
+}
+
+enum ZEveCertHashType {
+    HASH_NONE = 0;
+    HASH_SHA256_16bytes = 1;  // hash with sha256, the 1st 16 bytes of result in 'certHash'
+}
+
+message ZEveCert {
+   ZEveCertHashType hashAlgo = 1; //hash method used to arrive at certHash
+   bytes certHash = 2;            //Hash of the cert, computed using hashAlgo
+   ZEveCertType type = 3;         //what kind of certificate(to identify the target use case)
+   bytes cert = 4;                //X509 cert in .PEM format
+   ZEveCertAttr attributes = 5;   //properties of this certificate
+}
+
+enum ZEveCertType {
+   CERT_TYPE_DEVICE_ONBOARDING = 0;         //set for certificate used by edge node for identifying the device
+   CERT_TYPE_DEVICE_RESTRICTED_SIGNING = 1; //set for certificate used by edge node for attestation
+   CERT_TYPE_DEVICE_ENDORSEMENT_RSA = 2;    //set for endorsement key certificate with RSASSA signing algorithm
+   CERT_TYPE_DEVICE_ECDH_EXCHANGE = 3;      //set for certificate used by edge node to share symmetric key using ECDH
+}
+
+message ZEveCertAttr {
+   bool isMutable = 1; //set to false for immutable certificates
+}

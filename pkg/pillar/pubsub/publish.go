@@ -76,10 +76,12 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 			log.Debugf("Publish(%s/%s) unchanged\n", name, key)
 			return nil
 		}
-		log.Debugf("Publish(%s/%s) replacing due to diff %s\n",
-			name, key, cmp.Diff(m, newItem))
+		// DO NOT log Values. They may contain sensitive information.
+		log.Debugf("Publish(%s/%s) replacing due to diff\n",
+			name, key)
 	} else {
-		log.Debugf("Publish(%s/%s) adding %+v\n", name, key, newItem)
+		// DO NOT log Values. They may contain sensitive information.
+		log.Debugf("Publish(%s/%s) adding Item", name, key)
 	}
 	pub.km.key.Store(key, newItem)
 
@@ -99,8 +101,9 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 // Unpublish delete a key from the key-value map
 func (pub *PublicationImpl) Unpublish(key string) error {
 	name := pub.nameString()
-	if m, ok := pub.km.key.Load(key); ok {
-		log.Debugf("Unpublish(%s/%s) removing %+v\n", name, key, m)
+	if _, ok := pub.km.key.Load(key); ok {
+		// DO NOT log Values. They may contain sensitive information.
+		log.Debugf("Unpublish(%s/%s) removing Item", name, key)
 	} else {
 		errStr := fmt.Sprintf("Unpublish(%s/%s): key does not exist",
 			name, key)
@@ -132,7 +135,8 @@ func (pub *PublicationImpl) ClearRestarted() error {
 func (pub *PublicationImpl) Get(key string) (interface{}, error) {
 	m, ok := pub.km.key.Load(key)
 	if ok {
-		return m, nil
+		newIntf := deepCopy(m)
+		return newIntf, nil
 	} else {
 		name := pub.nameString()
 		errStr := fmt.Sprintf("Get(%s) unknown key %s", name, key)
@@ -144,11 +148,17 @@ func (pub *PublicationImpl) Get(key string) (interface{}, error) {
 func (pub *PublicationImpl) GetAll() map[string]interface{} {
 	result := make(map[string]interface{})
 	assigner := func(key string, val interface{}) bool {
-		result[key] = val
+		newVal := deepCopy(val)
+		result[key] = newVal
 		return true
 	}
 	pub.km.key.Range(assigner)
 	return result
+}
+
+// Iterate - performs some callback function on all items
+func (pub *PublicationImpl) Iterate(function fn) {
+	pub.km.key.Range(function)
 }
 
 // methods just for this implementation of Publisher
@@ -281,11 +291,12 @@ func (pub *PublicationImpl) dump(infoStr string) {
 	name := pub.nameString()
 	log.Debugf("dump(%s) %s\n", name, infoStr)
 	dumper := func(key string, val interface{}) bool {
-		b, err := json.Marshal(val)
+		_, err := json.Marshal(val)
 		if err != nil {
 			log.Fatal("json Marshal in dump", err)
 		}
-		log.Debugf("\tkey %s val %s\n", key, b)
+		// DO NOT log Values. They may contain sensitive information.
+		log.Debugf("\tkey %s", key)
 		return true
 	}
 	pub.km.key.Range(dumper)

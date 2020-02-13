@@ -67,6 +67,15 @@ func download(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 			asize, osize, progress := resp.Progress()
 			log.Infof("Update progress for %v: %v/%v",
 				resp.GetLocalName(), asize, osize)
+			// sometime, the download goes to an infinite loop,
+			// showing it has downloaded, more than it is supposed to
+			// aborting download, marking it as an error
+			if asize > osize {
+				errStr := fmt.Sprintf("%s, downloaded more than 100%% (%v / %v). Which is impossible. Aborting the download",
+					resp.GetLocalName(), asize, osize)
+				log.Errorln(errStr)
+				return errors.New(errStr)
+			}
 			status.Progress(progress)
 			continue
 		}

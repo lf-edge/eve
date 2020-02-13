@@ -20,17 +20,27 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"time"
 	"unsafe"
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/pidfile"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
+type tpmMgrContext struct {
+	subGlobalConfig pubsub.Subscription
+	GCInitialized   bool // GlobalConfig initialized
+}
+
 const (
+	agentName = "tpmmgr"
 	//TpmPubKeyName is the file to store TPM public key file
 	TpmPubKeyName = "/var/tmp/tpm.eccpubk.der"
 
@@ -66,12 +76,16 @@ const (
 	tpmLockName            = types.TmpDirname + "/tpm.lock"
 	maxPasswdLength        = 7  //limit TPM password to this length
 	vaultKeyLength         = 32 //Bytes
+
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 var (
 	tpmHwInfo        = ""
 	pcrSelection     = tpm2.PCRSelection{Hash: tpm2.AlgSHA1, PCRs: []int{7}}
-	pcrListForQuote  = tpm2.PCRSelection{Hash: tpm2.AlgSHA1, PCRs: []int{0, 1, 2, 3, 4, 5, 6, 7, 8}}
+	pcrListForQuote  = tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0, 1, 2, 3, 4, 5, 6, 7, 8}}
 	defaultKeyParams = tpm2.Public{
 		Type:    tpm2.AlgECC,
 		NameAlg: tpm2.AlgSHA256,
@@ -141,6 +155,8 @@ var (
 			ModulusRaw: make([]byte, 256),
 		},
 	}
+	debug         = false
+	debugOverride bool // From command line arg
 )
 
 //Refer to https://trustedcomputinggroup.org/wp-content/uploads/TCG-TPM-Vendor-ID-Registry-Version-1.01-Revision-1.00.pdf
@@ -182,13 +198,19 @@ func IsTpmEnabled() bool {
 }
 
 //Helps creating various keys, according to the supplied template, and hierarchy
-func createKey(keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public) error {
+func createKey(keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public, overwrite bool) error {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
 		log.Errorln(err)
 		return err
 	}
 	defer rw.Close()
+	if !overwrite {
+		//don't overwrite if key already exists
+		if _, _, _, err := tpm2.ReadPublic(rw, keyHandle); err == nil {
+			return nil
+		}
+	}
 	handle, _, err := tpm2.CreatePrimary(rw,
 		tpm2.HandleOwner,
 		pcrSelection,
@@ -850,12 +872,17 @@ func testEcdhAES() error {
 
 func Run() {
 	curpartPtr := flag.String("c", "", "Current partition")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
+	debug = *debugPtr
+	debugOverride = debug
+	if debugOverride {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 
 	curpart := *curpartPtr
-
-	log.SetLevel(log.DebugLevel)
-
 	// Sending json log format to stdout
 	logf, err := agentlog.Init("tpmmgr", curpart)
 	if err != nil {
@@ -863,43 +890,94 @@ func Run() {
 	}
 	defer logf.Close()
 
-	switch os.Args[1] {
+	if len(flag.Args()) == 0 {
+		log.Fatal("Insufficient arguments")
+	}
+	switch flag.Args()[0] {
 	case "genKey":
 		if err = createDeviceKey(); err != nil {
-			log.Errorf("Error in creating device primary key: %v ", err)
-			os.Exit(1)
+			log.Fatalf("Error in creating device primary key: %v ", err)
 		}
-		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate); err != nil {
-			log.Errorf("Error in creating Endorsement key: %v ", err)
-			os.Exit(1)
+		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, true); err != nil {
+			log.Fatalf("Error in creating Endorsement key: %v ", err)
 		}
-		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate); err != nil {
-			log.Errorf("Error in creating Srk key: %v ", err)
-			os.Exit(1)
+		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, true); err != nil {
+			log.Fatalf("Error in creating Srk key: %v ", err)
 		}
-		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate); err != nil {
-			log.Errorf("Error in creating Attestation key: %v ", err)
-			os.Exit(1)
+		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, true); err != nil {
+			log.Fatalf("Error in creating Attestation key: %v ", err)
 		}
 	case "readDeviceCert":
 		if err = readDeviceCert(); err != nil {
-			log.Errorln("Error in reading device cert")
-			os.Exit(1)
+			log.Fatalf("Error in reading device cert: %v", err)
 		}
 	case "writeDeviceCert":
 		if err = writeDeviceCert(); err != nil {
-			log.Errorln("Error in writing device cert")
-			os.Exit(1)
+			log.Fatalf("Error in writing device cert: %v", err)
 		}
 	case "readCredentials":
 		if err = readCredentials(); err != nil {
-			log.Errorln("Error in reading credentials")
-			os.Exit(1)
+			log.Fatalf("Error in reading credentials: %v", err)
 		}
 	case "genCredentials":
 		if err = genCredentials(); err != nil {
-			log.Errorln("Error in generating credentials")
-			os.Exit(1)
+			log.Fatalf("Error in generating credentials: %v", err)
+		}
+	case "runAsService":
+		log.Infof("Starting %s\n", agentName)
+
+		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+			log.Fatal(err)
+		}
+
+		// Run a periodic timer so we always update StillRunning
+		stillRunning := time.NewTicker(15 * time.Second)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+
+		// Context to pass around
+		ctx := tpmMgrContext{}
+
+		// Look for global config such as log levels
+		subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
+			false, &ctx, &pubsub.SubscriptionOptions{
+				CreateHandler: handleGlobalConfigModify,
+				ModifyHandler: handleGlobalConfigModify,
+				DeleteHandler: handleGlobalConfigDelete,
+				WarningTime:   warningTime,
+				ErrorTime:     errorTime,
+			})
+		if err != nil {
+			log.Fatal(err)
+		}
+		ctx.subGlobalConfig = subGlobalConfig
+		subGlobalConfig.Activate()
+
+		// Pick up debug aka log level before we start real work
+		for !ctx.GCInitialized {
+			log.Infof("waiting for GCInitialized")
+			select {
+			case change := <-subGlobalConfig.MsgChan():
+				subGlobalConfig.ProcessChange(change)
+			case <-stillRunning.C:
+			}
+			agentlog.StillRunning(agentName, warningTime, errorTime)
+		}
+		log.Infof("processed GlobalConfig")
+
+		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
+			log.Fatalf("Error in creating Endorsement key: %v ", err)
+		}
+		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, false); err != nil {
+			log.Fatalf("Error in creating Srk key: %v ", err)
+		}
+		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, false); err != nil {
+			log.Fatalf("Error in creating Attestation key: %v ", err)
+		}
+		for {
+			select {
+			case <-stillRunning.C:
+				agentlog.StillRunning(agentName, warningTime, errorTime)
+			}
 		}
 	case "printCapability":
 		printCapability()
@@ -909,5 +987,40 @@ func Run() {
 		testTpmEcdhSupport()
 	case "testEcdhAES":
 		testEcdhAES()
+	default:
+		log.Fatalf("Unknown argument %s", flag.Args()[0])
 	}
+}
+
+// Handles both create and modify events
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*tpmMgrContext)
+	if key != "global" {
+		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleGlobalConfigModify for %s\n", key)
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	if gcp != nil {
+		ctx.GCInitialized = true
+	}
+	log.Infof("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*tpmMgrContext)
+	if key != "global" {
+		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

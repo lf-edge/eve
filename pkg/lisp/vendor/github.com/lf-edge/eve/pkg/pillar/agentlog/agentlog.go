@@ -23,7 +23,8 @@ const (
 	stackFile  = "reboot-stack"
 )
 
-var savedAgentName string = "unknown" // Keep for signal and exit handlers
+var savedAgentName = "unknown" // Keep for signal and exit handlers
+var savedRebootReason = "unknown"
 
 // Parameter description
 // 1. agentName: Name with which disk log file will be created.
@@ -86,6 +87,7 @@ type FatalHook struct {
 // Fire saves the reason for the log.Fatal or log.Panic
 func (hook *FatalHook) Fire(entry *log.Entry) error {
 	reason := fmt.Sprintf("fatal: agent %s: %s", savedAgentName, entry.Message)
+	savedRebootReason = reason
 	RebootReason(reason)
 	return nil
 }
@@ -123,7 +125,7 @@ func handleSignals(sigs chan os.Signal) {
 // Print out our stack
 func printStack() {
 	stacks := getStacks(false)
-	log.Errorf("fatal stack trace:\n%v\n", stacks)
+	log.Errorf("fatal stack trace due to %s:\n%v\n", savedRebootReason, stacks)
 	RebootReason(fmt.Sprintf("fatal: agent %s exit", savedAgentName))
 	RebootStack(stacks)
 }
