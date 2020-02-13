@@ -120,7 +120,7 @@ func (ctx *domainContext) publishAssignableAdapters() {
 var debug = false
 var debugOverride bool // From command line arg
 
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	handlersInit()
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")

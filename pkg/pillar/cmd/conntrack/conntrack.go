@@ -6,13 +6,15 @@ package conntrack
 import (
 	"flag"
 	"fmt"
-	"github.com/eriknordmark/netlink"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"syscall"
+
+	"github.com/eriknordmark/netlink"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	log "github.com/sirupsen/logrus"
 )
 
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	// XXX curpartPtr := flag.String("c", "", "Current partition")
 	delFlow := flag.Bool("D", false, "Delete flow")
 	delSrcIP := flag.String("s", "", "Delete flow with Srouce IP")

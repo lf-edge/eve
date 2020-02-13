@@ -129,7 +129,7 @@ type zedcloudLogs struct {
 }
 
 // Run is an entry point into running logmanager
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	defaultLogdirname := agentlog.GetCurrentLogdir()
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug")

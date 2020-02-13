@@ -24,7 +24,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -75,7 +74,7 @@ type clientContext struct {
 var debug = false
 var debugOverride bool // From command line arg
 
-func Run() { //nolint:gocyclo
+func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
@@ -140,7 +139,10 @@ func Run() { //nolint:gocyclo
 	nameFileName := types.IdentityDirname + "/name"
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
-	pub, err := pubsublegacy.Publish(agentName, cms)
+	pub, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: cms,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -163,28 +165,32 @@ func Run() { //nolint:gocyclo
 	}
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
-		false, &clientCtx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleGlobalConfigModify,
-			ModifyHandler: handleGlobalConfigModify,
-			DeleteHandler: handleGlobalConfigDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleGlobalConfigModify,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		TopicImpl:     types.GlobalConfig{},
+		Ctx:           &clientCtx,
+	})
+
 	if err != nil {
 		log.Fatal(err)
 	}
 	clientCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &clientCtx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleDNSModify,
-			ModifyHandler: handleDNSModify,
-			DeleteHandler: handleDNSDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		CreateHandler: handleDNSModify,
+		ModifyHandler: handleDNSModify,
+		DeleteHandler: handleDNSDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		AgentName:     "nim",
+		TopicImpl:     types.DeviceNetworkStatus{},
+		Ctx:           &clientCtx,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}

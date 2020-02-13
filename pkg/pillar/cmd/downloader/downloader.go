@@ -18,7 +18,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -45,7 +44,7 @@ var (
 	dHandler           = makeDownloadHandler()
 )
 
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
@@ -78,7 +77,10 @@ func Run() {
 	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	cms := zedcloud.GetCloudMetrics() // Need type of data
-	pub, err := pubsublegacy.Publish(agentName, cms)
+	pub, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: cms,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -94,7 +96,7 @@ func Run() {
 	ctx := downloaderContext{}
 
 	// set up any state needed by handler functions
-	err = ctx.registerHandlers()
+	err = ctx.registerHandlers(ps)
 	if err != nil {
 		log.Fatal(err)
 	}

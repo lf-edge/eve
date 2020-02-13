@@ -86,7 +86,7 @@ func (ctx *nimContext) processArgs() {
 }
 
 // Run - Main function - invoked from zedbox.go
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	nimCtx := nimContext{
 		fallbackPortMap:  make(map[string]bool),
 		filteredFallback: make(map[string]bool),

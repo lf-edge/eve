@@ -7,13 +7,15 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
+	"os"
+
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/rackn/gohai/plugins/dmi"
 	"github.com/rackn/gohai/plugins/net"
 	"github.com/rackn/gohai/plugins/storage"
 	"github.com/rackn/gohai/plugins/system"
-	"log"
-	"os"
 )
 
 // Set from Makefile
@@ -51,7 +53,7 @@ func hwFp() {
 	enc.Encode(infos)
 }
 
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	cPtr := flag.Bool("c", false, "No CRLF")
 	hwPtr := flag.Bool("f", false, "Fingerprint hardware")
