@@ -60,13 +60,19 @@ func (e *EmptyDriverSubscriber) Start() error {
 
 func TestHandleModify(t *testing.T) {
 	ps := New(&EmptyDriver{})
-	sub, err := ps.SubscribeScope(agentName, agentScope, item, false, &item, nil)
+	sub, err := ps.NewSubscription(SubscriptionOptions{
+		AgentName:  agentName,
+		AgentScope: agentScope,
+		TopicImpl:  item,
+		Persistent: false,
+		Ctx:        &item,
+	})
 	if err != nil {
 		t.Fatalf("unable to subscribe: %v", err)
 	}
 	subImpl, ok := sub.(*SubscriptionImpl)
 	if !ok {
-		t.Fatal("Subscription was not a *SubscriptionImpl")
+		t.Fatal("NewSubscription was not a *SubscriptionImpl")
 	}
 
 	created := false
