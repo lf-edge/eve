@@ -7,6 +7,7 @@
 package pubsub
 
 import (
+	"fmt"
 	"reflect"
 	"time"
 
@@ -22,6 +23,12 @@ type SubscriptionOptions struct {
 	SyncHandler    SubRestartHandler
 	WarningTime    time.Duration
 	ErrorTime      time.Duration
+	AgentName      string
+	AgentScope     string
+	TopicImpl      interface{}
+	Activate       bool
+	Ctx            interface{}
+	Persistent     bool
 }
 
 // SubHandler is a generic handler to handle create, modify and delete
@@ -69,90 +76,46 @@ func New(driver Driver) *PubSub {
 	}
 }
 
-// Publish create a `Publication` for the given agent name and topic type.
-func (p *PubSub) Publish(agentName string, topicType interface{}) (Publication, error) {
-	return p.publishImpl(agentName, "", topicType, false)
-}
-
-// PublishPersistent create a `Publication` for the given agent name and topic
-// type, but with persistence of the messages across reboots.
-func (p *PubSub) PublishPersistent(agentName string, topicType interface{}) (Publication, error) {
-	return p.publishImpl(agentName, "", topicType, true)
-}
-
-// PublishScope create a `Publication` for the given agent name and topic,
-// restricted to a given scope.
-func (p *PubSub) PublishScope(agentName string, agentScope string, topicType interface{}) (Publication, error) {
-	return p.publishImpl(agentName, agentScope, topicType, false)
-}
-
-// Subscribe create a subscription for the given agent name and topic
-// optionally activating immediately. If `activate` is set to `false`
-// (the default), then the subscription will not begin to send messages
-// on the channel or process them until `Subscription.Start()` is called.
-func (p *PubSub) Subscribe(agentName string, topicType interface{}, activate bool,
-	ctx interface{}, options *SubscriptionOptions) (Subscription, error) {
-	return p.subscribeImpl(agentName, "", topicType, activate, ctx, false, options)
-}
-
-// SubscribeScope create a subscription for the given agent name and topic,
-// limited to a given scope,
-// optionally activating immediately. If `activate` is set to `false`
-// (the default), then the subscription will not begin to send messages
-// on the channel or process them until `Subscription.Start()` is called.
-func (p *PubSub) SubscribeScope(agentName string, agentScope string, topicType interface{},
-	activate bool, ctx interface{}, options *SubscriptionOptions) (Subscription, error) {
-	return p.subscribeImpl(agentName, agentScope, topicType, activate, ctx,
-		false, options)
-}
-
-// SubscribePersistent create a subscription for the given agent name and topic,
-// persistent,
-// optionally activating immediately. If `activate` is set to `false`
-// (the default), then the subscription will not begin to send messages
-// on the channel or process them until `Subscription.Start()` is called.
-func (p *PubSub) SubscribePersistent(agentName string, topicType interface{}, activate bool,
-	ctx interface{}, options *SubscriptionOptions) (Subscription, error) {
-	return p.subscribeImpl(agentName, "", topicType, activate, ctx, true, options)
-}
-
 // methods unique to this implementation
 
-func (p *PubSub) subscribeImpl(agentName string, agentScope string, topicImpl interface{},
-	activate bool, ctx interface{}, persistent bool, options *SubscriptionOptions) (Subscription, error) {
+// NewSubscription creates a new Subscription with given options
+func (p *PubSub) NewSubscription(options SubscriptionOptions) (Subscription, error) {
 
-	topic := TypeToName(topicImpl)
-	topicType := reflect.TypeOf(topicImpl)
+	if options.TopicImpl == nil {
+		return nil, fmt.Errorf("cannot create a subcription with a nil "+
+			" topicImpl. options: %+v", options)
+	}
+
+	topic := TypeToName(options.TopicImpl)
+	topicType := reflect.TypeOf(options.TopicImpl)
 	changes := make(chan Change)
 	sub := &SubscriptionImpl{
-		C:           changes,
-		agentName:   agentName,
-		agentScope:  agentScope,
-		topic:       topic,
-		topicType:   topicType,
-		userCtx:     ctx,
-		km:          keyMap{key: NewLockedStringMap()},
-		defaultName: p.driver.DefaultName(),
-	}
-	if options != nil {
-		sub.CreateHandler = options.CreateHandler
-		sub.ModifyHandler = options.ModifyHandler
-		sub.DeleteHandler = options.DeleteHandler
-		sub.RestartHandler = options.RestartHandler
-		sub.SynchronizedHandler = options.SyncHandler
-		sub.MaxProcessTimeWarn = options.WarningTime
-		sub.MaxProcessTimeError = options.ErrorTime
+		C:                   changes,
+		agentName:           options.AgentName,
+		agentScope:          options.AgentScope,
+		topic:               topic,
+		topicType:           topicType,
+		userCtx:             options.Ctx,
+		km:                  keyMap{key: NewLockedStringMap()},
+		defaultName:         p.driver.DefaultName(),
+		CreateHandler:       options.CreateHandler,
+		ModifyHandler:       options.ModifyHandler,
+		DeleteHandler:       options.DeleteHandler,
+		RestartHandler:      options.RestartHandler,
+		SynchronizedHandler: options.SyncHandler,
+		MaxProcessTimeWarn:  options.WarningTime,
+		MaxProcessTimeError: options.ErrorTime,
 	}
 	name := sub.nameString()
-	global := agentName == ""
-	driver, err := p.driver.Subscriber(global, name, topic, persistent, changes)
+	global := options.AgentName == ""
+	driver, err := p.driver.Subscriber(global, name, topic, options.Persistent, changes)
 	if err != nil {
 		return sub, err
 	}
 	sub.driver = driver
 
 	log.Infof("Subscribe(%s)\n", name)
-	if activate {
+	if options.Activate {
 		if err := sub.Activate(); err != nil {
 			return sub, err
 		}
@@ -163,29 +126,43 @@ func (p *PubSub) subscribeImpl(agentName string, agentScope string, topicImpl in
 // publishImpl init function to create directory and socket listener based on above settings
 // We read any checkpointed state from dirName and insert in pub.km as initial
 // values.
-func (p *PubSub) publishImpl(agentName string, agentScope string,
-	topicType interface{}, persistent bool) (Publication, error) {
 
-	topic := TypeToName(topicType)
+// PublicationOptions defines all the possible options a new publication may have
+type PublicationOptions struct {
+	AgentName  string
+	AgentScope string
+	TopicType  interface{}
+	Persistent bool
+}
+
+// NewPublication creates a new Publication with given options
+func (p *PubSub) NewPublication(options PublicationOptions) (Publication, error) {
+	if options.TopicType == nil {
+		return nil, fmt.Errorf("cannot create a publication with a nil "+
+			"topic type. options: %+v", options)
+	}
+
+	topic := TypeToName(options.TopicType)
 	// ensure the updaterlist is populated. This is the only place we consume it,
 	//  so fine to set it here
 	if p.updaterList == nil {
 		p.updaterList = &Updaters{}
 	}
 	pub := &PublicationImpl{
-		agentName:   agentName,
-		agentScope:  agentScope,
+		agentName:   options.AgentName,
+		agentScope:  options.AgentScope,
 		topic:       topic,
-		topicType:   reflect.TypeOf(topicType),
+		topicType:   reflect.TypeOf(options.TopicType),
 		km:          keyMap{key: NewLockedStringMap()},
 		updaterList: p.updaterList,
 		defaultName: p.driver.DefaultName(),
 	}
 	// create the driver
 	name := pub.nameString()
-	global := agentName == ""
-	log.Infof("publishImpl agentName(%s), agentScope(%s), topic(%s), nameString(%s), global(%v), persistent(%v)\n", agentName, agentScope, topic, name, global, persistent)
-	driver, err := p.driver.Publisher(global, name, topic, persistent, p.updaterList, pub, pub)
+	global := options.AgentName == ""
+	log.Infof("publishImpl agentName(%s), agentScope(%s), topic(%s), nameString(%s), global(%v), persistent(%v)\n",
+		options.AgentName, options.AgentScope, topic, name, global, options.Persistent)
+	driver, err := p.driver.Publisher(global, name, topic, options.Persistent, p.updaterList, pub, pub)
 	if err != nil {
 		return pub, err
 	}
