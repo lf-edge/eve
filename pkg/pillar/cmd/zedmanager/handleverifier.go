@@ -23,6 +23,20 @@ func lookupVerifyImageConfig(ctx *zedmanagerContext,
 	return &config
 }
 
+func lookupPersistImageConfig(ctx *zedmanagerContext,
+	sha string) *types.PersistImageConfig {
+
+	pub := ctx.pubAppImgPersistConfig
+	c, _ := pub.Get(sha)
+	if c == nil {
+		log.Infof("lookupPersistImageConfig(%s) not found\n",
+			sha)
+		return nil
+	}
+	config := c.(types.PersistImageConfig)
+	return &config
+}
+
 // If checkCerts is set this can return false. Otherwise not.
 func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, uuidStr string,
 	ss types.StorageStatus, checkCerts bool) (bool, types.ErrorInfo) {
@@ -67,14 +81,16 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("MaybeAddVerifyImageConfig: add for %s, IsContainer: %t",
 			imageID, ss.IsContainer)
 		n := types.VerifyImageConfig{
-			ImageID:          ss.ImageID,
-			Name:             ss.Name,
-			ImageSha256:      ss.ImageSha256,
-			RefCount:         1,
-			CertificateChain: ss.CertificateChain,
-			ImageSignature:   ss.ImageSignature,
-			SignatureKey:     ss.SignatureKey,
-			IsContainer:      ss.IsContainer,
+			ImageID: ss.ImageID,
+			VerifyConfig: types.VerifyConfig{
+				Name:             ss.Name,
+				ImageSha256:      ss.ImageSha256,
+				CertificateChain: ss.CertificateChain,
+				ImageSignature:   ss.ImageSignature,
+				SignatureKey:     ss.SignatureKey,
+			},
+			IsContainer: ss.IsContainer,
+			RefCount:    1,
 		}
 		publishVerifyImageConfig(ctx, &n)
 		log.Debugf("MaybeAddVerifyImageConfig - config: %+v\n", n)
@@ -84,7 +100,7 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, uuidStr string,
 }
 
 // MaybeRemoveVerifyImageConfig decreases the refcount and if it
-// reaches zero it removes the VerifyImageConfig
+// reaches zero the verifier might start a GC using the Expired exchange
 func MaybeRemoveVerifyImageConfig(ctx *zedmanagerContext, imageID uuid.UUID) {
 
 	log.Infof("MaybeRemoveVerifyImageConfig for %s\n", imageID)
@@ -104,8 +120,12 @@ func MaybeRemoveVerifyImageConfig(ctx *zedmanagerContext, imageID uuid.UUID) {
 	m.RefCount -= 1
 	log.Infof("MaybeRemoveVerifyImageConfig: RefCount to %d for %s\n",
 		m.RefCount, imageID)
+	if m.RefCount == 0 {
+		unpublishVerifyImageConfig(ctx, m.Key())
+	} else {
+		publishVerifyImageConfig(ctx, m)
+	}
 	log.Infof("MaybeRemoveVerifyImageConfig done for %s\n", imageID)
-	publishVerifyImageConfig(ctx, m)
 }
 
 func publishVerifyImageConfig(ctx *zedmanagerContext,
@@ -117,12 +137,26 @@ func publishVerifyImageConfig(ctx *zedmanagerContext,
 	pub.Publish(key, *config)
 }
 
-func unpublishVerifyImageConfig(ctx *zedmanagerContext,
-	config *types.VerifyImageConfig) {
+func unpublishVerifyImageConfig(ctx *zedmanagerContext, key string) {
 
-	key := config.Key()
 	log.Debugf("unpublishVerifyImageConfig(%s)\n", key)
 	pub := ctx.pubAppImgVerifierConfig
+	pub.Unpublish(key)
+}
+
+func publishPersistImageConfig(ctx *zedmanagerContext,
+	config *types.PersistImageConfig) {
+
+	key := config.Key()
+	log.Debugf("publishPersistImageConfig(%s)\n", key)
+	pub := ctx.pubAppImgPersistConfig
+	pub.Publish(key, *config)
+}
+
+func unpublishPersistImageConfig(ctx *zedmanagerContext, key string) {
+
+	log.Debugf("unpublishPersistImageConfig(%s)\n", key)
+	pub := ctx.pubAppImgPersistConfig
 	pub.Unpublish(key)
 }
 
@@ -139,38 +173,68 @@ func handleVerifyImageStatusModify(ctxArg interface{}, key string,
 			" ImageID: %s", status.ImageID)
 		return
 	}
-
-	// We handle two special cases in the handshake here
-	// 1. verifier added a status with RefCount=0 based on
-	// an existing file. We echo that with a config with RefCount=0
-	// 2. verifier set Expired in status when garbage collecting.
-	// If we have no RefCount we delete the config.
-
-	config := lookupVerifyImageConfig(ctx, status.ImageID)
-	if config == nil && status.RefCount == 0 {
-		log.Infof("handleVerifyImageStatusModify adding RefCount=0 config %s\n",
-			key)
-		n := types.VerifyImageConfig{
-			ImageID:     status.ImageID,
-			Name:        status.Name,
-			ImageSha256: status.ImageSha256,
-			// IsContainer might not be known by verifier
-			IsContainer: status.IsContainer,
-			RefCount:    0,
-		}
-		publishVerifyImageConfig(ctx, &n)
-		return
+	// Make sure the PersistImageConfig has the sum of the refcounts
+	// for the sha
+	if status.ImageSha256 != "" {
+		updatePersistImageConfig(ctx, status.ImageSha256)
 	}
-	if config != nil && config.RefCount == 0 && status.Expired {
-		log.Infof("handleVerifyImageStatusModify expired - deleting config %s\n",
-			key)
-		unpublishVerifyImageConfig(ctx, config)
-		return
-	}
-
-	// Normal update work
 	updateAIStatusWithStorageImageID(ctx, status.ImageID)
 	log.Infof("handleVerifyImageStatusModify done for %s", status.ImageID)
+}
+
+// Make sure the PersistImageConfig has the sum of the refcounts
+// for the sha
+func updatePersistImageConfig(ctx *zedmanagerContext, imageSha string) {
+	log.Infof("updatePersistImageConfig(%s)", imageSha)
+	if imageSha == "" {
+		return
+	}
+	var refcount uint
+	sub := ctx.subAppImgVerifierStatus
+	items := sub.GetAll()
+	for _, s := range items {
+		status := s.(types.VerifyImageStatus)
+		if status.ImageSha256 == imageSha {
+			log.Infof("Adding RefCount %d from %s to %s",
+				status.RefCount, status.ImageID, imageSha)
+			refcount += status.RefCount
+		}
+	}
+	config := lookupPersistImageConfig(ctx, imageSha)
+	if config == nil {
+		log.Errorf("updatePersistImageConfig(%s): config not found",
+			imageSha)
+		return
+	}
+	if config.RefCount == refcount {
+		log.Infof("updatePersistImageConfig(%s): no RefCount change %d",
+			imageSha, refcount)
+		return
+	}
+	log.Infof("updatePersistImageConfig(%s): RefCount change %d to %d",
+		imageSha, config.RefCount, refcount)
+	config.RefCount = refcount
+	publishPersistImageConfig(ctx, config)
+}
+
+// Calculate sum of the refcounts for the config for a particular sha
+func sumVerifyImageRefCount(ctx *zedmanagerContext, imageSha string) uint {
+	log.Infof("sumVerifyImageRefCount(%s)", imageSha)
+	if imageSha == "" {
+		return 0
+	}
+	var refcount uint
+	pub := ctx.pubAppImgVerifierConfig
+	items := pub.GetAll()
+	for _, c := range items {
+		config := c.(types.VerifyImageConfig)
+		if config.ImageSha256 == imageSha {
+			log.Infof("Adding RefCount %d from %s to %s",
+				config.RefCount, config.ImageID, imageSha)
+			refcount += config.RefCount
+		}
+	}
+	return refcount
 }
 
 // Note that this function returns the entry even if Pending* is set.
@@ -178,12 +242,12 @@ func lookupVerifyImageStatus(ctx *zedmanagerContext,
 	imageID uuid.UUID) *types.VerifyImageStatus {
 
 	sub := ctx.subAppImgVerifierStatus
-	c, _ := sub.Get(imageID.String())
-	if c == nil {
+	s, _ := sub.Get(imageID.String())
+	if s == nil {
 		log.Infof("lookupVerifyImageStatus(%s) not found\n", imageID)
 		return nil
 	}
-	status := c.(types.VerifyImageStatus)
+	status := s.(types.VerifyImageStatus)
 	return &status
 }
 
@@ -199,7 +263,76 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	if config != nil && config.RefCount == 0 {
 		log.Infof("handleVerifyImageStatusDelete delete config for %s\n",
 			key)
-		unpublishVerifyImageConfig(ctx, config)
+		unpublishVerifyImageConfig(ctx, config.Key())
+	}
+	// Make sure the PersistImageConfig has the sum of the refcounts
+	// for the sha
+	if status.ImageSha256 != "" {
+		updatePersistImageConfig(ctx, status.ImageSha256)
 	}
 	log.Infof("handleVerifyImageStatusDelete done for %s\n", key)
+}
+
+func lookupPersistImageStatus(ctx *zedmanagerContext,
+	imageSha string) *types.PersistImageStatus {
+
+	if imageSha == "" {
+		return nil
+	}
+	sub := ctx.subAppImgPersistStatus
+	s, _ := sub.Get(imageSha)
+	if s == nil {
+		log.Infof("lookupPersistImageStatus(%s) not found\n", imageSha)
+		return nil
+	}
+	status := s.(types.PersistImageStatus)
+	return &status
+}
+
+func handlePersistImageStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	status := statusArg.(types.PersistImageStatus)
+	ctx := ctxArg.(*zedmanagerContext)
+
+	log.Infof("handlePersistImageStatusModify for sha: %s, "+
+		" RefCount %d Expired %t", status.ImageSha256, status.RefCount,
+		status.Expired)
+
+	// We handle two special cases in the handshake here
+	// 1. verifier added a status with RefCount=0 based on
+	// an existing file. We echo that with a config with RefCount=0
+	// 2. verifier set Expired in status when garbage collecting.
+	// If we have no RefCount we delete the config.
+
+	config := lookupPersistImageConfig(ctx, status.ImageSha256)
+	if config == nil && status.RefCount == 0 {
+		log.Infof("handlePersistImageStatusModify adding RefCount=0 config %s\n",
+			key)
+		n := types.PersistImageConfig{
+			VerifyConfig: types.VerifyConfig{
+				Name:        status.Name,
+				ImageSha256: status.ImageSha256,
+			},
+			RefCount: 0,
+		}
+		publishPersistImageConfig(ctx, &n)
+	} else if config != nil && config.RefCount == 0 && status.Expired &&
+		sumVerifyImageRefCount(ctx, status.ImageSha256) == 0 {
+		log.Infof("handlePersistImageStatusModify expired - deleting config %s\n",
+			key)
+		unpublishPersistImageConfig(ctx, config.Key())
+	}
+	log.Infof("handlePersistImageStatusModify done %s\n", key)
+}
+
+func handlePersistImageStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	status := statusArg.(types.PersistImageStatus)
+	log.Infof("handlePersistImageStatusDelete for %s refcount %d expired %t\n",
+		key, status.RefCount, status.Expired)
+	ctx := ctxArg.(*zedmanagerContext)
+	unpublishPersistImageConfig(ctx, key)
+	log.Infof("handlePersistImageStatusDelete done %s\n", key)
 }
