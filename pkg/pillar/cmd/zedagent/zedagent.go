@@ -1051,8 +1051,8 @@ func handleVerifierStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := statusArg.(types.VerifyImageStatus)
-	log.Infof("handleVeriferStatusDelete RefCount %d Expired %v for %s\n",
-		status.RefCount, status.Expired, key)
+	log.Infof("handleVeriferStatusDelete RefCount %d for %s\n",
+		status.RefCount, key)
 	// Nothing to do
 }
 

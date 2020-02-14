@@ -59,6 +59,7 @@ type baseOsMgrContext struct {
 	pubBaseOsStatus          pubsub.Publication
 	pubBaseOsDownloadConfig  pubsub.Publication
 	pubBaseOsVerifierConfig  pubsub.Publication
+	pubBaseOsPersistConfig   pubsub.Publication
 	pubCertObjStatus         pubsub.Publication
 	pubCertObjDownloadConfig pubsub.Publication
 	pubZbootStatus           pubsub.Publication
@@ -72,6 +73,7 @@ type baseOsMgrContext struct {
 	subBaseOsDownloadStatus  pubsub.Subscription
 	subCertObjDownloadStatus pubsub.Subscription
 	subBaseOsVerifierStatus  pubsub.Subscription
+	subBaseOsPersistStatus   pubsub.Subscription
 	subNodeAgentStatus       pubsub.Subscription
 	rebootReason             string
 	rebootTime               time.Time
@@ -159,6 +161,9 @@ func Run(ps *pubsub.PubSub) {
 				log.Infof("Verifier reported restarted\n")
 			}
 
+		case change := <-ctx.subBaseOsPersistStatus.MsgChan():
+			ctx.subBaseOsPersistStatus.ProcessChange(change)
+
 		case change := <-ctx.subNodeAgentStatus.MsgChan():
 			ctx.subNodeAgentStatus.ProcessChange(change)
 
@@ -187,6 +192,9 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-ctx.subBaseOsVerifierStatus.MsgChan():
 			ctx.subBaseOsVerifierStatus.ProcessChange(change)
+
+		case change := <-ctx.subBaseOsPersistStatus.MsgChan():
+			ctx.subBaseOsPersistStatus.ProcessChange(change)
 
 		case change := <-ctx.subCertObjDownloadStatus.MsgChan():
 			ctx.subCertObjDownloadStatus.ProcessChange(change)
@@ -407,9 +415,31 @@ func handleVerifierStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	status := statusArg.(types.VerifyImageStatus)
-	log.Infof("handleVeriferStatusDelete RefCount %d Expired %v for %s\n",
+	ctx := ctxArg.(*baseOsMgrContext)
+	log.Infof("handleVeriferStatusDelete RefCount %d for %s\n",
+		status.RefCount, key)
+	removeVerifierStatus(ctx, &status)
+}
+
+// Handles both create and modify events
+func handlePersistStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	status := statusArg.(types.PersistImageStatus)
+	ctx := ctxArg.(*baseOsMgrContext)
+	log.Infof("handlePersistStatusModify for %s\n", key)
+	updatePersistStatus(ctx, &status)
+}
+
+// base os persist status delete event
+func handlePersistStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	status := statusArg.(types.PersistImageStatus)
+	ctx := ctxArg.(*baseOsMgrContext)
+	log.Infof("handlePersistStatusDelete RefCount %d expired %t for %s\n",
 		status.RefCount, status.Expired, key)
-	// Nothing to do
+	removePersistStatus(ctx, &status)
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {
@@ -474,6 +504,13 @@ func initializeSelfPublishHandles(ctx *baseOsMgrContext) {
 	}
 	pubBaseOsVerifierConfig.ClearRestarted()
 	ctx.pubBaseOsVerifierConfig = pubBaseOsVerifierConfig
+
+	pubBaseOsPersistConfig, err := pubsublegacy.PublishScope(agentName,
+		types.BaseOsObj, types.PersistImageConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubBaseOsPersistConfig = pubBaseOsPersistConfig
 
 	pubCertObjStatus, err := pubsublegacy.Publish(agentName,
 		types.CertObjStatus{})
@@ -628,6 +665,19 @@ func initializeVerifierHandles(ctx *baseOsMgrContext) {
 	}
 	ctx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
 	subBaseOsVerifierStatus.Activate()
+	// Look for PersistImageStatus from verifier
+	subBaseOsPersistStatus, err := pubsublegacy.SubscribeScope("verifier",
+		types.BaseOsObj, types.PersistImageStatus{}, false, ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handlePersistStatusModify,
+			ModifyHandler: handlePersistStatusModify,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subBaseOsPersistStatus = subBaseOsPersistStatus
+	subBaseOsPersistStatus.Activate()
 }
 
 // This handles both the create and modify events
