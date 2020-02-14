@@ -78,7 +78,8 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 
 	err = w.Add(configDir)
 	if err != nil {
-		log.Fatal(err, ": ", configDir)
+		log.Error(err, " Inintial Add: ", configDir)
+		// Check again when timer fires
 	}
 	// log.Debugln("WatchConfigStatus added", configDir)
 
@@ -229,7 +230,8 @@ func WatchStatus(statusDir string, jsonOnly bool, fileChanges chan<- string) {
 
 	err = w.Add(statusDir)
 	if err != nil {
-		log.Fatal(err, ": ", statusDir)
+		log.Error(err, " Inintial Add: ", statusDir)
+		// Check again when timer fires
 	}
 	// log.Debugln("WatchStatus added", statusDir)
 
