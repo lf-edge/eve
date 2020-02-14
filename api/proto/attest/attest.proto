@@ -3,7 +3,7 @@
 
 syntax = "proto3";
 
-option go_package  = "github.com/lf-edge/eve/api/go/certs";
+option go_package  = "github.com/lf-edge/eve/api/go/attest";
 option java_package = "com.zededa.cloud.uservice.proto";
 
 // This is the request payload for POST /api/v2/edgeDevice/id/<uuid>/attest
