@@ -10,10 +10,12 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/cmd/baseosmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/client"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/command"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/conntrack"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/diag"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/domainmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/downloader"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/executor"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/hardwaremodel"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/identitymgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/ipcmonitor"
@@ -35,9 +37,11 @@ import (
 
 var entrypoints = map[string]func(*pubsub.PubSub){
 	"client":         client.Run,
+	"command":        command.Run,
 	"diag":           diag.Run,
 	"domainmgr":      domainmgr.Run,
 	"downloader":     downloader.Run,
+	"executor":       executor.Run,
 	"hardwaremodel":  hardwaremodel.Run,
 	"identitymgr":    identitymgr.Run,
 	"ledmanager":     ledmanager.Run,
@@ -65,5 +69,6 @@ func main() {
 		entrypoint(ps)
 	} else {
 		fmt.Printf("Unknown package: %s\n", basename)
+		os.Exit(1)
 	}
 }
