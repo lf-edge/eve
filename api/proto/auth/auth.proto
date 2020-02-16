@@ -16,6 +16,7 @@ message AuthBody {
 enum hashAlgorithm {
     HASH_NONE = 0;
     HASH_SHA256_16bytes = 1;  // hash with sha256, the 1st 16 bytes of result in 'senderCertHash'
+    HASH_SHA256_32bytes = 2;  // hash with sha256, the whole 32 bytes of hash result
 }
 
 message AuthContainer {
