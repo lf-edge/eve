@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/auth'),
-  serialized_pb=_b('\n\nauth.proto\"\x1b\n\x08\x41uthBody\x12\x0f\n\x07payload\x18\x01 \x01(\x0c\"|\n\rAuthContainer\x12\x1e\n\x0b\x61uthPayload\x18\x01 \x01(\x0b\x32\t.AuthBody\x12\x1c\n\x04\x61lgo\x18\x02 \x01(\x0e\x32\x0e.hashAlgorithm\x12\x16\n\x0esenderCertHash\x18\x03 \x01(\x0c\x12\x15\n\rsignatureHash\x18\x04 \x01(\x0c*7\n\rhashAlgorithm\x12\r\n\tHASH_NONE\x10\x00\x12\x17\n\x13HASH_SHA256_16bytes\x10\x01\x42\x45\n\x1f\x63om.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/authb\x06proto3')
+  serialized_pb=_b('\n\nauth.proto\"\x1b\n\x08\x41uthBody\x12\x0f\n\x07payload\x18\x01 \x01(\x0c\"|\n\rAuthContainer\x12\x1e\n\x0b\x61uthPayload\x18\x01 \x01(\x0b\x32\t.AuthBody\x12\x1c\n\x04\x61lgo\x18\x02 \x01(\x0e\x32\x0e.hashAlgorithm\x12\x16\n\x0esenderCertHash\x18\x03 \x01(\x0c\x12\x15\n\rsignatureHash\x18\x04 \x01(\x0c*P\n\rhashAlgorithm\x12\r\n\tHASH_NONE\x10\x00\x12\x17\n\x13HASH_SHA256_16bytes\x10\x01\x12\x17\n\x13HASH_SHA256_32bytes\x10\x02\x42\x45\n\x1f\x63om.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/authb\x06proto3')
 )
 
 _HASHALGORITHM = _descriptor.EnumDescriptor(
@@ -37,17 +37,22 @@ _HASHALGORITHM = _descriptor.EnumDescriptor(
       name='HASH_SHA256_16bytes', index=1, number=1,
       serialized_options=None,
       type=None),
+    _descriptor.EnumValueDescriptor(
+      name='HASH_SHA256_32bytes', index=2, number=2,
+      serialized_options=None,
+      type=None),
   ],
   containing_type=None,
   serialized_options=None,
   serialized_start=169,
-  serialized_end=224,
+  serialized_end=249,
 )
 _sym_db.RegisterEnumDescriptor(_HASHALGORITHM)
 
 hashAlgorithm = enum_type_wrapper.EnumTypeWrapper(_HASHALGORITHM)
 HASH_NONE = 0
 HASH_SHA256_16bytes = 1
+HASH_SHA256_32bytes = 2
 
 
 
