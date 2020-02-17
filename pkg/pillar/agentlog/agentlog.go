@@ -141,6 +141,7 @@ func printStack() {
 }
 
 // RebootReason writes a reason string in /persist/IMGx/reboot-reason, including agentName and date
+// It also appends to /persist/log/reboot-reason.log
 // Note: can not use log here since we are called from a log hook!
 func RebootReason(reason string) {
 	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
@@ -151,14 +152,27 @@ func RebootReason(reason string) {
 		// Note: can not use log here since we are called from a log hook!
 		fmt.Printf("printToFile failed %s\n", err)
 	}
+	filename = "/persist/log/" + reasonFile + ".log"
+	err = printToFile(filename, fmt.Sprintf("Reboot from agent %s[%d] at %s: %s\n",
+		savedAgentName, savedPid, dateStr, reason))
+	if err != nil {
+		// Note: can not use log here since we are called from a log hook!
+		fmt.Printf("printToFile failed %s\n", err)
+	}
 	syscall.Sync()
 }
 
 // RebootStack writes stack in /persist/IMGx/reboot-stack
+// and appends to /persist/log/reboot-stack.log
 func RebootStack(stacks string) {
 	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), stackFile)
 	log.Warnf("RebootStack to %s", filename)
 	err := printToFile(filename, fmt.Sprintf("%v\n", stacks))
+	if err != nil {
+		log.Errorf("printToFile failed %s\n", err)
+	}
+	filename = "/persist/log/" + stackFile + ".log"
+	err = printToFile(filename, fmt.Sprintf("%v\n", stacks))
 	if err != nil {
 		log.Errorf("printToFile failed %s\n", err)
 	}
