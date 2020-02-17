@@ -1,36 +1,35 @@
-FROM alpine:3.10.3 as build
+FROM lfedge/eve-alpine:5857847c6fead01b89005d5bc9371403b685c52a as build
 WORKDIR /
 RUN apk add --no-cache \
-        git=2.22.2-r0 \
+        git=2.20.2-r0 \
         build-base=0.5-r1 \
         automake=1.16.1-r0 \
-        libtool=2.4.6-r6 \
+        libtool=2.4.6-r5 \
         autoconf=2.69-r2 \
-        py-docutils=0.14-r2 \
-        gnutls=3.6.8-r0 \
-        gnutls-dev=3.6.8-r0 \
+        py-docutils=0.14-r1 \
+        gnutls=3.6.7-r0 \
+        gnutls-dev=3.6.7-r0 \
         zlib-dev=1.2.11-r1 \
-        curl-dev=7.66.0-r0 \
+        curl-dev=7.64.0-r3 \
         mysql-dev=10.3.20-r0 \
         libdbi-dev=0.9.0-r0 \
-        libuuid=2.33.2-r0 \
-        util-linux-dev=2.33.2-r0 \
+        libuuid=2.33-r0 \
+        util-linux-dev=2.33-r0 \
         libgcrypt-dev=1.8.5-r0 \
-        flex=2.6.4-r2 \
-        bison=3.3.2-r0 \
+        flex=2.6.4-r1 \
+        bison=3.0.5-r0 \
         bsd-compat-headers=0.7.1-r0 \
-        linux-headers=4.19.36-r0 \
-        valgrind=3.15.0-r0 \
-        librdkafka-dev=1.0.1-r1 \
-        autoconf-archive=2019.01.06-r0 \
-        libestr-dev=0.1.11-r0 \
-        libfastjson-dev=0.99.8-r2 \
+        linux-headers=4.18.13-r1 \
+        valgrind=3.14.0-r0 \
+        librdkafka-dev=0.11.6-r1 \
+        libestr-dev=0.1.10-r0 \
+        libfastjson-dev=0.99.8-r1 \
         liblognorm-dev=2.0.6-r1 \
         librelp-dev=1.3.0-r0 \
         liblogging-dev=1.0.6-r0
 RUN apk add --no-cache \
-        man=1.14.3-r3 \
-        man-pages=5.01-r0 \
+        man=1.14.3-r0 \
+        man-pages=4.16-r0 \
         gcc-doc=8.3.0-r0
 ENV SUDO=""
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
@@ -45,11 +44,11 @@ COPY Makefile.am.tests /Makefile.am.tests
 COPY configure.ac /configure.ac
 RUN ./setup-rsyslog.sh
 
-From alpine:3.10.3
+From alpine:3.9
 RUN apk add --no-cache \
-        libuuid=2.33.2-r0 \
-        libfastjson-dev=0.99.8-r2 \
-        libestr-dev=0.1.11-r0 \
+        libuuid=2.33-r0 \
+        libfastjson-dev=0.99.8-r1 \
+        libestr-dev=0.1.10-r0 \
         liblogging-dev=1.0.6-r0
 COPY rsyslog.conf /etc/rsyslog.conf
 COPY init.sh /init.sh
