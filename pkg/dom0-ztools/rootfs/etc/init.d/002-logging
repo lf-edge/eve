@@ -1,3 +1,0 @@
-#!/bin/sh
-
-/usr/bin/memlogd -daemonize -max-line-len 8192
