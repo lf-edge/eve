@@ -12,11 +12,11 @@ config:
     - /etc/resolv.conf:/etc/resolv.conf
     - /run:/run
     - /var/config:/config
-    - /var/log:/var/log/dom0
     - /:/hostfs
-    - /var/persist:/persist
+    - /var/persist:/persist:rshared,rbind
     - /etc/eve-release:/etc/eve-release
   net: host
   capabilities:
     - all
   pid: host
+  rootfsPropagation: shared

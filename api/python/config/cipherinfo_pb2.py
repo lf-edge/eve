@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x10\x63ipherinfo.proto\"\xdc\x01\n\rCipherContext\x12\x11\n\tcontextId\x18\x01 \x01(\t\x12(\n\nhashScheme\x18\x02 \x01(\x0e\x32\x14.cipherHashAlgorithm\x12-\n\x11keyExchangeScheme\x18\x03 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x04 \x01(\x0e\x32\x11.EncryptionScheme\x12\x16\n\x0e\x64\x65viceCertHash\x18\x05 \x01(\x0c\x12\x1a\n\x12\x63ontrollerCertHash\x18\x06 \x01(\x0c\"i\n\x0b\x43ipherBlock\x12\x17\n\x0f\x63ipherContextId\x18\x01 \x01(\t\x12\x14\n\x0cinitialValue\x18\x02 \x01(\x0c\x12\x12\n\ncipherData\x18\x03 \x01(\x0c\x12\x17\n\x0f\x63learTextSha256\x18\x04 \x01(\x0c\"5\n\x0f\x43redentialBlock\x12\x10\n\x08identity\x18\x01 \x01(\t\x12\x10\n\x08password\x18\x02 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01*=\n\x13\x63ipherHashAlgorithm\x12\r\n\tHASH_NONE\x10\x00\x12\x17\n\x13HASH_SHA256_16bytes\x10\x01\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x10\x63ipherinfo.proto\"\xdc\x01\n\rCipherContext\x12\x11\n\tcontextId\x18\x01 \x01(\t\x12(\n\nhashScheme\x18\x02 \x01(\x0e\x32\x14.cipherHashAlgorithm\x12-\n\x11keyExchangeScheme\x18\x03 \x01(\x0e\x32\x12.KeyExchangeScheme\x12+\n\x10\x65ncryptionScheme\x18\x04 \x01(\x0e\x32\x11.EncryptionScheme\x12\x16\n\x0e\x64\x65viceCertHash\x18\x05 \x01(\x0c\x12\x1a\n\x12\x63ontrollerCertHash\x18\x06 \x01(\x0c\"i\n\x0b\x43ipherBlock\x12\x17\n\x0f\x63ipherContextId\x18\x01 \x01(\t\x12\x14\n\x0cinitialValue\x18\x02 \x01(\x0c\x12\x12\n\ncipherData\x18\x03 \x01(\x0c\x12\x17\n\x0f\x63learTextSha256\x18\x04 \x01(\x0c\"5\n\x0f\x43redentialBlock\x12\x10\n\x08identity\x18\x01 \x01(\t\x12\x10\n\x08password\x18\x02 \x01(\t*/\n\x11KeyExchangeScheme\x12\x0c\n\x08KEA_NONE\x10\x00\x12\x0c\n\x08KEA_ECDH\x10\x01*3\n\x10\x45ncryptionScheme\x12\x0b\n\x07SA_NONE\x10\x00\x12\x12\n\x0eSA_AES_256_CFB\x10\x01*V\n\x13\x63ipherHashAlgorithm\x12\r\n\tHASH_NONE\x10\x00\x12\x17\n\x13HASH_SHA256_16bytes\x10\x01\x12\x17\n\x13HASH_SHA256_32bytes\x10\x02\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
 )
 
 _KEYEXCHANGESCHEME = _descriptor.EnumDescriptor(
@@ -83,11 +83,15 @@ _CIPHERHASHALGORITHM = _descriptor.EnumDescriptor(
       name='HASH_SHA256_16bytes', index=1, number=1,
       serialized_options=None,
       type=None),
+    _descriptor.EnumValueDescriptor(
+      name='HASH_SHA256_32bytes', index=2, number=2,
+      serialized_options=None,
+      type=None),
   ],
   containing_type=None,
   serialized_options=None,
   serialized_start=507,
-  serialized_end=568,
+  serialized_end=593,
 )
 _sym_db.RegisterEnumDescriptor(_CIPHERHASHALGORITHM)
 
@@ -98,6 +102,7 @@ SA_NONE = 0
 SA_AES_256_CFB = 1
 HASH_NONE = 0
 HASH_SHA256_16bytes = 1
+HASH_SHA256_32bytes = 2
 
 
 

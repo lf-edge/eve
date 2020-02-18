@@ -14,7 +14,7 @@ require (
 
 replace github.com/lf-edge/eve/api/go => ../../api/go
 
-// replace github.com/lf-edge/eve/pkg/pillar => ../../../../../pkg/pillar
+replace github.com/lf-edge/eve/pkg/pillar => ../pillar
 
 replace github.com/vishvananda/netlink/nl => github.com/eriknordmark/netlink/nl v0.0.0-20190903203740-41fa442996b8
 

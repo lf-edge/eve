@@ -39,7 +39,6 @@ import (
 const (
 	agentName        = "logmanager"
 	commonLogdir     = types.PersistDir + "/log"
-	xenLogDirname    = "/var/log/xen"
 	lastSentDirname  = "lastlogsent"  // Directory in /persist/
 	lastDeferDirname = "lastlogdefer" // Directory in /persist/
 	logsAPI          = "api/v1/edgedevice/logs"
@@ -297,7 +296,6 @@ func Run() {
 	currentPartition := zboot.GetCurrentPartition()
 	loggerChan := make(chan logEntry)
 	ctx := loggerContext{logChan: loggerChan, image: currentPartition}
-	xenCtx := imageLoggerContext{}
 	lastSent := readLast(lastSentDirname, currentPartition)
 	lastSentStr, _ := lastSent.MarshalText()
 	log.Debugf("Current partition logs were last sent at %s\n",
@@ -337,15 +335,11 @@ func Run() {
 	logDirChanges := make(chan string)
 	go watch.WatchStatus(logDirName, false, logDirChanges)
 
-	xenLogDirChanges := make(chan string)
-	go watch.WatchStatus(xenLogDirname, false, xenLogDirChanges)
-
 	// Run these dir -> event as goroutines since they will block
 	// when there is backpressure
 	// XXX state sharing with HandleDeferred?
 	go handleLogDir(logDirChanges, logDirName, &ctx)
 	go handleLogDir(otherLogDirChanges, otherLogDirname, &otherCtx)
-	go handleXenLogDir(xenLogDirChanges, xenLogDirname, &xenCtx)
 
 	go parseAndSendSyslogEntries(&ctx)
 
@@ -439,18 +433,6 @@ func handleLogDir(logDirChanges chan string, logDirName string,
 		case change := <-logDirChanges:
 			handleLogDirEvent(change, logDirName, ctx,
 				handleLogDirModify, handleLogDirDelete)
-		}
-	}
-}
-
-func handleXenLogDir(logDirChanges chan string, logDirName string,
-	ctx *imageLoggerContext) {
-
-	for {
-		select {
-		case change := <-logDirChanges:
-			handleLogDirEvent(change, logDirName, ctx,
-				handleXenLogDirModify, handleXenLogDirDelete)
 		}
 	}
 }
@@ -832,94 +814,6 @@ func handleLogDirEvent(change string, logDirName string, ctx interface{},
 			operation)
 	}
 	handleLogDirModifyFunc(ctx, logFilePath, source)
-}
-
-func handleXenLogDirModify(context interface{},
-	filename string, source string) {
-
-	if strings.Compare(source, "hypervisor") == 0 {
-		log.Debugln("Ignoring hypervisor log while sending domU log")
-		return
-	}
-	ctx := context.(*imageLoggerContext)
-	for i, r := range ctx.logfileReaders {
-		if r.filename == filename {
-			readLineToEvent(&ctx.logfileReaders[i].logfileReader,
-				r.logChan)
-			return
-		}
-	}
-	// Look for guest-domainName.log and look it up to find app UUID
-	// change source to app UUID
-	if strings.HasPrefix(source, "guest-") {
-		domainName := strings.TrimPrefix(source, "guest-")
-		uuidStr := lookupDomainName(domainName)
-		if uuidStr != "" {
-			log.Infof("Changing %s to %s\n", source, uuidStr)
-			source = uuidStr
-		} else {
-			log.Infof("DomainName %s not found\n", domainName)
-		}
-	}
-	createXenLogger(ctx, filename, source)
-}
-
-func createXenLogger(ctx *imageLoggerContext, filename string, source string) {
-
-	log.Infof("createXenLogger: add %s, source %s\n", filename, source)
-
-	fileDesc, err := os.Open(filename)
-	if err != nil {
-		log.Errorf("Log file ignored due to %s\n", err)
-		return
-	}
-	// Start reading from the file with a reader.
-	reader := bufio.NewReader(fileDesc)
-	if reader == nil {
-		log.Errorf("Log file ignored due to %s\n", err)
-		return
-	}
-
-	r0 := logfileReader{filename: filename,
-		source:   source,
-		fileDesc: fileDesc,
-		reader:   reader,
-	}
-	r := imageLogfileReader{logfileReader: r0,
-		image:   source,
-		logChan: make(chan logEntry),
-	}
-
-	lastSent := readLast(lastSentDirname, source)
-	lastSentStr, _ := lastSent.MarshalText()
-	log.Debugf("createXenLogger: source %s last sent at %s\n",
-		source, string(lastSentStr))
-
-	// process associated channel
-	go processEvents(source, lastSent, r.logChan)
-
-	// Write start event to ensure log is not empty
-	now := time.Now()
-	nowStr, _ := now.MarshalText()
-	line := fmt.Sprintf("%s logmanager starting to log %s\n",
-		nowStr, r.source)
-	r.logChan <- logEntry{source: r.source, content: line,
-		timestamp: now}
-	// read initial entries until EOF
-	readLineToEvent(&r.logfileReader, r.logChan)
-	ctx.logfileReaders = append(ctx.logfileReaders, r)
-}
-
-func handleXenLogDirDelete(context interface{},
-	filename string, source string) {
-	ctx := context.(*imageLoggerContext)
-
-	log.Infof("handleLogDirDelete: delete %s, source %s\n", filename, source)
-	for _, logger := range ctx.logfileReaders {
-		if logger.logfileReader.filename == filename {
-			// XXX:FIXME, delete the entry
-		}
-	}
 }
 
 func handleLogDirModify(context interface{}, filename string, source string) {

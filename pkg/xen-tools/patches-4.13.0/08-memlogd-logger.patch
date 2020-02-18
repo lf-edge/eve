@@ -1,0 +1,194 @@
+diff --git a/tools/console/daemon/io.c b/tools/console/daemon/io.c
+index a43c57edad..d0bf636c10 100644
+--- a/tools/console/daemon/io.c
++++ b/tools/console/daemon/io.c
+@@ -27,6 +27,8 @@
+ #include <xen/io/console.h>
+ #include <xen/grant_table.h>
+ 
++#include "xentoollog_external.h"
++
+ #include <stdlib.h>
+ #include <errno.h>
+ #include <string.h>
+@@ -420,6 +422,15 @@ static int create_hv_log(void)
+ {
+ 	char logfile[PATH_MAX];
+ 	int fd;
++
++        fd = xtl_logger_create_external("hypervisor");
++        if (fd < 0) {
++            dolog(LOG_ERR, "Failed to establish connection with the external logger - falling back %d (%s)",
++                            errno, strerror(errno));
++        } else {
++            return fd;
++        }
++
+ 	snprintf(logfile, PATH_MAX-1, "%s/hypervisor.log", log_dir);
+ 	logfile[PATH_MAX-1] = '\0';
+ 
+@@ -444,6 +455,7 @@ static int create_hv_log(void)
+ static int create_console_log(struct console *con)
+ {
+ 	char logfile[PATH_MAX];
++        char logname[PATH_MAX];
+ 	char *namepath, *data, *s;
+ 	int fd;
+ 	unsigned int len;
+@@ -468,9 +480,20 @@ static int create_console_log(struct console *con)
+ 
+ 	snprintf(logfile, PATH_MAX-1, "%s/guest-%s%s.log",
+ 		 log_dir, data, con->log_suffix);
++        snprintf(logname, PATH_MAX-1, "guest_vm/%s%s",
++                 data, con->log_suffix);
+ 
+ 	free(data);
+ 	logfile[PATH_MAX-1] = '\0';
++        logname[PATH_MAX-1] = '\0';
++
++        fd = xtl_logger_create_external(logname);
++        if (fd < 0) {
++            dolog(LOG_ERR, "Failed to establish connection with the external logger - falling back %d (%s)",
++                            errno, strerror(errno));
++        } else {
++            return fd;
++        }
+ 
+ 	fd = open(logfile, O_WRONLY|O_CREAT|O_APPEND, 0644);
+ 	if (fd == -1)
+diff --git a/tools/libs/toollog/include/xentoollog_external.h b/tools/libs/toollog/include/xentoollog_external.h
+new file mode 100644
+index 0000000000..4b664fc36e
+--- /dev/null
++++ b/tools/libs/toollog/include/xentoollog_external.h
+@@ -0,0 +1,68 @@
++#ifndef XENTOOLLOG_EXTERNAL_H
++#define XENTOOLLOG_EXTERNAL_H
++
++#include <unistd.h>
++#include <string.h>
++#include <sys/socket.h>
++#include <sys/un.h>
++
++#define XTL_EXTERNAL_LOGGER_SOCKET          "/var/run/linuxkit-external-logging.sock"
++extern int xtl_logger_create_external(char *name);
++int xtl_logger_create_external(char *name) {
++    int fds[2];
++    int fd;
++    struct sockaddr_un addr;
++    struct msghdr message;
++    struct iovec iov[1];
++    struct cmsghdr *control_message = NULL;
++    char ctrl_buf[CMSG_SPACE(sizeof(int))];
++
++    /* fill out all the required C paperwork */
++    memset(&addr, 0, sizeof(addr));
++    addr.sun_family = AF_UNIX;
++    strcpy(addr.sun_path, XTL_EXTERNAL_LOGGER_SOCKET);
++
++    memset(&message, 0, sizeof(struct msghdr));
++    memset(ctrl_buf, 0, CMSG_SPACE(sizeof(int)));
++    iov[0].iov_base = name;
++    iov[0].iov_len = strlen(name);
++
++    message.msg_name = NULL;
++    message.msg_namelen = 0;
++    message.msg_iov = iov;
++    message.msg_iovlen = 1;
++    message.msg_controllen =  CMSG_SPACE(sizeof(int));
++    message.msg_control = ctrl_buf;
++
++    control_message = CMSG_FIRSTHDR(&message);
++    control_message->cmsg_level = SOL_SOCKET;
++    control_message->cmsg_type = SCM_RIGHTS;
++    control_message->cmsg_len = CMSG_LEN(sizeof(int));
++
++    /* now, do the deed */
++    fd = socket(AF_UNIX, SOCK_DGRAM, 0);
++    if (fd < 0)
++	goto bail;
++
++    if (pipe(fds))
++        goto bail_fd;
++
++    *((int *) CMSG_DATA(control_message)) = fds[0];
++
++    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
++        goto bail_fd_fds;
++
++    if (sendmsg(fd, &message, 0) >= 0) {
++        return fds[1];
++    }
++
++bail_fd_fds:
++    close(fds[0]);
++    close(fds[1]);
++bail_fd:
++    close(fd);
++bail:
++    return -1;
++}
++
++#endif /* XENTOOLLOG_EXTERNAL_H */
+diff --git a/tools/libxl/libxl_dm.c b/tools/libxl/libxl_dm.c
+index dac1b8ddb8..a368fe6ba0 100644
+--- a/tools/libxl/libxl_dm.c
++++ b/tools/libxl/libxl_dm.c
+@@ -25,6 +25,8 @@
+ #include <pwd.h>
+ #include <grp.h>
+ 
++#include "xentoollog_external.h"
++
+ static const char *libxl_tapif_script(libxl__gc *gc)
+ {
+ #if defined(__linux__) || defined(__FreeBSD__)
+@@ -49,6 +51,10 @@ static int libxl__create_qemu_logfile(libxl__gc *gc, char *name)
+     char *logfile;
+     int rc, logfile_w;
+ 
++    logfile_w = xtl_logger_create_external(name);
++    if (logfile_w >= 0)
++        return logfile_w;
++
+     rc = libxl_create_logfile(CTX, name, &logfile);
+     if (rc) return rc;
+ 
+diff --git a/tools/xl/xl_utils.c b/tools/xl/xl_utils.c
+index 4503ac7ea0..1f646c6400 100644
+--- a/tools/xl/xl_utils.c
++++ b/tools/xl/xl_utils.c
+@@ -27,6 +27,8 @@
+ #include "xl.h"
+ #include "xl_utils.h"
+ 
++#include "xentoollog_external.h"
++
+ void dolog(const char *file, int line, const char *func, char *fmt, ...)
+ {
+     va_list ap;
+@@ -264,14 +266,17 @@ int do_daemonize(char *name, const char *pidfile)
+ 
+     postfork();
+ 
+-    ret = libxl_create_logfile(ctx, name, &fullname);
+-    if (ret) {
+-        LOG("failed to open logfile %s: %s",fullname,strerror(errno));
+-        exit(-1);
+-    }
++    logfile = xtl_logger_create_external(name);
++    if (logfile < 0) {
++        ret = libxl_create_logfile(ctx, name, &fullname);
++        if (ret) {
++            LOG("failed to open logfile %s: %s",fullname,strerror(errno));
++            exit(-1);
++        }
+ 
+-    CHK_SYSCALL(logfile = open(fullname, O_WRONLY|O_CREAT|O_APPEND, 0644));
+-    free(fullname);
++        CHK_SYSCALL(logfile = open(fullname, O_WRONLY|O_CREAT|O_APPEND, 0644));
++        free(fullname);
++    }
+     assert(logfile >= 3);
+ 
+     CHK_SYSCALL(nullfd = open("/dev/null", O_RDONLY));

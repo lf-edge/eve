@@ -11,14 +11,5 @@ for i in $(cd /sys/class/net || return ; echo eth*) ; do
   ethtool -K "$i" sg off
 done
 
-# Need this for logrotate
-/usr/sbin/crond -d 8
-
-# Finally, we need to start Xen
-# In case it hangs and we have no hardware watchdog we run it in the background
-mkdir -p /var/run/xen/ /var/run/xenstored
-XENCONSOLED_ARGS='--log=all --log-dir=/var/log/xen' /etc/init.d/xencommons start &
-sleep 5 # Let it come up
-
 echo 'Starting device-steps'
 /opt/zededa/bin/device-steps.sh
