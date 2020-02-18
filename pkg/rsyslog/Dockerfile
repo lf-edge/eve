@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:959408d7de00a3537be4a375f1550f7d7895914c as build
+FROM lfedge/eve-alpine:0ad716589cb431841da89051a2bcfa92246a238f as build
 WORKDIR /
 RUN apk add --no-cache \
         git=2.20.2-r0 \
@@ -23,10 +23,10 @@ ENV SUDO=""
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig \
      LD_LIBRARY_PATH=/usr/local/lib \
      CFLAGS="-Os -fomit-frame-pointer"
-ENV RSYSLOG_CONFIGURE_OPTIONS --enable-mmjsonparse --enable-mmutf8fix --disable-omudpspoof --enable-relp --disable-snmp --disable-mmsnmptrapd --enable-usertools=no --enable-libgcrypt=no --enable-imemlogd
-COPY setup-rsyslog.sh /setup-rsyslog.sh
+ENV RSYSLOG_CONFIGURE_OPTIONS --enable-generate-man-pages=no --enable-mmjsonparse --enable-mmutf8fix --disable-omudpspoof --enable-relp --disable-snmp --disable-mmsnmptrapd --enable-usertools=no --enable-libgcrypt=no --enable-imemlogd
+COPY build-rsyslog.sh /build-rsyslog.sh
 COPY imemlogd.diff /imemlogd.diff
-RUN ./setup-rsyslog.sh
+RUN ./build-rsyslog.sh
 
 From alpine:3.10.3
 COPY rsyslog.conf /etc/rsyslog.conf
