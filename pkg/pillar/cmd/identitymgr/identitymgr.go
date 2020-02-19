@@ -28,7 +28,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -87,8 +86,11 @@ func Run(ps *pubsub.PubSub) {
 
 	identityCtx := identityContext{}
 
-	pubEIDStatus, err := pubsublegacy.Publish(agentName,
-		types.EIDStatus{})
+	pubEIDStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.EIDStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -96,14 +98,17 @@ func Run(ps *pubsub.PubSub) {
 	pubEIDStatus.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
-		false, &identityCtx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleGlobalConfigModify,
-			ModifyHandler: handleGlobalConfigModify,
-			DeleteHandler: handleGlobalConfigDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.GlobalConfig{},
+		Activate:      false,
+		Ctx:           &identityCtx,
+		CreateHandler: handleGlobalConfigModify,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -111,15 +116,18 @@ func Run(ps *pubsub.PubSub) {
 	subGlobalConfig.Activate()
 
 	// Subscribe to EIDConfig from zedmanager
-	subEIDConfig, err := pubsublegacy.Subscribe("zedmanager",
-		types.EIDConfig{}, false, &identityCtx, &pubsub.SubscriptionOptions{
-			CreateHandler:  handleCreate,
-			ModifyHandler:  handleModify,
-			DeleteHandler:  handleEIDConfigDelete,
-			RestartHandler: handleRestart,
-			WarningTime:    warningTime,
-			ErrorTime:      errorTime,
-		})
+	subEIDConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:      "zedmanager",
+		TopicImpl:      types.EIDConfig{},
+		Activate:       false,
+		Ctx:            &identityCtx,
+		CreateHandler:  handleCreate,
+		ModifyHandler:  handleModify,
+		DeleteHandler:  handleEIDConfigDelete,
+		RestartHandler: handleRestart,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}

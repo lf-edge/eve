@@ -33,7 +33,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/sema"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -212,14 +211,22 @@ func Run(ps *pubsub.PubSub) {
 	domainCtx.createSema = sema.Create(1)
 	domainCtx.createSema.P(1)
 
-	pubDomainStatus, err := pubsublegacy.Publish(agentName, types.DomainStatus{})
+	pubDomainStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.DomainStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	domainCtx.pubDomainStatus = pubDomainStatus
 	pubDomainStatus.ClearRestarted()
 
-	pubImageStatus, err := pubsublegacy.Publish(agentName, types.ImageStatus{})
+	pubImageStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.ImageStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -230,22 +237,31 @@ func Run(ps *pubsub.PubSub) {
 	populateInitialImageStatus(&domainCtx, rwImgDirname)
 	pubImageStatus.SignalRestarted()
 
-	pubAssignableAdapters, err := pubsublegacy.Publish(agentName,
-		types.AssignableAdapters{})
+	pubAssignableAdapters, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.AssignableAdapters{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	domainCtx.pubAssignableAdapters = pubAssignableAdapters
 
-	pubDomainMetric, err := pubsublegacy.Publish(agentName,
-		types.DomainMetric{})
+	pubDomainMetric, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.DomainMetric{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	domainCtx.pubDomainMetric = pubDomainMetric
 
-	pubHostMemory, err := pubsublegacy.Publish(agentName,
-		types.HostMemory{})
+	pubHostMemory, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.HostMemory{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -253,8 +269,12 @@ func Run(ps *pubsub.PubSub) {
 	pubHostMemory.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
-		false, &domainCtx, &pubsub.SubscriptionOptions{
+	subGlobalConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "",
+			TopicImpl:     types.GlobalConfig{},
+			Activate:      false,
+			Ctx:           &domainCtx,
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
 			DeleteHandler: handleGlobalConfigDelete,
@@ -267,8 +287,12 @@ func Run(ps *pubsub.PubSub) {
 	domainCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &domainCtx, &pubsub.SubscriptionOptions{
+	subDeviceNetworkStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "nim",
+			TopicImpl:     types.DeviceNetworkStatus{},
+			Activate:      false,
+			Ctx:           &domainCtx,
 			CreateHandler: handleDNSModify,
 			ModifyHandler: handleDNSModify,
 			DeleteHandler: handleDNSDelete,
@@ -312,8 +336,12 @@ func Run(ps *pubsub.PubSub) {
 	}
 
 	// Subscribe to PhysicalIOAdapterList from zedagent
-	subPhysicalIOAdapter, err := pubsublegacy.Subscribe("zedagent",
-		types.PhysicalIOAdapterList{}, false, &domainCtx, &pubsub.SubscriptionOptions{
+	subPhysicalIOAdapter, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "zedagent",
+			TopicImpl:     types.PhysicalIOAdapterList{},
+			Activate:      false,
+			Ctx:           &domainCtx,
 			CreateHandler: handlePhysicalIOAdapterListCreateModify,
 			ModifyHandler: handlePhysicalIOAdapterListCreateModify,
 			DeleteHandler: handlePhysicalIOAdapterListDelete,
@@ -348,8 +376,12 @@ func Run(ps *pubsub.PubSub) {
 	log.Infof("Have %d assignable adapters", len(aa.IoBundleList))
 
 	// Subscribe to DomainConfig from zedmanager
-	subDomainConfig, err := pubsublegacy.Subscribe("zedmanager",
-		types.DomainConfig{}, false, &domainCtx, &pubsub.SubscriptionOptions{
+	subDomainConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:      "zedmanager",
+			TopicImpl:      types.DomainConfig{},
+			Activate:       false,
+			Ctx:            &domainCtx,
 			CreateHandler:  handleDomainCreate,
 			ModifyHandler:  handleDomainModify,
 			DeleteHandler:  handleDomainDelete,

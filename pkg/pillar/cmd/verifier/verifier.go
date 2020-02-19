@@ -36,7 +36,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -126,16 +125,24 @@ func Run(ps *pubsub.PubSub) {
 	}
 
 	// Set up our publications before the subscriptions so ctx is set
-	pubAppImgStatus, err := pubsublegacy.PublishScope(agentName, types.AppImgObj,
-		types.VerifyImageStatus{})
+	pubAppImgStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.AppImgObj,
+			TopicType:  types.VerifyImageStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubAppImgStatus = pubAppImgStatus
 	pubAppImgStatus.ClearRestarted()
 
-	pubBaseOsStatus, err := pubsublegacy.PublishScope(agentName, types.BaseOsObj,
-		types.VerifyImageStatus{})
+	pubBaseOsStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.BaseOsObj,
+			TopicType:  types.VerifyImageStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -143,65 +150,89 @@ func Run(ps *pubsub.PubSub) {
 	pubBaseOsStatus.ClearRestarted()
 
 	// Set up our publications before the subscriptions so ctx is set
-	pubAppImgPersistStatus, err := pubsublegacy.PublishScope(agentName, types.AppImgObj,
-		types.PersistImageStatus{})
+	pubAppImgPersistStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.AppImgObj,
+			TopicType:  types.PersistImageStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubAppImgPersistStatus = pubAppImgPersistStatus
 
-	pubBaseOsPersistStatus, err := pubsublegacy.PublishScope(agentName, types.BaseOsObj,
-		types.PersistImageStatus{})
+	pubBaseOsPersistStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.BaseOsObj,
+			TopicType:  types.PersistImageStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubBaseOsPersistStatus = pubBaseOsPersistStatus
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
-		false, &ctx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleGlobalConfigModify,
-			ModifyHandler: handleGlobalConfigModify,
-			DeleteHandler: handleGlobalConfigDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.GlobalConfig{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleGlobalConfigModify,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	subAppImgConfig, err := pubsublegacy.SubscribeScope("zedmanager",
-		types.AppImgObj, types.VerifyImageConfig{}, false, &ctx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleAppImgCreate,
-			ModifyHandler: handleAppImgModify,
-			DeleteHandler: handleAppImgDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subAppImgConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedmanager",
+		AgentScope:    types.AppImgObj,
+		TopicImpl:     types.VerifyImageConfig{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleAppImgCreate,
+		ModifyHandler: handleAppImgModify,
+		DeleteHandler: handleAppImgDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
 
-	subBaseOsConfig, err := pubsublegacy.SubscribeScope("baseosmgr",
-		types.BaseOsObj, types.VerifyImageConfig{}, false, &ctx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleBaseOsCreate,
-			ModifyHandler: handleBaseOsModify,
-			DeleteHandler: handleBaseOsDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subBaseOsConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "baseosmgr",
+		AgentScope:    types.BaseOsObj,
+		TopicImpl:     types.VerifyImageConfig{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleBaseOsCreate,
+		ModifyHandler: handleBaseOsModify,
+		DeleteHandler: handleBaseOsDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
-	subAppImgPersistConfig, err := pubsublegacy.SubscribeScope("zedmanager",
-		types.AppImgObj, types.PersistImageConfig{}, false, &ctx, &pubsub.SubscriptionOptions{
+	subAppImgPersistConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "zedmanager",
+			AgentScope:    types.AppImgObj,
+			TopicImpl:     types.PersistImageConfig{},
+			Activate:      false,
+			Ctx:           &ctx,
 			CreateHandler: handleAppImgCreate,
 			ModifyHandler: handleAppImgModify,
 			DeleteHandler: handleAppImgDelete,
@@ -214,27 +245,36 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subAppImgPersistConfig = subAppImgPersistConfig
 	subAppImgPersistConfig.Activate()
 
-	subBaseOsPersistConfig, err := pubsublegacy.SubscribeScope("baseosmgr",
-		types.BaseOsObj, types.PersistImageConfig{}, false, &ctx, &pubsub.SubscriptionOptions{
+	subBaseOsPersistConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "baseosmgr",
+			AgentScope:    types.BaseOsObj,
+			TopicImpl:     types.PersistImageConfig{},
+			Activate:      false,
+			Ctx:           &ctx,
 			CreateHandler: handleBaseOsCreate,
 			ModifyHandler: handleBaseOsModify,
 			DeleteHandler: handleBaseOsDelete,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
 		})
+
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.subBaseOsPersistConfig = subBaseOsPersistConfig
 	subBaseOsPersistConfig.Activate()
 
-	subAssignableAdapters, err := pubsublegacy.Subscribe("domainmgr",
-		types.AssignableAdapters{}, false, &ctx, &pubsub.SubscriptionOptions{
-			ModifyHandler: handleAAModify,
-			DeleteHandler: handleAADelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "domainmgr",
+		TopicImpl:     types.AssignableAdapters{},
+		Activate:      false,
+		Ctx:           &ctx,
+		ModifyHandler: handleAAModify,
+		DeleteHandler: handleAADelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}

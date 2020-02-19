@@ -18,7 +18,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
 	log "github.com/sirupsen/logrus"
@@ -104,85 +103,112 @@ func Run(ps *pubsub.PubSub) {
 		globalConfig: &types.GlobalConfigDefaults,
 	}
 	// Create publish before subscribing and activating subscriptions
-	pubAppInstanceStatus, err := pubsublegacy.Publish(agentName,
-		types.AppInstanceStatus{})
+	pubAppInstanceStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.AppInstanceStatus{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubAppInstanceStatus = pubAppInstanceStatus
 	pubAppInstanceStatus.ClearRestarted()
 
-	pubAppNetworkConfig, err := pubsublegacy.Publish(agentName,
-		types.AppNetworkConfig{})
+	pubAppNetworkConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.AppNetworkConfig{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubAppNetworkConfig = pubAppNetworkConfig
 	pubAppNetworkConfig.ClearRestarted()
 
-	pubDomainConfig, err := pubsublegacy.Publish(agentName,
-		types.DomainConfig{})
+	pubDomainConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.DomainConfig{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubDomainConfig = pubDomainConfig
 	pubDomainConfig.ClearRestarted()
 
-	pubEIDConfig, err := pubsublegacy.Publish(agentName,
-		types.EIDConfig{})
+	pubEIDConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.EIDConfig{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubEIDConfig = pubEIDConfig
 	pubEIDConfig.ClearRestarted()
 
-	pubAppImgDownloadConfig, err := pubsublegacy.PublishScope(agentName,
-		types.AppImgObj, types.DownloaderConfig{})
+	pubAppImgDownloadConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.AppImgObj,
+		TopicType:  types.DownloaderConfig{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubAppImgDownloadConfig.ClearRestarted()
 	ctx.pubAppImgDownloadConfig = pubAppImgDownloadConfig
 
-	pubAppImgVerifierConfig, err := pubsublegacy.PublishScope(agentName,
-		types.AppImgObj, types.VerifyImageConfig{})
+	pubAppImgVerifierConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.AppImgObj,
+		TopicType:  types.VerifyImageConfig{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubAppImgVerifierConfig.ClearRestarted()
 	ctx.pubAppImgVerifierConfig = pubAppImgVerifierConfig
 
-	pubAppImgPersistConfig, err := pubsublegacy.PublishScope(agentName,
-		types.AppImgObj, types.PersistImageConfig{})
+	pubAppImgPersistConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.AppImgObj,
+			TopicType:  types.PersistImageConfig{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubAppImgPersistConfig = pubAppImgPersistConfig
 
-	pubUuidToNum, err := pubsublegacy.PublishPersistent(agentName,
-		types.UuidToNum{})
+	pubUuidToNum, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		Persistent: true,
+		TopicType:  types.UuidToNum{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubUuidToNum = pubUuidToNum
 	pubUuidToNum.ClearRestarted()
 
-	pubAppAndImageToHash, err := pubsublegacy.PublishPersistent(agentName,
-		types.AppAndImageToHash{})
+	pubAppAndImageToHash, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		Persistent: true,
+		TopicType:  types.AppAndImageToHash{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubAppAndImageToHash = pubAppAndImageToHash
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
-		false, &ctx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleGlobalConfigModify,
-			ModifyHandler: handleGlobalConfigModify,
-			DeleteHandler: handleGlobalConfigDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.GlobalConfig{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleGlobalConfigModify,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -190,15 +216,18 @@ func Run(ps *pubsub.PubSub) {
 	subGlobalConfig.Activate()
 
 	// Get AppInstanceConfig from zedagent
-	subAppInstanceConfig, err := pubsublegacy.Subscribe("zedagent",
-		types.AppInstanceConfig{}, false, &ctx, &pubsub.SubscriptionOptions{
-			CreateHandler:  handleCreate,
-			ModifyHandler:  handleModify,
-			DeleteHandler:  handleAppInstanceConfigDelete,
-			RestartHandler: handleConfigRestart,
-			WarningTime:    warningTime,
-			ErrorTime:      errorTime,
-		})
+	subAppInstanceConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:      "zedagent",
+		TopicImpl:      types.AppInstanceConfig{},
+		Activate:       false,
+		Ctx:            &ctx,
+		CreateHandler:  handleCreate,
+		ModifyHandler:  handleModify,
+		DeleteHandler:  handleAppInstanceConfigDelete,
+		RestartHandler: handleConfigRestart,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -206,15 +235,18 @@ func Run(ps *pubsub.PubSub) {
 	subAppInstanceConfig.Activate()
 
 	// Get AppNetworkStatus from zedrouter
-	subAppNetworkStatus, err := pubsublegacy.Subscribe("zedrouter",
-		types.AppNetworkStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
-			CreateHandler:  handleAppNetworkStatusModify,
-			ModifyHandler:  handleAppNetworkStatusModify,
-			DeleteHandler:  handleAppNetworkStatusDelete,
-			RestartHandler: handleZedrouterRestarted,
-			WarningTime:    warningTime,
-			ErrorTime:      errorTime,
-		})
+	subAppNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:      "zedrouter",
+		TopicImpl:      types.AppNetworkStatus{},
+		Activate:       false,
+		Ctx:            &ctx,
+		CreateHandler:  handleAppNetworkStatusModify,
+		ModifyHandler:  handleAppNetworkStatusModify,
+		DeleteHandler:  handleAppNetworkStatusDelete,
+		RestartHandler: handleZedrouterRestarted,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -222,14 +254,17 @@ func Run(ps *pubsub.PubSub) {
 	subAppNetworkStatus.Activate()
 
 	// Get DomainStatus from domainmgr
-	subDomainStatus, err := pubsublegacy.Subscribe("domainmgr",
-		types.DomainStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleDomainStatusModify,
-			ModifyHandler: handleDomainStatusModify,
-			DeleteHandler: handleDomainStatusDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subDomainStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "domainmgr",
+		TopicImpl:     types.DomainStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleDomainStatusModify,
+		ModifyHandler: handleDomainStatusModify,
+		DeleteHandler: handleDomainStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -237,12 +272,15 @@ func Run(ps *pubsub.PubSub) {
 	subDomainStatus.Activate()
 
 	// Get DomainStatus from domainmgr
-	subImageStatus, err := pubsublegacy.Subscribe("domainmgr",
-		types.ImageStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
-			WarningTime:    warningTime,
-			ErrorTime:      errorTime,
-			RestartHandler: handleImageStatusRestarted,
-		})
+	subImageStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:      "domainmgr",
+		TopicImpl:      types.ImageStatus{},
+		Activate:       false,
+		Ctx:            &ctx,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+		RestartHandler: handleImageStatusRestarted,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -250,14 +288,18 @@ func Run(ps *pubsub.PubSub) {
 	subImageStatus.Activate()
 
 	// Look for DownloaderStatus from downloader
-	subAppImgDownloadStatus, err := pubsublegacy.SubscribeScope("downloader",
-		types.AppImgObj, types.DownloaderStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleDownloaderStatusModify,
-			ModifyHandler: handleDownloaderStatusModify,
-			DeleteHandler: handleDownloaderStatusDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subAppImgDownloadStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "downloader",
+		AgentScope:    types.AppImgObj,
+		TopicImpl:     types.DownloaderStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleDownloaderStatusModify,
+		ModifyHandler: handleDownloaderStatusModify,
+		DeleteHandler: handleDownloaderStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -265,15 +307,19 @@ func Run(ps *pubsub.PubSub) {
 	subAppImgDownloadStatus.Activate()
 
 	// Look for VerifyImageStatus from verifier
-	subAppImgVerifierStatus, err := pubsublegacy.SubscribeScope("verifier",
-		types.AppImgObj, types.VerifyImageStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
-			CreateHandler:  handleVerifyImageStatusModify,
-			ModifyHandler:  handleVerifyImageStatusModify,
-			DeleteHandler:  handleVerifyImageStatusDelete,
-			RestartHandler: handleVerifierRestarted,
-			WarningTime:    warningTime,
-			ErrorTime:      errorTime,
-		})
+	subAppImgVerifierStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:      "verifier",
+		AgentScope:     types.AppImgObj,
+		TopicImpl:      types.VerifyImageStatus{},
+		Activate:       false,
+		Ctx:            &ctx,
+		CreateHandler:  handleVerifyImageStatusModify,
+		ModifyHandler:  handleVerifyImageStatusModify,
+		DeleteHandler:  handleVerifyImageStatusDelete,
+		RestartHandler: handleVerifierRestarted,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -281,8 +327,13 @@ func Run(ps *pubsub.PubSub) {
 	subAppImgVerifierStatus.Activate()
 
 	// Look for PersistImageStatus from verifier
-	subAppImgPersistStatus, err := pubsublegacy.SubscribeScope("verifier",
-		types.AppImgObj, types.PersistImageStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
+	subAppImgPersistStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "verifier",
+			AgentScope:    types.AppImgObj,
+			TopicImpl:     types.PersistImageStatus{},
+			Activate:      false,
+			Ctx:           &ctx,
 			CreateHandler: handlePersistImageStatusModify,
 			ModifyHandler: handlePersistImageStatusModify,
 			DeleteHandler: handlePersistImageStatusDelete,
@@ -296,29 +347,35 @@ func Run(ps *pubsub.PubSub) {
 	subAppImgPersistStatus.Activate()
 
 	// Get IdentityStatus from identitymgr
-	subEIDStatus, err := pubsublegacy.Subscribe("identitymgr",
-		types.EIDStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
-			CreateHandler:  handleEIDStatusModify,
-			ModifyHandler:  handleEIDStatusModify,
-			DeleteHandler:  handleEIDStatusDelete,
-			RestartHandler: handleIdentitymgrRestarted,
-			WarningTime:    warningTime,
-			ErrorTime:      errorTime,
-		})
+	subEIDStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:      "identitymgr",
+		TopicImpl:      types.EIDStatus{},
+		Activate:       false,
+		Ctx:            &ctx,
+		CreateHandler:  handleEIDStatusModify,
+		ModifyHandler:  handleEIDStatusModify,
+		DeleteHandler:  handleEIDStatusDelete,
+		RestartHandler: handleIdentitymgrRestarted,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.subEIDStatus = subEIDStatus
 	subEIDStatus.Activate()
 
-	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleDNSModify,
-			ModifyHandler: handleDNSModify,
-			DeleteHandler: handleDNSDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "nim",
+		TopicImpl:     types.DeviceNetworkStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleDNSModify,
+		ModifyHandler: handleDNSModify,
+		DeleteHandler: handleDNSDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -326,14 +383,17 @@ func Run(ps *pubsub.PubSub) {
 	subDeviceNetworkStatus.Activate()
 
 	// Look for CertObjStatus from baseosmgr
-	subCertObjStatus, err := pubsublegacy.Subscribe("baseosmgr",
-		types.CertObjStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleCertObjStatusModify,
-			ModifyHandler: handleCertObjStatusModify,
-			DeleteHandler: handleCertObjStatusDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subCertObjStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "baseosmgr",
+		TopicImpl:     types.CertObjStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleCertObjStatusModify,
+		ModifyHandler: handleCertObjStatusModify,
+		DeleteHandler: handleCertObjStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}

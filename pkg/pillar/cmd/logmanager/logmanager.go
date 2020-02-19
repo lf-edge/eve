@@ -27,7 +27,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -183,7 +182,11 @@ func Run(ps *pubsub.PubSub) {
 		}
 	}
 	cms := zedcloud.GetCloudMetrics() // Need type of data
-	pub, err := pubsublegacy.Publish(agentName, cms)
+	pub, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: cms,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -192,14 +195,17 @@ func Run(ps *pubsub.PubSub) {
 		globalConfig: &types.GlobalConfigDefaults,
 	}
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
-		false, &logmanagerCtx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleGlobalConfigModify,
-			ModifyHandler: handleGlobalConfigModify,
-			DeleteHandler: handleGlobalConfigDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.GlobalConfig{},
+		Activate:      false,
+		Ctx:           &logmanagerCtx,
+		CreateHandler: handleGlobalConfigModify,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -207,14 +213,17 @@ func Run(ps *pubsub.PubSub) {
 	subGlobalConfig.Activate()
 
 	// Get DomainStatus from domainmgr
-	subDomainStatus, err := pubsublegacy.Subscribe("domainmgr",
-		types.DomainStatus{}, false, &logmanagerCtx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleDomainStatusModify,
-			ModifyHandler: handleDomainStatusModify,
-			DeleteHandler: handleDomainStatusDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subDomainStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "domainmgr",
+		TopicImpl:     types.DomainStatus{},
+		Activate:      false,
+		Ctx:           logmanagerCtx,
+		CreateHandler: handleDomainStatusModify,
+		ModifyHandler: handleDomainStatusModify,
+		DeleteHandler: handleDomainStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -225,14 +234,17 @@ func Run(ps *pubsub.PubSub) {
 	DNSctx := DNSContext{}
 	DNSctx.usableAddressCount = types.CountLocalAddrAnyNoLinkLocal(*deviceNetworkStatus)
 
-	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &DNSctx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleDNSModify,
-			ModifyHandler: handleDNSModify,
-			DeleteHandler: handleDNSDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "nim",
+		TopicImpl:     types.DeviceNetworkStatus{},
+		Activate:      false,
+		Ctx:           DNSctx,
+		CreateHandler: handleDNSModify,
+		ModifyHandler: handleDNSModify,
+		DeleteHandler: handleDNSDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
