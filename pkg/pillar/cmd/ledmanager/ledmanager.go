@@ -30,7 +30,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -176,28 +175,34 @@ func Run(ps *pubsub.PubSub) {
 	ctx.countChange = make(chan int)
 	go TriggerBlinkOnDevice(ctx.countChange, blinkFunc)
 
-	subLedBlinkCounter, err := pubsublegacy.Subscribe("", types.LedBlinkCounter{},
-		false, &ctx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleLedBlinkModify,
-			ModifyHandler: handleLedBlinkModify,
-			DeleteHandler: handleLedBlinkDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subLedBlinkCounter, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.LedBlinkCounter{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleLedBlinkModify,
+		ModifyHandler: handleLedBlinkModify,
+		DeleteHandler: handleLedBlinkDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.subLedBlinkCounter = subLedBlinkCounter
 	subLedBlinkCounter.Activate()
 
-	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleDNSModify,
-			ModifyHandler: handleDNSModify,
-			DeleteHandler: handleDNSDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "nim",
+		TopicImpl:     types.DeviceNetworkStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleDNSModify,
+		ModifyHandler: handleDNSModify,
+		DeleteHandler: handleDNSDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -205,14 +210,17 @@ func Run(ps *pubsub.PubSub) {
 	subDeviceNetworkStatus.Activate()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
-		false, &ctx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleGlobalConfigModify,
-			ModifyHandler: handleGlobalConfigModify,
-			DeleteHandler: handleGlobalConfigDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.GlobalConfig{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleGlobalConfigModify,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}

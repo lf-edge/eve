@@ -32,7 +32,6 @@ import (
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -906,14 +905,17 @@ func Run(ps *pubsub.PubSub) {
 		ctx := tpmMgrContext{}
 
 		// Look for global config such as log levels
-		subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
-			false, &ctx, &pubsub.SubscriptionOptions{
-				CreateHandler: handleGlobalConfigModify,
-				ModifyHandler: handleGlobalConfigModify,
-				DeleteHandler: handleGlobalConfigDelete,
-				WarningTime:   warningTime,
-				ErrorTime:     errorTime,
-			})
+		subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+			AgentName:     "",
+			TopicImpl:     types.GlobalConfig{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 		if err != nil {
 			log.Fatal(err)
 		}

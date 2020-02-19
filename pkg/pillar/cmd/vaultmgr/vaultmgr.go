@@ -20,7 +20,6 @@ import (
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -394,9 +393,12 @@ func fetchFscryptStatus() (info.DataSecAtRestStatus, string) {
 	}
 }
 
-func initializeSelfPublishHandles(ctx *vaultMgrContext) {
-	pubVaultStatus, err := pubsublegacy.Publish(agentName,
-		types.VaultStatus{})
+func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *vaultMgrContext) {
+	pubVaultStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.VaultStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -484,14 +486,17 @@ func Run(ps *pubsub.PubSub) {
 		ctx := vaultMgrContext{}
 
 		// Look for global config such as log levels
-		subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
-			false, &ctx, &pubsub.SubscriptionOptions{
-				CreateHandler: handleGlobalConfigModify,
-				ModifyHandler: handleGlobalConfigModify,
-				DeleteHandler: handleGlobalConfigDelete,
-				WarningTime:   warningTime,
-				ErrorTime:     errorTime,
-			})
+		subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+			AgentName:     "",
+			TopicImpl:     types.GlobalConfig{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -511,7 +516,7 @@ func Run(ps *pubsub.PubSub) {
 		log.Infof("processed GlobalConfig")
 
 		// initialize publishing handles
-		initializeSelfPublishHandles(&ctx)
+		initializeSelfPublishHandles(ps, &ctx)
 
 		fscryptStatus, fscryptErr := fetchFscryptStatus()
 		publishVaultStatus(&ctx, defaultImgVaultName, defaultImgVault,
