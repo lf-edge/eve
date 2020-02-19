@@ -1,4 +1,4 @@
-FROM lfedge/eve-alpine:0ad716589cb431841da89051a2bcfa92246a238f as build
+FROM lfedge/eve-alpine:ad1020939fb59dbdaa558a3da99649d81e341cac as build
 WORKDIR /
 RUN apk add --no-cache \
         git=2.20.2-r0 \
@@ -6,7 +6,6 @@ RUN apk add --no-cache \
         automake=1.16.1-r0 \
         libtool=2.4.6-r5 \
         autoconf=2.69-r2 \
-        py-docutils=0.14-r1 \
         zlib-dev=1.2.11-r1 \
         curl-dev=7.64.0-r3 \
         libuuid=2.33-r0 \
