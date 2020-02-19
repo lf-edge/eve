@@ -262,6 +262,8 @@ pkg/qrexec-dom0: pkg/qrexec-lib pkg/xen-tools eve-qrexec-dom0
 	@true
 pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
 	@true
+pkg/storage-init: pkg/pillar eve-storage-init
+	@true
 pkg/%: eve-% FORCE
 	@true
 

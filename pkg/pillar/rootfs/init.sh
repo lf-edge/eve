@@ -12,4 +12,8 @@ for i in $(cd /sys/class/net || return ; echo eth*) ; do
 done
 
 echo 'Starting device-steps'
+
+#Link user keyring with session keyring of this container, to access fscrypt keys
+keyctl link @u @s
+
 /opt/zededa/bin/device-steps.sh

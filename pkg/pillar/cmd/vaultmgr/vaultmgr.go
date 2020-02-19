@@ -32,12 +32,8 @@ type vaultMgrContext struct {
 
 const (
 	agentName           = "vaultmgr"
-	fscryptPath         = "/opt/zededa/bin/fscrypt"
 	fscryptConfFile     = "/etc/fscrypt.conf"
 	keyctlPath          = "/bin/keyctl"
-	mountPoint          = types.PersistDir
-	defaultImgVault     = types.PersistDir + "/img"
-	defaultCfgVault     = types.PersistDir + "/config"
 	oldKeyDir           = "/TmpVaultDir1"
 	keyDir              = "/TmpVaultDir2"
 	protectorPrefix     = "TheVaultKey"
@@ -45,14 +41,18 @@ const (
 	vaultHalfKeyLen     = 16 //bytes
 	defaultImgVaultName = "Application Data Store"
 	defaultCfgVaultName = "Configuration Data Store"
+	fscryptOptBin       = "/opt/zededa/bin/fscrypt"
+	fscryptUsrBin       = "/usr/bin/fscrypt"
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
 )
 
 var (
-	keyFile    = keyDir + "/protector.key"
-	oldKeyFile = oldKeyDir + "/protector.key"
+	fscryptPath = "/usr/bin/fscrypt" //by default points to /usr/bin
+	mountPoint  = "/var/persist"     //by default assumes /var/persist
+	keyFile     = keyDir + "/protector.key"
+	oldKeyFile  = oldKeyDir + "/protector.key"
 
 	keyctlParams      = []string{"link", "@u", "@s"}
 	mntPointParams    = []string{"setup", mountPoint, "--quiet"}
@@ -62,6 +62,30 @@ var (
 	debug             = false
 	debugOverride     bool // From command line arg
 )
+
+func defaultImgVault() string {
+	return mountPoint + "/img"
+}
+
+func defaultCfgVault() string {
+	return mountPoint + "/config"
+}
+
+func setMountPoint(mntPt string) {
+	mountPoint = mntPt
+}
+
+func setMntPointParams(mntPt string) {
+	mntPointParams = []string{"setup", mntPt, "--quiet"}
+}
+
+func setStatusParams(mntPt string) {
+	statusParams = []string{"status", mntPt}
+}
+
+func setFscryptPath(path string) {
+	fscryptPath = path
+}
 
 func getEncryptParams(vaultPath string) []string {
 	args := []string{"encrypt", vaultPath, "--key=" + keyFile,
@@ -350,7 +374,7 @@ func publishVaultStatus(ctx *vaultMgrContext,
 		status.ErrorTime = time.Now()
 	} else {
 		args := getStatusParams(vaultPath)
-		if stderr, _, err := execCmd(fscryptPath, args...); err != nil {
+		if _, stderr, err := execCmd(fscryptPath, args...); err != nil {
 			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
 			status.Error = stderr
 			status.ErrorTime = time.Now()
@@ -367,11 +391,11 @@ func publishVaultStatus(ctx *vaultMgrContext,
 func fetchFscryptStatus() (info.DataSecAtRestStatus, string) {
 	_, err := os.Stat(fscryptConfFile)
 	if err == nil {
-		if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
+		if stdout, stderr, err := execCmd(fscryptPath, statusParams...); err != nil {
 			//fscrypt is setup, but not being used
 			log.Debug("Setting status to Error")
-			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
-				"Initialization failure"
+			log.Errorf("Setting status to error due to : %s, %s", stdout, stderr)
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR, stderr
 		} else {
 			//fscrypt is setup , and being used on /persist
 			log.Debug("Setting status to Enabled")
@@ -405,6 +429,11 @@ func initializeSelfPublishHandles(ctx *vaultMgrContext) {
 
 //GetOperInfo gets the current operational state of fscrypt. (Deprecated)
 func GetOperInfo() (info.DataSecAtRestStatus, string) {
+	setMountPoint(types.PersistDir)
+	setMntPointParams(mountPoint)
+	setStatusParams(mountPoint)
+	setFscryptPath(fscryptOptBin)
+
 	_, err := os.Stat(fscryptConfFile)
 	if err == nil {
 		if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
@@ -461,18 +490,27 @@ func Run() {
 
 	switch flag.Args()[0] {
 	case "setupVaults":
-		if err = setupFscryptEnv(); err != nil {
-			log.Fatal("Error in setting up fscrypt environment:", err)
+		if err := setupFscryptEnv(); err != nil {
+			log.Fatalf("Error in setting up fscrypt environment: %v", err)
+			os.Exit(1)
 		}
-		if err = setupVault(defaultImgVault); err != nil {
-			log.Fatalf("Error in setting up vault %s:%v", defaultImgVault, err)
+		if err := setupVault(defaultImgVault()); err != nil {
+			log.Fatalf("Error in setting up vault %s:%v", defaultImgVault(), err)
 		}
-		if err = setupVault(defaultCfgVault); err != nil {
-			log.Fatalf("Error in setting up vault %s %v", defaultImgVault, err)
+		if err := setupVault(defaultCfgVault()); err != nil {
+			log.Fatalf("Error in setting up vault %s %v", defaultImgVault(), err)
 		}
 	case "runAsService":
 		log.Infof("Starting %s\n", agentName)
 
+		setMountPoint(types.PersistDir)
+		setMntPointParams(mountPoint)
+		setStatusParams(mountPoint)
+		setFscryptPath(fscryptOptBin)
+
+		if err := setupFscryptEnv(); err != nil {
+			log.Fatalf("Error in setting up fscrypt environment: %v", err)
+		}
 		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 			log.Fatal(err)
 		}
@@ -514,9 +552,9 @@ func Run() {
 		initializeSelfPublishHandles(&ctx)
 
 		fscryptStatus, fscryptErr := fetchFscryptStatus()
-		publishVaultStatus(&ctx, defaultImgVaultName, defaultImgVault,
+		publishVaultStatus(&ctx, defaultImgVaultName, defaultImgVault(),
 			fscryptStatus, fscryptErr)
-		publishVaultStatus(&ctx, defaultCfgVaultName, defaultCfgVault,
+		publishVaultStatus(&ctx, defaultCfgVaultName, defaultCfgVault(),
 			fscryptStatus, fscryptErr)
 		for {
 			select {

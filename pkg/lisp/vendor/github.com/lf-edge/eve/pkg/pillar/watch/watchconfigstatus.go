@@ -12,6 +12,7 @@
 package watch
 
 import (
+	"fmt"
 	"github.com/fsnotify/fsnotify"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	log "github.com/sirupsen/logrus"
@@ -80,6 +81,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 	if err != nil {
 		log.Error(err, " Inintial Add: ", configDir)
 		// Check again when timer fires
+		logPersist("Initial Add")
 	}
 	// log.Debugln("WatchConfigStatus added", configDir)
 
@@ -134,6 +136,7 @@ func watchConfigStatusImpl(configDir string, statusDir string,
 			if err != nil {
 				log.Error(err, " Add: ", configDir)
 				// Check again when timer fires
+				logPersist("Add")
 				continue
 			}
 			foundRestart, foundRestarted := watchReadDir(configDir,
@@ -228,10 +231,12 @@ func WatchStatus(statusDir string, jsonOnly bool, fileChanges chan<- string) {
 		}
 	}()
 
+	// XXX logPersist("XXX test")
 	err = w.Add(statusDir)
 	if err != nil {
 		log.Error(err, " Inintial Add: ", statusDir)
 		// Check again when timer fires
+		logPersist("Initial Add")
 	}
 	// log.Debugln("WatchStatus added", statusDir)
 
@@ -271,6 +276,7 @@ func WatchStatus(statusDir string, jsonOnly bool, fileChanges chan<- string) {
 			if err != nil {
 				log.Error(err, " Add: ", statusDir)
 				// Try again on next timeout
+				logPersist("Add")
 				continue
 			}
 			foundRestart, foundRestarted := watchReadDir(statusDir,
@@ -282,5 +288,58 @@ func WatchStatus(statusDir string, jsonOnly bool, fileChanges chan<- string) {
 				fileChanges <- "M " + "restarted"
 			}
 		}
+	}
+}
+
+// XXX RCA
+// ls the content of /persist to a file
+func logPersist(str string) {
+	myfile := fmt.Sprintf("/persist/log/pid.%d", os.Getpid())
+	log.Infof("Logging ls to %s", myfile)
+	f, err := os.OpenFile(myfile, os.O_APPEND|os.O_WRONLY|os.O_CREATE,
+		os.ModeAppend)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	defer f.Close()
+	_, err = f.WriteString(fmt.Sprintf("Starting ls for %s at: %s\n",
+		str, time.Now().Format(time.RFC3339Nano)))
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	lsDir("/persist", f)
+	_, err = f.WriteString(fmt.Sprintf("Done ls for %s at: %s\n",
+		str, time.Now().Format(time.RFC3339Nano)))
+	if err != nil {
+		log.Error(err)
+		return
+	}
+}
+
+func lsDir(dir string, f *os.File) {
+	locations, err := ioutil.ReadDir(dir)
+	if err != nil {
+		log.Error(err)
+		f.WriteString(fmt.Sprintf("Failed: %s\n", err))
+		return
+	}
+	for _, location := range locations {
+		filename := dir + "/" + location.Name()
+
+		if location.IsDir() {
+			lsDir(filename, f)
+			continue
+		}
+		size := int64(0)
+		info, err := os.Stat(filename)
+		if err != nil {
+			log.Error(err)
+			f.WriteString(fmt.Sprintf("Failed: %s\n", err))
+		} else {
+			size = info.Size()
+		}
+		f.WriteString(fmt.Sprintf("Found %s size %d\n", filename, size))
 	}
 }

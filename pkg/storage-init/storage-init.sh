@@ -9,6 +9,10 @@ mkdir -p $PERSISTDIR
 chmod 700 $PERSISTDIR
 mkdir -p $CONFIGDIR
 chmod 700 $CONFIGDIR
+TPM_DEVICE_PATH="/dev/tpmrm0"
+BINDIR=/usr/bin
+EVE_ID="$(cat /run/eve.id 2>/dev/null)"
+
 if CONFIG=$(/hostfs/sbin/findfs PARTLABEL=CONFIG) && [ -n "$CONFIG" ]; then
     if ! fsck.vfat -y "$CONFIG"; then
         echo "$(date -Ins -u) fsck.vfat $CONFIG failed"
@@ -66,6 +70,17 @@ if P3=$(/hostfs/sbin/findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     fi
 else
     echo "$(date -Ins -u) No separate $PERSISTDIR partition"
+fi
+
+if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] && [ "$P3_FS_TYPE" = "ext4" ]; then
+    #It is a device with TPM, and formatted with ext4, setup fscrypt
+    echo "$(date -Ins -u) EXT4 partitioned $PERSISTDIR, enabling fscrypt"
+    #Initialize fscrypt algorithm, hash length etc.
+    if ! $BINDIR/vaultmgr -c "${EVE_ID:-IMGX}" setupVaults; then
+        echo "$(date -Ins -u) setupVaults failed"
+    else
+        echo "$(date -Ins -u) setupVaults successful"
+    fi
 fi
 
 UUID_SYMLINK_PATH="/dev/disk/by-uuid"

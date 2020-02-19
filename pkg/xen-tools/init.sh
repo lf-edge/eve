@@ -7,6 +7,9 @@ if [ -d /proc/xen/ ]; then
    mkdir -p /var/log/xen
    mkfifo /var/log/xen/xen-hotplug.log
 
+   #Link user keyring with session keyring of this container, to access fscrypt keys
+   keyctl link @u @s
+
    # start collecting logs (make sure that FIFO remains alway open for
    # writing - so readers don't get EOF, but rather block)
    tail -f /var/log/xen/xen-hotplug.log &
