@@ -774,9 +774,16 @@ func doStopDestroyDomain(status *types.DomainStatus) {
 // Check if it is still running
 // XXX would xen state be useful?
 func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
+	// Check config.Active to avoid spurious errors when shutting down
+	configActivate := false
+	config := lookupDomainConfig(ctx, status.Key())
+	if config != nil && config.Activate {
+		configActivate = true
+	}
+
 	domainID, err := xlDomid(status.DomainName, status.DomainId)
 	if err != nil {
-		if status.Activated {
+		if status.Activated && configActivate {
 			errStr := fmt.Sprintf("verifyStatus(%s) failed %s",
 				status.Key(), err)
 			log.Warnln(errStr)
@@ -808,7 +815,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 		}
 		// check if qemu processes has crashed
 		hasQemu := status.VirtualizationMode == types.HVM || status.VirtualizationMode == types.FML || status.IsContainer
-		if status.Activated && hasQemu && !isQemuRunning(status.DomainId) {
+		if configActivate && status.Activated && hasQemu && !isQemuRunning(status.DomainId) {
 			errStr := fmt.Sprintf("verifyStatus(%s) qemu crashed",
 				status.Key())
 			log.Errorf(errStr)
