@@ -1,1 +1,3 @@
-xl
+#!/bin/sh
+# shellcheck disable=SC2046,SC2086
+exec chroot /hostfs /usr/bin/ctr --namespace services.linuxkit t exec --cwd / ${TERM:+-t} --exec-id $(basename $(mktemp)) xen-tools env ${TERM:+TERM=}$TERM $(basename $0) "$@"
