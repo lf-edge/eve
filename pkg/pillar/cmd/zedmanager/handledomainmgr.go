@@ -67,12 +67,12 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	}
 	dc.DiskConfigList = make([]types.DiskConfig, numDisks)
 	i := 0
+	if len(aiConfig.StorageConfigList) < len(aiStatus.StorageStatusList) {
+		errStr := fmt.Sprintf("More StorageStatus than StorageConfig: %d vs %d", len(aiStatus.StorageStatusList), len(aiConfig.StorageConfigList))
+		log.Error(errStr)
+		return errors.New(errStr)
+	}
 	for index, sc := range aiConfig.StorageConfigList {
-		if index >= len(aiStatus.StorageStatusList) {
-			errStr := fmt.Sprintf("More StorageStatus than StorageConfig: %d vs %d", len(aiConfig.StorageConfigList), len(aiStatus.StorageStatusList))
-			log.Error(errStr)
-			return errors.New(errStr)
-		}
 		ssPtr := &aiStatus.StorageStatusList[index]
 		location := ssPtr.ActiveFileLocation
 		if location == "" {
