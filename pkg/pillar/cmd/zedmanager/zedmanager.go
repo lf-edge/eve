@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -707,6 +708,16 @@ func quantifyChanges(config types.AppInstanceConfig,
 			len(config.StorageConfigList))
 		needPurge = true
 	} else {
+		// Storage disks in the config and status can be in any order, it is not necessary
+		// that they will be available in the same order. So before starting comparision, we
+		// need to sort both config and status structures. Currently, we are sorting on the
+		// basis of Image UUID.
+		sort.SliceStable(config.StorageConfigList, func(i, j int) bool {
+			return config.StorageConfigList[i].ImageID.String() < config.StorageConfigList[j].ImageID.String()
+		})
+		sort.SliceStable(status.StorageStatusList, func(i, j int) bool {
+			return status.StorageStatusList[i].ImageID.String() < status.StorageStatusList[j].ImageID.String()
+		})
 		for i, sc := range config.StorageConfigList {
 			ss := status.StorageStatusList[i]
 			if ss.ImageID != sc.ImageID {
