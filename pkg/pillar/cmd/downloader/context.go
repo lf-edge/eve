@@ -165,6 +165,7 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 		AgentName:     "baseosmgr",
 		AgentScope:    types.BaseOsObj,
 		TopicImpl:     types.DownloaderConfig{},
+		Ctx:           ctx,
 	})
 	if err != nil {
 		return err
