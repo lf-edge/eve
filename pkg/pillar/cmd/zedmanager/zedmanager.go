@@ -657,17 +657,8 @@ func handleModify(ctxArg interface{}, key string,
 			status.PurgeCmd.Counter, config.PurgeCmd.Counter,
 			needPurge)
 		status.PurgeCmd.Counter = config.PurgeCmd.Counter
-		if status.IsContainer {
-			status.RestartInprogress = types.BRING_DOWN
-			status.State = types.RESTARTING
-			uuidtonum.UuidToNumAllocate(ctx.pubUuidToNum,
-				status.UUIDandVersion.UUID,
-				int(status.PurgeCmd.Counter),
-				false, "purgeCmdCounter")
-		} else {
-			status.PurgeInprogress = types.DOWNLOAD
-			status.State = types.PURGING
-		}
+		status.PurgeInprogress = types.DOWNLOAD
+		status.State = types.PURGING
 		// We persist the PurgeCmd Counter when PurgeInprogress is done
 	}
 	status.UUIDandVersion = config.UUIDandVersion
