@@ -759,6 +759,16 @@ func quantifyChanges(config types.AppInstanceConfig,
 			len(config.OverlayNetworkList))
 		needPurge = true
 	} else {
+		// Overlay networks in the config and status can be in any order, it is not necessary
+		// that they will be available in the same order. So before starting comparision, we
+		// need to sort both config and status structures. Currently, we are sorting on the
+		// basis of Name.
+		sort.SliceStable(config.OverlayNetworkList, func(i, j int) bool {
+			return config.OverlayNetworkList[i].Name < config.OverlayNetworkList[j].Name
+		})
+		sort.SliceStable(status.OverlayNetworkList, func(i, j int) bool {
+			return status.OverlayNetworkList[i].Name < status.OverlayNetworkList[j].Name
+		})
 		for i, oc := range config.OverlayNetworkList {
 			os := status.OverlayNetworkList[i]
 			if !cmp.Equal(oc.EIDConfigDetails, os.EIDConfigDetails) {
@@ -793,6 +803,16 @@ func quantifyChanges(config types.AppInstanceConfig,
 			len(config.UnderlayNetworkList))
 		needPurge = true
 	} else {
+		// Underlay networks in the config and status can be in any order, it is not necessary
+		// that they will be available in the same order. So before starting comparision, we
+		// need to sort both config and status structures. Currently, we are sorting on the
+		// basis of Name.
+		sort.SliceStable(config.UnderlayNetworkList, func(i, j int) bool {
+			return config.UnderlayNetworkList[i].Name < config.UnderlayNetworkList[j].Name
+		})
+		sort.SliceStable(status.UnderlayNetworkList, func(i, j int) bool {
+			return status.UnderlayNetworkList[i].Name < status.UnderlayNetworkList[j].Name
+		})
 		for i, uc := range config.UnderlayNetworkList {
 			us := status.UnderlayNetworkList[i]
 			if us.AppMacAddr.String() != uc.AppMacAddr.String() {
@@ -816,6 +836,16 @@ func quantifyChanges(config types.AppInstanceConfig,
 			}
 		}
 	}
+	// IO Adapters in the config and status can be in any order, it is not necessary
+	// that they will be available in the same order. So before starting comparision, we
+	// need to sort both config and status structures. Currently, we are sorting on the
+	// basis of Name.
+	sort.SliceStable(config.IoAdapterList, func(i, j int) bool {
+		return config.IoAdapterList[i].Name < config.IoAdapterList[j].Name
+	})
+	sort.SliceStable(status.IoAdapterList, func(i, j int) bool {
+		return status.IoAdapterList[i].Name < status.IoAdapterList[j].Name
+	})
 	if !cmp.Equal(config.IoAdapterList, status.IoAdapterList) {
 		log.Infof("quantifyChanges IoAdapterList changed: %v\n",
 			cmp.Diff(config.IoAdapterList, status.IoAdapterList))
