@@ -43,6 +43,7 @@ RUN apk add --no-cache \
         python=2.7.15-r3   \
         openssl=1.0.2u-r0  \
         iproute2=4.13.0-r0 \
+        keyutils=1.5.10-r0 \
         tini=0.18.0-r0
 
 COPY --from=lisp /lisp /lisp/
