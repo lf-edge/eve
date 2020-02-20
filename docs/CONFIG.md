@@ -193,7 +193,7 @@ The device does not specify DHCP-based WPAD since most browsers do not.
 
 In addition the above configurations be specified from the EV-controller by
 specifying one or more networks with the proxy and/or static as part of the
-zcli device create.
+zcli edge-node create.
 
 ### Adding configuration to the install image
 
