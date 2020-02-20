@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# FIXME: this will need to be absorbed by containerd/shim
+keyctl link @u @s
+
 if [ -d /proc/xen/ ]; then
    echo "Xen hypervisor support detected"
 
