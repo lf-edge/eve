@@ -30,6 +30,7 @@ message LogBundle {
     string image = 2; // SW image the log got emitted from
     repeated LogEntry log = 3; // Log entries
     google.protobuf.Timestamp timestamp = 4; // upload timestamp
+    string eveVersion = 5; // EVE software version
 }
 
 // This is the request payload for POST /api/v1/edgeDevice/apps/instances/id/<app-instance-uuid>/logs

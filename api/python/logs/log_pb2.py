@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/logs'),
-  serialized_pb=_b('\n\tlog.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfc\x01\n\x08LogEntry\x12\x10\n\x08severity\x18\x01 \x01(\t\x12\x0e\n\x06source\x18\x02 \x01(\t\x12\x0b\n\x03iid\x18\x03 \x01(\t\x12\x0f\n\x07\x63ontent\x18\x04 \x01(\t\x12\r\n\x05msgid\x18\x05 \x01(\x04\x12!\n\x04tags\x18\x06 \x03(\x0b\x32\x13.LogEntry.TagsEntry\x12-\n\ttimestamp\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x10\n\x08\x66ilename\x18\x08 \x01(\t\x12\x10\n\x08\x66unction\x18\t \x01(\t\x1a+\n\tTagsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"p\n\tLogBundle\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12\r\n\x05image\x18\x02 \x01(\t\x12\x16\n\x03log\x18\x03 \x03(\x0b\x32\t.LogEntry\x12-\n\ttimestamp\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"]\n\x14\x41ppInstanceLogBundle\x12\x16\n\x03log\x18\x01 \x03(\x0b\x32\t.LogEntry\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampBE\n\x1f\x63om.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/logsb\x06proto3')
+  serialized_pb=_b('\n\tlog.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfc\x01\n\x08LogEntry\x12\x10\n\x08severity\x18\x01 \x01(\t\x12\x0e\n\x06source\x18\x02 \x01(\t\x12\x0b\n\x03iid\x18\x03 \x01(\t\x12\x0f\n\x07\x63ontent\x18\x04 \x01(\t\x12\r\n\x05msgid\x18\x05 \x01(\x04\x12!\n\x04tags\x18\x06 \x03(\x0b\x32\x13.LogEntry.TagsEntry\x12-\n\ttimestamp\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x10\n\x08\x66ilename\x18\x08 \x01(\t\x12\x10\n\x08\x66unction\x18\t \x01(\t\x1a+\n\tTagsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x84\x01\n\tLogBundle\x12\r\n\x05\x64\x65vID\x18\x01 \x01(\t\x12\r\n\x05image\x18\x02 \x01(\t\x12\x16\n\x03log\x18\x03 \x03(\x0b\x32\t.LogEntry\x12-\n\ttimestamp\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x12\n\neveVersion\x18\x05 \x01(\t\"]\n\x14\x41ppInstanceLogBundle\x12\x16\n\x03log\x18\x01 \x03(\x0b\x32\t.LogEntry\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.TimestampBE\n\x1f\x63om.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/logsb\x06proto3')
   ,
   dependencies=[google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
 
@@ -186,6 +186,13 @@ _LOGBUNDLE = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='eveVersion', full_name='LogBundle.eveVersion', index=4,
+      number=5, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -198,8 +205,8 @@ _LOGBUNDLE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=301,
-  serialized_end=413,
+  serialized_start=302,
+  serialized_end=434,
 )
 
 
@@ -236,8 +243,8 @@ _APPINSTANCELOGBUNDLE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=415,
-  serialized_end=508,
+  serialized_start=436,
+  serialized_end=529,
 )
 
 _LOGENTRY_TAGSENTRY.containing_type = _LOGENTRY
