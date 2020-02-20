@@ -17,6 +17,7 @@ import (
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
@@ -378,7 +379,7 @@ func fetchFscryptStatus() (info.DataSecAtRestStatus, string) {
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED, ""
 		}
 	} else {
-		_, err := os.Stat(tpmmgr.TpmDevicePath)
+		_, err := os.Stat(etpm.TpmDevicePath)
 		if err != nil {
 			//This is due to lack of TPM
 			log.Debug("Setting status to disabled, HSM is not in use")
@@ -419,7 +420,7 @@ func GetOperInfo() (info.DataSecAtRestStatus, string) {
 				"Using Secure Application Vault=Yes, Using Secure Configuration Vault=Yes"
 		}
 	} else {
-		if !tpmmgr.IsTpmEnabled() {
+		if !etpm.IsTpmEnabled() {
 			//This is due to ext3 partition
 			log.Debug("Setting status to disabled, HSM is not in use")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,

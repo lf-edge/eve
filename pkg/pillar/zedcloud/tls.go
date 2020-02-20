@@ -7,60 +7,23 @@ package zedcloud
 
 import (
 	"bytes"
-	"crypto"
-	"crypto/ecdsa"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/asn1"
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ocsp"
-	"io"
 	"io/ioutil"
-	"math/big"
 	"strings"
 	"time"
 )
 
-//TpmPrivateKey is Custom implementation of crypto.PrivateKey interface
-type TpmPrivateKey struct {
-	PublicKey crypto.PublicKey
-}
-
-//Helper structure to pack ecdsa signature for ASN1 encoding
-type ecdsaSignature struct {
-	R, S *big.Int
-}
-
-//Public implements crypto.PrivateKey interface
-func (s TpmPrivateKey) Public() crypto.PublicKey {
-	clientCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
-	if err != nil {
-		return nil
-	}
-	block, _ := pem.Decode(clientCertBytes)
-	var cert *x509.Certificate
-	cert, _ = x509.ParseCertificate(block.Bytes)
-	ecdsaPublicKey := cert.PublicKey.(*ecdsa.PublicKey)
-	return ecdsaPublicKey
-}
-
-//Sign implements cryto.PrivateKey interface
-func (s TpmPrivateKey) Sign(r io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	R, S, err := tpmmgr.TpmSign(digest)
-	if err != nil {
-		return nil, err
-	}
-	return asn1.Marshal(ecdsaSignature{R, S})
-}
-
 //GetClientCert prepares tls.Certificate to connect to the cloud Controller
 func GetClientCert() (tls.Certificate, error) {
-	if !tpmmgr.IsTpmEnabled() {
+	if !etpm.IsTpmEnabled() {
 		//Not a TPM capable device, return openssl certificate
 		return tls.LoadX509KeyPair(types.DeviceCertName, types.DeviceKeyName)
 	}
@@ -75,7 +38,7 @@ func GetClientCert() (tls.Certificate, error) {
 	deviceTLSCert.Certificate = append(deviceTLSCert.Certificate,
 		deviceCertDERBytes.Bytes)
 
-	tpmPrivKey := TpmPrivateKey{}
+	tpmPrivKey := etpm.TpmPrivateKey{}
 	tpmPrivKey.PublicKey = tpmPrivKey.Public()
 
 	deviceTLSCert.PrivateKey = tpmPrivKey

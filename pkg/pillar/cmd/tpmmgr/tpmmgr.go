@@ -23,13 +23,13 @@ import (
 	"os/exec"
 	"reflect"
 	"time"
-	"unsafe"
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
@@ -50,12 +50,6 @@ const (
 	//TpmDeviceCertFileName is the file name to store device certificate
 	TpmDeviceCertFileName = types.DeviceCertName
 
-	//TpmDevicePath is the TPM device file path
-	TpmDevicePath = "/dev/tpmrm0"
-
-	//TpmDeviceKeyHdl is the well known TPM permanent handle for device key
-	TpmDeviceKeyHdl tpmutil.Handle = 0x817FFFFF
-
 	//TpmEKHdl is the well known TPM permanent handle for Endorsement key
 	TpmEKHdl tpmutil.Handle = 0x81000001
 
@@ -68,17 +62,12 @@ const (
 	//TpmDeviceCertHdl is the well known TPM NVIndex for device cert
 	TpmDeviceCertHdl tpmutil.Handle = 0x1500000
 
-	//TpmPasswdHdl is the well known TPM NVIndex for TPM Credentials
-	TpmPasswdHdl tpmutil.Handle = 0x1600000
-
 	//TpmDiskKeyHdl is the handle for constructing disk encryption key
 	TpmDiskKeyHdl tpmutil.Handle = 0x1700000
 
-	tpmCredentialsFileName = types.IdentityDirname + "/tpm_credential"
-	emptyPassword          = ""
-	tpmLockName            = types.TmpDirname + "/tpm.lock"
-	maxPasswdLength        = 7  //limit TPM password to this length
-	vaultKeyLength         = 32 //Bytes
+	emptyPassword  = ""
+	tpmLockName    = types.TmpDirname + "/tpm.lock"
+	vaultKeyLength = 32 //Bytes
 
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
@@ -190,19 +179,9 @@ var vendorRegistry = map[uint32]string{
 	0x474F4F47: "Google",
 }
 
-func fileExists(filename string) bool {
-	_, err := os.Stat(filename)
-	return err == nil
-}
-
-//IsTpmEnabled checks if TPM is being used by software for creating device cert
-func IsTpmEnabled() bool {
-	return fileExists(types.DeviceCertName) && !fileExists(types.DeviceKeyName)
-}
-
 //Helps creating various keys, according to the supplied template, and hierarchy
 func createKey(keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public, overwrite bool) error {
-	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		log.Errorln(err)
 		return err
@@ -240,22 +219,17 @@ func createKey(keyHandle, ownerHandle tpmutil.Handle, template tpm2.Public, over
 }
 
 func createDeviceKey() error {
-	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		log.Errorln(err)
 		return err
 	}
 	defer rw.Close()
 
-	tpmOwnerPasswdBytes, err := ioutil.ReadFile(tpmCredentialsFileName)
+	tpmOwnerPasswd, err := etpm.ReadOwnerCrdl()
 	if err != nil {
-		log.Fatalf("Reading from %s failed: %s", tpmCredentialsFileName, err)
+		log.Errorf("Reading owner credential failed: %s", err)
 		return err
-	}
-
-	tpmOwnerPasswd := string(tpmOwnerPasswdBytes)
-	if len(tpmOwnerPasswd) > maxPasswdLength {
-		tpmOwnerPasswd = tpmOwnerPasswd[0:maxPasswdLength]
 	}
 
 	//No previous key, create new one
@@ -271,13 +245,13 @@ func createDeviceKey() error {
 	}
 	if err := tpm2.EvictControl(rw, emptyPassword,
 		tpm2.HandleOwner,
-		TpmDeviceKeyHdl,
-		TpmDeviceKeyHdl); err != nil {
+		etpm.TpmDeviceKeyHdl,
+		etpm.TpmDeviceKeyHdl); err != nil {
 		log.Errorf("EvictControl failed: %v", err)
 	}
 	if err := tpm2.EvictControl(rw, emptyPassword,
 		tpm2.HandleOwner, signerHandle,
-		TpmDeviceKeyHdl); err != nil {
+		etpm.TpmDeviceKeyHdl); err != nil {
 		log.Errorf("EvictControl failed: %v, do BIOS reset of TPM", err)
 		return err
 	}
@@ -292,47 +266,9 @@ func createDeviceKey() error {
 	return nil
 }
 
-//TpmSign is used by external packages to get a digest signed by
-//device key in TPM
-func TpmSign(digest []byte) (*big.Int, *big.Int, error) {
-
-	rw, err := tpm2.OpenTPM(TpmDevicePath)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer rw.Close()
-
-	tpmOwnerPasswdBytes, err := ioutil.ReadFile(tpmCredentialsFileName)
-	if err != nil {
-		log.Fatalf("Reading from %s failed: %s", tpmCredentialsFileName, err)
-		return nil, nil, err
-	}
-	tpmOwnerPasswd := string(tpmOwnerPasswdBytes)
-	if len(tpmOwnerPasswd) > maxPasswdLength {
-		tpmOwnerPasswd = tpmOwnerPasswd[0:maxPasswdLength]
-	}
-
-	//XXX This "32" should really come from Hash algo used.
-	if len(digest) > 32 {
-		digest = digest[:32]
-	}
-
-	scheme := &tpm2.SigScheme{
-		Alg:  tpm2.AlgECDSA,
-		Hash: tpm2.AlgSHA256,
-	}
-	sig, err := tpm2.Sign(rw, TpmDeviceKeyHdl,
-		tpmOwnerPasswd, digest, scheme)
-	if err != nil {
-		log.Errorln("Sign using TPM failed")
-		return nil, nil, err
-	}
-	return sig.ECC.R, sig.ECC.S, nil
-}
-
 func writeDeviceCert() error {
 
-	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		return err
 	}
@@ -375,7 +311,7 @@ func writeDeviceCert() error {
 
 func readDeviceCert() error {
 
-	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		return err
 	}
@@ -409,7 +345,7 @@ func genCredentials() error {
 			return err
 		}
 		//Write uuid to credentials file for faster access
-		err = ioutil.WriteFile(tpmCredentialsFileName, out, 0644)
+		err = ioutil.WriteFile(etpm.TpmCredentialsFileName, out, 0644)
 		if err != nil {
 			log.Errorf("Writing to credentials file failed: %v", err)
 			return err
@@ -426,19 +362,19 @@ func genCredentials() error {
 
 func writeCredentials() error {
 
-	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		return err
 	}
 	defer rw.Close()
 
 	if err := tpm2.NVUndefineSpace(rw, emptyPassword,
-		tpm2.HandleOwner, TpmPasswdHdl,
+		tpm2.HandleOwner, etpm.TpmPasswdHdl,
 	); err != nil {
 		log.Debugf("NVUndefineSpace failed: %v", err)
 	}
 
-	tpmCredentialBytes, err := ioutil.ReadFile(tpmCredentialsFileName)
+	tpmCredentialBytes, err := ioutil.ReadFile(etpm.TpmCredentialsFileName)
 	if err != nil {
 		log.Errorf("Failed to read credentials file: %v", err)
 		return err
@@ -447,7 +383,7 @@ func writeCredentials() error {
 	// Define space in NV storage and clean up afterwards or subsequent runs will fail.
 	if err := tpm2.NVDefineSpace(rw,
 		tpm2.HandleOwner,
-		TpmPasswdHdl,
+		etpm.TpmPasswdHdl,
 		emptyPassword,
 		emptyPassword,
 		nil,
@@ -459,7 +395,7 @@ func writeCredentials() error {
 	}
 
 	// Write the data
-	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, TpmPasswdHdl,
+	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, etpm.TpmPasswdHdl,
 		emptyPassword, tpmCredentialBytes, 0); err != nil {
 		log.Errorf("NVWrite failed: %v", err)
 		return err
@@ -469,21 +405,21 @@ func writeCredentials() error {
 
 func readCredentials() error {
 
-	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		return err
 	}
 	defer rw.Close()
 
 	// Read all of the data with NVReadEx
-	tpmCredentialBytes, err := tpm2.NVReadEx(rw, TpmPasswdHdl,
+	tpmCredentialBytes, err := tpm2.NVReadEx(rw, etpm.TpmPasswdHdl,
 		tpm2.HandleOwner, emptyPassword, 0)
 	if err != nil {
 		log.Errorf("NVReadEx failed: %v", err)
 		return err
 	}
 
-	err = ioutil.WriteFile(tpmCredentialsFileName, tpmCredentialBytes, 0644)
+	err = ioutil.WriteFile(etpm.TpmCredentialsFileName, tpmCredentialBytes, 0644)
 	if err != nil {
 		log.Errorf("Writing to credentials file failed: %v", err)
 		return err
@@ -492,21 +428,12 @@ func readCredentials() error {
 	return nil
 }
 
-func getRandom(numBytes uint16) ([]byte, error) {
-	rw, err := tpm2.OpenTPM(TpmDevicePath)
-	if err != nil {
-		return nil, err
-	}
-	defer rw.Close()
-	return tpm2.GetRandom(rw, numBytes)
-}
-
 //FetchVaultKey retreives TPM part of the vault key
 func FetchVaultKey() ([]byte, error) {
 	//First try to read from TPM, if it was stored earlier
 	key, err := readDiskKey()
 	if err != nil {
-		key, err = getRandom(vaultKeyLength)
+		key, err = etpm.GetRandom(vaultKeyLength)
 		if err != nil {
 			log.Errorf("Error in generating random number: %v", err)
 			return nil, err
@@ -521,7 +448,7 @@ func FetchVaultKey() ([]byte, error) {
 }
 
 func writeDiskKey(key []byte) error {
-	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		return err
 	}
@@ -557,7 +484,7 @@ func writeDiskKey(key []byte) error {
 }
 
 func readDiskKey() ([]byte, error) {
-	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		return nil, err
 	}
@@ -582,61 +509,14 @@ const (
 	tpmPropertyFirmVer2     tpm2.TPMProp = 0x10c
 )
 
-func getModelName(vendorValue1 uint32, vendorValue2 uint32) string {
-	uintToByteArr := func(value uint32) []byte {
-		get8 := func(val uint32, offset uint32) uint8 {
-			return (uint8)((val >> ((3 - offset) * 8)) & 0xff)
-		}
-		var i uint32
-		var bytes []byte
-		for i = 0; i < uint32(unsafe.Sizeof(value)); i++ {
-			c := get8(value, i)
-			bytes = append(bytes, c)
-		}
-		return bytes
-	}
-	var model []byte
-	model = append(model, uintToByteArr(vendorValue1)...)
-	model = append(model, uintToByteArr(vendorValue2)...)
-	return string(model)
-}
-
-func getFirmwareVersion(v1 uint32, v2 uint32) string {
-	get16 := func(val uint32, offset uint32) uint16 {
-		return uint16((val >> ((1 - offset) * 16)) & 0xFFFF)
-	}
-	return fmt.Sprintf("%d.%d.%d.%d", get16(v1, 0), get16(v1, 1),
-		get16(v2, 0), get16(v2, 1))
-}
-
-func getTpmProperty(propID tpm2.TPMProp) (uint32, error) {
-
-	rw, err := tpm2.OpenTPM(TpmDevicePath)
-	if err != nil {
-		return 0, err
-	}
-	defer rw.Close()
-
-	v, _, err := tpm2.GetCapability(rw, tpm2.CapabilityTPMProperties,
-		1, uint32(propID))
-	if err != nil {
-		return 0, err
-	}
-	prop, ok := v[0].(tpm2.TaggedProperty)
-	if !ok {
-		return 0, fmt.Errorf("Unable to fetch property %d", propID)
-	}
-	return prop.Value, nil
-}
-
 //FetchTpmSwStatus returns states reflecting SW usage of TPM
 func FetchTpmSwStatus() info.HwSecurityModuleStatus {
-	_, err := os.Stat(TpmDevicePath)
+	_, err := os.Stat(etpm.TpmDevicePath)
 	if err != nil {
 		//No TPM found on this system
 		return info.HwSecurityModuleStatus_NOTFOUND
 	}
-	if IsTpmEnabled() {
+	if etpm.IsTpmEnabled() {
 		//TPM is found and is used by software
 		return info.HwSecurityModuleStatus_ENABLED
 	}
@@ -654,50 +534,38 @@ func FetchTpmHwInfo() (string, error) {
 	}
 
 	//Take care of non-TPM platforms
-	_, err := os.Stat(TpmDevicePath)
+	_, err := os.Stat(etpm.TpmDevicePath)
 	if err != nil {
 		tpmHwInfo = "Not Available"
 		return tpmHwInfo, nil
 	}
 
 	//First time. Fetch it from TPM and cache it.
-	v1, err := getTpmProperty(tpmPropertyManufacturer)
+	v1, err := etpm.GetTpmProperty(tpmPropertyManufacturer)
 	if err != nil {
 		return "", err
 	}
-	v2, err := getTpmProperty(tpmPropertyVendorStr1)
+	v2, err := etpm.GetTpmProperty(tpmPropertyVendorStr1)
 	if err != nil {
 		return "", err
 	}
-	v3, err := getTpmProperty(tpmPropertyVendorStr2)
+	v3, err := etpm.GetTpmProperty(tpmPropertyVendorStr2)
 	if err != nil {
 		return "", err
 	}
-	v4, err := getTpmProperty(tpmPropertyFirmVer1)
+	v4, err := etpm.GetTpmProperty(tpmPropertyFirmVer1)
 	if err != nil {
 		return "", err
 	}
-	v5, err := getTpmProperty(tpmPropertyFirmVer2)
+	v5, err := etpm.GetTpmProperty(tpmPropertyFirmVer2)
 	if err != nil {
 		return "", err
 	}
 	tpmHwInfo = fmt.Sprintf("%s-%s, FW Version %s", vendorRegistry[v1],
-		getModelName(v2, v3),
-		getFirmwareVersion(v4, v5))
+		etpm.GetModelName(v2, v3),
+		etpm.GetFirmwareVersion(v4, v5))
 
 	return tpmHwInfo, nil
-}
-
-func printNVProperties() {
-	if nvMaxSize, err := getTpmProperty(tpm2.NVMaxBufferSize); err != nil {
-		fmt.Printf("NV Max Size: 0x%X\n", nvMaxSize)
-	}
-	if nvIdxFirst, err := getTpmProperty(tpm2.NVIndexFirst); err != nil {
-		fmt.Printf("NV Index First: 0x%X\n", nvIdxFirst)
-	}
-	if nvIdxLast, err := getTpmProperty(tpm2.NVIndexLast); err != nil {
-		fmt.Printf("NV Index Last: 0x%X\n", nvIdxLast)
-	}
 }
 
 func printCapability() {
@@ -707,12 +575,10 @@ func printCapability() {
 	} else {
 		fmt.Println(hwInfoStr)
 	}
-	//XXX Not working, commenting for now
-	//printNVProperties()
 }
 
 func printPCRs() {
-	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		return
 	}
@@ -739,30 +605,25 @@ func printPCRs() {
 }
 
 func testTpmEcdhSupport() error {
-	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		log.Errorln(err)
 		return err
 	}
 	defer rw.Close()
 
-	z, p, err := tpm2.GenerateSharedECCSecret(rw, TpmDeviceKeyHdl, emptyPassword)
+	z, p, err := tpm2.GenerateSharedECCSecret(rw, etpm.TpmDeviceKeyHdl, emptyPassword)
 	if err != nil {
 		fmt.Printf("generating Shared Secret failed: %s", err)
 		return err
 	}
-	tpmOwnerPasswdBytes, err := ioutil.ReadFile(tpmCredentialsFileName)
+	tpmOwnerPasswd, err := etpm.ReadOwnerCrdl()
 	if err != nil {
-		fmt.Printf("Reading from %s failed: %s", tpmCredentialsFileName, err)
+		log.Errorf("Reading owner credential failed: %s", err)
 		return err
 	}
 
-	tpmOwnerPasswd := string(tpmOwnerPasswdBytes)
-	if len(tpmOwnerPasswd) > maxPasswdLength {
-		tpmOwnerPasswd = tpmOwnerPasswd[0:maxPasswdLength]
-	}
-
-	z1, err := tpm2.RecoverSharedECCSecret(rw, TpmDeviceKeyHdl, tpmOwnerPasswd, p)
+	z1, err := tpm2.RecoverSharedECCSecret(rw, etpm.TpmDeviceKeyHdl, tpmOwnerPasswd, p)
 	if err != nil {
 		fmt.Printf("recovering Shared Secret failed: %s", err)
 		return err
@@ -800,7 +661,7 @@ func sha256FromECPoint(X, Y *big.Int) [32]byte {
 
 //DecryptSecretWithEcdhKey recovers plaintext from given X, Y, iv and the ciphertext
 func DecryptSecretWithEcdhKey(X, Y *big.Int, iv, ciphertext, plaintext []byte) error {
-	rw, err := tpm2.OpenTPM(TpmDevicePath)
+	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		log.Errorln(err)
 		return err
@@ -808,17 +669,14 @@ func DecryptSecretWithEcdhKey(X, Y *big.Int, iv, ciphertext, plaintext []byte) e
 	defer rw.Close()
 
 	p := tpm2.ECPoint{X: X, Y: Y}
-	tpmOwnerPasswdBytes, err := ioutil.ReadFile(tpmCredentialsFileName)
+	tpmOwnerPasswd, err := etpm.ReadOwnerCrdl()
 	if err != nil {
-		fmt.Printf("Reading from %s failed: %s", tpmCredentialsFileName, err)
+		log.Errorf("Reading owner credential failed: %s", err)
 		return err
 	}
+
 	//Recover the key, and decrypt the message (EVE node Part)
-	tpmOwnerPasswd := string(tpmOwnerPasswdBytes)
-	if len(tpmOwnerPasswd) > maxPasswdLength {
-		tpmOwnerPasswd = tpmOwnerPasswd[0:maxPasswdLength]
-	}
-	z, err := tpm2.RecoverSharedECCSecret(rw, TpmDeviceKeyHdl, tpmOwnerPasswd, p)
+	z, err := tpm2.RecoverSharedECCSecret(rw, etpm.TpmDeviceKeyHdl, tpmOwnerPasswd, p)
 	if err != nil {
 		fmt.Printf("recovering Shared Secret failed: %s", err)
 		return err
@@ -877,7 +735,7 @@ func testEcdhAES() error {
 func DecryptCipherBlock(cipherBlock types.CipherBlock) ([]byte, error) {
 	// TBD:XXX, for nodes not having tpm chip, the device private key can be used
 	// which can be wrqpped up inside DecryptWithEcdhKey
-	if !IsTpmEnabled() {
+	if !etpm.IsTpmEnabled() {
 		return []byte{}, errors.New("Not supported")
 	}
 	if len(cipherBlock.CipherData) == 0 {
