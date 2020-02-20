@@ -23,7 +23,7 @@ import (
 
 	"github.com/eriknordmark/ipinfo"
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
@@ -179,8 +179,8 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	switch key := deviceCert.PrivateKey.(type) {
 	default:
 		log.Fatal("Private Key RSA type not supported")
-	case zedcloud.TpmPrivateKey:
-		r, s, err := tpmmgr.TpmSign(hash)
+	case etpm.TpmPrivateKey:
+		r, s, err := etpm.TpmSign(hash)
 		if err != nil {
 			log.Fatal("zedcloud.Sign: ", err)
 		}
