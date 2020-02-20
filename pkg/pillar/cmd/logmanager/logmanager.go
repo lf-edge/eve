@@ -60,6 +60,7 @@ var (
 	zedcloudCtx         zedcloud.ZedCloudContext
 
 	globalDeferInprogress bool
+	eveVersion            = readEveVersion("/etc/eve-release")
 )
 
 // global stuff
@@ -303,7 +304,7 @@ func Run(ps *pubsub.PubSub) {
 		string(lastSentStr))
 
 	// Start sender of log events
-	go processEvents(currentPartition, lastSent, loggerChan)
+	go processEvents(currentPartition, lastSent, loggerChan, eveVersion)
 
 	// If we have a logdir from a failed update, then set that up
 	// as well.
@@ -326,7 +327,7 @@ func Run(ps *pubsub.PubSub) {
 		log.Debugf("Other partition logs were last sent at %s\n",
 			string(lastSentStr))
 
-		go processEvents(otherPartition, lastSent, otherLoggerChan)
+		go processEvents(otherPartition, lastSent, otherLoggerChan, eveVersion)
 
 		go watch.WatchStatus(otherLogDirname, false, otherLogDirChanges)
 		otherCtx = loggerContext{logChan: otherLoggerChan,
@@ -492,7 +493,7 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 // This runs as a separate go routine sending out data
 // Compares and drops events which have already been sent to the cloud
 func processEvents(image string, prevLastSent time.Time,
-	logChan <-chan logEntry) {
+	logChan <-chan logEntry, eveVersion string) {
 
 	log.Infof("processEvents(%s, %s)\n", image, prevLastSent.String())
 
@@ -539,7 +540,7 @@ func processEvents(image string, prevLastSent time.Time,
 					return
 				}
 				sent = sendProtoStrForLogs(reportLogs, image,
-					iteration)
+					iteration, eveVersion)
 				if sent {
 					recordLast(lastSentDirname, image)
 				} else {
@@ -565,7 +566,7 @@ func processEvents(image string, prevLastSent time.Time,
 			log.Debugf("processEvents(%s): sending at messageCount %d, byteCount %d\n",
 				image, messageCount, byteCount)
 			sent = sendProtoStrForLogs(reportLogs, image,
-				iteration)
+				iteration, eveVersion)
 			messageCount = 0
 			iteration++
 			if sent {
@@ -584,7 +585,7 @@ func processEvents(image string, prevLastSent time.Time,
 				dropped, messageCount,
 				proto.Size(reportLogs))
 			sent := sendProtoStrForLogs(reportLogs, image,
-				iteration)
+				iteration, eveVersion)
 			messageCount = 0
 			iteration++
 			if sent {
@@ -678,10 +679,11 @@ func handleLogEvent(event logEntry, reportLogs *logs.LogBundle, counter int) {
 
 // Returns true if a message was successfully sent
 func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
-	iteration int) bool {
+	iteration int, eveVersion string) bool {
 	reportLogs.Timestamp = ptypes.TimestampNow()
 	reportLogs.DevID = *proto.String(devUUID.String())
 	reportLogs.Image = image
+	reportLogs.EveVersion = eveVersion
 
 	log.Debugln("sendProtoStrForLogs called...", iteration)
 	data, err := proto.Marshal(reportLogs)
@@ -1120,4 +1122,18 @@ func parseLogLevel(logLevel string) log.Level {
 		}
 	}
 	return level
+}
+
+func readEveVersion(fileName string) string {
+	version, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		log.Errorf("readEveVersion: Error reading EVE version from file %s", fileName)
+		return "Unknown"
+	}
+	versionStr := string(version)
+	versionStr = strings.TrimSpace(versionStr)
+	if versionStr == "" {
+		return "Unknown"
+	}
+	return versionStr
 }
