@@ -1011,6 +1011,7 @@ type UnderlayNetworkConfig struct {
 	Name       string           // From proto message
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
+	IntfOrder  int32            // XXX need to get from API
 
 	// Error
 	//	If there is a parsing error and this uLNetwork config cannot be

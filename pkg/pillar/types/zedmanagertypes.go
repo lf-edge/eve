@@ -216,6 +216,7 @@ type EIDOverlayConfig struct {
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // EIDv4 or EIDv6
 	Network    uuid.UUID
+	IntfOrder  int32 // XXX need to get from API
 
 	// Error
 	//	If there is a parsing error and this uLNetwork config cannot be
