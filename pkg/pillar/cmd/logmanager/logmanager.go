@@ -22,6 +22,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/api/go/logs"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -365,6 +366,11 @@ func Run(ps *pubsub.PubSub) {
 				warningTime, errorTime)
 
 		case change := <-deferredChan:
+			_, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, 1, 15)
+			if err != nil {
+				log.Infof("logmanager(Run): log message processing still in deferred state")
+				continue
+			}
 			start := time.Now()
 			done := zedcloud.HandleDeferred(change, 1*time.Second)
 			dbg.FreeOSMemory()
@@ -402,11 +408,7 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 		if !ok {
 			continue
 		}
-		level, err := log.ParseLevel(logInfo.Level)
-		if err != nil {
-			log.Errorf("ParseLevel failed: %s\n", err)
-			level = log.InfoLevel
-		}
+		level := parseLogLevel(logInfo.Level)
 		if dropEvent(logInfo.Source, level) {
 			log.Debugf("Dropping source %s level %v\n",
 				logInfo.Source, level)
@@ -510,9 +512,15 @@ func processEvents(image string, prevLastSent time.Time,
 		// but if the condition persists it will be set in a bit
 		if deferInprogress {
 			log.Warnf("processEvents(%s) deferInprogress", image)
-			time.Sleep(2 * time.Minute)
+			time.Sleep(30 * time.Second)
 			if globalDeferInprogress {
 				log.Warnf("processEvents(%s) globalDeferInprogress",
+					image)
+				continue
+			}
+			_, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, 1, 15)
+			if err != nil {
+				log.Infof("processEvents:(%s) log message processing still in deferred state",
 					image)
 				continue
 			}
@@ -919,11 +927,7 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 			} else {
 				lastTime = timestamp
 			}
-			level, err := log.ParseLevel(loginfo.Level)
-			if err != nil {
-				log.Errorf("ParseLevel failed: %s\n", err)
-				level = log.InfoLevel
-			}
+			level := parseLogLevel(loginfo.Level)
 			if dropEvent(r.source, level) {
 				log.Debugf("Dropping source %s level %v\n",
 					r.source, level)
@@ -1097,4 +1101,23 @@ func dropEvent(source string, level log.Level) bool {
 		return level > l
 	}
 	return false
+}
+
+func parseLogLevel(logLevel string) log.Level {
+	level, err := log.ParseLevel(logLevel)
+	if err != nil {
+		// XXX Some of the log sources send logs with
+		// severity set to err, emerg & notice.
+		// Logrus log level parse does not recognize the above severities.
+		// Map err, emerg to error and notice to info.
+		if logLevel == "err" || logLevel == "emerg" {
+			level = log.ErrorLevel
+		} else if logLevel == "notice" {
+			level = log.InfoLevel
+		} else {
+			log.Errorf("ParseLevel failed: %s, defaulting log level to Info\n", err)
+			level = log.InfoLevel
+		}
+	}
+	return level
 }
