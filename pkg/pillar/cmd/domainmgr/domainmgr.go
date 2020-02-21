@@ -1699,6 +1699,22 @@ func createMountPointFile(imageHash, mpFileName string, status types.DomainStatu
 	return nil
 }
 
+// checkDiskFormat will check the disk corruption and format mismatch
+// by comparing the output from 'qemu-img info' and the format passed
+// in object in config
+func checkDiskFormat(diskStatus types.DiskStatus) error {
+	imgInfo, err := diskmetrics.GetImgInfo(diskStatus.ActiveFileLocation)
+	if err != nil {
+		return err
+	}
+	if imgInfo.Format != strings.ToLower(diskStatus.Format.String()) {
+		return fmt.Errorf("Disk format mismatch, format in config %v and output of qemu-img %v\n"+
+			"Note: Format mismatch may be because of disk corruption also.",
+			diskStatus.Format, imgInfo.Format)
+	}
+	return nil
+}
+
 // Produce the xen cfg file based on the config and status created above
 // XXX or produce output to a string instead of file to make comparison
 // easier?
@@ -1828,6 +1844,11 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	for i, ds := range status.DiskStatusList {
 		if ds.Format == zconfig.Format_CONTAINER {
 			continue
+		}
+		err := checkDiskFormat(ds)
+		if err != nil {
+			log.Errorf("%v", err)
+			return err
 		}
 		access := "rw"
 		if ds.ReadOnly {
@@ -2274,17 +2295,22 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 	filename := xenCfgFilename(status.AppNum)
 	mpFileName := mountPointFileName(status.AppNum)
 	log.Infof("DomainCreate %s ... xenCfgFilename - %s\n", status.DomainName, filename)
+	var containerImageSha256 string
+	for _, ds := range status.DiskStatusList {
+		if ds.Format == zconfig.Format_CONTAINER {
+			containerImageSha256 = ds.ImageSha256
+			continue
+		}
+		err := checkDiskFormat(ds)
+		if err != nil {
+			log.Errorf("%v", err)
+			return domainID, podUUID, err
+		}
+	}
 	if status.IsContainer {
 		// Use rkt tool
 		// get the rkt image hash for this file; if we do not have it in the rkt cache,
 		// convert it
-		var containerImageSha256 string
-		for _, ds := range status.DiskStatusList {
-			if ds.Format == zconfig.Format_CONTAINER {
-				containerImageSha256 = ds.ImageSha256
-				break
-			}
-		}
 		ociFilename, err := utils.VerifiedImageFileLocation(containerImageSha256)
 		if err != nil {
 			log.Errorf("DomainCreate: Failed to get Image File Location. "+

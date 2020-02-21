@@ -1,7 +1,7 @@
 package verifier
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -31,8 +31,7 @@ func (v *verifyHandler) modify(ctxArg interface{}, objType string,
 	key string, configArg interface{}) {
 
 	log.Infof("verifyHandler.modify(%s)\n", key)
-	config := configArg.(types.VerifyImageConfig)
-	h, ok := v.handlers[config.Key()]
+	h, ok := v.handlers[key]
 	if !ok {
 		log.Fatalf("verifyHandler.modify called on config that does not exist")
 	}
@@ -51,14 +50,21 @@ func (v *verifyHandler) create(ctxArg interface{}, objType string,
 
 	log.Infof("verifyHandler.create(%s)\n", key)
 	ctx := ctxArg.(*verifierContext)
-	config := configArg.(types.VerifyImageConfig)
-	h, ok := v.handlers[config.Key()]
+	h, ok := v.handlers[key]
 	if ok {
 		log.Fatalf("verifyHandler.create called on config that already exists")
 	}
 	h1 := make(chan Notify, 1)
-	v.handlers[config.Key()] = h1
-	go runHandler(ctx, objType, key, h1)
+	v.handlers[key] = h1
+	typeName := pubsub.TypeToName(configArg)
+	switch typeName {
+	case "VerifyImageConfig":
+		go runHandler(ctx, objType, key, h1)
+	case "PersistImageConfig":
+		go runPersistHandler(ctx, objType, key, h1)
+	default:
+		log.Fatalf("Unknown type %s", typeName)
+	}
 	h = h1
 	select {
 	case h <- Notify{}:

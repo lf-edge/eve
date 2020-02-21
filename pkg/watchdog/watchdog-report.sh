@@ -34,7 +34,9 @@ CURPART=$(zboot curpart)
 echo "Watchdog report at $DATE: $*" >>/persist/"$CURPART"/reboot-reason
 
 # If a /run/<agent.pid> then look for an oom message in dmesg for that agent
+# and always record <agent> in reboot-reason
 oom=""
+agent=""
 if [ $# -ge 2 ]; then
     agent=$(echo "$2" | grep '/run/.*\.pid' | sed 's,/run/\(.*\)\.pid,\1,')
     if [ -n "$agent" ]; then
@@ -51,6 +53,16 @@ if [ -z "$oom" ]; then
 fi
 if [ -n "$oom" ]; then
    echo "$oom" >>/persist/"$CURPART"/reboot-reason
+fi
+if [ -n "$agent" ]; then
+    echo "$agent crashed" >>/persist/"$CURPART"/reboot-reason
+    panic=$(grep panic /persist/rsyslog/syslog.txt)
+    if [ -n "$panic" ]; then
+        echo "$panic" >>/persist/"$CURPART"/reboot-reason
+        # Note that panic stack trace might exist tagged with e.g. pillar.err
+        # in /persist/rsyslog/syslog.txt but can't extract from other .err
+        # files.
+    fi
 fi
 
 # Check if it is rsyslogd that crashed.

@@ -53,6 +53,8 @@ type zedmanagerContext struct {
 	subAppImgDownloadStatus pubsub.Subscription
 	pubAppImgVerifierConfig pubsub.Publication
 	subAppImgVerifierStatus pubsub.Subscription
+	pubAppImgPersistConfig  pubsub.Publication
+	subAppImgPersistStatus  pubsub.Subscription
 	subGlobalConfig         pubsub.Subscription
 	globalConfig            *types.GlobalConfig
 	pubUuidToNum            pubsub.Publication
@@ -148,6 +150,13 @@ func Run(ps *pubsub.PubSub) {
 	}
 	pubAppImgVerifierConfig.ClearRestarted()
 	ctx.pubAppImgVerifierConfig = pubAppImgVerifierConfig
+
+	pubAppImgPersistConfig, err := pubsublegacy.PublishScope(agentName,
+		types.AppImgObj, types.PersistImageConfig{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubAppImgPersistConfig = pubAppImgPersistConfig
 
 	pubUuidToNum, err := pubsublegacy.PublishPersistent(agentName,
 		types.UuidToNum{})
@@ -263,6 +272,21 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subAppImgVerifierStatus = subAppImgVerifierStatus
 	subAppImgVerifierStatus.Activate()
 
+	// Look for PersistImageStatus from verifier
+	subAppImgPersistStatus, err := pubsublegacy.SubscribeScope("verifier",
+		types.AppImgObj, types.PersistImageStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
+			CreateHandler: handlePersistImageStatusModify,
+			ModifyHandler: handlePersistImageStatusModify,
+			DeleteHandler: handlePersistImageStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subAppImgPersistStatus = subAppImgPersistStatus
+	subAppImgPersistStatus.Activate()
+
 	// Get IdentityStatus from identitymgr
 	subEIDStatus, err := pubsublegacy.Subscribe("identitymgr",
 		types.EIDStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
@@ -336,6 +360,9 @@ func Run(ps *pubsub.PubSub) {
 				log.Infof("Verifier reported restarted\n")
 			}
 
+		case change := <-subAppImgPersistStatus.MsgChan():
+			subAppImgPersistStatus.ProcessChange(change)
+
 		case change := <-subImageStatus.MsgChan():
 			subImageStatus.ProcessChange(change)
 			if ctx.rwImageAvailable {
@@ -362,6 +389,9 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subAppImgVerifierStatus.MsgChan():
 			subAppImgVerifierStatus.ProcessChange(change)
+
+		case change := <-subAppImgPersistStatus.MsgChan():
+			subAppImgPersistStatus.ProcessChange(change)
 
 		case change := <-subEIDStatus.MsgChan():
 			subEIDStatus.ProcessChange(change)

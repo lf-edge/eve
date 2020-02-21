@@ -200,7 +200,6 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 		}
 		// Shortcut if image is already verified
 		vs := lookupVerificationStatus(ctx, objType, sc.ImageID)
-
 		if vs != nil && !vs.Pending() &&
 			vs.State == types.DELIVERED {
 
@@ -208,8 +207,8 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 				imageID, sc.ImageSha256)
 			// If we don't already have a RefCount add one
 			if !ss.HasVerifierRef {
-				log.Infof("checkStorageDownloadStatus %s, !HasVerifierRef\n", vs.ImageID)
-				createVerifierConfig(ctx, uuidStr, objType, vs.ImageID, sc, *ss, false)
+				log.Infof("checkStorageDownloadStatus %s, !HasVerifierRef\n", sc.ImageID)
+				createVerifierConfig(ctx, uuidStr, objType, sc.ImageID, sc, *ss, false)
 				ss.HasVerifierRef = true
 				ret.Changed = true
 			}
@@ -226,6 +225,23 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 			continue
 		}
 
+		ps := lookupPersistStatus(ctx, objType, sc.ImageSha256)
+		if ps != nil && !ps.Expired {
+			ret.MinState = types.DOWNLOADED
+			ss.State = types.DOWNLOADED
+			ret.Changed = true
+			log.Infof(" %s, PersistImageStatus exist sha %s\n",
+				imageID, sc.ImageSha256)
+			// If we don't already have a RefCount add one
+			// Ensures that a VerifyImageStatus will be created
+			if !ss.HasVerifierRef {
+				log.Infof("checkStorageDownloadStatus %s, !HasVerifierRef\n", sc.ImageID)
+				createVerifierConfig(ctx, uuidStr, objType, sc.ImageID, sc, *ss, false)
+				ss.HasVerifierRef = true
+				ret.Changed = true
+			}
+			continue
+		}
 		if !ss.HasDownloaderRef {
 			log.Infof("checkStorageDownloadStatus %s, !HasDownloaderRef\n", imageID)
 			createDownloaderConfig(ctx, objType, imageID, &sc)
@@ -288,26 +304,23 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 		case types.DOWNLOADED:
 
 			log.Infof("checkStorageDownloadStatus %s, is downloaded\n", imageID)
-			// if verification is needed
-			if sc.ImageSha256 != "" {
-				// start verifier for this object
-				if !ss.HasVerifierRef {
-					val, errInfo := createVerifierConfig(ctx, uuidStr, objType,
-						imageID, sc, *ss, true)
-					if val {
+			// start verifier for this object
+			if !ss.HasVerifierRef {
+				val, errInfo := createVerifierConfig(ctx, uuidStr, objType,
+					imageID, sc, *ss, true)
+				if val {
+					ret.Changed = true
+					ss.HasVerifierRef = true
+				} else {
+					if errInfo.Error != "" {
+						ss.SetErrorInfo(errInfo)
+						ret.AllErrors = appendError(ret.AllErrors, "baseosmgr", ss.Error)
+						ret.ErrorTime = ss.ErrorTime
 						ret.Changed = true
-						ss.HasVerifierRef = true
 					} else {
-						if errInfo.Error != "" {
-							ss.SetErrorInfo(errInfo)
-							ret.AllErrors = appendError(ret.AllErrors, "baseosmgr", ss.Error)
-							ret.ErrorTime = ss.ErrorTime
+						if !ret.WaitingForCerts {
 							ret.Changed = true
-						} else {
-							if !ret.WaitingForCerts {
-								ret.Changed = true
-								ret.WaitingForCerts = true
-							}
+							ret.WaitingForCerts = true
 						}
 					}
 				}

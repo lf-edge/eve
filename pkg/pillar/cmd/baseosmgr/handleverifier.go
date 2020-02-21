@@ -24,6 +24,20 @@ func lookupVerifierConfig(ctx *baseOsMgrContext, objType string,
 	return &config
 }
 
+func lookupPersistConfig(ctx *baseOsMgrContext, objType string,
+	imageSha string) *types.PersistImageConfig {
+
+	pub := persistPublication(ctx, objType)
+	c, _ := pub.Get(imageSha)
+	if c == nil {
+		log.Infof("lookupPersistConfig(%s/%s) not found\n",
+			objType, imageSha)
+		return nil
+	}
+	config := c.(types.PersistImageConfig)
+	return &config
+}
+
 // If checkCerts is set this can return an error. Otherwise not.
 func createVerifierConfig(ctx *baseOsMgrContext, uuidStr string, objType string,
 	imageID uuid.UUID, sc types.StorageConfig, ss types.StorageStatus, checkCerts bool) (bool, types.ErrorInfo) {
@@ -52,13 +66,15 @@ func createVerifierConfig(ctx *baseOsMgrContext, uuidStr string, objType string,
 	} else {
 		log.Infof("createVerifierConfig(%s) add\n", imageID)
 		n := types.VerifyImageConfig{
-			ImageID:          imageID,
-			Name:             sc.Name,
-			ImageSha256:      sc.ImageSha256,
-			CertificateChain: sc.CertificateChain,
-			ImageSignature:   sc.ImageSignature,
-			SignatureKey:     sc.SignatureKey,
-			RefCount:         1,
+			ImageID: imageID,
+			VerifyConfig: types.VerifyConfig{
+				Name:             sc.Name,
+				ImageSha256:      sc.ImageSha256,
+				CertificateChain: sc.CertificateChain,
+				ImageSignature:   sc.ImageSignature,
+				SignatureKey:     sc.SignatureKey,
+			},
+			RefCount: 1,
 		}
 		publishVerifierConfig(ctx, objType, &n)
 	}
@@ -85,35 +101,147 @@ func updateVerifierStatus(ctx *baseOsMgrContext,
 			key, objType)
 		return
 	}
+	baseOsHandleStatusUpdateImageID(ctx, status.ImageID)
+	// Make sure the PersistImageConfig has the sum of the refcounts
+	// for the sha
+	if status.ImageSha256 != "" {
+		updatePersistImageConfig(ctx, objType, status.ImageSha256)
+	}
+	log.Infof("updateVerifierStatus(%s) done\n", key)
+}
+
+func removeVerifierStatus(ctx *baseOsMgrContext,
+	status *types.VerifyImageStatus) {
+
+	key := status.Key()
+	objType := status.ObjType
+	log.Infof("removeVerifierStatus(%s/%s) refcount %d\n",
+		objType, key, status.RefCount)
+	// If we still publish a config with RefCount == 0 we delete it.
+	config := lookupVerifierConfig(ctx, objType, status.ImageID)
+	if config != nil && config.RefCount == 0 {
+		log.Infof("removeVerifierStatus delete config for %s\n",
+			key)
+		unpublishVerifierConfig(ctx, objType, config)
+	}
+	// Make sure the PersistImageConfig has the sum of the refcounts
+	// for the sha
+	if status.ImageSha256 != "" {
+		updatePersistImageConfig(ctx, objType, status.ImageSha256)
+	}
+	log.Infof("removeVerifierStatus done for %s\n", key)
+}
+
+func updatePersistStatus(ctx *baseOsMgrContext,
+	status *types.PersistImageStatus) {
+
+	key := status.Key()
+	objType := status.ObjType
+	log.Infof("updatePersistStatus(%s/%s) to refcount %d expired %t\n",
+		objType, key, status.RefCount, status.Expired)
+
+	if status.ObjType != types.BaseOsObj {
+		log.Errorf("updatePersistStatus for %s, unsupported objType %s\n",
+			key, objType)
+		return
+	}
 	// We handle two special cases in the handshake here
 	// 1. verifier added a status with RefCount=0 based on
 	// an existing file. We echo that with a config with RefCount=0
 	// 2. verifier set Expired in status when garbage collecting.
 	// If we have no RefCount we delete the config.
 
-	config := lookupVerifierConfig(ctx, status.ObjType, status.ImageID)
+	config := lookupPersistConfig(ctx, status.ObjType, status.ImageSha256)
 	if config == nil && status.RefCount == 0 {
-		log.Infof("updateVerifierStatus adding RefCount=0 config %s\n",
+		log.Infof("updatePersistStatus adding RefCount=0 config %s\n",
 			key)
-		n := types.VerifyImageConfig{
-			ImageID:     status.ImageID,
-			Name:        status.Name,
-			ImageSha256: status.ImageSha256,
-			RefCount:    0,
+		n := types.PersistImageConfig{
+			VerifyConfig: types.VerifyConfig{
+				Name:        status.Name,
+				ImageSha256: status.ImageSha256,
+			},
+			RefCount: 0,
 		}
-		publishVerifierConfig(ctx, status.ObjType, &n)
-		return
-	}
-	if config != nil && config.RefCount == 0 && status.Expired {
-		log.Infof("updateVerifierStatus expired - deleting config %s\n",
+		publishPersistConfig(ctx, status.ObjType, &n)
+	} else if config != nil && config.RefCount == 0 && status.Expired &&
+		sumVerifyImageRefCount(ctx, status.ImageSha256) == 0 {
+		log.Infof("updatePersistStatus expired - deleting config %s\n",
 			key)
-		unpublishVerifierConfig(ctx, status.ObjType, config)
+		unpublishPersistConfig(ctx, status.ObjType, config)
+	}
+	log.Infof("updatePersistStatus(%s) done\n", key)
+}
+
+func removePersistStatus(ctx *baseOsMgrContext,
+	status *types.PersistImageStatus) {
+
+	key := status.Key()
+	objType := status.ObjType
+	log.Infof("removePersistStatus(%s/%s) refcount %d expired %t\n",
+		objType, key, status.RefCount, status.Expired)
+	config := lookupPersistConfig(ctx, status.ObjType, status.ImageSha256)
+	if config == nil {
+		log.Errorf("handlePersistStatusDelete no config for %s\n", key)
 		return
 	}
+	unpublishPersistConfig(ctx, status.ObjType, config)
+}
 
-	// Normal update work
-	baseOsHandleStatusUpdateImageID(ctx, status.ImageID)
-	log.Infof("updateVerifierStatus(%s) done\n", key)
+// Make sure the PersistImageConfig has the sum of the refcounts
+// for the sha
+func updatePersistImageConfig(ctx *baseOsMgrContext, objType string,
+	imageSha string) {
+
+	log.Infof("updatePersistImageConfig(%s/%s)", objType, imageSha)
+	if imageSha == "" {
+		return
+	}
+	var refcount uint
+	sub := ctx.subBaseOsVerifierStatus
+	items := sub.GetAll()
+	for _, s := range items {
+		status := s.(types.VerifyImageStatus)
+		if status.ImageSha256 == imageSha {
+			log.Infof("Adding RefCount %d from %s to %s",
+				status.RefCount, status.ImageID, imageSha)
+			refcount += status.RefCount
+		}
+	}
+	config := lookupPersistConfig(ctx, objType, imageSha)
+	if config == nil {
+		log.Errorf("updatePersistImageConfig(%s/%s): config not found",
+			objType, imageSha)
+		return
+	}
+	if config.RefCount == refcount {
+		log.Infof("updatePersistImageConfig(%s/%s): no RefCount change %d",
+			objType, imageSha, refcount)
+		return
+	}
+	log.Infof("updatePersistImageConfig(%s/%s): RefCount change %d to %d",
+		objType, imageSha, config.RefCount, refcount)
+	config.RefCount = refcount
+	publishPersistConfig(ctx, objType, config)
+}
+
+// Calculate sum of the refcounts for the config for a particular sha
+func sumVerifyImageRefCount(ctx *baseOsMgrContext, imageSha string) uint {
+	log.Infof("sumVerifyImageRefCount(%s)", imageSha)
+	if imageSha == "" {
+		return 0
+	}
+	var refcount uint
+	pub := ctx.pubBaseOsVerifierConfig
+	items := pub.GetAll()
+	for _, c := range items {
+		config := c.(types.VerifyImageConfig)
+		if config.ImageSha256 == imageSha {
+			log.Infof("Adding RefCount %d from %s to %s",
+				config.RefCount, config.ImageID, imageSha)
+			refcount += config.RefCount
+		}
+	}
+	return refcount
 }
 
 // MaybeRemoveVerifierConfig decreases the refcount and if it
@@ -140,8 +268,27 @@ func MaybeRemoveVerifierConfig(ctx *baseOsMgrContext, objType string,
 	m.RefCount -= 1
 	log.Infof("MaybeRemoveVerifierConfig remaining RefCount %d for %s\n",
 		m.RefCount, imageID)
-	publishVerifierConfig(ctx, objType, m)
+	if m.RefCount == 0 {
+		unpublishVerifierConfig(ctx, objType, m)
+	} else {
+		publishVerifierConfig(ctx, objType, m)
+	}
 	log.Infof("MaybeRemoveVerifierConfig done for %s\n", imageID)
+}
+
+// Note that this function returns the entry even if Pending* is set.
+func lookupPersistStatus(ctx *baseOsMgrContext, objType string,
+	imageSha256 string) *types.PersistImageStatus {
+
+	sub := ctx.subBaseOsPersistStatus
+	s, _ := sub.Get(imageSha256)
+	if s == nil {
+		log.Infof("lookupPersistStatus(%s/%s) not found\n",
+			objType, imageSha256)
+		return nil
+	}
+	status := s.(types.PersistImageStatus)
+	return &status
 }
 
 // Note that this function returns the entry even if Pending* is set.
@@ -149,14 +296,16 @@ func lookupVerificationStatus(ctx *baseOsMgrContext, objType string,
 	imageID uuid.UUID) *types.VerifyImageStatus {
 
 	sub := ctx.subBaseOsVerifierStatus
-	c, _ := sub.Get(imageID.String())
-	if c == nil {
-		log.Infof("lookupVerifierStatus(%s/%s) not found\n",
-			objType, imageID)
-		return nil
+	items := sub.GetAll()
+	for _, s := range items {
+		status := s.(types.VerifyImageStatus)
+		if status.ImageID == imageID {
+			return &status
+		}
 	}
-	status := c.(types.VerifyImageStatus)
-	return &status
+	log.Infof("lookupVerificationStatus(%s/%s) not found\n",
+		objType, imageID)
+	return nil
 }
 
 func checkStorageVerifierStatus(ctx *baseOsMgrContext, objType string, uuidStr string,
@@ -256,6 +405,29 @@ func unpublishVerifierConfig(ctx *baseOsMgrContext, objType string,
 	pub.Unpublish(key)
 }
 
+func publishPersistConfig(ctx *baseOsMgrContext, objType string,
+	config *types.PersistImageConfig) {
+
+	key := config.Key()
+	log.Debugf("publishPersistConfig(%s/%s)\n", objType, config.Key())
+	pub := persistPublication(ctx, objType)
+	pub.Publish(key, *config)
+}
+
+func unpublishPersistConfig(ctx *baseOsMgrContext, objType string,
+	config *types.PersistImageConfig) {
+
+	key := config.Key()
+	log.Debugf("unpublishPersistConfig(%s/%s)\n", objType, key)
+	pub := persistPublication(ctx, objType)
+	c, _ := pub.Get(key)
+	if c == nil {
+		log.Errorf("unpublishPersistConfig(%s) not found\n", key)
+		return
+	}
+	pub.Unpublish(key)
+}
+
 func verifierPublication(ctx *baseOsMgrContext, objType string) pubsub.Publication {
 	var pub pubsub.Publication
 	switch objType {
@@ -263,6 +435,18 @@ func verifierPublication(ctx *baseOsMgrContext, objType string) pubsub.Publicati
 		pub = ctx.pubBaseOsVerifierConfig
 	default:
 		log.Fatalf("verifierPublication: Unknown ObjType %s\n",
+			objType)
+	}
+	return pub
+}
+
+func persistPublication(ctx *baseOsMgrContext, objType string) pubsub.Publication {
+	var pub pubsub.Publication
+	switch objType {
+	case types.BaseOsObj:
+		pub = ctx.pubBaseOsPersistConfig
+	default:
+		log.Fatalf("persistPublication: Unknown ObjType %s\n",
 			objType)
 	}
 	return pub

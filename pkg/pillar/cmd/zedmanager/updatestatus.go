@@ -296,12 +296,12 @@ func doUpdate(ctx *zedmanagerContext,
 }
 
 // doInstallProcessStorageEntriesWithVerifiedImage
-//  Returns: (imageStatusPtr, vsPtr, storageStatusUpdate)
+//  Returns: (imageStatusPtr, vsPtr, psPtr, storageStatusUpdate)
 func doInstallProcessStorageEntriesWithVerifiedImage(
 	ctx *zedmanagerContext,
 	appInstUUID uuid.UUID,
 	ssPtr *types.StorageStatus) (*types.ImageStatus,
-	*types.VerifyImageStatus, bool) {
+	*types.VerifyImageStatus, *types.PersistImageStatus, bool) {
 
 	changed := false
 	imageID := ssPtr.ImageID
@@ -319,24 +319,41 @@ func doInstallProcessStorageEntriesWithVerifiedImage(
 			ssPtr.Progress = 100
 			changed = true
 		}
-		return isPtr, nil, changed
+		return isPtr, nil, nil, changed
 	}
 	// Check if image is already verified
-	vs := lookupVerifyImageStatus(ctx, ssPtr.ImageID)
-	// Handle post-reboot verification in progress by allowing
-	// types.DOWNLOADED. If the verification later fails we will
-	// get a delete of the VerifyImageStatus and skip this
+	// Look for matching sha if ssPtr.ImageSha256 is set and we didn't
+	// find based on ImageID
+	// XXX For containers we need a appUUID+ImageID map to the to be used ImageSha
+	vs := lookupVerifyImageStatus(ctx, imageID)
 	if vs == nil {
-		// XXX look for matching sha is ssPtr.ImageSha256 is set
-		log.Debugf("Verifier status not found for %s sha %s",
+		log.Infof("Verifier status not found for %s sha %s",
 			imageID, ssPtr.ImageSha256)
-		return nil, nil, false
+		ps := lookupPersistImageStatus(ctx, ssPtr.ImageSha256)
+		if ps == nil || ps.Expired {
+			return nil, nil, nil, false
+		}
+		log.Infof("XXX Found based on ImageSha256 %s imageID %s: %+v",
+			ssPtr.ImageSha256, imageID, ps)
+
+		if ssPtr.State != types.DOWNLOADED {
+			ssPtr.State = types.DOWNLOADED
+			ssPtr.Progress = 100
+			changed = true
+		}
+		// If we don't already have a RefCount add one
+		if !ssPtr.HasVerifierRef {
+			log.Infof("!HasVerifierRef")
+			// We don't need certs since Status already exists
+			MaybeAddVerifyImageConfig(ctx, appInstUUID.String(), *ssPtr, false)
+			ssPtr.HasVerifierRef = true
+			changed = true
+		}
+		return nil, nil, ps, changed
 	}
-	if vs.Expired {
-		log.Infof("Vs.Expired Set. Re-download image %s, sha %s",
-			imageID, ssPtr.ImageSha256)
-		return nil, nil, false
-	}
+	log.Infof("XXX Found based on ImageIS %s imageSha %s: %+v",
+		imageID, ssPtr.ImageSha256, vs)
+
 	switch vs.State {
 	case types.DELIVERED:
 		log.Infof("Found verified image for %s sha %s\n",
@@ -348,7 +365,7 @@ func doInstallProcessStorageEntriesWithVerifiedImage(
 	default:
 		log.Infof("vs.State (%d) not DELIVERED / DOWNLOADED. imageID: %s"+
 			" sha %s", vs.State, imageID, ssPtr.ImageSha256)
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
 	if ssPtr.ImageSha256 != vs.ImageSha256 {
 		log.Infof("updating imagesha from %s to %s", ssPtr.ImageSha256,
@@ -377,7 +394,7 @@ func doInstallProcessStorageEntriesWithVerifiedImage(
 	log.Debugf("Verifier Status Exists for StorageEntry: Name: %s, "+
 		"ImageID: %s,  vs.RefCount: %d, ssPtr.State: %d",
 		ssPtr.Name, ssPtr.ImageID, vs.RefCount, ssPtr.State)
-	return isPtr, vs, changed
+	return isPtr, vs, nil, changed
 }
 
 func doInstall(ctx *zedmanagerContext,
@@ -473,7 +490,7 @@ func doInstall(ctx *zedmanagerContext,
 			ss.Name, imageID, ss.ImageSha256)
 
 		// Check if VerifierStatus already exists.
-		isPtr, vs, statusUpdated := doInstallProcessStorageEntriesWithVerifiedImage(
+		isPtr, vs, ps, statusUpdated := doInstallProcessStorageEntriesWithVerifiedImage(
 			ctx, status.UUIDandVersion.UUID, ss)
 		changed = changed || statusUpdated
 		if isPtr != nil {
@@ -481,8 +498,8 @@ func doInstall(ctx *zedmanagerContext,
 				"Name: %s, imageID %s, ImageSha256: %s",
 				ss.Name, imageID, ss.ImageSha256)
 			// Image with imageStatus is in INSTALLED state
-			if minState > types.INSTALLED {
-				minState = types.INSTALLED
+			if minState > ss.State {
+				minState = ss.State
 			}
 			continue
 		}
@@ -490,10 +507,18 @@ func doInstall(ctx *zedmanagerContext,
 			log.Infof("doInstall: Verified image exists. StorageStatus "+
 				"Name: %s, imageID %s, ImageSha256: %s",
 				ss.Name, imageID, ss.ImageSha256)
-			if minState > vs.State {
-				minState = vs.State
+			if minState > ss.State {
+				minState = ss.State
 			}
 			continue
+		}
+		if ps != nil {
+			log.Infof("doInstall: Persistent image exists. StorageStatus "+
+				"Name: %s, imageID %s, ImageSha256: %s",
+				ss.Name, imageID, ss.ImageSha256)
+			if minState > ss.State {
+				minState = ss.State
+			}
 		}
 		if !ss.HasDownloaderRef {
 			log.Infof("doInstall !HasDownloaderRef for %s\n",
@@ -631,16 +656,31 @@ func doInstall(ctx *zedmanagerContext,
 				uuidStr, ss.ActiveFileLocation)
 			changed = true
 		} else {
-			// XXX also looks for non-empty ImageSha256
+			// Look based on ImageID and SHA
 			vs := lookupVerifyImageStatus(ctx, ss.ImageID)
-			if vs == nil || vs.Expired {
-				log.Infof("VerifyImageStatus for %s sha %s not found or Expired (%v)\n",
-					imageID, ss.ImageSha256, vs)
+			if vs == nil {
 				// Keep at current state
 				minState = types.DOWNLOADED
 				changed = true
+				ps := lookupPersistImageStatus(ctx, ss.ImageSha256)
+				if ps == nil || ps.Expired {
+					log.Infof("Verify/PersistImageStatus for %s sha %s not found",
+						imageID, ss.ImageSha256)
+					continue
+				}
+				log.Infof("XXX Found based on ImageSha256 %s imageID %s: %+v", ss.ImageSha256, imageID, ps)
+				// If we don't already have a RefCount add one
+				if !ss.HasVerifierRef {
+					log.Infof("!HasVerifierRef")
+					// We don't need certs since Status already exists
+					MaybeAddVerifyImageConfig(ctx, uuidStr, *ss, false)
+					ss.HasVerifierRef = true
+					changed = true
+				}
 				continue
 			}
+			log.Infof("XXX Found based on ImageID %s sha %s: %+v",
+				imageID, ss.ImageSha256, vs)
 			log.Infof("Found VerifyImageStatus for URL %s imageID %s sha %s",
 				ss.Name, imageID, vs.ImageSha256)
 
@@ -658,7 +698,7 @@ func doInstall(ctx *zedmanagerContext,
 				changed = true
 			}
 			if vs.Pending() {
-				log.Infof("lookupVerifyImageStatusAny %s Pending\n", imageID)
+				log.Infof("lookupVerifyImageStatus %s Pending\n", imageID)
 				continue
 			}
 			if vs.LastErr != "" {
