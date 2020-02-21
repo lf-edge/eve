@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/attest'),
-  serialized_pb=_b('\n\x0c\x61ttest.proto\"f\n\nZAttestReq\x12 \n\x07reqType\x18\x01 \x01(\x0e\x32\x0f.ZAttestReqType\x12\x1c\n\x05quote\x18\x02 \x01(\x0b\x32\r.ZAttestQuote\x12\x18\n\x05\x63\x65rts\x18\x03 \x03(\x0b\x32\t.ZEveCert\"}\n\x0fZAttestResponse\x12\"\n\x08respType\x18\x01 \x01(\x0e\x32\x10.ZAttestRespType\x12 \n\x05nonce\x18\x02 \x01(\x0b\x32\x11.ZAttestNonceResp\x12$\n\tquoteResp\x18\x03 \x01(\x0b\x32\x11.ZAttestQuoteResp\"!\n\x10ZAttestNonceResp\x12\r\n\x05nonce\x18\x01 \x01(\x0c\"5\n\x0cZAttestQuote\x12\x12\n\nattestData\x18\x01 \x01(\x0c\x12\x11\n\tsignature\x18\x02 \x01(\x0c\":\n\x10ZAttestQuoteResp\x12&\n\x08response\x18\x01 \x01(\x0e\x32\x14.ZAttestResponseCode\"\x8f\x01\n\x08ZEveCert\x12#\n\x08hashAlgo\x18\x01 \x01(\x0e\x32\x11.ZEveCertHashType\x12\x10\n\x08\x63\x65rtHash\x18\x02 \x01(\x0c\x12\x1b\n\x04type\x18\x03 \x01(\x0e\x32\r.ZEveCertType\x12\x0c\n\x04\x63\x65rt\x18\x04 \x01(\x0c\x12!\n\nattributes\x18\x05 \x01(\x0b\x32\r.ZEveCertAttr\"!\n\x0cZEveCertAttr\x12\x11\n\tisMutable\x18\x01 \x01(\x08*Q\n\x0eZAttestReqType\x12\x13\n\x0f\x41TTEST_REQ_CERT\x10\x00\x12\x14\n\x10\x41TTEST_REQ_NONCE\x10\x01\x12\x14\n\x10\x41TTEST_REQ_QUOTE\x10\x02*Z\n\x0fZAttestRespType\x12\x14\n\x10\x41TTEST_RESP_CERT\x10\x00\x12\x15\n\x11\x41TTEST_RESP_NONCE\x10\x01\x12\x1a\n\x16\x41TTEST_RESP_QUOTE_RESP\x10\x02*O\n\x13ZAttestResponseCode\x12\x1b\n\x17\x41TTEST_RESPONSE_SUCCESS\x10\x00\x12\x1b\n\x17\x41TTEST_RESPONSE_FAILURE\x10\x01*:\n\x10ZEveCertHashType\x12\r\n\tHASH_NONE\x10\x00\x12\x17\n\x13HASH_SHA256_16bytes\x10\x01*\xa2\x01\n\x0cZEveCertType\x12\x1f\n\x1b\x43\x45RT_TYPE_DEVICE_ONBOARDING\x10\x00\x12\'\n#CERT_TYPE_DEVICE_RESTRICTED_SIGNING\x10\x01\x12$\n CERT_TYPE_DEVICE_ENDORSEMENT_RSA\x10\x02\x12\"\n\x1e\x43\x45RT_TYPE_DEVICE_ECDH_EXCHANGE\x10\x03\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/attestb\x06proto3')
+  serialized_pb=_b('\n\x0c\x61ttest.proto\"f\n\nZAttestReq\x12 \n\x07reqType\x18\x01 \x01(\x0e\x32\x0f.ZAttestReqType\x12\x1c\n\x05quote\x18\x02 \x01(\x0b\x32\r.ZAttestQuote\x12\x18\n\x05\x63\x65rts\x18\x03 \x03(\x0b\x32\t.ZEveCert\"}\n\x0fZAttestResponse\x12\"\n\x08respType\x18\x01 \x01(\x0e\x32\x10.ZAttestRespType\x12 \n\x05nonce\x18\x02 \x01(\x0b\x32\x11.ZAttestNonceResp\x12$\n\tquoteResp\x18\x03 \x01(\x0b\x32\x11.ZAttestQuoteResp\"!\n\x10ZAttestNonceResp\x12\r\n\x05nonce\x18\x01 \x01(\x0c\"5\n\x0cZAttestQuote\x12\x12\n\nattestData\x18\x01 \x01(\x0c\x12\x11\n\tsignature\x18\x02 \x01(\x0c\":\n\x10ZAttestQuoteResp\x12&\n\x08response\x18\x01 \x01(\x0e\x32\x14.ZAttestResponseCode\"\x8f\x01\n\x08ZEveCert\x12#\n\x08hashAlgo\x18\x01 \x01(\x0e\x32\x11.ZEveCertHashType\x12\x10\n\x08\x63\x65rtHash\x18\x02 \x01(\x0c\x12\x1b\n\x04type\x18\x03 \x01(\x0e\x32\r.ZEveCertType\x12\x0c\n\x04\x63\x65rt\x18\x04 \x01(\x0c\x12!\n\nattributes\x18\x05 \x01(\x0b\x32\r.ZEveCertAttr\"!\n\x0cZEveCertAttr\x12\x11\n\tisMutable\x18\x01 \x01(\x08*f\n\x0eZAttestReqType\x12\x13\n\x0f\x41TTEST_REQ_NONE\x10\x00\x12\x13\n\x0f\x41TTEST_REQ_CERT\x10\x01\x12\x14\n\x10\x41TTEST_REQ_NONCE\x10\x02\x12\x14\n\x10\x41TTEST_REQ_QUOTE\x10\x03*p\n\x0fZAttestRespType\x12\x14\n\x10\x41TTEST_RESP_NONE\x10\x00\x12\x14\n\x10\x41TTEST_RESP_CERT\x10\x01\x12\x15\n\x11\x41TTEST_RESP_NONCE\x10\x02\x12\x1a\n\x16\x41TTEST_RESP_QUOTE_RESP\x10\x03*i\n\x13ZAttestResponseCode\x12\x18\n\x14\x41TTEST_RESPONSE_NONE\x10\x00\x12\x1b\n\x17\x41TTEST_RESPONSE_SUCCESS\x10\x01\x12\x1b\n\x17\x41TTEST_RESPONSE_FAILURE\x10\x02*:\n\x10ZEveCertHashType\x12\r\n\tHASH_NONE\x10\x00\x12\x17\n\x13HASH_SHA256_16bytes\x10\x01*\xbd\x01\n\x0cZEveCertType\x12\x19\n\x15\x43\x45RT_TYPE_DEVICE_NONE\x10\x00\x12\x1f\n\x1b\x43\x45RT_TYPE_DEVICE_ONBOARDING\x10\x01\x12\'\n#CERT_TYPE_DEVICE_RESTRICTED_SIGNING\x10\x02\x12$\n CERT_TYPE_DEVICE_ENDORSEMENT_RSA\x10\x03\x12\"\n\x1e\x43\x45RT_TYPE_DEVICE_ECDH_EXCHANGE\x10\x04\x42G\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/attestb\x06proto3')
 )
 
 _ZATTESTREQTYPE = _descriptor.EnumDescriptor(
@@ -30,22 +30,26 @@ _ZATTESTREQTYPE = _descriptor.EnumDescriptor(
   file=DESCRIPTOR,
   values=[
     _descriptor.EnumValueDescriptor(
-      name='ATTEST_REQ_CERT', index=0, number=0,
+      name='ATTEST_REQ_NONE', index=0, number=0,
       serialized_options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='ATTEST_REQ_NONCE', index=1, number=1,
+      name='ATTEST_REQ_CERT', index=1, number=1,
       serialized_options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='ATTEST_REQ_QUOTE', index=2, number=2,
+      name='ATTEST_REQ_NONCE', index=2, number=2,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ATTEST_REQ_QUOTE', index=3, number=3,
       serialized_options=None,
       type=None),
   ],
   containing_type=None,
   serialized_options=None,
   serialized_start=578,
-  serialized_end=659,
+  serialized_end=680,
 )
 _sym_db.RegisterEnumDescriptor(_ZATTESTREQTYPE)
 
@@ -57,22 +61,26 @@ _ZATTESTRESPTYPE = _descriptor.EnumDescriptor(
   file=DESCRIPTOR,
   values=[
     _descriptor.EnumValueDescriptor(
-      name='ATTEST_RESP_CERT', index=0, number=0,
+      name='ATTEST_RESP_NONE', index=0, number=0,
       serialized_options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='ATTEST_RESP_NONCE', index=1, number=1,
+      name='ATTEST_RESP_CERT', index=1, number=1,
       serialized_options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='ATTEST_RESP_QUOTE_RESP', index=2, number=2,
+      name='ATTEST_RESP_NONCE', index=2, number=2,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ATTEST_RESP_QUOTE_RESP', index=3, number=3,
       serialized_options=None,
       type=None),
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=661,
-  serialized_end=751,
+  serialized_start=682,
+  serialized_end=794,
 )
 _sym_db.RegisterEnumDescriptor(_ZATTESTRESPTYPE)
 
@@ -84,18 +92,22 @@ _ZATTESTRESPONSECODE = _descriptor.EnumDescriptor(
   file=DESCRIPTOR,
   values=[
     _descriptor.EnumValueDescriptor(
-      name='ATTEST_RESPONSE_SUCCESS', index=0, number=0,
+      name='ATTEST_RESPONSE_NONE', index=0, number=0,
       serialized_options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='ATTEST_RESPONSE_FAILURE', index=1, number=1,
+      name='ATTEST_RESPONSE_SUCCESS', index=1, number=1,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='ATTEST_RESPONSE_FAILURE', index=2, number=2,
       serialized_options=None,
       type=None),
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=753,
-  serialized_end=832,
+  serialized_start=796,
+  serialized_end=901,
 )
 _sym_db.RegisterEnumDescriptor(_ZATTESTRESPONSECODE)
 
@@ -117,8 +129,8 @@ _ZEVECERTHASHTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=834,
-  serialized_end=892,
+  serialized_start=903,
+  serialized_end=961,
 )
 _sym_db.RegisterEnumDescriptor(_ZEVECERTHASHTYPE)
 
@@ -130,44 +142,52 @@ _ZEVECERTTYPE = _descriptor.EnumDescriptor(
   file=DESCRIPTOR,
   values=[
     _descriptor.EnumValueDescriptor(
-      name='CERT_TYPE_DEVICE_ONBOARDING', index=0, number=0,
+      name='CERT_TYPE_DEVICE_NONE', index=0, number=0,
       serialized_options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='CERT_TYPE_DEVICE_RESTRICTED_SIGNING', index=1, number=1,
+      name='CERT_TYPE_DEVICE_ONBOARDING', index=1, number=1,
       serialized_options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='CERT_TYPE_DEVICE_ENDORSEMENT_RSA', index=2, number=2,
+      name='CERT_TYPE_DEVICE_RESTRICTED_SIGNING', index=2, number=2,
       serialized_options=None,
       type=None),
     _descriptor.EnumValueDescriptor(
-      name='CERT_TYPE_DEVICE_ECDH_EXCHANGE', index=3, number=3,
+      name='CERT_TYPE_DEVICE_ENDORSEMENT_RSA', index=3, number=3,
+      serialized_options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='CERT_TYPE_DEVICE_ECDH_EXCHANGE', index=4, number=4,
       serialized_options=None,
       type=None),
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=895,
-  serialized_end=1057,
+  serialized_start=964,
+  serialized_end=1153,
 )
 _sym_db.RegisterEnumDescriptor(_ZEVECERTTYPE)
 
 ZEveCertType = enum_type_wrapper.EnumTypeWrapper(_ZEVECERTTYPE)
-ATTEST_REQ_CERT = 0
-ATTEST_REQ_NONCE = 1
-ATTEST_REQ_QUOTE = 2
-ATTEST_RESP_CERT = 0
-ATTEST_RESP_NONCE = 1
-ATTEST_RESP_QUOTE_RESP = 2
-ATTEST_RESPONSE_SUCCESS = 0
-ATTEST_RESPONSE_FAILURE = 1
+ATTEST_REQ_NONE = 0
+ATTEST_REQ_CERT = 1
+ATTEST_REQ_NONCE = 2
+ATTEST_REQ_QUOTE = 3
+ATTEST_RESP_NONE = 0
+ATTEST_RESP_CERT = 1
+ATTEST_RESP_NONCE = 2
+ATTEST_RESP_QUOTE_RESP = 3
+ATTEST_RESPONSE_NONE = 0
+ATTEST_RESPONSE_SUCCESS = 1
+ATTEST_RESPONSE_FAILURE = 2
 HASH_NONE = 0
 HASH_SHA256_16bytes = 1
-CERT_TYPE_DEVICE_ONBOARDING = 0
-CERT_TYPE_DEVICE_RESTRICTED_SIGNING = 1
-CERT_TYPE_DEVICE_ENDORSEMENT_RSA = 2
-CERT_TYPE_DEVICE_ECDH_EXCHANGE = 3
+CERT_TYPE_DEVICE_NONE = 0
+CERT_TYPE_DEVICE_ONBOARDING = 1
+CERT_TYPE_DEVICE_RESTRICTED_SIGNING = 2
+CERT_TYPE_DEVICE_ENDORSEMENT_RSA = 3
+CERT_TYPE_DEVICE_ECDH_EXCHANGE = 4
 
 
 

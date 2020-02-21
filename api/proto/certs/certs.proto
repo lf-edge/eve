@@ -31,7 +31,8 @@ message ZCert {
 }
 
 enum ZCertType {
-   CERT_TYPE_CONTROLLER_SIGNING = 0;        //set for the leaf certificate used by controller to sign payload envelopes
-   CERT_TYPE_CONTROLLER_INTERMEDIATE = 1;   //set for intermediate certs used to validate the certificates
-   CERT_TYPE_CONTROLLER_ECDH_EXCHANGE = 2;  //set for certificate used by controller to share any symmetric key using ECDH
+   CERT_TYPE_CONTROLLER_NONE = 0;
+   CERT_TYPE_CONTROLLER_SIGNING = 1;        //set for the leaf certificate used by controller to sign payload envelopes
+   CERT_TYPE_CONTROLLER_INTERMEDIATE = 2;   //set for intermediate certs used to validate the certificates
+   CERT_TYPE_CONTROLLER_ECDH_EXCHANGE = 3;  //set for certificate used by controller to share any symmetric key using ECDH
 }
