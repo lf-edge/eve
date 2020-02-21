@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -58,6 +59,7 @@ type zedmanagerContext struct {
 	subGlobalConfig         pubsub.Subscription
 	globalConfig            *types.GlobalConfig
 	pubUuidToNum            pubsub.Publication
+	pubAppAndImageToHash    pubsub.Publication
 	GCInitialized           bool
 }
 
@@ -165,6 +167,13 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.pubUuidToNum = pubUuidToNum
 	pubUuidToNum.ClearRestarted()
+
+	pubAppAndImageToHash, err := pubsublegacy.PublishPersistent(agentName,
+		types.AppAndImageToHash{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubAppAndImageToHash = pubAppAndImageToHash
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
@@ -593,6 +602,7 @@ func handleCreate(ctxArg interface{}, key string,
 			//  a container. Deriving it from Storage seems hacky.
 			status.IsContainer = true
 		}
+		maybeLatchImageSha(ctx, config, ss)
 	}
 
 	status.EIDList = make([]types.EIDStatusDetails,
@@ -641,6 +651,57 @@ func handleCreate(ctxArg interface{}, key string,
 		publishAppInstanceStatus(ctx, &status)
 	}
 	log.Infof("handleCreate done for %s\n", config.DisplayName)
+}
+
+func maybeLatchImageSha(ctx *zedmanagerContext, config types.AppInstanceConfig,
+	ssPtr *types.StorageStatus) {
+
+	imageSha := lookupAppAndImageHash(ctx, config.UUIDandVersion.UUID,
+		ssPtr.ImageID)
+	if imageSha == "" {
+		if ssPtr.IsContainer && ssPtr.ImageSha256 == "" {
+			log.Infof("Container app/image %s %s/%s has not (yet) latched sha",
+				config.DisplayName, config.UUIDandVersion.UUID,
+				ssPtr.ImageID)
+		}
+		return
+	}
+	if ssPtr.ImageSha256 == "" {
+		log.Infof("Latching %s app/image %s/%s to sha %s",
+			config.DisplayName,
+			config.UUIDandVersion.UUID, ssPtr.ImageID, imageSha)
+		ssPtr.ImageSha256 = imageSha
+		if ssPtr.IsContainer {
+			newName := maybeInsertSha(ssPtr.Name, imageSha)
+			if newName != ssPtr.Name {
+				log.Infof("Changing container name from %s to %s",
+					ssPtr.Name, newName)
+				ssPtr.Name = newName
+			}
+		}
+	} else if ssPtr.ImageSha256 != imageSha {
+		// We already catch this change, but logging here in any case
+		log.Warnf("App/Image %s %s/%s hash sha %s received %s",
+			config.DisplayName,
+			config.UUIDandVersion.UUID, ssPtr.ImageID,
+			imageSha, ssPtr.ImageSha256)
+	}
+}
+
+// Check if the OCI name does not include an explicit sha and if not
+// return the name with the sha inserted.
+// Note that the sha must be lower case in the OCI reference.
+func maybeInsertSha(name string, sha string) string {
+	if strings.Index(name, "@") != -1 {
+		// Already has a sha
+		return name
+	}
+	sha = strings.ToLower(sha)
+	last := strings.LastIndex(name, ":")
+	if last == -1 {
+		return name + "@sha256:" + sha
+	}
+	return name[:last] + "@sha256:" + sha
 }
 
 func handleModify(ctxArg interface{}, key string,
@@ -716,6 +777,7 @@ func handleDelete(ctx *zedmanagerContext, key string,
 	removeAIStatus(ctx, status)
 	// Remove the recorded PurgeCmd Counter
 	uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, status.UUIDandVersion.UUID)
+	purgeAppAndImageHash(ctx, status.UUIDandVersion.UUID)
 	log.Infof("handleDelete done for %s\n", status.DisplayName)
 }
 
