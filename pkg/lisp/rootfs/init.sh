@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# FIXME: this will need to be absorbed by containerd/shim
+keyctl link @u @s
+
 EVE_ID="$(cat /run/eve.id 2>/dev/null)"
 
 cd /lisp || exit 1

@@ -113,7 +113,7 @@ var debugOverride bool // From command line arg
 // Set from Makefile
 var Version = "No version specified"
 
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug")
 	curpartPtr := flag.String("c", "", "Current partition")

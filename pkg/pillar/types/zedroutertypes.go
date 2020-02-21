@@ -313,20 +313,20 @@ type DhcpConfig struct {
 	DnsServers []net.IP // If not set we use Gateway as DNS server
 }
 
-// CryptoBlock - crypto data
-type CryptoBlock struct {
-	Identity string // encrypted identity or username for WPA-EAP
-	Password string // encrypted string of pass phrase or password hash
-}
-
 // WifiConfig - Wifi structure
 type WifiConfig struct {
 	SSID      string            // wifi SSID
 	KeyScheme WifiKeySchemeType // such as WPA-PSK, WPA-EAP
-	Identity  string            // identity or username for WPA-EAP
-	Password  string            // string of pass phrase or password hash
-	Crypto    CryptoBlock       // encrypted block of items
-	Priority  int32
+
+	// XXX: to be deprecated, use CipherBlock instead
+	Identity string // identity or username for WPA-EAP
+
+	// XXX: to be deprecated, use CipherBlock instead
+	Password string // string of pass phrase or password hash
+	Priority int32
+
+	// CipherBlock, for encrypted credentials
+	CipherBlock
 }
 
 // CellConfig - Cellular part of the configure
@@ -1011,6 +1011,7 @@ type UnderlayNetworkConfig struct {
 	Name       string           // From proto message
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // If set use DHCP to assign to app
+	IntfOrder  int32            // XXX need to get from API
 
 	// Error
 	//	If there is a parsing error and this uLNetwork config cannot be

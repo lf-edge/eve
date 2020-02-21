@@ -215,7 +215,7 @@ Or to give a more specific example, here's how you can allow ssh access to
 the device for debugging issues:
 
 ```bash
-zcli device update myqemu --config="debug.enable.ssh:`cat .ssh/id_rsa.pub`"
+zcli edge-node update myqemu --config="debug.enable.ssh:`cat .ssh/id_rsa.pub`"
 ```
 
 Most of the runtime configuration properties apply to an entire running EVE

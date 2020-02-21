@@ -1189,50 +1189,60 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 	log.Infof("doInactivate for %s\n", uuidStr)
 	changed := false
 	done := false
+	uninstall := (status.PurgeInprogress != types.BRING_DOWN)
 
-	// First halt the domain
-	unpublishDomainConfig(ctx, uuidStr)
+	if uninstall || !status.IsContainer {
+		// First halt the domain
+		unpublishDomainConfig(ctx, uuidStr)
 
-	// Check if DomainStatus gone; update AppInstanceStatus if error
-	ds := lookupDomainStatus(ctx, uuidStr)
-	if ds != nil {
-		if status.DomainName != ds.DomainName {
-			status.DomainName = ds.DomainName
-			changed = true
-		}
-		if status.BootTime != ds.BootTime {
-			status.BootTime = ds.BootTime
-			changed = true
-		}
-		c := updateVifUsed(status, *ds)
-		if c {
-			changed = true
-		}
-		log.Infof("Waiting for DomainStatus removal for %s\n", uuidStr)
-		// Look for xen errors.
-		if !ds.Activated {
-			if ds.LastErr != "" {
-				log.Errorf("Received error from domainmgr for %s: %s\n",
-					uuidStr, ds.LastErr)
-				status.Error = ds.LastErr
-				status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
-				status.ErrorTime = ds.LastErrTime
-				changed = true
-			} else if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
-				log.Infof("Clearing domainmgr error %s\n",
-					status.Error)
-				status.Error = ""
-				status.ErrorSource = ""
-				status.ErrorTime = time.Time{}
+		// Check if DomainStatus gone; update AppInstanceStatus if error
+		ds := lookupDomainStatus(ctx, uuidStr)
+		if ds != nil {
+			if status.DomainName != ds.DomainName {
+				status.DomainName = ds.DomainName
 				changed = true
 			}
+			if status.BootTime != ds.BootTime {
+				status.BootTime = ds.BootTime
+				changed = true
+			}
+			c := updateVifUsed(status, *ds)
+			if c {
+				changed = true
+			}
+			log.Infof("Waiting for DomainStatus removal for %s\n", uuidStr)
+			// Look for xen errors.
+			if !ds.Activated {
+				if ds.LastErr != "" {
+					log.Errorf("Received error from domainmgr for %s: %s\n",
+						uuidStr, ds.LastErr)
+					status.Error = ds.LastErr
+					status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
+					status.ErrorTime = ds.LastErrTime
+					changed = true
+				} else if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
+					log.Infof("Clearing domainmgr error %s\n",
+						status.Error)
+					status.Error = ""
+					status.ErrorSource = ""
+					status.ErrorTime = time.Time{}
+					changed = true
+				}
+			}
+			return changed, done
 		}
-		return changed, done
+
+		log.Infof("Done with DomainStatus removal for %s\n", uuidStr)
+	} else {
+		dc := lookupDomainConfig(ctx, uuidStr)
+		if dc.Activate {
+			log.Infof("PurgeInprogress for containers (%s) Clear Activate\n",
+				uuidStr)
+			dc.Activate = false
+			publishDomainConfig(ctx, dc)
+		}
 	}
 
-	log.Infof("Done with DomainStatus removal for %s\n", uuidStr)
-
-	uninstall := (status.PurgeInprogress != types.BRING_DOWN)
 	if uninstall {
 		unpublishAppNetworkConfig(ctx, uuidStr)
 	} else {

@@ -126,7 +126,7 @@ func newNodeagentContext() nodeagentContext {
 }
 
 // Run : nodeagent run entry function
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")

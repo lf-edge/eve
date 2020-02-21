@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
+	"github.com/golang/protobuf/proto"
+	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -331,35 +334,33 @@ func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool 
 	} else {
 		tmpfile.WriteString("# Automatically generated\n")
 		for _, wifi := range wconfig.Wifi {
+			cred, err := getWifiCredential(wifi)
+			if err != nil {
+				continue
+			}
 			tmpfile.WriteString("network={\n")
 			s := fmt.Sprintf("        ssid=\"%s\"\n", wifi.SSID)
 			tmpfile.WriteString(s)
 			tmpfile.WriteString("        scan_ssid=1\n")
-			if wifi.KeyScheme == types.KeySchemeWpaPsk { // WPA-PSK
+			switch wifi.KeyScheme {
+			case types.KeySchemeWpaPsk: // WPA-PSK
 				tmpfile.WriteString("        key_mgmt=WPA-PSK\n")
-				if len(wifi.Crypto.Password) > 0 {
-					// XXX hook into TPM decryption library
-				} else {
-					// this assumes a hashed passphrase, otherwise need "" around string
-					s = fmt.Sprintf("        psk=%s\n", wifi.Password)
+				// this assumes a hashed passphrase, otherwise need "" around string
+				if len(cred.Password) > 0 {
+					s = fmt.Sprintf("        psk=%s\n", cred.Password)
+					tmpfile.WriteString(s)
 				}
-				tmpfile.WriteString(s)
-			} else if wifi.KeyScheme == types.KeySchemeWpaEap { // EAP PEAP
+			case types.KeySchemeWpaEap: // EAP PEAP
 				tmpfile.WriteString("        key_mgmt=WPA-EAP\n        eap=PEAP\n")
-				if len(wifi.Crypto.Identity) > 0 {
-					// XXX hook into TPM decryption library
-				} else {
-					s = fmt.Sprintf("        identity=\"%s\"\n", wifi.Identity)
+				if len(cred.Identity) > 0 {
+					s = fmt.Sprintf("        identity=\"%s\"\n", cred.Identity)
+					tmpfile.WriteString(s)
 				}
-				tmpfile.WriteString(s)
-
-				if len(wifi.Crypto.Password) > 0 {
-					// XXX hook into TPM decryption library
-				} else {
-					s = fmt.Sprintf("        password=hash:%s\n", wifi.Password)
+				if len(cred.Password) > 0 {
+					s = fmt.Sprintf("        password=hash:%s\n", cred.Password)
+					tmpfile.WriteString(s)
 				}
-				tmpfile.WriteString(s)
-				// comment out the certifacatin verify. file.WriteString("        ca_cert=\"/config/ca.pem\"\n")
+				// comment out the certifacation verify. file.WriteString("        ca_cert=\"/config/ca.pem\"\n")
 				tmpfile.WriteString("        phase1=\"peaplabel=1\"\n")
 				tmpfile.WriteString("        phase2=\"auth=MSCHAPV2\"\n")
 			}
@@ -382,6 +383,32 @@ func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool 
 	}
 
 	return true
+}
+
+func getWifiCredential(wifi types.WifiConfig) (zconfig.CredentialBlock, error) {
+	cred := zconfig.CredentialBlock{}
+	if !wifi.IsCipher {
+		cred.Identity = wifi.Identity
+		cred.Password = wifi.Password
+		return cred, nil
+	}
+	if !wifi.IsValidCipher {
+		errStr := fmt.Sprintf("%s, Cipher Block is not ready", wifi.SSID)
+		log.Errorln(errStr)
+		return cred, errors.New(errStr)
+	}
+	clearData, err := tpmmgr.DecryptCipherBlock(wifi.CipherBlock)
+	if err != nil {
+		log.Errorf("%s, wifi CipherData decryption failed, %v\n",
+			wifi.SSID, err)
+		return cred, err
+	}
+	if err := proto.Unmarshal(clearData, &cred); err != nil {
+		log.Errorf("%s, wifi credential unmarshall failed, %v\n",
+			wifi.SSID, err)
+		return cred, err
+	}
+	return cred, nil
 }
 
 // CheckDNSUpdate sees if we should update based on DNS

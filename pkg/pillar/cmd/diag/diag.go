@@ -76,7 +76,7 @@ var simulateDnsFailure = false
 var simulatePingFailure = false
 var outfile = os.Stdout
 
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")

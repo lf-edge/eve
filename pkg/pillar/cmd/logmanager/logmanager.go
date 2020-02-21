@@ -22,6 +22,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/api/go/logs"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
@@ -59,6 +60,7 @@ var (
 	zedcloudCtx         zedcloud.ZedCloudContext
 
 	globalDeferInprogress bool
+	eveVersion            = readEveVersion("/etc/eve-release")
 )
 
 // global stuff
@@ -129,7 +131,7 @@ type zedcloudLogs struct {
 }
 
 // Run is an entry point into running logmanager
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	defaultLogdirname := agentlog.GetCurrentLogdir()
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug")
@@ -302,7 +304,7 @@ func Run() {
 		string(lastSentStr))
 
 	// Start sender of log events
-	go processEvents(currentPartition, lastSent, loggerChan)
+	go processEvents(currentPartition, lastSent, loggerChan, eveVersion)
 
 	// If we have a logdir from a failed update, then set that up
 	// as well.
@@ -325,7 +327,7 @@ func Run() {
 		log.Debugf("Other partition logs were last sent at %s\n",
 			string(lastSentStr))
 
-		go processEvents(otherPartition, lastSent, otherLoggerChan)
+		go processEvents(otherPartition, lastSent, otherLoggerChan, eveVersion)
 
 		go watch.WatchStatus(otherLogDirname, false, otherLogDirChanges)
 		otherCtx = loggerContext{logChan: otherLoggerChan,
@@ -365,6 +367,11 @@ func Run() {
 				warningTime, errorTime)
 
 		case change := <-deferredChan:
+			_, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, 1, 15)
+			if err != nil {
+				log.Infof("logmanager(Run): log message processing still in deferred state")
+				continue
+			}
 			start := time.Now()
 			done := zedcloud.HandleDeferred(change, 1*time.Second)
 			dbg.FreeOSMemory()
@@ -402,11 +409,7 @@ func parseAndSendSyslogEntries(ctx *loggerContext) {
 		if !ok {
 			continue
 		}
-		level, err := log.ParseLevel(logInfo.Level)
-		if err != nil {
-			log.Errorf("ParseLevel failed: %s\n", err)
-			level = log.InfoLevel
-		}
+		level := parseLogLevel(logInfo.Level)
 		if dropEvent(logInfo.Source, level) {
 			log.Debugf("Dropping source %s level %v\n",
 				logInfo.Source, level)
@@ -490,7 +493,7 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 // This runs as a separate go routine sending out data
 // Compares and drops events which have already been sent to the cloud
 func processEvents(image string, prevLastSent time.Time,
-	logChan <-chan logEntry) {
+	logChan <-chan logEntry, eveVersion string) {
 
 	log.Infof("processEvents(%s, %s)\n", image, prevLastSent.String())
 
@@ -510,9 +513,15 @@ func processEvents(image string, prevLastSent time.Time,
 		// but if the condition persists it will be set in a bit
 		if deferInprogress {
 			log.Warnf("processEvents(%s) deferInprogress", image)
-			time.Sleep(2 * time.Minute)
+			time.Sleep(30 * time.Second)
 			if globalDeferInprogress {
 				log.Warnf("processEvents(%s) globalDeferInprogress",
+					image)
+				continue
+			}
+			_, err := devicenetwork.VerifyDeviceNetworkStatus(*deviceNetworkStatus, 1, 15)
+			if err != nil {
+				log.Infof("processEvents:(%s) log message processing still in deferred state",
 					image)
 				continue
 			}
@@ -531,7 +540,7 @@ func processEvents(image string, prevLastSent time.Time,
 					return
 				}
 				sent = sendProtoStrForLogs(reportLogs, image,
-					iteration)
+					iteration, eveVersion)
 				if sent {
 					recordLast(lastSentDirname, image)
 				} else {
@@ -557,7 +566,7 @@ func processEvents(image string, prevLastSent time.Time,
 			log.Debugf("processEvents(%s): sending at messageCount %d, byteCount %d\n",
 				image, messageCount, byteCount)
 			sent = sendProtoStrForLogs(reportLogs, image,
-				iteration)
+				iteration, eveVersion)
 			messageCount = 0
 			iteration++
 			if sent {
@@ -576,7 +585,7 @@ func processEvents(image string, prevLastSent time.Time,
 				dropped, messageCount,
 				proto.Size(reportLogs))
 			sent := sendProtoStrForLogs(reportLogs, image,
-				iteration)
+				iteration, eveVersion)
 			messageCount = 0
 			iteration++
 			if sent {
@@ -670,10 +679,11 @@ func handleLogEvent(event logEntry, reportLogs *logs.LogBundle, counter int) {
 
 // Returns true if a message was successfully sent
 func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
-	iteration int) bool {
+	iteration int, eveVersion string) bool {
 	reportLogs.Timestamp = ptypes.TimestampNow()
 	reportLogs.DevID = *proto.String(devUUID.String())
 	reportLogs.Image = image
+	reportLogs.EveVersion = eveVersion
 
 	log.Debugln("sendProtoStrForLogs called...", iteration)
 	data, err := proto.Marshal(reportLogs)
@@ -919,11 +929,7 @@ func readLineToEvent(r *logfileReader, logChan chan<- logEntry) {
 			} else {
 				lastTime = timestamp
 			}
-			level, err := log.ParseLevel(loginfo.Level)
-			if err != nil {
-				log.Errorf("ParseLevel failed: %s\n", err)
-				level = log.InfoLevel
-			}
+			level := parseLogLevel(loginfo.Level)
 			if dropEvent(r.source, level) {
 				log.Debugf("Dropping source %s level %v\n",
 					r.source, level)
@@ -1097,4 +1103,37 @@ func dropEvent(source string, level log.Level) bool {
 		return level > l
 	}
 	return false
+}
+
+func parseLogLevel(logLevel string) log.Level {
+	level, err := log.ParseLevel(logLevel)
+	if err != nil {
+		// XXX Some of the log sources send logs with
+		// severity set to err, emerg & notice.
+		// Logrus log level parse does not recognize the above severities.
+		// Map err, emerg to error and notice to info.
+		if logLevel == "err" || logLevel == "emerg" {
+			level = log.ErrorLevel
+		} else if logLevel == "notice" {
+			level = log.InfoLevel
+		} else {
+			log.Errorf("ParseLevel failed: %s, defaulting log level to Info\n", err)
+			level = log.InfoLevel
+		}
+	}
+	return level
+}
+
+func readEveVersion(fileName string) string {
+	version, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		log.Errorf("readEveVersion: Error reading EVE version from file %s", fileName)
+		return "Unknown"
+	}
+	versionStr := string(version)
+	versionStr = strings.TrimSpace(versionStr)
+	if versionStr == "" {
+		return "Unknown"
+	}
+	return versionStr
 }

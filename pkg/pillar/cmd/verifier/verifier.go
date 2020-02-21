@@ -79,7 +79,7 @@ var debug = false
 var debugOverride bool                                // From command line arg
 var downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
 
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")

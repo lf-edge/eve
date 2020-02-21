@@ -80,7 +80,7 @@ type baseOsMgrContext struct {
 var debug = false
 var debugOverride bool // From command line arg
 
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")

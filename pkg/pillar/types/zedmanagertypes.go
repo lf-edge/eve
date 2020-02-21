@@ -65,8 +65,12 @@ type AppInstanceConfig struct {
 	IoAdapterList       []IoAdapter
 	RestartCmd          AppInstanceOpsCmd
 	PurgeCmd            AppInstanceOpsCmd
-	CloudInitUserData   *string // base64-encoded
-	RemoteConsole       bool
+	// XXX: to be deprecated, use CipherBlock instead
+	CloudInitUserData *string // base64-encoded
+	RemoteConsole     bool
+
+	// CipherBlock, for encrypted cloud-init data
+	CipherBlock
 }
 
 type AppInstanceOpsCmd struct {
@@ -216,6 +220,7 @@ type EIDOverlayConfig struct {
 	AppMacAddr net.HardwareAddr // If set use it for vif
 	AppIPAddr  net.IP           // EIDv4 or EIDv6
 	Network    uuid.UUID
+	IntfOrder  int32 // XXX need to get from API
 
 	// Error
 	//	If there is a parsing error and this uLNetwork config cannot be

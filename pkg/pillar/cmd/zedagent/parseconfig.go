@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -65,6 +66,7 @@ func parseConfig(config *zconfig.EdgeDevConfig, getconfigCtx *getconfigContext,
 		// on Physio configuration and Networks configuration. If either of
 		// Physio or Networks change, we should re-parse system adapters and
 		// publish updated configuration.
+		parseCipherContextConfig(getconfigCtx, config)
 		forceSystemAdaptersParse := physioChanged || networksChanged
 		parseSystemAdapterConfig(config, getconfigCtx, forceSystemAdaptersParse)
 		parseBaseOsConfig(getconfigCtx, config)
@@ -926,6 +928,7 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		if datastore.Region == "" {
 			datastore.Region = "us-west-2"
 		}
+		datastore.CipherBlock = parseCipherBlock(ctx, ds.GetCipherData())
 		ctx.pubDatastoreConfig.Publish(datastore.Key(), *datastore)
 	}
 }
@@ -1089,7 +1092,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 	}
 
 	// wireless property configuration
-	config.WirelessCfg = parseNetworkWirelessConfig(netEnt)
+	config.WirelessCfg = parseNetworkWirelessConfig(ctx, netEnt)
 
 	ipspec := netEnt.GetIp()
 	switch config.Type {
@@ -1170,7 +1173,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 	return config
 }
 
-func parseNetworkWirelessConfig(netEnt *zconfig.NetworkConfig) types.WirelessConfig {
+func parseNetworkWirelessConfig(ctx *getconfigContext, netEnt *zconfig.NetworkConfig) types.WirelessConfig {
 	var wconfig types.WirelessConfig
 
 	netWireless := netEnt.GetWireless()
@@ -1206,11 +1209,8 @@ func parseNetworkWirelessConfig(netEnt *zconfig.NetworkConfig) types.WirelessCon
 			}
 			wifi.Identity = wificfg.GetIdentity()
 			wifi.Password = wificfg.GetPassword()
-			zcrypto := wificfg.GetCrypto()
-			wifi.Crypto.Identity = zcrypto.GetIdentity()
-			wifi.Crypto.Password = zcrypto.GetPassword()
-
 			wifi.Priority = wificfg.GetPriority()
+			wifi.CipherBlock = parseCipherBlock(ctx, wificfg.GetCipherData())
 
 			wconfig.Wifi = append(wconfig.Wifi, wifi)
 		}
@@ -1358,6 +1358,20 @@ func parseUnderlayNetworkConfig(appInstance *types.AppInstanceConfig,
 				intfEnt.Name, ulCfg.Error)
 		}
 	}
+	// sort based on intfOrder
+	// XXX remove? Debug?
+	if len(appInstance.UnderlayNetworkList) > 1 {
+		log.Infof("XXX pre sort %+v", appInstance.UnderlayNetworkList)
+	}
+	sort.Slice(appInstance.UnderlayNetworkList[:],
+		func(i, j int) bool {
+			return appInstance.UnderlayNetworkList[i].IntfOrder <
+				appInstance.UnderlayNetworkList[j].IntfOrder
+		})
+	// XXX remove? Debug?
+	if len(appInstance.UnderlayNetworkList) > 1 {
+		log.Infof("XXX post sort %+v", appInstance.UnderlayNetworkList)
+	}
 }
 
 func isOverlayNetwork(netEnt *zconfig.NetworkConfig) bool {
@@ -1381,7 +1395,8 @@ func parseUnderlayNetworkConfigEntry(
 
 	ulCfg := new(types.UnderlayNetworkConfig)
 	ulCfg.Name = intfEnt.Name
-
+	// XXX set ulCfg.IntfOrder from API once available
+	var intfOrder int32
 	// Lookup NetworkInstance ID
 	networkInstanceEntry := lookupNetworkInstanceId(intfEnt.NetworkId,
 		cfgNetworkInstances)
@@ -1451,6 +1466,10 @@ func parseUnderlayNetworkConfigEntry(
 		aclCfg.Actions = make([]types.ACEAction,
 			len(acl.Actions))
 		aclCfg.RuleID = acl.Id
+		// XXX temporary until we get an intfOrder in the API
+		if intfOrder == 0 {
+			intfOrder = acl.Id
+		}
 		aclCfg.Name = acl.Name
 		aclCfg.Dir = types.ACEDirection(acl.Dir)
 		for matchIdx, match := range acl.Matches {
@@ -1473,6 +1492,8 @@ func parseUnderlayNetworkConfigEntry(
 		}
 		ulCfg.ACLs[aclIdx] = *aclCfg
 	}
+	// XXX set ulCfg.IntfOrder from API once available
+	ulCfg.IntfOrder = intfOrder
 	return ulCfg
 }
 
@@ -1484,6 +1505,8 @@ func parseOverlayNetworkConfigEntry(
 
 	olCfg := new(types.EIDOverlayConfig)
 	olCfg.Name = intfEnt.Name
+	// XXX set olCfg.IntfOrder from API once available
+	var intfOrder int32
 
 	// Lookup NetworkInstance ID
 	networkInstanceEntry := lookupNetworkInstanceId(intfEnt.NetworkId,
@@ -1563,6 +1586,10 @@ func parseOverlayNetworkConfigEntry(
 		aclCfg.Actions = make([]types.ACEAction,
 			len(acl.Actions))
 		aclCfg.RuleID = acl.Id
+		// XXX temporary until we get an intfOrder in the API
+		if intfOrder == 0 {
+			intfOrder = acl.Id
+		}
 		aclCfg.Name = acl.Name
 		aclCfg.Dir = types.ACEDirection(acl.Dir)
 		for matchIdx, match := range acl.Matches {
@@ -1588,6 +1615,8 @@ func parseOverlayNetworkConfigEntry(
 	olCfg.EIDConfigDetails.LispSignature = intfEnt.Lispsignature
 	olCfg.EIDConfigDetails.PemCert = intfEnt.Pemcert
 	olCfg.EIDConfigDetails.PemPrivateKey = intfEnt.Pemprivatekey
+	// XXX set olCfg.IntfOrder from API once available
+	olCfg.IntfOrder = intfOrder
 
 	return olCfg
 }
@@ -1612,6 +1641,20 @@ func parseOverlayNetworkConfig(appInstance *types.AppInstanceConfig,
 			log.Errorf("Error in Interface(%s) config. Error: %s",
 				intfEnt.Name, olCfg.Error)
 		}
+	}
+	// sort based on intfOrder
+	// XXX remove? Debug?
+	if len(appInstance.OverlayNetworkList) > 1 {
+		log.Infof("XXX pre sort %+v", appInstance.OverlayNetworkList)
+	}
+	sort.Slice(appInstance.OverlayNetworkList[:],
+		func(i, j int) bool {
+			return appInstance.OverlayNetworkList[i].IntfOrder <
+				appInstance.OverlayNetworkList[j].IntfOrder
+		})
+	// XXX remove? Debug?
+	if len(appInstance.OverlayNetworkList) > 1 {
+		log.Infof("XXX post sort %+v", appInstance.OverlayNetworkList)
 	}
 }
 

@@ -24,12 +24,17 @@ type DomainConfig struct {
 	Activate       bool   // Actually start the domU as opposed to prepare
 	AppNum         int    // From networking; makes the name unique
 	VmConfig
-	DiskConfigList    []DiskConfig
-	VifList           []VifInfo
-	IoAdapterList     []IoAdapter
+	DiskConfigList []DiskConfig
+	VifList        []VifInfo
+	IoAdapterList  []IoAdapter
+
+	// XXX: to be deprecated, use CipherBlock instead
 	CloudInitUserData *string // base64-encoded
 	// Container related info
 	IsContainer bool // Is this Domain for a Container?
+
+	// CipherBlock, for encrypted cloud-init data
+	CipherBlock
 }
 
 func (config DomainConfig) Key() string {

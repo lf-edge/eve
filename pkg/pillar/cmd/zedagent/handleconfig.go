@@ -59,6 +59,8 @@ type getconfigContext struct {
 	pubBaseOsConfig          pubsub.Publication
 	pubDatastoreConfig       pubsub.Publication
 	pubNetworkInstanceConfig pubsub.Publication
+	pubCipherContextConfig   pubsub.Publication
+	pubControllerCertConfig  pubsub.Publication
 	rebootFlag               bool
 }
 
@@ -265,8 +267,6 @@ func getLatestConfig(url string, iteration int,
 	utils.UpdateLedManagerConfig(4)
 	getconfigCtx.ledManagerCount = 4
 
-	writeReceivedProtoMessage(contents)
-
 	if !getconfigCtx.configReceived {
 		getconfigCtx.configReceived = true
 	}
@@ -276,6 +276,8 @@ func getLatestConfig(url string, iteration int,
 		log.Debugf("Configuration from zedcloud is unchanged\n")
 		return false
 	}
+	writeReceivedProtoMessage(contents)
+
 	return inhaleDeviceConfig(config, getconfigCtx, false)
 }
 
