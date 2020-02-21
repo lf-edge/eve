@@ -319,12 +319,15 @@ func doInstallProcessStorageEntriesWithVerifiedImage(
 			ssPtr.Progress = 100
 			changed = true
 		}
+		c := ensureVerifiedRefCount(ctx, appInstUUID, ssPtr)
+		if c {
+			changed = true
+		}
 		return isPtr, nil, nil, changed
 	}
 	// Check if image is already verified
 	// Look for matching sha if ssPtr.ImageSha256 is set and we didn't
 	// find based on ImageID
-	// XXX For containers we need a appUUID+ImageID map to the to be used ImageSha
 	vs := lookupVerifyImageStatus(ctx, imageID)
 	if vs == nil {
 		log.Infof("Verifier status not found for %s sha %s",
@@ -333,8 +336,8 @@ func doInstallProcessStorageEntriesWithVerifiedImage(
 		if ps == nil || ps.Expired {
 			return nil, nil, nil, false
 		}
-		log.Infof("XXX Found based on ImageSha256 %s imageID %s: %+v",
-			ssPtr.ImageSha256, imageID, ps)
+		log.Infof("Found %s based on ImageSha256 %s imageID %s",
+			ssPtr.Name, ssPtr.ImageSha256, imageID)
 
 		if ssPtr.State != types.DOWNLOADED {
 			ssPtr.State = types.DOWNLOADED
@@ -351,8 +354,8 @@ func doInstallProcessStorageEntriesWithVerifiedImage(
 		}
 		return nil, nil, ps, changed
 	}
-	log.Infof("XXX Found based on ImageIS %s imageSha %s: %+v",
-		imageID, ssPtr.ImageSha256, vs)
+	log.Infof("Found %s based on ImageID %s imageSha %s",
+		ssPtr.Name, imageID, ssPtr.ImageSha256)
 
 	switch vs.State {
 	case types.DELIVERED:
@@ -371,6 +374,7 @@ func doInstallProcessStorageEntriesWithVerifiedImage(
 		log.Infof("updating imagesha from %s to %s", ssPtr.ImageSha256,
 			vs.ImageSha256)
 		ssPtr.ImageSha256 = vs.ImageSha256
+		addAppAndImageHash(ctx, appInstUUID, ssPtr.ImageID, ssPtr.ImageSha256)
 		changed = true
 	}
 	if ssPtr.IsContainer {
@@ -395,6 +399,26 @@ func doInstallProcessStorageEntriesWithVerifiedImage(
 		"ImageID: %s,  vs.RefCount: %d, ssPtr.State: %d",
 		ssPtr.Name, ssPtr.ImageID, vs.RefCount, ssPtr.State)
 	return isPtr, vs, nil, changed
+}
+
+// Make sure we have a reference on the golden, verified image
+// as long as that image already exists in verifier.
+// Returns changed boolean
+func ensureVerifiedRefCount(ctx *zedmanagerContext, appInstUUID uuid.UUID,
+	ssPtr *types.StorageStatus) bool {
+
+	changed := false
+	if !ssPtr.HasVerifierRef &&
+		(lookupVerifyImageStatus(ctx, ssPtr.ImageID) != nil ||
+			lookupPersistImageStatus(ctx, ssPtr.ImageSha256) != nil) {
+
+		log.Infof("!HasVerifierRef")
+		// We don't need certs since Status already exists
+		MaybeAddVerifyImageConfig(ctx, appInstUUID.String(), *ssPtr, false)
+		ssPtr.HasVerifierRef = true
+		changed = true
+	}
+	return changed
 }
 
 func doInstall(ctx *zedmanagerContext,
@@ -447,6 +471,8 @@ func doInstall(ctx *zedmanagerContext,
 				newSs = append(newSs, *ss)
 				removed = true
 			}
+			deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
+				ss.ImageID)
 		}
 		log.Infof("purge inactive (%s) storageStatus from %d to %d\n",
 			config.Key(), len(status.StorageStatusList), len(newSs))
@@ -477,6 +503,7 @@ func doInstall(ctx *zedmanagerContext,
 		newSs := types.StorageStatus{}
 		newSs.UpdateFromStorageConfig(sc)
 		log.Infof("Adding new StorageStatus %v\n", newSs)
+		maybeLatchImageSha(ctx, config, &newSs)
 		status.StorageStatusList = append(status.StorageStatusList, newSs)
 		changed = true
 	}
@@ -519,6 +546,7 @@ func doInstall(ctx *zedmanagerContext,
 			if minState > ss.State {
 				minState = ss.State
 			}
+			continue
 		}
 		if !ss.HasDownloaderRef {
 			log.Infof("doInstall !HasDownloaderRef for %s\n",
@@ -655,6 +683,8 @@ func doInstall(ctx *zedmanagerContext,
 			log.Infof("Update SSL ActiveFileLocation for %s: %s\n",
 				uuidStr, ss.ActiveFileLocation)
 			changed = true
+			ensureVerifiedRefCount(ctx, config.UUIDandVersion.UUID,
+				ss)
 		} else {
 			// Look based on ImageID and SHA
 			vs := lookupVerifyImageStatus(ctx, ss.ImageID)
@@ -668,7 +698,8 @@ func doInstall(ctx *zedmanagerContext,
 						imageID, ss.ImageSha256)
 					continue
 				}
-				log.Infof("XXX Found based on ImageSha256 %s imageID %s: %+v", ss.ImageSha256, imageID, ps)
+				log.Infof("Found %s based on ImageSha256 %s imageID %s",
+					ss.Name, ss.ImageSha256, imageID)
 				// If we don't already have a RefCount add one
 				if !ss.HasVerifierRef {
 					log.Infof("!HasVerifierRef")
@@ -679,15 +710,15 @@ func doInstall(ctx *zedmanagerContext,
 				}
 				continue
 			}
-			log.Infof("XXX Found based on ImageID %s sha %s: %+v",
-				imageID, ss.ImageSha256, vs)
-			log.Infof("Found VerifyImageStatus for URL %s imageID %s sha %s",
-				ss.Name, imageID, vs.ImageSha256)
+			log.Infof("Found %s based on ImageID %s sha %s",
+				ss.Name, imageID, ss.ImageSha256)
 
 			if ss.ImageSha256 != vs.ImageSha256 {
 				log.Infof("updating image sha from %s to %s",
 					ss.ImageSha256, vs.ImageSha256)
 				ss.ImageSha256 = vs.ImageSha256
+				addAppAndImageHash(ctx, config.UUIDandVersion.UUID,
+					ss.ImageID, ss.ImageSha256)
 				changed = true
 			}
 			if minState > vs.State {
@@ -1155,6 +1186,8 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 		if c {
 			changed = true
 		}
+		deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
+			ss.ImageID)
 	}
 	log.Infof("purgeCmdDone(%s) storageStatus from %d to %d\n",
 		config.Key(), len(status.StorageStatusList), len(newSs))
@@ -1380,6 +1413,8 @@ func doUninstall(ctx *zedmanagerContext, uuidStr string,
 		if c {
 			changed = true
 		}
+		deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
+			ss.ImageID)
 	}
 	log.Debugf("Done with all verify and downloader removes for %s\n", uuidStr)
 

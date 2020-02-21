@@ -453,3 +453,17 @@ type SignatureInfo struct {
 	SignerCertPem        []byte
 	Signature            []byte
 }
+
+// AppAndImageToHash is used to retain <app,image> to sha maps across reboots.
+// Key for OCI images which can be specified with a tag and we need to be
+// able to latch the sha and choose when to update/refresh from the tag.
+type AppAndImageToHash struct {
+	AppUUID uuid.UUID
+	ImageID uuid.UUID
+	Hash    string
+}
+
+// Key is used for pubsub
+func (aih AppAndImageToHash) Key() string {
+	return fmt.Sprintf("%s.%s", aih.AppUUID.String(), aih.ImageID.String())
+}

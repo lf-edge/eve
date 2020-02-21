@@ -199,21 +199,32 @@ func updatePersistImageConfig(ctx *baseOsMgrContext, objType string,
 	var refcount uint
 	sub := ctx.subBaseOsVerifierStatus
 	items := sub.GetAll()
+	name := ""
 	for _, s := range items {
 		status := s.(types.VerifyImageStatus)
 		if status.ImageSha256 == imageSha {
 			log.Infof("Adding RefCount %d from %s to %s",
 				status.RefCount, status.ImageID, imageSha)
 			refcount += status.RefCount
+			name = status.Name
 		}
 	}
 	config := lookupPersistConfig(ctx, objType, imageSha)
 	if config == nil {
 		log.Errorf("updatePersistImageConfig(%s/%s): config not found",
 			objType, imageSha)
-		return
-	}
-	if config.RefCount == refcount {
+		if refcount == 0 {
+			return
+		}
+		n := types.PersistImageConfig{
+			VerifyConfig: types.VerifyConfig{
+				Name:        name,
+				ImageSha256: imageSha,
+			},
+			RefCount: 0,
+		}
+		config = &n
+	} else if config.RefCount == refcount {
 		log.Infof("updatePersistImageConfig(%s/%s): no RefCount change %d",
 			objType, imageSha, refcount)
 		return
