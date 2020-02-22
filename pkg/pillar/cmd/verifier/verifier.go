@@ -1192,40 +1192,11 @@ func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 			status.ImageID)
 	}
 
-	doDelete(status)
+	// When the refcount on PersistImageConfig drops and we do
+	// the Expire dance we will delete the actual verified file.
 
 	unpublishVerifyImageStatus(ctx, status)
 	log.Infof("handleDelete done for %s\n", status.ImageID)
-}
-
-// Remove the file from any of the three directories
-// Only if it verified (state DELIVERED) do we delete the final. Needed
-// to avoid deleting a different verified file with same sha as this claimed
-// to have
-func doDelete(status *types.VerifyImageStatus) {
-	log.Infof("doDelete(%s)\n", status.ImageID)
-
-	_, verifierDirname, verifiedDirname := status.ImageDownloadDirNames()
-
-	_, err := os.Stat(verifierDirname)
-	if err == nil {
-		log.Infof("doDelete removing verifier %s\n", verifierDirname)
-		if err := os.RemoveAll(verifierDirname); err != nil {
-			log.Fatal(err)
-		}
-	}
-	_, err = os.Stat(verifiedDirname)
-	if err == nil && status.State == types.DELIVERED {
-		if _, err := os.Stat(preserveFilename); err != nil {
-			log.Infof("doDelete removing %s\n", verifiedDirname)
-			if err := os.RemoveAll(verifiedDirname); err != nil {
-				log.Fatal(err)
-			}
-		} else {
-			log.Infof("doDelete preserving %s\n", verifiedDirname)
-		}
-	}
-	log.Infof("doDelete(%s) done\n", status.ImageID)
 }
 
 // Handles both create and modify events
