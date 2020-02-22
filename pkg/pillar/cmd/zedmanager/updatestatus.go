@@ -191,7 +191,8 @@ func checkDiskSize(ctxPtr *zedmanagerContext) error {
 		appDiskSize, diskSizeList, err := utils.GetDiskSizeForAppInstance(iterStatus)
 		if err != nil {
 			log.Errorf("checkDiskSize: err: %s", err.Error())
-			return err
+			// Assume application is going down and its disks
+			// are going away.
 		}
 		totalAppDiskSize += appDiskSize
 		appDiskSizeList += fmt.Sprintf("App: %s (Size: %d)\n%s\n",
