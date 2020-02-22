@@ -38,7 +38,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -79,7 +78,6 @@ type verifierContext struct {
 	assignableAdapters     *types.AssignableAdapters
 	subAssignableAdapters  pubsub.Subscription
 	gc                     *time.Ticker
-	RktGCGracePeriod       uint32
 	GCInitialized          bool
 }
 
@@ -535,34 +533,6 @@ func gcVerifiedObjects(ctx *verifierContext) {
 			publishPersistImageStatus(ctx, &status)
 		}
 	}
-
-	// Run rkt garbage collect
-	rktGc(ctx.RktGCGracePeriod, false)
-	rktGc(ctx.RktGCGracePeriod, true)
-}
-
-func rktGc(gracePeriod uint32, imageGc bool) {
-	log.Infof("rktGc %d\n", gracePeriod)
-
-	gracePeriodOption := fmt.Sprintf("--grace-period=%ds", gracePeriod)
-	cmd := "rkt"
-	args := []string{}
-	if imageGc {
-		args = append(args, "image")
-	}
-	args = append(args, []string{
-		"gc",
-		"--dir=" + types.PersistRktDataDir,
-		gracePeriodOption,
-	}...)
-	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
-	if err != nil {
-		log.Errorf("***rkt gc failed: %+v ", err)
-		log.Errorf("***rkt gc output: %s", string(stdoutStderr))
-		return
-	}
-	log.Debugf("rkt gc done: %s", string(stdoutStderr))
-	return
 }
 
 func updateVerifyErrStatus(ctx *verifierContext,
@@ -1274,9 +1244,6 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	if gcp != nil {
 		if gcp.DownloadGCTime != 0 {
 			downloadGCTime = time.Duration(gcp.DownloadGCTime) * time.Second
-		}
-		if gcp.RktGCGracePeriod != 0 {
-			ctx.RktGCGracePeriod = gcp.RktGCGracePeriod
 		}
 		ctx.GCInitialized = true
 	}

@@ -90,6 +90,7 @@ type domainContext struct {
 	vdiskGCTime            uint32 // In seconds
 	domainBootRetryTime    uint32 // In seconds
 	metricInterval         uint32 // In seconds
+	RktGCGracePeriod       uint32
 }
 
 // appRwImageName - Returns name of the image ( including parent dir )
@@ -357,6 +358,9 @@ func Run(ps *pubsub.PubSub) {
 	}
 	domainCtx.subDomainConfig = subDomainConfig
 	subDomainConfig.Activate()
+
+	// Start Rkt GC handler
+	go runRktGcHandler(&domainCtx)
 
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse
@@ -753,6 +757,18 @@ func runHandler(ctx *domainContext, key string, c <-chan Notify) {
 		}
 	}
 	log.Infof("runHandler(%s) DONE\n", key)
+}
+
+func runRktGcHandler(ctxPtr *domainContext) {
+	// Start the first timer after 10 mins
+	timer := time.NewTimer(100 * time.Minute)
+	for true {
+		<-timer.C
+		rktGc(ctxPtr.RktGCGracePeriod, false)
+		rktGc(ctxPtr.RktGCGracePeriod, true)
+		timer = time.NewTimer(
+			time.Duration(ctxPtr.RktGCGracePeriod) * time.Second)
+	}
 }
 
 // doStopDestroyDomain will destroy the domain of an instance if qemu is crashed
@@ -2848,9 +2864,16 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		if gcp.MetricInterval != 0 {
 			ctx.metricInterval = gcp.MetricInterval
 		}
+		if gcp.RktGCGracePeriod != 0 {
+			ctx.RktGCGracePeriod = gcp.RktGCGracePeriod
+		}
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s. VdiskGCTime: %d, "+
+		"DomainBootRetryTime: %d, usbAccess: %t, metricInterval: %d, "+
+		"RktGCGracePeriod: %d",
+		key, ctx.vdiskGCTime, ctx.domainBootRetryTime, ctx.usbAccess,
+		ctx.metricInterval, ctx.RktGCGracePeriod)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
