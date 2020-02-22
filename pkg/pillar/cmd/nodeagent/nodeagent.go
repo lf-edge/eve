@@ -521,7 +521,10 @@ func isZedAgentAlive(ctxPtr *nodeagentContext) bool {
 // we will push this as part of baseos status
 func handleLastRebootReason(ctx *nodeagentContext) {
 
-	ctx.rebootReason, ctx.rebootTime, ctx.rebootStack =
+	// ctx.rebootStack is sent by timer hence don't set it
+	// until after truncation.
+	var rebootStack = ""
+	ctx.rebootReason, ctx.rebootTime, rebootStack =
 		agentlog.GetCurrentRebootReason()
 	if ctx.rebootReason != "" {
 		log.Warnf("Current partition rebooted reason: %s\n",
@@ -549,13 +552,13 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	if ctx.rebootReason == "" {
 		ctx.rebootReason = otherRebootReason
 		ctx.rebootTime = otherRebootTime
-		ctx.rebootStack = otherRebootStack
+		rebootStack = otherRebootStack
 	}
 	// if still not found, pick up the common
 	if ctx.rebootReason == "" {
 		ctx.rebootReason = commonRebootReason
 		ctx.rebootTime = commonRebootTime
-		ctx.rebootStack = commonRebootStack
+		rebootStack = commonRebootStack
 	}
 
 	// still nothing, fillup the default
@@ -573,7 +576,7 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 		log.Warnf(reason)
 		ctx.rebootReason = reason
 		ctx.rebootTime = time.Now()
-		ctx.rebootStack = ""
+		rebootStack = ""
 	}
 	// remove the first boot file, if it is present
 	if fileExists(firstbootFile) {
@@ -581,13 +584,14 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	}
 
 	// if reboot stack size crosses max size, truncate
-	if len(ctx.rebootStack) > maxJSONAttributeSize {
-		runes := bytes.Runes([]byte(ctx.rebootStack))
+	if len(rebootStack) > maxJSONAttributeSize {
+		runes := bytes.Runes([]byte(rebootStack))
 		if len(runes) > maxJSONAttributeSize {
 			runes = runes[:maxRebootStackSize]
 		}
-		ctx.rebootStack = fmt.Sprintf("Truncated stack: %v", string(runes))
+		rebootStack = fmt.Sprintf("Truncated stack: %v", string(runes))
 	}
+	ctx.rebootStack = rebootStack
 	// Read and increment restartCounter
 	ctx.restartCounter = incrementRestartCounter()
 }
