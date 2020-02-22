@@ -31,6 +31,7 @@ type UpdateStats struct {
 // NotifChan channel for sending status updates
 type NotifChan chan UpdateStats
 
+// CustomWriter is a writer which will send the download progress
 type CustomWriter struct {
 	fp        *os.File
 	upSize    UpdateStats
@@ -42,7 +43,6 @@ func (r *CustomWriter) Write(p []byte) (int, error) {
 	if err != nil {
 		return n, err
 	}
-	// Got the length have read( or means has uploaded), and you can construct your message
 	atomic.AddInt64(&r.upSize.Asize, int64(n))
 
 	sendStats(r.prgNotify, r.upSize)
