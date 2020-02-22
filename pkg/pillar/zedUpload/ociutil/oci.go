@@ -13,6 +13,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	log "github.com/sirupsen/logrus"
+	"sync/atomic"
 )
 
 const (
@@ -29,6 +30,25 @@ type UpdateStats struct {
 
 // NotifChan channel for sending status updates
 type NotifChan chan UpdateStats
+
+type CustomWriter struct {
+	fp        *os.File
+	upSize    UpdateStats
+	prgNotify NotifChan
+}
+
+func (r *CustomWriter) Write(p []byte) (int, error) {
+	n, err := r.fp.Write(p)
+	if err != nil {
+		return n, err
+	}
+	// Got the length have read( or means has uploaded), and you can construct your message
+	atomic.AddInt64(&r.upSize.Asize, int64(n))
+
+	sendStats(r.prgNotify, r.upSize)
+
+	return n, err
+}
 
 // Tags return all known tags for a given repository on a given registry.
 // Optionally, can use authentication of username and apiKey as provided, else defaults
@@ -112,22 +132,27 @@ func Pull(registry, repo, localFile, username, apiKey string, client *http.Clien
 		return manifestDirect, manifestResolved, size, fmt.Errorf("unable to create directory to store downloaded file %s: %v", localDir, err)
 	}
 
+	w, err := os.Create(localFile)
+	if err != nil {
+		return manifestDirect, manifestResolved, size, err
+	}
+
+	cWriter := &CustomWriter{
+		fp:        w,
+		upSize:    stats,
+		prgNotify: prgchan,
+	}
+	defer w.Close()
+
 	// create a local file to write the output
 	// this uses the v1/tarball to write it, which is fully compatible with docker save.
 	// However, it is missing the "repositories" file, so we add it.
 	// Eventially, we may want to move to an entire cache of the registry in the
 	// OCI layout format.
-	err = tarball.WriteToFile(localFile, ref, img)
+	err = tarball.Write(ref, img, cWriter)
 	if err != nil {
 		return manifestDirect, manifestResolved, size, fmt.Errorf("error saving to %s: %v", localFile, err)
 	}
-	fi, err := os.Stat(localFile)
-	if err != nil {
-		return manifestDirect, manifestResolved, size, fmt.Errorf("error validating %s: %v", localFile, err)
-	}
-	// cheat a bit and write the total size, assuming it not to be bigger than our size
-	stats.Asize = max(stats.Size, fi.Size())
-	sendStats(prgchan, stats)
 	return manifestDirect, manifestResolved, size, nil
 }
 
