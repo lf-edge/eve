@@ -1579,12 +1579,16 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			ds.ActiveFileLocation = target
 			ds.FileLocation = target
 		} else {
+			if target != "" {
+				log.Infof("XXX Did not find target at %s for ContainerImageId(%s), ImageSha256(%s)",
+					target, ds.ImageID.String(), dc.ImageSha256)
+			}
 			log.Infof("getting image file location IsContainer(%v), ContainerImageId(%s), ImageSha256(%s)",
 				status.IsContainer, ds.ImageID.String(), dc.ImageSha256)
 			location, err := utils.VerifiedImageFileLocation(ds.ImageSha256)
 			if err != nil {
-				log.Errorf("configToStatus: Failed to get Image File Location. "+
-					"err: %+s", err.Error())
+				log.Errorf("configToStatus: Failed to get Image File Location (target %s) err: %s",
+					target, err)
 				return err
 			}
 			ds.FileLocation = location
