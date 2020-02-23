@@ -228,8 +228,7 @@ func createDeviceKey() error {
 
 	tpmOwnerPasswd, err := etpm.ReadOwnerCrdl()
 	if err != nil {
-		log.Errorf("Reading owner credential failed: %s", err)
-		return err
+		log.Fatalf("Reading owner credential failed: %s", err)
 	}
 
 	//No previous key, create new one
@@ -671,8 +670,7 @@ func DecryptSecretWithEcdhKey(X, Y *big.Int, iv, ciphertext, plaintext []byte) e
 	p := tpm2.ECPoint{X: X, Y: Y}
 	tpmOwnerPasswd, err := etpm.ReadOwnerCrdl()
 	if err != nil {
-		log.Errorf("Reading owner credential failed: %s", err)
-		return err
+		log.Fatalf("Reading owner credential failed: %s", err)
 	}
 
 	//Recover the key, and decrypt the message (EVE node Part)
@@ -851,32 +849,48 @@ func Run(ps *pubsub.PubSub) {
 	switch flag.Args()[0] {
 	case "genKey":
 		if err = createDeviceKey(); err != nil {
-			log.Fatalf("Error in creating device primary key: %v ", err)
+			//No need for Fatal, caller will take action based on return code.
+			log.Errorf("Error in creating device primary key: %v ", err)
+			os.Exit(1)
 		}
 		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, true); err != nil {
-			log.Fatalf("Error in creating Endorsement key: %v ", err)
+			//No need for Fatal, caller will take action based on return code.
+			log.Errorf("Error in creating Endorsement key: %v ", err)
+			os.Exit(1)
 		}
 		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, true); err != nil {
-			log.Fatalf("Error in creating Srk key: %v ", err)
+			//No need for Fatal, caller will take action based on return code.
+			log.Errorf("Error in creating Srk key: %v ", err)
+			os.Exit(1)
 		}
 		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, true); err != nil {
-			log.Fatalf("Error in creating Attestation key: %v ", err)
+			//No need for Fatal, caller will take action based on return code.
+			log.Errorf("Error in creating Attestation key: %v ", err)
+			os.Exit(1)
 		}
 	case "readDeviceCert":
 		if err = readDeviceCert(); err != nil {
-			log.Fatalf("Error in reading device cert: %v", err)
+			//No need for Fatal, caller will take action based on return code.
+			log.Errorf("Error in reading device cert: %v", err)
+			os.Exit(1)
 		}
 	case "writeDeviceCert":
 		if err = writeDeviceCert(); err != nil {
-			log.Fatalf("Error in writing device cert: %v", err)
+			//No need for Fatal, caller will take action based on return code.
+			log.Errorf("Error in writing device cert: %v", err)
+			os.Exit(1)
 		}
 	case "readCredentials":
 		if err = readCredentials(); err != nil {
-			log.Fatalf("Error in reading credentials: %v", err)
+			//No need for Fatal, caller will take action based on return code.
+			log.Errorf("Error in reading credentials: %v", err)
+			os.Exit(1)
 		}
 	case "genCredentials":
 		if err = genCredentials(); err != nil {
-			log.Fatalf("Error in generating credentials: %v", err)
+			//No need for Fatal, caller will take action based on return code.
+			log.Errorf("Error in generating credentials: %v", err)
+			os.Exit(1)
 		}
 	case "runAsService":
 		log.Infof("Starting %s\n", agentName)
@@ -919,14 +933,24 @@ func Run(ps *pubsub.PubSub) {
 		}
 		log.Infof("processed GlobalConfig")
 
-		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
-			log.Fatalf("Error in creating Endorsement key: %v ", err)
+		if etpm.IsTpmEnabled() && !etpm.FileExists(etpm.TpmCredentialsFileName) {
+			err := readCredentials()
+			if err != nil {
+				//this indicates that we are in a very bad state
+				log.Fatalf("TPM is enabled, but credential file is absent: %v", err)
+			}
 		}
-		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, false); err != nil {
-			log.Fatalf("Error in creating Srk key: %v ", err)
-		}
-		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, false); err != nil {
-			log.Fatalf("Error in creating Attestation key: %v ", err)
+		if etpm.IsTpmEnabled() {
+			//Try to create additional entries only if we are running in TPM-Enabled mode
+			if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
+				log.Fatalf("Error in creating Endorsement key: %v ", err)
+			}
+			if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, false); err != nil {
+				log.Fatalf("Error in creating Srk key: %v ", err)
+			}
+			if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, false); err != nil {
+				log.Fatalf("Error in creating Attestation key: %v ", err)
+			}
 		}
 		for {
 			select {
@@ -942,8 +966,20 @@ func Run(ps *pubsub.PubSub) {
 		testTpmEcdhSupport()
 	case "testEcdhAES":
 		testEcdhAES()
+	case "createEkSrkAik":
+		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
+			log.Errorf("Error in creating Endorsement key: %v ", err)
+		}
+		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, false); err != nil {
+			log.Errorf("Error in creating Srk key: %v ", err)
+		}
+		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, false); err != nil {
+			log.Errorf("Error in creating Attestation key: %v ", err)
+		}
 	default:
-		log.Fatalf("Unknown argument %s", flag.Args()[0])
+		//No need for Fatal, caller will take action based on return code.
+		log.Errorf("Unknown argument %s", flag.Args()[0])
+		os.Exit(1)
 	}
 }
 
