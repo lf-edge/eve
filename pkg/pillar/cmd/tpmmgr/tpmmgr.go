@@ -942,14 +942,16 @@ func Run(ps *pubsub.PubSub) {
 		}
 		if etpm.IsTpmEnabled() {
 			//Try to create additional entries only if we are running in TPM-Enabled mode
+			//FIXME: On some platforms, these key creations are failing. Till we root-cause,
+			//use Errorf instead of Fatalf. The features that use these keys are not enabled yet.
 			if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
-				log.Fatalf("Error in creating Endorsement key: %v ", err)
+				log.Errorf("Error in creating Endorsement key: %v ", err)
 			}
 			if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, false); err != nil {
-				log.Fatalf("Error in creating Srk key: %v ", err)
+				log.Errorf("Error in creating Srk key: %v ", err)
 			}
 			if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, false); err != nil {
-				log.Fatalf("Error in creating Attestation key: %v ", err)
+				log.Errorf("Error in creating Attestation key: %v ", err)
 			}
 		}
 		for {
