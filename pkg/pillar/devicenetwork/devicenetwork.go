@@ -190,7 +190,6 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		if u.ParseError != "" {
 			globalStatus.Ports[ix].Error = u.ParseError
 			globalStatus.Ports[ix].ErrorTime = u.ParseErrorTime
-			continue
 		}
 		ifindex, err := IfnameToIndex(u.IfName)
 		if err != nil {

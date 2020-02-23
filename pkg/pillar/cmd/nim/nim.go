@@ -322,6 +322,7 @@ func Run(ps *pubsub.PubSub) {
 	updateFilteredFallback(&nimCtx)
 
 	// Kick off intial configuration, which could be remembered from last boot
+	// Prunes any useless entries
 	devicenetwork.IngestPortConfigList(dnc)
 
 	for nimCtx.networkFallbackAnyEth == types.TS_ENABLED &&
