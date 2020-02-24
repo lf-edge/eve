@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 // Matches the json output of qemu-img info
@@ -58,6 +59,23 @@ func ResizeImg(diskfile string, newsize uint64) error {
 		"resize", diskfile, fmt.Sprintf("%d", newsize)).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
+			err, output)
+		return errors.New(errStr)
+	}
+	return nil
+}
+
+// CreateScratchDisk will create a disk of given format and size
+func CreateScratchDisk(diskfile, format string, size uint64) error {
+
+	if _, err := os.Stat(diskfile); err == nil {
+		errStr := fmt.Sprintf("qemu-img create failed: Disk file already exists %s\n", diskfile)
+		return errors.New(errStr)
+	}
+	output, err := exec.Command("/usr/bin/qemu-img",
+		"create", "-f", strings.ToLower(format), "-o", fmt.Sprintf("size=%d", size), diskfile).CombinedOutput()
+	if err != nil {
+		errStr := fmt.Sprintf("qemu-img create failed: %s, %s\n",
 			err, output)
 		return errors.New(errStr)
 	}
