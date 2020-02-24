@@ -91,7 +91,7 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) bool {
 			time.Sleep(10 * time.Second)
 		}
 		log.Infof("dhcpcd %s not running", nuc.IfName)
-		extras := []string{"-f", "/dhcpcd.conf", "--noipv4ll", "-B"}
+		extras := []string{"-f", "/dhcpcd.conf", "--noipv4ll", "-b", "-t", "0"}
 		if nuc.Gateway != nil && nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
 		}
@@ -138,7 +138,7 @@ func doDhcpClientActivate(nuc types.NetworkPortConfig) bool {
 		log.Infof("dhcpcd %s not running", nuc.IfName)
 		args := []string{fmt.Sprintf("ip_address=%s", nuc.AddrSubnet)}
 
-		extras := []string{"-f", "/dhcpcd.conf", "-B"}
+		extras := []string{"-f", "/dhcpcd.conf", "-b", "-t", "0"}
 		if nuc.Gateway == nil || nuc.Gateway.String() == "0.0.0.0" {
 			extras = append(extras, "--nogateway")
 		} else if nuc.Gateway.String() != "" {
@@ -220,7 +220,7 @@ func doDhcpClientInactivate(nuc types.NetworkPortConfig) {
 }
 
 func dhcpcdCmd(op string, extras []string, ifname string, background bool) bool {
-	name := "dhcpcd"
+	name := "/sbin/dhcpcd"
 	args := append([]string{op}, extras...)
 	args = append(args, ifname)
 	if background {
