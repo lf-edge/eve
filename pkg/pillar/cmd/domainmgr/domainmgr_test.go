@@ -155,7 +155,7 @@ func TestFetchEnvVariablesFromCloudInit(t *testing.T) {
 	}
 	for testname, test := range testFetchEnvVar {
 		t.Logf("Running test case %s", testname)
-		envMap, err := fetchEnvVariablesFromCloudInit(test.config)
+		envMap, err := fetchEnvVariablesFromCloudInit(nil, test.config)
 		switch testname {
 		case "Negative test env var 5":
 			if err == nil {

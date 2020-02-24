@@ -5,12 +5,14 @@ package types
 
 import (
 	zconfig "github.com/lf-edge/eve/api/go/config"
+	"time"
 )
 
-// CipherContext : Contains the decryption information
-// supplied by controller, for sensitive encrypted data
-type CipherContext struct {
-	ID                 string
+// CipherContextConfig : a pair of device and controller certificate
+// published by controller along with some attributes
+// part of EdgeDevConfig block, received from controller
+type CipherContextConfig struct {
+	ContextID          string
 	HashScheme         zconfig.CipherHashAlgorithm
 	KeyExchangeScheme  zconfig.KeyExchangeScheme
 	EncryptionScheme   zconfig.EncryptionScheme
@@ -19,31 +21,73 @@ type CipherContext struct {
 }
 
 // Key :
-func (cipherContext *CipherContext) Key() string {
-	return cipherContext.ID
+func (config *CipherContextConfig) Key() string {
+	return config.ContextID
 }
 
-// CipherBlock : Object specific encryption information
-type CipherBlock struct {
-	ID                string
-	KeyExchangeScheme zconfig.KeyExchangeScheme
-	EncryptionScheme  zconfig.EncryptionScheme
-	InitialValue      []byte
-	ControllerCert    []byte
-	DeviceCert        []byte
-	CipherData        []byte
-	ClearTextHash     []byte
-	IsCipher          bool
-	IsValidCipher     bool
+// CipherContextStatus : context information for the pair
+// of certificates
+type CipherContextStatus struct {
+	ContextID          string
+	HashScheme         zconfig.CipherHashAlgorithm
+	KeyExchangeScheme  zconfig.KeyExchangeScheme
+	EncryptionScheme   zconfig.EncryptionScheme
+	ControllerCertHash []byte
+	DeviceCertHash     []byte
+	ControllerCert     []byte // resolved through cert API
+	DeviceCert         []byte // local device certificate
+	ErrorInfo
 }
 
 // Key :
-func (cipherBlock *CipherBlock) Key() string {
-	return cipherBlock.ID
+func (status *CipherContextStatus) Key() string {
+	return status.ContextID
 }
 
-// CredentialBlock : Credential Information
-type CredentialBlock struct {
-	Identity string
-	Password string
+// SetErrorInfo : sets errorinfo on the cipher context status object
+func (status *CipherContextStatus) SetErrorInfo(agentName, strErr string) {
+	status.Error = strErr
+	status.ErrorTime = time.Now()
+	status.ErrorSource = agentName
+}
+
+// ClearErrorInfo : clears errorinfo on the cipher context status object
+func (status *CipherContextStatus) ClearErrorInfo() {
+	status.Error = ""
+	status.ErrorSource = ""
+	status.ErrorTime = time.Time{}
+}
+
+// CipherBlockStatus : Object specific encryption information
+type CipherBlockStatus struct {
+	CipherBlockID     string                    // constructed using individual reference
+	CipherContextID   string                    // cipher context id
+	KeyExchangeScheme zconfig.KeyExchangeScheme // from cipher context
+	EncryptionScheme  zconfig.EncryptionScheme  // from cipher context
+	ControllerCert    []byte                    // inherited from cipher context
+	DeviceCert        []byte                    // inherited from cipher context
+	InitialValue      []byte
+	CipherData        []byte
+	ClearTextHash     []byte
+	IsCipher          bool
+	ErrorInfo
+}
+
+// Key :
+func (status *CipherBlockStatus) Key() string {
+	return status.CipherBlockID
+}
+
+// SetErrorInfo : sets errorinfo on the cipher block status object
+func (status *CipherBlockStatus) SetErrorInfo(agentName, errStr string) {
+	status.Error = errStr
+	status.ErrorTime = time.Now()
+	status.ErrorSource = agentName
+}
+
+// ClearErrorInfo : clears errorinfo on the cipher block status object
+func (status *CipherBlockStatus) ClearErrorInfo() {
+	status.Error = ""
+	status.ErrorSource = ""
+	status.ErrorTime = time.Time{}
 }

@@ -57,6 +57,8 @@ type getconfigContext struct {
 	pubNetworkInstanceConfig pubsub.Publication
 	pubCipherContextConfig   pubsub.Publication
 	pubControllerCertConfig  pubsub.Publication
+	pubCipherContextStatus   pubsub.Publication
+	pubControllerCertStatus  pubsub.Publication
 	rebootFlag               bool
 }
 
@@ -311,6 +313,9 @@ func getCloudCertChain(ctx *zedagentContext) bool {
 		log.Errorf("getCloudCertChain: resp header error\n")
 		return false
 	}
+
+	// for cipher object handling
+	parseControllerCerts(ctx, contents)
 
 	certBytes, err := zedcloud.VerifyCloudCertChain(zedcloudCtx, serverName, contents)
 	if err != nil {

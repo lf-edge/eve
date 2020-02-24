@@ -659,10 +659,29 @@ func sha256FromECPoint(X, Y *big.Int) [32]byte {
 
 //DecryptSecretWithEcdhKey recovers plaintext from given X, Y, iv and the ciphertext
 func DecryptSecretWithEcdhKey(X, Y *big.Int, iv, ciphertext, plaintext []byte) error {
+	decryptKey, err := getDecryptKey(X, Y)
+	if err != nil {
+		return err
+	}
+	return aesDecrypt(plaintext, ciphertext, decryptKey[:], iv)
+}
+
+// getDecryptKey : uses the ECC params to construct the AES decryption Key
+func getDecryptKey(X, Y *big.Int) ([32]byte, error) {
+	// when TPM is not enabled, use the locally stored private key
+	if !etpm.IsTpmEnabled() {
+		privateKey, err := getDevicePrivateKey()
+		if err != nil {
+			return [32]byte{}, err
+		}
+		X, Y := elliptic.P256().Params().ScalarMult(X, Y, privateKey.D.Bytes())
+		decryptKey := sha256FromECPoint(X, Y)
+		return decryptKey, nil
+	}
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		log.Errorln(err)
-		return err
+		return [32]byte{}, err
 	}
 	defer rw.Close()
 
@@ -676,10 +695,10 @@ func DecryptSecretWithEcdhKey(X, Y *big.Int, iv, ciphertext, plaintext []byte) e
 	z, err := tpm2.RecoverSharedECCSecret(rw, etpm.TpmDeviceKeyHdl, tpmOwnerPasswd, p)
 	if err != nil {
 		fmt.Printf("recovering Shared Secret failed: %s", err)
-		return err
+		return [32]byte{}, err
 	}
 	decryptKey := sha256FromECPoint(z.X, z.Y)
-	return aesDecrypt(plaintext, ciphertext, decryptKey[:], iv)
+	return decryptKey, nil
 }
 
 //Test ECDH key exchange and a symmetric cipher based on ECDH
@@ -729,12 +748,7 @@ func testEcdhAES() error {
 }
 
 // DecryptCipherBlock : Decryption API, for encrypted object information received from controller
-func DecryptCipherBlock(cipherBlock types.CipherBlock) ([]byte, error) {
-	// TBD:XXX, for nodes not having tpm chip, the device private key can be used
-	// which can be wrqpped up inside DecryptWithEcdhKey
-	if !etpm.IsTpmEnabled() {
-		return []byte{}, errors.New("Not supported")
-	}
+func DecryptCipherBlock(cipherBlock types.CipherBlockStatus) ([]byte, error) {
 	if len(cipherBlock.CipherData) == 0 {
 		return []byte{}, errors.New("Invalid Cipher Payload")
 	}
@@ -755,7 +769,7 @@ func DecryptCipherBlock(cipherBlock types.CipherBlock) ([]byte, error) {
 	return []byte{}, errors.New("Unsupported Cipher Key Exchange Scheme")
 }
 
-func decryptCipherBlockWithECDH(cipherBlock types.CipherBlock) ([]byte, error) {
+func decryptCipherBlockWithECDH(cipherBlock types.CipherBlockStatus) ([]byte, error) {
 	if len(cipherBlock.ControllerCert) == 0 {
 		return []byte{}, errors.New("No Peer Public Certficate")
 	}
@@ -785,7 +799,7 @@ func decryptCipherBlockWithECDH(cipherBlock types.CipherBlock) ([]byte, error) {
 	return []byte{}, errors.New("Unsupported Encryption protocol")
 }
 
-func getControllerCertEcdhKey(cipherBlock types.CipherBlock) (*ecdsa.PublicKey, error) {
+func getControllerCertEcdhKey(cipherBlock types.CipherBlockStatus) (*ecdsa.PublicKey, error) {
 	var ecdhPubKey *ecdsa.PublicKey
 	block := cipherBlock.ControllerCert
 	certs := []*x509.Certificate{}
@@ -820,6 +834,30 @@ func validateDataHash(data []byte, suppliedHash []byte) bool {
 	h.Write(data)
 	computedHash := h.Sum(nil)
 	return bytes.Equal(suppliedHash, computedHash)
+}
+
+func getDevicePrivateKey() (*ecdsa.PrivateKey, error) {
+	// XXX:TBD, currently only one private key
+	keyPEMBlock, err := ioutil.ReadFile(types.DeviceKeyName)
+	if err != nil {
+		errStr := fmt.Sprintf("No valid PEM block found, %v", err)
+		log.Errorln(errStr)
+		return nil, errors.New(errStr)
+	}
+	var keyDERBlock *pem.Block
+	keyDERBlock, keyPEMBlock = pem.Decode(keyPEMBlock)
+	if keyDERBlock == nil {
+		errStr := fmt.Sprintf("No valid private key found")
+		log.Errorln(errStr)
+		return nil, errors.New(errStr)
+	}
+	privateKey, err := x509.ParseECPrivateKey(keyDERBlock.Bytes)
+	if err != nil {
+		errStr := fmt.Sprintf("Unable to parse private key, %v", err)
+		log.Errorln(errStr)
+		return nil, errors.New(errStr)
+	}
+	return privateKey, nil
 }
 
 func Run(ps *pubsub.PubSub) {

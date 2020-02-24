@@ -932,7 +932,8 @@ func publishDatastoreConfig(ctx *getconfigContext,
 		if datastore.Region == "" {
 			datastore.Region = "us-west-2"
 		}
-		datastore.CipherBlock = parseCipherBlock(ctx, ds.GetCipherData())
+		datastore.CipherBlockStatus = parseCipherBlock(ctx, datastore.Key(),
+			ds.GetCipherData())
 		ctx.pubDatastoreConfig.Publish(datastore.Key(), *datastore)
 	}
 }
@@ -1096,7 +1097,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 	}
 
 	// wireless property configuration
-	config.WirelessCfg = parseNetworkWirelessConfig(ctx, netEnt)
+	config.WirelessCfg = parseNetworkWirelessConfig(ctx, config.Key(), netEnt)
 
 	ipspec := netEnt.GetIp()
 	switch config.Type {
@@ -1177,7 +1178,7 @@ func parseOneNetworkXObjectConfig(ctx *getconfigContext, netEnt *zconfig.Network
 	return config
 }
 
-func parseNetworkWirelessConfig(ctx *getconfigContext, netEnt *zconfig.NetworkConfig) types.WirelessConfig {
+func parseNetworkWirelessConfig(ctx *getconfigContext, key string, netEnt *zconfig.NetworkConfig) types.WirelessConfig {
 	var wconfig types.WirelessConfig
 
 	netWireless := netEnt.GetWireless()
@@ -1214,7 +1215,9 @@ func parseNetworkWirelessConfig(ctx *getconfigContext, netEnt *zconfig.NetworkCo
 			wifi.Identity = wificfg.GetIdentity()
 			wifi.Password = wificfg.GetPassword()
 			wifi.Priority = wificfg.GetPriority()
-			wifi.CipherBlock = parseCipherBlock(ctx, wificfg.GetCipherData())
+			key = fmt.Sprintf("%s-%s", key, wifi.SSID)
+			wifi.CipherBlockStatus = parseCipherBlock(ctx, key,
+				wificfg.GetCipherData())
 
 			wconfig.Wifi = append(wconfig.Wifi, wifi)
 		}
