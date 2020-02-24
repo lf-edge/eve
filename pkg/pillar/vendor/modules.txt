@@ -229,6 +229,7 @@ github.com/kr/fs
 github.com/lf-edge/eve/api/go/config
 github.com/lf-edge/eve/api/go/register
 github.com/lf-edge/eve/api/go/logs
+github.com/lf-edge/eve/api/go/attest
 github.com/lf-edge/eve/api/go/info
 github.com/lf-edge/eve/api/go/flowlog
 github.com/lf-edge/eve/api/go/metrics
