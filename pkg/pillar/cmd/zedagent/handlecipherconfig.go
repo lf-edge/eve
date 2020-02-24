@@ -8,89 +8,17 @@ package zedagent
 import (
 	"bytes"
 	"crypto/sha256"
-	"errors"
 	"fmt"
-	"io/ioutil"
 
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
-// XXX:TBD controller certificate change should trigger reprocessing
-// of cipherContexts/cipherBlocks
-func handleControllerCertModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-	log.Infof("handleControllerCertModify(%s)\n", key)
-	config := configArg.(types.ControllerCertificate)
-	log.Infof("handleControllerCertModify(%s) done %v\n", key, config)
-}
+var cipherCtxConfigHash []byte
 
-func handleControllerCertDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-	log.Infof("handleControllerCertDelete(%s)\n", key)
-}
-
-// XXX:TBD cipherContext change should trigger reprocessing
-// of cipherBlocks
-func handleCipherContextModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-	log.Infof("handleCipherContextModify(%s)\n", key)
-	config := configArg.(types.CipherContext)
-	log.Infof("handleCipherContextModify(%s) done %v\n", key, config)
-}
-
-func handleCipherContextDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-	log.Infof("handleCipherContextDelete(%s)\n", key)
-}
-
-// parseCipherBlock : will collate all the relevant information
-// ciphercontext will be used to get the certs and encryption schemes
-func parseCipherBlock(ctx *getconfigContext,
-	cfgCipherBlock *zconfig.CipherBlock) types.CipherBlock {
-	cipherBlock := types.CipherBlock{}
-	if cfgCipherBlock == nil {
-		return cipherBlock
-	}
-	cipherBlock.ID = cfgCipherBlock.GetCipherContextId()
-	cipherBlock.InitialValue = cfgCipherBlock.GetInitialValue()
-	cipherBlock.CipherData = cfgCipherBlock.GetCipherData()
-	cipherBlock.ClearTextHash = cfgCipherBlock.GetClearTextSha256()
-
-	// should contain valid cipher data
-	if len(cipherBlock.CipherData) == 0 || len(cipherBlock.ID) == 0 {
-		log.Infof("%s, cipher block does not contain valid data\n", cipherBlock.ID)
-		return cipherBlock
-	}
-	cipherBlock.IsCipher = true
-
-	// get the cipher context
-	cipherContext := getCipherContextConfig(ctx, cipherBlock.ID)
-	if cipherContext == nil {
-		return cipherBlock
-	}
-
-	// copy the relevant attributes, from cipher context to cipher block
-	cipherBlock.KeyExchangeScheme = cipherContext.KeyExchangeScheme
-	cipherBlock.EncryptionScheme = cipherContext.EncryptionScheme
-
-	// get the relevant controller cert and device cert
-	ccert, dcert, err := getCipherContextCerts(ctx, cipherContext)
-	if err != nil {
-		return cipherBlock
-	}
-	cipherBlock.ControllerCert = ccert
-	cipherBlock.DeviceCert = dcert
-	// finally, mark the cipher block as valid
-	cipherBlock.IsValidCipher = true
-	return cipherBlock
-}
-
-// cipher context config parsing and publish
-var cipherContextConfigHash []byte
-
-func parseCipherContextConfig(getconfigCtx *getconfigContext,
+// cipher context config parsing routine
+func parseCipherContextConfig(ctx *getconfigContext,
 	config *zconfig.EdgeDevConfig) {
 
 	cfgCipherContextList := config.GetCipherContexts()
@@ -99,20 +27,19 @@ func parseCipherContextConfig(getconfigCtx *getconfigContext,
 		computeConfigElementSha(h, cfgCipherContext)
 	}
 	newConfigHash := h.Sum(nil)
-	same := bytes.Equal(newConfigHash, cipherContextConfigHash)
-	if same {
+	if bytes.Equal(newConfigHash, cipherCtxConfigHash) {
 		return
 	}
 	log.Infof("parseCipherContextConfig: Applying updated config\n"+
 		"Last Sha: % x\n"+
 		"New  Sha: % x\n"+
 		"cfgCipherContextList: %v\n",
-		cipherContextConfigHash, newConfigHash, cfgCipherContextList)
+		cipherCtxConfigHash, newConfigHash, cfgCipherContextList)
 
-	cipherContextConfigHash = newConfigHash
+	cipherCtxConfigHash = newConfigHash
 
 	// First look for deleted ones
-	items := getconfigCtx.pubCipherContextConfig.GetAll()
+	items := ctx.pubCipherContextConfig.GetAll()
 	for idStr := range items {
 		found := false
 		for _, cfgCipherContext := range cfgCipherContextList {
@@ -124,7 +51,7 @@ func parseCipherContextConfig(getconfigCtx *getconfigContext,
 		// cipherContext not found, delete
 		if !found {
 			log.Infof("parseCipherContextConfig: deleting %s\n", idStr)
-			unpublishCipherContextConfig(getconfigCtx, idStr)
+			unpublishCipherContextConfig(ctx, idStr)
 		}
 	}
 
@@ -133,31 +60,263 @@ func parseCipherContextConfig(getconfigCtx *getconfigContext,
 			log.Debugf("parseCipherContextConfig ignoring empty\n")
 			continue
 		}
-		cipherContext := new(types.CipherContext)
-		cipherContext.ID = cfgCipherContext.GetContextId()
-		cipherContext.HashScheme = cfgCipherContext.GetHashScheme()
-		cipherContext.KeyExchangeScheme = cfgCipherContext.GetKeyExchangeScheme()
-		cipherContext.EncryptionScheme = cfgCipherContext.GetEncryptionScheme()
-		cipherContext.DeviceCertHash = cfgCipherContext.GetDeviceCertHash()
-		cipherContext.ControllerCertHash = cfgCipherContext.GetControllerCertHash()
-		log.Debugf("parseCipherContextConfig publishing %v\n", cipherContext)
-		publishCipherContextConfig(getconfigCtx, cipherContext)
+		config := types.CipherContextConfig{
+			ContextID:          cfgCipherContext.GetContextId(),
+			HashScheme:         cfgCipherContext.GetHashScheme(),
+			KeyExchangeScheme:  cfgCipherContext.GetKeyExchangeScheme(),
+			EncryptionScheme:   cfgCipherContext.GetEncryptionScheme(),
+			DeviceCertHash:     cfgCipherContext.GetDeviceCertHash(),
+			ControllerCertHash: cfgCipherContext.GetControllerCertHash(),
+		}
+		publishCipherContextConfig(ctx, config)
 	}
 }
 
-func publishCipherContextConfig(getconfigCtx *getconfigContext,
-	config *types.CipherContext) {
+// on create/modification, update the cipher context certs
+func updateCipherContextCerts(ctx *getconfigContext,
+	status *types.CipherContextStatus) error {
+	// get controller cert
+	ccert, err0 := getControllerCert(ctx.zedagentCtx,
+		status.ControllerCertHash)
+	if err0 != nil {
+		return err0
+	}
+	status.ControllerCert = ccert
 
-	key := config.Key()
-	log.Debugf("publishCipherContext %s\n", key)
-	pub := getconfigCtx.pubCipherContextConfig
-	pub.Publish(key, *config)
+	// get device cert
+	dcert, err1 := getDeviceCert(status.HashScheme,
+		status.DeviceCertHash)
+	if err1 != nil {
+		return err1
+	}
+	status.DeviceCert = dcert
+	return nil
 }
 
-func unpublishCipherContextConfig(getconfigCtx *getconfigContext, key string) {
+// parseCipherBlock : will collate all the relevant information
+// ciphercontext will be used to get the certs and encryption schemes
+func parseCipherBlock(ctx *getconfigContext, key string,
+	cfgCipherBlock *zconfig.CipherBlock) types.CipherBlockStatus {
+	if cfgCipherBlock == nil {
+		return types.CipherBlockStatus{CipherBlockID: key}
+	}
+	cipherBlock := types.CipherBlockStatus{
+		CipherBlockID:   key,
+		CipherContextID: cfgCipherBlock.GetCipherContextId(),
+		InitialValue:    cfgCipherBlock.GetInitialValue(),
+		CipherData:      cfgCipherBlock.GetCipherData(),
+		ClearTextHash:   cfgCipherBlock.GetClearTextSha256(),
+	}
 
+	// should contain valid cipher data
+	if len(cipherBlock.CipherData) == 0 ||
+		len(cipherBlock.CipherContextID) == 0 {
+		errStr := fmt.Sprintf("%s, block contains incomplete data, %s",
+			cipherBlock.Key(), cipherBlock.CipherContextID)
+		cipherBlock.SetErrorInfo(agentName, errStr)
+		return cipherBlock
+	}
+	cipherBlock.IsCipher = true
+	log.Infof("%s, marking cipher as true\n",
+		cipherBlock.CipherContextID)
+
+	// get the cipher context
+	cipherCtx := getCipherContextStatus(ctx.zedagentCtx,
+		cipherBlock.CipherContextID)
+	if cipherCtx == nil {
+		errStr := fmt.Sprintf("cipherContext not found %s\n",
+			cipherBlock.CipherContextID)
+		cipherBlock.SetErrorInfo(agentName, errStr)
+	} else {
+		log.Infof("cipherContext found %s\n", cipherBlock.CipherContextID)
+		updateCipherBlock(*cipherCtx, &cipherBlock, key, false)
+	}
+	return cipherBlock
+}
+
+// for cipher context config
+func handleCipherContextConfigModify(ctxArg interface{}, key string,
+	configArg interface{}) {
+	log.Infof("handleCipherContextConfigModify(%s)\n", key)
+	ctx := ctxArg.(*zedagentContext)
+	config := configArg.(types.CipherContextConfig)
+	handleCipherContextConfigUpdate(ctx.getconfigCtx, config, false)
+	log.Debugf("handleCipherContextConfigModify(%s) done %v\n", key, config)
+}
+
+func handleCipherContextConfigDelete(ctxArg interface{}, key string,
+	configArg interface{}) {
+	log.Infof("handleCipherContextConfigDelete(%s)\n", key)
+	ctx := ctxArg.(*zedagentContext)
+	config := configArg.(types.CipherContextConfig)
+	handleCipherContextConfigUpdate(ctx.getconfigCtx, config, true)
+	log.Debugf("handleCipherContextConfigDone(%s) done\n", key)
+}
+
+// for cipher context status
+func handleCipherContextStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	log.Infof("handleCipherContextStatusModify(%s)\n", key)
+	ctx := ctxArg.(*zedagentContext)
+	status := statusArg.(types.CipherContextStatus)
+	handleCipherContextStatusUpdate(ctx.getconfigCtx, status, false)
+	log.Debugf("handleCipherContexStatustModify(%s) done %v\n", key, status)
+}
+
+func handleCipherContextStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	log.Infof("handleCipherContextStatusDelete(%s)\n", key)
+	ctx := ctxArg.(*zedagentContext)
+	status := statusArg.(types.CipherContextStatus)
+	//  clear matching cipher blocks
+	handleCipherContextStatusUpdate(ctx.getconfigCtx, status, true)
+	log.Debugf("handleCipherContextStatusDone(%s) done\n", key)
+}
+
+// on cipher context config update, update the cipher status
+func handleCipherContextConfigUpdate(ctx *getconfigContext,
+	config types.CipherContextConfig, reset bool) {
+
+	log.Infof("%s, update cipher config, reset: %v\n",
+		config.Key(), reset)
+	if reset {
+		unpublishCipherContextStatus(ctx, config.Key())
+		return
+	}
+	status := getCipherContextStatus(ctx.zedagentCtx, config.Key())
+
+	// nothing needs to be done
+	if status == nil {
+		if reset {
+			return
+		}
+		status0 := types.CipherContextStatus{
+			ContextID:          config.ContextID,
+			HashScheme:         config.HashScheme,
+			KeyExchangeScheme:  config.KeyExchangeScheme,
+			EncryptionScheme:   config.EncryptionScheme,
+			DeviceCertHash:     config.DeviceCertHash,
+			ControllerCertHash: config.ControllerCertHash,
+		}
+		status = &status0
+	}
+	status.ClearErrorInfo()
+	if err := updateCipherContextCerts(ctx, status); err != nil {
+		errStr := fmt.Sprintf("%s, CipherContextUpdateCerts failed, %s",
+			status.Key(), err)
+		status.SetErrorInfo(agentName, errStr)
+	}
+	publishCipherContextStatus(ctx, *status)
+}
+
+// cipher context status update, triggers cipher block updates
+func handleCipherContextStatusUpdate(ctx *getconfigContext,
+	status types.CipherContextStatus, reset bool) {
+
+	log.Infof("%s, update cipherblocks\n", status.Key())
+	// app instances cloud init data
+	appItems := ctx.pubAppInstanceConfig.GetAll()
+	for _, item := range appItems {
+		appCfg := item.(types.AppInstanceConfig)
+		if updateCipherBlock(status, &appCfg.CipherBlockStatus,
+			appCfg.Key(), reset) {
+			log.Infof("%s, updating app instance cipherblock %s\n",
+				status.Key(), appCfg.DisplayName)
+			ctx.pubAppInstanceConfig.Publish(appCfg.Key(), appCfg)
+		}
+	}
+
+	// data stores
+	dsItems := ctx.pubDatastoreConfig.GetAll()
+	for _, item := range dsItems {
+		dsCfg := item.(types.DatastoreConfig)
+		if updateCipherBlock(status, &dsCfg.CipherBlockStatus,
+			dsCfg.Key(), reset) {
+			log.Infof("%s, updating datastore cipherblock %s\n",
+				status.Key(), dsCfg.Key())
+			ctx.pubDatastoreConfig.Publish(dsCfg.Key(), dsCfg)
+		}
+	}
+
+	// device networks
+	netItems := ctx.pubNetworkXObjectConfig.GetAll()
+	for _, item := range netItems {
+		netCfg := item.(types.NetworkXObjectConfig)
+		wifiCfgs := netCfg.WirelessCfg.Wifi
+		change := false
+		for _, wifiCfg := range wifiCfgs {
+			if updateCipherBlock(status, &wifiCfg.CipherBlockStatus,
+				netCfg.Key(), reset) {
+				change = true
+			}
+		}
+		if change {
+			log.Infof("%s, updating network wifi cipherblock %s\n",
+				status.Key(), netCfg.Key())
+			ctx.pubNetworkXObjectConfig.Publish(netCfg.Key(), netCfg)
+		}
+	}
+}
+
+// cipherContext publish/get utilities
+func updateCipherBlock(status types.CipherContextStatus,
+	cipherBlock *types.CipherBlockStatus, key string, reset bool) bool {
+	if !cipherBlock.IsCipher ||
+		cipherBlock.CipherContextID != status.Key() {
+		return false
+	}
+	log.Infof("%s, updating cipherblock\n", status.Key())
+
+	// first mark the cipher block as not ready,
+	// copy the relavant attributes, from cipher context to cipher block
+	cipherBlock.ClearErrorInfo()
+	cipherBlock.KeyExchangeScheme = status.KeyExchangeScheme
+	cipherBlock.EncryptionScheme = status.EncryptionScheme
+
+	ccert, dcert := getCipherContextCerts(status)
+	if reset {
+		ccert = []byte{}
+		dcert = []byte{}
+		errStr := fmt.Sprintf("CipherContext(%s) deleted for the cipherBlock",
+			status.Key())
+		cipherBlock.SetErrorInfo(agentName, errStr)
+		return true
+	}
+	// when we have both the certificates,
+	// mark the cipher block as valid
+	if status.Error != "" {
+		cipherBlock.SetErrorInfo(agentName, status.Error)
+	} else {
+		cipherBlock.ControllerCert = ccert
+		cipherBlock.DeviceCert = dcert
+		if len(ccert) != 0 && len(dcert) != 0 {
+			log.Infof("cipherBlock is marked ready, %s\n",
+				cipherBlock.CipherContextID)
+		} else {
+			errStr := fmt.Sprintf("%s, certs are not ready",
+				cipherBlock.Key())
+			cipherBlock.SetErrorInfo(agentName, errStr)
+		}
+	}
+	return true
+}
+
+func getCipherContextCerts(status types.CipherContextStatus) ([]byte, []byte) {
+	return status.ControllerCert, status.DeviceCert
+}
+
+// pub/sub utilities for cipher context config and status
+func publishCipherContextConfig(ctx *getconfigContext,
+	config types.CipherContextConfig) {
+	key := config.Key()
+	log.Debugf("publishCipherContext %s\n", key)
+	pub := ctx.pubCipherContextConfig
+	pub.Publish(key, config)
+}
+
+func unpublishCipherContextConfig(ctx *getconfigContext, key string) {
 	log.Debugf("unpublishCipherContextConfig(%s)\n", key)
-	pub := getconfigCtx.pubCipherContextConfig
+	pub := ctx.pubCipherContextConfig
 	c, _ := pub.Get(key)
 	if c == nil {
 		log.Errorf("unpublishCipherContext(%s) not found\n", key)
@@ -166,101 +325,32 @@ func unpublishCipherContextConfig(getconfigCtx *getconfigContext, key string) {
 	pub.Unpublish(key)
 }
 
-func getCipherContextConfig(getconfigCtx *getconfigContext,
-	key string) *types.CipherContext {
-	log.Debugf("getCipherContextConfig(%s)\n", key)
-	pub := getconfigCtx.pubCipherContextConfig
-	c, _ := pub.Get(key)
-	if c == nil {
-		log.Errorf("CipherContextConfig(%s) not found\n", key)
+func getCipherContextStatus(ctx *zedagentContext,
+	key string) *types.CipherContextStatus {
+	pub := ctx.subCipherContextStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Errorf("getCipherContextStatus(%s) not found\n", key)
 		return nil
 	}
-	config := c.(types.CipherContext)
-	return &config
+	status := st.(types.CipherContextStatus)
+	return &status
 }
 
-func getCipherContextCerts(ctx *getconfigContext,
-	cipherContext *types.CipherContext) ([]byte, []byte, error) {
-	log.Debugf("getCipherContextCerts(%s)\n", cipherContext.Key())
-
-	// get controller cert
-	ccert := getCipherContextControllerCert(ctx, cipherContext.ControllerCertHash,
-		cipherContext.HashScheme)
-	if len(ccert) == 0 {
-		errStr := fmt.Sprintf("%s, Failed to collect controller cert information",
-			cipherContext.ID)
-		log.Errorln(errStr)
-		return ccert, []byte{}, errors.New(errStr)
-	}
-	// try to get device cert
-	dcert := getCipherContextDeviceCert(ctx, cipherContext.DeviceCertHash,
-		cipherContext.HashScheme)
-	if len(dcert) == 0 {
-		errStr := fmt.Sprintf("%s, Failed to collect device cert information",
-			cipherContext.ID)
-		log.Errorln(errStr)
-		return ccert, dcert, errors.New(errStr)
-	}
-	return ccert, dcert, nil
+func publishCipherContextStatus(ctx *getconfigContext,
+	status types.CipherContextStatus) {
+	key := status.Key()
+	log.Debugf("publishCipherContextStatus %s\n", key)
+	pub := ctx.pubCipherContextStatus
+	pub.Publish(key, status)
 }
 
-func getCipherContextControllerCert(ctx *getconfigContext, suppliedHash []byte,
-	hashScheme zconfig.CipherHashAlgorithm) []byte {
-	items := ctx.pubControllerCertConfig.GetAll()
-	for _, item := range items {
-		certConfig := item.(types.ControllerCertificate)
-		match := bytes.Equal(certConfig.CertHash, suppliedHash)
-		if match {
-			return certConfig.Cert
-		}
-	}
-	return []byte{}
-}
-
-func getCipherContextDeviceCert(ctx *getconfigContext, suppliedHash []byte,
-	hashScheme zconfig.CipherHashAlgorithm) []byte {
-	// TBD:XXX as of now, only one
-	certBytes, err := ioutil.ReadFile(types.DeviceCertName)
-	if err == nil {
-		match := computeAndMatchHash(certBytes, suppliedHash, hashScheme)
-		if match {
-			return certBytes
-		}
-	}
-	return []byte{}
-}
-
-func computeAndMatchHash(cert []byte, suppliedHash []byte,
-	hashScheme zconfig.CipherHashAlgorithm) bool {
-
-	switch hashScheme {
-	case zconfig.CipherHashAlgorithm_HASH_NONE:
-		return false
-
-	case zconfig.CipherHashAlgorithm_HASH_SHA256_16bytes:
-		h := sha256.New()
-		h.Write(cert)
-		computedHash := h.Sum(nil)
-		return bytes.Equal(suppliedHash, computedHash[:16])
-	}
-	return false
-}
-
-// for controller certificates, publish utilities
-func publishControllerCertConfig(getconfigCtx *getconfigContext,
-	config *types.ControllerCertificate) {
-	key := config.Key()
-	log.Debugf("publishControllerCertificate %s\n", key)
-	pub := getconfigCtx.pubControllerCertConfig
-	pub.Publish(key, *config)
-}
-
-func unpublishControllerCertConfig(getconfigCtx *getconfigContext, key string) {
-	log.Debugf("unpublishControllerCertConfig %s\n", key)
-	pub := getconfigCtx.pubControllerCertConfig
+func unpublishCipherContextStatus(ctx *getconfigContext, key string) {
+	log.Debugf("unpublishCipherContextStatus(%s)\n", key)
+	pub := ctx.pubCipherContextStatus
 	c, _ := pub.Get(key)
 	if c == nil {
-		log.Errorf("unpublishCertObjConfig(%s) not found\n", key)
+		log.Errorf("unpublishCipherContextStatus(%s) not found\n", key)
 		return
 	}
 	pub.Unpublish(key)

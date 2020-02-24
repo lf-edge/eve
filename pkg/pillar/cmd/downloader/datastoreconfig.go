@@ -18,5 +18,9 @@ func handleDatastoreConfigModify(ctxArg interface{}, key string,
 
 func handleDatastoreConfigDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
+	ctx := ctxArg.(*downloaderContext)
+	config := configArg.(types.DatastoreConfig)
+	cipherBlock := config.CipherBlockStatus
+	ctx.pubCipherBlockStatus.Unpublish(cipherBlock.Key())
 	log.Infof("handleDatastoreConfigDelete for %s\n", key)
 }

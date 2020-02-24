@@ -9,10 +9,9 @@ import (
 	"path"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedUpload"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
@@ -36,7 +35,7 @@ func handleSyncOp(ctx *downloaderContext, key string,
 	}
 
 	// construct the datastore context
-	dsCtx, err := constructDatastoreContext(config, status, *dst)
+	dsCtx, err := constructDatastoreContext(ctx, config, status, *dst)
 	if err != nil {
 		errStr := fmt.Sprintf("%s, Datastore construction failed, %s", config.Name, err)
 		handleSyncOpResponse(ctx, config, status, locFilename, key, errStr)
@@ -287,7 +286,7 @@ func handleSyncOpResponse(ctx *downloaderContext, config types.DownloaderConfig,
 }
 
 // cloud storage interface functions/APIs
-func constructDatastoreContext(config types.DownloaderConfig, status *types.DownloaderStatus, dst types.DatastoreConfig) (*types.DatastoreContext, error) {
+func constructDatastoreContext(ctx *downloaderContext, config types.DownloaderConfig, status *types.DownloaderStatus, dst types.DatastoreConfig) (*types.DatastoreContext, error) {
 	dpath := dst.Dpath
 	downloadURL := config.Name
 	if !config.NameIsURL {
@@ -301,7 +300,7 @@ func constructDatastoreContext(config types.DownloaderConfig, status *types.Down
 	}
 
 	// get the decrypted credentials
-	cred, err := getDatastoreCredential(dst)
+	cred, err := getDatastoreCredential(ctx, dst)
 	if err != nil {
 		return nil, err
 	}
@@ -322,28 +321,14 @@ func sourceFailureError(ip, ifname, url string, err error) {
 	zedcloud.ZedCloudFailure(ifname, url, 1024, 0, false)
 }
 
-func getDatastoreCredential(dst types.DatastoreConfig) (zconfig.CredentialBlock, error) {
-	cred := zconfig.CredentialBlock{}
-	if !dst.IsCipher {
-		cred.Identity = dst.ApiKey
-		cred.Password = dst.Password
-		return cred, nil
+func getDatastoreCredential(ctx *downloaderContext,
+	dst types.DatastoreConfig) (zconfig.CredentialBlock, error) {
+	cred := utils.PrepareCipherCred(dst.ApiKey, dst.Password)
+	status, cred, err := utils.GetCipherCredentials(agentName,
+		dst.CipherBlockStatus, cred)
+	if status.IsCipher && len(status.Error) == 0 {
+		log.Infof("%s, cipherblock decryption successful\n", dst.Key())
 	}
-	if !dst.IsValidCipher {
-		errStr := fmt.Sprintf("%s, Cipher Block is not ready", dst.Key())
-		log.Errorln(errStr)
-		return cred, errors.New(errStr)
-	}
-	clearData, err := tpmmgr.DecryptCipherBlock(dst.CipherBlock)
-	if err != nil {
-		log.Errorf("%s, dataStore CipherData decryption failed, %v\n",
-			dst.Key(), err)
-		return cred, err
-	}
-	if err := proto.Unmarshal(clearData, &cred); err != nil {
-		log.Errorf("%s, dataStore Credential unmarshall failed, %v\n",
-			dst.Key(), err)
-		return cred, err
-	}
-	return cred, nil
+	ctx.pubCipherBlockStatus.Publish(status.Key(), status)
+	return cred, err
 }

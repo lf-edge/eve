@@ -83,6 +83,8 @@ type zedagentContext struct {
 	iteration                 int
 	subCipherContextConfig    pubsub.Subscription
 	subControllerCertConfig   pubsub.Subscription
+	subCipherContextStatus    pubsub.Subscription
+	subControllerCertStatus   pubsub.Subscription
 	subNetworkInstanceStatus  pubsub.Subscription
 	subCertObjConfig          pubsub.Subscription
 	TriggerDeviceInfo         chan<- struct{}
@@ -348,7 +350,7 @@ func Run(ps *pubsub.PubSub) {
 	pubCipherContextConfig, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
-			TopicType: types.CipherContext{},
+			TopicType: types.CipherContextConfig{},
 		})
 	if err != nil {
 		log.Fatal(err)
@@ -359,7 +361,7 @@ func Run(ps *pubsub.PubSub) {
 	pubControllerCertConfig, err := ps.NewPublication(
 		pubsub.PublicationOptions{
 			AgentName: agentName,
-			TopicType: types.ControllerCertificate{},
+			TopicType: types.ControllerCertConfig{},
 		})
 	if err != nil {
 		log.Fatal(err)
@@ -367,16 +369,40 @@ func Run(ps *pubsub.PubSub) {
 	pubControllerCertConfig.ClearRestarted()
 	getconfigCtx.pubControllerCertConfig = pubControllerCertConfig
 
+	// for CipherContextStatus Publisher
+	pubCipherContextStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.CipherContextStatus{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubCipherContextStatus.ClearRestarted()
+	getconfigCtx.pubCipherContextStatus = pubCipherContextStatus
+
+	// for ControllerCertStatus Publisher
+	pubControllerCertStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.ControllerCertStatus{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubControllerCertStatus.ClearRestarted()
+	getconfigCtx.pubControllerCertStatus = pubControllerCertStatus
+
 	// for handling changes in the cipher context
 	subCipherContextConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     agentName,
-			TopicImpl:     types.CipherContext{},
+			TopicImpl:     types.CipherContextConfig{},
 			Activate:      false,
 			Ctx:           &zedagentCtx,
-			CreateHandler: handleCipherContextModify,
-			ModifyHandler: handleCipherContextModify,
-			DeleteHandler: handleCipherContextDelete,
+			CreateHandler: handleCipherContextConfigModify,
+			ModifyHandler: handleCipherContextConfigModify,
+			DeleteHandler: handleCipherContextConfigDelete,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
 		})
@@ -390,12 +416,12 @@ func Run(ps *pubsub.PubSub) {
 	subControllerCertConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     agentName,
-			TopicImpl:     types.ControllerCertificate{},
+			TopicImpl:     types.ControllerCertConfig{},
 			Activate:      false,
 			Ctx:           &zedagentCtx,
-			CreateHandler: handleControllerCertModify,
-			ModifyHandler: handleControllerCertModify,
-			DeleteHandler: handleControllerCertDelete,
+			CreateHandler: handleControllerCertConfigModify,
+			ModifyHandler: handleControllerCertConfigModify,
+			DeleteHandler: handleControllerCertConfigDelete,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
 		})
@@ -404,6 +430,43 @@ func Run(ps *pubsub.PubSub) {
 	}
 	zedagentCtx.subControllerCertConfig = subControllerCertConfig
 	subControllerCertConfig.Activate()
+
+	// for CipherContextStatus Subscriber Modify/Delete
+	subCipherContextStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     agentName,
+			TopicImpl:     types.CipherContextStatus{},
+			Activate:      false,
+			Ctx:           &zedagentCtx,
+			CreateHandler: handleCipherContextStatusModify,
+			ModifyHandler: handleCipherContextStatusModify,
+			DeleteHandler: handleCipherContextStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subCipherContextStatus = subCipherContextStatus
+	subCipherContextStatus.Activate()
+
+	// for ControllerCertStatus Subscriber Modify/Delete
+	subControllerCertStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     agentName,
+			TopicImpl:     types.ControllerCertStatus{},
+			Activate:      false,
+			CreateHandler: handleControllerCertStatusModify,
+			ModifyHandler: handleControllerCertStatusModify,
+			DeleteHandler: handleControllerCertStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	zedagentCtx.subControllerCertStatus = subControllerCertStatus
+	subControllerCertStatus.Activate()
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
@@ -816,6 +879,12 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subControllerCertConfig.MsgChan():
 			subControllerCertConfig.ProcessChange(change)
 
+		case change := <-subCipherContextStatus.MsgChan():
+			subCipherContextStatus.ProcessChange(change)
+
+		case change := <-subControllerCertStatus.MsgChan():
+			subControllerCertStatus.ProcessChange(change)
+
 		case change := <-deferredChan:
 			start := time.Now()
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
@@ -948,6 +1017,12 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subControllerCertConfig.MsgChan():
 			subControllerCertConfig.ProcessChange(change)
+
+		case change := <-subCipherContextStatus.MsgChan():
+			subCipherContextStatus.ProcessChange(change)
+
+		case change := <-subControllerCertStatus.MsgChan():
+			subControllerCertStatus.ProcessChange(change)
 
 		case change := <-deferredChan:
 			zedcloud.HandleDeferred(change, 100*time.Millisecond)
@@ -1100,6 +1175,12 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subControllerCertConfig.MsgChan():
 			subControllerCertConfig.ProcessChange(change)
+
+		case change := <-subCipherContextStatus.MsgChan():
+			subCipherContextStatus.ProcessChange(change)
+
+		case change := <-subControllerCertStatus.MsgChan():
+			subControllerCertStatus.ProcessChange(change)
 
 		case <-zedagentCtx.getCertsTimer.C:
 			start := time.Now()

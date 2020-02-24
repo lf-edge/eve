@@ -27,7 +27,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
@@ -81,6 +80,7 @@ type domainContext struct {
 	pubAssignableAdapters  pubsub.Publication
 	pubDomainMetric        pubsub.Publication
 	pubHostMemory          pubsub.Publication
+	pubCipherBlockStatus   pubsub.Publication
 	usbAccess              bool
 	createSema             sema.Semaphore
 	GCInitialized          bool
@@ -267,6 +267,17 @@ func Run(ps *pubsub.PubSub) {
 	}
 	domainCtx.pubHostMemory = pubHostMemory
 	pubHostMemory.ClearRestarted()
+
+	pubCipherBlockStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.CipherBlockStatus{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	domainCtx.pubCipherBlockStatus = pubCipherBlockStatus
+	pubCipherBlockStatus.ClearRestarted()
 
 	// Look for global config such as log levels
 	subGlobalConfig, err := ps.NewSubscription(
@@ -663,6 +674,31 @@ func unpublishImageStatus(ctx *domainContext, status *types.ImageStatus) {
 	pub.Unpublish(key)
 }
 
+func publishCipherBlockStatus(ctx *domainContext,
+	status types.CipherBlockStatus) {
+	key := status.Key()
+	if ctx == nil || len(status.Key()) == 0 {
+		return
+	}
+	log.Debugf("publishCipherBlockStatus(%s)\n", key)
+	pub := ctx.pubCipherBlockStatus
+	pub.Publish(key, status)
+}
+
+func unpublishCipherBlockStatus(ctx *domainContext, key string) {
+	if ctx == nil || len(key) == 0 {
+		return
+	}
+	log.Debugf("unpublishCipherBlockStatus(%s)\n", key)
+	pub := ctx.pubCipherBlockStatus
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Errorf("unpublishCipherBlockStatus(%s) not found\n", key)
+		return
+	}
+	pub.Unpublish(key)
+}
+
 func xenCfgFilename(appNum int) string {
 	return xenDirname + "/xen" + strconv.Itoa(appNum) + ".cfg"
 }
@@ -729,6 +765,13 @@ func handleDomainDelete(ctxArg interface{}, key string,
 	configArg interface{}) {
 
 	log.Infof("handleDomainDelete(%s)\n", key)
+	// delete the specific cipher block status
+	ctx := ctxArg.(*domainContext)
+	config := configArg.(types.DomainConfig)
+	// only when contains cloud-init user data (plain or cipher)
+	if config.IsCipher || config.CloudInitUserData != nil {
+		unpublishCipherBlockStatus(ctx, config.Key())
+	}
 	// Do we have a channel/goroutine?
 	h, ok := handlerMap[key]
 	if ok {
@@ -1627,13 +1670,13 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 	// XXX could defer to Activate
 	if config.IsCipher || config.CloudInitUserData != nil {
 		if status.IsContainer {
-			envList, err := fetchEnvVariablesFromCloudInit(config)
+			envList, err := fetchEnvVariablesFromCloudInit(ctx, config)
 			if err != nil {
 				return err
 			}
 			status.EnvVariables = envList
 		} else {
-			ds, err := createCloudInitISO(config)
+			ds, err := createCloudInitISO(ctx, config)
 			if err != nil {
 				return err
 			}
@@ -2498,23 +2541,16 @@ func maybeResizeDisk(diskfile string, maxsizebytes uint64) error {
 	return err
 }
 
-// getCloudInitData : returns decrypted cloud-init data
-func getCloudInitData(config types.DomainConfig) (*string, error) {
-	if !config.IsCipher {
-		return config.CloudInitUserData, nil
+// getCloudInitUserData : returns decrypted cloud-init user data
+func getCloudInitUserData(ctx *domainContext,
+	config types.DomainConfig) (*string, error) {
+	status, clearTextData, err := utils.GetCipherData(agentName,
+		config.CipherBlockStatus, config.CloudInitUserData)
+	publishCipherBlockStatus(ctx, status)
+	if status.IsCipher && len(status.Error) == 0 {
+		log.Infof("%s, cipherblock decryption successful\n", config.Key())
 	}
-	if !config.IsValidCipher {
-		errStr := fmt.Sprintf("%s, Cipher Block is not ready", config.DisplayName)
-		return nil, errors.New(errStr)
-	}
-	clearData, err := tpmmgr.DecryptCipherBlock(config.CipherBlock)
-	if err != nil {
-		log.Errorf("%s, cloud-init data decryption failed, %v\n",
-			config.DisplayName, err)
-		return nil, err
-	}
-	cloudInitData := base64.StdEncoding.EncodeToString(clearData)
-	return &cloudInitData, nil
+	return clearTextData, err
 }
 
 // Fetch the list of environment variables from the cloud init
@@ -2522,8 +2558,9 @@ func getCloudInitData(config types.DomainConfig) (*string, error) {
 // Example:
 // Key1:Val1
 // Key2:Val2 ...
-func fetchEnvVariablesFromCloudInit(config types.DomainConfig) (map[string]string, error) {
-	userData, err := getCloudInitData(config)
+func fetchEnvVariablesFromCloudInit(ctx *domainContext,
+	config types.DomainConfig) (map[string]string, error) {
+	userData, err := getCloudInitUserData(ctx, config)
 	if err != nil {
 		errStr := fmt.Sprintf("%s, cloud-init data get failed %s\n",
 			config.DisplayName, err)
@@ -2550,7 +2587,8 @@ func fetchEnvVariablesFromCloudInit(config types.DomainConfig) (map[string]strin
 }
 
 // Create a isofs with user-data and meta-data and add it to DiskStatus
-func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
+func createCloudInitISO(ctx *domainContext,
+	config types.DomainConfig) (*types.DiskStatus, error) {
 
 	fileName := fmt.Sprintf("%s/%s.cidata",
 		ciDirname, config.UUIDandVersion.UUID.String())
@@ -2577,7 +2615,7 @@ func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
 		log.Fatalf("createCloudInitISO failed %s\n", err)
 	}
 
-	userData, err := getCloudInitData(config)
+	userData, err := getCloudInitUserData(ctx, config)
 	if err != nil {
 		return nil, err
 	}
