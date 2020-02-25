@@ -1,14 +1,14 @@
-From 6f3f66408ee8b05b496c80ce6fd3917758e66fa9 Mon Sep 17 00:00:00 2001
+From 8a858ad0bba8e3b2d3059183773ddda9c6345f00 Mon Sep 17 00:00:00 2001
 From: Sankar Patchineelam <sankar@zededa.com>
 Date: Fri, 30 Aug 2019 18:22:16 +0530
-Subject: [PATCH 1/1] Enable local networking in containers
+Subject: [PATCH 08/11] Enable local networking in containers
 
 ---
  build.sh               |  2 +-
- files/run              |  9 ++++-
- files/udhcpc_script.sh | 82 ++++++++++++++++++++++++++++++++++++++++++
+ files/run              |  6 ++++
+ files/udhcpc_script.sh | 82 ++++++++++++++++++++++++++++++++++++++++++++++++++
  kernel/init-initrd     |  6 ++++
- 4 files changed, 97 insertions(+), 2 deletions(-)
+ 4 files changed, 95 insertions(+), 1 deletion(-)
  create mode 100755 files/udhcpc_script.sh
 
 diff --git a/build.sh b/build.sh
@@ -25,7 +25,7 @@ index c004297..adeb817 100755
  
  # Clean the repo, but save the vendor area
 diff --git a/files/run b/files/run
-index d001b5a..fbb3a71 100755
+index 02c21b9..6696287 100755
 --- a/files/run
 +++ b/files/run
 @@ -12,6 +12,7 @@ gw=""
@@ -36,21 +36,18 @@ index d001b5a..fbb3a71 100755
  
  for i in $*
  do
-@@ -63,7 +64,13 @@ echo "p9=[ 'tag=share_dir,security_model=none,path=$mountpoint' ]" >> $outconfig
- 
- if [ -f "$STAGE1_SEED_XL_CFG" ] ; then
-     grep -Ev '^(disk|bootloader|root|extra|kernel)' < "$STAGE1_SEED_XL_CFG" >> $outconfig
--    echo extra=\'console=hvc0 root=9p\' >> $outconfig
-+    if test $dhcp -eq 0
+@@ -69,6 +70,11 @@ if [ -f "$STAGE1_SEED_XL_CFG" ] ; then
+     else
+        EXTRA="$EXTRA console=hvc0"
+     fi
++    if test $dhcp -ne 0
 +    then
-+        echo extra=\'console=hvc0 root=9p\' >> $outconfig
-+    else
 +        cp $stage1/udhcpc_script.sh $stage2
-+        echo extra=\'console=hvc0 root=9p dhcp=1\' >> $outconfig
++        EXTRA="$EXTRA dhcp=1"
 +    fi
+     echo extra=\'$EXTRA\' >> $outconfig
  else	
      echo "memory = 1024" >> $outconfig
-     echo "vcpus = 2" >> $outconfig
 diff --git a/files/udhcpc_script.sh b/files/udhcpc_script.sh
 new file mode 100755
 index 0000000..681c4a5
@@ -140,7 +137,7 @@ index 0000000..681c4a5
 +
 +exit 0
 diff --git a/kernel/init-initrd b/kernel/init-initrd
-index ba78cde..eb2716d 100755
+index 8c7f146..e59f542 100755
 --- a/kernel/init-initrd
 +++ b/kernel/init-initrd
 @@ -39,6 +39,7 @@ ip=`cat /proc/cmdline | grep -o '\bip=[^ ]*' | cut -d = -f 2`
@@ -164,5 +161,5 @@ index ba78cde..eb2716d 100755
  cmd=`cat /mnt/cmdline`
  echo "Executing $cmd"
 -- 
-2.20.1 (Apple Git-117)
+2.15.1
 

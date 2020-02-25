@@ -1,20 +1,21 @@
-From 423a561620571640bb0531c6bca9aead78b65248 Mon Sep 17 00:00:00 2001
+From 9e45e9f4bdbb928623687675d804db45c7c07c60 Mon Sep 17 00:00:00 2001
 From: Roman Shaposhnik <rvs@zededa.com>
 Date: Fri, 12 Jul 2019 15:01:41 -0700
-Subject: [PATCH] Go 12 upgrade
+Subject: [PATCH 02/11] Go 12 upgrade
 
 ---
  build.sh           | 12 +++++-------
- go.mod             |  3 +
+ go.mod             |  3 +++
  init/go.mod        | 23 +++++++++++++++++++++++
  init/go.sum        | 34 ++++++++++++++++++++++++++++++++++
  kernel/make-initrd |  2 +-
- 4 files changed, 63 insertions(+), 8 deletions(-)
+ 5 files changed, 66 insertions(+), 8 deletions(-)
+ create mode 100644 go.mod
  create mode 100644 init/go.mod
  create mode 100644 init/go.sum
 
 diff --git a/build.sh b/build.sh
-index 5333632..f50b892 100755
+index 0153853..c004297 100755
 --- a/build.sh
 +++ b/build.sh
 @@ -25,7 +25,7 @@ then
@@ -49,7 +50,7 @@ index 5333632..f50b892 100755
  cd ..
 diff --git a/go.mod b/go.mod
 new file mode 100644
-index 0000000..85954e4
+index 0000000..8a268cf
 --- /dev/null
 +++ b/go.mod
 @@ -0,0 +1,3 @@
@@ -126,10 +127,10 @@ index 0000000..be31afc
 +gopkg.in/inf.v0 v0.9.1 h1:73M5CoZyi3ZLMOyDlQh031Cx6N9NDJ2Vvfl76EDAgDc=
 +gopkg.in/inf.v0 v0.9.1/go.mod h1:cWUDdTG/fYaXco+Dcufb5Vnc6Gp2YChqWtbxRZE0mXw=
 diff --git a/kernel/make-initrd b/kernel/make-initrd
-index 4c299dc..f83c775 100755
+index 0c7cba7..c4eaa4e 100755
 --- a/kernel/make-initrd
 +++ b/kernel/make-initrd
-@@ -16,7 +16,7 @@ mkdir -p $tmpdir/sys
+@@ -17,7 +17,7 @@ mkdir -p $tmpdir/sys
  mkdir -p $tmpdir/lib
  mkdir -p $tmpdir/var
  mkdir -p $tmpdir/mnt
