@@ -508,13 +508,12 @@ func rktGc(gracePeriod uint32, imageGc bool) {
 	log.Infof("rktGc %d\n", gracePeriod)
 
 	gracePeriodOption := fmt.Sprintf("--grace-period=%ds", gracePeriod)
-	cmd := "rkt"
-	args := []string{}
+	cmd := "eveadm"
+	args := []string{"rkt", "delete", "gc"}
 	if imageGc {
-		args = append(args, "image")
+		args = append(args, "--image")
 	}
 	args = append(args, []string{
-		"gc",
 		"--dir=" + types.PersistRktDataDir,
 		gracePeriodOption,
 	}...)
