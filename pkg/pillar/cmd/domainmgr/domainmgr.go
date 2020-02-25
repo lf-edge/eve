@@ -2371,14 +2371,17 @@ func rktRun(domainName, xenCfgFilename, mountPointFileName, imageHash string, en
 		envVarSlice = append(envVarSlice, fmt.Sprintf("--set-env=%s=%s", k, v))
 	}
 	log.Infof("rktRun %s\n", domainName)
-	cmd := "rkt"
+	cmd := "eveadm"
 	args := []string{
+		"rkt",
 		"--dir=" + types.PersistRktDataDir,
 		"--insecure-options=image",
-		"run",
+		"create",
 		imageHash,
 		"--stage1-path=/usr/sbin/stage1-xen.aci",
 		"--uuid-file-save=" + uuidFile,
+		"--xen-cfg-filename=" + xenCfgFilename,
+		"--paused",
 	}
 	args = append(args, envVarSlice...)
 	stage1XlOpts := "STAGE1_XL_OPTS=-p"
@@ -2416,9 +2419,11 @@ func rktRun(domainName, xenCfgFilename, mountPointFileName, imageHash string, en
 	log.Infof("rkt run done\n")
 
 	// Obtain the domain id
-	cmd = "xl"
+	cmd = "eveadm"
 	args = []string{
-		"domid",
+		"xen",
+		"info",
+		"--domname",
 		domainName,
 	}
 	stdoutStderr, err = wrap.Command(cmd, args...).CombinedOutput()
@@ -2439,10 +2444,11 @@ func rktRun(domainName, xenCfgFilename, mountPointFileName, imageHash string, en
 
 // rktStatus checks the status of the pod
 func rktStatus(podUUID string) string {
-	cmd := "rkt"
+	cmd := "eveadm"
 	args := []string{
+		"rkt",
 		"--dir=" + types.PersistRktDataDir,
-		"status",
+		"info",
 		podUUID,
 		"--format=json",
 	}
@@ -2466,10 +2472,11 @@ func rktStatus(podUUID string) string {
 // Create in paused state; Need to call xlUnpause later
 func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 	log.Infof("xlCreate %s %s\n", domainName, xenCfgFilename)
-	cmd := "xl"
+	cmd := "eveadm"
 	args := []string{
+		"xen",
 		"create",
-		xenCfgFilename,
+		"--xen-cfg-filename=" + xenCfgFilename,
 		"-p",
 	}
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
@@ -2482,7 +2489,9 @@ func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 	log.Infof("xl create done\n")
 
 	args = []string{
-		"domid",
+		"xen",
+		"info",
+		"--domname",
 		domainName,
 	}
 	stdoutStderr, err = wrap.Command(cmd, args...).CombinedOutput()
@@ -2505,10 +2514,10 @@ func xlStatus(domainName string, domainID int) error {
 	log.Infof("xlStatus %s %d\n", domainName, domainID)
 	// XXX xl list -l domainName returns json. XXX but state not included!
 	// Note that state is not very useful anyhow
-	cmd := "xl"
+	cmd := "eveadm"
 	args := []string{
-		"list",
-		"-l",
+		"xen",
+		"info",
 		domainName,
 	}
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
@@ -2529,9 +2538,11 @@ func xlStatus(domainName string, domainID int) error {
 // can change.
 func xlDomid(domainName string, domainID int) (int, error) {
 	log.Debugf("xlDomid %s %d\n", domainName, domainID)
-	cmd := "xl"
+	cmd := "eveadm"
 	args := []string{
-		"domid",
+		"xen",
+		"info",
+		"--domname",
 		domainName,
 	}
 	// Avoid wrap since we are called periodically
@@ -2609,9 +2620,10 @@ func xlDisableVifOffload(domainName string, domainID int, vifCount int) error {
 
 func xlUnpause(domainName string, domainID int) error {
 	log.Infof("xlUnpause %s %d\n", domainName, domainID)
-	cmd := "xl"
+	cmd := "eveadm"
 	args := []string{
-		"unpause",
+		"xen",
+		"start",
 		domainName,
 	}
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
@@ -2654,11 +2666,12 @@ func DomainShutdown(status types.DomainStatus, force bool) error {
 
 func rktStop(PodUUID string, force bool) error {
 	log.Infof("rktStop %s %t\n", PodUUID, force)
-	cmd := "rkt"
+	cmd := "eveadm"
 	var args []string
 	if force {
 		// rkt --dir=<RKT_DATA_DIR> stop PodUUID --force=true
 		args = []string{
+			"rkt",
 			"--dir=" + types.PersistRktDataDir,
 			"stop",
 			PodUUID,
@@ -2667,6 +2680,7 @@ func rktStop(PodUUID string, force bool) error {
 	} else {
 		// rkt --dir=<RKT_DATA_DIR> stop PodUUID
 		args = []string{
+			"rkt",
 			"--dir=" + types.PersistRktDataDir,
 			"stop",
 			PodUUID,
@@ -2685,17 +2699,19 @@ func rktStop(PodUUID string, force bool) error {
 
 func xlShutdown(domainName string, domainID int, force bool) error {
 	log.Infof("xlShutdown %s %d\n", domainName, domainID)
-	cmd := "xl"
+	cmd := "eveadm"
 	var args []string
 	if force {
 		args = []string{
-			"shutdown",
-			"-F",
+			"xen",
+			"stop",
 			domainName,
+			"--force=true",
 		}
 	} else {
 		args = []string{
-			"shutdown",
+			"xen",
+			"stop",
 			domainName,
 		}
 	}
@@ -2732,10 +2748,11 @@ func DomainDestroy(status types.DomainStatus) error {
 func rktRm(PodUUID string) error {
 	log.Infof("rktRm %s\n", PodUUID)
 	// rkt --dir=<RKT_DATA_DIR> rm PodUUID
-	cmd := "rkt"
+	cmd := "eveadm"
 	args := []string{
+		"rkt",
 		"--dir=" + types.PersistRktDataDir,
-		"rm",
+		"delete",
 		PodUUID,
 	}
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
@@ -2751,9 +2768,10 @@ func rktRm(PodUUID string) error {
 
 func xlDestroy(domainName string, domainID int) error {
 	log.Infof("xlDestroy %s %d\n", domainName, domainID)
-	cmd := "xl"
+	cmd := "eveadm"
 	args := []string{
-		"destroy",
+		"xen",
+		"delete",
 		domainName,
 	}
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()

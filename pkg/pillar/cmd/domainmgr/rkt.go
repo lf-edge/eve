@@ -218,14 +218,15 @@ func rktGetHashes() (map[string]string, error) {
 
 	m := map[string]string{}
 
-	cmd := "rkt"
+	cmd := "eveadm"
 	baseArgs := []string{
+		"rkt",
 		"--dir=" + types.PersistRktDataDir,
 		"--insecure-options=image",
 	}
 	args := append(baseArgs,
-		"image",
 		"list",
+		"--image=true",
 		"--fields=id",
 		"--no-legend",
 	)
@@ -263,15 +264,16 @@ func getRktManifest(imageHash string) (RktManifest, error) {
 	// process the json to get the exact item we need
 	var manifest RktManifest
 
-	cmd := "rkt"
+	cmd := "eveadm"
 	baseArgs := []string{
+		"rkt",
 		"--dir=" + types.PersistRktDataDir,
 		"--insecure-options=image",
 	}
 
 	args := append(baseArgs,
-		"image",
-		"cat-manifest",
+		"info",
+		"--image=true",
 		imageHash,
 	)
 	cmdLine := exec.Command(cmd, args...)
@@ -410,13 +412,15 @@ tarloop:
 func rktImportAciFile(aciFilename string) (string, error) {
 	log.Info("rktImportAciFile")
 
-	cmd := "rkt"
+	cmd := "eveadm"
 	baseArgs := []string{
+		"rkt",
+		"create",
+		"--image=true",
 		"--dir=" + types.PersistRktDataDir,
 		"--insecure-options=image",
 	}
 	args := append(baseArgs,
-		"fetch",
 		aciFilename,
 	)
 	log.Infof("Calling command %s %v\n", cmd, args)
