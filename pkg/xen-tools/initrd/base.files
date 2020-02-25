@@ -1,8 +1,8 @@
 /bin/busybox
-/bin/sh
 /lib/mdev
 /etc/modprobe.d/*.conf
 /etc/mdev.conf
 /launcher.sh
 /mount_disk.sh
 /udhcpc_script.sh
+/bin/sh
