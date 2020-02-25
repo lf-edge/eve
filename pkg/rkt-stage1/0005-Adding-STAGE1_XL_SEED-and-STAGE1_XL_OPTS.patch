@@ -1,5 +1,15 @@
+From 5c711d4d436408997575d1e9dbeba5125d990f50 Mon Sep 17 00:00:00 2001
+From: Roman Shaposhnik <rvs@zededa.com>
+Date: Mon, 24 Feb 2020 11:53:51 -0800
+Subject: [PATCH 05/11] Adding STAGE1_XL_SEED and STAGE1_XL_OPTS
+
+---
+ files/run  | 50 +++++++++++++++++++++++++++++---------------------
+ files/stop |  2 +-
+ 2 files changed, 30 insertions(+), 22 deletions(-)
+
 diff --git a/files/run b/files/run
-index 3f5fdc8..ab63fa0 100755
+index b684a72..620adef 100755
 --- a/files/run
 +++ b/files/run
 @@ -55,26 +55,33 @@ mountpoint=$stage2
@@ -28,7 +38,7 @@ index 3f5fdc8..ab63fa0 100755
 -echo "name=\"$uuid\"" >> $outconfig
 +
 +if [ -f "$STAGE1_SEED_XL_CFG" ] ; then
-+    grep -Ev '^(disk|type)' < "$STAGE1_SEED_XL_CFG" >> $outconfig
++    grep -Ev '^(disk|bootloader|root|extra|kernel)' < "$STAGE1_SEED_XL_CFG" >> $outconfig
 +    echo extra=\'console=hvc0 root=9p\' >> $outconfig
 +else	
 +    echo "memory = 1024" >> $outconfig
@@ -53,17 +63,28 @@ index 3f5fdc8..ab63fa0 100755
 +fi    
 +
  echo $cmdline > $mountpoint/cmdline
- xl create $gargs $workpath/out/test.0
- domid=`xl list | grep "$uuid" | awk '{print$2}'`
+ export IFS=$'\n'
+ stage2manifest=$mountpoint/manifest
+@@ -85,6 +92,7 @@ for row in `cat $stage2manifest | jq -c .app.environment[]`; do
+   echo export $KEY=\'$VALUE\' >> $stage2env
+ done
+ 
+-xl create $gargs $workpath/out/test.0
+-domid=`xl list | grep "$uuid" | awk '{print$2}'`
++xl create $gargs $outconfig $STAGE1_XL_OPTS
++domname=$(sed -ne '/^name *=/s/^.*"\(.*\)"/\1/p' < "$outconfig")
++domid=`xl list | grep "$domname" | awk '{print$2}'`
+ echo $domid > $pod/pid
 diff --git a/files/stop b/files/stop
-index 17db70b..e3e69e3 100755
+index 17db70b..5ca1cbe 100755
 --- a/files/stop
 +++ b/files/stop
-@@ -1,4 +1,6 @@
+@@ -1,4 +1,4 @@
  #!/bin/bash
  
 -xl destroy $1 &>/dev/null
-+domain=$(sed -ne '/^name *=/s/^.*"\(.*\)"/\1/p' < "/var/lib/rkt/pods/run/$1/stage1/rootfs/out/test.0")
-+
-+xl destroy $domain &>/dev/null
++xl destroy $(cat "/var/lib/rkt/pods/run/$1/pid") &>/dev/null
  exit 0
+-- 
+2.15.1
+
