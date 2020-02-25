@@ -3087,7 +3087,7 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 		// Setup list first because functions lookup in IoBundleList
 		for _, phyAdapter := range phyIOAdapterList.AdapterList {
 			ib := *types.IoBundleFromPhyAdapter(phyAdapter)
-			aa.IoBundleList = append(aa.IoBundleList, ib)
+			aa.AddOrUpdateIoBundle(ib)
 		}
 		// Now initialize each entry
 		for _, ib := range aa.IoBundleList {
@@ -3171,7 +3171,7 @@ func handleIBCreate(ctx *domainContext, ib types.IoBundle) {
 			ib.Type, ib.Name, err)
 		return
 	}
-	aa.IoBundleList = append(aa.IoBundleList, ib)
+	aa.AddOrUpdateIoBundle(ib)
 }
 
 func checkAndSetIoBundleAll(ctx *domainContext) {
@@ -3504,7 +3504,7 @@ func handleIBDelete(ctx *domainContext, name string) {
 		if e.Type == ib.Type && e.Name == ib.Name {
 			continue
 		}
-		replace.IoBundleList = append(replace.IoBundleList, e)
+		replace.AddOrUpdateIoBundle(e)
 	}
 	*ctx.assignableAdapters = replace
 	checkIoBundleAll(ctx)
