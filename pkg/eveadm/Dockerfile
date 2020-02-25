@@ -2,7 +2,7 @@ FROM golang:1.12.4-alpine as eveadm-build
 
 RUN apk add --no-cache git make
 
-ENV EVEADM_TAG 0.0.5
+ENV EVEADM_TAG 0.0.6
 
 RUN git clone --branch ${EVEADM_TAG} https://github.com/itmo-eve/eveadm.git
 
