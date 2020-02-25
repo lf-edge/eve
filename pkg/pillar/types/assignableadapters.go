@@ -182,6 +182,19 @@ func (ioType IoType) IsNet() bool {
 	}
 }
 
+// AddOrUpdateIoBundle - Add an Io bundle to AA. If the bundle already exists,
+//  it just updates it.
+func (aa *AssignableAdapters) AddOrUpdateIoBundle(ib IoBundle) {
+	curIbPtr := aa.LookupIoBundle(ib.Name)
+	if curIbPtr == nil {
+		log.Infof("handleIBCreate(%d %s %s) New Bundle",
+			ib.Type, ib.Name, ib.AssignmentGroup)
+		aa.IoBundleList = append(aa.IoBundleList, ib)
+	} else {
+		*curIbPtr = ib
+	}
+}
+
 // LookupIoBundle returns nil if not found
 func (aa *AssignableAdapters) LookupIoBundle(name string) *IoBundle {
 	for i, b := range aa.IoBundleList {
