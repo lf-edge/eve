@@ -2381,6 +2381,7 @@ func rktRun(domainName, xenCfgFilename, mountPointFileName, imageHash string, en
 		"--stage1-path=/usr/sbin/stage1-xen.aci",
 		"--uuid-file-save=" + uuidFile,
 		"--xen-cfg-filename=" + xenCfgFilename,
+		"--stage2_mnt_pts=" + mountPointFileName,
 		"--paused",
 	}
 	args = append(args, envVarSlice...)
