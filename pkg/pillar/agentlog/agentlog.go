@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"runtime"
 	dbg "runtime/debug"
+	"strings"
 	"syscall"
 	"time"
 
@@ -110,6 +111,13 @@ func (hook *SourceHook) Levels() []log.Level {
 	return log.AllLevels
 }
 
+func logStacks(stacks string) {
+	stackArray := strings.Split(stacks, "\n\n")
+	for _, stack := range stackArray {
+		log.Warnf("%v", stack)
+	}
+}
+
 // Wait on channel then handle the signals
 func handleSignals(sigs chan os.Signal) {
 	for {
@@ -119,7 +127,7 @@ func handleSignals(sigs chan os.Signal) {
 			switch sig {
 			case syscall.SIGUSR1:
 				stacks := getStacks(true)
-				log.Warnf("SIGUSR1 triggered stack traces:\n%v\n", stacks)
+				logStacks(fmt.Sprintf("SIGUSR1 triggered stack traces:\n\n %v\n", stacks))
 				// Could result in a watchdog reboot hence
 				// we save it as a reboot-stack
 				RebootStack(stacks)
