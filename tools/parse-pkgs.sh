@@ -95,6 +95,7 @@ sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e "s#FSCRYPT_TAG#${FSCRYPT_TAG}#" \
     -e "s#VTPM_TAG#${VTPM_TAG}#" \
     -e "s#UEFI_TAG#${UEFI_TAG}#" \
+    -e "s#EVEADM_TAG#${EVEADM_TAG}#" \
     -e "s#EVE_TAG#${EVE_TAG}#" \
     ${1:-}
 }
@@ -143,6 +144,7 @@ RKT_STAGE1_TAG=$(linuxkit_tag pkg/rkt-stage1)
 FSCRYPT_TAG=$(linuxkit_tag pkg/fscrypt)
 VTPM_TAG=$(linuxkit_tag pkg/vtpm)
 UEFI_TAG=$(linuxkit_tag pkg/uefi)
+EVEADM_TAG=$(linuxkit_tag pkg/eveadm)
 
 # Synthetic tags: the following tags are based on hashing
 # the contents of all the Dockerfile.in that we can find.

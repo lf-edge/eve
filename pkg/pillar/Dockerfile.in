@@ -36,6 +36,8 @@ FROM RKT_TAG as rkt-build
 FROM RKT_STAGE1_TAG as rkt-stage1-build
 # hadolint ignore=DL3006
 FROM FSCRYPT_TAG as fscrypt-build
+# hadolint ignore=DL3006
+FROM EVEADM_TAG as eveadm-build
 
 FROM alpine:3.8
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
@@ -70,6 +72,7 @@ COPY --from=strongswan / /
 COPY --from=rkt-build /go/rkt/build-rkt-1.26.0/target/bin/rkt /usr/sbin/rkt
 COPY --from=rkt-stage1-build /go/stage1-xen-master/stage1-xen.aci /usr/sbin/stage1-xen.aci
 COPY --from=fscrypt-build /fscrypt /opt/zededa/bin/fscrypt
+COPY --from=eveadm-build /eveadm /usr/sbin/eveadm
 
 # And now a few local tweaks
 COPY rootfs/ /
