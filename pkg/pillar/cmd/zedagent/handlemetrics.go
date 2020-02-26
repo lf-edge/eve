@@ -560,6 +560,23 @@ func createConfigItemStatus(
 	return cfgItemsPtr
 }
 
+func createAppInstances(ctxPtr *zedagentContext,
+	zinfoDevice *info.ZInfoDevice) {
+
+	addAppInstanceFunc := func(key string, value interface{}) bool {
+		ais := value.(types.AppInstanceStatus)
+		zinfoAppInst := new(info.ZInfoAppInstance)
+		zinfoAppInst.Uuid = ais.UUIDandVersion.UUID.String()
+		zinfoAppInst.Name = ais.DisplayName
+		zinfoAppInst.DomainName = ais.DomainName
+		zinfoDevice.AppInstances = append(zinfoDevice.AppInstances,
+			zinfoAppInst)
+		return true
+	}
+	ctxPtr.getconfigCtx.subAppInstanceStatus.Iterate(
+		addAppInstanceFunc)
+}
+
 // This function is called per change, hence needs to try over all management ports
 func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	aa := ctx.assignableAdapters
@@ -908,6 +925,11 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 
 	// Add ConfigItems to the DeviceInfo
 	ReportDeviceInfo.ConfigItemStatus = createConfigItemStatus(ctx.globalStatus)
+
+	// Add AppInstances to the DeviceInfo. We send a list of all AppInstances
+	// currently on the device - even if the corresponding AppInstanceConfig
+	// is deleted.
+	createAppInstances(ctx, ReportDeviceInfo)
 
 	log.Debugf("PublishDeviceInfoToZedCloud sending %v\n", ReportInfo)
 	data, err := proto.Marshal(ReportInfo)
