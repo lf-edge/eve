@@ -21,7 +21,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/info'),
-  serialized_pb=_b('\n\ninfo.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc8\x01\n\x14\x64\x65precatedMetricItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12 \n\x04type\x18\x02 \x01(\x0e\x32\x12.DepMetricItemType\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0fmetricItemValue\">\n\x15ZmetIPAssignmentEntry\x12\x12\n\nmacAddress\x18\x01 \x01(\t\x12\x11\n\tipAddress\x18\x02 \x03(\t\"A\n\x0bZmetVifInfo\x12\x0f\n\x07vifName\x18\x01 \x01(\t\x12\x12\n\nmacAddress\x18\x02 \x01(\t\x12\r\n\x05\x61ppID\x18\x03 \x01(\t\"\x97\x01\n\tZioBundle\x12\x19\n\x04type\x18\x01 \x01(\x0e\x32\x0b.IPhyIoType\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07members\x18\x03 \x03(\t\x12\x15\n\rusedByAppUUID\x18\x04 \x01(\t\x12\x14\n\x0cusedByBaseOS\x18\x05 \x01(\x08\x12#\n\rioAddressList\x18\x06 \x03(\x0b\x32\x0c.IoAddresses\"!\n\x0bIoAddresses\x12\x12\n\nmacAddress\x18\x01 \x01(\t\"\xc9\x01\n\x11ZInfoManufacturer\x12\x14\n\x0cmanufacturer\x18\x01 \x01(\t\x12\x13\n\x0bproductName\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x14\n\x0cserialNumber\x18\x04 \x01(\t\x12\x0c\n\x04UUID\x18\x05 \x01(\t\x12\x12\n\ncompatible\x18\x06 \x01(\t\x12\x12\n\nbiosVendor\x18\x07 \x01(\t\x12\x13\n\x0b\x62iosVersion\x18\x08 \x01(\t\x12\x17\n\x0f\x62iosReleaseDate\x18\t \x01(\t\"\x87\x02\n\x0cZInfoNetwork\x12\x0f\n\x07macAddr\x18\x03 \x01(\t\x12\x0f\n\x07\x64\x65vName\x18\x04 \x01(\t\x12\r\n\x05\x61lias\x18( \x01(\t\x12\x0f\n\x07IPAddrs\x18\x05 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x06 \x03(\t\x12\x16\n\x03\x64ns\x18\x07 \x01(\x0b\x32\t.ZInfoDNS\x12\n\n\x02up\x18\x08 \x01(\x08\x12\x19\n\x08location\x18\t \x01(\x0b\x32\x07.GeoLoc\x12\x0e\n\x06uplink\x18\n \x01(\x08\x12\x1e\n\nnetworkErr\x18\x0b \x01(\x0b\x32\n.ErrorInfo\x12\x11\n\tlocalName\x18\x0c \x01(\t\x12\x1b\n\x05proxy\x18\r \x01(\x0b\x32\x0c.ProxyStatus\"\x87\x01\n\x06GeoLoc\x12\x12\n\nUnderlayIP\x18\x01 \x01(\t\x12\x10\n\x08Hostname\x18\x02 \x01(\t\x12\x0c\n\x04\x43ity\x18\x03 \x01(\t\x12\x0e\n\x06Region\x18\x04 \x01(\t\x12\x0f\n\x07\x43ountry\x18\x05 \x01(\t\x12\x0b\n\x03Loc\x18\x06 \x01(\t\x12\x0b\n\x03Org\x18\x07 \x01(\t\x12\x0e\n\x06Postal\x18\x08 \x01(\t\"D\n\x08ZInfoDNS\x12\x12\n\nDNSservers\x18\x01 \x03(\t\x12\x11\n\tDNSdomain\x18\x02 \x01(\t\x12\x11\n\tDNSsearch\x18\x03 \x03(\t\"\x91\x01\n\x07ZInfoSW\x12\x11\n\tswVersion\x18\x02 \x01(\t\x12\x0e\n\x06swHash\x18\x03 \x01(\t\x12\x18\n\x05state\x18\x04 \x01(\x0e\x32\t.ZSwState\x12\x0e\n\x06target\x18\x06 \x01(\t\x12\x0c\n\x04vdev\x18\x07 \x01(\t\x12\x18\n\x10\x64ownloadProgress\x18\x08 \x01(\r\x12\x11\n\timageName\x18\t \x01(\t\"O\n\tErrorInfo\x12\x13\n\x0b\x64\x65scription\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"]\n\tVaultInfo\x12\x0c\n\x04name\x18\x01 \x01(\t\x12$\n\x06status\x18\x02 \x01(\x0e\x32\x14.DataSecAtRestStatus\x12\x1c\n\x08vaultErr\x18\x03 \x01(\x0b\x32\n.ErrorInfo\"b\n\rDataSecAtRest\x12$\n\x06status\x18\x01 \x01(\x0e\x32\x14.DataSecAtRestStatus\x12\x0c\n\x04info\x18\x02 \x01(\t\x12\x1d\n\tvaultList\x18\x03 \x03(\x0b\x32\n.VaultInfo\"/\n\x0fZInfoConfigItem\x12\r\n\x05value\x18\x01 \x01(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t\"\xb4\x02\n\x15ZInfoConfigItemStatus\x12<\n\x0b\x63onfigItems\x18\x01 \x03(\x0b\x32\'.ZInfoConfigItemStatus.ConfigItemsEntry\x12J\n\x12unknownConfigItems\x18\x02 \x03(\x0b\x32..ZInfoConfigItemStatus.UnknownConfigItemsEntry\x1a\x44\n\x10\x43onfigItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x1f\n\x05value\x18\x02 \x01(\x0b\x32\x10.ZInfoConfigItem:\x02\x38\x01\x1aK\n\x17UnknownConfigItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x1f\n\x05value\x18\x02 \x01(\x0b\x32\x10.ZInfoConfigItem:\x02\x38\x01\"\xe8\x05\n\x0bZInfoDevice\x12\x13\n\x0bmachineArch\x18\x04 \x01(\t\x12\x0f\n\x07\x63puArch\x18\x05 \x01(\t\x12\x10\n\x08platform\x18\x06 \x01(\t\x12\x0c\n\x04ncpu\x18\x07 \x01(\r\x12\x0e\n\x06memory\x18\x08 \x01(\x04\x12\x0f\n\x07storage\x18\t \x01(\x04\x12!\n\x05minfo\x18\x0b \x01(\x0b\x32\x12.ZInfoManufacturer\x12\x1e\n\x07network\x18\r \x03(\x0b\x32\r.ZInfoNetwork\x12&\n\x12\x61ssignableAdapters\x18\x0f \x03(\x0b\x32\n.ZioBundle\x12\x16\n\x03\x64ns\x18\x10 \x01(\x0b\x32\t.ZInfoDNS\x12\"\n\x0bstorageList\x18\x11 \x03(\x0b\x32\r.ZInfoStorage\x12,\n\x08\x62ootTime\x18\x12 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x06swList\x18\x13 \x03(\x0b\x32\x0b.ZInfoDevSW\x12\x10\n\x08HostName\x18\x14 \x01(\t\x12*\n\x0bmetricItems\x18\x15 \x03(\x0b\x32\x15.deprecatedMetricItem\x12\x18\n\x10lastRebootReason\x18\x16 \x01(\t\x12\x32\n\x0elastRebootTime\x18\x17 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12)\n\rsystemAdapter\x18\x18 \x01(\x0b\x32\x12.SystemAdapterInfo\x12\x16\n\x0erestartCounter\x18\x19 \x01(\r\x12*\n\tHSMStatus\x18\x1a \x01(\x0e\x32\x17.HwSecurityModuleStatus\x12\x0f\n\x07HSMInfo\x18\x1b \x01(\t\x12\x17\n\x0flastRebootStack\x18\x1c \x01(\t\x12)\n\x11\x64\x61taSecAtRestInfo\x18\x1d \x01(\x0b\x32\x0e.DataSecAtRest\x12\x30\n\x10\x63onfigItemStatus\x18\x1f \x01(\x0b\x32\x16.ZInfoConfigItemStatus\"L\n\x11SystemAdapterInfo\x12\x14\n\x0c\x63urrentIndex\x18\x01 \x01(\r\x12!\n\x06status\x18\x02 \x03(\x0b\x32\x11.DevicePortStatus\"\xf4\x01\n\x10\x44\x65vicePortStatus\x12\x0f\n\x07version\x18\x01 \x01(\r\x12\x0b\n\x03key\x18\x02 \x01(\t\x12\x30\n\x0ctimePriority\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12.\n\nlastFailed\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x31\n\rlastSucceeded\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1a\n\x05ports\x18\x06 \x03(\x0b\x32\x0b.DevicePort\x12\x11\n\tlastError\x18\x07 \x01(\t\"\x92\x03\n\nDevicePort\x12\x0e\n\x06ifname\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0e\n\x06isMgmt\x18\x03 \x01(\x08\x12\x0c\n\x04\x66ree\x18\x04 \x01(\x08\x12\x10\n\x08\x64hcpType\x18\x0b \x01(\r\x12\x0e\n\x06subnet\x18\x0c \x01(\t\x12\x0f\n\x07gateway\x18\r \x01(\t\x12\x12\n\ndomainname\x18\x0e \x01(\t\x12\x11\n\tntpServer\x18\x0f \x01(\t\x12\x12\n\ndnsServers\x18\x10 \x03(\t\x12\x14\n\x0c\x64hcpRangeLow\x18\x11 \x01(\t\x12\x15\n\rdhcpRangeHigh\x18\x12 \x01(\t\x12\x1b\n\x05proxy\x18\x15 \x01(\x0b\x32\x0c.ProxyStatus\x12\x0f\n\x07macAddr\x18\x16 \x01(\t\x12\x0f\n\x07IPAddrs\x18\x17 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x18 \x03(\t\x12\x16\n\x03\x64ns\x18\x19 \x01(\x0b\x32\t.ZInfoDNS\x12\n\n\x02up\x18\x1a \x01(\x08\x12\x19\n\x08location\x18\x1b \x01(\x0b\x32\x07.GeoLoc\x12\x17\n\x03\x65rr\x18\x1d \x01(\x0b\x32\n.ErrorInfo\"\x96\x01\n\x0bProxyStatus\x12\x1c\n\x07proxies\x18\x01 \x03(\x0b\x32\x0b.ProxyEntry\x12\x12\n\nexceptions\x18\x02 \x01(\t\x12\x0f\n\x07pacfile\x18\x03 \x01(\t\x12\x1a\n\x12networkProxyEnable\x18\x04 \x01(\x08\x12\x17\n\x0fnetworkProxyURL\x18\x05 \x01(\t\x12\x0f\n\x07wpadURL\x18\x06 \x01(\t\"8\n\nProxyEntry\x12\x0c\n\x04type\x18\x01 \x01(\r\x12\x0e\n\x06server\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\xdc\x02\n\nZInfoDevSW\x12\x11\n\tactivated\x18\x02 \x01(\x08\x12\x16\n\x0epartitionLabel\x18\x03 \x01(\t\x12\x17\n\x0fpartitionDevice\x18\x04 \x01(\t\x12\x16\n\x0epartitionState\x18\x05 \x01(\t\x12\x19\n\x06status\x18\x06 \x01(\x0e\x32\t.ZSwState\x12\x14\n\x0cshortVersion\x18\x07 \x01(\t\x12\x13\n\x0blongVersion\x18\x08 \x01(\t\x12\x19\n\x05swErr\x18\t \x01(\x0b\x32\n.ErrorInfo\x12\x18\n\x10\x64ownloadProgress\x18\n \x01(\r\x12!\n\nuserStatus\x18\x0b \x01(\x0e\x32\r.BaseOsStatus\x12\x14\n\x0csubStatusStr\x18\x0c \x01(\t\x12#\n\tsubStatus\x18\r \x01(\x0e\x32\x10.BaseOsSubStatus\x12\x19\n\x11subStatusProgress\x18\x0e \x01(\r\"Y\n\x0cZInfoStorage\x12\x0e\n\x06\x64\x65vice\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\r\n\x05total\x18\x03 \x01(\x04\x12\x17\n\x0fstorageLocation\x18\x04 \x01(\x08\"\x9b\x02\n\x08ZInfoApp\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x12\n\nappVersion\x18\x02 \x01(\t\x12\x11\n\tsystemApp\x18\x06 \x01(\x08\x12\x0f\n\x07\x41ppName\x18\x07 \x01(\t\x12\x1e\n\x0csoftwareList\x18\x08 \x03(\x0b\x32\x08.ZInfoSW\x12,\n\x08\x62ootTime\x18\x0c \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12$\n\x10\x61ssignedAdapters\x18\r \x03(\x0b\x32\n.ZioBundle\x12\x1a\n\x06\x61ppErr\x18\x0e \x03(\x0b\x32\n.ErrorInfo\x12\x18\n\x05state\x18\x0f \x01(\x0e\x32\t.ZSwState\x12\x1e\n\x07network\x18\x10 \x03(\x0b\x32\r.ZInfoNetwork\"D\n\x10ZInfoVpnLinkInfo\x12\r\n\x05spiId\x18\x01 \x01(\t\x12\x0e\n\x06subNet\x18\x02 \x01(\t\x12\x11\n\tdirection\x18\x03 \x01(\x08\"\xbd\x01\n\x0cZInfoVpnLink\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\r\n\x05reqId\x18\x03 \x01(\t\x12\x10\n\x08instTime\x18\x04 \x01(\x04\x12\x0f\n\x07\x65spInfo\x18\x05 \x01(\t\x12\x1d\n\x05state\x18\x06 \x01(\x0e\x32\x0e.ZInfoVpnState\x12 \n\x05lInfo\x18\n \x01(\x0b\x32\x11.ZInfoVpnLinkInfo\x12 \n\x05rInfo\x18\x0b \x01(\x0b\x32\x11.ZInfoVpnLinkInfo\"<\n\x10ZInfoVpnEndPoint\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0e\n\x06ipAddr\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\xd9\x01\n\x0cZInfoVpnConn\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x0f\n\x07\x65stTime\x18\x04 \x01(\x04\x12\x0c\n\x04ikes\x18\x05 \x01(\t\x12\x1d\n\x05state\x18\x06 \x01(\x0e\x32\x0e.ZInfoVpnState\x12 \n\x05lInfo\x18\x07 \x01(\x0b\x32\x11.ZInfoVpnEndPoint\x12 \n\x05rInfo\x18\x08 \x01(\x0b\x32\x11.ZInfoVpnEndPoint\x12\x1c\n\x05links\x18\n \x03(\x0b\x32\r.ZInfoVpnLink\"f\n\x08ZInfoVpn\x12\x0e\n\x06upTime\x18\x01 \x01(\x04\x12\x13\n\x0bpolicyBased\x18\x02 \x01(\x08\x12\x18\n\x10listeningIpAddrs\x18\x03 \x03(\t\x12\x1b\n\x04\x63onn\x18\n \x03(\x0b\x32\r.ZInfoVpnConn\",\n\tRlocState\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x11\n\tReachable\x18\x02 \x01(\x08\"7\n\rMapCacheEntry\x12\x0b\n\x03\x45ID\x18\x01 \x01(\t\x12\x19\n\x05Rlocs\x18\x02 \x03(\x0b\x32\n.RlocState\"C\n\x0b\x44\x61tabaseMap\x12\x0b\n\x03IID\x18\x01 \x01(\x04\x12\'\n\x0fMapCacheEntries\x18\x02 \x03(\x0b\x32\x0e.MapCacheEntry\"8\n\x08\x44\x65\x63\x61pKey\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x0c\n\x04Port\x18\x02 \x01(\x04\x12\x10\n\x08KeyCount\x18\x03 \x01(\x04\"\x8c\x01\n\tZInfoLisp\x12\x15\n\rItrCryptoPort\x18\x01 \x01(\x04\x12\x12\n\nEtrNatPort\x18\x02 \x01(\x04\x12\x12\n\nInterfaces\x18\x03 \x03(\t\x12\"\n\x0c\x44\x61tabaseMaps\x18\x04 \x03(\x0b\x32\x0c.DatabaseMap\x12\x1c\n\tDecapKeys\x18\x05 \x03(\x0b\x32\t.DecapKey\"\xc0\x04\n\x14ZInfoNetworkInstance\x12\x11\n\tnetworkID\x18\x02 \x01(\t\x12\x16\n\x0enetworkVersion\x18\x03 \x01(\t\x12\x10\n\x08instType\x18\x05 \x01(\r\x12\x13\n\x0b\x64isplayname\x18\x06 \x01(\t\x12\x11\n\tactivated\x18\x07 \x01(\x08\x12/\n\x0bupTimeStamp\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1e\n\x0csoftwareList\x18\t \x01(\x0b\x32\x08.ZInfoSW\x12\x19\n\x11\x43urrentUplinkIntf\x18\n \x01(\t\x12\x1a\n\x12\x43urrentUplinkAlias\x18\x0b \x01(\t\x12\x11\n\tbridgeNum\x18\x14 \x01(\r\x12\x12\n\nbridgeName\x18\x15 \x01(\t\x12\x14\n\x0c\x62ridgeIPAddr\x18\x16 \x01(\t\x12-\n\ripAssignments\x18\x17 \x03(\x0b\x32\x16.ZmetIPAssignmentEntry\x12\x14\n\x0c\x62ridgeIPSets\x18\x18 \x03(\t\x12\x1a\n\x04vifs\x18\x19 \x03(\x0b\x32\x0c.ZmetVifInfo\x12\x0f\n\x07ipv4Eid\x18\x1a \x01(\x08\x12$\n\x10\x61ssignedAdapters\x18\x1e \x03(\x0b\x32\n.ZioBundle\x12\x1a\n\x05vinfo\x18\x1f \x01(\x0b\x32\t.ZInfoVpnH\x00\x12\x1b\n\x05linfo\x18  \x01(\x0b\x32\n.ZInfoLispH\x00\x12\x1e\n\nnetworkErr\x18( \x03(\x0b\x32\n.ErrorInfoB\r\n\x0bInfoContent\"\xd9\x01\n\x08ZInfoMsg\x12\x1a\n\x05ztype\x18\x01 \x01(\x0e\x32\x0b.ZInfoTypes\x12\r\n\x05\x64\x65vId\x18\x02 \x01(\t\x12\x1d\n\x05\x64info\x18\x03 \x01(\x0b\x32\x0c.ZInfoDeviceH\x00\x12\x1a\n\x05\x61info\x18\x05 \x01(\x0b\x32\t.ZInfoAppH\x00\x12\'\n\x06niinfo\x18\x0c \x01(\x0b\x32\x15.ZInfoNetworkInstanceH\x00\x12/\n\x0b\x61tTimeStamp\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\r\n\x0bInfoContent*u\n\x11\x44\x65pMetricItemType\x12\x16\n\x12\x44\x65pMetricItemOther\x10\x00\x12\x16\n\x12\x44\x65pMetricItemGauge\x10\x01\x12\x18\n\x14\x44\x65pMetricItemCounter\x10\x02\x12\x16\n\x12\x44\x65pMetricItemState\x10\x03*G\n\nZInfoTypes\x12\t\n\x05ZiNop\x10\x00\x12\x0c\n\x08ZiDevice\x10\x01\x12\t\n\x05ZiApp\x10\x03\x12\x15\n\x11ZiNetworkInstance\x10\x06*\xa5\x01\n\nIPhyIoType\x12\x0e\n\nIPhyIoNoop\x10\x00\x12\x10\n\x0cIPhyIoNetEth\x10\x01\x12\r\n\tIPhyIoUSB\x10\x02\x12\r\n\tIPhyIoCOM\x10\x03\x12\x0f\n\x0bIPhyIoAudio\x10\x04\x12\x11\n\rIPhyIoNetWLAN\x10\x05\x12\x11\n\rIPhyIoNetWWAN\x10\x06\x12\x0e\n\nIPhyIoHDMI\x10\x07\x12\x10\n\x0bIPhyIoOther\x10\xff\x01*\xb8\x01\n\x08ZSwState\x12\x0b\n\x07INVALID\x10\x00\x12\x0b\n\x07INITIAL\x10\x01\x12\x14\n\x10\x44OWNLOAD_STARTED\x10\x02\x12\x0e\n\nDOWNLOADED\x10\x03\x12\r\n\tDELIVERED\x10\x04\x12\r\n\tINSTALLED\x10\x05\x12\x0b\n\x07\x42OOTING\x10\x06\x12\x0b\n\x07RUNNING\x10\x07\x12\x0b\n\x07HALTING\x10\x08\x12\n\n\x06HALTED\x10\t\x12\x0e\n\nRESTARTING\x10\n\x12\x0b\n\x07PURGING\x10\x0b*N\n\x16HwSecurityModuleStatus\x12\x0b\n\x07UNKNOWN\x10\x00\x12\x0c\n\x08NOTFOUND\x10\x01\x12\x0c\n\x08\x44ISABLED\x10\x02\x12\x0b\n\x07\x45NABLED\x10\x03*\x88\x01\n\x13\x44\x61taSecAtRestStatus\x12\x1b\n\x17\x44\x41TASEC_AT_REST_UNKNOWN\x10\x00\x12\x1c\n\x18\x44\x41TASEC_AT_REST_DISABLED\x10\x01\x12\x1b\n\x17\x44\x41TASEC_AT_REST_ENABLED\x10\x02\x12\x19\n\x15\x44\x41TASEC_AT_REST_ERROR\x10\x04*q\n\x0c\x42\x61seOsStatus\x12\x08\n\x04NONE\x10\x00\x12\x0f\n\x0b\x44OWNLOADING\x10\x01\x12\x11\n\rDOWNLOAD_DONE\x10\x02\x12\x0c\n\x08UPDATING\x10\x03\x12\x0b\n\x07UPDATED\x10\x04\x12\x0c\n\x08\x46\x41LLBACK\x10\x05\x12\n\n\x06\x46\x41ILED\x10\x06*\xb6\x01\n\x0f\x42\x61seOsSubStatus\x12\x12\n\x0eNONE_SUBSTATUS\x10\x00\x12\x17\n\x13\x44OWNLOAD_INPROGRESS\x10\x01\x12\x15\n\x11VERIFY_INPROGRESS\x10\x02\x12\x17\n\x13UPDATE_INITIALIZING\x10\x03\x12\x14\n\x10UPDATE_REBOOTING\x10\x04\x12\x12\n\x0eUPDATE_TESTING\x10\x05\x12\x1c\n\x18UPDATE_NEED_TEST_CONFIRM\x10\x06*\x8f\x01\n\rZInfoVpnState\x12\x0f\n\x0bVPN_INVALID\x10\x00\x12\x0f\n\x0bVPN_INITIAL\x10\x01\x12\x12\n\x0eVPN_CONNECTING\x10\x02\x12\x13\n\x0fVPN_ESTABLISHED\x10\x03\x12\x11\n\rVPN_INSTALLED\x10\x04\x12\x0f\n\x0bVPN_REKEYED\x10\x05\x12\x0f\n\x0bVPN_DELETED\x10\nBE\n\x1f\x63om.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/infob\x06proto3')
+  serialized_pb=_b('\n\ninfo.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc8\x01\n\x14\x64\x65precatedMetricItem\x12\x0b\n\x03key\x18\x01 \x01(\t\x12 \n\x04type\x18\x02 \x01(\x0e\x32\x12.DepMetricItemType\x12\x13\n\tboolValue\x18\x03 \x01(\x08H\x00\x12\x15\n\x0buint32Value\x18\x04 \x01(\rH\x00\x12\x15\n\x0buint64Value\x18\x05 \x01(\x04H\x00\x12\x14\n\nfloatValue\x18\x06 \x01(\x02H\x00\x12\x15\n\x0bstringValue\x18\x07 \x01(\tH\x00\x42\x11\n\x0fmetricItemValue\">\n\x15ZmetIPAssignmentEntry\x12\x12\n\nmacAddress\x18\x01 \x01(\t\x12\x11\n\tipAddress\x18\x02 \x03(\t\"A\n\x0bZmetVifInfo\x12\x0f\n\x07vifName\x18\x01 \x01(\t\x12\x12\n\nmacAddress\x18\x02 \x01(\t\x12\r\n\x05\x61ppID\x18\x03 \x01(\t\"\x97\x01\n\tZioBundle\x12\x19\n\x04type\x18\x01 \x01(\x0e\x32\x0b.IPhyIoType\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07members\x18\x03 \x03(\t\x12\x15\n\rusedByAppUUID\x18\x04 \x01(\t\x12\x14\n\x0cusedByBaseOS\x18\x05 \x01(\x08\x12#\n\rioAddressList\x18\x06 \x03(\x0b\x32\x0c.IoAddresses\"!\n\x0bIoAddresses\x12\x12\n\nmacAddress\x18\x01 \x01(\t\"\xc9\x01\n\x11ZInfoManufacturer\x12\x14\n\x0cmanufacturer\x18\x01 \x01(\t\x12\x13\n\x0bproductName\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x14\n\x0cserialNumber\x18\x04 \x01(\t\x12\x0c\n\x04UUID\x18\x05 \x01(\t\x12\x12\n\ncompatible\x18\x06 \x01(\t\x12\x12\n\nbiosVendor\x18\x07 \x01(\t\x12\x13\n\x0b\x62iosVersion\x18\x08 \x01(\t\x12\x17\n\x0f\x62iosReleaseDate\x18\t \x01(\t\"\x87\x02\n\x0cZInfoNetwork\x12\x0f\n\x07macAddr\x18\x03 \x01(\t\x12\x0f\n\x07\x64\x65vName\x18\x04 \x01(\t\x12\r\n\x05\x61lias\x18( \x01(\t\x12\x0f\n\x07IPAddrs\x18\x05 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x06 \x03(\t\x12\x16\n\x03\x64ns\x18\x07 \x01(\x0b\x32\t.ZInfoDNS\x12\n\n\x02up\x18\x08 \x01(\x08\x12\x19\n\x08location\x18\t \x01(\x0b\x32\x07.GeoLoc\x12\x0e\n\x06uplink\x18\n \x01(\x08\x12\x1e\n\nnetworkErr\x18\x0b \x01(\x0b\x32\n.ErrorInfo\x12\x11\n\tlocalName\x18\x0c \x01(\t\x12\x1b\n\x05proxy\x18\r \x01(\x0b\x32\x0c.ProxyStatus\"\x87\x01\n\x06GeoLoc\x12\x12\n\nUnderlayIP\x18\x01 \x01(\t\x12\x10\n\x08Hostname\x18\x02 \x01(\t\x12\x0c\n\x04\x43ity\x18\x03 \x01(\t\x12\x0e\n\x06Region\x18\x04 \x01(\t\x12\x0f\n\x07\x43ountry\x18\x05 \x01(\t\x12\x0b\n\x03Loc\x18\x06 \x01(\t\x12\x0b\n\x03Org\x18\x07 \x01(\t\x12\x0e\n\x06Postal\x18\x08 \x01(\t\"D\n\x08ZInfoDNS\x12\x12\n\nDNSservers\x18\x01 \x03(\t\x12\x11\n\tDNSdomain\x18\x02 \x01(\t\x12\x11\n\tDNSsearch\x18\x03 \x03(\t\"\x91\x01\n\x07ZInfoSW\x12\x11\n\tswVersion\x18\x02 \x01(\t\x12\x0e\n\x06swHash\x18\x03 \x01(\t\x12\x18\n\x05state\x18\x04 \x01(\x0e\x32\t.ZSwState\x12\x0e\n\x06target\x18\x06 \x01(\t\x12\x0c\n\x04vdev\x18\x07 \x01(\t\x12\x18\n\x10\x64ownloadProgress\x18\x08 \x01(\r\x12\x11\n\timageName\x18\t \x01(\t\"O\n\tErrorInfo\x12\x13\n\x0b\x64\x65scription\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"]\n\tVaultInfo\x12\x0c\n\x04name\x18\x01 \x01(\t\x12$\n\x06status\x18\x02 \x01(\x0e\x32\x14.DataSecAtRestStatus\x12\x1c\n\x08vaultErr\x18\x03 \x01(\x0b\x32\n.ErrorInfo\"b\n\rDataSecAtRest\x12$\n\x06status\x18\x01 \x01(\x0e\x32\x14.DataSecAtRestStatus\x12\x0c\n\x04info\x18\x02 \x01(\t\x12\x1d\n\tvaultList\x18\x03 \x03(\x0b\x32\n.VaultInfo\"/\n\x0fZInfoConfigItem\x12\r\n\x05value\x18\x01 \x01(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t\"\xb4\x02\n\x15ZInfoConfigItemStatus\x12<\n\x0b\x63onfigItems\x18\x01 \x03(\x0b\x32\'.ZInfoConfigItemStatus.ConfigItemsEntry\x12J\n\x12unknownConfigItems\x18\x02 \x03(\x0b\x32..ZInfoConfigItemStatus.UnknownConfigItemsEntry\x1a\x44\n\x10\x43onfigItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x1f\n\x05value\x18\x02 \x01(\x0b\x32\x10.ZInfoConfigItem:\x02\x38\x01\x1aK\n\x17UnknownConfigItemsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\x1f\n\x05value\x18\x02 \x01(\x0b\x32\x10.ZInfoConfigItem:\x02\x38\x01\"B\n\x10ZInfoAppInstance\x12\x0c\n\x04uuid\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x12\n\ndomainName\x18\x03 \x01(\t\"\x91\x06\n\x0bZInfoDevice\x12\x13\n\x0bmachineArch\x18\x04 \x01(\t\x12\x0f\n\x07\x63puArch\x18\x05 \x01(\t\x12\x10\n\x08platform\x18\x06 \x01(\t\x12\x0c\n\x04ncpu\x18\x07 \x01(\r\x12\x0e\n\x06memory\x18\x08 \x01(\x04\x12\x0f\n\x07storage\x18\t \x01(\x04\x12!\n\x05minfo\x18\x0b \x01(\x0b\x32\x12.ZInfoManufacturer\x12\x1e\n\x07network\x18\r \x03(\x0b\x32\r.ZInfoNetwork\x12&\n\x12\x61ssignableAdapters\x18\x0f \x03(\x0b\x32\n.ZioBundle\x12\x16\n\x03\x64ns\x18\x10 \x01(\x0b\x32\t.ZInfoDNS\x12\"\n\x0bstorageList\x18\x11 \x03(\x0b\x32\r.ZInfoStorage\x12,\n\x08\x62ootTime\x18\x12 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1b\n\x06swList\x18\x13 \x03(\x0b\x32\x0b.ZInfoDevSW\x12\x10\n\x08HostName\x18\x14 \x01(\t\x12*\n\x0bmetricItems\x18\x15 \x03(\x0b\x32\x15.deprecatedMetricItem\x12\x18\n\x10lastRebootReason\x18\x16 \x01(\t\x12\x32\n\x0elastRebootTime\x18\x17 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12)\n\rsystemAdapter\x18\x18 \x01(\x0b\x32\x12.SystemAdapterInfo\x12\x16\n\x0erestartCounter\x18\x19 \x01(\r\x12*\n\tHSMStatus\x18\x1a \x01(\x0e\x32\x17.HwSecurityModuleStatus\x12\x0f\n\x07HSMInfo\x18\x1b \x01(\t\x12\x17\n\x0flastRebootStack\x18\x1c \x01(\t\x12)\n\x11\x64\x61taSecAtRestInfo\x18\x1d \x01(\x0b\x32\x0e.DataSecAtRest\x12\x30\n\x10\x63onfigItemStatus\x18\x1f \x01(\x0b\x32\x16.ZInfoConfigItemStatus\x12\'\n\x0c\x61ppInstances\x18) \x03(\x0b\x32\x11.ZInfoAppInstance\"L\n\x11SystemAdapterInfo\x12\x14\n\x0c\x63urrentIndex\x18\x01 \x01(\r\x12!\n\x06status\x18\x02 \x03(\x0b\x32\x11.DevicePortStatus\"\xf4\x01\n\x10\x44\x65vicePortStatus\x12\x0f\n\x07version\x18\x01 \x01(\r\x12\x0b\n\x03key\x18\x02 \x01(\t\x12\x30\n\x0ctimePriority\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12.\n\nlastFailed\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x31\n\rlastSucceeded\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1a\n\x05ports\x18\x06 \x03(\x0b\x32\x0b.DevicePort\x12\x11\n\tlastError\x18\x07 \x01(\t\"\x92\x03\n\nDevicePort\x12\x0e\n\x06ifname\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0e\n\x06isMgmt\x18\x03 \x01(\x08\x12\x0c\n\x04\x66ree\x18\x04 \x01(\x08\x12\x10\n\x08\x64hcpType\x18\x0b \x01(\r\x12\x0e\n\x06subnet\x18\x0c \x01(\t\x12\x0f\n\x07gateway\x18\r \x01(\t\x12\x12\n\ndomainname\x18\x0e \x01(\t\x12\x11\n\tntpServer\x18\x0f \x01(\t\x12\x12\n\ndnsServers\x18\x10 \x03(\t\x12\x14\n\x0c\x64hcpRangeLow\x18\x11 \x01(\t\x12\x15\n\rdhcpRangeHigh\x18\x12 \x01(\t\x12\x1b\n\x05proxy\x18\x15 \x01(\x0b\x32\x0c.ProxyStatus\x12\x0f\n\x07macAddr\x18\x16 \x01(\t\x12\x0f\n\x07IPAddrs\x18\x17 \x03(\t\x12\x16\n\x0e\x64\x65\x66\x61ultRouters\x18\x18 \x03(\t\x12\x16\n\x03\x64ns\x18\x19 \x01(\x0b\x32\t.ZInfoDNS\x12\n\n\x02up\x18\x1a \x01(\x08\x12\x19\n\x08location\x18\x1b \x01(\x0b\x32\x07.GeoLoc\x12\x17\n\x03\x65rr\x18\x1d \x01(\x0b\x32\n.ErrorInfo\"\x96\x01\n\x0bProxyStatus\x12\x1c\n\x07proxies\x18\x01 \x03(\x0b\x32\x0b.ProxyEntry\x12\x12\n\nexceptions\x18\x02 \x01(\t\x12\x0f\n\x07pacfile\x18\x03 \x01(\t\x12\x1a\n\x12networkProxyEnable\x18\x04 \x01(\x08\x12\x17\n\x0fnetworkProxyURL\x18\x05 \x01(\t\x12\x0f\n\x07wpadURL\x18\x06 \x01(\t\"8\n\nProxyEntry\x12\x0c\n\x04type\x18\x01 \x01(\r\x12\x0e\n\x06server\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\xdc\x02\n\nZInfoDevSW\x12\x11\n\tactivated\x18\x02 \x01(\x08\x12\x16\n\x0epartitionLabel\x18\x03 \x01(\t\x12\x17\n\x0fpartitionDevice\x18\x04 \x01(\t\x12\x16\n\x0epartitionState\x18\x05 \x01(\t\x12\x19\n\x06status\x18\x06 \x01(\x0e\x32\t.ZSwState\x12\x14\n\x0cshortVersion\x18\x07 \x01(\t\x12\x13\n\x0blongVersion\x18\x08 \x01(\t\x12\x19\n\x05swErr\x18\t \x01(\x0b\x32\n.ErrorInfo\x12\x18\n\x10\x64ownloadProgress\x18\n \x01(\r\x12!\n\nuserStatus\x18\x0b \x01(\x0e\x32\r.BaseOsStatus\x12\x14\n\x0csubStatusStr\x18\x0c \x01(\t\x12#\n\tsubStatus\x18\r \x01(\x0e\x32\x10.BaseOsSubStatus\x12\x19\n\x11subStatusProgress\x18\x0e \x01(\r\"Y\n\x0cZInfoStorage\x12\x0e\n\x06\x64\x65vice\x18\x01 \x01(\t\x12\x11\n\tmountPath\x18\x02 \x01(\t\x12\r\n\x05total\x18\x03 \x01(\x04\x12\x17\n\x0fstorageLocation\x18\x04 \x01(\x08\"\x9b\x02\n\x08ZInfoApp\x12\r\n\x05\x41ppID\x18\x01 \x01(\t\x12\x12\n\nappVersion\x18\x02 \x01(\t\x12\x11\n\tsystemApp\x18\x06 \x01(\x08\x12\x0f\n\x07\x41ppName\x18\x07 \x01(\t\x12\x1e\n\x0csoftwareList\x18\x08 \x03(\x0b\x32\x08.ZInfoSW\x12,\n\x08\x62ootTime\x18\x0c \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12$\n\x10\x61ssignedAdapters\x18\r \x03(\x0b\x32\n.ZioBundle\x12\x1a\n\x06\x61ppErr\x18\x0e \x03(\x0b\x32\n.ErrorInfo\x12\x18\n\x05state\x18\x0f \x01(\x0e\x32\t.ZSwState\x12\x1e\n\x07network\x18\x10 \x03(\x0b\x32\r.ZInfoNetwork\"D\n\x10ZInfoVpnLinkInfo\x12\r\n\x05spiId\x18\x01 \x01(\t\x12\x0e\n\x06subNet\x18\x02 \x01(\t\x12\x11\n\tdirection\x18\x03 \x01(\x08\"\xbd\x01\n\x0cZInfoVpnLink\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\r\n\x05reqId\x18\x03 \x01(\t\x12\x10\n\x08instTime\x18\x04 \x01(\x04\x12\x0f\n\x07\x65spInfo\x18\x05 \x01(\t\x12\x1d\n\x05state\x18\x06 \x01(\x0e\x32\x0e.ZInfoVpnState\x12 \n\x05lInfo\x18\n \x01(\x0b\x32\x11.ZInfoVpnLinkInfo\x12 \n\x05rInfo\x18\x0b \x01(\x0b\x32\x11.ZInfoVpnLinkInfo\"<\n\x10ZInfoVpnEndPoint\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0e\n\x06ipAddr\x18\x02 \x01(\t\x12\x0c\n\x04port\x18\x03 \x01(\r\"\xd9\x01\n\x0cZInfoVpnConn\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0f\n\x07version\x18\x03 \x01(\t\x12\x0f\n\x07\x65stTime\x18\x04 \x01(\x04\x12\x0c\n\x04ikes\x18\x05 \x01(\t\x12\x1d\n\x05state\x18\x06 \x01(\x0e\x32\x0e.ZInfoVpnState\x12 \n\x05lInfo\x18\x07 \x01(\x0b\x32\x11.ZInfoVpnEndPoint\x12 \n\x05rInfo\x18\x08 \x01(\x0b\x32\x11.ZInfoVpnEndPoint\x12\x1c\n\x05links\x18\n \x03(\x0b\x32\r.ZInfoVpnLink\"f\n\x08ZInfoVpn\x12\x0e\n\x06upTime\x18\x01 \x01(\x04\x12\x13\n\x0bpolicyBased\x18\x02 \x01(\x08\x12\x18\n\x10listeningIpAddrs\x18\x03 \x03(\t\x12\x1b\n\x04\x63onn\x18\n \x03(\x0b\x32\r.ZInfoVpnConn\",\n\tRlocState\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x11\n\tReachable\x18\x02 \x01(\x08\"7\n\rMapCacheEntry\x12\x0b\n\x03\x45ID\x18\x01 \x01(\t\x12\x19\n\x05Rlocs\x18\x02 \x03(\x0b\x32\n.RlocState\"C\n\x0b\x44\x61tabaseMap\x12\x0b\n\x03IID\x18\x01 \x01(\x04\x12\'\n\x0fMapCacheEntries\x18\x02 \x03(\x0b\x32\x0e.MapCacheEntry\"8\n\x08\x44\x65\x63\x61pKey\x12\x0c\n\x04Rloc\x18\x01 \x01(\t\x12\x0c\n\x04Port\x18\x02 \x01(\x04\x12\x10\n\x08KeyCount\x18\x03 \x01(\x04\"\x8c\x01\n\tZInfoLisp\x12\x15\n\rItrCryptoPort\x18\x01 \x01(\x04\x12\x12\n\nEtrNatPort\x18\x02 \x01(\x04\x12\x12\n\nInterfaces\x18\x03 \x03(\t\x12\"\n\x0c\x44\x61tabaseMaps\x18\x04 \x03(\x0b\x32\x0c.DatabaseMap\x12\x1c\n\tDecapKeys\x18\x05 \x03(\x0b\x32\t.DecapKey\"\xc0\x04\n\x14ZInfoNetworkInstance\x12\x11\n\tnetworkID\x18\x02 \x01(\t\x12\x16\n\x0enetworkVersion\x18\x03 \x01(\t\x12\x10\n\x08instType\x18\x05 \x01(\r\x12\x13\n\x0b\x64isplayname\x18\x06 \x01(\t\x12\x11\n\tactivated\x18\x07 \x01(\x08\x12/\n\x0bupTimeStamp\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1e\n\x0csoftwareList\x18\t \x01(\x0b\x32\x08.ZInfoSW\x12\x19\n\x11\x43urrentUplinkIntf\x18\n \x01(\t\x12\x1a\n\x12\x43urrentUplinkAlias\x18\x0b \x01(\t\x12\x11\n\tbridgeNum\x18\x14 \x01(\r\x12\x12\n\nbridgeName\x18\x15 \x01(\t\x12\x14\n\x0c\x62ridgeIPAddr\x18\x16 \x01(\t\x12-\n\ripAssignments\x18\x17 \x03(\x0b\x32\x16.ZmetIPAssignmentEntry\x12\x14\n\x0c\x62ridgeIPSets\x18\x18 \x03(\t\x12\x1a\n\x04vifs\x18\x19 \x03(\x0b\x32\x0c.ZmetVifInfo\x12\x0f\n\x07ipv4Eid\x18\x1a \x01(\x08\x12$\n\x10\x61ssignedAdapters\x18\x1e \x03(\x0b\x32\n.ZioBundle\x12\x1a\n\x05vinfo\x18\x1f \x01(\x0b\x32\t.ZInfoVpnH\x00\x12\x1b\n\x05linfo\x18  \x01(\x0b\x32\n.ZInfoLispH\x00\x12\x1e\n\nnetworkErr\x18( \x03(\x0b\x32\n.ErrorInfoB\r\n\x0bInfoContent\"\xd9\x01\n\x08ZInfoMsg\x12\x1a\n\x05ztype\x18\x01 \x01(\x0e\x32\x0b.ZInfoTypes\x12\r\n\x05\x64\x65vId\x18\x02 \x01(\t\x12\x1d\n\x05\x64info\x18\x03 \x01(\x0b\x32\x0c.ZInfoDeviceH\x00\x12\x1a\n\x05\x61info\x18\x05 \x01(\x0b\x32\t.ZInfoAppH\x00\x12\'\n\x06niinfo\x18\x0c \x01(\x0b\x32\x15.ZInfoNetworkInstanceH\x00\x12/\n\x0b\x61tTimeStamp\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.TimestampB\r\n\x0bInfoContent*u\n\x11\x44\x65pMetricItemType\x12\x16\n\x12\x44\x65pMetricItemOther\x10\x00\x12\x16\n\x12\x44\x65pMetricItemGauge\x10\x01\x12\x18\n\x14\x44\x65pMetricItemCounter\x10\x02\x12\x16\n\x12\x44\x65pMetricItemState\x10\x03*G\n\nZInfoTypes\x12\t\n\x05ZiNop\x10\x00\x12\x0c\n\x08ZiDevice\x10\x01\x12\t\n\x05ZiApp\x10\x03\x12\x15\n\x11ZiNetworkInstance\x10\x06*\xa5\x01\n\nIPhyIoType\x12\x0e\n\nIPhyIoNoop\x10\x00\x12\x10\n\x0cIPhyIoNetEth\x10\x01\x12\r\n\tIPhyIoUSB\x10\x02\x12\r\n\tIPhyIoCOM\x10\x03\x12\x0f\n\x0bIPhyIoAudio\x10\x04\x12\x11\n\rIPhyIoNetWLAN\x10\x05\x12\x11\n\rIPhyIoNetWWAN\x10\x06\x12\x0e\n\nIPhyIoHDMI\x10\x07\x12\x10\n\x0bIPhyIoOther\x10\xff\x01*\xb8\x01\n\x08ZSwState\x12\x0b\n\x07INVALID\x10\x00\x12\x0b\n\x07INITIAL\x10\x01\x12\x14\n\x10\x44OWNLOAD_STARTED\x10\x02\x12\x0e\n\nDOWNLOADED\x10\x03\x12\r\n\tDELIVERED\x10\x04\x12\r\n\tINSTALLED\x10\x05\x12\x0b\n\x07\x42OOTING\x10\x06\x12\x0b\n\x07RUNNING\x10\x07\x12\x0b\n\x07HALTING\x10\x08\x12\n\n\x06HALTED\x10\t\x12\x0e\n\nRESTARTING\x10\n\x12\x0b\n\x07PURGING\x10\x0b*N\n\x16HwSecurityModuleStatus\x12\x0b\n\x07UNKNOWN\x10\x00\x12\x0c\n\x08NOTFOUND\x10\x01\x12\x0c\n\x08\x44ISABLED\x10\x02\x12\x0b\n\x07\x45NABLED\x10\x03*\x88\x01\n\x13\x44\x61taSecAtRestStatus\x12\x1b\n\x17\x44\x41TASEC_AT_REST_UNKNOWN\x10\x00\x12\x1c\n\x18\x44\x41TASEC_AT_REST_DISABLED\x10\x01\x12\x1b\n\x17\x44\x41TASEC_AT_REST_ENABLED\x10\x02\x12\x19\n\x15\x44\x41TASEC_AT_REST_ERROR\x10\x04*q\n\x0c\x42\x61seOsStatus\x12\x08\n\x04NONE\x10\x00\x12\x0f\n\x0b\x44OWNLOADING\x10\x01\x12\x11\n\rDOWNLOAD_DONE\x10\x02\x12\x0c\n\x08UPDATING\x10\x03\x12\x0b\n\x07UPDATED\x10\x04\x12\x0c\n\x08\x46\x41LLBACK\x10\x05\x12\n\n\x06\x46\x41ILED\x10\x06*\xb6\x01\n\x0f\x42\x61seOsSubStatus\x12\x12\n\x0eNONE_SUBSTATUS\x10\x00\x12\x17\n\x13\x44OWNLOAD_INPROGRESS\x10\x01\x12\x15\n\x11VERIFY_INPROGRESS\x10\x02\x12\x17\n\x13UPDATE_INITIALIZING\x10\x03\x12\x14\n\x10UPDATE_REBOOTING\x10\x04\x12\x12\n\x0eUPDATE_TESTING\x10\x05\x12\x1c\n\x18UPDATE_NEED_TEST_CONFIRM\x10\x06*\x8f\x01\n\rZInfoVpnState\x12\x0f\n\x0bVPN_INVALID\x10\x00\x12\x0f\n\x0bVPN_INITIAL\x10\x01\x12\x12\n\x0eVPN_CONNECTING\x10\x02\x12\x13\n\x0fVPN_ESTABLISHED\x10\x03\x12\x11\n\rVPN_INSTALLED\x10\x04\x12\x0f\n\x0bVPN_REKEYED\x10\x05\x12\x0f\n\x0bVPN_DELETED\x10\nBE\n\x1f\x63om.zededa.cloud.uservice.protoZ\"github.com/lf-edge/eve/api/go/infob\x06proto3')
   ,
   dependencies=[google_dot_protobuf_dot_timestamp__pb2.DESCRIPTOR,])
 
@@ -50,8 +50,8 @@ _DEPMETRICITEMTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=6268,
-  serialized_end=6385,
+  serialized_start=6377,
+  serialized_end=6494,
 )
 _sym_db.RegisterEnumDescriptor(_DEPMETRICITEMTYPE)
 
@@ -81,8 +81,8 @@ _ZINFOTYPES = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=6387,
-  serialized_end=6458,
+  serialized_start=6496,
+  serialized_end=6567,
 )
 _sym_db.RegisterEnumDescriptor(_ZINFOTYPES)
 
@@ -132,8 +132,8 @@ _IPHYIOTYPE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=6461,
-  serialized_end=6626,
+  serialized_start=6570,
+  serialized_end=6735,
 )
 _sym_db.RegisterEnumDescriptor(_IPHYIOTYPE)
 
@@ -195,8 +195,8 @@ _ZSWSTATE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=6629,
-  serialized_end=6813,
+  serialized_start=6738,
+  serialized_end=6922,
 )
 _sym_db.RegisterEnumDescriptor(_ZSWSTATE)
 
@@ -226,8 +226,8 @@ _HWSECURITYMODULESTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=6815,
-  serialized_end=6893,
+  serialized_start=6924,
+  serialized_end=7002,
 )
 _sym_db.RegisterEnumDescriptor(_HWSECURITYMODULESTATUS)
 
@@ -257,8 +257,8 @@ _DATASECATRESTSTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=6896,
-  serialized_end=7032,
+  serialized_start=7005,
+  serialized_end=7141,
 )
 _sym_db.RegisterEnumDescriptor(_DATASECATRESTSTATUS)
 
@@ -300,8 +300,8 @@ _BASEOSSTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=7034,
-  serialized_end=7147,
+  serialized_start=7143,
+  serialized_end=7256,
 )
 _sym_db.RegisterEnumDescriptor(_BASEOSSTATUS)
 
@@ -343,8 +343,8 @@ _BASEOSSUBSTATUS = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=7150,
-  serialized_end=7332,
+  serialized_start=7259,
+  serialized_end=7441,
 )
 _sym_db.RegisterEnumDescriptor(_BASEOSSUBSTATUS)
 
@@ -386,8 +386,8 @@ _ZINFOVPNSTATE = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=7335,
-  serialized_end=7478,
+  serialized_start=7444,
+  serialized_end=7587,
 )
 _sym_db.RegisterEnumDescriptor(_ZINFOVPNSTATE)
 
@@ -1380,6 +1380,51 @@ _ZINFOCONFIGITEMSTATUS = _descriptor.Descriptor(
 )
 
 
+_ZINFOAPPINSTANCE = _descriptor.Descriptor(
+  name='ZInfoAppInstance',
+  full_name='ZInfoAppInstance',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='uuid', full_name='ZInfoAppInstance.uuid', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='name', full_name='ZInfoAppInstance.name', index=1,
+      number=2, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='domainName', full_name='ZInfoAppInstance.domainName', index=2,
+      number=3, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=2032,
+  serialized_end=2098,
+)
+
+
 _ZINFODEVICE = _descriptor.Descriptor(
   name='ZInfoDevice',
   full_name='ZInfoDevice',
@@ -1555,6 +1600,13 @@ _ZINFODEVICE = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='appInstances', full_name='ZInfoDevice.appInstances', index=24,
+      number=41, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -1567,8 +1619,8 @@ _ZINFODEVICE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2033,
-  serialized_end=2777,
+  serialized_start=2101,
+  serialized_end=2886,
 )
 
 
@@ -1605,8 +1657,8 @@ _SYSTEMADAPTERINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2779,
-  serialized_end=2855,
+  serialized_start=2888,
+  serialized_end=2964,
 )
 
 
@@ -1678,8 +1730,8 @@ _DEVICEPORTSTATUS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2858,
-  serialized_end=3102,
+  serialized_start=2967,
+  serialized_end=3211,
 )
 
 
@@ -1842,8 +1894,8 @@ _DEVICEPORT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3105,
-  serialized_end=3507,
+  serialized_start=3214,
+  serialized_end=3616,
 )
 
 
@@ -1908,8 +1960,8 @@ _PROXYSTATUS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3510,
-  serialized_end=3660,
+  serialized_start=3619,
+  serialized_end=3769,
 )
 
 
@@ -1953,8 +2005,8 @@ _PROXYENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3662,
-  serialized_end=3718,
+  serialized_start=3771,
+  serialized_end=3827,
 )
 
 
@@ -2068,8 +2120,8 @@ _ZINFODEVSW = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=3721,
-  serialized_end=4069,
+  serialized_start=3830,
+  serialized_end=4178,
 )
 
 
@@ -2120,8 +2172,8 @@ _ZINFOSTORAGE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4071,
-  serialized_end=4160,
+  serialized_start=4180,
+  serialized_end=4269,
 )
 
 
@@ -2214,8 +2266,8 @@ _ZINFOAPP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4163,
-  serialized_end=4446,
+  serialized_start=4272,
+  serialized_end=4555,
 )
 
 
@@ -2259,8 +2311,8 @@ _ZINFOVPNLINKINFO = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4448,
-  serialized_end=4516,
+  serialized_start=4557,
+  serialized_end=4625,
 )
 
 
@@ -2339,8 +2391,8 @@ _ZINFOVPNLINK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4519,
-  serialized_end=4708,
+  serialized_start=4628,
+  serialized_end=4817,
 )
 
 
@@ -2384,8 +2436,8 @@ _ZINFOVPNENDPOINT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4710,
-  serialized_end=4770,
+  serialized_start=4819,
+  serialized_end=4879,
 )
 
 
@@ -2471,8 +2523,8 @@ _ZINFOVPNCONN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4773,
-  serialized_end=4990,
+  serialized_start=4882,
+  serialized_end=5099,
 )
 
 
@@ -2523,8 +2575,8 @@ _ZINFOVPN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=4992,
-  serialized_end=5094,
+  serialized_start=5101,
+  serialized_end=5203,
 )
 
 
@@ -2561,8 +2613,8 @@ _RLOCSTATE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5096,
-  serialized_end=5140,
+  serialized_start=5205,
+  serialized_end=5249,
 )
 
 
@@ -2599,8 +2651,8 @@ _MAPCACHEENTRY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5142,
-  serialized_end=5197,
+  serialized_start=5251,
+  serialized_end=5306,
 )
 
 
@@ -2637,8 +2689,8 @@ _DATABASEMAP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5199,
-  serialized_end=5266,
+  serialized_start=5308,
+  serialized_end=5375,
 )
 
 
@@ -2682,8 +2734,8 @@ _DECAPKEY = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5268,
-  serialized_end=5324,
+  serialized_start=5377,
+  serialized_end=5433,
 )
 
 
@@ -2741,8 +2793,8 @@ _ZINFOLISP = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=5327,
-  serialized_end=5467,
+  serialized_start=5436,
+  serialized_end=5576,
 )
 
 
@@ -2908,8 +2960,8 @@ _ZINFONETWORKINSTANCE = _descriptor.Descriptor(
       name='InfoContent', full_name='ZInfoNetworkInstance.InfoContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=5470,
-  serialized_end=6046,
+  serialized_start=5579,
+  serialized_end=6155,
 )
 
 
@@ -2977,8 +3029,8 @@ _ZINFOMSG = _descriptor.Descriptor(
       name='InfoContent', full_name='ZInfoMsg.InfoContent',
       index=0, containing_type=None, fields=[]),
   ],
-  serialized_start=6049,
-  serialized_end=6266,
+  serialized_start=6158,
+  serialized_end=6375,
 )
 
 _DEPRECATEDMETRICITEM.fields_by_name['type'].enum_type = _DEPMETRICITEMTYPE
@@ -3028,6 +3080,7 @@ _ZINFODEVICE.fields_by_name['systemAdapter'].message_type = _SYSTEMADAPTERINFO
 _ZINFODEVICE.fields_by_name['HSMStatus'].enum_type = _HWSECURITYMODULESTATUS
 _ZINFODEVICE.fields_by_name['dataSecAtRestInfo'].message_type = _DATASECATREST
 _ZINFODEVICE.fields_by_name['configItemStatus'].message_type = _ZINFOCONFIGITEMSTATUS
+_ZINFODEVICE.fields_by_name['appInstances'].message_type = _ZINFOAPPINSTANCE
 _SYSTEMADAPTERINFO.fields_by_name['status'].message_type = _DEVICEPORTSTATUS
 _DEVICEPORTSTATUS.fields_by_name['timePriority'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
 _DEVICEPORTSTATUS.fields_by_name['lastFailed'].message_type = google_dot_protobuf_dot_timestamp__pb2._TIMESTAMP
@@ -3103,6 +3156,7 @@ DESCRIPTOR.message_types_by_name['VaultInfo'] = _VAULTINFO
 DESCRIPTOR.message_types_by_name['DataSecAtRest'] = _DATASECATREST
 DESCRIPTOR.message_types_by_name['ZInfoConfigItem'] = _ZINFOCONFIGITEM
 DESCRIPTOR.message_types_by_name['ZInfoConfigItemStatus'] = _ZINFOCONFIGITEMSTATUS
+DESCRIPTOR.message_types_by_name['ZInfoAppInstance'] = _ZINFOAPPINSTANCE
 DESCRIPTOR.message_types_by_name['ZInfoDevice'] = _ZINFODEVICE
 DESCRIPTOR.message_types_by_name['SystemAdapterInfo'] = _SYSTEMADAPTERINFO
 DESCRIPTOR.message_types_by_name['DevicePortStatus'] = _DEVICEPORTSTATUS
@@ -3255,6 +3309,13 @@ ZInfoConfigItemStatus = _reflection.GeneratedProtocolMessageType('ZInfoConfigIte
 _sym_db.RegisterMessage(ZInfoConfigItemStatus)
 _sym_db.RegisterMessage(ZInfoConfigItemStatus.ConfigItemsEntry)
 _sym_db.RegisterMessage(ZInfoConfigItemStatus.UnknownConfigItemsEntry)
+
+ZInfoAppInstance = _reflection.GeneratedProtocolMessageType('ZInfoAppInstance', (_message.Message,), dict(
+  DESCRIPTOR = _ZINFOAPPINSTANCE,
+  __module__ = 'info_pb2'
+  # @@protoc_insertion_point(class_scope:ZInfoAppInstance)
+  ))
+_sym_db.RegisterMessage(ZInfoAppInstance)
 
 ZInfoDevice = _reflection.GeneratedProtocolMessageType('ZInfoDevice', (_message.Message,), dict(
   DESCRIPTOR = _ZINFODEVICE,
