@@ -65,11 +65,11 @@ if [ -n "$agent" ]; then
     fi
 fi
 
-# Check if it is rsyslogd that crashed.
+# Check if it is monitor-rsyslog.sh that crashed/stopped.
 # Tar the contents inside /persist/rsyslog directory and reboot.
 if [ $# -ge 2 ]; then
     agent=$(echo "$2" | grep '/run/.*\.pid' | sed 's,/run/\(.*\)\.pid,\1,')
-    if [ "$agent" = "rsyslogd" ]; then
+    if [ "$agent" = "monitor-rsyslogd" ]; then
         mkdir -p /persist/rsyslog-backup
         # Tar contents of /persist/rsyslog
         NAME="rsyslogd-$(date '+%Y-%m-%d-%H-%M-%S').tar.gz"

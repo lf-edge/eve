@@ -6,6 +6,7 @@ package agentlog
 import (
 	"fmt"
 	"io/ioutil"
+	"log/syslog"
 	"os"
 	"os/signal"
 	"runtime"
@@ -17,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	log "github.com/sirupsen/logrus"
+	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
 )
 
 const (
@@ -28,6 +30,33 @@ var savedAgentName = "unknown" // Keep for signal and exit handlers
 var savedRebootReason = "unknown"
 var savedPid = 0
 
+func setupSyslog(agentName string) error {
+	var err error
+
+	log.SetOutput(ioutil.Discard)
+
+	syslogPriorities := syslog.LOG_INFO | syslog.LOG_DEBUG |
+		syslog.LOG_ERR | syslog.LOG_WARNING | syslog.LOG_NOTICE |
+		syslog.LOG_CRIT | syslog.LOG_ALERT | syslog.LOG_EMERG
+
+	maxRetries := 10
+	for retryCount := 0; retryCount < maxRetries; retryCount++ {
+		syslogHook, err1 := lSyslog.NewSyslogHook("", "", syslogPriorities, agentName)
+		if err1 != nil {
+			err = err1
+			fmt.Printf("initImpl: Retry %d Failed creating syslog hook with error: %s",
+				retryCount, err)
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		log.AddHook(syslogHook)
+		return nil
+	}
+	fmt.Printf("Bailing out after %d tries of NewSyslogHook for %s with error: %s",
+		maxRetries, agentName, err)
+	return err
+}
+
 // Parameter description
 // 1. agentName: Name with which disk log file will be created.
 // 2. logdir: Directory in which disk log file will be placed.
@@ -36,15 +65,24 @@ var savedPid = 0
 //          examples: logmanager
 func initImpl(agentName string, logdir string, text bool) (*os.File, error) {
 
-	var err error
 	var logf *os.File
 	if text {
-		logfile := fmt.Sprintf("%s/%s.log", logdir, agentName)
-		logf, err = os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		err := setupSyslog(agentName)
 		if err != nil {
-			return nil, err
+			fmt.Printf("setupSyslog: failed for agent %s with error: %s", agentName, err)
+
+			// XXX At this time, we only use text based logging for logmanager
+			// and we do not want logmanager sending logs to STDOUT. That can lead
+			// to an infinite loop in logmanager. In the event it's not possible to
+			// setup syslog, send logs to a log file which the agent directly writes.
+			fmt.Printf("Setting up file based direct logging for agent %s", agentName)
+			logfile := fmt.Sprintf("%s/%s.log", logdir, agentName)
+			logf, err = os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+			if err != nil {
+				return nil, err
+			}
+			log.SetOutput(logf)
 		}
-		log.SetOutput(logf)
 	} else {
 		log.SetOutput(os.Stdout)
 	}
@@ -157,11 +195,11 @@ func printStack() {
 // Note: can not use log here since we are called from a log hook!
 func RebootReason(reason string, normal bool) {
 	log.Infof("RebootReason(%s)", reason)
-	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
+	filename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
 	dateStr := time.Now().Format(time.RFC3339Nano)
 	if !normal {
-		reason = fmt.Sprintf("Reboot from agent %s[%d] at %s: %s\n",
-			savedAgentName, savedPid, dateStr, reason)
+		reason = fmt.Sprintf("Reboot from agent %s[%d] in partition %s at %s: %s\n",
+			savedAgentName, savedPid, zboot.GetCurrentPartition(), dateStr, reason)
 	}
 	err := printToFile(filename, reason)
 	if err != nil {
@@ -180,7 +218,7 @@ func RebootReason(reason string, normal bool) {
 // RebootStack writes stack in /persist/IMGx/reboot-stack
 // and appends to /persist/log/reboot-stack.log
 func RebootStack(stacks string) {
-	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), stackFile)
+	filename := fmt.Sprintf("%s/%s", types.PersistDir, stackFile)
 	log.Warnf("RebootStack to %s", filename)
 	err := printToFile(filename, fmt.Sprintf("%v\n", stacks))
 	if err != nil {

@@ -692,11 +692,21 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 	}
 	size := int64(proto.Size(reportLogs))
 	if size > logMaxBytes {
-		log.Warnf("sendProtoStrForLogs: %d bytes: %s\n",
-			size, reportLogs)
+		log.Warnf("LogBundle Start: DevID %s, Image %s, EveVersion %s",
+			reportLogs.DevID, reportLogs.Image, reportLogs.EveVersion)
+		for _, logEntry := range reportLogs.Log {
+			log.Warnf("----> %s", logEntry)
+		}
+		log.Warnf("LogBundle End")
 	} else {
 		log.Debugf("sendProtoStrForLogs %d bytes: %s\n",
 			size, reportLogs)
+		log.Debugf("LogBundle Start: DevID %s, Image %s, EveVersion %s",
+			reportLogs.DevID, reportLogs.Image, reportLogs.EveVersion)
+		for _, logEntry := range reportLogs.Log {
+			log.Debugf("----> %s", logEntry)
+		}
+		log.Debugf("LogBundle End")
 	}
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
