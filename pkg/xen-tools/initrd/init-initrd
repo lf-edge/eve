@@ -73,7 +73,6 @@ then
 fi
 cp /mnt/cmdline /launcher.sh /mnt/rootfs
 source /mnt/environment
-source /mnt/external-environment
 
 echo "Executing /mount_disk.sh"
 /mount_disk.sh
