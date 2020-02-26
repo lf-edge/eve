@@ -3047,7 +3047,7 @@ func createCloudInitISO(config types.DomainConfig) (*types.DiskStatus, error) {
 	ds := new(types.DiskStatus)
 	ds.ActiveFileLocation = fileName
 	ds.Format = zconfig.Format_RAW
-	ds.Vdev = "hdc"
+	ds.Vdev = "hdc:cdrom"
 	ds.ReadOnly = false
 	ds.Preserve = true // Prevent attempt to copy
 	return ds, nil
