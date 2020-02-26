@@ -37,6 +37,6 @@ func TestDeriveLedCounter(t *testing.T) {
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
 		output := DeriveLedCounter(test.ledCounter, test.usableAddressCount)
-		assert.Equal(t, output, test.expectedValue)
+		assert.Equal(t, test.expectedValue, output)
 	}
 }

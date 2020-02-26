@@ -1,5 +1,16 @@
+From eecfdd2e95a965371d9ea0d52534d72e7afbc97f Mon Sep 17 00:00:00 2001
+From: Roman Shaposhnik <rvs@zededa.com>
+Date: Mon, 24 Feb 2020 11:53:09 -0800
+Subject: [PATCH 01/11] Disabling build of the kernel and acitool (since we use
+ external ones in EVE)
+
+---
+ build.sh           | 10 +++++-----
+ kernel/make-initrd |  1 +
+ 2 files changed, 6 insertions(+), 5 deletions(-)
+
 diff --git a/build.sh b/build.sh
-index f50b892..c004297 100755
+index 5333632..0153853 100755
 --- a/build.sh
 +++ b/build.sh
 @@ -72,8 +72,8 @@ for i in $execs; do
@@ -13,7 +24,7 @@ index f50b892..c004297 100755
  kernel/make-initrd
  cp kernel/out/initrd target/rootfs
  
-@@ -110,7 +110,7 @@ echo 1 > systemd-version
+@@ -112,7 +112,7 @@ echo 1 > systemd-version
  cd ../..
  
  # Build actool
@@ -25,7 +36,7 @@ index f50b892..c004297 100755
 -./aci/actool build target stage1-xen.aci
 +#./aci/actool build target stage1-xen.aci
 diff --git a/kernel/make-initrd b/kernel/make-initrd
-index f83c775..c4eaa4e 100755
+index 4c299dc..0c7cba7 100755
 --- a/kernel/make-initrd
 +++ b/kernel/make-initrd
 @@ -7,6 +7,7 @@ initrd=$outpath/initrd
@@ -36,3 +47,6 @@ index f83c775..c4eaa4e 100755
  mkdir -p $tmpdir/bin
  mkdir -p $tmpdir/sbin
  mkdir -p $tmpdir/etc
+-- 
+2.15.1
+

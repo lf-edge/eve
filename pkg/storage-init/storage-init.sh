@@ -62,6 +62,14 @@ if P3=$(/hostfs/sbin/findfs PARTLABEL=P3) && [ -n "$P3" ]; then
         tune2fs -O encrypt "$P3"
         if ! mount -t ext4 -o dirsync,noatime "$P3" $PERSISTDIR; then
             echo "$(date -Ins -u) mount $P3 failed"
+        else
+            # The only bit of initialization we do is to point containerd to /persist
+            # The trick here is to only do it if /persist is available and otherwise
+            # allow containerd to run with /var/lib/containerd on tmpfs (to make sure
+            # that the system comes up somehow)
+            mkdir -p "$PERSISTDIR/containerd"
+            mkdir -p /hostfs/var/lib
+            ln -s "$PERSISTDIR/containerd" /hostfs/var/lib/containerd
         fi
     fi
 else

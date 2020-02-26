@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"runtime"
 	dbg "runtime/debug"
+	"strings"
 	"syscall"
 	"time"
 
@@ -119,7 +120,12 @@ func handleSignals(sigs chan os.Signal) {
 			switch sig {
 			case syscall.SIGUSR1:
 				stacks := getStacks(true)
-				log.Warnf("SIGUSR1 triggered stack traces:\n%v\n", stacks)
+				stackArray := strings.Split(stacks, "\n\n")
+				log.Warnf("SIGUSR1 triggered with %d stacks", len(stackArray))
+				for _, stack := range stackArray {
+					log.Warnf("%v", stack)
+				}
+				log.Warnf("SIGUSR1: end of stacks")
 				// Could result in a watchdog reboot hence
 				// we save it as a reboot-stack
 				RebootStack(stacks)
@@ -135,7 +141,12 @@ func handleSignals(sigs chan os.Signal) {
 // Print out our stack
 func printStack() {
 	stacks := getStacks(false)
-	log.Errorf("fatal stack trace due to %s:\n%v\n", savedRebootReason, stacks)
+	stackArray := strings.Split(stacks, "\n\n")
+	log.Errorf("Fatal stack trace due to %s with %d stack traces", savedRebootReason, len(stackArray))
+	for _, stack := range stackArray {
+		log.Errorf("%v", stack)
+	}
+	log.Errorf("Fatal: end of stacks")
 	RebootReason(fmt.Sprintf("fatal: agent %s[%d] exit", savedAgentName, savedPid))
 	RebootStack(stacks)
 }

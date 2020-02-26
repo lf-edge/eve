@@ -1,14 +1,14 @@
-From 1d4ebd21736ee97c8055ef25e69c4a1156041303 Mon Sep 17 00:00:00 2001
+From 239650c658443fe54be64494a4dd3c3837e7ddb5 Mon Sep 17 00:00:00 2001
 From: bharani-zededa <bharani@zededa.com>
 Date: Sun, 24 Nov 2019 15:02:57 -0800
-Subject: [PATCH] Set working directory for containers
+Subject: [PATCH 09/11] Set working directory for containers
 
 ---
  build.sh           |  2 +-
  files/launcher.sh  | 12 ++++++++++++
  files/run          |  4 ++++
- kernel/init-initrd |  5 ++++-
- 4 files changed, 21 insertions(+), 2 deletions(-)
+ kernel/init-initrd |  3 +++
+ 4 files changed, 20 insertions(+), 1 deletion(-)
  create mode 100644 files/launcher.sh
 
 diff --git a/build.sh b/build.sh
@@ -43,10 +43,10 @@ index 0000000..2fad27e
 +set -- $ARGS
 +eval $@
 diff --git a/files/run b/files/run
-index 482c0ef..0ce4fa2 100755
+index 6696287..e06f701 100755
 --- a/files/run
 +++ b/files/run
-@@ -93,6 +93,8 @@ else
+@@ -98,6 +98,8 @@ else
      fi
  fi    
  
@@ -55,7 +55,7 @@ index 482c0ef..0ce4fa2 100755
  echo $cmdline > $mountpoint/cmdline
  export IFS=$'\n'
  stage2manifest=$mountpoint/manifest
-@@ -102,6 +104,8 @@ for row in `cat $stage2manifest | jq -c .app.environment[]`; do
+@@ -107,6 +109,8 @@ for row in `cat $stage2manifest | jq -c .app.environment[]`; do
    VALUE=$(echo $row | jq -r .value)
    echo export $KEY=\'$VALUE\' >> $stage2env
  done
@@ -65,10 +65,10 @@ index 482c0ef..0ce4fa2 100755
  xl create $gargs $outconfig $STAGE1_XL_OPTS
  domname=$(sed -ne '/^name *=/s/^.*"\(.*\)"/\1/p' < "$outconfig")
 diff --git a/kernel/init-initrd b/kernel/init-initrd
-index 66d8b54..a6eaa62 100755
+index e59f542..9f11a97 100755
 --- a/kernel/init-initrd
 +++ b/kernel/init-initrd
-@@ -74,7 +74,10 @@ then
+@@ -74,6 +74,9 @@ then
      ip link set dev eth0 up
      udhcpc --interface=eth0 --script=/mnt/udhcpc_script.sh
  fi
@@ -78,8 +78,6 @@ index 66d8b54..a6eaa62 100755
  cmd=`cat /mnt/cmdline`
  echo "Executing $cmd"
  source /mnt/environment
--eval chroot /mnt/rootfs $cmd
-+eval setsid -c chroot /mnt/rootfs /launcher.sh $cmd <> /dev/console 2>&1
 -- 
-2.11.0
+2.15.1
 

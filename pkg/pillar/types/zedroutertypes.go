@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -218,9 +219,55 @@ func (portConfig *DevicePortConfig) DoSanitize(
 	}
 }
 
+// CountMgmtPorts returns the number of management ports
+// Exclude any broken ones with Dhcp = DT_NONE
+func (portConfig *DevicePortConfig) CountMgmtPorts() int {
+
+	count := 0
+	for _, port := range portConfig.Ports {
+		if port.IsMgmt && port.Dhcp != DT_NONE {
+			count++
+		}
+	}
+	return count
+}
+
+// Equal compares two DevicePortConfig but skips things that are
+// more of status such as the timestamps and the ParseError
+// XXX Compare Version or not?
+// We compare the Ports in array order.
+func (portConfig *DevicePortConfig) Equal(portConfig2 *DevicePortConfig) bool {
+
+	if portConfig.Key != portConfig2.Key {
+		return false
+	}
+	if len(portConfig.Ports) != len(portConfig2.Ports) {
+		return false
+	}
+	for i, p1 := range portConfig.Ports {
+		p2 := portConfig2.Ports[i]
+		if p1.IfName != p2.IfName ||
+			p1.Name != p2.Name ||
+			p1.IsMgmt != p2.IsMgmt ||
+			p1.Free != p2.Free {
+			return false
+		}
+		if !reflect.DeepEqual(p1.DhcpConfig, p2.DhcpConfig) ||
+			!reflect.DeepEqual(p1.ProxyConfig, p2.ProxyConfig) ||
+			!reflect.DeepEqual(p1.WirelessCfg, p2.WirelessCfg) {
+			return false
+		}
+	}
+	return true
+}
+
 // IsDPCTestable - Return false if recent failure (less than 60 seconds ago)
+// Also returns false if it isn't usable
 func (portConfig DevicePortConfig) IsDPCTestable() bool {
 
+	if !portConfig.IsDPCUsable() {
+		return false
+	}
 	if portConfig.LastFailed.IsZero() {
 		return true
 	}
@@ -232,12 +279,21 @@ func (portConfig DevicePortConfig) IsDPCTestable() bool {
 	return (timeDiff > 60)
 }
 
-// IsDPCUntested -
+// IsDPCUntested - returns true if this is something we might want to test now.
+// Checks if it is Usable since there is no point in testing unusable things.
 func (portConfig DevicePortConfig) IsDPCUntested() bool {
-	if portConfig.LastFailed.IsZero() && portConfig.LastSucceeded.IsZero() {
+	if portConfig.LastFailed.IsZero() && portConfig.LastSucceeded.IsZero() &&
+		portConfig.IsDPCUsable() {
 		return true
 	}
 	return false
+}
+
+// IsDPCUsable - checks whether something is invalid; no management IP
+// addresses means it isn't usable hence we return false if none.
+func (portConfig DevicePortConfig) IsDPCUsable() bool {
+	mgmtCount := portConfig.CountMgmtPorts()
+	return mgmtCount > 0
 }
 
 // WasDPCWorking - Check if the last results for the DPC was Success
@@ -341,6 +397,9 @@ type WirelessConfig struct {
 	Wifi     []WifiConfig // Wifi Config params
 }
 
+// NetworkPortConfig has the configuration and some status like ParseErrors
+// for one IfName.
+// Note that if fields are added the Equal function needs to be updated.
 type NetworkPortConfig struct {
 	IfName string
 	Name   string // New logical name set by controller/model

@@ -93,12 +93,12 @@ func handlePersistDelete(ctx *verifierContext, status *types.PersistImageStatus)
 	_, err := os.Stat(verifiedDirname)
 	if err == nil {
 		if _, err := os.Stat(preserveFilename); err != nil {
-			log.Infof("doDelete removing %s\n", verifiedDirname)
+			log.Infof("handlePersistDelete removing %s\n", verifiedDirname)
 			if err := os.RemoveAll(verifiedDirname); err != nil {
 				log.Fatal(err)
 			}
 		} else {
-			log.Infof("doDelete preserving %s\n", verifiedDirname)
+			log.Infof("handlePersistDelete preserving %s\n", verifiedDirname)
 		}
 	}
 

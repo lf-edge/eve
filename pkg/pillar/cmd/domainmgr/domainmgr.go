@@ -49,7 +49,6 @@ const (
 	xenDirname   = runDirname + "/xen"       // We store xen cfg files here
 	ciDirname    = runDirname + "/cloudinit" // For cloud-init images
 	rwImgDirname = types.PersistDir + "/img" // We store images here
-	uuidFile     = types.PersistRktDataDir + "/uuid_file"
 	// Time limits for event loop handlers
 	errorTime   = 3 * time.Minute
 	warningTime = 40 * time.Second
@@ -90,6 +89,7 @@ type domainContext struct {
 	vdiskGCTime            uint32 // In seconds
 	domainBootRetryTime    uint32 // In seconds
 	metricInterval         uint32 // In seconds
+	RktGCGracePeriod       uint32
 }
 
 // appRwImageName - Returns name of the image ( including parent dir )
@@ -357,6 +357,9 @@ func Run(ps *pubsub.PubSub) {
 	}
 	domainCtx.subDomainConfig = subDomainConfig
 	subDomainConfig.Activate()
+
+	// Start Rkt GC handler
+	go runRktGcHandler(&domainCtx)
 
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse
@@ -753,6 +756,18 @@ func runHandler(ctx *domainContext, key string, c <-chan Notify) {
 		}
 	}
 	log.Infof("runHandler(%s) DONE\n", key)
+}
+
+func runRktGcHandler(ctxPtr *domainContext) {
+	// Start the first timer after 10 mins
+	timer := time.NewTimer(100 * time.Minute)
+	for true {
+		<-timer.C
+		rktGc(ctxPtr.RktGCGracePeriod, false)
+		rktGc(ctxPtr.RktGCGracePeriod, true)
+		timer = time.NewTimer(
+			time.Duration(ctxPtr.RktGCGracePeriod) * time.Second)
+	}
 }
 
 // doStopDestroyDomain will destroy the domain of an instance if qemu is crashed
@@ -1563,12 +1578,16 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			ds.ActiveFileLocation = target
 			ds.FileLocation = target
 		} else {
+			if target != "" {
+				log.Infof("XXX Did not find target at %s for ContainerImageId(%s), ImageSha256(%s)",
+					target, ds.ImageID.String(), dc.ImageSha256)
+			}
 			log.Infof("getting image file location IsContainer(%v), ContainerImageId(%s), ImageSha256(%s)",
 				status.IsContainer, ds.ImageID.String(), dc.ImageSha256)
 			location, err := utils.VerifiedImageFileLocation(ds.ImageSha256)
 			if err != nil {
-				log.Errorf("configToStatus: Failed to get Image File Location. "+
-					"err: %+s", err.Error())
+				log.Errorf("configToStatus: Failed to get Image File Location (target %s) err: %s",
+					target, err)
 				return err
 			}
 			ds.FileLocation = location
@@ -2282,7 +2301,7 @@ func lookForRktRunErrors(str string) error {
 	return nil
 }
 
-// DomainCreate is a wrapper for domain creation thru xlCreate or rktRun
+// DomainCreate is a wrapper for domain creation thru xlCreate or rktRun (rktPrepare + rktRunPrepared)
 // returns domainID, PodUUID and error
 func DomainCreate(status types.DomainStatus) (int, string, error) {
 
@@ -2344,64 +2363,38 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 // returns domainID, podUUID and error
 func rktRun(domainName, xenCfgFilename, mountPointFileName, imageHash string, envList map[string]string) (int, string, error) {
 	// STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=xenCfgFilename rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file --set-env=ENV-KEY=env-value
+
+	log.Infof("rktRun %s\n", domainName)
 	var (
 		envVarSlice = make([]string, 0)
+		err         error
+		podUUID     string
 	)
 	for k, v := range envList {
 		envVarSlice = append(envVarSlice, fmt.Sprintf("--set-env=%s=%s", k, v))
 	}
-	log.Infof("rktRun %s\n", domainName)
-	cmd := "rkt"
-	args := []string{
-		"--dir=" + types.PersistRktDataDir,
-		"--insecure-options=image",
-		"run",
-		imageHash,
-		"--stage1-path=/usr/sbin/stage1-xen.aci",
-		"--uuid-file-save=" + uuidFile,
-	}
-	args = append(args, envVarSlice...)
-	stage1XlOpts := "STAGE1_XL_OPTS=-p"
-	stage1XlCfg := "STAGE1_SEED_XL_CFG=" + xenCfgFilename
-	stage2MP := "STAGE2_MNT_PTS=" + mountPointFileName
-	log.Infof("Calling command %s %v\n", cmd, args)
-	log.Infof("Also setting env vars %s %s %s\n", stage1XlOpts, stage1XlCfg, stage2MP)
-	cmdLine := exec.Command(cmd, args...)
-	cmdLine.Env = append(os.Environ(), stage1XlOpts, stage1XlCfg, stage2MP)
-	stdoutStderr, err := cmdLine.CombinedOutput()
+
+	podUUID, err = rktPrepare(imageHash, envVarSlice)
 	if err != nil {
-		log.Errorln("rkt run failed ", err)
-		log.Errorln("rkt run output ", string(stdoutStderr))
-		return 0, "", fmt.Errorf("rkt run failed: %s\n",
-			string(stdoutStderr))
+		log.Errorln(err)
+		return 0, "", err
 	}
 
-	// Get Pod UUID
-	uuidData, err := ioutil.ReadFile(uuidFile)
+	err = rktRunPrepared(podUUID, xenCfgFilename, mountPointFileName)
 	if err != nil {
-		log.Errorf("Open %s failed : %s\n", uuidFile, err)
-		return 0, "", fmt.Errorf("open %s failed: %s\n", uuidFile, err)
+		log.Errorln(err)
+		return 0, "", err
 	}
-	podUUID := strings.TrimSpace(string(uuidData))
-	log.Infof("podUUID = %s\n", podUUID)
 
-	err = lookForRktRunErrors(string(stdoutStderr))
-	if err != nil {
-		if status := rktStatus(podUUID); status != "running" {
-			log.Errorf("status = %s, err = %s", status, err)
-			return 0, "", err
-		}
-		log.Errorf("running ignore rkt err = %s", err)
-	}
 	log.Infof("rkt run done\n")
 
 	// Obtain the domain id
-	cmd = "xl"
-	args = []string{
+	cmd := "xl"
+	args := []string{
 		"domid",
 		domainName,
 	}
-	stdoutStderr, err = wrap.Command(cmd, args...).CombinedOutput()
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
 	if err != nil {
 		log.Errorln("xl domid failed ", err)
 		log.Errorln("xl domid output ", string(stdoutStderr))
@@ -2415,6 +2408,67 @@ func rktRun(domainName, xenCfgFilename, mountPointFileName, imageHash string, en
 		return 0, "", fmt.Errorf("Can't extract domainID from %s: %s\n", res, err)
 	}
 	return domainID, podUUID, nil
+}
+
+func rktPrepare(imageHash string, envVarSlice []string) (string, error) {
+	log.Infof("rktPrepare %s\n", imageHash)
+	cmd := "rkt"
+	args := []string{
+		"--dir=" + types.PersistRktDataDir,
+		"--insecure-options=image",
+		"prepare",
+		imageHash,
+		"--stage1-path=/usr/sbin/stage1-xen.aci",
+		"--quiet",
+	}
+	args = append(args, envVarSlice...)
+	cmdLine := exec.Command(cmd, args...)
+	stdoutStderr, err := cmdLine.CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt prepare failed ", err)
+		log.Errorln("rkt prepare output ", string(stdoutStderr))
+		return "", fmt.Errorf("rkt prepare failed: %s\n",
+			string(stdoutStderr))
+	}
+
+	podUUID := strings.TrimSuffix(string(stdoutStderr), "\n")
+	log.Infof("podUUID = %s\n", podUUID)
+	return podUUID, nil
+}
+
+func rktRunPrepared(podUUID, xenCfgFilename, mountPointFileName string) error {
+	log.Infof("rktRunPrepared %s\n", podUUID)
+	cmd := "rkt"
+	args := []string{
+		"--dir=" + types.PersistRktDataDir,
+		"run-prepared",
+		podUUID,
+	}
+	stage1XlOpts := "STAGE1_XL_OPTS=-p"
+	stage1XlCfg := "STAGE1_SEED_XL_CFG=" + xenCfgFilename
+	stage2MP := "STAGE2_MNT_PTS=" + mountPointFileName
+	log.Infof("Calling command %s %v\n", cmd, args)
+	log.Infof("Also setting env vars %s %s %s\n", stage1XlOpts, stage1XlCfg, stage2MP)
+	cmdLine := exec.Command(cmd, args...)
+	cmdLine.Env = append(os.Environ(), stage1XlOpts, stage1XlCfg, stage2MP)
+	stdoutStderr, err := cmdLine.CombinedOutput()
+	if err != nil {
+		log.Errorln("rkt run-prepared failed ", err)
+		log.Errorln("rkt run-prepared output ", string(stdoutStderr))
+		return fmt.Errorf("rkt run-prepared failed: %s\n",
+			string(stdoutStderr))
+	}
+
+	err = lookForRktRunErrors(string(stdoutStderr))
+	if err != nil {
+		if status := rktStatus(podUUID); status != "running" {
+			log.Errorf("status = %s, err = %s", status, err)
+			return err
+		}
+		log.Errorf("running ignore rkt err = %s", err)
+	}
+	log.Infof("rkt run-prepared done\n")
+	return nil
 }
 
 // rktStatus checks the status of the pod
@@ -2848,9 +2902,16 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		if gcp.MetricInterval != 0 {
 			ctx.metricInterval = gcp.MetricInterval
 		}
+		if gcp.RktGCGracePeriod != 0 {
+			ctx.RktGCGracePeriod = gcp.RktGCGracePeriod
+		}
 		ctx.GCInitialized = true
 	}
-	log.Infof("handleGlobalConfigModify done for %s\n", key)
+	log.Infof("handleGlobalConfigModify done for %s. VdiskGCTime: %d, "+
+		"DomainBootRetryTime: %d, usbAccess: %t, metricInterval: %d, "+
+		"RktGCGracePeriod: %d",
+		key, ctx.vdiskGCTime, ctx.domainBootRetryTime, ctx.usbAccess,
+		ctx.metricInterval, ctx.RktGCGracePeriod)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
@@ -2927,7 +2988,11 @@ func fetchEnvVariablesFromCloudInit(config types.DomainConfig) (map[string]strin
 	envList := make(map[string]string, 0)
 	list := strings.Split(string(ud), "\n")
 	for _, v := range list {
-		pair := strings.SplitN(v, ":", 2)
+		pair := strings.SplitN(v, "=", 2)
+		if len(pair) != 2 {
+			errStr := fmt.Sprintf("Variable \"%s\" not defined properly\nKey value pair should be delimited by \"=\"", pair[0])
+			return nil, errors.New(errStr)
+		}
 		envList[pair[0]] = pair[1]
 	}
 
@@ -3026,7 +3091,7 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 		// Setup list first because functions lookup in IoBundleList
 		for _, phyAdapter := range phyIOAdapterList.AdapterList {
 			ib := *types.IoBundleFromPhyAdapter(phyAdapter)
-			aa.IoBundleList = append(aa.IoBundleList, ib)
+			aa.AddOrUpdateIoBundle(ib)
 		}
 		// Now initialize each entry
 		for _, ib := range aa.IoBundleList {
@@ -3110,7 +3175,7 @@ func handleIBCreate(ctx *domainContext, ib types.IoBundle) {
 			ib.Type, ib.Name, err)
 		return
 	}
-	aa.IoBundleList = append(aa.IoBundleList, ib)
+	aa.AddOrUpdateIoBundle(ib)
 }
 
 func checkAndSetIoBundleAll(ctx *domainContext) {
@@ -3443,7 +3508,7 @@ func handleIBDelete(ctx *domainContext, name string) {
 		if e.Type == ib.Type && e.Name == ib.Name {
 			continue
 		}
-		replace.IoBundleList = append(replace.IoBundleList, e)
+		replace.AddOrUpdateIoBundle(e)
 	}
 	*ctx.assignableAdapters = replace
 	checkIoBundleAll(ctx)

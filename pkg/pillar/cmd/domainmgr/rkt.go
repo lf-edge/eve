@@ -19,6 +19,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	v1tarball "github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -494,4 +495,31 @@ tarloop:
 		}
 	}
 	return tagList, nil
+}
+
+// Run rkt garbage collect
+//	rktGc(ctx.RktGCGracePeriod, false)
+//	rktGc(ctx.RktGCGracePeriod, true)
+func rktGc(gracePeriod uint32, imageGc bool) {
+	log.Infof("rktGc %d\n", gracePeriod)
+
+	gracePeriodOption := fmt.Sprintf("--grace-period=%ds", gracePeriod)
+	cmd := "rkt"
+	args := []string{}
+	if imageGc {
+		args = append(args, "image")
+	}
+	args = append(args, []string{
+		"gc",
+		"--dir=" + types.PersistRktDataDir,
+		gracePeriodOption,
+	}...)
+	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
+	if err != nil {
+		log.Errorf("***rkt gc failed: %+v ", err)
+		log.Errorf("***rkt gc output: %s", string(stdoutStderr))
+		return
+	}
+	log.Debugf("rkt gc done: %s", string(stdoutStderr))
+	return
 }

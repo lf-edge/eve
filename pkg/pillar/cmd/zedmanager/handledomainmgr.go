@@ -75,11 +75,18 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	}
 	for index, sc := range aiConfig.StorageConfigList {
 		ssPtr := &aiStatus.StorageStatusList[index]
-		location := ssPtr.ActiveFileLocation
-		if location == "" {
-			errStr := "No ActiveFileLocation"
-			log.Error(errStr)
-			return errors.New(errStr)
+		var location string
+
+		switch sc.Target {
+		case "", "disk", "tgtunknown":
+			// Do nothing
+		default:
+			location = ssPtr.ActiveFileLocation
+			if location == "" {
+				errStr := "No ActiveFileLocation"
+				log.Error(errStr)
+				return errors.New(errStr)
+			}
 		}
 
 		switch sc.Target {
