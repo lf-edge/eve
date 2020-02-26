@@ -221,6 +221,15 @@ message ZInfoConfigItemStatus {
     map<string, ZInfoConfigItem> unknownConfigItems = 2;
 }
 
+// ZInfoAppInstance - send a summary of App Instance so that controller knows
+// how many App Instances are still present on the device. Controller
+// can then use it to wait for an app to be fully deleted etc.
+message ZInfoAppInstance {
+    string uuid = 1;
+    string name = 2;
+    string domainName = 3;
+}
+
 // Base device info, as discovered by Xen (or OS on bare metal)
 message ZInfoDevice {
   string machineArch = 4;
@@ -258,6 +267,7 @@ message ZInfoDevice {
   DataSecAtRest dataSecAtRestInfo = 29; //Info about Data At Rest Security
 
   ZInfoConfigItemStatus configItemStatus = 31;
+  repeated ZInfoAppInstance appInstances = 32;
 }
 
 // The current and fallback system adapter information
