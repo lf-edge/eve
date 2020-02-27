@@ -63,7 +63,9 @@ func (s *Publisher) Load() (map[string][]byte, bool, error) {
 
 	files, err := ioutil.ReadDir(dirName)
 	if err != nil {
-		log.Fatal(err)
+		// Drive on?
+		log.Error(err)
+		return items, foundRestarted, err
 	}
 	for _, file := range files {
 		if !strings.HasSuffix(file.Name(), ".json") {
@@ -147,11 +149,15 @@ func (s *Publisher) serveConnection(conn net.Conn, instance int) {
 	buf := make([]byte, 65536)
 	res, err := conn.Read(buf)
 	if err != nil {
-		log.Fatalf("serveConnection(%s/%d) error: %v", s.name, instance, err)
+		// Peer process could have died
+		log.Errorf("serveConnection(%s/%d) error: %v", s.name, instance, err)
+		return
 	}
 	if res == len(buf) {
 		// Likely truncated
-		log.Fatalf("serveConnection(%s/%d) request likely truncated\n", s.name, instance)
+		// Peer process could have died
+		log.Errorf("serveConnection(%s/%d) request likely truncated\n", s.name, instance)
+		return
 	}
 
 	request := strings.Split(string(buf[0:res]), " ")

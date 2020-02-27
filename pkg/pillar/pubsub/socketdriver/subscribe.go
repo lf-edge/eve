@@ -129,7 +129,9 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 
 		if res == len(buf) {
 			// Likely truncated
-			log.Fatalf("connectAndRead(%s) request likely truncated\n", s.name)
+			// Peer process could have died
+			log.Errorf("connectAndRead(%s) request likely truncated\n", s.name)
+			continue
 		}
 		reply := strings.Split(string(buf[0:res]), " ")
 		count := len(reply)

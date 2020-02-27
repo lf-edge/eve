@@ -191,13 +191,16 @@ func (pub *PublicationImpl) populate() {
 
 	pairs, restarted, err := pub.driver.Load()
 	if err != nil {
-		log.Fatalf(err.Error())
+		// Could be a truncated or empty file
+		log.Error(err)
+		return
 	}
 	for key, itemB := range pairs {
 		item, err := parseTemplate(itemB, pub.topicType)
 		if err != nil {
-			log.Fatalf(err.Error())
-			return
+			// Handle bad files such as those of size zero
+			log.Error(err)
+			continue
 		}
 		pub.km.key.Store(key, item)
 	}
