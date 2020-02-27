@@ -60,23 +60,36 @@ func manifestsDescImg(image string, options []remote.Option) (name.Reference, *r
 
 	cfgName := manifest.Config.Digest
 	layerFiles := make([]string, 0)
+	var manifestFile v1tarball.Manifest
 
 	// size starts at the default of 0
 	// add the size of the config
 	size += manifest.Config.Size
 
 	// next the layers and their sizes, along with filenames for the manifest
-	for _, layer := range manifest.Layers {
-		size += layer.Size
-		layerFiles = append(layerFiles, fmt.Sprintf("%s.tar.gz", layer.Digest))
+	imgLayers, err := img.Layers()
+	if err != nil {
+		return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error getting layers of image: %v", err)
+	}
+	for _, layer := range imgLayers {
+		layerSize, err := layer.Size()
+		if err != nil {
+			return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error getting size of layers: %v", err)
+		}
+		size += layerSize
+		d, err := layer.Digest()
+		if err != nil {
+			return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error getting digest of layers: %v", err)
+		}
+		layerFiles = append(layerFiles, fmt.Sprintf("%s.tar.gz", d.Hex))
 	}
 
 	// get our manifestFile that will be added, convert to bytes, get size
-	manifestFile := v1tarball.Descriptor{
+	manifestFile = append(manifestFile, v1tarball.Descriptor{
 		Config:   cfgName.String(),
 		RepoTags: []string{image},
 		Layers:   layerFiles,
-	}
+	})
 	manifestFileBytes, err := json.Marshal(manifestFile)
 	if err != nil {
 		return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error converting tar manifest file to json: %v", err)
