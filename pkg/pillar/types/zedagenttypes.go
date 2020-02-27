@@ -242,9 +242,9 @@ type NodeAgentStatus struct {
 	UpdateInprogress  bool
 	RemainingTestTime time.Duration
 	DeviceReboot      bool
-	RebootReason      string
-	RebootStack       string
-	RebootTime        time.Time
+	RebootReason      string    // From last reboot
+	RebootStack       string    // From last reboot
+	RebootTime        time.Time // From last reboot
 	RestartCounter    uint32
 }
 
@@ -269,7 +269,7 @@ type ZedAgentStatus struct {
 	Name            string
 	ConfigGetStatus ConfigGetStatus
 	RebootCmd       bool
-	RebootReason    string
+	RebootReason    string // Current reason to reboot
 }
 
 // Key :
