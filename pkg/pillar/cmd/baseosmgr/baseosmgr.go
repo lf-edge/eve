@@ -75,8 +75,8 @@ type baseOsMgrContext struct {
 	subBaseOsVerifierStatus  pubsub.Subscription
 	subBaseOsPersistStatus   pubsub.Subscription
 	subNodeAgentStatus       pubsub.Subscription
-	rebootReason             string
-	rebootTime               time.Time
+	rebootReason             string    // From last reboot
+	rebootTime               time.Time // From last reboot
 }
 
 var debug = false

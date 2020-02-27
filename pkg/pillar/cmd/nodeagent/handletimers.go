@@ -176,13 +176,13 @@ func updateZedagentCloudConnectStatus(ctxPtr *nodeagentContext,
 	}
 }
 
+// zedagent is telling us to reboot
 func handleRebootCmd(ctxPtr *nodeagentContext, status types.ZedAgentStatus) {
 	if !status.RebootCmd || ctxPtr.rebootCmd {
 		return
 	}
 	ctxPtr.rebootCmd = true
-	ctxPtr.rebootReason = status.RebootReason
-	scheduleNodeReboot(ctxPtr, ctxPtr.rebootReason)
+	scheduleNodeReboot(ctxPtr, status.RebootReason)
 }
 
 func scheduleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
@@ -190,7 +190,7 @@ func scheduleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
 		log.Infof("reboot flag is already set\n")
 		return
 	}
-	log.Infof("scheduleNodeReboot(): Reboot reason(%s)\n", reasonStr)
+	log.Infof("scheduleNodeReboot(): current RebootReason: %s", reasonStr)
 
 	// publish, for zedagent to pick up the reboot event
 	// TBD:XXX, all other agents can subscribe to nodeagent or,
@@ -198,7 +198,7 @@ func scheduleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
 	// downloader can teardown the existing connections
 	// and clean up its temporary states etc.
 	ctxPtr.deviceReboot = true
-	ctxPtr.rebootReason = reasonStr
+	ctxPtr.currentRebootReason = reasonStr
 	publishNodeAgentStatus(ctxPtr)
 
 	// in any case, execute the reboot procedure
@@ -254,11 +254,11 @@ func handleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
 		duration/time.Second)
 	<-rebootTimer.C
 
+	// set the reboot reason
+	agentlog.RebootReason(ctxPtr.currentRebootReason, true)
+
 	// Wait for All Domains Halted
 	waitForAllDomainsHalted(ctxPtr)
-
-	// set the reboot reason
-	agentlog.RebootReason(reasonStr)
 
 	// do a sync
 	log.Infof("Doing a sync..\n")

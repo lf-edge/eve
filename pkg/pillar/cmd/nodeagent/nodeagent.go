@@ -89,11 +89,12 @@ type nodeagentContext struct {
 	testInprogress         bool
 	timeTickCount          uint32
 	usableAddressCount     int
-	rebootCmd              bool
+	rebootCmd              bool // Are we rebooting?
 	deviceReboot           bool
-	rebootReason           string
-	rebootStack            string
-	rebootTime             time.Time
+	currentRebootReason    string    // Reason we are rebooting
+	rebootReason           string    // From last reboot
+	rebootStack            string    // From last reboot
+	rebootTime             time.Time // From last reboot
 	restartCounter         uint32
 
 	// Some contants.. Declared here as variables to enable unit tests
@@ -527,13 +528,13 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	ctx.rebootReason, ctx.rebootTime, rebootStack =
 		agentlog.GetCurrentRebootReason()
 	if ctx.rebootReason != "" {
-		log.Warnf("Current partition rebooted reason: %s\n",
+		log.Warnf("Current partition RebootReason: %s\n",
 			ctx.rebootReason)
 		agentlog.DiscardCurrentRebootReason()
 	}
 	otherRebootReason, otherRebootTime, otherRebootStack := agentlog.GetOtherRebootReason()
 	if otherRebootReason != "" {
-		log.Warnf("Other partition rebooted reason: %s\n",
+		log.Warnf("Other partition RebootReason: %s\n",
 			otherRebootReason)
 		// if other partition state is "inprogress"
 		// do not erase the reboot reason, going to
@@ -544,7 +545,7 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	}
 	commonRebootReason, commonRebootTime, commonRebootStack := agentlog.GetCommonRebootReason()
 	if commonRebootReason != "" {
-		log.Warnf("Common rebooted reason: %s\n",
+		log.Warnf("Common RebootReason: %s\n",
 			commonRebootReason)
 		agentlog.DiscardCommonRebootReason()
 	}
@@ -573,7 +574,7 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 			reason = fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s\n",
 				dateStr)
 		}
-		log.Warnf(reason)
+		log.Warnf("Default RebootReason: %s", reason)
 		ctx.rebootReason = reason
 		ctx.rebootTime = time.Now()
 		rebootStack = ""

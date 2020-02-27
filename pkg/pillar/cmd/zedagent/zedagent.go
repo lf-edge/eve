@@ -106,9 +106,10 @@ type zedagentContext struct {
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool
-	rebootReason              string
-	rebootStack               string
-	rebootTime                time.Time
+	currentRebootReason       string    // Set by zedagent
+	rebootReason              string    // Previous reboot from nodeagent
+	rebootStack               string    // Previous reboot from nodeagent
+	rebootTime                time.Time // Previous reboot from nodeagent
 	restartCounter            uint32
 	subDevicePortConfigList   pubsub.Subscription
 	devicePortConfigList      types.DevicePortConfigList
