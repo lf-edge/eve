@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"runtime"
 	dbg "runtime/debug"
+	"strings"
 	"syscall"
 	"time"
 
@@ -82,7 +83,7 @@ type FatalHook struct {
 func (hook *FatalHook) Fire(entry *log.Entry) error {
 	reason := fmt.Sprintf("fatal: agent %s[%d]: %s", savedAgentName, savedPid, entry.Message)
 	savedRebootReason = reason
-	RebootReason(reason)
+	RebootReason(reason, false)
 	return nil
 }
 
@@ -119,7 +120,12 @@ func handleSignals(sigs chan os.Signal) {
 			switch sig {
 			case syscall.SIGUSR1:
 				stacks := getStacks(true)
-				log.Warnf("SIGUSR1 triggered stack traces:\n%v\n", stacks)
+				stackArray := strings.Split(stacks, "\n\n")
+				log.Warnf("SIGUSR1 triggered with %d stacks", len(stackArray))
+				for _, stack := range stackArray {
+					log.Warnf("%v", stack)
+				}
+				log.Warnf("SIGUSR1: end of stacks")
 				// Could result in a watchdog reboot hence
 				// we save it as a reboot-stack
 				RebootStack(stacks)
@@ -135,26 +141,35 @@ func handleSignals(sigs chan os.Signal) {
 // Print out our stack
 func printStack() {
 	stacks := getStacks(false)
-	log.Errorf("fatal stack trace due to %s:\n%v\n", savedRebootReason, stacks)
-	RebootReason(fmt.Sprintf("fatal: agent %s[%d] exit", savedAgentName, savedPid))
+	stackArray := strings.Split(stacks, "\n\n")
+	log.Errorf("Fatal stack trace due to %s with %d stack traces", savedRebootReason, len(stackArray))
+	for _, stack := range stackArray {
+		log.Errorf("%v", stack)
+	}
+	log.Errorf("Fatal: end of stacks")
+	RebootReason(fmt.Sprintf("fatal: agent %s[%d] exit", savedAgentName, savedPid),
+		false)
 	RebootStack(stacks)
 }
 
 // RebootReason writes a reason string in /persist/IMGx/reboot-reason, including agentName and date
 // It also appends to /persist/log/reboot-reason.log
 // Note: can not use log here since we are called from a log hook!
-func RebootReason(reason string) {
+func RebootReason(reason string, normal bool) {
+	log.Infof("RebootReason(%s)", reason)
 	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
 	dateStr := time.Now().Format(time.RFC3339Nano)
-	err := printToFile(filename, fmt.Sprintf("Reboot from agent %s[%d] at %s: %s\n",
-		savedAgentName, savedPid, dateStr, reason))
+	if !normal {
+		reason = fmt.Sprintf("Reboot from agent %s[%d] at %s: %s\n",
+			savedAgentName, savedPid, dateStr, reason)
+	}
+	err := printToFile(filename, reason)
 	if err != nil {
 		// Note: can not use log here since we are called from a log hook!
 		fmt.Printf("printToFile failed %s\n", err)
 	}
 	filename = "/persist/log/" + reasonFile + ".log"
-	err = printToFile(filename, fmt.Sprintf("Reboot from agent %s[%d] at %s: %s\n",
-		savedAgentName, savedPid, dateStr, reason))
+	err = printToFile(filename, reason)
 	if err != nil {
 		// Note: can not use log here since we are called from a log hook!
 		fmt.Printf("printToFile failed %s\n", err)
@@ -244,8 +259,11 @@ func DiscardCurrentRebootReason() {
 	if err := os.Remove(reasonFilename); err != nil {
 		log.Errorf("DiscardCurrentRebootReason failed %s\n", err)
 	}
-	if err := os.Remove(stackFilename); err != nil {
-		log.Errorf("DiscardCurrentRebootReason failed %s\n", err)
+	_, err := os.Stat(stackFilename)
+	if err != nil {
+		if err := os.Remove(stackFilename); err != nil {
+			log.Errorf("DiscardCurrentRebootReason failed %s\n", err)
+		}
 	}
 }
 
@@ -259,8 +277,11 @@ func DiscardOtherRebootReason() {
 	if err := os.Remove(reasonFilename); err != nil {
 		log.Errorf("DiscardOtherRebootReason failed %s\n", err)
 	}
-	if err := os.Remove(stackFilename); err != nil {
-		log.Errorf("DiscardOtherRebootReason failed %s\n", err)
+	_, err := os.Stat(stackFilename)
+	if err != nil {
+		if err := os.Remove(stackFilename); err != nil {
+			log.Errorf("DiscardOtherRebootReason failed %s\n", err)
+		}
 	}
 }
 
@@ -270,8 +291,11 @@ func DiscardCommonRebootReason() {
 	if err := os.Remove(reasonFilename); err != nil {
 		log.Errorf("DiscardCommonRebootReason failed %s\n", err)
 	}
-	if err := os.Remove(stackFilename); err != nil {
-		log.Errorf("DiscardCommonRebootReason failed %s\n", err)
+	_, err := os.Stat(stackFilename)
+	if err != nil {
+		if err := os.Remove(stackFilename); err != nil {
+			log.Errorf("DiscardCommonRebootReason failed %s\n", err)
+		}
 	}
 }
 

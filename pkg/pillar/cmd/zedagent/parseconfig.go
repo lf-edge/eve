@@ -610,6 +610,8 @@ func parseSystemAdapterConfig(config *zconfig.EdgeDevConfig,
 	portConfig.Ports = newPorts
 
 	// Any content change?
+	// Even if only ParseError or ParseErrorTime changed we publish so
+	// the change can be sent back to the controller using ctx.devicePortConfigList
 	if cmp.Equal(getconfigCtx.devicePortConfig.Ports, portConfig.Ports) &&
 		getconfigCtx.devicePortConfig.Version == portConfig.Version {
 		log.Infof("parseSystemAdapterConfig: DevicePortConfig - " +
@@ -655,13 +657,15 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		errStr := fmt.Sprintf("Missing phyio for %s; ignored",
 			sysAdapter.Name)
 		log.Error(errStr)
+		// Report error but set Dhcp, isMgmt, and isFree to sane values
 		port.ParseError = errStr
 		port.ParseErrorTime = time.Now()
-		return port
+		isFree = true
+	} else {
+		isFree = phyio.UsagePolicy.FreeUplink
+		log.Infof("Found phyio for %s: isFree: %t",
+			sysAdapter.Name, isFree)
 	}
-	isFree = phyio.UsagePolicy.FreeUplink
-	log.Infof("Found phyio for %s: isFree: %t", sysAdapter.Name, isFree)
-
 	if version < types.DPCIsMgmt {
 		log.Warnf("XXX old version; assuming isMgmt and isFree")
 		// This should go away when cloud sends proper values
@@ -684,6 +688,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 
 	port.Dhcp = types.DT_NONE
 	var ip net.IP
+	var network *types.NetworkXObjectConfig
 	if sysAdapter.Addr != "" {
 		ip = net.ParseIP(sysAdapter.Addr)
 		if ip == nil {
@@ -693,7 +698,7 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			log.Error(errStr)
 			port.ParseError = errStr
 			port.ParseErrorTime = time.Now()
-			return port
+			// IP will not be set below
 		}
 		// Note that ip is not used unless we have a network UUID
 	}
@@ -704,35 +709,38 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		// and copy proxy and other configuration
 		networkXObject, err := getconfigCtx.pubNetworkXObjectConfig.Get(sysAdapter.NetworkUUID)
 		if err != nil {
+			// XXX when do we retry looking for the networkXObject?
 			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s Network with UUID %s not found: %s",
 				port.IfName, sysAdapter.NetworkUUID, err)
 			log.Error(errStr)
 			port.ParseError = errStr
 			port.ParseErrorTime = time.Now()
-			return port
-		}
-		network := networkXObject.(types.NetworkXObjectConfig)
-		if network.Error != "" {
-			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s Network error: %v",
-				port.IfName, network.Error)
-			port.ParseError = errStr
-			port.ParseErrorTime = network.ErrorTime
-			return port
-		}
-		if ip != nil {
-			addrSubnet := network.Subnet
-			addrSubnet.IP = ip
-			port.AddrSubnet = addrSubnet.String()
+		} else {
+			net := networkXObject.(types.NetworkXObjectConfig)
+			network = &net
+			if network.Error != "" {
+				errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s Network error: %v",
+					port.IfName, network.Error)
+				port.ParseError = errStr
+				port.ParseErrorTime = network.ErrorTime
+			}
 		}
 
-		port.WirelessCfg = network.WirelessCfg
-		port.Gateway = network.Gateway
-		port.DomainName = network.DomainName
-		port.NtpServer = network.NtpServer
-		port.DnsServers = network.DnsServers
-		// Need to be careful since zedcloud can feed us bad Dhcp type
-		port.Dhcp = network.Dhcp
-		switch network.Dhcp {
+		if network != nil {
+			if ip != nil {
+				addrSubnet := network.Subnet
+				addrSubnet.IP = ip
+				port.AddrSubnet = addrSubnet.String()
+			}
+			port.WirelessCfg = network.WirelessCfg
+			port.Gateway = network.Gateway
+			port.DomainName = network.DomainName
+			port.NtpServer = network.NtpServer
+			port.DnsServers = network.DnsServers
+			// Need to be careful since zedcloud can feed us bad Dhcp type
+			port.Dhcp = network.Dhcp
+		}
+		switch port.Dhcp {
 		case types.DT_STATIC:
 			if port.AddrSubnet == "" {
 				errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s DT_STATIC but missing "+
@@ -740,7 +748,6 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 				log.Error(errStr)
 				port.ParseError = errStr
 				port.ParseErrorTime = time.Now()
-				return port
 			}
 		case types.DT_CLIENT:
 			// Do nothing
@@ -751,7 +758,6 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 				log.Error(errStr)
 				port.ParseError = errStr
 				port.ParseErrorTime = time.Now()
-				return port
 			}
 		default:
 			errStr := fmt.Sprintf("parseSystemAdapterConfig: Port %s: ignore unsupported dhcp type %v",
@@ -759,10 +765,9 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 			log.Error(errStr)
 			port.ParseError = errStr
 			port.ParseErrorTime = time.Now()
-			return port
 		}
 		// XXX use DnsNameToIpList?
-		if network.Proxy != nil {
+		if network != nil && network.Proxy != nil {
 			port.ProxyConfig = *network.Proxy
 		}
 	} else if isMgmt {
@@ -771,7 +776,6 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		log.Error(errStr)
 		port.ParseError = errStr
 		port.ParseErrorTime = time.Now()
-		return port
 	}
 	return port
 }
@@ -2236,7 +2240,8 @@ func handleRebootCmd(ctxPtr *zedagentContext, infoStr string) {
 	// shutdown the application instances
 	shutdownAppsGlobal(ctxPtr)
 	getconfigCtx := ctxPtr.getconfigCtx
-	ctxPtr.rebootReason = infoStr
+	ctxPtr.currentRebootReason = infoStr
+
 	publishZedAgentStatus(getconfigCtx)
 	log.Infof(infoStr)
 }

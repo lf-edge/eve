@@ -1,14 +1,14 @@
-From 47005834ef2506f4f06c1ee9791656ff187182a0 Mon Sep 17 00:00:00 2001
+From 594aff8f44bfa1d06bb9ac4d478728b6e006538f Mon Sep 17 00:00:00 2001
 From: Roman Shaposhnik <rvs@zededa.com>
 Date: Fri, 2 Aug 2019 11:04:33 -0700
-Subject: [PATCH 2/2] Allowing to use host EVE kernel
+Subject: [PATCH 07/11] Allowing to use host EVE kernel
 
 ---
  files/run | 6 +++++-
  1 file changed, 5 insertions(+), 1 deletion(-)
 
 diff --git a/files/run b/files/run
-index 529270b..f45bcc4 100755
+index 5e78021..02c21b9 100755
 --- a/files/run
 +++ b/files/run
 @@ -53,7 +53,11 @@ outconfig=$workpath/out/test.0

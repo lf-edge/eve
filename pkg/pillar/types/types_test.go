@@ -28,7 +28,7 @@ func TestUrlToSafename(t *testing.T) {
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
 		safename := UrlToSafename(test.url, test.sha)
-		assert.Equal(t, safename, test.safename)
+		assert.Equal(t, test.safename, safename)
 	}
 }
 

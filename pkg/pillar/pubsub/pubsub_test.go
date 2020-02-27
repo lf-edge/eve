@@ -131,8 +131,8 @@ func TestHandleModify(t *testing.T) {
 		}
 		handleModify(test.ctxArg, test.key, b)
 		// Make sure both weren't called
-		assert.Equal(t, created, test.expectedCreate)
-		assert.Equal(t, modified, test.expectedModify)
+		assert.Equal(t, test.expectedCreate, created)
+		assert.Equal(t, test.expectedModify, modified)
 		// Reset created and modified to false for next test
 		created = false
 		modified = false

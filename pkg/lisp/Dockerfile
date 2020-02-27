@@ -36,7 +36,6 @@ RUN apk del py2-pip py2-pyflakes
 # Putting it all together
 FROM alpine:3.8
 
-RUN echo da
 RUN apk add --no-cache \
         libffi=3.2.1-r4    \
         libpcap=1.8.1-r1   \
@@ -48,6 +47,7 @@ RUN apk add --no-cache \
 
 COPY --from=lisp /lisp /lisp/
 COPY --from=lisp /usr/bin/pydoc /usr/bin/smtpd.py /usr/bin/
+RUN echo workaround for https://github.com/moby/moby/issues/37965
 COPY --from=lisp /usr/lib/python2.7/site-packages /usr/lib/python2.7/site-packages 
 
 COPY --from=build /lisp/lisp-ztr /lisp/

@@ -1,3 +1,16 @@
+From 5398def5c0029f675068b226bf7a0f010f21135e Mon Sep 17 00:00:00 2001
+From: Roman Shaposhnik <rvs@zededa.com>
+Date: Mon, 24 Feb 2020 11:56:12 -0800
+Subject: [PATCH 11/11] Allowing containers to be given external block devices
+
+---
+ build.sh            |  2 +-
+ files/mount_disk.sh | 50 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ files/run           |  8 +++++++-
+ kernel/init-initrd  |  4 ++++
+ 4 files changed, 62 insertions(+), 2 deletions(-)
+ create mode 100644 files/mount_disk.sh
+
 diff --git a/build.sh b/build.sh
 index 04fceb6..9c623f3 100755
 --- a/build.sh
@@ -5,18 +18,18 @@ index 04fceb6..9c623f3 100755
 @@ -24,7 +24,7 @@ then
      exit 1
  fi
-
+ 
 -execs="enter run stop udhcpc_script.sh launcher.sh"
 +execs="enter run stop udhcpc_script.sh launcher.sh mount_disk.sh"
  netplugins="main/ptp main/bridge main/macvlan main/ipvlan ipam/host-local meta/flannel meta/tuning"
-
+ 
  # Clean the repo, but save the vendor area
 diff --git a/files/mount_disk.sh b/files/mount_disk.sh
 new file mode 100644
-index 0000000..db70141
+index 0000000..1019e52
 --- /dev/null
 +++ b/files/mount_disk.sh
-@@ -0,0 +1,56 @@
+@@ -0,0 +1,50 @@
 +#!/bin/sh
 +
 +mountPointLineNo=1
@@ -40,22 +53,16 @@ index 0000000..db70141
 +  echo "Failed to create device file for /dev/$disk"
 +  echo
 +
-+  #Creating a block device with partitioned disk
-+  partitionToBeMounted=1
-+  partedDisk="$disk""$partitionToBeMounted"
-+  echo "Creating device file /dev/$partedDisk"
-+  mknod /dev/$partedDisk b $major $(($minor + 1)) && \
-+  echo "Successfully created device file for /dev/$partedDisk" || \
-+  echo "Failed to create device file for /dev/$partedDisk"
-+  echo
-+
-+  #Creating a file system inside the partition
++  #Checking and creating a file system inside the partition
 +  fileSystem="vfat"
-+  echo "Creating $fileSystem file system on /dev/$partedDisk"
-+  mkfs.$fileSystem /dev/$partedDisk && \
-+  echo "Successfully created $fileSystem file system on /dev/$partedDisk" || \
-+  echo "Failed to create $fileSystem file system on /dev/$partedDisk"
-+  echo
++  existingFileSystem="$(eval $(blkid /dev/$disk | awk ' { print $3 } '); echo $TYPE)"
++  if [ "$existingFileSystem" == "" ]; then
++    echo "Creating $fileSystem file system on /dev/$disk"
++    mkfs.$fileSystem /dev/$disk && \
++    echo "Successfully created $fileSystem file system on /dev/$disk" || \
++    echo "Failed to create $fileSystem file system on /dev/$disk"
++    echo
++  fi
 +
 +  #Mounting the partition onto a target directory
 +  diskAccess=$(cat /sys/block/$disk/ro)
@@ -65,23 +72,23 @@ index 0000000..db70141
 +    accessRight=ro
 +  fi
 +  stage2TargetPath="/mnt/rootfs"$targetDir
-+  echo "Mounting /dev/$partedDisk on $stage2TargetPath with access: $accessRight"
++  echo "Mounting /dev/$disk on $stage2TargetPath with access: $accessRight"
 +  mkdir -p $stage2TargetPath
-+  mount -O remount,$accessRight /dev/$partedDisk $stage2TargetPath && \
-+  echo "Successfully mounted file system:/dev/$partedDisk on $targetDir" || \
-+  echo "Failed to mount file system:/dev/$partedDisk on $targetDir"
++  mount -O remount,$accessRight /dev/$disk $stage2TargetPath && \
++  echo "Successfully mounted file system:/dev/$disk on $targetDir" || \
++  echo "Failed to mount file system:/dev/$disk on $targetDir"
 +
 +  mountPointLineNo=$(expr $mountPointLineNo + 1)
 +done
 \ No newline at end of file
 diff --git a/files/run b/files/run
-index a26edca..32d0b7d 100755
+index e06f701..76e8007 100755
 --- a/files/run
 +++ b/files/run
 @@ -62,8 +62,12 @@ fi
  echo "ramdisk='$workpath/initrd'" >> $outconfig
  echo "p9=[ 'tag=share_dir,security_model=none,path=$mountpoint' ]" >> $outconfig
-
+ 
 +if [ -f "$STAGE2_MNT_PTS" ] ; then
 +  cp "$STAGE2_MNT_PTS" $stage2/mountPoints
 +fi
@@ -89,11 +96,11 @@ index a26edca..32d0b7d 100755
  if [ -f "$STAGE1_SEED_XL_CFG" ] ; then
 -    grep -Ev '^(disk|bootloader|root|extra|kernel)' < "$STAGE1_SEED_XL_CFG" >> $outconfig
 +    grep -Ev '^(bootloader|root|extra|kernel)' < "$STAGE1_SEED_XL_CFG" >> $outconfig
-     if test $dhcp -eq 0
-     then
-         echo extra=\'console=hvc0 root=9p\' >> $outconfig
-@@ -95,6 +99,8 @@ fi
-
+     EXTRA="root=9p"
+     if grep -q 'type.*=.*hvm' "$STAGE1_SEED_XL_CFG" ; then
+        EXTRA="$EXTRA console=tty0"
+@@ -100,6 +104,8 @@ fi
+ 
  cp $stage1/launcher.sh $stage2
  chmod +x $stage2/launcher.sh
 +cp $stage1/mount_disk.sh $stage2
@@ -114,3 +121,6 @@ index 98b2256..d1109c2 100755
 +/mnt/mount_disk.sh
 +
  eval setsid -c chroot /mnt/rootfs /launcher.sh $cmd <> /dev/console 2>&1
+-- 
+2.15.1
+

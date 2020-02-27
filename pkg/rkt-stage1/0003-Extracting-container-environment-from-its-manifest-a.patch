@@ -1,10 +1,21 @@
+From 14c840100cae24f78b2929134d9849c7fb71aab8 Mon Sep 17 00:00:00 2001
+From: Roman Shaposhnik <rvs@zededa.com>
+Date: Mon, 24 Feb 2020 11:55:48 -0800
+Subject: [PATCH 03/11] Extracting container environment from its manifest and
+ passing it in
+
+---
+ init/init.go       | 55 ++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ kernel/init-initrd |  1 +
+ 2 files changed, 56 insertions(+)
+
 diff --git a/init/init.go b/init/init.go
 index 94c0f4c..91317b2 100644
 --- a/init/init.go
 +++ b/init/init.go
 @@ -15,6 +15,7 @@
  package main
-
+ 
  import (
 +	"bytes"
  	"errors"
@@ -13,7 +24,7 @@ index 94c0f4c..91317b2 100644
 @@ -202,6 +203,15 @@ func stage1(rp *stage1commontypes.RuntimePod) int {
  		}
  	}
-
+ 
 +	ra := p.Manifest.Apps[0]
 +	appEnv := composeEnvironment(ra.App.Environment)
 +	appsPath := common.AppPath(p.Root, ra.Name)
@@ -29,11 +40,11 @@ index 94c0f4c..91317b2 100644
 @@ -221,9 +231,54 @@ func stage1(rp *stage1commontypes.RuntimePod) int {
  		log.FatalE(fmt.Sprintf("failed to execute %q", args[0]), err)
  	}
-
+ 
 +
  	return 0
  }
-
+ 
 +// writeEnvFile creates an external-environment file under appDir
 +// with entries from PodManifest.App.Environments
 +func writeEnvFile(appDir string, environment types.Environment) error {
@@ -82,12 +93,15 @@ index 94c0f4c..91317b2 100644
  	rp := parseFlags()
  	stage1initcommon.InitDebug(debug)
 diff --git a/kernel/init-initrd b/kernel/init-initrd
-index 317d698..98b2256 100755
+index ba78cde..9217b2a 100755
 --- a/kernel/init-initrd
 +++ b/kernel/init-initrd
-@@ -82,4 +82,5 @@ chmod +x /mnt/rootfs/launcher.sh
+@@ -70,4 +70,5 @@ then
+ fi
  cmd=`cat /mnt/cmdline`
  echo "Executing $cmd"
- source /mnt/environment
 +source /mnt/external-environment
- eval setsid -c chroot /mnt/rootfs /launcher.sh $cmd <> /dev/console 2>&1
+ eval chroot /mnt/rootfs $cmd
+-- 
+2.15.1
+

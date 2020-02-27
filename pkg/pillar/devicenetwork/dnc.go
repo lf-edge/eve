@@ -94,10 +94,6 @@ func SetupVerify(ctx *DeviceNetworkContext, index int) {
 	pending.Inprogress = true
 	pending.PendDPC = ctx.DevicePortConfigList.PortConfigList[ctx.NextDPCIndex]
 	pend2 := MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
-	if !reflect.DeepEqual(pending.PendDNS, pend2) {
-		log.Infof("SetupVerify: DeviceNetworkStatus change from %v to %v\n",
-			pending.PendDNS, pend2)
-	}
 	pending.PendDNS = pend2
 	pending.TestCount = 0
 	log.Infof("SetupVerify: Started testing DPC (index %d): %v",
@@ -229,7 +225,7 @@ func VerifyPending(pending *DPCPending,
 	log.Infof("VerifyPending: No required ports held in pciBack. " +
 		"parsing device port config list")
 
-	if !reflect.DeepEqual(pending.PendDPC.Ports, pending.OldDPC.Ports) {
+	if !pending.PendDPC.Equal(&pending.OldDPC) {
 		log.Infof("VerifyPending: DPC changed. check Wireless %v\n", pending.PendDPC)
 		checkAndUpdateWireless(nil, &pending.OldDPC, &pending.PendDPC)
 
@@ -242,10 +238,6 @@ func VerifyPending(pending *DPCPending,
 		pending.OldDPC = pending.PendDPC
 	}
 	pend2 := MakeDeviceNetworkStatus(pending.PendDPC, pending.PendDNS)
-	if !reflect.DeepEqual(pending.PendDNS, pend2) {
-		log.Infof("VerifyPending: DeviceNetworkStatus change from %v to %v\n",
-			pending.PendDNS, pend2)
-	}
 	pending.PendDNS = pend2
 
 	// We want connectivity to zedcloud via atleast one Management port.
@@ -429,6 +421,7 @@ func VerifyDevicePortConfig(ctx *DeviceNetworkContext) {
 // Move to next index (including wrap around)
 // Skip entries with LastFailed after LastSucceeded and
 // a recent LastFailed (a minute or less).
+// Also skip entries with no management IP addresses
 func getNextTestableDPCIndex(ctx *DeviceNetworkContext, start int) int {
 
 	log.Infof("getNextTestableDPCIndex: start %d\n", start)
@@ -486,6 +479,13 @@ func HandleDPCModify(ctxArg interface{}, key string, configArg interface{}) {
 		key, ctx.DevicePortConfig, portConfig)
 
 	portConfig.DoSanitize(true, true, key, true)
+	mgmtCount := portConfig.CountMgmtPorts()
+	if mgmtCount == 0 {
+		// This DPC will be ignored when we check IsDPCUsable which
+		// is called from IsDPCTestable and IsDPCUntested.
+		log.Warnf("Received DevicePortConfig key %s has no management ports; will be ignored",
+			portConfig.Key)
+	}
 
 	// XXX really need to know whether anything with current or lower
 	// index has changed. We don't care about inserts at the end of the list.
@@ -594,21 +594,34 @@ func HandleAssignableAdaptersDelete(ctxArg interface{}, key string,
 	log.Infof("HandleAssignableAdaptersDelete done for %s\n", key)
 }
 
-// IngestPortConfigList creates and republishes the inintial list
+// IngestPortConfigList creates and republishes the initial list
+// Removes useless ones (which might be re-added by the controller/zedagent
+// later but at least they are not in the way during boot)
 func IngestPortConfigList(ctx *DeviceNetworkContext) {
 	log.Infof("IngestPortConfigList")
 	item, err := ctx.PubDevicePortConfigList.Get("global")
-	var dpcl types.DevicePortConfigList
+	var storedDpcl types.DevicePortConfigList
 	if err != nil {
 		log.Errorf("No global key for DevicePortConfigList")
-		dpcl = types.DevicePortConfigList{}
+		storedDpcl = types.DevicePortConfigList{}
 	} else {
-		dpcl = item.(types.DevicePortConfigList)
+		storedDpcl = item.(types.DevicePortConfigList)
+	}
+	log.Infof("Initial DPCL %v", storedDpcl)
+	var dpcl types.DevicePortConfigList
+	for _, portConfig := range storedDpcl.PortConfigList {
+		if portConfig.CountMgmtPorts() == 0 {
+			log.Warnf("Stored DevicePortConfig key %s has no management ports; ignored",
+				portConfig.Key)
+			continue
+		}
+		dpcl.PortConfigList = append(dpcl.PortConfigList, portConfig)
 	}
 	ctx.DevicePortConfigList = &dpcl
-	log.Infof("Initial DPCL %v", dpcl)
+	log.Infof("Sanitized DPCL %v", dpcl)
 	compressAndPublishDevicePortConfigList(ctx)
 	ctx.DevicePortConfigList.CurrentIndex = -1 // No known working one
+	log.Infof("Published DPCL %v", ctx.DevicePortConfigList)
 	log.Infof("IngestPortConfigList len %d", len(ctx.DevicePortConfigList.PortConfigList))
 }
 
@@ -630,10 +643,8 @@ func lookupPortConfig(ctx *DeviceNetworkContext,
 	}
 	for i, port := range ctx.DevicePortConfigList.PortConfigList {
 		if port.Version == portConfig.Version &&
-			port.Key == portConfig.Key &&
-			reflect.DeepEqual(port.Ports, portConfig.Ports) {
-
-			log.Infof("lookupPortConfig deepequal found +%v\n",
+			port.Equal(&portConfig) {
+			log.Infof("lookupPortConfig Equal found +%v\n",
 				port)
 			return &ctx.DevicePortConfigList.PortConfigList[i], i
 		}
@@ -676,16 +687,11 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 		// If we modify the timestamp for other than current
 		// then treat as a change since it could have moved up
 		// in the list.
-		if oldConfig.Key == portConfig.Key &&
-			oldConfig.Version == portConfig.Version &&
-			reflect.DeepEqual(oldConfig.Ports, portConfig.Ports) {
-			// XXX - Should we not update the timestamp of Old Config since
-			//  it is now coming in as new config???
+		if oldConfig.Equal(portConfig) {
 			log.Infof("doUpdatePortConfigListAndPublish: no change but timestamps %v %v\n",
 				oldConfig.TimePriority, portConfig.TimePriority)
 
-			if current != nil &&
-				reflect.DeepEqual(current.Ports, oldConfig.Ports) {
+			if current != nil && current.Equal(oldConfig) {
 				log.Infof("doUpdatePortConfigListAndPublish: no change and same Ports as current\n")
 				return false
 			}
