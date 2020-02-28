@@ -1666,55 +1666,37 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 	return nil
 }
 
-func createMountPointExecEnvFiles(rootFsPrefix string, status types.DomainStatus) error {
-	rootFs := rootFsPrefix + "/stage1/rootfs/opt/stage2/runx"
-	mpFileName := rootFs + "/mountPoints"
-	cmdFileName := rootFs + "/cmdline"
-	envFileName := rootFs + "/environment"
-
-	mpFile, err := os.Create(mpFileName)
+func createMountPointFile(imageHash, mpFileName string, status types.DomainStatus) error {
+	file, err := os.Create(mpFileName)
 	if err != nil {
-		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", mpFileName, err.Error())
+		log.Errorf("createMountPointFile: os.Create for %v, failed: %v", mpFileName, err.Error())
 	}
-	defer mpFile.Close()
+	defer file.Close()
 
-	cmdFile, err := os.Create(cmdFileName)
-	if err != nil {
-		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", cmdFileName, err.Error())
-	}
-	defer cmdFile.Close()
-
-	envFile, err := os.Create(envFileName)
-	if err != nil {
-		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", envFileName, err.Error())
-	}
-	defer envFile.Close()
-
-	appManifest, err := getRktPodManifest(rootFsPrefix + "/pod")
+	appManifest, err := getRktManifest(imageHash)
 	if err != nil {
 		return fmt.Errorf("createMountPointFile: Error while fetching app manfest: %v", err.Error())
 	}
-	app := appManifest.Apps[0].App
 
 	//Ignoring container image in status.DiskStatusList
 	noOfDisks := len(status.DiskStatusList) - 1
 
 	//Validating if there are enough disks provided for the mount-points
-	if noOfDisks != len(app.Mounts) {
+	if noOfDisks != len(appManifest.App.MountPoints) {
 
-		if noOfDisks > len(app.Mounts) {
+		if noOfDisks > len(appManifest.App.MountPoints) {
 			//If no. of disks is (strictly) greater than no. of mount-points provided, we will ignore excessive disks.
 			log.Warnf("createMountPointFile: Number of volumes provided: %v is more than number of mount-points: %v. "+
-				"Excessive volumes will be ignored", noOfDisks, len(app.Mounts))
+				"Excessive volumes will be ignored", noOfDisks, len(appManifest.App.MountPoints))
 		} else {
 			//If no. of mount-points is (strictly) greater than no. of disks provided, we need to throw an error as there
 			// won't be enough disks to satisfy required mount-points.
 			return fmt.Errorf("createMountPointFile: Number of volumes provided: %v is less than number of mount-points: %v. ",
-				noOfDisks, len(app.Mounts))
+				noOfDisks, len(appManifest.App.MountPoints))
 		}
 	}
 
-	for i, mp := range app.Mounts {
+	for i, mp := range appManifest.App.MountPoints {
 		if mp.Path == "" {
 			err := fmt.Errorf("createMountPointFile: targetPath cannot be empty")
 			log.Errorf(err.Error())
@@ -1727,20 +1709,8 @@ func createMountPointExecEnvFiles(rootFsPrefix string, status types.DomainStatus
 		}
 		targetString := fmt.Sprintf("%s\n", mp.Path)
 		log.Infof("createMountPointFile: Processing mount point %d: %s\n", i, targetString)
-		mpFile.WriteString(targetString)
+		file.WriteString(targetString)
 	}
-
-	cmdFile.WriteString(strings.Join(app.Exec, " "))
-
-	envContent := ""
-	if app.WorkDir != "" {
-		envContent = fmt.Sprintf("WORKDIR=%s\n", app.WorkDir)
-	}
-	for _, env := range app.Env {
-		envContent = envContent + fmt.Sprintf("%s=\"%s\"\n", env.Name, env.Value)
-	}
-	envFile.WriteString(envContent)
-
 	return nil
 }
 
@@ -1817,7 +1787,8 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	}
 
 	if ramdisk != "" {
-		file.WriteString(fmt.Sprintf("ramdisk = \"%s\"\n", ramdisk))
+		file.WriteString(fmt.Sprintf("ramdisk = \"%s\"\n",
+			config.Ramdisk))
 	}
 
 	if bootLoader != "" {
@@ -2340,6 +2311,7 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 		err         error
 		podUUID     string
 		xlExtra     string
+		rktRootfs   string
 		envVarSlice = make([]string, 0)
 	)
 
@@ -2384,16 +2356,19 @@ func DomainCreate(status types.DomainStatus) (int, string, error) {
 			return domainID, podUUID, fmt.Errorf("unable to rkt prepare image: %v", err)
 		}
 
-		if podUUID != "" {
-			err = createMountPointExecEnvFiles("/persist/rkt/pods/prepared/"+podUUID, status)
-			if err != nil {
-				log.Error(err)
-				return domainID, podUUID, fmt.Errorf("unable to provision mount points and/or cmdline and/or environment into rkt image rootfs: %v", err)
-			}
-			xlExtra = "p9=[ 'tag=share_dir,security_model=none,path=/persist/rkt/pods/prepared/" + podUUID + "/stage1/rootfs/opt/stage2/runx' ]"
-		} else {
-			xlExtra = ""
+		rktRootfs = "/persist/rkt/pods/prepared/" + podUUID + "/stage1/rootfs/opt/stage2/" + status.DomainName
+
+		err = createMountPointFile(imageHash, rktRootfs+"/mountPoints", status)
+		if err != nil {
+			log.Error(err)
+			return domainID, podUUID, fmt.Errorf("unable to provision mount points into rkt image rootfs: %v", err)
 		}
+	}
+
+	if rktRootfs != "" {
+		xlExtra = "p9=[ 'tag=share_dir,security_model=none,path=" + rktRootfs + "' ]"
+	} else {
+		xlExtra = ""
 	}
 
 	// Use xl tool
@@ -2412,7 +2387,7 @@ func rktPrepare(imageHash string, name string, envVarSlice []string) (string, er
 		"prepare",
 		imageHash,
 		"--stage1-path=/usr/sbin/stage1-xen.aci",
-		"--name=runx",
+		"--name=" + name,
 		"--no-overlay",
 		"--quiet",
 	}
