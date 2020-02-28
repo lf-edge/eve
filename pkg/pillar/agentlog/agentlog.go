@@ -58,19 +58,9 @@ func initImpl(agentName string, logdir string, text bool) (*os.File, error) {
 	if text {
 		err := setupSyslog(agentName)
 		if err != nil {
+			// XXX Should we Fatal here?
 			fmt.Printf("setupSyslog: failed for agent %s with error: %s", agentName, err)
-
-			// XXX At this time, we only use text based logging for logmanager
-			// and we do not want logmanager sending logs to STDOUT. That can lead
-			// to an infinite loop in logmanager. In the event it's not possible to
-			// setup syslog, send logs to a log file which the agent directly writes.
-			fmt.Printf("Setting up file based direct logging for agent %s", agentName)
-			logfile := fmt.Sprintf("%s/%s.log", logdir, agentName)
-			logf, err = os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-			if err != nil {
-				return nil, err
-			}
-			log.SetOutput(logf)
+			return nil, err
 		}
 	} else {
 		log.SetOutput(os.Stdout)

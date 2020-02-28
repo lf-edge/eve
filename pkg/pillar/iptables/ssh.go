@@ -44,6 +44,8 @@ func UpdateSshAccess(enable bool, first bool) {
 		dropPortRange(8080, 8080)
 		allowLocalPortRange(4822, 4822)
 		allowLocalPortRange(5900, 5999)
+		// Allow UDP syslog port 514 for local communication only
+		allowUDPLocalPortRange(514, 514)
 		markControlFlows()
 	}
 	if enable {
@@ -101,6 +103,29 @@ func allowLocalPortRange(startPort int, endPort int) {
 		"-s", "::1", "-d", "::1", "-j", "ACCEPT")
 	Ip6tableCmd("-A", "INPUT", "-p", "tcp", "--dport", portStr,
 		"-j", "REJECT", "--reject-with", "tcp-reset")
+}
+
+func allowUDPLocalPortRange(startPort int, endPort int) {
+	log.Infof("allowUDPLocalPortRange(%d, %d)\n", startPort, endPort)
+	// Add these rules
+	// iptables -A INPUT -p udp -s 127.0.0.1 -d 127.0.0.1 --dport 22 -j ACCEPT
+	// iptables -A INPUT -p udp --dport 22 -j REJECT
+	// iptables -A INPUT -p udp -s ::1 -d ::1 --dport 22 -j ACCEPT
+	// ip6tables -A INPUT -p udp --dport 22 -j REJECT
+	var portStr string
+	if startPort == endPort {
+		portStr = fmt.Sprintf("%d", startPort)
+	} else {
+		portStr = fmt.Sprintf("%d:%d", startPort, endPort)
+	}
+	IptableCmd("-A", "INPUT", "-p", "udp", "--dport", portStr,
+		"-s", "127.0.0.1", "-d", "127.0.0.1", "-j", "ACCEPT")
+	IptableCmd("-A", "INPUT", "-p", "udp", "--dport", portStr,
+		"-j", "REJECT")
+	Ip6tableCmd("-A", "INPUT", "-p", "udp", "--dport", portStr,
+		"-s", "::1", "-d", "::1", "-j", "ACCEPT")
+	Ip6tableCmd("-A", "INPUT", "-p", "udp", "--dport", portStr,
+		"-j", "REJECT")
 }
 
 func dropPortRange(startPort int, endPort int) {
