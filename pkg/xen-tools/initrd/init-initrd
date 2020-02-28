@@ -1,11 +1,19 @@
 #!/bin/sh
 
-# first make sure busybox gets expanded into the glory that is UNIX
-busybox --install /bin
-
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
-mount -t devtmpfs -o size=10m,nr_inodes=248418,mode=755,nosuid,noexec,relatime devtmpfs /dev
+if ! test -f /dev/xvda
+then
+    mknod /dev/xvda b 202 0
+fi
+mknod -m 622 /dev/console c 5 1
+mknod -m 666 /dev/null c 1 3
+mknod -m 666 /dev/zero c 1 5
+mknod -m 666 /dev/ptmx c 5 2
+mknod -m 666 /dev/tty c 5 0
+mknod -m 444 /dev/random c 1 8
+mknod -m 444 /dev/urandom c 1 9
+touch /etc/fstab
 
 root=`cat /proc/cmdline | grep -o '\broot=[^ ]*' | cut -d = -f 2`
 if test -z "$root"
