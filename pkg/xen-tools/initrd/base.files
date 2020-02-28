@@ -5,5 +5,4 @@
 /launcher.sh
 /mount_disk.sh
 /udhcpc_script.sh
-/mnt
 /bin/sh

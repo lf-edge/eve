@@ -1,6 +1,6 @@
 #!/bin/sh
 
-mkdir -p ${WORKDIR:-/}
+mkdir -p $WORKDIR
 cd $WORKDIR
 ARGS=
 for i in "$@"

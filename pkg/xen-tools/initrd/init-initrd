@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # first make sure busybox gets expanded into the glory that is UNIX
-/bin/busybox --install /bin
+busybox --install /bin
 
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
@@ -13,7 +13,6 @@ then
     exit 1
 fi
 
-mkdir /mnt &>/dev/null
 if [ "$root" = "9p" ]
 then
     mount -t 9p -o msize=131072,trans=xen share_dir /mnt
@@ -24,8 +23,6 @@ fi
 mkdir /mnt/rootfs/dev &>/dev/null
 mkdir /mnt/rootfs/sys &>/dev/null
 mkdir /mnt/rootfs/proc &>/dev/null
-mkdir /dev/pts &>/dev/null
-mkdir /dev/shm &>/dev/null
 mount -o bind /dev /mnt/rootfs/dev
 mount -o bind /sys /mnt/rootfs/sys
 mount -o bind /proc /mnt/rootfs/proc
