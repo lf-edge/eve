@@ -2411,7 +2411,7 @@ func rktPrepare(imageHash string, name string, envVarSlice []string) (string, er
 		"--insecure-options=image",
 		"prepare",
 		imageHash,
-		"--stage1-path=/usr/sbin/stage1-dummy.aci",
+		"--stage1-path=/usr/sbin/stage1-xen.aci",
 		"--name=runx",
 		"--no-overlay",
 		"--quiet",
