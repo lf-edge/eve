@@ -31,30 +31,19 @@ var savedRebootReason = "unknown"
 var savedPid = 0
 
 func setupSyslog(agentName string) error {
-	var err error
-
 	log.SetOutput(ioutil.Discard)
-
 	syslogPriorities := syslog.LOG_INFO | syslog.LOG_DEBUG |
 		syslog.LOG_ERR | syslog.LOG_WARNING | syslog.LOG_NOTICE |
 		syslog.LOG_CRIT | syslog.LOG_ALERT | syslog.LOG_EMERG
 
-	maxRetries := 10
-	for retryCount := 0; retryCount < maxRetries; retryCount++ {
-		syslogHook, err1 := lSyslog.NewSyslogHook("", "", syslogPriorities, agentName)
-		if err1 != nil {
-			err = err1
-			fmt.Printf("initImpl: Retry %d Failed creating syslog hook with error: %s",
-				retryCount, err)
-			time.Sleep(1 * time.Second)
-			continue
-		}
-		log.AddHook(syslogHook)
-		return nil
+	syslogHook, err := lSyslog.NewSyslogHook("udp", "127.0.0.1:514",
+		syslogPriorities, agentName)
+	if err != nil {
+		fmt.Printf("setupSyslog: Failed creating syslog hook with error: %s", err)
+		return err
 	}
-	fmt.Printf("Bailing out after %d tries of NewSyslogHook for %s with error: %s",
-		maxRetries, agentName, err)
-	return err
+	log.AddHook(syslogHook)
+	return nil
 }
 
 // Parameter description
