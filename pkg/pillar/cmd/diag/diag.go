@@ -839,11 +839,7 @@ func parsePrint(configURL string, resp *http.Response, contents []byte) {
 	}
 
 	if resp.StatusCode == http.StatusNotModified {
-		log.Infof("StatusNotModified")
-		if len(contents) > 0 {
-			log.Infof("XXX StatusNotModified with len %d",
-				len(contents))
-		}
+		log.Debugf("StatusNotModified len %d", len(contents))
 		return
 	}
 
@@ -854,12 +850,7 @@ func parsePrint(configURL string, resp *http.Response, contents []byte) {
 	}
 	hash := configResponse.GetConfigHash()
 	if hash == prevConfigHash {
-		log.Infof("Same ConfigHash")
-		if len(contents) > 0 {
-			// XXX controller should omit full content
-			log.Infof("XXX len %d hash %s",
-				len(contents), hash)
-		}
+		log.Debugf("Same ConfigHash len %d", len(contents))
 		return
 	}
 	log.Infof("Change in ConfigHash from %s to %s", prevConfigHash, hash)

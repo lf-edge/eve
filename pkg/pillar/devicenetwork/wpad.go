@@ -21,7 +21,7 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 	ifname := status.IfName
 	proxyConfig := &status.ProxyConfig
 
-	log.Infof("CheckAndGetNetworkProxy(%s): enable %v, url %s\n",
+	log.Debugf("CheckAndGetNetworkProxy(%s): enable %v, url %s\n",
 		ifname, proxyConfig.NetworkProxyEnable,
 		proxyConfig.NetworkProxyURL)
 
