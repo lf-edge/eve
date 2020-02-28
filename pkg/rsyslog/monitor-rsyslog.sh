@@ -93,7 +93,7 @@ do
             echo "Started rsyslogd again with pid $RSYSLOG_PID"
         fi
     fi
-    if [ -n "$PID" ]; then
-        echo "rsyslogd running with pid $PID"
+    if [ -z "$PID" ]; then
+        echo "rsyslogd NOT running"
     fi
 done

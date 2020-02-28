@@ -153,7 +153,7 @@ func VerifyAllIntf(ctx ZedCloudContext,
 			}
 			switch resp.StatusCode {
 			case http.StatusOK, http.StatusCreated:
-				log.Infof("VerifyAllIntf: Zedcloud reachable via interface %s", intf)
+				log.Debugf("VerifyAllIntf: Zedcloud reachable via interface %s", intf)
 				intfSuccessCount += 1
 			default:
 				errStr := fmt.Sprintf("Uplink test FAILED via %s to URL %s with "+

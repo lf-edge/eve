@@ -388,12 +388,7 @@ func generateConfigRequest() ([]byte, *zconfig.ConfigRequest, error) {
 func readConfigResponseProtoMessage(resp *http.Response, contents []byte) (bool, *zconfig.EdgeDevConfig, error) {
 
 	if resp.StatusCode == http.StatusNotModified {
-		log.Debugf("StatusNotModified")
-		if len(contents) > 0 {
-			// XXX controller should omit full content
-			log.Infof("XXX StatusNotModified with len %d",
-				len(contents))
-		}
+		log.Debugf("StatusNotModified len %d", len(contents))
 		return false, nil, nil
 	}
 
@@ -405,12 +400,7 @@ func readConfigResponseProtoMessage(resp *http.Response, contents []byte) (bool,
 	}
 	hash := configResponse.GetConfigHash()
 	if hash == prevConfigHash {
-		log.Debugf("Same ConfigHash %s", hash)
-		if len(contents) > 0 {
-			// XXX controller should omit full content
-			log.Infof("XXX same hash %s with len %d",
-				hash, len(contents))
-		}
+		log.Debugf("Same ConfigHash %s len %d", hash, len(contents))
 		return false, nil, nil
 	}
 	log.Debugf("Change in ConfigHash from %s to %s", prevConfigHash, hash)

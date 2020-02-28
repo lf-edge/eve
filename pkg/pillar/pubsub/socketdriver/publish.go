@@ -59,7 +59,7 @@ func (s *Publisher) Load() (map[string][]byte, bool, error) {
 	foundRestarted := false
 	items := make(map[string][]byte)
 
-	log.Infof("Load(%s)\n", s.name)
+	log.Debugf("Load(%s)\n", s.name)
 
 	files, err := ioutil.ReadDir(dirName)
 	if err != nil {
@@ -85,11 +85,11 @@ func (s *Publisher) Load() (map[string][]byte, bool, error) {
 			continue
 		}
 
-		log.Infof("populate found key %s file %s\n", key, statusFile)
+		log.Debugf("Load found key %s file %s\n", key, statusFile)
 
 		sb, err := ioutil.ReadFile(statusFile)
 		if err != nil {
-			log.Errorf("populate: %s for %s\n", err, statusFile)
+			log.Errorf("Load: %s for %s\n", err, statusFile)
 			continue
 		}
 		items[key] = sb

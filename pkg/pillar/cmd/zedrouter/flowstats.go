@@ -151,7 +151,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 			return
 		}
 
-		log.Infof("***FlowStats(%d): device=%v, size of the flows %d\n", proto, devUUID, len(connT))
+		log.Debugf("***FlowStats(%d): device=%v, size of the flows %d\n", proto, devUUID, len(connT))
 
 		for _, entry := range connT { // loop through and process current timedout flow collection
 
@@ -166,7 +166,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 		}
 	}
 
-	log.Infof("FlowStats ++ Total timedout flows %d, loopcount debug %d\n", totalFlow, loopcount)
+	log.Debugf("FlowStats ++ Total timedout flows %d, loopcount debug %d\n", totalFlow, loopcount)
 	loopcount++
 
 	// per app/bridge packing flow stats to be uploaded

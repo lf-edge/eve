@@ -100,7 +100,10 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 			if err != nil {
 				errStr := fmt.Sprintf("connectAndRead(%s): Dial failed %s",
 					s.name, err)
-				log.Warnln(errStr)
+				// During startup and after a publisher has
+				// exited we get these failures; treat
+				// as debug
+				log.Debugln(errStr)
 				time.Sleep(10 * time.Second)
 				continue
 			}

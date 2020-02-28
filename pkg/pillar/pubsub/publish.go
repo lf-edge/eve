@@ -187,7 +187,7 @@ func (pub *PublicationImpl) updatersNotify(name string) {
 func (pub *PublicationImpl) populate() {
 	name := pub.nameString()
 
-	log.Infof("populate(%s)\n", name)
+	log.Debugf("populate(%s)\n", name)
 
 	pairs, restarted, err := pub.driver.Load()
 	if err != nil {
@@ -205,7 +205,7 @@ func (pub *PublicationImpl) populate() {
 		pub.km.key.Store(key, item)
 	}
 	pub.km.restarted = restarted
-	log.Infof("populate(%s) done\n", name)
+	log.Debugf("populate(%s) done\n", name)
 }
 
 // go routine which runs the AF_UNIX server.
