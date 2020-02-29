@@ -262,13 +262,13 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 	}
 
 	status := types.DomainStatus{DiskStatusList: []types.DiskStatus{{ImageSha256: "rootfs"}, {ImageSha256: "extraDisk"}}}
-	err = createMountPointExecEnvFiles(dir, status)
+	err = createMountPointExecEnvFiles(dir, &status)
 	if err != nil {
 		t.Errorf("createMountPointExecEnvFiles failed %v", err)
 	}
 
 	cmdline, err := ioutil.ReadFile(dir + "/stage1/rootfs/opt/stage2/runx/cmdline")
-	if string(cmdline) != "docker-entrypoint.sh redis-server" {
+	if string(cmdline) != "\"docker-entrypoint.sh\" \"redis-server\"" {
 		t.Errorf("createMountPointExecEnvFiles failed to create cmdline file %s %v", string(cmdline), err)
 	}
 
@@ -278,12 +278,12 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 	}
 
 	env, err := ioutil.ReadFile(dir + "/stage1/rootfs/opt/stage2/runx/environment")
-	if string(env) != `WORKDIR=/data
-PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-GOSU_VERSION="1.11"
-REDIS_VERSION="5.0.7"
-REDIS_DOWNLOAD_URL="http://download.redis.io/releases/redis-5.0.7.tar.gz"
-REDIS_DOWNLOAD_SHA="61db74eabf6801f057fd24b590232f2f337d422280fd19486eca03be87d3a82b"
+	if string(env) != `export WORKDIR="/data"
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export GOSU_VERSION="1.11"
+export REDIS_VERSION="5.0.7"
+export REDIS_DOWNLOAD_URL="http://download.redis.io/releases/redis-5.0.7.tar.gz"
+export REDIS_DOWNLOAD_SHA="61db74eabf6801f057fd24b590232f2f337d422280fd19486eca03be87d3a82b"
 ` {
 		t.Errorf("createMountPointExecEnvFiles failed to create environment file %s %v", string(env), err)
 	}

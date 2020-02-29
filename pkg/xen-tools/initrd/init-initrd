@@ -13,7 +13,7 @@ then
     exit 1
 fi
 
-mkdir /mnt &>/dev/null
+mkdir /mnt >/dev/null 2>&1
 if [ "$root" = "9p" ]
 then
     mount -t 9p -o msize=131072,trans=xen share_dir /mnt
@@ -21,11 +21,11 @@ else
     mount $root /mnt
 fi
 
-mkdir /mnt/rootfs/dev &>/dev/null
-mkdir /mnt/rootfs/sys &>/dev/null
-mkdir /mnt/rootfs/proc &>/dev/null
-mkdir /dev/pts &>/dev/null
-mkdir /dev/shm &>/dev/null
+mkdir /mnt/rootfs/dev >/dev/null 2>&1
+mkdir /mnt/rootfs/sys >/dev/null 2>&1
+mkdir /mnt/rootfs/proc >/dev/null 2>&1
+mkdir /dev/pts >/dev/null 2>&1
+mkdir /dev/shm >/dev/null 2>&1
 mount -o bind /dev /mnt/rootfs/dev
 mount -o bind /sys /mnt/rootfs/sys
 mount -o bind /proc /mnt/rootfs/proc
@@ -71,12 +71,15 @@ then
     ip link set dev eth0 up
     udhcpc --interface=eth0 --script=/udhcpc_script.sh
 fi
-cp /mnt/cmdline /launcher.sh /mnt/rootfs
-source /mnt/environment
 
+# Mounting requested volumes
 echo "Executing /mount_disk.sh"
 /mount_disk.sh
 
+# Commence launch sequence
+source /mnt/environment
+
 cmd=`cat /mnt/cmdline`
 echo "Executing $cmd"
-eval setsid -c chroot /mnt/rootfs /launcher.sh $cmd <> /dev/console 2>&1
+#shellcheck disable=SC2086
+eval setsid -c chroot /mnt/rootfs $cmd <> /dev/console 2>&1

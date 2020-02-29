@@ -60,7 +60,7 @@ type RktAppInstance struct {
 	// UserLabels        UserLabels      `json:"userLabels,omitempty"`
 }
 
-// RuntimeApp describes an application referenced in a PodManifest
+// RktApp describes an application referenced in a PodManifest
 type RktApp struct {
 	Name string `json:"name"`
 	// Image       RuntimeImage      `json:"image"`
