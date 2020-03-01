@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/Azure/azure-sdk-for-go v38.0.0+incompatible
+	github.com/Microsoft/hcsshim v0.8.7 // indirect
 	github.com/VictorLowther/godmi v0.0.0-20190311134151-270258a8252d // indirect
 	github.com/aws/aws-sdk-go v1.27.1
 	github.com/containerd/containerd v1.3.0
