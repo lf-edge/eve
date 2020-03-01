@@ -5,6 +5,9 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+
 	"github.com/lf-edge/eve/pkg/pillar/cmd/baseosmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/client"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/conntrack"
@@ -28,58 +31,39 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/cmd/zedrouter"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
-	"os"
-	"path/filepath"
 )
+
+var entrypoints = map[string]func(*pubsub.PubSub){
+	"client":         client.Run,
+	"diag":           diag.Run,
+	"domainmgr":      domainmgr.Run,
+	"downloader":     downloader.Run,
+	"hardwaremodel":  hardwaremodel.Run,
+	"identitymgr":    identitymgr.Run,
+	"ledmanager":     ledmanager.Run,
+	"logmanager":     logmanager.Run,
+	"nim":            nim.Run,
+	"nodeagent":      nodeagent.Run,
+	"verifier":       verifier.Run,
+	"waitforaddr":    waitforaddr.Run,
+	"zedagent":       zedagent.Run,
+	"zedmanager":     zedmanager.Run,
+	"zedrouter":      zedrouter.Run,
+	"ipcmonitor":     ipcmonitor.Run,
+	"baseosmgr":      baseosmgr.Run,
+	"wstunnelclient": wstunnelclient.Run,
+	"conntrack":      conntrack.Run,
+	"tpmmgr":         tpmmgr.Run,
+	"vaultmgr":       vaultmgr.Run,
+}
 
 func main() {
 	ps := pubsub.New(&socketdriver.SocketDriver{})
 
 	basename := filepath.Base(os.Args[0])
-	switch basename {
-	case "client":
-		client.Run(ps)
-	case "diag":
-		diag.Run(ps)
-	case "domainmgr":
-		domainmgr.Run(ps)
-	case "downloader":
-		downloader.Run(ps)
-	case "hardwaremodel":
-		hardwaremodel.Run(ps)
-	case "identitymgr":
-		identitymgr.Run(ps)
-	case "ledmanager":
-		ledmanager.Run(ps)
-	case "logmanager":
-		logmanager.Run(ps)
-	case "nim":
-		nim.Run(ps)
-	case "nodeagent":
-		nodeagent.Run(ps)
-	case "verifier":
-		verifier.Run(ps)
-	case "waitforaddr":
-		waitforaddr.Run(ps)
-	case "zedagent":
-		zedagent.Run(ps)
-	case "zedmanager":
-		zedmanager.Run(ps)
-	case "zedrouter":
-		zedrouter.Run(ps)
-	case "ipcmonitor":
-		ipcmonitor.Run(ps)
-	case "baseosmgr":
-		baseosmgr.Run(ps)
-	case "wstunnelclient":
-		wstunnelclient.Run(ps)
-	case "conntrack":
-		conntrack.Run(ps)
-	case "tpmmgr":
-		tpmmgr.Run(ps)
-	case "vaultmgr":
-		vaultmgr.Run(ps)
-	default:
+	if entrypoint, ok := entrypoints[basename]; ok {
+		entrypoint(ps)
+	} else {
 		fmt.Printf("Unknown package: %s\n", basename)
 	}
 }
