@@ -2,10 +2,11 @@
 FROM UEFI_TAG as uefi-build
 
 FROM lfedge/eve-alpine:3e3111a703366e9ac607d9c33d5fded006fa1df3 as runx-build
-RUN apk add --no-cache mkinitfs=3.4.1-r1
+RUN apk add --no-cache mkinitfs=3.4.1-r1 gcc=8.3.0-r0 musl-dev=1.1.20-r5
 
 COPY initrd/base.files /etc/mkinitfs/features.d/base.files
 COPY initrd/* /
+RUN gcc -s -o /chroot2 /chroot2.c && rm /chroot2.c
 RUN mkinitfs -n -F base -i /init-initrd -o /runx-initrd
 
 FROM alpine:3.8 as kernel-build

@@ -82,4 +82,4 @@ source /mnt/environment
 cmd=`cat /mnt/cmdline`
 echo "Executing $cmd"
 #shellcheck disable=SC2086
-eval setsid -c chroot /mnt/rootfs $cmd <> /dev/console 2>&1
+eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $cmd <> /dev/console 2>&1
