@@ -9,11 +9,15 @@
 package domainmgr
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/types"
+	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 type appImageNameEntry struct {
@@ -220,6 +224,14 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
           {
             "name": "volume-data",
             "path": "/data"
+          },
+					{
+            "name": "foo",
+            "path": "/foo"
+          },
+					{
+            "name": "bar",
+            "path": "/bar"
           }
         ],
         "ports": [
@@ -247,7 +259,9 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 `
 	// create a temp dir to hold resulting files
 	dir, _ := ioutil.TempDir("/tmp", "podfiles")
-	err := os.MkdirAll(dir+"/stage1/rootfs/opt/stage2/runx", 0777)
+	rootDir := path.Join(dir, "runx")
+	podPath := path.Join(dir, "pod")
+	err := os.MkdirAll(rootDir, 0777)
 	if err != nil {
 		t.Errorf("failed to create temporary dir")
 	} else {
@@ -255,36 +269,61 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 	}
 
 	// now create a fake pod file
-	file, _ := os.Create(dir + "/pod")
+	file, _ := os.Create(podPath)
 	_, err = file.WriteString(content)
 	if err != nil {
 		t.Errorf("failed to write to a pod file")
 	}
 
-	status := types.DomainStatus{DiskStatusList: []types.DiskStatus{{ImageSha256: "rootfs"}, {ImageSha256: "extraDisk"}}}
-	err = createMountPointExecEnvFiles(dir, &status)
+	status := types.DomainStatus{DiskStatusList: []types.DiskStatus{{ImageSha256: "rootfs"}, {ImageSha256: "extraDiskData"}, {ImageSha256: "extraDiskFoo"}, {ImageSha256: "extraDiskBar"}}}
+	execpath := []string{"docker-entrypoint.sh", "redis-server"}
+	// the proper format for this
+	execpathStr := "\"docker-entrypoint.sh\" \"redis-server\""
+	workdir := "/data"
+	mountpoints := []string{"/data", "/foo", "/bar"}
+	env := []KeyValue{
+		{Name: "PATH", Value: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
+		{Name: "GOSU_VERSION", Value: "1.11"},
+		{Name: "REDIS_VERSION", Value: "5.0.7"},
+		{Name: "REDIS_DOWNLOAD_URL", Value: "http://download.redis.io/releases/redis-5.0.7.tar.gz"},
+		{Name: "REDIS_DOWNLOAD_SHA", Value: "61db74eabf6801f057fd24b590232f2f337d422280fd19486eca03be87d3a82b"},
+	}
+
+	err = createMountPointExecEnvFiles(rootDir, mountpoints, execpath, workdir, env, &status)
 	if err != nil {
 		t.Errorf("createMountPointExecEnvFiles failed %v", err)
 	}
 
-	cmdline, err := ioutil.ReadFile(dir + "/stage1/rootfs/opt/stage2/runx/cmdline")
-	if string(cmdline) != "\"docker-entrypoint.sh\" \"redis-server\"" {
-		t.Errorf("createMountPointExecEnvFiles failed to create cmdline file %s %v", string(cmdline), err)
+	cmdlineFile := path.Join(rootDir, "cmdline")
+	cmdline, err := ioutil.ReadFile(cmdlineFile)
+	if err != nil {
+		t.Errorf("createMountPointExecEnvFiles failed to create cmdline file %s %v", cmdlineFile, err)
+	}
+	if string(cmdline) != execpathStr {
+		t.Errorf("mismatched cmdline file content, actual '%s' expected '%s'", string(cmdline), execpathStr)
 	}
 
-	mounts, err := ioutil.ReadFile(dir + "/stage1/rootfs/opt/stage2/runx/mountPoints")
-	if string(mounts) != "/data\n" {
-		t.Errorf("createMountPointExecEnvFiles failed to create mountPoints file %s %v", string(mounts), err)
+	mountFile := path.Join(rootDir, "mountPoints")
+	mountExpected := strings.Join(mountpoints, "\n") + "\n"
+	mounts, err := ioutil.ReadFile(mountFile)
+	if err != nil {
+		t.Errorf("createMountPointExecEnvFiles failed to create mountPoints file %s %v", mountFile, err)
+	}
+	if string(mounts) != mountExpected {
+		t.Errorf("mismatched mountpoints file content, actual '%s' expected '%s'", string(mounts), mountExpected)
 	}
 
-	env, err := ioutil.ReadFile(dir + "/stage1/rootfs/opt/stage2/runx/environment")
-	if string(env) != `export WORKDIR="/data"
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-export GOSU_VERSION="1.11"
-export REDIS_VERSION="5.0.7"
-export REDIS_DOWNLOAD_URL="http://download.redis.io/releases/redis-5.0.7.tar.gz"
-export REDIS_DOWNLOAD_SHA="61db74eabf6801f057fd24b590232f2f337d422280fd19486eca03be87d3a82b"
-` {
-		t.Errorf("createMountPointExecEnvFiles failed to create environment file %s %v", string(env), err)
+	envFile := path.Join(rootDir, "environment")
+	envActual, err := ioutil.ReadFile(envFile)
+	// start with WORKDIR
+	envExpect := fmt.Sprintf("export WORKDIR=\"%s\"\n", workdir)
+	for _, v := range env {
+		envExpect = envExpect + fmt.Sprintf("export %s=\"%s\"\n", v.Name, v.Value)
+	}
+	if err != nil {
+		t.Errorf("createMountPointExecEnvFiles failed to create environment file %s %v", envFile, err)
+	}
+	if string(envActual) != envExpect {
+		t.Errorf("mismatched env file content, actual '%s' expected '%s'", string(envActual), envExpect)
 	}
 }
