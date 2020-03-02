@@ -6,7 +6,6 @@ package agentlog
 import (
 	"fmt"
 	"io/ioutil"
-	"log/syslog"
 	"os"
 	"os/signal"
 	"runtime"
@@ -18,7 +17,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	log "github.com/sirupsen/logrus"
-	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
 )
 
 const (
@@ -30,58 +28,20 @@ var savedAgentName = "unknown" // Keep for signal and exit handlers
 var savedRebootReason = "unknown"
 var savedPid = 0
 
-func setupSyslog(agentName string) error {
-	log.SetOutput(ioutil.Discard)
-	syslogPriorities := syslog.LOG_INFO | syslog.LOG_DEBUG |
-		syslog.LOG_ERR | syslog.LOG_WARNING | syslog.LOG_NOTICE |
-		syslog.LOG_CRIT | syslog.LOG_ALERT | syslog.LOG_EMERG
-
-	syslogHook, err := lSyslog.NewSyslogHook("udp", "127.0.0.1:514",
-		syslogPriorities, agentName)
-	if err != nil {
-		fmt.Printf("setupSyslog: Failed creating syslog hook with error: %s", err)
-		return err
-	}
-	log.AddHook(syslogHook)
-	return nil
-}
-
 // Parameter description
 // 1. agentName: Name with which disk log file will be created.
 // 2. logdir: Directory in which disk log file will be placed.
-// 3. text: Test based loggin i.e. logs do into a file created based on
-//          the argument values passed for agentName & logdir.
-//          examples: logmanager
-func initImpl(agentName string, logdir string, text bool) (*os.File, error) {
-
-	var logf *os.File
-	if text {
-		err := setupSyslog(agentName)
-		if err != nil {
-			// XXX Should we Fatal here?
-			fmt.Printf("setupSyslog: failed for agent %s with error: %s", agentName, err)
-			return nil, err
-		}
-	} else {
-		log.SetOutput(os.Stdout)
-	}
+func initImpl(agentName string, logdir string) error {
+	log.SetOutput(os.Stdout)
 	hook := new(FatalHook)
 	log.AddHook(hook)
 	hook2 := new(SourceHook)
 	log.AddHook(hook2)
-	if text {
-		// Report nano timestamps
-		formatter := log.TextFormatter{
-			TimestampFormat: time.RFC3339Nano,
-		}
-		log.SetFormatter(&formatter)
-	} else {
-		// Report nano timestamps
-		formatter := log.JSONFormatter{
-			TimestampFormat: time.RFC3339Nano,
-		}
-		log.SetFormatter(&formatter)
+	// Report nano timestamps
+	formatter := log.JSONFormatter{
+		TimestampFormat: time.RFC3339Nano,
 	}
+	log.SetFormatter(&formatter)
 	log.SetReportCaller(true)
 	log.RegisterExitHandler(printStack)
 
@@ -89,7 +49,7 @@ func initImpl(agentName string, logdir string, text bool) (*os.File, error) {
 	signal.Notify(sigs, syscall.SIGUSR1)
 	signal.Notify(sigs, syscall.SIGUSR2)
 	go handleSignals(sigs)
-	return logf, nil
+	return nil
 }
 
 // FatalHook is used make sure we save the fatal and panic strings to a file
@@ -209,14 +169,6 @@ func RebootStack(stacks string) {
 		log.Errorf("printToFile failed %s\n", err)
 	}
 	syscall.Sync()
-}
-
-func GetCurrentRebootReason() (string, time.Time, string) {
-	reasonFilename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
-	stackFilename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), stackFile)
-	reason, ts := statAndRead(reasonFilename)
-	stack, _ := statAndRead(stackFilename)
-	return reason, ts, stack
 }
 
 func GetOtherRebootReason() (string, time.Time, string) {
@@ -364,23 +316,14 @@ func roundToMb(b uint64) uint64 {
 	return mb
 }
 
-func Init(agentName string, curpart string) (*os.File, error) {
+func Init(agentName string, curpart string) error {
 	if curpart != "" {
 		zboot.SetCurpart(curpart)
 	}
 	logdir := GetCurrentLogdir()
 	savedAgentName = agentName
 	savedPid = os.Getpid()
-	return initImpl(agentName, logdir, false)
-}
-
-func InitWithDirText(agentName string, logdir string, curpart string) (*os.File, error) {
-	if curpart != "" {
-		zboot.SetCurpart(curpart)
-	}
-	savedAgentName = agentName
-	savedPid = os.Getpid()
-	return initImpl(agentName, logdir, true)
+	return initImpl(agentName, logdir)
 }
 
 var currentIMGdir = ""

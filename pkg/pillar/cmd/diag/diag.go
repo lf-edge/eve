@@ -12,7 +12,6 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"mime"
 	"net"
@@ -80,7 +79,6 @@ func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
-	stdoutPtr := flag.Bool("s", false, "Use stdout")
 	foreverPtr := flag.Bool("f", false, "Forever flag")
 	pacContentsPtr := flag.Bool("p", false, "Print PAC file contents")
 	simulateDnsFailurePtr := flag.Bool("D", false, "simulateDnsFailure flag")
@@ -96,7 +94,6 @@ func Run(ps *pubsub.PubSub) {
 		log.SetLevel(log.InfoLevel)
 	}
 	curpart := *curpartPtr
-	useStdout := *stdoutPtr
 	simulateDnsFailure = *simulateDnsFailurePtr
 	simulatePingFailure = *simulatePingFailurePtr
 	outputFile := *outputFilePtr
@@ -104,19 +101,9 @@ func Run(ps *pubsub.PubSub) {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	logf, err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
-	}
-	defer logf.Close()
-
-	if useStdout {
-		if logf == nil {
-			log.SetOutput(os.Stdout)
-		} else {
-			multi := io.MultiWriter(logf, os.Stdout)
-			log.SetOutput(multi)
-		}
 	}
 
 	if outputFile != "" {
