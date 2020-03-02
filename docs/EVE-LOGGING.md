@@ -41,21 +41,7 @@ When a direct ssh connection to a device is possible, /persist/rsyslog/syslog.tx
 
 Rsyslogd is configured to send logs via TCP socket to logmanager. Logmanager bundles the logs into protobuf messages and exports them to cloud using API. Today when a device loses network connectivity to cloud, there is a back-off mechanism built into the logmanager that prompts rsyslogd to stop sending logs. When there is network drop, logmanager stops reading log messages from rsyslogd (TCP socket). Rsyslogd stops sending logs when it's output socket buffer is full. As a result following logs will be queued on disk. After the device's network connectivity is restored, rsyslogd starts sending logs from it's disk queues.
 
+Logmanager instead of now logging directly to file would now send it's logs to memlogd which will then be picked up by rsyslogd that writes to /persist/log/logmanager.log (this file is size regualted to a configured value - 100MB).
+
 ## Log files still present in device
-
-1. Logmanager's log file present in /persist/log/logmanager.log.
-   Latest code with cron, logrotate removed from pillar this log file grows irregulated.
-   What can be done to control the total size of this file on disk?
-
-   - Bring back cron, logrotate?
-   - Make logmanager send logs directly to /dev/log (not via memlogd) and put a programname
-      match in rsyslogd that redirects these logs into /persist/log/logmanger.log but using a
-	  size controlled out_channel.
-
-   Given the options above, it makes more sense to have rsyslogd write the logmanager.log file  and at the same time controlling it's size. Logmanager instead of now logging directly to file would not send it's logs to /dev/log which will then be picked up by rsyslogd that writes to /persist/log/logmanager.log (this file is size regualted to a configured value - 100MB).
-
-2. Reboot reason and reboot stack files present in /persist/IMGx and /persist/log directories.
-   reboot-reaon, reboot-stack files present in /persist/log directory get appended with updates.
-   The sames files in /persist/IMGx directory keep getting overwritten with new content every time there is USR1 signal sent
-   to a process or in the event of Fatal crash. These stack traces are also exported to cloud
-   using logging mechanism.
+Reboot reason and reboot stack files present in /persist and /persist/log directories. reboot-reaon, reboot-stack files present in /persist/log directory get appended with updates. The sames files in /persist directory keep getting overwritten with new content every time there is USR1 signal sent to a process or in the event of Fatal crash. These stack traces are also exported to cloud using logging mechanism.
