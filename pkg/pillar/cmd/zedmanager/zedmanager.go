@@ -693,8 +693,7 @@ func maybeLatchImageSha(ctx *zedmanagerContext, config types.AppInstanceConfig,
 // Note that the sha must be lower case in the OCI reference.
 func maybeInsertSha(name string, sha string) string {
 	if strings.Index(name, "@") != -1 {
-		// Already has a sha and tag
-		// We are not replacing specified tag with sha
+		// Already has a sha
 		return name
 	}
 	sha = strings.ToLower(sha)
@@ -704,6 +703,7 @@ func maybeInsertSha(name string, sha string) string {
 	} else if strings.Contains(name, ":latest") {
 		return name[:last] + "@sha256:" + sha
 	}
+	// We are not replacing specified tag with sha
 	return name
 }
 
