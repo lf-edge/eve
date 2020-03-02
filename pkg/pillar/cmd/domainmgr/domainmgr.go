@@ -10,7 +10,6 @@ package domainmgr
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -44,8 +43,6 @@ import (
 )
 
 const (
-	rktDirname   = "/persist/rkt/pods/prepared/"
-	rktPodRootfs = "/stage1/rootfs/opt/stage2/runx/"
 	agentName    = "domainmgr"
 	runDirname   = "/var/run/" + agentName
 	xenDirname   = runDirname + "/xen"       // We store xen cfg files here
@@ -91,7 +88,6 @@ type domainContext struct {
 	vdiskGCTime            uint32 // In seconds
 	domainBootRetryTime    uint32 // In seconds
 	metricInterval         uint32 // In seconds
-	RktGCGracePeriod       uint32
 }
 
 // appRwImageName - Returns name of the image ( including parent dir )
@@ -359,9 +355,6 @@ func Run(ps *pubsub.PubSub) {
 	}
 	domainCtx.subDomainConfig = subDomainConfig
 	subDomainConfig.Activate()
-
-	// Start Rkt GC handler
-	go runRktGcHandler(&domainCtx)
 
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse
@@ -754,18 +747,6 @@ func runHandler(ctx *domainContext, key string, c <-chan Notify) {
 		}
 	}
 	log.Infof("runHandler(%s) DONE\n", key)
-}
-
-func runRktGcHandler(ctxPtr *domainContext) {
-	// Start the first timer after 10 mins
-	timer := time.NewTimer(100 * time.Minute)
-	for true {
-		<-timer.C
-		rktGc(ctxPtr.RktGCGracePeriod, false)
-		rktGc(ctxPtr.RktGCGracePeriod, true)
-		timer = time.NewTimer(
-			time.Duration(ctxPtr.RktGCGracePeriod) * time.Second)
-	}
 }
 
 // doStopDestroyDomain will destroy the domain of an instance if qemu is crashed
@@ -1251,16 +1232,15 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	// FIXME: this will go away once we do a proper volumemanager
 	// Handle creating of rootFS bundle for containers
 	if status.IsContainer {
-		podUUID, err := rktPrepare(containerImageSha256, status)
+		podUUID, err := ctrPrepare(containerImageSha256, status)
 		if err != nil {
-			log.Errorf("Failed to create rkt POD bundle from %v\n", config)
+			log.Errorf("Failed to create ctr bundle from %v\n", config)
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
 			return
 		}
 
-		file.WriteString("p9=[ 'tag=share_dir,security_model=none,path=" +
-			rktDirname + podUUID + rktPodRootfs + "' ]\n")
+		file.WriteString(fmt.Sprintf("p9=[ 'tag=share_dir,security_model=none,path=%s']\n", getContainerRootfs(podUUID)))
 
 		status.PodUUID = podUUID
 	}
@@ -1425,7 +1405,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 		}
 	}
 
-	// Incase of rkt based container, DomainShutdown moves the
+	// Incase of ctr based container, DomainShutdown moves the
 	// container to exit state and the domain is destroyed
 	// Issue Domain Destroy irrespective in container case
 	if status.IsContainer || status.DomainId != 0 {
@@ -1675,8 +1655,7 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 	return nil
 }
 
-func createMountPointExecEnvFiles(rootFsPrefix string, status *types.DomainStatus) error {
-	rootFs := rootFsPrefix + rktPodRootfs
+func createMountPointExecEnvFiles(rootFs string, mountpoints, execpath []string, workdir string, env []KeyValue, status *types.DomainStatus) error {
 	mpFileName := rootFs + "/mountPoints"
 	cmdFileName := rootFs + "/cmdline"
 	envFileName := rootFs + "/environment"
@@ -1699,62 +1678,58 @@ func createMountPointExecEnvFiles(rootFsPrefix string, status *types.DomainStatu
 	}
 	defer envFile.Close()
 
-	appManifest, err := getRktPodManifest(rootFsPrefix + "/pod")
-	if err != nil {
-		return fmt.Errorf("createMountPointExecEnvFiles: Error while fetching app manfest: %v", err.Error())
-	}
-	app := appManifest.Apps[0].App
-
 	//Ignoring container image in status.DiskStatusList
 	noOfDisks := len(status.DiskStatusList) - 1
 
 	//Validating if there are enough disks provided for the mount-points
-	if noOfDisks != len(app.Mounts) {
-
-		if noOfDisks > len(app.Mounts) {
-			//If no. of disks is (strictly) greater than no. of mount-points provided, we will ignore excessive disks.
-			log.Warnf("createMountPointExecEnvFiles: Number of volumes provided: %v is more than number of mount-points: %v. "+
-				"Excessive volumes will be ignored", noOfDisks, len(app.Mounts))
-		} else {
-			//If no. of mount-points is (strictly) greater than no. of disks provided, we need to throw an error as there
-			// won't be enough disks to satisfy required mount-points.
-			return fmt.Errorf("createMountPointExecEnvFiles: Number of volumes provided: %v is less than number of mount-points: %v. ",
-				noOfDisks, len(app.Mounts))
-		}
+	switch {
+	case noOfDisks > len(mountpoints):
+		//If no. of disks is (strictly) greater than no. of mount-points provided, we will ignore excessive disks.
+		log.Warnf("createMountPointExecEnvFiles: Number of volumes provided: %v is more than number of mount-points: %v. "+
+			"Excessive volumes will be ignored", noOfDisks, len(mountpoints))
+	case noOfDisks < len(mountpoints):
+		//If no. of mount-points is (strictly) greater than no. of disks provided, we need to throw an error as there
+		// won't be enough disks to satisfy required mount-points.
+		return fmt.Errorf("createMountPointExecEnvFiles: Number of volumes provided: %v is less than number of mount-points: %v. ",
+			noOfDisks, len(mountpoints))
 	}
 
-	for i, mp := range app.Mounts {
-		if mp.Path == "" {
+	for i, mp := range mountpoints {
+		if mp == "" {
 			err := fmt.Errorf("createMountPointExecEnvFiles: targetPath cannot be empty")
 			log.Errorf(err.Error())
 			return err
-		} else if !strings.HasPrefix(mp.Path, "/") {
+		} else if !strings.HasPrefix(mp, "/") {
 			//Target path is expected to be absolute.
 			err := fmt.Errorf("createMountPointExecEnvFiles: targetPath should be absolute")
 			log.Errorf(err.Error())
 			return err
 		}
-		targetString := fmt.Sprintf("%s\n", mp.Path)
-		log.Infof("createMountPointExecEnvFiles: Processing mount point %d: %s\n", i, targetString)
-		if _, err := mpFile.WriteString(targetString); err != nil {
+		log.Infof("createMountPointExecEnvFiles: Processing mount point %d: %s\n", i, mp)
+		if _, err := mpFile.WriteString(fmt.Sprintf("%s\n", mp)); err != nil {
 			err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", mpFileName, err)
 			log.Errorf(err.Error())
 			return err
 		}
 	}
 
-	if _, err := cmdFile.WriteString("\"" + strings.Join(app.Exec, "\" \"") + "\""); err != nil {
+	// each item needs to be independently quoted for initrd
+	execpathQuoted := make([]string, 0)
+	for _, s := range execpath {
+		execpathQuoted = append(execpathQuoted, fmt.Sprintf("\"%s\"", s))
+	}
+	if _, err := cmdFile.WriteString(strings.Join(execpathQuoted, " ")); err != nil {
 		err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", cmdFileName, err)
 		log.Errorf(err.Error())
 		return err
 	}
 
 	envContent := ""
-	if app.WorkDir != "" {
-		envContent = fmt.Sprintf("export WORKDIR=\"%s\"\n", app.WorkDir)
+	if workdir != "" {
+		envContent = fmt.Sprintf("export WORKDIR=\"%s\"\n", workdir)
 	}
-	for _, env := range app.Env {
-		envContent = envContent + fmt.Sprintf("export %s=\"%s\"\n", env.Name, env.Value)
+	for _, e := range env {
+		envContent = envContent + fmt.Sprintf("export %s=\"%s\"\n", e.Name, e.Value)
 	}
 	if _, err := envFile.WriteString(envContent); err != nil {
 		err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", envFileName, err)
@@ -2289,11 +2264,11 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 		doInactivate(ctx, status, true)
 	} else {
 		if status.IsContainer {
-			// Use rkt tool to remove already exited or inactivated container apps
-			log.Infof("Using rkt tool to remove already exited container app ... PodUUID - %s\n", status.PodUUID)
-			err := rktRm(status.PodUUID)
+			// Use ctr to remove already exited or inactivated container apps
+			log.Infof("Using ctr to remove already exited container app ... PodUUID - %s\n", status.PodUUID)
+			err := ctrRm(status.PodUUID)
 			if err != nil {
-				log.Errorf("rktRm %s failed: %s\n",
+				log.Errorf("ctrRm %s failed: %s\n",
 					status.DomainName, err)
 			}
 		}
@@ -2327,7 +2302,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 		status.UUIDandVersion, status.DisplayName)
 }
 
-// DomainCreate is a wrapper for domain creation thru xlCreate or rktPrepare + xlCreate
+// DomainCreate is a wrapper for domain creation thru xlCreate or ctrPrepare + xlCreate
 // returns domainID, PodUUID and error
 func DomainCreate(status types.DomainStatus) (int, error) {
 
@@ -2353,84 +2328,6 @@ func DomainCreate(status types.DomainStatus) (int, error) {
 	domainID, err = xlCreate(status.DomainName, filename)
 
 	return domainID, err
-}
-
-func rktPrepare(containerImageSha256 string, status *types.DomainStatus) (string, error) {
-	// Use rkt tool
-	// get the rkt image hash for this file; if we do not have it in the rkt cache,
-	// convert it
-	podUUID := ""
-	ociFilename, err := utils.VerifiedImageFileLocation(containerImageSha256)
-	if err != nil {
-		log.Errorf("rktPrepare: Failed to get Image File Location. "+
-			"err: %+s", err.Error())
-		return podUUID, err
-	}
-	log.Infof("ociFilename %s sha %s", ociFilename, containerImageSha256)
-	imageHash, err := ociToRktImageHash(ociFilename)
-	if err != nil {
-		log.Error(err)
-		return podUUID, fmt.Errorf("unable to get rkt image hash: %v", err)
-	}
-
-	log.Infof("rktPrepare %s\n", imageHash)
-	cmd := "rkt"
-	args := []string{
-		"--dir=" + types.PersistRktDataDir,
-		"--insecure-options=image",
-		"prepare",
-		imageHash,
-		"--stage1-path=/usr/sbin/stage1-dummy.aci",
-		"--name=runx",
-		"--no-overlay",
-		"--quiet",
-	}
-	for k, v := range status.EnvVariables {
-		args = append(args, fmt.Sprintf("--set-env=%s=%s", k, v))
-	}
-	cmdLine := exec.Command(cmd, args...)
-
-	stdoutStderr, err := cmdLine.CombinedOutput()
-	if err != nil {
-		log.Errorln("rkt prepare failed ", err)
-		log.Errorln("rkt prepare output ", string(stdoutStderr))
-		return "", fmt.Errorf("rkt prepare failed: %s\n",
-			string(stdoutStderr))
-	}
-
-	podUUID = strings.TrimSuffix(string(stdoutStderr), "\n")
-	log.Infof("podUUID = %s\n", podUUID)
-
-	// finally, inject a few files of our own into the bundle
-	err = createMountPointExecEnvFiles(rktDirname+podUUID, status)
-
-	return podUUID, err
-}
-
-// rktStatus checks the status of the pod
-func rktStatus(podUUID string) string {
-	cmd := "rkt"
-	args := []string{
-		"--dir=" + types.PersistRktDataDir,
-		"status",
-		podUUID,
-		"--format=json",
-	}
-	log.Infof("Calling command %s %v\n", cmd, args)
-	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
-	if err != nil {
-		log.Errorln("rkt status failed ", err)
-		log.Errorln("rkt status output ", string(stdoutStderr))
-		return ""
-	}
-	log.Infof("rkt status done\n")
-	var status map[string]interface{}
-	if err := json.Unmarshal(stdoutStderr, &status); err != nil {
-		log.Errorln("rkt status failed ", err)
-		log.Errorln("rkt status output ", string(stdoutStderr))
-		return ""
-	}
-	return status["state"].(string)
 }
 
 // Create in paused state; Need to call xlUnpause later
@@ -2635,16 +2532,16 @@ func xlShutdown(domainName string, domainID int, force bool) error {
 	return nil
 }
 
-// DomainDestroy is a wrapper for domain Destroy thru xlDestroy or rktRm
+// DomainDestroy is a wrapper for domain Destroy thru xlDestroy or ctrRm
 func DomainDestroy(status types.DomainStatus) error {
 
 	var err error
 	log.Infof("DomainDestroy %s %d\n", status.DomainName, status.DomainId)
 
 	if status.IsContainer {
-		// Use rkt tool
-		log.Infof("Using rkt tool ... PodUUID - %s\n", status.PodUUID)
-		err = rktRm(status.PodUUID)
+		// Use ctr
+		log.Infof("Using ctr tool ... PodUUID - %s\n", status.PodUUID)
+		err = ctrRm(status.PodUUID)
 	} else {
 		// Use xl tool
 		log.Infof("Using xl tool ... DomainName - %s\n", status.DomainName)
@@ -2652,26 +2549,6 @@ func DomainDestroy(status types.DomainStatus) error {
 	}
 
 	return err
-}
-
-func rktRm(PodUUID string) error {
-	log.Infof("rktRm %s\n", PodUUID)
-	// rkt --dir=<RKT_DATA_DIR> rm PodUUID
-	cmd := "rkt"
-	args := []string{
-		"--dir=" + types.PersistRktDataDir,
-		"rm",
-		PodUUID,
-	}
-	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
-	if err != nil {
-		log.Errorln("rkt Rm failed ", err)
-		log.Errorln("rkt Rm output ", string(stdoutStderr))
-		return fmt.Errorf("rkt Rm failed: %s\n",
-			string(stdoutStderr))
-	}
-	log.Infof("rkt Rm done\n")
-	return nil
 }
 
 func xlDestroy(domainName string, domainID int) error {
@@ -2793,16 +2670,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		if gcp.MetricInterval != 0 {
 			ctx.metricInterval = gcp.MetricInterval
 		}
-		if gcp.RktGCGracePeriod != 0 {
-			ctx.RktGCGracePeriod = gcp.RktGCGracePeriod
-		}
 		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify done for %s. VdiskGCTime: %d, "+
 		"DomainBootRetryTime: %d, usbAccess: %t, metricInterval: %d, "+
-		"RktGCGracePeriod: %d",
 		key, ctx.vdiskGCTime, ctx.domainBootRetryTime, ctx.usbAccess,
-		ctx.metricInterval, ctx.RktGCGracePeriod)
+		ctx.metricInterval)
 }
 
 func handleGlobalConfigDelete(ctxArg interface{}, key string,
