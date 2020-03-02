@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestmaybeInsertSha(t *testing.T) {
+func TestMaybeInsertSha(t *testing.T) {
 	type insertSHA struct {
 		imageName         string
 		imageSHA          string
