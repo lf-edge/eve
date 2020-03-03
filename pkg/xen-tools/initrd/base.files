@@ -7,3 +7,4 @@
 /udhcpc_script.sh
 /mnt
 /bin/sh
+/sbin/poweroff
