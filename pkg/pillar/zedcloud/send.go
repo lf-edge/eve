@@ -443,6 +443,9 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		case http.StatusCreated:
 			log.Debugf("SendOnIntf to %s StatusCreated\n", reqUrl)
 			return resp, contents, false, nil
+		case http.StatusNotModified:
+			log.Debugf("SendOnIntf to %s StatusNotModified\n", reqUrl)
+			return resp, contents, false, nil
 		default:
 			errStr := fmt.Sprintf("sendOnIntf to %s reqlen %d statuscode %d %s",
 				reqUrl, reqlen, resp.StatusCode,
