@@ -27,4 +27,5 @@ message AuthContainer {
     hashAlgorithm algo = 2;        // hash algorithm used by sender Cert
     bytes   senderCertHash = 3;    // N bytes in length, 1st N bytes of sender siging cert sha256 hash
     bytes    signatureHash = 4;    // signature of the sha256 hash of the payload
+    bytes    senderCert = 5;       // full senderCert needed for some payloads
 }
