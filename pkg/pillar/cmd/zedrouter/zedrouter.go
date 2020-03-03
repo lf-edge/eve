@@ -627,7 +627,14 @@ func handleInit(runDirname string) {
 	// ipsets which are independent of config
 	createDefaultIpset()
 
+	// sysctl not related to networking, but keep with rest
 	_, err := wrap.Command("sysctl", "-w",
+		"kernel.softlockup_panic=1").Output()
+	if err != nil {
+		log.Fatal("Failed setting kernel.softlockup_panic ", err)
+	}
+
+	_, err = wrap.Command("sysctl", "-w",
 		"net.ipv4.ip_forward=1").Output()
 	if err != nil {
 		log.Fatal("Failed setting ip_forward ", err)
