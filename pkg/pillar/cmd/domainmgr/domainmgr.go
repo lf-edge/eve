@@ -815,6 +815,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			log.Warnf("verifyDomain(%s) domainID changed from %d to %d\n",
 				status.Key(), status.DomainId, domainID)
 			status.DomainId = domainID
+			status.BootTime = time.Now()
 			publishDomainStatus(ctx, status)
 		}
 		// check if qemu processes has crashed
