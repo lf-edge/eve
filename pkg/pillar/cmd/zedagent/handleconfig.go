@@ -282,7 +282,10 @@ func getLatestConfig(url string, iteration int,
 }
 
 func validateConfigMessage(url string, r *http.Response) error {
-
+	//No check Content-Type for empty response
+	if r.ContentLength == 0 {
+		return nil
+	}
 	var ctTypeStr = "Content-Type"
 	var ctTypeProtoStr = "application/x-proto-binary"
 
