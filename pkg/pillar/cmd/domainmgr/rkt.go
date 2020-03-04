@@ -44,6 +44,45 @@ type RktManifest struct {
 	App         App        `json:"app,omitempty"`
 }
 
+// RktAppInstance describes an application instance referenced in a PodManifest
+type RktAppInstance struct {
+	Exec []string `json:"exec"`
+	// EventHandlers     []EventHandler  `json:"eventHandlers,omitempty"`
+	User  string `json:"user"`
+	Group string `json:"group"`
+	// SupplementaryGIDs []int           `json:"supplementaryGIDs,omitempty"`
+	WorkDir string       `json:"workingDirectory,omitempty"`
+	Env     []KeyValue   `json:"environment,omitempty"`
+	Mounts  []MountPoint `json:"mountPoints,omitempty"`
+	// Ports             []Port          `json:"ports,omitempty"`
+	// Isolators         Isolators       `json:"isolators,omitempty"`
+	// UserAnnotations   UserAnnotations `json:"userAnnotations,omitempty"`
+	// UserLabels        UserLabels      `json:"userLabels,omitempty"`
+}
+
+// RktApp describes an application referenced in a PodManifest
+type RktApp struct {
+	Name string `json:"name"`
+	// Image       RuntimeImage      `json:"image"`
+	App RktAppInstance `json:"app,omitempty"`
+	// ReadOnlyRootFS bool              `json:"readOnlyRootFS,omitempty"`
+	// Mounts         []Mount           `json:"mounts,omitempty"`
+	// Annotations    types.Annotations `json:"annotations,omitempty"`
+}
+
+// RktPodManifest represents a rkt pod manifest
+type RktPodManifest struct {
+	ACVersion string   `json:"acVersion"`
+	ACKind    string   `json:"acKind"`
+	Apps      []RktApp `json:"apps"`
+	// Volumes         []types.Volume        `json:"volumes"`
+	// Isolators       []KeyValue      `json:"isolators"`
+	// Annotations     []KeyValue      `json:"annotations"`
+	// Ports           []exposedPort   `json:"ports"`
+	// UserAnnotations []KeyValue      `json:"userAnnotations,omitempty"`
+	// UserLabels      []KeyValue      `json:"userLabels,omitempty"`
+}
+
 // MountPoint - represents mountpoints of an app
 type MountPoint struct {
 	Name     string `json:"name"`
@@ -257,6 +296,23 @@ func rktGetHashes() (map[string]string, error) {
 	log.Infof("rkt hashes load complete; found %d images with docker hashes", len(m))
 	log.Debugf("rkt hashes: %+v", m)
 	return m, nil
+}
+
+func getRktPodManifest(PodManifestFile string) (RktPodManifest, error) {
+	// process the json to get the exact item we need
+	var manifest RktPodManifest
+
+	content, err := ioutil.ReadFile(PodManifestFile)
+	if err != nil {
+		log.Errorf("error reading rkt pod manifest %s failed: %v", PodManifestFile, err)
+		return manifest, fmt.Errorf("error reading rkt pod manifest %s failed: %v", PodManifestFile, err)
+	}
+
+	err = json.Unmarshal(content, &manifest)
+	if err != nil {
+		return manifest, fmt.Errorf("error parsing pod rkt manifest for %s: %v", content, err)
+	}
+	return manifest, nil
 }
 
 func getRktManifest(imageHash string) (RktManifest, error) {

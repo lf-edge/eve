@@ -12,7 +12,6 @@ package nim
 import (
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"reflect"
 	"sort"
@@ -101,18 +100,9 @@ func Run(ps *pubsub.PubSub) {
 		return
 	}
 
-	logf, err := agentlog.Init(agentName, nimCtx.curpart)
+	err := agentlog.Init(agentName, nimCtx.curpart)
 	if err != nil {
 		log.Fatal(err)
-	}
-	defer logf.Close()
-	if nimCtx.useStdout {
-		if logf == nil {
-			log.SetOutput(os.Stdout)
-		} else {
-			multi := io.MultiWriter(logf, os.Stdout)
-			log.SetOutput(multi)
-		}
 	}
 
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {

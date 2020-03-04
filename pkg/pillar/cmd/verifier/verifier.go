@@ -98,11 +98,10 @@ func Run(ps *pubsub.PubSub) {
 		log.SetLevel(log.InfoLevel)
 	}
 	curpart := *curpartPtr
-	logf, err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logf.Close()
 
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)

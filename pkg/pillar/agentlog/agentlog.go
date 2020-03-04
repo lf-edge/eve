@@ -31,40 +31,17 @@ var savedPid = 0
 // Parameter description
 // 1. agentName: Name with which disk log file will be created.
 // 2. logdir: Directory in which disk log file will be placed.
-// 3. text: Test based loggin i.e. logs do into a file created based on
-//          the argument values passed for agentName & logdir.
-//          examples: logmanager
-func initImpl(agentName string, logdir string, text bool) (*os.File, error) {
-
-	var err error
-	var logf *os.File
-	if text {
-		logfile := fmt.Sprintf("%s/%s.log", logdir, agentName)
-		logf, err = os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		if err != nil {
-			return nil, err
-		}
-		log.SetOutput(logf)
-	} else {
-		log.SetOutput(os.Stdout)
-	}
+func initImpl(agentName string, logdir string) error {
+	log.SetOutput(os.Stdout)
 	hook := new(FatalHook)
 	log.AddHook(hook)
 	hook2 := new(SourceHook)
 	log.AddHook(hook2)
-	if text {
-		// Report nano timestamps
-		formatter := log.TextFormatter{
-			TimestampFormat: time.RFC3339Nano,
-		}
-		log.SetFormatter(&formatter)
-	} else {
-		// Report nano timestamps
-		formatter := log.JSONFormatter{
-			TimestampFormat: time.RFC3339Nano,
-		}
-		log.SetFormatter(&formatter)
+	// Report nano timestamps
+	formatter := log.JSONFormatter{
+		TimestampFormat: time.RFC3339Nano,
 	}
+	log.SetFormatter(&formatter)
 	log.SetReportCaller(true)
 	log.RegisterExitHandler(printStack)
 
@@ -72,7 +49,7 @@ func initImpl(agentName string, logdir string, text bool) (*os.File, error) {
 	signal.Notify(sigs, syscall.SIGUSR1)
 	signal.Notify(sigs, syscall.SIGUSR2)
 	go handleSignals(sigs)
-	return logf, nil
+	return nil
 }
 
 // FatalHook is used make sure we save the fatal and panic strings to a file
@@ -157,11 +134,11 @@ func printStack() {
 // Note: can not use log here since we are called from a log hook!
 func RebootReason(reason string, normal bool) {
 	log.Infof("RebootReason(%s)", reason)
-	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
+	filename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
 	dateStr := time.Now().Format(time.RFC3339Nano)
 	if !normal {
-		reason = fmt.Sprintf("Reboot from agent %s[%d] at %s: %s\n",
-			savedAgentName, savedPid, dateStr, reason)
+		reason = fmt.Sprintf("Reboot from agent %s[%d] in partition %s at %s: %s\n",
+			savedAgentName, savedPid, zboot.GetCurrentPartition(), dateStr, reason)
 	}
 	err := printToFile(filename, reason)
 	if err != nil {
@@ -180,7 +157,7 @@ func RebootReason(reason string, normal bool) {
 // RebootStack writes stack in /persist/IMGx/reboot-stack
 // and appends to /persist/log/reboot-stack.log
 func RebootStack(stacks string) {
-	filename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), stackFile)
+	filename := fmt.Sprintf("%s/%s", types.PersistDir, stackFile)
 	log.Warnf("RebootStack to %s", filename)
 	err := printToFile(filename, fmt.Sprintf("%v\n", stacks))
 	if err != nil {
@@ -192,14 +169,6 @@ func RebootStack(stacks string) {
 		log.Errorf("printToFile failed %s\n", err)
 	}
 	syscall.Sync()
-}
-
-func GetCurrentRebootReason() (string, time.Time, string) {
-	reasonFilename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
-	stackFilename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), stackFile)
-	reason, ts := statAndRead(reasonFilename)
-	stack, _ := statAndRead(stackFilename)
-	return reason, ts, stack
 }
 
 func GetOtherRebootReason() (string, time.Time, string) {
@@ -347,23 +316,14 @@ func roundToMb(b uint64) uint64 {
 	return mb
 }
 
-func Init(agentName string, curpart string) (*os.File, error) {
+func Init(agentName string, curpart string) error {
 	if curpart != "" {
 		zboot.SetCurpart(curpart)
 	}
 	logdir := GetCurrentLogdir()
 	savedAgentName = agentName
 	savedPid = os.Getpid()
-	return initImpl(agentName, logdir, false)
-}
-
-func InitWithDirText(agentName string, logdir string, curpart string) (*os.File, error) {
-	if curpart != "" {
-		zboot.SetCurpart(curpart)
-	}
-	savedAgentName = agentName
-	savedPid = os.Getpid()
-	return initImpl(agentName, logdir, true)
+	return initImpl(agentName, logdir)
 }
 
 var currentIMGdir = ""

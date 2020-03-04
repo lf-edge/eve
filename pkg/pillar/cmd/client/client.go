@@ -9,7 +9,6 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"mime"
 	"net/http"
@@ -83,7 +82,6 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
-	stdoutPtr := flag.Bool("s", false, "Use stdout")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
 	maxRetriesPtr := flag.Int("r", 0, "Max retries")
 	flag.Parse()
@@ -97,7 +95,6 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 		log.SetLevel(log.InfoLevel)
 	}
 	curpart := *curpartPtr
-	useStdout := *stdoutPtr
 	noPidFlag := *noPidPtr
 	maxRetries := *maxRetriesPtr
 	args := flag.Args()
@@ -106,18 +103,9 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 		return
 	}
 	// Sending json log format to stdout
-	logf, err := agentlog.Init("client", curpart)
+	err := agentlog.Init("client", curpart)
 	if err != nil {
 		log.Fatal(err)
-	}
-	defer logf.Close()
-	if useStdout {
-		if logf == nil {
-			log.SetOutput(os.Stdout)
-		} else {
-			multi := io.MultiWriter(logf, os.Stdout)
-			log.SetOutput(multi)
-		}
 	}
 	if !noPidFlag {
 		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {

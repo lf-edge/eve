@@ -837,11 +837,10 @@ func Run(ps *pubsub.PubSub) {
 
 	curpart := *curpartPtr
 	// Sending json log format to stdout
-	logf, err := agentlog.Init("tpmmgr", curpart)
+	err := agentlog.Init("tpmmgr", curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logf.Close()
 
 	if len(flag.Args()) == 0 {
 		log.Fatal("Insufficient arguments")

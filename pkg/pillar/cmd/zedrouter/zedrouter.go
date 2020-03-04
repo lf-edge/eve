@@ -107,11 +107,10 @@ func Run(ps *pubsub.PubSub) {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	logf, err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logf.Close()
 
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
@@ -627,7 +626,14 @@ func handleInit(runDirname string) {
 	// ipsets which are independent of config
 	createDefaultIpset()
 
+	// sysctl not related to networking, but keep with rest
 	_, err := wrap.Command("sysctl", "-w",
+		"kernel.softlockup_panic=1").Output()
+	if err != nil {
+		log.Fatal("Failed setting kernel.softlockup_panic ", err)
+	}
+
+	_, err = wrap.Command("sysctl", "-w",
 		"net.ipv4.ip_forward=1").Output()
 	if err != nil {
 		log.Fatal("Failed setting ip_forward ", err)

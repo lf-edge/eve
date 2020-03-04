@@ -44,6 +44,8 @@ import (
 )
 
 const (
+	rktDirname   = "/persist/rkt/pods/prepared/"
+	rktPodRootfs = "/stage1/rootfs/opt/stage2/runx/"
 	agentName    = "domainmgr"
 	runDirname   = "/var/run/" + agentName
 	xenDirname   = runDirname + "/xen"       // We store xen cfg files here
@@ -139,11 +141,10 @@ func Run(ps *pubsub.PubSub) {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	logf, err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logf.Close()
 
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
@@ -629,10 +630,6 @@ func xenCfgFilename(appNum int) string {
 	return xenDirname + "/xen" + strconv.Itoa(appNum) + ".cfg"
 }
 
-func mountPointFileName(appNum int) string {
-	return xenDirname + "/mountPoint" + strconv.Itoa(appNum) + ".cfg"
-}
-
 // Notify simple struct to pass notification messages
 type Notify struct{}
 
@@ -772,16 +769,7 @@ func runRktGcHandler(ctxPtr *domainContext) {
 
 // doStopDestroyDomain will destroy the domain of an instance if qemu is crashed
 func doStopDestroyDomain(status *types.DomainStatus) {
-	var err error
-	if status.IsContainer {
-		// Use rkt tool
-		log.Infof("Using rkt tool to stop the running pod ... PodUUID - %s\n", status.PodUUID)
-		err = rktStop(status.PodUUID, false)
-		if err != nil {
-			log.Errorf("rktStop %s failed: %s\n", status.DomainName, err)
-		}
-	}
-	err = DomainDestroy(*status)
+	err := DomainDestroy(*status)
 	if err != nil {
 		log.Errorf("DomainDestroy %s failed: %s\n", status.DomainName, err)
 	}
@@ -893,7 +881,7 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 	status.TriedCount += 1
 
 	ctx.createSema.V(1)
-	domainID, podUUID, err := DomainCreate(*status)
+	domainID, err := DomainCreate(*status)
 	ctx.createSema.P(1)
 	if err != nil {
 		log.Errorf("maybeRetryBoot DomainCreate for %s: %s\n",
@@ -904,7 +892,6 @@ func maybeRetryBoot(ctx *domainContext, status *types.DomainStatus) {
 		publishDomainStatus(ctx, status)
 		return
 	}
-	status.PodUUID = podUUID
 	status.BootFailed = false
 	doActivateTail(ctx, status, domainID)
 }
@@ -1218,8 +1205,10 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 
 	// Do we need to copy any rw files? Preserve ones are copied upon
 	// creation
+	var containerImageSha256 string
 	for _, ds := range status.DiskStatusList {
 		if ds.Format == zconfig.Format_CONTAINER {
+			containerImageSha256 = ds.ImageSha256
 			continue
 		}
 		if ds.ReadOnly || ds.Preserve {
@@ -1258,15 +1247,31 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		return
 	}
 
+	// FIXME: this will go away once we do a proper volumemanager
+	// Handle creating of rootFS bundle for containers
+	if status.IsContainer {
+		podUUID, err := rktPrepare(containerImageSha256, status)
+		if err != nil {
+			log.Errorf("Failed to create rkt POD bundle from %v\n", config)
+			status.LastErr = fmt.Sprintf("%v", err)
+			status.LastErrTime = time.Now()
+			return
+		}
+
+		file.WriteString("p9=[ 'tag=share_dir,security_model=none,path=" +
+			rktDirname + podUUID + rktPodRootfs + "' ]\n")
+
+		status.PodUUID = podUUID
+	}
+
 	status.TriedCount = 0
 	var domainID int
-	var podUUID string
 	// Invoke xl create; try 3 times with a timeout
 	for {
 		status.TriedCount += 1
 		var err error
 		ctx.createSema.V(1)
-		domainID, podUUID, err = DomainCreate(*status)
+		domainID, err = DomainCreate(*status)
 		ctx.createSema.P(1)
 		if err == nil {
 			break
@@ -1284,7 +1289,6 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		publishDomainStatus(ctx, status)
 		time.Sleep(5 * time.Second)
 	}
-	status.PodUUID = podUUID
 	status.BootFailed = false
 	doActivateTail(ctx, status, domainID)
 }
@@ -1670,51 +1674,93 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 	return nil
 }
 
-func createMountPointFile(imageHash, mpFileName string, status types.DomainStatus) error {
-	file, err := os.Create(mpFileName)
-	if err != nil {
-		log.Errorf("createMountPointFile: os.Create for %v, failed: %v", mpFileName, err.Error())
-	}
-	defer file.Close()
+func createMountPointExecEnvFiles(rootFsPrefix string, status *types.DomainStatus) error {
+	rootFs := rootFsPrefix + rktPodRootfs
+	mpFileName := rootFs + "/mountPoints"
+	cmdFileName := rootFs + "/cmdline"
+	envFileName := rootFs + "/environment"
 
-	appManifest, err := getRktManifest(imageHash)
+	mpFile, err := os.Create(mpFileName)
 	if err != nil {
-		return fmt.Errorf("createMountPointFile: Error while fetching app manfest: %v", err.Error())
+		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", mpFileName, err.Error())
 	}
+	defer mpFile.Close()
+
+	cmdFile, err := os.Create(cmdFileName)
+	if err != nil {
+		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", cmdFileName, err.Error())
+	}
+	defer cmdFile.Close()
+
+	envFile, err := os.Create(envFileName)
+	if err != nil {
+		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", envFileName, err.Error())
+	}
+	defer envFile.Close()
+
+	appManifest, err := getRktPodManifest(rootFsPrefix + "/pod")
+	if err != nil {
+		return fmt.Errorf("createMountPointExecEnvFiles: Error while fetching app manfest: %v", err.Error())
+	}
+	app := appManifest.Apps[0].App
 
 	//Ignoring container image in status.DiskStatusList
 	noOfDisks := len(status.DiskStatusList) - 1
 
 	//Validating if there are enough disks provided for the mount-points
-	if noOfDisks != len(appManifest.App.MountPoints) {
+	if noOfDisks != len(app.Mounts) {
 
-		if noOfDisks > len(appManifest.App.MountPoints) {
+		if noOfDisks > len(app.Mounts) {
 			//If no. of disks is (strictly) greater than no. of mount-points provided, we will ignore excessive disks.
-			log.Warnf("createMountPointFile: Number of volumes provided: %v is more than number of mount-points: %v. "+
-				"Excessive volumes will be ignored", noOfDisks, len(appManifest.App.MountPoints))
+			log.Warnf("createMountPointExecEnvFiles: Number of volumes provided: %v is more than number of mount-points: %v. "+
+				"Excessive volumes will be ignored", noOfDisks, len(app.Mounts))
 		} else {
 			//If no. of mount-points is (strictly) greater than no. of disks provided, we need to throw an error as there
 			// won't be enough disks to satisfy required mount-points.
-			return fmt.Errorf("createMountPointFile: Number of volumes provided: %v is less than number of mount-points: %v. ",
-				noOfDisks, len(appManifest.App.MountPoints))
+			return fmt.Errorf("createMountPointExecEnvFiles: Number of volumes provided: %v is less than number of mount-points: %v. ",
+				noOfDisks, len(app.Mounts))
 		}
 	}
 
-	for i, mp := range appManifest.App.MountPoints {
+	for i, mp := range app.Mounts {
 		if mp.Path == "" {
-			err := fmt.Errorf("createMountPointFile: targetPath cannot be empty")
+			err := fmt.Errorf("createMountPointExecEnvFiles: targetPath cannot be empty")
 			log.Errorf(err.Error())
 			return err
 		} else if !strings.HasPrefix(mp.Path, "/") {
 			//Target path is expected to be absolute.
-			err := fmt.Errorf("createMountPointFile: targetPath should be absolute")
+			err := fmt.Errorf("createMountPointExecEnvFiles: targetPath should be absolute")
 			log.Errorf(err.Error())
 			return err
 		}
 		targetString := fmt.Sprintf("%s\n", mp.Path)
-		log.Infof("createMountPointFile: Processing mount point %d: %s\n", i, targetString)
-		file.WriteString(targetString)
+		log.Infof("createMountPointExecEnvFiles: Processing mount point %d: %s\n", i, targetString)
+		if _, err := mpFile.WriteString(targetString); err != nil {
+			err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", mpFileName, err)
+			log.Errorf(err.Error())
+			return err
+		}
 	}
+
+	if _, err := cmdFile.WriteString("\"" + strings.Join(app.Exec, "\" \"") + "\""); err != nil {
+		err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", cmdFileName, err)
+		log.Errorf(err.Error())
+		return err
+	}
+
+	envContent := ""
+	if app.WorkDir != "" {
+		envContent = fmt.Sprintf("export WORKDIR=\"%s\"\n", app.WorkDir)
+	}
+	for _, env := range app.Env {
+		envContent = envContent + fmt.Sprintf("export %s=\"%s\"\n", env.Name, env.Value)
+	}
+	if _, err := envFile.WriteString(envContent); err != nil {
+		err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", envFileName, err)
+		log.Errorf(err.Error())
+		return err
+	}
+
 	return nil
 }
 
@@ -1745,6 +1791,7 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	extra := ""
 	bootLoader := ""
 	kernel := ""
+	ramdisk := config.Ramdisk
 	vif_type := "vif"
 	xen_global := ""
 	uuidStr := fmt.Sprintf("appuuid=%s ", config.UUIDandVersion.UUID)
@@ -1768,6 +1815,12 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 			status.VirtualizationMode)
 	}
 
+	if status.IsContainer {
+		kernel = "/hostfs/boot/kernel"
+		ramdisk = "/usr/lib/xen/boot/runx-initrd"
+		extra = extra + " root=9p dhcp=1"
+	}
+
 	file.WriteString("# This file is automatically generated by domainmgr\n")
 	file.WriteString(fmt.Sprintf("name = \"%s\"\n", status.DomainName))
 	file.WriteString(fmt.Sprintf("type = \"%s\"\n", xen_type))
@@ -1779,9 +1832,8 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 		file.WriteString(fmt.Sprintf("kernel = \"%s\"\n", kernel))
 	}
 
-	if config.Ramdisk != "" {
-		file.WriteString(fmt.Sprintf("ramdisk = \"%s\"\n",
-			config.Ramdisk))
+	if ramdisk != "" {
+		file.WriteString(fmt.Sprintf("ramdisk = \"%s\"\n", ramdisk))
 	}
 
 	if bootLoader != "" {
@@ -2262,12 +2314,6 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 		log.Errorln(err)
 	}
 
-	// Delete mountPoint file
-	mpFileName := mountPointFileName(status.AppNum)
-	if err := os.Remove(mpFileName); err != nil {
-		log.Errorln(err)
-	}
-
 	// Do we need to delete any rw files that were not deleted during
 	// inactivation i.e. those preserved across reboots?
 	deleteStorageDisksForDomain(ctx, status)
@@ -2280,137 +2326,52 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 		status.UUIDandVersion, status.DisplayName)
 }
 
-// lookForRktRunErrors checks for xen errors or any other error which
-// are encountered while rkt run
-// rkt run returns two standard outputs when rkt runs successfully
-// so we need to remove them while checking for errors
-func lookForRktRunErrors(str string) error {
-	var output []string
-	standardOutput1 := "run: group \"rkt\" not found, will use default gid when rendering images"
-	standardOutput2 := "Parsing config from /var/lib/rkt/pods/run/"
-	strSlice := strings.Split(str, "\n")
-	for _, v := range strSlice {
-		if v != standardOutput1 && !strings.HasPrefix(v, standardOutput2) {
-			output = append(output, v)
-		}
-	}
-	errString := strings.Join(output, "\n")
-	if errString != "" {
-		return fmt.Errorf("rkt run failed: %s\n", errString)
-	}
-	return nil
-}
-
-// DomainCreate is a wrapper for domain creation thru xlCreate or rktRun (rktPrepare + rktRunPrepared)
+// DomainCreate is a wrapper for domain creation thru xlCreate or rktPrepare + xlCreate
 // returns domainID, PodUUID and error
-func DomainCreate(status types.DomainStatus) (int, string, error) {
+func DomainCreate(status types.DomainStatus) (int, error) {
 
 	var (
 		domainID int
 		err      error
-		podUUID  string
 	)
 
 	filename := xenCfgFilename(status.AppNum)
-	mpFileName := mountPointFileName(status.AppNum)
 	log.Infof("DomainCreate %s ... xenCfgFilename - %s\n", status.DomainName, filename)
-	var containerImageSha256 string
 	for _, ds := range status.DiskStatusList {
-		if ds.Format == zconfig.Format_CONTAINER {
-			containerImageSha256 = ds.ImageSha256
-			continue
-		}
-		err := checkDiskFormat(ds)
-		if err != nil {
-			log.Errorf("%v", err)
-			return domainID, podUUID, err
+		if ds.Format != zconfig.Format_CONTAINER {
+			err := checkDiskFormat(ds)
+			if err != nil {
+				log.Errorf("%v", err)
+				return domainID, err
+			}
 		}
 	}
-	if status.IsContainer {
-		// Use rkt tool
-		// get the rkt image hash for this file; if we do not have it in the rkt cache,
-		// convert it
-		ociFilename, err := utils.VerifiedImageFileLocation(containerImageSha256)
-		if err != nil {
-			log.Errorf("DomainCreate: Failed to get Image File Location. "+
-				"err: %+s", err.Error())
-			return domainID, podUUID, err
-		}
-		log.Infof("ociFilename %s sha %s", ociFilename, containerImageSha256)
-		imageHash, err := ociToRktImageHash(ociFilename)
-		if err != nil {
-			log.Error(err)
-			return domainID, podUUID, fmt.Errorf("unable to get rkt image hash: %v", err)
-		}
 
-		err = createMountPointFile(imageHash, mpFileName, status)
-		if err != nil {
-			log.Error(err)
-			return domainID, podUUID, fmt.Errorf("unable to create mountPointFile: %v", err)
-		}
+	// Use xl tool
+	log.Infof("Using xl tool ... xenCfgFilename - %s\n", filename)
+	domainID, err = xlCreate(status.DomainName, filename)
 
-		domainID, podUUID, err = rktRun(status.DomainName, filename, mpFileName, imageHash, status.EnvVariables)
-	} else {
-		// Use xl tool
-		log.Infof("Using xl tool ... xenCfgFilename - %s\n", filename)
-		domainID, err = xlCreate(status.DomainName, filename)
-	}
-
-	return domainID, podUUID, err
+	return domainID, err
 }
 
-// Launch app/container thru rkt
-// returns domainID, podUUID and error
-func rktRun(domainName, xenCfgFilename, mountPointFileName, imageHash string, envList map[string]string) (int, string, error) {
-	// STAGE1_XL_OPTS=-p STAGE1_SEED_XL_CFG=xenCfgFilename rkt --dir=<RKT_DATA_DIR> --insecure-options=image run <SHA> --stage1-path=/usr/sbin/stage1-xen.aci --uuid-file-save=uuid_file --set-env=ENV-KEY=env-value
-
-	log.Infof("rktRun %s\n", domainName)
-	var (
-		envVarSlice = make([]string, 0)
-		err         error
-		podUUID     string
-	)
-	for k, v := range envList {
-		envVarSlice = append(envVarSlice, fmt.Sprintf("--set-env=%s=%s", k, v))
-	}
-
-	podUUID, err = rktPrepare(imageHash, envVarSlice)
+func rktPrepare(containerImageSha256 string, status *types.DomainStatus) (string, error) {
+	// Use rkt tool
+	// get the rkt image hash for this file; if we do not have it in the rkt cache,
+	// convert it
+	podUUID := ""
+	ociFilename, err := utils.VerifiedImageFileLocation(containerImageSha256)
 	if err != nil {
-		log.Errorln(err)
-		return 0, "", err
+		log.Errorf("rktPrepare: Failed to get Image File Location. "+
+			"err: %+s", err.Error())
+		return podUUID, err
 	}
-
-	err = rktRunPrepared(podUUID, xenCfgFilename, mountPointFileName)
+	log.Infof("ociFilename %s sha %s", ociFilename, containerImageSha256)
+	imageHash, err := ociToRktImageHash(ociFilename)
 	if err != nil {
-		log.Errorln(err)
-		return 0, "", err
+		log.Error(err)
+		return podUUID, fmt.Errorf("unable to get rkt image hash: %v", err)
 	}
 
-	log.Infof("rkt run done\n")
-
-	// Obtain the domain id
-	cmd := "xl"
-	args := []string{
-		"domid",
-		domainName,
-	}
-	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
-	if err != nil {
-		log.Errorln("xl domid failed ", err)
-		log.Errorln("xl domid output ", string(stdoutStderr))
-		return 0, "", fmt.Errorf("xl domid failed: %s\n",
-			string(stdoutStderr))
-	}
-	res := strings.TrimSpace(string(stdoutStderr))
-	domainID, err := strconv.Atoi(res)
-	if err != nil {
-		log.Errorf("Can't extract domainID from %s: %s\n", res, err)
-		return 0, "", fmt.Errorf("Can't extract domainID from %s: %s\n", res, err)
-	}
-	return domainID, podUUID, nil
-}
-
-func rktPrepare(imageHash string, envVarSlice []string) (string, error) {
 	log.Infof("rktPrepare %s\n", imageHash)
 	cmd := "rkt"
 	args := []string{
@@ -2418,11 +2379,16 @@ func rktPrepare(imageHash string, envVarSlice []string) (string, error) {
 		"--insecure-options=image",
 		"prepare",
 		imageHash,
-		"--stage1-path=/usr/sbin/stage1-xen.aci",
+		"--stage1-path=/usr/sbin/stage1-dummy.aci",
+		"--name=runx",
+		"--no-overlay",
 		"--quiet",
 	}
-	args = append(args, envVarSlice...)
+	for k, v := range status.EnvVariables {
+		args = append(args, fmt.Sprintf("--set-env=%s=%s", k, v))
+	}
 	cmdLine := exec.Command(cmd, args...)
+
 	stdoutStderr, err := cmdLine.CombinedOutput()
 	if err != nil {
 		log.Errorln("rkt prepare failed ", err)
@@ -2431,44 +2397,13 @@ func rktPrepare(imageHash string, envVarSlice []string) (string, error) {
 			string(stdoutStderr))
 	}
 
-	podUUID := strings.TrimSuffix(string(stdoutStderr), "\n")
+	podUUID = strings.TrimSuffix(string(stdoutStderr), "\n")
 	log.Infof("podUUID = %s\n", podUUID)
-	return podUUID, nil
-}
 
-func rktRunPrepared(podUUID, xenCfgFilename, mountPointFileName string) error {
-	log.Infof("rktRunPrepared %s\n", podUUID)
-	cmd := "rkt"
-	args := []string{
-		"--dir=" + types.PersistRktDataDir,
-		"run-prepared",
-		podUUID,
-	}
-	stage1XlOpts := "STAGE1_XL_OPTS=-p"
-	stage1XlCfg := "STAGE1_SEED_XL_CFG=" + xenCfgFilename
-	stage2MP := "STAGE2_MNT_PTS=" + mountPointFileName
-	log.Infof("Calling command %s %v\n", cmd, args)
-	log.Infof("Also setting env vars %s %s %s\n", stage1XlOpts, stage1XlCfg, stage2MP)
-	cmdLine := exec.Command(cmd, args...)
-	cmdLine.Env = append(os.Environ(), stage1XlOpts, stage1XlCfg, stage2MP)
-	stdoutStderr, err := cmdLine.CombinedOutput()
-	if err != nil {
-		log.Errorln("rkt run-prepared failed ", err)
-		log.Errorln("rkt run-prepared output ", string(stdoutStderr))
-		return fmt.Errorf("rkt run-prepared failed: %s\n",
-			string(stdoutStderr))
-	}
+	// finally, inject a few files of our own into the bundle
+	err = createMountPointExecEnvFiles(rktDirname+podUUID, status)
 
-	err = lookForRktRunErrors(string(stdoutStderr))
-	if err != nil {
-		if status := rktStatus(podUUID); status != "running" {
-			log.Errorf("status = %s, err = %s", status, err)
-			return err
-		}
-		log.Errorf("running ignore rkt err = %s", err)
-	}
-	log.Infof("rkt run-prepared done\n")
-	return nil
+	return podUUID, err
 }
 
 // rktStatus checks the status of the pod
@@ -2659,62 +2594,17 @@ func xlUnpause(domainName string, domainID int) error {
 	return nil
 }
 
-// DomainShutdown is a wrapper for domain shutdown thru xlShutdown or rktStop
+// DomainShutdown is a wrapper for domain shutdown thru xlShutdown
 func DomainShutdown(status types.DomainStatus, force bool) error {
 
 	var err error
 	log.Infof("DomainShutdown force-%v %s %d\n", force, status.DomainName, status.DomainId)
 
-	if status.IsContainer {
-		// Use rkt tool
-		log.Infof("Using rkt tool ... PodUUID - %s\n", status.PodUUID)
-		err = rktStop(status.PodUUID, force)
-		if err != nil {
-			log.Errorf("rktStop %s failed: %s\n", status.DomainName, err)
-		}
-		// Unconditionally invoke xl shutdown
-		// This is causing an error, since rkt stop is putting the container to exit state
-		// and killing the domain
-		//log.Infof("Invoke xl tool ... DomainName - %s\n", status.DomainName)
-		//err = xlShutdown(status.DomainName, status.DomainId, force)
-	} else {
-		// Use xl tool
-		log.Infof("Using xl tool ... DomainName - %s\n", status.DomainName)
-		err = xlShutdown(status.DomainName, status.DomainId, force)
-	}
+	// Use xl tool
+	log.Infof("Using xl tool ... DomainName - %s\n", status.DomainName)
+	err = xlShutdown(status.DomainName, status.DomainId, force)
 
 	return err
-}
-
-func rktStop(PodUUID string, force bool) error {
-	log.Infof("rktStop %s %t\n", PodUUID, force)
-	cmd := "rkt"
-	var args []string
-	if force {
-		// rkt --dir=<RKT_DATA_DIR> stop PodUUID --force=true
-		args = []string{
-			"--dir=" + types.PersistRktDataDir,
-			"stop",
-			PodUUID,
-			"--force=true",
-		}
-	} else {
-		// rkt --dir=<RKT_DATA_DIR> stop PodUUID
-		args = []string{
-			"--dir=" + types.PersistRktDataDir,
-			"stop",
-			PodUUID,
-		}
-	}
-	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
-	if err != nil {
-		log.Errorln("rkt stop failed ", err)
-		log.Errorln("rkt stop output ", string(stdoutStderr))
-		return fmt.Errorf("rkt stop failed: %s\n",
-			string(stdoutStderr))
-	}
-	log.Infof("rkt stop done\n")
-	return nil
 }
 
 func xlShutdown(domainName string, domainID int, force bool) error {

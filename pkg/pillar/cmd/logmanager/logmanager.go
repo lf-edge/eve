@@ -157,12 +157,10 @@ func Run(ps *pubsub.PubSub) {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	logf, err := agentlog.InitWithDirText(agentName, commonLogdir,
-		curpart)
+	err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logf.Close()
 
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
@@ -643,14 +641,14 @@ func handleLogEvent(event logEntry, reportLogs *logs.LogBundle, counter int) {
 	// Assign a unique msgID for each message
 	msgID := msgIDCounter
 	msgIDCounter++
-	log.Debugf("Read event from %s time %v id %d: %s\n",
-		event.source, event.timestamp, msgID, event.content)
+	log.Debugf("Read event from %s time %v id %d",
+		event.source, event.timestamp, msgID)
 	// Have to discard if too large since service doesn't
 	// handle above 64k; we limit payload at 32k
 	strLen := len(event.content)
 	if strLen > logMaxBytes {
-		log.Errorf("handleLogEvent: dropping source %s %d bytes: %s\n",
-			event.source, strLen, event.content)
+		log.Errorf("handleLogEvent: dropping source %s %d bytes",
+			event.source, strLen)
 		return
 	}
 
@@ -672,8 +670,8 @@ func handleLogEvent(event logEntry, reportLogs *logs.LogBundle, counter int) {
 	reportLogs.Log = append(reportLogs.Log, logDetails)
 	newLen := int64(proto.Size(reportLogs))
 	if newLen > logMaxBytes {
-		log.Warnf("handleLogEvent: source %s from %d to %d bytes: %s\n",
-			event.source, oldLen, newLen, event.content)
+		log.Warnf("handleLogEvent: source %s from %d to %d bytes",
+			event.source, oldLen, newLen)
 	}
 }
 
@@ -692,11 +690,13 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 	}
 	size := int64(proto.Size(reportLogs))
 	if size > logMaxBytes {
-		log.Warnf("sendProtoStrForLogs: %d bytes: %s\n",
-			size, reportLogs)
+		log.Warnf("LogBundle: DevID %s, Image %s, EveVersion %s, %d log entries",
+			reportLogs.DevID, reportLogs.Image, reportLogs.EveVersion, len(reportLogs.Log))
 	} else {
 		log.Debugf("sendProtoStrForLogs %d bytes: %s\n",
 			size, reportLogs)
+		log.Debugf("LogBundle: DevID %s, Image %s, EveVersion %s",
+			reportLogs.DevID, reportLogs.Image, reportLogs.EveVersion)
 	}
 	buf := bytes.NewBuffer(data)
 	if buf == nil {

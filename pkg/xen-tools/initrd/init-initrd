@@ -1,19 +1,11 @@
 #!/bin/sh
 
+# first make sure busybox gets expanded into the glory that is UNIX
+/bin/busybox --install /bin
+
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
-if ! test -f /dev/xvda
-then
-    mknod /dev/xvda b 202 0
-fi
-mknod -m 622 /dev/console c 5 1
-mknod -m 666 /dev/null c 1 3
-mknod -m 666 /dev/zero c 1 5
-mknod -m 666 /dev/ptmx c 5 2
-mknod -m 666 /dev/tty c 5 0
-mknod -m 444 /dev/random c 1 8
-mknod -m 444 /dev/urandom c 1 9
-touch /etc/fstab
+mount -t devtmpfs -o size=10m,nr_inodes=248418,mode=755,nosuid,noexec,relatime devtmpfs /dev
 
 root=`cat /proc/cmdline | grep -o '\broot=[^ ]*' | cut -d = -f 2`
 if test -z "$root"
@@ -21,6 +13,7 @@ then
     exit 1
 fi
 
+mkdir /mnt >/dev/null 2>&1
 if [ "$root" = "9p" ]
 then
     mount -t 9p -o msize=131072,trans=xen share_dir /mnt
@@ -28,9 +21,11 @@ else
     mount $root /mnt
 fi
 
-mkdir /mnt/rootfs/dev &>/dev/null
-mkdir /mnt/rootfs/sys &>/dev/null
-mkdir /mnt/rootfs/proc &>/dev/null
+mkdir /mnt/rootfs/dev >/dev/null 2>&1
+mkdir /mnt/rootfs/sys >/dev/null 2>&1
+mkdir /mnt/rootfs/proc >/dev/null 2>&1
+mkdir /dev/pts >/dev/null 2>&1
+mkdir /dev/shm >/dev/null 2>&1
 mount -o bind /dev /mnt/rootfs/dev
 mount -o bind /sys /mnt/rootfs/sys
 mount -o bind /proc /mnt/rootfs/proc
@@ -76,13 +71,15 @@ then
     ip link set dev eth0 up
     udhcpc --interface=eth0 --script=/udhcpc_script.sh
 fi
-cp /mnt/cmdline /launcher.sh /mnt/rootfs
-source /mnt/environment
-source /mnt/external-environment
 
+# Mounting requested volumes
 echo "Executing /mount_disk.sh"
 /mount_disk.sh
 
+# Commence launch sequence
+source /mnt/environment
+
 cmd=`cat /mnt/cmdline`
 echo "Executing $cmd"
-eval setsid -c chroot /mnt/rootfs /launcher.sh $cmd <> /dev/console 2>&1
+#shellcheck disable=SC2086
+eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $cmd <> /dev/console 2>&1

@@ -10,6 +10,8 @@ package domainmgr
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"io/ioutil"
+	"os"
 	"reflect"
 	"testing"
 )
@@ -155,5 +157,134 @@ func TestFetchEnvVariablesFromCloudInit(t *testing.T) {
 				t.Errorf("Env map ( %v ) != Expected value ( %v )", envMap, test.expectOutput)
 			}
 		}
+	}
+}
+
+func TestCreateMountPointExecEnvFiles(t *testing.T) {
+	content := `
+{
+  "acVersion": "1.26.0",
+  "acKind": "PodManifest",
+  "apps": [
+    {
+      "name": "foobarbaz",
+      "image": {
+        "name": "registry-1.docker.io/library/redis",
+        "id": "sha512-572dff895cc8521bcc800c7fa5224a121d3afa8b545ff9fd9c87d9c5ff090469",
+        "labels": [
+          {
+            "name": "os",
+            "value": "linux"
+          },
+          {
+            "name": "arch",
+            "value": "amd64"
+          },
+          {
+            "name": "version",
+            "value": "latest"
+          }
+        ]
+      },
+      "app": {
+        "exec": [
+          "docker-entrypoint.sh",
+          "redis-server"
+        ],
+        "user": "0",
+        "group": "0",
+        "workingDirectory": "/data",
+        "environment": [
+          {
+            "name": "PATH",
+            "value": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+          },
+          {
+            "name": "GOSU_VERSION",
+            "value": "1.11"
+          },
+          {
+            "name": "REDIS_VERSION",
+            "value": "5.0.7"
+          },
+          {
+            "name": "REDIS_DOWNLOAD_URL",
+            "value": "http://download.redis.io/releases/redis-5.0.7.tar.gz"
+          },
+          {
+            "name": "REDIS_DOWNLOAD_SHA",
+            "value": "61db74eabf6801f057fd24b590232f2f337d422280fd19486eca03be87d3a82b"
+          }
+        ],
+        "mountPoints": [
+          {
+            "name": "volume-data",
+            "path": "/data"
+          }
+        ],
+        "ports": [
+          {
+            "name": "6379-tcp",
+            "protocol": "tcp",
+            "port": 6379,
+            "count": 1,
+            "socketActivated": false
+          }
+        ]
+      }
+    }
+  ],
+  "volumes": null,
+  "isolators": null,
+  "annotations": [
+    {
+      "name": "coreos.com/rkt/stage1/mutable",
+      "value": "false"
+    }
+  ],
+  "ports": []
+}
+`
+	// create a temp dir to hold resulting files
+	dir, _ := ioutil.TempDir("/tmp", "podfiles")
+	err := os.MkdirAll(dir+"/stage1/rootfs/opt/stage2/runx", 0777)
+	if err != nil {
+		t.Errorf("failed to create temporary dir")
+	} else {
+		defer os.RemoveAll(dir)
+	}
+
+	// now create a fake pod file
+	file, _ := os.Create(dir + "/pod")
+	_, err = file.WriteString(content)
+	if err != nil {
+		t.Errorf("failed to write to a pod file")
+	}
+
+	status := types.DomainStatus{DiskStatusList: []types.DiskStatus{{ImageSha256: "rootfs"}, {ImageSha256: "extraDisk"}}}
+	err = createMountPointExecEnvFiles(dir, &status)
+	if err != nil {
+		t.Errorf("createMountPointExecEnvFiles failed %v", err)
+	}
+
+	cmdline, err := ioutil.ReadFile(dir + "/stage1/rootfs/opt/stage2/runx/cmdline")
+	if string(cmdline) != "\"docker-entrypoint.sh\" \"redis-server\"" {
+		t.Errorf("createMountPointExecEnvFiles failed to create cmdline file %s %v", string(cmdline), err)
+	}
+
+	mounts, err := ioutil.ReadFile(dir + "/stage1/rootfs/opt/stage2/runx/mountPoints")
+	if string(mounts) != "/data\n" {
+		t.Errorf("createMountPointExecEnvFiles failed to create mountPoints file %s %v", string(mounts), err)
+	}
+
+	env, err := ioutil.ReadFile(dir + "/stage1/rootfs/opt/stage2/runx/environment")
+	if string(env) != `export WORKDIR="/data"
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export GOSU_VERSION="1.11"
+export REDIS_VERSION="5.0.7"
+export REDIS_DOWNLOAD_URL="http://download.redis.io/releases/redis-5.0.7.tar.gz"
+export REDIS_DOWNLOAD_SHA="61db74eabf6801f057fd24b590232f2f337d422280fd19486eca03be87d3a82b"
+` {
+		t.Errorf("createMountPointExecEnvFiles failed to create environment file %s %v", string(env), err)
 	}
 }

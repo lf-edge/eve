@@ -144,11 +144,10 @@ func Run(ps *pubsub.PubSub) {
 		return
 	}
 	curpart := *curpartPtr
-	logf, err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logf.Close()
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
@@ -526,12 +525,14 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	// until after truncation.
 	var rebootStack = ""
 	ctx.rebootReason, ctx.rebootTime, rebootStack =
-		agentlog.GetCurrentRebootReason()
+		agentlog.GetCommonRebootReason()
 	if ctx.rebootReason != "" {
 		log.Warnf("Current partition RebootReason: %s\n",
 			ctx.rebootReason)
 		agentlog.DiscardCurrentRebootReason()
 	}
+	// XXX We'll retain this block of code for some time to support having older
+	// versions of code in the other partition.
 	otherRebootReason, otherRebootTime, otherRebootStack := agentlog.GetOtherRebootReason()
 	if otherRebootReason != "" {
 		log.Warnf("Other partition RebootReason: %s\n",
@@ -543,23 +544,11 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 			agentlog.DiscardOtherRebootReason()
 		}
 	}
-	commonRebootReason, commonRebootTime, commonRebootStack := agentlog.GetCommonRebootReason()
-	if commonRebootReason != "" {
-		log.Warnf("Common RebootReason: %s\n",
-			commonRebootReason)
-		agentlog.DiscardCommonRebootReason()
-	}
 	// first, pick up from other partition
 	if ctx.rebootReason == "" {
 		ctx.rebootReason = otherRebootReason
 		ctx.rebootTime = otherRebootTime
 		rebootStack = otherRebootStack
-	}
-	// if still not found, pick up the common
-	if ctx.rebootReason == "" {
-		ctx.rebootReason = commonRebootReason
-		ctx.rebootTime = commonRebootTime
-		rebootStack = commonRebootStack
 	}
 
 	// still nothing, fillup the default
