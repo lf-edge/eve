@@ -625,68 +625,6 @@ func handleInit(runDirname string) {
 
 	// ipsets which are independent of config
 	createDefaultIpset()
-
-	// sysctl not related to networking, but keep with rest
-	_, err := wrap.Command("sysctl", "-w",
-		"kernel.softlockup_panic=1").Output()
-	if err != nil {
-		log.Fatal("Failed setting kernel.softlockup_panic ", err)
-	}
-
-	_, err = wrap.Command("sysctl", "-w",
-		"net.ipv4.ip_forward=1").Output()
-	if err != nil {
-		log.Fatal("Failed setting ip_forward ", err)
-	}
-	_, err = wrap.Command("sysctl", "-w",
-		"net.ipv6.conf.all.forwarding=1").Output()
-	if err != nil {
-		log.Fatal("Failed setting ipv6.conf.all.forwarding ", err)
-	}
-	// We use ip6tables for the bridge
-	_, err = wrap.Command("sysctl", "-w",
-		"net.bridge.bridge-nf-call-ip6tables=1").Output()
-	if err != nil {
-		log.Fatal("Failed setting net.bridge-nf-call-ip6tables ", err)
-	}
-	_, err = wrap.Command("sysctl", "-w",
-		"net.bridge.bridge-nf-call-iptables=1").Output()
-	if err != nil {
-		log.Fatal("Failed setting net.bridge-nf-call-iptables ", err)
-	}
-	_, err = wrap.Command("sysctl", "-w",
-		"net.bridge.bridge-nf-call-arptables=1").Output()
-	if err != nil {
-		log.Fatal("Failed setting net.bridge-nf-call-arptables ", err)
-	}
-	// Needed in test setups where we have the same subnet on multiple ports
-	// XXX restrict to management ports?
-	_, err = wrap.Command("sysctl", "-w",
-		"net.ipv4.conf.all.rp_filter=2").Output()
-	if err != nil {
-		log.Fatal("Failed setting rp_filter ", err)
-	}
-	_, err = wrap.Command("sysctl", "-w",
-		"net.netfilter.nf_conntrack_acct=1").Output()
-	if err != nil {
-		log.Fatal("Failed setting conntrack_acct ", err)
-	}
-	_, err = wrap.Command("sysctl", "-w",
-		"net.netfilter.nf_conntrack_timestamp=1").Output()
-	if err != nil {
-		log.Fatal("Failed setting conntrack_timestamp ", err)
-	}
-	_, err = wrap.Command("sysctl", "-w",
-		"net.ipv4.conf.all.log_martians=1").Output()
-	if err != nil {
-		log.Fatal("Failed setting log_martians ", err)
-	}
-	_, err = wrap.Command("sysctl", "-w",
-		"net.ipv4.conf.default.log_martians=1").Output()
-	if err != nil {
-		log.Fatal("Failed setting log_martians ", err)
-	}
-	AppFlowMonitorTimeoutAdjust()
 }
 
 func publishLispDataplaneConfig(ctx *zedrouterContext,

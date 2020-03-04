@@ -19,7 +19,6 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -88,7 +87,7 @@ type dnsEntry struct {
 
 const (
 	maxBridgeNumber int    = 256
-	timeoutSec      int32  = 150      // less than 150 sec, consider done
+	timeoutSec      int32  = 150      // less than 150 sec, consider done (make sure to update 01-eve.conf in pkg/dom0-ztools)
 	markMask        uint32 = 0xffffff // get the Mark bits for ACL number
 	appShiftBits    uint32 = 24       // top 8 bits for App Number
 	maxFlowPack     int    = 125      // approximate 320 bytes per flow/dns, got an assert in zedagent when size was 241
@@ -854,87 +853,4 @@ func bridgeStrToNum(bnStr string) (int, error) {
 		return 0, err
 	}
 	return bnNum, nil
-}
-
-func flowTimeOutSet(item string, origValue int) {
-
-	tOutValue := origValue + int(timeoutSec) // add 150 seconds
-	setStr := item + "=" + strconv.Itoa(tOutValue)
-	_, err := wrap.Command("sysctl", "-w", setStr).Output()
-	if err != nil {
-		log.Errorf("FlowStats: set item %s error", setStr)
-	}
-}
-
-// AppFlowMonitorTimeoutAdjust :
-// Adjust the conntrack flow session timeout values
-// by adding 150 seconds on top of default seconds
-func AppFlowMonitorTimeoutAdjust() {
-
-	baseStr := "net.netfilter.nf_conntrack_"
-
-	flowTimeOutSet(baseStr+"tcp_timeout_fin_wait", 120)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_last_ack", 30)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_max_retrans", 300)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_syn_recv", 60)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_syn_sent", 120)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_time_wait", 120)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_unacknowledged", 300)
-
-	flowTimeOutSet(baseStr+"udp_timeout", 30)
-
-	flowTimeOutSet(baseStr+"udp_timeout_stream", 180)
-
-	flowTimeOutSet(baseStr+"dccp_timeout_closereq", 64)
-
-	flowTimeOutSet(baseStr+"dccp_timeout_closing", 64)
-
-	// default was 432000 (5 days) see discussion https://dev.archive.openwrt.org/ticket/12976.html
-	flowTimeOutSet(baseStr+"dccp_timeout_open", 3600)
-
-	flowTimeOutSet(baseStr+"dccp_timeout_partopen", 480)
-
-	flowTimeOutSet(baseStr+"dccp_timeout_request", 240)
-
-	flowTimeOutSet(baseStr+"dccp_timeout_respond", 480)
-
-	flowTimeOutSet(baseStr+"dccp_timeout_timewait", 240)
-
-	flowTimeOutSet(baseStr+"frag6_timeout", 60)
-
-	flowTimeOutSet(baseStr+"generic_timeout", 600)
-
-	flowTimeOutSet(baseStr+"icmp_timeout", 30)
-
-	flowTimeOutSet(baseStr+"icmpv6_timeout", 30)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_closed", 10)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_cookie_echoed", 3)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_cookie_wait", 3)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_established", 3600)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_heartbeat_acked", 210)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_heartbeat_sent", 30)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_shutdown_ack_sent", 3)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_shutdown_recd", 0)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_shutdown_sent", 0)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_close", 10)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_close_wait", 60)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_established", 3600)
 }
