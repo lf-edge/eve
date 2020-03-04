@@ -13,6 +13,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"io"
 	"io/ioutil"
 	"os"
@@ -1654,7 +1655,7 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 	return nil
 }
 
-func createMountPointExecEnvFiles(rootFs string, mountpoints, execpath []string, workdir string, env []KeyValue, status *types.DomainStatus) error {
+func createMountPointExecEnvFiles(rootFs string, mountpoints []specs.Mount, execpath []string, workdir string, env []string, status *types.DomainStatus) error {
 	mpFileName := rootFs + "/mountPoints"
 	cmdFileName := rootFs + "/cmdline"
 	envFileName := rootFs + "/environment"
@@ -1694,18 +1695,18 @@ func createMountPointExecEnvFiles(rootFs string, mountpoints, execpath []string,
 	}
 
 	for i, mp := range mountpoints {
-		if mp == "" {
+		if mp.Destination == "" {
 			err := fmt.Errorf("createMountPointExecEnvFiles: targetPath cannot be empty")
 			log.Errorf(err.Error())
 			return err
-		} else if !strings.HasPrefix(mp, "/") {
+		} else if !strings.HasPrefix(mp.Destination, "/") {
 			//Target path is expected to be absolute.
 			err := fmt.Errorf("createMountPointExecEnvFiles: targetPath should be absolute")
 			log.Errorf(err.Error())
 			return err
 		}
 		log.Infof("createMountPointExecEnvFiles: Processing mount point %d: %s\n", i, mp)
-		if _, err := mpFile.WriteString(fmt.Sprintf("%s\n", mp)); err != nil {
+		if _, err := mpFile.WriteString(fmt.Sprintf("%s\n", mp.Destination)); err != nil {
 			err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", mpFileName, err)
 			log.Errorf(err.Error())
 			return err
@@ -1728,7 +1729,7 @@ func createMountPointExecEnvFiles(rootFs string, mountpoints, execpath []string,
 		envContent = fmt.Sprintf("export WORKDIR=\"%s\"\n", workdir)
 	}
 	for _, e := range env {
-		envContent = envContent + fmt.Sprintf("export %s=\"%s\"\n", e.Name, e.Value)
+		envContent = envContent + fmt.Sprintf("export %s\n", e)
 	}
 	if _, err := envFile.WriteString(envContent); err != nil {
 		err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", envFileName, err)
