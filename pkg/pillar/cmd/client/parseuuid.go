@@ -29,13 +29,10 @@ func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.U
 	}
 
 	if resp.StatusCode == http.StatusNotModified {
-		log.Infof("StatusNotModified")
-		if len(contents) > 0 {
-			log.Infof("XXX StatusNotModified with len %d",
-				len(contents))
-		}
-		// Signal as error since we are not returning any useful values.
-		return devUUID, hardwaremodel, enterprise, name, fmt.Errorf("Unchanged StatusNotModified")
+		log.Debugf("StatusNotModified len %d", len(contents))
+		// Return as error since we are not returning any useful values.
+		return devUUID, hardwaremodel, enterprise, name,
+			fmt.Errorf("Unchanged StatusNotModified")
 	}
 
 	configResponse, err := readConfigResponseProtoMessage(contents)
@@ -45,14 +42,10 @@ func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.U
 	}
 	hash := configResponse.GetConfigHash()
 	if hash == prevConfigHash {
-		log.Infof("Same ConfigHash %s", hash)
-		if len(contents) > 0 {
-			// XXX controller should omit full content
-			log.Infof("XXX same hash %s with len %d",
-				hash, len(contents))
-		}
-		// Signal as error since we are not returning any useful values.
-		return devUUID, hardwaremodel, enterprise, name, fmt.Errorf("Unchanged config hash")
+		log.Debugf("Same ConfigHash %s len %d", hash, len(contents))
+		// Return as error since we are not returning any useful values.
+		return devUUID, hardwaremodel, enterprise, name,
+			fmt.Errorf("Unchanged config hash")
 	}
 	log.Infof("Change in ConfigHash from %s to %s", prevConfigHash, hash)
 	prevConfigHash = hash

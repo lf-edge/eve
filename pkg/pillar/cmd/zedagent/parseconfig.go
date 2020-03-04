@@ -2240,7 +2240,8 @@ func handleRebootCmd(ctxPtr *zedagentContext, infoStr string) {
 	// shutdown the application instances
 	shutdownAppsGlobal(ctxPtr)
 	getconfigCtx := ctxPtr.getconfigCtx
-	ctxPtr.rebootReason = infoStr
+	ctxPtr.currentRebootReason = infoStr
+
 	publishZedAgentStatus(getconfigCtx)
 	log.Infof(infoStr)
 }

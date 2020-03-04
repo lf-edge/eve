@@ -106,9 +106,10 @@ type zedagentContext struct {
 	rebootCmd                 bool
 	rebootCmdDeferred         bool
 	deviceReboot              bool
-	rebootReason              string
-	rebootStack               string
-	rebootTime                time.Time
+	currentRebootReason       string    // Set by zedagent
+	rebootReason              string    // Previous reboot from nodeagent
+	rebootStack               string    // Previous reboot from nodeagent
+	rebootTime                time.Time // Previous reboot from nodeagent
 	restartCounter            uint32
 	subDevicePortConfigList   pubsub.Subscription
 	devicePortConfigList      types.DevicePortConfigList
@@ -439,7 +440,7 @@ func Run(ps *pubsub.PubSub) {
 	// Look for AppInstanceStatus from zedmanager
 	subAppInstanceStatus, err := pubsublegacy.Subscribe("zedmanager",
 		types.AppInstanceStatus{}, false, &zedagentCtx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleAppInstanceStatusModify,
+			CreateHandler: handleAppInstanceStatusCreate,
 			ModifyHandler: handleAppInstanceStatusModify,
 			DeleteHandler: handleAppInstanceStatusDelete,
 			WarningTime:   warningTime,
@@ -1098,6 +1099,19 @@ func initializeDirs() {
 	}
 }
 
+// handleAppInstanceStatusCreate - Handle AIS create. Publish ZInfoApp
+//  and ZInfoDevice to the cloud.
+func handleAppInstanceStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	status := statusArg.(types.AppInstanceStatus)
+	ctx := ctxArg.(*zedagentContext)
+	uuidStr := status.Key()
+	PublishAppInfoToZedCloud(ctx, uuidStr, &status, ctx.assignableAdapters,
+		ctx.iteration)
+	triggerPublishDevInfo(ctx)
+	ctx.iteration++
+}
+
 // app instance event watch to capture transitions
 // and publish to zedCloud
 // Handles both create and modify events
@@ -1118,6 +1132,7 @@ func handleAppInstanceStatusDelete(ctxArg interface{}, key string,
 	uuidStr := key
 	PublishAppInfoToZedCloud(ctx, uuidStr, nil, ctx.assignableAdapters,
 		ctx.iteration)
+	triggerPublishDevInfo(ctx)
 	ctx.iteration++
 }
 

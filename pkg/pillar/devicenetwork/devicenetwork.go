@@ -79,7 +79,7 @@ func IsProxyConfigEmpty(proxyConfig types.ProxyConfig) bool {
 func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	retryCount int, timeout uint32) (bool, error) {
 
-	log.Infof("VerifyDeviceNetworkStatus() %d\n", retryCount)
+	log.Debugf("VerifyDeviceNetworkStatus() %d\n", retryCount)
 	// Check if it is 1970 in which case we declare success since
 	// our certificates will not work until NTP has brought the time
 	// forward.
@@ -107,7 +107,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	// Get device serial number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
 	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
-	log.Infof("NIM Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
+	log.Debugf("NIM Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
 	tlsConfig, err := zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus, serverName,

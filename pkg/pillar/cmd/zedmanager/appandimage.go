@@ -64,9 +64,11 @@ func purgeAppAndImageHash(ctx *zedmanagerContext, appUUID uuid.UUID) {
 	items := ctx.pubAppAndImageToHash.GetAll()
 	for _, a := range items {
 		aih := a.(types.AppAndImageToHash)
-		log.Errorf("purgeAppAndImageHash(%s) deleting %s hash %s",
-			appUUID, aih.ImageID, aih.Hash)
-		ctx.pubAppAndImageToHash.Unpublish(aih.Key())
+		if aih.AppUUID == appUUID {
+			log.Errorf("purgeAppAndImageHash(%s) deleting %s hash %s",
+				appUUID, aih.ImageID, aih.Hash)
+			ctx.pubAppAndImageToHash.Unpublish(aih.Key())
+		}
 	}
 	log.Infof("purgeAppAndImageHash(%s) done", appUUID)
 }

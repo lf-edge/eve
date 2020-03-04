@@ -304,7 +304,7 @@ func launchHostProbe(ctx *zedrouterContext) {
 	nhPing := make(map[string]bool)
 	localDown := make(map[string]bool)
 	remoteProbe := make(map[string]map[string]probeRes)
-	log.Infof("launchHostProbe: enter\n")
+	log.Debugf("launchHostProbe: enter\n")
 	dpub := ctx.subDeviceNetworkStatus
 	ditems := dpub.GetAll()
 
@@ -462,7 +462,7 @@ func probeCheckStatus(status *types.NetworkInstanceStatus) {
 		if currIntf != "" {
 			if currinfo, ok := status.PInfo[currIntf]; ok {
 				numOfUps = infoUpCount(currinfo)
-				log.Infof("probeCheckStatus: level %d, currintf %s, num Ups %d\n", c, currIntf, numOfUps)
+				log.Debugf("probeCheckStatus: level %d, currintf %s, num Ups %d\n", c, currIntf, numOfUps)
 			}
 		}
 		if numOfUps > 0 {
@@ -633,7 +633,7 @@ func getProbeRatio(netstatus *types.NetworkInstanceStatus) uint32 {
 func probeProcessReply(info *types.ProbeInfo, gotReply bool, latency int64, isLocal bool) bool {
 	var stateChange bool
 	if isLocal {
-		log.Infof("probeProcessReply: intf %s, gw up %v, sucess count %d, down count %d, got reply %v\n",
+		log.Debugf("probeProcessReply: intf %s, gw up %v, sucess count %d, down count %d, got reply %v\n",
 			info.IfName, info.GatewayUP, info.SuccessCnt, info.FailedCnt, gotReply)
 		if gotReply {
 			// fast convergence treatment for local ping, if the intf has stayed down for a while

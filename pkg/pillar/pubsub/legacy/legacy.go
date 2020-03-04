@@ -12,7 +12,7 @@ var (
 
 // Publish create a `Publication` for the given agent name and topic type.
 func Publish(agentName string, topicType interface{}) (pubsub.Publication, error) {
-	log.Infof("legacy.Publish agentName(%s)", agentName)
+	log.Debugf("legacy.Publish agentName(%s)", agentName)
 	return defaultPubsub.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,
 		TopicType: topicType,
