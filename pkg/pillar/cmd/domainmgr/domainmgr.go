@@ -1759,10 +1759,11 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 		if config.Kernel != "" {
 			kernel = config.Kernel
 		}
+		xen_global = "firmware = \"ovmf\"\n"
 	case types.FML:
 		xen_type = "hvm"
 		vif_type = "ioemu"
-		xen_global = "hdtype = \"ahci\"\nspoof_xen = 1\npci_permissive = 1\n"
+		xen_global = "hdtype = \"ahci\"\nspoof_xen = 1\npci_permissive = 1\nfirmware = \"ovmf\"\n"
 	default:
 		log.Errorf("Internal error: Unknown virtualizationMode %d",
 			status.VirtualizationMode)
