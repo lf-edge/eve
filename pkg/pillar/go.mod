@@ -65,4 +65,4 @@ replace git.apache.org/thrift.git => github.com/apache/thrift v0.12.0
 replace github.com/google/go-tpm => github.com/cshari-zededa/go-tpm v0.0.0-20200113112746-a8476c2d6eb3
 
 // because containerd
-replace github.com/docker/distribution => github.com/docker/distribution v0.0.0-20190205005809-0d3efadf0154+incompatible
+replace github.com/docker/distribution => github.com/docker/distribution v0.0.0-20190205005809-0d3efadf0154

@@ -9,12 +9,7 @@
 package domainmgr
 
 import (
-	"fmt"
-	"io/ioutil"
-	"os"
-	"path"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -164,166 +159,382 @@ func TestFetchEnvVariablesFromCloudInit(t *testing.T) {
 	}
 }
 
-func TestCreateMountPointExecEnvFiles(t *testing.T) {
-	content := `
-{
-  "acVersion": "1.26.0",
-  "acKind": "PodManifest",
-  "apps": [
-    {
-      "name": "foobarbaz",
-      "image": {
-        "name": "registry-1.docker.io/library/redis",
-        "id": "sha512-572dff895cc8521bcc800c7fa5224a121d3afa8b545ff9fd9c87d9c5ff090469",
-        "labels": [
-          {
-            "name": "os",
-            "value": "linux"
-          },
-          {
-            "name": "arch",
-            "value": "amd64"
-          },
-          {
-            "name": "version",
-            "value": "latest"
-          }
-        ]
-      },
-      "app": {
-        "exec": [
-          "docker-entrypoint.sh",
-          "redis-server"
-        ],
-        "user": "0",
-        "group": "0",
-        "workingDirectory": "/data",
-        "environment": [
-          {
-            "name": "PATH",
-            "value": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-          },
-          {
-            "name": "GOSU_VERSION",
-            "value": "1.11"
-          },
-          {
-            "name": "REDIS_VERSION",
-            "value": "5.0.7"
-          },
-          {
-            "name": "REDIS_DOWNLOAD_URL",
-            "value": "http://download.redis.io/releases/redis-5.0.7.tar.gz"
-          },
-          {
-            "name": "REDIS_DOWNLOAD_SHA",
-            "value": "61db74eabf6801f057fd24b590232f2f337d422280fd19486eca03be87d3a82b"
-          }
-        ],
-        "mountPoints": [
-          {
-            "name": "volume-data",
-            "path": "/data"
-          },
-					{
-            "name": "foo",
-            "path": "/foo"
-          },
-					{
-            "name": "bar",
-            "path": "/bar"
-          }
-        ],
-        "ports": [
-          {
-            "name": "6379-tcp",
-            "protocol": "tcp",
-            "port": 6379,
-            "count": 1,
-            "socketActivated": false
-          }
-        ]
-      }
-    }
-  ],
-  "volumes": null,
-  "isolators": null,
-  "annotations": [
-    {
-      "name": "coreos.com/rkt/stage1/mutable",
-      "value": "false"
-    }
-  ],
-  "ports": []
-}
-`
-	// create a temp dir to hold resulting files
-	dir, _ := ioutil.TempDir("/tmp", "podfiles")
-	rootDir := path.Join(dir, "runx")
-	podPath := path.Join(dir, "pod")
-	err := os.MkdirAll(rootDir, 0777)
-	if err != nil {
-		t.Errorf("failed to create temporary dir")
-	} else {
-		defer os.RemoveAll(dir)
-	}
-
-	// now create a fake pod file
-	file, _ := os.Create(podPath)
-	_, err = file.WriteString(content)
-	if err != nil {
-		t.Errorf("failed to write to a pod file")
-	}
-
-	status := types.DomainStatus{DiskStatusList: []types.DiskStatus{{ImageSha256: "rootfs"}, {ImageSha256: "extraDiskData"}, {ImageSha256: "extraDiskFoo"}, {ImageSha256: "extraDiskBar"}}}
-	execpath := []string{"docker-entrypoint.sh", "redis-server"}
-	// the proper format for this
-	execpathStr := "\"docker-entrypoint.sh\" \"redis-server\""
-	workdir := "/data"
-	mountpoints := []string{"/data", "/foo", "/bar"}
-	env := []KeyValue{
-		{Name: "PATH", Value: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
-		{Name: "GOSU_VERSION", Value: "1.11"},
-		{Name: "REDIS_VERSION", Value: "5.0.7"},
-		{Name: "REDIS_DOWNLOAD_URL", Value: "http://download.redis.io/releases/redis-5.0.7.tar.gz"},
-		{Name: "REDIS_DOWNLOAD_SHA", Value: "61db74eabf6801f057fd24b590232f2f337d422280fd19486eca03be87d3a82b"},
-	}
-
-	err = createMountPointExecEnvFiles(rootDir, mountpoints, execpath, workdir, env, &status)
-	if err != nil {
-		t.Errorf("createMountPointExecEnvFiles failed %v", err)
-	}
-
-	cmdlineFile := path.Join(rootDir, "cmdline")
-	cmdline, err := ioutil.ReadFile(cmdlineFile)
-	if err != nil {
-		t.Errorf("createMountPointExecEnvFiles failed to create cmdline file %s %v", cmdlineFile, err)
-	}
-	if string(cmdline) != execpathStr {
-		t.Errorf("mismatched cmdline file content, actual '%s' expected '%s'", string(cmdline), execpathStr)
-	}
-
-	mountFile := path.Join(rootDir, "mountPoints")
-	mountExpected := strings.Join(mountpoints, "\n") + "\n"
-	mounts, err := ioutil.ReadFile(mountFile)
-	if err != nil {
-		t.Errorf("createMountPointExecEnvFiles failed to create mountPoints file %s %v", mountFile, err)
-	}
-	if string(mounts) != mountExpected {
-		t.Errorf("mismatched mountpoints file content, actual '%s' expected '%s'", string(mounts), mountExpected)
-	}
-
-	envFile := path.Join(rootDir, "environment")
-	envActual, err := ioutil.ReadFile(envFile)
-	// start with WORKDIR
-	envExpect := fmt.Sprintf("export WORKDIR=\"%s\"\n", workdir)
-	for _, v := range env {
-		envExpect = envExpect + fmt.Sprintf("export %s=\"%s\"\n", v.Name, v.Value)
-	}
-	if err != nil {
-		t.Errorf("createMountPointExecEnvFiles failed to create environment file %s %v", envFile, err)
-	}
-	if string(envActual) != envExpect {
-		t.Errorf("mismatched env file content, actual '%s' expected '%s'", string(envActual), envExpect)
-	}
-}
+//func TestCreateMountPointExecEnvFiles(t *testing.T) {
+//	content := `
+//{
+//  "acVersion": "1.26.0",
+//  "acKind": "PodManifest",
+//  "apps": [
+//    {
+//      "name": "foobarbaz",
+//      "image": {
+//        "name": "registry-1.docker.io/library/redis",
+//        "id": "sha512-572dff895cc8521bcc800c7fa5224a121d3afa8b545ff9fd9c87d9c5ff090469",
+//        "labels": [
+//          {
+//            "name": "os",
+//            "value": "linux"
+//          },
+//          {
+//            "name": "arch",
+//            "value": "amd64"
+//          },
+//          {
+//            "name": "version",
+//            "value": "latest"
+//          }
+//        ]
+//      },
+//      "app": {
+//        "exec": [
+//          "docker-entrypoint.sh",
+//          "redis-server"
+//        ],
+//        "user": "0",
+//        "group": "0",
+//        "workingDirectory": "/data",
+//        "environment": [
+//          {
+//            "name": "PATH",
+//            "value": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+//          },
+//          {
+//            "name": "GOSU_VERSION",
+//            "value": "1.11"
+//          },
+//          {
+//            "name": "REDIS_VERSION",
+//            "value": "5.0.7"
+//          },
+//          {
+//            "name": "REDIS_DOWNLOAD_URL",
+//            "value": "http://download.redis.io/releases/redis-5.0.7.tar.gz"
+//          },
+//          {
+//            "name": "REDIS_DOWNLOAD_SHA",
+//            "value": "61db74eabf6801f057fd24b590232f2f337d422280fd19486eca03be87d3a82b"
+//          }
+//        ],
+//        "mountPoints": [
+//          {
+//            "name": "volume-data",
+//            "path": "/data"
+//          },
+//					{
+//            "name": "foo",
+//            "path": "/foo"
+//          },
+//					{
+//            "name": "bar",
+//            "path": "/bar"
+//          }
+//        ],
+//        "ports": [
+//          {
+//            "name": "6379-tcp",
+//            "protocol": "tcp",
+//            "port": 6379,
+//            "count": 1,
+//            "socketActivated": false
+//          }
+//        ]
+//      }
+//    }
+//  ],
+//  "volumes": null,
+//  "isolators": null,
+//  "annotations": [
+//    {
+//      "name": "coreos.com/rkt/stage1/mutable",
+//      "value": "false"
+//    }
+//  ],
+//  "ports": []
+//}
+//`
+//	newContent := `{
+//   "ociVersion":"1.0.1",
+//   "process":{
+//      "user":{
+//         "uid":0,
+//         "gid":0
+//      },
+//      "args":[
+//         "/bin/sh"
+//      ],
+//      "env":[
+//         "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+//         "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+//      ],
+//      "cwd":"/",
+//      "capabilities":{
+//         "bounding":[
+//            "CAP_CHOWN",
+//            "CAP_DAC_OVERRIDE",
+//            "CAP_FSETID",
+//            "CAP_FOWNER",
+//            "CAP_MKNOD",
+//            "CAP_NET_RAW",
+//            "CAP_SETGID",
+//            "CAP_SETUID",
+//            "CAP_SETFCAP",
+//            "CAP_SETPCAP",
+//            "CAP_NET_BIND_SERVICE",
+//            "CAP_SYS_CHROOT",
+//            "CAP_KILL",
+//            "CAP_AUDIT_WRITE"
+//         ],
+//         "effective":[
+//            "CAP_CHOWN",
+//            "CAP_DAC_OVERRIDE",
+//            "CAP_FSETID",
+//            "CAP_FOWNER",
+//            "CAP_MKNOD",
+//            "CAP_NET_RAW",
+//            "CAP_SETGID",
+//            "CAP_SETUID",
+//            "CAP_SETFCAP",
+//            "CAP_SETPCAP",
+//            "CAP_NET_BIND_SERVICE",
+//            "CAP_SYS_CHROOT",
+//            "CAP_KILL",
+//            "CAP_AUDIT_WRITE"
+//         ],
+//         "inheritable":[
+//            "CAP_CHOWN",
+//            "CAP_DAC_OVERRIDE",
+//            "CAP_FSETID",
+//            "CAP_FOWNER",
+//            "CAP_MKNOD",
+//            "CAP_NET_RAW",
+//            "CAP_SETGID",
+//            "CAP_SETUID",
+//            "CAP_SETFCAP",
+//            "CAP_SETPCAP",
+//            "CAP_NET_BIND_SERVICE",
+//            "CAP_SYS_CHROOT",
+//            "CAP_KILL",
+//            "CAP_AUDIT_WRITE"
+//         ],
+//         "permitted":[
+//            "CAP_CHOWN",
+//            "CAP_DAC_OVERRIDE",
+//            "CAP_FSETID",
+//            "CAP_FOWNER",
+//            "CAP_MKNOD",
+//            "CAP_NET_RAW",
+//            "CAP_SETGID",
+//            "CAP_SETUID",
+//            "CAP_SETFCAP",
+//            "CAP_SETPCAP",
+//            "CAP_NET_BIND_SERVICE",
+//            "CAP_SYS_CHROOT",
+//            "CAP_KILL",
+//            "CAP_AUDIT_WRITE"
+//         ]
+//      },
+//      "rlimits":[
+//         {
+//            "type":"RLIMIT_NOFILE",
+//            "hard":1024,
+//            "soft":1024
+//         }
+//      ],
+//      "noNewPrivileges":true
+//   },
+//   "root":{
+//      "path":"rootfs"
+//   },
+//   "mounts":[
+//      {
+//         "destination":"/proc",
+//         "type":"proc",
+//         "source":"proc"
+//      },
+//      {
+//         "destination":"/dev",
+//         "type":"tmpfs",
+//         "source":"tmpfs",
+//         "options":[
+//            "nosuid",
+//            "strictatime",
+//            "mode=755",
+//            "size=65536k"
+//         ]
+//      },
+//      {
+//         "destination":"/dev/pts",
+//         "type":"devpts",
+//         "source":"devpts",
+//         "options":[
+//            "nosuid",
+//            "noexec",
+//            "newinstance",
+//            "ptmxmode=0666",
+//            "mode=0620",
+//            "gid=5"
+//         ]
+//      },
+//      {
+//         "destination":"/dev/shm",
+//         "type":"tmpfs",
+//         "source":"shm",
+//         "options":[
+//            "nosuid",
+//            "noexec",
+//            "nodev",
+//            "mode=1777",
+//            "size=65536k"
+//         ]
+//      },
+//      {
+//         "destination":"/dev/mqueue",
+//         "type":"mqueue",
+//         "source":"mqueue",
+//         "options":[
+//            "nosuid",
+//            "noexec",
+//            "nodev"
+//         ]
+//      },
+//      {
+//         "destination":"/sys",
+//         "type":"sysfs",
+//         "source":"sysfs",
+//         "options":[
+//            "nosuid",
+//            "noexec",
+//            "nodev",
+//            "ro"
+//         ]
+//      },
+//      {
+//         "destination":"/run",
+//         "type":"tmpfs",
+//         "source":"tmpfs",
+//         "options":[
+//            "nosuid",
+//            "strictatime",
+//            "mode=755",
+//            "size=65536k"
+//         ]
+//      }
+//   ],
+//   "linux":{
+//      "resources":{
+//         "devices":[
+//            {
+//               "allow":false,
+//               "access":"rwm"
+//            }
+//         ]
+//      },
+//      "cgroupsPath":"/eve-user-apps/alpine",
+//      "namespaces":[
+//         {
+//            "type":"pid"
+//         },
+//         {
+//            "type":"ipc"
+//         },
+//         {
+//            "type":"uts"
+//         },
+//         {
+//            "type":"mount"
+//         },
+//         {
+//            "type":"network"
+//         }
+//      ],
+//      "maskedPaths":[
+//         "/proc/acpi",
+//         "/proc/kcore",
+//         "/proc/keys",
+//         "/proc/latency_stats",
+//         "/proc/timer_list",
+//         "/proc/timer_stats",
+//         "/proc/sched_debug",
+//         "/sys/firmware",
+//         "/proc/scsi"
+//      ],
+//      "readonlyPaths":[
+//         "/proc/asound",
+//         "/proc/bus",
+//         "/proc/fs",
+//         "/proc/irq",
+//         "/proc/sys",
+//         "/proc/sysrq-trigger"
+//      ]
+//   }
+//}`
+//	// create a temp dir to hold resulting files
+//	dir, _ := ioutil.TempDir("/tmp", "podfiles")
+//	rootDir := path.Join(dir, "runx")
+//	podPath := path.Join(dir, "pod")
+//	err := os.MkdirAll(rootDir, 0777)
+//	if err != nil {
+//		t.Errorf("failed to create temporary dir")
+//	} else {
+//		defer os.RemoveAll(dir)
+//	}
+//
+//	// now create a fake pod file
+//	file, _ := os.Create(podPath)
+//	_, err = file.WriteString(content)
+//	if err != nil {
+//		t.Errorf("failed to write to a pod file")
+//	}
+//
+//	status := types.DomainStatus{DiskStatusList: []types.DiskStatus{{ImageSha256: "rootfs"}, {ImageSha256: "extraDiskData"}, {ImageSha256: "extraDiskFoo"}, {ImageSha256: "extraDiskBar"}}}
+//	execpath := []string{"docker-entrypoint.sh", "redis-server"}
+//	// the proper format for this
+//	execpathStr := "\"docker-entrypoint.sh\" \"redis-server\""
+//	workdir := "/data"
+//	mountpoints := []string{"/data", "/foo", "/bar"}
+//	env := []KeyValue{
+//		{Name: "PATH", Value: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
+//		{Name: "GOSU_VERSION", Value: "1.11"},
+//		{Name: "REDIS_VERSION", Value: "5.0.7"},
+//		{Name: "REDIS_DOWNLOAD_URL", Value: "http://download.redis.io/releases/redis-5.0.7.tar.gz"},
+//		{Name: "REDIS_DOWNLOAD_SHA", Value: "61db74eabf6801f057fd24b590232f2f337d422280fd19486eca03be87d3a82b"},
+//	}
+//
+//	err = createMountPointExecEnvFiles(rootDir, mountpoints, execpath, workdir, env, &status)
+//	if err != nil {
+//		t.Errorf("createMountPointExecEnvFiles failed %v", err)
+//	}
+//
+//	cmdlineFile := path.Join(rootDir, "cmdline")
+//	cmdline, err := ioutil.ReadFile(cmdlineFile)
+//	if err != nil {
+//		t.Errorf("createMountPointExecEnvFiles failed to create cmdline file %s %v", cmdlineFile, err)
+//	}
+//	if string(cmdline) != execpathStr {
+//		t.Errorf("mismatched cmdline file content, actual '%s' expected '%s'", string(cmdline), execpathStr)
+//	}
+//
+//	mountFile := path.Join(rootDir, "mountPoints")
+//	mountExpected := strings.Join(mountpoints, "\n") + "\n"
+//	mounts, err := ioutil.ReadFile(mountFile)
+//	if err != nil {
+//		t.Errorf("createMountPointExecEnvFiles failed to create mountPoints file %s %v", mountFile, err)
+//	}
+//	if string(mounts) != mountExpected {
+//		t.Errorf("mismatched mountpoints file content, actual '%s' expected '%s'", string(mounts), mountExpected)
+//	}
+//
+//	envFile := path.Join(rootDir, "environment")
+//	envActual, err := ioutil.ReadFile(envFile)
+//	// start with WORKDIR
+//	envExpect := fmt.Sprintf("export WORKDIR=\"%s\"\n", workdir)
+//	for _, v := range env {
+//		envExpect = envExpect + fmt.Sprintf("export %s=\"%s\"\n", v.Name, v.Value)
+//	}
+//	if err != nil {
+//		t.Errorf("createMountPointExecEnvFiles failed to create environment file %s %v", envFile, err)
+//	}
+//	if string(envActual) != envExpect {
+//		t.Errorf("mismatched env file content, actual '%s' expected '%s'", string(envActual), envExpect)
+//	}
+//}
