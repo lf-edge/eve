@@ -3,6 +3,7 @@ package ociutil
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1"
@@ -10,6 +11,12 @@ import (
 	v1tarball "github.com/google/go-containerregistry/pkg/v1/tarball"
 	log "github.com/sirupsen/logrus"
 )
+
+// computeSizeOfFile is taking the file size and rounding off it to
+// the nearest 512 bytes and adding up 512 bytes for the tar header
+func computeSizeOfFile(x int64) int64 {
+	return int64(math.Ceil(float64(x)/float64(512))*float64(512)) + 512
+}
 
 func manifestsDescImg(image string, options []remote.Option) (name.Reference, *remote.Descriptor, v1.Image, []byte, []byte, int64, error) {
 	var (
@@ -23,6 +30,12 @@ func manifestsDescImg(image string, options []remote.Option) (name.Reference, *r
 	log.Infof("manifestsDescImg(%s)", image)
 	// this one should go away
 	log.Infof("options %#v", options)
+
+	// FIXME tar archive size is 1024 bytes greater than the sizes of
+	// the underlying file. Currently, it has been added purely on the
+	// basis of analysis. These changes will go away once underlying
+	// "go-containerregistry" library will start supporting download progess
+	size = 1024
 
 	ref, err = name.ParseReference(image)
 	if err != nil {
@@ -64,7 +77,7 @@ func manifestsDescImg(image string, options []remote.Option) (name.Reference, *r
 
 	// size starts at the default of 0
 	// add the size of the config
-	size += manifest.Config.Size
+	size += computeSizeOfFile(manifest.Config.Size)
 
 	// next the layers and their sizes, along with filenames for the manifest
 	imgLayers, err := img.Layers()
@@ -76,7 +89,7 @@ func manifestsDescImg(image string, options []remote.Option) (name.Reference, *r
 		if err != nil {
 			return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error getting size of layers: %v", err)
 		}
-		size += layerSize
+		size += computeSizeOfFile(layerSize)
 		d, err := layer.Digest()
 		if err != nil {
 			return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error getting digest of layers: %v", err)
@@ -94,7 +107,7 @@ func manifestsDescImg(image string, options []remote.Option) (name.Reference, *r
 	if err != nil {
 		return ref, desc, img, manifestDirect, manifestResolved, size, fmt.Errorf("error converting tar manifest file to json: %v", err)
 	}
-	size += int64(len(manifestFileBytes))
+	size += computeSizeOfFile(int64(len(manifestFileBytes)))
 
 	return ref, desc, img, manifestDirect, manifestResolved, size, nil
 }
