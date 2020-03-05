@@ -15,8 +15,6 @@ ZTMPDIR=/var/tmp/zededa
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 GCDIR=$PERSISTDIR/config/GlobalConfig
-LOGDIRA=$PERSISTDIR/IMGA/log
-LOGDIRB=$PERSISTDIR/IMGB/log
 AGENTS0="logmanager ledmanager nim nodeagent"
 AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent baseosmgr wstunnelclient"
 AGENTS="$AGENTS0 $AGENTS1"
@@ -115,15 +113,6 @@ fi
 
 CONFIGDEV=$(zboot partdev CONFIG)
 
-if [ ! -d $LOGDIRA ]; then
-    echo "$(date -Ins -u) Creating $LOGDIRA"
-    mkdir -p $LOGDIRA
-fi
-if [ ! -d $LOGDIRB ]; then
-    echo "$(date -Ins -u) Creating $LOGDIRB"
-    mkdir -p $LOGDIRB
-fi
-
 P3=$(/hostfs/sbin/findfs PARTLABEL=P3)
 P3_FS_TYPE=$(blkid "$P3"| awk '{print $3}' | sed 's/TYPE=//' | sed 's/"//g')
 if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] && [ "$P3_FS_TYPE" = "ext4" ]; then
@@ -145,12 +134,6 @@ if [ ! -d "$PERSIST_RKT_CNI_DIR" ]; then
     chmod 744 "$PERSIST_RKT_CNI_DIR"
 fi
 
-if [ -f $PERSISTDIR/IMGA/reboot-reason ]; then
-    echo "IMGA reboot-reason: $(cat $PERSISTDIR/IMGA/reboot-reason)"
-fi
-if [ -f $PERSISTDIR/IMGB/reboot-reason ]; then
-    echo "IMGB reboot-reason: $(cat $PERSISTDIR/IMGB/reboot-reason)"
-fi
 if [ -f $PERSISTDIR/reboot-reason ]; then
     echo "Common reboot-reason: $(cat $PERSISTDIR/reboot-reason)"
 fi

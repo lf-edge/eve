@@ -29,7 +29,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/watch"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
@@ -303,43 +302,6 @@ func Run(ps *pubsub.PubSub) {
 
 	// Start sender of log events
 	go processEvents(currentPartition, lastSent, loggerChan, eveVersion)
-
-	// If we have a logdir from a failed update, then set that up
-	// as well.
-	// XXX we can close this down once we've reached EOF for all the
-	// files in otherLogdirname. This is TBD
-	// Closing otherLoggerChan would the effect of terminating the
-	// processEvents go routine but we need to tell when all the files
-	// have reached the end.
-	otherLogDirname := agentlog.GetOtherLogdir()
-	otherLogDirChanges := make(chan string)
-	var otherCtx = loggerContext{}
-
-	if otherLogDirname != "" {
-		log.Infof("Have logs from failed upgrade in %s\n",
-			otherLogDirname)
-		otherLoggerChan := make(chan logEntry)
-		otherPartition := zboot.GetOtherPartition()
-		lastSent := readLast(lastSentDirname, otherPartition)
-		lastSentStr, _ := lastSent.MarshalText()
-		log.Debugf("Other partition logs were last sent at %s\n",
-			string(lastSentStr))
-
-		go processEvents(otherPartition, lastSent, otherLoggerChan, eveVersion)
-
-		go watch.WatchStatus(otherLogDirname, false, otherLogDirChanges)
-		otherCtx = loggerContext{logChan: otherLoggerChan,
-			image: otherPartition}
-	}
-
-	logDirChanges := make(chan string)
-	go watch.WatchStatus(logDirName, false, logDirChanges)
-
-	// Run these dir -> event as goroutines since they will block
-	// when there is backpressure
-	// XXX state sharing with HandleDeferred?
-	go handleLogDir(logDirChanges, logDirName, &ctx)
-	go handleLogDir(otherLogDirChanges, otherLogDirname, &otherCtx)
 
 	go parseAndSendSyslogEntries(&ctx)
 
