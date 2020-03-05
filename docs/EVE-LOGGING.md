@@ -44,4 +44,12 @@ Rsyslogd is configured to send logs via TCP socket to logmanager. Logmanager bun
 Logmanager instead of now logging directly to file would now send it's logs to memlogd which will then be picked up by rsyslogd that writes to /persist/log/logmanager.log (this file is size regualted to a configured value - 100MB).
 
 ## Log files still present in device
+
 Reboot reason and reboot stack files present in /persist and /persist/log directories. reboot-reaon, reboot-stack files present in /persist/log directory get appended with updates. The sames files in /persist directory keep getting overwritten with new content every time there is USR1 signal sent to a process or in the event of Fatal crash. These stack traces are also exported to cloud using logging mechanism.
+
+# Helpful debug commands
+
+1. If you are debugging a device and for some reason do not see logs coming to /persist/rsyslog/syslog.txt (possible issue with rsyslogd) and would like to read/tail logs directly from memlogd buffers, use the following command.
+
+```/hostfs/usr/bin/logread -F -socket /run/memlogdq.sock```.
+This command starts by dumping all logs present in the current circular buffers and acts like tail command after that (dump to screen as and when a new log comes into memlogd).
