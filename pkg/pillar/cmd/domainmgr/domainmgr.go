@@ -1232,9 +1232,18 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	// FIXME: this will go away once we do a proper volumemanager
 	// Handle creating of rootFS bundle for containers
 	if status.IsContainer {
-		podUUID, err := ctrPrepare(containerImageSha256, status)
+		ociFilename, err := utils.VerifiedImageFileLocation(containerImageSha256)
 		if err != nil {
-			log.Errorf("Failed to create ctr bundle from %v\n", config)
+			log.Errorf("failed to get Image File Location. "+
+				"err: %+s", err.Error())
+			status.LastErr = fmt.Sprintf("failed to get Image File Location. err: %+s", err.Error())
+			status.LastErrTime = time.Now()
+			return
+		}
+		log.Infof("ociFilename %s sha %s", ociFilename, containerImageSha256)
+		podUUID, err := ctrPrepare(ociFilename, status.EnvVariables, len(status.DiskStatusList))
+		if err != nil {
+			log.Errorf("Failed to create ctr bundle. Error %v\n", err.Error())
 			status.LastErr = fmt.Sprintf("%v", err)
 			status.LastErrTime = time.Now()
 			return
@@ -1655,7 +1664,7 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 	return nil
 }
 
-func createMountPointExecEnvFiles(rootFs string, mountpoints []specs.Mount, execpath []string, workdir string, env []string, status *types.DomainStatus) error {
+func createMountPointExecEnvFiles(rootFs string, mountpoints []specs.Mount, execpath []string, workdir string, env []string, noOfDisks int) error {
 	mpFileName := rootFs + "/mountPoints"
 	cmdFileName := rootFs + "/cmdline"
 	envFileName := rootFs + "/environment"
@@ -1679,7 +1688,7 @@ func createMountPointExecEnvFiles(rootFs string, mountpoints []specs.Mount, exec
 	defer envFile.Close()
 
 	//Ignoring container image in status.DiskStatusList
-	noOfDisks := len(status.DiskStatusList) - 1
+	noOfDisks = noOfDisks - 1
 
 	//Validating if there are enough disks provided for the mount-points
 	switch {
