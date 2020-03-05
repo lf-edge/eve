@@ -43,6 +43,7 @@ import (
 )
 
 const (
+	eveadmPath   = "/opt/zededa/bin/eveadm"
 	agentName    = "domainmgr"
 	runDirname   = "/var/run/" + agentName
 	xenDirname   = runDirname + "/xen"       // We store xen cfg files here
@@ -2332,10 +2333,11 @@ func DomainCreate(status types.DomainStatus) (int, error) {
 // Create in paused state; Need to call xlUnpause later
 func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 	log.Infof("xlCreate %s %s\n", domainName, xenCfgFilename)
-	cmd := "xl"
+	cmd := eveadmPath
 	args := []string{
+		"xen",
 		"create",
-		xenCfgFilename,
+		"--xen-cfg-filename=" + xenCfgFilename,
 		"-p",
 	}
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
@@ -2348,7 +2350,9 @@ func xlCreate(domainName string, xenCfgFilename string) (int, error) {
 	log.Infof("xl create done\n")
 
 	args = []string{
-		"domid",
+		"xen",
+		"info",
+		"--domname",
 		domainName,
 	}
 	stdoutStderr, err = wrap.Command(cmd, args...).CombinedOutput()
@@ -2371,10 +2375,10 @@ func xlStatus(domainName string, domainID int) error {
 	log.Infof("xlStatus %s %d\n", domainName, domainID)
 	// XXX xl list -l domainName returns json. XXX but state not included!
 	// Note that state is not very useful anyhow
-	cmd := "xl"
+	cmd := eveadmPath
 	args := []string{
-		"list",
-		"-l",
+		"xen",
+		"info",
 		domainName,
 	}
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
@@ -2395,9 +2399,11 @@ func xlStatus(domainName string, domainID int) error {
 // can change.
 func xlDomid(domainName string, domainID int) (int, error) {
 	log.Debugf("xlDomid %s %d\n", domainName, domainID)
-	cmd := "xl"
+	cmd := eveadmPath
 	args := []string{
-		"domid",
+		"xen",
+		"info",
+		"--domname",
 		domainName,
 	}
 	// Avoid wrap since we are called periodically
@@ -2475,9 +2481,10 @@ func xlDisableVifOffload(domainName string, domainID int, vifCount int) error {
 
 func xlUnpause(domainName string, domainID int) error {
 	log.Infof("xlUnpause %s %d\n", domainName, domainID)
-	cmd := "xl"
+	cmd := eveadmPath
 	args := []string{
-		"unpause",
+		"xen",
+		"start",
 		domainName,
 	}
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
@@ -2506,17 +2513,19 @@ func DomainShutdown(status types.DomainStatus, force bool) error {
 
 func xlShutdown(domainName string, domainID int, force bool) error {
 	log.Infof("xlShutdown %s %d\n", domainName, domainID)
-	cmd := "xl"
+	cmd := eveadmPath
 	var args []string
 	if force {
 		args = []string{
-			"shutdown",
-			"-F",
+			"xen",
+			"stop",
 			domainName,
+			"--force=true",
 		}
 	} else {
 		args = []string{
-			"shutdown",
+			"xen",
+			"stop",
 			domainName,
 		}
 	}
@@ -2552,9 +2561,10 @@ func DomainDestroy(status types.DomainStatus) error {
 
 func xlDestroy(domainName string, domainID int) error {
 	log.Infof("xlDestroy %s %d\n", domainName, domainID)
-	cmd := "xl"
+	cmd := eveadmPath
 	args := []string{
-		"destroy",
+		"xen",
+		"delete",
 		domainName,
 	}
 	stdoutStderr, err := wrap.Command(cmd, args...).CombinedOutput()
