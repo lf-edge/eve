@@ -21,7 +21,6 @@ AGENTS0="logmanager ledmanager nim nodeagent"
 AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent baseosmgr wstunnelclient"
 AGENTS="$AGENTS0 $AGENTS1"
 TPM_DEVICE_PATH="/dev/tpmrm0"
-XDG_RUNTIME_DIR=/run/tmp
 PATH=$BINDIR:$PATH
 
 echo "$(date -Ins -u) Starting device-steps.sh"
@@ -64,8 +63,7 @@ if [ -d $TMPDIR ]; then
 fi
 mkdir -p $TMPDIR
 export TMPDIR
-mkdir -p $XDG_RUNTIME_DIR
-export XDG_RUNTIME_DIR
+
 mkdir -p $PERSISTDIR/containerd
 ln -s $PERSISTDIR/containerd /var/lib/containerd
 

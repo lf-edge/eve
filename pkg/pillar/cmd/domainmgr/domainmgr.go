@@ -9,11 +9,11 @@
 package domainmgr
 
 import (
+	"bytes"
 	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/opencontainers/runtime-spec/specs-go"
 	"io"
 	"io/ioutil"
 	"os"
@@ -1664,28 +1664,10 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 	return nil
 }
 
-func createMountPointExecEnvFiles(rootFs string, mountpoints []specs.Mount, execpath []string, workdir string, env []string, noOfDisks int) error {
+func createMountPointExecEnvFiles(rootFs string, mountpoints map[string]struct{}, execpath []string, workdir string, env []string, noOfDisks int) error {
 	mpFileName := rootFs + "/mountPoints"
 	cmdFileName := rootFs + "/cmdline"
 	envFileName := rootFs + "/environment"
-
-	mpFile, err := os.Create(mpFileName)
-	if err != nil {
-		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", mpFileName, err.Error())
-	}
-	defer mpFile.Close()
-
-	cmdFile, err := os.Create(cmdFileName)
-	if err != nil {
-		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", cmdFileName, err.Error())
-	}
-	defer cmdFile.Close()
-
-	envFile, err := os.Create(envFileName)
-	if err != nil {
-		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", envFileName, err.Error())
-	}
-	defer envFile.Close()
 
 	//Ignoring container image in status.DiskStatusList
 	noOfDisks = noOfDisks - 1
@@ -1702,24 +1684,19 @@ func createMountPointExecEnvFiles(rootFs string, mountpoints []specs.Mount, exec
 		return fmt.Errorf("createMountPointExecEnvFiles: Number of volumes provided: %v is less than number of mount-points: %v. ",
 			noOfDisks, len(mountpoints))
 	}
-
-	for i, mp := range mountpoints {
-		if mp.Destination == "" {
-			err := fmt.Errorf("createMountPointExecEnvFiles: targetPath cannot be empty")
-			log.Errorf(err.Error())
-			return err
-		} else if !strings.HasPrefix(mp.Destination, "/") {
+	var mpBuffer bytes.Buffer
+	for path := range mountpoints {
+		if !strings.HasPrefix(path, "/") {
 			//Target path is expected to be absolute.
 			err := fmt.Errorf("createMountPointExecEnvFiles: targetPath should be absolute")
 			log.Errorf(err.Error())
 			return err
 		}
-		log.Infof("createMountPointExecEnvFiles: Processing mount point %d: %s\n", i, mp)
-		if _, err := mpFile.WriteString(fmt.Sprintf("%s\n", mp.Destination)); err != nil {
-			err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", mpFileName, err)
-			log.Errorf(err.Error())
-			return err
-		}
+		log.Infof("createMountPointExecEnvFiles: Processing mount point %s\n", path)
+		mpBuffer.WriteString(fmt.Sprintf("%s\n", path))
+	}
+	if err := ioutil.WriteFile(mpFileName, mpBuffer.Bytes(), 0666); err != nil {
+		return fmt.Errorf("createMountPointExecEnvFiles: exception while writing file %v. %v", mpFileName, err)
 	}
 
 	// each item needs to be independently quoted for initrd
@@ -1727,10 +1704,8 @@ func createMountPointExecEnvFiles(rootFs string, mountpoints []specs.Mount, exec
 	for _, s := range execpath {
 		execpathQuoted = append(execpathQuoted, fmt.Sprintf("\"%s\"", s))
 	}
-	if _, err := cmdFile.WriteString(strings.Join(execpathQuoted, " ")); err != nil {
-		err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", cmdFileName, err)
-		log.Errorf(err.Error())
-		return err
+	if err := ioutil.WriteFile(cmdFileName, []byte(strings.Join(execpathQuoted, " ")), 0666); err != nil {
+		return fmt.Errorf("createMountPointExecEnvFiles: exception while writing file %v. %v", mpFileName, err)
 	}
 
 	envContent := ""
@@ -1740,10 +1715,8 @@ func createMountPointExecEnvFiles(rootFs string, mountpoints []specs.Mount, exec
 	for _, e := range env {
 		envContent = envContent + fmt.Sprintf("export %s\n", e)
 	}
-	if _, err := envFile.WriteString(envContent); err != nil {
-		err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", envFileName, err)
-		log.Errorf(err.Error())
-		return err
+	if err := ioutil.WriteFile(envFileName, []byte(envContent), 0666); err != nil {
+		return fmt.Errorf("createMountPointExecEnvFiles: exception while writing file %v. %v", mpFileName, err)
 	}
 
 	return nil
