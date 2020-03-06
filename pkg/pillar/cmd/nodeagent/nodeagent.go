@@ -529,7 +529,7 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 	if ctx.rebootReason != "" {
 		log.Warnf("Current partition RebootReason: %s\n",
 			ctx.rebootReason)
-		agentlog.DiscardCurrentRebootReason()
+		agentlog.DiscardCommonRebootReason()
 	}
 	// XXX We'll retain this block of code for some time to support having older
 	// versions of code in the other partition.
