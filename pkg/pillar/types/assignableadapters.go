@@ -14,6 +14,7 @@ package types
 import (
 	"strings"
 
+	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -79,6 +80,9 @@ type IoBundle struct {
 	IsPCIBack bool // Assigned to pciback
 	IsPort    bool // Whole or part of the bundle is a zedrouter port
 }
+
+// Really a constant
+var nilUUID = uuid.UUID{}
 
 // HasAdapterChanged - We store each Physical Adapter using the IoBundle object.
 // Compares IoBundle with Physical adapter and returns if they are the Same
@@ -183,16 +187,49 @@ func (ioType IoType) IsNet() bool {
 }
 
 // AddOrUpdateIoBundle - Add an Io bundle to AA. If the bundle already exists,
-//  it just updates it.
+// the function updates it, while preserving the most specific information.
+// The information we preserve are of two kinds:
+// - IsPort/IsPCIBack/UsedByUUID which come from interaction with nim
+// - Unique/MacAddr which come from the PhysicalIoAdapter
 func (aa *AssignableAdapters) AddOrUpdateIoBundle(ib IoBundle) {
 	curIbPtr := aa.LookupIoBundle(ib.Name)
 	if curIbPtr == nil {
-		log.Infof("handleIBCreate(%d %s %s) New Bundle",
+		log.Infof("AddOrUpdateIoBundle(%d %s %s) New bundle",
 			ib.Type, ib.Name, ib.AssignmentGroup)
 		aa.IoBundleList = append(aa.IoBundleList, ib)
-	} else {
-		*curIbPtr = ib
+		return
 	}
+	log.Infof("AddOrUpdateIoBundle(%d %s %s) Update bundle; diff %+v",
+		ib.Type, ib.Name, ib.AssignmentGroup,
+		cmp.Diff(*curIbPtr, ib))
+
+	// We preserve the most specific
+	if curIbPtr.UsedByUUID != nilUUID {
+		log.Infof("AddOrUpdateIoBundle(%d %s %s) preserve UsedByUUID %v",
+			ib.Type, ib.Name, ib.AssignmentGroup, curIbPtr.UsedByUUID)
+		ib.UsedByUUID = curIbPtr.UsedByUUID
+	}
+	if curIbPtr.IsPort {
+		log.Infof("AddOrUpdateIoBundle(%d %s %s) preserve IsPort %t",
+			ib.Type, ib.Name, ib.AssignmentGroup, curIbPtr.IsPort)
+		ib.IsPort = curIbPtr.IsPort
+	}
+	if curIbPtr.IsPCIBack {
+		log.Infof("AddOrUpdateIoBundle(%d %s %s) preserve IsPCIBack %t",
+			ib.Type, ib.Name, ib.AssignmentGroup, curIbPtr.IsPCIBack)
+		ib.IsPCIBack = curIbPtr.IsPCIBack
+	}
+	if curIbPtr.Unique != "" {
+		log.Infof("AddOrUpdateIoBundle(%d %s %s) preserve Unique %v",
+			ib.Type, ib.Name, ib.AssignmentGroup, curIbPtr.Unique)
+		ib.Unique = curIbPtr.Unique
+	}
+	if curIbPtr.MacAddr != "" {
+		log.Infof("AddOrUpdateIoBundle(%d %s %s) preserve MacAddr %v",
+			ib.Type, ib.Name, ib.AssignmentGroup, curIbPtr.MacAddr)
+		ib.MacAddr = curIbPtr.MacAddr
+	}
+	*curIbPtr = ib
 }
 
 // LookupIoBundle returns nil if not found
