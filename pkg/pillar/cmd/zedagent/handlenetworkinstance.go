@@ -54,6 +54,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	*infoType = zinfo.ZInfoTypes_ZiNetworkInstance
 	infoMsg.DevId = *proto.String(zcdevUUID.String())
 	infoMsg.Ztype = *infoType
+	infoMsg.AtTimeStamp = ptypes.TimestampNow()
 
 	uuid := status.Key()
 	info := new(zinfo.ZInfoNetworkInstance)
