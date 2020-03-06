@@ -57,7 +57,7 @@ message zedcloudMetric {
     google.protobuf.Timestamp lastFailure = 4;
     google.protobuf.Timestamp lastSuccess = 5;
     repeated urlcloudMetric urlMetrics = 6;
-    uint64 authVerifyFailure = 7; // part of failure, authen verify fail count for V2 API
+    uint64 authVerifyFailure = 7; // networking success, authen verify fail count for V2 API
 }
 
 // Information for each API URL

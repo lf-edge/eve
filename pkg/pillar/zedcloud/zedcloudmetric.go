@@ -29,24 +29,30 @@ func maybeInit(ifname string) {
 	}
 }
 
-func ZedCloudFailure(ifname string, url string, reqLen int64, respLen int64) {
+func ZedCloudFailure(ifname string, url string, reqLen int64, respLen int64, authenFail bool) {
 	mutex.Lock()
 	maybeInit(ifname)
 	m := metrics[ifname]
-	m.FailureCount += 1
-	m.LastFailure = time.Now()
-	var u types.UrlcloudMetrics
-	var ok bool
-	if u, ok = m.URLCounters[url]; !ok {
-		u = types.UrlcloudMetrics{}
+	// if we have authen verify failure, the network part is success
+	if authenFail {
+		m.AuthFailCount++
+	} else {
+		m.FailureCount++
+		m.LastFailure = time.Now()
+
+		var u types.UrlcloudMetrics
+		var ok bool
+		if u, ok = m.URLCounters[url]; !ok {
+			u = types.UrlcloudMetrics{}
+		}
+		u.TryMsgCount++
+		u.TryByteCount += reqLen
+		if respLen != 0 {
+			u.RecvMsgCount++
+			u.RecvByteCount += respLen
+		}
+		m.URLCounters[url] = u
 	}
-	u.TryMsgCount += 1
-	u.TryByteCount += reqLen
-	if respLen != 0 {
-		u.RecvMsgCount += 1
-		u.RecvByteCount += respLen
-	}
-	m.URLCounters[url] = u
 	metrics[ifname] = m
 	mutex.Unlock()
 }
@@ -100,6 +106,7 @@ func Append(cms types.MetricsMap, cms1 types.MetricsMap) types.MetricsMap {
 		}
 		cm.FailureCount += cm1.FailureCount
 		cm.SuccessCount += cm1.SuccessCount
+		cm.AuthFailCount += cm1.AuthFailCount
 		if cm.URLCounters == nil {
 			cm.URLCounters = make(map[string]types.UrlcloudMetrics)
 		}

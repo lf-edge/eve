@@ -32,6 +32,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
+	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -74,6 +75,7 @@ var debugOverride bool // From command line arg
 var simulateDnsFailure = false
 var simulatePingFailure = false
 var outfile = os.Stdout
+var nilUUID uuid.UUID
 
 func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
@@ -84,7 +86,6 @@ func Run(ps *pubsub.PubSub) {
 	simulateDnsFailurePtr := flag.Bool("D", false, "simulateDnsFailure flag")
 	simulatePingFailurePtr := flag.Bool("P", false, "simulatePingFailure flag")
 	outputFilePtr := flag.String("o", "", "file or device for output")
-	twoPtr := flag.Bool("2", false, "V2 API (for testing purposes only)")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
@@ -151,7 +152,7 @@ func Run(ps *pubsub.PubSub) {
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
 		NetworkSendTimeout:  ctx.globalConfig.NetworkTestTimeout,
-		V2API:               *twoPtr, // XXX for testing purposes
+		V2API:               zedcloud.UseV2API(),
 	}
 
 	// Get device serial number
@@ -159,6 +160,10 @@ func Run(ps *pubsub.PubSub) {
 	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
 	log.Infof("Diag Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
+
+	// XXX move to later for Get UUID if available
+
+	log.Infof("diag Run: Use V2 API %v\n", zedcloudCtx.V2API)
 
 	if fileExists(types.DeviceCertName) {
 		// Load device cert
@@ -726,7 +731,7 @@ func tryPing(ctx *diagContext, ifname string, reqURL string) bool {
 	zedcloudCtx := ctx.zedcloudCtx
 	// Set the TLS config on each attempt in case it has changed due to proxies etc
 	if reqURL == "" {
-		reqURL = ctx.serverNameAndPort + "/api/v1/edgedevice/ping"
+		reqURL = zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API, false, nilUUID, "ping")
 		err := zedcloud.UpdateTLSConfig(zedcloudCtx, ctx.serverName, ctx.cert)
 		if err != nil {
 			errStr := fmt.Sprintf("ERROR: %s: internal UpdateTLSConfig failed %s\n",
@@ -785,7 +790,9 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 		return false
 	}
 	zedcloudCtx := ctx.zedcloudCtx
-	reqURL := ctx.serverNameAndPort + "/api/v1/edgedevice/config"
+
+	// XXX always use nilUUID for now until pub/sub available for UUID
+	reqURL := zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API, false, nilUUID, "config")
 	// Set the TLS config on each attempt in case it has changed due to proxies etc
 	err = zedcloud.UpdateTLSConfig(zedcloudCtx, ctx.serverName, ctx.cert)
 	if err != nil {
@@ -908,7 +915,7 @@ func myGet(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 	resp, contents, rtf, err := zedcloud.SendOnIntf(*zedcloudCtx,
 		reqURL, ifname, 0, nil, allowProxy)
 	if err != nil {
-		if rtf {
+		if rtf == types.SenderStatusRemTempFail {
 			fmt.Fprintf(outfile, "ERROR: %s: get %s remote temporary failure: %s\n",
 				ifname, reqURL, err)
 		} else {
@@ -958,7 +965,7 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 	resp, contents, rtf, err := zedcloud.SendOnIntf(*zedcloudCtx,
 		reqURL, ifname, reqlen, b, allowProxy)
 	if err != nil {
-		if rtf {
+		if rtf == types.SenderStatusRemTempFail {
 			fmt.Fprintf(outfile, "ERROR: %s: post %s remote temporary failure: %s\n",
 				ifname, reqURL, err)
 		} else {
