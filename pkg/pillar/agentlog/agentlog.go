@@ -222,20 +222,6 @@ func printToFile(filename string, str string) error {
 	return nil
 }
 
-func DiscardCurrentRebootReason() {
-	reasonFilename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), reasonFile)
-	stackFilename := fmt.Sprintf("%s/%s", getCurrentIMGdir(), stackFile)
-	if err := os.Remove(reasonFilename); err != nil {
-		log.Errorf("DiscardCurrentRebootReason failed %s\n", err)
-	}
-	_, err := os.Stat(stackFilename)
-	if err != nil {
-		if err := os.Remove(stackFilename); err != nil {
-			log.Errorf("DiscardCurrentRebootReason failed %s\n", err)
-		}
-	}
-}
-
 func DiscardOtherRebootReason() {
 	dirname := getOtherIMGdir(false)
 	if dirname == "" {
