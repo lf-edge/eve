@@ -182,6 +182,9 @@ if ! pgrep ledmanager >/dev/null; then
     ledmanager &
     wait_for_touch ledmanager
 fi
+if [ ! -f $CONFIGDIR/device.cert.pem ]; then
+    touch $FIRSTBOOTFILE # For nodeagent
+fi
 echo "$(date -Ins -u) Starting nodeagent"
 $BINDIR/nodeagent -c $CURPART &
 wait_for_touch nodeagent
@@ -317,7 +320,6 @@ touch "$WATCHDOG_PID/zedclient.pid" \
 
 if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
-    touch $FIRSTBOOTFILE # For zedagent
     touch $CONFIGDIR/self-register-pending
     sync
     blockdev --flushbufs "$CONFIGDEV"

@@ -47,7 +47,6 @@ import (
 const (
 	agentName          = "zedagent"
 	restartCounterFile = types.IdentityDirname + "/restartcounter"
-	firstbootFile      = types.TmpDirname + "/first-boot"
 	// checkpointDirname - location of config checkpoint
 	checkpointDirname = types.PersistDir + "/checkpoint"
 	// Time limits for event loop handlers
