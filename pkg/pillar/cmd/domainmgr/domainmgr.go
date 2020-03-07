@@ -9,7 +9,6 @@
 package domainmgr
 
 import (
-	"bytes"
 	"encoding/base64"
 	"errors"
 	"flag"
@@ -1669,6 +1668,24 @@ func createMountPointExecEnvFiles(rootFs string, mountpoints map[string]struct{}
 	cmdFileName := rootFs + "/cmdline"
 	envFileName := rootFs + "/environment"
 
+	mpFile, err := os.Create(mpFileName)
+	if err != nil {
+		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", mpFileName, err.Error())
+	}
+	defer mpFile.Close()
+
+	cmdFile, err := os.Create(cmdFileName)
+	if err != nil {
+		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", cmdFileName, err.Error())
+	}
+	defer cmdFile.Close()
+
+	envFile, err := os.Create(envFileName)
+	if err != nil {
+		log.Errorf("createMountPointExecEnvFiles: os.Create for %v, failed: %v", envFileName, err.Error())
+	}
+	defer envFile.Close()
+
 	//Ignoring container image in status.DiskStatusList
 	noOfDisks = noOfDisks - 1
 
@@ -1684,7 +1701,7 @@ func createMountPointExecEnvFiles(rootFs string, mountpoints map[string]struct{}
 		return fmt.Errorf("createMountPointExecEnvFiles: Number of volumes provided: %v is less than number of mount-points: %v. ",
 			noOfDisks, len(mountpoints))
 	}
-	var mpBuffer bytes.Buffer
+
 	for path := range mountpoints {
 		if !strings.HasPrefix(path, "/") {
 			//Target path is expected to be absolute.
@@ -1693,10 +1710,11 @@ func createMountPointExecEnvFiles(rootFs string, mountpoints map[string]struct{}
 			return err
 		}
 		log.Infof("createMountPointExecEnvFiles: Processing mount point %s\n", path)
-		mpBuffer.WriteString(fmt.Sprintf("%s\n", path))
-	}
-	if err := ioutil.WriteFile(mpFileName, mpBuffer.Bytes(), 0666); err != nil {
-		return fmt.Errorf("createMountPointExecEnvFiles: exception while writing file %v. %v", mpFileName, err)
+		if _, err := mpFile.WriteString(fmt.Sprintf("%s\n", path)); err != nil {
+			err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", mpFileName, err)
+			log.Errorf(err.Error())
+			return err
+		}
 	}
 
 	// each item needs to be independently quoted for initrd
@@ -1704,8 +1722,10 @@ func createMountPointExecEnvFiles(rootFs string, mountpoints map[string]struct{}
 	for _, s := range execpath {
 		execpathQuoted = append(execpathQuoted, fmt.Sprintf("\"%s\"", s))
 	}
-	if err := ioutil.WriteFile(cmdFileName, []byte(strings.Join(execpathQuoted, " ")), 0666); err != nil {
-		return fmt.Errorf("createMountPointExecEnvFiles: exception while writing file %v. %v", mpFileName, err)
+	if _, err := cmdFile.WriteString(strings.Join(execpathQuoted, " ")); err != nil {
+		err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", cmdFileName, err)
+		log.Errorf(err.Error())
+		return err
 	}
 
 	envContent := ""
@@ -1715,8 +1735,10 @@ func createMountPointExecEnvFiles(rootFs string, mountpoints map[string]struct{}
 	for _, e := range env {
 		envContent = envContent + fmt.Sprintf("export %s\n", e)
 	}
-	if err := ioutil.WriteFile(envFileName, []byte(envContent), 0666); err != nil {
-		return fmt.Errorf("createMountPointExecEnvFiles: exception while writing file %v. %v", mpFileName, err)
+	if _, err := envFile.WriteString(envContent); err != nil {
+		err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", envFileName, err)
+		log.Errorf(err.Error())
+		return err
 	}
 
 	return nil

@@ -183,13 +183,13 @@ func ctrCreate(ctrdCtx context.Context, ctrdClient *containerd.Client, container
 		log.Errorf("Could not build new containerd container: %v. %v", containerID, err.Error())
 		return fmt.Errorf("ctrCreate: Could not build new containerd container: %v. %v", containerID, err.Error())
 	}
-	imageConfigJson, err := getImageInfoJSON(ctrdCtx, ctrdImage)
+	imageConfigJSON, err := getImageInfoJSON(ctrdCtx, ctrdImage)
 	if err != nil {
 		container.Delete(ctrdCtx)
 		log.Errorf("Could not build json of image: %v. %v", ctrdImage.Name(), err.Error())
 		return fmt.Errorf("ctrCreate: Could not build json of image: %v. %v", ctrdImage.Name(), err.Error())
 	}
-	err = createBundle(ctrdCtx, ctrdClient, container, containerSnapshot, imageConfigJson)
+	err = createBundle(ctrdCtx, ctrdClient, container, containerSnapshot, imageConfigJSON)
 	if err != nil {
 		container.Delete(ctrdCtx)
 		deleteBundle(containerID)
@@ -347,7 +347,7 @@ func getContainerInfo(ctrdCtx context.Context, container containerd.Container) (
 }
 
 //createBundle - assigns a UUID and creates a bundle for container's rootFs
-func createBundle(ctrdCtx context.Context, ctrdClient *containerd.Client, container containerd.Container, snapshotName, imageConfigJson string) error {
+func createBundle(ctrdCtx context.Context, ctrdClient *containerd.Client, container containerd.Container, snapshotName, imageConfigJSON string) error {
 	appDir := getContainerPath(container.ID())
 	rootFsDir := path.Join(appDir, containerRootfsPath)
 	//rootFsDir := getContainerRootfs(container.ID())
@@ -367,7 +367,7 @@ func createBundle(ctrdCtx context.Context, ctrdClient *containerd.Client, contai
 	if err != nil {
 		return fmt.Errorf("Exception while writing container info to %v/%v. %v", appDir, containerConfigFilename, err)
 	}
-	err = ioutil.WriteFile(filepath.Join(appDir, imageConfigFilename), []byte(imageConfigJson), 0666)
+	err = ioutil.WriteFile(filepath.Join(appDir, imageConfigFilename), []byte(imageConfigJSON), 0666)
 	if err != nil {
 		return fmt.Errorf("Exception while writing image info to %v/%v. %v", appDir, imageConfigFilename, err)
 	}
@@ -472,8 +472,8 @@ func executeShellCommands(commands []*command) ([]string, error) {
 	return results, nil
 }
 
-func deleteBundle(containerId string) {
-	os.RemoveAll(getContainerPath(containerId))
+func deleteBundle(containerID string) {
+	os.RemoveAll(getContainerPath(containerID))
 }
 
 func isContainerNotFound(e error) bool {
