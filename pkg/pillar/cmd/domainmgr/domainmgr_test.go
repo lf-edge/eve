@@ -177,7 +177,7 @@ func TestFetchEnvVariablesFromCloudInit(t *testing.T) {
 
 func TestCreateMountPointExecEnvFiles(t *testing.T) {
 
-	newContent := `{
+	content := `{
     "created": "2020-02-05T00:52:57.387773144Z",
     "author": "adarsh@zededa.com",
     "architecture": "amd64",
@@ -229,7 +229,7 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
         }
     ]
 }`
-	// create a temp dir to hold resulting files
+	//create a temp dir to hold resulting files
 	dir, _ := ioutil.TempDir("/tmp", "podfiles")
 	rootDir := path.Join(dir, "runx")
 	podPath := path.Join(dir, "pod")
@@ -242,7 +242,7 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 
 	// now create a fake pod file
 	file, _ := os.Create(podPath)
-	_, err = file.WriteString(newContent)
+	_, err = file.WriteString(content)
 	if err != nil {
 		t.Errorf("failed to write to a pod file")
 	}
@@ -255,7 +255,7 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 	}
 	env := []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
 
-	err = createMountPointExecEnvFiles(rootDir, mountpoints, execpath, workdir, env, 0)
+	err = createMountPointExecEnvFiles(rootDir, mountpoints, execpath, workdir, env, 2)
 	if err != nil {
 		t.Errorf("createMountPointExecEnvFiles failed %v", err)
 	}
@@ -282,7 +282,7 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 	envFile := path.Join(rootDir, "environment")
 	envActual, err := ioutil.ReadFile(envFile)
 	// start with WORKDIR
-	envExpect := "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+	envExpect := "export WORKDIR=\"/data\"\nexport PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n"
 	if err != nil {
 		t.Errorf("createMountPointExecEnvFiles failed to create environment file %s %v", envFile, err)
 	}
