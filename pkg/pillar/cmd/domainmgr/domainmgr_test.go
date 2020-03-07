@@ -9,6 +9,8 @@
 package domainmgr
 
 import (
+	"flag"
+	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"io/ioutil"
 	"os"
@@ -22,6 +24,15 @@ type appImageNameEntry struct {
 	sha         string
 	appUUID     string
 	imageFormat string
+}
+
+func TestDefaultXenHypervisor(t *testing.T) {
+	hypervisorPtr := flag.String("h", "xen", "")
+	flag.CommandLine.Parse([]string{""})
+	hyper = hypervisor.GetHypervisor(*hypervisorPtr)
+	if hyper.Name() != "xen" {
+		t.Errorf("Expected xen default hypervisor, got %s", hyper.Name())
+	}
 }
 
 func TestParseAppRwImageName(t *testing.T) {
