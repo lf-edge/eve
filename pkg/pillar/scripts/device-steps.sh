@@ -9,6 +9,7 @@ CONFIGDIR=/config
 PERSISTDIR=/persist
 PERSIST_RKT_DATA_DIR=$PERSISTDIR/rkt
 PERSIST_RKT_CNI_DIR=$PERSISTDIR/rkt-cni
+PERSIST_CERTS=$PERSISTDIR/certs
 BINDIR=/opt/zededa/bin
 TMPDIR=/persist/tmp
 ZTMPDIR=/var/tmp/zededa
@@ -67,7 +68,7 @@ if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
 fi
 
-DIRS="$CONFIGDIR $ZTMPDIR $CONFIGDIR/DevicePortConfig"
+DIRS="$CONFIGDIR $ZTMPDIR $CONFIGDIR/DevicePortConfig $PERSIST_CERTS"
 
 for d in $DIRS; do
     d1=$(dirname "$d")
@@ -102,13 +103,13 @@ if [ ! -f /config/v2tlsbaseroot-certificates.pem ]; then
     cp -p /etc/ssl/certs/ca-certificates.crt /config/v2tlsbaseroot-certificates.pem
 fi
 sha=$(openssl sha256 /config/v2tlsbaseroot-certificates.pem | awk '{print $2}')
-if [ ! -f "/persist/certs/$sha" ]; then
-    echo "$(date -Ins -u) Adding /config/v2tlsbaseroot-certificates.pem to /persist/certs"
-    cp /config/v2tlsbaseroot-certificates.pem "/persist/certs/$sha"
+if [ ! -f "$PERSIST_CERTS/$sha" ]; then
+    echo "$(date -Ins -u) Adding /config/v2tlsbaseroot-certificates.pem to $PERSIST_CERTS"
+    cp /config/v2tlsbaseroot-certificates.pem "$PERSIST_CERTS/$sha"
 fi
-if [ ! -f /persist/certs/v2tlsbaseroot-certificates.sha256 ]; then
+if [ ! -f "$PERSIST_CERTS/v2tlsbaseroot-certificates.sha256" ]; then
     echo "$(date -Ins -u) Setting /config/v2tlsbaseroot-certificates.pem as current"
-    echo "$sha" >/persist/certs/v2tlsbaseroot-certificates.sha256
+    echo "$sha" >"$PERSIST_CERTS/v2tlsbaseroot-certificates.sha256"
 fi
 
 CONFIGDEV=$(zboot partdev CONFIG)

@@ -41,7 +41,6 @@ const (
 	commonLogdir     = types.PersistDir + "/log"
 	lastSentDirname  = "lastlogsent"  // Directory in /persist/
 	lastDeferDirname = "lastlogdefer" // Directory in /persist/
-	logsAPI          = "api/v1/edgedevice/logs"
 	logMaxMessages   = 100
 	logMaxBytes      = 32768 // Approximate - no headers counted
 	// Time limits for event loop handlers
@@ -719,14 +718,13 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 	serverName = strings.Split(serverName, ":")[0]
 
 	//set log url
-	logsURL = serverNameAndPort + "/" + logsAPI
+	zedcloudCtx.V2API = zedcloud.UseV2API()
 
-	v2api := false // XXX set
 	zedcloudCtx.DeviceNetworkStatus = deviceNetworkStatus
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 	zedcloudCtx.NetworkSendTimeout = ctx.globalConfig.NetworkSendTimeout
-	zedcloudCtx.V2API = v2api
+	log.Infof("sendCtxInit: Use V2 API %v\n", zedcloud.UseV2API())
 
 	// get the edge box serial number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
@@ -759,6 +757,8 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 		zedcloudCtx.DevUUID = devUUID
 		break
 	}
+	// wait for uuid of logs V2 URL string
+	logsURL = zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "logs")
 	log.Infof("Read UUID %s\n", devUUID)
 }
 

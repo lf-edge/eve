@@ -167,6 +167,8 @@ github.com/lf-edge/eve/api/go/logs
 github.com/lf-edge/eve/api/go/info
 github.com/lf-edge/eve/api/go/flowlog
 github.com/lf-edge/eve/api/go/metrics
+github.com/lf-edge/eve/api/go/auth
+github.com/lf-edge/eve/api/go/certs
 # github.com/opencontainers/go-digest v1.0.0-rc1
 github.com/opencontainers/go-digest
 # github.com/opencontainers/image-spec v1.0.1 => github.com/opencontainers/image-spec v1.0.0-rc2

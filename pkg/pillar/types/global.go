@@ -9,6 +9,21 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// SenderResult - Enum name for return extra sender results from SendOnAllIntf
+type SenderResult uint8
+
+// Enum of http extra status for 'rtf'
+const (
+	SenderStatusNone                      SenderResult = iota
+	SenderStatusRemTempFail                            // http remote temporarilly failure
+	SenderStatusCertMiss                               // remote signed senderCertHash we don't have
+	SenderStatusSignVerifyFail                         // envelope signature verify failed
+	SenderStatusAlgoFail                               // hash algorithm we don't support
+	SenderStatusHashSizeError                          // senderCertHash length error
+	SenderStatusCertUnknownAuthority                   // device may miss proxy certificate for MiTM
+	SenderStatusCertUnknownAuthorityProxy              // device configed proxy, may miss proxy certificate for MiTM
+)
+
 // ConfigItemStatus - Status of Config Items
 type ConfigItemStatus struct {
 	// Value - Current value of the item

@@ -398,7 +398,7 @@ func launchHostProbe(ctx *zedrouterContext) {
 						if err != nil {
 							log.Debugf("launchHostProbe: send on intf %s, err %v\n", info.IfName, err)
 						}
-						if rtf {
+						if rtf == types.SenderStatusRemTempFail {
 							log.Debugf("launchHostProbe: remote temp failure\n")
 						}
 						if resp != nil {
