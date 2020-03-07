@@ -21,15 +21,11 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
-
-var configApi string = "api/v1/edgedevice/config"
-var statusApi string = "api/v1/edgedevice/info"
-var metricsApi string = "api/v1/edgedevice/metrics"
-var flowlogAPI = "api/v1/edgedevice/flowlog"
 
 // This is set once at init time and not changed
 var serverName string
@@ -86,16 +82,16 @@ func handleConfigInit(networkSendTimeout uint32) {
 	serverNameAndPort = strings.TrimSpace(string(bytes))
 	serverName = strings.Split(serverNameAndPort, ":")[0]
 
-	v2api := false // XXX set
 	zedcloudCtx.DeviceNetworkStatus = deviceNetworkStatus
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
 	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
 	zedcloudCtx.NetworkSendTimeout = networkSendTimeout
-	zedcloudCtx.V2API = v2api
+	zedcloudCtx.V2API = zedcloud.UseV2API()
 	log.Infof("Configure Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
+	log.Infof("handleConfigInit: Use V2 API %v\n", zedcloud.UseV2API())
 
 	// XXX need to redo this since the root certificates can change
 	err = zedcloud.UpdateTLSConfig(&zedcloudCtx, serverName, nil)
@@ -122,7 +118,7 @@ func handleConfigInit(networkSendTimeout uint32) {
 func configTimerTask(handleChannel chan interface{},
 	getconfigCtx *getconfigContext) {
 
-	configUrl := serverNameAndPort + "/" + configApi
+	configUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "config")
 	iteration := 0
 	getconfigCtx.rebootFlag = getLatestConfig(configUrl, iteration,
 		getconfigCtx)
@@ -206,14 +202,17 @@ func getLatestConfig(url string, iteration int,
 	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, size, buf, iteration, return400)
 	if err != nil {
 		newCount := 2
-		if rtf {
-			log.Errorf("getLatestConfig remoteTemporaryFailure: %s", err)
+		if rtf == types.SenderStatusRemTempFail {
+			log.Infof("getLatestConfig remoteTemporaryFailure: %s", err)
 			newCount = 3 // Almost connected to controller!
 			// Don't treat as upgrade failure
 			if getconfigCtx.updateInprogress {
 				log.Warnf("remoteTemporaryFailure don't fail update")
 				getconfigCtx.configGetStatus = types.ConfigGetTemporaryFail
 			}
+		} else if rtf == types.SenderStatusCertMiss {
+			// trigger a one sec timer to acquire new certs from cloud
+			triggerFetchCerts(getconfigCtx.zedagentCtx)
 		} else {
 			log.Errorf("getLatestConfig failed: %s", err)
 		}
@@ -246,8 +245,8 @@ func getLatestConfig(url string, iteration int,
 		return false
 	}
 
-	if err := validateConfigMessage(url, resp); err != nil {
-		log.Errorln("validateConfigMessage: ", err)
+	if err := validateProtoMessage(url, resp); err != nil {
+		log.Errorln("validateProtoMessage: ", err)
 		// Inform ledmanager about cloud connectivity
 		utils.UpdateLedManagerConfig(3)
 		getconfigCtx.ledManagerCount = 3
@@ -281,7 +280,60 @@ func getLatestConfig(url string, iteration int,
 	return inhaleDeviceConfig(config, getconfigCtx, false)
 }
 
-func validateConfigMessage(url string, r *http.Response) error {
+func getCloudCertChain(ctx *zedagentContext) bool {
+	// get Certs is always V2 API, if the reply turns out it's not, will reset it, use http for now
+	zedcloudCtx.V2API = true
+	certURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, true, nilUUID, "certs")
+	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, certURL, 0, nil, 0, false)
+	if err != nil {
+		if rtf == types.SenderStatusRemTempFail {
+			log.Infof("getCloudCertChain remoteTemporaryFailure: %s", err)
+		} else {
+			log.Errorf("getCloudCertChain failed: %s", err)
+		}
+		return false
+	}
+
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusCreated, http.StatusNotModified:
+		log.Infof("getCloudCertChain: status %s\n", resp.Status)
+	case http.StatusNotFound, http.StatusUnauthorized, http.StatusNotImplemented, http.StatusBadRequest:
+		log.Infof("getCloudCertChain: server %s does not support V2 API\n", serverName)
+		zedcloudCtx.V2API = false
+		return false
+	default:
+		log.Errorf("getCloudCertChain: statuscode %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+		return false
+	}
+
+	err = validateProtoMessage(certURL, resp)
+	if err != nil {
+		log.Errorf("getCloudCertChain: resp header error\n")
+		return false
+	}
+
+	certBytes, err := zedcloud.VerifyCloudCertChain(zedcloudCtx, serverName, contents)
+	if err != nil {
+		log.Errorf("getCloudCertChain: verify err %v", err)
+		return false
+	}
+	err = fileutils.WriteRename(types.ServerCertFileName, certBytes)
+	if err != nil {
+		log.Errorf("getCloudCertChain: file save err %v", err)
+		return false
+	}
+
+	log.Infof("getCloudCertChain: success\n")
+	return true
+}
+
+func triggerFetchCerts(ctx *zedagentContext) {
+	// trigger a one sec timer to acquire new certs from cloud
+	log.Infof("triggerFetchCerts: set timer for 1 sec\n")
+	ctx.getCertsTimer = time.NewTimer(1 * time.Second)
+}
+
+func validateProtoMessage(url string, r *http.Response) error {
 	//No check Content-Type for empty response
 	if r.ContentLength == 0 {
 		return nil

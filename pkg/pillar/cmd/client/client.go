@@ -26,6 +26,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -70,12 +71,16 @@ type clientContext struct {
 	subGlobalConfig        pubsub.Subscription
 	globalConfig           *types.GlobalConfig
 	zedcloudCtx            *zedcloud.ZedCloudContext
+	getCertsTimer          *time.Timer
 }
 
 var (
 	debug             = false
 	debugOverride     bool // From command line arg
 	serverNameAndPort string
+	serverName        string
+	onboardTLSConfig  *tls.Config
+	devtlsConfig      *tls.Config
 )
 
 func Run(ps *pubsub.PubSub) { //nolint:gocyclo
@@ -190,14 +195,12 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	clientCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	// XXX set propertly
-	v2api := false
 	zedcloudCtx := zedcloud.ZedCloudContext{
 		DeviceNetworkStatus: clientCtx.deviceNetworkStatus,
 		FailureFunc:         zedcloud.ZedCloudFailure,
 		SuccessFunc:         zedcloud.ZedCloudSuccess,
 		NetworkSendTimeout:  clientCtx.globalConfig.NetworkSendTimeout,
-		V2API:               v2api,
+		V2API:               zedcloud.UseV2API(),
 	}
 
 	// Get device serial number
@@ -229,7 +232,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 
 	var onboardCert tls.Certificate
 	var deviceCertPem []byte
-	var onboardTLSConfig *tls.Config
+	var gotServerCerts bool
 
 	if operations["selfRegister"] {
 		var err error
@@ -255,7 +258,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	if err != nil {
 		log.Fatal(err)
 	}
-	tlsConfig, err := zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
+	devtlsConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
 		serverName, &deviceCert, &zedcloudCtx)
 	if err != nil {
 		log.Fatal(err)
@@ -267,7 +270,11 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	var enterprise string
 	var name string
 	gotUUID := false
+	gotRegister := false
 	retryCount := 0
+	clientCtx.getCertsTimer = time.NewTimer(1 * time.Second)
+	clientCtx.getCertsTimer.Stop()
+
 	for !done {
 		log.Infof("Waiting for usableAddressCount %d and done %v\n",
 			clientCtx.usableAddressCount, done)
@@ -284,13 +291,24 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 				// XXX keep exponential unchanged?
 				break
 			}
-			// XXX server/tls setup from above to capture change
-			// to server file?
-			if operations["selfRegister"] {
+
+			// try to fetch the server certs chain first, if it's V2
+			if !gotServerCerts && zedcloudCtx.V2API {
+				gotServerCerts = fetchCertChain(zedcloudCtx, devtlsConfig, retryCount, true) // XXX always get certs from cloud for now
+				log.Infof("client fetchCertChain, gotServerCerts %v\n", gotServerCerts)
+				if !gotServerCerts {
+					break
+				}
+			}
+
+			if !gotRegister && operations["selfRegister"] {
 				done = selfRegister(zedcloudCtx, onboardTLSConfig, deviceCertPem, retryCount)
+				if done {
+					gotRegister = true
+				}
 				if !done && operations["getUuid"] {
 					// Check if getUUid succeeds
-					done, devUUID, hardwaremodel, enterprise, name = doGetUUID(zedcloudCtx, tlsConfig, retryCount)
+					done, devUUID, hardwaremodel, enterprise, name = doGetUUID(&clientCtx, devtlsConfig, retryCount)
 					if done {
 						log.Infof("getUUID succeeded; selfRegister no longer needed")
 						gotUUID = true
@@ -298,7 +316,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 				}
 			}
 			if !gotUUID && operations["getUuid"] {
-				done, devUUID, hardwaremodel, enterprise, name = doGetUUID(zedcloudCtx, tlsConfig, retryCount)
+				done, devUUID, hardwaremodel, enterprise, name = doGetUUID(&clientCtx, devtlsConfig, retryCount)
 				if done {
 					log.Infof("getUUID succeeded; selfRegister no longer needed")
 					gotUUID = true
@@ -330,6 +348,11 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 					oldUUID.String())
 				done = true
 			}
+
+		case <-clientCtx.getCertsTimer.C:
+			// triggered by cert miss error in doGetUUID, so the TLS is device TLSConfig
+			ok := fetchCertChain(zedcloudCtx, devtlsConfig, retryCount, true)
+			log.Infof("client timer get cert chain %v\n", ok)
 
 		case <-stillRunning.C:
 		}
@@ -410,19 +433,23 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 
 // Post something without a return type.
 // Returns true when done; false when retry
+// the third return value is the extra send status, for Cert Miss status for example
 func myPost(zedcloudCtx zedcloud.ZedCloudContext, tlsConfig *tls.Config,
-	requrl string, retryCount int, reqlen int64, b *bytes.Buffer) (bool, *http.Response, []byte) {
+	requrl string, retryCount int, reqlen int64, b *bytes.Buffer) (bool, *http.Response, types.SenderResult, []byte) {
 
+	senderStatus := types.SenderStatusNone
 	zedcloudCtx.TlsConfig = tlsConfig
 	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx,
 		requrl, reqlen, b, retryCount, return400)
 	if err != nil {
-		if rtf {
+		if rtf == types.SenderStatusRemTempFail {
 			log.Errorf("remoteTemporaryFailure %s", err)
+		} else if rtf == types.SenderStatusCertMiss {
+			log.Infof("client myPost: Cert Miss\n")
 		} else {
 			log.Errorln(err)
 		}
-		return false, resp, contents
+		return false, resp, rtf, contents
 	}
 
 	if !zedcloudCtx.NoLedManager {
@@ -450,36 +477,36 @@ func myPost(zedcloudCtx zedcloud.ZedCloudContext, tlsConfig *tls.Config,
 		log.Errorf("%s StatusConflict\n", requrl)
 		// Retry until fixed
 		log.Errorf("%s\n", string(contents))
-		return false, resp, contents
-	case http.StatusNotModified:
+		return false, resp, senderStatus, contents
+	case http.StatusNotFound, http.StatusUnauthorized, http.StatusNotModified:
 		// Caller needs to handle
-		return false, resp, contents
+		return false, resp, senderStatus, contents
 	default:
 		log.Errorf("%s statuscode %d %s\n",
 			requrl, resp.StatusCode,
 			http.StatusText(resp.StatusCode))
 		log.Errorf("%s\n", string(contents))
-		return false, resp, contents
+		return false, resp, senderStatus, contents
 	}
 
 	contentType := resp.Header.Get("Content-Type")
 	if contentType == "" {
 		log.Errorf("%s no content-type\n", requrl)
-		return false, resp, contents
+		return false, resp, senderStatus, contents
 	}
 	mimeType, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		log.Errorf("%s ParseMediaType failed %v\n", requrl, err)
-		return false, resp, contents
+		return false, resp, senderStatus, contents
 	}
 	switch mimeType {
 	case "application/x-proto-binary", "application/json", "text/plain":
 		log.Debugf("Received reply %s\n", string(contents))
 	default:
 		log.Errorln("Incorrect Content-Type " + mimeType)
-		return false, resp, contents
+		return false, resp, senderStatus, contents
 	}
-	return true, resp, contents
+	return true, resp, senderStatus, contents
 }
 
 // Returns true when done; false when retry
@@ -502,8 +529,9 @@ func selfRegister(zedcloudCtx zedcloud.ZedCloudContext, tlsConfig *tls.Config, d
 		log.Errorln(err)
 		return false
 	}
-	requrl := serverNameAndPort + "/api/v1/edgedevice/register"
-	done, resp, contents := myPost(zedcloudCtx, tlsConfig,
+	// in V2 API, register does not send UUID string
+	requrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, nilUUID, "register")
+	done, resp, _, contents := myPost(zedcloudCtx, tlsConfig,
 		requrl, retryCount,
 		int64(len(b)), bytes.NewBuffer(b))
 	if resp != nil && resp.StatusCode == http.StatusNotModified {
@@ -516,31 +544,96 @@ func selfRegister(zedcloudCtx zedcloud.ZedCloudContext, tlsConfig *tls.Config, d
 		log.Errorf("%s\n", string(contents))
 		done = false
 	}
+
 	return done
 }
 
-func doGetUUID(zedcloudCtx zedcloud.ZedCloudContext, tlsConfig *tls.Config,
+// fetch V2 certs from cloud, return GotCloudCerts and ServerIsV1 boolean
+// if got certs, the leaf is saved to types.ServerCertFileName file
+func fetchCertChain(zedcloudCtx zedcloud.ZedCloudContext, tlsConfig *tls.Config, retryCount int, force bool) bool {
+	var resp *http.Response
+	var b, contents []byte
+	var done bool
+
+	if !force {
+		_, err := os.Stat(types.ServerCertFileName)
+		if err == nil {
+			return true
+		}
+	}
+
+	// certs API is always V2, and without UUID, use http for now
+	requrl := zedcloud.URLPathString(serverNameAndPort, true, true, nilUUID, "certs")
+	// currently there is no data included for the request, same as myGet()
+	done, resp, _, contents = myPost(zedcloudCtx, tlsConfig, requrl, retryCount, int64(len(b)), bytes.NewBuffer(b))
+	if resp != nil {
+		log.Infof("client fetchCertChain done %v, resp-code %d, content len %d", done, resp.StatusCode, len(contents))
+		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusUnauthorized ||
+			resp.StatusCode == http.StatusNotImplemented || resp.StatusCode == http.StatusBadRequest {
+			// cloud server does not support V2 API
+			log.Infof("client fetchCertChain: server %s does not support V2 API\n", serverName)
+			return false
+		}
+		// catch default return status, if not done, will return false later
+		log.Infof("client fetchCertChain: server %s return status %s, done %v\n", serverName, resp.Status, done)
+	} else {
+		log.Infof("client fetchCertChain done %v, resp null, content len %d", done, len(contents))
+	}
+	if !done {
+		return false
+	}
+
+	zedcloudCtx.TlsConfig = tlsConfig
+	// verify the certificate chain and write the siging cert to file
+	certBytes, err := zedcloud.VerifyCloudCertChain(zedcloudCtx, serverName, contents)
+	if err != nil {
+		log.Errorf("client fetchCertChain: verify err %v", err)
+		return false
+	}
+
+	err = fileutils.WriteRename(types.ServerCertFileName, certBytes)
+	if err != nil {
+		log.Errorf("client fetchCertChain: file save err %v", err)
+		return false
+	}
+
+	log.Infof("client fetchCertChain: ok\n")
+	return true
+}
+
+func doGetUUID(ctx *clientContext, tlsConfig *tls.Config,
 	retryCount int) (bool, uuid.UUID, string, string, string) {
 
 	var resp *http.Response
 	var contents []byte
+	var rtf types.SenderResult
+	zedcloudCtx := *ctx.zedcloudCtx
 
-	requrl := serverNameAndPort + "/api/v1/edgedevice/config"
+	// get UUID does not have UUID string in V2 API
+	requrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, nilUUID, "config")
 	b, err := generateConfigRequest()
 	if err != nil {
 		log.Errorln(err)
 		return false, nilUUID, "", "", ""
 	}
 	var done bool
-	done, resp, contents = myPost(zedcloudCtx, tlsConfig, requrl, retryCount,
+	done, resp, rtf, contents = myPost(zedcloudCtx, tlsConfig, requrl, retryCount,
 		int64(len(b)), bytes.NewBuffer(b))
 	if resp != nil && resp.StatusCode == http.StatusNotModified {
 		// Acceptable response for a ConfigRequest POST
 		done = true
 	}
 	if !done {
+		// This may be due to the cloud cert file is stale, since the hash does not match.
+		// acquire new cert chain.
+		if rtf == types.SenderStatusCertMiss {
+			interval := time.Duration(1)
+			ctx.getCertsTimer = time.NewTimer(interval * time.Second)
+			log.Infof("doGetUUID: Cert miss. Setup timer to acquire\n")
+		}
 		return false, nilUUID, "", "", ""
 	}
+	log.Infof("doGetUUID: client getUUID ok\n")
 	devUUID, hardwaremodel, enterprise, name, err := parseConfig(requrl, resp, contents)
 	if err == nil {
 		// Inform ledmanager about config received from cloud
@@ -615,9 +708,25 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	}
 
 	// update proxy certs if configured
-	if ctx.zedcloudCtx != nil && ctx.zedcloudCtx.V2API {
-		zedcloud.UpdateTLSProxyCerts(ctx.zedcloudCtx)
+	ctx.zedcloudCtx.DeviceNetworkStatus = &status
+	// if there is proxy certs change, needs to update both
+	// onboard and device tlsconfig
+	cloudCtx := zedcloud.ZedCloudContext{}
+	cloudCtx.TlsConfig = devtlsConfig
+	cloudCtx.PrevCertPEM = ctx.zedcloudCtx.PrevCertPEM
+	cloudCtx.DeviceNetworkStatus = ctx.zedcloudCtx.DeviceNetworkStatus
+	if cloudCtx.TlsConfig == nil {
+		log.Infof("handleDNSModify: client onboard, tlsconfig nil\n")
 	}
+	updated := zedcloud.UpdateTLSProxyCerts(&cloudCtx)
+	if updated {
+		if onboardTLSConfig != nil {
+			onboardTLSConfig.RootCAs = cloudCtx.TlsConfig.RootCAs
+		}
+		devtlsConfig.RootCAs = cloudCtx.TlsConfig.RootCAs
+		log.Infof("handleDNSModify: client rootCAs updated\n")
+	}
+
 	log.Infof("handleDNSModify done for %s\n", key)
 }
 
