@@ -68,33 +68,33 @@ serial = ['pty']
 		conf.Close()
 	}
 
-	domId, err := hyper.Create("test.1", conf.Name())
+	domID, err := hyper.Create("test.1", conf.Name())
 	if err != nil {
 		t.Errorf("Create domain test failed %v", err)
 	}
 
-	ctx := hyper.(NullContext)
+	ctx := hyper.(nullContext)
 	if _, err := os.Stat(ctx.tempDir + "/test.1"); err != nil {
 		t.Errorf("Create domain didn't deposit a file %s %v", ctx.tempDir, err)
 	}
 
-	if err := hyper.Stop("test.1", domId, true); err == nil {
+	if err := hyper.Stop("test.1", domID, true); err == nil {
 		t.Errorf("Stop domain should've failed for a domain that is not running")
 	}
 
-	if err := hyper.Start("test.1", domId); err != nil {
+	if err := hyper.Start("test.1", domID); err != nil {
 		t.Errorf("Couldn't start a domain %v", err)
 	}
 
-	if err := hyper.Start("test.1", domId); err == nil {
+	if err := hyper.Start("test.1", domID); err == nil {
 		t.Errorf("Start domain should've failed for a domain that is already running")
 	}
 
-	if err := hyper.Stop("test.1", domId, false); err != nil {
+	if err := hyper.Stop("test.1", domID, false); err != nil {
 		t.Errorf("Couldn't stop a domain %v", err)
 	}
 
-	if id, err := hyper.LookupByName("test.1", domId); err != nil || id != domId {
+	if id, err := hyper.LookupByName("test.1", domID); err != nil || id != domID {
 		t.Errorf("LookupByName domain failed %d %v", id, err)
 	}
 
@@ -106,11 +106,11 @@ serial = ['pty']
 		t.Errorf("Info domain should've failed for a domain that is non-existent")
 	}
 
-	if err := hyper.Info("test.1", domId); err != nil {
+	if err := hyper.Info("test.1", domID); err != nil {
 		t.Errorf("Info domain failed %v", err)
 	}
 
-	if err := hyper.Delete("test.1", domId); err != nil {
+	if err := hyper.Delete("test.1", domID); err != nil {
 		t.Errorf("Delete domain failed %v", err)
 	}
 }

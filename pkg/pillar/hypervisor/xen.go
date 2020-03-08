@@ -14,18 +14,18 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type XenContext struct {
+type xenContext struct {
 }
 
 func newXen() Hypervisor {
-	return XenContext{}
+	return xenContext{}
 }
 
-func (ctx XenContext) Name() string {
+func (ctx xenContext) Name() string {
 	return "xen"
 }
 
-func (ctx XenContext) Create(domainName string, xenCfgFilename string) (int, error) {
+func (ctx xenContext) Create(domainName string, xenCfgFilename string) (int, error) {
 	log.Infof("xlCreate %s %s\n", domainName, xenCfgFilename)
 	cmd := "xl"
 	args := []string{
@@ -62,7 +62,7 @@ func (ctx XenContext) Create(domainName string, xenCfgFilename string) (int, err
 	return domainID, nil
 }
 
-func (ctx XenContext) Start(domainName string, domainID int) error {
+func (ctx xenContext) Start(domainName string, domainID int) error {
 	log.Infof("xlUnpause %s %d\n", domainName, domainID)
 	cmd := "xl"
 	args := []string{
@@ -80,7 +80,7 @@ func (ctx XenContext) Start(domainName string, domainID int) error {
 	return nil
 }
 
-func (ctx XenContext) Stop(domainName string, domainID int, force bool) error {
+func (ctx xenContext) Stop(domainName string, domainID int, force bool) error {
 	log.Infof("xlShutdown %s %d\n", domainName, domainID)
 	cmd := "xl"
 	var args []string
@@ -107,7 +107,7 @@ func (ctx XenContext) Stop(domainName string, domainID int, force bool) error {
 	return nil
 }
 
-func (ctx XenContext) Delete(domainName string, domainID int) error {
+func (ctx xenContext) Delete(domainName string, domainID int) error {
 	log.Infof("xlDestroy %s %d\n", domainName, domainID)
 	cmd := "xl"
 	args := []string{
@@ -125,7 +125,7 @@ func (ctx XenContext) Delete(domainName string, domainID int) error {
 	return nil
 }
 
-func (ctx XenContext) Info(domainName string, domainID int) error {
+func (ctx xenContext) Info(domainName string, domainID int) error {
 	log.Infof("xlStatus %s %d\n", domainName, domainID)
 	// XXX xl list -l domainName returns json. XXX but state not included!
 	// Note that state is not very useful anyhow
@@ -149,7 +149,7 @@ func (ctx XenContext) Info(domainName string, domainID int) error {
 	return nil
 }
 
-func (ctx XenContext) LookupByName(domainName string, domainID int) (int, error) {
+func (ctx xenContext) LookupByName(domainName string, domainID int) (int, error) {
 	log.Debugf("xlDomid %s %d\n", domainName, domainID)
 	cmd := "xl"
 	args := []string{
@@ -179,7 +179,7 @@ func (ctx XenContext) LookupByName(domainName string, domainID int) (int, error)
 
 // Perform xenstore write to disable all of these for all VIFs
 // feature-sg, feature-gso-tcpv4, feature-gso-tcpv6, feature-ipv6-csum-offload
-func (ctx XenContext) Tune(domainName string, domainID int, vifCount int) error {
+func (ctx xenContext) Tune(domainName string, domainID int, vifCount int) error {
 	log.Infof("xlDisableVifOffload %s %d %d\n",
 		domainName, domainID, vifCount)
 	pref := "/local/domain"
@@ -229,7 +229,7 @@ func (ctx XenContext) Tune(domainName string, domainID int, vifCount int) error 
 	return nil
 }
 
-func (ctx XenContext) PCIReserve(long string) error {
+func (ctx xenContext) PCIReserve(long string) error {
 	log.Infof("pciAssignableAdd %s\n", long)
 	cmd := "xl"
 	args := []string{
@@ -247,7 +247,7 @@ func (ctx XenContext) PCIReserve(long string) error {
 	return nil
 }
 
-func (ctx XenContext) PCIRelease(long string) error {
+func (ctx xenContext) PCIRelease(long string) error {
 	log.Infof("pciAssignableRemove %s\n", long)
 	cmd := "xl"
 	args := []string{
@@ -266,7 +266,7 @@ func (ctx XenContext) PCIRelease(long string) error {
 	return nil
 }
 
-func (ctx XenContext) IsDeviceModelAlive(domid int) bool {
+func (ctx xenContext) IsDeviceModelAlive(domid int) bool {
 	// create pgrep command to see if dataplane is running
 	match := fmt.Sprintf("domid %d", domid)
 	cmd := wrap.Command("pgrep", "-f", match)
