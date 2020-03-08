@@ -18,11 +18,6 @@ import (
  it makes several very important assumptions
 
  - the registry manifest *also* is in the tar file, named "manifest-<sha256hash>.json"
- - the file is structured as a "docker export" format, and not an OCI v1 format
-
- The latter is in place only because we still are using rkt, which needs an aci,
- which we get via running docker2aci, which only supports docker export files.
- When we get rid of rkt, we should convert these all to OCI v1.
 */
 
 // compute the sha for an OCI tar file with the manifest inside
