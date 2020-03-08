@@ -6,6 +6,21 @@ volumes:
     run: {}
 
 networks:
+    # eve-host:
+    #    external:
+    #        name: host
+    # eve-ipvlan:
+    #    driver: ipvlan
+    #    driver_opts:
+    #        parent: eth0.50
+    #        ipvlan_mode: l2
+    #    enable_ipv6: true
+    #    ipam:
+    #        config:
+    #            - subnet: fde3:84ac:fc48::/48
+    #            - gateway: fde3:84ac:fc48::1
+    #            - subnet: 1.1.1.0/24
+    #            - gateway: 1.1.1.1
     eve:
         driver: bridge
         driver_opts:
@@ -33,6 +48,7 @@ services:
             - type: bind
               source: CURDIR/pkg
               target: /pkg
+        # network_mode: host
         networks:
             - eve
 
@@ -43,6 +59,7 @@ services:
             - persist:/persist
             - config:/config
             - run:/run
+        # network_mode: host
         networks:
             - eve
 
@@ -53,6 +70,7 @@ services:
             - persist:/persist
             - config:/config
             - run:/run
+        # network_mode: host
         networks:
             - eve
 
@@ -63,6 +81,7 @@ services:
             - persist:/persist
             - config:/config
             - run:/run
+        # network_mode: host
         networks:
             - eve
 
@@ -73,6 +92,7 @@ services:
             - persist:/persist
             - config:/config
             - run:/run
+        # network_mode: host
         networks:
             - eve
 
@@ -83,6 +103,7 @@ services:
             - persist:/persist
             - config:/config
             - run:/run
+        # network_mode: host
         networks:
             - eve
 
@@ -93,6 +114,7 @@ services:
             - persist:/persist
             - config:/config
             - run:/run
+        # network_mode: host
         networks:
             - eve
 
@@ -103,6 +125,7 @@ services:
             - persist:/persist
             - config:/config
             - run:/run
+        # network_mode: host
         networks:
             - eve
 
@@ -113,6 +136,7 @@ services:
             - persist:/persist
             - config:/config
             - run:/run
+        # network_mode: host
         networks:
             - eve
 
@@ -123,6 +147,7 @@ services:
             - persist:/persist
             - config:/config
             - run:/run
+        # network_mode: host
         networks:
             - eve
 
@@ -142,6 +167,7 @@ services:
             - type: bind
               source: CURDIR/tools/fake-zboot.sh
               target: /usr/bin/zboot
+        # network_mode: host
         networks:
             - eve
 
@@ -152,5 +178,6 @@ services:
             - persist:/persist
             - config:/config
             - run:/run
+        # network_mode: host
         networks:
             - eve
