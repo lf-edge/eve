@@ -265,23 +265,6 @@ func getContainerConfigs(imageInfo v1.Image, userEnvVars map[string]string) (map
 	return mountpoints, execpath, workdir, env, nil
 }
 
-func getRktPodManifest(PodManifestFile string) (RktPodManifest, error) {
-	// process the json to get the exact item we need
-	var manifest RktPodManifest
-
-	content, err := ioutil.ReadFile(PodManifestFile)
-	if err != nil {
-		log.Errorf("error reading rkt pod manifest %s failed: %v", PodManifestFile, err)
-		return manifest, fmt.Errorf("getRktPodManifest: error reading rkt pod manifest %s failed: %v", PodManifestFile, err)
-	}
-
-	err = json.Unmarshal(content, &manifest)
-	if err != nil {
-		return manifest, fmt.Errorf("getRktPodManifest: error parsing pod rkt manifest for %s: %v", content, err)
-	}
-	return manifest, nil
-}
-
 func loadContainer(ctrdCtx context.Context, ctrdClient *containerd.Client, containerID string) (containerd.Container, error) {
 	if ctrdClient == nil {
 		return nil, fmt.Errorf("loadContainer: Container client is nil")
