@@ -55,7 +55,6 @@ var reportDirPaths = []string{
 	types.PersistDir + "/status",
 	types.PersistDir + "/certs",
 	types.PersistDir + "/checkpoint",
-	types.PersistDir + "/rkt",
 	types.PersistDir + "/IMGA",
 	types.PersistDir + "/IMGB",
 }

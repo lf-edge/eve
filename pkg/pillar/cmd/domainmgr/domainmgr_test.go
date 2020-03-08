@@ -12,14 +12,11 @@ import (
 	"flag"
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
 	"reflect"
 	"testing"
-
-	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 type appImageNameEntry struct {
