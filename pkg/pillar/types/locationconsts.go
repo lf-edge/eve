@@ -22,9 +22,6 @@ const (
 	// named based on sha256 hash each in its own directory
 	VerifiedAppImgDirname = AppImgDirname + "/verified"
 
-	// PersistRktDataDir - Location of rkt dir,
-	PersistRktDataDir = PersistDir + "/rkt"
-
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"
 	// SelfRegFile - name of self-register-filed file

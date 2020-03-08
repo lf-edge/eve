@@ -68,7 +68,6 @@ func (gs *GlobalStatus) UpdateItemValuesFromGlobalConfig(gc GlobalConfig) {
 	gs.setItemValueInt("timer.use.config.checkpoint", gc.StaleConfigTime)
 	gs.setItemValueInt("timer.gc.download", gc.DownloadGCTime)
 	gs.setItemValueInt("timer.gc.vdisk", gc.VdiskGCTime)
-	gs.setItemValueInt("timer.gc.rkt.graceperiod", gc.RktGCGracePeriod)
 	gs.setItemValueInt("timer.download.retry", gc.DownloadRetryTime)
 	gs.setItemValueInt("timer.boot.retry", gc.DomainBootRetryTime)
 	gs.setItemValueInt("storage.dom0.disk.minusage.percent",
@@ -112,7 +111,6 @@ type GlobalConfig struct {
 	StaleConfigTime         uint32 // On reboot use saved config if not stale
 	DownloadGCTime          uint32 // Garbage collect if no use
 	VdiskGCTime             uint32 // Garbage collect RW disk if no use
-	RktGCGracePeriod        uint32 // GracePeriod to be used with rkt gc
 
 	DownloadRetryTime   uint32 // Retry failed download after N sec
 	DomainBootRetryTime uint32 // Retry failed boot after N sec
@@ -208,7 +206,6 @@ var GlobalConfigDefaults = GlobalConfig{
 	VdiskGCTime:         3600, // 1 hour
 	DownloadRetryTime:   600,  // 10 minutes
 	DomainBootRetryTime: 600,  // 10 minutes
-	RktGCGracePeriod:    3600, // 1 hour
 
 	AllowNonFreeAppImages:  TS_ENABLED,
 	AllowNonFreeBaseImages: TS_ENABLED,
@@ -290,10 +287,6 @@ func ApplyGlobalConfig(newgc GlobalConfig) GlobalConfig {
 		newgc.AllowNonFreeBaseImages = GlobalConfigDefaults.AllowNonFreeBaseImages
 	}
 
-	if newgc.RktGCGracePeriod == 0 {
-		newgc.RktGCGracePeriod = GlobalConfigDefaults.RktGCGracePeriod
-	}
-
 	if newgc.Dom0MinDiskUsagePercent == 0 {
 		newgc.Dom0MinDiskUsagePercent =
 			GlobalConfigDefaults.Dom0MinDiskUsagePercent
@@ -321,7 +314,6 @@ var GlobalConfigMinimums = GlobalConfig{
 	DownloadRetryTime:       60,
 	DomainBootRetryTime:     10,
 	Dom0MinDiskUsagePercent: 20,
-	RktGCGracePeriod:        600,
 }
 
 func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
@@ -399,11 +391,6 @@ func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
 		log.Warnf("Enforce minimum DomainBootRetryTime received %d; using %d",
 			newgc.DomainBootRetryTime, GlobalConfigMinimums.DomainBootRetryTime)
 		newgc.DomainBootRetryTime = GlobalConfigMinimums.DomainBootRetryTime
-	}
-	if newgc.RktGCGracePeriod < GlobalConfigMinimums.RktGCGracePeriod {
-		log.Warnf("Enforce minimum RktGCGracePeriod received %d; using %d",
-			newgc.RktGCGracePeriod, GlobalConfigMinimums.RktGCGracePeriod)
-		newgc.RktGCGracePeriod = GlobalConfigMinimums.RktGCGracePeriod
 	}
 	if newgc.Dom0MinDiskUsagePercent < GlobalConfigMinimums.Dom0MinDiskUsagePercent {
 		log.Warnf("Enforce minimum Dom0MinDiskUsagePercent received %d; using %d",
