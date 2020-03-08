@@ -64,6 +64,7 @@ resolve_tags() {
 sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e '/image:.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e "s#EVE_VERSION#$EVE_VERSION#" \
+    -e "s#CURDIR#$(pwd)#" \
     -e "s#ACRN_KERNEL_TAG#$ACRN_KERNEL_TAG#" \
     -e "s#KERNEL_TAG#$KERNEL_TAG#" \
     -e "s#FW_TAG#$FW_TAG#" \
