@@ -17,7 +17,7 @@ type domState struct {
 	state  string
 }
 
-type NullContext struct {
+type nullContext struct {
 	tempDir    string
 	doms       map[string]*domState
 	domCounter int
@@ -25,7 +25,7 @@ type NullContext struct {
 }
 
 func newNull() Hypervisor {
-	res := NullContext{tempDir: "/tmp",
+	res := nullContext{tempDir: "/tmp",
 		doms:       map[string]*domState{},
 		domCounter: 0,
 		PCI:        map[string]bool{}}
@@ -35,11 +35,11 @@ func newNull() Hypervisor {
 	return res
 }
 
-func (ctx NullContext) Name() string {
+func (ctx nullContext) Name() string {
 	return "null"
 }
 
-func (ctx NullContext) Create(domainName string, cfgFilename string) (int, error) {
+func (ctx nullContext) Create(domainName string, cfgFilename string) (int, error) {
 	// pre-flight checks
 	if _, err := os.Stat(cfgFilename); domainName == "" || err != nil {
 		return 0, fmt.Errorf("Null Domain create failed to create domain with either empty name or empty config %s\n", domainName)
@@ -70,7 +70,7 @@ func (ctx NullContext) Create(domainName string, cfgFilename string) (int, error
 	return ctx.domCounter, nil
 }
 
-func (ctx NullContext) Start(domainName string, domainID int) error {
+func (ctx nullContext) Start(domainName string, domainID int) error {
 	if dom, found := ctx.doms[domainName]; found && dom.state == "stopped" {
 		dom.state = "running"
 		return nil
@@ -79,7 +79,7 @@ func (ctx NullContext) Start(domainName string, domainID int) error {
 	}
 }
 
-func (ctx NullContext) Stop(domainName string, domainID int, force bool) error {
+func (ctx nullContext) Stop(domainName string, domainID int, force bool) error {
 	if dom, found := ctx.doms[domainName]; found && dom.state == "running" {
 		dom.state = "stopped"
 		return nil
@@ -88,14 +88,14 @@ func (ctx NullContext) Stop(domainName string, domainID int, force bool) error {
 	}
 }
 
-func (ctx NullContext) Delete(domainName string, domainID int) error {
+func (ctx nullContext) Delete(domainName string, domainID int) error {
 	// calls to Delete are serialized in the consumer: no need to worry about locking
 	os.RemoveAll(ctx.tempDir + "/" + domainName)
 	delete(ctx.doms, domainName)
 	return nil
 }
 
-func (ctx NullContext) Info(domainName string, domainID int) error {
+func (ctx nullContext) Info(domainName string, domainID int) error {
 	if dom, found := ctx.doms[domainName]; found {
 		log.Infof("Null Domain %s is %s and has the following config %s\n", domainName, dom.state, dom.config)
 		return nil
@@ -105,7 +105,7 @@ func (ctx NullContext) Info(domainName string, domainID int) error {
 	}
 }
 
-func (ctx NullContext) LookupByName(domainName string, domainID int) (int, error) {
+func (ctx nullContext) LookupByName(domainName string, domainID int) (int, error) {
 	if dom, found := ctx.doms[domainName]; found {
 		return dom.id, nil
 	} else {
@@ -113,11 +113,11 @@ func (ctx NullContext) LookupByName(domainName string, domainID int) (int, error
 	}
 }
 
-func (ctx NullContext) Tune(string, int, int) error {
+func (ctx nullContext) Tune(string, int, int) error {
 	return nil
 }
 
-func (ctx NullContext) PCIReserve(long string) error {
+func (ctx nullContext) PCIReserve(long string) error {
 	if ctx.PCI[long] {
 		return fmt.Errorf("PCI %s is already reserved", long)
 	} else {
@@ -126,7 +126,7 @@ func (ctx NullContext) PCIReserve(long string) error {
 	}
 }
 
-func (ctx NullContext) PCIRelease(long string) error {
+func (ctx nullContext) PCIRelease(long string) error {
 	if !ctx.PCI[long] {
 		return fmt.Errorf("PCI %s is not reserved", long)
 	} else {
@@ -135,6 +135,6 @@ func (ctx NullContext) PCIRelease(long string) error {
 	}
 }
 
-func (ctx NullContext) IsDeviceModelAlive(int) bool {
+func (ctx nullContext) IsDeviceModelAlive(int) bool {
 	return true
 }

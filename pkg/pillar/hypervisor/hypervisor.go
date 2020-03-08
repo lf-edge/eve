@@ -7,6 +7,7 @@ import (
 	"os"
 )
 
+// Hypervisor provides methods for manipulating domains on the host
 type Hypervisor interface {
 	Name() string
 
@@ -25,6 +26,7 @@ type Hypervisor interface {
 	PCIRelease(string) error
 }
 
+// GetHypervisor returns a particular hypervisor implementation
 func GetHypervisor(hint string) Hypervisor {
 	var knownHypervisors = map[string]func() Hypervisor{
 		"xen":  newXen,

@@ -3,53 +3,53 @@
 
 package hypervisor
 
-type KvmContext struct {
+type kvmContext struct {
 }
 
 func newKvm() Hypervisor {
-	return KvmContext{}
+	return kvmContext{}
 }
 
-func (ctx KvmContext) Name() string {
+func (ctx kvmContext) Name() string {
 	return "kvm"
 }
 
-func (ctx KvmContext) Create(domainName string, xenCfgFilename string) (int, error) {
+func (ctx kvmContext) Create(domainName string, xenCfgFilename string) (int, error) {
 	return 0, nil
 }
 
-func (ctx KvmContext) Start(domainName string, domainID int) error {
+func (ctx kvmContext) Start(domainName string, domainID int) error {
 	return nil
 }
 
-func (ctx KvmContext) Stop(domainName string, domainID int, force bool) error {
+func (ctx kvmContext) Stop(domainName string, domainID int, force bool) error {
 	return nil
 }
 
-func (ctx KvmContext) Delete(domainName string, domainID int) error {
+func (ctx kvmContext) Delete(domainName string, domainID int) error {
 	return nil
 }
 
-func (ctx KvmContext) Info(domainName string, domainID int) error {
+func (ctx kvmContext) Info(domainName string, domainID int) error {
 	return nil
 }
 
-func (ctx KvmContext) LookupByName(domainName string, domainID int) (int, error) {
+func (ctx kvmContext) LookupByName(domainName string, domainID int) (int, error) {
 	return 0, nil
 }
 
-func (ctx KvmContext) Tune(domainName string, domainID int, vifCount int) error {
+func (ctx kvmContext) Tune(domainName string, domainID int, vifCount int) error {
 	return nil
 }
 
-func (ctx KvmContext) PCIReserve(long string) error {
+func (ctx kvmContext) PCIReserve(long string) error {
 	return nil
 }
 
-func (ctx KvmContext) PCIRelease(long string) error {
+func (ctx kvmContext) PCIRelease(long string) error {
 	return nil
 }
 
-func (ctx KvmContext) IsDeviceModelAlive(domid int) bool {
+func (ctx kvmContext) IsDeviceModelAlive(domid int) bool {
 	return true
 }
