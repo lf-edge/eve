@@ -154,9 +154,7 @@ func (ep *OCITransportMethod) processDownload(req *DronaRequest) (int64, error) 
 	}
 	err = appendImageRepositories(req.objloc, ep.registry, ep.path, imageManifest)
 
-	// we do not need to convert the file to aci, or import it
-	// into rkt, as that is done elsewhere. The zedUpload's job is to download
-	// an OCI image as a tar file
+	// zedUpload's job is to download an OCI image as a v1 tar file. Done.
 	return size, nil
 }
 

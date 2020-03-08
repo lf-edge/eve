@@ -311,10 +311,12 @@ At this point you should remove your USB Disk from the UP Squared Board slot and
 A quick note on linuxkit: you may be wondering why do we have a container-based
 architecture for a Xen-centric environment. First of all, OCI containers
 are a key type of a workload for our platform. Which means having
-OCI environment to run them is a key requirement. We do plan to run them
-via Stage 1 Xen [https://github.com/rkt/stage1-xen](https://github.com/rkt/stage1-xen)
-down the road, but
-while that isn't integrated fully we will be simply relying on containerd.
+OCI environment to run them is a key requirement. We run them
+via:
+
+1. Set up the filesystem root using [containerd](https://containerd.io)
+1. Launch the domU using Xen via `xl`
+
 In addition to that, while we plan to build a fully disagregated system
 (with even device drivers running in their separate domains) right now
 we are just getting started and having containers as a first step towards
