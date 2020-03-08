@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/containers"
@@ -132,11 +133,10 @@ func ctrRm(containerID string) error {
 	}
 	defer ctrdClient.Close()
 	ctrdCtx := getContainerdContext(ctrdServicesNamespace)
-	deleteBundle(containerID)
-	return ctrDeleteContainer(ctrdCtx, ctrdClient, containerID)
+	return cleanUpContainer(ctrdCtx, ctrdClient, containerID)
 }
 
-func ctrDeleteContainer(ctrdCtx context.Context, ctrdClient *containerd.Client, containerID string) error {
+func cleanUpContainer(ctrdCtx context.Context, ctrdClient *containerd.Client, containerID string) error {
 	container, err := loadContainer(ctrdCtx, ctrdClient, containerID)
 	if err != nil {
 		return err
@@ -144,10 +144,13 @@ func ctrDeleteContainer(ctrdCtx context.Context, ctrdClient *containerd.Client, 
 	if container == nil {
 		return nil
 	}
-	err = container.Delete(ctrdCtx)
-	if err != nil {
+	if err := container.Delete(ctrdCtx); err != nil {
 		log.Errorf("Unable to delete container: %v. %v", containerID, err.Error())
-		return fmt.Errorf("ctrDeleteContainer: Unable to delete container: %v. %v", containerID, err.Error())
+		return fmt.Errorf("cleanUpContainer: Unable to delete container: %v. %v", containerID, err.Error())
+	}
+	if err := deleteBundle(containerID); err != nil {
+		log.Errorf("Unable to delete bundle of container: %v. %v", containerID, err.Error())
+		return fmt.Errorf("cleanUpContainer: Unable to delete bundle of container: %v. %v", containerID, err.Error())
 	}
 
 	return nil
@@ -263,23 +266,6 @@ func getContainerConfigs(imageInfo v1.Image, userEnvVars map[string]string) (map
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
 	return mountpoints, execpath, workdir, env, nil
-}
-
-func getRktPodManifest(PodManifestFile string) (RktPodManifest, error) {
-	// process the json to get the exact item we need
-	var manifest RktPodManifest
-
-	content, err := ioutil.ReadFile(PodManifestFile)
-	if err != nil {
-		log.Errorf("error reading rkt pod manifest %s failed: %v", PodManifestFile, err)
-		return manifest, fmt.Errorf("getRktPodManifest: error reading rkt pod manifest %s failed: %v", PodManifestFile, err)
-	}
-
-	err = json.Unmarshal(content, &manifest)
-	if err != nil {
-		return manifest, fmt.Errorf("getRktPodManifest: error parsing pod rkt manifest for %s: %v", content, err)
-	}
-	return manifest, nil
 }
 
 func loadContainer(ctrdCtx context.Context, ctrdClient *containerd.Client, containerID string) (containerd.Container, error) {
@@ -426,16 +412,6 @@ func getImageInfoJSON(ctrdCtx context.Context, image containerd.Image) (string, 
 
 // Util methods
 
-func buildEnvVarsSlice(envMap map[string]string) []string {
-	var envVars []string
-
-	for envName, envValue := range envMap {
-		envVars = append(envVars, fmt.Sprintf("%s=%s", envName, envValue))
-	}
-
-	return envVars
-}
-
 // getJSON - returns input in JSON format
 func getJSON(x interface{}) (string, error) {
 	b, err := json.MarshalIndent(x, "", "    ")
@@ -472,10 +448,16 @@ func executeShellCommands(commands []*command) ([]string, error) {
 	return results, nil
 }
 
-func deleteBundle(containerID string) {
-	os.RemoveAll(getContainerPath(containerID))
-}
-
 func isContainerNotFound(e error) bool {
 	return strings.HasSuffix(e.Error(), ": not found")
+}
+
+func deleteBundle(containerID string) error {
+	if err := syscall.Unmount(getContainerRootfs(containerID), 0); err != nil {
+		return fmt.Errorf("deleteBundle: Exception while unmounting: %v. %v", getContainerRootfs(containerID), err.Error())
+	}
+	if err := os.RemoveAll(getContainerPath(containerID)); err != nil {
+		return fmt.Errorf("deleteBundle: Exception while deleting: %v. %v", getContainerPath(containerID), err.Error())
+	}
+	return nil
 }
