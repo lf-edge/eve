@@ -319,7 +319,7 @@ func constructDatastoreContext(config types.DownloaderConfig, status *types.Down
 
 func sourceFailureError(ip, ifname, url string, err error) {
 	log.Errorf("Source IP %s failed: %s\n", ip, err)
-	zedcloud.ZedCloudFailure(ifname, url, 1024, 0)
+	zedcloud.ZedCloudFailure(ifname, url, 1024, 0, false)
 }
 
 func getDatastoreCredential(dst types.DatastoreConfig) (zconfig.CredentialBlock, error) {

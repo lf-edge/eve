@@ -96,9 +96,11 @@ func (t *WSTunnelClient) TestConnection(devNetStatus *types.DeviceNetworkStatus,
 	t.LocalRelayServer = strings.TrimSuffix(t.LocalRelayServer, "/")
 
 	log.Debugf("Testing connection to %s on local address: %v, proxy: %v", t.Tunnel, localAddr, proxyURL)
+	log.Infof("Testing connection to %s on local address: %v, proxy: %v", t.Tunnel, localAddr, proxyURL)
 
 	serverName := strings.Split(t.TunnelServerNameAndPort, ":")[0]
-	// XXX assume v1 API for now
+
+	// zedcloudCtx V2API UseV2API()
 	tlsConfig, err := GetTlsConfig(devNetStatus, serverName, nil, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -117,14 +119,18 @@ func (t *WSTunnelClient) TestConnection(devNetStatus *types.DeviceNetworkStatus,
 		dialer.Proxy = http.ProxyURL(proxyURL)
 	}
 
-	pingURL := fmt.Sprintf("%s/api/v1/edgedevice/connection/ping", t.Tunnel)
+	// XXX keep the wstunnel as v1 for now
+	pingURL := URLPathString(t.Tunnel, false, false, nilUUID, "connection/ping")
 	log.Debugf("Testing connection to ping url: %s", pingURL)
 	_, resp, err := dialer.Dial(pingURL, nil)
-
+	if resp == nil { // this can get error, but with resp code is still 200
+		log.Infof("TestConnection: url %s, resp %v, err %v", pingURL, resp, err)
+		return err
+	}
 	log.Debugf("Read ping response status code: %v for ping url: %s", resp.StatusCode, pingURL)
 
 	if resp.StatusCode == http.StatusOK {
-		url := fmt.Sprintf("%s/api/v1/edgedevice/connection/tunnel", t.Tunnel)
+		url := URLPathString(t.Tunnel, false, false, nilUUID, "connection/tunnel")
 		t.DestURL = url
 		t.Dialer = dialer
 		log.Infof("Connection test succeeded for url: %s on local address: %v, proxy: %v", url, localAddr, proxyURL)

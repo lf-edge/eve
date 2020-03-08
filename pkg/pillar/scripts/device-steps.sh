@@ -9,14 +9,13 @@ CONFIGDIR=/config
 PERSISTDIR=/persist
 PERSIST_RKT_DATA_DIR=$PERSISTDIR/rkt
 PERSIST_RKT_CNI_DIR=$PERSISTDIR/rkt-cni
+PERSIST_CERTS=$PERSISTDIR/certs
 BINDIR=/opt/zededa/bin
 TMPDIR=/persist/tmp
 ZTMPDIR=/var/tmp/zededa
 DPCDIR=$ZTMPDIR/DevicePortConfig
 FIRSTBOOTFILE=$ZTMPDIR/first-boot
 GCDIR=$PERSISTDIR/config/GlobalConfig
-LOGDIRA=$PERSISTDIR/IMGA/log
-LOGDIRB=$PERSISTDIR/IMGB/log
 AGENTS0="logmanager ledmanager nim nodeagent"
 AGENTS1="zedmanager zedrouter domainmgr downloader verifier identitymgr zedagent baseosmgr wstunnelclient"
 AGENTS="$AGENTS0 $AGENTS1"
@@ -69,7 +68,7 @@ if ! mount -o remount,flush,dirsync,noatime $CONFIGDIR; then
     echo "$(date -Ins -u) Remount $CONFIGDIR failed"
 fi
 
-DIRS="$CONFIGDIR $ZTMPDIR $CONFIGDIR/DevicePortConfig"
+DIRS="$CONFIGDIR $ZTMPDIR $CONFIGDIR/DevicePortConfig $PERSIST_CERTS"
 
 for d in $DIRS; do
     d1=$(dirname "$d")
@@ -104,25 +103,16 @@ if [ ! -f /config/v2tlsbaseroot-certificates.pem ]; then
     cp -p /etc/ssl/certs/ca-certificates.crt /config/v2tlsbaseroot-certificates.pem
 fi
 sha=$(openssl sha256 /config/v2tlsbaseroot-certificates.pem | awk '{print $2}')
-if [ ! -f "/persist/certs/$sha" ]; then
-    echo "$(date -Ins -u) Adding /config/v2tlsbaseroot-certificates.pem to /persist/certs"
-    cp /config/v2tlsbaseroot-certificates.pem "/persist/certs/$sha"
+if [ ! -f "$PERSIST_CERTS/$sha" ]; then
+    echo "$(date -Ins -u) Adding /config/v2tlsbaseroot-certificates.pem to $PERSIST_CERTS"
+    cp /config/v2tlsbaseroot-certificates.pem "$PERSIST_CERTS/$sha"
 fi
-if [ ! -f /persist/certs/v2tlsbaseroot-certificates.sha256 ]; then
+if [ ! -f "$PERSIST_CERTS/v2tlsbaseroot-certificates.sha256" ]; then
     echo "$(date -Ins -u) Setting /config/v2tlsbaseroot-certificates.pem as current"
-    echo "$sha" >/persist/certs/v2tlsbaseroot-certificates.sha256
+    echo "$sha" >"$PERSIST_CERTS/v2tlsbaseroot-certificates.sha256"
 fi
 
 CONFIGDEV=$(zboot partdev CONFIG)
-
-if [ ! -d $LOGDIRA ]; then
-    echo "$(date -Ins -u) Creating $LOGDIRA"
-    mkdir -p $LOGDIRA
-fi
-if [ ! -d $LOGDIRB ]; then
-    echo "$(date -Ins -u) Creating $LOGDIRB"
-    mkdir -p $LOGDIRB
-fi
 
 P3=$(/hostfs/sbin/findfs PARTLABEL=P3)
 P3_FS_TYPE=$(blkid "$P3"| awk '{print $3}' | sed 's/TYPE=//' | sed 's/"//g')
@@ -145,12 +135,6 @@ if [ ! -d "$PERSIST_RKT_CNI_DIR" ]; then
     chmod 744 "$PERSIST_RKT_CNI_DIR"
 fi
 
-if [ -f $PERSISTDIR/IMGA/reboot-reason ]; then
-    echo "IMGA reboot-reason: $(cat $PERSISTDIR/IMGA/reboot-reason)"
-fi
-if [ -f $PERSISTDIR/IMGB/reboot-reason ]; then
-    echo "IMGB reboot-reason: $(cat $PERSISTDIR/IMGB/reboot-reason)"
-fi
 if [ -f $PERSISTDIR/reboot-reason ]; then
     echo "Common reboot-reason: $(cat $PERSISTDIR/reboot-reason)"
 fi
@@ -197,6 +181,9 @@ if ! pgrep ledmanager >/dev/null; then
     echo "$(date -Ins -u) Starting ledmanager"
     ledmanager &
     wait_for_touch ledmanager
+fi
+if [ ! -f $CONFIGDIR/device.cert.pem ]; then
+    touch $FIRSTBOOTFILE # For nodeagent
 fi
 echo "$(date -Ins -u) Starting nodeagent"
 $BINDIR/nodeagent -c $CURPART &
@@ -333,7 +320,6 @@ touch "$WATCHDOG_PID/zedclient.pid" \
 
 if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     echo "$(date -Ins -u) Generating a device key pair and self-signed cert (using TPM/TEE if available)"
-    touch $FIRSTBOOTFILE # For zedagent
     touch $CONFIGDIR/self-register-pending
     sync
     blockdev --flushbufs "$CONFIGDEV"

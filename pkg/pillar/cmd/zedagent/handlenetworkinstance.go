@@ -54,6 +54,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 	*infoType = zinfo.ZInfoTypes_ZiNetworkInstance
 	infoMsg.DevId = *proto.String(zcdevUUID.String())
 	infoMsg.Ztype = *infoType
+	infoMsg.AtTimeStamp = ptypes.TimestampNow()
 
 	uuid := status.Key()
 	info := new(zinfo.ZInfoNetworkInstance)
@@ -684,7 +685,7 @@ func publishInfoToZedCloud(UUID string, infoMsg *zinfo.ZInfoMsg, iteration int) 
 	if err != nil {
 		log.Fatal("publishInfoToZedCloud proto marshaling error: ", err)
 	}
-	statusUrl := serverNameAndPort + "/" + statusApi
+	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "info")
 	zedcloud.RemoveDeferred(UUID)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
@@ -840,12 +841,12 @@ func sendFlowProtobuf(protoflows *flowlog.FlowMessage) {
 		flowIteration++
 		buf := bytes.NewBuffer(data)
 		size := int64(proto.Size(&pflows))
-		flowlogURL := serverNameAndPort + "/" + flowlogAPI
+		flowlogURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "flowlog")
 		const return400 = false
 		_, _, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, flowlogURL,
 			size, buf, flowIteration, return400)
 		if err != nil {
-			if rtf {
+			if rtf == types.SenderStatusRemTempFail {
 				log.Errorf("FlowStats: sendFlowProtobuf  remoteTemporaryFailure: %s",
 					err)
 			} else {

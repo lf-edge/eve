@@ -47,7 +47,6 @@ import (
 const (
 	agentName          = "zedagent"
 	restartCounterFile = types.IdentityDirname + "/restartcounter"
-	firstbootFile      = types.TmpDirname + "/first-boot"
 	// checkpointDirname - location of config checkpoint
 	checkpointDirname = types.PersistDir + "/checkpoint"
 	// Time limits for event loop handlers
@@ -117,6 +116,7 @@ type zedagentContext struct {
 	physicalIoAdapterMap      map[string]types.PhysicalIOAdapter
 	globalConfig              types.GlobalConfig
 	globalStatus              types.GlobalStatus
+	getCertsTimer             *time.Timer
 }
 
 var debug = false
@@ -855,6 +855,9 @@ func Run(ps *pubsub.PubSub) {
 	// XXX close handleChannels?
 	getconfigCtx.configTickerHandle = configTickerHandle
 
+	zedagentCtx.getCertsTimer = time.NewTimer(1 * time.Second)
+	zedagentCtx.getCertsTimer.Stop()
+
 	for {
 		select {
 		case change := <-subZbootStatus.MsgChan():
@@ -979,6 +982,13 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subControllerCertConfig.MsgChan():
 			subControllerCertConfig.ProcessChange(change)
+
+		case <-zedagentCtx.getCertsTimer.C:
+			start := time.Now()
+			ok := getCloudCertChain(&zedagentCtx)
+			log.Infof("zedagent Run: getCertsTimer get cloud cert ok %v\n", ok)
+			pubsub.CheckMaxTimeTopic(agentName, "getCertsTimer", start,
+				warningTime, errorTime)
 
 		case <-stillRunning.C:
 			// Fault injection

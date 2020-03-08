@@ -29,7 +29,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/watch"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/satori/go.uuid"
@@ -42,7 +41,6 @@ const (
 	commonLogdir     = types.PersistDir + "/log"
 	lastSentDirname  = "lastlogsent"  // Directory in /persist/
 	lastDeferDirname = "lastlogdefer" // Directory in /persist/
-	logsAPI          = "api/v1/edgedevice/logs"
 	logMaxMessages   = 100
 	logMaxBytes      = 32768 // Approximate - no headers counted
 	// Time limits for event loop handlers
@@ -303,43 +301,6 @@ func Run(ps *pubsub.PubSub) {
 
 	// Start sender of log events
 	go processEvents(currentPartition, lastSent, loggerChan, eveVersion)
-
-	// If we have a logdir from a failed update, then set that up
-	// as well.
-	// XXX we can close this down once we've reached EOF for all the
-	// files in otherLogdirname. This is TBD
-	// Closing otherLoggerChan would the effect of terminating the
-	// processEvents go routine but we need to tell when all the files
-	// have reached the end.
-	otherLogDirname := agentlog.GetOtherLogdir()
-	otherLogDirChanges := make(chan string)
-	var otherCtx = loggerContext{}
-
-	if otherLogDirname != "" {
-		log.Infof("Have logs from failed upgrade in %s\n",
-			otherLogDirname)
-		otherLoggerChan := make(chan logEntry)
-		otherPartition := zboot.GetOtherPartition()
-		lastSent := readLast(lastSentDirname, otherPartition)
-		lastSentStr, _ := lastSent.MarshalText()
-		log.Debugf("Other partition logs were last sent at %s\n",
-			string(lastSentStr))
-
-		go processEvents(otherPartition, lastSent, otherLoggerChan, eveVersion)
-
-		go watch.WatchStatus(otherLogDirname, false, otherLogDirChanges)
-		otherCtx = loggerContext{logChan: otherLoggerChan,
-			image: otherPartition}
-	}
-
-	logDirChanges := make(chan string)
-	go watch.WatchStatus(logDirName, false, logDirChanges)
-
-	// Run these dir -> event as goroutines since they will block
-	// when there is backpressure
-	// XXX state sharing with HandleDeferred?
-	go handleLogDir(logDirChanges, logDirName, &ctx)
-	go handleLogDir(otherLogDirChanges, otherLogDirname, &otherCtx)
 
 	go parseAndSendSyslogEntries(&ctx)
 
@@ -757,14 +718,13 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 	serverName = strings.Split(serverName, ":")[0]
 
 	//set log url
-	logsURL = serverNameAndPort + "/" + logsAPI
+	zedcloudCtx.V2API = zedcloud.UseV2API()
 
-	v2api := false // XXX set
 	zedcloudCtx.DeviceNetworkStatus = deviceNetworkStatus
 	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
 	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
 	zedcloudCtx.NetworkSendTimeout = ctx.globalConfig.NetworkSendTimeout
-	zedcloudCtx.V2API = v2api
+	log.Infof("sendCtxInit: Use V2 API %v\n", zedcloud.UseV2API())
 
 	// get the edge box serial number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
@@ -797,6 +757,8 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 		zedcloudCtx.DevUUID = devUUID
 		break
 	}
+	// wait for uuid of logs V2 URL string
+	logsURL = zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "logs")
 	log.Infof("Read UUID %s\n", devUUID)
 }
 

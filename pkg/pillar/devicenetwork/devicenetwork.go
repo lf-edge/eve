@@ -94,15 +94,14 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	}
 	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
-	testUrl := serverNameAndPort + "/api/v1/edgedevice/ping"
 
-	// XXX set by caller?
-	v2api := false
 	zedcloudCtx := zedcloud.ZedCloudContext{
 		DeviceNetworkStatus: &status,
 		NetworkSendTimeout:  timeout,
-		V2API:               v2api,
+		V2API:               zedcloud.UseV2API(),
 	}
+	log.Infof("VerifyDeviceNetworkStatus: Use V2 API %v\n", zedcloud.UseV2API())
+	testURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, nilUUID, "ping")
 
 	// Get device serial number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
@@ -127,7 +126,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 		tlsConfig, err = zedcloud.GetTlsConfig(zedcloudCtx.DeviceNetworkStatus,
 			serverName, clientCert, &zedcloudCtx)
 		if err != nil {
-			errStr := "TLS configuration for talking to Zedcloud cannot be found"
+			errStr := fmt.Sprintf("TLS configuration for talking to Zedcloud cannot be found: %s", err)
 
 			log.Infof("VerifyDeviceNetworkStatus: %s\n", errStr)
 			return false, errors.New(errStr)
@@ -142,7 +141,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 			return false, errors.New(errStr)
 		}
 	}
-	cloudReachable, rtf, err := zedcloud.VerifyAllIntf(zedcloudCtx, testUrl, retryCount, 1)
+	cloudReachable, rtf, err := zedcloud.VerifyAllIntf(zedcloudCtx, testURL, retryCount, 1)
 	if err != nil {
 		if rtf {
 			log.Errorf("VerifyDeviceNetworkStatus: VerifyAllIntf remoteTemporaryFailure %s",
@@ -155,10 +154,10 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	}
 
 	if cloudReachable {
-		log.Infof("Uplink test SUCCESS to URL: %s", testUrl)
+		log.Infof("Uplink test SUCCESS to URL: %s", testURL)
 		return false, nil
 	}
-	errStr := fmt.Sprintf("Uplink test FAIL to URL: %s", testUrl)
+	errStr := fmt.Sprintf("Uplink test FAIL to URL: %s", testURL)
 	log.Errorf("VerifyDeviceNetworkStatus: %s\n", errStr)
 	return rtf, errors.New(errStr)
 }

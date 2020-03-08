@@ -17,6 +17,7 @@ type ZedcloudMetric struct {
 	LastFailure  time.Time
 	LastSuccess  time.Time
 	URLCounters  map[string]UrlcloudMetrics
+	AuthFailCount uint64
 }
 
 // UrlcloudMetrics are metrics for a particular URL

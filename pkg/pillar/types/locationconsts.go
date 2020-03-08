@@ -46,6 +46,11 @@ const (
 	// UUIDFileName - device UUID
 	UUIDFileName = IdentityDirname + "/uuid"
 
+	// APIV2FileName - user can statically allow for API v2
+	APIV2FileName = IdentityDirname + "/Force-API-V2"
+	// ServerCertFileName - filename for server leaf certificate
+	ServerCertFileName = CertificateDirname + "/server.cert0.pem"
+
 	// AppImgObj - name of app image obj dir
 	AppImgObj = "appImg.obj"
 	// BaseOsObj - name of base image obj dir

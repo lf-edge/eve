@@ -815,6 +815,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			log.Warnf("verifyDomain(%s) domainID changed from %d to %d\n",
 				status.Key(), status.DomainId, domainID)
 			status.DomainId = domainID
+			status.BootTime = time.Now()
 			publishDomainStatus(ctx, status)
 		}
 		// check if qemu processes has crashed
@@ -2981,6 +2982,8 @@ func handlePhysicalIOAdapterListCreateModify(ctxArg interface{},
 		// Setup list first because functions lookup in IoBundleList
 		for _, phyAdapter := range phyIOAdapterList.AdapterList {
 			ib := *types.IoBundleFromPhyAdapter(phyAdapter)
+			// We assume AddOrUpdateIoBundle will preserve any
+			// existing IsPort/IsPCIBack/UsedByUUID
 			aa.AddOrUpdateIoBundle(ib)
 		}
 		// Now initialize each entry
@@ -3065,6 +3068,7 @@ func handleIBCreate(ctx *domainContext, ib types.IoBundle) {
 			ib.Type, ib.Name, err)
 		return
 	}
+	// We assume AddOrUpdateIoBundle will preserve any existing Unique/MacAddr
 	aa.AddOrUpdateIoBundle(ib)
 }
 
@@ -3392,13 +3396,14 @@ func handleIBDelete(ctx *domainContext, name string) {
 			ib.IsPCIBack = false
 		}
 	}
+	// Create a new list with everything but "ib" included
 	replace := types.AssignableAdapters{Initialized: true,
 		IoBundleList: make([]types.IoBundle, len(aa.IoBundleList)-1)}
 	for _, e := range aa.IoBundleList {
 		if e.Type == ib.Type && e.Name == ib.Name {
 			continue
 		}
-		replace.AddOrUpdateIoBundle(e)
+		replace.IoBundleList = append(replace.IoBundleList, e)
 	}
 	*ctx.assignableAdapters = replace
 	checkIoBundleAll(ctx)

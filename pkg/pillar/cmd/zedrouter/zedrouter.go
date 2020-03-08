@@ -405,6 +405,8 @@ func Run(ps *pubsub.PubSub) {
 			subAssignableAdapters.ProcessChange(change)
 
 		case change := <-subAppNetworkConfig.MsgChan():
+			// If we have an NetworkInstanceConfig process it first
+			checkAndProcessNetworkInstanceConfig(&zedrouterCtx)
 			subAppNetworkConfig.ProcessChange(change)
 
 		case change := <-subDeviceNetworkStatus.MsgChan():
@@ -438,6 +440,8 @@ func Run(ps *pubsub.PubSub) {
 			subAssignableAdapters.ProcessChange(change)
 
 		case change := <-subAppNetworkConfig.MsgChan():
+			// If we have an NetworkInstanceConfig process it first
+			checkAndProcessNetworkInstanceConfig(&zedrouterCtx)
 			subAppNetworkConfig.ProcessChange(change)
 
 		case change := <-subAppNetworkConfigAg.MsgChan():
@@ -573,6 +577,17 @@ func Run(ps *pubsub.PubSub) {
 			pubsub.CheckMaxTimeTopic(agentName, "allocatorGC", start,
 				warningTime, errorTime)
 		}
+	}
+}
+
+// If we have an NetworkInstanceConfig process it first
+func checkAndProcessNetworkInstanceConfig(ctx *zedrouterContext) {
+	select {
+	case change := <-ctx.subNetworkInstanceConfig.MsgChan():
+		log.Infof("Processing NetworkInstanceConfig before AppNetworkConfig")
+		ctx.subNetworkInstanceConfig.ProcessChange(change)
+	default:
+		log.Infof("NO NetworkInstanceConfig before AppNetworkConfig")
 	}
 }
 
