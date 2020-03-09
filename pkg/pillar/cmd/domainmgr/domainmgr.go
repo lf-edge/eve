@@ -126,12 +126,12 @@ var hyper hypervisor.Hypervisor // Current hypervisor
 
 func Run(ps *pubsub.PubSub) {
 	handlersInit()
+	allHypervisors, enabledHypervisors := hypervisor.GetAvailableHypervisors()
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
-	hypervisorPtr := flag.String("h", "xen", "Current hypervisor (xen, kvm, acrn, null). Default is xen")
+	hypervisorPtr := flag.String("h", enabledHypervisors[0], fmt.Sprintf("Current hypervisor %+q", allHypervisors))
 	flag.Parse()
-	hyper = hypervisor.GetHypervisor(*hypervisorPtr)
 	debug = *debugPtr
 	debugOverride = debug
 	if debugOverride {
@@ -145,6 +145,11 @@ func Run(ps *pubsub.PubSub) {
 		return
 	}
 	err := agentlog.Init(agentName, curpart)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	hyper, err = hypervisor.GetHypervisor(*hypervisorPtr)
 	if err != nil {
 		log.Fatal(err)
 	}

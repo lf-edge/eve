@@ -29,9 +29,9 @@ type appImageNameEntry struct {
 func TestDefaultXenHypervisor(t *testing.T) {
 	hypervisorPtr := flag.String("h", "xen", "")
 	flag.CommandLine.Parse([]string{""})
-	hyper = hypervisor.GetHypervisor(*hypervisorPtr)
-	if hyper.Name() != "xen" {
-		t.Errorf("Expected xen default hypervisor, got %s", hyper.Name())
+	hyper, err := hypervisor.GetHypervisor(*hypervisorPtr)
+	if err != nil || hyper.Name() != "xen" {
+		t.Errorf("Expected xen default hypervisor, got %s with error %v", hyper.Name(), err)
 	}
 }
 

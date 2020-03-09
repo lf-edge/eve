@@ -4,12 +4,21 @@
 package hypervisor
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
 )
 
-var hyper = GetHypervisor("null")
+var hyper Hypervisor
+
+func init() {
+	var err error
+	hyper, err = GetHypervisor("null")
+	if hyper.Name() != "null" || err != nil {
+		panic(fmt.Sprintf("Requested null hypervisor, got %s (with error %v) instead", hyper.Name(), err))
+	}
+}
 
 func TestNullCreate(t *testing.T) {
 	if _, err := hyper.Create("", ""); err == nil {
