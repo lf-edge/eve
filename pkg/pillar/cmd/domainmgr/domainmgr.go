@@ -371,6 +371,10 @@ func Run(ps *pubsub.PubSub) {
 	gc := time.NewTicker(duration * time.Second)
 	gcResetObjectsLastUse(&domainCtx, rwImgDirname)
 
+	if err := initContainerdClient(); err != nil {
+		log.Fatal(err)
+	}
+	defer ctrdClient.Close()
 	for {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
