@@ -1253,7 +1253,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			return
 		}
 
-		file.WriteString(fmt.Sprintf("p9=[ 'tag=share_dir,security_model=none,path=%s']\n", getContainerRootfs(podUUID)))
+		file.WriteString(fmt.Sprintf("p9=[ 'tag=share_dir,security_model=none,path=%s']\n", getContainerPath(podUUID)))
 
 		status.PodUUID = podUUID
 	}
@@ -1668,10 +1668,10 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 	return nil
 }
 
-func createMountPointExecEnvFiles(rootFs string, mountpoints map[string]struct{}, execpath []string, workdir string, env []string, noOfDisks int) error {
-	mpFileName := rootFs + "/mountPoints"
-	cmdFileName := rootFs + "/cmdline"
-	envFileName := rootFs + "/environment"
+func createMountPointExecEnvFiles(containerPath string, mountpoints map[string]struct{}, execpath []string, workdir string, env []string, noOfDisks int) error {
+	mpFileName := containerPath + "/mountPoints"
+	cmdFileName := containerPath + "/cmdline"
+	envFileName := containerPath + "/environment"
 
 	mpFile, err := os.Create(mpFileName)
 	if err != nil {
