@@ -6,6 +6,7 @@
 package types
 
 import (
+	"fmt"
 	"path"
 	"time"
 
@@ -43,7 +44,7 @@ type VerifyConfig struct {
 
 // Key returns the pubsub Key
 func (config VerifyImageConfig) Key() string {
-	return config.ImageID.String()
+	return fmt.Sprintf("%s.%s", config.ImageID.String(), config.VerifyConfig.ImageSha256)
 }
 
 func (config VerifyImageConfig) VerifyFilename(fileName string) bool {
@@ -99,7 +100,7 @@ type VerifyStatus struct {
 
 // Key returns the pubsub Key
 func (status VerifyImageStatus) Key() string {
-	return status.ImageID.String()
+	return fmt.Sprintf("%s.%s", status.ImageID.String(), status.VerifyStatus.ImageSha256)
 }
 
 func (status VerifyImageStatus) VerifyFilename(fileName string) bool {

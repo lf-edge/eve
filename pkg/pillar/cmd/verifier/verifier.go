@@ -690,12 +690,12 @@ func verifierPersistSubscription(ctx *verifierContext, objType string) pubsub.Su
 
 // Callers must be careful to publish any changes to VerifyImageStatus
 func lookupVerifyImageStatus(ctx *verifierContext, objType string,
-	imageID string) *types.VerifyImageStatus {
+	key string) *types.VerifyImageStatus {
 
 	pub := verifierPublication(ctx, objType)
-	st, _ := pub.Get(imageID)
+	st, _ := pub.Get(key)
 	if st == nil {
-		log.Infof("lookupVerifyImageStatus(%s) not found\n", imageID)
+		log.Infof("lookupVerifyImageStatus (%s) not found\n", key)
 		return nil
 	}
 	status := st.(types.VerifyImageStatus)

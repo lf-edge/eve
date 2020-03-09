@@ -19,13 +19,13 @@ import (
 var nilUUID uuid.UUID
 
 func lookupDownloaderConfig(ctx *baseOsMgrContext, objType string,
-	imageID uuid.UUID) *types.DownloaderConfig {
+	imageID uuid.UUID, imageSha256 string) *types.DownloaderConfig {
 
 	pub := downloaderPublication(ctx, objType)
-	c, _ := pub.Get(imageID.String())
+	c, _ := pub.Get(fmt.Sprintf("%s.%s", imageID.String(), imageSha256))
 	if c == nil {
-		log.Infof("lookupDownloaderConfig(%s/%s) not found\n",
-			objType, imageID)
+		log.Infof("lookupDownloaderConfig(%s/%s.%s) not found\n",
+			objType, imageID, imageSha256)
 		return nil
 	}
 	config := c.(types.DownloaderConfig)
@@ -37,7 +37,7 @@ func createDownloaderConfig(ctx *baseOsMgrContext, objType string, imageID uuid.
 
 	log.Infof("createDownloaderConfig(%s/%s)\n", objType, imageID)
 
-	if m := lookupDownloaderConfig(ctx, objType, imageID); m != nil {
+	if m := lookupDownloaderConfig(ctx, objType, imageID, sc.ImageSha256); m != nil {
 		m.RefCount += 1
 		log.Infof("createDownloaderConfig(%s) refcount to %d\n",
 			imageID, m.RefCount)
@@ -51,8 +51,9 @@ func createDownloaderConfig(ctx *baseOsMgrContext, objType string, imageID uuid.
 			NameIsURL:   sc.NameIsURL,
 			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
 				objType),
-			Size:     sc.Size,
-			RefCount: 1,
+			Size:        sc.Size,
+			RefCount:    1,
+			ImageSha256: sc.ImageSha256,
 		}
 		publishDownloaderConfig(ctx, objType, &n)
 	}
@@ -83,7 +84,7 @@ func updateDownloaderStatus(ctx *baseOsMgrContext,
 	// 2. downloader set Expired in status when garbage collecting.
 	// If we have no RefCount we delete the config.
 
-	config := lookupDownloaderConfig(ctx, status.ObjType, status.ImageID)
+	config := lookupDownloaderConfig(ctx, status.ObjType, status.ImageID, status.ImageSha256)
 	if config == nil && status.RefCount == 0 {
 		log.Infof("updateDownloaderStatus adding RefCount=0 config %s\n",
 			key)
@@ -94,8 +95,9 @@ func updateDownloaderStatus(ctx *baseOsMgrContext,
 			NameIsURL:   status.NameIsURL,
 			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
 				objType),
-			Size:     status.Size,
-			RefCount: 0,
+			Size:        status.Size,
+			RefCount:    0,
+			ImageSha256: status.ImageSha256,
 		}
 		publishDownloaderConfig(ctx, status.ObjType, &n)
 		return
@@ -120,11 +122,11 @@ func updateDownloaderStatus(ctx *baseOsMgrContext,
 }
 
 // Lookup published config;
-func removeDownloaderConfig(ctx *baseOsMgrContext, objType string, imageID uuid.UUID) {
+func removeDownloaderConfig(ctx *baseOsMgrContext, objType, imageSha256 string, imageID uuid.UUID) {
 
 	log.Infof("removeDownloaderConfig(%s/%s)\n", objType, imageID)
 
-	config := lookupDownloaderConfig(ctx, objType, imageID)
+	config := lookupDownloaderConfig(ctx, objType, imageID, imageSha256)
 	if config == nil {
 		log.Infof("removeDownloaderConfig(%s/%s) no Config\n",
 			objType, imageID)
@@ -142,14 +144,14 @@ func removeDownloaderConfig(ctx *baseOsMgrContext, objType string, imageID uuid.
 }
 
 // Note that this function returns the entry even if Pending* is set.
-func lookupDownloaderStatus(ctx *baseOsMgrContext, objType string,
+func lookupDownloaderStatus(ctx *baseOsMgrContext, objType, imageSha256 string,
 	imageID uuid.UUID) *types.DownloaderStatus {
 
 	sub := downloaderSubscription(ctx, objType)
-	c, _ := sub.Get(imageID.String())
+	c, _ := sub.Get(fmt.Sprintf("%s.%s", imageID.String(), imageSha256))
 	if c == nil {
-		log.Infof("lookupDownloaderStatus(%s/%s) not found\n",
-			objType, imageID)
+		log.Infof("lookupDownloaderStatus(%s/%s.%s) not found\n",
+			objType, imageID, imageSha256)
 		return nil
 	}
 	status := c.(types.DownloaderStatus)
@@ -249,7 +251,7 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 			ret.Changed = true
 		}
 
-		ds := lookupDownloaderStatus(ctx, objType, ss.ImageID)
+		ds := lookupDownloaderStatus(ctx, objType, ss.ImageSha256, ss.ImageID)
 		if ds == nil {
 			log.Infof("LookupDownloaderStatus %s not yet\n",
 				imageID)

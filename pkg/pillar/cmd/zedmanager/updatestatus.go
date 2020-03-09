@@ -329,7 +329,7 @@ func doInstallProcessStorageEntriesWithVerifiedImage(
 	// Check if image is already verified
 	// Look for matching sha if ssPtr.ImageSha256 is set and we didn't
 	// find based on ImageID
-	vs := lookupVerifyImageStatus(ctx, imageID)
+	vs := lookupVerifyImageStatus(ctx, imageID, ssPtr.ImageSha256)
 	if vs == nil {
 		log.Infof("Verifier status not found for %s sha %s",
 			imageID, ssPtr.ImageSha256)
@@ -410,7 +410,7 @@ func ensureVerifiedRefCount(ctx *zedmanagerContext, appInstUUID uuid.UUID,
 
 	changed := false
 	if !ssPtr.HasVerifierRef &&
-		(lookupVerifyImageStatus(ctx, ssPtr.ImageID) != nil ||
+		(lookupVerifyImageStatus(ctx, ssPtr.ImageID, ssPtr.ImageSha256) != nil ||
 			lookupPersistImageStatus(ctx, ssPtr.ImageSha256) != nil) {
 
 		log.Infof("!HasVerifierRef")
@@ -556,7 +556,7 @@ func doInstall(ctx *zedmanagerContext,
 			ss.HasDownloaderRef = true
 			changed = true
 		}
-		ds := lookupDownloaderStatus(ctx, imageID)
+		ds := lookupDownloaderStatus(ctx, imageID, ss.ImageSha256)
 		if ds == nil || ds.Expired || ds.RefCount == 0 {
 			if ds == nil {
 				log.Infof("downloadStatus not found. name: %s", imageID)
@@ -690,7 +690,7 @@ func doInstall(ctx *zedmanagerContext,
 				ss)
 		} else {
 			// Look based on ImageID and SHA
-			vs := lookupVerifyImageStatus(ctx, ss.ImageID)
+			vs := lookupVerifyImageStatus(ctx, ss.ImageID, ss.ImageSha256)
 			if vs == nil {
 				// Keep at current state
 				minState = types.DOWNLOADED
@@ -732,7 +732,7 @@ func doInstall(ctx *zedmanagerContext,
 				changed = true
 			}
 			if vs.Pending() {
-				log.Infof("lookupVerifyImageStatus %s Pending\n", imageID)
+				log.Infof("lookupVerifyImageStatus (%s.%s) Pending\n", imageID, ss.ImageSha256)
 				continue
 			}
 			if vs.LastErr != "" {
@@ -1216,13 +1216,13 @@ func MaybeRemoveStorageStatus(ctx *zedmanagerContext, ss *types.StorageStatus) b
 
 	// Decrease refcount if we had increased it
 	if ss.HasVerifierRef {
-		MaybeRemoveVerifyImageConfig(ctx, ss.ImageID)
+		MaybeRemoveVerifyImageConfig(ctx, ss.ImageID, ss.ImageSha256)
 		ss.HasVerifierRef = false
 		changed = true
 	}
 	// Decrease refcount if we had increased it
 	if ss.HasDownloaderRef {
-		MaybeRemoveDownloaderConfig(ctx, ss.ImageID)
+		MaybeRemoveDownloaderConfig(ctx, ss.ImageID, ss.ImageSha256)
 		ss.HasDownloaderRef = false
 		changed = true
 	}

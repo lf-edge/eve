@@ -244,12 +244,12 @@ func doCertObjUninstall(ctx *baseOsMgrContext, uuidStr string,
 			uuidStr, ss.ImageID)
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {
-			removeDownloaderConfig(ctx, types.CertObj, ss.ImageID)
+			removeDownloaderConfig(ctx, types.CertObj, ss.ImageSha256, ss.ImageID)
 			ss.HasDownloaderRef = false
 			changed = true
 		}
 
-		ds := lookupDownloaderStatus(ctx, types.CertObj, ss.ImageID)
+		ds := lookupDownloaderStatus(ctx, types.CertObj, ss.ImageSha256, ss.ImageID)
 		// XXX if additional refs it will not go away
 		if false && ds != nil {
 			log.Infof("doCertObjUninstall(%s) download %s not yet gone\n",

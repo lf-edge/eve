@@ -699,7 +699,7 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 			log.Infof("doBaseOsUninstall(%s) for %s, HasDownloaderRef %s\n",
 				status.BaseOsVersion, uuidStr, ss.ImageID)
 
-			removeDownloaderConfig(ctx, types.BaseOsObj, ss.ImageID)
+			removeDownloaderConfig(ctx, types.BaseOsObj, ss.ImageSha256, ss.ImageID)
 			ss.HasDownloaderRef = false
 			changed = true
 		} else {
@@ -707,7 +707,7 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 				status.BaseOsVersion, uuidStr)
 		}
 
-		ds := lookupDownloaderStatus(ctx, types.BaseOsObj, ss.ImageID)
+		ds := lookupDownloaderStatus(ctx, types.BaseOsObj, ss.ImageSha256, ss.ImageID)
 		if ds != nil {
 			log.Infof("doBaseOsUninstall(%s) for %s, Download %s not yet gone; RefCount %d\n",
 				status.BaseOsVersion, uuidStr, ss.ImageID,

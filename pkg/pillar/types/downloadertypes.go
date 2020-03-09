@@ -4,6 +4,7 @@
 package types
 
 import (
+	"fmt"
 	"time"
 
 	uuid "github.com/satori/go.uuid"
@@ -21,10 +22,11 @@ type DownloaderConfig struct {
 	Size             uint64 // In bytes
 	FinalObjDir      string // final Object Store
 	RefCount         uint
+	ImageSha256      string
 }
 
 func (config DownloaderConfig) Key() string {
-	return config.ImageID.String()
+	return fmt.Sprintf("%s.%s", config.ImageID.String(), config.ImageSha256)
 }
 
 func (config DownloaderConfig) VerifyFilename(fileName string) bool {
@@ -68,10 +70,11 @@ type DownloaderStatus struct {
 	LastErr          string // Download error
 	LastErrTime      time.Time
 	RetryCount       int
+	ImageSha256      string
 }
 
 func (status DownloaderStatus) Key() string {
-	return status.ImageID.String()
+	return fmt.Sprintf("%s.%s", status.ImageID.String(), status.ImageSha256)
 }
 
 func (status DownloaderStatus) VerifyFilename(fileName string) bool {

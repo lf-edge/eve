@@ -340,6 +340,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 			LastUse:          time.Now(),
 			AllowNonFreePort: config.AllowNonFreePort,
 			PendingAdd:       true,
+			ImageSha256:      config.ImageSha256,
 		}
 		status = &status0
 	} else {
@@ -351,6 +352,7 @@ func handleCreate(ctx *downloaderContext, objType string,
 		status.RefCount = config.RefCount
 		status.LastUse = time.Now()
 		status.Expired = false
+		status.ImageSha256 = config.ImageSha256
 	}
 	publishDownloaderStatus(ctx, status)
 

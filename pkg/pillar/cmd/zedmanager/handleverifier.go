@@ -4,19 +4,21 @@
 package zedmanager
 
 import (
+	"fmt"
+
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 func lookupVerifyImageConfig(ctx *zedmanagerContext,
-	imageID uuid.UUID) *types.VerifyImageConfig {
+	imageID uuid.UUID, imageSha256 string) *types.VerifyImageConfig {
 
 	pub := ctx.pubAppImgVerifierConfig
-	c, _ := pub.Get(imageID.String())
+	c, _ := pub.Get(fmt.Sprintf("%s.%s", imageID.String(), imageSha256))
 	if c == nil {
-		log.Infof("lookupVerifyImageConfig(%s) not found\n",
-			imageID)
+		log.Infof("lookupVerifyImageConfig(%s.%s) not found\n",
+			imageID, imageSha256)
 		return nil
 	}
 	config := c.(types.VerifyImageConfig)
@@ -61,7 +63,7 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, uuidStr string,
 		}
 	}
 
-	m := lookupVerifyImageConfig(ctx, imageID)
+	m := lookupVerifyImageConfig(ctx, imageID, ss.ImageSha256)
 	if m != nil {
 		m.RefCount += 1
 		log.Infof("MaybeAddVerifyImageConfig: refcnt to %d for %s\n",
@@ -101,11 +103,11 @@ func MaybeAddVerifyImageConfig(ctx *zedmanagerContext, uuidStr string,
 
 // MaybeRemoveVerifyImageConfig decreases the refcount and if it
 // reaches zero the verifier might start a GC using the Expired exchange
-func MaybeRemoveVerifyImageConfig(ctx *zedmanagerContext, imageID uuid.UUID) {
+func MaybeRemoveVerifyImageConfig(ctx *zedmanagerContext, imageID uuid.UUID, imageSha256 string) {
 
 	log.Infof("MaybeRemoveVerifyImageConfig for %s\n", imageID)
 
-	m := lookupVerifyImageConfig(ctx, imageID)
+	m := lookupVerifyImageConfig(ctx, imageID, imageSha256)
 	if m == nil {
 		log.Infof("MaybeRemoveVerifyImageConfig: config missing for %s\n",
 			imageID)
@@ -250,12 +252,12 @@ func sumVerifyImageRefCount(ctx *zedmanagerContext, imageSha string) uint {
 
 // Note that this function returns the entry even if Pending* is set.
 func lookupVerifyImageStatus(ctx *zedmanagerContext,
-	imageID uuid.UUID) *types.VerifyImageStatus {
+	imageID uuid.UUID, imageSha256 string) *types.VerifyImageStatus {
 
 	sub := ctx.subAppImgVerifierStatus
-	s, _ := sub.Get(imageID.String())
+	s, _ := sub.Get(fmt.Sprintf("%s.%s", imageID.String(), imageSha256))
 	if s == nil {
-		log.Infof("lookupVerifyImageStatus(%s) not found\n", imageID)
+		log.Infof("lookupVerifyImageStatus(%s.%s) not found\n", imageID, imageSha256)
 		return nil
 	}
 	status := s.(types.VerifyImageStatus)
@@ -270,7 +272,7 @@ func handleVerifyImageStatusDelete(ctxArg interface{}, key string,
 	ctx := ctxArg.(*zedmanagerContext)
 	removeAIStatusImageID(ctx, status.ImageID)
 	// If we still publish a config with RefCount == 0 we delete it.
-	config := lookupVerifyImageConfig(ctx, status.ImageID)
+	config := lookupVerifyImageConfig(ctx, status.ImageID, status.ImageSha256)
 	if config != nil && config.RefCount == 0 {
 		log.Infof("handleVerifyImageStatusDelete delete config for %s\n",
 			key)
