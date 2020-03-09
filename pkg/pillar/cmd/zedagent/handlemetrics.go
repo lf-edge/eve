@@ -1225,6 +1225,13 @@ func encodeNetworkPortConfig(npc *types.NetworkPortConfig) *info.DevicePort {
 	// XXX  string dhcpRangeHigh = 18;
 
 	dp.Proxy = encodeProxyStatus(&npc.ProxyConfig)
+	if !npc.ParseErrorTime.IsZero() {
+		errInfo := new(info.ErrorInfo)
+		errInfo.Description = npc.ParseError
+		errTime, _ := ptypes.TimestampProto(npc.ParseErrorTime)
+		errInfo.Timestamp = errTime
+		dp.Err = errInfo
+	}
 	return dp
 }
 
