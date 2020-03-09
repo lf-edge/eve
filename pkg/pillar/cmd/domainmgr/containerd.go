@@ -18,6 +18,7 @@ import (
 	"github.com/containerd/containerd/mount"
 	"github.com/containerd/containerd/namespaces"
 	"github.com/containerd/containerd/oci"
+	"github.com/containerd/containerd/runtime/v2/runc/options"
 	"github.com/containerd/typeurl"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -169,11 +170,14 @@ func ctrCreate(ctrdCtx context.Context, ctrdClient *containerd.Client, container
 		return fmt.Errorf("ctrCreate: Container context is nil")
 	}
 
+	// containerOpts = append(containerOpts, containerd.WithNewSpec(oci.WithImageConfig(ctrdImage)))
 	containerSnapshot := fmt.Sprintf("%s-snapshot", containerID)
-	containerOpts = append(containerOpts, containerd.WithImage(ctrdImage))
-	containerOpts = append(containerOpts, containerd.WithNewSnapshot(containerSnapshot, ctrdImage))
-	containerOpts = append(containerOpts, containerd.WithNewSpec(oci.WithImageConfig(ctrdImage)))
-	containerOpts = append(containerOpts, containerd.WithSpec(&ociSpec, ociOpts...))
+	containerOpts = append(containerOpts,
+		containerd.WithImage(ctrdImage),
+		containerd.WithSnapshotter(defaultSnapshotter),
+		containerd.WithNewSnapshot(containerSnapshot, ctrdImage),
+		containerd.WithRuntime("io.containerd.runc.v2", &options.Options{}),
+		containerd.WithSpec(&ociSpec, ociOpts...))
 	container, err := ctrdClient.NewContainer(
 		ctrdCtx,
 		containerID,
@@ -230,6 +234,16 @@ func ctrPrepare(ociFilename string, envVars map[string]string, noOfDisks int) (s
 	imageInfo, err := getImageInfo(ctrdCtx, ctrdImage)
 	if err != nil {
 		return containerID, fmt.Errorf("ctrPrepare: unable to get image: %v config: %v", ctrdImage.Name(), err)
+	}
+	// containerd.NewImageWithPlatform(client, i, platforms.Only(platform))
+	unpacked, err := ctrdImage.IsUnpacked(ctrdCtx, defaultSnapshotter)
+	if err != nil {
+		return containerID, fmt.Errorf("ctrPrepare: unable to get image metadata: %v config: %v", ctrdImage.Name(), err)
+	}
+	if !unpacked {
+		if err := ctrdImage.Unpack(ctrdCtx, defaultSnapshotter); err != nil {
+			return containerID, fmt.Errorf("ctrPrepare: unable to unpack image: %v config: %v", ctrdImage.Name(), err)
+		}
 	}
 	if err = ctrCreate(ctrdCtx, ctrdClient, containerID, ctrdImage); err != nil {
 		return containerID, fmt.Errorf("ctrPrepare: failed to create container %s, error: %v", containerID, err.Error())
