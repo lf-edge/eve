@@ -3,6 +3,7 @@
 start_rsyslogd()
 {
     RSYSLOG_WORK_DIR=/persist/rsyslog
+    RSYSLOG_BACKUP_DIR=/persist/rsyslog-backup
     OLD_DIR=/persist/syslog
     # We need to clean up old state it seems. Use $OLD_DIR as the hint
     if [ -d "$OLD_DIR" ]; then
@@ -13,6 +14,10 @@ start_rsyslogd()
     if [ ! -d "$RSYSLOG_WORK_DIR" ]; then
         mkdir -p $RSYSLOG_WORK_DIR
         chmod 644 $RSYSLOG_WORK_DIR
+    fi
+    if [ ! -d "$RSYSLOG_BACKUP_DIR" ]; then
+        mkdir -p $RSYSLOG_BACKUP_DIR
+        chmod 644 $RSYSLOG_BACKUP_DIR
     fi
 
     IMGP=$(cat /run/eve.id 2>/dev/null)
@@ -69,6 +74,8 @@ do
         NAME="rsyslogd-$(date '+%Y-%m-%d-%H-%M-%S').tar.gz"
         tar -cvzf "/persist/rsyslog-backup/$NAME" /persist/rsyslog/*
         rm -rf /persist/rsyslog
+        TAR_SIZE=$(stat -c %s /persist/rsyslog-backup/"$NAME")
+        echo "rsyslogd: Moved $TAR_SIZE bytes of compressed logs into /persist/rsyslog-backup/$NAME"
 
         # restart and wait for rsyslogd
         if [ "$RSYSLOGD_RESTART_COUNT" -ge "$RSYSLOGD_MAX_RESTART_COUNT" ]; then
