@@ -5,10 +5,22 @@
 
 PERSISTDIR=/var/persist
 CONFIGDIR=/var/config
+
+# The only bit of initialization we do is to point containerd to /persist
+# The trick here is to only do it if /persist is available and otherwise
+# allow containerd to run with /var/lib/containerd on tmpfs (to make sure
+# that the system comes up somehow)
+init_containerd() {
+    mkdir -p "$PERSISTDIR/containerd"
+    mkdir -p /hostfs/var/lib
+    ln -s "$PERSISTDIR/containerd" /hostfs/var/lib/containerd
+}
+
 mkdir -p $PERSISTDIR
 chmod 700 $PERSISTDIR
 mkdir -p $CONFIGDIR
 chmod 700 $CONFIGDIR
+
 if CONFIG=$(/hostfs/sbin/findfs PARTLABEL=CONFIG) && [ -n "$CONFIG" ]; then
     if ! fsck.vfat -y "$CONFIG"; then
         echo "$(date -Ins -u) fsck.vfat $CONFIG failed"
@@ -55,6 +67,8 @@ if P3=$(/hostfs/sbin/findfs PARTLABEL=P3) && [ -n "$P3" ]; then
     if [ "$P3_FS_TYPE" = "ext3" ]; then
         if ! mount -t ext3 -o dirsync,noatime "$P3" $PERSISTDIR; then
             echo "$(date -Ins -u) mount $P3 failed"
+        else
+            init_containerd
         fi
     fi
     #On ext4, enable encryption support before mounting.
@@ -63,13 +77,7 @@ if P3=$(/hostfs/sbin/findfs PARTLABEL=P3) && [ -n "$P3" ]; then
         if ! mount -t ext4 -o dirsync,noatime "$P3" $PERSISTDIR; then
             echo "$(date -Ins -u) mount $P3 failed"
         else
-            # The only bit of initialization we do is to point containerd to /persist
-            # The trick here is to only do it if /persist is available and otherwise
-            # allow containerd to run with /var/lib/containerd on tmpfs (to make sure
-            # that the system comes up somehow)
-            mkdir -p "$PERSISTDIR/containerd"
-            mkdir -p /hostfs/var/lib
-            ln -s "$PERSISTDIR/containerd" /hostfs/var/lib/containerd
+            init_containerd
         fi
     fi
 else
