@@ -236,13 +236,13 @@ func ctrPrepare(ociFilename string, envVars map[string]string, noOfDisks int) (s
 		return containerID, fmt.Errorf("ctrPrepare: failed to create container %s, error: %v", containerID, err.Error())
 	}
 	// inject a few files of our own into the bundle
-	containerRootfs := getContainerRootfs(containerID)
+	containerpath := getContainerPath(containerID)
 	mountpoints, execpath, workdir, env, err := getContainerConfigs(imageInfo, envVars)
 	if err != nil {
 		return containerID, fmt.Errorf("ctrPrepare: unable to get container config: %v", err)
 	}
 
-	err = createMountPointExecEnvFiles(containerRootfs, mountpoints, execpath, workdir, env, noOfDisks)
+	err = createMountPointExecEnvFiles(containerpath, mountpoints, execpath, workdir, env, noOfDisks)
 
 	return containerID, err
 }
