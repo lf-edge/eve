@@ -3,7 +3,6 @@
 start_rsyslogd()
 {
     RSYSLOG_WORK_DIR=/persist/rsyslog
-    RSYSLOG_BACKUP_DIR=/persist/rsyslog-backup
     OLD_DIR=/persist/syslog
     # We need to clean up old state it seems. Use $OLD_DIR as the hint
     if [ -d "$OLD_DIR" ]; then
@@ -14,10 +13,6 @@ start_rsyslogd()
     if [ ! -d "$RSYSLOG_WORK_DIR" ]; then
         mkdir -p $RSYSLOG_WORK_DIR
         chmod 644 $RSYSLOG_WORK_DIR
-    fi
-    if [ ! -d "$RSYSLOG_BACKUP_DIR" ]; then
-        mkdir -p $RSYSLOG_BACKUP_DIR
-        chmod 644 $RSYSLOG_BACKUP_DIR
     fi
 
     IMGP=$(cat /run/eve.id 2>/dev/null)
@@ -70,12 +65,16 @@ do
     PID=$(pgrep rsyslogd)
     if [ "$PID" != "$RSYSLOG_PID" ] || [ -z "$RSYSLOG_PID" ]; then
         echo "Error: rsyslogd died, trying to restart rsyslogd"
-        # tar the current contents of /persist/rsyslog and clear them
-        NAME="rsyslogd-$(date '+%Y-%m-%d-%H-%M-%S').tar.gz"
-        tar -cvzf "/persist/rsyslog-backup/$NAME" /persist/rsyslog/*
+        IFS_BAK=$IFS
+        IFS="$(printf '%b_' '\n')"; IFS="${IFS%_}"
+        TOTAL_BYTES=0
+        for line in $(stat -c %s /persist/rsyslog/*)
+        do
+            TOTAL_BYTES=$(( TOTAL_BYTES + line ))
+        done
+        IFS=$IFS_BAK
         rm -rf /persist/rsyslog
-        TAR_SIZE=$(stat -c %s /persist/rsyslog-backup/"$NAME")
-        echo "rsyslogd: Moved $TAR_SIZE bytes of compressed logs into /persist/rsyslog-backup/$NAME"
+        echo "rsyslogd: Removed $TOTAL_BYTES bytes worth of logs from /persist/rsyslog"
 
         # restart and wait for rsyslogd
         if [ "$RSYSLOGD_RESTART_COUNT" -ge "$RSYSLOGD_MAX_RESTART_COUNT" ]; then
