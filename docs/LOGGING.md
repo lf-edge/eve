@@ -20,6 +20,15 @@ The imemlogd plugin looks for json messages in the log and then skips the precee
 
 Logs coming from pillar container that cannot be json parsed or truncated will have their source field set to pillar.out/pillar.err in EVE log API. It is at times useful to look for pillar.out/pillar.err as source match criteria in EVE log API. The same applies to other containers like lisp, xen-tools etc.
 
+Logs coming from xen-tools container are of three kinds:
+
+* container itself logs under the name of ```xen-tools```
+* xen hypervisor logs under the name ```hypervisor```
+* each domain launched by xen-tools container also logs under the following names
+  * ```guest_vm/[VM_NAME]``` logs the console output for VM_NAME domain
+  * ```qemu-dm-[VM_NAME]``` logs the qemu device model output
+  * ```qdisk-[VM ID]``` logs the qdisk output
+
 If there are too many logs coming from various containers and the log reader is not able to keep up, oldest logs from the current circular buffer will be overwritten. All logs read by memlgod by rsyslogd will be written to disk queues. When there is heavy disk usage and rsyslogd does not get sufficient time to write incoming logs to disk, it can result in log loss from memlogd.
 
 The following diagram shows the flow of logs from containers to rsyslog and to cloud.
