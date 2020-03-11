@@ -133,9 +133,9 @@ func Run(ps *pubsub.PubSub) {
 	}
 
 	pubUuidToNum, err := ps.NewPublication(pubsub.PublicationOptions{
-		AgentName: agentName,
+		AgentName:  agentName,
 		Persistent: true,
-		TopicType: types.UuidToNum{},
+		TopicType:  types.UuidToNum{},
 	})
 	if err != nil {
 		log.Fatal(err)
