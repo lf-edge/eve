@@ -1897,3 +1897,8 @@ type VifIPTrig struct {
 func (vifIP VifIPTrig) Key() string {
 	return vifIP.MacAddr
 }
+
+// OnboardingStatus - UUID, etc. advertised by client process
+type OnboardingStatus struct {
+	DeviceUUID uuid.UUID
+}
