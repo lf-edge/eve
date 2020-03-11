@@ -17,6 +17,8 @@ onboot:
      image: STORAGE_INIT_TAG
    - name: sysctl
      image: linuxkit/sysctl:v0.5
+     binds:
+        - /etc/sysctl.d:/etc/sysctl.d
    - name: rngd
      image: RNGD_TAG
      command: ["/sbin/rngd", "-1"]
