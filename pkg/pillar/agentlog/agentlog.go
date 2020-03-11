@@ -129,7 +129,7 @@ func printStack() {
 	RebootStack(stacks)
 }
 
-// RebootReason writes a reason string in /persist/IMGx/reboot-reason, including agentName and date
+// RebootReason writes a reason string in /persist/reboot-reason, including agentName and date
 // It also appends to /persist/log/reboot-reason.log
 // Note: can not use log here since we are called from a log hook!
 func RebootReason(reason string, normal bool) {
@@ -154,7 +154,7 @@ func RebootReason(reason string, normal bool) {
 	syscall.Sync()
 }
 
-// RebootStack writes stack in /persist/IMGx/reboot-stack
+// RebootStack writes stack in /persist/reboot-stack
 // and appends to /persist/log/reboot-stack.log
 func RebootStack(stacks string) {
 	filename := fmt.Sprintf("%s/%s", types.PersistDir, stackFile)
