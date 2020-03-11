@@ -233,7 +233,7 @@ func Run(ps *pubsub.PubSub) {
 	subDevicePortConfigList, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
 			AgentName:     "nim",
-			Persistent: true,
+			Persistent:    true,
 			TopicImpl:     types.DevicePortConfigList{},
 			Activate:      false,
 			Ctx:           &ctx,
