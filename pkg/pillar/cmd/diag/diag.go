@@ -65,6 +65,7 @@ type diagContext struct {
 	zedcloudCtx             *zedcloud.ZedCloudContext
 	cert                    *tls.Certificate
 	usingOnboardCert        bool
+	devUUID                 uuid.UUID
 }
 
 // Set from Makefile
@@ -231,6 +232,21 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subDevicePortConfigList = subDevicePortConfigList
 	subDevicePortConfigList.Activate()
 
+	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedclient",
+		CreateHandler: handleOnboardStatusModify,
+		ModifyHandler: handleOnboardStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		TopicImpl:     types.OnboardingStatus{},
+		Activate:      true,
+		Persistent:    true,
+		Ctx:           &ctx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	for {
 		select {
 		case change := <-subGlobalConfig.MsgChan():
@@ -243,6 +259,9 @@ func Run(ps *pubsub.PubSub) {
 		case change := <-subDeviceNetworkStatus.MsgChan():
 			ctx.gotDNS = true
 			subDeviceNetworkStatus.ProcessChange(change)
+
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
 
 		case change := <-subDevicePortConfigList.MsgChan():
 			ctx.gotDPCList = true
@@ -382,6 +401,19 @@ func handleDPCModify(ctxArg interface{}, key string, statusArg interface{}) {
 	// XXX set output sched in ctx; print one second later?
 	printOutput(ctx)
 	log.Infof("handleDPCModify done for %s\n", key)
+}
+
+// Handles UUID change from process client
+func handleOnboardStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
+	status := statusArg.(types.OnboardingStatus)
+	ctx := ctxArg.(*diagContext)
+	if cmp.Equal(ctx.devUUID, status.DeviceUUID) {
+		log.Infof("handleOnboardStatusModify no change to %v\n", ctx.devUUID)
+		return
+	}
+	ctx.devUUID = status.DeviceUUID
+	log.Infof("handleOnboardStatusModify changed to %v\n", ctx.devUUID)
+	printOutput(ctx)
 }
 
 // Print output for all interfaces
@@ -791,8 +823,7 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 	}
 	zedcloudCtx := ctx.zedcloudCtx
 
-	// XXX always use nilUUID for now until pub/sub available for UUID
-	reqURL := zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API, false, nilUUID, "config")
+	reqURL := zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API, false, ctx.devUUID, "config")
 	// Set the TLS config on each attempt in case it has changed due to proxies etc
 	err = zedcloud.UpdateTLSConfig(zedcloudCtx, ctx.serverName, ctx.cert)
 	if err != nil {

@@ -145,6 +145,12 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 		log.Fatal(err)
 	}
 
+	pubOnboardStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		TopicType:  types.OnboardingStatus{},
+		Persistent: true,
+	})
+
 	var oldUUID uuid.UUID
 	b, err := ioutil.ReadFile(types.UUIDFileName)
 	if err == nil {
@@ -361,6 +367,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 
 	// Post loop code
 	if devUUID != nilUUID {
+		var trigOnboardStatus types.OnboardingStatus
 		doWrite := true
 		if oldUUID != nilUUID {
 			if oldUUID != devUUID {
@@ -383,6 +390,12 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 			}
 			log.Debugf("Wrote UUID %s\n", devUUID)
 		}
+
+		// always publish the latest UUID
+		trigOnboardStatus.DeviceUUID = devUUID
+		pubOnboardStatus.Publish("global", trigOnboardStatus)
+		log.Infof("client pub OnboardStatus\n")
+
 		doWrite = true
 		if hardwaremodel != "" {
 			if oldHardwaremodel != hardwaremodel {
