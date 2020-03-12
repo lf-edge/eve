@@ -22,9 +22,19 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		displayName)
 
 	changed := false
+	existingConfigChanged := false
 	m := lookupDomainConfig(ctx, key)
 	if m != nil {
 		// XXX any other change? Compare nothing else changed?
+		for i, ss := range aiStatus.StorageStatusList {
+			dc := &m.DiskConfigList[i]
+			if dc.ImageSha256 != ss.ImageSha256 {
+				log.Infof("Updating image sha from %s to %s in domain config",
+					dc.ImageSha256, ss.ImageSha256)
+				dc.ImageSha256 = ss.ImageSha256
+				existingConfigChanged = true
+			}
+		}
 		if m.Activate != aiConfig.Activate {
 			log.Infof("Domain config: Activate changed %s\n", key)
 			changed = true
@@ -36,6 +46,9 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		changed = true
 	}
 	if !changed {
+		if existingConfigChanged {
+			publishDomainConfig(ctx, m)
+		}
 		log.Infof("MaybeAddDomainConfig done for %s\n", key)
 		return nil
 	}

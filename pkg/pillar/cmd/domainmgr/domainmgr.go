@@ -1935,6 +1935,19 @@ func updateStatusFromConfig(status *types.DomainStatus, config types.DomainConfi
 	status.EnableVnc = config.EnableVnc
 	status.VncDisplay = config.VncDisplay
 	status.VncPasswd = config.VncPasswd
+	for i, dc := range config.DiskConfigList {
+		ds := &status.DiskStatusList[i]
+		ds.UpdateDiskStatusFromConfig(dc)
+		location, err := utils.VerifiedImageFileLocation(ds.ImageSha256)
+		if err != nil {
+			log.Errorf("updateStatusFromConfig: Failed to get Image File Location (for image sha %s) err: %s",
+				ds.ImageSha256, err)
+		}
+		ds.FileLocation = location
+		if ds.Format == zconfig.Format_CONTAINER {
+			ds.ActiveFileLocation = location
+		}
+	}
 }
 
 // If we have a -emu named interface we assume it is being used

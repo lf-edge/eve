@@ -963,6 +963,11 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("Waiting for DomainStatus for %s\n", uuidStr)
 		return changed
 	}
+	updated := checkDomainStatus(*ds, *status)
+	if !updated {
+		log.Infof("Waiting for DomainStatus to be updated for %s\n", uuidStr)
+		return changed
+	}
 	if status.DomainName != ds.DomainName {
 		status.DomainName = ds.DomainName
 		changed = true
@@ -1114,6 +1119,25 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	}
 	log.Infof("doActivate done for %s\n", uuidStr)
 	return changed
+}
+
+func checkDomainStatus(ds types.DomainStatus,
+	aiStatus types.AppInstanceStatus) bool {
+
+	for _, ds := range ds.DiskStatusList {
+		for _, ss := range aiStatus.StorageStatusList {
+			if ds.ImageID != ss.ImageID {
+				continue
+			}
+			if ds.ImageSha256 != ss.ImageSha256 {
+				log.Infof("Waiting for domain status to be updated,"+
+					"expected sha256 for %s is: %s but currently is: %s",
+					ss.Name, ss.ImageSha256, ds.ImageSha256)
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // Check if VifUsed has changed and return true if it has

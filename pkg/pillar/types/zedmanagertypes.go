@@ -299,24 +299,32 @@ type StorageStatus struct {
 
 // UpdateFromStorageConfig sets up StorageStatus based on StorageConfig struct
 func (ss *StorageStatus) UpdateFromStorageConfig(sc StorageConfig) {
+	ss.ImageID = sc.ImageID
 	ss.DatastoreID = sc.DatastoreID
 	ss.Name = sc.Name
-	ss.NameIsURL = sc.NameIsURL
-	ss.ImageID = sc.ImageID
 	ss.ImageSha256 = sc.ImageSha256
+	ss.NameIsURL = sc.NameIsURL
 	ss.Size = sc.Size
 	ss.CertificateChain = sc.CertificateChain
 	ss.ImageSignature = sc.ImageSignature
 	ss.SignatureKey = sc.SignatureKey
 	ss.ReadOnly = sc.ReadOnly
 	ss.Preserve = sc.Preserve
-	ss.Format = sc.Format
 	ss.Maxsizebytes = sc.Maxsizebytes
+	ss.Format = sc.Format
 	ss.Devtype = sc.Devtype
 	ss.Target = sc.Target
+	ss.State = 0
+	ss.Progress = 0
+	ss.HasDownloaderRef = false
+	ss.HasVerifierRef = false
 	if ss.Format == zconfig.Format_CONTAINER {
 		ss.IsContainer = true
 	}
+	ss.Vdev = ""
+	ss.ActiveFileLocation = ""
+	ss.FinalObjDir = ""
+	ss.ErrorInfo = ErrorInfo{}
 	return
 }
 

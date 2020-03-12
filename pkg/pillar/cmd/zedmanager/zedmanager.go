@@ -825,6 +825,7 @@ func handleModify(ctxArg interface{}, key string,
 		}
 	}
 	if needPurge || config.PurgeCmd.Counter != status.PurgeCmd.Counter {
+		fetchLatestContainerImage(ctx, config, status)
 		log.Infof("handleModify(%v) for %s purgecmd from %d to %d "+
 			"needPurge: %v\n",
 			config.UUIDandVersion, config.DisplayName,
@@ -862,6 +863,22 @@ func handleDelete(ctx *zedmanagerContext, key string,
 	uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, status.UUIDandVersion.UUID)
 	purgeAppAndImageHash(ctx, status.UUIDandVersion.UUID)
 	log.Infof("handleDelete done for %s\n", status.DisplayName)
+}
+
+func fetchLatestContainerImage(ctx *zedmanagerContext,
+	config types.AppInstanceConfig, status *types.AppInstanceStatus) {
+
+	for i, sc := range config.StorageConfigList {
+		ss := &status.StorageStatusList[i]
+		if ss.ImageSha256 != sc.ImageSha256 {
+			log.Infof("ImageSha256 changed from %v to %v in storage status\n",
+				ss.ImageSha256, sc.ImageSha256)
+			MaybeRemoveStorageStatus(ctx, ss)
+			deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
+				ss.ImageID)
+			ss.UpdateFromStorageConfig(sc)
+		}
+	}
 }
 
 // Returns needRestart, needPurge

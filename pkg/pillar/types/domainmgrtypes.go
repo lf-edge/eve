@@ -158,6 +158,12 @@ func (status DomainStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }
 
+func (status *DiskStatus) UpdateDiskStatusFromConfig(config DiskConfig) {
+	if status.ImageID == config.ImageID {
+		status.ImageSha256 = config.ImageSha256
+	}
+}
+
 // VifInfoByVif looks up based on the name aka Vif
 func (status DomainStatus) VifInfoByVif(vif string) *VifInfo {
 	for i := range status.VifList {
