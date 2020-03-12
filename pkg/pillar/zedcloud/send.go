@@ -303,7 +303,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 				log.Errorf("SendOnIntf: auth error %v\n", err)
 				return nil, nil, senderStatus, err
 			}
-			log.Infof("SendOnIntf: add auth for %s\n", reqUrl) // XXX move to debug later
+			log.Debugf("SendOnIntf: add auth for %s\n", reqUrl)
 		} else {
 			b2 = b
 		}
@@ -358,7 +358,8 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 		}
 		req = req.WithContext(httptrace.WithClientTrace(req.Context(),
 			trace))
-		log.Infof("SendOnIntf: req method %s, isget %v, url %s\n", req.Method, ishttpGet, reqUrl)
+		log.Debugf("SendOnIntf: req method %s, isget %v, url %s",
+			req.Method, ishttpGet, reqUrl)
 		resp, err := client.Do(req)
 		if err != nil {
 			if cf, cert := isCertFailure(err); cf {
@@ -496,8 +497,8 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 						}
 						return nil, nil, rtf, err
 					}
-					log.Infof("SendOnIntf verify auth ok, len content/content2 %d/%d, url %s\n",
-						len(contents), len(contents2), reqUrl) // XXX change to debug later
+					log.Debugf("SendOnIntf verify auth ok, len content/content2 %d/%d, url %s",
+						len(contents), len(contents2), reqUrl)
 				} else {
 					contents2 = contents
 				}
