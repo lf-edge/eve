@@ -158,6 +158,7 @@ func (status DomainStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }
 
+// UpdateDiskStatusFromConfig will update the disk status with the given disk config
 func (status *DiskStatus) UpdateDiskStatusFromConfig(config DiskConfig) {
 	if status.ImageID == config.ImageID {
 		status.ImageSha256 = config.ImageSha256
