@@ -171,7 +171,8 @@ func AllowNonFreePort(gc ConfigItemValueMap, objType string) bool {
 	}
 }
 
-// The key/index to this is the ImageID which is allocated by the controller.
+// AppImgResolveConfig key/index to this is the ImageID which is allocated by the controller.
+// It will resolve container image tag to sha256
 type AppImgResolveConfig struct {
 	ImageID     uuid.UUID
 	DatastoreID uuid.UUID
@@ -180,10 +181,12 @@ type AppImgResolveConfig struct {
 	IsContainer bool
 }
 
+// Key : ImageID is used to differentiate different config
 func (config AppImgResolveConfig) Key() string {
 	return fmt.Sprintf("%s", config.ImageID.String())
 }
 
+// VerifyFilename will verify the key name
 func (config AppImgResolveConfig) VerifyFilename(fileName string) bool {
 	expect := config.Key() + ".json"
 	ret := expect == fileName
@@ -194,7 +197,7 @@ func (config AppImgResolveConfig) VerifyFilename(fileName string) bool {
 	return ret
 }
 
-// The key/index to this is the ImageID which comes from AppImgResolveConfig.
+// AppImgResolveStatus : The key/index to this is the ImageID which comes from AppImgResolveConfig.
 type AppImgResolveStatus struct {
 	ImageID     uuid.UUID
 	DatastoreID uuid.UUID
@@ -204,10 +207,12 @@ type AppImgResolveStatus struct {
 	ImageSha256 string
 }
 
+// Key : ImageID is used to differentiate different config
 func (status AppImgResolveStatus) Key() string {
 	return fmt.Sprintf("%s", status.ImageID.String())
 }
 
+// VerifyFilename will verify the key name
 func (status AppImgResolveStatus) VerifyFilename(fileName string) bool {
 	expect := status.Key() + ".json"
 	ret := expect == fileName
