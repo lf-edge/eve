@@ -131,9 +131,10 @@ func printStack() {
 
 // RebootReason writes a reason string in /persist/reboot-reason, including agentName and date
 // It also appends to /persist/log/reboot-reason.log
-// Note: can not use log here since we are called from a log hook!
+// NOTE: can not use log here since we are called from a log hook!
 func RebootReason(reason string, normal bool) {
-	log.Infof("RebootReason(%s)", reason)
+	// NOTE: can not use log here since we are called from a log hook!
+	fmt.Printf("RebootReason(%s)", reason)
 	filename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
 	dateStr := time.Now().Format(time.RFC3339Nano)
 	if !normal {
