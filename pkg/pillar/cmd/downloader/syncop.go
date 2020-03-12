@@ -189,6 +189,11 @@ func handleSyncOp(ctx *downloaderContext, key string,
 			ctx:    ctx,
 			status: status,
 		}
+		sha256, err := objectMetadata(ctx, trType, st, zedUpload.SyncOpGetObjectMetaData, serverURL, auth,
+			dsCtx.Dpath, dsCtx.Region,
+			config.Size, ifname, ipSrc, remoteName, locFilename)
+		log.Infof("Rishabh Testing: %v ---- %v\n",
+			sha256, err)
 		err = download(ctx, trType, st, syncOp, serverURL, auth,
 			dsCtx.Dpath, dsCtx.Region,
 			config.Size, ifname, ipSrc, remoteName, locFilename)
