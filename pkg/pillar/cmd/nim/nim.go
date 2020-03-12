@@ -140,7 +140,7 @@ func Run(ps *pubsub.PubSub) {
 		pubsub.PublicationOptions{
 			AgentName:  agentName,
 			Persistent: true,
-			TopicType:  types.DevicePortConfig{},
+			TopicType:  types.DevicePortConfigList{},
 		})
 	if err != nil {
 		log.Fatal(err)
