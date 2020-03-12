@@ -12,3 +12,5 @@ pkg/qrexec-lib/Dockerfile
 .go/
 tags
 tmp/
+/images/docker-compose.yml
+/images/version.yml

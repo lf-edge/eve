@@ -142,6 +142,11 @@ func ctrRm(containerPath string) error {
 		log.Errorf("Unable to delete container: %v. %v", containerID, err.Error())
 		return fmt.Errorf("cleanUpContainer: Unable to delete container: %v. %v", containerID, err.Error())
 	}
+	snapshotter := ctrdClient.SnapshotService(defaultSnapshotter)
+	if err = snapshotter.Remove(ctrdCtx, fmt.Sprintf("%s-snapshot", containerID)); err != nil{
+		log.Errorf("Unable to delete snapshot of container: %v. %v", containerID, err.Error())
+		return fmt.Errorf("cleanUpContainer: Unable to delete snapshot of container: %v. %v", containerID, err.Error())
+	}
 	if err := deleteBundle(containerID); err != nil {
 		log.Errorf("Unable to delete bundle of container: %v. %v", containerID, err.Error())
 		return fmt.Errorf("cleanUpContainer: Unable to delete bundle of container: %v. %v", containerID, err.Error())
