@@ -48,7 +48,7 @@ func verifyAuthentication(c []byte, skipVerify bool) ([]byte, types.SenderResult
 	sm := &zauth.AuthContainer{}
 	err := proto.Unmarshal(c, sm)
 	if err != nil {
-		log.Infof("verifyAuthentication: can not unmarshal authen content, %v\n", err)
+		log.Errorf("verifyAuthentication: can not unmarshal authen content, %v\n", err)
 		return nil, senderSt, err
 	}
 
@@ -56,14 +56,15 @@ func verifyAuthentication(c []byte, skipVerify bool) ([]byte, types.SenderResult
 	if !skipVerify { // no verify for /certs itself
 		if len(sm.GetSenderCertHash()) != hashSha256Len16 &&
 			len(sm.GetSenderCertHash()) != hashSha256Len32 {
-			log.Infof("verifyAuthentication: senderCertHash length %d\n", len(sm.GetSenderCertHash()))
+			log.Errorf("verifyAuthentication: senderCertHash length %d\n",
+				len(sm.GetSenderCertHash()))
 			err := fmt.Errorf("verifyAuthentication: senderCertHash length error")
 			return nil, types.SenderStatusHashSizeError, err
 		}
 
 		cert, err := getCloudCert()
 		if err != nil {
-			log.Infof("verifyAuthentication: can not get server cert, %v\n", err)
+			log.Errorf("verifyAuthentication: can not get server cert, %v\n", err)
 			return nil, senderSt, err
 		}
 
@@ -71,19 +72,19 @@ func verifyAuthentication(c []byte, skipVerify bool) ([]byte, types.SenderResult
 		case zauth.HashAlgorithm_HASH_SHA256_32bytes:
 			if bytes.Compare(sm.GetSenderCertHash(), cloudCertHash) != 0 {
 				err := fmt.Errorf("verifyAuthentication: local server cert hash 32bytes does not match in authen")
-				log.Infof("verifyAuthentication: local server cert hash(%d) does not match in authen (%d) %v, %v",
+				log.Errorf("verifyAuthentication: local server cert hash(%d) does not match in authen (%d) %v, %v",
 					len(cloudCertHash), len(sm.GetSenderCertHash()), cloudCertHash, sm.GetSenderCertHash())
 				return nil, types.SenderStatusCertMiss, err
 			}
 		case zauth.HashAlgorithm_HASH_SHA256_16bytes:
 			if bytes.Compare(sm.GetSenderCertHash(), cloudCertHash[:hashSha256Len16]) != 0 {
 				err := fmt.Errorf("verifyAuthentication: local server cert hash 16bytes does not match in authen")
-				log.Infof("verifyAuthentication: local server cert hash(%d) does not match in authen (%d) %v, %v",
+				log.Errorf("verifyAuthentication: local server cert hash(%d) does not match in authen (%d) %v, %v",
 					len(cloudCertHash), len(sm.GetSenderCertHash()), cloudCertHash, sm.GetSenderCertHash())
 				return nil, types.SenderStatusCertMiss, err
 			}
 		default:
-			log.Infof("verifyAuthentication: hash algorithm is not supported\n")
+			log.Errorf("verifyAuthentication: hash algorithm is not supported\n")
 			err := fmt.Errorf("verifyAuthentication: hash algorithm is not supported")
 			return nil, types.SenderStatusAlgoFail, err
 		}
@@ -91,10 +92,10 @@ func verifyAuthentication(c []byte, skipVerify bool) ([]byte, types.SenderResult
 		hash := ComputeSha(data)
 		err = verifyAuthSig(sm.GetSignatureHash(), cert, hash)
 		if err != nil {
-			log.Infof("verifyAuthentication: verifyAuthSig error %v\n", err)
+			log.Errorf("verifyAuthentication: verifyAuthSig error %v\n", err)
 			return nil, types.SenderStatusSignVerifyFail, err
 		}
-		log.Infof("verifyAuthentication: ok\n")
+		log.Debugf("verifyAuthentication: ok\n")
 	}
 	return data, senderSt, nil
 }
@@ -104,7 +105,7 @@ func getCloudCert() (*x509.Certificate, error) {
 	if serverLeafCert == nil {
 		certBytes, err := ioutil.ReadFile(types.ServerCertFileName)
 		if err != nil {
-			log.Infof("getCloudCert: can not read in server cert file, %v\n", err)
+			log.Errorf("getCloudCert: can not read in server cert file, %v\n", err)
 			return sCert, err
 		}
 		block, _ := pem.Decode(certBytes)
@@ -115,7 +116,7 @@ func getCloudCert() (*x509.Certificate, error) {
 
 		sCert, err = x509.ParseCertificate(block.Bytes)
 		if err != nil {
-			log.Infof("getCloudCert: can not parse cert %v\n", err)
+			log.Errorf("getCloudCert: can not parse cert %v\n", err)
 			return sCert, err
 		}
 
@@ -141,7 +142,7 @@ func verifyAuthSig(signature []byte, cert *x509.Certificate, hash []byte) error 
 		if err != nil {
 			return err
 		}
-		log.Infof("verifyAuthSig: verify rsa ok\n")
+		log.Debugf("verifyAuthSig: verify rsa ok\n")
 	case *ecdsa.PublicKey:
 
 		sigHalflen := len(signature) / 2
@@ -155,9 +156,9 @@ func verifyAuthSig(signature []byte, cert *x509.Certificate, hash []byte) error 
 		if !ok {
 			return errors.New("ecdsa image signature verification failed")
 		}
-		log.Infof("verifyAuthSig: verify ecdsa ok\n")
+		log.Debugf("verifyAuthSig: verify ecdsa ok\n")
 	default:
-		log.Debugf("verifyAuthSig: unknown type of public key %T\n", pub)
+		log.Errorf("verifyAuthSig: unknown type of public key %T\n", pub)
 		return errors.New("unknown type of public key")
 	}
 	return nil
@@ -187,10 +188,10 @@ func addAuthentication(ctx ZedCloudContext, b *bytes.Buffer, useOnboard bool) (*
 		sm.SenderCert = onBoardCertBytes
 		if len(sm.SenderCert) == 0 {
 			err := fmt.Errorf("addAuthentication: SenderCert empty")
-			log.Infof("addAuthenticate: get sender cert failed, %v\n", err)
+			log.Errorf("addAuthenticate: get sender cert failed, %v\n", err)
 			return nil, err
 		}
-		log.Infof("addAuthenticate: onboard senderCert size %d\n", len(sm.SenderCert))
+		log.Debugf("addAuthenticate: onboard senderCert size %d\n", len(sm.SenderCert))
 	} else {
 		sm.SenderCertHash = deviceCertHash
 	}
@@ -244,7 +245,7 @@ func getMyDevCert(isOnboard bool) (tls.Certificate, error) {
 				return cert, err
 			}
 			onBoardCert = &cert
-			log.Infof("getMyDevCert: onboard cert with hash %v\n", string(onBoardCertHash))
+			log.Debugf("getMyDevCert: onboard cert with hash %v\n", string(onBoardCertHash))
 		} else {
 			cert = *onBoardCert
 		}
@@ -252,7 +253,7 @@ func getMyDevCert(isOnboard bool) (tls.Certificate, error) {
 		if deviceCert == nil {
 			cert, err = GetClientCert()
 			if err != nil {
-				log.Infof("getMyDevCert: get client cert error %v\n", err)
+				log.Errorf("getMyDevCert: get client cert error %v\n", err)
 				return cert, err
 			}
 
@@ -262,7 +263,7 @@ func getMyDevCert(isOnboard bool) (tls.Certificate, error) {
 				return cert, err
 			}
 			deviceCert = &cert
-			log.Infof("getMyDevCert: device cert with hash %v\n", string(deviceCertHash))
+			log.Debugf("getMyDevCert: device cert with hash %v\n", string(deviceCertHash))
 		} else {
 			cert = *deviceCert
 		}
@@ -283,18 +284,18 @@ func signAuthData(sigdata []byte, cert tls.Certificate) ([]byte, error) {
 	case etpm.TpmPrivateKey:
 		r, s, err := etpm.TpmSign(hash)
 		if err != nil {
-			log.Infof("signAuthData: tpmSign error %v\n", err)
+			log.Errorf("signAuthData: tpmSign error %v\n", err)
 			return nil, err
 		}
 		log.Debugf("r.bytes %d s.bytes %d\n", len(r.Bytes()),
 			len(s.Bytes()))
 		sigres = r.Bytes()
 		sigres = append(sigres, s.Bytes()...)
-		log.Infof("signAuthData: tpm sigres (len %d): %x\n", len(sigres), sigres)
+		log.Debugf("signAuthData: tpm sigres (len %d): %x\n", len(sigres), sigres)
 	case *ecdsa.PrivateKey:
 		r, s, err := ecdsa.Sign(rand.Reader, key, hash)
 		if err != nil {
-			log.Infof("signAuthData: ecdsa sign error %v\n", err)
+			log.Errorf("signAuthData: ecdsa sign error %v\n", err)
 			return nil, err
 			//log.Fatal("ecdsa.Sign: ", err)
 		}
@@ -302,7 +303,8 @@ func signAuthData(sigdata []byte, cert tls.Certificate) ([]byte, error) {
 			len(s.Bytes()))
 		sigres = r.Bytes()
 		sigres = append(sigres, s.Bytes()...)
-		log.Infof("signAuthData: ecdas sigres (len %d): %x\n", len(sigres), sigres)
+		log.Debugf("signAuthData: ecdas sigres (len %d): %x\n",
+			len(sigres), sigres)
 	}
 	return sigres, nil
 }
@@ -337,7 +339,7 @@ func VerifyCloudCertChain(ctx ZedCloudContext, serverName string, content []byte
 	sm := &zcert.ZControllerCert{}
 	err := proto.Unmarshal(content, sm)
 	if err != nil {
-		log.Infof("SaveCertsToFile: Unmarshal err %v\n", err)
+		log.Errorf("SaveCertsToFile: Unmarshal err %v\n", err)
 		return nil, err
 	}
 
@@ -354,7 +356,8 @@ func VerifyCloudCertChain(ctx ZedCloudContext, serverName string, content []byte
 				err := fmt.Errorf("VerifyCloudCertChain: fail to append intermediate certs")
 				return nil, err
 			}
-			log.Infof("VerifyCloudCertChain: get intermediate cert %d, len %d\n", keyCnt, len(cert.GetCert()))
+			log.Debugf("VerifyCloudCertChain: get intermediate cert %d, len %d\n",
+				keyCnt, len(cert.GetCert()))
 		} else if cert.Type == zcert.ZCertType_CERT_TYPE_CONTROLLER_SIGNING {
 			if len(certByte) > 0 {
 				err := fmt.Errorf("VerifyCloudCertChain: received more than one leaf cert")
@@ -371,14 +374,15 @@ func VerifyCloudCertChain(ctx ZedCloudContext, serverName string, content []byte
 				log.Errorf("VerifyCloudCertChain: fail to parse certificate %v\n", err)
 				return nil, err
 			}
-			log.Infof("VerifyCloudCertChain: get signing cert %d, len %d\n", keyCnt, len(cert.GetCert()))
+			log.Debugf("VerifyCloudCertChain: get signing cert %d, len %d\n",
+				keyCnt, len(cert.GetCert()))
 		} else {
 			err := fmt.Errorf("VerifyCloudCertChain: received cert with unknown type %d", cert.Type)
 			return nil, err
 		}
 	}
 
-	log.Infof("VerifyCloudCertChain: key count %d\n", keyCnt)
+	log.Debugf("VerifyCloudCertChain: key count %d\n", keyCnt)
 	if leafcert == nil {
 		err := fmt.Errorf("VerifyCloudCertChain: fail to acquire leaf cert")
 		return nil, err
@@ -429,7 +433,7 @@ func VerifyCloudCertChain(ctx ZedCloudContext, serverName string, content []byte
 	}
 	serverLeafCert = sCert
 
-	log.Infof("VerifyCloudCertChain: success\n")
+	log.Debugf("VerifyCloudCertChain: success\n")
 	return certByte, nil
 }
 
