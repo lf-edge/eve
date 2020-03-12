@@ -125,7 +125,7 @@ type DomainStatus struct {
 	BootFailed         bool
 	AdaptersFailed     bool
 	IsContainer        bool              // Is this Domain for a Container?
-	PodUUID            string            // Pod UUID outputted by rkt
+	PodUUID            string            // Pod UUID we create
 	EnvVariables       map[string]string // List of environment variables to be set in container
 }
 

@@ -29,6 +29,7 @@ if [ -d /proc/xen/ ]; then
 
 elif [ -e /dev/kvm ]; then
    echo "KVM hypervisor support detected"
+   while true ; do sleep 60 ; done
 
 else
    echo "No hypervisor support detected, feel free to run bare-metail containers"

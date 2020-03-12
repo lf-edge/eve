@@ -211,6 +211,10 @@ run-grub: $(BIOS_IMG) $(EFI_PART) $(DEVICETREE_DTB)
 	[ -f $(EFI_PART)/BOOT/grub.cfg ] && mv $(EFI_PART)/BOOT/grub.cfg $(EFI_PART)/BOOT/grub.cfg.$(notdir $(shell mktemp))
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=vvfat,label=EVE,file=fat:rw:$(EFI_PART)/..
 
+run-compose: images/docker-compose.yml images/version.yml
+	docker-compose -f $< run storage-init sh -c 'rm -rf /run/* /config/* ; cp -Lr /conf/* /config/ ; echo IMGA > /run/eve.id'
+	docker-compose -f $< up
+
 # ensure the dist directory exists
 $(DIST) $(INSTALLER):
 	mkdir -p $@
@@ -254,7 +258,7 @@ pkgs: FORCE_BUILD=
 pkgs: build-tools $(PKGS)
 	@echo Done building packages
 
-pkg/pillar: pkg/dnsmasq pkg/strongswan pkg/gpt-tools pkg/fscrypt pkg/rkt pkg/rkt-stage1 eve-pillar
+pkg/pillar: pkg/dnsmasq pkg/strongswan pkg/gpt-tools pkg/fscrypt eve-pillar
 	@true
 pkg/xen-tools: pkg/uefi eve-xen-tools
 	@true
@@ -380,6 +384,7 @@ help:
 	@echo "   installer-iso  builds an ISO installers image (to be installed on bootable media)"
 	@echo
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
+	@echo "   run-compose       runs all EVE microservices via docker-compose deployment"
 	@echo "   run-live          runs a full fledged virtual device on qemu (as close as it gets to actual h/w)"
 	@echo "   run-rootfs        runs a rootfs.img (limited usefulness e.g. quick test before cloud upload)"
 	@echo "   run-grub          runs our copy of GRUB bootloader and nothing else (very limited usefulness)"

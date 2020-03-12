@@ -1,0 +1,19 @@
+--- a/tools/Makefile.orig
++++ b/tools/Makefile
+@@ -239,7 +239,7 @@
+ 		virtfs='' ; \
+ 	fi ; \
+ 	PKG_CONFIG_PATH=$(XEN_ROOT)/tools/pkg-config$${PKG_CONFIG_PATH:+:$${PKG_CONFIG_PATH}} \
+-	$$source/configure --enable-xen --target-list=i386-softmmu \
++	$$source/configure --enable-xen --target-list=x86_64-softmmu \
+ 		$(QEMU_XEN_ENABLE_DEBUG) \
+ 		$$enable_trace_backend \
+ 		--prefix=$(LIBEXEC) \
+@@ -278,7 +278,6 @@
+ 		--bindir=$(LIBEXEC_BIN) \
+ 		--datadir=$(SHAREDIR)/qemu-xen \
+ 		--localstatedir=$(localstatedir) \
+-		--disable-kvm \
+ 		--disable-docs \
+                 --disable-werror \
+ 		--disable-guest-agent \

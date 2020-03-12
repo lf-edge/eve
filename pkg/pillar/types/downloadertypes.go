@@ -10,20 +10,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// RktCredentials is a rkt based Container Credentials
-type RktCredentials struct {
-	User     string `json:"user"`
-	Password string `json:"password"`
-}
-
-// RktAuthInfo is a rkt based Container Authentication Info
-type RktAuthInfo struct {
-	RktKind     string          `json:"rktkind"`
-	RktVersion  string          `json:"rktversion"`
-	Registries  []string        `json:"registries"`
-	Credentials *RktCredentials `json:"credentials"`
-}
-
 // The key/index to this is the ImageID which is allocated by the controller.
 type DownloaderConfig struct {
 	ImageID          uuid.UUID

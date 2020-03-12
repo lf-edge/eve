@@ -65,10 +65,16 @@ do
     PID=$(pgrep rsyslogd)
     if [ "$PID" != "$RSYSLOG_PID" ] || [ -z "$RSYSLOG_PID" ]; then
         echo "Error: rsyslogd died, trying to restart rsyslogd"
-        # tar the current contents of /persist/rsyslog and clear them
-        NAME="rsyslogd-$(date '+%Y-%m-%d-%H-%M-%S').tar.gz"
-        tar -cvzf "/persist/rsyslog-backup/$NAME" /persist/rsyslog/*
+        IFS_BAK=$IFS
+        IFS="$(printf '%b_' '\n')"; IFS="${IFS%_}"
+        TOTAL_BYTES=0
+        for line in $(stat -c %s /persist/rsyslog/*)
+        do
+            TOTAL_BYTES=$(( TOTAL_BYTES + line ))
+        done
+        IFS=$IFS_BAK
         rm -rf /persist/rsyslog
+        echo "rsyslogd: Removed $TOTAL_BYTES bytes worth of logs from /persist/rsyslog"
 
         # restart and wait for rsyslogd
         if [ "$RSYSLOGD_RESTART_COUNT" -ge "$RSYSLOGD_MAX_RESTART_COUNT" ]; then

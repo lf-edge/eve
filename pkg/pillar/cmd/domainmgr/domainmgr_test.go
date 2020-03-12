@@ -9,9 +9,12 @@
 package domainmgr
 
 import (
+	"flag"
+	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"io/ioutil"
 	"os"
+	"path"
 	"reflect"
 	"testing"
 )
@@ -22,6 +25,15 @@ type appImageNameEntry struct {
 	sha         string
 	appUUID     string
 	imageFormat string
+}
+
+func TestDefaultXenHypervisor(t *testing.T) {
+	hypervisorPtr := flag.String("h", "xen", "")
+	flag.CommandLine.Parse([]string{""})
+	hyper, err := hypervisor.GetHypervisor(*hypervisorPtr)
+	if err != nil || hyper.Name() != "xen" {
+		t.Errorf("Expected xen default hypervisor, got %s with error %v", hyper.Name(), err)
+	}
 }
 
 func TestParseAppRwImageName(t *testing.T) {
@@ -161,93 +173,64 @@ func TestFetchEnvVariablesFromCloudInit(t *testing.T) {
 }
 
 func TestCreateMountPointExecEnvFiles(t *testing.T) {
-	content := `
-{
-  "acVersion": "1.26.0",
-  "acKind": "PodManifest",
-  "apps": [
-    {
-      "name": "foobarbaz",
-      "image": {
-        "name": "registry-1.docker.io/library/redis",
-        "id": "sha512-572dff895cc8521bcc800c7fa5224a121d3afa8b545ff9fd9c87d9c5ff090469",
-        "labels": [
-          {
-            "name": "os",
-            "value": "linux"
-          },
-          {
-            "name": "arch",
-            "value": "amd64"
-          },
-          {
-            "name": "version",
-            "value": "latest"
-          }
+
+	content := `{
+    "created": "2020-02-05T00:52:57.387773144Z",
+    "author": "adarsh@zededa.com",
+    "architecture": "amd64",
+    "os": "linux",
+    "config": {
+        "Env": [
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        ],
+        "Cmd": [
+            "/bin/sh"
+        ],
+        "Volumes": {
+            "/myvol": {}
+        }
+    },
+    "rootfs": {
+        "type": "layers",
+        "diff_ids": [
+            "sha256:a79a1aaf8143bbbe6061bc5326a1dcc490d9b9c1ea6b9c27d14c182e15c535ee",
+            "sha256:a235ff03ae531a929c240688c52e802c4f3714b2446d1f34b1d20bfd59ce1965"
         ]
-      },
-      "app": {
-        "exec": [
-          "docker-entrypoint.sh",
-          "redis-server"
-        ],
-        "user": "0",
-        "group": "0",
-        "workingDirectory": "/data",
-        "environment": [
-          {
-            "name": "PATH",
-            "value": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-          },
-          {
-            "name": "GOSU_VERSION",
-            "value": "1.11"
-          },
-          {
-            "name": "REDIS_VERSION",
-            "value": "5.0.7"
-          },
-          {
-            "name": "REDIS_DOWNLOAD_URL",
-            "value": "http://download.redis.io/releases/redis-5.0.7.tar.gz"
-          },
-          {
-            "name": "REDIS_DOWNLOAD_SHA",
-            "value": "61db74eabf6801f057fd24b590232f2f337d422280fd19486eca03be87d3a82b"
-          }
-        ],
-        "mountPoints": [
-          {
-            "name": "volume-data",
-            "path": "/data"
-          }
-        ],
-        "ports": [
-          {
-            "name": "6379-tcp",
-            "protocol": "tcp",
-            "port": 6379,
-            "count": 1,
-            "socketActivated": false
-          }
-        ]
-      }
-    }
-  ],
-  "volumes": null,
-  "isolators": null,
-  "annotations": [
-    {
-      "name": "coreos.com/rkt/stage1/mutable",
-      "value": "false"
-    }
-  ],
-  "ports": []
-}
-`
-	// create a temp dir to hold resulting files
+    },
+    "history": [
+        {
+            "created": "2019-01-30T22:20:20.383667418Z",
+            "created_by": "/bin/sh -c #(nop) ADD file:eaf29f2198d25cc0e88b84af6478f422db6a8ffb6919bf746117252cfcd88a47 in / "
+        },
+        {
+            "created": "2019-01-30T22:20:20.590559734Z",
+            "created_by": "/bin/sh -c #(nop)  CMD [\"/bin/sh\"]",
+            "empty_layer": true
+        },
+        {
+            "created": "2020-02-05T00:52:55.559839255Z",
+            "created_by": "/bin/sh -c #(nop)  MAINTAINER adarsh@zededa.com",
+            "author": "adarsh@zededa.com",
+            "empty_layer": true
+        },
+        {
+            "created": "2020-02-05T00:52:57.115531308Z",
+            "created_by": "/bin/sh -c mkdir /myvol",
+            "author": "adarsh@zededa.com"
+        },
+        {
+            "created": "2020-02-05T00:52:57.387773144Z",
+            "created_by": "/bin/sh -c #(nop)  VOLUME [/myvol]",
+            "author": "adarsh@zededa.com",
+            "empty_layer": true
+        }
+    ]
+}`
+	//create a temp dir to hold resulting files
 	dir, _ := ioutil.TempDir("/tmp", "podfiles")
-	err := os.MkdirAll(dir+"/stage1/rootfs/opt/stage2/runx", 0777)
+	rootDir := path.Join(dir, "runx")
+	podPath := path.Join(dir, "pod")
+	err := os.MkdirAll(rootDir, 0777)
 	if err != nil {
 		t.Errorf("failed to create temporary dir")
 	} else {
@@ -255,36 +238,52 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 	}
 
 	// now create a fake pod file
-	file, _ := os.Create(dir + "/pod")
+	file, _ := os.Create(podPath)
 	_, err = file.WriteString(content)
 	if err != nil {
 		t.Errorf("failed to write to a pod file")
 	}
+	execpath := []string{"/bin/sh"}
+	// the proper format for this
+	execpathStr := "\"/bin/sh\""
+	workdir := "/data"
+	mountpoints := map[string]struct{}{
+		"/myvol": {},
+	}
+	env := []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
 
-	status := types.DomainStatus{DiskStatusList: []types.DiskStatus{{ImageSha256: "rootfs"}, {ImageSha256: "extraDisk"}}}
-	err = createMountPointExecEnvFiles(dir, &status)
+	err = createMountPointExecEnvFiles(rootDir, mountpoints, execpath, workdir, env, 2)
 	if err != nil {
 		t.Errorf("createMountPointExecEnvFiles failed %v", err)
 	}
 
-	cmdline, err := ioutil.ReadFile(dir + "/stage1/rootfs/opt/stage2/runx/cmdline")
-	if string(cmdline) != "\"docker-entrypoint.sh\" \"redis-server\"" {
-		t.Errorf("createMountPointExecEnvFiles failed to create cmdline file %s %v", string(cmdline), err)
+	cmdlineFile := path.Join(rootDir, "cmdline")
+	cmdline, err := ioutil.ReadFile(cmdlineFile)
+	if err != nil {
+		t.Errorf("createMountPointExecEnvFiles failed to create cmdline file %s %v", cmdlineFile, err)
+	}
+	if string(cmdline) != execpathStr {
+		t.Errorf("mismatched cmdline file content, actual '%s' expected '%s'", string(cmdline), execpathStr)
 	}
 
-	mounts, err := ioutil.ReadFile(dir + "/stage1/rootfs/opt/stage2/runx/mountPoints")
-	if string(mounts) != "/data\n" {
-		t.Errorf("createMountPointExecEnvFiles failed to create mountPoints file %s %v", string(mounts), err)
+	mountFile := path.Join(rootDir, "mountPoints")
+	mountExpected := "/myvol" + "\n"
+	mounts, err := ioutil.ReadFile(mountFile)
+	if err != nil {
+		t.Errorf("createMountPointExecEnvFiles failed to create mountPoints file %s %v", mountFile, err)
+	}
+	if string(mounts) != mountExpected {
+		t.Errorf("mismatched mountpoints file content, actual '%s' expected '%s'", string(mounts), mountExpected)
 	}
 
-	env, err := ioutil.ReadFile(dir + "/stage1/rootfs/opt/stage2/runx/environment")
-	if string(env) != `export WORKDIR="/data"
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-export GOSU_VERSION="1.11"
-export REDIS_VERSION="5.0.7"
-export REDIS_DOWNLOAD_URL="http://download.redis.io/releases/redis-5.0.7.tar.gz"
-export REDIS_DOWNLOAD_SHA="61db74eabf6801f057fd24b590232f2f337d422280fd19486eca03be87d3a82b"
-` {
-		t.Errorf("createMountPointExecEnvFiles failed to create environment file %s %v", string(env), err)
+	envFile := path.Join(rootDir, "environment")
+	envActual, err := ioutil.ReadFile(envFile)
+	// start with WORKDIR
+	envExpect := "export WORKDIR=\"/data\"\nexport PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n"
+	if err != nil {
+		t.Errorf("createMountPointExecEnvFiles failed to create environment file %s %v", envFile, err)
+	}
+	if string(envActual) != envExpect {
+		t.Errorf("mismatched env file content, actual '%s' expected '%s'", string(envActual), envExpect)
 	}
 }
