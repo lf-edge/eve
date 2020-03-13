@@ -586,11 +586,8 @@ var msgIDCounter = 1
 var iteration = 0
 
 func handleAppLogEvent(event logEntry, appLogs *logs.AppInstanceLogBundle) {
-	// Assign a unique msgID for each message
-	msgID := msgIDCounter
-	msgIDCounter++
-	log.Debugf("Read event from %s time %v id %d",
-		event.source, event.timestamp, msgID)
+	log.Debugf("Read event from %s time %v",
+		event.source, event.timestamp)
 	// Have to discard if too large since service doesn't
 	// handle above 64k; we limit payload at 32k
 	strLen := len(event.content)
@@ -612,7 +609,6 @@ func handleAppLogEvent(event logEntry, appLogs *logs.AppInstanceLogBundle) {
 	logDetails.Timestamp, _ = ptypes.TimestampProto(event.timestamp)
 	logDetails.Source = event.source
 	logDetails.Iid = event.iid
-	logDetails.Msgid = uint64(msgID)
 	logDetails.Filename = event.filename
 	logDetails.Function = event.function
 	oldLen := int64(proto.Size(appLogs))
