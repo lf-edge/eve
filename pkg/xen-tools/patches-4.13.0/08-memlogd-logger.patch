@@ -39,7 +39,7 @@ index a43c57edad..d0bf636c10 100644
  
  	snprintf(logfile, PATH_MAX-1, "%s/guest-%s%s.log",
  		 log_dir, data, con->log_suffix);
-+        snprintf(logname, PATH_MAX-1, "guest_vm/%s%s",
++        snprintf(logname, PATH_MAX-1, "guest_vm-%s%s",
 +                 data, con->log_suffix);
  
  	free(data);
