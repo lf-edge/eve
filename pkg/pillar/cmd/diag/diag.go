@@ -151,13 +151,7 @@ func Run(ps *pubsub.PubSub) {
 	ctx.serverNameAndPort = strings.TrimSpace(string(server))
 	ctx.serverName = strings.Split(ctx.serverNameAndPort, ":")[0]
 
-	zedcloudCtx := zedcloud.ZedCloudContext{
-		DeviceNetworkStatus: ctx.DeviceNetworkStatus,
-		FailureFunc:         zedcloud.ZedCloudFailure,
-		SuccessFunc:         zedcloud.ZedCloudSuccess,
-		NetworkSendTimeout:  ctx.globalConfig.NetworkTestTimeout,
-		V2API:               zedcloud.UseV2API(),
-	}
+	zedcloudCtx := zedcloud.NewContext(ctx.DeviceNetworkStatus, ctx.globalConfig.NetworkTestTimeout, true)
 
 	// Get device serial number
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
@@ -851,16 +845,28 @@ func tryPostUUID(ctx *diagContext, ifname string) bool {
 	zedcloudCtx.NoLedManager = true
 	retryCount := 0
 	done := false
+	rtf := types.SenderStatusNone
 	var delay time.Duration
 	for !done {
 		time.Sleep(delay)
 		var resp *http.Response
 		var buf []byte
-		done, resp, buf = myPost(zedcloudCtx, reqURL, ifname, retryCount,
+		done, resp, rtf, buf = myPost(zedcloudCtx, reqURL, ifname, retryCount,
 			int64(len(b)), bytes.NewBuffer(b))
 		if done {
 			parsePrint(reqURL, resp, buf)
 			break
+		}
+		if rtf == types.SenderStatusCertMiss {
+			// currently only three places we need to verify envelope data
+			// 1) client
+			// 2) zedagent
+			// 3) diag here for getting /config
+			// 1) is the initial getting cloud certs, 2) rely on zedagent to refetch the cloud certs
+			// if zedcloud has cert change. 3) only need to zero out the cache in zedcloudCtx and
+			// it will reacquire from the updated cert file. zedagent is the only one resposible for refetching certs.
+			zedcloud.ClearCloudCert(zedcloudCtx)
+			return false
 		}
 		retryCount += 1
 		if maxRetries != 0 && retryCount > maxRetries {
@@ -959,7 +965,7 @@ func myGet(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 			ifname, proxyURL.String(), reqURL)
 	}
 	const allowProxy = true
-	resp, contents, rtf, err := zedcloud.SendOnIntf(*zedcloudCtx,
+	resp, contents, rtf, err := zedcloud.SendOnIntf(zedcloudCtx,
 		reqURL, ifname, 0, nil, allowProxy)
 	if err != nil {
 		if rtf == types.SenderStatusRemTempFail {
@@ -990,7 +996,7 @@ func myGet(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 }
 
 func myPost(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
-	retryCount int, reqlen int64, b *bytes.Buffer) (bool, *http.Response, []byte) {
+	retryCount int, reqlen int64, b *bytes.Buffer) (bool, *http.Response, types.SenderResult, []byte) {
 
 	var preqURL string
 	if strings.HasPrefix(reqURL, "http:") {
@@ -1009,7 +1015,7 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 			ifname, proxyURL.String(), reqURL)
 	}
 	const allowProxy = true
-	resp, contents, rtf, err := zedcloud.SendOnIntf(*zedcloudCtx,
+	resp, contents, rtf, err := zedcloud.SendOnIntf(zedcloudCtx,
 		reqURL, ifname, reqlen, b, allowProxy)
 	if err != nil {
 		if rtf == types.SenderStatusRemTempFail {
@@ -1019,23 +1025,23 @@ func myPost(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 			fmt.Fprintf(outfile, "ERROR: %s: get %s failed: %s\n",
 				ifname, reqURL, err)
 		}
-		return false, nil, nil
+		return false, nil, rtf, nil
 	}
 
 	switch resp.StatusCode {
 	case http.StatusOK:
 		fmt.Fprintf(outfile, "INFO: %s: %s StatusOK\n", ifname, reqURL)
-		return true, resp, contents
+		return true, resp, rtf, contents
 	case http.StatusNotModified:
 		fmt.Fprintf(outfile, "INFO: %s: %s StatusNotModified\n", ifname, reqURL)
-		return true, resp, contents
+		return true, resp, rtf, contents
 	default:
 		fmt.Fprintf(outfile, "ERROR: %s: %s statuscode %d %s\n",
 			ifname, reqURL, resp.StatusCode,
 			http.StatusText(resp.StatusCode))
 		fmt.Fprintf(outfile, "ERRROR: %s: Received %s\n",
 			ifname, string(contents))
-		return false, nil, nil
+		return false, nil, rtf, nil
 	}
 }
 

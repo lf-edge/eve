@@ -38,9 +38,17 @@ type ZedCloudContext struct {
 	DevUUID             uuid.UUID
 	DevSerial           string
 	DevSoftSerial       string
-	NetworkSendTimeout  uint32   // In seconds
-	V2API               bool     // XXX Needed?
-	PrevCertPEM         [][]byte // cached proxy certs for later comparison
+	NetworkSendTimeout  uint32 // In seconds
+	V2API               bool   // XXX Needed?
+	// V2 related items
+	PrevCertPEM      [][]byte // cached proxy certs for later comparison
+	onBoardCert      *tls.Certificate
+	deviceCert       *tls.Certificate
+	serverLeafCert   *x509.Certificate
+	deviceCertHash   []byte
+	onBoardCertHash  []byte
+	cloudCertHash    []byte
+	onBoardCertBytes []byte
 }
 
 var sendCounter uint32
@@ -52,7 +60,7 @@ var nilUUID = uuid.UUID{}
 // use []byte contents return.
 // We return a bool remoteTemporaryFailure for the cases when we reached
 // the controller but it is overloaded, or has certificate issues.
-func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int, return400 bool) (*http.Response, []byte, types.SenderResult, error) {
+func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buffer, iteration int, return400 bool) (*http.Response, []byte, types.SenderResult, error) {
 	// If failed then try the non-free
 	const allowProxy = true
 	var errorList []error
@@ -115,7 +123,7 @@ func SendOnAllIntf(ctx ZedCloudContext, url string, reqlen int64, b *bytes.Buffe
 // Otherwise we test non-free interfaces also.
 // We return a bool remoteTemporaryFailure for the cases when we reached
 // the controller but it is overloaded, or has certificate issues.
-func VerifyAllIntf(ctx ZedCloudContext,
+func VerifyAllIntf(ctx *ZedCloudContext,
 	url string, successCount int, iteration int) (bool, bool, error) {
 	var intfSuccessCount int = 0
 	const allowProxy = true
@@ -143,6 +151,8 @@ func VerifyAllIntf(ctx ZedCloudContext,
 				// We have enough uplinks with cloud connectivity working.
 				break
 			}
+			// This VerifyAllIntf() is called for "ping" url only, it does not have
+			// return envelope verifying check. Thus below does not check other values of rtf.
 			resp, _, rtf, err := SendOnIntf(ctx, url, intf, 0, nil, allowProxy)
 			if rtf == types.SenderStatusRemTempFail {
 				remoteTemporaryFailure = true
@@ -190,32 +200,32 @@ func VerifyAllIntf(ctx ZedCloudContext,
 // to allow the caller to look at StatusCode
 // We return a bool remoteTemporaryFailure for the cases when we reached
 // the controller but it is overloaded, or has certificate issues.
-func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool) (*http.Response, []byte, types.SenderResult, error) {
+func SendOnIntf(ctx *ZedCloudContext, destURL string, intf string, reqlen int64, b *bytes.Buffer, allowProxy bool) (*http.Response, []byte, types.SenderResult, error) {
 
 	var reqUrl string
 	var useTLS, isEdgenode, ishttpGet, useOnboard, isCerts bool
 
 	senderStatus := types.SenderStatusNone
-	if strings.HasPrefix(destUrl, "http:") {
-		reqUrl = destUrl
+	if strings.HasPrefix(destURL, "http:") {
+		reqUrl = destURL
 		useTLS = false
 	} else {
-		if strings.HasPrefix(destUrl, "https:") {
-			reqUrl = destUrl
+		if strings.HasPrefix(destURL, "https:") {
+			reqUrl = destURL
 		} else {
-			reqUrl = "https://" + destUrl
+			reqUrl = "https://" + destURL
 		}
 		useTLS = true
 	}
 
-	if strings.Contains(destUrl, "/edgedevice/") {
+	if strings.Contains(destURL, "/edgedevice/") {
 		isEdgenode = true
-		if strings.Contains(destUrl, "/ping") {
+		if strings.Contains(destURL, "/ping") {
 			ishttpGet = true
-		} else if strings.Contains(destUrl, "/certs") {
+		} else if strings.Contains(destURL, "/certs") {
 			ishttpGet = true
 			isCerts = true
-		} else if strings.Contains(destUrl, "/register") {
+		} else if strings.Contains(destURL, "/register") {
 			useOnboard = true
 		}
 	}
@@ -483,7 +493,7 @@ func SendOnIntf(ctx ZedCloudContext, destUrl string, intf string, reqlen int64, 
 			rtf := types.SenderStatusNone
 			if ctx.V2API || isCerts { // /certs may not have set the V2API yet
 				if resplen > 0 && checkMimeProtoType(resp) {
-					contents2, rtf, err = verifyAuthentication(contents, isCerts)
+					contents2, rtf, err = verifyAuthentication(ctx, contents, isCerts)
 					if err != nil {
 						var envelopeErr bool
 						if rtf == types.SenderStatusHashSizeError || rtf == types.SenderStatusAlgoFail {
@@ -583,4 +593,18 @@ func isNoSuitableAddress(err error) bool {
 		return false
 	}
 	return e2.Err == "no suitable address found"
+}
+
+// NewContext - return initialized cloud context
+func NewContext(dns *types.DeviceNetworkStatus, timeout uint32, needStats bool) ZedCloudContext {
+	ctx := ZedCloudContext{
+		DeviceNetworkStatus: dns,
+		NetworkSendTimeout:  timeout,
+		V2API:               UseV2API(),
+	}
+	if needStats {
+		ctx.FailureFunc = ZedCloudFailure
+		ctx.SuccessFunc = ZedCloudSuccess
+	}
+	return ctx
 }
