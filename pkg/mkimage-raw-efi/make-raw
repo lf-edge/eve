@@ -282,10 +282,10 @@ case "$(sgdisk -p $IMGFILE 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '\0
       ;;
   "Name System IMGA IMGB CONFIG P3"*)
       echo "Found EVE GPT partition table on $IMGFILE"
-      sgdisk -g --clear $IMGFILE 2>/dev/null
+      sgdisk -Z --clear $IMGFILE 2>/dev/null
       ;;
    *) echo "Unknown (or unrecongnizable) GTP partition table on $IMGFILE"
-      sgdisk -g --clear $IMGFILE 2>/dev/null
+      sgdisk -Z --clear $IMGFILE 2>/dev/null
       ;;
 esac
 
