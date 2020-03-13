@@ -32,18 +32,13 @@ import (
 	"os"
 )
 
-var onBoardCert, deviceCert *tls.Certificate
-var serverLeafCert *x509.Certificate
-var deviceCertHash, onBoardCertHash, cloudCertHash []byte
-var onBoardCertBytes []byte
-
 const (
 	hashSha256Len16 = 16 // senderCertHash size of 16
 	hashSha256Len32 = 32 // size of 32 bytes
 )
 
 // given an envelope protobuf received from controller, verify the authentication
-func verifyAuthentication(c []byte, skipVerify bool) ([]byte, types.SenderResult, error) {
+func verifyAuthentication(ctx *ZedCloudContext, c []byte, skipVerify bool) ([]byte, types.SenderResult, error) {
 	senderSt := types.SenderStatusNone
 	sm := &zauth.AuthContainer{}
 	err := proto.Unmarshal(c, sm)
@@ -62,7 +57,7 @@ func verifyAuthentication(c []byte, skipVerify bool) ([]byte, types.SenderResult
 			return nil, types.SenderStatusHashSizeError, err
 		}
 
-		cert, err := getCloudCert()
+		err := getCloudCert(ctx)
 		if err != nil {
 			log.Errorf("verifyAuthentication: can not get server cert, %v\n", err)
 			return nil, senderSt, err
@@ -70,17 +65,17 @@ func verifyAuthentication(c []byte, skipVerify bool) ([]byte, types.SenderResult
 
 		switch sm.Algo {
 		case zauth.HashAlgorithm_HASH_SHA256_32bytes:
-			if bytes.Compare(sm.GetSenderCertHash(), cloudCertHash) != 0 {
+			if bytes.Compare(sm.GetSenderCertHash(), ctx.cloudCertHash) != 0 {
 				err := fmt.Errorf("verifyAuthentication: local server cert hash 32bytes does not match in authen")
 				log.Errorf("verifyAuthentication: local server cert hash(%d) does not match in authen (%d) %v, %v",
-					len(cloudCertHash), len(sm.GetSenderCertHash()), cloudCertHash, sm.GetSenderCertHash())
+					len(ctx.cloudCertHash), len(sm.GetSenderCertHash()), ctx.cloudCertHash, sm.GetSenderCertHash())
 				return nil, types.SenderStatusCertMiss, err
 			}
 		case zauth.HashAlgorithm_HASH_SHA256_16bytes:
-			if bytes.Compare(sm.GetSenderCertHash(), cloudCertHash[:hashSha256Len16]) != 0 {
+			if bytes.Compare(sm.GetSenderCertHash(), ctx.cloudCertHash[:hashSha256Len16]) != 0 {
 				err := fmt.Errorf("verifyAuthentication: local server cert hash 16bytes does not match in authen")
 				log.Errorf("verifyAuthentication: local server cert hash(%d) does not match in authen (%d) %v, %v",
-					len(cloudCertHash), len(sm.GetSenderCertHash()), cloudCertHash, sm.GetSenderCertHash())
+					len(ctx.cloudCertHash), len(sm.GetSenderCertHash()), ctx.cloudCertHash, sm.GetSenderCertHash())
 				return nil, types.SenderStatusCertMiss, err
 			}
 		default:
@@ -90,7 +85,7 @@ func verifyAuthentication(c []byte, skipVerify bool) ([]byte, types.SenderResult
 		}
 
 		hash := ComputeSha(data)
-		err = verifyAuthSig(sm.GetSignatureHash(), cert, hash)
+		err = verifyAuthSig(sm.GetSignatureHash(), ctx.serverLeafCert, hash)
 		if err != nil {
 			log.Errorf("verifyAuthentication: verifyAuthSig error %v\n", err)
 			return nil, types.SenderStatusSignVerifyFail, err
@@ -100,35 +95,37 @@ func verifyAuthentication(c []byte, skipVerify bool) ([]byte, types.SenderResult
 	return data, senderSt, nil
 }
 
-func getCloudCert() (*x509.Certificate, error) {
-	var sCert *x509.Certificate
-	if serverLeafCert == nil {
+func getCloudCert(ctx *ZedCloudContext) error {
+	if ctx.serverLeafCert == nil {
 		certBytes, err := ioutil.ReadFile(types.ServerCertFileName)
 		if err != nil {
 			log.Errorf("getCloudCert: can not read in server cert file, %v\n", err)
-			return sCert, err
+			return err
 		}
 		block, _ := pem.Decode(certBytes)
 		if block == nil {
 			err := fmt.Errorf("getCloudCert: can not get client Cert")
-			return sCert, err
+			return err
 		}
 
-		sCert, err = x509.ParseCertificate(block.Bytes)
+		sCert, err := x509.ParseCertificate(block.Bytes)
 		if err != nil {
 			log.Errorf("getCloudCert: can not parse cert %v\n", err)
-			return sCert, err
+			return err
 		}
 
 		// hash verify using PEM bytes from cloud
-		cloudCertHash = ComputeSha(certBytes)
-		serverLeafCert = sCert
-
-	} else {
-		sCert = serverLeafCert
+		ctx.cloudCertHash = ComputeSha(certBytes)
+		ctx.serverLeafCert = sCert
 	}
 
-	return sCert, nil
+	return nil
+}
+
+// ClearCloudCert - zero out cached cloud certs in client zedcloudCtx
+func ClearCloudCert(ctx *ZedCloudContext) {
+	ctx.serverLeafCert = nil
+	ctx.cloudCertHash = nil
 }
 
 // verify the signed data with cloud certificate public key
@@ -165,7 +162,7 @@ func verifyAuthSig(signature []byte, cert *x509.Certificate, hash []byte) error 
 }
 
 // add an authentication envelope protobuf when sending http POST
-func addAuthentication(ctx ZedCloudContext, b *bytes.Buffer, useOnboard bool) (*bytes.Buffer, error) {
+func addAuthentication(ctx *ZedCloudContext, b *bytes.Buffer, useOnboard bool) (*bytes.Buffer, error) {
 	var data []byte
 	if b != nil {
 		data = b.Bytes()
@@ -176,7 +173,7 @@ func addAuthentication(ctx ZedCloudContext, b *bytes.Buffer, useOnboard bool) (*
 	sm := zauth.AuthContainer{}
 	sm.AuthPayload = &body
 
-	cert, err := getMyDevCert(useOnboard)
+	cert, err := getMyDevCert(ctx, useOnboard)
 	if err != nil {
 		log.Debugf("addAuthenticate: get client cert failed\n")
 		return nil, err
@@ -184,8 +181,8 @@ func addAuthentication(ctx ZedCloudContext, b *bytes.Buffer, useOnboard bool) (*
 
 	// assign our certificate hash of 32 bytes
 	if useOnboard {
-		sm.SenderCertHash = onBoardCertHash
-		sm.SenderCert = onBoardCertBytes
+		sm.SenderCertHash = ctx.onBoardCertHash
+		sm.SenderCert = ctx.onBoardCertBytes
 		if len(sm.SenderCert) == 0 {
 			err := fmt.Errorf("addAuthentication: SenderCert empty")
 			log.Errorf("addAuthenticate: get sender cert failed, %v\n", err)
@@ -193,7 +190,7 @@ func addAuthentication(ctx ZedCloudContext, b *bytes.Buffer, useOnboard bool) (*
 		}
 		log.Debugf("addAuthenticate: onboard senderCert size %d\n", len(sm.SenderCert))
 	} else {
-		sm.SenderCertHash = deviceCertHash
+		sm.SenderCertHash = ctx.deviceCertHash
 	}
 	if sm.SenderCertHash == nil {
 		err := fmt.Errorf("addAuthentication: SenderCertHash empty")
@@ -220,11 +217,11 @@ func addAuthentication(ctx ZedCloudContext, b *bytes.Buffer, useOnboard bool) (*
 	return buf, nil
 }
 
-func getMyDevCert(isOnboard bool) (tls.Certificate, error) {
+func getMyDevCert(ctx *ZedCloudContext, isOnboard bool) (tls.Certificate, error) {
 	var cert tls.Certificate
 	var err error
 	if isOnboard {
-		if onBoardCert == nil {
+		if ctx.onBoardCert == nil {
 			cert, err = tls.LoadX509KeyPair(types.OnboardCertName,
 				types.OnboardKeyName)
 			if err != nil {
@@ -237,20 +234,20 @@ func getMyDevCert(isOnboard bool) (tls.Certificate, error) {
 				log.Debugf("getMyDevCert: get onboard certbytes error %v\n", err)
 				return cert, err
 			}
-			onBoardCertBytes = []byte(base64.StdEncoding.EncodeToString(onboardCertpem))
+			ctx.onBoardCertBytes = []byte(base64.StdEncoding.EncodeToString(onboardCertpem))
 
 			// device side of cert hash is calculated from the x509 cert, not from PEM bytes
-			onBoardCertHash, err = certToSha256(cert)
+			ctx.onBoardCertHash, err = certToSha256(cert)
 			if err != nil {
 				return cert, err
 			}
-			onBoardCert = &cert
-			log.Debugf("getMyDevCert: onboard cert with hash %v\n", string(onBoardCertHash))
+			ctx.onBoardCert = &cert
+			log.Debugf("getMyDevCert: onboard cert with hash %v\n", string(ctx.onBoardCertHash))
 		} else {
-			cert = *onBoardCert
+			cert = *ctx.onBoardCert
 		}
 	} else {
-		if deviceCert == nil {
+		if ctx.deviceCert == nil {
 			cert, err = GetClientCert()
 			if err != nil {
 				log.Errorf("getMyDevCert: get client cert error %v\n", err)
@@ -258,14 +255,14 @@ func getMyDevCert(isOnboard bool) (tls.Certificate, error) {
 			}
 
 			// device side of cert hash is calculated from the x509 cert, not from PEM bytes
-			deviceCertHash, err = certToSha256(cert)
+			ctx.deviceCertHash, err = certToSha256(cert)
 			if err != nil {
 				return cert, err
 			}
-			deviceCert = &cert
-			log.Debugf("getMyDevCert: device cert with hash %v\n", string(deviceCertHash))
+			ctx.deviceCert = &cert
+			log.Debugf("getMyDevCert: device cert with hash %v\n", string(ctx.deviceCertHash))
 		} else {
-			cert = *deviceCert
+			cert = *ctx.deviceCert
 		}
 	}
 	return cert, nil
@@ -335,7 +332,7 @@ func checkMimeProtoType(r *http.Response) bool {
 }
 
 // VerifyCloudCertChain - verify certificate chain from controller
-func VerifyCloudCertChain(ctx ZedCloudContext, serverName string, content []byte) ([]byte, error) {
+func VerifyCloudCertChain(ctx *ZedCloudContext, serverName string, content []byte) ([]byte, error) {
 	sm := &zcert.ZControllerCert{}
 	err := proto.Unmarshal(content, sm)
 	if err != nil {
@@ -420,7 +417,7 @@ func VerifyCloudCertChain(ctx ZedCloudContext, serverName string, content []byte
 	}
 
 	// save this cert and hash to serverLeafCert and cloudCertHash
-	cloudCertHash = ComputeSha(certByte)
+	ctx.cloudCertHash = ComputeSha(certByte)
 	block, _ = pem.Decode(certByte)
 	if block == nil {
 		err := fmt.Errorf("VerifyCloudCertChain: can not get client Cert")
@@ -431,7 +428,7 @@ func VerifyCloudCertChain(ctx ZedCloudContext, serverName string, content []byte
 		log.Errorf("VerifyCloudCertChain: can not parse cert %v", err)
 		return nil, err
 	}
-	serverLeafCert = sCert
+	ctx.serverLeafCert = sCert
 
 	log.Debugf("VerifyCloudCertChain: success\n")
 	return certByte, nil

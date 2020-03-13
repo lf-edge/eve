@@ -84,16 +84,12 @@ func handleConfigInit(networkSendTimeout uint32) {
 	serverNameAndPort = strings.TrimSpace(string(bytes))
 	serverName = strings.Split(serverNameAndPort, ":")[0]
 
-	zedcloudCtx.DeviceNetworkStatus = deviceNetworkStatus
-	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
-	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
+	zedcloudCtx = zedcloud.NewContext(deviceNetworkStatus, networkSendTimeout, true)
+
 	zedcloudCtx.DevSerial = hardware.GetProductSerial()
 	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
-	zedcloudCtx.NetworkSendTimeout = networkSendTimeout
-	zedcloudCtx.V2API = zedcloud.UseV2API()
-	log.Infof("Configure Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
-		zedcloudCtx.DevSoftSerial)
-	log.Infof("handleConfigInit: Use V2 API %v\n", zedcloud.UseV2API())
+	log.Infof("Configure Get Device Serial %s, Soft Serial %s, Use V2 API %v\n", zedcloudCtx.DevSerial,
+		zedcloudCtx.DevSoftSerial, zedcloud.UseV2API())
 
 	// XXX need to redo this since the root certificates can change
 	err = zedcloud.UpdateTLSConfig(&zedcloudCtx, serverName, nil)
@@ -201,7 +197,7 @@ func getLatestConfig(url string, iteration int,
 	}
 	buf := bytes.NewBuffer(b)
 	size := int64(proto.Size(cr))
-	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, url, size, buf, iteration, return400)
+	resp, contents, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, url, size, buf, iteration, return400)
 	if err != nil {
 		newCount := 2
 		if rtf == types.SenderStatusRemTempFail {
@@ -286,7 +282,7 @@ func getCloudCertChain(ctx *zedagentContext) bool {
 	// get Certs is always V2 API, if the reply turns out it's not, will reset it, use http for now
 	zedcloudCtx.V2API = true
 	certURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, true, nilUUID, "certs")
-	resp, contents, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, certURL, 0, nil, 0, false)
+	resp, contents, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, certURL, 0, nil, 0, false)
 	if err != nil {
 		if rtf == types.SenderStatusRemTempFail {
 			log.Infof("getCloudCertChain remoteTemporaryFailure: %s", err)
@@ -317,7 +313,7 @@ func getCloudCertChain(ctx *zedagentContext) bool {
 	// for cipher object handling
 	parseControllerCerts(ctx, contents)
 
-	certBytes, err := zedcloud.VerifyCloudCertChain(zedcloudCtx, serverName, contents)
+	certBytes, err := zedcloud.VerifyCloudCertChain(&zedcloudCtx, serverName, contents)
 	if err != nil {
 		log.Errorf("getCloudCertChain: verify err %v", err)
 		return false
