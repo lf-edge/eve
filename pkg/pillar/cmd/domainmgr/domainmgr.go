@@ -1259,7 +1259,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 				return
 			}
 			log.Infof("ociFilename %s sha %s", ociFilename, ds.ImageSha256)
-			if err := ctrPrepare(ds.FSVolumeLocation, ociFilename, status.EnvVariables, len(status.DiskStatusList)); err != nil {
+			if err := ctrPrepare(ds.FSVolumeLocation, ociFilename, status.EnvVariables, len(status.DiskStatusList), config.UUIDandVersion.UUID.String()); err != nil {
 				log.Errorf("Failed to create ctr bundle. Error %v\n", err.Error())
 				status.LastErr = fmt.Sprintf("%v", err)
 				status.LastErrTime = time.Now()
