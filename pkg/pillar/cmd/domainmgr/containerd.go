@@ -22,7 +22,6 @@ import (
 	"github.com/containerd/typeurl"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
-	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -199,13 +198,11 @@ func ctrCreate(containerID string, ctrdImage containerd.Image) error {
 }
 
 // ctrPrepare prepare an existing container
-func ctrPrepare(ociFilename string, envVars map[string]string, noOfDisks int) (string, error) {
-	containerID := uuid.NewV4().String()
-
+func ctrPrepare(containerID string, ociFilename string, envVars map[string]string, noOfDisks int) error {
 	loadedImages, err := containerdLoadImageTar(ociFilename)
 	if err != nil {
 		log.Errorf("failed to load Image File at %s into containerd: %+s", ociFilename, err.Error())
-		return containerID, err
+		return err
 	}
 
 	// we currently only support one image per file; will change eventually
@@ -220,31 +217,31 @@ func ctrPrepare(ociFilename string, envVars map[string]string, noOfDisks int) (s
 	ctrdImage := containerd.NewImage(ctrdClient, image)
 	imageInfo, err := getImageInfo(ctrdCtx, ctrdImage)
 	if err != nil {
-		return containerID, fmt.Errorf("ctrPrepare: unable to get image: %v config: %v", ctrdImage.Name(), err)
+		return fmt.Errorf("ctrPrepare: unable to get image: %v config: %v", ctrdImage.Name(), err)
 	}
 	// containerd.NewImageWithPlatform(client, i, platforms.Only(platform))
 	unpacked, err := ctrdImage.IsUnpacked(ctrdCtx, defaultSnapshotter)
 	if err != nil {
-		return containerID, fmt.Errorf("ctrPrepare: unable to get image metadata: %v config: %v", ctrdImage.Name(), err)
+		return fmt.Errorf("ctrPrepare: unable to get image metadata: %v config: %v", ctrdImage.Name(), err)
 	}
 	if !unpacked {
 		if err := ctrdImage.Unpack(ctrdCtx, defaultSnapshotter); err != nil {
-			return containerID, fmt.Errorf("ctrPrepare: unable to unpack image: %v config: %v", ctrdImage.Name(), err)
+			return fmt.Errorf("ctrPrepare: unable to unpack image: %v config: %v", ctrdImage.Name(), err)
 		}
 	}
 	if err = ctrCreate(containerID, ctrdImage); err != nil {
-		return containerID, fmt.Errorf("ctrPrepare: failed to create container %s, error: %v", containerID, err.Error())
+		return fmt.Errorf("ctrPrepare: failed to create container %s, error: %v", containerID, err.Error())
 	}
 	// inject a few files of our own into the bundle
 	containerpath := getContainerPath(containerID)
 	mountpoints, execpath, workdir, env, err := getContainerConfigs(imageInfo, envVars)
 	if err != nil {
-		return containerID, fmt.Errorf("ctrPrepare: unable to get container config: %v", err)
+		return fmt.Errorf("ctrPrepare: unable to get container config: %v", err)
 	}
 
 	err = createMountPointExecEnvFiles(containerpath, mountpoints, execpath, workdir, env, noOfDisks)
 
-	return containerID, err
+	return err
 }
 
 // getContainerConfigs get the container configs needed, specifically
