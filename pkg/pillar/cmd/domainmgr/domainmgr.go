@@ -835,14 +835,6 @@ func runHandler(ctx *domainContext, key string, c <-chan Notify) {
 	log.Infof("runHandler(%s) DONE\n", key)
 }
 
-// doStopDestroyDomain will destroy the domain of an instance if qemu is crashed
-func doStopDestroyDomain(status *types.DomainStatus) {
-	err := DomainDestroy(*status)
-	if err != nil {
-		log.Errorf("DomainDestroy %s failed: %s\n", status.DomainName, err)
-	}
-}
-
 // Check if it is still running
 // XXX would xen state be useful?
 func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
@@ -897,7 +889,9 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.Activated = false
 			status.State = types.HALTED
 			publishDomainStatus(ctx, status)
-			doStopDestroyDomain(status)
+			if err := hyper.Delete(status.DomainName, status.DomainId); err != nil {
+				log.Errorf("failed to delete domain: %s (%v)\n", status.DomainName, err)
+			}
 		}
 	}
 }
@@ -1059,13 +1053,10 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		return
 	}
 
-	// Do we need to copy any rw files? !Preserve ones are copied upon
+	// Do we need to copy any rw files? !Preserve ones and container FSes are copied upon
 	// activation.
 	for _, ds := range status.DiskStatusList {
-		if ds.Format == zconfig.Format_CONTAINER {
-			continue
-		}
-		if ds.ReadOnly || !ds.Preserve {
+		if ds.ReadOnly || !ds.Preserve || ds.Format == zconfig.Format_CONTAINER {
 			continue
 		}
 		log.Infof("Potentially copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
@@ -1255,18 +1246,28 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 
 	// Do we need to copy any rw files? Preserve ones are copied upon
 	// creation
-	var containerImageSha256 string
 	for _, ds := range status.DiskStatusList {
-		if ds.Format == zconfig.Format_CONTAINER {
-			containerImageSha256 = ds.ImageSha256
-			continue
-		}
 		if ds.ReadOnly || ds.Preserve {
 			continue
-		}
-		log.Infof("Potentially copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
-		if _, err := os.Stat(ds.ActiveFileLocation); err == nil && ds.Preserve {
+		} else if ds.Format == zconfig.Format_CONTAINER {
+			ociFilename, err := utils.VerifiedImageFileLocation(ds.ImageSha256)
+			if err != nil {
+				log.Errorf("failed to get Image File Location. "+
+					"err: %+s", err.Error())
+				status.LastErr = fmt.Sprintf("failed to get Image File Location. err: %+s", err.Error())
+				status.LastErrTime = time.Now()
+				return
+			}
+			log.Infof("ociFilename %s sha %s", ociFilename, ds.ImageSha256)
+			if err := ctrPrepare(ds.FSVolumeID, ociFilename, status.EnvVariables, len(status.DiskStatusList)); err != nil {
+				log.Errorf("Failed to create ctr bundle. Error %v\n", err.Error())
+				status.LastErr = fmt.Sprintf("%v", err)
+				status.LastErrTime = time.Now()
+				return
+			}
+		} else if _, err := os.Stat(ds.ActiveFileLocation); err == nil && ds.Preserve {
 			log.Infof("Preserve and target exists - skip copy\n")
+			addImageStatus(ctx, ds.ActiveFileLocation)
 		} else {
 			log.Infof("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
 			if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
@@ -1278,8 +1279,8 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			}
 			log.Infof("Copy DONE from %s to %s\n",
 				ds.FileLocation, ds.ActiveFileLocation)
+			addImageStatus(ctx, ds.ActiveFileLocation)
 		}
-		addImageStatus(ctx, ds.ActiveFileLocation)
 	}
 
 	filename := xenCfgFilename(config.AppNum)
@@ -1295,31 +1296,6 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
 		return
-	}
-
-	// FIXME: this will go away once we do a proper volumemanager
-	// Handle creating of rootFS bundle for containers
-	if status.IsContainer {
-		ociFilename, err := utils.VerifiedImageFileLocation(containerImageSha256)
-		if err != nil {
-			log.Errorf("failed to get Image File Location. "+
-				"err: %+s", err.Error())
-			status.LastErr = fmt.Sprintf("failed to get Image File Location. err: %+s", err.Error())
-			status.LastErrTime = time.Now()
-			return
-		}
-		log.Infof("ociFilename %s sha %s", ociFilename, containerImageSha256)
-		podUUID, err := ctrPrepare(ociFilename, status.EnvVariables, len(status.DiskStatusList))
-		if err != nil {
-			log.Errorf("Failed to create ctr bundle. Error %v\n", err.Error())
-			status.LastErr = fmt.Sprintf("%v", err)
-			status.LastErrTime = time.Now()
-			return
-		}
-
-		file.WriteString(fmt.Sprintf("p9=[ 'tag=share_dir,security_model=none,path=%s']\n", getContainerPath(podUUID)))
-
-		status.PodUUID = podUUID
 	}
 
 	status.TriedCount = 0
@@ -1486,10 +1462,8 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	// container to exit state and the domain is destroyed
 	// Issue Domain Destroy irrespective in container case
 	if status.IsContainer || status.DomainId != 0 {
-		err := DomainDestroy(*status)
-		if err != nil {
-			log.Errorf("DomainDestroy %s failed: %s\n",
-				status.DomainName, err)
+		if err := hyper.Delete(status.DomainName, status.DomainId); err != nil {
+			log.Errorf("Failed to delete domain %s (%v)\n", status.DomainName, err)
 		}
 		// Even if destroy failed we wait again
 		log.Infof("doInactivate(%v) for %s: waiting for domain to be destroyed\n",
@@ -1517,9 +1491,11 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	// not be preserved across reboots?
 	for _, ds := range status.DiskStatusList {
 		if ds.Format == zconfig.Format_CONTAINER {
-			continue
-		}
-		if !ds.ReadOnly && !ds.Preserve {
+			log.Infof("Removing container volume %s\n", ds.FSVolumeID)
+			if err := ctrRm(ds.FSVolumeID); err != nil {
+				log.Errorf("ctrRm %s failed: %s\n", ds.FSVolumeID, err)
+			}
+		} else if !ds.ReadOnly && !ds.Preserve {
 			log.Infof("Delete copy at %s\n", ds.ActiveFileLocation)
 			if err := os.Remove(ds.ActiveFileLocation); err != nil {
 				log.Errorln(err)
@@ -1624,7 +1600,9 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.Vdev = xv
 
 		target := ""
-		if ds.Format != zconfig.Format_CONTAINER && !dc.ReadOnly {
+		if ds.Format == zconfig.Format_CONTAINER {
+			ds.FSVolumeID = uuid.NewV4().String()
+		} else if !dc.ReadOnly {
 			// XXX:Why are we excluding container images? Are they supposed to be
 			//  readonly
 			// Pick new location for a per-guest copy
@@ -1960,30 +1938,34 @@ func configToXencfg(config types.DomainConfig, status types.DomainStatus,
 	// Always prefer CDROM vdisk over disk
 	file.WriteString(fmt.Sprintf("boot = \"%s\"\n", "dc"))
 
-	diskString := ""
+	var diskStrings []string
+	var p9Strings []string
 	for i, ds := range status.DiskStatusList {
 		if ds.Format == zconfig.Format_CONTAINER {
-			continue
-		}
-		err := checkDiskFormat(ds)
-		if err != nil {
-			log.Errorf("%v", err)
-			return err
-		}
-		access := "rw"
-		if ds.ReadOnly {
-			access = "ro"
-		}
-		oneDisk := fmt.Sprintf("'%s,%s,%s,%s'",
-			ds.ActiveFileLocation, strings.ToLower(ds.Format.String()), ds.Vdev, access)
-		log.Debugf("Processing disk %d: %s\n", i, oneDisk)
-		if diskString == "" {
-			diskString = oneDisk
+			p9Strings = append(p9Strings,
+				fmt.Sprintf("'tag=share_dir,security_model=none,path=%s']\n", getContainerPath(ds.FSVolumeID)))
 		} else {
-			diskString = diskString + ", " + oneDisk
+			err := checkDiskFormat(ds)
+			if err != nil {
+				log.Errorf("%v", err)
+				return err
+			}
+			access := "rw"
+			if ds.ReadOnly {
+				access = "ro"
+			}
+			oneDisk := fmt.Sprintf("'%s,%s,%s,%s'",
+				ds.ActiveFileLocation, strings.ToLower(ds.Format.String()), ds.Vdev, access)
+			log.Debugf("Processing disk %d: %s\n", i, oneDisk)
+			diskStrings = append(diskStrings, oneDisk)
 		}
 	}
-	file.WriteString(fmt.Sprintf("disk = [%s]\n", diskString))
+	if len(diskStrings) > 0 {
+		file.WriteString(fmt.Sprintf("disk = [%s]\n", strings.Join(diskStrings, ",")))
+	}
+	if len(p9Strings) > 0 {
+		file.WriteString(fmt.Sprintf("p9 = [%s]\n", strings.Join(p9Strings, ",")))
+	}
 
 	vifString := ""
 	for _, net := range config.VifList {
@@ -2307,11 +2289,13 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 
 func deleteStorageDisksForDomain(ctx *domainContext,
 	statusPtr *types.DomainStatus) {
-	if statusPtr.IsContainer {
-		log.Debugf("Container. Not deleting any images")
-	}
 	for _, ds := range statusPtr.DiskStatusList {
-		if !ds.ReadOnly && ds.Preserve {
+		if ds.Format == zconfig.Format_CONTAINER {
+			log.Infof("Removing container volume %s\n", ds.FSVolumeID)
+			if err := ctrRm(ds.FSVolumeID); err != nil {
+				log.Errorf("ctrRm %s failed: %s\n", ds.FSVolumeID, err)
+			}
+		} else if !ds.ReadOnly && !ds.Preserve {
 			log.Infof("Delete copy at %s\n", ds.ActiveFileLocation)
 			if err := os.Remove(ds.ActiveFileLocation); err != nil {
 				log.Errorln(err)
@@ -2336,15 +2320,6 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	if status.Activated {
 		doInactivate(ctx, status, true)
 	} else {
-		if status.IsContainer {
-			// Use ctr to remove already exited or inactivated container apps
-			log.Infof("Using ctr to remove already exited container app ... PodUUID - %s\n", status.PodUUID)
-			err := ctrRm(status.PodUUID)
-			if err != nil {
-				log.Errorf("ctrRm %s failed: %s\n",
-					status.DomainName, err)
-			}
-		}
 		pciUnassign(ctx, status, true)
 	}
 
@@ -2376,7 +2351,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 }
 
 // DomainCreate is a wrapper for domain creation
-// returns domainID, PodUUID and error
+// returns domainID and error
 func DomainCreate(status types.DomainStatus) (int, error) {
 
 	var (
@@ -2412,25 +2387,6 @@ func DomainShutdown(status types.DomainStatus, force bool) error {
 	// Stop the domain
 	log.Infof("Stopping domain - %s\n", status.DomainName)
 	err = hyper.Stop(status.DomainName, status.DomainId, force)
-
-	return err
-}
-
-// DomainDestroy is a wrapper for domain Destroy
-func DomainDestroy(status types.DomainStatus) error {
-
-	var err error
-	log.Infof("DomainDestroy %s %d\n", status.DomainName, status.DomainId)
-
-	if status.IsContainer {
-		// Use ctr
-		log.Infof("Using ctr tool ... PodUUID - %s\n", status.PodUUID)
-		err = ctrRm(status.PodUUID)
-	} else {
-		// Delete the domain
-		log.Infof("Deleting domain - %s\n", status.DomainName)
-		err = hyper.Delete(status.DomainName, status.DomainId)
-	}
 
 	return err
 }
