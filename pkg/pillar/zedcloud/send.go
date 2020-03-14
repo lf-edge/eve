@@ -41,14 +41,24 @@ type ZedCloudContext struct {
 	NetworkSendTimeout  uint32 // In seconds
 	V2API               bool   // XXX Needed?
 	// V2 related items
-	PrevCertPEM      [][]byte // cached proxy certs for later comparison
-	onBoardCert      *tls.Certificate
-	deviceCert       *tls.Certificate
-	serverLeafCert   *x509.Certificate
-	deviceCertHash   []byte
-	onBoardCertHash  []byte
-	cloudCertHash    []byte
-	onBoardCertBytes []byte
+	PrevCertPEM           [][]byte // cached proxy certs for later comparison
+	onBoardCert           *tls.Certificate
+	deviceCert            *tls.Certificate
+	serverSigningCert     *x509.Certificate
+	deviceCertHash        []byte
+	onBoardCertHash       []byte
+	serverSigningCertHash []byte
+	onBoardCertBytes      []byte
+}
+
+// ContextOptions - options to be passed at NewContext
+type ContextOptions struct {
+	DevNetworkStatus *types.DeviceNetworkStatus
+	TLSConfig        *tls.Config
+	NeedStatsFunc    bool
+	Timeout          uint32
+	Serial           string
+	SoftSerial       string
 }
 
 var sendCounter uint32
@@ -596,13 +606,16 @@ func isNoSuitableAddress(err error) bool {
 }
 
 // NewContext - return initialized cloud context
-func NewContext(dns *types.DeviceNetworkStatus, timeout uint32, needStats bool) ZedCloudContext {
+func NewContext(opt ContextOptions) ZedCloudContext {
 	ctx := ZedCloudContext{
-		DeviceNetworkStatus: dns,
-		NetworkSendTimeout:  timeout,
+		DeviceNetworkStatus: opt.DevNetworkStatus,
+		NetworkSendTimeout:  opt.Timeout,
+		TlsConfig:           opt.TLSConfig,
 		V2API:               UseV2API(),
+		DevSerial:           opt.Serial,
+		DevSoftSerial:       opt.SoftSerial,
 	}
-	if needStats {
+	if opt.NeedStatsFunc {
 		ctx.FailureFunc = ZedCloudFailure
 		ctx.SuccessFunc = ZedCloudSuccess
 	}

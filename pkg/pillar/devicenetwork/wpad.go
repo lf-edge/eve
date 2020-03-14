@@ -90,7 +90,10 @@ func CheckAndGetNetworkProxy(deviceNetworkStatus *types.DeviceNetworkStatus,
 	}
 }
 
-var ctx = zedcloud.NewContext(nil, 15, true)
+var ctx = zedcloud.NewContext(zedcloud.ContextOptions{
+	Timeout:       15,
+	NeedStatsFunc: true,
+})
 
 func getPacFile(status *types.DeviceNetworkStatus, url string,
 	ifname string) (string, error) {

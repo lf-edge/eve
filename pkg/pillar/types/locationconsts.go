@@ -45,8 +45,8 @@ const (
 
 	// APIV2FileName - user can statically allow for API v2
 	APIV2FileName = IdentityDirname + "/Force-API-V2"
-	// ServerCertFileName - filename for server leaf certificate
-	ServerCertFileName = CertificateDirname + "/server.cert0.pem"
+	// ServerSigningCertFileName - filename for server signing leaf certificate
+	ServerSigningCertFileName = CertificateDirname + "/server-signing-cert.pem"
 
 	// AppImgObj - name of app image obj dir
 	AppImgObj = "appImg.obj"

@@ -57,25 +57,27 @@ func verifyAuthentication(ctx *ZedCloudContext, c []byte, skipVerify bool) ([]by
 			return nil, types.SenderStatusHashSizeError, err
 		}
 
-		err := getCloudCert(ctx)
-		if err != nil {
-			log.Errorf("verifyAuthentication: can not get server cert, %v\n", err)
-			return nil, senderSt, err
+		if ctx.serverSigningCert == nil {
+			err := getServerSigingCert(ctx)
+			if err != nil {
+				log.Errorf("verifyAuthentication: can not get server cert, %v\n", err)
+				return nil, senderSt, err
+			}
 		}
 
 		switch sm.Algo {
 		case zauth.HashAlgorithm_HASH_SHA256_32bytes:
-			if bytes.Compare(sm.GetSenderCertHash(), ctx.cloudCertHash) != 0 {
+			if bytes.Compare(sm.GetSenderCertHash(), ctx.serverSigningCertHash) != 0 {
 				err := fmt.Errorf("verifyAuthentication: local server cert hash 32bytes does not match in authen")
 				log.Errorf("verifyAuthentication: local server cert hash(%d) does not match in authen (%d) %v, %v",
-					len(ctx.cloudCertHash), len(sm.GetSenderCertHash()), ctx.cloudCertHash, sm.GetSenderCertHash())
+					len(ctx.serverSigningCertHash), len(sm.GetSenderCertHash()), ctx.serverSigningCertHash, sm.GetSenderCertHash())
 				return nil, types.SenderStatusCertMiss, err
 			}
 		case zauth.HashAlgorithm_HASH_SHA256_16bytes:
-			if bytes.Compare(sm.GetSenderCertHash(), ctx.cloudCertHash[:hashSha256Len16]) != 0 {
+			if bytes.Compare(sm.GetSenderCertHash(), ctx.serverSigningCertHash[:hashSha256Len16]) != 0 {
 				err := fmt.Errorf("verifyAuthentication: local server cert hash 16bytes does not match in authen")
 				log.Errorf("verifyAuthentication: local server cert hash(%d) does not match in authen (%d) %v, %v",
-					len(ctx.cloudCertHash), len(sm.GetSenderCertHash()), ctx.cloudCertHash, sm.GetSenderCertHash())
+					len(ctx.serverSigningCertHash), len(sm.GetSenderCertHash()), ctx.serverSigningCertHash, sm.GetSenderCertHash())
 				return nil, types.SenderStatusCertMiss, err
 			}
 		default:
@@ -85,7 +87,7 @@ func verifyAuthentication(ctx *ZedCloudContext, c []byte, skipVerify bool) ([]by
 		}
 
 		hash := ComputeSha(data)
-		err = verifyAuthSig(sm.GetSignatureHash(), ctx.serverLeafCert, hash)
+		err = verifyAuthSig(sm.GetSignatureHash(), ctx.serverSigningCert, hash)
 		if err != nil {
 			log.Errorf("verifyAuthentication: verifyAuthSig error %v\n", err)
 			return nil, types.SenderStatusSignVerifyFail, err
@@ -95,37 +97,35 @@ func verifyAuthentication(ctx *ZedCloudContext, c []byte, skipVerify bool) ([]by
 	return data, senderSt, nil
 }
 
-func getCloudCert(ctx *ZedCloudContext) error {
-	if ctx.serverLeafCert == nil {
-		certBytes, err := ioutil.ReadFile(types.ServerCertFileName)
-		if err != nil {
-			log.Errorf("getCloudCert: can not read in server cert file, %v\n", err)
-			return err
-		}
-		block, _ := pem.Decode(certBytes)
-		if block == nil {
-			err := fmt.Errorf("getCloudCert: can not get client Cert")
-			return err
-		}
-
-		sCert, err := x509.ParseCertificate(block.Bytes)
-		if err != nil {
-			log.Errorf("getCloudCert: can not parse cert %v\n", err)
-			return err
-		}
-
-		// hash verify using PEM bytes from cloud
-		ctx.cloudCertHash = ComputeSha(certBytes)
-		ctx.serverLeafCert = sCert
+func getServerSigingCert(ctx *ZedCloudContext) error {
+	certBytes, err := ioutil.ReadFile(types.ServerSigningCertFileName)
+	if err != nil {
+		log.Errorf("getServerSigningCert: can not read in server cert file, %v\n", err)
+		return err
 	}
+	block, _ := pem.Decode(certBytes)
+	if block == nil {
+		err := fmt.Errorf("getServerSigningCert: can not get client Cert")
+		return err
+	}
+
+	sCert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		log.Errorf("getServerSigningCert: can not parse cert %v\n", err)
+		return err
+	}
+
+	// hash verify using PEM bytes from cloud
+	ctx.serverSigningCertHash = ComputeSha(certBytes)
+	ctx.serverSigningCert = sCert
 
 	return nil
 }
 
 // ClearCloudCert - zero out cached cloud certs in client zedcloudCtx
 func ClearCloudCert(ctx *ZedCloudContext) {
-	ctx.serverLeafCert = nil
-	ctx.cloudCertHash = nil
+	ctx.serverSigningCert = nil
+	ctx.serverSigningCertHash = nil
 }
 
 // verify the signed data with cloud certificate public key
@@ -416,8 +416,8 @@ func VerifyCloudCertChain(ctx *ZedCloudContext, serverName string, content []byt
 		return nil, err
 	}
 
-	// save this cert and hash to serverLeafCert and cloudCertHash
-	ctx.cloudCertHash = ComputeSha(certByte)
+	// save this cert and hash to serverSigningCert and serverSigingCertHash
+	ctx.serverSigningCertHash = ComputeSha(certByte)
 	block, _ = pem.Decode(certByte)
 	if block == nil {
 		err := fmt.Errorf("VerifyCloudCertChain: can not get client Cert")
@@ -428,7 +428,7 @@ func VerifyCloudCertChain(ctx *ZedCloudContext, serverName string, content []byt
 		log.Errorf("VerifyCloudCertChain: can not parse cert %v", err)
 		return nil, err
 	}
-	ctx.serverLeafCert = sCert
+	ctx.serverSigningCert = sCert
 
 	log.Debugf("VerifyCloudCertChain: success\n")
 	return certByte, nil

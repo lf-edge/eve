@@ -84,10 +84,14 @@ func handleConfigInit(networkSendTimeout uint32) {
 	serverNameAndPort = strings.TrimSpace(string(bytes))
 	serverName = strings.Split(serverNameAndPort, ":")[0]
 
-	zedcloudCtx = zedcloud.NewContext(deviceNetworkStatus, networkSendTimeout, true)
+	zedcloudCtx = zedcloud.NewContext(zedcloud.ContextOptions{
+		DevNetworkStatus: deviceNetworkStatus,
+		Timeout:          networkSendTimeout,
+		NeedStatsFunc:    true,
+		Serial:           hardware.GetProductSerial(),
+		SoftSerial:       hardware.GetSoftSerial(),
+	})
 
-	zedcloudCtx.DevSerial = hardware.GetProductSerial()
-	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
 	log.Infof("Configure Get Device Serial %s, Soft Serial %s, Use V2 API %v\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial, zedcloud.UseV2API())
 
@@ -318,7 +322,7 @@ func getCloudCertChain(ctx *zedagentContext) bool {
 		log.Errorf("getCloudCertChain: verify err %v", err)
 		return false
 	}
-	err = fileutils.WriteRename(types.ServerCertFileName, certBytes)
+	err = fileutils.WriteRename(types.ServerSigningCertFileName, certBytes)
 	if err != nil {
 		log.Errorf("getCloudCertChain: file save err %v", err)
 		return false

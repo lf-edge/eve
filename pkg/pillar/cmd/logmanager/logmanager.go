@@ -730,12 +730,15 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 	serverName = strings.Split(serverName, ":")[0]
 
 	//set log url
-	zedcloudCtx = zedcloud.NewContext(deviceNetworkStatus, ctx.globalConfig.NetworkSendTimeout, true)
+	zedcloudCtx = zedcloud.NewContext(zedcloud.ContextOptions{
+		DevNetworkStatus: deviceNetworkStatus,
+		Timeout:          ctx.globalConfig.NetworkSendTimeout,
+		NeedStatsFunc:    true,
+		Serial:           hardware.GetProductSerial(),
+		SoftSerial:       hardware.GetSoftSerial(),
+	})
 	log.Infof("sendCtxInit: Use V2 API %v\n", zedcloud.UseV2API())
 
-	// get the edge box serial number
-	zedcloudCtx.DevSerial = hardware.GetProductSerial()
-	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
 	dnsCtx.zedcloudCtx = &zedcloudCtx
 	log.Infof("Log Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)

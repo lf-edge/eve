@@ -201,11 +201,14 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	clientCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	zedcloudCtx := zedcloud.NewContext(clientCtx.deviceNetworkStatus, clientCtx.globalConfig.NetworkSendTimeout, true)
+	zedcloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
+		DevNetworkStatus: clientCtx.deviceNetworkStatus,
+		Timeout:          clientCtx.globalConfig.NetworkSendTimeout,
+		NeedStatsFunc:    true,
+		Serial:           hardware.GetProductSerial(),
+		SoftSerial:       hardware.GetSoftSerial(),
+	})
 
-	// Get device serial number
-	zedcloudCtx.DevSerial = hardware.GetProductSerial()
-	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
 	clientCtx.zedcloudCtx = &zedcloudCtx
 	log.Infof("Client Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
@@ -556,14 +559,14 @@ func selfRegister(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config, 
 }
 
 // fetch V2 certs from cloud, return GotCloudCerts and ServerIsV1 boolean
-// if got certs, the leaf is saved to types.ServerCertFileName file
+// if got certs, the leaf is saved to types.ServerSigningCertFileName file
 func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config, retryCount int, force bool) bool {
 	var resp *http.Response
 	var b, contents []byte
 	var done bool
 
 	if !force {
-		_, err := os.Stat(types.ServerCertFileName)
+		_, err := os.Stat(types.ServerSigningCertFileName)
 		if err == nil {
 			return true
 		}
@@ -598,7 +601,7 @@ func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config
 		return false
 	}
 
-	err = fileutils.WriteRename(types.ServerCertFileName, certBytes)
+	err = fileutils.WriteRename(types.ServerSigningCertFileName, certBytes)
 	if err != nil {
 		log.Errorf("client fetchCertChain: file save err %v", err)
 		return false
@@ -718,8 +721,10 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 	ctx.zedcloudCtx.DeviceNetworkStatus = &status
 	// if there is proxy certs change, needs to update both
 	// onboard and device tlsconfig
-	cloudCtx := zedcloud.NewContext(ctx.zedcloudCtx.DeviceNetworkStatus, 0, false)
-	cloudCtx.TlsConfig = devtlsConfig
+	cloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
+		DevNetworkStatus: ctx.zedcloudCtx.DeviceNetworkStatus,
+		TLSConfig:        devtlsConfig,
+	})
 	cloudCtx.PrevCertPEM = ctx.zedcloudCtx.PrevCertPEM
 	updated := zedcloud.UpdateTLSProxyCerts(&cloudCtx)
 	if updated {

@@ -151,11 +151,13 @@ func Run(ps *pubsub.PubSub) {
 	ctx.serverNameAndPort = strings.TrimSpace(string(server))
 	ctx.serverName = strings.Split(ctx.serverNameAndPort, ":")[0]
 
-	zedcloudCtx := zedcloud.NewContext(ctx.DeviceNetworkStatus, ctx.globalConfig.NetworkTestTimeout, true)
-
-	// Get device serial number
-	zedcloudCtx.DevSerial = hardware.GetProductSerial()
-	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
+	zedcloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
+		DevNetworkStatus: ctx.DeviceNetworkStatus,
+		Timeout:          ctx.globalConfig.NetworkTestTimeout,
+		NeedStatsFunc:    true,
+		Serial:           hardware.GetProductSerial(),
+		SoftSerial:       hardware.GetSoftSerial(),
+	})
 	log.Infof("Diag Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
