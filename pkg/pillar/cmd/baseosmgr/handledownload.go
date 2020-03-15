@@ -251,7 +251,7 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 			ret.Changed = true
 		}
 
-		ds := lookupDownloaderStatus(ctx, objType, ss.ImageSha256, ss.ImageID)
+		ds := lookupDownloaderStatus(ctx, objType, sc.ImageSha256, ss.ImageID)
 		if ds == nil {
 			log.Infof("LookupDownloaderStatus %s not yet\n",
 				imageID)
