@@ -77,3 +77,7 @@ func (ctx acrnContext) IsDeviceModelAlive(domid int) bool {
 func (ctx acrnContext) GetHostCPUMem() (types.HostMemory, error) {
 	return selfDomCPUMem()
 }
+
+func (ctx acrnContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
+	return nil, nil
+}

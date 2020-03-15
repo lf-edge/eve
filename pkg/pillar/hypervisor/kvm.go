@@ -66,3 +66,7 @@ func (ctx kvmContext) IsDeviceModelAlive(domid int) bool {
 func (ctx kvmContext) GetHostCPUMem() (types.HostMemory, error) {
 	return selfDomCPUMem()
 }
+
+func (ctx kvmContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
+	return nil, nil
+}

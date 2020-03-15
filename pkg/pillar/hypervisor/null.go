@@ -147,3 +147,7 @@ func (ctx nullContext) IsDeviceModelAlive(int) bool {
 func (ctx nullContext) GetHostCPUMem() (types.HostMemory, error) {
 	return selfDomCPUMem()
 }
+
+func (ctx nullContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
+	return nil, nil
+}
