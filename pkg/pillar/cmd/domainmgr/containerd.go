@@ -133,32 +133,36 @@ func ctrRm(containerPath string, silent bool) error {
 	containerID := filepath.Base(containerPath)
 	container, err := loadContainer(containerID)
 	if err != nil {
-		log.Errorf("ctrRm: exception while loading container: %v. %v", containerID, err.Error())
+		err = fmt.Errorf("ctrRm: exception while loading container: %v. %v", containerID, err.Error())
+		log.Error(err)
 		if !silent {
-			return fmt.Errorf("ctrRm: exception while loading container: %v. %v", containerID, err.Error())
+			return err
 		}
 	}
 	if container == nil {
 		return nil
 	}
 	if err := container.Delete(ctrdCtx); err != nil {
-		log.Errorf("Unable to delete container: %v. %v", containerID, err.Error())
+		err = fmt.Errorf("ctrRm: unable to delete container: %v. %v", containerID, err.Error())
+		log.Error(err)
 		if !silent {
-			return fmt.Errorf("cleanUpContainer: Unable to delete container: %v. %v", containerID, err.Error())
+			return err
 		}
 
 	}
 	snapshotter := ctrdClient.SnapshotService(defaultSnapshotter)
 	if err = snapshotter.Remove(ctrdCtx, getSnapshotName(containerID)); err != nil {
-		log.Errorf("Unable to delete snapshot of container: %v. %v", containerID, err.Error())
+		err = fmt.Errorf("ctrRm: unable to delete snapshot of container: %v. %v", containerID, err.Error())
+		log.Error(err)
 		if !silent {
-			return fmt.Errorf("cleanUpContainer: Unable to delete snapshot of container: %v. %v", containerID, err.Error())
+			return err
 		}
 	}
 	if err := deleteBundle(containerID, silent); err != nil {
-		log.Errorf("Unable to delete bundle of container: %v. %v", containerID, err.Error())
+		err = fmt.Errorf("ctrRm: unable to delete bundle of container: %v. %v", containerID, err.Error())
+		log.Error(err)
 		if !silent {
-			return fmt.Errorf("cleanUpContainer: Unable to delete bundle of container: %v. %v", containerID, err.Error())
+			return err
 		}
 	}
 	return nil
