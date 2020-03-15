@@ -272,7 +272,8 @@ func ctrPrepare(containerPath string, ociFilename string, envVars map[string]str
 func getContainerConfigs(imageInfo v1.Image, userEnvVars map[string]string) (map[string]struct{}, []string, string, []string, error) {
 
 	mountpoints := imageInfo.Config.Volumes
-	execpath := imageInfo.Config.Cmd
+	execpath := imageInfo.Config.Entrypoint
+	execpath = append(execpath, imageInfo.Config.Cmd...)
 	workdir := imageInfo.Config.WorkingDir
 	env := imageInfo.Config.Env
 
