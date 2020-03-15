@@ -328,7 +328,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	log.Infof("processed GlobalConfig")
 
-	go metricsTimerTask(&domainCtx)
+	go metricsTimerTask(&domainCtx, hyper)
 
 	// Wait for DeviceNetworkStatus to be init so we know the management
 	// ports and then wait for assignableAdapters.

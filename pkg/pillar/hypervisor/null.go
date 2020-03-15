@@ -143,3 +143,7 @@ func (ctx nullContext) PCIRelease(long string) error {
 func (ctx nullContext) IsDeviceModelAlive(int) bool {
 	return true
 }
+
+func (ctx nullContext) GetHostCPUMem() (types.HostMemory, error) {
+	return selfDomCPUMem()
+}

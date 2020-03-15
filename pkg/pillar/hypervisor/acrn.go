@@ -73,3 +73,7 @@ func (ctx acrnContext) PCIRelease(long string) error {
 func (ctx acrnContext) IsDeviceModelAlive(domid int) bool {
 	return true
 }
+
+func (ctx acrnContext) GetHostCPUMem() (types.HostMemory, error) {
+	return selfDomCPUMem()
+}

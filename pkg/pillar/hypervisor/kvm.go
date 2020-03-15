@@ -62,3 +62,7 @@ func (ctx kvmContext) PCIRelease(long string) error {
 func (ctx kvmContext) IsDeviceModelAlive(domid int) bool {
 	return true
 }
+
+func (ctx kvmContext) GetHostCPUMem() (types.HostMemory, error) {
+	return selfDomCPUMem()
+}
