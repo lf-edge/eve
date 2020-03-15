@@ -6,6 +6,7 @@ package domainmgr
 import (
 	"context"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -27,9 +28,9 @@ const (
 )
 
 // Run a periodic post of the metrics
-func metricsTimerTask(ctx *domainContext) {
+func metricsTimerTask(ctx *domainContext, hyper hypervisor.Hypervisor) {
 	log.Infoln("starting metrics timer task")
-	getAndPublishMetrics(ctx)
+	getAndPublishMetrics(ctx, hyper)
 
 	// Publish 4X more often than zedagent publishes to controller
 	interval := time.Duration(ctx.metricInterval) * time.Second
@@ -45,7 +46,7 @@ func metricsTimerTask(ctx *domainContext) {
 		select {
 		case <-ticker.C:
 			start := time.Now()
-			getAndPublishMetrics(ctx)
+			getAndPublishMetrics(ctx, hyper)
 			pubsub.CheckMaxTimeTopic(agentName+"metrics", "publishMetrics", start,
 				warningTime, errorTime)
 
@@ -55,9 +56,10 @@ func metricsTimerTask(ctx *domainContext) {
 	}
 }
 
-func getAndPublishMetrics(ctx *domainContext) {
+func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 	getAndPublishCPUMemory(ctx)
-	getAndPublishHostMemory(ctx)
+	hm, _ := hyper.GetHostCPUMem()
+	ctx.pubHostMemory.Publish("global", hm)
 }
 
 func getAndPublishCPUMemory(ctx *domainContext) {
@@ -308,83 +310,4 @@ func roundFromBytesToMbytes(byteCount uint64) uint64 {
 
 	kbytes := (byteCount + kbyte/2) / kbyte
 	return (kbytes + kbyte/2) / kbyte
-}
-
-func getAndPublishHostMemory(ctx *domainContext) {
-
-	dict := executeXlInfoCmd()
-	if dict == nil {
-		hm := fallbackHostMemory()
-		ctx.pubHostMemory.Publish("global", hm)
-		return
-	}
-	var err error
-	hm := types.HostMemory{}
-	hm.TotalMemoryMB, err = strconv.ParseUint(dict["total_memory"], 10, 64)
-	if err != nil {
-		log.Errorf("Failed parsing total_memory: %s", err)
-		hm.TotalMemoryMB = 0
-	}
-	hm.FreeMemoryMB, err = strconv.ParseUint(dict["free_memory"], 10, 64)
-	if err != nil {
-		log.Errorf("Failed parsing free_memory: %s", err)
-		hm.FreeMemoryMB = 0
-	}
-
-	// Note that this is the set of physical CPUs which is different
-	// than the set of CPUs assigned to dom0
-	var ncpus uint64
-	ncpus, err = strconv.ParseUint(dict["nr_cpus"], 10, 32)
-	if err != nil {
-		log.Errorln("error while converting ncpus to int: ", err)
-		ncpus = 0
-	}
-	hm.Ncpus = uint32(ncpus)
-	ctx.pubHostMemory.Publish("global", hm)
-	if false {
-		// debug code to compare Xen and fallback
-		// XXX remove debug code
-		hm2 := fallbackHostMemory()
-		log.Infof("XXX xen %+v fallback %+v", hm, hm2)
-	}
-}
-
-// First approximation for a host without Xen
-func fallbackHostMemory() types.HostMemory {
-	hm := types.HostMemory{}
-	vm, err := mem.VirtualMemory()
-	if err != nil {
-		log.Errorf("mem.VirtualMemory failed: %s", err)
-		return hm
-	}
-	hm.TotalMemoryMB = roundFromBytesToMbytes(vm.Total)
-	hm.FreeMemoryMB = roundFromBytesToMbytes(vm.Available)
-
-	info, err := cpu.Info()
-	if err != nil {
-		log.Errorf("cpu.Info failed: %s", err)
-		return hm
-	}
-	hm.Ncpus = uint32(len(info))
-	return hm
-}
-
-func executeXlInfoCmd() map[string]string {
-	xlCmd := exec.Command("xl", "info")
-	stdout, err := xlCmd.Output()
-	if err != nil {
-		log.Errorf("xl info failed %s\n", err)
-		return nil
-	}
-	xlInfo := string(stdout)
-	splitXlInfo := strings.Split(xlInfo, "\n")
-
-	dict := make(map[string]string, len(splitXlInfo)-1)
-	for _, str := range splitXlInfo {
-		res := strings.SplitN(str, ":", 2)
-		if len(res) == 2 {
-			dict[strings.TrimSpace(res[0])] = strings.TrimSpace(res[1])
-		}
-	}
-	return dict
 }

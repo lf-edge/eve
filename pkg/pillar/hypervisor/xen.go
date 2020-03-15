@@ -589,3 +589,52 @@ func (ctx xenContext) IsDeviceModelAlive(domid int) bool {
 		match, out)
 	return true
 }
+
+func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
+	xlCmd := exec.Command("xl", "info")
+	stdout, err := xlCmd.Output()
+	if err != nil {
+		log.Errorf("xl info failed %s\n falling back on Dom0 stats", err)
+		return selfDomCPUMem()
+	}
+
+	xlInfo := string(stdout)
+	splitXlInfo := strings.Split(xlInfo, "\n")
+
+	dict := make(map[string]string, len(splitXlInfo)-1)
+	for _, str := range splitXlInfo {
+		res := strings.SplitN(str, ":", 2)
+		if len(res) == 2 {
+			dict[strings.TrimSpace(res[0])] = strings.TrimSpace(res[1])
+		}
+	}
+
+	hm := types.HostMemory{}
+	hm.TotalMemoryMB, err = strconv.ParseUint(dict["total_memory"], 10, 64)
+	if err != nil {
+		log.Errorf("Failed parsing total_memory: %s", err)
+		hm.TotalMemoryMB = 0
+	}
+	hm.FreeMemoryMB, err = strconv.ParseUint(dict["free_memory"], 10, 64)
+	if err != nil {
+		log.Errorf("Failed parsing free_memory: %s", err)
+		hm.FreeMemoryMB = 0
+	}
+
+	// Note that this is the set of physical CPUs which is different
+	// than the set of CPUs assigned to dom0
+	var ncpus uint64
+	ncpus, err = strconv.ParseUint(dict["nr_cpus"], 10, 32)
+	if err != nil {
+		log.Errorln("error while converting ncpus to int: ", err)
+		ncpus = 0
+	}
+	hm.Ncpus = uint32(ncpus)
+	if false {
+		// debug code to compare Xen and fallback
+		// XXX remove debug code
+		hm2, err := selfDomCPUMem()
+		log.Infof("XXX xen %+v fallback %+v (%v)", hm, hm2, err)
+	}
+	return hm, nil
+}
