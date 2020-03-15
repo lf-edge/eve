@@ -3,6 +3,11 @@
 
 package hypervisor
 
+import (
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"os"
+)
+
 type acrnContext struct {
 }
 
@@ -13,6 +18,10 @@ func newAcrn() Hypervisor {
 // Name returns the name of this hypervisor implementation
 func (ctx acrnContext) Name() string {
 	return "acrn"
+}
+
+func (ctx acrnContext) CreateDomConfig(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error {
+	return nil
 }
 
 // Create creates a domain in a stopped state

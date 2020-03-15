@@ -5,6 +5,7 @@ package hypervisor
 
 import (
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"io/ioutil"
 	"os"
 
@@ -37,6 +38,10 @@ func newNull() Hypervisor {
 
 func (ctx nullContext) Name() string {
 	return "null"
+}
+
+func (ctx nullContext) CreateDomConfig(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error {
+	return nil
 }
 
 func (ctx nullContext) Create(domainName string, cfgFilename string) (int, error) {
