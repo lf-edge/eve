@@ -4,17 +4,26 @@
 package hypervisor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	zconfig "github.com/lf-edge/eve/api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/wrap"
+	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/mem"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	log "github.com/sirupsen/logrus"
+)
+
+const (
+	dom0Name = "Domain-0"
 )
 
 type typeAndPCI struct {
@@ -637,4 +646,186 @@ func (ctx xenContext) GetHostCPUMem() (types.HostMemory, error) {
 		log.Infof("XXX xen %+v fallback %+v (%v)", hm, hm2, err)
 	}
 	return hm, nil
+}
+
+func (ctx xenContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
+	count := 0
+	counter := 0
+	stdout, _, _ := execWithTimeout("xentop", "-b", "-d", "1", "-i", "2", "-f")
+	xentopInfo := string(stdout)
+
+	splitXentopInfo := strings.Split(xentopInfo, "\n")
+	splitXentopInfoLength := len(splitXentopInfo)
+	var i int
+	var start int
+
+	for i = 0; i < splitXentopInfoLength; i++ {
+
+		str := splitXentopInfo[i]
+		re := regexp.MustCompile(" ")
+
+		spaceRemovedsplitXentopInfo := re.ReplaceAllLiteralString(str, "")
+		matched, err := regexp.MatchString("NAMESTATECPU.*", spaceRemovedsplitXentopInfo)
+
+		if err != nil {
+			log.Debugf("MatchString failed: %s", err)
+		} else if matched {
+
+			count++
+			log.Debugf("string matched: %s", str)
+			if count == 2 {
+				start = i + 1
+				log.Debugf("value of i: %d", start)
+			}
+		}
+	}
+
+	length := splitXentopInfoLength - 1 - start
+	finalOutput := make([][]string, length)
+
+	for j := start; j < splitXentopInfoLength-1; j++ {
+		finalOutput[j-start] = strings.Fields(strings.TrimSpace(splitXentopInfo[j]))
+	}
+
+	cpuMemoryStat := make([][]string, length)
+
+	for i := range cpuMemoryStat {
+		cpuMemoryStat[i] = make([]string, 20)
+	}
+
+	// Need to treat "no limit" as one token
+	for f := 0; f < length; f++ {
+
+		// First name and state
+		out := 0
+		counter++
+		cpuMemoryStat[f][counter] = finalOutput[f][out]
+		out++
+		counter++
+		cpuMemoryStat[f][counter] = finalOutput[f][out]
+		out++
+		for ; out < len(finalOutput[f]); out++ {
+
+			if finalOutput[f][out] == "no" {
+
+			} else if finalOutput[f][out] == "limit" {
+				counter++
+				cpuMemoryStat[f][counter] = "no limit"
+			} else {
+				counter++
+				cpuMemoryStat[f][counter] = finalOutput[f][out]
+			}
+		}
+		counter = 0
+	}
+	log.Debugf("ExecuteXentopCmd return %+v", cpuMemoryStat)
+
+	var dmList map[string]types.DomainMetric
+	if len(cpuMemoryStat) == 0 {
+		dmList = fallbackDomainMetric()
+	} else {
+		dmList = parseCPUMemoryStat(cpuMemoryStat)
+	}
+	// finally add host entry to dmList
+	if false {
+		// debug code to compare Xen and fallback
+		log.Infof("XXX reported DomainMetric %+v", dmList)
+		dmList = fallbackDomainMetric()
+		log.Infof("XXX fallback DomainMetric %+v", dmList)
+	}
+	return dmList, nil
+}
+
+// Returns cpuTotal, usedMemory, availableMemory, usedPercentage
+func parseCPUMemoryStat(cpuMemoryStat [][]string) map[string]types.DomainMetric {
+
+	result := make(map[string]types.DomainMetric)
+	for _, stat := range cpuMemoryStat {
+		if len(stat) <= 2 {
+			continue
+		}
+		domainname := strings.TrimSpace(stat[1])
+		if len(stat) <= 6 {
+			continue
+		}
+		log.Debugf("lookupCPUMemoryStat for %s %d elem: %+v",
+			domainname, len(stat), stat)
+		cpuTotal, err := strconv.ParseUint(stat[3], 10, 0)
+		if err != nil {
+			log.Errorf("ParseUint(%s) failed: %s",
+				stat[3], err)
+			cpuTotal = 0
+		}
+		// This is in kbytes
+		totalMemory, err := strconv.ParseUint(stat[5], 10, 0)
+		if err != nil {
+			log.Errorf("ParseUint(%s) failed: %s",
+				stat[5], err)
+			totalMemory = 0
+		}
+		totalMemory = roundFromKbytesToMbytes(totalMemory)
+		usedMemoryPercent, err := strconv.ParseFloat(stat[6], 10)
+		if err != nil {
+			log.Errorf("ParseFloat(%s) failed: %s",
+				stat[6], err)
+			usedMemoryPercent = 0
+		}
+		usedMemory := (float64(totalMemory) * (usedMemoryPercent)) / 100
+		availableMemory := float64(totalMemory) - usedMemory
+
+		dm := types.DomainMetric{
+			CPUTotal:          cpuTotal,
+			UsedMemory:        uint32(usedMemory),
+			AvailableMemory:   uint32(availableMemory),
+			UsedMemoryPercent: float64(usedMemoryPercent),
+		}
+		result[domainname] = dm
+	}
+	return result
+}
+
+// First approximation for a host without Xen
+// XXX Assumes that all of the used memory in the host is overhead the same way dom0 is
+// overhead, which is completely incorrect when running containers
+func fallbackDomainMetric() map[string]types.DomainMetric {
+	dmList := make(map[string]types.DomainMetric)
+	vm, err := mem.VirtualMemory()
+	if err != nil {
+		return dmList
+	}
+	var usedMemoryPercent float64
+	if vm.Total != 0 {
+		usedMemoryPercent = float64(100 * (vm.Total - vm.Available) / vm.Total)
+	}
+	total := roundFromBytesToMbytes(vm.Total)
+	available := roundFromBytesToMbytes(vm.Available)
+	dm := types.DomainMetric{
+		UsedMemory:        uint32(total - available),
+		AvailableMemory:   uint32(available),
+		UsedMemoryPercent: usedMemoryPercent,
+	}
+	// Ask for one total entry
+	cpuStat, err := cpu.Times(false)
+	if err != nil {
+		return dmList
+	}
+	for _, cpu := range cpuStat {
+		dm.CPUTotal = uint64(cpu.Total())
+		break
+	}
+	dmList[dom0Name] = dm
+	return dmList
+}
+
+func execWithTimeout(command string, args ...string) ([]byte, bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(),
+		10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, command, args...)
+	out, err := cmd.Output()
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, false, nil
+	}
+	return out, true, err
 }

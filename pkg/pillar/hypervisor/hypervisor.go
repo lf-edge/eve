@@ -32,6 +32,7 @@ type Hypervisor interface {
 	PCIRelease(string) error
 
 	GetHostCPUMem() (types.HostMemory, error)
+	GetDomsCPUMem() (map[string]types.DomainMetric, error)
 }
 
 type hypervisorDesc struct {
@@ -92,4 +93,10 @@ func roundFromBytesToMbytes(byteCount uint64) uint64 {
 
 	kbytes := (byteCount + kbyte/2) / kbyte
 	return (kbytes + kbyte/2) / kbyte
+}
+
+func roundFromKbytesToMbytes(byteCount uint64) uint64 {
+	const kbyte = 1024
+
+	return (byteCount + kbyte/2) / kbyte
 }
