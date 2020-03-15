@@ -203,7 +203,7 @@ type DiskStatus struct {
 	Devtype            string // From config
 	Vdev               string // Allocated
 	ActiveFileLocation string // Allocated; private copy if RW; FileLocation if RO
-	FSVolumeID         string // Allocated; for containers this has UUID of the FSVolume
+	FSVolumeLocation   string // Allocated; for containers this has path to the FSVolume
 }
 
 // Track the active image files in rwImgDirname

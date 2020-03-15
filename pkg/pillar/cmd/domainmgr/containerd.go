@@ -127,9 +127,10 @@ func ctrStop(containerID string, force bool) error {
 }
 
 // ctrRm remove an existing container
-func ctrRm(containerID string) error {
-	log.Infof("ctrRm %s\n", containerID)
+func ctrRm(containerPath string) error {
+	log.Infof("ctrRm %s\n", containerPath)
 
+	containerID := filepath.Base(containerPath)
 	container, err := loadContainer(containerID)
 	if err != nil {
 		return err
@@ -198,7 +199,7 @@ func ctrCreate(containerID string, ctrdImage containerd.Image) error {
 }
 
 // ctrPrepare prepare an existing container
-func ctrPrepare(containerID string, ociFilename string, envVars map[string]string, noOfDisks int) error {
+func ctrPrepare(containerPath string, ociFilename string, envVars map[string]string, noOfDisks int) error {
 	loadedImages, err := containerdLoadImageTar(ociFilename)
 	if err != nil {
 		log.Errorf("failed to load Image File at %s into containerd: %+s", ociFilename, err.Error())
@@ -229,17 +230,16 @@ func ctrPrepare(containerID string, ociFilename string, envVars map[string]strin
 			return fmt.Errorf("ctrPrepare: unable to unpack image: %v config: %v", ctrdImage.Name(), err)
 		}
 	}
-	if err = ctrCreate(containerID, ctrdImage); err != nil {
-		return fmt.Errorf("ctrPrepare: failed to create container %s, error: %v", containerID, err.Error())
+	if err = ctrCreate(filepath.Base(containerPath), ctrdImage); err != nil {
+		return fmt.Errorf("ctrPrepare: failed to create container %s, error: %v", containerPath, err.Error())
 	}
 	// inject a few files of our own into the bundle
-	containerpath := getContainerPath(containerID)
 	mountpoints, execpath, workdir, env, err := getContainerConfigs(imageInfo, envVars)
 	if err != nil {
 		return fmt.Errorf("ctrPrepare: unable to get container config: %v", err)
 	}
 
-	err = createMountPointExecEnvFiles(containerpath, mountpoints, execpath, workdir, env, noOfDisks)
+	err = createMountPointExecEnvFiles(containerPath, mountpoints, execpath, workdir, env, noOfDisks)
 
 	return err
 }

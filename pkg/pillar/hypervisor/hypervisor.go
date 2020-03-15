@@ -5,12 +5,15 @@ package hypervisor
 
 import (
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"os"
 )
 
 // Hypervisor provides methods for manipulating domains on the host
 type Hypervisor interface {
 	Name() string
+
+	CreateDomConfig(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error
 
 	Create(string, string) (int, error)
 

@@ -3,6 +3,11 @@
 
 package hypervisor
 
+import (
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"os"
+)
+
 type kvmContext struct {
 }
 
@@ -12,6 +17,10 @@ func newKvm() Hypervisor {
 
 func (ctx kvmContext) Name() string {
 	return "kvm"
+}
+
+func (ctx kvmContext) CreateDomConfig(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error {
+	return nil
 }
 
 func (ctx kvmContext) Create(domainName string, xenCfgFilename string) (int, error) {
