@@ -315,12 +315,18 @@ func Run(ps *pubsub.PubSub) {
 	subAppImgDownloadStatus.Activate()
 
 	// Look for AppImgResolveStatus from downloader
-	subAppImgResolveStatus, err := pubsublegacy.SubscribeScope("downloader",
-		types.AppImgObj, types.AppImgResolveStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
-			DeleteHandler: handleResolveStatusDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subAppImgResolveStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "downloader",
+		AgentScope:    types.AppImgObj,
+		TopicImpl:     types.AppImgResolveStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleResolveStatusModify,
+		ModifyHandler: handleResolveStatusModify,
+		DeleteHandler: handleResolveStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}

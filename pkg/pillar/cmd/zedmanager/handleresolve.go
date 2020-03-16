@@ -67,3 +67,9 @@ func handleResolveStatusDelete(ctxArg interface{}, key string,
 	}
 	log.Infof("handleResolveStatusDelete done for %s\n", key)
 }
+
+func handleResolveStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	return
+}
