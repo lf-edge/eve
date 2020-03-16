@@ -1259,7 +1259,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 				return
 			}
 			log.Infof("ociFilename %s sha %s", ociFilename, ds.ImageSha256)
-			if err := ctrPrepare(ds.FSVolumeLocation, ociFilename, status.EnvVariables, len(status.DiskStatusList), config.UUIDandVersion.UUID.String()); err != nil {
+			if err := ctrPrepare(ds.FSVolumeLocation, ociFilename, status.EnvVariables, len(status.DiskStatusList)); err != nil {
 				log.Errorf("Failed to create ctr bundle. Error %v\n", err.Error())
 				status.LastErr = fmt.Sprintf("%v", err)
 				status.LastErrTime = time.Now()
@@ -1600,7 +1600,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 
 		target := ""
 		if ds.Format == zconfig.Format_CONTAINER {
-			ds.FSVolumeLocation = getContainerPath(uuid.NewV4().String())
+			ds.FSVolumeLocation = getContainerPath(config.UUIDandVersion.UUID.String())
 		} else if !dc.ReadOnly {
 			// XXX:Why are we excluding container images? Are they supposed to be
 			//  readonly

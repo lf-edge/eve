@@ -217,7 +217,8 @@ func ctrCreate(containerID string, ctrdImage containerd.Image) error {
 }
 
 // ctrPrepare prepare an existing container
-func ctrPrepare(containerPath string, ociFilename string, envVars map[string]string, noOfDisks int, containerID string) error {
+func ctrPrepare(containerPath string, ociFilename string, envVars map[string]string, noOfDisks int) error {
+	containerID := filepath.Base(containerPath)
 	// On device restart, the existing bundle is not deleted, we need to delete the existing bundle of the container and recreate it.
 	if isBundleExists(containerID) {
 		log.Infof("ctrPrepare: a bundle with ID: %v already exists. Cleaning existing bundle and recreating it", containerID)
