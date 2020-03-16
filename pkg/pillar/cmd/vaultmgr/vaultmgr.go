@@ -319,7 +319,7 @@ func setupVault(vaultPath string) error {
 		if err := unlockVault(vaultPath, true); err != nil {
 			return err
 		}
-		//return changeProtector(vaultPath)
+		return changeProtector(vaultPath)
 	}
 	return nil
 }
