@@ -170,3 +170,50 @@ func AllowNonFreePort(gc ConfigItemValueMap, objType string) bool {
 		return false
 	}
 }
+
+// The key/index to this is the ImageID which is allocated by the controller.
+type AppImgResolveConfig struct {
+	ImageID     uuid.UUID
+	DatastoreID uuid.UUID
+	Name        string
+	NameIsURL   bool // If not we form URL based on datastore info
+	IsContainer bool
+}
+
+func (config AppImgResolveConfig) Key() string {
+	return fmt.Sprintf("%s", config.ImageID.String())
+}
+
+func (config AppImgResolveConfig) VerifyFilename(fileName string) bool {
+	expect := config.Key() + ".json"
+	ret := expect == fileName
+	if !ret {
+		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
+			fileName, expect)
+	}
+	return ret
+}
+
+// The key/index to this is the ImageID which comes from AppImgResolveConfig.
+type AppImgResolveStatus struct {
+	ImageID     uuid.UUID
+	DatastoreID uuid.UUID
+	Name        string
+	IsContainer bool
+	NameIsURL   bool // If not we form URL based on datastore info
+	ImageSha256 string
+}
+
+func (status AppImgResolveStatus) Key() string {
+	return fmt.Sprintf("%s", status.ImageID.String())
+}
+
+func (status AppImgResolveStatus) VerifyFilename(fileName string) bool {
+	expect := status.Key() + ".json"
+	ret := expect == fileName
+	if !ret {
+		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
+			fileName, expect)
+	}
+	return ret
+}

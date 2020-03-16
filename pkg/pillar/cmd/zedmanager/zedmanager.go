@@ -55,6 +55,8 @@ type zedmanagerContext struct {
 	subAppImgVerifierStatus pubsub.Subscription
 	pubAppImgPersistConfig  pubsub.Publication
 	subAppImgPersistStatus  pubsub.Subscription
+	pubAppImgResolveConfig  pubsub.Publication
+	subAppImgResolveStatus  pubsub.Subscription
 	subGlobalConfig         pubsub.Subscription
 	globalConfig            *types.ConfigItemValueMap
 	pubUuidToNum            pubsub.Publication
@@ -148,6 +150,17 @@ func Run(ps *pubsub.PubSub) {
 	}
 	pubAppImgDownloadConfig.ClearRestarted()
 	ctx.pubAppImgDownloadConfig = pubAppImgDownloadConfig
+
+	pubAppImgResolveConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.AppImgObj,
+		TopicType:  types.AppImgResolveConfig{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubAppImgResolveConfig.ClearRestarted()
+	ctx.pubAppImgResolveConfig = pubAppImgResolveConfig
 
 	pubAppImgVerifierConfig, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName:  agentName,
@@ -301,6 +314,19 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subAppImgDownloadStatus = subAppImgDownloadStatus
 	subAppImgDownloadStatus.Activate()
 
+	// Look for AppImgResolveStatus from downloader
+	subAppImgResolveStatus, err := pubsublegacy.SubscribeScope("downloader",
+		types.AppImgObj, types.AppImgResolveStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
+			DeleteHandler: handleResolveStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subAppImgResolveStatus = subAppImgResolveStatus
+	subAppImgResolveStatus.Activate()
+
 	// Look for VerifyImageStatus from verifier
 	subAppImgVerifierStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:      "verifier",
@@ -449,6 +475,9 @@ func Run(ps *pubsub.PubSub) {
 
 		case change := <-subAppImgDownloadStatus.MsgChan():
 			subAppImgDownloadStatus.ProcessChange(change)
+
+		case change := <-subAppImgResolveStatus.MsgChan():
+			subAppImgResolveStatus.ProcessChange(change)
 
 		case change := <-subAppImgVerifierStatus.MsgChan():
 			subAppImgVerifierStatus.ProcessChange(change)

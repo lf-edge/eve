@@ -129,9 +129,9 @@ func objectMetadata(ctx *downloaderContext, trType zedUpload.SyncTransportType,
 	// check for proxies on the selected management port interface
 	proxyURL, err := zedcloud.LookupProxy(
 		&ctx.deviceNetworkStatus, ifname, downloadURL)
-	if err == nil && proxyUrl != nil {
-		log.Infof("%s: Using proxy %s", trType, proxyUrl.String())
-		dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyUrl)
+	if err == nil && proxyURL != nil {
+		log.Infof("%s: Using proxy %s", trType, proxyURL.String())
+		dEndPoint.WithSrcIPAndProxySelection(ipSrc, proxyURL)
 	} else {
 		dEndPoint.WithSrcIPSelection(ipSrc)
 	}
