@@ -279,10 +279,21 @@ func getContainerConfigs(imageInfo v1.Image, userEnvVars map[string]string) (map
 	execpath := imageInfo.Config.Entrypoint
 	execpath = append(execpath, imageInfo.Config.Cmd...)
 	workdir := imageInfo.Config.WorkingDir
-	env := imageInfo.Config.Env
+	unProcessedEnv := imageInfo.Config.Env
+	var env []string
+	for _, e := range unProcessedEnv {
+		keyAndValueSlice := strings.Split(e, "=")
+		if len(keyAndValueSlice) == 2 {
+			//handles Key=Value case
+			env = append(env, fmt.Sprintf("%s=\"%s\"", keyAndValueSlice[0], keyAndValueSlice[1]))
+		} else {
+			//handles Key= case
+			env = append(env, e)
+		}
+	}
 
 	for k, v := range userEnvVars {
-		env = append(env, fmt.Sprintf("%s=%s", k, v))
+		env = append(env, fmt.Sprintf("%s=\"%s\"", k, v))
 	}
 	return mountpoints, execpath, workdir, env, nil
 }

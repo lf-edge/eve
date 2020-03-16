@@ -1779,7 +1779,7 @@ func createMountPointExecEnvFiles(containerPath string, mountpoints map[string]s
 		envContent = fmt.Sprintf("export WORKDIR=\"%s\"\n", workdir)
 	}
 	for _, e := range env {
-		envContent = envContent + fmt.Sprintf("export \"%s\"\n", e)
+		envContent = envContent + fmt.Sprintf("export %s\n", e)
 	}
 	if _, err := envFile.WriteString(envContent); err != nil {
 		err := fmt.Errorf("createMountPointExecEnvFiles: writing to %s failed %v", envFileName, err)
