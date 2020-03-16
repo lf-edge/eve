@@ -24,7 +24,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -117,37 +116,50 @@ func Run(ps *pubsub.PubSub) {
 	// Make sure we have a GlobalConfig file with defaults
 	utils.EnsureGCFile()
 
-	pubDeviceNetworkStatus, err := pubsublegacy.Publish(agentName,
-		types.DeviceNetworkStatus{})
+	pubDeviceNetworkStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.DeviceNetworkStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubDeviceNetworkStatus.ClearRestarted()
 
-	pubDevicePortConfig, err := pubsublegacy.Publish(agentName,
-		types.DevicePortConfig{})
+	pubDevicePortConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.DevicePortConfig{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubDevicePortConfig.ClearRestarted()
 
-	pubDevicePortConfigList, err := pubsublegacy.PublishPersistent(agentName,
-		types.DevicePortConfigList{})
+	pubDevicePortConfigList, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			Persistent: true,
+			TopicType:  types.DevicePortConfigList{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubDevicePortConfigList.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
-		false, &nimCtx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleGlobalConfigModify,
-			ModifyHandler: handleGlobalConfigModify,
-			DeleteHandler: handleGlobalConfigDelete,
-			SyncHandler:   handleGlobalConfigSynchronized,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.GlobalConfig{},
+		Activate:      false,
+		Ctx:           &nimCtx,
+		CreateHandler: handleGlobalConfigModify,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		SyncHandler:   handleGlobalConfigSynchronized,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -166,74 +178,85 @@ func Run(ps *pubsub.PubSub) {
 	// 1. zedagent publishing DevicePortConfig
 	// 2. override file in /var/tmp/zededa/DevicePortConfig/*.json
 	// 3. "lastresort" derived from the set of network interfaces
-	subDevicePortConfigA, err := pubsublegacy.Subscribe("zedagent",
-		types.DevicePortConfig{}, false,
-		&nimCtx.DeviceNetworkContext, &pubsub.SubscriptionOptions{
-			CreateHandler: devicenetwork.HandleDPCModify,
-			ModifyHandler: devicenetwork.HandleDPCModify,
-			DeleteHandler: devicenetwork.HandleDPCDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subDevicePortConfigA, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		TopicImpl:     types.DevicePortConfig{},
+		Activate:      false,
+		Ctx:           &nimCtx.DeviceNetworkContext,
+		CreateHandler: devicenetwork.HandleDPCModify,
+		ModifyHandler: devicenetwork.HandleDPCModify,
+		DeleteHandler: devicenetwork.HandleDPCDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	nimCtx.SubDevicePortConfigA = subDevicePortConfigA
 	subDevicePortConfigA.Activate()
 
-	subDevicePortConfigO, err := pubsublegacy.Subscribe("",
-		types.DevicePortConfig{}, false,
-		&nimCtx.DeviceNetworkContext, &pubsub.SubscriptionOptions{
-			CreateHandler: devicenetwork.HandleDPCModify,
-			ModifyHandler: devicenetwork.HandleDPCModify,
-			DeleteHandler: devicenetwork.HandleDPCDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subDevicePortConfigO, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.DevicePortConfig{},
+		Activate:      false,
+		Ctx:           &nimCtx.DeviceNetworkContext,
+		CreateHandler: devicenetwork.HandleDPCModify,
+		ModifyHandler: devicenetwork.HandleDPCModify,
+		DeleteHandler: devicenetwork.HandleDPCDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	nimCtx.SubDevicePortConfigO = subDevicePortConfigO
 	subDevicePortConfigO.Activate()
 
-	subDevicePortConfigS, err := pubsublegacy.Subscribe(agentName,
-		types.DevicePortConfig{}, false,
-		&nimCtx.DeviceNetworkContext, &pubsub.SubscriptionOptions{
-			CreateHandler: devicenetwork.HandleDPCModify,
-			ModifyHandler: devicenetwork.HandleDPCModify,
-			DeleteHandler: devicenetwork.HandleDPCDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subDevicePortConfigS, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     agentName,
+		TopicImpl:     types.DevicePortConfig{},
+		Activate:      false,
+		Ctx:           &nimCtx.DeviceNetworkContext,
+		CreateHandler: devicenetwork.HandleDPCModify,
+		ModifyHandler: devicenetwork.HandleDPCModify,
+		DeleteHandler: devicenetwork.HandleDPCDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	nimCtx.SubDevicePortConfigS = subDevicePortConfigS
 	subDevicePortConfigS.Activate()
 
-	subAssignableAdapters, err := pubsublegacy.Subscribe("domainmgr",
-		types.AssignableAdapters{}, false,
-		&nimCtx.DeviceNetworkContext, &pubsub.SubscriptionOptions{
-			CreateHandler: devicenetwork.HandleAssignableAdaptersModify,
-			ModifyHandler: devicenetwork.HandleAssignableAdaptersModify,
-			DeleteHandler: devicenetwork.HandleAssignableAdaptersDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "domainmgr",
+		TopicImpl:     types.AssignableAdapters{},
+		Activate:      false,
+		Ctx:           &nimCtx.DeviceNetworkContext,
+		CreateHandler: devicenetwork.HandleAssignableAdaptersModify,
+		ModifyHandler: devicenetwork.HandleAssignableAdaptersModify,
+		DeleteHandler: devicenetwork.HandleAssignableAdaptersDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	nimCtx.SubAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
-	subNetworkInstanceStatus, err := pubsublegacy.Subscribe("zedrouter",
-		types.NetworkInstanceStatus{}, false, &nimCtx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleNetworkInstanceModify,
-			ModifyHandler: handleNetworkInstanceModify,
-			DeleteHandler: handleNetworkInstanceDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subNetworkInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedrouter",
+		TopicImpl:     types.NetworkInstanceStatus{},
+		Activate:      false,
+		Ctx:           &nimCtx,
+		CreateHandler: handleNetworkInstanceModify,
+		ModifyHandler: handleNetworkInstanceModify,
+		DeleteHandler: handleNetworkInstanceDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}

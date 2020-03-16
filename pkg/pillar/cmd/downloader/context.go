@@ -20,6 +20,7 @@ type downloaderContext struct {
 	pubCertObjStatus        pubsub.Publication
 	subGlobalDownloadConfig pubsub.Subscription
 	pubGlobalDownloadStatus pubsub.Publication
+	pubCipherBlockStatus    pubsub.Publication
 	subDatastoreConfig      pubsub.Subscription
 	deviceNetworkStatus     types.DeviceNetworkStatus
 	globalConfig            types.GlobalDownloadConfig
@@ -95,6 +96,15 @@ func (ctx *downloaderContext) registerHandlers(ps *pubsub.PubSub) error {
 	}
 	ctx.subDatastoreConfig = subDatastoreConfig
 	subDatastoreConfig.Activate()
+
+	pubCipherBlockStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.CipherBlockStatus{},
+	})
+	if err != nil {
+		return err
+	}
+	ctx.pubCipherBlockStatus = pubCipherBlockStatus
 
 	pubGlobalDownloadStatus, err := ps.NewPublication(pubsub.PublicationOptions{
 		AgentName: agentName,

@@ -9,11 +9,10 @@ import (
 	"fmt"
 	"github.com/eriknordmark/ipinfo"
 	"github.com/eriknordmark/netlink"
-	"github.com/golang/protobuf/proto"
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -384,29 +383,13 @@ func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool 
 }
 
 func getWifiCredential(wifi types.WifiConfig) (zconfig.CredentialBlock, error) {
-	cred := zconfig.CredentialBlock{}
-	if !wifi.IsCipher {
-		cred.Identity = wifi.Identity
-		cred.Password = wifi.Password
-		return cred, nil
+	cred := utils.PrepareCipherCred(wifi.Identity, wifi.Password)
+	status, cred, err := utils.GetCipherCredentials("devicenetwork",
+		wifi.CipherBlockStatus, cred)
+	if status.IsCipher && len(status.Error) == 0 {
+		log.Infof("%s, cipherblock decryption successful\n", wifi.SSID)
 	}
-	if !wifi.IsValidCipher {
-		errStr := fmt.Sprintf("%s, Cipher Block is not ready", wifi.SSID)
-		log.Errorln(errStr)
-		return cred, errors.New(errStr)
-	}
-	clearData, err := tpmmgr.DecryptCipherBlock(wifi.CipherBlock)
-	if err != nil {
-		log.Errorf("%s, wifi CipherData decryption failed, %v\n",
-			wifi.SSID, err)
-		return cred, err
-	}
-	if err := proto.Unmarshal(clearData, &cred); err != nil {
-		log.Errorf("%s, wifi credential unmarshall failed, %v\n",
-			wifi.SSID, err)
-		return cred, err
-	}
-	return cred, nil
+	return cred, err
 }
 
 // CheckDNSUpdate sees if we should update based on DNS

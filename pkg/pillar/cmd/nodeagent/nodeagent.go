@@ -31,7 +31,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
@@ -164,8 +163,11 @@ func Run(ps *pubsub.PubSub) {
 	handleLastRebootReason(&nodeagentCtx)
 
 	// publisher of NodeAgent Status
-	pubNodeAgentStatus, err := pubsublegacy.Publish(agentName,
-		types.NodeAgentStatus{})
+	pubNodeAgentStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.NodeAgentStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -173,7 +175,11 @@ func Run(ps *pubsub.PubSub) {
 	nodeagentCtx.pubNodeAgentStatus = pubNodeAgentStatus
 
 	// publisher of Zboot Config
-	pubZbootConfig, err := pubsublegacy.Publish(agentName, types.ZbootConfig{})
+	pubZbootConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.ZbootConfig{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -181,14 +187,17 @@ func Run(ps *pubsub.PubSub) {
 	nodeagentCtx.pubZbootConfig = pubZbootConfig
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
-		false, &nodeagentCtx, &pubsub.SubscriptionOptions{
-			ModifyHandler: handleGlobalConfigModify,
-			DeleteHandler: handleGlobalConfigDelete,
-			SyncHandler:   handleGlobalConfigSynchronized,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.GlobalConfig{},
+		Activate:      false,
+		Ctx:           &nodeagentCtx,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		SyncHandler:   handleGlobalConfigSynchronized,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -205,9 +214,12 @@ func Run(ps *pubsub.PubSub) {
 	publishNodeAgentStatus(&nodeagentCtx)
 
 	// Get DomainStatus from domainmgr
-	subDomainStatus, err := pubsublegacy.Subscribe("domainmgr",
-		types.DomainStatus{}, false, &nodeagentCtx,
-		&pubsub.SubscriptionOptions{})
+	subDomainStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName: "domainmgr",
+		TopicImpl: types.DomainStatus{},
+		Activate:  false,
+		Ctx:       &nodeagentCtx,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -234,7 +246,7 @@ func Run(ps *pubsub.PubSub) {
 	// when the partition status is inprogress state
 	// check network connectivity for 300 seconds
 	if nodeagentCtx.updateInprogress {
-		checkNetworkConnectivity(&nodeagentCtx)
+		checkNetworkConnectivity(ps, &nodeagentCtx)
 	}
 
 	// if current partition state is not in-progress,
@@ -269,13 +281,16 @@ func Run(ps *pubsub.PubSub) {
 	}
 
 	// subscribe to zboot status events
-	subZbootStatus, err := pubsublegacy.Subscribe("baseosmgr",
-		types.ZbootStatus{}, false, &nodeagentCtx, &pubsub.SubscriptionOptions{
-			ModifyHandler: handleZbootStatusModify,
-			DeleteHandler: handleZbootStatusDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subZbootStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "baseosmgr",
+		TopicImpl:     types.ZbootStatus{},
+		Activate:      false,
+		Ctx:           &nodeagentCtx,
+		ModifyHandler: handleZbootStatusModify,
+		DeleteHandler: handleZbootStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -283,13 +298,16 @@ func Run(ps *pubsub.PubSub) {
 	subZbootStatus.Activate()
 
 	// subscribe to zedagent status events
-	subZedAgentStatus, err := pubsublegacy.Subscribe("zedagent",
-		types.ZedAgentStatus{}, false, &nodeagentCtx, &pubsub.SubscriptionOptions{
-			ModifyHandler: handleZedAgentStatusModify,
-			DeleteHandler: handleZedAgentStatusDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subZedAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		TopicImpl:     types.ZedAgentStatus{},
+		Activate:      false,
+		Ctx:           &nodeagentCtx,
+		ModifyHandler: handleZedAgentStatusModify,
+		DeleteHandler: handleZedAgentStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -417,15 +435,18 @@ func handleZbootStatusDelete(ctxArg interface{},
 	log.Infof("handleZbootStatusDelete(%s) done\n", key)
 }
 
-func checkNetworkConnectivity(ctxPtr *nodeagentContext) {
+func checkNetworkConnectivity(ps *pubsub.PubSub, ctxPtr *nodeagentContext) {
 	// for device network status
-	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, ctxPtr, &pubsub.SubscriptionOptions{
-			ModifyHandler: handleDNSModify,
-			DeleteHandler: handleDNSDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "nim",
+		TopicImpl:     types.DeviceNetworkStatus{},
+		Activate:      false,
+		Ctx:           ctxPtr,
+		ModifyHandler: handleDNSModify,
+		DeleteHandler: handleDNSDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}

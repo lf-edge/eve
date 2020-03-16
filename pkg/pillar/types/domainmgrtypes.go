@@ -28,13 +28,13 @@ type DomainConfig struct {
 	VifList        []VifInfo
 	IoAdapterList  []IoAdapter
 
-	// XXX: to be deprecated, use CipherBlock instead
+	// XXX: to be deprecated, use CipherBlockStatus instead
 	CloudInitUserData *string // base64-encoded
 	// Container related info
 	IsContainer bool // Is this Domain for a Container?
 
-	// CipherBlock, for encrypted cloud-init data
-	CipherBlock
+	// CipherBlockStatus, for encrypted cloud-init data
+	CipherBlockStatus
 }
 
 func (config DomainConfig) Key() string {

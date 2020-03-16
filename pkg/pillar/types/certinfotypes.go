@@ -4,20 +4,50 @@
 package types
 
 import (
-	"encoding/base64"
-	//zcert "github.com/lf-edge/eve/api/go/certs"
+	"encoding/hex"
+	zcert "github.com/lf-edge/eve/api/go/certs"
+	"time"
 )
 
-// ControllerCertificate : controller certicate
-type ControllerCertificate struct {
-	//	HashAlgo zcert.ZCertHashAlgorithm
-	//	Type     zcert.ZCertType
-	//	Attr     zcert.ZCertProperties
+// ControllerCertConfig : controller certicate
+// config received from controller
+type ControllerCertConfig struct {
+	HashAlgo zcert.CertHashAlgorithm
+	Type     zcert.ZCertType
 	Cert     []byte
 	CertHash []byte
 }
 
 // Key :
-func (cert *ControllerCertificate) Key() string {
-	return base64.StdEncoding.EncodeToString(cert.CertHash)
+func (cert *ControllerCertConfig) Key() string {
+	return hex.EncodeToString(cert.CertHash)
+}
+
+// ControllerCertStatus : controller certicate
+// status
+type ControllerCertStatus struct {
+	HashAlgo zcert.CertHashAlgorithm
+	Type     zcert.ZCertType
+	Cert     []byte
+	CertHash []byte
+	ErrorInfo
+}
+
+// Key :
+func (cert *ControllerCertStatus) Key() string {
+	return hex.EncodeToString(cert.CertHash)
+}
+
+// SetErrorInfo : sets errorinfo on the controller cert
+func (cert *ControllerCertStatus) SetErrorInfo(agentName, errStr string) {
+	cert.Error = errStr
+	cert.ErrorTime = time.Now()
+	cert.ErrorSource = agentName
+}
+
+// ClearErrorInfo : clears errorinfo on the controller cert
+func (cert *ControllerCertStatus) ClearErrorInfo() {
+	cert.Error = ""
+	cert.ErrorSource = ""
+	cert.ErrorTime = time.Time{}
 }

@@ -374,15 +374,15 @@ type WifiConfig struct {
 	SSID      string            // wifi SSID
 	KeyScheme WifiKeySchemeType // such as WPA-PSK, WPA-EAP
 
-	// XXX: to be deprecated, use CipherBlock instead
+	// XXX: to be deprecated, use CipherBlockStatus instead
 	Identity string // identity or username for WPA-EAP
 
-	// XXX: to be deprecated, use CipherBlock instead
+	// XXX: to be deprecated, use CipherBlockStatus instead
 	Password string // string of pass phrase or password hash
 	Priority int32
 
-	// CipherBlock, for encrypted credentials
-	CipherBlock
+	// CipherBlockStatus, for encrypted credentials
+	CipherBlockStatus
 }
 
 // CellConfig - Cellular part of the configure

@@ -27,7 +27,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/satori/go.uuid"
@@ -133,8 +132,11 @@ func Run(ps *pubsub.PubSub) {
 		}
 	}
 
-	pubUuidToNum, err := pubsublegacy.PublishPersistent(agentName,
-		types.UuidToNum{})
+	pubUuidToNum, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		Persistent: true,
+		TopicType:  types.UuidToNum{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -156,28 +158,34 @@ func Run(ps *pubsub.PubSub) {
 	zedrouterCtx.networkInstanceStatusMap =
 		make(map[uuid.UUID]*types.NetworkInstanceStatus)
 
-	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleDNSModify,
-			ModifyHandler: handleDNSModify,
-			DeleteHandler: handleDNSDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "nim",
+		TopicImpl:     types.DeviceNetworkStatus{},
+		Activate:      false,
+		Ctx:           &zedrouterCtx,
+		CreateHandler: handleDNSModify,
+		ModifyHandler: handleDNSModify,
+		DeleteHandler: handleDNSDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	subAssignableAdapters, err := pubsublegacy.Subscribe("domainmgr",
-		types.AssignableAdapters{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleAAModify,
-			ModifyHandler: handleAAModify,
-			DeleteHandler: handleAADelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "domainmgr",
+		TopicImpl:     types.AssignableAdapters{},
+		Activate:      false,
+		Ctx:           &zedrouterCtx,
+		CreateHandler: handleAAModify,
+		ModifyHandler: handleAAModify,
+		DeleteHandler: handleAADelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -185,14 +193,17 @@ func Run(ps *pubsub.PubSub) {
 	subAssignableAdapters.Activate()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
-		false, &zedrouterCtx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleGlobalConfigModify,
-			ModifyHandler: handleGlobalConfigModify,
-			DeleteHandler: handleGlobalConfigDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.GlobalConfig{},
+		Activate:      false,
+		Ctx:           &zedrouterCtx,
+		CreateHandler: handleGlobalConfigModify,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -206,49 +217,66 @@ func Run(ps *pubsub.PubSub) {
 	// Also need to do this before we wait for IP addresses since
 	// zedagent waits for these to be published/exist, and zedagent
 	// runs the fallback timers after that wait.
-	pubNetworkInstanceStatus, err := pubsublegacy.Publish(agentName,
-		types.NetworkInstanceStatus{})
+	pubNetworkInstanceStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.NetworkInstanceStatus{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubNetworkInstanceStatus = pubNetworkInstanceStatus
 
-	pubAppNetworkStatus, err := pubsublegacy.Publish(agentName,
-		types.AppNetworkStatus{})
+	pubAppNetworkStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.AppNetworkStatus{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubAppNetworkStatus = pubAppNetworkStatus
 	pubAppNetworkStatus.ClearRestarted()
 
-	pubLispDataplaneConfig, err := pubsublegacy.Publish(agentName,
-		types.LispDataplaneConfig{})
+	pubLispDataplaneConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.LispDataplaneConfig{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubLispDataplaneConfig = pubLispDataplaneConfig
 
-	pubNetworkInstanceMetrics, err := pubsublegacy.Publish(agentName,
-		types.NetworkInstanceMetrics{})
+	pubNetworkInstanceMetrics, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.NetworkInstanceMetrics{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubNetworkInstanceMetrics = pubNetworkInstanceMetrics
 
-	pubAppFlowMonitor, err := pubsublegacy.Publish(agentName, types.IPFlow{})
+	pubAppFlowMonitor, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.IPFlow{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubAppFlowMonitor = pubAppFlowMonitor
 
-	pubAppVifIPTrig, err := pubsublegacy.Publish(agentName, types.VifIPTrig{})
+	pubAppVifIPTrig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.VifIPTrig{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.pubAppVifIPTrig = pubAppVifIPTrig
 
 	nms := getNetworkMetrics(&zedrouterCtx) // Need type of data
-	pub, err := pubsublegacy.Publish(agentName, nms)
+	pub, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: nms,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -292,14 +320,17 @@ func Run(ps *pubsub.PubSub) {
 	}
 	log.Infof("Have %d assignable adapters\n", len(aa.IoBundleList))
 
-	subNetworkInstanceConfig, err := pubsublegacy.Subscribe("zedagent",
-		types.NetworkInstanceConfig{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleNetworkInstanceModify,
-			ModifyHandler: handleNetworkInstanceModify,
-			DeleteHandler: handleNetworkInstanceDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subNetworkInstanceConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		TopicImpl:     types.NetworkInstanceConfig{},
+		Activate:      false,
+		Ctx:           &zedrouterCtx,
+		CreateHandler: handleNetworkInstanceModify,
+		ModifyHandler: handleNetworkInstanceModify,
+		DeleteHandler: handleNetworkInstanceDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -308,15 +339,18 @@ func Run(ps *pubsub.PubSub) {
 	log.Infof("Subscribed to NetworkInstanceConfig")
 
 	// Subscribe to AppNetworkConfig from zedmanager and from zedagent
-	subAppNetworkConfig, err := pubsublegacy.Subscribe("zedmanager",
-		types.AppNetworkConfig{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
-			CreateHandler:  handleAppNetworkCreate,
-			ModifyHandler:  handleAppNetworkModify,
-			DeleteHandler:  handleAppNetworkConfigDelete,
-			RestartHandler: handleRestart,
-			WarningTime:    warningTime,
-			ErrorTime:      errorTime,
-		})
+	subAppNetworkConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:      "zedmanager",
+		TopicImpl:      types.AppNetworkConfig{},
+		Activate:       false,
+		Ctx:            &zedrouterCtx,
+		CreateHandler:  handleAppNetworkCreate,
+		ModifyHandler:  handleAppNetworkModify,
+		DeleteHandler:  handleAppNetworkConfigDelete,
+		RestartHandler: handleRestart,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -324,40 +358,49 @@ func Run(ps *pubsub.PubSub) {
 	subAppNetworkConfig.Activate()
 
 	// Subscribe to AppNetworkConfig from zedmanager
-	subAppNetworkConfigAg, err := pubsublegacy.Subscribe("zedagent",
-		types.AppNetworkConfig{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
-			CreateHandler: handleAppNetworkCreate,
-			ModifyHandler: handleAppNetworkModify,
-			DeleteHandler: handleAppNetworkConfigDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subAppNetworkConfigAg, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		TopicImpl:     types.AppNetworkConfig{},
+		Activate:      false,
+		Ctx:           &zedrouterCtx,
+		CreateHandler: handleAppNetworkCreate,
+		ModifyHandler: handleAppNetworkModify,
+		DeleteHandler: handleAppNetworkConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.subAppNetworkConfigAg = subAppNetworkConfigAg
 	subAppNetworkConfigAg.Activate()
 
-	subLispInfoStatus, err := pubsublegacy.Subscribe("lisp-ztr",
-		types.LispInfoStatus{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
-			ModifyHandler: handleLispInfoModify,
-			DeleteHandler: handleLispInfoDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subLispInfoStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "lisp-ztr",
+		TopicImpl:     types.LispInfoStatus{},
+		Activate:      false,
+		Ctx:           &zedrouterCtx,
+		ModifyHandler: handleLispInfoModify,
+		DeleteHandler: handleLispInfoDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	zedrouterCtx.subLispInfoStatus = subLispInfoStatus
 	subLispInfoStatus.Activate()
 
-	subLispMetrics, err := pubsublegacy.Subscribe("lisp-ztr",
-		types.LispMetrics{}, false, &zedrouterCtx, &pubsub.SubscriptionOptions{
-			ModifyHandler: handleLispMetricsModify,
-			DeleteHandler: handleLispMetricsDelete,
-			WarningTime:   warningTime,
-			ErrorTime:     errorTime,
-		})
+	subLispMetrics, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "lisp-ztr",
+		TopicImpl:     types.LispMetrics{},
+		Activate:      false,
+		Ctx:           &zedrouterCtx,
+		ModifyHandler: handleLispMetricsModify,
+		DeleteHandler: handleLispMetricsDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}

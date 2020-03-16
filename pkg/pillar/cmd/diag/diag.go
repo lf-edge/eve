@@ -28,7 +28,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
@@ -127,8 +126,12 @@ func Run(ps *pubsub.PubSub) {
 	utils.EnsureGCFile()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
-		false, &ctx, &pubsub.SubscriptionOptions{
+	subGlobalConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "",
+			TopicImpl:     types.GlobalConfig{},
+			Activate:      false,
+			Ctx:           &ctx,
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
 			DeleteHandler: handleGlobalConfigDelete,
@@ -191,8 +194,12 @@ func Run(ps *pubsub.PubSub) {
 	}
 	ctx.zedcloudCtx = &zedcloudCtx
 
-	subLedBlinkCounter, err := pubsublegacy.Subscribe("", types.LedBlinkCounter{},
-		false, &ctx, &pubsub.SubscriptionOptions{
+	subLedBlinkCounter, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "",
+			TopicImpl:     types.LedBlinkCounter{},
+			Activate:      false,
+			Ctx:           &ctx,
 			CreateHandler: handleLedBlinkModify,
 			ModifyHandler: handleLedBlinkModify,
 			WarningTime:   warningTime,
@@ -205,8 +212,12 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subLedBlinkCounter = subLedBlinkCounter
 	subLedBlinkCounter.Activate()
 
-	subDeviceNetworkStatus, err := pubsublegacy.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &ctx, &pubsub.SubscriptionOptions{
+	subDeviceNetworkStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "nim",
+			TopicImpl:     types.DeviceNetworkStatus{},
+			Activate:      false,
+			Ctx:           &ctx,
 			CreateHandler: handleDNSModify,
 			ModifyHandler: handleDNSModify,
 			DeleteHandler: handleDNSDelete,
@@ -220,8 +231,13 @@ func Run(ps *pubsub.PubSub) {
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	subDevicePortConfigList, err := pubsublegacy.SubscribePersistent("nim",
-		types.DevicePortConfigList{}, false, &ctx, &pubsub.SubscriptionOptions{
+	subDevicePortConfigList, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "nim",
+			Persistent:    true,
+			TopicImpl:     types.DevicePortConfigList{},
+			Activate:      false,
+			Ctx:           &ctx,
 			CreateHandler: handleDPCModify,
 			ModifyHandler: handleDPCModify,
 		})

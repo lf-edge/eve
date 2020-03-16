@@ -38,7 +38,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -119,14 +118,14 @@ func Run(ps *pubsub.PubSub) {
 	}
 
 	// initialize publishing handles
-	initializeSelfPublishHandles(&ctx)
+	initializeSelfPublishHandles(ps, &ctx)
 
 	// initialize module specific subscriber handles
-	initializeGlobalConfigHandles(&ctx)
-	initializeNodeAgentHandles(&ctx)
-	initializeZedagentHandles(&ctx)
-	initializeVerifierHandles(&ctx)
-	initializeDownloaderHandles(&ctx)
+	initializeGlobalConfigHandles(ps, &ctx)
+	initializeNodeAgentHandles(ps, &ctx)
+	initializeZedagentHandles(ps, &ctx)
+	initializeVerifierHandles(ps, &ctx)
+	initializeDownloaderHandles(ps, &ctx)
 
 	// publish zboot partition status
 	publishZbootPartitionStatusAll(&ctx)
@@ -479,55 +478,82 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 
-func initializeSelfPublishHandles(ctx *baseOsMgrContext) {
-	pubBaseOsStatus, err := pubsublegacy.Publish(agentName,
-		types.BaseOsStatus{})
+func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
+	pubBaseOsStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.BaseOsStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubBaseOsStatus.ClearRestarted()
 	ctx.pubBaseOsStatus = pubBaseOsStatus
 
-	pubBaseOsDownloadConfig, err := pubsublegacy.PublishScope(agentName,
-		types.BaseOsObj, types.DownloaderConfig{})
+	pubBaseOsDownloadConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.BaseOsObj,
+			TopicType:  types.DownloaderConfig{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubBaseOsDownloadConfig.ClearRestarted()
 	ctx.pubBaseOsDownloadConfig = pubBaseOsDownloadConfig
 
-	pubBaseOsVerifierConfig, err := pubsublegacy.PublishScope(agentName,
-		types.BaseOsObj, types.VerifyImageConfig{})
+	pubBaseOsVerifierConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.BaseOsObj,
+			TopicType:  types.VerifyImageConfig{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubBaseOsVerifierConfig.ClearRestarted()
 	ctx.pubBaseOsVerifierConfig = pubBaseOsVerifierConfig
 
-	pubBaseOsPersistConfig, err := pubsublegacy.PublishScope(agentName,
-		types.BaseOsObj, types.PersistImageConfig{})
+	pubBaseOsPersistConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.BaseOsObj,
+			TopicType:  types.PersistImageConfig{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubBaseOsPersistConfig = pubBaseOsPersistConfig
 
-	pubCertObjStatus, err := pubsublegacy.Publish(agentName,
-		types.CertObjStatus{})
+	pubCertObjStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.CertObjStatus{},
+		})
+
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubCertObjStatus.ClearRestarted()
 	ctx.pubCertObjStatus = pubCertObjStatus
 
-	pubCertObjDownloadConfig, err := pubsublegacy.PublishScope(agentName,
-		types.CertObj, types.DownloaderConfig{})
+	pubCertObjDownloadConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.CertObj,
+			TopicType:  types.DownloaderConfig{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubCertObjDownloadConfig.ClearRestarted()
 	ctx.pubCertObjDownloadConfig = pubCertObjDownloadConfig
 
-	pubZbootStatus, err := pubsublegacy.Publish(agentName, types.ZbootStatus{})
+	pubZbootStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.ZbootStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -535,11 +561,15 @@ func initializeSelfPublishHandles(ctx *baseOsMgrContext) {
 	ctx.pubZbootStatus = pubZbootStatus
 }
 
-func initializeGlobalConfigHandles(ctx *baseOsMgrContext) {
+func initializeGlobalConfigHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
-		false, ctx, &pubsub.SubscriptionOptions{
+	subGlobalConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "",
+			TopicImpl:     types.GlobalConfig{},
+			Activate:      false,
+			Ctx:           ctx,
 			CreateHandler: handleGlobalConfigModify,
 			ModifyHandler: handleGlobalConfigModify,
 			DeleteHandler: handleGlobalConfigDelete,
@@ -553,10 +583,14 @@ func initializeGlobalConfigHandles(ctx *baseOsMgrContext) {
 	subGlobalConfig.Activate()
 }
 
-func initializeNodeAgentHandles(ctx *baseOsMgrContext) {
+func initializeNodeAgentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	// Look for NodeAgentStatus, from zedagent
-	subNodeAgentStatus, err := pubsublegacy.Subscribe("nodeagent",
-		types.NodeAgentStatus{}, false, ctx, &pubsub.SubscriptionOptions{
+	subNodeAgentStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "nodeagent",
+			TopicImpl:     types.NodeAgentStatus{},
+			Activate:      false,
+			Ctx:           ctx,
 			ModifyHandler: handleNodeAgentStatusModify,
 			DeleteHandler: handleNodeAgentStatusDelete,
 			WarningTime:   warningTime,
@@ -569,8 +603,12 @@ func initializeNodeAgentHandles(ctx *baseOsMgrContext) {
 	subNodeAgentStatus.Activate()
 
 	// Look for ZbootConfig, from nodeagent
-	subZbootConfig, err := pubsublegacy.Subscribe("nodeagent",
-		types.ZbootConfig{}, false, ctx, &pubsub.SubscriptionOptions{
+	subZbootConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "nodeagent",
+			TopicImpl:     types.ZbootConfig{},
+			Activate:      false,
+			Ctx:           ctx,
 			CreateHandler: handleZbootConfigModify,
 			ModifyHandler: handleZbootConfigModify,
 			DeleteHandler: handleZbootConfigDelete,
@@ -584,10 +622,14 @@ func initializeNodeAgentHandles(ctx *baseOsMgrContext) {
 	subZbootConfig.Activate()
 }
 
-func initializeZedagentHandles(ctx *baseOsMgrContext) {
+func initializeZedagentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	// Look for BaseOsConfig , from zedagent
-	subBaseOsConfig, err := pubsublegacy.Subscribe("zedagent",
-		types.BaseOsConfig{}, false, ctx, &pubsub.SubscriptionOptions{
+	subBaseOsConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "zedagent",
+			TopicImpl:     types.BaseOsConfig{},
+			Activate:      false,
+			Ctx:           ctx,
 			CreateHandler: handleBaseOsCreate,
 			ModifyHandler: handleBaseOsModify,
 			DeleteHandler: handleBaseOsConfigDelete,
@@ -601,8 +643,12 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	subBaseOsConfig.Activate()
 
 	// Look for CertObjConfig, from zedagent
-	subCertObjConfig, err := pubsublegacy.Subscribe("zedagent",
-		types.CertObjConfig{}, false, ctx, &pubsub.SubscriptionOptions{
+	subCertObjConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "zedagent",
+			TopicImpl:     types.CertObjConfig{},
+			Activate:      false,
+			Ctx:           ctx,
 			CreateHandler: handleCertObjCreate,
 			ModifyHandler: handleCertObjModify,
 			DeleteHandler: handleCertObjConfigDelete,
@@ -616,10 +662,15 @@ func initializeZedagentHandles(ctx *baseOsMgrContext) {
 	subCertObjConfig.Activate()
 }
 
-func initializeDownloaderHandles(ctx *baseOsMgrContext) {
+func initializeDownloaderHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	// Look for BaseOs DownloaderStatus from downloader
-	subBaseOsDownloadStatus, err := pubsublegacy.SubscribeScope("downloader",
-		types.BaseOsObj, types.DownloaderStatus{}, false, ctx, &pubsub.SubscriptionOptions{
+	subBaseOsDownloadStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "downloader",
+			AgentScope:    types.BaseOsObj,
+			TopicImpl:     types.DownloaderStatus{},
+			Activate:      false,
+			Ctx:           ctx,
 			CreateHandler: handleDownloadStatusModify,
 			ModifyHandler: handleDownloadStatusModify,
 			DeleteHandler: handleDownloadStatusDelete,
@@ -633,8 +684,13 @@ func initializeDownloaderHandles(ctx *baseOsMgrContext) {
 	subBaseOsDownloadStatus.Activate()
 
 	// Look for Certs DownloaderStatus from downloader
-	subCertObjDownloadStatus, err := pubsublegacy.SubscribeScope("downloader",
-		types.CertObj, types.DownloaderStatus{}, false, ctx, &pubsub.SubscriptionOptions{
+	subCertObjDownloadStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "downloader",
+			AgentScope:    types.CertObj,
+			TopicImpl:     types.DownloaderStatus{},
+			Activate:      false,
+			Ctx:           ctx,
 			CreateHandler: handleDownloadStatusModify,
 			ModifyHandler: handleDownloadStatusModify,
 			DeleteHandler: handleDownloadStatusDelete,
@@ -649,10 +705,15 @@ func initializeDownloaderHandles(ctx *baseOsMgrContext) {
 
 }
 
-func initializeVerifierHandles(ctx *baseOsMgrContext) {
+func initializeVerifierHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	// Look for VerifyImageStatus from verifier
-	subBaseOsVerifierStatus, err := pubsublegacy.SubscribeScope("verifier",
-		types.BaseOsObj, types.VerifyImageStatus{}, false, ctx, &pubsub.SubscriptionOptions{
+	subBaseOsVerifierStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:      "verifier",
+			AgentScope:     types.BaseOsObj,
+			TopicImpl:      types.VerifyImageStatus{},
+			Activate:       false,
+			Ctx:            ctx,
 			CreateHandler:  handleVerifierStatusModify,
 			ModifyHandler:  handleVerifierStatusModify,
 			RestartHandler: handleVerifierRestarted,
@@ -665,13 +726,19 @@ func initializeVerifierHandles(ctx *baseOsMgrContext) {
 	ctx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
 	subBaseOsVerifierStatus.Activate()
 	// Look for PersistImageStatus from verifier
-	subBaseOsPersistStatus, err := pubsublegacy.SubscribeScope("verifier",
-		types.BaseOsObj, types.PersistImageStatus{}, false, ctx, &pubsub.SubscriptionOptions{
+	subBaseOsPersistStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "verifier",
+			AgentScope:    types.BaseOsObj,
+			TopicImpl:     types.PersistImageStatus{},
+			Activate:      false,
+			Ctx:           ctx,
 			CreateHandler: handlePersistStatusModify,
 			ModifyHandler: handlePersistStatusModify,
 			WarningTime:   warningTime,
 			ErrorTime:     errorTime,
 		})
+
 	if err != nil {
 		log.Fatal(err)
 	}

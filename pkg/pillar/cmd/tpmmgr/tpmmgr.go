@@ -5,11 +5,13 @@ package tpmmgr
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
@@ -32,14 +34,18 @@ import (
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	pubsublegacy "github.com/lf-edge/eve/pkg/pillar/pubsub/legacy"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
 type tpmMgrContext struct {
-	subGlobalConfig pubsub.Subscription
-	GCInitialized   bool // GlobalConfig initialized
+	subGlobalConfig    pubsub.Subscription
+	subNodeAgentStatus pubsub.Subscription
+	subAttestNonce     pubsub.Subscription
+	pubAttestQuote     pubsub.Publication
+	globalConfig       *types.GlobalConfig
+	GCInitialized      bool // GlobalConfig initialized
+	DeviceReboot       bool //is the device rebooting?
 }
 
 const (
@@ -59,11 +65,17 @@ const (
 	//TpmAKHdl is the well known TPM permanent handle for AIK key
 	TpmAKHdl tpmutil.Handle = 0x81000003
 
+	//TpmQuoteKeyHdl is the well known TPM permanent handle for PCR Quote signing key
+	TpmQuoteKeyHdl tpmutil.Handle = 0x81000004
+
 	//TpmDeviceCertHdl is the well known TPM NVIndex for device cert
 	TpmDeviceCertHdl tpmutil.Handle = 0x1500000
 
 	//TpmDiskKeyHdl is the handle for constructing disk encryption key
 	TpmDiskKeyHdl tpmutil.Handle = 0x1700000
+
+	//location of the attestation certificate
+	attestCertFile = types.IdentityDirname + "/attest.cert.pem"
 
 	emptyPassword  = ""
 	tpmLockName    = types.TmpDirname + "/tpm.lock"
@@ -131,7 +143,7 @@ var (
 			ModulusRaw: make([]byte, 256),
 		},
 	}
-	//This is a restricted signing key, for PCR Quote and other such uses
+	//This is a restricted signing key, for vTPM guest usage
 	defaultAkTemplate = tpm2.Public{
 		Type:    tpm2.AlgRSA,
 		NameAlg: tpm2.AlgSHA256,
@@ -145,6 +157,22 @@ var (
 			},
 			KeyBits:    2048,
 			ModulusRaw: make([]byte, 256),
+		},
+	}
+	//This is a restricted signing key, for PCR Quote and other such uses
+	defaultQuoteKeyTemplate = tpm2.Public{
+		Type:    tpm2.AlgECC,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent |
+			tpm2.FlagSensitiveDataOrigin | tpm2.FlagUserWithAuth |
+			tpm2.FlagRestricted | tpm2.FlagSign | tpm2.FlagNoDA,
+		ECCParameters: &tpm2.ECCParams{
+			Sign: &tpm2.SigScheme{
+				Alg:  tpm2.AlgECDSA,
+				Hash: tpm2.AlgSHA256,
+			},
+			CurveID: tpm2.CurveNISTP256,
+			Point:   tpm2.ECPoint{X: big.NewInt(0), Y: big.NewInt(0)},
 		},
 	}
 	debug         = false
@@ -579,9 +607,9 @@ func printCapability() {
 func printPCRs() {
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
+		fmt.Printf("Error opening TPM device: %s", err)
 		return
 	}
-	defer rw.Close()
 	for i := 0; i < 23; i++ {
 		pcrVal, err := tpm2.ReadPCR(rw, i, tpm2.AlgSHA256)
 		if err != nil {
@@ -589,7 +617,7 @@ func printPCRs() {
 		}
 		fmt.Printf("PCR %d: Value: 0x%X\n", i, pcrVal)
 	}
-	attestData, pcrQuote, err := tpm2.Quote(rw, TpmAKHdl,
+	attestData, pcrQuote, err := tpm2.Quote(rw, TpmQuoteKeyHdl,
 		emptyPassword,
 		emptyPassword,
 		[]byte("nonce"),
@@ -597,9 +625,10 @@ func printPCRs() {
 		tpm2.AlgNull)
 	if err != nil {
 		fmt.Printf("Error in creating quote: %v\n", err)
+		log.Fatal(err)
 	} else {
 		fmt.Printf("attestData = %v\n", attestData)
-		fmt.Printf("pcrQuote = %v, %v\n", pcrQuote.Alg, *pcrQuote.RSA)
+		fmt.Printf("pcrQuote = %v, %v\n", pcrQuote.Alg, *pcrQuote.ECC)
 	}
 }
 
@@ -660,10 +689,29 @@ func sha256FromECPoint(X, Y *big.Int) [32]byte {
 
 //DecryptSecretWithEcdhKey recovers plaintext from given X, Y, iv and the ciphertext
 func DecryptSecretWithEcdhKey(X, Y *big.Int, iv, ciphertext, plaintext []byte) error {
+	decryptKey, err := getDecryptKey(X, Y)
+	if err != nil {
+		return err
+	}
+	return aesDecrypt(plaintext, ciphertext, decryptKey[:], iv)
+}
+
+// getDecryptKey : uses the ECC params to construct the AES decryption Key
+func getDecryptKey(X, Y *big.Int) ([32]byte, error) {
+	// when TPM is not enabled, use the locally stored private key
+	if !etpm.IsTpmEnabled() {
+		privateKey, err := getDevicePrivateKey()
+		if err != nil {
+			return [32]byte{}, err
+		}
+		X, Y := elliptic.P256().Params().ScalarMult(X, Y, privateKey.D.Bytes())
+		decryptKey := sha256FromECPoint(X, Y)
+		return decryptKey, nil
+	}
 	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
 	if err != nil {
 		log.Errorln(err)
-		return err
+		return [32]byte{}, err
 	}
 	defer rw.Close()
 
@@ -677,10 +725,10 @@ func DecryptSecretWithEcdhKey(X, Y *big.Int, iv, ciphertext, plaintext []byte) e
 	z, err := tpm2.RecoverSharedECCSecret(rw, etpm.TpmDeviceKeyHdl, tpmOwnerPasswd, p)
 	if err != nil {
 		fmt.Printf("recovering Shared Secret failed: %s", err)
-		return err
+		return [32]byte{}, err
 	}
 	decryptKey := sha256FromECPoint(z.X, z.Y)
-	return aesDecrypt(plaintext, ciphertext, decryptKey[:], iv)
+	return decryptKey, nil
 }
 
 //Test ECDH key exchange and a symmetric cipher based on ECDH
@@ -730,12 +778,7 @@ func testEcdhAES() error {
 }
 
 // DecryptCipherBlock : Decryption API, for encrypted object information received from controller
-func DecryptCipherBlock(cipherBlock types.CipherBlock) ([]byte, error) {
-	// TBD:XXX, for nodes not having tpm chip, the device private key can be used
-	// which can be wrqpped up inside DecryptWithEcdhKey
-	if !etpm.IsTpmEnabled() {
-		return []byte{}, errors.New("Not supported")
-	}
+func DecryptCipherBlock(cipherBlock types.CipherBlockStatus) ([]byte, error) {
 	if len(cipherBlock.CipherData) == 0 {
 		return []byte{}, errors.New("Invalid Cipher Payload")
 	}
@@ -756,7 +799,7 @@ func DecryptCipherBlock(cipherBlock types.CipherBlock) ([]byte, error) {
 	return []byte{}, errors.New("Unsupported Cipher Key Exchange Scheme")
 }
 
-func decryptCipherBlockWithECDH(cipherBlock types.CipherBlock) ([]byte, error) {
+func decryptCipherBlockWithECDH(cipherBlock types.CipherBlockStatus) ([]byte, error) {
 	if len(cipherBlock.ControllerCert) == 0 {
 		return []byte{}, errors.New("No Peer Public Certficate")
 	}
@@ -786,7 +829,7 @@ func decryptCipherBlockWithECDH(cipherBlock types.CipherBlock) ([]byte, error) {
 	return []byte{}, errors.New("Unsupported Encryption protocol")
 }
 
-func getControllerCertEcdhKey(cipherBlock types.CipherBlock) (*ecdsa.PublicKey, error) {
+func getControllerCertEcdhKey(cipherBlock types.CipherBlockStatus) (*ecdsa.PublicKey, error) {
 	var ecdhPubKey *ecdsa.PublicKey
 	block := cipherBlock.ControllerCert
 	certs := []*x509.Certificate{}
@@ -821,6 +864,74 @@ func validateDataHash(data []byte, suppliedHash []byte) bool {
 	h.Write(data)
 	computedHash := h.Sum(nil)
 	return bytes.Equal(suppliedHash, computedHash)
+}
+
+func getDevicePrivateKey() (*ecdsa.PrivateKey, error) {
+	// XXX:TBD, currently only one private key
+	keyPEMBlock, err := ioutil.ReadFile(types.DeviceKeyName)
+	if err != nil {
+		errStr := fmt.Sprintf("No valid PEM block found, %v", err)
+		log.Errorln(errStr)
+		return nil, errors.New(errStr)
+	}
+	var keyDERBlock *pem.Block
+	keyDERBlock, keyPEMBlock = pem.Decode(keyPEMBlock)
+	if keyDERBlock == nil {
+		errStr := fmt.Sprintf("No valid private key found")
+		log.Errorln(errStr)
+		return nil, errors.New(errStr)
+	}
+	privateKey, err := x509.ParseECPrivateKey(keyDERBlock.Bytes)
+	if err != nil {
+		errStr := fmt.Sprintf("Unable to parse private key, %v", err)
+		log.Errorln(errStr)
+		return nil, errors.New(errStr)
+	}
+	return privateKey, nil
+}
+
+func tpmKeyToRsa(p tpm2.Public) (crypto.PublicKey, error) {
+	pubKey := &rsa.PublicKey{N: p.RSAParameters.Modulus, E: int(p.RSAParameters.Exponent)}
+	return pubKey, nil
+}
+
+func createCerts() error {
+	//Check if we already have the certificate in /config
+	if !etpm.FileExists(attestCertFile) {
+		rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
+		if err != nil {
+			log.Errorln(err)
+			return err
+		}
+		clientCertBytes, err := ioutil.ReadFile(types.DeviceCertName)
+		if err != nil {
+			return nil
+		}
+		block, _ := pem.Decode(clientCertBytes)
+		deviceCert, _ := x509.ParseCertificate(block.Bytes)
+		attestKey, _, _, err := tpm2.ReadPublic(rw, TpmAKHdl)
+		publicKey, err := tpmKeyToRsa(attestKey)
+		tpmPrivKey := etpm.TpmPrivateKey{}
+		tpmPrivKey.PublicKey = tpmPrivKey.Public()
+		template := *deviceCert
+		template.SerialNumber = big.NewInt(123456789)
+		fmt.Println(template)
+		cert, err := x509.CreateCertificate(rand.Reader,
+			&template,
+			deviceCert,
+			publicKey,
+			tpmPrivKey)
+		//Cert is not present in /config, generate new one
+		//Store certificate in /config
+		certBlock := &pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: cert,
+		}
+		certBytes := pem.EncodeToMemory(certBlock)
+		ioutil.WriteFile(attestCertFile, certBytes, 0644)
+	}
+	//change state to CERTS_CREATED
+	return nil
 }
 
 func Run(ps *pubsub.PubSub) {
@@ -906,19 +1017,54 @@ func Run(ps *pubsub.PubSub) {
 		ctx := tpmMgrContext{}
 
 		// Look for global config such as log levels
-		subGlobalConfig, err := pubsublegacy.Subscribe("", types.GlobalConfig{},
-			false, &ctx, &pubsub.SubscriptionOptions{
-				CreateHandler: handleGlobalConfigModify,
-				ModifyHandler: handleGlobalConfigModify,
-				DeleteHandler: handleGlobalConfigDelete,
-				WarningTime:   warningTime,
-				ErrorTime:     errorTime,
-			})
+		subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+			AgentName:     "",
+			TopicImpl:     types.GlobalConfig{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 		if err != nil {
 			log.Fatal(err)
 		}
 		ctx.subGlobalConfig = subGlobalConfig
 		subGlobalConfig.Activate()
+
+		subNodeAgentStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+			AgentName:     "nodeagent",
+			TopicImpl:     types.NodeAgentStatus{},
+			Activate:      false,
+			Ctx:           &ctx,
+			ModifyHandler: handleNodeAgentStatusModify,
+			DeleteHandler: handleNodeAgentStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+		ctx.subNodeAgentStatus = subNodeAgentStatus
+		subNodeAgentStatus.Activate()
+
+		subAttestNonce, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+			AgentName:     "zedagent",
+			TopicImpl:     types.AttestNonce{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handleAttestNonceModify,
+			ModifyHandler: handleAttestNonceModify,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+		ctx.subAttestNonce = subAttestNonce
+		//subAttestNonce.Activate()
 
 		// Pick up debug aka log level before we start real work
 		for !ctx.GCInitialized {
@@ -926,6 +1072,8 @@ func Run(ps *pubsub.PubSub) {
 			select {
 			case change := <-subGlobalConfig.MsgChan():
 				subGlobalConfig.ProcessChange(change)
+			case change := <-ctx.subNodeAgentStatus.MsgChan():
+				ctx.subNodeAgentStatus.ProcessChange(change)
 			case <-stillRunning.C:
 			}
 			agentlog.StillRunning(agentName, warningTime, errorTime)
@@ -939,22 +1087,41 @@ func Run(ps *pubsub.PubSub) {
 				log.Fatalf("TPM is enabled, but credential file is absent: %v", err)
 			}
 		}
+		//Try to create additional entries only if we are running in TPM-Enabled mode
 		if etpm.IsTpmEnabled() {
-			//Try to create additional entries only if we are running in TPM-Enabled mode
-			//FIXME: On some platforms, these key creations are failing. Till we root-cause,
-			//use Errorf instead of Fatalf. The features that use these keys are not enabled yet.
+			//Below, each key creation takes around 30 seconds. It is possible
+			//that the device may be undergoing a reboot and hence we get a
+			//EPIPE from TPM char device driver. Logging reboot reason helps
+			//identify if the EPIPE is because of reboot or because of some other error
+			//FIXME: We might have to avoid Fatal if it is EPIPE and DeviceReboot is true
 			if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
-				log.Errorf("Error in creating Endorsement key: %v ", err)
+				//are we rebooting? capture that info for EPIPE errors
+				deviceReboot, ok := readNodeAgentStatus(&ctx)
+				log.Fatalf("Error in creating Endorsement key: %v, DeviceReboot is %v %v", err,
+					deviceReboot, ok)
 			}
 			if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, false); err != nil {
-				log.Errorf("Error in creating Srk key: %v ", err)
+				deviceReboot, ok := readNodeAgentStatus(&ctx)
+				log.Fatalf("Error in creating Srk key: %v, DeviceReboot is %v %v", err,
+					deviceReboot, ok)
 			}
 			if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, false); err != nil {
-				log.Errorf("Error in creating Attestation key: %v ", err)
+				deviceReboot, ok := readNodeAgentStatus(&ctx)
+				log.Fatalf("Error in creating Attestation key: %v, DeviceReboot is %v %v", err,
+					deviceReboot, ok)
+			}
+			if err = createKey(TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, false); err != nil {
+				deviceReboot, ok := readNodeAgentStatus(&ctx)
+				log.Fatalf("Error in creating Quote key: %v, DeviceReboot is %v %v", err,
+					deviceReboot, ok)
 			}
 		}
 		for {
 			select {
+			case change := <-subGlobalConfig.MsgChan():
+				subGlobalConfig.ProcessChange(change)
+			case change := <-ctx.subNodeAgentStatus.MsgChan():
+				ctx.subNodeAgentStatus.ProcessChange(change)
 			case <-stillRunning.C:
 				agentlog.StillRunning(agentName, warningTime, errorTime)
 			}
@@ -967,15 +1134,18 @@ func Run(ps *pubsub.PubSub) {
 		testTpmEcdhSupport()
 	case "testEcdhAES":
 		testEcdhAES()
-	case "createEkSrkAik":
+	case "createKeys":
 		if err = createKey(TpmEKHdl, tpm2.HandleEndorsement, defaultEkTemplate, false); err != nil {
-			log.Errorf("Error in creating Endorsement key: %v ", err)
+			fmt.Printf("Error in creating Endorsement key: %v ", err)
 		}
 		if err = createKey(TpmSRKHdl, tpm2.HandleOwner, defaultSrkTemplate, false); err != nil {
-			log.Errorf("Error in creating Srk key: %v ", err)
+			fmt.Printf("Error in creating Srk key: %v ", err)
 		}
 		if err = createKey(TpmAKHdl, tpm2.HandleOwner, defaultAkTemplate, false); err != nil {
-			log.Errorf("Error in creating Attestation key: %v ", err)
+			fmt.Printf("Error in creating Attestation key: %v ", err)
+		}
+		if err = createKey(TpmQuoteKeyHdl, tpm2.HandleOwner, defaultQuoteKeyTemplate, false); err != nil {
+			fmt.Printf("Error in creating PCR Quote key: %v ", err)
 		}
 	default:
 		//No need for Fatal, caller will take action based on return code.
@@ -1015,4 +1185,50 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
+}
+
+// Handles both create and modify events
+func handleNodeAgentStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
+	status := statusArg.(types.NodeAgentStatus)
+	ctx := ctxArg.(*tpmMgrContext)
+	if key != "nodeagent" {
+		log.Infof("handleNodeAgentStatusModify: ignoring %s\n", key)
+		return
+	}
+	ctx.DeviceReboot = status.DeviceReboot
+	log.Infof("handleNodeAgentStatusModify done for %s: %v\n", key, ctx.DeviceReboot)
+}
+
+func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	log.Infof("handleNodeAgentStatusDelete for %s\n", key)
+	ctx := ctxArg.(*tpmMgrContext)
+
+	if key != "nodeagent" {
+		log.Infof("handleNodeAgentStatusDelete: ignoring %s\n", key)
+		return
+	}
+	ctx.DeviceReboot = false
+	log.Infof("handleNodeAgentStatusDelete done for %s: %v\n", key, ctx.DeviceReboot)
+}
+
+func readNodeAgentStatus(ctx *tpmMgrContext) (bool, error) {
+	nodeAgentStatus, err := ctx.subNodeAgentStatus.Get("nodeagent")
+	if err != nil {
+		return false, err
+	}
+	status := nodeAgentStatus.(types.NodeAgentStatus)
+	return status.DeviceReboot, nil
+}
+
+// Handles both create and modify events
+func handleAttestNonceModify(ctxArg interface{}, key string, statusArg interface{}) {
+	log.Infof("handleAttestNonceModify received")
+	//status := statusArg.(types.NodeAgentStatus)
+	log.Infof("handleAttestNonceModify done")
+}
+
+func handleAttestNonceDelete(ctxArg interface{}, key string, statusArg interface{}) {
+	log.Infof("handleAttestNonceDelete done")
 }
