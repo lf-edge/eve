@@ -1491,7 +1491,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	for _, ds := range status.DiskStatusList {
 		if ds.Format == zconfig.Format_CONTAINER {
 			log.Infof("Removing container volume %s\n", ds.FSVolumeLocation)
-			if err := ctrRm(ds.FSVolumeLocation); err != nil {
+			if err := ctrRm(ds.FSVolumeLocation, false); err != nil {
 				log.Errorf("ctrRm %s failed: %s\n", ds.FSVolumeLocation, err)
 			}
 		} else if !ds.ReadOnly && !ds.Preserve {
@@ -1990,7 +1990,7 @@ func deleteStorageDisksForDomain(ctx *domainContext,
 	for _, ds := range statusPtr.DiskStatusList {
 		if ds.Format == zconfig.Format_CONTAINER {
 			log.Infof("Removing container volume %s\n", ds.FSVolumeLocation)
-			if err := ctrRm(ds.FSVolumeLocation); err != nil {
+			if err := ctrRm(ds.FSVolumeLocation, false); err != nil {
 				log.Errorf("ctrRm %s failed: %s\n", ds.FSVolumeLocation, err)
 			}
 		} else if !ds.ReadOnly && !ds.Preserve {
