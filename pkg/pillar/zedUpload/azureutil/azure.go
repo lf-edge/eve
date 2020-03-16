@@ -7,11 +7,13 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"github.com/Azure/azure-sdk-for-go/storage"
 	"io"
 	"net/http"
 	"os"
 	"strings"
+	"time"
+
+	"github.com/Azure/azure-sdk-for-go/storage"
 )
 
 const (
@@ -241,4 +243,115 @@ func GetAzureBlobMetaData(accountName, accountKey, containerName, remoteFile str
 	}
 	stringHex := hex.EncodeToString(decodedString)
 	return blob.Properties.ContentLength, stringHex, nil
+}
+
+// GenerateBlobSasURI is used to generate the URI which can be used to access the blob until the the URI expries
+func GenerateBlobSasURI(accountName, accountKey, containerName, remoteFile string, httpClient *http.Client, startTime time.Time, endTime time.Time) (string, error) {
+	c, err := NewClient(accountName, accountKey, httpClient)
+	if err != nil {
+		return "", err
+	}
+	blobClient := c.GetBlobService()
+	container := blobClient.GetContainerReference(containerName)
+	containerExists, err := container.Exists()
+	if err != nil {
+		return "", err
+	}
+	if !containerExists {
+		return "", fmt.Errorf("%s:container doesn't exist", containerName)
+	}
+	blob := container.GetBlobReference(remoteFile)
+	exists, err := blob.Exists()
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		return "", fmt.Errorf("%s: blob doesn't exist", remoteFile)
+	}
+	options := storage.BlobSASOptions{}
+	options.Read = true
+	options.Start = startTime
+	options.Expiry = endTime
+	options.UseHTTPS = true
+
+	sasURI, err := blob.GetSASURI(options)
+	if err != nil {
+		return "", err
+	}
+	return sasURI, nil
+}
+
+// UploadPartByChunk is used to upload the given chunk of data into the block blob
+func UploadPartByChunk(accountName, accountKey, containerName, remoteFile, partID string, httpClient *http.Client, chunk []byte) error {
+	c, err := NewClient(accountName, accountKey, httpClient)
+	if err != nil {
+		return err
+	}
+	blobClient := c.GetBlobService()
+	container := blobClient.GetContainerReference(containerName)
+	containerExists, err := container.Exists()
+	if err != nil {
+		return err
+	}
+	if !containerExists {
+		err = container.Create(nil)
+		if err != nil {
+			return err
+		}
+	}
+	blob := container.GetBlobReference(remoteFile)
+	exists, err := blob.Exists()
+	if err != nil {
+		return err
+	}
+	if !exists {
+		err = blob.CreateBlockBlob(nil)
+		if err != nil {
+			return err
+		}
+	}
+	err = blob.PutBlock(partID, chunk, nil)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// UploadBlockListToBlob used to complete the list of parts whcich are already uploaded in block blob
+func UploadBlockListToBlob(accountName, accountKey, containerName, remoteFile string, httpClient *http.Client, blocks []string) error {
+	c, err := NewClient(accountName, accountKey, httpClient)
+	if err != nil {
+		return err
+	}
+	blobClient := c.GetBlobService()
+	container := blobClient.GetContainerReference(containerName)
+	containerExists, err := container.Exists()
+	if err != nil {
+		return err
+	}
+	if !containerExists {
+		return fmt.Errorf("%s: Container doesn't exist", containerName)
+	}
+	blob := container.GetBlobReference(remoteFile)
+	exists, err := blob.Exists()
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return fmt.Errorf("%s: blob doesn't exist", remoteFile)
+	}
+	err = blob.PutBlockList(getStorageBlocks(blocks), nil)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func getStorageBlocks(blocks []string) []storage.Block {
+	var storageBlocks []storage.Block
+	for _, id := range blocks {
+		block := storage.Block{ID: id, Status: storage.BlockStatusLatest}
+		storageBlocks = append(storageBlocks, block)
+	}
+	return storageBlocks
 }
