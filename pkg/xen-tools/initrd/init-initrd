@@ -14,9 +14,10 @@ then
 fi
 
 mkdir /mnt >/dev/null 2>&1
-if [ "$root" = "9p" ]
-then
+if [ "$root" = "9p-xen" ]; then
     mount -t 9p -o msize=131072,trans=xen share_dir /mnt
+elif [ "$root" = "9p-kvm" ]; then
+    mount -t 9p -o msize=131072,trans=virtio,version=9p2000.L hostshare /mnt
 else
     mount $root /mnt
 fi
