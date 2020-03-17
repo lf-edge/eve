@@ -12,7 +12,7 @@ from google.protobuf import symbol_database as _symbol_database
 _sym_db = _symbol_database.Default()
 
 
-import fw_pb2 as fw__pb2
+import afw_pb2 as afw__pb2
 import netcmn_pb2 as netcmn__pb2
 import cipherinfo_pb2 as cipherinfo__pb2
 
@@ -22,9 +22,9 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto3',
   serialized_options=_b('\n\037com.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/config'),
-  serialized_pb=_b('\n\x0fnetconfig.proto\x1a\x08\x66w.proto\x1a\x0cnetcmn.proto\x1a\x10\x63ipherinfo.proto\"\xb1\x01\n\rNetworkConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x1a\n\x04type\x18\x05 \x01(\x0e\x32\x0c.NetworkType\x12\x13\n\x02ip\x18\x06 \x01(\x0b\x32\x07.ipspec\x12 \n\x03\x64ns\x18\x07 \x03(\x0b\x32\x13.ZnetStaticDNSEntry\x12\x1e\n\x08\x65ntProxy\x18\x08 \x01(\x0b\x32\x0c.ProxyConfig\x12!\n\x08wireless\x18\n \x01(\x0b\x32\x0f.WirelessConfig\"q\n\x0eWirelessConfig\x12\x1b\n\x04type\x18\x01 \x01(\x0e\x32\r.WirelessType\x12$\n\x0b\x63\x65llularCfg\x18\x05 \x03(\x0b\x32\x0f.CellularConfig\x12\x1c\n\x07wifiCfg\x18\n \x03(\x0b\x32\x0b.WifiConfig\"\x1d\n\x0e\x43\x65llularConfig\x12\x0b\n\x03\x41PN\x18\x01 \x01(\t\"\xf5\x01\n\nWifiConfig\x12\x10\n\x08wifiSSID\x18\x01 \x01(\t\x12!\n\tkeyScheme\x18\x02 \x01(\x0e\x32\x0e.WiFiKeyScheme\x12\x10\n\x08identity\x18\x05 \x01(\t\x12\x10\n\x08password\x18\n \x01(\t\x12\'\n\x06\x63rypto\x18\x14 \x01(\x0b\x32\x17.WifiConfig.cryptoblock\x12\x10\n\x08priority\x18\x19 \x01(\x05\x12 \n\ncipherData\x18\x1e \x01(\x0b\x32\x0c.CipherBlock\x1a\x31\n\x0b\x63ryptoblock\x12\x10\n\x08identity\x18\x0b \x01(\t\x12\x10\n\x08password\x18\x0c \x01(\tBG\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
+  serialized_pb=_b('\n\x0fnetconfig.proto\x1a\tafw.proto\x1a\x0cnetcmn.proto\x1a\x10\x63ipherinfo.proto\"\xb1\x01\n\rNetworkConfig\x12\n\n\x02id\x18\x01 \x01(\t\x12\x1a\n\x04type\x18\x05 \x01(\x0e\x32\x0c.NetworkType\x12\x13\n\x02ip\x18\x06 \x01(\x0b\x32\x07.ipspec\x12 \n\x03\x64ns\x18\x07 \x03(\x0b\x32\x13.ZnetStaticDNSEntry\x12\x1e\n\x08\x65ntProxy\x18\x08 \x01(\x0b\x32\x0c.ProxyConfig\x12!\n\x08wireless\x18\n \x01(\x0b\x32\x0f.WirelessConfig\"q\n\x0eWirelessConfig\x12\x1b\n\x04type\x18\x01 \x01(\x0e\x32\r.WirelessType\x12$\n\x0b\x63\x65llularCfg\x18\x05 \x03(\x0b\x32\x0f.CellularConfig\x12\x1c\n\x07wifiCfg\x18\n \x03(\x0b\x32\x0b.WifiConfig\"\x1d\n\x0e\x43\x65llularConfig\x12\x0b\n\x03\x41PN\x18\x01 \x01(\t\"\xf5\x01\n\nWifiConfig\x12\x10\n\x08wifiSSID\x18\x01 \x01(\t\x12!\n\tkeyScheme\x18\x02 \x01(\x0e\x32\x0e.WiFiKeyScheme\x12\x10\n\x08identity\x18\x05 \x01(\t\x12\x10\n\x08password\x18\n \x01(\t\x12\'\n\x06\x63rypto\x18\x14 \x01(\x0b\x32\x17.WifiConfig.cryptoblock\x12\x10\n\x08priority\x18\x19 \x01(\x05\x12 \n\ncipherData\x18\x1e \x01(\x0b\x32\x0c.CipherBlock\x1a\x31\n\x0b\x63ryptoblock\x12\x10\n\x08identity\x18\x0b \x01(\t\x12\x10\n\x08password\x18\x0c \x01(\tBG\n\x1f\x63om.zededa.cloud.uservice.protoZ$github.com/lf-edge/eve/api/go/configb\x06proto3')
   ,
-  dependencies=[fw__pb2.DESCRIPTOR,netcmn__pb2.DESCRIPTOR,cipherinfo__pb2.DESCRIPTOR,])
+  dependencies=[afw__pb2.DESCRIPTOR,netcmn__pb2.DESCRIPTOR,cipherinfo__pb2.DESCRIPTOR,])
 
 
 
@@ -90,8 +90,8 @@ _NETWORKCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=62,
-  serialized_end=239,
+  serialized_start=63,
+  serialized_end=240,
 )
 
 
@@ -135,8 +135,8 @@ _WIRELESSCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=241,
-  serialized_end=354,
+  serialized_start=242,
+  serialized_end=355,
 )
 
 
@@ -166,8 +166,8 @@ _CELLULARCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=356,
-  serialized_end=385,
+  serialized_start=357,
+  serialized_end=386,
 )
 
 
@@ -204,8 +204,8 @@ _WIFICONFIG_CRYPTOBLOCK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=584,
-  serialized_end=633,
+  serialized_start=585,
+  serialized_end=634,
 )
 
 _WIFICONFIG = _descriptor.Descriptor(
@@ -276,8 +276,8 @@ _WIFICONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=388,
-  serialized_end=633,
+  serialized_start=389,
+  serialized_end=634,
 )
 
 _NETWORKCONFIG.fields_by_name['type'].enum_type = netcmn__pb2._NETWORKTYPE
