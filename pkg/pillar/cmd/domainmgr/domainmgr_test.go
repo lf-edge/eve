@@ -250,7 +250,7 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 	mountpoints := map[string]struct{}{
 		"/myvol": {},
 	}
-	env := []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+	env := []string{"PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\""}
 
 	err = createMountPointExecEnvFiles(rootDir, mountpoints, execpath, workdir, env, 2)
 	if err != nil {
@@ -279,7 +279,7 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 	envFile := path.Join(rootDir, "environment")
 	envActual, err := ioutil.ReadFile(envFile)
 	// start with WORKDIR
-	envExpect := "export WORKDIR=\"/data\"\nexport PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n"
+	envExpect := "export WORKDIR=\"/data\"\nexport PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"\n"
 	if err != nil {
 		t.Errorf("createMountPointExecEnvFiles failed to create environment file %s %v", envFile, err)
 	}
