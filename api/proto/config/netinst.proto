@@ -47,7 +47,7 @@ enum ZcServiceType {
   // mapping service for zededa overlay service
   mapServer = 1;
 
-  // if device has support feature enabled, this is cloud service from 
+  // if device has support feature enabled, this is cloud service from
   // device can be reached
   supportServer = 2;
 }
