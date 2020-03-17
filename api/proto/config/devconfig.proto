@@ -6,7 +6,7 @@ syntax = "proto3";
 option go_package  = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
-import "cipherinfo.proto";
+import "acipherinfo.proto";
 import "devcommon.proto";
 import "appconfig.proto";
 import "baseosconfig.proto";
