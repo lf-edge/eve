@@ -231,10 +231,18 @@ func VerifyPending(pending *DPCPending,
 
 		log.Infof("VerifyPending: DPC changed. update DhcpClient.\n")
 		if UpdateDhcpClient(pending.PendDPC, pending.OldDPC) {
-			log.Warnf("VerifyPending: update DhcpClient: retry")
+			// Still waiting for a network interface
 			// UpdateDhcpClient has done no changes when it returns
 			// retry
-			return DPC_WAIT
+			if pending.TestCount < MaxDPCRetestCount {
+				log.Warnf("VerifyPending: update DhcpClient: retry count %d",
+					pending.TestCount)
+				pending.TestCount++
+				return DPC_WAIT
+			} else {
+				log.Warnf("VerifyPending: update DhcpClient: retry failed")
+				return DPC_FAIL
+			}
 		}
 		pending.OldDPC = pending.PendDPC
 	}
