@@ -14,6 +14,8 @@ require (
 	github.com/containerd/typeurl v0.0.0-20200205145503-b45ef1f1f737
 	github.com/coreos/ioprogress v0.0.0-20151023204047-4637e494fd9b // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
+	github.com/digitalocean/go-libvirt v0.0.0-20190715144809-7b622097a793 // indirect
+	github.com/digitalocean/go-qemu v0.0.0-20181112162955-dd7bb9c771b8
 	github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c // indirect
 	github.com/eriknordmark/ipinfo v0.0.0-20190220084921-7ee0839158f9
 	github.com/eriknordmark/netlink v0.0.0-20190912172510-3b6b45309321
