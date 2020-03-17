@@ -149,7 +149,8 @@ type DevicePortConfig struct {
 	// All zeros means never tested.
 	LastFailed    time.Time
 	LastSucceeded time.Time
-	LastError     string // Set when LastFailed is updated
+	LastError     string    // Set when LastFailed is updated
+	LastIPAndDNS  time.Time // Time when we got some IP addresses and DNS
 
 	Ports []NetworkPortConfig
 }
