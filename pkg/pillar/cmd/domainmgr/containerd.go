@@ -224,6 +224,7 @@ func ctrPrepare(containerPath string, ociFilename string, envVars map[string]str
 		log.Infof("ctrPrepare: a bundle with ID: %v already exists. Cleaning existing bundle and recreating it", containerID)
 		ctrRm(containerID, true)
 	}
+
 	loadedImages, err := containerdLoadImageTar(ociFilename)
 	if err != nil {
 		log.Errorf("failed to load Image File at %s into containerd: %+s", ociFilename, err.Error())

@@ -9,7 +9,10 @@ import (
 )
 
 // Return the UUID of the instance based on the domainname
-func lookupDomainName(domainName string) string {
+func lookupDomainName(ctxArg interface{}, domainName string) string {
+	ctx := ctxArg.(*logmanagerContext)
+	ctx.RLock()
+	defer ctx.RUnlock()
 	if du, ok := domainUuid[domainName]; ok {
 		return du
 	}
@@ -22,6 +25,9 @@ var domainUuid map[string]string = make(map[string]string)
 func handleDomainStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
+	ctx := ctxArg.(*logmanagerContext)
+	ctx.Lock()
+	defer ctx.Unlock()
 	log.Infof("handleDomainStatusModify for %s\n", key)
 	status := statusArg.(types.DomainStatus)
 	// Record the domainName even if Pending* is set
@@ -34,6 +40,9 @@ func handleDomainStatusModify(ctxArg interface{}, key string,
 func handleDomainStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
+	ctx := ctxArg.(*logmanagerContext)
+	ctx.Lock()
+	defer ctx.Unlock()
 	log.Infof("handleDomainStatusDelete for %s\n", key)
 	status := statusArg.(types.DomainStatus)
 	if _, ok := domainUuid[status.DomainName]; !ok {
