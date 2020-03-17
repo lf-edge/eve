@@ -26,29 +26,6 @@ message NetworkConfig {
         WirelessConfig wireless = 10;
 }
 
-message NetworkAdapter {
-        string name =1;         // name which we report in metrics and status
-        // deprecated = 2;
-
-        string networkId = 3;   // UUID of NetworkInstance object
-
-        string addr = 4;        // Static IP address; could be IPv4 EID
-        string hostname = 5;    // Not currently used
-
-        // more configuration for getting addr/EID
-        string cryptoEid = 10;
-        string lispsignature = 6;
-        bytes  pemcert = 7;
-        bytes  pemprivatekey = 8;
-
-        // Used in case of P2V, where we want to specify a macAddress
-        // to vif, that is simulated towards app
-        string macAddress = 9;
-
-        // firewall
-        repeated ACE acls = 40;
-}
-
 message WirelessConfig {
     WirelessType type = 1;                   // either LTE or Wifi
     repeated CellularConfig cellularCfg = 5; // Cellular config

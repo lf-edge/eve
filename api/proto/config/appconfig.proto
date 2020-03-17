@@ -9,7 +9,8 @@ option java_package = "com.zededa.cloud.uservice.proto";
 import "devcommon.proto";
 import "storage.proto";
 import "vm.proto";
-import "netconfig.proto";
+import "anetworkadapter.proto";
+import "cipherinfo.proto";
 
 message InstanceOpsCmd {
 	uint32 counter = 2;
@@ -54,4 +55,7 @@ message AppInstanceConfig {
     // Config flag if the app-instance should be made accessible
     // through a remote console session established by the device.
     bool remoteConsole = 12;
+
+    // contains the encrypted userData
+    CipherBlock cipherData = 13;
 }
