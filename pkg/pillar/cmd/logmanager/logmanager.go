@@ -777,7 +777,7 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 		appLogs.Log = []*logs.LogEntry{}
 		return false
 	}
-	resp, _, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, appLogsURL,
+	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, appLogsURL,
 		size, buf, iteration, return400)
 	// XXX We seem to still get large or bad messages which are rejected
 	// by the server. Ignore them to make sure we can log subsequent ones.
