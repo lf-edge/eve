@@ -10,56 +10,56 @@ option java_package = "com.zededa.cloud.uservice.proto";
 
 // Security Key Exchange Method
 enum KeyExchangeScheme {
-    KEA_NONE = 0;
-    KEA_ECDH = 1;
+  KEA_NONE = 0;
+  KEA_ECDH = 1;
 }
 
 // Encryption Scheme for Cipher Payload
 enum EncryptionScheme {
-    SA_NONE = 0;
-    SA_AES_256_CFB = 1;
+  SA_NONE = 0;
+  SA_AES_256_CFB = 1;
 }
 
 enum cipherHashAlgorithm {
-    HASH_NONE = 0;
-    HASH_SHA256_16bytes = 1;  // hash with sha256, the 1st 16 bytes of result in 'senderCertHash'
-    HASH_SHA256_32bytes = 2;  // hash with sha256, the whole 32 bytes of hash result
+  HASH_NONE = 0;
+  HASH_SHA256_16bytes = 1;  // hash with sha256, the 1st 16 bytes of result in 'senderCertHash'
+  HASH_SHA256_32bytes = 2;  // hash with sha256, the whole 32 bytes of hash result
 }
 
 // Cipher information to decrypt Sensitive Data
 message CipherContext {
-    // cipher context id, key to this structure
-    string contextId = 1;
+  // cipher context id, key to this structure
+  string contextId = 1;
 
-    // algorithm used to compute hash for certificates
-    cipherHashAlgorithm hashScheme = 2;
+  // algorithm used to compute hash for certificates
+  cipherHashAlgorithm hashScheme = 2;
 
-    // for key exchange scheme, like ECDH etc.
-    KeyExchangeScheme keyExchangeScheme = 3;
+  // for key exchange scheme, like ECDH etc.
+  KeyExchangeScheme keyExchangeScheme = 3;
 
-    // for encrypting sensitive data, like AES256 etc.
-    EncryptionScheme encryptionScheme = 4;
+  // for encrypting sensitive data, like AES256 etc.
+  EncryptionScheme encryptionScheme = 4;
 
-    // device public certificate hash
-    bytes deviceCertHash = 5;
+  // device public certificate hash
+  bytes deviceCertHash = 5;
 
-    // controller certificate hash
-    bytes controllerCertHash = 6;
+  // controller certificate hash
+  bytes controllerCertHash = 6;
 }
 
 // Encrypted sensitive data information
 message CipherBlock {
-    // cipher context id
-    string cipherContextId = 1;
+  // cipher context id
+  string cipherContextId = 1;
 
-    // Initial Value for Symmetric Key derivation
-    bytes initialValue = 2;
+  // Initial Value for Symmetric Key derivation
+  bytes initialValue = 2;
 
-    // encrypted sensitive data
-    bytes cipherData = 3;
+  // encrypted sensitive data
+  bytes cipherData = 3;
 
-    // sha256 of the plaintext sensitive data
-    bytes clearTextSha256 = 4;
+  // sha256 of the plaintext sensitive data
+  bytes clearTextSha256 = 4;
 }
 
 
@@ -68,6 +68,6 @@ message CipherBlock {
 //  wire for data in transit, by the controller
 // for encryption
 message CredentialBlock {
-    string identity = 1;
-    string password = 2;
+  string identity = 1;
+  string password = 2;
 }

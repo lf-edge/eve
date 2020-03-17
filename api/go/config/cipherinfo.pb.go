@@ -314,7 +314,9 @@ func init() {
 	proto.RegisterType((*CredentialBlock)(nil), "CredentialBlock")
 }
 
-func init() { proto.RegisterFile("cipherinfo.proto", fileDescriptor_d32c1c7154980027) }
+func init() {
+	proto.RegisterFile("cipherinfo.proto", fileDescriptor_d32c1c7154980027)
+}
 
 var fileDescriptor_d32c1c7154980027 = []byte{
 	// 479 bytes of a gzipped FileDescriptorProto

@@ -18,21 +18,21 @@ message ZControllerCert {
 //Keep these two in sync
 //XXX: import auth/auth.proto and avoid this duplication
 enum certHashAlgorithm {
-    HASH_NONE = 0;
-    HASH_SHA256_16bytes = 1;  // hash with sha256, the 1st 16 bytes of result in 'certHash'
-    HASH_SHA256_32bytes = 2;  // hash with sha256, the whole 32 bytes of hash result
+  HASH_NONE = 0;
+  HASH_SHA256_16bytes = 1;  // hash with sha256, the 1st 16 bytes of result in 'certHash'
+  HASH_SHA256_32bytes = 2;  // hash with sha256, the whole 32 bytes of hash result
 }
 
 message ZCert {
-   certHashAlgorithm hashAlgo = 1; //hash method used to arrive at certHash
-   bytes certHash = 2;             //truncated hash of the cert, according to hashing scheme in hashAlgo
-   ZCertType type = 3;             //what kind of certificate(to identify the target use case)
-   bytes cert = 4;                 //X509 cert in .PEM format
+  certHashAlgorithm hashAlgo = 1; //hash method used to arrive at certHash
+  bytes certHash = 2;             //truncated hash of the cert, according to hashing scheme in hashAlgo
+  ZCertType type = 3;             //what kind of certificate(to identify the target use case)
+  bytes cert = 4;                 //X509 cert in .PEM format
 }
 
 enum ZCertType {
-   CERT_TYPE_CONTROLLER_NONE = 0;
-   CERT_TYPE_CONTROLLER_SIGNING = 1;        //set for the leaf certificate used by controller to sign payload envelopes
-   CERT_TYPE_CONTROLLER_INTERMEDIATE = 2;   //set for intermediate certs used to validate the certificates
-   CERT_TYPE_CONTROLLER_ECDH_EXCHANGE = 3;  //set for certificate used by controller to share any symmetric key using ECDH
+  CERT_TYPE_CONTROLLER_NONE = 0;
+  CERT_TYPE_CONTROLLER_SIGNING = 1;        //set for the leaf certificate used by controller to sign payload envelopes
+  CERT_TYPE_CONTROLLER_INTERMEDIATE = 2;   //set for intermediate certs used to validate the certificates
+  CERT_TYPE_CONTROLLER_ECDH_EXCHANGE = 3;  //set for certificate used by controller to share any symmetric key using ECDH
 }

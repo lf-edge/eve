@@ -534,7 +534,9 @@ func init() {
 	proto.RegisterType((*ZEveCertAttr)(nil), "ZEveCertAttr")
 }
 
-func init() { proto.RegisterFile("attest.proto", fileDescriptor_208cf26448842a3f) }
+func init() {
+	proto.RegisterFile("attest.proto", fileDescriptor_208cf26448842a3f)
+}
 
 var fileDescriptor_208cf26448842a3f = []byte{
 	// 689 bytes of a gzipped FileDescriptorProto
