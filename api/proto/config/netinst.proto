@@ -30,80 +30,80 @@ enum AddressType {
 }
 
 enum ZNetworkOpaqueConfigType {
-	ZNetOConfigVPN   = 0;
-	ZNetOConfigLisp  = 1;
+  ZNetOConfigVPN   = 0;
+  ZNetOConfigLisp  = 1;
 }
 
 // Network Instance Opaque config. In future we might add more fields here
 // but idea is here. This is service specific configuration.
 message NetworkInstanceOpaqueConfig {
-	string oconfig = 1;
-	NetworkInstanceLispConfig lispConfig = 2;
-	ZNetworkOpaqueConfigType  type = 3;
+  string oconfig = 1;
+  NetworkInstanceLispConfig lispConfig = 2;
+  ZNetworkOpaqueConfigType  type = 3;
 }
 
 enum ZcServiceType {
-       zcloudInvalidSrv = 0;
-       // mapping service for zededa overlay service
-        mapServer = 1;
+  zcloudInvalidSrv = 0;
+  // mapping service for zededa overlay service
+  mapServer = 1;
 
-       // if device has support feature enabled, this is cloud service from 
-       // device can be reached
-        supportServer = 2;
+  // if device has support feature enabled, this is cloud service from 
+  // device can be reached
+  supportServer = 2;
 }
 
 // This is way to tell the device if there is service in cloud somewhere,
 // what type it is how to access it
 message ZcServicePoint {
-        ZcServiceType zsType = 3;
-        string NameOrIp   = 1;
-        string Credential = 2;
+  ZcServiceType zsType = 3;
+  string NameOrIp   = 1;
+  string Credential = 2;
 }
 
 // Lisp NetworkInstance config
 message NetworkInstanceLispConfig {
-        repeated ZcServicePoint LispMSs = 1;
-        uint32 LispInstanceId = 2;
+  repeated ZcServicePoint LispMSs = 1;
+  uint32 LispInstanceId = 2;
 
-        bool allocate = 3;
-        bool exportprivate = 4;
-        bytes allocationprefix = 5;
-        uint32 allocationprefixlen = 6;
+  bool allocate = 3;
+  bool exportprivate = 4;
+  bytes allocationprefix = 5;
+  uint32 allocationprefixlen = 6;
 
-	// various configuration to dataPlane, lispers.net vs Zededa
-	bool experimental = 20;
+  // various configuration to dataPlane, lispers.net vs Zededa
+  bool experimental = 20;
 }
 
 message NetworkInstanceConfig {
-	UUIDandVersion uuidandversion = 1;
-	string displayname = 2;
+  UUIDandVersion uuidandversion = 1;
+  string displayname = 2;
 
-	// instType - Type of network instance ( local, bridge etc )
-	ZNetworkInstType instType = 4;
+  // instType - Type of network instance ( local, bridge etc )
+  ZNetworkInstType instType = 4;
   // activate
   //  - True by default. If set to false ( inactivate), the network instance
   //    configuration is downloaded to the device, but the network instance
   //    itself is not created on the device.
-	bool activate = 5;
+  bool activate = 5;
 
-	// port - Only a single port is supported.
+  // port - Only a single port is supported.
   //    This is used as the external connection for the network instance.
   //    This can be a physical (eth0 ) or logical port (vlan 0).
   //    The port name comes from DeviceConfig ( When it is supported in future).
   //    If the user needs multiple physical ports, Device config should be
   //    used to create a label for multiple physical ports.
-	Adapter port = 20;
+  Adapter port = 20;
 
-	// cfg - Used to pass some feature-specific configuration to the
+  // cfg - Used to pass some feature-specific configuration to the
   //       network instance. For Ex: Lisp, StriongSwan etc
-	NetworkInstanceOpaqueConfig cfg = 30;
+  NetworkInstanceOpaqueConfig cfg = 30;
 
-	// type of ipSpec
-	AddressType ipType = 39;
+  // type of ipSpec
+  AddressType ipType = 39;
 
-	// network ip specification
-	ipspec ip = 40;
+  // network ip specification
+  ipspec ip = 40;
 
-	// static DNS entry, if we are running DNS/DHCP service
-	repeated ZnetStaticDNSEntry dns = 41;
+  // static DNS entry, if we are running DNS/DHCP service
+  repeated ZnetStaticDNSEntry dns = 41;
 }

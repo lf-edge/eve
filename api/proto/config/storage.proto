@@ -11,9 +11,9 @@ import "cipherinfo.proto";
 import "devcommon.proto";
 
 message SignatureInfo {
-	string intercertsurl = 1;
-	string signercerturl = 2;
-	bytes signature = 3;
+  string intercertsurl = 1;
+  string signercerturl = 2;
+  bytes signature = 3;
 }
 
 enum DsType {
@@ -27,26 +27,26 @@ enum DsType {
 }
 
 message DatastoreConfig {
-	string id = 100;
+  string id = 100;
 
-	DsType dType = 1;
+  DsType dType = 1;
 
-	string fqdn = 2;
+  string fqdn = 2;
 
-    // to be deprecated, use cipherData instead
-	string apiKey = 3;
+  // to be deprecated, use cipherData instead
+  string apiKey = 3;
 
-    // to be deprecated, use cipherData instead
-	string password = 4;
+  // to be deprecated, use cipherData instead
+  string password = 4;
 
-	// depending on datastore types, it could be bucket or path
-	string dpath = 5;
+  // depending on datastore types, it could be bucket or path
+  string dpath = 5;
 
-	// Applies for some datastore types
-	string region = 6;
+  // Applies for some datastore types
+  string region = 6;
 
-    // contains the encrypted credentials
-    CipherBlock cipherData = 7;
+  // contains the encrypted credentials
+  CipherBlock cipherData = 7;
 }
 
 
@@ -63,46 +63,46 @@ enum Format {
 }
 
 message Image {
-	UUIDandVersion uuidandversion = 1;
-	// it could be relative path/name as well
-	string name = 2;
+  UUIDandVersion uuidandversion = 1;
+  // it could be relative path/name as well
+  string name = 2;
 
-	string sha256 = 3;
-	Format iformat = 4;
+  string sha256 = 3;
+  Format iformat = 4;
 
-	// if its signed image
-	SignatureInfo siginfo = 5;
+  // if its signed image
+  SignatureInfo siginfo = 5;
 
-	string dsId = 6;
-	int64 sizeBytes = 8;
+  string dsId = 6;
+  int64 sizeBytes = 8;
 }
 
 enum Target {
-	TgtUnknown = 0;
-	Disk   = 1;
-	Kernel = 2;
-	Initrd = 3;
-	RamDisk = 4;
-	// XXX DeviceTree?
+  TgtUnknown = 0;
+  Disk   = 1;
+  Kernel = 2;
+  Initrd = 3;
+  RamDisk = 4;
+  // XXX DeviceTree?
 }
 
 enum DriveType {
-	Unclassified = 0;
-	CDROM   = 1;
-	HDD     = 2;
-	NET     = 3;
+  Unclassified = 0;
+  CDROM   = 1;
+  HDD     = 2;
+  NET     = 3;
 
-	// this type is allocate the empty disk of maxsizebytes specified
-	HDD_EMPTY  = 4;
+  // this type is allocate the empty disk of maxsizebytes specified
+  HDD_EMPTY  = 4;
 }
 
 message Drive {
-	Image image = 1;
-	bool readonly = 5;
-	bool preserve = 6;
-	DriveType drvtype = 8;
-	Target target = 9;
-	// Initial image need to be resized to this size.
-	// A value of 0 will indicate that no resizing is required
-	int64 maxsizebytes = 10;
+  Image image = 1;
+  bool readonly = 5;
+  bool preserve = 6;
+  DriveType drvtype = 8;
+  Target target = 9;
+  // Initial image need to be resized to this size.
+  // A value of 0 will indicate that no resizing is required
+  int64 maxsizebytes = 10;
 }

@@ -572,7 +572,9 @@ func init() {
 	proto.RegisterType((*Ipspec)(nil), "ipspec")
 }
 
-func init() { proto.RegisterFile("netcmn.proto", fileDescriptor_d4fb078f34bebaa1) }
+func init() {
+	proto.RegisterFile("netcmn.proto", fileDescriptor_d4fb078f34bebaa1)
+}
 
 var fileDescriptor_d4fb078f34bebaa1 = []byte{
 	// 705 bytes of a gzipped FileDescriptorProto
