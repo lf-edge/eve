@@ -112,6 +112,10 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible h1:7qlOGliEKZXTDg6OTjfoBKDXWrumCAMpl/TFQ4/5kLM=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
+github.com/digitalocean/go-libvirt v0.0.0-20190715144809-7b622097a793 h1:+ItaX1GKKT70bYwazNtWeYz8QBfirNC85J70psPGgN0=
+github.com/digitalocean/go-libvirt v0.0.0-20190715144809-7b622097a793/go.mod h1:PRcPVAAma6zcLpFd4GZrjR/MRpood3TamjKI2m/z/Uw=
+github.com/digitalocean/go-qemu v0.0.0-20181112162955-dd7bb9c771b8 h1:N7nH2py78LcMqYY3rZjjrsX6N7uCN7sjvaosgpXN9Ow=
+github.com/digitalocean/go-qemu v0.0.0-20181112162955-dd7bb9c771b8/go.mod h1:/YnlngP1PARC0SKAZx6kaAEMOp8bNTQGqS+Ka3MctNI=
 github.com/dnaeon/go-vcr v1.0.1 h1:r8L/HqC0Hje5AXMu1ooW8oyQyOFv4GxqpL0nRP7SLLY=
 github.com/dnaeon/go-vcr v1.0.1/go.mod h1:aBB1+wY4s93YsC3HHjMBMrwTj2R9FHDzUr9KyGc8n1E=
 github.com/docker/cli v0.0.0-20191017083524-a8ff7f821017 h1:2HQmlpI3yI9deH18Q6xiSOIjXD4sLI55Y/gfpa8/558=
