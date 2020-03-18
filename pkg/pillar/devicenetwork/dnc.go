@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -63,11 +62,10 @@ type DeviceNetworkContext struct {
 	CloudConnectivityWorks bool
 
 	// Timers in seconds
-	DPCTestDuration           uint32                  // Wait for DHCP address
-	NetworkTestInterval       uint32                  // Test interval in minutes.
-	NetworkTestBetterInterval uint32                  // Look for lower/better index
-	TestSendTimeout           uint32                  // Timeout for HTTP/Send
-	wifiPortCfg               types.NetworkPortConfig // XXX hack until zedcloud wifi support
+	DPCTestDuration           uint32 // Wait for DHCP address
+	NetworkTestInterval       uint32 // Test interval in minutes.
+	NetworkTestBetterInterval uint32 // Look for lower/better index
+	TestSendTimeout           uint32 // Timeout for HTTP/Send
 }
 
 func UpdateLastResortPortConfig(ctx *DeviceNetworkContext, ports []string) {
@@ -678,16 +676,6 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 	currentIndex := ctx.DevicePortConfigList.CurrentIndex
 	oldConfig, _ := lookupPortConfig(ctx, *portConfig)
 
-	// There is no Controller support for Wifi Yet. Only way to configure
-	//  Wifi is through override.json. Copy the existing Wifi config into
-	// Portconfig if wifi is not present in Port Config
-	if strings.Contains(portConfig.Key, "override") {
-		checkAndUpdateWireless(ctx, oldConfig, portConfig)
-	} else {
-		// XXX remove this when controller supports WIFI
-		checkAndCopyWireless(ctx, portConfig)
-	}
-
 	if delete {
 		if oldConfig == nil {
 			log.Errorf("doUpdatePortConfigListAndPublish - Delete. "+
@@ -751,8 +739,7 @@ func (ctx *DeviceNetworkContext) doUpdatePortConfigListAndPublish(
 }
 
 func checkAndUpdateWireless(ctx *DeviceNetworkContext, oCfg *types.DevicePortConfig, portCfg *types.DevicePortConfig) {
-	log.Infof("checkAndUpdateWireless: oCfg nil %v, portCfg Ports %v\n", oCfg == nil, portCfg.Ports)
-	isOverride := strings.Contains(portCfg.Key, "override")
+	log.Infof("checkAndUpdateWireless: oCfg type %v, nil %v, portCfg Ports %v\n", portCfg.Key, oCfg == nil, portCfg.Ports)
 	for _, pCfg := range portCfg.Ports {
 		var oldPortCfg *types.NetworkPortConfig
 		if oCfg != nil {
@@ -763,9 +750,7 @@ func checkAndUpdateWireless(ctx *DeviceNetworkContext, oCfg *types.DevicePortCon
 				}
 			}
 		}
-		// XXX need to test out after the controller supports WIFI, if the 'isOverride' is not
-		// needed by then, will remove that
-		if oldPortCfg == nil || isOverride || !reflect.DeepEqual(oldPortCfg.WirelessCfg, pCfg.WirelessCfg) {
+		if oldPortCfg == nil || !reflect.DeepEqual(oldPortCfg.WirelessCfg, pCfg.WirelessCfg) {
 			if pCfg.WirelessCfg.WType == types.WirelessTypeCellular ||
 				oldPortCfg != nil && oldPortCfg.WirelessCfg.WType == types.WirelessTypeCellular {
 				devPortInstallAPname(pCfg.IfName, pCfg.WirelessCfg)
@@ -774,25 +759,6 @@ func checkAndUpdateWireless(ctx *DeviceNetworkContext, oCfg *types.DevicePortCon
 				status := devPortInstallWifiConfig(pCfg.IfName, pCfg.WirelessCfg)
 				log.Infof("checkAndUpdateWireless: updated wpa file ok %v\n", status)
 			}
-		}
-
-		// XXX remove when controller supports WIFI config
-		if ctx != nil && isOverride && pCfg.WirelessCfg.WType == types.WirelessTypeWifi {
-			ctx.wifiPortCfg = pCfg
-		}
-	}
-}
-
-// hack for temp solution until zedcloud support wifi
-func checkAndCopyWireless(ctx *DeviceNetworkContext, portCfg *types.DevicePortConfig) {
-	if ctx.wifiPortCfg.WirelessCfg.WType == types.WirelessTypeNone {
-		return
-	}
-	for idx, pCfg := range portCfg.Ports {
-		if ctx.wifiPortCfg.IfName == pCfg.IfName {
-			portCfg.Ports[idx].WirelessCfg = ctx.wifiPortCfg.WirelessCfg
-			log.Infof("checkAndCopyWireless: portCfg %+v\n", portCfg.Ports[idx])
-			return
 		}
 	}
 }
