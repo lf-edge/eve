@@ -1135,7 +1135,7 @@ func cleanupAdapters(ctx *domainContext, ioAdapterList []types.IoAdapter,
 	for _, adapter := range ioAdapterList {
 		log.Debugf("cleanupAdapters processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
-		list := ctx.assignableAdapters.LookupIoBundleGroup(adapter.Name)
+		list := ctx.assignableAdapters.LookupIoBundleAny(adapter.Name)
 		if len(list) == 0 {
 			continue
 		}
@@ -1166,7 +1166,7 @@ func doAssignIoAdaptersToDomain(ctx *domainContext, config types.DomainConfig,
 			adapter.Type, adapter.Name)
 
 		aa := ctx.assignableAdapters
-		list := aa.LookupIoBundleGroup(adapter.Name)
+		list := aa.LookupIoBundleAny(adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if len(list) == 0 {
 			log.Fatalf("doAssignIoAdaptersToDomain IoBundle disappeared %d %s for %s\n",
@@ -1522,7 +1522,7 @@ func pciUnassign(ctx *domainContext, status *types.DomainStatus,
 		log.Debugf("doInactivate processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
 		aa := ctx.assignableAdapters
-		list := aa.LookupIoBundleGroup(adapter.Name)
+		list := aa.LookupIoBundleAny(adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if len(list) == 0 {
 			log.Fatalf("doInactivate IoBundle disappeared %d %s for %s\n",
@@ -1679,7 +1679,7 @@ func configAdapters(ctx *domainContext, config types.DomainConfig) error {
 		log.Debugf("configAdapters processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
 		// Lookup to make sure adapter exists on this device
-		list := ctx.assignableAdapters.LookupIoBundleGroup(adapter.Name)
+		list := ctx.assignableAdapters.LookupIoBundleAny(adapter.Name)
 		if len(list) == 0 {
 			return fmt.Errorf("unknown adapter %d %s",
 				adapter.Type, adapter.Name)

@@ -262,7 +262,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 	return globalStatus
 }
 
-// write the access-point name into /run/cccesspoint directory
+// write the access-point name into /run/accesspoint directory
 // the filenames are the physical ports with access-point address/name in content
 func devPortInstallAPname(ifname string, wconfig types.WirelessConfig) {
 	if _, err := os.Stat(apDirname); err != nil {

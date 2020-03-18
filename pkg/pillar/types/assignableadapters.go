@@ -247,6 +247,9 @@ func (aa *AssignableAdapters) LookupIoBundle(name string) *IoBundle {
 func (aa *AssignableAdapters) LookupIoBundleGroup(group string) []*IoBundle {
 
 	var list []*IoBundle
+	if group == "" {
+		return list
+	}
 	for i, b := range aa.IoBundleList {
 		if b.AssignmentGroup == "" {
 			continue
@@ -256,6 +259,27 @@ func (aa *AssignableAdapters) LookupIoBundleGroup(group string) []*IoBundle {
 		}
 	}
 	return list
+}
+
+// LookupIoBundleAny returns an empty slice if not found; name can be
+// a member or a group
+// Returns pointers into aa
+func (aa *AssignableAdapters) LookupIoBundleAny(name string) []*IoBundle {
+
+	list := aa.LookupIoBundleGroup(name)
+	if len(list) != 0 {
+		return list
+	}
+	ib := aa.LookupIoBundle(name)
+	if ib == nil {
+		return list
+	}
+	if ib.AssignmentGroup == "" {
+		// Singleton
+		list = append(list, ib)
+		return list
+	}
+	return aa.LookupIoBundleGroup(ib.AssignmentGroup)
 }
 
 // LookupIoBundleNet checks for IoNet*

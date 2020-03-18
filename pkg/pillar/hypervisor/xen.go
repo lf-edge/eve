@@ -250,7 +250,7 @@ func (ctx xenContext) CreateDomConfig(domainName string, config types.DomainConf
 	for _, adapter := range config.IoAdapterList {
 		log.Debugf("configToXenCfg processing adapter %d %s\n",
 			adapter.Type, adapter.Name)
-		list := aa.LookupIoBundleGroup(adapter.Name)
+		list := aa.LookupIoBundleAny(adapter.Name)
 		// We reserved it in handleCreate so nobody could have stolen it
 		if len(list) == 0 {
 			log.Fatalf("configToXencfg IoBundle disappeared %d %s for %s\n",
