@@ -113,7 +113,7 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 			reportAA.Type = zinfo.IPhyIoType(ia.Type)
 			reportAA.Name = ia.Name
 			reportAA.UsedByAppUUID = zcdevUUID.String()
-			list := ctx.assignableAdapters.LookupIoBundleGroup(ia.Name)
+			list := ctx.assignableAdapters.LookupIoBundleAny(ia.Name)
 			for _, ib := range list {
 				if ib == nil {
 					continue
