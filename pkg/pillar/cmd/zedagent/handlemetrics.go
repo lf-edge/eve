@@ -1402,7 +1402,7 @@ func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 	iteration int) error {
 
 	const return400 = true
-	resp, _, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
+	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, url,
 		size, buf, iteration, return400)
 	if resp != nil && resp.StatusCode >= 400 && resp.StatusCode < 500 {
 		log.Infof("SendProtoBuf: %s silently ignore code %d\n",
@@ -1426,7 +1426,7 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 	size := int64(proto.Size(ReportMetrics))
 	metricsUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "metrics")
 	const return400 = false
-	_, _, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
+	_, _, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, metricsUrl,
 		size, buf, iteration, return400)
 	if err != nil {
 		// Hopefully next timeout will be more successful

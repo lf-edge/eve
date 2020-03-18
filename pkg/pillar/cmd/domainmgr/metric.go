@@ -4,12 +4,8 @@
 package domainmgr
 
 import (
-	"context"
 	"fmt"
-	"os/exec"
-	"regexp"
-	"strconv"
-	"strings"
+	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -17,8 +13,6 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
-	"github.com/shirou/gopsutil/cpu"
-	"github.com/shirou/gopsutil/mem"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -27,9 +21,9 @@ const (
 )
 
 // Run a periodic post of the metrics
-func metricsTimerTask(ctx *domainContext) {
+func metricsTimerTask(ctx *domainContext, hyper hypervisor.Hypervisor) {
 	log.Infoln("starting metrics timer task")
-	getAndPublishMetrics(ctx)
+	getAndPublishMetrics(ctx, hyper)
 
 	// Publish 4X more often than zedagent publishes to controller
 	interval := time.Duration(ctx.metricInterval) * time.Second
@@ -45,7 +39,7 @@ func metricsTimerTask(ctx *domainContext) {
 		select {
 		case <-ticker.C:
 			start := time.Now()
-			getAndPublishMetrics(ctx)
+			getAndPublishMetrics(ctx, hyper)
 			pubsub.CheckMaxTimeTopic(agentName+"metrics", "publishMetrics", start,
 				warningTime, errorTime)
 
@@ -55,19 +49,8 @@ func metricsTimerTask(ctx *domainContext) {
 	}
 }
 
-func getAndPublishMetrics(ctx *domainContext) {
-	getAndPublishCPUMemory(ctx)
-	getAndPublishHostMemory(ctx)
-}
-
-func getAndPublishCPUMemory(ctx *domainContext) {
-	var dmList map[string]types.DomainMetric
-	cpuMemoryStat := executeXentopCmd()
-	if len(cpuMemoryStat) == 0 {
-		dmList = fallbackDomainMetric()
-	} else {
-		dmList = parseCPUMemoryStat(cpuMemoryStat)
-	}
+func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
+	dmList, _ := hyper.GetDomsCPUMem()
 	for domainName, dm := range dmList {
 		uuid, err := domainnameToUUID(ctx, domainName)
 		if err != nil {
@@ -77,12 +60,9 @@ func getAndPublishCPUMemory(ctx *domainContext) {
 		dm.UUIDandVersion.UUID = uuid
 		ctx.pubDomainMetric.Publish(dm.Key(), dm)
 	}
-	if false {
-		// debug code to compare Xen and fallback
-		log.Infof("XXX reported DomainMetric %+v", dmList)
-		dmList = fallbackDomainMetric()
-		log.Infof("XXX fallback DomainMetric %+v", dmList)
-	}
+
+	hm, _ := hyper.GetHostCPUMem()
+	ctx.pubHostMemory.Publish("global", hm)
 }
 
 // Returns zero for the host/overhead
@@ -99,292 +79,4 @@ func domainnameToUUID(ctx *domainContext, domainName string) (uuid.UUID, error) 
 		}
 	}
 	return uuid.UUID{}, fmt.Errorf("Unknown domainname %s", domainName)
-}
-
-// First approximation for a host without Xen
-// XXX Assumes that all of the used memory in the host is overhead the same way dom0 is
-// overhead, which is completely incorrect when running containers
-func fallbackDomainMetric() map[string]types.DomainMetric {
-	dmList := make(map[string]types.DomainMetric)
-	vm, err := mem.VirtualMemory()
-	if err != nil {
-		log.Errorf("mem.VirtualMemory failed: %s", err)
-		return dmList
-	}
-	var usedMemoryPercent float64
-	if vm.Total != 0 {
-		usedMemoryPercent = float64(100 * (vm.Total - vm.Available) / vm.Total)
-	}
-	total := roundFromBytesToMbytes(vm.Total)
-	available := roundFromBytesToMbytes(vm.Available)
-	dm := types.DomainMetric{
-		UsedMemory:        uint32(total - available),
-		AvailableMemory:   uint32(available),
-		UsedMemoryPercent: usedMemoryPercent,
-	}
-	// Ask for one total entry
-	cpuStat, err := cpu.Times(false)
-	if err != nil {
-		log.Errorf("cpu.TimesStat failed: %s", err)
-		return dmList
-	}
-	for _, cpu := range cpuStat {
-		log.Infof("cpuStat %s: %v", cpu.CPU, cpu)
-		dm.CPUTotal = uint64(cpu.Total())
-		break
-	}
-	dmList[dom0Name] = dm
-	return dmList
-}
-
-// XXX can we use libxenstat? /usr/local/lib/libxenstat.so on hikey
-// /usr/lib/libxenstat.so in container
-func executeXentopCmd() [][]string {
-	var cpuMemoryStat [][]string
-
-	count := 0
-	counter := 0
-	arg1 := "xentop"
-	arg2 := "-b"
-	arg3 := "-d"
-	arg4 := "1"
-	arg5 := "-i"
-	arg6 := "2"
-	arg7 := "-f"
-
-	stdout, ok, err := execWithTimeout(arg1, arg2, arg3, arg4, arg5, arg6, arg7)
-	if err != nil {
-		log.Errorf("xentop failed: %s", err)
-		return [][]string{}
-	}
-	if !ok {
-		log.Warnf("xentop timed out")
-		return nil
-	}
-
-	xentopInfo := string(stdout)
-
-	splitXentopInfo := strings.Split(xentopInfo, "\n")
-
-	splitXentopInfoLength := len(splitXentopInfo)
-	var i int
-	var start int
-
-	for i = 0; i < splitXentopInfoLength; i++ {
-
-		str := splitXentopInfo[i]
-		re := regexp.MustCompile(" ")
-
-		spaceRemovedsplitXentopInfo := re.ReplaceAllLiteralString(str, "")
-		matched, err := regexp.MatchString("NAMESTATECPU.*", spaceRemovedsplitXentopInfo)
-
-		if err != nil {
-			log.Debugf("MatchString failed: %s", err)
-		} else if matched {
-
-			count++
-			log.Debugf("string matched: %s", str)
-			if count == 2 {
-				start = i + 1
-				log.Debugf("value of i: %d", start)
-			}
-		}
-	}
-
-	length := splitXentopInfoLength - 1 - start
-	finalOutput := make([][]string, length)
-
-	for j := start; j < splitXentopInfoLength-1; j++ {
-
-		finalOutput[j-start] = strings.Fields(strings.TrimSpace(splitXentopInfo[j]))
-	}
-
-	cpuMemoryStat = make([][]string, length)
-
-	for i := range cpuMemoryStat {
-		cpuMemoryStat[i] = make([]string, 20)
-	}
-
-	// Need to treat "no limit" as one token
-	for f := 0; f < length; f++ {
-
-		// First name and state
-		out := 0
-		counter++
-		cpuMemoryStat[f][counter] = finalOutput[f][out]
-		out++
-		counter++
-		cpuMemoryStat[f][counter] = finalOutput[f][out]
-		out++
-		for ; out < len(finalOutput[f]); out++ {
-
-			if finalOutput[f][out] == "no" {
-
-			} else if finalOutput[f][out] == "limit" {
-				counter++
-				cpuMemoryStat[f][counter] = "no limit"
-			} else {
-				counter++
-				cpuMemoryStat[f][counter] = finalOutput[f][out]
-			}
-		}
-		counter = 0
-	}
-	log.Debugf("ExecuteXentopCmd return %+v", cpuMemoryStat)
-	return cpuMemoryStat
-}
-
-func execWithTimeout(command string, args ...string) ([]byte, bool, error) {
-
-	ctx, cancel := context.WithTimeout(context.Background(),
-		10*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, command, args...)
-	out, err := cmd.Output()
-	if ctx.Err() == context.DeadlineExceeded {
-		return nil, false, nil
-	}
-	return out, true, err
-}
-
-// Returns cpuTotal, usedMemory, availableMemory, usedPercentage
-func parseCPUMemoryStat(cpuMemoryStat [][]string) map[string]types.DomainMetric {
-
-	result := make(map[string]types.DomainMetric)
-	for _, stat := range cpuMemoryStat {
-		if len(stat) <= 2 {
-			continue
-		}
-		domainname := strings.TrimSpace(stat[1])
-		if len(stat) <= 6 {
-			continue
-		}
-		log.Debugf("lookupCPUMemoryStat for %s %d elem: %+v",
-			domainname, len(stat), stat)
-		cpuTotal, err := strconv.ParseUint(stat[3], 10, 0)
-		if err != nil {
-			log.Errorf("ParseUint(%s) failed: %s",
-				stat[3], err)
-			cpuTotal = 0
-		}
-		// This is in kbytes
-		totalMemory, err := strconv.ParseUint(stat[5], 10, 0)
-		if err != nil {
-			log.Errorf("ParseUint(%s) failed: %s",
-				stat[5], err)
-			totalMemory = 0
-		}
-		totalMemory = RoundFromKbytesToMbytes(totalMemory)
-		usedMemoryPercent, err := strconv.ParseFloat(stat[6], 10)
-		if err != nil {
-			log.Errorf("ParseFloat(%s) failed: %s",
-				stat[6], err)
-			usedMemoryPercent = 0
-		}
-		usedMemory := (float64(totalMemory) * (usedMemoryPercent)) / 100
-		availableMemory := float64(totalMemory) - usedMemory
-
-		dm := types.DomainMetric{
-			CPUTotal:          cpuTotal,
-			UsedMemory:        uint32(usedMemory),
-			AvailableMemory:   uint32(availableMemory),
-			UsedMemoryPercent: float64(usedMemoryPercent),
-		}
-		result[domainname] = dm
-	}
-	return result
-}
-
-// RoundFromKbytesToMbytes rounds
-func RoundFromKbytesToMbytes(byteCount uint64) uint64 {
-	const kbyte = 1024
-
-	return (byteCount + kbyte/2) / kbyte
-}
-
-func roundFromBytesToMbytes(byteCount uint64) uint64 {
-	const kbyte = 1024
-
-	kbytes := (byteCount + kbyte/2) / kbyte
-	return (kbytes + kbyte/2) / kbyte
-}
-
-func getAndPublishHostMemory(ctx *domainContext) {
-
-	dict := executeXlInfoCmd()
-	if dict == nil {
-		hm := fallbackHostMemory()
-		ctx.pubHostMemory.Publish("global", hm)
-		return
-	}
-	var err error
-	hm := types.HostMemory{}
-	hm.TotalMemoryMB, err = strconv.ParseUint(dict["total_memory"], 10, 64)
-	if err != nil {
-		log.Errorf("Failed parsing total_memory: %s", err)
-		hm.TotalMemoryMB = 0
-	}
-	hm.FreeMemoryMB, err = strconv.ParseUint(dict["free_memory"], 10, 64)
-	if err != nil {
-		log.Errorf("Failed parsing free_memory: %s", err)
-		hm.FreeMemoryMB = 0
-	}
-
-	// Note that this is the set of physical CPUs which is different
-	// than the set of CPUs assigned to dom0
-	var ncpus uint64
-	ncpus, err = strconv.ParseUint(dict["nr_cpus"], 10, 32)
-	if err != nil {
-		log.Errorln("error while converting ncpus to int: ", err)
-		ncpus = 0
-	}
-	hm.Ncpus = uint32(ncpus)
-	ctx.pubHostMemory.Publish("global", hm)
-	if false {
-		// debug code to compare Xen and fallback
-		// XXX remove debug code
-		hm2 := fallbackHostMemory()
-		log.Infof("XXX xen %+v fallback %+v", hm, hm2)
-	}
-}
-
-// First approximation for a host without Xen
-func fallbackHostMemory() types.HostMemory {
-	hm := types.HostMemory{}
-	vm, err := mem.VirtualMemory()
-	if err != nil {
-		log.Errorf("mem.VirtualMemory failed: %s", err)
-		return hm
-	}
-	hm.TotalMemoryMB = roundFromBytesToMbytes(vm.Total)
-	hm.FreeMemoryMB = roundFromBytesToMbytes(vm.Available)
-
-	info, err := cpu.Info()
-	if err != nil {
-		log.Errorf("cpu.Info failed: %s", err)
-		return hm
-	}
-	hm.Ncpus = uint32(len(info))
-	return hm
-}
-
-func executeXlInfoCmd() map[string]string {
-	xlCmd := exec.Command("xl", "info")
-	stdout, err := xlCmd.Output()
-	if err != nil {
-		log.Errorf("xl info failed %s\n", err)
-		return nil
-	}
-	xlInfo := string(stdout)
-	splitXlInfo := strings.Split(xlInfo, "\n")
-
-	dict := make(map[string]string, len(splitXlInfo)-1)
-	for _, str := range splitXlInfo {
-		res := strings.SplitN(str, ":", 2)
-		if len(res) == 2 {
-			dict[strings.TrimSpace(res[0])] = strings.TrimSpace(res[1])
-		}
-	}
-	return dict
 }

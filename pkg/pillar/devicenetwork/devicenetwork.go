@@ -94,17 +94,15 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 	serverNameAndPort := strings.TrimSpace(string(server))
 	serverName := strings.Split(serverNameAndPort, ":")[0]
 
-	zedcloudCtx := zedcloud.ZedCloudContext{
-		DeviceNetworkStatus: &status,
-		NetworkSendTimeout:  timeout,
-		V2API:               zedcloud.UseV2API(),
-	}
+	zedcloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
+		DevNetworkStatus: &status,
+		Timeout:          timeout,
+		Serial:           hardware.GetProductSerial(),
+		SoftSerial:       hardware.GetSoftSerial(),
+	})
 	log.Infof("VerifyDeviceNetworkStatus: Use V2 API %v\n", zedcloud.UseV2API())
 	testURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, nilUUID, "ping")
 
-	// Get device serial number
-	zedcloudCtx.DevSerial = hardware.GetProductSerial()
-	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
 	log.Debugf("NIM Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
@@ -140,7 +138,7 @@ func VerifyDeviceNetworkStatus(status types.DeviceNetworkStatus,
 			return false, errors.New(errStr)
 		}
 	}
-	cloudReachable, rtf, err := zedcloud.VerifyAllIntf(zedcloudCtx, testURL, retryCount, 1)
+	cloudReachable, rtf, err := zedcloud.VerifyAllIntf(&zedcloudCtx, testURL, retryCount, 1)
 	if err != nil {
 		if rtf {
 			log.Errorf("VerifyDeviceNetworkStatus: VerifyAllIntf remoteTemporaryFailure %s",

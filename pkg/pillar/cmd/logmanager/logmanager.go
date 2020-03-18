@@ -699,7 +699,7 @@ func sendProtoStrForLogs(reportLogs *logs.LogBundle, image string,
 		reportLogs.Log = []*logs.LogEntry{}
 		return false
 	}
-	resp, _, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, logsURL,
+	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, logsURL,
 		size, buf, iteration, return400)
 	// XXX We seem to still get large or bad messages which are rejected
 	// by the server. Ignore them to make sure we can log subsequent ones.
@@ -777,7 +777,7 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 		appLogs.Log = []*logs.LogEntry{}
 		return false
 	}
-	resp, _, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, appLogsURL,
+	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, appLogsURL,
 		size, buf, iteration, return400)
 	// XXX We seem to still get large or bad messages which are rejected
 	// by the server. Ignore them to make sure we can log subsequent ones.
@@ -821,17 +821,15 @@ func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
 	serverName = strings.Split(serverName, ":")[0]
 
 	//set log url
-	zedcloudCtx.V2API = zedcloud.UseV2API()
-
-	zedcloudCtx.DeviceNetworkStatus = deviceNetworkStatus
-	zedcloudCtx.FailureFunc = zedcloud.ZedCloudFailure
-	zedcloudCtx.SuccessFunc = zedcloud.ZedCloudSuccess
-	zedcloudCtx.NetworkSendTimeout = ctx.globalConfig.NetworkSendTimeout
+	zedcloudCtx = zedcloud.NewContext(zedcloud.ContextOptions{
+		DevNetworkStatus: deviceNetworkStatus,
+		Timeout:          ctx.globalConfig.NetworkSendTimeout,
+		NeedStatsFunc:    true,
+		Serial:           hardware.GetProductSerial(),
+		SoftSerial:       hardware.GetSoftSerial(),
+	})
 	log.Infof("sendCtxInit: Use V2 API %v\n", zedcloud.UseV2API())
 
-	// get the edge box serial number
-	zedcloudCtx.DevSerial = hardware.GetProductSerial()
-	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
 	dnsCtx.zedcloudCtx = &zedcloudCtx
 	log.Infof("Log Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)

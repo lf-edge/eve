@@ -125,7 +125,6 @@ type DomainStatus struct {
 	BootFailed         bool
 	AdaptersFailed     bool
 	IsContainer        bool              // Is this Domain for a Container?
-	PodUUID            string            // Pod UUID we create
 	EnvVariables       map[string]string // List of environment variables to be set in container
 }
 
@@ -204,6 +203,7 @@ type DiskStatus struct {
 	Devtype            string // From config
 	Vdev               string // Allocated
 	ActiveFileLocation string // Allocated; private copy if RW; FileLocation if RO
+	FSVolumeLocation   string // Allocated; for containers this has path to the FSVolume
 }
 
 // Track the active image files in rwImgDirname

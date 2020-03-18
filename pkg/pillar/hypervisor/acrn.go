@@ -3,6 +3,11 @@
 
 package hypervisor
 
+import (
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"os"
+)
+
 type acrnContext struct {
 }
 
@@ -13,6 +18,10 @@ func newAcrn() Hypervisor {
 // Name returns the name of this hypervisor implementation
 func (ctx acrnContext) Name() string {
 	return "acrn"
+}
+
+func (ctx acrnContext) CreateDomConfig(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error {
+	return nil
 }
 
 // Create creates a domain in a stopped state
@@ -63,4 +72,12 @@ func (ctx acrnContext) PCIRelease(long string) error {
 // IsDeviceModelAlive returns true if a process supplying device model to a domain is still running
 func (ctx acrnContext) IsDeviceModelAlive(domid int) bool {
 	return true
+}
+
+func (ctx acrnContext) GetHostCPUMem() (types.HostMemory, error) {
+	return selfDomCPUMem()
+}
+
+func (ctx acrnContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
+	return nil, nil
 }

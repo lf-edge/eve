@@ -5,12 +5,17 @@ package hypervisor
 
 import (
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/mem"
 	"os"
 )
 
 // Hypervisor provides methods for manipulating domains on the host
 type Hypervisor interface {
 	Name() string
+
+	CreateDomConfig(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error
 
 	Create(string, string) (int, error)
 
@@ -25,6 +30,9 @@ type Hypervisor interface {
 
 	PCIReserve(string) error
 	PCIRelease(string) error
+
+	GetHostCPUMem() (types.HostMemory, error)
+	GetDomsCPUMem() (map[string]types.DomainMetric, error)
 }
 
 type hypervisorDesc struct {
@@ -61,4 +69,34 @@ func GetAvailableHypervisors() (all []string, enabled []string) {
 	// null is always enabled for now
 	enabled = append(enabled, "null")
 	return
+}
+
+func selfDomCPUMem() (types.HostMemory, error) {
+	hm := types.HostMemory{}
+	vm, err := mem.VirtualMemory()
+	if err != nil {
+		return hm, err
+	}
+	hm.TotalMemoryMB = roundFromBytesToMbytes(vm.Total)
+	hm.FreeMemoryMB = roundFromBytesToMbytes(vm.Available)
+
+	info, err := cpu.Info()
+	if err != nil {
+		return hm, err
+	}
+	hm.Ncpus = uint32(len(info))
+	return hm, nil
+}
+
+func roundFromBytesToMbytes(byteCount uint64) uint64 {
+	const kbyte = 1024
+
+	kbytes := (byteCount + kbyte/2) / kbyte
+	return (kbytes + kbyte/2) / kbyte
+}
+
+func roundFromKbytesToMbytes(byteCount uint64) uint64 {
+	const kbyte = 1024
+
+	return (byteCount + kbyte/2) / kbyte
 }

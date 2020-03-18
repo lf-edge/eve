@@ -230,11 +230,22 @@ func VerifyPending(pending *DPCPending,
 		checkAndUpdateWireless(nil, &pending.OldDPC, &pending.PendDPC)
 
 		log.Infof("VerifyPending: DPC changed. update DhcpClient.\n")
-		if UpdateDhcpClient(pending.PendDPC, pending.OldDPC) {
-			log.Warnf("VerifyPending: update DhcpClient: retry")
-			// UpdateDhcpClient has done no changes when it returns
-			// retry
-			return DPC_WAIT
+		ifname, err := UpdateDhcpClient(pending.PendDPC, pending.OldDPC)
+		if err != nil {
+			// Still waiting for a network interface
+			if pending.TestCount < MaxDPCRetestCount {
+				log.Warnf("VerifyPending: update DhcpClient: retry due to ifname %s at count %d: %s",
+					ifname, pending.TestCount, err)
+				pending.TestCount++
+				return DPC_WAIT
+			} else {
+				log.Warnf("VerifyPending: update DhcpClient: failed due to ifname %s: %s",
+					ifname, err)
+				// XXX set per interface error to err
+				pending.PendDPC.LastFailed = time.Now()
+				pending.PendDPC.LastError = err.Error()
+				return DPC_FAIL
+			}
 		}
 		pending.OldDPC = pending.PendDPC
 	}
@@ -244,6 +255,9 @@ func VerifyPending(pending *DPCPending,
 	// We want connectivity to zedcloud via atleast one Management port.
 	rtf, err := VerifyDeviceNetworkStatus(pending.PendDNS, 1, timeout)
 	if err == nil {
+		if checkIfMgmtPortsHaveIPandDNS(pending.PendDNS) {
+			pending.PendDPC.LastIPAndDNS = time.Now()
+		}
 		pending.PendDPC.LastSucceeded = time.Now()
 		pending.PendDPC.LastError = ""
 		log.Infof("VerifyPending: DPC passed network test: %+v",
@@ -276,6 +290,7 @@ func VerifyPending(pending *DPCPending,
 	pending.TestCount = MaxDPCRetestCount
 	pending.PendDPC.LastFailed = time.Now()
 	pending.PendDPC.LastError = errStr
+	pending.PendDPC.LastIPAndDNS = time.Now()
 	return DPC_FAIL
 }
 
@@ -795,6 +810,7 @@ func updatePortConfig(ctx *DeviceNetworkContext, oldConfig *types.DevicePortConf
 	portConfig.LastFailed = oldConfig.LastFailed
 	portConfig.LastError = oldConfig.LastError
 	portConfig.LastSucceeded = oldConfig.LastSucceeded
+	portConfig.LastIPAndDNS = oldConfig.LastIPAndDNS
 	log.Infof("updatePortConfig: diff time remove+add  %+v\n",
 		portConfig)
 	removePortConfig(ctx, *oldConfig)

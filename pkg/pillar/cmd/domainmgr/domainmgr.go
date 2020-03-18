@@ -328,7 +328,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 	log.Infof("processed GlobalConfig")
 
-	go metricsTimerTask(&domainCtx)
+	go metricsTimerTask(&domainCtx, hyper)
 
 	// Wait for DeviceNetworkStatus to be init so we know the management
 	// ports and then wait for assignableAdapters.
@@ -835,14 +835,6 @@ func runHandler(ctx *domainContext, key string, c <-chan Notify) {
 	log.Infof("runHandler(%s) DONE\n", key)
 }
 
-// doStopDestroyDomain will destroy the domain of an instance if qemu is crashed
-func doStopDestroyDomain(status *types.DomainStatus) {
-	err := DomainDestroy(*status)
-	if err != nil {
-		log.Errorf("DomainDestroy %s failed: %s\n", status.DomainName, err)
-	}
-}
-
 // Check if it is still running
 // XXX would xen state be useful?
 func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
@@ -897,7 +889,9 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.Activated = false
 			status.State = types.HALTED
 			publishDomainStatus(ctx, status)
-			doStopDestroyDomain(status)
+			if err := hyper.Delete(status.DomainName, status.DomainId); err != nil {
+				log.Errorf("failed to delete domain: %s (%v)\n", status.DomainName, err)
+			}
 		}
 	}
 }
@@ -1059,13 +1053,10 @@ func handleCreate(ctx *domainContext, key string, config *types.DomainConfig) {
 		return
 	}
 
-	// Do we need to copy any rw files? !Preserve ones are copied upon
+	// Do we need to copy any rw files? !Preserve ones and container FSes are copied upon
 	// activation.
 	for _, ds := range status.DiskStatusList {
-		if ds.Format == zconfig.Format_CONTAINER {
-			continue
-		}
-		if ds.ReadOnly || !ds.Preserve {
+		if ds.ReadOnly || !ds.Preserve || ds.Format == zconfig.Format_CONTAINER {
 			continue
 		}
 		log.Infof("Potentially copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
@@ -1255,18 +1246,28 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 
 	// Do we need to copy any rw files? Preserve ones are copied upon
 	// creation
-	var containerImageSha256 string
 	for _, ds := range status.DiskStatusList {
-		if ds.Format == zconfig.Format_CONTAINER {
-			containerImageSha256 = ds.ImageSha256
-			continue
-		}
 		if ds.ReadOnly || ds.Preserve {
 			continue
-		}
-		log.Infof("Potentially copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
-		if _, err := os.Stat(ds.ActiveFileLocation); err == nil && ds.Preserve {
+		} else if ds.Format == zconfig.Format_CONTAINER {
+			ociFilename, err := utils.VerifiedImageFileLocation(ds.ImageSha256)
+			if err != nil {
+				log.Errorf("failed to get Image File Location. "+
+					"err: %+s", err.Error())
+				status.LastErr = fmt.Sprintf("failed to get Image File Location. err: %+s", err.Error())
+				status.LastErrTime = time.Now()
+				return
+			}
+			log.Infof("ociFilename %s sha %s", ociFilename, ds.ImageSha256)
+			if err := ctrPrepare(ds.FSVolumeLocation, ociFilename, status.EnvVariables, len(status.DiskStatusList)); err != nil {
+				log.Errorf("Failed to create ctr bundle. Error %v\n", err.Error())
+				status.LastErr = fmt.Sprintf("%v", err)
+				status.LastErrTime = time.Now()
+				return
+			}
+		} else if _, err := os.Stat(ds.ActiveFileLocation); err == nil && ds.Preserve {
 			log.Infof("Preserve and target exists - skip copy\n")
+			addImageStatus(ctx, ds.ActiveFileLocation)
 		} else {
 			log.Infof("Copy from %s to %s\n", ds.FileLocation, ds.ActiveFileLocation)
 			if err := cp(ds.ActiveFileLocation, ds.FileLocation); err != nil {
@@ -1278,8 +1279,8 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 			}
 			log.Infof("Copy DONE from %s to %s\n",
 				ds.FileLocation, ds.ActiveFileLocation)
+			addImageStatus(ctx, ds.ActiveFileLocation)
 		}
-		addImageStatus(ctx, ds.ActiveFileLocation)
 	}
 
 	filename := xenCfgFilename(config.AppNum)
@@ -1289,37 +1290,11 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 	defer file.Close()
 
-	if err := configToXencfg(config, *status, ctx.assignableAdapters,
-		file); err != nil {
+	if err := hyper.CreateDomConfig(status.DomainName, config, status.DiskStatusList, ctx.assignableAdapters, file); err != nil {
 		log.Errorf("Failed to create DomainStatus from %v\n", config)
 		status.LastErr = fmt.Sprintf("%v", err)
 		status.LastErrTime = time.Now()
 		return
-	}
-
-	// FIXME: this will go away once we do a proper volumemanager
-	// Handle creating of rootFS bundle for containers
-	if status.IsContainer {
-		ociFilename, err := utils.VerifiedImageFileLocation(containerImageSha256)
-		if err != nil {
-			log.Errorf("failed to get Image File Location. "+
-				"err: %+s", err.Error())
-			status.LastErr = fmt.Sprintf("failed to get Image File Location. err: %+s", err.Error())
-			status.LastErrTime = time.Now()
-			return
-		}
-		log.Infof("ociFilename %s sha %s", ociFilename, containerImageSha256)
-		podUUID, err := ctrPrepare(ociFilename, status.EnvVariables, len(status.DiskStatusList))
-		if err != nil {
-			log.Errorf("Failed to create ctr bundle. Error %v\n", err.Error())
-			status.LastErr = fmt.Sprintf("%v", err)
-			status.LastErrTime = time.Now()
-			return
-		}
-
-		file.WriteString(fmt.Sprintf("p9=[ 'tag=share_dir,security_model=none,path=%s']\n", getContainerPath(podUUID)))
-
-		status.PodUUID = podUUID
 	}
 
 	status.TriedCount = 0
@@ -1486,10 +1461,8 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	// container to exit state and the domain is destroyed
 	// Issue Domain Destroy irrespective in container case
 	if status.IsContainer || status.DomainId != 0 {
-		err := DomainDestroy(*status)
-		if err != nil {
-			log.Errorf("DomainDestroy %s failed: %s\n",
-				status.DomainName, err)
+		if err := hyper.Delete(status.DomainName, status.DomainId); err != nil {
+			log.Errorf("Failed to delete domain %s (%v)\n", status.DomainName, err)
 		}
 		// Even if destroy failed we wait again
 		log.Infof("doInactivate(%v) for %s: waiting for domain to be destroyed\n",
@@ -1517,9 +1490,11 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	// not be preserved across reboots?
 	for _, ds := range status.DiskStatusList {
 		if ds.Format == zconfig.Format_CONTAINER {
-			continue
-		}
-		if !ds.ReadOnly && !ds.Preserve {
+			log.Infof("Removing container volume %s\n", ds.FSVolumeLocation)
+			if err := ctrRm(ds.FSVolumeLocation, false); err != nil {
+				log.Errorf("ctrRm %s failed: %s\n", ds.FSVolumeLocation, err)
+			}
+		} else if !ds.ReadOnly && !ds.Preserve {
 			log.Infof("Delete copy at %s\n", ds.ActiveFileLocation)
 			if err := os.Remove(ds.ActiveFileLocation); err != nil {
 				log.Errorln(err)
@@ -1624,7 +1599,9 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 		ds.Vdev = xv
 
 		target := ""
-		if ds.Format != zconfig.Format_CONTAINER && !dc.ReadOnly {
+		if ds.Format == zconfig.Format_CONTAINER {
+			ds.FSVolumeLocation = getContainerPath(config.UUIDandVersion.UUID.String())
+		} else if !dc.ReadOnly {
 			// XXX:Why are we excluding container images? Are they supposed to be
 			//  readonly
 			// Pick new location for a per-guest copy
@@ -1829,303 +1806,6 @@ func checkDiskFormat(diskStatus types.DiskStatus) error {
 	return nil
 }
 
-// Produce the xen cfg file based on the config and status created above
-// XXX or produce output to a string instead of file to make comparison
-// easier?
-func configToXencfg(config types.DomainConfig, status types.DomainStatus,
-	aa *types.AssignableAdapters, file *os.File) error {
-
-	xen_type := "pvh"
-	rootDev := ""
-	extra := ""
-	bootLoader := ""
-	kernel := ""
-	ramdisk := config.Ramdisk
-	vif_type := "vif"
-	xen_global := ""
-	uuidStr := fmt.Sprintf("appuuid=%s ", config.UUIDandVersion.UUID)
-
-	switch status.VirtualizationMode {
-	case types.PV:
-		xen_type = "pvh"
-		extra = "console=hvc0 " + uuidStr + config.ExtraArgs
-		kernel = "/usr/lib/xen/boot/ovmf-pvh.bin"
-	case types.HVM:
-		xen_type = "hvm"
-		if config.Kernel != "" {
-			kernel = config.Kernel
-		}
-	case types.FML:
-		xen_type = "hvm"
-		vif_type = "ioemu"
-		xen_global = "hdtype = \"ahci\"\nspoof_xen = 1\npci_permissive = 1\n"
-	default:
-		log.Errorf("Internal error: Unknown virtualizationMode %d",
-			status.VirtualizationMode)
-	}
-
-	if status.IsContainer {
-		kernel = "/hostfs/boot/kernel"
-		ramdisk = "/usr/lib/xen/boot/runx-initrd"
-		extra = extra + " root=9p dhcp=1"
-	}
-
-	file.WriteString("# This file is automatically generated by domainmgr\n")
-	file.WriteString(fmt.Sprintf("name = \"%s\"\n", status.DomainName))
-	file.WriteString(fmt.Sprintf("type = \"%s\"\n", xen_type))
-	file.WriteString(fmt.Sprintf("uuid = \"%s\"\n",
-		config.UUIDandVersion.UUID))
-	file.WriteString(xen_global)
-
-	if kernel != "" {
-		file.WriteString(fmt.Sprintf("kernel = \"%s\"\n", kernel))
-	}
-
-	if ramdisk != "" {
-		file.WriteString(fmt.Sprintf("ramdisk = \"%s\"\n", ramdisk))
-	}
-
-	if bootLoader != "" {
-		file.WriteString(fmt.Sprintf("bootloader = \"%s\"\n",
-			bootLoader))
-	}
-	if config.EnableVnc {
-		file.WriteString(fmt.Sprintf("vnc = 1\n"))
-		file.WriteString(fmt.Sprintf("vnclisten = \"0.0.0.0\"\n"))
-		file.WriteString(fmt.Sprintf("usb=1\n"))
-		file.WriteString(fmt.Sprintf("usbdevice=[\"tablet\"]\n"))
-
-		if config.VncDisplay != 0 {
-			file.WriteString(fmt.Sprintf("vncdisplay = %d\n",
-				config.VncDisplay))
-		}
-		if config.VncPasswd != "" {
-			file.WriteString(fmt.Sprintf("vncpasswd = \"%s\"\n",
-				config.VncPasswd))
-		}
-	} else {
-		file.WriteString(fmt.Sprintf("vnc = 0\n"))
-	}
-
-	// Go from kbytes to mbytes
-	kbyte2mbyte := func(kbyte int) int {
-		return (kbyte + 1023) / 1024
-	}
-	file.WriteString(fmt.Sprintf("memory = %d\n",
-		kbyte2mbyte(config.Memory)))
-	if config.MaxMem != 0 {
-		file.WriteString(fmt.Sprintf("maxmem = %d\n",
-			kbyte2mbyte(config.MaxMem)))
-	}
-	vCpus := config.VCpus
-	if vCpus == 0 {
-		vCpus = 1
-	}
-	file.WriteString(fmt.Sprintf("vcpus = %d\n", vCpus))
-	maxCpus := config.MaxCpus
-	if maxCpus == 0 {
-		maxCpus = vCpus
-	}
-	file.WriteString(fmt.Sprintf("maxcpus = %d\n", maxCpus))
-	if config.CPUs != "" {
-		file.WriteString(fmt.Sprintf("cpus = \"%s\"\n", config.CPUs))
-	}
-	if config.DeviceTree != "" {
-		file.WriteString(fmt.Sprintf("device_tree = \"%s\"\n",
-			config.DeviceTree))
-	}
-	dtString := ""
-	for _, dt := range config.DtDev {
-		if dtString != "" {
-			dtString += ","
-		}
-		dtString += fmt.Sprintf("\"%s\"", dt)
-	}
-	if dtString != "" {
-		file.WriteString(fmt.Sprintf("dtdev = [%s]\n", dtString))
-	}
-	// Note that qcow2 images might have partitions hence xvda1 by default
-	if rootDev != "" {
-		file.WriteString(fmt.Sprintf("root = \"%s\"\n", rootDev))
-	}
-	if extra != "" {
-		file.WriteString(fmt.Sprintf("extra = \"%s\"\n", extra))
-	}
-	// XXX Should one be able to disable the serial console? Would need
-	// knob in manifest
-
-	var serialAssignments []string
-	serialAssignments = append(serialAssignments, "pty")
-
-	// Always prefer CDROM vdisk over disk
-	file.WriteString(fmt.Sprintf("boot = \"%s\"\n", "dc"))
-
-	diskString := ""
-	for i, ds := range status.DiskStatusList {
-		if ds.Format == zconfig.Format_CONTAINER {
-			continue
-		}
-		err := checkDiskFormat(ds)
-		if err != nil {
-			log.Errorf("%v", err)
-			return err
-		}
-		access := "rw"
-		if ds.ReadOnly {
-			access = "ro"
-		}
-		oneDisk := fmt.Sprintf("'%s,%s,%s,%s'",
-			ds.ActiveFileLocation, strings.ToLower(ds.Format.String()), ds.Vdev, access)
-		log.Debugf("Processing disk %d: %s\n", i, oneDisk)
-		if diskString == "" {
-			diskString = oneDisk
-		} else {
-			diskString = diskString + ", " + oneDisk
-		}
-	}
-	file.WriteString(fmt.Sprintf("disk = [%s]\n", diskString))
-
-	vifString := ""
-	for _, net := range config.VifList {
-		oneVif := fmt.Sprintf("'bridge=%s,vifname=%s,mac=%s,type=%s'",
-			net.Bridge, net.Vif, net.Mac, vif_type)
-		if vifString == "" {
-			vifString = oneVif
-		} else {
-			vifString = vifString + ", " + oneVif
-		}
-	}
-	file.WriteString(fmt.Sprintf("vif = [%s]\n", vifString))
-
-	imString := ""
-	for _, im := range config.IOMem {
-		if imString != "" {
-			imString += ","
-		}
-		imString += fmt.Sprintf("\"%s\"", im)
-	}
-	if imString != "" {
-		file.WriteString(fmt.Sprintf("iomem = [%s]\n", imString))
-	}
-
-	// Gather all PCI assignments into a single line
-	// Also irqs, ioports, and serials
-	// irqs and ioports are used if we are pv; serials if hvm
-	var pciAssignments []typeAndPCI
-	var irqAssignments []string
-	var ioportsAssignments []string
-
-	for _, irq := range config.IRQs {
-		irqString := fmt.Sprintf("%d", irq)
-		irqAssignments = addNoDuplicate(irqAssignments, irqString)
-	}
-	for _, adapter := range config.IoAdapterList {
-		log.Debugf("configToXenCfg processing adapter %d %s\n",
-			adapter.Type, adapter.Name)
-		list := aa.LookupIoBundleGroup(adapter.Name)
-		// We reserved it in handleCreate so nobody could have stolen it
-		if len(list) == 0 {
-			log.Fatalf("configToXencfg IoBundle disappeared %d %s for %s\n",
-				adapter.Type, adapter.Name, status.DomainName)
-		}
-		for _, ib := range list {
-			if ib == nil {
-				continue
-			}
-			if ib.UsedByUUID != config.UUIDandVersion.UUID {
-				log.Fatalf("configToXencfg IoBundle not ours %s: %d %s for %s\n",
-					ib.UsedByUUID, adapter.Type, adapter.Name,
-					status.DomainName)
-			}
-			if ib.PciLong != "" {
-				tap := typeAndPCI{pciLong: ib.PciLong, ioType: ib.Type}
-				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
-			}
-			if ib.Irq != "" && status.VirtualizationMode == types.PV {
-				log.Infof("Adding irq <%s>\n", ib.Irq)
-				irqAssignments = addNoDuplicate(irqAssignments,
-					ib.Irq)
-			}
-			if ib.Ioports != "" && status.VirtualizationMode == types.PV {
-				log.Infof("Adding ioport <%s>\n", ib.Ioports)
-				ioportsAssignments = addNoDuplicate(ioportsAssignments, ib.Ioports)
-			}
-			if ib.Serial != "" && (status.VirtualizationMode == types.HVM || status.VirtualizationMode == types.FML) {
-				log.Infof("Adding serial <%s>\n", ib.Serial)
-				serialAssignments = addNoDuplicate(serialAssignments, ib.Serial)
-			}
-		}
-	}
-	if len(pciAssignments) != 0 {
-		log.Infof("PCI assignments %v\n", pciAssignments)
-		cfg := fmt.Sprintf("pci = [ ")
-		for i, pa := range pciAssignments {
-			if i != 0 {
-				cfg = cfg + ", "
-			}
-			short := types.PCILongToShort(pa.pciLong)
-			// USB controller are subject to legacy USB support from
-			// some BIOS. Use relaxed to get past that.
-			if pa.ioType == types.IoUSB {
-				cfg = cfg + fmt.Sprintf("'%s,rdm_policy=relaxed'",
-					short)
-			} else {
-				cfg = cfg + fmt.Sprintf("'%s'", short)
-			}
-		}
-		cfg = cfg + "]"
-		log.Debugf("Adding pci config <%s>\n", cfg)
-		file.WriteString(fmt.Sprintf("%s\n", cfg))
-	}
-	irqString := ""
-	for _, irq := range irqAssignments {
-		if irqString != "" {
-			irqString += ","
-		}
-		irqString += irq
-	}
-	if irqString != "" {
-		file.WriteString(fmt.Sprintf("irqs = [%s]\n", irqString))
-	}
-	ioportString := ""
-	for _, ioports := range ioportsAssignments {
-		if ioportString != "" {
-			ioportString += ","
-		}
-		ioportString += ioports
-	}
-	if ioportString != "" {
-		file.WriteString(fmt.Sprintf("ioports = [%s]\n", ioportString))
-	}
-	serialString := ""
-	for _, serial := range serialAssignments {
-		if serialString != "" {
-			serialString += ","
-		}
-		serialString += "'" + serial + "'"
-	}
-	if serialString != "" {
-		file.WriteString(fmt.Sprintf("serial = [%s]\n", serialString))
-	}
-	// XXX log file content: log.Infof("Created %s: %s
-	return nil
-}
-
-type typeAndPCI struct {
-	pciLong string
-	ioType  types.IoType
-}
-
-func addNoDuplicatePCI(list []typeAndPCI, tap typeAndPCI) []typeAndPCI {
-
-	for _, t := range list {
-		if t.pciLong == tap.pciLong {
-			return list
-		}
-	}
-	return append(list, tap)
-}
-
 func addNoDuplicate(list []string, add string) []string {
 
 	for _, s := range list {
@@ -2307,11 +1987,13 @@ func waitForDomainGone(status types.DomainStatus, maxDelay time.Duration) bool {
 
 func deleteStorageDisksForDomain(ctx *domainContext,
 	statusPtr *types.DomainStatus) {
-	if statusPtr.IsContainer {
-		log.Debugf("Container. Not deleting any images")
-	}
 	for _, ds := range statusPtr.DiskStatusList {
-		if !ds.ReadOnly && ds.Preserve {
+		if ds.Format == zconfig.Format_CONTAINER {
+			log.Infof("Removing container volume %s\n", ds.FSVolumeLocation)
+			if err := ctrRm(ds.FSVolumeLocation, false); err != nil {
+				log.Errorf("ctrRm %s failed: %s\n", ds.FSVolumeLocation, err)
+			}
+		} else if !ds.ReadOnly && !ds.Preserve {
 			log.Infof("Delete copy at %s\n", ds.ActiveFileLocation)
 			if err := os.Remove(ds.ActiveFileLocation); err != nil {
 				log.Errorln(err)
@@ -2336,15 +2018,6 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 	if status.Activated {
 		doInactivate(ctx, status, true)
 	} else {
-		if status.IsContainer {
-			// Use ctr to remove already exited or inactivated container apps
-			log.Infof("Using ctr to remove already exited container app ... PodUUID - %s\n", status.PodUUID)
-			err := ctrRm(status.PodUUID)
-			if err != nil {
-				log.Errorf("ctrRm %s failed: %s\n",
-					status.DomainName, err)
-			}
-		}
 		pciUnassign(ctx, status, true)
 	}
 
@@ -2376,7 +2049,7 @@ func handleDelete(ctx *domainContext, key string, status *types.DomainStatus) {
 }
 
 // DomainCreate is a wrapper for domain creation
-// returns domainID, PodUUID and error
+// returns domainID and error
 func DomainCreate(status types.DomainStatus) (int, error) {
 
 	var (
@@ -2412,25 +2085,6 @@ func DomainShutdown(status types.DomainStatus, force bool) error {
 	// Stop the domain
 	log.Infof("Stopping domain - %s\n", status.DomainName)
 	err = hyper.Stop(status.DomainName, status.DomainId, force)
-
-	return err
-}
-
-// DomainDestroy is a wrapper for domain Destroy
-func DomainDestroy(status types.DomainStatus) error {
-
-	var err error
-	log.Infof("DomainDestroy %s %d\n", status.DomainName, status.DomainId)
-
-	if status.IsContainer {
-		// Use ctr
-		log.Infof("Using ctr tool ... PodUUID - %s\n", status.PodUUID)
-		err = ctrRm(status.PodUUID)
-	} else {
-		// Delete the domain
-		log.Infof("Deleting domain - %s\n", status.DomainName)
-		err = hyper.Delete(status.DomainName, status.DomainId)
-	}
 
 	return err
 }

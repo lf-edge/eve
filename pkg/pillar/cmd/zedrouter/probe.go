@@ -47,12 +47,11 @@ type probeRes struct {
 var iteration uint32
 var serverNameAndPort string
 var addrChgTime time.Time // record last time intf address change time
-var zcloudCtx = zedcloud.ZedCloudContext{
-	FailureFunc:        zedcloud.ZedCloudFailure,
-	SuccessFunc:        zedcloud.ZedCloudSuccess,
-	TlsConfig:          &tls.Config{InsecureSkipVerify: true},
-	NetworkSendTimeout: maxRemoteProbeWait,
-}
+var zcloudCtx = zedcloud.NewContext(zedcloud.ContextOptions{
+	Timeout:       maxRemoteProbeWait,
+	TLSConfig:     &tls.Config{InsecureSkipVerify: true},
+	NeedStatsFunc: true,
+})
 
 // use probeMutex to protect the status.PInfo[] map entries. When the external
 // port is configured from Management into App-Shared, this map entry of the port
@@ -394,7 +393,7 @@ func launchHostProbe(ctx *zedrouterContext) {
 					}
 					if foundport {
 						startTime := time.Now()
-						resp, _, rtf, err := zedcloud.SendOnIntf(zcloudCtx, remoteURL, info.IfName, 0, nil, true)
+						resp, _, rtf, err := zedcloud.SendOnIntf(&zcloudCtx, remoteURL, info.IfName, 0, nil, true)
 						if err != nil {
 							log.Debugf("launchHostProbe: send on intf %s, err %v\n", info.IfName, err)
 						}

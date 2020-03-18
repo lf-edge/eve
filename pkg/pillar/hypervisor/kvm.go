@@ -3,6 +3,11 @@
 
 package hypervisor
 
+import (
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"os"
+)
+
 type kvmContext struct {
 }
 
@@ -12,6 +17,10 @@ func newKvm() Hypervisor {
 
 func (ctx kvmContext) Name() string {
 	return "kvm"
+}
+
+func (ctx kvmContext) CreateDomConfig(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error {
+	return nil
 }
 
 func (ctx kvmContext) Create(domainName string, xenCfgFilename string) (int, error) {
@@ -52,4 +61,12 @@ func (ctx kvmContext) PCIRelease(long string) error {
 
 func (ctx kvmContext) IsDeviceModelAlive(domid int) bool {
 	return true
+}
+
+func (ctx kvmContext) GetHostCPUMem() (types.HostMemory, error) {
+	return selfDomCPUMem()
+}
+
+func (ctx kvmContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
+	return nil, nil
 }

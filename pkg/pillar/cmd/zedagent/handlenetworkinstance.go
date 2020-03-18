@@ -843,7 +843,7 @@ func sendFlowProtobuf(protoflows *flowlog.FlowMessage) {
 		size := int64(proto.Size(&pflows))
 		flowlogURL := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "flowlog")
 		const return400 = false
-		_, _, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, flowlogURL,
+		_, _, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, flowlogURL,
 			size, buf, flowIteration, return400)
 		if err != nil {
 			if rtf == types.SenderStatusRemTempFail {

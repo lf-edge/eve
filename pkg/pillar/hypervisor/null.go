@@ -5,6 +5,7 @@ package hypervisor
 
 import (
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	"io/ioutil"
 	"os"
 
@@ -37,6 +38,10 @@ func newNull() Hypervisor {
 
 func (ctx nullContext) Name() string {
 	return "null"
+}
+
+func (ctx nullContext) CreateDomConfig(string, types.DomainConfig, []types.DiskStatus, *types.AssignableAdapters, *os.File) error {
+	return nil
 }
 
 func (ctx nullContext) Create(domainName string, cfgFilename string) (int, error) {
@@ -137,4 +142,12 @@ func (ctx nullContext) PCIRelease(long string) error {
 
 func (ctx nullContext) IsDeviceModelAlive(int) bool {
 	return true
+}
+
+func (ctx nullContext) GetHostCPUMem() (types.HostMemory, error) {
+	return selfDomCPUMem()
+}
+
+func (ctx nullContext) GetDomsCPUMem() (map[string]types.DomainMetric, error) {
+	return nil, nil
 }
