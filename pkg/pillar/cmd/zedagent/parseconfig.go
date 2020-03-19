@@ -316,7 +316,7 @@ func publishNetworkInstanceConfig(ctx *getconfigContext,
 			networkInstanceConfig.Type, networkInstanceConfig.Activate)
 
 		if apiConfigEntry.Port != nil {
-			networkInstanceConfig.Port = apiConfigEntry.Port.Name
+			networkInstanceConfig.Logicallabel = apiConfigEntry.Port.Name
 		}
 		networkInstanceConfig.IpType = types.AddressType(apiConfigEntry.IpType)
 
@@ -638,30 +638,36 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 	version types.DevicePortConfigVersion) *types.NetworkPortConfig {
 	var isMgmt, isFree bool = false, false
 
+	log.Infof("XXX parseOneSystemAdapterConfig name %s lowerLayerName %s",
+		sysAdapter.Name, sysAdapter.LowerLayerName)
 	port := new(types.NetworkPortConfig)
 
-	// XXX - There seems to be an implicit Assumption here that
-	// sysAdapter.Name is same as Port.IfName
-	// CHANGE this to: port.IfName = sysAdapter.getIfname()
-	port.IfName = sysAdapter.Name
-	port.Name = sysAdapter.Name
-
-	// XXX - Make the change after LowerLayerName starts to get used.
-	//  Look up using LowerLayerName ( PhysicalLabel).
+	if sysAdapter.LowerLayerName == "" {
+		port.Phylabel = sysAdapter.Name
+	} else {
+		port.Phylabel = sysAdapter.LowerLayerName
+	}
+	// Look up using LowerLayerName which should match a phyio PhysicalLabel.
 	// If LowerLayerName is not found, use sysAdapter.Name to do the lookup
-	//  Currently, lookupDeviceIo looks up using LogicalLabel. But it should
-	//  Really be physical Label.
-	phyio := lookupDeviceIo(getconfigCtx, sysAdapter.Name)
+	phyio := lookupDeviceIo(getconfigCtx, sysAdapter.LowerLayerName)
+	if phyio == nil {
+		phyio = lookupDeviceIo(getconfigCtx, sysAdapter.Name)
+	}
 	if phyio == nil {
 		// We will re-check when phyio changes.
-		errStr := fmt.Sprintf("Missing phyio for %s; ignored",
-			sysAdapter.Name)
+		errStr := fmt.Sprintf("Missing phyio for %s lower %s; ignored",
+			sysAdapter.Name, sysAdapter.LowerLayerName)
 		log.Error(errStr)
 		// Report error but set Dhcp, isMgmt, and isFree to sane values
 		port.ParseError = errStr
 		port.ParseErrorTime = time.Now()
+		port.Logicallabel = port.Phylabel
+		port.IfName = sysAdapter.Name
 		isFree = true
 	} else {
+		port.Phylabel = phyio.Phylabel
+		port.Logicallabel = phyio.Logicallabel
+		port.IfName = phyio.Phyaddr.Ifname
 		isFree = phyio.UsagePolicy.FreeUplink
 		log.Infof("Found phyio for %s: isFree: %t",
 			sysAdapter.Name, isFree)
@@ -856,9 +862,15 @@ func parseDeviceIoListConfig(config *zconfig.EdgeDevConfig,
 	return true
 }
 
-func lookupDeviceIo(getconfigCtx *getconfigContext, logicalLabel string) *types.PhysicalIOAdapter {
+// XXX should we continue to compare logicalLabel as a fallback?
+func lookupDeviceIo(getconfigCtx *getconfigContext, label string) *types.PhysicalIOAdapter {
 	for _, port := range getconfigCtx.zedagentCtx.physicalIoAdapterMap {
-		if port.Logicallabel == logicalLabel {
+		if port.Phylabel == label {
+			return &port
+		}
+	}
+	for _, port := range getconfigCtx.zedagentCtx.physicalIoAdapterMap {
+		if port.Logicallabel == label {
 			return &port
 		}
 	}

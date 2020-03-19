@@ -959,7 +959,7 @@ func isAssigned(ctx *nimContext, ifname string) bool {
 
 	log.Debugf("isAssigned(%s) have %d bundles\n",
 		ifname, len(ctx.AssignableAdapters.IoBundleList))
-	ib := ctx.AssignableAdapters.LookupIoBundleNet(ifname)
+	ib := ctx.AssignableAdapters.LookupIoBundleIfName(ifname)
 	if ib == nil {
 		return false
 	}
@@ -984,7 +984,7 @@ func isSwitch(ctx *nimContext, ifname string) bool {
 	for _, st := range items {
 		status := st.(types.NetworkInstanceStatus)
 
-		if !status.IsUsingPort(ifname) {
+		if !status.IsUsingIfName(ifname) {
 			continue
 		}
 		log.Debugf("isSwitch(%s) found use in %s/%s\n",

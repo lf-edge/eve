@@ -563,30 +563,28 @@ func HandleAssignableAdaptersModify(ctxArg interface{}, key string,
 			continue
 		}
 		if ctx.AssignableAdapters != nil {
-			currentIoBundle := ctx.AssignableAdapters.LookupIoBundle(
-				ioBundle.Name)
+			currentIoBundle := ctx.AssignableAdapters.LookupIoBundlePhylabel(
+				ioBundle.Phylabel)
 			if currentIoBundle != nil &&
 				ioBundle.IsPCIBack == currentIoBundle.IsPCIBack {
 				log.Infof("HandleAssignableAdaptersModify(): ioBundle (%+v) "+
 					"PCIBack status (%+v) unchanged\n",
-					ioBundle.Name, ioBundle.IsPCIBack)
+					ioBundle.Phylabel, ioBundle.IsPCIBack)
 				continue
 			}
 		} else {
 			log.Infof("HandleAssignableAdaptersModify(): " +
 				"ctx.AssignableAdapters = nil\n")
 		}
-		// XXX this assumes that ioBundle.Name is the ifname known
-		// by the kernel/ifconfig
 		if ioBundle.IsPCIBack {
 			log.Infof("HandleAssignableAdaptersModify(): ioBundle (%+v) changed "+
-				"to pciBack", ioBundle.Name)
+				"to pciBack", ioBundle.Phylabel)
 			// Interface put back in pciBack list.
 			// Stop dhcp and update DeviceNetworkStatus
 			//doDhcpClientInactivate()  KALYAN- FIXTHIS BEFORE MERGE
 		} else {
 			log.Infof("HandleAssignableAdaptersModify(): ioBundle (%+v) changed "+
-				"to pciBack=false", ioBundle.Name)
+				"to pciBack=false", ioBundle.Phylabel)
 			// Interface moved out of PciBack mode.
 		}
 	}

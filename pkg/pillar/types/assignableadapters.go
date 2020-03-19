@@ -32,11 +32,11 @@ type IoBundle struct {
 	// Type
 	//	Type of the IoBundle
 	Type IoType
-	// Name
+	// Phylabel
 	//	Short hand name such as "COM1".
 	//	Used in the API to specify that a adapter should
 	//	be assigned to an application.
-	Name string
+	Phylabel string
 
 	// Logical Label assigned to the Adapter
 	Logicallabel string
@@ -92,8 +92,8 @@ func (ib IoBundle) HasAdapterChanged(phyAdapter PhysicalIOAdapter) bool {
 		log.Infof("Type changed from %d to %d", ib.Type, phyAdapter.Ptype)
 		return true
 	}
-	if phyAdapter.Phylabel != ib.Name {
-		log.Infof("Name changed from %s to %s", ib.Name, phyAdapter.Phylabel)
+	if phyAdapter.Phylabel != ib.Phylabel {
+		log.Infof("Name changed from %s to %s", ib.Phylabel, phyAdapter.Phylabel)
 		return true
 	}
 	if phyAdapter.Phyaddr.PciLong != ib.PciLong {
@@ -147,7 +147,7 @@ func IoBundleFromPhyAdapter(phyAdapter PhysicalIOAdapter) *IoBundle {
 	// XXX - We should really change IoType to type zconfig.PhyIoType
 	ib := IoBundle{}
 	ib.Type = IoType(phyAdapter.Ptype)
-	ib.Name = phyAdapter.Phylabel // XXX should rename the field in ib to be Phylabel
+	ib.Phylabel = phyAdapter.Phylabel
 	ib.Logicallabel = phyAdapter.Logicallabel
 	ib.AssignmentGroup = phyAdapter.Assigngrp
 	ib.Ifname = phyAdapter.Phyaddr.Ifname
@@ -192,50 +192,50 @@ func (ioType IoType) IsNet() bool {
 // - IsPort/IsPCIBack/UsedByUUID which come from interaction with nim
 // - Unique/MacAddr which come from the PhysicalIoAdapter
 func (aa *AssignableAdapters) AddOrUpdateIoBundle(ib IoBundle) {
-	curIbPtr := aa.LookupIoBundle(ib.Name)
+	curIbPtr := aa.LookupIoBundlePhylabel(ib.Phylabel)
 	if curIbPtr == nil {
 		log.Infof("AddOrUpdateIoBundle(%d %s %s) New bundle",
-			ib.Type, ib.Name, ib.AssignmentGroup)
+			ib.Type, ib.Phylabel, ib.AssignmentGroup)
 		aa.IoBundleList = append(aa.IoBundleList, ib)
 		return
 	}
 	log.Infof("AddOrUpdateIoBundle(%d %s %s) Update bundle; diff %+v",
-		ib.Type, ib.Name, ib.AssignmentGroup,
+		ib.Type, ib.Phylabel, ib.AssignmentGroup,
 		cmp.Diff(*curIbPtr, ib))
 
 	// We preserve the most specific
 	if curIbPtr.UsedByUUID != nilUUID {
 		log.Infof("AddOrUpdateIoBundle(%d %s %s) preserve UsedByUUID %v",
-			ib.Type, ib.Name, ib.AssignmentGroup, curIbPtr.UsedByUUID)
+			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.UsedByUUID)
 		ib.UsedByUUID = curIbPtr.UsedByUUID
 	}
 	if curIbPtr.IsPort {
 		log.Infof("AddOrUpdateIoBundle(%d %s %s) preserve IsPort %t",
-			ib.Type, ib.Name, ib.AssignmentGroup, curIbPtr.IsPort)
+			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.IsPort)
 		ib.IsPort = curIbPtr.IsPort
 	}
 	if curIbPtr.IsPCIBack {
 		log.Infof("AddOrUpdateIoBundle(%d %s %s) preserve IsPCIBack %t",
-			ib.Type, ib.Name, ib.AssignmentGroup, curIbPtr.IsPCIBack)
+			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.IsPCIBack)
 		ib.IsPCIBack = curIbPtr.IsPCIBack
 	}
 	if curIbPtr.Unique != "" {
 		log.Infof("AddOrUpdateIoBundle(%d %s %s) preserve Unique %v",
-			ib.Type, ib.Name, ib.AssignmentGroup, curIbPtr.Unique)
+			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.Unique)
 		ib.Unique = curIbPtr.Unique
 	}
 	if curIbPtr.MacAddr != "" {
 		log.Infof("AddOrUpdateIoBundle(%d %s %s) preserve MacAddr %v",
-			ib.Type, ib.Name, ib.AssignmentGroup, curIbPtr.MacAddr)
+			ib.Type, ib.Phylabel, ib.AssignmentGroup, curIbPtr.MacAddr)
 		ib.MacAddr = curIbPtr.MacAddr
 	}
 	*curIbPtr = ib
 }
 
-// LookupIoBundle returns nil if not found
-func (aa *AssignableAdapters) LookupIoBundle(name string) *IoBundle {
+// LookupIoBundlePhylabel returns nil if not found
+func (aa *AssignableAdapters) LookupIoBundlePhylabel(phylabel string) *IoBundle {
 	for i, b := range aa.IoBundleList {
-		if strings.EqualFold(b.Name, name) {
+		if strings.EqualFold(b.Phylabel, phylabel) {
 			return &aa.IoBundleList[i]
 		}
 	}
@@ -262,7 +262,7 @@ func (aa *AssignableAdapters) LookupIoBundleGroup(group string) []*IoBundle {
 }
 
 // LookupIoBundleAny returns an empty slice if not found; name can be
-// a member or a group
+// a member phylabel or a group
 // Returns pointers into aa
 func (aa *AssignableAdapters) LookupIoBundleAny(name string) []*IoBundle {
 
@@ -270,7 +270,7 @@ func (aa *AssignableAdapters) LookupIoBundleAny(name string) []*IoBundle {
 	if len(list) != 0 {
 		return list
 	}
-	ib := aa.LookupIoBundle(name)
+	ib := aa.LookupIoBundlePhylabel(name)
 	if ib == nil {
 		return list
 	}
@@ -282,10 +282,10 @@ func (aa *AssignableAdapters) LookupIoBundleAny(name string) []*IoBundle {
 	return aa.LookupIoBundleGroup(ib.AssignmentGroup)
 }
 
-// LookupIoBundleNet checks for IoNet*
-func (aa *AssignableAdapters) LookupIoBundleNet(name string) *IoBundle {
+// LookupIoBundleIfName checks for IoNet* types and a ifname match
+func (aa *AssignableAdapters) LookupIoBundleIfName(ifname string) *IoBundle {
 	for i, b := range aa.IoBundleList {
-		if b.Type.IsNet() && strings.EqualFold(b.Name, name) {
+		if b.Type.IsNet() && strings.EqualFold(b.Ifname, ifname) {
 			return &aa.IoBundleList[i]
 		}
 	}
