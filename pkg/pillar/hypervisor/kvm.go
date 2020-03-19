@@ -12,6 +12,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -332,11 +333,10 @@ func (ctx kvmContext) Create(domainName string, cfgFilename string) (int, error)
 	log.Infof("done launching qemu device model")
 
 	// lets capture console device; don't mind if it fails
-	os.Symlink(strings.ReplaceAll(strings.ReplaceAll(string(stdoutStderr),
-		"char device redirected to ", ""),
-		" (label charserial0)", ""),
-		consFile)
-
+	match := regexp.MustCompile(`char device redirected to ([^ ]*) \(label charserial0\)`).FindStringSubmatch(string(stdoutStderr))
+	if len(match) == 2 {
+		os.Symlink(match[1], consFile)
+	}
 	pidStr, err := ioutil.ReadFile(pidFile)
 	if err != nil {
 		return 0, logError("failed to retrieve qemu PID file %s (%v)", pidFile, err)
@@ -359,7 +359,7 @@ func (ctx kvmContext) Create(domainName string, cfgFilename string) (int, error)
 func (ctx kvmContext) Start(domainName string, domainID int) error {
 	qmpFile := kvmStateDir + domainName + "/qmp"
 
-	if err := execCont(qmpFile); err != nil {
+	if err := execContinue(qmpFile); err != nil {
 		return logError("failed to start domain that is stopped %v", err)
 	}
 
