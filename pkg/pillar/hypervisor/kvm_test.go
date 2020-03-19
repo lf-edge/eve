@@ -12,13 +12,13 @@ import (
 	"testing"
 )
 
-var hyper_kvm Hypervisor
+var hyperKvm Hypervisor
 
 func init() {
 	var err error
-	hyper_kvm, err = GetHypervisor("kvm")
-	if hyper_kvm.Name() != "kvm" || err != nil {
-		panic(fmt.Sprintf("Requested kvm hypervisor, got %s (with error %v) instead", hyper_kvm.Name(), err))
+	hyperKvm, err = GetHypervisor("kvm")
+	if hyperKvm.Name() != "kvm" || err != nil {
+		panic(fmt.Sprintf("Requested kvm hypervisor, got %s (with error %v) instead", hyperKvm.Name(), err))
 	}
 }
 
@@ -51,7 +51,7 @@ func TestCreateDomConfig(t *testing.T) {
 	} else {
 		defer os.Remove(conf.Name())
 	}
-	if err := hyper_kvm.CreateDomConfig("test", config, disks, &aa, conf); err != nil {
+	if err := hyperKvm.CreateDomConfig("test", config, disks, &aa, conf); err != nil {
 		t.Errorf("CreateDomConfig failed %v", err)
 	}
 
@@ -140,18 +140,18 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "pcie.0"
   addr = "0x1"
 
-[device "pci.1"]
+[device "pci.2"]
   driver = "pcie-root-port"
   port = "0x11"
   chassis = "2"
   bus = "pcie.0"
-  addr = "0x2.0x1"
+  addr = "0x2"
 
 [device "usb"]
   driver = "qemu-xhci"
   p2 = "15"
   p3 = "15"
-  bus = "pci.1"
+  bus = "pci.2"
   addr = "0x0"
 
 [device "input0"]
@@ -159,12 +159,12 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "usb.0"
   port = "1"
 
-[device "pci.2"]
+[device "pci.3"]
   driver = "pcie-root-port"
   port = "0x12"
   chassis = "3"
   bus = "pcie.0"
-  addr = "0x2.0x2"
+  addr = "3"
 
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
@@ -174,17 +174,10 @@ func TestCreateDomConfig(t *testing.T) {
 [device "virtio-disk0"]
   driver = "virtio-blk-pci"
   scsi = "off"
-  bus = "pci.2"
+  bus = "pci.3"
   addr = "0x0"
   drive = "drive-virtio-disk0"
   bootindex = "0"
-
-# [device "pci.3"]
-#  driver = "pcie-root-port"
-#  port = "0x12"
-#  chassis = "3"
-#  bus = "pcie.0"
-#  addr = "0x2.0x2"
 
 [fsdev "fsdev1"]
   fsdriver = "local"
@@ -195,16 +188,14 @@ func TestCreateDomConfig(t *testing.T) {
   driver = "virtio-9p-pci"
   fsdev = "fsdev1"
   mount_tag = "hostshare"
+  addr = "4"
 
-#  bus = "pci.3"
-#  addr = "0x0"
-
-[device "pci.4"]
+[device "pci.5"]
   driver = "pcie-root-port"
   port = "0x12"
   chassis = "3"
   bus = "pcie.0"
-  addr = "0x2.0x2"
+  addr = "5"
 
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
@@ -214,31 +205,10 @@ func TestCreateDomConfig(t *testing.T) {
 [device "virtio-disk2"]
   driver = "virtio-blk-pci"
   scsi = "off"
-  bus = "pci.4"
+  bus = "pci.5"
   addr = "0x0"
   drive = "drive-virtio-disk2"
   bootindex = "2"
-
-[device "pci.5"]
-  driver = "pcie-root-port"
-  port = "0x10"
-  chassis = "1"
-  bus = "pcie.0"
-  multifunction = "on"
-  addr = "0x2"
-
-[netdev "hostnet0"]
-  type = "tap"
-  br = "bn0"
-  script = "no"
-  downscript = "no"
-
-[device "net0"]
-  driver = "e1000e"
-  netdev = "hostnet0"
-  mac = "6a:00:03:61:a6:90"
-  bus = "pci.5"
-  addr = "0x0"
 
 [device "pci.6"]
   driver = "pcie-root-port"
@@ -246,19 +216,40 @@ func TestCreateDomConfig(t *testing.T) {
   chassis = "1"
   bus = "pcie.0"
   multifunction = "on"
-  addr = "0x2"
+  addr = "6"
+
+[netdev "hostnet0"]
+  type = "tap"
+  br = "bn0"
+  script = "/etc/xen/scripts/qemu-ifup"
+  downscript = "no"
+
+[device "net0"]
+  driver = "virtio-net-pci"
+  netdev = "hostnet0"
+  mac = "6a:00:03:61:a6:90"
+  bus = "pci.6"
+  addr = "0x0"
+
+[device "pci.7"]
+  driver = "pcie-root-port"
+  port = "0x10"
+  chassis = "1"
+  bus = "pcie.0"
+  multifunction = "on"
+  addr = "7"
 
 [netdev "hostnet1"]
   type = "tap"
   br = "bn0"
-  script = "no"
+  script = "/etc/xen/scripts/qemu-ifup"
   downscript = "no"
 
 [device "net1"]
-  driver = "e1000e"
+  driver = "virtio-net-pci"
   netdev = "hostnet1"
   mac = "6a:00:03:61:a6:91"
-  bus = "pci.6"
+  bus = "pci.7"
   addr = "0x0"
 ` {
 		t.Errorf("got an unexpected resulting config %s", string(result))
@@ -344,7 +335,7 @@ func TestCreateDom(t *testing.T) {
   cores = "1"
   threads = "1"`), 0777)
 
-	if _, err := hyper_kvm.Create("test", conf.Name()); err != nil {
+	if _, err := hyperKvm.Create("test", conf.Name()); err != nil {
 		t.Errorf("Create domain config failed %v", err)
 	}
 
@@ -364,15 +355,15 @@ func TestCreateDom(t *testing.T) {
 		}
 	}
 
-	if err := hyper_kvm.Start("test", 0); err != nil {
+	if err := hyperKvm.Start("test", 0); err != nil {
 		t.Errorf("Start domain failed %v", err)
 	}
 
-	if err := hyper_kvm.Stop("test", 0, true); err != nil {
+	if err := hyperKvm.Stop("test", 0, true); err != nil {
 		t.Errorf("Stop domain failed %v", err)
 	}
 
-	if err := hyper_kvm.Delete("test", 0); err != nil {
+	if err := hyperKvm.Delete("test", 0); err != nil {
 		t.Errorf("Delete domain failed %v", err)
 	}
 
