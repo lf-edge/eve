@@ -25,7 +25,7 @@ func execRawCmd(socket, cmd string) ([]byte, error) {
 	return monitor.Run([]byte(cmd))
 }
 
-func execCont(socket string) error {
+func execContinue(socket string) error {
 	_, err := execRawCmd(socket, `{ "execute": "cont" }`)
 	return err
 }
