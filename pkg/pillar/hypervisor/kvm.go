@@ -200,6 +200,7 @@ const qemuNetTemplate = `
 
 [netdev "hostnet{{.NetID}}"]
   type = "tap"
+  ifname = "{{.Vif}}"
   br = "{{.Bridge}}"
   script = "/etc/xen/scripts/qemu-ifup"
   downscript = "no"
@@ -289,15 +290,14 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 
 	// render network device model settings
 	netContext := struct {
-		PCIId, NetID int
-		Mac, Bridge  string
+		PCIId, NetID     int
+		Mac, Bridge, Vif string
 	}{PCIId: diskContext.PCIId, NetID: 0}
 	t, _ = template.New("qemuNet").Parse(qemuNetTemplate)
 	for _, net := range config.VifList {
-		// net.Bridge
-		// net.Vif
 		netContext.Mac = net.Mac
 		netContext.Bridge = net.Bridge
+		netContext.Vif = net.Vif
 		if err := t.Execute(file, netContext); err != nil {
 			return logError("can't write to config file %s (%v)", file.Name(), err)
 		}
