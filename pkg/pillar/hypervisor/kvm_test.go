@@ -35,8 +35,8 @@ func TestCreateDomConfig(t *testing.T) {
 			VncPasswd:  "rosebud",
 		},
 		VifList: []types.VifInfo{
-			{Bridge: "bn0", Mac: "6a:00:03:61:a6:90"},
-			{Bridge: "bn0", Mac: "6a:00:03:61:a6:91"},
+			{Bridge: "bn0", Mac: "6a:00:03:61:a6:90", Vif: "nbu1x1"},
+			{Bridge: "bn0", Mac: "6a:00:03:61:a6:91", Vif: "nbu1x2"},
 		},
 	}
 	disks := []types.DiskStatus{
@@ -220,6 +220,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [netdev "hostnet0"]
   type = "tap"
+  ifname = "nbu1x1"
   br = "bn0"
   script = "/etc/xen/scripts/qemu-ifup"
   downscript = "no"
@@ -241,6 +242,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [netdev "hostnet1"]
   type = "tap"
+  ifname = "nbu1x2"
   br = "bn0"
   script = "/etc/xen/scripts/qemu-ifup"
   downscript = "no"
