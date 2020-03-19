@@ -79,7 +79,7 @@ type zedrouterContext struct {
 	pubAppFlowMonitor         pubsub.Publication
 	pubAppVifIPTrig           pubsub.Publication
 	networkInstanceStatusMap  map[uuid.UUID]*types.NetworkInstanceStatus
-	dnsServers                map[string][]net.IP
+	dnsServers                map[string][]net.IP // Key is ifname
 	checkNIUplinks            chan bool
 	hostProbeTimer            *time.Timer
 	hostFastProbe             bool
@@ -1161,12 +1161,12 @@ func getSwitchIPv4Addr(ctx *zedrouterContext,
 		errStr := fmt.Sprintf("NI not a switch. Type: %d", status.Type)
 		return "", errors.New(errStr)
 	}
-	if status.Port == "" {
-		log.Infof("SwitchType, but no Adapter\n")
+	if status.Logicallabel == "" {
+		log.Infof("SwitchType, but no LogicalLabel\n")
 		return "", nil
 	}
 
-	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Port)
+	ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, status.Logicallabel)
 	ifindex, err := devicenetwork.IfnameToIndex(ifname)
 	if err != nil {
 		errStr := fmt.Sprintf("getSwitchIPv4Addr(%s): IfnameToIndex(%s) failed %s",
@@ -1188,7 +1188,7 @@ func getSwitchIPv4Addr(ctx *zedrouterContext,
 		}
 	}
 	log.Infof("getSwitchIPv4Addr(%s): no IPv4 address on %s yet\n",
-		status.DisplayName, status.Port)
+		status.DisplayName, status.Logicallabel)
 	return "", nil
 }
 
@@ -1835,10 +1835,10 @@ func createAndStartLisp(ctx *zedrouterContext,
 	lispRunDirname, bridgeName string) {
 
 	additionalInfo := generateAdditionalInfo(status, olConfig)
-	ifnames := adapterToIfNames(ctx, instStatus.Port)
+	ifnames := labelToIfNames(ctx, instStatus.Logicallabel)
 	ifnameMap := make(map[string]bool)
-	for _, adapter := range ifnames {
-		ifnameMap[adapter] = true
+	for _, ifname := range ifnames {
+		ifnameMap[ifname] = true
 	}
 	deviceNetworkParams := types.DeviceNetworkStatus{}
 	for _, port := range ctx.deviceNetworkStatus.Ports {
@@ -2902,7 +2902,7 @@ func containsHangingACLPortMapRule(ctx *zedrouterContext,
 	for _, ulCfg := range ulCfgList {
 		network := ulCfg.Network.String()
 		netInstStatus := lookupNetworkInstanceStatus(ctx, network)
-		if netInstStatus == nil || netInstStatus.Port != "" ||
+		if netInstStatus == nil || netInstStatus.Logicallabel != "" ||
 			len(netInstStatus.IfNameList) != 0 {
 			continue
 		}
@@ -3039,27 +3039,27 @@ func releaseAppNetworkResources(ctx *zedrouterContext, key string,
 func isDNSServerChanged(ctx *zedrouterContext, newStatus *types.DeviceNetworkStatus) bool {
 	var dnsDiffer bool
 	for _, port := range newStatus.Ports {
-		if _, ok := ctx.dnsServers[port.Name]; !ok {
+		if _, ok := ctx.dnsServers[port.IfName]; !ok {
 			// if dnsServer does not have valid server IPs, assign now
 			// and if we lose uplink connection, it will not overwrite the previous server IPs
 			if len(port.DnsServers) > 0 { // just assigned
-				ctx.dnsServers[port.Name] = port.DnsServers
+				ctx.dnsServers[port.IfName] = port.DnsServers
 			}
 		} else {
 			// only check if we have valid new DNS server sets on the uplink
 			// valid DNS server IP changes will trigger the restart of dnsmasq.
 			if len(port.DnsServers) != 0 {
 				// new one has different entries, and not the Internet disconnect case
-				if len(ctx.dnsServers[port.Name]) != len(port.DnsServers) {
-					ctx.dnsServers[port.Name] = port.DnsServers
+				if len(ctx.dnsServers[port.IfName]) != len(port.DnsServers) {
+					ctx.dnsServers[port.IfName] = port.DnsServers
 					dnsDiffer = true
 					continue
 				}
 				for idx, server := range port.DnsServers { // compare each one and update if changed
-					if server.Equal(ctx.dnsServers[port.Name][idx]) == false {
+					if server.Equal(ctx.dnsServers[port.IfName][idx]) == false {
 						log.Infof("isDnsServerChanged: intf %s exist %v, new %v\n",
-							port.Name, ctx.dnsServers[port.Name], port.DnsServers)
-						ctx.dnsServers[port.Name] = port.DnsServers
+							port.IfName, ctx.dnsServers[port.IfName], port.DnsServers)
+						ctx.dnsServers[port.IfName] = port.DnsServers
 						dnsDiffer = true
 						break
 					}

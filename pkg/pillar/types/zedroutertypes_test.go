@@ -125,26 +125,29 @@ func TestIsNetworkUsed(t *testing.T) {
 
 // Make sure IsDPCUsable passes
 var usablePort = NetworkPortConfig{
-	IfName:     "eth0",
-	Name:       "eth0",
-	IsMgmt:     true,
-	DhcpConfig: DhcpConfig{Dhcp: DT_CLIENT},
+	IfName:       "eth0",
+	Phylabel:     "eth0",
+	Logicallabel: "eth0",
+	IsMgmt:       true,
+	DhcpConfig:   DhcpConfig{Dhcp: DT_CLIENT},
 }
 var usablePorts = []NetworkPortConfig{usablePort}
 
 var unusablePort1 = NetworkPortConfig{
-	IfName:     "eth0",
-	Name:       "eth0",
-	IsMgmt:     false,
-	DhcpConfig: DhcpConfig{Dhcp: DT_CLIENT},
+	IfName:       "eth0",
+	Phylabel:     "eth0",
+	Logicallabel: "eth0",
+	IsMgmt:       false,
+	DhcpConfig:   DhcpConfig{Dhcp: DT_CLIENT},
 }
 var unusablePorts1 = []NetworkPortConfig{unusablePort1}
 
 var unusablePort2 = NetworkPortConfig{
-	IfName:     "eth0",
-	Name:       "eth0",
-	IsMgmt:     true,
-	DhcpConfig: DhcpConfig{Dhcp: DT_NONE},
+	IfName:       "eth0",
+	Phylabel:     "eth0",
+	Logicallabel: "eth0",
+	IsMgmt:       true,
+	DhcpConfig:   DhcpConfig{Dhcp: DT_NONE},
 }
 var unusablePorts2 = []NetworkPortConfig{unusablePort2}
 var mixedPorts = []NetworkPortConfig{usablePort, unusablePort1, unusablePort2}
@@ -322,31 +325,6 @@ func TestWasDPCWorking(t *testing.T) {
 		t.Logf("Running test case %s", testname)
 		value := test.devicePortConfig.WasDPCWorking()
 		assert.Equal(t, test.expectedValue, value)
-	}
-}
-
-func TestGetPortByName(t *testing.T) {
-	testMatrix := map[string]struct {
-		deviceNetworkStatus DeviceNetworkStatus
-		port                string
-		expectedValue       NetworkPortStatus
-	}{
-		"Test name is port one": {
-			deviceNetworkStatus: DeviceNetworkStatus{
-				Ports: []NetworkPortStatus{
-					{Name: "port one"},
-				},
-			},
-			port: "port one",
-			expectedValue: NetworkPortStatus{
-				Name: "port one",
-			},
-		},
-	}
-	for testname, test := range testMatrix {
-		t.Logf("Running test case %s", testname)
-		value := test.deviceNetworkStatus.GetPortByName(test.port)
-		assert.Equal(t, test.expectedValue, *value)
 	}
 }
 

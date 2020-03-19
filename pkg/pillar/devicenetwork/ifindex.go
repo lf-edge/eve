@@ -158,7 +158,7 @@ func RelevantLastResort(link netlink.Link) (bool, bool) {
 	loopbackFlag := (linkFlags & net.FlagLoopback) != 0
 	broadcastFlag := (linkFlags & net.FlagBroadcast) != 0
 	upFlag := (attrs.OperState == netlink.OperUp)
-	isVif := strings.HasPrefix(ifname, "vif") || strings.HasPrefix(ifname, "nbu")
+	isVif := strings.HasPrefix(ifname, "vif") || strings.HasPrefix(ifname, "nbu") || strings.HasPrefix(ifname, "nbo")
 	if linkType == "device" && !loopbackFlag && broadcastFlag &&
 		attrs.MasterIndex == 0 && !isVif {
 
