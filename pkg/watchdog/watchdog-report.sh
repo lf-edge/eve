@@ -10,7 +10,9 @@
 # First log to /persist in case zboot/kernel is hung on disk
 
 DATE=$(date -Is)
+CURPART=$(cat /run/eve.id)
 echo "Watchdog report at $DATE: $*" >>/persist/reboot-reason
+echo "$CURPART" > /persist/reboot-image
 sync
 
 # If a /run/<agent.touch> then try sending a SIGUSR1 to get a stack trace
