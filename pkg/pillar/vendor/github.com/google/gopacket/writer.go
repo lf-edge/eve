@@ -218,7 +218,7 @@ func SerializeLayers(w SerializeBuffer, opts SerializeOptions, layers ...Seriali
 
 // SerializePacket is a convenience function that calls SerializeLayers
 // on packet's Layers().
-// It returns an error if one of the packet layers is not a SerializableLayer.
+// It returns an error if one of the packet layers is not a SerializebleLayer.
 func SerializePacket(buf SerializeBuffer, opts SerializeOptions, packet Packet) error {
 	sls := []SerializableLayer{}
 	for _, layer := range packet.Layers() {
