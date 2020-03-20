@@ -40,9 +40,10 @@ func TestCreateDomConfig(t *testing.T) {
 		},
 	}
 	disks := []types.DiskStatus{
-		{Format: zconfig.Format_QCOW2, ActiveFileLocation: "/foo/bar.qcow2"},
-		{Format: zconfig.Format_CONTAINER, FSVolumeLocation: "/foo/container"},
-		{Format: zconfig.Format_RAW, ActiveFileLocation: "/foo/bar.raw"},
+		{Format: zconfig.Format_QCOW2, ActiveFileLocation: "/foo/bar.qcow2", Devtype: "HDD"},
+		{Format: zconfig.Format_CONTAINER, FSVolumeLocation: "/foo/container", Devtype: "Unclassified"},
+		{Format: zconfig.Format_RAW, ActiveFileLocation: "/foo/bar.raw", Devtype: "HDD_EMPTY"},
+		{Format: zconfig.Format_RAW, ActiveFileLocation: "/foo/cd.iso", Devtype: "CDROM"},
 	}
 	aa := types.AssignableAdapters{}
 	conf, err := ioutil.TempFile("/tmp", "config")
@@ -142,7 +143,7 @@ func TestCreateDomConfig(t *testing.T) {
 
 [device "pci.2"]
   driver = "pcie-root-port"
-  port = "0x11"
+  port = "12"
   chassis = "2"
   bus = "pcie.0"
   addr = "0x2"
@@ -159,9 +160,10 @@ func TestCreateDomConfig(t *testing.T) {
   bus = "usb.0"
   port = "1"
 
+
 [device "pci.3"]
   driver = "pcie-root-port"
-  port = "0x12"
+  port = "13"
   chassis = "3"
   bus = "pcie.0"
   addr = "3"
@@ -179,6 +181,7 @@ func TestCreateDomConfig(t *testing.T) {
   drive = "drive-virtio-disk0"
   bootindex = "0"
 
+
 [fsdev "fsdev1"]
   fsdriver = "local"
   security_model = "none"
@@ -190,10 +193,11 @@ func TestCreateDomConfig(t *testing.T) {
   mount_tag = "hostshare"
   addr = "4"
 
+
 [device "pci.5"]
   driver = "pcie-root-port"
-  port = "0x12"
-  chassis = "3"
+  port = "15"
+  chassis = "5"
   bus = "pcie.0"
   addr = "5"
 
@@ -210,10 +214,23 @@ func TestCreateDomConfig(t *testing.T) {
   drive = "drive-virtio-disk2"
   bootindex = "2"
 
+
+[drive "drive-sata0-3"]
+  file = "/foo/cd.iso"
+  format = "raw"
+  if = "none"
+  media = "cdrom"
+  readonly = "on"
+
+[device "sata0-0"]
+  driver = "ide-cd"
+  bus = "ide.0"
+  drive = "drive-sata0-3"
+
 [device "pci.6"]
   driver = "pcie-root-port"
-  port = "0x10"
-  chassis = "1"
+  port = "16"
+  chassis = "6"
   bus = "pcie.0"
   multifunction = "on"
   addr = "6"
@@ -234,8 +251,8 @@ func TestCreateDomConfig(t *testing.T) {
 
 [device "pci.7"]
   driver = "pcie-root-port"
-  port = "0x10"
-  chassis = "1"
+  port = "17"
+  chassis = "7"
   bus = "pcie.0"
   multifunction = "on"
   addr = "7"
