@@ -246,6 +246,7 @@ type NodeAgentStatus struct {
 	RebootStack       string    // From last reboot
 	RebootTime        time.Time // From last reboot
 	RestartCounter    uint32
+	RebootImage       string
 }
 
 // Key :

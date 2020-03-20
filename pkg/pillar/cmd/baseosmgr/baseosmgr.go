@@ -76,6 +76,7 @@ type baseOsMgrContext struct {
 	subNodeAgentStatus       pubsub.Subscription
 	rebootReason             string    // From last reboot
 	rebootTime               time.Time // From last reboot
+	rebootImage              string    // Image from which the last reboot happened
 }
 
 var debug = false
@@ -753,6 +754,7 @@ func handleNodeAgentStatusModify(ctxArg interface{}, key string,
 	status := statusArg.(types.NodeAgentStatus)
 	ctx.rebootTime = status.RebootTime
 	ctx.rebootReason = status.RebootReason
+	ctx.rebootImage = status.RebootImage
 	updateBaseOsStatusOnReboot(ctx)
 	log.Infof("handleNodeAgentStatusModify(%s) done\n", key)
 }
