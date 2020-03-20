@@ -6,6 +6,7 @@ syntax = "proto3";
 option go_package  = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
+import "acipherinfo.proto";
 import "devcommon.proto";
 import "storage.proto";
 import "vm.proto";
@@ -54,4 +55,7 @@ message AppInstanceConfig {
   // Config flag if the app-instance should be made accessible
   // through a remote console session established by the device.
   bool remoteConsole = 12;
+
+  // contains the encrypted userdata
+  CipherBlock cipherData = 13;
 }
