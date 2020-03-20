@@ -45,6 +45,11 @@ func execQuit(socket string) error {
 	return err
 }
 
+func execQueryCLIOptions(socket string) (string, error) {
+	res, err := execRawCmd(socket, `{ "execute": "query-command-line-options" }`)
+	return string(res), err
+}
+
 func getQemuStatus(socket string) (string, error) {
 	if raw, err := execRawCmd(socket, `{ "execute": "query-status" }`); err == nil {
 		var result struct {
