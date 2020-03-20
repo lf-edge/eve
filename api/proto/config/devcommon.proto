@@ -9,8 +9,8 @@ option java_package = "com.zededa.cloud.uservice.proto";
 import "devmodel.proto"; // FIXME: this import is because of Adapter in common
 
 message UUIDandVersion {
-	string uuid = 1;
-	string version = 2;
+  string uuid = 1;
+  string version = 2;
 }
 
 // Device Operational Commands Semantic
@@ -21,10 +21,10 @@ message UUIDandVersion {
 // In future can be extended to have more scheduled events
 //
 message DeviceOpsCmd {
-        uint32 counter = 2;
-        bool desiredState = 3;
-        // FIXME: change to timestamp, once we move to gogo proto
-        string opsTime = 4;
+  uint32 counter = 2;
+  bool desiredState = 3;
+  // FIXME: change to timestamp, once we move to gogo proto
+  string opsTime = 4;
 }
 
 // Timers and other per-device policy which relates to the interaction
@@ -33,13 +33,13 @@ message DeviceOpsCmd {
 // between .5 and 1.5 of these nominal values. If not set (i.e. zero),
 // it means the default value of 60 seconds.
 message ConfigItem {
-        string key = 1;         // E.g., "configinterval"
-        string value = 2;
-        // deprecated = 3;
-        // deprecated = 4;
-        // deprecated = 5;
-        // deprecated = 6;
-        // deprecated = 7;
+  string key = 1;         // E.g., "configinterval"
+  string value = 2;
+  // deprecated = 3;
+  // deprecated = 4;
+  // deprecated = 5;
+  // deprecated = 6;
+  // deprecated = 7;
 }
 
 

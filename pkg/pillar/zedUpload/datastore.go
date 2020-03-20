@@ -26,6 +26,9 @@ const (
 	SyncOpDownloadWithSignature = 4
 	SyncOpList                  = 5
 	SyncOpGetObjectMetaData     = 6
+	SyncOpGetURI                = 7
+	SysOpPutPart                = 8
+	SysOpCompleteParts          = 9
 
 	DefaultNumberOfHandlers = 10
 

@@ -6,15 +6,15 @@ syntax = "proto3";
 option go_package  = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
-import "cipherinfo.proto";
-import "devcommon.proto";
+import "acipherinfo.proto";
 import "appconfig.proto";
 import "baseosconfig.proto";
-import "netconfig.proto";
-import "storage.proto";
-import "netinst.proto";
-import "mesh.proto";
+import "devcommon.proto";
 import "devmodel.proto";
+import "mesh.proto";
+import "netconfig.proto";
+import "netinst.proto";
+import "storage.proto";
 
 // This is the response to a GET /api/v1/edgeDevice/config
 // The EdgeDevConfig message carries all of the device's configuration from
@@ -24,51 +24,51 @@ import "devmodel.proto";
 // The message is assumed to be protected by a TLS session bound to the
 // device certificate.
 message EdgeDevConfig {
-        UUIDandVersion id = 1;
-        // deprecated = 2;
-        // deprecated = 3;
+  UUIDandVersion id = 1;
+  // deprecated = 2;
+  // deprecated = 3;
 
-        repeated AppInstanceConfig apps   = 4;
-        repeated NetworkConfig networks = 5;
-        repeated DatastoreConfig datastores = 6;
+  repeated AppInstanceConfig apps   = 4;
+  repeated NetworkConfig networks = 5;
+  repeated DatastoreConfig datastores = 6;
 
-        DeviceLispDetails lispInfo = 7;
-        repeated BaseOSConfig base = 8;        // BaseOSImage config block
-        DeviceOpsCmd reboot = 9;
-        DeviceOpsCmd backup = 10;
+  DeviceLispDetails lispInfo = 7;
+  repeated BaseOSConfig base = 8;        // BaseOSImage config block
+  DeviceOpsCmd reboot = 9;
+  DeviceOpsCmd backup = 10;
 
-        repeated ConfigItem configItems = 11;
+  repeated ConfigItem configItems = 11;
 
-        // systemAdapterList - List of DeviceNetworkAdapters. Only Network
-        //  adapters ( Ex: eth0, wlan1 etc ) have a corresponding SystemAdapter.
-        // non-Network adapters do not have systemadapters.
-        repeated SystemAdapter systemAdapterList = 12;
+  // systemAdapterList - List of DeviceNetworkAdapters. Only Network
+  //  adapters ( Ex: eth0, wlan1 etc ) have a corresponding SystemAdapter.
+  // non-Network adapters do not have systemadapters.
+  repeated SystemAdapter systemAdapterList = 12;
 
-        // deviceIoList - List of Physical Adapters. Includes both Network
-        //  Adapters and Non-Network Adapters ( USB / Com etc )
-        repeated PhysicalIO deviceIoList = 13;
+  // deviceIoList - List of Physical Adapters. Includes both Network
+  //  Adapters and Non-Network Adapters ( USB / Com etc )
+  repeated PhysicalIO deviceIoList = 13;
 
-        // Override dmidecode info if set
-        string manufacturer = 14;
-        string productName = 15;
+  // Override dmidecode info if set
+  string manufacturer = 14;
+  string productName = 15;
 
-        repeated NetworkInstanceConfig networkInstances = 16;
+  repeated NetworkInstanceConfig networkInstances = 16;
 
-        // Information saved by device to make it easier to find in the controller
-        string enterprise = 17;
-        string name = 18;
+  // Information saved by device to make it easier to find in the controller
+  string enterprise = 17;
+  string name = 18;
 
-        // controller supplies a list of cipher contexts,
-        // containing certificate and other details, to be
-        // used for sensitive data decryption
-        repeated CipherContext cipherContexts = 19;
+  // controller supplies a list of cipher contexts,
+  // containing certificate and other details, to be
+  // used for sensitive data decryption
+  repeated CipherContext cipherContexts = 19;
 }
 
 message ConfigRequest {
-        string configHash = 1;
+  string configHash = 1;
 }
 
 message ConfigResponse {
-        EdgeDevConfig config = 1;
-        string configHash = 2;
+  EdgeDevConfig config = 1;
+  string configHash = 2;
 }

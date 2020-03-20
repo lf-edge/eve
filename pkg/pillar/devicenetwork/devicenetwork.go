@@ -45,6 +45,8 @@ func makeDevicePortConfig(ctx *DeviceNetworkContext, ports []string, free []stri
 	config.Ports = make([]types.NetworkPortConfig, len(ports))
 	for ix, u := range ports {
 		config.Ports[ix].IfName = u
+		config.Ports[ix].Phylabel = u
+		config.Ports[ix].Logicallabel = u
 		for _, f := range free {
 			if f == u {
 				config.Ports[ix].Free = true
@@ -52,7 +54,6 @@ func makeDevicePortConfig(ctx *DeviceNetworkContext, ports []string, free []stri
 			}
 		}
 		config.Ports[ix].IsMgmt = true
-		config.Ports[ix].Name = config.Ports[ix].IfName
 		config.Ports[ix].Dhcp = types.DT_CLIENT
 		port, err := ctx.DevicePortConfig.GetPortByIfName(u)
 		if err == nil {
@@ -169,7 +170,8 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 		len(globalConfig.Ports))
 	for ix, u := range globalConfig.Ports {
 		globalStatus.Ports[ix].IfName = u.IfName
-		globalStatus.Ports[ix].Name = u.Name
+		globalStatus.Ports[ix].Phylabel = u.Phylabel
+		globalStatus.Ports[ix].Logicallabel = u.Logicallabel
 		globalStatus.Ports[ix].IsMgmt = u.IsMgmt
 		globalStatus.Ports[ix].Free = u.Free
 		globalStatus.Ports[ix].ProxyConfig = u.ProxyConfig
@@ -262,7 +264,7 @@ func MakeDeviceNetworkStatus(globalConfig types.DevicePortConfig, oldStatus type
 	return globalStatus
 }
 
-// write the access-point name into /run/cccesspoint directory
+// write the access-point name into /run/accesspoint directory
 // the filenames are the physical ports with access-point address/name in content
 func devPortInstallAPname(ifname string, wconfig types.WirelessConfig) {
 	if _, err := os.Stat(apDirname); err != nil {

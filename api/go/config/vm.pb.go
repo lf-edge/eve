@@ -235,7 +235,9 @@ func init() {
 	proto.RegisterType((*VmConfig)(nil), "VmConfig")
 }
 
-func init() { proto.RegisterFile("vm.proto", fileDescriptor_cab246c8c7c5372d) }
+func init() {
+	proto.RegisterFile("vm.proto", fileDescriptor_cab246c8c7c5372d)
+}
 
 var fileDescriptor_cab246c8c7c5372d = []byte{
 	// 413 bytes of a gzipped FileDescriptorProto

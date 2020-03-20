@@ -185,7 +185,9 @@ func init() {
 	proto.RegisterType((*BaseOSConfig)(nil), "BaseOSConfig")
 }
 
-func init() { proto.RegisterFile("baseosconfig.proto", fileDescriptor_6e38642df7794058) }
+func init() {
+	proto.RegisterFile("baseosconfig.proto", fileDescriptor_6e38642df7794058)
+}
 
 var fileDescriptor_6e38642df7794058 = []byte{
 	// 324 bytes of a gzipped FileDescriptorProto

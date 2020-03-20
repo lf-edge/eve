@@ -595,7 +595,7 @@ func fetchCertChain(zedcloudCtx *zedcloud.ZedCloudContext, tlsConfig *tls.Config
 
 	zedcloudCtx.TlsConfig = tlsConfig
 	// verify the certificate chain and write the siging cert to file
-	certBytes, err := zedcloud.VerifyCloudCertChain(zedcloudCtx, serverName, contents)
+	certBytes, err := zedcloud.VerifySigningCertChain(zedcloudCtx, contents)
 	if err != nil {
 		log.Errorf("client fetchCertChain: verify err %v", err)
 		return false

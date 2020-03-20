@@ -28,21 +28,21 @@ option java_package = "com.zededa.cloud.uservice.proto";
 
 // Deprecate; replace by level 2 specification
 enum sWAdapterType {
-       IGNORE = 0;
-       VLAN = 1;
-       BOND = 2;
+  IGNORE = 0;
+  VLAN = 1;
+  BOND = 2;
 }
 
 // Deprecate; replace by level 2 specification
 message sWAdapterParams {
-        sWAdapterType aType = 1;
+  sWAdapterType aType = 1;
 
-        // vlan
-       string underlayInterface = 8;
-       uint32 vlanId = 9;
+  // vlan
+  string underlayInterface = 8;
+  uint32 vlanId = 9;
 
-       // OR : repeated physical interfaces for bond0
-       repeated string bondgroup = 10;
+  // OR : repeated physical interfaces for bond0
+  repeated string bondgroup = 10;
 }
 
 // systemAdapters, are the higher l2 concept built on physicalIOs.
@@ -51,68 +51,68 @@ message sWAdapterParams {
 // These endpoints can be further used to connect to controller or
 // can be shared between workload/services running on the node.
 message SystemAdapter {
-        // name - Name of the Network Interface. This is the Port Name
-        //  used in Info / Metrics / flowlog etc. Name cannot be changed.
-        // This will be the Network Port name.
-        string name = 1;
+  // name - Name of the Network Interface. This is the Port Name
+  //  used in Info / Metrics / flowlog etc. Name cannot be changed.
+  // This will be the Network Port name.
+  string name = 1;
 
-        // deprecated; need level 2 spec. sWAdapterParams allocDetails = 20;
-        // this is part of the freelink group
-        // DEPRECATED by PhyIoAdapter.usagePolicy.
-        bool freeUplink = 2;
+  // deprecated; need level 2 spec. sWAdapterParams allocDetails = 20;
+  // this is part of the freelink group
+  // DEPRECATED by PhyIoAdapter.usagePolicy.
+  bool freeUplink = 2;
 
-        // uplink - DEPRECATED by PhysicalIO.Usage / PhysicalIO.UsagePolicy
-        // this is part of the uplink group
-        // deprecate: have a separate device policy object in the API
-        bool uplink = 3;
+  // uplink - DEPRECATED by PhysicalIO.Usage / PhysicalIO.UsagePolicy
+  // this is part of the uplink group
+  // deprecate: have a separate device policy object in the API
+  bool uplink = 3;
 
-        // networkUUID - attach this network config for this adapter
-        // if not set, depending on Usage of Adapter, would be treated as
-        // an L2 port
-        string networkUUID = 4;
+  // networkUUID - attach this network config for this adapter
+  // if not set, depending on Usage of Adapter, would be treated as
+  // an L2 port
+  string networkUUID = 4;
 
-        // addr - if its static network we need ip address
-        // If this is specified, networkUUID must also be specified. addr
-        // is expected to be in sync with the network object (same subnet etc ).
-        string addr = 5;
+  // addr - if its static network we need ip address
+  // If this is specified, networkUUID must also be specified. addr
+  // is expected to be in sync with the network object (same subnet etc ).
+  string addr = 5;
 
-        // deprecated = 6
+  // deprecated = 6
 
-        // alias - Device just reflects it back in status / Metrics back to
-        // cloud.
-        string alias = 7;
+  // alias - Device just reflects it back in status / Metrics back to
+  // cloud.
+  string alias = 7;
 
-        // lowerLayerName - For example, if lower layer is PhysicalAdapter
-        // ( physical interface), this should point to PhyLabel of the
-        // physicalIO.
-        string lowerLayerName = 8;
+  // lowerLayerName - For example, if lower layer is PhysicalAdapter
+  // ( physical interface), this should point to PhyLabel of the
+  // physicalIO.
+  string lowerLayerName = 8;
 }
 
 enum PhyIoType {
-        PhyIoNoop = 0;
-        PhyIoNetEth = 1;
-        PhyIoUSB = 2;
-        PhyIoCOM = 3;
-        PhyIoAudio = 4;
-        PhyIoNetWLAN = 5;
-        PhyIoNetWWAN = 6;
-        PhyIoHDMI = 7;
-        PhyIoOther = 255;
+  PhyIoNoop = 0;
+  PhyIoNetEth = 1;
+  PhyIoUSB = 2;
+  PhyIoCOM = 3;
+  PhyIoAudio = 4;
+  PhyIoNetWLAN = 5;
+  PhyIoNetWWAN = 6;
+  PhyIoHDMI = 7;
+  PhyIoOther = 255;
 }
 
 // How does EVE should use them, for what purpose it is for
 enum PhyIoMemberUsage {
-        PhyIoUsageNone      = 0;
-        // Used by both management and apps.
-        PhyIoUsageMgmtAndApps = 1;
-        // Shared by multiple apps
-        PhyIoUsageShared    = 2;
-        // used by only one app
-        PhyIoUsageDedicated = 3;
-        // Adapter Blocked. Do not use the Adapter.
-        PhyIoUsageDisabled   = 4;
-        // Used for Management traffic only. Cannot be used by Apps.
-        PhyIoUsageMgmtOnly = 5;
+  PhyIoUsageNone      = 0;
+  // Used by both management and apps.
+  PhyIoUsageMgmtAndApps = 1;
+  // Shared by multiple apps
+  PhyIoUsageShared    = 2;
+  // used by only one app
+  PhyIoUsageDedicated = 3;
+  // Adapter Blocked. Do not use the Adapter.
+  PhyIoUsageDisabled   = 4;
+  // Used for Management traffic only. Cannot be used by Apps.
+  PhyIoUsageMgmtOnly = 5;
 }
 
 // Given additional details for EVE softwar to how to treat this
@@ -121,19 +121,19 @@ enum PhyIoMemberUsage {
 // XXX Note that this is the static information from the model.
 // Current configuration is in systemAdapter
 message PhyIOUsagePolicy {
-        // DEPRECATED - Used only when one other normal uplinks are down
-        bool freeUplink = 1;
+  // DEPRECATED - Used only when one other normal uplinks are down
+  bool freeUplink = 1;
 
-        // fallBackPriority
-        //  0 is the highest priority.
-        //  Lower priority interfaces are used only when NONE of the higher
-        //  priority interfaces are up.
-        //  For example:
-        //      First use all interfaces with priority 0
-        //      if no priority 0 interfaces, use interfaces with priority 1
-        //      if no priority 1 interfaces, use interfaces with priority 2
-        //      and so on..
-        uint32 fallBackPriority = 2;
+  // fallBackPriority
+  //  0 is the highest priority.
+  //  Lower priority interfaces are used only when NONE of the higher
+  //  priority interfaces are up.
+  //  For example:
+  //      First use all interfaces with priority 0
+  //      if no priority 0 interfaces, use interfaces with priority 1
+  //      if no priority 1 interfaces, use interfaces with priority 2
+  //      and so on..
+  uint32 fallBackPriority = 2;
 }
 
 // PhysicalIO:
@@ -144,55 +144,55 @@ message PhyIOUsagePolicy {
 //    it can be further configured to either provide IP connectivity or
 //    directly be given to workloads
 message PhysicalIO {
-      PhyIoType ptype           = 1;
+  PhyIoType ptype           = 1;
 
-      // physical label typically printed on box.
-      // Example Eth0, Eth1, Wifi0, ComA, ComB
-      string phylabel           = 2;
+  // physical label typically printed on box.
+  // Example Eth0, Eth1, Wifi0, ComA, ComB
+  string phylabel           = 2;
 
-      // The hardware bus address. The key to this map can be of the following
-      // (case-insensitive) values:
-      // "pcilong": the address is a PCI id of the form 0000:02:00.0
-      // "ifname": the addresss is a string for a network interface like "eth1"
-      // "serial": the address is a Linux serial port alias such as "/dev/ttyS2"
-      // "irq": the address is a number such as "5". This can be a comma
-      //    separated list of integers or even a range of integers. Hence using
-      //    a string to address this.
-      // "ioports": the address is a string such as "2f8-2ff"
-      map <string, string> phyaddrs = 3;
+  // The hardware bus address. The key to this map can be of the following
+  // (case-insensitive) values:
+  // "pcilong": the address is a PCI id of the form 0000:02:00.0
+  // "ifname": the addresss is a string for a network interface like "eth1"
+  // "serial": the address is a Linux serial port alias such as "/dev/ttyS2"
+  // "irq": the address is a number such as "5". This can be a comma
+  //    separated list of integers or even a range of integers. Hence using
+  //    a string to address this.
+  // "ioports": the address is a string such as "2f8-2ff"
+  map <string, string> phyaddrs = 3;
 
-      // logicallabel - provides the ability to model designer to refer
-      //    the physicalIO port to using more friendly name
-      // For example Eth0->Mgmt0
-      //  or USBA->ConfigDiskA etc
-      string logicallabel       = 4;
+  // logicallabel - provides the ability to model designer to refer
+  //    the physicalIO port to using more friendly name
+  // For example Eth0->Mgmt0
+  //  or USBA->ConfigDiskA etc
+  string logicallabel       = 4;
 
-      // assigngrp
-      // Assignment Group, is unique label that is applied across PhysicalIOs
-      // EntireGroup can be assigned to application or nothing at all
-      //
-      // This is the name used in AppInstanceConfig.adapters to assign an
-      // adapter to an application.
-      //
-      // If assigngrp is not set, the Adapter cannot be assigned to any
-      // application. One example is, when the adapter is on the same Pci
-      // bus as another device required by Dom0.
-      //
-      // Even if there is only one device on the its PCIBus, the assignGrp Must
-      // be set.
-      string  assigngrp         = 5;
+  // assigngrp
+  // Assignment Group, is unique label that is applied across PhysicalIOs
+  // EntireGroup can be assigned to application or nothing at all
+  //
+  // This is the name used in AppInstanceConfig.adapters to assign an
+  // adapter to an application.
+  //
+  // If assigngrp is not set, the Adapter cannot be assigned to any
+  // application. One example is, when the adapter is on the same Pci
+  // bus as another device required by Dom0.
+  //
+  // Even if there is only one device on the its PCIBus, the assignGrp Must
+  // be set.
+  string  assigngrp         = 5;
 
-      // usage - indicates the role of adapter ( mgmt / blocked / app-direct
-      //    etc. )
-      PhyIoMemberUsage usage    = 6;
+  // usage - indicates the role of adapter ( mgmt / blocked / app-direct
+  //    etc. )
+  PhyIoMemberUsage usage    = 6;
 
-      // usagePolicy - Policy Object used to further refine the usage.
-      // For example, specify if this should be only used as fallback?
-      //    Or used as the primary uplink? Allow App traffic? restrict
-      //    app traffic?? etc..
-      PhyIOUsagePolicy usagePolicy    = 7;
+  // usagePolicy - Policy Object used to further refine the usage.
+  // For example, specify if this should be only used as fallback?
+  //    Or used as the primary uplink? Allow App traffic? restrict
+  //    app traffic?? etc..
+  PhyIOUsagePolicy usagePolicy    = 7;
 
-      // physical and logical attributes
-      //    For example in WWAN to which firmware version to laod etc
-      map <string, string> cbattr = 8;
+  // physical and logical attributes
+  //    For example in WWAN to which firmware version to laod etc
+  map <string, string> cbattr = 8;
 }

@@ -11,25 +11,25 @@ option go_package  = "github.com/lf-edge/eve/api/go/register";
 // The message is assumed to be protected by a TLS session bound to the
 // onboarding certificate.
 message ZRegisterMsg {
-       string onBoardKey = 1; // deprecated
-       // deprecated = 1;
+  string onBoardKey = 1; // deprecated
+  // deprecated = 1;
 
-       bytes pemCert = 2;
-       string serial = 3;
-       string softSerial = 4;
+  bytes pemCert = 2;
+  string serial = 3;
+  string softSerial = 4;
 }
 
 // XXX is this used? Not in client.go; deprecate
 enum ZRegisterResult {
-        ZRegNone         = 0;
-        ZRegSuccess      = 1;
-        ZRegNotActive    = 2;
-        ZRegAlreadyDone  = 3;
-        ZRegDeviceNA     = 4;
-        ZRegFailed       = 5;
+  ZRegNone         = 0;
+  ZRegSuccess      = 1;
+  ZRegNotActive    = 2;
+  ZRegAlreadyDone  = 3;
+  ZRegDeviceNA     = 4;
+  ZRegFailed       = 5;
 }
 
 // XXX is this used? Not in client.go; deprecate
 message ZRegisterResp {
-        ZRegisterResult result = 2;
+  ZRegisterResult result = 2;
 }

@@ -11,20 +11,20 @@ import "storage.proto";
 
 // OS version key and value pair
 message OSKeyTags {
-	string OSVerKey = 1;
-	string OSVerValue = 2;
+  string OSVerKey = 1;
+  string OSVerValue = 2;
 }
 
 // repeated key value tags compromising
 message OSVerDetails {
-	repeated OSKeyTags baseOSParams = 12;
+  repeated OSKeyTags baseOSParams = 12;
 }
 
 message BaseOSConfig {
-	UUIDandVersion uuidandversion = 1;
-	repeated Drive drives = 3;
-	bool activate = 4;
+  UUIDandVersion uuidandversion = 1;
+  repeated Drive drives = 3;
+  bool activate = 4;
 
-	string baseOSVersion = 10;
-	OSVerDetails baseOSDetails = 11;
+  string baseOSVersion = 10;
+  OSVerDetails baseOSDetails = 11;
 }

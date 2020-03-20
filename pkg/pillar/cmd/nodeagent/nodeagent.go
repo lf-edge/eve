@@ -92,6 +92,7 @@ type nodeagentContext struct {
 	deviceReboot           bool
 	currentRebootReason    string    // Reason we are rebooting
 	rebootReason           string    // From last reboot
+	rebootImage            string    // Image from which the last reboot happened
 	rebootStack            string    // From last reboot
 	rebootTime             time.Time // From last reboot
 	restartCounter         uint32
@@ -603,6 +604,11 @@ func handleLastRebootReason(ctx *nodeagentContext) {
 		rebootStack = fmt.Sprintf("Truncated stack: %v", string(runes))
 	}
 	ctx.rebootStack = rebootStack
+	rebootImage := agentlog.GetRebootImage()
+	if rebootImage != "" {
+		ctx.rebootImage = rebootImage
+		agentlog.DiscardRebootImage()
+	}
 	// Read and increment restartCounter
 	ctx.restartCounter = incrementRestartCounter()
 }
@@ -651,6 +657,7 @@ func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 		RebootReason:      ctxPtr.rebootReason,
 		RebootStack:       ctxPtr.rebootStack,
 		RebootTime:        ctxPtr.rebootTime,
+		RebootImage:       ctxPtr.rebootImage,
 		RestartCounter:    ctxPtr.restartCounter,
 	}
 	pub.Publish(agentName, status)

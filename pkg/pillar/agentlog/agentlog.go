@@ -20,8 +20,9 @@ import (
 )
 
 const (
-	reasonFile = "reboot-reason"
-	stackFile  = "reboot-stack"
+	reasonFile  = "reboot-reason"
+	stackFile   = "reboot-stack"
+	rebootImage = "reboot-image"
 )
 
 var savedAgentName = "unknown" // Keep for signal and exit handlers
@@ -152,6 +153,13 @@ func RebootReason(reason string, normal bool) {
 		// Note: can not use log here since we are called from a log hook!
 		fmt.Printf("printToFile failed %s\n", err)
 	}
+	filename = "/persist/" + rebootImage
+	curPart := zboot.GetCurrentPartition()
+	err = printToFile(filename, curPart)
+	if err != nil {
+		// Note: can not use log here since we are called from a log hook!
+		fmt.Printf("printToFile failed %s\n", err)
+	}
 	syscall.Sync()
 }
 
@@ -191,6 +199,13 @@ func GetCommonRebootReason() (string, time.Time, string) {
 	reason, ts := statAndRead(reasonFilename)
 	stack, _ := statAndRead(stackFilename)
 	return reason, ts, stack
+}
+
+// GetRebootImage : Image from which the reboot happened
+func GetRebootImage() string {
+	rebootFilename := fmt.Sprintf("%s/%s", types.PersistDir, rebootImage)
+	image, _ := statAndRead(rebootFilename)
+	return image
 }
 
 // Returns content and Modtime
@@ -252,6 +267,14 @@ func DiscardCommonRebootReason() {
 		if err := os.Remove(stackFilename); err != nil {
 			log.Errorf("DiscardCommonRebootReason failed %s\n", err)
 		}
+	}
+}
+
+// DiscardRebootImage : Discard the last reboot-image file
+func DiscardRebootImage() {
+	rebootFilename := fmt.Sprintf("%s/%s", types.PersistDir, rebootImage)
+	if err := os.Remove(rebootFilename); err != nil {
+		log.Errorf("DiscardRebootImage failed %s\n", err)
 	}
 }
 

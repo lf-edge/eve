@@ -66,6 +66,14 @@ type DronaRequest struct {
 
 	// Download counter
 	retry int
+
+	// used by Multipart upload
+	Adata  []byte
+	PartID string
+	SasURI string
+
+	// used by azure
+	Blocks []string
 }
 
 // Return object local name

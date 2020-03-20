@@ -1044,12 +1044,16 @@ func updateBaseOsStatusOnReboot(ctxPtr *baseOsMgrContext) {
 	}
 }
 
-// first pick up from the partition
+// Assumes the callers verify that the other partition is "inprogress" which means
+// we most recently booted that partition.
 func handleOtherPartRebootReason(ctxPtr *baseOsMgrContext, status *types.BaseOsStatus) {
-	oReason, oTime, _ := agentlog.GetOtherRebootReason()
-	if oReason != "" {
-		status.Error = oReason
-		status.ErrorTime = oTime
+	curPart := zboot.GetCurrentPartition()
+	if curPart == ctxPtr.rebootImage {
+		return
+	}
+	if ctxPtr.rebootReason != "" {
+		status.Error = ctxPtr.rebootReason
+		status.ErrorTime = ctxPtr.rebootTime
 	} else {
 		dateStr := ctxPtr.rebootTime.Format(time.RFC3339Nano)
 		reason := fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s\n",

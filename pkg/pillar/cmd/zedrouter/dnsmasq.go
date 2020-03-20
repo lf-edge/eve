@@ -134,7 +134,7 @@ func createDnsmasqConfiglet(
 	advertizeRouter := true
 	var router string
 
-	if netconf.Port == "" {
+	if netconf.Logicallabel == "" {
 		log.Infof("Internal switch without external port case, dnsmasq suppress router advertize\n")
 		advertizeRouter = false
 	} else if Ipv4Eid {

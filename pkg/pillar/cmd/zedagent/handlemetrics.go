@@ -184,10 +184,10 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 
 	// Use the network metrics from zedrouter subscription
 	// Only report stats for the ports in DeviceNetworkStatus
-	portNames := types.ReportPorts(*deviceNetworkStatus)
-	for _, port := range portNames {
+	phylabelList := types.ReportPhylabels(*deviceNetworkStatus)
+	for _, phylabel := range phylabelList {
 		var metric *types.NetworkMetric
-		ifname := types.AdapterToIfName(deviceNetworkStatus, port)
+		ifname := types.PhylabelToIfName(deviceNetworkStatus, phylabel)
 		for _, m := range networkMetrics.MetricList {
 			if ifname == m.IfName {
 				metric = &m
@@ -199,7 +199,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 		}
 		networkDetails := new(metrics.NetworkMetric)
 		networkDetails.LocalName = metric.IfName
-		networkDetails.IName = port
+		networkDetails.IName = phylabel
 
 		networkDetails.TxPkts = metric.TxPkts
 		networkDetails.RxPkts = metric.RxPkts
@@ -785,15 +785,15 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// Read interface name from library and match it with port name from
 	// global status. Only report the ports in DeviceNetworkStatus
 	interfaces, _ := psutilnet.Interfaces()
-	portNames := types.ReportPorts(*deviceNetworkStatus)
-	for _, port := range portNames {
-		ifname := types.AdapterToIfName(deviceNetworkStatus, port)
+	phylabelList := types.ReportPhylabels(*deviceNetworkStatus)
+	for _, phylabel := range phylabelList {
+		ifname := types.PhylabelToIfName(deviceNetworkStatus, phylabel)
 		for _, interfaceDetail := range interfaces {
 			if ifname != interfaceDetail.Name {
 				continue
 			}
 			ReportDeviceNetworkInfo := getNetInfo(interfaceDetail, true)
-			ReportDeviceNetworkInfo.DevName = *proto.String(port)
+			ReportDeviceNetworkInfo.DevName = *proto.String(phylabel)
 			ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
 				ReportDeviceNetworkInfo)
 		}
@@ -823,7 +823,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				break
 			}
 		}
-		if seen {
+		if seen && ib.AssignmentGroup != "" {
 			continue
 		}
 		seenBundles = append(seenBundles, ib.AssignmentGroup)
@@ -835,15 +835,17 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			if ib.AssignmentGroup != "" {
 				log.Infof("Nothing to report for %d %s",
 					ib.Type, ib.AssignmentGroup)
+				continue
 			}
-			continue
+			// Singleton
+			list = append(list, &ib)
 		}
 		for _, b := range list {
 			if b == nil {
 				continue
 			}
 			reportAA.Members = append(reportAA.Members,
-				b.Name)
+				b.Phylabel)
 			if b.MacAddr != "" {
 				reportMac := new(info.IoAddresses)
 				reportMac.MacAddress = b.MacAddr
@@ -1201,7 +1203,8 @@ func encodeSystemAdapterInfo(dpcl types.DevicePortConfigList) *info.SystemAdapte
 func encodeNetworkPortConfig(npc *types.NetworkPortConfig) *info.DevicePort {
 	dp := new(info.DevicePort)
 	dp.Ifname = npc.IfName
-	dp.Name = npc.Name
+	// XXX rename the protobuf field Name to Phylabel and add Logicallabel?
+	dp.Name = npc.Phylabel
 	dp.IsMgmt = npc.IsMgmt
 	dp.Free = npc.Free
 	// DhcpConfig
@@ -1298,12 +1301,12 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			reportAA.Type = info.IPhyIoType(ia.Type)
 			reportAA.Name = ia.Name
 			reportAA.UsedByAppUUID = aiStatus.Key()
-			list := aa.LookupIoBundleGroup(ia.Name)
+			list := aa.LookupIoBundleAny(ia.Name)
 			for _, ib := range list {
 				if ib == nil {
 					continue
 				}
-				reportAA.Members = append(reportAA.Members, ib.Name)
+				reportAA.Members = append(reportAA.Members, ib.Phylabel)
 				if ib.MacAddr != "" {
 					reportMac := new(info.IoAddresses)
 					reportMac.MacAddress = ib.MacAddr

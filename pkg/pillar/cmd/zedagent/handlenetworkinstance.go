@@ -104,21 +104,21 @@ func prepareAndPublishNetworkInstanceInfoMsg(ctx *zedagentContext,
 		}
 		info.Ipv4Eid = status.Ipv4Eid
 		for _, ifname := range status.IfNameList {
-			ia := ctx.assignableAdapters.LookupIoBundle(ifname)
+			ia := ctx.assignableAdapters.LookupIoBundleIfName(ifname)
 			if ia == nil {
 				log.Warnf("Missing adapter for ifname %s", ifname)
 				continue
 			}
 			reportAA := new(zinfo.ZioBundle)
 			reportAA.Type = zinfo.IPhyIoType(ia.Type)
-			reportAA.Name = ia.Name
+			reportAA.Name = ia.Phylabel
 			reportAA.UsedByAppUUID = zcdevUUID.String()
-			list := ctx.assignableAdapters.LookupIoBundleGroup(ia.Name)
+			list := ctx.assignableAdapters.LookupIoBundleAny(ia.Phylabel)
 			for _, ib := range list {
 				if ib == nil {
 					continue
 				}
-				reportAA.Members = append(reportAA.Members, ib.Name)
+				reportAA.Members = append(reportAA.Members, ib.Phylabel)
 				if ib.MacAddr != "" {
 					reportMac := new(zinfo.IoAddresses)
 					reportMac.MacAddress = ib.MacAddr

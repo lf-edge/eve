@@ -64,12 +64,12 @@ func deviceUpdateNIprobing(ctx *zedrouterContext, status *types.DeviceNetworkSta
 	pub := ctx.pubNetworkInstanceStatus
 	log.Debugf("deviceUpdateNIprobing: enter\n")
 	for _, port := range status.Ports {
-		log.Infof("deviceUpdateNIprobing: port %s, is Mgmt %v\n", port.Name, port.IsMgmt)
+		log.Infof("deviceUpdateNIprobing: port %s/%s, is Mgmt %v\n", port.Phylabel, port.IfName, port.IsMgmt)
 
 		items := pub.GetAll()
 		for _, st := range items {
 			netstatus := st.(types.NetworkInstanceStatus)
-			if !isSharedPortLabel(netstatus.Port) {
+			if !isSharedPortLabel(netstatus.Logicallabel) {
 				continue
 			}
 			resetIsPresentFlag(&netstatus, port.IfName)
@@ -88,7 +88,7 @@ func deviceUpdateNIprobing(ctx *zedrouterContext, status *types.DeviceNetworkSta
 func niUpdateNIprobing(ctx *zedrouterContext, status *types.NetworkInstanceStatus) {
 	pub := ctx.subDeviceNetworkStatus
 	items := pub.GetAll()
-	portList := getIfNameListForPort(ctx, status.Port)
+	portList := getIfNameListForLLOrIfname(ctx, status.Logicallabel)
 	log.Infof("niUpdateNIprobing: enter, type %v, number of ports %d\n", status.Type, len(portList))
 	for _, st := range items {
 		devStatus := st.(types.DeviceNetworkStatus)
@@ -100,8 +100,8 @@ func niUpdateNIprobing(ctx *zedrouterContext, status *types.NetworkInstanceStatu
 					port, devStatus)
 				continue
 			}
-			if !isSharedPortLabel(status.Port) &&
-				status.Port != devPort.Name {
+			if !isSharedPortLabel(status.Logicallabel) &&
+				status.Logicallabel != devPort.Logicallabel {
 				continue
 			}
 			niProbingUpdatePort(ctx, *devPort, status)
@@ -171,7 +171,7 @@ func niProbingUpdatePort(ctx *zedrouterContext, port types.NetworkPortStatus,
 		// the probe status are copied inside publish NI status
 		netstatus.PInfo[port.IfName] = info
 		log.Infof("niProbingUpdatePort: %s modified %s, isFree %v\n", netstatus.BridgeName, port.IfName, info.IsFree)
-		if netstatus.Port == port.Name {
+		if netstatus.Logicallabel == port.Logicallabel {
 			// if the intf lose ip address or gain ip address, react faster
 			// XXX detect changes to LocalAddr and NHAddr in general?
 			if ipAddrIsValid(prevLocalAddr) && !ipAddrIsValid(info.LocalAddr) {
@@ -230,7 +230,7 @@ func checkNIprobeUplink(ctx *zedrouterContext, status *types.NetworkInstanceStat
 		// No link local.
 		for _, info := range status.PInfo {
 			// Pick uplink with atleast one usable IP address
-			ifNameList := getIfNameListForPort(ctx, info.IfName)
+			ifNameList := getIfNameListForLLOrIfname(ctx, info.IfName)
 			if len(ifNameList) != 0 {
 				for _, ifName := range ifNameList {
 					_, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus, 0, ifName)
@@ -251,7 +251,7 @@ func checkNIprobeUplink(ctx *zedrouterContext, status *types.NetworkInstanceStat
 			// We are not able to find a port with usable unicast IP address.
 			// Try and find a port that atleast has a local UP address.
 			for _, info := range status.PInfo {
-				ifNameList := getIfNameListForPort(ctx, info.IfName)
+				ifNameList := getIfNameListForLLOrIfname(ctx, info.IfName)
 				if len(ifNameList) != 0 {
 					for _, ifName := range ifNameList {
 						_, err := types.GetLocalAddrAny(*ctx.deviceNetworkStatus, 0, ifName)
