@@ -456,6 +456,7 @@ func Run(ps *pubsub.PubSub) {
 			AgentName:     agentName,
 			TopicImpl:     types.ControllerCertStatus{},
 			Activate:      false,
+			Ctx:           &zedagentCtx,
 			CreateHandler: handleControllerCertStatusModify,
 			ModifyHandler: handleControllerCertStatusModify,
 			DeleteHandler: handleControllerCertStatusDelete,
