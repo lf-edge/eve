@@ -3,7 +3,7 @@
 ARG GOVER=1.12.4
 FROM golang:${GOVER}-alpine as build
 RUN apk update
-RUN apk add --no-cache git gcc linux-headers libc-dev util-linux make
+RUN apk add --no-cache git gcc linux-headers libc-dev util-linux libpcap-dev make
 
 # These three are supporting rudimentary cross-build capabilities.
 # The only one supported so far is cross compiling for aarch64 on x86
@@ -41,7 +41,7 @@ RUN apk add --no-cache \
     coreutils dmidecode libbz2 libuuid ipset       \
     curl radvd perl ethtool \
     util-linux e2fsprogs libcrypto1.0 xorriso qemu-img \
-    jq e2fsprogs-extra keyutils
+    libpcap jq e2fsprogs-extra keyutils
 
 # We have to make sure configs survive in some location, but they don't pollute
 # the default /config (since that is expected to be an empty mount point)
