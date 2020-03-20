@@ -286,14 +286,14 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 			diskContext.Devtype = "CONTAINER"
 		} else {
 			diskContext.DiskFile = ds.ActiveFileLocation
-			diskContext.Devtype = ds.Devtype
+			diskContext.Devtype = strings.ToUpper(ds.Devtype)
 		}
 		diskContext.ro = ds.ReadOnly
 		diskContext.DiskFormat = strings.ToLower(ds.Format.String())
 		if err := t.Execute(file, diskContext); err != nil {
 			return logError("can't write to config file %s (%v)", file.Name(), err)
 		}
-		if ds.Devtype == "CDROM" {
+		if diskContext.Devtype == "CDROM" {
 			diskContext.SATAId = diskContext.SATAId + 1
 		} else {
 			diskContext.PCIId = diskContext.PCIId + 1
@@ -402,11 +402,16 @@ func (ctx kvmContext) Delete(domainName string, domainID int) error {
 }
 
 func (ctx kvmContext) Info(domainName string, domainID int) error {
-	return nil
+	res, err := execQueryCLIOptions(kvmStateDir + domainName + "/qmp")
+	log.Infof("KVM Info for domain %s %d %s (%v)", domainName, domainID, res, err)
+	return err
 }
 
 func (ctx kvmContext) LookupByName(domainName string, domainID int) (int, error) {
-	return 0, nil
+	if id, found := ctx.domains[domainName]; !found || id != domainID {
+		return id, logError("couldn't find domain %s or new id %d != old one %d", domainName, id, domainID)
+	}
+	return domainID, nil
 }
 
 func (ctx kvmContext) Tune(domainName string, domainID int, vifCount int) error {
@@ -422,7 +427,8 @@ func (ctx kvmContext) PCIRelease(long string) error {
 }
 
 func (ctx kvmContext) IsDeviceModelAlive(domid int) bool {
-	return true
+	_, err := os.Stat(fmt.Sprintf("/proc/%d", domid))
+	return err == nil
 }
 
 func (ctx kvmContext) GetHostCPUMem() (types.HostMemory, error) {
