@@ -269,11 +269,11 @@ github.com/robertkrimen/otto/token
 # github.com/satori/go.uuid v1.2.0
 github.com/satori/go.uuid
 # github.com/shirou/gopsutil v0.0.0-20190323131628-2cbc9195c892
-github.com/shirou/gopsutil/cpu
-github.com/shirou/gopsutil/mem
 github.com/shirou/gopsutil/disk
 github.com/shirou/gopsutil/host
 github.com/shirou/gopsutil/net
+github.com/shirou/gopsutil/cpu
+github.com/shirou/gopsutil/mem
 github.com/shirou/gopsutil/internal/common
 github.com/shirou/gopsutil/process
 # github.com/shirou/w32 v0.0.0-20160930032740-bb4de0191aa4
