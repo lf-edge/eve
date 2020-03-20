@@ -317,7 +317,7 @@ func getCloudCertChain(ctx *zedagentContext) bool {
 	// for cipher object handling
 	parseControllerCerts(ctx, contents)
 
-	certBytes, err := zedcloud.VerifyCloudCertChain(&zedcloudCtx, serverName, contents)
+	certBytes, err := zedcloud.VerifySigningCertChain(&zedcloudCtx, contents)
 	if err != nil {
 		log.Errorf("getCloudCertChain: verify err %v", err)
 		return false
