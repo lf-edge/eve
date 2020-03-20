@@ -867,6 +867,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 			status.LastErr = ""
 			status.LastErrTime = time.Time{}
 			status.DomainId = domainID
+			status.BootTime = time.Now()
 			status.Activated = true
 			status.State = types.RUNNING
 			publishDomainStatus(ctx, status)
@@ -1363,6 +1364,7 @@ func doActivateTail(ctx *domainContext, status *types.DomainStatus,
 	domainID, err = hyper.LookupByName(status.DomainName, status.DomainId)
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
+		status.BootTime = time.Now()
 	}
 	log.Infof("doActivateTail(%v) done for %s\n",
 		status.UUIDandVersion, status.DisplayName)
@@ -1376,6 +1378,7 @@ func doInactivate(ctx *domainContext, status *types.DomainStatus, impatient bool
 	domainID, err := hyper.LookupByName(status.DomainName, status.DomainId)
 	if err == nil && domainID != status.DomainId {
 		status.DomainId = domainID
+		status.BootTime = time.Now()
 	}
 	// If this is a delete of the App Instance we wait for a shorter time
 	// since all of the read-write disk images will be deleted.
