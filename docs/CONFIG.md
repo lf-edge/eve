@@ -7,7 +7,8 @@ In general, EVE is trying to make sure that its controller always has the last w
 * `grub.cfg` - local tweaks to an [otherwise readonly grub.cfg](README.md#runtime-lifecycle)
 * `DevicePortConfig/override.json` - initial configuration for all of EVE's network interfaces (see below for details)
 * `server` - contains a FQDN of a controller and its port (e.g. controller.acme.com:123)
-* `root-certificate.pem` - contains an x509 root certificate for the controller
+* `root-certificate.pem` - contains an x509 root certificate to trust for the controller for TLS in V1 API and object signing in V2 API
+* `v2tlsbaseroot-certificates.pem` - contains the x509 root certificate to trust for the TLS to the controller when using the V2 API
 * `onboard.cert.pem` - onboarding certificate for the [initial registration](REGISTRATION.md) with the controller
 * `wpa_supplicant.conf` - a legacy way of configuring EVE's WiFi
 * `authorized_keys` - initial authorized SSH keys for accessing EVE's debug console
@@ -52,7 +53,7 @@ That file is /config/DevicePortConfig/override.json
 [Note that this file does not override cloud configuration. TBD: should we rename
 it to local.json instead?]
 And futher overridden by a USB memory stick plugged in when the device is powered
-on. The [scripts/mkusb.sh](../scripts/mkusb.sh) can be used to create a
+on. The [tools/makeusbconf.sh](../tools/makeusbconf.sh) can be used to create a
 USB stick with a json file specifying the device connectivity based on the
 examples below.
 Finally, when the device is created or updated in the controller, the device
@@ -192,7 +193,7 @@ The device does not specify DHCP-based WPAD since most browsers do not.
 
 In addition the above configurations be specified from the EV-controller by
 specifying one or more networks with the proxy and/or static as part of the
-zcli device create.
+zcli edge-node create.
 
 ### Adding configuration to the install image
 
@@ -202,7 +203,7 @@ during the build of the installation medium.
 The former can be used to specify proxies and static IP configuration for
 the ports, if that is necessary to have the device connect to the controller.
 But a DevicePortConfig can also be added to a USB stick in which case it
-will be copied from the USB stick on boot. See [mkusb.sh](../scripts/mkusb.sh)
+will be copied from the USB stick on boot. See [tools/makeusbconf.sh](../tools/makeusbconf.sh)
 
 The latter can be used to specify the initial timers and ssh/usb behavior
 which will be in place until the device connects to the controller and gets its
@@ -217,14 +218,28 @@ make config.img; make installer.raw
 
 ### Creating USB sticks
 
-The [scripts/mkusb.sh](../scripts/mkusb.sh) can run on Linux to create a USB stick.
+The [tools/makeusbconf.sh](../tools/makeusbconf.sh) can run on any system that supports Docker to create a USB stick.
 It takes a usb.json as an argument, plus a few additrional arguments:
 
-* -t Test the stick by mounting and reading it after written.
 * -d Create a dump directory on the stick, which Eve will use to deposit any
   diagnostics.
 * -i Create an identity directory on the stick, which Eve will use to deposit
   its identity like the device certificate.
+
+On Linux the USB image can be created directly on the USB stick.
+After using e.g., lsblk to get the name of the USB stick block device (/dev/sdx in this example) run
+
+```bash
+tools/makeusbconf.sh -d -i -f ~/usb.json -s 8000 /dev/sdx
+```
+
+On MacOS the USB image can be placed in a image file e.g,
+
+```bash
+tools/makeusbconf.sh -d -i -f ~/usb.json -s 8000 usb.img
+```
+
+and then separately copied to the raw USB disk device.
 
 ### Troubleshooting
 
@@ -264,4 +279,3 @@ can be IP routing issues, DNS issues, WPAD, or proxy issues.
 If there is no console (display and keyboard) to run diag or look at these files,
 the ```mkush.sh -d``` above can be used to get the diagnostics deposited on the
 USB stick for inspection.
-

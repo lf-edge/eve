@@ -45,6 +45,33 @@
             "NtpServer": "",
             "Pacfile": "",
             "Proxies": null
+        },
+        {
+            "AddrSubnet": "",
+            "Dhcp": 4,
+            "DnsServers": null,
+            "DomainName": "",
+            "Exceptions": "",
+            "Free": true,
+            "Gateway": "",
+            "IfName": "wlan0",
+            "Name": "Management",
+            "IsMgmt": true,
+            "NetworkProxyEnable": false,
+            "NetworkProxyURL": "",
+            "NtpServer": "",
+            "Pacfile": "",
+            "Proxies": null,
+            "WirelessCfg": {
+                "WType": 2,
+                "Wifi": [
+                    {
+                        "KeyScheme": 1,
+                        "Password": "02c16f065e55550a62d1dcfed3317077d4e2c1ab4c48cec447e23cdafd1f287a",
+                        "SSID": "your-ssid-string"
+                    }
+                ]
+            }
         }
     ]
 }

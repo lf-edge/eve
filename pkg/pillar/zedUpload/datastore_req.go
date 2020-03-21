@@ -66,6 +66,14 @@ type DronaRequest struct {
 
 	// Download counter
 	retry int
+
+	// used by Multipart upload
+	Adata  []byte
+	PartID string
+	SasURI string
+
+	// used by azure
+	Blocks []string
 }
 
 // Return object local name
@@ -82,13 +90,15 @@ func (req *DronaRequest) GetLocalName() string {
 func (req *DronaRequest) GetDnStatus() error {
 	req.Lock()
 	defer req.Unlock()
-	return fmt.Errorf("Syncer Download Status on %s - error %s", req.name, req.status)
+	return fmt.Errorf("Syncer Download Status on %s, Location: %s - error %s",
+		req.name, req.objloc, req.status)
 }
 
 func (req *DronaRequest) GetUpStatus() (string, error) {
 	req.Lock()
 	defer req.Unlock()
-	return req.objloc, fmt.Errorf("Syncer Upload Status on %s - error %s", req.name, req.status)
+	return req.objloc, fmt.Errorf("Syncer Upload Status on %s, location: %s "+
+		" - error %s", req.name, req.objloc, req.status)
 }
 
 // Return is it update
@@ -128,6 +138,21 @@ func (req *DronaRequest) GetOsize() int64 {
 	req.Lock()
 	defer req.Unlock()
 	return req.objectSize
+}
+
+// Progress return download progress
+// returns asize (bytes), osize (bytes), progress (percent out of 100)
+func (req *DronaRequest) Progress() (int64, int64, uint) {
+	req.Lock()
+	defer req.Unlock()
+	asize := req.asize
+	osize := req.objectSize
+	progress := uint(0)
+	if osize != 0 {
+		percent := 100 * asize / osize
+		progress = uint(percent)
+	}
+	return asize, osize, progress
 }
 
 func (req *DronaRequest) GetImageList() []string {

@@ -23,7 +23,7 @@ import (
 
 	"github.com/eriknordmark/ipinfo"
 	zconfig "github.com/lf-edge/eve/api/go/config"
-	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	log "github.com/sirupsen/logrus"
@@ -44,18 +44,6 @@ type DeviceLispConfig struct {
 	ClientAddr      string // To detect NATs
 }
 
-// Assumes the config files are in IdentityDirname, which is /config. Files are:
-//  device.cert.pem,
-//  device.key.pem		Device certificate/key created before this
-//  		     		client is started.
-//  infra			If this file exists assume zedcontrol and do not
-//  				create ACLs
-//  root-certificate.pem	Root CA cert(s)
-//
-//  In addition we have:
-//  /var/tmp/zededa/zedserverconfig Written by us; zed server EIDs
-//  /var/tmp/zededa/uuid	Written by us
-//
 var lispPrevConfigHash []byte
 var prevLispConfig DeviceLispConfig
 
@@ -68,7 +56,6 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	//Fill DeviceLispConfig struct with LispInfo config...
 	var lispConfig = DeviceLispConfig{}
 
-	log.Debugf("handleLookupParam got config %v\n", devConfig)
 	lispInfo := devConfig.LispInfo
 	if lispInfo == nil {
 		log.Errorf("handleLookupParam: missing lispInfo\n")
@@ -85,6 +72,8 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 		log.Debugf("handleLookupParam: lispInfo sha is unchanged\n")
 		return
 	}
+	// Note that there are no secrets in lispInfo. XXX true?
+	log.Debugf("handleLookupParam got lisp config %v", lispInfo)
 	lispConfig.LispInstance = lispInfo.LispInstance
 	lispConfig.EID = net.ParseIP(lispInfo.EID)
 	lispConfig.ClientAddr = lispInfo.ClientAddr
@@ -190,8 +179,8 @@ func handleLookupParam(getconfigCtx *getconfigContext,
 	switch key := deviceCert.PrivateKey.(type) {
 	default:
 		log.Fatal("Private Key RSA type not supported")
-	case zedcloud.TpmPrivateKey:
-		r, s, err := tpmmgr.TpmSign(hash)
+	case etpm.TpmPrivateKey:
+		r, s, err := etpm.TpmSign(hash)
 		if err != nil {
 			log.Fatal("zedcloud.Sign: ", err)
 		}

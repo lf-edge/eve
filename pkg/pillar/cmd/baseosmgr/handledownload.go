@@ -9,7 +9,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/satori/go.uuid"
@@ -20,50 +19,44 @@ import (
 var nilUUID uuid.UUID
 
 func lookupDownloaderConfig(ctx *baseOsMgrContext, objType string,
-	safename string) *types.DownloaderConfig {
+	imageID uuid.UUID) *types.DownloaderConfig {
 
 	pub := downloaderPublication(ctx, objType)
-	c, _ := pub.Get(safename)
+	c, _ := pub.Get(imageID.String())
 	if c == nil {
 		log.Infof("lookupDownloaderConfig(%s/%s) not found\n",
-			objType, safename)
+			objType, imageID)
 		return nil
 	}
-	config := cast.CastDownloaderConfig(c)
-	if config.Key() != safename {
-		log.Errorf("lookupDownloaderConfig(%s) got %s; ignored %+v\n",
-			safename, config.Key(), config)
-		return nil
-	}
+	config := c.(types.DownloaderConfig)
 	return &config
 }
 
-func createDownloaderConfig(ctx *baseOsMgrContext, objType string, safename string,
+func createDownloaderConfig(ctx *baseOsMgrContext, objType string, imageID uuid.UUID,
 	sc *types.StorageConfig) {
 
-	log.Infof("createDownloaderConfig(%s/%s)\n", objType, safename)
+	log.Infof("createDownloaderConfig(%s/%s)\n", objType, imageID)
 
-	if m := lookupDownloaderConfig(ctx, objType, safename); m != nil {
+	if m := lookupDownloaderConfig(ctx, objType, imageID); m != nil {
 		m.RefCount += 1
 		log.Infof("createDownloaderConfig(%s) refcount to %d\n",
-			safename, m.RefCount)
+			imageID, m.RefCount)
 		publishDownloaderConfig(ctx, objType, m)
 	} else {
-		log.Infof("createDownloaderConfig(%s) add\n", safename)
+		log.Infof("createDownloaderConfig(%s) add\n", imageID)
 		n := types.DownloaderConfig{
+			ImageID:     sc.ImageID,
 			DatastoreID: sc.DatastoreID,
-			Safename:    safename,
 			Name:        sc.Name,
 			NameIsURL:   sc.NameIsURL,
 			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
 				objType),
-			Size:        sc.Size,
-			ImageSha256: sc.ImageSha256,
-			RefCount:    1,
+			Size:     sc.Size,
+			RefCount: 1,
 		}
 		publishDownloaderConfig(ctx, objType, &n)
 	}
-	log.Infof("createDownloaderConfig(%s/%s) done\n", objType, safename)
+	log.Infof("createDownloaderConfig(%s/%s) done\n", objType, imageID)
 }
 
 func updateDownloaderStatus(ctx *baseOsMgrContext,
@@ -90,20 +83,19 @@ func updateDownloaderStatus(ctx *baseOsMgrContext,
 	// 2. downloader set Expired in status when garbage collecting.
 	// If we have no RefCount we delete the config.
 
-	config := lookupDownloaderConfig(ctx, status.ObjType, status.Key())
+	config := lookupDownloaderConfig(ctx, status.ObjType, status.ImageID)
 	if config == nil && status.RefCount == 0 {
 		log.Infof("updateDownloaderStatus adding RefCount=0 config %s\n",
 			key)
 		n := types.DownloaderConfig{
+			ImageID:     status.ImageID,
 			DatastoreID: status.DatastoreID,
-			Safename:    status.Safename,
 			Name:        status.Name,
 			NameIsURL:   status.NameIsURL,
 			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
 				objType),
-			Size:        status.Size,
-			ImageSha256: status.ImageSha256,
-			RefCount:    0,
+			Size:     status.Size,
+			RefCount: 0,
 		}
 		publishDownloaderConfig(ctx, status.ObjType, &n)
 		return
@@ -118,54 +110,49 @@ func updateDownloaderStatus(ctx *baseOsMgrContext,
 	// Normal update work
 	switch objType {
 	case types.BaseOsObj:
-		baseOsHandleStatusUpdateSafename(ctx, status.Safename)
+		baseOsHandleStatusUpdateImageID(ctx, status.ImageID)
 
 	case types.CertObj:
-		certObjHandleStatusUpdateSafename(ctx, status.Safename)
+		certObjHandleStatusUpdateImageID(ctx, status.ImageID)
 	}
 	log.Infof("updateDownloaderStatus(%s/%s) done\n",
 		objType, key)
 }
 
 // Lookup published config;
-func removeDownloaderConfig(ctx *baseOsMgrContext, objType string, safename string) {
+func removeDownloaderConfig(ctx *baseOsMgrContext, objType string, imageID uuid.UUID) {
 
-	log.Infof("removeDownloaderConfig(%s/%s)\n", objType, safename)
+	log.Infof("removeDownloaderConfig(%s/%s)\n", objType, imageID)
 
-	config := lookupDownloaderConfig(ctx, objType, safename)
+	config := lookupDownloaderConfig(ctx, objType, imageID)
 	if config == nil {
 		log.Infof("removeDownloaderConfig(%s/%s) no Config\n",
-			objType, safename)
+			objType, imageID)
 		return
 	}
-	config.RefCount -= 1
-	if config.RefCount < 0 {
-		log.Fatalf("removeDownloaderConfig(%s/%s): negative RefCount %d\n",
-			objType, safename, config.RefCount)
+	if config.RefCount == 0 {
+		log.Fatalf("removeDownloaderConfig(%s/%s): RefCount already 0. Cannot"+
+			" decrement it.", objType, imageID)
 	}
+	config.RefCount -= 1
 	log.Infof("removeDownloaderConfig(%s/%s) decrementing refCount to %d\n",
-		objType, safename, config.RefCount)
+		objType, imageID, config.RefCount)
 	publishDownloaderConfig(ctx, objType, config)
-	log.Infof("removeDownloaderConfig(%s/%s) done\n", objType, safename)
+	log.Infof("removeDownloaderConfig(%s/%s) done\n", objType, imageID)
 }
 
 // Note that this function returns the entry even if Pending* is set.
 func lookupDownloaderStatus(ctx *baseOsMgrContext, objType string,
-	safename string) *types.DownloaderStatus {
+	imageID uuid.UUID) *types.DownloaderStatus {
 
 	sub := downloaderSubscription(ctx, objType)
-	c, _ := sub.Get(safename)
+	c, _ := sub.Get(imageID.String())
 	if c == nil {
 		log.Infof("lookupDownloaderStatus(%s/%s) not found\n",
-			objType, safename)
+			objType, imageID)
 		return nil
 	}
-	status := cast.CastDownloaderStatus(c)
-	if status.Key() != safename {
-		log.Errorf("lookupDownloaderStatus(%s) got %s; ignored %+v\n",
-			safename, status.Key(), status)
-		return nil
-	}
+	status := c.(types.DownloaderStatus)
 	return &status
 }
 
@@ -185,14 +172,14 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 
 		ss := &status[i]
 
-		safename := types.UrlToSafename(sc.Name, sc.ImageSha256)
+		imageID := sc.ImageID
 
 		log.Infof("checkStorageDownloadStatus %s, image status %v\n",
-			safename, ss.State)
+			imageID, ss.State)
 		if ss.State == types.INSTALLED {
 			ret.MinState = ss.State
 			log.Infof("checkStorageDownloadStatus %s is already installed\n",
-				safename)
+				imageID)
 			continue
 		}
 
@@ -201,6 +188,7 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 		// XXX other sanity checks?
 		// Only meaningful for certObj
 		if objType == types.CertObj && ss.FinalObjDir != "" {
+			safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
 			dstFilename := ss.FinalObjDir + "/" + types.SafenameToFilename(safename)
 			st, err := os.Stat(dstFilename)
 			if err == nil && st.Size() != 0 {
@@ -210,66 +198,78 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 				continue
 			}
 		}
-		if sc.ImageSha256 != "" {
-			// Shortcut if image is already verified
-			vs := lookupVerificationStatusAny(ctx, objType,
-				safename, sc.ImageSha256)
+		// Shortcut if image is already verified
+		vs := lookupVerificationStatus(ctx, objType, sc.ImageID)
+		if vs != nil && !vs.Pending() &&
+			vs.State == types.DELIVERED {
 
-			if vs != nil && !vs.Pending() &&
-				vs.State == types.DELIVERED {
-
-				log.Infof(" %s, exists verified with sha %s\n",
-					safename, sc.ImageSha256)
-				if vs.Safename != safename {
-					// If found based on sha256
-					log.Infof("found diff safename %s\n",
-						vs.Safename)
-				}
-				// If we don't already have a RefCount add one
-				if !ss.HasVerifierRef {
-					log.Infof("checkStorageDownloadStatus %s, !HasVerifierRef\n", vs.Safename)
-					createVerifierConfig(ctx, objType,
-						vs.Safename, &sc, false)
-					ss.HasVerifierRef = true
-					ret.Changed = true
-				}
-				if ret.MinState > vs.State {
-					ret.MinState = vs.State
-				}
-				if vs.State != ss.State {
-					log.Infof("checkStorageDownloadStatus(%s) from vs set ss.State %d\n",
-						safename, vs.State)
-					ss.State = vs.State
-					ss.Progress = 100
-					ret.Changed = true
-				}
-				continue
+			log.Infof(" %s, exists verified with sha %s\n",
+				imageID, sc.ImageSha256)
+			// If we don't already have a RefCount add one
+			if !ss.HasVerifierRef {
+				log.Infof("checkStorageDownloadStatus %s, !HasVerifierRef\n", sc.ImageID)
+				createVerifierConfig(ctx, uuidStr, objType, sc.ImageID, sc, *ss, false)
+				ss.HasVerifierRef = true
+				ret.Changed = true
 			}
+			if ret.MinState > vs.State {
+				ret.MinState = vs.State
+			}
+			if vs.State != ss.State {
+				log.Infof("checkStorageDownloadStatus(%s) from vs set ss.State %d\n",
+					imageID, vs.State)
+				ss.State = vs.State
+				ss.Progress = 100
+				ret.Changed = true
+			}
+			continue
 		}
 
+		ps := lookupPersistStatus(ctx, objType, sc.ImageSha256)
+		if ps != nil && !ps.Expired {
+			ret.MinState = types.DOWNLOADED
+			ss.State = types.DOWNLOADED
+			ret.Changed = true
+			log.Infof(" %s, PersistImageStatus exist sha %s\n",
+				imageID, sc.ImageSha256)
+			// If we don't already have a RefCount add one
+			// Ensures that a VerifyImageStatus will be created
+			if !ss.HasVerifierRef {
+				log.Infof("checkStorageDownloadStatus %s, !HasVerifierRef\n", sc.ImageID)
+				createVerifierConfig(ctx, uuidStr, objType, sc.ImageID, sc, *ss, false)
+				ss.HasVerifierRef = true
+				ret.Changed = true
+			}
+			continue
+		}
 		if !ss.HasDownloaderRef {
-			log.Infof("checkStorageDownloadStatus %s, !HasDownloaderRef\n", safename)
-			createDownloaderConfig(ctx, objType, safename, &sc)
+			log.Infof("checkStorageDownloadStatus %s, !HasDownloaderRef\n", imageID)
+			createDownloaderConfig(ctx, objType, imageID, &sc)
 			ss.HasDownloaderRef = true
 			ret.Changed = true
 		}
 
-		ds := lookupDownloaderStatus(ctx, objType, safename)
+		ds := lookupDownloaderStatus(ctx, objType, ss.ImageID)
 		if ds == nil {
 			log.Infof("LookupDownloaderStatus %s not yet\n",
-				safename)
+				imageID)
 			ret.MinState = types.DOWNLOAD_STARTED
 			ss.State = types.DOWNLOAD_STARTED
 			ret.Changed = true
 			continue
 		}
-
+		if ds.FileLocation != "" && ss.ActiveFileLocation == "" {
+			ss.ActiveFileLocation = ds.FileLocation
+			ret.Changed = true
+			log.Infof("checkStorageDownloadStatus(%s) from ds set ActiveFileLocation to %s",
+				imageID, ds.FileLocation)
+		}
 		if ret.MinState > ds.State {
 			ret.MinState = ds.State
 		}
 		if ds.State != ss.State {
 			log.Infof("checkStorageDownloadStatus(%s) from ds set ss.State %d\n",
-				safename, ds.State)
+				imageID, ds.State)
 			ss.State = ds.State
 			ret.Changed = true
 		}
@@ -280,16 +280,19 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 		}
 		if ds.Pending() {
 			log.Infof("checkStorageDownloadStatus(%s) Pending\n",
-				safename)
+				imageID)
 			continue
 		}
 		if ds.LastErr != "" {
 			log.Errorf("checkStorageDownloadStatus %s, downloader error, %s\n",
 				uuidStr, ds.LastErr)
-			ss.Error = ds.LastErr
-			ret.AllErrors = appendError(ret.AllErrors, "downloader",
-				ds.LastErr)
-			ss.ErrorTime = ds.LastErrTime
+			errInfo := types.ErrorInfo{
+				Error:       ds.LastErr,
+				ErrorTime:   ds.LastErrTime,
+				ErrorSource: pubsub.TypeToName(types.VerifyImageStatus{}),
+			}
+			ss.SetErrorInfo(errInfo)
+			ret.AllErrors = appendError(ret.AllErrors, "downloader", ds.LastErr)
 			ret.ErrorTime = ss.ErrorTime
 			ret.Changed = true
 		}
@@ -300,18 +303,25 @@ func checkStorageDownloadStatus(ctx *baseOsMgrContext, objType string,
 			// Nothing to do
 		case types.DOWNLOADED:
 
-			log.Infof("checkStorageDownloadStatus %s, is downloaded\n", safename)
-			// if verification is needed
-			if sc.ImageSha256 != "" {
-				// start verifier for this object
-				if !ss.HasVerifierRef {
-					err := createVerifierConfig(ctx,
-						objType, safename, &sc, true)
-					if err == nil {
-						ss.HasVerifierRef = true
+			log.Infof("checkStorageDownloadStatus %s, is downloaded\n", imageID)
+			// start verifier for this object
+			if !ss.HasVerifierRef {
+				val, errInfo := createVerifierConfig(ctx, uuidStr, objType,
+					imageID, sc, *ss, true)
+				if val {
+					ret.Changed = true
+					ss.HasVerifierRef = true
+				} else {
+					if errInfo.Error != "" {
+						ss.SetErrorInfo(errInfo)
+						ret.AllErrors = appendError(ret.AllErrors, "baseosmgr", ss.Error)
+						ret.ErrorTime = ss.ErrorTime
 						ret.Changed = true
 					} else {
-						ret.WaitingForCerts = true
+						if !ret.WaitingForCerts {
+							ret.Changed = true
+							ret.WaitingForCerts = true
+						}
 					}
 				}
 			}
@@ -336,8 +346,14 @@ func installDownloadedObjects(objType string, uuidStr string,
 	for i := range *status {
 		ss := &(*status)[i]
 
-		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
-
+		// XXX for at least the certs we should use the sha
+		// as part of the name. In fact preserve the safenanme
+		var safename string // XXX rename to dstname??
+		if objType == types.CertObj {
+			safename = types.UrlToSafename(ss.Name, ss.ImageSha256)
+		} else {
+			safename = ss.ImageID.String()
+		}
 		installDownloadedObject(objType, safename, ss)
 
 		// if something is still not installed, mark accordingly
@@ -357,7 +373,7 @@ func installDownloadedObject(objType string, safename string,
 	status *types.StorageStatus) error {
 
 	var ret error
-	var srcFilename string = types.DownloadDirname + "/" + objType
+	var srcFilename string
 
 	log.Infof("installDownloadedObject(%s/%s, %v)\n",
 		objType, safename, status.State)
@@ -381,12 +397,21 @@ func installDownloadedObject(objType string, safename string,
 				safename)
 			return nil
 		}
-		srcFilename += "/pending/" + safename
+		srcFilename = status.ActiveFileLocation
+		if srcFilename == "" {
+			log.Fatalf("XXX no ActiveFileLocation for DOWNLOADED %s", safename)
+		}
+		log.Infof("For %s ActiveFileLocation for DOWNLOADED: %s", safename, srcFilename)
 
 	case types.DELIVERED:
-		srcFilename += "/verified/" + status.ImageSha256 + "/" +
-			types.SafenameToFilename(safename)
-
+		if objType == types.CertObj {
+			log.Fatalf("DELIVERED CertObj %s", safename)
+		}
+		srcFilename = status.ActiveFileLocation
+		if srcFilename == "" {
+			log.Fatalf("XXX no ActiveFileLocation for DELIVERED %s", safename)
+		}
+		log.Infof("For %s ActiveFileLocation for DELIVERED: %s", safename, srcFilename)
 	default:
 		log.Infof("installDownloadedObject %s, still not ready (%d)\n",
 			safename, status.State)
@@ -426,8 +451,12 @@ func installDownloadedObject(objType string, safename string,
 		status.State = types.INSTALLED
 		log.Infof("installDownloadedObject(%s) done\n", safename)
 	} else {
-		status.Error = fmt.Sprintf("%s", ret)
-		status.ErrorTime = time.Now()
+		errInfo := types.ErrorInfo{
+			Error:       fmt.Sprintf("%s", ret),
+			ErrorTime:   time.Now(),
+			ErrorSource: pubsub.TypeToName(types.VerifyImageStatus{}),
+		}
+		status.SetErrorInfo(errInfo)
 	}
 	return ret
 }
@@ -438,7 +467,7 @@ func publishDownloaderConfig(ctx *baseOsMgrContext, objType string,
 	key := config.Key()
 	log.Debugf("publishDownloaderConfig(%s/%s)\n", objType, config.Key())
 	pub := downloaderPublication(ctx, objType)
-	pub.Publish(key, config)
+	pub.Publish(key, *config)
 }
 
 func unpublishDownloaderConfig(ctx *baseOsMgrContext, objType string,
@@ -455,8 +484,8 @@ func unpublishDownloaderConfig(ctx *baseOsMgrContext, objType string,
 	pub.Unpublish(key)
 }
 
-func downloaderPublication(ctx *baseOsMgrContext, objType string) *pubsub.Publication {
-	var pub *pubsub.Publication
+func downloaderPublication(ctx *baseOsMgrContext, objType string) pubsub.Publication {
+	var pub pubsub.Publication
 	switch objType {
 	case types.BaseOsObj:
 		pub = ctx.pubBaseOsDownloadConfig
@@ -469,8 +498,8 @@ func downloaderPublication(ctx *baseOsMgrContext, objType string) *pubsub.Public
 	return pub
 }
 
-func downloaderSubscription(ctx *baseOsMgrContext, objType string) *pubsub.Subscription {
-	var sub *pubsub.Subscription
+func downloaderSubscription(ctx *baseOsMgrContext, objType string) pubsub.Subscription {
+	var sub pubsub.Subscription
 	switch objType {
 	case types.BaseOsObj:
 		sub = ctx.subBaseOsDownloadStatus

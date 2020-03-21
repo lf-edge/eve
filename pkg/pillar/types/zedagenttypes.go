@@ -6,6 +6,7 @@ package types
 import (
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -160,6 +161,29 @@ func (status CertObjStatus) CheckPendingDelete() bool {
 	return false
 }
 
+// getCertObjStatus finds a certificate, and returns the status
+// returns three values,
+//  - whether the cert object status is found
+//  - whether the cert object is installed
+//  - any error information
+func (status CertObjStatus) getCertStatus(certURL string) (bool, bool, ErrorInfo) {
+	for _, certObj := range status.StorageStatusList {
+		if certObj.Name == certURL {
+			installed := true
+			if certObj.Error != "" || certObj.State != INSTALLED {
+				installed = false
+			}
+			return true, installed, certObj.GetErrorInfo()
+		}
+	}
+	errorInfo := ErrorInfo{
+		Error:       "Invalid Certificate, not found",
+		ErrorSource: pubsub.TypeToName(VerifyImageStatus{}),
+		ErrorTime:   time.Now(),
+	}
+	return false, false, errorInfo
+}
+
 // return value holder
 type RetStatus struct {
 	Changed          bool
@@ -198,10 +222,13 @@ type DatastoreConfig struct {
 	UUID     uuid.UUID
 	DsType   string
 	Fqdn     string
-	ApiKey   string
-	Password string
+	ApiKey   string // XXX: to be deprecated, use CipherBlockStatus instead
+	Password string // XXX: to be deprecated, use CipherBlockStatus instead
 	Dpath    string // depending on DsType, it could be bucket or path
 	Region   string
+
+	// CipherBlockStatus, for encrypted credentials
+	CipherBlockStatus
 }
 
 func (config DatastoreConfig) Key() string {
@@ -214,9 +241,12 @@ type NodeAgentStatus struct {
 	CurPart           string
 	UpdateInprogress  bool
 	RemainingTestTime time.Duration
-	NeedsReboot       bool
-	RebootReason      string
-	ErrorStr          string
+	DeviceReboot      bool
+	RebootReason      string    // From last reboot
+	RebootStack       string    // From last reboot
+	RebootTime        time.Time // From last reboot
+	RestartCounter    uint32
+	RebootImage       string
 }
 
 // Key :
@@ -239,6 +269,8 @@ const (
 type ZedAgentStatus struct {
 	Name            string
 	ConfigGetStatus ConfigGetStatus
+	RebootCmd       bool
+	RebootReason    string // Current reason to reboot
 }
 
 // Key :

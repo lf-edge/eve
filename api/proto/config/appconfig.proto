@@ -12,45 +12,46 @@ import "vm.proto";
 import "netconfig.proto";
 
 message InstanceOpsCmd {
-	uint32 counter = 2;
-	string opsTime = 4;
+  uint32 counter = 2;
+  string opsTime = 4;
 }
 
 message AppInstanceConfig {
-	UUIDandVersion uuidandversion = 1;
-	string displayname = 2;
-	VmConfig fixedresources = 3;
-	repeated Drive drives = 4;
-	bool activate = 5;
+  UUIDandVersion uuidandversion = 1;
+  string displayname = 2;
+  VmConfig fixedresources = 3;
+  repeated Drive drives = 4;
+  bool activate = 5;
 
-	// NetworkAdapter are virtual adapters assigned to the application
-	// Physical adapters such as eth1 are part of Adapter
-	repeated NetworkAdapter interfaces = 6;
-	repeated Adapter adapters = 7;	// I/O adapters to assign to app
+  // NetworkAdapter are virtual adapters assigned to the application
+  // Physical adapters such as eth1 are part of Adapter
+  repeated NetworkAdapter interfaces = 6;
+  // adapters - Name in Adapter should be set to PhysicalIO.assigngrp
+  repeated Adapter adapters = 7; // I/O adapters to assign to app
 
-	//The device behavior for a restart command (if counter increased) 
-	// is to restart the application instance honoring the persist setting
-	// for the disks/drives. 
-	// The device can assume that the adapters did not change.
+  // The device behavior for a restart command (if counter increased)
+  // is to restart the application instance honoring the persist setting
+  // for the disks/drives.
+  // The device can assume that the adapters did not change.
+  InstanceOpsCmd restart = 9;
 
-        InstanceOpsCmd restart = 9;
+  // The device behavior for a purge command is to restart the domU.
+  // with the disks/drives recreated from the downloaded images
+  // (whether preserve is set or not).
+  //    if the manifest is changed with purge option, new manifest will
+  //    be used. Device doesn't know what has changed, it will get the
+  //    changed config.
+  //
+  //    if disks section have changed will be purged automatically.
+  //    phase 1: we would purge all disks irrespective preserve flag
+  InstanceOpsCmd purge = 10;
 
-	// The device behavior for a purge command is to restart the domU.
-	// with the disks/drives recreated from the downloaded images 
-	// (whether preserve is set or not).
-	//    if the manifest is changed with purge option, new manifest will
-	//    be used. Device doesn't know what has changed, it will get the
-	//    changed config.
-	// 
-	//    if disks section have changed will be purged automatically.
-	//    phase 1: we would purge all disks irrespective preserve flag
-        InstanceOpsCmd purge = 10;
-	// App Instance initialization configuration data provided by user
-	// This will be used as "user-data" in cloud-init
-	// Empty string will indicate that cloud-init is not required
-	string userData = 11;
+  // App Instance initialization configuration data provided by user
+  // This will be used as "user-data" in cloud-init
+  // Empty string will indicate that cloud-init is not required
+  string userData = 11;
 
-	// Config flag if the app-instance should be made accessible
-	// through a remote console session established by the device.
-	bool remoteConsole = 12;
+  // Config flag if the app-instance should be made accessible
+  // through a remote console session established by the device.
+  bool remoteConsole = 12;
 }

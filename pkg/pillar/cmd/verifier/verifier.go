@@ -8,12 +8,11 @@
 // with VerifyImageConfig and compare against VerifyImageStatus in the status
 // dir.
 //
-// Move the file from DownloadDirname/pending/<claimedsha>/<safename> to
-// to DownloadDirname/verifier/<claimedsha>/<safename> and make RO,
+// Move the file from DownloadDirname/pending/<imageID> to
+// to DownloadDirname/verifier/<imageID> and make RO,
 // then attempt to verify sum.
-// Once sum is verified, move to DownloadDirname/verified/<sha>/<filename>// where the filename is the last part of the URL (after the last '/')
-// Note that different URLs for same file will download to the same <sha>
-// directory. We delete duplicates assuming the file content will be the same.
+// Once sum is verified, move to DownloadDirname/verified/<sha256>/<filename> where the
+// filename is the last part of the URL (after the last '/')
 
 package verifier
 
@@ -35,23 +34,30 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 const (
 	agentName = "verifier"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 
 	// If this file is present we don't delete verified files in handleDelete
 	preserveFilename = types.TmpDirname + "/preserve"
 )
 
+// Really a constant
+var nilUUID uuid.UUID
+
 // Go doesn't like this as a constant
 var (
 	verifierObjTypes = []string{types.AppImgObj, types.BaseOsObj}
+	vHandler         = makeVerifyHandler()
 )
 
 // Set from Makefile
@@ -59,22 +65,26 @@ var Version = "No version specified"
 
 // Any state used by handlers goes here
 type verifierContext struct {
-	subAppImgConfig       *pubsub.Subscription
-	pubAppImgStatus       *pubsub.Publication
-	subBaseOsConfig       *pubsub.Subscription
-	pubBaseOsStatus       *pubsub.Publication
-	subGlobalConfig       *pubsub.Subscription
-	assignableAdapters    *types.AssignableAdapters
-	subAssignableAdapters *pubsub.Subscription
-	gc                    *time.Ticker
+	subAppImgConfig        pubsub.Subscription
+	pubAppImgStatus        pubsub.Publication
+	subAppImgPersistConfig pubsub.Subscription
+	pubAppImgPersistStatus pubsub.Publication
+	subBaseOsConfig        pubsub.Subscription
+	pubBaseOsStatus        pubsub.Publication
+	subBaseOsPersistConfig pubsub.Subscription
+	pubBaseOsPersistStatus pubsub.Publication
+	subGlobalConfig        pubsub.Subscription
+	assignableAdapters     *types.AssignableAdapters
+	subAssignableAdapters  pubsub.Subscription
+	gc                     *time.Ticker
+	GCInitialized          bool
 }
 
 var debug = false
 var debugOverride bool                                // From command line arg
 var downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfig
 
-func Run() {
-	handlersInit()
+func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
@@ -87,11 +97,10 @@ func Run() {
 		log.SetLevel(log.InfoLevel)
 	}
 	curpart := *curpartPtr
-	logf, err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logf.Close()
 
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
@@ -104,7 +113,7 @@ func Run() {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
+	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	// create the directories
 	initializeDirs()
@@ -116,99 +125,182 @@ func Run() {
 	}
 
 	// Set up our publications before the subscriptions so ctx is set
-	pubAppImgStatus, err := pubsub.PublishScope(agentName, types.AppImgObj,
-		types.VerifyImageStatus{})
+	pubAppImgStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.AppImgObj,
+			TopicType:  types.VerifyImageStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubAppImgStatus = pubAppImgStatus
 	pubAppImgStatus.ClearRestarted()
 
-	pubBaseOsStatus, err := pubsub.PublishScope(agentName, types.BaseOsObj,
-		types.VerifyImageStatus{})
+	pubBaseOsStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.BaseOsObj,
+			TopicType:  types.VerifyImageStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubBaseOsStatus = pubBaseOsStatus
 	pubBaseOsStatus.ClearRestarted()
 
-	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
-		false, &ctx)
+	// Set up our publications before the subscriptions so ctx is set
+	pubAppImgPersistStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.AppImgObj,
+			TopicType:  types.PersistImageStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	ctx.pubAppImgPersistStatus = pubAppImgPersistStatus
+
+	pubBaseOsPersistStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.BaseOsObj,
+			TopicType:  types.PersistImageStatus{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubBaseOsPersistStatus = pubBaseOsPersistStatus
+
+	// Look for global config such as log levels
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.GlobalConfig{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleGlobalConfigModify,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	subAppImgConfig, err := pubsub.SubscribeScope("zedmanager",
-		types.AppImgObj, types.VerifyImageConfig{}, false, &ctx)
+	subAppImgConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedmanager",
+		AgentScope:    types.AppImgObj,
+		TopicImpl:     types.VerifyImageConfig{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleAppImgCreate,
+		ModifyHandler: handleAppImgModify,
+		DeleteHandler: handleAppImgDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppImgConfig.ModifyHandler = handleAppImgModify
-	subAppImgConfig.CreateHandler = handleAppImgCreate
-	subAppImgConfig.DeleteHandler = handleAppImgDelete
 	ctx.subAppImgConfig = subAppImgConfig
 	subAppImgConfig.Activate()
 
-	subBaseOsConfig, err := pubsub.SubscribeScope("baseosmgr",
-		types.BaseOsObj, types.VerifyImageConfig{}, false, &ctx)
+	subBaseOsConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "baseosmgr",
+		AgentScope:    types.BaseOsObj,
+		TopicImpl:     types.VerifyImageConfig{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleBaseOsCreate,
+		ModifyHandler: handleBaseOsModify,
+		DeleteHandler: handleBaseOsDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subBaseOsConfig.ModifyHandler = handleBaseOsModify
-	subBaseOsConfig.CreateHandler = handleBaseOsCreate
-	subBaseOsConfig.DeleteHandler = handleBaseOsDelete
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
-	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
-		types.AssignableAdapters{}, false, &ctx)
+	subAppImgPersistConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "zedmanager",
+			AgentScope:    types.AppImgObj,
+			TopicImpl:     types.PersistImageConfig{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handleAppImgCreate,
+			ModifyHandler: handleAppImgModify,
+			DeleteHandler: handleAppImgDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAssignableAdapters.ModifyHandler = handleAAModify
-	subAssignableAdapters.DeleteHandler = handleAADelete
+	ctx.subAppImgPersistConfig = subAppImgPersistConfig
+	subAppImgPersistConfig.Activate()
+
+	subBaseOsPersistConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "baseosmgr",
+			AgentScope:    types.BaseOsObj,
+			TopicImpl:     types.PersistImageConfig{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handleBaseOsCreate,
+			ModifyHandler: handleBaseOsModify,
+			DeleteHandler: handleBaseOsDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subBaseOsPersistConfig = subBaseOsPersistConfig
+	subBaseOsPersistConfig.Activate()
+
+	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "domainmgr",
+		TopicImpl:     types.AssignableAdapters{},
+		Activate:      false,
+		Ctx:           &ctx,
+		ModifyHandler: handleAAModify,
+		DeleteHandler: handleAADelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 	ctx.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
+	// Pick up debug aka log level before we start real work
+	for !ctx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
+
 	// Publish status for any objects that were verified before reboot
-	// Then we report that the rest of the system can proceed.
-	// After than handleInitUpdateVerifiedObjects will recheck
-	// sha/signatures which can take many minutes, and update zedmanager.
+	// The signatures will be re-checked during handleModify for App images.
 	handleInit(&ctx)
 
 	// Report to zedmanager that init is done
 	pubAppImgStatus.SignalRestarted()
 	pubBaseOsStatus.SignalRestarted()
 	log.Infof("SignalRestarted done")
-
-	// Need stillRunning across handleInitUpdateVerifiedObjects since
-	// it reverifies potentially huge images
-	keepRunning := func(doneChan chan struct{}) {
-		log.Infof("keepRunning starting")
-		for {
-			select {
-			case <-doneChan:
-				log.Infof("keepRunning done")
-				close(doneChan)
-				return
-
-			case <-stillRunning.C:
-			}
-			agentlog.StillRunning(agentName)
-		}
-	}
-	doneChan := make(chan struct{})
-	go keepRunning(doneChan)
-
-	handleInitUpdateVerifiedObjects(&ctx)
-
-	doneChan <- struct{}{}
 
 	// We will cleanup zero RefCount objects after a while
 	// We run timer 10 times more often than the limit on LastUse
@@ -220,34 +312,33 @@ func Run() {
 
 	for {
 		select {
-		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
-		case change := <-subAppImgConfig.C:
-			start := agentlog.StartTime()
+		case change := <-subAppImgConfig.MsgChan():
 			subAppImgConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
-		case change := <-subBaseOsConfig.C:
-			start := agentlog.StartTime()
+		case change := <-subBaseOsConfig.MsgChan():
 			subBaseOsConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
-		case change := <-subAssignableAdapters.C:
-			start := agentlog.StartTime()
+		case change := <-subAppImgPersistConfig.MsgChan():
+			subAppImgPersistConfig.ProcessChange(change)
+
+		case change := <-subBaseOsPersistConfig.MsgChan():
+			subBaseOsPersistConfig.ProcessChange(change)
+
+		case change := <-subAssignableAdapters.MsgChan():
 			subAssignableAdapters.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-ctx.gc.C:
-			start := agentlog.StartTime()
+			start := time.Now()
 			gcVerifiedObjects(&ctx)
-			agentlog.CheckMaxTime(agentName, start)
+			pubsub.CheckMaxTimeTopic(agentName, "gc", start,
+				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
@@ -293,20 +384,15 @@ func initializeDirs() {
 // has PendingDelete set.
 func handleInitWorkinProgressObjects(ctx *verifierContext) {
 
-	publications := []*pubsub.Publication{
+	publications := []pubsub.Publication{
 		ctx.pubAppImgStatus,
 		ctx.pubBaseOsStatus,
 	}
 	for _, pub := range publications {
 		items := pub.GetAll()
-		for key, st := range items {
-			status := cast.CastVerifyImageStatus(st)
-			if status.Key() != key {
-				log.Errorf("handleInitWorkin key/UUID mismatch %s vs %s; ignored %+v\n",
-					key, status.Key(), status)
-				continue
-			}
-			log.Debugf("Marking with PendingDelete: %s\n", key)
+		for _, st := range items {
+			status := st.(types.VerifyImageStatus)
+			log.Debugf("Marking with PendingDelete: %s\n", status.Key())
 			status.PendingDelete = true
 			publishVerifyImageStatus(ctx, &status)
 		}
@@ -314,6 +400,7 @@ func handleInitWorkinProgressObjects(ctx *verifierContext) {
 }
 
 // Recreate status files for verified objects as types.DOWNLOADED
+// except containers which we mark as types.DELIVERED
 func handleInitVerifiedObjects(ctx *verifierContext) {
 
 	for _, objType := range verifierObjTypes {
@@ -326,19 +413,28 @@ func handleInitVerifiedObjects(ctx *verifierContext) {
 	}
 }
 
-// Verify the sha/signatures and then mark as types.DELIVERED
-func handleInitUpdateVerifiedObjects(ctx *verifierContext) {
+func verifiedImageStatusFromImageFile(
+	objType, objDirname, parentDirname, imageFileName string,
+	size int64, filename string) *types.PersistImageStatus {
 
-	log.Infoln("handleInitUpdateVerifiedObjects")
-	for _, objType := range verifierObjTypes {
-
-		verifiedDirname := types.DownloadDirname + "/" + objType + "/verified"
-		if _, err := os.Stat(verifiedDirname); err == nil {
-			updateInitialStatusFromVerified(ctx, objType,
-				verifiedDirname, "")
-		}
+	status := types.PersistImageStatus{
+		VerifyStatus: types.VerifyStatus{
+			Name:         imageFileName,
+			ObjType:      objType,
+			FileLocation: filename,
+			ImageSha256:  parentDirname,
+			Size:         size,
+		},
+		LastUse:  time.Now(),
+		RefCount: 0,
 	}
-	log.Infoln("handleInitUpdateVerifiedObjects done")
+
+	log.Debugf("verifiedImageStatusFromImageFile: objType: %s, "+
+		"objDirname: %s, parentDirname: %s, imageFileName: %s",
+		objType, objDirname, parentDirname, imageFileName)
+
+	log.Debugf("verifiedImageStatusFromImageFile: status: %+v", status)
+	return &status
 }
 
 // Recursive scanning for verified objects,
@@ -355,6 +451,8 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 		log.Fatal(err)
 	}
 
+	log.Debugf("populateInitialStatusFromVerified: processing locations %v", locations)
+
 	for _, location := range locations {
 
 		filename := objDirname + "/" + location.Name()
@@ -369,113 +467,35 @@ func populateInitialStatusFromVerified(ctx *verifierContext,
 			size := int64(0)
 			info, err := os.Stat(filename)
 			if err != nil {
+				// XXX Delete file?
 				log.Error(err)
 			} else {
 				size = info.Size()
 			}
 			log.Debugf("populateInitialStatusFromVerified: Processing %s: %d Mbytes\n",
 				filename, size/(1024*1024))
-
-			sha := parentDirname
-			// We don't know the URL; Pick a name which is unique
-			safename := location.Name() + "." + sha
-
-			status := types.VerifyImageStatus{
-				Safename:    safename,
-				ObjType:     objType,
-				ImageSha256: sha,
-				State:       types.DOWNLOADED,
-				Size:        size,
-				RefCount:    0,
-				LastUse:     time.Now(),
+			status := verifiedImageStatusFromImageFile(objType, objDirname,
+				parentDirname, location.Name(), size, filename)
+			if status != nil {
+				publishPersistImageStatus(ctx, status)
 			}
-			publishVerifyImageStatus(ctx, &status)
-		}
-	}
-}
-
-// Recursive scanning for verified objects,
-// to update the VerifyImageStatus after verifying the sha/signatures.
-func updateInitialStatusFromVerified(ctx *verifierContext,
-	objType string, objDirname string, parentDirname string) {
-
-	log.Infof("updateInitialStatusFromVerified(%s, %s)\n", objDirname,
-		parentDirname)
-
-	locations, err := ioutil.ReadDir(objDirname)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, location := range locations {
-
-		filename := objDirname + "/" + location.Name()
-
-		if location.IsDir() {
-			log.Debugf("updateInitialStatusFromVerified: Looking in %s\n", filename)
-			if _, err := os.Stat(filename); err == nil {
-				updateInitialStatusFromVerified(ctx,
-					objType, filename, location.Name())
-			}
-		} else {
-			log.Debugf("updateInitialStatusFromVerified: Processing %s\n",
-				filename)
-
-			sha := parentDirname
-			safename := location.Name() + "." + sha
-			status := lookupVerifyImageStatus(ctx,
-				objType, safename)
-			if status == nil {
-				log.Errorf("updateInitialStatusFromVerified: %s/%s not found\n",
-					objType, safename)
-				continue
-			}
-
-			// We re-verify the sha on reboot/restart
-			// XXX what about signature? Do we have the certs?
-			imageHash, err := computeShaFile(filename)
-			if err != nil {
-				log.Errorf("computeShaFile %s failed %s\n",
-					filename, err)
-				doDelete(status)
-				continue
-			}
-
-			got := fmt.Sprintf("%x", imageHash)
-			if got != strings.ToLower(sha) {
-				log.Errorf("computed   %s\n", got)
-				log.Errorf("configured %s\n",
-					strings.ToLower(sha))
-				doDelete(status)
-				continue
-			}
-
-			status.State = types.DELIVERED
-			// Passed sha verification
-			publishVerifyImageStatus(ctx, status)
 		}
 	}
 }
 
 // remove the status files marked as pending delete
 func handleInitMarkedDeletePendingObjects(ctx *verifierContext) {
-	publications := []*pubsub.Publication{
+	publications := []pubsub.Publication{
 		ctx.pubAppImgStatus,
 		ctx.pubBaseOsStatus,
 	}
 	for _, pub := range publications {
 		items := pub.GetAll()
-		for key, st := range items {
-			status := cast.CastVerifyImageStatus(st)
-			if status.Key() != key {
-				log.Errorf("handleInitMarked key/UUID mismatch %s vs %s; ignored %+v\n",
-					key, status.Key(), status)
-				continue
-			}
+		for _, st := range items {
+			status := st.(types.VerifyImageStatus)
 			if status.PendingDelete {
 				log.Infof("still PendingDelete; delete %s\n",
-					key)
+					status.Key())
 				unpublishVerifyImageStatus(ctx, &status)
 			}
 		}
@@ -526,35 +546,30 @@ func clearInProgressDownloadDirs(objTypes []string) {
 // XXX Note that this runs concurrently with the handler.
 func gcVerifiedObjects(ctx *verifierContext) {
 	log.Debugf("gcVerifiedObjects()\n")
-	publications := []*pubsub.Publication{
-		ctx.pubAppImgStatus,
-		ctx.pubBaseOsStatus,
+	publications := []pubsub.Publication{
+		ctx.pubAppImgPersistStatus,
+		ctx.pubBaseOsPersistStatus,
 	}
 	for _, pub := range publications {
 		items := pub.GetAll()
-		for key, st := range items {
-			status := cast.CastVerifyImageStatus(st)
-			if status.Key() != key {
-				log.Errorf("gcVerifiedObjects key/UUID mismatch %s vs %s; ignored %+v\n",
-					key, status.Key(), status)
-				continue
-			}
+		for _, st := range items {
+			status := st.(types.PersistImageStatus)
 			if status.RefCount != 0 {
 				log.Debugf("gcVerifiedObjects: skipping RefCount %d: %s\n",
-					status.RefCount, key)
+					status.RefCount, status.Key())
 				continue
 			}
 			timePassed := time.Since(status.LastUse)
 			if timePassed < downloadGCTime {
 				log.Debugf("gcverifiedObjects: skipping recently used %s remains %d seconds\n",
-					key,
+					status.Key(),
 					(timePassed-downloadGCTime)/time.Second)
 				continue
 			}
 			log.Infof("gcVerifiedObjects: expiring status for %s; LastUse %v now %v\n",
-				key, status.LastUse, time.Now())
+				status.Key(), status.LastUse, time.Now())
 			status.Expired = true
-			publishVerifyImageStatus(ctx, &status)
+			publishPersistImageStatus(ctx, &status)
 		}
 	}
 }
@@ -572,18 +587,18 @@ func publishVerifyImageStatus(ctx *verifierContext,
 	status *types.VerifyImageStatus) {
 
 	log.Debugf("publishVerifyImageStatus(%s, %s)\n",
-		status.ObjType, status.Safename)
+		status.ObjType, status.ImageID)
 
 	pub := verifierPublication(ctx, status.ObjType)
 	key := status.Key()
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishVerifyImageStatus(ctx *verifierContext,
 	status *types.VerifyImageStatus) {
 
 	log.Debugf("publishVerifyImageStatus(%s, %s)\n",
-		status.ObjType, status.Safename)
+		status.ObjType, status.ImageID)
 
 	pub := verifierPublication(ctx, status.ObjType)
 	key := status.Key()
@@ -595,8 +610,35 @@ func unpublishVerifyImageStatus(ctx *verifierContext,
 	pub.Unpublish(key)
 }
 
-func verifierPublication(ctx *verifierContext, objType string) *pubsub.Publication {
-	var pub *pubsub.Publication
+func publishPersistImageStatus(ctx *verifierContext,
+	status *types.PersistImageStatus) {
+
+	log.Debugf("publishPersistImageStatus(%s, %s)\n",
+		status.ObjType, status.ImageSha256)
+
+	pub := verifierPersistPublication(ctx, status.ObjType)
+	key := status.Key()
+	pub.Publish(key, *status)
+}
+
+func unpublishPersistImageStatus(ctx *verifierContext,
+	status *types.PersistImageStatus) {
+
+	log.Debugf("publishPersistImageStatus(%s, %s)\n",
+		status.ObjType, status.ImageSha256)
+
+	pub := verifierPersistPublication(ctx, status.ObjType)
+	key := status.Key()
+	st, _ := pub.Get(key)
+	if st == nil {
+		log.Errorf("unpublishPersistImageStatus(%s) not found\n", key)
+		return
+	}
+	pub.Unpublish(key)
+}
+
+func verifierPublication(ctx *verifierContext, objType string) pubsub.Publication {
+	var pub pubsub.Publication
 	switch objType {
 	case types.AppImgObj:
 		pub = ctx.pubAppImgStatus
@@ -609,143 +651,94 @@ func verifierPublication(ctx *verifierContext, objType string) *pubsub.Publicati
 	return pub
 }
 
-// Wrappers to add objType for create. The Delete wrappers are merely
-// for function name consistency
-func handleAppImgModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	handleVerifyImageModify(ctxArg, types.AppImgObj, key, configArg)
-}
-func handleAppImgCreate(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	handleVerifyImageCreate(ctxArg, types.AppImgObj, key, configArg)
-}
-
-func handleAppImgDelete(ctxArg interface{}, key string, configArg interface{}) {
-	handleVerifyImageDelete(ctxArg, key, configArg)
+func verifierSubscription(ctx *verifierContext, objType string) pubsub.Subscription {
+	var sub pubsub.Subscription
+	switch objType {
+	case types.AppImgObj:
+		sub = ctx.subAppImgConfig
+	case types.BaseOsObj:
+		sub = ctx.subBaseOsConfig
+	default:
+		log.Fatalf("verifierSubscription: Unknown ObjType %s\n",
+			objType)
+	}
+	return sub
 }
 
-func handleBaseOsModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	handleVerifyImageModify(ctxArg, types.BaseOsObj, key, configArg)
+func verifierPersistPublication(ctx *verifierContext, objType string) pubsub.Publication {
+	var pub pubsub.Publication
+	switch objType {
+	case types.AppImgObj:
+		pub = ctx.pubAppImgPersistStatus
+	case types.BaseOsObj:
+		pub = ctx.pubBaseOsPersistStatus
+	default:
+		log.Fatalf("verifierPersistPublication: Unknown ObjType %s\n",
+			objType)
+	}
+	return pub
 }
 
-func handleBaseOsCreate(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	handleVerifyImageCreate(ctxArg, types.BaseOsObj, key, configArg)
-}
-
-func handleBaseOsDelete(ctxArg interface{}, key string, configArg interface{}) {
-	handleVerifyImageDelete(ctxArg, key, configArg)
+func verifierPersistSubscription(ctx *verifierContext, objType string) pubsub.Subscription {
+	var sub pubsub.Subscription
+	switch objType {
+	case types.AppImgObj:
+		sub = ctx.subAppImgPersistConfig
+	case types.BaseOsObj:
+		sub = ctx.subBaseOsPersistConfig
+	default:
+		log.Fatalf("verifierPersistSubscription: Unknown ObjType %s\n",
+			objType)
+	}
+	return sub
 }
 
 // Callers must be careful to publish any changes to VerifyImageStatus
 func lookupVerifyImageStatus(ctx *verifierContext, objType string,
-	key string) *types.VerifyImageStatus {
+	imageID string) *types.VerifyImageStatus {
 
 	pub := verifierPublication(ctx, objType)
-	st, _ := pub.Get(key)
+	st, _ := pub.Get(imageID)
 	if st == nil {
-		log.Infof("lookupVerifyImageStatus(%s) not found\n", key)
+		log.Infof("lookupVerifyImageStatus(%s) not found\n", imageID)
 		return nil
 	}
-	status := cast.CastVerifyImageStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupVerifyImageStatus(%s) got %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.VerifyImageStatus)
 	return &status
 }
 
-// We have one goroutine per provisioned domU object.
-// Channel is used to send config (new and updates)
-// Channel is closed when the object is deleted
-// The go-routine owns writing status for the object
-// The key in the map is the objects Key()
-type handlers map[string]chan<- interface{}
+// Callers must be careful to publish any changes to PersistImageStatus
+func lookupPersistImageStatus(ctx *verifierContext, objType string,
+	sha string) *types.PersistImageStatus {
 
-var handlerMap handlers
-
-func handlersInit() {
-	handlerMap = make(handlers)
+	pub := verifierPersistPublication(ctx, objType)
+	st, _ := pub.Get(sha)
+	if st == nil {
+		log.Infof("lookupPersistImageStatus(%s) not found\n", sha)
+		return nil
+	}
+	status := st.(types.PersistImageStatus)
+	return &status
 }
 
-// Wrappers around handleCreate, handleModify, and handleDelete
-
-// Determine whether it is an create or modify
-func handleVerifyImageModify(ctxArg interface{}, objType string,
-	key string, configArg interface{}) {
-
-	log.Infof("handleVerifyImageModify(%s)\n", key)
-	config := cast.CastVerifyImageConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleVerifyImageModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	h, ok := handlerMap[config.Key()]
-	if !ok {
-		log.Fatalf("handleVerifyImageModify called on config that does not exist")
-	}
-	h <- configArg
-	log.Infof("handleVerifyImageModify(%s) done\n", key)
-}
-func handleVerifyImageCreate(ctxArg interface{}, objType string,
-	key string, configArg interface{}) {
-
-	log.Infof("handleVerifyImageCreate(%s)\n", key)
-	ctx := ctxArg.(*verifierContext)
-	config := cast.CastVerifyImageConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleVerifyImageCreate key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	h, ok := handlerMap[config.Key()]
-	if ok {
-		log.Fatalf("handleVerifyImageCreate called on config that already exists")
-	}
-	h1 := make(chan interface{}, 1)
-	handlerMap[config.Key()] = h1
-	go runHandler(ctx, objType, key, h1)
-	h = h1
-	h <- configArg
-	log.Infof("handleVerifyImageCreate(%s) done\n", key)
-}
-
-func handleVerifyImageDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Infof("handleVerifyImageDelete(%s)\n", key)
-	// Do we have a channel/goroutine?
-	h, ok := handlerMap[key]
-	if ok {
-		log.Debugf("Closing channel\n")
-		close(h)
-		delete(handlerMap, key)
-	} else {
-		log.Debugf("handleVerifyImageDelete: unknown %s\n", key)
-		return
-	}
-	log.Infof("handleVerifyImageDelete(%s) done\n", key)
-}
-
-// Server for each domU
+// Server for each VerifyImageConfig
 func runHandler(ctx *verifierContext, objType string, key string,
-	c <-chan interface{}) {
+	c <-chan Notify) {
 
 	log.Infof("runHandler starting\n")
 
 	closed := false
 	for !closed {
 		select {
-		case configArg, ok := <-c:
+		case _, ok := <-c:
 			if ok {
-				config := cast.CastVerifyImageConfig(configArg)
+				sub := verifierSubscription(ctx, objType)
+				c, err := sub.Get(key)
+				if err != nil {
+					log.Errorf("runHandler no config for %s", key)
+					continue
+				}
+				config := c.(types.VerifyImageConfig)
 				status := lookupVerifyImageStatus(ctx,
 					objType, key)
 				if status == nil {
@@ -767,48 +760,101 @@ func runHandler(ctx *verifierContext, objType string, key string,
 	log.Infof("runHandler(%s) DONE\n", key)
 }
 
+// Server for each PersistImageConfig
+func runPersistHandler(ctx *verifierContext, objType string, key string,
+	c <-chan Notify) {
+
+	log.Infof("runPersistHandler starting\n")
+
+	closed := false
+	for !closed {
+		select {
+		case _, ok := <-c:
+			if ok {
+				sub := verifierPersistSubscription(ctx, objType)
+				c, err := sub.Get(key)
+				if err != nil {
+					log.Errorf("runPersistHandler no config for %s", key)
+					continue
+				}
+				config := c.(types.PersistImageConfig)
+				status := lookupPersistImageStatus(ctx,
+					objType, key)
+				if status == nil {
+					handlePersistCreate(ctx, objType, &config)
+				} else {
+					handlePersistModify(ctx, &config, status)
+				}
+			} else {
+				// Closed
+				status := lookupPersistImageStatus(ctx,
+					objType, key)
+				if status != nil {
+					handlePersistDelete(ctx, status)
+				}
+				closed = true
+			}
+		}
+	}
+	log.Infof("runPersistHandler(%s) DONE\n", key)
+}
+
 func handleCreate(ctx *verifierContext, objType string,
 	config *types.VerifyImageConfig) {
 
-	log.Infof("handleCreate(%v) objType %s for %s\n",
-		config.Safename, objType, config.Name)
+	log.Infof("handleCreate(%s) objType %s for %s\n",
+		config.ImageID, objType, config.Name)
 	if objType == "" {
 		log.Fatalf("handleCreate: No ObjType for %s\n",
-			config.Safename)
+			config.ImageID)
 	}
 
 	status := types.VerifyImageStatus{
-		Safename:         config.Safename,
-		ObjType:          objType,
-		ImageSha256:      config.ImageSha256,
-		PendingAdd:       true,
-		State:            types.DOWNLOADED,
-		RefCount:         config.RefCount,
-		LastUse:          time.Now(),
-		IsContainer:      config.IsContainer,
-		ContainerImageID: config.ContainerImageID,
+		ImageID: config.ImageID,
+		VerifyStatus: types.VerifyStatus{
+			Name:        config.Name,
+			ObjType:     objType,
+			ImageSha256: config.ImageSha256,
+		},
+		PendingAdd:  true,
+		State:       types.DOWNLOADED,
+		RefCount:    config.RefCount,
+		IsContainer: config.IsContainer,
+	}
+	publishVerifyImageStatus(ctx, &status)
+	// Does this already exist under the sha?
+	if config.ImageSha256 != "" {
+		ps := lookupPersistImageStatus(ctx, objType, config.ImageSha256)
+		if ps != nil {
+			// XXX if this is the first time since reboot, should we verify
+			// the sha and signature?
+			log.Infof("Found PersistImageStatus for %s id %s",
+				config.ImageSha256, config.ImageID)
+			status.VerifyStatus = ps.VerifyStatus
+			status.PendingAdd = false
+			status.State = types.DELIVERED
+			publishVerifyImageStatus(ctx, &status)
+			log.Infof("handleCreate done for %s\n", config.Name)
+			return
+		}
+		log.Infof("No PersistImageStatus for %s id %s",
+			config.ImageSha256, config.ImageID)
+	}
+	ok, size := markObjectAsVerifying(ctx, config, &status)
+	if !ok {
+		log.Errorf("handleCreate fail for %s\n", config.Name)
+		return
+	}
+	status.Size = size
+	publishVerifyImageStatus(ctx, &status)
+
+	if !verifyObjectSha(ctx, config, &status) {
+		log.Errorf("handleCreate fail for %s\n", config.Name)
+		return
 	}
 	publishVerifyImageStatus(ctx, &status)
 
-	// Skip verification steps for Container. Container image verification
-	// is done by rkt fetch itself.. No need to be done here.
-	if !config.IsContainer {
-		ok, size := markObjectAsVerifying(ctx, config, &status)
-		if !ok {
-			log.Errorf("handleCreate fail for %s\n", config.Name)
-			return
-		}
-		status.Size = size
-		publishVerifyImageStatus(ctx, &status)
-
-		if !verifyObjectSha(ctx, config, &status) {
-			log.Errorf("handleCreate fail for %s\n", config.Name)
-			return
-		}
-		publishVerifyImageStatus(ctx, &status)
-
-		markObjectAsVerified(ctx, config, &status)
-	}
+	markObjectAsVerified(ctx, config, &status)
 	status.PendingAdd = false
 	status.State = types.DELIVERED
 	publishVerifyImageStatus(ctx, &status)
@@ -820,19 +866,8 @@ func markObjectAsVerifying(ctx *verifierContext,
 	config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus) (bool, int64) {
 
-	// Form the unique filename in
-	// DownloadDirname/<objType>/pending/
-	// based on the claimed Sha256 and safename, and the same name
-	// in DownloadDirname/<objType>/verifier/. Form a shorter name for
-	// DownloadDirname/<objType/>verified/.
-
-	objType := status.ObjType
-	downloadDirname := types.DownloadDirname + "/" + objType
-	pendingDirname := downloadDirname + "/pending/" + status.ImageSha256
-	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
-
-	pendingFilename := pendingDirname + "/" + config.Safename
-	verifierFilename := verifierDirname + "/" + config.Safename
+	pendingDirname, verifierDirname, _ := status.ImageDownloadDirNames()
+	pendingFilename, verifierFilename, _ := status.ImageDownloadFilenames()
 
 	// Move to verifier directory which is RO
 	// XXX should have dom0 do this and/or have RO mounts
@@ -845,7 +880,7 @@ func markObjectAsVerifying(ctx *verifierContext,
 		log.Errorf("markObjectAsVerifying failed %s\n", err)
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, status, cerr)
-		log.Errorf("handleCreate failed for %s\n", config.Name)
+		log.Errorf("markObjectAsVerifying failed for %s\n", config.Name)
 		return false, 0
 	}
 
@@ -874,7 +909,7 @@ func markObjectAsVerifying(ctx *verifierContext,
 	if err := os.Chmod(verifierFilename, 0400); err != nil {
 		log.Fatal(err)
 	}
-
+	status.FileLocation = verifierFilename
 	// Clean up empty directory
 	if err := os.RemoveAll(pendingDirname); err != nil {
 		log.Fatal(err)
@@ -885,15 +920,10 @@ func markObjectAsVerifying(ctx *verifierContext,
 func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus) bool {
 
-	objType := status.ObjType
-	downloadDirname := types.DownloadDirname + "/" + objType
-	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
-	verifierFilename := verifierDirname + "/" + config.Safename
+	_, verifierFilename, _ := status.ImageDownloadFilenames()
+	log.Infof("Verifying URL %s file %s\n", config.Name, verifierFilename)
 
-	log.Infof("Verifying URL %s file %s\n",
-		config.Name, verifierFilename)
-
-	imageHash, err := computeShaFile(verifierFilename)
+	imageHashB, err := computeShaFileByType(verifierFilename, status.IsContainer)
 	if err != nil {
 		cerr := fmt.Sprintf("%v", err)
 		updateVerifyErrStatus(ctx, status, cerr)
@@ -901,13 +931,18 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 			config.Name, cerr)
 		return false
 	}
+	log.Infof("internal hash consistency validated for URL %s file %s", config.Name, verifierFilename)
 
-	got := fmt.Sprintf("%x", imageHash)
-	if got != strings.ToLower(config.ImageSha256) {
-		log.Errorf("computed   %s\n", got)
-		log.Errorf("configured %s\n", strings.ToLower(config.ImageSha256))
+	imageHash := fmt.Sprintf("%x", imageHashB)
+	configuredHash := strings.ToLower(config.ImageSha256)
+	if configuredHash == "" {
+		log.Infof("no image hash provided, skipping root validation. Setting to %s for %s", imageHash, config.ImageID)
+		status.ImageSha256 = strings.ToUpper(imageHash)
+	} else if imageHash != configuredHash {
+		log.Errorf("computed   %s\n", imageHash)
+		log.Errorf("configured %s\n", configuredHash)
 		cerr := fmt.Sprintf("computed %s configured %s",
-			got, config.ImageSha256)
+			imageHash, configuredHash)
 		status.PendingAdd = false
 		updateVerifyErrStatus(ctx, status, cerr)
 		log.Errorf("verifyObjectSha %s failed %s\n",
@@ -917,15 +952,30 @@ func verifyObjectSha(ctx *verifierContext, config *types.VerifyImageConfig,
 
 	log.Infof("Sha validation successful for %s\n", config.Name)
 
-	if cerr := verifyObjectShaSignature(status, config, imageHash); cerr != "" {
-		updateVerifyErrStatus(ctx, status, cerr)
-		log.Errorf("Signature validation failed for %s, %s\n",
-			config.Name, cerr)
-		return false
+	// we only do this for non-OCI images for now, as we do not have hash signing
+	if !status.IsContainer {
+		if cerr := verifyObjectShaSignature(status, config, imageHashB); cerr != "" {
+			updateVerifyErrStatus(ctx, status, cerr)
+			log.Errorf("Signature validation failed for %s, %s\n",
+				config.Name, cerr)
+			return false
+		}
 	}
 	return true
 }
 
+// compute the hash for different file types. If the file itself contains
+// sub-dependencies with hashes as well, example inside a tar file, validate
+// those hashes as well.
+// Returns the hash of the file itself, or the root of the dependencies.
+func computeShaFileByType(filename string, container bool) ([]byte, error) {
+	if container {
+		return computeShaOCITar(filename)
+	}
+	return computeShaFile(filename)
+}
+
+// compute the sha for a straight file
 func computeShaFile(filename string) ([]byte, error) {
 	f, err := os.Open(filename)
 	if err != nil {
@@ -992,7 +1042,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 	//Create the set of root certificates...
 	roots := x509.NewCertPool()
 
-	// Read the root cerificates from /config
+	// Read the signing root cerificates from /config
 	rootCertificate, err := ioutil.ReadFile(types.RootCertFileName)
 	if err != nil {
 		log.Errorln(err)
@@ -1016,6 +1066,7 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 			return cerr
 		}
 
+		// XXX must put these in Intermediates not Rootfs
 		if ok := roots.AppendCertsFromPEM(bytes); !ok {
 			cerr := fmt.Sprintf("failed to parse intermediate certificate")
 			return cerr
@@ -1078,19 +1129,11 @@ func verifyObjectShaSignature(status *types.VerifyImageStatus, config *types.Ver
 func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 	status *types.VerifyImageStatus) {
 
-	objType := status.ObjType
-	downloadDirname := types.DownloadDirname + "/" + objType
-	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
-	verifiedDirname := downloadDirname + "/verified/" + config.ImageSha256
-
-	verifierFilename := verifierDirname + "/" + config.Safename
-	verifiedFilename := verifiedDirname + "/" + config.Safename
-
+	_, verifierDirname, verifiedDirname := status.ImageDownloadDirNames()
+	_, verifierFilename, verifiedFilename := status.ImageDownloadFilenames()
 	// Move directory from DownloadDirname/verifier to
 	// DownloadDirname/verified
 	// XXX should have dom0 do this and/or have RO mounts
-	filename := types.SafenameToFilename(config.Safename)
-	verifiedFilename = verifiedDirname + "/" + filename
 	log.Infof("Move from %s to %s\n", verifierFilename, verifiedFilename)
 
 	if _, err := os.Stat(verifierFilename); err != nil {
@@ -1105,24 +1148,13 @@ func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 	}
 
 	if _, err := os.Stat(verifiedDirname); err == nil {
-		// Directory exists thus we have a sha256 collision presumably
-		// due to multiple safenames (i.e., URLs) for the same content.
-		// Delete existing to avoid wasting space.
-		locations, err := ioutil.ReadDir(verifiedDirname)
-		if err != nil {
-			log.Fatal(err)
-		}
-		for _, location := range locations {
-			log.Debugf("Identical sha256 (%s) for safenames %s and %s; deleting old\n",
-				config.ImageSha256, location.Name(),
-				config.Safename)
-		}
+		log.Warn(verifiedDirname + ": directory exists")
 		if err := os.RemoveAll(verifiedDirname); err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	log.Errorf("Create %s\n", verifiedDirname)
+	log.Infof("Create %s\n", verifiedDirname)
 	if err := os.MkdirAll(verifiedDirname, 0700); err != nil {
 		log.Fatal(err)
 	}
@@ -1135,10 +1167,14 @@ func markObjectAsVerified(ctx *verifierContext, config *types.VerifyImageConfig,
 		log.Fatal(err)
 	}
 
+	status.FileLocation = verifiedFilename
+
 	// Clean up empty directory
 	if err := os.RemoveAll(verifierDirname); err != nil {
 		log.Fatal(err)
 	}
+	log.Infof("markObjectAsVerified - DOne. Moved from %s to %s\n",
+		verifierFilename, verifiedFilename)
 }
 
 func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
@@ -1147,104 +1183,59 @@ func handleModify(ctx *verifierContext, config *types.VerifyImageConfig,
 	// Note no comparison on version
 	changed := false
 
-	log.Infof("handleModify(%v) objType %s for %s\n",
-		status.Safename, status.ObjType, config.Name)
+	log.Infof("handleModify(%s) objType %s for %s, config.RefCount: %d, "+
+		"status.RefCount: %d, isContainer: %t",
+		status.ImageID, status.ObjType, config.Name, config.RefCount,
+		status.RefCount, config.IsContainer)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleModify: No ObjType for %s\n",
-			status.Safename)
+			status.ImageID)
+	}
+
+	if config.IsContainer != status.IsContainer {
+		log.Infof("handleModify: Setting IsContainer to %t for %s",
+			config.IsContainer, status.ImageID)
+		status.IsContainer = config.IsContainer
+		changed = true
+	}
+	if status.ImageSha256 == "" && config.ImageSha256 != "" {
+		log.Infof("handleModify: Setting ImageSha256 to %s for %s",
+			config.ImageSha256, status.ImageID)
+		status.ImageSha256 = config.ImageSha256
+		changed = true
 	}
 
 	// Always update RefCount
 	if status.RefCount != config.RefCount {
-		log.Infof("handleModify RefCount change %s from %d to %d Expired %v\n",
-			config.Name, status.RefCount, config.RefCount,
-			status.Expired)
+		log.Infof("handleModify RefCount change %s from %d to %d",
+			config.Name, status.RefCount, config.RefCount)
 		status.RefCount = config.RefCount
-		status.Expired = false
 		changed = true
 	}
 
-	if status.RefCount == 0 {
-		// GC timer will clean up by marking status Expired
-		// and some point in time.
-		// Then user (zedmanager/baseosmgr) will delete config.
-		status.PendingModify = true
-		status.LastUse = time.Now()
-		status.PendingModify = false
+	if changed {
 		publishVerifyImageStatus(ctx, status)
-		log.Infof("handleModify done for %s\n", config.Name)
-		return
 	}
-
-	// If identical we do nothing. Otherwise we do a delete and create.
-	if config.Safename == status.Safename &&
-		config.ImageSha256 == status.ImageSha256 {
-		if changed {
-			publishVerifyImageStatus(ctx, status)
-		}
-		log.Infof("handleModify: no (other) change for %s\n",
-			config.Name)
-		return
-	}
-
-	status.PendingModify = true
-	publishVerifyImageStatus(ctx, status)
-	handleDelete(ctx, status)
-	handleCreate(ctx, status.ObjType, config)
-	status.PendingModify = false
-	publishVerifyImageStatus(ctx, status)
-	log.Infof("handleModify done for %s\n", config.Name)
+	log.Infof("handleModify done for %s. Status.RefCount=%d, Config.RefCount:%d",
+		config.Name, status.RefCount, config.RefCount)
 }
 
 func handleDelete(ctx *verifierContext, status *types.VerifyImageStatus) {
 
-	log.Infof("handleDelete(%v) objType %s refcount %d lastUse %v Expired %v\n",
-		status.Safename, status.ObjType, status.RefCount,
-		status.LastUse, status.Expired)
+	log.Infof("handleDelete(%s) objType %s refcount %d",
+		status.ImageID, status.ObjType, status.RefCount)
 
 	if status.ObjType == "" {
 		log.Fatalf("handleDelete: No ObjType for %s\n",
-			status.Safename)
+			status.ImageID)
 	}
 
-	doDelete(status)
+	// When the refcount on PersistImageConfig drops and we do
+	// the Expire dance we will delete the actual verified file.
 
 	unpublishVerifyImageStatus(ctx, status)
-	log.Infof("handleDelete done for %s\n", status.Safename)
-}
-
-// Remove the file from any of the three directories
-// Only if it verified (state DELIVERED) do we delete the final. Needed
-// to avoid deleting a different verified file with same sha as this claimed
-// to have
-func doDelete(status *types.VerifyImageStatus) {
-	log.Infof("doDelete(%v)\n", status.Safename)
-
-	objType := status.ObjType
-	downloadDirname := types.DownloadDirname + "/" + objType
-	verifierDirname := downloadDirname + "/verifier/" + status.ImageSha256
-	verifiedDirname := downloadDirname + "/verified/" + status.ImageSha256
-
-	_, err := os.Stat(verifierDirname)
-	if err == nil {
-		log.Infof("doDelete removing verifier %s\n", verifierDirname)
-		if err := os.RemoveAll(verifierDirname); err != nil {
-			log.Fatal(err)
-		}
-	}
-	_, err = os.Stat(verifiedDirname)
-	if err == nil && status.State == types.DELIVERED {
-		if _, err := os.Stat(preserveFilename); err != nil {
-			log.Infof("doDelete removing %s\n", verifiedDirname)
-			if err := os.RemoveAll(verifiedDirname); err != nil {
-				log.Fatal(err)
-			}
-		} else {
-			log.Infof("doDelete preserving %s\n", verifiedDirname)
-		}
-	}
-	log.Infof("doDelete(%v) done\n", status.Safename)
+	log.Infof("handleDelete done for %s\n", status.ImageID)
 }
 
 // Handles both create and modify events
@@ -1260,8 +1251,11 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 	var gcp *types.GlobalConfig
 	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
-	if gcp != nil && gcp.DownloadGCTime != 0 {
-		downloadGCTime = time.Duration(gcp.DownloadGCTime) * time.Second
+	if gcp != nil {
+		if gcp.DownloadGCTime != 0 {
+			downloadGCTime = time.Duration(gcp.DownloadGCTime) * time.Second
+		}
+		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
@@ -1284,7 +1278,7 @@ func handleAAModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
 	ctx := ctxArg.(*verifierContext)
-	status := cast.CastAssignableAdapters(statusArg)
+	status := statusArg.(types.AssignableAdapters)
 	if key != "global" {
 		log.Infof("handleAAModify: ignoring %s\n", key)
 		return
@@ -1316,23 +1310,18 @@ func handleAADelete(ctxArg interface{}, key string,
 
 // gc timer just started, reset the LastUse timestamp to now if the refcount is zero
 func gcResetObjectLastUse(ctx *verifierContext) {
-	publications := []*pubsub.Publication{
-		ctx.pubAppImgStatus,
-		ctx.pubBaseOsStatus,
+	publications := []pubsub.Publication{
+		ctx.pubAppImgPersistStatus,
+		ctx.pubBaseOsPersistStatus,
 	}
 	for _, pub := range publications {
 		items := pub.GetAll()
-		for key, st := range items {
-			status := cast.CastVerifyImageStatus(st)
-			if status.Key() != key {
-				log.Errorf("gcResetObjectLastUse key/UUID mismatch %s vs %s; ignored %+v\n",
-					key, status.Key(), status)
-				continue
-			}
+		for _, st := range items {
+			status := st.(types.PersistImageStatus)
 			if status.RefCount == 0 {
 				status.LastUse = time.Now()
-				log.Infof("gcResetObjectLastUse: reset %v LastUse to now\n", key)
-				publishVerifyImageStatus(ctx, &status)
+				log.Infof("gcResetObjectLastUse: reset %v LastUse to now\n", status.Key())
+				publishPersistImageStatus(ctx, &status)
 			}
 		}
 	}

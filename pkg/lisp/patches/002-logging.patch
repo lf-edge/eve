@@ -1,0 +1,48 @@
+diff -ruN a/lisp/lispconfig.py b/lisp/lispconfig.py
+--- a/lisp/lispconfig.py
++++ b/lisp/lispconfig.py
+@@ -1550,14 +1550,7 @@
+     if (startstop == False and lisp.lisp_is_running(process) == False): return
+ 
+     filename = process + ".pyo"
+-    logfile = "./logs/" + process + ".log"
+-    
+-    if (lisp.lisp_is_ubuntu() or lisp.lisp_is_raspbian() or \
+-        lisp.lisp_is_debian() or lisp.lisp_is_debian_kali()):
+-        program = "python -O " + filename + " 2>&1 > " + logfile + " &"
+-    else:
+-        program = "python -O " + filename + " >& " + logfile + " &"
+-    #endif
++    program = "python -O " + filename + " &"
+ 
+     datestamp = commands.getoutput("date")
+     if (startstop and os.path.exists(filename)):
+diff -ruN a/lisp/lisp.py b/lisp/lisp.py
+--- a/lisp/lisp.py
++++ b/lisp/lisp.py
+@@ -73,6 +73,7 @@
+ lisp_i_am_ddt = False
+ lisp_log_id = ""
+ lisp_debug_logging = True
++lisp_process_logfile_done = False
+ 
+ lisp_map_notify_queue = {}   # Key is concat of nonce and etr address
+ lisp_map_servers_list = {}   # Key is ms-name/address string, value lisp_ms() 
+@@ -577,13 +578,10 @@
+ # or another procedure rotated the file out of the directory.
+ #
+ def lisp_process_logfile():
+-    logfile = "./logs/lisp-{}.log".format(lisp_log_id)
+-    if (os.path.exists(logfile)): return
+-
+-    sys.stdout.close()
+-    sys.stdout = open(logfile, "a")
+-
+-    lisp_print_banner(bold("logfile rotation", False))
++    global lisp_process_logfile_done
++    if (lisp_process_logfile_done == False):
++        lisp_process_logfile_done = True
++        lisp_print_banner(bold("logfile rotation", False))
+     return
+ #enddef
+ 

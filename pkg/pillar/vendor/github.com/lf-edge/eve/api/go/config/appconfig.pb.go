@@ -76,8 +76,13 @@ type AppInstanceConfig struct {
 	// NetworkAdapter are virtual adapters assigned to the application
 	// Physical adapters such as eth1 are part of Adapter
 	Interfaces []*NetworkAdapter `protobuf:"bytes,6,rep,name=interfaces,proto3" json:"interfaces,omitempty"`
-	Adapters   []*Adapter        `protobuf:"bytes,7,rep,name=adapters,proto3" json:"adapters,omitempty"`
-	Restart    *InstanceOpsCmd   `protobuf:"bytes,9,opt,name=restart,proto3" json:"restart,omitempty"`
+	// adapters - Name in Adapter should be set to PhysicalIO.assigngrp
+	Adapters []*Adapter `protobuf:"bytes,7,rep,name=adapters,proto3" json:"adapters,omitempty"`
+	// The device behavior for a restart command (if counter increased)
+	// is to restart the application instance honoring the persist setting
+	// for the disks/drives.
+	// The device can assume that the adapters did not change.
+	Restart *InstanceOpsCmd `protobuf:"bytes,9,opt,name=restart,proto3" json:"restart,omitempty"`
 	// The device behavior for a purge command is to restart the domU.
 	// with the disks/drives recreated from the downloaded images
 	// (whether preserve is set or not).
@@ -207,7 +212,9 @@ func init() {
 	proto.RegisterType((*AppInstanceConfig)(nil), "AppInstanceConfig")
 }
 
-func init() { proto.RegisterFile("appconfig.proto", fileDescriptor_6183fdf07ef5608d) }
+func init() {
+	proto.RegisterFile("appconfig.proto", fileDescriptor_6183fdf07ef5608d)
+}
 
 var fileDescriptor_6183fdf07ef5608d = []byte{
 	// 420 bytes of a gzipped FileDescriptorProto

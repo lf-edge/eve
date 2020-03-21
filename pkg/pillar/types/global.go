@@ -4,20 +4,112 @@
 package types
 
 import (
-	"encoding/json"
-	"io/ioutil"
-	"os"
+	"strconv"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	log "github.com/sirupsen/logrus"
 )
 
+// SenderResult - Enum name for return extra sender results from SendOnAllIntf
+type SenderResult uint8
+
+// Enum of http extra status for 'rtf'
 const (
-	globalConfigDir  = PersistConfigDir + "/GlobalConfig"
-	globalConfigFile = globalConfigDir + "/global.json"
-	symlinkDir       = TmpDirname + "/GlobalConfig"
+	SenderStatusNone                      SenderResult = iota
+	SenderStatusRemTempFail                            // http remote temporarilly failure
+	SenderStatusCertMiss                               // remote signed senderCertHash we don't have
+	SenderStatusSignVerifyFail                         // envelope signature verify failed
+	SenderStatusAlgoFail                               // hash algorithm we don't support
+	SenderStatusHashSizeError                          // senderCertHash length error
+	SenderStatusCertUnknownAuthority                   // device may miss proxy certificate for MiTM
+	SenderStatusCertUnknownAuthorityProxy              // device configed proxy, may miss proxy certificate for MiTM
 )
+
+// ConfigItemStatus - Status of Config Items
+type ConfigItemStatus struct {
+	// Value - Current value of the item
+	Value string
+	// Err - Error from last config. nil if no error.
+	Err error
+}
+
+// GlobalStatus - Status of Global Config Items.
+type GlobalStatus struct {
+	// ConfigItems - key : Item Key Str
+	ConfigItems map[string]ConfigItemStatus
+	// UnknownConfigItems - Unrecognized ConfigItems.
+	UnknownConfigItems map[string]ConfigItemStatus
+}
+
+// setItemValue - Sets value for the key. Expects a valid key. asserts if
+//  the key is not found.
+func (gs *GlobalStatus) setItemValue(key, value string) {
+	item := gs.ConfigItems[key]
+	item.Value = value
+	gs.ConfigItems[key] = item
+}
+
+func (gs *GlobalStatus) setItemValueInt(key string, intVal uint32) {
+	value := strconv.FormatUint(uint64(intVal), 10)
+	gs.setItemValue(key, value)
+}
+
+func (gs *GlobalStatus) setItemValueTriState(key string, state TriState) {
+	value := FormatTriState(state)
+	gs.setItemValue(key, value)
+}
+
+func (gs *GlobalStatus) setItemValueBool(key string, boolVal bool) {
+	value := strconv.FormatBool(boolVal)
+	gs.setItemValue(key, value)
+}
+
+// UpdateItemValuesFromGlobalConfig - Update values of ConfigItems from
+// globalConfig
+func (gs *GlobalStatus) UpdateItemValuesFromGlobalConfig(gc GlobalConfig) {
+	// Set Int Values
+	gs.setItemValueInt("timer.config.interval", gc.ConfigInterval)
+	gs.setItemValueInt("timer.metric.interval", gc.MetricInterval)
+	gs.setItemValueInt("timer.send.timeout", gc.NetworkSendTimeout)
+	gs.setItemValueInt("timer.reboot.no.network", gc.ResetIfCloudGoneTime)
+	gs.setItemValueInt("timer.update.fallback.no.network",
+		gc.FallbackIfCloudGoneTime)
+	gs.setItemValueInt("timer.test.baseimage.update", gc.MintimeUpdateSuccess)
+	gs.setItemValueInt("timer.port.georedo", gc.NetworkGeoRedoTime)
+	gs.setItemValueInt("timer.port.georetry", gc.NetworkGeoRetryTime)
+	gs.setItemValueInt("timer.port.testduration", gc.NetworkTestDuration)
+	gs.setItemValueInt("timer.port.testinterval", gc.NetworkTestInterval)
+	gs.setItemValueInt("timer.port.timeout", gc.NetworkTestTimeout)
+	gs.setItemValueInt("timer.port.testbetterinterval", gc.NetworkTestBetterInterval)
+	gs.setItemValueInt("timer.use.config.checkpoint", gc.StaleConfigTime)
+	gs.setItemValueInt("timer.gc.download", gc.DownloadGCTime)
+	gs.setItemValueInt("timer.gc.vdisk", gc.VdiskGCTime)
+	gs.setItemValueInt("timer.download.retry", gc.DownloadRetryTime)
+	gs.setItemValueInt("timer.boot.retry", gc.DomainBootRetryTime)
+	gs.setItemValueInt("storage.dom0.disk.minusage.percent",
+		gc.Dom0MinDiskUsagePercent)
+
+	// Set TriState Values
+	gs.setItemValueTriState("network.fallback.any.eth", gc.NetworkFallbackAnyEth)
+	gs.setItemValueTriState("network.allow.wwan.app.download",
+		gc.AllowNonFreeAppImages)
+	gs.setItemValueTriState("network.allow.wwan.baseos.download",
+		gc.AllowNonFreeBaseImages)
+
+	// Set Bool
+	gs.setItemValueBool("debug.enable.usb", gc.UsbAccess)
+	gs.setItemValueBool("debug.enable.ssh", gc.SshAccess)
+	gs.setItemValueBool("app.allow.vnc", gc.AllowAppVnc)
+
+	// Set String Values
+	gs.setItemValue("debug.default.loglevel", gc.DefaultLogLevel)
+	gs.setItemValue("debug.default.remote.loglevel", gc.DefaultRemoteLogLevel)
+
+	for agentName, agentSetting := range gc.AgentSettings {
+		gs.setItemValue("debug"+agentName+"loglevel", agentSetting.LogLevel)
+		gs.setItemValue("debug"+agentName+"remote.loglevel",
+			agentSetting.RemoteLogLevel)
+	}
+}
 
 // GlobalConfig is used for log levels and timer values which are preserved
 // across reboots and baseimage-updates.
@@ -72,6 +164,11 @@ type GlobalConfig struct {
 	// will use free and non-free (e.g., WWAN) ports for image downloads.
 	AllowNonFreeAppImages  TriState // For app images
 	AllowNonFreeBaseImages TriState // For baseos images
+
+	// Dom0MinDiskUsagePercent - Percentage of available storage reserved for
+	// dom0. The rest is available for Apps.
+	Dom0MinDiskUsagePercent uint32
+	IgnoreDiskCheckForApps  bool
 
 	// XXX add max space for downloads?
 	// XXX add max space for running images?
@@ -130,6 +227,9 @@ var GlobalConfigDefaults = GlobalConfig{
 
 	DefaultLogLevel:       "info", // XXX Should we change to warning?
 	DefaultRemoteLogLevel: "info", // XXX Should we change to warning?
+
+	Dom0MinDiskUsagePercent: 20,
+	IgnoreDiskCheckForApps:  false,
 }
 
 // Check which values are set and which should come from defaults
@@ -201,6 +301,11 @@ func ApplyGlobalConfig(newgc GlobalConfig) GlobalConfig {
 	if newgc.AllowNonFreeBaseImages == TS_NONE {
 		newgc.AllowNonFreeBaseImages = GlobalConfigDefaults.AllowNonFreeBaseImages
 	}
+
+	if newgc.Dom0MinDiskUsagePercent == 0 {
+		newgc.Dom0MinDiskUsagePercent =
+			GlobalConfigDefaults.Dom0MinDiskUsagePercent
+	}
 	return newgc
 }
 
@@ -218,11 +323,12 @@ var GlobalConfigMinimums = GlobalConfig{
 	NetworkTestInterval:       300, // 5 minutes
 	NetworkTestBetterInterval: 0,   // Disabled
 
-	StaleConfigTime:     0, // Don't use stale config
-	DownloadGCTime:      60,
-	VdiskGCTime:         60,
-	DownloadRetryTime:   60,
-	DomainBootRetryTime: 10,
+	StaleConfigTime:         0, // Don't use stale config
+	DownloadGCTime:          60,
+	VdiskGCTime:             60,
+	DownloadRetryTime:       60,
+	DomainBootRetryTime:     10,
+	Dom0MinDiskUsagePercent: 20,
 }
 
 func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
@@ -301,82 +407,10 @@ func EnforceGlobalConfigMinimums(newgc GlobalConfig) GlobalConfig {
 			newgc.DomainBootRetryTime, GlobalConfigMinimums.DomainBootRetryTime)
 		newgc.DomainBootRetryTime = GlobalConfigMinimums.DomainBootRetryTime
 	}
+	if newgc.Dom0MinDiskUsagePercent < GlobalConfigMinimums.Dom0MinDiskUsagePercent {
+		log.Warnf("Enforce minimum Dom0MinDiskUsagePercent received %d; using %d",
+			newgc.Dom0MinDiskUsagePercent, GlobalConfigMinimums.Dom0MinDiskUsagePercent)
+		newgc.Dom0MinDiskUsagePercent = GlobalConfigMinimums.Dom0MinDiskUsagePercent
+	}
 	return newgc
-}
-
-// Agents which wait for GlobalConfig initialized should call this
-// on startup to make sure we have a GlobalConfig file.
-func EnsureGCFile() {
-	if _, err := os.Stat(globalConfigDir); err != nil {
-		log.Infof("Create %s\n", globalConfigDir)
-		if err := os.MkdirAll(globalConfigDir, 0700); err != nil {
-			log.Fatal(err)
-		}
-	}
-	// If it exists but doesn't parse we pretend it doesn't exist
-	if _, err := os.Stat(globalConfigFile); err == nil {
-		ok := false
-		sb, err := ioutil.ReadFile(globalConfigFile)
-		if err != nil {
-			log.Errorf("%s for %s", err, globalConfigFile)
-		} else {
-			gc := GlobalConfig{}
-			if err := json.Unmarshal(sb, &gc); err != nil {
-				log.Errorf("%s file: %s", err, globalConfigFile)
-			} else {
-				ok = true
-			}
-			// Any new fields which need defaults/mins applied?
-			changed := false
-			updated := ApplyGlobalConfig(gc)
-			if !cmp.Equal(gc, updated) {
-				log.Infof("EnsureGCFile: updated with defaults %v",
-					cmp.Diff(gc, updated))
-				changed = true
-			}
-			sane := EnforceGlobalConfigMinimums(updated)
-			if !cmp.Equal(updated, sane) {
-				log.Infof("EnsureGCFile: enforced minimums %v",
-					cmp.Diff(updated, sane))
-				changed = true
-			}
-			gc = sane
-			if changed {
-				err := pubsub.PublishToDir(PersistConfigDir,
-					"global", gc)
-				if err != nil {
-					log.Errorf("PublishToDir for globalConfig failed: %s",
-						err)
-				}
-			}
-		}
-		if !ok {
-			log.Warnf("Removing bad %s", globalConfigFile)
-			if err := os.RemoveAll(globalConfigFile); err != nil {
-				log.Fatal(err)
-			}
-		}
-	}
-	if _, err := os.Stat(globalConfigFile); err != nil {
-		err := pubsub.PublishToDir(PersistConfigDir, "global",
-			GlobalConfigDefaults)
-		if err != nil {
-			log.Errorf("PublishToDir for globalConfig failed %s\n",
-				err)
-		}
-	}
-
-	info, err := os.Lstat(symlinkDir)
-	if err == nil {
-		if (info.Mode() & os.ModeSymlink) != 0 {
-			return
-		}
-		log.Warnf("Removing old %s", symlinkDir)
-		if err := os.RemoveAll(symlinkDir); err != nil {
-			log.Fatal(err)
-		}
-	}
-	if err := os.Symlink(globalConfigDir, symlinkDir); err != nil {
-		log.Fatal(err)
-	}
 }

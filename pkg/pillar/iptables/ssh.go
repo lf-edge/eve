@@ -128,7 +128,7 @@ func dropPortRange(startPort int, endPort int) {
 func markControlFlows() {
 	// Mark HTTP, ssh and guacamole packets
 	// Pick flow marking values 1, 2, 3 from the reserved space.
-	portStr := "8080,22,4822"
+	portStr := "22,4822"
 	IptableCmd("-t", "mangle", "-I", "PREROUTING", "1", "-p", "tcp",
 		"--match", "multiport", "--dports", portStr,
 		"-j", "CONNMARK", "--set-mark", ControlProtocolMarkingIDMap["in_http_ssh_guacamole"])

@@ -13,7 +13,6 @@ import (
 	"syscall"
 
 	"github.com/eriknordmark/netlink"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
@@ -176,13 +175,8 @@ func compileNetworkIpsetsStatus(ctx *zedrouterContext,
 	// walk all of netconfig - find all hosts which use this network
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
-	for key, st := range items {
-		status := cast.CastAppNetworkStatus(st)
-		if status.Key() != key {
-			log.Errorf("compileNetworkIpsetsStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, status.Key(), status)
-			continue
-		}
+	for _, st := range items {
+		status := st.(types.AppNetworkStatus)
 		if skipKey != "" && status.Key() == skipKey {
 			log.Debugf("compileNetworkIpsetsStatus skipping %s\n",
 				skipKey)
@@ -217,13 +211,8 @@ func compileNetworkIpsetsConfig(ctx *zedrouterContext,
 	// walk all of netconfig - find all hosts which use this network
 	sub := ctx.subAppNetworkConfig
 	items := sub.GetAll()
-	for key, c := range items {
-		config := cast.CastAppNetworkConfig(c)
-		if config.Key() != key {
-			log.Errorf("compileNetworkIpsetsConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, config.Key(), config)
-			continue
-		}
+	for _, c := range items {
+		config := c.(types.AppNetworkConfig)
 		for _, olConfig := range config.OverlayNetworkList {
 			if olConfig.Network != netconfig.UUID {
 				continue
@@ -669,7 +658,7 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 	var rulesList types.IPTablesRuleList
 
 	// Sanity check for old/incorrect controller
-	if ace.RuleID == 0 {
+	if ace.RuleID == 0 && !aclArgs.IsMgmt {
 		errStr := fmt.Sprintf("ACE with zero RuleID not supported: %+v",
 			ace)
 		log.Errorln(errStr)
@@ -946,9 +935,9 @@ func aceToRules(aclArgs types.AppNetworkACLArgs, ace types.ACE) (types.IPTablesR
 	aclRule3.IsUserConfigured = true
 	aclRule3.RuleID = ace.RuleID
 	if aclArgs.NIType == types.NetworkInstanceTypeSwitch {
-		if len(aclArgs.UpLinks) > 1 {
-			errStr := fmt.Sprintf("aceToRules: Switch network instance with more than ONE " +
-				"uplink attached is not supported now.")
+		if len(aclArgs.UpLinks) != 1 {
+			errStr := fmt.Sprintf("aceToRules: Switch network instance is only supported with exactly one " +
+				"uplink attached for now.")
 			log.Errorln(errStr)
 			return nil, errors.New(errStr)
 		} else {

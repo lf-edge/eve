@@ -18,8 +18,6 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -136,7 +134,7 @@ func createDnsmasqConfiglet(
 	advertizeRouter := true
 	var router string
 
-	if netconf.Port == "" {
+	if netconf.Logicallabel == "" {
 		log.Infof("Internal switch without external port case, dnsmasq suppress router advertize\n")
 		advertizeRouter = false
 	} else if Ipv4Eid {
@@ -354,25 +352,20 @@ func startDnsmasq(bridgeName string) {
 	log.Infof("startDnsmasq(%s)\n", bridgeName)
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	name := "nohup"
-	//    XXX currently running as root with -d above
 	args := []string{
 		"/opt/zededa/bin/dnsmasq",
-		"-d",
 		"-C",
 		cfgPathname,
 	}
-	logFilename := fmt.Sprintf("dnsmasq.%s", bridgeName)
-	logf, err := agentlog.InitChild(logFilename)
-	if err != nil {
-		log.Fatalf("startDnsmasq agentlog failed: %s\n", err)
-	}
-	w := bufio.NewWriter(logf)
-	ts := time.Now().Format(time.RFC3339Nano)
-	fmt.Fprintf(w, "%s Starting %s %v\n", ts, name, args)
 	cmd := exec.Command(name, args...)
-	cmd.Stderr = logf
 	log.Infof("Calling command %s %v\n", name, args)
-	go cmd.Run()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Errorf("startDnsmasq: Failed starting dnsmasq for bridge %s (%s)",
+			bridgeName, err)
+	} else {
+		log.Infof("startDnsmasq: Started dnsmasq with output: %s", out)
+	}
 }
 
 //    pkill -u nobody -f dnsmasq.${BRIDGENAME}.conf
@@ -380,7 +373,6 @@ func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 
 	log.Infof("stopDnsmasq(%s)\n", bridgeName)
 	cfgFilename := dnsmasqConfigFile(bridgeName)
-	// XXX currently running as root with -d above
 	pkillUserArgs("root", cfgFilename, printOnError)
 
 	if delConfiglet {
@@ -400,7 +392,7 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 	items := pub.GetAll()
 	for _, st := range items {
 		changed := false
-		status := cast.CastAppNetworkStatus(st)
+		status := st.(types.AppNetworkStatus)
 		for i := range status.UnderlayNetworkList {
 			ulStatus := &status.UnderlayNetworkList[i]
 			l := findLease(ctx.dhcpLeases, status.Key(), ulStatus.Mac)

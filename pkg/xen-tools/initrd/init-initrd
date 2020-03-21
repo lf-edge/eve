@@ -1,0 +1,85 @@
+#!/bin/sh
+
+# first make sure busybox gets expanded into the glory that is UNIX
+/bin/busybox --install /bin
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs -o size=10m,nr_inodes=248418,mode=755,nosuid,noexec,relatime devtmpfs /dev
+
+root=`cat /proc/cmdline | grep -o '\broot=[^ ]*' | cut -d = -f 2`
+if test -z "$root"
+then
+    exit 1
+fi
+
+mkdir /mnt >/dev/null 2>&1
+if [ "$root" = "9p" ]
+then
+    mount -t 9p -o msize=131072,trans=xen share_dir /mnt
+else
+    mount $root /mnt
+fi
+
+mkdir /mnt/rootfs/dev >/dev/null 2>&1
+mkdir /mnt/rootfs/sys >/dev/null 2>&1
+mkdir /mnt/rootfs/proc >/dev/null 2>&1
+mkdir /dev/pts >/dev/null 2>&1
+mkdir /dev/shm >/dev/null 2>&1
+mount -o bind /dev /mnt/rootfs/dev
+mount -o bind /sys /mnt/rootfs/sys
+mount -o bind /proc /mnt/rootfs/proc
+mount -t devpts -o gid=5,mode=0620,noexec,nosuid devpts /mnt/rootfs/dev/pts
+mount -t tmpfs -o nodev,nosuid,noexec shm /mnt/rootfs/dev/shm
+
+ip=`cat /proc/cmdline | grep -o '\bip=[^ ]*' | cut -d = -f 2`
+gw=`cat /proc/cmdline | grep -o '\bgw=[^ ]*' | cut -d = -f 2`
+route=`cat /proc/cmdline | grep -o '\broute=[^ ]*' | cut -d = -f 2`
+pvcalls=`cat /proc/cmdline | grep  'pvcalls=1'`
+dhcp=`cat /proc/cmdline | grep  'dhcp=1'`
+if test "$pvcalls"
+then
+		mkdir -p /mnt/rootfs/etc
+		echo "nameserver 8.8.8.8" > /mnt/rootfs/etc/resolv.conf
+		echo "options use-vc" >> /mnt/rootfs/etc/resolv.conf
+elif test "$ip"
+then
+	# ipv4
+	if [ "$ip" != "${ip#*[0-9].[0-9]}" ]
+	then
+		ifconfig eth0 $ip up
+		if [ "$route" ] && [ "$gw" ]
+		then
+			route add -net $route gw $gw eth0
+		fi
+		mkdir -p /mnt/rootfs/etc
+		echo "nameserver 8.8.8.8" > /mnt/rootfs/etc/resolv.conf
+	# ipv6
+	elif [ "$ip" != "${ip#*:[0-9a-fA-F]}" ]
+	then
+		ifconfig eth0 add $ip up
+		if [ "$route" ] && [ "$gw" ]
+		then
+			route -A inet6 add $route gw $gw eth0
+		fi
+		mkdir -p /mnt/rootfs/etc
+		echo "nameserver 2001:4860:4860::8888" > /mnt/rootfs/etc/resolv.conf
+	fi
+elif test "$dhcp"
+then
+    ip link set dev lo up
+    ip link set dev eth0 up
+    udhcpc --interface=eth0 --script=/udhcpc_script.sh
+fi
+
+# Mounting requested volumes
+echo "Executing /mount_disk.sh"
+/mount_disk.sh
+
+# Commence launch sequence
+source /mnt/environment
+
+cmd=`cat /mnt/cmdline`
+echo "Executing $cmd"
+#shellcheck disable=SC2086
+eval /chroot2 /mnt/rootfs "${WORKDIR:-/}" $cmd <> /dev/console 2>&1

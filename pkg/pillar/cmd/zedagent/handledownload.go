@@ -9,8 +9,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func downloaderSubscription(ctx *zedagentContext, objType string) *pubsub.Subscription {
-	var sub *pubsub.Subscription
+func downloaderSubscription(ctx *zedagentContext, objType string) pubsub.Subscription {
+	var sub pubsub.Subscription
 	switch objType {
 	case types.BaseOsObj:
 		sub = ctx.subBaseOsDownloadStatus

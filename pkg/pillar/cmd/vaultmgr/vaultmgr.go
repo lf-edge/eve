@@ -11,34 +11,56 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"time"
 
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
+	"github.com/lf-edge/eve/pkg/pillar/pidfile"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
+type vaultMgrContext struct {
+	pubVaultStatus  pubsub.Publication
+	subGlobalConfig pubsub.Subscription
+	GCInitialized   bool // GlobalConfig initialized
+}
+
 const (
-	fscryptPath     = "/opt/zededa/bin/fscrypt"
-	fscryptConfFile = "/etc/fscrypt.conf"
-	keyctlPath      = "/bin/keyctl"
-	mountPoint      = types.PersistDir
-	defaultImgVault = types.PersistDir + "/img"
-	defaultCfgVault = types.PersistDir + "/config"
-	keyDir          = "/TmpVaultDir"
-	protectorPrefix = "TheVaultKey"
-	vaultKeyLen     = 32 //bytes
-	vaultHalfKeyLen = 16 //bytes
+	agentName           = "vaultmgr"
+	fscryptPath         = "/opt/zededa/bin/fscrypt"
+	fscryptConfFile     = "/etc/fscrypt.conf"
+	keyctlPath          = "/bin/keyctl"
+	mountPoint          = types.PersistDir
+	defaultImgVault     = types.PersistDir + "/img"
+	defaultCfgVault     = types.PersistDir + "/config"
+	oldKeyDir           = "/TmpVaultDir1"
+	keyDir              = "/TmpVaultDir2"
+	protectorPrefix     = "TheVaultKey"
+	vaultKeyLen         = 32 //bytes
+	vaultHalfKeyLen     = 16 //bytes
+	defaultImgVaultName = "Application Data Store"
+	defaultCfgVaultName = "Configuration Data Store"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 var (
-	keyFile           = keyDir + "/protector.key"
+	keyFile    = keyDir + "/protector.key"
+	oldKeyFile = oldKeyDir + "/protector.key"
+
 	keyctlParams      = []string{"link", "@u", "@s"}
 	mntPointParams    = []string{"setup", mountPoint, "--quiet"}
 	statusParams      = []string{"status", mountPoint}
 	vaultStatusParams = []string{"status"}
 	setupParams       = []string{"setup", "--quiet"}
+	debug             = false
+	debugOverride     bool // From command line arg
 )
 
 func getEncryptParams(vaultPath string) []string {
@@ -59,9 +81,48 @@ func getStatusParams(vaultPath string) []string {
 	return append(args, vaultPath)
 }
 
+func getChangeProtectorParams(protectorID string) []string {
+	args := []string{"metadata", "change-passphrase", "--key=" + keyFile,
+		"--old-key=" + oldKeyFile, "--source=raw_key",
+		"--protector=" + mountPoint + ":" + protectorID}
+	return args
+}
+
+func getProtectorID(vaultPath string) ([][]string, error) {
+	args := getStatusParams(vaultPath)
+	stdOut, _, err := execCmd(fscryptPath, args...)
+	if err != nil {
+		return nil, err
+	}
+	protector := regexp.MustCompile(`([[:xdigit:]]+)  No      raw key protector`)
+	return protector.FindAllStringSubmatch(stdOut, -1), nil
+}
+
+func changeProtector(vaultPath string) error {
+	protectorID, err := getProtectorID(vaultPath)
+	if protectorID != nil {
+		if err := stageKey(true, oldKeyDir, oldKeyFile); err != nil {
+			return err
+		}
+		defer unstageKey(oldKeyDir, oldKeyFile)
+		if err := stageKey(false, keyDir, keyFile); err != nil {
+			return err
+		}
+		defer unstageKey(keyDir, keyFile)
+		if stdOut, stdErr, err := execCmd(fscryptPath,
+			getChangeProtectorParams(protectorID[0][1])...); err != nil {
+			log.Errorf("Error changing protector key: %v", err)
+			log.Debug(stdOut)
+			log.Debug(stdErr)
+			return err
+		}
+		log.Infof("Changed key for protector %s", (protectorID[0][1]))
+	}
+	return err
+}
+
 //Error values
 var (
-	ErrNoTpm       = errors.New("No TPM on this system")
 	ErrInvalKeyLen = errors.New("Unexpected key length")
 )
 
@@ -88,16 +149,13 @@ func linkKeyrings() error {
 func retrieveTpmKey() ([]byte, error) {
 	var tpmKey []byte
 	var err error
-	if tpmmgr.IsTpmEnabled() {
-		tpmKey, err = tpmmgr.FetchVaultKey()
-		if err != nil {
-			log.Errorf("Error fetching TPM key: %v", err)
-			return nil, err
-		}
-		return tpmKey, nil
-	} else {
-		return nil, ErrNoTpm
+	tpmKey, err = tpmmgr.FetchVaultKey()
+	if err != nil {
+		log.Errorf("Error fetching TPM key: %v", err)
+		return nil, err
 	}
+	log.Info("Using TPM key")
+	return tpmKey, nil
 }
 
 func retrieveCloudKey() ([]byte, error) {
@@ -118,65 +176,66 @@ func mergeKeys(key1 []byte, key2 []byte) ([]byte, error) {
 	mergedKey := []byte("")
 	mergedKey = append(mergedKey, key1[0:v1]...)
 	mergedKey = append(mergedKey, key2[v1:v2]...)
+	log.Info("Merging keys")
 	return mergedKey, nil
 }
 
-func deriveVaultKey() ([]byte, error) {
+//cloudKeyOnlyMode is set when the key is used only from cloud, and not from TPM.
+func deriveVaultKey(cloudKeyOnlyMode bool) ([]byte, error) {
 	//First fetch Cloud Key
 	cloudKey, err := retrieveCloudKey()
 	if err != nil {
 		return nil, err
 	}
-
-	//Next fetch TPM key, if one is available
-	tpmKey, err := retrieveTpmKey()
-	if err == ErrNoTpm {
+	if cloudKeyOnlyMode {
 		return cloudKey, nil
-	} else if err == nil {
+	}
+	tpmKey, err := retrieveTpmKey()
+	if err == nil {
 		return mergeKeys(tpmKey, cloudKey)
 	} else {
 		//TPM is present but still error retriving the key
-		return nil, err
+		return cloudKey, err
 	}
 }
 
 //stageKey is responsible for talking to TPM and Controller
 //and preparing the key for accessing the vault
-func stageKey() error {
+func stageKey(cloudKeyOnlyMode bool, keyDirName string, keyFileName string) error {
 	//Create a tmpfs file to pass the secret to fscrypt
-	if _, _, err := execCmd("mkdir", keyDir); err != nil {
-		log.Fatalf("Error creating keyDir %v", err)
+	if _, _, err := execCmd("mkdir", keyDirName); err != nil {
+		log.Fatalf("Error creating keyDir %s %v", keyDirName, err)
 		return err
 	}
 
-	if _, _, err := execCmd("mount", "-t", "tmpfs", "tmpfs", keyDir); err != nil {
-		log.Fatalf("Error mounting tmpfs on keyDir: %v", err)
+	if _, _, err := execCmd("mount", "-t", "tmpfs", "tmpfs", keyDirName); err != nil {
+		log.Fatalf("Error mounting tmpfs on keyDir %s: %v", keyDirName, err)
 		return err
 	}
 
-	vaultKey, err := deriveVaultKey()
+	vaultKey, err := deriveVaultKey(cloudKeyOnlyMode)
 	if err != nil {
 		log.Errorf("Error deriving key for accessing the vault: %v", err)
 		return err
 	}
-	if err := ioutil.WriteFile(keyFile, vaultKey, 0700); err != nil {
+	if err := ioutil.WriteFile(keyFileName, vaultKey, 0700); err != nil {
 		log.Fatalf("Error creating keyFile: %v", err)
 	}
 	return nil
 }
 
-func unstageKey() {
+func unstageKey(keyDirName string, keyFileName string) {
 	//Shred the tmpfs file, and remove it
-	if _, _, err := execCmd("shred", "--remove", keyFile); err != nil {
-		log.Fatalf("Error shredding keyFile: %v", err)
+	if _, _, err := execCmd("shred", "--remove", keyFileName); err != nil {
+		log.Fatalf("Error shredding keyFile %s: %v", keyFileName, err)
 		return
 	}
-	if _, _, err := execCmd("umount", keyDir); err != nil {
-		log.Fatalf("Error unmounting: %v", err)
+	if _, _, err := execCmd("umount", keyDirName); err != nil {
+		log.Fatalf("Error unmounting %s: %v", keyDirName, err)
 		return
 	}
-	if _, _, err := execCmd("rm", "-rf", keyDir); err != nil {
-		log.Fatalf("Error removing keyDir: %v", err)
+	if _, _, err := execCmd("rm", "-rf", keyDirName); err != nil {
+		log.Fatalf("Error removing keyDir %s : %v", keyDirName, err)
 		return
 	}
 	return
@@ -208,15 +267,15 @@ func handleFirstUse() error {
 	return nil
 }
 
-func unlockVault(vaultPath string) error {
-	if err := stageKey(); err != nil {
+func unlockVault(vaultPath string, cloudKeyOnlyMode bool) error {
+	if err := stageKey(cloudKeyOnlyMode, keyDir, keyFile); err != nil {
 		return err
 	}
-	defer unstageKey()
+	defer unstageKey(keyDir, keyFile)
 
 	//Unlock vault for access
 	if _, _, err := execCmd(fscryptPath, getUnlockParams(vaultPath)...); err != nil {
-		log.Fatalf("Error unlocking vault: %v", err)
+		log.Errorf("Error unlocking vault: %v", err)
 		return err
 	}
 	return linkKeyrings()
@@ -224,10 +283,10 @@ func unlockVault(vaultPath string) error {
 
 //createVault expects an empty, existing dir at vaultPath
 func createVault(vaultPath string) error {
-	if err := stageKey(); err != nil {
+	if err := stageKey(true, keyDir, keyFile); err != nil {
 		return err
 	}
-	defer unstageKey()
+	defer unstageKey(keyDir, keyFile)
 
 	//Encrypt vault, and unlock it for accessing
 	if stdout, stderr, err := execCmd(fscryptPath, getEncryptParams(vaultPath)...); err != nil {
@@ -255,7 +314,14 @@ func setupVault(vaultPath string) error {
 	}
 	//Already setup for encryption, go for unlocking
 	log.Debugf("Unlocking %s", vaultPath)
-	return unlockVault(vaultPath)
+	if err := unlockVault(vaultPath, false); err != nil {
+		log.Debug("Unlocking using fallback mode")
+		if err := unlockVault(vaultPath, true); err != nil {
+			return err
+		}
+		//return changeProtector(vaultPath)
+	}
+	return nil
 }
 
 func setupFscryptEnv() error {
@@ -272,8 +338,33 @@ func setupFscryptEnv() error {
 	return nil
 }
 
-//GetOperInfo gets the current operational state of fscrypt
-func GetOperInfo() (info.DataSecAtRestStatus, string) {
+func publishVaultStatus(ctx *vaultMgrContext,
+	vaultName string, vaultPath string,
+	fscryptStatus info.DataSecAtRestStatus,
+	fscryptError string) {
+	status := types.VaultStatus{}
+	status.Name = vaultName
+	if fscryptStatus != info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED {
+		status.Status = fscryptStatus
+		status.Error = fscryptError
+		status.ErrorTime = time.Now()
+	} else {
+		args := getStatusParams(vaultPath)
+		if stderr, _, err := execCmd(fscryptPath, args...); err != nil {
+			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
+			status.Error = stderr
+			status.ErrorTime = time.Now()
+		} else {
+			status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED
+		}
+	}
+	key := status.Key()
+	log.Debugf("Publishing VaultStatus %s\n", key)
+	pub := ctx.pubVaultStatus
+	pub.Publish(key, status)
+}
+
+func fetchFscryptStatus() (info.DataSecAtRestStatus, string) {
 	_, err := os.Stat(fscryptConfFile)
 	if err == nil {
 		if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
@@ -284,11 +375,54 @@ func GetOperInfo() (info.DataSecAtRestStatus, string) {
 		} else {
 			//fscrypt is setup , and being used on /persist
 			log.Debug("Setting status to Enabled")
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED, ""
+		}
+	} else {
+		_, err := os.Stat(etpm.TpmDevicePath)
+		if err != nil {
+			//This is due to lack of TPM
+			log.Debug("Setting status to disabled, HSM is not in use")
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
+				"No active TPM found, but needed for key generation"
+		} else {
+			//This is due to ext3 partition
+			log.Debug("setting status to disabled, ext3 partition")
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
+				"File system is incompatible, needs a disruptive upgrade"
+		}
+	}
+}
+
+func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *vaultMgrContext) {
+	pubVaultStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.VaultStatus{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pubVaultStatus.ClearRestarted()
+	ctx.pubVaultStatus = pubVaultStatus
+}
+
+//GetOperInfo gets the current operational state of fscrypt. (Deprecated)
+func GetOperInfo() (info.DataSecAtRestStatus, string) {
+	_, err := os.Stat(fscryptConfFile)
+	if err == nil {
+		if _, _, err := execCmd(fscryptPath, statusParams...); err != nil {
+			//fscrypt is setup, but not being used
+			log.Debug("Setting status to Error")
+			return info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR,
+				"Initialization failure"
+		} else {
+			//fscrypt is setup, and being used on /persist
+			log.Debug("Setting status to Enabled")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED,
 				"Using Secure Application Vault=Yes, Using Secure Configuration Vault=Yes"
 		}
 	} else {
-		if !tpmmgr.IsTpmEnabled() {
+		if !etpm.IsTpmEnabled() {
 			//This is due to ext3 partition
 			log.Debug("Setting status to disabled, HSM is not in use")
 			return info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED,
@@ -303,21 +437,29 @@ func GetOperInfo() (info.DataSecAtRestStatus, string) {
 }
 
 //Run is the entrypoint for running vaultmgr as a standalone program
-func Run() {
+func Run(ps *pubsub.PubSub) {
 
 	curpartPtr := flag.String("c", "", "Current partition")
+	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
-
+	debug = *debugPtr
+	debugOverride = debug
+	if debugOverride {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 	curpart := *curpartPtr
 
-	log.SetLevel(log.DebugLevel)
-
 	// Sending json log format to stdout
-	logf, err := agentlog.Init("vaultmgr", curpart)
+	err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logf.Close()
+
+	if len(flag.Args()) == 0 {
+		log.Fatal("Insufficient arguments")
+	}
 
 	switch flag.Args()[0] {
 	case "setupVaults":
@@ -330,8 +472,97 @@ func Run() {
 		if err = setupVault(defaultCfgVault); err != nil {
 			log.Fatalf("Error in setting up vault %s %v", defaultImgVault, err)
 		}
+	case "runAsService":
+		log.Infof("Starting %s\n", agentName)
+
+		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
+			log.Fatal(err)
+		}
+		// Run a periodic timer so we always update StillRunning
+		stillRunning := time.NewTicker(15 * time.Second)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+
+		// Context to pass around
+		ctx := vaultMgrContext{}
+
+		// Look for global config such as log levels
+		subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+			AgentName:     "",
+			TopicImpl:     types.GlobalConfig{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+		ctx.subGlobalConfig = subGlobalConfig
+		subGlobalConfig.Activate()
+
+		// Pick up debug aka log level before we start real work
+		for !ctx.GCInitialized {
+			log.Infof("waiting for GCInitialized")
+			select {
+			case change := <-subGlobalConfig.MsgChan():
+				subGlobalConfig.ProcessChange(change)
+			case <-stillRunning.C:
+			}
+			agentlog.StillRunning(agentName, warningTime, errorTime)
+		}
+		log.Infof("processed GlobalConfig")
+
+		// initialize publishing handles
+		initializeSelfPublishHandles(ps, &ctx)
+
+		fscryptStatus, fscryptErr := fetchFscryptStatus()
+		publishVaultStatus(&ctx, defaultImgVaultName, defaultImgVault,
+			fscryptStatus, fscryptErr)
+		publishVaultStatus(&ctx, defaultCfgVaultName, defaultCfgVault,
+			fscryptStatus, fscryptErr)
+		for {
+			select {
+			case <-stillRunning.C:
+				agentlog.StillRunning(agentName, warningTime, errorTime)
+			}
+		}
 	default:
-		log.Errorln("Unknown Argument")
-		os.Exit(1)
+		log.Fatalf("Unknown argument %s", flag.Args()[0])
 	}
+}
+
+// Handles both create and modify events
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*vaultMgrContext)
+	if key != "global" {
+		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleGlobalConfigModify for %s\n", key)
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	if gcp != nil {
+		ctx.GCInitialized = true
+	}
+	log.Infof("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*vaultMgrContext)
+	if key != "global" {
+		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

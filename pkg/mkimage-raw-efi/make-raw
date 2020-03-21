@@ -40,6 +40,7 @@
 #   * config.tar for config partition
 #
 set -e
+[ -n "$DEBUG" ] && set -x
 
 IMGFILE=$1
 shift
@@ -53,14 +54,32 @@ ROOTFS_PART_SIZE=$(( 300 * 1024 * 1024 ))
 CONF_PART_SIZE=$((1024 * 1024))
 # installer inventory parition size in bytes
 WIN_INVENTORY_PART_SIZE=$((10240 * 1024))
+# installer system parition size in bytes
+INSTALLER_SYS_PART_SIZE=$(( 300 * 1024 * 1024 ))
 
-function cp_with_backup {
+sgdisk() {
+  # filter out annoying messages we can't get rid of:
+  #   https://github.com/kini/gptfdisk/blob/master/diskio-unix.cc#L153
+  local OUT
+  local RET
+  OUT=$(/usr/bin/sgdisk "$@" 2>&1)
+  RET=$?
+  echo "$OUT" | grep -Ev "$(echo '^Disk device is
+when determining sector size! Setting sector size to 512
+Warning: The kernel is still using the old partition table
+The new table will be used at the next reboot or after you
+run partprobe.*or kpartx
+The operation has completed successfully.' | tr '\012' '|')$^" || :
+  return $RET
+}
+
+cp_with_backup() {
   local MD5_SUM=$(md5sum "$2" | cut -f1 -d\  )
   [ -f "$2".$MD5_SUM ] || cp "$2" "$2".$MD5_SUM
   [ $? -eq 0 ] && cp "$1" "$2"
 }
 
-function grow_part {
+grow_part() {
   # (x+1024)/1024*1024 rounds up to multiple of 1024KB, or 2048
   # sectors some firmwares get confused if the partitions are not
   # aligned on 2048 blocks we will round up to the nearest multiple of
@@ -71,7 +90,7 @@ function grow_part {
   echo $(( $1 + 2 * $IMAGE_SIZE_KB - 1))
 }
 
-function dir2vfat {
+dir2vfat() {
   # <img name> dir2vfat <dir> <image size> [label]
   local IMG=`mktemp -u -p /tmp/data`
   local LABEL=${3:-EVE}
@@ -82,34 +101,40 @@ function dir2vfat {
   echo $IMG
 }
 
-function do_efi {
-  eval local SEC_START=\$$1
-  local SEC_END=`grow_part $SEC_START $EFI_PART_SIZE`
-  local NUM_PART=$(( $PART_OFFSET + 1 ))
-
-  # Create a partition
-  sgdisk --new $NUM_PART:$SEC_START:$SEC_END --typecode=$NUM_PART:ef00 --change-name=$NUM_PART:'EFI System' \
-         --attributes $NUM_PART:set:2 $IMGFILE
- 
-  # Extract GRUB bootloader
-  # Try squashfs tools first in case ROOTFS_IMG is squashfs, otherwise use mount
-  rm -rf /tmp/grub
-  unsquashfs -d /tmp/grub "$ROOTFS_IMG" EFI/BOOT/ || (
-      mkdir -p /tmp/grub/EFI/BOOT
-      mount -o loop "$ROOTFS_IMG" /mnt
-      cp /mnt/EFI/BOOT/BOOT*EFI /tmp/grub/EFI/BOOT/
-      umount /mnt
-  )
-  cp /tmp/grub/EFI/BOOT/BOOT*EFI /efifs/EFI/BOOT
-
-  #   ...copy EFI fs to EFI partition
-  dd if=`dir2vfat /efifs $(( ($SEC_END - $SEC_START) / 2))` of=$IMGFILE bs=512 conv=notrunc seek=$SEC_START
-
-  eval $1=$(($SEC_END + 1))
+mkefifs() {
+  rm -rf /efifs
+  mkdir /efifs
+  cp -Lr "$EFI_DIR" /efifs/EFI
 }
 
+do_system_vfat_part() {
+  eval "local SEC_START=\$$1"
+  local SEC_END="$(grow_part "$SEC_START" "$2")"
+  local NUM_PART=$(( PART_OFFSET + 1 ))
 
-function do_rootfs {
+  # Create a partition
+  sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" --typecode="$NUM_PART:ef00" --change-name="$NUM_PART":'EFI System' \
+         --attributes "$NUM_PART:set:2" "$IMGFILE"
+
+  #   ...copy EFI fs to EFI partition
+  dd if="$(dir2vfat /efifs $(( (SEC_END - SEC_START) / 2)))" of="$IMGFILE" bs=512 conv=notrunc seek="$SEC_START"
+
+  eval "$1=$((SEC_END + 1))"
+}
+
+do_efi() {
+  mkefifs
+  sed -e 's#@PATH_TO_GRUB@#'"$(cd /efifs; echo EFI/BOOT/BOOT*EFI)"'#' < /grub.cfg.in > /efifs/EFI/BOOT/grub.cfg
+  do_system_vfat_part "$1" "$EFI_PART_SIZE"
+}
+
+do_installer() {
+  mkefifs
+  cp "$INITRD_IMG" "$ROOTFS_IMG" /UsbInvocationScript.txt /efifs
+  do_system_vfat_part "$1" "$INSTALLER_SYS_PART_SIZE"
+}
+
+do_rootfs() {
     eval SEC_START=\$$1
     local SEC_END=`grow_part $SEC_START $ROOTFS_PART_SIZE`
     LABEL=$2
@@ -134,16 +159,16 @@ function do_rootfs {
     eval $1=$(( $SEC_END + 1))
 }
 
-function do_imga {
+do_imga() {
     do_rootfs $1 IMGA $ROOTFS_IMG
 }
 
-function do_imgb {
+do_imgb() {
     # for now we are not initializing IMGB - hence passing /dev/null
     do_rootfs $1 IMGB /dev/null
 }
 
-function do_vfat {
+do_vfat() {
     eval local SEC_START=\$$1
     local SEC_END=`grow_part $SEC_START $CONF_PART_SIZE`
     local NUM_PART=$(( $PART_OFFSET + 4 ))
@@ -158,15 +183,15 @@ function do_vfat {
     eval $1=$(( $SEC_END + 1))
 }
 
-function do_conf {
+do_conf() {
     do_vfat $1 13307e62-cd9c-4920-8f9b-91b45828b798 
 }
 
-function do_conf_win {
+do_conf_win() {
     do_vfat $1 EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
 }
 
-function do_inventory_win {
+do_inventory_win() {
     eval local SEC_START="\$$1"
     # shellcheck disable=SC2155
     local SEC_END=$(grow_part "$SEC_START" "$WIN_INVENTORY_PART_SIZE")
@@ -200,19 +225,42 @@ do_persist() {
     eval $1=0
 }
 
+do_usb_conf() {
+    eval local SEC_START="\$$1"
+    # shellcheck disable=SC2155
+    local SEC_END=$(sgdisk -E "$IMGFILE")
+    local NUM_PART=$(( PART_OFFSET + 1 ))
+    local PART_TYPE=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7
+    local FAT_SIZE=$(( SEC_END - SEC_START ))
+
+    sgdisk --new "$NUM_PART:$SEC_START:$SEC_END" \
+           --typecode="$NUM_PART:$PART_TYPE" \
+           --change-name="$NUM_PART:DevicePortConfig" "$IMGFILE"
+
+    mformat -i "${IMGFILE}@@$(( SEC_START * 512 ))" -h $(( FAT_SIZE / 65535 + 1 )) -t 1 -s 65535 -l EVEDPC ::
+    mcopy -i "${IMGFILE}@@$(( SEC_START * 512 ))" /parts/* ::/
+
+    eval "$1=$(( SEC_END + 1))"
+}
 
 #
-# Extract partitions from stdin
+# Extract partitions from stdin or look them up in /bits
 #
-mkdir /parts 2>/dev/null || :
-[ -t 0 ] || (cd /parts; bsdtar xzf -)
+if [ ! -d /parts ]; then
+   mkdir /parts
+   (cd /parts ; bsdtar xzf -)
+fi
 
+# content of initrd installer image
+INITRD_IMG=/parts/initrd.img
 # content of rootfs partition
-ROOTFS_IMG=`echo /parts/rootfs*.img | cut -f1 -d\ `
+ROOTFS_IMG=/parts/rootfs.img
 # content of conf partition 
 CONF_FILE=/parts/config.img
 # content of persist partition
 PERSIST_FILE=/parts/persist.img
+# EFI boot directory
+EFI_DIR=/parts/EFI
 
 # offset in the GTP partition table from which we can start our numbering
 PART_OFFSET=0
@@ -234,10 +282,10 @@ case "$(sgdisk -p $IMGFILE 2>/dev/null | sed -ne '/^Number/,$s/^.* //p' | tr '\0
       ;;
   "Name System IMGA IMGB CONFIG P3"*)
       echo "Found EVE GPT partition table on $IMGFILE"
-      sgdisk -g --clear $IMGFILE 2>/dev/null
+      sgdisk -Z --clear $IMGFILE 2>/dev/null
       ;;
    *) echo "Unknown (or unrecongnizable) GTP partition table on $IMGFILE"
-      sgdisk -g --clear $IMGFILE 2>/dev/null
+      sgdisk -Z --clear $IMGFILE 2>/dev/null
       ;;
 esac
 
@@ -246,12 +294,13 @@ for p in $PARTS ; do
 done
 
 # Update embedded boot partition with our own bootloader
-if [ ${EMBED_BOOT_START:-0} -gt 0 -a ${EMBED_BOOT_SIZE:-0} -gt 0 -a -f /efifs/EFI/BOOT/BOOTX64.EFI ] ; then
-  if mount $IMGFILE /mnt -o loop,offset=$(( $EMBED_BOOT_START * 512  )),sizelimit=$(( $EMBED_BOOT_SIZE * 512 )) ; then
+GRUB_IMG="$(echo /efifs/EFI/BOOT/BOOT*.EFI)"
+if [ ${EMBED_BOOT_START:-0} -gt 0 -a ${EMBED_BOOT_SIZE:-0} -gt 0 -a -f "$GRUB_IMG" ] ; then
+  if mount $IMGFILE /mnt -o loop,offset=$(( EMBED_BOOT_START * 512  )),sizelimit=$(( EMBED_BOOT_SIZE * 512 )) ; then
      FASTBOOT=$(cd /mnt/EFI/BOOT/ ; ls | grep -i '^fastboot.efi$')
      if $(set ${FASTBOOT:-. .} ; test $# -eq 1) ; then
-        cp_with_backup /efifs/EFI/BOOT/BOOTX64.EFI /mnt/EFI/BOOT/$FASTBOOT
-        (echo 'set root=hd0,gpt11' ; echo 'chainloader /efi/boot/bootx64.efi' ; echo 'boot') > /tmp/grub.cfg
+        cp_with_backup "$GRUB_IMG" "/mnt/EFI/BOOT/$FASTBOOT"
+        (echo 'set root=hd0,gpt11' ; echo 'configfile /efi/boot/grub.cfg') > /tmp/grub.cfg
         cp_with_backup /tmp/grub.cfg /mnt/EFI/BOOT/grub.cfg
      fi
   fi

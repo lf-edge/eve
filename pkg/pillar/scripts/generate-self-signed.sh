@@ -49,11 +49,16 @@ subject="/C=US/ST=California/L=Santa Clara/O=Zededa, Inc/CN=onboard"
 
 if [ "$use_tpm" = true ]; then
         #Prepare TPM credentials, generate one if required
-        /opt/zededa/bin/tpmmgr genCredentials
+        if ! /opt/zededa/bin/tpmmgr genCredentials; then
+            echo "genCredentials failed, not proceeding with TPM based cert"
+            exit 1
+        fi
         echo "TPM mode is active, using ECC key from TPM"
         if ! /opt/zededa/bin/tpmmgr readDeviceCert; then
             echo "readDeviceCert failed, generating new key and cert"
-            /opt/zededa/bin/tpmmgr genKey
+            if ! /opt/zededa/bin/tpmmgr genKey; then
+                exit 1
+            fi
         else
             echo "readDeviceCert successful, re-using existing certificate"
             exit 0
@@ -89,7 +94,9 @@ esac
 
 if [ "$use_tpm" = true ]; then
     echo "Writing device certificate to TPM"
-    /opt/zededa/bin/tpmmgr writeDeviceCert
+    if ! /opt/zededa/bin/tpmmgr writeDeviceCert; then
+        echo "Failed to backup device cert in TPM NVRAM"
+    fi
 fi
 
 #Cleanup

@@ -93,7 +93,7 @@ func handleResetOnCloudDisconnect(ctxPtr *nodeagentContext) {
 // on upgrade validation testing time expiry,
 // initiate the validation completion procedure
 func handleUpgradeTestValidation(ctxPtr *nodeagentContext) {
-	if !ctxPtr.testInprogress || ctxPtr.needsReboot {
+	if !ctxPtr.testInprogress || ctxPtr.deviceReboot {
 		return
 	}
 	if checkUpgradeValidationTestTimeExpiry(ctxPtr) {
@@ -176,36 +176,89 @@ func updateZedagentCloudConnectStatus(ctxPtr *nodeagentContext,
 	}
 }
 
+// zedagent is telling us to reboot
+func handleRebootCmd(ctxPtr *nodeagentContext, status types.ZedAgentStatus) {
+	if !status.RebootCmd || ctxPtr.rebootCmd {
+		return
+	}
+	ctxPtr.rebootCmd = true
+	scheduleNodeReboot(ctxPtr, status.RebootReason)
+}
+
 func scheduleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
-	log.Infof("scheduleNodeReboot(): Reboot reason(%s)\n", reasonStr)
-	if ctxPtr.needsReboot {
+	if ctxPtr.deviceReboot {
 		log.Infof("reboot flag is already set\n")
 		return
 	}
+	log.Infof("scheduleNodeReboot(): current RebootReason: %s", reasonStr)
 
 	// publish, for zedagent to pick up the reboot event
 	// TBD:XXX, all other agents can subscribe to nodeagent or,
 	// status to gracefully shutdown their states, for example
 	// downloader can teardown the existing connections
 	// and clean up its temporary states etc.
-	ctxPtr.needsReboot = true
-	ctxPtr.rebootReason = reasonStr
+	ctxPtr.deviceReboot = true
+	ctxPtr.currentRebootReason = reasonStr
 	publishNodeAgentStatus(ctxPtr)
 
 	// in any case, execute the reboot procedure
 	// with a delayed timer
-	go handleNodeReboot(reasonStr)
+	go handleNodeReboot(ctxPtr, reasonStr)
 }
 
-func handleNodeReboot(reasonStr string) {
+func allDomainsHalted(ctxPtr *nodeagentContext) bool {
+	// Check if all domains have been halted.
+	items := ctxPtr.subDomainStatus.GetAll()
+	for _, c := range items {
+		ds := c.(types.DomainStatus)
+		if ds.Activated {
+			log.Debugf("allDomainsHalted: Domain (UUID: %s, name: %s) "+
+				"not halted. State: %d",
+				ds.UUIDandVersion.UUID.String(), ds.DisplayName, ds.State)
+			return false
+		}
+	}
+	log.Debugf("allDomainsHalted: All Domains Halted.")
+	return true
 
-	duration := time.Second * time.Duration(rebootDelay)
+}
+
+// waitForAllDomainsHalted
+//  blocks till all domains are halted. Should only be invoked from
+//  a thread.
+func waitForAllDomainsHalted(ctxPtr *nodeagentContext) {
+
+	var totalWaitTime uint32
+	for totalWaitTime = 0; totalWaitTime < ctxPtr.maxDomainHaltTime; totalWaitTime += ctxPtr.domainHaltWaitIncrement {
+		if allDomainsHalted(ctxPtr) {
+			return
+		}
+
+		duration := time.Second * time.Duration(ctxPtr.domainHaltWaitIncrement)
+		domainHaltWaitTimer := time.NewTimer(duration)
+		log.Debugf("waitForAllDomainsHalted: Waiting for all domains to be halted. "+
+			"totalWaitTime: %d sec, domainHaltWaitIncrement: %d sec",
+			totalWaitTime, domainHaltWaitIncrement)
+		<-domainHaltWaitTimer.C
+	}
+	log.Infof("waitForAllDomainsHalted: Max waittime for DomainsHalted."+
+		"totalWaitTime: %d sec, maxDomainHaltTime: %d sec. Proceeding "+
+		"with reboot", totalWaitTime, maxDomainHaltTime)
+}
+
+func handleNodeReboot(ctxPtr *nodeagentContext, reasonStr string) {
+	// Wait for MinRebootDelay time
+	duration := time.Second * time.Duration(minRebootDelay)
 	rebootTimer := time.NewTimer(duration)
-	log.Infof("handleNodeReboot: timer %d seconds\n",
+	log.Infof("handleNodeReboot: minRebootDelay timer %d seconds\n",
 		duration/time.Second)
 	<-rebootTimer.C
+
 	// set the reboot reason
-	agentlog.RebootReason(reasonStr)
+	agentlog.RebootReason(ctxPtr.currentRebootReason, true)
+
+	// Wait for All Domains Halted
+	waitForAllDomainsHalted(ctxPtr)
 
 	// do a sync
 	log.Infof("Doing a sync..\n")

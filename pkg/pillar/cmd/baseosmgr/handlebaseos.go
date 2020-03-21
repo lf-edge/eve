@@ -14,9 +14,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lf-edge/eve/pkg/pillar/cast"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zboot"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -24,19 +25,12 @@ const (
 	BaseOsImageCount = 1
 )
 
-var immediate int = 30 // take a 30 second delay
-var rebootTimer *time.Timer
-
-func lookupBaseOsSafename(ctx *baseOsMgrContext, safename string) *types.BaseOsConfig {
+func lookupBaseOsImageID(ctx *baseOsMgrContext, imageID uuid.UUID) *types.BaseOsConfig {
 	items := ctx.subBaseOsConfig.GetAll()
 	for _, c := range items {
-		config := cast.CastBaseOsConfig(c)
+		config := c.(types.BaseOsConfig)
 		for _, sc := range config.StorageConfigList {
-			safename1 := types.UrlToSafename(sc.Name,
-				sc.ImageSha256)
-
-			// base os config contains the current image
-			if safename == safename1 {
+			if uuid.Equal(sc.ImageID, imageID) {
 				return &config
 			}
 		}
@@ -44,24 +38,24 @@ func lookupBaseOsSafename(ctx *baseOsMgrContext, safename string) *types.BaseOsC
 	return nil
 }
 
-func baseOsHandleStatusUpdateSafename(ctx *baseOsMgrContext, safename string) {
+func baseOsHandleStatusUpdateImageID(ctx *baseOsMgrContext, imageID uuid.UUID) {
 
-	log.Infof("baseOsStatusUpdateSafename for %s\n", safename)
-	config := lookupBaseOsSafename(ctx, safename)
+	log.Infof("baseOsHandleStatusUpdateImageID for %s\n", imageID)
+	config := lookupBaseOsImageID(ctx, imageID)
 	if config == nil {
-		log.Infof("baseOsHandleStatusUpdateSafename(%s) not found\n",
-			safename)
+		log.Infof("baseOsHandleStatusUpdateImageID(%s) not found\n",
+			imageID)
 		return
 	}
 	uuidStr := config.Key()
 	status := lookupBaseOsStatus(ctx, uuidStr)
 	if status == nil {
-		log.Infof("baseOsHandleStatusUpdateSafename(%s) no status\n",
-			safename)
+		log.Infof("baseOsHandleStatusUpdateImageID(%s) no status\n",
+			imageID)
 		return
 	}
-	log.Infof("baseOsHandleStatusUpdateSafename(%s) found %s\n",
-		safename, uuidStr)
+	log.Infof("baseOsHandleStatusUpdateImageID(%s) found %s\n",
+		imageID, uuidStr)
 
 	// handle the change event for this base os config
 	baseOsHandleStatusUpdate(ctx, config, status)
@@ -255,6 +249,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 		log.Infof("Installing %s over unused\n",
 			config.BaseOsVersion)
 	case "inprogress":
+		agentlog.DiscardOtherRebootReason()
 		log.Infof("Installing %s over inprogress\n",
 			config.BaseOsVersion)
 	case "updating":
@@ -345,13 +340,12 @@ func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
 
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		if ss.Name != sc.Name ||
-			ss.ImageSha256 != sc.ImageSha256 {
+		if ss.Name != sc.Name || !uuid.Equal(ss.ImageID, sc.ImageID) {
 			// Report to zedcloud
 			errString := fmt.Sprintf("%s, for %s, Storage config mismatch:\n\t%s\n\t%s\n\t%s\n\t%s\n\n", uuidStr,
 				config.BaseOsVersion,
 				sc.Name, ss.Name,
-				sc.ImageSha256, ss.ImageSha256)
+				sc.ImageID, ss.ImageID)
 			log.Errorln(errString)
 			status.Error = errString
 			status.ErrorTime = time.Now()
@@ -420,12 +414,11 @@ func validatePartition(ctx *baseOsMgrContext,
 	// version?
 	if otherPartState == "inprogress" &&
 		otherPartVersion == config.BaseOsVersion {
-
-		errStr := fmt.Sprintf("Attempt to reinstall failed update %s in %s: refused",
-			config.BaseOsVersion, otherPartName)
-		log.Errorln(errStr)
-		status.Error = errStr
-		status.ErrorTime = time.Now()
+		// we are going to quote the same error, while doing baseos
+		// upgrade validation.
+		// first pick up from the partition
+		handleOtherPartRebootReason(ctx, status)
+		log.Errorln(status.Error)
 		changed = true
 		return changed, false
 	}
@@ -640,6 +633,10 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 				zboot.GetCurrentPartition())
 			if curPartState == "active" {
 				log.Infof("Mark other partition %s, unused\n", partName)
+				// we will erase the older reboot reason
+				if zboot.IsOtherPartitionStateInProgress() {
+					agentlog.DiscardOtherRebootReason()
+				}
 				zboot.SetOtherPartitionStateUnused()
 				publishZbootPartitionStatus(ctx, partName)
 				baseOsSetPartitionInfoInStatus(ctx, status,
@@ -660,9 +657,9 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 		// Decrease refcount if we had increased it
 		if ss.HasVerifierRef {
 			log.Infof("doBaseOsUninstall(%s) for %s, HasVerifierRef %s\n",
-				status.BaseOsVersion, uuidStr, ss.ImageSha256)
-			MaybeRemoveVerifierConfigSha256(ctx, types.BaseOsObj,
-				ss.ImageSha256)
+				status.BaseOsVersion, uuidStr, ss.ImageID)
+			MaybeRemoveVerifierConfig(ctx, types.BaseOsObj,
+				ss.ImageID)
 			ss.HasVerifierRef = false
 			changed = true
 		} else {
@@ -670,12 +667,10 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 				status.BaseOsVersion, uuidStr)
 		}
 
-		vs := lookupVerificationStatusSha256(ctx, types.BaseOsObj,
-			ss.ImageSha256)
-
+		vs := lookupVerificationStatus(ctx, types.BaseOsObj, ss.ImageID)
 		if vs != nil {
 			log.Infof("doBaseOsUninstall(%s) for %s, Verifier %s not yet gone; RefCount %d\n",
-				status.BaseOsVersion, uuidStr, ss.ImageSha256,
+				status.BaseOsVersion, uuidStr, ss.ImageID,
 				vs.RefCount)
 			removedAll = false
 			continue
@@ -698,13 +693,12 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 	for i := range status.StorageStatusList {
 
 		ss := &status.StorageStatusList[i]
-		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {
 			log.Infof("doBaseOsUninstall(%s) for %s, HasDownloaderRef %s\n",
-				status.BaseOsVersion, uuidStr, safename)
+				status.BaseOsVersion, uuidStr, ss.ImageID)
 
-			removeDownloaderConfig(ctx, types.BaseOsObj, safename)
+			removeDownloaderConfig(ctx, types.BaseOsObj, ss.ImageID)
 			ss.HasDownloaderRef = false
 			changed = true
 		} else {
@@ -712,10 +706,10 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 				status.BaseOsVersion, uuidStr)
 		}
 
-		ds := lookupDownloaderStatus(ctx, types.BaseOsObj, ss.ImageSha256)
+		ds := lookupDownloaderStatus(ctx, types.BaseOsObj, ss.ImageID)
 		if ds != nil {
 			log.Infof("doBaseOsUninstall(%s) for %s, Download %s not yet gone; RefCount %d\n",
-				status.BaseOsVersion, uuidStr, safename,
+				status.BaseOsVersion, uuidStr, ss.ImageID,
 				ds.RefCount)
 			removedAll = false
 			continue
@@ -788,12 +782,7 @@ func lookupBaseOsConfig(ctx *baseOsMgrContext, key string) *types.BaseOsConfig {
 		log.Infof("lookupBaseOsConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastBaseOsConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupBaseOsConfig(%s) got %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.BaseOsConfig)
 	return &config
 }
 
@@ -804,12 +793,7 @@ func lookupBaseOsStatus(ctx *baseOsMgrContext, key string) *types.BaseOsStatus {
 		log.Infof("lookupBaseOsStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastBaseOsStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupBaseOsStatus(%s) got %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.BaseOsStatus)
 	return &status
 }
 
@@ -820,7 +804,7 @@ func lookupBaseOsStatusByPartLabel(ctx *baseOsMgrContext, partLabel string) *typ
 		log.Infof("lookupBaseOsStatusByPartLabel(%s) not found\n", partLabel)
 		return nil
 	}
-	status := cast.CastBaseOsStatus(st)
+	status := st.(types.BaseOsStatus)
 	if status.Key() != partLabel {
 		log.Errorf("lookupBaseOsStatus(%s) got %s; ignored %+v\n",
 			partLabel, status.Key(), status)
@@ -834,7 +818,7 @@ func publishBaseOsStatus(ctx *baseOsMgrContext, status *types.BaseOsStatus) {
 	key := status.Key()
 	log.Debugf("Publishing BaseOsStatus %s\n", key)
 	pub := ctx.pubBaseOsStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishBaseOsStatus(ctx *baseOsMgrContext, key string) {
@@ -927,7 +911,7 @@ func updateAndPublishBaseOsStatusAll(ctx *baseOsMgrContext) {
 	pub := ctx.pubBaseOsStatus
 	items := pub.GetAll()
 	for _, st := range items {
-		status := cast.CastBaseOsStatus(st)
+		status := st.(types.BaseOsStatus)
 		if status.PartitionLabel == "" {
 			continue
 		}
@@ -940,7 +924,7 @@ func maybeRetryInstall(ctx *baseOsMgrContext) {
 	pub := ctx.pubBaseOsStatus
 	items := pub.GetAll()
 	for _, st := range items {
-		status := cast.CastBaseOsStatus(st)
+		status := st.(types.BaseOsStatus)
 		if !status.TooEarly {
 			log.Infof("maybeRetryInstall(%s) skipped\n",
 				status.Key())
@@ -1029,7 +1013,7 @@ func getZbootStatus(ctx *baseOsMgrContext, partName string) *types.ZbootStatus {
 		log.Errorf("getZbootStatus(%s) not found\n", partName)
 		return nil
 	}
-	status := cast.ZbootStatus(st)
+	status := st.(types.ZbootStatus)
 	return &status
 }
 
@@ -1042,4 +1026,39 @@ func isValidBaseOsPartitionLabel(name string) bool {
 		}
 	}
 	return false
+}
+
+// only thing to do is to look at the other partition and update
+// error status into the baseos status
+func updateBaseOsStatusOnReboot(ctxPtr *baseOsMgrContext) {
+	partName := zboot.GetOtherPartition()
+	partStatus := getZbootStatus(ctxPtr, partName)
+	if partStatus != nil &&
+		partStatus.PartitionState == "inprogress" {
+		status := lookupBaseOsStatusByPartLabel(ctxPtr, partName)
+		if status != nil &&
+			status.BaseOsVersion == partStatus.ShortVersion {
+			handleOtherPartRebootReason(ctxPtr, status)
+			publishBaseOsStatus(ctxPtr, status)
+		}
+	}
+}
+
+// Assumes the callers verify that the other partition is "inprogress" which means
+// we most recently booted that partition.
+func handleOtherPartRebootReason(ctxPtr *baseOsMgrContext, status *types.BaseOsStatus) {
+	curPart := zboot.GetCurrentPartition()
+	if curPart == ctxPtr.rebootImage {
+		return
+	}
+	if ctxPtr.rebootReason != "" {
+		status.Error = ctxPtr.rebootReason
+		status.ErrorTime = ctxPtr.rebootTime
+	} else {
+		dateStr := ctxPtr.rebootTime.Format(time.RFC3339Nano)
+		reason := fmt.Sprintf("Unknown reboot reason - power failure or crash - at %s\n",
+			dateStr)
+		status.Error = reason
+		status.ErrorTime = ctxPtr.rebootTime
+	}
 }

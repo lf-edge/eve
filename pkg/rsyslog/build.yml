@@ -1,0 +1,13 @@
+image: eve-rsyslog
+org: lfedge
+network: yes
+config:
+  binds:
+    - /run:/run
+    - /dev:/dev
+    - /etc/resolv.conf:/etc/resolv.conf
+    - /var/persist:/persist
+  net: host
+  capabilities:
+    - all
+  pid: host

@@ -36,7 +36,6 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -46,6 +45,9 @@ import (
 const (
 	agentName      = "baseosmgr"
 	partitionCount = 2
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Set from Makefile
@@ -53,27 +55,34 @@ var Version = "No version specified"
 
 type baseOsMgrContext struct {
 	verifierRestarted        bool // Information from handleVerifierRestarted
-	pubBaseOsStatus          *pubsub.Publication
-	pubBaseOsDownloadConfig  *pubsub.Publication
-	pubBaseOsVerifierConfig  *pubsub.Publication
-	pubCertObjStatus         *pubsub.Publication
-	pubCertObjDownloadConfig *pubsub.Publication
-	pubZbootStatus           *pubsub.Publication
+	pubBaseOsStatus          pubsub.Publication
+	pubBaseOsDownloadConfig  pubsub.Publication
+	pubBaseOsVerifierConfig  pubsub.Publication
+	pubBaseOsPersistConfig   pubsub.Publication
+	pubCertObjStatus         pubsub.Publication
+	pubCertObjDownloadConfig pubsub.Publication
+	pubZbootStatus           pubsub.Publication
 
-	subGlobalConfig          *pubsub.Subscription
+	subGlobalConfig          pubsub.Subscription
 	globalConfig             *types.GlobalConfig
-	subBaseOsConfig          *pubsub.Subscription
-	subZbootConfig           *pubsub.Subscription
-	subCertObjConfig         *pubsub.Subscription
-	subBaseOsDownloadStatus  *pubsub.Subscription
-	subCertObjDownloadStatus *pubsub.Subscription
-	subBaseOsVerifierStatus  *pubsub.Subscription
+	GCInitialized            bool
+	subBaseOsConfig          pubsub.Subscription
+	subZbootConfig           pubsub.Subscription
+	subCertObjConfig         pubsub.Subscription
+	subBaseOsDownloadStatus  pubsub.Subscription
+	subCertObjDownloadStatus pubsub.Subscription
+	subBaseOsVerifierStatus  pubsub.Subscription
+	subBaseOsPersistStatus   pubsub.Subscription
+	subNodeAgentStatus       pubsub.Subscription
+	rebootReason             string    // From last reboot
+	rebootTime               time.Time // From last reboot
+	rebootImage              string    // Image from which the last reboot happened
 }
 
 var debug = false
 var debugOverride bool // From command line arg
 
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
@@ -90,11 +99,10 @@ func Run() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	logf, err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logf.Close()
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
@@ -103,7 +111,7 @@ func Run() {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
+	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	// Context to pass around
 	ctx := baseOsMgrContext{
@@ -111,13 +119,14 @@ func Run() {
 	}
 
 	// initialize publishing handles
-	initializeSelfPublishHandles(&ctx)
+	initializeSelfPublishHandles(ps, &ctx)
 
 	// initialize module specific subscriber handles
-	initializeGlobalConfigHandles(&ctx)
-	initializeZedagentHandles(&ctx)
-	initializeVerifierHandles(&ctx)
-	initializeDownloaderHandles(&ctx)
+	initializeGlobalConfigHandles(ps, &ctx)
+	initializeNodeAgentHandles(ps, &ctx)
+	initializeZedagentHandles(ps, &ctx)
+	initializeVerifierHandles(ps, &ctx)
+	initializeDownloaderHandles(ps, &ctx)
 
 	// publish zboot partition status
 	publishZbootPartitionStatusAll(&ctx)
@@ -125,70 +134,76 @@ func Run() {
 	// report other agents, about, zboot status availability
 	ctx.pubZbootStatus.SignalRestarted()
 
+	// Pick up debug aka log level before we start real work
+	for !ctx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-ctx.subGlobalConfig.MsgChan():
+			ctx.subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
+
 	// First we process the verifierStatus to avoid downloading
 	// an image we already have in place.
 	log.Infof("Handling initial verifier Status\n")
 	for !ctx.verifierRestarted {
 		select {
-		case change := <-ctx.subGlobalConfig.C:
-			start := agentlog.StartTime()
+		case change := <-ctx.subGlobalConfig.MsgChan():
 			ctx.subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
-		case change := <-ctx.subBaseOsVerifierStatus.C:
-			start := agentlog.StartTime()
+		case change := <-ctx.subBaseOsVerifierStatus.MsgChan():
 			ctx.subBaseOsVerifierStatus.ProcessChange(change)
 			if ctx.verifierRestarted {
 				log.Infof("Verifier reported restarted\n")
 			}
-			agentlog.CheckMaxTime(agentName, start)
+
+		case change := <-ctx.subBaseOsPersistStatus.MsgChan():
+			ctx.subBaseOsPersistStatus.ProcessChange(change)
+
+		case change := <-ctx.subNodeAgentStatus.MsgChan():
+			ctx.subNodeAgentStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	// start the forever loop for event handling
 	for {
 		select {
-		case change := <-ctx.subGlobalConfig.C:
-			start := agentlog.StartTime()
+		case change := <-ctx.subGlobalConfig.MsgChan():
 			ctx.subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
-		case change := <-ctx.subCertObjConfig.C:
-			start := agentlog.StartTime()
+		case change := <-ctx.subCertObjConfig.MsgChan():
 			ctx.subCertObjConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
-		case change := <-ctx.subBaseOsConfig.C:
-			start := agentlog.StartTime()
+		case change := <-ctx.subBaseOsConfig.MsgChan():
 			ctx.subBaseOsConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
-		case change := <-ctx.subZbootConfig.C:
-			start := agentlog.StartTime()
+		case change := <-ctx.subZbootConfig.MsgChan():
 			ctx.subZbootConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
-		case change := <-ctx.subBaseOsDownloadStatus.C:
-			start := agentlog.StartTime()
+		case change := <-ctx.subBaseOsDownloadStatus.MsgChan():
 			ctx.subBaseOsDownloadStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
-		case change := <-ctx.subBaseOsVerifierStatus.C:
-			start := agentlog.StartTime()
+		case change := <-ctx.subBaseOsVerifierStatus.MsgChan():
 			ctx.subBaseOsVerifierStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
-		case change := <-ctx.subCertObjDownloadStatus.C:
-			start := agentlog.StartTime()
+		case change := <-ctx.subBaseOsPersistStatus.MsgChan():
+			ctx.subBaseOsPersistStatus.ProcessChange(change)
+
+		case change := <-ctx.subCertObjDownloadStatus.MsgChan():
 			ctx.subCertObjDownloadStatus.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
+
+		case change := <-ctx.subNodeAgentStatus.MsgChan():
+			ctx.subNodeAgentStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
@@ -219,7 +234,7 @@ func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("handleBaseOsCreate(%s)\n", key)
 	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.CastBaseOsConfig(configArg)
+	config := configArg.(types.BaseOsConfig)
 	status := types.BaseOsStatus{
 		UUIDandVersion: config.UUIDandVersion,
 		BaseOsVersion:  config.BaseOsVersion,
@@ -232,7 +247,7 @@ func handleBaseOsCreate(ctxArg interface{}, key string, configArg interface{}) {
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
 		ss.Name = sc.Name
-		ss.ImageSha256 = sc.ImageSha256
+		ss.ImageID = sc.ImageID
 		ss.Target = sc.Target
 	}
 	// Check image count
@@ -253,13 +268,8 @@ func handleBaseOsModify(ctxArg interface{}, key string, configArg interface{}) {
 
 	log.Infof("handleBaseOsModify(%s)\n", key)
 	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.CastBaseOsConfig(configArg)
+	config := configArg.(types.BaseOsConfig)
 	status := lookupBaseOsStatus(ctx, key)
-	if config.Key() != key {
-		log.Errorf("handleBaseOsModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
 	if status == nil {
 		log.Errorf("handleBaseOsModify status not found, ignored %+v\n", key)
 		return
@@ -286,15 +296,8 @@ func handleBaseOsModify(ctxArg interface{}, key string, configArg interface{}) {
 }
 
 // base os config delete event
-func handleBaseOsDelete(ctxArg interface{}, key string,
-	statusArg interface{}) {
-	status := statusArg.(*types.BaseOsStatus)
-	if status.Key() != key {
-		log.Errorf("handleBaseOsDelete key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
-	ctx := ctxArg.(*baseOsMgrContext)
+func handleBaseOsDelete(ctx *baseOsMgrContext, key string,
+	status *types.BaseOsStatus) {
 
 	log.Infof("handleBaseOsDelete for %s\n", status.BaseOsVersion)
 	removeBaseOsConfig(ctx, status.Key())
@@ -318,7 +321,7 @@ func handleCertObjConfigDelete(ctxArg interface{}, key string,
 // certificate config create event
 func handleCertObjCreate(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.CastCertObjConfig(configArg)
+	config := configArg.(types.CertObjConfig)
 	log.Infof("handleCertObjCreate for %s\n", key)
 
 	status := types.CertObjStatus{
@@ -332,7 +335,7 @@ func handleCertObjCreate(ctxArg interface{}, key string, configArg interface{}) 
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
 		ss.Name = sc.Name
-		ss.ImageSha256 = sc.ImageSha256
+		ss.ImageID = sc.ImageID
 		ss.FinalObjDir = types.CertificateDirname
 	}
 
@@ -344,7 +347,7 @@ func handleCertObjCreate(ctxArg interface{}, key string, configArg interface{}) 
 // certificate config modify event
 func handleCertObjModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.CastCertObjConfig(configArg)
+	config := configArg.(types.CertObjConfig)
 	status := lookupCertObjStatus(ctx, key)
 	uuidStr := config.Key()
 	log.Infof("handleCertObjModify for %s\n", uuidStr)
@@ -378,15 +381,10 @@ func handleCertObjDelete(ctx *baseOsMgrContext, key string,
 func handleDownloadStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := cast.CastDownloaderStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleDownloadStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
+	status := statusArg.(types.DownloaderStatus)
 	ctx := ctxArg.(*baseOsMgrContext)
 	log.Infof("handleDownloadStatusModify for %s\n",
-		status.Safename)
+		status.ImageID)
 	updateDownloaderStatus(ctx, &status)
 }
 
@@ -394,7 +392,7 @@ func handleDownloadStatusModify(ctxArg interface{}, key string,
 func handleDownloadStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := cast.CastDownloaderStatus(statusArg)
+	status := statusArg.(types.DownloaderStatus)
 	log.Infof("handleDownloadStatusDelete RefCount %d Expired %v for %s\n",
 		status.RefCount, status.Expired, key)
 	// Nothing to do
@@ -405,14 +403,9 @@ func handleDownloadStatusDelete(ctxArg interface{}, key string,
 func handleVerifierStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := cast.CastVerifyImageStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleVerifierStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
+	status := statusArg.(types.VerifyImageStatus)
 	ctx := ctxArg.(*baseOsMgrContext)
-	log.Infof("handleVerifierStatusModify for %s\n", status.Safename)
+	log.Infof("handleVerifierStatusModify for %s\n", status.ImageID)
 	updateVerifierStatus(ctx, &status)
 }
 
@@ -420,10 +413,32 @@ func handleVerifierStatusModify(ctxArg interface{}, key string,
 func handleVerifierStatusDelete(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := cast.CastVerifyImageStatus(statusArg)
-	log.Infof("handleVeriferStatusDelete RefCount %d Expired %v for %s\n",
+	status := statusArg.(types.VerifyImageStatus)
+	ctx := ctxArg.(*baseOsMgrContext)
+	log.Infof("handleVeriferStatusDelete RefCount %d for %s\n",
+		status.RefCount, key)
+	removeVerifierStatus(ctx, &status)
+}
+
+// Handles both create and modify events
+func handlePersistStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	status := statusArg.(types.PersistImageStatus)
+	ctx := ctxArg.(*baseOsMgrContext)
+	log.Infof("handlePersistStatusModify for %s\n", key)
+	updatePersistStatus(ctx, &status)
+}
+
+// base os persist status delete event
+func handlePersistStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	status := statusArg.(types.PersistImageStatus)
+	ctx := ctxArg.(*baseOsMgrContext)
+	log.Infof("handlePersistStatusDelete RefCount %d expired %t for %s\n",
 		status.RefCount, status.Expired, key)
-	// Nothing to do
+	removePersistStatus(ctx, &status)
 }
 
 func appendError(allErrors string, prefix string, lasterr string) string {
@@ -444,6 +459,7 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		debugOverride)
 	if gcp != nil {
 		ctx.globalConfig = gcp
+		ctx.GCInitialized = true
 	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
@@ -463,48 +479,82 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }
 
-func initializeSelfPublishHandles(ctx *baseOsMgrContext) {
-	pubBaseOsStatus, err := pubsub.Publish(agentName,
-		types.BaseOsStatus{})
+func initializeSelfPublishHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
+	pubBaseOsStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.BaseOsStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubBaseOsStatus.ClearRestarted()
 	ctx.pubBaseOsStatus = pubBaseOsStatus
 
-	pubBaseOsDownloadConfig, err := pubsub.PublishScope(agentName,
-		types.BaseOsObj, types.DownloaderConfig{})
+	pubBaseOsDownloadConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.BaseOsObj,
+			TopicType:  types.DownloaderConfig{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubBaseOsDownloadConfig.ClearRestarted()
 	ctx.pubBaseOsDownloadConfig = pubBaseOsDownloadConfig
 
-	pubBaseOsVerifierConfig, err := pubsub.PublishScope(agentName,
-		types.BaseOsObj, types.VerifyImageConfig{})
+	pubBaseOsVerifierConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.BaseOsObj,
+			TopicType:  types.VerifyImageConfig{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubBaseOsVerifierConfig.ClearRestarted()
 	ctx.pubBaseOsVerifierConfig = pubBaseOsVerifierConfig
 
-	pubCertObjStatus, err := pubsub.Publish(agentName,
-		types.CertObjStatus{})
+	pubBaseOsPersistConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.BaseOsObj,
+			TopicType:  types.PersistImageConfig{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubBaseOsPersistConfig = pubBaseOsPersistConfig
+
+	pubCertObjStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.CertObjStatus{},
+		})
+
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubCertObjStatus.ClearRestarted()
 	ctx.pubCertObjStatus = pubCertObjStatus
 
-	pubCertObjDownloadConfig, err := pubsub.PublishScope(agentName,
-		types.CertObj, types.DownloaderConfig{})
+	pubCertObjDownloadConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.CertObj,
+			TopicType:  types.DownloaderConfig{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubCertObjDownloadConfig.ClearRestarted()
 	ctx.pubCertObjDownloadConfig = pubCertObjDownloadConfig
 
-	pubZbootStatus, err := pubsub.Publish(agentName, types.ZbootStatus{})
+	pubZbootStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.ZbootStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -512,105 +562,213 @@ func initializeSelfPublishHandles(ctx *baseOsMgrContext) {
 	ctx.pubZbootStatus = pubZbootStatus
 }
 
-func initializeGlobalConfigHandles(ctx *baseOsMgrContext) {
+func initializeGlobalConfigHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
-		false, ctx)
+	subGlobalConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "",
+			TopicImpl:     types.GlobalConfig{},
+			Activate:      false,
+			Ctx:           ctx,
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 }
 
-func initializeZedagentHandles(ctx *baseOsMgrContext) {
-	// Look for BaseOsConfig , from zedagent
-	subBaseOsConfig, err := pubsub.Subscribe("zedagent",
-		types.BaseOsConfig{}, false, ctx)
+func initializeNodeAgentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
+	// Look for NodeAgentStatus, from zedagent
+	subNodeAgentStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "nodeagent",
+			TopicImpl:     types.NodeAgentStatus{},
+			Activate:      false,
+			Ctx:           ctx,
+			ModifyHandler: handleNodeAgentStatusModify,
+			DeleteHandler: handleNodeAgentStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subBaseOsConfig.ModifyHandler = handleBaseOsModify
-	subBaseOsConfig.CreateHandler = handleBaseOsCreate
-	subBaseOsConfig.DeleteHandler = handleBaseOsConfigDelete
+	ctx.subNodeAgentStatus = subNodeAgentStatus
+	subNodeAgentStatus.Activate()
+
+	// Look for ZbootConfig, from nodeagent
+	subZbootConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "nodeagent",
+			TopicImpl:     types.ZbootConfig{},
+			Activate:      false,
+			Ctx:           ctx,
+			CreateHandler: handleZbootConfigModify,
+			ModifyHandler: handleZbootConfigModify,
+			DeleteHandler: handleZbootConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subZbootConfig = subZbootConfig
+	subZbootConfig.Activate()
+}
+
+func initializeZedagentHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
+	// Look for BaseOsConfig , from zedagent
+	subBaseOsConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "zedagent",
+			TopicImpl:     types.BaseOsConfig{},
+			Activate:      false,
+			Ctx:           ctx,
+			CreateHandler: handleBaseOsCreate,
+			ModifyHandler: handleBaseOsModify,
+			DeleteHandler: handleBaseOsConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
 	ctx.subBaseOsConfig = subBaseOsConfig
 	subBaseOsConfig.Activate()
 
-	// Look for ZbootConfig , from nodeagent
-	subZbootConfig, err := pubsub.Subscribe("nodeagent",
-		types.ZbootConfig{}, false, ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subZbootConfig.ModifyHandler = handleZbootConfigModify
-	subZbootConfig.CreateHandler = handleZbootConfigModify
-	subZbootConfig.DeleteHandler = handleZbootConfigDelete
-	ctx.subZbootConfig = subZbootConfig
-	subZbootConfig.Activate()
-
 	// Look for CertObjConfig, from zedagent
-	subCertObjConfig, err := pubsub.Subscribe("zedagent",
-		types.CertObjConfig{}, false, ctx)
+	subCertObjConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "zedagent",
+			TopicImpl:     types.CertObjConfig{},
+			Activate:      false,
+			Ctx:           ctx,
+			CreateHandler: handleCertObjCreate,
+			ModifyHandler: handleCertObjModify,
+			DeleteHandler: handleCertObjConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subCertObjConfig.ModifyHandler = handleCertObjModify
-	subCertObjConfig.CreateHandler = handleCertObjCreate
-	subCertObjConfig.DeleteHandler = handleCertObjConfigDelete
 	ctx.subCertObjConfig = subCertObjConfig
 	subCertObjConfig.Activate()
 }
 
-func initializeDownloaderHandles(ctx *baseOsMgrContext) {
+func initializeDownloaderHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	// Look for BaseOs DownloaderStatus from downloader
-	subBaseOsDownloadStatus, err := pubsub.SubscribeScope("downloader",
-		types.BaseOsObj, types.DownloaderStatus{}, false, ctx)
+	subBaseOsDownloadStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "downloader",
+			AgentScope:    types.BaseOsObj,
+			TopicImpl:     types.DownloaderStatus{},
+			Activate:      false,
+			Ctx:           ctx,
+			CreateHandler: handleDownloadStatusModify,
+			ModifyHandler: handleDownloadStatusModify,
+			DeleteHandler: handleDownloadStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subBaseOsDownloadStatus.ModifyHandler = handleDownloadStatusModify
-	subBaseOsDownloadStatus.CreateHandler = handleDownloadStatusModify
-	subBaseOsDownloadStatus.DeleteHandler = handleDownloadStatusDelete
 	ctx.subBaseOsDownloadStatus = subBaseOsDownloadStatus
 	subBaseOsDownloadStatus.Activate()
 
 	// Look for Certs DownloaderStatus from downloader
-	subCertObjDownloadStatus, err := pubsub.SubscribeScope("downloader",
-		types.CertObj, types.DownloaderStatus{}, false, ctx)
+	subCertObjDownloadStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "downloader",
+			AgentScope:    types.CertObj,
+			TopicImpl:     types.DownloaderStatus{},
+			Activate:      false,
+			Ctx:           ctx,
+			CreateHandler: handleDownloadStatusModify,
+			ModifyHandler: handleDownloadStatusModify,
+			DeleteHandler: handleDownloadStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subCertObjDownloadStatus.ModifyHandler = handleDownloadStatusModify
-	subCertObjDownloadStatus.CreateHandler = handleDownloadStatusModify
-	subCertObjDownloadStatus.DeleteHandler = handleDownloadStatusDelete
 	ctx.subCertObjDownloadStatus = subCertObjDownloadStatus
 	subCertObjDownloadStatus.Activate()
 
 }
 
-func initializeVerifierHandles(ctx *baseOsMgrContext) {
+func initializeVerifierHandles(ps *pubsub.PubSub, ctx *baseOsMgrContext) {
 	// Look for VerifyImageStatus from verifier
-	subBaseOsVerifierStatus, err := pubsub.SubscribeScope("verifier",
-		types.BaseOsObj, types.VerifyImageStatus{}, false, ctx)
+	subBaseOsVerifierStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:      "verifier",
+			AgentScope:     types.BaseOsObj,
+			TopicImpl:      types.VerifyImageStatus{},
+			Activate:       false,
+			Ctx:            ctx,
+			CreateHandler:  handleVerifierStatusModify,
+			ModifyHandler:  handleVerifierStatusModify,
+			RestartHandler: handleVerifierRestarted,
+			WarningTime:    warningTime,
+			ErrorTime:      errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subBaseOsVerifierStatus.ModifyHandler = handleVerifierStatusModify
-	subBaseOsVerifierStatus.CreateHandler = handleVerifierStatusModify
-	subBaseOsVerifierStatus.DeleteHandler = handleVerifierStatusDelete
-	subBaseOsVerifierStatus.RestartHandler = handleVerifierRestarted
 	ctx.subBaseOsVerifierStatus = subBaseOsVerifierStatus
 	subBaseOsVerifierStatus.Activate()
+	// Look for PersistImageStatus from verifier
+	subBaseOsPersistStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "verifier",
+			AgentScope:    types.BaseOsObj,
+			TopicImpl:     types.PersistImageStatus{},
+			Activate:      false,
+			Ctx:           ctx,
+			CreateHandler: handlePersistStatusModify,
+			ModifyHandler: handlePersistStatusModify,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subBaseOsPersistStatus = subBaseOsPersistStatus
+	subBaseOsPersistStatus.Activate()
+}
+
+// This handles both the create and modify events
+func handleNodeAgentStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	ctx := ctxArg.(*baseOsMgrContext)
+	status := statusArg.(types.NodeAgentStatus)
+	ctx.rebootTime = status.RebootTime
+	ctx.rebootReason = status.RebootReason
+	ctx.rebootImage = status.RebootImage
+	updateBaseOsStatusOnReboot(ctx)
+	log.Infof("handleNodeAgentStatusModify(%s) done\n", key)
+}
+
+func handleNodeAgentStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	// do nothing
+	log.Infof("handleNodeAgentStatusDelete(%s) done\n", key)
 }
 
 // This handles both the create and modify events
 func handleZbootConfigModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*baseOsMgrContext)
-	config := cast.ZbootConfig(configArg)
+	config := configArg.(types.ZbootConfig)
 	status := getZbootStatus(ctx, key)
 	if status == nil {
 		log.Infof("handleZbootConfigModify: unknown %s\n", key)

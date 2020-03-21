@@ -10,44 +10,28 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// RktCredentials is a rkt based Container Credentials
-type RktCredentials struct {
-	User     string `json:"user"`
-	Password string `json:"password"`
-}
-
-// RktAuthInfo is a rkt based Container Authentication Info
-type RktAuthInfo struct {
-	RktKind     string          `json:"rktkind"`
-	RktVersion  string          `json:"rktversion"`
-	Registries  []string        `json:"registries"`
-	Credentials *RktCredentials `json:"credentials"`
-}
-
-// The key/index to this is the Safename which is allocated by ZedManager.
-// That is the filename in which we store the corresponding json files.
+// The key/index to this is the ImageID which is allocated by the controller.
 type DownloaderConfig struct {
+	ImageID          uuid.UUID
 	DatastoreID      uuid.UUID
-	Safename         string
 	Name             string
 	NameIsURL        bool // If not we form URL based on datastore info
 	IsContainer      bool
 	AllowNonFreePort bool
 	Size             uint64 // In bytes
-	ImageSha256      string // sha256 of immutable image
 	FinalObjDir      string // final Object Store
 	RefCount         uint
 }
 
 func (config DownloaderConfig) Key() string {
-	return config.Safename
+	return config.ImageID.String()
 }
 
 func (config DownloaderConfig) VerifyFilename(fileName string) bool {
 	expect := config.Key() + ".json"
 	ret := expect == fileName
 	if !ret {
-		log.Errorf("Mismatch between filename and contained Safename: %s vs. %s\n",
+		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
 			fileName, expect)
 	}
 	return ret
@@ -60,13 +44,13 @@ type CertConfig struct {
 	CertChain  []DownloaderConfig
 }
 
-// The key/index to this is the Safename which comes from DownloaderConfig.
-// That is the filename in which we store the corresponding json files.
+// The key/index to this is the ImageID which comes from DownloaderConfig.
 type DownloaderStatus struct {
+	ImageID          uuid.UUID
 	DatastoreID      uuid.UUID
-	Safename         string
 	Name             string
 	ObjType          string
+	FileLocation     string // Filename where downloaded; replace with file info
 	IsContainer      bool
 	PendingAdd       bool
 	PendingModify    bool
@@ -76,8 +60,6 @@ type DownloaderStatus struct {
 	Expired          bool      // Handshake to client
 	NameIsURL        bool      // If not we form URL based on datastore info
 	AllowNonFreePort bool
-	ImageSha256      string // sha256 of immutable image
-	ContainerImageID string
 	State            SwState // DOWNLOADED etc
 	ReservedSpace    uint64  // Contribution to global ReservedSpace
 	Size             uint64  // Once DOWNLOADED; in bytes
@@ -89,14 +71,14 @@ type DownloaderStatus struct {
 }
 
 func (status DownloaderStatus) Key() string {
-	return status.Safename
+	return status.ImageID.String()
 }
 
 func (status DownloaderStatus) VerifyFilename(fileName string) bool {
 	expect := status.Key() + ".json"
 	ret := expect == fileName
 	if !ret {
-		log.Errorf("Mismatch between filename and contained Safename: %s vs. %s\n",
+		log.Errorf("Mismatch between filename and contained key: %s vs. %s\n",
 			fileName, expect)
 	}
 	return ret
@@ -116,6 +98,34 @@ func (status DownloaderStatus) CheckPendingDelete() bool {
 
 func (status DownloaderStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
+}
+
+// SetErrorInfo : Set Error Information for DownloaderStatus
+func (status *DownloaderStatus) SetErrorInfo(errStr string) {
+	status.LastErr = errStr
+	status.LastErrTime = time.Now()
+}
+
+// ClearErrorInfo : Clear Error Information for DownloaderStatus
+func (status *DownloaderStatus) ClearErrorInfo() {
+	status.LastErr = ""
+	status.LastErrTime = time.Time{}
+}
+
+// ClearPendingStatus : Clear Pending Status for DownloaderStatus
+func (status *DownloaderStatus) ClearPendingStatus() {
+	if status.PendingAdd {
+		status.PendingAdd = false
+	}
+	if status.PendingModify {
+		status.PendingModify = false
+	}
+}
+
+// HandleDownloadFail : Do Failure specific tasks
+func (status *DownloaderStatus) HandleDownloadFail(errStr string) {
+	status.SetErrorInfo(errStr)
+	status.ClearPendingStatus()
 }
 
 type GlobalDownloadConfig struct {

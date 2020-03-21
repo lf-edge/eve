@@ -26,6 +26,9 @@ const (
 	SyncOpDownloadWithSignature = 4
 	SyncOpList                  = 5
 	SyncOpGetObjectMetaData     = 6
+	SyncOpGetURI                = 7
+	SysOpPutPart                = 8
+	SysOpCompleteParts          = 9
 
 	DefaultNumberOfHandlers = 10
 
@@ -38,10 +41,11 @@ const (
 type SyncTransportType string
 
 const (
-	SyncAwsTr   SyncTransportType = "s3"
-	SyncAzureTr SyncTransportType = "azure"
-	SyncHttpTr  SyncTransportType = "http"
-	SyncSftpTr  SyncTransportType = "sftp"
+	SyncAwsTr         SyncTransportType = "s3"
+	SyncAzureTr       SyncTransportType = "azure"
+	SyncHttpTr        SyncTransportType = "http"
+	SyncSftpTr        SyncTransportType = "sftp"
+	SyncOCIRegistryTr SyncTransportType = "oci"
 )
 
 //
@@ -53,8 +57,8 @@ type DronaEndPoint interface {
 	Open() error
 	Action(req *DronaRequest) error
 	Close() error
-	WithSrcIpSelection(localAddr net.IP) error
-	WithSrcIpAndProxySelection(localAddr net.IP, proxy *url.URL) error
+	WithSrcIPSelection(localAddr net.IP) error
+	WithSrcIPAndProxySelection(localAddr net.IP, proxy *url.URL) error
 	WithBindIntf(intf string) error
 	WithLogging(onoff bool) error
 }
@@ -226,6 +230,14 @@ func (ctx *DronaCtx) NewSyncerDest(tr SyncTransportType, UrlOrRegion, PathOrBkt 
 			syncEp.uname = auth.Uname
 			syncEp.passwd = auth.Password
 			syncEp.keys = auth.Keys
+		}
+		syncEp.failPostTime = time.Now()
+		return syncEp, nil
+	case SyncOCIRegistryTr:
+		syncEp := &OCITransportMethod{transport: tr, registry: UrlOrRegion, path: PathOrBkt, ctx: ctx}
+		if auth != nil {
+			syncEp.uname = auth.Uname
+			syncEp.apiKey = auth.Password
 		}
 		syncEp.failPostTime = time.Now()
 		return syncEp, nil

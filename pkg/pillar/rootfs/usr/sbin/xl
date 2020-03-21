@@ -1,0 +1,10 @@
+#!/bin/sh
+# shellcheck disable=SC2046,SC2086
+if [ "$1" = create ] && (echo "$2" | grep -q "/var/lib/rkt/pods/run/"); then
+   chroot /hostfs /usr/bin/ctr --namespace services.linuxkit t exec --cwd / --exec-id $(basename $(mktemp)) xen-tools xl "$@"
+   nohup sh -c 'while true; do sleep 23; ps -alef | grep -q "[0-9] xl '"$1 $2"'" || exit 0 ; done' > /dev/null 2>&1 &
+elif [ "$1" = console ]; then
+   exec chroot /hostfs /usr/bin/ctr --namespace services.linuxkit t exec --cwd / ${TERM:+-t} --exec-id $(basename $(mktemp)) xen-tools env ${TERM:+TERM=}$TERM xl "$@"
+else
+   exec chroot /hostfs /usr/bin/ctr --namespace services.linuxkit t exec --cwd / --exec-id $(basename $(mktemp)) xen-tools xl "$@"
+fi

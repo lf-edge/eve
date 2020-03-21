@@ -6,7 +6,7 @@ If you are running EVE in production there is *no* way to do that. For developer
 or debug builds of EVE you can set a debug.enable.ssh property to your ssh public
 key. E.g:
 ```bash
-zcli device update myqemu --config="debug.enable.ssh:`cat .ssh/id_rsa.pub`"
+zcli edge-node update myqemu --config="debug.enable.ssh:`cat .ssh/id_rsa.pub`"
 ```
 
 ## 2. Legacy method for out-of-band configuration delivery
@@ -19,7 +19,7 @@ The DevicePortConfig can be statically put into EVE's configuration partition un
 to specify proxies and static IPs for the ports. This could be required
 to have your Edge Node connect to the controller. DevicePortConfig file can also be
 put onto a USB stick that you will plug into your Edge Node in which case it will
-be copied from the USB stick during boot and used.  See [mkusb.sh](../pkg/pillar/scripts/mkusb.sh)
+be copied from the USB stick during boot and used.  See [tools/makeusbconf.sh](../tools/makeusbconf.sh)
 for details. The format of the DevicePortConfig/global.json is specified with
 examples in [legacy EVE configuration management](CONFIG.md)
 

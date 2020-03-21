@@ -6,6 +6,7 @@
 package zedrouter
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"strconv"
@@ -17,9 +18,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/wrap"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -88,7 +87,7 @@ type dnsEntry struct {
 
 const (
 	maxBridgeNumber int    = 256
-	timeoutSec      int32  = 150      // less than 150 sec, consider done
+	timeoutSec      int32  = 150      // less than 150 sec, consider done (make sure to update 01-eve.conf in pkg/dom0-ztools)
 	markMask        uint32 = 0xffffff // get the Mark bits for ACL number
 	appShiftBits    uint32 = 24       // top 8 bits for App Number
 	maxFlowPack     int    = 125      // approximate 320 bytes per flow/dns, got an assert in zedagent when size was 241
@@ -105,6 +104,7 @@ var loopcount int // XXX debug
 
 var dnssys [maxBridgeNumber]dnsSys // per bridge DNS records for the collection period
 var devUUID, nilUUID uuid.UUID
+var broadcastMAC = []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 
 // FlowStatsCollect : Timer fired to collect iptable flow stats
 func FlowStatsCollect(ctx *zedrouterContext) {
@@ -150,7 +150,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 			return
 		}
 
-		log.Infof("***FlowStats(%d): device=%v, size of the flows %d\n", proto, devUUID, len(connT))
+		log.Debugf("***FlowStats(%d): device=%v, size of the flows %d\n", proto, devUUID, len(connT))
 
 		for _, entry := range connT { // loop through and process current timedout flow collection
 
@@ -165,7 +165,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 		}
 	}
 
-	log.Infof("FlowStats ++ Total timedout flows %d, loopcount debug %d\n", totalFlow, loopcount)
+	log.Debugf("FlowStats ++ Total timedout flows %d, loopcount debug %d\n", totalFlow, loopcount)
 	loopcount++
 
 	// per app/bridge packing flow stats to be uploaded
@@ -186,7 +186,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 				Scope: scope,
 			}
 
-			log.Infof("FlowStats: bnx=%s, appidx %d\n", bnx, appIdx)
+			log.Debugf("FlowStats: bnx=%s, appidx %d\n", bnx, appIdx)
 			// temp print out the flow "tuple" and stats per app/bridge
 			for i, tuple := range timeOutTuples { // search for flowstats by bridge
 				var aclattr aclAttr
@@ -203,25 +203,25 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					tmpMap := instData.ipaclattr[int(appN)]
 					if tmpMap != nil {
 						if _, ok := tmpMap[int(tuple.aclNum)]; !ok {
-							log.Infof("FlowStats: == can not get acl map with aclN, should not happen appN %d, aclN %d; %s\n",
+							log.Debugf("FlowStats: == can not get acl map with aclN, should not happen appN %d, aclN %d; %s\n",
 								appN, tuple.aclNum, tuple.String())
 							continue
 						}
 						aclattr = tmpMap[int(tuple.aclNum)]
 					} else {
-						log.Infof("FlowStats: == can't get acl map with appN, should not happen, appN %d, aclN %d; %s\n",
+						log.Debugf("FlowStats: == can't get acl map with appN, should not happen, appN %d, aclN %d; %s\n",
 							appN, tuple.aclNum, tuple.String())
 						continue
 					}
 					if aclattr.aclNum == 0 {
-						log.Infof("FlowStats: == aclN zero in attr, appN %d, aclN %d; %s\n", appN, tuple.aclNum, tuple.String())
+						log.Debugf("FlowStats: == aclN zero in attr, appN %d, aclN %d; %s\n", appN, tuple.aclNum, tuple.String())
 						// some debug info
 						continue
 					}
 
 					bridgeName = aclattr.bridge
 					if strings.Compare(bnx, bridgeName) != 0 {
-						log.Infof("FlowStats: == bridge name not match %s, %s\n", bnx, bridgeName)
+						log.Debugf("FlowStats: == bridge name not match %s, %s\n", bnx, bridgeName)
 						continue
 					}
 					scope.Intf = aclattr.intfname // App side DomU internal interface name
@@ -244,7 +244,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					continue
 				}
 				// temp print out log for the flow
-				log.Infof("FlowStats [%d]: on bn%d %s\n", i, bnNum, tuple.String()) // just print for now
+				log.Debugf("FlowStats [%d]: on bn%d %s\n", i, bnNum, tuple.String()) // just print for now
 
 				flowtuple := types.IPTuple{
 					Src:     tuple.SrcIP,
@@ -287,7 +287,6 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 
 			// get the bringe-X dns request/replies
 			dnssys[bnNum].Lock()
-			defer dnssys[bnNum].Unlock()
 			for _, dnsdata := range dnssys[bnNum].Snoop {
 				// unique by domain name, latest reply overwrite previous ones
 				if dnsdata.isIPv4 {
@@ -299,7 +298,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 			for idx := range dnsrec {
 				for _, dnsRec := range dnsrec[idx] {
 					// temp print out all unique dns replies for the bridge
-					log.Infof("!!FlowStats: DNS time %v, domain %s, appIP %v, count %d, Answers %v",
+					log.Debugf("!!FlowStats: DNS time %v, domain %s, appIP %v, count %d, Answers %v",
 						dnsRec.TimeStamp, dnsRec.DomainName, dnsRec.AppIP, dnsRec.ANCount, dnsRec.Answers)
 
 					dnsrec := types.DNSReq{
@@ -315,6 +314,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 					}
 				}
 			}
+			dnssys[bnNum].Unlock()
 
 			// flow record done for the bridge/app
 			// publish the flow data (per app/bridge) and sequence (for size limit) to zedagent now
@@ -330,7 +330,7 @@ func FlowStatsCollect(ctx *zedrouterContext) {
 				continue
 			}
 			dnssys[bnNum].Snoop = nil
-			log.Infof("!!FlowStats: clear dns record for bn%d", bnNum)
+			log.Debugf("!!FlowStats: clear dns record for bn%d", bnNum)
 		}
 	}
 }
@@ -446,7 +446,7 @@ func flowMergeProcess(entry *netlink.ConntrackFlow, instData networkAttrs) flowS
 		ipFlow.AppInitiate = true
 	} else { // if we can not find our App endpoint is part of the flow, something is wrong
 		ipFlow.dbg2 = 5
-		log.Infof("FlowStats: flow entry can not locate app IP address, appNum %d, %s", AppNum, entry.String())
+		log.Debugf("FlowStats: flow entry can not locate app IP address, appNum %d, %s", AppNum, entry.String())
 		return ipFlow
 	}
 
@@ -514,23 +514,30 @@ func checkAppAndACL(ctx *zedrouterContext, instData *networkAttrs) {
 	pub := ctx.pubAppNetworkStatus
 	items := pub.GetAll()
 	for _, st := range items {
-		status := cast.CastAppNetworkStatus(st)
+		status := st.(types.AppNetworkStatus)
 		for i, ulStatus := range status.UnderlayNetworkList {
-			log.Infof("===FlowStats: (index %d) AppNum %d, VifInfo %v, IP addr %v, Hostname %s\n",
+			log.Debugf("===FlowStats: (index %d) AppNum %d, VifInfo %v, IP addr %v, Hostname %s\n",
 				i, status.AppNum, ulStatus.VifInfo, ulStatus.AllocatedIPAddr, ulStatus.HostName)
 
+			ulconfig := ulStatus.UnderlayNetworkConfig
 			// build an App-IPaddress/intfs cache indexed by App-number
-			if ulStatus.AllocatedIPAddr != "" {
-				tmpAppInfo := appInfo{
-					ipaddr:    net.ParseIP(ulStatus.AllocatedIPAddr),
-					intf:      ulStatus.Name,
-					localintf: ulStatus.Bridge,
-				}
-				instData.appIPinfo[status.AppNum] = append(instData.appIPinfo[status.AppNum], tmpAppInfo)
+			tmpAppInfo := appInfo{
+				ipaddr:    net.ParseIP(ulStatus.AllocatedIPAddr),
+				intf:      ulStatus.Name,
+				localintf: ulStatus.Bridge,
 			}
+			netstatus := lookupNetworkInstanceStatus(ctx, ulconfig.Network.String())
+			if netstatus != nil {
+				if netstatus.Type == types.NetworkInstanceTypeSwitch {
+					if _, ok := netstatus.IPAssignments[ulStatus.Mac]; ok {
+						tmpAppInfo.ipaddr = netstatus.IPAssignments[ulStatus.Mac]
+						log.Debugf("===FlowStats: switchnet, get ip %v\n", tmpAppInfo.ipaddr)
+					}
+				}
+			}
+			instData.appIPinfo[status.AppNum] = append(instData.appIPinfo[status.AppNum], tmpAppInfo)
 
 			// Fill in the bnNet indexed by bridge-name, used for loop through bridges, and Scope
-			ulconfig := ulStatus.UnderlayNetworkConfig
 			intfAttr := bridgeAttr{
 				bridge:  ulStatus.Bridge,
 				netUUID: ulconfig.Network,
@@ -540,7 +547,7 @@ func checkAppAndACL(ctx *zedrouterContext, instData *networkAttrs) {
 			// build an App list cache, used for loop through all the Apps
 			if instData.appNet[status.AppNum] == nilUUID {
 				instData.appNet[status.AppNum] = status.UUIDandVersion.UUID
-				log.Infof("===FlowStats: appNet appNum %d, uuid %v\n", status.AppNum, instData.appNet[status.AppNum])
+				log.Debugf("===FlowStats: appNet appNum %d, uuid %v\n", status.AppNum, instData.appNet[status.AppNum])
 			}
 
 			// build an acl cache indexed by app/aclnum, from flow MARK, we can get this aclAttr info
@@ -587,7 +594,7 @@ func flowPublish(ctx *zedrouterContext, flowdata *types.IPFlow, seq, idx *int) {
 		scope.Sequence = strconv.Itoa(*seq)
 	}
 	flowKey = scope.UUID.String() + scope.NetUUID.String() + scope.Sequence
-	ctx.pubAppFlowMonitor.Publish(flowKey, flowdata)
+	ctx.pubAppFlowMonitor.Publish(flowKey, *flowdata)
 	log.Infof("FlowStats: publish to zedagent: total records %d, sequence %d\n", *idx, *seq)
 	*seq++
 	flowdata.Flows = nil
@@ -651,7 +658,9 @@ func DNSMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.Netwo
 		case packet = <-dnsIn:
 			dnslayer := packet.Layer(layers.LayerTypeDNS)
 			if switched && dnslayer == nil {
+				dnssys[bnNum].Lock()
 				checkDHCPPacketInfo(bnNum, packet, ctx)
+				dnssys[bnNum].Unlock()
 			} else {
 				dnssys[bnNum].Lock()
 				checkDNSPacketInfo(bnNum, packet, dnslayer)
@@ -671,16 +680,17 @@ func DNSStopMonitor(bnNum int) {
 
 // Monitor the dhcp packets for switched network instance
 func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContext) {
-	var isReplyAck, needUpdate, foundDstMac bool
+	var isReplyAck, needUpdate, foundDstMac, isBroadcast bool
 	var vifInfo []types.VifNameMac
 	var netstatus types.NetworkInstanceStatus
+	var vifTrig types.VifIPTrig
 
 	// use the IPAssigments of the NetworkInstanceStatus, since this is switched net
 	// and the field will not be assigned or modified by others
 	pub := ctx.pubNetworkInstanceStatus
 	items := pub.GetAll()
 	for _, st := range items {
-		netstatus = cast.CastNetworkInstanceStatus(st)
+		netstatus = st.(types.NetworkInstanceStatus)
 		if netstatus.Type != types.NetworkInstanceTypeSwitch || netstatus.BridgeNum != bnNum {
 			continue
 		}
@@ -694,15 +704,21 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 	etherLayer := packet.Layer(layers.LayerTypeEthernet)
 	if etherLayer != nil {
 		etherPkt, _ := etherLayer.(*layers.Ethernet)
-		for _, vif := range vifInfo {
-			if strings.Compare(etherPkt.DstMAC.String(), vif.MacAddr) == 0 {
-				foundDstMac = true
-				break
+		if bytes.Compare(etherPkt.DstMAC, broadcastMAC) == 0 {
+			// some DHCP servers send replies with broadcast MAC address,
+			// need to check those in payload to see if it's for-us
+			isBroadcast = true
+		} else {
+			for _, vif := range vifInfo {
+				if strings.Compare(etherPkt.DstMAC.String(), vif.MacAddr) == 0 {
+					foundDstMac = true
+					break
+				}
 			}
 		}
 	}
-	if !foundDstMac { // dhcp packet not for this bridge App ports
-		log.Infof("checkDHCPPacketInfo: pkt no dst mac for us\n")
+	if !foundDstMac && !isBroadcast { // dhcp packet not for this bridge App ports
+		log.Debugf("checkDHCPPacketInfo: pkt no dst mac for us\n")
 		return
 	}
 
@@ -724,7 +740,7 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 				}
 			}
 			if isReplyAck {
-				log.Infof("checkDHCPPacketInfo: bn%d, Xid %d, clientip %s, yourclientip %s, clienthw %v, options %v\n",
+				log.Debugf("checkDHCPPacketInfo: bn%d, Xid %d, clientip %s, yourclientip %s, clienthw %v, options %v\n",
 					bnNum, dhcpv4.Xid, dhcpv4.ClientIP.String(), dhcpv4.YourClientIP.String(), dhcpv4.ClientHWAddr, dhcpv4.Options)
 				for _, vif := range vifInfo {
 					if strings.Compare(vif.MacAddr, dhcpv4.ClientHWAddr.String()) == 0 {
@@ -740,12 +756,14 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 								needUpdate = true
 							}
 						}
+						vifTrig.MacAddr = vif.MacAddr
+						vifTrig.IPAddr = dhcpv4.YourClientIP
 						break
 					}
 				}
 			}
 		} else {
-			log.Infof("checkDHCPPacketInfo: no dhcp layer\n")
+			log.Debugf("checkDHCPPacketInfo: no dhcp layer\n")
 		}
 	} else {
 		// XXX need to come back to handle ipv6 properly, including:
@@ -756,14 +774,17 @@ func checkDHCPPacketInfo(bnNum int, packet gopacket.Packet, ctx *zedrouterContex
 		dhcpLayer := packet.Layer(layers.LayerTypeDHCPv6)
 		if dhcpLayer != nil {
 			dhcpv6, _ := dhcpLayer.(*layers.DHCPv6)
-			log.Infof("DHCPv6: Msgtype %v, LinkAddr %s, PeerAddr %s, Options %v\n",
+			log.Debugf("DHCPv6: Msgtype %v, LinkAddr %s, PeerAddr %s, Options %v\n",
 				dhcpv6.MsgType, dhcpv6.LinkAddr.String(), dhcpv6.PeerAddr.String(), dhcpv6.Options)
 		}
 	}
 
 	if needUpdate {
 		log.Infof("checkDHCPPacketInfo: need update %v, %v\n", vifInfo, netstatus.IPAssignments)
-		publishNetworkInstanceStatus(ctx, &netstatus)
+		pub := ctx.pubNetworkInstanceStatus
+		pub.Publish(netstatus.Key(), netstatus)
+		// trigger the AppInfo update to cloud
+		ctx.pubAppVifIPTrig.Publish(vifTrig.MacAddr, vifTrig)
 	}
 }
 
@@ -807,7 +828,7 @@ func checkDNSPacketInfo(bnNum int, packet gopacket.Packet, dnsLayer gopacket.Lay
 				}
 				if haveAN {
 					dnssys[bnNum].Snoop = append(dnssys[bnNum].Snoop, dnsentry)
-					log.Infof("!!--FlowStats: DNS collected for %s, bridge Number %d", string(dnsQ.Name), bnNum)
+					log.Debugf("!!--FlowStats: DNS collected for %s, bridge Number %d", string(dnsQ.Name), bnNum)
 					break
 				}
 			}
@@ -832,87 +853,4 @@ func bridgeStrToNum(bnStr string) (int, error) {
 		return 0, err
 	}
 	return bnNum, nil
-}
-
-func flowTimeOutSet(item string, origValue int) {
-
-	tOutValue := origValue + int(timeoutSec) // add 150 seconds
-	setStr := item + "=" + strconv.Itoa(tOutValue)
-	_, err := wrap.Command("sysctl", "-w", setStr).Output()
-	if err != nil {
-		log.Errorf("FlowStats: set item %s error", setStr)
-	}
-}
-
-// AppFlowMonitorTimeoutAdjust :
-// Adjust the conntrack flow session timeout values
-// by adding 150 seconds on top of default seconds
-func AppFlowMonitorTimeoutAdjust() {
-
-	baseStr := "net.netfilter.nf_conntrack_"
-
-	flowTimeOutSet(baseStr+"tcp_timeout_fin_wait", 120)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_last_ack", 30)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_max_retrans", 300)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_syn_recv", 60)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_syn_sent", 120)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_time_wait", 120)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_unacknowledged", 300)
-
-	flowTimeOutSet(baseStr+"udp_timeout", 30)
-
-	flowTimeOutSet(baseStr+"udp_timeout_stream", 180)
-
-	flowTimeOutSet(baseStr+"dccp_timeout_closereq", 64)
-
-	flowTimeOutSet(baseStr+"dccp_timeout_closing", 64)
-
-	// default was 432000 (5 days) see discussion https://dev.archive.openwrt.org/ticket/12976.html
-	flowTimeOutSet(baseStr+"dccp_timeout_open", 3600)
-
-	flowTimeOutSet(baseStr+"dccp_timeout_partopen", 480)
-
-	flowTimeOutSet(baseStr+"dccp_timeout_request", 240)
-
-	flowTimeOutSet(baseStr+"dccp_timeout_respond", 480)
-
-	flowTimeOutSet(baseStr+"dccp_timeout_timewait", 240)
-
-	flowTimeOutSet(baseStr+"frag6_timeout", 60)
-
-	flowTimeOutSet(baseStr+"generic_timeout", 600)
-
-	flowTimeOutSet(baseStr+"icmp_timeout", 30)
-
-	flowTimeOutSet(baseStr+"icmpv6_timeout", 30)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_closed", 10)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_cookie_echoed", 3)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_cookie_wait", 3)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_established", 3600)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_heartbeat_acked", 210)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_heartbeat_sent", 30)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_shutdown_ack_sent", 3)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_shutdown_recd", 0)
-
-	flowTimeOutSet(baseStr+"sctp_timeout_shutdown_sent", 0)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_close", 10)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_close_wait", 60)
-
-	flowTimeOutSet(baseStr+"tcp_timeout_established", 3600)
 }

@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -35,6 +34,9 @@ import (
 
 const (
 	agentName = "identitymgr"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Set from Makefile
@@ -42,15 +44,16 @@ var Version = "No version specified"
 
 // Information for handleCreate/Modify/Delete
 type identityContext struct {
-	subEIDConfig    *pubsub.Subscription
-	pubEIDStatus    *pubsub.Publication
-	subGlobalConfig *pubsub.Subscription
+	subEIDConfig    pubsub.Subscription
+	pubEIDStatus    pubsub.Publication
+	subGlobalConfig pubsub.Subscription
+	GCInitialized   bool
 }
 
 var debug = false
 var debugOverride bool // From command line arg
 
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
@@ -67,11 +70,10 @@ func Run() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	logf, err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logf.Close()
 
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
@@ -80,12 +82,15 @@ func Run() {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
+	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	identityCtx := identityContext{}
 
-	pubEIDStatus, err := pubsub.Publish(agentName,
-		types.EIDStatus{})
+	pubEIDStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.EIDStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -93,45 +98,65 @@ func Run() {
 	pubEIDStatus.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
-		false, &identityCtx)
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.GlobalConfig{},
+		Activate:      false,
+		Ctx:           &identityCtx,
+		CreateHandler: handleGlobalConfigModify,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.CreateHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	identityCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
 	// Subscribe to EIDConfig from zedmanager
-	subEIDConfig, err := pubsub.Subscribe("zedmanager",
-		types.EIDConfig{}, false, &identityCtx)
+	subEIDConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:      "zedmanager",
+		TopicImpl:      types.EIDConfig{},
+		Activate:       false,
+		Ctx:            &identityCtx,
+		CreateHandler:  handleCreate,
+		ModifyHandler:  handleModify,
+		DeleteHandler:  handleEIDConfigDelete,
+		RestartHandler: handleRestart,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subEIDConfig.ModifyHandler = handleModify
-	subEIDConfig.CreateHandler = handleCreate
-	subEIDConfig.DeleteHandler = handleEIDConfigDelete
-	subEIDConfig.RestartHandler = handleRestart
 	identityCtx.subEIDConfig = subEIDConfig
 	subEIDConfig.Activate()
 
+	// Pick up debug aka log level before we start real work
+	for !identityCtx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
+
 	for {
 		select {
-		case change := <-subGlobalConfig.C:
-			start := agentlog.StartTime()
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
-		case change := <-subEIDConfig.C:
-			start := agentlog.StartTime()
+		case change := <-subEIDConfig.MsgChan():
 			subEIDConfig.ProcessChange(change)
-			agentlog.CheckMaxTime(agentName, start)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName)
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
@@ -149,7 +174,7 @@ func publishEIDStatus(ctx *identityContext, key string, status *types.EIDStatus)
 
 	log.Debugf("publishEIDStatus(%s)\n", key)
 	pub := ctx.pubEIDStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishEIDStatus(ctx *identityContext, key string) {
@@ -187,12 +212,7 @@ func lookupEIDStatus(ctx *identityContext, key string) *types.EIDStatus {
 		log.Infof("lookupEIDStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastEIDStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupEIDStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.EIDStatus)
 	return &status
 }
 
@@ -204,18 +224,13 @@ func lookupEIDConfig(ctx *identityContext, key string) *types.EIDConfig {
 		log.Infof("lookupEIDConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastEIDConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupEIDConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.EIDConfig)
 	return &config
 }
 
 func handleCreate(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*identityContext)
-	config := cast.CastEIDConfig(configArg)
+	config := configArg.(types.EIDConfig)
 	log.Infof("handleCreate(%s) for %s\n", key, config.DisplayName)
 
 	// Start by marking with PendingAdd
@@ -428,7 +443,7 @@ func encodePrivateKey(keypair *ecdsa.PrivateKey) ([]byte, error) {
 // else. Such a version change would be e.g. due to an ACL change.
 func handleModify(ctxArg interface{}, key string, configArg interface{}) {
 	ctx := ctxArg.(*identityContext)
-	config := cast.CastEIDConfig(configArg)
+	config := configArg.(types.EIDConfig)
 	status := lookupEIDStatus(ctx, key)
 
 	if status == nil {
@@ -480,8 +495,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	if gcp != nil {
+		ctx.GCInitialized = true
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 

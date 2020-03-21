@@ -1,0 +1,10 @@
+/bin/busybox
+/lib/mdev
+/etc/modprobe.d/*.conf
+/etc/mdev.conf
+/chroot2
+/mount_disk.sh
+/udhcpc_script.sh
+/mnt
+/bin/sh
+/sbin/poweroff

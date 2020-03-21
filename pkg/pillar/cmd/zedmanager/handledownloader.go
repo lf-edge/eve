@@ -4,61 +4,66 @@
 package zedmanager
 
 import (
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
-func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, safename string,
+func AddOrRefcountDownloaderConfig(ctx *zedmanagerContext, imageID uuid.UUID,
 	ss types.StorageStatus) {
 
-	log.Infof("AddOrRefcountDownloaderConfig for %s\n", safename)
+	log.Infof("AddOrRefcountDownloaderConfig for %s\n", imageID)
 	log.Infof("AddOrRefcountDownloaderConfig: StorageStatus: %+v\n", ss)
 
-	m := lookupDownloaderConfig(ctx, safename)
+	m := lookupDownloaderConfig(ctx, imageID)
 	if m != nil {
 		m.RefCount += 1
+		if m.IsContainer != ss.IsContainer {
+			log.Infof("change IsContainer to %t for %s",
+				ss.IsContainer, imageID)
+		}
 		log.Infof("downloader config exists for %s to refcount %d\n",
-			safename, m.RefCount)
+			imageID, m.RefCount)
 		publishDownloaderConfig(ctx, m)
 	} else {
 		log.Debugf("AddOrRefcountDownloaderConfig: add for %s\n",
-			safename)
+			imageID)
 		n := types.DownloaderConfig{
+			ImageID:     ss.ImageID,
 			DatastoreID: ss.DatastoreID,
-			Safename:    safename,
 			Name:        ss.Name,
 			NameIsURL:   ss.NameIsURL,
 			IsContainer: ss.IsContainer,
 			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
 				types.AppImgObj),
-			Size:        ss.Size,
-			ImageSha256: ss.ImageSha256,
-			RefCount:    1,
+			Size:     ss.Size,
+			RefCount: 1,
 		}
 		log.Infof("AddOrRefcountDownloaderConfig: DownloaderConfig: %+v\n", n)
 		publishDownloaderConfig(ctx, &n)
 	}
 	log.Infof("AddOrRefcountDownloaderConfig done for %s\n",
-		safename)
+		imageID)
 }
 
-func MaybeRemoveDownloaderConfig(ctx *zedmanagerContext, safename string) {
-	log.Infof("MaybeRemoveDownloaderConfig for %s\n", safename)
+func MaybeRemoveDownloaderConfig(ctx *zedmanagerContext, imageID uuid.UUID) {
+	log.Infof("MaybeRemoveDownloaderConfig for %s\n", imageID)
 
-	m := lookupDownloaderConfig(ctx, safename)
+	m := lookupDownloaderConfig(ctx, imageID)
 	if m == nil {
 		log.Infof("MaybeRemoveDownloaderConfig: config missing for %s\n",
-			safename)
+			imageID)
 		return
 	}
-	m.RefCount -= 1
-	if m.RefCount < 0 {
-		log.Fatalf("MaybeRemoveDownloaderConfig: negative RefCount %d for %s\n",
-			m.RefCount, safename)
+	if m.RefCount == 0 {
+		log.Fatalf("MaybeRemoveDownloaderConfig: Attempting to reduce "+
+			"0 RefCount. Image Details - Name: %s, ImageID: %s, "+
+			"IsContainer: %t\n",
+			m.Name, m.ImageID, m.IsContainer)
 	}
+	m.RefCount -= 1
 	log.Infof("MaybeRemoveDownloaderConfig remaining RefCount %d for %s\n",
-		m.RefCount, safename)
+		m.RefCount, imageID)
 	publishDownloaderConfig(ctx, m)
 }
 
@@ -68,7 +73,7 @@ func publishDownloaderConfig(ctx *zedmanagerContext,
 	key := config.Key()
 	log.Debugf("publishDownloaderConfig(%s)\n", key)
 	pub := ctx.pubAppImgDownloadConfig
-	pub.Publish(key, config)
+	pub.Publish(key, *config)
 }
 
 func unpublishDownloaderConfig(ctx *zedmanagerContext,
@@ -82,15 +87,11 @@ func unpublishDownloaderConfig(ctx *zedmanagerContext,
 
 func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
-	status := cast.CastDownloaderStatus(statusArg)
-	if status.Key() != key {
-		log.Errorf("handleDownloaderStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
+	status := statusArg.(types.DownloaderStatus)
 	ctx := ctxArg.(*zedmanagerContext)
-	log.Infof("handleDownloaderStatusModify for %s RefCount %d\n",
-		status.Safename, status.RefCount)
+	log.Infof("handleDownloaderStatusModify for %s status.RefCount %d"+
+		"status.Expired: %+v\n",
+		status.ImageID, status.RefCount, status.Expired)
 
 	// Handling even if Pending is set to process Progress updates
 
@@ -100,21 +101,21 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 	// 2. downloader set Expired in status when garbage collecting.
 	// If we have no RefCount we delete the config.
 
-	config := lookupDownloaderConfig(ctx, status.Key())
+	config := lookupDownloaderConfig(ctx, status.ImageID)
 	if config == nil && status.RefCount == 0 {
 		log.Infof("handleDownloaderStatusModify adding RefCount=0 config %s\n",
 			key)
 		n := types.DownloaderConfig{
+			ImageID:     status.ImageID,
 			DatastoreID: status.DatastoreID,
-			Safename:    status.Safename,
 			Name:        status.Name,
 			NameIsURL:   status.NameIsURL,
+			// IsContainer might not be known by downloader
 			IsContainer: status.IsContainer,
 			AllowNonFreePort: types.AllowNonFreePort(*ctx.globalConfig,
 				types.AppImgObj),
-			Size:        status.Size,
-			ImageSha256: status.ImageSha256,
-			RefCount:    0,
+			Size:     status.Size,
+			RefCount: 0,
 		}
 		publishDownloaderConfig(ctx, &n)
 		return
@@ -126,51 +127,35 @@ func handleDownloaderStatusModify(ctxArg interface{}, key string,
 		return
 	}
 
-	updateContainerImageID := false
-	if status.IsContainer {
-		updateContainerImageID = true
-	}
-
 	// Normal update case
-	updateAIStatusWithStorageSafename(ctx, key, updateContainerImageID, status.ContainerImageID)
-	log.Infof("handleDownloaderStatusModify done for %s\n",
-		status.Safename)
+	updateAIStatusWithStorageImageID(ctx, status.ImageID)
+	log.Infof("handleDownloaderStatusModify done for %s\n", status.ImageID)
 }
 
 func lookupDownloaderConfig(ctx *zedmanagerContext,
-	safename string) *types.DownloaderConfig {
+	imageID uuid.UUID) *types.DownloaderConfig {
 
 	pub := ctx.pubAppImgDownloadConfig
-	c, _ := pub.Get(safename)
+	c, _ := pub.Get(imageID.String())
 	if c == nil {
-		log.Infof("lookupDownloaderConfig(%s) not found\n", safename)
+		log.Infof("lookupDownloaderConfig(%s) not found\n", imageID)
 		return nil
 	}
-	config := cast.CastDownloaderConfig(c)
-	if config.Key() != safename {
-		log.Errorf("lookupDownloaderConfig(%s) got %s; ignored %+v\n",
-			safename, config.Key(), config)
-		return nil
-	}
+	config := c.(types.DownloaderConfig)
 	return &config
 }
 
 // Note that this function returns the entry even if Pending* is set.
 func lookupDownloaderStatus(ctx *zedmanagerContext,
-	safename string) *types.DownloaderStatus {
+	imageID uuid.UUID) *types.DownloaderStatus {
 
 	sub := ctx.subAppImgDownloadStatus
-	c, _ := sub.Get(safename)
+	c, _ := sub.Get(imageID.String())
 	if c == nil {
-		log.Infof("lookupDownloaderStatus(%s) not found\n", safename)
+		log.Infof("lookupDownloaderStatus(%s) not found\n", imageID)
 		return nil
 	}
-	status := cast.CastDownloaderStatus(c)
-	if status.Key() != safename {
-		log.Errorf("lookupDownloaderStatus(%s) got %s; ignored %+v\n",
-			safename, status.Key(), status)
-		return nil
-	}
+	status := c.(types.DownloaderStatus)
 	return &status
 }
 
@@ -179,9 +164,10 @@ func handleDownloaderStatusDelete(ctxArg interface{}, key string,
 
 	log.Infof("handleDownloaderStatusDelete for %s\n", key)
 	ctx := ctxArg.(*zedmanagerContext)
-	removeAIStatusSafename(ctx, key)
+	status := statusArg.(types.DownloaderStatus)
+	removeAIStatusImageID(ctx, status.ImageID)
 	// If we still publish a config with RefCount == 0 we delete it.
-	config := lookupDownloaderConfig(ctx, key)
+	config := lookupDownloaderConfig(ctx, status.ImageID)
 	if config != nil && config.RefCount == 0 {
 		log.Infof("handleDownloaderStatusDelete delete config for %s\n",
 			key)

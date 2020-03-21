@@ -16,43 +16,43 @@ var aa AssignableAdapters = AssignableAdapters{
 		{
 			Type:            IoNetEth,
 			AssignmentGroup: "eth0-1",
-			Name:            "eth0",
+			Phylabel:        "eth0",
 			Ifname:          "eth0",
 		},
 		{
 			Type:            IoNetEth,
 			AssignmentGroup: "eth0-1",
-			Name:            "eth1",
+			Phylabel:        "eth1",
 			Ifname:          "eth1",
 		},
 		{
 			Type:            IoNetEth,
 			AssignmentGroup: "eth2",
-			Name:            "eth2",
+			Phylabel:        "eth2",
 			Ifname:          "eth2",
 		},
 		{
 			Type:            IoNetEth,
 			AssignmentGroup: "eTH4-7",
-			Name:            "eth4",
+			Phylabel:        "eth4",
 			Ifname:          "eth4",
 		},
 		{
 			Type:            IoNetEth,
 			AssignmentGroup: "eTH4-7",
-			Name:            "eth5",
+			Phylabel:        "eth5",
 			Ifname:          "eth5",
 		},
 		{
 			Type:            IoNetEth,
 			AssignmentGroup: "eTH4-7",
-			Name:            "eth6",
+			Phylabel:        "eth6",
 			Ifname:          "eth6",
 		},
 		{
 			Type:            IoNetEth,
 			AssignmentGroup: "eTH4-7",
-			Name:            "eth7",
+			Phylabel:        "eth7",
 			Ifname:          "eth7",
 		},
 	},
@@ -98,7 +98,7 @@ func TestLookupIoBundleGroup(t *testing.T) {
 	}
 }
 
-func TestLookupIoBundle(t *testing.T) {
+func TestLookupIoBundlePhylabel(t *testing.T) {
 	testMatrix := map[string]struct {
 		ioType             IoType
 		lookupName         string
@@ -130,11 +130,11 @@ func TestLookupIoBundle(t *testing.T) {
 	// Basic test
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
-		ioBundle := aa.LookupIoBundle(test.lookupName)
+		ioBundle := aa.LookupIoBundlePhylabel(test.lookupName)
 		if ioBundle == nil {
 			assert.Equal(t, test.expectedBundleName, "")
 		} else {
-			assert.Equal(t, test.expectedBundleName, ioBundle.Name)
+			assert.Equal(t, test.expectedBundleName, ioBundle.Phylabel)
 		}
 	}
 }
@@ -152,22 +152,22 @@ func TestIoBundleFromPhyAdapter(t *testing.T) {
 			Ioports: "3f8-3ff",
 			Serial:  "/dev/ttyS0",
 		},
-		Usage: zconfig.PhyIoMemberUsage_PhyIoUsageMgmt,
+		Usage: zconfig.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
 		UsagePolicy: PhyIOUsagePolicy{
 			FreeUplink: true,
 		},
 	}
 	ibPtr := IoBundleFromPhyAdapter(phyAdapter)
 	assert.NotEqual(t, ibPtr, nil)
-	assert.Equal(t, ibPtr.Type, IoType(phyAdapter.Ptype))
-	assert.Equal(t, ibPtr.Name, phyAdapter.Phylabel)
-	assert.Equal(t, ibPtr.Logicallabel, phyAdapter.Logicallabel)
-	assert.Equal(t, ibPtr.AssignmentGroup, phyAdapter.Assigngrp)
-	assert.Equal(t, ibPtr.Ifname, phyAdapter.Phyaddr.Ifname)
-	assert.Equal(t, ibPtr.PciLong, phyAdapter.Phyaddr.PciLong)
-	assert.Equal(t, ibPtr.Irq, phyAdapter.Phyaddr.Irq)
-	assert.Equal(t, ibPtr.Ioports, phyAdapter.Phyaddr.Ioports)
-	assert.Equal(t, ibPtr.Serial, phyAdapter.Phyaddr.Serial)
-	assert.Equal(t, ibPtr.Usage, phyAdapter.Usage)
-	assert.Equal(t, ibPtr.FreeUplink, phyAdapter.UsagePolicy.FreeUplink)
+	assert.Equal(t, IoType(phyAdapter.Ptype), ibPtr.Type)
+	assert.Equal(t, phyAdapter.Phylabel, ibPtr.Phylabel)
+	assert.Equal(t, phyAdapter.Logicallabel, ibPtr.Logicallabel)
+	assert.Equal(t, phyAdapter.Assigngrp, ibPtr.AssignmentGroup)
+	assert.Equal(t, phyAdapter.Phyaddr.Ifname, ibPtr.Ifname)
+	assert.Equal(t, phyAdapter.Phyaddr.PciLong, ibPtr.PciLong)
+	assert.Equal(t, phyAdapter.Phyaddr.Irq, ibPtr.Irq)
+	assert.Equal(t, phyAdapter.Phyaddr.Ioports, ibPtr.Ioports)
+	assert.Equal(t, phyAdapter.Phyaddr.Serial, ibPtr.Serial)
+	assert.Equal(t, phyAdapter.Usage, ibPtr.Usage)
+	assert.Equal(t, phyAdapter.UsagePolicy.FreeUplink, ibPtr.FreeUplink)
 }

@@ -7,12 +7,9 @@ package zedagent
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -24,13 +21,13 @@ import (
 	"github.com/lf-edge/eve/api/go/info"
 	"github.com/lf-edge/eve/api/go/metrics"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/tpmmgr"
 	"github.com/lf-edge/eve/pkg/pillar/cmd/vaultmgr"
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/netclone"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
 	"github.com/shirou/gopsutil/disk"
@@ -39,8 +36,28 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Also report usage for these paths
-var reportPaths = []string{"/", types.IdentityDirname, types.PersistDir}
+// Report disk usage for these paths
+var reportDiskPaths = []string{
+	"/",
+	types.IdentityDirname,
+	types.PersistDir,
+}
+
+// Report directory usage for these paths
+var reportDirPaths = []string{
+	types.PersistDir,
+	types.PersistDir + "/downloads",
+	types.PersistDir + "/img",
+	types.PersistDir + "/tmp",
+	types.PersistDir + "/log",
+	types.PersistDir + "/rsyslog",
+	types.PersistDir + "/config",
+	types.PersistDir + "/status",
+	types.PersistDir + "/certs",
+	types.PersistDir + "/checkpoint",
+	types.PersistDir + "/IMGA",
+	types.PersistDir + "/IMGB",
+}
 
 // Application-related files live here; includes downloads and verifications in progress
 var appPersistPaths = []string{
@@ -48,22 +65,13 @@ var appPersistPaths = []string{
 	types.AppImgDirname,
 }
 
-func publishMetrics(ctx *zedagentContext, iteration int) {
-	cpuMemoryStat := ExecuteXentopCmd()
-	if cpuMemoryStat == nil {
-		return
-	}
-	PublishMetricsToZedCloud(ctx, cpuMemoryStat, iteration)
-}
-
 // Run a periodic post of the metrics
-
 func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 	iteration := 0
 	log.Infoln("starting report metrics timer task")
 	publishMetrics(ctx, iteration)
 
-	interval := time.Duration(globalConfig.MetricInterval) * time.Second
+	interval := time.Duration(ctx.globalConfig.MetricInterval) * time.Second
 	max := float64(interval)
 	min := max * 0.3
 	ticker := flextimer.NewRangeTicker(time.Duration(min), time.Duration(max))
@@ -72,30 +80,32 @@ func metricsTimerTask(ctx *zedagentContext, handleChannel chan interface{}) {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
+	agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
 
 	for {
 		select {
 		case <-ticker.C:
-			start := agentlog.StartTime()
+			start := time.Now()
 			iteration += 1
 			publishMetrics(ctx, iteration)
-			agentlog.CheckMaxTime(agentName+"metrics", start)
+			pubsub.CheckMaxTimeTopic(agentName+"metrics", "publishMetrics", start,
+				warningTime, errorTime)
 
 		case <-stillRunning.C:
 		}
-		agentlog.StillRunning(agentName + "metrics")
+		agentlog.StillRunning(agentName+"metrics", warningTime, errorTime)
 	}
 }
 
 // Called when globalConfig changes
 // Assumes the caller has verifier that the interval has changed
-func updateMetricsTimer(tickerHandle interface{}) {
+func updateMetricsTimer(metricInterval uint32, tickerHandle interface{}) {
 
 	if tickerHandle == nil {
 		log.Warnf("updateMetricsTimer: no metricsTickerHandle yet")
 		return
 	}
-	interval := time.Duration(globalConfig.MetricInterval) * time.Second
+	interval := time.Duration(metricInterval) * time.Second
 	log.Infof("updateMetricsTimer() change to %v\n", interval)
 	max := float64(interval)
 	min := max * 0.3
@@ -105,183 +115,20 @@ func updateMetricsTimer(tickerHandle interface{}) {
 	flextimer.TickNow(tickerHandle)
 }
 
-func ExecuteXlInfoCmd() map[string]string {
-	xlCmd := exec.Command("xl", "info")
-	stdout, err := xlCmd.Output()
-	if err != nil {
-		log.Errorf("xl info failed %s\n", err)
+// Key is device UUID for host and app instance UUID for app instances
+// Returns DomainMetric
+func lookupDomainMetric(ctx *zedagentContext, uuidStr string) *types.DomainMetric {
+	sub := ctx.getconfigCtx.subDomainMetric
+	m, _ := sub.Get(uuidStr)
+	if m == nil {
+		log.Infof("lookupDomainMetric(%s) not found\n", uuidStr)
 		return nil
 	}
-	xlInfo := string(stdout)
-	splitXlInfo := strings.Split(xlInfo, "\n")
-
-	dict := make(map[string]string, len(splitXlInfo)-1)
-	for _, str := range splitXlInfo {
-		res := strings.SplitN(str, ":", 2)
-		if len(res) == 2 {
-			dict[strings.TrimSpace(res[0])] = strings.TrimSpace(res[1])
-		}
-	}
-	return dict
+	metric := m.(types.DomainMetric)
+	return &metric
 }
 
-// XXX can we use libxenstat? /usr/local/lib/libxenstat.so on hikey
-// /usr/lib/libxenstat.so in container
-func ExecuteXentopCmd() [][]string {
-	var cpuMemoryStat [][]string
-
-	count := 0
-	counter := 0
-	arg1 := "xentop"
-	arg2 := "-b"
-	arg3 := "-d"
-	arg4 := "1"
-	arg5 := "-i"
-	arg6 := "2"
-	arg7 := "-f"
-
-	stdout, ok, err := execWithTimeout(arg1, arg2, arg3, arg4, arg5, arg6, arg7)
-	if err != nil {
-		log.Errorf("xentop failed: %s", err)
-		return [][]string{}
-	}
-	if !ok {
-		log.Warnf("xentop timed out")
-		return nil
-	}
-
-	xentopInfo := string(stdout)
-
-	splitXentopInfo := strings.Split(xentopInfo, "\n")
-
-	splitXentopInfoLength := len(splitXentopInfo)
-	var i int
-	var start int
-
-	for i = 0; i < splitXentopInfoLength; i++ {
-
-		str := splitXentopInfo[i]
-		re := regexp.MustCompile(" ")
-
-		spaceRemovedsplitXentopInfo := re.ReplaceAllLiteralString(str, "")
-		matched, err := regexp.MatchString("NAMESTATECPU.*", spaceRemovedsplitXentopInfo)
-
-		if err != nil {
-			log.Debugf("MatchString failed: %s", err)
-		} else if matched {
-
-			count++
-			log.Debugf("string matched: %s", str)
-			if count == 2 {
-				start = i + 1
-				log.Debugf("value of i: %d", start)
-			}
-		}
-	}
-
-	length := splitXentopInfoLength - 1 - start
-	finalOutput := make([][]string, length)
-
-	for j := start; j < splitXentopInfoLength-1; j++ {
-
-		finalOutput[j-start] = strings.Fields(strings.TrimSpace(splitXentopInfo[j]))
-	}
-
-	cpuMemoryStat = make([][]string, length)
-
-	for i := range cpuMemoryStat {
-		cpuMemoryStat[i] = make([]string, 20)
-	}
-
-	// Need to treat "no limit" as one token
-	for f := 0; f < length; f++ {
-
-		// First name and state
-		out := 0
-		counter++
-		cpuMemoryStat[f][counter] = finalOutput[f][out]
-		out++
-		counter++
-		cpuMemoryStat[f][counter] = finalOutput[f][out]
-		out++
-		for ; out < len(finalOutput[f]); out++ {
-
-			if finalOutput[f][out] == "no" {
-
-			} else if finalOutput[f][out] == "limit" {
-				counter++
-				cpuMemoryStat[f][counter] = "no limit"
-			} else {
-				counter++
-				cpuMemoryStat[f][counter] = finalOutput[f][out]
-			}
-		}
-		counter = 0
-	}
-	log.Debugf("ExecuteXentopCmd return %+v", cpuMemoryStat)
-	return cpuMemoryStat
-}
-
-func execWithTimeout(command string, args ...string) ([]byte, bool, error) {
-
-	ctx, cancel := context.WithTimeout(context.Background(),
-		10*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, command, args...)
-	out, err := cmd.Output()
-	if ctx.Err() == context.DeadlineExceeded {
-		return nil, false, nil
-	}
-	return out, true, err
-}
-
-// Returns cpuTotal, usedMemory, availableMemory, usedPercentage
-func lookupCpuMemoryStat(cpuMemoryStat [][]string, domainname string) (uint64, uint32, uint32, float64) {
-
-	for _, stat := range cpuMemoryStat {
-		if len(stat) <= 2 {
-			continue
-		}
-		dn := strings.TrimSpace(stat[1])
-		if dn == domainname {
-			if len(stat) <= 6 {
-				return 0, 0, 0, 0.0
-			}
-			log.Debugf("lookupCpuMemoryStat for %s %d elem: %+v",
-				domainname, len(stat), stat)
-			cpuTotal, err := strconv.ParseUint(stat[3], 10, 0)
-			if err != nil {
-				log.Errorf("ParseUint(%s) failed: %s",
-					stat[3], err)
-				cpuTotal = 0
-			}
-			// This is in kbytes
-			totalMemory, err := strconv.ParseUint(stat[5], 10, 0)
-			if err != nil {
-				log.Errorf("ParseUint(%s) failed: %s",
-					stat[5], err)
-				totalMemory = 0
-			}
-			totalMemory = RoundFromKbytesToMbytes(totalMemory)
-			usedMemoryPercent, err := strconv.ParseFloat(stat[6], 10)
-			if err != nil {
-				log.Errorf("ParseFloat(%s) failed: %s",
-					stat[6], err)
-				usedMemoryPercent = 0
-			}
-			usedMemory := (float64(totalMemory) * (usedMemoryPercent)) / 100
-			availableMemory := float64(totalMemory) - usedMemory
-
-			return cpuTotal, uint32(usedMemory), uint32(availableMemory),
-				float64(usedMemoryPercent)
-		}
-	}
-	return 0, 0, 0, 0.0
-}
-
-func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
-	iteration int) {
+func publishMetrics(ctx *zedagentContext, iteration int) {
 
 	var ReportMetrics = &metrics.ZMetricMsg{}
 
@@ -311,20 +158,13 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 	ReportDeviceMetric.CpuMetric.UpTime = uptime
 
 	// Memory related info for the device
-	dict := ExecuteXlInfoCmd()
 	var totalMemory, freeMemory uint64
-	if dict != nil {
-		var err error
-		totalMemory, err = strconv.ParseUint(dict["total_memory"], 10, 64)
-		if err != nil {
-			log.Errorf("Failed parsing total_memory: %s", err)
-			totalMemory = 0
-		}
-		freeMemory, err = strconv.ParseUint(dict["free_memory"], 10, 64)
-		if err != nil {
-			log.Errorf("Failed parsing free_memory: %s", err)
-			freeMemory = 0
-		}
+	sub := ctx.getconfigCtx.subHostMemory
+	m, _ := sub.Get("global")
+	if m != nil {
+		metric := m.(types.HostMemory)
+		totalMemory = metric.TotalMemoryMB
+		freeMemory = metric.FreeMemoryMB
 	}
 	// total_memory and free_memory is in MBytes
 	used := totalMemory - freeMemory
@@ -344,10 +184,10 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 
 	// Use the network metrics from zedrouter subscription
 	// Only report stats for the ports in DeviceNetworkStatus
-	portNames := types.ReportPorts(*deviceNetworkStatus)
-	for _, port := range portNames {
+	phylabelList := types.ReportPhylabels(*deviceNetworkStatus)
+	for _, phylabel := range phylabelList {
 		var metric *types.NetworkMetric
-		ifname := types.AdapterToIfName(deviceNetworkStatus, port)
+		ifname := types.PhylabelToIfName(deviceNetworkStatus, phylabel)
 		for _, m := range networkMetrics.MetricList {
 			if ifname == m.IfName {
 				metric = &m
@@ -359,7 +199,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		}
 		networkDetails := new(metrics.NetworkMetric)
 		networkDetails.LocalName = metric.IfName
-		networkDetails.IName = port
+		networkDetails.IName = phylabel
 
 		networkDetails.TxPkts = metric.TxPkts
 		networkDetails.RxPkts = metric.RxPkts
@@ -380,24 +220,20 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 
 	// Collect zedcloud metrics from ourselves and other agents
 	cms := zedcloud.GetCloudMetrics()
-	// Have to make a copy
-	cms = zedcloud.CastCloudMetrics(cms)
-	cms1 := zedcloud.CastCloudMetrics(clientMetrics)
-	if cms1 != nil {
-		cms = zedcloud.Append(cms, cms1)
+	if clientMetrics != nil {
+		cms = zedcloud.Append(cms, clientMetrics)
 	}
-	cms1 = zedcloud.CastCloudMetrics(logmanagerMetrics)
-	if cms1 != nil {
-		cms = zedcloud.Append(cms, cms1)
+	if logmanagerMetrics != nil {
+		cms = zedcloud.Append(cms, logmanagerMetrics)
 	}
-	cms1 = zedcloud.CastCloudMetrics(downloaderMetrics)
-	if cms1 != nil {
-		cms = zedcloud.Append(cms, cms1)
+	if downloaderMetrics != nil {
+		cms = zedcloud.Append(cms, downloaderMetrics)
 	}
 	for ifname, cm := range cms {
 		metric := metrics.ZedcloudMetric{IfName: ifname,
-			Failures: cm.FailureCount,
-			Success:  cm.SuccessCount,
+			Failures:          cm.FailureCount,
+			Success:           cm.SuccessCount,
+			AuthVerifyFailure: cm.AuthFailCount,
 		}
 		if !cm.LastFailure.IsZero() {
 			lf, _ := ptypes.TimestampProto(cm.LastFailure)
@@ -407,7 +243,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 			ls, _ := ptypes.TimestampProto(cm.LastSuccess)
 			metric.LastSuccess = ls
 		}
-		for url, um := range cm.UrlCounters {
+		for url, um := range cm.URLCounters {
 			log.Debugf("CloudMetrics[%s] url %s %v\n",
 				ifname, url, um)
 			urlMet := new(metrics.UrlcloudMetric)
@@ -440,7 +276,7 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		// XXX do we have a mountpath? Combine with paths below if same?
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
-	for _, path := range reportPaths {
+	for _, path := range reportDiskPaths {
 		u, err := disk.Usage(path)
 		if err != nil {
 			// Happens e.g., if we don't have a /persist
@@ -453,6 +289,14 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 			Total: RoundToMbytes(u.Total),
 			Used:  RoundToMbytes(u.Used),
 			Free:  RoundToMbytes(u.Free),
+		}
+		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
+	}
+	for _, path := range reportDirPaths {
+		usage := diskmetrics.SizeFromDir(path)
+		log.Debugf("Path %s usage %d", path, usage)
+		metric := metrics.DiskMetric{MountPath: path,
+			Used: RoundToMbytes(usage),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
@@ -476,27 +320,29 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 	// as disks)
 	verifierStatusMap := verifierGetAll(ctx)
 	for _, st := range verifierStatusMap {
-		vs := cast.CastVerifyImageStatus(st)
+		vs := st.(types.VerifyImageStatus)
 		log.Debugf("verifierStatusMap %s size %d\n",
-			vs.Safename, vs.Size)
+			vs.Name, vs.Size)
 		metric := metrics.DiskMetric{
-			Disk:  vs.Safename,
+			Disk:  vs.Name,
 			Total: RoundToMbytes(uint64(vs.Size)),
+			Used:  RoundToMbytes(uint64(vs.Size)),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
 	downloaderStatusMap := downloaderGetAll(ctx)
 	for _, st := range downloaderStatusMap {
-		ds := cast.CastDownloaderStatus(st)
+		ds := st.(types.DownloaderStatus)
 		log.Debugf("downloaderStatusMap %s size %d\n",
-			ds.Safename, ds.Size)
+			ds.Name, ds.Size)
 		if _, found := verifierStatusMap[ds.Key()]; found {
 			log.Debugf("Found verifierStatusMap for %s\n", ds.Key())
 			continue
 		}
 		metric := metrics.DiskMetric{
-			Disk:  ds.Safename,
+			Disk:  ds.Name,
 			Total: RoundToMbytes(uint64(ds.Size)),
+			Used:  RoundToMbytes(uint64(ds.Size)),
 		}
 		ReportDeviceMetric.Disk = append(ReportDeviceMetric.Disk, &metric)
 	}
@@ -512,21 +358,24 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 		ReportDeviceMetric.MetricItems = append(ReportDeviceMetric.MetricItems, item)
 	}
 
-	cpuTotal, usedMemory, availableMemory, usedMemoryPercent := lookupCpuMemoryStat(cpuMemoryStat, "Domain-0")
-	log.Debugf("Domain-0 CPU from xentop: %d, percent used %d\n",
-		cpuTotal, (100*cpuTotal)/uint64(info.Uptime))
-	ReportDeviceMetric.CpuMetric.Total = *proto.Uint64(cpuTotal)
+	// Get device info using nil UUID
+	dm := lookupDomainMetric(ctx, nilUUID.String())
+	if dm != nil {
+		log.Debugf("host CPU: %d, percent used %d\n",
+			dm.CPUTotal, (100*dm.CPUTotal)/uint64(info.Uptime))
+		ReportDeviceMetric.CpuMetric.Total = *proto.Uint64(dm.CPUTotal)
 
-	ReportDeviceMetric.SystemServicesMemoryMB = new(metrics.MemoryMetric)
-	ReportDeviceMetric.SystemServicesMemoryMB.UsedMem = usedMemory
-	ReportDeviceMetric.SystemServicesMemoryMB.AvailMem = availableMemory
-	ReportDeviceMetric.SystemServicesMemoryMB.UsedPercentage = usedMemoryPercent
-	ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage = (100.0 - (usedMemoryPercent))
-	log.Debugf("dom-0 Memory from xentop: %v %v %v %v",
-		ReportDeviceMetric.SystemServicesMemoryMB.UsedMem,
-		ReportDeviceMetric.SystemServicesMemoryMB.AvailMem,
-		ReportDeviceMetric.SystemServicesMemoryMB.UsedPercentage,
-		ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage)
+		ReportDeviceMetric.SystemServicesMemoryMB = new(metrics.MemoryMetric)
+		ReportDeviceMetric.SystemServicesMemoryMB.UsedMem = dm.UsedMemory
+		ReportDeviceMetric.SystemServicesMemoryMB.AvailMem = dm.AvailableMemory
+		ReportDeviceMetric.SystemServicesMemoryMB.UsedPercentage = dm.UsedMemoryPercent
+		ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage = (100.0 - (dm.UsedMemoryPercent))
+		log.Debugf("host Memory: %v %v %v %v",
+			ReportDeviceMetric.SystemServicesMemoryMB.UsedMem,
+			ReportDeviceMetric.SystemServicesMemoryMB.AvailMem,
+			ReportDeviceMetric.SystemServicesMemoryMB.UsedPercentage,
+			ReportDeviceMetric.SystemServicesMemoryMB.AvailPercentage)
+	}
 
 	ReportMetrics.MetricContent = new(metrics.ZMetricMsg_Dm)
 	if x, ok := ReportMetrics.GetMetricContent().(*metrics.ZMetricMsg_Dm); ok {
@@ -534,33 +383,35 @@ func PublishMetricsToZedCloud(ctx *zedagentContext, cpuMemoryStat [][]string,
 	}
 
 	// Loop over AppInstanceStatus so we report before the instance has booted
-	sub := ctx.getconfigCtx.subAppInstanceStatus
+	sub = ctx.getconfigCtx.subAppInstanceStatus
 	items := sub.GetAll()
 	for _, st := range items {
-		aiStatus := cast.CastAppInstanceStatus(st)
+		aiStatus := st.(types.AppInstanceStatus)
 
 		ReportAppMetric := new(metrics.AppMetric)
 		ReportAppMetric.Cpu = new(metrics.AppCpuMetric)
 		ReportAppMetric.Memory = new(metrics.MemoryMetric)
 		ReportAppMetric.AppName = aiStatus.DisplayName
 		ReportAppMetric.AppID = aiStatus.Key()
-		if !aiStatus.BootTime.IsZero() {
+		if !aiStatus.BootTime.IsZero() && aiStatus.Activated {
 			elapsed := time.Since(aiStatus.BootTime)
 			uptime, _ := ptypes.TimestampProto(
 				time.Unix(0, elapsed.Nanoseconds()).UTC())
 			ReportAppMetric.Cpu.UpTime = uptime
 		}
 
-		appCpuTotal, usedMemory, availableMemory, usedMemoryPercent := lookupCpuMemoryStat(cpuMemoryStat, aiStatus.DomainName)
-		log.Debugf("xentop for %s CPU %d, usedMem %v, availMem %v, availMemPercent %v",
-			aiStatus.DomainName, appCpuTotal, usedMemory,
-			availableMemory, usedMemoryPercent)
-		ReportAppMetric.Cpu.Total = *proto.Uint64(appCpuTotal)
-		ReportAppMetric.Memory.UsedMem = usedMemory
-		ReportAppMetric.Memory.AvailMem = availableMemory
-		ReportAppMetric.Memory.UsedPercentage = usedMemoryPercent
-		availableMemoryPercent := 100.0 - usedMemoryPercent
-		ReportAppMetric.Memory.AvailPercentage = availableMemoryPercent
+		dm := lookupDomainMetric(ctx, aiStatus.Key())
+		if dm != nil {
+			log.Debugf("metrics for %s CPU %d, usedMem %v, availMem %v, availMemPercent %v",
+				aiStatus.DomainName, dm.CPUTotal, dm.UsedMemory,
+				dm.AvailableMemory, dm.UsedMemoryPercent)
+			ReportAppMetric.Cpu.Total = *proto.Uint64(dm.CPUTotal)
+			ReportAppMetric.Memory.UsedMem = dm.UsedMemory
+			ReportAppMetric.Memory.AvailMem = dm.AvailableMemory
+			ReportAppMetric.Memory.UsedPercentage = dm.UsedMemoryPercent
+			availableMemoryPercent := 100.0 - dm.UsedMemoryPercent
+			ReportAppMetric.Memory.AvailPercentage = availableMemoryPercent
+		}
 
 		appInterfaceList := aiStatus.GetAppInterfaceList()
 		log.Debugf("ReportMetrics: domainName %s ifs %v\n",
@@ -660,10 +511,70 @@ func RoundToMbytes(byteCount uint64) uint64 {
 	return (byteCount + mbyte/2) / mbyte
 }
 
-func RoundFromKbytesToMbytes(byteCount uint64) uint64 {
-	const kbyte = 1024
+//getDataSecAtRestInfo prepares status related to Data security at Rest
+func getDataSecAtRestInfo(ctx *zedagentContext) *info.DataSecAtRest {
+	subVaultStatus := ctx.subVaultStatus
+	ReportDataSecAtRestInfo := new(info.DataSecAtRest)
+	ReportDataSecAtRestInfo.VaultList = make([]*info.VaultInfo, 0)
+	vaultList := subVaultStatus.GetAll()
+	for _, vaultItem := range vaultList {
+		vault := vaultItem.(types.VaultStatus)
+		vaultInfo := new(info.VaultInfo)
+		vaultInfo.Name = vault.Name
+		vaultInfo.Status = vault.Status
+		if !vault.ErrorTime.IsZero() {
+			vaultInfo.VaultErr = new(info.ErrorInfo)
+			vaultInfo.VaultErr.Description = vault.Error
+			vaultInfo.VaultErr.Timestamp, _ = ptypes.TimestampProto(vault.ErrorTime)
+		}
+		ReportDataSecAtRestInfo.VaultList = append(ReportDataSecAtRestInfo.VaultList, vaultInfo)
+	}
+	return ReportDataSecAtRestInfo
+}
 
-	return (byteCount + kbyte/2) / kbyte
+func createConfigItemStatus(
+	status types.GlobalStatus) *info.ZInfoConfigItemStatus {
+
+	cfgItemsPtr := new(info.ZInfoConfigItemStatus)
+
+	// Copy ConfigItems
+	cfgItemsPtr.ConfigItems = make(map[string]*info.ZInfoConfigItem)
+	for key, statusCfgItem := range status.ConfigItems {
+		if statusCfgItem.Err != nil {
+			cfgItemsPtr.ConfigItems[key] = &info.ZInfoConfigItem{
+				Value: statusCfgItem.Value,
+				Error: statusCfgItem.Err.Error()}
+		} else {
+			cfgItemsPtr.ConfigItems[key] = &info.ZInfoConfigItem{
+				Value: statusCfgItem.Value}
+		}
+	}
+
+	// Copy Unknown Config Items
+	cfgItemsPtr.UnknownConfigItems = make(map[string]*info.ZInfoConfigItem)
+	for key, statusUnknownCfgItem := range status.UnknownConfigItems {
+		cfgItemsPtr.UnknownConfigItems[key] = &info.ZInfoConfigItem{
+			Value: statusUnknownCfgItem.Value,
+			Error: statusUnknownCfgItem.Err.Error()}
+	}
+	return cfgItemsPtr
+}
+
+func createAppInstances(ctxPtr *zedagentContext,
+	zinfoDevice *info.ZInfoDevice) {
+
+	addAppInstanceFunc := func(key string, value interface{}) bool {
+		ais := value.(types.AppInstanceStatus)
+		zinfoAppInst := new(info.ZInfoAppInstance)
+		zinfoAppInst.Uuid = ais.UUIDandVersion.UUID.String()
+		zinfoAppInst.Name = ais.DisplayName
+		zinfoAppInst.DomainName = ais.DomainName
+		zinfoDevice.AppInstances = append(zinfoDevice.AppInstances,
+			zinfoAppInst)
+		return true
+	}
+	ctxPtr.getconfigCtx.subAppInstanceStatus.Iterate(
+		addAppInstanceFunc)
 }
 
 // This function is called per change, hence needs to try over all management ports
@@ -712,23 +623,13 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		ReportDeviceInfo.Platform = *proto.String(strings.TrimSpace(platform))
 	}
 
-	dict := ExecuteXlInfoCmd()
-	if dict != nil {
-		// Note that this is the set of physical CPUs which is different
-		// than the set of CPUs assigned to dom0
-		ncpus, err := strconv.ParseUint(dict["nr_cpus"], 10, 32)
-		if err != nil {
-			log.Errorln("error while converting ncpus to int: ", err)
-		} else {
-			ReportDeviceInfo.Ncpu = *proto.Uint32(uint32(ncpus))
-		}
-		totalMemory, err := strconv.ParseUint(dict["total_memory"], 10, 64)
-		if err == nil {
-			// totalMemory is in MBytes
-			ReportDeviceInfo.Memory = *proto.Uint64(uint64(totalMemory))
-		}
+	sub := ctx.getconfigCtx.subHostMemory
+	m, _ := sub.Get("global")
+	if m != nil {
+		metric := m.(types.HostMemory)
+		ReportDeviceInfo.Ncpu = *proto.Uint32(metric.Ncpus)
+		ReportDeviceInfo.Memory = *proto.Uint64(metric.TotalMemoryMB)
 	}
-
 	// Find all disks and partitions
 	disks := findDisksPartitions()
 	ReportDeviceInfo.Storage = *proto.Uint64(0)
@@ -743,7 +644,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			ReportDeviceInfo.Storage += *proto.Uint64(size)
 		}
 	}
-	for _, path := range reportPaths {
+	for _, path := range reportDiskPaths {
 		u, err := disk.Usage(path)
 		if err != nil {
 			// Happens e.g., if we don't have a /persist
@@ -786,7 +687,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		// Look for a matching IMGA/IMGB in baseOsStatus
 		items := subBaseOsStatus.GetAll()
 		for _, st := range items {
-			bos := cast.CastBaseOsStatus(st)
+			bos := st.(types.BaseOsStatus)
 			if bos.PartitionLabel == partLabel {
 				return &bos
 			}
@@ -852,7 +753,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// Report any other BaseOsStatus which might have errors
 	items := subBaseOsStatus.GetAll()
 	for _, st := range items {
-		bos := cast.CastBaseOsStatus(st)
+		bos := st.(types.BaseOsStatus)
 		if bos.PartitionLabel != "" {
 			// Already reported above
 			continue
@@ -884,15 +785,15 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	// Read interface name from library and match it with port name from
 	// global status. Only report the ports in DeviceNetworkStatus
 	interfaces, _ := psutilnet.Interfaces()
-	portNames := types.ReportPorts(*deviceNetworkStatus)
-	for _, port := range portNames {
-		ifname := types.AdapterToIfName(deviceNetworkStatus, port)
+	phylabelList := types.ReportPhylabels(*deviceNetworkStatus)
+	for _, phylabel := range phylabelList {
+		ifname := types.PhylabelToIfName(deviceNetworkStatus, phylabel)
 		for _, interfaceDetail := range interfaces {
 			if ifname != interfaceDetail.Name {
 				continue
 			}
 			ReportDeviceNetworkInfo := getNetInfo(interfaceDetail, true)
-			ReportDeviceNetworkInfo.DevName = *proto.String(port)
+			ReportDeviceNetworkInfo.DevName = *proto.String(phylabel)
 			ReportDeviceInfo.Network = append(ReportDeviceInfo.Network,
 				ReportDeviceNetworkInfo)
 		}
@@ -922,7 +823,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 				break
 			}
 		}
-		if seen {
+		if seen && ib.AssignmentGroup != "" {
 			continue
 		}
 		seenBundles = append(seenBundles, ib.AssignmentGroup)
@@ -934,15 +835,17 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 			if ib.AssignmentGroup != "" {
 				log.Infof("Nothing to report for %d %s",
 					ib.Type, ib.AssignmentGroup)
+				continue
 			}
-			continue
+			// Singleton
+			list = append(list, &ib)
 		}
 		for _, b := range list {
 			if b == nil {
 				continue
 			}
 			reportAA.Members = append(reportAA.Members,
-				b.Name)
+				b.Phylabel)
 			if b.MacAddr != "" {
 				reportMac := new(info.IoAddresses)
 				reportMac.MacAddress = b.MacAddr
@@ -995,16 +898,7 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	}
 
 	ReportDeviceInfo.LastRebootReason = ctx.rebootReason
-	if len(ctx.rebootStack) > 1600 {
-		runes := bytes.Runes([]byte(ctx.rebootStack))
-		if len(runes) > 1600 {
-			runes = runes[:1600]
-		}
-		ReportDeviceInfo.LastRebootStack = fmt.Sprintf("Truncated stack: %v",
-			ctx.rebootStack)
-	} else {
-		ReportDeviceInfo.LastRebootStack = ctx.rebootStack
-	}
+	ReportDeviceInfo.LastRebootStack = ctx.rebootStack
 	if !ctx.rebootTime.IsZero() {
 		rebootTime, _ := ptypes.TimestampProto(ctx.rebootTime)
 		ReportDeviceInfo.LastRebootTime = rebootTime
@@ -1019,7 +913,9 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 	ReportDeviceInfo.HSMInfo, _ = tpmmgr.FetchTpmHwInfo()
 
 	//Operational information about Data Security At Rest
-	ReportDataSecAtRestInfo := new(info.DataSecAtRest)
+	ReportDataSecAtRestInfo := getDataSecAtRestInfo(ctx)
+
+	//This will be removed after new fields propagate to Controller.
 	ReportDataSecAtRestInfo.Status, ReportDataSecAtRestInfo.Info =
 		vaultmgr.GetOperInfo()
 	ReportDeviceInfo.DataSecAtRestInfo = ReportDataSecAtRestInfo
@@ -1029,13 +925,21 @@ func PublishDeviceInfoToZedCloud(ctx *zedagentContext) {
 		x.Dinfo = ReportDeviceInfo
 	}
 
+	// Add ConfigItems to the DeviceInfo
+	ReportDeviceInfo.ConfigItemStatus = createConfigItemStatus(ctx.globalStatus)
+
+	// Add AppInstances to the DeviceInfo. We send a list of all AppInstances
+	// currently on the device - even if the corresponding AppInstanceConfig
+	// is deleted.
+	createAppInstances(ctx, ReportDeviceInfo)
+
 	log.Debugf("PublishDeviceInfoToZedCloud sending %v\n", ReportInfo)
 	data, err := proto.Marshal(ReportInfo)
 	if err != nil {
 		log.Fatal("PublishDeviceInfoToZedCloud proto marshaling error: ", err)
 	}
 
-	statusUrl := serverNameAndPort + "/" + statusApi
+	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "info")
 	zedcloud.RemoveDeferred(deviceUUID)
 	buf := bytes.NewBuffer(data)
 	if buf == nil {
@@ -1261,6 +1165,7 @@ func encodeProxyStatus(proxyConfig *types.ProxyConfig) *info.ProxyStatus {
 	status.NetworkProxyEnable = proxyConfig.NetworkProxyEnable
 	status.NetworkProxyURL = proxyConfig.NetworkProxyURL
 	status.WpadURL = proxyConfig.WpadURL
+	// XXX add? status.ProxyCertPEM = proxyConfig.ProxyCertPEM
 	log.Debugf("encodeProxyStatus: %+v\n", status)
 	return status
 }
@@ -1298,23 +1203,37 @@ func encodeSystemAdapterInfo(dpcl types.DevicePortConfigList) *info.SystemAdapte
 func encodeNetworkPortConfig(npc *types.NetworkPortConfig) *info.DevicePort {
 	dp := new(info.DevicePort)
 	dp.Ifname = npc.IfName
-	dp.Name = npc.Name
+	// XXX rename the protobuf field Name to Phylabel and add Logicallabel?
+	dp.Name = npc.Phylabel
 	dp.IsMgmt = npc.IsMgmt
 	dp.Free = npc.Free
 	// DhcpConfig
 	dp.DhcpType = uint32(npc.Dhcp)
 	dp.Subnet = npc.AddrSubnet
-	dp.Gateway = npc.Gateway.String()
-	dp.Domainname = npc.DomainName
+
+	dp.DefaultRouters = make([]string, 0)
+	dp.DefaultRouters = append(dp.DefaultRouters, npc.Gateway.String())
+
 	dp.NtpServer = npc.NtpServer.String()
+
+	dp.Dns = new(info.ZInfoDNS)
+	dp.Dns.DNSdomain = npc.DomainName
+	dp.Dns.DNSservers = make([]string, 0)
 	for _, d := range npc.DnsServers {
-		dp.DnsServers = append(dp.DnsServers, d.String())
+		dp.Dns.DNSservers = append(dp.Dns.DNSservers, d.String())
 	}
 	// XXX Not in definition. Remove?
 	// XXX  string dhcpRangeLow = 17;
 	// XXX  string dhcpRangeHigh = 18;
 
 	dp.Proxy = encodeProxyStatus(&npc.ProxyConfig)
+	if !npc.ParseErrorTime.IsZero() {
+		errInfo := new(info.ErrorInfo)
+		errInfo.Description = npc.ParseError
+		errTime, _ := ptypes.TimestampProto(npc.ParseErrorTime)
+		errInfo.Timestamp = errTime
+		dp.Err = errInfo
+	}
 	return dp
 }
 
@@ -1382,12 +1301,12 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 			reportAA.Type = info.IPhyIoType(ia.Type)
 			reportAA.Name = ia.Name
 			reportAA.UsedByAppUUID = aiStatus.Key()
-			list := aa.LookupIoBundleGroup(ia.Name)
+			list := aa.LookupIoBundleAny(ia.Name)
 			for _, ib := range list {
 				if ib == nil {
 					continue
 				}
-				reportAA.Members = append(reportAA.Members, ib.Name)
+				reportAA.Members = append(reportAA.Members, ib.Phylabel)
 				if ib.MacAddr != "" {
 					reportMac := new(info.IoAddresses)
 					reportMac.MacAddress = ib.MacAddr
@@ -1441,7 +1360,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 	if err != nil {
 		log.Fatal("PublishAppInfoToZedCloud proto marshaling error: ", err)
 	}
-	statusUrl := serverNameAndPort + "/" + statusApi
+	statusUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "info")
 
 	zedcloud.RemoveDeferred(uuid)
 	buf := bytes.NewBuffer(data)
@@ -1467,12 +1386,12 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 
 func appIfnameToName(aiStatus *types.AppInstanceStatus, vifname string) string {
 	for _, ulStatus := range aiStatus.UnderlayNetworks {
-		if ulStatus.Vif == vifname {
+		if ulStatus.VifUsed == vifname {
 			return ulStatus.Name
 		}
 	}
 	for _, olStatus := range aiStatus.OverlayNetworks {
-		if olStatus.Vif == vifname {
+		if olStatus.VifUsed == vifname {
 			return olStatus.Name
 		}
 	}
@@ -1486,7 +1405,7 @@ func SendProtobuf(url string, buf *bytes.Buffer, size int64,
 	iteration int) error {
 
 	const return400 = true
-	resp, _, _, err := zedcloud.SendOnAllIntf(zedcloudCtx, url,
+	resp, _, _, err := zedcloud.SendOnAllIntf(&zedcloudCtx, url,
 		size, buf, iteration, return400)
 	if resp != nil && resp.StatusCode >= 400 && resp.StatusCode < 500 {
 		log.Infof("SendProtoBuf: %s silently ignore code %d\n",
@@ -1508,13 +1427,13 @@ func SendMetricsProtobuf(ReportMetrics *metrics.ZMetricMsg,
 
 	buf := bytes.NewBuffer(data)
 	size := int64(proto.Size(ReportMetrics))
-	metricsUrl := serverNameAndPort + "/" + metricsApi
+	metricsUrl := zedcloud.URLPathString(serverNameAndPort, zedcloudCtx.V2API, false, devUUID, "metrics")
 	const return400 = false
-	_, _, rtf, err := zedcloud.SendOnAllIntf(zedcloudCtx, metricsUrl,
+	_, _, rtf, err := zedcloud.SendOnAllIntf(&zedcloudCtx, metricsUrl,
 		size, buf, iteration, return400)
 	if err != nil {
 		// Hopefully next timeout will be more successful
-		if rtf {
+		if rtf == types.SenderStatusRemTempFail {
 			log.Errorf("SendMetricsProtobuf remoteTemporaryFailure: %s",
 				err)
 		} else {
@@ -1580,16 +1499,15 @@ func getAppIP(ctx *zedagentContext, aiStatus *types.AppInstanceStatus,
 
 	log.Debugf("getAppIP(%s, %s)\n", aiStatus.Key(), vifname)
 	for _, ulStatus := range aiStatus.UnderlayNetworks {
-		if ulStatus.Vif != vifname {
+		if ulStatus.VifUsed != vifname {
 			continue
 		}
 		log.Debugf("getAppIP(%s, %s) found underlay %s assigned %v mac %s\n",
-			aiStatus.Key(), vifname,
-			ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac)
+			aiStatus.Key(), vifname, ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac)
 		return ulStatus.AllocatedIPAddr, ulStatus.Assigned, ulStatus.Mac
 	}
 	for _, olStatus := range aiStatus.OverlayNetworks {
-		if olStatus.Vif != vifname {
+		if olStatus.VifUsed != vifname {
 			continue
 		}
 		log.Debugf("getAppIP(%s, %s) found overlay %s assigned %v mac %s\n",

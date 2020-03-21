@@ -21,7 +21,7 @@ func doZbootBaseOsInstallationComplete(ctxPtr *nodeagentContext,
 		log.Errorf("Partition(%s) Config not found\n", key)
 		return
 	}
-	if isZbootOtherPartitionStateUpdating(ctxPtr) && !ctxPtr.needsReboot {
+	if isZbootOtherPartitionStateUpdating(ctxPtr) && !ctxPtr.deviceReboot {
 		infoStr := fmt.Sprintf("NORMAL: baseos-update(%s) reboot\n", key)
 		log.Infof(infoStr)
 		scheduleNodeReboot(ctxPtr, infoStr)

@@ -1,0 +1,2 @@
+This is a basic file. It is just there so we have something to
+put in a tar file and check it exists, and its hash.

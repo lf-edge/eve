@@ -28,11 +28,29 @@ func parseConfig(configUrl string, resp *http.Response, contents []byte) (uuid.U
 		return devUUID, hardwaremodel, enterprise, name, err
 	}
 
-	config, err := readDeviceConfigProtoMessage(contents)
+	if resp.StatusCode == http.StatusNotModified {
+		log.Debugf("StatusNotModified len %d", len(contents))
+		// Return as error since we are not returning any useful values.
+		return devUUID, hardwaremodel, enterprise, name,
+			fmt.Errorf("Unchanged StatusNotModified")
+	}
+
+	configResponse, err := readConfigResponseProtoMessage(contents)
 	if err != nil {
-		log.Errorln("readDeviceConfigProtoMessage: ", err)
+		log.Errorln("readConfigResponseProtoMessage: ", err)
 		return devUUID, hardwaremodel, enterprise, name, err
 	}
+	hash := configResponse.GetConfigHash()
+	if hash == prevConfigHash {
+		log.Debugf("Same ConfigHash %s len %d", hash, len(contents))
+		// Return as error since we are not returning any useful values.
+		return devUUID, hardwaremodel, enterprise, name,
+			fmt.Errorf("Unchanged config hash")
+	}
+	log.Infof("Change in ConfigHash from %s to %s", prevConfigHash, hash)
+	prevConfigHash = hash
+	config := configResponse.GetConfig()
+
 	// Check if we have an override from the device config
 	manufacturer := config.GetManufacturer()
 	productName := config.GetProductName()
@@ -74,15 +92,29 @@ func validateConfigMessage(configUrl string, r *http.Response) error {
 	}
 }
 
-// Returns changed, config, error. The changed is based on a comparison of
-// the hash of the protobuf message.
-func readDeviceConfigProtoMessage(contents []byte) (*zconfig.EdgeDevConfig, error) {
-	var config = &zconfig.EdgeDevConfig{}
+func readConfigResponseProtoMessage(contents []byte) (*zconfig.ConfigResponse, error) {
+	var configResponse = &zconfig.ConfigResponse{}
 
-	err := proto.Unmarshal(contents, config)
+	err := proto.Unmarshal(contents, configResponse)
 	if err != nil {
 		log.Errorf("Unmarshalling failed: %v", err)
 		return nil, err
 	}
-	return config, nil
+	return configResponse, nil
+}
+
+// The most recent config hash we received
+var prevConfigHash string
+
+func generateConfigRequest() ([]byte, error) {
+	log.Debugf("generateConfigRequest() sending hash %s", prevConfigHash)
+	configRequest := &zconfig.ConfigRequest{
+		ConfigHash: prevConfigHash,
+	}
+	b, err := proto.Marshal(configRequest)
+	if err != nil {
+		log.Errorln(err)
+		return b, err
+	}
+	return b, nil
 }

@@ -13,8 +13,36 @@ Welcome to EVE!
             pause <qube>
             resume <qube>
             destroy <qube>
+            persist list
+            persist attach <disk>
 __EOT__
   exit 1
+}
+
+sec_start=2048
+sec_end=0
+num_p3_part=9
+p3_old_tag=P3_OLD
+
+list_partitions() {
+  p3_dev=$(/sbin/findfs PARTLABEL=P3)
+  p3_dev_base=$(basename "$p3_dev")
+  /bin/lsblk -o KNAME,TYPE,SIZE,MODEL,PARTLABEL
+  echo "CURRENT PERSIST PARTITION IS: $p3_dev_base"
+}
+
+relabel_dev() {
+  /usr/bin/sgdisk -c "$num_p3_part":"$1" "$2"
+}
+
+clear_gpt() {
+  /usr/bin/sgdisk -g --clear "$1"
+}
+
+create_new_p3_part() {
+  /usr/bin/sgdisk --new "$num_p3_part":"$sec_start":"$sec_end" \
+                  --typecode="$num_p3_part":7dcc9ef1-b744-454a-b6ee-c15af7e3eea9 \
+                  --change-name="$num_p3_part":'P3' "$1"
 }
 
 case "$1" in
@@ -44,6 +72,41 @@ case "$1" in
           ;;
   resume) [ -z "$2" ] && help
           ${CTR_CMD} t resume $2
+          ;;
+ persist) case "$2" in
+               list) list_partitions
+                     ;;
+             attach) [ -z "$3" ] && help
+                     shift 2
+                     #fetch current P3 partition
+                     curr_p3_dev=$(/sbin/findfs PARTLABEL=P3)
+                     [ -z "$curr_p3_dev" ] && echo "Failed to find current P3 device" && exit 1
+                     curr_p3_dsk="/dev/"$(lsblk -no pkname "$curr_p3_dev")
+
+                     #Attach must be idempotent
+                     [ "$curr_p3_dsk" = "$1" ] && echo "Persist is already on the given disk. Nothing to be done." && exit 0
+
+                     #Clear GPT on new device, and create P3 partition
+                     clear_gpt "$1"
+                     create_new_p3_part "$1"
+
+                     #check the result. At this point we should have two P3 partitions.
+                     #since findfs returns only the first P3, use cgpt to be more specific
+                     new_p3_dev=$(/usr/bin/cgpt find -l P3 "$1")
+                     new_p3_dsk="/dev/"$(lsblk -no pkname "$new_p3_dev")
+                     [ "$new_p3_dsk" != "$1" ] && echo "Failed to attach persist to $1" && exit 1
+
+                     #now rename current partition label
+                     echo "Removing P3 label from the old partition $curr_p3_dev"
+                     relabel_dev "$p3_old_tag" "$curr_p3_dsk"
+
+                     echo "Done. Attached persist to $1"
+                     #print the partition
+                     list_partitions
+                     ;;
+                  *) help
+                     ;;
+          esac
           ;;
        *) help 
           ;;
