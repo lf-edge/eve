@@ -61,6 +61,10 @@ RUN dist/install.sh /out
 # Filter out a few things that we don't currently need
 RUN rm -rf /out/usr/share/qemu-xen/qemu/edk2-* /out/var/run
 
+# this tiny C code is there to replace a perl dependency
+COPY rightfile.c /tmp
+RUN gcc -o /out/usr/bin/rightfile /tmp/rightfile.c
+
 FROM alpine:3.8
 RUN apk add --no-cache \
     bash=4.4.19-r1     \
@@ -82,7 +86,7 @@ COPY init.sh /
 RUN ln -s qemu-system-x86_64 /usr/lib/xen/bin/qemu-system-i386
 
 # We need to keep a slim profile, which means removing things we don't need
-RUN rm -rf /usr/lib/libxen*.a /usr/lib/libxl*.a /usr/lib/debug
+RUN rm -rf /usr/lib/libxen*.a /usr/lib/libxl*.a /usr/lib/debug /usr/lib/python2.7
 
 # Adjust /var/run to be shared
 RUN rm -rf /var/run && ln -s /run /var/run

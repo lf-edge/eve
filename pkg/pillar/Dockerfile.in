@@ -39,7 +39,7 @@ SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 RUN apk add --no-cache \
     yajl xz bash openssl iptables ip6tables iproute2 dhcpcd      \
     coreutils dmidecode libbz2 libuuid ipset       \
-    curl radvd perl ethtool \
+    curl radvd ethtool \
     util-linux e2fsprogs libcrypto1.0 xorriso qemu-img \
     libpcap jq e2fsprogs-extra keyutils
 
