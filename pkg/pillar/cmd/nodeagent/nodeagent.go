@@ -17,8 +17,8 @@ package nodeagent
 
 import (
 	"bytes"
-	"flag"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -29,7 +29,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
-	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
@@ -62,6 +61,7 @@ const (
 var Version = "No version specified"
 
 type nodeagentContext struct {
+	agentBaseContext       agentbase.Context
 	GCInitialized          bool // Received initial GlobalConfig
 	DNSinitialized         bool // Received DeviceNetworkStatus
 	globalConfig           *types.ConfigItemValueMap
@@ -123,35 +123,34 @@ func newNodeagentContext() nodeagentContext {
 	duration = time.Duration(timeTickInterval) * time.Second
 	nodeagentCtx.tickerTimer = time.NewTicker(duration)
 	nodeagentCtx.configGetStatus = types.ConfigGetFail
+
+	nodeagentCtx.agentBaseContext.ErrorTime = errorTime
+	nodeagentCtx.agentBaseContext.AgentName = agentName
+	nodeagentCtx.agentBaseContext.WarningTime = warningTime
+
+	curpart := agentlog.EveCurrentPartition()
+	nodeagentCtx.curPart = strings.TrimSpace(curpart)
+	nodeagentCtx.agentBaseContext.NeedWatchdog = true
 	return nodeagentCtx
+}
+
+func (ctxPtr *nodeagentContext) AgentBaseContext() *agentbase.Context {
+	return &ctxPtr.agentBaseContext
+}
+
+func (ctxPtr *nodeagentContext) AddAgentSpecificCLIFlags() {
+	return
+}
+
+func (ctxPtr *nodeagentContext) ProcessAgentSpecificCLIFlags() {
+	return
 }
 
 // Run : nodeagent run entry function
 func Run(ps *pubsub.PubSub) {
-	versionPtr := flag.Bool("v", false, "Version")
-	debugPtr := flag.Bool("d", false, "Debug flag")
-	flag.Parse()
-	debug = *debugPtr
-	debugOverride = debug
-	if debugOverride {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
-	if *versionPtr {
-		fmt.Printf("%s: %s\n", os.Args[0], Version)
-		return
-	}
-	agentlog.Init(agentName)
-	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
-		log.Fatal(err)
-	}
-
-	log.Infof("Starting %s\n", agentName)
-
 	nodeagentCtx := newNodeagentContext()
-	curpart := agentlog.EveCurrentPartition()
-	nodeagentCtx.curPart = strings.TrimSpace(curpart)
+
+	agentbase.Run(&nodeagentCtx)
 
 	// Make sure we have a GlobalConfig file with defaults
 	utils.EnsureGCFile()
