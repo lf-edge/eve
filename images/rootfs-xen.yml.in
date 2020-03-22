@@ -3,8 +3,8 @@ kernel:
   cmdline: "rootdelay=3"
 init:
   - linuxkit/init:v0.5
-  - linuxkit/runc:v0.5
-  - linuxkit/containerd:v0.5
+  - linuxkit/runc:69b4a35eaa22eba4990ee52cccc8f48f6c08ed03
+  - linuxkit/containerd:09553963ed9da626c25cf8acdf6d62ec37645412
   - linuxkit/getty:v0.5
   - linuxkit/memlogd:v0.5
   - GRUB_TAG
