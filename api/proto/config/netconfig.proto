@@ -6,41 +6,72 @@ syntax = "proto3";
 option go_package = "github.com/lf-edge/eve/api/go/config";
 option java_package = "com.zededa.cloud.uservice.proto";
 
+import "acipherinfo.proto";
 import "fw.proto";
 import "netcmn.proto";
 
 message NetworkConfig {
-        string id = 1;
-        NetworkType type = 5;
+  string id = 1;
+  NetworkType type = 5;
 
-        // network ip specification
-        ipspec ip = 6;
+  // network ip specification
+  ipspec ip = 6;
 
-        repeated ZnetStaticDNSEntry dns = 7;
+  repeated ZnetStaticDNSEntry dns = 7;
 
-        // enterprise proxy
-        ProxyConfig entProxy = 8;
+  // enterprise proxy
+  ProxyConfig entProxy = 8;
+
+  // wireless specification
+  WirelessConfig wireless = 10;
 }
 
 message NetworkAdapter {
-        string name =1;         // name which we report in metrics and status
-        // deprecated = 2;
+  string name =1;         // name which we report in metrics and status
+  // deprecated = 2;
 
-        string networkId = 3;   // UUID of NetworkInstance object
+  string networkId = 3;   // UUID of NetworkInstance object
 
-        string addr = 4;        // Static IP address; could be IPv4 EID
-        string hostname = 5;    // Not currently used
+  string addr = 4;        // Static IP address; could be IPv4 EID
+  string hostname = 5;    // Not currently used
 
-        // more configuration for getting addr/EID
-        string cryptoEid = 10;
-        string lispsignature = 6;
-        bytes  pemcert = 7;
-        bytes  pemprivatekey = 8;
+  // more configuration for getting addr/EID
+  string cryptoEid = 10;
+  string lispsignature = 6;
+  bytes  pemcert = 7;
+  bytes  pemprivatekey = 8;
 
-        // Used in case of P2V, where we want to specify a macAddress
-        // to vif, that is simulated towards app
-        string macAddress = 9;
+  // Used in case of P2V, where we want to specify a macAddress
+  // to vif, that is simulated towards app
+  string macAddress = 9;
 
-        // firewall
-        repeated ACE acls = 40;
+  // firewall
+  repeated ACE acls = 40;
+}
+
+message WirelessConfig {
+  WirelessType type = 1;                   // either LTE or Wifi
+  repeated CellularConfig cellularCfg = 5; // Cellular config
+  repeated WifiConfig wifiCfg = 10;        // Wifi, can be multiple APs on a single wlan, e.g. one for 2.5Ghz, other 5Ghz SSIDs
+}
+
+message CellularConfig {
+  string APN = 1;                 // APN string
+}
+
+message WifiConfig {
+  string wifiSSID = 1;             // SSID for WIFI
+  WiFiKeyScheme keyScheme = 2;     // key management scheme, WPA-PSK, WPS-EPA, etc
+  // to be deprecated, use cipherData instead
+  string identity = 5;             // WPA2 Enterprise user identity/username
+  // to be deprecated, use cipherData instead
+  string password = 10;            // a string of hashed psk or password
+  message cryptoblock {
+    string identity = 11;        // encrypted username if not empty
+    string password = 12;        // encrypted Password if not empty
+  }
+  cryptoblock crypto = 20;         // encrypted block
+  int32  priority = 25;            // priority of connection, default is 0
+
+  CipherBlock cipherData = 30;     // contains encrypted credential information
 }

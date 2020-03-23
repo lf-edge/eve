@@ -136,7 +136,7 @@ func (ch *channel) ReadFcall(ctx context.Context, fcall *Fcall) error {
 	}
 
 	if err := ch.conn.SetReadDeadline(deadline); err != nil {
-		log.Printf("p9p: transport: error setting read deadline on %v: %v", ch.conn.RemoteAddr(), err)
+		log.Printf("transport: error setting read deadline on %v: %v", ch.conn.RemoteAddr(), err)
 	}
 
 	n, err := readmsg(ch.brd, ch.rdbuf)
@@ -184,7 +184,7 @@ func (ch *channel) WriteFcall(ctx context.Context, fcall *Fcall) error {
 	}
 
 	if err := ch.conn.SetWriteDeadline(deadline); err != nil {
-		log.Printf("p9p: transport: error setting read deadline on %v: %v", ch.conn.RemoteAddr(), err)
+		log.Printf("transport: error setting read deadline on %v: %v", ch.conn.RemoteAddr(), err)
 	}
 
 	if err := ch.maybeTruncate(fcall); err != nil {

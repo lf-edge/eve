@@ -1,0 +1,38 @@
+// Copyright(c) 2020 Zededa, Inc.
+// All rights reserved.
+
+syntax = "proto3";
+
+option go_package  = "github.com/lf-edge/eve/api/go/certs";
+option java_package = "com.zededa.cloud.uservice.proto";
+
+// This is the response payload for GET /api/v1/edgeDevice/certs
+// or /api/v2/edgeDevice/certs
+// ZControllerCert carries a set of X.509 certificate and their properties
+// from Controller to EVE.
+message ZControllerCert {
+  repeated ZCert certs = 1;  //list of certificates sent by controller
+}
+
+//This is same as hashAlgorithm in auth/auth.proto
+//Keep these two in sync
+//XXX: import auth/auth.proto and avoid this duplication
+enum certHashAlgorithm {
+  HASH_NONE = 0;
+  HASH_SHA256_16bytes = 1;  // hash with sha256, the 1st 16 bytes of result in 'certHash'
+  HASH_SHA256_32bytes = 2;  // hash with sha256, the whole 32 bytes of hash result
+}
+
+message ZCert {
+  certHashAlgorithm hashAlgo = 1; //hash method used to arrive at certHash
+  bytes certHash = 2;             //truncated hash of the cert, according to hashing scheme in hashAlgo
+  ZCertType type = 3;             //what kind of certificate(to identify the target use case)
+  bytes cert = 4;                 //X509 cert in .PEM format
+}
+
+enum ZCertType {
+  CERT_TYPE_CONTROLLER_NONE = 0;
+  CERT_TYPE_CONTROLLER_SIGNING = 1;        //set for the leaf certificate used by controller to sign payload envelopes
+  CERT_TYPE_CONTROLLER_INTERMEDIATE = 2;   //set for intermediate certs used to validate the certificates
+  CERT_TYPE_CONTROLLER_ECDH_EXCHANGE = 3;  //set for certificate used by controller to share any symmetric key using ECDH
+}

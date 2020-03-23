@@ -6,25 +6,15 @@ package zedmanager
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"os"
 
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
-const (
-	persistDir            = "/persist"
-	objectDownloadDirname = persistDir + "/downloads"
-	imgCatalogDirname     = objectDownloadDirname + "/" + appImgObj
-	pendingDirname        = imgCatalogDirname + "/pending"
-	verifierDirname       = imgCatalogDirname + "/verifier"
-	finalDirname          = imgCatalogDirname + "/verified"
-)
-
 func MaybeAddDomainConfig(ctx *zedmanagerContext,
-	aiConfig types.AppInstanceConfig, ns *types.AppNetworkStatus) error {
+	aiConfig types.AppInstanceConfig,
+	aiStatus types.AppInstanceStatus,
+	ns *types.AppNetworkStatus) error {
 
 	key := aiConfig.Key()
 	displayName := aiConfig.DisplayName
@@ -59,15 +49,17 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 		DisplayName:       aiConfig.DisplayName,
 		Activate:          aiConfig.Activate,
 		AppNum:            AppNum,
+		IsContainer:       aiStatus.IsContainer,
 		VmConfig:          aiConfig.FixedResources,
 		IoAdapterList:     aiConfig.IoAdapterList,
 		CloudInitUserData: aiConfig.CloudInitUserData,
+		CipherBlockStatus: aiConfig.CipherBlockStatus,
 	}
 
 	// Determine number of "disk" targets in list
 	numDisks := 0
 	for _, sc := range aiConfig.StorageConfigList {
-		if sc.Target == "" || sc.Target == "disk" {
+		if sc.Target == "" || sc.Target == "disk" || sc.Target == "tgtunknown" {
 			numDisks++
 		} else {
 			log.Infof("Not allocating disk for Target %s\n",
@@ -76,17 +68,33 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	}
 	dc.DiskConfigList = make([]types.DiskConfig, numDisks)
 	i := 0
-	for _, sc := range aiConfig.StorageConfigList {
-		// Check that file is verified
-		locationDir := finalDirname + "/" + sc.ImageSha256
-		location, err := locationFromDir(locationDir)
-		if err != nil {
-			return err
-		}
+	if len(aiConfig.StorageConfigList) > len(aiStatus.StorageStatusList) {
+		errStr := fmt.Sprintf("More StorageConfig than StorageStatus: %d vs %d", len(aiConfig.StorageConfigList), len(aiStatus.StorageStatusList))
+		log.Error(errStr)
+		return errors.New(errStr)
+	}
+	for index, sc := range aiConfig.StorageConfigList {
+		ssPtr := &aiStatus.StorageStatusList[index]
+		var location string
+
 		switch sc.Target {
-		case "", "disk":
+		case "", "disk", "tgtunknown":
+			// Do nothing
+		default:
+			location = ssPtr.ActiveFileLocation
+			if location == "" {
+				errStr := "No ActiveFileLocation"
+				log.Error(errStr)
+				return errors.New(errStr)
+			}
+		}
+
+		switch sc.Target {
+		case "", "disk", "tgtunknown":
 			disk := &dc.DiskConfigList[i]
-			disk.ImageSha256 = sc.ImageSha256
+			disk.ImageID = sc.ImageID
+			// Pick up sha from verifier
+			disk.ImageSha256 = ssPtr.ImageSha256
 			disk.ReadOnly = sc.ReadOnly
 			disk.Preserve = sc.Preserve
 			disk.Format = sc.Format
@@ -145,12 +153,7 @@ func lookupDomainConfig(ctx *zedmanagerContext, key string) *types.DomainConfig 
 		log.Infof("lookupDomainConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastDomainConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupDomainConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.DomainConfig)
 	return &config
 }
 
@@ -162,12 +165,7 @@ func lookupDomainStatus(ctx *zedmanagerContext, key string) *types.DomainStatus 
 		log.Infof("lookupDomainStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastDomainStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupDomainStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.DomainStatus)
 	return &status
 }
 
@@ -177,7 +175,7 @@ func publishDomainConfig(ctx *zedmanagerContext,
 	key := status.Key()
 	log.Debugf("publishDomainConfig(%s)\n", key)
 	pub := ctx.pubDomainConfig
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishDomainConfig(ctx *zedmanagerContext, uuidStr string) {
@@ -196,13 +194,8 @@ func unpublishDomainConfig(ctx *zedmanagerContext, uuidStr string) {
 func handleDomainStatusModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
-	status := cast.CastDomainStatus(statusArg)
+	status := statusArg.(types.DomainStatus)
 	ctx := ctxArg.(*zedmanagerContext)
-	if status.Key() != key {
-		log.Errorf("handleDomainStatusModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return
-	}
 	log.Infof("handleDomainStatusModify for %s\n", key)
 	// Record DomainStatus.State even if Pending() to capture HALTING
 
@@ -217,29 +210,4 @@ func handleDomainStatusDelete(ctxArg interface{}, key string,
 	ctx := ctxArg.(*zedmanagerContext)
 	removeAIStatusUUID(ctx, key)
 	log.Infof("handleDomainStatusDelete done for %s\n", key)
-}
-
-func locationFromDir(locationDir string) (string, error) {
-	if _, err := os.Stat(locationDir); err != nil {
-		log.Errorf("Missing directory: %s, %s\n", locationDir, err)
-		return "", err
-	}
-	// locationDir is a directory. Need to find single file inside
-	// which the verifier ensures.
-	locations, err := ioutil.ReadDir(locationDir)
-	if err != nil {
-		log.Errorln(err)
-		return "", err
-	}
-	if len(locations) != 1 {
-		log.Errorf("Multiple files in %s\n", locationDir)
-		return "", errors.New(fmt.Sprintf("Multiple files in %s\n",
-			locationDir))
-	}
-	if len(locations) == 0 {
-		log.Errorf("No files in %s\n", locationDir)
-		return "", errors.New(fmt.Sprintf("No files in %s\n",
-			locationDir))
-	}
-	return locationDir + "/" + locations[0].Name(), nil
 }

@@ -1,0 +1,91 @@
+From 48b195415966089fdcb3ccf9da6f6a23e217546c Mon Sep 17 00:00:00 2001
+From: Jack Ren <jack.ren@intel.com>
+Date: Thu, 17 Oct 2019 04:50:10 +0800
+Subject: [PATCH 5/5] hv: pass the cmdline from grub to the kernel
+
+Signed-off-by: Jack Ren <jack.ren@intel.com>
+---
+ hypervisor/boot/guest/vboot_info.c | 30 +++++++++++++++++++++++++-----
+ 1 file changed, 25 insertions(+), 5 deletions(-)
+
+diff --git a/hypervisor/boot/guest/vboot_info.c b/hypervisor/boot/guest/vboot_info.c
+index 306ee06..3223e4b 100644
+--- a/hypervisor/boot/guest/vboot_info.c
++++ b/hypervisor/boot/guest/vboot_info.c
+@@ -48,6 +48,7 @@ static void init_vm_ramdisk_info(struct acrn_vm *vm, const struct multiboot_modu
+  */
+ static char kernel_cmdline[MAX_BOOTARGS_SIZE + 1U];
+ 
++#if 0
+ /**
+  * @pre vm != NULL && cmdline != NULL && cmdstr != NULL
+  */
+@@ -89,6 +90,7 @@ static void merge_cmdline(const struct acrn_vm *vm, const char *cmdline, const c
+ 		(void)strncpy_s(cmd_dst, dst_avail, cmdstr, cmdstr_len);
+ 	}
+ }
++#endif
+ 
+ /**
+  * @pre vm != NULL
+@@ -152,6 +154,7 @@ static int32_t init_vm_kernel_info(struct acrn_vm *vm, const struct multiboot_mo
+ /**
+  * @pre vm != NULL && mbi != NULL
+  */
++static uint32_t get_mod_idx_by_tag(const struct multiboot_module *mods, uint32_t mods_count, const char *tag);
+ static void init_vm_bootargs_info(struct acrn_vm *vm, const struct multiboot_info *mbi)
+ {
+ 	struct acrn_vm_config *vm_config = get_vm_config(vm->vm_id);
+@@ -161,6 +164,7 @@ static void init_vm_bootargs_info(struct acrn_vm *vm, const struct multiboot_inf
+ 		vm->sw.bootargs_info.src_addr = bootargs;
+ 		vm->sw.bootargs_info.size = strnlen_s(bootargs, MAX_BOOTARGS_SIZE);
+ 	} else {
++#if 0
+ 		/* vm_config->load_order == SOS_VM */
+ 		if (((mbi->mi_flags & MULTIBOOT_INFO_HAS_CMDLINE) != 0U)
+ 				&& (*(char *)hpa2hva(mbi->mi_cmdline) != 0)) {
+@@ -176,6 +180,25 @@ static void init_vm_bootargs_info(struct acrn_vm *vm, const struct multiboot_inf
+ 			vm->sw.bootargs_info.src_addr = bootargs;
+ 			vm->sw.bootargs_info.size = strnlen_s(bootargs, MAX_BOOTARGS_SIZE);
+ 		}
++#else
++		const char *mm_string;
++		uint32_t mm_str_len;
++		uint32_t mod_idx;
++		struct multiboot_module *mods;
++
++		mods = (struct multiboot_module *)hpa2hva((uint64_t)mbi->mi_mods_addr);
++		mod_idx = get_mod_idx_by_tag(mods, mbi->mi_mods_count, vm_config->os_config.kernel_mod_tag);
++		if (mod_idx != INVALID_MOD_IDX) {
++			mm_string = (char *)hpa2hva((uint64_t)mods[mod_idx].mm_string);
++			mm_str_len = strnlen_s(mm_string, MAX_BOOTARGS_SIZE);
++			(void)strncpy_s(kernel_cmdline, MAX_BOOTARGS_SIZE, mm_string, mm_str_len);
++			vm->sw.bootargs_info.src_addr = kernel_cmdline;
++			vm->sw.bootargs_info.size = strnlen_s(kernel_cmdline, MAX_BOOTARGS_SIZE);
++		} else {
++			vm->sw.bootargs_info.src_addr = NULL;
++			vm->sw.bootargs_info.size = 0;
++		}
++#endif
+ 	}
+ 
+ 	/* Kernel bootarg and zero page are right before the kernel image */
+@@ -195,13 +218,10 @@ static uint32_t get_mod_idx_by_tag(const struct multiboot_module *mods, uint32_t
+ 
+ 	for (i = 0U; i < mods_count; i++) {
+ 		const char *mm_string = (char *)hpa2hva((uint64_t)mods[i].mm_string);
+-		uint32_t mm_str_len = strnlen_s(mm_string, MAX_MOD_TAG_LEN);
++		uint32_t mm_str_len = strnlen_s(mm_string, MAX_BOOTARGS_SIZE);
+ 
+ 		/* when do file stitch by tool, the tag in mm_string might be followed with 0x0d or 0x0a */
+-		if ((mm_str_len >= tag_len) && (strncmp(mm_string, tag, tag_len) == 0)
+-				&& ((*(mm_string + tag_len) == 0x0d)
+-				|| (*(mm_string + tag_len) == 0x0a)
+-				|| (*(mm_string + tag_len) == 0))){
++		if ((mm_str_len >= tag_len) && (strstr_s(mm_string, mm_str_len, tag, tag_len) != NULL)) {
+ 			ret = i;
+ 			break;
+ 		}
+-- 
+2.7.4
+

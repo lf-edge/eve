@@ -4,6 +4,8 @@
 #
 # [1] A poor man is a man on a deadline.
 #
+EVE="$(cd "$(dirname "$0")" && pwd)/../"
+PATH="$EVE/build-tools/bin:$PATH"
 
 get_git_tag() {
   echo ${EVE_HASH:-$(git tag -l --points-at HEAD | grep '[0-9]*\.[0-9]*\.[0-9]*' | head -1)}
@@ -13,7 +15,7 @@ eve_version() {
   local vers="`get_git_tag`"
 
   if [ -z "$vers" ] ; then
-    vers="0.0.0-`git rev-parse --abbrev-ref HEAD`-`git describe --match v --abbrev=8 --always --dirty`-`date -u +"%Y-%m-%d.%H.%M"`"
+    vers="${EVE_SNAPSHOT_VERSION:-0.0.0}-$(git rev-parse --abbrev-ref HEAD | tr / _)-$(git describe --match v --abbrev=8 --always --dirty)-$(date -u +"%Y-%m-%d.%H.%M")"
     vers=`echo ${vers} | sed -e 's#-master##'`
   fi
 
@@ -21,7 +23,7 @@ eve_version() {
 }
 
 linuxkit_tag() {
-    echo "$(linuxkit pkg show-tag ${EVE_HASH:+--hash $EVE_HASH} """$1""")$ARCH"
+    echo "$(linuxkit pkg show-tag ${EVE_HASH:+--hash $EVE_HASH} "$EVE/$1")$ARCH"
 }
 
 immutable_tag() {
@@ -61,31 +63,37 @@ synthetic_tag() {
 resolve_tags() {
 sed -e '/-.*linuxkit\/.*:/s# *$#'${ARCH}# \
     -e '/image:.*linuxkit\/.*:/s# *$#'${ARCH}# \
-    -e "s#EVE_VERSION#"$EVE_VERSION"#" \
-    -e "s#KERNEL_TAG#"$KERNEL_TAG"#" \
-    -e "s#FW_TAG#"$FW_TAG"#" \
-    -e "s#XENTOOLS_TAG#"$XENTOOLS_TAG"#" \
-    -e "s#DOM0ZTOOLS_TAG#"$DOM0ZTOOLS_TAG"#" \
-    -e "s#RNGD_TAG#"$RNGD_TAG"#" \
-    -e "s#XEN_TAG#"$XEN_TAG"#" \
-    -e "s#DNSMASQ_TAG#"$DNSMASQ_TAG"#" \
-    -e "s#STRONGSWAN_TAG#"$STRONGSWAN_TAG"#" \
-    -e "s#TESTCERT_TAG#"$TESTCERT_TAG"#" \
-    -e "s#TESTMSVCS_TAG#"$TESTMSVCS_TAG"#" \
-    -e "s#PILLAR_TAG#"$PILLAR_TAG"#" \
-    -e "s#QREXECLIB_TAG#"$QREXECLIB_TAG"#" \
-    -e "s#WWAN_TAG#"$WWAN_TAG"#" \
-    -e "s#WLAN_TAG#"$WLAN_TAG"#" \
-    -e "s#GUACD_TAG#"$GUACD_TAG"#" \
-    -e "s#GRUB_TAG#"$GRUB_TAG"#" \
-    -e "s#DTREES_TAG#"$DTREES_TAG"#" \
-    -e "s#GPTTOOLS_TAG#"$GPTTOOLS_TAG"#" \
-    -e "s#WATCHDOG_TAG#"$WATCHDOG_TAG"#" \
-    -e "s#MKRAW_TAG#"$MKRAW_TAG"#" \
-    -e "s#DEBUG_TAG#"$DEBUG_TAG"#" \
-    -e "s#LISP_TAG#"$LISP_TAG"#" \
-    -e "s#RKT_TAG#${RKT_TAG}#" \
-    -e "s#RKT_STAGE1_TAG#${RKT_STAGE1_TAG}#" \
+    -e "s#EVE_VERSION#$EVE_VERSION#" \
+    -e "s#CURDIR#$(pwd)#" \
+    -e "s#ACRN_KERNEL_TAG#$ACRN_KERNEL_TAG#" \
+    -e "s#KERNEL_TAG#$KERNEL_TAG#" \
+    -e "s#FW_TAG#$FW_TAG#" \
+    -e "s#XENTOOLS_TAG#$XENTOOLS_TAG#" \
+    -e "s#DOM0ZTOOLS_TAG#$DOM0ZTOOLS_TAG#" \
+    -e "s#RNGD_TAG#$RNGD_TAG#" \
+    -e "s#XEN_TAG#$XEN_TAG#" \
+    -e "s#ACRN_TAG#$ACRN_TAG#" \
+    -e "s#DNSMASQ_TAG#$DNSMASQ_TAG#" \
+    -e "s#STRONGSWAN_TAG#$STRONGSWAN_TAG#" \
+    -e "s#TESTCERT_TAG#$TESTCERT_TAG#" \
+    -e "s#TESTMSVCS_TAG#$TESTMSVCS_TAG#" \
+    -e "s#PILLAR_TAG#$PILLAR_TAG#" \
+    -e "s#STORAGE_INIT_TAG#$STORAGE_INIT_TAG#" \
+    -e "s#QREXECLIB_TAG#$QREXECLIB_TAG#" \
+    -e "s#RSYSLOGD_TAG#$RSYSLOGD_TAG#" \
+    -e "s#WWAN_TAG#$WWAN_TAG#" \
+    -e "s#WLAN_TAG#$WLAN_TAG#" \
+    -e "s#GUACD_TAG#$GUACD_TAG#" \
+    -e "s#GRUB_TAG#$GRUB_TAG#" \
+    -e "s#DTREES_TAG#$DTREES_TAG#" \
+    -e "s#GPTTOOLS_TAG#$GPTTOOLS_TAG#" \
+    -e "s#WATCHDOG_TAG#$WATCHDOG_TAG#" \
+    -e "s#MKRAW_TAG#$MKRAW_TAG#" \
+    -e "s#DEBUG_TAG#$DEBUG_TAG#" \
+    -e "s#LISP_TAG#$LISP_TAG#" \
+    -e "s#FSCRYPT_TAG#${FSCRYPT_TAG}#" \
+    -e "s#VTPM_TAG#${VTPM_TAG}#" \
+    -e "s#UEFI_TAG#${UEFI_TAG}#" \
     -e "s#EVE_TAG#${EVE_TAG}#" \
     ${1:-}
 }
@@ -106,28 +114,32 @@ fi
 EVE_VERSION=${EVE_VERSION:-`eve_version`$ARCH}
 
 KERNEL_TAG=$(linuxkit_tag pkg/kernel)
+ACRN_KERNEL_TAG=$(linuxkit_tag pkg/acrn-kernel)
 FW_TAG=$(linuxkit_tag pkg/fw)
 XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)
 XEN_TAG=$(linuxkit_tag pkg/xen)
+ACRN_TAG=$(linuxkit_tag pkg/acrn)
 GRUB_TAG=$(linuxkit_tag pkg/grub)
-DTREES_TAG=$(linuxkit_tag pkg/device-trees)
 DNSMASQ_TAG=$(linuxkit_tag pkg/dnsmasq)
 STRONGSWAN_TAG=$(linuxkit_tag pkg/strongswan)
 TESTMSVCS_TAG=$(linuxkit_tag pkg/test-microsvcs)
 DOM0ZTOOLS_TAG=$(linuxkit_tag pkg/dom0-ztools)
 RNGD_TAG=$(linuxkit_tag pkg/rngd)
 QREXECLIB_TAG=$(linuxkit_tag pkg/qrexec-lib)
+RSYSLOGD_TAG=$(linuxkit_tag pkg/rsyslog)
 WWAN_TAG=$(linuxkit_tag pkg/wwan)
 WLAN_TAG=$(linuxkit_tag pkg/wlan)
 GUACD_TAG=$(linuxkit_tag pkg/guacd)
 LISP_TAG=$(linuxkit_tag pkg/lisp)
 PILLAR_TAG=$(linuxkit_tag pkg/pillar)
+STORAGE_INIT_TAG=$(linuxkit_tag pkg/storage-init)
 GPTTOOLS_TAG=$(linuxkit_tag pkg/gpt-tools)
 WATCHDOG_TAG=$(linuxkit_tag pkg/watchdog)
 MKRAW_TAG=$(linuxkit_tag pkg/mkimage-raw-efi)
 DEBUG_TAG=$(linuxkit_tag pkg/debug)
-RKT_TAG=$(linuxkit_tag pkg/rkt)
-RKT_STAGE1_TAG=$(linuxkit_tag pkg/rkt-stage1)
+FSCRYPT_TAG=$(linuxkit_tag pkg/fscrypt)
+VTPM_TAG=$(linuxkit_tag pkg/vtpm)
+UEFI_TAG=$(linuxkit_tag pkg/uefi)
 
 # Synthetic tags: the following tags are based on hashing
 # the contents of all the Dockerfile.in that we can find.

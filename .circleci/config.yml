@@ -27,33 +27,25 @@ jobs:
           name: Installing qemu-utils
           command: sudo apt-get update; sudo apt-get install -y qemu-utils
       - run:
+          name: Alpine Cache
+          command: >
+            make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} FORCE_BUILD=--disable-cache pkg/alpine
+      - run:
           name: Packages
           command: >
-            make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} pkgs
+            make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} FORCE_BUILD=--disable-cache pkgs
       - run:
           name: EVE
           command: >
-            make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push} eve
+            make ${DOCKERHUB_USERNAME:+LINUXKIT_PKG_TARGET=push EVE_SNAPSHOT_VERSION=0.0.0-snapshot} eve
+      - store_artifacts:
+          path: dist/amd64/installer/rootfs.img
+      - store_artifacts:
+          path: images/rootfs-xen.yml
   yetus:
-    environment:
-      - CGO_ENABLED: 1
-      - GO111MODULE: "on"
-      - CGO_LDFLAGS: -lm
     docker:
-      - image: apache/yetus:master
+      - image: apache/yetus:0.11.0
     steps:
-      - run:
-          name: update package cache
-          command: apt-get -q update
-      - run:
-          name: install libpcap-dev
-          command: apt-get -q install --no-install-recommends -y libpcap-dev
-      - run:
-          name: upgrade golangci-lint
-          command: >
-                    go get
-                    github.com/golangci/golangci-lint/cmd/golangci-lint@692dacb773b703162c091c2d8c59f9cd2d6801db
-                    && mv /root/go/bin/golangci-lint /usr/local/bin
       - checkout
       # create a fake artifact so that Apache Yetus knows the URL
       - run:
@@ -64,23 +56,10 @@ jobs:
           command: echo "bootstrap" > /tmp/yetus-out/bootstrap
       - store_artifacts:
           path: /tmp/yetus-out
+      # now actually run Apache Yetus precommit
       - run:
           name: yetus
-          command: >
-            test-patch
-            --build-tool=nobuild
-            --plugins=all,-asflicense,-shelldocs,-gitlab
-            --patch-dir=/tmp/yetus-out
-            --whitespace-tabs-ignore-list='.*Makefile.*','.*\.go','.*\.dts','.*\.md'
-            --html-report-file=/tmp/yetus-out/report.html
-            --console-report-file=/tmp/yetus-out/console.txt
-            --brief-report-file=/tmp/yetus-out/brief.txt
-            --excludes=.yetus-excludes
-            --linecomments=''
-            --bugcomments=briefreport,htmlout,junit
-            --junit-results-xml=/tmp/yetus-out/results.xml
-            --tests-filter=checkmake,golang,golangcilint
-            --continuous-improvement=true
+          command: make yetus
       - store_test_results:
           path: /tmp/yetus-out
       - store_artifacts:

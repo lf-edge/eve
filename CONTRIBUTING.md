@@ -14,7 +14,7 @@ that benefit the community at large, not just code contributions:
 * Fix bugs and add new features
 
 EVE governance is conducted by the Technical Steering Committee (TSC),
-which is currently composed of 22 active members:
+which is currently composed of the following members:
 
 * Allen Wittenauer <aw@effectivemachines.com>
 * Avi Deitcher <avi@deitcher.net>
@@ -23,7 +23,6 @@ which is currently composed of 22 active members:
 * Erik Nordmark <erik@zededa.com>
 * Gianluca Guida <glguida@gmail.com>
 * Gopi Krishna Kodali <gkodali@zededa.com>
-* Greg Chase <gchase@gmail.com>
 * Hariharasubramanian C S <cshari@zededa.com>
 * Kalyan Nidumolu <kalyan@zededa.com>
 * Roman Shaposhnik <rvs@zededa.com>
@@ -137,6 +136,27 @@ close an issue. Including references automatically closes the issue on a merge.
 Any member of the TSC can merge outstanding Pull Requests, provided they pass
 the required checks configured on the repository and take care of all the
 community feedback provided.
+
+### Check your changes
+
+The EVE project uses CircleCI to verify changes do not negatively impact
+the style or functionality of the documentation and code.  Some of these
+tests can be run locally to verify your work, prior to pushing them to
+GitHub.
+
+Specifically, the yetus tests may be run by using `make yetus`.  The
+first run of that rule will cause a Docker image to be built for running
+the tests, which can take a long time.  The yetus package will be
+downloaded into `/tmp/yetus`, and the results from testing the tree will
+be placed in the `/tmp/yetus-out` directory.
+
+*NOTE*: The yetus tests were added relatively late to the project,
+so pre-existing issues remain in the tree.  As a result, those issues
+may be flagged by the CI process when making unrelated changes nearby.
+Those pre-existing issues must be fixed as part of your PR, if they
+cause the CI tests to fail.  Unless directly touched by an existing
+patch in your branch, these failures should be fixed in additional
+new patches by appending them to your branch.
 
 ### Sign your work
 

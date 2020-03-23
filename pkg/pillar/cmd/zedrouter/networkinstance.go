@@ -10,13 +10,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	uuid "github.com/satori/go.uuid"
 	"net"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/eriknordmark/netlink"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -35,14 +35,14 @@ func allowSharedPort(status *types.NetworkInstanceStatus) bool {
 //  NetworkInstanceTypeSwitch, all other current types of network instance
 //  can share the port. Whether such ports can be used by network instance
 //  can be checked  using allowSharedPort() function
-func isSharedPortLabel(port string) bool {
+func isSharedPortLabel(label string) bool {
 	// XXX - I think we can get rid of these built-in labels (uplink/freeuplink).
 	//	This will be cleaned up as part of support for deviceConfig
 	//	from cloud.
-	if strings.EqualFold(port, "uplink") {
+	if strings.EqualFold(label, "uplink") {
 		return true
 	}
-	if strings.EqualFold(port, "freeuplink") {
+	if strings.EqualFold(label, "freeuplink") {
 		return true
 	}
 	return false
@@ -59,36 +59,34 @@ func checkPortAvailable(
 	ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) error {
 
-	if status.Port == "" {
-		log.Infof("Port not specified\n")
+	log.Infof("NetworkInstance(%s-%s), logicallabel: %s, currentUplinkIntf: %s",
+		status.DisplayName, status.UUID, status.Logicallabel,
+		status.CurrentUplinkIntf)
+
+	if status.CurrentUplinkIntf == "" {
+		log.Infof("CurrentUplinkIntf not specified\n")
 		return nil
 	}
-	log.Infof("NetworkInstance(%s-%s), port: %s\n",
-		status.DisplayName, status.UUID, status.Port)
 
 	if allowSharedPort(status) {
-		if isSharedPortLabel(status.Port) {
+		if isSharedPortLabel(status.CurrentUplinkIntf) {
 			log.Infof("allowSharedPort: %t, isSharedPortLabel:%t",
-				allowSharedPort(status), isSharedPortLabel(status.Port))
+				allowSharedPort(status), isSharedPortLabel(status.CurrentUplinkIntf))
 			return nil
 		}
 	} else {
-		if isSharedPortLabel(status.Port) {
+		if isSharedPortLabel(status.CurrentUplinkIntf) {
 			errStr := fmt.Sprintf("SharedPortLabel %s not allowed for exclusive network instance %s-%s\n",
-				status.Port, status.Key(), status.DisplayName)
+				status.CurrentUplinkIntf, status.Key(), status.DisplayName)
 			log.Errorln(errStr)
 			return errors.New(errStr)
 		}
 	}
-	portStatus := ctx.deviceNetworkStatus.GetPortByName(status.Port)
+	portStatus := ctx.deviceNetworkStatus.GetPortByIfName(status.CurrentUplinkIntf)
 	if portStatus == nil {
-		// XXX Fallback until we have complete Name support in UI
-		portStatus = ctx.deviceNetworkStatus.GetPortByIfName(status.Port)
-		if portStatus == nil {
-			errStr := fmt.Sprintf("PortStatus for %s not found for network instance %s-%s\n",
-				status.Port, status.Key(), status.DisplayName)
-			return errors.New(errStr)
-		}
+		errStr := fmt.Sprintf("PortStatus for %s not found for network instance %s-%s\n",
+			status.CurrentUplinkIntf, status.Key(), status.DisplayName)
+		return errors.New(errStr)
 	}
 
 	if allowSharedPort(status) {
@@ -96,7 +94,7 @@ func checkPortAvailable(
 		if portStatus.Dhcp == types.DT_NONE {
 			errStr := fmt.Sprintf("Port %s not configured for shared use. "+
 				"Cannot be used by Switch Network Instance %s-%s\n",
-				status.Port, status.UUID, status.DisplayName)
+				status.CurrentUplinkIntf, status.UUID, status.DisplayName)
 			return errors.New(errStr)
 		}
 		// Make sure it is not used by a NetworkInstance of type Switch
@@ -104,14 +102,14 @@ func checkPortAvailable(
 			if status == iterStatusEntry {
 				continue
 			}
-			if !iterStatusEntry.IsUsingPort(status.Port) {
+			if !iterStatusEntry.IsUsingIfName(status.CurrentUplinkIntf) {
 				continue
 			}
 			if !allowSharedPort(iterStatusEntry) {
-				errStr := fmt.Sprintf("Port %s already used by "+
+				errStr := fmt.Sprintf("Ifname %s already used by "+
 					"Switch NetworkInstance %s-%s. It cannot be used by "+
 					"any other Network Instance such as %s-%s\n",
-					status.Port, iterStatusEntry.UUID,
+					status.CurrentUplinkIntf, iterStatusEntry.UUID,
 					iterStatusEntry.DisplayName,
 					status.UUID, status.DisplayName)
 				return errors.New(errStr)
@@ -120,9 +118,9 @@ func checkPortAvailable(
 	} else {
 		// Make sure it will not be configured for IP
 		if portStatus.Dhcp != types.DT_NONE {
-			errStr := fmt.Sprintf("Port %s configured for shared use. "+
+			errStr := fmt.Sprintf("Port %s configured for shared use with DHCP type %d. "+
 				"Cannot be used by Switch Network Instance %s-%s\n",
-				status.Port, status.UUID, status.DisplayName)
+				status.CurrentUplinkIntf, portStatus.Dhcp, status.UUID, status.DisplayName)
 			return errors.New(errStr)
 		}
 		// Make sure it is not used by any other NetworkInstance
@@ -130,10 +128,10 @@ func checkPortAvailable(
 			if status == iterStatusEntry {
 				continue
 			}
-			if iterStatusEntry.IsUsingPort(status.Port) {
-				errStr := fmt.Sprintf("Port %s already used by NetworkInstance %s-%s. "+
+			if iterStatusEntry.IsUsingIfName(status.CurrentUplinkIntf) {
+				errStr := fmt.Sprintf("Ifname %s already used by NetworkInstance %s-%s. "+
 					"Cannot be used by Switch Network Instance %s-%s\n",
-					status.Port, iterStatusEntry.UUID, iterStatusEntry.DisplayName,
+					status.CurrentUplinkIntf, iterStatusEntry.UUID, iterStatusEntry.DisplayName,
 					status.UUID, status.DisplayName)
 				return errors.New(errStr)
 			}
@@ -213,7 +211,7 @@ func networkInstanceBridgeDelete(
 	// itself and not the rules for specific domU vifs.
 
 	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
-		BridgeIP: status.BridgeIPAddr}
+		BridgeIP: status.BridgeIPAddr, NIType: status.Type, UpLinks: status.IfNameList}
 	handleNetworkInstanceACLConfiglet("-D", aclArgs)
 
 	// delete the sister interface
@@ -331,7 +329,7 @@ func doBridgeAclsDelete(
 	// Delete ACLs attached to this network aka linux bridge
 	items := ctx.pubAppNetworkStatus.GetAll()
 	for _, ans := range items {
-		appNetStatus := cast.CastAppNetworkStatus(ans)
+		appNetStatus := ans.(types.AppNetworkStatus)
 
 		for _, olStatus := range appNetStatus.OverlayNetworkList {
 			if olStatus.Network != status.UUID {
@@ -382,13 +380,14 @@ func handleNetworkInstanceModify(
 
 	ctx := ctxArg.(*zedrouterContext)
 	pub := ctx.pubNetworkInstanceStatus
-	config := cast.CastNetworkInstanceConfig(configArg)
+	config := configArg.(types.NetworkInstanceConfig)
 	status := lookupNetworkInstanceStatus(ctx, key)
 	if status != nil {
 		log.Infof("handleNetworkInstanceModify(%s)\n", key)
 		status.ChangeInProgress = types.ChangeInProgressTypeModify
 		pub.Publish(status.Key(), *status)
 		doNetworkInstanceModify(ctx, config, status)
+		niUpdateNIprobing(ctx, status)
 		status.ChangeInProgress = types.ChangeInProgressTypeNone
 		publishNetworkInstanceStatus(ctx, status)
 		log.Infof("handleNetworkInstanceModify(%s) done\n", key)
@@ -418,6 +417,9 @@ func handleNetworkInstanceCreate(
 	ctx.networkInstanceStatusMap[status.UUID] = &status
 	pub.Publish(status.Key(), status)
 
+	status.PInfo = make(map[string]types.ProbeInfo)
+	niUpdateNIprobing(ctx, &status)
+
 	err := doNetworkInstanceCreate(ctx, &status)
 	if err != nil {
 		log.Errorf("doNetworkInstanceCreate(%s) failed: %s\n",
@@ -440,6 +442,7 @@ func handleNetworkInstanceCreate(
 			status.Activated = true
 		}
 	}
+
 	status.ChangeInProgress = types.ChangeInProgressTypeNone
 	publishNetworkInstanceStatus(ctx, &status)
 	// Hooks for updating dependent objects
@@ -459,7 +462,7 @@ func handleNetworkInstanceDelete(ctxArg interface{}, key string,
 		return
 	}
 	status.ChangeInProgress = types.ChangeInProgressTypeDelete
-	pub.Publish(status.Key(), status)
+	pub.Publish(status.Key(), *status)
 	if status.Activated {
 		doNetworkInstanceInactivate(ctx, status)
 	}
@@ -523,11 +526,17 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 	stopDnsmasq(bridgeName, false, false)
 
 	if status.BridgeIPAddr != "" {
+		dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
+			status.CurrentUplinkIntf)
 		createDnsmasqConfiglet(bridgeName,
 			status.BridgeIPAddr, &status.NetworkInstanceConfig,
-			hostsDirpath, status.BridgeIPSets, status.Ipv4Eid)
+			hostsDirpath, status.BridgeIPSets, status.Ipv4Eid,
+			status.CurrentUplinkIntf, dnsServers)
 		startDnsmasq(bridgeName)
 	}
+
+	// monitor the DNS and DHCP information
+	go DNSMonitor(bridgeName, bridgeNum, ctx, status)
 
 	if status.IsIPv6() {
 		// XXX do we need same logic as for IPv4 dnsmasq to not
@@ -544,13 +553,6 @@ func doNetworkInstanceCreate(ctx *zedrouterContext,
 		}
 	default:
 	}
-	// setup the ACLs for the bridge
-	// Here we explicitly adding the iptables rules, to the bottom of the
-	// rule chains, which are tied to the Linux bridge itself and not the
-	//  rules for any specific domU vifs.
-	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
-		BridgeIP: status.BridgeIPAddr}
-	handleNetworkInstanceACLConfiglet("-A", aclArgs)
 	return nil
 }
 
@@ -578,7 +580,7 @@ func doNetworkInstanceSanityCheck(
 
 	if err := checkPortAvailable(ctx, status); err != nil {
 		log.Errorf("checkPortAvailable failed: Port: %s, err:%s",
-			status.Port, err)
+			status.CurrentUplinkIntf, err)
 		return err
 	}
 
@@ -705,9 +707,11 @@ func doNetworkInstanceModify(ctx *zedrouterContext,
 			errors.New("Changing Type of NetworkInstance is not supported"))
 	}
 
-	if config.Port != status.Port {
-		status.SetError(
-			errors.New("Changing Port in NetworkInstance is not yet supported"))
+	if config.Logicallabel != status.Logicallabel {
+		err := fmt.Errorf("Changing Logicallabel in NetworkInstance is not yet supported: from %s to %s",
+			status.Logicallabel, config.Logicallabel)
+		log.Error(err)
+		status.SetError(err)
 		return
 	}
 
@@ -726,10 +730,10 @@ func doNetworkInstanceModify(ctx *zedrouterContext,
 	}
 }
 
-// getSwitchNetworkInstanceUsingPort
+// getSwitchNetworkInstanceUsingIfname
 //		This function assumes if a port used by networkInstance of type SWITCH
 //		is not shared ie., is not used by any other network instance.
-func getSwitchNetworkInstanceUsingPort(
+func getSwitchNetworkInstanceUsingIfname(
 	ctx *zedrouterContext,
 	ifname string) (status *types.NetworkInstanceStatus) {
 
@@ -737,9 +741,9 @@ func getSwitchNetworkInstanceUsingPort(
 	items := pub.GetAll()
 
 	for _, st := range items {
-		status := cast.CastNetworkInstanceStatus(st)
-		ifname2 := types.AdapterToIfName(ctx.deviceNetworkStatus,
-			status.Port)
+		status := st.(types.NetworkInstanceStatus)
+		ifname2 := types.LogicallabelToIfName(ctx.deviceNetworkStatus,
+			status.Logicallabel)
 		if ifname2 != ifname {
 			log.Infof("maybeUpdateBridgeIPAddr - NI (%s) not using %s\n",
 				status.DisplayName, ifname)
@@ -747,14 +751,14 @@ func getSwitchNetworkInstanceUsingPort(
 		}
 
 		// Found Status using the Port.
-		log.Infof("getSwitchNetworkInstanceUsingPort: networkInstance (%s) using "+
-			"port %s, ifname: %s, type: %d\n",
-			status.DisplayName, status.Port, ifname, status.Type)
+		log.Infof("getSwitchNetworkInstanceUsingIfname: networkInstance (%s) using "+
+			"logicallabel: %s, ifname: %s, type: %d\n",
+			status.DisplayName, status.Logicallabel, ifname, status.Type)
 
 		if status.Type == types.NetworkInstanceTypeSwitch {
 			return &status
 		}
-		log.Infof("getSwitchNetworkInstanceUsingPort: networkInstance (%s) "+
+		log.Infof("getSwitchNetworkInstanceUsingIfname: networkInstance (%s) "+
 			"not of type (%d) switch\n",
 			status.DisplayName, status.Type)
 		break
@@ -762,7 +766,7 @@ func getSwitchNetworkInstanceUsingPort(
 	return nil
 }
 
-func restartDnsmasq(status *types.NetworkInstanceStatus) {
+func restartDnsmasq(ctx *zedrouterContext, status *types.NetworkInstanceStatus) {
 
 	log.Infof("restartDnsmasq(%s) ipsets %v\n",
 		status.BridgeName, status.BridgeIPSets)
@@ -775,10 +779,29 @@ func restartDnsmasq(status *types.NetworkInstanceStatus) {
 		[]string{status.BridgeIPAddr})
 
 	// Use existing BridgeIPSets
+	dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
+		status.CurrentUplinkIntf)
 	createDnsmasqConfiglet(bridgeName, status.BridgeIPAddr,
 		&status.NetworkInstanceConfig, hostsDirpath, status.BridgeIPSets,
-		status.Ipv4Eid)
+		status.Ipv4Eid, status.CurrentUplinkIntf, dnsServers)
+	createHostDnsmasqFile(ctx, bridgeName)
 	startDnsmasq(bridgeName)
+}
+
+func createHostDnsmasqFile(ctx *zedrouterContext, bridge string) {
+	pub := ctx.pubAppNetworkStatus
+	items := pub.GetAll()
+	for _, st := range items {
+		status := st.(types.AppNetworkStatus)
+		for _, ulStatus := range status.UnderlayNetworkList {
+			if strings.Compare(bridge, ulStatus.Bridge) != 0 {
+				continue
+			}
+			addhostDnsmasq(bridge, ulStatus.Mac,
+				ulStatus.AllocatedIPAddr, status.UUIDandVersion.UUID.String())
+			log.Infof("createHostDnsmasqFile:(%s) mac=%s, IP=%s\n", bridge, ulStatus.Mac, ulStatus.AllocatedIPAddr)
+		}
+	}
 }
 
 // Returns an IP address as a string, or "" if not found.
@@ -812,9 +835,17 @@ func lookupOrAllocateIPv4(
 
 	// Starting guess based on number allocated
 	allocated := uint(len(status.IPAssignments))
+	if status.Gateway != nil {
+		// With Gateway present in network instance status,
+		// we would have used that as our Bridge IP address and not
+		// allocated new one. Since bridge IP address is also stored
+		// as part of IPAssignments, the actual allocated IP address
+		// numner is 1 less than the length of IPAssignments map size.
+		allocated--
+	}
 	a := addToIP(status.DhcpRange.Start, allocated)
 	for status.DhcpRange.End == nil ||
-		bytes.Compare(a, status.DhcpRange.End) < 0 {
+		bytes.Compare(a, status.DhcpRange.End) <= 0 {
 
 		log.Infof("lookupOrAllocateIPv4(%s) testing %s\n",
 			mac.String(), a.String())
@@ -911,16 +942,16 @@ func doConfigureIpAddrOnInterface(
 func getPortIPv4Addr(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) (string, error) {
 	// Find any service which is associated with the appLink UUID
-	log.Infof("NetworkInstance UUID:%s, Name: %s, Port: %s\n",
-		status.UUID, status.DisplayName, status.Port)
+	log.Infof("NetworkInstance UUID:%s, Name: %s, LogicalLabel: %s\n",
+		status.UUID, status.DisplayName, status.Logicallabel)
 
-	if status.Port == "" {
-		log.Infof("no Port\n")
+	if status.Logicallabel == "" {
+		log.Infof("no Logicallabel\n")
 		return "", nil
 	}
 
-	// Get IP address from adapter
-	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Port)
+	// Get IP address from Logicallabel
+	ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, status.Logicallabel)
 	ifindex, err := devicenetwork.IfnameToIndex(ifname)
 	if err != nil {
 		return "", err
@@ -932,12 +963,12 @@ func getPortIPv4Addr(ctx *zedrouterContext,
 		addrs = nil
 	}
 	for _, addr := range addrs {
-		log.Infof("found addr %s\n", addr.IP.String())
-		if addr.IP.To4() != nil {
-			return addr.IP.String(), nil
+		log.Infof("found addr %s\n", addr.String())
+		if addr.To4() != nil {
+			return addr.String(), nil
 		}
 	}
-	log.Infof("No IPv4 address on %s yet\n", status.Port)
+	log.Infof("No IPv4 address on %s yet\n", status.Logicallabel)
 	return "", nil
 }
 
@@ -1063,7 +1094,7 @@ func updateBridgeIPAddr(
 	if status.BridgeIPAddr != old && status.BridgeIPAddr != "" {
 		log.Infof("updateBridgeIPAddr(%s) restarting dnsmasq\n",
 			status.Key())
-		restartDnsmasq(status)
+		restartDnsmasq(ctx, status)
 	}
 }
 
@@ -1073,7 +1104,7 @@ func maybeUpdateBridgeIPAddr(
 	ctx *zedrouterContext,
 	ifname string) {
 
-	status := getSwitchNetworkInstanceUsingPort(ctx, ifname)
+	status := getSwitchNetworkInstanceUsingIfname(ctx, ifname)
 	if status == nil {
 		return
 	}
@@ -1098,17 +1129,22 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 
 	// Check that Port is either "uplink", "freeuplink", or
 	// an existing port name assigned to domO/zedrouter.
-	// A Bridge only works with a single adapter interface.
+	// A Bridge only works with a single logicallabel interface.
 	// Management ports are not allowed to be part of Switch networks.
 	err := checkPortAvailable(ctx, status)
 	if err != nil {
-		log.Errorf("checkPortAvailable failed: Port: %s, err:%s",
-			status.Port, err)
+		log.Errorf("checkPortAvailable failed: CurrentUplinkIntf: %s, err:%s",
+			status.CurrentUplinkIntf, err)
 		return err
 	}
 
 	// Get a list of IfNames to the ones we have an ifIndex for.
-	status.IfNameList = getIfNameListForPort(ctx, status.Port)
+	if status.Type == types.NetworkInstanceTypeSwitch {
+		// switched NI is not probed and does not have a CurrentUplinkIntf
+		status.IfNameList = getIfNameListForLLOrIfname(ctx, status.Logicallabel)
+	} else {
+		status.IfNameList = getIfNameListForLLOrIfname(ctx, status.CurrentUplinkIntf)
+	}
 	log.Infof("IfNameList: %+v", status.IfNameList)
 
 	switch status.Type {
@@ -1128,21 +1164,29 @@ func doNetworkInstanceActivate(ctx *zedrouterContext,
 			status.Type)
 		err = errors.New(errStr)
 	}
+	status.ProgUplinkIntf = status.CurrentUplinkIntf
+	// setup the ACLs for the bridge
+	// Here we explicitly adding the iptables rules, to the bottom of the
+	// rule chains, which are tied to the Linux bridge itself and not the
+	//  rules for any specific domU vifs.
+	aclArgs := types.AppNetworkACLArgs{IsMgmt: false, BridgeName: status.BridgeName,
+		BridgeIP: status.BridgeIPAddr, NIType: status.Type, UpLinks: status.IfNameList}
+	handleNetworkInstanceACLConfiglet("-A", aclArgs)
 	return err
 }
 
-// getIfNameListForPort
+// getIfNameListForLLorIfname takes a logicallabel or a ifname
 // Get a list of IfNames to the ones we have an ifIndex for.
 // In the case where the port maps to multiple underlying ports
 // (For Ex: uplink), only include ports that have an ifindex.
 //	If there is no such port with ifindex, then retain the whole list.
 //	NetworkInstance creation will fail when programming default routes
 //  and iptable rules in that case - and that should be fine.
-func getIfNameListForPort(
+func getIfNameListForLLOrIfname(
 	ctx *zedrouterContext,
-	port string) []string {
+	llOrIfname string) []string {
 
-	ifNameList := adapterToIfNames(ctx, port)
+	ifNameList := labelToIfNames(ctx, llOrIfname)
 	log.Infof("ifNameList: %+v", ifNameList)
 
 	filteredList := make([]string, 0)
@@ -1164,15 +1208,16 @@ func getIfNameListForPort(
 					ifName, err.Error())
 			}
 		} else {
-			log.Infof("DeviceNetworkStatus not found for port(%s)", port)
+			log.Infof("DeviceNetworkStatus not found for ifName(%s)",
+				ifName)
 		}
 	}
 	if len(filteredList) > 0 {
 		log.Infof("filteredList: %+v", filteredList)
 		return filteredList
 	}
-	log.Infof("ifname or ifindex not found for any interface for port(%s)."+
-		"Returning the unfiltered list: %+v", port, ifNameList)
+	log.Infof("ifname or ifindex not found for any interface for logicallabel(%s)."+
+		"Returning the unfiltered list: %+v", llOrIfname, ifNameList)
 	return ifNameList
 }
 
@@ -1184,8 +1229,9 @@ func doNetworkInstanceInactivate(
 		status.UUID, status.Type)
 
 	bridgeInactivateforNetworkInstance(ctx, status)
-	natInactivate(ctx, status)
 	switch status.Type {
+	case types.NetworkInstanceTypeLocal:
+		natInactivate(ctx, status, false)
 	case types.NetworkInstanceTypeCloud:
 		vpnInactivate(ctx, status)
 	case types.NetworkInstanceTypeMesh:
@@ -1222,6 +1268,7 @@ func doNetworkInstanceDelete(
 		if status.IsIPv6() {
 			stopRadvd(status.BridgeName, true)
 		}
+		DNSStopMonitor(status.BridgeNum)
 	}
 	networkInstanceBridgeDelete(ctx, status)
 }
@@ -1233,12 +1280,7 @@ func lookupNetworkInstanceConfig(ctx *zedrouterContext, key string) *types.Netwo
 	if c == nil {
 		return nil
 	}
-	config := cast.CastNetworkInstanceConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupNetworkInstanceConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.NetworkInstanceConfig)
 	return &config
 }
 
@@ -1248,7 +1290,7 @@ func lookupNetworkInstanceStatus(ctx *zedrouterContext, key string) *types.Netwo
 	if st == nil {
 		return nil
 	}
-	status := cast.CastNetworkInstanceStatus(st)
+	status := st.(types.NetworkInstanceStatus)
 	return &status
 }
 
@@ -1258,12 +1300,7 @@ func lookupNetworkInstanceMetrics(ctx *zedrouterContext, key string) *types.Netw
 	if st == nil {
 		return nil
 	}
-	status := cast.CastNetworkInstanceMetrics(st)
-	if status.Key() != key {
-		log.Errorf("lookupNetworkInstanceMetrics key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.NetworkInstanceMetrics)
 	return &status
 }
 
@@ -1282,6 +1319,7 @@ func createNetworkInstanceMetrics(ctx *zedrouterContext,
 
 	netMetrics.MetricList = []types.NetworkMetric{*netMetric}
 	niMetrics.NetworkMetrics = netMetrics
+	niMetrics.ProbeMetrics = getNIProbeMetric(ctx, status)
 	switch status.Type {
 	case types.NetworkInstanceTypeCloud:
 		if strongSwanVpnStatusGet(ctx, status, &niMetrics) {
@@ -1302,7 +1340,7 @@ func publishNetworkInstanceMetricsAll(ctx *zedrouterContext) {
 	}
 	nms := getNetworkMetrics(ctx)
 	for _, ni := range niList {
-		status := cast.CastNetworkInstanceStatus(ni)
+		status := ni.(types.NetworkInstanceStatus)
 		netMetrics := createNetworkInstanceMetrics(ctx, &status, &nms)
 		publishNetworkInstanceMetrics(ctx, netMetrics)
 	}
@@ -1318,15 +1356,17 @@ func deleteNetworkInstanceMetrics(ctx *zedrouterContext, key string) {
 func publishNetworkInstanceStatus(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
 
+	copyProbeStats(ctx, status)
+	ctx.networkInstanceStatusMap[status.UUID] = status
 	pub := ctx.pubNetworkInstanceStatus
-	pub.Publish(status.Key(), &status)
+	pub.Publish(status.Key(), *status)
 }
 
 func publishNetworkInstanceMetrics(ctx *zedrouterContext,
 	status *types.NetworkInstanceMetrics) {
 
 	pub := ctx.pubNetworkInstanceMetrics
-	pub.Publish(status.Key(), &status)
+	pub.Publish(status.Key(), *status)
 }
 
 // ==== Bridge
@@ -1342,29 +1382,29 @@ func bridgeActivate(ctx *zedrouterContext,
 			status.BridgeName, err)
 		return errors.New(errStr)
 	}
-	// Find adapter
-	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Port)
+	// Find logicallabel
+	ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, status.Logicallabel)
 	alink, _ := netlink.LinkByName(ifname)
 	if alink == nil {
-		errStr := fmt.Sprintf("Unknown adapter %s, %s",
-			status.Port, ifname)
+		errStr := fmt.Sprintf("Unknown Logicallabel %s, %s",
+			status.Logicallabel, ifname)
 		return errors.New(errStr)
 	}
 	// Make sure it is up
-	//    ip link set ${adapter} up
+	//    ip link set ${logicallabel} up
 	if err := netlink.LinkSetUp(alink); err != nil {
-		errStr := fmt.Sprintf("LinkSetUp on %s failed: %s",
-			status.Port, err)
+		errStr := fmt.Sprintf("LinkSetUp on %s ifname %s failed: %s",
+			status.Logicallabel, ifname, err)
 		return errors.New(errStr)
 	}
-	// ip link set ${adapter} master ${bridge_name}
+	// ip link set ${logicallabel} master ${bridge_name}
 	if err := netlink.LinkSetMaster(alink, bridgeLink); err != nil {
-		errStr := fmt.Sprintf("LinkSetMaster %s %s failed: %s",
-			status.Port, status.BridgeName, err)
+		errStr := fmt.Sprintf("LinkSetMaster %s ifname %s bridge %s failed: %s",
+			status.Logicallabel, ifname, status.BridgeName, err)
 		return errors.New(errStr)
 	}
-	log.Infof("bridgeActivate: added %s to bridge %s\n",
-		status.Port, status.BridgeName)
+	log.Infof("bridgeActivate: added %s ifname %s to bridge %s\n",
+		status.Logicallabel, ifname, status.BridgeName)
 	return nil
 }
 
@@ -1372,24 +1412,24 @@ func bridgeInactivateforNetworkInstance(ctx *zedrouterContext,
 	status *types.NetworkInstanceStatus) {
 
 	log.Infof("bridgeInactivateforNetworkInstance(%s)\n", status.DisplayName)
-	// Find adapter
-	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, status.Port)
+	// Find logicallabel
+	ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, status.Logicallabel)
 	alink, _ := netlink.LinkByName(ifname)
 	if alink == nil {
-		errStr := fmt.Sprintf("Unknown adapter %s, %s",
-			status.Port, ifname)
+		errStr := fmt.Sprintf("Unknown logicallabel %s, %s",
+			status.Logicallabel, ifname)
 		log.Errorln(errStr)
 		return
 	}
-	// ip link set ${adapter} nomaster
+	// ip link set ${logicallabel} nomaster
 	if err := netlink.LinkSetNoMaster(alink); err != nil {
-		errStr := fmt.Sprintf("LinkSetMaster %s failed: %s",
-			status.Port, err)
+		errStr := fmt.Sprintf("LinkSetNoMaster %s ifname %s failed: %s",
+			status.Logicallabel, ifname, err)
 		log.Infoln(errStr)
 		return
 	}
-	log.Infof("bridgeInactivateforNetworkInstance: removed %s from bridge\n",
-		status.Port)
+	log.Infof("bridgeInactivateforNetworkInstance: removed %s ifname %s from bridge\n",
+		status.Logicallabel, ifname)
 }
 
 // ==== Lisp
@@ -1444,6 +1484,16 @@ func natActivate(ctx *zedrouterContext,
 	log.Infof("natActivate(%s)\n", status.DisplayName)
 	subnetStr := status.Subnet.String()
 
+	// status.IfNameList should not have more than one interface name.
+	// Put a check anyway.
+	// XXX Remove the loop below in future when we have reasonable stability in code.
+	if len(status.IfNameList) > 1 {
+		errStr := fmt.Sprintf("Network instance can have ONE interface active at the most,"+
+			" but we have %d active interfaces.", len(status.IfNameList))
+		log.Errorf(errStr)
+		err := errors.New(errStr)
+		return err
+	}
 	for _, a := range status.IfNameList {
 		log.Infof("Adding iptables rules for %s \n", a)
 		err := iptables.IptableCmd("-t", "nat", "-A", "POSTROUTING", "-o", a,
@@ -1452,18 +1502,12 @@ func natActivate(ctx *zedrouterContext,
 			log.Errorf("IptableCmd failed: %s", err)
 			return err
 		}
-		err = PbrRouteAddDefault(status.BridgeName, a)
+		err = PbrRouteAddAll(status.BridgeName, a)
 		if err != nil {
-			log.Errorf("PbrRouteAddDefault for Bridge(%s) and interface %s failed. "+
+			log.Errorf("PbrRouteAddAll for Bridge(%s) and interface %s failed. "+
 				"Err: %s", status.BridgeName, a, err)
 			return err
 		}
-	}
-	// Add to Pbr table
-	err := PbrNATAdd(subnetStr)
-	if err != nil {
-		log.Errorf("PbrNATAdd failed for port %s - err = %s\n", status.Port, err)
-		return err
 	}
 	return nil
 }
@@ -1484,7 +1528,7 @@ func lispInactivate(ctx *zedrouterContext,
 	}
 
 	for _, ans := range items {
-		appNetStatus := cast.CastAppNetworkStatus(ans)
+		appNetStatus := ans.(types.AppNetworkStatus)
 		if len(appNetStatus.OverlayNetworkList) == 0 {
 			continue
 		}
@@ -1504,25 +1548,25 @@ func lispInactivate(ctx *zedrouterContext,
 }
 
 func natInactivate(ctx *zedrouterContext,
-	status *types.NetworkInstanceStatus) {
+	status *types.NetworkInstanceStatus, inActivateOld bool) {
 
 	log.Infof("natInactivate(%s)\n", status.DisplayName)
 	subnetStr := status.Subnet.String()
-	for _, a := range status.IfNameList {
-		err := iptables.IptableCmd("-t", "nat", "-D", "POSTROUTING", "-o", a,
-			"-s", subnetStr, "-j", "MASQUERADE")
-		if err != nil {
-			log.Errorf("natInactivate: iptableCmd failed %s\n", err)
-		}
-		err = PbrRouteDeleteDefault(status.BridgeName, a)
-		if err != nil {
-			log.Errorf("natInactivate: PbrRouteDeleteDefault failed %s\n", err)
-		}
+	var oldUplinkIntf string
+	if inActivateOld {
+		// XXX Should we instead use status.ProgUplinkIntf
+		oldUplinkIntf = status.PrevUplinkIntf
+	} else {
+		oldUplinkIntf = status.CurrentUplinkIntf
 	}
-	// Remove from Pbr table
-	err := PbrNATDel(subnetStr)
+	err := iptables.IptableCmd("-t", "nat", "-D", "POSTROUTING", "-o", oldUplinkIntf,
+		"-s", subnetStr, "-j", "MASQUERADE")
 	if err != nil {
-		log.Errorf("natInactivate: PbrNATDel failed %s\n", err)
+		log.Errorf("natInactivate: iptableCmd failed %s\n", err)
+	}
+	err = PbrRouteDeleteAll(status.BridgeName, oldUplinkIntf)
+	if err != nil {
+		log.Errorf("natInactivate: PbrRouteDeleteAll failed %s\n", err)
 	}
 }
 
@@ -1537,7 +1581,7 @@ func lookupNetworkInstanceStatusByBridgeName(ctx *zedrouterContext,
 	pub := ctx.pubNetworkInstanceStatus
 	items := pub.GetAll()
 	for _, st := range items {
-		status := cast.CastNetworkInstanceStatus(st)
+		status := st.(types.NetworkInstanceStatus)
 		if status.BridgeName == bridgeName {
 			return &status
 		}
@@ -1661,19 +1705,19 @@ func strongswanNetworkInstanceInactivate(ctx *zedrouterContext,
 	}
 }
 
-// adapterToIfNames
+// labelToIfNames
 //	XXX - Probably should move this to ZedRouter.go as a method
 //		of zedRouterContext
-// Expand the generic names, and return the interface name
-// Does not verify the existence of the adapters/interfaces
-func adapterToIfNames(ctx *zedrouterContext, adapter string) []string {
-	if strings.EqualFold(adapter, "uplink") {
+// Expand the generic names, and return the interface names.
+// Does not verify the existence of the logicallabels/interfaces
+func labelToIfNames(ctx *zedrouterContext, llOrIfname string) []string {
+	if strings.EqualFold(llOrIfname, "uplink") {
 		return types.GetMgmtPortsAny(*ctx.deviceNetworkStatus, 0)
 	}
-	if strings.EqualFold(adapter, "freeuplink") {
+	if strings.EqualFold(llOrIfname, "freeuplink") {
 		return types.GetMgmtPortsFree(*ctx.deviceNetworkStatus, 0)
 	}
-	ifname := types.AdapterToIfName(ctx.deviceNetworkStatus, adapter)
+	ifname := types.LogicallabelToIfName(ctx.deviceNetworkStatus, llOrIfname)
 	if len(ifname) == 0 {
 		return []string{}
 	}
@@ -1685,10 +1729,186 @@ func vifNameToBridgeName(ctx *zedrouterContext, vifName string) string {
 	pub := ctx.pubNetworkInstanceStatus
 	instanceItems := pub.GetAll()
 	for _, st := range instanceItems {
-		status := cast.CastNetworkInstanceStatus(st)
+		status := st.(types.NetworkInstanceStatus)
 		if status.IsVifInBridge(vifName) {
 			return status.BridgeName
 		}
 	}
 	return ""
+}
+
+// Get All ifindices for the Network Instances which are using ifname
+func getAllNIindices(ctx *zedrouterContext, ifname string) []int {
+
+	var indicies []int
+	pub := ctx.pubNetworkInstanceStatus
+	if pub == nil {
+		return indicies
+	}
+	instanceItems := pub.GetAll()
+	for _, st := range instanceItems {
+		status := st.(types.NetworkInstanceStatus)
+		if !status.IsUsingIfName(ifname) {
+			continue
+		}
+		if status.BridgeName == "" {
+			continue
+		}
+		link, err := netlink.LinkByName(status.BridgeName)
+		if err != nil {
+			errStr := fmt.Sprintf("LinkByName(%s) failed: %s",
+				status.BridgeName, err)
+			log.Errorln(errStr)
+			continue
+		}
+		indicies = append(indicies, link.Attrs().Index)
+	}
+	return indicies
+}
+
+func checkAndReprogramNetworkInstances(ctx *zedrouterContext) {
+	pub := ctx.pubNetworkInstanceStatus
+	instanceItems := pub.GetAll()
+
+	for _, instance := range instanceItems {
+		status := instance.(types.NetworkInstanceStatus)
+
+		if !status.NeedIntfUpdate {
+			continue
+		}
+		if status.ProgUplinkIntf == status.CurrentUplinkIntf {
+			log.Infof("checkAndReprogramNetworkInstances: Uplink (%s) has not changed"+
+				" for network instance %s",
+				status.CurrentUplinkIntf, status.DisplayName)
+			continue
+		}
+
+		log.Infof("checkAndReprogramNetworkInstances: Changing Uplink to %s from %s for "+
+			"network instance %s", status.CurrentUplinkIntf, status.PrevUplinkIntf,
+			status.DisplayName)
+		doNetworkInstanceFallback(ctx, &status)
+	}
+}
+
+func doNetworkInstanceFallback(
+	ctx *zedrouterContext,
+	status *types.NetworkInstanceStatus) error {
+
+	log.Infof("doNetworkInstanceFallback NetworkInstance key %s type %d\n",
+		status.UUID, status.Type)
+
+	var err error
+	// Get a list of IfNames to the ones we have an ifIndex for.
+	status.IfNameList = getIfNameListForLLOrIfname(ctx, status.CurrentUplinkIntf)
+	publishNetworkInstanceStatus(ctx, status)
+	log.Infof("IfNameList: %+v", status.IfNameList)
+
+	switch status.Type {
+	case types.NetworkInstanceTypeLocal:
+		if !status.Activated {
+			return nil
+		}
+		natInactivate(ctx, status, true)
+		err = natActivate(ctx, status)
+		if err != nil {
+			log.Errorf("doNetworkInstanceFallback: %s", err)
+		}
+		status.ProgUplinkIntf = status.CurrentUplinkIntf
+
+		// Use dns server received from DHCP for the current uplink
+		bridgeName := status.BridgeName
+		hostsDirpath := runDirname + "/hosts." + bridgeName
+		deleteOnlyDnsmasqConfiglet(bridgeName)
+		stopDnsmasq(bridgeName, false, false)
+
+		if status.BridgeIPAddr != "" {
+			dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
+				status.CurrentUplinkIntf)
+			createDnsmasqConfiglet(bridgeName,
+				status.BridgeIPAddr, &status.NetworkInstanceConfig,
+				hostsDirpath, status.BridgeIPSets, status.Ipv4Eid,
+				status.CurrentUplinkIntf, dnsServers)
+			startDnsmasq(bridgeName)
+		}
+
+		// Go through the list of all application connected to this network instance
+		// and clear conntrack flows corresponding to them.
+		apps := ctx.pubAppNetworkStatus.GetAll()
+		// Find all app instances that use this network and purge flows
+		// that correspond to these applications.
+		for _, app := range apps {
+			appNetworkStatus := app.(types.AppNetworkStatus)
+			for i := range appNetworkStatus.UnderlayNetworkList {
+				ulStatus := &appNetworkStatus.UnderlayNetworkList[i]
+				if uuid.Equal(ulStatus.Network, status.UUID) {
+					config := lookupAppNetworkConfig(ctx, appNetworkStatus.Key())
+					ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
+						config.UnderlayNetworkList)
+					ulConfig := &config.UnderlayNetworkList[i]
+					// This should take care of re-programming any ACL rules that
+					// use input match on uplinks.
+					doAppNetworkModifyUnderlayNetwork(
+						ctx, &appNetworkStatus, ulConfig, ulStatus, ipsets, true)
+				}
+			}
+			publishAppNetworkStatus(ctx, &appNetworkStatus)
+		}
+	case types.NetworkInstanceTypeSwitch:
+		// NA for switch network instance.
+	case types.NetworkInstanceTypeCloud:
+		// XXX Add support for Cloud network instance
+		if status.Activated {
+			vpnInactivate(ctx, status)
+		}
+		vpnDelete(ctx, status)
+		vpnCreate(ctx, status)
+		if status.Activated {
+			vpnActivate(ctx, status)
+		}
+		status.ProgUplinkIntf = status.CurrentUplinkIntf
+
+		// Use dns server received from DHCP for the current uplink
+		bridgeName := status.BridgeName
+		hostsDirpath := runDirname + "/hosts." + bridgeName
+		deleteOnlyDnsmasqConfiglet(bridgeName)
+		stopDnsmasq(bridgeName, false, false)
+
+		if status.BridgeIPAddr != "" {
+			dnsServers := types.GetDNSServers(*ctx.deviceNetworkStatus,
+				status.CurrentUplinkIntf)
+			createDnsmasqConfiglet(bridgeName,
+				status.BridgeIPAddr, &status.NetworkInstanceConfig,
+				hostsDirpath, status.BridgeIPSets, status.Ipv4Eid,
+				status.CurrentUplinkIntf, dnsServers)
+			startDnsmasq(bridgeName)
+		}
+
+		// Go through the list of all application connected to this network instance
+		// and clear conntrack flows corresponding to them.
+		apps := ctx.pubAppNetworkStatus.GetAll()
+		// Find all app instances that use this network and purge flows
+		// that correspond to these applications.
+		for _, app := range apps {
+			appNetworkStatus := app.(types.AppNetworkStatus)
+			for i := range appNetworkStatus.UnderlayNetworkList {
+				ulStatus := &appNetworkStatus.UnderlayNetworkList[i]
+				if uuid.Equal(ulStatus.Network, status.UUID) {
+					config := lookupAppNetworkConfig(ctx, appNetworkStatus.Key())
+					ipsets := compileAppInstanceIpsets(ctx, config.OverlayNetworkList,
+						config.UnderlayNetworkList)
+					ulConfig := &config.UnderlayNetworkList[i]
+					// This should take care of re-programming any ACL rules that
+					// use input match on uplinks.
+					doAppNetworkModifyUnderlayNetwork(
+						ctx, &appNetworkStatus, ulConfig, ulStatus, ipsets, true)
+				}
+			}
+			publishAppNetworkStatus(ctx, &appNetworkStatus)
+		}
+	case types.NetworkInstanceTypeMesh:
+		// XXX Add support for Mesh network instance
+	}
+	status.NeedIntfUpdate = false
+	publishNetworkInstanceStatus(ctx, status)
+	return err
 }

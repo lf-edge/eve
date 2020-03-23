@@ -14,26 +14,27 @@ option java_package = "com.zededa.cloud.uservice.proto";
 enum VmMode {
   PV = 0;
   HVM = 1;
-  // PVH = 2;
+  Filler = 2; // PVH = 2;
+  FML = 3; // Experimental machine learning mode
 }
 
 message VmConfig {
-	string kernel = 1;
-	string ramdisk = 2;
-	uint32 memory = 3;
-	uint32 maxmem = 4;
-	uint32 vcpus = 5;
-	uint32 maxcpus = 6;
-	string rootdev = 7;
-	string extraargs = 8;
-	string bootloader = 9;
-	string cpus = 10;
-	string devicetree = 11;
-	repeated string dtdev = 12;
-	repeated uint32 irqs = 13;
-	repeated string iomem = 14;
-	VmMode virtualizationMode = 15;
-	bool enableVnc = 16;
-	uint32 vncDisplay = 17;
-	string vncPasswd = 18;
+  string kernel = 1;
+  string ramdisk = 2;
+  uint32 memory = 3;
+  uint32 maxmem = 4;
+  uint32 vcpus = 5;
+  uint32 maxcpus = 6;
+  string rootdev = 7;
+  string extraargs = 8;
+  string bootloader = 9;
+  string cpus = 10;
+  string devicetree = 11;
+  repeated string dtdev = 12;
+  repeated uint32 irqs = 13;
+  repeated string iomem = 14;
+  VmMode virtualizationMode = 15;
+  bool enableVnc = 16;
+  uint32 vncDisplay = 17;
+  string vncPasswd = 18;
 }

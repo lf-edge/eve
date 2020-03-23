@@ -27,7 +27,7 @@ func GetImgInfo(diskfile string) (*ImgInfo, error) {
 	if _, err := os.Stat(diskfile); err != nil {
 		return nil, err
 	}
-	output, err := exec.Command("/usr/lib/xen/bin/qemu-img",
+	output, err := exec.Command("/usr/bin/qemu-img",
 		"info", "-U", "--output=json", diskfile).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",
@@ -40,12 +40,21 @@ func GetImgInfo(diskfile string) (*ImgInfo, error) {
 	return &imgInfo, nil
 }
 
+// GetDiskVirtualSize - returns VirtualSize of the image
+func GetDiskVirtualSize(diskfile string) (uint64, error) {
+	imgInfo, err := GetImgInfo(diskfile)
+	if err != nil {
+		return 0, err
+	}
+	return imgInfo.VirtualSize, nil
+}
+
 func ResizeImg(diskfile string, newsize uint64) error {
 
 	if _, err := os.Stat(diskfile); err != nil {
 		return err
 	}
-	output, err := exec.Command("/usr/lib/xen/bin/qemu-img",
+	output, err := exec.Command("/usr/bin/qemu-img",
 		"resize", diskfile, fmt.Sprintf("%d", newsize)).CombinedOutput()
 	if err != nil {
 		errStr := fmt.Sprintf("qemu-img failed: %s, %s\n",

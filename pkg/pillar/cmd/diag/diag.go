@@ -1,4 +1,4 @@
-// Copyright (c) 2018 Zededa, Inc.
+// Copyright (c) 2018,2019 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // Utility to dump diagnostic information about connectivity
@@ -6,42 +6,41 @@
 package diag
 
 import (
+	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"flag"
 	"fmt"
-	"github.com/eriknordmark/ipinfo"
-	"github.com/google/go-cmp/cmp"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
-	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
-	"github.com/lf-edge/eve/pkg/pillar/hardware"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
-	log "github.com/sirupsen/logrus"
-	"io"
 	"io/ioutil"
+	"mime"
 	"net"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/eriknordmark/ipinfo"
+	"github.com/golang/protobuf/proto"
+	"github.com/google/go-cmp/cmp"
+	zconfig "github.com/lf-edge/eve/api/go/config"
+	"github.com/lf-edge/eve/pkg/pillar/agentlog"
+	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
+	"github.com/lf-edge/eve/pkg/pillar/hardware"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
+	"github.com/lf-edge/eve/pkg/pillar/zedcloud"
+	"github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
-	agentName       = "diag"
-	tmpDirname      = "/var/tmp/zededa"
-	AADirname       = tmpDirname + "/AssignableAdapters"
-	DNCDirname      = tmpDirname + "/DeviceNetworkConfig"
-	identityDirname = "/config"
-	selfRegFile     = identityDirname + "/self-register-failed"
-	serverFileName  = identityDirname + "/server"
-	deviceCertName  = identityDirname + "/device.cert.pem"
-	deviceKeyName   = identityDirname + "/device.key.pem"
-	onboardCertName = identityDirname + "/onboard.cert.pem"
-	onboardKeyName  = identityDirname + "/onboard.key.pem"
-	maxRetries      = 5
+	agentName  = "diag"
+	maxRetries = 5
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // State passed to handlers
@@ -52,10 +51,11 @@ type diagContext struct {
 	pacContents             bool // Print PAC file contents
 	ledCounter              int
 	derivedLedCounter       int // Based on ledCounter + usableAddressCount
-	subGlobalConfig         *pubsub.Subscription
-	subLedBlinkCounter      *pubsub.Subscription
-	subDeviceNetworkStatus  *pubsub.Subscription
-	subDevicePortConfigList *pubsub.Subscription
+	subGlobalConfig         pubsub.Subscription
+	globalConfig            *types.GlobalConfig
+	subLedBlinkCounter      pubsub.Subscription
+	subDeviceNetworkStatus  pubsub.Subscription
+	subDevicePortConfigList pubsub.Subscription
 	gotBC                   bool
 	gotDNS                  bool
 	gotDPCList              bool
@@ -64,6 +64,7 @@ type diagContext struct {
 	zedcloudCtx             *zedcloud.ZedCloudContext
 	cert                    *tls.Certificate
 	usingOnboardCert        bool
+	devUUID                 uuid.UUID
 }
 
 // Set from Makefile
@@ -73,16 +74,18 @@ var debug = false
 var debugOverride bool // From command line arg
 var simulateDnsFailure = false
 var simulatePingFailure = false
+var outfile = os.Stdout
+var nilUUID uuid.UUID
 
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
-	stdoutPtr := flag.Bool("s", false, "Use stdout")
 	foreverPtr := flag.Bool("f", false, "Forever flag")
 	pacContentsPtr := flag.Bool("p", false, "Print PAC file contents")
 	simulateDnsFailurePtr := flag.Bool("D", false, "simulateDnsFailure flag")
 	simulatePingFailurePtr := flag.Bool("P", false, "simulatePingFailure flag")
+	outputFilePtr := flag.String("o", "", "file or device for output")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
@@ -92,132 +95,195 @@ func Run() {
 		log.SetLevel(log.InfoLevel)
 	}
 	curpart := *curpartPtr
-	useStdout := *stdoutPtr
 	simulateDnsFailure = *simulateDnsFailurePtr
 	simulatePingFailure = *simulatePingFailurePtr
+	outputFile := *outputFilePtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	logf, err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logf.Close()
 
-	if useStdout {
-		multi := io.MultiWriter(logf, os.Stdout)
-		log.SetOutput(multi)
+	if outputFile != "" {
+		outfile, err = os.OpenFile(outputFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
-
+	log.Infof("Starting %s", agentName)
 	ctx := diagContext{
-		forever:     *foreverPtr,
-		pacContents: *pacContentsPtr,
+		forever:      *foreverPtr,
+		pacContents:  *pacContentsPtr,
+		globalConfig: &types.GlobalConfigDefaults,
 	}
 	ctx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	ctx.DevicePortConfigList = &types.DevicePortConfigList{}
 
-	// XXX should we subscribe to and get GlobalConfig for debug??
+	// Make sure we have a GlobalConfig file with defaults
+	utils.EnsureGCFile()
 
-	server, err := ioutil.ReadFile(serverFileName)
+	// Look for global config such as log levels
+	subGlobalConfig, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "",
+			TopicImpl:     types.GlobalConfig{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handleGlobalConfigModify,
+			ModifyHandler: handleGlobalConfigModify,
+			DeleteHandler: handleGlobalConfigDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subGlobalConfig = subGlobalConfig
+	subGlobalConfig.Activate()
+
+	server, err := ioutil.ReadFile(types.ServerFileName)
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.serverNameAndPort = strings.TrimSpace(string(server))
 	ctx.serverName = strings.Split(ctx.serverNameAndPort, ":")[0]
 
-	zedcloudCtx := zedcloud.ZedCloudContext{
-		DeviceNetworkStatus: ctx.DeviceNetworkStatus,
-		FailureFunc:         zedcloud.ZedCloudFailure,
-		SuccessFunc:         zedcloud.ZedCloudSuccess,
-	}
-
-	// Get device serail number
-	zedcloudCtx.DevSerial = hardware.GetProductSerial()
-	zedcloudCtx.DevSoftSerial = hardware.GetSoftSerial()
+	zedcloudCtx := zedcloud.NewContext(zedcloud.ContextOptions{
+		DevNetworkStatus: ctx.DeviceNetworkStatus,
+		Timeout:          ctx.globalConfig.NetworkTestTimeout,
+		NeedStatsFunc:    true,
+		Serial:           hardware.GetProductSerial(),
+		SoftSerial:       hardware.GetSoftSerial(),
+	})
 	log.Infof("Diag Get Device Serial %s, Soft Serial %s\n", zedcloudCtx.DevSerial,
 		zedcloudCtx.DevSoftSerial)
 
-	if fileExists(deviceCertName) {
+	// XXX move to later for Get UUID if available
+
+	log.Infof("diag Run: Use V2 API %v\n", zedcloudCtx.V2API)
+
+	if fileExists(types.DeviceCertName) {
 		// Load device cert
 		cert, err := zedcloud.GetClientCert()
 		if err != nil {
 			log.Fatal(err)
 		}
 		ctx.cert = &cert
-	} else if fileExists(onboardCertName) && fileExists(onboardKeyName) {
-		cert, err := tls.LoadX509KeyPair(onboardCertName,
-			onboardKeyName)
+	} else if fileExists(types.OnboardCertName) &&
+		fileExists(types.OnboardKeyName) {
+		cert, err := tls.LoadX509KeyPair(types.OnboardCertName,
+			types.OnboardKeyName)
 		if err != nil {
 			log.Fatal(err)
 		}
 		ctx.cert = &cert
-		fmt.Printf("WARNING: no device cert; using onboarding cert at %v\n",
+		fmt.Fprintf(outfile, "WARNING: no device cert; using onboarding cert at %v\n",
 			time.Now().Format(time.RFC3339Nano))
 		ctx.usingOnboardCert = true
 	} else {
-		fmt.Printf("ERROR: no device cert and no onboarding cert at %v\n",
+		fmt.Fprintf(outfile, "ERROR: no device cert and no onboarding cert at %v\n",
 			time.Now().Format(time.RFC3339Nano))
 		os.Exit(1)
 	}
-
-	tlsConfig, err := zedcloud.GetTlsConfig(ctx.serverName, ctx.cert)
-	if err != nil {
-		log.Fatal(err)
-	}
-	zedcloudCtx.TlsConfig = tlsConfig
 	ctx.zedcloudCtx = &zedcloudCtx
 
-	subLedBlinkCounter, err := pubsub.Subscribe("", types.LedBlinkCounter{},
-		false, &ctx)
+	subLedBlinkCounter, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "",
+			TopicImpl:     types.LedBlinkCounter{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handleLedBlinkModify,
+			ModifyHandler: handleLedBlinkModify,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		errStr := fmt.Sprintf("ERROR: internal Subscribe failed %s\n", err)
 		panic(errStr)
 	}
-	subLedBlinkCounter.ModifyHandler = handleLedBlinkModify
 	ctx.subLedBlinkCounter = subLedBlinkCounter
 	subLedBlinkCounter.Activate()
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &ctx)
+	subDeviceNetworkStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "nim",
+			TopicImpl:     types.DeviceNetworkStatus{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handleDNSModify,
+			ModifyHandler: handleDNSModify,
+			DeleteHandler: handleDNSDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		errStr := fmt.Sprintf("ERROR: internal Subscribe failed %s\n", err)
 		panic(errStr)
 	}
-	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
-	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
-	subDevicePortConfigList, err := pubsub.SubscribePersistent("nim",
-		types.DevicePortConfigList{}, false, &ctx)
+	subDevicePortConfigList, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "nim",
+			Persistent:    true,
+			TopicImpl:     types.DevicePortConfigList{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handleDPCModify,
+			ModifyHandler: handleDPCModify,
+		})
 	if err != nil {
 		errStr := fmt.Sprintf("ERROR: internal Subscribe failed %s\n", err)
 		panic(errStr)
 	}
-	subDevicePortConfigList.ModifyHandler = handleDPCModify
 	ctx.subDevicePortConfigList = subDevicePortConfigList
 	subDevicePortConfigList.Activate()
 
+	subOnboardStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedclient",
+		CreateHandler: handleOnboardStatusModify,
+		ModifyHandler: handleOnboardStatusModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+		TopicImpl:     types.OnboardingStatus{},
+		Activate:      true,
+		Persistent:    true,
+		Ctx:           &ctx,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	for {
 		select {
-		case change := <-subLedBlinkCounter.C:
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subLedBlinkCounter.MsgChan():
 			ctx.gotBC = true
 			subLedBlinkCounter.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			ctx.gotDNS = true
 			subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-subDevicePortConfigList.C:
+		case change := <-subOnboardStatus.MsgChan():
+			subOnboardStatus.ProcessChange(change)
+
+		case change := <-subDevicePortConfigList.MsgChan():
 			ctx.gotDPCList = true
 			subDevicePortConfigList.ProcessChange(change)
 		}
 		if !ctx.forever && ctx.gotDNS && ctx.gotBC && ctx.gotDPCList {
 			break
 		}
-		if ctx.usingOnboardCert && fileExists(deviceCertName) {
-			fmt.Printf("WARNING: Switching from onboard to device cert\n")
+		if ctx.usingOnboardCert && fileExists(types.DeviceCertName) {
+			fmt.Fprintf(outfile, "WARNING: Switching from onboard to device cert\n")
 			// Load device cert
 			cert, err := zedcloud.GetClientCert()
 			if err != nil {
@@ -225,11 +291,6 @@ func Run() {
 			}
 			ctx.cert = &cert
 			ctx.usingOnboardCert = false
-			tlsConfig, err := zedcloud.GetTlsConfig(ctx.serverName, ctx.cert)
-			if err != nil {
-				log.Fatal(err)
-			}
-			zedcloudCtx.TlsConfig = tlsConfig
 		}
 	}
 }
@@ -239,20 +300,11 @@ func fileExists(filename string) bool {
 	return err == nil
 }
 
-func DNCExists(model string) bool {
-	DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
-	return fileExists(DNCFilename)
-}
-
-func AAExists(model string) bool {
-	AAFilename := fmt.Sprintf("%s/%s.json", AADirname, model)
-	return fileExists(AAFilename)
-}
-
+// Handles both create and modify events
 func handleLedBlinkModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	config := cast.CastLedBlinkCounter(configArg)
+	config := configArg.(types.LedBlinkCounter)
 	ctx := ctxArg.(*diagContext)
 
 	if key != "ledconfig" {
@@ -273,9 +325,10 @@ func handleLedBlinkModify(ctxArg interface{}, key string,
 	printOutput(ctx)
 }
 
+// Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	ctx := ctxArg.(*diagContext)
 	if key != "global" {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
@@ -298,6 +351,11 @@ func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 			ctx.UsableAddressCount)
 		log.Infof("counter %d usableAddr %d, derived %d\n",
 			ctx.ledCounter, ctx.UsableAddressCount, ctx.derivedLedCounter)
+	}
+
+	// update proxy certs if configured
+	if ctx.zedcloudCtx != nil && ctx.zedcloudCtx.V2API {
+		zedcloud.UpdateTLSProxyCerts(ctx.zedcloudCtx)
 	}
 	// XXX can we limit to interfaces which changed?
 	// XXX wait in case we get another handle call?
@@ -333,9 +391,10 @@ func handleDNSDelete(ctxArg interface{}, key string,
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
+// Handles both create and modify events
 func handleDPCModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDevicePortConfigList(statusArg)
+	status := statusArg.(types.DevicePortConfigList)
 	ctx := ctxArg.(*diagContext)
 	if key != "global" {
 		log.Infof("handleDPCModify: ignoring %s\n", key)
@@ -356,6 +415,19 @@ func handleDPCModify(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDPCModify done for %s\n", key)
 }
 
+// Handles UUID change from process client
+func handleOnboardStatusModify(ctxArg interface{}, key string, statusArg interface{}) {
+	status := statusArg.(types.OnboardingStatus)
+	ctx := ctxArg.(*diagContext)
+	if cmp.Equal(ctx.devUUID, status.DeviceUUID) {
+		log.Infof("handleOnboardStatusModify no change to %v\n", ctx.devUUID)
+		return
+	}
+	ctx.devUUID = status.DeviceUUID
+	log.Infof("handleOnboardStatusModify changed to %v\n", ctx.devUUID)
+	printOutput(ctx)
+}
+
 // Print output for all interfaces
 // XXX can we limit to interfaces which changed?
 func printOutput(ctx *diagContext) {
@@ -365,61 +437,33 @@ func printOutput(ctx *diagContext) {
 		return
 	}
 
-	fmt.Printf("\nINFO: updated diag information at %v\n",
+	fmt.Fprintf(outfile, "\nINFO: updated diag information at %v\n",
 		time.Now().Format(time.RFC3339Nano))
-	savedHardwareModel := hardware.GetHardwareModelOverride()
-	hardwareModel := hardware.GetHardwareModelNoOverride()
-	if savedHardwareModel != "" && savedHardwareModel != hardwareModel {
-		fmt.Printf("INFO: dmidecode model string %s overridden as %s\n",
-			hardwareModel, savedHardwareModel)
-	}
-	if savedHardwareModel != "" {
-		if !DNCExists(savedHardwareModel) {
-			fmt.Printf("ERROR: /config/hardwaremodel %s does not exist in /var/tmp/zededa/DeviceNetworkConfig\n",
-				savedHardwareModel)
-			fmt.Printf("NOTE: Device is using /var/tmp/zededa/DeviceNetworkConfig/default.json\n")
-		}
-		if !AAExists(savedHardwareModel) {
-			fmt.Printf("ERROR: /config/hardwaremodel %s does not exist in /var/tmp/zededa/AssignableAdapters\n",
-				savedHardwareModel)
-			fmt.Printf("NOTE: Device is using /var/tmp/zededa/AssignableAdapters/default.json\n")
-		}
-	}
-	if !DNCExists(hardwareModel) {
-		fmt.Printf("INFO: dmidecode model %s does not exist in /var/tmp/zededa/DeviceNetworkConfig\n",
-			hardwareModel)
-	}
-	if !AAExists(hardwareModel) {
-		fmt.Printf("INFO: dmidecode model %s does not exist in /var/tmp/zededa/AssignableAdapters\n",
-			hardwareModel)
-	}
 	// XXX certificate fingerprints? What does zedcloud use?
-	if fileExists(selfRegFile) {
-		fmt.Printf("INFO: selfRegister is still in progress\n")
+	if fileExists(types.SelfRegFile) {
+		fmt.Fprintf(outfile, "INFO: selfRegister is still in progress\n")
 		// XXX print onboarding cert
 	}
 
 	switch ctx.derivedLedCounter {
 	case 0:
-		fmt.Printf("ERROR: Summary: Unknown LED counter 0\n")
+		fmt.Fprintf(outfile, "ERROR: Summary: Unknown LED counter 0\n")
 	case 1:
-		fmt.Printf("ERROR: Summary: Waiting for DHCP IP address(es)\n")
+		fmt.Fprintf(outfile, "ERROR: Summary: Waiting for DHCP IP address(es)\n")
 	case 2:
-		fmt.Printf("ERROR: Summary: Trying to connect to EV Controller\n")
+		fmt.Fprintf(outfile, "ERROR: Summary: Trying to connect to EV Controller\n")
 	case 3:
-		fmt.Printf("WARNING: Summary: Connected to EV Controller but not onboarded\n")
+		fmt.Fprintf(outfile, "WARNING: Summary: Connected to EV Controller but not onboarded\n")
 	case 4:
-		fmt.Printf("INFO: Summary: Connected to EV Controller and onboarded\n")
+		fmt.Fprintf(outfile, "INFO: Summary: Connected to EV Controller and onboarded\n")
 	case 10:
-		fmt.Printf("ERROR: Summary: Onboarding failure or conflict\n")
-	case 11:
-		fmt.Printf("ERROR: Summary: Missing /var/tmp/zededa/DeviceNetworkConfig/ model file\n")
+		fmt.Fprintf(outfile, "ERROR: Summary: Onboarding failure or conflict\n")
 	case 12:
-		fmt.Printf("ERROR: Summary: Response without TLS - ignored\n")
+		fmt.Fprintf(outfile, "ERROR: Summary: Response without TLS - ignored\n")
 	case 13:
-		fmt.Printf("ERROR: Summary: Response without OSCP or bad OSCP - ignored\n")
+		fmt.Fprintf(outfile, "ERROR: Summary: Response without OSCP or bad OSCP - ignored\n")
 	default:
-		fmt.Printf("ERROR: Summary: Unsupported LED counter %d\n",
+		fmt.Fprintf(outfile, "ERROR: Summary: Unsupported LED counter %d\n",
 			ctx.derivedLedCounter)
 	}
 
@@ -437,38 +481,38 @@ func printOutput(ctx *diagContext) {
 	if DPCLen > 0 {
 		first := ctx.DevicePortConfigList.PortConfigList[0]
 		if ctx.DevicePortConfigList.CurrentIndex == -1 {
-			fmt.Printf("WARNING: Have no currently working DevicePortConfig\n")
+			fmt.Fprintf(outfile, "WARNING: Have no currently working DevicePortConfig\n")
 		} else if ctx.DevicePortConfigList.CurrentIndex != 0 {
-			fmt.Printf("WARNING: Not %s highest priority DevicePortConfig key %s due to %s\n",
+			fmt.Fprintf(outfile, "WARNING: Not %s highest priority DevicePortConfig key %s due to %s\n",
 				downcase, first.Key, first.LastError)
 			for i, dpc := range ctx.DevicePortConfigList.PortConfigList {
 				if i == 0 {
 					continue
 				}
 				if i != ctx.DevicePortConfigList.CurrentIndex {
-					fmt.Printf("WARNING: Not %s priority %d DevicePortConfig key %s due to %s\n",
+					fmt.Fprintf(outfile, "WARNING: Not %s priority %d DevicePortConfig key %s due to %s\n",
 						downcase, i, dpc.Key, dpc.LastError)
 				} else {
-					fmt.Printf("INFO: %s priority %d DevicePortConfig key %s\n",
+					fmt.Fprintf(outfile, "INFO: %s priority %d DevicePortConfig key %s\n",
 						upcase, i, dpc.Key)
 					break
 				}
 			}
 			if DPCLen-1 > ctx.DevicePortConfigList.CurrentIndex {
-				fmt.Printf("INFO: Have %d backup DevicePortConfig\n",
+				fmt.Fprintf(outfile, "INFO: Have %d backup DevicePortConfig\n",
 					DPCLen-1-ctx.DevicePortConfigList.CurrentIndex)
 			}
 		} else {
-			fmt.Printf("INFO: %s highest priority DevicePortConfig key %s\n",
+			fmt.Fprintf(outfile, "INFO: %s highest priority DevicePortConfig key %s\n",
 				upcase, first.Key)
 			if DPCLen > 1 {
-				fmt.Printf("INFO: Have %d backup DevicePortConfig\n",
+				fmt.Fprintf(outfile, "INFO: Have %d backup DevicePortConfig\n",
 					DPCLen-1)
 			}
 		}
 	}
 	if testing {
-		fmt.Printf("WARNING: The configuration below is under test hence might report failures\n")
+		fmt.Fprintf(outfile, "WARNING: The configuration below is under test hence might report failures\n")
 	}
 	numPorts := len(ctx.DeviceNetworkStatus.Ports)
 	mgmtPorts := 0
@@ -476,7 +520,7 @@ func printOutput(ctx *diagContext) {
 	passOtherPorts := 0
 
 	numMgmtPorts := len(types.GetMgmtPortsAny(*ctx.DeviceNetworkStatus, 0))
-	fmt.Printf("INFO: Have %d total ports. %d ports should be connected to EV controller\n", numPorts, numMgmtPorts)
+	fmt.Fprintf(outfile, "INFO: Have %d total ports. %d ports should be connected to EV controller\n", numPorts, numMgmtPorts)
 	for _, port := range ctx.DeviceNetworkStatus.Ports {
 		// Print usefully formatted info based on which
 		// fields are set and Dhcp type; proxy info order
@@ -499,7 +543,7 @@ func printOutput(ctx *diagContext) {
 		} else if isMgmt {
 			typeStr = "for EV Controller"
 		}
-		fmt.Printf("INFO: Port %s: %s\n", ifname, typeStr)
+		fmt.Fprintf(outfile, "INFO: Port %s: %s\n", ifname, typeStr)
 		ipCount := 0
 		for _, ai := range port.AddrInfoList {
 			if ai.Addr.IsLinkLocalUnicast() {
@@ -508,43 +552,43 @@ func printOutput(ctx *diagContext) {
 			ipCount += 1
 			noGeo := ipinfo.IPInfo{}
 			if ai.Geo == noGeo {
-				fmt.Printf("INFO: %s: IP address %s not geolocated\n",
+				fmt.Fprintf(outfile, "INFO: %s: IP address %s not geolocated\n",
 					ifname, ai.Addr)
 			} else {
-				fmt.Printf("INFO: %s: IP address %s geolocated to %+v\n",
+				fmt.Fprintf(outfile, "INFO: %s: IP address %s geolocated to %+v\n",
 					ifname, ai.Addr, ai.Geo)
 			}
 		}
 		if ipCount == 0 {
-			fmt.Printf("INFO: %s: No IP address\n",
+			fmt.Fprintf(outfile, "INFO: %s: No IP address\n",
 				ifname)
 		}
 
-		fmt.Printf("INFO: %s: DNS servers: ", ifname)
+		fmt.Fprintf(outfile, "INFO: %s: DNS servers: ", ifname)
 		for _, ds := range port.DnsServers {
-			fmt.Printf("%s, ", ds.String())
+			fmt.Fprintf(outfile, "%s, ", ds.String())
 		}
-		fmt.Printf("\n")
+		fmt.Fprintf(outfile, "\n")
 		// If static print static config
 		if port.Dhcp == types.DT_STATIC {
-			fmt.Printf("INFO: %s: Static IP subnet: %s\n",
+			fmt.Fprintf(outfile, "INFO: %s: Static IP subnet: %s\n",
 				ifname, port.Subnet.String())
-			fmt.Printf("INFO: %s: Static IP router: %s\n",
+			fmt.Fprintf(outfile, "INFO: %s: Static IP router: %s\n",
 				ifname, port.Gateway.String())
-			fmt.Printf("INFO: %s: Static Domain Name: %s\n",
+			fmt.Fprintf(outfile, "INFO: %s: Static Domain Name: %s\n",
 				ifname, port.DomainName)
-			fmt.Printf("INFO: %s: Static NTP server: %s\n",
+			fmt.Fprintf(outfile, "INFO: %s: Static NTP server: %s\n",
 				ifname, port.NtpServer.String())
 		}
 		printProxy(ctx, port, ifname)
 
 		if !isMgmt {
-			fmt.Printf("INFO: %s: not intended for EV controller; skipping those tests\n",
+			fmt.Fprintf(outfile, "INFO: %s: not intended for EV controller; skipping those tests\n",
 				ifname)
 			continue
 		}
 		if ipCount == 0 {
-			fmt.Printf("WARNING: %s: No IP address to connect to EV controller\n",
+			fmt.Fprintf(outfile, "WARNING: %s: No IP address to connect to EV controller\n",
 				ifname)
 			continue
 		}
@@ -553,7 +597,7 @@ func printOutput(ctx *diagContext) {
 			continue
 		}
 		if !tryPing(ctx, ifname, "") {
-			fmt.Printf("ERROR: %s: ping failed to %s; trying google\n",
+			fmt.Fprintf(outfile, "ERROR: %s: ping failed to %s; trying google\n",
 				ifname, ctx.serverNameAndPort)
 			origServerName := ctx.serverName
 			origServerNameAndPort := ctx.serverNameAndPort
@@ -561,34 +605,25 @@ func printOutput(ctx *diagContext) {
 			ctx.serverNameAndPort = ctx.serverName
 			res := tryPing(ctx, ifname, "http://www.google.com")
 			if res {
-				fmt.Printf("WARNING: %s: Can reach http://google.com but not https://%s\n",
+				fmt.Fprintf(outfile, "WARNING: %s: Can reach http://google.com but not https://%s\n",
 					ifname, origServerNameAndPort)
 			} else {
-				fmt.Printf("ERROR: %s: Can't reach http://google.com; likely lack of Internet connectivity\n",
+				fmt.Fprintf(outfile, "ERROR: %s: Can't reach http://google.com; likely lack of Internet connectivity\n",
 					ifname)
 			}
 			res = tryPing(ctx, ifname, "https://www.google.com")
 			if res {
-				fmt.Printf("WARNING: %s: Can reach https://google.com but not https://%s\n",
+				fmt.Fprintf(outfile, "WARNING: %s: Can reach https://google.com but not https://%s\n",
 					ifname, origServerNameAndPort)
 			} else {
-				fmt.Printf("ERROR: %s: Can't reach https://google.com; likely lack of Internet connectivity\n",
+				fmt.Fprintf(outfile, "ERROR: %s: Can't reach https://google.com; likely lack of Internet connectivity\n",
 					ifname)
 			}
 			ctx.serverName = origServerName
 			ctx.serverNameAndPort = origServerNameAndPort
-			// restore TLS
-			tlsConfig, err := zedcloud.GetTlsConfig(ctx.serverName,
-				ctx.cert)
-			if err != nil {
-				errStr := fmt.Sprintf("ERROR: %s: internal GetTlsConfig failed %s\n",
-					ifname, err)
-				panic(errStr)
-			}
-			ctx.zedcloudCtx.TlsConfig = tlsConfig
 			continue
 		}
-		if !tryGetUuid(ctx, ifname) {
+		if !tryPostUUID(ctx, ifname) {
 			continue
 		}
 		if isMgmt {
@@ -596,18 +631,18 @@ func printOutput(ctx *diagContext) {
 		} else {
 			passOtherPorts += 1
 		}
-		fmt.Printf("PASS: port %s fully connected to EV controller %s\n",
+		fmt.Fprintf(outfile, "PASS: port %s fully connected to EV controller %s\n",
 			ifname, ctx.serverName)
 	}
 	if passOtherPorts > 0 {
-		fmt.Printf("WARNING: %d non-management ports have connectivity to the EV controller. Is that intentional?\n", passOtherPorts)
+		fmt.Fprintf(outfile, "WARNING: %d non-management ports have connectivity to the EV controller. Is that intentional?\n", passOtherPorts)
 	}
 	if mgmtPorts == 0 {
-		fmt.Printf("ERROR: No ports specified to have EV controller connectivity\n")
+		fmt.Fprintf(outfile, "ERROR: No ports specified to have EV controller connectivity\n")
 	} else if passPorts == mgmtPorts {
-		fmt.Printf("PASS: All ports specified to have EV controller connectivity passed test\n")
+		fmt.Fprintf(outfile, "PASS: All ports specified to have EV controller connectivity passed test\n")
 	} else {
-		fmt.Printf("WARNING: %d out of %d ports specified to have EV controller connectivity passed test\n",
+		fmt.Fprintf(outfile, "WARNING: %d out of %d ports specified to have EV controller connectivity passed test\n",
 			passPorts, mgmtPorts)
 	}
 }
@@ -616,33 +651,33 @@ func printProxy(ctx *diagContext, port types.NetworkPortStatus,
 	ifname string) {
 
 	if devicenetwork.IsProxyConfigEmpty(port.ProxyConfig) {
-		fmt.Printf("INFO: %s: no http(s) proxy\n", ifname)
+		fmt.Fprintf(outfile, "INFO: %s: no http(s) proxy\n", ifname)
 		return
 	}
 	if port.ProxyConfig.Exceptions != "" {
-		fmt.Printf("INFO: %s: proxy exceptions %s\n",
+		fmt.Fprintf(outfile, "INFO: %s: proxy exceptions %s\n",
 			ifname, port.ProxyConfig.Exceptions)
 	}
 	if port.Error != "" {
-		fmt.Printf("ERROR: %s: from WPAD? %s\n", ifname, port.Error)
+		fmt.Fprintf(outfile, "ERROR: %s: from WPAD? %s\n", ifname, port.Error)
 	}
 	if port.ProxyConfig.NetworkProxyEnable {
 		if port.ProxyConfig.NetworkProxyURL == "" {
 			if port.ProxyConfig.WpadURL == "" {
-				fmt.Printf("WARNING: %s: WPAD enabled but found no URL\n",
+				fmt.Fprintf(outfile, "WARNING: %s: WPAD enabled but found no URL\n",
 					ifname)
 			} else {
-				fmt.Printf("INFO: %s: WPAD enabled found URL %s\n",
+				fmt.Fprintf(outfile, "INFO: %s: WPAD enabled found URL %s\n",
 					ifname, port.ProxyConfig.WpadURL)
 			}
 		} else {
-			fmt.Printf("INFO: %s: WPAD fetched from %s\n",
+			fmt.Fprintf(outfile, "INFO: %s: WPAD fetched from %s\n",
 				ifname, port.ProxyConfig.NetworkProxyURL)
 		}
 	}
 	pacLen := len(port.ProxyConfig.Pacfile)
 	if pacLen > 0 {
-		fmt.Printf("INFO: %s: Have PAC file len %d\n",
+		fmt.Fprintf(outfile, "INFO: %s: Have PAC file len %d\n",
 			ifname, pacLen)
 		if ctx.pacContents {
 			pacFile, err := base64.StdEncoding.DecodeString(port.ProxyConfig.Pacfile)
@@ -650,7 +685,7 @@ func printProxy(ctx *diagContext, port types.NetworkPortStatus,
 				errStr := fmt.Sprintf("Decoding proxy file failed: %s", err)
 				log.Errorf(errStr)
 			} else {
-				fmt.Printf("INFO: %s: PAC file:\n%s\n",
+				fmt.Fprintf(outfile, "INFO: %s: PAC file:\n%s\n",
 					ifname, pacFile)
 			}
 		}
@@ -664,7 +699,7 @@ func printProxy(ctx *diagContext, port types.NetworkPortStatus,
 				} else {
 					httpProxy = fmt.Sprintf("%s", proxy.Server)
 				}
-				fmt.Printf("INFO: %s: http proxy %s\n",
+				fmt.Fprintf(outfile, "INFO: %s: http proxy %s\n",
 					ifname, httpProxy)
 			case types.NPT_HTTPS:
 				var httpsProxy string
@@ -673,53 +708,88 @@ func printProxy(ctx *diagContext, port types.NetworkPortStatus,
 				} else {
 					httpsProxy = fmt.Sprintf("%s", proxy.Server)
 				}
-				fmt.Printf("INFO: %s: https proxy %s\n",
+				fmt.Fprintf(outfile, "INFO: %s: https proxy %s\n",
 					ifname, httpsProxy)
 			}
 		}
+
+		if len(port.ProxyCertPEM) > 0 {
+			fmt.Fprintf(outfile, "INFO: %d proxy certificate(s)", len(port.ProxyCertPEM))
+		}
 	}
 }
 
-// XXX should we make this and send.go use DNS on one interface?
 func tryLookupIP(ctx *diagContext, ifname string) bool {
 
-	ips, err := net.LookupIP(ctx.serverName)
-	if err != nil {
-		fmt.Printf("ERROR: %s: DNS lookup of %s failed: %s\n",
-			ifname, ctx.serverName, err)
-		return false
-	}
-	if len(ips) == 0 {
-		fmt.Printf("ERROR: %s: DNS lookup of %s returned no answers\n",
+	addrCount := types.CountLocalAddrAnyNoLinkLocalIf(*ctx.DeviceNetworkStatus, ifname)
+	if addrCount == 0 {
+		fmt.Fprintf(outfile, "ERROR: %s: DNS lookup of %s not possible since no IP address\n",
 			ifname, ctx.serverName)
 		return false
 	}
-	for _, ip := range ips {
-		fmt.Printf("INFO: %s: DNS lookup of %s returned %s\n",
-			ifname, ctx.serverName, ip.String())
+	for retryCount := 0; retryCount < addrCount; retryCount++ {
+		localAddr, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.DeviceNetworkStatus,
+			retryCount, ifname)
+		if err != nil {
+			fmt.Fprintf(outfile, "ERROR: %s: DNS lookup of %s: internal error: %s address\n",
+				ifname, ctx.serverName, err)
+			return false
+		}
+		localUDPAddr := net.UDPAddr{IP: localAddr}
+		log.Debugf("tryLookupIP: using intf %s source %v", ifname, localUDPAddr)
+		resolverDial := func(ctx context.Context, network, address string) (net.Conn, error) {
+			log.Debugf("resolverDial %v %v", network, address)
+			d := net.Dialer{LocalAddr: &localUDPAddr}
+			return d.Dial(network, address)
+		}
+		r := net.Resolver{Dial: resolverDial, PreferGo: true,
+			StrictErrors: false}
+		ips, err := r.LookupIPAddr(context.Background(), ctx.serverName)
+		if err != nil {
+			fmt.Fprintf(outfile, "ERROR: %s: DNS lookup of %s failed: %s\n",
+				ifname, ctx.serverName, err)
+			continue
+		}
+		log.Debugf("tryLookupIP: got %d addresses", len(ips))
+		if len(ips) == 0 {
+			fmt.Fprintf(outfile, "ERROR: %s: DNS lookup of %s returned no answers\n",
+				ifname, ctx.serverName)
+			return false
+		}
+		for _, ip := range ips {
+			fmt.Fprintf(outfile, "INFO: %s: DNS lookup of %s returned %s\n",
+				ifname, ctx.serverName, ip.String())
+		}
+		if simulateDnsFailure {
+			fmt.Fprintf(outfile, "INFO: %s: Simulate DNS lookup failure\n", ifname)
+			return false
+		}
+		return true
 	}
-	if simulateDnsFailure {
-		fmt.Printf("INFO: %s: Simulate DNS lookup failure\n", ifname)
-		return false
-	}
-	return true
+	// Tried all in loop
+	return false
 }
 
-func tryPing(ctx *diagContext, ifname string, requrl string) bool {
+func tryPing(ctx *diagContext, ifname string, reqURL string) bool {
 
 	zedcloudCtx := ctx.zedcloudCtx
-	if requrl == "" {
-		requrl = ctx.serverNameAndPort + "/api/v1/edgedevice/ping"
-	} else {
-		tlsConfig, err := zedcloud.GetTlsConfig(ctx.serverName,
-			ctx.cert)
+	// Set the TLS config on each attempt in case it has changed due to proxies etc
+	if reqURL == "" {
+		reqURL = zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API, false, nilUUID, "ping")
+		err := zedcloud.UpdateTLSConfig(zedcloudCtx, ctx.serverName, ctx.cert)
 		if err != nil {
-			errStr := fmt.Sprintf("ERROR: %s: internal GetTlsConfig failed %s\n",
+			errStr := fmt.Sprintf("ERROR: %s: internal UpdateTLSConfig failed %s\n",
 				ifname, err)
 			panic(errStr)
 		}
-		zedcloudCtx.TlsConfig = tlsConfig
-		tlsConfig.InsecureSkipVerify = true
+	} else {
+		err := zedcloud.UpdateTLSConfig(zedcloudCtx, ctx.serverName, ctx.cert)
+		if err != nil {
+			errStr := fmt.Sprintf("ERROR: %s: internal UpdateTLSConfig failed %s\n",
+				ifname, err)
+			panic(errStr)
+		}
+		zedcloudCtx.TlsConfig.InsecureSkipVerify = true
 	}
 
 	// As we ping the cloud or other URLs, don't affect the LEDs
@@ -730,43 +800,79 @@ func tryPing(ctx *diagContext, ifname string, requrl string) bool {
 	var delay time.Duration
 	for !done {
 		time.Sleep(delay)
-		done, _, _ = myGet(zedcloudCtx, requrl, ifname, retryCount)
+		done, _, _ = myGet(zedcloudCtx, reqURL, ifname, retryCount)
 		if done {
 			break
 		}
 		retryCount += 1
 		if maxRetries != 0 && retryCount > maxRetries {
-			fmt.Printf("ERROR: %s: Exceeded %d retries for ping\n",
+			fmt.Fprintf(outfile, "ERROR: %s: Exceeded %d retries for ping\n",
 				ifname, maxRetries)
 			return false
 		}
 		delay = time.Second
 	}
 	if simulatePingFailure {
-		fmt.Printf("INFO: %s: Simulate ping failure\n", ifname)
+		fmt.Fprintf(outfile, "INFO: %s: Simulate ping failure\n", ifname)
 		return false
 	}
 	return true
 }
 
-func tryGetUuid(ctx *diagContext, ifname string) bool {
+// The most recent config hash we received
+var prevConfigHash string
 
+func tryPostUUID(ctx *diagContext, ifname string) bool {
+
+	log.Debugf("tryPostUUID() sending hash %s", prevConfigHash)
+	configRequest := &zconfig.ConfigRequest{
+		ConfigHash: prevConfigHash,
+	}
+	b, err := proto.Marshal(configRequest)
+	if err != nil {
+		log.Errorln(err)
+		return false
+	}
 	zedcloudCtx := ctx.zedcloudCtx
-	requrl := ctx.serverNameAndPort + "/api/v1/edgedevice/config"
+
+	reqURL := zedcloud.URLPathString(ctx.serverNameAndPort, zedcloudCtx.V2API, false, ctx.devUUID, "config")
+	// Set the TLS config on each attempt in case it has changed due to proxies etc
+	err = zedcloud.UpdateTLSConfig(zedcloudCtx, ctx.serverName, ctx.cert)
+	if err != nil {
+		errStr := fmt.Sprintf("ERROR: %s: internal UpdateTLSConfig failed %s\n",
+			ifname, err)
+		panic(errStr)
+	}
 	// As we ping the cloud or other URLs, don't affect the LEDs
 	zedcloudCtx.NoLedManager = true
 	retryCount := 0
 	done := false
+	rtf := types.SenderStatusNone
 	var delay time.Duration
 	for !done {
 		time.Sleep(delay)
-		done, _, _ = myGet(zedcloudCtx, requrl, ifname, retryCount)
+		var resp *http.Response
+		var buf []byte
+		done, resp, rtf, buf = myPost(zedcloudCtx, reqURL, ifname, retryCount,
+			int64(len(b)), bytes.NewBuffer(b))
 		if done {
+			parsePrint(reqURL, resp, buf)
 			break
+		}
+		if rtf == types.SenderStatusCertMiss {
+			// currently only three places we need to verify envelope data
+			// 1) client
+			// 2) zedagent
+			// 3) diag here for getting /config
+			// 1) is the initial getting cloud certs, 2) rely on zedagent to refetch the cloud certs
+			// if zedcloud has cert change. 3) only need to zero out the cache in zedcloudCtx and
+			// it will reacquire from the updated cert file. zedagent is the only one resposible for refetching certs.
+			zedcloud.ClearCloudCert(zedcloudCtx)
+			return false
 		}
 		retryCount += 1
 		if maxRetries != 0 && retryCount > maxRetries {
-			fmt.Printf("ERROR: %s: Exceeded %d retries for get config\n",
+			fmt.Fprintf(outfile, "ERROR: %s: Exceeded %d retries for get config\n",
 				ifname, maxRetries)
 			return false
 		}
@@ -775,52 +881,202 @@ func tryGetUuid(ctx *diagContext, ifname string) bool {
 	return true
 }
 
+func parsePrint(configURL string, resp *http.Response, contents []byte) {
+	if err := validateConfigMessage(configURL, resp); err != nil {
+		log.Errorln("validateConfigMessage: ", err)
+		return
+	}
+
+	if resp.StatusCode == http.StatusNotModified {
+		log.Debugf("StatusNotModified len %d", len(contents))
+		return
+	}
+
+	configResponse, err := readConfigResponseProtoMessage(contents)
+	if err != nil {
+		log.Errorln("readConfigResponseProtoMessage: ", err)
+		return
+	}
+	hash := configResponse.GetConfigHash()
+	if hash == prevConfigHash {
+		log.Debugf("Same ConfigHash len %d", len(contents))
+		return
+	}
+	log.Infof("Change in ConfigHash from %s to %s", prevConfigHash, hash)
+	prevConfigHash = hash
+	config := configResponse.GetConfig()
+	uuidStr := strings.TrimSpace(config.GetId().Uuid)
+	log.Infof("Changed ConfigResponse with uuid %s", uuidStr)
+}
+
+// From zedagent/handleconfig.go
+func validateConfigMessage(configURL string, r *http.Response) error {
+
+	var ctTypeStr = "Content-Type"
+	var ctTypeProtoStr = "application/x-proto-binary"
+
+	ct := r.Header.Get(ctTypeStr)
+	if ct == "" {
+		return fmt.Errorf("No content-type")
+	}
+	mimeType, _, err := mime.ParseMediaType(ct)
+	if err != nil {
+		return fmt.Errorf("Get Content-type error")
+	}
+	switch mimeType {
+	case ctTypeProtoStr:
+		return nil
+	default:
+		return fmt.Errorf("Content-type %s not supported",
+			mimeType)
+	}
+}
+
+func readConfigResponseProtoMessage(contents []byte) (*zconfig.ConfigResponse, error) {
+	var configResponse = &zconfig.ConfigResponse{}
+
+	err := proto.Unmarshal(contents, configResponse)
+	if err != nil {
+		log.Errorf("Unmarshalling failed: %v", err)
+		return nil, err
+	}
+	return configResponse, nil
+}
+
 // Get something without a return type; used by ping
 // Returns true when done; false when retry.
 // Returns the response when done. Caller can not use resp.Body but
 // can use the contents []byte
-func myGet(zedcloudCtx *zedcloud.ZedCloudContext, requrl string, ifname string,
+func myGet(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
 	retryCount int) (bool, *http.Response, []byte) {
 
-	var preqUrl string
-	if strings.HasPrefix(requrl, "http:") {
-		preqUrl = requrl
-	} else if strings.HasPrefix(requrl, "https:") {
-		preqUrl = requrl
+	var preqURL string
+	if strings.HasPrefix(reqURL, "http:") {
+		preqURL = reqURL
+	} else if strings.HasPrefix(reqURL, "https:") {
+		preqURL = reqURL
 	} else {
-		preqUrl = "https://" + requrl
+		preqURL = "https://" + reqURL
 	}
-	proxyUrl, err := zedcloud.LookupProxy(zedcloudCtx.DeviceNetworkStatus,
-		ifname, preqUrl)
+	proxyURL, err := zedcloud.LookupProxy(zedcloudCtx.DeviceNetworkStatus,
+		ifname, preqURL)
 	if err != nil {
-		fmt.Printf("ERROR: %s: LookupProxy failed: %s\n", ifname, err)
-	} else if proxyUrl != nil {
-		fmt.Printf("INFO: %s: Proxy %s to reach %s\n",
-			ifname, proxyUrl.String(), requrl)
+		fmt.Fprintf(outfile, "ERROR: %s: LookupProxy failed: %s\n", ifname, err)
+	} else if proxyURL != nil {
+		fmt.Fprintf(outfile, "INFO: %s: Proxy %s to reach %s\n",
+			ifname, proxyURL.String(), reqURL)
 	}
 	const allowProxy = true
-	resp, contents, cf, err := zedcloud.SendOnIntf(*zedcloudCtx,
-		requrl, ifname, 0, nil, allowProxy, 15)
+	resp, contents, rtf, err := zedcloud.SendOnIntf(zedcloudCtx,
+		reqURL, ifname, 0, nil, allowProxy)
 	if err != nil {
-		fmt.Printf("ERROR: %s: get %s failed: %s\n",
-			ifname, requrl, err)
-		if cf {
-			fmt.Printf("ERROR: %s: get %s certificate failure\n",
-				ifname, requrl)
+		if rtf == types.SenderStatusRemTempFail {
+			fmt.Fprintf(outfile, "ERROR: %s: get %s remote temporary failure: %s\n",
+				ifname, reqURL, err)
+		} else {
+			fmt.Fprintf(outfile, "ERROR: %s: get %s failed: %s\n",
+				ifname, reqURL, err)
 		}
 		return false, nil, nil
 	}
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		fmt.Printf("INFO: %s: %s StatusOK\n", ifname, requrl)
+		fmt.Fprintf(outfile, "INFO: %s: %s StatusOK\n", ifname, reqURL)
+		return true, resp, contents
+	case http.StatusNotModified:
+		fmt.Fprintf(outfile, "INFO: %s: %s StatusNotModified\n", ifname, reqURL)
 		return true, resp, contents
 	default:
-		fmt.Printf("ERROR: %s: %s statuscode %d %s\n",
-			ifname, requrl, resp.StatusCode,
+		fmt.Fprintf(outfile, "ERROR: %s: %s statuscode %d %s\n",
+			ifname, reqURL, resp.StatusCode,
 			http.StatusText(resp.StatusCode))
-		fmt.Printf("ERRROR: %s: Received %s\n",
+		fmt.Fprintf(outfile, "ERRROR: %s: Received %s\n",
 			ifname, string(contents))
 		return false, nil, nil
 	}
+}
+
+func myPost(zedcloudCtx *zedcloud.ZedCloudContext, reqURL string, ifname string,
+	retryCount int, reqlen int64, b *bytes.Buffer) (bool, *http.Response, types.SenderResult, []byte) {
+
+	var preqURL string
+	if strings.HasPrefix(reqURL, "http:") {
+		preqURL = reqURL
+	} else if strings.HasPrefix(reqURL, "https:") {
+		preqURL = reqURL
+	} else {
+		preqURL = "https://" + reqURL
+	}
+	proxyURL, err := zedcloud.LookupProxy(zedcloudCtx.DeviceNetworkStatus,
+		ifname, preqURL)
+	if err != nil {
+		fmt.Fprintf(outfile, "ERROR: %s: LookupProxy failed: %s\n", ifname, err)
+	} else if proxyURL != nil {
+		fmt.Fprintf(outfile, "INFO: %s: Proxy %s to reach %s\n",
+			ifname, proxyURL.String(), reqURL)
+	}
+	const allowProxy = true
+	resp, contents, rtf, err := zedcloud.SendOnIntf(zedcloudCtx,
+		reqURL, ifname, reqlen, b, allowProxy)
+	if err != nil {
+		if rtf == types.SenderStatusRemTempFail {
+			fmt.Fprintf(outfile, "ERROR: %s: post %s remote temporary failure: %s\n",
+				ifname, reqURL, err)
+		} else {
+			fmt.Fprintf(outfile, "ERROR: %s: get %s failed: %s\n",
+				ifname, reqURL, err)
+		}
+		return false, nil, rtf, nil
+	}
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		fmt.Fprintf(outfile, "INFO: %s: %s StatusOK\n", ifname, reqURL)
+		return true, resp, rtf, contents
+	case http.StatusNotModified:
+		fmt.Fprintf(outfile, "INFO: %s: %s StatusNotModified\n", ifname, reqURL)
+		return true, resp, rtf, contents
+	default:
+		fmt.Fprintf(outfile, "ERROR: %s: %s statuscode %d %s\n",
+			ifname, reqURL, resp.StatusCode,
+			http.StatusText(resp.StatusCode))
+		fmt.Fprintf(outfile, "ERRROR: %s: Received %s\n",
+			ifname, string(contents))
+		return false, nil, rtf, nil
+	}
+}
+
+// Handles both create and modify events
+func handleGlobalConfigModify(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*diagContext)
+	if key != "global" {
+		log.Infof("handleGlobalConfigModify: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleGlobalConfigModify for %s\n", key)
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	if gcp != nil {
+		ctx.globalConfig = gcp
+	}
+	log.Infof("handleGlobalConfigModify done for %s\n", key)
+}
+
+func handleGlobalConfigDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+
+	ctx := ctxArg.(*diagContext)
+	if key != "global" {
+		log.Infof("handleGlobalConfigDelete: ignoring %s\n", key)
+		return
+	}
+	log.Infof("handleGlobalConfigDelete for %s\n", key)
+	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+		debugOverride)
+	*ctx.globalConfig = types.GlobalConfigDefaults
+	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

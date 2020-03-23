@@ -11,25 +11,23 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/uuidtonum"
-	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 const (
-	appImgObj = "appImg.obj"
-	certObj   = "cert.obj"
 	agentName = "zedmanager"
-
-	certificateDirname = persistDir + "/certs"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Set from Makefile
@@ -39,23 +37,29 @@ var Version = "No version specified"
 type zedmanagerContext struct {
 	configRestarted         bool
 	verifierRestarted       bool
-	subAppInstanceConfig    *pubsub.Subscription
-	pubAppInstanceStatus    *pubsub.Publication
-	subDeviceNetworkStatus  *pubsub.Subscription
-	pubAppNetworkConfig     *pubsub.Publication
-	subAppNetworkStatus     *pubsub.Subscription
-	pubDomainConfig         *pubsub.Publication
-	subDomainStatus         *pubsub.Subscription
-	pubEIDConfig            *pubsub.Publication
-	subEIDStatus            *pubsub.Subscription
-	subCertObjStatus        *pubsub.Subscription
-	pubAppImgDownloadConfig *pubsub.Publication
-	subAppImgDownloadStatus *pubsub.Subscription
-	pubAppImgVerifierConfig *pubsub.Publication
-	subAppImgVerifierStatus *pubsub.Subscription
-	subDatastoreConfig      *pubsub.Subscription
-	subGlobalConfig         *pubsub.Subscription
-	pubUuidToNum            *pubsub.Publication
+	rwImageAvailable        bool
+	subAppInstanceConfig    pubsub.Subscription
+	pubAppInstanceStatus    pubsub.Publication
+	subDeviceNetworkStatus  pubsub.Subscription
+	pubAppNetworkConfig     pubsub.Publication
+	subAppNetworkStatus     pubsub.Subscription
+	pubDomainConfig         pubsub.Publication
+	subDomainStatus         pubsub.Subscription
+	subImageStatus          pubsub.Subscription
+	pubEIDConfig            pubsub.Publication
+	subEIDStatus            pubsub.Subscription
+	subCertObjStatus        pubsub.Subscription
+	pubAppImgDownloadConfig pubsub.Publication
+	subAppImgDownloadStatus pubsub.Subscription
+	pubAppImgVerifierConfig pubsub.Publication
+	subAppImgVerifierStatus pubsub.Subscription
+	pubAppImgPersistConfig  pubsub.Publication
+	subAppImgPersistStatus  pubsub.Subscription
+	subGlobalConfig         pubsub.Subscription
+	globalConfig            *types.GlobalConfig
+	pubUuidToNum            pubsub.Publication
+	pubAppAndImageToHash    pubsub.Publication
+	GCInitialized           bool
 }
 
 var deviceNetworkStatus types.DeviceNetworkStatus
@@ -63,7 +67,7 @@ var deviceNetworkStatus types.DeviceNetworkStatus
 var debug = false
 var debugOverride bool // From command line arg
 
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	curpartPtr := flag.String("c", "", "Current partition")
@@ -80,11 +84,10 @@ func Run() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	logf, err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logf.Close()
 
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
@@ -93,235 +96,392 @@ func Run() {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
+	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	// Any state needed by handler functions
-	ctx := zedmanagerContext{}
-
+	ctx := zedmanagerContext{
+		globalConfig: &types.GlobalConfigDefaults,
+	}
 	// Create publish before subscribing and activating subscriptions
-	pubAppInstanceStatus, err := pubsub.Publish(agentName,
-		types.AppInstanceStatus{})
+	pubAppInstanceStatus, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.AppInstanceStatus{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubAppInstanceStatus = pubAppInstanceStatus
 	pubAppInstanceStatus.ClearRestarted()
 
-	pubAppNetworkConfig, err := pubsub.Publish(agentName,
-		types.AppNetworkConfig{})
+	pubAppNetworkConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.AppNetworkConfig{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubAppNetworkConfig = pubAppNetworkConfig
 	pubAppNetworkConfig.ClearRestarted()
 
-	pubDomainConfig, err := pubsub.Publish(agentName,
-		types.DomainConfig{})
+	pubDomainConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.DomainConfig{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubDomainConfig = pubDomainConfig
 	pubDomainConfig.ClearRestarted()
 
-	pubEIDConfig, err := pubsub.Publish(agentName,
-		types.EIDConfig{})
+	pubEIDConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.EIDConfig{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubEIDConfig = pubEIDConfig
 	pubEIDConfig.ClearRestarted()
 
-	pubAppImgDownloadConfig, err := pubsub.PublishScope(agentName,
-		appImgObj, types.DownloaderConfig{})
+	pubAppImgDownloadConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.AppImgObj,
+		TopicType:  types.DownloaderConfig{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubAppImgDownloadConfig.ClearRestarted()
 	ctx.pubAppImgDownloadConfig = pubAppImgDownloadConfig
 
-	pubAppImgVerifierConfig, err := pubsub.PublishScope(agentName,
-		appImgObj, types.VerifyImageConfig{})
+	pubAppImgVerifierConfig, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		AgentScope: types.AppImgObj,
+		TopicType:  types.VerifyImageConfig{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubAppImgVerifierConfig.ClearRestarted()
 	ctx.pubAppImgVerifierConfig = pubAppImgVerifierConfig
 
-	pubUuidToNum, err := pubsub.PublishPersistent(agentName,
-		types.UuidToNum{})
+	pubAppImgPersistConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			AgentScope: types.AppImgObj,
+			TopicType:  types.PersistImageConfig{},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubAppImgPersistConfig = pubAppImgPersistConfig
+
+	pubUuidToNum, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		Persistent: true,
+		TopicType:  types.UuidToNum{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 	ctx.pubUuidToNum = pubUuidToNum
 	pubUuidToNum.ClearRestarted()
 
-	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
-		false, &ctx)
+	pubAppAndImageToHash, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName:  agentName,
+		Persistent: true,
+		TopicType:  types.AppAndImageToHash{},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
+	ctx.pubAppAndImageToHash = pubAppAndImageToHash
+
+	// Look for global config such as log levels
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.GlobalConfig{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleGlobalConfigModify,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
 	// Get AppInstanceConfig from zedagent
-	subAppInstanceConfig, err := pubsub.Subscribe("zedagent",
-		types.AppInstanceConfig{}, false, &ctx)
+	subAppInstanceConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:      "zedagent",
+		TopicImpl:      types.AppInstanceConfig{},
+		Activate:       false,
+		Ctx:            &ctx,
+		CreateHandler:  handleCreate,
+		ModifyHandler:  handleModify,
+		DeleteHandler:  handleAppInstanceConfigDelete,
+		RestartHandler: handleConfigRestart,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppInstanceConfig.ModifyHandler = handleAppInstanceConfigModify
-	subAppInstanceConfig.DeleteHandler = handleAppInstanceConfigDelete
-	subAppInstanceConfig.RestartHandler = handleConfigRestart
 	ctx.subAppInstanceConfig = subAppInstanceConfig
 	subAppInstanceConfig.Activate()
 
-	// Look for DatastoreConfig from zedagent
-	// No handlers since we look at collection when we need to
-	subDatastoreConfig, err := pubsub.Subscribe("zedagent",
-		types.DatastoreConfig{}, false, &ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDatastoreConfig.ModifyHandler = handleDatastoreConfigModify
-	subDatastoreConfig.DeleteHandler = handleDatastoreConfigDelete
-	ctx.subDatastoreConfig = subDatastoreConfig
-	subDatastoreConfig.Activate()
-
 	// Get AppNetworkStatus from zedrouter
-	subAppNetworkStatus, err := pubsub.Subscribe("zedrouter",
-		types.AppNetworkStatus{}, false, &ctx)
+	subAppNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:      "zedrouter",
+		TopicImpl:      types.AppNetworkStatus{},
+		Activate:       false,
+		Ctx:            &ctx,
+		CreateHandler:  handleAppNetworkStatusModify,
+		ModifyHandler:  handleAppNetworkStatusModify,
+		DeleteHandler:  handleAppNetworkStatusDelete,
+		RestartHandler: handleZedrouterRestarted,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppNetworkStatus.ModifyHandler = handleAppNetworkStatusModify
-	subAppNetworkStatus.DeleteHandler = handleAppNetworkStatusDelete
-	subAppNetworkStatus.RestartHandler = handleZedrouterRestarted
 	ctx.subAppNetworkStatus = subAppNetworkStatus
 	subAppNetworkStatus.Activate()
 
 	// Get DomainStatus from domainmgr
-	subDomainStatus, err := pubsub.Subscribe("domainmgr",
-		types.DomainStatus{}, false, &ctx)
+	subDomainStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "domainmgr",
+		TopicImpl:     types.DomainStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleDomainStatusModify,
+		ModifyHandler: handleDomainStatusModify,
+		DeleteHandler: handleDomainStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDomainStatus.ModifyHandler = handleDomainStatusModify
-	subDomainStatus.DeleteHandler = handleDomainStatusDelete
 	ctx.subDomainStatus = subDomainStatus
 	subDomainStatus.Activate()
 
-	// Look for DownloaderStatus from downloader
-	subAppImgDownloadStatus, err := pubsub.SubscribeScope("downloader",
-		appImgObj, types.DownloaderStatus{}, false, &ctx)
+	// Get DomainStatus from domainmgr
+	subImageStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:      "domainmgr",
+		TopicImpl:      types.ImageStatus{},
+		Activate:       false,
+		Ctx:            &ctx,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+		RestartHandler: handleImageStatusRestarted,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppImgDownloadStatus.ModifyHandler = handleDownloaderStatusModify
-	subAppImgDownloadStatus.DeleteHandler = handleDownloaderStatusDelete
+	ctx.subImageStatus = subImageStatus
+	subImageStatus.Activate()
+
+	// Look for DownloaderStatus from downloader
+	subAppImgDownloadStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "downloader",
+		AgentScope:    types.AppImgObj,
+		TopicImpl:     types.DownloaderStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleDownloaderStatusModify,
+		ModifyHandler: handleDownloaderStatusModify,
+		DeleteHandler: handleDownloaderStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 	ctx.subAppImgDownloadStatus = subAppImgDownloadStatus
 	subAppImgDownloadStatus.Activate()
 
 	// Look for VerifyImageStatus from verifier
-	subAppImgVerifierStatus, err := pubsub.SubscribeScope("verifier",
-		appImgObj, types.VerifyImageStatus{}, false, &ctx)
+	subAppImgVerifierStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:      "verifier",
+		AgentScope:     types.AppImgObj,
+		TopicImpl:      types.VerifyImageStatus{},
+		Activate:       false,
+		Ctx:            &ctx,
+		CreateHandler:  handleVerifyImageStatusModify,
+		ModifyHandler:  handleVerifyImageStatusModify,
+		DeleteHandler:  handleVerifyImageStatusDelete,
+		RestartHandler: handleVerifierRestarted,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAppImgVerifierStatus.ModifyHandler = handleVerifyImageStatusModify
-	subAppImgVerifierStatus.DeleteHandler = handleVerifyImageStatusDelete
-	subAppImgVerifierStatus.RestartHandler = handleVerifierRestarted
 	ctx.subAppImgVerifierStatus = subAppImgVerifierStatus
 	subAppImgVerifierStatus.Activate()
 
-	// Get IdentityStatus from identitymgr
-	subEIDStatus, err := pubsub.Subscribe("identitymgr",
-		types.EIDStatus{}, false, &ctx)
+	// Look for PersistImageStatus from verifier
+	subAppImgPersistStatus, err := ps.NewSubscription(
+		pubsub.SubscriptionOptions{
+			AgentName:     "verifier",
+			AgentScope:    types.AppImgObj,
+			TopicImpl:     types.PersistImageStatus{},
+			Activate:      false,
+			Ctx:           &ctx,
+			CreateHandler: handlePersistImageStatusModify,
+			ModifyHandler: handlePersistImageStatusModify,
+			DeleteHandler: handlePersistImageStatusDelete,
+			WarningTime:   warningTime,
+			ErrorTime:     errorTime,
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subEIDStatus.ModifyHandler = handleEIDStatusModify
-	subEIDStatus.DeleteHandler = handleEIDStatusDelete
-	subEIDStatus.RestartHandler = handleIdentitymgrRestarted
+	ctx.subAppImgPersistStatus = subAppImgPersistStatus
+	subAppImgPersistStatus.Activate()
+
+	// Get IdentityStatus from identitymgr
+	subEIDStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:      "identitymgr",
+		TopicImpl:      types.EIDStatus{},
+		Activate:       false,
+		Ctx:            &ctx,
+		CreateHandler:  handleEIDStatusModify,
+		ModifyHandler:  handleEIDStatusModify,
+		DeleteHandler:  handleEIDStatusDelete,
+		RestartHandler: handleIdentitymgrRestarted,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 	ctx.subEIDStatus = subEIDStatus
 	subEIDStatus.Activate()
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &ctx)
+	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "nim",
+		TopicImpl:     types.DeviceNetworkStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleDNSModify,
+		ModifyHandler: handleDNSModify,
+		DeleteHandler: handleDNSDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
-	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
 	// Look for CertObjStatus from baseosmgr
-	subCertObjStatus, err := pubsub.Subscribe("baseosmgr",
-		types.CertObjStatus{}, false, &ctx)
+	subCertObjStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "baseosmgr",
+		TopicImpl:     types.CertObjStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleCertObjStatusModify,
+		ModifyHandler: handleCertObjStatusModify,
+		DeleteHandler: handleCertObjStatusDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subCertObjStatus.ModifyHandler = handleCertObjStatusModify
-	subCertObjStatus.DeleteHandler = handleCertObjStatusDelete
 	ctx.subCertObjStatus = subCertObjStatus
 	subCertObjStatus.Activate()
 
-	// First we process the verifierStatus to avoid downloading
-	// an image we already have in place.
-	log.Infof("Handling initial verifier Status\n")
-	for !ctx.verifierRestarted {
+	// Pick up debug aka log level before we start real work
+	for !ctx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
+
+	// First we process the verifierStatus and ImageStatus to avoid downloading
+	// an image we already have in place.
+	for !ctx.verifierRestarted || !ctx.rwImageAvailable {
+		log.Infof("Waiting for verifier %t rwImageAvailable %t",
+			ctx.verifierRestarted, ctx.rwImageAvailable)
+
+		select {
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subAppImgVerifierStatus.C:
+		case change := <-subAppImgVerifierStatus.MsgChan():
 			subAppImgVerifierStatus.ProcessChange(change)
 			if ctx.verifierRestarted {
 				log.Infof("Verifier reported restarted\n")
 			}
+
+		case change := <-subAppImgPersistStatus.MsgChan():
+			subAppImgPersistStatus.ProcessChange(change)
+
+		case change := <-subImageStatus.MsgChan():
+			subImageStatus.ProcessChange(change)
+			if ctx.rwImageAvailable {
+				log.Infof("rwImageAvailable\n")
+			}
+
+		case <-stillRunning.C:
 		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 
 	log.Infof("Handling all inputs\n")
 	for {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
 		// handle cert ObjectsChanges
-		case change := <-subCertObjStatus.C:
+		case change := <-subCertObjStatus.MsgChan():
 			subCertObjStatus.ProcessChange(change)
 
-		case change := <-subAppImgDownloadStatus.C:
+		case change := <-subAppImgDownloadStatus.MsgChan():
 			subAppImgDownloadStatus.ProcessChange(change)
 
-		case change := <-subAppImgVerifierStatus.C:
+		case change := <-subAppImgVerifierStatus.MsgChan():
 			subAppImgVerifierStatus.ProcessChange(change)
 
-		case change := <-subEIDStatus.C:
+		case change := <-subAppImgPersistStatus.MsgChan():
+			subAppImgPersistStatus.ProcessChange(change)
+
+		case change := <-subEIDStatus.MsgChan():
 			subEIDStatus.ProcessChange(change)
 
-		case change := <-subAppNetworkStatus.C:
+		case change := <-subAppNetworkStatus.MsgChan():
 			subAppNetworkStatus.ProcessChange(change)
 
-		case change := <-subDomainStatus.C:
+		case change := <-subDomainStatus.MsgChan():
 			subDomainStatus.ProcessChange(change)
 
-		case change := <-subAppInstanceConfig.C:
+		case change := <-subImageStatus.MsgChan():
+			subImageStatus.ProcessChange(change)
+
+		case change := <-subAppInstanceConfig.MsgChan():
 			subAppInstanceConfig.ProcessChange(change)
 
-		case change := <-subDatastoreConfig.C:
-			subDatastoreConfig.ProcessChange(change)
-
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
@@ -357,6 +517,15 @@ func handleVerifierRestarted(ctxArg interface{}, done bool) {
 	}
 }
 
+func handleImageStatusRestarted(ctxArg interface{}, done bool) {
+	ctx := ctxArg.(*zedmanagerContext)
+
+	log.Infof("handleImageStatusRestarted(%v)\n", done)
+	if done {
+		ctx.rwImageAvailable = true
+	}
+}
+
 func handleIdentitymgrRestarted(ctxArg interface{}, done bool) {
 	ctx := ctxArg.(*zedmanagerContext)
 
@@ -381,7 +550,7 @@ func publishAppInstanceStatus(ctx *zedmanagerContext,
 	key := status.Key()
 	log.Debugf("publishAppInstanceStatus(%s)\n", key)
 	pub := ctx.pubAppInstanceStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishAppInstanceStatus(ctx *zedmanagerContext,
@@ -396,26 +565,6 @@ func unpublishAppInstanceStatus(ctx *zedmanagerContext,
 		return
 	}
 	pub.Unpublish(key)
-}
-
-// Determine whether it is an create or modify
-func handleAppInstanceConfigModify(ctxArg interface{}, key string, configArg interface{}) {
-
-	log.Infof("handleAppInstanceConfigModify(%s)\n", key)
-	ctx := ctxArg.(*zedmanagerContext)
-	config := cast.CastAppInstanceConfig(configArg)
-	if config.Key() != key {
-		log.Errorf("handleAppInstanceConfigModify key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return
-	}
-	status := lookupAppInstanceStatus(ctx, key)
-	if status == nil {
-		handleCreate(ctx, key, config)
-	} else {
-		handleModify(ctx, key, config, status)
-	}
-	log.Infof("handleAppInstanceConfigModify(%s) done\n", key)
 }
 
 func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
@@ -441,12 +590,7 @@ func lookupAppInstanceStatus(ctx *zedmanagerContext, key string) *types.AppInsta
 		log.Infof("lookupAppInstanceStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastAppInstanceStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupAppInstanceStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.AppInstanceStatus)
 	return &status
 }
 
@@ -458,17 +602,14 @@ func lookupAppInstanceConfig(ctx *zedmanagerContext, key string) *types.AppInsta
 		log.Infof("lookupAppInstanceConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastAppInstanceConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupAppInstanceConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.AppInstanceConfig)
 	return &config
 }
 
-func handleCreate(ctx *zedmanagerContext, key string,
-	config types.AppInstanceConfig) {
+func handleCreate(ctxArg interface{}, key string,
+	configArg interface{}) {
+	ctx := ctxArg.(*zedmanagerContext)
+	config := configArg.(types.AppInstanceConfig)
 
 	log.Infof("handleCreate(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
@@ -514,20 +655,15 @@ func handleCreate(ctx *zedmanagerContext, key string,
 		len(config.StorageConfigList))
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
-		ss.DatastoreId = sc.DatastoreId
-		ss.Name = sc.Name
-		ss.ImageSha256 = sc.ImageSha256
-		ss.Size = sc.Size
-		ss.CertificateChain = sc.CertificateChain
-		ss.ImageSignature = sc.ImageSignature
-		ss.SignatureKey = sc.SignatureKey
-		ss.ReadOnly = sc.ReadOnly
-		ss.Preserve = sc.Preserve
-		ss.Format = sc.Format
-		ss.Maxsizebytes = sc.Maxsizebytes
-		ss.Devtype = sc.Devtype
-		ss.Target = sc.Target
+		ss.UpdateFromStorageConfig(sc)
+		if ss.IsContainer {
+			// FIXME - We really need a top level flag to tell the app is
+			//  a container. Deriving it from Storage seems hacky.
+			status.IsContainer = true
+		}
+		maybeLatchImageSha(ctx, config, ss)
 	}
+
 	status.EIDList = make([]types.EIDStatusDetails,
 		len(config.OverlayNetworkList))
 
@@ -542,30 +678,96 @@ func handleCreate(ctx *zedmanagerContext, key string,
 		log.Errorf("App Instance %s-%s: Errors in App Instance Create.",
 			config.DisplayName, config.UUIDandVersion.UUID)
 	}
+
+	// Do some basic sanity checks.
+	if config.FixedResources.Memory == 0 {
+		errStr := "Invalid Memory Size - 0\n"
+		status.Error += errStr
+	}
+	if config.FixedResources.VCpus == 0 {
+		errStr := "Invalid Cpu count - 0\n"
+		status.Error += errStr
+	}
+	if status.Error != "" {
+		status.SetError(status.Error, "Zedmanager Create Handler",
+			time.Now())
+	}
 	publishAppInstanceStatus(ctx, &status)
 
-	// If there are no errors, go ahead with Instance creation.
-	if status.Error == "" {
-		handleCreate2(ctx, config, status)
+	// if some error, return
+	if status.Error != "" {
+		log.Errorf("AppInstance(Name:%s, UUID:%s): Errors in App Instance "+
+			"Create. Error: %s",
+			config.DisplayName, config.UUIDandVersion.UUID, status.Error)
+		return
 	}
 
-}
-
-func handleCreate2(ctx *zedmanagerContext, config types.AppInstanceConfig,
-	status types.AppInstanceStatus) {
-
-	uuidStr := status.Key()
-	changed := doUpdate(ctx, uuidStr, config, &status)
+	// If there are no errors, go ahead with Instance creation.
+	changed := doUpdate(ctx, config, &status)
 	if changed {
-		log.Infof("handleCreate status change for %s\n",
-			uuidStr)
+		log.Infof("AppInstance(Name:%s, UUID:%s): handleCreate status change.",
+			config.DisplayName, config.UUIDandVersion.UUID)
 		publishAppInstanceStatus(ctx, &status)
 	}
 	log.Infof("handleCreate done for %s\n", config.DisplayName)
 }
 
-func handleModify(ctx *zedmanagerContext, key string,
-	config types.AppInstanceConfig, status *types.AppInstanceStatus) {
+func maybeLatchImageSha(ctx *zedmanagerContext, config types.AppInstanceConfig,
+	ssPtr *types.StorageStatus) {
+
+	imageSha := lookupAppAndImageHash(ctx, config.UUIDandVersion.UUID,
+		ssPtr.ImageID)
+	if imageSha == "" {
+		if ssPtr.IsContainer && ssPtr.ImageSha256 == "" {
+			log.Infof("Container app/image %s %s/%s has not (yet) latched sha",
+				config.DisplayName, config.UUIDandVersion.UUID,
+				ssPtr.ImageID)
+		}
+		return
+	}
+	if ssPtr.ImageSha256 == "" {
+		log.Infof("Latching %s app/image %s/%s to sha %s",
+			config.DisplayName,
+			config.UUIDandVersion.UUID, ssPtr.ImageID, imageSha)
+		ssPtr.ImageSha256 = imageSha
+		if ssPtr.IsContainer {
+			newName := maybeInsertSha(ssPtr.Name, imageSha)
+			if newName != ssPtr.Name {
+				log.Infof("Changing container name from %s to %s",
+					ssPtr.Name, newName)
+				ssPtr.Name = newName
+			}
+		}
+	} else if ssPtr.ImageSha256 != imageSha {
+		// We already catch this change, but logging here in any case
+		log.Warnf("App/Image %s %s/%s hash sha %s received %s",
+			config.DisplayName,
+			config.UUIDandVersion.UUID, ssPtr.ImageID,
+			imageSha, ssPtr.ImageSha256)
+	}
+}
+
+// Check if the OCI name does not include an explicit sha and if not
+// return the name with the sha inserted.
+// Note that the sha must be lower case in the OCI reference.
+func maybeInsertSha(name string, sha string) string {
+	if strings.Index(name, "@") != -1 {
+		// Already has a sha
+		return name
+	}
+	sha = strings.ToLower(sha)
+	last := strings.LastIndex(name, ":")
+	if last == -1 {
+		return name + "@sha256:" + sha
+	}
+	return name[:last] + "@sha256:" + sha
+}
+
+func handleModify(ctxArg interface{}, key string,
+	configArg interface{}) {
+	ctx := ctxArg.(*zedmanagerContext)
+	config := configArg.(types.AppInstanceConfig)
+	status := lookupAppInstanceStatus(ctx, key)
 	log.Infof("handleModify(%v) for %s\n",
 		config.UUIDandVersion, config.DisplayName)
 
@@ -580,7 +782,8 @@ func handleModify(ctx *zedmanagerContext, key string,
 	if needRestart ||
 		config.RestartCmd.Counter != status.RestartCmd.Counter {
 
-		log.Infof("handleModify(%v) for %s restartcmd from %d to %d need %v\n",
+		log.Infof("handleModify(%v) for %s restartcmd from %d to %d "+
+			"needRestart: %v\n",
 			config.UUIDandVersion, config.DisplayName,
 			status.RestartCmd.Counter, config.RestartCmd.Counter,
 			needRestart)
@@ -598,7 +801,8 @@ func handleModify(ctx *zedmanagerContext, key string,
 		}
 	}
 	if needPurge || config.PurgeCmd.Counter != status.PurgeCmd.Counter {
-		log.Infof("handleModify(%v) for %s purgecmd from %d to %d need %v\n",
+		log.Infof("handleModify(%v) for %s purgecmd from %d to %d "+
+			"needPurge: %v\n",
 			config.UUIDandVersion, config.DisplayName,
 			status.PurgeCmd.Counter, config.PurgeCmd.Counter,
 			needPurge)
@@ -610,11 +814,9 @@ func handleModify(ctx *zedmanagerContext, key string,
 	status.UUIDandVersion = config.UUIDandVersion
 	publishAppInstanceStatus(ctx, status)
 
-	uuidStr := status.Key()
-	changed := doUpdate(ctx, uuidStr, config, status)
+	changed := doUpdate(ctx, config, status)
 	if changed {
-		log.Infof("handleModify status change for %s\n",
-			uuidStr)
+		log.Infof("handleModify status change for %s", status.Key())
 		publishAppInstanceStatus(ctx, status)
 	}
 	status.FixedResources = config.FixedResources
@@ -634,6 +836,7 @@ func handleDelete(ctx *zedmanagerContext, key string,
 	removeAIStatus(ctx, status)
 	// Remove the recorded PurgeCmd Counter
 	uuidtonum.UuidToNumDelete(ctx.pubUuidToNum, status.UUIDandVersion.UUID)
+	purgeAppAndImageHash(ctx, status.UUIDandVersion.UUID)
 	log.Infof("handleDelete done for %s\n", status.DisplayName)
 }
 
@@ -657,9 +860,9 @@ func quantifyChanges(config types.AppInstanceConfig,
 	} else {
 		for i, sc := range config.StorageConfigList {
 			ss := status.StorageStatusList[i]
-			if ss.ImageSha256 != sc.ImageSha256 {
-				log.Infof("quantifyChanges storage sha changed from %s to %s\n",
-					ss.ImageSha256, sc.ImageSha256)
+			if ss.ImageID != sc.ImageID {
+				log.Infof("quantifyChanges storage imageID changed from %s to %s\n",
+					ss.ImageID, sc.ImageID)
 				needPurge = true
 			}
 			if ss.ReadOnly != sc.ReadOnly {
@@ -768,9 +971,10 @@ func quantifyChanges(config types.AppInstanceConfig,
 	return needPurge, needRestart
 }
 
+// Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	if key != "global" {
 		log.Debugf("handleDNSModify: ignoring %s\n", key)
 		return
@@ -797,70 +1001,7 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
-func handleDatastoreConfigModify(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	ctx := ctxArg.(*zedmanagerContext)
-	config := cast.CastDatastoreConfig(configArg)
-	checkAndRecreateAppInstance(ctx, config.UUID)
-	log.Infof("handleDatastoreConfigModify for %s\n", key)
-}
-
-func handleDatastoreConfigDelete(ctxArg interface{}, key string,
-	configArg interface{}) {
-
-	log.Infof("handleDatastoreConfigDelete for %s\n", key)
-}
-
-// Called when a DatastoreConfig is added
-// Walk all BaseOsStatus (XXX Cert?) looking for MissingDatastore, then
-// check if the DatastoreId matches.
-func checkAndRecreateAppInstance(ctx *zedmanagerContext, datastore uuid.UUID) {
-
-	log.Infof("checkAndRecreateAppInstance(%s)\n", datastore.String())
-	pub := ctx.pubAppInstanceStatus
-	items := pub.GetAll()
-	for _, st := range items {
-		status := cast.CastAppInstanceStatus(st)
-		if !status.MissingDatastore {
-			continue
-		}
-		log.Infof("checkAndRecreateAppInstance(%s) missing for %s\n",
-			datastore.String(), status.DisplayName)
-
-		config := lookupAppInstanceConfig(ctx, status.Key())
-		if config == nil {
-			log.Warnf("checkAndRecreatebaseOs(%s) no config for %s\n",
-				datastore.String(), status.DisplayName)
-			continue
-		}
-
-		matched := false
-		for _, ss := range config.StorageConfigList {
-			if ss.DatastoreId != datastore {
-				continue
-			}
-			log.Infof("checkAndRecreateAppInstance(%s) found ss %s for %s\n",
-				datastore.String(), ss.Name,
-				status.DisplayName)
-			matched = true
-		}
-		if !matched {
-			continue
-		}
-		log.Infof("checkAndRecreateAppInstance(%s) recreating for %s\n",
-			datastore.String(), status.DisplayName)
-		if status.Error != "" {
-			log.Infof("checkAndRecreateAppInstance(%s) remove error %s for %s\n",
-				datastore.String(), status.Error,
-				status.DisplayName)
-			status.Error = ""
-			status.ErrorTime = time.Time{}
-		}
-		handleCreate2(ctx, *config, status)
-	}
-}
-
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
@@ -870,8 +1011,13 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	if gcp != nil {
+		ctx.globalConfig = gcp
+		ctx.GCInitialized = true
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 
@@ -886,5 +1032,6 @@ func handleGlobalConfigDelete(ctxArg interface{}, key string,
 	log.Infof("handleGlobalConfigDelete for %s\n", key)
 	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	*ctx.globalConfig = types.GlobalConfigDefaults
 	log.Infof("handleGlobalConfigDelete done for %s\n", key)
 }

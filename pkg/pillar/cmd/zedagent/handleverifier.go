@@ -5,15 +5,16 @@ package zedagent
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
-func verifierSubscription(ctx *zedagentContext, objType string) *pubsub.Subscription {
-	var sub *pubsub.Subscription
+func verifierSubscription(ctx *zedagentContext, objType string) pubsub.Subscription {
+	var sub pubsub.Subscription
 	switch objType {
-	case baseOsObj:
+	case types.BaseOsObj:
 		sub = ctx.subBaseOsVerifierStatus
-	case appImgObj:
+	case types.AppImgObj:
 		sub = ctx.subAppImgVerifierStatus
 	default:
 		log.Fatalf("verifierSubscription: Unknown ObjType %s\n",
@@ -23,9 +24,9 @@ func verifierSubscription(ctx *zedagentContext, objType string) *pubsub.Subscrip
 }
 
 func verifierGetAll(ctx *zedagentContext) map[string]interface{} {
-	sub1 := verifierSubscription(ctx, baseOsObj)
+	sub1 := verifierSubscription(ctx, types.BaseOsObj)
 	items1 := sub1.GetAll()
-	sub2 := verifierSubscription(ctx, appImgObj)
+	sub2 := verifierSubscription(ctx, types.AppImgObj)
 	items2 := sub2.GetAll()
 
 	items := make(map[string]interface{})

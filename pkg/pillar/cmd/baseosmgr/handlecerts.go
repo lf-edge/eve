@@ -6,34 +6,30 @@ package baseosmgr
 
 import (
 	"fmt"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
-	"github.com/lf-edge/eve/pkg/pillar/types"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"os"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/types"
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
-func lookupCertObjSafename(ctx *baseOsMgrContext, safename string) *types.CertObjConfig {
+// Returns a list of all matching cert objects
+func lookupCertObjImageID(ctx *baseOsMgrContext, imageID uuid.UUID) []*types.CertObjConfig {
 
+	var result []*types.CertObjConfig
 	sub := ctx.subCertObjConfig
 	items := sub.GetAll()
-	for key, c := range items {
-		config := cast.CastCertObjConfig(c)
-		if config.Key() != key {
-			log.Errorf("certObjHandleStatusUpdateSafename key/UUID mismatch %s vs %s; ignored %+v\n",
-				key, config.Key(), config)
-			continue
-		}
+	for _, c := range items {
+		config := c.(types.CertObjConfig)
 		for _, sc := range config.StorageConfigList {
-			safename1 := types.UrlToSafename(sc.Name,
-				sc.ImageSha256)
-			if safename == safename1 {
-				return &config
+			if uuid.Equal(imageID, sc.ImageID) {
+				result = append(result, &config)
 			}
 		}
 	}
-	return nil
+	return result
 }
 
 // check if the storage object config have changed
@@ -60,27 +56,27 @@ func certObjCheckConfigModify(ctx *baseOsMgrContext, uuidStr string,
 	return false
 }
 
-// XXX but there can be multiple CertObjConfig/Status with the same safename!
-// This only looks for one.
-func certObjHandleStatusUpdateSafename(ctx *baseOsMgrContext, safename string) {
+func certObjHandleStatusUpdateImageID(ctx *baseOsMgrContext, imageID uuid.UUID) {
 
-	log.Infof("certObjHandleStatusUpdateSafename(%s)\n", safename)
-	config := lookupCertObjSafename(ctx, safename)
-	if config == nil {
-		log.Infof("certObjHandleStatusUpdateSafename(%s) not found\n",
-			safename)
+	log.Infof("certObjHandleStatusUpdateImageId(%s)\n", imageID)
+	configPtrList := lookupCertObjImageID(ctx, imageID)
+	if len(configPtrList) == 0 {
+		log.Infof("certObjHandleStatusUpdateImageID(%s) not found\n",
+			imageID)
 		return
 	}
-	uuidStr := config.Key()
-	status := lookupCertObjStatus(ctx, uuidStr)
-	if status == nil {
-		log.Infof("certObjHandleStatusUpdateSafename(%s) no status\n",
-			safename)
-		return
+	for _, configPtr := range configPtrList {
+		uuidStr := configPtr.Key()
+		statusPtr := lookupCertObjStatus(ctx, uuidStr)
+		if statusPtr == nil {
+			log.Infof("certObjHandleStatusUpdateImageID(%s) no status\n",
+				imageID)
+			continue
+		}
+		log.Infof("certObjHandleStatusUpdateImageID(%s) found %s\n",
+			imageID, uuidStr)
+		certObjHandleStatusUpdate(ctx, configPtr, statusPtr)
 	}
-	log.Infof("certObjHandleStatusUpdateSafename(%s) found %s\n",
-		safename, uuidStr)
-	certObjHandleStatusUpdate(ctx, config, status)
 }
 
 func certObjHandleStatusUpdate(ctx *baseOsMgrContext,
@@ -144,12 +140,11 @@ func doCertObjInstall(ctx *baseOsMgrContext, uuidStr string, config types.CertOb
 	for i, sc := range config.StorageConfigList {
 		ss := &status.StorageStatusList[i]
 
-		if ss.Name != sc.Name ||
-			ss.ImageSha256 != sc.ImageSha256 {
+		if ss.Name != sc.Name || !uuid.Equal(ss.ImageID, sc.ImageID) {
 			// Report to zedcloud
 			errString := fmt.Sprintf("%s, Storage config mismatch:\n\t%s\n\t%s\n\t%s\n\t%s\n\n", uuidStr,
 				sc.Name, ss.Name,
-				sc.ImageSha256, ss.ImageSha256)
+				sc.ImageID, ss.ImageID)
 			log.Errorln(errString)
 			status.Error = errString
 			status.ErrorTime = time.Now()
@@ -166,7 +161,7 @@ func doCertObjInstall(ctx *baseOsMgrContext, uuidStr string, config types.CertOb
 	}
 
 	// install the certs now
-	if installDownloadedObjects(certObj, uuidStr, &status.StorageStatusList) {
+	if installDownloadedObjects(types.CertObj, uuidStr, &status.StorageStatusList) {
 		// Automatically move from DOWNLOADED to INSTALLED
 		status.State = types.INSTALLED
 		changed = true
@@ -180,13 +175,12 @@ func doCertObjInstall(ctx *baseOsMgrContext, uuidStr string, config types.CertOb
 func checkCertObjStorageDownloadStatus(ctx *baseOsMgrContext, uuidStr string,
 	config types.CertObjConfig, status *types.CertObjStatus) (bool, bool) {
 
-	ret := checkStorageDownloadStatus(ctx, certObj, uuidStr,
+	ret := checkStorageDownloadStatus(ctx, types.CertObj, uuidStr,
 		config.StorageConfigList, status.StorageStatusList)
 
 	status.State = ret.MinState
 	status.Error = ret.AllErrors
 	status.ErrorTime = ret.ErrorTime
-	status.MissingDatastore = ret.MissingDatastore
 
 	log.Infof("checkCertObjDownloadStatus %s, %v\n", uuidStr, ret.MinState)
 
@@ -246,21 +240,20 @@ func doCertObjUninstall(ctx *baseOsMgrContext, uuidStr string,
 	for i := range status.StorageStatusList {
 
 		ss := &status.StorageStatusList[i]
-		safename := types.UrlToSafename(ss.Name, ss.ImageSha256)
-		log.Infof("doCertObjUninstall(%s) safename %s\n",
-			uuidStr, safename)
+		log.Infof("doCertObjUninstall(%s) imageID %s\n",
+			uuidStr, ss.ImageID)
 		// Decrease refcount if we had increased it
 		if ss.HasDownloaderRef {
-			removeDownloaderConfig(ctx, certObj, safename)
+			removeDownloaderConfig(ctx, types.CertObj, ss.ImageID)
 			ss.HasDownloaderRef = false
 			changed = true
 		}
 
-		ds := lookupDownloaderStatus(ctx, certObj, safename)
+		ds := lookupDownloaderStatus(ctx, types.CertObj, ss.ImageID)
 		// XXX if additional refs it will not go away
 		if false && ds != nil {
 			log.Infof("doCertObjUninstall(%s) download %s not yet gone\n",
-				uuidStr, safename)
+				uuidStr, ss.ImageID)
 			removedAll = false
 			continue
 		}
@@ -280,6 +273,7 @@ func doCertObjUninstall(ctx *baseOsMgrContext, uuidStr string,
 	return changed, del
 }
 
+// key is UUIDandVersion string
 func lookupCertObjConfig(ctx *baseOsMgrContext, key string) *types.CertObjConfig {
 
 	sub := ctx.subCertObjConfig
@@ -288,15 +282,11 @@ func lookupCertObjConfig(ctx *baseOsMgrContext, key string) *types.CertObjConfig
 		log.Infof("lookupCertObjConfig(%s) not found\n", key)
 		return nil
 	}
-	config := cast.CastCertObjConfig(c)
-	if config.Key() != key {
-		log.Errorf("lookupCertObjConfig key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, config.Key(), config)
-		return nil
-	}
+	config := c.(types.CertObjConfig)
 	return &config
 }
 
+// key is UUIDandVersion string
 func lookupCertObjStatus(ctx *baseOsMgrContext, key string) *types.CertObjStatus {
 	pub := ctx.pubCertObjStatus
 	st, _ := pub.Get(key)
@@ -304,12 +294,7 @@ func lookupCertObjStatus(ctx *baseOsMgrContext, key string) *types.CertObjStatus
 		log.Infof("lookupCertObjStatus(%s) not found\n", key)
 		return nil
 	}
-	status := cast.CastCertObjStatus(st)
-	if status.Key() != key {
-		log.Errorf("lookupCertObjStatus key/UUID mismatch %s vs %s; ignored %+v\n",
-			key, status.Key(), status)
-		return nil
-	}
+	status := st.(types.CertObjStatus)
 	return &status
 }
 
@@ -318,7 +303,7 @@ func publishCertObjStatus(ctx *baseOsMgrContext, status *types.CertObjStatus) {
 	key := status.Key()
 	log.Debugf("publishCertObjStatus(%s)\n", key)
 	pub := ctx.pubCertObjStatus
-	pub.Publish(key, status)
+	pub.Publish(key, *status)
 }
 
 func unpublishCertObjStatus(ctx *baseOsMgrContext, key string) {

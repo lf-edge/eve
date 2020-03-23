@@ -21,13 +21,9 @@ WORKDIR /pillar
 RUN [ -z "$GOARCH" ] || export CC=$(echo /*-cross/bin/*-gcc) ;\
     echo "Running go vet" && go vet ./... && \
     echo "Running go fmt" && ERR=$(gofmt -e -l -s $(find . -name \*.go | grep -v /vendor/)) && \
-       if [ -n "$ERR" ] ; then echo $ERR ; exit 1 ; fi && \
+       if [ -n "$ERR" ] ; then echo "go fmt Failed - ERR: "$ERR ; exit 1 ; fi && \
     make DISTDIR=/dist build
 
-# hadolint ignore=DL3006
-FROM LISP_TAG as lisp
-# hadolint ignore=DL3006
-FROM XENTOOLS_TAG as xen-tools
 # hadolint ignore=DL3006
 FROM DNSMASQ_TAG as dnsmasq
 # hadolint ignore=DL3006
@@ -35,22 +31,17 @@ FROM STRONGSWAN_TAG as strongswan
 # hadolint ignore=DL3006
 FROM GPTTOOLS_TAG as gpttools
 # hadolint ignore=DL3006
-FROM WATCHDOG_TAG as watchdog
-# hadolint ignore=DL3006
-FROM RKT_TAG as rkt-build
-# hadolint ignore=DL3006
-FROM RKT_STAGE1_TAG as rkt-stage1-build
+FROM FSCRYPT_TAG as fscrypt-build
 
 FROM alpine:3.8
-RUN apk add --no-cache \
-    yajl xz bash openssl iptables ip6tables iproute2 dhcpcd \
-    apk-cron coreutils dmidecode sudo libbz2 libuuid ipset \
-    libaio logrotate pixman glib curl radvd perl ethtool \
-    util-linux e2fsprogs libcrypto1.0 xorriso \
-    python libpcap libffi jq
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
-# The following is for xen-tools
-RUN [ `uname -m` = "aarch64" ] && apk add --no-cache libfdt || :
+RUN apk add --no-cache \
+    yajl xz bash openssl iptables ip6tables iproute2 dhcpcd      \
+    coreutils dmidecode libbz2 libuuid ipset       \
+    curl radvd ethtool \
+    util-linux e2fsprogs libcrypto1.0 xorriso qemu-img \
+    libpcap jq e2fsprogs-extra keyutils
 
 # We have to make sure configs survive in some location, but they don't pollute
 # the default /config (since that is expected to be an empty mount point)
@@ -59,26 +50,33 @@ ADD scripts/device-steps.sh \
     scripts/generate-device.sh \
     scripts/generate-self-signed.sh \
     scripts/handlezedserverconfig.sh \
-    scripts/watchdog-report.sh \
   /opt/zededa/bin/
-ADD conf/AssignableAdapters /var/tmp/zededa/AssignableAdapters
-ADD conf/DeviceNetworkConfig /var/tmp/zededa/DeviceNetworkConfig
 ADD conf/lisp.config.base /var/tmp/zededa/lisp.config.base
 
+COPY patches/* /patches/
+RUN set -e && for patch in ../patches/*.patch; do \
+        echo "Applying $patch"; \
+        patch -p1 < "$patch"; \
+    done
+
 COPY --from=build /dist /opt/zededa/bin
-COPY --from=xen-tools / /
-COPY --from=lisp / /
 COPY --from=gpttools / /
 COPY --from=dnsmasq /usr/sbin/dnsmasq /opt/zededa/bin/dnsmasq
 COPY --from=strongswan / /
-COPY --from=watchdog /usr/sbin /usr/sbin
-COPY --from=rkt-build /go/rkt/build-rkt-1.26.0/target/bin/rkt /usr/sbin/rkt
-COPY --from=rkt-stage1-build /go/stage1-xen-master/stage1-xen.aci /usr/sbin/stage1-xen.aci
+COPY --from=fscrypt-build /fscrypt /opt/zededa/bin/fscrypt
 
 # And now a few local tweaks
 COPY rootfs/ /
-# logrotate requires restricted permissions
-RUN chmod 644 /etc/logrotate.d/zededa
+
+# We will start experimenting with stripping go binaries on ARM only for now
+RUN if [ "$(uname -m)" = "aarch64" ] ; then                                             \
+       apk add --no-cache findutils=4.6.0-r1 binutils=2.30-r6 file=5.32-r2             ;\
+       find / -type f -executable -exec file {} \; | grep 'not stripped' | cut -f1 -d: |\
+       xargs strip                                                                     ;\
+       apk del findutils binutils file                                                 ;\
+    fi
+
+SHELL ["/bin/sh", "-c"]
 
 # FIXME: replace with tini+monit ASAP
 WORKDIR /

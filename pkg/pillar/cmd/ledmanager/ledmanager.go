@@ -20,18 +20,18 @@ package ledmanager
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"time"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
-	"io/ioutil"
-	"os"
-	"os/exec"
-	"time"
 )
 
 const (
@@ -43,12 +43,13 @@ const (
 type ledManagerContext struct {
 	countChange            chan int
 	ledCounter             int // Supress work and logging if no change
-	subGlobalConfig        *pubsub.Subscription
-	subLedBlinkCounter     *pubsub.Subscription
-	subDeviceNetworkStatus *pubsub.Subscription
+	subGlobalConfig        pubsub.Subscription
+	subLedBlinkCounter     pubsub.Subscription
+	subDeviceNetworkStatus pubsub.Subscription
 	deviceNetworkStatus    types.DeviceNetworkStatus
 	usableAddressCount     int
 	derivedLedCounter      int // Based on ledCounter + usableAddressCount
+	GCInitialized          bool
 }
 
 type Blink200msFunc func()
@@ -92,6 +93,10 @@ var mToF = []modelToFuncs{
 		initFunc:  InitWifiLedCmd,
 		blinkFunc: ExecuteWifiLedCmd},
 	{
+		model:     "LeMaker.HiKey-6220",
+		initFunc:  InitWifiLedCmd,
+		blinkFunc: ExecuteWifiLedCmd},
+	{
 		model: "QEMU.Standard PC (i440FX + PIIX, 1996)",
 		// No dd disk light blinking on QEMU
 	},
@@ -107,7 +112,7 @@ var debugOverride bool // From command line arg
 // Set from Makefile
 var Version = "No version specified"
 
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug")
 	curpartPtr := flag.String("c", "", "Current partition")
@@ -128,11 +133,10 @@ func Run() {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	logf, err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName, curpart)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer logf.Close()
 
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
@@ -141,7 +145,7 @@ func Run() {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
+	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	model := hardware.GetHardwareModel()
 	log.Infof("Got HardwareModel %s\n", model)
@@ -171,65 +175,100 @@ func Run() {
 	ctx.countChange = make(chan int)
 	go TriggerBlinkOnDevice(ctx.countChange, blinkFunc)
 
-	subLedBlinkCounter, err := pubsub.Subscribe("", types.LedBlinkCounter{},
-		false, &ctx)
+	subLedBlinkCounter, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.LedBlinkCounter{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleLedBlinkModify,
+		ModifyHandler: handleLedBlinkModify,
+		DeleteHandler: handleLedBlinkDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subLedBlinkCounter.ModifyHandler = handleLedBlinkModify
-	subLedBlinkCounter.DeleteHandler = handleLedBlinkDelete
 	ctx.subLedBlinkCounter = subLedBlinkCounter
 	subLedBlinkCounter.Activate()
 
-	subDeviceNetworkStatus, err := pubsub.Subscribe("nim",
-		types.DeviceNetworkStatus{}, false, &ctx)
+	subDeviceNetworkStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "nim",
+		TopicImpl:     types.DeviceNetworkStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleDNSModify,
+		ModifyHandler: handleDNSModify,
+		DeleteHandler: handleDNSDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDeviceNetworkStatus.ModifyHandler = handleDNSModify
-	subDeviceNetworkStatus.DeleteHandler = handleDNSDelete
 	ctx.subDeviceNetworkStatus = subDeviceNetworkStatus
 	subDeviceNetworkStatus.Activate()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
-		false, &ctx)
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.GlobalConfig{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleGlobalConfigModify,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
 	ctx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
+	// Pick up debug aka log level before we start real work
+	for !ctx.GCInitialized {
+		log.Infof("waiting for GCInitialized")
+		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+		case <-stillRunning.C:
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+	log.Infof("processed GlobalConfig")
+
 	for {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDeviceNetworkStatus.C:
+		case change := <-subDeviceNetworkStatus.MsgChan():
 			subDeviceNetworkStatus.ProcessChange(change)
 
-		case change := <-subLedBlinkCounter.C:
+		case change := <-subLedBlinkCounter.MsgChan():
 			subLedBlinkCounter.ProcessChange(change)
 
 		case <-stillRunning.C:
 			// Fault injection
 			if fatalFlag {
 				log.Fatal("Requested fault injection to cause watchdog")
-			} else if hangFlag {
-				log.Infof("Requested to not touch to cause watchdog")
-			} else {
-				agentlog.StillRunning(agentName)
 			}
+		}
+		if hangFlag {
+			log.Infof("Requested to not touch to cause watchdog")
+		} else {
+			agentlog.StillRunning(agentName, warningTime, errorTime)
 		}
 	}
 }
 
+// Handles both create and modify events
 func handleLedBlinkModify(ctxArg interface{}, key string,
 	configArg interface{}) {
 
-	config := cast.CastLedBlinkCounter(configArg)
+	config := configArg.(types.LedBlinkCounter)
 	ctx := ctxArg.(*ledManagerContext)
 
 	if key != "ledconfig" {
@@ -310,6 +349,9 @@ const (
 	ledFilename        = "/sys/class/leds/wifi_active"
 	triggerFilename    = ledFilename + "/trigger"
 	brightnessFilename = ledFilename + "/brightness"
+	// Time limits for event loop handlers
+	errorTime   = 3 * time.Minute
+	warningTime = 40 * time.Second
 )
 
 // Disable existimg trigger
@@ -338,10 +380,11 @@ func ExecuteWifiLedCmd() {
 	}
 }
 
+// Handles both create and modify events
 func handleDNSModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	ctx := ctxArg.(*ledManagerContext)
-	status := cast.CastDeviceNetworkStatus(statusArg)
+	status := statusArg.(types.DeviceNetworkStatus)
 	if key != "global" {
 		log.Infof("handleDNSModify: ignoring %s\n", key)
 		return
@@ -389,6 +432,7 @@ func handleDNSDelete(ctxArg interface{}, key string, statusArg interface{}) {
 	log.Infof("handleDNSDelete done for %s\n", key)
 }
 
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
@@ -398,8 +442,12 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 		return
 	}
 	log.Infof("handleGlobalConfigModify for %s\n", key)
-	debug, _ = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
+	var gcp *types.GlobalConfig
+	debug, gcp = agentlog.HandleGlobalConfig(ctx.subGlobalConfig, agentName,
 		debugOverride)
+	if gcp != nil {
+		ctx.GCInitialized = true
+	}
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
 }
 

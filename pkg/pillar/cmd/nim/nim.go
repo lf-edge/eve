@@ -12,43 +12,42 @@ package nim
 import (
 	"flag"
 	"fmt"
-	"io"
 	"os"
+	"reflect"
 	"sort"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/devicenetwork"
 	"github.com/lf-edge/eve/pkg/pillar/flextimer"
-	"github.com/lf-edge/eve/pkg/pillar/hardware"
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
 	"github.com/lf-edge/eve/pkg/pillar/pidfile"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/ssh"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 const (
-	agentName   = "nim"
-	tmpDirname  = "/var/tmp/zededa"
-	DNCDirname  = tmpDirname + "/DeviceNetworkConfig"
-	DPCOverride = tmpDirname + "/DevicePortConfig/override.json"
+	agentName = "nim"
+	// Time limits for event loop handlers; shorter for nim than other agents
+	errorTime   = 60 * time.Second
+	warningTime = 40 * time.Second
 )
 
 type nimContext struct {
 	devicenetwork.DeviceNetworkContext
-	subGlobalConfig   *pubsub.Subscription
+	subGlobalConfig   pubsub.Subscription
 	GCInitialized     bool // Received initial GlobalConfig
 	globalConfig      *types.GlobalConfig
 	sshAccess         bool
 	sshAuthorizedKeys string
 	allowAppVnc       bool
 
-	subNetworkInstanceStatus *pubsub.Subscription
+	subNetworkInstanceStatus pubsub.Subscription
 
 	networkFallbackAnyEth types.TriState
 	fallbackPortMap       map[string]bool
@@ -84,43 +83,8 @@ func (ctx *nimContext) processArgs() {
 	ctx.version = *versionPtr
 }
 
-func waitForDeviceNetworkConfigFile() string {
-	model := hardware.GetHardwareModel()
-
-	// To better handle new hardware platforms log and blink if we
-	// don't have a DeviceNetworkConfig
-	// After some tries we fall back to default.json which is eth0, wlan0
-	// and wwan0
-	// If we have a DevicePortConfig/override.json we proceed
-	// without a DNCFilename!
-	tries := 0
-	if fileExists(DPCOverride) {
-		model = "default"
-		return model
-	}
-	for {
-		DNCFilename := fmt.Sprintf("%s/%s.json", DNCDirname, model)
-		_, err := os.Stat(DNCFilename)
-		if err == nil {
-			break
-		}
-		// Tell the world that we have issues
-		types.UpdateLedManagerConfig(11)
-		log.Warningln(err)
-		log.Warningf("You need to create this file for this hardware: %s\n",
-			DNCFilename)
-		time.Sleep(time.Second)
-		tries++
-		if tries == 120 { // Two minutes
-			log.Infof("Falling back to using hardware model default\n")
-			model = "default"
-		}
-	}
-	return model
-}
-
 // Run - Main function - invoked from zedbox.go
-func Run() {
+func Run(ps *pubsub.PubSub) {
 	nimCtx := nimContext{
 		fallbackPortMap:  make(map[string]bool),
 		filteredFallback: make(map[string]bool),
@@ -135,14 +99,9 @@ func Run() {
 		return
 	}
 
-	logf, err := agentlog.Init(agentName, nimCtx.curpart)
+	err := agentlog.Init(agentName, nimCtx.curpart)
 	if err != nil {
 		log.Fatal(err)
-	}
-	defer logf.Close()
-	if nimCtx.useStdout {
-		multi := io.MultiWriter(logf, os.Stdout)
-		log.SetOutput(multi)
 	}
 
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
@@ -152,131 +111,155 @@ func Run() {
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)
-	agentlog.StillRunning(agentName)
-
-	model := waitForDeviceNetworkConfigFile()
+	agentlog.StillRunning(agentName, warningTime, errorTime)
 
 	// Make sure we have a GlobalConfig file with defaults
-	types.EnsureGCFile()
+	utils.EnsureGCFile()
 
-	pubDeviceNetworkStatus, err := pubsub.Publish(agentName,
-		types.DeviceNetworkStatus{})
+	pubDeviceNetworkStatus, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.DeviceNetworkStatus{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubDeviceNetworkStatus.ClearRestarted()
 
-	pubDevicePortConfig, err := pubsub.Publish(agentName,
-		types.DevicePortConfig{})
+	pubDevicePortConfig, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName: agentName,
+			TopicType: types.DevicePortConfig{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubDevicePortConfig.ClearRestarted()
 
-	pubDevicePortConfigList, err := pubsub.PublishPersistent(agentName,
-		types.DevicePortConfigList{})
+	pubDevicePortConfigList, err := ps.NewPublication(
+		pubsub.PublicationOptions{
+			AgentName:  agentName,
+			Persistent: true,
+			TopicType:  types.DevicePortConfigList{},
+		})
 	if err != nil {
 		log.Fatal(err)
 	}
 	pubDevicePortConfigList.ClearRestarted()
 
 	// Look for global config such as log levels
-	subGlobalConfig, err := pubsub.Subscribe("", types.GlobalConfig{},
-		false, &nimCtx)
+	subGlobalConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.GlobalConfig{},
+		Activate:      false,
+		Ctx:           &nimCtx,
+		CreateHandler: handleGlobalConfigModify,
+		ModifyHandler: handleGlobalConfigModify,
+		DeleteHandler: handleGlobalConfigDelete,
+		SyncHandler:   handleGlobalConfigSynchronized,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subGlobalConfig.ModifyHandler = handleGlobalConfigModify
-	subGlobalConfig.DeleteHandler = handleGlobalConfigDelete
-	subGlobalConfig.SynchronizedHandler = handleGlobalConfigSynchronized
 	nimCtx.subGlobalConfig = subGlobalConfig
 	subGlobalConfig.Activate()
 
-	nimCtx.ManufacturerModel = model
-	nimCtx.DeviceNetworkConfig = &types.DeviceNetworkConfig{}
 	nimCtx.DevicePortConfig = &types.DevicePortConfig{}
-	item, _ := pubDevicePortConfigList.Get("global")
-	if item != nil {
-		dpcl := cast.CastDevicePortConfigList(item)
-		nimCtx.DevicePortConfigList = &dpcl
-		log.Infof("Initial DPCL %+v\n", nimCtx.DevicePortConfigList)
-	} else {
-		nimCtx.DevicePortConfigList = &types.DevicePortConfigList{}
-	}
-	nimCtx.DevicePortConfigList.CurrentIndex = -1 // No known working one
 	nimCtx.DeviceNetworkStatus = &types.DeviceNetworkStatus{}
 	nimCtx.PubDevicePortConfig = pubDevicePortConfig
 	nimCtx.PubDevicePortConfigList = pubDevicePortConfigList
 	nimCtx.PubDeviceNetworkStatus = pubDeviceNetworkStatus
-
-	// Get the initial DeviceNetworkConfig
-	// Subscribe from "" means /var/tmp/zededa/
-	subDeviceNetworkConfig, err := pubsub.Subscribe("",
-		types.DeviceNetworkConfig{}, false,
-		&nimCtx.DeviceNetworkContext)
-	if err != nil {
-		log.Fatal(err)
-	}
-	subDeviceNetworkConfig.ModifyHandler = devicenetwork.HandleDNCModify
-	subDeviceNetworkConfig.DeleteHandler = devicenetwork.HandleDNCDelete
-	nimCtx.SubDeviceNetworkConfig = subDeviceNetworkConfig
-	subDeviceNetworkConfig.Activate()
+	dnc := &nimCtx.DeviceNetworkContext
+	devicenetwork.IngestPortConfigList(dnc)
 
 	// We get DevicePortConfig from three sources in this priority:
-	// 1. zedagent publishing NetworkPortConfig
-	// 2. override file in /var/tmp/zededa/NetworkPortConfig/*.json
-	// 3. self-generated file derived from per-platform DeviceNetworkConfig
-	subDevicePortConfigA, err := pubsub.Subscribe("zedagent",
-		types.DevicePortConfig{}, false,
-		&nimCtx.DeviceNetworkContext)
+	// 1. zedagent publishing DevicePortConfig
+	// 2. override file in /var/tmp/zededa/DevicePortConfig/*.json
+	// 3. "lastresort" derived from the set of network interfaces
+	subDevicePortConfigA, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedagent",
+		TopicImpl:     types.DevicePortConfig{},
+		Activate:      false,
+		Ctx:           &nimCtx.DeviceNetworkContext,
+		CreateHandler: devicenetwork.HandleDPCModify,
+		ModifyHandler: devicenetwork.HandleDPCModify,
+		DeleteHandler: devicenetwork.HandleDPCDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDevicePortConfigA.ModifyHandler = devicenetwork.HandleDPCModify
-	subDevicePortConfigA.DeleteHandler = devicenetwork.HandleDPCDelete
 	nimCtx.SubDevicePortConfigA = subDevicePortConfigA
 	subDevicePortConfigA.Activate()
 
-	subDevicePortConfigO, err := pubsub.Subscribe("",
-		types.DevicePortConfig{}, false,
-		&nimCtx.DeviceNetworkContext)
+	subDevicePortConfigO, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "",
+		TopicImpl:     types.DevicePortConfig{},
+		Activate:      false,
+		Ctx:           &nimCtx.DeviceNetworkContext,
+		CreateHandler: devicenetwork.HandleDPCModify,
+		ModifyHandler: devicenetwork.HandleDPCModify,
+		DeleteHandler: devicenetwork.HandleDPCDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDevicePortConfigO.ModifyHandler = devicenetwork.HandleDPCModify
-	subDevicePortConfigO.DeleteHandler = devicenetwork.HandleDPCDelete
 	nimCtx.SubDevicePortConfigO = subDevicePortConfigO
 	subDevicePortConfigO.Activate()
 
-	subDevicePortConfigS, err := pubsub.Subscribe(agentName,
-		types.DevicePortConfig{}, false,
-		&nimCtx.DeviceNetworkContext)
+	subDevicePortConfigS, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     agentName,
+		TopicImpl:     types.DevicePortConfig{},
+		Activate:      false,
+		Ctx:           &nimCtx.DeviceNetworkContext,
+		CreateHandler: devicenetwork.HandleDPCModify,
+		ModifyHandler: devicenetwork.HandleDPCModify,
+		DeleteHandler: devicenetwork.HandleDPCDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subDevicePortConfigS.ModifyHandler = devicenetwork.HandleDPCModify
-	subDevicePortConfigS.DeleteHandler = devicenetwork.HandleDPCDelete
 	nimCtx.SubDevicePortConfigS = subDevicePortConfigS
 	subDevicePortConfigS.Activate()
 
-	subAssignableAdapters, err := pubsub.Subscribe("domainmgr",
-		types.AssignableAdapters{}, false,
-		&nimCtx.DeviceNetworkContext)
+	subAssignableAdapters, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "domainmgr",
+		TopicImpl:     types.AssignableAdapters{},
+		Activate:      false,
+		Ctx:           &nimCtx.DeviceNetworkContext,
+		CreateHandler: devicenetwork.HandleAssignableAdaptersModify,
+		ModifyHandler: devicenetwork.HandleAssignableAdaptersModify,
+		DeleteHandler: devicenetwork.HandleAssignableAdaptersDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subAssignableAdapters.ModifyHandler = devicenetwork.HandleAssignableAdaptersModify
-	subAssignableAdapters.DeleteHandler = devicenetwork.HandleAssignableAdaptersDelete
 	nimCtx.SubAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
-	subNetworkInstanceStatus, err := pubsub.Subscribe("zedrouter",
-		types.NetworkInstanceStatus{}, false, &nimCtx)
+	subNetworkInstanceStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedrouter",
+		TopicImpl:     types.NetworkInstanceStatus{},
+		Activate:      false,
+		Ctx:           &nimCtx,
+		CreateHandler: handleNetworkInstanceModify,
+		ModifyHandler: handleNetworkInstanceModify,
+		DeleteHandler: handleNetworkInstanceDelete,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	subNetworkInstanceStatus.ModifyHandler = handleNetworkInstanceModify
-	subNetworkInstanceStatus.DeleteHandler = handleNetworkInstanceDelete
 	nimCtx.subNetworkInstanceStatus = subNetworkInstanceStatus
 	subNetworkInstanceStatus.Activate()
 
@@ -285,18 +268,15 @@ func Run() {
 	// Apply any changes from the port config to date.
 	publishDeviceNetworkStatus(&nimCtx)
 
-	// Wait for initial GlobalConfig and the DeviceNetworkConfig
-	for !nimCtx.GCInitialized || !nimCtx.DNCInitialized {
-		log.Infof("Waiting for GCInitialized %v or DNCInitialized %v\n",
-			nimCtx.GCInitialized, nimCtx.DNCInitialized)
+	// Wait for initial GlobalConfig
+	for !nimCtx.GCInitialized {
+		log.Infof("Waiting for GCInitialized")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
-
-		case change := <-subDeviceNetworkConfig.C:
-			subDeviceNetworkConfig.ProcessChange(change)
 		}
 	}
+	log.Infof("processed GlobalConfig")
 
 	// We refresh the gelocation information when the underlay
 	// IP address(es) change, plus periodically based on this timer
@@ -309,8 +289,7 @@ func Run() {
 	geoTimer := flextimer.NewRangeTicker(time.Duration(geoMin),
 		time.Duration(geoMax))
 
-	dnc := &nimCtx.DeviceNetworkContext
-	// TIme we wait for DHCP to get an address before giving up
+	// Time we wait for DHCP to get an address before giving up
 	dnc.DPCTestDuration = nimCtx.globalConfig.NetworkTestDuration
 
 	// Timer for checking/verifying pending device network status
@@ -325,9 +304,7 @@ func Run() {
 
 	// Periodic timer that tests device cloud connectivity
 	dnc.NetworkTestInterval = nimCtx.globalConfig.NetworkTestInterval
-	networkTestInterval := time.Duration(time.Duration(dnc.NetworkTestInterval) * time.Second)
-	networkTestTimer := time.NewTimer(networkTestInterval)
-	dnc.NetworkTestTimer = networkTestTimer
+	dnc.NetworkTestTimer = time.NewTimer(time.Duration(dnc.NetworkTestInterval) * time.Second)
 	// We start assuming cloud connectivity works
 	dnc.CloudConnectivityWorks = true
 
@@ -345,8 +322,40 @@ func Run() {
 	}
 
 	// Look for address and link changes
+	routeChanges := devicenetwork.RouteChangeInit()
 	addrChanges := devicenetwork.AddrChangeInit()
 	linkChanges := devicenetwork.LinkChangeInit()
+
+	// Build an initial lastresort by picking up initial links
+	// XXX hack to pre-populate
+	for idx := 0; idx < 16; idx++ {
+		devicenetwork.IfindexToName(idx)
+	}
+	handleLinkChange(&nimCtx)
+	updateFilteredFallback(&nimCtx)
+
+	// Kick off intial configuration, which could be remembered from last boot
+	// Prunes any useless entries
+	devicenetwork.IngestPortConfigList(dnc)
+
+	for nimCtx.networkFallbackAnyEth == types.TS_ENABLED &&
+		len(dnc.DevicePortConfigList.PortConfigList) == 0 {
+		select {
+		case change := <-subGlobalConfig.MsgChan():
+			subGlobalConfig.ProcessChange(change)
+
+		case change := <-subDevicePortConfigS.MsgChan():
+			subDevicePortConfigS.ProcessChange(change)
+			log.Infof("Got subDevicePortConfigS: len %d",
+				len(dnc.DevicePortConfigList.PortConfigList))
+
+		case <-stillRunning.C:
+			// Need StillRunning when ports yet Ethernets
+		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
+	}
+
+	devicenetwork.RestartVerify(dnc, "Initial config")
 
 	// To avoid a race between domainmgr starting and moving this to pciback
 	// and zedagent publishing its DevicePortConfig using those assigned-away
@@ -358,92 +367,126 @@ func Run() {
 	for !nimCtx.AssignableAdapters.Initialized {
 		log.Infof("Waiting for AA to initialize")
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDeviceNetworkConfig.C:
-			subDeviceNetworkConfig.ProcessChange(change)
-
-		case change := <-subDevicePortConfigO.C:
+		case change := <-subDevicePortConfigO.MsgChan():
 			subDevicePortConfigO.ProcessChange(change)
 
-		case change := <-subDevicePortConfigS.C:
+		case change := <-subDevicePortConfigS.MsgChan():
 			subDevicePortConfigS.ProcessChange(change)
 
-		case change := <-subAssignableAdapters.C:
+		case change := <-subAssignableAdapters.MsgChan():
 			subAssignableAdapters.ProcessChange(change)
 			updateFilteredFallback(&nimCtx)
 
-		case change := <-subNetworkInstanceStatus.C:
+		case change := <-subNetworkInstanceStatus.MsgChan():
 			subNetworkInstanceStatus.ProcessChange(change)
 
 		case change, ok := <-addrChanges:
+			start := time.Now()
 			if !ok {
 				log.Errorf("addrChanges closed\n")
 				// XXX Need to discard all cached information?
 				addrChanges = devicenetwork.AddrChangeInit()
 			} else {
-				if devicenetwork.AddrChange(change) {
-					devicenetwork.HandleAddressChange(&nimCtx.DeviceNetworkContext)
+				ch, ifindex := devicenetwork.AddrChange(nimCtx.DeviceNetworkContext, change)
+				if ch {
+					handleInterfaceChange(&nimCtx, ifindex,
+						"AddrChange", true)
 				}
 			}
+			pubsub.CheckMaxTimeTopic(agentName, "addrChanges", start,
+				warningTime, errorTime)
 
 		case change, ok := <-linkChanges:
+			start := time.Now()
 			if !ok {
 				log.Errorf("linkChanges closed\n")
 				linkChanges = devicenetwork.LinkChangeInit()
 				// XXX Need to discard all cached information?
-			} else if devicenetwork.LinkChange(change) {
-				handleLinkChange(&nimCtx)
-				// XXX trigger testing??
+			} else {
+				ch, ifindex := devicenetwork.LinkChange(change)
+				if ch {
+					handleLinkChange(&nimCtx)
+					handleInterfaceChange(&nimCtx, ifindex,
+						"LinkChange", true)
+				}
 			}
+			pubsub.CheckMaxTimeTopic(agentName, "linkChanges", start,
+				warningTime, errorTime)
+
+		case change, ok := <-routeChanges:
+			start := time.Now()
+			if !ok {
+				log.Errorf("routeChanges closed\n")
+				routeChanges = devicenetwork.RouteChangeInit()
+			} else {
+				ch, ifindex := devicenetwork.RouteChange(nimCtx.DeviceNetworkContext, change)
+				if ch {
+					handleInterfaceChange(&nimCtx, ifindex,
+						"RouteChange", false)
+				}
+			}
+			pubsub.CheckMaxTimeTopic(agentName, "linkChanges", start,
+				warningTime, errorTime)
 
 		case <-geoTimer.C:
+			start := time.Now()
 			log.Debugln("geoTimer at", time.Now())
 			change := devicenetwork.UpdateDeviceNetworkGeo(
 				geoRedoTime, nimCtx.DeviceNetworkStatus)
 			if change {
 				publishDeviceNetworkStatus(&nimCtx)
 			}
+			pubsub.CheckMaxTimeTopic(agentName, "geoTimer", start,
+				warningTime, errorTime)
 
 		case _, ok := <-dnc.Pending.PendTimer.C:
+			start := time.Now()
 			if !ok {
 				log.Infof("Device port test timer stopped?")
 			} else {
 				log.Debugln("PendTimer at", time.Now())
 				devicenetwork.VerifyDevicePortConfig(dnc)
 			}
+			pubsub.CheckMaxTimeTopic(agentName, "PendTimer", start,
+				warningTime, errorTime)
 
 		case _, ok := <-dnc.NetworkTestTimer.C:
+			start := time.Now()
 			if !ok {
 				log.Infof("Network test timer stopped?")
 			} else if nimCtx.DevicePortConfigList.CurrentIndex == -1 {
-				start := time.Now()
 				log.Debugf("Starting looking for working Device connectivity to cloud")
 				devicenetwork.RestartVerify(dnc,
 					"Looking for working")
 				log.Infof("Looking for working  done at index %d. Took %v",
 					dnc.NextDPCIndex, time.Since(start))
 			} else {
-				start := time.Now()
 				log.Debugf("Starting test of Device connectivity to cloud")
 				ok := tryDeviceConnectivityToCloud(dnc)
 				if ok {
 					log.Debugf("Device connectivity to cloud worked. Took %v",
 						time.Since(start))
+					// Look for DNS etc update
+					devicenetwork.CheckDNSUpdate(
+						&nimCtx.DeviceNetworkContext)
 				} else {
 					log.Infof("Device connectivity to cloud failed. Took %v",
 						time.Since(start))
 				}
 			}
+			pubsub.CheckMaxTimeTopic(agentName, "TestTimer", start,
+				warningTime, errorTime)
 
 		case _, ok := <-dnc.NetworkTestBetterTimer.C:
+			start := time.Now()
 			if !ok {
 				log.Infof("Network testBetterTimer stopped?")
 			} else if dnc.NextDPCIndex == 0 {
 				log.Debugf("Network testBetterTimer at zero ignored")
 			} else {
-				start := time.Now()
 				log.Infof("Network testBetterTimer at index %d",
 					dnc.NextDPCIndex)
 				devicenetwork.RestartVerify(dnc,
@@ -451,79 +494,111 @@ func Run() {
 				log.Infof("Network testBetterTimer done at index %d. Took %v",
 					dnc.NextDPCIndex, time.Since(start))
 			}
+			pubsub.CheckMaxTimeTopic(agentName, "TestTimer", start,
+				warningTime, errorTime)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 	log.Infof("AA initialized")
 
 	for {
 		select {
-		case change := <-subGlobalConfig.C:
+		case change := <-subGlobalConfig.MsgChan():
 			subGlobalConfig.ProcessChange(change)
 
-		case change := <-subDeviceNetworkConfig.C:
-			subDeviceNetworkConfig.ProcessChange(change)
-
-		case change := <-subDevicePortConfigA.C:
+		case change := <-subDevicePortConfigA.MsgChan():
 			subDevicePortConfigA.ProcessChange(change)
 
-		case change := <-subDevicePortConfigO.C:
+		case change := <-subDevicePortConfigO.MsgChan():
 			subDevicePortConfigO.ProcessChange(change)
 
-		case change := <-subDevicePortConfigS.C:
+		case change := <-subDevicePortConfigS.MsgChan():
 			subDevicePortConfigS.ProcessChange(change)
 
-		case change := <-subAssignableAdapters.C:
+		case change := <-subAssignableAdapters.MsgChan():
 			subAssignableAdapters.ProcessChange(change)
 			updateFilteredFallback(&nimCtx)
 
-		case change := <-subNetworkInstanceStatus.C:
+		case change := <-subNetworkInstanceStatus.MsgChan():
 			subNetworkInstanceStatus.ProcessChange(change)
 
 		case change, ok := <-addrChanges:
+			start := time.Now()
 			if !ok {
 				log.Errorf("addrChanges closed\n")
 				addrChanges = devicenetwork.AddrChangeInit()
 				// XXX Need to discard all cached information?
 			} else {
-				if devicenetwork.AddrChange(change) {
-					devicenetwork.HandleAddressChange(&nimCtx.DeviceNetworkContext)
+				ch, ifindex := devicenetwork.AddrChange(nimCtx.DeviceNetworkContext, change)
+				if ch {
+					handleInterfaceChange(&nimCtx, ifindex,
+						"AddrChange", true)
 				}
 			}
+			pubsub.CheckMaxTimeTopic(agentName, "addrChanges", start,
+				warningTime, errorTime)
 
 		case change, ok := <-linkChanges:
+			start := time.Now()
 			if !ok {
 				log.Errorf("linkChanges closed\n")
 				linkChanges = devicenetwork.LinkChangeInit()
 				// XXX Need to discard all cached information?
-			} else if devicenetwork.LinkChange(change) {
-				handleLinkChange(&nimCtx)
-				// XXX trigger testing??
+			} else {
+				ch, ifindex := devicenetwork.LinkChange(change)
+				if ch {
+					handleLinkChange(&nimCtx)
+					handleInterfaceChange(&nimCtx, ifindex,
+						"LinkChange", true)
+				}
 			}
+			pubsub.CheckMaxTimeTopic(agentName, "linkChanges", start,
+				warningTime, errorTime)
+
+		case change, ok := <-routeChanges:
+			start := time.Now()
+			if !ok {
+				log.Errorf("routeChanges closed\n")
+				routeChanges = devicenetwork.RouteChangeInit()
+			} else {
+				ch, ifindex := devicenetwork.RouteChange(nimCtx.DeviceNetworkContext, change)
+				if ch {
+					handleInterfaceChange(&nimCtx, ifindex,
+						"RouteChange", false)
+				}
+			}
+			pubsub.CheckMaxTimeTopic(agentName, "routeChanges", start,
+				warningTime, errorTime)
 
 		case <-geoTimer.C:
+			start := time.Now()
 			log.Debugln("geoTimer at", time.Now())
 			change := devicenetwork.UpdateDeviceNetworkGeo(
 				geoRedoTime, nimCtx.DeviceNetworkStatus)
 			if change {
 				publishDeviceNetworkStatus(&nimCtx)
 			}
+			pubsub.CheckMaxTimeTopic(agentName, "geoTimer", start,
+				warningTime, errorTime)
 
 		case _, ok := <-dnc.Pending.PendTimer.C:
+			start := time.Now()
 			if !ok {
 				log.Infof("Device port test timer stopped?")
 			} else {
 				log.Debugln("PendTimer at", time.Now())
 				devicenetwork.VerifyDevicePortConfig(dnc)
 			}
+			pubsub.CheckMaxTimeTopic(agentName, "PendTimer", start,
+				warningTime, errorTime)
 
 		case _, ok := <-dnc.NetworkTestTimer.C:
+			start := time.Now()
 			if !ok {
 				log.Infof("Network test timer stopped?")
 			} else {
-				start := time.Now()
 				log.Debugf("Starting test of Device connectivity to cloud")
 				ok := tryDeviceConnectivityToCloud(dnc)
 				if ok {
@@ -534,14 +609,16 @@ func Run() {
 						time.Since(start))
 				}
 			}
+			pubsub.CheckMaxTimeTopic(agentName, "TestTimer", start,
+				warningTime, errorTime)
 
 		case _, ok := <-dnc.NetworkTestBetterTimer.C:
+			start := time.Now()
 			if !ok {
 				log.Infof("Network testBetterTimer stopped?")
 			} else if dnc.NextDPCIndex == 0 {
 				log.Debugf("Network testBetterTimer at zero ignored")
 			} else {
-				start := time.Now()
 				log.Infof("Network testBetterTimer at index %d",
 					dnc.NextDPCIndex)
 				devicenetwork.RestartVerify(dnc,
@@ -549,10 +626,12 @@ func Run() {
 				log.Infof("Network testBetterTimer done at index %d. Took %v",
 					dnc.NextDPCIndex, time.Since(start))
 			}
+			pubsub.CheckMaxTimeTopic(agentName, "TestBetterTimer", start,
+				warningTime, errorTime)
 
 		case <-stillRunning.C:
-			agentlog.StillRunning(agentName)
 		}
+		agentlog.StillRunning(agentName, warningTime, errorTime)
 	}
 }
 
@@ -580,6 +659,65 @@ func handleLinkChange(ctx *nimContext) {
 	}
 }
 
+// handleInterfaceChange deals with the fact that linkchange, addrchange, and
+// routechange do not reliably indicate when a link/address comes and goes, so
+// we explicitly check whether there are changes to the kernel list of IP
+// address.
+// Only applies to device ports.
+func handleInterfaceChange(ctx *nimContext, ifindex int, logstr string, force bool) {
+	// We do not see address change notifications when
+	// link drops so call directly
+	ifname, _, _ := devicenetwork.IfindexToName(ifindex)
+	log.Infof("%s(%s) ifindex %d force %t", logstr, ifname, ifindex, force)
+	if ifname != "" && !types.IsPort(*ctx.DeviceNetworkStatus, ifname) {
+		log.Debugf("%s(%s): not port", logstr, ifname)
+		return
+	}
+	if force {
+		// The caller has already purged addresses from IfindexToAddrs
+		addrs, err := devicenetwork.GetIPAddrs(ifindex)
+		if err != nil {
+			addrs = nil
+		}
+		log.Infof("%s(%s) force changed to %v",
+			logstr, ifname, addrs)
+		// Do not have a baseline to delete from
+		devicenetwork.FlushRules(ifindex)
+		for _, a := range addrs {
+			devicenetwork.AddSourceRule(ifindex, devicenetwork.HostSubnet(a), false)
+		}
+		devicenetwork.HandleAddressChange(&ctx.DeviceNetworkContext)
+		// XXX should we trigger restarting testing?
+		return
+	}
+
+	// Compare old vs. current
+	oldAddrs, _ := devicenetwork.IfindexToAddrs(ifindex)
+	addrs, err := devicenetwork.GetIPAddrs(ifindex)
+	if err != nil {
+		log.Warnf("%s(%s %d) no addrs: %s",
+			logstr, ifname, ifindex, err)
+		addrs = nil
+	}
+	if len(oldAddrs) == 0 && len(addrs) == 0 {
+		// Equal but one might be nil
+	} else if reflect.DeepEqual(oldAddrs, addrs) {
+		// Equal
+	} else {
+		log.Infof("%s(%s) changed from %v to %v",
+			logstr, ifname, oldAddrs, addrs)
+		for _, a := range oldAddrs {
+			devicenetwork.DelSourceRule(ifindex, devicenetwork.HostSubnet(a), false)
+		}
+		for _, a := range addrs {
+			devicenetwork.AddSourceRule(ifindex, devicenetwork.HostSubnet(a), false)
+		}
+
+		devicenetwork.HandleAddressChange(&ctx.DeviceNetworkContext)
+		// XXX should we trigger restarting testing?
+	}
+}
+
 func updateFilteredFallback(ctx *nimContext) {
 	ctx.filteredFallback = filterIfMap(ctx, ctx.fallbackPortMap)
 	log.Infof("new filteredFallback: %+v\n", ctx.filteredFallback)
@@ -589,7 +727,7 @@ func updateFilteredFallback(ctx *nimContext) {
 }
 
 func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool {
-	cf, err := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1)
+	rtf, err := devicenetwork.VerifyDeviceNetworkStatus(*ctx.DeviceNetworkStatus, 1, ctx.TestSendTimeout)
 	if err == nil {
 		log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test passed.")
 		if ctx.NextDPCIndex < len(ctx.DevicePortConfigList.PortConfigList) {
@@ -602,11 +740,12 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 		ctx.NetworkTestTimer = time.NewTimer(time.Duration(ctx.NetworkTestInterval) * time.Second)
 		return true
 	}
-	if !ctx.CloudConnectivityWorks && !cf {
+	if !ctx.CloudConnectivityWorks && !rtf {
 		// If previous cloud connectivity test also failed, it means
 		// that the current DPC configuration stopped working.
 		// In this case we start the process where device tries to
 		// figure out a DevicePortConfig that works.
+		// We avoid doing this for remoteTemporaryFailures
 		if ctx.Pending.Inprogress {
 			log.Infof("tryDeviceConnectivityToCloud: Device port configuration list " +
 				"verification in progress")
@@ -620,8 +759,8 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 			devicenetwork.RestartVerify(ctx, "tryDeviceConnectivityToCloud")
 		}
 	} else {
-		if cf {
-			log.Infof("tryDeviceConnectivityToCloud: certificate failure")
+		if rtf {
+			log.Warnf("tryDeviceConnectivityToCloud: remoteTemporaryFailure: %s", err)
 		} else {
 			log.Infof("tryDeviceConnectivityToCloud: Device cloud connectivity test restart timer due to %s", err)
 		}
@@ -635,10 +774,13 @@ func tryDeviceConnectivityToCloud(ctx *devicenetwork.DeviceNetworkContext) bool 
 func publishDeviceNetworkStatus(ctx *nimContext) {
 	log.Infof("PublishDeviceNetworkStatus: %+v\n",
 		ctx.DeviceNetworkStatus)
+	devicenetwork.UpdateResolvConf(*ctx.DeviceNetworkStatus)
+	devicenetwork.UpdatePBR(*ctx.DeviceNetworkStatus)
 	ctx.DeviceNetworkStatus.Testing = false
-	ctx.PubDeviceNetworkStatus.Publish("global", ctx.DeviceNetworkStatus)
+	ctx.PubDeviceNetworkStatus.Publish("global", *ctx.DeviceNetworkStatus)
 }
 
+// Handles both create and modify events
 func handleGlobalConfigModify(ctxArg interface{}, key string,
 	statusArg interface{}) {
 
@@ -697,6 +839,10 @@ func handleGlobalConfigModify(ctxArg interface{}, key string,
 			ctx.NetworkTestBetterInterval = gcp.NetworkTestBetterInterval
 		}
 		ctx.globalConfig = gcp
+		dnc := &ctx.DeviceNetworkContext
+		dnc.NetworkTestInterval = ctx.globalConfig.NetworkTestInterval
+		dnc.DPCTestDuration = ctx.globalConfig.NetworkTestDuration
+		dnc.TestSendTimeout = ctx.globalConfig.NetworkTestTimeout
 	}
 	ctx.GCInitialized = true
 	log.Infof("handleGlobalConfigModify done for %s\n", key)
@@ -731,6 +877,7 @@ func handleGlobalConfigSynchronized(ctxArg interface{}, done bool) {
 	}
 }
 
+// Handles both create and modify events
 func handleNetworkInstanceModify(ctxArg interface{}, key string, statusArg interface{}) {
 
 	log.Infof("handleNetworkInstanceStatusModify(%s)\n", key)
@@ -756,14 +903,14 @@ func fileExists(filename string) bool {
 }
 
 func updateFallbackAnyEth(ctx *nimContext) {
-	log.Infof("updateFallbackAnyEth: enable %v ifs %v\n",
+	log.Debugf("updateFallbackAnyEth: enable %v ifs %v\n",
 		ctx.networkFallbackAnyEth, ctx.filteredFallback)
 	if ctx.networkFallbackAnyEth == types.TS_ENABLED {
 		ports := mapToKeys(ctx.filteredFallback)
 		// sort ports to reduce churn; otherwise with two they swap
 		// almost every time
 		sort.Strings(ports)
-		log.Infof("updateFallbackAnyEth: ports %+v", ports)
+		log.Debugf("updateFallbackAnyEth: ports %+v", ports)
 		devicenetwork.UpdateLastResortPortConfig(&ctx.DeviceNetworkContext,
 			ports)
 	} else if ctx.networkFallbackAnyEth == types.TS_DISABLED {
@@ -789,7 +936,7 @@ func mapToKeys(m map[string]bool) []string {
 // Exclude those in AssignableAdapters with usedByUUID!=0
 // Exclude those in NetworkInstanceStatus Type=switch
 func filterIfMap(ctx *nimContext, fallbackPortMap map[string]bool) map[string]bool {
-	log.Infof("filterIfMap: len %d\n", len(fallbackPortMap))
+	log.Debugf("filterIfMap: len %d\n", len(fallbackPortMap))
 
 	filteredFallback := make(map[string]bool, len(fallbackPortMap))
 	for ifname, upFlag := range fallbackPortMap {
@@ -810,13 +957,13 @@ var nilUUID uuid.UUID
 // Check in AssignableAdapters with usedByUUID!=0
 func isAssigned(ctx *nimContext, ifname string) bool {
 
-	log.Infof("isAssigned(%s) have %d bundles\n",
+	log.Debugf("isAssigned(%s) have %d bundles\n",
 		ifname, len(ctx.AssignableAdapters.IoBundleList))
-	ib := ctx.AssignableAdapters.LookupIoBundleNet(ifname)
+	ib := ctx.AssignableAdapters.LookupIoBundleIfName(ifname)
 	if ib == nil {
 		return false
 	}
-	log.Infof("isAssigned(%s): pciback %t used %s\n",
+	log.Debugf("isAssigned(%s): pciback %t used %s\n",
 		ifname, ib.IsPCIBack, ib.UsedByUUID.String())
 
 	if ib.UsedByUUID != nilUUID {
@@ -831,22 +978,22 @@ func isSwitch(ctx *nimContext, ifname string) bool {
 
 	sub := ctx.subNetworkInstanceStatus
 	items := sub.GetAll()
-	log.Infof("isSwitch(%s) have %d items\n", ifname, len(items))
+	log.Debugf("isSwitch(%s) have %d items\n", ifname, len(items))
 
 	foundExcl := false
 	for _, st := range items {
-		status := cast.CastNetworkInstanceStatus(st)
+		status := st.(types.NetworkInstanceStatus)
 
-		if !status.IsUsingPort(ifname) {
+		if !status.IsUsingIfName(ifname) {
 			continue
 		}
-		log.Infof("isSwitch(%s) found use in %s/%s\n",
+		log.Debugf("isSwitch(%s) found use in %s/%s\n",
 			ifname, status.DisplayName, status.Key())
 		if status.Type != types.NetworkInstanceTypeSwitch {
 			continue
 		}
 		foundExcl = true
-		log.Infof("isSwitch(%s) found excl use in %s/%s\n",
+		log.Debugf("isSwitch(%s) found excl use in %s/%s\n",
 			ifname, status.DisplayName, status.Key())
 	}
 	return foundExcl

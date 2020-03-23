@@ -158,7 +158,7 @@ func RelevantLastResort(link netlink.Link) (bool, bool) {
 	loopbackFlag := (linkFlags & net.FlagLoopback) != 0
 	broadcastFlag := (linkFlags & net.FlagBroadcast) != 0
 	upFlag := (attrs.OperState == netlink.OperUp)
-	isVif := strings.HasPrefix(ifname, "vif") || strings.HasPrefix(ifname, "nbu")
+	isVif := strings.HasPrefix(ifname, "vif") || strings.HasPrefix(ifname, "nbu") || strings.HasPrefix(ifname, "nbo")
 	if linkType == "device" && !loopbackFlag && broadcastFlag &&
 		attrs.MasterIndex == 0 && !isVif {
 
@@ -183,11 +183,11 @@ func IfindexGetLastResortMap() map[string]bool {
 
 // ===== map from ifindex to list of IP addresses
 
-var ifindexToAddrs map[int][]net.IPNet = make(map[int][]net.IPNet)
+var ifindexToAddrs = make(map[int][]net.IP)
 
 // Returns true if added
-func IfindexToAddrsAdd(index int, addr net.IPNet) bool {
-	log.Infof("IfIndexToAddrsAdd(%d, %s)", index, addr.String())
+func IfindexToAddrsAdd(index int, addr net.IP) bool {
+	log.Infof("IfindexToAddrsAdd(%d, %s)", index, addr.String())
 	addrs, ok := ifindexToAddrs[index]
 	if !ok {
 		log.Debugf("IfindexToAddrsAdd add %v for %d\n", addr, index)
@@ -197,9 +197,7 @@ func IfindexToAddrsAdd(index int, addr net.IPNet) bool {
 	}
 	found := false
 	for _, a := range addrs {
-		// Equal if containment in both directions?
-		if a.IP.Equal(addr.IP) &&
-			a.Contains(addr.IP) && addr.Contains(a.IP) {
+		if a.Equal(addr) {
 			found = true
 			break
 		}
@@ -213,17 +211,15 @@ func IfindexToAddrsAdd(index int, addr net.IPNet) bool {
 }
 
 // Returns true if deleted
-func IfindexToAddrsDel(index int, addr net.IPNet) bool {
-	log.Infof("IfIndexToAddrsDel(%d, %s)", index, addr.String())
+func IfindexToAddrsDel(index int, addr net.IP) bool {
+	log.Infof("IfindexToAddrsDel(%d, %s)", index, addr.String())
 	addrs, ok := ifindexToAddrs[index]
 	if !ok {
 		log.Warnf("IfindexToAddrsDel unknown index %d\n", index)
 		return false
 	}
 	for i, a := range addrs {
-		// Equal if containment in both directions?
-		if a.IP.Equal(addr.IP) &&
-			a.Contains(addr.IP) && addr.Contains(a.IP) {
+		if a.Equal(addr) {
 			log.Debugf("IfindexToAddrsDel del %v for %d\n",
 				addr, index)
 			ifindexToAddrs[index] = append(ifindexToAddrs[index][:i],
@@ -238,7 +234,7 @@ func IfindexToAddrsDel(index int, addr net.IPNet) bool {
 	return false
 }
 
-func IfindexToAddrs(index int) ([]net.IPNet, error) {
+func IfindexToAddrs(index int) ([]net.IP, error) {
 	addrs, ok := ifindexToAddrs[index]
 	if !ok {
 		return nil, errors.New(fmt.Sprintf("Unknown ifindex %d", index))
@@ -247,13 +243,15 @@ func IfindexToAddrs(index int) ([]net.IPNet, error) {
 }
 
 func IfindexToAddrsFlush(index int) {
-	log.Infof("IfIndexToAddrsFlush(%d)", index)
+	log.Infof("IfindexToAddrsFlush(%d)", index)
 	_, ok := ifindexToAddrs[index]
 	if !ok {
 		log.Warnf("IfindexToAddrsFlush: Unknown ifindex %d", index)
 		return
 	}
-	var addrs []net.IPNet
+	log.Infof("IfindexToAddrsFlush(%d) removing %v",
+		index, ifindexToAddrs[index])
+	var addrs []net.IP
 	ifindexToAddrs[index] = addrs
 }
 

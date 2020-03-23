@@ -1,0 +1,21 @@
+diff -Nru a/gmp-4.3.2/configfsf.sub b/gmp-4.3.2/configfsf.sub
+--- configfsf.sub	2010-01-07 20:09:02.000000000 +0000
++++ configfsf.sub	2019-09-28 02:58:59.000000000 +0100
+@@ -4,7 +4,7 @@
+ #   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+ #   Free Software Foundation, Inc.
+ 
+-timestamp='2008-06-16'
++timestamp='2019-09-28'
+ 
+ # This file is (in principle) common to ALL GNU software.
+ # The presence of a machine in this file suggests that SOME GNU software
+@@ -120,7 +120,7 @@
+ # Here we must recognize all the valid KERNEL-OS combinations.
+ maybe_os=`echo $1 | sed 's/^\(.*\)-\([^-]*-[^-]*\)$/\2/'`
+ case $maybe_os in
+-  nto-qnx* | linux-gnu* | linux-dietlibc | linux-newlib* | linux-uclibc* | \
++  nto-qnx* | linux-gnu* | linux-dietlibc | linux-newlib* | linux-uclibc* | linux-musl | \
+   uclinux-uclibc* | uclinux-gnu* | kfreebsd*-gnu* | knetbsd*-gnu* | netbsd*-gnu* | \
+   storm-chaos* | os2-emx* | rtmk-nova*)
+     os=-$maybe_os

@@ -1,0 +1,77 @@
+{
+    "Version": 1,
+    "Ports": [
+        {
+            "Dhcp": 4,
+            "Free": true,
+            "IfName": "eth0",
+            "Name": "Management1",
+            "IsMgmt": true
+        },
+        {
+            "AddrSubnet": "192.168.1.11/24",
+            "Dhcp": 1,
+            "DnsServers": [
+                "8.8.8.8"
+            ],
+            "DomainName": "example.com",
+            "Free": true,
+            "Gateway": "192.168.1.1",
+            "IfName": "eth1",
+            "Name": "Management2",
+            "IsMgmt": true,
+            "NtpServer": "38.108.181.254",
+            "NetworkProxyEnable": false,
+            "NetworkProxyURL": "",
+            "NtpServer": "",
+            "Pacfile": "",
+            "Proxies": null
+        },
+        {
+            "AddrSubnet": "10.10.64.214/16",
+            "Dhcp": 1,
+            "DnsServers": [
+                "8.8.8.8"
+            ],
+            "DomainName": "example.com",
+            "Free": true,
+            "Gateway": "10.10.64.1",
+            "IfName": "eth2",
+            "Name": "Management3",
+            "IsMgmt": true,
+            "NtpServer": "38.108.181.254",
+            "NetworkProxyEnable": false,
+            "NetworkProxyURL": "",
+            "NtpServer": "",
+            "Pacfile": "",
+            "Proxies": null
+        },
+        {
+            "AddrSubnet": "",
+            "Dhcp": 4,
+            "DnsServers": null,
+            "DomainName": "",
+            "Exceptions": "",
+            "Free": true,
+            "Gateway": "",
+            "IfName": "wlan0",
+            "Name": "Management",
+            "IsMgmt": true,
+            "NetworkProxyEnable": false,
+            "NetworkProxyURL": "",
+            "NtpServer": "",
+            "Pacfile": "",
+            "Proxies": null,
+            "WirelessCfg": {
+                "WType": 2,
+                "Wifi": [
+                    {
+                        "KeyScheme": 1,
+                        "Password": "02c16f065e55550a62d1dcfed3317077d4e2c1ab4c48cec447e23cdafd1f287a",
+                        "SSID": "your-ssid-string"
+                    }
+                ]
+            }
+        }
+    ]
+}

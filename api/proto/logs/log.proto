@@ -9,13 +9,15 @@ option go_package  = "github.com/lf-edge/eve/api/go/logs";
 option java_package = "com.zededa.cloud.uservice.proto";
 
 message LogEntry {
-    string severity = 1; // e.g., INFO, DEBUG, ERROR etc.
-    string source = 2;   // Source of the msg, zedmanager etc.
-    string iid = 3;      // instance ID of the source (e.g., PID)
-    string content = 4;  // actual log message
-    uint64 msgid = 5;    // monotonically increasing number (detect drops)
-    map <string, string> tags = 6; // additional meta info <key,value>
-    google.protobuf.Timestamp timestamp = 7; // timestamp of the msg
+  string severity = 1; // e.g., INFO, DEBUG, ERROR etc.
+  string source = 2;   // Source of the msg, zedmanager etc.
+  string iid = 3;      // instance ID of the source (e.g., PID)
+  string content = 4;  // actual log message
+  uint64 msgid = 5;    // monotonically increasing number (detect drops)
+  map <string, string> tags = 6; // additional meta info <key,value>
+  google.protobuf.Timestamp timestamp = 7; // timestamp of the msg
+  string filename = 8;
+  string function = 9;
 }
 
 // This is the request payload for POST /api/v1/edgeDevice/logs
@@ -24,8 +26,15 @@ message LogEntry {
 // The message is assumed to be protected by a TLS session bound to the
 // device certificate.
 message LogBundle {
-    string devID = 1; // Device UUID
-    string image = 2; // SW image the log got emitted from
-    repeated LogEntry log = 3; // Log entries
-    google.protobuf.Timestamp timestamp = 4; // upload timestamp
+  string devID = 1; // Device UUID
+  string image = 2; // SW image the log got emitted from
+  repeated LogEntry log = 3; // Log entries
+  google.protobuf.Timestamp timestamp = 4; // upload timestamp
+  string eveVersion = 5; // EVE software version
+}
+
+// This is the request payload for POST /api/v1/edgeDevice/apps/instances/id/<app-instance-uuid>/logs
+message AppInstanceLogBundle {
+  repeated LogEntry log = 1; // Log entries
+  google.protobuf.Timestamp timestamp = 2; // upload timestamp
 }

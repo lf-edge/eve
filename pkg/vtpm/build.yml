@@ -1,0 +1,11 @@
+image: eve-vtpm
+org: lfedge
+network: yes
+config:
+  binds:
+    - /dev:/dev
+    - /run:/run
+    - /var/config:/config
+  net: host
+  capabilities:
+    - all

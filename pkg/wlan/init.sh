@@ -6,7 +6,25 @@
 (ip link set mlan0 down ; ip link set mlan0 name wlan0) || /bin/true
 
 ip link set wlan0 up
+filetime=0
+wpaproc="wpa_supplicant"
+configdir=/run/wlan
+configfile=/run/wlan/wpa_supplicant.conf
+if [ -d "$configdir" ] && [ -f "$configfile" ]; then
+  filetime=$(stat -c %Y "$configfile")
+  wpa_supplicant -Dwext -iwlan0 -c "$configfile" -d -B
+fi
 while true ; do
-  [ -f /config/wpa_supplicant.conf ] && wpa_supplicant -Dwext -iwlan0 -c /config/wpa_supplicant.conf -d
   sleep 10
+  if [ -d "$configdir" ] && [ -f /run/wlan/wpa_supplicant.conf ]; then
+    newfiletime=$(stat -c %Y "$configfile")
+    if [ "${newfiletime}" -ne "${filetime}" ]; then
+      filetime=$newfiletime
+      if [ -z "$(pgrep -x "wpa_supplicant")" ]; then
+        wpa_supplicant -Dwext -iwlan0 -c "$configfile" -d -B
+      else
+        killall -s HUP $wpaproc
+      fi
+    fi
+  fi
 done

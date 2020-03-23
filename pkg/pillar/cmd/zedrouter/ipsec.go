@@ -12,8 +12,8 @@ import (
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/pillar/iptables"
-	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -161,7 +161,7 @@ func ipTablesRuleCreate(vpnConfig types.VpnConfig) error {
 		}
 	}
 	if err := ipTablesCounterRulesSet(vpnConfig.PolicyBased,
-		tunnelConfig.Name, portConfig.Name); err != nil {
+		tunnelConfig.Name, portConfig.IfName); err != nil {
 		return err
 	}
 	return nil
@@ -170,6 +170,10 @@ func ipTablesRuleCreate(vpnConfig types.VpnConfig) error {
 func ipTablesRulesDelete(vpnConfig types.VpnConfig) error {
 	portConfig := vpnConfig.PortConfig
 	gatewayConfig := vpnConfig.GatewayConfig
+	if len(vpnConfig.ClientConfigList) == 0 {
+		// Network instance creation must have failed.
+		return nil
+	}
 	clientConfig := vpnConfig.ClientConfigList[0]
 	tunnelConfig := clientConfig.TunnelConfig
 
@@ -180,7 +184,7 @@ func ipTablesRulesDelete(vpnConfig types.VpnConfig) error {
 		}
 	}
 	if err := ipTablesCounterRulesReset(vpnConfig.PolicyBased,
-		tunnelConfig.Name, portConfig.Name); err != nil {
+		tunnelConfig.Name, portConfig.IfName); err != nil {
 		return err
 	}
 	return nil
@@ -477,15 +481,17 @@ func ipRouteDelete(vpnConfig types.VpnConfig) error {
 
 	// for client config setup, create server subnet route
 	if vpnConfig.IsClient {
-		tunnelConfig := vpnConfig.ClientConfigList[0].TunnelConfig
-		cmd := exec.Command("ip", "route", "delete", gatewayConfig.SubnetBlock)
-		if _, err := cmd.Output(); err != nil {
-			log.Errorf("%s for %s %s add\n",
-				err.Error(), "iproute", gatewayConfig.SubnetBlock)
-			return err
+		if len(vpnConfig.ClientConfigList) > 0 {
+			tunnelConfig := vpnConfig.ClientConfigList[0].TunnelConfig
+			cmd := exec.Command("ip", "route", "delete", gatewayConfig.SubnetBlock)
+			if _, err := cmd.Output(); err != nil {
+				log.Errorf("%s for %s %s add\n",
+					err.Error(), "iproute", gatewayConfig.SubnetBlock)
+				return err
+			}
+			log.Infof("ipRoute(%s) %s delete OK\n", tunnelConfig.Name,
+				gatewayConfig.SubnetBlock)
 		}
-		log.Infof("ipRoute(%s) %s delete OK\n", tunnelConfig.Name,
-			gatewayConfig.SubnetBlock)
 	} else {
 		// for server config, remove all client routes
 		for _, clientConfig := range vpnConfig.ClientConfigList {
@@ -628,6 +634,9 @@ func ipLinkTunnelCreate(vpnConfig types.VpnConfig) error {
 func ipLinkTunnelDelete(vpnConfig types.VpnConfig) error {
 
 	if vpnConfig.PolicyBased {
+		return nil
+	}
+	if len(vpnConfig.ClientConfigList) == 0 {
 		return nil
 	}
 	clientConfig := vpnConfig.ClientConfigList[0]
@@ -818,15 +827,15 @@ func charonConfigReset() error {
 func sysctlConfigCreate(vpnConfig types.VpnConfig) error {
 
 	portConfig := vpnConfig.PortConfig
-	log.Infof("%s: %s config\n", portConfig.Name, "sysctl")
+	log.Infof("%s: %s config\n", portConfig.IfName, "sysctl")
 
 	writeStr := ""
 	if vpnConfig.PolicyBased {
-		writeStr = writeStr + "\n net.ipv4.conf." + portConfig.Name + ".disable_xfrm=0"
-		writeStr = writeStr + "\n net.ipv4.conf." + portConfig.Name + ".disable_policy=0\n"
+		writeStr = writeStr + "\n net.ipv4.conf." + portConfig.IfName + ".disable_xfrm=0"
+		writeStr = writeStr + "\n net.ipv4.conf." + portConfig.IfName + ".disable_policy=0\n"
 	} else {
-		writeStr = writeStr + "\n net.ipv4.conf." + portConfig.Name + ".disable_xfrm=1"
-		writeStr = writeStr + "\n net.ipv4.conf." + portConfig.Name + ".disable_policy=1\n"
+		writeStr = writeStr + "\n net.ipv4.conf." + portConfig.IfName + ".disable_xfrm=1"
+		writeStr = writeStr + "\n net.ipv4.conf." + portConfig.IfName + ".disable_policy=1\n"
 		for _, clientConfig := range vpnConfig.ClientConfigList {
 			tunnelConfig := clientConfig.TunnelConfig
 			log.Infof("%s: %s config\n", tunnelConfig.Name, "sysctl")
@@ -860,7 +869,7 @@ func sysctlConfigSet() error {
 
 func ipSecConfigFileWrite(filename string, writeStr string) error {
 	data := []byte(writeStr)
-	if err := pubsub.WriteRename(filename, data); err != nil {
+	if err := fileutils.WriteRename(filename, data); err != nil {
 		return err
 	}
 	return nil

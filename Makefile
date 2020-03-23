@@ -7,75 +7,104 @@ GOVER ?= 1.12.4
 PKGBASE=github.com/lf-edge/eve
 GOMODULE=$(PKGBASE)/pkg/pillar
 GOTREE=$(CURDIR)/pkg/pillar
-PROTO_LANGS?=go python
-
-APIDIRS = $(shell find ./api/* -maxdepth 1 -type d -exec basename {} \;)
-
-PATH := $(CURDIR)/build-tools/bin:$(PATH)
+PATH:=$(CURDIR)/build-tools/bin:$(PATH)
 
 export CGO_ENABLED GOOS GOARCH PATH
 
+# A set of tweakable knobs for our build needs (tweak at your risk!)
+# which language bindings to generate for EVE API
+PROTO_LANGS=go python
+# The default hypervisor is Xen. Use 'make HV=acrn' to build ACRN images. AMD64 only
+HV=xen
 # How large to we want the disk to be in Mb
 MEDIA_SIZE=8192
+# Image type for final disk images
 IMG_FORMAT=qcow2
+# Filesystem type for rootfs image
 ROOTFS_FORMAT=squash
-
-SSH_PORT := 2222
-
+# SSH port to use for running images live
+SSH_PORT=2222
+# Use QEMU H/W accelearation (any non-empty value will trigger using it)
+ACCEL=
+# Location of the EVE configuration folder to be used in builds
 CONF_DIR=conf
+
+UNAME_S := $(shell uname -s)
 
 USER         = $(shell id -u -n)
 GROUP        = $(shell id -g -n)
 UID          = $(shell id -u)
 GID          = $(shell id -g)
 
-EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty)
+#for MacOS - use predefined user and group IDs
+ifeq ($(UNAME_S),Darwin)
+	USER         = eve
+	GROUP        = eve
+	UID          = 1001
+	GID          = 1001
+endif
 
-HOSTARCH:=$(shell uname -m)
+EVE_TREE_TAG = $(shell git describe --abbrev=8 --always --dirty)
+APIDIRS = $(shell find ./api/* -maxdepth 1 -type d -exec basename {} \;)
+
+HOSTARCH:=$(subst aarch64,arm64,$(subst x86_64,amd64,$(shell uname -m)))
 # by default, take the host architecture as the target architecture, but can override with `make ZARCH=foo`
 #    assuming that the toolchain supports it, of course...
 ZARCH ?= $(HOSTARCH)
+export ZARCH
 # warn if we are cross-compiling and track it
 CROSS ?=
 ifneq ($(HOSTARCH),$(ZARCH))
 CROSS = 1
-$(warning "WARNING: We are assembling a $(ZARCH) image on $(HOSTARCH). Things may break.")
+$(warning "WARNING: We are assembling an $(ZARCH) image on $(HOSTARCH). Things may break.")
 endif
-# canonicalized names for architecture
-ifeq ($(ZARCH),aarch64)
-        ZARCH=arm64
-endif
-ifeq ($(ZARCH),x86_64)
-        ZARCH=amd64
-endif
-
-QEMU_SYSTEM_arm64:=qemu-system-aarch64
-QEMU_SYSTEM_amd64:=qemu-system-x86_64
-QEMU_SYSTEM=$(QEMU_SYSTEM_$(ZARCH))
-
-# where we store outputs
-DIST=$(CURDIR)/dist/$(ZARCH)
 
 DOCKER_ARCH_TAG=$(ZARCH)
 
-LIVE_IMG=$(DIST)/live
-ROOTFS_IMG=$(DIST)/rootfs.img
-TARGET_IMG=$(DIST)/target.img
-INSTALLER_IMG=$(DIST)/installer
-CONFIG_IMG=$(DIST)/config.img
+# EVE rootfs image manifest
+ROOTFS_YML_xen_amd64=images/rootfs-xen.yml
+ROOTFS_YML_xen_arm64=images/rootfs-xen.yml
+ROOTFS_YML_acrn_amd64=images/rootfs-acrn.yml
+ROOTFS_YML_acrn_arm64=ACRN-IS-NOT-SUPPORTED-ON-ARM
+ROOTFS_YML=$(ROOTFS_YML_$(HV)_$(ZARCH))
 
-BIOS_IMG=$(DIST)/bios/OVMF.fd
-EFI_PART=$(DIST)/bios/EFI
+# where we store outputs
+DIST=$(CURDIR)/dist/$(ZARCH)
+DOCKER_DIST=/eve/dist/$(ZARCH)
+
+BIOS_IMG=$(DIST)/OVMF.fd
+LIVE_IMG=$(DIST)/live
+TARGET_IMG=$(DIST)/target.img
+INSTALLER=$(DIST)/installer
+
+ROOTFS_IMG=$(INSTALLER)/rootfs.img
+CONFIG_IMG=$(INSTALLER)/config.img
+INITRD_IMG=$(INSTALLER)/initrd.img
+EFI_PART=$(INSTALLER)/EFI
+
+DEVICETREE_DTB_amd64=
+DEVICETREE_DTB_arm64=$(DIST)/dtb/eve.dtb
+DEVICETREE_DTB=$(DEVICETREE_DTB_$(ZARCH))
+
 CONF_PART=$(CURDIR)/../adam/run/config
 
-QEMU_OPTS_arm64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt
+# qemu settings
+QEMU_SYSTEM_arm64=qemu-system-aarch64
+QEMU_SYSTEM_amd64=qemu-system-x86_64
+QEMU_SYSTEM=$(QEMU_SYSTEM_$(ZARCH))
+
+QEMU_ACCEL_Y_Darwin=-M accel=hvf --cpu host
+QEMU_ACCEL_Y_Linux=-enable-kvm
+QEMU_ACCEL:=$(QEMU_ACCEL_$(ACCEL:%=Y)_$(shell uname -s))
+
+QEMU_OPTS_arm64= -machine virt,gic_version=3 -machine virtualization=true -cpu cortex-a57 -machine type=virt -drive file=fat:rw:$(dir $(DEVICETREE_DTB)),label=QEMU_DTB,format=vvfat
 # -drive file=./bios/flash0.img,format=raw,if=pflash -drive file=./bios/flash1.img,format=raw,if=pflash
 # [ -f bios/flash1.img ] || dd if=/dev/zero of=bios/flash1.img bs=1048576 count=64
-QEMU_OPTS_amd64= -cpu SandyBridge
+QEMU_OPTS_amd64= -cpu SandyBridge $(QEMU_ACCEL)
 QEMU_OPTS_COMMON= -smbios type=1,serial=31415926 -m 4096 -smp 4 -display none -serial mon:stdio -bios $(BIOS_IMG) \
         -rtc base=utc,clock=rt \
-        -netdev user,id=eth0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::$(SSH_PORT)-:22 -device e1000,netdev=eth0 \
-        -netdev user,id=eth1,net=192.168.2.0/24,dhcpstart=192.168.2.10 -device e1000,netdev=eth1
+        -netdev user,id=eth0,net=192.168.1.0/24,dhcpstart=192.168.1.10,hostfwd=tcp::$(SSH_PORT)-:22 -device virtio-net-pci,netdev=eth0 \
+        -netdev user,id=eth1,net=192.168.2.0/24,dhcpstart=192.168.2.10 -device virtio-net-pci,netdev=eth1
 QEMU_OPTS_CONF_PART=$(shell [ -d $(CONF_PART) ] && echo '-drive file=fat:rw:$(CONF_PART),format=raw')
 QEMU_OPTS=$(QEMU_OPTS_COMMON) $(QEMU_OPTS_$(ZARCH)) $(QEMU_OPTS_CONF_PART)
 
@@ -83,8 +112,22 @@ GOOS=linux
 CGO_ENABLED=1
 GOBUILDER=eve-build-$(shell echo $(USER) | tr A-Z a-z)
 
-DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; docker export $$C | tar -xf - $$2 ; docker rm $$C ; } ; _
-DOCKER_GO = _() { mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ;\
+# if proxy is set, use it when building docker builder
+ifneq ($(HTTP_PROXY),)
+DOCKER_HTTP_PROXY:=--build-arg http_proxy=$(HTTP_PROXY)
+endif
+ifneq ($(HTTPS_PROXY),)
+DOCKER_HTTPS_PROXY:=--build-arg https_proxy=$(HTTPS_PROXY)
+endif
+ifneq ($(NO_PROXY),)
+DOCKER_NO_PROXY:=--build-arg no_proxy=$(NO_PROXY)
+endif
+ifneq ($(ALL_PROXY),)
+DOCKER_ALL_PROXY:=--build-arg all_proxy=$(ALL_PROXY)
+endif
+
+DOCKER_UNPACK= _() { C=`docker create $$1 fake` ; shift ; docker export $$C | tar -xf - "$$@" ; docker rm $$C ; } ; _
+DOCKER_GO = _() { mkdir -p $(CURDIR)/.go/src/$${3:-dummy} ; mkdir -p $(CURDIR)/.go/bin ; \
     docker run $$DOCKER_GO_ARGS -i --rm -u $(USER) -w /go/src/$${3:-dummy} \
     -v $(CURDIR)/.go:/go -v $$2:/go/src/$${3:-dummy} -v $${4:-$(CURDIR)/.go/bin}:/go/bin -v $(CURDIR)/:/eve -v $${HOME}:/home/$(USER) \
     -e GOOS -e GOARCH -e CGO_ENABLED -e BUILD=local $(GOBUILDER) bash --noprofile --norc -c "$$1" ; } ; _
@@ -114,21 +157,31 @@ all: help
 
 test: $(GOBUILDER) | $(DIST)
 	@echo Running tests on $(GOMODULE)
-	@$(DOCKER_GO) "set -o pipefail ; go test -v ./... 2>&1 | go-junit-report | sed -e 1d" $(GOTREE) $(GOMODULE) > $(DIST)/results.xml
+	@$(DOCKER_GO) "gotestsum --junitfile $(DOCKER_DIST)/results.xml" $(GOTREE) $(GOMODULE)
 
 clean:
-	rm -rf $(DIST) pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile \
-	       images/installer.yml images/rootfs.yml
+	rm -rf $(DIST) $(ROOTFS_YML_xen_$(ZARCH)) $(ROOTFS_YML_acrn_$(ZARCH)) \
+               pkg/pillar/Dockerfile pkg/qrexec-lib/Dockerfile pkg/qrexec-dom0/Dockerfile
+
+yetus:
+	@echo Running yetus
+	build-tools/src/yetus/test-patch.sh
 
 build-tools: $(LINUXKIT)
 	@echo Done building $<
 
-$(EFI_PART): $(LINUXKIT) | $(DIST)/bios
-	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/grub)-$(DOCKER_ARCH_TAG) EFI
-	(echo "set root=(hd0)" ; echo "chainloader /EFI/BOOT/BOOTX64.EFI" ; echo boot) > $@/BOOT/grub.cfg
+$(BIOS_IMG): $(LINUXKIT) | $(DIST)
+	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/uefi)-$(DOCKER_ARCH_TAG) $(notdir $@)
 
-$(BIOS_IMG): $(LINUXKIT) | $(DIST)/bios
-	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/uefi)-$(DOCKER_ARCH_TAG) OVMF.fd
+$(DEVICETREE_DTB): $(BIOS_IMG) | $(DIST)
+	mkdir $(dir $@) 2>/dev/null || :
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -machine dumpdtb=$@
+
+$(EFI_PART): $(LINUXKIT) | $(INSTALLER)
+	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/grub)-$(DOCKER_ARCH_TAG) $(notdir $@)
+
+$(INITRD_IMG): $(LINUXKIT) | $(INSTALLER)
+	cd $| ; $(DOCKER_UNPACK) $(shell $(LINUXKIT) pkg show-tag pkg/mkimage-raw-efi)-$(DOCKER_ARCH_TAG) $(notdir $@ $(EFI_PART))
 
 # run-installer
 #
@@ -136,44 +189,49 @@ $(BIOS_IMG): $(LINUXKIT) | $(DIST)/bios
 # through the installer. It's the long road to live.img. Good for
 # testing.
 #
-# -machine dumpdtb=virt.dtb
-#
-run-installer-iso: $(BIOS_IMG)
+run-installer-iso: $(BIOS_IMG) $(DEVICETREE_DTB)
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -cdrom $(INSTALLER_IMG).iso -boot d
+	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -cdrom $(INSTALLER).iso -boot d $(QEMU_OPTS)
 
-run-installer-raw: $(BIOS_IMG)
+run-installer-raw: $(BIOS_IMG) $(DEVICETREE_DTB)
 	qemu-img create -f ${IMG_FORMAT} $(TARGET_IMG) ${MEDIA_SIZE}M
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(INSTALLER_IMG).raw,format=raw
+	$(QEMU_SYSTEM) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT) -drive file=$(INSTALLER).raw,format=raw $(QEMU_OPTS)
 
-run-live run: $(BIOS_IMG)
+run-live run: $(BIOS_IMG) $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(LIVE_IMG).img,format=$(IMG_FORMAT)
 
-run-target: $(BIOS_IMG)
+run-target: $(BIOS_IMG) $(DEVICETREE_DTB)
 	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(TARGET_IMG),format=$(IMG_FORMAT)
 
-run-rootfs: $(BIOS_IMG) $(EFI_PART)
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:$(EFI_PART)/..,format=raw
+run-rootfs: $(BIOS_IMG) $(EFI_PART) $(DEVICETREE_DTB)
+	(echo 'set devicetree="(hd0,msdos1)/eve.dtb"' ; echo 'set rootfs_root=/dev/vdb' ; echo 'set root=hd1' ; echo 'export rootfs_root' ; echo 'export devicetree' ; echo 'configfile /EFI/BOOT/grub.cfg' ) > $(EFI_PART)/BOOT/grub.cfg
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=$(ROOTFS_IMG),format=raw -drive file=fat:rw:$(EFI_PART)/..,label=CONFIG,format=vvfat
 
-run-grub: $(BIOS_IMG) $(EFI_PART)
-	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive file=fat:rw:$(EFI_PART)/..,format=raw
+run-grub: $(BIOS_IMG) $(EFI_PART) $(DEVICETREE_DTB)
+	[ -f $(EFI_PART)/BOOT/grub.cfg ] && mv $(EFI_PART)/BOOT/grub.cfg $(EFI_PART)/BOOT/grub.cfg.$(notdir $(shell mktemp))
+	$(QEMU_SYSTEM) $(QEMU_OPTS) -drive format=vvfat,label=EVE,file=fat:rw:$(EFI_PART)/..
+
+run-compose: images/docker-compose.yml images/version.yml
+	docker-compose -f $< run storage-init sh -c 'rm -rf /run/* /config/* ; cp -Lr /conf/* /config/ ; echo IMGA > /run/eve.id'
+	docker-compose -f $< up
 
 # ensure the dist directory exists
-$(DIST) $(DIST)/bios:
+$(DIST) $(INSTALLER):
 	mkdir -p $@
 
 # convenience targets - so you can do `make config` instead of `make dist/config.img`, and `make installer` instead of `make dist/amd64/installer.img
+initrd: $(INITRD_IMG)
 config: $(CONFIG_IMG)
 rootfs: $(ROOTFS_IMG)
 live: $(LIVE_IMG).img
-installer: $(INSTALLER_IMG).raw
-installer-iso: $(INSTALLER_IMG).iso
+installer: $(INSTALLER).raw
+installer-iso: $(INSTALLER).iso
 
-$(CONFIG_IMG): conf/server conf/onboard.cert.pem conf/wpa_supplicant.conf conf/authorized_keys conf/ | $(DIST)
-	./tools/makeconfig.sh $(CONF_DIR) $@
+$(CONFIG_IMG): $(CONF_DIR) FORCE | $(INSTALLER)
+	./tools/makeconfig.sh $< $@
 
-$(ROOTFS_IMG): images/rootfs.yml | $(DIST)
-	./tools/makerootfs.sh $< $(ROOTFS_FORMAT) $@
+$(ROOTFS_IMG): $(ROOTFS_YML) | $(INSTALLER)
+	./tools/makerootfs.sh $< $@ $(ROOTFS_FORMAT)
 	@[ $$(wc -c < "$@") -gt $$(( 250 * 1024 * 1024 )) ] && \
           echo "ERROR: size of $@ is greater than 250MB (bigger than allocated partition)" && exit 1 || :
 
@@ -185,20 +243,14 @@ $(LIVE_IMG).qcow2: $(LIVE_IMG).raw | $(DIST)
 	qemu-img convert -c -f raw -O qcow2 $< $@
 	rm $<
 
-$(LIVE_IMG).raw: $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
-	tar -C $(DIST) -c $(notdir $^) | ./tools/makeflash.sh -C ${MEDIA_SIZE} $@
+$(LIVE_IMG).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) | $(INSTALLER)
+	./tools/makeflash.sh -C ${MEDIA_SIZE} $| $@
 
-$(ROOTFS_IMG)_installer.img: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
-	./tools/makerootfs.sh $< $(ROOTFS_FORMAT) $@
-	@[ $$(wc -c < "$@") -gt $$(( 300 * 1024 * 1024 )) ] && \
-          echo "ERROR: size of $@ is greater than 300MB (bigger than allocated partition)" && exit 1 || :
+$(INSTALLER).raw: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) | $(INSTALLER)
+	./tools/makeflash.sh -C 350 $| $@ "conf_win installer inventory_win"
 
-$(INSTALLER_IMG).raw: $(ROOTFS_IMG)_installer.img $(CONFIG_IMG) | $(DIST)
-	tar -C $(DIST) -c $(notdir $^) | ./tools/makeflash.sh -C 350 $@ "efi imga conf_win inventory_win"
-	rm $(ROOTFS_IMG)_installer.img
-
-$(INSTALLER_IMG).iso: images/installer.yml $(ROOTFS_IMG) $(CONFIG_IMG) | $(DIST)
-	./tools/makeiso.sh $< $@
+$(INSTALLER).iso: $(EFI_PART) $(ROOTFS_IMG) $(INITRD_IMG) $(CONFIG_IMG) | $(INSTALLER)
+	./tools/makeiso.sh $| $@
 
 # top-level linuxkit packages targets, note the one enforcing ordering between packages
 pkgs: RESCAN_DEPS=
@@ -206,7 +258,9 @@ pkgs: FORCE_BUILD=
 pkgs: build-tools $(PKGS)
 	@echo Done building packages
 
-pkg/pillar: pkg/lisp pkg/xen-tools pkg/dnsmasq pkg/strongswan pkg/gpt-tools pkg/watchdog pkg/rkt pkg/rkt-stage1 eve-pillar
+pkg/pillar: pkg/dnsmasq pkg/strongswan pkg/gpt-tools pkg/fscrypt eve-pillar
+	@true
+pkg/xen-tools: pkg/uefi eve-xen-tools
 	@true
 pkg/qrexec-dom0: pkg/qrexec-lib pkg/xen-tools eve-qrexec-dom0
 	@true
@@ -215,8 +269,8 @@ pkg/qrexec-lib: pkg/xen-tools eve-qrexec-lib
 pkg/%: eve-% FORCE
 	@true
 
-eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER_IMG).iso $(INSTALLER_IMG).raw $(ROOTFS_IMG) $(LIVE_IMG).img images/rootfs.yml images/installer.yml
-	cp pkg/eve/* Makefile images/rootfs.yml images/installer.yml $(DIST)
+eve: Makefile $(BIOS_IMG) $(CONFIG_IMG) $(INSTALLER).iso $(INSTALLER).raw $(ROOTFS_IMG) $(LIVE_IMG).img $(ROOTFS_YML)
+	cp pkg/eve/* Makefile $(ROOTFS_YML) $(DIST)
 	$(LINUXKIT) pkg $(LINUXKIT_PKG_TARGET) --hash-path $(CURDIR) $(LINUXKIT_OPTS) $(DIST)
 
 proto-vendor:
@@ -263,7 +317,9 @@ $(GOBUILDER):
 ifneq ($(BUILD),local)
 	@echo "Creating go builder image for user $(USER)"
 	@docker build --build-arg GOVER=$(GOVER) --build-arg USER=$(USER) --build-arg GROUP=$(GROUP) \
-                      --build-arg UID=$(UID) --build-arg GID=$(GID) -t $@ build-tools/src/scripts >/dev/null
+                      --build-arg UID=$(UID) --build-arg GID=$(GID) \
+                      $(DOCKER_HTTP_PROXY) $(DOCKER_HTTPS_PROXY) $(DOCKER_NO_PROXY) $(DOCKER_ALL_PROXY) \
+                      -t $@ build-tools/src/scripts > /dev/null
 	@echo "$@ docker container is ready to use"
 endif
 
@@ -286,7 +342,13 @@ eve-%: pkg/%/Dockerfile build-tools $(RESCAN_DEPS)
 	@$(DOCKER_GO) "dep ensure -update $(GODEP_NAME)" $(dir $@)
 	@echo Done updating $@
 
-.PHONY: all clean test run pkgs help build-tools live rootfs config installer live FORCE $(DIST)
+docker-old-images:
+	./tools/oldimages.sh
+
+docker-image-clean:
+	docker rmi -f $(shell ./tools/oldimages.sh)
+
+.PHONY: all clean test run pkgs help build-tools live rootfs config installer live FORCE $(DIST) HOSTARCH
 FORCE:
 
 help:
@@ -302,13 +364,14 @@ help:
 	@echo "to the make's command line. You can also run in a cross- way since"
 	@echo "all the execution is done via qemu."
 	@echo
-	@echo "Commonly used maitenance and development targets:"
+	@echo "Commonly used maintenance and development targets:"
 	@echo "   test           run EVE tests"
 	@echo "   clean          clean build artifacts in a current directory (doesn't clean Docker)"
 	@echo "   release        prepare branch for a release (VERSION=x.y.z required)"
 	@echo "   proto          generates Go and Python source from protobuf API definitions"
 	@echo "   proto-vendor   update vendored API in packages that require it (e.g. pkg/pillar)"
 	@echo "   shell          drop into docker container setup for Go development"
+	@echo "   yetus          run Apache Yetus to check the quality of the source tree"
 	@echo
 	@echo "Commonly used build targets:"
 	@echo "   build-tools    builds linuxkit and manifest-tool utilities under build-tools/bin"
@@ -321,6 +384,7 @@ help:
 	@echo "   installer-iso  builds an ISO installers image (to be installed on bootable media)"
 	@echo
 	@echo "Commonly used run targets (note they don't automatically rebuild images they run):"
+	@echo "   run-compose       runs all EVE microservices via docker-compose deployment"
 	@echo "   run-live          runs a full fledged virtual device on qemu (as close as it gets to actual h/w)"
 	@echo "   run-rootfs        runs a rootfs.img (limited usefulness e.g. quick test before cloud upload)"
 	@echo "   run-grub          runs our copy of GRUB bootloader and nothing else (very limited usefulness)"

@@ -5,17 +5,18 @@ package zedagent
 
 import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
 
-func downloaderSubscription(ctx *zedagentContext, objType string) *pubsub.Subscription {
-	var sub *pubsub.Subscription
+func downloaderSubscription(ctx *zedagentContext, objType string) pubsub.Subscription {
+	var sub pubsub.Subscription
 	switch objType {
-	case baseOsObj:
+	case types.BaseOsObj:
 		sub = ctx.subBaseOsDownloadStatus
-	case certObj:
+	case types.CertObj:
 		sub = ctx.subCertObjDownloadStatus
-	case appImgObj:
+	case types.AppImgObj:
 		sub = ctx.subAppImgDownloadStatus
 	default:
 		log.Fatalf("downloaderSubscription: Unknown ObjType %s\n",
@@ -25,11 +26,11 @@ func downloaderSubscription(ctx *zedagentContext, objType string) *pubsub.Subscr
 }
 
 func downloaderGetAll(ctx *zedagentContext) map[string]interface{} {
-	sub1 := downloaderSubscription(ctx, baseOsObj)
+	sub1 := downloaderSubscription(ctx, types.BaseOsObj)
 	items1 := sub1.GetAll()
-	sub2 := downloaderSubscription(ctx, certObj)
+	sub2 := downloaderSubscription(ctx, types.CertObj)
 	items2 := sub2.GetAll()
-	sub3 := downloaderSubscription(ctx, appImgObj)
+	sub3 := downloaderSubscription(ctx, types.AppImgObj)
 	items3 := sub3.GetAll()
 
 	items := make(map[string]interface{})

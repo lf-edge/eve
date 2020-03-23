@@ -10,7 +10,7 @@ This is accomplished by logic to test connectivity to the controller (implemente
 
 ## Sources of configuration
 
-There are several sources from which nim gets the potential port configurations. Those all use the ```DevicePortConfig``` type. There are examples of such configurations in [static-and-proxy-config.md](../pkg/pillar/docs/static-and-proxy-config.md)
+There are several sources from which nim gets the potential port configurations. Those all use the ```DevicePortConfig``` type. There are examples of such configurations in [legacy EVE configuration](CONFIG.md)
 
 ### Hardware-model based baseline
 
@@ -24,9 +24,9 @@ Those input files are used to construct a file with the same information but usi
 
 ### Override the configuration using a USB stick
 
-If the deployment site requires use of http enterprise proxies and/or static IP configuration, then a file containing a DevicePortConfig can be placed on a USB stick. Note that this requires that the USB controller is enabled using debug.enable.usb as specified in [global-config-variables.md](../pkg/pillar/docs/global-config-variables.md)
+If the deployment site requires use of http enterprise proxies and/or static IP configuration, then a file containing a DevicePortConfig can be placed on a USB stick. Note that this requires that the USB controller is enabled using debug.enable.usb as specified in [configuration properties](CONFIG-PROPERTIES.md)
 
-There are examples of such configurations in [static-and-proxy-config.md](../pkg/pillar/docs/static-and-proxy-config.md)
+There are examples of such configurations in [legacy EVE configuration](CONFIG.md)
 
 ### From the controller
 
@@ -39,7 +39,7 @@ Note that the device reports the status of all of the device connectivity using 
 
 ### Last resort
 
-If the network.fallback.any.eth config is set to true as specified in [global-config-variables.md](../pkg/pillar/docs/global-config-variables.md), then there an additional lowest priority item in the list of DevicePortConfigs, based on finding all of the Ethernet and Ethernet-like interfaces (an example of the latter is WiFi) which are not used exclusively by applications.
+If the network.fallback.any.eth config is set to true as specified in [configuration properties](CONFIG-PROPERTIES.md), then there an additional lowest priority item in the list of DevicePortConfigs, based on finding all of the Ethernet and Ethernet-like interfaces (an example of the latter is WiFi) which are not used exclusively by applications.
 
 ## Prioritizing the list
 

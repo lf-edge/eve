@@ -119,33 +119,112 @@ func TestIsNetworkUsed(t *testing.T) {
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
 		networkUsed := test.config.IsNetworkUsed(test.network)
-		assert.Equal(t, networkUsed, test.expectedValue)
+		assert.Equal(t, test.expectedValue, networkUsed)
 	}
 }
+
+// Make sure IsDPCUsable passes
+var usablePort = NetworkPortConfig{
+	IfName:       "eth0",
+	Phylabel:     "eth0",
+	Logicallabel: "eth0",
+	IsMgmt:       true,
+	DhcpConfig:   DhcpConfig{Dhcp: DT_CLIENT},
+}
+var usablePorts = []NetworkPortConfig{usablePort}
+
+var unusablePort1 = NetworkPortConfig{
+	IfName:       "eth0",
+	Phylabel:     "eth0",
+	Logicallabel: "eth0",
+	IsMgmt:       false,
+	DhcpConfig:   DhcpConfig{Dhcp: DT_CLIENT},
+}
+var unusablePorts1 = []NetworkPortConfig{unusablePort1}
+
+var unusablePort2 = NetworkPortConfig{
+	IfName:       "eth0",
+	Phylabel:     "eth0",
+	Logicallabel: "eth0",
+	IsMgmt:       true,
+	DhcpConfig:   DhcpConfig{Dhcp: DT_NONE},
+}
+var unusablePorts2 = []NetworkPortConfig{unusablePort2}
+var mixedPorts = []NetworkPortConfig{usablePort, unusablePort1, unusablePort2}
+
+func TestIsDPCUsable(t *testing.T) {
+	n := time.Now()
+	testMatrix := map[string]struct {
+		devicePortConfig DevicePortConfig
+		expectedValue    bool
+	}{
+		"Management and DT_CLIENT": {
+			devicePortConfig: DevicePortConfig{
+				LastFailed:    time.Time{},
+				LastSucceeded: n,
+				Ports:         usablePorts,
+			},
+			expectedValue: true,
+		},
+		"Mixture of usable and unusable ports": {
+			devicePortConfig: DevicePortConfig{
+				LastFailed:    time.Time{},
+				LastSucceeded: n,
+				Ports:         mixedPorts,
+			},
+			expectedValue: true,
+		},
+		"Not management and DT_CLIENT": {
+			devicePortConfig: DevicePortConfig{
+				LastFailed:    time.Time{},
+				LastSucceeded: n,
+				Ports:         unusablePorts1,
+			},
+			expectedValue: false,
+		},
+		"Management and DT_NONE": {
+			devicePortConfig: DevicePortConfig{
+				LastFailed:    time.Time{},
+				LastSucceeded: n,
+				Ports:         unusablePorts2,
+			},
+			expectedValue: false,
+		},
+	}
+	for testname, test := range testMatrix {
+		t.Logf("Running test case %s", testname)
+		value := test.devicePortConfig.IsDPCUsable()
+		assert.Equal(t, test.expectedValue, value)
+	}
+}
+
 func TestIsDPCTestable(t *testing.T) {
 	n := time.Now()
 	testMatrix := map[string]struct {
 		devicePortConfig DevicePortConfig
 		expectedValue    bool
 	}{
-		"Diffrence is exactly 60 seconds": {
+		"Difference is exactly 60 seconds": {
 			devicePortConfig: DevicePortConfig{
 				LastFailed:    n.Add(time.Second * 60),
 				LastSucceeded: n,
+				Ports:         usablePorts,
 			},
 			expectedValue: false,
 		},
-		"Diffrence is 61 seconds": {
+		"Difference is 61 seconds": {
 			devicePortConfig: DevicePortConfig{
 				LastFailed:    n.Add(time.Second * 61),
 				LastSucceeded: n,
+				Ports:         usablePorts,
 			},
 			expectedValue: false,
 		},
-		"Diffrence is 59 seconds": {
+		"Difference is 59 seconds": {
 			devicePortConfig: DevicePortConfig{
 				LastFailed:    n.Add(time.Second * 59),
 				LastSucceeded: n,
+				Ports:         usablePorts,
 			},
 			expectedValue: false,
 		},
@@ -153,6 +232,7 @@ func TestIsDPCTestable(t *testing.T) {
 			devicePortConfig: DevicePortConfig{
 				LastFailed:    time.Time{},
 				LastSucceeded: n,
+				Ports:         usablePorts,
 			},
 			expectedValue: true,
 		},
@@ -160,6 +240,7 @@ func TestIsDPCTestable(t *testing.T) {
 			devicePortConfig: DevicePortConfig{
 				LastFailed:    n,
 				LastSucceeded: n.Add(time.Second * 61),
+				Ports:         usablePorts,
 			},
 			expectedValue: true,
 		},
@@ -167,7 +248,7 @@ func TestIsDPCTestable(t *testing.T) {
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
 		value := test.devicePortConfig.IsDPCTestable()
-		assert.Equal(t, value, test.expectedValue)
+		assert.Equal(t, test.expectedValue, value)
 	}
 }
 
@@ -181,6 +262,7 @@ func TestIsDPCUntested(t *testing.T) {
 			devicePortConfig: DevicePortConfig{
 				LastFailed:    time.Time{},
 				LastSucceeded: time.Time{},
+				Ports:         usablePorts,
 			},
 			expectedValue: true,
 		},
@@ -188,6 +270,7 @@ func TestIsDPCUntested(t *testing.T) {
 			devicePortConfig: DevicePortConfig{
 				LastFailed:    time.Time{},
 				LastSucceeded: n,
+				Ports:         usablePorts,
 			},
 			expectedValue: false,
 		},
@@ -195,6 +278,7 @@ func TestIsDPCUntested(t *testing.T) {
 			devicePortConfig: DevicePortConfig{
 				LastFailed:    time.Time{},
 				LastSucceeded: n,
+				Ports:         usablePorts,
 			},
 			expectedValue: false,
 		},
@@ -202,7 +286,7 @@ func TestIsDPCUntested(t *testing.T) {
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
 		value := test.devicePortConfig.IsDPCUntested()
-		assert.Equal(t, value, test.expectedValue)
+		assert.Equal(t, test.expectedValue, value)
 	}
 }
 
@@ -216,6 +300,7 @@ func TestWasDPCWorking(t *testing.T) {
 			devicePortConfig: DevicePortConfig{
 				LastFailed:    n,
 				LastSucceeded: time.Time{},
+				Ports:         usablePorts,
 			},
 			expectedValue: false,
 		},
@@ -223,6 +308,7 @@ func TestWasDPCWorking(t *testing.T) {
 			devicePortConfig: DevicePortConfig{
 				LastFailed:    n,
 				LastSucceeded: n.Add(time.Second * 60),
+				Ports:         usablePorts,
 			},
 			expectedValue: true,
 		},
@@ -230,6 +316,7 @@ func TestWasDPCWorking(t *testing.T) {
 			devicePortConfig: DevicePortConfig{
 				LastFailed:    n.Add(time.Second * 60),
 				LastSucceeded: n,
+				Ports:         usablePorts,
 			},
 			expectedValue: false,
 		},
@@ -237,32 +324,7 @@ func TestWasDPCWorking(t *testing.T) {
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
 		value := test.devicePortConfig.WasDPCWorking()
-		assert.Equal(t, value, test.expectedValue)
-	}
-}
-
-func TestGetPortByName(t *testing.T) {
-	testMatrix := map[string]struct {
-		deviceNetworkStatus DeviceNetworkStatus
-		port                string
-		expectedValue       NetworkPortStatus
-	}{
-		"Test name is port one": {
-			deviceNetworkStatus: DeviceNetworkStatus{
-				Ports: []NetworkPortStatus{
-					{Name: "port one"},
-				},
-			},
-			port: "port one",
-			expectedValue: NetworkPortStatus{
-				Name: "port one",
-			},
-		},
-	}
-	for testname, test := range testMatrix {
-		t.Logf("Running test case %s", testname)
-		value := test.deviceNetworkStatus.GetPortByName(test.port)
-		assert.Equal(t, *value, test.expectedValue)
+		assert.Equal(t, test.expectedValue, value)
 	}
 }
 
@@ -287,6 +349,6 @@ func TestGetPortByIfName(t *testing.T) {
 	for testname, test := range testMatrix {
 		t.Logf("Running test case %s", testname)
 		value := test.deviceNetworkStatus.GetPortByIfName(test.port)
-		assert.Equal(t, *value, test.expectedValue)
+		assert.Equal(t, test.expectedValue, *value)
 	}
 }

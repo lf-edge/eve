@@ -1,4 +1,5 @@
 # EVE is Edge Virtualization Engine
+
 [![CircleCI](https://circleci.com/gh/lf-edge/eve.svg?style=svg)](https://circleci.com/gh/lf-edge/eve)
 [![Goreport](https://goreportcard.com/badge/github.com/lf-edge/eve)](https://goreportcard.com/report/github.com/lf-edge/eve)
 [![Godoc](https://godoc.org/github.com/lf-edge/eve/pkg/pillar?status.svg)](https://godoc.org/github.com/lf-edge/eve/pkg/pillar)
@@ -11,8 +12,8 @@ To get its job done, EVE leverages a lot of great open source projects: [Xen Pro
 
 ## How to use
 
-You will need qemu 3.x+ (https://www.qemu.org/), Docker (https://www.docker.com)
-and go 1.12+ (https://golang.org) installed in your system.
+You will need [QEMU 3.x+](https://www.qemu.org/), [Docker](https://www.docker.com), [Make](https://www.gnu.org/software/make/)
+and [go 1.12+](https://golang.org) installed in your system.
 
 Note, that since Linuxkit and manifest-tool are evolving pretty rapidly, we're
 vendoring those under build-tools/src. This means you don't have to have them
@@ -20,62 +21,111 @@ locally installed, but it also means your first build time will be much longer.
 
 If you're on MacOS the following steps should get you all the dependencies:
 
-  0. Get Go:
+### Install Dependencies
 
-  ```
-  https://golang.org/dl/
-  ```
-  1. Get Docker:
+#### Get Go
 
-  ```
-  https://store.docker.com/editions/community/docker-ce-desktop-mac
-  ```
-  2. Make sure brew is installed:
+```sh
+https://golang.org/dl/
+```
 
-  ```
-  https://brew.sh/
-  ```
-  3. Brew install qemu.
+#### Get Docker
 
-  ```
-  $ brew install qemu
-  ```
+```sh
+https://store.docker.com/editions/community/docker-ce-desktop-mac
+```
 
 Make sure that Docker is up and running on your system. On MacOS just start a docker Application, on Linux make sure docker service is running. Regardless of how you start Docker you can make sure that it is ready for you by running the following command and making sure that it returns both a version of the client AND a version of the server:
 
-```
+```sh
 docker version
 ```
 
-EVE requires beeing built in Git repository (the tools keep looking up git commit IDs). The easiest way is to clone EVE repository from GitHub:
+#### Get Make
+
+##### Install On OSX (using [Brew](https://brew.sh/))
+
+```sh
+$ brew install make
 ```
+
+##### Inatall On Ubuntu
+
+```sh
+$ sudo apt-get install make
+```
+
+#### Get QEMU
+
+##### On OSX using [Brew](https://brew.sh/)
+
+```sh
+$ brew install qemu
+```
+
+##### On Ubuntu Linux
+
+```sh
+$ sudo apt install qemu-utils # for make live
+$ sudo apt install qemu-system-x86 # for make run
+```
+
+#### Get Project EVE
+
+EVE requires being built in a Git repository (the tools keep looking up git commit IDs). The easiest way is to clone EVE repository from GitHub:
+
+```sh
 git clone https://github.com/lf-edge/eve.git
 cd eve
 ```
 
 Build both the build-tools as well as the live image in the source directory:
 
-```
+```sh
 make build-tools
 make live
 ```
-This will download the relevant dockers from docker hub and create a bootable
-image 'dist/<ARCH>/live.img'.
 
-Please note that not all containers will be fetched from the docker
-hub. mkimage-raw-efi in particular will be built.
+This will download the relevant docker images from docker hub and create a bootable
+image `dist/<ARCH>/live.img`.
 
-Also, keep in mind that since the initial build fetches a LOT of bits
-over the network it may occasionally time out and fail. Typically
-re-running make fixes the issue. If it doesn't you can attempt a local
-build of all the required EVE packages first by running:
+Please note that not all containers will be fetched from Docker Hub.
+`mkimage-raw-efi` in particular will be built.
 
+> **_NOTE:_** Since the initial build fetches a LOT of bits
+> over the network it may occasionally time out and fail. Typically
+> re-running `make` fixes the issue. If it doesn't you can attempt a local
+> build of all the required EVE packages first by running `make pkgs`
+
+#### Proxies
+
+Building of the various images may require downloading packages from the Internet. If you have direct Internet access, everything will "just work".
+On the other hand, if you need to run behind a proxy, you may run into issues downloading. These manifest in two key areas:
+
+* docker: docker needs to download images from the image registries. Configuring your local installation of docker is beyond the scope of this
+document, please see [here](https://docs.docker.com/network/proxy/).
+* packages: the package updates _inside_ the images running in docker may need to use http/s proxies.
+
+To configure your build process to use proxies, you can set the following environment variables. They will be picked up automatically when running
+any `make` commands and used within the building containers. If they are _not_ set, no proxy is set:
+
+* `HTTP_PROXY`
+* `HTTPS_PROXY`
+* `ALL_PROXY`
+* `NO_PROXY`
+
+#### Running in QEMU
+
+Finally run the resulting image in QEMU with some default assumptions:
+
+```sh
+make run
 ```
-make pkgs
-```
 
-Finally run the resulting image by typing `make run`. This will launch
-qemu with some default assumptions.
+> **_NOTE:_**  The default QEMU configuration needs 4GB of memory available.
+> If you get an error message about being unable to allocate memory, try freeing up some RAM.
+> If you can't free up 4GB, you can reduce the memory allocation in the `Makefile` from 4096 (4GB) to 2048 (2GB).
+> Running QEMU with less than 2GB of memory is not recommended.
 
 Once the image boots you can interact with it either by using the console
 (right there in the terminal window from which make run was executed).
@@ -87,7 +137,18 @@ from containerd - use that instead).
 Once in a container you can run the usual xl commands to start VMs and
 interact with Xen.
 
-### Custom Config Partition
+#### Exitting
+
+To exit out of the QEMU environment, press `Ctrl-A + C` to reach the QEMU console, then `q` to quit.
+
+##### Linux
+
+```sh
+$ exit # leave eve
+$ poweroff -f # leave qemu
+```
+
+### Customizing the Configuration
 
 As described in [BUILD.md](./docs/BUILD.md) and [REGISTRATION.md](./docs/REGISTRATION.md), a booting EVE looks in its config partition to determine:
 
@@ -105,7 +166,7 @@ Note that the directory must exist to be mounted; if not, it will be ignored. Th
 
 ## How to use on an ARM board
 
-While running everything on your laptop with qemu could be fun, nothing
+While running everything on your laptop with QEMU could be fun, nothing
 beats real hardware. The most cost-effective option, not surprisingly,
 is ARM. We recommend using HiKey board [http://www.lenovator.com/product/90.html](http://www.lenovator.com/product/90.html).
 Once you acquire the board you will need to build an installer image by running
@@ -217,21 +278,42 @@ The following steps have been tested on Intel UP Squared Board (AAEON UP-APL01) 
 ```bash
 git clone https://github.com/lf-edge/eve.git
 cd eve
-sudo make ZARCH=amd64 installer
+make ZARCH=amd64 installer
 ```
 
 Find the device using
+
+### On Ubuntu
 
 ```bash
 fdisk -l
 ```
 
-Now format the USB Disk and run the following commands
+### On OSX
 
 ```bash
-sudo umount /dev/sdXXX
-sudo dd if=dist/amd64/installer.raw of=/dev/sdXXX
+diskutil list
 ```
+
+Now format the USB Disk and run the following commands
+
+### Linux / Ubuntu
+
+```bash
+umount /dev/sdXXX
+sudo dd if=dist/amd64/installer.raw of=/dev/sdXXX
+eject /dev/sdXXX
+```
+
+### OSX
+
+```bash
+diskutil umount /dev/sdXXX
+sudo dd if=dist/amd64/installer.raw of=/dev/sdXXX
+diskutil eject /dev/sdXXX
+```
+
+Alternatively the image can be written with tools like [balenaEtcher](https://www.balena.io/etcher/)
 
 Now plug the USB Disk on your UP Squared Board and the installer should now replace the existing OS on the UP Squared board with EVE.
 
@@ -254,10 +336,12 @@ At this point you should remove your USB Disk from the UP Squared Board slot and
 A quick note on linuxkit: you may be wondering why do we have a container-based
 architecture for a Xen-centric environment. First of all, OCI containers
 are a key type of a workload for our platform. Which means having
-OCI environment to run them is a key requirement. We do plan to run them
-via Stage 1 Xen [https://github.com/rkt/stage1-xen](https://github.com/rkt/stage1-xen)
-down the road, but
-while that isn't integrated fully we will be simply relying on containerd.
+OCI environment to run them is a key requirement. We run them
+via:
+
+1. Set up the filesystem root using [containerd](https://containerd.io)
+1. Launch the domU using Xen via `xl`
+
 In addition to that, while we plan to build a fully disagregated system
 (with even device drivers running in their separate domains) right now
 we are just getting started and having containers as a first step towards

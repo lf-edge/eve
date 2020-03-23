@@ -1,0 +1,26 @@
+From 3fbf87ef4ef82bf9079f275f74905a75e2b7a285 Mon Sep 17 00:00:00 2001
+From: Jack Ren <jack.ren@intel.com>
+Date: Sat, 19 Oct 2019 01:17:26 +0800
+Subject: [PATCH 4/4] config: enable USB HID as builtin
+
+Signed-off-by: Jack Ren <jack.ren@intel.com>
+---
+ kernel_config_uefi_sos | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/kernel_config_uefi_sos b/kernel_config_uefi_sos
+index 4bbc154..3e9b2d9 100644
+--- a/kernel_config_uefi_sos
++++ b/kernel_config_uefi_sos
+@@ -4327,7 +4327,7 @@ CONFIG_HID_SENSOR_HUB=m
+ #
+ # USB HID support
+ #
+-CONFIG_USB_HID=m
++CONFIG_USB_HID=y
+ CONFIG_HID_PID=y
+ CONFIG_USB_HIDDEV=y
+ 
+-- 
+2.7.4
+

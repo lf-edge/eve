@@ -651,20 +651,25 @@ func incrementVpnMetricsConnStats(vpnMetrics *types.VpnMetrics,
 	vpnMetrics.DataStat.OutPkts.Pkts += outPktStats.Pkts
 }
 
-func getUplink(ctx *zedrouterContext, portName string) (string, error) {
+func getUplink(ctx *zedrouterContext, llOrIfname string) (string, error) {
 
-	if portName == "" {
-		return portName, errors.New("port config is absent")
+	if llOrIfname == "" {
+		return llOrIfname, errors.New("port config is absent")
 	}
 
-	ifNameList := getIfNameListForPort(ctx, portName)
+	ifNameList := getIfNameListForLLOrIfname(ctx, llOrIfname)
 	if len(ifNameList) != 0 {
-		portName = types.AdapterToIfName(ctx.deviceNetworkStatus,
-			ifNameList[0])
-		return portName, nil
+		for _, ifName := range ifNameList {
+			_, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus,
+				0, ifName)
+			if err != nil {
+				continue
+			}
+			return ifName, nil
+		}
 	}
-	errStr := fmt.Sprintf("%s is not available", portName)
-	return portName, errors.New(errStr)
+	errStr := fmt.Sprintf("%s is not available", llOrIfname)
+	return llOrIfname, errors.New(errStr)
 }
 
 func strongSwanConfigGet(ctx *zedrouterContext,
@@ -675,15 +680,21 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 	vpnConfig := types.VpnConfig{}
 	appNetPresent := false
 
-	portName, err := getUplink(ctx, status.Port)
-	if err != nil {
-		return vpnConfig, err
+	var err error
+	var ifname string
+	if status.CurrentUplinkIntf != "" {
+		ifname, _ = getUplink(ctx, status.CurrentUplinkIntf)
+	} else {
+		ifname, err = getUplink(ctx, status.Logicallabel)
+		if err != nil {
+			return vpnConfig, err
+		}
 	}
 
-	port.Name = portName
+	port.IfName = ifname
 	// port ip address error
 	srcIp, err := types.GetLocalAddrAnyNoLinkLocal(*ctx.deviceNetworkStatus, 0,
-		port.Name)
+		port.IfName)
 	if err != nil {
 		return vpnConfig, err
 	}
@@ -694,7 +705,7 @@ func strongSwanConfigGet(ctx *zedrouterContext,
 		return vpnConfig, errors.New("appnet is not IPv4")
 	}
 	appNetPresent = true
-	appLink.Name = status.BridgeName
+	appLink.IfName = status.BridgeName
 	appLink.SubnetBlock = status.Subnet.String()
 
 	vpnCloudConfig, err := strongSwanVpnConfigParse(status.OpaqueConfig)

@@ -24,7 +24,11 @@ message memoryMetric {
 }
 
 message networkMetric {
+  // iName - Set to SystemAdapter.Name
   string iName = 1;	// name from config; displayName for network instance
+  // alias - Set to SystemAdapter.alias
+  string alias = 20;
+
   uint64 txBytes = 2;	// in bytes
   uint64 rxBytes = 3;	// in bytes
   uint64 txDrops = 4;
@@ -39,36 +43,39 @@ message networkMetric {
   uint64 rxAclDrops = 13;
   uint64 txAclRateLimitDrops = 14;
   uint64 rxAclRateLimitDrops = 15;
+
+  // localName - Set to IfName of the Adapter
   string localName = 16; // local vif name e.g., nbu*
 }
 
 // Failures and successes for commuication to zedcloud
 // for each management port
 message zedcloudMetric {
-    string ifName = 1;          // interface name for management port
-    uint64 failures = 2;
-    uint64 success = 3;
-    google.protobuf.Timestamp lastFailure = 4;
-    google.protobuf.Timestamp lastSuccess = 5;
-    repeated urlcloudMetric urlMetrics = 6;
+  string ifName = 1;          // interface name for management port
+  uint64 failures = 2;
+  uint64 success = 3;
+  google.protobuf.Timestamp lastFailure = 4;
+  google.protobuf.Timestamp lastSuccess = 5;
+  repeated urlcloudMetric urlMetrics = 6;
+  uint64 authVerifyFailure = 7; // networking success, authen verify fail count for V2 API
 }
 
 // Information for each API URL
 message urlcloudMetric {
-    string url = 1;
-    int64 tryMsgCount = 2;	// Things we might have tried to send
-    int64 tryByteCount = 3;	// or it failed before we could send them.
-    int64 sentMsgCount = 4;
-    int64 sentByteCount = 5;
-    int64 recvMsgCount = 6;
-    int64 recvByteCount = 7;
+  string url = 1;
+  int64 tryMsgCount = 2;        // Things we might have tried to send
+  int64 tryByteCount = 3;       // or it failed before we could send them.
+  int64 sentMsgCount = 4;
+  int64 sentByteCount = 5;
+  int64 recvMsgCount = 6;
+  int64 recvByteCount = 7;
 }
 
 message appCpuMetric {
-    // deprecated = 2;
-    // deprecated = 3;
-    google.protobuf.Timestamp upTime = 4;
-    uint64 total = 5;                   // cpu total in secs.
+  // deprecated = 2;
+  // deprecated = 3;
+  google.protobuf.Timestamp upTime = 4;
+  uint64 total = 5;                   // cpu total in secs.
 }
 
 message deviceMetric {
@@ -95,16 +102,16 @@ enum MetricItemType {
 // Open-ended metrics from different part of the device such as LTE modem
 // metrics.
 message MetricItem {
-	string key = 1;		// E.g., "lte-signal-strength"
-	MetricItemType type = 2;
-	oneof metricItemValue {
-		bool boolValue = 3;
-		uint32 uint32Value = 4;	// If timer this is in seconds
-		uint64 uint64Value = 5;
-		float floatValue = 6;
-		string stringValue = 7; // Use with care
-	}
-}		
+  string key = 1;               // E.g., "lte-signal-strength"
+  MetricItemType type = 2;
+  oneof metricItemValue {
+    bool boolValue = 3;
+    uint32 uint32Value = 4;     // If timer this is in seconds
+    uint64 uint64Value = 5;
+    float floatValue = 6;
+    string stringValue = 7; // Use with care
+  }
+}
 
 // For each partition; counts since boot
 message diskMetric {
@@ -139,53 +146,53 @@ message appMetric {
 
 // Lisp stats
 message PktStat {
-	uint64 Packets = 1;
-	uint64 Bytes = 2;
+  uint64 Packets = 1;
+  uint64 Bytes = 2;
 }
 
 message RlocStats {
-	string Rloc = 1;
-	PktStat Stats = 2;
-	uint64 SecondsSinceLastPacket = 3;
+  string Rloc = 1;
+  PktStat Stats = 2;
+  uint64 SecondsSinceLastPacket = 3;
 }
 
 message EidStats {
-	uint64 IID = 1;
-	string EID = 2;
-	repeated RlocStats RlocStatsEntries = 3;
+  uint64 IID = 1;
+  string EID = 2;
+  repeated RlocStats RlocStatsEntries = 3;
 }
 
 message ZMetricLisp {
-	// Encap Statistics
-	repeated EidStats EidStatsEntries = 1; // ITR Statistics
-	PktStat ItrPacketSendError = 2;
-	PktStat InvalidEidError = 3;
+  // Encap Statistics
+  repeated EidStats EidStatsEntries = 1; // ITR Statistics
+  PktStat ItrPacketSendError = 2;
+  PktStat InvalidEidError = 3;
 
-	// Decap Statistics
-	PktStat NoDecryptKey = 4;
-	PktStat OuterHeaderError = 5;
-	PktStat BadInnerVersion = 6;
-	PktStat GoodPackets = 7;
-	PktStat ICVError = 8;
-	PktStat LispHeaderError = 9;
-	PktStat CheckSumError = 10;
-	PktStat DecapReInjectError = 11;
-	PktStat DecryptError = 12;
+  // Decap Statistics
+  PktStat NoDecryptKey = 4;
+  PktStat OuterHeaderError = 5;
+  PktStat BadInnerVersion = 6;
+  PktStat GoodPackets = 7;
+  PktStat ICVError = 8;
+  PktStat LispHeaderError = 9;
+  PktStat CheckSumError = 10;
+  PktStat DecapReInjectError = 11;
+  PktStat DecryptError = 12;
 }
 
 // Vpn Stats
 message ZMetricConn {
-	PktStat InPkts = 1;
-	PktStat OutPkts = 2;
-	PktStat ErrPkts = 3;
-	PktStat CarierErrPkts = 4;
+  PktStat InPkts = 1;
+  PktStat OutPkts = 2;
+  PktStat ErrPkts = 3;
+  PktStat CarierErrPkts = 4;
 }
 
 message ZMetricVpn {
-	ZMetricConn ConnStat = 1;
-	ZMetricConn IkeStat = 2;
-	ZMetricConn NatTStat = 3;
-	ZMetricConn EspStat = 4;
+  ZMetricConn ConnStat = 1;
+  ZMetricConn IkeStat = 2;
+  ZMetricConn NatTStat = 3;
+  ZMetricConn EspStat = 4;
 }
 
 // For other services with no specific metrics
@@ -221,32 +228,52 @@ message ZMetricFlow {
 }
 
 message ZMetricLispGlobal {
-	// Encap/ITR Statistics
-	PktStat ItrPacketSendError = 2;
-	PktStat InvalidEidError = 3;
+  // Encap/ITR Statistics
+  PktStat ItrPacketSendError = 2;
+  PktStat InvalidEidError = 3;
 
-	// Decap/ETR Statistics
-	PktStat NoDecryptKey = 4;
-	PktStat OuterHeaderError = 5;
-	PktStat BadInnerVersion = 6;
-	PktStat GoodPackets = 7;
-	PktStat ICVError = 8;
-	PktStat LispHeaderError = 9;
-	PktStat CheckSumError = 10;
-	PktStat DecapReInjectError = 11;
-	PktStat DecryptError = 12;
+  // Decap/ETR Statistics
+  PktStat NoDecryptKey = 4;
+  PktStat OuterHeaderError = 5;
+  PktStat BadInnerVersion = 6;
+  PktStat GoodPackets = 7;
+  PktStat ICVError = 8;
+  PktStat LispHeaderError = 9;
+  PktStat CheckSumError = 10;
+  PktStat DecapReInjectError = 11;
+  PktStat DecryptError = 12;
 }
 
 message NetworkStats {
-	uint64 totalPackets = 1;
-	uint64 errors = 2;
-	uint64 drops = 3;
-	uint64 totalBytes = 4;
+  uint64 totalPackets = 1;
+  uint64 errors = 2;
+  uint64 drops = 3;
+  uint64 totalBytes = 4;
 }
 
 message ZMetricNetworkStats {
-	NetworkStats rx = 1;
-	NetworkStats tx = 2;
+  NetworkStats rx = 1;
+  NetworkStats tx = 2;
+}
+
+message ZProbeNIMetrics {         // per NI probing stats
+  string currentIntf = 1;         // current picked uplink interface
+  string remoteEndpoint = 2;      // remote URL or IP address for probing
+  uint32 pingIntv = 3;            // local ping interval in seconds
+  uint32 remotePingIntv = 4;      // remote probe interval in seconds
+  uint32 uplinkCnt = 5;           // total number of uplink intf in consideration
+  message ZProbeIntfMetric {      // level 2
+    string intfName = 11;            // uplink interface name, e.g. eth1, wlan0
+    string gatewayNexhtop = 12;      // intf nexthop IP address
+    bool   gatewayUP = 13;           // local gateway status UP or not
+    bool   remoteHostUP = 14;        // remote url/IP status UP or not
+    uint32 nexthopUpCount = 15;      // local ping success count
+    uint32 nexthopDownCount = 16;    // local ping failure count
+    uint32 remoteUpCount = 17;       // remote probing success count
+    uint32 remoteDownCount = 18;     // remote probing failure count
+    uint32 remoteProbeLatency = 19;  // remote host probe latency in msec
+  }
+  repeated ZProbeIntfMetric intfMetric = 10; // per uplink intf probing stats
 }
 
 message ZMetricNetworkInstance {
@@ -258,6 +285,7 @@ message ZMetricNetworkInstance {
   bool activated = 7;		// Forwarding enabled
 
   repeated networkMetric network = 10;	// Aggregate counters for bridge
+  ZProbeNIMetrics probeMetric = 12;     // NI uplink probing stats
   oneof InstanceContent {
     ZMetricVpn  vpnm = 20;
     ZMetricLisp lispm = 21;
@@ -283,9 +311,9 @@ message ZMetricMsg {
   google.protobuf.Timestamp atTimeStamp = 3;
 
   oneof MetricContent {
-  	deviceMetric dm = 4;
-   }
-   repeated appMetric am = 5;
-   // deprecated = 6;
-   repeated ZMetricNetworkInstance nm = 7;
+    deviceMetric dm = 4;
+  }
+  repeated appMetric am = 5;
+  // deprecated = 6;
+  repeated ZMetricNetworkInstance nm = 7;
 }

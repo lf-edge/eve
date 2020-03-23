@@ -1,8 +1,8 @@
+^pkg/mkimage-raw-efi/initramfs-init
+^pkg/mkimage-raw-efi/nlplug-findfs.c
 ^pkg/fw/
-^pkg/rngd/cmd/rngd/vendor/
 ^build-tools/src/linuxkit/
 ^build-tools/src/manifest-tool/
-^pkg/pillar/vendor/
 ^pkg/pillar/zedpac/
 ^api/python/
 ^api/go/
@@ -11,3 +11,4 @@
 ^.+build.yml
 ^.+go.mod
 ^.+go.sum
+^.+/vendor/.+

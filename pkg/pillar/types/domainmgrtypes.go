@@ -4,11 +4,14 @@
 package types
 
 import (
-	log "github.com/sirupsen/logrus"
 	"time"
+
+	zconfig "github.com/lf-edge/eve/api/go/config"
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
-// The information XenManager needs to boot and halt domains
+// The information DomainManager needs to boot and halt domains
 // If the the version (in UUIDandVersion) changes then the domain needs to
 // halted and booted?? NO, because an ACL change from ZedControl would bump
 // the version. Who determines which changes require halt+reboot?
@@ -21,10 +24,17 @@ type DomainConfig struct {
 	Activate       bool   // Actually start the domU as opposed to prepare
 	AppNum         int    // From networking; makes the name unique
 	VmConfig
-	DiskConfigList    []DiskConfig
-	VifList           []VifInfo
-	IoAdapterList     []IoAdapter
-	CloudInitUserData string // base64-encoded
+	DiskConfigList []DiskConfig
+	VifList        []VifInfo
+	IoAdapterList  []IoAdapter
+
+	// XXX: to be deprecated, use CipherBlockStatus instead
+	CloudInitUserData *string // base64-encoded
+	// Container related info
+	IsContainer bool // Is this Domain for a Container?
+
+	// CipherBlockStatus, for encrypted cloud-init data
+	CipherBlockStatus
 }
 
 func (config DomainConfig) Key() string {
@@ -39,6 +49,16 @@ func (config DomainConfig) VerifyFilename(fileName string) bool {
 			fileName, expect)
 	}
 	return ret
+}
+
+// VirtualizationModeOrDefault sets the default to PV
+func (config DomainConfig) VirtualizationModeOrDefault() VmMode {
+	switch config.VirtualizationMode {
+	case PV, HVM, FML:
+		return config.VirtualizationMode
+	default:
+		return PV
+	}
 }
 
 // Some of these items can be overridden by matching Targets in
@@ -76,7 +96,8 @@ type VmMode uint8
 const (
 	PV VmMode = iota + 0 // Default
 	HVM
-	// PVH
+	Filler
+	FML
 )
 
 type DomainStatus struct {
@@ -84,7 +105,7 @@ type DomainStatus struct {
 	DisplayName        string
 	State              SwState // BOOTING and above?
 	Activated          bool    // XXX remove??
-	AppNum             int
+	AppNum             int     // From networking; makes the name unique
 	PendingAdd         bool
 	PendingModify      bool
 	PendingDelete      bool
@@ -103,6 +124,8 @@ type DomainStatus struct {
 	LastErrTime        time.Time
 	BootFailed         bool
 	AdaptersFailed     bool
+	IsContainer        bool              // Is this Domain for a Container?
+	EnvVariables       map[string]string // List of environment variables to be set in container
 }
 
 func (status DomainStatus) Key() string {
@@ -135,43 +158,63 @@ func (status DomainStatus) Pending() bool {
 	return status.PendingAdd || status.PendingModify || status.PendingDelete
 }
 
-type VifInfo struct {
-	Bridge string
-	Vif    string
-	Mac    string
+// VifInfoByVif looks up based on the name aka Vif
+func (status DomainStatus) VifInfoByVif(vif string) *VifInfo {
+	for i := range status.VifList {
+		net := &status.VifList[i]
+		if net.Vif == vif {
+			return net
+		}
+	}
+	return nil
 }
 
-// XenManager will pass these to the xen xl config file
+type VifInfo struct {
+	Bridge  string
+	Vif     string
+	VifUsed string // Has -emu in name in Status if appropriate
+	Mac     string
+}
+
+// DomainManager will pass these to the xen xl config file
 // The vdev is automatically assigned as xvd[x], where X is a, b, c etc,
 // based on the order in the DiskList
 // Note that vdev in general can be hd[x], xvd[x], sd[x] but here we only
 // use xvd
 type DiskConfig struct {
-	ImageSha256 string // sha256 of immutable image
+	ImageID     uuid.UUID // UUID of the image
+	ImageSha256 string    // sha256 of immutable image
 	ReadOnly    bool
 	Preserve    bool // If set a rw disk will be preserved across
 	// boots (acivate/inactivate)
 	Maxsizebytes uint64 // Resize filesystem to this size if set
-	Format       string // Default "raw"; could be raw, qcow, qcow2, vhd
+	Format       zconfig.Format
 	Devtype      string // Default ""; could be e.g. "cdrom"
 }
 
 type DiskStatus struct {
-	ImageSha256        string // sha256 of immutable image
+	ImageID            uuid.UUID // UUID of immutable image
+	ImageSha256        string    // sha256 of immutable image
 	ReadOnly           bool
 	Preserve           bool
 	FileLocation       string // Local location of Image
 	Maxsizebytes       uint64 // Resize filesystem to this size if set
-	Format             string // From config
+	Format             zconfig.Format
 	Devtype            string // From config
 	Vdev               string // Allocated
 	ActiveFileLocation string // Allocated; private copy if RW; FileLocation if RO
+	FSVolumeLocation   string // Allocated; for containers this has path to the FSVolume
 }
 
 // Track the active image files in rwImgDirname
+// The ImageSha256 is used when an app instance has multiple virtual disks.
+// We do not have an imageID in the pathnames for the RW images hence we can't report
+// an imageID on startup.
 type ImageStatus struct {
-	Filename     string // Basename; used as key
-	FileLocation string // Local location of Image
+	AppInstUUID  uuid.UUID // UUID of App Instance using the image.
+	ImageSha256  string    // ImageSha256 of original image
+	Filename     string    // Basename; used as key
+	FileLocation string    // Local location of Image
 	RefCount     uint
 	LastUse      time.Time // When RefCount dropped to zero
 	Size         uint64
@@ -179,4 +222,27 @@ type ImageStatus struct {
 
 func (status ImageStatus) Key() string {
 	return status.Filename
+}
+
+// DomainMetric carries CPU and memory usage. UUID=devUUID for the dom0/host metrics overhead
+type DomainMetric struct {
+	UUIDandVersion    UUIDandVersion
+	CPUTotal          uint64 // Seconds since Domain boot
+	UsedMemory        uint32
+	AvailableMemory   uint32
+	UsedMemoryPercent float64
+}
+
+// Key returns the key for pubsub
+func (metric DomainMetric) Key() string {
+	return metric.UUIDandVersion.UUID.String()
+}
+
+// HostMemory reports global stats. Published under "global" key
+// Note that Ncpus is the set of physical CPUs which is different
+// than the set of CPUs assigned to dom0
+type HostMemory struct {
+	TotalMemoryMB uint64
+	FreeMemoryMB  uint64
+	Ncpus         uint32
 }

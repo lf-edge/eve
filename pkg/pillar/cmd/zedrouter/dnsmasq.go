@@ -18,8 +18,6 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/lf-edge/eve/pkg/pillar/agentlog"
-	"github.com/lf-edge/eve/pkg/pillar/cast"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -68,10 +66,10 @@ func dnsmasqDhcpHostDir(bridgeName string) string {
 func createDnsmasqConfiglet(
 	bridgeName string, bridgeIPAddr string,
 	netconf *types.NetworkInstanceConfig, hostsDir string,
-	ipsets []string, Ipv4Eid bool) {
+	ipsets []string, Ipv4Eid bool, uplink string, dnsServers []net.IP) {
 
-	log.Infof("createDnsmasqConfiglet(%s, %s) netconf %v, ipsets %v\n",
-		bridgeName, bridgeIPAddr, netconf, ipsets)
+	log.Infof("createDnsmasqConfiglet(%s, %s) netconf %v, ipsets %v uplink %s dnsServers %v",
+		bridgeName, bridgeIPAddr, netconf, ipsets, uplink, dnsServers)
 
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	// Delete if it exists
@@ -93,6 +91,14 @@ func createDnsmasqConfiglet(
 	ensureDir(dhcphostsDir)
 
 	file.WriteString(dnsmasqStatic)
+	if len(dnsServers) != 0 {
+		// Pick file where dnsmasq should send DNS read upstream
+		for _, s := range dnsServers {
+			file.WriteString(fmt.Sprintf("server=%s@%s\n", s, uplink))
+		}
+		file.WriteString("no-resolv\n")
+	}
+
 	for _, ipset := range ipsets {
 		file.WriteString(fmt.Sprintf("ipset=/%s/ipv4.%s,ipv6.%s\n",
 			ipset, ipset, ipset))
@@ -128,7 +134,10 @@ func createDnsmasqConfiglet(
 	advertizeRouter := true
 	var router string
 
-	if Ipv4Eid {
+	if netconf.Logicallabel == "" {
+		log.Infof("Internal switch without external port case, dnsmasq suppress router advertize\n")
+		advertizeRouter = false
+	} else if Ipv4Eid {
 		advertizeRouter = false
 	} else if netconf.Gateway != nil {
 		if netconf.Gateway.IsUnspecified() {
@@ -343,25 +352,20 @@ func startDnsmasq(bridgeName string) {
 	log.Infof("startDnsmasq(%s)\n", bridgeName)
 	cfgPathname := dnsmasqConfigPath(bridgeName)
 	name := "nohup"
-	//    XXX currently running as root with -d above
 	args := []string{
 		"/opt/zededa/bin/dnsmasq",
-		"-d",
 		"-C",
 		cfgPathname,
 	}
-	logFilename := fmt.Sprintf("dnsmasq.%s", bridgeName)
-	logf, err := agentlog.InitChild(logFilename)
-	if err != nil {
-		log.Fatalf("startDnsmasq agentlog failed: %s\n", err)
-	}
-	w := bufio.NewWriter(logf)
-	ts := time.Now().Format(time.RFC3339Nano)
-	fmt.Fprintf(w, "%s Starting %s %v\n", ts, name, args)
 	cmd := exec.Command(name, args...)
-	cmd.Stderr = logf
 	log.Infof("Calling command %s %v\n", name, args)
-	go cmd.Run()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Errorf("startDnsmasq: Failed starting dnsmasq for bridge %s (%s)",
+			bridgeName, err)
+	} else {
+		log.Infof("startDnsmasq: Started dnsmasq with output: %s", out)
+	}
 }
 
 //    pkill -u nobody -f dnsmasq.${BRIDGENAME}.conf
@@ -369,7 +373,6 @@ func stopDnsmasq(bridgeName string, printOnError bool, delConfiglet bool) {
 
 	log.Infof("stopDnsmasq(%s)\n", bridgeName)
 	cfgFilename := dnsmasqConfigFile(bridgeName)
-	// XXX currently running as root with -d above
 	pkillUserArgs("root", cfgFilename, printOnError)
 
 	if delConfiglet {
@@ -389,7 +392,7 @@ func checkAndPublishDhcpLeases(ctx *zedrouterContext) {
 	items := pub.GetAll()
 	for _, st := range items {
 		changed := false
-		status := cast.CastAppNetworkStatus(st)
+		status := st.(types.AppNetworkStatus)
 		for i := range status.UnderlayNetworkList {
 			ulStatus := &status.UnderlayNetworkList[i]
 			l := findLease(ctx.dhcpLeases, status.Key(), ulStatus.Mac)
@@ -494,4 +497,20 @@ func readLeases() []dnsmasqLease {
 		leases = append(leases, lease)
 	}
 	return leases
+}
+
+// When we restart dnsmasq with smaller changes like chaging DNS server
+// file configuration, we should not delete the hosts configuration for
+// that has the IP address allotment information.
+func deleteOnlyDnsmasqConfiglet(bridgeName string) {
+
+	log.Infof("deleteOnlyDnsmasqConfiglet(%s)\n", bridgeName)
+	cfgPathname := dnsmasqConfigPath(bridgeName)
+	if _, err := os.Stat(cfgPathname); err == nil {
+		if err := os.Remove(cfgPathname); err != nil {
+			errStr := fmt.Sprintf("deleteOnlyDnsmasqConfiglet %v",
+				err)
+			log.Errorln(errStr)
+		}
+	}
 }

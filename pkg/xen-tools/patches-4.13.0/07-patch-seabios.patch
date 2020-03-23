@@ -1,0 +1,10 @@
+--- a/tools/firmware/Makefile
++++ b/tools/firmware/Makefile
+@@ -26,6 +26,7 @@
+ seabios-dir:
+ 	GIT=$(GIT) $(XEN_ROOT)/scripts/git-checkout.sh $(SEABIOS_UPSTREAM_URL) $(SEABIOS_UPSTREAM_REVISION) seabios-dir
+ 	cp seabios-config seabios-dir/.config;
++	cd seabios-dir && patch -p1 < /patches/patch.seabios
+ 	$(MAKE) -C seabios-dir olddefconfig CC=$(SEABIOSCC) LD=$(SEABIOSLD)
+ 	rm -f seabios-dir/.version
+ 	echo '$(SEABIOS_UPSTREAM_REVISION)' > seabios-dir/.version

@@ -4,9 +4,11 @@
 package types
 
 import (
+	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
 
 type OsVerParams struct {
@@ -61,8 +63,7 @@ type BaseOsStatus struct {
 
 	// Mininum state across all steps/StorageStatus.
 	// Error* set implies error.
-	State            SwState
-	MissingDatastore bool // If some DatastoreId not found
+	State SwState
 	// error strings across all steps/StorageStatus
 	Error     string
 	ErrorTime time.Time
@@ -128,8 +129,7 @@ type CertObjStatus struct {
 	StorageStatusList []StorageStatus
 	// Mininum state across all steps/ StorageStatus.
 	// Error* set implies error.
-	State            SwState
-	MissingDatastore bool // If some DatastoreId not found
+	State SwState
 	// error strings across all steps/StorageStatus
 	Error     string
 	ErrorTime time.Time
@@ -159,6 +159,29 @@ func (status CertObjStatus) CheckPendingModify() bool {
 
 func (status CertObjStatus) CheckPendingDelete() bool {
 	return false
+}
+
+// getCertObjStatus finds a certificate, and returns the status
+// returns three values,
+//  - whether the cert object status is found
+//  - whether the cert object is installed
+//  - any error information
+func (status CertObjStatus) getCertStatus(certURL string) (bool, bool, ErrorInfo) {
+	for _, certObj := range status.StorageStatusList {
+		if certObj.Name == certURL {
+			installed := true
+			if certObj.Error != "" || certObj.State != INSTALLED {
+				installed = false
+			}
+			return true, installed, certObj.GetErrorInfo()
+		}
+	}
+	errorInfo := ErrorInfo{
+		Error:       "Invalid Certificate, not found",
+		ErrorSource: pubsub.TypeToName(VerifyImageStatus{}),
+		ErrorTime:   time.Now(),
+	}
+	return false, false, errorInfo
 }
 
 // return value holder
@@ -199,12 +222,58 @@ type DatastoreConfig struct {
 	UUID     uuid.UUID
 	DsType   string
 	Fqdn     string
-	ApiKey   string
-	Password string
+	ApiKey   string // XXX: to be deprecated, use CipherBlockStatus instead
+	Password string // XXX: to be deprecated, use CipherBlockStatus instead
 	Dpath    string // depending on DsType, it could be bucket or path
 	Region   string
+
+	// CipherBlockStatus, for encrypted credentials
+	CipherBlockStatus
 }
 
 func (config DatastoreConfig) Key() string {
 	return config.UUID.String()
+}
+
+// NodeAgentStatus :
+type NodeAgentStatus struct {
+	Name              string
+	CurPart           string
+	UpdateInprogress  bool
+	RemainingTestTime time.Duration
+	DeviceReboot      bool
+	RebootReason      string    // From last reboot
+	RebootStack       string    // From last reboot
+	RebootTime        time.Time // From last reboot
+	RestartCounter    uint32
+	RebootImage       string
+}
+
+// Key :
+func (status NodeAgentStatus) Key() string {
+	return status.Name
+}
+
+// ConfigGetStatus : Config Get Status from Controller
+type ConfigGetStatus uint8
+
+// ConfigGetSuccess : Config get is successful
+const (
+	ConfigGetSuccess ConfigGetStatus = iota + 1
+	ConfigGetFail
+	ConfigGetTemporaryFail
+	ConfigGetReadSaved
+)
+
+// ZedAgentStatus :
+type ZedAgentStatus struct {
+	Name            string
+	ConfigGetStatus ConfigGetStatus
+	RebootCmd       bool
+	RebootReason    string // Current reason to reboot
+}
+
+// Key :
+func (status ZedAgentStatus) Key() string {
+	return status.Name
 }

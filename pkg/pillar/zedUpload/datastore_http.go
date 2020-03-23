@@ -5,11 +5,12 @@ package zedUpload
 
 import (
 	"fmt"
-	zedHttp "github.com/lf-edge/eve/pkg/pillar/zedUpload/httputil"
 	"net"
 	"net/http"
 	"net/url"
 	"time"
+
+	zedHttp "github.com/lf-edge/eve/pkg/pillar/zedUpload/httputil"
 )
 
 type HttpTransportMethod struct {
@@ -62,13 +63,15 @@ func (ep *HttpTransportMethod) Close() error {
 	return nil
 }
 
-// use the specific ip as source address for this connection
-func (ep *HttpTransportMethod) WithSrcIpSelection(localAddr net.IP) error {
+// WithSrcIPSelection use the specific ip as source address for this connection
+func (ep *HttpTransportMethod) WithSrcIPSelection(localAddr net.IP) error {
 	ep.hClient = httpClientSrcIP(localAddr, nil)
 	return nil
 }
 
-func (ep *HttpTransportMethod) WithSrcIpAndProxySelection(localAddr net.IP,
+// WithSrcIPAndProxySelection use the specific ip as source address for this
+// connection and connect via the provided proxy URL
+func (ep *HttpTransportMethod) WithSrcIPAndProxySelection(localAddr net.IP,
 	proxy *url.URL) error {
 	ep.hClient = httpClientSrcIP(localAddr, proxy)
 	return nil
