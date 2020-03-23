@@ -54,7 +54,7 @@ Using QEMU as example: it emulates the control plane of virtio PCI device like d
 * Virtio backend running in separate userspace process. vhost-user or user space vhost is feature in QEMU that supports this hand-off.
 * Virtio backend inside host kernel (VHOST_). QEMU helps setup kick/irq eventfd, vhost utilizes them to communicates with drivers in guest directly for virtqueue notification. Linux kernel module vhost sends/receives data via virtqueue with guest without exiting to host user space. vhost-worker is the kernel thread handling the notification and data buffer, the arrangement that enables it to access whole QEMU/guest address space is that: QEMU issues VHOST_SET_OWNER ioctl call to saves the mm context of qemu process in vhost_dev, then vhost-worker thread take on the specified mm context. Check use_mm() kernel function.
 
-NOTE on virtio-bus vs virtio-pci-bus split: QEMU has gone through [a refactoring](https://wiki.qemu.org/Features/virtio-refactoring) where an abstract virtio-bus was introduced as an implementation detail. While it is now possible to construct transport/backend pairs manually by creating 1-1 correspondance between the two it is [much more convenient](https://lists.gnu.org/archive/html/qemu-discuss/2017-02/msg00060.html) to use aliases like virtio-net-pci that neatly wrap the two together.
+NOTE on virtio-bus vs virtio-pci-bus split: QEMU has gone through [a refactoring](https://wiki.qemu.org/Features/virtio-refactoring) where an abstract virtio-bus was introduced as an implementation detail. While it is now possible to construct transport/backend pairs manually by creating 1-1 correspondence between the two it is [much more convenient](https://lists.gnu.org/archive/html/qemu-discuss/2017-02/msg00060.html) to use aliases like virtio-net-pci that neatly wrap the two together.
 
 ## Device model implementations (anchor processes and resource accounting)
 
@@ -88,3 +88,22 @@ On a running system, EVE keeps hypervisor state under `/run/hypervisor/<HYPERVIS
 * a file called `pid` that identifies an anchor process for the running domain
 * a symlink called `cons` that points to a serial console of the running domain (you may want to use screen to see what's going on)
 * a hypervisor specific pointer to the API channel (e.g. KVM uses `qmp` to point to qemu's QMP UNIX domain socket)
+
+## IOMMU support
+
+EVE relies on modern [IOMMU support](https://vfio.blogspot.com/2014/08/iommu-groups-inside-and-out.html) via [VT-d on Intel](https://software.intel.com/en-us/articles/intel-virtualization-technology-for-directed-io-vt-d-enhancing-intel-platforms-for-efficient-virtualization-of-io-devices) and [SMMU on ARM](https://developer.arm.com/architectures/system-architectures/system-components/system-mmu-support) to allow for direct assignment of PCI devices to domains. For type-1 hypervisors IOMMU support is provided by the hypervisor itself, while in type-2 hypervisor case we're relying on [VFIO support in the Linux Kernel](https://www.kernel.org/doc/Documentation/vfio.txt).
+
+It must be noted, that given dual nature of IOMMU support in the Linux kernel itself (it can be used to optimized device drivers in addition to providing virtualization and user-space capabilities) they have an extra incentive to focus on properly enabling access controls via PCIe ACS (Access Control Services). Sadly, a lot of PCIe hardware is still [very](https://www.redhat.com/archives/vfio-users/2016-July/msg00043.html), [very](https://bugzilla.redhat.com/show_bug.cgi?id=1037684) badly broken and has to be worked around. For now, EVE takes a blunt approach of punting on fine-grained ACS controls with both [Xen](https://lists.gt.net/xen/devel/345180) and [KVM](https://lkml.org/lkml/2013/5/30/513) hypervisors.
+
+Hardware quirks aside, EVE uses the following hypervisor capabilities to manage IOMMU-based device assignments to domains:
+
+* [Xen PCI Passthrough](https://wiki.xenproject.org/wiki/Xen_PCI_Passthrough) for Xen
+* [HV Dev Passthrough](https://projectacrn.github.io/1.0/developer-guides/hld/hv-dev-passthrough.html) for ACRN
+* [QEMU/VFIO Passthrough](https://wiki.archlinux.org/index.php/PCI_passthrough_via_OVMF) for KVM
+
+While IOMMU tries to make hardware presented to the domain look indistinguishable from the bare-metal hardware, some device drivers running inside of the domain (most notably [NVidia ones](https://forum.level1techs.com/t/the-pragmatic-neckbeard-3-vfio-iommu-and-pcie/111251)) will try to detect this and degrade their capabilities. EVE uses hypervisor spoofing techniques to trick the drivers into thinking that they are truly operating on bare-metal hardware:
+
+* [Xen spoofing](../pkg/xen-tools/patches-4.13.0/05-xen-spoofing.patch)
+* [KVM spoofing](https://forum.level1techs.com/t/the-pragmatic-neckbeard-4-kvm-and-libvirt/112397)
+
+Finally, BIOS/firmware running as part of the domain plays a big role in how well IOMMU capabilities can be utilized. EVE has an option of switching to [UEFI firmware](../pkg/uefi) from a more compact [SeaBIOS](https://seabios.org/SeaBIOS) implementation whenever needed. 
