@@ -1,6 +1,6 @@
 # EVE's use of hypervisors and hardware assisted virtualization
 
-EVE is slightly unusual in how it looks at hypervisors and hardware assisted virtualization technology. Unlike some of the other systems that were clearly built as virtualization platforms (ESXi, Hyper-V, etc.) EVE's ultimate task is to be able to run [Edge Containers](ECOS.md) as efficiently (and securely!) as possible. A running ECO is represented as a series of tasks consuming resources provided by each Edge Node (such as CPU, RAM, volumes, network instances, etc.). Tasks can further improve their performance (and security) by requesting accelerator and/or isolation services typically provided by type-1 or type-2 hypervisors and backed by hardware assisted virtualization.
+EVE is slightly unusual in how it looks at hypervisors and hardware assisted virtualization technology. Unlike some of the other systems that were clearly built as virtualization platforms (ESXi, Hyper-V, etc.) EVE's ultimate task is to be able to run [Edge Containers](ECOS.md) as efficiently (and securely!) as possible. A running ECO is represented as a series of tasks consuming resources provided by each Edge Node (such as CPU, RAM, volumes, network instances, etc.). Tasks can further improve their performance and security by requesting accelerator and/or isolation services typically provided by type-1 or type-2 hypervisors and backed by hardware assisted virtualization.
 
 This mapping of Tasks to resources creates an interesting architecture where things like virtualization capabilities can be consumed transparently without the user explicitly tweaking the virtualization knobs like it would be the case with systems like libvirt/virsh.
 
@@ -8,16 +8,21 @@ The rest of this document summarizes various implementation details we leverage 
 
 ## Device models
 
-Whenever a task gets isolated into a standalone domain (either for performance or security reasons) domain gets assigned a certain, fixed amount of RAM and can have a number of virtual CPUs that would get multiplexed on top the physical CPUs available on the Edge Node. Additionally, a task may request a subset of PCI devices to be exclusively available to it (which makes them unavailable for any other domains and the host itself). Providing RAM, CPU and direct PCI assignment to a given task is one half of a job of any hypervisor. That's the easy part.
+Assigning resources to tasks involves two types of assignment:
+
+* dedicated, where resources are assigned directly to the workload
+* virtualized, where resource are assigned in a virtualized fashion, enabling the host to multiplex them among multiple guests and the host itself
+
+Whenever a task gets isolated into a standalone domain, for performance or security reasons, domain gets assigned a certain, fixed amount of RAM and can have a number of virtual CPUs that would get multiplexed on top the physical CPUs available on the Edge Node. Additionally, a task may request a subset of PCI devices to be available to it exclusively, which makes them unavailable for any other domains and the host itself. Providing RAM, CPU and direct PCI assignment to a given task is one half of a job of any hypervisor. That's the easy part.
 
 The difficult (or at least much more involved part) is how to present a series of devices (network, disk, GPU, console) to the task in such a way as to allow them to be multiplexed to the actual physical devices available on the host. This is know as providing a "device model" to the domain and it is where the art of virtualization really begins.
 
-All domains get presented with the "device model" that consist of a virtual set of buses and virtual devices attached to those busses. Domains can initiate I/O to any of these busses/devices and that I/O gets routed by the hypervisor to the outside of the domain. Servicing that I/O on the host side can then be done either by:
+All domains get presented with a "device model" that consists of a virtual set of buses and virtual devices attached to those busses. Domains can initiate I/O to any of these busses/devices and that I/O gets routed by the hypervisor to the outside of the domain. Servicing that I/O on the host side can then be done either by:
 
 1. Host Linux kernel directly
 2. A user-space program
 
-Obviously, a user-space program will require more context switches and will always be slower than a corresponding code running directly in the host kernel space. But even then, a user-space program can be thought of as a I/O emulation of "last resort" (if there's no direct support in the kernel for the corresponding bus and/or device). This kind of a user space program is known as a Virtual Machine Monitor (VMM). Qemu is the most featureful VMM that exists today in open source and currently EVE is using it for all the hypervisors it supports. However, depending on how our use cases evolve we may start using more lightweight (or specialized) VMMs in the future, such as:
+Normally, a user-space program will require more context switches and will always be slower than corresponding code running directly in the host kernel space. But even then, a user-space program can be thought of as a I/O emulation of "last resort" (if there's no direct support in the kernel for the corresponding bus and/or device). This kind of a user space program is known as a Virtual Machine Monitor (VMM). Qemu is the most featureful VMM that exists today in open source and currently EVE is using it for all the hypervisors it supports. However, depending on how our use cases evolve we may start using more lightweight (or specialized) VMMs in the future, such as:
 
 * [Firecracker](https://github.com/firecracker-microvm/firecracker/blob/master/docs/design.md)
 * [ukvm/solo5](https://www.usenix.org/sites/default/files/conference/protected-files/hotcloud16_slides_williams.pdf)
@@ -43,7 +48,7 @@ Obviously, every time we have a choice (e.g. we have full control over the devic
 
 As a general rule of thumb, Xen uses [xenbus](https://wiki.xen.org/wiki/XenBus) and Front/Back paravirtualizaed device drivers. KVM uses [VirtIO framework](https://wiki.osdev.org/Virtio) that relies on a standard PCI bus interface with virtulized devices having VirtIO specific PCI VendorID and DeviceID.
 
-Take QEMU as example, it emulates the control plane of virtio PCI device like device status, feature bits and device configuration space, while the implementation of virtqueue backend data plane has three options so far:
+Using QEMU as example: it emulates the control plane of virtio PCI device like device status, feature bits and device configuration space, while the implementation of virtqueue backend data plane has three options as of this writing:
 
 * Virtio backend running inside QEMU virtqueue notification and actual data access are done directly by QEMU.
 * Virtio backend running in separate userspace process. vhost-user or user space vhost is feature in QEMU that supports this hand-off.
