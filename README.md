@@ -98,7 +98,7 @@ Please note that not all containers will be fetched from Docker Hub.
 > build of all the required EVE packages first by running `make pkgs`
 >
 > **_NOTE:_** use make parameter "-j" edit number of threads to build faster.
-> set number of threads suggestions CPU * 2.
+> set number of threads suggestions CPU*2.
 > on OSX show number of CPU : `sysctl hw.ncpu`;
 > on Ubuntu Linux show number of CPU : `nproc`;
 
