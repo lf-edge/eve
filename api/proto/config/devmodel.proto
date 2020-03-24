@@ -159,6 +159,7 @@ message PhysicalIO {
   //    separated list of integers or even a range of integers. Hence using
   //    a string to address this.
   // "ioports": the address is a string such as "2f8-2ff"
+  // If the type is PhyIoNet*, then there needs to be an "ifname" physaddr.
   map <string, string> phyaddrs = 3;
 
   // logicallabel - provides the ability to model designer to refer
