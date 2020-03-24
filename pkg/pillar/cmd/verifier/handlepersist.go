@@ -23,17 +23,18 @@ func handlePersistCreate(ctx *verifierContext, objType string,
 		log.Fatalf("handlePersistCreate: No ObjType for %s\n",
 			config.ImageSha256)
 	}
-
-	status := types.PersistImageStatus{
-		VerifyStatus: types.VerifyStatus{
-			Name:        config.Name,
-			ObjType:     objType,
-			ImageSha256: config.ImageSha256,
-		},
-		RefCount: config.RefCount,
-		LastUse:  time.Now(),
+	// Require a status since we otherwise don't have a FileLocation
+	status := lookupPersistImageStatus(ctx, objType, config.ImageSha256)
+	if status == nil {
+		log.Errorf("No PersistImageStatus but config for %s/%s",
+			objType, config.ImageSha256)
+		return
 	}
-	publishPersistImageStatus(ctx, &status)
+	// Update
+	status.Name = config.Name
+	status.RefCount = config.RefCount
+	status.LastUse = time.Now()
+	publishPersistImageStatus(ctx, status)
 	log.Infof("handlePersistCreate done for %s\n", config.Name)
 }
 
@@ -65,7 +66,7 @@ func handlePersistModify(ctx *verifierContext, config *types.PersistImageConfig,
 	if status.RefCount == 0 {
 		// GC timer will clean up by marking status Expired
 		// and some point in time.
-		// Then user (zedmanager/baseosmgr) will delete config.
+		// Then user (volumemgr) will delete config.
 		status.LastUse = time.Now()
 		changed = true
 	}

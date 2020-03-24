@@ -186,7 +186,7 @@ func Run(ps *pubsub.PubSub) {
 	subGlobalConfig.Activate()
 
 	subAppImgConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "zedmanager",
+		AgentName:     "volumemgr",
 		AgentScope:    types.AppImgObj,
 		TopicImpl:     types.VerifyImageConfig{},
 		Activate:      false,
@@ -204,7 +204,7 @@ func Run(ps *pubsub.PubSub) {
 	subAppImgConfig.Activate()
 
 	subBaseOsConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		AgentName:     "baseosmgr",
+		AgentName:     "volumemgr",
 		AgentScope:    types.BaseOsObj,
 		TopicImpl:     types.VerifyImageConfig{},
 		Activate:      false,
@@ -223,7 +223,7 @@ func Run(ps *pubsub.PubSub) {
 
 	subAppImgPersistConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
-			AgentName:     "zedmanager",
+			AgentName:     "volumemgr",
 			AgentScope:    types.AppImgObj,
 			TopicImpl:     types.PersistImageConfig{},
 			Activate:      false,
@@ -242,7 +242,7 @@ func Run(ps *pubsub.PubSub) {
 
 	subBaseOsPersistConfig, err := ps.NewSubscription(
 		pubsub.SubscriptionOptions{
-			AgentName:     "baseosmgr",
+			AgentName:     "volumemgr",
 			AgentScope:    types.BaseOsObj,
 			TopicImpl:     types.PersistImageConfig{},
 			Activate:      false,
@@ -292,7 +292,7 @@ func Run(ps *pubsub.PubSub) {
 	// The signatures will be re-checked during handleModify for App images.
 	handleInit(&ctx)
 
-	// Report to zedmanager that init is done
+	// Report to volumemgr that init is done
 	pubAppImgStatus.SignalRestarted()
 	pubBaseOsStatus.SignalRestarted()
 	log.Infof("SignalRestarted done")
@@ -536,9 +536,10 @@ func clearInProgressDownloadDirs(objTypes []string) {
 
 // If an object has a zero RefCount and dropped to zero more than
 // downloadGCTime ago, then we delete the Status. That will result in the
-// user (zedmanager or baseosmgr) deleting the Config, unless a RefCount
+// user (volumemgr) deleting the Config, unless a RefCount
 // increase is underway.
 // XXX Note that this runs concurrently with the handler.
+// XXX I guess we still need this for Persist to handshake the delete
 func gcVerifiedObjects(ctx *verifierContext) {
 	log.Debugf("gcVerifiedObjects()\n")
 	publications := []pubsub.Publication{
@@ -828,6 +829,7 @@ func handleCreate(ctx *verifierContext, objType string,
 			status.VerifyStatus = ps.VerifyStatus
 			status.PendingAdd = false
 			status.State = types.DELIVERED
+			status.FileLocation = ps.FileLocation
 			publishVerifyImageStatus(ctx, &status)
 			log.Infof("handleCreate done for %s\n", config.Name)
 			return
@@ -850,6 +852,9 @@ func handleCreate(ctx *verifierContext, objType string,
 	publishVerifyImageStatus(ctx, &status)
 
 	markObjectAsVerified(ctx, config, &status)
+	if status.FileLocation == "" {
+		log.Fatalf("Verified but no FileLocation for %s", status.Key())
+	}
 	status.PendingAdd = false
 	status.State = types.DELIVERED
 	publishVerifyImageStatus(ctx, &status)

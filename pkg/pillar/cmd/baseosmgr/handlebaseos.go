@@ -26,12 +26,12 @@ const (
 	LastImageVersionFile = types.PersistStatusDir + "/last-image-version"
 )
 
-func lookupBaseOsImageID(ctx *baseOsMgrContext, imageID uuid.UUID) *types.BaseOsConfig {
+func lookupBaseOsImageSha(ctx *baseOsMgrContext, imageSha string) *types.BaseOsConfig {
 	items := ctx.subBaseOsConfig.GetAll()
 	for _, c := range items {
 		config := c.(types.BaseOsConfig)
 		for _, sc := range config.StorageConfigList {
-			if uuid.Equal(sc.ImageID, imageID) {
+			if sc.ImageSha256 == imageSha {
 				return &config
 			}
 		}
@@ -39,24 +39,24 @@ func lookupBaseOsImageID(ctx *baseOsMgrContext, imageID uuid.UUID) *types.BaseOs
 	return nil
 }
 
-func baseOsHandleStatusUpdateImageID(ctx *baseOsMgrContext, imageID uuid.UUID) {
+func baseOsHandleStatusUpdateImageSha(ctx *baseOsMgrContext, imageSha string) {
 
-	log.Infof("baseOsHandleStatusUpdateImageID for %s\n", imageID)
-	config := lookupBaseOsImageID(ctx, imageID)
+	log.Infof("baseOsHandleStatusUpdateImageSha for %s\n", imageSha)
+	config := lookupBaseOsImageSha(ctx, imageSha)
 	if config == nil {
-		log.Infof("baseOsHandleStatusUpdateImageID(%s) not found\n",
-			imageID)
+		log.Infof("baseOsHandleStatusUpdateImageSha(%s) not found\n",
+			imageSha)
 		return
 	}
 	uuidStr := config.Key()
 	status := lookupBaseOsStatus(ctx, uuidStr)
 	if status == nil {
-		log.Infof("baseOsHandleStatusUpdateImageID(%s) no status\n",
-			imageID)
+		log.Infof("baseOsHandleStatusUpdateImageSha(%s) no status\n",
+			imageSha)
 		return
 	}
-	log.Infof("baseOsHandleStatusUpdateImageID(%s) found %s\n",
-		imageID, uuidStr)
+	log.Infof("baseOsHandleStatusUpdateImageSha(%s) found %s\n",
+		imageSha, uuidStr)
 
 	// handle the change event for this base os config
 	baseOsHandleStatusUpdate(ctx, config, status)
@@ -273,8 +273,7 @@ func doBaseOsActivate(ctx *baseOsMgrContext, uuidStr string,
 	publishBaseOsStatus(ctx, status)
 
 	// install the image at proper partition; dd etc
-	if installDownloadedObjects(types.BaseOsObj, uuidStr,
-		&status.StorageStatusList) {
+	if installDownloadedObjects(uuidStr, &status.StorageStatusList) {
 
 		changed = true
 		// Match the version string inside image?
@@ -355,27 +354,16 @@ func doBaseOsInstall(ctx *baseOsMgrContext, uuidStr string,
 		}
 	}
 
-	// Check if we should proceed to download and verify
+	// Check if we should proceed to ask volumemgr
 	changed, proceed = validatePartition(ctx, config, status)
 	if !proceed {
 		return changed, false
 	}
-	// check for the download status change
-	c, downloaded :=
-		checkBaseOsStorageDownloadStatus(ctx, uuidStr, config, status)
+	// check for the volume status change
+	c, done := checkBaseOsVolumeStatus(ctx, uuidStr, config, status)
 	changed = changed || c
-	if !downloaded {
-		log.Infof(" %s, Still not downloaded\n", config.BaseOsVersion)
-		return changed, false
-	}
-
-	// check for the verification status change
-	c, verified :=
-		checkBaseOsVerificationStatus(ctx, uuidStr, config, status)
-	changed = changed || c
-	if !verified {
-		log.Infof("doBaseOsInstall(%s) still not verified %s\n",
-			uuidStr, config.BaseOsVersion)
+	if !done {
+		log.Infof(" %s, volume still not done", config.BaseOsVersion)
 		return changed, false
 	}
 
@@ -487,64 +475,31 @@ func validateAndAssignPartition(ctx *baseOsMgrContext,
 	return changed, proceed
 }
 
-func checkBaseOsStorageDownloadStatus(ctx *baseOsMgrContext, uuidStr string,
+func checkBaseOsVolumeStatus(ctx *baseOsMgrContext, uuidStr string,
 	config types.BaseOsConfig,
 	status *types.BaseOsStatus) (bool, bool) {
 
-	log.Infof("checkBaseOsStorageDownloadStatus(%s) for %s\n",
+	log.Infof("checkBaseOsVolumeStatus(%s) for %s\n",
 		config.BaseOsVersion, uuidStr)
-	ret := checkStorageDownloadStatus(ctx, types.BaseOsObj, uuidStr,
-		config.StorageConfigList, status.StorageStatusList)
+	ret := checkVolumeStatus(ctx, uuidStr, config.StorageConfigList,
+		status.StorageStatusList)
 
 	status.State = ret.MinState
 
 	if ret.AllErrors != "" {
 		status.Error = ret.AllErrors
 		status.ErrorTime = ret.ErrorTime
-		log.Errorf("checkBaseOsStorageDownloadStatus(%s) for %s, Download error at %v: %v\n",
-			config.BaseOsVersion, uuidStr, status.ErrorTime, status.Error)
-		return ret.Changed, false
-	}
-
-	if ret.MinState < types.DOWNLOADED {
-		log.Infof("checkBaseOsStorageDownloadStatus(%s) for %s, Waiting for all downloads\n",
-			config.BaseOsVersion, uuidStr)
-		return ret.Changed, false
-	}
-
-	if ret.WaitingForCerts {
-		log.Infof("checkBaseOsStorageDownloadStatus(%s) for %s, Waiting for certs\n",
-			config.BaseOsVersion, uuidStr)
-		return ret.Changed, false
-	}
-
-	log.Infof("checkBaseOsStorageDownloadStatus(%s) for %s, Downloads done\n",
-		config.BaseOsVersion, uuidStr)
-	return ret.Changed, true
-}
-
-func checkBaseOsVerificationStatus(ctx *baseOsMgrContext, uuidStr string,
-	config types.BaseOsConfig, status *types.BaseOsStatus) (bool, bool) {
-
-	ret := checkStorageVerifierStatus(ctx, types.BaseOsObj,
-		uuidStr, config.StorageConfigList, status.StorageStatusList)
-
-	status.State = ret.MinState
-
-	if ret.AllErrors != "" {
-		status.Error = ret.AllErrors
-		status.ErrorTime = ret.ErrorTime
-		log.Errorf("checkBaseOsVerificationStatus(%s) for %s, Verification error at %v: %v\n",
+		log.Errorf("checkBaseOsVolumeStatus(%s) for %s, volumemgr error at %v: %v\n",
 			config.BaseOsVersion, uuidStr, status.ErrorTime, status.Error)
 		return ret.Changed, false
 	}
 
 	if ret.MinState < types.DELIVERED {
-		log.Infof("checkBaseOsVerificationStatus(%s) for %s, Waiting for all verifications\n",
+		log.Infof("checkBaseOsVolumeStatus(%s) for %s, Waiting for volumemgr",
 			config.BaseOsVersion, uuidStr)
 		return ret.Changed, false
 	}
-	log.Infof("checkBaseOsVerificationStatus(%s) for %s, Verifications done\n",
+	log.Infof("checkBaseOsVolumeStatus(%s) for %s, done\n",
 		config.BaseOsVersion, uuidStr)
 	return ret.Changed, true
 }
@@ -652,25 +607,23 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 		changed = true
 	}
 	for i := range status.StorageStatusList {
-
 		ss := &status.StorageStatusList[i]
-
 		// Decrease refcount if we had increased it
-		if ss.HasVerifierRef {
-			log.Infof("doBaseOsUninstall(%s) for %s, HasVerifierRef %s\n",
+		if ss.HasVolumemgrRef {
+			log.Infof("doBaseOsUninstall(%s) for %s, HasVolumemgrRef %s\n",
 				status.BaseOsVersion, uuidStr, ss.ImageID)
-			MaybeRemoveVerifierConfig(ctx, types.BaseOsObj,
-				ss.ImageID)
-			ss.HasVerifierRef = false
+
+			MaybeRemoveVolumeConfig(ctx, ss.ImageSha256, nilUUID, ss.ImageID)
+			ss.HasVolumemgrRef = false
 			changed = true
 		} else {
-			log.Infof("doBaseOsUninstall(%s) for %s, NO HasVerifier\n",
+			log.Infof("doBaseOsUninstall(%s) for %s, NO HasVolumemgrRef\n",
 				status.BaseOsVersion, uuidStr)
 		}
 
-		vs := lookupVerificationStatus(ctx, types.BaseOsObj, ss.ImageID)
+		vs := lookupVolumeStatus(ctx, ss.ImageSha256, nilUUID, ss.ImageID)
 		if vs != nil {
-			log.Infof("doBaseOsUninstall(%s) for %s, Verifier %s not yet gone; RefCount %d\n",
+			log.Infof("doBaseOsUninstall(%s) for %s, Volume %s not yet gone; RefCount %d\n",
 				status.BaseOsVersion, uuidStr, ss.ImageID,
 				vs.RefCount)
 			removedAll = false
@@ -679,46 +632,7 @@ func doBaseOsUninstall(ctx *baseOsMgrContext, uuidStr string,
 	}
 
 	if !removedAll {
-		// XXX Note that we hit this all the time, and
-		// we proceed to not look at the downloads and proceed
-		// to delete all the config and status for this baseos, which
-		// is odd.
-		// Changed to proceed in any case
-		log.Infof("doBaseOsUninstall(%s) for %s, NOT Waiting for verifier purge\n",
-			status.BaseOsVersion, uuidStr)
-		// XXX return changed, del
-	}
-
-	removedAll = true
-
-	for i := range status.StorageStatusList {
-
-		ss := &status.StorageStatusList[i]
-		// Decrease refcount if we had increased it
-		if ss.HasDownloaderRef {
-			log.Infof("doBaseOsUninstall(%s) for %s, HasDownloaderRef %s\n",
-				status.BaseOsVersion, uuidStr, ss.ImageID)
-
-			removeDownloaderConfig(ctx, types.BaseOsObj, ss.ImageID)
-			ss.HasDownloaderRef = false
-			changed = true
-		} else {
-			log.Infof("doBaseOsUninstall(%s) for %s, NO HasDownloaderRef\n",
-				status.BaseOsVersion, uuidStr)
-		}
-
-		ds := lookupDownloaderStatus(ctx, types.BaseOsObj, ss.ImageID)
-		if ds != nil {
-			log.Infof("doBaseOsUninstall(%s) for %s, Download %s not yet gone; RefCount %d\n",
-				status.BaseOsVersion, uuidStr, ss.ImageID,
-				ds.RefCount)
-			removedAll = false
-			continue
-		}
-	}
-
-	if !removedAll {
-		log.Infof("doBaseOsUninstall(%s) for %s, Waiting for downloader purge\n",
+		log.Infof("doBaseOsUninstall(%s) for %s, Waiting for volumemgr purge",
 			status.BaseOsVersion, uuidStr)
 		return changed, del
 	}

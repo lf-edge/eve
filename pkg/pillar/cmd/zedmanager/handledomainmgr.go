@@ -11,6 +11,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// MaybeAddDomainConfig makes sure we have a DomainConfig
 func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	aiConfig types.AppInstanceConfig,
 	aiStatus types.AppInstanceStatus,
@@ -21,23 +22,12 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 	log.Infof("MaybeAddDomainConfig for %s displayName %s\n", key,
 		displayName)
 
-	changed := false
 	m := lookupDomainConfig(ctx, key)
 	if m != nil {
-		// XXX any other change? Compare nothing else changed?
-		if m.Activate != aiConfig.Activate {
-			log.Infof("Domain config: Activate changed %s\n", key)
-			changed = true
-		} else {
-			log.Infof("Domain config already exists for %s\n", key)
-		}
+		// Always update to pick up new disks, vifs, Activate etc
+		log.Infof("Domain config already exists for %s\n", key)
 	} else {
 		log.Infof("Domain config add for %s\n", key)
-		changed = true
-	}
-	if !changed {
-		log.Infof("MaybeAddDomainConfig done for %s\n", key)
-		return nil
 	}
 	AppNum := 0
 	if ns != nil {
@@ -66,41 +56,35 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 				sc.Target)
 		}
 	}
-	dc.DiskConfigList = make([]types.DiskConfig, numDisks)
-	i := 0
-	if len(aiConfig.StorageConfigList) > len(aiStatus.StorageStatusList) {
-		errStr := fmt.Sprintf("More StorageConfig than StorageStatus: %d vs %d", len(aiConfig.StorageConfigList), len(aiStatus.StorageStatusList))
-		log.Error(errStr)
-		return errors.New(errStr)
-	}
-	for index, sc := range aiConfig.StorageConfigList {
-		ssPtr := &aiStatus.StorageStatusList[index]
-		var location string
-
-		switch sc.Target {
-		case "", "disk", "tgtunknown":
-			// Do nothing
-		default:
-			location = ssPtr.ActiveFileLocation
-			if location == "" {
-				errStr := "No ActiveFileLocation"
-				log.Error(errStr)
-				return errors.New(errStr)
-			}
+	dc.DiskConfigList = make([]types.DiskConfig, 0, numDisks)
+	for _, sc := range aiConfig.StorageConfigList {
+		ssPtr := lookupStorageStatus(&aiStatus, sc)
+		if ssPtr == nil {
+			log.Errorf("Missing StorageStatus for (Name: %s, "+
+				"ImageSha256: %s, ImageID: %s, PurgeCounter: %d)",
+				sc.Name, sc.ImageSha256, sc.ImageID, sc.PurgeCounter)
+			continue
+		}
+		location := ssPtr.ActiveFileLocation
+		if location == "" {
+			errStr := "No ActiveFileLocation"
+			log.Error(errStr)
+			return errors.New(errStr)
 		}
 
 		switch sc.Target {
 		case "", "disk", "tgtunknown":
-			disk := &dc.DiskConfigList[i]
+			disk := types.DiskConfig{}
 			disk.ImageID = sc.ImageID
-			// Pick up sha from verifier
+			// Pick up sha and FileLocation from volumemgr
 			disk.ImageSha256 = ssPtr.ImageSha256
+			disk.FileLocation = location
 			disk.ReadOnly = sc.ReadOnly
 			disk.Preserve = sc.Preserve
 			disk.Format = sc.Format
 			disk.Maxsizebytes = sc.Maxsizebytes
 			disk.Devtype = sc.Devtype
-			i++
+			dc.DiskConfigList = append(dc.DiskConfigList, disk)
 		case "kernel":
 			if dc.Kernel != "" {
 				log.Infof("Overriding kernel %s with location %s\n",

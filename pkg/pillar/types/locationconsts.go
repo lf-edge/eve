@@ -56,4 +56,6 @@ const (
 	BaseOsObj = "baseOs.obj"
 	// CertObj - Name of Certificate obj. dir
 	CertObj = "cert.obj"
+	// UnknownObj - Name of unknown obj. dir for what's found in /persist/img
+	UnknownObj = "unknown.obj"
 )
