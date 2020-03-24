@@ -664,10 +664,25 @@ func parseOneSystemAdapterConfig(getconfigCtx *getconfigContext,
 		port.Logicallabel = port.Phylabel
 		port.IfName = sysAdapter.Name
 		isFree = true
+	} else if !types.IoType(phyio.Ptype).IsNet() {
+		errStr := fmt.Sprintf("phyio for %s lower %s not IsNet; ignored",
+			sysAdapter.Name, sysAdapter.LowerLayerName)
+		log.Error(errStr)
+		return nil
 	} else {
 		port.Phylabel = phyio.Phylabel
 		port.Logicallabel = phyio.Logicallabel
 		port.IfName = phyio.Phyaddr.Ifname
+		if port.IfName == "" {
+			// Might not be set for all models
+			log.Warnf("Phyio for phylabel %s logicallabel %s has no ifname",
+				phyio.Phylabel, phyio.Logicallabel)
+			if phyio.Logicallabel != "" {
+				port.IfName = phyio.Logicallabel
+			} else {
+				port.IfName = phyio.Phylabel
+			}
+		}
 		isFree = phyio.UsagePolicy.FreeUplink
 		log.Infof("Found phyio for %s: isFree: %t",
 			sysAdapter.Name, isFree)
