@@ -81,18 +81,9 @@ cd eve
 
 Build both the build-tools as well as the live image in the source directory:
 
-##### On OSX make
-
 ```sh
-make build-tools -j $(($(sysctl hw.ncpu | sed 's/hw.ncpu: //g')*2))
-make live -j $(($(sysctl hw.ncpu | sed 's/hw.ncpu: //g')*2))
-```
-
-##### On Ubuntu Linux make
-
-```sh
-make build-tools -j $(($(nproc)*2))
-make live -j $(($(nproc)*2))
+make build-tools
+make live
 ```
 
 This will download the relevant docker images from docker hub and create a bootable
@@ -105,6 +96,10 @@ Please note that not all containers will be fetched from Docker Hub.
 > over the network it may occasionally time out and fail. Typically
 > re-running `make` fixes the issue. If it doesn't you can attempt a local
 > build of all the required EVE packages first by running `make pkgs`
+> **_NOTE:_** use make parameter "-j" edit number of threads to build faster
+> set number of threads suggestions CPU * 2 
+> on OSX show number of CPU : sysctl hw.ncpu
+> on Ubuntu Linux show number of CPU : nproc
 
 #### Proxies
 
