@@ -308,7 +308,7 @@ eject /dev/sdXXX
 ### OSX
 
 ```bash
-diskutil umount /dev/sdXXX
+diskutil umountDisk /dev/sdXXX
 sudo dd if=dist/amd64/installer.raw of=/dev/sdXXX
 diskutil eject /dev/sdXXX
 ```
