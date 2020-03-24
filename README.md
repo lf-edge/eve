@@ -81,18 +81,9 @@ cd eve
 
 Build both the build-tools as well as the live image in the source directory:
 
-##### On OSX make
-
 ```sh
-make build-tools -j $(($(sysctl hw.ncpu | sed 's/hw.ncpu: //g')*2))
-make live -j $(($(sysctl hw.ncpu | sed 's/hw.ncpu: //g')*2))
-```
-
-##### On Ubuntu Linux make
-
-```sh
-make build-tools -j $(($(nproc)*2))
-make live -j $(($(nproc)*2))
+make build-tools
+make live
 ```
 
 This will download the relevant docker images from docker hub and create a bootable
