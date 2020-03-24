@@ -69,11 +69,17 @@ type DronaRequest struct {
 
 	// used by Multipart upload
 	Adata  []byte
-	PartID string
+	PartID int64
 	SasURI string
 
-	// used by azure
+	// used by azure and s3 while Multipart Upload
 	Blocks []string
+	// generated SasURI TTL
+	Duration time.Duration
+	// generated while creating multipart file
+	UploadID string
+	// generated after uploading the part to the multipart file
+	EtagID string
 }
 
 // Return object local name
