@@ -38,6 +38,19 @@ func (ep *AwsTransportMethod) Action(req *DronaRequest) error {
 		contentLength, remoteFileMD5, err = ep.processS3ObjectMetaData(req)
 		req.contentLength = contentLength
 		req.remoteFileMD5 = remoteFileMD5
+	case SysOpPutPart:
+		etagID, uploadID, err := ep.processMultipartUpload(req)
+		if err == nil {
+			req.UploadID = uploadID
+			req.EtagID = etagID
+		}
+	case SysOpCompleteParts:
+		err = ep.completeMultipartUpload(req)
+	case SyncOpGetURI:
+		sasURL, err := ep.generateSignedURL(req)
+		if err == nil {
+			req.SasURI = sasURL
+		}
 	default:
 		err = fmt.Errorf("Unknown AWS S3 datastore operation")
 	}
@@ -275,6 +288,22 @@ func (ep *AwsTransportMethod) NewRequest(opType SyncOpType, objname, objloc stri
 
 func (ep *AwsTransportMethod) getContext() *DronaCtx {
 	return ep.ctx
+}
+
+func (ep *AwsTransportMethod) processMultipartUpload(req *DronaRequest) (string, string, error) {
+	s3ctx := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.hClient)
+	return s3ctx.UploadPart(ep.bucket, req.localName, req.Adata, req.PartID, req.UploadID)
+
+}
+
+func (ep *AwsTransportMethod) completeMultipartUpload(req *DronaRequest) error {
+	s3ctx := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.hClient)
+	return s3ctx.CompleteUploadedParts(ep.bucket, req.localName, req.UploadID, req.Blocks)
+}
+
+func (ep *AwsTransportMethod) generateSignedURL(req *DronaRequest) (string, error) {
+	s3ctx := zedAWS.NewAwsCtx(ep.token, ep.apiKey, ep.region, ep.hClient)
+	return s3ctx.GetSignedURL(ep.bucket, req.localName, req.Duration)
 }
 
 type AwsTransportMethod struct {

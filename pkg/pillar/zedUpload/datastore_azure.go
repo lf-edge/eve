@@ -159,11 +159,11 @@ func (ep *AzureTransportMethod) getContext() *DronaCtx {
 }
 
 func (ep *AzureTransportMethod) processAzureUploadByChunks(req *DronaRequest) error {
-	return azure.UploadPartByChunk(ep.acName, ep.acKey, ep.container, req.localName, req.PartID, ep.hClient, req.Adata)
+	return azure.UploadPartByChunk(ep.acName, ep.acKey, ep.container, req.localName, req.UploadID, ep.hClient, req.Adata)
 }
 
 func (ep *AzureTransportMethod) processGenerateBlobSasURI(req *DronaRequest) (string, error) {
-	return azure.GenerateBlobSasURI(ep.acName, ep.acKey, ep.container, req.localName, ep.hClient, req.startTime, req.endTime)
+	return azure.GenerateBlobSasURI(ep.acName, ep.acKey, ep.container, req.localName, ep.hClient, req.Duration)
 }
 
 func (ep *AzureTransportMethod) processPutBlockListIntoBlob(req *DronaRequest) error {
