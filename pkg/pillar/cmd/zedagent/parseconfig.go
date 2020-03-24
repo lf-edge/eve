@@ -1944,7 +1944,6 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 			err = nil
 		}
 	}
-	ctx.zedagentCtx.globalStatus = newGlobalStatus
 	newGlobalConfig = types.ApplyGlobalConfig(newGlobalConfig)
 	// XXX - Should we also not call EnforceGlobalConfigMinimums on
 	// newGlobalConfig here before checking if anything changed??
@@ -1959,6 +1958,7 @@ func parseConfigItems(config *zconfig.EdgeDevConfig, ctx *getconfigContext) {
 
 		// Set GlobalStatus Values from GlobalConfig.
 		newGlobalStatus.UpdateItemValuesFromGlobalConfig(*gcPtr)
+		ctx.zedagentCtx.globalStatus = newGlobalStatus
 
 		if gcPtr.ConfigInterval != oldGlobalConfig.ConfigInterval {
 			log.Infof("parseConfigItems: %s change from %d to %d\n",
