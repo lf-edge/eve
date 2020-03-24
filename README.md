@@ -12,7 +12,7 @@ To get its job done, EVE leverages a lot of great open source projects: [Xen Pro
 
 ## How to use
 
-You will need [QEMU 3.x+](https://www.qemu.org/), [Docker](https://www.docker.com)
+You will need [QEMU 3.x+](https://www.qemu.org/), [Docker](https://www.docker.com), [Make](https://www.gnu.org/software/make/)
 and [go 1.12+](https://golang.org) installed in your system.
 
 Note, that since Linuxkit and manifest-tool are evolving pretty rapidly, we're
@@ -39,6 +39,20 @@ Make sure that Docker is up and running on your system. On MacOS just start a do
 
 ```sh
 docker version
+```
+
+#### Get Make
+
+##### Install On OSX (using [Brew](https://brew.sh/))
+
+```sh
+$ brew install make
+```
+
+##### Inatall On Ubuntu
+
+```sh
+$ sudo apt-get install make
 ```
 
 #### Get QEMU
@@ -283,9 +297,20 @@ diskutil list
 
 Now format the USB Disk and run the following commands
 
+### Linux / Ubuntu
+
 ```bash
-sudo umount /dev/sdXXX
+umount /dev/sdXXX
 sudo dd if=dist/amd64/installer.raw of=/dev/sdXXX
+eject /dev/sdXXX
+```
+
+### OSX
+
+```bash
+diskutil umount /dev/sdXXX
+sudo dd if=dist/amd64/installer.raw of=/dev/sdXXX
+diskutil eject /dev/sdXXX
 ```
 
 Alternatively the image can be written with tools like [balenaEtcher](https://www.balena.io/etcher/)
