@@ -440,6 +440,8 @@ func doDownload(ctx *downloaderContext, config types.DownloaderConfig, status *t
 	dst, errStr := lookupDatastoreConfig(ctx, config.DatastoreID, config.Name)
 	if dst == nil {
 		status.RetryCount++
+		// XXX can we have a faster retry in this case?
+		// React when DatastoreConfig changes?
 		status.HandleDownloadFail(errStr)
 		publishDownloaderStatus(ctx, status)
 		log.Errorf("doDownload(%s): deferred with %s\n", config.Name, errStr)
@@ -536,9 +538,10 @@ func downloaderInit(ctx *downloaderContext) *zedUpload.DronaCtx {
 
 // If an object has a zero RefCount and dropped to zero more than
 // downloadGCTime ago, then we delete the Status. That will result in the
-// user (zedmanager or baseosmgr) deleting the Config, unless a RefCount
+// user (volumemgr) deleting the Config, unless a RefCount
 // increase is underway.
 // XXX Note that this runs concurrently with the handler.
+// XXX needed for downloader?
 func gcObjects(ctx *downloaderContext) {
 	log.Debugf("gcObjects()\n")
 	publications := []pubsub.Publication{

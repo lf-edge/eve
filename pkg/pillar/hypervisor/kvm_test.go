@@ -59,10 +59,10 @@ func TestCreateDomConfig(t *testing.T) {
 		},
 	}
 	disks := []types.DiskStatus{
-		{Format: zconfig.Format_QCOW2, ActiveFileLocation: "/foo/bar.qcow2", Devtype: "HDD"},
-		{Format: zconfig.Format_CONTAINER, FSVolumeLocation: "/foo/container", Devtype: "Unclassified"},
-		{Format: zconfig.Format_RAW, ActiveFileLocation: "/foo/bar.raw", Devtype: "HDD_EMPTY"},
-		{Format: zconfig.Format_RAW, ActiveFileLocation: "/foo/cd.iso", Devtype: "CDROM"},
+		{Format: zconfig.Format_QCOW2, FileLocation: "/foo/bar.qcow2", Devtype: "HDD"},
+		{Format: zconfig.Format_CONTAINER, FileLocation: "/foo/container", Devtype: "Unclassified"},
+		{Format: zconfig.Format_RAW, FileLocation: "/foo/bar.raw", Devtype: "HDD_EMPTY"},
+		{Format: zconfig.Format_RAW, FileLocation: "/foo/cd.iso", Devtype: "CDROM"},
 	}
 	aa := types.AssignableAdapters{
 		Initialized: true,

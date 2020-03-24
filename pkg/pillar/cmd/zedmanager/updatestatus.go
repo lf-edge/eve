@@ -62,8 +62,8 @@ func updateAIStatusUUID(ctx *zedmanagerContext, uuidStr string) {
 	}
 	changed := doUpdate(ctx, *config, status)
 	if changed {
-		log.Infof("updateAIStatusUUID status change for %s\n",
-			uuidStr)
+		log.Infof("updateAIStatusUUID status change %d for %s\n",
+			status.State, uuidStr)
 		publishAppInstanceStatus(ctx, status)
 	}
 }
@@ -241,11 +241,11 @@ func doUpdate(ctx *zedmanagerContext,
 
 	// Are we doing a purge?
 	if status.PurgeInprogress == types.DOWNLOAD {
-		log.Infof("PurgeInprogress(%s) download/verifications done\n",
+		log.Infof("PurgeInprogress(%s) volumemgr done\n",
 			status.Key())
 		status.PurgeInprogress = types.BRING_DOWN
 		changed = true
-		// Keep the verified images in place
+		// Keep the old volumes in place
 		_, done := doRemove(ctx, status, false)
 		if !done {
 			log.Infof("PurgeInprogress(%s) waiting for removal\n",
@@ -296,132 +296,6 @@ func doUpdate(ctx *zedmanagerContext,
 	return changed
 }
 
-// doInstallProcessStorageEntriesWithVerifiedImage
-//  Returns: (imageStatusPtr, vsPtr, psPtr, storageStatusUpdate)
-func doInstallProcessStorageEntriesWithVerifiedImage(
-	ctx *zedmanagerContext,
-	appInstUUID uuid.UUID,
-	ssPtr *types.StorageStatus) (*types.ImageStatus,
-	*types.VerifyImageStatus, *types.PersistImageStatus, bool) {
-
-	changed := false
-	imageID := ssPtr.ImageID
-
-	// Check if the image is already present in ImageStatus. If yes,
-	// go ahead and use it.
-
-	isPtr := lookupImageStatusForApp(ctx, appInstUUID, ssPtr.ImageSha256)
-	if isPtr != nil {
-		// ImageStatus found for the Image
-		log.Infof("Image Status found for app UUID: %s. ImageStatus: %+v",
-			appInstUUID.String(), *isPtr)
-		if ssPtr.State != types.DELIVERED {
-			ssPtr.State = types.DELIVERED
-			ssPtr.Progress = 100
-			changed = true
-		}
-		c := ensureVerifiedRefCount(ctx, appInstUUID, ssPtr)
-		if c {
-			changed = true
-		}
-		return isPtr, nil, nil, changed
-	}
-	// Check if image is already verified
-	// Look for matching sha if ssPtr.ImageSha256 is set and we didn't
-	// find based on ImageID
-	vs := lookupVerifyImageStatus(ctx, imageID)
-	if vs == nil {
-		log.Infof("Verifier status not found for %s sha %s",
-			imageID, ssPtr.ImageSha256)
-		ps := lookupPersistImageStatus(ctx, ssPtr.ImageSha256)
-		if ps == nil || ps.Expired {
-			return nil, nil, nil, false
-		}
-		log.Infof("Found %s based on ImageSha256 %s imageID %s",
-			ssPtr.Name, ssPtr.ImageSha256, imageID)
-
-		if ssPtr.State != types.DOWNLOADED {
-			ssPtr.State = types.DOWNLOADED
-			ssPtr.Progress = 100
-			changed = true
-		}
-		// If we don't already have a RefCount add one
-		if !ssPtr.HasVerifierRef {
-			log.Infof("!HasVerifierRef")
-			// We don't need certs since Status already exists
-			MaybeAddVerifyImageConfig(ctx, appInstUUID.String(), *ssPtr, false)
-			ssPtr.HasVerifierRef = true
-			changed = true
-		}
-		return nil, nil, ps, changed
-	}
-	log.Infof("Found %s based on ImageID %s imageSha %s",
-		ssPtr.Name, imageID, ssPtr.ImageSha256)
-
-	switch vs.State {
-	case types.DELIVERED:
-		log.Infof("Found verified image for %s sha %s\n",
-			imageID, ssPtr.ImageSha256)
-
-	case types.DOWNLOADED:
-		log.Infof("Found downloaded/verified image for %s sha %s\n",
-			imageID, ssPtr.ImageSha256)
-	default:
-		log.Infof("vs.State (%d) not DELIVERED / DOWNLOADED. imageID: %s"+
-			" sha %s", vs.State, imageID, ssPtr.ImageSha256)
-		return nil, nil, nil, false
-	}
-	if ssPtr.ImageSha256 != vs.ImageSha256 {
-		log.Infof("updating imagesha from %s to %s", ssPtr.ImageSha256,
-			vs.ImageSha256)
-		ssPtr.ImageSha256 = vs.ImageSha256
-		addAppAndImageHash(ctx, appInstUUID, ssPtr.ImageID, ssPtr.ImageSha256)
-		changed = true
-	}
-	if ssPtr.IsContainer {
-		log.Debugf("Container. vs.IsContainer = %t, vs.ImageID: %s, sha: %s",
-			vs.IsContainer, vs.ImageID, vs.ImageSha256)
-	}
-	if vs.State != ssPtr.State {
-		ssPtr.State = vs.State
-		ssPtr.Progress = 100
-		changed = true
-	}
-
-	// If we don't already have a RefCount add one
-	if !ssPtr.HasVerifierRef {
-		log.Infof("!HasVerifierRef")
-		// We don't need certs since Status already exists
-		MaybeAddVerifyImageConfig(ctx, appInstUUID.String(), *ssPtr, false)
-		ssPtr.HasVerifierRef = true
-		changed = true
-	}
-	log.Debugf("Verifier Status Exists for StorageEntry: Name: %s, "+
-		"ImageID: %s,  vs.RefCount: %d, ssPtr.State: %d",
-		ssPtr.Name, ssPtr.ImageID, vs.RefCount, ssPtr.State)
-	return isPtr, vs, nil, changed
-}
-
-// Make sure we have a reference on the golden, verified image
-// as long as that image already exists in verifier.
-// Returns changed boolean
-func ensureVerifiedRefCount(ctx *zedmanagerContext, appInstUUID uuid.UUID,
-	ssPtr *types.StorageStatus) bool {
-
-	changed := false
-	if !ssPtr.HasVerifierRef &&
-		(lookupVerifyImageStatus(ctx, ssPtr.ImageID) != nil ||
-			lookupPersistImageStatus(ctx, ssPtr.ImageSha256) != nil) {
-
-		log.Infof("!HasVerifierRef")
-		// We don't need certs since Status already exists
-		MaybeAddVerifyImageConfig(ctx, appInstUUID.String(), *ssPtr, false)
-		ssPtr.HasVerifierRef = true
-		changed = true
-	}
-	return changed
-}
-
 func doInstall(ctx *zedmanagerContext,
 	config types.AppInstanceConfig,
 	status *types.AppInstanceStatus) (bool, bool) {
@@ -447,6 +321,22 @@ func doInstall(ctx *zedmanagerContext,
 		log.Warnln(errString)
 	}
 
+	// Any PurgeCounter updates?
+	// For now PurgeCounter applies to first disk
+	// XXX doesn't work with needPurge in zedmanager; turn needPurge into
+	// error there?
+	// Note that this behaves as if we receive a PurgeCounter update from
+	// the controller for the first disk.
+	if len(config.StorageConfigList) > 0 &&
+		config.StorageConfigList[0].PurgeCounter != config.PurgeCmd.Counter {
+		sc := &config.StorageConfigList[0]
+		log.Infof("Setting purgeCounter to %d for %s",
+			config.PurgeCmd.Counter, config.Key())
+		// We set in config, each time we
+		// are called since StorageConfig is overwritten
+		// by zedagent
+		sc.PurgeCounter = config.PurgeCmd.Counter
+	}
 	// If we are purging and we failed to activate due some images
 	// which are not removed from StorageConfigList we remove them
 	if status.PurgeInprogress == types.DOWNLOAD && !status.Activated {
@@ -465,10 +355,10 @@ func doInstall(ctx *zedmanagerContext,
 				log.Infof("Removing error %s\n", status.Error)
 				status.ClearError()
 			}
-			c := MaybeRemoveStorageStatus(ctx, ss)
+			c := MaybeRemoveStorageStatus(ctx, config.UUIDandVersion.UUID, ss)
 			if c {
 				// Keep in StorageStatus until we get an update
-				// from downloader
+				// from volumemgr
 				newSs = append(newSs, *ss)
 				removed = true
 			}
@@ -493,9 +383,9 @@ func doInstall(ctx *zedmanagerContext,
 		}
 		if status.PurgeInprogress == types.NONE {
 			errString := fmt.Sprintf("New storageConfig (Name: %s, "+
-				"ImageSha256: %s, ImageID: %s) found. New Storage configs are "+
+				"ImageSha256: %s, ImageID: %s, PurgeCounter: %d) found. New Storage configs are "+
 				"not allowed unless purged",
-				sc.Name, sc.ImageSha256, sc.ImageID)
+				sc.Name, sc.ImageSha256, sc.ImageID, sc.PurgeCounter)
 			log.Errorln(errString)
 			status.Error = errString
 			status.ErrorTime = time.Now()
@@ -509,138 +399,85 @@ func doInstall(ctx *zedmanagerContext,
 		changed = true
 	}
 
-	waitingForCerts := false
-
 	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
-		imageID := ss.ImageID
-		log.Infof("StorageStatus Name: %s, imageID %s, ImageSha256: %s",
-			ss.Name, imageID, ss.ImageSha256)
+		log.Infof("StorageStatus Name: %s, imageID %s, ImageSha256: %s, purgeCounter %d",
+			ss.Name, ss.ImageID, ss.ImageSha256, ss.PurgeCounter)
 
-		// Check if VerifierStatus already exists.
-		isPtr, vs, ps, statusUpdated := doInstallProcessStorageEntriesWithVerifiedImage(
-			ctx, status.UUIDandVersion.UUID, ss)
-		changed = changed || statusUpdated
-		if isPtr != nil {
-			log.Infof("doInstall: Installed image exists. StorageStatus "+
-				"Name: %s, imageID %s, ImageSha256: %s",
-				ss.Name, imageID, ss.ImageSha256)
-			// Image with imageStatus is in INSTALLED state
-			if minState > ss.State {
-				minState = ss.State
-			}
-			continue
-		}
-		if vs != nil {
-			log.Infof("doInstall: Verified image exists. StorageStatus "+
-				"Name: %s, imageID %s, ImageSha256: %s",
-				ss.Name, imageID, ss.ImageSha256)
-			if minState > ss.State {
-				minState = ss.State
-			}
-			continue
-		}
-		if ps != nil {
-			log.Infof("doInstall: Persistent image exists. StorageStatus "+
-				"Name: %s, imageID %s, ImageSha256: %s",
-				ss.Name, imageID, ss.ImageSha256)
-			if minState > ss.State {
-				minState = ss.State
-			}
-			continue
-		}
-		if !ss.HasDownloaderRef {
-			log.Infof("doInstall !HasDownloaderRef for %s\n",
-				imageID)
-			AddOrRefcountDownloaderConfig(ctx, imageID, *ss)
-			ss.HasDownloaderRef = true
+		if !ss.HasVolumemgrRef {
+			log.Infof("doInstall !HasVolumemgrRef for %s",
+				ss.Name)
+			AddOrRefcountVolumeConfig(ctx, ss.ImageSha256,
+				config.UUIDandVersion.UUID, ss.ImageID,
+				ss.PurgeCounter, *ss)
+			ss.HasVolumemgrRef = true
 			changed = true
 		}
-		ds := lookupDownloaderStatus(ctx, imageID)
-		if ds == nil || ds.Expired || ds.RefCount == 0 {
-			if ds == nil {
-				log.Infof("downloadStatus not found. name: %s", imageID)
-			} else if ds.Expired {
-				log.Infof("downloadStatusExpired set. name: %s", imageID)
+		vs := lookupVolumeStatus(ctx, ss.ImageSha256,
+			config.UUIDandVersion.UUID, ss.ImageID, ss.PurgeCounter)
+		if vs == nil || vs.RefCount == 0 {
+			if vs == nil {
+				log.Infof("VolumeStatus not found. name: %s",
+					ss.Name)
 			} else {
-				log.Infof("downloadStatus RefCount=0 ignored. name: %s", imageID)
+				log.Infof("VolumeStatus RefCount zero. name: %s",
+					ss.Name)
 			}
 			minState = types.DOWNLOAD_STARTED
 			ss.State = types.DOWNLOAD_STARTED
 			changed = true
 			continue
 		}
-		if ds.FileLocation != "" && ss.ActiveFileLocation == "" {
-			ss.ActiveFileLocation = ds.FileLocation
+		if vs.FileLocation != ss.ActiveFileLocation {
+			ss.ActiveFileLocation = vs.FileLocation
 			changed = true
-			log.Infof("From ds set ActiveFileLocation to %s for %s",
-				ds.FileLocation, imageID)
+			log.Infof("From VolumeStatus set ActiveFileLocation to %s for %s",
+				vs.FileLocation, ss.Name)
 		}
-		if minState > ds.State {
-			minState = ds.State
-		}
-		if ds.State != ss.State {
-			ss.State = ds.State
+		// XXX should really be done as separate ResolveConfig/Status
+		// XXX might mess up containers
+		if false && ss.ImageSha256 != vs.BlobSha256 {
+			log.Infof("updating image sha from %s to %s",
+				ss.ImageSha256, vs.BlobSha256)
+			ss.ImageSha256 = vs.BlobSha256
+			addAppAndImageHash(ctx, config.UUIDandVersion.UUID,
+				ss.ImageID, ss.ImageSha256)
 			changed = true
 		}
-		if ds.Progress != ss.Progress {
-			ss.Progress = ds.Progress
+		if minState > vs.State {
+			minState = vs.State
+		}
+		if vs.State != ss.State {
+			ss.State = vs.State
 			changed = true
 		}
-		if ds.Pending() {
-			log.Infof("lookupDownloaderStatus %s Pending\n",
-				imageID)
+		if vs.Progress != ss.Progress {
+			ss.Progress = vs.Progress
+			changed = true
+		}
+		if vs.Pending() {
+			log.Infof("lookupVolumeStatus %s Pending",
+				ss.Name)
 			continue
 		}
-		if ds.LastErr != "" {
-			log.Errorf("Received error from downloader for %s: %s\n",
-				imageID, ds.LastErr)
-			ss.Error = ds.LastErr
-			ss.ErrorSource = pubsub.TypeToName(types.DownloaderStatus{})
+		if vs.LastErr != "" {
+			log.Errorf("Received error from volumemgr for %s: %s",
+				ss.Name, vs.LastErr)
+			ss.Error = vs.LastErr
+			ss.ErrorSource = pubsub.TypeToName(types.VolumeStatus{})
 			errorSource = ss.ErrorSource
-			allErrors = appendError(allErrors, "downloader",
-				ds.LastErr)
-			ss.ErrorTime = ds.LastErrTime
-			errorTime = ds.LastErrTime
+			allErrors = appendError(allErrors, "volumemgr",
+				vs.LastErr)
+			ss.ErrorTime = vs.LastErrTime
+			errorTime = vs.LastErrTime
 			changed = true
 			continue
-		} else if ss.ErrorSource == pubsub.TypeToName(types.DownloaderStatus{}) {
-			log.Infof("Clearing downloader error %s\n", ss.Error)
+		} else if ss.ErrorSource == pubsub.TypeToName(types.VolumeStatus{}) {
+			log.Infof("Clearing volumemgr error %s", ss.Error)
 			ss.Error = ""
 			ss.ErrorSource = ""
 			ss.ErrorTime = time.Time{}
 			changed = true
-		}
-		switch ds.State {
-		case types.INITIAL:
-			// Nothing to do
-		case types.DOWNLOAD_STARTED:
-			// Nothing to do
-		case types.DOWNLOADED:
-			// Kick verifier to start if it hasn't already
-			if !ss.HasVerifierRef {
-				ret, errInfo := MaybeAddVerifyImageConfig(ctx, uuidStr,
-					*ss, true)
-				if ret {
-					ss.HasVerifierRef = true
-					changed = true
-				} else {
-					// if errors, set the certError flag
-					// otherwise, mark as waiting for certs
-					if errInfo.Error != "" {
-						ss.SetErrorInfo(errInfo)
-						errorSource = ss.ErrorSource
-						allErrors = appendError(allErrors, "baseosmgr", ss.Error)
-						errorTime = ss.ErrorTime
-						changed = true
-					} else {
-						if !waitingForCerts {
-							changed = true
-							waitingForCerts = true
-						}
-					}
-				}
-			}
 		}
 	}
 
@@ -659,140 +496,15 @@ func doInstall(ctx *zedmanagerContext,
 	status.ErrorSource = errorSource
 	status.ErrorTime = errorTime
 	if allErrors != "" {
-		log.Errorf("Download error for %s: %s\n", uuidStr, allErrors)
-		return changed, false
-	}
-
-	if minState < types.DOWNLOADED {
-		log.Infof("Waiting for all downloads for %s\n", uuidStr)
-		return changed, false
-	}
-	if waitingForCerts {
-		log.Infof("Waiting for certs for %s\n", uuidStr)
-		return changed, false
-	}
-	log.Infof("Done with downloads for %s\n", uuidStr)
-	minState = types.MAXSTATE
-	for i := range status.StorageStatusList {
-		ss := &status.StorageStatusList[i]
-		imageID := ss.ImageID
-		isPtr := lookupImageStatusForApp(ctx, config.UUIDandVersion.UUID,
-			ss.ImageSha256)
-		if isPtr != nil {
-			log.Infof("Found ImageStatus %s for URL %s imageID %s\n",
-				isPtr.FileLocation, ss.Name, imageID)
-
-			ss.ActiveFileLocation = isPtr.FileLocation
-			log.Infof("Update SSL ActiveFileLocation for %s: %s\n",
-				uuidStr, ss.ActiveFileLocation)
-			changed = true
-			ensureVerifiedRefCount(ctx, config.UUIDandVersion.UUID,
-				ss)
-		} else {
-			// Look based on ImageID and SHA
-			vs := lookupVerifyImageStatus(ctx, ss.ImageID)
-			if vs == nil {
-				// Keep at current state
-				minState = types.DOWNLOADED
-				changed = true
-				ps := lookupPersistImageStatus(ctx, ss.ImageSha256)
-				if ps == nil || ps.Expired {
-					log.Infof("Verify/PersistImageStatus for %s sha %s not found",
-						imageID, ss.ImageSha256)
-					continue
-				}
-				log.Infof("Found %s based on ImageSha256 %s imageID %s",
-					ss.Name, ss.ImageSha256, imageID)
-				// If we don't already have a RefCount add one
-				if !ss.HasVerifierRef {
-					log.Infof("!HasVerifierRef")
-					// We don't need certs since Status already exists
-					MaybeAddVerifyImageConfig(ctx, uuidStr, *ss, false)
-					ss.HasVerifierRef = true
-					changed = true
-				}
-				continue
-			}
-			log.Infof("Found %s based on ImageID %s sha %s",
-				ss.Name, imageID, ss.ImageSha256)
-
-			if ss.ImageSha256 != vs.ImageSha256 {
-				log.Infof("updating image sha from %s to %s",
-					ss.ImageSha256, vs.ImageSha256)
-				ss.ImageSha256 = vs.ImageSha256
-				addAppAndImageHash(ctx, config.UUIDandVersion.UUID,
-					ss.ImageID, ss.ImageSha256)
-				changed = true
-			}
-			if minState > vs.State {
-				minState = vs.State
-			}
-			if vs.State != ss.State {
-				ss.State = vs.State
-				changed = true
-			}
-			if vs.Pending() {
-				log.Infof("lookupVerifyImageStatus %s Pending\n", imageID)
-				continue
-			}
-			if vs.LastErr != "" {
-				log.Errorf("Received error from verifier for %s: %s\n",
-					imageID, vs.LastErr)
-				ss.Error = vs.LastErr
-				ss.ErrorSource = pubsub.TypeToName(types.VerifyImageStatus{})
-				errorSource = ss.ErrorSource
-				allErrors = appendError(allErrors, "verifier", vs.LastErr)
-				ss.ErrorTime = vs.LastErrTime
-				errorTime = vs.LastErrTime
-				changed = true
-				continue
-			} else if ss.ErrorSource == pubsub.TypeToName(types.VerifyImageStatus{}) {
-				log.Infof("Clearing verifier error %s\n", ss.Error)
-				ss.Error = ""
-				ss.ErrorSource = ""
-				ss.ErrorTime = time.Time{}
-				changed = true
-			}
-			switch vs.State {
-			case types.INITIAL:
-				// Nothing to do
-			default:
-				ss.ActiveFileLocation = vs.FileLocation
-				log.Infof("Update SSL ActiveFileLocation for %s: %s\n",
-					uuidStr, ss.ActiveFileLocation)
-				changed = true
-			}
-		}
-		log.Infof("doInstall: StorageStatus ImageID:%s, Name: %s, "+
-			"minState:%d", ss.ImageID, ss.Name, minState)
-	}
-	if minState == types.MAXSTATE {
-		// Odd; no StorageConfig in list
-		minState = types.DELIVERED
-	}
-	switch status.State {
-	case types.RESTARTING, types.PURGING:
-		// Leave unchanged
-	default:
-		status.State = minState
-		changed = true
-	}
-	log.Debugf("doInstall: uuidStr: %s, minState:%d", uuidStr, minState)
-
-	status.Error = allErrors
-	status.ErrorSource = errorSource
-	status.ErrorTime = errorTime
-	if allErrors != "" {
-		log.Errorf("Verify error for %s: %s\n", uuidStr, allErrors)
+		log.Errorf("Volumemgr error for %s: %s", uuidStr, allErrors)
 		return changed, false
 	}
 
 	if minState < types.DELIVERED {
-		log.Infof("doInstall: Waiting for all verifications for %s. "+
-			"minState: %d", uuidStr, minState)
+		log.Infof("Waiting for all volumes for %s", uuidStr)
 		return changed, false
 	}
-	log.Infof("Done with verifications for %s\n", uuidStr)
+	log.Infof("Done with volumes for %s\n", uuidStr)
 	log.Infof("doInstall done for %s\n", uuidStr)
 	return changed, true
 }
@@ -815,8 +527,6 @@ func doPrepare(ctx *zedmanagerContext,
 		return changed, false
 	}
 
-	// XXX could allocate EIDs before we download for better parallelism
-	// with zedcloud
 	// Make sure we have an EIDConfig for each overlay
 	for _, ec := range config.OverlayNetworkList {
 		MaybeAddEIDConfig(ctx, config.UUIDandVersion,
@@ -883,6 +593,9 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 				changed = true
 			}
 			if status.BootTime != ds.BootTime {
+				log.Infof("Update boottime to %s for %s",
+					ds.BootTime.Format(time.RFC3339Nano),
+					status.Key())
 				status.BootTime = ds.BootTime
 				changed = true
 			}
@@ -968,6 +681,8 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		changed = true
 	}
 	if status.BootTime != ds.BootTime {
+		log.Infof("Update boottime to %s for %s",
+			ds.BootTime.Format(time.RFC3339Nano), status.Key())
 		status.BootTime = ds.BootTime
 		changed = true
 	}
@@ -1050,22 +765,13 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 		log.Infof("Waiting for DomainStatus !Pending for %s\n", uuidStr)
 		return changed
 	}
-	// Update ActiveFileLocation and Vdev from DiskStatus
+	// Update Vdev from DiskStatus
 	for _, disk := range ds.DiskStatusList {
-		// Need to lookup based on ImageSha256
 		found := false
 		for i := range status.StorageStatusList {
 			ss := &status.StorageStatusList[i]
 			if uuid.Equal(ss.ImageID, disk.ImageID) {
 				found = true
-				log.Infof("Found SSL ActiveFileLocation for %s: %s\n",
-					uuidStr, disk.ActiveFileLocation)
-				if ss.ActiveFileLocation != disk.ActiveFileLocation {
-					log.Infof("Update SSL ActiveFileLocation for %s: %s\n",
-						uuidStr, disk.ActiveFileLocation)
-					ss.ActiveFileLocation = disk.ActiveFileLocation
-					changed = true
-				}
 				if ss.Vdev != disk.Vdev {
 					log.Infof("Update SSL Vdev for %s: %s\n",
 						uuidStr, disk.Vdev)
@@ -1075,8 +781,7 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 			}
 		}
 		if !found {
-			log.Infof("No SSL ActiveFileLocation for %s: %s\n",
-				uuidStr, disk.ActiveFileLocation)
+			log.Infof("No vdev for %s", uuidStr)
 		}
 	}
 	log.Infof("Done with DomainStatus for %s\n", uuidStr)
@@ -1146,9 +851,9 @@ func lookupStorageStatus(status *types.AppInstanceStatus, sc types.StorageConfig
 
 	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
-		if ss.ImageID == sc.ImageID {
-			log.Debugf("lookupStorageStatus found %s %s\n",
-				ss.Name, ss.ImageID)
+		if ss.ImageID == sc.ImageID && ss.PurgeCounter == sc.PurgeCounter {
+			log.Debugf("lookupStorageStatus found %s %s purgeCounter %d",
+				ss.Name, ss.ImageID, ss.PurgeCounter)
 			return ss
 		}
 	}
@@ -1159,9 +864,9 @@ func lookupStorageConfig(config *types.AppInstanceConfig, ss types.StorageStatus
 
 	for i := range config.StorageConfigList {
 		sc := &config.StorageConfigList[i]
-		if ss.ImageID == sc.ImageID {
-			log.Debugf("lookupStorageConfig found SC %s %s\n",
-				sc.Name, sc.ImageID)
+		if ss.ImageID == sc.ImageID && ss.PurgeCounter == sc.PurgeCounter {
+			log.Debugf("lookupStorageConfig found SC %s %s purgeCounter %d",
+				sc.Name, sc.ImageID, sc.PurgeCounter)
 			return sc
 		}
 	}
@@ -1185,7 +890,7 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 		}
 		log.Debugf("purgeCmdDone(%s) unused SS %s %s\n",
 			config.Key(), ss.Name, ss.ImageID)
-		c := MaybeRemoveStorageStatus(ctx, ss)
+		c := MaybeRemoveStorageStatus(ctx, config.UUIDandVersion.UUID, ss)
 		if c {
 			changed = true
 		}
@@ -1204,26 +909,17 @@ func purgeCmdDone(ctx *zedmanagerContext, config types.AppInstanceConfig,
 }
 
 // MaybeRemoveStorageStatus returns changed bool and updates StorageStatus
-func MaybeRemoveStorageStatus(ctx *zedmanagerContext, ss *types.StorageStatus) bool {
+func MaybeRemoveStorageStatus(ctx *zedmanagerContext, AppInstID uuid.UUID,
+	ss *types.StorageStatus) bool {
 
 	changed := false
-
-	log.Infof("MaybeRemoveStorageStatus: removing StorageStatus for:"+
-		"Name: %s, ImageID: %s, HasDownloaderRef: %t, HasVerifierRef: %t,"+
-		"IsContainer: %t, Error: %s",
-		ss.Name, ss.ImageID, ss.HasDownloaderRef, ss.HasVerifierRef,
-		ss.IsContainer, ss.Error)
+	log.Infof("MaybeRemoveStorageStatus: removing StorageStatus for %s",
+		ss.Name)
 
 	// Decrease refcount if we had increased it
-	if ss.HasVerifierRef {
-		MaybeRemoveVerifyImageConfig(ctx, ss.ImageID)
-		ss.HasVerifierRef = false
-		changed = true
-	}
-	// Decrease refcount if we had increased it
-	if ss.HasDownloaderRef {
-		MaybeRemoveDownloaderConfig(ctx, ss.ImageID)
-		ss.HasDownloaderRef = false
+	if ss.HasVolumemgrRef {
+		MaybeRemoveVolumeConfig(ctx, ss.ImageSha256, AppInstID, ss.ImageID, ss.PurgeCounter)
+		ss.HasVolumemgrRef = false
 		changed = true
 	}
 	return changed
@@ -1232,13 +928,13 @@ func MaybeRemoveStorageStatus(ctx *zedmanagerContext, ss *types.StorageStatus) b
 func doRemove(ctx *zedmanagerContext,
 	status *types.AppInstanceStatus, uninstall bool) (bool, bool) {
 
-	uuidStr := status.Key()
-
-	log.Infof("doRemove for %s uninstall %v\n", uuidStr, uninstall)
+	appInstID := status.UUIDandVersion.UUID
+	uuidStr := appInstID.String()
+	log.Infof("doRemove for %s uninstall %t", appInstID, uninstall)
 
 	changed := false
 	done := false
-	c, done := doInactivate(ctx, uuidStr, status)
+	c, done := doInactivate(ctx, appInstID, status)
 	changed = changed || c
 	if !done {
 		log.Infof("doRemove waiting for inactivate for %s\n", uuidStr)
@@ -1248,7 +944,7 @@ func doRemove(ctx *zedmanagerContext,
 		c := doUnprepare(ctx, uuidStr, status)
 		changed = changed || c
 		if uninstall {
-			c, d := doUninstall(ctx, uuidStr, status)
+			c, d := doUninstall(ctx, appInstID, status)
 			changed = changed || c
 			done = done || d
 		} else {
@@ -1259,78 +955,96 @@ func doRemove(ctx *zedmanagerContext,
 	return changed, done
 }
 
-func doInactivate(ctx *zedmanagerContext, uuidStr string,
+func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 	status *types.AppInstanceStatus) (bool, bool) {
 
+	uuidStr := appInstID.String()
 	log.Infof("doInactivate for %s\n", uuidStr)
 	changed := false
 	done := false
 	uninstall := (status.PurgeInprogress != types.BRING_DOWN)
 
-	if uninstall || !status.IsContainer {
-		// First halt the domain
-		unpublishDomainConfig(ctx, uuidStr)
-
-		// Check if DomainStatus gone; update AppInstanceStatus if error
-		ds := lookupDomainStatus(ctx, uuidStr)
-		if ds != nil {
-			if status.DomainName != ds.DomainName {
-				status.DomainName = ds.DomainName
-				changed = true
-			}
-			if status.BootTime != ds.BootTime {
-				status.BootTime = ds.BootTime
-				changed = true
-			}
-			c := updateVifUsed(status, *ds)
-			if c {
-				changed = true
-			}
-			log.Infof("Waiting for DomainStatus removal for %s\n", uuidStr)
-			// Look for xen errors.
-			if !ds.Activated {
-				if ds.LastErr != "" {
-					log.Errorf("Received error from domainmgr for %s: %s\n",
-						uuidStr, ds.LastErr)
-					status.Error = ds.LastErr
-					status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
-					status.ErrorTime = ds.LastErrTime
-					changed = true
-				} else if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
-					log.Infof("Clearing domainmgr error %s\n",
-						status.Error)
-					status.Error = ""
-					status.ErrorSource = ""
-					status.ErrorTime = time.Time{}
-					changed = true
-				}
-			}
-			return changed, done
+	if uninstall {
+		log.Infof("doInactivate uninstall for %s\n", uuidStr)
+		// First halt the domain by deleting
+		if lookupDomainConfig(ctx, uuidStr) != nil {
+			unpublishDomainConfig(ctx, uuidStr)
 		}
 
-		log.Infof("Done with DomainStatus removal for %s\n", uuidStr)
 	} else {
+		log.Infof("doInactivate NOT uninstall for %s\n", uuidStr)
+		// First half the domain by clearing Activate
 		dc := lookupDomainConfig(ctx, uuidStr)
-		if dc.Activate {
-			log.Infof("PurgeInprogress for containers (%s) Clear Activate\n",
+		if dc == nil {
+			log.Warnf("doInactivate: No DomainConfig for %s\n",
+				uuidStr)
+		} else if dc.Activate {
+			log.Infof("doInactivate: Clearing Activate for DomainConfig for %s\n",
 				uuidStr)
 			dc.Activate = false
 			publishDomainConfig(ctx, dc)
 		}
 	}
+	// Check if DomainStatus !Activated; update AppInstanceStatus if error
+	ds := lookupDomainStatus(ctx, uuidStr)
+	if ds != nil && (uninstall || ds.Activated) {
+		if uninstall {
+			log.Infof("Waiting for DomainStatus removal for %s\n",
+				uuidStr)
+		} else {
+			log.Infof("Waiting for DomainStatus !Activated for %s\n",
+				uuidStr)
+		}
+		// Update state
+		if status.DomainName != ds.DomainName {
+			status.DomainName = ds.DomainName
+			changed = true
+		}
+		if status.BootTime != ds.BootTime {
+			log.Infof("Update boottime to %v for %s",
+				ds.BootTime.Format(time.RFC3339Nano),
+				status.Key())
+			status.BootTime = ds.BootTime
+			changed = true
+		}
+		c := updateVifUsed(status, *ds)
+		if c {
+			changed = true
+		}
+		// Look for errors
+		if ds.LastErr != "" {
+			log.Errorf("Received error from domainmgr for %s: %s\n",
+				uuidStr, ds.LastErr)
+			status.Error = ds.LastErr
+			status.ErrorSource = pubsub.TypeToName(types.DomainStatus{})
+			status.ErrorTime = ds.LastErrTime
+			changed = true
+		} else if status.ErrorSource == pubsub.TypeToName(types.DomainStatus{}) {
+			log.Infof("Clearing domainmgr error %s\n",
+				status.Error)
+			status.Error = ""
+			status.ErrorSource = ""
+			status.ErrorTime = time.Time{}
+			changed = true
+		}
+		return changed, done
+	}
+	log.Infof("Done with DomainStatus removal/deactivate for %s\n", uuidStr)
 
 	if uninstall {
-		unpublishAppNetworkConfig(ctx, uuidStr)
+		if lookupAppNetworkConfig(ctx, uuidStr) != nil {
+			unpublishAppNetworkConfig(ctx, uuidStr)
+		}
 	} else {
 		m := lookupAppNetworkConfig(ctx, status.Key())
-		if m != nil {
+		if m == nil {
+			log.Warnf("doInactivate: No AppNetworkConfig for %s\n",
+				uuidStr)
+		} else if m.Activate {
 			log.Infof("doInactivate: Clearing Activate for AppNetworkConfig for %s\n",
 				uuidStr)
 			m.Activate = false
 			publishAppNetworkConfig(ctx, m)
-		} else {
-			log.Warnf("doInactivte: No AppNetworkConfig for %s\n",
-				uuidStr)
 		}
 	}
 	// Check if AppNetworkStatus gone or !Activated
@@ -1359,7 +1073,7 @@ func doInactivate(ctx *zedmanagerContext, uuidStr string,
 		}
 		return changed, done
 	}
-	log.Debugf("Done with AppNetworkStatus removal for %s\n", uuidStr)
+	log.Infof("Done with AppNetworkStatus removal/deactivaye for %s\n", uuidStr)
 	done = true
 	status.Activated = false
 	status.ActivateInprogress = false
@@ -1403,26 +1117,27 @@ func doUnprepare(ctx *zedmanagerContext, uuidStr string,
 	return changed
 }
 
-func doUninstall(ctx *zedmanagerContext, uuidStr string,
+func doUninstall(ctx *zedmanagerContext, appInstID uuid.UUID,
 	status *types.AppInstanceStatus) (bool, bool) {
 
-	log.Infof("doUninstall for %s\n", uuidStr)
+	log.Infof("doUninstall for %s", appInstID)
 	changed := false
 	del := false
 
 	for i := range status.StorageStatusList {
 		ss := &status.StorageStatusList[i]
-		c := MaybeRemoveStorageStatus(ctx, ss)
+		c := MaybeRemoveStorageStatus(ctx, appInstID, ss)
 		if c {
 			changed = true
 		}
 		deleteAppAndImageHash(ctx, status.UUIDandVersion.UUID,
 			ss.ImageID)
 	}
-	log.Debugf("Done with all verify and downloader removes for %s\n", uuidStr)
+	log.Debugf("Done with all volumemgr removes for %s",
+		appInstID)
 
 	del = true
-	log.Infof("doUninstall done for %s\n", uuidStr)
+	log.Infof("doUninstall done for %s", appInstID)
 	return changed, del
 }
 
@@ -1490,6 +1205,8 @@ func doInactivateHalt(ctx *zedmanagerContext,
 		changed = true
 	}
 	if status.BootTime != ds.BootTime {
+		log.Infof("Update boottime to %v for %s",
+			ds.BootTime.Format(time.RFC3339Nano), status.Key())
 		status.BootTime = ds.BootTime
 		changed = true
 	}

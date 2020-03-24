@@ -1,8 +1,7 @@
 // Copyright (c) 2017-2018 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-// cert object event handlers
-package baseosmgr
+package volumemgr
 
 import (
 	"fmt"
@@ -10,13 +9,14 @@ import (
 	"os"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
 // Returns a list of all matching cert objects
-func lookupCertObjImageID(ctx *baseOsMgrContext, imageID uuid.UUID) []*types.CertObjConfig {
+func lookupCertObjImageID(ctx *volumemgrContext, imageID uuid.UUID) []*types.CertObjConfig {
 
 	var result []*types.CertObjConfig
 	sub := ctx.subCertObjConfig
@@ -33,7 +33,7 @@ func lookupCertObjImageID(ctx *baseOsMgrContext, imageID uuid.UUID) []*types.Cer
 }
 
 // check if the storage object config have changed
-func certObjCheckConfigModify(ctx *baseOsMgrContext, uuidStr string,
+func certObjCheckConfigModify(ctx *volumemgrContext, uuidStr string,
 	config *types.CertObjConfig, status *types.CertObjStatus) bool {
 
 	// check, whether number of cert objects have changed
@@ -56,7 +56,7 @@ func certObjCheckConfigModify(ctx *baseOsMgrContext, uuidStr string,
 	return false
 }
 
-func certObjHandleStatusUpdateImageID(ctx *baseOsMgrContext, imageID uuid.UUID) {
+func certObjHandleStatusUpdateImageID(ctx *volumemgrContext, imageID uuid.UUID) {
 
 	log.Infof("certObjHandleStatusUpdateImageId(%s)\n", imageID)
 	configPtrList := lookupCertObjImageID(ctx, imageID)
@@ -79,7 +79,8 @@ func certObjHandleStatusUpdateImageID(ctx *baseOsMgrContext, imageID uuid.UUID) 
 	}
 }
 
-func certObjHandleStatusUpdate(ctx *baseOsMgrContext,
+// XXX who calls this?
+func certObjHandleStatusUpdate(ctx *volumemgrContext,
 	config *types.CertObjConfig, status *types.CertObjStatus) {
 
 	uuidStr := config.Key()
@@ -93,7 +94,7 @@ func certObjHandleStatusUpdate(ctx *baseOsMgrContext,
 	}
 }
 
-func doCertObjStatusUpdate(ctx *baseOsMgrContext, uuidStr string, config types.CertObjConfig,
+func doCertObjStatusUpdate(ctx *volumemgrContext, uuidStr string, config types.CertObjConfig,
 	status *types.CertObjStatus) bool {
 
 	log.Infof("doCertObjStatusUpdate(%s)\n", uuidStr)
@@ -103,26 +104,27 @@ func doCertObjStatusUpdate(ctx *baseOsMgrContext, uuidStr string, config types.C
 		return changed
 	}
 
-	// call baseOs to pick up the certs
-	baseOsConfig := lookupBaseOsConfig(ctx, uuidStr)
-	if baseOsConfig == nil {
-		log.Infof("doCertObjStatusUdate(%s) no baseOsConfig\n",
-			uuidStr)
-		return changed
+	// Walk all which have WaitingForCerts set
+	pubs := []pubsub.Publication{
+		ctx.publication(types.VolumeStatus{}, types.AppImgObj),
+		ctx.publication(types.VolumeStatus{}, types.BaseOsObj),
 	}
 
-	baseOsStatus := lookupBaseOsStatus(ctx, uuidStr)
-	if baseOsStatus == nil {
-		log.Infof("doCertObjStatusUdate(%s) no baseOsStatus\n",
-			uuidStr)
-		return changed
+	for _, pub := range pubs {
+		items := pub.GetAll()
+		for _, st := range items {
+			vs := st.(types.VolumeStatus)
+			if !vs.WaitingForCerts {
+				continue
+			}
+			doUpdate(ctx, &vs)
+		}
 	}
-	baseOsHandleStatusUpdate(ctx, baseOsConfig, baseOsStatus)
 	log.Infof("doCertObjStatusUdate(%s) done %v\n", uuidStr, changed)
 	return changed
 }
 
-func doCertObjInstall(ctx *baseOsMgrContext, uuidStr string, config types.CertObjConfig,
+func doCertObjInstall(ctx *volumemgrContext, uuidStr string, config types.CertObjConfig,
 	status *types.CertObjStatus) (bool, bool) {
 
 	log.Infof("doCertObjInstall(%s)\n", uuidStr)
@@ -161,23 +163,24 @@ func doCertObjInstall(ctx *baseOsMgrContext, uuidStr string, config types.CertOb
 	}
 
 	// install the certs now
-	if installDownloadedObjects(types.CertObj, uuidStr, &status.StorageStatusList) {
-		// Automatically move from DOWNLOADED to INSTALLED
-		status.State = types.INSTALLED
-		changed = true
-	}
+	// XXX
+	//	if installDownloadedObjects(types.CertObj, uuidStr, &status.StorageStatusList) {
+	//		// Automatically move from DOWNLOADED to INSTALLED
+	//		status.State = types.INSTALLED
+	//		changed = true
+	//	}
 
 	publishCertObjStatus(ctx, status)
 	log.Infof("doCertObjInstall(%s) done %v\n", uuidStr, changed)
 	return changed, true
 }
 
-func checkCertObjStorageDownloadStatus(ctx *baseOsMgrContext, uuidStr string,
+func checkCertObjStorageDownloadStatus(ctx *volumemgrContext, uuidStr string,
 	config types.CertObjConfig, status *types.CertObjStatus) (bool, bool) {
 
-	ret := checkStorageDownloadStatus(ctx, types.CertObj, uuidStr,
-		config.StorageConfigList, status.StorageStatusList)
-
+	// XXX	ret := checkStorageDownloadStatus(ctx, types.CertObj, uuidStr,
+	//		config.StorageConfigList, status.StorageStatusList)
+	var ret types.RetStatus
 	status.State = ret.MinState
 	status.Error = ret.AllErrors
 	status.ErrorTime = ret.ErrorTime
@@ -196,18 +199,11 @@ func checkCertObjStorageDownloadStatus(ctx *baseOsMgrContext, uuidStr string,
 		return ret.Changed, false
 	}
 
-	// XXX can this ever happen?
-	if ret.WaitingForCerts {
-		log.Infof("checkCertObjDownloadStatus %s, Waiting for certs\n",
-			uuidStr)
-		return ret.Changed, false
-	}
-
 	log.Infof("checkCertObjDownloadStatus for %s, Downloads done\n", uuidStr)
 	return ret.Changed, true
 }
 
-func removeCertObjConfig(ctx *baseOsMgrContext, uuidStr string) {
+func removeCertObjConfig(ctx *volumemgrContext, uuidStr string) {
 
 	log.Infof("removeCertObjConfig(%s)\n", uuidStr)
 	status := lookupCertObjStatus(ctx, uuidStr)
@@ -229,11 +225,17 @@ func removeCertObjConfig(ctx *baseOsMgrContext, uuidStr string) {
 	log.Infof("removeCertObjConfig(%s) done\n", uuidStr)
 }
 
-func doCertObjUninstall(ctx *baseOsMgrContext, uuidStr string,
+// XXX how many elements in StorageStatusList for a certobj?
+// XXX zedagent creates a StorageConfigList with one entry per certificate
+// and drive and associated that with the UUID of the BaseOsConfig or AppInstanceConfig.
+// XXX just walk and ensure we have a refcount on urlsha=sha(URL=name)
+// XXX no need to reduce refcounts if that is complex.
+func doCertObjUninstall(ctx *volumemgrContext, uuidStr string,
 	status *types.CertObjStatus) (bool, bool) {
 
 	var del, changed, removedAll bool
-
+	// XXX VolumeStatus for function
+	vstatus := new(types.VolumeStatus)
 	removedAll = true
 	log.Infof("doCertObjUninstall(%s)\n", uuidStr)
 
@@ -243,9 +245,9 @@ func doCertObjUninstall(ctx *baseOsMgrContext, uuidStr string,
 		log.Infof("doCertObjUninstall(%s) imageID %s\n",
 			uuidStr, ss.ImageID)
 		// Decrease refcount if we had increased it
-		if ss.HasDownloaderRef {
-			removeDownloaderConfig(ctx, types.CertObj, ss.ImageID)
-			ss.HasDownloaderRef = false
+		if vstatus.DownloadOrigin.HasDownloaderRef {
+			// XXX removeDownloaderConfig(ctx, types.CertObj, ss.ImageID)
+			vstatus.DownloadOrigin.HasDownloaderRef = false
 			changed = true
 		}
 
@@ -274,7 +276,7 @@ func doCertObjUninstall(ctx *baseOsMgrContext, uuidStr string,
 }
 
 // key is UUIDandVersion string
-func lookupCertObjConfig(ctx *baseOsMgrContext, key string) *types.CertObjConfig {
+func lookupCertObjConfig(ctx *volumemgrContext, key string) *types.CertObjConfig {
 
 	sub := ctx.subCertObjConfig
 	c, _ := sub.Get(key)
@@ -287,7 +289,7 @@ func lookupCertObjConfig(ctx *baseOsMgrContext, key string) *types.CertObjConfig
 }
 
 // key is UUIDandVersion string
-func lookupCertObjStatus(ctx *baseOsMgrContext, key string) *types.CertObjStatus {
+func lookupCertObjStatus(ctx *volumemgrContext, key string) *types.CertObjStatus {
 	pub := ctx.pubCertObjStatus
 	st, _ := pub.Get(key)
 	if st == nil {
@@ -298,7 +300,7 @@ func lookupCertObjStatus(ctx *baseOsMgrContext, key string) *types.CertObjStatus
 	return &status
 }
 
-func publishCertObjStatus(ctx *baseOsMgrContext, status *types.CertObjStatus) {
+func publishCertObjStatus(ctx *volumemgrContext, status *types.CertObjStatus) {
 
 	key := status.Key()
 	log.Debugf("publishCertObjStatus(%s)\n", key)
@@ -306,7 +308,7 @@ func publishCertObjStatus(ctx *baseOsMgrContext, status *types.CertObjStatus) {
 	pub.Publish(key, *status)
 }
 
-func unpublishCertObjStatus(ctx *baseOsMgrContext, key string) {
+func unpublishCertObjStatus(ctx *volumemgrContext, key string) {
 
 	log.Debugf("unpublishCertObjStatus(%s)\n", key)
 	pub := ctx.pubCertObjStatus
