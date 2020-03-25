@@ -54,7 +54,7 @@ var (
 	zedcloudCtx         zedcloud.ZedCloudContext
 
 	globalDeferInprogress bool
-	eveVersion            = readEveVersion("/etc/eve-release")
+	eveVersion            = agentlog.EveVersion()
 	// Really a constant
 	nilUUID uuid.UUID
 )
@@ -1005,18 +1005,4 @@ func parseLogLevel(logLevel string) log.Level {
 		}
 	}
 	return level
-}
-
-func readEveVersion(fileName string) string {
-	version, err := ioutil.ReadFile(fileName)
-	if err != nil {
-		log.Errorf("readEveVersion: Error reading EVE version from file %s", fileName)
-		return "Unknown"
-	}
-	versionStr := string(version)
-	versionStr = strings.TrimSpace(versionStr)
-	if versionStr == "" {
-		return "Unknown"
-	}
-	return versionStr
 }
