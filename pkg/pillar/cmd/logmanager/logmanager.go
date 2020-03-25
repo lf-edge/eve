@@ -785,12 +785,14 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	// this one?
 	// Response code 404 is sent back where device tries to send log entries,
 	// corresponding to an app/container instance that has already been deleted.
-	is4xx := isResp4xx(resp.StatusCode)
-	if resp != nil && is4xx {
-		log.Errorf("Failed sending %d bytes image %s to %s; code %v; ignored error\n",
-			size, image, appLogsURL, resp.StatusCode)
-		appLogs.Log = []*logs.LogEntry{}
-		return true
+	if resp != nil {
+		is4xx := isResp4xx(resp.StatusCode)
+		if is4xx {
+			log.Errorf("Failed sending %d bytes image %s to %s; code %v; ignored error\n",
+				size, image, appLogsURL, resp.StatusCode)
+			appLogs.Log = []*logs.LogEntry{}
+			return true
+		}
 	}
 	if err != nil {
 		log.Errorf("SendProtoStrForLogs %d bytes image %s failed: %s\n",
