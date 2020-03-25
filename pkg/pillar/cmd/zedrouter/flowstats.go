@@ -8,21 +8,21 @@ package zedrouter
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/eriknordmark/netlink"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	"github.com/satori/go.uuid"
+	pcap "github.com/packetcap/go-pcap"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	"io/ioutil"
-	"syscall"
 )
 
 type flowStats struct {
@@ -610,8 +610,7 @@ func DNSMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.Netwo
 		snapshotLen int32 = 1280             // draft-madi-dnsop-udp4dns-00
 		promiscuous       = true             // mainly for switched network
 		timeout           = 10 * time.Second // collect enough packets in 10sec before processing
-		handle      *pcap.Handle
-		filter      = "udp and port 53"
+		filter            = "udp and port 53"
 		switched    bool
 		// XXX come back to handle TCP DNS snoop, more useful for zone transfer
 		// https://github.com/google/gopacket/issues/236
@@ -624,9 +623,9 @@ func DNSMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.Netwo
 		switched = true
 		filter = "udp and (port 53 or port 67)"
 	}
-	log.Infof("(FlowStats) DNS Monitor on %s(bridge-num %d) swithced=%v, filter=%s", bn, bnNum, switched, filter)
+	log.Infof("(FlowStats) DNS Monitor on %s(bridge-num %d) switched=%v, filter=%s", bn, bnNum, switched, filter)
 
-	handle, err = pcap.OpenLive(bn, snapshotLen, promiscuous, timeout)
+	handle, err := pcap.OpenLive(bn, snapshotLen, promiscuous, timeout, false)
 	if err != nil {
 		log.Errorf("Can not snoop on bridge %s", bn)
 		return
@@ -641,7 +640,7 @@ func DNSMonitor(bn string, bnNum int, ctx *zedrouterContext, status *types.Netwo
 
 	dnssys[bnNum].Done = make(chan bool)
 	dnssys[bnNum].channelOpen = true
-	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+	packetSource := gopacket.NewPacketSource(handle, layers.LinkType(handle.LinkType()))
 	dnsIn := packetSource.Packets()
 	for {
 		var packet gopacket.Packet
