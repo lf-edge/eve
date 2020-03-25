@@ -788,13 +788,14 @@ func DecryptCipherBlock(cipherBlock types.CipherBlockStatus) ([]byte, error) {
 
 	case zconfig.KeyExchangeScheme_KEA_ECDH:
 		clearData, err := decryptCipherBlockWithECDH(cipherBlock)
-		if err == nil {
-			if ret := validateDataHash(clearData,
-				cipherBlock.ClearTextHash); !ret {
-				return []byte{}, errors.New("Data Validation Failed")
-			}
-			return clearData, nil
+		if err != nil {
+			return []byte{}, err
 		}
+		if ret := validateDataHash(clearData,
+			cipherBlock.ClearTextHash); !ret {
+			return []byte{}, errors.New("Data Validation Failed")
+		}
+		return clearData, nil
 	}
 	return []byte{}, errors.New("Unsupported Cipher Key Exchange Scheme")
 }
