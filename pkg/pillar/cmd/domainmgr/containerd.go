@@ -150,14 +150,6 @@ func ctrRm(containerPath string, silent bool) error {
 		}
 
 	}
-	snapshotter := ctrdClient.SnapshotService(defaultSnapshotter)
-	if err = snapshotter.Remove(ctrdCtx, getSnapshotName(containerID)); err != nil {
-		err = fmt.Errorf("ctrRm: unable to delete snapshot of container: %v. %v", containerID, err.Error())
-		log.Error(err)
-		if !silent {
-			return err
-		}
-	}
 	if err := deleteBundle(containerID, silent); err != nil {
 		err = fmt.Errorf("ctrRm: unable to delete bundle of container: %v. %v", containerID, err.Error())
 		log.Error(err)

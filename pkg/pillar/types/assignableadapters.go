@@ -157,6 +157,16 @@ func IoBundleFromPhyAdapter(phyAdapter PhysicalIOAdapter) *IoBundle {
 	ib.Serial = phyAdapter.Phyaddr.Serial
 	ib.Usage = phyAdapter.Usage
 	ib.FreeUplink = phyAdapter.UsagePolicy.FreeUplink
+	// Guard against models without ifname for network adapters
+	if ib.Type.IsNet() && ib.Ifname == "" {
+		log.Warnf("phyAdapter IsNet without ifname: phylabel %s logicallabel %s",
+			ib.Phylabel, ib.Logicallabel)
+		if ib.Logicallabel != "" {
+			ib.Ifname = ib.Logicallabel
+		} else {
+			ib.Ifname = ib.Phylabel
+		}
+	}
 	return &ib
 }
 

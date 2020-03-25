@@ -17,5 +17,8 @@ for p in [0-9]*; do
    kill -9 "$p"
 done
 
+# unmount all disks
+/bin/umount -a -r
+
 # and finally kill the "init"
 kill -9 1
