@@ -58,7 +58,6 @@ type nimContext struct {
 	debugOverride bool // From command line arg
 	useStdout     bool
 	version       bool
-	curpart       string
 }
 
 // Set from Makefile
@@ -67,7 +66,6 @@ var Version = "No version specified"
 func (ctx *nimContext) processArgs() {
 	versionPtr := flag.Bool("v", false, "Print Version of the agent.")
 	debugPtr := flag.Bool("d", false, "Set Debug level")
-	curpartPtr := flag.String("c", "", "Current partition")
 	stdoutPtr := flag.Bool("s", false, "Use stdout")
 	flag.Parse()
 
@@ -79,7 +77,6 @@ func (ctx *nimContext) processArgs() {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	ctx.curpart = *curpartPtr
 	ctx.version = *versionPtr
 }
 
@@ -99,7 +96,7 @@ func Run(ps *pubsub.PubSub) {
 		return
 	}
 
-	err := agentlog.Init(agentName, nimCtx.curpart)
+	err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
 	}

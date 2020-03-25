@@ -86,7 +86,6 @@ var (
 func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
-	curpartPtr := flag.String("c", "", "Current partition")
 	noPidPtr := flag.Bool("p", false, "Do not check for running client")
 	maxRetriesPtr := flag.Int("r", 0, "Max retries")
 	flag.Parse()
@@ -99,7 +98,6 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	curpart := *curpartPtr
 	noPidFlag := *noPidPtr
 	maxRetries := *maxRetriesPtr
 	args := flag.Args()
@@ -108,7 +106,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 		return
 	}
 	// Sending json log format to stdout
-	err := agentlog.Init("client", curpart)
+	err := agentlog.Init("client")
 	if err != nil {
 		log.Fatal(err)
 	}

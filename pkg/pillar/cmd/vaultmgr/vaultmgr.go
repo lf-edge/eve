@@ -439,7 +439,6 @@ func GetOperInfo() (info.DataSecAtRestStatus, string) {
 //Run is the entrypoint for running vaultmgr as a standalone program
 func Run(ps *pubsub.PubSub) {
 
-	curpartPtr := flag.String("c", "", "Current partition")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
@@ -449,10 +448,9 @@ func Run(ps *pubsub.PubSub) {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	curpart := *curpartPtr
 
 	// Sending json log format to stdout
-	err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
 	}

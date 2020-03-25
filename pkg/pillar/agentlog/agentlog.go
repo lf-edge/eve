@@ -341,7 +341,8 @@ func roundToMb(b uint64) uint64 {
 	return mb
 }
 
-func Init(agentName string, curpart string) error {
+func Init(agentName string) error {
+	curpart := EveCurrentPartition()
 	if curpart != "" {
 		zboot.SetCurpart(curpart)
 	}

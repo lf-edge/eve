@@ -15,7 +15,6 @@ import (
 )
 
 func Run(ps *pubsub.PubSub) {
-	// XXX curpartPtr := flag.String("c", "", "Current partition")
 	delFlow := flag.Bool("D", false, "Delete flow")
 	delSrcIP := flag.String("s", "", "Delete flow with Srouce IP")
 	delProto := flag.Int("p", 0, "Delete flow with protocol ID")
@@ -65,7 +64,6 @@ func Run(ps *pubsub.PubSub) {
 		return
 	}
 	// XXX args := flag.Args()
-	// XXX curpart := *curpartPtr
 	res, err := netlink.ConntrackTableList(netlink.ConntrackTable, syscall.AF_INET)
 	if err != nil {
 		log.Println("ContrackTableList", err)

@@ -127,7 +127,6 @@ var flowQ *list.List
 func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
-	curpartPtr := flag.String("c", "", "Current partition")
 	parsePtr := flag.String("p", "", "parse checkpoint file")
 	validatePtr := flag.Bool("V", false, "validate UTF-8 in checkpoint")
 	fatalPtr := flag.Bool("F", false, "Cause log.Fatal fault injection")
@@ -142,7 +141,6 @@ func Run(ps *pubsub.PubSub) {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	curpart := *curpartPtr
 	parse := *parsePtr
 	validate := *validatePtr
 	if *versionPtr {
@@ -170,7 +168,7 @@ func Run(ps *pubsub.PubSub) {
 		}
 		return
 	}
-	err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
 	}
