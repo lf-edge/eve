@@ -121,7 +121,7 @@ if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] && [ "$P3_FS_TYPE"
     #It is a device with TPM, and formatted with ext4, setup fscrypt
     echo "$(date -Ins -u) EXT4 partitioned $PERSISTDIR, enabling fscrypt"
     #Initialize fscrypt algorithm, hash length etc.
-    $BINDIR/vaultmgr -c "$CURPART" setupVaults
+    $BINDIR/vaultmgr setupVaults
 fi
 
 if [ -f $PERSISTDIR/IMGA/reboot-reason ]; then
@@ -187,7 +187,7 @@ if [ ! -f $CONFIGDIR/device.cert.pem ]; then
     touch $FIRSTBOOTFILE # For nodeagent
 fi
 echo "$(date -Ins -u) Starting nodeagent"
-$BINDIR/nodeagent -c $CURPART &
+$BINDIR/nodeagent &
 wait_for_touch nodeagent
 
 mkdir -p "$WATCHDOG_PID" "$WATCHDOG_FILE"
@@ -277,19 +277,19 @@ done
 
 # Get IP addresses
 echo "$(date -Ins -u) Starting nim"
-$BINDIR/nim -c $CURPART &
+$BINDIR/nim &
 wait_for_touch nim
 
 # Restart watchdog ledmanager and nim
 touch "$WATCHDOG_PID/nim.pid" "$WATCHDOG_FILE/nim.touch"
 
 # Print diag output forever on changes
-$BINDIR/diag -c $CURPART -f -o /dev/console &
+$BINDIR/diag -f -o /dev/console &
 
 # Wait for having IP addresses for a few minutes
 # so that we are likely to have an address when we run ntp
 echo "$(date -Ins -u) Starting waitforaddr"
-$BINDIR/waitforaddr -c $CURPART
+$BINDIR/waitforaddr
 
 # Deposit any diag information from nim
 access_usb
@@ -368,7 +368,7 @@ if [ $SELF_REGISTER = 1 ]; then
         exit 1
     fi
     echo "$(date -Ins -u) Starting client selfRegister getUuid"
-    if ! $BINDIR/client -c $CURPART selfRegister getUuid; then
+    if ! $BINDIR/client selfRegister getUuid; then
         # XXX $? is always zero
         echo "$(date -Ins -u) client selfRegister failed with $?"
         exit 1
@@ -395,7 +395,7 @@ if [ $SELF_REGISTER = 1 ]; then
 else
     echo "$(date -Ins -u) Get UUID in in case device was deleted and recreated with same device cert"
     echo "$(date -Ins -u) Starting client getUuid"
-    $BINDIR/client -c $CURPART getUuid
+    $BINDIR/client getUuid
     if [ ! -f $CONFIGDIR/hardwaremodel ]; then
         echo "$(date -Ins -u) XXX /config/hardwaremodel missing; creating"
         /opt/zededa/bin/hardwaremodel -c >$CONFIGDIR/hardwaremodel
@@ -427,19 +427,19 @@ rm "$WATCHDOG_PID/zedclient.pid"
 
 for AGENT in $AGENTS1; do
     echo "$(date -Ins -u) Starting $AGENT"
-    $BINDIR/"$AGENT" -c $CURPART &
+    $BINDIR/"$AGENT" &
     wait_for_touch "$AGENT"
 done
 
 # Start vaultmgr as a service
-$BINDIR/vaultmgr -c "$CURPART" runAsService &
+$BINDIR/vaultmgr runAsService &
 wait_for_touch vaultmgr
 touch "$WATCHDOG_PID/vaultmgr.pid" "$WATCHDOG_FILE/vaultmgr.touch"
 
 # Start tpmmgr as a service
 if [ -c $TPM_DEVICE_PATH ] && ! [ -f $CONFIGDIR/disable-tpm ] ; then
     echo "$(date -Ins -u) Starting tpmmgr as a service agent"
-    $BINDIR/tpmmgr -c "$CURPART" runAsService &
+    $BINDIR/tpmmgr runAsService &
     wait_for_touch tpmmgr
     touch "$WATCHDOG_PID/tpmmgr.pid" "$WATCHDOG_FILE/tpmmgr.touch"
 fi
@@ -447,7 +447,7 @@ fi
 #If logmanager is already running we don't have to start it.
 if ! pgrep logmanager >/dev/null; then
     echo "$(date -Ins -u) Starting logmanager"
-    $BINDIR/logmanager -c $CURPART &
+    $BINDIR/logmanager &
     wait_for_touch logmanager
     touch "$WATCHDOG_PID/logmanager.pid" "$WATCHDOG_FILE/logmanager.touch"
 fi

@@ -53,7 +53,6 @@ type executorContext struct {
 func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
-	curpartPtr := flag.String("c", "", "Current partition")
 	timeLimitPtr := flag.Uint("t", 120, "Maximum time to wait for command")
 	flag.Parse()
 	execCtx := executorContext{}
@@ -65,8 +64,7 @@ func Run(ps *pubsub.PubSub) {
 		log.SetLevel(log.InfoLevel)
 	}
 	execCtx.timeLimit = *timeLimitPtr
-	curpart := *curpartPtr
-	err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
 	}

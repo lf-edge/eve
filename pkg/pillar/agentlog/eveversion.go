@@ -9,9 +9,15 @@ import (
 	"strings"
 )
 
-const versionFile = "/etc/eve-release"
+const (
+	versionFile   = "/etc/eve-release"
+	partitionFile = "/run/eve.id"
+)
 
-var version = "" // Cached value since it doesn't change on a running device
+var (
+	version   = "" // Cached value since it doesn't change on a running device
+	partition = "" // Does not change on a running device
+)
 
 // EveVersion returns the version of the current image
 func EveVersion() string {
@@ -34,4 +40,27 @@ func readEveVersion(fileName string) string {
 		return "Unknown"
 	}
 	return versionStr
+}
+
+// EveCurrentPartition returns the current EVE image partition
+func EveCurrentPartition() string {
+	if partition == "" {
+		partition = readCurrentPartition(partitionFile)
+	}
+	return partition
+}
+
+func readCurrentPartition(fileName string) string {
+	curpart, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		fmt.Printf("readCurrentPartition: Error reading current partition from file %s",
+			fileName)
+		return "Unknown"
+	}
+	curpartStr := string(curpart)
+	curpartStr = strings.TrimSpace(curpartStr)
+	if curpartStr == "" {
+		return "Unknown"
+	}
+	return curpartStr
 }

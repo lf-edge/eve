@@ -935,7 +935,6 @@ func createCerts() error {
 }
 
 func Run(ps *pubsub.PubSub) {
-	curpartPtr := flag.String("c", "", "Current partition")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
@@ -946,9 +945,8 @@ func Run(ps *pubsub.PubSub) {
 		log.SetLevel(log.InfoLevel)
 	}
 
-	curpart := *curpartPtr
 	// Sending json log format to stdout
-	err := agentlog.Init("tpmmgr", curpart)
+	err := agentlog.Init("tpmmgr")
 	if err != nil {
 		log.Fatal(err)
 	}

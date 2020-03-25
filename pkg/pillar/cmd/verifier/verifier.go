@@ -87,7 +87,6 @@ var downloadGCTime = time.Duration(600) * time.Second // Unless from GlobalConfi
 func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
-	curpartPtr := flag.String("c", "", "Current partition")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
@@ -96,8 +95,7 @@ func Run(ps *pubsub.PubSub) {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	curpart := *curpartPtr
-	err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
 	}

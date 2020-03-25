@@ -130,7 +130,6 @@ func newNodeagentContext() nodeagentContext {
 func Run(ps *pubsub.PubSub) {
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
-	curpartPtr := flag.String("c", "", "Current partition")
 	flag.Parse()
 	debug = *debugPtr
 	debugOverride = debug
@@ -143,8 +142,7 @@ func Run(ps *pubsub.PubSub) {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
 		return
 	}
-	curpart := *curpartPtr
-	err := agentlog.Init(agentName, curpart)
+	err := agentlog.Init(agentName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -152,9 +150,10 @@ func Run(ps *pubsub.PubSub) {
 		log.Fatal(err)
 	}
 
-	log.Infof("Starting %s, on %s\n", agentName, curpart)
+	log.Infof("Starting %s\n", agentName)
 
 	nodeagentCtx := newNodeagentContext()
+	curpart := agentlog.EveCurrentPartition()
 	nodeagentCtx.curPart = strings.TrimSpace(curpart)
 
 	// Make sure we have a GlobalConfig file with defaults
