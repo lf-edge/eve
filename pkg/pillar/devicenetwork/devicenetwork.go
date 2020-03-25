@@ -383,13 +383,20 @@ func devPortInstallWifiConfig(ifname string, wconfig types.WirelessConfig) bool 
 }
 
 func getWifiCredential(wifi types.WifiConfig) (zconfig.CredentialBlock, error) {
-	cred := utils.PrepareCipherCred(wifi.Identity, wifi.Password)
-	status, cred, err := utils.GetCipherCredentials("devicenetwork",
-		wifi.CipherBlockStatus, cred)
-	if status.IsCipher && len(status.Error) == 0 {
-		log.Infof("%s, cipherblock decryption successful\n", wifi.SSID)
+	if wifi.CipherBlockStatus.IsCipher {
+		_, cred, err := utils.GetCipherCredentials("devicenetwork",
+			wifi.CipherBlockStatus)
+		if err != nil {
+			log.Infof("%s, wifi config cipherblock decryption unsuccessful: %v\n", wifi.SSID, err)
+			cred = utils.PrepareCipherCred(wifi.Identity, wifi.Password)
+			return cred, nil
+		}
+		log.Infof("%s, wifi config cipherblock decryption successful\n", wifi.SSID)
+		return cred, nil
 	}
-	return cred, err
+	log.Infof("%s, wifi config cipherblock not present\n", wifi.SSID)
+	cred := utils.PrepareCipherCred(wifi.Identity, wifi.Password)
+	return cred, nil
 }
 
 // CheckDNSUpdate sees if we should update based on DNS

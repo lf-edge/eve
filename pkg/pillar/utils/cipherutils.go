@@ -29,10 +29,11 @@ func PrepareCipherCred(id, password string) zconfig.CredentialBlock {
 }
 
 // GetCipherCredentials : decrypt credential block
-func GetCipherCredentials(agentName string, status types.CipherBlockStatus,
-	cred zconfig.CredentialBlock) (types.CipherBlockStatus, zconfig.CredentialBlock, error) {
+func GetCipherCredentials(agentName string, status types.CipherBlockStatus) (types.CipherBlockStatus,
+	zconfig.CredentialBlock, error) {
 	cipherBlock := new(types.CipherBlockStatus)
 	*cipherBlock = status
+	var cred zconfig.CredentialBlock
 	if !cipherBlock.IsCipher {
 		return handleCipherBlockCredError(agentName, cipherBlock, cred, nil)
 	}
