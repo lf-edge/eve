@@ -783,9 +783,12 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	// by the server. Ignore them to make sure we can log subsequent ones.
 	// XXX Should we inject a separate log entry to record that we dropped
 	// this one?
-	if resp != nil && resp.StatusCode == 400 {
-		log.Errorf("Failed sending %d bytes image %s to %s; code 400; ignored error\n",
-			size, image, appLogsURL)
+	// Response code 404 is sent back where device tries to send log entries,
+	// corresponding to an app/container instance that has already been deleted.
+	is4xx := isResp4xx(resp.StatusCode)
+	if resp != nil && is4xx {
+		log.Errorf("Failed sending %d bytes image %s to %s; code %v; ignored error\n",
+			size, image, appLogsURL, resp.StatusCode)
 		appLogs.Log = []*logs.LogEntry{}
 		return true
 	}
@@ -808,6 +811,14 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	log.Debugf("Sent %d bytes image %s to %s\n", size, image, appLogsURL)
 	appLogs.Log = []*logs.LogEntry{}
 	return true
+}
+
+func isResp4xx(code int) bool {
+	remainder := code - 400
+	if remainder >= 0 && remainder <= 99 {
+		return true
+	}
+	return false
 }
 
 func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
