@@ -139,8 +139,8 @@ func RebootReason(reason string, normal bool) {
 	filename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
 	dateStr := time.Now().Format(time.RFC3339Nano)
 	if !normal {
-		reason = fmt.Sprintf("Reboot from agent %s[%d] in partition %s at %s: %s\n",
-			savedAgentName, savedPid, zboot.GetCurrentPartition(), dateStr, reason)
+		reason = fmt.Sprintf("Reboot from agent %s[%d] in partition %s EVE version %s at %s: %s\n",
+			savedAgentName, savedPid, zboot.GetCurrentPartition(), EveVersion(), dateStr, reason)
 	}
 	err := printToFile(filename, reason)
 	if err != nil {
