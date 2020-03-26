@@ -54,7 +54,7 @@ var (
 	zedcloudCtx         zedcloud.ZedCloudContext
 
 	globalDeferInprogress bool
-	eveVersion            = readEveVersion("/etc/eve-release")
+	eveVersion            = agentlog.EveVersion()
 	// Really a constant
 	nilUUID uuid.UUID
 )
@@ -785,12 +785,14 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	// this one?
 	// Response code 404 is sent back where device tries to send log entries,
 	// corresponding to an app/container instance that has already been deleted.
-	is4xx := isResp4xx(resp.StatusCode)
-	if resp != nil && is4xx {
-		log.Errorf("Failed sending %d bytes image %s to %s; code %v; ignored error\n",
-			size, image, appLogsURL, resp.StatusCode)
-		appLogs.Log = []*logs.LogEntry{}
-		return true
+	if resp != nil {
+		is4xx := isResp4xx(resp.StatusCode)
+		if is4xx {
+			log.Errorf("Failed sending %d bytes image %s to %s; code %v; ignored error\n",
+				size, image, appLogsURL, resp.StatusCode)
+			appLogs.Log = []*logs.LogEntry{}
+			return true
+		}
 	}
 	if err != nil {
 		log.Errorf("SendProtoStrForLogs %d bytes image %s failed: %s\n",
@@ -1003,18 +1005,4 @@ func parseLogLevel(logLevel string) log.Level {
 		}
 	}
 	return level
-}
-
-func readEveVersion(fileName string) string {
-	version, err := ioutil.ReadFile(fileName)
-	if err != nil {
-		log.Errorf("readEveVersion: Error reading EVE version from file %s", fileName)
-		return "Unknown"
-	}
-	versionStr := string(version)
-	versionStr = strings.TrimSpace(versionStr)
-	if versionStr == "" {
-		return "Unknown"
-	}
-	return versionStr
 }

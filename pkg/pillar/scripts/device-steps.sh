@@ -21,7 +21,8 @@ TPM_DEVICE_PATH="/dev/tpmrm0"
 PATH=$BINDIR:$PATH
 
 echo "$(date -Ins -u) Starting device-steps.sh"
-echo "$(date -Ins -u) EVE version: $(cat $BINDIR/versioninfo)"
+echo "$(date -Ins -u) EVE version: $(cat /etc/eve-release)"
+cp -p /etc/eve-release /run/eve-release
 
 MEASURE=0
 while [ $# != 0 ]; do
