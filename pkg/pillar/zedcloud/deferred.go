@@ -100,7 +100,7 @@ func (ctx *DeferredContext) handleDeferred(event time.Time,
 			resp, _, _, err := SendOnAllIntf(&item.zedcloudCtx, item.url,
 				item.size, item.buf, iteration, item.return400)
 			if item.return400 && resp != nil &&
-				resp.StatusCode == 400 {
+				resp.StatusCode >= 400 && resp.StatusCode < 500 {
 				log.Infof("HandleDeferred: for %s ignore code %d\n",
 					key, resp.StatusCode)
 			} else if err != nil {
