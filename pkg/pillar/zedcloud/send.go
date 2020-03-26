@@ -110,7 +110,7 @@ func SendOnAllIntf(ctx *ZedCloudContext, url string, reqlen int64, b *bytes.Buff
 				remoteTemporaryFailure = rtf
 			}
 			if return400 && resp != nil &&
-				resp.StatusCode == 400 {
+				resp.StatusCode >= 400 && resp.StatusCode < 500 {
 				log.Infof("sendOnAllIntf: for %s reqlen %d ignore code %d\n",
 					url, reqlen, resp.StatusCode)
 				return resp, nil, remoteTemporaryFailure, err
