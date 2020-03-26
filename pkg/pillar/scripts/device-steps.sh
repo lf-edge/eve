@@ -156,10 +156,6 @@ for f in "$dir"/*.json; do
     cp -p "$f" $GCDIR
 done
 
-if ! CURPART=$(zboot curpart); then
-    CURPART="IMGA"
-fi
-
 if [ ! -d $PERSISTDIR/log ]; then
     echo "$(date -Ins -u) Creating $PERSISTDIR/log"
     mkdir $PERSISTDIR/log
@@ -237,7 +233,7 @@ access_usb() {
         if [ -d /mnt/dump ]; then
             echo "$(date -Ins -u) Dumping diagnostics to USB stick"
             # Check if it fits without clobbering an existing tar file
-            if tar cf /mnt/dump/diag1.tar /persist/status/ /persist/config /var/run/ /persist/log "/persist/$CURPART/log"; then
+            if tar cf /mnt/dump/diag1.tar /persist/status/ /persist/config /var/run/ /persist/log "/persist/rsyslog"; then
                 mv /mnt/dump/diag1.tar /mnt/dump/diag.tar
             else
                 rm -f /mnt/dump/diag1.tar
