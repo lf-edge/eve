@@ -130,11 +130,9 @@ type zedcloudLogs struct {
 
 // Run is an entry point into running logmanager
 func Run(ps *pubsub.PubSub) {
-	defaultLogdirname := agentlog.GetCurrentLogdir()
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug")
 	forcePtr := flag.Bool("f", false, "Force")
-	logdirPtr := flag.String("l", defaultLogdirname, "Log file directory")
 	fatalPtr := flag.Bool("F", false, "Cause log.Fatal fault injection")
 	hangPtr := flag.Bool("H", false, "Cause watchdog .touch fault injection")
 	flag.Parse()
@@ -147,7 +145,6 @@ func Run(ps *pubsub.PubSub) {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	logDirName := *logdirPtr
 	force := *forcePtr
 	if *versionPtr {
 		fmt.Printf("%s: %s\n", os.Args[0], Version)
@@ -158,7 +155,6 @@ func Run(ps *pubsub.PubSub) {
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("Starting %s watching %s\n", agentName, logDirName)
 
 	// Run a periodic timer so we always update StillRunning
 	stillRunning := time.NewTicker(25 * time.Second)

@@ -32,8 +32,7 @@ var savedPid = 0
 
 // Parameter description
 // 1. agentName: Name with which disk log file will be created.
-// 2. logdir: Directory in which disk log file will be placed.
-func initImpl(agentName string, logdir string) {
+func initImpl(agentName string) {
 	log.SetOutput(os.Stdout)
 	hook := new(FatalHook)
 	log.AddHook(hook)
@@ -140,7 +139,7 @@ func RebootReason(reason string, normal bool) {
 	dateStr := time.Now().Format(time.RFC3339Nano)
 	if !normal {
 		reason = fmt.Sprintf("Reboot from agent %s[%d] in partition %s EVE version %s at %s: %s\n",
-			savedAgentName, savedPid, zboot.GetCurrentPartition(), EveVersion(), dateStr, reason)
+			savedAgentName, savedPid, EveCurrentPartition(), EveVersion(), dateStr, reason)
 	}
 	err := printToFile(filename, reason)
 	if err != nil {
@@ -154,7 +153,7 @@ func RebootReason(reason string, normal bool) {
 		fmt.Printf("printToFile failed %s\n", err)
 	}
 	filename = "/persist/" + rebootImage
-	curPart := zboot.GetCurrentPartition()
+	curPart := EveCurrentPartition()
 	err = printToFile(filename, curPart)
 	if err != nil {
 		// Note: can not use log here since we are called from a log hook!
@@ -341,32 +340,14 @@ func roundToMb(b uint64) uint64 {
 }
 
 func Init(agentName string) {
-	curpart := EveCurrentPartition()
-	if curpart != "" {
-		zboot.SetCurpart(curpart)
-	}
-	logdir := GetCurrentLogdir()
 	savedAgentName = agentName
 	savedPid = os.Getpid()
-	initImpl(agentName, logdir)
-}
-
-var currentIMGdir = ""
-
-func getCurrentIMGdir() string {
-
-	if currentIMGdir != "" {
-		return currentIMGdir
-	}
-	partName := zboot.GetCurrentPartition()
-	currentIMGdir = fmt.Sprintf("%s/%s", types.PersistDir, partName)
-	return currentIMGdir
+	initImpl(agentName)
 }
 
 var otherIMGdir = ""
 
 func getOtherIMGdir(inprogressCheck bool) string {
-
 	if otherIMGdir != "" {
 		return otherIMGdir
 	}
@@ -376,20 +357,6 @@ func getOtherIMGdir(inprogressCheck bool) string {
 	partName := zboot.GetOtherPartition()
 	otherIMGdir = fmt.Sprintf("%s/%s", types.PersistDir, partName)
 	return otherIMGdir
-}
-
-// Return a logdir for agents and logmanager to use by default
-func GetCurrentLogdir() string {
-	return fmt.Sprintf("%s/log", getCurrentIMGdir())
-}
-
-// If the other partition is not inprogress we return the empty string
-func GetOtherLogdir() string {
-	dirname := getOtherIMGdir(true)
-	if dirname == "" {
-		return ""
-	}
-	return fmt.Sprintf("%s/log", dirname)
 }
 
 // Debug info to tell how often/late we call stillRunning; keyed by agentName
