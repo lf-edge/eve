@@ -224,7 +224,16 @@ const qemuNetTemplate = `
   addr = "0x0"
 `
 
+const qemuPciPassthruTemplate = `
+[device]
+  driver = "vfio-pci"
+  host = "{{.PciShortAddr}}"
+`
+
 const kvmStateDir = "/var/run/hypervisor/kvm/"
+const sysfsPciDevices = "/sys/bus/pci/devices/"
+const sysfsVfioPciBind = "/sys/bus/pci/drivers/vfio-pci/bind"
+const sysfsPciDriversProbe = "/sys/bus/pci/drivers_probe"
 
 func logError(format string, a ...interface{}) error {
 	log.Errorf(format, a...)
@@ -318,6 +327,47 @@ func (ctx kvmContext) CreateDomConfig(domainName string, config types.DomainConf
 		netContext.NetID = netContext.NetID + 1
 	}
 
+	// Gather all PCI assignments into a single line
+	var pciAssignments []typeAndPCI
+	for _, adapter := range config.IoAdapterList {
+		log.Debugf("processing adapter %d %s\n", adapter.Type, adapter.Name)
+		list := aa.LookupIoBundleAny(adapter.Name)
+		// We reserved it in handleCreate so nobody could have stolen it
+		if len(list) == 0 {
+			log.Fatalf("IoBundle disappeared %d %s for %s\n",
+				adapter.Type, adapter.Name, domainName)
+		}
+		for _, ib := range list {
+			if ib == nil {
+				continue
+			}
+			if ib.UsedByUUID != config.UUIDandVersion.UUID {
+				log.Fatalf("IoBundle not ours %s: %d %s for %s\n",
+					ib.UsedByUUID, adapter.Type, adapter.Name,
+					domainName)
+			}
+			if ib.PciLong != "" {
+				tap := typeAndPCI{pciLong: ib.PciLong, ioType: ib.Type}
+				pciAssignments = addNoDuplicatePCI(pciAssignments, tap)
+			}
+		}
+	}
+	if len(pciAssignments) != 0 {
+		log.Infof("PCI assignments %v\n", pciAssignments)
+
+		pciPTContext := struct {
+			PciShortAddr string
+		}{PciShortAddr: ""}
+
+		t, _ = template.New("qemuPciPT").Parse(qemuPciPassthruTemplate)
+		for _, pa := range pciAssignments {
+			short := types.PCILongToShort(pa.pciLong)
+			pciPTContext.PciShortAddr = short
+			if err := t.Execute(file, pciPTContext); err != nil {
+				return logError("can't write PCI Passthrough to config file %s (%v)", file.Name(), err)
+			}
+		}
+	}
 	return nil
 }
 
@@ -419,10 +469,57 @@ func (ctx kvmContext) Tune(domainName string, domainID int, vifCount int) error 
 }
 
 func (ctx kvmContext) PCIReserve(long string) error {
+	log.Errorf("PCIReserve long addr is %s", long)
+
+	overrideFile := sysfsPciDevices + long + "/driver_override"
+	unbindFile := sysfsPciDevices + long + "/driver/unbind"
+
+	//Unbind current driver, whatever it is
+	if err := ioutil.WriteFile(unbindFile, []byte(long), 0644); err != nil {
+		log.Fatalf("unbind failure for PCI device %s: %v",
+			long, err)
+	}
+
+	//map vfio-pci as the driver_override for the device
+	if err := ioutil.WriteFile(overrideFile, []byte("vfio-pci"), 0644); err != nil {
+		log.Fatalf("driver_override failure for PCI device %s: %v",
+			long, err)
+	}
+
+	//Write PCI DDDD:BB:DD.FF to /sys/bus/pci/drivers/vfio-pci/bind
+	if err := ioutil.WriteFile(sysfsVfioPciBind, []byte(long), 0644); err != nil {
+		log.Fatalf("bind failure for PCI device %s: %v",
+			long, err)
+	}
+
 	return nil
 }
 
 func (ctx kvmContext) PCIRelease(long string) error {
+	log.Errorf("PCIRelease long addr is %s", long)
+
+	overrideFile := sysfsPciDevices + long + "/driver_override"
+	unbindFile := sysfsPciDevices + long + "/driver/unbind"
+
+	//Unbind vfio-pci
+	if err := ioutil.WriteFile(unbindFile, []byte(long), 0644); err != nil {
+		log.Fatalf("unbind failure for PCI device %s: %v",
+			long, err)
+	}
+
+	//Write Empty string, to clear driver_override for the device
+	if err := ioutil.WriteFile(overrideFile, []byte(""), 0644); err != nil {
+		log.Fatalf("driver_override failure for PCI device %s: %v",
+			long, err)
+	}
+
+	//Write PCI DDDD:BB:DD.FF to /sys/bus/pci/drivers_probe,
+	//as a best-effort to bring back original driver
+	if err := ioutil.WriteFile(sysfsPciDriversProbe, []byte(long), 0644); err != nil {
+		log.Fatalf("drivers_probe failure for PCI device %s: %v",
+			long, err)
+	}
+
 	return nil
 }
 
