@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	versionFile   = "/etc/eve-release"
+	versionFile   = "/run/eve-release"
 	partitionFile = "/run/eve.id"
 )
 
