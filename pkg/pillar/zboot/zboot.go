@@ -382,22 +382,16 @@ func MarkCurrentPartitionStateActive() error {
 
 // XXX known pathnames for the version file and the zededa-tools container
 const (
-	newVersionFile = "/run/eve-release"
-	// XXX remove use of shortVersionFile in container once the deployed
-	// images all have newVersionFile
-	shortVersionFile = "/opt/zededa/bin/versioninfo"
-	longVersionFile  = "XXX"
-	otherPrefix      = "/containers/services/pillar/lower"
+	versionFile          = "/run/eve-release"
+	otherPartVersionFile = "/etc/eve-release"
+	otherPrefix          = "/containers/services/pillar/lower"
 	// XXX handle baseimage-update by looking for old names
 	otherPrefixOld = "/containers/services/zededa-tools/lower"
 )
 
 func GetShortVersion(partName string) string {
-	ver := getVersion(partName, newVersionFile, false)
-	if ver != "" {
-		return ver
-	}
-	return getVersion(partName, shortVersionFile, true)
+	ver := getVersion(partName, versionFile, false)
+	return ver
 }
 
 // XXX add longversion once we have a filename above
@@ -421,6 +415,7 @@ func getVersion(part string, verFilename string, inContainer bool) string {
 		log.Infof("%s, readCurVersion %s\n", part, versionStr)
 		return versionStr
 	} else {
+		verFilename = otherPartVersionFile
 		devname := GetPartitionDevname(part)
 		target, err := ioutil.TempDir("/var/run", "tmpmnt")
 		if err != nil {
