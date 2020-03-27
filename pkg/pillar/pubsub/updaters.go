@@ -30,7 +30,8 @@ func (u *Updaters) Add(updater chan Notify, name string, instance int) {
 // Remove an updater
 func (u *Updaters) Remove(updater chan Notify) {
 	u.lock.Lock()
-	servers := make([]notifyName, len(u.servers))
+	// A new slice which points to the same underlying array
+	servers := u.servers[:0]
 	found := false
 	for _, old := range u.servers {
 		if old.ch == updater {

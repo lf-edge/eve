@@ -54,7 +54,7 @@ var (
 	zedcloudCtx         zedcloud.ZedCloudContext
 
 	globalDeferInprogress bool
-	eveVersion            = readEveVersion("/etc/eve-release")
+	eveVersion            = agentlog.EveVersion()
 	// Really a constant
 	nilUUID uuid.UUID
 )
@@ -783,11 +783,16 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	// by the server. Ignore them to make sure we can log subsequent ones.
 	// XXX Should we inject a separate log entry to record that we dropped
 	// this one?
-	if resp != nil && resp.StatusCode == 400 {
-		log.Errorf("Failed sending %d bytes image %s to %s; code 400; ignored error\n",
-			size, image, appLogsURL)
-		appLogs.Log = []*logs.LogEntry{}
-		return true
+	// Response code 404 is sent back where device tries to send log entries,
+	// corresponding to an app/container instance that has already been deleted.
+	if resp != nil {
+		is4xx := isResp4xx(resp.StatusCode)
+		if is4xx {
+			log.Errorf("Failed sending %d bytes image %s to %s; code %v; ignored error\n",
+				size, image, appLogsURL, resp.StatusCode)
+			appLogs.Log = []*logs.LogEntry{}
+			return true
+		}
 	}
 	if err != nil {
 		log.Errorf("SendProtoStrForLogs %d bytes image %s failed: %s\n",
@@ -808,6 +813,14 @@ func sendProtoStrForAppLogs(appUUID string, appLogs *logs.AppInstanceLogBundle,
 	log.Debugf("Sent %d bytes image %s to %s\n", size, image, appLogsURL)
 	appLogs.Log = []*logs.LogEntry{}
 	return true
+}
+
+func isResp4xx(code int) bool {
+	remainder := code - 400
+	if remainder >= 0 && remainder <= 99 {
+		return true
+	}
+	return false
 }
 
 func sendCtxInit(ctx *logmanagerContext, dnsCtx *DNSContext) {
@@ -992,18 +1005,4 @@ func parseLogLevel(logLevel string) log.Level {
 		}
 	}
 	return level
-}
-
-func readEveVersion(fileName string) string {
-	version, err := ioutil.ReadFile(fileName)
-	if err != nil {
-		log.Errorf("readEveVersion: Error reading EVE version from file %s", fileName)
-		return "Unknown"
-	}
-	versionStr := string(version)
-	versionStr = strings.TrimSpace(versionStr)
-	if versionStr == "" {
-		return "Unknown"
-	}
-	return versionStr
 }

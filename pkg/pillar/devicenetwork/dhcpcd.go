@@ -240,6 +240,8 @@ func dhcpcdCmd(op string, extras []string, ifname string, background bool) bool 
 	args = append(args, ifname)
 	if background {
 		cmd := exec.Command(name, args...)
+		cmd.Stdout = os.NewFile(0, os.DevNull)
+		cmd.Stderr = os.NewFile(0, os.DevNull)
 
 		log.Infof("Background command %s %v\n", name, args)
 		go func() {

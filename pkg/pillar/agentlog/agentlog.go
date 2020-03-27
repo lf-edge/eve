@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"runtime"
 	dbg "runtime/debug"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -110,7 +111,7 @@ func handleSignals(sigs chan os.Signal) {
 			case syscall.SIGUSR2:
 				log.Warnf("SIGUSR2 triggered memory info:\n")
 				logMemUsage()
-				logGCStats()
+				logMemAllocationSites()
 			}
 		}
 	}
@@ -139,8 +140,8 @@ func RebootReason(reason string, normal bool) {
 	filename := fmt.Sprintf("%s/%s", types.PersistDir, reasonFile)
 	dateStr := time.Now().Format(time.RFC3339Nano)
 	if !normal {
-		reason = fmt.Sprintf("Reboot from agent %s[%d] in partition %s at %s: %s\n",
-			savedAgentName, savedPid, zboot.GetCurrentPartition(), dateStr, reason)
+		reason = fmt.Sprintf("Reboot from agent %s[%d] in partition %s EVE version %s at %s: %s\n",
+			savedAgentName, savedPid, zboot.GetCurrentPartition(), EveVersion(), dateStr, reason)
 	}
 	err := printToFile(filename, reason)
 	if err != nil {
@@ -300,23 +301,37 @@ func logGCStats() {
 	log.Infof("GCStats %+v\n", m)
 }
 
+// Print in sorted order based on top bytes
+func logMemAllocationSites() {
+	reportZeroInUse := false
+	numSites, sites := GetMemAllocationSites(reportZeroInUse)
+	log.Warnf("alloc %d sites len %d", numSites, len(sites))
+	sort.Slice(sites,
+		func(i, j int) bool {
+			return sites[i].InUseBytes > sites[j].InUseBytes ||
+				(sites[i].InUseBytes == sites[j].InUseBytes &&
+					sites[i].AllocBytes > sites[j].AllocBytes)
+		})
+	for _, site := range sites {
+		log.Warnf("alloc %d bytes %d objects total %d/%d at:\n%s",
+			site.InUseBytes, site.InUseObjects, site.AllocBytes,
+			site.AllocObjects, site.PrintedStack)
+	}
+}
+
 // LogMemoryUsage provides for user-triggered memory reports
 func LogMemoryUsage() {
 	log.Info("User-triggered memory report")
 	logMemUsage()
-	logGCStats()
+	logMemAllocationSites()
 }
 
 func logMemUsage() {
 	var m runtime.MemStats
 
 	runtime.ReadMemStats(&m)
-
-	log.Infof("Alloc %v Mb", roundToMb(m.Alloc))
-	log.Infof("TotalAlloc %v Mb", roundToMb(m.TotalAlloc))
-	log.Infof("Sys %v Mb", roundToMb(m.Sys))
-	log.Infof("NumGC %v", m.NumGC)
-	log.Infof("MemStats %+v", m)
+	log.Infof("Alloc %d Mb, TotalAlloc %d Mb, Sys %d Mb, NumGC %d",
+		roundToMb(m.Alloc), roundToMb(m.TotalAlloc), roundToMb(m.Sys), m.NumGC)
 }
 
 func roundToMb(b uint64) uint64 {
