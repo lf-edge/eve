@@ -95,10 +95,7 @@ func Run(ps *pubsub.PubSub) {
 		return
 	}
 
-	err := agentlog.Init(agentName)
-	if err != nil {
-		log.Fatal(err)
-	}
+	agentlog.Init(agentName)
 
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)

@@ -33,7 +33,7 @@ var savedPid = 0
 // Parameter description
 // 1. agentName: Name with which disk log file will be created.
 // 2. logdir: Directory in which disk log file will be placed.
-func initImpl(agentName string, logdir string) error {
+func initImpl(agentName string, logdir string) {
 	log.SetOutput(os.Stdout)
 	hook := new(FatalHook)
 	log.AddHook(hook)
@@ -51,7 +51,6 @@ func initImpl(agentName string, logdir string) error {
 	signal.Notify(sigs, syscall.SIGUSR1)
 	signal.Notify(sigs, syscall.SIGUSR2)
 	go handleSignals(sigs)
-	return nil
 }
 
 // FatalHook is used make sure we save the fatal and panic strings to a file
@@ -341,7 +340,7 @@ func roundToMb(b uint64) uint64 {
 	return mb
 }
 
-func Init(agentName string) error {
+func Init(agentName string) {
 	curpart := EveCurrentPartition()
 	if curpart != "" {
 		zboot.SetCurpart(curpart)
@@ -349,7 +348,7 @@ func Init(agentName string) error {
 	logdir := GetCurrentLogdir()
 	savedAgentName = agentName
 	savedPid = os.Getpid()
-	return initImpl(agentName, logdir)
+	initImpl(agentName, logdir)
 }
 
 var currentIMGdir = ""

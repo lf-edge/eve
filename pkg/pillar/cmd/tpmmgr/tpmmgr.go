@@ -935,6 +935,7 @@ func createCerts() error {
 }
 
 func Run(ps *pubsub.PubSub) {
+	var err error
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	flag.Parse()
 	debug = *debugPtr
@@ -946,10 +947,7 @@ func Run(ps *pubsub.PubSub) {
 	}
 
 	// Sending json log format to stdout
-	err := agentlog.Init("tpmmgr")
-	if err != nil {
-		log.Fatal(err)
-	}
+	agentlog.Init("tpmmgr")
 
 	if len(flag.Args()) == 0 {
 		log.Fatal("Insufficient arguments")
