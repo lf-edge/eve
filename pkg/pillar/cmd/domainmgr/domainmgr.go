@@ -1820,6 +1820,9 @@ func addNoDuplicate(list []string, add string) []string {
 }
 
 func cp(dst, src string) error {
+	if strings.Compare(dst, src) == 0 {
+		return nil
+	}
 	s, err := os.Open(src)
 	if err != nil {
 		return err
