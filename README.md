@@ -187,7 +187,7 @@ diskutil list):
 
 ```sh
 diskutil list
-diskutil umountDisk /dev/rdiskXXX
+diskutil unmountDisk /dev/rdiskXXX
 sudo dd if=dist/arm64/installer.raw of=/dev/rdiskXXX bs=1m
 diskutil eject /dev/rdiskXXX
 ```
@@ -313,7 +313,7 @@ eject /dev/sdXXX
 ### OSX
 
 ```bash
-diskutil umount /dev/sdXXX
+diskutil unmountDisk /dev/sdXXX
 sudo dd if=dist/amd64/installer.raw of=/dev/sdXXX
 diskutil eject /dev/sdXXX
 ```
