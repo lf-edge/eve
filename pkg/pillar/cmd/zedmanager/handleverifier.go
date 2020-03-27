@@ -120,12 +120,8 @@ func MaybeRemoveVerifyImageConfig(ctx *zedmanagerContext, imageID uuid.UUID) {
 	m.RefCount -= 1
 	log.Infof("MaybeRemoveVerifyImageConfig: RefCount to %d for %s\n",
 		m.RefCount, imageID)
-	if m.RefCount == 0 {
-		unpublishVerifyImageConfig(ctx, m.Key())
-	} else {
-		publishVerifyImageConfig(ctx, m)
-	}
 	log.Infof("MaybeRemoveVerifyImageConfig done for %s\n", imageID)
+	publishVerifyImageConfig(ctx, m)
 }
 
 func publishVerifyImageConfig(ctx *zedmanagerContext,
