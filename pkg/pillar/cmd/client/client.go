@@ -106,10 +106,7 @@ func Run(ps *pubsub.PubSub) { //nolint:gocyclo
 		return
 	}
 	// Sending json log format to stdout
-	err := agentlog.Init("client")
-	if err != nil {
-		log.Fatal(err)
-	}
+	agentlog.Init("client")
 	if !noPidFlag {
 		if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 			log.Fatal(err)

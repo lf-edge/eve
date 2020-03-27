@@ -125,6 +125,7 @@ var debugOverride bool // From command line arg
 var flowQ *list.List
 
 func Run(ps *pubsub.PubSub) {
+	var err error
 	versionPtr := flag.Bool("v", false, "Version")
 	debugPtr := flag.Bool("d", false, "Debug flag")
 	parsePtr := flag.String("p", "", "parse checkpoint file")
@@ -168,10 +169,7 @@ func Run(ps *pubsub.PubSub) {
 		}
 		return
 	}
-	err := agentlog.Init(agentName)
-	if err != nil {
-		log.Fatal(err)
-	}
+	agentlog.Init(agentName)
 	if err := pidfile.CheckAndCreatePidfile(agentName); err != nil {
 		log.Fatal(err)
 	}
