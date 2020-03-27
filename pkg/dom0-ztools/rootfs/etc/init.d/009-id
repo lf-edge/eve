@@ -1,2 +1,3 @@
 #!/bin/sh
 zboot curpart > /run/eve.id
+cp -p /etc/eve-release /run/eve-release
