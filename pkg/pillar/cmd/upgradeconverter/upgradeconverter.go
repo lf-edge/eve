@@ -69,10 +69,7 @@ func Run(ps *pubsub.PubSub) {
 		log.SetLevel(log.InfoLevel)
 	}
 
-	err := agentlog.Init("upgradeconverter", "")
-	if err != nil {
-		log.Fatal(err)
-	}
+	agentlog.Init("upgradeconverter")
 	if err := pidfile.CheckAndCreatePidfile(ctx.agentName); err != nil {
 		log.Fatal(err)
 	}
