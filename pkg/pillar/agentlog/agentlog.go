@@ -30,28 +30,6 @@ var savedAgentName = "unknown" // Keep for signal and exit handlers
 var savedRebootReason = "unknown"
 var savedPid = 0
 
-// Parameter description
-// 1. agentName: Name with which disk log file will be created.
-func initImpl(agentName string) {
-	log.SetOutput(os.Stdout)
-	hook := new(FatalHook)
-	log.AddHook(hook)
-	hook2 := new(SourceHook)
-	log.AddHook(hook2)
-	// Report nano timestamps
-	formatter := log.JSONFormatter{
-		TimestampFormat: time.RFC3339Nano,
-	}
-	log.SetFormatter(&formatter)
-	log.SetReportCaller(true)
-	log.RegisterExitHandler(printStack)
-
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGUSR1)
-	signal.Notify(sigs, syscall.SIGUSR2)
-	go handleSignals(sigs)
-}
-
 // FatalHook is used make sure we save the fatal and panic strings to a file
 type FatalHook struct {
 }
@@ -342,7 +320,23 @@ func roundToMb(b uint64) uint64 {
 func Init(agentName string) {
 	savedAgentName = agentName
 	savedPid = os.Getpid()
-	initImpl(agentName)
+	log.SetOutput(os.Stdout)
+	hook := new(FatalHook)
+	log.AddHook(hook)
+	hook2 := new(SourceHook)
+	log.AddHook(hook2)
+	// Report nano timestamps
+	formatter := log.JSONFormatter{
+		TimestampFormat: time.RFC3339Nano,
+	}
+	log.SetFormatter(&formatter)
+	log.SetReportCaller(true)
+	log.RegisterExitHandler(printStack)
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGUSR1)
+	signal.Notify(sigs, syscall.SIGUSR2)
+	go handleSignals(sigs)
 }
 
 var otherIMGdir = ""
