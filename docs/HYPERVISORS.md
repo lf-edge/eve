@@ -95,6 +95,8 @@ EVE relies on modern [IOMMU support](https://vfio.blogspot.com/2014/08/iommu-gro
 
 It must be noted, that given dual nature of IOMMU support in the Linux kernel itself (it can be used to optimized device drivers in addition to providing virtualization and user-space capabilities) they have an extra incentive to focus on properly enabling access controls via PCIe ACS (Access Control Services). Sadly, a lot of PCIe hardware is still [very](https://www.redhat.com/archives/vfio-users/2016-July/msg00043.html), [very](https://bugzilla.redhat.com/show_bug.cgi?id=1037684) badly broken and has to be worked around. For now, EVE takes a blunt approach of punting on fine-grained ACS controls with both [Xen](https://lists.gt.net/xen/devel/345180) and [KVM](https://lkml.org/lkml/2013/5/30/513) hypervisors.
 
+Further details of Xen vs. KVM IOMMU handling are [documented here](https://docs.google.com/document/d/12-z6JD41J_oNrCg_c0yAxGWg5ADBQ8_bSiP_NH6Hqwo/edit#).
+
 Hardware quirks aside, EVE uses the following hypervisor capabilities to manage IOMMU-based device assignments to domains:
 
 * [Xen PCI Passthrough](https://wiki.xenproject.org/wiki/Xen_PCI_Passthrough) for Xen
