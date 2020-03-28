@@ -28,5 +28,12 @@ RUN bash -c 'patch -p0 < patch/*'
 RUN make -C BaseTools
 RUN ./build.sh
 
+# now create an out dir for all the artifacts
+RUN mkdir /out && cp /ws/OVMF*.fd /out
+
+# FIXME: we should be building Raspbery Pi 4 UEFI implementations
+COPY rpi /tmp/rpi
+RUN if [ "$(uname -m)" = aarch64 ]; then cp -r /tmp/rpi /out/ ;fi
+
 FROM scratch
-COPY --from=build /ws/OVMF*.fd /
+COPY --from=build /out/* /
