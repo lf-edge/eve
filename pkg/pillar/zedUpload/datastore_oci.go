@@ -192,8 +192,8 @@ func (ep *OCITransportMethod) processList(req *DronaRequest) ([]string, error) {
 // processObjectMetaData Artifact Metadata from OCI registry
 func (ep *OCITransportMethod) processObjectMetaData(req *DronaRequest) (string, int64, error) {
 	var (
-		err  error
-		size int64
+		err           error
+		size          int64
 		imageSha256   string
 		imageManifest []byte
 	)
