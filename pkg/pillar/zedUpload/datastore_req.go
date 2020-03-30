@@ -67,6 +67,9 @@ type DronaRequest struct {
 	// Download counter
 	retry int
 
+	// Image Sha256
+	ImageSha256 string
+
 	// used by Multipart upload
 	Adata  []byte
 	PartID int64
@@ -209,6 +212,13 @@ func (req *DronaRequest) GetStatus() string {
 	req.Lock()
 	defer req.Unlock()
 	return req.status
+}
+
+// GetSha256 returns an image sha256
+func (req *DronaRequest) GetSha256() string {
+	req.Lock()
+	defer req.Unlock()
+	return req.ImageSha256
 }
 
 type SyncMetaFile struct {
