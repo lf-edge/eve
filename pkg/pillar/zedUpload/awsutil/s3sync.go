@@ -354,7 +354,7 @@ func (s *S3ctx) GetSignedURL(bname, bkey string, duration time.Duration) (string
 		Key:    aws.String(bkey)})
 
 	// Presign a request with specified duration.
-	signedURL, err := req.Presign(duration * time.Minute)
+	signedURL, err := req.Presign(duration)
 
 	return signedURL, err
 }
