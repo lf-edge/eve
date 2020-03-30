@@ -23,7 +23,8 @@ eve_version() {
 }
 
 linuxkit_tag() {
-    echo "$(linuxkit pkg show-tag ${EVE_HASH:+--hash $EVE_HASH} "$EVE/$1")$ARCH"
+    local tag=$(linuxkit pkg show-tag ${EVE_HASH:+--hash $EVE_HASH} "$EVE/$1")
+    echo "${tag%-dirty}$ARCH"
 }
 
 immutable_tag() {
