@@ -279,8 +279,12 @@ func MaybeRemoveVerifierConfig(ctx *baseOsMgrContext, objType string,
 	m.RefCount -= 1
 	log.Infof("MaybeRemoveVerifierConfig remaining RefCount %d for %s\n",
 		m.RefCount, imageID)
+	if m.RefCount == 0 {
+		unpublishVerifierConfig(ctx, objType, m)
+	} else {
+		publishVerifierConfig(ctx, objType, m)
+	}
 	log.Infof("MaybeRemoveVerifierConfig done for %s\n", imageID)
-	publishVerifierConfig(ctx, objType, m)
 }
 
 // Note that this function returns the entry even if Pending* is set.

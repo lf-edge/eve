@@ -557,11 +557,13 @@ func doInstall(ctx *zedmanagerContext,
 			changed = true
 		}
 		ds := lookupDownloaderStatus(ctx, imageID)
-		if ds == nil || ds.Expired {
+		if ds == nil || ds.Expired || ds.RefCount == 0 {
 			if ds == nil {
 				log.Infof("downloadStatus not found. name: %s", imageID)
-			} else {
+			} else if ds.Expired {
 				log.Infof("downloadStatusExpired set. name: %s", imageID)
+			} else {
+				log.Infof("downloadStatus RefCount=0 ignored. name: %s", imageID)
 			}
 			minState = types.DOWNLOAD_STARTED
 			ss.State = types.DOWNLOAD_STARTED
